@@ -59,11 +59,21 @@ try {
 }
 
 ok(release.draft === false, 'release 不是草稿（草稿客户端看不到，而且不报错）')
-ok(release.prerelease === false, 'release 不是预发布')
+/*
+ * 预发布（版本号带 `-`）：必须标成 prerelease，且**不占 Latest**——Latest 永远
+ * 是最新稳定版，稳定版客户端的更新检查才不会被推进 alpha（electron-updater 自己
+ * 也会按语义化版本把关，这里是对齐的口径）。正式版维持原来的两条断言。
+ */
+const prerelease = version.includes('-')
+ok(release.prerelease === prerelease, prerelease ? 'release 标记为预发布' : 'release 不是预发布')
 ok(typeof release.body === 'string' && release.body.trim().length > 0, '写了 Release 正文（客户端悬停时显示的就是它）')
 
 const latest = await api('/releases/latest')
-ok(latest.tag_name === tag, '它就是 Latest（否则客户端取到的是另一个版本）', latest.tag_name)
+if (prerelease) {
+  ok(latest.tag_name !== tag, '预发布不占 Latest（稳定版客户端不会被推进 alpha）', latest.tag_name)
+} else {
+  ok(latest.tag_name === tag, '它就是 Latest（否则客户端取到的是另一个版本）', latest.tag_name)
+}
 
 /* ---------- 2. 三样产物齐全 ---------- */
 

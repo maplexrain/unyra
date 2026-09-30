@@ -139,14 +139,21 @@ const title = '归一 Unyra ' + tag
  */
 const notesFile = path.join(ROOT, 'release-notes', tag + '.md')
 const notesArgs = existsSync(notesFile) ? ['--notes-file', notesFile] : ['--generate-notes']
+/*
+ * 预发布（版本号带 `-`，如 0.4.10-alpha）：标成 prerelease，且**不占 Latest**——
+ * Latest 永远是最新稳定版，稳定版客户端的更新检查才不会被推进 alpha。
+ * electron-updater 自己也会按语义化版本把关（默认不装 prerelease），这里是对齐。
+ */
+const prerelease = version.includes('-')
+const visibilityArgs = prerelease ? ['--prerelease'] : ['--latest']
 
-console.log('[release] 创建 GitHub Release ' + tag)
+console.log('[release] 创建 GitHub Release ' + tag + (prerelease ? '（预发布）' : ''))
 let created = gh([
   'release', 'create', tag,
   '-R', slug,
   '--target', 'main',
   '--title', title,
-  '--latest',
+  ...visibilityArgs,
   ...notesArgs,
   ...files,
 ])
@@ -158,7 +165,7 @@ if (!created.ok && /already exists|already_exists/i.test(created.out)) {
     console.error('[release] 补传失败：' + up.out)
     process.exit(1)
   }
-  created = gh(['release', 'edit', tag, '-R', slug, '--title', title, '--latest', ...notesArgs])
+  created = gh(['release', 'edit', tag, '-R', slug, '--title', title, ...visibilityArgs, ...notesArgs])
 }
 if (!created.ok) {
   console.error('[release] 创建/更新 Release 失败：' + created.out)
