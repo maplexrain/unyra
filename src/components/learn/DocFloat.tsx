@@ -63,6 +63,8 @@ interface Props {
 
 /** 鼠标离开按钮/浮层后，再等这么久才算真离开：两段之间的空隙不该让浮层闪没 */
 const LEAVE_GRACE_MS = 180
+/** 退场动画的时长（与 motion.css 的 moji-tip-out 一致）：播完才卸载 */
+const HIDE_MS = 150
 /** 浮层开着时跟随「当前读到哪一节」的刷新节奏（activeIndex 变了才动） */
 const FOLLOW_MS = 300
 
@@ -77,48 +79,69 @@ export default function DocFloat({
   onTogglePure,
   outlineSlot,
 }: Props) {
-  /** 浮层开合与快照：快照在打开那一刻取一次，开着的时候定时跟句柄对齐 */
-  const [open, setOpen] = useState(false)
+  /**
+   * 浮层三态：closed（不挂载）→ open（展开）→ closing（退场动画中）→ closed。
+   * 中间态是给退场动画留的：unmount 太快就什么都看不到，收回的那一帧必须真的播完。
+   */
+  const [phase, setPhase] = useState<'closed' | 'open' | 'closing'>('closed')
+  /** 快照在打开那一刻取一次，开着的时候定时跟句柄对齐 */
   const [snap, setSnap] = useState<{ items: OutlineHandle['items']; activeIndex: number } | null>(null)
-  const timers = useRef<{ leave?: number; follow?: number }>({})
+  const timers = useRef<{ leave?: number; hide?: number; follow?: number }>({})
 
-  const stopTimers = () => {
-    if (timers.current.leave !== undefined) window.clearTimeout(timers.current.leave)
+  useEffect(
+    () => () => {
+      if (timers.current.leave !== undefined) window.clearTimeout(timers.current.leave)
+      if (timers.current.hide !== undefined) window.clearTimeout(timers.current.hide)
+      if (timers.current.follow !== undefined) window.clearInterval(timers.current.follow)
+    },
+    [],
+  )
+
+  /** 走退场：先播收回动画，播完才把浮层从 DOM 里摘掉 */
+  const beginClose = () => {
+    if (timers.current.hide !== undefined) return
     if (timers.current.follow !== undefined) window.clearInterval(timers.current.follow)
-    timers.current = {}
+    timers.current.follow = undefined
+    setPhase((p) => (p === 'closed' ? p : 'closing'))
+    timers.current.hide = window.setTimeout(() => {
+      timers.current.hide = undefined
+      setPhase('closed')
+      setSnap(null)
+    }, HIDE_MS)
   }
-  useEffect(() => stopTimers, [])
 
   const openNow = () => {
-    stopTimers()
+    // 收回途中又移回来了：取消那趟退场，回到展开（动画类换回去，重新播一遍展开）
+    if (timers.current.leave !== undefined) window.clearTimeout(timers.current.leave)
+    if (timers.current.hide !== undefined) window.clearTimeout(timers.current.hide)
+    timers.current.leave = undefined
+    timers.current.hide = undefined
     const h = outlineSlot?.current ?? null
     if (!h || !h.items.length) return
     setSnap({ items: h.items, activeIndex: h.activeIndex })
-    setOpen(true)
-    // 开着的时候正文可能还在滚：跟着句柄把「当前读到哪」刷进高亮
-    timers.current.follow = window.setInterval(() => {
-      const cur = outlineSlot?.current ?? null
-      if (!cur || !cur.items.length) {
-        setOpen(false)
-        setSnap(null)
-        stopTimers()
-        return
-      }
-      setSnap((prev) =>
-        prev && prev.items === cur.items && prev.activeIndex === cur.activeIndex
-          ? prev
-          : { items: cur.items, activeIndex: cur.activeIndex },
-      )
-    }, FOLLOW_MS)
+    setPhase('open')
+    if (timers.current.follow === undefined) {
+      // 开着的时候正文可能还在滚：跟着句柄把「当前读到哪」刷进高亮
+      timers.current.follow = window.setInterval(() => {
+        const cur = outlineSlot?.current ?? null
+        if (!cur || !cur.items.length) {
+          beginClose()
+          return
+        }
+        setSnap((prev) =>
+          prev && prev.items === cur.items && prev.activeIndex === cur.activeIndex
+            ? prev
+            : { items: cur.items, activeIndex: cur.activeIndex },
+        )
+      }, FOLLOW_MS)
+    }
   }
 
   const closeSoon = () => {
-    if (timers.current.leave !== undefined) window.clearTimeout(timers.current.leave)
+    if (timers.current.leave !== undefined) return
     timers.current.leave = window.setTimeout(() => {
       timers.current.leave = undefined
-      setOpen(false)
-      setSnap(null)
-      stopTimers()
+      beginClose()
     }, LEAVE_GRACE_MS)
   }
 
@@ -142,21 +165,18 @@ export default function DocFloat({
           <button
             type="button"
             title={t('标题大纲：鼠标停留展开，点一条跳到对应标题')}
-            aria-expanded={open}
+            aria-expanded={phase === 'open'}
             className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-ink-soft transition hover:bg-line/50 hover:text-ink"
           >
             <ListTree size={15} />
           </button>
-          {open && snap && (
+          {phase !== 'closed' && snap && (
             <DocOutline
               items={snap.items}
               activeIndex={snap.activeIndex}
+              closing={phase === 'closing'}
               onJump={(index) => outlineSlot?.current?.jump(index)}
-              onDismiss={() => {
-                setOpen(false)
-                setSnap(null)
-                stopTimers()
-              }}
+              onDismiss={beginClose}
             />
           )}
         </div>

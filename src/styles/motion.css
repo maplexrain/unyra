@@ -499,22 +499,34 @@
 }
 
 /*
- * 气泡式 tip 的出场：从挂它的那颗按钮的方向（右上）轻轻探出来。
- * 只动透明度与一丁点位移/缩放，一条 160ms 的合成层动画，进出都不抢戏。
- * 用在文档区悬浮组的标题大纲气泡上（见 components/learn/DocOutline）。
+ * 气泡式 tip 的进出场：**从挂它的那颗按钮所在的右上角，向左下展开 / 收回**。
+ *
+ * 手法是 clip-path 的 inset 裁切——可见区域从右上角一个点，沿对角线长大到全尺寸；
+ * 退场原路收回。比透明度+缩放有方向感：它真的是「从按钮里长出来」，
+ * 而不是在原地淡入。展开用一条先快后缓的曲线（出手利落、收尾柔和），
+ * 收回用 ease-in（越收越快，像被吸回按钮）。用在文档区的标题大纲气泡上
+ * （见 components/learn/DocOutline）。
  */
 .moji-tip-pop {
-  transform-origin: top right;
-  animation: moji-tip-pop 0.16s ease-out both;
+  animation: moji-tip-in 0.19s cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
-@keyframes moji-tip-pop {
+@keyframes moji-tip-in {
   from {
-    opacity: 0;
-    transform: translateY(-3px) scale(0.97);
+    clip-path: inset(0 0 100% 100%);
   }
   to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
+    clip-path: inset(0 0 0 0);
+  }
+}
+.moji-tip-out {
+  animation: moji-tip-out 0.15s ease-in both;
+}
+@keyframes moji-tip-out {
+  from {
+    clip-path: inset(0 0 0 0);
+  }
+  to {
+    clip-path: inset(0 0 100% 100%);
   }
 }
 
@@ -598,6 +610,11 @@
     animation: none;
     opacity: 0.7;
     transform: none;
+  }
+  /* 气泡的展开/收回是纯装饰：减动效下直接就地显隐 */
+  .moji-tip-pop,
+  .moji-tip-out {
+    animation: none;
   }
   /* 条纹留着（它也是「这是滑条」的形状提示），只是不再滚动 */
   .moji-effort-zebra-layer {
