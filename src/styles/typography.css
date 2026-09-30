@@ -1,0 +1,334 @@
+/* 本文件负责：文档正文与预览排版——正文那一列、预览排版、笔洗、加粗、Agent 富文本 */
+/* ---------- 文档区正文那一列 ---------- */
+
+/*
+ * 文档区里**正文那一列**的宽度：排法可以一种视图一样，列宽只有一个数——
+ * 预览、源码、本地文件、试卷副本都收在这一列里居中。切视图时正文不会从 850
+ * 跳到满宽再跳回来（源码视图从前没有上限，大屏上就是一条 1800px 的长行）。
+ *
+ * 为什么是 850：一行太长，眼睛回行要横扫；太短则频繁换行，读起来碎。850 配
+ * 15.5px 的正文（见下面 .note-preview 的 --doc-scale）一行约 50 个汉字，
+ * 是长文里舒服的一档；再宽就该分双栏了，那是另一件事。
+ *
+ * 只管宽度与居中，左右内边距各视图自便：源码是编辑框（pl-[32px] pr-[22px]，
+ * 与预览的正文左右对齐），预览还要避开左边的标题定位栏。窄于 850 的格子
+ * （分割之后）宽度照旧自适应。
+ *
+ * **这里不能写 display**：调用方身上挂着 Tailwind 的 flex / block，而无层级的
+ * 规则盖得住 @layer 里的工具类，写一行 display 就会把它们的排布悄悄改掉。
+ */
+.doc-measure {
+  width: 100%;
+  max-width: 850px;
+  margin-inline: auto;
+}
+
+/* ---------- 预览排版 ---------- */
+
+.note-preview {
+  /*
+    正文的字号只有一个系数：--doc-scale（Ctrl + 滚轮调，见 NodeNote）。
+    这里定的是基准值，文档里其余排版尺寸都是 em，跟着一起等比缩放——
+    改一处就能整篇放大缩小，不会出现标题大了正文没大的错位。
+  */
+  font-size: calc(15.5px * var(--doc-scale, 1));
+  line-height: 1.9;
+  /* 正文比界面再松一点，长段落更易读 */
+  letter-spacing: 0.022em;
+  color: var(--color-ink);
+  overflow-wrap: break-word;
+}
+.note-preview > :first-child {
+  margin-top: 0 !important;
+}
+.note-preview h1,
+.note-preview h2,
+.note-preview h3,
+.note-preview h4 {
+  font-weight: 600;
+  color: var(--color-ink-strong);
+  line-height: 1.45;
+  letter-spacing: 0.03em;
+}
+.note-preview h1 {
+  font-size: 1.65em;
+  margin: 1.4em 0 0.7em;
+  padding-bottom: 0.4em;
+  border-bottom: 1px solid var(--color-line);
+}
+.note-preview h2 {
+  font-size: 1.32em;
+  margin: 1.5em 0 0.6em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--color-line);
+}
+.note-preview h3 {
+  font-size: 1.12em;
+  margin: 1.3em 0 0.5em;
+}
+.note-preview h4 {
+  font-size: 1em;
+  margin: 1.2em 0 0.4em;
+}
+
+/*
+  跳转命中的标题——一次「朱笔落点」，只有两件事，同一个节拍（1.5s，同一条缓动曲线）：
+    1. 印色笔洗由左向右扫过整行，两端淡出——是「划过」，不是套一个底色方块
+    2. 标题轻轻向上一提（6px 内落定），像被摆正
+  底色之外不画任何线条：曾经有过左缘一道朱条和下缘一道朱线，合起来像给这块底
+  描了边框，看着别扭，都去掉了（标题自己那条细线是文档排版，不属于这一段）。
+  左侧留白比右侧给得多，字不贴着底色边缘。
+  缓动滚到位时视口里往往同时有两个标题（上一节的尾巴 + 这一节的开头），
+  只凭滚动停下看不出到的是哪一个——这一笔就是给眼睛的落点。
+  由 lib/headingFlash 加上/摘掉这个类来触发，时长两边要一致（1.5s）。
+*/
+.moji-head-hit {
+  position: relative;
+  animation: moji-head-lift 1.5s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+/* 笔洗：两端淡出，没有硬边；左侧 inset 更大 = 字左边留出气 */
+.moji-head-hit::before {
+  content: '';
+  position: absolute;
+  inset: -4px -12px -4px -20px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    color-mix(in srgb, var(--color-seal) 26%, transparent) 3.5%,
+    color-mix(in srgb, var(--color-seal) 26%, transparent) 96.5%,
+    transparent 100%
+  );
+  transform-origin: left center;
+  animation: moji-head-wipe 1.5s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+@keyframes moji-head-lift {
+  0% {
+    transform: translateY(6px);
+  }
+  20%,
+  100% {
+    transform: translateY(0);
+  }
+}
+@keyframes moji-head-wipe {
+  0% {
+    opacity: 0.9;
+    transform: scaleX(0);
+  }
+  22%,
+  76% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+}
+.note-preview p {
+  margin: 0.65em 0;
+}
+.note-preview a {
+  color: var(--color-seal);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.note-preview a:hover {
+  color: var(--color-seal-deep);
+}
+/* 加粗：加重字重之外，额外撑一点字距与左右内边距，让它在密排中文里真正跳出来 */
+.note-preview strong,
+.note-preview b {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0 0.09em;
+  color: var(--color-ink-strong);
+}
+.note-preview ul,
+.note-preview ol {
+  margin: 0.6em 0;
+  padding-left: 1.6em;
+}
+.note-preview ul {
+  list-style: disc;
+}
+.note-preview ul ul {
+  list-style: circle;
+}
+.note-preview ol {
+  list-style: decimal;
+}
+.note-preview li {
+  margin: 0.28em 0;
+}
+.note-preview li::marker {
+  color: var(--color-ink-faint);
+}
+.note-preview li:has(> input[type='checkbox']) {
+  list-style: none;
+  margin-left: -1.3em;
+}
+/**
+ * 复选框（自查清单）。
+ *
+ * 选择器用**后代**而不是 `li > input`：清单有两种写法，模型两种都用——
+ * 1. GFM 任务列表 `- [ ] 文字` → `<li><input>…`;
+ * 2. 正文里直接写 HTML（提示词里就是这么建议的）：`<input type="checkbox" id="nt-1">
+ *    <label for="nt-1">文字</label>` → 这是**段落里的行内元素，根本没有 li**。
+ * 只写 li 那一版时第 2 种完全落空，方框紧贴着正文、还比文字高半头。
+ *
+ * 三条声明各自解决什么：
+ * - `width/height: 1em`：方框跟着字号走，和文字同一个尺度；
+ * - `vertical-align: -0.125em`：**对齐汉字的中腰**。实测（Chromium）——汉字「我」的墨迹
+ *   在基线上方 0.88em ~ 下方 0.12em，中心在**基线上方 0.375em**；而 `middle` 只把方框中心
+ *   抬到 0.25em（那是拉丁小写 x 的高度），所以中文行里方框总是低半头。
+ *   vertical-align 定的是方框**底边**的位置：底边落在基线上方 -0.125em 时，
+ *   1em 高的方框中心正好在 0.375em 处。表意文字的 em 网格是标准化的，换字体也成立。
+ * - `margin-right`：表单控件本来有 UA 默认边距，被 Tailwind 的 preflight 统一清零了，
+ *   于是方框和第一个字之间一个像素都不剩——这里自己给回来。
+ * 同时覆盖对话区（.moji-agent-md）与正文（.note-preview），两处都有清单。
+ */
+.note-preview input[type='checkbox'],
+.moji-agent-md input[type='checkbox'] {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  margin-right: 0.5em;
+  accent-color: var(--color-seal);
+}
+.note-preview blockquote {
+  margin: 1em 0;
+  padding: 0.5em 1.1em;
+  border-left: 3px solid var(--color-seal);
+  background: var(--color-inset);
+  border-radius: 0 8px 8px 0;
+  color: var(--color-quote-ink);
+}
+.note-preview blockquote p {
+  margin: 0.25em 0;
+}
+.note-preview code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--color-code);
+  border: 1px solid var(--color-line);
+  border-radius: 5px;
+  padding: 0.08em 0.4em;
+  color: var(--color-seal-deep);
+}
+.note-preview pre {
+  margin: 1em 0;
+  padding: 0.9em 1.1em;
+  overflow-x: auto;
+  background: var(--color-sunken);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  line-height: 1.65;
+}
+.note-preview pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-ink);
+  font-size: 0.85em;
+}
+.note-preview table {
+  margin: 1em 0;
+  border-collapse: collapse;
+  font-size: 0.93em;
+}
+.note-preview th,
+.note-preview td {
+  border: 1px solid var(--color-line-strong);
+  padding: 0.42em 0.95em;
+  /* 默认居中，与编辑器表格表单一致；分隔行里显式 :--- / ---: 的内联样式会覆盖它 */
+  text-align: center;
+}
+.note-preview th {
+  background: var(--color-inset);
+  font-weight: 600;
+  color: var(--color-ink-strong);
+}
+.note-preview tbody tr:nth-child(even) {
+  background: var(--color-sunken);
+}
+.note-preview hr {
+  margin: 2em 0;
+  border: none;
+  border-top: 1px solid var(--color-line-strong);
+}
+.note-preview img {
+  max-width: 100%;
+  border-radius: 4px;
+}
+/*
+ * 图片外面包着的链接（`[![图](x)](y)`）：照 GitHub 的样子保持**行内**——
+ * 链接是文字流里的一员，图跟着它待在文字中间，而不是把整行占成一块。
+ * marked 渲出来的本来就是行内结构，这里只是把话挑明，防个别壳层把它顶成块。
+ */
+.note-preview a:has(> img),
+.moji-agent-md a:has(> img) {
+  display: inline;
+}
+
+/* ---------- Agent 富文本：可折叠面板、图注、SVG 图示、活动图 ---------- */
+/* 这些元素由 Agent 直接写在 Markdown 里（含内嵌 <style>/<svg>），这里只给通用外观，
+   具体的动画与配色由 Agent 内嵌的、带唯一前缀的 CSS 负责。 */
+.note-preview details.md-fold {
+  margin: 1em 0;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-sunken);
+  padding: 0.5em 0.9em;
+}
+.note-preview details.md-fold > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--color-ink-strong);
+  list-style: none;
+}
+.note-preview details.md-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.note-preview details.md-fold > summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 0.45em;
+  color: var(--color-seal);
+  transition: transform 0.15s ease;
+}
+.note-preview details.md-fold[open] > summary::before {
+  transform: rotate(90deg);
+}
+.note-preview figure.md-fig {
+  margin: 1.1em 0;
+  text-align: center;
+}
+.note-preview figure.md-fig svg {
+  max-width: 100%;
+  height: auto;
+}
+.note-preview figure.md-fig figcaption {
+  margin-top: 0.4em;
+  font-size: 0.85em;
+  color: var(--color-ink-faint);
+}
+.note-preview svg {
+  max-width: 100%;
+}
+/* details 展开动画是浏览器提供的（部分内核支持），不影响内容可见性 */
+.note-preview .katex {
+  font-size: 1.06em;
+}
+.note-preview .katex-display {
+  margin: 1.15em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25em 0;
+}
+.note-preview .katex-display > .katex {
+  font-size: 1.12em;
+}
+

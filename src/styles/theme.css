@@ -1,0 +1,668 @@
+/* 本文件负责：主题变量与配色——@theme 令牌、深色模式覆盖、各套扩展主题及各自的选中态与标志色 */
+@theme {
+  /* 纸与墨 */
+  --color-paper: #f5f2eb;
+  --color-paper-deep: #eee9dd;
+  --color-card: #fcfbf7;
+  --color-ink: #2e2a25;
+  --color-ink-strong: #1f1b17;
+  --color-ink-soft: #6e665b;
+  --color-ink-faint: #a89e90;
+  --color-line: #e4ddcd;
+  --color-line-strong: #d0c6b1;
+  /**
+   * 遮罩色（图片预览、抽屉背景这类"压暗下面内容"的表面）。
+   * 单独一个 token 而不是复用 ink：ink 在深色模式下是**浅色**（它是文字色），
+   * 拿它当遮罩会得到一层白纱——深色模式下的图片预览正是这么白的。
+   */
+  --color-mask: #1f1b17;
+
+  /* 印章红，仅作点睛 */
+  --color-seal: #a8432f;
+  --color-seal-deep: #8c3524;
+
+  /* 语义色：状态与提示（浅色为原值，深色模式在下方覆盖） */
+  --color-ok: #8a9a6b;
+  --color-ok-deep: #5c6b45;
+  --color-ok-text: #5c7a3f;
+  --color-warn: #c08a2d;
+  --color-warn-deep: #8a6420;
+
+  /* 表面层级：正文里嵌套的底色（引用/代码/表格等），集中成 token 以便深色模式替换 */
+  --color-sunken: #faf7f0;
+  --color-inset: #f3eee2;
+  --color-elevated: #fffdf6;
+  --color-code: #f0ebdf;
+  --color-quote-ink: #5d564c;
+  --color-mark: #f7e6a8;
+
+  /**
+   * 代码块语法高亮（见 src/syntax）：TextMate 的 scope 先归成十来个令牌类型，
+   * 颜色只认这几个变量。**浅色值写在这里，深色族在下方统一覆盖**——
+   * 于是切换浅色/深色是纯 CSS 的事，一个 token 都不用重新解析。
+   */
+  --color-code-comment: #a0a1a7;
+  --color-code-string: #50a14f;
+  --color-code-number: #986801;
+  --color-code-keyword: #a626a4;
+  --color-code-function: #4078f2;
+  --color-code-type: #c18401;
+  --color-code-variable: #e45649;
+  --color-code-tag: #e45649;
+  --color-code-builtin: #0184bc;
+  --color-code-meta: #4078f2;
+  --color-code-punct: #6e665b;
+  --color-code-invalid: #8c3524;
+  --color-scroll: #d5cbb8;
+  --color-scroll-strong: #c2b69e;
+
+  /* 注解标记可选颜色（调色板里的蓝/紫；其余复用上面的语义色） */
+  --color-anno-blue: #2f6ea8;
+  --color-anno-purple: #7a4fa8;
+
+  /* 全站统一使用黑体（无衬线）：中文优先 PingFang / 鸿蒙 / 思源黑体 / 微软雅黑，
+     西文回落到系统 UI 字体。不再提供衬线选项，正文与标题同族，避免宋体混排。 */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI',
+    'PingFang SC', 'HarmonyOS Sans SC', 'Source Han Sans SC', 'Noto Sans SC',
+    'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', Consolas, 'Sarasa Mono SC', Menlo, monospace;
+}
+
+/* ---------- 深色模式 ---------- */
+/* 覆盖 @theme 定义的变量：属性选择器与 :root 同元素但优先级更高，可稳定覆盖 */
+:root[data-theme='dark'] {
+  --color-paper: #17150f;
+  --color-paper-deep: #120f0b;
+  --color-card: #1e1b16;
+  --color-ink: #e6e0d4;
+  --color-ink-strong: #f6f2ea;
+  --color-ink-soft: #a89e90;
+  --color-ink-faint: #7c7468;
+  --color-line: #332e26;
+  --color-line-strong: #493f33;
+  --color-mask: #000000;
+  --color-seal: #d0705a;
+  --color-seal-deep: #e08a74;
+
+  --color-ok: #8a9a6b;
+  --color-ok-deep: #b4c497;
+  --color-ok-text: #a4bb86;
+  --color-warn: #c9922f;
+  --color-warn-deep: #e2b463;
+
+  --color-sunken: #14110d;
+  --color-inset: #262019;
+  --color-elevated: #242019;
+  --color-code: #211c15;
+  --color-quote-ink: #c6bdae;
+  --color-mark: #574415;
+  --color-scroll: #3a332a;
+  --color-scroll-strong: #4e4536;
+
+  /* 深色下提高亮度，保证在深底上可读 */
+  --color-anno-blue: #7fb0dd;
+  --color-anno-purple: #b79ae0;
+
+  color-scheme: dark;
+}
+
+/* ---------- 扩展主题 ---------- */
+/*
+ * 每套主题 = 一个同名 data-theme 变量块（appearance.ts 的 THEME_MODES 与这里的
+ * 块名一一对应）。规则与深色块相同：*-deep 在浅色系里是「更深、可作文字」，
+ * 在深色系里是「更亮、可在深底上读」——语义是「该 token 的强化版」。
+ *
+ * 强调色的取舍：粉 / 蓝 / 绿三套的 --color-seal 跟着主题走（这是它们存在的意义）；
+ * 纯白 / 纯黑保留印章红——纯白纸上一点印章红是这套设计的身份，纯黑沿用深色块的
+ * 提亮值。注意 plot 曲线默认色与 AI 生成内容的示例色（#a8432f）不跟主题走，
+ * 强调色偏离红系的粉 / 蓝 / 绿主题里，图表与正文配色会有轻微的「各说各话」，
+ * 这是刻意接受的代价（内容色没法跟着换肤）。
+ */
+:root[data-theme='pink'] {
+  --color-paper: #fbf3f4;
+  --color-paper-deep: #f6e9ec;
+  --color-card: #fffdfd;
+  --color-ink: #45323c;
+  --color-ink-strong: #32212b;
+  --color-ink-soft: #8a6b78;
+  --color-ink-faint: #c3a4b1;
+  --color-line: #f0dae0;
+  --color-line-strong: #e2bcc8;
+  --color-mask: #32212b;
+  --color-seal: #cf5787;
+  --color-seal-deep: #ad3d6b;
+
+  --color-ok: #85a378;
+  --color-ok-deep: #5a7a4e;
+  --color-ok-text: #4f7a45;
+  --color-warn: #d0913d;
+  --color-warn-deep: #97651f;
+
+  --color-sunken: #fdf5f7;
+  --color-inset: #f5e2e8;
+  --color-elevated: #fffdfe;
+  --color-code: #f6e8ec;
+  --color-quote-ink: #7c5e6b;
+  --color-mark: #fcd8e4;
+  --color-scroll: #e6c5cf;
+  --color-scroll-strong: #d5a3b3;
+
+  --color-anno-blue: #4f7fb5;
+  --color-anno-purple: #9a5fb0;
+
+  color-scheme: light;
+}
+
+:root[data-theme='blue'] {
+  --color-paper: #eef3f7;
+  --color-paper-deep: #e4ebf2;
+  --color-card: #fafcfd;
+  --color-ink: #2c3a47;
+  --color-ink-strong: #1b2a37;
+  --color-ink-soft: #5e7285;
+  --color-ink-faint: #94a7b7;
+  --color-line: #d6e0ea;
+  --color-line-strong: #b9cbd9;
+  --color-mask: #1b2a37;
+  --color-seal: #3d6da6;
+  --color-seal-deep: #2c4f7c;
+
+  --color-ok: #6f9a8b;
+  --color-ok-deep: #4a7263;
+  --color-ok-text: #42705c;
+  --color-warn: #b8893c;
+  --color-warn-deep: #82601f;
+
+  --color-sunken: #f4f8fb;
+  --color-inset: #e3ebf3;
+  --color-elevated: #fdfeff;
+  --color-code: #e7eef5;
+  --color-quote-ink: #4d6172;
+  --color-mark: #d7e7f4;
+  --color-scroll: #c2d2df;
+  --color-scroll-strong: #a6bccd;
+
+  --color-anno-blue: #2f6ea8;
+  --color-anno-purple: #6e63b5;
+
+  color-scheme: light;
+}
+
+:root[data-theme='green'] {
+  --color-paper: #f1f6ee;
+  --color-paper-deep: #e7efe2;
+  --color-card: #fafcf6;
+  --color-ink: #2e3c2f;
+  --color-ink-strong: #1d2c1f;
+  --color-ink-soft: #5e7460;
+  --color-ink-faint: #98aa9a;
+  --color-line: #d7e3d2;
+  --color-line-strong: #bad0b4;
+  --color-mask: #1d2c1f;
+  --color-seal: #4f8f45;
+  --color-seal-deep: #3a6f31;
+
+  --color-ok: #7fa06b;
+  --color-ok-deep: #55793f;
+  --color-ok-text: #4d7a3c;
+  --color-warn: #bd9a2f;
+  --color-warn-deep: #866c1e;
+
+  --color-sunken: #f5faf2;
+  --color-inset: #e4efe0;
+  --color-elevated: #fcfffa;
+  --color-code: #e9f1e4;
+  --color-quote-ink: #4f6350;
+  --color-mark: #e3efa9;
+  --color-scroll: #c3d6bc;
+  --color-scroll-strong: #a7c29f;
+
+  --color-anno-blue: #3a7ca5;
+  --color-anno-purple: #7a4fa8;
+
+  color-scheme: light;
+}
+
+/* 纯白：把「纸」推到无色，结构全靠边框与灰阶层级撑起来；印章红照旧点睛 */
+:root[data-theme='white'] {
+  --color-paper: #ffffff;
+  --color-paper-deep: #f5f5f6;
+  --color-card: #ffffff;
+  --color-ink: #26262a;
+  --color-ink-strong: #0f0f11;
+  --color-ink-soft: #6c6c72;
+  --color-ink-faint: #ababb1;
+  --color-line: #e9e9ec;
+  --color-line-strong: #d5d5da;
+  --color-mask: #0f0f11;
+  --color-seal: #a8432f;
+  --color-seal-deep: #8c3524;
+
+  --color-ok: #7d9a6b;
+  --color-ok-deep: #5c6b45;
+  --color-ok-text: #5c7a3f;
+  --color-warn: #bd8a2d;
+  --color-warn-deep: #8a6420;
+
+  --color-sunken: #fafafb;
+  --color-inset: #f1f1f3;
+  --color-elevated: #ffffff;
+  --color-code: #f4f4f6;
+  --color-quote-ink: #54545a;
+  --color-mark: #fdf3a8;
+  --color-scroll: #dedee2;
+  --color-scroll-strong: #c9c9cf;
+
+  --color-anno-blue: #2f6ea8;
+  --color-anno-purple: #7a4fa8;
+
+  color-scheme: light;
+}
+
+/* 纯黑：OLED 取向，底色压到真黑；语义色沿用深色块的提亮值，-*deep 保持「更亮」语义 */
+:root[data-theme='black'] {
+  --color-paper: #000000;
+  --color-paper-deep: #050505;
+  --color-card: #131316;
+  --color-ink: #e7e7ea;
+  --color-ink-strong: #ffffff;
+  --color-ink-soft: #9c9ca3;
+  --color-ink-faint: #68686f;
+  --color-line: #27272b;
+  --color-line-strong: #3b3b41;
+  --color-mask: #000000;
+  --color-seal: #d0705a;
+  --color-seal-deep: #e08a74;
+
+  --color-ok: #8a9a6b;
+  --color-ok-deep: #b4c497;
+  --color-ok-text: #a4bb86;
+  --color-warn: #c9922f;
+  --color-warn-deep: #e2b463;
+
+  --color-sunken: #0a0a0b;
+  --color-inset: #1b1b1e;
+  --color-elevated: #17171a;
+  --color-code: #141417;
+  --color-quote-ink: #b6b6bc;
+  --color-mark: #574415;
+  --color-scroll: #2d2d31;
+  --color-scroll-strong: #414147;
+
+  --color-anno-blue: #7fb0dd;
+  --color-anno-purple: #b79ae0;
+
+  color-scheme: dark;
+}
+
+/* ---------- 扩展主题（第二批） ---------- */
+/*
+ * 暖纸：羊皮纸底、棕墨，强调色保留印章红——阅读向的浅色，长时间读最省力的一套。
+ * 琥珀：暖橙纸面 + 橙红强调；强调色离印章红最近，图表与正文最不打架的一套。
+ * 雾紫：薰衣草灰紫 + 紫强调（注解调色板里本就有紫的先例）。
+ * 石墨：中性深灰，介于「深色」（暖褐调）与「纯黑」之间的中间档。
+ * 夜航蓝：深海军蓝 + 提亮天蓝强调，与「静谧蓝」成昼夜一对。
+ * 高对比：真黑底、纯白字、线条加粗提亮——无障碍向；强调色留在红系，
+ *   因为所有「强调色上叠白字」的按钮（bg-seal + text-white）在亮黄/亮青上都不可读。
+ */
+:root[data-theme='sepia'] {
+  --color-paper: #f2ead7;
+  --color-paper-deep: #e9dcbd;
+  --color-card: #faf4e6;
+  --color-ink: #443a2b;
+  --color-ink-strong: #2e2618;
+  --color-ink-soft: #7d6f56;
+  --color-ink-faint: #b3a488;
+  --color-line: #e0d2b2;
+  --color-line-strong: #cbb890;
+  --color-mask: #2e2618;
+  --color-seal: #a8432f;
+  --color-seal-deep: #8c3524;
+
+  --color-ok: #8a9a6b;
+  --color-ok-deep: #5c6b45;
+  --color-ok-text: #5c7a3f;
+  --color-warn: #b8862d;
+  --color-warn-deep: #8a6420;
+
+  --color-sunken: #f7f1e0;
+  --color-inset: #ecdfc4;
+  --color-elevated: #fdf8ec;
+  --color-code: #ece0c6;
+  --color-quote-ink: #6b5f48;
+  --color-mark: #f3de9a;
+  --color-scroll: #d3c5a3;
+  --color-scroll-strong: #bfae87;
+
+  --color-anno-blue: #2f6ea8;
+  --color-anno-purple: #7a4fa8;
+
+  color-scheme: light;
+}
+
+:root[data-theme='amber'] {
+  --color-paper: #faf0e3;
+  --color-paper-deep: #f4e4cf;
+  --color-card: #fef9f2;
+  --color-ink: #453426;
+  --color-ink-strong: #2f2318;
+  --color-ink-soft: #85705c;
+  --color-ink-faint: #bfa78e;
+  --color-line: #eddbc3;
+  --color-line-strong: #dfc19e;
+  --color-mask: #2f2318;
+  --color-seal: #c56a2e;
+  --color-seal-deep: #a5511f;
+
+  --color-ok: #8a9a6b;
+  --color-ok-deep: #5c6b45;
+  --color-ok-text: #5c7a3f;
+  --color-warn: #c08a2d;
+  --color-warn-deep: #8a6420;
+
+  --color-sunken: #fcf4e9;
+  --color-inset: #f2e2cc;
+  --color-elevated: #fffcf5;
+  --color-code: #f3e6d2;
+  --color-quote-ink: #6d5a48;
+  --color-mark: #f9dd9f;
+  --color-scroll: #ddc5a6;
+  --color-scroll-strong: #cbad87;
+
+  --color-anno-blue: #2f6ea8;
+  --color-anno-purple: #7a4fa8;
+
+  color-scheme: light;
+}
+
+:root[data-theme='purple'] {
+  --color-paper: #f2f0f6;
+  --color-paper-deep: #e9e5f0;
+  --color-card: #fbfafd;
+  --color-ink: #383243;
+  --color-ink-strong: #251f31;
+  --color-ink-soft: #6f6680;
+  --color-ink-faint: #a79fb6;
+  --color-line: #e0dae9;
+  --color-line-strong: #c9c0da;
+  --color-mask: #251f31;
+  --color-seal: #7e5fb5;
+  --color-seal-deep: #61449a;
+
+  --color-ok: #7fa084;
+  --color-ok-deep: #527a58;
+  --color-ok-text: #4a7a52;
+  --color-warn: #b8893c;
+  --color-warn-deep: #83611f;
+
+  --color-sunken: #f6f4fa;
+  --color-inset: #e6e0f0;
+  --color-elevated: #fefeff;
+  --color-code: #ebe7f3;
+  --color-quote-ink: #5d5570;
+  --color-mark: #e4d7f7;
+  --color-scroll: #d0c8de;
+  --color-scroll-strong: #b7abce;
+
+  --color-anno-blue: #2f6ea8;
+  --color-anno-purple: #7a4fa8;
+
+  color-scheme: light;
+}
+
+:root[data-theme='graphite'] {
+  --color-paper: #1b1b1d;
+  --color-paper-deep: #141416;
+  --color-card: #232326;
+  --color-ink: #d9d9dc;
+  --color-ink-strong: #f4f4f6;
+  --color-ink-soft: #a4a4aa;
+  --color-ink-faint: #737379;
+  --color-line: #303035;
+  --color-line-strong: #45454b;
+  --color-mask: #000000;
+  --color-seal: #c96a58;
+  --color-seal-deep: #de8a78;
+
+  --color-ok: #8a9a6b;
+  --color-ok-deep: #b4c497;
+  --color-ok-text: #a4bb86;
+  --color-warn: #c9922f;
+  --color-warn-deep: #e2b463;
+
+  --color-sunken: #121214;
+  --color-inset: #2a2a2e;
+  --color-elevated: #262629;
+  --color-code: #1d1d20;
+  --color-quote-ink: #b3b3b9;
+  --color-mark: #4e4816;
+  --color-scroll: #35353a;
+  --color-scroll-strong: #4a4a50;
+
+  --color-anno-blue: #7fb0dd;
+  --color-anno-purple: #b79ae0;
+
+  color-scheme: dark;
+}
+
+:root[data-theme='navy'] {
+  --color-paper: #10141f;
+  --color-paper-deep: #0c0f18;
+  --color-card: #181d2b;
+  --color-ink: #ccd6e4;
+  --color-ink-strong: #e8eef7;
+  --color-ink-soft: #8b99ad;
+  --color-ink-faint: #5c6a7d;
+  --color-line: #242c3d;
+  --color-line-strong: #35415a;
+  --color-mask: #000000;
+  --color-seal: #6f9ed6;
+  --color-seal-deep: #8fb8e6;
+
+  --color-ok: #7f9a8b;
+  --color-ok-deep: #a8c4b4;
+  --color-ok-text: #9cbcae;
+  --color-warn: #c9922f;
+  --color-warn-deep: #e2b463;
+
+  --color-sunken: #0d1019;
+  --color-inset: #1f2637;
+  --color-elevated: #1c2232;
+  --color-code: #151a27;
+  --color-quote-ink: #a9b6c8;
+  --color-mark: #233a5e;
+  --color-scroll: #2a3346;
+  --color-scroll-strong: #3c4862;
+
+  --color-anno-blue: #7fb0dd;
+  --color-anno-purple: #b79ae0;
+
+  color-scheme: dark;
+}
+
+:root[data-theme='contrast'] {
+  --color-paper: #000000;
+  --color-paper-deep: #000000;
+  --color-card: #08080a;
+  --color-ink: #ffffff;
+  --color-ink-strong: #ffffff;
+  --color-ink-soft: #d4d4d8;
+  --color-ink-faint: #9a9aa2;
+  --color-line: #3f3f46;
+  --color-line-strong: #808088;
+  --color-mask: #000000;
+  --color-seal: #f2654a;
+  --color-seal-deep: #ffb3a2;
+
+  --color-ok: #85d485;
+  --color-ok-deep: #b2ecb2;
+  --color-ok-text: #a8e8a8;
+  --color-warn: #ffcb3d;
+  --color-warn-deep: #ffdd75;
+
+  --color-sunken: #060607;
+  --color-inset: #161619;
+  --color-elevated: #101013;
+  --color-code: #0a0a0c;
+  --color-quote-ink: #eaeaea;
+  --color-mark: #6b5d12;
+  --color-scroll: #45454c;
+  --color-scroll-strong: #64646c;
+
+  --color-anno-blue: #7cc0ff;
+  --color-anno-purple: #c9a2f5;
+
+  color-scheme: dark;
+}
+
+/* 深色系扩展三套（石墨 / 夜航蓝 / 高对比）与纯黑同一组伴随：选中态、标志提亮、
+   注解底纹加强、深遮罩。选中态的底色用各自的 seal-deep 现场调（color-mix），
+   同一份规则跟着每套主题走。 */
+:root[data-theme='graphite'] ::selection,
+:root[data-theme='navy'] ::selection,
+:root[data-theme='contrast'] ::selection {
+  background-color: color-mix(in srgb, var(--color-seal-deep) 40%, transparent);
+  color: var(--color-ink-strong);
+}
+:root[data-theme='graphite'] .moji-anno,
+:root[data-theme='navy'] .moji-anno,
+:root[data-theme='contrast'] .moji-anno {
+  background: color-mix(in srgb, var(--color-seal) 14%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--color-seal) 85%, transparent);
+}
+:root[data-theme='graphite'] .moji-anno:hover,
+:root[data-theme='navy'] .moji-anno:hover,
+:root[data-theme='contrast'] .moji-anno:hover {
+  background: color-mix(in srgb, var(--color-seal) 26%, transparent);
+}
+:root[data-theme='graphite'],
+:root[data-theme='navy'],
+:root[data-theme='contrast'] {
+  --scrim: rgba(0, 0, 0, 0.6);
+}
+/* 浅色扩展里强调色偏离红系的两套（琥珀 / 雾紫）选中态跟着各自强调色走 */
+:root[data-theme='amber'] ::selection {
+  background-color: rgba(197, 106, 46, 0.18);
+}
+:root[data-theme='purple'] ::selection {
+  background-color: rgba(126, 95, 181, 0.16);
+}
+
+/* 选中态跟着强调色走：粉 / 蓝 / 绿三套用各自的强调色薄薄一层（浅底、默认文字色即可） */
+:root[data-theme='pink'] ::selection {
+  background-color: rgba(207, 87, 135, 0.18);
+}
+:root[data-theme='blue'] ::selection {
+  background-color: rgba(61, 109, 166, 0.18);
+}
+:root[data-theme='green'] ::selection {
+  background-color: rgba(79, 143, 69, 0.18);
+}
+/* 纯黑与深色同理：底色深、对比不足，用更亮的红并提亮文字 */
+:root[data-theme='black'] ::selection {
+  background-color: rgba(224, 138, 116, 0.4);
+  color: var(--color-ink-strong);
+}
+/* 标志颜色由 .moji-logo 统一给 var(--color-seal)，深色系各块的提亮值已内建 */
+:root[data-theme='black'] .moji-anno {
+  background: color-mix(in srgb, var(--color-seal) 14%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--color-seal) 85%, transparent);
+}
+:root[data-theme='black'] .moji-anno:hover {
+  background: color-mix(in srgb, var(--color-seal) 26%, transparent);
+}
+/* 模态遮罩：纯黑与深色同口径 */
+:root[data-theme='black'] {
+  --scrim: rgba(0, 0, 0, 0.6);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  /* 略松的字距，中文正文更透气、易读 */
+  letter-spacing: 0.015em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 选中态：浅色下用淡印章红；深色下底色深、对比不足，改用更亮的红并提亮文字 */
+::selection {
+  background-color: rgba(168, 67, 47, 0.2);
+}
+:root[data-theme='dark'] ::selection {
+  background-color: rgba(224, 138, 116, 0.4);
+  color: var(--color-ink-strong);
+}
+
+/* 应用标志（components/Logo 的内联 SVG）：fill 走 currentColor，颜色在这里给
+   当前主题的印章红——深色系拿到的是各块里提亮过的 --color-seal，对比度由调色板
+   保证了（旧版烤死在 PNG 里、靠 brightness 滤镜硬扛的做法已随内联 SVG 退役） */
+.moji-logo {
+  color: var(--color-seal);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scroll) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-scroll);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-scroll-strong);
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/*
+ * 吐司出场：**只管 y 方向**，横向居中由外层那个 left-1/2 + -translate-x-1/2 负责。
+ *
+ * 这里绝不能写成 translate(-50%, …)：Tailwind v4 的 -translate-x-1/2 落在 translate
+ * 属性上（不是 transform），与 keyframes 的 transform 是**叠加**关系，两者一起用
+ * 会把气泡推到 -100% 去，动画一结束再跳回正中（见 Toast.tsx 顶部那段说明）。
+ */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-toast-in {
+  animation: toast-in 0.22s cubic-bezier(0.21, 1.02, 0.73, 1);
+}
+
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.animate-soft-pulse {
+  animation: soft-pulse 1.3s ease-in-out infinite;
+}
+

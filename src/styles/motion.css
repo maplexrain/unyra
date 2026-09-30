@@ -1,0 +1,612 @@
+/* 本文件负责：动效——浮层进退场、加载反馈、弹窗、骨架屏，以及「关掉动效」偏好 */
+/* ---------- 动效：浮层进退场、加载反馈 ---------- */
+
+/*
+ * 统一节奏：进场 160ms、出场 120ms。出场更快是有意的——用户已经决定要走，
+ * 这时候让他等动画只会显得迟钝；进场则要看得见，才有「从这里展开」的因果感。
+ *
+ * 这些类只负责「播一次」，什么时候真正卸载由 React 侧决定（见 lib/presence.ts）：
+ * CSS 自己没法在动画结束后移除元素，直接条件渲染又会让退场动画来不及播。
+ *
+ * 方向按浮层相对触发元素的位置挑：向下展开的从上方落下；账号菜单与模型菜单
+ * 各有自己的展开方向（见 .moji-wipe-corner-* / .moji-bloom-up-*），
+ * 对不上的用 moji-in-soft（只缩放淡入）。
+ */
+@keyframes moji-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-5px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes moji-in-soft {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes moji-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+
+.moji-in-down {
+  animation: moji-in-down 0.16s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.moji-in-soft {
+  animation: moji-in-soft 0.16s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.moji-out {
+  animation: moji-out 0.12s ease-in both;
+}
+
+/*
+ * 横向可滚、但看不见滚动条。
+ *
+ * 思考气泡收起时那一行「最后一行预览」用它：内容是滚动的，脚本每次把它推到最右端，
+ * 让用户看见模型还在往外吐字。滚动条在这里只是噪声——那一行是状态提示，不是给人拖的控件。
+ */
+.moji-scroll-x {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.moji-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * 纵向可滚、但看不见滚动条。
+ *
+ * 消息列表用它：右边缘那条位置留给消息定位条（见 AgentPanel），
+ * 两者叠在一起时滚动条只会跟那些小点抢地方。列表照样能用滚轮、触控板、
+ * PageUp/PageDown 滚，只是不再画那条槽。
+ */
+.moji-scroll-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.moji-scroll-none::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * 账号菜单：从右上角向左下展开、收起时缩回同一个角。
+ *
+ * 用 clip-path 而不是把 scale 缩到 0：scale(0) 会把里面的文字一起压扁，
+ * 展开过程中字是变形的；clip-path 只改「可见区域」，可见区从右上角那一点
+ * 长到整块，文字始终是正常比例。inset(0 0 100% 100%) 正是「0 宽 0 高、
+ * 只剩右上角一点」，inset(0) 则是整块——展开就是这两者之间的过渡。
+ */
+@keyframes moji-wipe-corner-in {
+  from {
+    clip-path: inset(0 0 100% 100%);
+    opacity: 0.45;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+@keyframes moji-wipe-corner-out {
+  from {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+  to {
+    clip-path: inset(0 0 100% 100%);
+    opacity: 0;
+  }
+}
+
+.moji-wipe-corner-in {
+  animation: moji-wipe-corner-in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.moji-wipe-corner-out {
+  animation: moji-wipe-corner-out 0.14s ease-in both;
+}
+
+/*
+ * 提供商·模型菜单：从面板**底边中点**向上、向左右展开，收起时缩回那一点。
+ * inset(100% 50% 0 50%) = 上下挤到最底、左右挤到正中，即底边中点那一点。
+ * 面板挂在按钮上方（bottom-full），因此「从这里长出来」的方向感与按钮一致。
+ */
+@keyframes moji-bloom-up-in {
+  from {
+    clip-path: inset(100% 50% 0 50%);
+    opacity: 0.5;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+@keyframes moji-bloom-up-out {
+  from {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+  to {
+    clip-path: inset(100% 50% 0 50%);
+    opacity: 0;
+  }
+}
+
+.moji-bloom-up-in {
+  animation: moji-bloom-up-in 0.2s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.moji-bloom-up-out {
+  animation: moji-bloom-up-out 0.16s ease-in both;
+}
+
+/*
+ * 底部笔记输入区：从下沿升起、关闭时原路降下去。
+ *
+ * 位移用 translateY(100%)（自己的整高）：面板始终贴在列的底边，
+ * 只是整块移出可视区——比动画 height 便宜得多，也不牵动正文重排。
+ * 这里是少数几个用 transform 而不是 clip-path 的地方：它要移动的是**位置**，
+ * 不是「露出一块」，clip-path 做不出「从下面升上来」。
+ */
+@keyframes moji-sheet-up-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes moji-sheet-down-out {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+.moji-sheet-in {
+  animation: moji-sheet-up-in 0.24s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.moji-sheet-out {
+  animation: moji-sheet-down-out 0.2s cubic-bezier(0.55, 0, 1, 0.45) both;
+}
+
+/*
+ * 层级菜单的滑动：往里走一层时，新面板自左滑入、旧面板向右滑出；
+ * 退回上一层则两边方向都相反。位移只走合成层，不触发重排；
+ * 时长与 ModelPicker 的 SLIDE_MS 对齐（动画略短，播完才卸载旧面板）。
+ */
+@keyframes moji-slide-in-forward {
+  from {
+    opacity: 0.25;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes moji-slide-out-forward {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0.25;
+    transform: translateX(100%);
+  }
+}
+@keyframes moji-slide-in-back {
+  from {
+    opacity: 0.25;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes moji-slide-out-back {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0.25;
+    transform: translateX(-100%);
+  }
+}
+
+.moji-slide-in-forward {
+  animation: moji-slide-in-forward 0.24s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.moji-slide-out-forward {
+  animation: moji-slide-out-forward 0.24s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.moji-slide-in-back {
+  animation: moji-slide-in-back 0.24s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.moji-slide-out-back {
+  animation: moji-slide-out-back 0.24s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/*
+ * 结构化表单（api.ask）翻题时的小步滑动：前进时新题从右侧轻轻滑入，
+ * 退回时从左侧滑入——方向跟着走，人才会确信「刚才那题在后面」。
+ * 只位移 20px + 淡入：它是在一张卡里换内容，不是整块面板换页，
+ * 位移大了反而像卡片被抽走重放。只做入场（旧题在同一个位置被新题顶替，
+ * 入场动画已经把「换了」这件事说清楚），省掉双卡并存的退场编排。
+ * prefers-reduced-motion 下退回淡入（与全局那条一致的做法）。
+ */
+@keyframes moji-step-in-forward {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes moji-step-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.moji-step-in-forward {
+  animation: moji-step-in-forward 0.2s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.moji-step-in-back {
+  animation: moji-step-in-back 0.2s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .moji-step-in-forward,
+  .moji-step-in-back {
+    animation: moji-in-soft 0.16s ease-out both;
+  }
+}
+
+/*
+ * 思考等级滑条的斑马纹：底色由 React 按档位写成荧光色（外框自己的背景色），
+ * 这一层只负责盖上去的斜条纹，并让它缓慢横向滚动——像一根通着电的电阻丝，
+ * 「滑动变阻」这个隐喻得动起来才成立。
+ *
+ * 条纹**不画在外框的背景上**：外框是圆角 + overflow:hidden，用 background-position
+ * 做动画时浏览器把它合成到一块按元素盒子取整的图层上、之后再按圆角裁掉，
+ * 左端就会裂出一道竖直的接缝。改成一个独立的绝对定位层、整体用 transform 平移，
+ * 图层自身不带裁剪，接缝无从产生（顺带省掉逐帧重绘背景）。
+ *
+ * 用 repeating-linear-gradient 而不是「一段渐变 + background-size 平铺」：
+ * 后者的每一格都被裁成直角三角形，看着像一排锯齿；前者在整块画布上无限重复，
+ * 每道条纹的两条边互相平行，裁在上下边缘之间就是**斜长方形**。
+ *
+ * 要无缝，位移必须等于条纹沿 x 轴的周期：条纹周期 12px 是沿渐变轴的，
+ * 135° 的 x 分量是 sin135°≈0.7071，因此横向位移 = 12 / 0.7071 ≈ 17px。
+ * 这一层左边多伸出的也正是这一个周期（left:-17px）而右边不缩，
+ * 于是平移一整周期时两端始终有料，不会露出空白。
+ *
+ * 外框上的 .moji-effort-zebra 只剩底色与裁剪（React 那边还在用这个类名）。
+ */
+.moji-effort-zebra-layer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -17px;
+  right: 0;
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.55) 0 6px,
+    rgba(255, 255, 255, 0) 6px 12px
+  );
+  animation: moji-effort-stripes 1.15s linear infinite;
+  /* 跟着外框一起圆：条纹层比外框宽，右端那道圆角得自己收 */
+  border-radius: inherit;
+}
+@keyframes moji-effort-stripes {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(17px);
+  }
+}
+
+/*
+ * 档位文字的白色描边。
+ *
+ * 用**零模糊**的 text-shadow 在八个方向各叠一层白字，围出一圈硬边——
+ * 相当于给字描了一道白边，字与底下滚动的条纹之间就有了稳定的分界，
+ * 条纹滚到笔画跟前也不会把字吃掉。
+ *
+ * 不用 -webkit-text-stroke：它是往字形**内侧**画的，10px 出头的小字被吃掉一圈后
+ * 笔画会细得发虚；text-shadow 只往外扩，字重不变。
+ * blur 半径必须是 0：一旦有模糊就成了发光，边缘糊开反而更脏。
+ */
+.moji-effort-label {
+  text-shadow:
+    -1px -1px 0 #fff,
+    0 -1px 0 #fff,
+    1px -1px 0 #fff,
+    -1px 0 0 #fff,
+    1px 0 0 #fff,
+    -1px 1px 0 #fff,
+    0 1px 0 #fff,
+    1px 1px 0 #fff;
+}
+
+/* 弹窗：面板轻微上浮 + 遮罩淡入；退场同理，遮罩不能比面板先没 */
+@keyframes moji-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes moji-dialog-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+}
+@keyframes moji-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes moji-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.moji-dialog-in {
+  animation: moji-dialog-in 0.2s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.moji-dialog-out {
+  animation: moji-dialog-out 0.14s ease-in both;
+}
+.moji-fade-in {
+  animation: moji-fade-in 0.18s ease-out both;
+}
+.moji-fade-out {
+  animation: moji-fade-out 0.14s ease-in both;
+}
+
+/*
+ * 「正在工作」波浪：5 条竖长方形依次起伏，像一排电平条。
+ *
+ * 用 scaleY 而不是 height：动画只走合成层，不会每帧触发重排（高度动画会）。
+ * 高度固定 + 以中心为原点，于是每条向上下两头伸长、缩回，整行外框不动，
+ * 旁边的文字不会被推来推去。延迟由 React 按序号给（见 components/WaveBars.tsx）。
+ *
+ * 周期取 2.1s，与下面 .moji-sheen 的文字高光掠过一致——两处等待指示同屏出现
+ * 时（比如「导师正在准备」那行字旁边）节奏是合拍的，不会各跳各的。
+ */
+.moji-wave {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+  height: 15px;
+}
+.moji-wave > i {
+  display: block;
+  width: 3px;
+  height: 15px;
+  border-radius: 2px;
+  background: currentColor;
+  transform-origin: center;
+  animation: moji-wave-bar 2.1s ease-in-out infinite;
+}
+@keyframes moji-wave-bar {
+  0%,
+  100% {
+    transform: scaleY(0.26);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+/* 骨架屏：等正文时占位，比一片空白更像「正在写」 */
+.moji-skeleton {
+  border-radius: 5px;
+  background: linear-gradient(
+    90deg,
+    var(--color-inset) 0%,
+    var(--color-line) 42%,
+    var(--color-inset) 84%
+  );
+  background-size: 220% 100%;
+  animation: moji-shimmer 1.7s ease-in-out infinite;
+}
+@keyframes moji-shimmer {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -30% 0;
+  }
+}
+
+/*
+ * 「导师正在准备」那行字的**循环高光**：一道光从左往右从字上掠过去。
+ *
+ * 做法是把一段横向渐变裁进字里（background-clip: text），再让这段渐变自己走一圈——
+ * 比逐字改颜色便宜得多（一个元素、一条只走合成层的动画），也不必知道文案有几个字。
+ *
+ * 底色取 ink-faint（它本来就是这行状态字的颜色），高光取 ink-strong：
+ * 十二套主题下都还是「同一族的深浅两档」，不会跳出配色。渐变两端留得比中间长，
+ * 于是同一时刻字上只有一道窄光，而不是整行一起呼吸。
+ *
+ * 停一下再走的节奏（linear + 首尾各留一段底色）比匀速来回更像「光扫过」：
+ * 位移与 background-size 的配比抄的是上面骨架屏那一套（130% → -30%）。
+ */
+.moji-sheen {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-ink-faint) 0%,
+    var(--color-ink-faint) 36%,
+    var(--color-ink-strong) 50%,
+    var(--color-ink-faint) 64%,
+    var(--color-ink-faint) 100%
+  );
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  /* 字色必须让位：渐变是「用文字当蒙版」画出来的，留着字色就把它盖住了 */
+  color: transparent;
+  animation: moji-sheen-sweep 2.1s linear infinite;
+}
+@keyframes moji-sheen-sweep {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -30% 0;
+  }
+}
+
+/*
+ * 气泡式 tip 的出场：从挂它的那颗按钮的方向（右上）轻轻探出来。
+ * 只动透明度与一丁点位移/缩放，一条 160ms 的合成层动画，进出都不抢戏。
+ * 用在文档区悬浮组的标题大纲气泡上（见 components/learn/DocOutline）。
+ */
+.moji-tip-pop {
+  transform-origin: top right;
+  animation: moji-tip-pop 0.16s ease-out both;
+}
+@keyframes moji-tip-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/*
+ * 折叠区的展开 / 收起过渡：grid-template-rows 从 0fr 到 1fr。
+ *
+ * 为什么不用 max-height：那要拍一个「内容可能多高」的脑袋，拍小了截断内容，
+ * 拍大了收起时慢半拍；也不量 scrollHeight 写行内样式——展开一半时内容还在流式
+ * 追加，量一次就得追着量一次。0fr/1fr 是浏览器自己算的：「有多少展多少」，
+ * 一行过渡代码，内容随时变长都跟得上。子元素必须 min-height: 0 + overflow hidden，
+ * 否则 0fr 压不住内容的最小高度（这是 grid 轨道的默认规矩）。
+ */
+.moji-fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.22s ease;
+}
+.moji-fold.moji-fold-open {
+  grid-template-rows: 1fr;
+}
+.moji-fold > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 关掉动效偏好：只留状态，不留运动。退场交给定时器，元素照常卸载 */
+@media (prefers-reduced-motion: reduce) {
+  .moji-in-down,
+  .moji-in-soft,
+  .moji-dialog-in,
+  .moji-fade-in,
+  .moji-wipe-corner-in,
+  .moji-bloom-up-in,
+  .moji-sheet-in,
+  .moji-skeleton,
+  .animate-soft-pulse,
+  .animate-toast-in {
+    animation: none;
+  }
+  /* 折叠区直接切换，不播高度过渡 */
+  .moji-fold {
+    transition: none;
+  }
+  /* 高光扫不动了，就把字还原成它本来的颜色：留着渐变裁字会变成一块静止的花字 */
+  .moji-sheen {
+    animation: none;
+    background-image: none;
+    color: var(--color-ink-faint);
+  }
+  .moji-out,
+  .moji-dialog-out,
+  .moji-fade-out,
+  .moji-wipe-corner-out,
+  .moji-bloom-up-out,
+  .moji-sheet-out {
+    animation: none;
+    opacity: 0;
+  }
+  /* 跳过去的那条消息：不要缩放，但要留住那圈描边——它是「就是这一条」的答案，不是装饰。
+     描边什么时候消失由 JS 的定时器说了算（见 AgentPanel 的 MSG_FLASH_MS） */
+  .moji-msg-flash {
+    animation: none;
+    outline: 3px solid var(--color-seal);
+    outline-offset: 2px;
+  }
+  /* 输入区不能只留 opacity:0：它是靠位移出场的，少了动画就会停在原位 */
+  .moji-sheet-out {
+    transform: translateY(100%);
+  }
+  /* 滑动只留「换了一屏」的结果，不留位移 */
+  .moji-slide-in-forward,
+  .moji-slide-in-back {
+    animation: none;
+  }
+  .moji-slide-out-forward,
+  .moji-slide-out-back {
+    animation: none;
+    opacity: 0;
+  }
+  .moji-wave > i {
+    animation: none;
+    opacity: 0.7;
+    transform: none;
+  }
+  /* 条纹留着（它也是「这是滑条」的形状提示），只是不再滚动 */
+  .moji-effort-zebra-layer {
+    animation: none;
+  }
+  /* 跳转落点提示不能一起关掉，否则就白跳了：去掉动作，留一道静止的笔洗 */
+  .moji-head-hit,
+  .moji-head-hit::before {
+    animation: none;
+  }
+}
+

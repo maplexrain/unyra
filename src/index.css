@@ -1,0 +1,10 @@
+@import 'tailwindcss';
+
+@import './styles/theme.css';
+@import './styles/typography.css';
+@import './styles/code.css';
+@import './styles/annotation.css';
+@import './styles/markdown.css';
+@import './styles/chrome.css';
+@import './styles/motion.css';
+@import './styles/workspace.css';

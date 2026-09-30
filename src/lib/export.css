@@ -1,0 +1,538 @@
+/*
+ * 导出件的样式：.html 与 .pdf 共用同一份（见 lib/exportDoc 的 standaloneHtml）。
+ *
+ * 这个文件**不会**被应用加载——它由 exportDoc 以 ?raw 读成字符串，内嵌进导出件。
+ * 因此它必须自给自足：不能引用 index.css 里的类与 Tailwind 的 @theme 变量，
+ * 也不能依赖 KaTeX 的样式表，所有颜色与变量都在这份文件里重新定义一遍。
+ *
+ * 正文排版与 index.css 的 .note-preview 是同一套。那边改了这里要跟着改，
+ * 否则「预览里看到的」与「导出的」会长得不一样。
+ */
+
+:root {
+  --color-paper: #f5f2eb;
+  --color-card: #fcfbf7;
+  --color-ink: #2e2a25;
+  --color-ink-strong: #1f1b17;
+  --color-ink-soft: #6e665b;
+  --color-ink-faint: #a89e90;
+  --color-line: #e4ddcd;
+  --color-line-strong: #d0c6b1;
+  --color-seal: #a8432f;
+  --color-seal-deep: #8c3524;
+  --color-sunken: #faf7f0;
+  --color-inset: #f3eee2;
+  --color-code: #f0ebdf;
+  --color-quote-ink: #5d564c;
+  --color-mark: #f7e6a8;
+
+  /* 代码块语法高亮（见 src/syntax）：与 index.css 同一组名字，这里是导出件的浅色一份 */
+  --color-code-comment: #a0a1a7;
+  --color-code-string: #50a14f;
+  --color-code-number: #986801;
+  --color-code-keyword: #a626a4;
+  --color-code-function: #4078f2;
+  --color-code-type: #c18401;
+  --color-code-variable: #e45649;
+  --color-code-tag: #e45649;
+  --color-code-builtin: #0184bc;
+  --color-code-meta: #4078f2;
+  --color-code-punct: #6e665b;
+  --color-code-invalid: #8c3524;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI',
+    'PingFang SC', 'HarmonyOS Sans SC', 'Source Han Sans SC', 'Noto Sans SC',
+    'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', Consolas, 'Sarasa Mono SC', Menlo, monospace;
+}
+
+:root[data-theme='dark'] {
+  --color-paper: #17150f;
+  --color-card: #1e1b16;
+  --color-ink: #e6e0d4;
+  --color-ink-strong: #f6f2ea;
+  --color-ink-soft: #a89e90;
+  --color-ink-faint: #7c7468;
+  --color-line: #332e26;
+  --color-line-strong: #493f33;
+  --color-seal: #d0705a;
+  --color-seal-deep: #e08a74;
+  --color-sunken: #14110d;
+  --color-inset: #262019;
+  --color-code: #211c15;
+  --color-quote-ink: #c6bdae;
+  --color-mark: #574415;
+  /* 深色导出件里的代码配色（与 index.css 的深色族一致） */
+  --color-code-comment: #6b7280;
+  --color-code-string: #98c379;
+  --color-code-number: #d19a66;
+  --color-code-keyword: #c678dd;
+  --color-code-function: #61afef;
+  --color-code-type: #e5c07b;
+  --color-code-variable: #e06c75;
+  --color-code-tag: #e06c75;
+  --color-code-builtin: #56b6c2;
+  --color-code-meta: #61afef;
+  --color-code-punct: #9aa0a6;
+  --color-code-invalid: #e06c75;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-card);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15.5px;
+  line-height: 1.9;
+  letter-spacing: 0.022em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-mark);
+}
+
+/* ---------- 页头 / 页脚 ---------- */
+
+.page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 44px 40px 56px;
+}
+
+.export-head {
+  margin-bottom: 28px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-line-strong);
+}
+
+.export-kicker {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--color-ink-faint);
+}
+
+.export-title {
+  margin: 7px 0 0;
+  font-size: 25px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--color-ink-strong);
+}
+
+.export-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 9px;
+  font-size: 12px;
+  color: var(--color-ink-faint);
+}
+
+.export-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 16px;
+  margin-top: 44px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-line);
+  font-size: 11.5px;
+  color: var(--color-ink-faint);
+}
+
+/* ---------- 正文排版（与 index.css 的 .note-preview 同一套） ---------- */
+
+.note-preview {
+  overflow-wrap: break-word;
+}
+
+.note-preview > :first-child {
+  margin-top: 0;
+}
+
+.note-preview h1,
+.note-preview h2,
+.note-preview h3,
+.note-preview h4 {
+  font-weight: 600;
+  color: var(--color-ink-strong);
+  line-height: 1.45;
+  letter-spacing: 0.03em;
+}
+
+.note-preview h1 {
+  font-size: 1.65em;
+  margin: 1.4em 0 0.7em;
+  padding-bottom: 0.4em;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.note-preview h2 {
+  font-size: 1.32em;
+  margin: 1.5em 0 0.6em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.note-preview h3 {
+  font-size: 1.12em;
+  margin: 1.3em 0 0.5em;
+}
+
+.note-preview h4 {
+  font-size: 1em;
+  margin: 1.2em 0 0.4em;
+}
+
+.note-preview p {
+  margin: 0.65em 0;
+}
+
+.note-preview a {
+  color: var(--color-seal);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.note-preview strong,
+.note-preview b {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0 0.09em;
+  color: var(--color-ink-strong);
+}
+
+.note-preview ul,
+.note-preview ol {
+  margin: 0.6em 0;
+  padding-left: 1.6em;
+}
+
+.note-preview ul {
+  list-style: disc;
+}
+
+.note-preview ul ul {
+  list-style: circle;
+}
+
+.note-preview ol {
+  list-style: decimal;
+}
+
+.note-preview li {
+  margin: 0.28em 0;
+}
+
+.note-preview li::marker {
+  color: var(--color-ink-faint);
+}
+
+.note-preview li:has(> input[type='checkbox']) {
+  list-style: none;
+  margin-left: -1.3em;
+}
+
+.note-preview input[type='checkbox'] {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  margin-right: 0.5em;
+  accent-color: var(--color-seal);
+}
+
+.note-preview blockquote {
+  margin: 1em 0;
+  padding: 0.5em 1.1em;
+  border-left: 3px solid var(--color-seal);
+  background: var(--color-inset);
+  border-radius: 0 8px 8px 0;
+  color: var(--color-quote-ink);
+}
+
+.note-preview blockquote p {
+  margin: 0.25em 0;
+}
+
+.note-preview code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--color-code);
+  border: 1px solid var(--color-line);
+  border-radius: 5px;
+  padding: 0.08em 0.4em;
+  color: var(--color-seal-deep);
+}
+
+.note-preview pre {
+  margin: 1em 0;
+  padding: 0.9em 1.1em;
+  overflow-x: auto;
+  background: var(--color-sunken);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  line-height: 1.65;
+}
+
+.note-preview pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-ink);
+  font-size: 0.85em;
+  white-space: pre-wrap;
+}
+
+/*
+  代码块语法高亮（见 src/syntax）：令牌只带类名，颜色全在上面那组变量上。
+  导出件里这份与 index.css 是同一套类名与变量名——预览里什么样，导出件就什么样。
+*/
+.tok-comment {
+  color: var(--color-code-comment);
+  font-style: italic;
+}
+.tok-string {
+  color: var(--color-code-string);
+}
+.tok-number,
+.tok-constant {
+  color: var(--color-code-number);
+}
+.tok-keyword {
+  color: var(--color-code-keyword);
+}
+.tok-function {
+  color: var(--color-code-function);
+}
+.tok-type {
+  color: var(--color-code-type);
+}
+.tok-variable {
+  color: var(--color-code-variable);
+}
+.tok-tag {
+  color: var(--color-code-tag);
+}
+.tok-builtin {
+  color: var(--color-code-builtin);
+}
+.tok-meta {
+  color: var(--color-code-meta);
+}
+.tok-operator,
+.tok-punctuation {
+  color: var(--color-code-punct);
+}
+.tok-invalid {
+  color: var(--color-code-invalid);
+}
+
+.note-preview table {
+  margin: 1em 0;
+  border-collapse: collapse;
+  font-size: 0.93em;
+}
+
+.note-preview th,
+.note-preview td {
+  border: 1px solid var(--color-line-strong);
+  padding: 0.42em 0.95em;
+  text-align: center;
+}
+
+.note-preview th {
+  background: var(--color-inset);
+  font-weight: 600;
+  color: var(--color-ink-strong);
+}
+
+.note-preview tbody tr:nth-child(even) {
+  background: var(--color-sunken);
+}
+
+.note-preview hr {
+  margin: 2em 0;
+  border: none;
+  border-top: 1px solid var(--color-line-strong);
+}
+
+.note-preview img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.note-preview svg {
+  max-width: 100%;
+}
+
+.note-preview details.md-fold {
+  margin: 1em 0;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-sunken);
+  padding: 0.5em 0.9em;
+}
+
+.note-preview details.md-fold > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--color-ink-strong);
+  list-style: none;
+}
+
+.note-preview details.md-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.note-preview details.md-fold > summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 0.45em;
+  color: var(--color-seal);
+}
+
+.note-preview figure.md-fig {
+  margin: 1.1em 0;
+  text-align: center;
+}
+
+.note-preview figure.md-fig figcaption {
+  margin-top: 0.4em;
+  font-size: 0.85em;
+  color: var(--color-ink-faint);
+}
+
+/* ---------- 公式：用 MathML 排，不依赖 KaTeX 的字体 ---------- */
+
+/*
+ * KaTeX 默认同时产出两份：.katex-html（靠它自己那 20 多个 woff2 才排得对）
+ * 与 .katex-mathml（浏览器原生的 MathML）。导出件里把前者隐掉、把后者放出来——
+ * 否则要么带着两兆字体走，要么公式散成一堆没有度量的 span。
+ */
+.katex-html {
+  display: none !important;
+}
+
+.katex-mathml {
+  position: static;
+  clip: auto;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  display: inline-block;
+}
+
+.katex-mathml math {
+  font-size: 1.06em;
+}
+
+.katex-display {
+  margin: 1.15em 0;
+  padding: 0.25em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+}
+
+.katex-display .katex-mathml {
+  display: block;
+}
+
+/* ---------- 注解、内部链接、资源引用 ---------- */
+
+/* 注解：正文里带虚线下划线，鼠标悬停能看到内容（导出件没有浮层，用 title） */
+.moji-anno {
+  border-bottom: 1px dashed var(--color-seal);
+  cursor: help;
+}
+
+/* moji:node / moji:learn / moji:doc 这些内部链接在导出件里已经去掉了 href：
+   它们指向的是应用里的东西，点不开；留着颜色反而骗人 */
+.moji-x-link {
+  color: inherit !important;
+  text-decoration: none !important;
+  border-bottom: 1px dotted var(--color-line-strong);
+}
+
+.moji-export-note {
+  display: inline-block;
+  padding: 0.08em 0.5em;
+  border: 1px dashed var(--color-line-strong);
+  border-radius: 6px;
+  font-size: 0.85em;
+  color: var(--color-ink-faint);
+}
+
+/* ---------- 函数图像：导出件里是预览时画好的那张 SVG ---------- */
+
+.moji-plot {
+  margin: 1.15em 0;
+  padding: 8px 10px 4px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-card);
+  overflow: hidden;
+}
+
+.moji-plot-stage svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.moji-plot text {
+  font-family: var(--font-sans);
+  fill: var(--color-ink-soft);
+}
+
+/* ---------- 打印 / 分页 ---------- */
+
+@media print {
+  :root:not([data-theme='dark']) body {
+    background: #fff;
+  }
+
+  .page {
+    max-width: none;
+    padding: 0;
+  }
+
+  .note-preview pre,
+  .note-preview table,
+  .note-preview blockquote,
+  .note-preview img,
+  .note-preview .katex-display,
+  .note-preview .moji-plot,
+  .note-preview figure.md-fig {
+    break-inside: avoid;
+  }
+
+  .note-preview h1,
+  .note-preview h2,
+  .note-preview h3,
+  .note-preview h4 {
+    break-after: avoid;
+  }
+
+  .export-head {
+    break-after: avoid;
+  }
+
+  .export-foot {
+    break-before: avoid;
+  }
+}

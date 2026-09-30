@@ -1,0 +1,170 @@
+/* 本文件负责：超级导师回复的 Markdown 渲染与回溯式学习知识图 */
+/* ---------- 超级导师回复的 Markdown 渲染 ---------- */
+
+.moji-agent-md {
+  font-size: 13.5px;
+  line-height: 1.72;
+  letter-spacing: 0.015em;
+  color: var(--color-ink);
+  overflow-wrap: break-word;
+}
+.moji-agent-md > :first-child {
+  margin-top: 0;
+}
+.moji-agent-md > :last-child {
+  margin-bottom: 0;
+}
+.moji-agent-md p {
+  margin: 0.5em 0;
+}
+.moji-agent-md h1,
+.moji-agent-md h2,
+.moji-agent-md h3,
+.moji-agent-md h4 {
+  font-weight: 600;
+  color: var(--color-ink-strong);
+  margin: 0.9em 0 0.4em;
+  font-size: 1.06em;
+}
+.moji-agent-md ul,
+.moji-agent-md ol {
+  margin: 0.45em 0;
+  padding-left: 1.4em;
+}
+.moji-agent-md ul {
+  list-style: disc;
+}
+.moji-agent-md ol {
+  list-style: decimal;
+}
+.moji-agent-md li {
+  margin: 0.2em 0;
+}
+.moji-agent-md li::marker {
+  color: var(--color-ink-faint);
+}
+.moji-agent-md a {
+  color: var(--color-seal);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.moji-agent-md strong,
+.moji-agent-md b {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0 0.09em;
+  color: var(--color-ink-strong);
+}
+.moji-agent-md code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--color-code);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 0.05em 0.32em;
+  color: var(--color-seal-deep);
+}
+.moji-agent-md pre {
+  margin: 0.6em 0;
+  padding: 0.6em 0.8em;
+  overflow-x: auto;
+  background: var(--color-sunken);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  line-height: 1.6;
+}
+.moji-agent-md pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-ink);
+}
+.moji-agent-md blockquote {
+  margin: 0.6em 0;
+  padding: 0.35em 0.8em;
+  border-left: 3px solid var(--color-seal);
+  background: var(--color-inset);
+  border-radius: 0 6px 6px 0;
+  color: var(--color-quote-ink);
+}
+.moji-agent-md blockquote p {
+  margin: 0.15em 0;
+}
+.moji-agent-md table {
+  margin: 0.6em 0;
+  border-collapse: collapse;
+  font-size: 0.94em;
+}
+.moji-agent-md th,
+.moji-agent-md td {
+  border: 1px solid var(--color-line-strong);
+  padding: 0.3em 0.6em;
+}
+.moji-agent-md th {
+  background: var(--color-inset);
+  font-weight: 600;
+}
+.moji-agent-md hr {
+  margin: 0.9em 0;
+  border: none;
+  border-top: 1px solid var(--color-line-strong);
+}
+.moji-agent-md .katex-display {
+  margin: 0.6em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.moji-agent-md .katex {
+  font-size: 1.04em;
+}
+
+/* ---------- 回溯式学习：知识图 ---------- */
+
+.moji-graph,
+.moji-graph-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 子树用左侧竖线 + 每项一个横钩，表达「依赖 → 前置」的层级 */
+.moji-graph-children {
+  position: relative;
+  margin-left: 12px;
+  padding-left: 16px;
+  border-left: 1px solid var(--color-line);
+}
+
+.moji-graph-item {
+  position: relative;
+}
+
+.moji-graph-children > .moji-graph-item::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 16px;
+  width: 14px;
+  height: 1px;
+  background: var(--color-line);
+}
+
+/*
+ * 大纲页（OutlineView）的导语 / 节点描述 / 条目摘要走对话正文同一套 markdown 排版
+ * （.moji-agent-md），但这一页自己的设计是浅一档的墨色、导语与描述略大一号——
+ * 双类名保证压过 .moji-agent-md 的默认字号与墨色，不依赖样式表的先后顺序。
+ */
+.moji-agent-md.moji-outline-intro {
+  font-size: 13.5px;
+  color: var(--color-ink-soft);
+}
+
+.moji-agent-md.moji-outline-desc {
+  font-size: 13px;
+  color: var(--color-ink-soft);
+}
+
+.moji-agent-md.moji-outline-summary {
+  color: var(--color-ink-soft);
+}
+

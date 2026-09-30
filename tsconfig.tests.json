@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tests.tsbuildinfo",
+    "target": "es2023",
+    /* 用例要 import 渲染层的纯函数模块（例如 lib/keyCombo 的签名里就有 KeyboardEvent），
+       所以这一份必须带上 DOM 的类型。这只是类型层面——用例仍旧跑在 Node 里
+       （vitest 的 environment: 'node'），不引 jsdom。 */
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    /* 用例会 import 渲染层的模块（例如 lib/exportDoc），那条链上有两样东西只有应用侧
+       才声明过，缺了就会在别人的源码里报错、或干脆解析不到：
+       1. marked-katex-extension 自带的 d.ts 不准，应用侧在 src/types 里手写了一份替代
+          （见 tsconfig.app.json 的 paths），不映射就会去读它的 src/*.ts，
+          于是别人的 noUnusedParameters 报在这边；
+       2. ?raw 这类导入的模块声明也在 src/types（导出件的样式表就是这么读进来的）。
+       两份声明本身不含任何运行时代码，列进来只是把类型补齐。 */
+    "paths": {
+      "marked-katex-extension": ["./src/types/marked-katex-extension.d.ts"]
+    },
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    /* 用例是一条条 import 进渲染层模块的，而那些模块之间也会互相 import——
+       代码块那一条链上就有 .tsx（lib/modalConfirm 里临时挂的那个确认框）。
+       没有 jsx，别人的 .tsx 会在这份配置里报 TS6142「--jsx is not set」。
+       这只是编译选项，不是运行时：用例仍旧不引 jsdom。 */
+    "jsx": "react-jsx",
+
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["tests", "src/types", "scripts/update.test.ts"]
+}

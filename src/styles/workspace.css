@@ -1,0 +1,69 @@
+/* 本文件负责：工作区的其余样式——查找高亮、页签栏与源码视图 */
+/* ---------- 查找高亮 ---------- */
+
+/*
+ * 文档区查找（Ctrl+F）命中处的底色。
+ *
+ * 用 CSS Custom Highlight API 给 Range 上色，**一个 DOM 节点都不改**——往正文里插
+ * <mark> 会打乱渲染期的注解（了解 / 注解）与 React 的 reconciliation，下一次重渲染
+ * 还会把它抹掉。Highlight 只画颜色，正文的 DOM 原样不动（见 components/learn/FindBar）。
+ */
+::highlight(moji-find) {
+  background-color: color-mix(in srgb, var(--color-warn) 42%, transparent);
+}
+::highlight(moji-find-active) {
+  background-color: var(--color-seal);
+  color: #fff;
+}
+
+/* ---------- 页签栏与源码视图 ---------- */
+
+/*
+ * 页签条横向溢出时的滚动：三五个页签之后就一定会溢出，
+ * 但那条滚动条只有 4px、又压在页签下沿上，看着像页签自己长了条毛边。
+ * 藏起来——激活的页签会自己滚到中间（见 TabBar 的居中滚动），
+ * 需要手动滚的时候用触摸板的横向滚动或 Shift + 滚轮，都是本来就有的操作。
+ */
+.moji-tab-strip {
+  scrollbar-width: none;
+}
+.moji-tab-strip::-webkit-scrollbar {
+  height: 0;
+}
+
+/*
+ * 拖完松手的那一帧：页签之间的位移不许补间。
+ *
+ * 拖动期间靠 transform 让位，而重排之后每个页签的**落位**正好等于它让位后看到的位置。
+ * 也就是说清掉位移它们本来就在原地——可过渡是拿「过渡前算出来的 transform」补间的，
+ * 不清掉的话浏览器会让它们从「再退一格」的地方滑回来，整条栏在松手时抽一下。
+ * 只有一帧（见 TabBar 的 snap），被拖的那一项走的是另一条路（settle）。
+ * 这一条不加 !important：它在 index.css 里是无层样式，优先级本来就压得住 @layer utilities。
+ */
+.moji-tab-snap .moji-tab {
+  transition: none;
+}
+
+/*
+ * 源码视图的正文：**与预览同一族字体**（用户定的）。
+ *
+ * 从前这里用等宽字体：Markdown 源文的缩进看着更"对齐"，但中文字在等宽字体下
+ * 本来就散，再加上全局那 0.015em 的字距，整篇读起来比预览松一大截；来回切源码/预览
+ * 时字还变两次。现在字族与字距都按预览来，只留 tab-size——制表位仍要对齐。
+ *
+ * 字号由组件按 --doc-scale 写成内联的 font-size（与预览视图共用同一个系数）。
+ *
+ * 不画滚动条：编辑时它会随行数忽隐忽现，占掉的那十几像素还让正文与预览对不齐
+ * （内容超出照样能滚，只是不显示那条槽）。
+ */
+.moji-source-editor {
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+  line-height: 1.8;
+  tab-size: 2;
+  scrollbar-width: none;
+}
+.moji-source-editor::-webkit-scrollbar {
+  display: none;
+}
+

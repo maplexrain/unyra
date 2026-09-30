@@ -1,0 +1,350 @@
+/* 本文件负责：代码相关样式——语法高亮令牌、代码块操作菜单与运行结果、函数图像 */
+/* ---------- 代码块语法高亮（src/syntax：TextMate → scopes → 令牌类型） ---------- */
+/*
+  令牌只带类名、不带颜色：颜色全在 --color-code-* 这组变量上。所以切主题、换配色
+  都只是换变量的事，一段代码都不必重新 tokenize（见 src/syntax/Theme.ts）。
+  注释用斜体是各家主题的惯例，也是最省事的「一眼分辨」。
+*/
+.tok-comment {
+  color: var(--color-code-comment);
+  font-style: italic;
+}
+.tok-string {
+  color: var(--color-code-string);
+}
+.tok-number,
+.tok-constant {
+  color: var(--color-code-number);
+}
+.tok-keyword {
+  color: var(--color-code-keyword);
+}
+.tok-function {
+  color: var(--color-code-function);
+}
+.tok-type {
+  color: var(--color-code-type);
+}
+.tok-variable {
+  color: var(--color-code-variable);
+}
+.tok-tag {
+  color: var(--color-code-tag);
+}
+.tok-builtin {
+  color: var(--color-code-builtin);
+}
+.tok-meta {
+  color: var(--color-code-meta);
+}
+.tok-operator,
+.tok-punctuation {
+  color: var(--color-code-punct);
+}
+.tok-invalid {
+  color: var(--color-code-invalid);
+}
+
+/* 深色族共用一套代码配色（覆盖上面那份浅色默认值） */
+:root[data-theme='dark'],
+:root[data-theme='black'],
+:root[data-theme='graphite'],
+:root[data-theme='navy'],
+:root[data-theme='contrast'] {
+  --color-code-comment: #6b7280;
+  --color-code-string: #98c379;
+  --color-code-number: #d19a66;
+  --color-code-keyword: #c678dd;
+  --color-code-function: #61afef;
+  --color-code-type: #e5c07b;
+  --color-code-variable: #e06c75;
+  --color-code-tag: #e06c75;
+  --color-code-builtin: #56b6c2;
+  --color-code-meta: #61afef;
+  --color-code-punct: #9aa0a6;
+  --color-code-invalid: #e06c75;
+}
+
+/* ---------- 代码块操作菜单与运行结果（内置插件 code-run） ---------- */
+/*
+  为什么给每个代码块包一层 .moji-run-block：菜单要「贴在代码块右上角」，
+  而 <pre> 自己是一个横向滚动容器——绝对定位的子元素会跟着代码一起滚走。
+  包一层壳（<pre> 仍是它唯一的直接内容）不动任何既有选择器：正文那套规则
+  写的都是后代选择器（.note-preview pre 之类），多一层不影响。
+  菜单常驻 DOM 只是 opacity:0：hover 时才现形（需求：鼠标经过才弹出），
+  不做创建/销毁，就没有布局抖动；隐藏时必须 pointer-events:none，
+  否则它会挡住代码右上角的文字选择。
+*/
+.moji-run-block {
+  position: relative;
+}
+.moji-run-menu {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--color-elevated) 86%, transparent);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 18px rgba(31, 27, 23, 0.14);
+  opacity: 0;
+  transform: translateX(4px);
+  pointer-events: none;
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+.moji-run-block:hover .moji-run-menu,
+.moji-run-menu:focus-within {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.moji-run-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-ink-soft);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.moji-run-btn:hover:not(:disabled) {
+  background: var(--color-inset);
+  color: var(--color-ink-strong);
+}
+.moji-run-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+/* 已经有产物：编译那颗按钮换个颜色，一眼看出「这回是重编」 */
+.moji-run-btn.is-recompile,
+.moji-run-btn.is-busy {
+  color: var(--color-seal);
+}
+.moji-run-spin {
+  display: none;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: moji-run-spin 0.7s linear infinite;
+}
+.moji-run-btn.is-busy .moji-run-spin {
+  display: inline-block;
+}
+@keyframes moji-run-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/*
+  「无输出」标签：**导师判定**这段代码跑不出任何东西之后（它调 api.code.silent 交货，
+  见 lib/codeArtifacts），那一块只剩复制与这一句，编译与运行两颗按钮收起。
+  它不是按钮，别做成看起来能点的样子；悬停能看到导师给的理由。
+*/
+.moji-run-none {
+  padding: 3px 8px;
+  color: var(--color-ink-faint);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+  cursor: default;
+}
+
+/* 运行结果那一栏：贴在代码块下面（需求：输出显示在代码块下方） */
+.moji-run-out {
+  margin: -0.5em 0 1em;
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  background: var(--color-sunken);
+  overflow: hidden;
+}
+.moji-run-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-inset);
+}
+.moji-run-title {
+  flex: 1;
+  color: var(--color-ink-soft);
+  font-size: 11px;
+  font-weight: 600;
+}
+.moji-run-mini {
+  padding: 2px 6px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-ink-soft);
+  font-size: 11px;
+  cursor: pointer;
+}
+.moji-run-mini:hover {
+  background: var(--color-line);
+  color: var(--color-ink-strong);
+}
+.moji-run-body {
+  max-height: 320px;
+  overflow: auto;
+  padding: 6px 10px 8px;
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  line-height: 1.65;
+}
+.moji-run-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-ink);
+}
+.moji-run-line.lv-warn {
+  color: var(--color-code-number);
+}
+.moji-run-line.lv-error {
+  color: var(--color-code-invalid);
+}
+.moji-run-line.lv-return {
+  color: var(--color-code-function);
+}
+.moji-run-line.lv-sys,
+.moji-run-stage {
+  color: var(--color-ink-soft);
+}
+.moji-run-stage {
+  padding: 1px 0;
+  font-family: var(--font-sans);
+  font-size: 1.15em;
+}
+/* 编译说明：模型补了哪些假上下文，得让用户看得见——它是「伪」的那一部分 */
+.moji-run-note {
+  margin: 2px 0 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--color-inset);
+  color: var(--color-ink-soft);
+  font-family: var(--font-sans);
+  font-size: 1.15em;
+  white-space: pre-wrap;
+}
+.moji-run-src {
+  margin: 4px 0;
+  padding: 8px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: var(--color-code);
+  white-space: pre-wrap;
+}
+
+/* ---------- 函数图像（```plot，由 function-plot 渲染） ---------- */
+
+.moji-plot {
+  position: relative;
+  margin: 1.15em 0;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-card);
+  padding: 8px 10px 4px;
+  overflow: hidden;
+}
+.moji-plot-stage {
+  width: 100%;
+}
+/* function-plot 产出的 <svg> 按容器宽度自适应 */
+.moji-plot-stage svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
+}
+/* 坐标轴文字/网格线随主题取色，否则深色模式下是黑字黑线 */
+.moji-plot-stage svg text {
+  fill: var(--color-ink-soft);
+}
+.moji-plot-stage svg text.title {
+  fill: var(--color-ink-strong);
+}
+/* 轴线与原点辅助线：库内以 stroke="black" 呈现属性绘制，深色下等于隐形，这里覆盖 */
+.moji-plot-stage svg .axis path,
+.moji-plot-stage svg .axis line,
+.moji-plot-stage svg path.origin {
+  stroke: var(--color-ink-soft);
+}
+.moji-plot-stage svg .axis line {
+  stroke: var(--color-line-strong);
+}
+/* 含 LaTeX 的标题/轴标签：用 HTML 覆盖层渲染（见 lib/plot.ts） */
+.moji-plot-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--color-ink-soft);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.moji-plot-label-title {
+  font-size: 21px;
+  color: var(--color-ink-strong);
+  /* 标题可以很长（用户写的是完整句子）：允许换行、限制在图表宽度内，
+     否则 nowrap + overflow:hidden 会把右边裁掉（见 lib/plot 的收边） */
+  white-space: normal;
+  max-width: calc(100% - 20px);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.moji-plot-label .katex {
+  font-size: 1em;
+}
+.moji-plot-hint {
+  padding: 14px 4px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--color-ink-faint);
+}
+.moji-plot-error {
+  border-color: color-mix(in srgb, var(--color-seal) 35%, transparent);
+}
+.moji-plot-msg {
+  padding: 6px 2px;
+  font-size: 12.5px;
+  color: var(--color-seal-deep);
+}
+.moji-plot-error pre {
+  margin: 0.4em 0 0.6em;
+  padding: 0.6em 0.8em;
+  background: var(--color-sunken);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 0.82em;
+}
+/* 悬停读数：function-plot 的 .tip 是 SVG 分组，文字样式在这里定 */
+.moji-plot .tip text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--color-ink-soft);
+}
+.moji-plot .tip path {
+  stroke: var(--color-ink-faint);
+}
+

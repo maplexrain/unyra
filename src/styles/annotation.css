@@ -1,0 +1,376 @@
+/* 本文件负责：注解与知识关联——「了解」注解、笔记标记与浮层、引文定位、知识节点链接、资源与文件卡片 */
+/* ---------- 「了解」注解：正文里带下划线的术语 + 悬停弹出释义 ---------- */
+
+/* 注解标记是**文字自己的样式**：淡印章底 + 虚线，扫一眼就能看出哪些词有注解。
+   刻意不加任何符号占位（旧版两侧的 «» 与笔记的 ✎ 已删）——注解的存在感由
+   底色与下划线给，掺进字形只会打断阅读，被标注的词还是词本身。 */
+.moji-anno {
+  border-bottom: 1.5px dashed color-mix(in srgb, var(--color-seal) 78%, transparent);
+  background: color-mix(in srgb, var(--color-seal) 7%, transparent);
+  cursor: help;
+  transition: background 0.15s ease;
+}
+.moji-anno:hover {
+  background: color-mix(in srgb, var(--color-seal) 20%, transparent);
+  border-bottom-style: solid;
+}
+/* 深色模式下低透明度底几乎看不见，提高底色与虚线的强度 */
+:root[data-theme='dark'] .moji-anno {
+  background: color-mix(in srgb, var(--color-seal) 14%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--color-seal) 85%, transparent);
+}
+:root[data-theme='dark'] .moji-anno:hover {
+  background: color-mix(in srgb, var(--color-seal) 26%, transparent);
+}
+
+/* 「笔记」标记：与「了解」同一套浮层，只用实线与更沉的底色区分——表示「这里是我写的」。
+   两种注解的差异全在线型与底色上，不再靠角标字形。 */
+.moji-anno-note {
+  border-bottom-style: solid;
+  border-bottom-color: color-mix(in srgb, var(--color-seal) 70%, transparent);
+  background: color-mix(in srgb, var(--color-seal) 10%, transparent);
+}
+
+/* 引文定位：点击对话气泡里的选段引文时，在正文对应文字上播放一次高亮。
+   用绝对定位覆盖层而不是包裹元素——正文内容由 React 之外托管，不宜改动结构。 */
+.moji-quote-flash {
+  position: fixed;
+  z-index: 55;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-seal) 26%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-seal) 60%, transparent);
+  pointer-events: none;
+  animation: moji-quote-flash 1.6s ease-out forwards;
+}
+@keyframes moji-quote-flash {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.moji-anno-pop {
+  position: fixed;
+  z-index: 60;
+  max-width: 300px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 10px;
+  background: var(--color-card);
+  padding: 8px 11px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--color-ink);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+}
+/* 「笔记」浮层：可停留、可点击（里面有修改/删除按钮），因此要接收指针事件 */
+.moji-anno-pop-interactive {
+  pointer-events: auto;
+  max-width: 340px;
+  padding: 0;
+  overflow: hidden;
+}
+.moji-anno-pop-interactive .moji-anno-body {
+  padding: 9px 12px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+/* 笔记正文走块级 Markdown，压掉首尾多余外边距，浮层里更紧凑 */
+.moji-anno-pop-interactive .moji-anno-body > :first-child {
+  margin-top: 0;
+}
+.moji-anno-pop-interactive .moji-anno-body > :last-child {
+  margin-bottom: 0;
+}
+.moji-anno-pop-interactive .moji-anno-body p {
+  margin: 0.4em 0;
+}
+.moji-anno-pop-interactive .moji-anno-body ul,
+.moji-anno-pop-interactive .moji-anno-body ol {
+  margin: 0.4em 0;
+  padding-left: 1.35em;
+}
+.moji-anno-pop-interactive .moji-anno-body code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--color-code);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 0.05em 0.32em;
+}
+.moji-anno-pop-interactive .moji-anno-body .katex-display {
+  margin: 0.5em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+/*
+ * 「修改 / 删除」两个**文字按钮**：行内挂在笔记正文末尾（见 lib/annotation 的
+ * attachActions），不另起一条工具条——浮层本来就小，多一行就多占一块地方，
+ * 而这两个动作是尾巴上的附属物，跟在最后一行文字后面最自然。
+ * 用文字而不是图标：动作叫什么就写什么，两个词比两个图形好认。
+ */
+.moji-anno-acts {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-left: 10px;
+  user-select: none;
+}
+.moji-anno-acts button {
+  padding: 0;
+  color: var(--color-ink-faint);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-ink-faint) 40%, transparent);
+  font: inherit;
+  font-size: 0.88em;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+.moji-anno-acts button:hover {
+  color: var(--color-seal-deep);
+  border-bottom-color: var(--color-seal-deep);
+}
+.moji-anno-acts button[data-act='delete']:hover {
+  color: var(--color-seal);
+  border-bottom-color: var(--color-seal);
+}
+/* 箭头单独定位（见 MarkdownView.showPopup）：位置由术语中心决定，
+   气泡即使被夹取也不影响箭头指向。dir 决定指向上下。 */
+.moji-anno-arrow {
+  position: fixed;
+  z-index: 60;
+  width: 8px;
+  height: 8px;
+  background: var(--color-card);
+  border-left: 1px solid var(--color-line-strong);
+  border-top: 1px solid var(--color-line-strong);
+  pointer-events: none;
+}
+.moji-anno-arrow[data-dir='down'] {
+  transform: translateX(-50%) rotate(225deg);
+}
+.moji-anno-arrow[data-dir='up'] {
+  transform: translateX(-50%) rotate(45deg);
+}
+
+/*
+ * 注解浮层的退场：动画播完前元素还在，必须立刻断掉指针事件，
+ * 否则「了解」的浮层在消失的那一瞬间还能挡住下一次点击。
+ * 进场/退场的动画类由 lib/annotation.ts 切换（浮层是命令式 DOM，不走 React）。
+ */
+.moji-anno-pop.moji-out {
+  pointer-events: none;
+}
+
+/* ---------- 知识节点链接 ---------- */
+
+.moji-node-link,
+.note-preview a[href^='moji:node/'],
+.moji-agent-md a[href^='moji:node/'] {
+  color: var(--color-seal);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-seal) 40%, transparent);
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.moji-node-link:hover,
+.note-preview a[href^='moji:node/']:hover,
+.moji-agent-md a[href^='moji:node/']:hover {
+  background-color: color-mix(in srgb, var(--color-seal) 12%, transparent);
+  border-bottom-color: var(--color-seal);
+}
+
+/* 「点击学习」链接（AI 交互大纲里的概念）。
+   两种状态用类名区分（见 lib/nodeLink.markLearnLinks）：
+   - 未创建 (.moji-learn-new)：点击会新建节点 → 印章红、实心标记，像「开始学习」
+   - 已创建 (.moji-learn-known)：点击只是跳过去 → 灰调、点状下划线、对勾标记，
+     读起来像「已可进入」，不再抢新任务的注意力 */
+.moji-learn-link,
+.note-preview a[href^='moji:learn'],
+.moji-agent-md a[href^='moji:learn'] {
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0 1px;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+/* 未创建 */
+.moji-learn-new,
+.note-preview a[href^='moji:learn']:not(.moji-learn-known),
+.moji-agent-md a[href^='moji:learn']:not(.moji-learn-known) {
+  color: var(--color-seal-deep);
+  border-bottom: 1.5px dashed color-mix(in srgb, var(--color-seal) 55%, transparent);
+}
+.moji-learn-new::after,
+.note-preview a[href^='moji:learn']:not(.moji-learn-known)::after,
+.moji-agent-md a[href^='moji:learn']:not(.moji-learn-known)::after {
+  content: '＋';
+  font-size: 0.78em;
+  vertical-align: 0.1em;
+  margin-left: 1px;
+  font-weight: 400;
+  opacity: 0.75;
+}
+.moji-learn-new:hover,
+.note-preview a[href^='moji:learn']:not(.moji-learn-known):hover,
+.moji-agent-md a[href^='moji:learn']:not(.moji-learn-known):hover {
+  background-color: color-mix(in srgb, var(--color-seal) 14%, transparent);
+  border-bottom-style: solid;
+  border-bottom-color: var(--color-seal);
+}
+
+/* 已创建 */
+.moji-learn-known,
+.note-preview a[href^='moji:learn'].moji-learn-known,
+.moji-agent-md a[href^='moji:learn'].moji-learn-known {
+  color: var(--color-ink-soft);
+  border-bottom: 1.5px dotted color-mix(in srgb, var(--color-ink-soft) 55%, transparent);
+}
+.moji-learn-known::after,
+.note-preview a[href^='moji:learn'].moji-learn-known::after,
+.moji-agent-md a[href^='moji:learn'].moji-learn-known::after {
+  content: '✓';
+  font-size: 0.72em;
+  vertical-align: 0.26em;
+  margin-left: 2px;
+  color: var(--color-ok-text);
+  opacity: 0.9;
+}
+.moji-learn-known:hover,
+.note-preview a[href^='moji:learn'].moji-learn-known:hover,
+.moji-agent-md a[href^='moji:learn'].moji-learn-known:hover {
+  background-color: color-mix(in srgb, var(--color-ink-soft) 14%, transparent);
+  border-bottom-style: solid;
+  border-bottom-color: var(--color-ink-soft);
+}
+
+/* ---------- 目标级资源：内联插图与文件卡片（见 lib/staticView.ts） ---------- */
+/*
+ * 文档里的「![图注](moji:static/<uuid>)」与「[文字](moji:static/<uuid>)」。
+ * marked 只产出 <img>/<a>，真正的形态（内联图 / 文件卡片 / 资源不存在）由
+ * hydrateStaticFiles 在 DOM 提交后落定。所以这里既按类名、也按 href/src 前缀选择：
+ * 前者是补丁之后的形态，后者让补丁之前的那一帧已经是卡片，而不是一条默认链接。
+ * 颜色一律走主题变量（--color-*），深色模式自然跟随。
+ */
+.moji-static-card,
+.note-preview a[href^='moji:static/'],
+.moji-agent-md a[href^='moji:static/'] {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 7px 0 4px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 7px;
+  background: var(--color-sunken);
+  color: var(--color-ink);
+  /* 与正文字号、行高都留一点余量：卡片嵌在段落里不能把行撑开 */
+  font-size: 0.9em;
+  font-weight: 600;
+  line-height: 1.45;
+  vertical-align: middle;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+.moji-static-card:hover,
+.note-preview a[href^='moji:static/']:hover,
+.moji-agent-md a[href^='moji:static/']:hover {
+  background: color-mix(in srgb, var(--color-seal) 9%, var(--color-sunken));
+  border-color: color-mix(in srgb, var(--color-seal) 50%, var(--color-line-strong));
+  color: var(--color-ink);
+}
+/* 资源不存在 / 文件缺失：虚线，不假装它是一个能打开的文件 */
+.moji-static-card-missing {
+  border-style: dashed;
+  background: transparent;
+}
+.moji-static-card-missing:hover {
+  background: color-mix(in srgb, var(--color-warn) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-warn) 55%, var(--color-line-strong));
+}
+
+/* 后缀徽标 */
+.moji-static-icon {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-seal) 13%, transparent);
+  color: var(--color-seal-deep);
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: 0.08em;
+}
+.moji-static-name {
+  margin-right: 2px;
+}
+.moji-static-size,
+.moji-static-note {
+  margin-left: 4px;
+  color: var(--color-ink-faint);
+  font-size: 0.82em;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.moji-static-note {
+  color: var(--color-warn-deep);
+}
+
+/*
+ * 内联插图。读字节期间先给一块灰底占位：<img> 是替换元素，伪元素画不出来，
+ * 「正在读取…」这几个字只能落在外面包的那层壳上。
+ */
+.moji-static-imgwrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  min-width: 150px;
+  min-height: 76px;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+.moji-static-imgwrap.moji-static-loading {
+  border: 1px dashed var(--color-line-strong);
+  background: var(--color-inset);
+}
+/* 占位期不显示那张还没有 src 的图：否则会先露出替代文字与碎图标 */
+.moji-static-imgwrap.moji-static-loading img {
+  display: none;
+}
+.moji-static-hint {
+  color: var(--color-ink-faint);
+  font-size: 0.85em;
+  letter-spacing: 0.02em;
+}
+.note-preview img.moji-static-img,
+.moji-agent-md img.moji-static-img {
+  max-width: 100%;
+  vertical-align: middle;
+}
+/* 点击即在文件管理器里定位：插图、占位壳、卡片与链接是同一种交互 */
+[data-static-ref],
+.moji-static-imgwrap img {
+  cursor: pointer;
+}
+

@@ -1,0 +1,38 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-electron
+dist-ssr
+
+# 打包产物（npm run release:win）
+release
+# 授权签发器的构建产物（npm run licgen:gui）
+dist-licgen
+# 签发器的免安装单 exe（npm run licgen:exe）——卖家自用，不进版本库、不发布
+release-licgen
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# AI 助手本地工作目录
+.zcode/
+
+# 授权签发器的打包配置——只给卖家自用，绝不进公开仓库
+electron-builder.licgen.yml

@@ -1,0 +1,189 @@
+/* 本文件负责：应用外壳——打印、只读界面、无边框窗口拖拽区、两栏对调（View Transitions） */
+/* ---------- 打印（导出 PDF） ---------- */
+
+@media print {
+  body {
+    background: #fff !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  /* 代码块的操作菜单与运行结果不是文档内容：纸上不该出现它们 */
+  .moji-run-menu,
+  .moji-run-out {
+    display: none !important;
+  }
+  .print-flat,
+  .print-flat * {
+    overflow: visible !important;
+  }
+  .print-flat {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+  /*
+    两列布局在纸上塌成一列：格子不再分「左宽右定宽」，分隔线也一并去掉。
+    两列对调之后右格可能装着文档——那时它若还留着固定宽度与那根竖线，
+    导出的 PDF 就只剩窄窄一条，还多出一道边。
+  */
+  .print-col {
+    width: auto !important;
+    border: 0 !important;
+  }
+  .note-preview {
+    max-width: none !important;
+    padding: 0 !important;
+    font-size: 12pt;
+  }
+  .note-preview pre,
+  .note-preview .katex-display,
+  .note-preview table,
+  .note-preview blockquote,
+  .note-preview .moji-plot {
+    break-inside: avoid;
+  }
+  .note-preview h1,
+  .note-preview h2,
+  .note-preview h3 {
+    break-after: avoid;
+  }
+}
+
+/* 模态遮罩：跟随主题。深色下用浅色半透明会把整个屏幕洗白，必须单独定义 */
+:root {
+  --scrim: rgba(31, 27, 23, 0.25);
+}
+:root[data-theme='dark'] {
+  --scrim: rgba(0, 0, 0, 0.6);
+}
+.modal-scrim {
+  background: var(--scrim);
+}
+
+/* ---------- 只读界面：默认不可选中文字、不可拖拽 ---------- */
+
+/*
+ * 这是一个「读内容 + 操作」的应用界面，不是网页文档：
+ * 随处能选中，点击就会变成拖选；图片与链接被拖走还会留下半透明的拖影。
+ * 因此默认全站禁选、禁拖，只在这两处放开——**文档浏览区**（.note-preview，
+ * 用户要摘抄、要选中词汇建节点）与 **AI 对话列表**（.moji-selectable，
+ * 用户要复制回复），外加上输入类元素（否则连字都改不了）。
+ *
+ * 放开的区域同时恢复 -webkit-user-drag，图片之类的才拖得动。
+ */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea,
+select,
+[contenteditable='true'],
+.moji-selectable,
+.moji-selectable *,
+.note-preview,
+.note-preview * {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+img,
+a {
+  -webkit-user-drag: none;
+}
+
+.note-preview img,
+.moji-selectable img {
+  -webkit-user-drag: element;
+}
+
+/* ---------- 无边框窗口：自绘标题栏的拖拽区 ---------- */
+
+/*
+ * 应用用 Electron 的 frame:false 启动，窗口拖动全靠 CSS 的 app-region。
+ * 规则：顶栏整条可拖，里面的交互元素必须显式声明 no-drag，
+ * 否则点击会被解释成「拖窗口」，按钮按不动、输入框也点不进去。
+ */
+.app-drag {
+  -webkit-app-region: drag;
+}
+
+.app-drag button,
+.app-drag a,
+.app-drag input,
+.app-drag select,
+.app-drag textarea,
+.app-drag [role='button'],
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* 拖拽区里的文字不可选中：选中文本会与拖动冲突，观感也乱 */
+.app-drag {
+  user-select: none;
+}
+
+/* ---------- 两栏对调：View Transitions ---------- */
+
+/*
+ * 双击两列中间那条线把文档区与导师栏换个位置（见 LearnWorkspace 的 swapSides）。
+ * 直接换 DOM 顺序是「唰」地一下，眼睛跟不上哪一栏去了哪边；View Transitions 让浏览器
+ * 在改动前后各拍一张快照，再拿着下面这两个名字把两列从旧位置补间到新位置——
+ * 位置和宽度一起变，所以看着是「挤过去」。
+ *
+ * 根快照那层淡入淡出要关掉：整页闪一下只会让人以为界面重载了，
+ * 我们只要两列自己动。没有这条 API 的运行时（老 Chromium）什么都不会发生，
+ * 换位照常完成，只是没有动画。
+ */
+.vt-doc-col {
+  view-transition-name: moji-doc-col;
+}
+.vt-agent-col {
+  view-transition-name: moji-agent-col;
+}
+::view-transition-group(moji-doc-col),
+::view-transition-group(moji-agent-col) {
+  animation-duration: 340ms;
+  animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(moji-doc-col),
+  ::view-transition-group(moji-agent-col) {
+    animation-duration: 1ms;
+  }
+}
+
+/*
+ * 从定位条跳过去的那条消息：闪一下，让人一眼认出「就是这一条」。
+ *
+ * 用描边 + 轻微放大，而不是换背景色：用户气泡本身就是深色的，换底色看不出来。
+ * 时长与 AgentPanel 的 MSG_FLASH_MS 是一对，改一个记得改另一个。
+ */
+@keyframes moji-msg-flash {
+  0% {
+    outline: 3px solid var(--color-seal);
+    outline-offset: 2px;
+    transform: scale(1.02);
+  }
+  60% {
+    outline: 3px solid var(--color-seal);
+    outline-offset: 2px;
+    transform: none;
+  }
+  100% {
+    outline: 3px solid transparent;
+    outline-offset: 2px;
+    transform: none;
+  }
+}
+.moji-msg-flash {
+  animation: moji-msg-flash 1.1s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+

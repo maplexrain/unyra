@@ -1,0 +1,92 @@
+# 打包发布：把 dist/（渲染层）与 dist-electron/（主进程 + preload）装进安装包。
+#
+# 为什么单独一个文件而不写进 package.json 的 "build" 字段：那段 JSON 写不了注释，
+# 而这里每一条都值得写清「为什么」——尤其是 files 与用户数据目录这两条。
+#
+# 用法：npm run release:win（= 先 npm run build，再交给 electron-builder）
+# 产物在 release/ 下：GUI 安装包 .exe，以及免安装的 win-unpacked/ 目录。
+
+appId: com.moji.guiyi # 与 electron/main.ts 的 setAppUserModelId 一致：任务栏与通知按它归组
+productName: 归一 Unyra # 安装向导、快捷方式、控制面板里显示的名字
+
+directories:
+  output: release # 产物目录（.gitignore 已忽略，不进版本库）
+  buildResources: build # build/icon.png → exe 与安装包的图标
+
+# 用本地已装好的 Electron 运行时，不去 GitHub 下那份 110MB 的 zip。
+# 为什么必须这么干：国内网络下 github.com 时通时不通（实测一次 ETIMEDOUT 就让整个打包失败），
+# 而每卖一单都要重新打一次包——那份 zip 每次都重下既慢又容易炸。
+# 目录布局与官方 zip 解包后完全一致（node_modules/electron/dist，含 version 文件）。
+# 注意：它必须与 devDependencies 里的 electron 版本一致（现在都是 44.3.0），
+# 换 Electron 版本时记得同步跑一次 node node_modules/electron/install.js。
+electronDist: node_modules/electron/dist
+
+files:
+  # 只装运行时要用的三样。
+  # 不排掉 node_modules 的话，electron-builder 会把 production dependencies 整份拷进 asar
+  # （react / marked / katex / tailwind 都挂在 dependencies 上），而运行时一个都不需要：
+  # dist/ 是 vite 打好的整包、dist-electron/*.cjs 是 esbuild 打好的单文件，
+  # 三个产物里出现过的 require 只有 electron 与 node: 内置模块。
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+  - '!node_modules/**/*'
+  # 源码映射不进包：发布构建本来就不生成，这里再兜一道（免得哪天手工构建时漏进去）
+  - '!**/*.map'
+
+asar: true # 资源打进单文件包；Electron 对 fs / nativeImage 的读取是 asar 透明的
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png # 由 public/logo.svg 生成（npm run icons），electron-builder 会转成多尺寸 .ico
+  # 文件名用 ASCII：安装向导里显示的仍是「归一 Unyra」，但中文文件名在下载/传输环节容易变成乱码
+  artifactName: Unyra-${version}-Setup.${ext}
+
+nsis:
+  oneClick: false # 有向导：可以改安装目录、能看到装到哪
+  perMachine: false # 装进当前用户目录，不弹 UAC
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 归一 Unyra
+  # 卸载时不动用户数据：教学文档、对话、资源都在 %APPDATA%\moji-notes 里。
+  # 这个目录由 electron/main.ts 用 setPath 钉死（不走 app.getName()），所以上面改 productName
+  # 只是换个显示名，数据一个字节都不会挪窝。
+  deleteAppDataOnUninstall: false
+
+# 更新分发：安装包与版本元数据（latest.yml）传到开源仓库（本仓库）的 Releases；
+# electron-updater 的 GitHub provider 匿名去 releases 里取 latest.yml 与安装包，
+# 不需要给任何人发 token。
+#
+# releaseType 必须是 release。默认值是 draft，而草稿既不出现在 releases/latest、
+# 也不出现在 releases.atom 里——检查更新会永远回答「已是最新」，且没有任何报错。
+#
+# 这一段的 owner/repo 必须与 electron/update-core.ts 的 RELEASE_REPO 一致
+# （前者是安装包真的去哪取，后者是界面上「发布页」指向哪），scripts/update.test.ts 钉住了这一点。
+#
+# 只在 npm run release:publish 时才会真的上传；平时的 release:win 传 --publish never。
+publish:
+  - provider: github
+    owner: maplexrain
+    repo: unyra
+    releaseType: release
+
+# 反篡改开关（Electron fuses：打包时直接改写 exe 里的标志位）。
+#
+# 最省事的那种「破解」是：解包 → 改 app.asar（比如把某个判断改成 true）→ 重打包。
+# 下面这两条一起把它堵死——integrity 校验内容哈希（哈希在打包时写进 exe 资源），
+# onlyLoadAppFromAsar 去掉 app/ 目录这条旁路，于是「加载未被校验的代码」不再可能。
+# 实测：改过一个字节的 app.asar 之后，程序直接起不来（见 docs/packaging-and-release.md「反篡改」）。
+#
+# 代价：**改完 asar 必须重新打包**，不能手工往包里塞文件了；发布构建要重跑一次
+# electron-builder（它会重新写入哈希）。
+electronFuses:
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  # 注入类改法：堵掉 NODE_OPTIONS / ELECTRON_RUN_AS_NODE / --inspect 三条路子。
+  # 开发调试不受影响：fuses 只改打包产物，npm run dev 跑的是 node_modules 里的 electron。
+  enableNodeOptionsEnvironmentVariable: false
+  runAsNode: false
+  enableNodeCliInspectArguments: false
