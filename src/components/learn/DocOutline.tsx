@@ -13,6 +13,8 @@ interface Props {
   onJump: (index: number) => void
   /** 跳转之后把浮层收起来 */
   onDismiss: () => void
+  /** 退场中：改播收回动画（见 motion.css 的 moji-tip-out），收回方向与出场相反 */
+  closing?: boolean
 }
 
 /**
@@ -27,7 +29,7 @@ interface Props {
  * 带下级的标题可以收起；收起状态按标题序号记，因为正文每次流式更新都会
  * 重新抽取大纲、节点对象每次都是新的，拿对象当键会立刻失效。
  */
-export default function DocOutline({ items, activeIndex, onJump, onDismiss }: Props) {
+export default function DocOutline({ items, activeIndex, onJump, onDismiss, closing = false }: Props) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(() => new Set())
   const rows = useMemo(() => flattenOutline(items, collapsed), [items, collapsed])
   const total = useMemo(() => countOutline(items), [items])
@@ -81,12 +83,14 @@ export default function DocOutline({ items, activeIndex, onJump, onDismiss }: Pr
       卡片背景与正文同一张底色（bg-card），看起来才是「文档冒出来的气泡」
       而不是一片浮着的白纸；出场动画见 motion.css 的 .moji-tip-pop。
     */
-    <div className="no-print absolute right-0 top-[calc(100%+6px)] z-30">
+    <div
+      className={`no-print absolute right-0 top-[calc(100%+6px)] z-30 ${closing ? 'moji-tip-out' : 'moji-tip-pop'}`}
+    >
       <span
         aria-hidden="true"
         className="absolute -top-1 right-3 z-10 h-2.5 w-2.5 rotate-45 rounded-[2px] border-l border-t border-line bg-card"
       />
-      <div className="moji-tip-pop flex max-h-[min(60vh,480px)] w-[280px] flex-col overflow-hidden rounded-lg border border-line bg-card shadow-[0_10px_30px_rgba(31,27,23,0.16)]">
+      <div className="flex max-h-[min(60vh,480px)] w-[280px] flex-col overflow-hidden rounded-lg border border-line bg-card shadow-[0_10px_30px_rgba(31,27,23,0.16)]">
       <header className="flex shrink-0 items-center gap-1 border-b border-line px-2.5 py-2">
         <ListTree size={13} className="shrink-0 text-ink-faint" />
         <span className="truncate text-[11.5px] font-medium tracking-wide text-ink">{t('本页标题')}</span>
