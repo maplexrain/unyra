@@ -7,11 +7,11 @@
 
 [下载安装包](https://github.com/maplexrain/unyra/releases) · [项目文档](docs/README.md) · [问题反馈](https://github.com/maplexrain/unyra/issues)
 
-[![Release](https://img.shields.io/badge/release-v0.4.9-a8432f)](https://github.com/maplexrain/unyra/releases)
+[![Release](https://img.shields.io/badge/release-v0.4.10-a8432f)](https://github.com/maplexrain/unyra/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4)](https://github.com/maplexrain/unyra/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6)](https://www.typescriptlang.org/)
 
 </div>
 
