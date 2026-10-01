@@ -22,8 +22,11 @@ const root = createRoot(document.getElementById('root')!)
 
 /**
  * 全站禁拖：默认不让任何东西被拖走（拖走的文字/图片会留下半透明拖影，
- * 拖动还常常与点击冲突）。只有**文档浏览区**与 **AI 对话列表**例外，
- * 那两处的选中文字与图片是用户可能要拖去别处的。禁选的范围见 index.css。
+ * 拖动还常常与点击冲突）。只有三类例外：**文档浏览区**与 **AI 对话列表**
+ * （那两处的选中文字与图片是用户可能要拖去别处的），以及**显式声明了
+ * `draggable="true"` 的元素**——那是应用自己登记的拖拽源（资源管理器的行，
+ * 拖去页签栏 / 对话输入框，见 explorer 与 lib/chipSyntax），浏览器原生的
+ * img/a 默认拖拽不携带这个属性，照旧被拦。禁选的范围见 index.css。
  *
  * 挂在捕获阶段：任何组件都不必再自己处理 dragstart。
  */
@@ -31,7 +34,7 @@ document.addEventListener(
   'dragstart',
   (e) => {
     const el = e.target instanceof Element ? e.target : null
-    if (el?.closest('.note-preview, .moji-selectable')) return
+    if (el?.closest('[draggable="true"], .note-preview, .moji-selectable')) return
     e.preventDefault()
   },
   true,

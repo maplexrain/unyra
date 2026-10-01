@@ -142,9 +142,11 @@ export function ComposerUi(props: ComposerUiProps): ReactNode {
       plusButtonClass={menu.plusButtonClass}
       dragOver={dragOver}
       onDragOver={(e) => {
-        // 文件与引用都亮起来：拖一段普通文字进来不该有反应
+        // 文件与引用都亮起来：拖一段普通文字进来不该有反应。
+        // dropEffect 显式给 copy：拖拽源声明的是 effectAllowed=copy，两处口径要一致
         if (!e.dataTransfer.types.includes('Files') && !e.dataTransfer.types.includes(CHIP_MIME)) return
         e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
         setDragOver(true)
       }}
       onDragLeave={() => setDragOver(false)}
