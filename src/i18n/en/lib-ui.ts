@@ -110,6 +110,7 @@ const dict: Record<string, string> = {
 
   /* ---------- lib/staticView.ts：资源占位与缺失 ---------- */
   '正在读取…': 'Reading...',
+  '图片读取失败': 'Image failed to load',
   '文件缺失': 'File missing',
   '文件不在资源目录里': 'The file is not in the resource folder',
   '资源不存在 · {0}': 'Resource not found · {0}',
