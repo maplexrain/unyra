@@ -12,6 +12,7 @@ import type {
 } from '../../../agent/types'
 import { applyCompaction } from '../../compact'
 import { recoverInterruptedTurn } from '../../agent/inflight'
+import { normalizeSubBucket } from '../../../agent/subagent/registry'
 
 function normalizeQuote(raw: unknown): MessageQuote | null {
   if (!raw || typeof raw !== 'object') return null
@@ -235,6 +236,13 @@ export function normalizeConversation(
   }
   const title = typeof r.title === 'string' ? r.title.trim() : ''
   const inflight = normalizeInflight(r.inflight)
+  /**
+   * 子代理桶（见 agent/subagent、docs/subagent-architecture.md）：随 chat.json 落盘的
+   * 定义与会话。**这里是它唯一的载入出口**——buildDocs 整份序列化没问题，但这一层是
+   * 逐字段重建的，漏了它子代理就会「重启后凭空消失」（入口按钮直接不见了）。
+   * 归一化里含：形状不对整桶丢弃；进程被杀时残留的「运行中」复位为「被中断」。
+   */
+  const subagents = normalizeSubBucket(r.subagents)
   const conv: Conversation = {
     id: typeof r.id === 'string' ? r.id : crypto.randomUUID(),
     goalId,
@@ -245,6 +253,7 @@ export function normalizeConversation(
     ...(title ? { title } : {}),
     ...(summary ? { summary } : {}),
     ...(inflight ? { inflight } : {}),
+    ...(subagents ? { subagents } : {}),
   }
   /*
    * 先做中断恢复，再应用挂着的压缩摘要：恢复出来的消息若遇上「没应用完的压缩」
