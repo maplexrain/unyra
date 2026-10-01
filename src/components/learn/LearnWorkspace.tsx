@@ -136,6 +136,7 @@ import { useAgent } from '../../learn/useAgent'
 import ExplorerSidebar from './ExplorerSidebar'
 import { focusAgentInput } from '../../lib/agentFocus'
 import { moveTabMark, resetTabMark } from '../../lib/tabMark'
+import type { DocChipPayload } from '../../lib/docChip'
 import TabBar from './TabBar'
 import FindBar from './FindBar'
 import SuperDocView from './SuperDocView'
@@ -301,6 +302,33 @@ export default function LearnWorkspace({
     },
     [store.exams],
   )
+
+  /**
+   * 页签拖进对话输入框时交给它的那份信息（见 lib/docChip）：显示名 + 发送给模型的路径信息。
+   * 节点文档给数据树里的相对路径（导师的 doc.* 接口直接吃它）；超级文档在路径后带上自己的
+   * 名字（sdoc.read 认「路径 + 名字」这对）；本地文件给绝对路径；试卷副本没有文件，
+   * 退回「名字 + 是什么」。
+   */
+  const tabDocPayload = useCallback((ref: TabRef): DocChipPayload => {
+    const title = tabTitle(ref, (id) => nodeById(getLatest(), id)?.title, examTabTitle)
+    if (ref.kind === 'local') return { label: title, token: '@' + ref.path }
+    if (ref.kind === 'exam') return { label: title, token: `「${title}」（试卷副本）` }
+    const path = nodeDocPath(
+      getLatest(),
+      ref.nodeId,
+      ref.kind === 'teach'
+        ? { kind: 'teaching' }
+        : ref.kind === 'note'
+          ? { kind: 'note', note: ref.note }
+          : ref.kind === 'outline'
+            ? { kind: 'outline' }
+            : { kind: 'teaching' },
+    )
+    if (ref.kind === 'super') {
+      return { label: title, token: path ? `${path} 的超级文档「${ref.name}」` : `「${ref.name}」` }
+    }
+    return path ? { label: title, token: '@' + path } : { label: title, token: `「${title}」` }
+  }, [getLatest, examTabTitle])
 
   /**
    * 同名页签的**路径后缀**（键 = 页签 id）。
@@ -1608,6 +1636,8 @@ export default function LearnWorkspace({
                 }}
                 // 上层只认坐标（它知道别的格在哪），TabBar 交出落点那一刻的指针位置
                 onDrop={(tabId, _ids, x, y, commit) => onTabDrop(tabId, x, y, commit)}
+                // 页签拖进对话输入框时交给它的那份信息（路径信息在这里算，TabBar 不认得 store）
+                docPayloadOf={tabDocPayload}
                 // 棱形只在焦点格的栏上跟着右键走（见 lib/tabMark）
                 focused={isFocused}
               />

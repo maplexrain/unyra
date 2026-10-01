@@ -149,7 +149,7 @@ const dict: Record<string, string> = {
   '尚未配置「{0}」的 API Key，请到顶栏设置中填写（也可在那里更换提供商）。':
     'No API Key configured for "{0}" yet — fill it in under the top-bar Settings (you can switch providers there too).',
   '移除全部附件': 'Remove all attachments',
-  '向超级导师提问…（/ 可用斜杠命令，可拖入文件、粘贴图片）': 'Ask the Super Tutor… (/ for slash commands; drop files or paste images)',
+  '向超级导师提问…（/ 可用斜杠命令，可拖入文件、页签、图片）': 'Ask the Super Tutor… (/ for slash commands; drop files, tabs, or images)',
   '发送（Enter）': 'Send (Enter)',
 
   /* ---------- ToolCard ---------- */

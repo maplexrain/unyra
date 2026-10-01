@@ -61,6 +61,8 @@ path 写错不会白跑：报错里会列出「这个节点下有哪些子节点
     })
 
 api 一览（文档类的第一个参数都是 path，省略即「当前节点的教学文档」）：
+学习者消息里以 @ 开头的 docs/… 路径是学习者从页签拖进来的文档引用，直接把它当 path 用；
+写成「某路径 的超级文档「名字」」的，用 sdoc.read(路径, 名字) 读。
 - api.doc.read(path) → { path, doc, chars, content }：**整篇文档**（会占上下文，慎用）。
 - api.doc.readRange(path, start, end) → { text, start, end, total }：只读这一段，
   省略 end 时读 start 之后约 1500 字。学习者「询问」某段时会给出字符偏移，用它精确读取即可。

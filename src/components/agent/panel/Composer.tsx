@@ -6,7 +6,7 @@
  * 接线在 useComposerUi.tsx；这里只负责画和接。
  */
 
-import { useRef, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowUp, Bot, ChevronRight, ListChecks, Square } from 'lucide-react'
 import type { AskAnswers, AskFormPayload } from '../../../agent/tools'
 import type { Conversation, MessageUsage, PendingImage } from '../../../agent/types'
@@ -19,7 +19,8 @@ import { PlusMenu } from './PlusMenu'
 import { useSlashMenu, type SlashItem } from './useSlashMenu'
 import type { ComposerApi } from './useComposer'
 import type { MenuSub } from './types'
-import { NO_AUTOFILL } from '../../../lib/autofill'
+import { caretAtEnd, chipHtml, escapeHtml, placeCaretEnd, serializeEditable } from '../../../lib/composerDoc'
+import { registerDocChipTarget } from '../../../lib/docChip'
 import { t } from '../../../i18n'
 
 export interface ComposerProps {
@@ -151,10 +152,68 @@ export function Composer(props: ComposerProps) {
    * 输入框自己的 ref：斜杠菜单的项被点掉之后把焦点送回去（点菜单项会把焦点带到
    * 按钮上，菜单一卸载焦点就落进 body——下一个命令就得先点一下输入框才打得进去）。
    */
-  const taRef = useRef<HTMLTextAreaElement | null>(null)
-  const textareaMount = (el: HTMLTextAreaElement | null) => {
-    composer.textareaMount(el)
-    taRef.current = el
+  const editorRef = useRef<HTMLDivElement | null>(null)
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  const editorMount = (el: HTMLDivElement | null) => {
+    composer.editorMount(el)
+    editorRef.current = el
+  }
+
+  /** 任何编辑（打字、粘贴、接受补全、拖进页签）之后同步一次镜像：斜杠菜单、占位符与发送键都读它 */
+  const onEdit = () => {
+    const el = editorRef.current
+    if (el) setValue(serializeEditable(el))
+  }
+
+  /** 外部清空（发送、斜杠命令执行、Esc）走 setValue('')：镜像归零，这里跟着把编辑区清掉 */
+  useEffect(() => {
+    if (value !== '') return
+    const el = editorRef.current
+    if (el && el.innerHTML !== '') el.innerHTML = ''
+  }, [value])
+
+  /**
+   * 幽灵补全的那截灰字：直接操作 DOM（页签栏的棱形同款做法）——它跟着光标逐键挪，
+   * 走 state 既会把整块面板带上重渲染，也撞「effect 里 setState」的 lint。
+   */
+  const ghostRef = useRef<HTMLSpanElement | null>(null)
+
+  /**
+   * 登记成页签的落点：文档区的页签真正拖出来之后，落在输入卡片上就变成一枚引用
+   * （发送时按登记的路径信息展开，见 lib/composerDoc）。子会话模式不登记——那里的输入框只读。
+   * 悬停高亮用本地 state：值不变时 setState 自己 bail，指针压着也不会每帧重渲染。
+   */
+  const [chipHover, setChipHover] = useState(false)
+  useEffect(() => {
+    // 登记的是整张输入卡片（附件列、工具条都算落点），不是只有正文那一块
+    const el = cardRef.current
+    if (!el || subMode) return
+    registerDocChipTarget({
+      el,
+      hover: setChipHover,
+      receive: (doc) => {
+        const box = editorRef.current
+        if (!box) return
+        placeCaretEnd(box)
+        document.execCommand('insertHTML', false, chipHtml(doc))
+        box.dispatchEvent(new Event('input', { bubbles: true }))
+      },
+    })
+    return () => registerDocChipTarget(null)
+  }, [subMode])
+
+  /** 粘贴：图片走附件那条路；纯文本拍平了插进来（contenteditable 默认会粘成带样式的 HTML） */
+  const onPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const data = e.clipboardData
+    if (!data) return
+    if ([...data.items].some((it) => it.kind === 'file' && it.type.startsWith('image/'))) {
+      pasteImages(e)
+      return
+    }
+    const text = data.getData('text/plain')
+    if (!text) return
+    e.preventDefault()
+    document.execCommand('insertHTML', false, escapeHtml(text).split('\n').join('<br>'))
   }
 
   /**
@@ -179,6 +238,74 @@ export function Composer(props: ComposerProps) {
     onSuperLab,
   })
 
+  /*
+   * 幽灵补全：斜杠菜单开着、且高亮的那条命令还有没打出来的后半截时，把那半截
+   * 以灰字画在光标后面，Tab（或光标在末尾时的 →）收进输入框。与斜杠菜单同一条
+   * 判据（整段输入就是这截命令），另外只在光标位于末尾时出现——半截命令本来就打在末尾。
+   */
+  const ghostText = (() => {
+    if (!slash.active || slash.level !== 'root') return ''
+    const item = slash.items[slash.highlight]
+    if (!item || item.disabled || item.sub) return ''
+    const typed = value.startsWith('/') ? value.slice(1).toLowerCase() : ''
+    return item.key.startsWith(typed) ? item.key.slice(typed.length) : ''
+  })()
+
+  useLayoutEffect(() => {
+    const el = editorRef.current
+    const measurable = !!ghostText && !!el && document.activeElement === el && caretAtEnd(el)
+    const sel = measurable ? window.getSelection() : null
+    const rect =
+      sel && sel.rangeCount > 0 && sel.isCollapsed && el!.contains(sel.anchorNode)
+        ? sel.getRangeAt(0).getBoundingClientRect()
+        : null
+    if (!ghostText || !rect || (!rect.left && !rect.top)) {
+      ghostRef.current?.remove()
+      ghostRef.current = null
+      return
+    }
+    let g = ghostRef.current
+    if (!g) {
+      g = document.createElement('span')
+      g.className =
+        'pointer-events-none fixed z-40 select-none whitespace-pre text-[13px] leading-relaxed text-ink-faint/80'
+      document.body.appendChild(g)
+      ghostRef.current = g
+    }
+    g.textContent = ghostText
+    g.style.left = rect.left + 'px'
+    g.style.top = rect.top + 'px'
+  }, [ghostText, value, subMode])
+
+  /** 收下幽灵：把半截命令补成完整的「/命令」，光标留末尾——菜单继续开着，回车即执行 */
+  const acceptGhost = () => {
+    const item = slash.items[slash.highlight]
+    const el = editorRef.current
+    if (!el || slash.level !== 'root' || !item || item.disabled) return
+    el.textContent = '/' + item.key
+    placeCaretEnd(el)
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // 斜杠命令先接：Enter / 方向键 / Esc / 退格（二级）都归它，剩下的才是补全与发送
+    if (slash.onKeyDown(e)) return
+    if (
+      ghostRef.current &&
+      (e.key === 'Tab' || (e.key === 'ArrowRight' && editorRef.current && caretAtEnd(editorRef.current)))
+    ) {
+      e.preventDefault()
+      acceptGhost()
+      return
+    }
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+      e.preventDefault()
+      // contenteditable 的默认 Enter 会插进一个 div 壳，序列化还得另算一层——两键都拦下自己插
+      if (e.shiftKey) document.execCommand('insertLineBreak')
+      else submit()
+    }
+  }
+
   /** 斜杠菜单的一行。一级带 /命令 的等宽小字，二级带「当前」角标（历史 / effort 共用一张表结构） */
   const slashItem = (item: SlashItem, i: number) => (
     <button
@@ -189,7 +316,7 @@ export function Composer(props: ComposerProps) {
       title={item.hint}
       onClick={() => {
         slash.pick(item)
-        taRef.current?.focus()
+        editorRef.current?.focus()
       }}
       onMouseEnter={() => slash.hover(i)}
       className={
@@ -271,7 +398,7 @@ export function Composer(props: ComposerProps) {
                   type="button"
                   onClick={() => {
                     slash.back()
-                    taRef.current?.focus()
+                    editorRef.current?.focus()
                   }}
                   className="text-ink-soft transition hover:text-ink"
                 >
@@ -295,11 +422,12 @@ export function Composer(props: ComposerProps) {
         </div>
       )}
       <div
+        ref={cardRef}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         className={`rounded-2xl border bg-card shadow-sm transition ${
-          dragOver
+          dragOver || chipHover
             ? 'border-seal/60 ring-2 ring-seal/20'
             : 'border-line focus-within:border-seal/50 focus-within:ring-2 focus-within:ring-seal/10'
         }`}
@@ -338,29 +466,44 @@ export function Composer(props: ComposerProps) {
           </div>
         )}
 
-        <textarea
-          ref={textareaMount}
-          value={value}
-          rows={1}
-          disabled={!!subMode}
-          onChange={(e) => setValue(e.target.value)}
-          onPaste={pasteImages}
-          onKeyDown={(e) => {
-            // 斜杠命令先接：Enter / 方向键 / Esc / 退格（二级）都归它，剩下的才是发送与新行
-            if (slash.onKeyDown(e)) return
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault()
-              submit()
+        {/*
+          输入框是一块 contenteditable：页签拖进来要落成一枚**元素**（可整体删、不可拆开
+          编辑），textarea 装不下第二形态。它是非受控的——真正的正文住在 DOM 里，
+          composer.value 只是每次编辑后同步过来的「序列化镜像」（斜杠菜单与发送键读它；
+          发送时页签已经展开成路径信息，见 lib/composerDoc 的 serializeEditable）。
+        */}
+        <div className="relative">
+          {/* 删空之后 Chromium 会留一根 <br> 当光标锚，所以占位按 trim 判，不能按「空串」判 */}
+          {value.trim() === '' && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3.5 top-2.5 max-w-full truncate text-[13px] leading-relaxed text-ink-faint"
+            >
+              {subMode
+                ? t('子会话只接受导师的调度——回到导师对话给它派任务。')
+                : t('向超级导师提问…（/ 可用斜杠命令，可拖入文件、页签、图片）')}
+            </span>
+          )}
+          <div
+            ref={editorMount}
+            contentEditable={!subMode}
+            role="textbox"
+            aria-multiline="true"
+            spellCheck={false}
+            suppressContentEditableWarning
+            onInput={onEdit}
+            onPaste={onPaste}
+            onBlur={() => {
+              ghostRef.current?.remove()
+              ghostRef.current = null
+            }}
+            onKeyDown={onKeyDown}
+            className={
+              'block max-h-56 min-h-[42px] w-full overflow-y-auto rounded-t-2xl bg-transparent px-3.5 pt-2.5 pb-2 text-[13px] leading-relaxed text-ink outline-none ' +
+              (subMode ? 'cursor-not-allowed opacity-55' : '')
             }
-          }}
-          placeholder={
-            subMode
-              ? t('子会话只接受导师的调度——回到导师对话给它派任务。')
-              : t('向超级导师提问…（/ 可用斜杠命令，可拖入文件、粘贴图片）')
-          }
-          className="block max-h-56 min-h-[42px] w-full resize-none overflow-y-auto rounded-t-2xl bg-transparent px-3.5 pt-2.5 pb-2 text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-faint disabled:cursor-not-allowed disabled:opacity-55"
-          {...NO_AUTOFILL}
-        />
+          />
+        </div>
 
         <div className="flex items-center gap-2 rounded-b-2xl px-2.5 py-2">
           {/*
