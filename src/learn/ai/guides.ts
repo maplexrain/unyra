@@ -14,6 +14,9 @@ export const RICH_CONTENT_GUIDE = `富内容写作（重要）：
 才少量内嵌 HTML/SVG。不要为了炫技而堆砌，也不要把整篇写成 HTML。
 
 渲染器已放行、可以放心使用的写法：
+- **图片**：数据目录里与文档放在一起的图片，用**相对路径**引用——\`![图注](hero.png)\`、
+  \`![](shots/a.png)\`（把图片文件放进该文档所在的目录或其子目录即可，按文档所在文件夹算相对位置）；
+  资源库里的图照旧用 \`moji:static/<uuid>\`；远程图片直接写完整的 https URL。
 - 可折叠面板（把推导、证明、答案收起来，先让读者自己想）：
   <details class="md-fold"><summary>点开看推导</summary>
 

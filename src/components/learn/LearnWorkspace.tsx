@@ -104,6 +104,8 @@ import {
   subscribeResources,
 } from '../../learn/static'
 import { nodePathOf } from '../../learn/paths'
+import { nodeDocPath } from '../../learn/files'
+import { createNodeDocImageResolver } from '../../lib/docImages'
 import { revealLocalFile, revealPath, revealUserPath, listUserDir, mkdirUserPath, moveUserPath, writeUserText } from '../../lib/storage'
 import { wsAllocateName, wsNameOk } from '../../learn/workspace'
 import { notifyWsChanged } from './explorer/wsChanges'
@@ -520,6 +522,25 @@ export default function LearnWorkspace({
     })
     return () => setStaticView(null)
   }, [activeGoalId, store, getLatest, onToast])
+
+  /**
+   * 节点文档的「就地图片」解析器工厂（见 lib/docImages）：文档里相对路径引用的图片
+   * （图片就放在数据目录里文档旁边）按**那一份文档自己的目录**解析、读字节贴成 data URL。
+   * 常驻的多片正文各是各的文档，所以这里只造「工厂」，每片正文带着自己的 node/kind/note
+   * 现取目录（nodeDocPath 走 getLatest，永远是最新的存储树）。callback 身份稳定，
+   * 各片的 resolver 只在页签文档变化时换新。
+   */
+  const nodeImageResolver = useCallback(
+    (nodeId: string, kind: DocKind, note?: string) =>
+      createNodeDocImageResolver({
+        dirRel: () => {
+          const p = nodeDocPath(getLatest(), nodeId, { kind, note })
+          // 教学文档是「目录/节点.md」、笔记是「目录/节点.notes/名字.md」——文档所在目录就是往前一级
+          return p ? p.replace(/\/[^/]*$/, '') : null
+        },
+      }),
+    [getLatest],
+  )
 
   /** api.ui.screenshot：把文档区截成 PNG data URL（转存进资源库由 useAgent 统一做） */
   const captureDocForAgent = useCallback(
@@ -1755,6 +1776,9 @@ export default function LearnWorkspace({
                   onScrollTop={(top) => rememberScroll(tab.id, top)}
                   note={{
                     onLearnConcept: (term) => void openConcept(node.id, term),
+                    // 文档目录旁的图片（相对路径引用）：按「这一份文档自己的目录」解析成 data URL
+                    // （见 lib/docImages——生产 CSP 不放行 file:，这是文档资源能显示的唯一通道）
+                    resolveLocalImage: nodeImageResolver(node.id, source.kind, source.note),
                     onUnderstand: (term, occurrence, snippet) => understandConcept(node.id, term, occurrence, snippet),
                     onSaveAnnotation: (term, body, style, occurrence) =>
                       saveAnnotation(node.id, term, body, style, occurrence),

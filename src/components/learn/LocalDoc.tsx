@@ -4,6 +4,7 @@ import type { DocView } from '../../learn/types'
 import { fileNameOf, isPreviewable } from '../../learn/tabs'
 import { readLocalFile } from '../../lib/localFiles'
 import { renderNoteGfm } from '../../lib/markdown'
+import { createLocalDocImageResolver } from '../../lib/docImages'
 import { copySelectionAsMarkdown } from '../../lib/copySource'
 import type { OutlineHandle } from '../../lib/outline'
 import MarkdownView from '../MarkdownView'
@@ -125,6 +126,12 @@ export default function LocalDoc({
   // 要像 GitHub 那样并排流开，而不是被 <br> 摞成一列（见 lib/markdown 的 renderNoteGfm）
   const html = useMemo(() => (previewable && path.toLowerCase().endsWith('.md') ? renderNoteGfm(text) : ''), [text, previewable, path])
   const isHtml = /\.html?$/i.test(path)
+  /**
+   * 文档旁边的图片（相对路径引用，如 `![图](hero.png)`）：按这份外部文件**自己的目录**
+   * 解析并读成 data URL（见 lib/docImages）。生产 CSP 不放行 file:，这条水合通道是
+   * 外地文档的图能显示出来的唯一一条路。path 变了（换了文件）解析器跟着换。
+   */
+  const resolveLocalImage = useMemo(() => createLocalDocImageResolver(path), [path])
 
   /*
    * 外部 md 的大纲（悬浮大纲按钮用，见 DocFloat）。与 NodeNote 同一套钩子：
@@ -208,7 +215,7 @@ export default function LocalDoc({
         style={{ '--doc-scale': scale } as CSSProperties}
         onCopy={(e) => copySelectionAsMarkdown(e, e.currentTarget, text)}
       >
-        <MarkdownView html={html} />
+        <MarkdownView html={html} resolveLocalImage={resolveLocalImage} />
       </div>
     </div>
   )

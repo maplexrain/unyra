@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { AnnotationStyle, DocKind, KnowledgeNode } from '../../learn/types'
+import type { LocalImageResolver } from '../../lib/docImages'
 import { canAnnotate } from '../../lib/annotation'
 import { renderNote } from '../../lib/markdown'
 import { useReadingTracker } from '../../learn/useReadingTracker'
@@ -56,6 +57,11 @@ interface Props {
   knownConceptKeys?: Set<string>
   /** 有效阅读的增量（见 learn/reading）；由上层安静写进 store，不参与渲染 */
   onReading?: (delta: ReadingDelta) => void
+  /**
+   * 就地图片解析器（见 lib/docImages）：这份文档目录旁边的图片（相对路径引用）据此显示。
+   * 由上层按「这一份文档自己的目录」注入——常驻的多片正文各是各的文档，不能共用一个「当前目录」。
+   */
+  resolveLocalImage?: LocalImageResolver
   /** 这份文档此刻不算「前台」（例如考试窗口开着）：采集器停表 */
   readingPaused?: boolean
   /**
@@ -114,6 +120,7 @@ export default function NodeNote({
   onWarn,
   knownConceptKeys,
   onReading,
+  resolveLocalImage,
   readingPaused = false,
   readingKnownToday,
   active = true,
@@ -307,6 +314,7 @@ export default function NodeNote({
           annotations={node.annotations}
           knownConceptKeys={knownConceptKeys}
           annotationActions={annotationActions}
+          resolveLocalImage={resolveLocalImage}
           wordCount={wordCount}
           // 选词菜单浮在正文这一层上：位置与开合仍由本组件管（见 note/useSelectionMenu）
           overlay={

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef, useEffect } from 'react'
 import type { Annotation } from '../learn/types'
 import {
   endAnnotationPreview,
@@ -8,6 +8,7 @@ import {
   type AnnotationActions,
 } from '../lib/annotation'
 import { parseStyle, serializeStyle } from '../lib/annotationStyle'
+import { hydrateDocImages, type LocalImageResolver } from '../lib/docImages'
 import {
   markLearnLinks,
   markdownPathFromHref,
@@ -38,6 +39,12 @@ interface Props {
   /** 用户注解的浮层里「修改/删除」按钮的回调（了解浮层不需要） */
   annotationActions?: AnnotationActions
   className?: string
+  /**
+   * 就地图片的解析器（见 lib/docImages）：文档里相对路径 / file:/// 的 <img>（图片放在
+   * 文档自己的目录旁边）据此读字节贴成 data URL。不传就不管这类引用——对话气泡、
+   * 试卷这些没有「文档目录」概念的渲染方不传。
+   */
+  resolveLocalImage?: LocalImageResolver
 }
 
 /**
@@ -64,6 +71,7 @@ export default function MarkdownView({
   knownConceptKeys,
   annotationActions,
   className,
+  resolveLocalImage,
 }: Props) {
   const ref = useRef<HTMLDivElement | null>(null)
   /**
@@ -165,6 +173,18 @@ export default function MarkdownView({
     if (!el) return
     markLearnLinks(el, knownFrom(learnSig))
   }, [learnSig])
+
+  /**
+   * ④ 就地图片：文档旁边（相对路径，或数据树内的 file:///）的 <img> 读字节贴成 data URL
+   * （见 lib/docImages 的说明——生产 CSP 不放行 file:，这是「文档资源加载不出来」的修复）。
+   * 与 ① 同一块 DOM；水合按元素记进度，resolver 换身份 / 正文重建后的重跑都是幂等空转。
+   * 用 effect 而非 layout effect：它是异步读盘，不参与这一帧的排版。
+   */
+  useEffect(() => {
+    const el = ref.current
+    if (!el || !resolveLocalImage) return
+    return hydrateDocImages(el, resolveLocalImage)
+  }, [html, resolveLocalImage])
 
   return (
     <div
