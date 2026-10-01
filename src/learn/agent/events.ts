@@ -49,7 +49,8 @@ export function applyEvent(parts: AgentPart[], e: AgentEvent): void {
     case 'pace':
       break
     case 'error':
-      parts.push({ type: 'notice', level: 'warn', text: `⚠️ ${e.message}` })
+      // 图标由 NoticeBlock 自己画（svg 警示三角），文字里不再拼 ⚠️——两个图标叠在一起
+      parts.push({ type: 'notice', level: 'warn', text: e.message })
       break
     case 'done':
       break

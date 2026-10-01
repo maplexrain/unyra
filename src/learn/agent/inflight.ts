@@ -22,6 +22,22 @@ export const TURN_FLUSH_MS = 2000
 const INTERRUPTED_RESULT = '（这次执行没有完成：应用退出时它还在运行，结果未知）'
 
 /**
+ * 中断说明的正文（界面图标由 NoticeBlock 画，文字里不带 ⚠️）。
+ * 导出它是为了两处对上：一处是上面这句说明的生成，另一处是消息列表里
+ * 「继续」按钮的判据——只有中断说明才配得上那个按钮（见 isInterruptedNotice）。
+ */
+export const INTERRUPTED_NOTICE = '这一轮回复在应用退出时被中断，以上是中断前保存的进度。'
+
+/**
+ * 这条提示是不是「应用退出被中断」的说明。
+ * 老版本写入的文案带 ⚠️ 前缀、且可能是英文翻译——按两个语种的关键片段匹配，
+ * 不比整句：文案改动一两个字也不至于把按钮弄丢。
+ */
+export function isInterruptedNotice(text: string): boolean {
+  return text.includes('应用退出时被中断') || text.includes('interrupted when the app exited')
+}
+
+/**
  * 把正在跑的回复整条替换进会话：第一次是追加，之后按固定 id 替换（msg.id 由轮次开始时定下）。
  * settle=true 表示轮次收口（正常结束或被用户停止）：同时清掉 inflight 标记，载入恢复不再认它。
  */
@@ -60,7 +76,7 @@ export function recoverInterruptedTurn(conv: Conversation): Conversation {
             {
               type: 'notice' as const,
               level: 'warn' as const,
-              text: t('⚠️ 这一轮回复在应用退出时被中断，以上是中断前保存的进度。'),
+              text: t(INTERRUPTED_NOTICE),
             },
           ],
         }

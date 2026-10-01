@@ -844,6 +844,32 @@ export function useAgent(opts: {
 
   const stop = useCallback(() => abortRef.current?.abort(), [])
 
+  /**
+   * 继续「应用退出时被中断」的那一轮（消息列表中断说明旁的「继续」按钮）。
+   *
+   * 走一条**隐藏指令**起一轮新的 loop：被中断的那条回复已经收口（恢复是载入时做的，
+   * inflight 标记已清），旧轮次本身救不回来——能做的是让导师读到中断说明后接着做。
+   * 指令不显示（中断说明本身已经把事情讲清楚了，再来一个用户气泡只会占地方），
+   * 但带 mark：对话里落一条「继续」分界条，这一轮在长对话里找得回来。
+   */
+  const resumeInterrupted = useCallback(() => {
+    if (!goalId || !nodeId || !conversationId) return
+    if (running) {
+      onNoticeRef.current?.(t('导师正在回答，等这一轮结束再继续'))
+      return
+    }
+    void runTurn(
+      { goalId, nodeId, conversationId },
+      t('上一轮回复在应用退出时被中断，以上是中断前保存的进度。请从中断处接着做，把没完成的部分完成；已经完成的部分不要重做。'),
+      true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      t('继续'),
+    )
+  }, [goalId, nodeId, conversationId, running, runTurn])
+
   const streamingLive = streaming && streaming.conversationId === conversationId ? streaming : null
   const streamingParts = streamingLive?.parts ?? null
 
@@ -857,6 +883,8 @@ export function useAgent(opts: {
     send,
     autoTeach,
     runHidden,
+    /** 继续被中断的一轮（消息列表中断说明旁的「继续」按钮），见上方说明 */
+    resumeInterrupted,
     /** 触发一个工作流（内置或登记过的）：指令以 user 消息进上下文，见上方说明 */
     runWorkflow,
     compactNow,
