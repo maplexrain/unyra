@@ -17,6 +17,14 @@ export const WEB_MAX_BYTES = 4 * 1024 * 1024
 export const WEB_TIMEOUT_MS = 20_000
 
 /**
+ * 这两个状态码换一套浏览器指纹再试一次往往就过了：403 是站点（或它前面的防护）
+ * 认出了「不是浏览器的请求」，429 是同一 UA 的频控。纯函数，Node 探针钉得住。
+ */
+export function shouldRetryWithAlt(status: number): boolean {
+  return status === 403 || status === 429
+}
+
+/**
  * 这个地址能不能抓。返回 null 表示可以，否则是给模型看的一句人话。
  *
  * 只放行 http/https，并且**不许指向本机与内网**：agent 是模型写的代码在跑，

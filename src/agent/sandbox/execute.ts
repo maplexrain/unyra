@@ -13,13 +13,15 @@ import type { ExecuteTool, SandboxCall, SandboxOptions } from './types'
 import { makeDomFacade, RENAMED_API_HINT, runInWorker } from './worker'
 
 /* ---------- 工具本体 ---------- */
+const DESCRIPTION_FIELD = {
+  type: 'object' as const,
+  description: '这段代码要做什么（一句话，给人看的，也会显示在界面上）',
+}
+
 const EXECUTE_PARAMETERS = {
   type: 'object',
   properties: {
-    description: {
-      type: 'string',
-      description: '这段代码要做什么（一句话，给人看的，也会显示在界面上）',
-    },
+    description: DESCRIPTION_FIELD,
     body: {
       type: 'string',
       description:
@@ -66,6 +68,27 @@ const EXECUTE_PARAMETERS = {
   additionalProperties: false,
 }
 
+/** 子代理版 body 说明的骨架：前后是纪律，中间按会话授权生成 api 清单（见 apiBriefForGroups） */
+const SUB_BODY_PREFIX =
+  '一段匿名函数源码，形如 ((api)=>{ ... return 结果 })，也可以写成 ((api)=>{...})()。可以用 await；' +
+  '返回值会被回给你（超过 3.2 万字符会截断）。api 上挂着（本次会话只开放了下面这些）：\n'
+const SUB_BODY_SUFFIX =
+  '\n写操作的失败不抛异常：返回值是 { ok:false, content:"哪一步没做成、怎么改" }，' +
+  '并汇总在结果最前面的「没有生效」清单里——判断成败看清单，不要用 try/catch，也不要追加读接口确认。' +
+  '调试用 api.log(...)，输出随结果一起回给你。沙箱里没有 window / document / fetch。'
+
+/** apiBrief（子代理按需 api）存在时换掉 body 说明，只写它真有的 api */
+function executeParameters(apiBrief?: string): typeof EXECUTE_PARAMETERS {
+  if (!apiBrief) return EXECUTE_PARAMETERS
+  return {
+    ...EXECUTE_PARAMETERS,
+    properties: {
+      description: DESCRIPTION_FIELD,
+      body: { type: 'string', description: SUB_BODY_PREFIX + apiBrief + SUB_BODY_SUFFIX },
+    },
+  }
+}
+
 /**
  * 唯一的工具：执行一段 JS 编排。
  * description 会作为工具卡片标题显示，因此要求模型写人话而不是复述代码。
@@ -84,23 +107,26 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
 
   return {
     name: 'execute',
-    description:
-      '执行一段 JS 来操作学习数据。文档读写、节点增删改、描述、试卷、临时变量都只能通过这里调用——' +
-      '没有别的工具。一次编排可以同时操作多个节点：用 path 指名是哪个节点的哪份文档' +
-      "（path 省略 = 当前节点的教学文档，\"笔记\" = 当前节点的笔记，"+
-      "\"笔记/名字\" = 其中某一份，没有就新建）。"+
-      '多步、批量、需要判断或循环的活都用代码一次做完，不要把中间结果写进对话。' +
-      '体量大的中间数据用 api.tmp 暂存（可设过期时间），只把键名或结论带回来。' +
-      '出题用 exam.create：题型只认 single / multiple / truefalse / fill / short，' +
-      '单选/多选/对错必须给 answer（选项 id 数组，如 ["A"]），题目对象的完整写法见 body 的参数说明；' +
-      '除随堂小测外还要给 minutes（时限，不得低于题目数 × 2）。' +
-      'exam.read 任何时候都能调（没有卷子也是一种答案），exam.delete 只能删一次都没考过的卷子。' +
-      '学习者的学习状态（自评 / 掌握度 / 错误记忆 / 检验记录）用 state.* 读写：' +
-      'state.read() 看当前节点，state.update() 修正掌握度或自评，state.mistake() 记一次错误，' +
-      'state.check() 记一次探针或主动回忆的结果。' +
-      '本目标 static/ 下的资源（图片、PDF、附件）用 res.* 管理：清单、读、改、删、引用扫描都在那里；' +
-      'res.read 读图片不会返回 base64，图片会直接出现在你的下一步里。',
-    parameters: EXECUTE_PARAMETERS,
+    description: opts.apiBrief
+      ? '执行一段 JS 来完成任务：api 按本会话的授权开放（完整签名见参数说明）。' +
+        '多步、批量、需要判断或循环的活用代码一次做完，不要把中间结果写进对话；' +
+        '体量大的中间数据用 api.tmp 暂存，只把键名或结论带回来。'
+      : '执行一段 JS 来操作学习数据。文档读写、节点增删改、描述、试卷、临时变量都只能通过这里调用——' +
+        '没有别的工具。一次编排可以同时操作多个节点：用 path 指名是哪个节点的哪份文档' +
+        "（path 省略 = 当前节点的教学文档，\"笔记\" = 当前节点的笔记，"+
+        "\"笔记/名字\" = 其中某一份，没有就新建）。"+
+        '多步、批量、需要判断或循环的活都用代码一次做完，不要把中间结果写进对话。' +
+        '体量大的中间数据用 api.tmp 暂存（可设过期时间），只把键名或结论带回来。' +
+        '出题用 exam.create：题型只认 single / multiple / truefalse / fill / short，' +
+        '单选/多选/对错必须给 answer（选项 id 数组，如 ["A"]），题目对象的完整写法见 body 的参数说明；' +
+        '除随堂小测外还要给 minutes（时限，不得低于题目数 × 2）。' +
+        'exam.read 任何时候都能调（没有卷子也是一种答案），exam.delete 只能删一次都没考过的卷子。' +
+        '学习者的学习状态（自评 / 掌握度 / 错误记忆 / 检验记录）用 state.* 读写：' +
+        'state.read() 看当前节点，state.update() 修正掌握度或自评，state.mistake() 记一次错误，' +
+        'state.check() 记一次探针或主动回忆的结果。' +
+        '本目标 static/ 下的资源（图片、PDF、附件）用 res.* 管理：清单、读、改、删、引用扫描都在那里；' +
+        'res.read 读图片不会返回 base64，图片会直接出现在你的下一步里。',
+    parameters: executeParameters(opts.apiBrief),
     run: async (args) => {
       const description = asText(args.description).trim()
       const body = asText(args.body)
@@ -129,6 +155,17 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
         body: compiled.body,
         timeoutMs,
         callApi: async (name, callArgs) => {
+          /**
+           * api 组白名单（子代理专用）的硬闸：名单外的组当场拒绝。
+           * apiAllow 是「execute 按需开放」的承诺，这里才是让它算数的地方——
+           * 名单内的组照常，名单外的一律「没有这个 api」，并把开放的组写进报错，
+           * 模型据此改写调用而不是瞎试。log 是沙箱自己的通道，不受白名单管。
+           */
+          if (opts.apiAllow?.length && name !== 'log' && !opts.apiAllow.includes(name.split('.')[0])) {
+            throw new Error(
+              '沙箱里没有这个 api：' + name + '。本次会话只开放了这些 api 组：' + opts.apiAllow.join('、'),
+            )
+          }
           if (name === 'log') {
             logLine(...callArgs)
             return null

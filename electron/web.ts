@@ -19,6 +19,7 @@ import {
   charsetFromHtml,
   charsetOf,
   kindOfContentType,
+  shouldRetryWithAlt,
   webUrlBlockReason,
   type WebKind,
 } from './web-core'
@@ -42,32 +43,56 @@ export interface WebFetchOk {
 export type WebFetchResult = WebFetchOk | { ok: false; error: string }
 
 /**
- * 一个正常的浏览器 UA。
+ * 两组「正常浏览器」的请求指纹。
  *
- * 为什么不用 Electron 的默认 UA：不少站点（尤其文档站与博客）会按 UA 直接回 403/406，
- * 而这里读的是公开页面、与用户手动打开它没有分别——伪装成浏览器是让「读得到」而不是「绕过什么」。
+ * 为什么不用 Electron 的默认 UA：不少站点（尤其文档站与博客、以及搜索引擎）会按 UA
+ * 直接回 403/406，而这里读的是公开页面、与用户手动打开它没有分别——伪装成浏览器
+ * 是让「读得到」而不是「绕过什么」。
+ *
+ * 为什么有两套：仅换 UA 已经不够了——很多防护看的是整组指纹（sec-ch-ua / sec-fetch-*
+ * 的组合是否自洽）。第一套按当前 Chrome 补全；站点仍回 403/429 时换 Firefox 指纹
+ * （它不发 sec-ch-ua，头组合自然不同）再试一次，同一套 20 秒总时限内完成。
  */
-const UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+const UA_CHROME =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+const UA_FIREFOX = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0'
+
+function browserHeaders(kind: 'chrome' | 'firefox'): Record<string, string> {
+  const base: Record<string, string> = {
+    'User-Agent': kind === 'chrome' ? UA_CHROME : UA_FIREFOX,
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+  }
+  if (kind === 'chrome') {
+    base['sec-ch-ua'] = '"Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"'
+    base['sec-ch-ua-mobile'] = '?0'
+    base['sec-ch-ua-platform'] = '"Windows"'
+    base['Sec-Fetch-User'] = '?1'
+  }
+  return base
+}
+
+async function attempt(url: string, kind: 'chrome' | 'firefox', signal: AbortSignal): Promise<Response> {
+  return fetch(url, { method: 'GET', redirect: 'follow', signal, headers: browserHeaders(kind) })
+}
 
 async function fetchPage(raw: unknown): Promise<WebFetchResult> {
   const url = typeof raw === 'string' ? raw.trim() : ''
   const blocked = webUrlBlockReason(url)
   if (blocked) return { ok: false, error: blocked }
 
+  // 总时限只有一份：403 重试与第一次共享同一个 20 秒窗口，不会把一轮对话吊成 40 秒
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), WEB_TIMEOUT_MS)
   try {
-    const res = await fetch(url, {
-      method: 'GET',
-      redirect: 'follow',
-      signal: ac.signal,
-      headers: {
-        'User-Agent': UA,
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-      },
-    })
+    let res = await attempt(url, 'chrome', ac.signal)
+    if (shouldRetryWithAlt(res.status)) {
+      res = await attempt(url, 'firefox', ac.signal).catch(() => res)
+    }
     const contentType = res.headers.get('content-type') ?? ''
     const kind = kindOfContentType(contentType)
     if (!res.ok) return { ok: false, error: t('这个地址回了 {0}（{1}）', res.status, res.statusText) }

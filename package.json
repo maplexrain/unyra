@@ -6,7 +6,9 @@
   "author": "maplexrain",
   "type": "module",
   "main": "dist-electron/main.cjs",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "electron:dev": "node scripts/dev.mjs",
@@ -56,6 +58,7 @@
     "electron": "^44.3.0",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
+    "happy-dom": "^20.14.5",
     "oxlint": "^1.79.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.2",

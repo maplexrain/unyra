@@ -142,6 +142,7 @@
 | 位置 | 是什么 |
 | --- | --- |
 | `src/agent/persona.ts` | 三种人格的指令文本、共同底线、以及「这一轮要不要补一句」的判据（纯函数） |
+| `src/agent/subagent/` | 子代理：内置与导师自定义的定义、会话簿记、一次任务的执行器与导师侧的三件工具（见 [subagent-architecture.md](subagent-architecture.md)） |
 | `src/agent/runtime` | 「思考 → 工具 → 观察」循环（不设轮次上限） |
 | `src/agent/settings.ts` · `components/satellite/AgentSettingsPanel.tsx` | Agent 设置的归一化与界面 |
 | `src/components/agent/AgentPanel.tsx` | agent 栏：消息列表、消息定位条、输入卡片（「+」的菜单在这里） |

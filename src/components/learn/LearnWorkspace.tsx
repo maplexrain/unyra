@@ -2155,6 +2155,8 @@ export default function LearnWorkspace({
                 tps={agent.tps}
                 // 上下文占用圆环的实时账（每跳 usage 重算；轮末随落库一起清）
                 liveUsage={agent.liveUsage}
+                // 子代理（见 docs/subagent-architecture.md）：会话列表、实时槽与子会话视图的数据源
+                sub={agent.sub}
               />
             }
           />

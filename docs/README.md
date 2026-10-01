@@ -10,6 +10,7 @@ README 只负责介绍项目（它是什么、能做什么、怎么装）。**�
 | --- | --- |
 | [learning.md](learning.md) | 学习是怎么组织的：目标 / 节点 / 大纲、选词菜单、注解、目标级对话 |
 | [agent.md](agent.md) | 超级导师：人格、上下文压缩、工具气泡、Agent 设置、用户画像 |
+| [subagent-architecture.md](subagent-architecture.md) | 子代理：内置与导师自定义、独立的上下文、只交付最终消息、内置的网络检索 |
 | [sandbox-api.md](sandbox-api.md) | 导师唯一那只手：`execute` 工具、path 寻址、全部 api 一览 |
 | [data-and-privacy.md](data-and-privacy.md) | 数据存在哪、长什么样、哪些请求会离开这台机器 |
 

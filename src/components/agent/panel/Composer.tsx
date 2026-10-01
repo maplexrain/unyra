@@ -7,7 +7,7 @@
  */
 
 import { useRef, type ReactNode } from 'react'
-import { ArrowUp, ChevronRight, ListChecks, Square } from 'lucide-react'
+import { ArrowUp, Bot, ChevronRight, ListChecks, Square } from 'lucide-react'
 import type { AskAnswers, AskFormPayload } from '../../../agent/tools'
 import type { Conversation, MessageUsage, PendingImage } from '../../../agent/types'
 import type { ReasoningEffort } from '../../../ai/types'
@@ -79,6 +79,14 @@ export interface ComposerProps {
   onSetEffort: (e: ReasoningEffort) => void
   /** 点开输入框里的缩略图看大图 */
   onOpenPreview: (image: PendingImage) => void
+  /**
+   * 子会话模式：面板正看着一个子代理会话。输入框禁用（子会话只接受导师的调度），
+   * 「+」菜单与模型选择器这些导师域的控件一并隐藏；「停止」保留——停的是整轮，
+   * 会级联中止正在跑的子代理。
+   */
+  subMode?: { name: string; running: boolean }
+  /** 子代理会话入口（按钮 + 弹出列表），插在模型选择器左侧；没有会话时不渲染 */
+  subAgentSlot?: ReactNode
   /** 拖拽悬停：高亮输入框，告诉用户「松手就放这里」 */
   dragOver: boolean
   onDragOver: (e: React.DragEvent) => void
@@ -130,6 +138,8 @@ export function Composer(props: ComposerProps) {
     onSetEffort,
     onSuperLab,
     onOpenPreview,
+    subMode,
+    subAgentSlot,
     dragOver,
     onDragOver,
     onDragLeave,
@@ -332,6 +342,7 @@ export function Composer(props: ComposerProps) {
           ref={textareaMount}
           value={value}
           rows={1}
+          disabled={!!subMode}
           onChange={(e) => setValue(e.target.value)}
           onPaste={pasteImages}
           onKeyDown={(e) => {
@@ -342,8 +353,12 @@ export function Composer(props: ComposerProps) {
               submit()
             }
           }}
-          placeholder={t('向超级导师提问…（/ 可用斜杠命令，可拖入文件、粘贴图片）')}
-          className="block max-h-56 min-h-[42px] w-full resize-none overflow-y-auto rounded-t-2xl bg-transparent px-3.5 pt-2.5 pb-2 text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-faint"
+          placeholder={
+            subMode
+              ? t('子会话只接受导师的调度——回到导师对话给它派任务。')
+              : t('向超级导师提问…（/ 可用斜杠命令，可拖入文件、粘贴图片）')
+          }
+          className="block max-h-56 min-h-[42px] w-full resize-none overflow-y-auto rounded-t-2xl bg-transparent px-3.5 pt-2.5 pb-2 text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-faint disabled:cursor-not-allowed disabled:opacity-55"
           {...NO_AUTOFILL}
         />
 
@@ -355,23 +370,33 @@ export function Composer(props: ComposerProps) {
             它**必须画在这一行里**（PlusMenu 渲染的是「面板 + 按钮」两件事，按钮在流内）：
             面板靠上面那层 relative 定位，按钮则是这一行 flex 的第一个孩子——放到卡片外面去，
             按钮就会掉到卡片上方（2026-09 拆 panel/ 时就是这么错位的）。
+            子会话模式下不画：那些动作都是导师域的。
           */}
-          <PlusMenu
-            menuMounted={menuMounted}
-            menuClosing={menuClosing}
-            menuSub={menuSub}
-            menuOpen={menuOpen}
-            menuLeaving={menuLeaving}
-            menuDir={menuDir}
-            menuBodyH={menuBodyH}
-            panelMount={panelMount}
-            panelBodyMount={panelBodyMount}
-            buttonMount={buttonMount}
-            renderMenuPanel={renderMenuPanel}
-            goRoot={goRoot}
-            toggle={toggle}
-            plusButtonClass={plusButtonClass}
-          />
+          {!subMode && (
+            <PlusMenu
+              menuMounted={menuMounted}
+              menuClosing={menuClosing}
+              menuSub={menuSub}
+              menuOpen={menuOpen}
+              menuLeaving={menuLeaving}
+              menuDir={menuDir}
+              menuBodyH={menuBodyH}
+              panelMount={panelMount}
+              panelBodyMount={panelBodyMount}
+              buttonMount={buttonMount}
+              renderMenuPanel={renderMenuPanel}
+              goRoot={goRoot}
+              toggle={toggle}
+              plusButtonClass={plusButtonClass}
+            />
+          )}
+          {subMode && (
+            <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-ink-faint">
+              <Bot size={13} className="shrink-0 text-seal" />
+              <span className="truncate font-medium text-ink-soft">{subMode.name}</span>
+              <span className="shrink-0">· {t('子会话只读')}</span>
+            </span>
+          )}
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
             {/*
               这里原先有一颗「添加图片」的按钮，现在**没有它**了：附件统一从
@@ -379,8 +404,9 @@ export function Composer(props: ComposerProps) {
               两颗按钮做同一件事，只会让人猜「图片走哪条、文件走哪条」。
               贴图这条路照旧：拖进来、Ctrl+V 都行，本来就是习惯动作，不必有按钮。
             */}
-            <ModelPicker onChanged={onModelChanged} />
-            <ContextRing usages={usages} />
+            {subAgentSlot}
+            {!subMode && <ModelPicker onChanged={onModelChanged} />}
+            {!subMode && <ContextRing usages={usages} />}
             {running ? (
               <button
                 type="button"
@@ -399,7 +425,7 @@ export function Composer(props: ComposerProps) {
                  * 斜杠命令打着的时候发不得：那截文字是命令，不是消息（Enter 在斜杠菜单里
                  * 已经被拦下，这颗按钮是同一道闸的鼠标侧）。
                  */
-                disabled={slash.active || (!value.trim() && !images.length && !files.length)}
+                disabled={!!subMode || slash.active || (!value.trim() && !images.length && !files.length)}
                 className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink text-paper shadow-sm transition hover:bg-ink-strong disabled:pointer-events-none disabled:opacity-35"
               >
                 <ArrowUp size={15} />

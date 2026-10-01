@@ -7,7 +7,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react'
-import { Brain } from 'lucide-react'
+import { ArrowLeft, Bot, Brain } from 'lucide-react'
 import type {
   AgentPart,
   Conversation,
@@ -18,6 +18,7 @@ import type {
 } from '../../agent/types'
 import type { AskAnswers, AskFormPayload } from '../../agent/tools'
 import type { PersonaId } from '../../agent/persona'
+import type { SubAgentDef, SubAgentSession } from '../../agent/subagent/types'
 import type { ReasoningEffort } from '../../ai/types'
 import PersonaPicker from './PersonaPicker'
 import { ImageLightbox, PendingLightbox } from './panel/Images'
@@ -27,6 +28,7 @@ import { useMessageList } from './panel/useMessageList'
 import { ComposerUi } from './panel/useComposerUi'
 import { PaceStrip } from './panel/PaceStrip'
 import { FollowLatestButton } from './panel/MessageBubble'
+import { SubAgentMenu } from './panel/SubAgentMenu'
 import { toolLabel } from './panel/toolLabel'
 import { useComposer } from './panel/useComposer'
 import { useMsgRail } from './panel/useMsgRail'
@@ -127,6 +129,20 @@ interface Props {
   tps: number | null
   /** 正在跑的这一轮到目前为止的账（每跳 usage 重算）：圆环的实时数据源，空闲时为 null */
   liveUsage?: MessageUsage | null
+  /**
+   * 子代理（见 docs/subagent-architecture.md）：当前对话的会话列表 + 正在跑的那场的
+   * 实时输出。面板据此画入口按钮、弹出会话列表与子会话视图——子会话的渲染与导师
+   * 视图是同一套（消息列表、工具卡片、流式），只是数据源换掉、输入禁用。
+   */
+  sub?: {
+    sessions: SubAgentSession[]
+    /** 内置 + 本对话自定义的定义（会话按 defKey 认名字与内置标记） */
+    defs: SubAgentDef[]
+    running: boolean
+    streamingSessionId: string | null
+    streamingRunId: string | null
+    streaming: AgentPart[] | null
+  }
 }
 
 export default function AgentPanel({
@@ -167,6 +183,7 @@ export default function AgentPanel({
   iwanna,
   tps,
   liveUsage,
+  sub,
 }: Props) {
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
   /** 点开看大图的附件。两种来源各一份状态：已进资源库的气泡图与还在内存里的待发送图 */
@@ -196,6 +213,31 @@ export default function AgentPanel({
         .filter((m) => m.id !== streamingMessageId),
     [conversation, streamingMessageId],
   )
+
+  /**
+   * 子会话视图：viewSubId 指着哪个会话，整个面板就看哪一边。消息列表、流式输出、
+   * 状态条与定位条的输入全部换成子会话那一份——渲染机制与导师视图完全同一套，
+   * 换的只是数据源；返回导师就是把 viewSubId 清掉。
+   */
+  const [viewSubId, setViewSubId] = useState<string | null>(null)
+  const subSession = useMemo(
+    () => (sub && viewSubId ? (sub.sessions.find((s) => s.id === viewSubId) ?? null) : null),
+    [sub, viewSubId],
+  )
+  /** 正看着的这场任务就是正在跑的那场（实时流式来自 sub.streaming） */
+  const subLiveHere = !!subSession && sub?.streamingSessionId === subSession.id
+  const viewMessages = useMemo(
+    () =>
+      subSession
+        ? subSession.messages.filter((m) => m.id !== (subLiveHere ? sub?.streamingRunId : null))
+        : messages,
+    [subSession, subLiveHere, sub?.streamingRunId, messages],
+  )
+  const viewStreaming = subSession ? (subLiveHere ? (sub?.streaming ?? null) : null) : streaming
+  const viewRunning = subSession ? !!(subLiveHere && sub?.running) : running
+  /** 子会话头部要显示的定义信息（名字 / 内置标记） */
+  const subDef = subSession ? (sub?.defs ?? []).find((d) => d.key === subSession.defKey) : undefined
+  const backToTutor = useCallback(() => setViewSubId(null), [])
   /**
    * 这个对话里所有回复的 token 账，圆环与浮层据此汇总。
    * 跑着的时候把**实时账**追加在最后（每跳 usage 重算）：一轮里模型来回好几跳，
@@ -204,10 +246,10 @@ export default function AgentPanel({
    */
   const usages = useMemo(
     () => [
-      ...messages.flatMap((m) => (m.role === 'assistant' && m.usage ? [m.usage] : [])),
-      ...(liveUsage ? [liveUsage] : []),
+      ...viewMessages.flatMap((m) => (m.role === 'assistant' && m.usage ? [m.usage] : [])),
+      ...(!subSession && liveUsage ? [liveUsage] : []),
     ],
-    [messages, liveUsage],
+    [viewMessages, subSession, liveUsage],
   )
   /**
    * 失活的分界线：从这一条（下标）起还在上下文里，前面的已经被折进摘要、只作显示。
@@ -216,11 +258,11 @@ export default function AgentPanel({
    * 压缩就是「一条原消息都不留 + 摘要成为第一条消息」。全部都失活时给 messages.length
    * （那时摘要下面还没有新消息，分界线画在列表开头，由上面那句 summary 单独渲染）。
    */
-  const summary = conversation?.summary ?? null
+  const summary = subSession ? null : (conversation?.summary ?? null)
   const summaryStart = useMemo(() => {
-    const i = messages.findIndex((m) => !m.retired)
-    return i < 0 ? messages.length : i
-  }, [messages])
+    const i = viewMessages.findIndex((m) => !m.retired)
+    return i < 0 ? viewMessages.length : i
+  }, [viewMessages])
 
   /* ---------- 定位条、滚动跟随与字号 ---------- */
 
@@ -253,7 +295,7 @@ export default function AgentPanel({
     zoomPct,
     zoomHud,
   } = useScrollFollow(
-    messages,
+    viewMessages,
     { scrollRef, rootRef, msgRefs, railAnchorsRef },
     setRailActive,
   )
@@ -261,17 +303,17 @@ export default function AgentPanel({
   /** 跟随状态下，内容每长一点就贴到底部；脱离之后一律不动 */
   useEffect(() => {
     stickToBottom()
-  }, [stickToBottom, messages.length, streaming, running])
+  }, [stickToBottom, viewMessages.length, viewStreaming, viewRunning])
 
   // 定位条排在后面：它的 useLayoutEffect 与上面那个「贴底」谁先跑与拆分前一致（见各自注释）
   const { railWide, anchors, railHover, setRailHover, hoverAnchor, measureAnchors } = useMsgRail(
-    messages,
+    viewMessages,
     { scrollRef, rootRef, msgRefs, railAnchorsRef },
   )
   // 消息、流式内容一变就重新量一遍（正文还在长，位置一直在动）；容器尺寸变化同理
   useLayoutEffect(() => {
     measureAnchors()
-  }, [measureAnchors, streaming, running, chatScale])
+  }, [measureAnchors, viewStreaming, viewRunning, chatScale])
 
   const composer = useComposer({
     running,
@@ -345,18 +387,18 @@ export default function AgentPanel({
    * 同样的输入给同样的数，什么时候算、算几次都不影响结果。
    */
   const { turns, steps, tokensTotal, tpsNow } = useMemo(() => {
-    const turns = messages.filter((m) => m.role === 'assistant').length + (streaming ? 1 : 0)
+    const turns = viewMessages.filter((m) => m.role === 'assistant').length + (viewStreaming ? 1 : 0)
     const steps =
-      messages.reduce((n, m) => n + m.parts.filter((p) => p.type === 'tool').length, 0) +
-      (streaming?.filter((p) => p.type === 'tool').length ?? 0)
+      viewMessages.reduce((n, m) => n + m.parts.filter((p) => p.type === 'tool').length, 0) +
+      (viewStreaming?.filter((p) => p.type === 'tool').length ?? 0)
     /**
      * 最后一条带 tps 的导师回复。原来是 [...messages].reverse().find(...)：先整份复制再倒着找，
      * 这里改成从后往前的 for——找到的是同一条（倒过来之后的第一个 = 原来最后一个），
      * 也照样跳过 tps 为 0 / 缺失的那些。
      */
     const lastStoredTps = (): number | null => {
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const m = messages[i]
+      for (let i = viewMessages.length - 1; i >= 0; i--) {
+        const m = viewMessages[i]
         if (m.role === 'assistant' && m.usage?.tps) return m.usage.tps
       }
       return null
@@ -364,7 +406,7 @@ export default function AgentPanel({
     // 实时值优先：跑着的时候读这一轮上报的；空闲时退回最后一条回复里存的存量
     const tpsNow = tps ?? lastStoredTps()
     return { turns, steps, tokensTotal: usages.reduce((n, u) => n + u.totalTokens, 0), tpsNow }
-  }, [messages, streaming, usages, tps])
+  }, [viewMessages, viewStreaming, usages, tps])
 
   /**
    * loop 还在跑时，消息列表末尾那行波浪的说明文字。
@@ -379,23 +421,25 @@ export default function AgentPanel({
   // loopLabel 不进 useMemo：纯字符串拼装，一次渲染算两回也花不了几个钱，
   // 而把 locale 塞进依赖数组只会换来一条「多余依赖」的 lint 警告。
   useLocale()
-  const lastStreaming = streaming?.[streaming.length - 1]
+  const lastStreaming = viewStreaming?.[viewStreaming.length - 1]
   const loopLabel =
     lastStreaming && lastStreaming.type === 'tool' && lastStreaming.status === 'running'
       ? t('正在{0}…', toolLabel(lastStreaming.name, lastStreaming.args))
-      : streaming?.length
-        ? t('导师正在准备')
+      : viewStreaming?.length
+        ? subSession
+          ? t('子代理正在准备')
+          : t('导师正在准备')
         : t('思考中…')
 
   // 消息列表那一段 JSX：状态与回调都在上面，这里只负责把它渲染出来
   const messageList = useMessageList({
-    messages,
+    messages: viewMessages,
     summaryStart,
     summary,
     summaryOpen,
     setSummaryOpen,
-    streaming,
-    running,
+    streaming: viewStreaming,
+    running: viewRunning,
     loopLabel,
     flashId,
     msgRefs,
@@ -417,30 +461,73 @@ export default function AgentPanel({
         三段各写一次同一个上限，而不是外面再包一层：这样底色的铺满范围不变，
         宽出来的部分就是这一栏自己的留白，三段的左右边缘也正好对齐。
       */}
-      <header className="mx-auto flex h-11 w-full max-w-[768px] shrink-0 items-center gap-2 border-b border-line px-3.5">
-        <Brain size={15} className="shrink-0 text-seal" />
-        <span className="shrink-0 text-[13px] font-medium text-ink-strong">{t('超级导师')}</span>
-        <PersonaPicker persona={persona} onPick={onPickPersona} />
-        <span className="min-w-0 flex-1 truncate text-[11px] text-ink-faint">{t('正在辅导「{0}」', nodeTitle)}</span>
-
-        {/*
-          这一段对话叫什么。名字由模型读第一句话起（见 learn/title），还没起好时**什么都不显示**——
-          挂一个「对话 1」占着地方，等于告诉用户"它叫这个"，而它其实还没名字。
-        */}
-        {conversation?.title && (
-          <span
-            title={conversation.title}
-            className="max-w-[240px] shrink-0 truncate rounded-md bg-line/50 px-1.5 py-0.5 text-[11px] text-ink-soft"
+      {subSession ? (
+        /*
+          子会话的表头：左上角**返回按钮**（回导师对话）、机器人图标、会话名与内置/自定义
+          标记、实时状态。任务次数放右边——它是这个会话的履历，不是又一个动作。
+        */
+        <header className="mx-auto flex h-11 w-full max-w-[768px] shrink-0 items-center gap-2 border-b border-line px-3.5">
+          <button
+            type="button"
+            title={t('返回导师对话')}
+            onClick={backToTutor}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-soft transition hover:bg-line/60 hover:text-ink"
           >
-            {conversation.title}
+            <ArrowLeft size={15} />
+          </button>
+          <Bot size={15} className="shrink-0 text-seal" />
+          <span className="shrink-0 text-[13px] font-medium text-ink-strong">
+            {subDef?.name ?? subSession.defKey}
           </span>
-        )}
-        {/*
-          切换 / 删除 / 新建对话**都不在这里**：它们搬进了输入框左下角那颗「+」
-          （见「更多 → 对话历史」与「更多 → 新建对话」）。顶栏右上角这个位置留给
-          「这一段是什么」，而不是又一个动作按钮。
-        */}
-      </header>
+          <span
+            className={
+              'shrink-0 rounded px-1 py-px text-[9.5px] ' +
+              (subDef?.builtin ? 'bg-seal/10 text-seal-deep' : 'bg-line/70 text-ink-soft')
+            }
+          >
+            {subDef?.builtin ? t('内置') : t('自定义')}
+          </span>
+          {viewRunning ? (
+            <span className="shrink-0 text-[11px] text-seal">{t('任务进行中')}</span>
+          ) : (
+            <span className="shrink-0 text-[11px] text-ink-faint">
+              {subSession.status === 'interrupted'
+                ? t('上次被中断')
+                : subSession.status === 'error'
+                  ? t('上次出错')
+                  : t('空闲')}
+            </span>
+          )}
+          <span className="min-w-0 flex-1 truncate text-right text-[11px] text-ink-faint">
+            {t('独立上下文 · {0} 次任务', subSession.runs)}
+          </span>
+        </header>
+      ) : (
+        <header className="mx-auto flex h-11 w-full max-w-[768px] shrink-0 items-center gap-2 border-b border-line px-3.5">
+          <Brain size={15} className="shrink-0 text-seal" />
+          <span className="shrink-0 text-[13px] font-medium text-ink-strong">{t('超级导师')}</span>
+          <PersonaPicker persona={persona} onPick={onPickPersona} />
+          <span className="min-w-0 flex-1 truncate text-[11px] text-ink-faint">{t('正在辅导「{0}」', nodeTitle)}</span>
+
+          {/*
+            这一段对话叫什么。名字由模型读第一句话起（见 learn/title），还没起好时**什么都不显示**——
+            挂一个「对话 1」占着地方，等于告诉用户"它叫这个"，而它其实还没名字。
+          */}
+          {conversation?.title && (
+            <span
+              title={conversation.title}
+              className="max-w-[240px] shrink-0 truncate rounded-md bg-line/50 px-1.5 py-0.5 text-[11px] text-ink-soft"
+            >
+              {conversation.title}
+            </span>
+          )}
+          {/*
+            切换 / 删除 / 新建对话**都不在这里**：它们搬进了输入框左下角那颗「+」
+            （见「更多 → 对话历史」与「更多 → 新建对话」）。顶栏右上角这个位置留给
+            「这一段是什么」，而不是又一个动作按钮。
+          */}
+        </header>
+      )}
 
       {/*
         列表外面多包一层（relative）：脱离自动滚动后那颗「回到最新」按钮要浮在右下角，
@@ -516,6 +603,15 @@ export default function AgentPanel({
           effort={effort}
           onSetEffort={onSetEffort}
           onOpenPreview={setPreview}
+          subMode={subSession ? { name: subDef?.name ?? subSession.defKey, running: viewRunning } : undefined}
+          subAgentSlot={
+            <SubAgentMenu
+              sessions={sub?.sessions ?? []}
+              defs={sub?.defs ?? []}
+              runningSessionId={sub?.streamingSessionId ?? null}
+              onOpen={setViewSubId}
+            />
+          }
         />
 
         {/*

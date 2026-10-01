@@ -279,15 +279,16 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
   },
   {
     key: 'web',
-    label: '读网页 · web.webFetch / web.read',
+    label: '读网页与搜索 · web.webFetch / web.read / web.search',
     intro:
-      '把网页读成正文。**长的页面不会整篇塞给你**：超过两万多字就存成文件，只回一棵大纲树' +
+      '把网页读成正文、用主流引擎搜索。**长的页面不会整篇塞给你**：超过两万多字就存成文件，只回一棵大纲树' +
       '（每行「# 标题 - 这一节正文的字数」，不含子节），你按小节 web.read 去取。' +
       '抓取只读、有体积（4MB）与时间（20 秒）上限，本机与内网地址一律拒绝。' +
       '别连着抓十几个站点：先想清楚要哪一段，再动手。',
     items: [
       { name: 'web.webFetch', signature: "web.webFetch('https://…')", summary: '抓一页并转成 markdown：短的回全文，长的存成文件并回大纲树（每节字数）+ uuid', availability: 'always' },
       { name: 'web.read', signature: "web.read(uuid, '一级标题/二级标题')", summary: '读落盘网页的某一节（path 可省略：从头给一段 + 大纲）；一次最多回 1.2 万字，没回完会说明怎么继续', availability: 'always' },
+      { name: 'web.search', signature: "web.search(query, { engines? | engine?, lang?, count? }?)", summary: '多引擎搜索（baidu / bing / google / yandex / wikipedia）：engines 给数组并行搜多家（≤3）；回 { rank, title, url, snippet, engine }，解析不出的引擎在 failed 里说明，换一家再试', availability: 'always' },
     ],
   },
   {

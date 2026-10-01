@@ -215,7 +215,7 @@ const dict: Record<string, string> = {
   '写一个文本文件（**整份覆盖**；父目录自动建）。回执带 created / updated——覆盖用户的真实文件前想一想': 'Write one text file (**whole-file overwrite**; parents created automatically). The receipt carries created / updated; think before overwriting a real file of the user',
   '上下文 · compact': 'Context · compact',
   '写入交接摘要：summary 是正文（目标与背景 / 已讲清的内容 / 学习者的状态 / 约定与术语），tasks 是还没做完的事（逐条，写到能照着继续干）；太短会被拒': 'Write the handoff summary: summary is the body (goal and background / what has been covered / the state of the learner / conventions and terms), tasks are the unfinished items (one per line, written so work can resume from them); too short gets rejected',
-  '读网页 · web.webFetch / web.read': 'Web reading · web.webFetch / web.read',
+  '读网页与搜索 · web.webFetch / web.read / web.search': 'Web reading & search · web.webFetch / web.read / web.search',
   '抓一页并转成 markdown：短的回全文，长的存成文件并回大纲树（每节字数）+ uuid': 'Fetch a page and convert to markdown: short ones return the full text, long ones are saved to a file returning an outline tree (per-section sizes) + uuid',
   '读落盘网页的某一节（path 可省略：从头给一段 + 大纲）；一次最多回 1.2 万字，没回完会说明怎么继续': 'Read one section of a saved page (path optional: starts from the top with a chunk + outline); at most 12k characters per call, and it explains how to continue when unfinished',
   '人机协作 · wait / ask / iwanna / tiktok': 'Human-AI collaboration · wait / ask / iwanna / tiktok',

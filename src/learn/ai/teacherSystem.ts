@@ -10,6 +10,7 @@ import {
   LEARN_LINK_SYNTAX,
   LEARNING_STATE_GUIDE,
   RICH_CONTENT_GUIDE,
+  SUBAGENT_GUIDE,
 } from './guides'
 
 /**
@@ -77,6 +78,8 @@ export function buildTeacherSystem(opts: {
     '- 没填的字段一律不要臆断（不知道他的水平就按通用深度讲），也不要生硬复述画像内容。',
     '',
     EXECUTE_GUIDE,
+    '',
+    SUBAGENT_GUIDE,
     '',
     LEARNING_STATE_GUIDE,
     '',
