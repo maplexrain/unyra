@@ -28,6 +28,24 @@ export async function readLocalFile(path: string): Promise<LocalReadResult> {
   }
 }
 
+/**
+ * 读外部本地文档旁边的一张图（绝对路径）：图片回 data URL，读不到 / 不是图片回 null。
+ *
+ * 走 local:readAttach 这条通道：它本来就收任意绝对路径（附件选择的回读），图片扩展名
+ * 直接给 dataUrl，还有 32MB 的体积上限。storage 那一组不行——它的路径必须落在数据
+ * 目录之内，外部文档（在数据目录之外）的图片会被「路径不合法」拒掉。
+ * 只被 lib/docImages 的 LocalDoc 解析器使用（边界夹在文档自己的目录内）。
+ */
+export async function readLocalImage(path: string): Promise<string | null> {
+  try {
+    const r = await native().local.readAttach(path)
+    if (!r.ok) return null
+    return r.kind === 'image' && r.dataUrl ? r.dataUrl : null
+  } catch {
+    return null
+  }
+}
+
 /** 写回外部文件；成功返回 null，失败返回一句错误 */
 export async function writeLocalFile(path: string, content: string): Promise<string | null> {
   try {

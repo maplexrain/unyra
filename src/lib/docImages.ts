@@ -14,6 +14,8 @@
  */
 import { loadImageByRel } from '../learn/static'
 import { readImage, storageInfo } from './storage'
+import { readLocalImage } from './localFiles'
+import { t } from '../i18n'
 
 export type LocalImageResolver = (src: string) => Promise<string | null>
 
@@ -27,6 +29,16 @@ export function isRelativeImageSrc(src: string): boolean {
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(s)) return false
   if (s.startsWith('//') || s.startsWith('/')) return false
   return true
+}
+
+/**
+ * 需要「读字节再贴回 src」待遇的图片引用 = 相对路径 + file:/// 两种。
+ * 解析期（lib/markdown 的 image 渲染器）据此对这类引用**不发 src**——
+ * 浏览器不该自己去请求它（生产里那是 ERR_FILE_NOT_FOUND 的直接来源），
+ * 只标 data-moji-local-src，等水合按文档目录读字节。
+ */
+export function isLocalPendingImageSrc(src: string): boolean {
+  return isRelativeImageSrc(src) || /^file:\/\//i.test(src.trim())
 }
 
 /** file:/// URL → 本地路径（正斜杠、盘符开头）；不是本地文件路径回 null */
@@ -113,6 +125,8 @@ export function createNodeDocImageResolver(deps: NodeDocImageDeps): LocalImageRe
 /**
  * 外部本地 md（LocalDoc）的就地图解析：相对路径按它**自己的目录**解析，
  * file:/// 也只认这个目录之内——外部文档的资源就是它旁边那些文件，不多给。
+ * 读取走 local:readAttach（任意绝对路径的附件通道，图片扩展名回 data URL）——
+ * storage 那组只认数据目录内的路径，外部文件用它会被「路径不合法」拒掉。
  */
 export function createLocalDocImageResolver(filePath: string): LocalImageResolver {
   const dir = filePath.replace(/\\/g, '/').replace(/\/+$/, '').split('/').slice(0, -1).join('/')
@@ -121,24 +135,29 @@ export function createLocalDocImageResolver(filePath: string): LocalImageResolve
       const rel = joinUnderDir(dir, src)
       // 外部文档的资源就是它旁边那些文件：爬出文档目录的一律不读
       if (!rel || !pathInside(dir, rel)) return null
-      return readImage(rel)
+      return readLocalImage(rel)
     }
     const abs = fileUrlToPath(src)?.replace(/\\/g, '/')
     if (!abs || !pathInside(dir, abs)) return null
-    return readImage(abs)
+    return readLocalImage(abs)
   }
 }
 
 /* ---------- 水合 ---------- */
 
-/** 处理进度的记号（写在元素属性上）：同一份 src 只解析一次，重跑水合是空转 */
-const DONE_ATTR = 'data-moji-local'
-/** 读不到（文件不在 / 越界被拒）时钉上的类：虚线底，别留一个莫名的碎图标（样式见 styles/annotation.css） */
+/** 水合进度记在元素上：done / missing 不再动；pending（正文先重建了）从 data-moji-local-src 再来一遍 */
+const STATE_ATTR = 'data-moji-local-state'
+const ORIG_ATTR = 'data-moji-local-src'
+/** 读不到（文件不在 / 越界被拒）时换成的说明文字：一枚安静的灰字，无边框无底色 */
 export const LOCAL_IMG_MISSING = 'moji-local-img-missing'
 
 /**
- * 把 root 下所有「就地引用」的 <img> 贴成 data URL。
- * 只碰相对路径与 file:/// 两种写法；https/data/blob/moji: 的 src 本来就能渲染或另有水合，不动。
+ * 把就地引用的图片读字节贴回 src。
+ *
+ * 两个来源：marked 解析期标好的 `img[data-moji-local-src]`（markdown 相对引用，
+ * **从来没有 src**，浏览器不发请求），以及正文里手写的 `<img src="相对/file:">`
+ * （在这里当场摘掉 src，晚一拍也比留着它刷 404 强）。三态幂等：正文在水合期间
+ * 被重建（agent 改写、切页签回来），重跑水合会接着 pending 的那几张再来一遍。
  */
 export function hydrateDocImages(root: HTMLElement, resolve: LocalImageResolver): () => void {
   let disposed = false
@@ -152,15 +171,27 @@ export function hydrateDocImages(root: HTMLElement, resolve: LocalImageResolver)
     }
     return p
   }
-  for (const img of Array.from(root.querySelectorAll<HTMLImageElement>('img[src]'))) {
-    const src = img.getAttribute('src') ?? ''
-    if (!isRelativeImageSrc(src) && !/^file:\/\//i.test(src)) continue
-    if (img.getAttribute(DONE_ATTR) === src) continue
-    img.setAttribute(DONE_ATTR, src)
-    void once(src).then((url) => {
+  for (const img of Array.from(root.querySelectorAll<HTMLImageElement>('img'))) {
+    const state = img.getAttribute(STATE_ATTR)
+    if (state === 'done' || state === 'missing') continue
+    const orig = (state === 'pending' ? img.getAttribute(ORIG_ATTR) : (img.getAttribute(ORIG_ATTR) ?? img.getAttribute('src')))?.trim()
+    if (!orig || !isLocalPendingImageSrc(orig)) continue
+    img.setAttribute(STATE_ATTR, 'pending')
+    img.setAttribute(ORIG_ATTR, orig)
+    if (img.hasAttribute('src')) img.removeAttribute('src')
+    void once(orig).then((url) => {
       if (disposed || !root.contains(img)) return
-      if (url) img.src = url
-      else img.classList.add(LOCAL_IMG_MISSING)
+      if (url) {
+        img.setAttribute(STATE_ATTR, 'done')
+        img.src = url
+      } else {
+        img.setAttribute(STATE_ATTR, 'missing')
+        // 不给边框与底色：读不到就换成一枚安静的灰字（alt 是作者写的图注，优先用它）
+        const note = img.ownerDocument!.createElement('span')
+        note.className = LOCAL_IMG_MISSING
+        note.textContent = (img.getAttribute('alt') ?? '').trim() || t('图片读取失败')
+        img.replaceWith(note)
+      }
     })
   }
   return () => {

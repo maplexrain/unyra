@@ -12,6 +12,7 @@ import {
   renderPluginsRevision,
 } from './renderPlugins'
 import { sanitizeHtml } from './sanitize'
+import { isLocalPendingImageSrc } from './docImages'
 
 /**
  * KaTeX 里没有字形度量的字符 → 等价的 LaTeX 写法。
@@ -92,8 +93,28 @@ marked.use({
       if (!plugin) return false
       return renderFenceWith(plugin, text) ?? false
     },
+    /**
+     * 就地图片（相对路径 / file:///）在**解析期就不发 src**：只标 data-moji-local-src。
+     * 浏览器不会自己去请求它——生产里相对 src 会解析到安装目录、file: 会被 CSP 拦，
+     * 控制台那串 ERR_FILE_NOT_FOUND 就是这么来的。水合（lib/docImages）按文档目录
+     * 读字节后再把 src 贴回去。https/data/blob/moji: 照常发 src，各走各的通道。
+     */
+    image(token) {
+      const href = (token.href ?? '').trim()
+      if (!isLocalPendingImageSrc(href)) return false
+      return (
+        '<img data-moji-local-src="' + attrEscape(href) + '" alt="' + attrEscape(token.text ?? '') + '"' +
+        (token.title ? ' title="' + attrEscape(token.title) + '"' : '') +
+        ' loading="lazy">'
+      )
+    },
   },
 })
+
+/** 属性值转义（就地图片标记用；正文转义走 marked 自己的机制） */
+function attrEscape(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
 
 /**
  * 正文文字：插件对「解析之后的文字」做二次加工（引号染色、符号换色这类，见
