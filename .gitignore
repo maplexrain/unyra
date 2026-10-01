@@ -36,3 +36,4 @@ release-licgen
 
 # 授权签发器的打包配置——只给卖家自用，绝不进公开仓库
 electron-builder.licgen.yml
+coverage/

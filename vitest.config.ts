@@ -15,5 +15,15 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     globals: false,
+    /*
+     * 覆盖率只做报告、不做门禁（npm run test:coverage）：先看数字找盲区。
+     * 不定阈值——阈值一旦拦人，就会诱导出凑行数的用例；这里要的是「哪里没测到」的地图。
+     * include 收窄到 src/ 的代码文件（tests 与 scripts 不是被测对象）；vitest 5 起
+     * 从没被任何用例加载过的文件也会进报告——0% 的那几行才是真正的盲区所在。
+     */
+    coverage: {
+      reporter: ['text', 'html'],
+      include: ['src/**/*.{ts,tsx}'],
+    },
   },
 })
