@@ -101,7 +101,11 @@ const dict: Record<string, string> = {
   '{0} 分': '{0} pts',
 
   // ---------- inflight：中断恢复提示 ----------
-  '⚠️ 这一轮回复在应用退出时被中断，以上是中断前保存的进度。': '⚠️ This reply was interrupted when the app exited; the progress above is what was saved.',
+  '这一轮回复在应用退出时被中断，以上是中断前保存的进度。': 'This reply was interrupted when the app exited; the progress above is what was saved.',
+  '上一轮回复在应用退出时被中断，以上是中断前保存的进度。请从中断处接着做，把没完成的部分完成；已经完成的部分不要重做。': 'The previous reply was interrupted when the app exited; the progress above is what was saved. Pick up where it left off and finish what remains — do not redo what is already done.',
+  '继续': 'Resume',
+  '接着没跑完的地方继续这一轮': 'Resume this turn from where it stopped',
+  '导师正在回答，等这一轮结束再继续': 'The tutor is still answering; wait for this turn to finish before resuming',
 
   // ---------- static/images：附件与图片错误 ----------
   '只能添加图片文件': 'Only image files can be added',

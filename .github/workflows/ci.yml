@@ -1,0 +1,47 @@
+# CI 门禁：PR 与进 main 的每一推都要过这一关。
+#
+# CONTRIBUTING 里「提交前必须全绿」此前只靠自觉，这里是同一套命令的机器执行版——
+# 本地怎么跑，这里就怎么跑：先类型检查，再 lint，再三套测试，最后完整构建。
+#
+# 只用一台 ubuntu，不设矩阵：三套测试都是纯 Node（vitest + 两套 esbuild 打包的探针，
+# 不启动 Electron，连二进制都不用下）；构建链（tsc / vite / esbuild）同样跨平台。
+# 开发与发布都在 Windows，但 src 与测试不按平台分支，ubuntu 跑得动且更快。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同一分支又推了新提交时取消还在跑的旧一轮：结论只看最新代码
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # 与开发机同大版本（package.json 没有 engines 字段，以本地 node -v 为准）
+          node-version: 24
+          cache: npm
+
+      - name: 安装依赖
+        # Electron 二进制已不随 npm install 下载（见 CONTRIBUTING），CI 不跑应用也不需要它
+        run: npm ci
+
+      - name: 类型检查（tsc -b，四个 tsconfig 全量）
+        run: npm run typecheck
+
+      - name: Lint（oxlint）
+        run: npm run lint
+
+      - name: 测试（vitest + agent 探针 + update 探针）
+        run: npm test
+
+      - name: 构建（vite 渲染层 + electron 主进程）
+        run: npm run build

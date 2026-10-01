@@ -1,0 +1,27 @@
+# 依赖自动升版：npm 依赖与 CI 里的 action 各一路，每周看一眼。
+# minor/patch 归并成一个 PR，免得淹没通知；major 一个一 PR——
+# Electron / React / vite 这种大版本必须单独审、单独跑。
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: chore
+      include: scope
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope

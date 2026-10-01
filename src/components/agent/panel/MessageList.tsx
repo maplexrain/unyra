@@ -34,5 +34,7 @@ export interface MessageListProps {
   /** 待确认删除的那条消息（再点一次才真删） */
   confirmDel: string | null
   clickDelete: (id: string) => void
+  /** 点中断说明旁的「继续」：恢复被中断的一轮（身份恒定，见 AgentPanel） */
+  onResumeNotice?: () => void
   setBubblePreview: React.Dispatch<React.SetStateAction<MessageImage | null>>
 }

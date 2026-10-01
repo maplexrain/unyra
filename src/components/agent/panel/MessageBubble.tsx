@@ -37,6 +37,7 @@ import { ToolCard } from './ToolCard'
 import { lastLineOf } from './preview'
 import { toolLabel } from './toolLabel'
 import { useFold } from './useFold'
+import { isInterruptedNotice } from '../../../learn/agent/inflight'
 import { t, useLocale } from '../../../i18n'
 
 /**
@@ -58,6 +59,8 @@ interface MessageRowProps {
   editingText: string | null
   /** 每条消息的 DOM：定位条与缩放都要用 */
   msgRefs: React.RefObject<Map<string, HTMLDivElement>>
+  /** 点中断说明旁的「继续」：恢复被中断的一轮（见 AgentPanel；只挂在正文的 NoticeBlock 上） */
+  onResumeNotice?: () => void
   /** 保存编辑：id 与文本由这一行自己带上去（见 AgentPanel 里 saveEdit 的说明） */
   onSaveEdit: (id: string, text: string) => void
   /** 删除：第一次点只是请人再确认一次，判据在 AgentPanel 的 clickDelete 里 */
@@ -86,6 +89,7 @@ export const MessageRow = memo(function MessageRow({
   confirming,
   editingText,
   msgRefs,
+  onResumeNotice,
   onSaveEdit,
   onDelete,
   setEditing,
@@ -95,28 +99,6 @@ export const MessageRow = memo(function MessageRow({
   useLocale()
   /** 失活的消息淡一档（与拆分前的 ' opacity-55' 逐字相同） */
   const fadedCls = faded ? ' opacity-55' : ''
-
-  if (m.hidden) {
-    /*
-     * 导师自己发起的动作（回忆 / 探针 / 出卷 / 阅卷 / 开讲）：一条细分界条。
-     * 它不显示指令原文（那是内部提示词，不是给用户看的话），只标出「这里发生了什么」；
-     * 定位条按它做锚点，点一下能跳回来。圆角是为了让跳转时的描边跟着它的形状走。
-     */
-    return (
-      <div
-        ref={(el) => {
-          if (el) msgRefs.current.set(m.id, el)
-          else msgRefs.current.delete(m.id)
-        }}
-        className={'mb-3 flex items-center gap-2 rounded px-1 text-[11px] text-ink-faint ' +
-          (flash ? 'moji-msg-flash' : '')}
-      >
-        <span className="h-px flex-1 bg-line" />
-        <span className="shrink-0">{t(m.mark ?? '导师动作')}</span>
-        <span className="h-px flex-1 bg-line" />
-      </div>
-    )
-  }
 
   if (m.role === 'user') {
     return (
@@ -175,7 +157,7 @@ export const MessageRow = memo(function MessageRow({
       }}
       className={'group relative mb-4' + fadedCls}
     >
-      <Parts parts={m.parts} />
+      <Parts parts={m.parts} onResumeNotice={onResumeNotice} />
       {m.usage && (
         <div className="mt-1">
           <UsageLine usage={m.usage} />
@@ -334,7 +316,7 @@ type ProcessPart = Extract<AgentPart, { type: 'thinking' } | { type: 'tool' }>
  * 等于藏起警告，所以它也留在组外（并切断组）。历史消息与正在流式的那一段走的是
  * 同一个函数，归组行为天然一致。
  */
-function Parts({ parts }: { parts: AgentPart[] }) {
+function Parts({ parts, onResumeNotice }: { parts: AgentPart[]; onResumeNotice?: () => void }) {
   const groups: Array<{ kind: 'group'; items: ProcessPart[] } | { kind: 'single'; part: AgentPart }> = []
   for (const p of parts) {
     if (p.type === 'hop') continue
@@ -357,16 +339,16 @@ function Parts({ parts }: { parts: AgentPart[] }) {
             <SinglePart part={part} />
           </div>
         ) : (
-          <SinglePart key={i} part={part} />
+          <SinglePart key={i} part={part} onResumeNotice={onResumeNotice} />
         )
       })}
     </div>
   )
 }
 
-function SinglePart({ part }: { part: AgentPart }) {
+function SinglePart({ part, onResumeNotice }: { part: AgentPart; onResumeNotice?: () => void }) {
   if (part.type === 'text') return <TextBlock text={part.text} />
-  if (part.type === 'notice') return <NoticeBlock level={part.level} text={part.text} />
+  if (part.type === 'notice') return <NoticeBlock level={part.level} text={part.text} onResume={onResumeNotice} />
   if (part.type === 'thinking') return <ThinkingBlock text={part.text} />
   if (part.type === 'tool') return <ToolCard part={part} />
   return null
@@ -497,15 +479,39 @@ function ThinkingBlock({ text }: { text: string }) {
 }
 
 /** 运行时提示：输出被截断、步数用尽、正在重试等——让「异常终止」可见 */
-function NoticeBlock({ level, text }: { level: 'warn' | 'info'; text: string }) {
+function NoticeBlock({
+  level,
+  text,
+  onResume,
+}: {
+  level: 'warn' | 'info'
+  text: string
+  /** 提供时且这条是「应用退出被中断」的说明：末尾给一颗「继续」，一键恢复没跑完的 loop */
+  onResume?: () => void
+}) {
+  const resumable = !!onResume && isInterruptedNotice(text)
   return (
     <div
       className={`flex items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12.5px] leading-relaxed ${
         level === 'warn' ? 'border-warn/45 bg-warn/10 text-warn-deep' : 'border-line bg-line/25 text-ink-soft'
       }`}
     >
-      <AlertTriangle size={12} className="mt-[2px] shrink-0" />
+      {/*
+        mt-[4px]：图标与文字的**第一行**居中对齐——12.5px 的 leading-relaxed 行高约 20px，
+        12px 的图标上下各补 4px 才落在同一水平线上。
+      */}
+      <AlertTriangle size={12} className="mt-[4px] shrink-0" />
       <span className="min-w-0 flex-1">{text}</span>
+      {resumable && (
+        <button
+          type="button"
+          onClick={onResume}
+          title={t('接着没跑完的地方继续这一轮')}
+          className="ml-0.5 mt-[1px] shrink-0 rounded border border-warn/50 px-1.5 py-0.5 text-[11px] leading-none text-warn-deep transition hover:bg-warn/15"
+        >
+          {t('继续')}
+        </button>
+      )}
     </div>
   )
 }
@@ -514,6 +520,52 @@ function NoticeBlock({ level, text }: { level: 'warn' | 'info'; text: string }) 
  * 「新建对话」的图标（NewChatIcon）搬去了 components/icons.tsx：侧栏的新建学习目标、
  * 打开本地文件与它是同一批手画图标，放在一起才好对齐视觉语言。
  */
+
+/**
+ * 导师动作分界条（回忆 / 探针 / 出卷 / 阅卷 / 开讲）。不显示指令原文（那是内部
+ * 提示词，不是给用户看的话），只标出「这里发生了什么」；定位条按它做锚点，
+ * 点一下能跳回来。
+ *
+ * **相邻的分界条融成一条**：工作流常连着触发（换人格 → 开讲），各画各的就是
+ * 两条紧贴的横线，中间只隔一行字高的空——空间上重复表达「这里有一次导师动作」。
+ * 融合后一条横线串起全部动作名，动作之间用一截细竖线分开（不用「·」：动作名
+ * 本身可能带「·」，如「导师人格 · 标准导师」）。每条消息仍各自往 msgRefs 里
+ * 注册自己的 DOM（就是这同一条分界条）：定位条的锚点一个不少。
+ */
+export function HiddenDivider({
+  msgs,
+  faded,
+  flash,
+  msgRefs,
+}: {
+  msgs: ConversationMessage[]
+  faded: boolean
+  flash: boolean
+  msgRefs: React.RefObject<Map<string, HTMLDivElement>>
+}) {
+  return (
+    <div
+      ref={(el) => {
+        for (const m of msgs) {
+          if (el) msgRefs.current.set(m.id, el)
+          else msgRefs.current.delete(m.id)
+        }
+      }}
+      className={'mb-3 flex items-center gap-2 rounded px-1 text-[11px] text-ink-faint' +
+        (faded ? ' opacity-55' : '') +
+        (flash ? ' moji-msg-flash' : '')}
+    >
+      <span className="h-px flex-1 bg-line" />
+      {msgs.map((m, i) => (
+        <span key={m.id} className="flex shrink-0 items-center gap-2">
+          {i > 0 && <span aria-hidden="true" className="h-2.5 w-px bg-line-strong" />}
+          {t(m.mark ?? '导师动作')}
+        </span>
+      ))}
+      <span className="h-px flex-1 bg-line" />
+    </div>
+  )
+}
 
 /**
  * 「回到最新」：脱离自动滚动后浮在列表右下角，点一下平滑滚到底并恢复跟随。

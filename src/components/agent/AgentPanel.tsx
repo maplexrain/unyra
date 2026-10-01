@@ -107,6 +107,11 @@ interface Props {
   onEditMessage: (messageId: string, text: string) => void
   onDeleteMessage: (messageId: string) => void
   /**
+   * 继续被中断的一轮（消息列表中断说明旁的「继续」按钮）。可选：宿主没接就不画按钮。
+   * 面板内走 ref 转发保持回调身份恒定——memo 过的消息行不因它每次渲染换身份而整列重渲染。
+   */
+  onResumeInterrupted?: () => void
+  /**
    * 待回答的结构化表单（api.ask 发起的）：显示在输入框上方，提交前沙箱一直阻塞着。
    * id 是这一次表单的身份（重开一张表单时 key 换掉，旧答案不会串）。
    */
@@ -155,6 +160,7 @@ export default function AgentPanel({
   onDeleteConversation,
   onEditMessage,
   onDeleteMessage,
+  onResumeInterrupted,
   ask,
   onAskSubmit,
   onAskCancel,
@@ -288,6 +294,13 @@ export default function AgentPanel({
     messagesApiRef.current = { onEditMessage, onDeleteMessage }
   })
 
+  /** 「继续」按钮的恒定身份包装（见 Props.onResumeInterrupted 的说明） */
+  const resumeRef = useRef(onResumeInterrupted)
+  useLayoutEffect(() => {
+    resumeRef.current = onResumeInterrupted
+  })
+  const resumeInterrupted = useCallback(() => resumeRef.current?.(), [])
+
   /**
    * 保存编辑：id 与文本由消息行带上来（原来是从 editing 那份状态里读的，两者在调用点上等值——
    * 编辑框只在 editing.id === 这一条 时才画出来）。于是它不依赖 editing，身份恒定：
@@ -391,6 +404,7 @@ export default function AgentPanel({
     saveEdit,
     confirmDel,
     clickDelete,
+    onResumeNotice: resumeInterrupted,
     setBubblePreview,
   })
 

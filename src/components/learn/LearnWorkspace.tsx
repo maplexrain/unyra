@@ -2144,6 +2144,8 @@ export default function LearnWorkspace({
                   set(next)
                   pruneImagesOf(next)
                 }}
+                // 中断说明旁的「继续」：接着被应用退出打断的那一轮往下做（见 useAgent.resumeInterrupted）
+                onResumeInterrupted={() => agent.resumeInterrupted()}
                 // api.ask 的表单卡与 api.iwanna 的计划卡（都渲染在输入框上方）
                 ask={agent.pendingAsk}
                 onAskSubmit={agent.submitAsk}

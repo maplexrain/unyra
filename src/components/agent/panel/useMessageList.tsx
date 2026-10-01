@@ -14,9 +14,34 @@
 
 import WaveBars from '../../WaveBars'
 import { CompactionDivider } from './CompactionDivider'
-import { MessageRow, Parts } from './MessageBubble'
+import { HiddenDivider, MessageRow, Parts } from './MessageBubble'
 import type { MessageListProps } from './MessageList'
+import type { ConversationMessage } from '../../../agent/types'
 import { t } from '../../../i18n'
+
+/**
+ * 把消息列切成渲染段：隐藏消息（导师动作）按**相邻**归成一段，其余各自一段。
+ * 相邻的分割线在 HiddenDivider 里融成一条——不归段的话，工作流连着触发的两下
+ * 就画出两条紧贴的横线（见 HiddenDivider 的说明）。
+ */
+type Segment =
+  | { kind: 'marks'; msgs: ConversationMessage[]; start: number }
+  | { kind: 'row'; m: ConversationMessage; at: number }
+
+function toSegments(messages: ConversationMessage[]): Segment[] {
+  const segments: Segment[] = []
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i]
+    if (m.hidden) {
+      const last = segments[segments.length - 1]
+      if (last && last.kind === 'marks') last.msgs.push(m)
+      else segments.push({ kind: 'marks', msgs: [m], start: i })
+    } else {
+      segments.push({ kind: 'row', m, at: i })
+    }
+  }
+  return segments
+}
 
 export function useMessageList({
   messages,
@@ -34,6 +59,7 @@ export function useMessageList({
   saveEdit,
   confirmDel,
   clickDelete,
+  onResumeNotice,
   setBubblePreview,
 }: MessageListProps) {
   return (
@@ -55,26 +81,42 @@ export function useMessageList({
         <CompactionDivider summary={summary} open={summaryOpen} onToggle={() => setSummaryOpen((v) => !v)} />
       )}
 
-      {messages.map((m, i) => (
+      {toSegments(messages).map((seg) => {
         /*
          * 一条消息一行，行自己 memo 过（见 MessageBubble 的 MessageRow）：
          * 能变的东西（消息本体、是否失活、是否在闪、是否待确认删除、正在编辑的文本）
          * 都在 props 里，流式逐跳重渲染时没变过的那些就整棵子树跳过。
+         * toSegments 每次渲染现算，但产出的 row 段里的 m 是同一个对象——memo 不受影响。
          */
-        <MessageRow
-          key={m.id}
-          m={m}
-          faded={i < summaryStart}
-          flash={flashId === m.id}
-          confirming={confirmDel === m.id}
-          editingText={editing?.id === m.id ? editing.text : null}
-          msgRefs={msgRefs}
-          onSaveEdit={saveEdit}
-          onDelete={clickDelete}
-          setEditing={setEditing}
-          setBubblePreview={setBubblePreview}
-        />
-      ))}
+        if (seg.kind === 'marks') {
+          return (
+            <HiddenDivider
+              key={seg.msgs[0].id}
+              msgs={seg.msgs}
+              faded={seg.start < summaryStart}
+              flash={seg.msgs.some((m) => m.id === flashId)}
+              msgRefs={msgRefs}
+            />
+          )
+        }
+        const m = seg.m
+        return (
+          <MessageRow
+            key={m.id}
+            m={m}
+            faded={seg.at < summaryStart}
+            flash={flashId === m.id}
+            confirming={confirmDel === m.id}
+            editingText={editing?.id === m.id ? editing.text : null}
+            msgRefs={msgRefs}
+            onResumeNotice={onResumeNotice}
+            onSaveEdit={saveEdit}
+            onDelete={clickDelete}
+            setEditing={setEditing}
+            setBubblePreview={setBubblePreview}
+          />
+        )
+      })}
 
       {streaming && streaming.length > 0 && (
         <div className="mb-4">
