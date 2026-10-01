@@ -281,6 +281,69 @@ export interface Conversation {
    * 也不会被误伤。
    */
   inflight?: { messageId: string; startedAt: number }
+  /**
+   * 子代理（见 docs/subagent-architecture.md）：这段对话里登记过的自定义定义与活着的
+   * 会话（各自的独立上下文）。**生命周期 = 这段对话**：随 chat.json 落盘、随对话删除
+   * 一起消失。没有子代理的对话不写这个字段（空桶存 undefined）。
+   */
+  subagents?: SubAgentBucket
+}
+
+/**
+ * 子代理的类型契约（持久化在 Conversation.subagents 上，随 chat.json 落盘）。
+ *
+ * 子代理是导师派出去干活的「分身」：各有自己独立的上下文，在导师的对话里跑自己的
+ * 「思考 → 工具 → 观察」循环，跑完只把**一份交付消息**交回导师（中间过程不进导师上下文）。
+ * 分两种：**内置**（提示词与 api 面写死在代码里，导师直接调用、不可改）与
+ * **导师自定义**（导师先登记系统提示词与可用的 api 组，然后才能派活）。
+ * 架构与边界见 docs/subagent-architecture.md；实现见 agent/subagent/。
+ */
+
+/** 一个子代理的定义：key 是导师寻址它的唯一凭据 */
+export interface SubAgentDef {
+  /** 稳定标识：agent_run 的 agent 参数写的就是它（如 'web-search'） */
+  key: string
+  /** 显示名（面板的会话列表用） */
+  name: string
+  /** 内置的定义不可被 agent_define 覆盖 */
+  builtin: boolean
+  /** 子代理自己的系统提示词——它的上下文里唯一的一号消息 */
+  system: string
+  /**
+   * execute 开放的 api 组（SandboxOptions.apiAllow，如 ['web','tmp']）。
+   * 「子代理都有 execute 工具，api 按需开放」就是它：名单外的组在通道口被硬拒。
+   */
+  apiGroups: string[]
+}
+
+export type SubAgentStatus = 'idle' | 'running' | 'interrupted' | 'error'
+
+/** 一次生命的实例：一个定义可以对应一个活着的会话（按 defKey 复用） */
+export interface SubAgentSession {
+  id: string
+  defKey: string
+  status: SubAgentStatus
+  /** 已完成的任务次数 */
+  runs: number
+  createdAt: number
+  lastActiveAt: number
+  /**
+   * 自己独立的上下文。就是普通的 ConversationMessage[]：导师的任务是一条 user 消息，
+   * 每次任务是一条 assistant 回复（parts 里含工具卡片、思考与通知）。
+   * 界面渲染与模型历史（toChatHistory）共用这一份——与导师同一套镜像纪律。
+   */
+  messages: ConversationMessage[]
+  /** 最近一次交付的预览（会话列表用；完整交付只进导师上下文） */
+  lastDelivery?: string
+  /** 最近一次没能交付的原因（中断 / 出错）——列表里要说清为什么没有交付 */
+  lastIssue?: string
+}
+
+/** 一段对话的子代理桶：自定义定义 + 会话。生命周期 = 这段导师对话（随 chat.json 落盘） */
+export interface SubAgentBucket {
+  /** 导师 agent_define 登记的定义（本对话内有效；内置的不在这里） */
+  defs: SubAgentDef[]
+  sessions: SubAgentSession[]
 }
 
 /** 运行时事件流：前端据此增量渲染 */

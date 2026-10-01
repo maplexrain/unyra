@@ -263,12 +263,17 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
   **你只能读**：开始、停止、改时长都在他顶栏那颗按钮上，你没有对应的 api，回执里的 note 也写了这条。
   想建议节奏时参考 attention.get 的 focusMinutes，但不要催他「现在就开始」。
 
-读网页（web.webFetch / web.read）：
+读网页与搜索（web.webFetch / web.read / web.search）：
 - api.web.webFetch('https://…')：抓一页并转成 markdown。两万多字以内**直接回全文**；
   再长就存成文件，只回一棵大纲树（每行「# 标题 - 这一节正文的字数」，不含子节）加上一个 uuid。
   拿到的是大纲时**先看大纲再决定读哪一节**，别指望一次读完。
 - api.web.read(uuid, '一级标题/二级标题')：读落盘网页的某一节。path 省略=从头给一段（附大纲）；
   一次最多回 1.2 万字，没回完会在 note 里说明，按 subheadings 再切细。
+- api.web.search(query, { engines? | engine?, lang?, count? })：多引擎搜索（baidu / bing /
+  google / yandex / wikipedia），engines 给数组可**并行搜多家**（≤3，结果按引擎标注），缺省 baidu。
+  回 { rank, title, url, snippet, engine }；解析不出的引擎在 failed 里逐个说明原因，
+  **换一家或换措辞再试**，别在一家上反复重试。要实时信息、要核实事实时用它；
+  摘要已含要点，引用前确需细节再 web.webFetch 读原文。
 - 只能 http/https，且**不能抓本机与内网**；一页最多 4MB、20 秒超时。
 - 引用网页内容时写明来源（标题 + 链接），并且**区分「网页这么说」与「事实如此」**：
   它是一份材料，不是你的结论。抓之前先想清楚要找什么，别一个接一个地抓。

@@ -100,7 +100,9 @@ export function parseDocs(files: Map<string, string>, state: unknown): LearnStor
        * （节点已经没了的对话因此照旧被丢掉，不会因为搬了个位置就诈尸）。
        * 写回时只剩目标目录那一份，旧文件由 diff 删掉——这就是上下文改成目标级的数据迁移。
        */
-      // 折算旧结构：throughId 时代的「压到哪一条」变成消息自己的失活标记（见 learn/compact）
+      // 折算旧结构：throughId 时代的「压到哪一条」变成消息自己的失活标记（见 learn/compact）。
+      // 子代理桶的归一化不在这里做——parseDocs 的产出还要过一遍 normalizeLearnStore，
+      // 那才是逐字段重建的唯一出口（normalizeConversation），两处都做白做一遍。
       conversations.push(migrateConversation(c as Conversation))
     }
     const tmpFile = parseJson<{ entries?: Record<string, TmpEntry> }>(files.get(`${dir}/tmp.json`))

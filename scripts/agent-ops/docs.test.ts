@@ -238,6 +238,8 @@ export async function apiNameTests() {
     // 读网页：抓取要网络、落盘要磁盘，探针里给一份假的实现（真链路见 tests/webPage.test.ts）
     'web.webFetch': "'https://example.com/a'",
     'web.read': "'deadbeef', '一级标题'",
+    // 多引擎搜索：同样给假的（解析与引擎表在 tests/webSerp.test.ts 里钉）
+    'web.search': "'勾股定理', { engine: 'baidu' }",
     // 上下文压缩：真实现（纯 store 逻辑）——摘要太短会被拒，所以这里给一段够长的
     'compact': "{ summary: '极限的直觉与夹逼定理都讲完了，学习者复述时漏了有界性，已经纠正并记进错题；下一步看导数的定义。', tasks: ['把「导数」那一节的第三节补完'] }",
     // 工作区目录：真实文件在主进程，探针给一份假的（见 fakeWorkspaceIo）
@@ -261,10 +263,16 @@ export async function apiNameTests() {
     resourceIo: resIo,
     // 工作区同样给一份假的：名单检查只问「这三个 api 在不在」
     workspaceIo: fakeWorkspaceIo().io,
-    // 读网页同样给一份假的：名单检查只问「这两个 api 在不在」
+    // 读网页同样给一份假的：名单检查只问「这三个 api 在不在」
     web: {
       fetch: async (url: string) => ({ ok: true, uuid: 'deadbeef', url, title: '示例页', chars: 3, text: '正文' }),
       read: async (uuid: string, path?: string) => ({ ok: true, uuid, ...(path ? { section: path } : {}) }),
+      search: async (query: string, opts?: Record<string, unknown>) => ({
+        ok: true,
+        engine: opts?.engine ?? 'baidu',
+        query,
+        results: [{ rank: 1, title: '勾股定理 - 百度百科', url: 'https://example.com/pyth', snippet: '直角三角形边长关系' }],
+      }),
     },
     // 画像同样给一份假的：名单检查只问「这个名字真的注册了吗」
     userInfo: {
@@ -341,6 +349,14 @@ export async function apiNameTests() {
   const bare = createExecuteTool({ ...ops, exam: undefined, runSandbox: fakeRunner })
   const exam = await bare.run({ description: '名单检查', body: '((api)=>{ return await api.exam.read() })' }, { nodeId: childId, goalId })
   ok(exam.content.includes('沙箱里没有这个 api'), '没注入 exam 时它确实不存在', exam.content.slice(0, 120))
+
+  // 子代理的 api 白名单（apiAllow）是通道口的硬校验，不是提示词君子协定：
+  // 名单外的组当场被拒（报错里写明开放了哪些组），名单内的组照常放行。
+  const sub = createExecuteTool({ ...ops, runSandbox: fakeRunner, apiAllow: ['web', 'tmp'] })
+  const denied = await sub.run({ description: '越权读文档', body: '((api)=>{ return await api.doc.read("") })' }, { nodeId: childId, goalId })
+  ok(!denied.ok && denied.content.includes('只开放了'), 'apiAllow 名单外的组当场被拒', denied.content.slice(0, 160))
+  const allowed = await sub.run({ description: '搜索', body: "((api)=>{ return await api.web.search('勾股定理') })" }, { nodeId: childId, goalId })
+  ok(allowed.ok && allowed.content.includes('baidu'), 'apiAllow 名单内的组照常放行', allowed.content.slice(0, 160))
 }
 
 /* ---------- 6. 资源库（static）：res.* 的行为（分节标题与 fixture 见 ./harness） ---------- */

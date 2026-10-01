@@ -43,6 +43,9 @@ import { toChatHistory } from './agent/history'
 import { TURN_FLUSH_MS, upsertAssistantInFlight } from './agent/inflight'
 import { loadAttachTexts, transferPendingFiles, transferPendingImages } from './agent/transfer'
 import { applyAskToProfile, learnSandboxOps, type AgentRunTarget, type AgentUiDeps } from './agent/sandboxOps'
+import { createSubAgentTools } from '../agent/subagent/tools'
+import { BUILTIN_SUBAGENTS } from '../agent/subagent/builtin'
+import { EMPTY_SUB_BUCKET } from '../agent/subagent/registry'
 import { t } from '../i18n'
 
 /*
@@ -115,6 +118,19 @@ export function useAgent(opts: {
    * 圆环就错过了全程。轮次结束随落库一起清空（圆环回退到持久化的那份）。
    */
   const [liveUsage, setLiveUsage] = useState<MessageUsage | null>(null)
+
+  /**
+   * 子代理会话住在 Conversation.subagents 上、随 chat.json 落盘（生命周期 = 这段
+   * 导师对话，见 docs/subagent-architecture.md）——这里不再另立状态，读走对话、
+   * 写走 setBucket（在 createSubAgentTools 的装配处）。唯一留在内存的是 subLive：
+   * 正在跑的那场任务的流式输出（落库只在任务收口时发生一次）。
+   */
+  const [subLive, setSubLive] = useState<{
+    conversationId: string
+    sessionId: string
+    runId: string
+    parts: AgentPart[]
+  } | null>(null)
 
   useEffect(() => {
     onNeedKeyRef.current = onNeedKey
@@ -309,17 +325,28 @@ export function useAgent(opts: {
       const signal = ctrl.signal
       // ui 依赖现取最新的一份（见 uiRef 的说明）
       const uiDeps = uiRef.current
+      /**
+       * 全局提供商 / 模型 / 思考等级：所有 AI 功能的共同基底。提前到这里，
+       * 因为子代理要跑在导师同一轮的模型与档位上（见 subagent 的说明）。
+       */
+      const global = resolveGlobal(settings)
+      const window = globalContextWindow(settings)
+      /**
+       * 沙箱基座：一轮对话与子代理共用同一套能力（learnSandboxOps 的产物）。
+       * execute 拿全量，子代理按定义的 apiGroups 取子集（见 createSubAgentTools）。
+       */
+      const sandboxBase = learnSandboxOps({
+        getLatest,
+        set,
+        // 这一轮冲着来的节点是沙箱里的「当前节点」——不是界面上此刻选中的那个
+        nodeId: () => target.nodeId,
+        goalId: () => target.goalId,
+      })
+      /** 子代理实时槽的 parts 按次累积（runId → parts），任务结束随手清掉 */
+      const subRunParts = new Map<string, AgentPart[]>()
       const tools = [
         createExecuteTool({
-          // 每个 api 怎么落到 store 上，全在 learn/agentOps（与 React 无关，可单独测）。
-          // 装配与超级文档的桥共用一份（见 learnSandboxOps 的说明）
-          ...learnSandboxOps({
-            getLatest,
-            set,
-            // 这一轮冲着来的节点是沙箱里的「当前节点」——不是界面上此刻选中的那个
-            nodeId: () => target.nodeId,
-            goalId: () => target.goalId,
-          }),
+          ...sandboxBase,
           /*
            * 考试工具：作用对象是这一轮冲着来的那个节点（target.nodeId），
            * 不是「此刻界面上选中的那个」——一轮可能跑好几十秒，期间用户切了节点
@@ -407,6 +434,47 @@ export function useAgent(opts: {
               : {}),
           },
         }),
+        /**
+         * 子代理三件工具（agent_define / agent_run / agent_list）：每轮都声明、
+         * 形状不变——工具声明参与前缀，中途换工具集会把缓存整段作废。
+         * agent_run 阻塞到子代理交付，导师的循环在它返回前不会前进（「父等子」）。
+         */
+        ...createSubAgentTools({
+          conversationId: target.conversationId,
+          sandbox: sandboxBase,
+          provider: global.provider,
+          model: global.model,
+          effort: effortOverride ?? global.effort,
+          contextWindow: window,
+          signal,
+          // 子代理桶住在对话上：现读走 getLatest，写回 = 更新这条对话（persist 走落盘队列）
+          getBucket: () => conversationById(getLatest(), target.conversationId)?.subagents ?? EMPTY_SUB_BUCKET,
+          setBucket: (update) => {
+            const stored = conversationById(getLatest(), target.conversationId)
+            if (!stored) return
+            const next = update(stored.subagents ?? EMPTY_SUB_BUCKET)
+            // 空桶不存字段：没有子代理的对话不该在 chat.json 里多一截空结构
+            persist({ ...stored, subagents: next.defs.length || next.sessions.length ? next : undefined })
+          },
+          onEvent: (sessionId, runId, e) => {
+            let runParts = subRunParts.get(runId)
+            if (!runParts) {
+              runParts = []
+              subRunParts.set(runId, runParts)
+            }
+            applyEvent(runParts, e)
+            setSubLive({
+              conversationId: target.conversationId,
+              sessionId,
+              runId,
+              parts: [...runParts],
+            })
+          },
+          onRunEnd: (_sessionId, runId) => {
+            subRunParts.delete(runId)
+            setSubLive((cur) => (cur && cur.runId === runId ? null : cur))
+          },
+        }),
       ]
 
       const parts: AgentPart[] = []
@@ -448,8 +516,8 @@ export function useAgent(opts: {
       /**
        * 这一轮的 token 账。每跳（模型→工具→模型）都会来一条 usage：
        * 最后一跳的输入量就是「当前上下文占用」，各跳累加则是这一轮的总量。
+       * （contextWindow 在上面的工具装配处已取好——子代理要用同一个数。）
        */
-      const window = globalContextWindow(settings)
       const tally = { context: 0, total: 0, output: 0, read: 0, miss: 0, estimated: false, turns: 0, tps: 0 }
       setStreaming({ conversationId: target.conversationId, messageId: assistantId, parts: [] })
       setRunning(true)
@@ -458,8 +526,6 @@ export function useAgent(opts: {
       // ctrl 在上面的工具装配处创建（ask / wait 的中止语义需要它），这里只挂到 ref 上
       abortRef.current = ctrl
       try {
-        // 全局提供商 / 模型 / 思考等级：所有 AI 功能的共同基底
-        const global = resolveGlobal(settings)
         await runAgent({
           provider: global.provider,
           model: global.model,
@@ -873,6 +939,13 @@ export function useAgent(opts: {
   const streamingLive = streaming && streaming.conversationId === conversationId ? streaming : null
   const streamingParts = streamingLive?.parts ?? null
 
+  /**
+   * 子代理视图数据：当前对话的会话列表 + 正在跑的那场的实时输出。
+   * 面板据此画入口按钮（会话数）、弹出列表与子会话视图（实时流式与导师视图同一套渲染）。
+   */
+  const subBucket = conversation?.subagents
+  const subLiveHere = subLive && subLive.conversationId === conversationId ? subLive : null
+
   return {
     conversation,
     streaming: streamingParts,
@@ -899,5 +972,15 @@ export function useAgent(opts: {
     tps,
     /** 正在跑的这一轮到目前为止的账（每跳 usage 重算）：上下文占用圆环的实时数据源 */
     liveUsage,
+    /** 子代理：当前对话的会话与实时槽（见 docs/subagent-architecture.md） */
+    sub: {
+      sessions: subBucket?.sessions ?? [],
+      // 定义 = 内置 + 本对话登记的（面板的会话列表按 defKey 认名字与内置标记）
+      defs: [...BUILTIN_SUBAGENTS, ...(subBucket?.defs ?? [])],
+      running: !!subLiveHere,
+      streamingSessionId: subLiveHere?.sessionId ?? null,
+      streamingRunId: subLiveHere?.runId ?? null,
+      streaming: subLiveHere?.parts ?? null,
+    },
   }
 }

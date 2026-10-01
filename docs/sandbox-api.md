@@ -41,7 +41,7 @@ Agent 只有 `execute` 一个工具：它写一段 JS **匿名函数**（`((api)
 | 学习状态 | `state.read(path)` · `state.update(path,{self,by,mastery,note})` · `state.mistake(path,{pattern,cause})` · `state.forget(path,pattern)` · `state.check(path,{kind,…})` |
 | 暂存 | `tmp.set({key,value,ttlMs})` · `get` / `has` / `del` / `list` / `clear`（按节点存放，不进上下文） |
 | 画像 | `userInfo.get()` · `userInfo.update({字段:值})`（**不进提示词**，导师要用得自己取；见 [agent.md](agent.md#用户与画像)） |
-| 网页 | `web.webFetch(url)` · `web.read(uuid, '一级/二级')`（**太长的会落盘**、只回大纲树；只能 http/https，不碰内网） |
+| 网页 | `web.webFetch(url)` · `web.read(uuid, '一级/二级')`（**太长的会落盘**、只回大纲树；只能 http/https，不碰内网；403/429 自动换浏览器指纹重试一次）· `web.search(query, { engines? | engine?, lang?, count? })`（多引擎搜索：baidu / bing / google / yandex / wikipedia，engines 数组并行搜多家，回标题·链接·摘要的列表；抓取走同一条只读通道） |
 
 ## 读与写的口径是分开的
 

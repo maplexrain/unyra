@@ -299,6 +299,20 @@ const dict: Record<string, string> = {
   '删除工作流「{0}」？': 'Delete workflow "{0}"?',
   '删除后这个触发入口就没了，指令文本也无法恢复；需要时可以让超级导师重新登记一份。':
     'Deleting removes this trigger for good and the instruction text cannot be recovered; you can always ask the Super Tutor to register a new one.',
+
+  /* ---------- 子代理（SubAgentMenu / AgentPanel 子会话视图 / Composer 子会话模式） ---------- */
+  '子代理会话': 'Sub-agent sessions',
+  '返回导师对话': 'Back to the tutor conversation',
+  '自定义': 'Custom',
+  '任务进行中': 'Task running',
+  '上次被中断': 'Last task interrupted',
+  '上次出错': 'Last task failed',
+  '空闲': 'Idle',
+  '独立上下文 · {0} 次任务': 'Independent context · {0} tasks',
+  '子会话只读': 'sub-session is read-only',
+  '子会话只接受导师的调度——回到导师对话给它派任务。':
+    'Sub-sessions only take orders from the tutor — go back to the tutor conversation to dispatch tasks.',
+  '子代理正在准备': 'Sub-agent is preparing',
 }
 
 export default dict

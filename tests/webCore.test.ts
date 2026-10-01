@@ -14,8 +14,19 @@ import {
   charsetOf,
   isPrivateHost,
   kindOfContentType,
+  shouldRetryWithAlt,
   webUrlBlockReason,
 } from '../electron/web-core'
+
+describe('403/429 换指纹重试的判据', () => {
+  it('只认这两个状态码（别的一律不重试，不把时限烧在 hopeless 的地址上）', () => {
+    expect(shouldRetryWithAlt(403)).toBe(true)
+    expect(shouldRetryWithAlt(429)).toBe(true)
+    expect(shouldRetryWithAlt(200)).toBe(false)
+    expect(shouldRetryWithAlt(404)).toBe(false)
+    expect(shouldRetryWithAlt(500)).toBe(false)
+  })
+})
 
 describe('地址能不能抓', () => {
   it('正常的 http/https 放行', () => {

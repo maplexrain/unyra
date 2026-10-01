@@ -209,6 +209,16 @@ export interface SandboxOptions {
   timeoutMs?: number
   /** 测试可注入一个假的沙箱执行器，从而不依赖浏览器 Worker */
   runSandbox?: (req: SandboxRequest) => Promise<SandboxReply>
+  /**
+   * api 组白名单（子代理专用）：给出时，名单外的组在 callApi 通道口被当场拒绝——
+   * 「execute 的 api 按需开放」的硬闸（不是提示词君子协定）。不设就是全量（导师）。
+   */
+  apiAllow?: string[]
+  /**
+   * execute 参数说明里的 api 清单（子代理专用）：给了就替换默认的那份全量说明，
+   * 让子代理只看到它真有的 api（清单从 apiCatalog 按组生成，见 subagent/builtin）。
+   */
+  apiBrief?: string
 }
 
 /* ---------- ask：结构化表单 ---------- */
@@ -369,10 +379,10 @@ export interface PomodoroOps {
 }
 
 /**
- * web.*：把网页读成正文（见 learn/webDocs）。
+ * web.*：把网页读成正文（见 learn/webDocs）；search 多引擎搜索（见 learn/webSearch）。
  *
- * 两个 api 的分工：webFetch 抓一页（正文短就直接给，长了落盘并只回大纲树），
- * read 按 uuid + 小节路径读落盘的那一份。
+ * 三个 api 的分工：webFetch 抓一页（正文短就直接给，长了落盘并只回大纲树），
+ * read 按 uuid + 小节路径读落盘的那一份，search 是多引擎搜索（抓取复用同一条主进程通道）。
  *
  * 实现由界面层注入（抓取要网络、落盘要 storage，都不该进这个文件）；
  * Node 探针里给一份假的就能把 api 面钉住。
@@ -382,6 +392,12 @@ export interface WebOps {
   fetch: (url: string) => Promise<unknown>
   /** 读落盘网页的某一节；path 形如 '一级标题/二级标题'，省略则从头给一段（附大纲） */
   read: (uuid: string, path?: string) => Promise<unknown>
+  /**
+   * 多引擎搜索：query → { ok, engine, results: [{ rank, title, url, snippet }] }。
+   * 引擎与语言在 opts 里（engine / lang / count）。不注入就没有 web.search
+   * （子代理的内置「网络检索」靠它干活；抓取与解析见 learn/webSearch 与 lib/web/serp）。
+   */
+  search?: (query: string, opts?: Record<string, unknown>) => Promise<unknown>
 }
 
 export interface MindOps {

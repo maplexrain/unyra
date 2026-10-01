@@ -536,11 +536,19 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     const compactOps = opts.compact
     wrapApi(api, 'compact', (args) => compactOps.write(asRecord(args[0])), log)
   }
-  // 读网页：抓取与落盘都在界面层（见 learn/webDocs），这里只是两个入口
+  // 读网页：抓取与落盘都在界面层（见 learn/webDocs），这里只是几个入口
   if (opts.web) {
     const web = opts.web
     wrapApi(api, 'web.webFetch', (args) => web.fetch(asText(args[0]).trim()), log)
     wrapApi(api, 'web.read', (args) => web.read(asText(args[0]).trim(), asText(args[1]).trim() || undefined), log)
+    // 多引擎搜索（见 learn/webSearch）：不注入 search 就没有这一条（子代理按 apiAllow 决定）
+    if (web.search) {
+      const webSearch = web.search
+      wrapApi(api, 'web.search', (args) => {
+        const a = asRecord(args[1])
+        return webSearch(asText(args[0]).trim(), a)
+      }, log)
+    }
   }
 
   // 学习者画像：get 回给模型看的那份（不含头像），update 是增量的（只写传进来的字段）

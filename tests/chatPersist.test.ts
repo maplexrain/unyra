@@ -19,6 +19,8 @@ import { buildDocs, buildState, parseDocs } from '../src/learn/files'
 import { activeMessages } from '../src/learn/compact'
 import { upsertAssistantInFlight } from '../src/learn/agent/inflight'
 import { emptyPomodoro } from '../src/learn/pomodoro'
+import { createSession, withRunResult, withTaskMessage } from '../src/agent/subagent/registry'
+import { WEB_SEARCH_DEF } from '../src/agent/subagent/builtin'
 import type { Conversation, ConversationMessage, ContextSummary } from '../src/agent/types'
 import type { LearnStore } from '../src/learn/types'
 
@@ -165,8 +167,53 @@ describe('对话写盘 → 读回', () => {
     expect(part && part.type === 'tool' ? part.images : null).toEqual([shot])
   })
 
-  it('写摘要的那一轮没跑完（pending 留在盘上）：读回来就地把它应用掉', () => {
-    const back = roundTrip(
+  it('子代理桶活着回来：定义、会话与各自独立的上下文（normalizeConversation 的字段白名单曾经把它整层剥掉）', () => {
+    const task = withTaskMessage(createSession(WEB_SEARCH_DEF), '查一下勾股定理的证明思路')
+    const session = withRunResult(task.session, {
+      runId: 'run1',
+      taskMessageId: task.message.id,
+      parts: [
+        { type: 'tool', id: 't1', name: 'execute', args: '{}', result: '搜索回执', ok: true, status: 'done' },
+        { type: 'hop' },
+        { type: 'text', text: '交付正文' },
+      ],
+      usage: null,
+      status: 'idle',
+      delivery: '交付正文',
+    })
+    const back = roundTrip({
+      ...convWith([msg('u1', 'user', '开始')]),
+      subagents: {
+        defs: [{ key: 'reader', name: '文档通读', builtin: false, system: '通读长文档的子代理。', apiGroups: ['doc', 'tmp'] }],
+        sessions: [session],
+      },
+    })
+    expect(back.subagents?.defs).toHaveLength(1)
+    expect(back.subagents?.defs[0]).toMatchObject({ key: 'reader', apiGroups: ['doc', 'tmp'] })
+    const live = back.subagents?.sessions[0]
+    expect(live?.runs).toBe(1)
+    expect(live?.lastDelivery).toBe('交付正文')
+    // 会话自己的上下文（任务 + 含工具卡片的回复）一条不少——入口按钮与子会话视图全靠它
+    expect(live?.messages).toHaveLength(2)
+    expect(live?.messages[0]?.parts[0]).toEqual({ type: 'text', text: '查一下勾股定理的证明思路' })
+    expect(live?.messages[1]?.parts.some((p) => p.type === 'tool')).toBe(true)
+  })
+
+  it('子代理桶的坏数据不炸也不留：残留「运行中」复位「被中断」，形状不对整层丢弃', () => {
+    const running = { ...withTaskMessage(createSession(WEB_SEARCH_DEF), '任务').session, status: 'running' as const }
+    const back = roundTrip({
+      ...convWith([msg('u1', 'user', '开始')]),
+      subagents: { defs: [{ key: 42 }] as never, sessions: [running, { id: '半条' }] as never },
+    })
+    // running 复位为 interrupted（进程被杀时那场任务已经没了，留着只会永远脉冲）
+    expect(back.subagents?.sessions.map((s) => s.status)).toEqual(['interrupted'])
+    expect(back.subagents?.defs).toHaveLength(0)
+    // 形状完全不对的整桶丢弃：读回来等于没有这个字段
+    const gone = roundTrip({ ...convWith([msg('u1', 'user', '开始')]), subagents: '乱写' as never })
+    expect(gone.subagents).toBeUndefined()
+  })
+
+  it('写摘要的那一轮没跑完（pending 留在盘上）：读回来就地把它应用掉', () => {    const back = roundTrip(
       convWith(
         [msg('u1', 'user', '我想学导数'), msg('a1', 'assistant', '好'), msg('u2', 'user', '继续')],
         { at: now, text: '## 已经讲清的内容\n导数的定义。', tasks: [], messages: 0, chars: 0, pending: true },

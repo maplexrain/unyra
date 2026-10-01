@@ -113,6 +113,8 @@ const API_NAMES = [
   // 读网页：抓取在主进程、正文提取在渲染层、落盘在当前用户目录（见 learn/webDocs）
   'web.webFetch',
   'web.read',
+  // 多引擎搜索（抓取走同一条主进程通道，解析在渲染层，见 learn/webSearch）
+  'web.search',
   // 上下文压缩：agent 自己写交接摘要（见 learn/compact）
   'compact',
   // 人机协作与界面：ask 会阻塞到用户提交，wait 是合法的「慢」（超时按空闲算）

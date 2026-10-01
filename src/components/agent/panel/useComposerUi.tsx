@@ -53,6 +53,10 @@ export interface ComposerUiProps {
   onSetEffort: (e: ReasoningEffort) => void
   /** 点开输入框里的缩略图看大图 */
   onOpenPreview: (image: PendingImage) => void
+  /** 子会话模式（见 Composer.subMode 的说明）：面板正看着一个子代理会话 */
+  subMode?: { name: string; running: boolean }
+  /** 子代理会话入口（按钮 + 弹出列表），插在模型选择器左侧 */
+  subAgentSlot?: ReactNode
 }
 
 export function ComposerUi(props: ComposerUiProps): ReactNode {
