@@ -14,6 +14,8 @@ import { DocRow, ExamList, NoteRenameRow } from './DocRow'
 import { DocFolderIcon } from '../docTypes'
 import { WorkspaceRow } from './WorkspaceRow'
 import type { ExamActions, MenuTarget, NodeDocActions, WsActions } from './types'
+import { chipJson, type ChipPayload } from '../../../lib/chipSyntax'
+import { nodeDocPath } from '../../../learn/files'
 import { t } from '../../../i18n'
 
 /**
@@ -103,6 +105,38 @@ export function NodeRow({
     <p className="py-1 pl-1.5 pr-2 text-[11px] leading-relaxed text-ink-faint">{text}</p>
   )
 
+  /**
+   * 这个节点底下的东西能拖出去的那几份引用（见 lib/chipSyntax 的 ChipPayload）：
+   * 拖到页签栏开成页签、拖到对话输入框变成一枚引用。nodeId 宿主都知道，一并带上，
+   * 打开时免于按路径反查（见 learn/chipRef）。
+   */
+  const teachChip = (): ChipPayload => ({
+    type: 'doc',
+    nodeId: node.id,
+    path: nodeDocPath(store, node.id, { kind: 'teaching' }) ?? undefined,
+    title: nodeTitle,
+  })
+  const outlineChip = (): ChipPayload => ({
+    type: 'outline',
+    nodeId: node.id,
+    path: nodeDocPath(store, node.id, { kind: 'outline' }) ?? undefined,
+    title: nodeTitle,
+  })
+  const noteChip = (name: string): ChipPayload => ({
+    type: 'note',
+    nodeId: node.id,
+    note: name,
+    path: nodeDocPath(store, node.id, { kind: 'note', note: name }) ?? undefined,
+    title: name,
+  })
+  const superChip = (name: string): ChipPayload => ({
+    type: 'super',
+    nodeId: node.id,
+    name,
+    path: nodeDocPath(store, node.id, { kind: 'teaching' }) ?? undefined,
+    title: name,
+  })
+
   return (
     <div>
       <div className="mb-0.5">
@@ -115,6 +149,12 @@ export function NodeRow({
            * 点展开后置顶的那一行。
            */
           onClick={() => onToggle(node.id)}
+          // 节点行拖出去 = 它的教学文档（教学文档行的引用是同一份）
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData('application/x-moji-chip', chipJson(teachChip()))
+            e.dataTransfer.effectAllowed = 'copy'
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') onToggle(node.id)
           }}
@@ -195,6 +235,7 @@ export function NodeRow({
             label={t('大纲')}
             hint={t('打开「{0}」的大纲页（这一层的路线图：子目标与各自的学习情况）', nodeTitle)}
             active={outlineActive}
+            dragChip={outlineChip}
             onClick={() => docs.onOpenOutline(node.id)}
             onMenu={(x, y) => onOpenMenu(x, y, { kind: 'outline', node })}
           />
@@ -203,6 +244,7 @@ export function NodeRow({
             label={nodeTitle}
             hint={t('打开学习文档「{0}」（与节点绑定：删除它就是删除节点）', nodeTitle)}
             active={teachActive}
+            dragChip={teachChip}
             onClick={() => onSelectNode(node.id)}
             onMenu={(x, y) => onOpenMenu(x, y, { kind: 'teach', node })}
           />
@@ -250,6 +292,7 @@ export function NodeRow({
                     label={n.name}
                     hint={t('打开笔记「{0}」（右键：改名 / 在资源管理器中打开 / 删除）', n.name)}
                     active={activeTab?.kind === 'note' && activeTab.nodeId === node.id && activeTab.note === n.name}
+                    dragChip={() => noteChip(n.name)}
                     onClick={() => docs.onOpenNote(node.id, n.name)}
                     onMenu={(x, y) => onOpenMenu(x, y, { kind: 'note', node, name: n.name })}
                   />
@@ -272,6 +315,7 @@ export function NodeRow({
                   label={d.name}
                   hint={t('打开超级文档「{0}」（右键：在资源管理器中打开 / 删除）', d.name)}
                   active={activeTab?.kind === 'super' && activeTab.nodeId === node.id && activeTab.name === d.name}
+                  dragChip={() => superChip(d.name)}
                   onClick={() => docs.onOpenSuperDoc(node.id, d.name)}
                   onMenu={(x, y) => onOpenMenu(x, y, { kind: 'super', node, name: d.name })}
                 />

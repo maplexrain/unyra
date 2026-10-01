@@ -70,6 +70,8 @@ const dict: Record<string, string> = {
   '关闭右侧': 'Close tabs to the right',
   '关闭其他': 'Close others',
   '全部关闭': 'Close all',
+  '这场试卷已经不在了': 'This exam no longer exists',
+  '这条引用对应的文档已经不在了': 'The document this reference points to no longer exists',
 }
 
 export default dict

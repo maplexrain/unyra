@@ -11,6 +11,7 @@ import { useClock } from '../../../lib/clock'
 import { relativeTime } from '../../../lib/time'
 import { STATUS_META } from '../mastery'
 import { DocTypeIcon } from '../docTypes'
+import { chipJson } from '../../../lib/chipSyntax'
 import { t } from '../../../i18n'
 
 /**
@@ -187,6 +188,12 @@ export function LocalRow({
         onMenu(e.clientX, e.clientY)
       }}
       title={file.path}
+      // 拖出去 = 外部文件的引用：拖到页签栏开成 l: 页签，拖到输入框是一枚引用
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('application/x-moji-chip', chipJson({ type: 'local', path: file.path, title: file.name }))
+        e.dataTransfer.effectAllowed = 'copy'
+      }}
       className="group flex cursor-pointer items-center gap-1.5 py-1.5 pl-1.5 pr-1 transition hover:bg-line/40"
     >
       <DocTypeIcon kind="local" size={13} />

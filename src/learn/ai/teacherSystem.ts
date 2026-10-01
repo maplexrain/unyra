@@ -5,6 +5,7 @@
 import { PLOT_SYNTAX_GUIDE } from '../../lib/plot'
 import { EXECUTE_GUIDE } from './executeGuide'
 import {
+  CHIP_GUIDE,
   DOC_LINK_SYNTAX,
   GOAL_OUTLINE_GUIDE,
   LEARN_LINK_SYNTAX,
@@ -92,6 +93,8 @@ export function buildTeacherSystem(opts: {
     PLOT_SYNTAX_GUIDE,
     '',
     RICH_CONTENT_GUIDE,
+    '',
+    CHIP_GUIDE,
     '',
     '节点描述（description）：界面上会显示它（节点树的悬停提示）；用 api.description.read / update 读写。',
     '它是简短的概念概述，通常保持原样即可，只有确实需要修正时才改。',

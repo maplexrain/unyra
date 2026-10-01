@@ -136,7 +136,8 @@ import { useAgent } from '../../learn/useAgent'
 import ExplorerSidebar from './ExplorerSidebar'
 import { focusAgentInput } from '../../lib/agentFocus'
 import { moveTabMark, resetTabMark } from '../../lib/tabMark'
-import type { DocChipPayload } from '../../lib/docChip'
+import { setChipOpener, type ChipPayload } from '../../lib/docChip'
+import { tabRefFromChip } from '../../learn/chipRef'
 import TabBar from './TabBar'
 import FindBar from './FindBar'
 import SuperDocView from './SuperDocView'
@@ -304,30 +305,25 @@ export default function LearnWorkspace({
   )
 
   /**
-   * 页签拖进对话输入框时交给它的那份信息（见 lib/docChip）：显示名 + 发送给模型的路径信息。
-   * 节点文档给数据树里的相对路径（导师的 doc.* 接口直接吃它）；超级文档在路径后带上自己的
-   * 名字（sdoc.read 认「路径 + 名字」这对）；本地文件给绝对路径；试卷副本没有文件，
-   * 退回「名字 + 是什么」。
+   * 页签拖进对话输入框时交给它的那份引用（见 lib/chipSyntax 的 ChipPayload）：
+   * 带上宿主知道的全部字段——nodeId 让打开时免于反查，path 给导师的 doc.* 接口与
+   * #[{…}] 文本形态用，title 是显示名。
    */
-  const tabDocPayload = useCallback((ref: TabRef): DocChipPayload => {
-    const title = tabTitle(ref, (id) => nodeById(getLatest(), id)?.title, examTabTitle)
-    if (ref.kind === 'local') return { label: title, token: '@' + ref.path }
-    if (ref.kind === 'exam') return { label: title, token: `「${title}」（试卷副本）` }
-    const path = nodeDocPath(
-      getLatest(),
-      ref.nodeId,
-      ref.kind === 'teach'
-        ? { kind: 'teaching' }
-        : ref.kind === 'note'
-          ? { kind: 'note', note: ref.note }
-          : ref.kind === 'outline'
-            ? { kind: 'outline' }
-            : { kind: 'teaching' },
-    )
-    if (ref.kind === 'super') {
-      return { label: title, token: path ? `${path} 的超级文档「${ref.name}」` : `「${ref.name}」` }
+  const tabDocPayload = useCallback((ref: TabRef): ChipPayload | null => {
+    const s = getLatest()
+    const title = tabTitle(ref, (id) => nodeById(s, id)?.title, examTabTitle)
+    if (ref.kind === 'local') return { type: 'local', path: ref.path, title }
+    if (ref.kind === 'exam') {
+      return { type: 'attempt', nodeId: ref.nodeId, examId: ref.examId, attemptId: ref.attemptId, title }
     }
-    return path ? { label: title, token: '@' + path } : { label: title, token: `「${title}」` }
+    const docPath = (kind: 'teaching' | 'note' | 'outline', note?: string): string | undefined =>
+      nodeDocPath(s, ref.nodeId, { kind, ...(note ? { note } : {}) }) ?? undefined
+    if (ref.kind === 'teach') return { type: 'doc', nodeId: ref.nodeId, path: docPath('teaching'), title }
+    if (ref.kind === 'note') {
+      return { type: 'note', nodeId: ref.nodeId, note: ref.note, path: docPath('note', ref.note), title: ref.note }
+    }
+    if (ref.kind === 'outline') return { type: 'outline', nodeId: ref.nodeId, path: docPath('outline'), title }
+    return { type: 'super', nodeId: ref.nodeId, name: ref.name, path: docPath('teaching'), title: ref.name }
   }, [getLatest, examTabTitle])
 
   /**
@@ -1321,6 +1317,44 @@ export default function LearnWorkspace({
     openTab({ kind: 'exam', nodeId, examId, attemptId })
   }
 
+  /**
+   * 点击一枚 chip 引用：节点类开页签（开不了 = 引用已失效，说一句）；
+   * 试卷原件没有页签形态——它弹的是考试窗口（与资源管理器那颗「考试」是同一个入口）。
+   */
+  const openChip = useCallback(
+    (p: ChipPayload) => {
+      const s = getLatest()
+      if (p.type === 'exam' && !p.attemptId) {
+        const row = p.examId ? s.exams.find((e) => e.id === p.examId) : undefined
+        if (!row) {
+          onToast(t('这场试卷已经不在了'))
+          return
+        }
+        if (exam.live && exam.live.examId !== row.id) {
+          onToast(t('有一场考试正在进行，先把它考完或放弃'))
+          exam.reveal()
+          return
+        }
+        selectNode(row.nodeId)
+        exam.openExam(row.id)
+        return
+      }
+      const ref = tabRefFromChip(s, p)
+      if (!ref) {
+        onToast(t('这条引用对应的文档已经不在了'))
+        return
+      }
+      openTab(ref)
+    },
+    [getLatest, openTab, selectNode, exam, onToast],
+  )
+
+  // chip 的「点击打开」全走这一份登记（消息列表、输入框都不认识 store，见 lib/docChip）
+  useEffect(() => {
+    setChipOpener(openChip)
+    return () => setChipOpener(null)
+  }, [openChip])
+
   /** 在资源管理器中定位某个目标的大纲文件（{节点}.outline.json，大纲行右键菜单用） */
   const revealOutlineFile = async (nodeId: string) => {
     const rel = nodeDocRel(getLatest(), nodeId, { kind: 'outline' })
@@ -1491,25 +1525,25 @@ export default function LearnWorkspace({
   })
 
   /*
-   * Ctrl+Q：收起 / 展开右侧那一栏（与骑在分割线上那颗小按钮同一件事）。
+   * Ctrl+Q：它的名字是「聚焦导师」。
    *
-   * 附带一件事：**这一格装的是导师时，展开后把光标直接放进它的输入框**——
-   * 弹出来的东西就是要跟你说话的那个，再让你去点一下输入框是白费一步。
-   * 只在这一格是导师时做：它装的是文档时（两栏对调过）聚焦一个别处的输入框，
-   * 只会让接着敲的字跑到看不见的地方去。
-   * 展开是 300ms 补间，而输入框此刻就在 DOM 里，所以先聚焦、不等动画。
+   * 导师栏在**右侧栏**时：收着就展开，然后把光标放进输入框——弹出来的东西就是要跟你
+   * 说话的那个，再让你去点一下输入框是白费一步。收展交给骑在分割线上的那颗小按钮，
+   * 这一下永远落到输入框上（展开是 300ms 补间，而输入框此刻就在 DOM 里，先聚焦、不等动画）。
+   * 导师栏占着**主位**时维持原样：收起 / 展开右侧那一栏（与骑线按钮同一件事）。
+   * 纯净阅读里**不响应**：那一格此刻已经从布局里让出去了，没有「右侧栏」可收可展——
+   * 照旧执行会有两个坏结果：退出纯净阅读后栏位状态被悄悄改了（用户没看见这一下），
+   * 而导师栏正占着右边那一格时，它会当场顶回屏幕、盖在正文上。
    */
   useShortcut('agent.focus', {
     down: () => {
-      /*
-       * 纯净阅读里**不响应**：那一格此刻已经从布局里让出去了，没有「右侧栏」可收可展。
-       * 照旧执行会有两个坏结果——退出纯净阅读之后栏位状态被悄悄改了（用户没看见这一下），
-       * 而导师栏正占着右边那一格时，它会当场顶回屏幕、盖在正文上。
-       */
       if (pure) return
-      const wasCollapsed = sideCollapsed
+      if (!agentLeft) {
+        if (sideCollapsed) toggleSide()
+        focusAgentInput()
+        return
+      }
       toggleSide()
-      if (!agentLeft && wasCollapsed) focusAgentInput()
     },
   })
 
@@ -1638,6 +1672,15 @@ export default function LearnWorkspace({
                 onDrop={(tabId, _ids, x, y, commit) => onTabDrop(tabId, x, y, commit)}
                 // 页签拖进对话输入框时交给它的那份信息（路径信息在这里算，TabBar 不认得 store）
                 docPayloadOf={tabDocPayload}
+                // 资源管理器/外部拖进来的引用落在这一格的页签栏上：还原成页签开在这一格里
+                onDropChip={(p) => {
+                  const s = getLatest()
+                  const ref = tabRefFromChip(s, p)
+                  if (!ref) return
+                  const nodeId = tabNodeId(ref)
+                  const base = nodeId ? retargetNode(s, nodeId) : s
+                  set({ ...base, docArea: openInGroup(base.docArea, groupId, ref, Date.now()) })
+                }}
                 // 棱形只在焦点格的栏上跟着右键走（见 lib/tabMark）
                 focused={isFocused}
               />

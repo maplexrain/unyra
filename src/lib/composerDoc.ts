@@ -1,39 +1,20 @@
 /**
- * 对话输入框（contenteditable）的纯逻辑：页签 chip 的 DOM 形态与「编辑区 → 发送文本」。
+ * 对话输入框（contenteditable）的纯逻辑：`#[{…}]` 的就地展开与「编辑区 → 发送文本」。
  *
- * 输入框从 textarea 换成 contenteditable 只为了一件事：页签拖进来要变成一枚**元素**
- * （可整体删除、不可拆开编辑），而发送给模型的仍是纯文本——chip 按登记的 token
- * （页签的路径信息）展开。序列化是纯函数，钉在单测里（tests/composerDoc.test.ts）。
+ * 输入框从 textarea 换成 contenteditable 是为了承载 chip：一枚 chip 是**一个整体**
+ * （contenteditable=false，删就整删），而发送给模型的仍是纯文本——chip 按登记的
+ * `#[{…}]` token 展开（语法与外观见 lib/chipSyntax）。序列化是纯函数，钉在单测里
+ * （tests/composerDoc.test.ts）。
  */
 
-import type { DocChipPayload } from './docChip'
+import { buildChipHtml, splitChips } from './chipSyntax'
 
 /** 页签 chip 的标记属性：serializeEditable 认它，别的元素一律当普通内容递归 */
 const CHIP_ATTR = 'data-moji-doc-chip'
 
-/** escape & < > "：chip 的属性与文字、粘进来的正文都来自文件名与网页，什么字符都可能有 */
-export function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-/** 一枚页签 chip 的 HTML（插入 contenteditable 用）。后面的空格让连续两枚 chip 不贴死 */
-export function chipHtml(doc: DocChipPayload): string {
-  const cls =
-    'inline-flex max-w-[260px] items-center rounded-md bg-line/60 px-1.5 py-0.5 ' +
-    'align-baseline text-[12px] leading-5 text-ink-soft'
-  return (
-    `<span class="${cls}" ${CHIP_ATTR}="1" data-token="${escapeHtml(doc.token)}"` +
-    ` title="${escapeHtml(doc.token)}" contenteditable="false">${escapeHtml(doc.label)}</span>&nbsp;`
-  )
-}
-
 /**
  * 编辑区内容 → 发送文本。文字、换行（<br> 与块级元素）照实收，chip 展开成登记的
- * token——模型看到的就是「@docs/…」这样的路径信息。只认自己插进去的形态
+ * `#[{…}]` token——模型看到的就是系统提示词里那份引用语法。只认自己插进去的形态
  * （文字、<br>、chip、粘贴拍平出的 div/p），不需要一个通用的 HTML 反解析器。
  */
 export function serializeEditable(root: Element): string {
@@ -59,6 +40,35 @@ export function serializeEditable(root: Element): string {
   }
   for (const child of Array.from(root.childNodes)) walk(child)
   return out
+}
+
+/**
+ * 把编辑区里打出来 / 粘进来的完整 `#[{…}]` 就地换成 chip 元素（解析不开的照旧是文字）。
+ *
+ * 程序化改 DOM 不会触发 input 事件，调用方（onEdit）改完自己同步镜像即可，不会重入。
+ * IME 组合期间不要调：组合串还没定型，扫描替换会打断输入法。
+ */
+export function expandChipTokens(root: HTMLElement): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const hits: Text[] = []
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.nodeValue && node.nodeValue.includes('#[')) hits.push(node as Text)
+  }
+  for (const node of hits) {
+    const segments = splitChips(node.nodeValue ?? '')
+    if (!segments.some((s) => s.kind === 'chip')) continue
+    const frag = document.createDocumentFragment()
+    for (const seg of segments) {
+      if (seg.kind === 'text') {
+        frag.appendChild(document.createTextNode(seg.text))
+        continue
+      }
+      const holder = document.createElement('template')
+      holder.innerHTML = buildChipHtml(seg.payload)
+      frag.appendChild(holder.content)
+    }
+    node.replaceWith(frag)
+  }
 }
 
 /** 光标推到编辑区末尾并聚焦：「接着写」的位置——Ctrl+Q 聚焦、拖进页签都落在这里 */

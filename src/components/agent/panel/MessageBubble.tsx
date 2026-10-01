@@ -2,7 +2,7 @@
  * 一条消息长什么样：引文、气泡里的附件、操作按钮、编辑框，以及正文里的
  * 消息组（思考与工具调用）/ 文本块 / 提示块，外加列表右下角那颗「回到最新」。
  *
- * 层级与用色的规矩：**只有用户消息保留气泡本尊**（墨底圆角）；其余一律无壳——
+ * 层级与用色的规矩：**只有用户消息保留气泡本尊**（同色系、深一档的底色圆角）；其余一律无壳——
  * 导师的正文、思考气泡、工具调用气泡、消息组的收拢容器都不带边框与底色，
  * 分层靠排版与缩进。相邻至少两条的思考 / 工具调用才收进消息组，落单的
  * 不成组，自己就是一条气泡。
@@ -14,7 +14,7 @@
  * 没变过的历史消息不该跟着把整棵子树重新 reconcile 一遍。
  */
 
-import { memo, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Brain,
@@ -38,6 +38,8 @@ import { lastLineOf } from './preview'
 import { toolLabel } from './toolLabel'
 import { useFold } from './useFold'
 import { isInterruptedNotice } from '../../../learn/agent/inflight'
+import { hydrateChipTokens, openChipRef, type ChipPayload } from '../../../lib/docChip'
+import { chipLabel, chipSvg, chipToken, splitChips } from '../../../lib/chipSyntax'
 import { t, useLocale } from '../../../i18n'
 
 /**
@@ -137,10 +139,11 @@ export const MessageRow = memo(function MessageRow({
                 ))}
               </div>
             )}
-            {/* 只发了图没写字时不留一个空气泡 */}
+            {/* 只发了图没写字时不留一个空气泡。底色与列表同色系、只深一档（纸面上的同一族颜色），
+                文字与导师正文同色——气泡只负责「这是你说的话」，不负责抢眼 */}
             {m.parts.some((p) => p.type === 'text' && p.text.trim()) && (
-              <div className="whitespace-pre-wrap rounded-2xl rounded-br-sm bg-ink px-3 py-2 text-[13.5px] leading-relaxed text-paper">
-                {m.parts.filter((p) => p.type === 'text').map((p) => p.text).join('')}
+              <div className="whitespace-pre-wrap rounded-2xl rounded-br-sm bg-line/50 px-3 py-2 text-[13.5px] leading-relaxed text-ink">
+                <ChipText text={m.parts.filter((p) => p.type === 'text').map((p) => p.text).join('')} />
               </div>
             )}
           </div>
@@ -601,9 +604,48 @@ export function FollowLatestButton({ onClick }: { onClick: () => void }) {
   )
 }
 
+/**
+ * 一枚引用 chip（React 侧，用户消息的分词产物）：#[{…}] 语法的文本在这里渲染成
+ * 可点击的引用，点击打开它指向的文档 / 试卷（opener 由 LearnWorkspace 登记，见 lib/docChip）。
+ */
+function ChipView({ payload }: { payload: ChipPayload }) {
+  return (
+    <button type="button" className="moji-chip" title={chipToken(payload)} onClick={() => openChipRef(payload)}>
+      <span aria-hidden="true" dangerouslySetInnerHTML={{ __html: chipSvg(payload.type) }} />
+      <span className="moji-chip-label">{chipLabel(payload)}</span>
+    </button>
+  )
+}
+
+/** 消息文本 → 文字与 chip 交替：解析得开的 #[{…}] 成为一枚引用，其余照旧是文字 */
+function ChipText({ text }: { text: string }) {
+  const segments = useMemo(() => splitChips(text), [text])
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.kind === 'text' ? <span key={i}>{seg.text}</span> : <ChipView key={i} payload={seg.payload} />,
+      )}
+    </>
+  )
+}
+
 function TextBlock({ text }: { text: string }) {
   const html = useMemo(() => renderNote(text), [text])
-  return <MarkdownView html={html} className="moji-agent-md" />
+  /*
+   * 导师交付里写的 #[{…}] 在 DOM 提交之后换成可点击的 chip——markdown 渲染是纯函数
+   * （产物按源文缓存），chip 的解析与打开是另一层的事（与图片就地加载同一套做法）。
+   */
+  const hostRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = hostRef.current
+    if (!el) return
+    return hydrateChipTokens(el)
+  }, [html])
+  return (
+    <div ref={hostRef}>
+      <MarkdownView html={html} className="moji-agent-md" />
+    </div>
+  )
 }
 
 export { QuoteChip, MessageActions, EditBox, Parts }

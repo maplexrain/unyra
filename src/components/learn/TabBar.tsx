@@ -4,7 +4,8 @@ import { DocTypeIcon } from './docTypes'
 import type { LearnTab, TabRef } from '../../learn/types'
 import { TAB_CLOSE_LABEL, dragSlotDelta, type TabCloseMode } from '../../learn/tabs'
 import { setTabMarkHandlers } from '../../lib/tabMark'
-import { docChipDrop, docChipHover, type DocChipPayload } from '../../lib/docChip'
+import { docChipDrop, docChipHover, type ChipPayload } from '../../lib/docChip'
+import { CHIP_MIME, parseChipJson } from '../../lib/chipSyntax'
 import { useClampToViewport, useDismissOn } from '../../lib/useDismiss'
 import { t } from '../../i18n'
 
@@ -61,7 +62,12 @@ interface Props {
    * 页签拖进对话输入框时交给它的那份信息（显示名 + 路径信息，见 lib/docChip）。
    * 在上层算——它认得 store 与考试名；不给这条，页签就拖不进输入框。
    */
-  docPayloadOf?: (ref: TabRef) => DocChipPayload | null
+  docPayloadOf?: (ref: TabRef) => ChipPayload | null
+  /**
+   * 资源管理器 / 外部拖进来的引用落在这一格的页签栏上：还原成页签开在这一格里。
+   * 上层解析不出 TabRef（比如试卷原件）就忽略——那不是一份能开页签的文档。
+   */
+  onDropChip?: (p: ChipPayload) => void
   /**
    * 这一格是不是焦点格。
    *
@@ -136,6 +142,7 @@ export default function TabBar({
   onStripHost,
   onDrop,
   docPayloadOf,
+  onDropChip,
   focused = false,
 }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -612,6 +619,18 @@ export default function TabBar({
         ref={(el) => {
           stripRef.current = el
           onStripHost?.(el)
+        }}
+        onDragOver={(e) => {
+          if (!onDropChip || !e.dataTransfer.types.includes(CHIP_MIME)) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'copy'
+        }}
+        onDrop={(e) => {
+          const raw = e.dataTransfer.getData(CHIP_MIME)
+          if (!onDropChip || !raw) return
+          e.preventDefault()
+          const p = parseChipJson(raw)
+          if (p) onDropChip(p)
         }}
         className="moji-tab-strip flex min-w-0 flex-1 items-end gap-[3px] overflow-x-auto"
       >

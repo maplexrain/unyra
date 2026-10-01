@@ -19,8 +19,9 @@ import { PlusMenu } from './PlusMenu'
 import { useSlashMenu, type SlashItem } from './useSlashMenu'
 import type { ComposerApi } from './useComposer'
 import type { MenuSub } from './types'
-import { caretAtEnd, chipHtml, escapeHtml, placeCaretEnd, serializeEditable } from '../../../lib/composerDoc'
-import { registerDocChipTarget } from '../../../lib/docChip'
+import { caretAtEnd, expandChipTokens, placeCaretEnd, serializeEditable } from '../../../lib/composerDoc'
+import { openChipRef, payloadOfChipAttr, registerDocChipTarget } from '../../../lib/docChip'
+import { buildChipHtml, escapeHtml, splitChips } from '../../../lib/chipSyntax'
 import { t } from '../../../i18n'
 
 export interface ComposerProps {
@@ -159,10 +160,16 @@ export function Composer(props: ComposerProps) {
     editorRef.current = el
   }
 
+  /** IME 组合中不做 chip 展开（会打断输入法）；组合结束那一下会再走一遍 onEdit */
+  const composingRef = useRef(false)
+
   /** 任何编辑（打字、粘贴、接受补全、拖进页签）之后同步一次镜像：斜杠菜单、占位符与发送键都读它 */
   const onEdit = () => {
     const el = editorRef.current
-    if (el) setValue(serializeEditable(el))
+    if (!el) return
+    // 打出来/粘进来的完整 #[{…}] 就地变成一枚 chip（程序化改 DOM 不触发 input，不会重入）
+    if (!composingRef.current) expandChipTokens(el)
+    setValue(serializeEditable(el))
   }
 
   /** 外部清空（发送、斜杠命令执行、Esc）走 setValue('')：镜像归零，这里跟着把编辑区清掉 */
@@ -195,14 +202,14 @@ export function Composer(props: ComposerProps) {
         const box = editorRef.current
         if (!box) return
         placeCaretEnd(box)
-        document.execCommand('insertHTML', false, chipHtml(doc))
+        document.execCommand('insertHTML', false, buildChipHtml(doc))
         box.dispatchEvent(new Event('input', { bubbles: true }))
       },
     })
     return () => registerDocChipTarget(null)
   }, [subMode])
 
-  /** 粘贴：图片走附件那条路；纯文本拍平了插进来（contenteditable 默认会粘成带样式的 HTML） */
+  /** 粘贴：图片走附件那条路；文本拍平插进来，其中完整的 #[{…}] 直接落成 chip */
   const onPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     const data = e.clipboardData
     if (!data) return
@@ -213,7 +220,38 @@ export function Composer(props: ComposerProps) {
     const text = data.getData('text/plain')
     if (!text) return
     e.preventDefault()
-    document.execCommand('insertHTML', false, escapeHtml(text).split('\n').join('<br>'))
+    const html = splitChips(text)
+      .map((seg) =>
+        seg.kind === 'text' ? escapeHtml(seg.text).split('\n').join('<br>') : buildChipHtml(seg.payload),
+      )
+      .join('')
+    document.execCommand('insertHTML', false, html)
+  }
+
+  /**
+   * 复制 / 剪切：选区里含 chip 时接管——chip 只被带出显示名的话，引用就断了。
+   * 按 serialize 的规矩把 chip 展开成 #[{…}] 再放进剪贴板，粘回输入框（或发出去）
+   * 都还是完整的引用。纯文字选区走浏览器默认，不拦。
+   */
+  const onCopyCut = (e: React.ClipboardEvent<HTMLDivElement>, cut: boolean) => {
+    const sel = window.getSelection()
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
+    const holder = document.createElement('div')
+    holder.appendChild(sel.getRangeAt(0).cloneContents())
+    if (!holder.querySelector('[data-moji-doc-chip]')) return
+    e.preventDefault()
+    e.clipboardData.setData('text/plain', serializeEditable(holder))
+    if (cut) document.execCommand('delete')
+  }
+
+  /** 点输入框里的一枚 chip：打开它引用的文档（chip 是「一个整体」，点它 = 看它） */
+  const onEditorClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target
+    if (!(target instanceof Element)) return
+    const chip = target.closest('[data-moji-doc-chip]')
+    if (!chip || !editorRef.current?.contains(chip)) return
+    const payload = payloadOfChipAttr(chip.getAttribute('data-chip'))
+    if (payload) openChipRef(payload)
   }
 
   /**
@@ -288,8 +326,12 @@ export function Composer(props: ComposerProps) {
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    // 斜杠命令先接：Enter / 方向键 / Esc / 退格（二级）都归它，剩下的才是补全与发送
-    if (slash.onKeyDown(e)) return
+    // 斜杠命令先接：Enter / 方向键 / Esc / 退格（二级）都归它，剩下的才是补全与发送。
+    // 归了它的键处理完都把焦点送回输入框：执行可能开过对话框 / 切过主位，把焦点吸走了。
+    if (slash.onKeyDown(e)) {
+      editorRef.current?.focus()
+      return
+    }
     if (
       ghostRef.current &&
       (e.key === 'Tab' || (e.key === 'ArrowRight' && editorRef.current && caretAtEnd(editorRef.current)))
@@ -493,6 +535,16 @@ export function Composer(props: ComposerProps) {
             suppressContentEditableWarning
             onInput={onEdit}
             onPaste={onPaste}
+            onCopy={(e) => onCopyCut(e, false)}
+            onCut={(e) => onCopyCut(e, true)}
+            onCompositionStart={() => {
+              composingRef.current = true
+            }}
+            onCompositionEnd={() => {
+              composingRef.current = false
+              onEdit()
+            }}
+            onClick={onEditorClick}
             onBlur={() => {
               ghostRef.current?.remove()
               ghostRef.current = null
