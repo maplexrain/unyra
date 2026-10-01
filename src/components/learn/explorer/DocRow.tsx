@@ -10,13 +10,9 @@ import { GraduationCap } from 'lucide-react'
 import { attemptBrief, examTotalPoints } from '../../../learn/exam'
 import type { KnowledgeNode, TabRef } from '../../../learn/types'
 import { DocTypeIcon } from '../docTypes'
-import {
-  examNeedsWork,
-  type ExamActions,
-  type MenuTarget,
-  type NodeDocActions,
-} from './types'
+import { examNeedsWork, type ExamActions, type MenuTarget, type NodeDocActions } from './types'
 import { Collapse } from './sections'
+import { chipJson, type ChipPayload } from '../../../lib/chipSyntax'
 import { t } from '../../../i18n'
 
 /**
@@ -39,6 +35,7 @@ export function DocRow({
   expandable = false,
   open = false,
   nested = false,
+  dragChip,
 }: {
   /** 文档类型：决定图标与颜色（见 docTypes） */
   kind?: 'teach' | 'outline' | 'note' | 'super' | 'exam' | 'local'
@@ -67,6 +64,11 @@ export function DocRow({
   open?: boolean
   /** 第三层（某一次考试）：再往里缩一档 */
   nested?: boolean
+  /**
+   * 这一行能拖出的那份引用（见 lib/chipSyntax 的 ChipPayload）：拖到页签栏开成页签、
+   * 拖到对话输入框变成一枚引用。不给就是这一行不参与拖拽（比如就地改名行）。
+   */
+  dragChip?: () => ChipPayload | null
 }) {
   return (
     /*
@@ -78,6 +80,13 @@ export function DocRow({
       role="button"
       tabIndex={0}
       title={hint}
+      draggable={!!dragChip}
+      onDragStart={(e) => {
+        const p = dragChip?.()
+        if (!p) return
+        e.dataTransfer.setData('application/x-moji-chip', chipJson(p))
+        e.dataTransfer.effectAllowed = 'copy'
+      }}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === 'Enter') onClick()
@@ -239,6 +248,9 @@ export function ExamList({
               }
               expandable
               open={openThis}
+              // 拖出去 = 试卷原件的引用：拖进输入框是「跟导师谈这份卷子」（点击弹考试窗口），
+              // 拖到页签栏没人接（原件没有页签形态，见 chipRef）
+              dragChip={() => ({ type: 'exam', nodeId: node.id, examId: exam.id, title: exam.title })}
               // 点一下只展开历次考试：侧栏里没有「打开一份试卷」这回事，
               // 真正能打开的是某一次考试的副本（下一层那几条）
               onClick={() => setOpenExam((cur) => (cur === exam.id ? null : exam.id))}
@@ -288,6 +300,14 @@ export function ExamList({
                         activeTab.examId === exam.id &&
                         activeTab.attemptId === attempt.id
                       }
+                      // 拖出去 = 这一次考试的副本：页签栏上开成 e: 页签，输入框里是一枚引用
+                      dragChip={() => ({
+                        type: 'attempt',
+                        nodeId: node.id,
+                        examId: exam.id,
+                        attemptId: attempt.id,
+                        title: exam.title + ' · ' + stamp,
+                      })}
                       onClick={() => docs.onOpenAttempt(node.id, exam.id, attempt.id)}
                       onMenu={(x, y) =>
                         onOpenMenu(x, y, { kind: 'attempt', node, exam, attempt })

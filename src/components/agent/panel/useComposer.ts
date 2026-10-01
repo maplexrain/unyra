@@ -11,6 +11,7 @@ import type { PendingFile, PendingImage } from '../../../agent/types'
 import { MAX_FILES, pendingFromFile, pendingFromRead } from '../../../learn/attachments'
 import { MAX_IMAGES, MAX_SOURCE_BYTES } from '../../../learn/images'
 import { setAgentFocusHandler } from '../../../lib/agentFocus'
+import { placeCaretEnd } from '../../../lib/composerDoc'
 import { native } from '../../../lib/native'
 import { usePresence } from '../../../lib/presence'
 import { MENU_EXIT_MS } from './constants'
@@ -40,8 +41,8 @@ export interface ComposerApi {
   pickAttachment: () => Promise<void>
   /** 发送。交出去的是 File 原件；预览地址此刻就可以放掉了（转存读的是 file，不是它） */
   submit: () => void
-  /** 输入框从一行起步，随内容长高（值一变就重量一次）。名字不带 Ref：见下面的说明 */
-  textareaMount: (el: HTMLTextAreaElement | null) => void
+  /** 输入框（contenteditable）的挂载回调。名字不带 Ref：见下面的说明 */
+  editorMount: (el: HTMLDivElement | null) => void
   /*
    * 三个挂载回调（不叫 xxxRef 是有意的）：它们把节点登记到 hook 内部的 ref 上，
    * 传给 JSX 的是函数本身。react(refs) 规则会把名字里带 Ref 的标识符一律当成
@@ -104,19 +105,9 @@ export function useComposer({
   const menuBtnRef = useRef<HTMLButtonElement | null>(null)
   /** 弹出来的那一块自己：点在它上面不算「点别处」（见 PlusMenu 里那个 effect） */
   const menuRef = useRef<HTMLDivElement | null>(null)
-  const inputRef = useRef<HTMLTextAreaElement | null>(null)
-
-  /**
-   * 输入框从一行起步，随内容长高；长到 max-h（见 textarea 的类名）后改为内部滚动。
-   * 先置 auto 再读 scrollHeight，这样删字、发送清空后能缩回去——
-   * 直接读 scrollHeight 只会量到当前高度，永远缩不回来。
-   */
-  useEffect(() => {
-    const el = inputRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-  }, [value])
+  const inputRef = useRef<HTMLElement | null>(null)
+  // contenteditable 的 div 自己会随内容长高（长到 max-h 后改为内部滚动），
+  // 不再像 textarea 那样要逐值量一次高度。
 
   /*
    * Ctrl+Q 要「把光标放进输入框」，而它住在上面的学习区里（见 lib/agentFocus）。
@@ -129,10 +120,8 @@ export function useComposer({
     setAgentFocusHandler(() => {
       const el = inputRef.current
       if (!el) return
-      el.focus()
       // 光标放到末尾：那是「接着写」的位置，而选中的一段旧文字会让人一敲就删掉它。
-      const end = el.value.length
-      el.setSelectionRange(end, end)
+      placeCaretEnd(el)
     })
     return () => setAgentFocusHandler(null)
   }, [])
@@ -299,7 +288,7 @@ export function useComposer({
     addPendingFiles,
     pickAttachment,
     submit,
-    textareaMount: (el: HTMLTextAreaElement | null) => {
+    editorMount: (el: HTMLDivElement | null) => {
       inputRef.current = el
     },
     onMenuButtonMount: (el: HTMLButtonElement | null) => {

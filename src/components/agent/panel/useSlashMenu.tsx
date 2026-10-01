@@ -225,7 +225,7 @@ export function useSlashMenu({
    *
    * Enter 一律拦下（哪怕没有匹配项）——那就是「长得像命令」的文字，发出去必是误会。
    */
-  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+  const onKeyDown = (e: KeyboardEvent<HTMLElement>): boolean => {
     if (!active || e.nativeEvent.isComposing) return false
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       if (!items.length) return false

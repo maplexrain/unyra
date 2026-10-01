@@ -103,6 +103,19 @@ export function useTabDnd({ getLatest, set }: { getLatest: () => LearnStore; set
   )
 
   /**
+   * 指针是否落在文档区任何一格（含页签栏）的实测矩形里。
+   */
+  const pointInDocArea = useCallback((x: number, y: number): boolean => {
+    for (const hosts of [stripHosts.current, groupHosts.current]) {
+      for (const el of hosts.values()) {
+        const r = el.getBoundingClientRect()
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true
+      }
+    }
+    return false
+  }, [])
+
+  /**
    * 页签落下：拖到别格的中间 = 挪过去；拖到某一格的边上 = 从那儿分割。
    * 返回 true 表示这一下已经由这里处理（TabBar 不必再自己重排，也不必播归位动画）。
    */
@@ -111,7 +124,15 @@ export function useTabDnd({ getLatest, set }: { getLatest: () => LearnStore; set
       setTabDrag(null)
       if (!commit) return false
       const over = zoneAt(tabId, x, y)
-      if (!over) return false
+      if (!over) {
+        /*
+         * 落点不在任何别的格上。页签能被真正拖出去之后，松手在**整个文档区之外**
+         * （对话栏、侧栏、窗口外）= 取消这次拖动，页签回原位——原先这里会把
+         * 「拖到多远」一律当栏内重排收场，页签明明被拖到了文档区外面却还原地换了个位置。
+         * 栏内 / 自己那格的正中仍返回 false，走 TabBar 自己的栏内重排。
+         */
+        return !pointInDocArea(x, y)
+      }
       const s = getLatest()
       if (over.zone === 'center') {
         /*
@@ -131,7 +152,7 @@ export function useTabDnd({ getLatest, set }: { getLatest: () => LearnStore; set
       set({ ...s, docArea: splitWith(s.docArea, over.group, dir, side, tabId) })
       return true
     },
-    [getLatest, set, zoneAt],
+    [getLatest, set, zoneAt, pointInDocArea],
   )
 
   /**

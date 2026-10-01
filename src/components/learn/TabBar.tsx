@@ -4,6 +4,8 @@ import { DocTypeIcon } from './docTypes'
 import type { LearnTab, TabRef } from '../../learn/types'
 import { TAB_CLOSE_LABEL, dragSlotDelta, type TabCloseMode } from '../../learn/tabs'
 import { setTabMarkHandlers } from '../../lib/tabMark'
+import { docChipDrop, docChipHover, type ChipPayload } from '../../lib/docChip'
+import { CHIP_MIME, parseChipJson } from '../../lib/chipSyntax'
 import { useClampToViewport, useDismissOn } from '../../lib/useDismiss'
 import { t } from '../../i18n'
 
@@ -18,6 +20,8 @@ import { t } from '../../i18n'
  * 挤在页签栏里既占地方，又让一条本该只回答「有哪些文档」的栏变得要读两遍。
  *
  * 拖动除了栏内排序，还有**跨格**：拖到别格的边上就是分割（见 onDrop）。
+ * 页签还能被**真正拖出来**：出了这条栏，一枚一模一样的影子跟着指针满窗口走，
+ * 落在对话输入框上就变成一枚文档引用（见 lib/docChip），落在文档区之外则取消回原位。
  */
 
 interface Props {
@@ -55,6 +59,16 @@ interface Props {
    */
   onDrop: (tabId: string, ids: string[], x: number, y: number, commit: boolean) => boolean
   /**
+   * 页签拖进对话输入框时交给它的那份信息（显示名 + 路径信息，见 lib/docChip）。
+   * 在上层算——它认得 store 与考试名；不给这条，页签就拖不进输入框。
+   */
+  docPayloadOf?: (ref: TabRef) => ChipPayload | null
+  /**
+   * 资源管理器 / 外部拖进来的引用落在这一格的页签栏上：还原成页签开在这一格里。
+   * 上层解析不出 TabRef（比如试卷原件）就忽略——那不是一份能开页签的文档。
+   */
+  onDropChip?: (p: ChipPayload) => void
+  /**
    * 这一格是不是焦点格。
    *
    * 棱形只在焦点格的栏上跟着右键走（见 lib/tabMark）：分割成好几格之后，每格都有自己的
@@ -71,6 +85,9 @@ interface Props {
 
 /** 拖动一个页签要挪动这么多像素才算「在拖」，低于它仍是点击 */
 const DRAG_MIN = 4
+
+/** 指针出栏多少像素算「拖出来了」：出栏的判定留余量防抖，回栏的判定不留（回得更紧） */
+const LIFT_PAD = 8
 
 /** 页签之间的间距，与下面那个 gap-[3px] 是一对 */
 const TAB_GAP = 3
@@ -108,6 +125,8 @@ interface DragState {
   dx: number
   /** 被拖的那个页签的宽度（其余页签要让位的距离就是它 + 间距） */
   width: number
+  /** 指针出了页签栏：页签被真正拖了出来，栏里只剩一枚淡占位（影子跟着指针走） */
+  lifted: boolean
 }
 
 export default function TabBar({
@@ -122,6 +141,8 @@ export default function TabBar({
   onDragMove,
   onStripHost,
   onDrop,
+  docPayloadOf,
+  onDropChip,
   focused = false,
 }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -177,6 +198,10 @@ export default function TabBar({
     /** 最近一次算出来的落点与位移。松开时以它为准，而不是再读一遍 React 状态 */
     to: number
     dx: number
+    /** 抓取点相对页签的偏移：影子跟指针保持按下那一刻的相对位置 */
+    grabX: number
+    grabY: number
+    lifted: boolean
   } | null>(null)
   /**
    * 刚刚拖完的这一下不算「点击」。
@@ -185,6 +210,16 @@ export default function TabBar({
    * 松手就会把刚拖过去的那一项**激活**（拖一下顺带换了文档，没人想要这个副作用）。
    */
   const justDragged = useRef(false)
+
+  /**
+   * 页签被拖出栏之后跟着指针走的那枚影子：一份克隆直接挂在 body 上（每帧写 style）。
+   * 走 state 会把整棵学习区带上重渲染（棱形同一条纪律）。松手/回栏/卸载都要摘掉。
+   */
+  const ghostRef = useRef<HTMLDivElement | null>(null)
+  const removeGhost = () => {
+    ghostRef.current?.remove()
+    ghostRef.current = null
+  }
 
   /**
    * 激活的页签要**尽量落在正中间**：页签多了必然横向溢出，从大纲链接跳过来、
@@ -219,9 +254,12 @@ export default function TabBar({
     })
   }, [activeId])
 
-  /* 卸载时把没跑完的「下一帧」撤掉：它里面是 setState */
+  /* 卸载时把没跑完的「下一帧」撤掉（它里面是 setState）；拖到一半的影子与输入框高亮一并收掉 */
   useEffect(() => () => {
     if (raf.current) cancelAnimationFrame(raf.current)
+    ghostRef.current?.remove()
+    ghostRef.current = null
+    docChipHover(-1, -1)
   }, [])
 
   /* ---------- 拖动排序 ---------- */
@@ -252,6 +290,9 @@ export default function TabBar({
       moved: false,
       to: from,
       dx: 0,
+      grabX: 0,
+      grabY: 0,
+      lifted: false,
     }
     el.setPointerCapture(e.pointerId)
   }
@@ -263,30 +304,107 @@ export default function TabBar({
     if (!d.moved) {
       if (Math.abs(dx) < DRAG_MIN) return
       d.moved = true
+      // 抓取点相对页签的偏移量一次：影子此后与指针保持这个相对位置（跟棱形同一条纪律）
+      const r = e.currentTarget.getBoundingClientRect()
+      d.grabX = e.clientX - r.left
+      d.grabY = e.clientY - r.top
     }
-    // 落点 = 指针越过了其余页签里多少个的中点。被拖的那个自己不参与比较
-    let to = 0
-    for (const r of d.rects) {
-      if (r.id === d.id) continue
-      if (e.clientX > r.left + r.width / 2) to++
+    /*
+     * 在栏内还是在栏外：栏内沿用原来的跟手位移与让位预览；出了栏页签就**真的被拖了出来**
+     * ——一枚一模一样的影子跟着指针满窗口走，栏里那枚退成淡淡的占位。
+     * 出栏的判定留 LIFT_PAD 的余量防抖，回栏的判定不留（回得更紧）：在边界上抖动不会来回闪。
+     */
+    const strip = stripRef.current
+    const inStrip = (() => {
+      if (!strip) return false
+      const r = strip.getBoundingClientRect()
+      return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
+    })()
+    const lifted = d.lifted
+      ? !inStrip
+      : (() => {
+          if (inStrip || !strip) return false
+          const r = strip.getBoundingClientRect()
+          return (
+            e.clientX < r.left ||
+            e.clientX > r.right ||
+            e.clientY < r.top - LIFT_PAD ||
+            e.clientY > r.bottom + LIFT_PAD
+          )
+        })()
+    if (lifted) {
+      if (!d.lifted) {
+        d.lifted = true
+        // 影子 = 这一枚页签的克隆：样式宽窄一模一样，只把拖动位移清掉
+        const g = document.createElement('div')
+        const clone = e.currentTarget.cloneNode(true) as HTMLElement
+        clone.style.transform = ''
+        g.appendChild(clone)
+        g.style.cssText =
+          'position:fixed;z-index:90;pointer-events:none;width:' + d.width + 'px;' +
+          'border-radius:6px;overflow:hidden;opacity:.96;transform:rotate(-.5deg);' +
+          'box-shadow:0 14px 32px rgba(31,27,23,.30);'
+        document.body.appendChild(g)
+        ghostRef.current = g
+        // 光标不必另设：指针捕获在页签上，页签拖动态自带的 cursor-grabbing 会跟着捕获走
+      }
+      const g = ghostRef.current
+      if (g) {
+        g.style.left = e.clientX - d.grabX + 'px'
+        g.style.top = e.clientY - d.grabY + 'px'
+      }
+    } else if (d.lifted) {
+      d.lifted = false
+      removeGhost()
     }
-    d.to = to
-    d.dx = dx
-    setDrag({ id: d.id, from: d.from, to, dx, width: d.width })
+    if (d.lifted) {
+      // 影子模式下栏里风平浪静：被拖的那枚回槽（淡显），其余不让位。状态不变就不必重渲染
+      d.to = d.from
+      d.dx = 0
+      setDrag((cur) =>
+        cur && cur.id === d.id && cur.lifted
+          ? cur
+          : { id: d.id, from: d.from, to: d.from, dx: 0, width: d.width, lifted: true },
+      )
+    } else {
+      // 落点 = 指针越过了其余页签里多少个的中点。被拖的那个自己不参与比较
+      let to = 0
+      for (const r of d.rects) {
+        if (r.id === d.id) continue
+        if (e.clientX > r.left + r.width / 2) to++
+      }
+      d.to = to
+      d.dx = dx
+      setDrag({ id: d.id, from: d.from, to, dx, width: d.width, lifted: false })
+    }
     // 报给上层：它据此判断「指针现在落在哪一格的哪一条边上」（见 onDrop 与 LearnWorkspace）
     onDragMove(d.id, e.clientX, e.clientY)
+    // 输入卡片的高亮跟着指针走：压在上面就亮起来，告诉用户「松手就放这里」
+    docChipHover(e.clientX, e.clientY)
   }
 
   const endDrag = (commit: boolean, x = 0, y = 0) => {
     const d = dragRef.current
     dragRef.current = null
     setDrag(null)
+    removeGhost()
+    docChipHover(-1, -1)
     if (!d?.moved) return
     justDragged.current = true
     const ids = tabs.map((tab) => tab.id)
-    if (commit && d.to !== d.from) {
+    // 影子模式下不存在「栏内落点」：松手要么被输入框/别的格接走，要么取消回原位
+    if (commit && !d.lifted && d.to !== d.from) {
       const [moved] = ids.splice(d.from, 1)
       ids.splice(d.to, 0, moved)
+    }
+    /*
+     * 先问对话输入框：页签落在输入卡片上 = 把这份文档交给导师（变成一枚引用）。
+     * 接住了就到此为止——这不是排序也不是分屏，本栏什么都不用做。
+     */
+    if (commit && docPayloadOf) {
+      const ref = tabs.find((tab) => tab.id === d.id)?.ref
+      const payload = ref ? docPayloadOf(ref) : null
+      if (payload && docChipDrop(x, y, payload)) return
     }
     /*
      * 先问上层接不接手：拖到**别格**（或别格的边上）是「移动 / 分割」，
@@ -502,6 +620,18 @@ export default function TabBar({
           stripRef.current = el
           onStripHost?.(el)
         }}
+        onDragOver={(e) => {
+          if (!onDropChip || !e.dataTransfer.types.includes(CHIP_MIME)) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'copy'
+        }}
+        onDrop={(e) => {
+          const raw = e.dataTransfer.getData(CHIP_MIME)
+          if (!onDropChip || !raw) return
+          e.preventDefault()
+          const p = parseChipJson(raw)
+          if (p) onDropChip(p)
+        }}
         className="moji-tab-strip flex min-w-0 flex-1 items-end gap-[3px] overflow-x-auto"
       >
         {tabs.map((tab, i) => {
@@ -512,9 +642,11 @@ export default function TabBar({
           const dragging = drag?.id === tab.id
           const settling = settle?.id === tab.id
           const dirty = unsaved.has(tab.id)
+          const lifted = dragging && !!drag?.lifted
           const shift = shiftOf(i)
-          // 三种位移只会有一个生效：拖着的跟手、刚落下的在归位、其余在让位
-          const offset = dragging ? drag.dx : settling ? settle.offset : shift
+          // 三种位移只会有一个生效：拖着的跟手（拖出栏后的影子模式里它留在槽位上）、
+          // 刚落下的在归位、其余在让位
+          const offset = dragging && !lifted ? drag.dx : settling ? settle.offset : shift
           /*
            * min-w：页签的宽度本来由标题撑开，短标题（「导数」两个字）就窄得只剩一个
            * 可以点的小方块，一排页签看着也参差不齐。给它一个下限，短标题一样好按。
@@ -531,7 +663,9 @@ export default function TabBar({
               : 'transition-transform duration-150 ' +
                 (on
                   ? 'border-line-strong bg-card text-ink-strong'
-                  : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink'))
+                  : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink')) +
+            // 拖出栏后栏里这枚只剩个淡占位：正文跟着指针（影子）走了
+            (lifted ? ' opacity-40' : '')
           return (
             <div
               key={tab.id}

@@ -1,0 +1,37 @@
+/*
+ * 引用 chip（#[{…}] 渲染出来的那枚元素）的样式。输入框、消息列表、拖放插入共用这一份。
+ */
+
+.moji-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 300px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--color-line-strong);
+  background: var(--color-card);
+  color: var(--color-ink-soft);
+  font-size: 12px;
+  line-height: 20px;
+  vertical-align: baseline;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.moji-chip:hover {
+  border-color: var(--color-seal, #4a8fd4);
+  background: var(--color-paper-deep);
+}
+
+/* 名字超长时从右边截：认一份东西靠的是开头那几个字（与页签标题同一条规矩） */
+.moji-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.moji-chip svg {
+  flex-shrink: 0;
+}

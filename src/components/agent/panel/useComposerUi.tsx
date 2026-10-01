@@ -13,6 +13,8 @@ import type { ReasoningEffort } from '../../../ai/types'
 import { Composer } from './Composer'
 import type { ComposerApi } from './useComposer'
 import { usePlusMenu, type PlusMenuApi } from './usePlusMenu'
+import { docChipReceive } from '../../../lib/docChip'
+import { CHIP_MIME, parseChipJson } from '../../../lib/chipSyntax'
 
 export interface ComposerUiProps {
   composer: ComposerApi
@@ -105,7 +107,16 @@ export function ComposerUi(props: ComposerUiProps): ReactNode {
     onAttach: () => void composer.pickAttachment(),
   })
 
-  const dropImages = (e: React.DragEvent) => {
+  const dropInto = (e: React.DragEvent) => {
+    // 资源管理器 / 外部拖进来的引用（HTML5 拖放那一路）：优先于文件——它是对话的一部分
+    const chipRaw = e.dataTransfer.getData(CHIP_MIME)
+    if (chipRaw) {
+      e.preventDefault()
+      setDragOver(false)
+      const p = parseChipJson(chipRaw)
+      if (p) docChipReceive(p)
+      return
+    }
     if (!e.dataTransfer.types.includes('Files')) return
     e.preventDefault()
     setDragOver(false)
@@ -131,13 +142,15 @@ export function ComposerUi(props: ComposerUiProps): ReactNode {
       plusButtonClass={menu.plusButtonClass}
       dragOver={dragOver}
       onDragOver={(e) => {
-        // 只对「拖进来的是文件」亮起来：拖一段文字进来不该有反应
-        if (!e.dataTransfer.types.includes('Files')) return
+        // 文件与引用都亮起来：拖一段普通文字进来不该有反应。
+        // dropEffect 显式给 copy：拖拽源声明的是 effectAllowed=copy，两处口径要一致
+        if (!e.dataTransfer.types.includes('Files') && !e.dataTransfer.types.includes(CHIP_MIME)) return
         e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
         setDragOver(true)
       }}
       onDragLeave={() => setDragOver(false)}
-      onDrop={dropImages}
+      onDrop={dropInto}
     />
   )
 }
