@@ -1,0 +1,15 @@
+name: 功能建议
+description: 想要一个新能力，或者现有的东西更好用
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决的问题
+      description: 先说场景——你在做什么的时候卡住了？场景比功能清单有用得多。
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你设想的解法（可选）
