@@ -9,6 +9,7 @@ npm start            # 运行生产构建
 npm run lint
 npm run test           # 一次跑完全部测试：vitest 单元用例 + 下面两套 Node 探针（提交前跑这个）
 npm run test:unit      # 只跑 vitest（tests/ 下的单元用例，秒级）
+npm run test:coverage  # 覆盖率报告（vitest 用例的行/分支覆盖）：看数字找盲区，不是门禁
 npm run test:agent     # Node 里跑一遍新架构的回归探针（存储 / 路径寻址 / execute 的 api 面）
 npm run test:update    # 更新链路的回归探针（发布配置一致性 / 检查时机 / 失败归类 / 构建产物自检）
 npm run release:verify # 发布之后核对线上那份与本地产物（正式发布？Latest？三样齐全？sha512 对得上？）
@@ -43,6 +44,7 @@ node scripts/serve-fake-model.mjs --script <剧本.mjs>   # 本地假模型：�
 | `npm run test:unit` | vitest 单元用例（`tests/**/*.test.ts`，秒级）：页签、笔记、本地文件、快捷键、暂存区（暂存的增删、改名搬家、读回来的校验）、上下文压缩（摘要怎么成形 / 失活怎么折算 / 值不值得压）、文件附件（围栏与截断）、agent 设置归一化、文档查找的命中区间、导出的建议文件名与整页 HTML 的自足性（无外部引用 / 转义 / 公式走 MathML） |
 | `npm run test:agent` | Node 探针：存储 / 路径寻址 / execute 的 api 面 |
 | `npm run test:update` | Node 探针：更新链路（发布配置一致性 / 检查时机 / 失败归类 / 构建产物自检） |
+| `npm run test:coverage` | 覆盖率报告（只算 vitest 用例）：全部 `src/` 文件都在表里，包括从没被用例加载过的——0% 的那几行才是盲区。终端出文字表，逐文件详情在 `coverage/index.html`。只做报告不定阈值：阈值一旦拦人，就会诱导出凑行数的用例 |
 
 分工是定下来的，别混：
 

@@ -1,0 +1,43 @@
+name: Bug 报告
+description: 应用出了问题——报得越清楚，修得越快
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: 版本号 + 复现步骤 + 预期/实际行为（CONTRIBUTING 里那条规矩的表单版）。
+  - type: input
+    id: version
+    attributes:
+      label: 版本号
+      description: 「设置 → 关于」里能查到
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统
+      description: 例如 Windows 11 24H2
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从哪里点起、发生了什么；能稳定复现吗？
+      placeholder: |
+        1. 打开……
+        2. 点击……
+        3. ……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为与实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: 截图 / 日志（可选）
+      description: 截图能救很多描述不清的场面

@@ -6,6 +6,7 @@
   "author": "maplexrain",
   "type": "module",
   "main": "dist-electron/main.cjs",
+  "engines": { "node": ">=24" },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "electron:dev": "node scripts/dev.mjs",
@@ -13,6 +14,7 @@
     "typecheck": "tsc -b",
     "test": "node scripts/run-tests.mjs",
     "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:agent": "node scripts/run-agent-ops-test.mjs",
     "test:update": "node scripts/run-update-test.mjs",
     "start:trace": "node scripts/startup-trace.mjs",
@@ -50,6 +52,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
+    "@vitest/coverage-v8": "^5.0.3",
     "electron": "^44.3.0",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",

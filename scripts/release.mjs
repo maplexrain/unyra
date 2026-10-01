@@ -26,7 +26,7 @@
  */
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
@@ -88,6 +88,28 @@ function checkLocalArtifacts() {
     process.exit(1)
   }
   return [exePath, exePath + '.blockmap', ymlPath]
+}
+
+/**
+ * 发版把 README 徽章的版本号一起带过去：徽章是写死的图标地址，过去靠人肉记着改，
+ * 忘了就会像 v0.4.10 发了 README 还挂着 v0.4.9 那样悄悄过期。
+ * 预发布不动徽章：Latest 永远是最新稳定版（见下面 visibilityArgs），徽章跟它对齐。
+ * 同步只改本地文件，不阻塞发布，也不替人提交——改动随下一个 PR 带回 main。
+ */
+function syncReadmeBadge() {
+  if (prerelease) {
+    console.log('[release] 预发布不占用 Latest，README 徽章维持上一稳定版。')
+    return
+  }
+  const readmePath = path.join(ROOT, 'README.md')
+  const before = readFileSync(readmePath, 'utf-8')
+  const after = before.replace(/release-v[\w.]+-/, 'release-v' + version + '-')
+  if (after === before) {
+    console.error('[release] README 里没找到 release-v… 徽章，版本号没同步（徽章格式变过？）。')
+    return
+  }
+  writeFileSync(readmePath, after)
+  console.log('[release] README 徽章已同步到 v' + version + '——这个改动还没提交，记得随下一个 PR 带回去。')
 }
 
 if (publish) {
@@ -171,6 +193,7 @@ if (!created.ok) {
   console.error('[release] 创建/更新 Release 失败：' + created.out)
   process.exit(1)
 }
+syncReadmeBadge()
 
 // 最后一步不是走过场：发出去的东西与本地对不上时，退出码非零（见 verify-release.mjs）
 run('发布后自检（线上 vs 本地）', [path.join(ROOT, 'scripts/verify-release.mjs')])

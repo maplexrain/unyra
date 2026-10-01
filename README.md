@@ -7,6 +7,7 @@
 
 [下载安装包](https://github.com/maplexrain/unyra/releases) · [项目文档](docs/README.md) · [问题反馈](https://github.com/maplexrain/unyra/issues)
 
+[![CI](https://github.com/maplexrain/unyra/actions/workflows/ci.yml/badge.svg)](https://github.com/maplexrain/unyra/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/badge/release-v0.4.10-a8432f)](https://github.com/maplexrain/unyra/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4)](https://github.com/maplexrain/unyra/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F)](https://www.electronjs.org/)
