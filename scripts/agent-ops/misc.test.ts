@@ -36,6 +36,9 @@ import { ok } from './harness'
 export function cspTests() {
   ok(/script-src[^;]*'unsafe-eval'/.test(LOCAL_FILE_CSP), 'CSP 放行 unsafe-eval（compileBody 与沙箱都要 new Function）', LOCAL_FILE_CSP)
   ok(/worker-src[^;]*blob:/.test(LOCAL_FILE_CSP), 'CSP 放行 blob: Worker（沙箱就跑在 blob worker 里）', LOCAL_FILE_CSP)
+  // 文档里的远程图片是正经内容（被动资源，不执行脚本）；本地图片不走 CSP——lib/docImages 读字节贴 data URL
+  ok(/img-src[^;]*https:/.test(LOCAL_FILE_CSP), 'img-src 放行远程图片', LOCAL_FILE_CSP)
+  ok(!/img-src[^;]*file:/.test(LOCAL_FILE_CSP), 'img-src 不放行 file:（本地图片走 data URL 水合，不开读任意本地文件的口子）', LOCAL_FILE_CSP)
   ok(LOCAL_FILE_CSP.includes("connect-src 'self' llm-proxy:"), '网络出口仍只留 llm-proxy', LOCAL_FILE_CSP)
   ok(LOCAL_FILE_CSP.includes("default-src 'self'"), '默认仍只允许本地资源', LOCAL_FILE_CSP)
   ok(!/default-src[^;]*[*]/.test(LOCAL_FILE_CSP), 'CSP 没有被放成通配', LOCAL_FILE_CSP)

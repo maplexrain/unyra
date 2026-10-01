@@ -368,6 +368,23 @@
   max-width: 100%;
   vertical-align: middle;
 }
+/*
+ * 就地图片（lib/docImages 水合）读不到时钉上的样式：文件不在、或在边界外被拒。
+ * 别留一个莫名的碎图标——按「资源不存在」同一条视觉语言：虚线边 + 淡底 + 给 alt 留字位。
+ */
+.note-preview img.moji-local-img-missing,
+.moji-agent-md img.moji-local-img-missing {
+  display: inline-block;
+  max-width: 100%;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px dashed var(--color-line-strong);
+  border-radius: 4px;
+  background: var(--color-inset);
+  color: var(--color-ink-faint);
+  font-size: 0.85em;
+  vertical-align: middle;
+}
 /* 点击即在文件管理器里定位：插图、占位壳、卡片与链接是同一种交互 */
 [data-static-ref],
 .moji-static-imgwrap img {

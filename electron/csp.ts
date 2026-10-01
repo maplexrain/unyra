@@ -15,12 +15,17 @@
  *
  * 其余部分是真正的收紧：默认只允许本地资源，网络出口只留 llm-proxy:（AI 请求的唯一通道），
  * 远程脚本、远程样式一概放不进来。
+ *
+ * img-src 放行 http(s) 是 2026-10-01 的补充：文档（用户写的、贴进来的、导师写的）里的
+ * 远程图片是正经内容——图片是被动资源，不执行任何脚本，script-src / connect-src 的收紧
+ * 不受影响。本地图片不走这条：它们由 lib/docImages 读字节贴成 data URL（file: 来源连
+ * 'self' 都匹配不上，放行 file: 反而等于给文档开一个读任意本地文件的口子）。
  */
 export const LOCAL_FILE_CSP =
   "default-src 'self'; " +
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
   "worker-src 'self' blob:; " +
   "style-src 'self' 'unsafe-inline'; " +
-  "img-src 'self' data: blob:; " +
+  "img-src 'self' data: blob: https: http:; " +
   "font-src 'self' data:; " +
   "connect-src 'self' llm-proxy:;"

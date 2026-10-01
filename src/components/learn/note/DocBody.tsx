@@ -11,6 +11,7 @@ import MarkdownView from '../../MarkdownView'
 import WaveBars from '../../WaveBars'
 import type { Annotation, DocKind } from '../../../learn/types'
 import type { AnnotationActions } from '../../../lib/annotation'
+import type { LocalImageResolver } from '../../../lib/docImages'
 import { copySelectionAsMarkdown } from '../../../lib/copySource'
 import { t } from '../../../i18n'
 
@@ -34,6 +35,8 @@ interface Props {
   knownConceptKeys?: Set<string>
   /** 注解浮层里「修改/删除」的回调 */
   annotationActions: AnnotationActions
+  /** 就地图片解析器（见 lib/docImages）：文档目录旁的相对路径图片据此显示；上层按文档注入 */
+  resolveLocalImage?: LocalImageResolver
   /** 正文字数（去掉空白）：页脚那行用 */
   wordCount: number
   /** 浮在正文这一层上的东西（选词菜单）：位置与开合由上层管，这里只负责插回原位 */
@@ -52,6 +55,7 @@ export function DocBody({
   annotations,
   knownConceptKeys,
   annotationActions,
+  resolveLocalImage,
   wordCount,
   overlay,
 }: Props) {
@@ -83,6 +87,7 @@ export function DocBody({
             annotations={annotations}
             knownConceptKeys={knownConceptKeys}
             annotationActions={annotationActions}
+            resolveLocalImage={resolveLocalImage}
           />
         </div>
 
