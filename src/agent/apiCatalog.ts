@@ -302,9 +302,10 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     items: [
       { name: 'browser.open', signature: "browser.open('https://…')", summary: '开一个网页页签（纯关键词当搜索词）；回 tabId，返回时首屏基本加载完', availability: 'browser' },
       { name: 'browser.tabs', signature: 'browser.tabs()', summary: '全部存活的网页页签：tabId、url、标题、是否激活、所在格；之后一切操作按 tabId 指名', availability: 'browser' },
+      { name: 'browser.snapshot', signature: 'browser.snapshot(tabId?)', summary: '页面快照：可交互元素列成带 ref 的清单（role + 名称 + 输入值，≤200 条）——看页面的文本通道，比截图省；DOM 变了 ref 会过期，重新 snapshot 即可', availability: 'browser' },
       { name: 'browser.activate', signature: 'browser.activate(tabId)', summary: '把某个页签切到前台', availability: 'browser' },
       { name: 'browser.close', signature: 'browser.close(tabId)', summary: '关掉某个页签（不弹确认——用户没让关就别关）', availability: 'browser' },
-      { name: 'browser.click', signature: 'browser.click(tabId?, 目标, { button?, dbl?, holdMs? }?)', summary: '点一下：目标是 CSS 选择器（自动滚到元素点中心）或 { x, y } 坐标；button:"right"/"middle"，dbl:true 双击，holdMs 长按毫秒', availability: 'browser' },
+      { name: 'browser.click', signature: 'browser.click(tabId?, 目标, { button?, dbl?, holdMs? }?)', summary: '点一下：目标是 snapshot 的 { ref }（最稳）、CSS 选择器（自动滚到元素点中心）或 { x, y } 坐标；button:"right"/"middle"，dbl:true 双击，holdMs 长按毫秒', availability: 'browser' },
       { name: 'browser.drag', signature: 'browser.drag(tabId?, 起点, 终点, { steps? }?)', summary: '按住从起点拖到终点再松开（文本选区、滑块、画笔）', availability: 'browser' },
       { name: 'browser.scroll', signature: 'browser.scroll(tabId?, { dx?, dy?, x?, y? })', summary: '滚轮滚动：dy 正数往下、dx 正数往右，x/y 定滚动落点（省略 = 视口左上）', availability: 'browser' },
       { name: 'browser.type', signature: 'browser.type(tabId?, 文字, 目标?)', summary: '输入文字（插到焦点元素；给了目标先点它再输入），中文照常', availability: 'browser' },

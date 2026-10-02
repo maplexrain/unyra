@@ -1,5 +1,6 @@
 import type { KeyboardInputEvent, MouseInputEvent, MouseWheelInputEvent, WebviewTag } from 'electron'
 import type { BrowserOps, BrowserTabInfo, BrowserTarget } from '../../agent/sandbox/types'
+import type { WebSnapshotElement } from '../../../shared/ipc'
 import type { LearnStore, TabRef, WebTabMeta } from '../types'
 import { findTab, focusedGroup, groupIdOfTab } from '../groups'
 import { normalizeWebInput } from '../webUrl'
@@ -9,13 +10,14 @@ import { saveScreenshot } from '../screenshots'
 /**
  * browser.* 的宿主实现（沙箱里 api.browser.* 的真身，见 agent/sandbox/types 的 BrowserOps）。
  *
- * 这一层是「看 = 截图、动手 = 真输入注入」：
- * - 看页面只有 capture（capturePage → 资源库 → images 通道）；**没有读页面文字与执行
- *   页面 JS 的口子**——那两条（read / eval）试过一轮，返回结果不可控，已从沙箱面撤掉。
- *   唯一还在页面里跑 JS 的地方是**内部**的坐标测量（selector → 中心点，见 MEASURE_SNIPPET），
- *   返回值只有 { x, y }，可控。
+ * 这一层是「看 = 快照/截图、动手 = 真输入注入」：
+ * - 看页面有两条：snapshot（Accessibility 树 → 带 ref 的元素清单，纯文本、省）与 capture
+ *   （截图）。**没有任何读整页文字、执行页面 JS 的口子**——那两条（read / eval）试过一轮，
+ *   返回结果不可控，已从沙箱面撤掉。
  * - 动手走 webview 元素的 sendInputEvent / insertText（等价 CDP Input 域）：页面收到的是
  *   **可信事件**（isTrusted），导航、右键、双击、拖拽、滚轮都走真实行为链路。
+ * - 定位（selector / ref → 坐标）也全在主进程 CDP（DOM 域：querySelector → 滚进视野 →
+ *   取四边形中心），渲染层不注入任何页面 JS。
  *
  * 页签模型（docArea）与活信息（webMeta）是学习工作区组件的状态，动作也是组件闭包——
  * 由 LearnWorkspace 每轮渲染装配一份 BrowserDeps 交给 useAgent，回合内在这里拼成
@@ -30,6 +32,10 @@ export interface BrowserDeps {
   closeTab: (groupId: string, tabId: string, mode: 'self', opts?: { confirm?: boolean }) => void
   /** web 页签的活信息（真标题/加载态）；每次渲染都是最新的一份 */
   webMeta: Record<string, WebTabMeta>
+  /** 页面快照（主进程：Accessibility 树 → 带 ref 的可交互元素清单，见 shared/axTree） */
+  snapshot: (wcId: number) => Promise<{ elements: WebSnapshotElement[]; truncated?: boolean } | { error: string }>
+  /** 把 { ref } / { selector } 解析成视口坐标（主进程 CDP：滚进视野 + 取元素四边形中心） */
+  locate: (wcId: number, target: { ref: number } | { selector: string }) => Promise<{ x: number; y: number } | { error: string }>
 }
 
 type WebTabRef = Extract<TabRef, { kind: 'web' }>
@@ -48,6 +54,10 @@ async function settle(wv: WebviewTag, timeoutMs = 8000): Promise<void> {
 }
 
 /** 输入注入有 12s 兜底：页面卡死不该把整轮沙箱拖到空闲超时 */
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+/** 输入注入有 12s 兜底：页面卡死不该把整轮沙箱拖到空闲超时 */
 function withTimeout<T>(p: Promise<T>, what: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(what + '超时（页面可能没有响应）')), 12_000)
@@ -62,44 +72,6 @@ function withTimeout<T>(p: Promise<T>, what: string): Promise<T> {
       },
     )
   })
-}
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-
-/**
- * selector → 中心坐标：滚到可视区再量。这是**内部**使用页面 JS 的唯一一处，
- * 返回值钉死为 { x, y }（agent 面上没有 eval）。
- */
-const MEASURE_SNIPPET = (sel: string): string => {
-  const q = JSON.stringify(sel)
-  return (
-    '(() => { const el = document.querySelector(' + q + '); if (!el) return null; ' +
-    "el.scrollIntoView({ block: 'center', inline: 'nearest' }); " +
-    'const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()'
-  )
-}
-
-/** 目标解析：选择器 → 等页面安静、量中心；坐标 → 取整原样 */
-async function pointOf(wv: WebviewTag, target: BrowserTarget): Promise<{ x: number; y: number }> {
-  if (typeof target === 'string') {
-    const sel = target.trim()
-    if (!sel) throw new Error('目标要给 CSS 选择器字符串或 { x, y } 坐标')
-    await settle(wv)
-    const p = (await withTimeout(wv.executeJavaScript(MEASURE_SNIPPET(sel), false), '定位元素')) as {
-      x?: number
-      y?: number
-    } | null
-    if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') {
-      throw new Error(
-        '页面上找不到这个选择器：' + sel + '（跨源 iframe 里的元素定位不到——先截图再改用坐标）',
-      )
-    }
-    return { x: Math.round(p.x), y: Math.round(p.y) }
-  }
-  if (typeof target !== 'object' || typeof target.x !== 'number' || typeof target.y !== 'number') {
-    throw new Error('坐标目标要给 { x, y }（网页视口内的 CSS 像素）')
-  }
-  return { x: Math.round(target.x), y: Math.round(target.y) }
 }
 
 /** 键名按 KeyboardEvent.key；组合键只认修饰键 + 单键（'Ctrl+A'、'Shift+Tab'） */
@@ -164,6 +136,38 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
     return wv
   }
 
+  const wcIdOf = (wv: WebviewTag): number => {
+    try {
+      return wv.getWebContentsId()
+    } catch {
+      throw new Error('网页还没挂上（刚开的那一拍）——稍等再试')
+    }
+  }
+
+  /** { ref } / { selector } → 视口坐标：全部交给主进程 CDP（滚进视野 + 取四边形中心） */
+  const locatePoint = async (wv: WebviewTag, target: { ref: number } | { selector: string }) => {
+    await settle(wv)
+    const r = await withTimeout(deps.locate(wcIdOf(wv), target), '定位元素')
+    if ('error' in r) throw new Error(r.error)
+    return r
+  }
+
+  /** 目标解析：{ref} / 选择器 → 主进程 CDP 定位；坐标 → 取整原样 */
+  const pointOf = async (wv: WebviewTag, target: BrowserTarget): Promise<{ x: number; y: number }> => {
+    if (typeof target === 'object' && target !== null && 'ref' in target) {
+      return locatePoint(wv, { ref: (target as { ref: number }).ref })
+    }
+    if (typeof target === 'string') {
+      const sel = target.trim()
+      if (!sel) throw new Error('目标要给 CSS 选择器、{ x, y } 坐标，或 snapshot 清单里的 { ref }')
+      return locatePoint(wv, { selector: sel })
+    }
+    if (typeof target !== 'object' || typeof target.x !== 'number' || typeof target.y !== 'number') {
+      throw new Error('目标要给 CSS 选择器、{ x, y } 坐标，或 snapshot 清单里的 { ref }')
+    }
+    return { x: Math.round(target.x), y: Math.round(target.y) }
+  }
+
   /** 一次完整的点击（move → down → up）；holdMs 的长按由 click 自己拆开 */
   const clickAt = async (wv: WebviewTag, x: number, y: number, button = 'left', clickCount = 1): Promise<void> => {
     await wv.sendInputEvent({ type: 'mouseMove', x, y } as MouseInputEvent)
@@ -215,6 +219,13 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
       }
       deps.closeTab(group, tabId, 'self', { confirm: false })
       return { ok: true }
+    },
+    async snapshot(tabId) {
+      const { tabId: id } = resolveTab(tabId)
+      const wv = element(id)
+      const r = await deps.snapshot(wcIdOf(wv))
+      if ('error' in r) throw new Error(r.error)
+      return { elements: r.elements, ...(r.truncated ? { truncated: r.truncated } : {}) }
     },
     async click(tabId, target, opts = {}) {
       const { tabId: id } = resolveTab(tabId)

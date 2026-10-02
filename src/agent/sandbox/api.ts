@@ -560,6 +560,7 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     wrapApi(api, 'browser.tabs', () => browser.tabs(), log)
     wrapApi(api, 'browser.activate', (args) => browser.activate(asText(args[0]).trim()), log)
     wrapApi(api, 'browser.close', (args) => browser.close(asText(args[0]).trim()), log)
+    wrapApi(api, 'browser.snapshot', (args) => browser.snapshot(args.length ? asText(args[0]).trim() || undefined : undefined), log)
     /*
      * 带目标的方法（click / drag / type / key / scroll）都收两种写法：
      * 方法(目标…) 与 方法(tabId, 目标…)。tabId 一定是 tabs() 回的 w: 开头的 id，
@@ -567,11 +568,12 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
      */
     const tabIdOf = (v: unknown): string | undefined =>
       typeof v === 'string' && v.startsWith('w:') ? v : undefined
-    const targetOf = (v: unknown): string | { x: number; y: number } => {
+    const targetOf = (v: unknown): string | { x: number; y: number } | { ref: number } => {
       if (typeof v === 'string' && v.trim()) return v.trim()
       const o = asRecord(v)
       if (typeof o.x === 'number' && typeof o.y === 'number') return { x: o.x, y: o.y }
-      throw new Error('目标要给 CSS 选择器字符串或 { x, y } 坐标（网页视口内的 CSS 像素）')
+      if (typeof o.ref === 'number') return { ref: o.ref }
+      throw new Error('目标要给 CSS 选择器、{ x, y } 坐标，或 browser.snapshot 清单里的 { ref }')
     }
     wrapApi(api, 'browser.click', (args) => {
       const tabId = tabIdOf(args[0])

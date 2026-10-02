@@ -925,7 +925,18 @@ export default function LearnWorkspace({
   // browser.* 的宿主依赖：closeTab（useDocSaveFlow）到这条线才就位，所以回填放在这里——
   // 每次渲染换成最新的一份（webMeta 活信息在里面）
   useEffect(() => {
-    browserDepsRef.current = { getLatest, set, openWebTab, activateTab, closeTab, webMeta }
+    browserDepsRef.current = {
+      getLatest,
+      set,
+      openWebTab,
+      activateTab,
+      closeTab,
+      webMeta,
+      snapshot: (wcId) =>
+        isElectron() ? native().browser.snapshot(wcId) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
+      locate: (wcId, target) =>
+        isElectron() ? native().browser.locate(wcId, target) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
+    }
   })
 
   /**

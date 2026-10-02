@@ -24,7 +24,7 @@ import type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginListResult,
   PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
   StorageInfo, StorageOk, StorageRootResult, UpdateFail, UpdatePhase, UpdateState,
-  VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceReadResult, WebFetchResult,
+  VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceReadResult, WebFetchResult, WebSnapshotResult,
 } from '../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（渲染层与主进程共用一份，见该文件顶部）：
@@ -35,7 +35,7 @@ export type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginListResult,
   PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
   StorageInfo, StorageOk, StorageRootResult, UpdateFail, UpdatePhase, UpdateState,
-  VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceReadResult, WebFetchResult,
+  VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceReadResult, WebFetchResult, WebSnapshotResult,
 }
 
 /* ---------- 只在 preload 这一侧用到的形状 ---------- */
@@ -499,6 +499,13 @@ const api = {
       ipcRenderer.on('web:shortcut', listener)
       return () => ipcRenderer.removeListener('web:shortcut', listener)
     },
+    /** 页面快照：Accessibility 树 → 带 ref 的可交互元素清单（browser.* 的「看」通道） */
+    snapshot: (wcId: number): Promise<WebSnapshotResult> => ipcRenderer.invoke('web:snapshot', wcId),
+    /** 把 { ref } / { selector } 解析成视口坐标（主进程 CDP：滚进视野 + 取元素四边形中心） */
+    locate: (
+      wcId: number,
+      target: { ref: number } | { selector: string },
+    ): Promise<{ x: number; y: number } | { error: string }> => ipcRenderer.invoke('web:locate', wcId, target),
   },
 
   shell: {

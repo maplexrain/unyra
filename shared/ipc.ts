@@ -14,6 +14,27 @@
  * - 每个类型上面那句「谁在用」写的是它跨进程的两端，改字段之前先看那两端。
  */
 
+/* ---------- 内置浏览器（webview 网页页签） ---------- */
+
+/** 页面快照里的一枚可交互元素（browser.snapshot 清单的项）。
+ *  谁在用：主进程 electron/app/webSession.ts（Accessibility 树转换，见 shared/axTree.ts），
+ *  preload 的 browser.snapshot，渲染层 src/learn/web/browserOps 的 api.browser.snapshot。 */
+export interface WebSnapshotElement {
+  /** 编号（每次快照从 1 重新数）；click / type 的目标可写成 { ref } 按号指名 */
+  ref: number
+  /** 无障碍角色：button / link / textbox / heading … */
+  role: string
+  /** 无障碍名称（按钮文字、链接文字、输入框的标签…） */
+  name: string
+  /** 输入框的当前值（只有文本框类才有） */
+  value?: string
+}
+
+/** browser.snapshot 的返回：元素清单，或一句人话错误。谁在用：同上。 */
+export type WebSnapshotResult =
+  | { elements: WebSnapshotElement[]; truncated?: boolean }
+  | { error: string }
+
 /* ---------- 窗口外壳 / 数据落盘 ---------- */
 
 /**

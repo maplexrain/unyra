@@ -24,6 +24,8 @@ function makeDeps(store: LearnStore, webMeta: Record<string, WebTabMeta> = {}) {
   const opened: string[] = []
   const activated: string[] = []
   const closed: Array<[string, string]> = []
+  const snapshotted: number[] = []
+  const located: Array<[number, { ref: number } | { selector: string }]> = []
   const deps: BrowserDeps = {
     getLatest: () => store,
     set: () => {},
@@ -38,21 +40,27 @@ function makeDeps(store: LearnStore, webMeta: Record<string, WebTabMeta> = {}) {
       closed.push([group, id])
     },
     webMeta,
+    snapshot: async (wcId) => {
+      snapshotted.push(wcId)
+      return { elements: [{ ref: 1, role: 'button', name: '提交' }] }
+    },
+    locate: async (wcId, target) => {
+      located.push([wcId, target])
+      // ref=2 是「过期 ref」的哨兵
+      if ('ref' in target && target.ref === 2) return { error: 'ref 不存在或已过期（页面变了）——重新 api.browser.snapshot' }
+      return { x: 50, y: 60 }
+    },
   }
-  return { deps, opened, activated, closed }
+  return { deps, opened, activated, closed, snapshotted, located }
 }
 
-/** 假 webview：记录注入的输入事件、页面里跑过的 JS 与插入的文字 */
-function fakeWv(opts: { measure?: unknown } = {}) {
+/** 假 webview：记录注入的输入事件与插入的文字（定位已全部走主进程 CDP，页面 JS 不再注入） */
+function fakeWv() {
   const events: unknown[] = []
   const texts: string[] = []
-  const js: string[] = []
   const el = {
     isLoading: () => false,
-    executeJavaScript: async (code: string) => {
-      js.push(code)
-      return opts.measure !== undefined ? opts.measure : { x: 120.6, y: 80.4 }
-    },
+    getWebContentsId: () => 424242,
     sendInputEvent: async (e: unknown) => {
       events.push(e)
     },
@@ -60,7 +68,7 @@ function fakeWv(opts: { measure?: unknown } = {}) {
       texts.push(t)
     },
   }
-  return { el: el as unknown as WebviewTag, events, texts, js }
+  return { el: el as unknown as WebviewTag, events, texts }
 }
 
 /** 登记一枚假元素，测试结束随手摘掉（登记表是模块级的，别串到别的用例） */
@@ -95,46 +103,62 @@ describe('makeBrowserOps：browser.* 的宿主实现（纯逻辑 + 假元素，N
     ])
   })
 
-  it('click 用选择器定位（内部量坐标）后注入 move→down→up，坐标取整', async () => {
-    const { deps } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
+  it('snapshot 把主进程的元素清单原样带回（wcId 来自页签的 guest）', async () => {
+    const { deps, snapshotted } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
     const ops = makeBrowserOps(deps, 'goal1')
-    const { el, events, js } = fakeWv()
+    const { el } = fakeWv()
     await withWv('w:a', el, async () => {
-      const r = await ops.click(undefined, '.btn')
-      expect(r).toEqual({ ok: true, at: { x: 121, y: 80 } })
+      const r = await ops.snapshot(undefined)
+      expect(r).toEqual({ elements: [{ ref: 1, role: 'button', name: '提交' }] })
     })
-    expect(js.length).toBe(1)
-    expect(js[0]).toContain('document.querySelector(".btn")')
+    expect(snapshotted.length).toBe(1)
+    expect(snapshotted[0]).toBe(424242)
+    // 主进程报错要变成可读的失败，而不是把 { error } 当成功交回去
+    const broken = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
+    broken.deps.snapshot = async () => ({ error: '调试通道被占用' })
+    await withWv('w:a', el, async () => {
+      await expect(makeBrowserOps(broken.deps, 'goal1').snapshot('w:a')).rejects.toThrow('调试通道被占用')
+    })
+  })
+
+  it('click 的 { ref } 目标走主进程定位（拿回坐标再注入 move→down→up）', async () => {
+    const { deps, located } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
+    const ops = makeBrowserOps(deps, 'goal1')
+    const { el, events } = fakeWv()
+    await withWv('w:a', el, async () => {
+      const r = await ops.click(undefined, { ref: 1 })
+      expect(r).toEqual({ ok: true, at: { x: 50, y: 60 } })
+    })
+    expect(located[0][1]).toEqual({ ref: 1 })
     expect(events).toEqual([
-      { type: 'mouseMove', x: 121, y: 80 },
-      { type: 'mouseDown', x: 121, y: 80, button: 'left', clickCount: 1 },
-      { type: 'mouseUp', x: 121, y: 80, button: 'left', clickCount: 1 },
+      { type: 'mouseMove', x: 50, y: 60 },
+      { type: 'mouseDown', x: 50, y: 60, button: 'left', clickCount: 1 },
+      { type: 'mouseUp', x: 50, y: 60, button: 'left', clickCount: 1 },
     ])
   })
 
-  it('click 的右键/中键/双击换 button 与 clickCount；坐标目标不再量 JS', async () => {
-    const { deps } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
+  it('click 的选择器目标同样走主进程定位；坐标目标不触发定位', async () => {
+    const { deps, located } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
     const ops = makeBrowserOps(deps, 'goal1')
-    const { el, events, js } = fakeWv()
+    const { el, events } = fakeWv()
     await withWv('w:a', el, async () => {
+      await ops.click('w:a', '.btn')
+      expect(located[0][1]).toEqual({ selector: '.btn' })
       await ops.click('w:a', { x: 10.4, y: 20.6 }, { button: 'right' })
-      await ops.click('w:a', { x: 10, y: 20 }, { dbl: true })
-      await ops.click('w:a', { x: 10, y: 20 }, { button: 'middle' })
     })
-    expect(js.length).toBe(0)
+    expect(located.length).toBe(1)
     expect(events.filter((e) => (e as { type: string }).type === 'mouseDown')).toEqual([
+      { type: 'mouseDown', x: 50, y: 60, button: 'left', clickCount: 1 },
       { type: 'mouseDown', x: 10, y: 21, button: 'right', clickCount: 1 },
-      { type: 'mouseDown', x: 10, y: 20, button: 'left', clickCount: 2 },
-      { type: 'mouseDown', x: 10, y: 20, button: 'middle', clickCount: 1 },
     ])
   })
 
-  it('click 找不到选择器时报错并提示换坐标', async () => {
+  it('过期 ref 的定位错误原样抛给模型（引导重新 snapshot）', async () => {
     const { deps } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
     const ops = makeBrowserOps(deps, 'goal1')
-    const { el } = fakeWv({ measure: null })
+    const { el } = fakeWv()
     await withWv('w:a', el, async () => {
-      await expect(ops.click(undefined, '.nope')).rejects.toThrow('找不到这个选择器')
+      await expect(ops.click(undefined, { ref: 2 })).rejects.toThrow('重新 api.browser.snapshot')
     })
   })
 
@@ -150,13 +174,12 @@ describe('makeBrowserOps：browser.* 的宿主实现（纯逻辑 + 假元素，N
     expect(types[0]).toBe('mouseMove')
     expect(types[1]).toBe('mouseDown')
     expect(types[types.length - 1]).toBe('mouseUp')
-    // down 之后是 steps 段 move（含中点 50,25），最后 up
     expect(events[2]).toEqual({ type: 'mouseMove', x: 50, y: 25 })
     expect(events[events.length - 1]).toEqual({ type: 'mouseUp', x: 100, y: 50, button: 'left', clickCount: 1 })
   })
 
   it('scroll 校验滚动量并原样传 delta；type 先点目标再插文字（中文照常）', async () => {
-    const { deps } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
+    const { deps, located } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
     const ops = makeBrowserOps(deps, 'goal1')
     const { el, events, texts } = fakeWv()
     await withWv('w:a', el, async () => {
@@ -166,6 +189,7 @@ describe('makeBrowserOps：browser.* 的宿主实现（纯逻辑 + 假元素，N
       const r = await ops.type('w:a', '你好世界', '.input')
       expect(r).toEqual({ ok: true, typed: 4 })
       expect(texts).toEqual(['你好世界'])
+      expect(located[0][1]).toEqual({ selector: '.input' })
       // 先点了目标（move→down→up 三件套），再插文字
       expect(events.slice(1, 4).map((e) => (e as { type: string }).type)).toEqual(['mouseMove', 'mouseDown', 'mouseUp'])
     })
@@ -195,6 +219,7 @@ describe('makeBrowserOps：browser.* 的宿主实现（纯逻辑 + 假元素，N
     const ops = makeBrowserOps(deps, 'goal1')
     await expect(ops.click('w:ghost', '.x')).rejects.toThrow('没有这个网页页签')
     await expect(ops.capture('w:ghost')).rejects.toThrow('没有这个网页页签')
+    await expect(ops.snapshot('w:ghost')).rejects.toThrow('没有这个网页页签')
     // 焦点格激活的是网页，但元素没挂上（刚重启回来）：元素级的错
     await expect(ops.capture(undefined)).rejects.toThrow('网页元素不在了')
     const ops2 = makeBrowserOps(makeDeps(storeWith([], null)).deps, 'goal1')

@@ -589,8 +589,8 @@ export interface BrowserTabInfo {
   group: string
 }
 
-/** click / drag / type 的目标：CSS 选择器（自动滚到元素取中心）或视口内坐标 */
-export type BrowserTarget = string | { x: number; y: number }
+/** click / drag / type 的目标：snapshot 清单里的 { ref }、CSS 选择器（自动滚到元素取中心）或视口内坐标 */
+export type BrowserTarget = string | { x: number; y: number } | { ref: number }
 
 /**
  * 内置浏览器（browser.*）的宿主实现（见 learn/web/browserOps 与 learn/web/webviewRegistry）。
@@ -609,6 +609,14 @@ export interface BrowserOps {
   activate(tabId: string): { ok: true }
   /** 关掉某个页签（不弹确认） */
   close(tabId: string): { ok: true }
+  /**
+   * 页面快照：可交互元素列成**带 ref 的清单**（role + 名称 + 输入值，≤200 条）——
+   * 「看」的文本通道，比截图省；DOM 变了 ref 会过期，重新 snapshot 即可。
+   */
+  snapshot(tabId?: string): Promise<{
+    elements: Array<{ ref: number; role: string; name: string; value?: string }>
+    truncated?: boolean
+  }>
   /** 点一下：button 换右/中键（中键会开成新页签），dbl 双击，holdMs 长按毫秒 */
   click(
     tabId: string | undefined,

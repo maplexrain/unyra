@@ -14,7 +14,7 @@ import type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
-  VoiceReadResult, WebFetchResult,
+  VoiceReadResult, WebFetchResult, WebSnapshotResult,
 } from '../../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（与 electron/preload.ts 共用一份，见该文件顶部）：
@@ -25,7 +25,7 @@ export type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
-  VoiceReadResult, WebFetchResult,
+  VoiceReadResult, WebFetchResult, WebSnapshotResult,
 }
 
 export type PluginList =
@@ -315,6 +315,10 @@ export interface NativeBridge {
   browser: {
     onOpenTab(cb: (url: string) => void): () => void
     onShortcut(cb: (key: string) => void): () => void
+    /** 页面快照：Accessibility 树 → 带 ref 的可交互元素清单（browser.* 的「看」通道） */
+    snapshot(wcId: number): Promise<WebSnapshotResult>
+    /** 把 { ref } / { selector } 解析成视口坐标（主进程 CDP：滚进视野 + 取元素四边形中心） */
+    locate(wcId: number, target: { ref: number } | { selector: string }): Promise<{ x: number; y: number } | { error: string }>
   }
 }
 

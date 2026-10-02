@@ -120,6 +120,7 @@ const API_NAMES = [
   'browser.tabs',
   'browser.activate',
   'browser.close',
+  'browser.snapshot',
   'browser.click',
   'browser.drag',
   'browser.scroll',

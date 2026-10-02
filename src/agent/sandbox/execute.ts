@@ -44,9 +44,9 @@ const EXECUTE_PARAMETERS = {
         '还有 wait（等待）/ ask（表单提问，阻塞等用户）/ mind（长期记忆）/ iwanna（计划预告）/ tiktok（响铃）' +
         '/ method（目标级持久化函数：create / list / call / delete）/ sdoc（超级文档：list / read / write / delete）' +
         '/ ui.switchMain / ui.toast / ui.point / ui.scroll / ui.screenshot / ui.superdoc（界面操作），' +
-        '/ browser.open / browser.tabs / browser.activate / browser.close / browser.click / browser.drag / ' +
+        '/ browser.open / browser.tabs / browser.activate / browser.close / browser.snapshot / browser.click / browser.drag / ' +
         'browser.scroll / browser.type / browser.key / browser.capture' +
-        '（内置浏览器：开网页、管页签、模拟鼠标键盘、截图——看页面用截图），' +
+        '（内置浏览器：开网页、管页签、快照元素清单、模拟鼠标键盘、截图——看页面用 snapshot/capture），' +
         '完整签名与使用时机见系统提示词的 execute 一节。' +
         'create 的 payload —— title、kind:"quiz"|"test"|"exam"、level:"easy"|"medium"|"hard"|"extreme"、' +
         'minutes（时限分钟数；小测不用给，其余不得低于题目数 × 2）、' +
