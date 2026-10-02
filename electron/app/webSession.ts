@@ -16,7 +16,7 @@ import { app, ipcMain, session, shell, webContents, type Debugger, type WebConte
 import { canOpenExternal } from '../link-core'
 import { mainWindow } from './mainWindow'
 import { axNodesToElements, type AxRawNode } from '../../shared/axTree'
-import type { WebSnapshotResult } from '../../shared/ipc'
+import type { WebDomOpResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult } from '../../shared/ipc'
 
 /**
  * 内置浏览器的分区。渲染层 <webview partition> 与这里是**同一个字符串**（两处必须一致，
@@ -54,26 +54,120 @@ function ensureDebugger(wc: WebContents): Debugger {
   return dbg
 }
 
-function registerSnapshotIpc(): void {
-  /** 单条 CDP 命令的兜底超时：页面卡死不该把 IPC 调用无限吊着 */
-  function cdp<T>(dbg: Debugger, method: string, params?: object, ms = 12_000): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error(method + ' 超时（页面可能没有响应）')), ms)
-      dbg
-        .sendCommand(method, params)
-        .then(
-          (v) => {
-            clearTimeout(t)
-            resolve(v as T)
-          },
-          (e: unknown) => {
-            clearTimeout(t)
-            reject(e instanceof Error ? e : new Error(String(e)))
-          },
-        )
-    })
-  }
+/** 单条 CDP 命令的兜底超时：页面卡死不该把 IPC 调用无限吊着 */
+function cdp<T>(dbg: Debugger, method: string, params?: object, ms = 12_000): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(method + ' 超时（页面可能没有响应）')), ms)
+    dbg
+      .sendCommand(method, params)
+      .then(
+        (v) => {
+          clearTimeout(t)
+          resolve(v as T)
+        },
+        (e: unknown) => {
+          clearTimeout(t)
+          reject(e instanceof Error ? e : new Error(String(e)))
+        },
+      )
+  })
+}
 
+/** ref / selector → backendNodeId（point 与 domOp 共用的定位层）。
+ *  ref 走台账（快照那一刻钉下的 DOM 节点）；selector 现场从 DOM 树查。 */
+async function backendOf(
+  dbg: Debugger,
+  wcId: number,
+  target: { ref?: number; selector?: string },
+): Promise<{ backendNodeId: number; label: string } | { error: string }> {
+  if (typeof target?.ref === 'number') {
+    const hit = snapshotRefs.get(wcId)?.get(target.ref)
+    if (!hit) return { error: 'ref 不存在或已过期（页面变了）——重新 api.browser.snapshot' }
+    return { backendNodeId: hit.backendNodeId, label: hit.name ? '（' + hit.role + '「' + hit.name + '」）' : '' }
+  }
+  if (typeof target?.selector === 'string' && target.selector.trim()) {
+    const sel = target.selector.trim()
+    const { root } = await cdp<{ root?: { nodeId?: number } }>(dbg, 'DOM.getDocument', { depth: 0 })
+    if (!root?.nodeId) return { error: '拿不到页面的 DOM 树根（页面可能还没挂好）' }
+    const { nodeId } = await cdp<{ nodeId?: number }>(dbg, 'DOM.querySelector', { nodeId: root.nodeId, selector: sel })
+    if (!nodeId) {
+      return { error: '页面上找不到这个选择器：' + sel + '（跨源 iframe 里的元素定位不到——先 snapshot 换 { ref }）' }
+    }
+    return { backendNodeId: nodeId, label: '' }
+  }
+  return { error: '定位目标要给 { ref } 或 { selector }' }
+}
+
+/** 受控 DOM 操作（browser.dom）的固定函数：op → 在元素上跑的 JS。
+ *  这是 agent 面上**唯一**的页面执行口子，而且函数是死的、参数是值——没有任意 JS 的口子。 */
+const DOM_OPS: Record<string, { fn: string; takesArg: boolean }> = {
+  click: {
+    fn: 'function () { this.scrollIntoView({ block: "center" }); this.click(); return true }',
+    takesArg: false,
+  },
+  fill: {
+    // React 受控输入框认的是 native setter + input 事件，直接赋值会被它自己的 state 抹掉
+    fn: 'function (t) { const proto = this instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; const setter = Object.getOwnPropertyDescriptor(proto, "value").set; setter.call(this, String(t)); this.dispatchEvent(new Event("input", { bubbles: true })); this.dispatchEvent(new Event("change", { bubbles: true })); return this.value }',
+    takesArg: true,
+  },
+  focus: {
+    fn: 'function () { this.focus(); return document.activeElement === this }',
+    takesArg: false,
+  },
+  submit: {
+    fn: 'function () { const f = this.closest("form"); if (!f) return { error: "这个元素不在任何表单里——直接对提交按钮用 click，或对输入框 submit" }; f.requestSubmit(); return true }',
+    takesArg: false,
+  },
+  text: {
+    fn: 'function () { return ((this.innerText || this.textContent || "") + "").replace(/\\n{3,}/g, "\\n\\n").trim().slice(0, 4000) }',
+    takesArg: false,
+  },
+  attr: {
+    fn: 'function (n) { const v = this.getAttribute(String(n)); if (v != null) return v.slice(0, 500); const p = this[String(n)]; return p == null || typeof p === "function" ? null : String(p).slice(0, 500) }',
+    takesArg: true,
+  },
+}
+
+/** browser.point 的高亮函数：滚到元素（锚点跳转），注入一圈短暂的脉冲描边 */
+const POINT_FN =
+  'function () {' +
+  '  this.scrollIntoView({ block: "center", inline: "center" });' +
+  '  if (!document.getElementById("moji-agent-point-style")) {' +
+  '    const st = document.createElement("style");' +
+  '    st.id = "moji-agent-point-style";' +
+  '    st.textContent = "@keyframes mojiPointPulse{0%{box-shadow:0 0 0 0 rgba(74,143,212,.55)}100%{box-shadow:0 0 0 14px rgba(74,143,212,0)}}";' +
+  '    document.head.appendChild(st);' +
+  '  }' +
+  '  const r = this.getBoundingClientRect();' +
+  '  const hl = document.createElement("div");' +
+  '  hl.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;border:2px solid #4a8fd4;border-radius:6px;background:rgba(74,143,212,.12);animation:mojiPointPulse 1s ease-out 2;left:" + (r.left - 4) + "px;top:" + (r.top - 4) + "px;width:" + (r.width + 8) + "px;height:" + (r.height + 8) + "px;";' +
+  '  document.body.appendChild(hl);' +
+  '  setTimeout(() => hl.remove(), 2400);' +
+  '  return true;' +
+  '}'
+
+/** 在某个 DOM 节点上执行我们的固定函数（参数只走值），回可序列化的小结果 */
+async function callOnElement<T>(
+  dbg: Debugger,
+  backendNodeId: number,
+  fn: string,
+  args: Array<{ value: string }> = [],
+): Promise<T> {
+  const { object } = await cdp<{ object?: { objectId?: string } }>(dbg, 'DOM.resolveNode', { backendNodeId })
+  if (!object?.objectId) throw new Error('这个元素的运行时对象拿不到了')
+  const r = await cdp<{
+    result?: { value?: unknown }
+    exceptionDetails?: { exception?: { description?: string } }
+  }>(dbg, 'Runtime.callFunctionOn', { objectId: object.objectId, functionDeclaration: fn, arguments: args, returnByValue: true })
+  if (r.exceptionDetails) {
+    throw new Error(
+      '页面里执行失败：' + (r.exceptionDetails.exception?.description ?? '未知异常').slice(0, 200),
+    )
+  }
+  return (r.result?.value ?? true) as T
+}
+
+function registerSnapshotIpc(): void {
   ipcMain.handle('web:snapshot', async (_e, wcId: number): Promise<WebSnapshotResult> => {
     const wc = guestOf(wcId)
     if (!wc) return { error: '这一页签的网页已经不在了' }
@@ -104,61 +198,91 @@ function registerSnapshotIpc(): void {
     }
   })
 
+  // 页面滚到目标元素并高亮（browser.point）：锚点跳转 + 短暂脉冲描边
   ipcMain.handle(
-    'web:locate',
+    'web:point',
     async (
       _e,
       wcId: number,
       target: { ref?: number; selector?: string },
-    ): Promise<{ x: number; y: number } | { error: string }> => {
+    ): Promise<WebPointResult> => {
       const wc = guestOf(wcId)
       if (!wc) return { error: '这一页签的网页已经不在了' }
       let label = ''
       try {
-        const dbg = await ensureDebugger(wc)
+        const dbg = ensureDebugger(wc)
         await cdp(dbg, 'DOM.enable').catch(() => {})
-        // backendNodeId：ref 走台账；selector 现场从 DOM 树查（depth 0 只要根，查询在 CDP 侧的树里做）
-        let backendNodeId: number | undefined
-        if (typeof target?.ref === 'number') {
-          const hit = snapshotRefs.get(wcId)?.get(target.ref)
-          if (!hit) return { error: 'ref 不存在或已过期（页面变了）——重新 api.browser.snapshot' }
-          backendNodeId = hit.backendNodeId
-          label = hit.name ? '（' + hit.role + '「' + hit.name + '」）' : ''
-        } else if (typeof target?.selector === 'string' && target.selector.trim()) {
-          const sel = target.selector.trim()
-          const { root } = await cdp<{ root?: { nodeId?: number } }>(dbg, 'DOM.getDocument', { depth: 0 })
-          if (!root?.nodeId) return { error: '拿不到页面的 DOM 树根（页面可能还没挂好）' }
-          const { nodeId } = await cdp<{ nodeId?: number }>(dbg, 'DOM.querySelector', {
-            nodeId: root.nodeId,
-            selector: sel,
-          })
-          if (!nodeId) {
-            return { error: '页面上找不到这个选择器：' + sel + '（跨源 iframe 里的元素定位不到——先 snapshot 换 { ref }）' }
-          }
-          backendNodeId = nodeId
-        } else {
-          return { error: '定位目标要给 { ref } 或 { selector }' }
+        const hit = await backendOf(dbg, wcId, target)
+        if ('error' in hit) return hit
+        label = hit.label
+        await callOnElement(dbg, hit.backendNodeId, POINT_FN)
+        return { ok: true }
+      } catch (err) {
+        return { error: '定位失败' + label + '：' + (err instanceof Error ? err.message : '页面可能已经变了——重新 api.browser.snapshot') }
+      }
+    },
+  )
+
+  // 受控 DOM 操作（browser.dom）：固定函数 + 值参数，没有任意 JS 的口子
+  ipcMain.handle(
+    'web:domOp',
+    async (_e, wcId: number, ref: number, op: string, arg?: string): Promise<WebDomOpResult> => {
+      const spec = DOM_OPS[String(op ?? '')]
+      if (!spec) {
+        return { error: '不认识的 dom 操作：' + String(op) + '。可用：' + Object.keys(DOM_OPS).join(' / ') }
+      }
+      const hit = snapshotRefs.get(wcId)?.get(Number(ref))
+      if (!hit) return { error: 'ref 不存在或已过期（页面变了）——重新 api.browser.snapshot' }
+      const wc = guestOf(wcId)
+      if (!wc) return { error: '这一页签的网页已经不在了' }
+      try {
+        const dbg = ensureDebugger(wc)
+        await cdp(dbg, 'DOM.enable').catch(() => {})
+        const result = await callOnElement<unknown>(
+          dbg,
+          hit.backendNodeId,
+          spec.fn,
+          spec.takesArg ? [{ value: String(arg ?? '') }] : [],
+        )
+        // 操作自己的「业务失败」（比如 submit 却不在表单里）也按错误交回去
+        if (result && typeof result === 'object' && 'error' in (result as Record<string, unknown>)) {
+          return { error: String((result as Record<string, unknown>).error) }
         }
-        // 元素多半在视口外：先滚进视野（节点已消失/不可滚的回错吞掉，下一步取四边形兜底）
-        await cdp(dbg, 'DOM.scrollIntoViewIfNeeded', { backendNodeId }).catch(() => {})
-        const { quads } = await cdp<{ quads?: number[][] }>(dbg, 'DOM.getContentQuads', { backendNodeId })
-        const quad = quads?.[0]
-        if (!quad || quad.length < 8) {
-          return { error: '目标现在没有可点的位置（元素可能已经消失了）——重新 api.browser.snapshot 或换坐标' }
-        }
-        const xs = [quad[0], quad[2], quad[4], quad[6]]
-        const ys = [quad[1], quad[3], quad[5], quad[7]]
+        return { ok: true, ...(result !== undefined && result !== true ? { result } : {}) }
+      } catch (err) {
+        const label = hit.name ? '（' + hit.role + '「' + hit.name + '」）' : ''
         return {
-          x: Math.round((Math.min(...xs) + Math.max(...xs)) / 2),
-          y: Math.round((Math.min(...ys) + Math.max(...ys)) / 2),
-        }
-      } catch {
-        return {
-          error: '定位失败' + label + '：页面可能已经变了——重新 api.browser.snapshot 或换坐标',
+          error:
+            'dom.' +
+            String(op) +
+            ' 失败' +
+            label +
+            '：' +
+            (err instanceof Error ? err.message : '页面可能已经变了——重新 api.browser.snapshot'),
         }
       }
     },
   )
+
+  // 整页 HTML（browser.read 的第一步）：渲染层拿它走 webFetch 同一条 markdown 管线
+  ipcMain.handle('web:readHtml', async (_e, wcId: number): Promise<WebReadHtmlResult> => {
+    const wc = guestOf(wcId)
+    if (!wc) return { error: '这一页签的网页已经不在了' }
+    try {
+      const dbg = ensureDebugger(wc)
+      await cdp(dbg, 'DOM.enable').catch(() => {})
+      const { root } = await cdp<{
+        root?: { nodeId?: number; children?: Array<{ nodeId?: number; nodeName?: string }> }
+      }>(dbg, 'DOM.getDocument', { depth: 1 })
+      const htmlNode = root?.children?.find((c) => (c.nodeName ?? '').toUpperCase() === 'HTML')
+      if (!htmlNode?.nodeId) return { error: '拿不到页面的 DOM（页面可能还没挂好）' }
+      const { outerHTML } = await cdp<{ outerHTML?: string }>(dbg, 'DOM.getOuterHTML', { nodeId: htmlNode.nodeId })
+      if (!outerHTML) return { error: '这一页拿不到 DOM 内容' }
+      return { html: outerHTML, url: wc.getURL(), title: wc.getTitle() }
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : '读取页面 DOM 失败' }
+    }
+  })
 }
 
 export function setupWebBrowser(): void {

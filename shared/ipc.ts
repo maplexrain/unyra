@@ -35,6 +35,18 @@ export type WebSnapshotResult =
   | { elements: WebSnapshotElement[]; truncated?: boolean }
   | { error: string }
 
+/** browser.point 的返回：页面已滚到目标并高亮，或一句人话错误。谁在用：同上。 */
+export type WebPointResult = { ok: true } | { error: string }
+
+/** browser.dom 的返回：受控 DOM 操作的执行回执（result 是操作自己的小结果），或一句人话错误。
+ *  谁在用：同上。 */
+export type WebDomOpResult = { ok: true; result?: unknown } | { error: string }
+
+/** browser.read 的第一步：主进程从 live DOM 取回的整页 HTML（渲染层走 webFetch 同一条
+ *  markdown 管线转换）。谁在用：主进程 electron/app/webSession.ts 的 web:readHtml，
+ *  渲染层 src/learn/web/browserOps 与 src/learn/webDocs 的 livePageForAgent。 */
+export type WebReadHtmlResult = { html: string; url: string; title: string } | { error: string }
+
 /* ---------- 窗口外壳 / 数据落盘 ---------- */
 
 /**

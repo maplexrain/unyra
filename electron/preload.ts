@@ -24,7 +24,8 @@ import type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginListResult,
   PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
   StorageInfo, StorageOk, StorageRootResult, UpdateFail, UpdatePhase, UpdateState,
-  VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceReadResult, WebFetchResult, WebSnapshotResult,
+  VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceReadResult, WebDomOpResult,
+  WebFetchResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult,
 } from '../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（渲染层与主进程共用一份，见该文件顶部）：
@@ -35,7 +36,8 @@ export type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginListResult,
   PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
   StorageInfo, StorageOk, StorageRootResult, UpdateFail, UpdatePhase, UpdateState,
-  VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceReadResult, WebFetchResult, WebSnapshotResult,
+  VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceReadResult, WebDomOpResult,
+  WebFetchResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult,
 }
 
 /* ---------- 只在 preload 这一侧用到的形状 ---------- */
@@ -501,11 +503,14 @@ const api = {
     },
     /** 页面快照：Accessibility 树 → 带 ref 的可交互元素清单（browser.* 的「看」通道） */
     snapshot: (wcId: number): Promise<WebSnapshotResult> => ipcRenderer.invoke('web:snapshot', wcId),
-    /** 把 { ref } / { selector } 解析成视口坐标（主进程 CDP：滚进视野 + 取元素四边形中心） */
-    locate: (
-      wcId: number,
-      target: { ref: number } | { selector: string },
-    ): Promise<{ x: number; y: number } | { error: string }> => ipcRenderer.invoke('web:locate', wcId, target),
+    /** 页面滚到目标元素并高亮突出（browser.point） */
+    point: (wcId: number, target: { ref: number } | { selector: string }): Promise<WebPointResult> =>
+      ipcRenderer.invoke('web:point', wcId, target),
+    /** 对 snapshot 的 ref 执行受控 DOM 操作（browser.dom）：固定函数 + 值参数 */
+    domOp: (wcId: number, ref: number, op: string, arg?: string): Promise<WebDomOpResult> =>
+      ipcRenderer.invoke('web:domOp', wcId, ref, op, arg),
+    /** 拿当前页的整份 DOM HTML（渲染层走 webFetch 同一条 markdown 管线，browser.read） */
+    readHtml: (wcId: number): Promise<WebReadHtmlResult> => ipcRenderer.invoke('web:readHtml', wcId),
   },
 
   shell: {

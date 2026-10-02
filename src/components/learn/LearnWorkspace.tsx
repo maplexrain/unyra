@@ -934,8 +934,12 @@ export default function LearnWorkspace({
       webMeta,
       snapshot: (wcId) =>
         isElectron() ? native().browser.snapshot(wcId) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      locate: (wcId, target) =>
-        isElectron() ? native().browser.locate(wcId, target) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
+      point: (wcId, target) =>
+        isElectron() ? native().browser.point(wcId, target) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
+      domOp: (wcId, ref, op, arg) =>
+        isElectron() ? native().browser.domOp(wcId, ref, op, arg) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
+      readHtml: (wcId) =>
+        isElectron() ? native().browser.readHtml(wcId) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
     }
   })
 

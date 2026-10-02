@@ -295,22 +295,20 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     key: 'browser',
     label: '内置浏览器 · browser',
     intro:
-      '操作**界面上开着的网页页签**（文档区里那种地球图标页签）：开站、管理页签、模拟鼠标键盘、截图。' +
-      '**看页面只用 browser.capture 截图**——没有读页面文字与执行 JS 的口子。' +
-      '输入是**真输入注入**（页面收到的是可信事件）：导航、右键、双击、拖拽都是真的。' +
-      '操作的是用户的真实登录会话——不可逆动作先问用户。',
+      '操作**界面上开着的网页页签**（文档区里那种地球图标页签）：开站、管理页签、snapshot 元素清单、' +
+      '对 ref 做受控 DOM 操作、整页转 markdown、截图。' +
+      '**看 = snapshot/read（文本）优先，capture（截图）是最后手段**；dom 是受控操作（固定函数 + 值参数，' +
+      '没有任意 JS 的口子），操作的是用户的真实登录会话——不可逆动作先问用户。',
     items: [
       { name: 'browser.open', signature: "browser.open('https://…')", summary: '开一个网页页签（纯关键词当搜索词）；回 tabId，返回时首屏基本加载完', availability: 'browser' },
       { name: 'browser.tabs', signature: 'browser.tabs()', summary: '全部存活的网页页签：tabId、url、标题、是否激活、所在格；之后一切操作按 tabId 指名', availability: 'browser' },
-      { name: 'browser.snapshot', signature: 'browser.snapshot(tabId?)', summary: '页面快照：可交互元素列成带 ref 的清单（role + 名称 + 输入值，≤200 条）——看页面的文本通道，比截图省；DOM 变了 ref 会过期，重新 snapshot 即可', availability: 'browser' },
+      { name: 'browser.snapshot', signature: 'browser.snapshot(tabId?)', summary: '页面快照：可交互元素列成带 ref 的清单（role + 名称 + 输入值，≤200 条）——认结构、找要点的元素全靠它；DOM 变了 ref 会过期，重新 snapshot 即可', availability: 'browser' },
       { name: 'browser.activate', signature: 'browser.activate(tabId)', summary: '把某个页签切到前台', availability: 'browser' },
       { name: 'browser.close', signature: 'browser.close(tabId)', summary: '关掉某个页签（不弹确认——用户没让关就别关）', availability: 'browser' },
-      { name: 'browser.click', signature: 'browser.click(tabId?, 目标, { button?, dbl?, holdMs? }?)', summary: '点一下：目标是 snapshot 的 { ref }（最稳）、CSS 选择器（自动滚到元素点中心）或 { x, y } 坐标；button:"right"/"middle"，dbl:true 双击，holdMs 长按毫秒', availability: 'browser' },
-      { name: 'browser.drag', signature: 'browser.drag(tabId?, 起点, 终点, { steps? }?)', summary: '按住从起点拖到终点再松开（文本选区、滑块、画笔）', availability: 'browser' },
-      { name: 'browser.scroll', signature: 'browser.scroll(tabId?, { dx?, dy?, x?, y? })', summary: '滚轮滚动：dy 正数往下、dx 正数往右，x/y 定滚动落点（省略 = 视口左上）', availability: 'browser' },
-      { name: 'browser.type', signature: 'browser.type(tabId?, 文字, 目标?)', summary: '输入文字（插到焦点元素；给了目标先点它再输入），中文照常', availability: 'browser' },
-      { name: 'browser.key', signature: 'browser.key(tabId?, "Enter" | "Ctrl+A" | …)', summary: '按键或组合键（Ctrl/Shift/Alt/Meta + 单键）；输完文字要回车就是它', availability: 'browser' },
-      { name: 'browser.capture', signature: 'browser.capture(tabId?)', summary: '页面截图 → 存进资源库并附在下一跳（与 ui.screenshot 同一条通道）——看页面全靠它', availability: 'browser' },
+      { name: 'browser.point', signature: 'browser.point(tabId?, 目标)', summary: '页面像锚点跳转一样滚到目标元素（{ ref } 或选择器），并注入短暂的脉冲高亮把它标出来——指给用户看、或自己确认位置', availability: 'browser' },
+      { name: 'browser.dom', signature: 'browser.dom(tabId?, ref, op, arg?)', summary: '对 snapshot 清单里的 ref 做受控 DOM 操作：op = "click" / "fill"(文字，触发 input/change) / "focus" / "submit"(所在表单) / "text"(元素文字 ≤4000 字) / "attr"(属性名)；result 回操作自己的小结果', availability: 'browser' },
+      { name: 'browser.read', signature: 'browser.read(tabId?)', summary: '整页转 markdown（与 webFetch 同一条管线）：短的回全文，长的落盘回大纲树（每节字数）+ uuid，再用 web.read 按节读——登录态页面也能读', availability: 'browser' },
+      { name: 'browser.capture', signature: 'browser.capture(tabId?)', summary: '页面截图 → 存进资源库并附在下一跳（与 ui.screenshot 同一条通道）——**最后手段**：snapshot/read 拿不到的信息才用它', availability: 'browser' },
     ],
   },
   {
