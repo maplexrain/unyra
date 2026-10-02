@@ -288,7 +288,7 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     items: [
       { name: 'web.webFetch', signature: "web.webFetch('https://…')", summary: '抓一页并转成 markdown：短的回全文，长的存成文件并回大纲树（每节字数）+ uuid', availability: 'always' },
       { name: 'web.read', signature: "web.read(uuid, '一级标题/二级标题')", summary: '读落盘网页的某一节（path 可省略：从头给一段 + 大纲）；一次最多回 1.2 万字，没回完会说明怎么继续', availability: 'always' },
-      { name: 'web.search', signature: "web.search(query, { engines? | engine?, lang?, count? }?)", summary: '多引擎搜索（baidu / bing / google / yandex / wikipedia）：engines 给数组并行搜多家（≤3）；回 { rank, title, url, snippet, engine }，解析不出的引擎在 failed 里说明，换一家再试', availability: 'always' },
+      { name: 'web.search', signature: "web.search(query, { engines? | engine?, lang?, count?, onEngineFail? }?)", summary: '多引擎搜索（baidu / bing / google / yandex / wikipedia）：engines 给数组并行搜多家（≤3）；回 searchedAt（抓取时刻，结果里的相对时间按它折算）+ results，解析不出的引擎在 failed 里说明；**engines 全挂缺省自动用 baidu/bing 补搜一轮**（onEngineFail:"strict" 关掉），weak 列出只回标题没摘要的引擎', availability: 'always' },
     ],
   },
   {
@@ -358,7 +358,7 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
       '→ wait 收交付（首个完成即返回，必带最大时长）。**子代理自身拿不到这一组**（不递归）。',
     items: [
       { name: 'subagent.create', signature: 'subagent.create({ key, name?, system, tools? })', summary: '登记定义（只登记、不启动）；system 写清角色、工作方式与交付纪律；tools 是它 execute 开放的 api 组（不给就是 web + tmp）；同 key 再登记即覆盖（会话上下文保留）', availability: 'subagent' },
-      { name: 'subagent.run', signature: 'subagent.run({ agent, task })', summary: '派任务并启动，**立即返回**（任务在后台跑）；task 要自包含（子代理看不到你们的对话）；对同一 agent 重复 run 要等它空闲', availability: 'subagent' },
+      { name: 'subagent.run', signature: 'subagent.run({ agent, task })', summary: '派任务并启动，**立即返回**（任务在后台跑）；agent 认 key（name 作别名，同名歧义要指名）；task 要自包含（子代理看不到你们的对话）；**一个 key 同一时刻只跑一个任务**，要并发建多个 key', availability: 'subagent' },
       { name: 'subagent.wait', signature: 'subagent.wait({ seconds })', summary: '等交付：有挂起的立即全部返回；否则监听所有在跑的，**首个完成即返回**（含仍在跑清单）；到 seconds 没人交付返回 timedOut；无人可等立即返回空', availability: 'subagent' },
       { name: 'subagent.view', signature: 'subagent.view(agent)', summary: '看状态与最近过程（recent 是最近几条消息）——超时后先 view 判断是否在钻牛角尖，再决定 intervene 还是再等一轮', availability: 'subagent' },
       { name: 'subagent.intervene', signature: 'subagent.intervene(agent, instruction)', summary: '给运行中的 agent 插入一条指令；等它当前这条消息输出完整后才插入，不打断半截输出', availability: 'subagent' },

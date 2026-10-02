@@ -8,7 +8,7 @@
  * DOMParser 由 happy-dom 提供（文件头的 environment pragma），生产里是渲染层的原生实现。
  */
 import { describe, expect, it } from 'vitest'
-import { parseSerp, serpUrl, SEARCH_ENGINES } from '../src/lib/web/serp'
+import { parseSerp, planFallback, serpUrl, SEARCH_ENGINES, weakEngines } from '../src/lib/web/serp'
 
 describe('serpUrl', () => {
   it('五家引擎的地址各就各位', () => {
@@ -132,5 +132,24 @@ describe('parseSerp', () => {
 
   it('引擎表与文档口径一致：五家', () => {
     expect(SEARCH_ENGINES).toEqual(['baidu', 'bing', 'google', 'yandex', 'wikipedia'])
+  })
+})
+
+describe('searchForAgent 的降级与质量信号（纯函数，宿主实现在 learn/webSearch）', () => {
+  it('planFallback：缺省引擎里没试过的才补（都试过就认命，不再重试）', () => {
+    expect(planFallback(['google'])).toEqual(['baidu', 'bing'])
+    expect(planFallback(['google', 'yandex'])).toEqual(['baidu', 'bing'])
+    expect(planFallback(['baidu', 'bing'])).toEqual([])
+    expect(planFallback([])).toEqual(['baidu', 'bing'])
+  })
+
+  it('weakEngines：整家引擎只回标题没摘要才算弱（个别空摘要不算、空结果不算）', () => {
+    expect(weakEngines([{ engine: 'baidu', results: [{ title: 't', url: 'u', snippet: '' }] }])).toEqual(['baidu'])
+    expect(
+      weakEngines([
+        { engine: 'baidu', results: [{ title: 't', url: 'u', snippet: '有摘要' }, { title: 't2', url: 'u2', snippet: '' }] },
+      ]),
+    ).toEqual([])
+    expect(weakEngines([{ engine: 'bing', results: [] }])).toEqual([])
   })
 })
