@@ -90,10 +90,31 @@ export function createSubAgentManager(deps: SubAgentManagerDeps): SubAgentManage
     turn = config
   }
 
-  /** 按 key 取定义与会话（桶现读：api 执行回调里永远看到最新的一份） */
-  const lookup = (key: string): { def?: SubAgentDef; session?: SubAgentSession } => {
+  /**
+   * 寻址：key 优先，name 作别名（导师常把更显眼的 name 抄进 agent 参数，实测反馈 2026-10-02）。
+   * 同名多定义是歧义，拒并列出候选；完全没命中时把 key（name）清单报出来——与 node 寻址
+   * 「找不到就列候选」同一套直觉，不退化为笼统提示。
+   */
+  const resolve = (raw: unknown): { def?: SubAgentDef; session?: SubAgentSession; error?: string } => {
+    const addr = asText(raw).trim()
     const b = deps.getBucket()
-    return { def: b.defs.find((d) => d.key === key), session: sessionOf(b, key) }
+    const byKey = b.defs.find((d) => d.key === addr)
+    if (byKey) return { def: byKey, session: sessionOf(b, byKey.key) }
+    const byName = b.defs.filter((d) => d.name === addr)
+    if (byName.length === 1) return { def: byName[0]!, session: sessionOf(b, byName[0]!.key) }
+    if (byName.length > 1) {
+      return {
+        error:
+          '「' + addr + '」是 ' + byName.length + ' 个子代理的显示名（' +
+          byName.map((d) => d.key + '（' + d.name + '）').join('、') + '）。用 key 指名你要的哪一个。',
+      }
+    }
+    const known = b.defs.map((d) => d.key + '（' + d.name + '）').join('、') || '（一个都没有）'
+    return {
+      error:
+        '没有叫「' + addr + '」的子代理。已登记的：' + known + '。' +
+        '地址认 key（name 是显示名，碰巧同名也能对上）；没有就先 create({ key, system, tools? }) 登记。',
+    }
   }
 
   const saveSession = (next: SubAgentSession): void => {
@@ -273,31 +294,43 @@ export function createSubAgentManager(deps: SubAgentManagerDeps): SubAgentManage
         name,
         apiGroups: groups,
         ...(prev
-          ? { note: '已覆盖同 key 的旧定义；会话上下文保留，新提示词从下一次任务起生效。' }
-          : { note: '已登记（只登记、未启动）。用 run({ agent: "' + key + '", task }) 派任务。' }),
+          ? {
+              note:
+                '⚠️ 已覆盖同 key 的旧定义；会话上下文保留，新提示词从下一次任务起生效。' +
+                '一个 key 同一时刻只跑一个任务，要并发请建多个 key。',
+            }
+          : {
+              note:
+                '已登记（只登记、未启动）。下一步：run({ agent: "' + key + '", task }) 派任务——地址认 key' +
+                '（name 是显示名，碰巧写 name 也能对上）。一个 key 同一时刻只跑一个任务，要并发就建多个 key 再一起 run。',
+            }),
       }
     },
 
     run: (args) => {
-      const key = asText(args.agent).trim()
       const task = asText(args.task).trim()
       if (!task) {
         return { error: 'run 需要一段 task：要做什么、什么口径、交付什么格式，写全（子代理看不到你们的对话）。' }
       }
-      const { def, session } = lookup(key)
-      if (!def) return { error: '没有叫「' + key + '」的子代理。先 create({ key, system, tools? }) 登记再 run。' }
+      const found = resolve(args.agent)
+      if (found.error) return { error: found.error }
+      const def = found.def!
+      const session = found.session
       if (session && running.has(session.id)) {
-        return { error: '「' + key + '」正在跑：用 wait 收它的交付，或先 interrupt。' }
+        return { error: '「' + def.key + '」正在跑：用 wait 收它的交付，或先 interrupt。' }
       }
       const withTask = withTaskMessage(session ?? createSession(def), task)
       startLoop(def, withTask.session)
-      return { ok: true, agent: key, note: '已启动，在后台跑。用 wait({ seconds }) 收交付（记得给最大时长）。' }
+      return { ok: true, agent: def.key, note: '已启动，在后台跑。用 wait({ seconds }) 收交付（记得给最大时长）。' }
     },
 
     resume: (key) => {
-      const { def, session } = lookup(key)
-      if (!def || !session) return { error: '没有叫「' + key + '」的子代理（或它还没跑过任何任务）。' }
-      if (running.has(session.id)) return { error: '「' + key + '」正在跑，无需恢复。' }
+      const found = resolve(key)
+      if (found.error) return { error: found.error }
+      const def = found.def!
+      const session = found.session
+      if (!session) return { error: '「' + def.key + '」还没跑过任何任务，没有可恢复的上下文。派任务用 run。' }
+      if (running.has(session.id)) return { error: '「' + def.key + '」正在跑，无需恢复。' }
       if (session.status !== 'interrupted') {
         return { error: '它没有可恢复的任务（当前状态：' + session.status + '）。派新任务用 run。' }
       }
@@ -308,26 +341,30 @@ export function createSubAgentManager(deps: SubAgentManagerDeps): SubAgentManage
     intervene: (key, instruction) => {
       const text = (instruction ?? '').trim()
       if (!text) return { error: '介入需要一段指令：告诉它往哪调整。' }
-      const { session } = lookup(key)
-      const handle = session ? running.get(session.id) : undefined
+      const found = resolve(key)
+      if (found.error) return { error: found.error }
+      const handle = found.session ? running.get(found.session.id) : undefined
       if (!handle) {
-        return { error: '「' + key + '」没有在跑：介入只对运行中的 agent 有意义。派任务用 run，恢复用 resume。' }
+        return { error: '「' + found.def!.key + '」没有在跑：介入只对运行中的 agent 有意义。派任务用 run，恢复用 resume。' }
       }
       handle.injections.push(text)
       return { ok: true, agent: key, queued: handle.injections.length, note: '已排队：等它当前这条消息输出完整后就插入（绝不打断半截输出）。' }
     },
 
     interrupt: (key) => {
-      const { session } = lookup(key)
-      const handle = session ? running.get(session.id) : undefined
-      if (!handle) return { error: '「' + key + '」没有在跑。' }
+      const found = resolve(key)
+      if (found.error) return { error: found.error }
+      const handle = found.session ? running.get(found.session.id) : undefined
+      if (!handle) return { error: '「' + found.def!.key + '」没有在跑。' }
       handle.ctrl.abort()
-      return { ok: true, agent: key, note: '已请求中断（上下文保留，之后可 resume）。中断在下一个边界生效；wait 会领回中断回执。' }
+      return { ok: true, agent: found.def!.key, note: '已请求中断（上下文保留，之后可 resume）。中断在下一个边界生效；wait 会领回中断回执。' }
     },
 
     view: (key) => {
-      const { def, session } = lookup(key)
-      if (!def) return { error: '没有叫「' + key + '」的子代理。' }
+      const found = resolve(key)
+      if (found.error) return { error: found.error }
+      const def = found.def!
+      const session = found.session
       const handle = session ? running.get(session.id) : undefined
       const recent = (session?.messages ?? []).slice(-8).map((m) => ({
         role: m.role,
@@ -357,20 +394,22 @@ export function createSubAgentManager(deps: SubAgentManagerDeps): SubAgentManage
     },
 
     remove: (key) => {
-      const { def, session } = lookup(key)
-      if (!def) return { error: '没有叫「' + key + '」的子代理。' }
+      const found = resolve(key)
+      if (found.error) return { error: found.error }
+      const def = found.def!
+      const session = found.session
       const wasRunning = session ? running.has(session.id) : false
       if (session) {
         const handle = running.get(session.id)
         if (handle) handle.ctrl.abort()
       }
       deps.setBucket((prev) => ({
-        defs: prev.defs.filter((d) => d.key !== key),
-        sessions: prev.sessions.filter((s) => s.defKey !== key),
+        defs: prev.defs.filter((d) => d.key !== def.key),
+        sessions: prev.sessions.filter((s) => s.defKey !== def.key),
       }))
       // 挂起队列里它的交付一并清掉：会话都没了，交付无处安放
-      for (let i = pending.length - 1; i >= 0; i--) if (pending[i].agent === key) pending.splice(i, 1)
-      return { ok: true, agent: key, note: '已删除定义与会话' + (wasRunning ? '（正在跑的那场已中断）' : '') + '。' }
+      for (let i = pending.length - 1; i >= 0; i--) if (pending[i].agent === def.key) pending.splice(i, 1)
+      return { ok: true, agent: def.key, note: '已删除定义与会话' + (wasRunning ? '（正在跑的那场已中断）' : '') + '。' }
     },
 
     wait: (args) => {

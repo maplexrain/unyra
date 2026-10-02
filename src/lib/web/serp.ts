@@ -21,6 +21,21 @@ export interface SerpResult {
 
 export const SNIPPET_MAX = 320
 
+/** 缺省引擎顺位（中文网络下最稳的两家）：engines 全挂时的自动降级顺序 */
+export const FALLBACK_ENGINES: SearchEngine[] = ['baidu', 'bing']
+
+/** 引擎全挂时的降级计划：缺省引擎里还没试过的那几家（都试过了就认命，不再重试） */
+export function planFallback(tried: SearchEngine[]): SearchEngine[] {
+  return FALLBACK_ENGINES.filter((e) => !tried.includes(e))
+}
+
+/** 「成功但没摘要」的引擎：结果只剩标题与链接（安全验证或解析质量差），细节必须 webFetch 核实 */
+export function weakEngines(good: Array<{ engine: SearchEngine; results: SerpResult[] }>): SearchEngine[] {
+  return good
+    .filter((g) => g.results.length > 0 && g.results.every((r) => !r.snippet.trim()))
+    .map((g) => g.engine)
+}
+
 /** 每家引擎的解析规则：容器选择器 → 标题链接 → 摘要（按可信度从高到低，逐个试） */
 interface EngineRule {
   item: string

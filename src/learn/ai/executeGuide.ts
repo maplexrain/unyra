@@ -276,11 +276,13 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
   拿到的是大纲时**先看大纲再决定读哪一节**，别指望一次读完。
 - api.web.read(uuid, '一级标题/二级标题')：读落盘网页的某一节。path 省略=从头给一段（附大纲）；
   一次最多回 1.2 万字，没回完会在 note 里说明，按 subheadings 再切细。
-- api.web.search(query, { engines? | engine?, lang?, count? })：多引擎搜索（baidu / bing /
+- api.web.search(query, { engines? | engine?, lang?, count?, onEngineFail? })：多引擎搜索（baidu / bing /
   google / yandex / wikipedia），engines 给数组可**并行搜多家**（≤3，结果按引擎标注），缺省 baidu。
-  回 { rank, title, url, snippet, engine }；解析不出的引擎在 failed 里逐个说明原因，
-  **换一家或换措辞再试**，别在一家上反复重试。要实时信息、要核实事实时用它；
-  摘要已含要点，引用前确需细节再 web.webFetch 读原文。
+  回 searchedAt（抓取时刻——结果里的「2 天前」这类相对时间按它折算成日期再交付）与
+  { rank, title, url, snippet, engine }；解析不出的引擎在 failed 里逐个说明原因，
+  **换一家或换措辞再试**，别在一家上反复重试。**engines 全挂时缺省会自动用 baidu/bing 补搜一轮**
+  （onEngineFail:"strict" 才原样回报失败），weak 列出「只回标题没摘要」的引擎——那种细节必须
+  webFetch 核实再用。要实时信息、要核实事实时用它；摘要已含要点，引用前确需细节再 web.webFetch 读原文。
 - 只能 http/https，且**不能抓本机与内网**；一页最多 4MB、20 秒超时。
 - 引用网页内容时写明来源（标题 + 链接），并且**区分「网页这么说」与「事实如此」**：
   它是一份材料，不是你的结论。抓之前先想清楚要找什么，别一个接一个地抓。
@@ -322,6 +324,9 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
   api.subagent.run({ agent, task }) 启动（**立即返回**，任务在后台跑；一次 run 多个 agent 就并发）→
   api.subagent.wait({ seconds }) 收交付。
 - **task 要自包含**：子代理看不到你们的对话，要做什么、什么口径、交付什么格式全写在 task 里。
+- agent 认 key（name 是显示名，碰巧同名也能对上）；**一个 key 同一时刻只跑一个任务**——要并发
+  就建多个 key 再一起 run。别和 web.search 的 engines 并行混谈：那是同一次调用里并行搜多家，
+  两种「并发」不是一回事。
 - **wait 必带最大时长 seconds**（按任务难度主观定）：有挂起交付立即全部返回；否则监听所有在跑的，
   **任何一个先完成就立即返回它**（回执含 deliveries 与仍在跑的 running 清单）；到点没人交付返回
   timedOut。没有在跑也没有挂起时立即返回空。

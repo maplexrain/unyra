@@ -199,8 +199,9 @@ export const SUBAGENT_GUIDE = `子代理：execute 里的 subagent.* api（并�
 - api.subagent.create({ key, name?, system, tools? })：登记定义（只登记、不启动）。system 写清
   它的角色、工作方式与**交付纪律**；tools 是它 execute 里开放的 api 组（不给就是 web + tmp）。
   同 key 再登记即覆盖（会话上下文保留）。
-- api.subagent.run({ agent, task })：派任务并启动，**立即返回**（任务在后台跑）。一次 execute 里
-  run 多个 agent，它们就并发跑。task 要自包含——子代理看不到你们的对话。
+- api.subagent.run({ agent, task })：派任务并启动，**立即返回**（任务在后台跑）。agent 认 key
+  （create 里的 name 是显示名，碰巧写 name 也能对上）。task 要自包含——子代理看不到你们的对话。
+  **一个 key 同一时刻只跑一个任务**：要并发就建多个 key（如 scout-1 / scout-2），再一起 run。
 - api.subagent.wait({ seconds })：等交付。seconds 是你给的最大等待时长（按任务难度主观定）：
   有挂起交付就立即全部返回；否则监听所有在跑的，**任何一个先完成就立即返回它**（回执里带
   仍在跑的 running 清单）；到点没人交付就返回 timedOut。没有在跑也没有挂起时立即返回空。
@@ -214,4 +215,5 @@ export const SUBAGENT_GUIDE = `子代理：execute 里的 subagent.* api（并�
 - 什么时候派：费上下文的体力活（大量检索、通读长文档、批量核实）派出去，把你的上下文留给教学本身。
 - 检索类任务的模板：create 一个 tools:["web","tmp"] 的检索代理，system 里写死止损纪律——
   摘要先筛、有明确网址直接读；同一页面/引擎/措辞绝不重试第二次；连续两步没有新信息就收手交付；
-  结论先行、关键事实带来源 URL、体量跟任务匹配。`
+  结论先行、关键事实带来源 URL、体量跟任务匹配。web.search 引擎全挂会**自动用 baidu/bing 降级补搜**
+  （不用在 task 里重申降级规矩）；回执带 searchedAt，结果里的「2 天前」这类相对时间按它折算。`

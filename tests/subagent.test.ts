@@ -145,6 +145,33 @@ describe('subagent.create', () => {
     // 同 key 再登记即覆盖
     await manager.api.create({ key: 'worker', system: '换一个也足够长的系统提示词，写清新的角色与交付纪律。' })
     expect(bucket().defs).toHaveLength(1)
+    // 回执交代寻址与单任务约束；覆盖时明确警示
+    const fresh = await manager.api.create({ key: 'solo', system: '一个足够长的系统提示词，写清角色与交付纪律。' })
+    expect(fresh.note).toContain('run({ agent: "solo"')
+    expect(fresh.note).toContain('一个 key 同一时刻只跑一个任务')
+    const over = await manager.api.create({ key: 'solo', system: '再换一个也足够长的系统提示词，写清新的角色与交付纪律。' })
+    expect(over.note).toContain('已覆盖')
+    expect(over.note).toContain('会话上下文保留')
+  })
+})
+
+describe('寻址（key 优先，name 作别名）', () => {
+  it('run 认 name；同名歧义拒并列出候选；未命中把已登记的 key（name）全列出来', async () => {
+    const { stream } = taskStream([{ match: 'A任务', hops: [{ content: '交付', toolCalls: [] }] }])
+    const { manager } = makeManager({ stream })
+    await manager.api.create({ key: 'scout', name: '检索兵', system: '一个足够长的系统提示词，写清角色与交付纪律。' })
+    // name 作别名：导师把更显眼的 name 抄进 agent 参数也能对上
+    const r = await manager.api.run({ agent: '检索兵', task: '做 A任务' })
+    expect(r.ok).toBe(true)
+    const w = await manager.api.wait({ seconds: 5 })
+    expect(w.deliveries[0]!.agent).toBe('scout')
+    // 同名歧义：两个定义同名，拒并要求用 key
+    await manager.api.create({ key: 'scout2', name: '检索兵', system: '另一个也足够长的系统提示词，写清角色与交付纪律。' })
+    expect((await manager.api.run({ agent: '检索兵', task: 'x' })).error).toContain('用 key')
+    // 未命中：候选清单带 key（name）两个维度
+    const miss = await manager.api.run({ agent: '不存在', task: 'x' })
+    expect(miss.error).toContain('scout（检索兵）')
+    expect(miss.error).toContain('scout2（检索兵）')
   })
 })
 
