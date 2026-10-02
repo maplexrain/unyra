@@ -294,19 +294,17 @@ export interface Conversation {
  *
  * 子代理是导师派出去干活的「分身」：各有自己独立的上下文，在导师的对话里跑自己的
  * 「思考 → 工具 → 观察」循环，跑完只把**一份交付消息**交回导师（中间过程不进导师上下文）。
- * 分两种：**内置**（提示词与 api 面写死在代码里，导师直接调用、不可改）与
- * **导师自定义**（导师先登记系统提示词与可用的 api 组，然后才能派活）。
+ * 没有内置的：导师用 agent_spawn 先定义（系统提示词与可用的 api 组），**定义完成即启动**；
+ * 定义只活在当前这段对话里，不能跨对话复用，本对话内可反复派活（会话按 key 复用）。
  * 架构与边界见 docs/subagent-architecture.md；实现见 agent/subagent/。
  */
 
 /** 一个子代理的定义：key 是导师寻址它的唯一凭据 */
 export interface SubAgentDef {
-  /** 稳定标识：agent_run 的 agent 参数写的就是它（如 'web-search'） */
+  /** 稳定标识：agent_run 的 agent 参数写的就是它 */
   key: string
   /** 显示名（面板的会话列表用） */
   name: string
-  /** 内置的定义不可被 agent_define 覆盖 */
-  builtin: boolean
   /** 子代理自己的系统提示词——它的上下文里唯一的一号消息 */
   system: string
   /**
@@ -341,7 +339,7 @@ export interface SubAgentSession {
 
 /** 一段对话的子代理桶：自定义定义 + 会话。生命周期 = 这段导师对话（随 chat.json 落盘） */
 export interface SubAgentBucket {
-  /** 导师 agent_define 登记的定义（本对话内有效；内置的不在这里） */
+  /** 导师 agent_spawn 登记的定义（只在本对话内有效） */
   defs: SubAgentDef[]
   sessions: SubAgentSession[]
 }

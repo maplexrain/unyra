@@ -20,11 +20,13 @@ import { activeMessages } from '../src/learn/compact'
 import { upsertAssistantInFlight } from '../src/learn/agent/inflight'
 import { emptyPomodoro } from '../src/learn/pomodoro'
 import { createSession, withRunResult, withTaskMessage } from '../src/agent/subagent/registry'
-import { WEB_SEARCH_DEF } from '../src/agent/subagent/builtin'
 import type { Conversation, ConversationMessage, ContextSummary } from '../src/agent/types'
 import type { LearnStore } from '../src/learn/types'
 
 const now = new Date(2026, 8, 23, 21, 0).getTime()
+
+/** 子代理定义替身（没有内置子代理了）：会话按 defKey 挂在它名下 */
+const SUB_DEF = { key: 'reader', name: '文档通读', system: '通读长文档的子代理。', apiGroups: ['doc', 'tmp'] }
 
 const msg = (id: string, role: 'user' | 'assistant', text: string): ConversationMessage => ({
   id,
@@ -168,7 +170,7 @@ describe('对话写盘 → 读回', () => {
   })
 
   it('子代理桶活着回来：定义、会话与各自独立的上下文（normalizeConversation 的字段白名单曾经把它整层剥掉）', () => {
-    const task = withTaskMessage(createSession(WEB_SEARCH_DEF), '查一下勾股定理的证明思路')
+    const task = withTaskMessage(createSession(SUB_DEF), '查一下勾股定理的证明思路')
     const session = withRunResult(task.session, {
       runId: 'run1',
       taskMessageId: task.message.id,
@@ -184,7 +186,7 @@ describe('对话写盘 → 读回', () => {
     const back = roundTrip({
       ...convWith([msg('u1', 'user', '开始')]),
       subagents: {
-        defs: [{ key: 'reader', name: '文档通读', builtin: false, system: '通读长文档的子代理。', apiGroups: ['doc', 'tmp'] }],
+        defs: [SUB_DEF],
         sessions: [session],
       },
     })
@@ -199,15 +201,17 @@ describe('对话写盘 → 读回', () => {
     expect(live?.messages[1]?.parts.some((p) => p.type === 'tool')).toBe(true)
   })
 
-  it('子代理桶的坏数据不炸也不留：残留「运行中」复位「被中断」，形状不对整层丢弃', () => {
-    const running = { ...withTaskMessage(createSession(WEB_SEARCH_DEF), '任务').session, status: 'running' as const }
+  it('子代理桶的坏数据不炸也不留：残留「运行中」复位「被中断」，孤儿会话剪掉，形状不对整层丢弃', () => {
+    const running = { ...withTaskMessage(createSession(SUB_DEF), '任务').session, status: 'running' as const }
+    const orphan = withTaskMessage(createSession({ ...SUB_DEF, key: 'web-search' }), '内置时代的任务').session
     const back = roundTrip({
       ...convWith([msg('u1', 'user', '开始')]),
-      subagents: { defs: [{ key: 42 }] as never, sessions: [running, { id: '半条' }] as never },
+      subagents: { defs: [SUB_DEF], sessions: [running, orphan, { id: '半条' }] as never },
     })
-    // running 复位为 interrupted（进程被杀时那场任务已经没了，留着只会永远脉冲）
+    // running 复位为 interrupted（进程被杀时那场任务已经没了，留着只会永远脉冲）；孤儿会话不回来
     expect(back.subagents?.sessions.map((s) => s.status)).toEqual(['interrupted'])
-    expect(back.subagents?.defs).toHaveLength(0)
+    expect(back.subagents?.sessions.map((s) => s.defKey)).toEqual(['reader'])
+    expect(back.subagents?.defs).toHaveLength(1)
     // 形状完全不对的整桶丢弃：读回来等于没有这个字段
     const gone = roundTrip({ ...convWith([msg('u1', 'user', '开始')]), subagents: '乱写' as never })
     expect(gone.subagents).toBeUndefined()

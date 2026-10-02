@@ -1,10 +1,14 @@
 /**
- * 导师侧的子代理工具：agent_define（登记自定义子代理）/ agent_run（派活并等交付）/
- * agent_list（看有哪些会话）。
+ * 导师侧的子代理工具：agent_spawn（定义并**立刻启动**）/ agent_run（给已定义的派活并等交付）/
+ * agent_list（看本对话有哪些会话）。
  *
- * 「父等子」就落在 agent_run 的形状上：它是一个普通工具，导师的循环在工具返回前
+ * 没有内置子代理：要用就先 agent_spawn——定义完成的同时它就开始跑第一单任务；
+ * 之后 agent_run 在当前对话里复用（同 key 会话续着用，fresh:true 才清空）。
+ * 定义与会话都住在 Conversation.subagents 上、随 chat.json 落盘，生命周期 = 这段导师对话。
+ *
+ * 「父等子」就落在 spawn / run 的形状上：它们是普通工具，导师的循环在工具返回前
  * 不会前进——交付文本作为工具结果回填进导师上下文，中间过程一概不带出来。
- * 同一轮派多个 agent_run 会按序执行，全部完成后导师才继续。
+ * 同一轮派多个会按序执行，全部完成后导师才继续。
  */
 import type { ReasoningEffort, StreamFn } from '../../ai/types'
 import type { ResolvedProvider } from '../../ai/client'
@@ -14,7 +18,7 @@ import { clip } from '../sandbox/api'
 import { createExecuteTool } from '../sandbox/execute'
 import type { SandboxOptions } from '../sandbox/types'
 import { asText } from '../sandbox/refs'
-import { apiBriefForGroups, BUILTIN_SUBAGENTS, findBuiltinSubAgent, SUBAGENT_ALLOWED_GROUPS } from './builtin'
+import { apiBriefForGroups, SUBAGENT_ALLOWED_GROUPS } from './groups'
 import { createSession, sessionOf, withFreshContext, withRunResult, withRunning, withTaskMessage, type SubRunRecord } from './registry'
 import { runSubAgentTask, type SubRunOutcome } from './runner'
 import type { SubAgentBucket, SubAgentDef, SubAgentSession } from './types'
@@ -48,13 +52,12 @@ export interface SubAgentToolDeps {
   stream?: StreamFn
 }
 
-const DEFINE_PARAMETERS = {
+const SPAWN_PARAMETERS = {
   type: 'object',
   properties: {
     key: {
       type: 'string',
-      description:
-        '这个子代理的标识（agent_run 的 agent 参数就写它）。字母开头，字母/数字/-/_，32 字以内；内置的 key（如 web-search）不可占用。',
+      description: '这个子代理的标识（之后 agent_run 的 agent 参数就写它）。字母开头，字母/数字/-/_，32 字以内。',
     },
     name: { type: 'string', description: '显示名（几个字，界面的会话列表用）' },
     system: {
@@ -68,15 +71,20 @@ const DEFINE_PARAMETERS = {
       description:
         '它 execute 里开放的 api 组。可选：web / tmp / res / doc / node / outline / mind / workspace / reading / attention。不给时默认 web + tmp。',
     },
+    task: {
+      type: 'string',
+      description:
+        '第一单任务——定义完成它就立刻开始跑。要**自包含**：子代理看不到你们的对话——要查/做什么、什么口径、交付什么格式，全写在这里。',
+    },
   },
-  required: ['key', 'system'],
+  required: ['key', 'system', 'task'],
   additionalProperties: false,
 }
 
 const RUN_PARAMETERS = {
   type: 'object',
   properties: {
-    agent: { type: 'string', description: '子代理的 key（内置 web-search，或 agent_define 登记过的）' },
+    agent: { type: 'string', description: '已定义的子代理 key（agent_spawn 登记过的；agent_list 可以先看一眼）' },
     task: {
       type: 'string',
       description:
@@ -105,19 +113,109 @@ export function createSubAgentTools(deps: SubAgentToolDeps): AgentTool[] {
     })
   }
 
-  const define: AgentTool = {
-    name: 'agent_define',
+  /**
+   * 跑一单任务并落账：spawn 与 run 共用的后半段（会话追加任务 → runAgent → 交付回填）。
+   * 返回给导师的回执在这一个出口里成形：交付正文，或「为什么没有交付」。
+   */
+  const runTask = async (
+    def: SubAgentDef,
+    session: SubAgentSession,
+    task: string,
+    fresh?: boolean,
+  ): Promise<{ ok: boolean; content: string }> => {
+    if (fresh === true) {
+      session = withFreshContext(session)
+      resetPrefixGate('sub:' + session.id)
+    }
+    const withTask = withTaskMessage(session, task)
+    session = withRunning(withTask.session, true)
+    saveSession(session)
+
+    // 级联中止：导师这一轮被停止时，正在跑的子代理当场退场。
+    // 信号在进来之前就已经废了的话，监听器不会再收到事件，这里直接补一刀。
+    const subCtrl = new AbortController()
+    const onAbort = () => subCtrl.abort()
+    if (deps.signal.aborted) subCtrl.abort()
+    else deps.signal.addEventListener('abort', onAbort, { once: true })
+    try {
+      const runId = crypto.randomUUID()
+      let outcome: SubRunOutcome
+      try {
+        outcome = await runSubAgentTask({
+          def,
+          sessionId: session.id,
+          messages: withTask.session.messages,
+          tools: [createExecuteTool(subsetSandbox(deps.sandbox, def.apiGroups))],
+          provider: deps.provider,
+          model: deps.model,
+          effort: deps.effort,
+          contextWindow: deps.contextWindow,
+          signal: subCtrl.signal,
+          onEvent: (e) => deps.onEvent?.(session.id, runId, e),
+          ...(deps.stream ? { stream: deps.stream } : {}),
+        })
+      } catch (err) {
+        // runAgent 自己兜住了模型侧的绝大多数错误；能抛到这里的是装配层的问题。
+        // 记成一次失败的回复——绝不能让会话卡在「运行中」、实时槽悬着不收。
+        const message = err instanceof Error ? err.message : '子代理执行失败'
+        outcome = {
+          status: 'error',
+          delivery: null,
+          parts: [{ type: 'notice', level: 'warn', text: message }],
+          usage: null,
+          error: message,
+        }
+      }
+      const record: SubRunRecord = {
+        runId,
+        taskMessageId: withTask.message.id,
+        parts: outcome.parts,
+        usage: outcome.usage,
+        status: outcome.status === 'complete' || outcome.status === 'incomplete' ? 'idle' : outcome.status,
+        delivery: outcome.delivery,
+        issue:
+          outcome.error ??
+          (outcome.status === 'interrupted'
+            ? '任务被中止，没有交付'
+            : outcome.status === 'incomplete'
+              ? '输出提前结束，交付可能不完整'
+              : undefined),
+      }
+      const done = withRunResult(session, record)
+      saveSession(done)
+      deps.onRunEnd?.(session.id, runId)
+
+      const head = '【子代理交付 · ' + def.name + '】（key: ' + def.key + ' · 第 ' + done.runs + ' 次任务）\n\n'
+      if (outcome.delivery) {
+        const note =
+          outcome.status === 'incomplete'
+            ? '（注意：它的输出提前结束，这份交付可能不完整；再派一次任务可以让它接着写。）\n\n'
+            : ''
+        return { ok: true, content: clip(head + note + outcome.delivery) }
+      }
+      const why =
+        outcome.status === 'interrupted'
+          ? '任务被用户中止，没有交付。它的上下文还在：再派一次任务可以接着做，或用 fresh:true 重开。'
+          : outcome.status === 'error'
+            ? '执行失败：' + (outcome.error ?? '未知错误') + '。可以再试一次；反复失败就把任务拆小，或换个说法。'
+            : '它结束了但没有交付正文（只有工具调用）。再派一次任务，明确要求把结果写成一段完整文字。'
+      return { ok: false, content: head + why }
+    } finally {
+      deps.signal.removeEventListener('abort', onAbort)
+    }
+  }
+
+  const spawn: AgentTool = {
+    name: 'agent_spawn',
     description:
-      '登记一个自定义子代理（只在当前这段对话内有效）：给它系统提示词与可用的 api 组，之后用 agent_run 派活。' +
-      '同 key 再登记即覆盖；内置子代理（web-search）不可覆盖、也无需登记。',
-    parameters: DEFINE_PARAMETERS,
+      '定义一个子代理并**立刻启动**：定义完成的同时它就开始跑 task（第一单任务）。' +
+      '给它系统提示词与可用的 api 组；定义只在当前这段对话内有效，不能跨对话复用；' +
+      '同 key 再定义即覆盖（会话上下文保留，新提示词从下一次任务起生效）。之后的活用 agent_run 派。',
+    parameters: SPAWN_PARAMETERS,
     run: async (args) => {
       const key = asText(args.key).trim()
       if (!KEY_PATTERN.test(key)) {
         return { ok: false, content: 'key 不合法：字母开头，后面用字母/数字/-/_，32 字以内。' }
-      }
-      if (findBuiltinSubAgent(key)) {
-        return { ok: false, content: '「' + key + '」是内置子代理，提示词与 api 面不可改。换一个 key 登记你自己的。' }
       }
       const system = asText(args.system).trim()
       if (system.length < 20) {
@@ -132,36 +230,34 @@ export function createSubAgentTools(deps: SubAgentToolDeps): AgentTool[] {
           content: 'api 组不认识：' + invalid.join('、') + '。可选的只有：' + SUBAGENT_ALLOWED_GROUPS.join('、') + '。',
         }
       }
+      const task = asText(args.task).trim()
+      if (!task) {
+        return { ok: false, content: 'task 不能为空：定义完成它就立刻跑这单任务，把要做什么、交付什么写全。' }
+      }
       const name = asText(args.name).trim() || key
-      const def: SubAgentDef = { key, name, builtin: false, system, apiGroups: groups }
-      let note = ''
+      const def: SubAgentDef = { key, name, system, apiGroups: groups }
       const bucket = deps.getBucket()
       const prev = bucket.defs.find((d) => d.key === key)
-      if (prev) {
+      if (prev && prev.system !== system) {
         const session = sessionOf(bucket, key)
-        if (session && prev.system !== system) {
+        if (session) {
           // 换提示词 = 设计内的前缀重写：门禁账重置，下一次任务从新前缀记起
           resetPrefixGate('sub:' + session.id)
         }
-        note = '（已覆盖同 key 的旧定义' + (session ? '，会话上下文保留，新提示词从下一次任务起生效' : '') + '）'
       }
       deps.setBucket((p) => {
         const defs = p.defs.some((d) => d.key === key) ? p.defs.map((d) => (d.key === key ? def : d)) : [...p.defs, def]
         return { ...p, defs }
       })
-      return {
-        ok: true,
-        content:
-          '子代理「' + name + '」（key: ' + key + '）已登记' + note + '。api 组：' + groups.join('、') +
-          '。用 agent_run({ agent: "' + key + '", task: … }) 派活；任务描述要自包含。',
-      }
+      const session = sessionOf(deps.getBucket(), key) ?? createSession(def)
+      return runTask(def, session, task)
     },
   }
 
   const run: AgentTool = {
     name: 'agent_run',
     description:
-      '把一件活派给子代理并**等它做完**：它有自己独立的上下文与工具，跑完只把一份交付消息回给你——' +
+      '把一单活派给**当前对话里已定义**的子代理并**等它做完**：它有自己独立的上下文与工具，跑完只把一份交付消息回给你——' +
       '中间过程不占你的上下文。同一 agent 的会话会复用（它记得上次任务里读过的东西）；fresh:true 才清空重开。' +
       '一轮里可以连续派多个，它们依次执行，全部完成后你才继续。',
     parameters: RUN_PARAMETERS,
@@ -170,110 +266,31 @@ export function createSubAgentTools(deps: SubAgentToolDeps): AgentTool[] {
       const task = asText(args.task).trim()
       if (!task) return { ok: false, content: 'agent_run 需要一段 task。子代理看不到你们的对话，把要做什么、什么口径、交付什么格式写全。' }
       const bucket = deps.getBucket()
-      const def = findBuiltinSubAgent(key) ?? bucket.defs.find((d) => d.key === key)
+      const def = bucket.defs.find((d) => d.key === key)
       if (!def) {
-        const known = [...BUILTIN_SUBAGENTS.map((d) => d.key), ...bucket.defs.map((d) => d.key)].join('、') || '（一个都没有）'
+        const known = bucket.defs.map((d) => d.key).join('、') || '（一个都没有）'
         return {
           ok: false,
-          content: '没有叫「' + key + '」的子代理。现有的：' + known + '。自定义的要先 agent_define 登记再派。',
+          content:
+            '没有叫「' + key + '」的子代理。当前对话已定义的：' + known +
+            '。没有合适的就先用 agent_spawn 定义并启动——第一单任务就写在 spawn 的 task 里。',
         }
       }
-      let session = sessionOf(bucket, key)
-      if (!session) session = createSession(def)
-      if (args.fresh === true) {
-        session = withFreshContext(session)
-        resetPrefixGate('sub:' + session.id)
-      }
-      const withTask = withTaskMessage(session, task)
-      session = withRunning(withTask.session, true)
-      saveSession(session)
-
-      // 级联中止：导师这一轮被停止时，正在跑的子代理当场退场。
-      // 信号在进来之前就已经废了的话，监听器不会再收到事件，这里直接补一刀。
-      const subCtrl = new AbortController()
-      const onAbort = () => subCtrl.abort()
-      if (deps.signal.aborted) subCtrl.abort()
-      else deps.signal.addEventListener('abort', onAbort, { once: true })
-      try {
-        const runId = crypto.randomUUID()
-        let outcome: SubRunOutcome
-        try {
-          outcome = await runSubAgentTask({
-            def,
-            sessionId: session.id,
-            messages: withTask.session.messages,
-            tools: [createExecuteTool(subsetSandbox(deps.sandbox, def.apiGroups))],
-            provider: deps.provider,
-            model: deps.model,
-            effort: deps.effort,
-            contextWindow: deps.contextWindow,
-            signal: subCtrl.signal,
-            onEvent: (e) => deps.onEvent?.(session.id, runId, e),
-            ...(deps.stream ? { stream: deps.stream } : {}),
-          })
-        } catch (err) {
-          // runAgent 自己兜住了模型侧的绝大多数错误；能抛到这里的是装配层的问题。
-          // 记成一次失败的回复——绝不能让会话卡在「运行中」、实时槽悬着不收。
-          const message = err instanceof Error ? err.message : '子代理执行失败'
-          outcome = {
-            status: 'error',
-            delivery: null,
-            parts: [{ type: 'notice', level: 'warn', text: message }],
-            usage: null,
-            error: message,
-          }
-        }
-        const record: SubRunRecord = {
-          runId,
-          taskMessageId: withTask.message.id,
-          parts: outcome.parts,
-          usage: outcome.usage,
-          status: outcome.status === 'complete' || outcome.status === 'incomplete' ? 'idle' : outcome.status,
-          delivery: outcome.delivery,
-          issue:
-            outcome.error ??
-            (outcome.status === 'interrupted'
-              ? '任务被中止，没有交付'
-              : outcome.status === 'incomplete'
-                ? '输出提前结束，交付可能不完整'
-                : undefined),
-        }
-        const done = withRunResult(session, record)
-        saveSession(done)
-        deps.onRunEnd?.(session.id, runId)
-
-        const head = '【子代理交付 · ' + def.name + '】（key: ' + def.key + ' · 第 ' + done.runs + ' 次任务）\n\n'
-        if (outcome.delivery) {
-          const note =
-            outcome.status === 'incomplete'
-              ? '（注意：它的输出提前结束，这份交付可能不完整；再派一次任务可以让它接着写。）\n\n'
-              : ''
-          return { ok: true, content: clip(head + note + outcome.delivery) }
-        }
-        const why =
-          outcome.status === 'interrupted'
-            ? '任务被用户中止，没有交付。它的上下文还在：再派一次任务可以接着做，或用 fresh:true 重开。'
-            : outcome.status === 'error'
-              ? '执行失败：' + (outcome.error ?? '未知错误') + '。可以再试一次；反复失败就把任务拆小，或换个说法。'
-              : '它结束了但没有交付正文（只有工具调用）。再派一次任务，明确要求把结果写成一段完整文字。'
-        return { ok: false, content: head + why }
-      } finally {
-        deps.signal.removeEventListener('abort', onAbort)
-      }
+      const session = sessionOf(bucket, key) ?? createSession(def)
+      return runTask(def, session, task, args.fresh === true)
     },
   }
 
   const list: AgentTool = {
     name: 'agent_list',
-    description: '列出当前的子代理定义与会话：key、名字、状态、任务次数、最近一次交付或问题。派活前不确定有哪些，先看一眼。',
+    description: '列出当前对话的子代理定义与会话：key、名字、状态、任务次数、最近一次交付或问题。派活前不确定有哪些，先看一眼。',
     parameters: LIST_PARAMETERS,
     run: async () => {
       const bucket = deps.getBucket()
       const statusLabel = (s: SubAgentSession['status']): string =>
         s === 'running' ? '运行中' : s === 'interrupted' ? '上次被中断' : s === 'error' ? '上次出错' : '空闲'
       const lines: string[] = []
-      for (const def of BUILTIN_SUBAGENTS) lines.push('- ' + def.key + '（' + def.name + '，内置）')
-      for (const def of bucket.defs) lines.push('- ' + def.key + '（' + def.name + '，自定义）')
+      for (const def of bucket.defs) lines.push('- ' + def.key + '（' + def.name + '）')
       for (const s of bucket.sessions) {
         const extra = s.lastDelivery
           ? '最近交付：' + s.lastDelivery
@@ -286,12 +303,12 @@ export function createSubAgentTools(deps: SubAgentToolDeps): AgentTool[] {
       }
       const body = lines.length
         ? lines.join('\n')
-        : '还没有任何子代理。内置的 web-search 可以直接派；自定义的先 agent_define 登记一个。'
+        : '当前对话还没有任何子代理。用 agent_spawn({ key, system, tools?, task }) 定义并启动一个——定义完成它就立刻开始跑。'
       return { ok: true, content: body }
     },
   }
 
-  return [define, run, list]
+  return [spawn, run, list]
 }
 
 /**

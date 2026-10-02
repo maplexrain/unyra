@@ -14,7 +14,7 @@ import { useLocale, t } from '../../../i18n'
 
 export interface SubAgentMenuProps {
   sessions: SubAgentSession[]
-  /** 定义（内置 + 本对话自定义的）：会话项按 defKey 认名字与内置标记 */
+  /** 定义（本对话里 agent_spawn 登记的）：会话项按 defKey 认名字 */
   defs: SubAgentDef[]
   /** 正在跑的子代理（全对话至多一场）：入口按钮与列表项只靠颜色区分，不另加装饰 */
   runningSessionId: string | null
@@ -85,14 +85,6 @@ export function SubAgentMenu({ sessions, defs, runningSessionId, onOpen }: SubAg
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
                       <span className="truncate text-[12.5px] text-ink">{def?.name ?? s.defKey}</span>
-                      <span
-                        className={
-                          'shrink-0 rounded px-1 py-px text-[9.5px] ' +
-                          (def?.builtin ? 'bg-seal/10 text-seal-deep' : 'bg-line/70 text-ink-soft')
-                        }
-                      >
-                        {def?.builtin ? t('内置') : t('自定义')}
-                      </span>
                     </span>
                     <span className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-ink-faint">
                       <span className={status.live ? 'shrink-0 text-seal' : 'shrink-0'}>{status.label}</span>
