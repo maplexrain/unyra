@@ -5,14 +5,14 @@
  * explorer/useTreeExpand、explorer/useSidebarWidth 管。
  */
 import { useMemo, useState } from 'react'
-import type { KnowledgeNode, LearnStore, TabRef } from '../../learn/types'
+import type { FavoriteRef, KnowledgeNode, LearnStore, TabRef } from '../../learn/types'
 import { nodeById } from '../../learn/graph'
 import { EXPLORER_WIDTH_MAX, EXPLORER_WIDTH_MIN } from '../../lib/appearance'
 import Logo from '../Logo'
 import { NewGoalIcon, OpenLocalIcon } from '../icons'
 import { NodeRow } from './explorer/NodeRow'
 import { RowMenu } from './explorer/RowMenu'
-import { LocalRow, RecentSection, Section } from './explorer/sections'
+import { FavoriteSection, LocalRow, RecentSection, Section } from './explorer/sections'
 import { useSidebarWidth } from './explorer/useSidebarWidth'
 import { useTreeExpand } from './explorer/useTreeExpand'
 import type { ExamActions, MenuState, MenuTarget, NodeDocActions, NodeStateActions, WsActions } from './explorer/types'
@@ -71,6 +71,12 @@ interface Props {
   onRevealLocal: (path: string) => void
   /** 弹原生对话框挑本地文件 */
   onPickLocal: () => void
+  /** 收藏区：打开一行（现场换算成页签，见 LearnWorkspace 的 openFavorite） */
+  onOpenFavorite: (ref: FavoriteRef) => void
+  /** 收藏区：把一行摘出收藏夹（不动文档本身） */
+  onRemoveFavorite: (ref: FavoriteRef) => void
+  /** 收藏行的标题（节点名 / 考试名要查数据，见 learn/favorites 的 favoriteTitle） */
+  favoriteTitleOf: (ref: FavoriteRef) => string
   /** 节点下面那些文档的动作：新建、打开、改名、删除、定位 */
   docs: NodeDocActions
   /** 考试那一侧的动作（原先都在文档区悬浮组的「试卷」tip 里） */
@@ -98,6 +104,9 @@ export default function ExplorerSidebar({
   onRemoveLocal,
   onRevealLocal,
   onPickLocal,
+  onOpenFavorite,
+  onRemoveFavorite,
+  favoriteTitleOf,
   docs,
   exams,
   state,
@@ -214,6 +223,17 @@ export default function ExplorerSidebar({
               )}
             </div>
           </Section>
+
+          {/* 收藏：树与本地文件之间。收藏的东西多种多样（文档 / 网页 / 文件），
+              放在「我有什么」的两区之间才找得到；空列表整块不显示 */}
+          <FavoriteSection
+            items={store.favorites ?? []}
+            open={sectionOpen('favorites')}
+            onToggle={() => toggleSection('favorites')}
+            titleOf={favoriteTitleOf}
+            onOpen={onOpenFavorite}
+            onRemove={onRemoveFavorite}
+          />
 
           {locals.length > 0 && (
             <Section

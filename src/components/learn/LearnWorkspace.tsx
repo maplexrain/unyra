@@ -34,6 +34,7 @@ import {
 import type {
   DocKind,
   DocView,
+  FavoriteRef,
   KnowledgeNode,
   LearnStore,
   LearnTab,
@@ -42,6 +43,15 @@ import type {
   WebTabMeta,
 } from '../../learn/types'
 import { emptyDocs, emptyOutline, notesOf } from '../../learn/types'
+import {
+  favoriteKey,
+  favoriteKeyOfTab,
+  favoriteRefOfTab,
+  favoriteTitle,
+  removeFavorite as removeFromFavorites,
+  tabRefOfFavorite,
+  toggleFavorite as toggleInFavorites,
+} from '../../learn/favorites'
 import { getOutlineSlot } from '../../lib/outline'
 import {
   activateIn,
@@ -310,15 +320,27 @@ export default function LearnWorkspace({
   )
 
   /**
+   * 网页页签活信息的镜像。tabDocPayload 声明在 webMeta（下面 web 块）之前，
+   * hook 闭包引用后声明的 const 会犯 react-compiler 的前向引用——经 ref 晚绑定，
+   * 每次渲染由 web 块的回填 effect 刷新（与 openTabRef 同一套做法）。
+   */
+  const webMetaRef = useRef<Record<string, WebTabMeta>>({})
+
+  /**
    * 页签拖进对话输入框时交给它的那份引用（见 lib/chipSyntax 的 ChipPayload）：
    * 带上宿主知道的全部字段——nodeId 让打开时免于反查，path 给导师的 doc.* 接口与
-   * #[{…}] 文本形态用，title 是显示名。
+   * #[{…}] 文本形态用，title 是显示名。网页页签也拖得出引用：一枚 web chip。
    */
   const tabDocPayload = useCallback((ref: TabRef): ChipPayload | null => {
     const s = getLatest()
     const title = tabTitle(ref, (id) => nodeById(s, id)?.title, examTabTitle)
     if (ref.kind === 'local') return { type: 'local', path: ref.path, title }
-    if (ref.kind === 'web') return null // 网页页签还没有引用形态（agent 读网页是后续的事）
+    if (ref.kind === 'web') {
+      // 起始页没有可引用的东西；网页引用带网址与活标题（没拿到标题时 chipLabel 显示域名兜底）
+      if (!ref.url) return null
+      const m = webMetaRef.current[tabKey(ref)]
+      return { type: 'web', url: ref.url, ...(m?.title ? { title: m.title } : {}) }
+    }
     if (ref.kind === 'exam') {
       return { type: 'attempt', nodeId: ref.nodeId, examId: ref.examId, attemptId: ref.attemptId, title }
     }
@@ -889,6 +911,74 @@ export default function LearnWorkspace({
     }
   }, [openWebTab])
 
+  /* ---------- 收藏（页签右键菜单 / 地址栏星标 / 侧栏收藏区，见 learn/favorites） ---------- */
+
+  /** 已收藏的身份集合：三个入口的「收藏了没有」都查它 */
+  const favoriteKeys = useMemo(
+    () => new Set((store.favorites ?? []).map((f) => favoriteKey(f))),
+    [store.favorites],
+  )
+
+  const isTabFavorite = useCallback(
+    (ref: TabRef) => {
+      const key = favoriteKeyOfTab(ref)
+      return !!key && favoriteKeys.has(key)
+    },
+    [favoriteKeys],
+  )
+
+  /** 地址栏星标的那一问：这一页（网址）收藏了没有 */
+  const isUrlFavorite = useCallback(
+    (url: string) => !!url && favoriteKeys.has(favoriteKey({ kind: 'web', url })),
+    [favoriteKeys],
+  )
+
+  /** 收藏 / 取消收藏（页签右键菜单）：起始页没有网址，无从收藏，不动。
+   *  网页要顺手把「这一页」的活标题与站点图标记进收藏——收藏夹里显示的是它们，
+   *  不是裸网址（标题没有活数据源可查，只能收藏那一刻存下来，见 learn/favorites）；
+   *  extra 由地址栏星标直接给，页签右键则从 webMeta 里现查。 */
+  const toggleTabFavorite = useCallback(
+    (tab: Pick<LearnTab, 'id' | 'ref'>, extra?: { title?: string; icon?: string }) => {
+      const fav = favoriteRefOfTab(tab.ref)
+      if (!fav) return
+      const m = tab.ref.kind === 'web' ? webMeta[tab.id] : undefined
+      const title = extra?.title ?? m?.title
+      const icon = extra?.icon ?? m?.favicon
+      const full: FavoriteRef =
+        fav.kind === 'web'
+          ? { ...fav, ...(title ? { title: title.slice(0, 200) } : {}), ...(icon ? { icon } : {}) }
+          : fav
+      const s = getLatest()
+      set({ ...s, favorites: toggleInFavorites(s.favorites ?? [], full, Date.now()) })
+    },
+    [getLatest, set, webMeta],
+  )
+
+  /** 地址栏星标：收藏的是当前网址（与页签右键同一条路），这一页的标题与图标一并记下 */
+  const toggleUrlFavorite = useCallback(
+    (url: string, extra?: { title?: string; icon?: string }) =>
+      toggleTabFavorite({ id: '', ref: { kind: 'web', url, key: '' } }, extra),
+    [toggleTabFavorite],
+  )
+
+  /** 点收藏区的一行：现场换算成页签（网页开新签）走与别处**同一个** openTab */
+  const openFavorite = useCallback((ref: FavoriteRef) => openTab(tabRefOfFavorite(ref)), [openTab])
+
+  /** 把一行摘出收藏夹（侧栏收藏区的移除键；收藏的 × 不动文档本身） */
+  const dropFavorite = useCallback(
+    (ref: FavoriteRef) => {
+      const s = getLatest()
+      set({ ...s, favorites: removeFromFavorites(s.favorites ?? [], favoriteKey(ref)) })
+    },
+    [getLatest, set],
+  )
+
+  /** 收藏行的标题：节点名与考试名都是活查的（改名之后收藏跟着新名字走） */
+  const favoriteTitleOf = useCallback(
+    (ref: FavoriteRef) => favoriteTitle(ref, (id) => nodeById(store, id)?.title, examTabTitle),
+    [store, examTabTitle],
+  )
+
   /*
    * 保存 / 关页签 / 冲突流整体在 useDocSaveFlow（workspace/）：
    * 暂存入口、Ctrl+S、关页签、两个确认框、本地文件监听是同一条链上的环节，拆开反而难读。
@@ -925,6 +1015,7 @@ export default function LearnWorkspace({
   // browser.* 的宿主依赖：closeTab（useDocSaveFlow）到这条线才就位，所以回填放在这里——
   // 每次渲染换成最新的一份（webMeta 活信息在里面）
   useEffect(() => {
+    webMetaRef.current = webMeta
     browserDepsRef.current = {
       getLatest,
       set,
@@ -1799,6 +1890,9 @@ export default function LearnWorkspace({
                 docPayloadOf={tabDocPayload}
                 // web 页签的活标题/站点图标（加载完才有，见 WebTabMeta）
                 webMetaOf={(tab) => (tab.ref.kind === 'web' ? webMeta[tab.id] : undefined)}
+                // 右键菜单的收藏/取消收藏（见 learn/favorites）
+                favoriteOf={isTabFavorite}
+                onToggleFavorite={toggleTabFavorite}
                 // 资源管理器/外部拖进来的引用落在这一格的页签栏上：还原成页签开在这一格里
                 onDropChip={(p) => {
                   const s = getLatest()
@@ -2040,6 +2134,9 @@ export default function LearnWorkspace({
               hidden={gTab?.ref.kind !== 'web'}
               onMeta={patchWebMeta}
               onCommitUrl={commitWebUrl}
+              // 地址栏的收藏星标（收藏认网址，见 learn/favorites）
+              favoriteOf={isUrlFavorite}
+              onToggleFavoriteUrl={toggleUrlFavorite}
             />
           )}
 
@@ -2197,6 +2294,10 @@ export default function LearnWorkspace({
         onRemoveLocal={dropLocalFile}
         onRevealLocal={(path) => void revealLocalFile(path)}
         onPickLocal={() => void pickLocal()}
+        // 收藏区（学习目标与本地文件之间）：打开 / 移除 / 现查标题
+        onOpenFavorite={openFavorite}
+        onRemoveFavorite={dropFavorite}
+        favoriteTitleOf={favoriteTitleOf}
         /*
          * 侧栏里那些文档行的动作。每一个都走与别处**同一个入口**：
          * 新建交给同一套流程（笔记由 learn/notes 起名、试卷与超级文档交给导师的工作流），

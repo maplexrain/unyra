@@ -5,12 +5,13 @@
  */
 import { useMemo } from 'react'
 import { ChevronRight, X } from 'lucide-react'
-import type { LearnStore, LocalFile } from '../../../learn/types'
+import type { FavoriteItem, FavoriteRef, LearnStore, LocalFile } from '../../../learn/types'
+import { favoriteKey } from '../../../learn/favorites'
 import { recentOpens, type RecentOpen } from '../../../learn/recents'
 import { useClock } from '../../../lib/clock'
 import { relativeTime } from '../../../lib/time'
 import { STATUS_META } from '../mastery'
-import { DocTypeIcon } from '../docTypes'
+import { DocTypeIcon, WebTabTypeIcon } from '../docTypes'
 import { chipJson } from '../../../lib/chipSyntax'
 import { t } from '../../../i18n'
 
@@ -86,6 +87,99 @@ export function RecentRow({ item, now, onOpen }: { item: RecentOpen; now: number
         {item.hint && <span className="text-[11px] text-ink-faint"> · {item.hint}</span>}
       </span>
       <span className="shrink-0 text-[10.5px] text-ink-faint">{relativeTime(item.at, now)}</span>
+    </div>
+  )
+}
+
+/**
+ * 收藏区：文档与网页的收藏夹（见 learn/favorites）。
+ *
+ * 收藏从别处进来：页签的右键菜单、网页地址栏的星标。这里只负责**看与去**——
+ * 点一行打开它（网页现场开新签，见 LearnWorkspace 的 openFavorite），
+ * 悬停的 × 把它摘出收藏夹。标题由上层现查（见 favoriteTitle）：
+ * 改名之后收藏跟着新名字走。空列表整块不显示（与本地文件区同一条规矩）。
+ */
+export function FavoriteSection({
+  items,
+  open,
+  onToggle,
+  titleOf,
+  onOpen,
+  onRemove,
+}: {
+  items: FavoriteItem[]
+  open: boolean
+  onToggle: () => void
+  titleOf: (ref: FavoriteRef) => string
+  onOpen: (ref: FavoriteRef) => void
+  onRemove: (ref: FavoriteRef) => void
+}) {
+  if (!items.length) return null
+  return (
+    <Section title={t('收藏')} count={items.length} open={open} onToggle={onToggle}>
+      <div className="px-2">
+        {items.map((f) => (
+          <FavoriteRow
+            key={favoriteKey(f)}
+            item={f}
+            title={titleOf(f)}
+            onOpen={() => onOpen(f)}
+            onRemove={() => onRemove(f)}
+          />
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+/**
+ * 收藏的一行：类型图标（与页签栏同一套，一眼认出这是哪种东西）+ 现查的标题 + 悬停移除。
+ * 完整的网址 / 路径放 title——「我收藏的是哪个 notes.md、哪一页」悬停就能确认。
+ */
+export function FavoriteRow({
+  item,
+  title,
+  onOpen,
+  onRemove,
+}: {
+  item: FavoriteRef
+  title: string
+  onOpen: () => void
+  onRemove: () => void
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onOpen()
+      }}
+      title={item.kind === 'web' ? item.url : item.kind === 'local' ? item.path : title}
+      className="group flex cursor-pointer items-center gap-1.5 py-1.5 pl-1.5 pr-1 transition hover:bg-line/40"
+    >
+      {/* 网页行显示**站点图标**（收藏那一刻记下的 favicon，与页签栏同一颗组件；没记到退回地球），
+          其余类型用类型图标——同一个东西在页签栏与收藏夹里长得一样。
+          网页包一层 16px 格子与 DocTypeIcon 的占位对齐，标题的左边缘才不会因行而异。 */}
+      {item.kind === 'web' ? (
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+          <WebTabTypeIcon favicon={item.icon} size={13} />
+        </span>
+      ) : (
+        <DocTypeIcon kind={item.kind} size={13} />
+      )}
+      <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{title}</span>
+      <button
+        type="button"
+        title={t('从收藏里移除')}
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove()
+        }}
+        className="hidden h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-seal group-hover:flex"
+      >
+        <X size={12} />
+      </button>
     </div>
   )
 }

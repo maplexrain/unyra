@@ -551,6 +551,36 @@ export interface LocalFile {
   openedAt: number
 }
 
+/**
+ * 收藏夹里的一条指向什么（见 learn/favorites）。
+ *
+ * 与 TabRef 同构，只有网页不同：收藏认**网址**而不是开签那一刻的 key——
+ * 收藏的是「这个页面」，同一网址开几枚页签、关了再开，都是同一条收藏。
+ */
+export type FavoriteRef =
+  /** 某个节点的教学文档 */
+  | { kind: 'teach'; nodeId: string }
+  /** 某个节点的某一份笔记（名字就是身份，见 NoteFile） */
+  | { kind: 'note'; nodeId: string; note: string }
+  /** 某个节点的某一份超级文档（名字就是身份，见 SuperDocFile） */
+  | { kind: 'super'; nodeId: string; name: string }
+  /** 某一次考试的只读副本（认考试，与页签同一口径） */
+  | { kind: 'exam'; nodeId: string; examId: string; attemptId: string }
+  /** 某个目标的大纲页 */
+  | { kind: 'outline'; nodeId: string }
+  /** 磁盘上的外部文件（绝对路径） */
+  | { kind: 'local'; path: string }
+  /**
+   * 一个网页（内置浏览器；认网址）。收藏那一刻顺手记下页面的**标题与站点图标**——
+   * 网页标题没有活的数据源可查（文档改名有节点可查，页面标题只在打开时才知道），
+   * 收藏夹里要显示它们就只能存（见 learn/favorites）。缺了（页面还没加载完就收藏了）
+   * 显示域名兜底；两者都不参与身份（favoriteKey 只比网址）。
+   */
+  | { kind: 'web'; url: string; title?: string; icon?: string }
+
+/** 一条收藏：指向什么 + 什么时候收藏的（列表按收藏先后排） */
+export type FavoriteItem = FavoriteRef & { at: number }
+
 export interface LearnStore {
   version: 2
   nodes: KnowledgeNode[]
@@ -626,6 +656,12 @@ export interface LearnStore {
   docScroll: DocScroll
   /** 最近拖进来 / 打开过的本地文件（新的在前）；空列表时侧栏不显示这一区 */
   localFiles: LocalFile[]
+  /**
+   * 收藏夹：文档与网页（见 learn/favorites）。**可选字段**：旧 state.json 里没有它，
+   * 读回来的旧数据不必补——所有使用处都按 `?? []` 兜底。侧栏的「收藏」区、页签右键菜单
+   * 与网页地址栏的星标都在它里面增删；指向已删除东西的收藏由 normalize 在读盘时剪掉。
+   */
+  favorites?: FavoriteItem[]
 }
 
 /**

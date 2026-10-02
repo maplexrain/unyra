@@ -97,6 +97,8 @@ export function mergeLearnStore(base: LearnStore, incoming: LearnStore): LearnSt
     // 读到哪儿了同样属于「这台机器上的动作」：导入别人的备份不该把阅读位置也换掉
     docScroll: base.docScroll ?? {},
     localFiles: base.localFiles ?? [],
+    // 收藏夹同理：「我收藏了什么」是这台机器上的动作，不跟着别人的备份走
+    favorites: base.favorites ?? [],
     /*
      * 记忆、函数库、工作流登记、阅读记录、打卡、番茄钟：**一律以「我这一份」为准**
      * （阅读与打卡是按目标的账，同样整本以我这份为准）。

@@ -22,6 +22,7 @@ export function emptyLearnStore(): LearnStore {
     drafts: {},
     docScroll: {},
     localFiles: [],
+    favorites: [],
     // 阅读与打卡按目标分开存（见 learn/reading 的 ReadingBook）：空库就是空账本
     reading: { byGoal: {} },
     checkin: { byGoal: {} },
