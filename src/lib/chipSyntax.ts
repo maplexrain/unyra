@@ -14,14 +14,16 @@
  * - `contenteditable="false"`：输入框里它是**一个整体**——删就整删，不会拆开。
  */
 
-/** 一份被引用的东西。字段按类型给：路径类给 path，试卷类给 examId/attemptId，nodeId 有就带 */
+/** 一份被引用的东西。字段按类型给：路径类给 path，试卷类给 examId/attemptId，网页给 url，nodeId 有就带 */
 export interface ChipPayload {
-  type: 'doc' | 'note' | 'outline' | 'super' | 'local' | 'exam' | 'attempt' | 'ws'
+  type: 'doc' | 'note' | 'outline' | 'super' | 'local' | 'exam' | 'attempt' | 'ws' | 'web'
   /**
    * 路径：数据树相对路径（doc/note/outline/super 的宿主路径）、本地绝对路径（local）、
    * 或相对当前用户的工作区路径（ws，形如 docs/…/workspace/报告.md）
    */
   path?: string
+  /** 完整网址（type:'web'）——网页页签拖进来的引用，点击开一枚网页页签 */
+  url?: string
   /** 节点 id：宿主自己拖出来时都带；导师写的是否带随缘，缺了靠 path 反查 */
   nodeId?: string
   /** 工作区目录（type:'ws'）：点击跳到所属节点 */
@@ -42,7 +44,7 @@ export const CHIP_MIME = 'application/x-moji-chip'
 
 /* ---------- 编码 ---------- */
 
-/** token = `#[{…}]`。键序固定（type → path → nodeId → note → name → examId → attemptId → title），
+/** token = `#[{…}]`。键序固定（type → path → nodeId → dir → note → name → examId → attemptId → url → title），
  * 同一份东西永远编出同一段文本——对比、去重、测试都靠这一点 */
 export function chipToken(p: ChipPayload): string {
   const parts: string[] = []
@@ -58,6 +60,7 @@ export function chipToken(p: ChipPayload): string {
   put('name', p.name)
   put('examId', p.examId)
   put('attemptId', p.attemptId)
+  put('url', p.url)
   put('title', p.title)
   return '#[{' + parts.join(', ') + '}]'
 }
@@ -69,7 +72,7 @@ export function chipJson(p: ChipPayload): string {
 
 /* ---------- 解析 ---------- */
 
-const CHIP_TYPES = new Set(['doc', 'note', 'outline', 'super', 'local', 'exam', 'attempt', 'ws'])
+const CHIP_TYPES = new Set(['doc', 'note', 'outline', 'super', 'local', 'exam', 'attempt', 'ws', 'web'])
 
 /** 宽松修复：导师写的 JSON 可能带裸键名、单引号/全角引号/尾逗号——严格 parse 失败了再修一次 */
 function repairJson(s: string): string {
@@ -112,6 +115,7 @@ export function parseChipJson(raw: string): ChipPayload | null {
     name: str('name'),
     examId: str('examId'),
     attemptId: str('attemptId'),
+    url: str('url'),
     title: str('title'),
   }
 }
@@ -140,11 +144,18 @@ export function splitChips(text: string): Array<{ kind: 'text'; text: string } |
 
 /* ---------- 外观 ---------- */
 
-/** 显示名：title 优先，其余按类型的自然兜底 */
+/** 显示名：title 优先，其余按类型的自然兜底（web 没带 title 显示域名） */
 export function chipLabel(p: ChipPayload): string {
   if (p.title) return p.title
   if (p.type === 'attempt') return '试卷副本'
   if (p.type === 'exam') return '试卷'
+  if (p.type === 'web' && p.url) {
+    try {
+      return new URL(p.url).host
+    } catch {
+      return p.url
+    }
+  }
   if (p.name) return p.name
   if (p.note) return p.note
   if (p.path) {
@@ -172,6 +183,8 @@ const CHIP_ICON: Record<ChipPayload['type'], { color: string; d: string[] }> = {
   local: { color: '#98928a', d: ['M2.5 4.5h11v7h-11z', 'M2.5 8.5h11', 'M11 10.2h.01'] },
   // 中性灰：节点工作区里的文件/目录（一个抽屉盒——磁盘上真实存在的东西）
   ws: { color: '#98928a', d: ['M2 4.5h4.4L8 6.4h6v7.1H2z', 'M2 8.4h12', 'M5 10.6h4'] },
+  // 青：网页（一颗地球——经线、纬线、圆）
+  web: { color: '#2aa1b8', d: ['M8 2.5a5.5 5.5 0 1 0 0 11a5.5 5.5 0 1 0 0-11', 'M2.5 8h11', 'M8 2.5c1.9 1.6 1.9 9.4 0 11M8 2.5c-1.9 1.6-1.9 9.4 0 11'] },
   // 朱：试卷（一顶学士帽）
   exam: { color: '#c0563a', d: ['M8 2.8 2.5 5.8 8 8.8l5.5-3z', 'M4.8 7.3v2.9c0 .9 1.5 1.9 3.2 1.9s3.2-1 3.2-1.9V7.3'] },
   // 朱：完成批改的试卷副本（判分圆环 + 对勾）

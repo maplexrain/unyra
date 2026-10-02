@@ -26,6 +26,16 @@ describe('chipSyntax：#[{…}] 的编解码', () => {
     expect(parseChipToken(token)).toEqual(doc)
   })
 
+  it('web chip：url 进 token、往返一致；显示名 title 优先、域名兜底；图标是青色地球', () => {
+    const web = { type: 'web' as const, url: 'https://docs.python.org/3/', title: 'Python 文档' }
+    expect(chipToken(web)).toBe('#[{"type":"web", "url":"https://docs.python.org/3/", "title":"Python 文档"}]')
+    expect(parseChipToken(chipToken(web))).toEqual(web)
+    // 没写 title：显示域名（不甩一个长网址进 chip）
+    expect(chipLabel(web)).toBe('Python 文档')
+    expect(chipLabel({ type: 'web', url: 'https://docs.python.org/3/' })).toBe('docs.python.org')
+    expect(chipSvg('web')).toContain('#2aa1b8')
+  })
+
   it('parseChipJson：宽松解析——裸键名、单引号、全角引号、尾逗号都修', () => {
     expect(parseChipJson(`{type:'doc', path:'docs/a.md',}`)).toEqual({ type: 'doc', path: 'docs/a.md' })
     expect(parseChipJson('{type：“doc”， path：“docs/a.md”}')).toEqual({ type: 'doc', path: 'docs/a.md' })

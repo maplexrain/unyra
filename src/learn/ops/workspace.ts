@@ -13,6 +13,7 @@
 import type { KnowledgeNode } from '../types'
 import { nodeById, normalizeKey, prereqIds } from '../graph'
 import { nodePathOf } from '../paths'
+import { WORKSPACE_DIR } from '../layout'
 import { wsJoin, wsRelOf } from '../workspace'
 import type { AgentOpsDeps, WorkspaceIo } from './deps'
 
@@ -109,7 +110,12 @@ export function createWorkspaceOps(deps: AgentOpsDeps, io: WorkspaceIo) {
       if (!child) break
       cursor = child
     }
-    return { node: cursor, rest: segments.slice(i) }
+    const rest = segments.slice(i)
+    // 「节点/workspace/文件」的写法同样认（与 ws 引用 chip 的口径一致，见 learn/chipRef）：
+    // workspace 这一段与节点工作区目录本身重复，吃掉一段；真在里面又套了一层 workspace 的，
+    // 写两层照样到——只吃第一段
+    if (rest[0] === WORKSPACE_DIR) rest.shift()
+    return { node: cursor, rest }
   }
 
   /** 节点路径 + 文件部分拼成给人看的回执路径（微积分/极限/数据/实验.csv） */
@@ -138,6 +144,9 @@ export function createWorkspaceOps(deps: AgentOpsDeps, io: WorkspaceIo) {
         .map((e) => ({ name: e.name, kind: e.dir ? 'dir' : 'file' }))
       return {
         node: labelOf(r.node, []),
+        // rel 是相对当前用户的磁盘路径：写 ws 引用 chip（#[{type:"ws", path:…}]）时原样抄它，
+        // 手拼的「节点路径 + 文件段」点击时定位不到（见 learn/chipRef 的两种写法说明）
+        rel: loc.rel,
         dir: r.rest.join('/'),
         entries,
         ...(entries.length ? {} : { note: '（还没有文件——workspace.write 写下第一个，或让用户把文件放进来）' }),
@@ -168,13 +177,14 @@ export function createWorkspaceOps(deps: AgentOpsDeps, io: WorkspaceIo) {
       if (res.content.length > READ_LIMIT) {
         return {
           path: labelOf(r.node, r.rest),
+          rel: loc.rel,
           truncated: true,
           totalChars: res.content.length,
           content: res.content.slice(0, READ_LIMIT),
           note: '太长只给了前 ' + READ_LIMIT + ' 字；要分段就读就拆成小文件，或让用户在系统里打开',
         }
       }
-      return { path: labelOf(r.node, r.rest), chars: res.content.length, content: res.content }
+      return { path: labelOf(r.node, r.rest), rel: loc.rel, chars: res.content.length, content: res.content }
     },
 
     async write(input: Record<string, unknown>) {
@@ -200,6 +210,7 @@ export function createWorkspaceOps(deps: AgentOpsDeps, io: WorkspaceIo) {
       if (!res.ok) return { error: res.error ?? '写入失败' }
       return {
         path: labelOf(r.node, r.rest),
+        rel: loc.rel,
         chars: content.length,
         ...(existed ? { updated: true, note: '整份覆盖了已有文件' } : { created: true }),
       }
