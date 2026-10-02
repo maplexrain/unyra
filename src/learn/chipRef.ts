@@ -12,7 +12,7 @@ import type { ChipPayload } from '../lib/chipSyntax'
 import { nodeDocPath } from './files/build'
 import { nodeById } from './graph/lookup'
 import { notesOf, type LearnStore, type TabRef } from './types'
-import { userPath } from '../lib/storage'
+import { userAbsPath } from '../lib/storage'
 
 /** 规整外来路径：反斜杠 → 斜杠、去掉开头的 ./（导师与文件管理器给的写法不统一） */
 function normPath(p: string): string {
@@ -22,12 +22,12 @@ function normPath(p: string): string {
 export function tabRefFromChip(store: LearnStore, p: ChipPayload): TabRef | null {
   // 外部文件：路径就是身份
   if (p.type === 'local') return p.path ? { kind: 'local', path: p.path } : null
-  // 工作区文件：rel 是「相对当前用户」的路径，换算成绝对路径开本地页签
+  // 工作区文件：rel 是「相对当前用户」的路径，换算成磁盘绝对路径开本地页签
   //（解析不解析看后缀，见 learn/tabs 的 viewOf）；目录没有页签形态——跳到所属节点
   if (p.type === 'ws') {
     if (p.dir) return p.nodeId ? { kind: 'teach', nodeId: p.nodeId } : null
     if (!p.path) return null
-    const abs = userPath(normPath(p.path))
+    const abs = userAbsPath(normPath(p.path))
     return abs ? { kind: 'local', path: abs } : null
   }
   // 考试：只有「某一次的副本」能开成页签；原件返回 null（opener 走考试窗口）
