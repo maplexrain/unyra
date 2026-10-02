@@ -74,6 +74,13 @@ export interface AgentRunOptions {
    * 不注入就没有任何开销。
    */
   onContext?: (snapshot: ContextSnapshot) => void
+  /**
+   * 介入通道（子代理并发模型的钩子，导师不注入）：在「当前这条消息已经完整」的边界
+   * （工具结果之后、或无工具调用的消息完结之后）拉一次；返回要插入的指令文本，没有就
+   * null。指令以一条 user 消息进历史——调用方负责把「半场落库 + 指令入账」同步进自己的
+   * 会话账本（镜像纪律）。绝不打断半截输出：流式还在进行时，插入只会发生在消息完整之后。
+   */
+  injections?: () => Promise<string | null>
 }
 
 /** 服务端资源不足属于瞬时故障，允许对「空结果」自动重试的次数 */
@@ -326,6 +333,14 @@ export async function runAgent(opts: AgentRunOptions): Promise<void> {
           return
         }
         /*
+         * 介入通道：当前这条消息（连同工具结果）已经完整。有指令就作为一条 user
+         * 消息插进历史——模型下一跳先看到它再继续；没有就照常进下一跳。
+         */
+        if (opts.injections) {
+          const injected = await opts.injections()
+          if (injected !== null) messages.push({ role: 'user', content: injected })
+        }
+        /*
          * 跳边界：这一跳到此为止，下面开始的是下一跳。它只服务于历史还原——
          * parts 是扁平的事件流，「同一跳的两次调用」与「相邻两跳」长得一样，
          * 只有这里分得清（见 agent/types 的 hop 说明）。
@@ -336,6 +351,20 @@ export async function runAgent(opts: AgentRunOptions): Promise<void> {
         continue
       }
 
+      /*
+       * 没有工具调用本该收场；但介入通道里还挂着指令时，把它当成新的一轮：
+       * 这条最终消息此刻才补进历史（正常收场时不进——循环要继续就必须进，镜像才对得上），
+       * 指令作为 user 消息跟在后面，模型据此调整方向接着干。
+       */
+      if (opts.injections) {
+        const injected = await opts.injections()
+        if (injected !== null) {
+          if (result.content) messages.push({ role: 'assistant', content: result.content })
+          messages.push({ role: 'user', content: injected })
+          onEvent({ type: 'hop' })
+          continue
+        }
+      }
       // 没有工具调用即本轮任务收敛，正常收场
       onEvent({ type: 'done' })
       return

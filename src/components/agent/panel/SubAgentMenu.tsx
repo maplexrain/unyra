@@ -14,20 +14,20 @@ import { useLocale, t } from '../../../i18n'
 
 export interface SubAgentMenuProps {
   sessions: SubAgentSession[]
-  /** 定义（本对话里 agent_spawn 登记的）：会话项按 defKey 认名字 */
+  /** 定义（本对话里 subagent.create 登记的）：会话项按 defKey 认名字 */
   defs: SubAgentDef[]
-  /** 正在跑的子代理（全对话至多一场）：入口按钮与列表项只靠颜色区分，不另加装饰 */
-  runningSessionId: string | null
   onOpen: (id: string) => void
 }
 
-export function SubAgentMenu({ sessions, defs, runningSessionId, onOpen }: SubAgentMenuProps) {
+export function SubAgentMenu({ sessions, defs, onOpen }: SubAgentMenuProps) {
   const [open, setOpen] = useState(false)
   useLocale()
   if (!sessions.length) return null
   const defOf = (key: string): SubAgentDef | undefined => defs.find((d) => d.key === key)
+  /** 有没有正在跑的（并发模型下可能多场）：入口按钮的颜色只看这一件事 */
+  const anyRunning = sessions.some((s) => s.status === 'running')
   const statusOf = (s: SubAgentSession): { label: string; live: boolean } =>
-    s.id === runningSessionId || s.status === 'running'
+    s.status === 'running'
       ? { label: t('任务进行中'), live: true }
       : s.status === 'interrupted'
         ? { label: t('上次被中断'), live: false }
@@ -54,7 +54,7 @@ export function SubAgentMenu({ sessions, defs, runningSessionId, onOpen }: SubAg
         onClick={() => setOpen((v) => !v)}
         className={
           'flex h-8 items-center gap-1 rounded-lg px-1.5 transition ' +
-          (runningSessionId ? 'text-seal hover:text-seal-deep' : open ? 'text-ink' : 'text-ink-faint hover:text-ink')
+          (anyRunning ? 'text-seal hover:text-seal-deep' : open ? 'text-ink' : 'text-ink-faint hover:text-ink')
         }
       >
         <Bot size={14} />

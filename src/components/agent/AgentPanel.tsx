@@ -138,12 +138,11 @@ interface Props {
    */
   sub?: {
     sessions: SubAgentSession[]
-    /** 内置 + 本对话自定义的定义（会话按 defKey 认名字与内置标记） */
+    /** 本对话里 subagent.create 登记的定义（会话按 defKey 认名字） */
     defs: SubAgentDef[]
     running: boolean
-    streamingSessionId: string | null
-    streamingRunId: string | null
-    streaming: AgentPart[] | null
+    /** 每场在跑任务的实时流式（并发时多场同时在跑，按会话挑自己那一份） */
+    live: Array<{ sessionId: string; runId: string; parts: AgentPart[] }>
   }
 }
 
@@ -227,17 +226,18 @@ export default function AgentPanel({
     () => (sub && viewSubId ? (sub.sessions.find((s) => s.id === viewSubId) ?? null) : null),
     [sub, viewSubId],
   )
-  /** 正看着的这场任务就是正在跑的那场（实时流式来自 sub.streaming） */
-  const subLiveHere = !!subSession && sub?.streamingSessionId === subSession.id
-  const viewMessages = useMemo(
-    () =>
-      subSession
-        ? subSession.messages.filter((m) => m.id !== (subLiveHere ? sub?.streamingRunId : null))
-        : messages,
-    [subSession, subLiveHere, sub?.streamingRunId, messages],
+  /**
+   * 正看着的这场任务在跑吗（实时流式来自 sub.live 里属于这个会话的那一份）。
+   * 并发模型下过程是边跑边落库的（介入插入前固化一段、收口再固化一段），
+   * 会话消息与实时流式天然不重不漏——不再需要按 runId 剔重的过滤。
+   */
+  const subLive = useMemo(
+    () => (sub && viewSubId ? (sub.live.find((l) => l.sessionId === viewSubId) ?? null) : null),
+    [sub, viewSubId],
   )
-  const viewStreaming = subSession ? (subLiveHere ? (sub?.streaming ?? null) : null) : streaming
-  const viewRunning = subSession ? !!(subLiveHere && sub?.running) : running
+  const viewMessages = useMemo(() => (subSession ? subSession.messages : messages), [subSession, messages])
+  const viewStreaming = subSession ? (subLive ? subLive.parts : null) : streaming
+  const viewRunning = subSession ? !!(subLive || subSession.status === 'running') : running
   /** 子会话头部要显示的定义信息（名字 / 内置标记） */
   const subDef = subSession ? (sub?.defs ?? []).find((d) => d.key === subSession.defKey) : undefined
   const backToTutor = useCallback(() => setViewSubId(null), [])
@@ -603,12 +603,7 @@ export default function AgentPanel({
           onOpenPreview={setPreview}
           subMode={subSession ? { name: subDef?.name ?? subSession.defKey, running: viewRunning } : undefined}
           subAgentSlot={
-            <SubAgentMenu
-              sessions={sub?.sessions ?? []}
-              defs={sub?.defs ?? []}
-              runningSessionId={sub?.streamingSessionId ?? null}
-              onOpen={setViewSubId}
-            />
+            <SubAgentMenu sessions={sub?.sessions ?? []} defs={sub?.defs ?? []} onOpen={setViewSubId} />
           }
         />
 

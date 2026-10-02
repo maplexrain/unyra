@@ -47,6 +47,10 @@ const EXECUTE_PARAMETERS = {
         '/ browser.open / browser.tabs / browser.activate / browser.close / browser.snapshot / browser.point / ' +
         'browser.dom(ref, op, arg?) / browser.read / browser.capture' +
         '（内置浏览器：开网页、管页签、快照元素清单、受控 DOM 操作、整页转 markdown——看页面用 snapshot/read），' +
+        '/ subagent.create({key,name?,system,tools?}) / subagent.run({agent,task}) / subagent.wait({seconds}) / ' +
+        'subagent.view(agent) / subagent.intervene(agent,指令) / subagent.interrupt(agent) / subagent.resume(agent) / ' +
+        'subagent.delete(agent)' +
+        '（子代理管理：并发派出、后台跑、wait 收首个交付——范式与监督纪律见系统提示词的子代理一节），' +
         '完整签名与使用时机见系统提示词的 execute 一节。' +
         'create 的 payload —— title、kind:"quiz"|"test"|"exam"、level:"easy"|"medium"|"hard"|"extreme"、' +
         'minutes（时限分钟数；小测不用给，其余不得低于题目数 × 2）、' +
