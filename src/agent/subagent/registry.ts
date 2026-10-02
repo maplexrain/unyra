@@ -16,7 +16,9 @@ export const EMPTY_SUB_BUCKET: SubAgentBucket = { defs: [], sessions: [] }
 /**
  * 载入时的防御归一化（parse.ts 调用）：磁盘上的东西可能被手改过、也可能是旧版本写的。
  * 形状不对整桶丢弃（宁可不显示，也不让坏数据炸掉渲染）；**残留的「运行中」复位为
- * 「被中断」**——进程被杀时正在跑的那场任务已经没了，留着 running 状态点会永远脉冲。
+ * 「被中断」**——进程被杀时正在跑的那场任务已经没了，留着 running 状态点会永远脉冲；
+ * **孤儿会话直接剪掉**（defKey 没有对应的定义）——子代理已无内置，定义与会话总是成对
+ * 写入，对不上号的是内置时代（web-search）的残留。
  */
 export function normalizeSubBucket(raw: unknown): SubAgentBucket | undefined {
   if (!raw || typeof raw !== 'object') return undefined
@@ -35,6 +37,8 @@ export function normalizeSubBucket(raw: unknown): SubAgentBucket | undefined {
             !!s && typeof s === 'object' && typeof (s as SubAgentSession).id === 'string' &&
             typeof (s as SubAgentSession).defKey === 'string' && Array.isArray((s as SubAgentSession).messages),
         )
+        // 孤儿会话（定义不在了）剪掉：会话渲染按 defKey 认名字，没有定义就永远只能显示裸 key
+        .filter((s) => defs.some((d) => d.key === s.defKey))
         .map((s) => ({ ...s, status: (s.status === 'running' ? 'interrupted' : s.status) as SubAgentStatus }))
     : []
   if (!defs.length && !sessions.length) return undefined

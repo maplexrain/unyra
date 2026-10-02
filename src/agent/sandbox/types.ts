@@ -222,7 +222,7 @@ export interface SandboxOptions {
   apiAllow?: string[]
   /**
    * execute 参数说明里的 api 清单（子代理专用）：给了就替换默认的那份全量说明，
-   * 让子代理只看到它真有的 api（清单从 apiCatalog 按组生成，见 subagent/builtin）。
+   * 让子代理只看到它真有的 api（清单从 apiCatalog 按组生成，见 subagent/groups）。
    */
   apiBrief?: string
 }

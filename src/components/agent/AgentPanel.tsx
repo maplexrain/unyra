@@ -468,8 +468,8 @@ export default function AgentPanel({
         /*
           顶栏不画下边框、也不自带底色：它和消息列表共用面板同一层背景（bg-paper-deep/40），
           去掉那条线之后整块就是一体的——与下面「输入区与列表之间不画分隔线」同一条道理。
-          子会话的表头：左上角**返回按钮**（回导师对话）、机器人图标、会话名与内置/自定义
-          标记、实时状态。任务次数放右边——它是这个会话的履历，不是又一个动作。
+          子会话的表头：左上角**返回按钮**（回导师对话）、机器人图标、会话名与
+          实时状态。任务次数放右边——它是这个会话的履历，不是又一个动作。
         */
         <header className="mx-auto flex h-11 w-full max-w-[768px] shrink-0 items-center gap-2 px-3.5">
           <button
@@ -483,14 +483,6 @@ export default function AgentPanel({
           <Bot size={15} className="shrink-0 text-seal" />
           <span className="shrink-0 text-[13px] font-medium text-ink-strong">
             {subDef?.name ?? subSession.defKey}
-          </span>
-          <span
-            className={
-              'shrink-0 rounded px-1 py-px text-[9.5px] ' +
-              (subDef?.builtin ? 'bg-seal/10 text-seal-deep' : 'bg-line/70 text-ink-soft')
-            }
-          >
-            {subDef?.builtin ? t('内置') : t('自定义')}
           </span>
           {viewRunning ? (
             <span className="shrink-0 text-[11px] text-seal">{t('任务进行中')}</span>

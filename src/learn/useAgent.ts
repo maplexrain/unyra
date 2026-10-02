@@ -47,7 +47,6 @@ import { TURN_FLUSH_MS, upsertAssistantInFlight } from './agent/inflight'
 import { loadAttachTexts, transferPendingFiles, transferPendingImages } from './agent/transfer'
 import { applyAskToProfile, learnSandboxOps, type AgentRunTarget, type AgentUiDeps } from './agent/sandboxOps'
 import { createSubAgentTools } from '../agent/subagent/tools'
-import { BUILTIN_SUBAGENTS } from '../agent/subagent/builtin'
 import { EMPTY_SUB_BUCKET } from '../agent/subagent/registry'
 import { t } from '../i18n'
 
@@ -465,9 +464,9 @@ export function useAgent(opts: {
           ...(browserDeps ? { browser: makeBrowserOps(browserDeps, target.goalId) } : {}),
         }),
         /**
-         * 子代理三件工具（agent_define / agent_run / agent_list）：每轮都声明、
+         * 子代理三件工具（agent_spawn / agent_run / agent_list）：每轮都声明、
          * 形状不变——工具声明参与前缀，中途换工具集会把缓存整段作废。
-         * agent_run 阻塞到子代理交付，导师的循环在它返回前不会前进（「父等子」）。
+         * spawn 与 run 都阻塞到子代理交付，导师的循环在它返回前不会前进（「父等子」）。
          */
         ...createSubAgentTools({
           conversationId: target.conversationId,
@@ -1005,8 +1004,8 @@ export function useAgent(opts: {
     /** 子代理：当前对话的会话与实时槽（见 docs/subagent-architecture.md） */
     sub: {
       sessions: subBucket?.sessions ?? [],
-      // 定义 = 内置 + 本对话登记的（面板的会话列表按 defKey 认名字与内置标记）
-      defs: [...BUILTIN_SUBAGENTS, ...(subBucket?.defs ?? [])],
+      // 定义只来自本对话（agent_spawn 登记的；面板的会话列表按 defKey 认名字）
+      defs: subBucket?.defs ?? [],
       running: !!subLiveHere,
       streamingSessionId: subLiveHere?.sessionId ?? null,
       streamingRunId: subLiveHere?.runId ?? null,
