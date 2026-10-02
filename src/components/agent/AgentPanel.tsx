@@ -466,10 +466,12 @@ export default function AgentPanel({
       */}
       {subSession ? (
         /*
+          顶栏不画下边框、也不自带底色：它和消息列表共用面板同一层背景（bg-paper-deep/40），
+          去掉那条线之后整块就是一体的——与下面「输入区与列表之间不画分隔线」同一条道理。
           子会话的表头：左上角**返回按钮**（回导师对话）、机器人图标、会话名与内置/自定义
           标记、实时状态。任务次数放右边——它是这个会话的履历，不是又一个动作。
         */
-        <header className="mx-auto flex h-11 w-full max-w-[768px] shrink-0 items-center gap-2 border-b border-line px-3.5">
+        <header className="mx-auto flex h-11 w-full max-w-[768px] shrink-0 items-center gap-2 px-3.5">
           <button
             type="button"
             title={t('返回导师对话')}
@@ -506,7 +508,7 @@ export default function AgentPanel({
           </span>
         </header>
       ) : (
-        <header className="mx-auto flex h-11 w-full max-w-[768px] shrink-0 items-center gap-2 border-b border-line px-3.5">
+        <header className="mx-auto flex h-11 w-full max-w-[768px] shrink-0 items-center gap-2 px-3.5">
           <Brain size={15} className="shrink-0 text-seal" />
           <span className="shrink-0 text-[13px] font-medium text-ink-strong">{t('超级导师')}</span>
           <PersonaPicker persona={persona} onPick={onPickPersona} />

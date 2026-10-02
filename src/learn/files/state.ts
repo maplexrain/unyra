@@ -1,7 +1,7 @@
 /** 这个文件负责什么：界面状态（state.json）的形状与写出——「上次看到哪儿」、页签、暂存区与本地文件那一份。 */
 
 import type { Drafts } from '../drafts'
-import type { DocKind, DocScroll, LearnStore, LearnTab, LocalFile, WorkflowEffortSetting, WorkflowEntry } from '../types'
+import type { DocKind, DocScroll, FavoriteItem, LearnStore, LearnTab, LocalFile, WorkflowEffortSetting, WorkflowEntry } from '../types'
 
 /**
  * 界面状态（相对用户目录的 state.json）。
@@ -29,6 +29,8 @@ export interface LearnState {
   docScroll?: DocScroll
   /** 最近打开过的本地文件 */
   localFiles?: LocalFile[]
+  /** 收藏夹：文档与网页（见 learn/favorites） */
+  favorites?: FavoriteItem[]
   /**
    * 全局工作流（跨目标、跟着用户走；目标级的在各自目录的 workflow.json）。
    * efforts 是每条工作流的思考档位配置（键 = id，内置与登记通吃）——同样全局一份，
@@ -61,6 +63,8 @@ export function buildState(store: LearnStore): Record<string, unknown> {
     // 读到哪儿了：空表不写（与番茄钟同一条纪律——空字段只会让读代码的人以为这里存过东西）
     ...(Object.keys(store.docScroll ?? {}).length ? { docScroll: store.docScroll } : {}),
     localFiles: store.localFiles,
+    // 收藏夹只在真有东西时写：空清单只会让人以为收藏过什么（与 workflows 同一条纪律）
+    ...(store.favorites?.length ? { favorites: store.favorites } : {}),
     // 全局工作流没有就不写：空清单只会让人以为登记过东西（与 mind.json / method.json 同一条纪律）。
     // 档位配置（efforts）同理：一张空表不如没有——「这个字段存在」本身就是一种声明
     ...(store.workflows?.global?.length || (store.workflows?.efforts && Object.keys(store.workflows.efforts).length)

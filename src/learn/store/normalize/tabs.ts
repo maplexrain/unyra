@@ -1,8 +1,10 @@
 /** 页签与本地文件列表的反序列化：指向已不存在的东西的页签一律丢掉，本地文件只校验形状、不查磁盘。 */
 
-import type { DocScroll, DocView, KnowledgeNode, LearnTab, LocalFile, TabRef } from '../../types'
+import type { DocScroll, DocView, FavoriteItem, FavoriteRef, KnowledgeNode, LearnTab, LocalFile, TabRef } from '../../types'
+import type { Exam } from '../../exam'
 import { sortLocalFiles } from '../../localfiles'
 import { newWebKey, tabKey } from '../../tabs'
+import { favoriteKey } from '../../favorites'
 
 /* ---------- 页签与本地文件列表 ---------- */
 
@@ -105,4 +107,63 @@ export function normalizeLocalFiles(raw: unknown): LocalFile[] {
     out.push({ path, name, openedAt: typeof r.openedAt === 'number' && Number.isFinite(r.openedAt) ? r.openedAt : now })
   }
   return sortLocalFiles(out)
+}
+
+/**
+ * 收藏列表：与页签同一条纪律——指向不存在的东西的收藏当场丢掉（节点被删、笔记改名、
+ * 考试记录清掉，收藏就成了空指），网页只认 http(s)，本地文件只校验形状（文件后来被删
+ * 是常态，点开时再报）。同一身份只留一条，顺序照旧（收藏的先后就是列表的先后）。
+ */
+export function normalizeFavorites(
+  raw: unknown,
+  byId: Map<string, KnowledgeNode>,
+  exams: Exam[],
+): FavoriteItem[] {
+  if (!Array.isArray(raw)) return []
+  const now = Date.now()
+  const out: FavoriteItem[] = []
+  const push = (ref: FavoriteRef, at: number): void => {
+    if (out.some((f) => favoriteKey(f) === favoriteKey(ref))) return
+    out.push({ ...ref, at: Number.isFinite(at) && at > 0 ? at : now })
+  }
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const r = item as Record<string, unknown>
+    const at = typeof r.at === 'number' ? r.at : NaN
+    if (r.kind === 'local') {
+      if (typeof r.path === 'string' && r.path) push({ kind: 'local', path: r.path }, at)
+      continue
+    }
+    if (r.kind === 'web') {
+      if (typeof r.url === 'string' && /^https?:\/\//i.test(r.url)) {
+        const fav: FavoriteRef = { kind: 'web', url: r.url }
+        // 标题与站点图标是收藏那一刻记下的展示信息（见 types 的 web 分支）；形状不对或超长就弃掉/截断
+        if (typeof r.title === 'string' && r.title.trim()) fav.title = r.title.trim().slice(0, 200)
+        if (typeof r.icon === 'string' && /^https?:\/\//i.test(r.icon)) fav.icon = r.icon
+        push(fav, at)
+      }
+      continue
+    }
+    const nodeId = typeof r.nodeId === 'string' ? r.nodeId : ''
+    const node = byId.get(nodeId)
+    if (!node) continue
+    if (r.kind === 'teach') push({ kind: 'teach', nodeId }, at)
+    else if (r.kind === 'outline') push({ kind: 'outline', nodeId }, at)
+    else if (r.kind === 'note') {
+      const note = typeof r.note === 'string' ? r.note : ''
+      if (note && (node.notes ?? []).some((n) => n.name.toLowerCase() === note.toLowerCase()))
+        push({ kind: 'note', nodeId, note }, at)
+    } else if (r.kind === 'super') {
+      const name = typeof r.name === 'string' ? r.name : ''
+      if (name && (node.superdocs ?? []).some((n) => n.name.toLowerCase() === name.toLowerCase()))
+        push({ kind: 'super', nodeId, name }, at)
+    } else if (r.kind === 'exam') {
+      const examId = typeof r.examId === 'string' ? r.examId : ''
+      const attemptId = typeof r.attemptId === 'string' ? r.attemptId : ''
+      const exam = exams.find((e) => e.id === examId)
+      if (examId && attemptId && exam?.attempts.some((a) => a.id === attemptId))
+        push({ kind: 'exam', nodeId, examId, attemptId }, at)
+    }
+  }
+  return out
 }

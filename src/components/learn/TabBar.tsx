@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowLeftToLine, ArrowRightToLine, FoldHorizontal, OctagonX, X } from 'lucide-react'
+import { ArrowLeftToLine, ArrowRightToLine, FoldHorizontal, OctagonX, Star, X } from 'lucide-react'
 import { DocTypeIcon, WebTabTypeIcon } from './docTypes'
 import type { LearnTab, TabRef, WebTabMeta } from '../../learn/types'
 import { TAB_CLOSE_LABEL, dragSlotDelta, type TabCloseMode } from '../../learn/tabs'
@@ -81,6 +81,13 @@ interface Props {
    */
   focused?: boolean
   /**
+   * 这一格的页签右键菜单要的收藏两件事：它收藏了没有（决定显示「收藏」还是「取消收藏」）、
+   * 以及切换它——传**整枚页签**：网页收藏要顺手记下这一页的活标题与站点图标（见 learn/favorites），
+   * 只给 ref 就查不到它们。不给这两条，菜单里就没有收藏这一项。
+   */
+  favoriteOf?: (ref: TabRef) => boolean
+  onToggleFavorite?: (tab: LearnTab) => void
+  /**
    * 文档区里按住右键横向拖动的进度：在当前页签的背景里画出来。
    * dir 是方向（1 = 往右拖，进度从左往右长；-1 = 往左拖，从右往左长），
    * ratio 是「这一格拖了多少」（0~1，满一格就换页签）。
@@ -151,6 +158,8 @@ export default function TabBar({
   docPayloadOf,
   webMetaOf,
   onDropChip,
+  favoriteOf,
+  onToggleFavorite,
   focused = false,
 }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -783,6 +792,11 @@ export default function TabBar({
           menu={menu}
           label={menuLabel}
           tabs={tabs}
+          favorited={menuTab ? (favoriteOf?.(menuTab.ref) ?? false) : false}
+          onToggleFavorite={() => {
+            if (menuTab && onToggleFavorite) onToggleFavorite(menuTab)
+            setMenu(null)
+          }}
           onClose={() => setMenu(null)}
           onPick={(mode) => {
             onClose(menu.id, mode)
@@ -803,7 +817,7 @@ const ICON = 'flex w-[14px] shrink-0 items-center justify-center'
 const COUNT = 'ml-auto pl-3 text-[11px] tabular-nums text-ink-faint'
 
 /**
- * 页签右键菜单：关闭 / 关闭左侧 / 关闭右侧 / 关闭其他 / 全部关闭。
+ * 页签右键菜单：收藏（或取消收藏）/ 关闭 / 关闭左侧 / 关闭右侧 / 关闭其他 / 全部关闭。
  *
  * 排版只有一条规矩：**一枚图标 + 一个左对齐的标签**，图标对齐在同一列上。
  * 前一版把图标撒在文字的左右两侧（这边一个箭头、那边一个箭头、中间再夹一枚叉），
@@ -821,6 +835,8 @@ function TabMenu({
   menu,
   label,
   tabs,
+  favorited,
+  onToggleFavorite,
   onClose,
   onPick,
 }: {
@@ -828,6 +844,9 @@ function TabMenu({
   /** 这一项的名字（抬头那一行）：右键菜单先说清「是对着哪一个」 */
   label: string
   tabs: LearnTab[]
+  /** 这一项收藏了没有（决定星标是实是虚、文案是「收藏」还是「取消收藏」） */
+  favorited: boolean
+  onToggleFavorite: () => void
   onClose: () => void
   onPick: (mode: TabCloseMode) => void
 }) {
@@ -863,6 +882,23 @@ function TabMenu({
       <div className="truncate px-2.5 py-1 text-[10.5px] text-ink-faint" title={label}>
         {label}
       </div>
+
+      {/*
+        收藏：菜单的第一项（星标实 = 已收藏，再点就取消）。它与「关闭」是两类事，
+        中间隔一道线；收藏是留下轨迹的温和动作，排在最前面。
+      */}
+      <button type="button" role="menuitem" onClick={onToggleFavorite} className={ROW}>
+        <span className={ICON}>
+          <Star
+            size={13}
+            className={favorited ? 'text-seal' : 'text-ink-soft'}
+            fill={favorited ? 'currentColor' : 'none'}
+          />
+        </span>
+        {favorited ? t('取消收藏') : t('收藏')}
+      </button>
+
+      <span aria-hidden="true" className="my-1 block h-px bg-line" />
 
       {/* 关闭这一项：一枚普通的叉，中性色——最常用、也最不「狠」的一个 */}
       <button type="button" role="menuitem" onClick={() => onPick('self')} className={ROW}>

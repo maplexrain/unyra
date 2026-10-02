@@ -58,13 +58,18 @@ export const CHIP_GUIDE = `引用 chip（#[{…}]）与交付清单（重要）�
 
 - type 取值：doc 教学文档 / note 笔记 / outline 大纲 / super 超级文档 / local 外部文件 /
   exam 试卷（不带 attemptId）/ attempt 某一次考试的副本（带 examId 与 attemptId）/
-  ws 节点工作区里的文件或目录（path 是相对当前用户的路径，如 docs/…/workspace/报告.md；
-  目录带 dir:true，点击跳到所属节点）。
+  ws 节点工作区里的文件或目录：path 用 **workspace api 回执里的 rel 字段**（形如
+  docs/…/workspace/报告.md 的磁盘路径，原样抄）；「节点/workspace/文件」这种手写格式
+  （如 极限/workspace/报告.md）也认；目录带 dir:true，点击跳到所属节点 /
+  web 网页（url 给完整网址——通常是学习者拖进来的网页页签；要读它的内容用 web.webFetch(url)）。
 - note 要带 note（笔记名）；super 要带 name（超级文档名）与 path（它所属节点的教学文档路径）；
   title 是给学习者看的显示名，尽量写上。
-- 路径用数据树相对路径（与 doc.read 的 path 同一套）；local 给完整绝对路径。
-- 它必须裸写在正文里，**不要包进代码块或行内代码**——包起来就不会被渲染成引用了。
-- 不要虚构 path / examId：引用指错了，学习者点开的就是别的东西。
+- **path 必须是真实存在的数据树相对路径，从这些地方原样抄**：每轮上下文里【写入目标】给的那条、
+  api.node.read / api.node.list 回执里的 path 字段、你 doc.write 回执里的路径。**绝不要自己拼**——
+  拿节点标题或「教学」这类文档别称手工拼出来的路径（如 【某目标】/教学）索引不到，
+  学习者点开是一片空。只知道节点不知道路径，先 api.node.read 拿真实 path 再写 chip。
+- local 给完整绝对路径；它必须裸写在正文里，**不要包进代码块或行内代码**——包起来就不会被渲染成引用了。
+- 不要虚构 path / examId / url：引用指错了，学习者点开的就是别的东西（或什么都没有）。
 
 每一轮的交付（最后那条面向学习者的回复）里，凡是这一轮**新增或修改过**的文件，
 都在末尾用一小节列出来：一行一个 chip，后面跟半句「改了什么」。没动过文件就不列。`

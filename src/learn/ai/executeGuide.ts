@@ -137,11 +137,15 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
 工作区（workspace；每个节点在磁盘上的真实目录）：
 - 目录是真的：users/<uid>/docs/<目标>/<节点>/workspace/（就在节点目录里），用户在系统资源管理器里
   看得见、自己也能放文件。
-  路径写法与文档同构——节点路径在前、文件在后（极限/数据/实验.csv），省略 path 就是当前节点。
+  路径写法与文档同构——节点路径在前、文件在后（极限/数据/实验.csv），省略 path 就是当前节点；
+  「节点/workspace/文件」（极限/workspace/要点.md）这种把工作区目录写全的格式也认。
 - api.workspace.list(path?)：先看有什么再动手；目录还不存在时回空清单。
 - api.workspace.read(path)：读文本文件；二进制读不了，太长会截断（totalChars 是全文长度）。
 - api.workspace.write({ path, content })：整份覆盖地写，父目录自动建；回执里 created / updated
   说明是新建还是覆盖——**覆盖之前想一想**，那是用户的真实文件。
+- 回执里的 **rel** 是这份文件的磁盘路径（docs/…/workspace/…）：要在回复里引用工作区文件
+  （ws 引用 chip 的 path）就**原样抄它**；「节点路径 + 文件段」那种写法（path 字段）只在
+  workspace api 之间通用，拿去当 chip 的 path 点击时定位不到。
 - 要交付「拿得走的文件」（整理好的资料、数据、代码）就写在这里，别只留在对话里。
 
 资源库（本目标 \`static/\` 里的文件，用 uuid 寻址；用户往输入框贴的图片就转存在这里）：
@@ -284,7 +288,8 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
 内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.snapshot / browser.point / browser.dom / browser.read / browser.capture）：
 - 这一组操作的是**界面上开着的网页页签**（文档区里那种地球图标页签）。没有页签就先
   api.browser.open('https://…') 开一个：纯关键词会当搜索词处理；返回 tabId，那时首屏已基本加载完。
-- api.browser.tabs()：列出存活的页签。之后一切操作按 tabId 指名；省略 tabId 指「焦点格正看着的那个网页」。
+- api.browser.tabs()：列出存活的页签。**browser.open 之前先查它**：目标网址已经开着就 activate
+  过去，别重复开同一个网址。之后一切操作按 tabId 指名；省略 tabId 指「焦点格正看着的那个网页」。
 - **看页面三招（按便宜程度排）**：
   - api.browser.snapshot(tabId?)：把可交互元素列成**带 ref 的清单**（role + 名称 + 输入值，≤200 条）
     ——认结构、找要点的元素全靠它。DOM 变了 ref 会过期，重新 snapshot 就好。

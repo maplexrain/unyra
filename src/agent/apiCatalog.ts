@@ -301,7 +301,7 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
       '没有任意 JS 的口子），操作的是用户的真实登录会话——不可逆动作先问用户。',
     items: [
       { name: 'browser.open', signature: "browser.open('https://…')", summary: '开一个网页页签（纯关键词当搜索词）；回 tabId，返回时首屏基本加载完', availability: 'browser' },
-      { name: 'browser.tabs', signature: 'browser.tabs()', summary: '全部存活的网页页签：tabId、url、标题、是否激活、所在格；之后一切操作按 tabId 指名', availability: 'browser' },
+      { name: 'browser.tabs', signature: 'browser.tabs()', summary: '全部存活的网页页签：tabId、url、标题、是否激活、所在格；browser.open 前先查它（同一网址 activate 即可，别重复开），之后一切操作按 tabId 指名', availability: 'browser' },
       { name: 'browser.snapshot', signature: 'browser.snapshot(tabId?)', summary: '页面快照：可交互元素列成带 ref 的清单（role + 名称 + 输入值，≤200 条）——认结构、找要点的元素全靠它；DOM 变了 ref 会过期，重新 snapshot 即可', availability: 'browser' },
       { name: 'browser.activate', signature: 'browser.activate(tabId)', summary: '把某个页签切到前台', availability: 'browser' },
       { name: 'browser.close', signature: 'browser.close(tabId)', summary: '关掉某个页签（不弹确认——用户没让关就别关）', availability: 'browser' },

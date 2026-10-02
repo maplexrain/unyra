@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { WebviewTag } from 'electron'
-import { ArrowLeft, ArrowRight, ExternalLink, RotateCw, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ExternalLink, RotateCw, Star, X } from 'lucide-react'
 import type { LearnTab, TabRef, WebTabMeta } from '../../../learn/types'
 import { normalizeWebInput } from '../../../learn/webUrl'
 import { isElectron, native } from '../../../lib/native'
@@ -37,6 +37,10 @@ interface Props {
   onMeta: (tabId: string, patch: Partial<WebTabMeta>) => void
   /** 把当前地址回写进页签（主框架导航时，重启回到离开时的那一页） */
   onCommitUrl: (tabId: string, url: string) => void
+  /** 当前地址收藏了没有（地址栏星标的实虚，见 learn/favorites）；不给就藏起这颗按钮 */
+  favoriteOf?: (url: string) => boolean
+  /** 星标点击：收藏 / 取消收藏当前地址；extra 是这一页的活标题与站点图标（一并记进收藏） */
+  onToggleFavoriteUrl?: (url: string, extra?: { title?: string; icon?: string }) => void
 }
 
 const BTN =
@@ -49,7 +53,7 @@ const BTN =
  */
 const ALLOW_POPUPS = 'true' as unknown as boolean
 
-export default function WebTabLayer({ tabs, activeId, meta, hidden, onMeta, onCommitUrl }: Props) {
+export default function WebTabLayer({ tabs, activeId, meta, hidden, onMeta, onCommitUrl, favoriteOf, onToggleFavoriteUrl }: Props) {
   const active = tabs.find((x) => x.id === activeId) ?? null
   // webview 元素走模块级登记表（learn/web/webviewRegistry）：browser.* 的宿主实现
   // 也从那里拿元素，两层看的是同一份，不用各自维护
@@ -81,6 +85,13 @@ export default function WebTabLayer({ tabs, activeId, meta, hidden, onMeta, onCo
             if (!active.ref.url) onCommitUrl(active.id, url)
             else withActive((wv) => wv.loadURL(url))
           }}
+          favorited={favoriteOf ? favoriteOf(meta[active.id]?.url ?? active.ref.url) : false}
+          onToggleFavorite={() => {
+            const url = meta[active.id]?.url ?? active.ref.url
+            if (url && onToggleFavoriteUrl) {
+              onToggleFavoriteUrl(url, { title: meta[active.id]?.title, icon: meta[active.id]?.favicon })
+            }
+          }}
         />
       )}
       <div className="relative min-h-0 flex-1">
@@ -109,6 +120,8 @@ function WebToolbar({
   onReload,
   onStop,
   onAddress,
+  favorited,
+  onToggleFavorite,
 }: {
   tab: WebTab
   m: WebTabMeta | undefined
@@ -117,6 +130,9 @@ function WebToolbar({
   onReload: () => void
   onStop: () => void
   onAddress: (url: string) => void
+  /** 当前地址收藏了没有；起始页（没有网址）这颗按钮置灰 */
+  favorited: boolean
+  onToggleFavorite: () => void
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   // 展示值：页签自己的活 url 优先，还没收到过事件的（刚重启回来）拿 ref.url 兜底
@@ -169,6 +185,21 @@ function WebToolbar({
         placeholder={t('搜索或输入网址')}
         className="h-7 min-w-0 flex-1 rounded-md border border-line bg-paper/60 px-2.5 text-[12px] text-ink outline-none transition placeholder:text-ink-faint focus:border-seal/60"
       />
+      {/*
+        收藏星标：实心 = 这一页在收藏夹里，点一下取消；空心 = 还没收藏。
+        网页收藏认网址（同一网址开几枚页签都指向同一条收藏，见 learn/favorites），
+        起始页没有网址，无从收藏，置灰。
+      */}
+      <button
+        type="button"
+        title={favorited ? t('取消收藏') : t('收藏此页')}
+        aria-label={favorited ? t('取消收藏') : t('收藏此页')}
+        disabled={!url}
+        onClick={onToggleFavorite}
+        className={BTN}
+      >
+        <Star size={14} className={favorited ? 'text-seal' : ''} fill={favorited ? 'currentColor' : 'none'} />
+      </button>
       <button
         type="button"
         title={t('在系统浏览器打开')}
