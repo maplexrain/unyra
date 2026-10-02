@@ -60,6 +60,7 @@ import {
 } from '../../learn/groups'
 import { makeTab, newWebKey, tabIndex, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
 import { normalizeWebInput } from '../../learn/webUrl'
+import type { BrowserDeps } from '../../learn/web/browserOps'
 import {
   addConversation,
   deleteConversation,
@@ -596,6 +597,8 @@ export default function LearnWorkspace({
    * 就是它）。所以这里放一个 ref：声明之后随时回填，调用时刻一定已经是最新的一份。
    */
   const openTabRef = useRef<(ref: TabRef) => void>(() => {})
+  /** browser.* 的宿主依赖槽：真正的值在 web 块里（openWebTab / webMeta 声明靠后），effect 里回填 */
+  const browserDepsRef = useRef<BrowserDeps | null>(null)
 
   const agent = useAgent({
     store,
@@ -629,6 +632,8 @@ export default function LearnWorkspace({
         return { opened: true }
       },
     },
+    // browser.*：依赖在 web 块里（openWebTab / webMeta 声明在 useAgent 之后），这里只给取法
+    browserDeps: () => browserDepsRef.current ?? undefined,
   })
 
   /**
@@ -847,17 +852,12 @@ export default function LearnWorkspace({
    * 网页的弹窗 / target=_blank（主进程拦下来推回来的，见 electron/app/webSession）也落到这里。
    */
   const openWebTab = useCallback(
-    (url: string) => {
+    (url: string): string => {
       const s = getLatest()
-      set({
-        ...s,
-        docArea: openInGroup(
-          s.docArea,
-          s.docArea.focus,
-          { kind: 'web', url: normalizeWebInput(url), key: newWebKey() },
-          Date.now(),
-        ),
-      })
+      // ref 当场算好（页签身份就是 tabKey），开完直接回页签 id——browser.open 靠它指名
+      const ref: TabRef = { kind: 'web', url: normalizeWebInput(url), key: newWebKey() }
+      set({ ...s, docArea: openInGroup(s.docArea, s.docArea.focus, ref, Date.now()) })
+      return tabKey(ref)
     },
     [getLatest, set],
   )
@@ -920,6 +920,12 @@ export default function LearnWorkspace({
     setLocalSaved,
     docTitle,
     onToast,
+  })
+
+  // browser.* 的宿主依赖：closeTab（useDocSaveFlow）到这条线才就位，所以回填放在这里——
+  // 每次渲染换成最新的一份（webMeta 活信息在里面）
+  useEffect(() => {
+    browserDepsRef.current = { getLatest, set, openWebTab, activateTab, closeTab, webMeta }
   })
 
   /**

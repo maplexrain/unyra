@@ -44,6 +44,8 @@ const EXECUTE_PARAMETERS = {
         '还有 wait（等待）/ ask（表单提问，阻塞等用户）/ mind（长期记忆）/ iwanna（计划预告）/ tiktok（响铃）' +
         '/ method（目标级持久化函数：create / list / call / delete）/ sdoc（超级文档：list / read / write / delete）' +
         '/ ui.switchMain / ui.toast / ui.point / ui.scroll / ui.screenshot / ui.superdoc（界面操作），' +
+        '/ browser.open / browser.tabs / browser.activate / browser.close / browser.read / browser.eval / browser.capture' +
+        '（内置浏览器：开网页、管页签、读页面、执行页面 JS、截图），' +
         '完整签名与使用时机见系统提示词的 execute 一节。' +
         'create 的 payload —— title、kind:"quiz"|"test"|"exam"、level:"easy"|"medium"|"hard"|"extreme"、' +
         'minutes（时限分钟数；小测不用给，其余不得低于题目数 × 2）、' +
@@ -125,7 +127,9 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
         'state.read() 看当前节点，state.update() 修正掌握度或自评，state.mistake() 记一次错误，' +
         'state.check() 记一次探针或主动回忆的结果。' +
         '本目标 static/ 下的资源（图片、PDF、附件）用 res.* 管理：清单、读、改、删、引用扫描都在那里；' +
-        'res.read 读图片不会返回 base64，图片会直接出现在你的下一步里。',
+        'res.read 读图片不会返回 base64，图片会直接出现在你的下一步里。' +
+        '界面里开着的网页页签用 browser.* 操作：开站、列/切/关页签、读页面正文、在页面里执行 JS、页面截图' +
+        '（截图与 ui.screenshot 一样落进资源库并出现在你的下一步里；要动页面先跟用户说一声）。',
     parameters: executeParameters(opts.apiBrief),
     run: async (args) => {
       const description = asText(args.description).trim()

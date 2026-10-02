@@ -204,6 +204,12 @@ export interface SandboxOptions {
    * 这些 api 都要「界面在场」——文档区没有打开的文档时，部分调用会明确失败。
    */
   ui?: UiOps
+  /**
+   * 内置浏览器（browser.*，见 learn/web/browserOps）：界面上开着的网页页签的
+   * 打开、管理、页面读取与操作、截图。依赖界面注入（webview 元素在渲染层），
+   * 未注入就没有这一组。
+   */
+  browser?: BrowserOps
   /** 一次编排的中止信号：用户点「停止」时，正在等用户的 ask 等调用要能立刻退出 */
   signal?: AbortSignal
   timeoutMs?: number
@@ -571,6 +577,39 @@ export interface UiOps {
    * opened 说明那份超级文档还在不在——删掉的打不开，别静默开一个空页签。
    */
   openSuper?: (req: { nodeId: string; name: string }) => Promise<{ opened: boolean }> | { opened: boolean }
+}
+
+/** browser.tabs 的元素：一枚存活网页页签的快照 */
+export interface BrowserTabInfo {
+  tabId: string
+  url: string
+  title: string
+  active: boolean
+  /** 页签所在分组格的 id */
+  group: string
+}
+
+/**
+ * 内置浏览器（browser.*）的宿主实现（见 learn/web/browserOps 与 learn/web/webviewRegistry）。
+ *
+ * read / eval / capture 的 tabId 省略 = 「焦点格正看着的那个网页」；指名不存在时抛错，
+ * 错误里引导模型先 browser.tabs()。返回对象会原样序列化给模型，文字要写成人话。
+ */
+export interface BrowserOps {
+  /** 开一个网页页签（纯关键词当搜索词处理）；回 tabId，返回时首屏基本加载完 */
+  open(url: string): Promise<{ tabId: string; url: string; note?: string }>
+  /** 全部存活的网页页签 */
+  tabs(): BrowserTabInfo[]
+  /** 把某个页签切到前台 */
+  activate(tabId: string): { ok: true }
+  /** 关掉某个页签（不弹确认） */
+  close(tabId: string): { ok: true }
+  /** 读格式化正文（article/main 优先，退回整页文本，约 1.8 万字截断） */
+  read(tabId?: string): Promise<{ tabId: string; url: string; title: string; text: string; truncated?: boolean }>
+  /** 在页面里执行一段 JS（字符串源码），回可序列化结果 */
+  eval(tabId: string | undefined, code: string): Promise<unknown>
+  /** 页面截图 → 资源库 + 挂到下一跳（与 ui.screenshot 同一条通道） */
+  capture(tabId?: string): Promise<{ ok: true; note?: string; images: MessageImage[] } | { ok: false; error: string }>
 }
 
 /**

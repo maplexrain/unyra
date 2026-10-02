@@ -246,6 +246,14 @@ export async function apiNameTests() {
     'workspace.list': "''",
     'workspace.read': "'极限/要点.md'",
     'workspace.write': "{ path: '极限/要点.md', content: '# 要点' }",
+    // 内置浏览器：webview 元素在真实渲染层，探针给一份假的宿主（见下面 browser 桩）
+    'browser.open': "'https://example.com'",
+    'browser.tabs': '',
+    'browser.activate': "'w:probe'",
+    'browser.close': "'w:probe'",
+    'browser.read': "''",
+    'browser.eval': "'document.title'",
+    'browser.capture': "''",
   }
   let s = staticStore()
   let tmpStore: Record<string, unknown> = {}
@@ -296,6 +304,11 @@ export async function apiNameTests() {
   let sawToast = ''
   let sawScroll: unknown = null
   let sawOpenSuper: string | null = null
+  // browser 桩：名单检查只问「这七个 api 在不在」，行为断言看下面的 sawBrowserXxx
+  let sawBrowserOpen = ''
+  let sawBrowserEval = ''
+  let sawBrowserActivate = ''
+  let sawBrowserClose = ''
   const stubRoot = { querySelectorAll: () => [] } as unknown as Element
   const tool = createExecuteTool({
     ...ops,
@@ -313,6 +326,15 @@ export async function apiNameTests() {
       capture: async () => ({ ok: true, images: [] }),
       domRoot: () => stubRoot,
       openSuper: ({ name }) => { sawOpenSuper = name; return { opened: true } },
+    },
+    browser: {
+      open: async (url: string) => { sawBrowserOpen = url; return { tabId: 'w:probe', url } },
+      tabs: () => [{ tabId: 'w:probe', url: 'https://example.com', title: '示例页', active: true, group: 'g1' }],
+      activate: (tabId: string) => { sawBrowserActivate = tabId; return { ok: true } },
+      close: (tabId: string) => { sawBrowserClose = tabId; return { ok: true } },
+      read: async (tabId?: string) => ({ tabId: tabId ?? 'w:probe', url: 'https://example.com', title: '示例页', text: '正文' }),
+      eval: async (_tabId: string | undefined, code: string) => { sawBrowserEval = code; return '示例标题' },
+      capture: async () => ({ ok: true, note: '（桩）', images: [] }),
     },
   })
   for (const name of SANDBOX_API_NAMES) {
@@ -338,6 +360,14 @@ export async function apiNameTests() {
   ok(!!sawIwanna && sawIwanna.length === 2, 'iwanna 把计划递给了宿主（界面据此渲染预告清单）', sawIwanna)
   ok(sawMain === 'agent' && sawToast === '你好' && !!sawScroll, 'ui.switchMain / ui.toast / ui.scroll 都到了宿主')
   ok(sawOpenSuper === '探针文档', 'ui.superdoc 把要开的文档名递给了宿主', sawOpenSuper)
+  ok(
+    sawBrowserOpen === 'https://example.com' &&
+      sawBrowserEval === 'document.title' &&
+      sawBrowserActivate === 'w:probe' &&
+      sawBrowserClose === 'w:probe',
+    'browser 这一组真的到了宿主（开站 / 执行页面 JS / 切页签 / 关页签）',
+    { sawBrowserOpen, sawBrowserEval },
+  )
   // ui.point 的行号定位：源文行要先剥成渲染文本里找得到的纯文字——
   // agent 实测拿原始源文行去搜渲染结果，除了纯散文行一律 located:false
   ok(plainLineOf('## 微积分基本定理') === '微积分基本定理', '标题行剥掉井号', plainLineOf('## 微积分基本定理'))

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { WebviewTag } from 'electron'
 import { ArrowLeft, ArrowRight, ExternalLink, RotateCw, X } from 'lucide-react'
 import type { LearnTab, TabRef, WebTabMeta } from '../../../learn/types'
@@ -6,6 +6,7 @@ import { normalizeWebInput } from '../../../learn/webUrl'
 import { isElectron, native } from '../../../lib/native'
 import { t } from '../../../i18n'
 import { setAddressFocus } from './addressFocus'
+import { registerWebview, webviewOf } from '../../../learn/web/webviewRegistry'
 
 /** web 页签：ref 一定是 web 分支（调用方按 kind 过滤过） */
 export type WebTab = LearnTab & { ref: Extract<TabRef, { kind: 'web' }> }
@@ -49,16 +50,11 @@ const BTN =
 const ALLOW_POPUPS = 'true' as unknown as boolean
 
 export default function WebTabLayer({ tabs, activeId, meta, hidden, onMeta, onCommitUrl }: Props) {
-  /** 活着的 webview 元素（key = 页签 id）：工具条对「当前页」的动作全走这里 */
-  const wvs = useRef(new Map<string, WebviewTag>())
-  const registerWv = useCallback((id: string, el: WebviewTag | null) => {
-    if (el) wvs.current.set(id, el)
-    else wvs.current.delete(id)
-  }, [])
-
   const active = tabs.find((x) => x.id === activeId) ?? null
+  // webview 元素走模块级登记表（learn/web/webviewRegistry）：browser.* 的宿主实现
+  // 也从那里拿元素，两层看的是同一份，不用各自维护
   const withActive = (fn: (wv: WebviewTag) => void): void => {
-    const wv = active ? wvs.current.get(active.id) : undefined
+    const wv = active ? webviewOf(active.id) : undefined
     if (wv) fn(wv)
   }
 
@@ -94,7 +90,6 @@ export default function WebTabLayer({ tabs, activeId, meta, hidden, onMeta, onCo
             tab={tab}
             active={!hidden && tab.id === activeId}
             m={meta[tab.id]}
-            registerWv={registerWv}
             onMeta={onMeta}
             onCommitUrl={onCommitUrl}
           />
@@ -196,14 +191,12 @@ function WebPage({
   tab,
   active,
   m,
-  registerWv,
   onMeta,
   onCommitUrl,
 }: {
   tab: WebTab
   active: boolean
   m: WebTabMeta | undefined
-  registerWv: (id: string, el: WebviewTag | null) => void
   onMeta: (tabId: string, patch: Partial<WebTabMeta>) => void
   onCommitUrl: (tabId: string, url: string) => void
 }) {
@@ -307,7 +300,7 @@ function WebPage({
       <webview
         ref={(el) => {
           wvRef.current = (el as WebviewTag | null) ?? null
-          registerWv(id, (el as WebviewTag | null) ?? null)
+          registerWebview(id, (el as WebviewTag | null) ?? null)
         }}
         src={src}
         partition="persist:web"

@@ -551,6 +551,24 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     }
   }
 
+  // 内置浏览器（browser.*，见 learn/web/browserOps）：界面上开着的网页页签的
+  // 打开、管理与页面级操作。依赖界面注入（webview 元素在渲染层），未注入就没有这一组。
+  if (opts.browser) {
+    const browser = opts.browser
+    wrapApi(api, 'browser.open', (args) => browser.open(asText(args[0]).trim()), log)
+    wrapApi(api, 'browser.tabs', () => browser.tabs(), log)
+    wrapApi(api, 'browser.activate', (args) => browser.activate(asText(args[0]).trim()), log)
+    wrapApi(api, 'browser.close', (args) => browser.close(asText(args[0]).trim()), log)
+    wrapApi(api, 'browser.read', (args) => browser.read(args.length ? asText(args[0]).trim() || undefined : undefined), log)
+    // 两种写法都收：browser.eval(js) 与 browser.eval(tabId, js)
+    wrapApi(api, 'browser.eval', (args) => {
+      const code = asText(args[args.length - 1])
+      const tabId = args.length > 1 ? asText(args[0]).trim() || undefined : undefined
+      return browser.eval(tabId, code)
+    }, log)
+    wrapApi(api, 'browser.capture', (args) => browser.capture(args.length ? asText(args[0]).trim() || undefined : undefined), log)
+  }
+
   // 学习者画像：get 回给模型看的那份（不含头像），update 是增量的（只写传进来的字段）
   if (opts.userInfo) {
     const userInfo = opts.userInfo
