@@ -41,6 +41,13 @@ interface Props {
 const BTN =
   'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-transparent text-ink-soft transition hover:bg-line/50 hover:text-ink disabled:opacity-35 disabled:hover:bg-transparent'
 
+/**
+ * allowpopups 必须落**字符串**：@types/react 把它声明成 boolean，但 React 运行时对
+ * 非自定义未知元素的布尔属性「只警告、不写 DOM」——属性没上元素，webview 就封死
+ * 弹窗通道，target=_blank 的链接（Bing/百度的搜索结果全是）点击一律无效。
+ */
+const ALLOW_POPUPS = 'true' as unknown as boolean
+
 export default function WebTabLayer({ tabs, activeId, meta, hidden, onMeta, onCommitUrl }: Props) {
   /** 活着的 webview 元素（key = 页签 id）：工具条对「当前页」的动作全走这里 */
   const wvs = useRef(new Map<string, WebviewTag>())
@@ -304,9 +311,7 @@ function WebPage({
         }}
         src={src}
         partition="persist:web"
-        // 必须是字符串：布尔 true 会被 React 拒写进 DOM（非自定义元素的布尔属性），
-        // 没有这个属性 webview 就封死弹窗通道——target=_blank 的链接点下去全是「无效」
-        allowpopups="true"
+        allowpopups={ALLOW_POPUPS}
         style={{ display: 'flex', width: '100%', height: '100%' }}
       />
       {m?.error && (
