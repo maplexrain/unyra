@@ -63,14 +63,14 @@ export function sessionOf(bucket: SubAgentBucket, defKey: string): SubAgentSessi
 }
 
 /**
- * 追加一条任务消息（导师派下来的活）。界面上它就是一条用户气泡——
- * 子会话视图里看得到导师要它干什么。
+ * 追加一条 user 消息：导师的任务（withTaskMessage）与介入的指令（withUserMessage）
+ * 走同一条路。界面上都是一条用户气泡——子会话视图里看得到导师要它干什么、中途插了什么话。
  */
-export function withTaskMessage(session: SubAgentSession, task: string): { session: SubAgentSession; message: ConversationMessage } {
+export function withUserMessage(session: SubAgentSession, text: string): { session: SubAgentSession; message: ConversationMessage } {
   const message: ConversationMessage = {
     id: crypto.randomUUID(),
     role: 'user',
-    parts: [{ type: 'text', text: task }],
+    parts: [{ type: 'text', text }],
     ts: Date.now(),
   }
   return {
@@ -79,29 +79,38 @@ export function withTaskMessage(session: SubAgentSession, task: string): { sessi
   }
 }
 
+export function withTaskMessage(session: SubAgentSession, task: string): { session: SubAgentSession; message: ConversationMessage } {
+  return withUserMessage(session, task)
+}
+
+/**
+ * 把跑到此刻的 parts 固化成一条 assistant 消息（就地换新对象，不改旧的）。
+ * 并发模型下的「半场落库」：介入指令插入前、任务收口时各有一次——循环内部的历史
+ * 推进与会话账本必须在同一个点长出同一条消息，toChatHistory 的镜像纪律才不破。
+ * usage 只带在收口那一条上（中途的段没有独立的账）。
+ */
+export function withAssistantFlush(session: SubAgentSession, parts: AgentPart[], usage?: MessageUsage): SubAgentSession {
+  if (!parts.length) return session
+  const message: ConversationMessage = {
+    id: crypto.randomUUID(),
+    role: 'assistant',
+    parts: [...parts],
+    ...(usage ? { usage } : {}),
+    ts: Date.now(),
+  }
+  return { ...session, messages: [...session.messages, message], lastActiveAt: Date.now() }
+}
+
 export interface SubRunRecord {
-  /** 这次任务的 runId（同一条 assistant 消息的身份；流式渲染也按它剔重） */
-  runId: string
-  taskMessageId: string
-  parts: AgentPart[]
-  usage: MessageUsage | null
   status: SubAgentSession['status']
   delivery: string | null
   issue?: string
 }
 
-/** 任务跑完，把回复消息与结果状态落进会话（就地换新对象，不改旧的） */
-export function withRunResult(session: SubAgentSession, record: SubRunRecord): SubAgentSession {
-  const message: ConversationMessage = {
-    id: record.runId,
-    role: 'assistant',
-    parts: record.parts,
-    ...(record.usage ? { usage: record.usage } : {}),
-    ts: Date.now(),
-  }
+/** 任务收口：状态、次数与最近交付/问题落进会话（消息本体由 withAssistantFlush 落，这里只记账） */
+export function withRunOutcome(session: SubAgentSession, record: SubRunRecord): SubAgentSession {
   return {
     ...session,
-    messages: [...session.messages, message],
     status: record.status === 'running' ? 'idle' : record.status,
     runs: session.runs + 1,
     lastActiveAt: Date.now(),

@@ -5,22 +5,26 @@
  * 与导师的运行时共用同一个 runAgent 循环、同一套事件累加（applyEvent）与
  * 历史还原（toChatHistory）——子代理的历史也必须逐字节镜像，前缀门禁按
  * `sub:{sessionId}` 分键记账，与导师的会话互不干扰。
+ *
+ * 并发模型下这场循环跑在后台：介入通道在「当前消息完整」的边界把导师的指令插进来
+ * （半场落库与指令入账都发生在同一个点，toChatHistory 的镜像才不破）；收口时把
+ * 最后一段 parts 固化成回复消息是管理器的事（finishRun），这里只负责跑与记账。
  */
 import type { ReasoningEffort, StreamFn } from '../../ai/types'
 import type { ResolvedProvider } from '../../ai/client'
 import { runAgent } from '../runtime'
 import { assertPrefixStable } from '../prefixGate'
-import type { AgentEvent, AgentPart, AgentTool, MessageUsage } from '../types'
+import type { AgentEvent, AgentPart, AgentTool, ConversationMessage, MessageUsage } from '../types'
 import { applyEvent } from '../../learn/agent/events'
 import { toChatHistory } from '../../learn/agent/history'
-import type { ConversationMessage } from '../types'
 
 export type SubRunStatus = 'complete' | 'incomplete' | 'interrupted' | 'error'
 
 export interface SubRunOutcome {
   status: SubRunStatus
-  /** 交付：最后一段正文（没有工具调用的那一跳）。中断 / 出错 / 纯工具跳时为 null */
+  /** 交付：最后一段（自上次边界以来）的正文。中断 / 出错 / 纯工具跳时为 null */
   delivery: string | null
+  /** 自上次边界以来的 parts（管理器收口时固化成回复消息） */
   parts: AgentPart[]
   usage: MessageUsage | null
   /** 出错时的原文（status === 'error' 时有） */
@@ -40,6 +44,17 @@ export interface SubRunOptions {
   contextWindow: number
   signal?: AbortSignal
   onEvent?: (e: AgentEvent) => void
+  /**
+   * 介入通道（并发 / 监督模型）：导师在循环跑动中插进来的指令。
+   * pull 在「当前这条消息已完整」的边界被调；拉到非空时 runner 先 flush（半场落库）
+   * 再 append（指令入账），两者与 runAgent 内部的历史推进发生在同一个点——
+   * 会话账本与循环历史因此始终逐字节对齐，绝不打断半截输出。
+   */
+  injections?: {
+    pull: () => string | null
+    flush: (parts: AgentPart[]) => void
+    append: (text: string) => void
+  }
   /** 测试注入替身流，从而不联网驱动整个循环 */
   stream?: StreamFn
 }
@@ -66,10 +81,23 @@ export function deliveryOf(parts: AgentPart[]): string | null {
 }
 
 export async function runSubAgentTask(opts: SubRunOptions): Promise<SubRunOutcome> {
-  const parts: AgentPart[] = []
+  let parts: AgentPart[] = []
   const tally = { context: 0, total: 0, output: 0, read: 0, miss: 0, estimated: false, tps: 0 }
   let sawNotice = false
   let errorMessage: string | undefined
+
+  /** 边界动作：拉介入指令 → 半场落库 → 指令入账；三件事钉在同一个点 */
+  const atBoundary = async (): Promise<string | null> => {
+    if (!opts.injections) return null
+    const text = opts.injections.pull()
+    if (text === null) return null
+    if (parts.length) {
+      opts.injections.flush(parts)
+      parts = []
+    }
+    opts.injections.append(text)
+    return text
+  }
 
   await runAgent({
     provider: opts.provider,
@@ -85,9 +113,10 @@ export async function runSubAgentTask(opts: SubRunOptions): Promise<SubRunOutcom
     ctx: { nodeId: null, goalId: '' },
     signal: opts.signal,
     ...(opts.effort ? { reasoningEffort: opts.effort } : {}),
+    injections: atBoundary,
     ...(opts.stream ? { stream: opts.stream } : {}),
     onContext: (snapshot) => {
-      // 前缀门禁按子会话分键：任务只在会话消息末尾追加，还原出的历史必须只增不改
+      // 前缀门禁按子会话分键：任务与介入只在会话消息末尾追加，还原出的历史必须只增不改
       assertPrefixStable(
         'sub:' + opts.sessionId,
         snapshot.messages,

@@ -776,5 +776,19 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     wrapApi(api, 'res.refs', (args) => res.refs(args.length ? uuid(args[0]) : undefined), log)
   }
 
+  // 子代理管理（subagent.*）：**导师专用**——SUBAGENT_ALLOWED_GROUPS 里没有这一组，
+  // 子代理的 apiAllow 白名单永远放不进来（不递归在通道口硬挡）。实现在 subagent/manager。
+  if (opts.subagent) {
+    const sa = opts.subagent
+    wrapApi(api, 'subagent.create', (args) => sa.create(asRecord(args[0])), log)
+    wrapApi(api, 'subagent.run', (args) => sa.run(asRecord(args[0])), log)
+    wrapApi(api, 'subagent.resume', (args) => sa.resume(asText(args[0]).trim()), log)
+    wrapApi(api, 'subagent.intervene', (args) => sa.intervene(asText(args[0]).trim(), asText(args[1])), log)
+    wrapApi(api, 'subagent.interrupt', (args) => sa.interrupt(asText(args[0]).trim()), log)
+    wrapApi(api, 'subagent.view', (args) => sa.view(asText(args[0]).trim()), log)
+    wrapApi(api, 'subagent.delete', (args) => sa.remove(asText(args[0]).trim()), log)
+    wrapApi(api, 'subagent.wait', (args) => sa.wait(asRecord(args[0])), log)
+  }
+
   return { api, tmp }
 }

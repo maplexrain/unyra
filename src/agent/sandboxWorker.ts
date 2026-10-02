@@ -125,6 +125,16 @@ const API_NAMES = [
   'browser.dom',
   'browser.read',
   'browser.capture',
+  // 子代理管理（导师专用）：并发派出、后台跑、wait 收交付。子代理的 apiAllow 白名单
+  // 里永远没有这一组——不递归在通道口硬挡（实现见 agent/subagent/manager）
+  'subagent.create',
+  'subagent.run',
+  'subagent.resume',
+  'subagent.intervene',
+  'subagent.interrupt',
+  'subagent.view',
+  'subagent.delete',
+  'subagent.wait',
   // 上下文压缩：agent 自己写交接摘要（见 learn/compact）
   'compact',
   // 人机协作与界面：ask 会阻塞到用户提交，wait 是合法的「慢」（超时按空闲算）

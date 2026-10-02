@@ -240,6 +240,16 @@ export async function apiNameTests() {
     'web.read': "'deadbeef', '一级标题'",
     // 多引擎搜索：同样给假的（解析与引擎表在 tests/webSerp.test.ts 里钉）
     'web.search': "'勾股定理', { engine: 'baidu' }",
+    // 子代理管理（导师专用）：宿主是桩；这组断言只问「api 在不在」——
+    // 并发、等待与介入的行为在 tests/subagent.test.ts 里钉
+    'subagent.create': "{ key: 'probe', name: '探针代理', system: '探针用的子代理定义，长度足以通过校验。' }",
+    'subagent.run': "{ agent: 'probe', task: '探针任务' }",
+    'subagent.wait': "{ seconds: 1 }",
+    'subagent.view': "'probe'",
+    'subagent.intervene': "'probe', '换条路走'",
+    'subagent.interrupt': "'probe'",
+    'subagent.resume': "'probe'",
+    'subagent.delete': "'probe'",
     // 上下文压缩：真实现（纯 store 逻辑）——摘要太短会被拒，所以这里给一段够长的
     'compact': "{ summary: '极限的直觉与夹逼定理都讲完了，学习者复述时漏了有界性，已经纠正并记进错题；下一步看导数的定义。', tasks: ['把「导数」那一节的第三节补完'] }",
     // 工作区目录：真实文件在主进程，探针给一份假的（见 fakeWorkspaceIo）
@@ -339,6 +349,17 @@ export async function apiNameTests() {
       dom: async (_tabId: string | undefined, ref: number, op: string) => { sawBrowserDom = ref + ':' + op; return { ok: true } },
       read: async () => ({ ok: true, uuid: 'deadbeef', url: 'https://example.com', title: '示例页', chars: 3, text: '正文' }),
       capture: async () => ({ ok: true, note: '（桩）', images: [] }),
+    },
+    // 子代理管理：桩（并发、等待与介入的行为由 tests/subagent.test.ts 用假流钉住）
+    subagent: {
+      create: () => ({ ok: true, key: 'probe', name: '探针代理' }),
+      run: () => ({ ok: true, agent: 'probe', note: '已启动' }),
+      resume: () => ({ ok: true, agent: 'probe' }),
+      intervene: () => ({ ok: true, agent: 'probe', queued: 1 }),
+      interrupt: () => ({ ok: true, agent: 'probe' }),
+      view: () => ({ ok: true, agent: 'probe', status: 'idle', recent: [] }),
+      remove: () => ({ ok: true, agent: 'probe' }),
+      wait: async () => ({ deliveries: [], running: [] }),
     },
   })
   for (const name of SANDBOX_API_NAMES) {

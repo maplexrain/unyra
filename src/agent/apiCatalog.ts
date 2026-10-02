@@ -15,7 +15,7 @@ export interface ApiEntry {
   signature: string
   summary: string
   /** 什么时候才可用（绝大多数恒可用；条件注入的少数要写明） */
-  availability?: 'always' | 'exam' | 'ui' | 'browser'
+  availability?: 'always' | 'exam' | 'ui' | 'browser' | 'subagent'
 }
 
 export interface ApiGroup {
@@ -347,6 +347,24 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
           '回调拿到文档区根节点的门面：root.query(sel) / text(sel, i?) / attr(sel, name, i?) / html(sel, i?) / rect(sel, i?) / count(sel) / exists(sel) / click(sel, i?)',
         availability: 'ui',
       },
+    ],
+  },
+  {
+    key: 'subagent',
+    label: '子代理 · subagent（导师专用）',
+    intro:
+      '把独立的活**并发地**派给子代理：它们各有自己独立的上下文，在后台同时跑各自的工作循环，' +
+      '跑完各交一份交付消息——中间过程不占你的上下文。范式：create 登记 → run 启动（一次 run 多个即并发）' +
+      '→ wait 收交付（首个完成即返回，必带最大时长）。**子代理自身拿不到这一组**（不递归）。',
+    items: [
+      { name: 'subagent.create', signature: 'subagent.create({ key, name?, system, tools? })', summary: '登记定义（只登记、不启动）；system 写清角色、工作方式与交付纪律；tools 是它 execute 开放的 api 组（不给就是 web + tmp）；同 key 再登记即覆盖（会话上下文保留）', availability: 'subagent' },
+      { name: 'subagent.run', signature: 'subagent.run({ agent, task })', summary: '派任务并启动，**立即返回**（任务在后台跑）；task 要自包含（子代理看不到你们的对话）；对同一 agent 重复 run 要等它空闲', availability: 'subagent' },
+      { name: 'subagent.wait', signature: 'subagent.wait({ seconds })', summary: '等交付：有挂起的立即全部返回；否则监听所有在跑的，**首个完成即返回**（含仍在跑清单）；到 seconds 没人交付返回 timedOut；无人可等立即返回空', availability: 'subagent' },
+      { name: 'subagent.view', signature: 'subagent.view(agent)', summary: '看状态与最近过程（recent 是最近几条消息）——超时后先 view 判断是否在钻牛角尖，再决定 intervene 还是再等一轮', availability: 'subagent' },
+      { name: 'subagent.intervene', signature: 'subagent.intervene(agent, instruction)', summary: '给运行中的 agent 插入一条指令；等它当前这条消息输出完整后才插入，不打断半截输出', availability: 'subagent' },
+      { name: 'subagent.interrupt', signature: 'subagent.interrupt(agent)', summary: '中断运行中的 agent（在下一个边界生效；上下文保留，可 resume）', availability: 'subagent' },
+      { name: 'subagent.resume', signature: 'subagent.resume(agent)', summary: '把被中断的 agent 从断点接着跑（上下文保留，不加新指令）', availability: 'subagent' },
+      { name: 'subagent.delete', signature: 'subagent.delete(agent)', summary: '删定义与会话（含挂起的交付；在跑的先中断）', availability: 'subagent' },
     ],
   },
 ]

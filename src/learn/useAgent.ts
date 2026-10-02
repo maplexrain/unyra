@@ -46,7 +46,7 @@ import { toChatHistory } from './agent/history'
 import { TURN_FLUSH_MS, upsertAssistantInFlight } from './agent/inflight'
 import { loadAttachTexts, transferPendingFiles, transferPendingImages } from './agent/transfer'
 import { applyAskToProfile, learnSandboxOps, type AgentRunTarget, type AgentUiDeps } from './agent/sandboxOps'
-import { createSubAgentTools } from '../agent/subagent/tools'
+import { createSubAgentManager, type SubAgentManager } from '../agent/subagent/manager'
 import { EMPTY_SUB_BUCKET } from '../agent/subagent/registry'
 import { t } from '../i18n'
 
@@ -129,22 +129,26 @@ export function useAgent(opts: {
   /**
    * 子代理会话住在 Conversation.subagents 上、随 chat.json 落盘（生命周期 = 这段
    * 导师对话，见 docs/subagent-architecture.md）——这里不再另立状态，读走对话、
-   * 写走 setBucket（在 createSubAgentTools 的装配处）。唯一留在内存的是 subLive：
-   * 正在跑的那场任务的流式输出（落库只在任务收口时发生一次）。
+   * 写走子代理管理器的 setBucket。留在内存的只有两样：
+   * - subRuns：并发在跑的各场任务的流式输出（一段对话可同时跑多场，按 runId 分槽）；
+   * - 子代理管理器（按 conversationId 各一个，跨轮存活——轮次结束仍在后台跑的任务
+   *   由它继续管着，下一轮的 wait 领回交付）。
    */
-  const [subLive, setSubLive] = useState<{
-    conversationId: string
-    sessionId: string
-    runId: string
-    parts: AgentPart[]
-  } | null>(null)
+  const [subRuns, setSubRuns] = useState<Array<{ conversationId: string; sessionId: string; runId: string; parts: AgentPart[] }>>([])
+  const subManagersRef = useRef(new Map<string, SubAgentManager>())
 
   useEffect(() => {
     onNeedKeyRef.current = onNeedKey
     onNoticeRef.current = opts.onNotice
   })
 
-  useEffect(() => () => abortRef.current?.abort(), [])
+  useEffect(
+    () => () => {
+      abortRef.current?.abort()
+      for (const m of subManagersRef.current.values()) m.abortAll()
+    },
+    [],
+  )
 
   const conversation = useMemo<Conversation | null>(
     () => (conversationId ? (conversationById(store, conversationId) ?? null) : null),
@@ -161,6 +165,44 @@ export function useAgent(opts: {
       set({ ...s, conversations })
     },
     [getLatest, set],
+  )
+
+  /**
+   * 子代理管理器：一段对话一个、跨轮存活（在跑的任务不随轮次结束而停，
+   * 交付挂起在它手里，下一轮的 wait 领回）。桶的读写都在这条对话上。
+   */
+  const getOrCreateSubManager = useCallback(
+    (conversationId: string): SubAgentManager => {
+      let m = subManagersRef.current.get(conversationId)
+      if (!m) {
+        m = createSubAgentManager({
+          getBucket: () => conversationById(getLatest(), conversationId)?.subagents ?? EMPTY_SUB_BUCKET,
+          setBucket: (update) => {
+            const stored = conversationById(getLatest(), conversationId)
+            if (!stored) return
+            const next = update(stored.subagents ?? EMPTY_SUB_BUCKET)
+            // 空桶不存字段：没有子代理的对话不该在 chat.json 里多一截空结构
+            persist({ ...stored, subagents: next.defs.length || next.sessions.length ? next : undefined })
+          },
+          onEvent: (sessionId, runId, e) => {
+            setSubRuns((prev) => {
+              const cur = prev.find((r) => r.runId === runId)
+              const parts = cur ? [...cur.parts] : []
+              applyEvent(parts, e)
+              return cur
+                ? prev.map((r) => (r.runId === runId ? { ...r, parts } : r))
+                : [...prev, { conversationId, sessionId, runId, parts }]
+            })
+          },
+          onRunEnd: (_sessionId, runId) => {
+            setSubRuns((prev) => prev.filter((r) => r.runId !== runId))
+          },
+        })
+        subManagersRef.current.set(conversationId, m)
+      }
+      return m
+    },
+    [getLatest, persist],
   )
 
   /**
@@ -342,7 +384,7 @@ export function useAgent(opts: {
       const window = globalContextWindow(settings)
       /**
        * 沙箱基座：一轮对话与子代理共用同一套能力（learnSandboxOps 的产物）。
-       * execute 拿全量，子代理按定义的 apiGroups 取子集（见 createSubAgentTools）。
+       * execute 拿全量，子代理按定义的 apiGroups 取子集（见 subagent/manager）。
        */
       const sandboxBase = learnSandboxOps({
         getLatest,
@@ -351,8 +393,20 @@ export function useAgent(opts: {
         nodeId: () => target.nodeId,
         goalId: () => target.goalId,
       })
-      /** 子代理实时槽的 parts 按次累积（runId → parts），任务结束随手清掉 */
-      const subRunParts = new Map<string, AgentPart[]>()
+      /**
+       * 子代理管理器：喂给这一轮的模型配置与沙箱基座；它启动的子代理任务用
+       * 启动那一刻的配置跑完（换轮不漂移）。
+       */
+      const manager = getOrCreateSubManager(target.conversationId)
+      manager.setTurn({
+        sandbox: sandboxBase,
+        provider: global.provider,
+        model: global.model,
+        effort: effortOverride ?? global.effort,
+        contextWindow: window,
+      })
+      // subagent api 挂进沙箱（导师专用；子代理的 apiAllow 白名单里没有这一组）
+      sandboxBase.subagent = manager.api
       const tools = [
         createExecuteTool({
           ...sandboxBase,
@@ -463,49 +517,7 @@ export function useAgent(opts: {
           // 内置浏览器（browser.*）：宿主依赖在场的回合才有这一组（见 learn/web/browserOps）
           ...(browserDeps ? { browser: makeBrowserOps(browserDeps, target.goalId) } : {}),
         }),
-        /**
-         * 子代理三件工具（agent_spawn / agent_run / agent_list）：每轮都声明、
-         * 形状不变——工具声明参与前缀，中途换工具集会把缓存整段作废。
-         * spawn 与 run 都阻塞到子代理交付，导师的循环在它返回前不会前进（「父等子」）。
-         */
-        ...createSubAgentTools({
-          conversationId: target.conversationId,
-          sandbox: sandboxBase,
-          provider: global.provider,
-          model: global.model,
-          effort: effortOverride ?? global.effort,
-          contextWindow: window,
-          signal,
-          // 子代理桶住在对话上：现读走 getLatest，写回 = 更新这条对话（persist 走落盘队列）
-          getBucket: () => conversationById(getLatest(), target.conversationId)?.subagents ?? EMPTY_SUB_BUCKET,
-          setBucket: (update) => {
-            const stored = conversationById(getLatest(), target.conversationId)
-            if (!stored) return
-            const next = update(stored.subagents ?? EMPTY_SUB_BUCKET)
-            // 空桶不存字段：没有子代理的对话不该在 chat.json 里多一截空结构
-            persist({ ...stored, subagents: next.defs.length || next.sessions.length ? next : undefined })
-          },
-          onEvent: (sessionId, runId, e) => {
-            let runParts = subRunParts.get(runId)
-            if (!runParts) {
-              runParts = []
-              subRunParts.set(runId, runParts)
-            }
-            applyEvent(runParts, e)
-            setSubLive({
-              conversationId: target.conversationId,
-              sessionId,
-              runId,
-              parts: [...runParts],
-            })
-          },
-          onRunEnd: (_sessionId, runId) => {
-            subRunParts.delete(runId)
-            setSubLive((cur) => (cur && cur.runId === runId ? null : cur))
-          },
-        }),
       ]
-
       const parts: AgentPart[] = []
 
       /**
@@ -710,7 +722,7 @@ export function useAgent(opts: {
         }
       }
     },
-    [examDeps, getLatest, nameConversation, persist, set],
+    [examDeps, getLatest, getOrCreateSubManager, nameConversation, persist, set],
   )
 
   /**
@@ -937,7 +949,11 @@ export function useAgent(opts: {
     [goalId, nodeId, conversationId, runTurn],
   )
 
-  const stop = useCallback(() => abortRef.current?.abort(), [])
+  const stop = useCallback(() => {
+    abortRef.current?.abort()
+    // 子代理在后台跑：停止这一轮时把当前对话所有在跑的一并中断（级联）
+    if (conversationId) subManagersRef.current.get(conversationId)?.abortAll()
+  }, [conversationId])
 
   /**
    * 继续「应用退出时被中断」的那一轮（消息列表中断说明旁的「继续」按钮）。
@@ -973,7 +989,6 @@ export function useAgent(opts: {
    * 面板据此画入口按钮（会话数）、弹出列表与子会话视图（实时流式与导师视图同一套渲染）。
    */
   const subBucket = conversation?.subagents
-  const subLiveHere = subLive && subLive.conversationId === conversationId ? subLive : null
 
   return {
     conversation,
@@ -1001,15 +1016,15 @@ export function useAgent(opts: {
     tps,
     /** 正在跑的这一轮到目前为止的账（每跳 usage 重算）：上下文占用圆环的实时数据源 */
     liveUsage,
-    /** 子代理：当前对话的会话与实时槽（见 docs/subagent-architecture.md） */
+    /** 子代理：当前对话的会话与各场在跑任务的实时流（见 docs/subagent-architecture.md） */
     sub: {
       sessions: subBucket?.sessions ?? [],
-      // 定义只来自本对话（agent_spawn 登记的；面板的会话列表按 defKey 认名字）
+      // 定义只来自本对话（subagent.create 登记的；面板的会话列表按 defKey 认名字）
       defs: subBucket?.defs ?? [],
-      running: !!subLiveHere,
-      streamingSessionId: subLiveHere?.sessionId ?? null,
-      streamingRunId: subLiveHere?.runId ?? null,
-      streaming: subLiveHere?.parts ?? null,
+      running: subRuns.some((r) => r.conversationId === conversationId),
+      live: subRuns
+        .filter((r) => r.conversationId === conversationId)
+        .map(({ sessionId, runId, parts }) => ({ sessionId, runId, parts })),
     },
   }
 }

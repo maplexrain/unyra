@@ -19,7 +19,7 @@ import { buildDocs, buildState, parseDocs } from '../src/learn/files'
 import { activeMessages } from '../src/learn/compact'
 import { upsertAssistantInFlight } from '../src/learn/agent/inflight'
 import { emptyPomodoro } from '../src/learn/pomodoro'
-import { createSession, withRunResult, withTaskMessage } from '../src/agent/subagent/registry'
+import { createSession, withAssistantFlush, withRunOutcome, withTaskMessage } from '../src/agent/subagent/registry'
 import type { Conversation, ConversationMessage, ContextSummary } from '../src/agent/types'
 import type { LearnStore } from '../src/learn/types'
 
@@ -171,18 +171,14 @@ describe('对话写盘 → 读回', () => {
 
   it('子代理桶活着回来：定义、会话与各自独立的上下文（normalizeConversation 的字段白名单曾经把它整层剥掉）', () => {
     const task = withTaskMessage(createSession(SUB_DEF), '查一下勾股定理的证明思路')
-    const session = withRunResult(task.session, {
-      runId: 'run1',
-      taskMessageId: task.message.id,
-      parts: [
+    const session = withRunOutcome(
+      withAssistantFlush(task.session, [
         { type: 'tool', id: 't1', name: 'execute', args: '{}', result: '搜索回执', ok: true, status: 'done' },
         { type: 'hop' },
         { type: 'text', text: '交付正文' },
-      ],
-      usage: null,
-      status: 'idle',
-      delivery: '交付正文',
-    })
+      ]),
+      { status: 'idle', delivery: '交付正文' },
+    )
     const back = roundTrip({
       ...convWith([msg('u1', 'user', '开始')]),
       subagents: {
