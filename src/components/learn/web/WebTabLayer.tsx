@@ -304,7 +304,9 @@ function WebPage({
         }}
         src={src}
         partition="persist:web"
-        allowpopups
+        // 必须是字符串：布尔 true 会被 React 拒写进 DOM（非自定义元素的布尔属性），
+        // 没有这个属性 webview 就封死弹窗通道——target=_blank 的链接点下去全是「无效」
+        allowpopups="true"
         style={{ display: 'flex', width: '100%', height: '100%' }}
       />
       {m?.error && (

@@ -13,7 +13,8 @@ declare module 'react' {
       webview: DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> & {
         src?: string
         partition?: string
-        allowpopups?: boolean
+        /** 只认字符串：webview 不是自定义元素，布尔值会被 React 拒写进 DOM（弹窗通道就断了） */
+        allowpopups?: 'true' | 'false'
       }
     }
   }
