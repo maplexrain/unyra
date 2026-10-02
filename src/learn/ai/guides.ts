@@ -57,7 +57,9 @@ export const CHIP_GUIDE = `引用 chip（#[{…}]）与交付清单（重要）�
     #[{type:"doc", path:"docs/…/xxx.md", title:"显示名"}]
 
 - type 取值：doc 教学文档 / note 笔记 / outline 大纲 / super 超级文档 / local 外部文件 /
-  exam 试卷（不带 attemptId）/ attempt 某一次考试的副本（带 examId 与 attemptId）。
+  exam 试卷（不带 attemptId）/ attempt 某一次考试的副本（带 examId 与 attemptId）/
+  ws 节点工作区里的文件或目录（path 是相对当前用户的路径，如 docs/…/workspace/报告.md；
+  目录带 dir:true，点击跳到所属节点）。
 - note 要带 note（笔记名）；super 要带 name（超级文档名）与 path（它所属节点的教学文档路径）；
   title 是给学习者看的显示名，尽量写上。
 - 路径用数据树相对路径（与 doc.read 的 path 同一套）；local 给完整绝对路径。

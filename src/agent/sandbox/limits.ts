@@ -14,3 +14,6 @@ export const MAX_RESULT_CHARS = 32_000
 
 /** 一次编排里最多记录多少个 api 调用（只影响展示，不影响执行） */
 export const MAX_LOGGED_CALLS = 40
+
+/** api.ask 挂出后，用户**没有任何操作**多久判超时（任意操作都会续住它，见 lib/userActivity） */
+export const ASK_IDLE_TIMEOUT_MS = 60_000

@@ -109,7 +109,7 @@ import {
 import { nodePathOf } from '../../learn/paths'
 import { nodeDocPath } from '../../learn/files'
 import { createNodeDocImageResolver } from '../../lib/docImages'
-import { revealLocalFile, revealPath, revealUserPath, listUserDir, mkdirUserPath, moveUserPath, writeUserText } from '../../lib/storage'
+import { revealLocalFile, revealPath, revealUserPath, userPath, listUserDir, mkdirUserPath, moveUserPath, writeUserText } from '../../lib/storage'
 import { wsAllocateName, wsNameOk } from '../../learn/workspace'
 import { notifyWsChanged } from './explorer/wsChanges'
 import { setStaticView } from '../../lib/staticView'
@@ -1494,6 +1494,22 @@ export default function LearnWorkspace({
     if (!(await revealUserPath(rel))) onToast(t('未能在资源管理器中定位该文件'))
   }
 
+  /**
+   * 工作区文件在页签里打开：rel（相对当前用户）换算成绝对路径，开一份 local 页签——
+   * 解析不解析看后缀（md/html 有预览，其余看源码，见 learn/tabs 的 viewOf）。
+   */
+  const openWsFile = useCallback(
+    (rel: string) => {
+      const abs = userPath(rel)
+      if (!abs) {
+        onToast(t('当前没有登录用户，打不开工作区文件'))
+        return
+      }
+      openTab({ kind: 'local', path: abs })
+    },
+    [openTab, onToast],
+  )
+
   /** 工作区里正在就地改名的那条路径（null = 没有在改名） */
   const [renamingWs, setRenamingWs] = useState<string | null>(null)
 
@@ -2170,6 +2186,7 @@ export default function LearnWorkspace({
         onDeleteNode={requestRemoveNode}
         onRevealNode={(nodeId) => void revealNodeFile(nodeId)}
         onRevealWs={(rel) => void revealWsFile(rel)}
+        onOpenWs={openWsFile}
         ws={wsActions}
         onOpenLocal={openLocalFile}
         onRemoveLocal={dropLocalFile}

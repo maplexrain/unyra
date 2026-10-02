@@ -13,8 +13,9 @@
  * 「工作区」根行不给改名：它的名字是布局定死的（nodeLayout 的分段 + workspace），
  * 磁盘上改了也会被下一次随标题的搬家改回来。
  *
- * 文件行点了就是在系统资源管理器里定位：归一目前不预览工作区里的任意文件，
- * 与其假装能打开，不如直接把人带到文件面前。
+ * 文件行点了在**页签里打开**（local 页签，解析不解析看后缀，见 learn/tabs 的 viewOf）；
+ * 目录行点了展开 / 收起。两类行都可拖拽——拖到对话输入框变成 ws 引用（见 lib/chipSyntax），
+ * 拖到文档区页签栏直接开在这格里。
  */
 import { useEffect, useRef, useState } from 'react'
 import { FileText, Folder } from 'lucide-react'
@@ -101,7 +102,7 @@ function WsDir({
   hint,
   ws,
   onOpenMenu,
-  onReveal,
+  onOpen,
 }: {
   node: KnowledgeNode
   /** 节点工作区的相对路径（docs/…/workspace/…）；往下各层用 segments 拼 */
@@ -113,7 +114,8 @@ function WsDir({
   /** 新建 / 改名的动作与当前改名中的路径（真实 IO 在宿主，见 WsActions） */
   ws: WsActions
   onOpenMenu: (x: number, y: number, target: MenuTarget) => void
-  onReveal: (rel: string) => void
+  /** 工作区文件在页签里打开（见 LearnWorkspace 的 openWsFile） */
+  onOpen: (rel: string) => void
 }) {
   const [open, setOpen] = useState(false)
   const [entries, setEntries] = useState<WsEntry[] | null>(null)
@@ -161,6 +163,8 @@ function WsDir({
           expandable
           open={open}
           onClick={() => void toggle()}
+          // 目录也能拖成引用：点击跳到所属节点（ws 目录没有页签形态，见 learn/chipRef）
+          dragChip={segments.length === 0 ? undefined : () => ({ type: 'ws', path: full, nodeId: node.id, title: label, dir: true })}
           onMenu={(x, y) =>
             onOpenMenu(x, y, { kind: 'ws', node, rel: full, dir: true, root: segments.length === 0 })
           }
@@ -186,7 +190,7 @@ function WsDir({
                   hint={t('工作区子目录「{0}」（磁盘上真实存在的文件夹；点行展开 / 收起，右键新建 / 改名）', e.name)}
                   ws={ws}
                   onOpenMenu={onOpenMenu}
-                  onReveal={onReveal}
+                  onOpen={onOpen}
                 />
               )
             }
@@ -211,8 +215,9 @@ function WsDir({
                   </span>
                 }
                 label={e.name}
-                hint={t('在系统资源管理器里定位「{0}」（点击行；右键：改名 / 定位）', e.name)}
-                onClick={() => onReveal(childRel)}
+                hint={t('工作区文件「{0}」（点击在页签打开；右键：改名 / 定位 / 拖进对话或文档区）', e.name)}
+                onClick={() => onOpen(childRel)}
+                dragChip={() => ({ type: 'ws', path: childRel, nodeId: node.id, title: e.name })}
                 onMenu={(x, y) => onOpenMenu(x, y, { kind: 'ws', node, rel: childRel, dir: false })}
               />
             )
@@ -229,13 +234,14 @@ export function WorkspaceRow({
   node,
   ws,
   onOpenMenu,
-  onReveal,
+  onOpen,
 }: {
   store: LearnStore
   node: KnowledgeNode
   ws: WsActions
   onOpenMenu: (x: number, y: number, target: MenuTarget) => void
-  onReveal: (rel: string) => void
+  /** 工作区文件在页签里打开（见 LearnWorkspace 的 openWsFile） */
+  onOpen: (rel: string) => void
 }) {
   const base = wsRelOf(store, node.id)
   // 没进任何目标目录的节点（理论上不该有）：不画，免得点开是一场空
@@ -250,7 +256,7 @@ export function WorkspaceRow({
         hint={t('这个节点目录下的真实文件夹（{0}/）；点行展开看磁盘上实际有什么，右键新建目录 / 文件', base)}
         ws={ws}
         onOpenMenu={onOpenMenu}
-        onReveal={onReveal}
+        onOpen={onOpen}
       />
     </div>
   )

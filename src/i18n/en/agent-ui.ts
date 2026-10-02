@@ -200,7 +200,8 @@ const dict: Record<string, string> = {
   '前面的选择让所有后续问题都跳过了，直接提交即可。': 'Your earlier choices skipped all remaining questions — just submit.',
   '回到上一题（答案都留着）': 'Previous question (answers are kept)',
   '上一题': 'Previous',
-  '想答的答，懒得答的留空直接提交也可以': 'Answer what you like; leaving blanks and submitting directly is fine too',
+  '想答的答，懒得答的留空直接提交也可以；一分钟没有任何操作会自动收起':
+    'Answer what you like; leaving blanks and submitting directly is fine too — the form closes itself after a minute of no activity',
   '不回答了': 'Not answering',
   '提交': 'Submit',
   '下一题': 'Next',

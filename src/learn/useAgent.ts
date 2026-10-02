@@ -21,6 +21,8 @@ import {
 } from '../agent/types'
 import { runAgent } from '../agent/runtime'
 import { createExecuteTool, type AskAnswers, type AskFormPayload, type ExamToolDeps } from '../agent/tools'
+import { ASK_IDLE_TIMEOUT_MS } from '../agent/sandbox/limits'
+import { ensureActivityListeners, userIdleMs } from '../lib/userActivity'
 import { recordContext } from '../agent/contextFilter'
 import { assertPrefixStable, resetPrefixGate } from '../agent/prefixGate'
 import { globalContextWindow, hasApiKey, loadAiSettings, resolveGlobal } from '../ai/settings'
@@ -389,10 +391,12 @@ export function useAgent(opts: {
             }),
           ask: (form) =>
             new Promise<unknown>((resolve) => {
+              let idleTimer: ReturnType<typeof setInterval> | null = null
               const finish = (value: unknown): void => {
                 if (askWaiterRef.current !== finish) return
                 askWaiterRef.current = null
                 signal.removeEventListener('abort', onAbort)
+                if (idleTimer) clearInterval(idleTimer)
                 setPendingAsk(null)
                 // 标了 userInfo 的题目：答案在**用户提交的那一刻**就落进画像（见 user/fields），
                 // 导师拿到答案时画像已经写好了——不必再 update 一遍，也就没有「转述走样」这一步
@@ -403,6 +407,22 @@ export function useAgent(opts: {
               signal.addEventListener('abort', onAbort, { once: true })
               askWaiterRef.current = finish
               setPendingAsk({ id: crypto.randomUUID(), form })
+              /*
+               * 表单限时：挂出一分钟后用户**没有任何操作**（鼠标键盘都不动，任意操作都会续住它，
+               * 见 lib/userActivity）就自动收起并带回 timedOut——agent 据此自行决定继续或交付，
+               * 不能为一个没人理的表单把整轮沙箱无限吊着。
+               */
+              ensureActivityListeners()
+              idleTimer = setInterval(() => {
+                if (askWaiterRef.current !== finish) return
+                if (userIdleMs() >= ASK_IDLE_TIMEOUT_MS) {
+                  finish({
+                    ok: false,
+                    timedOut: true,
+                    content: '表单挂出一分钟，用户没有任何操作（超时自动收起）。不要假设用户的回答。',
+                  })
+                }
+              }, 5_000)
             }),
           iwanna: (items) => setIwanna(items),
           tiktok: async () => {

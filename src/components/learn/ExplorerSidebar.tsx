@@ -59,6 +59,8 @@ interface Props {
   onRevealNode: (nodeId: string) => void
   /** 定位工作区目录里的真实文件 / 子目录（docs/…/workspace/…，见 learn/workspace） */
   onRevealWs: (rel: string) => void
+  /** 工作区文件在页签里打开（解析不解析看后缀，见 LearnWorkspace 的 openWsFile） */
+  onOpenWs: (rel: string) => void
   /** 工作区的新建与改名（真实文件 / 目录，IO 在宿主那一头，见 WsActions） */
   ws: WsActions
   /** 打开一个本地文件（列表项点击、或从对话框挑回来） */
@@ -90,6 +92,7 @@ export default function ExplorerSidebar({
   onDeleteNode,
   onRevealNode,
   onRevealWs,
+  onOpenWs,
   ws,
   onOpenLocal,
   onRemoveLocal,
@@ -198,7 +201,7 @@ export default function ExplorerSidebar({
                   exams={exams}
                   renamingNote={renaming && renaming.nodeId === root.id ? renaming.name : null}
                   onEndRename={() => setRenaming(null)}
-                  onRevealWs={onRevealWs}
+                  onOpenWs={onOpenWs}
                   ws={ws}
                 />
               ))}
