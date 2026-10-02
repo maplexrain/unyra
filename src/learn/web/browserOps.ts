@@ -1,5 +1,5 @@
-import type { WebviewTag } from 'electron'
-import type { BrowserOps, BrowserTabInfo } from '../../agent/sandbox/types'
+import type { KeyboardInputEvent, MouseInputEvent, MouseWheelInputEvent, WebviewTag } from 'electron'
+import type { BrowserOps, BrowserTabInfo, BrowserTarget } from '../../agent/sandbox/types'
 import type { LearnStore, TabRef, WebTabMeta } from '../types'
 import { findTab, focusedGroup, groupIdOfTab } from '../groups'
 import { normalizeWebInput } from '../webUrl'
@@ -9,13 +9,17 @@ import { saveScreenshot } from '../screenshots'
 /**
  * browser.* 的宿主实现（沙箱里 api.browser.* 的真身，见 agent/sandbox/types 的 BrowserOps）。
  *
- * 这些 api 操作的是**界面上开着的网页页签**：页签模型（docArea）与活信息（webMeta）
- * 都是学习工作区组件的状态，动作（openWebTab / activateTab / closeTab）也是组件闭包——
- * 所以由 LearnWorkspace 每轮渲染装配一份 BrowserDeps 交给 useAgent，回合内在这里
- * 拼成 BrowserOps（goalId 是回合内的，截图落进那个目标的资源库）。
+ * 这一层是「看 = 截图、动手 = 真输入注入」：
+ * - 看页面只有 capture（capturePage → 资源库 → images 通道）；**没有读页面文字与执行
+ *   页面 JS 的口子**——那两条（read / eval）试过一轮，返回结果不可控，已从沙箱面撤掉。
+ *   唯一还在页面里跑 JS 的地方是**内部**的坐标测量（selector → 中心点，见 MEASURE_SNIPPET），
+ *   返回值只有 { x, y }，可控。
+ * - 动手走 webview 元素的 sendInputEvent / insertText（等价 CDP Input 域）：页面收到的是
+ *   **可信事件**（isTrusted），导航、右键、双击、拖拽、滚轮都走真实行为链路。
  *
- * webview 元素本身走模块级登记表（见 ./webviewRegistry）：WebPage 挂载时登记、
- * 卸载时摘除，这里现取现用。
+ * 页签模型（docArea）与活信息（webMeta）是学习工作区组件的状态，动作也是组件闭包——
+ * 由 LearnWorkspace 每轮渲染装配一份 BrowserDeps 交给 useAgent，回合内在这里拼成
+ * BrowserOps（goalId 是回合内的，截图落进那个目标的资源库）。
  */
 export interface BrowserDeps {
   getLatest: () => LearnStore
@@ -30,7 +34,7 @@ export interface BrowserDeps {
 
 type WebTabRef = Extract<TabRef, { kind: 'web' }>
 
-/** 读正文/跑 JS 前先等页面安静：isLoading 轮询（上限 8s，超时不报错，拿到什么算什么） */
+/** 动手前先等页面安静：isLoading 轮询（上限 8s，超时不报错，拿到什么算什么） */
 async function settle(wv: WebviewTag, timeoutMs = 8000): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -43,7 +47,7 @@ async function settle(wv: WebviewTag, timeoutMs = 8000): Promise<void> {
   }
 }
 
-/** 页面级调用有 12s 兜底：页面卡死不该把整轮沙箱拖到空闲超时 */
+/** 输入注入有 12s 兜底：页面卡死不该把整轮沙箱拖到空闲超时 */
 function withTimeout<T>(p: Promise<T>, what: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(what + '超时（页面可能没有响应）')), 12_000)
@@ -60,14 +64,69 @@ function withTimeout<T>(p: Promise<T>, what: string): Promise<T> {
   })
 }
 
-/** 页面里跑的正文提取：article / main 优先，退回整页 innerText */
-const READ_SNIPPET =
-  '(() => { const pick = document.querySelector(\'article, main, [role="main"]\') || document.body; ' +
-  "const text = ((pick && pick.innerText) || document.body.innerText || '').replace(/\\n{3,}/g, '\\n\\n').trim(); " +
-  'return { title: document.title, url: location.href, text } })()'
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-/** 读正文的截断线：给模型留出其余结果的余地（execute 层 3.2 万字符的总闸在后头） */
-const MAX_READ_CHARS = 18_000
+/**
+ * selector → 中心坐标：滚到可视区再量。这是**内部**使用页面 JS 的唯一一处，
+ * 返回值钉死为 { x, y }（agent 面上没有 eval）。
+ */
+const MEASURE_SNIPPET = (sel: string): string => {
+  const q = JSON.stringify(sel)
+  return (
+    '(() => { const el = document.querySelector(' + q + '); if (!el) return null; ' +
+    "el.scrollIntoView({ block: 'center', inline: 'nearest' }); " +
+    'const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()'
+  )
+}
+
+/** 目标解析：选择器 → 等页面安静、量中心；坐标 → 取整原样 */
+async function pointOf(wv: WebviewTag, target: BrowserTarget): Promise<{ x: number; y: number }> {
+  if (typeof target === 'string') {
+    const sel = target.trim()
+    if (!sel) throw new Error('目标要给 CSS 选择器字符串或 { x, y } 坐标')
+    await settle(wv)
+    const p = (await withTimeout(wv.executeJavaScript(MEASURE_SNIPPET(sel), false), '定位元素')) as {
+      x?: number
+      y?: number
+    } | null
+    if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') {
+      throw new Error(
+        '页面上找不到这个选择器：' + sel + '（跨源 iframe 里的元素定位不到——先截图再改用坐标）',
+      )
+    }
+    return { x: Math.round(p.x), y: Math.round(p.y) }
+  }
+  if (typeof target !== 'object' || typeof target.x !== 'number' || typeof target.y !== 'number') {
+    throw new Error('坐标目标要给 { x, y }（网页视口内的 CSS 像素）')
+  }
+  return { x: Math.round(target.x), y: Math.round(target.y) }
+}
+
+/** 键名按 KeyboardEvent.key；组合键只认修饰键 + 单键（'Ctrl+A'、'Shift+Tab'） */
+const KEY_MODS: Record<string, 'alt' | 'control' | 'meta' | 'shift'> = {
+  ctrl: 'control',
+  control: 'control',
+  shift: 'shift',
+  alt: 'alt',
+  meta: 'meta',
+  cmd: 'meta',
+}
+
+function parseKeys(raw: string): { key: string; modifiers: string[] } {
+  const parts = raw
+    .split('+')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (!parts.length) throw new Error('要给出键名：api.browser.key("Enter")、api.browser.key("Ctrl+A")')
+  const base = parts[parts.length - 1]
+  const modifiers = parts.slice(0, -1).map((s) => {
+    const m = KEY_MODS[s.toLowerCase()]
+    if (!m) throw new Error('不认识的修饰键：' + s + '（只认 Ctrl / Shift / Alt / Meta）')
+    return m
+  })
+  // 空格的 KeyboardEvent.key 是空格字符，其余原样给（'Enter'、'Escape'、'a'）
+  return { key: base.toLowerCase() === 'space' ? ' ' : base, modifiers }
+}
 
 function hostOf(url: string): string {
   try {
@@ -105,6 +164,13 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
     return wv
   }
 
+  /** 一次完整的点击（move → down → up）；holdMs 的长按由 click 自己拆开 */
+  const clickAt = async (wv: WebviewTag, x: number, y: number, button = 'left', clickCount = 1): Promise<void> => {
+    await wv.sendInputEvent({ type: 'mouseMove', x, y } as MouseInputEvent)
+    await wv.sendInputEvent({ type: 'mouseDown', x, y, button, clickCount } as MouseInputEvent)
+    await wv.sendInputEvent({ type: 'mouseUp', x, y, button, clickCount } as MouseInputEvent)
+  }
+
   return {
     async open(url) {
       const target = normalizeWebInput(url)
@@ -115,7 +181,7 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
       return {
         tabId,
         url: target,
-        ...(wv ? {} : { note: '页签已开，网页元素还在挂载——马上再 read/eval 也能拿到（会等它加载完）' }),
+        ...(wv ? {} : { note: '页签已开，网页元素还在挂载——马上再操作也能拿到（动手前会等它加载完）' }),
       }
     },
     tabs() {
@@ -150,32 +216,75 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
       deps.closeTab(group, tabId, 'self', { confirm: false })
       return { ok: true }
     },
-    async read(tabId) {
-      const { tabId: id, ref } = resolveTab(tabId)
+    async click(tabId, target, opts = {}) {
+      const { tabId: id } = resolveTab(tabId)
       const wv = element(id)
-      await settle(wv)
-      const r = (await withTimeout(wv.executeJavaScript(READ_SNIPPET, false), '读取页面')) as {
-        title?: string
-        url?: string
-        text?: string
-      }
-      const full = r?.text ?? ''
-      return {
-        tabId: id,
-        url: r?.url || ref.url,
-        title: r?.title || titleOf(id, ref),
-        text: full.slice(0, MAX_READ_CHARS),
-        ...(full.length > MAX_READ_CHARS ? { truncated: true } : {}),
-      }
+      const { x, y } = await pointOf(wv, target)
+      const button = opts.button ?? 'left'
+      const clickCount = opts.dbl ? 2 : 1
+      await wv.sendInputEvent({ type: 'mouseMove', x, y } as MouseInputEvent)
+      await wv.sendInputEvent({ type: 'mouseDown', x, y, button, clickCount } as MouseInputEvent)
+      if (opts.holdMs) await sleep(Math.max(0, Math.min(5000, Math.round(opts.holdMs))))
+      await wv.sendInputEvent({ type: 'mouseUp', x, y, button, clickCount } as MouseInputEvent)
+      return { ok: true as const, at: { x, y } }
     },
-    async eval(tabId, code) {
-      if (typeof code !== 'string' || !code.trim()) {
-        throw new Error('要给一段 JS 源码字符串：api.browser.eval(tabId?, "document.title")')
+    async drag(tabId, from, to, opts = {}) {
+      const { tabId: id } = resolveTab(tabId)
+      const wv = element(id)
+      const a = await pointOf(wv, from)
+      const b = await pointOf(wv, to)
+      const steps = Math.max(2, Math.min(30, Math.round(opts.steps ?? 10)))
+      await wv.sendInputEvent({ type: 'mouseMove', x: a.x, y: a.y } as MouseInputEvent)
+      await wv.sendInputEvent({ type: 'mouseDown', x: a.x, y: a.y, button: 'left', clickCount: 1 } as MouseInputEvent)
+      for (let i = 1; i <= steps; i++) {
+        await wv.sendInputEvent({
+          type: 'mouseMove',
+          x: Math.round(a.x + ((b.x - a.x) * i) / steps),
+          y: Math.round(a.y + ((b.y - a.y) * i) / steps),
+        } as MouseInputEvent)
+        await sleep(16)
+      }
+      await wv.sendInputEvent({ type: 'mouseUp', x: b.x, y: b.y, button: 'left', clickCount: 1 } as MouseInputEvent)
+      return { ok: true as const, from: a, to: b }
+    },
+    async scroll(tabId, opts) {
+      const { tabId: id } = resolveTab(tabId)
+      const wv = element(id)
+      const dx = Math.round(opts.dx ?? 0)
+      const dy = Math.round(opts.dy ?? 0)
+      if (!dx && !dy) throw new Error('要给出滚动量：api.browser.scroll({ dy: 600 })（dy 正数往下）')
+      await wv.sendInputEvent({
+        type: 'mouseWheel',
+        x: Math.round(opts.x ?? 0),
+        y: Math.round(opts.y ?? 0),
+        deltaX: dx,
+        deltaY: dy,
+      } as MouseWheelInputEvent)
+      return { ok: true }
+    },
+    async type(tabId, text, target) {
+      if (typeof text !== 'string' || !text) {
+        throw new Error('要给出要输入的文字：api.browser.type("要输入的内容", 目标?)')
       }
       const { tabId: id } = resolveTab(tabId)
       const wv = element(id)
-      const value = await withTimeout(wv.executeJavaScript(code, false), '页面执行')
-      return value === undefined ? { ok: true, note: '（这段 JS 没有返回值）' } : value
+      if (target) {
+        const { x, y } = await pointOf(wv, target)
+        await clickAt(wv, x, y)
+      }
+      await wv.insertText(text)
+      return { ok: true as const, typed: [...text].length }
+    },
+    async key(tabId, keys) {
+      if (typeof keys !== 'string' || !keys.trim()) {
+        throw new Error('要给出键名：api.browser.key("Enter")、api.browser.key("Ctrl+A")')
+      }
+      const { tabId: id } = resolveTab(tabId)
+      const wv = element(id)
+      const { key, modifiers } = parseKeys(keys)
+      await wv.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers } as KeyboardInputEvent)
+      await wv.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers } as KeyboardInputEvent)
+      return { ok: true }
     },
     async capture(tabId) {
       const { tabId: id, ref } = resolveTab(tabId)

@@ -251,8 +251,11 @@ export async function apiNameTests() {
     'browser.tabs': '',
     'browser.activate': "'w:probe'",
     'browser.close': "'w:probe'",
-    'browser.read': "''",
-    'browser.eval': "'document.title'",
+    'browser.click': "'#submit'",
+    'browser.drag': "'.a', '.b'",
+    'browser.scroll': "{ dy: 300 }",
+    'browser.type': "'你好'",
+    'browser.key': "'Enter'",
     'browser.capture': "''",
   }
   let s = staticStore()
@@ -304,9 +307,11 @@ export async function apiNameTests() {
   let sawToast = ''
   let sawScroll: unknown = null
   let sawOpenSuper: string | null = null
-  // browser 桩：名单检查只问「这七个 api 在不在」，行为断言看下面的 sawBrowserXxx
+  // browser 桩：名单检查只问「这十个 api 在不在」，行为断言看下面的 sawBrowserXxx
   let sawBrowserOpen = ''
-  let sawBrowserEval = ''
+  let sawBrowserClick = ''
+  let sawBrowserType = ''
+  let sawBrowserKey = ''
   let sawBrowserActivate = ''
   let sawBrowserClose = ''
   const stubRoot = { querySelectorAll: () => [] } as unknown as Element
@@ -332,8 +337,11 @@ export async function apiNameTests() {
       tabs: () => [{ tabId: 'w:probe', url: 'https://example.com', title: '示例页', active: true, group: 'g1' }],
       activate: (tabId: string) => { sawBrowserActivate = tabId; return { ok: true } },
       close: (tabId: string) => { sawBrowserClose = tabId; return { ok: true } },
-      read: async (tabId?: string) => ({ tabId: tabId ?? 'w:probe', url: 'https://example.com', title: '示例页', text: '正文' }),
-      eval: async (_tabId: string | undefined, code: string) => { sawBrowserEval = code; return '示例标题' },
+      click: async (_tabId: string | undefined, target: unknown) => { sawBrowserClick = String(target); return { ok: true, at: { x: 1, y: 2 } } },
+      drag: async () => ({ ok: true, from: { x: 0, y: 0 }, to: { x: 1, y: 1 } }),
+      scroll: async () => ({ ok: true }),
+      type: async (_tabId: string | undefined, text: string) => { sawBrowserType = text; return { ok: true, typed: text.length } },
+      key: async (_tabId: string | undefined, keys: string) => { sawBrowserKey = keys; return { ok: true } },
       capture: async () => ({ ok: true, note: '（桩）', images: [] }),
     },
   })
@@ -362,11 +370,13 @@ export async function apiNameTests() {
   ok(sawOpenSuper === '探针文档', 'ui.superdoc 把要开的文档名递给了宿主', sawOpenSuper)
   ok(
     sawBrowserOpen === 'https://example.com' &&
-      sawBrowserEval === 'document.title' &&
+      sawBrowserClick === '#submit' &&
+      sawBrowserType === '你好' &&
+      sawBrowserKey === 'Enter' &&
       sawBrowserActivate === 'w:probe' &&
       sawBrowserClose === 'w:probe',
-    'browser 这一组真的到了宿主（开站 / 执行页面 JS / 切页签 / 关页签）',
-    { sawBrowserOpen, sawBrowserEval },
+    'browser 这一组真的到了宿主（开站 / 点击 / 打字 / 按键 / 切页签 / 关页签）',
+    { sawBrowserOpen, sawBrowserClick },
   )
   // ui.point 的行号定位：源文行要先剥成渲染文本里找得到的纯文字——
   // agent 实测拿原始源文行去搜渲染结果，除了纯散文行一律 located:false

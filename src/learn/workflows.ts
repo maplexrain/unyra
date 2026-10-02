@@ -307,6 +307,40 @@ const REVIEW_INSTRUCTION = [
 ].join('\n')
 
 /**
+ * 「浏览器操作」：替用户驱动内置浏览器完成任务。之所以特化成工作流：网页是
+ * **看图干活**的场景，普通对话里模型容易去猜页面内容、或想找条「读文字」的近路——
+ * 这里把「看 = 截图、动手 = 模拟鼠标键盘」钉成唯一的路子，并把连招塞进同一次
+ * execute（连招才是浏览效率的主要来源），推理档位给 low（识别与决策都轻）。
+ */
+const BROWSER_USE_INSTRUCTION = [
+  '你要替用户操作**内置浏览器**（文档区那种地球图标页签）完成任务。这一轮只用 api.browser.* 与 api.wait：',
+  '**看页面只用截图（api.browser.capture），输入只用模拟鼠标和键盘（api.browser.click / type / key）**',
+  '——没有读页面文字、执行页面 JS 的通道，也不要用 web.webFetch 凑合（那是另一个抓取器，看不到登录态）。',
+  '',
+  '流程：',
+  '1. 先 api.browser.tabs() 看存活页签；没有合适的就 api.browser.open(网址) 开一个（纯关键词会当搜索词）。',
+  '   后续操作按 tabId 指名；省略 tabId 指焦点格正看着的那个。',
+  '2. **看**：api.browser.capture(tabId?) 截图，图会出现在你的下一步里。不要凭想象猜页面长什么样；',
+  '   截图出来空白或半截就 api.wait(800) 再截一次（页面可能还在加载）。',
+  '3. **点**：api.browser.click(tabId?, 目标, { button?, dbl?, holdMs? }?)。目标是 CSS 选择器',
+  '   （自动滚到元素点它的中心）或 { x, y } 坐标（在截图上估算）；button:"right" 右键、"middle" 中键',
+  '   （会开成新页签），dbl:true 双击，holdMs 毫秒长按。',
+  '4. **输入**：api.browser.type(tabId?, 文字, 目标?) —— 给了目标会先点它再输入，中文照常；',
+  '   回车与快捷键用 api.browser.key(tabId?, "Enter" / "Escape" / "Ctrl+A")。',
+  '5. **滚动与拖拽**：api.browser.scroll(tabId?, { dy: 600 })（dy 正数往下）；',
+  '   按住拖拽用 api.browser.drag(tabId?, 起点, 终点)（选区、滑块、画笔这类）。',
+  '',
+  '效率纪律（这是浏览器工作流的生命线）：',
+  '- **把一连串小动作写进同一次 execute 的代码里连续做完**——点输入框 → 打字 → 回车 → 等加载，',
+  '  一段代码一气呵成，然后才截一张图核对。不要每敲一个字、每点一下就截一次图。',
+  '- click 碰到还在加载的页面会自动等它稳定；选择器找不到会报错——先截图看一眼，换坐标或换措辞，',
+  '  同一个选择器最多重试一次。',
+  '',
+  '安全纪律：这是用户的**真实登录会话**。提交订单、支付、删除、发送消息这类不可逆动作，',
+  '必须先用 api.ask 跟用户确认再动手；用户没让关的页签不要 api.browser.close。',
+].join('\n')
+
+/**
  * 内置条目的定义形：没有时间戳（它们不是「登记」出来的），runnable 可以不给（默认能跑）。
  * effort 是**推荐档**——交付物型的厚（教学文档、出卷）、对话型的薄（探针、注解），
  * 逐条写在定义里；这是产品对「这项功能的底线质量」的表态，用户随时可以覆盖。
@@ -448,6 +482,14 @@ const BUILTIN_DEFS: BuiltinDef[] = [
     runnable: false,
     // 主动提取的对话体验优先
     effort: 'medium',
+  },
+  {
+    id: 'browser-use',
+    name: '浏览器操作',
+    description: '替用户操作内置浏览器：截图看页面、模拟鼠标键盘完成任务',
+    instruction: BROWSER_USE_INSTRUCTION,
+    // 全程看图干活：识别与决策都轻，low 足够——快才是浏览效率
+    effort: 'low',
   },
 ]
 

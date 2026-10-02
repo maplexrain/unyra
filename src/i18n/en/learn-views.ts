@@ -34,6 +34,8 @@ const dict: Record<string, string> = {
   '按今天读到的内容出几道题，答到门槛才算打卡': 'Sets a few questions based on what you read today; the check-in only counts when you pass',
   '复习': 'Review',
   '按间隔复习计划带用户做一次复习：先主动提取，再按阶段检查并落账': 'Guides a spaced-repetition session: active recall first, then stage-based checks that get recorded',
+  '浏览器操作': 'Browser use',
+  '替用户操作内置浏览器：截图看页面、模拟鼠标键盘完成任务': 'Drives the built-in browser for you: looks via screenshots, acts via simulated mouse and keyboard',
 
   // ---------- 共享的标签常量（在使用处包 t()：learn/types、learn/learning、learn/review、pomodoro 等） ----------
   '学习中': 'Learning',
@@ -514,6 +516,7 @@ const dict: Record<string, string> = {
   '{0}，先不关闭了': '{0} — holding off on closing',
   '现在还打不了卡': 'Check-in is not ready yet',
   '打卡要出题，请先在设置中填写「{0}」的 API Key': 'Check-in needs questions — set the {0} API Key in Settings first',
+  '浏览器操作要先在设置中填写「{0}」的 API Key': 'Browser use needs an API — set the {0} API Key in Settings first',
   '出题需要 AI，请先在设置中填写「{0}」的 API Key': 'Generating an exam needs AI — set the {0} API Key in Settings first',
   '有一次考试还没判分、或还没写错题讲解，先让导师把它收尾': 'An exam is still awaiting grading or explanations — let the tutor wrap that up first',
   '判分与讲解需要 AI，请先在设置中填写「{0}」的 API Key': 'Grading and explanations need AI — set the {0} API Key in Settings first',

@@ -115,13 +115,16 @@ const API_NAMES = [
   'web.read',
   // 多引擎搜索（抓取走同一条主进程通道，解析在渲染层，见 learn/webSearch）
   'web.search',
-  // 内置浏览器：网页页签的打开 / 管理 / 页面读取与操作 / 截图（见 learn/web/browserOps）
+  // 内置浏览器：网页页签的打开 / 管理 / 模拟鼠标键盘 / 截图（见 learn/web/browserOps）
   'browser.open',
   'browser.tabs',
   'browser.activate',
   'browser.close',
-  'browser.read',
-  'browser.eval',
+  'browser.click',
+  'browser.drag',
+  'browser.scroll',
+  'browser.type',
+  'browser.key',
   'browser.capture',
   // 上下文压缩：agent 自己写交接摘要（见 learn/compact）
   'compact',

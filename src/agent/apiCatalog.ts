@@ -295,17 +295,21 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     key: 'browser',
     label: '内置浏览器 · browser',
     intro:
-      '操作**界面上开着的网页页签**（文档区里那种地球图标页签）：开站、管理页签、读页面正文、' +
-      '在页面里执行 JS、截图。读的是用户的真实登录会话——读可以大方，写要克制；' +
-      '没有网页页签时先 browser.open 开一个。',
+      '操作**界面上开着的网页页签**（文档区里那种地球图标页签）：开站、管理页签、模拟鼠标键盘、截图。' +
+      '**看页面只用 browser.capture 截图**——没有读页面文字与执行 JS 的口子。' +
+      '输入是**真输入注入**（页面收到的是可信事件）：导航、右键、双击、拖拽都是真的。' +
+      '操作的是用户的真实登录会话——不可逆动作先问用户。',
     items: [
       { name: 'browser.open', signature: "browser.open('https://…')", summary: '开一个网页页签（纯关键词当搜索词）；回 tabId，返回时首屏基本加载完', availability: 'browser' },
       { name: 'browser.tabs', signature: 'browser.tabs()', summary: '全部存活的网页页签：tabId、url、标题、是否激活、所在格；之后一切操作按 tabId 指名', availability: 'browser' },
       { name: 'browser.activate', signature: 'browser.activate(tabId)', summary: '把某个页签切到前台', availability: 'browser' },
       { name: 'browser.close', signature: 'browser.close(tabId)', summary: '关掉某个页签（不弹确认——用户没让关就别关）', availability: 'browser' },
-      { name: 'browser.read', signature: 'browser.read(tabId?)', summary: '读格式化正文（article/main 优先，退回整页文本，约 1.8 万字截断）→ { title, url, text }；tabId 省略 = 焦点格正看着的网页', availability: 'browser' },
-      { name: 'browser.eval', signature: 'browser.eval(tabId?, js)', summary: '在页面里执行一段 JS（字符串源码），回可序列化结果；只在用户明确要求时动页面', availability: 'browser' },
-      { name: 'browser.capture', signature: 'browser.capture(tabId?)', summary: '页面截图 → 存进资源库并附在下一跳（与 ui.screenshot 同一条通道）', availability: 'browser' },
+      { name: 'browser.click', signature: 'browser.click(tabId?, 目标, { button?, dbl?, holdMs? }?)', summary: '点一下：目标是 CSS 选择器（自动滚到元素点中心）或 { x, y } 坐标；button:"right"/"middle"，dbl:true 双击，holdMs 长按毫秒', availability: 'browser' },
+      { name: 'browser.drag', signature: 'browser.drag(tabId?, 起点, 终点, { steps? }?)', summary: '按住从起点拖到终点再松开（文本选区、滑块、画笔）', availability: 'browser' },
+      { name: 'browser.scroll', signature: 'browser.scroll(tabId?, { dx?, dy?, x?, y? })', summary: '滚轮滚动：dy 正数往下、dx 正数往右，x/y 定滚动落点（省略 = 视口左上）', availability: 'browser' },
+      { name: 'browser.type', signature: 'browser.type(tabId?, 文字, 目标?)', summary: '输入文字（插到焦点元素；给了目标先点它再输入），中文照常', availability: 'browser' },
+      { name: 'browser.key', signature: 'browser.key(tabId?, "Enter" | "Ctrl+A" | …)', summary: '按键或组合键（Ctrl/Shift/Alt/Meta + 单键）；输完文字要回车就是它', availability: 'browser' },
+      { name: 'browser.capture', signature: 'browser.capture(tabId?)', summary: '页面截图 → 存进资源库并附在下一跳（与 ui.screenshot 同一条通道）——看页面全靠它', availability: 'browser' },
     ],
   },
   {

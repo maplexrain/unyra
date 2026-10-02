@@ -589,9 +589,14 @@ export interface BrowserTabInfo {
   group: string
 }
 
+/** click / drag / type 的目标：CSS 选择器（自动滚到元素取中心）或视口内坐标 */
+export type BrowserTarget = string | { x: number; y: number }
+
 /**
  * 内置浏览器（browser.*）的宿主实现（见 learn/web/browserOps 与 learn/web/webviewRegistry）。
  *
+ * **看页面用 capture（截图），动手用 click / type / key（真输入注入，页面收到的是
+ * isTrusted 的可信事件）**——没有读页面文字与任意执行 JS 的口子（结果不可控，已撤）。
  * read / eval / capture 的 tabId 省略 = 「焦点格正看着的那个网页」；指名不存在时抛错，
  * 错误里引导模型先 browser.tabs()。返回对象会原样序列化给模型，文字要写成人话。
  */
@@ -604,11 +609,26 @@ export interface BrowserOps {
   activate(tabId: string): { ok: true }
   /** 关掉某个页签（不弹确认） */
   close(tabId: string): { ok: true }
-  /** 读格式化正文（article/main 优先，退回整页文本，约 1.8 万字截断） */
-  read(tabId?: string): Promise<{ tabId: string; url: string; title: string; text: string; truncated?: boolean }>
-  /** 在页面里执行一段 JS（字符串源码），回可序列化结果 */
-  eval(tabId: string | undefined, code: string): Promise<unknown>
-  /** 页面截图 → 资源库 + 挂到下一跳（与 ui.screenshot 同一条通道） */
+  /** 点一下：button 换右/中键（中键会开成新页签），dbl 双击，holdMs 长按毫秒 */
+  click(
+    tabId: string | undefined,
+    target: BrowserTarget,
+    opts?: { button?: 'left' | 'right' | 'middle'; dbl?: boolean; holdMs?: number },
+  ): Promise<{ ok: true; at: { x: number; y: number } }>
+  /** 按住从 from 拖到 to 再松开（文本选区、滑块、画笔） */
+  drag(
+    tabId: string | undefined,
+    from: BrowserTarget,
+    to: BrowserTarget,
+    opts?: { steps?: number },
+  ): Promise<{ ok: true; from: { x: number; y: number }; to: { x: number; y: number } }>
+  /** 滚轮滚动：dy 正数往下、dx 正数往右；x/y 是滚动的落点（省略 = 视口左上） */
+  scroll(tabId: string | undefined, opts: { dx?: number; dy?: number; x?: number; y?: number }): Promise<{ ok: true }>
+  /** 输入文字（插到焦点元素；给了 target 会先点它），中文照常 */
+  type(tabId: string | undefined, text: string, target?: BrowserTarget): Promise<{ ok: true; typed: number }>
+  /** 按键或组合键：'Enter' / 'Escape' / 'ArrowDown' / 'Ctrl+A'（修饰键只认 Ctrl/Shift/Alt/Meta） */
+  key(tabId: string | undefined, keys: string): Promise<{ ok: true }>
+  /** 页面截图 → 资源库 + 挂到下一跳（与 ui.screenshot 同一条通道）——看页面全靠它 */
   capture(tabId?: string): Promise<{ ok: true; note?: string; images: MessageImage[] } | { ok: false; error: string }>
 }
 

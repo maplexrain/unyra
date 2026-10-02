@@ -11,6 +11,7 @@ import {
   ChevronRight,
   FlaskConical,
   Flame,
+  Globe,
   MessagesSquare,
   Paperclip,
   Settings,
@@ -54,6 +55,8 @@ export interface PlusMenuArgs {
   onSuperLab: () => void
   /** 更多 → 工作流 → 打卡 */
   onCheckin: () => void
+  /** 更多 → 工作流 → 浏览器操作：替用户驱动内置浏览器完成任务 */
+  onBrowserUse: () => void
   /** 更多 → 压缩上下文：把前面的对话折成一份摘要 */
   onCompact: () => void
   /** 更多 → 超级导师设置：打开超级导师自己的设置窗口（与全局设置不是同一个） */
@@ -109,6 +112,7 @@ export function usePlusMenu({
   onRecall,
   onSuperLab,
   onCheckin,
+  onBrowserUse,
   onCompact,
   onOpenAgentSettings,
   onAttach,
@@ -159,7 +163,7 @@ export function usePlusMenu({
     {
       key: 'workflow',
       label: t('工作流'),
-      hint: t('回忆 / 超级实验室 / 打卡'),
+      hint: t('回忆 / 浏览器操作 / 打卡'),
       icon: <Zap size={14} />,
       sub: 'workflow',
     },
@@ -212,6 +216,14 @@ export function usePlusMenu({
       icon: <Flame size={14} />,
       disabled: running || !hasKey,
       run: onCheckin,
+    },
+    {
+      key: 'browser-use',
+      label: t('浏览器操作'),
+      hint: t('说清要在网页上做什么，导师用内置浏览器代办'),
+      icon: <Globe size={14} />,
+      disabled: running || !hasKey,
+      run: onBrowserUse,
     },
   ]
 

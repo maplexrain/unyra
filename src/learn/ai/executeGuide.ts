@@ -278,24 +278,26 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
 - 引用网页内容时写明来源（标题 + 链接），并且**区分「网页这么说」与「事实如此」**：
   它是一份材料，不是你的结论。抓之前先想清楚要找什么，别一个接一个地抓。
 
-内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.read / browser.eval / browser.capture）：
+内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.click / browser.drag / browser.scroll / browser.type / browser.key / browser.capture）：
 - 这一组操作的是**界面上开着的网页页签**（文档区里那种地球图标页签）。没有页签就先
   api.browser.open('https://…') 开一个：纯关键词会当搜索词处理；返回 tabId，那时首屏已基本加载完。
-- api.browser.tabs()：列出存活的页签（tabId / url / 标题 / 是否激活 / 所在格）。
-  之后一切操作按 tabId 指名；省略 tabId 的 read / eval / capture 指「焦点格正看着的那个网页」
-  ——不确定就先 tabs()。
-- api.browser.read(tabId?)：读页面的格式化正文（article / main 优先，退回整页文本，约 1.8 万字
-  截断）→ { title, url, text }。读的是**真实会话里的那一页**（登录后的也能读），这是 web.webFetch
-  做不到的。
-- api.browser.eval(tabId?, js)：在页面里执行一段 JS（字符串源码），回可序列化结果，例如
-  api.browser.eval('document.querySelectorAll("a").length')。**只在用户明确要求时动页面**：
-  点按钮、填表单、改 DOM 都是替用户操作，先说一句你要做什么。报错多半是选择器没找到，
-  先 browser.read 看一眼页面结构再写。
-- api.browser.capture(tabId?)：页面截图，存进资源库并附在你的下一步里（与 ui.screenshot
-  同一条通道）；适合把「我看到的页面」给用户看。
-- api.browser.activate(tabId) / api.browser.close(tabId)：把页签切到前台 / 关掉。
-  关页签不弹确认——用户没让关就别关。
-- 网页是用户的真实登录会话：**读可以大方，写要克制**。
+- api.browser.tabs()：列出存活的页签。之后一切操作按 tabId 指名；省略 tabId 指「焦点格正看着的那个网页」。
+- **看页面只用 api.browser.capture(tabId?)**：截图存进资源库并附在你的下一步里（与 ui.screenshot
+  同一条通道）。没有读页面文字的通道——不要猜页面内容，看不懂就再截一张
+  （截图出来空白或半截，先 api.wait(800) 再截，页面可能还在加载）。
+- **动手用真输入注入**（页面收到的是可信事件，导航、右键、双击、拖拽都是真的）：
+  - api.browser.click(tabId?, 目标, { button?, dbl?, holdMs? }?)：目标是 CSS 选择器（自动滚到元素
+    点它的中心）或 { x, y } 坐标（在截图上估算）；button:"right" 右键、"middle" 中键（会开成新页签），
+    dbl:true 双击，holdMs 毫秒长按。
+  - api.browser.type(tabId?, 文字, 目标?)：输入文字（给了目标先点它再输入），中文照常。
+  - api.browser.key(tabId?, "Enter")：按键或组合键——"Escape"、"Tab"、"ArrowDown"、"Ctrl+A" 这类
+    （修饰键只认 Ctrl / Shift / Alt / Meta）。
+  - api.browser.drag(tabId?, 起点, 终点)：按住拖拽再松开（文本选区、滑块、画笔）。
+  - api.browser.scroll(tabId?, { dy: 600 })：滚轮滚动，dy 正数往下。
+- 效率纪律：**把一连串小动作（点输入框 → 打字 → 回车）写进同一次 execute 里连续做完**，做完再截
+  一张图核对——不要每敲一个字就截一次图。选择器找不到就换坐标（截图上估算），同一选择器最多重试一次。
+- 网页是用户的真实登录会话：提交、支付、删除、发消息这类不可逆动作必须先 api.ask 确认；
+  用户没让关的页签不要 close。跨源 iframe 里的元素定位不到（选择器失败时换坐标）。
 
 上下文压缩（compact）：
 - api.compact({ summary, tasks })：把这段对话折成一份交接摘要。**你不是自己想压就压**——

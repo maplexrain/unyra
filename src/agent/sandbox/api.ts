@@ -552,19 +552,52 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
   }
 
   // 内置浏览器（browser.*，见 learn/web/browserOps）：界面上开着的网页页签的
-  // 打开、管理与页面级操作。依赖界面注入（webview 元素在渲染层），未注入就没有这一组。
+  // 打开、管理与真输入注入（看=截图，动手=模拟鼠标键盘）。依赖界面注入
+  //（webview 元素在渲染层），未注入就没有这一组。
   if (opts.browser) {
     const browser = opts.browser
     wrapApi(api, 'browser.open', (args) => browser.open(asText(args[0]).trim()), log)
     wrapApi(api, 'browser.tabs', () => browser.tabs(), log)
     wrapApi(api, 'browser.activate', (args) => browser.activate(asText(args[0]).trim()), log)
     wrapApi(api, 'browser.close', (args) => browser.close(asText(args[0]).trim()), log)
-    wrapApi(api, 'browser.read', (args) => browser.read(args.length ? asText(args[0]).trim() || undefined : undefined), log)
-    // 两种写法都收：browser.eval(js) 与 browser.eval(tabId, js)
-    wrapApi(api, 'browser.eval', (args) => {
-      const code = asText(args[args.length - 1])
-      const tabId = args.length > 1 ? asText(args[0]).trim() || undefined : undefined
-      return browser.eval(tabId, code)
+    /*
+     * 带目标的方法（click / drag / type / key / scroll）都收两种写法：
+     * 方法(目标…) 与 方法(tabId, 目标…)。tabId 一定是 tabs() 回的 w: 开头的 id，
+     * 而 CSS 选择器不可能以 w: 开头，凭这个区分第一参是不是页签。
+     */
+    const tabIdOf = (v: unknown): string | undefined =>
+      typeof v === 'string' && v.startsWith('w:') ? v : undefined
+    const targetOf = (v: unknown): string | { x: number; y: number } => {
+      if (typeof v === 'string' && v.trim()) return v.trim()
+      const o = asRecord(v)
+      if (typeof o.x === 'number' && typeof o.y === 'number') return { x: o.x, y: o.y }
+      throw new Error('目标要给 CSS 选择器字符串或 { x, y } 坐标（网页视口内的 CSS 像素）')
+    }
+    wrapApi(api, 'browser.click', (args) => {
+      const tabId = tabIdOf(args[0])
+      const rest = tabId ? args.slice(1) : args
+      const clickOpts = rest[1] === undefined ? undefined : asRecord(rest[1])
+      return browser.click(tabId, targetOf(rest[0]), clickOpts as { button?: 'left' | 'right' | 'middle'; dbl?: boolean; holdMs?: number } | undefined)
+    }, log)
+    wrapApi(api, 'browser.drag', (args) => {
+      const tabId = tabIdOf(args[0])
+      const rest = tabId ? args.slice(1) : args
+      const dragOpts = rest[2] === undefined ? undefined : asRecord(rest[2])
+      return browser.drag(tabId, targetOf(rest[0]), targetOf(rest[1]), dragOpts as { steps?: number } | undefined)
+    }, log)
+    wrapApi(api, 'browser.scroll', (args) => {
+      const tabId = tabIdOf(args[0])
+      return browser.scroll(tabId, asRecord(tabId ? args[1] : args[0]))
+    }, log)
+    wrapApi(api, 'browser.type', (args) => {
+      const tabId = tabIdOf(args[0])
+      const rest = tabId ? args.slice(1) : args
+      const target = rest[1] === undefined ? undefined : targetOf(rest[1])
+      return browser.type(tabId, asText(rest[0]), target)
+    }, log)
+    wrapApi(api, 'browser.key', (args) => {
+      const tabId = tabIdOf(args[0])
+      return browser.key(tabId, asText(tabId ? args[1] : args[0]))
     }, log)
     wrapApi(api, 'browser.capture', (args) => browser.capture(args.length ? asText(args[0]).trim() || undefined : undefined), log)
   }

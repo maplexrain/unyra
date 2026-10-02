@@ -43,6 +43,8 @@ export interface ComposerUiProps {
   onRecall: () => void
   onSuperLab: () => void
   onCheckin: () => void
+  /** 更多 → 工作流 → 浏览器操作：替用户驱动内置浏览器完成任务 */
+  onBrowserUse: () => void
   onCompact: () => void
   compacting: boolean
   /** 自动压缩阈值（0~1），菜单项上如实说明「到多少会自己压」 */
@@ -76,6 +78,7 @@ export function ComposerUi(props: ComposerUiProps): ReactNode {
     onRecall,
     onSuperLab,
     onCheckin,
+    onBrowserUse,
     onCompact,
     onOpenAgentSettings,
   } = props
@@ -101,6 +104,7 @@ export function ComposerUi(props: ComposerUiProps): ReactNode {
     onRecall,
     onSuperLab,
     onCheckin,
+    onBrowserUse,
     onCompact,
     onOpenAgentSettings,
     // 附件那两个入口由输入区提供（见 useComposer）

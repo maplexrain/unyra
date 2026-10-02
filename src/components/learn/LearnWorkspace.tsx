@@ -1319,6 +1319,7 @@ export default function LearnWorkspace({
     startRecall,
     startProbe,
     startSuperLab,
+    startBrowserUse,
     startOutline,
     workflowRows,
     runWorkflowRow,
@@ -2321,6 +2322,7 @@ export default function LearnWorkspace({
                 // 更多 → 工作流 → 超级实验室：问清想做什么实验，生成一份可交互的超级文档（内置工作流）
                 onSuperLab={startSuperLab}
                 onCheckin={startCheckin}
+                onBrowserUse={startBrowserUse}
                 onCompact={() => void agent.compactNow()}
                 compacting={agent.compacting}
                 onOpenAgentSettings={() => setAgentSettingsOpen(true)}
