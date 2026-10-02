@@ -39,6 +39,7 @@ import type {
   LearnTab,
   OutlineEntry,
   TabRef,
+  WebTabMeta,
 } from '../../learn/types'
 import { emptyDocs, emptyOutline, notesOf } from '../../learn/types'
 import { getOutlineSlot } from '../../lib/outline'
@@ -57,7 +58,8 @@ import {
   setFocus,
   type DocLayout,
 } from '../../learn/groups'
-import { makeTab, tabIndex, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
+import { makeTab, newWebKey, tabIndex, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
+import { normalizeWebInput } from '../../learn/webUrl'
 import {
   addConversation,
   deleteConversation,
@@ -139,6 +141,8 @@ import { moveTabMark, resetTabMark } from '../../lib/tabMark'
 import { setChipOpener, type ChipPayload } from '../../lib/docChip'
 import { tabRefFromChip } from '../../learn/chipRef'
 import TabBar from './TabBar'
+import WebTabLayer, { type WebTab } from './web/WebTabLayer'
+import { focusWebAddress } from './web/addressFocus'
 import FindBar from './FindBar'
 import SuperDocView from './SuperDocView'
 import { readSuperDoc } from '../../learn/superdocs'
@@ -146,7 +150,7 @@ import { superDocsOf } from '../../learn/types'
 import { findMethod, runMethodEntry } from '../../learn/methods'
 import { learnSandboxOps } from '../../learn/useAgent'
 import { buildStandaloneApi } from '../../agent/tools'
-import { native } from '../../lib/native'
+import { isElectron, native } from '../../lib/native'
 import DocFloat from './DocFloat'
 import LocalDoc from './LocalDoc'
 import SourceEditor from './SourceEditor'
@@ -313,6 +317,7 @@ export default function LearnWorkspace({
     const s = getLatest()
     const title = tabTitle(ref, (id) => nodeById(s, id)?.title, examTabTitle)
     if (ref.kind === 'local') return { type: 'local', path: ref.path, title }
+    if (ref.kind === 'web') return null // 网页页签还没有引用形态（agent 读网页是后续的事）
     if (ref.kind === 'exam') {
       return { type: 'attempt', nodeId: ref.nodeId, examId: ref.examId, attemptId: ref.attemptId, title }
     }
@@ -822,6 +827,67 @@ export default function LearnWorkspace({
     },
     [getLatest, retargetNode, set],
   )
+
+  /* ---------- 内置浏览器（网页页签，见 components/learn/web） ---------- */
+
+  /**
+   * 网页页签的**活信息**（会话内、不落盘）：标题、图标、加载态。页面事件推着走，
+   * 页签栏与地址栏工具条读它；重启后由页面事件现学，learn/state 不挑这个字段。
+   */
+  const [webMeta, setWebMeta] = useState<Record<string, WebTabMeta>>({})
+  const patchWebMeta = useCallback((id: string, p: Partial<WebTabMeta>) => {
+    setWebMeta((prev) => {
+      const base: WebTabMeta = prev[id] ?? { url: '', loading: false, canBack: false, canFwd: false, error: null }
+      return { ...prev, [id]: { ...base, ...p } }
+    })
+  }, [])
+
+  /**
+   * 开一个网页页签：url 归一（learn/webUrl），空串 = 起始页（只有地址栏）。
+   * 网页的弹窗 / target=_blank（主进程拦下来推回来的，见 electron/app/webSession）也落到这里。
+   */
+  const openWebTab = useCallback(
+    (url: string) => {
+      const s = getLatest()
+      set({
+        ...s,
+        docArea: openInGroup(
+          s.docArea,
+          s.docArea.focus,
+          { kind: 'web', url: normalizeWebInput(url), key: newWebKey() },
+          Date.now(),
+        ),
+      })
+    },
+    [getLatest, set],
+  )
+
+  /** 把当前地址回写进页签（主框架导航时）：重启回到离开时的那一页 */
+  const commitWebUrl = useCallback(
+    (tabId: string, url: string) => {
+      const s = getLatest()
+      const tab = findTab(s.docArea, tabId)
+      if (!tab || tab.ref.kind !== 'web' || tab.ref.url === url) return
+      set({ ...s, docArea: patchTab(s.docArea, tabId, { ref: { ...tab.ref, url } }) })
+    },
+    [getLatest, set],
+  )
+
+  // 主进程推来的两条（见 electron/app/webSession）：要开的新网页页签，与从网页里
+  // 转发回来的应用快捷键（焦点在网页里时 DOM 层收不到）。转发来的键当成一次普通
+  // 按键交给快捷键注册表——Ctrl+Q/W/L 在那里都有注册，不用第二套分派。
+  useEffect(() => {
+    if (!isElectron()) return
+    const browser = native().browser
+    const offTab = browser.onOpenTab((url) => openWebTab(url))
+    const offKey = browser.onShortcut((key) => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true, cancelable: true }))
+    })
+    return () => {
+      offTab()
+      offKey()
+    }
+  }, [openWebTab])
 
   /*
    * 保存 / 关页签 / 冲突流整体在 useDocSaveFlow（workspace/）：
@@ -1558,6 +1624,20 @@ export default function LearnWorkspace({
    */
   useShortcut('doc.zen', { down: () => toggleZen() })
 
+  /*
+   * Ctrl+L：新建网页页签（浏览器的肌肉记忆）。
+   * 焦点格已经看着一个网页时不开第二枚，把光标挪进它的地址栏——输入、回车、直达。
+   */
+  useShortcut('web.newTab', {
+    down: () => {
+      const s = getLatest()
+      const group = focusedGroup(s.docArea)
+      const active = group?.tabs.find((x) => x.id === group.active)
+      if (active?.ref.kind === 'web') focusWebAddress()
+      else openWebTab('')
+    },
+  })
+
   const hasContent = store.goals.length > 0 && activeNode
 
   /*
@@ -1591,6 +1671,8 @@ export default function LearnWorkspace({
     const isFocused = groupId === docs.focus
     const gExam = examCopyOf(store, gTab)
     const panes = residentPanes.filter((p) => p.group === groupId)
+    /** 这一格挂着的网页页签：WebTabLayer 常驻层只挂一份，切页签只藏不卸（见下） */
+    const gWebTabs = (g.group?.tabs ?? []).filter((x): x is WebTab => x.ref.kind === 'web')
     /** 这一格的正文层：切页签的过场、查找条与数据属性都挂在它身上 */
     const boxProps = {
       'data-doc-area': groupId,
@@ -1672,6 +1754,8 @@ export default function LearnWorkspace({
                 onDrop={(tabId, _ids, x, y, commit) => onTabDrop(tabId, x, y, commit)}
                 // 页签拖进对话输入框时交给它的那份信息（路径信息在这里算，TabBar 不认得 store）
                 docPayloadOf={tabDocPayload}
+                // web 页签的活标题/站点图标（加载完才有，见 WebTabMeta）
+                webMetaOf={(tab) => (tab.ref.kind === 'web' ? webMeta[tab.id] : undefined)}
                 // 资源管理器/外部拖进来的引用落在这一格的页签栏上：还原成页签开在这一格里
                 onDropChip={(p) => {
                   const s = getLatest()
@@ -1716,7 +1800,13 @@ export default function LearnWorkspace({
             {...boxProps}
             className="flex min-h-0 flex-1 flex-col"
           >
-            {gTab?.ref.kind === 'local' ? (
+            {gTab?.ref.kind === 'web' ? (
+              /*
+                网页页签：正文不归 React 画（guest 进程自己渲染），由下面挂着的
+                WebTabLayer 常驻层显示——这里只让出位置，别画任何东西。
+              */
+              null
+            ) : gTab?.ref.kind === 'local' ? (
               /*
                 本地文件：内容不在数据目录里，读取与落盘都由它自己管（见 LocalDoc）。
                 key 绑「路径 + 外部版本号」：换一个文件、或文件在外部被改过（应用里
@@ -1815,7 +1905,7 @@ export default function LearnWorkspace({
                 />
               ) : null /* 预览那一份由下面的常驻列表渲染（见 DocPane） */
             ) : (
-              <EmptyDoc onPickLocal={() => void pickLocal()} />
+              <EmptyDoc onPickLocal={() => void pickLocal()} onOpenWeb={() => openWebTab('')} />
             )}
 
             {/*
@@ -1896,6 +1986,21 @@ export default function LearnWorkspace({
           </div>
 
           {/*
+            网页层（见 components/learn/web/WebTabLayer）：常挂在格子里、切去文档时
+            整层藏起来（guest 进程照跑）。z-10 盖过正文，又在拖放高亮（z-30）之下。
+          */}
+          {gWebTabs.length > 0 && (
+            <WebTabLayer
+              tabs={gWebTabs}
+              activeId={gTab?.ref.kind === 'web' ? gTab.id : null}
+              meta={webMeta}
+              hidden={gTab?.ref.kind !== 'web'}
+              onMeta={patchWebMeta}
+              onCommitUrl={commitWebUrl}
+            />
+          )}
+
+          {/*
             查找 / 替换条：浮在正文右上角（见 components/learn/FindBar）。
             它是**全局一个**（Ctrl+F 打开的那一条），所以只画在焦点格上：同时冒出两条，
             用户按 Ctrl+F 时根本不知道往哪一条里打字。
@@ -1923,7 +2028,7 @@ export default function LearnWorkspace({
             节点的工具（笔记 / 超级文档 / 学习状态 / 试卷），右半边是这份文档的动作
             （源码 / 预览 / 导出）。一个页签都没有的空格子不画。
           */}
-          {gTab && (
+          {gTab && gTab.ref.kind !== 'web' && (
             <DocFloat
               /*
                * key 绑「格 + 节点」：换节点时重挂，各块 tip 的展开状态自然回到收起；

@@ -481,6 +481,26 @@ const api = {
     fetch: (url: string): Promise<WebFetchResult> => ipcRenderer.invoke('web:fetch', url),
   },
 
+  /**
+   * 内置浏览器页签（见 src/components/learn/web 与 electron/app/webSession）。
+   * 两条都是主进程推、渲染层收：
+   * - onOpenTab —— 网页的弹窗 / target=_blank 要开的新页签（拦截与协议判定在主进程）；
+   * - onShortcut —— 焦点在网页里时按下的应用快捷键（Ctrl+Q/W/L），转发回来当 DOM 键用。
+   * 都返回取消订阅函数。
+   */
+  browser: {
+    onOpenTab: (cb: (url: string) => void): (() => void) => {
+      const listener = (_e: unknown, url: string): void => cb(url)
+      ipcRenderer.on('web:openTab', listener)
+      return () => ipcRenderer.removeListener('web:openTab', listener)
+    },
+    onShortcut: (cb: (key: string) => void): (() => void) => {
+      const listener = (_e: unknown, key: string): void => cb(key)
+      ipcRenderer.on('web:shortcut', listener)
+      return () => ipcRenderer.removeListener('web:shortcut', listener)
+    },
+  },
+
   shell: {
     /** 当前关窗行为 */
     getCloseBehavior: (): Promise<CloseBehavior> => ipcRenderer.invoke('shell:getCloseBehavior'),

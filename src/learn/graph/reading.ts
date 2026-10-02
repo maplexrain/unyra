@@ -113,9 +113,9 @@ export function deleteGoal(store: LearnStore, goalId: string): LearnStore {
   }
 }
 
-/** 页签挂在哪个节点上；本地文件页签返回空串（它不属于任何节点，删节点不该关掉它） */
+/** 页签挂在哪个节点上；本地文件与网页页签返回空串（它们不属于任何节点，删节点不该关掉它们） */
 function tabNodeIdOf(ref: TabRef): string {
-  return ref.kind === 'local' ? '' : ref.nodeId
+  return ref.kind === 'local' || ref.kind === 'web' ? '' : ref.nodeId
 }
 
 /* ---------- 派生视图 ---------- */

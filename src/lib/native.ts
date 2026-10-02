@@ -306,6 +306,16 @@ export interface NativeBridge {
   web: {
     fetch(url: string): Promise<WebFetchResult>
   }
+  /**
+   * 内置浏览器页签（见 src/components/learn/web 与 electron/app/webSession）。
+   * 两条都是主进程推、渲染层收：onOpenTab —— 网页弹窗 / target=_blank 要开的新页签
+   * （拦截与协议判定在主进程）；onShortcut —— 焦点在网页里时按下的应用快捷键，
+   * 转发回来当 DOM 键用。返回取消订阅函数。
+   */
+  browser: {
+    onOpenTab(cb: (url: string) => void): () => void
+    onShortcut(cb: (key: string) => void): () => void
+  }
 }
 
 declare global {

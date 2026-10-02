@@ -34,7 +34,8 @@ export function isPreviewable(name: string): boolean {
 /**
  * 页签的身份。各种来源共用一个命名空间，前缀把它们分开：
  * 节点的教学文档是 `t:`、某一份笔记是 `n:`、某一份超级文档是 `s:`、
- * 某一次考试的只读副本是 `e:`、某个目标的大纲页是 `o:`、本地文件是 `l:`。
+ * 某一次考试的只读副本是 `e:`、某个目标的大纲页是 `o:`、本地文件是 `l:`、
+ * 网页页签是 `w:`（key 是开签那一刻生成的随机身份，见 newWebKey）。
  * 于是「同一个东西只开一次」这件事只要比字符串就够了——笔记改名时替换的也是它
  * （见 replaceTabRef）。
  *
@@ -47,6 +48,8 @@ export function tabKey(ref: TabRef): string {
   if (ref.kind === 'super') return 's:' + ref.nodeId + ':' + ref.name
   if (ref.kind === 'exam') return 'e:' + ref.examId + ':' + ref.attemptId
   if (ref.kind === 'outline') return 'o:' + ref.nodeId
+  // 网页按**开签那一刻生成的 key**（而不是网址）认身份：同一个网址可以开两枚，起始页也不冲突
+  if (ref.kind === 'web') return 'w:' + ref.key
   return 'l:' + ref.path
 }
 
@@ -54,9 +57,9 @@ export function makeTab(ref: TabRef, at: number, view?: DocView): LearnTab {
   return { id: tabKey(ref), ref, ...(view ? { view } : {}), createdAt: at }
 }
 
-/** 页签挂在哪个节点上；本地文件页签不属于任何节点 */
+/** 页签挂在哪个节点上；本地文件与网页页签不属于任何节点 */
 export function tabNodeId(ref: TabRef): string | null {
-  return ref.kind === 'local' ? null : ref.nodeId
+  return ref.kind === 'local' || ref.kind === 'web' ? null : ref.nodeId
 }
 
 /**
@@ -72,6 +75,11 @@ export function tabIdNodeId(id: string): string | null {
   const rest = id.slice(2)
   const cut = rest.indexOf(':')
   return cut < 0 ? rest : rest.slice(0, cut)
+}
+
+/** web 页签的身份后缀：开签那一刻生成、导航不换（见 TabRef 的 web 分支与 tabKey） */
+export function newWebKey(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }
 
 /**
@@ -90,6 +98,15 @@ export function tabTitle(
   if (ref.kind === 'super') return ref.name
   if (ref.kind === 'exam') return examTitle?.(ref.examId, ref.attemptId) ?? t('试卷副本')
   if (ref.kind === 'outline') return (nodeTitle(ref.nodeId) ?? t('已删除的节点')) + t(' · 大纲')
+  if (ref.kind === 'web') {
+    // 页面的真标题是活信息（见 types 的 WebTabMeta），这里只能兜底出域名；起始页没有域名
+    if (!ref.url) return t('新网页页签')
+    try {
+      return new URL(ref.url).host
+    } catch {
+      return ref.url
+    }
+  }
   return fileNameOf(ref.path)
 }
 
@@ -102,6 +119,7 @@ export function tabTitle(
  */
 export function tabTrail(ref: TabRef, nodePath: (nodeId: string) => string): string {
   if (ref.kind === 'exam') return ''
+  if (ref.kind === 'web') return ''
   if (ref.kind === 'local') {
     const i = Math.max(ref.path.lastIndexOf('/'), ref.path.lastIndexOf('\\'))
     return i > 0 ? ref.path.slice(0, i) : ''

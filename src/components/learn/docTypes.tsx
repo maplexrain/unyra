@@ -1,4 +1,4 @@
-import { AppWindow, BookOpen, Folder, FolderOpen, GraduationCap, HardDrive, ListTree, NotebookPen } from 'lucide-react'
+import { AppWindow, BookOpen, Folder, FolderOpen, Globe, GraduationCap, HardDrive, ListTree, Loader2, NotebookPen } from 'lucide-react'
 
 /**
  * 文档类型的**视觉身份**：一种类型一个图标、一个颜色。
@@ -9,7 +9,7 @@ import { AppWindow, BookOpen, Folder, FolderOpen, GraduationCap, HardDrive, List
  * 颜色**不跟主题变量走**：类型身份要恒定，切到深色或粉色主题，蓝的还是蓝的、紫的还是紫的，
  * 靠颜色认类型才认得稳。这几个色都取中等亮度，浅色纸面与深色纸面上都看得清。
  */
-export type DocKindKey = 'teach' | 'note' | 'super' | 'exam' | 'outline' | 'local'
+export type DocKindKey = 'teach' | 'note' | 'super' | 'exam' | 'outline' | 'local' | 'web'
 
 const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   teach: '#4a8fd4', // 蓝：教学文档
@@ -18,6 +18,7 @@ const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   exam: '#c0563a', // 朱：试卷（含它的历次考试）
   outline: '#2e8b6e', // 松绿：大纲页（结构化的路线图）
   local: '#98928a', // 中性灰：外部文件
+  web: '#2aa1b8', // 青：网页（内置浏览器）
 }
 
 /**
@@ -36,6 +37,8 @@ export function DocTypeIcon({ kind, size = 11 }: { kind: DocKindKey; size?: numb
       <GraduationCap size={size} />
     ) : kind === 'outline' ? (
       <ListTree size={size} />
+    ) : kind === 'web' ? (
+      <Globe size={size} />
     ) : (
       <HardDrive size={size} />
     )
@@ -51,8 +54,29 @@ export function DocTypeIcon({ kind, size = 11 }: { kind: DocKindKey; size?: numb
 }
 
 /**
- * 一颗**目录**图标：文件夹的形状 + 同一个中性灰。
- *
+ * web 页签的类型图标：加载中给一颗转圈（同一个类型色），拿到站点图标后用它替掉地球。
+ * 页签栏专用（资源管理器没有网页行）——favicon 与加载态是「这一页」的活信息，见 WebTabMeta。
+ */
+export function WebTabTypeIcon({ favicon, loading, size = 11 }: { favicon?: string; loading?: boolean; size?: number }) {
+  if (loading) {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex h-4 w-4 shrink-0 items-center justify-center"
+        style={{ color: DOC_TYPE_COLOR.web }}
+      >
+        <Loader2 size={size} className="animate-spin" />
+      </span>
+    )
+  }
+  if (favicon) {
+    return <img src={favicon} alt="" aria-hidden="true" className="h-3 w-3 shrink-0 self-center rounded-[3px]" />
+  }
+  return <DocTypeIcon kind="web" />
+}
+
+/**
+ * 一颗**目录**图标：文件夹的形状 + 同一个中性灰。 *
  * 目录**不再带类型色**（用户定的）：目录行的职责是先让人认出「这是个装东西的目录」，
  * 与一份份实打实的文档（类型图标，各带各的类型色）一眼区分开——目录永远是文件夹的形状、
  * 永远是灰的，笔记 / 试卷 / 超级文档的目录不再各占一个颜色。占的还是同一个 16px 格子，

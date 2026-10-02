@@ -247,6 +247,8 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       const s = getLatest()
       const text = draftOf(s.drafts, tab.id)
       if (text === undefined) return null
+      // 网页页签没有编辑器，永远不该有暂存正文；真有这份草稿也没处可存
+      if (tab.ref.kind === 'web') return null
       const title = tabTitle(tab.ref, (nid) => nodeById(s, nid)?.title, examTabTitle)
       setDocSaving(true)
       if (tab.ref.kind === 'local') {

@@ -113,6 +113,12 @@ export const SHORTCUT_DEFS: ShortcutDef[] = [
     hint: '收起两侧栏、页签栏与顶栏，只留正文；再按一次退出，Esc 也能退出（文档区右上角那颗按钮是同一件事）',
     def: 'F11',
   },
+  {
+    id: 'web.newTab',
+    label: '新建网页页签',
+    hint: '在焦点格里开一个网页页签（内置浏览器）；焦点已经在网页页签上时，把光标挪到它的地址栏',
+    def: 'Ctrl+L',
+  },
 ]
 
 /**
