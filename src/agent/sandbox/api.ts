@@ -551,6 +551,47 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     }
   }
 
+  // 内置浏览器（browser.*，见 learn/web/browserOps）：界面上开着的网页页签的打开、
+  // 管理、快照/阅读与受控 DOM 操作（看=snapshot/read，动手=dom，突出=point）。
+  // 依赖界面注入（webview 元素在渲染层），未注入就没有这一组。
+  if (opts.browser) {
+    const browser = opts.browser
+    wrapApi(api, 'browser.open', (args) => browser.open(asText(args[0]).trim()), log)
+    wrapApi(api, 'browser.tabs', () => browser.tabs(), log)
+    wrapApi(api, 'browser.activate', (args) => browser.activate(asText(args[0]).trim()), log)
+    wrapApi(api, 'browser.close', (args) => browser.close(asText(args[0]).trim()), log)
+    wrapApi(api, 'browser.snapshot', (args) => browser.snapshot(args.length ? asText(args[0]).trim() || undefined : undefined), log)
+    /*
+     * 带目标的方法（point）收两种写法：方法(目标) 与 方法(tabId, 目标)。
+     * tabId 一定是 tabs() 回的 w: 开头的 id，而 CSS 选择器不可能以 w: 开头，
+     * 凭这个区分第一参是不是页签。
+     */
+    const tabIdOf = (v: unknown): string | undefined =>
+      typeof v === 'string' && v.startsWith('w:') ? v : undefined
+    const targetOf = (v: unknown): string | { ref: number } => {
+      if (typeof v === 'string' && v.trim()) return v.trim()
+      const o = asRecord(v)
+      if (typeof o.ref === 'number') return { ref: o.ref }
+      throw new Error('目标要给 browser.snapshot 清单里的 { ref } 或 CSS 选择器字符串')
+    }
+    wrapApi(api, 'browser.point', (args) => {
+      const tabId = tabIdOf(args[0])
+      const rest = tabId ? args.slice(1) : args
+      return browser.point(tabId, targetOf(rest[0]))
+    }, log)
+    // dom 两种写法：dom(ref, op, arg?) 与 dom(tabId, ref, op, arg?)
+    wrapApi(api, 'browser.dom', (args) => {
+      const tabId = tabIdOf(args[0])
+      const rest = tabId ? args.slice(1) : args
+      const ref = Number(rest[0])
+      if (!Number.isFinite(ref)) throw new Error('ref 要给 browser.snapshot 清单里的编号数字')
+      const arg = rest[2] === undefined ? undefined : asText(rest[2])
+      return browser.dom(tabId, ref, asText(rest[1]).trim(), arg)
+    }, log)
+    wrapApi(api, 'browser.read', (args) => browser.read(args.length ? asText(args[0]).trim() || undefined : undefined), log)
+    wrapApi(api, 'browser.capture', (args) => browser.capture(args.length ? asText(args[0]).trim() || undefined : undefined), log)
+  }
+
   // 学习者画像：get 回给模型看的那份（不含头像），update 是增量的（只写传进来的字段）
   if (opts.userInfo) {
     const userInfo = opts.userInfo

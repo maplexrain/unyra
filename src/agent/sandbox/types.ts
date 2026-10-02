@@ -204,6 +204,12 @@ export interface SandboxOptions {
    * 这些 api 都要「界面在场」——文档区没有打开的文档时，部分调用会明确失败。
    */
   ui?: UiOps
+  /**
+   * 内置浏览器（browser.*，见 learn/web/browserOps）：界面上开着的网页页签的
+   * 打开、管理、页面读取与操作、截图。依赖界面注入（webview 元素在渲染层），
+   * 未注入就没有这一组。
+   */
+  browser?: BrowserOps
   /** 一次编排的中止信号：用户点「停止」时，正在等用户的 ask 等调用要能立刻退出 */
   signal?: AbortSignal
   timeoutMs?: number
@@ -571,6 +577,59 @@ export interface UiOps {
    * opened 说明那份超级文档还在不在——删掉的打不开，别静默开一个空页签。
    */
   openSuper?: (req: { nodeId: string; name: string }) => Promise<{ opened: boolean }> | { opened: boolean }
+}
+
+/** browser.tabs 的元素：一枚存活网页页签的快照 */
+export interface BrowserTabInfo {
+  tabId: string
+  url: string
+  title: string
+  active: boolean
+  /** 页签所在分组格的 id */
+  group: string
+}
+
+/** point / dom 的目标：snapshot 清单里的 { ref } 或 CSS 选择器 */
+export type BrowserTarget = string | { ref: number }
+
+/**
+ * 内置浏览器（browser.*）的宿主实现（见 learn/web/browserOps 与 learn/web/webviewRegistry）。
+ *
+ * **看 = snapshot（元素清单）/ read（整页 markdown）/ capture（截图，最后手段），
+ * 动手 = dom（对 ref 的受控 DOM 操作），指给用户看 = point（滚动 + 高亮）**——
+ * 没有任意执行页面 JS 的口子（read / eval 试过一轮，结果不可控，已撤）。
+ * tabId 省略 = 「焦点格正看着的那个网页」；指名不存在时抛错，错误里引导先 browser.tabs()。
+ * 返回对象会原样序列化给模型，文字要写成人话。
+ */
+export interface BrowserOps {
+  /** 开一个网页页签（纯关键词当搜索词处理）；回 tabId，返回时首屏基本加载完 */
+  open(url: string): Promise<{ tabId: string; url: string; note?: string }>
+  /** 全部存活的网页页签 */
+  tabs(): BrowserTabInfo[]
+  /** 把某个页签切到前台 */
+  activate(tabId: string): { ok: true }
+  /** 关掉某个页签（不弹确认） */
+  close(tabId: string): { ok: true }
+  /**
+   * 页面快照：可交互元素列成**带 ref 的清单**（role + 名称 + 输入值，≤200 条）——
+   * 「看」的文本通道，比截图省；DOM 变了 ref 会过期，重新 snapshot 即可。
+   */
+  snapshot(tabId?: string): Promise<{
+    elements: Array<{ ref: number; role: string; name: string; value?: string }>
+    truncated?: boolean
+  }>
+  /** 页面像锚点跳转一样滚到目标元素，并注入短暂的脉冲高亮把它标出来（指给用户看） */
+  point(tabId: string | undefined, target: BrowserTarget): Promise<{ ok: true }>
+  /**
+   * 对 snapshot 清单里的 ref 做受控 DOM 操作：op = "click" / "fill"(文字，触发
+   * input/change，React 受控输入也认) / "focus" / "submit"(所在表单) / "text"(元素文字，
+   * ≤4000 字) / "attr"(属性名)。result 是操作自己的小结果（fill 回新值、attr 回属性值）。
+   */
+  dom(tabId: string | undefined, ref: number, op: string, arg?: string): Promise<{ ok: true; result?: unknown }>
+  /** 整页转 markdown（与 web.webFetch 同一条管线：短的回全文，长的落盘回大纲 + uuid） */
+  read(tabId?: string): Promise<unknown>
+  /** 页面截图 → 资源库 + 挂到下一跳（与 ui.screenshot 同一条通道）——snapshot/read 拿不到时才用 */
+  capture(tabId?: string): Promise<{ ok: true; note?: string; images: MessageImage[] } | { ok: false; error: string }>
 }
 
 /**

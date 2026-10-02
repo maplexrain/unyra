@@ -114,6 +114,66 @@ export async function fetchForAgent(rawUrl: string): Promise<unknown> {
 }
 
 /**
+ * api.browser.read 的落点：**已在登录会话里打开的那一页** → markdown。
+ *
+ * 与 fetchForAgent 共用同一条管线（parseWebPage → treeToMarkdown → 落盘/大纲），
+ * 区别只在 HTML 来源：那边主进程去抓字节，这边主进程从 live DOM 里取 outerHTML
+ * （见 electron/app/webSession 的 web:readHtml）——登录后的页面、滚过之后的单页应用，
+ * 抓取器拿不到的内容这里都拿得到。回执形状与 webFetch 一致，
+ * 长文一样落盘进 users/<uid>/web/，模型用 web.read 按节读。
+ */
+export async function livePageForAgent(rawHtml: string, rawUrl: string): Promise<unknown> {
+  const html = String(rawHtml ?? '')
+  const url = String(rawUrl ?? '').trim()
+  if (!html.trim()) return { error: '这一页没有内容可转（可能是空的起始页）' }
+  const parsed = parseWebPage(html)
+  const markdown = parsed ? treeToMarkdown(parsed.tree, url) : ''
+  if (!markdown.trim()) {
+    return { error: '这一页没提取出正文（可能是纯前端渲染的页面，或者正文全在脚本里）', url }
+  }
+  const title = clip(parsed?.title || firstHeading(markdown) || url, 200)
+  const outline = outlineLines(markdown)
+  const uuid = newId()
+  const meta: WebDocMeta = {
+    uuid,
+    url,
+    finalUrl: url,
+    title,
+    fetchedAt: Date.now(),
+    chars: markdown.length,
+    truncated: false,
+    outline,
+  }
+  const saved = await save(uuid, meta, markdown)
+  const base = {
+    ok: true,
+    uuid,
+    url,
+    title,
+    chars: markdown.length,
+    saved,
+    ...(parsed?.description ? { description: clip(parsed.description, 300) } : {}),
+  }
+  if (!needsFile(markdown)) {
+    return {
+      ...base,
+      text: markdown,
+      note:
+        '（' + markdown.length + ' 字，全文在上面）需要再读某一节时用 web.read(uuid, "一级标题/二级标题")。' +
+        (saved ? '' : '注意：这一次没能落盘，之后 web.read 读不到它。'),
+    }
+  }
+  return {
+    ...base,
+    outline: outline.slice(0, OUTLINE_MAX),
+    note:
+      '这一页太长（' + markdown.length + ' 字，超过 ' + WEB_INLINE_LIMIT + '），正文已存成文件（uuid 见上），' +
+      '这里只给你大纲：每行是「# 标题 - 这一节正文的字数」（不含子节）。' +
+      '挑你真正需要的那一节，用 web.read(uuid, "一级标题/二级标题") 读它，别一次读完。',
+  }
+}
+
+/**
  * api.web.read(uuid, path)：读落盘网页的某一节。
  *
  * path 省略时从头给一段（并附大纲）；给了就按「一级/二级」这样的路径定位。

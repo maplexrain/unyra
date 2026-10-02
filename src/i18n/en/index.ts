@@ -10,6 +10,7 @@ import learnViews from './learn-views'
 import libUi from './lib-ui'
 import shellUi from './shell-ui'
 import stores from './stores'
+import webUi from './web-ui'
 
 export const en: Record<string, string> = {
   ...agentUi,
@@ -18,4 +19,5 @@ export const en: Record<string, string> = {
   ...libUi,
   ...shellUi,
   ...stores,
+  ...webUi,
 }

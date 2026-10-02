@@ -491,9 +491,30 @@ export type TabRef =
   | { kind: 'outline'; nodeId: string }
   /** 磁盘上的外部文件（绝对路径） */
   | { kind: 'local'; path: string }
+  /**
+   * 内置浏览器的网页页签（<webview>，见 electron/app/webSession 与 components/learn/web）。
+   * url 是**当前**地址——页面每次主框架导航都回写进来，重启回到离开时的那一页；
+   * key 是开签那一刻生成的唯一身份（learn/tabs 的 newWebKey），导航不换：
+   * 同一个网址可以开两枚页签，空地址（起始页，url === ''）也可以同时开好几枚。
+   */
+  | { kind: 'web'; url: string; key: string }
 
 /** 文档区的两种视图：源码（可编辑）与预览（渲染后） */
 export type DocView = 'source' | 'preview'
+
+/**
+ * web 页签的**活信息**：只活在会话里、不落盘（learn/state 的 buildState 不挑它）。
+ * 标题与图标要等页面事件来了才有，页签栏拿 tabTitle 兜底出的域名先顶着（见 learn/tabs）。
+ */
+export interface WebTabMeta {
+  url: string
+  title?: string
+  favicon?: string
+  loading: boolean
+  canBack: boolean
+  canFwd: boolean
+  error: string | null
+}
 
 /**
  * 一个打开的页签。

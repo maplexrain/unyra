@@ -2,7 +2,7 @@
 
 import type { DocScroll, DocView, KnowledgeNode, LearnTab, LocalFile, TabRef } from '../../types'
 import { sortLocalFiles } from '../../localfiles'
-import { tabKey } from '../../tabs'
+import { newWebKey, tabKey } from '../../tabs'
 
 /* ---------- 页签与本地文件列表 ---------- */
 
@@ -36,6 +36,12 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
   const r = raw as Record<string, unknown>
   if (r.kind === 'local') {
     return typeof r.path === 'string' && r.path ? { kind: 'local', path: r.path } : null
+  }
+  // 网页页签不挂节点：只认 http(s) 与空（起始页）；身份 key 缺了现场补一枚（页签各自独立）
+  if (r.kind === 'web') {
+    const url = typeof r.url === 'string' ? r.url : ''
+    if (url && !/^https?:\/\//i.test(url)) return null
+    return { kind: 'web', url, key: typeof r.key === 'string' && r.key ? r.key : newWebKey() }
   }
   const nodeId = typeof r.nodeId === 'string' ? r.nodeId : ''
   const node = byId.get(nodeId)

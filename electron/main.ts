@@ -32,6 +32,7 @@ import { startUpdateChecks } from './update'
 import { registerWebIpc } from './web'
 import { bootSingleInstance, initStartupTrace, lap } from './app/startup'
 import { createWindow, showMainWindow } from './app/windows'
+import { setupWebBrowser } from './app/webSession'
 import { closeExamWindow } from './app/examWindow'
 import { createTray, markQuitting } from './app/tray'
 import { installAppMenu } from './app/icon'
@@ -113,6 +114,8 @@ function main(): void {
     registerProxyProtocol()
     installLocalFileCsp()
     installAppMenu()
+    // 内置浏览器的会话与守门（网页页签）：分区、UA 伪装、权限、弹窗与快捷键转发
+    setupWebBrowser()
     /*
      * 先开窗再建托盘（两者都不 await）。
      *

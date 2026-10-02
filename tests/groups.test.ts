@@ -52,7 +52,9 @@ const tab = (ref: TabRef): LearnTab => ({
             ? 'e:' + ref.examId + ':' + ref.attemptId
             : ref.kind === 'outline'
               ? 'o:' + ref.nodeId
-              : 'l:' + ref.path,
+              : ref.kind === 'web'
+                ? 'w:' + ref.key
+                : 'l:' + ref.path,
   ref,
   createdAt: AT,
 })

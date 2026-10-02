@@ -21,6 +21,8 @@ import {
 } from '../agent/types'
 import { runAgent } from '../agent/runtime'
 import { createExecuteTool, type AskAnswers, type AskFormPayload, type ExamToolDeps } from '../agent/tools'
+import { ASK_IDLE_TIMEOUT_MS } from '../agent/sandbox/limits'
+import { ensureActivityListeners, userIdleMs } from '../lib/userActivity'
 import { recordContext } from '../agent/contextFilter'
 import { assertPrefixStable, resetPrefixGate } from '../agent/prefixGate'
 import { globalContextWindow, hasApiKey, loadAiSettings, resolveGlobal } from '../ai/settings'
@@ -36,6 +38,7 @@ import { findWorkflow, renderWorkflowInstruction, resolveWorkflowEffort, workflo
 import { generateConversationTitle, namingSource } from './title'
 import { createMindOps } from './mind'
 import { saveScreenshot } from './screenshots'
+import { makeBrowserOps, type BrowserDeps } from './web/browserOps'
 import { loadImagesById, loadImagesFor } from './images'
 import { native } from '../lib/native'
 import { applyEvent } from './agent/events'
@@ -78,6 +81,8 @@ export function useAgent(opts: {
   examDeps?: (nodeId: string) => ExamToolDeps | undefined
   /** ui.* 与截图需要的能力（见 AgentUiDeps） */
   ui?: AgentUiDeps
+  /** browser.* 的宿主依赖工厂（web 页签动作与活信息，见 learn/web/browserOps）；不注入就没有这一组 */
+  browserDeps?: () => BrowserDeps | undefined
 }) {
   const { store, set, getLatest, goalId, nodeId, conversationId, onNeedKey, examDeps } = opts
   /**
@@ -85,8 +90,11 @@ export function useAgent(opts: {
    * 直接解构会永远拿到首轮那份旧回调（agentLeft 一变，switchMain 就指错方向）。
    */
   const uiRef = useRef(opts.ui)
+  /** browser.* 的宿主依赖（web 页签动作与活信息）：同 uiRef 的理由，每渲染刷新 */
+  const browserFnRef = useRef(opts.browserDeps)
   useEffect(() => {
     uiRef.current = opts.ui
+    browserFnRef.current = opts.browserDeps
   })
   const [streaming, setStreaming] = useState<{ conversationId: string; messageId: string; parts: AgentPart[] } | null>(
     null,
@@ -325,6 +333,8 @@ export function useAgent(opts: {
       const signal = ctrl.signal
       // ui 依赖现取最新的一份（见 uiRef 的说明）
       const uiDeps = uiRef.current
+      // browser 依赖现取最新的一份（webMeta 活信息随渲染变，与 uiRef 同款说明）
+      const browserDeps = browserFnRef.current?.()
       /**
        * 全局提供商 / 模型 / 思考等级：所有 AI 功能的共同基底。提前到这里，
        * 因为子代理要跑在导师同一轮的模型与档位上（见 subagent 的说明）。
@@ -381,10 +391,12 @@ export function useAgent(opts: {
             }),
           ask: (form) =>
             new Promise<unknown>((resolve) => {
+              let idleTimer: ReturnType<typeof setInterval> | null = null
               const finish = (value: unknown): void => {
                 if (askWaiterRef.current !== finish) return
                 askWaiterRef.current = null
                 signal.removeEventListener('abort', onAbort)
+                if (idleTimer) clearInterval(idleTimer)
                 setPendingAsk(null)
                 // 标了 userInfo 的题目：答案在**用户提交的那一刻**就落进画像（见 user/fields），
                 // 导师拿到答案时画像已经写好了——不必再 update 一遍，也就没有「转述走样」这一步
@@ -395,6 +407,22 @@ export function useAgent(opts: {
               signal.addEventListener('abort', onAbort, { once: true })
               askWaiterRef.current = finish
               setPendingAsk({ id: crypto.randomUUID(), form })
+              /*
+               * 表单限时：挂出一分钟后用户**没有任何操作**（鼠标键盘都不动，任意操作都会续住它，
+               * 见 lib/userActivity）就自动收起并带回 timedOut——agent 据此自行决定继续或交付，
+               * 不能为一个没人理的表单把整轮沙箱无限吊着。
+               */
+              ensureActivityListeners()
+              idleTimer = setInterval(() => {
+                if (askWaiterRef.current !== finish) return
+                if (userIdleMs() >= ASK_IDLE_TIMEOUT_MS) {
+                  finish({
+                    ok: false,
+                    timedOut: true,
+                    content: '表单挂出一分钟，用户没有任何操作（超时自动收起）。不要假设用户的回答。',
+                  })
+                }
+              }, 5_000)
             }),
           iwanna: (items) => setIwanna(items),
           tiktok: async () => {
@@ -433,6 +461,8 @@ export function useAgent(opts: {
                 }
               : {}),
           },
+          // 内置浏览器（browser.*）：宿主依赖在场的回合才有这一组（见 learn/web/browserOps）
+          ...(browserDeps ? { browser: makeBrowserOps(browserDeps, target.goalId) } : {}),
         }),
         /**
          * 子代理三件工具（agent_define / agent_run / agent_list）：每轮都声明、

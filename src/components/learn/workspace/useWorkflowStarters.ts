@@ -101,6 +101,18 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     agent.runWorkflow('checkin', { nodeId })
   }, [activeGoal, activeNodeId, agent, getLatest, hasKey, onToast, onOpenSettings, providerName])
 
+  /** 浏览器操作：交给导师用内置浏览器代办（看=截图、输入=模拟鼠标键盘），低档推理走快流程 */
+  const startBrowserUse = useCallback(() => {
+    const nodeId = activeNodeId ?? activeGoal?.rootNodeId ?? null
+    if (!nodeId) return
+    if (!hasKey) {
+      onToast(t('浏览器操作要先在设置中填写「{0}」的 API Key', providerName))
+      onOpenSettings()
+      return
+    }
+    agent.runWorkflow('browser-use', { nodeId })
+  }, [activeGoal, activeNodeId, agent, hasKey, onToast, onOpenSettings, providerName])
+
   /**
    * 新增一份试卷：**不先问类型与难度**，直接跑内置工作流「出卷」——导师会自己 ask 用户
    * （类型 / 难度由它问、时限由它按题量与难度估，见 learn/workflows 的 EXAM_INSTRUCTION）。
@@ -370,6 +382,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     startRecall,
     startProbe,
     startSuperLab,
+    startBrowserUse,
     startOutline,
     workflowRows,
     runWorkflowRow,

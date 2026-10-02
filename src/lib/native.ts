@@ -14,7 +14,7 @@ import type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
-  VoiceReadResult, WebFetchResult,
+  VoiceReadResult, WebDomOpResult, WebFetchResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult,
 } from '../../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（与 electron/preload.ts 共用一份，见该文件顶部）：
@@ -25,7 +25,7 @@ export type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
-  VoiceReadResult, WebFetchResult,
+  VoiceReadResult, WebDomOpResult, WebFetchResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult,
 }
 
 export type PluginList =
@@ -305,6 +305,24 @@ export interface NativeBridge {
    */
   web: {
     fetch(url: string): Promise<WebFetchResult>
+  }
+  /**
+   * 内置浏览器页签（见 src/components/learn/web 与 electron/app/webSession）。
+   * 两条都是主进程推、渲染层收：onOpenTab —— 网页弹窗 / target=_blank 要开的新页签
+   * （拦截与协议判定在主进程）；onShortcut —— 焦点在网页里时按下的应用快捷键，
+   * 转发回来当 DOM 键用。返回取消订阅函数。
+   */
+  browser: {
+    onOpenTab(cb: (url: string) => void): () => void
+    onShortcut(cb: (key: string) => void): () => void
+    /** 页面快照：Accessibility 树 → 带 ref 的可交互元素清单（browser.* 的「看」通道） */
+    snapshot(wcId: number): Promise<WebSnapshotResult>
+    /** 页面滚到目标元素并高亮突出（browser.point） */
+    point(wcId: number, target: { ref: number } | { selector: string }): Promise<WebPointResult>
+    /** 对 snapshot 的 ref 执行受控 DOM 操作（browser.dom）：固定函数 + 值参数 */
+    domOp(wcId: number, ref: number, op: string, arg?: string): Promise<WebDomOpResult>
+    /** 拿当前页的整份 DOM HTML（渲染层走 webFetch 同一条 markdown 管线，browser.read） */
+    readHtml(wcId: number): Promise<WebReadHtmlResult>
   }
 }
 

@@ -10,6 +10,7 @@ import { emptyDocs } from '../src/learn/groups'
 import { buildState } from '../src/learn/files'
 import type { LearnStore } from '../src/learn/types'
 import {
+  BUILTIN_EFFORT,
   builtinWorkflowRows,
   findWorkflow,
   listWorkflowRows,
@@ -47,7 +48,7 @@ const store = (workflows?: LearnStore['workflows']): LearnStore => ({
 })
 
 describe('内置工作流', () => {
-  it('十三个内置都在：开讲、学习大纲、生成大纲、回忆、探针、出卷、阅卷、了解、超级实验室、伪编译、压缩上下文、打卡、复习', () => {
+  it('十四个内置都在：开讲、学习大纲、生成大纲、回忆、探针、出卷、阅卷、了解、超级实验室、伪编译、压缩上下文、打卡、复习、浏览器操作', () => {
     const rows = builtinWorkflowRows()
     expect(rows.map((r) => r.id)).toEqual([
       'teach-node',
@@ -63,11 +64,14 @@ describe('内置工作流', () => {
       'compact',
       'checkin',
       'review',
+      'browser-use',
     ])
     for (const r of rows) {
       expect(r.tier).toBe('builtin')
       expect(r.instruction.trim()).not.toBe('')
     }
+    // 浏览器操作是看图干活的快流程：推荐档钉在 low（用户仍可在设置里覆盖）
+    expect(BUILTIN_EFFORT['browser-use']).toBe('low')
   })
 
   it('问询类（开讲/出卷/超级实验室/打卡）触发前响铃切主位；阅卷不能从列表直接跑', () => {

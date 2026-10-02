@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowLeftToLine, ArrowRightToLine, FoldHorizontal, OctagonX, X } from 'lucide-react'
-import { DocTypeIcon } from './docTypes'
-import type { LearnTab, TabRef } from '../../learn/types'
+import { DocTypeIcon, WebTabTypeIcon } from './docTypes'
+import type { LearnTab, TabRef, WebTabMeta } from '../../learn/types'
 import { TAB_CLOSE_LABEL, dragSlotDelta, type TabCloseMode } from '../../learn/tabs'
 import { setTabMarkHandlers } from '../../lib/tabMark'
 import { docChipDrop, docChipHover, type ChipPayload } from '../../lib/docChip'
@@ -69,6 +69,11 @@ interface Props {
    */
   onDropChip?: (p: ChipPayload) => void
   /**
+   * web 页签的活信息（真标题 / 站点图标 / 加载态，见 WebTabMeta）：有就盖过 titleOf——
+   * 页面的真标题要等加载完才有，tabTitle 只能兜底出域名（见 learn/tabs）。
+   */
+  webMetaOf?: (tab: LearnTab) => WebTabMeta | undefined
+  /**
    * 这一格是不是焦点格。
    *
    * 棱形只在焦点格的栏上跟着右键走（见 lib/tabMark）：分割成好几格之后，每格都有自己的
@@ -99,7 +104,9 @@ const TAB_GAP = 3
  * 那一格占住原先留给「与关闭键等宽的空档」的 16px（见下面页签里那格），
  * 于是标题仍然是在整条页签里居中的——图标只是把空档填成了有用信息。
  */
-function TabTypeIcon({ tab }: { tab: TabRef }) {
+function TabTypeIcon({ tab, favicon, loading }: { tab: TabRef; favicon?: string; loading?: boolean }) {
+  // 网页页签的图标带活信息（转圈/站点图标，见 docTypes 的 WebTabTypeIcon）
+  if (tab.kind === 'web') return <WebTabTypeIcon favicon={favicon} loading={loading} />
   return <DocTypeIcon kind={tab.kind} />
 }
 
@@ -142,6 +149,7 @@ export default function TabBar({
   onStripHost,
   onDrop,
   docPayloadOf,
+  webMetaOf,
   onDropChip,
   focused = false,
 }: Props) {
@@ -636,7 +644,8 @@ export default function TabBar({
       >
         {tabs.map((tab, i) => {
           const on = tab.id === activeId
-          const title = titleOf(tab.ref)
+          const wmeta = webMetaOf?.(tab)
+          const title = (tab.ref.kind === 'web' ? wmeta?.title : undefined) ?? titleOf(tab.ref)
           // 重名时才有：「路径 · 标题」，平时一条路径都不显示（见 Props.trailOf）
           const trail = trailOf?.(tab.ref) ?? ''
           const dragging = drag?.id === tab.id
@@ -703,7 +712,11 @@ export default function TabBar({
                 与右边那颗关闭键等宽（都是 16px）：标题因此还是在整条页签里居中，
                 而空档本身也成了有用的信息。
               */}
-              <TabTypeIcon tab={tab.ref} />
+              <TabTypeIcon
+                tab={tab.ref}
+                favicon={tab.ref.kind === 'web' ? wmeta?.favicon : undefined}
+                loading={wmeta?.loading}
+              />
               {/*
                 标题居中：外层 flex-1 占住两边等宽的空档、内层按内容宽。
                 不直接写 text-center + truncate 是因为那样**长标题会把开头切掉**：

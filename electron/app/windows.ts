@@ -38,6 +38,9 @@ export async function createWindow(): Promise<void> {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      // 内置浏览器的网页页签（<webview>，见 app/webSession 与 src/components/learn/web）：
+      // 只有宿主需要这个开关；guest 是独立进程，默认全沙箱
+      webviewTag: true,
     },
   })
 

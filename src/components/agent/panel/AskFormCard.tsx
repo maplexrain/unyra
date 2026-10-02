@@ -284,7 +284,7 @@ export function AskFormCard({
           {t('上一题')}
         </button>
         <span className="min-w-0 flex-1 truncate text-[10.5px] text-ink-faint">
-          {t('想答的答，懒得答的留空直接提交也可以')}
+          {t('想答的答，懒得答的留空直接提交也可以；一分钟没有任何操作会自动收起')}
         </span>
         <button
           type="button"

@@ -47,7 +47,8 @@ export function examDeleteWarn(exam: Exam): string {
  * 读回来的内容，由 LocalDoc 自己拿着（见它的 edit）。
  */
 export function savedTextOf(store: LearnStore, ref: TabRef): string {
-  if (ref.kind === 'local') return ''
+  // 网页页签没有暂存正文（没有编辑器），与本地文件同路
+  if (ref.kind === 'local' || ref.kind === 'web') return ''
   const node = nodeById(store, ref.nodeId)
   if (!node) return ''
   if (ref.kind === 'note') return findNote(notesOf(node), ref.note)?.content ?? ''

@@ -227,7 +227,7 @@ export function NodeHints({ node, store }: { node: KnowledgeNode; store: LearnSt
  * 页签是可以全部关掉的（右键菜单里就有「全部关闭」），那时给一句话说清去哪儿找东西，
  * 而不是留一片白——空白面板看起来像坏了。
  */
-export function EmptyDoc({ onPickLocal }: { onPickLocal: () => void }) {
+export function EmptyDoc({ onPickLocal, onOpenWeb }: { onPickLocal: () => void; onOpenWeb?: () => void }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
       <p className="text-[13px] text-ink-soft">{t('没有打开的文档')}</p>
@@ -240,6 +240,18 @@ export function EmptyDoc({ onPickLocal }: { onPickLocal: () => void }) {
         >
           {t('打开一个本地文件')}
         </button>
+        {onOpenWeb && (
+          <>
+            {t('，或')}
+            <button
+              type="button"
+              onClick={onOpenWeb}
+              className="mx-0.5 rounded px-1 text-seal-deep underline decoration-dotted underline-offset-2 transition hover:bg-seal/10"
+            >
+              {t('打开一个网页')}
+            </button>
+          </>
+        )}
         。
       </p>
     </div>

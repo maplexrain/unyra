@@ -115,6 +115,16 @@ const API_NAMES = [
   'web.read',
   // 多引擎搜索（抓取走同一条主进程通道，解析在渲染层，见 learn/webSearch）
   'web.search',
+  // 内置浏览器：网页页签的打开 / 管理 / 快照与阅读 / 受控 DOM 操作 / 截图（见 learn/web/browserOps）
+  'browser.open',
+  'browser.tabs',
+  'browser.activate',
+  'browser.close',
+  'browser.snapshot',
+  'browser.point',
+  'browser.dom',
+  'browser.read',
+  'browser.capture',
   // 上下文压缩：agent 自己写交接摘要（见 learn/compact）
   'compact',
   // 人机协作与界面：ask 会阻塞到用户提交，wait 是合法的「慢」（超时按空闲算）

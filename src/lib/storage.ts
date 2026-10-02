@@ -46,11 +46,46 @@ let scopeUid: string | null = null
 /** 由 learn/store 的 hydrate 调用；未登录传 null */
 export function setUserScope(uid: string | null): void {
   scopeUid = uid
+  // 绝对路径换算依赖数据根：登录 / 启动 / 换用户都顺手刷一次（异步，不阻塞 hydrate）
+  void refreshStorageRoot()
 }
 
 /** 「相对当前用户」→「相对数据根」；未登录返回 null（调用方按中性值处理） */
 export function userPath(rel: string): string | null {
   return scopeUid ? userRel(scopeUid, rel) : null
+}
+
+/* ---------- 数据根：把「相对当前用户」换算成磁盘绝对路径 ---------- */
+
+/**
+ * 工作区文件要以 **local 页签**打开（TabRef.path 的语义是磁盘绝对路径，LocalDoc
+ * 用它直接读写真实文件），而工作区的 rel 只有「相对当前用户」这一种——中间隔着
+ * 数据根（{root}）与 uid 两级。数据根只有 IPC 能问（storage.info），这里拉一次
+ * 缓住：setUserScope（启动 / 登录）与换存储位置后各刷一次。
+ */
+
+let cachedRoot: string | null = null
+
+/** 拉一次并记住数据根；拿不到就置 null（userAbsPath 随之给出中性失败） */
+export async function refreshStorageRoot(): Promise<void> {
+  try {
+    cachedRoot = (await native().storage.info()).root || null
+  } catch {
+    cachedRoot = null
+  }
+}
+
+/**
+ * 「相对当前用户」→ 磁盘绝对路径（{root}/users/{uid}/{rel}）。
+ * 未登录、或数据根还没拉到（启动头几拍）返回 null——调用方按中性值处理；
+ * 同步可用（click / 拖放的芯片打开都是同步链），刷新靠 refreshStorageRoot。
+ * rel 里带 `..` 的一律拒绝：这条路径要落成真实文件路径，不能给穿目录的口子。
+ */
+export function userAbsPath(rel: string): string | null {
+  if (!cachedRoot || !scopeUid) return null
+  const segs = rel.split('/').filter(Boolean)
+  if (!segs.length || segs.some((s) => s === '..')) return null
+  return [cachedRoot.replace(/[\\/]+$/, ''), 'users', scopeUid, ...segs].join('/')
 }
 
 /* ---------- 基本读写 ---------- */
@@ -60,11 +95,15 @@ export async function storageInfo(): Promise<StorageInfo> {
 }
 
 export async function setRoot(dir?: string): Promise<{ ok: boolean; root: string; error?: string }> {
-  return native().storage.setRoot(dir)
+  const r = await native().storage.setRoot(dir)
+  if (r.ok && r.root) cachedRoot = r.root
+  return r
 }
 
 export async function pickRoot(): Promise<{ ok: boolean; canceled?: boolean; root?: string; error?: string }> {
-  return native().storage.pickRoot()
+  const r = await native().storage.pickRoot()
+  if (r.ok && r.root) cachedRoot = r.root
+  return r
 }
 
 /** 读文本；不存在返回 null */

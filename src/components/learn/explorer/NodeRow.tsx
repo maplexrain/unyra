@@ -48,7 +48,7 @@ export function NodeRow({
   exams,
   renamingNote,
   onEndRename,
-  onRevealWs,
+  onOpenWs,
   ws,
 }: {
   node: KnowledgeNode
@@ -67,8 +67,8 @@ export function NodeRow({
   renamingNote: string | null
   /** 改名结束（提交或取消都走它）：清掉侧栏那一层的状态 */
   onEndRename: () => void
-  /** 定位工作区里的真实文件（工作区目录树里点文件行 / 右键，见 LearnWorkspace 的 revealWsFile） */
-  onRevealWs: (rel: string) => void
+  /** 工作区文件在页签里打开（解析不解析看后缀，见 LearnWorkspace 的 openWsFile） */
+  onOpenWs: (rel: string) => void
   /** 工作区的新建与改名（真实文件 / 目录，IO 在宿主那一头，见 WsActions） */
   ws: WsActions
 }) {
@@ -330,7 +330,7 @@ export function NodeRow({
           文件与子目录就是磁盘上实际有的那些（用户放进去的、导师用 workspace.write 写的都在）。
           一直显示：真实目录永远存在，藏起来反而让人以为没有。
         */}
-        <WorkspaceRow node={node} store={store} ws={ws} onOpenMenu={onOpenMenu} onReveal={onRevealWs} />
+        <WorkspaceRow node={node} store={store} ws={ws} onOpenMenu={onOpenMenu} onOpen={onOpenWs} />
 
         {children.map((child) => (
           <div key={child.id} className="ml-3 border-l border-line pl-1.5">
@@ -348,7 +348,7 @@ export function NodeRow({
               exams={exams}
               renamingNote={renamingNote}
               onEndRename={onEndRename}
-              onRevealWs={onRevealWs}
+              onOpenWs={onOpenWs}
               ws={ws}
             />
           </div>

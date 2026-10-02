@@ -80,6 +80,8 @@ interface Props {
    * 「翻菜单主动找出来做」——所以这里也不二次确认，直接跑。
    */
   onCheckin: () => void
+  /** 更多 → 工作流 → 浏览器操作：替用户驱动内置浏览器完成任务（看=截图、输入=模拟鼠标键盘） */
+  onBrowserUse: () => void
   /** 更多 → 压缩上下文：把前面的对话折成一份摘要 */
   onCompact: () => void
   /** 正在压缩（菜单项置灰，避免连点两次） */
@@ -161,6 +163,7 @@ export default function AgentPanel({
   onRecall,
   onSuperLab,
   onCheckin,
+  onBrowserUse,
   onCompact,
   compacting,
   onOpenAgentSettings,
@@ -595,6 +598,7 @@ export default function AgentPanel({
           onRecall={onRecall}
           onSuperLab={onSuperLab}
           onCheckin={onCheckin}
+          onBrowserUse={onBrowserUse}
           onCompact={onCompact}
           compacting={compacting}
           compactThreshold={compactThreshold}

@@ -16,11 +16,16 @@
 
 /** 一份被引用的东西。字段按类型给：路径类给 path，试卷类给 examId/attemptId，nodeId 有就带 */
 export interface ChipPayload {
-  type: 'doc' | 'note' | 'outline' | 'super' | 'local' | 'exam' | 'attempt'
-  /** 路径：数据树相对路径（doc/note/outline/super 的宿主路径）或本地绝对路径（local） */
+  type: 'doc' | 'note' | 'outline' | 'super' | 'local' | 'exam' | 'attempt' | 'ws'
+  /**
+   * 路径：数据树相对路径（doc/note/outline/super 的宿主路径）、本地绝对路径（local）、
+   * 或相对当前用户的工作区路径（ws，形如 docs/…/workspace/报告.md）
+   */
   path?: string
   /** 节点 id：宿主自己拖出来时都带；导师写的是否带随缘，缺了靠 path 反查 */
   nodeId?: string
+  /** 工作区目录（type:'ws'）：点击跳到所属节点 */
+  dir?: boolean
   /** 笔记名（type:'note'） */
   note?: string
   /** 超级文档名（type:'super'） */
@@ -47,6 +52,8 @@ export function chipToken(p: ChipPayload): string {
   put('type', p.type)
   put('path', p.path)
   put('nodeId', p.nodeId)
+  // 工作区目录不是字符串值，单独写（agent 写 true / 缺省都解析得回来）
+  if (p.dir) parts.push('"dir":true')
   put('note', p.note)
   put('name', p.name)
   put('examId', p.examId)
@@ -62,7 +69,7 @@ export function chipJson(p: ChipPayload): string {
 
 /* ---------- 解析 ---------- */
 
-const CHIP_TYPES = new Set(['doc', 'note', 'outline', 'super', 'local', 'exam', 'attempt'])
+const CHIP_TYPES = new Set(['doc', 'note', 'outline', 'super', 'local', 'exam', 'attempt', 'ws'])
 
 /** 宽松修复：导师写的 JSON 可能带裸键名、单引号/全角引号/尾逗号——严格 parse 失败了再修一次 */
 function repairJson(s: string): string {
@@ -163,6 +170,8 @@ const CHIP_ICON: Record<ChipPayload['type'], { color: string; d: string[] }> = {
   outline: { color: '#2e8b6e', d: ['M2.5 4h11', 'M4.5 8h9', 'M4.5 12h9', 'M2.5 7v6'] },
   // 中性灰：外部文件（一块硬盘）
   local: { color: '#98928a', d: ['M2.5 4.5h11v7h-11z', 'M2.5 8.5h11', 'M11 10.2h.01'] },
+  // 中性灰：节点工作区里的文件/目录（一个抽屉盒——磁盘上真实存在的东西）
+  ws: { color: '#98928a', d: ['M2 4.5h4.4L8 6.4h6v7.1H2z', 'M2 8.4h12', 'M5 10.6h4'] },
   // 朱：试卷（一顶学士帽）
   exam: { color: '#c0563a', d: ['M8 2.8 2.5 5.8 8 8.8l5.5-3z', 'M4.8 7.3v2.9c0 .9 1.5 1.9 3.2 1.9s3.2-1 3.2-1.9V7.3'] },
   // 朱：完成批改的试卷副本（判分圆环 + 对勾）

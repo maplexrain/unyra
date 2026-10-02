@@ -98,7 +98,8 @@ export function paneInfo(
     tab.ref.kind !== 'local' &&
     tab.ref.kind !== 'super' &&
     tab.ref.kind !== 'exam' &&
-    tab.ref.kind !== 'outline'
+    tab.ref.kind !== 'outline' &&
+    tab.ref.kind !== 'web'
       ? sourceOf(store, tab, node)
       : null
   const empty = emptyNote(store, tab)
@@ -112,7 +113,8 @@ export function paneInfo(
     draft: draftOf(store.drafts, tab?.id ?? null),
     title: tab ? tabTitle(tab.ref, (id) => nodeById(store, id)?.title, examTitle) : '',
     // 空笔记也能预览（它就是一片空白）：与「这份文件不能预览」是两回事，按钮的说明不一样
-    previewable: !!tab && !empty && (tab.ref.kind !== 'local' || isPreviewable(tab.ref.path)),
+    previewable:
+      !!tab && tab.ref.kind !== 'web' && !empty && (tab.ref.kind !== 'local' || isPreviewable(tab.ref.path)),
     emptyNote: empty,
   }
 }

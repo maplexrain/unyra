@@ -15,7 +15,7 @@ export interface ApiEntry {
   signature: string
   summary: string
   /** 什么时候才可用（绝大多数恒可用；条件注入的少数要写明） */
-  availability?: 'always' | 'exam' | 'ui'
+  availability?: 'always' | 'exam' | 'ui' | 'browser'
 }
 
 export interface ApiGroup {
@@ -289,6 +289,26 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
       { name: 'web.webFetch', signature: "web.webFetch('https://…')", summary: '抓一页并转成 markdown：短的回全文，长的存成文件并回大纲树（每节字数）+ uuid', availability: 'always' },
       { name: 'web.read', signature: "web.read(uuid, '一级标题/二级标题')", summary: '读落盘网页的某一节（path 可省略：从头给一段 + 大纲）；一次最多回 1.2 万字，没回完会说明怎么继续', availability: 'always' },
       { name: 'web.search', signature: "web.search(query, { engines? | engine?, lang?, count? }?)", summary: '多引擎搜索（baidu / bing / google / yandex / wikipedia）：engines 给数组并行搜多家（≤3）；回 { rank, title, url, snippet, engine }，解析不出的引擎在 failed 里说明，换一家再试', availability: 'always' },
+    ],
+  },
+  {
+    key: 'browser',
+    label: '内置浏览器 · browser',
+    intro:
+      '操作**界面上开着的网页页签**（文档区里那种地球图标页签）：开站、管理页签、snapshot 元素清单、' +
+      '对 ref 做受控 DOM 操作、整页转 markdown、截图。' +
+      '**看 = snapshot/read（文本）优先，capture（截图）是最后手段**；dom 是受控操作（固定函数 + 值参数，' +
+      '没有任意 JS 的口子），操作的是用户的真实登录会话——不可逆动作先问用户。',
+    items: [
+      { name: 'browser.open', signature: "browser.open('https://…')", summary: '开一个网页页签（纯关键词当搜索词）；回 tabId，返回时首屏基本加载完', availability: 'browser' },
+      { name: 'browser.tabs', signature: 'browser.tabs()', summary: '全部存活的网页页签：tabId、url、标题、是否激活、所在格；之后一切操作按 tabId 指名', availability: 'browser' },
+      { name: 'browser.snapshot', signature: 'browser.snapshot(tabId?)', summary: '页面快照：可交互元素列成带 ref 的清单（role + 名称 + 输入值，≤200 条）——认结构、找要点的元素全靠它；DOM 变了 ref 会过期，重新 snapshot 即可', availability: 'browser' },
+      { name: 'browser.activate', signature: 'browser.activate(tabId)', summary: '把某个页签切到前台', availability: 'browser' },
+      { name: 'browser.close', signature: 'browser.close(tabId)', summary: '关掉某个页签（不弹确认——用户没让关就别关）', availability: 'browser' },
+      { name: 'browser.point', signature: 'browser.point(tabId?, 目标)', summary: '页面像锚点跳转一样滚到目标元素（{ ref } 或选择器），并注入短暂的脉冲高亮把它标出来——指给用户看、或自己确认位置', availability: 'browser' },
+      { name: 'browser.dom', signature: 'browser.dom(tabId?, ref, op, arg?)', summary: '对 snapshot 清单里的 ref 做受控 DOM 操作：op = "click" / "fill"(文字，触发 input/change) / "focus" / "submit"(所在表单) / "text"(元素文字 ≤4000 字) / "attr"(属性名)；result 回操作自己的小结果', availability: 'browser' },
+      { name: 'browser.read', signature: 'browser.read(tabId?)', summary: '整页转 markdown（与 webFetch 同一条管线）：短的回全文，长的落盘回大纲树（每节字数）+ uuid，再用 web.read 按节读——登录态页面也能读', availability: 'browser' },
+      { name: 'browser.capture', signature: 'browser.capture(tabId?)', summary: '页面截图 → 存进资源库并附在下一跳（与 ui.screenshot 同一条通道）——**最后手段**：snapshot/read 拿不到的信息才用它', availability: 'browser' },
     ],
   },
   {
