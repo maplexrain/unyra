@@ -137,6 +137,9 @@ const API_NAMES = [
   'subagent.wait',
   // 上下文压缩：agent 自己写交接摘要（见 learn/compact）
   'compact',
+  // 引用 chip：生成与交付前自查（手拼的 path 定位不到，见 learn/ops/chip）
+  'chip.build',
+  'chip.check',
   // 人机协作与界面：ask 会阻塞到用户提交，wait 是合法的「慢」（超时按空闲算）
   'wait',
   'ask',

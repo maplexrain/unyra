@@ -40,6 +40,7 @@ import { createResourceOps } from './resource'
 import { createAttentionOps, createCheckinOps, createCompactOps, createPomodoroOps, createReadingOps } from './process'
 import { createReviewOps } from './review'
 import { createWorkspaceOps } from './workspace'
+import { createChipOps } from './chip'
 
 export function createAgentOps(deps: AgentOpsDeps): AgentOps {
   const store0 = () => deps.getLatest()
@@ -470,6 +471,8 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
     ...(deps.workspaceIo ? { workspace: createWorkspaceOps(deps, deps.workspaceIo) } : {}),
     // 上下文压缩：纯 store 逻辑，总是可用（见 learn/compact）
     compact: createCompactOps(deps),
+    // 引用 chip：生成与交付前自查——build 当场对 store 验证可定位（见 learn/ops/chip）
+    chip: createChipOps(deps),
     // 读网页：实现整个由界面层给（见 learn/webDocs），这里只接线
     ...(deps.web ? { web: deps.web } : {}),
   }

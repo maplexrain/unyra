@@ -191,6 +191,8 @@ export interface SandboxOptions {
   /** 上下文压缩（compact，见 learn/compact）；未注入就没有它 */
   compact?: CompactOps
   userInfo?: UserInfoOps
+  /** 引用 chip 的生成与校验（chip.build / chip.check，见 learn/ops/chip）；未注入就没有这一组 */
+  chip?: ChipOps
   /** 阻塞等待（wait，毫秒）；未注入就没有 wait */
   wait?: (ms: number) => Promise<void>
   /** 结构化表单询问（ask）：显示表单并阻塞到用户提交/取消；未注入就没有 ask */
@@ -501,6 +503,20 @@ export interface MindOps {
 export interface CompactOps {
   /** { summary, tasks? } → 摘要成形并写入会话（等本轮结束后应用） */
   write: (input: Record<string, unknown>) => unknown
+}
+
+/* ---------- chip：引用 chip 的生成与校验 ---------- */
+
+/**
+ * chip.* 的宿主实现（见 learn/ops/chip）。build 把「拼对路径」从模型手里拿走——
+ * 当场对 store 解析、生成的 payload 一定带 nodeId，定位不到就 ok:false；
+ * check 让模型在交付前把草稿里的 chip 逐颗验一遍。
+ */
+export interface ChipOps {
+  /** { type, path?, url?, note?, name?, examId?, attemptId?, dir?, title? } → { chip, type, title } 或 { ok:false, problem } */
+  build: (input: Record<string, unknown>) => unknown
+  /** 任意文本 → 逐颗解析其中的 #[{…}] 并验证定位 → { total, valid, invalid, problems? } */
+  check: (text: string) => unknown
 }
 
 /* ---------- method：目标级持久化函数 ---------- */

@@ -70,6 +70,18 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     ],
   },
   {
+    key: 'chip',
+    label: '引用 chip · chip',
+    intro:
+      '交付清单里的 #[{…}] 用这一组生成与校验，**不要手写**——手拼的 path（拿节点标题或「教学」' +
+      '这类别称去拼【目标】/教学）在数据树里不存在，学习者点开是一片空。build 当场对 store 解析，' +
+      '生成的 payload 永远带 nodeId，定位不到就 ok:false 说明原因；check 在交付前把草稿里的 chip 逐颗验一遍。',
+    items: [
+      { name: 'chip.build', signature: 'chip.build({ type, path?, url?, note?, name?, examId?, attemptId?, dir?, title? })', summary: '生成一颗引用 chip 并当场验证可定位，返回 { chip, type, title }——把 chip 原样抄进回复。type 认 doc/note/outline/super/exam/attempt/ws/web/local；path 寻址与 doc.* 同构（省略 = 当前节点）', availability: 'always' },
+      { name: 'chip.check', signature: 'chip.check(text)', summary: '交付前自查：解析文本里每一颗 #[{…}] 并验证定位，回 { total, valid, invalid, problems }——坏的用 build 重新生成', availability: 'always' },
+    ],
+  },
+  {
     key: 'tmp',
     label: '临时变量 · tmp',
     intro: '按节点存放、可设过期、不进上下文；体量大的中间数据放这里，只把键名带回对话。',

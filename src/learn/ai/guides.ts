@@ -36,33 +36,30 @@ export const RICH_CONTENT_GUIDE = `富内容写作（重要）：
 - 内嵌 HTML 必须闭合良好；不确定能否渲染的写法就退回纯 Markdown。`
 
 /**
- * 引用 chip：导师与学习者之间「指名一份文件」的共同语法。
- * 学习者端把 `#[{…}]` 渲染成可点击的引用元素（输入框里是一枚整体元素，
- * 消息列表里点击即打开），所以交付清单也走它——这一段同时是格式说明与交付纪律。
+ * 引用 chip 的**生成与交付纪律**。`#[{…}]` 的编解码与外观在 lib/chipSyntax（纯语法），
+ * 宿主实现在 learn/ops/chip——这里只教模型两件事：生成一律走 api.chip.build
+ * （手拼的 path 定位不到，是交付事故的头号来源），发出前用 api.chip.check 自查。
  */
-export const CHIP_GUIDE = `引用 chip（#[{…}]）与交付清单（重要）：
+export const CHIP_GUIDE = `引用 chip 与交付清单（重要）：
 
-在回复里引用一份具体的文件，用**一行内联**的 chip 语法，学习者端会把它渲染成可点击的引用：
+在回复里引用一份具体的文件，用 chip 语法 \`#[{…}]\`（学习者端渲染成可点击的引用）。
+**chip 一律用 api.chip.build 生成，把返回的 chip 字符串原样抄进回复——绝不手写**：
+手拼的 path（拿节点标题或「教学」这类别称去拼【某目标】/教学）在数据树里不存在，
+学习者点开是一片空，而且这种错不报任何错。build 当场对 store 解析，生成的一定定位得到；
+定位不到它会 ok:false 并说明原因，照那句话改。
 
-    #[{type:"doc", path:"docs/…/xxx.md", title:"显示名"}]
-
-- type 取值：doc 教学文档 / note 笔记 / outline 大纲 / super 超级文档 / local 外部文件 /
-  exam 试卷（不带 attemptId）/ attempt 某一次考试的副本（带 examId 与 attemptId）/
-  ws 节点工作区里的文件或目录：path 用 **workspace api 回执里的 rel 字段**（形如
-  docs/…/workspace/报告.md 的磁盘路径，原样抄）；「节点/workspace/文件」这种手写格式
-  （如 极限/workspace/报告.md）也认；目录带 dir:true，点击跳到所属节点 /
-  web 网页（url 给完整网址——通常是学习者拖进来的网页页签；要读它的内容用 web.webFetch(url)）。
-- note 要带 note（笔记名）；super 要带 name（超级文档名）与 path（它所属节点的教学文档路径）；
-  title 是给学习者看的显示名，尽量写上。
-- **path 必须是真实存在的数据树相对路径，从这些地方原样抄**：每轮上下文里【写入目标】给的那条、
-  api.node.read / api.node.list 回执里的 path 字段、你 doc.write 回执里的路径。**绝不要自己拼**——
-  拿节点标题或「教学」这类文档别称手工拼出来的路径（如 【某目标】/教学）索引不到，
-  学习者点开是一片空。只知道节点不知道路径，先 api.node.read 拿真实 path 再写 chip。
-- local 给完整绝对路径；它必须裸写在正文里，**不要包进代码块或行内代码**——包起来就不会被渲染成引用了。
-- 不要虚构 path / examId / url：引用指错了，学习者点开的就是别的东西（或什么都没有）。
+- api.chip.build({ type, path?, url?, note?, name?, examId?, attemptId?, dir?, title? })：生成一颗 chip，
+  返回 { chip, type, title }。type 认：doc 教学文档 / note 笔记（带 note 名）/ outline 大纲 /
+  super 超级文档（带 name）/ exam 试卷 / attempt 某一次考试的副本（带 examId 与 attemptId）/
+  ws 节点工作区文件或目录（path 用 workspace api 回执里的 rel，原样抄；目录带 dir:true）/
+  web 网页（url 给完整网址）/ local 外部文件（完整绝对路径）。path 寻址与 doc.* 同构
+  （省略 = 当前节点的教学文档；"笔记/错题本" 指名某一份笔记）。
+- api.chip.check(text)：交付前自查。把回复草稿（或其中一段）给它，它逐颗解析其中的
+  chip 并对 store 验定位，回 { total, valid, invalid, problems }——problems 里每颗坏的都带着
+  「哪一颗、为什么」。交付清单里出现手写的 chip（或你不确定的），先用它过一遍。
 
 每一轮的交付（最后那条面向学习者的回复）里，凡是这一轮**新增或修改过**的文件，
-都在末尾用一小节列出来：一行一个 chip，后面跟半句「改了什么」。没动过文件就不列。`
+都在末尾用一小节列出来：用 build 生成 chip，一行一个，后面跟半句「改了什么」。没动过文件就不列。`
 
 /**
  * 学习目标（根节点）的笔记规格：系统性学习。
