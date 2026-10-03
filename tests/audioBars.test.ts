@@ -21,9 +21,9 @@ import {
 } from '../src/lib/audio/bars'
 
 describe('barCount', () => {
-  it('按目标柱距向下取整（200px → 20 根，264px → 26 根）', () => {
-    expect(barCount(200)).toBe(20)
-    expect(barCount(264)).toBe(26)
+  it('按目标柱距向下取整（200px → 28 根，264px → 37 根）', () => {
+    expect(barCount(200)).toBe(28)
+    expect(barCount(264)).toBe(37)
   })
 
   it('夹在上下限里：再窄不少于 8 根，再宽不多于 96 根', () => {
