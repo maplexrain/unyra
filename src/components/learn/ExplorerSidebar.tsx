@@ -13,6 +13,7 @@ import { NewGoalIcon, OpenLocalIcon } from '../icons'
 import { NodeRow } from './explorer/NodeRow'
 import { RowMenu } from './explorer/RowMenu'
 import { FavoriteSection, LocalRow, RecentSection, Section } from './explorer/sections'
+import SystemAudioWave from './SystemAudioWave'
 import { useSidebarWidth } from './explorer/useSidebarWidth'
 import { useTreeExpand } from './explorer/useTreeExpand'
 import type { ExamActions, MenuState, MenuTarget, NodeDocActions, NodeStateActions, WsActions } from './explorer/types'
@@ -274,6 +275,13 @@ export default function ExplorerSidebar({
             onSelectNode={onSelectNode}
             onOpenLocal={onOpenLocal}
           />
+        </div>
+
+        {/* 系统音频柱形频谱：挂在侧栏底端当一台小电台（采集见 src/lib/audio/loopback）。
+            离阅读视线最远的位置留给纯装饰；柱子从这条带的底边往上长，接不上
+            系统音频时只剩一排底座，原因在 canvas 的悬停提示里 */}
+        <div className="border-t border-line px-2 py-2.5">
+          <SystemAudioWave />
         </div>
 
         {/* 拖拽的提示常驻在最下面一行：本地文件区没内容时整块不显示，没有这句话就没人知道能拖 */}
