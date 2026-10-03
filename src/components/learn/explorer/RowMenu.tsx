@@ -5,6 +5,7 @@
 import { useRef, useState } from 'react'
 import { Download, FilePlus, FolderPlus, FolderOpen, GraduationCap, ListTree, NotebookPen, Pencil, Play, RotateCcw, Trash2 } from 'lucide-react'
 import { STATUS_META } from '../mastery'
+import StatusBranch from '../StatusBranch'
 import { DocTypeIcon } from '../docTypes'
 import { NodeStatePanel } from '../NodeStatePanel'
 import { examNeedsWork, type RowMenuProps } from './types'
@@ -256,7 +257,7 @@ export function RowMenu({
               onClick={() => setStateSide((cur) => (cur ? null : 'right'))}
               className={MENU_ITEM + ' text-ink hover:bg-line/60'}
             >
-              <span className={'h-[7px] w-[7px] shrink-0 rounded-full ' + STATUS_META[target.node.status].dot} />
+              <StatusBranch size={12} className={'shrink-0 ' + STATUS_META[target.node.status].mark} />
               {t('学习状态')}
               <span className="ml-auto pl-2 text-[10.5px] text-ink-faint">
                 {t(STATUS_META[target.node.status].label)}

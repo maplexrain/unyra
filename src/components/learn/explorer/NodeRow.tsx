@@ -9,6 +9,7 @@ import type { KnowledgeNode, LearnStore, TabRef } from '../../../learn/types'
 import { superDocsOf } from '../../../learn/types'
 import { examsOfNode, nodeById, prereqIds } from '../../../learn/graph'
 import { STATUS_META } from '../mastery'
+import StatusBranch from '../StatusBranch'
 import { Collapse } from './sections'
 import { DocRow, ExamList, NoteRenameRow } from './DocRow'
 import { DocFolderIcon } from '../docTypes'
@@ -190,12 +191,12 @@ export function NodeRow({
           </button>
 
           {/*
-            学习状态：**标题前的一颗小标记**（配色见 mastery 的 STATUS_META）。
-            它从前是文档区顶上那条「学会之后可以回溯」的提示条——那条已经删掉了：
-            状态是要一眼扫过整棵树看出来的东西，不是每打开一份文档就弹一次的提示。
+            学习状态：**标题前的一棵小分支**（配色见 mastery 的 STATUS_META）。
+            它从前是一颗圆点、更早是文档区顶上那条「学会之后可以回溯」的提示条——
+            状态是要一眼扫过整棵树看出来的东西，分支的形状还带上了「这是树上的节点」。
           */}
-          <span className="mt-[6px] flex shrink-0 items-center" title={t(meta.label)}>
-            <span className={'h-[7px] w-[7px] rounded-full ' + meta.dot} />
+          <span className="mt-[3px] flex shrink-0 items-center" title={t(meta.label)}>
+            <StatusBranch size={12} className={meta.mark} />
           </span>
 
           <span className="min-w-0 flex-1">

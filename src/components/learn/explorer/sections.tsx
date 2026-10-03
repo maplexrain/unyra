@@ -11,6 +11,7 @@ import { recentOpens, type RecentOpen } from '../../../learn/recents'
 import { useClock } from '../../../lib/clock'
 import { relativeTime } from '../../../lib/time'
 import { STATUS_META } from '../mastery'
+import StatusBranch from '../StatusBranch'
 import { DocTypeIcon, WebTabTypeIcon } from '../docTypes'
 import { chipJson } from '../../../lib/chipSyntax'
 import { t } from '../../../i18n'
@@ -72,7 +73,7 @@ export function RecentRow({ item, now, onOpen }: { item: RecentOpen; now: number
     >
       {item.kind === 'node' ? (
         <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-          <span className={'h-[6px] w-[6px] rounded-full ' + STATUS_META[item.status ?? 'learning'].dot} />
+          <StatusBranch size={11} className={STATUS_META[item.status ?? 'learning'].mark} />
         </span>
       ) : (
         <DocTypeIcon kind="local" size={13} />
