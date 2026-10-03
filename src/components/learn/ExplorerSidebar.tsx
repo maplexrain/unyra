@@ -278,9 +278,9 @@ export default function ExplorerSidebar({
         </div>
 
         {/* 系统音频柱形频谱：挂在侧栏底端当一台小电台（采集见 src/lib/audio/loopback）。
-            离阅读视线最远的位置留给纯装饰；柱子从这条带的底边往上长，接不上
-            系统音频时只剩一排底座，原因在 canvas 的悬停提示里 */}
-        <div className="border-t border-line px-2 py-2.5">
+            满宽、不加上边框——树区滚到底已有留白，再画一条线就把这块小电台框死了；
+            柱子从底边往上长，接不上系统音频时只剩一排底座，原因在悬停提示里 */}
+        <div className="px-2 py-2.5">
           <SystemAudioWave />
         </div>
 

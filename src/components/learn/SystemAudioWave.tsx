@@ -1,14 +1,14 @@
 import { useEffect, useRef } from 'react'
 import { t } from '../../i18n'
 import { startLoopback, type LoopbackSession } from '../../lib/audio/loopback'
-import { addBreath, applyGravity, barRanges, BAR_COUNT, sampleBars, smoothBars } from '../../lib/audio/bars'
+import { addBreath, applyGravity, barCount, barRanges, sampleBars, smoothBars } from '../../lib/audio/bars'
 
 /**
  * 顶栏的系统音频柱形频谱：电脑正在播的声音，实时画成一排柱。
  *
  * **挂在侧栏底端当一台小电台**：资源管理器滚动区与拖拽提示行之间的一条专属
- * 底带（200px 居中、高 48px），离阅读视线最远的位置留给纯装饰；侧栏拖窄到
- * 200px 以下时随 max-w-full 收缩，画柱的间距按实际宽度现算。
+ * 底带，**满宽**（高 48px）；柱数/柱宽/间隙全部按实际宽度现算（bars.barCount），
+ * 侧栏拖宽拖窄都跟着重排，无需任何固定宽度。
  *
  * 数据从系统回环来（src/lib/audio/loopback），这里只管画。三条自我约束与
  * GoalParticles 同一套：
@@ -20,9 +20,6 @@ import { addBreath, applyGravity, barRanges, BAR_COUNT, sampleBars, smoothBars }
  * 采不到系统音频时（Linux 无回环、无声卡、权限被拒）只剩一排 2px 底座，原因
  * 写进 canvas 的 title——频谱缺席是可理解的降级，不值得为它弹吐司。
  */
-
-/** 柱间缝（px）；柱宽由画布宽与柱数算出来 */
-const BAR_GAP = 2
 
 /** 下降重力：每帧回落的全高占比（涨即时、落缓慢，见 bars.applyGravity） */
 const BAR_FALL = 0.04
@@ -61,15 +58,26 @@ export default function SystemAudioWave() {
     let retryTimer = 0
     let attempts = 0
 
-    // 频谱缓冲与频段表在会话接上时按 bins()/采样率现分配（会话会重连，跟着重算）
+    // 频谱缓冲与频段表按「会话 × 当前宽度」现分配：会话重连、侧栏拖宽拖窄都会重算
     let freq: Uint8Array<ArrayBuffer> | null = null
     let ranges: Array<[number, number]> | null = null
-    const target = new Float32Array(BAR_COUNT)
-    const shown = new Float32Array(BAR_COUNT)
+    let bars = 0
+    let target = new Float32Array(0)
+    let shown = new Float32Array(0)
     // 峰值帽：独立于柱身的第二套高度轨迹，落得更慢（见 bars.applyGravity）
-    const caps = new Float32Array(BAR_COUNT)
+    let caps = new Float32Array(0)
     // 实际画出去的柱高 = 柱身重力 + 静音呼吸；单开一份，别把呼吸喂回重力的状态里
-    const drawn = new Float32Array(BAR_COUNT)
+    let drawn = new Float32Array(0)
+
+    /** 柱数变了就重排缓冲与频段表（顺带清零重力状态） */
+    const realloc = (n: number): void => {
+      bars = n
+      target = new Float32Array(n)
+      shown = new Float32Array(n)
+      caps = new Float32Array(n)
+      drawn = new Float32Array(n)
+      ranges = session ? barRanges(session.sampleRate(), session.bins(), n) : null
+    }
 
     const readColors = () => {
       const cs = getComputedStyle(canvas)
@@ -106,9 +114,7 @@ export default function SystemAudioWave() {
           }
           session = s
           freq = new Uint8Array(s.bins())
-          ranges = barRanges(s.sampleRate(), s.bins(), BAR_COUNT)
-          shown.fill(0)
-          caps.fill(0)
+          realloc(barCount(Math.max(1, width)))
           attempts = 0
           setTip(t('正在监听系统音频'))
         } catch (err) {
@@ -129,13 +135,19 @@ export default function SystemAudioWave() {
 
     const draw = (now: number): void => {
       ctx.clearRect(0, 0, width, height)
-      const step = width / BAR_COUNT
-      const barW = Math.max(1, step - BAR_GAP)
+
+      // 柱数/柱宽/间隙全部按实际宽度现算（侧栏拖宽拖窄跟着重排）；间隙按柱距的
+      // 三成走（夹在 1..3px），宽度变了疏密关系不变
+      const n = barCount(Math.max(1, width))
+      if (n !== bars) realloc(n)
+      const step = width / n
+      const gap = Math.min(3, Math.max(1, step * 0.3))
+      const barW = Math.max(1, step - gap)
 
       // 底座：每柱常驻 2px，静音时也能看出这里是一排频谱柱
       ctx.fillStyle = line
       ctx.globalAlpha = 0.35
-      for (let i = 0; i < BAR_COUNT; i++) {
+      for (let i = 0; i < n; i++) {
         ctx.fillRect(i * step, height - 2, barW, 2)
       }
 
@@ -151,7 +163,7 @@ export default function SystemAudioWave() {
         // 顶栏内容底下，太实会顶得文字发闷
         ctx.fillStyle = grad ?? seal
         ctx.globalAlpha = 0.5
-        for (let i = 0; i < BAR_COUNT; i++) {
+        for (let i = 0; i < n; i++) {
           const h = drawn[i] * (height - 2)
           if (h < 0.5) continue
           const r = Math.min(barW / 2, h)
@@ -164,7 +176,7 @@ export default function SystemAudioWave() {
         // 一眼能看出刚才的峰有多高
         ctx.fillStyle = seal
         ctx.globalAlpha = 0.85
-        for (let i = 0; i < BAR_COUNT; i++) {
+        for (let i = 0; i < n; i++) {
           const ch = caps[i] * (height - 2)
           if (ch < 1.5) continue
           ctx.fillRect(i * step, height - 2 - ch - 2, barW, 2)
@@ -208,5 +220,5 @@ export default function SystemAudioWave() {
     }
   }, [])
 
-  return <canvas ref={ref} aria-hidden="true" className="mx-auto block h-12 w-[200px] max-w-full" />
+  return <canvas ref={ref} aria-hidden="true" className="block h-12 w-full" />
 }
