@@ -78,16 +78,17 @@ export function Topbar({
   const [themeMenu, setThemeMenu] = useState<{ x: number; y: number } | null>(null)
 
   return (
-    /*
-      这一层必须自带 z-index：backdrop-blur 会让顶栏成为层叠上下文，
+    <>
+      {/*
+        这一层必须自带 z-index：backdrop-blur 会让顶栏成为层叠上下文，
       于是里面那个 z-30 的下拉菜单被封在顶栏这一层里，只能按「顶栏的位置」
       参与绘制。而 AI 面板里助手消息那层是 position: relative（z-index auto），
       在 DOM 里排在顶栏之后——同层级里靠后者压前者，菜单就被消息盖住了。
       给顶栏一个正数 z-index，整个顶栏（连同菜单）才真正浮在正文之上。
       取 20 是留出层次：正文浮层（z-30）在它上面，移动端抽屉与其遮罩（z-30/40）、
-      各类弹窗（z-50/60）也在它上面。
-    */
-    <div className="app-drag no-print relative z-20 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-gradient-to-b from-card/90 to-paper/70 px-3 backdrop-blur">
+        各类弹窗（z-50/60）也在它上面。
+      */}
+      <div className="app-drag no-print relative z-20 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-gradient-to-b from-card/90 to-paper/70 px-3 backdrop-blur">
       <button
         type="button"
         title={t('打开知识节点')}
@@ -197,7 +198,12 @@ export function Topbar({
 
         <WindowControls />
       </div>
+      </div>
 
+      {/*
+        主题菜单必须渲染在顶栏那个 div **外面**：顶栏的 backdrop-blur 会把自己变成
+        fixed 定位的包含块，菜单的 fixed 坐标会被解释成「相对顶栏」，弹到视口外去。
+      */}
       {themeMenu && (
         <ThemeMenu
           menu={themeMenu}
@@ -209,7 +215,7 @@ export function Topbar({
           onClose={() => setThemeMenu(null)}
         />
       )}
-    </div>
+    </>
   )
 }
 

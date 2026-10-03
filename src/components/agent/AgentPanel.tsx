@@ -533,7 +533,8 @@ export default function AgentPanel({
           onScroll={onScroll}
           // 不显示滚动条（moji-scroll-none）：右边那条位置留给定位条，见 index.css。
           // pr-9 而不是 px-3.5：最宽的那个点（18px）也要与正文留出空隙（几何见 panel/constants.ts）
-          className="moji-scroll-none moji-selectable h-full overflow-y-auto py-3 pl-3.5 pr-9"
+          // 顶边距不放在容器上：容器一垫，下面的 sticky 渐隐就贴不住滚动口顶端（空出一截）
+          className="moji-scroll-none moji-selectable h-full overflow-y-auto pb-3 pl-3.5 pr-9"
         >
           {/*
             顶部渐隐：滚出去的内容在这条渐变里淡出，而不是被容器上缘一刀切掉。
@@ -550,7 +551,7 @@ export default function AgentPanel({
             }}
           />
           {/* 字号系数挂在这一层、而不是滚动容器上：滚动条与内边距不该跟着缩放 */}
-          <div style={{ zoom: chatScale } as CSSProperties}>
+          <div className="pt-3" style={{ zoom: chatScale } as CSSProperties}>
             {messageList}
           </div>
         </div>

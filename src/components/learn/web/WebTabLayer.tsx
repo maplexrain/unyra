@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { WebviewTag } from 'electron'
-import { ArrowLeft, ArrowRight, ClipboardPaste, Copy, ExternalLink, RotateCw, Star, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ExternalLink, RotateCw, Star, X } from 'lucide-react'
 import type { LearnTab, TabRef, WebTabMeta } from '../../../learn/types'
 import { normalizeWebInput } from '../../../learn/webUrl'
 import { isElectron, native } from '../../../lib/native'
-import { useClampToViewport, useDismissOn } from '../../../lib/useDismiss'
 import { t } from '../../../i18n'
 import { setAddressFocus } from './addressFocus'
-import { registerWebview, webviewOf } from '../../../learn/web/webviewRegistry'
+import { registerWebview, webviewByWcId, webviewOf } from '../../../learn/web/webviewRegistry'
 
 /** web 页签：ref 一定是 web 分支（调用方按 kind 过滤过） */
 export type WebTab = LearnTab & { ref: Extract<TabRef, { kind: 'web' }> }
@@ -62,6 +61,34 @@ export default function WebTabLayer({ tabs, activeId, meta, hidden, onMeta, onCo
     const wv = active ? webviewOf(active.id) : undefined
     if (wv) fn(wv)
   }
+
+  /*
+    guest 里的鼠标指针事件（electron/guestPreload 上报，主进程按 wcId 转发回来）：
+    在对应的 <webview> 元素上合成一枚可冒泡的 PointerEvent。合成事件不是 isTrusted
+    的，但应用侧的手势（右键横划换页签那一类）全是普通监听，照常接得住——
+    「网页里触发的事件冒泡到宿主」这条链的最后一段就在这里补上。
+  */
+  useEffect(() => {
+    if (!isElectron()) return
+    return native().browser.onGuestInput((p) => {
+      const el = webviewByWcId(p.wcId)
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      el.dispatchEvent(
+        new PointerEvent(p.type, {
+          bubbles: true,
+          cancelable: true,
+          clientX: r.left + p.x,
+          clientY: r.top + p.y,
+          button: p.button,
+          buttons: p.buttons,
+          pointerId: 1,
+          pointerType: 'mouse',
+          isPrimary: true,
+        }),
+      )
+    })
+  }, [])
 
   return (
     <div
@@ -235,8 +262,6 @@ function WebPage({
   // 挂载那一刻的地址，之后永远不变（见文件头的说明）；起始页还没有地址
   const [src] = useState(tab.ref.url)
   const wvRef = useRef<WebviewTag | null>(null)
-  /** guest 里的右键菜单（复制 / 粘贴 / 刷新）弹在哪；null = 没弹 */
-  const [menu, setMenu] = useState<{ x: number; y: number; sel: boolean } | null>(null)
   const id = tab.id
 
   useEffect(() => {
@@ -291,20 +316,6 @@ function WebPage({
       wv.style.width = ''
       wv.style.height = ''
     }
-    /*
-      guest 的右键：Electron 默认弹它自己那份英文菜单（与我们整个界面两张皮）。
-      接住 context-menu 事件换成自己的菜单——复制 / 粘贴 / 刷新，样式与页签栏右键菜单同款。
-      preventDefault 要打在事件本身与 params 两处（不同版本挂在哪一处不一样，都打上才稳）。
-    */
-    const onCtx = (ev: Event): void => {
-      ev.preventDefault()
-      const p = (ev as Event & { params?: { x?: number; y?: number; selectionText?: string; preventDefault?: () => void } })
-        .params
-      p?.preventDefault?.()
-      const r = wv.getBoundingClientRect()
-      setMenu({ x: r.left + (p?.x ?? 0), y: r.top + (p?.y ?? 0), sel: !!p?.selectionText })
-    }
-    wv.addEventListener('context-menu', onCtx)
     wv.addEventListener('did-start-loading', onStart)
     wv.addEventListener('did-stop-loading', onStopLoad)
     wv.addEventListener('did-navigate', onNavigate)
@@ -316,7 +327,6 @@ function WebPage({
     wv.addEventListener('enter-html-full-screen', onEnterFs)
     wv.addEventListener('leave-html-full-screen', onLeaveFs)
     return () => {
-      wv.removeEventListener('context-menu', onCtx)
       wv.removeEventListener('did-start-loading', onStart)
       wv.removeEventListener('did-stop-loading', onStopLoad)
       wv.removeEventListener('did-navigate', onNavigate)
@@ -368,76 +378,6 @@ function WebPage({
           </button>
         </div>
       )}
-      {menu && (
-        <WebViewCtxMenu
-          x={menu.x}
-          y={menu.y}
-          hasSelection={menu.sel}
-          onPick={(act) => {
-            const wv = wvRef.current
-            if (!wv) return
-            if (act === 'copy') wv.copy()
-            else if (act === 'paste') wv.paste()
-            else wv.reload()
-          }}
-          onClose={() => setMenu(null)}
-        />
-      )}
-    </div>
-  )
-}
-
-const CTX_ROW =
-  'flex w-full items-center gap-2.5 rounded-md py-1.5 pl-2 pr-2.5 text-left text-[12px] text-ink transition hover:bg-line/60 disabled:opacity-40 disabled:hover:bg-transparent'
-
-/**
- * 网页里的右键菜单：复制 / 粘贴 / 刷新。
- *
- * 复制与粘贴直接落在 guest 的 webContents 上（webview.copy/paste），刷新与工具条那颗
- * 是同一个动作。有选中文字才亮「复制」；样式与页签栏的右键菜单同一套（见 TabBar）。
- */
-function WebViewCtxMenu({
-  x,
-  y,
-  hasSelection,
-  onPick,
-  onClose,
-}: {
-  x: number
-  y: number
-  hasSelection: boolean
-  onPick: (act: 'copy' | 'paste' | 'reload') => void
-  onClose: () => void
-}) {
-  const ref = useRef<HTMLDivElement | null>(null)
-  useDismissOn({ onClose })
-  useClampToViewport(ref, { x, y })
-  return (
-    <div
-      ref={ref}
-      role="menu"
-      onMouseDown={(e) => e.stopPropagation()}
-      className="moji-in-soft fixed z-[70] min-w-[150px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
-    >
-      <button type="button" role="menuitem" disabled={!hasSelection} onClick={() => { onPick('copy'); onClose() }} className={CTX_ROW}>
-        <span className="flex w-[14px] shrink-0 items-center justify-center">
-          <Copy size={13} className="text-ink-soft" />
-        </span>
-        {t('复制')}
-      </button>
-      <button type="button" role="menuitem" onClick={() => { onPick('paste'); onClose() }} className={CTX_ROW}>
-        <span className="flex w-[14px] shrink-0 items-center justify-center">
-          <ClipboardPaste size={13} className="text-ink-soft" />
-        </span>
-        {t('粘贴')}
-      </button>
-      <span aria-hidden="true" className="my-1 block h-px bg-line" />
-      <button type="button" role="menuitem" onClick={() => { onPick('reload'); onClose() }} className={CTX_ROW}>
-        <span className="flex w-[14px] shrink-0 items-center justify-center">
-          <RotateCw size={13} className="text-ink-soft" />
-        </span>
-        {t('刷新')}
-      </button>
     </div>
   )
 }

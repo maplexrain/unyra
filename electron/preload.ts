@@ -488,6 +488,8 @@ const api = {
    * 两条都是主进程推、渲染层收：
    * - onOpenTab —— 网页的弹窗 / target=_blank 要开的新页签（拦截与协议判定在主进程）；
    * - onShortcut —— 焦点在网页里时按下的应用快捷键（Ctrl+Q/W/L），转发回来当 DOM 键用。
+   * - onGuestInput —— guest 里的鼠标指针事件（electron/guestPreload 上报），
+   *   渲染层据此在 <webview> 元素上合成可冒泡的 PointerEvent。
    * 都返回取消订阅函数。
    */
   browser: {
@@ -500,6 +502,13 @@ const api = {
       const listener = (_e: unknown, key: string): void => cb(key)
       ipcRenderer.on('web:shortcut', listener)
       return () => ipcRenderer.removeListener('web:shortcut', listener)
+    },
+    onGuestInput: (
+      cb: (p: { wcId: number; type: string; button: number; buttons: number; x: number; y: number }) => void,
+    ): (() => void) => {
+      const listener = (_e: unknown, p: Parameters<typeof cb>[0]): void => cb(p)
+      ipcRenderer.on('web:guest-input', listener)
+      return () => ipcRenderer.removeListener('web:guest-input', listener)
     },
     /** 页面快照：Accessibility 树 → 带 ref 的可交互元素清单（browser.* 的「看」通道） */
     snapshot: (wcId: number): Promise<WebSnapshotResult> => ipcRenderer.invoke('web:snapshot', wcId),
