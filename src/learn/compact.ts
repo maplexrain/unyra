@@ -38,12 +38,13 @@ export const MAX_TASK_CHARS = 400
  */
 export const MIN_ACTIVE_MESSAGES = 4
 
-/** 一条消息有多少字（正文 + 工具结果；工具参数不算——它是过程，不是内容） */
+/** 一条消息有多少字（正文 + 工具结果 + 注入的模块全文；工具参数不算——它是过程，不是内容） */
 export function messageChars(m: ConversationMessage): number {
   let n = 0
   for (const p of m.parts) {
     if (p.type === 'text' || p.type === 'thinking') n += p.text.length
     else if (p.type === 'tool') n += p.result.length
+    else if (p.type === 'prompt-module') n += p.text.length
   }
   return n
 }

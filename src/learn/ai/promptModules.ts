@@ -463,17 +463,23 @@ export function writableContentOf(name: string, args: unknown[]): string | null 
 }
 
 /**
- * 去重判据：keys 里哪些模块**还没有**一条活着的消息带着它。
+ * 去重判据：keys 里哪些模块**还没有**出现在活着的上下文里。
  *
- * 只统计 !retired 的消息——被压缩折掉的模块消息不再进上下文，模型看不见了，
- * 必须允许重新注入（与 needsPersonaAnnounce 的判据同一口径）。
+ * 两种形态都算「已注入」：
+ * - 回复里的 prompt-module 片段（mid-loop 边界注入，见 agent/types）；
+ * - 轮开始时注入的独立隐藏消息（工作流触发，字段在消息上）。
+ * 只统计 !retired——被压缩折掉的不再进上下文，必须允许重新注入
+ * （与 needsPersonaAnnounce 的判据同一口径）。
  * 调用方传的消息列表必须与「这次请求真正会发的历史」同源（同一份 Conversation.messages）。
  */
 export function missingPromptModules(messages: ConversationMessage[], keys: string[]): string[] {
   const alive = new Set<string>()
   for (const m of messages) {
-    if (m.retired || !m.promptModule) continue
-    alive.add(m.promptModule)
+    if (m.retired) continue
+    if (m.promptModule) alive.add(m.promptModule)
+    for (const p of m.parts) {
+      if (p.type === 'prompt-module') alive.add(p.key)
+    }
   }
   return [...new Set(keys)].filter((k) => !alive.has(k))
 }

@@ -14,7 +14,7 @@
 
 import WaveBars from '../../WaveBars'
 import { CompactionDivider } from './CompactionDivider'
-import { HiddenDivider, MessageRow, ModuleDivider, Parts } from './MessageBubble'
+import { HiddenDivider, MessageRow, Parts } from './MessageBubble'
 import type { MessageListProps } from './MessageList'
 import type { ConversationMessage } from '../../../agent/types'
 import { t } from '../../../i18n'
@@ -23,21 +23,19 @@ import { t } from '../../../i18n'
  * 把消息列切成渲染段：隐藏消息（导师动作）按**相邻**归成一段，其余各自一段。
  * 相邻的分割线在 HiddenDivider 里融成一条——不归段的话，工作流连着触发的两下
  * 就画出两条紧贴的横线（见 HiddenDivider 的说明）。
- * 例外：提示词模块（动态注入，见 learn/ai/promptModules）单独成段——它有自己的
- * 可展开分界条（ModuleDivider），融进普通 marks 段就没有「点开看全文」的入口了。
+ * 动态注入的提示词模块**不在这一层**：mid-loop 注入记成回复里的 prompt-module
+ * 片段，由 Parts 渲染成轮内折叠块（不分割轮次）；只有工作流轮开始时注入的那种
+ * 独立隐藏消息走 HiddenDivider（它本来就在轮与轮之间）。
  */
 type Segment =
   | { kind: 'marks'; msgs: ConversationMessage[]; start: number }
-  | { kind: 'module'; m: ConversationMessage; at: number }
   | { kind: 'row'; m: ConversationMessage; at: number }
 
 function toSegments(messages: ConversationMessage[]): Segment[] {
   const segments: Segment[] = []
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i]
-    if (m.promptModule) {
-      segments.push({ kind: 'module', m, at: i })
-    } else if (m.hidden) {
+    if (m.hidden) {
       const last = segments[segments.length - 1]
       if (last && last.kind === 'marks') last.msgs.push(m)
       else segments.push({ kind: 'marks', msgs: [m], start: i })
@@ -100,17 +98,6 @@ export function useMessageList({
               msgs={seg.msgs}
               faded={seg.start < summaryStart}
               flash={seg.msgs.some((m) => m.id === flashId)}
-              msgRefs={msgRefs}
-            />
-          )
-        }
-        if (seg.kind === 'module') {
-          return (
-            <ModuleDivider
-              key={seg.m.id}
-              m={seg.m}
-              faded={seg.at < summaryStart}
-              flash={seg.m.id === flashId}
               msgRefs={msgRefs}
             />
           )

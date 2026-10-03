@@ -145,3 +145,43 @@ export function tabRefFromChip(store: LearnStore, p: ChipPayload): TabRef | null
   }
   return null
 }
+
+/**
+ * 一颗 payload 能不能定位到真东西：能回 null，不能回一句人话。
+ *
+ * 与 tabRefFromChip（opener 的打开逻辑）**同源**——这里能过，点击就打得开；
+ * chip.build 的生成前校验与 chip.check 的交付前自查都走它，定位规则只写这一份。
+ * （exam 原件没有页签形态——opener 对它走考试窗口——所以在这里单独判存在性，
+ * 不经过 tabRefFromChip。）
+ */
+export function chipResolveProblem(store: LearnStore, p: ChipPayload): string | null {
+  if (p.type === 'web') {
+    if (!p.url) return '缺 url（完整网址）'
+    try {
+      const u = new URL(p.url)
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'url 只认 http/https'
+    } catch {
+      return 'url 解析不开（要完整网址，如 https://…）'
+    }
+    return null
+  }
+  if (p.type === 'local') return p.path ? null : '缺 path（本地文件的完整绝对路径）'
+  if (p.type === 'ws') {
+    if (p.dir) return p.nodeId && nodeById(store, p.nodeId) ? null : '目录 chip 要带所属节点的 nodeId'
+    return p.path && wsChipUserRel(store, p.path)
+      ? null
+      : '工作区路径定位不到（path 要用 workspace api 回执里的 rel，原样抄）'
+  }
+  if (p.type === 'exam' || p.type === 'attempt') {
+    const exam = p.examId ? store.exams.find((e) => e.id === p.examId) : undefined
+    if (!exam) return '没有这份试卷（examId 要从 exam.read 的回执里抄）'
+    if (p.type === 'attempt') {
+      if (!p.attemptId) return 'attempt 型要带 attemptId'
+      if (!exam.attempts.some((a) => a.id === p.attemptId)) {
+        return '这份试卷里没有这一次考试（attemptId 从 exam.read 的 history 里抄）'
+      }
+    }
+    return null
+  }
+  return tabRefFromChip(store, p) ? null : '定位不到这份引用（path 要是数据树里的真实文档路径——用 chip.build 生成，不要手写）'
+}

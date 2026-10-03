@@ -40,6 +40,7 @@ import { useFold } from './useFold'
 import { isInterruptedNotice } from '../../../learn/agent/inflight'
 import { hydrateChipTokens, openChipRef, type ChipPayload } from '../../../lib/docChip'
 import { chipLabel, chipSvg, chipToken, splitChips } from '../../../lib/chipSyntax'
+import { promptModuleByKey } from '../../../learn/ai/promptModules'
 import { t, useLocale } from '../../../i18n'
 
 /**
@@ -354,6 +355,7 @@ function SinglePart({ part, onResumeNotice }: { part: AgentPart; onResumeNotice?
   if (part.type === 'notice') return <NoticeBlock level={part.level} text={part.text} onResume={onResumeNotice} />
   if (part.type === 'thinking') return <ThinkingBlock text={part.text} />
   if (part.type === 'tool') return <ToolCard part={part} />
+  if (part.type === 'prompt-module') return <PromptModuleBlock part={part} />
   return null
 }
 
@@ -571,55 +573,31 @@ export function HiddenDivider({
 }
 
 /**
- * 动态注入的提示词模块那条分界条（见 learn/ai/promptModules）。
+ * 动态注入的提示词模块（见 learn/ai/promptModules）在回复**内部**的折叠块。
  *
- * 与 HiddenDivider 同一层级——它也是一条隐藏 user 消息——但多一个要求：**显式可展开**。
- * 透明化是这套机制的立身之本：上下文里被注入了什么规范，用户随时点开就能看到，
- * 不必去翻存储。默认收起只占一行（「已注入上下文」）；展开是模块全文。
+ * 它与思考、工具调用是同一层——轮次进行中的一个片段，**不分割轮次**：折叠时一行
+ * 「提示词模块 · 界面操作 · 已注入上下文」（与消息组同一套 chevron 词汇），
+ * 展开看注入的全文。透明化是这套机制的立身之本：上下文里被注入了什么，用户
+ * 随时点开就能看到。
  */
-export function ModuleDivider({
-  m,
-  faded,
-  flash,
-  msgRefs,
-}: {
-  m: ConversationMessage
-  faded: boolean
-  flash: boolean
-  msgRefs: React.RefObject<Map<string, HTMLDivElement>>
-}) {
+function PromptModuleBlock({ part }: { part: Extract<AgentPart, { type: 'prompt-module' }> }) {
   const [open, setOpen] = useState(false)
-  const text = useMemo(
-    () => m.parts.filter((p) => p.type === 'text').map((p) => p.text).join(''),
-    [m],
-  )
+  const title = promptModuleByKey(part.key)?.title ?? part.key
   return (
-    <div
-      ref={(el) => {
-        if (el) msgRefs.current.set(m.id, el)
-        else msgRefs.current.delete(m.id)
-      }}
-      className={'mb-3' + (faded ? ' opacity-55' : '') + (flash ? ' moji-msg-flash' : '')}
-    >
+    <div className="border-b border-line pb-2">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-[11px] text-ink-faint transition hover:text-ink-soft"
         title={open ? t('收起模块全文') : t('点开查看注入的完整提示词')}
+        className="flex w-full items-center gap-1.5 text-left text-[12.5px] text-ink-faint transition hover:text-ink-soft"
       >
-        <span className="h-px flex-1 bg-line" />
-        <ChevronRight
-          size={11}
-          aria-hidden="true"
-          className={'shrink-0 transition-transform' + (open ? ' rotate-90' : '')}
-        />
-        <span className="shrink-0">{t(m.mark ?? '提示词模块')}</span>
-        <span className="shrink-0 opacity-70">{t('已注入上下文')}</span>
-        <span className="h-px flex-1 bg-line" />
+        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        <span className="shrink-0">{t('提示词模块 · {0}', title)}</span>
+        <span className="shrink-0 opacity-75">{t('已注入上下文')}</span>
       </button>
       {open && (
-        <pre className="moji-in-soft mx-1 mt-1 max-h-80 overflow-auto whitespace-pre-wrap rounded border border-line bg-card/70 p-2.5 text-left text-[11.5px] leading-relaxed text-ink-soft">
-          {text}
+        <pre className="moji-in-soft mt-1.5 max-h-80 overflow-auto whitespace-pre-wrap rounded border border-line bg-card/70 p-2.5 text-left text-[11.5px] leading-relaxed text-ink-soft">
+          {part.text}
         </pre>
       )}
     </div>

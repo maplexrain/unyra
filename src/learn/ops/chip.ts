@@ -4,16 +4,21 @@
  * 为什么要有这一组：交付清单里的 `#[{…}]` 由模型手写时，path 全靠它自己拼——
  * 拿节点标题或「教学」这类别称手拼出来的路径（【目标】/教学）在数据树里不存在，
  * 学习者点开就是一片空，而且这种错不报任何错。chip.build 把「拼对路径」这件事
- * 从模型手里拿走：它当场对 store 解析（与 doc.* 同一个解析器、同一套寻址），生成
- * 的 payload 永远带 nodeId（渲染端点击优先认它）——build 过的 chip 一定点得开；
- * chip.check 让模型在发出交付前把草稿里的 chip 逐颗验一遍。
+ * 从模型手里拿走：
+ * - 节点寻址沿用 doc.* 的宽容口径（标题、#id、别名都认），解析出节点后
+ *   **换算成渲染端真正认的磁盘路径**（nodeDocPath，如 docs/微积分/极限/教学.md）——
+ *   第一版发的是「目标/节点」这种寻址标签，opener 反查不到，点开是一片空；
+ * - payload 永远带 nodeId（点击优先认它）；
+ * - 生成前用 chipResolveProblem 校验——它与消息列表的打开逻辑（tabRefFromChip）
+ *   同源，「build 能生成」与「点击打得开」是同一件事。
  */
-
 import { chipToken, splitChips, type ChipPayload } from '../../lib/chipSyntax'
-import { docsInfoOf, nodePathOf, resolveNode } from '../paths'
-import { ancestors, nodeById } from '../graph'
+import { docsInfoOf, resolveNode } from '../paths'
+import { chipResolveProblem } from '../chipRef'
+import { nodeDocPath } from '../files/build'
 import { superDocsOf, type KnowledgeNode, type LearnStore } from '../types'
 import { wsRelOf } from '../workspace'
+import { ancestors } from '../graph'
 import type { AgentOpsDeps } from './deps'
 
 const BUILD_TYPES = ['doc', 'note', 'outline', 'super', 'exam', 'attempt', 'ws', 'web', 'local'] as const
@@ -28,13 +33,6 @@ export function createChipOps(deps: AgentOpsDeps) {
     return r.ok ? { ok: true, node: r.value } : { ok: false, problem: r.message }
   }
 
-  /** 一个节点属不属于当前目标（沿父线走到根，或它自己就是根） */
-  const inGoal = (node: KnowledgeNode): boolean => {
-    const goal = store0().goals.find((g) => g.id === scope().goalId)
-    if (!goal) return false
-    return node.id === goal.rootNodeId || ancestors(store0(), node.id).includes(goal.rootNodeId)
-  }
-
   /** 笔记名的现清单（定位与报错都要用「现在真的有哪几份」） */
   const noteNamesOf = (node: KnowledgeNode): string[] =>
     docsInfoOf(node)
@@ -42,64 +40,29 @@ export function createChipOps(deps: AgentOpsDeps) {
       .map((d) => d.note ?? '')
       .filter(Boolean)
 
-  /**
-   * 一颗 payload 能不能定位到真东西：能回 null，不能回一句人话。
-   * build 用它做生成前的最后一道校验，check 用它逐颗验证草稿里的 chip。
-   */
-  const locate = (p: ChipPayload): string | null => {
-    const store = store0()
-    if (p.type === 'web') {
-      if (!p.url) return '缺 url'
-      try {
-        const u = new URL(p.url)
-        if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'url 只认 http/https'
-      } catch {
-        return 'url 解析不开（要完整网址，如 https://…）'
-      }
-      return null
+  /** 节点的教学文档磁盘路径；拿不到（节点不在数据目录里）给一句人话 */
+  const teachingRelOf = (node: KnowledgeNode): { ok: true; rel: string } | { ok: false; problem: string } => {
+    const rel = nodeDocPath(store0(), node.id, { kind: 'teaching' })
+    return rel ? { ok: true, rel } : { ok: false, problem: '这个节点的文档不在数据目录里，引用不了' }
+  }
+
+  /** 生成前的最后一道校验 + 回执（定位规则与 opener 同源，见 chipRef.chipResolveProblem） */
+  const finish = (p: ChipPayload): { ok: true; chip: string; type: string; title: string; note: string } | { ok: false; problem: string } => {
+    const problem = chipResolveProblem(store0(), p)
+    if (problem) return { ok: false, problem }
+    return {
+      ok: true,
+      chip: chipToken(p),
+      type: p.type,
+      title: p.title ?? '',
+      note: '把这串 chip 原样抄进回复（不要手改里面的 JSON）。',
     }
-    if (p.type === 'local') return p.path ? null : '缺 path（本地文件的完整绝对路径）'
-    if (p.type === 'ws') {
-      if (!p.path) return '缺 path（workspace api 回执里的 rel，原样抄）'
-      return ownerNodeOfWs(store, scope().goalId, p.path) ? null : '这个工作区路径不属于本目标的任何节点（path 要用 workspace api 回执里的 rel，原样抄）'
-    }
-    if (p.type === 'exam' || p.type === 'attempt') {
-      const exam = p.examId ? store.exams.find((e) => e.id === p.examId) : undefined
-      if (!exam) return '没有这份试卷（examId 要从 exam.read 的回执里抄）'
-      if (p.type === 'attempt') {
-        if (!p.attemptId) return 'attempt 型要带 attemptId'
-        if (!exam.attempts.some((a) => a.id === p.attemptId)) return '这份试卷里没有这一次考试（attemptId 从 exam.read 的 history 里抄）'
-      }
-      return null
-    }
-    // doc / note / outline / super：先定位节点（nodeId 优先，path 兜底反查）
-    let node: KnowledgeNode | undefined
-    if (p.nodeId) {
-      node = nodeById(store, p.nodeId)
-    } else {
-      const got = nodeFor(p.path ?? undefined)
-      if (got.ok) node = got.node
-    }
-    if (!node || !inGoal(node)) return '定位不到节点（path 不是本目标里真实存在的数据树路径）'
-    if (p.type === 'super') {
-      if (!p.name) return 'super 型要带 name（超级文档名）'
-      if (!superDocsOf(node).some((s) => s.name === p.name)) return '这个节点上没有叫「' + p.name + '」的超级文档'
-      return null
-    }
-    if (p.type === 'note') {
-      const names = noteNamesOf(node)
-      if (!p.note) return 'note 型要带 note（笔记名）'
-      if (!names.includes(p.note)) return '这个节点上没有叫「' + p.note + '」的笔记（现有：' + (names.join('、') || '还没有任何笔记') + '）'
-      return null
-    }
-    // doc / outline：教学文档与大纲随节点存在（创建时就位），节点在就定位得到
-    return null
   }
 
   return {
     /**
      * 生成一颗 chip。入参是「引用什么」（寻址与 doc.* 同构），不是 chip 的 JSON——
-     * 拼路径、补 nodeId、定标题都是这里的活；生成前先 locate 一遍，定位不到就 ok:false。
+     * 换算磁盘路径、补 nodeId、定标题都是这里的活。
      */
     build: (input: Record<string, unknown>) => {
       const type = typeof input.type === 'string' ? input.type.trim() : ''
@@ -119,29 +82,23 @@ export function createChipOps(deps: AgentOpsDeps) {
       const title = str('title')
 
       if (type === 'web') {
-        const p: ChipPayload = { type: 'web', url: str('url'), ...(title ? { title } : {}) }
-        const problem = locate(p)
-        return problem ? { ok: false, problem } : { ok: true, ...emit(p) }
+        return finish({ type: 'web', url: str('url'), ...(title ? { title } : {}) })
       }
       if (type === 'local') {
-        const p: ChipPayload = { type: 'local', path: str('path'), ...(title ? { title } : {}) }
-        const problem = locate(p)
-        return problem ? { ok: false, problem } : { ok: true, ...emit(p) }
+        return finish({ type: 'local', path: str('path'), ...(title ? { title } : {}) })
       }
       if (type === 'ws') {
         const rel = str('path')
         if (!rel) return { ok: false, problem: 'ws 型要给 path（workspace api 回执里的 rel，原样抄，不要自己拼）' }
+        // 目录 chip 点击跳到所属节点，nodeId 必带；文件 chip 也顺手带上（点击少一步反查）
         const owner = ownerNodeOfWs(store, scope().goalId, rel)
-        if (!owner) return { ok: false, problem: '这个工作区路径不属于本目标的任何节点：path 要用 workspace api 回执里的 rel，原样抄' }
-        const p: ChipPayload = {
+        return finish({
           type: 'ws',
           path: rel,
-          nodeId: owner.id,
+          ...(owner ? { nodeId: owner.id } : {}),
           ...(input.dir === true ? { dir: true } : {}),
           ...(title ? { title } : { title: baseName(rel) }),
-        }
-        const problem = locate(p)
-        return problem ? { ok: false, problem } : { ok: true, ...emit(p) }
+        })
       }
       if (type === 'exam' || type === 'attempt') {
         const examId = str('examId')
@@ -162,26 +119,28 @@ export function createChipOps(deps: AgentOpsDeps) {
             return { ok: false, problem: '这份试卷里没有这一次考试（attemptId 从 exam.read 的 history 里抄）' }
           }
         }
-        const p: ChipPayload = {
+        return finish({
           type,
           examId: exam.id,
           ...(type === 'attempt' && attemptId ? { attemptId } : {}),
           ...(title ? { title } : { title: exam.title }),
-        }
-        const problem = locate(p)
-        return problem ? { ok: false, problem } : { ok: true, ...emit(p) }
+        })
       }
       // doc / note / outline / super：先解析节点（path 与 doc.* 同构；省略 = 当前节点）
+      const kind = type as ChipPayload['type']
       const got = nodeFor(str('path'))
       if (!got.ok) return { ok: false, problem: got.problem }
       const node = got.node
-      const nodePath = nodePathOf(store, scope().goalId, node.id)
       if (type === 'super') {
         const name = str('name')
         if (!name) return { ok: false, problem: 'super 型要给 name（超级文档名）' }
-        const p: ChipPayload = { type: 'super', name, path: nodePath, nodeId: node.id, ...(title ? { title } : { title: name }) }
-        const problem = locate(p)
-        return problem ? { ok: false, problem } : { ok: true, ...emit(p) }
+        if (!superDocsOf(node).some((s) => s.name === name)) {
+          return { ok: false, problem: '这个节点上没有叫「' + name + '」的超级文档' }
+        }
+        const teach = teachingRelOf(node)
+        if (!teach.ok) return teach
+        // 超级文档没有自己的文件：opener 按「节点教学文档路径 + name」认
+        return finish({ type: 'super', name, path: teach.rel, nodeId: node.id, ...(title ? { title } : { title: name }) })
       }
       if (type === 'note') {
         const names = noteNamesOf(node)
@@ -194,16 +153,20 @@ export function createChipOps(deps: AgentOpsDeps) {
               : '这个节点还没有任何笔记——先 doc.append 写进一份再引用，或要引用教学文档就用 type:"doc"',
           }
         }
-        const p: ChipPayload = { type: 'note', path: nodePath, note, nodeId: node.id, ...(title ? { title } : { title: note }) }
-        const problem = locate(p)
-        return problem ? { ok: false, problem } : { ok: true, ...emit(p) }
+        if (!names.includes(note)) {
+          return { ok: false, problem: '这个节点上没有叫「' + note + '」的笔记（现有：' + (names.join('、') || '还没有任何笔记') + '）' }
+        }
+        const rel = nodeDocPath(store, node.id, { kind: 'note', note })
+        if (!rel) return { ok: false, problem: '这份笔记不在数据目录里，引用不了' }
+        return finish({ type: 'note', path: rel, note, nodeId: node.id, ...(title ? { title } : { title: note }) })
       }
       // doc / outline：教学文档与大纲随节点存在（创建时就位）
-      // （走到这里的 type 只剩 doc / outline；type 变量是 string，收窄一次给 ChipPayload）
-      const kind = type as ChipPayload['type']
-      const p: ChipPayload = { type: kind, path: nodePath, nodeId: node.id, ...(title ? { title } : { title: node.title }) }
-      const problem = locate(p)
-      return problem ? { ok: false, problem } : { ok: true, ...emit(p) }
+      const teach = teachingRelOf(node)
+      if (!teach.ok) return teach
+      const rel =
+        type === 'outline' ? nodeDocPath(store, node.id, { kind: 'outline' }) : teach.rel
+      if (!rel) return { ok: false, problem: '这份大纲不在数据目录里，引用不了' }
+      return finish({ type: kind, path: rel, nodeId: node.id, ...(title ? { title } : { title: node.title }) })
     },
 
     /**
@@ -211,13 +174,13 @@ export function createChipOps(deps: AgentOpsDeps) {
      * 验一遍定位。长得像 chip 但解析不开的段落单独点出来——那也是要修的。
      */
     check: (text: string) => {
+      const likeChip = (text.match(/#\[\s*\{/g) ?? []).length
       const chips = splitChips(text ?? '').filter((s) => s.kind === 'chip')
       const problems: Array<{ chip: string; problem: string }> = []
       for (const c of chips) {
-        const problem = locate(c.payload)
+        const problem = chipResolveProblem(store0(), c.payload)
         if (problem) problems.push({ chip: c.token, problem })
       }
-      const likeChip = (text.match(/#\[\s*\{/g) ?? []).length
       const unparsed = likeChip - chips.length
       const valid = chips.length - problems.length
       return {
@@ -235,19 +198,12 @@ export function createChipOps(deps: AgentOpsDeps) {
   }
 }
 
-/* ---------- 小工具 ---------- */
-
-/** 生成回执的公共部分：chip 字符串 + 界面上会显示的名字 */
-function emit(p: ChipPayload): { chip: string; type: string; title: string; note: string } {
-  return {
-    chip: chipToken(p),
-    type: p.type,
-    title: p.title ?? '',
-    note: '把这串 chip 原样抄进回复（不要手改里面的 JSON）。',
-  }
+function baseName(p: string): string {
+  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
+  return i >= 0 ? p.slice(i + 1) : p
 }
 
-/** 一个工作区 rel 属于哪个节点（dir chip 与文件 chip 同一条判据：落在节点的 workspace 基目录下） */
+/** 一个工作区 rel 属于当前目标的哪个节点（落在节点的 workspace 基目录下就是它的） */
 function ownerNodeOfWs(store: LearnStore, goalId: string, rel: string): KnowledgeNode | undefined {
   const goal = store.goals.find((g) => g.id === goalId)
   if (!goal) return undefined
@@ -257,9 +213,4 @@ function ownerNodeOfWs(store: LearnStore, goalId: string, rel: string): Knowledg
     if (n.id === goal.rootNodeId || ancestors(store, n.id).includes(goal.rootNodeId)) return n
   }
   return undefined
-}
-
-function baseName(p: string): string {
-  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
-  return i >= 0 ? p.slice(i + 1) : p
 }

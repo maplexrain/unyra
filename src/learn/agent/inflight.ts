@@ -48,35 +48,6 @@ export function upsertAssistantInFlight(conv: Conversation, msg: ConversationMes
 }
 
 /**
- * 介入式注入的半场切分（动态提示词模块，见 learn/ai/promptModules）。
- *
- * 注入发生在 agent loop 的边界——当前这条请求已经完整、工具结果都已落账，但下一跳
- * 还没开始。此刻正在跑的回复要**一分为二**：已积累的前半场按 id 收口（不再是在途），
- * 模块消息跟在后面，然后开一条新的在途回复（inflight 指向新 id——崩溃恢复认的仍是
- * 「正在写的那一段」，前半场已经安全落库）。
- *
- * 为什么必须切分而不是把模块消息简单追加在整条回复后面：线上实发的顺序是
- * [前半场, 模块, 后半场]（runtime 在 hop 边界把模块 push 进请求流），而会话里一条
- * 回复是一个消息对象（各跳折在里面）——不切分的话，模块消息只能排在整条回复之后，
- * 下一轮还原出的历史就与上一轮实发对不上，前缀缓存从那里整段作废。切分让数组顺序
- * 与实发逐字节一致，toChatHistory 不需要任何特判。
- */
-export function splitInFlightForInjection(
-  conv: Conversation,
-  settled: ConversationMessage,
-  moduleMsgs: ConversationMessage[],
-  nextInflightId: string,
-  at: number,
-): Conversation {
-  const withSettled = upsertAssistantInFlight(conv, settled, true)
-  return {
-    ...withSettled,
-    messages: [...withSettled.messages, ...moduleMsgs],
-    inflight: { messageId: nextInflightId, startedAt: at },
-  }
-}
-
-/**
  * 载入时的中断恢复：inflight 标记还在 = 那一轮没跑完进程就没了。
  * - 已有正文/工具片段：还在跑的执行补一条「结果未知」的回执（保持调用/返回成对，
  *   服务端的配对校验不受影响），末尾加一条中断说明——**模型也要读得到**，下一轮才接得上；
