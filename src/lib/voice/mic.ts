@@ -70,7 +70,7 @@ const CONSTRAINT_SETS: MediaStreamConstraints[] = [
 ]
 
 /** 话筒的名字与参数，写进日志与界面：出问题时这几行字最有用 */
-function describeTrack(stream: MediaStream): string {
+export function describeTrack(stream: MediaStream): string {
   const track = stream.getAudioTracks()[0]
   if (!track) return t('没有音轨')
   const s = track.getSettings ? track.getSettings() : {}
