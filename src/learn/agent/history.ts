@@ -142,6 +142,14 @@ export function toChatHistory(
         // 整跳没有正文也没有调用（只有 thinking，或干脆为空）：占位一条，与既有行为一致
         out.push({ role: 'assistant', content: '（已处理）' })
       }
+      /**
+       * 动态注入的提示词模块（learn/ai/prompt-modules）：它发生在跳的边界——线上实发
+       * 是「这一跳的消息 + 一条模块 user 消息」，所以还原时按它在片段里的位置补发。
+       * 逐字节镜像纪律与上面的图片消息同一条：差一个字符，前缀缓存从这里整段作废。
+       */
+      for (const p of seg) {
+        if (p.type === 'prompt-module') out.push({ role: 'user', content: p.text })
+      }
     }
   }
   return withinBudget(dropOrphans(out))

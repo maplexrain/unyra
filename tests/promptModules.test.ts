@@ -109,14 +109,35 @@ describe('触发映射', () => {
 })
 
 describe('去重判据', () => {
-  it('注过的 key 不再返回；没注过的去重后返回', () => {
+  it('消息级标记（工作流轮开始注入的形态）算已注入', () => {
     const msgs = [userMsg({ promptModule: 'sdoc' })]
     expect(missingPromptModules(msgs, ['sdoc', 'sdoc', 'browser'])).toEqual(['browser'])
   })
 
-  it('retired 的不算数：被压缩折掉的模块要能重新注入', () => {
-    const msgs = [userMsg({ promptModule: 'sdoc', retired: true })]
-    expect(missingPromptModules(msgs, ['sdoc'])).toEqual(['sdoc'])
+  it('回复里的 prompt-module 片段（mid-loop 边界注入的形态）也算已注入', () => {
+    const msgs = [
+      {
+        id: 'a1',
+        role: 'assistant' as const,
+        parts: [{ type: 'prompt-module' as const, key: 'sdoc', text: '规范全文' }],
+        ts: AT,
+      },
+    ]
+    expect(missingPromptModules(msgs, ['sdoc', 'browser'])).toEqual(['browser'])
+  })
+
+  it('retired 的不算数：被压缩折掉的模块要能重新注入（两种形态同一条规矩）', () => {
+    const msgs = [
+      userMsg({ promptModule: 'sdoc', retired: true }),
+      {
+        id: 'a1',
+        role: 'assistant' as const,
+        parts: [{ type: 'prompt-module' as const, key: 'web', text: '规范全文' }],
+        ts: AT,
+        retired: true,
+      },
+    ]
+    expect(missingPromptModules(msgs, ['sdoc', 'web'])).toEqual(['sdoc', 'web'])
   })
 
   it('普通用户消息与没有标记的隐藏消息都不影响判定', () => {

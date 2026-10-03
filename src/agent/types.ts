@@ -22,6 +22,18 @@ export type AgentPart =
    */
   | { type: 'hop' }
   | {
+      /**
+       * 动态注入的提示词模块（见 learn/ai/promptModules）：发生在 agent loop 的边界
+       * （当前这条请求已完整），它是**回复内部的一个片段**——界面渲染成与思考/工具
+       * 同层的折叠块（不分割轮次），toChatHistory 在它所在的位置补发一条 user 消息
+       * （text 就是当时注入的全文，逐字节重放，见 agent/history）。
+       * 去重判据扫 parts 里的 key（retired 的消息不算——压缩后要能重新注入）。
+       */
+      type: 'prompt-module'
+      key: string
+      text: string
+    }
+  | {
       type: 'tool'
       id: string
       name: string

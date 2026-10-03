@@ -126,6 +126,11 @@ function normalizePart(raw: unknown): AgentPart | null {
   // 跳边界标记（见 agent/types 的 hop 说明）：必须原样保留，否则读回来之后
   // 多跳回合会退化成「整轮一条」还原，与重启前实发的结构对不上
   if (r.type === 'hop') return { type: 'hop' }
+  // 动态注入的提示词模块片段（agent/types 的 prompt-module）：key 与全文都要原样保留——
+  // toChatHistory 靠它在原位置补发 user 消息，丢了等于那一轮的实发与还原对不上
+  if (r.type === 'prompt-module' && typeof r.key === 'string' && r.key && typeof r.text === 'string') {
+    return { type: 'prompt-module', key: r.key, text: r.text }
+  }
   if (r.type === 'thinking' && typeof r.text === 'string') return { type: 'thinking', text: r.text }
   if (r.type === 'text' && typeof r.text === 'string') return { type: 'text', text: r.text }
   if (r.type === 'notice' && typeof r.text === 'string') {

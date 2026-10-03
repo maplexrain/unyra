@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest'
 import type { KnowledgeNode, LearnStore } from '../src/learn/types'
 import { createChipOps } from '../src/learn/ops/chip'
 import { wsRelOf } from '../src/learn/workspace'
+import { nodeDocPath } from '../src/learn/files/build'
 import { parseChipToken } from '../src/lib/chipSyntax'
 
 const NOW = 1700000000000
@@ -77,27 +78,33 @@ function chipWith(store = fixture()) {
 }
 
 describe('chip.build：生成的 chip 一定定位得到', () => {
-  it('doc：省略 path 落当前节点，payload 带 nodeId 与标题', () => {
-    const r = chipWith().build({ type: 'doc' }) as { ok: boolean; chip: string; title: string }
+  it('doc：省略 path 落当前节点，payload 带 nodeId、磁盘路径与标题', () => {
+    const store = fixture()
+    const r = chipWith(store).build({ type: 'doc' }) as { ok: boolean; chip: string; title: string }
     expect(r.ok).toBe(true)
     expect(r.chip.startsWith('#[{')).toBe(true)
     expect(r.chip).toContain('"nodeId":"c1"')
+    // path 是渲染端（tabRefFromChip）认的磁盘路径，不是「目标/节点」寻址标签
+    expect(r.chip).toContain(nodeDocPath(store, 'c1', { kind: 'teaching' })!)
     expect(r.title).toBe('极限')
-    // 生成的 token 自己就能解析回来，且能通过同一条定位逻辑
     expect(parseChipToken(r.chip)?.nodeId).toBe('c1')
   })
 
   it('doc：写标题也指得明白（与 doc.* 同一套寻址）', () => {
-    const r = chipWith().build({ type: 'doc', path: '微积分' }) as { ok: boolean; chip: string }
+    const store = fixture()
+    const r = chipWith(store).build({ type: 'doc', path: '微积分' }) as { ok: boolean; chip: string }
     expect(r.ok).toBe(true)
     expect(r.chip).toContain('"nodeId":"r1"')
+    expect(r.chip).toContain(nodeDocPath(store, 'r1', { kind: 'teaching' })!)
   })
 
-  it('可救的别名拼法（极限/教学）被规范化成真 path；彻底编造的（【极限】/教学）拒绝生成并带候选', () => {
-    const ops = chipWith()
+  it('可救的别名拼法（极限/教学）被规范化成磁盘路径；彻底编造的（【极限】/教学）拒绝生成并带候选', () => {
+    const store = fixture()
+    const ops = chipWith(store)
     const aliased = ops.build({ type: 'doc', path: '极限/教学' }) as { ok: boolean; chip: string }
     expect(aliased.ok).toBe(true)
     expect(aliased.chip).toContain('"nodeId":"c1"')
+    expect(aliased.chip).toContain(nodeDocPath(store, 'c1', { kind: 'teaching' })!)
     const fabricated = ops.build({ type: 'doc', path: '【极限】/教学' }) as { ok: boolean; problem: string }
     expect(fabricated.ok).toBe(false)
     expect(fabricated.problem).toContain('没有')
@@ -135,14 +142,14 @@ describe('chip.build：生成的 chip 一定定位得到', () => {
     expect(badAttempt.ok).toBe(false)
   })
 
-  it('ws：path 用 workspace 回执的 rel（基目录前缀判定节点归属），乱拼的拒绝', () => {
+  it('ws：path 用 workspace 回执的 rel（落在节点基目录下），彻底乱拼的拒绝', () => {
     const store = fixture()
     const ops = chipWith(store)
     const base = wsRelOf(store, 'c1')!
     const good = ops.build({ type: 'ws', path: base + '/报告.md' }) as { ok: boolean; chip: string }
     expect(good.ok).toBe(true)
     expect(good.chip).toContain('"nodeId":"c1"')
-    const bad = ops.build({ type: 'ws', path: '极限/workspace/报告.md' }) as { ok: boolean; problem: string }
+    const bad = ops.build({ type: 'ws', path: '乱写的目录/报告.md' }) as { ok: boolean; problem: string }
     expect(bad.ok).toBe(false)
   })
 

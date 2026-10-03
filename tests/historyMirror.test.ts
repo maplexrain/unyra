@@ -137,4 +137,41 @@ describe('toChatHistory 与 runtime 实发的逐跳镜像', () => {
     expect(history[1]).toMatchObject({ role: 'assistant', content: '答', tool_calls: [{ id: 'x1' }] })
     expect(history[2]).toMatchObject({ role: 'tool', tool_call_id: 'x1' })
   })
+
+  it('mid-loop 注入的提示词模块：还原时在片段位置补发 user 消息，与实发逐字节前缀', async () => {
+    const MODULE = '【提示词模块 · 超级文档】规范全文……'
+    const userText = '做个交互小工具'
+    let injected = false
+    const { requests, stream } = fakeStream([
+      { content: '', toolCalls: [{ id: 'call-1', name: 'execute', arguments: '{"body":"sdoc"}' }] },
+      { content: '做完了。' },
+    ])
+    const parts: AgentPart[] = []
+    await runAgent({
+      provider,
+      model: 'test-model',
+      system: SYSTEM,
+      messages: [{ role: 'user', content: userText }],
+      tools: [executeTool],
+      ctx: { nodeId: 'n1', goalId: 'g1' },
+      stream,
+      onEvent: (e: AgentEvent) => applyEvent(parts, e),
+      // 与 useAgent 的回调同一套动作：边界上把模块记成回复的片段，文本交回 runtime；
+      // 只注一次——key 入账后队列就空了（再注会违反去重，这里如实模拟）
+      injections: async () => {
+        if (injected) return null
+        injected = true
+        parts.push({ type: 'prompt-module', key: 'sdoc', text: MODULE })
+        return MODULE
+      },
+    })
+    expect(requests.length).toBe(2)
+    // 实发：第二跳里模块 user 消息紧跟在工具结果之后
+    const lastHop = requests[1]
+    expect(lastHop[lastHop.length - 1]).toEqual({ role: 'user', content: MODULE })
+    // 还原：模块片段在原位置变成同一条 user 消息，整份历史以最后一跳为逐字节前缀
+    const next = nextTurnRequests(userText, parts)
+    expect(next.slice(0, lastHop.length)).toEqual(lastHop)
+    expect(next[lastHop.length]).toMatchObject({ role: 'assistant', content: '做完了。' })
+  })
 })
