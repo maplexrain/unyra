@@ -6,10 +6,9 @@ import { addBreath, applyGravity, barRanges, BAR_COUNT, sampleBars, smoothBars }
 /**
  * 顶栏的系统音频柱形频谱：电脑正在播的声音，实时画成一排柱。
  *
- * **居中悬浮、不占布局位**：绝对定位挂在顶栏正中，宽 200、高 60%（底边锚着
- * 顶栏底边——柱子从底边往上长，锚顶会让底座悬空），目标名/面包屑/
- * 按钮的排布完全不受它影响；-z-10 让柱子压在顶栏内容**底下**（顶栏自己是层叠
- * 上下文，负 z 只会落到顶栏背景之上、内容之下，不会漏出去）。
+ * **挂在侧栏底端当一台小电台**：资源管理器滚动区与拖拽提示行之间的一条专属
+ * 底带（200px 居中、高 48px），离阅读视线最远的位置留给纯装饰；侧栏拖窄到
+ * 200px 以下时随 max-w-full 收缩，画柱的间距按实际宽度现算。
  *
  * 数据从系统回环来（src/lib/audio/loopback），这里只管画。三条自我约束与
  * GoalParticles 同一套：
@@ -209,11 +208,5 @@ export default function SystemAudioWave() {
     }
   }, [])
 
-  return (
-    <canvas
-      ref={ref}
-      aria-hidden="true"
-      className="pointer-events-none absolute left-1/2 bottom-0 -z-10 h-[60%] w-[200px] -translate-x-1/2"
-    />
-  )
+  return <canvas ref={ref} aria-hidden="true" className="mx-auto block h-12 w-[200px] max-w-full" />
 }
