@@ -284,11 +284,6 @@ export default function ExplorerSidebar({
           <SystemAudioWave />
         </div>
 
-        {/* 拖拽的提示常驻在最下面一行：本地文件区没内容时整块不显示，没有这句话就没人知道能拖 */}
-        <div className="border-t border-line px-4 py-2 text-[10.5px] leading-relaxed text-ink-faint">
-          {t('把 txt / markdown 文件拖进窗口，就能在这里浏览')}
-        </div>
-
         {/*
           右边线上的宽度把手：命中区 8px（一像素的线抓不住），骑在那条 border-r 上。
           md 以上才有意义——窄屏下这一栏是盖在内容上的抽屉，宽度由屏幕说了算。
