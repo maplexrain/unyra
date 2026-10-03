@@ -7,14 +7,17 @@
  * 原先它们与工作区本体挤在同一个文件里，搬出来之后「改顶栏一颗按钮」不必再翻三千行正文。
  */
 
-import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowUp, BookOpen, Contact, Loader2, Menu, Monitor, Moon, Sun } from 'lucide-react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { ArrowUp, BookOpen, Check, Contact, Loader2, Menu, Monitor, Moon, Sun } from 'lucide-react'
 import type { KnowledgeNode, LearnStore } from '../../../learn/types'
 import { nodeById, pathToRoot, unmetPrereqs } from '../../../learn/graph'
 import { plainSnippet } from '../../../learn/text'
 import { NO_AUTOFILL } from '../../../lib/autofill'
+import { useClampToViewport, useDismissOn } from '../../../lib/useDismiss'
 import {
   THEME_LABEL,
+  THEME_MODES,
+  THEME_SWATCH,
   getAppearance,
   isDarkTheme,
   setAppearance,
@@ -71,6 +74,8 @@ export function Topbar({
   onToast: (msg: string) => void
 }) {
   const appearance = useAppearance()
+  /** 主题按钮的右键菜单：完整主题列表弹在这；null = 没弹 */
+  const [themeMenu, setThemeMenu] = useState<{ x: number; y: number } | null>(null)
 
   return (
     /*
@@ -144,7 +149,12 @@ export function Topbar({
         */}
         <button
           type="button"
-          title={t('主题：{0}（点击切换，更多主题在设置里）', t(THEME_LABEL[appearance.theme]))}
+          title={t('主题：{0}（点击切换，右键看全部主题）', t(THEME_LABEL[appearance.theme]))}
+          onContextMenu={(e) => {
+            // 右键不弹系统的，弹完整的主题列表（低频的扩展配色走这条路，左键仍是三档快切）
+            e.preventDefault()
+            setThemeMenu({ x: e.clientX, y: e.clientY })
+          }}
           onClick={() => {
             const next: ThemeMode =
               appearance.theme === 'system'
@@ -187,6 +197,82 @@ export function Topbar({
 
         <WindowControls />
       </div>
+
+      {themeMenu && (
+        <ThemeMenu
+          menu={themeMenu}
+          current={appearance.theme}
+          onPick={(mode) => {
+            setAppearance({ ...getAppearance(), theme: mode })
+            setThemeMenu(null)
+          }}
+          onClose={() => setThemeMenu(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * 主题按钮的右键菜单：全部主题（含左键轮换里轮不到的扩展配色）一次列全。
+ *
+ * 左键仍是「跟随系统 → 浅色 → 深色」的三档快切（高频动作，两次之内必到）；
+ * 暖纸、石墨、纯黑这些低频选择归这条菜单——不用再绕去设置页。
+ * 每行左侧一枚小色板（这套主题的纸色 + 强调色圆点，见 lib/appearance 的 THEME_SWATCH），
+ * 当前档位带一枚勾。
+ */
+function ThemeMenu({
+  menu,
+  current,
+  onPick,
+  onClose,
+}: {
+  menu: { x: number; y: number }
+  current: ThemeMode
+  onPick: (mode: ThemeMode) => void
+  onClose: () => void
+}) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  useDismissOn({ onClose })
+  useClampToViewport(ref, menu)
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      onMouseDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }}
+      className="moji-in-soft fixed z-[70] max-h-[70vh] min-w-[172px] overflow-y-auto rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+    >
+      {THEME_MODES.map((mode) => {
+        const on = mode === current
+        const swatch = THEME_SWATCH[mode]
+        return (
+          <button
+            key={mode}
+            type="button"
+            role="menuitem"
+            onClick={() => onPick(mode)}
+            className={
+              'flex w-full items-center gap-2.5 rounded-md py-1.5 pl-2 pr-2.5 text-left text-[12px] transition hover:bg-line/60 ' +
+              (on ? 'font-medium text-ink-strong' : 'text-ink')
+            }
+          >
+            {/* 色板：纸色打底、强调色一枚圆点——不看名字也能认出是哪套配色 */}
+            <span
+              aria-hidden="true"
+              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-line-strong"
+              style={{ background: swatch.paper }}
+            >
+              <span className="h-2 w-2 rounded-full" style={{ background: swatch.accent }} />
+            </span>
+            <span className="min-w-0 flex-1 truncate">{t(THEME_LABEL[mode])}</span>
+            {on && <Check size={13} className="shrink-0 text-seal" />}
+          </button>
+        )
+      })}
     </div>
   )
 }

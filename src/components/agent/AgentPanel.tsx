@@ -378,19 +378,16 @@ export default function AgentPanel({
 
   /**
    * 底部状态条的数据。轮数 = 导师回复（跑着的那一轮也算一条）；
-   * 步数 = 累计执行的编排（execute 工具）次数；token = 各回复账目的总和。
+   * token = 各回复账目的总和。
    * 都从「消息 + 正在流式的那一份」现推，不另立状态——数据只有一份，不会对不上。
    *
-   * 这四个数都是**纯派生**：只认 messages / streaming / usages / tps。流式写作时逐跳重渲染，
-   * 而这四样里只有 streaming 在变——不缓存就等于每来一个 chunk 都把全部历史消息从头扫一遍
+   * 这三个数都是**纯派生**：只认 messages / streaming / usages / tps。流式写作时逐跳重渲染，
+   * 而这三样里只有 streaming 在变——不缓存就等于每来一个 chunk 都把全部历史消息从头扫一遍
    * （其中还有一处 [...messages].reverse() 要整份复制数组）。缓存下来，输出与现算逐字相同：
    * 同样的输入给同样的数，什么时候算、算几次都不影响结果。
    */
-  const { turns, steps, tokensTotal, tpsNow } = useMemo(() => {
+  const { turns, tokensTotal, tpsNow } = useMemo(() => {
     const turns = viewMessages.filter((m) => m.role === 'assistant').length + (viewStreaming ? 1 : 0)
-    const steps =
-      viewMessages.reduce((n, m) => n + m.parts.filter((p) => p.type === 'tool').length, 0) +
-      (viewStreaming?.filter((p) => p.type === 'tool').length ?? 0)
     /**
      * 最后一条带 tps 的导师回复。原来是 [...messages].reverse().find(...)：先整份复制再倒着找，
      * 这里改成从后往前的 for——找到的是同一条（倒过来之后的第一个 = 原来最后一个），
@@ -405,7 +402,7 @@ export default function AgentPanel({
     }
     // 实时值优先：跑着的时候读这一轮上报的；空闲时退回最后一条回复里存的存量
     const tpsNow = tps ?? lastStoredTps()
-    return { turns, steps, tokensTotal: usages.reduce((n, u) => n + u.totalTokens, 0), tpsNow }
+    return { turns, tokensTotal: usages.reduce((n, u) => n + u.totalTokens, 0), tpsNow }
   }, [viewMessages, viewStreaming, usages, tps])
 
   /**
@@ -538,6 +535,20 @@ export default function AgentPanel({
           // pr-9 而不是 px-3.5：最宽的那个点（18px）也要与正文留出空隙（几何见 panel/constants.ts）
           className="moji-scroll-none moji-selectable h-full overflow-y-auto py-3 pl-3.5 pr-9"
         >
+          {/*
+            顶部渐隐：滚出去的内容在这条渐变里淡出，而不是被容器上缘一刀切掉。
+            背景色就是面板这一层的底色（paper-deep 四成叠在 paper 上，见根节点的
+            bg-paper-deep/40），color-mix 在这里现算出同一个合成色；sticky 负下边距
+            让它压住列表顶端而不占布局。
+          */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none sticky top-0 z-[1] -mb-12 h-12 shrink-0"
+            style={{
+              background:
+                'linear-gradient(to bottom, color-mix(in srgb, var(--color-paper-deep) 40%, var(--color-paper)), transparent)',
+            }}
+          />
           {/* 字号系数挂在这一层、而不是滚动容器上：滚动条与内边距不该跟着缩放 */}
           <div style={{ zoom: chatScale } as CSSProperties}>
             {messageList}
@@ -609,7 +620,7 @@ export default function AgentPanel({
           平时几乎不占地方（一行 10.5px 的灰字），但对着它心里有数：
           「是不是卡住了」（tps 还在跳）、「这次怎么这么贵」（Σ 的数字）都一眼可见。
         */}
-        <PaceStrip turns={turns} steps={steps} tps={tpsNow} tokens={tokensTotal} />
+        <PaceStrip turns={turns} tps={tpsNow} tokens={tokensTotal} />
       </div>
 
       {/*

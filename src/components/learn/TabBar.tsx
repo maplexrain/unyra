@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowLeftToLine, ArrowRightToLine, FoldHorizontal, OctagonX, Star, X } from 'lucide-react'
+import { ArrowLeftToLine, ArrowRightToLine, FoldHorizontal, Globe, OctagonX, Star, X } from 'lucide-react'
 import { DocTypeIcon, WebTabTypeIcon } from './docTypes'
 import type { LearnTab, TabRef, WebTabMeta } from '../../learn/types'
 import { TAB_CLOSE_LABEL, dragSlotDelta, type TabCloseMode } from '../../learn/tabs'
@@ -88,6 +88,11 @@ interface Props {
   favoriteOf?: (ref: TabRef) => boolean
   onToggleFavorite?: (tab: LearnTab) => void
   /**
+   * 右键点在**栏上空白处**（不是任何一枚页签）时的菜单要的两件事：
+   * 开一个新的浏览器页签，以及把这一格的页签全部关掉。不给就没有这张菜单。
+   */
+  onOpenWebTab?: () => void
+  /**
    * 文档区里按住右键横向拖动的进度：在当前页签的背景里画出来。
    * dir 是方向（1 = 往右拖，进度从左往右长；-1 = 往左拖，从右往左长），
    * ratio 是「这一格拖了多少」（0~1，满一格就换页签）。
@@ -160,6 +165,7 @@ export default function TabBar({
   onDropChip,
   favoriteOf,
   onToggleFavorite,
+  onOpenWebTab,
   focused = false,
 }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -182,6 +188,8 @@ export default function TabBar({
   /** 刚刚是用右键拖棱形：那一下的 contextmenu 要吃掉，别弹菜单 */
   const swallowMenu = useRef(false)
   const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null)
+  /** 右键点在栏上空白处的菜单（不是某一枚页签）：开新网页页签 / 全部关闭 */
+  const [barMenu, setBarMenu] = useState<{ x: number; y: number } | null>(null)
   /** 右键菜单抬头那一行要说的话：这一项叫什么（找不到就不用说了，它已经被关掉了） */
   const menuTab = menu ? tabs.find((tab) => tab.id === menu.id) : undefined
   const menuLabel = menuTab ? titleOf(menuTab.ref) : ''
@@ -649,6 +657,12 @@ export default function TabBar({
           const p = parseChipJson(raw)
           if (p) onDropChip(p)
         }}
+        onContextMenu={(e) => {
+          // 落在某枚页签上的右键归页签自己的菜单（那里已经 preventDefault 过了）
+          if ((e.target as HTMLElement).closest('[data-tab]')) return
+          e.preventDefault()
+          setBarMenu({ x: e.clientX, y: e.clientY })
+        }}
         className="moji-tab-strip flex min-w-0 flex-1 items-end gap-[3px] overflow-x-auto"
       >
         {tabs.map((tab, i) => {
@@ -787,6 +801,24 @@ export default function TabBar({
         <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-line-strong" />
       )}
 
+      {barMenu && onOpenWebTab && (
+        <BarMenu
+          menu={barMenu}
+          canCloseAll={tabs.length > 0}
+          count={tabs.length}
+          onOpenWebTab={() => {
+            onOpenWebTab()
+            setBarMenu(null)
+          }}
+          onCloseAll={() => {
+            // 「全部关闭」不吃页签 id：给谁都一样，mode 说了算（见 learn/tabs 的 closeTabs）
+            onClose(activeId ?? tabs[0]?.id ?? '', 'all')
+            setBarMenu(null)
+          }}
+          onClose={() => setBarMenu(null)}
+        />
+      )}
+
       {menu && (
         <TabMenu
           menu={menu}
@@ -804,6 +836,65 @@ export default function TabBar({
           }}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * 栏上空白处的右键菜单：开一个新浏览器页签，或把这一格的页签全部关掉。
+ *
+ * 与页签自己的菜单共用同一套骨架（图标一列 + 左对齐标签）；
+ * 「全部关闭」同样取印章红——它连当前页签一起收走，是这张菜单里最狠的一个。
+ */
+function BarMenu({
+  menu,
+  canCloseAll,
+  count,
+  onOpenWebTab,
+  onCloseAll,
+  onClose,
+}: {
+  menu: { x: number; y: number }
+  canCloseAll: boolean
+  count: number
+  onOpenWebTab: () => void
+  onCloseAll: () => void
+  onClose: () => void
+}) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  useDismissOn({ onClose })
+  useClampToViewport(ref, menu)
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      onMouseDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }}
+      className="moji-in-soft fixed z-[70] min-w-[196px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+    >
+      <button type="button" role="menuitem" onClick={onOpenWebTab} className={ROW}>
+        <span className={ICON}>
+          <Globe size={13} className="text-ink-soft" />
+        </span>
+        {t('打开新浏览器标签页')}
+      </button>
+      <span aria-hidden="true" className="my-1 block h-px bg-line" />
+      <button
+        type="button"
+        role="menuitem"
+        disabled={!canCloseAll}
+        onClick={onCloseAll}
+        className={ROW + ' text-seal-deep hover:bg-seal/10'}
+      >
+        <span className={ICON}>
+          <OctagonX size={13} />
+        </span>
+        {t(TAB_CLOSE_LABEL.all)}
+        <span className={COUNT}>{count}</span>
+      </button>
     </div>
   )
 }

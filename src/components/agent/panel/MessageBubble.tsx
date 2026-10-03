@@ -607,7 +607,7 @@ function PromptModuleBlock({ part }: { part: Extract<AgentPart, { type: 'prompt-
 /**
  * 「回到最新」：脱离自动滚动后浮在列表右下角，点一下平滑滚到底并恢复跟随。
  *
- * 图标是手画的 inline SVG（不走图标库）：一条下行箭头落在一条基线上，意为「跳到最下面」，
+ * 图标是手画的 inline SVG（不走图标库）：一支回旋镖，去而复返地扎向下方——
  * 与发送、停止那些功能性图标不会看混。
  */
 export function FollowLatestButton({ onClick }: { onClick: () => void }) {
@@ -617,7 +617,7 @@ export function FollowLatestButton({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       title={t('回到最新消息（恢复自动滚动）')}
       // right-8 而不是 right-3：最右边那条留给消息定位条，两者别叠在一起
-      className="moji-in-soft absolute bottom-3 right-8 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-line-strong bg-card text-ink-soft shadow-[0_6px_20px_rgba(31,27,23,0.18)] transition hover:border-seal/50 hover:text-seal"
+      className="moji-in-soft absolute bottom-3 right-8 z-10 flex h-8 w-8 items-center justify-center rounded-lg border border-line-strong bg-card/70 text-ink-soft shadow-[0_6px_20px_rgba(31,27,23,0.18)] transition hover:border-seal/50 hover:text-seal"
     >
       <svg
         viewBox="0 0 24 24"
@@ -630,9 +630,8 @@ export function FollowLatestButton({ onClick }: { onClick: () => void }) {
         strokeLinejoin="round"
         aria-hidden="true"
       >
-        <path d="M12 4.5v11" />
-        <path d="M7.2 11 12 15.8 16.8 11" />
-        <path d="M5.5 19.5h13" />
+        <path d="M6.5 4.5c7.5 0 10 3.8 10 10.5" />
+        <path d="M12.2 10.8 16.5 15l4.3-4.2" />
       </svg>
     </button>
   )

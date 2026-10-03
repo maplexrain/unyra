@@ -24,8 +24,13 @@ import type { WebDomOpResult, WebPointResult, WebReadHtmlResult, WebSnapshotResu
  */
 export const WEB_PARTITION = 'persist:web'
 
-/** 焦点在网页里也要能用的应用快捷键：q = 聚焦导师，w = 关页签，l = 新建网页页签 */
-const FORWARD_KEYS = new Set(['q', 'w', 'l'])
+/**
+ * 焦点在网页里也要能用的应用快捷键（guest 进程吃掉按键，宿主的 keydown 收不到，
+ * 见 before-input-event 里的转发）：q = 聚焦导师，w = 关页签，l = 新建网页页签，
+ * s = 保存，f / h = 查找 / 替换，e = 导出，F11 = 纯净阅读。
+ * 复制 / 粘贴 / 全选那些组合故意不在列：那是网页自己的活，不抢。
+ */
+const FORWARD_KEYS = new Set(['q', 'w', 'l', 's', 'f', 'h', 'e', 'f11'])
 
 /* ---------- 页面快照（browser.snapshot）：Accessibility 树 → 带 ref 的元素清单 ---------- */
 
@@ -328,7 +333,9 @@ export function setupWebBrowser(): void {
 
     contents.on('before-input-event', (e, input) => {
       if (input.type !== 'keyDown') return
-      if (!(input.control || input.meta) || input.alt || input.shift) return
+      // 功能键（F11）不带修饰键；其余只转 Ctrl/Meta（无 Alt/Shift）的应用组合
+      const bare = /^F\d{1,2}$/.test(input.key)
+      if (!bare && (!(input.control || input.meta) || input.alt || input.shift)) return
       const key = input.key.toLowerCase()
       if (!FORWARD_KEYS.has(key)) return
       e.preventDefault()

@@ -175,7 +175,7 @@ import { publishReadingDay } from '../../lib/readingPulse'
 import { residentIds, useRecentTabs } from '../../learn/resident'
 import type { UiPointRequest } from '../../agent/tools'
 import type { Props } from './workspace/constants'
-import { SRC_SCROLL_SUFFIX } from './workspace/constants'
+import { SRC_SCROLL_SUFFIX, SIDE_ANIM_MS } from './workspace/constants'
 import { ZONE_BOX } from './workspace/drag'
 import { examDeleteWarn } from './workspace/labels'
 import { conceptKeysOf, emptyNote, examCopyOf, paneInfo, paneOf } from './workspace/panes'
@@ -897,13 +897,22 @@ export default function LearnWorkspace({
 
   // 主进程推来的两条（见 electron/app/webSession）：要开的新网页页签，与从网页里
   // 转发回来的应用快捷键（焦点在网页里时 DOM 层收不到）。转发来的键当成一次普通
-  // 按键交给快捷键注册表——Ctrl+Q/W/L 在那里都有注册，不用第二套分派。
+  // 按键交给快捷键注册表——那些键在那里都有注册，不用第二套分派。
+  // 功能键（F11 一类）不带修饰键转发（主进程小写送来），其余是 Ctrl 组合。
   useEffect(() => {
     if (!isElectron()) return
     const browser = native().browser
     const offTab = browser.onOpenTab((url) => openWebTab(url))
     const offKey = browser.onShortcut((key) => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true, cancelable: true }))
+      const fn = /^f(\d{1,2})$/.exec(key)
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: fn ? 'F' + fn[1] : key,
+          ctrlKey: !fn,
+          bubbles: true,
+          cancelable: true,
+        }),
+      )
     })
     return () => {
       offTab()
@@ -1725,12 +1734,13 @@ export default function LearnWorkspace({
   })
 
   /*
-   * Ctrl+Q：它的名字是「聚焦导师」。
+   * Ctrl+Q：它的名字是「聚焦导师」，动作是**切换**右侧栏。
    *
-   * 导师栏在**右侧栏**时：收着就展开，然后把光标放进输入框——弹出来的东西就是要跟你
-   * 说话的那个，再让你去点一下输入框是白费一步。收展交给骑在分割线上的那颗小按钮，
-   * 这一下永远落到输入框上（展开是 300ms 补间，而输入框此刻就在 DOM 里，先聚焦、不等动画）。
-   * 导师栏占着**主位**时维持原样：收起 / 展开右侧那一栏（与骑线按钮同一件事）。
+   * 导师栏在**右侧栏**时：收着就展开，并把光标放进输入框——弹出来的东西就是要跟你
+   * 说话的那个，再让你去点一下输入框是白费一步。展开是 300ms 补间，而收着的那一栏
+   * 是 invisible（见 SplitRow）：光标此刻落进去也看不见，所以等补间走完、面板真的
+   * 现形了再把焦点放进去。已经展开的再一次就是收起。
+   * 导师栏占着**主位**时：收起 / 展开右侧那一栏（与骑线按钮同一件事）。
    * 纯净阅读里**不响应**：那一格此刻已经从布局里让出去了，没有「右侧栏」可收可展——
    * 照旧执行会有两个坏结果：退出纯净阅读后栏位状态被悄悄改了（用户没看见这一下），
    * 而导师栏正占着右边那一格时，它会当场顶回屏幕、盖在正文上。
@@ -1739,8 +1749,12 @@ export default function LearnWorkspace({
     down: () => {
       if (pure) return
       if (!agentLeft) {
-        if (sideCollapsed) toggleSide()
-        focusAgentInput()
+        if (sideCollapsed) {
+          expandSide()
+          window.setTimeout(focusAgentInput, SIDE_ANIM_MS)
+        } else {
+          toggleSide()
+        }
         return
       }
       toggleSide()
@@ -1904,6 +1918,8 @@ export default function LearnWorkspace({
                 }}
                 // 棱形只在焦点格的栏上跟着右键走（见 lib/tabMark）
                 focused={isFocused}
+                // 栏上空白处的右键菜单要开新网页页签（见 TabBar 的 BarMenu）
+                onOpenWebTab={() => openWebTab('')}
               />
             </div>
           </div>
@@ -1935,6 +1951,18 @@ export default function LearnWorkspace({
           <div
             ref={isFocused ? docBox : undefined}
             {...boxProps}
+            onDoubleClick={(e) => {
+              /*
+                快速双击 = 切换纯净阅读（与右上角那颗按钮、F11 同一件事）。
+                双击在文字上本来就是「选一个词」：选中了内容就不当开关，不然读正文时
+                随手双击一个词就进出了；点在按钮 / 输入框 / 链接这类可交互的东西上也不算。
+                超级文档是 iframe，guest 里的事件到不了这里，天然不受影响。
+              */
+              if (window.getSelection()?.isCollapsed === false) return
+              const el = e.target as HTMLElement
+              if (el.closest('button, input, textarea, a, iframe, [contenteditable="true"], [role="button"]')) return
+              toggleZen()
+            }}
             className="flex min-h-0 flex-1 flex-col"
           >
             {gTab?.ref.kind === 'web' ? (
