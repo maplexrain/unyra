@@ -87,9 +87,16 @@ export function useMsgRail(
     if (!box || !panel) return
     const boxTop = box.getBoundingClientRect().top
     const rows: Array<{ id: string; text: string; top: number }> = []
-    for (const m of messages) {
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i]
       // 锚点 = 用户说过的话 + 导师自己发起的那些动作（分界条）
       if (m.role !== 'user') continue
+      /*
+        相邻的导师动作在消息列表里已经融成**同一条**分界线（见 HiddenDivider），
+        定位条也只落一个锚点：一簇里的第一条。要是每条 hidden 消息各占一个点，
+        视觉上就是好几个锚点指着同一条横线。
+      */
+      if (m.hidden && messages[i - 1]?.hidden) continue
       // eslint-disable-next-line react/refs
       const el = msgRefs.current.get(m.id)
       if (!el) continue
