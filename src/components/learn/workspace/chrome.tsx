@@ -113,8 +113,9 @@ export function Topbar({
       {/* 当前位置（面包屑）：从文档区顶上那条面包屑行上移过来，正文区因此省下一行 */}
       <NodeTrail node={activeNode} store={store} onSelect={onSelectNode} />
 
-      {/* 系统音频波浪：电脑在放什么，这里就画什么（采集见 src/lib/audio/loopback）。
-          没挂任何交互，这一段依然是拖窗口的手感区；接不上系统音频时只剩一条基线 */}
+      {/* 系统音频柱形频谱：电脑在放什么，这里就画什么（采集见 src/lib/audio/loopback）。
+          绝对定位居中悬浮、不占布局位，柱子压在顶栏内容底下，交互全部放行——
+          这一段照样是拖窗口的手感区；接不上系统音频时只剩一排底座 */}
       <SystemAudioWave />
 
       {/* 右侧只留账号与窗口控制：保存状态与「新建目标」都不再放进顶栏——

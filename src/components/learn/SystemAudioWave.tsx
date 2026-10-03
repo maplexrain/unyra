@@ -6,9 +6,13 @@ import { applyGravity, barRanges, BAR_COUNT, sampleBars } from '../../lib/audio/
 /**
  * 顶栏的系统音频柱形频谱：电脑正在播的声音，实时画成一排柱。
  *
+ * **居中悬浮、不占布局位**：绝对定位挂在顶栏正中，宽 200、满高，目标名/面包屑/
+ * 按钮的排布完全不受它影响；-z-10 让柱子压在顶栏内容**底下**（顶栏自己是层叠
+ * 上下文，负 z 只会落到顶栏背景之上、内容之下，不会漏出去）。
+ *
  * 数据从系统回环来（src/lib/audio/loopback），这里只管画。三条自我约束与
  * GoalParticles 同一套：
- * - 纯装饰、不挂任何事件——它处在顶栏拖拽区里，鼠标划过去还是在拖窗口；
+ * - 纯装饰、不挂任何事件——pointer-events 放行，鼠标划过去还是在拖窗口；
  * - 颜色从 CSS 变量读（--color-seal / --color-seal-deep / --color-line-strong），
  *   主题自动跟随；
  * - 尊重「减少动效」：降到约 8fps，柱子还在呼吸，只是不逐帧刷新。
@@ -128,9 +132,10 @@ export default function SystemAudioWave() {
         sampleBars(freq, ranges, target)
         applyGravity(shown, target, BAR_FALL)
 
-        // 柱身：从底座往上长，圆角顶，底部深顶部亮的渐变
+        // 柱身：从底座往上长，圆角顶，底部深顶部亮的渐变；半透明——它压在
+        // 顶栏内容底下，太实会顶得文字发闷
         ctx.fillStyle = grad ?? seal
-        ctx.globalAlpha = 0.9
+        ctx.globalAlpha = 0.5
         for (let i = 0; i < BAR_COUNT; i++) {
           const h = shown[i] * (height - 2)
           if (h < 0.5) continue
@@ -178,5 +183,11 @@ export default function SystemAudioWave() {
     }
   }, [])
 
-  return <canvas ref={ref} aria-hidden="true" className="h-full w-[400px] shrink-0" />
+  return (
+    <canvas
+      ref={ref}
+      aria-hidden="true"
+      className="pointer-events-none absolute left-1/2 top-0 -z-10 h-full w-[200px] -translate-x-1/2"
+    />
+  )
 }
