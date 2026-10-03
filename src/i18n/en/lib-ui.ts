@@ -165,6 +165,13 @@ const dict: Record<string, string> = {
   '这个运行环境拿不到麦克风（navigator.mediaDevices 不可用）': 'The microphone is unavailable in this environment (navigator.mediaDevices is missing)',
   '音频子系统没有启动（AudioContext 处于 {0}）：换个输入设备或重启应用再试': 'The audio subsystem did not start (AudioContext is {0}); try another input device or restart the app',
 
+  /* ---------- lib/audio/loopback.ts：系统音频回环与顶栏波浪 ---------- */
+  '这个运行环境拿不到音频（navigator.mediaDevices 不可用）': 'Audio is unavailable in this environment (navigator.mediaDevices is missing)',
+  '音频子系统没有启动（AudioContext 处于 {0}）': 'The audio subsystem did not start (AudioContext is {0})',
+  '正在监听系统音频': 'Listening to system audio',
+  '输出设备变了，重新接系统音频': 'Output device changed, reconnecting to system audio',
+  '系统音频拿不到：{0}': 'System audio is unavailable: {0}',
+
   /* ---------- lib/voice/engine.ts ---------- */
   '语音 worker 启动失败：{0}': 'The voice worker failed to start: {0}',
   '语音引擎还没准备好': 'The voice engine is not ready yet',

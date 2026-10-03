@@ -27,6 +27,7 @@ import UpdateButton from '../../update/UpdateButton'
 import WindowControls from '../../WindowControls'
 import Bullseye from '../../Bullseye'
 import GoalParticles from '../GoalParticles'
+import SystemAudioWave from '../SystemAudioWave'
 import ModelPicker from '../../agent/ModelPicker'
 import { t } from '../../../i18n'
 
@@ -111,6 +112,10 @@ export function Topbar({
 
       {/* 当前位置（面包屑）：从文档区顶上那条面包屑行上移过来，正文区因此省下一行 */}
       <NodeTrail node={activeNode} store={store} onSelect={onSelectNode} />
+
+      {/* 系统音频波浪：电脑在放什么，这里就画什么（采集见 src/lib/audio/loopback）。
+          没挂任何交互，这一段依然是拖窗口的手感区；接不上系统音频时只剩一条基线 */}
+      <SystemAudioWave />
 
       {/* 右侧只留账号与窗口控制：保存状态与「新建目标」都不再放进顶栏——
           数据本就是实时保存的，而新建目标与知识节点栏右上角那颗按钮是同一件事 */}

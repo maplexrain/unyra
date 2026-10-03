@@ -4,7 +4,7 @@
  *
  * 考试窗口（第二个 BrowserWindow）不在这里，见 examWindow.ts。
  */
-import { app, BrowserWindow, shell, type WebContents } from 'electron'
+import { app, BrowserWindow, desktopCapturer, session, shell, type WebContents } from 'electron'
 import path from 'node:path'
 import { canOpenExternal, linkAction } from '../link-core'
 import { startupBackground } from '../storage'
@@ -14,6 +14,20 @@ import { appIcon } from './icon'
 import { attachCloseGuard } from './tray'
 
 /* ---------- 窗口 ---------- */
+
+/**
+ * 系统音频可视化（顶栏的波浪，src/components/learn/SystemAudioWave.tsx）用的
+ * display-media 通道：渲染层 getDisplayMedia 要「屏幕 + 声音」时，画面给主显示器、
+ * 声音给「系统回环」（Windows 的 WASAPI loopback）——渲染层到手就停掉视频轨，
+ * 实际只消费声音。不弹系统选择器：这条请求只服务于波形，固定给主屏即可。
+ */
+function attachLoopbackAudio(): void {
+  session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+    void desktopCapturer
+      .getSources({ types: ['screen'] })
+      .then((sources) => callback({ video: sources[0], audio: 'loopback' }))
+  })
+}
 
 export async function createWindow(): Promise<void> {
   const state = await loadWindowState()
@@ -75,6 +89,9 @@ export async function createWindow(): Promise<void> {
   })
 
   attachConsoleForwarding(win)
+
+  // 回环音频的 display-media 通道必须在页面加载前就位（渲染层一开波浪就会要）
+  attachLoopbackAudio()
 
   if (DEV_SERVER_URL) {
     await win.loadURL(DEV_SERVER_URL)
