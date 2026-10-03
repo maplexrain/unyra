@@ -140,11 +140,11 @@ export default function SystemAudioWave() {
       ctx.clearRect(0, 0, width, height)
 
       // 柱数/柱宽/间隙全部按实际宽度现算（侧栏拖宽拖窄跟着重排）；间隙按柱距的
-      // 三成走（夹在 1..3px），宽度变了疏密关系不变
+      // 一成半走（夹在 0.75..2px），宽度变了疏密关系不变
       const n = barCount(Math.max(1, width))
       if (n !== bars) realloc(n)
       const step = width / n
-      const gap = Math.min(3, Math.max(1, step * 0.3))
+      const gap = Math.min(2, Math.max(0.75, step * 0.15))
       const barW = Math.max(1, step - gap)
 
       // 底座：每柱常驻 2px，静音时也能看出这里是一排频谱柱
