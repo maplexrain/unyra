@@ -251,6 +251,9 @@ export async function apiNameTests() {
     'subagent.delete': "'probe'",
     // 上下文压缩：真实现（纯 store 逻辑）——摘要太短会被拒，所以这里给一段够长的
     'compact': "{ summary: '极限的直觉与夹逼定理都讲完了，学习者复述时漏了有界性，已经纠正并记进错题；下一步看导数的定义。', tasks: ['把「导数」那一节的第三节补完'] }",
+    // 引用 chip：生成（当场对 store 验证可定位）与交付前自查（见 learn/ops/chip）
+    'chip.build': "{ type: 'doc' }",
+    'chip.check': "'看：#[{type:\"doc\", path:\"微积分\"}]'",
     // 工作区目录：真实文件在主进程，探针给一份假的（见 fakeWorkspaceIo）
     'workspace.list': "''",
     'workspace.read': "'极限/要点.md'",
@@ -424,6 +427,18 @@ export async function apiNameTests() {
     { nodeId: childId, goalId },
   )
   ok(sawModules.includes('plot-forms'), '写入 plot 围栏把数据形态模块报给了宿主', sawModules)
+
+  // 引用 chip 的行为（learn/ops/chip）：build 生成必带 nodeId（点得开的保证）、
+  // 编造的 path 拒绝生成、check 把坏 chip 逐颗点出来。
+  const chipOk = await tool.run({ description: 'chip', body: "((api)=>{ return await api.chip.build({ type: 'doc', path: '微积分' }) })" }, { nodeId: childId, goalId })
+  ok(chipOk.ok && chipOk.content.includes('nodeId') && chipOk.content.includes('n1'), 'chip.build 生成的 chip 带 nodeId（点得开的保证）', chipOk.content.slice(0, 180))
+  const chipBad = await tool.run({ description: 'chip', body: "((api)=>{ return await api.chip.build({ type: 'doc', path: '【不存在】/教学' }) })" }, { nodeId: childId, goalId })
+  ok(!chipBad.ok, 'chip.build 对编造的 path 拒绝生成', chipBad.content.slice(0, 160))
+  const chipCk = await tool.run(
+    { description: 'chip', body: "((api)=>{ return await api.chip.check('看：#[{type:\"doc\", path:\"不存在\"}]') })" },
+    { nodeId: childId, goalId },
+  )
+  ok(chipCk.ok && chipCk.content.includes('"invalid":1'), 'chip.check 把定位不到的 chip 点出来', chipCk.content.slice(0, 220))
 }
 
 /* ---------- 6. 资源库（static）：res.* 的行为（分节标题与 fixture 见 ./harness） ---------- */

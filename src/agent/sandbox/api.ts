@@ -536,6 +536,12 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     const compactOps = opts.compact
     wrapApi(api, 'compact', (args) => compactOps.write(asRecord(args[0])), log)
   }
+  // 引用 chip：生成（当场对 store 验证可定位）与交付前自查（见 learn/ops/chip）
+  if (opts.chip) {
+    const chipOps = opts.chip
+    wrapApi(api, 'chip.build', (args) => chipOps.build(asRecord(args[0])), log)
+    wrapApi(api, 'chip.check', (args) => chipOps.check(asText(args[0])), log)
+  }
   // 读网页：抓取与落盘都在界面层（见 learn/webDocs），这里只是几个入口
   if (opts.web) {
     const web = opts.web

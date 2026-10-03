@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest'
 import { emptyDocs } from '../src/learn/groups'
 import { buildDocs, buildState, parseDocs } from '../src/learn/files'
 import { activeMessages } from '../src/learn/compact'
-import { upsertAssistantInFlight } from '../src/learn/agent/inflight'
+import { upsertAssistantInFlight, splitInFlightForInjection } from '../src/learn/agent/inflight'
 import { emptyPomodoro } from '../src/learn/pomodoro'
 import { createSession, withAssistantFlush, withRunOutcome, withTaskMessage } from '../src/agent/subagent/registry'
 import type { Conversation, ConversationMessage, ContextSummary } from '../src/agent/types'
@@ -118,6 +118,29 @@ describe('对话写盘 → 读回', () => {
     expect(back.messages[1].mark).toBe('提示词模块 · 超级文档')
     expect(back.messages[1].hidden).toBe(true)
     // 去重判据（missingPromptModules）看到的就是这条：活着 → 已注入
+  })
+
+  it('模块注入的半场切分：在途回复一分为二，模块插在两段之间，inflight 指向新段（数组顺序 = 实发顺序，toChatHistory 无需特判）', () => {
+    const conv = convWith([msg('u1', 'user', '开工')])
+    const firstHalf = {
+      id: 'a1',
+      role: 'assistant' as const,
+      parts: [{ type: 'text' as const, text: '前半' }, { type: 'tool' as const, id: 't1', name: 'execute', args: '{}', result: 'ok', ok: true, status: 'done' as const }],
+      ts: now,
+    }
+    const running = upsertAssistantInFlight(conv, firstHalf)
+    const next = splitInFlightForInjection(
+      running,
+      firstHalf,
+      [{ ...msg('m1', 'user', '超级文档（sdoc）……规范全文'), hidden: true, mark: '提示词模块 · 超级文档', promptModule: 'sdoc' }],
+      'a2',
+      now,
+    )
+    expect(next.messages.map((m) => m.id)).toEqual(['u1', 'a1', 'm1'])
+    expect(next.inflight).toMatchObject({ messageId: 'a2' })
+    // 后半场随后按 a2 追加，顺序自然正确
+    const withSecond = upsertAssistantInFlight(next, { id: 'a2', role: 'assistant', parts: [{ type: 'text', text: '后半' }], ts: now })
+    expect(withSecond.messages.map((m) => m.id)).toEqual(['u1', 'a1', 'm1', 'a2'])
   })
 
   it('压缩过的历史读回来还是压过的：摘要与失活标记一起活着', () => {

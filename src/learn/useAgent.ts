@@ -43,7 +43,7 @@ import { loadImagesById, loadImagesFor } from './images'
 import { native } from '../lib/native'
 import { applyEvent } from './agent/events'
 import { toChatHistory } from './agent/history'
-import { TURN_FLUSH_MS, upsertAssistantInFlight } from './agent/inflight'
+import { TURN_FLUSH_MS, upsertAssistantInFlight, splitInFlightForInjection } from './agent/inflight'
 import { loadAttachTexts, transferPendingFiles, transferPendingImages } from './agent/transfer'
 import { applyAskToProfile, learnSandboxOps, type AgentRunTarget, type AgentUiDeps } from './agent/sandboxOps'
 import { createSubAgentManager, type SubAgentManager } from '../agent/subagent/manager'
@@ -307,8 +307,9 @@ export function useAgent(opts: {
        * 这一轮回复的固定身份：轮次内增量落库按它整条替换（见 flushTurn 的说明），
        * 也随 inflight 标记写进会话——进程被杀后，载入恢复靠它找到那条没收口的回复
        * （见 learn/agent/inflight 的 recoverInterruptedTurn）。
+       * 模块注入会在边界把它**一分为二**（见 injections 回调），所以是 let。
        */
-      const assistantId = crypto.randomUUID()
+      let assistantId = crypto.randomUUID()
 
       /*
        * 到这一刻才转存：这一轮真的会发出去，这些附件才真的会进上下文。
@@ -636,6 +637,43 @@ export function useAgent(opts: {
               snapshot.tools as Parameters<typeof assertPrefixStable>[2],
             )
             if (loadAgentSettings().dev.contextDebugger) recordContext(snapshot)
+          },
+          /**
+           * 动态提示词注入的边界通道（触发在 execute 里发生，onPromptModule 只入队）。
+           * runtime 在「当前这条请求已经完整」的边界拉一次——正是「等当前 loop 请求结束」
+           * 的那一点：绝不打断半截输出。有积压就注入**一个**模块（一条 user 消息只能带一个
+           * 标记，去重按模块记），runtime 把它追加到末尾并继续 loop——不等整轮结束。
+           * 落库用半场切分（见 splitInFlightForInjection）：在途回复一分为二，数组顺序
+           * 与实发逐字节一致。流式还在跑时这里不会被调到，break 不了任何输出。
+           */
+          injections: async () => {
+            if (!moduleQueue.size) return null
+            const stored = conversationById(getLatest(), target.conversationId)
+            if (!stored) {
+              moduleQueue.clear()
+              return null
+            }
+            const keys = missingPromptModules(activeMessages(stored.messages), [...moduleQueue])
+            if (!keys.length) {
+              moduleQueue.clear()
+              return null
+            }
+            const mod = promptModuleByKey(keys[0])
+            if (!mod) return null
+            moduleQueue.delete(keys[0])
+            const moduleMsg = promptModuleMessage(mod, crypto.randomUUID(), Date.now())
+            const settled: ConversationMessage = {
+              id: assistantId,
+              role: 'assistant',
+              parts: [...parts],
+              ts: Date.now(),
+            }
+            const nextId = crypto.randomUUID()
+            persist(splitInFlightForInjection(stored, settled, [moduleMsg], nextId, Date.now()))
+            assistantId = nextId
+            parts.length = 0
+            setStreaming({ conversationId: target.conversationId, messageId: assistantId, parts: [] })
+            return mod.text
           },
           onEvent: (e) => {
             if (e.type === 'usage') {
