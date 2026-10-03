@@ -140,7 +140,6 @@ const API_NAMES = [
   // 人机协作与界面：ask 会阻塞到用户提交，wait 是合法的「慢」（超时按空闲算）
   'wait',
   'ask',
-  'iwanna',
   'tiktok',
   'ui.switchMain',
   'ui.toast',

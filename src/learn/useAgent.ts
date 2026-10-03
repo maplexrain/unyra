@@ -34,7 +34,7 @@ import { MIN_ACTIVE_MESSAGES, activeMessages, applyCompaction, shouldCompact } f
 import { needsPersonaAnnounce, personaMessage } from '../agent/persona'
 import { conversationById, nodeById } from './graph'
 import { currentNodeBlock, makeExamTool } from './agentOps'
-import { findWorkflow, renderWorkflowInstruction, resolveWorkflowEffort, workflowPrep } from './workflows'
+import { findWorkflow, renderWorkflowInstruction, resolveWorkflowEffort, workflowPrep, workflowModules } from './workflows'
 import { generateConversationTitle, namingSource } from './title'
 import { createMindOps } from './mind'
 import { saveScreenshot } from './screenshots'
@@ -48,6 +48,12 @@ import { loadAttachTexts, transferPendingFiles, transferPendingImages } from './
 import { applyAskToProfile, learnSandboxOps, type AgentRunTarget, type AgentUiDeps } from './agent/sandboxOps'
 import { createSubAgentManager, type SubAgentManager } from '../agent/subagent/manager'
 import { EMPTY_SUB_BUCKET } from '../agent/subagent/registry'
+import {
+  missingPromptModules,
+  promptModuleByKey,
+  promptModuleMessage,
+  type PromptModule,
+} from './ai/promptModules'
 import { t } from '../i18n'
 
 /*
@@ -111,8 +117,6 @@ export function useAgent(opts: {
    */
   const [pendingAsk, setPendingAsk] = useState<{ id: string; form: AskFormPayload } | null>(null)
   const askWaiterRef = useRef<((value: unknown) => void) | null>(null)
-  /** api.iwanna 预告的计划：一轮跑完就清掉（它说的是「接下来」，不是「做过什么」） */
-  const [iwanna, setIwanna] = useState<string[] | null>(null)
   /**
    * 最近一跳实测的输出速度（tok/s，见 ChatUsage.tps）。轮次开始时清零，
    * 每跳 usage 带着它来就更新——输入区的状态条读它（跑完之后回退到消息里的存量）。
@@ -285,6 +289,13 @@ export function useAgent(opts: {
        * 直接生效，工作流轮的档位独立于它。
        */
       effortOverride?: ReasoningEffort,
+      /**
+       * 这一轮触发前要注入的提示词模块（动态提示词注入，见 learn/ai/promptModules）。
+       * 由 runWorkflow 算好带来（内置 promptModule / 登记的 prompt）。注入点与人格补发
+       * 同一处——排在用户消息之前、只在队尾追加（前缀缓存安全）；活着的消息里已有
+       * 标记的自动跳过，同一上下文绝不重复注入。
+       */
+      modules?: PromptModule[],
     ) => {
       const trimmed = text.trim()
       if (!trimmed) return
@@ -354,9 +365,18 @@ export function useAgent(opts: {
       const announcer = needsPersonaAnnounce(conv.messages, personaId)
         ? [personaMessage(personaId, Date.now(), crypto.randomUUID())]
         : []
+      // 提示词模块：与人格补发同一位置、同一条纪律（retired 的不算数，压缩后自动重注）
+      const moduleMsgs = modules?.length
+        ? missingPromptModules(conv.messages, modules.map((m) => m.key))
+            .map((key) => {
+              const mod = promptModuleByKey(key) ?? modules.find((m) => m.key === key)
+              return mod ? promptModuleMessage(mod, crypto.randomUUID(), Date.now()) : null
+            })
+            .filter((m): m is ConversationMessage => m !== null)
+        : []
       conv = {
         ...conv,
-        messages: [...conv.messages, ...announcer, userMsg],
+        messages: [...conv.messages, ...announcer, ...moduleMsgs, userMsg],
         updatedAt: Date.now(),
         // 在途标记：这一轮没收口（进程被杀）时，载入恢复据此找到这条回复（见 learn/agent/inflight）
         inflight: { messageId: assistantId, startedAt: Date.now() },
@@ -367,11 +387,16 @@ export function useAgent(opts: {
 
       /**
        * 唯一的工具：模型写一段 JS，经由沙箱里的 api 完成读写。
-       * 文档、节点、描述、试卷、临时变量、长期记忆、人机协作（ask / iwanna / tiktok）
+       * 文档、节点、描述、试卷、临时变量、长期记忆、人机协作（ask / tiktok）
        * 与界面操作（ui.*）的全部能力都从这里进出（见 agent/tools）。
        */
       const ctrl = new AbortController()
       const signal = ctrl.signal
+      /**
+       * 本轮 execute 报上来的提示词模块 key（apiGroup / 内容触发，见 learn/ai/promptModules）。
+       * 只收集不落库：轮末 finally 里统一去重、统一追加——绝不在这里改会话。
+       */
+      const moduleQueue = new Set<string>()
       // ui 依赖现取最新的一份（见 uiRef 的说明）
       const uiDeps = uiRef.current
       // browser 依赖现取最新的一份（webMeta 活信息随渲染变，与 uiRef 同款说明）
@@ -422,6 +447,8 @@ export function useAgent(opts: {
             const deps = examDeps?.(target.nodeId)
             return deps ? makeExamTool(deps) : undefined
           })(),
+          // 动态提示词注入的触发口：execute 只报 key，去重与落库都在轮末（见 moduleQueue）
+          onPromptModule: (key) => moduleQueue.add(key),
           // 用户点「停止」时，正在等用户的 ask 与正在睡的 wait 要能立刻退场
           signal,
           /** 长期记忆：按目标归档；绝不自动拼进上下文，agent 需要时主动读写 */
@@ -477,7 +504,6 @@ export function useAgent(opts: {
                 }
               }, 5_000)
             }),
-          iwanna: (items) => setIwanna(items),
           tiktok: async () => {
             // Electron 的 beep：响一声即返回；不在 Electron 里跑时静默跳过
             try {
@@ -684,12 +710,32 @@ export function useAgent(opts: {
             persist(upsertAssistantInFlight(stored, assistantMsg, true))
           }
         }
+        /*
+         * 动态提示词注入（apiGroup / 内容触发，见 learn/ai/promptModules）：本轮 execute
+         * 报上来的模块在此刻统一落库——排在刚收口的回复之后、只在队尾追加（前缀缓存安全）。
+         * 去重以**活着的消息**为准（activeMessages 与请求走同一份口径）：已注过的不重注。
+         * 模块消息随后若被压缩折掉（retired），下次使用会重新注入——那是设计内行为。
+         */
+        if (moduleQueue.size) {
+          const stored = conversationById(getLatest(), target.conversationId)
+          if (stored) {
+            const keys = missingPromptModules(activeMessages(stored.messages), [...moduleQueue])
+            const msgs = keys
+              .map((key) => {
+                const mod = promptModuleByKey(key)
+                return mod ? promptModuleMessage(mod, crypto.randomUUID(), Date.now()) : null
+              })
+              .filter((m): m is ConversationMessage => m !== null)
+            if (msgs.length) {
+              persist({ ...stored, messages: [...stored.messages, ...msgs], updatedAt: Date.now() })
+            }
+          }
+        }
         setRunning(false)
         setStreaming(null)
         // 实时账功成身退：落库的那一份已经进会话，圆环从它读同一口径的数
         setLiveUsage(null)
-        // 「接下来要做」只属于跑着的那一轮；表单若还挂着（异常路径）也一并收掉
-        setIwanna(null)
+        // 表单若还挂着（异常路径）也一并收掉
         setPendingAsk(null)
 
         /*
@@ -743,6 +789,8 @@ export function useAgent(opts: {
       mark?: string,
       isCompactTurn = false,
       effortOverride?: ReasoningEffort,
+      /** 工作流触发时随指令注入的提示词模块（见 runTurnUnchecked 同名参数） */
+      modules?: PromptModule[],
     ) => {
       if (!text.trim()) return
       if (!hasApiKey(loadAiSettings())) {
@@ -758,7 +806,7 @@ export function useAgent(opts: {
       chain.set(target.conversationId, ticket)
       try {
         if (prev) await prev
-        await runTurnUnchecked(target, text, hidden, context, quote, pending, files, mark, isCompactTurn, effortOverride)
+        await runTurnUnchecked(target, text, hidden, context, quote, pending, files, mark, isCompactTurn, effortOverride, modules)
       } finally {
         release()
         if (chain.get(target.conversationId) === ticket) chain.delete(target.conversationId)
@@ -864,6 +912,9 @@ export function useAgent(opts: {
         // 压缩轮跑完不再触发自动压缩（否则写不成摘要时会一轮接一轮，见 isCompactTurn 的说明）
         found.id === 'compact',
         effort,
+        // 触发时随指令注入的提示词模块（内置 promptModule / 登记的 prompt；
+        // 同一上下文只注一次，重复触发靠活消息上的标记去重）
+        workflowModules(found),
       )
     },
     [goalId, nodeId, conversationId, getLatest, runTurn],
@@ -1010,8 +1061,6 @@ export function useAgent(opts: {
     pendingAsk,
     submitAsk,
     cancelAsk,
-    /** api.iwanna 预告的计划（一轮结束自动清空） */
-    iwanna,
     /** 最近一跳实测的输出速度（tok/s）；没在跑、或服务端没流式回包时为 null */
     tps,
     /** 正在跑的这一轮到目前为止的账（每跳 usage 重算）：上下文占用圆环的实时数据源 */

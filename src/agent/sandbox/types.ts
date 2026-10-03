@@ -195,8 +195,6 @@ export interface SandboxOptions {
   wait?: (ms: number) => Promise<void>
   /** 结构化表单询问（ask）：显示表单并阻塞到用户提交/取消；未注入就没有 ask */
   ask?: (form: AskFormPayload) => Promise<unknown>
-  /** 任务预告（iwanna）：把接下来的计划以可视化清单显示给用户（只预告，不可勾选） */
-  iwanna?: (items: string[]) => void
   /** 提示音（tiktok）：响一声系统提示音，提醒用户来看 */
   tiktok?: () => Promise<void> | void
   /**
@@ -231,6 +229,13 @@ export interface SandboxOptions {
    * 不含这一组——子代理的 apiAllow 白名单永远放不进它，不递归在通道口就被挡死。
    */
   subagent?: SubAgentSandboxApi
+  /**
+   * 动态提示词注入的触发回调（**导师专用**，见 learn/ai/promptModules）：本次编排里
+   * 模型第一次用到某个低频 api 组（或写出了 plot / 动画内容）时，execute 把对应的
+   * 模块 key 报给宿主；宿主负责去重（同一上下文只注入一次）与落库。子代理不注入——
+   * 它们的规范在各自 def 的 system 里。
+   */
+  onPromptModule?: (key: string) => void
 }
 
 /** subagent.wait 的一条交付：交付正文（中断 / 出错为 null）与为什么 */

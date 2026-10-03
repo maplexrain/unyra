@@ -80,7 +80,7 @@ function makeApi() {
     if (full === 'ui.dom') continue
     const dot = full.indexOf('.')
     if (dot < 0) {
-      // 不带点的顶层 api（wait / iwanna / tiktok…）：直接挂在 api 上
+      // 不带点的顶层 api（wait / tiktok…）：直接挂在 api 上
       api[full] = (...callArgs) => call(full, callArgs)
       continue
     }

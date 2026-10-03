@@ -1,4 +1,5 @@
 import { REASONING_EFFORTS, type ReasoningEffort } from '../ai/types'
+import { promptModuleByKey, type PromptModule } from './ai/promptModules'
 import type { LearnStore, WorkflowEntry, WorkflowEffortSetting } from './types'
 
 export type { WorkflowEffortSetting }
@@ -43,6 +44,12 @@ export interface WorkflowRow extends WorkflowEntry {
   prep?: 'ask' | 'show'
   /** instruction 里的 {{占位符}} 清单：触发方必须把这些参数补齐 */
   params?: string[]
+  /**
+   * 触发时随指令注入的**内置提示词模块**（learn/ai/promptModules；只有内置条目用——
+   * 登记的走 WorkflowEntry.prompt）。规程类知识（如超级文档规范）按模块 key 注入，
+   * 同一上下文只注一次；之后再次触发只发 instruction。
+   */
+  promptModule?: string
   /** 能不能从工作流列表直接跑：出卷/阅卷要专用入口（选类型等级 / 先交卷），列表里不给他们按钮 */
   runnable: boolean
   /**
@@ -172,7 +179,9 @@ const SUPERLAB_INSTRUCTION = [
   '现在启动「超级实验室」：在当前节点做一份**超级文档**——可交互的实验或小工具，用户在页签里点、文档干活并显示结果。',
   '第一步｜问需求：用 api.ask 问用户想做什么实验 / 需要什么功能（一道简答题，给两三个贴合当前节点主题的示例选项帮他起意）。留空等于「你来定」：挑当前节点里最能帮助理解的一个知识点自拟实验，不必再问。',
   '第二步｜先想后写：确定这个实验演示什么规律或验证什么结论、用户怎么交互（按什么、改什么、看什么结果）、界面按什么顺序排。',
-  '第三步｜用 api.sdoc.write 在当前节点写一份**完整可运行的 HTML**（样式与脚本规范照系统提示词的「超级文档」一节：颜色一律 var(--color-*)、布局整洁不要圆角卡片、脚本顶层初始化）。要查文档、算结果这类重逻辑先 api.method.create 落成函数，脚本里 api.method.call 调用。',
+  '第三步｜用 api.sdoc.write 在当前节点写一份**完整可运行的 HTML**（规范已在上面作为' +
+    '「提示词模块 · 超级文档」注入，照它写：颜色一律 var(--color-*)、布局整洁不要圆角卡片、' +
+    '说明文字装进 <moji-markdown>、脚本顶层初始化）。要查文档、算结果这类重逻辑先 api.method.create 落成函数，脚本里 api.method.call 调用。',
   '第四步｜用 api.ui.superdoc 打开它，用 api.ui.switchMain("doc") 把文档区切到主位，再用一两句话告诉用户这个实验能玩什么。',
 ].join('\n')
 
@@ -416,6 +425,8 @@ const BUILTIN_DEFS: BuiltinDef[] = [
     name: '出卷',
     description: '先问清类型与难度，再出一份带时限的试卷',
     instruction: EXAM_INSTRUCTION,
+    // 试卷 api 的完整口径（两层结构、阶段约束）随这条工作流注入一次
+    promptModule: 'exam',
     // 它自己会先 ask 一次（类型 / 难度），所以没有占位符、也从列表里可跑
     prep: 'ask',
     // 题干与干扰项质量直接影响学习；卷子的章法主要靠指令模板，high 是质量与等待的平衡点
@@ -426,6 +437,7 @@ const BUILTIN_DEFS: BuiltinDef[] = [
     name: '阅卷',
     description: '判分 + 看历史错题写讲解、记错法、修正掌握度（交卷后自动跑）',
     instruction: GRADE_INSTRUCTION,
+    promptModule: 'exam',
     // 必须先有人交卷：从列表里空跑只会得到「没有需要讲解的考试」
     runnable: false,
     // 判分记错账会污染复习计划，讲解要质量；判分对照本身偏机械，max 的边际收益不值多等的
@@ -449,6 +461,8 @@ const BUILTIN_DEFS: BuiltinDef[] = [
     name: '超级实验室',
     description: '问清想做什么实验，生成一份可交互的超级文档',
     instruction: SUPERLAB_INSTRUCTION,
+    // 超级文档的完整规范（样式变量、moji-markdown、脚本通道）随这条工作流注入一次
+    promptModule: 'sdoc',
     prep: 'ask',
     // 生成可交互 HTML/JS：复杂代码合成是 max 收益最大的场景，失败代价最高、也等得起
     effort: 'max',
@@ -458,6 +472,8 @@ const BUILTIN_DEFS: BuiltinDef[] = [
     name: '伪编译',
     description: '把文档里这段代码转译成可运行的 JS，产物交给它运行',
     instruction: CODE_COMPILE_INSTRUCTION,
+    // 产物交付的 api 口径（save / silent）随这条工作流注入一次
+    promptModule: 'code',
     // 代码、语言与 key 由代码块菜单补齐；从工作流列表里空跑没有意义
     params: ['language', 'key', 'code'],
     runnable: false,
@@ -471,6 +487,8 @@ const BUILTIN_DEFS: BuiltinDef[] = [
     name: '压缩上下文',
     description: '把前面的对话折成一份交接摘要（旧消息随即失活）',
     instruction: COMPACT_INSTRUCTION,
+    // api.compact 的生效时机与参数口径随这条工作流注入一次
+    promptModule: 'compact',
     // 摘要失真会带坏之后所有轮次：low 会丢细节，medium 保真与速度平衡
     effort: 'medium',
   },
@@ -551,6 +569,26 @@ export function resolveWorkflowEffort(
   return setting
 }
 
+/**
+ * 一条工作流触发时要注入哪些提示词模块（动态提示词注入，见 learn/ai/promptModules）：
+ * - 内置条目的 promptModule 指到注册表里的内置模块（key 原样）；
+ * - 登记条目的 prompt 是自己的规程文本，按 wf:<id> 作键动态成模块。
+ * 两者都有就都注入（去重在宿主那边做：同一 key 只注一次）。都没有就是空。
+ */
+export function workflowModules(
+  row: Pick<WorkflowRow, 'id' | 'name' | 'prompt' | 'promptModule'>,
+): PromptModule[] {
+  const out: PromptModule[] = []
+  if (row.promptModule) {
+    const m = promptModuleByKey(row.promptModule)
+    if (m) out.push(m)
+  }
+  if (typeof row.prompt === 'string' && row.prompt.trim()) {
+    out.push({ key: 'wf:' + row.id, title: row.name, text: row.prompt })
+  }
+  return out
+}
+
 /** 内置工作流列表（顺序即设置里的展示顺序；时间戳为 0——它们不是登记出来的） */
 export function builtinWorkflowRows(): WorkflowRow[] {
   return BUILTIN_DEFS.map((d) => ({
@@ -600,7 +638,7 @@ export function upsertWorkflow(
   store: LearnStore,
   tier: 'global' | 'goal',
   goalId: string,
-  input: { name?: unknown; instruction?: unknown; description?: unknown },
+  input: { name?: unknown; instruction?: unknown; description?: unknown; prompt?: unknown },
   at: number,
 ): { ok: true; store: LearnStore; entry: WorkflowEntry; updated: boolean } | { ok: false; error: string } {
   const name = typeof input.name === 'string' ? input.name.trim() : ''
@@ -616,15 +654,30 @@ export function upsertWorkflow(
   if (instruction.length > WORKFLOW_TEXT_MAX) {
     return { ok: false, error: `instruction 最长 ${WORKFLOW_TEXT_MAX} 字符（收到 ${instruction.length}），把步骤写精` }
   }
+  // 规程提示词（可选）：给了就校验长度；没给就保留原有的（更新时不传 prompt ≠ 清空）
+  let prompt: string | undefined
+  if (typeof input.prompt === 'string' && input.prompt.trim()) {
+    prompt = input.prompt.trim()
+    if (prompt.length > WORKFLOW_TEXT_MAX) {
+      return { ok: false, error: `prompt 最长 ${WORKFLOW_TEXT_MAX} 字符（收到 ${prompt.length}）` }
+    }
+  }
   const list = tier === 'global' ? globalOf(store) : goalOf(store, goalId)
   const existing = list.find((w) => w.name.toLowerCase() === name.toLowerCase())
   const entry: WorkflowEntry = existing
-    ? { ...existing, instruction, description: description || existing.description, updatedAt: at }
+    ? {
+        ...existing,
+        instruction,
+        description: description || existing.description,
+        ...(prompt !== undefined ? { prompt } : {}),
+        updatedAt: at,
+      }
     : {
         id: 'wf_' + at.toString(36) + Math.random().toString(36).slice(2, 8),
         name,
         description,
         instruction,
+        ...(prompt !== undefined ? { prompt } : {}),
         createdAt: at,
         updatedAt: at,
       }
@@ -718,6 +771,8 @@ export function normalizeWorkflowEntries(raw: unknown): WorkflowEntry[] {
       name,
       description: typeof m.description === 'string' ? m.description : '',
       instruction,
+      // 规程提示词（动态注入用，见 workflowModules）：形状不对就不带这一块
+      ...(typeof m.prompt === 'string' && m.prompt.trim() ? { prompt: m.prompt } : {}),
       createdAt: typeof m.createdAt === 'number' ? m.createdAt : Date.now(),
       updatedAt: typeof m.updatedAt === 'number' ? m.updatedAt : Date.now(),
     })

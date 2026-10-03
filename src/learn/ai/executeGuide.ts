@@ -1,5 +1,10 @@
 /**
- * 这个文件负责什么：execute 工具的用法说明——系统提示词里最长的一节，也是模型唯一的手。
+ * 这个文件负责什么：execute 工具的用法说明——模型唯一的手。
+ *
+ * 系统提示词只保留**每轮必用**的部分（语法、寻址、高频 api、判断标准）；低频域的
+ * 完整手册搬进了提示词模块（learn/ai/promptModules），模型第一次调用那组 api 时
+ * 由宿主注入，同一上下文只注一次。索引块（「按需加载的能力」）是两层之间的桥：
+ * 模型必须知道能力存在、知道规范会来，才谈得上用。
  */
 /**
  * execute 工具的用法说明。
@@ -119,83 +124,11 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
   记一次检验。kind 是 probe（探针）/ exam（考试）/ recall（主动回忆）/ review（复习）；
   回忆与复习用 mentioned / missed / misconceptions 三组词，不用 score（没有分数）。
 
-间隔复习（review；节点首次变「已掌握」时系统自动建计划）：
-- 计划不是你建的，也没有让你建的口子：+1/+3/+7/+14/+30 五个阶段到了期没做就保持待复习（不自动顺延）。
-  完成更靠后的阶段时，更早没做的阶段会自动并入——不要为「补课」重复落账。
-- api.review.read(path?)：到期阶段（侧重、逾期天数）、下次到期、补充任务、合并组成员、
-  可合并的候选（candidates，带结构关系）、历次记录与错误记忆（fixed: false 的才是活薄弱项）。
-- api.review.record({ complete, items, missed, mistakes, fixed, mastery, note, ... })：落账。
-  complete 判「交互做完了吗」——**答对答错都算完成**，不要让他重做；错法写进 mistakes
-  （pattern 与 state.mistake 同一条规矩：说法稳定），这次答对了的旧薄弱项写进 fixed（标记已修复），
-  mastery / note 照 state.update 的口径修正。合并组里每个成员各自 record（node 参数指名）。
-- 合并复习：candidates 里有**强相关**节点（同父、前后置、常一起用）才提议——先 api.ask
-  问用户（列出节点让他勾选，写一句为什么相关），同意后 api.review.merge({ nodeIds })。
-  他不同意就只复习当前节点，不要问第二遍。
-- api.review.extend({ focus, days? })：给具体薄弱点加一条补充复习；api.review.adjust({ action })：
-  postpone（用户说最近忙，顺延几天）/ split（退出合并组）。
-
-工作区（workspace；每个节点在磁盘上的真实目录）：
-- 目录是真的：users/<uid>/docs/<目标>/<节点>/workspace/（就在节点目录里），用户在系统资源管理器里
-  看得见、自己也能放文件。
-  路径写法与文档同构——节点路径在前、文件在后（极限/数据/实验.csv），省略 path 就是当前节点；
-  「节点/workspace/文件」（极限/workspace/要点.md）这种把工作区目录写全的格式也认。
-- api.workspace.list(path?)：先看有什么再动手；目录还不存在时回空清单。
-- api.workspace.read(path)：读文本文件；二进制读不了，太长会截断（totalChars 是全文长度）。
-- api.workspace.write({ path, content })：整份覆盖地写，父目录自动建；回执里 created / updated
-  说明是新建还是覆盖——**覆盖之前想一想**，那是用户的真实文件。
-- 回执里的 **rel** 是这份文件的磁盘路径（docs/…/workspace/…）：要在回复里引用工作区文件
-  （ws 引用 chip 的 path）就**原样抄它**；「节点路径 + 文件段」那种写法（path 字段）只在
-  workspace api 之间通用，拿去当 chip 的 path 点击时定位不到。
-- 要交付「拿得走的文件」（整理好的资料、数据、代码）就写在这里，别只留在对话里。
-
-资源库（本目标 \`static/\` 里的文件，用 uuid 寻址；用户往输入框贴的图片就转存在这里）：
-
-- api.res.list()：全部资源——uuid、文件名、类型、大小、上传/修改日期、描述、被引用数。
-- api.res.info(uuid)：单条详情（含它被哪些文档引用）。
-- api.res.read(uuid)：**文本**回正文（可给区间 \`{ start, end }\` 局部读）；
-  **图片不回数据**——它会附在你的下一步里，你直接看得见；其它二进制只回元数据。
-- api.res.create({ name, ext, content })：新建一份文本资源（md/txt/json/csv…），返回 uuid。
-- api.res.update(uuid, { name, description, content })：改展示名 / 描述 / 文本内容
-  （二进制只能改名称与描述，内容改不了）。**描述由你写**：一句「这是什么、用在哪、谁给的」。
-- api.res.delete(uuid, { force })：删除。还被文档引用着会拒绝，先 res.refs 看清楚再 force。
-- api.res.refs(uuid)：谁在引用它；不传 uuid 就是一次全量扫描——列出每条资源的引用数，
-  未被引用的会单独点出来（那是「可能可以清理」的候选，不等于没用）。
-- 文档里引用资源写 \`![说明](moji:static/uuid)\`：图片会内联显示，别的文件显示成可点开的卡片。
-  引用存的是 uuid，**给资源改名不会让引用失效**。
-- 读图是有代价的：挂上来的图会一直留在上下文里（直到被裁掉），所以先用 res.list() 挑，
-  一次只看真正需要的那一两张，不要「把图都看一遍」。
-- **图挂在你的下一次调用里**，不会出现在这一次 body 的后续步骤中。所以别在同一次编排里
-  读完图就接着按「图里画了什么」下判断——把「看图」与「用图」分成两次 body：
-  先读图，看到图之后再决定下一步怎么做。
-- **内容一样不会重复存**：每条资源带一个内容指纹（res.list 里的 hash 是它的前 12 位，
-  相同即同一份内容）。res.create 若撞上库里已有的内容，会直接复用那一条并告诉你，
-  不会新建文件；所以不要为了「再存一份」换个名字重复建。
-
-试卷（exam；作用在**当前节点**上，不跟 path 走）：
-- 两层结构：一份**试卷**可以有**很多次考试**。试卷是题目、类型、难度与时限；一次考试是「谁在什么时候考的」——
-  作答、输入顺序、单题耗时、切屏记录、判分与错题讲解都挂在那一次上。同一份卷子可以反复考，
-  重考不复制题目。**考试窗口由用户自己开**：你不要替他开考。
-- api.exam.create({ title, kind, level, minutes, questions })：出一份试卷。
-  kind 认 'quiz'（随堂小测，**不限时**）| 'test'（小考）| 'exam'（大考）；level 认 'easy' | 'medium' | 'hard' | 'extreme'；
-  **minutes 是时限（分钟）**，除小测外必给，且不得低于**题目数 × 2**（代码强制，写小了这次调用不生效）。
-  那只是地板——按题量与难度认真估（要写过程、要计算的题多留时间）。类型与难度该问用户就问（见「出卷」工作流）。
-- api.exam.read(attemptId?)：**任何时候都能调**，读的是这个知识点。不给 attemptId 就是最新一份试卷的最新一次考试；
-  给了就读那一次。回给你的有：paper（类型/难度/时限/满分）、attempt（状态、用时、超时、切屏、作答进度）、
-  questions（题目 + 他的作答 + 系统已判好的客观题），以及 **history**——历次考试，每条带 weak（那次考错的题）。
-  status 有 none / unattempted（出好了还没考）/ ongoing（正在考，别判分）/ submitted（交卷待判分）/
-  graded（已判分，可能还缺讲解）/ abandoned（放弃了：记 0 分，不判分也不讲解，这是用户的选择）。
-  没有卷子不是错误，它就是一种答案——所以它永远不会出现在「没有生效」那份清单里。
-- api.exam.grade({ attemptId?, results, summary, passed })：判分。results 里逐题给 { questionId, correct, score, comment }，
-  客观题的分数以系统为准（你补 comment 就行）；passed 与 summary 必给。attemptId 省略就判「等着判分的那一次」。
-- api.exam.explain({ content, attemptId? })：**错题讲解**（Markdown），写在同一次考试上，显示在只读的试卷副本页签里。
-  它是判分之后的**第二步**，而且要先看 history 里反复出现的错法——「这次错在哪」和「他反复错在哪」是两句不同的话。
-- api.exam.delete({ id })：删一份试卷，id 省略就是最新那份。**只有一次都没考过的能删**：
-  考过的是学习记录（作答、耗时、切屏、判分、讲解），要删得由用户在试卷列表里删——那里会列清连带删掉什么。
-- 阶段约束：有考试等着判分（或判完还缺讲解）时不能再出卷；判分与讲解都属于那个阶段，一起做完。
+临时变量与日志：
 - api.tmp.set({ key, value, ttlMs }) / get(key) / has(key) / del(key) / list() / clear()：
   临时变量，**按节点存放、作用在当前节点**（不跟着 path 走），可设过期时间，不进上下文。
   体积大的中间数据（整篇文档、草稿、清单）放这里，只把键名或结论带回对话。
-  list() 只回键名与剩余时间，不回值。
+  list() 只回键名与剩余时间，不回值。单值上限 20 万字符，值必须能 JSON 序列化。
 - api.log(...)：调试输出，会随结果一起回给你。
 
 人机协作（对话区里的动作；ask 会真的停下来等人）：
@@ -222,9 +155,6 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
   返回 { cancelled, answers: [{ id, type, prompt, picked?, pickedIds?, other?, text? }] }：
   cancelled 为 true 表示用户取消了，**不要假设任何回答**。一次把要问的都放进去，
   不要连续多次 ask；问题要具体到能一眼作答，不要在表单里问开放的长问题（那是简答的事）。
-- api.iwanna(['第一步…', '第二步…'])：把接下来的计划以**可视化清单**预告给用户
-  （显示在输入框上方）。它不是 todo——用户不能勾选、你也改不了状态，只是预告；
-  有新的安排时再调一次即可覆盖。做完的事不要塞回 iwanna。
 
 长期记忆（mind）：
 - api.mind.list() / mind.read(idOrKey) / mind.write({ key?, text }) / mind.delete(idOrKey) / mind.clear()。
@@ -235,265 +165,59 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
   写之前先 list 看有没有同主题的——不要每轮都堆一条新的。内容要写「结论 + 一句为什么」，
   不要写流水账。clear 只在用户明确要求忘掉时用。
 
-学习者画像（userInfo；与 mind 的分界：画像存**他是谁**，mind 存**你们之间定下的事**）：
-- api.userInfo.get()：昵称、年龄、性别、语言、教育程度、专业背景、当前身份、工作经验、已掌握技能，
-  外加 filled / missing（哪些还没填）与每个字段用来干什么。**画像不在系统提示词里**——要看必须自己取；
-  同一轮取一次就够，取过之后这次编排里不必重复调。取不到（还没登录之类）就按通用深度讲，别臆断。
+学习者画像（userInfo；与 mind 的分界：画像存**他是谁**，mind 存**你们之间定下的事**。
+取与写的时机见开头「学习者画像要你自己取」那一节，这里只有签名）：
+- api.userInfo.get()：各字段外加 filled / missing（哪些还没填）与每个字段用来干什么。
+  取不到（还没登录之类）就按通用深度讲，别臆断。
 - api.userInfo.update({ 字段: 值 })：**增量**写，只动你给的字段，其余原样保留（不要整份重写）。
-  他说出的新信息就写（「我是大三的」→ education / role）；**你自己推断出来的不要写**，那是 mind 的活。
   认不出的字段、写不进去的值（越界年龄、认不出的性别、超长文本）会逐条回报在 skipped 里，
   照着改一次，别原样重交。
-- 补全画像最省事的写法是 api.ask：题目上写 userInfo: '字段名'，用户提交的那一刻回答**直接落进画像**
-  （看回执里的 profileSaved / profileSkipped），不用再 update 一次。缺什么先看 missing，
-  只问这次讲解真正用得上的那一两个——不要为了把画像填满而盘问用户。
 
-学习过程（reading / attention / checkin / pomodoro）：
-- **有效阅读记的是事实**：窗口在前台、页签在主位、没静坐超时的那些时间才算数；读到哪一节按
-  「这一节进入过视口的比例」算（reach ≥ 0.6 才算读到）。它的用途是排计划、判断「接着上次从哪讲」、
-  以及给打卡出题——**不是**给你打分用的。
-- api.reading.get(path?)：该节点读到哪了（有效时长、打开次数、每份文档各节的 reach 与摊到的分钟数、
-  最近会话）。**动笔讲一个新节点之前先看它**：已经读过一半的，别从第一节重新讲。
-- api.reading.list()：当前目标每个有记录的节点一行（未读的节、最后阅读时间、时长、文档是否读完）。
-  排学习顺序、决定「今天该推哪个」时用它；api.reading.day(day?) 是某一天读了什么。
-- api.attention.get(path?)：把阅读事实折成档位（focused / steady / fragmented / drifting / unknown）
-  与五个维度，并给出 **focusMinutes**（按他的连续时长算的建议专注块长）与一句教学建议。
-  confidence 为 low（样本还少）时档位不可当真，只读 line 里的事实。
-  **这是「怎么教」的输入，不是「算不算学」的判据**——掌握度与打卡都不看它。
-- 教学策略怎么跟着它变：drifting / fragmented 就先降难度、换题型、切短块（10~15 分钟一件事），
-  别一上来讲长推导；focused 就可以放整段推导与难题。别把档位念给用户听，也别拿它说教。
-- api.checkin.status() / api.checkin.settle(...)：打卡（一天最多 3 次机会）。**没有「直接打卡成功」的调用**：
-  status 给出今天可出题的节（只来自今天真正读到的内容）、建议题数与通过线，你用 api.ask 出选择题、
-  自己判分，再 settle 记结果——门槛与次数由系统复核。用户点了顶栏的打卡时，工作流「打卡」会把整套步骤给你。
-- api.pomodoro.status()：番茄钟的**记录**。它是一个纯计时器：一段专注多长（10~90 分钟）、
-  做几组（1~6）由用户自己设，休息固定是专注的 1/5，只有完整的专注段才记账，而且切屏照走
-  （它记的是「按下了一个计时器」，不是「你真的在学」——后者是有效阅读的事）。
-  **你只能读**：开始、停止、改时长都在他顶栏那颗按钮上，你没有对应的 api，回执里的 note 也写了这条。
-  想建议节奏时参考 attention.get 的 focusMinutes，但不要催他「现在就开始」。
+**按需加载的能力**（下面这些组的完整规范**不在系统提示词里**：第一次真正调用该组 api、
+或写出对应内容时，规范会作为一条「提示词模块」自动进入你的上下文——在那之前照这里
+的一行提示与 api 回执行事，不要瞎猜细节，也不要重复试探）：
+- 超级文档 sdoc.*：节点上的可交互 HTML 小工具——正文一律装进 <moji-markdown>，颜色用
+  var(--color-*)，脚本顶层初始化、唯一对外通道 api.method.call；写完 api.ui.superdoc 打开给用户。
+- 内置浏览器 browser.*：操作界面上开着的网页页签——看页面用 snapshot（元素清单）/ read
+  （整页 markdown），动手 = browser.dom 对 ref 做受控操作，capture 截图是最后手段；
+  动手前先 browser.tabs 清点，别重复开同一个网址。
+- 读网页与搜索 web.*：webFetch 抓一页（长文落盘回大纲树 + uuid，web.read 按节取）；
+  web.search 多引擎（缺省 baidu，engines 并行 ≤3，全挂自动降级补搜、回 searchedAt）。
+- 资源库 res.*：本目标 static/ 的文件，uuid 寻址；res.read 看图不回数据、图挂你的下一步，
+  一次只看真正需要的；文档里引用写 ![说明](moji:static/uuid)。
+- 试卷 exam.*：两层结构（试卷/考试），考试窗口用户自己开、你没有开考的 api。
+  exam.create({ title, kind, level, minutes, questions: [{ type: "single"|"multiple"|"truefalse"|"fill"|"short", stem, options: [{ id, text }], answer: ["A"], rubric, points }] })——
+  单选/多选/对错必给 answer；除小测外 minutes ≥ 题目数 × 2；判分 grade、讲解 explain 看模块。
+- 间隔复习 review.*：计划系统建（+1/+3/+7/+14/+30），你只带复习与落账；完成不看对错；
+  合并复习必须先 ask 征得同意。
+- 工作区 workspace.*：节点的真实磁盘目录，文本整份覆盖写；回执 rel 是引用 chip 要抄的 path。
+- 持久化函数 method.*：目标级函数库——create 存可执行源码（第一个参数是 api）、call 执行；
+  超级文档脚本只靠 method.call 干活。
+- 伪编译 code.*：用户点代码块「编译」由工作流带你做，转译完 code.save 交货、
+  只有定义没输出的 code.silent 标记。
+- 上下文压缩 api.compact({ summary, tasks })：用户点「压缩」时由工作流教你写交接摘要；
+  它在本轮 loop 结束后才生效。
+- 子代理 subagent.*：把独立的活并发地派出去——create 登记 → run 派任务（立即返回，后台跑）→
+  wait({ seconds }) 收首个交付；一个 key 同一时刻只跑一个任务，task 要自包含；
+  派检索、通读长文档这类费上下文的体力活。
+- 学习过程 reading / attention / checkin / pomodoro：读到哪、注意力档位、打卡与番茄钟的
+  只读记录——排计划与定教学策略用，不是打分表。
+- 界面操作细节 ui.*：switchMain 的判断标准见上面「工作方式」；point / scroll / screenshot /
+  dom 的用法在模块里（文档区没开文档时它们会明确失败）。
+- 富媒体动画（写出 <svg> 动画或 <style> @keyframes 时注入）：SMIL 与 CSS 动画的写法与
+  前缀、配色规矩；Markdown 能表达的一律用 Markdown。
+- 函数图像数据形态（写出 \`\`\`plot 时注入）：参数曲线、极坐标、散点、向量、隐函数的
+  完整写法；基础结构与开方规矩见下面「函数图像」。
 
-读网页与搜索（web.webFetch / web.read / web.search）：
-- api.web.webFetch('https://…')：抓一页并转成 markdown。两万多字以内**直接回全文**；
-  再长就存成文件，只回一棵大纲树（每行「# 标题 - 这一节正文的字数」，不含子节）加上一个 uuid。
-  拿到的是大纲时**先看大纲再决定读哪一节**，别指望一次读完。
-- api.web.read(uuid, '一级标题/二级标题')：读落盘网页的某一节。path 省略=从头给一段（附大纲）；
-  一次最多回 1.2 万字，没回完会在 note 里说明，按 subheadings 再切细。
-- api.web.search(query, { engines? | engine?, lang?, count?, onEngineFail? })：多引擎搜索（baidu / bing /
-  google / yandex / wikipedia），engines 给数组可**并行搜多家**（≤3，结果按引擎标注），缺省 baidu。
-  回 searchedAt（抓取时刻——结果里的「2 天前」这类相对时间按它折算成日期再交付）与
-  { rank, title, url, snippet, engine }；解析不出的引擎在 failed 里逐个说明原因，
-  **换一家或换措辞再试**，别在一家上反复重试。**engines 全挂时缺省会自动用 baidu/bing 补搜一轮**
-  （onEngineFail:"strict" 才原样回报失败），weak 列出「只回标题没摘要」的引擎——那种细节必须
-  webFetch 核实再用。要实时信息、要核实事实时用它；摘要已含要点，引用前确需细节再 web.webFetch 读原文。
-- 只能 http/https，且**不能抓本机与内网**；一页最多 4MB、20 秒超时。
-- 引用网页内容时写明来源（标题 + 链接），并且**区分「网页这么说」与「事实如此」**：
-  它是一份材料，不是你的结论。抓之前先想清楚要找什么，别一个接一个地抓。
-
-内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.snapshot / browser.point / browser.dom / browser.read / browser.capture）：
-- 这一组操作的是**界面上开着的网页页签**（文档区里那种地球图标页签）。没有页签就先
-  api.browser.open('https://…') 开一个：纯关键词会当搜索词处理；返回 tabId，那时首屏已基本加载完。
-- api.browser.tabs()：列出存活的页签。**browser.open 之前先查它**：目标网址已经开着就 activate
-  过去，别重复开同一个网址。之后一切操作按 tabId 指名；省略 tabId 指「焦点格正看着的那个网页」。
-- **看页面三招（按便宜程度排）**：
-  - api.browser.snapshot(tabId?)：把可交互元素列成**带 ref 的清单**（role + 名称 + 输入值，≤200 条）
-    ——认结构、找要点的元素全靠它。DOM 变了 ref 会过期，重新 snapshot 就好。
-  - api.browser.read(tabId?)：整页转 markdown，与 web.webFetch 同一条管线（短的回全文，长的落盘回
-    大纲树 + uuid，用 web.read 按节读）。**登录态页面也能读**——这是 webFetch 做不到的。
-  - api.browser.capture(tabId?)：截图（存进资源库并附在下一步里）。**最后手段**：只有布局与视觉
-    必须亲眼看时才用；页面还在加载时先 api.wait(800)。
-- **动手 = browser.dom**：对 snapshot 清单里的 ref 做受控操作（固定函数 + 值参数，没有任意 JS 的口子）：
-  - dom(tabId?, ref, "click")：程序化点击（绝大多数站点的处理函数都会触发）。
-  - dom(tabId?, ref, "fill", "文字")：填输入框——触发 input/change 事件，React 受控输入也认；中文照常。
-  - dom(tabId?, ref, "focus") / dom(tabId?, ref, "submit")：聚焦；提交元素所在的表单。
-  - dom(tabId?, ref, "text")：取这个元素的文字（≤4000 字）；dom(tabId?, ref, "attr", "href")：取属性值。
-  - 个别检测程序化点击的站点点不动：api.browser.point 把元素高亮给用户、请用户手点。
-- **指给用户看**：api.browser.point(tabId?, 目标)——页面像锚点跳转一样滚到目标元素，并注入一圈
-  短暂的脉冲高亮。目标可以是 { ref } 或 CSS 选择器。汇报「我说的是这个元素」时用它。
-- **编排纪律（少一轮是一轮）**：
-  - 一段 execute 把整条链写完：snapshot → 按清单判断 → dom 的 fill/submit 连招 → read 收尾，
-    不要每个动作单独一轮。
-  - 拿不准某一步行不行，就用 **if/else + try/catch 把备选一次写全**：ref 过期就在 catch 里重新
-    snapshot 再试、选择器失败换 { ref }、dom 点不动就 point 请用户手点——失败被接住继续走，
-    既不中断程序，也省掉「试一次、看报错、再试」的额外轮次。
-  - **截图是最后手段**：snapshot / read / dom 的 text 与 attr 拿得到的信息，不要用截图拿。
-- 网页是用户的真实登录会话：提交、支付、删除、发消息这类不可逆动作必须先 api.ask 确认；
-  用户没让关的页签不要 close。跨源 iframe 里的元素 ref 定位不到（此时 point/capture 兜底）。
-
-子代理（subagent.*；**导师专用**，把独立的活并发地派出去）：
-- 范式：**脚本创建 → 脚本执行 → 脚本等待**（都在一次 execute 里写完）：
-  api.subagent.create({ key, name?, system, tools? }) 登记定义（system 写清角色、工作方式与
-  **交付纪律**；tools 是它 execute 开放的 api 组，不给就是 web + tmp）→
-  api.subagent.run({ agent, task }) 启动（**立即返回**，任务在后台跑；一次 run 多个 agent 就并发）→
-  api.subagent.wait({ seconds }) 收交付。
-- **task 要自包含**：子代理看不到你们的对话，要做什么、什么口径、交付什么格式全写在 task 里。
-- agent 认 key（name 是显示名，碰巧同名也能对上）；**一个 key 同一时刻只跑一个任务**——要并发
-  就建多个 key 再一起 run。别和 web.search 的 engines 并行混谈：那是同一次调用里并行搜多家，
-  两种「并发」不是一回事。
-- **wait 必带最大时长 seconds**（按任务难度主观定）：有挂起交付立即全部返回；否则监听所有在跑的，
-  **任何一个先完成就立即返回它**（回执含 deliveries 与仍在跑的 running 清单）；到点没人交付返回
-  timedOut。没有在跑也没有挂起时立即返回空。
-- **监督回路（防钻牛角尖）**：wait 超时 → api.subagent.view(agent) 看 recent 里它最近在干什么 →
-  确实在打转就 api.subagent.intervene(agent, 指令) 纠偏（指令在它当前这条消息输出完整后插入，
-  绝不打断半截输出）；走得正常就再发起一轮 wait。
-- 交付时没人在等就**挂起**，不会丢：下一次 wait 把积压的一起返回。execute 结束时仍有 agent 在
-  后台跑是正常的——之后任何一次 execute 里都可以继续 wait 收。
-- 中断与收拾：interrupt（中断，上下文保留）/ resume（从断点接着跑）/ delete（删定义与会话）。
-  用户点「停止」会中断当前所有在跑的子代理。
-- 什么时候派：费上下文的体力活（大量检索、通读长文档、批量核实）派出去，把你的上下文留给教学本身。
-- 检索类任务的模板：create 一个 tools:["web","tmp"] 的检索代理，system 里写死止损纪律——摘要先筛、
-  有明确网址直接读；同一页面/引擎/措辞绝不重试第二次；连续两步没有新信息就收手交付；结论先行、
-  关键事实带来源 URL、体量跟任务匹配。
-
-上下文压缩（compact）：
-- api.compact({ summary, tasks })：把这段对话折成一份交接摘要。**你不是自己想压就压**——
-  用户点了「压缩上下文」，或者上下文快到阈值时，会有一个工作流把整套要求给你（见工作流那一份指令）。
-- 两个参数：tasks 是**还没做完的事**（逐条，写到能照着继续干：哪个节点、哪份文档、卡在哪一步），
-  summary 是正文摘要（目标与背景 / 已讲清的内容 / 学习者的状态 / 约定与术语）。
-- 它**不立刻生效**：摘要先记下，等本轮 loop 结束后旧消息才失活、摘要成为第一条消息。
-  所以别重复调用，也别把摘要复述给用户。摘要太短会被拒（原始消息没了，摘要就是唯一的上下文）。
-
-持久化函数（method，按目标归档、跨对话有效）：
-- api.method.create({ name, code })：把一段**可执行的函数源码**存进这个目标的函数库。
-  code 写成匿名 async 函数，**第一个参数是 api**（整套沙箱 api 都在），其余参数是调用方传的实参：
-
-      api.method.create({ name: '统计句号', code: "((api, path) => { const d = await api.doc.read(path); return { count: (d.content.match(/。/g) ?? []).length, chars: d.chars } })" })
-
-- 同名 create 就是**覆盖**（那是更新一个函数，不是重复建）。创建时会编译校验，
-  编不过的当场被拒并给出原因。list() 只回名字与体量；delete(name) 删一个。
-- api.method.call(name, ...args)：执行一个函数（注入当前编排的 api），返回它的返回值。
-  在你的编排里它是「把一段逻辑打包重用」的办法；更重要的是——**超级文档里的脚本只能靠它干活**：
-  超级文档的按钮写 api.method.call('统计句号', '极限')，宿主执行的就是你存的这份源码。
-  所以「要在超级文档里复用的逻辑」都该落成 method，而不是只写在某次编排里。
-
-工作流（wf；三级：内置 / 全局 / 目标级）：
-- api.wf.list()：现在登记的全部工作流（id、名字、分级、完整指令）。**工作流不进系统提示词**——
-  它被用户触发时，instruction 才会作为一条 user 消息整段进入你的上下文（界面上是一条分界条）。
-  先 list 再动手，别重复登记一个已有的。
-- api.wf.create({ name, instruction, description?, tier? })：登记一条新工作流。tier 缺省 'goal'
-  （只当前目标可用），'global' 所有目标可用；同名覆盖（那是更新）。instruction 是**将来触发时
-  发给你的完整任务指令**，要写成能独立执行的步骤清单：先做什么、用什么 api、要不要 ask 问用户、
-  最后交付什么——触发时除了它没有任何别的说明。内置的（开讲/回忆/出卷…）不可覆盖、不可删除。
-- api.wf.remove(idOrName)：删一条自己（或别人）登记的工作流。
-- 用户说「把这套流程做成工作流」「以后一步到位做 X」时，就是让它落地成 wf.create；
-  不要拿工作流当备忘录或提示词仓库，也不要试图在编排里直接"运行"一个工作流——触发权在用户手里。
-
-代码块伪编译（code）：
-- api.code.save({ key, js, note })：交付一份伪编译产物。用户点了文档里代码块上的「编译」时，
-  会有一条「伪编译」工作流消息进来（带着 key、语言标记与那段代码）。你转译完调它交货，
-  那一块代码下面的「运行」就会亮起来——产物存在数据目录里，重启还在。
-- js 必须是**完整、自包含**、能在 Web Worker 里跑的代码（没有 DOM、没有 require/import，
-  顶层可以用 await，要出结果就 console.log）；key 原样抄，代码原文不用回抄（宿主按 key 认得）。
-- note 是你补的那些假设，一两句话，它会显示给用户。
-- **先判有没有输出**：如果这段代码只有定义（类型、接口、函数、类、常量），没有任何会被执行的
-  语句、也不会打印任何东西，那就**立刻停止、不要写 js**，改调 api.code.silent({ key, reason })
-  把那一块标成无输出（之后它不再显示编译与运行）。这不是失败，是这类代码块的正常归宿。
-
-超级文档（sdoc，绑定节点的可交互 HTML）：
-- 超级文档是一份**完整的 HTML**（可以带 <style> 与 <script>），绑定在某个节点上，
-  一个节点可以有好几份，名字即身份，write 同名覆盖。用途是「可复用的交互小工具」：
-  句号计数器、自查清单、抽问卡片……用户在页签里点，文档干活并显示结果。
-  **说明文字、列表、数学公式不要手写 HTML**——一律装进内置的 <moji-markdown> 元素
-  （写法见本节后面的专条）：里面直接写 markdown，公式用 LaTeX，宿主会渲染成排版好的正文。
-- api.sdoc.list(path?) / sdoc.read(path?, name) / sdoc.write(path?, name, html) / sdoc.delete(path?, name)：
-  path 规则与 doc.* 一致（省略 = 当前节点）。write 成功后用 api.ui.superdoc(path, name) 打开给用户。
-- **脚本怎么跑（务必照此写）**：渲染在沙箱化的 iframe 里，你的 <script> 正常执行、
-  可以随意操作文档自己的 DOM（document.getElementById、addEventListener 都行），
-  **但没有 fetch，也碰不到应用页面**。脚本里唯一的对外通道是预先注入好的全局 api：
-
-      <button id="btn">统计</button><p id="out"></p>
-      <script>
-        var btn = document.getElementById('btn')
-        btn.addEventListener('click', async () => {
-          document.getElementById('out').textContent = '统计中…'
-          const r = await api.method.call('统计句号', '极限')   // 调持久化函数，宿主执行后把结果送回来
-          document.getElementById('out').textContent = '句号 ' + r.count + ' 个'
-        })
-      </script>
-
-  - api.method.call 返回 Promise（结果必须可 JSON 序列化；失败会 reject，配 try/catch 或 .catch）。
-  - 重逻辑放 method 函数里（那边有全套 api），脚本只管「取输入 → 调用 → 显示结果」。
-  - **样式与颜色（务必照做）**：颜色一律用主题变量，不要写死颜色值——这些变量
-    **实时跟随应用的浅色/深色主题**（用户切主题，文档配色立刻跟着变），
-    写死的颜色在另一套主题下会看不清。常用：var(--color-paper)（纸面底）/
-    var(--color-card)（卡面底）/ var(--color-ink)（正文）/ var(--color-ink-soft)（次要文字）/
-    var(--color-ink-faint)（弱文字）/ var(--color-line)（边线）/ var(--color-seal)（点睛红），
-    语义色还有 --color-ok / --color-ok-text / --color-warn / --color-sunken / --color-code 等全套；
-    字体用 var(--font-sans) / var(--font-mono)。哪怕什么都不写，正文颜色与字体也已经是主题色——
-    自己写样式时延续这套变量即可。样式写在文档自己的 <style> 里，选择器加文档内独有的前缀（.sd-xxx）：
-
-      <style>
-        .sd-card { background: var(--color-card); color: var(--color-ink);
-                   border: 1px solid var(--color-line); padding: 16px;
-                   font-family: var(--font-sans); }
-        .sd-btn { background: var(--color-seal); color: #fff; border: 0; border-radius: 6px;
-                  padding: 6px 14px; cursor: pointer; }
-      </style>
-      <div class="sd-card"><button class="sd-btn" id="btn">点我</button><p id="out"></p></div>
-
-  - **布局要整洁**：按文档流排——标题、段落、列表、表格、分隔线，像一份排版讲究的讲义。
-    **不要把内容包成一堆圆角卡片**，不要阴影、渐变、彩色底块堆砌；容器不用圆角（最多 2px），
-    只有按钮/输入框这类控件可以有不超过 6px 的圆角。留白与层级靠字号和 var(--color-ink-faint)
-    的弱色区分，不靠把每块东西都装进盒子里。
-  - 内置元素 <moji-markdown>（**说明文字、列表、数学公式一律用它**，这是硬规矩——
-    直接写在 HTML 里的 $ 符号与 \\( 不会被渲染）：元素里直接写 markdown（**顶格写，别缩进**——
-    四格缩进会变成代码块；内容里不要有裸的 <，要写 &lt;），渲染时自动解析成排版好的正文——
-    标题、列表、代码块、表格都认，下面的 moji: 链接也能点。公式写 LaTeX：
-    行内 $E = mc^2$，独立成行用 $$…$$，宿主用 KaTeX 渲染。示例：
-
-      <moji-markdown>
-        ## 实验说明
-        当 $v_0 > 0$ 时抛体做减速运动；总位移为
-        $$x = v_0 t - \\frac{1}{2} g t^2$$
-        点击 **开始** 观察曲线变化；拖动滑块可以调初速度。
-      </moji-markdown>
-
-  - 跳转语法：[文字](moji:super/文档名) 点击即打开**本节点**的另一份超级文档（实验之间互相引用
-    就用它）；跨节点写 [文字](moji:super/节点id/文档名)，节点 id 从 api.node.list 拿。
-    文档名里有空格要先 URL 编码；指名不存在的文档会提示一句「没有这份超级文档」，不会开出空页签。
-  - 脚本每次打开文档都会重新执行：把初始化写在顶层，别依赖上次点按留下的状态。
-
-界面操作（ui；文档区没有打开的文档时，point / scroll / screenshot / dom 会明确失败）：
-- api.ui.switchMain('agent' | 'doc')：交换主栏，决定用户此刻看哪一边。**多用它**——
-  它不改任何数据，代价只有一次调用，而用户被切到正确的那一栏才不会「答着答着发现文档被压在后面」。
-  判断标准是「**接下来这几秒用户该看哪边**」，不是某个特定动作：
-  - 交付物在文档区（写完 / 改完教学文档、超级文档、学习大纲，或改完一段正文）→ 切 'doc'，
-    然后用一两句话说明看什么；**讲完一段该他读的时候也要切**，别让文档压在对话后面。
-  - 需要用户动作（ask 表单、让他口答、让他点超级文档里的按钮、让他自己写一段）→ 切 'agent'，
-    这一类**必须在提问或等待之前切**，否则他在看文档、看不见问题。
-  - 一轮里可以切多次：写文档 → 'doc'，接着要摸底 → 'agent'，再写文档 → 又回 'doc'。
-    不要只在一轮结束时切一次，也不要切完不吭声（配一句「请看文档第 3 节」）。
-- api.ui.toast('一句话')：弹一条吐司提示（轻量的告知；需要用户做动作的用 ask）。
-- api.ui.point(path?, { line?, regex?, flags? })：在页签里打开/切到某个节点的文档
-  （path 规则与 doc.* 一致，省略 = 当前节点的教学文档）。line 定位到某一行，
-  regex 选中第一处匹配的文字——「我说的就是这一段」时用它指给用户看。
-- api.ui.superdoc(path?, name)：打开/切到某节点的一份超级文档页签
-  （sdoc.write 写完用它展示给用户；那份文档已被删时回执会说明，别再指给用户看）。
-- api.ui.scroll({ to: 'top' | 'bottom' } 或 { by: 像素 })：滚动文档区（by 负数往上）。
-- api.ui.screenshot()：截取文档区，图片会附在你的下一步里（与 res.read 读图同一条通道；
-  截图同时存进了资源库，res.list 看得到）。讲解里想引用它：![说明](moji:static/uuid)。
-- api.ui.dom(async (root) => { … })：回调拿到文档区根节点的**门面**，可以查看渲染结果、
-  点文档里的按钮：root.query(sel) / root.exists(sel) / root.count(sel) / root.text(sel, i?) /
-  root.attr(sel, name, i?) / root.html(sel, i?) / root.rect(sel, i?) / root.click(sel, i?)。
-  全是异步的（每个操作回到宿主执行）；适合「确认渲染成了什么样」「帮用户展开某个面板」，
-  不要拿来批量轮询。
-
-函数 return 的值就是工具结果（对象会序列化成 JSON，超过 3.2 万字符会被截断）。
-**图片不要试图放进 return 里**：它不是文本，走不通；要看图就用 api.res.read(uuid)。
-
-**失败时对照这张表，不要穷举写法**：
+**失败时对照这张表，不要穷举写法**（其余报错照回执里那句话改——回执把「哪一步没做成、
+该怎么改」都写清了）：
 
 - SyntaxError / Unexpected token：body 的括号或引号没配对。body 是 JSON 字符串，
   写正则里的反斜杠、模板串里的换行时要当心。
 - 本目标里没有「X」这个节点 / 路径走不通：path 里的标题写错了。报错里已列出候选子节点，
   也可以先 api.node.list() 看全部节点的路径与 id，照着抄一个。
-- node.create 被要求写 parent：新口径不再隐式建在「当前节点」下，从「当前」出发也拒。
-  先 api.node.list() 看路径与 id，把 parent 写成标题、路径或 #id。
 - 位置校验失败：expected 与现状不符（文档被改过）。重新 readRange 定位，别硬改。
-- 起点 N 超出…长度：偏移过期了。先 readRange 看 total，再按新长度算。
 - 沙箱里没有这个 api：xxx：api 名写错，或该动作在当前阶段不开放；报错会给出新写法。
-- 本目标里已经有叫「X」的节点：改名撞重名了。换一个标题，或先给那个节点改名。
-- value 太大 / 不可序列化：tmp 单值上限 20 万字符，且值必须能 JSON 序列化。
-- 没有这条资源：uuid 抄错了。先 api.res.list() 看清单，uuid 就是里面那一串。
-- 资源还被 N 份文档引用着：先 api.res.refs(uuid) 看清楚引用它的地方，改掉引用或确认后 force。
-- 图片读不到（清单里有、磁盘上没有）：文件被手工删过或移动过。告诉用户，别反复重试同一个 uuid。
 - 沙箱超时：代码里有死循环或过重的计算。拆小，或改用 tmp 分步处理。
 
 重试纪律：**同一种写法最多重试 1 次**。连续两次失败就换策略（改小、先探针、或换 api），

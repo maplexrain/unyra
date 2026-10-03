@@ -133,6 +133,14 @@ export interface ConversationMessage {
    */
   persona?: string
   /**
+   * 这是「动态注入的提示词模块」那条隐藏指令，值是模块 key（见 learn/ai/promptModules）。
+   *
+   * 与 persona 同一条道理：去重判据认字段不认文案。宿主注入前扫一遍活着的消息
+   * （retired 的不算——被压缩折掉的模块要能重新注入），key 已在就不重复注入；
+   * 界面上带 mark 渲染成可展开的分界条（见 MessageBubble 的 ModuleDivider）。
+   */
+  promptModule?: string
+  /**
    * 附加上下文（如「询问」的选段位置），随消息一起送给模型但不展示。
    * 与 hidden 的区别：hidden 连正文都不显示，context 只补充说明、正文照常显示。
    */

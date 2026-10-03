@@ -122,8 +122,6 @@ interface Props {
   ask: { id: string; form: AskFormPayload } | null
   onAskSubmit: (answers: AskAnswers) => void
   onAskCancel: () => void
-  /** 导师预告的接下来要做什么（api.iwanna）：只展示，不可勾选，一轮结束就消失 */
-  iwanna: string[] | null
   /**
    * 最近一跳实测的输出速度（tok/s，运行时掐表测得）。跑着的时候来自实时上报，
    * 空闲时为 null——状态条会退回用最后一条回复里存的值。
@@ -182,7 +180,6 @@ export default function AgentPanel({
   ask,
   onAskSubmit,
   onAskCancel,
-  iwanna,
   tps,
   liveUsage,
   sub,
@@ -577,7 +574,6 @@ export default function AgentPanel({
           running={running}
           hasKey={hasKey}
           providerLabel={providerLabel}
-          iwanna={iwanna}
           ask={ask}
           onAskSubmit={onAskSubmit}
           onAskCancel={onAskCancel}

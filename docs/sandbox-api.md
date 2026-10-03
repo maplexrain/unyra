@@ -97,7 +97,9 @@ Agent 只有 `execute` 一个工具：它写一段 JS **匿名函数**（`((api)
 1. 实现在 `src/agent/sandbox/api.ts` 的 `buildApi`（它把 `SandboxOptions` 上的宿主能力逐个包成 api 方法；
    各组 `*Ops` 的实现住在 `src/learn/ops/`）；
 2. 名单在 `src/agent/sandboxWorker.ts` 的 `API_NAMES`（不登记的话 Worker 侧不存在这个名字）；
-3. 用法写进 `src/learn/ai/executeGuide.ts` 的 `EXECUTE_GUIDE`（模型唯一的手）；
+3. 用法写进提示词：每轮必用的组进 `src/learn/ai/executeGuide.ts` 的 `EXECUTE_GUIDE`，
+   低频域的完整手册搬进提示词模块（`src/learn/ai/promptModules.ts`，首次调用时注入，
+   见 [prompt-modules.md](prompt-modules.md)）；
 4. 目录加进 `src/agent/apiCatalog.ts`（设置 → 开发者里那份「api 上下文管理」）。
 
 后两者与前两者的一致性由 agent 探针逐条对账，漏一处就红。

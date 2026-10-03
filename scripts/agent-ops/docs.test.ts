@@ -207,7 +207,6 @@ export async function apiNameTests() {
     // 人机协作与界面：宿主能力是桩（见下面 createExecuteTool 的注入）
     'wait': '0',
     'ask': "{ title: '确认', questions: [{ type: 'short', prompt: '怎么继续？' }] }",
-    'iwanna': "['先读文档', '再写笔记']",
     'tiktok': '',
     'ui.switchMain': "'agent'",
     'ui.toast': "'你好'",
@@ -309,9 +308,8 @@ export async function apiNameTests() {
       remove: () => ({ ok: true, content: '（桩）' }),
     },
   })
-  // 人机协作与界面那一组：wait / ask / iwanna / tiktok / ui 都是桩（行为由界面接线保证），
+  // 人机协作与界面那一组：wait / ask / tiktok / ui 都是桩（行为由界面接线保证），
   // mind 用真的 createMindOps（它是纯 store 逻辑，Node 里就能跑）
-  let sawIwanna: string[] | null = null
   let sawMain = ''
   let sawToast = ''
   let sawScroll: unknown = null
@@ -328,7 +326,6 @@ export async function apiNameTests() {
     mind: createMindOps({ getLatest: () => s, set: (n) => { s = n }, goalId: () => goalId }),
     wait: async () => {},
     ask: async () => ({ ok: true, cancelled: false, answers: [] }),
-    iwanna: (items) => { sawIwanna = items },
     tiktok: async () => {},
     ui: {
       switchMain: (main) => { sawMain = main },
@@ -381,8 +378,7 @@ export async function apiNameTests() {
   for (const n of SANDBOX_API_NAMES) ok(catalogNames.includes(n), '沙箱名单里的 ' + n + ' 在 api 目录里有一条')
   ok(catalogNames.length === nameSet.size, '目录与名单的条数一致（没有重复、没有漏）', { catalog: catalogNames.length, names: nameSet.size })
 
-  // 新 api 的行为抽两条钉住：iwanna 真的把计划递给了宿主，ui.dom 的门面真的可用
-  ok(!!sawIwanna && sawIwanna.length === 2, 'iwanna 把计划递给了宿主（界面据此渲染预告清单）', sawIwanna)
+  // 新 api 的行为抽两条钉住：ui.dom 的门面真的可用
   ok(sawMain === 'agent' && sawToast === '你好' && !!sawScroll, 'ui.switchMain / ui.toast / ui.scroll 都到了宿主')
   ok(sawOpenSuper === '探针文档', 'ui.superdoc 把要开的文档名递给了宿主', sawOpenSuper)
   ok(
@@ -407,11 +403,27 @@ export async function apiNameTests() {
 
   // 子代理的 api 白名单（apiAllow）是通道口的硬校验，不是提示词君子协定：
   // 名单外的组当场被拒（报错里写明开放了哪些组），名单内的组照常放行。
-  const sub = createExecuteTool({ ...ops, runSandbox: fakeRunner, apiAllow: ['web', 'tmp'] })
+  // 触发口挂上之后还能钉一条：被拒的调用进不了 log，也就不会报模块 key。
+  const deniedModules: string[] = []
+  const sub = createExecuteTool({ ...ops, runSandbox: fakeRunner, apiAllow: ['web', 'tmp'], onPromptModule: (k) => deniedModules.push(k) })
   const denied = await sub.run({ description: '越权读文档', body: '((api)=>{ return await api.doc.read("") })' }, { nodeId: childId, goalId })
   ok(!denied.ok && denied.content.includes('只开放了'), 'apiAllow 名单外的组当场被拒', denied.content.slice(0, 160))
+  ok(!deniedModules.includes('doc'), '被 apiAllow 拒掉的调用不触发注入', deniedModules)
   const allowed = await sub.run({ description: '搜索', body: "((api)=>{ return await api.web.search('勾股定理') })" }, { nodeId: childId, goalId })
-  ok(allowed.ok && allowed.content.includes('baidu'), 'apiAllow 名单内的组照常放行', allowed.content.slice(0, 160))
+  ok(allowed.ok && allowed.content.includes('baidu') && deniedModules.includes('web'), 'apiAllow 名单内的组照常放行并触发注入', { content: allowed.content.slice(0, 120), keys: deniedModules })
+
+  // 动态提示词注入的触发口（learn/ai/promptModules）：execute 只负责「报 key」——
+  // 组触发按本次编排里真实调过的组报（被 apiAllow 拒的组进不了 log，也就不报），
+  // 内容触发在写入参数上嗅探 plot 围栏与动画标记。去重与落库在宿主（useAgent）。
+  const sawModules: string[] = []
+  const modTool = createExecuteTool({ ...ops, runSandbox: fakeRunner, onPromptModule: (k) => sawModules.push(k) })
+  await modTool.run({ description: '组触发', body: "((api)=>{ return await api.web.search('探针') })" }, { nodeId: childId, goalId })
+  ok(sawModules.includes('web'), '调用 web 组把模块 key 报给了宿主', sawModules)
+  await modTool.run(
+    { description: '内容触发', body: "((api)=>{ return await api.doc.append('笔记/探针', '看图：\\n\\n```plot\\n{ \"data\": [] }\\n```') })" },
+    { nodeId: childId, goalId },
+  )
+  ok(sawModules.includes('plot-forms'), '写入 plot 围栏把数据形态模块报给了宿主', sawModules)
 }
 
 /* ---------- 6. 资源库（static）：res.* 的行为（分节标题与 fixture 见 ./harness） ---------- */

@@ -3,6 +3,7 @@
  * （编译 body → 建 api → 跑沙箱 → 收失败与图片 → 拼回执）与结果顶部的失败清单，以及几个体量上限。
  */
 import { domOp } from '../../lib/docDom'
+import { promptModuleForApiName, promptModuleForContent, writableContentOf } from '../../learn/ai/promptModules'
 import { MAX_TOOL_IMAGES, type MessageImage } from '../types'
 import { buildApi, clip, imagesOf } from './api'
 import { safeJson } from './askForm'
@@ -26,49 +27,14 @@ const EXECUTE_PARAMETERS = {
       type: 'string',
       description:
         '一段匿名函数源码，形如 ((api)=>{ ... return 结果 })，也可以写成 ((api)=>{...})()。可以用 await；' +
-        '返回值会被回给你（超过 3.2 万字符会截断）。api 上挂着：' +
-        'doc.read(path) / doc.readRange(path,start,end) / doc.find(path,要查的文字) / ' +
-        'doc.write(path,content) / doc.replace(path,{start,end,content,expected}) / doc.append(path,content) / ' +
-        'doc.annotate({term,occurrence?,body})（在正文上划一条注解，注解挂在节点上）、' +
-        'node.list() / node.read(path) / node.create({parent,title,description})（parent 必填：写标题或 #id，' +
-        '不再隐式建在当前节点下）/ node.title(path) / ' +
-        'node.rename(path,title) / node.update(path,{title,description,status}) / node.delete(path) / ' +
-        'node.move(path, 新父节点)（迁移节点）、description.read(path) / description.update(path,content)、' +
-        'outline.read(path?)（读节点的大纲：{ intro, children:[{ key, title, summary }] }，没有时 null）/ ' +
-        'outline.write(path?, { intro, children:[{ title, summary }] })（整份写入大纲；' +
-        'children 只列直接子层级一层，key 由标题自动生成）、' +
-        'tmp.set({key,value,ttlMs}) / tmp.get(key) / tmp.has(key) / tmp.del(key) / tmp.list() / tmp.clear()、' +
-        '以及 exam 这一组（有试卷时才挂）：exam.create(payload) / exam.read(attemptId?) / ' +
-        'exam.grade(payload) / exam.explain({ content, attemptId? })（错题讲解，判分之后的第二步）。' +
-        'userInfo.get() / userInfo.update({字段:值})（学习者画像，增量写；画像不在系统提示词里，要用得自己取）、' +
-        '还有 wait（等待）/ ask（表单提问，阻塞等用户）/ mind（长期记忆）/ iwanna（计划预告）/ tiktok（响铃）' +
-        '/ method（目标级持久化函数：create / list / call / delete）/ sdoc（超级文档：list / read / write / delete）' +
-        '/ ui.switchMain / ui.toast / ui.point / ui.scroll / ui.screenshot / ui.superdoc（界面操作），' +
-        '/ browser.open / browser.tabs / browser.activate / browser.close / browser.snapshot / browser.point / ' +
-        'browser.dom(ref, op, arg?) / browser.read / browser.capture' +
-        '（内置浏览器：开网页、管页签、快照元素清单、受控 DOM 操作、整页转 markdown——看页面用 snapshot/read），' +
-        '/ subagent.create({key,name?,system,tools?}) / subagent.run({agent,task}) / subagent.wait({seconds}) / ' +
-        'subagent.view(agent) / subagent.intervene(agent,指令) / subagent.interrupt(agent) / subagent.resume(agent) / ' +
-        'subagent.delete(agent)' +
-        '（子代理管理：并发派出、后台跑、wait 收首个交付——范式与监督纪律见系统提示词的子代理一节），' +
-        '完整签名与使用时机见系统提示词的 execute 一节。' +
-        'create 的 payload —— title、kind:"quiz"|"test"|"exam"、level:"easy"|"medium"|"hard"|"extreme"、' +
-        'minutes（时限分钟数；小测不用给，其余不得低于题目数 × 2）、' +
-        'questions:[{ type:"single"|"multiple"|"truefalse"|"fill"|"short", stem:"题干", ' +
-        'options:[{id:"A",text:"选项文字"},{id:"B",text:"…"}], answer:["A"], rubric:"解析", points:2 }]。' +
-        '单选/多选/对错必须给 answer（选项 id 数组）；填空/简答的 answer 写参考答案' +
-        '（填空给了就按它严格判分，简答只作阅卷参考），rubric 写评分要点或解析；' +
-        'grade 的 payload —— { passed:boolean, summary:"总评", results:[{ questionId, correct, score, comment }] }。' +
-        "path 省略即「当前节点的教学文档」；\"笔记\" 指当前节点的笔记（一个节点可以有多份），"+
-        "\"笔记/错题本\" 指其中叫「错题本」的那一份（没有就新建），\"极限/笔记\" 指节点「极限」的笔记。"+
-        "写笔记时给个有意义的名字（如 \"笔记/错题本\"），别把不同用处的东西都堆进同一份；"+
-        "node.read(path) 的 docs 里列着这个节点现有的笔记名，拿不准就先看一眼。"+
-        '资源库（本目标 static/ 下的文件，用 uuid 寻址）：' +
-        'res.list() / res.info(uuid) / res.read(uuid) / res.create({name, ext, content}) / ' +
-        'res.update(uuid, {name, description, content}) / res.delete(uuid, {force}) / res.refs(uuid?)。' +
-        'res.read 读图片时**不会**把图片数据给你——图片会直接出现在你的下一步里，所以一次只看真正需要的几张；' +
-        '文档里引用资源写成 ![说明](moji:static/uuid)。' +
-        '调试用 api.log(...)，它的输出会随结果一起回给你。沙箱里没有 window / document / fetch。',
+        '返回值会被回给你（超过 3.2 万字符会截断）。' +
+        '**写操作的失败不抛异常**：回 { ok:false, content:"哪一步没做成、该怎么改" }，并汇总在结果最前面' +
+        '那份「没有生效」清单里——判断成败看清单，不要用 try/catch，也不要追加读接口确认。' +
+        'path 省略 = 当前节点的教学文档，"笔记" = 当前节点的笔记，"笔记/错题本" = 指名某一份（没有就新建）。' +
+        'api 上有什么、各组的完整签名与使用时机，全部见系统提示词的 execute 一节；' +
+        '低频组（sdoc / browser / web / res / exam / review / workspace / method / code / subagent / ui 细节等）' +
+        '的规范会在你第一次调用该组时自动注入。调试用 api.log(...)，输出随结果一起回给你。' +
+        '沙箱里没有 window / document / fetch。',
     },
   },
   required: ['description', 'body'],
@@ -118,24 +84,10 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
       ? '执行一段 JS 来完成任务：api 按本会话的授权开放（完整签名见参数说明）。' +
         '多步、批量、需要判断或循环的活用代码一次做完，不要把中间结果写进对话；' +
         '体量大的中间数据用 api.tmp 暂存，只把键名或结论带回来。'
-      : '执行一段 JS 来操作学习数据。文档读写、节点增删改、描述、试卷、临时变量都只能通过这里调用——' +
-        '没有别的工具。一次编排可以同时操作多个节点：用 path 指名是哪个节点的哪份文档' +
-        "（path 省略 = 当前节点的教学文档，\"笔记\" = 当前节点的笔记，"+
-        "\"笔记/名字\" = 其中某一份，没有就新建）。"+
-        '多步、批量、需要判断或循环的活都用代码一次做完，不要把中间结果写进对话。' +
-        '体量大的中间数据用 api.tmp 暂存（可设过期时间），只把键名或结论带回来。' +
-        '出题用 exam.create：题型只认 single / multiple / truefalse / fill / short，' +
-        '单选/多选/对错必须给 answer（选项 id 数组，如 ["A"]），题目对象的完整写法见 body 的参数说明；' +
-        '除随堂小测外还要给 minutes（时限，不得低于题目数 × 2）。' +
-        'exam.read 任何时候都能调（没有卷子也是一种答案），exam.delete 只能删一次都没考过的卷子。' +
-        '学习者的学习状态（自评 / 掌握度 / 错误记忆 / 检验记录）用 state.* 读写：' +
-        'state.read() 看当前节点，state.update() 修正掌握度或自评，state.mistake() 记一次错误，' +
-        'state.check() 记一次探针或主动回忆的结果。' +
-        '本目标 static/ 下的资源（图片、PDF、附件）用 res.* 管理：清单、读、改、删、引用扫描都在那里；' +
-        'res.read 读图片不会返回 base64，图片会直接出现在你的下一步里。' +
-        '界面里开着的网页页签用 browser.* 操作：开站、列/切/关页签、snapshot 元素清单、对 ref 做受控 DOM 操作' +
-        '（click/fill/focus/submit/text/attr）、整页转 markdown（read）、滚动高亮（point）。' +
-        '看页面用 snapshot/read（capture 截图是最后手段，落进资源库并出现在你的下一步里）；要动页面先跟用户说一声。',
+      : '执行一段 JS 来操作学习数据——**唯一的工具**：文档读写、节点增删改、描述、试卷、临时变量、' +
+        '人机协作与界面操作都只能通过这里调用。多步、批量、需要判断或循环的活用代码一次做完，' +
+        '不要把中间结果写进对话；体量大的用 api.tmp 暂存，只把键名或结论带回来。' +
+        '各 api 组的签名与使用时机见系统提示词的 execute 一节（低频组的完整规范在首次调用时自动注入）。',
     parameters: executeParameters(opts.apiBrief),
     run: async (args) => {
       const description = asText(args.description).trim()
@@ -147,6 +99,12 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
       const compiled = compileBody(body)
       if (!compiled.ok) return { ok: false, content: compiled.content }
       const log: SandboxCall[] = []
+      /**
+       * 动态提示词注入的触发收集（见 learn/ai/promptModules）：写入内容里的标记在 callApi
+       * 里当场记，低频 api 组在编排结束后按 log 统一记；都只在编排收尾报给宿主——
+       * 宿主负责去重与落库，这里绝不改会话。
+       */
+      const moduleKeys = new Set<string>()
       const { api } = buildApi(opts, log)
       /**
        * 本次编排里 api 附带的图片（目前只有 res.read 会带）。它们不能进 content
@@ -218,6 +176,11 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
             const hint = RENAMED_API_HINT[name]
             throw new Error('沙箱里没有这个 api：' + name + (hint ? '。它已改名，现在写作 ' + hint : ''))
           }
+          // 内容触发：这次写入的东西里带 plot 围栏或动画标记，对应模块就该在场
+          if (opts.onPromptModule) {
+            const content = writableContentOf(name, callArgs)
+            if (content) for (const key of promptModuleForContent(content)) moduleKeys.add(key)
+          }
           const value = await fn(...callArgs)
           const images = imagesOf(value)
           if (!images.length) return value
@@ -234,6 +197,18 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
       })
       domSessions.clear()
       lastCalls = log
+
+      /**
+       * 组触发：本次编排里真实调用过的低频 api 组（log 是执行成功的通道——被 apiAllow
+       * 拒掉的调用进不了它，也不会触发注入）。逐一报给宿主，去重是宿主的事。
+       */
+      if (opts.onPromptModule) {
+        for (const c of log) {
+          const key = promptModuleForApiName(c.name)
+          if (key) moduleKeys.add(key)
+        }
+        for (const key of moduleKeys) opts.onPromptModule(key)
+      }
 
       if (!reply.ok) {
         const detail = description ? '（这段代码的说明：' + description + '）' : ''

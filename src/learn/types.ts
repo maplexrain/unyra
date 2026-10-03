@@ -716,6 +716,12 @@ export interface WorkflowEntry {
   description: string
   /** 触发时以 user 角色整段进入上下文的完整任务指令 */
   instruction: string
+  /**
+   * 规程提示词（**可选**，动态提示词注入）：每次触发都要在场的「这套流程怎么干」的稳定知识
+   * 与 instruction 分开——它按 wf:<id> 作键注入，**同一上下文只注一次**；之后再次触发只发
+   * instruction（见 useAgent.runWorkflow 与 learn/ai/promptModules）。没写就没有这一块。
+   */
+  prompt?: string
   createdAt: number
   updatedAt: number
 }

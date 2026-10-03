@@ -222,6 +222,11 @@ export function normalizeConversation(
         ...(typeof mr.mark === 'string' && mr.mark ? { mark: mr.mark } : {}),
         // 人格指令的标记：丢了会让「人格交代过没有」重新变成「没交代」，每轮都补一条
         ...(typeof mr.persona === 'string' && mr.persona ? { persona: mr.persona } : {}),
+        /*
+         * 提示词模块的标记（learn/ai/promptModules）：丢了会让「这个模块注入过没有」
+         * 重新变成「没注入过」——重启后每用到一次低频组就重复注一遍规范。
+         */
+        ...(typeof mr.promptModule === 'string' && mr.promptModule ? { promptModule: mr.promptModule } : {}),
         ...(typeof mr.context === 'string' && mr.context ? { context: mr.context } : {}),
         ...(quote ? { quote } : {}),
         ...(images.length ? { images } : {}),
