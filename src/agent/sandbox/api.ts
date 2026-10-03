@@ -1,7 +1,7 @@
 /**
  * 这个文件负责什么：**沙箱里能调到的全部 api 的定义**。buildApi 把 SandboxOptions 上的宿主能力
  * 逐个包成 api 方法（doc / node / state / tmp / exam / mind / method / sdoc / wf / code /
- * reading / attention / checkin / pomodoro / compact / web / userInfo / wait / ask / iwanna /
+ * reading / attention / checkin / pomodoro / compact / web / userInfo / wait / ask /
  * tiktok / ui / res），wrapApi 负责记账与失败判定；每个 api 都是调用时才读 opts，不持有快照。
  */
 import { needleForDoc } from '../../lib/docDom'
@@ -92,7 +92,7 @@ function wrapApi(api: Record<string, unknown>, name: string, fn: (args: unknown[
   }
   const dot = name.indexOf('.')
   if (dot < 0) {
-    // 不带点的顶层 api（wait / iwanna / tiktok…）：直接挂在 api 上，没有组这一层
+    // 不带点的顶层 api（wait / tiktok…）：直接挂在 api 上，没有组这一层
     api[name] = wrapped
     return
   }
@@ -616,19 +616,6 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
       const parsed = normalizeAskForm(args[0])
       if (!parsed.ok) return parsed
       return ask(parsed.form)
-    }, log)
-  }
-
-  if (opts.iwanna) {
-    const iwanna = opts.iwanna
-    wrapApi(api, 'iwanna', (args) => {
-      const items = (Array.isArray(args[0]) ? args[0] : [args[0]])
-        .map((x) => asText(x).replace(/\s+/g, ' ').trim().slice(0, 120))
-        .filter(Boolean)
-        .slice(0, 10)
-      if (!items.length) return { error: 'iwanna 需要至少一条计划（字符串或字符串数组）' }
-      iwanna(items)
-      return { ok: true, count: items.length, note: '计划已显示给用户。完成后有新的安排时再调一次即可覆盖。' }
     }, log)
   }
 

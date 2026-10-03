@@ -571,6 +571,62 @@ export function HiddenDivider({
 }
 
 /**
+ * 动态注入的提示词模块那条分界条（见 learn/ai/promptModules）。
+ *
+ * 与 HiddenDivider 同一层级——它也是一条隐藏 user 消息——但多一个要求：**显式可展开**。
+ * 透明化是这套机制的立身之本：上下文里被注入了什么规范，用户随时点开就能看到，
+ * 不必去翻存储。默认收起只占一行（「已注入上下文」）；展开是模块全文。
+ */
+export function ModuleDivider({
+  m,
+  faded,
+  flash,
+  msgRefs,
+}: {
+  m: ConversationMessage
+  faded: boolean
+  flash: boolean
+  msgRefs: React.RefObject<Map<string, HTMLDivElement>>
+}) {
+  const [open, setOpen] = useState(false)
+  const text = useMemo(
+    () => m.parts.filter((p) => p.type === 'text').map((p) => p.text).join(''),
+    [m],
+  )
+  return (
+    <div
+      ref={(el) => {
+        if (el) msgRefs.current.set(m.id, el)
+        else msgRefs.current.delete(m.id)
+      }}
+      className={'mb-3' + (faded ? ' opacity-55' : '') + (flash ? ' moji-msg-flash' : '')}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-[11px] text-ink-faint transition hover:text-ink-soft"
+        title={open ? t('收起模块全文') : t('点开查看注入的完整提示词')}
+      >
+        <span className="h-px flex-1 bg-line" />
+        <ChevronRight
+          size={11}
+          aria-hidden="true"
+          className={'shrink-0 transition-transform' + (open ? ' rotate-90' : '')}
+        />
+        <span className="shrink-0">{t(m.mark ?? '提示词模块')}</span>
+        <span className="shrink-0 opacity-70">{t('已注入上下文')}</span>
+        <span className="h-px flex-1 bg-line" />
+      </button>
+      {open && (
+        <pre className="moji-in-soft mx-1 mt-1 max-h-80 overflow-auto whitespace-pre-wrap rounded border border-line bg-card/70 p-2.5 text-left text-[11.5px] leading-relaxed text-ink-soft">
+          {text}
+        </pre>
+      )}
+    </div>
+  )
+}
+
+/**
  * 「回到最新」：脱离自动滚动后浮在列表右下角，点一下平滑滚到底并恢复跟随。
  *
  * 图标是手画的 inline SVG（不走图标库）：一条下行箭头落在一条基线上，意为「跳到最下面」，

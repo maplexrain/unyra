@@ -2494,11 +2494,10 @@ export default function LearnWorkspace({
                 }}
                 // 中断说明旁的「继续」：接着被应用退出打断的那一轮往下做（见 useAgent.resumeInterrupted）
                 onResumeInterrupted={() => agent.resumeInterrupted()}
-                // api.ask 的表单卡与 api.iwanna 的计划卡（都渲染在输入框上方）
+                // api.ask 的表单卡（渲染在输入框上方）
                 ask={agent.pendingAsk}
                 onAskSubmit={agent.submitAsk}
                 onAskCancel={agent.cancelAsk}
-                iwanna={agent.iwanna}
                 // 状态条要的实时吐字速度（空闲时面板自己回退到消息里的存量）
                 tps={agent.tps}
                 // 上下文占用圆环的实时账（每跳 usage 重算；轮末随落库一起清）

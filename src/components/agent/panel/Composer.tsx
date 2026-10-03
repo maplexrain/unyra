@@ -1,13 +1,13 @@
 /**
  * 输入区：整张卡片（附件列 + textarea + 底部工具条），以及卡片上方那几块
- * 「导师接下来的计划」（api.iwanna）、结构化表单与未配置 Key 的提示。
+ * 结构化表单与未配置 Key 的提示。
  *
  * 状态在 useComposer.ts（草稿与附件）、菜单在 usePlusMenu.tsx / PlusMenu.tsx，
  * 接线在 useComposerUi.tsx；这里只负责画和接。
  */
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowUp, Bot, ChevronRight, ListChecks, Square } from 'lucide-react'
+import { ArrowUp, Bot, ChevronRight, Square } from 'lucide-react'
 import type { AskAnswers, AskFormPayload } from '../../../agent/tools'
 import type { Conversation, MessageUsage, PendingImage } from '../../../agent/types'
 import type { ReasoningEffort } from '../../../ai/types'
@@ -48,8 +48,6 @@ export interface ComposerProps {
   hasKey: boolean
   /** 当前提供商的显示名，仅用于「未配置」提示 */
   providerLabel: string
-  /** 导师预告的接下来要做什么（api.iwanna）：只展示，不可勾选，一轮结束就消失 */
-  iwanna: string[] | null
   /**
    * 待回答的结构化表单（api.ask 发起的）：显示在输入框上方，提交前沙箱一直阻塞着。
    * id 是这一次表单的身份（重开一张表单时 key 换掉，旧答案不会串）。
@@ -121,7 +119,6 @@ export function Composer(props: ComposerProps) {
     running,
     hasKey,
     providerLabel,
-    iwanna,
     ask,
     onAskSubmit,
     onAskCancel,
@@ -383,24 +380,6 @@ export function Composer(props: ComposerProps) {
 
   return (
     <>
-      {/* 导师预告的计划（api.iwanna）：紧贴输入区，回答问题时余光也看得见 */}
-      {iwanna && iwanna.length > 0 && (
-        <div className="moji-in-soft mb-2 rounded-xl border border-seal/25 bg-seal/[0.05] px-3 py-2">
-          <div className="flex items-center gap-1.5 text-[11.5px] font-medium text-seal-deep">
-            <ListChecks size={12} />
-            {t('导师接下来的计划')}
-          </div>
-          <ol className="mt-1 space-y-0.5 pl-1">
-            {iwanna.map((item, i) => (
-              <li key={i} className="flex items-baseline gap-1.5 text-[11.5px] leading-relaxed text-ink">
-                <span className="shrink-0 tabular-nums text-ink-faint">{i + 1}.</span>
-                <span className="min-w-0">{item}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-
       {/* 结构化表单（api.ask）：压在输入框上方，提交之前沙箱一直等着 */}
       {ask && (
         <AskFormCard key={ask.id} form={ask.form} onSubmit={onAskSubmit} onCancel={onAskCancel} />

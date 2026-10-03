@@ -173,7 +173,7 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
       '没有 wf.run——触发永远由用户在界面上点。',
     items: [
       { name: 'wf.list', signature: 'wf.list()', summary: '全部工作流（内置 + 全局 + 当前目标），带 id、分级与完整指令', availability: 'always' },
-      { name: 'wf.create', signature: 'wf.create({ name, instruction, description?, tier? })', summary: '登记一条工作流；instruction 写成能独立执行的步骤清单，tier 缺省 goal（global 则所有目标可用）；同名覆盖', availability: 'always' },
+      { name: 'wf.create', signature: 'wf.create({ name, instruction, description?, tier?, prompt? })', summary: '登记一条工作流；instruction 写成能独立执行的步骤清单，tier 缺省 goal（global 则所有目标可用）；prompt（可选）是每次触发都要在场的规程知识——按 wf:<id> 作键、同一上下文只注入一次，之后触发只发 instruction；同名覆盖', availability: 'always' },
       { name: 'wf.remove', signature: 'wf.remove(idOrName)', summary: '删除一条登记的工作流（内置的删不掉）', availability: 'always' },
     ],
   },
@@ -313,7 +313,7 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
   },
   {
     key: 'flow',
-    label: '人机协作 · wait / ask / iwanna / tiktok',
+    label: '人机协作 · wait / ask / tiktok',
     intro: 'ask 会阻塞到用户提交；调用前先 tiktok 响一声。一次把要问的都放进一张表单。',
     items: [
       { name: 'wait', signature: 'wait(ms)', summary: '阻塞等待 0~120000 ms，给界面/用户留时间', availability: 'always' },
@@ -325,7 +325,6 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
           '题目给 when: { id, oneOf } 实现「前面选了什么影响后面问什么」；返回 answers，用户取消时 cancelled: true',
         availability: 'always',
       },
-      { name: 'iwanna', signature: 'iwanna([\'第一步\', \'第二步\', …])', summary: '把接下来的计划以可视化清单预告给用户（不是 todo，不能勾选）', availability: 'always' },
       { name: 'tiktok', signature: 'tiktok()', summary: '响一声系统提示音，提醒用户来看', availability: 'always' },
     ],
   },

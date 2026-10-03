@@ -107,6 +107,19 @@ describe('对话写盘 → 读回', () => {
     expect(shown.map((m) => m.id)).toEqual(['u1', 'u2'])
   })
 
+  it('提示词模块的标记活着回来：丢了它，重启后每次用到低频组都会重复注一遍（见 learn/ai/promptModules）', () => {
+    const back = roundTrip(
+      convWith([
+        msg('u1', 'user', '帮我做个交互小工具'),
+        { ...msg('u2', 'user', '超级文档（sdoc）——这份规范在你第一次使用超级文档时注入：…'), hidden: true, mark: '提示词模块 · 超级文档', promptModule: 'sdoc' },
+      ]),
+    )
+    expect(back.messages[1].promptModule).toBe('sdoc')
+    expect(back.messages[1].mark).toBe('提示词模块 · 超级文档')
+    expect(back.messages[1].hidden).toBe(true)
+    // 去重判据（missingPromptModules）看到的就是这条：活着 → 已注入
+  })
+
   it('压缩过的历史读回来还是压过的：摘要与失活标记一起活着', () => {
     const summary: ContextSummary = {
       at: now,

@@ -325,6 +325,10 @@ function fail(el: HTMLElement, stage: HTMLElement, message: string, source: stri
 /**
  * 交给教学 Agent 的语法说明（写进系统提示词，与上面的实现保持同步）。
  *
+ * 系统提示词里只保留**每次写图像都要用**的基本结构与开方规矩；data 各形态的完整写法
+ * （参数曲线、极坐标、散点、向量、隐函数）搬进了提示词模块 plot-forms
+ * （learn/ai/promptModules，模型第一次写出 plot 围栏时注入）。
+ *
  * 关于 graphType：function-plot 的采样器由 graphType 决定，默认 graphType 是
  * interval，只支持 linear / implicit。points、parametric、polar 必须显式换成
  * polyline / scatter 才会切到 builtIn 采样器，否则运行时会抛错。
@@ -336,20 +340,9 @@ export const PLOT_SYNTAX_GUIDE = `函数图像：用三个反引号 + plot 包�
 - title：图标题；需要公式时用行内 LaTeX（$...$），会被正确排版
 - xAxis / yAxis：{ "domain": [min, max], "label": "x", "grid": true }；type 可选 "log"；
   label 同样支持 $...$ 公式
-- data：图形数组，每项取下列形态之一
+- data：图形数组（显式函数最常用：{ "fn": "x^2" }；参数曲线、极坐标、散点、向量、
+  隐函数等各形态的完整写法，第一次写图像时「提示词模块 · 函数图像的数据形态」会自动注入）
 - annotations：[{ "x": 1, "y": 1, "label": "切点" }]
-
-data 各形态（points / parametric / polar 必须写 graphType，否则会当成区间采样而报错）：
-1) 显式函数：{ "fn": "x^2" }
-   可加切线：{ "fn": "x^2", "derivative": { "fn": "2*x", "x0": 1 } }
-   可加割线：{ "fn": "x^2", "secants": [{ "x0": 0, "x1": 1 }] }
-   可指定颜色：{ "fn": "sin(x)", "color": "#a8432f" }
-2) 参数曲线（变量用 t）：{ "graphType": "polyline", "fnType": "parametric", "x": "cos(t)", "y": "sin(t)" }
-3) 极坐标（变量用 theta）：{ "graphType": "polyline", "fnType": "polar", "r": "1 + cos(theta)" }
-4) 散点：{ "graphType": "scatter", "fnType": "points", "points": [[1, 1], [2, 4]] }
-5) 向量：{ "graphType": "polyline", "fnType": "vector", "vector": [2, 1], "offset": [0, 0] }
-6) 隐函数（用 interval 采样，需同时给 graphType 与 fnType）：
-   { "graphType": "interval", "fnType": "implicit", "fn": "x^2 + y^2 - 1" }
 
 写法要求：
 - 乘号必须写出来（2*x 而不是 2x），乘方用 ^；支持 sin cos tan exp log sqrt nthRoot abs 等。
@@ -358,5 +351,4 @@ data 各形态（points / parametric / polar 必须写 graphType，否则会当�
   （真写了也不会错：渲染时 x^(1/3) 会被自动改写成 nthRoot(x,3)，但自己写清楚更稳，
   而且 nthRoot 在自变量为负时也画得出来——奇数次方根对负数是有定义的。）
 - 表达式里只能用数学函数与四则运算，不要出现浏览器对象或函数定义。
-- 图像默认不可缩放（避免在文档里滚动时误触），需要交互缩放时加 "disableZoom": false。
 - 只在图像确实有助于理解时使用，一张图配一两句文字说明。`

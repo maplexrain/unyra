@@ -146,7 +146,6 @@ const dict: Record<string, string> = {
   '↑↓ 选 · Enter 执行 · 退格返回': '↑↓ select · Enter to run · Backspace to go back',
 
   /* ---------- Composer ---------- */
-  '导师接下来的计划': 'What the tutor plans to do next',
   '尚未配置「{0}」的 API Key，请到顶栏设置中填写（也可在那里更换提供商）。':
     'No API Key configured for "{0}" yet — fill it in under the top-bar Settings (you can switch providers there too).',
   '移除全部附件': 'Remove all attachments',
@@ -223,6 +222,13 @@ const dict: Record<string, string> = {
   '［图片］': '[image]',
   '（空消息）': '(empty message)',
   '导师动作': 'Tutor action',
+
+  /* ---------- 提示词模块分界条（动态注入，见 learn/ai/promptModules） ---------- */
+  '提示词模块': 'Prompt module',
+  '提示词模块 · {0}': 'Prompt module · {0}',
+  '已注入上下文': 'injected into context',
+  '点开查看注入的完整提示词': 'Click to view the full injected prompt',
+  '收起模块全文': 'Collapse module text',
 
   /* ---------- toolLabel 的旧工具名标签 ---------- */
   '执行代码': 'Execute code',

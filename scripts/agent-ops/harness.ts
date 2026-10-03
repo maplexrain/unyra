@@ -203,7 +203,7 @@ export const fakeRunner = async (req: SandboxRequest): Promise<SandboxReply> => 
     const fn = new Function('api', 'return (' + req.body + ')')() as (api: unknown) => unknown
     const api = new Proxy({}, {
       get: (_t, group: string) =>
-        // 组代理本身是**可调用**的函数：不带点的顶层 api（wait / iwanna…）走 api.wait(...) 直调，
+        // 组代理本身是**可调用**的函数：不带点的顶层 api（wait…）走 api.wait(...) 直调，
         // 带点的组（doc.*）则继续取方法。两条路都归到 callApi。
         new Proxy((...args: unknown[]) => req.callApi(group, args), {
           get: (_t2, method: string) =>

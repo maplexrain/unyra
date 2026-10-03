@@ -22,8 +22,6 @@ export interface ComposerUiProps {
   hasKey: boolean
   /** 当前提供商的显示名，仅用于「未配置」提示 */
   providerLabel: string
-  /** 导师预告的接下来要做什么（api.iwanna）：只展示，不可勾选，一轮结束就消失 */
-  iwanna: string[] | null
   /**
    * 待回答的结构化表单（api.ask 发起的）：显示在输入框上方，提交前沙箱一直阻塞着。
    * id 是这一次表单的身份（重开一张表单时 key 换掉，旧答案不会串）。
