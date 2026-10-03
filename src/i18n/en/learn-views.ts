@@ -187,7 +187,6 @@ const dict: Record<string, string> = {
   '取消收藏': 'Unfavorite',
   '收藏此页': 'Favorite this page',
   '从收藏里移除': 'Remove from favorites',
-  '把 txt / markdown 文件拖进窗口，就能在这里浏览': 'Drag txt / markdown files into the window to browse them here',
   '拖动调整资源管理器宽度（{0}~{1} px）': 'Drag to resize the explorer ({0}–{1} px)',
   '拖动调整宽度（{0}~{1} px）': 'Drag to resize ({0}–{1} px)',
   '最近打开': 'Recently opened',
