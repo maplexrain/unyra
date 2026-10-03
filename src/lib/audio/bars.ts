@@ -9,14 +9,15 @@
  * applyGravity（柱身快涨慢落 + 峰值帽更慢地飘）→ addBreath（静音呼吸涟漪）。
  */
 
-/** 目标柱距（柱宽 + 间隙，px）：宽度来了先按它数出柱数，余量再均摊回每根柱 */
-export const BAR_PITCH = 7
+/** 目标柱距（柱宽 + 间隙，px）：宽度来了先按它数出柱数，余量再均摊回每根柱。
+ *  10px 档配空心柱：柱宽约 7px 才装得下一圈描边，再密就挤成细线框了 */
+export const BAR_PITCH = 10
 
 /** 柱数的上下限：再窄也不少于 8 根（不然不成谱），再宽也不多于 96 根（没有意义） */
 const MIN_BARS = 8
 const MAX_BARS = 96
 
-/** 柱数按宽度现算：264px 的侧栏底带 → 37 根；侧栏拖宽拖窄都跟着走 */
+/** 柱数按宽度现算：264px 的侧栏底带 → 26 根；侧栏拖宽拖窄都跟着走 */
 export function barCount(width: number): number {
   return Math.max(MIN_BARS, Math.min(MAX_BARS, Math.floor(width / BAR_PITCH)))
 }

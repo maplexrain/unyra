@@ -159,17 +159,26 @@ export default function SystemAudioWave() {
         drawn.set(shown)
         addBreath(drawn, now, BREATH_AMP)
 
-        // 柱身：从底座往上长，圆角顶，底部深顶部亮的渐变；半透明——它压在
-        // 顶栏内容底下，太实会顶得文字发闷
-        ctx.fillStyle = grad ?? seal
+        // 柱身：**空心**——开口朝下的圆角轮廓（两侧 + 圆角顶，不画底边），
+        // 坐在底座上像一排小试管；描边走主题渐变、半透明，压在内容底下不闷
+        ctx.strokeStyle = grad ?? seal
         ctx.globalAlpha = 0.5
+        ctx.lineWidth = 1.5
+        ctx.lineJoin = 'round'
         for (let i = 0; i < n; i++) {
           const h = drawn[i] * (height - 2)
           if (h < 0.5) continue
+          const left = i * step
+          const top = height - 2 - h
           const r = Math.min(barW / 2, h)
           ctx.beginPath()
-          ctx.roundRect(i * step, height - 2 - h, barW, h, [r, r, 0, 0])
-          ctx.fill()
+          ctx.moveTo(left, height - 2)
+          ctx.lineTo(left, top + r)
+          ctx.quadraticCurveTo(left, top, left + r, top)
+          ctx.lineTo(left + barW - r, top)
+          ctx.quadraticCurveTo(left + barW, top, left + barW, top + r)
+          ctx.lineTo(left + barW, height - 2)
+          ctx.stroke()
         }
 
         // 峰值帽：骑在柱顶正上方 2px 的小节，比柱身亮、落得比柱身慢——
