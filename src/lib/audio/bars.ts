@@ -5,8 +5,8 @@
  * 分得对不对、值取没取对、峰值落不落得回来，都是肉眼验收不了的东西。
  */
 
-/** 柱数：400px 宽、2px 缝时柱宽约 6px，疏密正好 */
-export const BAR_COUNT = 50
+/** 柱数：200px 宽、2px 缝时柱宽约 5px，疏密正好（再密就挤成细缝条了） */
+export const BAR_COUNT = 28
 
 /** 频段整形：字节频谱本身是 dB 刻度，再压一道 gamma，柱高分布更好看 */
 export const GAMMA = 1.4
