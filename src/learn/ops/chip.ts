@@ -199,7 +199,9 @@ export function createChipOps(deps: AgentOpsDeps) {
         return problem ? { ok: false, problem } : { ok: true, ...emit(p) }
       }
       // doc / outline：教学文档与大纲随节点存在（创建时就位）
-      const p: ChipPayload = { type, path: nodePath, nodeId: node.id, ...(title ? { title } : { title: node.title }) }
+      // （走到这里的 type 只剩 doc / outline；type 变量是 string，收窄一次给 ChipPayload）
+      const kind = type as ChipPayload['type']
+      const p: ChipPayload = { type: kind, path: nodePath, nodeId: node.id, ...(title ? { title } : { title: node.title }) }
       const problem = locate(p)
       return problem ? { ok: false, problem } : { ok: true, ...emit(p) }
     },
