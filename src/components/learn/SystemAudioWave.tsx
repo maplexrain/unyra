@@ -30,6 +30,9 @@ const CAP_FALL = 0.012
 /** 静音呼吸的涟漪幅度（0..1 全高占比 ≈ 3px）：无声时柱子缓缓起伏，整块「活着在听」 */
 const BREATH_AMP = 0.055
 
+/** 静音线：峰值帽的最高点低于它 = 周围一秒没声，柱子从空心切回实心待机 */
+const SILENCE_LEVEL = 0.04
+
 /** 接连失败的重试上限：约半分钟都接不上就放弃（title 里留着原因），不再空转 */
 const MAX_RETRIES = 10
 
@@ -159,26 +162,47 @@ export default function SystemAudioWave() {
         drawn.set(shown)
         addBreath(drawn, now, BREATH_AMP)
 
-        // 柱身：**空心**——开口朝下的圆角轮廓（两侧 + 圆角顶，不画底边），
-        // 坐在底座上像一排小试管；描边走主题渐变、半透明，压在内容底下不闷
-        ctx.strokeStyle = grad ?? seal
-        ctx.globalAlpha = 0.5
-        ctx.lineWidth = 1.5
-        ctx.lineJoin = 'round'
-        for (let i = 0; i < n; i++) {
-          const h = drawn[i] * (height - 2)
-          if (h < 0.5) continue
-          const left = i * step
-          const top = height - 2 - h
-          const r = Math.min(barW / 2, h)
-          ctx.beginPath()
-          ctx.moveTo(left, height - 2)
-          ctx.lineTo(left, top + r)
-          ctx.quadraticCurveTo(left, top, left + r, top)
-          ctx.lineTo(left + barW - r, top)
-          ctx.quadraticCurveTo(left + barW, top, left + barW, top + r)
-          ctx.lineTo(left + barW, height - 2)
-          ctx.stroke()
+        // 有声/无声两种形态：峰值帽的最高点就是「最近有没有声」的现成指标——
+        // 帽瞬顶（有声）画空心描边，帽落到底（静音）切回实心待机。切换发生在
+        // 柱子只剩几个像素的地方，肉眼看不出跳变
+        let capPeak = 0
+        for (let i = 0; i < n; i++) if (caps[i] > capPeak) capPeak = caps[i]
+        const solid = capPeak < SILENCE_LEVEL
+
+        if (solid) {
+          // 实心待机：圆角顶填充，跟着静音呼吸缓缓起伏
+          ctx.fillStyle = grad ?? seal
+          ctx.globalAlpha = 0.5
+          for (let i = 0; i < n; i++) {
+            const h = drawn[i] * (height - 2)
+            if (h < 0.5) continue
+            const r = Math.min(barW / 2, h)
+            ctx.beginPath()
+            ctx.roundRect(i * step, height - 2 - h, barW, h, [r, r, 0, 0])
+            ctx.fill()
+          }
+        } else {
+          // 空心：开口朝下的圆角轮廓（两侧 + 圆角顶，不画底边），坐在底座上
+          // 像一排小试管；描边走主题渐变、半透明，压在内容底下不闷
+          ctx.strokeStyle = grad ?? seal
+          ctx.globalAlpha = 0.5
+          ctx.lineWidth = 1.5
+          ctx.lineJoin = 'round'
+          for (let i = 0; i < n; i++) {
+            const h = drawn[i] * (height - 2)
+            if (h < 0.5) continue
+            const left = i * step
+            const top = height - 2 - h
+            const r = Math.min(barW / 2, h)
+            ctx.beginPath()
+            ctx.moveTo(left, height - 2)
+            ctx.lineTo(left, top + r)
+            ctx.quadraticCurveTo(left, top, left + r, top)
+            ctx.lineTo(left + barW - r, top)
+            ctx.quadraticCurveTo(left + barW, top, left + barW, top + r)
+            ctx.lineTo(left + barW, height - 2)
+            ctx.stroke()
+          }
         }
 
         // 峰值帽：骑在柱顶正上方 2px 的小节，比柱身亮、落得比柱身慢——
