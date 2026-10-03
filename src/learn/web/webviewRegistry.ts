@@ -18,3 +18,15 @@ export function registerWebview(tabId: string, el: WebviewTag | null): void {
 export function webviewOf(tabId: string): WebviewTag | undefined {
   return els.get(tabId)
 }
+
+/** 按 guest 的 WebContents id 找元素（web:guest-input 转发回来时只带 wcId） */
+export function webviewByWcId(wcId: number): WebviewTag | undefined {
+  for (const el of els.values()) {
+    try {
+      if (el.getWebContentsId?.() === wcId) return el
+    } catch {
+      // 元素已经 detached（页签刚关）：跳过，它不可能匹配
+    }
+  }
+  return undefined
+}

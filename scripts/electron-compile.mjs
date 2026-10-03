@@ -75,6 +75,7 @@ export async function buildElectron(outdir = join(ROOT, 'dist-electron')) {
       [
         join(ROOT, 'electron/main.ts'),
         join(ROOT, 'electron/preload.ts'),
+        join(ROOT, 'electron/guestPreload.ts'),
         join(ROOT, 'electron/proxy.ts'),
       ],
       outdir,

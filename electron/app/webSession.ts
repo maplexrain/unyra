@@ -12,9 +12,11 @@
  *
  * 下载不挂 will-download：Electron 默认弹系统「另存为」，够用。
  */
-import { app, ipcMain, session, shell, webContents, type Debugger, type WebContents } from 'electron'
+import { join } from 'node:path'
+import { app, BrowserWindow, ipcMain, Menu, session, shell, webContents, type Debugger, type WebContents } from 'electron'
 import { canOpenExternal } from '../link-core'
 import { mainWindow } from './mainWindow'
+import { t } from '../i18n'
 import { axNodesToElements, type AxRawNode } from '../../shared/axTree'
 import type { WebDomOpResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult } from '../../shared/ipc'
 
@@ -290,9 +292,38 @@ function registerSnapshotIpc(): void {
   })
 }
 
+/** 右键按下后的横向位移台账（wcId → 起点 x 与是否已算「划过」）：划过的右键不弹菜单 */
+const markDrag = new Map<number, { x0: number; moved: boolean }>()
+
+/**
+ * guest 的指针事件上报（见 electron/guestPreload）：校验形状后原样转给主窗口，
+ * 渲染层据此在对应的 <webview> 元素上合成可冒泡的 PointerEvent——「网页里触发的事件
+ * 冒泡到宿主」走的就是这一条（右键横划换页签那一类手势因此能在网页页签里用）。
+ * preload 只上报、不向页面世界暴露任何东西（contextIsolation 下页面摸不到它），
+ * 所以这条通道的攻击面就只有「伪造指针事件」，伪造出来的也不过是让手势动一动。
+ */
+function registerGuestInputIpc(): void {
+  ipcMain.on('web:guest-input', (e, raw: unknown) => {
+    const p = raw as Partial<Record<'type' | 'x' | 'y' | 'button' | 'buttons', unknown>> | null
+    if (!p || typeof p !== 'object') return
+    const type = p.type
+    if (type !== 'pointerdown' && type !== 'pointermove' && type !== 'pointerup') return
+    const { x, y, button, buttons } = p
+    if (typeof x !== 'number' || typeof y !== 'number' || typeof button !== 'number' || typeof buttons !== 'number') return
+    // 右键台账：划动判定在这里记一份——右键菜单由这里弹，只有它知道「刚刚是不是手势」
+    if (type === 'pointerdown' && button === 2) markDrag.set(e.sender.id, { x0: x, moved: false })
+    else if (type === 'pointermove' && button === 2) {
+      const d = markDrag.get(e.sender.id)
+      if (d && Math.abs(x - d.x0) >= 4) d.moved = true
+    }
+    mainWindow()?.webContents.send('web:guest-input', { type, x, y, button, buttons, wcId: e.sender.id })
+  })
+}
+
 export function setupWebBrowser(): void {
   const ses = session.fromPartition(WEB_PARTITION)
   registerSnapshotIpc()
+  registerGuestInputIpc()
 
   // 只摘掉 Electron/… 尾巴，版本号用真实 Chromium 的，其余照抄正常 Chrome 的桌面 UA
   ses.setUserAgent(
@@ -309,10 +340,13 @@ export function setupWebBrowser(): void {
 
   app.on('web-contents-created', (_e, contents) => {
     // 宿主（主窗口 / 考试窗口）：webview 挂上来之前收掉一切特权——纵深防御，
-    // 就算渲染层被人改了属性，guest 也拿不到 node 与我们的预载脚本
+    // 就算渲染层被人改了属性，guest 也拿不到 node 与主窗口那份预载脚本
     if (contents.getType() === 'window') {
       contents.on('will-attach-webview', (_e2, webPreferences, params) => {
-        delete webPreferences.preload
+        // 预载换成我们自己的**最小脚本**（electron/guestPreload：只上报指针事件，
+        // 好让网页里的事件能冒泡到宿主）。node 照旧关死，contextIsolation 默认开着，
+        // 页面世界摸不到预载世界里的 ipcRenderer。
+        webPreferences.preload = join(__dirname, 'guestPreload.cjs')
         webPreferences.nodeIntegration = false
         if (params.partition !== WEB_PARTITION) params.partition = WEB_PARTITION
       })
@@ -329,6 +363,25 @@ export function setupWebBrowser(): void {
       if (url.startsWith('mailto:')) void shell.openExternal(url)
       else if (canOpenExternal(url)) mainWindow()?.webContents.send('web:openTab', url)
       return { action: 'deny' }
+    })
+
+    /*
+     * guest 的右键菜单：弹**原生菜单**（就落在网页里，而不是应用层再糊一张）。
+     * 复制 / 粘贴用 role：它们作用于**聚焦的 WebContents**——右键此刻在 guest 里，正好。
+     * 右键横划是换页签的手势（渲染层在文档区接；事件经 web:guest-input 上来）：
+     * 划过了就不弹，否则每划一次都跳出一份菜单。
+     */
+    contents.on('context-menu', (e2, params) => {
+      e2.preventDefault()
+      const d = markDrag.get(contents.id)
+      markDrag.delete(contents.id)
+      if (d?.moved) return
+      Menu.buildFromTemplate([
+        { label: t('复制'), role: 'copy', enabled: params.editFlags.canCopy },
+        { label: t('粘贴'), role: 'paste', enabled: params.editFlags.canPaste },
+        { type: 'separator' },
+        { label: t('刷新'), click: () => contents.reload() },
+      ]).popup({ window: BrowserWindow.fromWebContents(contents.hostWebContents ?? contents) ?? undefined })
     })
 
     contents.on('before-input-event', (e, input) => {
