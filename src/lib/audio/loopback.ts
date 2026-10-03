@@ -1,5 +1,5 @@
 /**
- * 系统音频回环采集：把「电脑正在播什么」变成波形数据，供顶栏的波浪可视化用。
+ * 系统音频回环采集：把「电脑正在播什么」变成频谱数据，供顶栏的柱形可视化用。
  *
  * Windows 下 Chromium 能直接给「系统回环」（WASAPI loopback，不占麦克风、系统
  * 也不弹录制提示），但拿它有两条路，优先级如下：
@@ -10,21 +10,25 @@
  * 2. **getUserMedia 的 desktop 音源**（老路子）：`chromeMediaSource: 'desktop'`
  *    的遗留约束，Windows 上多年来一直可用——第 1 条被拒或不支持时兜底。
  *
- * 两条都走不通（Linux 无回环、无声卡）就抛错，波浪画成一条基线，原因写进
- * canvas 的 title。这里只管采集与释放，画线在 SystemAudioWave。
+ * 两条都走不通（Linux 无回环、无声卡）就抛错，柱形画成一行底座，原因写进
+ * canvas 的 title。这里只管采集与释放，画柱在 SystemAudioWave。
  */
 import { t } from '../../i18n'
 import { describeTrack } from '../voice/mic'
 
-/** 分析窗大小：2048 采样 ≈ 46ms @44.1kHz，取点够密、延迟也看不出来 */
-export const FFT_SIZE = 2048
+/** 分析窗大小：2048 采样 → 1024 个频点，分辨率 ≈ 21.5Hz @44.1kHz，画柱足够 */
+const FFT_SIZE = 2048
 
 export interface LoopbackSession {
   /**
-   * 取当前一段时域波形（-1..1）写进 into（长度必须 ≤ FFT_SIZE）。
-   * 会话已停止时返回 false——调用方据此画基线。
+   * 取当前一帧频谱（0..255 的 dB 整形值）写进 into（长度必须 = bins()）。
+   * 会话已停止时返回 false——调用方据此画底座。
    */
-  waveform(into: Float32Array<ArrayBuffer>): boolean
+  spectrum(into: Uint8Array<ArrayBuffer>): boolean
+  /** 频点数（fftSize 的一半），分配 into 与算频段都用它 */
+  bins(): number
+  /** 采样率：barRanges 换算频段用 */
+  sampleRate(): number
   /** 诊断信息：走的哪条通道、什么设备。出问题时这几行字比猜测值钱 */
   via(): string
   /** 停止采集并释放（音轨停掉、AudioContext 关掉） */
@@ -42,7 +46,7 @@ export async function startLoopback(opts?: { onEnded?: () => void }): Promise<Lo
 
   const ctx = new AudioContext()
   // Electron 默认不拦自动播放（autoplayPolicy = no-user-gesture-required），但别的壳
-  // 不一定；挂起状态下 analyser 一个数都不会动，症状同样是「永远一条直线」
+  // 不一定；挂起状态下 analyser 一个数都不会动，症状同样是「永远一行底座」
   if (ctx.state === 'suspended') {
     try {
       await ctx.resume()
@@ -59,16 +63,20 @@ export async function startLoopback(opts?: { onEnded?: () => void }): Promise<Lo
   const source = ctx.createMediaStreamSource(stream)
   const analyser = ctx.createAnalyser()
   analyser.fftSize = FFT_SIZE
+  // 频谱自身的帧间平滑（0..1）：柱子的原始数据就先顺一遍，重力再叠一道
+  analyser.smoothingTimeConstant = 0.8
   source.connect(analyser)
   // analyser 不接 destination 也会被驱动——这里只读不播，不像 mic.ts 那样需要 sink
 
   let stopped = false
   return {
-    waveform(into: Float32Array<ArrayBuffer>): boolean {
-      if (stopped) return false
-      analyser.getFloatTimeDomainData(into)
+    spectrum(into: Uint8Array<ArrayBuffer>): boolean {
+      if (stopped || into.length !== analyser.frequencyBinCount) return false
+      analyser.getByteFrequencyData(into)
       return true
     },
+    bins: () => analyser.frequencyBinCount,
+    sampleRate: () => ctx.sampleRate,
     via: () => via,
     stop(): void {
       if (stopped) return

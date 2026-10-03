@@ -1,20 +1,27 @@
 import { useEffect, useRef } from 'react'
 import { t } from '../../i18n'
-import { FFT_SIZE, startLoopback, type LoopbackSession } from '../../lib/audio/loopback'
-import { autoGain, sampleWave, WAVE_POINTS } from '../../lib/audio/wave'
+import { startLoopback, type LoopbackSession } from '../../lib/audio/loopback'
+import { applyGravity, barRanges, BAR_COUNT, sampleBars } from '../../lib/audio/bars'
 
 /**
- * 顶栏的系统音频波浪：电脑正在播的声音，实时画成一条波。
+ * 顶栏的系统音频柱形频谱：电脑正在播的声音，实时画成一排柱。
  *
  * 数据从系统回环来（src/lib/audio/loopback），这里只管画。三条自我约束与
  * GoalParticles 同一套：
  * - 纯装饰、不挂任何事件——它处在顶栏拖拽区里，鼠标划过去还是在拖窗口；
- * - 颜色从 CSS 变量读（--color-seal / --color-line-strong），主题自动跟随；
- * - 尊重「减少动效」：降到约 8fps，波浪还在呼吸，只是不逐帧刷新。
+ * - 颜色从 CSS 变量读（--color-seal / --color-seal-deep / --color-line-strong），
+ *   主题自动跟随；
+ * - 尊重「减少动效」：降到约 8fps，柱子还在呼吸，只是不逐帧刷新。
  *
- * 采不到系统音频时（Linux 无回环、无声卡、权限被拒）只画一条基线，原因写进
- * canvas 的 title——波浪缺席是可理解的降级，不值得为它弹吐司。
+ * 采不到系统音频时（Linux 无回环、无声卡、权限被拒）只剩一排 2px 底座，原因
+ * 写进 canvas 的 title——频谱缺席是可理解的降级，不值得为它弹吐司。
  */
+
+/** 柱间缝（px）；柱宽由画布宽与柱数算出来 */
+const BAR_GAP = 2
+
+/** 下降重力：每帧回落的全高占比（涨即时、落缓慢，见 bars.applyGravity） */
+const BAR_FALL = 0.04
 
 /** 接连失败的重试上限：约半分钟都接不上就放弃（title 里留着原因），不再空转 */
 const MAX_RETRIES = 10
@@ -36,23 +43,29 @@ export default function SystemAudioWave() {
     let raf = 0
     let frames = 0
     let seal = '#a8432f'
+    let sealDeep = '#8c3524'
     let line = '#d0c6b1'
+    let grad: CanvasGradient | null = null
     let disposed = false
     let session: LoopbackSession | null = null
     let retryTimer = 0
     let attempts = 0
 
-    const buf = new Float32Array(FFT_SIZE)
-    const ys = new Float32Array(WAVE_POINTS)
-    // 上一帧画出去的形状：时间平滑的基准（shown 与 ys 分开，sampleWave 不能原地插值）
-    const shown = new Float32Array(WAVE_POINTS)
-    let hasPrev = false
-    const peak = { value: 0 }
+    // 频谱缓冲与频段表在会话接上时按 bins()/采样率现分配（会话会重连，跟着重算）
+    let freq: Uint8Array<ArrayBuffer> | null = null
+    let ranges: Array<[number, number]> | null = null
+    const target = new Float32Array(BAR_COUNT)
+    const shown = new Float32Array(BAR_COUNT)
 
     const readColors = () => {
       const cs = getComputedStyle(canvas)
       seal = cs.getPropertyValue('--color-seal').trim() || seal
+      sealDeep = cs.getPropertyValue('--color-seal-deep').trim() || sealDeep
       line = cs.getPropertyValue('--color-line-strong').trim() || line
+      // 柱身渐变：底部深、顶部强调色；换主题/换尺寸时重建
+      grad = ctx.createLinearGradient(0, height, 0, 0)
+      grad.addColorStop(0, sealDeep)
+      grad.addColorStop(1, seal)
     }
 
     const setTip = (text: string) => {
@@ -78,13 +91,16 @@ export default function SystemAudioWave() {
             return
           }
           session = s
+          freq = new Uint8Array(s.bins())
+          ranges = barRanges(s.sampleRate(), s.bins(), BAR_COUNT)
+          shown.fill(0)
           attempts = 0
-          peak.value = 0
-          hasPrev = false
           setTip(t('正在监听系统音频'))
         } catch (err) {
           if (disposed) return
           session = null
+          freq = null
+          ranges = null
           const msg = err instanceof Error ? err.message : String(err)
           setTip(t('系统音频拿不到：{0}', msg))
           console.warn('[sys-audio] 采集失败：', err)
@@ -98,41 +114,31 @@ export default function SystemAudioWave() {
 
     const draw = (): void => {
       ctx.clearRect(0, 0, width, height)
-      const cy = height / 2
+      const step = width / BAR_COUNT
+      const barW = Math.max(1, step - BAR_GAP)
 
-      // 基线：波浪再安静这一条也在——它同时是「没有信号」的形状
-      ctx.strokeStyle = line
-      ctx.globalAlpha = 0.55
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(0, cy)
-      ctx.lineTo(width, cy)
-      ctx.stroke()
+      // 底座：每柱常驻 2px，静音时也能看出这里是一排频谱柱
+      ctx.fillStyle = line
+      ctx.globalAlpha = 0.35
+      for (let i = 0; i < BAR_COUNT; i++) {
+        ctx.fillRect(i * step, height - 2, barW, 2)
+      }
 
-      if (session?.waveform(buf)) {
-        const gain = autoGain(peak, buf, 0.998)
-        sampleWave(buf, ys, hasPrev ? shown : null, 0.5)
-        shown.set(ys)
-        hasPrev = true
+      if (session && freq && ranges && session.spectrum(freq)) {
+        sampleBars(freq, ranges, target)
+        applyGravity(shown, target, BAR_FALL)
 
-        ctx.lineJoin = 'round'
-        ctx.lineCap = 'round'
-        ctx.strokeStyle = seal
-        ctx.beginPath()
-        for (let i = 0; i < WAVE_POINTS; i++) {
-          const x = (i / (WAVE_POINTS - 1)) * width
-          // 增益已把峰值抬到 92% 半高，这里直接乘上去；夹在 1px 内防削出画布
-          const y = Math.min(height - 1, Math.max(1, cy - ys[i] * gain * cy))
-          if (i === 0) ctx.moveTo(x, y)
-          else ctx.lineTo(x, y)
-        }
-        // 同一条路径描两遍：先垫一圈光晕，再压一条细主线
-        ctx.globalAlpha = 0.14
-        ctx.lineWidth = 5
-        ctx.stroke()
+        // 柱身：从底座往上长，圆角顶，底部深顶部亮的渐变
+        ctx.fillStyle = grad ?? seal
         ctx.globalAlpha = 0.9
-        ctx.lineWidth = 1.5
-        ctx.stroke()
+        for (let i = 0; i < BAR_COUNT; i++) {
+          const h = shown[i] * (height - 2)
+          if (h < 0.5) continue
+          const r = Math.min(barW / 2, h)
+          ctx.beginPath()
+          ctx.roundRect(i * step, height - 2 - h, barW, h, [r, r, 0, 0])
+          ctx.fill()
+        }
       }
       ctx.globalAlpha = 1
     }
