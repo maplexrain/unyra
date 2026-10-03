@@ -9,8 +9,17 @@
  * applyGravity（柱身快涨慢落 + 峰值帽更慢地飘）→ addBreath（静音呼吸涟漪）。
  */
 
-/** 柱数：200px 宽、2px 缝时柱宽约 5px，疏密正好（再密就挤成细缝条了） */
-export const BAR_COUNT = 28
+/** 目标柱距（柱宽 + 间隙，px）：宽度来了先按它数出柱数，余量再均摊回每根柱 */
+export const BAR_PITCH = 7
+
+/** 柱数的上下限：再窄也不少于 8 根（不然不成谱），再宽也不多于 96 根（没有意义） */
+const MIN_BARS = 8
+const MAX_BARS = 96
+
+/** 柱数按宽度现算：264px 的侧栏底带 → 37 根；侧栏拖宽拖窄都跟着走 */
+export function barCount(width: number): number {
+  return Math.max(MIN_BARS, Math.min(MAX_BARS, Math.floor(width / BAR_PITCH)))
+}
 
 /** 频段整形：字节频谱本身是 dB 刻度，再压一道 gamma，柱高分布更好看 */
 export const GAMMA = 1.4
