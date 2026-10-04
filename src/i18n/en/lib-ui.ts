@@ -87,6 +87,10 @@ const dict: Record<string, string> = {
   '正在跑…': 'Running...',
   '已复制': 'Copied',
   '复制失败': 'Copy failed',
+  '移动失败': 'Move failed',
+  '不能把目录移进它自己里面': "A folder can't be moved into itself",
+  '已复制到 {0}': 'Copied to {0}',
+  '已移动到 {0}': 'Moved to {0}',
   '这段代码要联网': 'This code needs the network',
   '它想访问：\n{0}\n\n同意之后，本次运行里后续的联网请求都会一并放行。\n代码是 AI 转译出来的，请确认上面这个地址你认识。':
     'It wants to reach:\n{0}\n\nOnce allowed, further network requests in this run are let through as well.\nThe code was translated by AI; please make sure you recognize the address above.',

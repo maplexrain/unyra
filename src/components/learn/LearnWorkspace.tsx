@@ -53,6 +53,7 @@ import {
   renameFavoriteGroup,
   renameWebFavorite,
   setFavoriteGroup,
+  createFavoriteGroup,
   tabRefOfFavorite,
   toggleFavorite as toggleInFavorites,
 } from '../../learn/favorites'
@@ -123,7 +124,7 @@ import {
 import { nodePathOf } from '../../learn/paths'
 import { nodeDocPath } from '../../learn/files'
 import { createNodeDocImageResolver } from '../../lib/docImages'
-import { revealLocalFile, revealPath, revealUserPath, userAbsPath, refreshStorageRoot, listUserDir, mkdirUserPath, moveUserPath, writeUserText } from '../../lib/storage'
+import { revealLocalFile, revealPath, revealUserPath, userAbsPath, refreshStorageRoot, listUserDir, mkdirUserPath, moveUserPath, copyUserPath, writeUserText } from '../../lib/storage'
 import { wsAllocateName, wsNameOk } from '../../learn/workspace'
 import { notifyWsChanged } from './explorer/wsChanges'
 import { setStaticView } from '../../lib/staticView'
@@ -155,6 +156,7 @@ import { focusAgentInput } from '../../lib/agentFocus'
 import { moveTabMark, resetTabMark } from '../../lib/tabMark'
 import { setChipOpener, type ChipPayload } from '../../lib/docChip'
 import { tabRefFromChip } from '../../learn/chipRef'
+import { CHIP_MIME, parseChipJson } from '../../lib/chipSyntax'
 import TabBar from './TabBar'
 import WebTabLayer, { type WebTab } from './web/WebTabLayer'
 import { focusWebAddress } from './web/addressFocus'
@@ -987,28 +989,51 @@ export default function LearnWorkspace({
   )
 
   /*
-   * 收藏的分组与改名（网页收藏的管理，见 learn/favorites 的分组段）。
-   * 四个都是「对收藏清单的一次纯函数变换 + set」：组名长在成员身上、不单独登记，
-   * 拆组 = 成员的 group 字段摘掉，收藏本身一条不丢。
+   * 收藏的分组与改名（见 learn/favorites 的分组段）。组名登记在 favGroups、同时长在
+   * 成员身上：移入一个没登记过的组名时顺手登记（拖进来的「新建分组」也走这条路），
+   * 删组 = 登记表摘掉 + 成员的 group 摘掉（收藏一条不丢）。
    */
   const setFavGroup = useCallback(
     (ref: FavoriteRef, group: string | null) => {
       const s = getLatest()
-      set({ ...s, favorites: setFavoriteGroup(s.favorites ?? [], favoriteKey(ref), group) })
+      const next = setFavoriteGroup(s.favorites ?? [], favoriteKey(ref), group)
+      const groups =
+        group && !(s.favGroups ?? []).includes(group.trim())
+          ? createFavoriteGroup(s.favGroups ?? [], group)
+          : s.favGroups ?? []
+      set({ ...s, favorites: next, favGroups: groups })
+    },
+    [getLatest, set],
+  )
+  const createFavGroup = useCallback(
+    (name: string) => {
+      const s = getLatest()
+      set({ ...s, favGroups: createFavoriteGroup(s.favGroups ?? [], name) })
     },
     [getLatest, set],
   )
   const renameFavGroup = useCallback(
     (from: string, to: string) => {
+      const next = to.trim().slice(0, 64)
+      if (!next || next === from) return
       const s = getLatest()
-      set({ ...s, favorites: renameFavoriteGroup(s.favorites ?? [], from, to) })
+      set({
+        ...s,
+        favGroups: (s.favGroups ?? []).map((g) => (g === from ? next : g)),
+        // 组名同时也是成员身上的标记：成员一起换
+        favorites: renameFavoriteGroup(s.favorites ?? [], from, next),
+      })
     },
     [getLatest, set],
   )
   const removeFavGroup = useCallback(
     (group: string) => {
       const s = getLatest()
-      set({ ...s, favorites: removeFavoriteGroup(s.favorites ?? [], group) })
+      set({
+        ...s,
+        favGroups: (s.favGroups ?? []).filter((g) => g !== group),
+        favorites: removeFavoriteGroup(s.favorites ?? [], group),
+      })
     },
     [getLatest, set],
   )
@@ -1694,6 +1719,26 @@ export default function LearnWorkspace({
         notifyWsChanged()
       })()
     },
+    /** 拖拽移动 / 复制（Ctrl）：落到某个目录行上，把文件或整个目录搬（拷）过去。
+        撞名自动避开（「新建文件 2.md」那套习惯）；目录移进它自己当场拒绝。 */
+    transfer: (fromRel: string, toDirRel: string, copy: boolean) => {
+      if (fromRel === toDirRel || toDirRel.startsWith(fromRel + '/')) {
+        onToast(t('不能把目录移进它自己里面'))
+        return
+      }
+      void (async () => {
+        const name = localFileNameOf(fromRel)
+        const taken = new Set((await listUserDir(toDirRel)).map((e) => e.name))
+        const toRel = toDirRel + '/' + wsAllocateName(name, taken)
+        const done = copy ? await copyUserPath(fromRel, toRel) : await moveUserPath(fromRel, toRel)
+        if (!done) {
+          onToast(t(copy ? '复制失败' : '移动失败'))
+          return
+        }
+        notifyWsChanged()
+        onToast(copy ? t('已复制到 {0}', toDirRel.split('/').pop() ?? '') : t('已移动到 {0}', toDirRel.split('/').pop() ?? ''))
+      })()
+    },
   }
   const goalSubtreeSize = (rootId: string): number => {
     const goal = getLatest().goals.find((g) => g.rootNodeId === rootId)
@@ -1849,6 +1894,19 @@ export default function LearnWorkspace({
    * 写成普通函数而不是组件：它要用到组件里几十个闭包（保存、注解、导出、工作流…），
    * 拆成组件就得把这几十样逐个透传一遍，而它本来就只在这一次渲染里用（每格一次）。
    */
+  /**
+   * 把一枚引用开进指定分组。页签栏（TabBar 的 onDropChip）与正文区任意位置的 chip
+   * 落点共用这一条路——拖到文档区直接打开，不必再瞄准那条窄页签栏。
+   */
+  const openChipInGroup = (groupId: string) => (p: ChipPayload) => {
+    const s = getLatest()
+    const ref = tabRefFromChip(s, p)
+    if (!ref) return
+    const nodeId = tabNodeId(ref)
+    const base = nodeId ? retargetNode(s, nodeId) : s
+    set({ ...base, docArea: openInGroup(base.docArea, groupId, ref, Date.now()) })
+  }
+
   const renderGroup = (groupId: string) => {
     const g = paneInfo(store, docs, groupId, examTabTitle)
     const gTab = g.tab
@@ -1946,14 +2004,7 @@ export default function LearnWorkspace({
                 favoriteOf={isTabFavorite}
                 onToggleFavorite={toggleTabFavorite}
                 // 资源管理器/外部拖进来的引用落在这一格的页签栏上：还原成页签开在这一格里
-                onDropChip={(p) => {
-                  const s = getLatest()
-                  const ref = tabRefFromChip(s, p)
-                  if (!ref) return
-                  const nodeId = tabNodeId(ref)
-                  const base = nodeId ? retargetNode(s, nodeId) : s
-                  set({ ...base, docArea: openInGroup(base.docArea, groupId, ref, Date.now()) })
-                }}
+                onDropChip={openChipInGroup(groupId)}
                 // 棱形只在焦点格的栏上跟着右键走（见 lib/tabMark）
                 focused={isFocused}
                 // 栏上空白处的右键菜单要开新网页页签（见 TabBar 的 BarMenu）
@@ -1989,6 +2040,21 @@ export default function LearnWorkspace({
           <div
             ref={isFocused ? docBox : undefined}
             {...boxProps}
+            onDragOver={(e) => {
+              // 整个正文区都是 chip 的落点：资源管理器 / 收藏里拖来的引用，拖到这里
+              // 直接开成本格的页签（不必再瞄准上面那条窄页签栏）。系统文件拖入
+              // （dataTransfer.files）走 window 级的监听，这里只认 chip。
+              if (!e.dataTransfer.types.includes(CHIP_MIME)) return
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'copy'
+            }}
+            onDrop={(e) => {
+              const raw = e.dataTransfer.getData(CHIP_MIME)
+              if (!raw) return
+              e.preventDefault()
+              const p = parseChipJson(raw)
+              if (p) openChipInGroup(groupId)(p)
+            }}
             onDoubleClick={(e) => {
               /*
                 快速双击 = 切换纯净阅读（与右上角那颗按钮、F11 同一件事）。
@@ -2045,6 +2111,8 @@ export default function LearnWorkspace({
                 saveError={docSaveError}
                 onMissing={() => closeTab(groupId, gTab.id, 'self', { confirm: false })}
                 outlineSlot={getOutlineSlot(gTab.id)}
+                // 空 md 默认进编辑（空预览是一片白）：读完内容发现是空的，从预览切过来
+                onNeedEdit={() => setTabView(gTab.id, 'source')}
               />
             ) : gTab?.ref.kind === 'exam' ? (
               /*
@@ -2090,6 +2158,7 @@ export default function LearnWorkspace({
                   scale={docScale}
                   scrollTop={store.docScroll[gTabId + SRC_SCROLL_SUFFIX]}
                   onScrollTop={(top) => rememberScroll(gTabId + SRC_SCROLL_SUFFIX, top)}
+                  ext=".html"
                 />
               ) : (
                 <SuperDocView
@@ -2117,6 +2186,7 @@ export default function LearnWorkspace({
                   state={docSaving ? 'saving' : g.draft === undefined ? 'saved' : 'dirty'}
                   label={g.title}
                   scale={docScale}
+                  ext=".md"
                   // 编辑位置与阅读位置各记各的：同一份文档在源码里改到一半、
                   // 切到预览又读到别处，共用一格会互相拽（见 learn/types 的 DocScroll）
                   scrollTop={store.docScroll[gTabId + SRC_SCROLL_SUFFIX]}
@@ -2383,6 +2453,7 @@ export default function LearnWorkspace({
         onRenameFavoriteGroup={renameFavGroup}
         onRemoveFavoriteGroup={removeFavGroup}
         onRenameFavoriteTitle={renameFavTitle}
+        onCreateFavoriteGroup={createFavGroup}
         favoriteTitleOf={favoriteTitleOf}
         /*
          * 侧栏里那些文档行的动作。每一个都走与别处**同一个入口**：

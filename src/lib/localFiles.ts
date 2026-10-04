@@ -28,6 +28,24 @@ export async function readLocalFile(path: string): Promise<LocalReadResult> {
   }
 }
 
+/** 读本地媒体文件的结果（多媒体预览页签用，见 LocalDoc 的 media 视图） */
+export interface LocalMediaRead {
+  ok: boolean
+  mime?: string
+  dataUrl?: string
+  error?: string
+}
+
+/** 读一个外部媒体文件（图片 / 音频 / 视频）：回 mime 与 dataUrl，主进程限 200MB */
+export async function readLocalMediaFile(path: string): Promise<LocalMediaRead> {
+  try {
+    const r = await native().local.readMedia(path)
+    return r.ok ? { ok: true, mime: r.mime, dataUrl: r.dataUrl } : { ok: false, error: r.error }
+  } catch {
+    return { ok: false, error: t('读不到这个文件：应用没有跑在 Electron 里') }
+  }
+}
+
 /**
  * 读外部本地文档旁边的一张图（绝对路径）：图片回 data URL，读不到 / 不是图片回 null。
  *

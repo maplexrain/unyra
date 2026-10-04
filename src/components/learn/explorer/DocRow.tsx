@@ -36,6 +36,7 @@ export function DocRow({
   open = false,
   nested = false,
   dragChip,
+  onDragExtra,
 }: {
   /** 文档类型：决定图标与颜色（见 docTypes） */
   kind?: 'teach' | 'outline' | 'note' | 'super' | 'exam' | 'local'
@@ -69,6 +70,8 @@ export function DocRow({
    * 拖到对话输入框变成一枚引用。不给就是这一行不参与拖拽（比如就地改名行）。
    */
   dragChip?: () => ChipPayload | null
+  /** 拖动开始时的附加数据（工作区行用它再塞一份「移动 / 复制」的 MIME，见 learn/workspace） */
+  onDragExtra?: (e: React.DragEvent<HTMLDivElement>) => void
 }) {
   return (
     /*
@@ -85,7 +88,8 @@ export function DocRow({
         const p = dragChip?.()
         if (!p) return
         e.dataTransfer.setData('application/x-moji-chip', chipJson(p))
-        e.dataTransfer.effectAllowed = 'copy'
+        e.dataTransfer.effectAllowed = 'copyMove'
+        onDragExtra?.(e)
       }}
       onClick={onClick}
       onKeyDown={(e) => {

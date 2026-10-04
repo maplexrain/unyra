@@ -90,12 +90,16 @@ describe('默认视图', () => {
     expect(viewOf(tab(note('n1', '笔记')))).toBe('preview')
   })
 
-  it('本地文件按扩展名：md / html 能预览，别的落到源码', () => {
+  it('本地文件按扩展名：md 默认预览，媒体进媒体预览，其余文本一律编辑', () => {
     expect(viewOf(tab(local('C:/a/x.md')))).toBe('preview')
     expect(viewOf(tab(local('C:/a/x.markdown')))).toBe('preview')
-    expect(viewOf(tab(local('C:/a/x.HTML')))).toBe('preview')
+    // 口径改了：除 markdown 外的文本（含 html）默认都是编辑模式
+    expect(viewOf(tab(local('C:/a/x.HTML')))).toBe('source')
     // txt 没有渲染器：硬给一个「预览」只会是一片空白
     expect(viewOf(tab(local('C:/a/x.txt')))).toBe('source')
+    // 图片 / 音频 / 视频：没有「源码」可言，直接进媒体预览
+    expect(viewOf(tab(local('C:/a/x.png')))).toBe('media')
+    expect(viewOf(tab(local('C:/a/x.mp4')))).toBe('media')
   })
 
   it('用户手动选过的视图优先，且只作用于那一个页签', () => {

@@ -186,25 +186,28 @@ export default function DocFloat({
           （「这份文档现在怎么看」只有两种），摆两颗按钮等于把一对互斥状态画成两个动作，
           而真正会点的永远只有一颗——切到另一边。
           图标显示**现在在哪一边**，title 说明点下去会到哪一边。
+          媒体预览（图片 / 音频 / 视频）没有源码可看：整颗不出现。
         */}
-        <button
-          type="button"
-          title={
-            view === 'source'
-              ? previewable
-                ? t('预览：看渲染后的样子（现在是源码）')
-                : (previewHint ?? t('这份文件不能预览（只支持 Markdown 与 HTML），只能看源码'))
-              : t('源码：直接编辑 Markdown / HTML（现在是预览）')
-          }
-          aria-pressed={view === 'preview'}
-          disabled={view === 'source' && !previewable}
-          onClick={() => onSwitchView(view === 'source' ? 'preview' : 'source')}
-          className={
-            VIEW_BTN + ' border-transparent text-ink-soft hover:bg-line/50 hover:text-ink'
-          }
-        >
-          {view === 'source' ? <SquareCode size={15} /> : <Eye size={15} />}
-        </button>
+        {view !== 'media' && (
+          <button
+            type="button"
+            title={
+              view === 'source'
+                ? previewable
+                  ? t('预览：看渲染后的样子（现在是源码）')
+                  : (previewHint ?? t('这份文件不能预览（只支持 Markdown 与 HTML），只能看源码'))
+                : t('源码：直接编辑 Markdown / HTML（现在是预览）')
+            }
+            aria-pressed={view === 'preview'}
+            disabled={view === 'source' && !previewable}
+            onClick={() => onSwitchView(view === 'source' ? 'preview' : 'source')}
+            className={
+              VIEW_BTN + ' border-transparent text-ink-soft hover:bg-line/50 hover:text-ink'
+            }
+          >
+            {view === 'source' ? <SquareCode size={15} /> : <Eye size={15} />}
+          </button>
+        )}
 
         {/*
           纯净阅读：把两侧栏、页签栏与顶栏一起收掉，只留正文（F11 / Esc 是同一件事，

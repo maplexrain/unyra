@@ -21,7 +21,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FileText, Folder } from 'lucide-react'
 import type { KnowledgeNode, LearnStore } from '../../../learn/types'
 import { listUserDir } from '../../../lib/storage'
-import { wsJoin, wsRelOf } from '../../../learn/workspace'
+import { WS_MOVE_MIME, wsJoin, wsRelOf } from '../../../learn/workspace'
 import { DocFolderIcon } from '../docTypes'
 import { Collapse } from './sections'
 import { DocRow } from './DocRow'
@@ -103,6 +103,7 @@ function WsDir({
   ws,
   onOpenMenu,
   onOpen,
+  onTransfer,
 }: {
   node: KnowledgeNode
   /** 节点工作区的相对路径（docs/…/workspace/…）；往下各层用 segments 拼 */
@@ -116,9 +117,13 @@ function WsDir({
   onOpenMenu: (x: number, y: number, target: MenuTarget) => void
   /** 工作区文件在页签里打开（见 LearnWorkspace 的 openWsFile） */
   onOpen: (rel: string) => void
+  /** 拖拽移动 / 复制：把 fromRel 落到本目录（Ctrl = 复制） */
+  onTransfer: (fromRel: string, toDirRel: string, copy: boolean) => void
 }) {
   const [open, setOpen] = useState(false)
   const [entries, setEntries] = useState<WsEntry[] | null>(null)
+  /** 拖着工作区条目悬在本目录行上（高亮这一行，告诉用户「松手就放这里」） */
+  const [dropHover, setDropHover] = useState(false)
   const full = segments.length ? (wsJoin(base, segments) ?? base) : base
   // 改自己的名字要落回父目录：父目录的路径从 base + 去掉最后一段推出来
   const parentFull = segments.length > 1 ? (wsJoin(base, segments.slice(0, -1)) ?? base) : base
@@ -145,6 +150,36 @@ function WsDir({
     ws.rename(rel, parent + '/' + name)
   }
 
+  /** 本目录行作为**拖放落点**的三件事：拖过亮起来、离开熄掉、松手交给 ws.transfer */
+  const dropHandlers = {
+    onDragOver: (e: React.DragEvent<HTMLDivElement>) => {
+      if (!e.dataTransfer.types.includes(WS_MOVE_MIME)) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move'
+      setDropHover(true)
+    },
+    onDragLeave: (e: React.DragEvent<HTMLDivElement>) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropHover(false)
+    },
+    onDrop: (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setDropHover(false)
+      const raw = e.dataTransfer.getData(WS_MOVE_MIME)
+      if (!raw) return
+      try {
+        const { rel } = JSON.parse(raw) as { rel?: string }
+        if (rel) onTransfer(rel, full, e.ctrlKey)
+      } catch {
+        /* 坏数据就当没拖 */
+      }
+    },
+  }
+  /** 拖出去的额外一份（WS_MOVE_MIME）：文件与子目录都能被移动 / 复制，根行不行 */
+  const dragExtra = (rel: string) => (e: React.DragEvent<HTMLDivElement>) => {
+    e.dataTransfer.setData(WS_MOVE_MIME, JSON.stringify({ rel }))
+  }
+
   return (
     <div>
       {ws.renaming === full && segments.length > 0 ? (
@@ -155,20 +190,23 @@ function WsDir({
           onCancel={ws.endRename}
         />
       ) : (
-        <DocRow
-          icon={<DocFolderIcon open={open} />}
-          label={label}
-          hint={hint}
-          badge={entries && entries.length > 0 ? countBadge(entries.length) : undefined}
-          expandable
-          open={open}
-          onClick={() => void toggle()}
-          // 目录也能拖成引用：点击跳到所属节点（ws 目录没有页签形态，见 learn/chipRef）
-          dragChip={segments.length === 0 ? undefined : () => ({ type: 'ws', path: full, nodeId: node.id, title: label, dir: true })}
-          onMenu={(x, y) =>
-            onOpenMenu(x, y, { kind: 'ws', node, rel: full, dir: true, root: segments.length === 0 })
-          }
-        />
+        <div {...dropHandlers} className={'rounded ' + (dropHover ? 'ring-1 ring-seal/60 bg-seal/10' : '')}>
+          <DocRow
+            icon={<DocFolderIcon open={open} />}
+            label={label}
+            hint={hint}
+            badge={entries && entries.length > 0 ? countBadge(entries.length) : undefined}
+            expandable
+            open={open}
+            onClick={() => void toggle()}
+            // 目录也能拖成引用：点击跳到所属节点（ws 目录没有页签形态，见 learn/chipRef）
+            dragChip={segments.length === 0 ? undefined : () => ({ type: 'ws', path: full, nodeId: node.id, title: label, dir: true })}
+            onDragExtra={segments.length === 0 ? undefined : dragExtra(full)}
+            onMenu={(x, y) =>
+              onOpenMenu(x, y, { kind: 'ws', node, rel: full, dir: true, root: segments.length === 0 })
+            }
+          />
+        </div>
       )}
       <Collapse open={open}>
         <div className="ml-3 border-l border-line pl-1.5">
@@ -191,6 +229,7 @@ function WsDir({
                   ws={ws}
                   onOpenMenu={onOpenMenu}
                   onOpen={onOpen}
+                  onTransfer={onTransfer}
                 />
               )
             }
@@ -215,9 +254,10 @@ function WsDir({
                   </span>
                 }
                 label={e.name}
-                hint={t('工作区文件「{0}」（点击在页签打开；右键：改名 / 定位 / 拖进对话或文档区）', e.name)}
+                hint={t('工作区文件「{0}」（点击在页签打开；可拖拽：到目录行移动 / Ctrl 复制，到文档区或对话打开）', e.name)}
                 onClick={() => onOpen(childRel)}
                 dragChip={() => ({ type: 'ws', path: childRel, nodeId: node.id, title: e.name })}
+                onDragExtra={dragExtra(childRel)}
                 onMenu={(x, y) => onOpenMenu(x, y, { kind: 'ws', node, rel: childRel, dir: false })}
               />
             )
@@ -235,6 +275,7 @@ export function WorkspaceRow({
   ws,
   onOpenMenu,
   onOpen,
+  onTransfer,
 }: {
   store: LearnStore
   node: KnowledgeNode
@@ -242,6 +283,8 @@ export function WorkspaceRow({
   onOpenMenu: (x: number, y: number, target: MenuTarget) => void
   /** 工作区文件在页签里打开（见 LearnWorkspace 的 openWsFile） */
   onOpen: (rel: string) => void
+  /** 拖拽移动 / 复制（真实 IO 在宿主，见 WsActions.transfer） */
+  onTransfer: (fromRel: string, toDirRel: string, copy: boolean) => void
 }) {
   const base = wsRelOf(store, node.id)
   // 没进任何目标目录的节点（理论上不该有）：不画，免得点开是一场空
@@ -257,6 +300,7 @@ export function WorkspaceRow({
         ws={ws}
         onOpenMenu={onOpenMenu}
         onOpen={onOpen}
+        onTransfer={onTransfer}
       />
     </div>
   )

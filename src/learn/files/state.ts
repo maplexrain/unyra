@@ -31,6 +31,8 @@ export interface LearnState {
   localFiles?: LocalFile[]
   /** 收藏夹：文档与网页（见 learn/favorites） */
   favorites?: FavoriteItem[]
+  /** 收藏分组的登记表（空组也要能存在；见 learn/favorites 的分组段） */
+  favGroups?: string[]
   /**
    * 全局工作流（跨目标、跟着用户走；目标级的在各自目录的 workflow.json）。
    * efforts 是每条工作流的思考档位配置（键 = id，内置与登记通吃）——同样全局一份，
@@ -65,6 +67,8 @@ export function buildState(store: LearnStore): Record<string, unknown> {
     localFiles: store.localFiles,
     // 收藏夹只在真有东西时写：空清单只会让人以为收藏过什么（与 workflows 同一条纪律）
     ...(store.favorites?.length ? { favorites: store.favorites } : {}),
+    // 分组登记表只在真有组时写（与 favorites 同一条纪律）
+    ...(store.favGroups?.length ? { favGroups: store.favGroups } : {}),
     // 全局工作流没有就不写：空清单只会让人以为登记过东西（与 mind.json / method.json 同一条纪律）。
     // 档位配置（efforts）同理：一张空表不如没有——「这个字段存在」本身就是一种声明
     ...(store.workflows?.global?.length || (store.workflows?.efforts && Object.keys(store.workflows.efforts).length)

@@ -158,6 +158,29 @@ export async function movePath(fromRel: unknown, toRel: unknown): Promise<Result
   }
 }
 
+/**
+ * 复制文件或整个目录（工作区拖拽的 Ctrl 分支，见 LearnWorkspace 的 wsActions.transfer）。
+ * 目标已存在直接拒绝（调用方会先撞名避开，真撞上了说明有并发，宁可失败也不覆盖）；
+ * 目录用 fsp.cp 递归整份拷。
+ */
+export async function copyPath(fromRel: unknown, toRel: unknown): Promise<Result> {
+  const m = moveTargets(fromRel, toRel)
+  if ('error' in m) return { ok: false, error: m.error }
+  if (m.noop) return { ok: false, error: tr('源与目标是同一个文件') }
+  try {
+    const taken = await fsp
+      .access(m.to)
+      .then(() => true)
+      .catch(() => false)
+    if (taken) return { ok: false, error: tr('目标已存在') }
+    await fsp.mkdir(path.dirname(m.to), { recursive: true })
+    await fsp.cp(m.from, m.to, { recursive: true, errorOnExist: true, force: false })
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: errText(err) }
+  }
+}
+
 export async function removePath(rel: unknown): Promise<Result> {
   const t = target(rel)
   if ('error' in t) return { ok: false, error: t.error }

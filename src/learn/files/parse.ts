@@ -199,6 +199,7 @@ export function parseDocs(files: Map<string, string>, state: unknown): LearnStor
     drafts: s.drafts ?? null,
     localFiles: s.localFiles ?? null,
     favorites: s.favorites ?? null,
+    favGroups: s.favGroups ?? null,
     /*
      * 阅读与打卡现在按目标存在各自目录里（reading.json / checkin.json，见上面）。
      * state.json 里那两个老字段**故意不读**：这次改口径不迁移数据，旧的那一份直接丢掉。

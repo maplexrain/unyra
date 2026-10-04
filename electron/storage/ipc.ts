@@ -6,6 +6,7 @@ import { ipcMain } from 'electron'
 import { pickAttach, readAttach } from './attach'
 import { readBinary, readImage, writeBinary, writeImage } from './binary'
 import {
+  copyPath,
   listDir,
   mkdirPath,
   movePath,
@@ -19,7 +20,7 @@ import {
   writeYaml,
 } from './files'
 import { flushSync } from './flush'
-import { pickLocal, readLocal, revealLocal, setLocalWatchList, writeLocal } from './local'
+import { pickLocal, readLocal, readLocalMedia, revealLocal, setLocalWatchList, writeLocal } from './local'
 import { closeBehavior, currentRoot, defaultRoot, loadGlobal, pickRoot, setCloseBehavior, setRoot } from './settings'
 
 /* ---------- IPC 注册 ---------- */
@@ -51,6 +52,7 @@ export function registerStorageIpc(): void {
   ipcMain.handle('storage:readBinary', (_e, rel: unknown) => readBinary(rel))
   // 改名时把整个目录挪走，避免旧目录的递归删除带走资源库里的二进制（见 movePath）
   ipcMain.handle('storage:move', (_e, from: unknown, to: unknown) => movePath(from, to))
+  ipcMain.handle('storage:copy', (_e, from: unknown, to: unknown) => copyPath(from, to))
   ipcMain.handle('storage:remove', (_e, rel: unknown) => removePath(rel))
   // 工作区的新建目录（真实 mkdir，见 mkdirPath）
   ipcMain.handle('storage:mkdir', (_e, rel: unknown) => mkdirPath(rel))
@@ -60,6 +62,7 @@ export function registerStorageIpc(): void {
 
   // 外部文件：拖进来浏览的那些（绝对路径，见上面的说明）
   ipcMain.handle('local:read', (_e, p: unknown) => readLocal(p))
+  ipcMain.handle('local:readMedia', (_e, p: unknown) => readLocalMedia(p))
   ipcMain.handle('local:write', (_e, p: unknown, content: unknown) => writeLocal(p, content))
   ipcMain.handle('local:reveal', (_e, p: unknown) => revealLocal(p))
   ipcMain.handle('local:pick', () => pickLocal())

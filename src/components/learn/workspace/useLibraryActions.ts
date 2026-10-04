@@ -13,7 +13,7 @@ import { createNote, deleteNote, renameNoteFile } from '../../../learn/graph'
 import { removeSuperDoc } from '../../../learn/superdocs'
 import { captureLocalRemove, captureNoteDelete, captureSuperDelete, type ExplorerUndo } from '../../../learn/undo'
 import { nodeDocRel } from '../../../learn/store'
-import { addLocalFile, isSupportedLocalFile, removeLocalFile } from '../../../learn/localfiles'
+import { addLocalFile, removeLocalFile } from '../../../learn/localfiles'
 import { openInGroup } from '../../../learn/groups'
 import { revealPath } from '../../../lib/storage'
 import { droppedFilePath, pickLocalFiles } from '../../../lib/localFiles'
@@ -114,19 +114,15 @@ export function useLibraryActions({ getLatest, set, flush, onToast, openTab, pus
   /**
    * 把若干个外部文件收进「本地文件」列表并打开它们。
    *
-   * 不支持的类型在这里就被挡掉（见 learn/localfiles 的 isSupportedLocalFile）：
-   * 让它进列表再在打开时报错，等于把同一个问题说两遍。
-   * 一次拖进来好几个时全部开成页签，但只有第一个是激活的——后面的排在那儿，
-   * 想看哪一个点一下就行，不必重新去文件管理器里找。
+   * 现在来者不拒（见 learn/localfiles）：文本开编辑器、媒体开预览页签，路径一律记进
+   * 「最近打开」。一次拖进来好几个时全部开成页签，但只有第一个是激活的——后面的
+   * 排在那儿，想看哪一个点一下就行，不必重新去文件管理器里找。
    */
   const addLocalFiles = useCallback(
     (paths: string[]) => {
       const s = getLatest()
-      const usable = paths.filter((p) => p && isSupportedLocalFile(p))
-      if (!usable.length) {
-        onToast(t('只能浏览 txt / markdown / html 文件'))
-        return
-      }
+      const usable = paths.filter(Boolean)
+      if (!usable.length) return
       let next = s
       let at = Date.now()
       let docArea = s.docArea
@@ -138,7 +134,7 @@ export function useLibraryActions({ getLatest, set, flush, onToast, openTab, pus
       const first: TabRef = { kind: 'local', path: usable[0] }
       set({ ...next, docArea: openInGroup(docArea, docArea.focus, first, at) })
     },
-    [getLatest, set, onToast],
+    [getLatest, set],
   )
 
   /**
@@ -187,8 +183,7 @@ export function useLibraryActions({ getLatest, set, flush, onToast, openTab, pus
     const usable = (e: DragEvent): File[] => {
       const list = e.dataTransfer?.files
       if (!list?.length) return []
-      const files = [...list]
-      return files.some((f) => isSupportedLocalFile(f.name)) ? files : []
+      return [...list]
     }
     const onOver = (e: DragEvent) => {
       if (!usable(e).length) return

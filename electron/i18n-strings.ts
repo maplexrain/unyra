@@ -105,6 +105,9 @@ const dict: Record<string, string> = {
 
   /* ---------- storage/local.ts ---------- */
   '这个文件类型不能在这里打开（只支持 md / txt / html）': "This file type can't be opened here (only md / txt / html)",
+  '这个文件类型不能在这里编辑（文本类：md / txt / 代码等；媒体文件会自动进预览）': "This file type can't be edited here (text files like md / txt / code; media files open in preview automatically)",
+  '这个文件类型不能在这里预览': "This file type can't be previewed here",
+  '文件太大（超过 200MB），用系统播放器打开吧': 'The file is too large (over 200 MB); open it with your system player instead',
   '文件不在了（可能已被移动或删除）': 'The file is gone (it may have been moved or deleted)',
   '读取失败': 'Failed to read',
   '这个文件类型不能在这里保存': "This file type can't be saved here",

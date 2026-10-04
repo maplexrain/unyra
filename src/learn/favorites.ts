@@ -1,3 +1,4 @@
+import type { ChipPayload } from '../lib/chipSyntax'
 import type { FavoriteItem, FavoriteRef, TabRef } from './types'
 import { fileNameOf, newWebKey } from './tabs'
 import { t } from '../i18n'
@@ -97,6 +98,46 @@ export function renameWebFavorite(list: FavoriteItem[], key: string, title: stri
   const name = title.trim().slice(0, 200)
   if (!name) return list
   return list.map((f) => (favoriteKey(f) === key && f.kind === 'web' ? { ...f, title: name } : f))
+}
+
+/**
+ * 新建一个分组（登记表追加一条）：组名长在成员身上、这里登记的是「组本身」，
+ * 空组也由此能存在。已存在的名字原样返回（不重复登记、不报错）。
+ */
+export function createFavoriteGroup(groups: string[], name: string): string[] {
+  const clean = name.trim().slice(0, 64)
+  if (!clean || groups.includes(clean)) return groups
+  return [...groups, clean]
+}
+
+/** 收藏 → chip 引用（拖到对话输入框 / 文档区的 payload，见 lib/chipSyntax）：认不出的给 null */
+export function chipPayloadOfFavorite(ref: FavoriteRef): ChipPayload | null {
+  switch (ref.kind) {
+    case 'teach':
+      return { type: 'doc', nodeId: ref.nodeId }
+    case 'note':
+      return { type: 'note', nodeId: ref.nodeId, note: ref.note }
+    case 'super':
+      return { type: 'super', nodeId: ref.nodeId, name: ref.name }
+    case 'exam':
+      // 收藏里只有「某一次的副本」：与页签同一口径，落 attempt 型（opener 开副本页签）
+      return { type: 'attempt', nodeId: ref.nodeId, examId: ref.examId, attemptId: ref.attemptId }
+    case 'outline':
+      return { type: 'outline', nodeId: ref.nodeId }
+    case 'local':
+      return { type: 'local', path: ref.path, title: fileNameOf(ref.path) }
+    case 'web':
+      return { type: 'web', url: ref.url, title: ref.title ?? hostOf(ref.url) }
+  }
+}
+
+/** 网址的 host；解析不开原样返回（chip 的 title 只是展示信息） */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
 }
 
 /**
