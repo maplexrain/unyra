@@ -49,12 +49,43 @@ export async function readText(rel: unknown): Promise<ReadResult> {
   }
 }
 
+/**
+ * 原子写：先落同目录的临时文件、再 rename 到位。
+ *
+ * 直接 writeFile 覆盖旧文件的话，进程死在写的半路上（强杀、断电、崩溃）就留下半个
+ * state.json——下次启动读不出来，整个状态被按空处理：教学文档还能从 docs/ 里解析回来，
+ * **只存在 state.json 里的东西（收藏、对话、页签布局）就全灭了**，再一保存连盘上的旧数据
+ * 一起覆盖掉。rename 在同一目录内是同卷的，本身就是原子操作。
+ */
+async function atomicWrite(full: string, content: string): Promise<void> {
+  const tmp = full + '.tmp'
+  await fsp.writeFile(tmp, content, 'utf-8')
+  try {
+    await fsp.rename(tmp, full)
+  } catch (err) {
+    // 个别文件系统 / 杀软占用会让 rename 对已存在目标失败：退回「先删再改名」，
+    // 中间丢的窗口只有「已经写好的临时文件还等着就位」的那一瞬间
+    if (!isMissing(err)) {
+      try {
+        await fsp.rm(full, { force: true })
+        await fsp.rename(tmp, full)
+        return
+      } catch (err2) {
+        await fsp.rm(tmp, { force: true }).catch(() => {})
+        throw err2
+      }
+    }
+    await fsp.rm(tmp, { force: true }).catch(() => {})
+    throw err
+  }
+}
+
 export async function writeText(rel: unknown, content: unknown): Promise<Result> {
   const t = target(rel)
   if ('error' in t) return { ok: false, error: t.error }
   try {
     await fsp.mkdir(path.dirname(t.full), { recursive: true })
-    await fsp.writeFile(t.full, typeof content === 'string' ? content : '', 'utf-8')
+    await atomicWrite(t.full, typeof content === 'string' ? content : '')
     return { ok: true }
   } catch (err) {
     return { ok: false, error: errText(err) }

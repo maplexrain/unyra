@@ -80,8 +80,19 @@ export function flushSync(items: unknown): { ok: boolean; failed: string[] } {
             : typeof raw.data === 'string'
               ? raw.data
               : ''
-      fs.writeFileSync(full, text, 'utf-8')
+      // 关窗前这一趟是数据的最后出口，更要原子写（见 files.ts 的 atomicWrite）：
+      // 写到一半被强杀，留下的半个 state.json 会在下次启动把收藏、对话整个读没
+      const tmp = full + '.tmp'
+      fs.writeFileSync(tmp, text, 'utf-8')
+      try {
+        fs.renameSync(tmp, full)
+      } catch {
+        fs.rmSync(full, { force: true })
+        fs.renameSync(tmp, full)
+      }
     } catch {
+      // 临时文件可能已写了一半：清掉再报失败，别在数据目录里留垃圾
+      fs.rmSync(full + '.tmp', { force: true })
       failed.push(String(raw?.rel))
     }
   }

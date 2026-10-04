@@ -131,8 +131,10 @@ export async function readJson<T>(rel: string): Promise<T | null> {
   if (!text) return null
   try {
     return JSON.parse(text) as T
-  } catch {
-    console.warn('[storage] JSON 解析失败：', rel)
+  } catch (err) {
+    // 解析失败 = 文件多半被截断过（非原子写时代的遗留、或磁盘问题）：
+    // 把错误对象一起打出来，修数据才有线索
+    console.warn('[storage] JSON 解析失败：', rel, err)
     return null
   }
 }
