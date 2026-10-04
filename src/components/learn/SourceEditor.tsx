@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { Compartment, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
+import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { HighlightStyle, syntaxHighlighting, LanguageDescription } from '@codemirror/language'
+import { HighlightStyle, syntaxHighlighting, indentOnInput, indentUnit, bracketMatching, LanguageDescription } from '@codemirror/language'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages as codeLanguages } from '@codemirror/language-data'
 import { tags } from '@lezer/highlight'
@@ -156,7 +157,13 @@ export default function SourceEditor({
         doc: valueRef.current,
         extensions: [
           history(),
-          keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
+          keymap.of([indentWithTab, ...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap]),
+          // 符号自动补全（输入 ( [ { " ' ` 自动带出另一半、跳过与删除成对）与括号配对高亮
+          closeBrackets(),
+          bracketMatching(),
+          // 自动缩进：换行继承上一行的缩进，语言有语法的话按语法缩进；缩进单位是两个空格
+          indentOnInput(),
+          indentUnit.of('  '),
           EditorView.lineWrapping,
           readOnlyComp.of([]),
           langComp.of([]),
