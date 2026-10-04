@@ -102,7 +102,7 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
       '考试窗口由用户自己开——你不要替他开考。读永远可用，写看阶段：有待判分（或判完缺讲解）的那一次时不能出卷，' +
       '判分与讲解要一起做完。',
     items: [
-      { name: 'exam.create', signature: 'exam.create({ title?, kind, level, minutes, questions })', summary: '出一份试卷；题型 single/multiple/truefalse/fill/short；除小测外 minutes 不得低于题目数 × 2', availability: 'exam' },
+      { name: 'exam.create', signature: 'exam.create({ title?, kind, level, minutes, questions })', summary: '出一份试卷；题型 single/multiple/truefalse/fill/short；除小测外 minutes 不得低于题目数 × 2；题面按 Markdown 渲染——数学公式必须 LaTeX（$…$/$$…$$），带图题给 image（完整 SVG 源码）', availability: 'exam' },
       { name: 'exam.read', signature: 'exam.read(attemptId?)', summary: '任何时候都能调；回题目、作答、系统判分与历次考试（含每次考错的题）', availability: 'exam' },
       { name: 'exam.grade', signature: 'exam.grade({ attemptId?, passed, summary, results })', summary: '判分：客观题以系统为准，你补 comment（要先有人交卷）', availability: 'exam' },
       { name: 'exam.explain', signature: 'exam.explain({ content, attemptId? })', summary: '错题讲解（判分之后的第二步）：看历史错题定薄弱项，写进那一次考试', availability: 'exam' },

@@ -505,6 +505,13 @@ const dict: Record<string, string> = {
   'AI 已判分，接着写错题讲解': 'AI has graded the paper; next it writes the mistake explanations',
   '已写入错题讲解，试卷副本已经打开': 'Mistake explanations saved; the exam copy tab is now open',
 
+  // ---------- 试卷插图自检吐司（workspace/examImageCheck） ----------
+  '插图自检：{0} 张全部正常': 'Figure self-check: all {0} render fine',
+  '插图自检：{0} 张异常，已修复': 'Figure self-check: {0} were broken and have been fixed',
+  '插图自检：{0} 张异常，修复了 {1} 张': 'Figure self-check: {0} were broken; {1} fixed',
+  '插图自检：{0} 张异常，自动修复没有成功——可以让导师在对话里修图': 'Figure self-check: {0} broken; auto-fix failed — ask the tutor to fix them in chat',
+  '插图自检没有完成：{0}': 'Figure self-check did not finish: {0}',
+
   // ---------- 选区动作 / 资料库动作 / 链接 / 保存流 / 工作流启动器的吐司 ----------
   '「{0}」已在本目标中，已跳到该节点': '"{0}" already exists in this goal; jumped to its node',
   '已创建节点「{0}」': 'Created node "{0}"',

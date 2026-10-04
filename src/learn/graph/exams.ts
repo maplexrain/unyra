@@ -48,6 +48,27 @@ export function removeExam(store: LearnStore, examId: string): LearnStore {
   return { ...store, exams: store.exams.filter((e) => e.id !== examId) }
 }
 
+/**
+ * 把插图自检的修复结果写回某份试卷（questionId → 修好的 SVG）。
+ * 自检跑在出卷之后（见 workspace/examImageCheck），试卷已经落库，这里按 id 就地替换；
+ * 试卷或题目已不存在的（比如用户中途删了卷）就当没发生。
+ */
+export function replaceQuestionImages(store: LearnStore, examId: string, images: Record<string, string>): LearnStore {
+  const ids = Object.keys(images)
+  if (!ids.length) return store
+  return {
+    ...store,
+    exams: store.exams.map((e) =>
+      e.id !== examId
+        ? e
+        : {
+            ...e,
+            questions: e.questions.map((q) => (images[q.id] !== undefined ? { ...q, image: images[q.id] } : q)),
+          },
+    ),
+  }
+}
+
 /** 写入一次考试（新建或整条替换）——考试记录挂在试卷下面，所以落盘时动的是试卷 */
 export function upsertAttempt(store: LearnStore, examId: string, attempt: ExamAttempt): LearnStore {
   const exam = store.exams.find((e) => e.id === examId)

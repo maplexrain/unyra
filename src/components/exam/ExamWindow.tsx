@@ -551,6 +551,11 @@ function QuestionBlock({
         <span className="ml-1 text-[11.5px] text-ink-faint tabular-nums">{t('（{0} 分）', question.points)}</span>
       </div>
 
+      {question.image && (
+        /* 配图：题干的一部分，摆题干下、作答区上。SVG 源码在入库前已消毒（见 learn/exam/svg） */
+        <div className="moji-exam-figure" dangerouslySetInnerHTML={{ __html: question.image }} />
+      )}
+
       {question.type === 'fill' ? (
         <input
           value={draft.text}

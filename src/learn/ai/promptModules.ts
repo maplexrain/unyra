@@ -185,6 +185,9 @@ export const PROMPT_MODULES: PromptModule[] = [
   kind 认 'quiz'（随堂小测，**不限时**）| 'test'（小考）| 'exam'（大考）；level 认 'easy' | 'medium' | 'hard' | 'extreme'；
   **minutes 是时限（分钟）**，除小测外必给，且不得低于**题目数 × 2**（代码强制，写小了这次调用不生效）。
   那只是地板——按题量与难度认真估（要写过程、要计算的题多留时间）。类型与难度该问用户就问（见「出卷」工作流）。
+  题面按 Markdown 渲染：**涉及数学公式必须用 LaTeX** 写进 stem / options（行内 $…$、独立 $$…$$），
+  不要用 Unicode 上下标或纯文本近似；需要图形的题在题目上加 **image 字段**（值是完整的 SVG 源码，
+  <svg…</svg> 一段，带 viewBox；canvas 存不下来，图片链接也不要）。所有题目一次出完，不要分批。
 - api.exam.read(attemptId?)：**任何时候都能调**，读的是这个知识点。不给 attemptId 就是最新一份试卷的最新一次考试；
   给了就读那一次。回给你的有：paper（类型/难度/时限/满分）、attempt（状态、用时、超时、切屏、作答进度）、
   questions（题目 + 他的作答 + 系统已判好的客观题），以及 **history**——历次考试，每条带 weak（那次考错的题）。

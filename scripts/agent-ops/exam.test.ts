@@ -6,6 +6,7 @@
  */
 import type { Exam, ExamAttempt } from '../../src/learn/exam'
 import { examDeleteBlock, examReadPayload, normalizeQuestions, parseQuestions, questionsMix } from '../../src/learn/exam'
+import { replaceQuestionImages } from '../../src/learn/graph'
 import { newAttempt } from '../../src/learn/examRecords'
 import { buildDocs, buildState, parseDocs } from '../../src/learn/files'
 import { createAgentOps, makeExamTool } from '../../src/learn/agentOps'
@@ -130,6 +131,51 @@ export async function examTests() {
   ok(t8.ok && t8.questions[0].options?.[1].text === '乙', '{key,value} 选项', t8)
   const t9 = parseQuestions([{ type: 'multiple', stem: 'x', options: ['甲', '乙', '丙'], answer: 'A、B' }])
   ok(t9.ok && t9.questions[0].answer?.join() === 'A,B', '多选答案用顿号连写也认', t9)
+
+  /* 3.5) 带图的题：image 是完整 SVG 源码，入库前消毒（script / 事件属性 / foreignObject 剥掉） */
+  const fig = parseQuestions([
+    {
+      type: 'single',
+      stem: '下图函数 $f(x)=x^2-2$ 的零点个数是？',
+      image:
+        '```svg\n<svg viewBox="0 0 200 120" onload="alert(1)"><script>alert(2)</script>' +
+        '<circle cx="60" cy="60" r="40" fill="none" stroke="black"/><foreignObject><body>x</body></foreignObject></svg>\n```',
+      options: ['1 个', '2 个'],
+      answer: 'A',
+    },
+  ])
+  ok(fig.ok, '带 SVG 配图的题能解析（image 认围栏包裹）', fig.ok ? '' : fig.message)
+  if (fig.ok) {
+    const img = fig.questions[0].image ?? ''
+    ok(img.startsWith('<svg'), '只保留 svg 根（外面的围栏与说明不要）', img.slice(0, 40))
+    ok(!img.includes('<script') && !img.includes('onload'), 'script 与事件属性被剥掉', img)
+    ok(!img.includes('foreignObject'), 'foreignObject 整棵剪掉', img)
+    ok(img.includes('<circle'), '图形本体保留', img)
+  }
+  const badFig = parseQuestions([{ type: 'single', stem: 'x', image: '<div>不是 svg</div>', options: ['a', 'b'], answer: 'A' }])
+  ok(!badFig.ok, 'image 里没有 <svg> 要驳回并指路', badFig.ok ? '' : badFig.message)
+
+  /* 3.6) 插图自检的修复写回（graph/exams 的 replaceQuestionImages）：只动指定试卷的指定题 */
+  const examWithQuestion = (qid: string): Exam => ({
+    id: 'ex-fix',
+    nodeId: childId,
+    goalId,
+    title: 't',
+    kind: 'quiz',
+    level: 'easy',
+    minutes: 0,
+    questions: [{ id: qid, type: 'single', stem: 's', points: 1 }],
+    createdAt: 0,
+    attempts: [],
+  })
+  const fixed = replaceQuestionImages({ ...baseStore(), exams: [examWithQuestion('q1')] }, 'ex-fix', {
+    q1: '<svg viewBox="0 0 1 1"></svg>',
+  })
+  ok(fixed.exams[0]?.questions[0]?.image !== undefined, 'replaceQuestionImages 把修复写回对应题目', fixed.exams[0]?.questions[0])
+  ok(
+    replaceQuestionImages({ ...baseStore(), exams: [examWithQuestion('q1')] }, 'ex-missing', { q1: '<svg/>' }).exams[0]?.questions[0]?.image === undefined,
+    '找不到试卷时不动任何东西',
+  )
 
   /* 4) 工具层：直接把数组当入参传给 exam.create，不能被 asRecord 悄悄变成「没有 questions」 */
   const captured: Array<Record<string, unknown>> = []
