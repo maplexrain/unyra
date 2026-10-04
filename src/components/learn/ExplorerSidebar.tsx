@@ -76,6 +76,11 @@ interface Props {
   onOpenFavorite: (ref: FavoriteRef) => void
   /** 收藏区：把一行摘出收藏夹（不动文档本身） */
   onRemoveFavorite: (ref: FavoriteRef) => void
+  /** 收藏分组（网页收藏的管理，见 learn/favorites）：移入 / 组改名 / 拆组 / 改收藏显示名 */
+  onSetFavoriteGroup: (ref: FavoriteRef, group: string | null) => void
+  onRenameFavoriteGroup: (from: string, to: string) => void
+  onRemoveFavoriteGroup: (group: string) => void
+  onRenameFavoriteTitle: (ref: FavoriteRef, title: string) => void
   /** 收藏行的标题（节点名 / 考试名要查数据，见 learn/favorites 的 favoriteTitle） */
   favoriteTitleOf: (ref: FavoriteRef) => string
   /** 节点下面那些文档的动作：新建、打开、改名、删除、定位 */
@@ -107,6 +112,10 @@ export default function ExplorerSidebar({
   onPickLocal,
   onOpenFavorite,
   onRemoveFavorite,
+  onSetFavoriteGroup,
+  onRenameFavoriteGroup,
+  onRemoveFavoriteGroup,
+  onRenameFavoriteTitle,
   favoriteTitleOf,
   docs,
   exams,
@@ -234,6 +243,10 @@ export default function ExplorerSidebar({
             titleOf={favoriteTitleOf}
             onOpen={onOpenFavorite}
             onRemove={onRemoveFavorite}
+            onSetGroup={onSetFavoriteGroup}
+            onRenameGroup={onRenameFavoriteGroup}
+            onRemoveGroup={onRemoveFavoriteGroup}
+            onRenameTitle={onRenameFavoriteTitle}
           />
 
           {locals.length > 0 && (

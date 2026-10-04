@@ -55,6 +55,50 @@ export function removeFavorite(list: FavoriteItem[], key: string): FavoriteItem[
   return list.filter((f) => favoriteKey(f) !== key)
 }
 
+/* ---------- 分组文件夹（网页收藏的管理用） ---------- */
+
+/** 组名的清理口径：前后空白去掉、限长；空串视为「没有分组」 */
+const cleanGroup = (raw: string): string | undefined => {
+  const name = raw.trim().slice(0, 64)
+  return name || undefined
+}
+
+/** 把一条收藏移进分组（group 为 null = 移回顶层）；分组是收藏自己的属性，不在别处登记 */
+export function setFavoriteGroup(list: FavoriteItem[], key: string, group: string | null): FavoriteItem[] {
+  const next = cleanGroup(group ?? '') ?? undefined
+  return list.map((f) => {
+    if (favoriteKey(f) !== key) return f
+    const item: FavoriteItem = { ...f }
+    if (next) item.group = next
+    else delete item.group
+    return item
+  })
+}
+
+/** 给分组改名：成员原样跟着走（组名就是身份，成员上的 group 字符串换一份） */
+export function renameFavoriteGroup(list: FavoriteItem[], from: string, to: string): FavoriteItem[] {
+  const next = cleanGroup(to)
+  if (!next || next === from) return list
+  return list.map((f) => (f.group === from ? { ...f, group: next } : f))
+}
+
+/** 拆掉一个分组：成员回到顶层，收藏本身一条不丢 */
+export function removeFavoriteGroup(list: FavoriteItem[], group: string): FavoriteItem[] {
+  return list.map((f) => {
+    if (f.group !== group) return f
+    const item: FavoriteItem = { ...f }
+    delete item.group
+    return item
+  })
+}
+
+/** 改一条网页收藏的显示名（收藏那一刻存的页面标题，见 types 的 web 分支） */
+export function renameWebFavorite(list: FavoriteItem[], key: string, title: string): FavoriteItem[] {
+  const name = title.trim().slice(0, 200)
+  if (!name) return list
+  return list.map((f) => (favoriteKey(f) === key && f.kind === 'web' ? { ...f, title: name } : f))
+}
+
 /**
  * 收藏行显示的名字：与 tabTitle 同一个思路——标题全部**现查**（节点名、考试名都是活的），
  * 收藏里不存标题，改名之后收藏跟着新名字走，不会烂在旧标题上。

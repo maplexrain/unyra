@@ -49,6 +49,10 @@ import {
   favoriteRefOfTab,
   favoriteTitle,
   removeFavorite as removeFromFavorites,
+  removeFavoriteGroup,
+  renameFavoriteGroup,
+  renameWebFavorite,
+  setFavoriteGroup,
   tabRefOfFavorite,
   toggleFavorite as toggleInFavorites,
 } from '../../learn/favorites'
@@ -978,6 +982,40 @@ export default function LearnWorkspace({
     (ref: FavoriteRef) => {
       const s = getLatest()
       set({ ...s, favorites: removeFromFavorites(s.favorites ?? [], favoriteKey(ref)) })
+    },
+    [getLatest, set],
+  )
+
+  /*
+   * 收藏的分组与改名（网页收藏的管理，见 learn/favorites 的分组段）。
+   * 四个都是「对收藏清单的一次纯函数变换 + set」：组名长在成员身上、不单独登记，
+   * 拆组 = 成员的 group 字段摘掉，收藏本身一条不丢。
+   */
+  const setFavGroup = useCallback(
+    (ref: FavoriteRef, group: string | null) => {
+      const s = getLatest()
+      set({ ...s, favorites: setFavoriteGroup(s.favorites ?? [], favoriteKey(ref), group) })
+    },
+    [getLatest, set],
+  )
+  const renameFavGroup = useCallback(
+    (from: string, to: string) => {
+      const s = getLatest()
+      set({ ...s, favorites: renameFavoriteGroup(s.favorites ?? [], from, to) })
+    },
+    [getLatest, set],
+  )
+  const removeFavGroup = useCallback(
+    (group: string) => {
+      const s = getLatest()
+      set({ ...s, favorites: removeFavoriteGroup(s.favorites ?? [], group) })
+    },
+    [getLatest, set],
+  )
+  const renameFavTitle = useCallback(
+    (ref: FavoriteRef, title: string) => {
+      const s = getLatest()
+      set({ ...s, favorites: renameWebFavorite(s.favorites ?? [], favoriteKey(ref), title) })
     },
     [getLatest, set],
   )
@@ -2341,6 +2379,10 @@ export default function LearnWorkspace({
         // 收藏区（学习目标与本地文件之间）：打开 / 移除 / 现查标题
         onOpenFavorite={openFavorite}
         onRemoveFavorite={dropFavorite}
+        onSetFavoriteGroup={setFavGroup}
+        onRenameFavoriteGroup={renameFavGroup}
+        onRemoveFavoriteGroup={removeFavGroup}
+        onRenameFavoriteTitle={renameFavTitle}
         favoriteTitleOf={favoriteTitleOf}
         /*
          * 侧栏里那些文档行的动作。每一个都走与别处**同一个入口**：

@@ -578,8 +578,12 @@ export type FavoriteRef =
    */
   | { kind: 'web'; url: string; title?: string; icon?: string }
 
-/** 一条收藏：指向什么 + 什么时候收藏的（列表按收藏先后排） */
-export type FavoriteItem = FavoriteRef & { at: number }
+/**
+ * 一条收藏：指向什么 + 什么时候收藏的（列表按收藏先后排）。
+ * group 是**分组文件夹**的名字（网页收藏的管理用，见 learn/favorites）：缺了 = 没有分组、
+ * 躺在收藏区顶层。它不参与身份（favoriteKey 只比指向），改组名只是原地换字符串。
+ */
+export type FavoriteItem = FavoriteRef & { at: number; group?: string }
 
 export interface LearnStore {
   version: 2
