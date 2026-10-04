@@ -110,6 +110,22 @@ export function normalizeLocalFiles(raw: unknown): LocalFile[] {
 }
 
 /**
+ * 收藏分组的登记表：只认非空字符串（trim / 64 字上限），同名只留一条，顺序照旧。
+ * 组名同时长在成员身上（FavoriteItem.group），这里只登记「组本身」——空组靠它存在。
+ */
+export function normalizeFavGroups(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const out: string[] = []
+  for (const item of raw) {
+    if (typeof item !== 'string') continue
+    const name = item.trim().slice(0, 64)
+    if (!name || out.includes(name)) continue
+    out.push(name)
+  }
+  return out
+}
+
+/**
  * 收藏列表：与页签同一条纪律——指向不存在的东西的收藏当场丢掉（节点被删、笔记改名、
  * 考试记录清掉，收藏就成了空指），网页只认 http(s)，本地文件只校验形状（文件后来被删
  * 是常态，点开时再报）。同一身份只留一条，顺序照旧（收藏的先后就是列表的先后）。

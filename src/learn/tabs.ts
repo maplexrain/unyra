@@ -10,8 +10,15 @@ import { t } from '../i18n'
  * 2. 后续还有别的入口要开页签（大纲链接、agent、搜索结果），逻辑只该有一份。
  */
 
-/** 能渲染出预览的扩展名：markdown 与 html。别的类型只能看源码（见 viewOf） */
+/** 能渲染出预览的扩展名：markdown 与 html。别的文本类型只能看源码（见 viewOf） */
 const PREVIEW_EXTS = ['.md', '.markdown', '.html', '.htm']
+
+/** 本地文件的**媒体预览**扩展名：图片 / 音频 / 视频（看的是内容本身，不是文本） */
+const MEDIA_EXTS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.avif',
+  '.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.opus',
+  '.mp4', '.webm', '.mkv', '.mov', '.m4v',
+])
 
 /** 路径里的文件名（两种分隔符都认：本地文件来自 Windows，链接里可能是正斜杠） */
 export function fileNameOf(p: string): string {
@@ -29,6 +36,11 @@ export function extOf(name: string): string {
 /** 这个文件能不能预览（md / html） */
 export function isPreviewable(name: string): boolean {
   return PREVIEW_EXTS.includes(extOf(name))
+}
+
+/** 这个文件是不是走**媒体预览**的（图片 / 音频 / 视频） */
+export function isMediaFile(name: string): boolean {
+  return MEDIA_EXTS.has(extOf(name))
 }
 
 /**
@@ -141,7 +153,12 @@ export function tabTrail(ref: TabRef, nodePath: (nodeId: string) => string): str
 export function viewOf(tab: LearnTab, empty = false): DocView {
   if (tab.view) return tab.view
   if (empty) return 'source'
-  if (tab.ref.kind === 'local') return isPreviewable(tab.ref.path) ? 'preview' : 'source'
+  if (tab.ref.kind === 'local') {
+    // 媒体文件：没有「源码」可看，直接进媒体预览
+    if (isMediaFile(tab.ref.path)) return 'media'
+    // 需求口径：markdown 默认预览，**其余文本一律默认编辑**（html 也不例外）
+    return /\.(md|markdown)$/i.test(tab.ref.path) ? 'preview' : 'source'
+  }
   return 'preview'
 }
 

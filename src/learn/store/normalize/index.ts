@@ -25,7 +25,7 @@ import { normalizeTmpStore, pruneTmpToNodes } from '../../../lib/tmpStore'
 import { normalizeNode } from './node'
 import { normalizeConversation } from './conversation'
 import { normalizeExam } from './exam'
-import { normalizeDocScroll, normalizeFavorites, normalizeLocalFiles, normalizeTab } from './tabs'
+import { normalizeDocScroll, normalizeFavorites, normalizeFavGroups, normalizeLocalFiles, normalizeTab } from './tabs'
 
 /**
  * 把一份（可能来自磁盘、也可能来自导入文件）的数据归一成合法的学习数据；
@@ -254,6 +254,7 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       // 读到哪儿了：只认有限的非负数，坏值丢掉（位置读错只该退回从头，不该让整份状态读不出来）
       docScroll: normalizeDocScroll(d.docScroll),
       localFiles: normalizeLocalFiles(d.localFiles),
+      favGroups: normalizeFavGroups(d.favGroups),
       // 收藏夹按「东西还在不在」校验（与页签的口径一致）：节点没了、笔记改名了的收藏当场丢
       favorites: normalizeFavorites(d.favorites, byId, exams),
     }

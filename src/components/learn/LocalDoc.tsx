@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { TriangleAlert as FileWarning, Loader2 } from 'lucide-react'
 import type { DocView } from '../../learn/types'
-import { fileNameOf, isPreviewable } from '../../learn/tabs'
-import { readLocalFile } from '../../lib/localFiles'
+import { extOf, fileNameOf, isMediaFile, isPreviewable } from '../../learn/tabs'
+import { readLocalFile, readLocalMediaFile } from '../../lib/localFiles'
 import { renderNoteGfm } from '../../lib/markdown'
 import { createLocalDocImageResolver } from '../../lib/docImages'
 import { copySelectionAsMarkdown } from '../../lib/copySource'
@@ -50,6 +50,8 @@ interface Props {
   onMissing: () => void
   /** 大纲句柄槽（见 lib/outline 的 OutlineHandle）：外部 md 同样挂标题大纲（见 DocFloat） */
   outlineSlot?: { current: OutlineHandle | null }
+  /** md 打开时是空的：默认视图会从预览切到编辑（空预览是一片白，用户要的是往里写） */
+  onNeedEdit?: () => void
 }
 
 export default function LocalDoc({
@@ -63,9 +65,13 @@ export default function LocalDoc({
   saveError,
   onMissing,
   outlineSlot,
+  onNeedEdit,
 }: Props) {
   const name = fileNameOf(path)
   const previewable = isPreviewable(path)
+  const media = isMediaFile(path)
+  /** 媒体文件读到的 data URL（mime 由后缀定，见 electron/storage/local 的 readLocalMedia） */
+  const [mediaSrc, setMediaSrc] = useState<{ mime: string; dataUrl: string } | null>(null)
   /** 打开时从磁盘读到的那一份（基准的初值，见下面 base 的说明） */
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(true)
@@ -86,6 +92,8 @@ export default function LocalDoc({
    * 边改边被读回来的内容覆盖掉。
    */
   useEffect(() => {
+    // 媒体文件不走文本读取（白名单也会拒它）：下面专门有一个 effect 读它
+    if (media) return
     let alive = true
     void readLocalFile(path).then((r) => {
       if (!alive) return
@@ -100,7 +108,35 @@ export default function LocalDoc({
     return () => {
       alive = false
     }
-  }, [path])
+  }, [path, media])
+
+  // 媒体文件：读一次二进制（data URL），图片 / 音频 / 视频各按 mime 渲染
+  useEffect(() => {
+    if (!media) return
+    let alive = true
+    void readLocalMediaFile(path).then((r) => {
+      if (!alive) return
+      setLoading(false)
+      if (!r.ok) {
+        setError(r.error ?? t('读取失败'))
+        return
+      }
+      setMediaSrc({ mime: r.mime ?? '', dataUrl: r.dataUrl ?? '' })
+    })
+    return () => {
+      alive = false
+    }
+  }, [path, media])
+
+  /*
+   * md 打开时是空的：把默认视图从预览切到编辑（效果体在下面 base 定义之后，
+   * 那里才是「空与不空」第一次可知的位置）。
+   */
+  const needEditRef = useRef(onNeedEdit)
+  useEffect(() => {
+    needEditRef.current = onNeedEdit
+  }, [onNeedEdit])
+  const isMd = /\.(md|markdown)$/i.test(path)
 
   /**
    * 编辑器里的正文：暂存区里有就用它。
@@ -112,6 +148,16 @@ export default function LocalDoc({
   const text = draft ?? base
   /** 改回原样时把暂存撤掉：那颗「未保存」的圆点该跟着消失 */
   const edit = (next: string) => onDraft(next === base ? null : next)
+
+  /*
+   * md 打开时是空的：把默认视图从预览切到编辑。空预览是一片白，用户打开一个空笔记
+   * 就是要往里写（与节点空笔记的 viewOf(empty) 同一条道理，但本地文件的空与不空
+   * 只有读完才知道，所以在这里补这一下）。用户自己选过视图（tab.view 已设）就听他的。
+   */
+  useEffect(() => {
+    if (view !== 'preview' || !isMd || loading || error || draft !== undefined || base !== '') return
+    needEditRef.current?.()
+  }, [view, isMd, loading, error, draft, base])
 
   const state: SaveState = saving
     ? 'saving'
@@ -174,6 +220,43 @@ export default function LocalDoc({
     )
   }
 
+  // 媒体文件：图片 / 音频 / 视频各按 mime 渲染，居中展示（没有「源码」这种东西可看）
+  if (media) {
+    if (loading) {
+      return (
+        <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-[12.5px] text-ink-faint">
+          <Loader2 size={14} className="animate-spin" />
+          {t('正在读取 {0}…', name)}
+        </div>
+      )
+    }
+    if (error || !mediaSrc) {
+      return (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+          <FileWarning size={22} className="text-ink-faint" />
+          <p className="text-[13px] text-ink">{error ?? t('读取失败')}</p>
+        </div>
+      )
+    }
+    const mime = mediaSrc.mime
+    const controls =
+      mime.startsWith('video/') ? (
+        <video src={mediaSrc.dataUrl} controls className="max-h-full max-w-full" />
+      ) : mime.startsWith('audio/') ? (
+        <div className="flex w-full max-w-[520px] flex-col items-center gap-3">
+          <span className="text-[12px] text-ink-faint">{name}</span>
+          <audio src={mediaSrc.dataUrl} controls className="w-full" />
+        </div>
+      ) : (
+        <img src={mediaSrc.dataUrl} alt={name} className="max-h-full max-w-full object-contain" />
+      )
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-card p-4">
+        {controls}
+      </div>
+    )
+  }
+
   if (view === 'source' || !previewable) {
     return (
       <SourceEditor
@@ -183,6 +266,7 @@ export default function LocalDoc({
         error={saveError ?? error}
         label={path}
         scale={scale}
+        ext={extOf(path)}
       />
     )
   }

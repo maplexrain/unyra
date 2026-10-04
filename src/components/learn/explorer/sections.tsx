@@ -3,18 +3,20 @@
  * 本地文件行（LocalRow）、以及「最近打开」那一段（RecentSection / RecentRow）。
  * 它们只被 ExplorerSidebar 直接渲染。
  */
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronRight,
+  ExternalLink,
   Folder,
   FolderInput,
   FolderMinus,
   FolderOpen,
+  FolderPlus,
   Pencil,
   X,
 } from 'lucide-react'
 import type { FavoriteItem, FavoriteRef, LearnStore, LocalFile } from '../../../learn/types'
-import { favoriteKey } from '../../../learn/favorites'
+import { chipPayloadOfFavorite, favoriteKey } from '../../../learn/favorites'
 import { useClampToViewport, useDismissOn } from '../../../lib/useDismiss'
 import { recentOpens, type RecentOpen } from '../../../learn/recents'
 import { useClock } from '../../../lib/clock'
@@ -101,23 +103,27 @@ export function RecentRow({ item, now, onOpen }: { item: RecentOpen; now: number
   )
 }
 
-/** 组里整行的一项（右键「移入分组」那张小菜单用） */
+/** 组里整行的一项（右键菜单用） */
 const MENU_ROW =
   'flex w-full items-center gap-2 rounded-md py-1.5 pl-2 pr-2.5 text-left text-[12px] text-ink transition hover:bg-line/60 disabled:opacity-40 disabled:hover:bg-transparent'
+
+/** 收藏行拖出引用时额外带的一份身份（拖进分组分类只认它，见 FavRow 的 onDragStart） */
+const FAV_KEY_MIME = 'application/x-moji-fav'
 
 /**
  * 收藏区：文档与网页的收藏夹（见 learn/favorites）。
  *
  * 收藏从别处进来：页签的右键菜单、网页地址栏的星标。这里负责**看、去与整理**——
- * 点一行打开它（网页现场开新签），悬停的按钮把它移进分组 / 改名 / 摘出收藏夹。
- * 标题由上层现查（见 favoriteTitle）：改名之后收藏跟着新名字走。
+ * 点一行打开它；整理动作全部收在**右键菜单**里（移入分组 / 重命名 / 删除），
+ * 行上不摆按钮：悬停冒出来的一排键会把 flex-1 的标题挤得重排，看过去就是抖一下。
  *
- * **分组文件夹**是网页收藏的管理方式：一条收藏带一个可选的 group 名字（随收藏落盘），
- * 收藏区按它折成一层层文件夹。分组不单独登记——组名长在成员身上，拆组就是把成员
- * 放回顶层，没有「空组」这种东西要清。
+ * **分组文件夹**：组名登记在 store.favGroups（「新建分组」按钮创建的就是它），
+ * 成员身上同时带着自己的组名（FavoriteItem.group）。收藏行可以**拖**：
+ * 拖到文档区开页签、拖到对话输入框变引用 chip、拖到某个分组行上快速归类。
  */
 export function FavoriteSection({
   items,
+  groups,
   open,
   onToggle,
   titleOf,
@@ -127,27 +133,48 @@ export function FavoriteSection({
   onRenameGroup,
   onRemoveGroup,
   onRenameTitle,
+  onCreateGroup,
 }: {
   items: FavoriteItem[]
+  /** 分组登记表（store.favGroups）：空组也在这里 */
+  groups: string[]
   open: boolean
   onToggle: () => void
   titleOf: (ref: FavoriteRef) => string
   onOpen: (ref: FavoriteRef) => void
   onRemove: (ref: FavoriteRef) => void
-  /** 把一条收藏移进分组（null = 移回顶层）；分组不在这里登记，移过去组就存在了 */
+  /** 把一条收藏移进分组（null = 移回顶层）；组名不在登记表里就顺手登记 */
   onSetGroup: (ref: FavoriteRef, group: string | null) => void
-  /** 给分组改名：成员原样跟着走 */
+  /** 给分组改名：登记表与成员一起换 */
   onRenameGroup: (from: string, to: string) => void
-  /** 拆掉一个分组：成员回到顶层，收藏一条不丢 */
+  /** 删除分组：成员回到顶层 */
   onRemoveGroup: (group: string) => void
   /** 改一条网页收藏的显示名（收藏那一刻存的页面标题） */
   onRenameTitle: (ref: FavoriteRef, title: string) => void
+  /** 新建分组（登记表追加；同名静默不动） */
+  onCreateGroup: (name: string) => void
 }) {
-  if (!items.length) return null
+  if (!items.length && !groups.length) return null
   return (
-    <Section title={t('收藏')} count={items.length} open={open} onToggle={onToggle}>
+    <Section
+      title={t('收藏')}
+      count={items.length}
+      open={open}
+      onToggle={onToggle}
+      action={
+        <button
+          type="button"
+          title={t('新建分组')}
+          onClick={() => onCreateGroupClick()}
+          className="hidden h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-ink group-hover:flex"
+        >
+          <FolderPlus size={12} />
+        </button>
+      }
+    >
       <FavoriteGroups
         items={items}
+        groups={groups}
         titleOf={titleOf}
         onOpen={onOpen}
         onRemove={onRemove}
@@ -155,14 +182,22 @@ export function FavoriteSection({
         onRenameGroup={onRenameGroup}
         onRemoveGroup={onRemoveGroup}
         onRenameTitle={onRenameTitle}
+        onCreateGroup={onCreateGroup}
       />
     </Section>
   )
+
+  /** 新建分组的入口在标题行上，而 inline 输入框的 state 在 FavoriteGroups 里：
+      借一个自定义事件把「该出输入框了」递进去（两侧隔着 Section，不值得为它抬 props） */
+  function onCreateGroupClick(): void {
+    window.dispatchEvent(new CustomEvent('moji-fav-new-group'))
+  }
 }
 
-/** 顶层与分组两个层次的全部渲染；state 只活在这一块里（分组展开、改名、移动菜单） */
+/** 顶层与分组两个层次的全部渲染；state 只活在这一块里（分组展开、改名、右键菜单、拖拽高亮） */
 function FavoriteGroups({
   items,
+  groups,
   titleOf,
   onOpen,
   onRemove,
@@ -170,8 +205,10 @@ function FavoriteGroups({
   onRenameGroup,
   onRemoveGroup,
   onRenameTitle,
+  onCreateGroup,
 }: {
   items: FavoriteItem[]
+  groups: string[]
   titleOf: (ref: FavoriteRef) => string
   onOpen: (ref: FavoriteRef) => void
   onRemove: (ref: FavoriteRef) => void
@@ -179,19 +216,33 @@ function FavoriteGroups({
   onRenameGroup: (from: string, to: string) => void
   onRemoveGroup: (group: string) => void
   onRenameTitle: (ref: FavoriteRef, title: string) => void
+  onCreateGroup: (name: string) => void
 }) {
   /** 收起状态的分组（默认全展开：文件夹存在的意义就是让人一眼看到里面的东西） */
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
-  /** 「移入分组」菜单弹在哪一条上（比的是收藏身份）；group 为 null 时是「新建分组」的输入态 */
-  const [menu, setMenu] = useState<{ key: string; x: number; y: number; newGroup: boolean } | null>(null)
-  /** 正在改名的分组 / 网页收藏（inline input） */
+  /** 右键菜单：对着一条收藏（key）或一个分组（name） */
+  const [menu, setMenu] = useState<
+    { kind: 'fav'; key: string; x: number; y: number } | { kind: 'group'; name: string; x: number; y: number } | null
+  >(null)
+  /** 正在改名的分组 / 网页收藏（inline input，由菜单里的「重命名」触发） */
   const [renamingGroup, setRenamingGroup] = useState<string | null>(null)
   const [renamingKey, setRenamingKey] = useState<string | null>(null)
+  /** 「新建分组」的 inline 输入框开没有（入口在标题行，经 moji-fav-new-group 事件叫开） */
+  const [creating, setCreating] = useState(false)
+  /** 拖着收藏悬在哪个分组行上（高亮那一行） */
+  const [dropGroup, setDropGroup] = useState<string | null>(null)
 
-  // 顶层（没分组的）与各分组：组按第一次出现的先后排，成员保持收藏的先后
-  const { top, groups } = useMemo(() => {
+  // 「新建分组」按钮在 Section 标题行上（FavoriteSection 里），借事件把输入框叫开
+  useEffect(() => {
+    const open = (): void => setCreating(true)
+    window.addEventListener('moji-fav-new-group', open)
+    return () => window.removeEventListener('moji-fav-new-group', open)
+  }, [])
+
+  // 顶层（没分组的）与各分组：登记表里的组在前（含空组），成员带出来的野组随后；
+  // 成员保持收藏的先后
+  const { top, groupsAll } = useMemo(() => {
     const top: FavoriteItem[] = []
-    const order: string[] = []
     const byGroup = new Map<string, FavoriteItem[]>()
     for (const f of items) {
       if (!f.group) {
@@ -202,12 +253,17 @@ function FavoriteGroups({
       if (!list) {
         list = []
         byGroup.set(f.group, list)
-        order.push(f.group)
       }
       list.push(f)
     }
-    return { top, groups: order.map((name) => ({ name, items: byGroup.get(name) ?? [] })) }
-  }, [items])
+    const order: string[] = []
+    for (const name of groups) if (byGroup.has(name) || !order.includes(name)) order.push(name)
+    for (const name of byGroup.keys()) if (!order.includes(name)) order.push(name)
+    return {
+      top,
+      groupsAll: order.map((name) => ({ name, items: byGroup.get(name) ?? [] })),
+    }
+  }, [items, groups])
 
   const toggleGroup = (name: string) =>
     setCollapsed((prev) => {
@@ -217,29 +273,63 @@ function FavoriteGroups({
       return next
     })
 
-  const menuKey = menu ? (items.find((f) => favoriteKey(f) === menu.key) ?? null) : null
-  const groupNames = groups.map((g) => g.name)
+  /** 收藏行的右键菜单（打开 / 移入分组 / 重命名 / 删除都在里面） */
+  const openFavMenu = (f: FavoriteItem) => (x: number, y: number) =>
+    setMenu({ kind: 'fav', key: favoriteKey(f), x, y })
+
+  const menuFav = menu?.kind === 'fav' ? (items.find((f) => favoriteKey(f) === menu.key) ?? null) : null
+
+  /** 拖着收藏松手在分组行上：按拖时带出来的收藏身份归类 */
+  const onGroupDrop = (group: string) => (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDropGroup(null)
+    const key = e.dataTransfer.getData(FAV_KEY_MIME)
+    if (!key) return
+    const item = items.find((f) => favoriteKey(f) === key)
+    if (item && item.group !== group) onSetGroup(item, group)
+  }
+
+  /** 拖进分组的悬停高亮：只认带着收藏身份的拖拽，别的拖拽（页签、文件）不理 */
+  const onGroupDragOver = (group: string) => (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes(FAV_KEY_MIME)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDropGroup(group)
+  }
+
+  const favRow = (f: FavoriteItem, indent: boolean) => (
+    <FavRow
+      key={favoriteKey(f)}
+      item={f}
+      indent={indent}
+      title={titleOf(f)}
+      renaming={renamingKey === favoriteKey(f)}
+      onRenameCommit={(name) => {
+        setRenamingKey(null)
+        if (name.trim()) onRenameTitle(f, name)
+      }}
+      onRenameCancel={() => setRenamingKey(null)}
+      onOpen={() => onOpen(f)}
+      onMenu={openFavMenu(f)}
+    />
+  )
 
   return (
-    <div className="px-2">
-      {top.map((f) => (
-        <FavRow
-          key={favoriteKey(f)}
-          item={f}
-          title={titleOf(f)}
-          renaming={renamingKey === favoriteKey(f)}
-          onRenameCommit={(name) => {
-            setRenamingKey(null)
-            if (name.trim()) onRenameTitle(f, name)
+    <div className="px-2" onDragLeave={() => setDropGroup(null)}>
+      {creating && (
+        <InlineName
+          initial=""
+          placeholder={t('新分组名，回车确认')}
+          onCommit={(name) => {
+            setCreating(false)
+            if (name.trim()) onCreateGroup(name)
           }}
-          onRenameCancel={() => setRenamingKey(null)}
-          onOpen={() => onOpen(f)}
-          onRemove={() => onRemove(f)}
-          onMove={(x, y) => setMenu({ key: favoriteKey(f), x, y, newGroup: false })}
-          onRenameStart={() => setRenamingKey(favoriteKey(f))}
+          onCancel={() => setCreating(false)}
         />
-      ))}
-      {groups.map((g) => (
+      )}
+      {top.map((f) => favRow(f, false))}
+      {groupsAll.map((g) => (
         <div key={g.name}>
           {renamingGroup === g.name ? (
             <InlineName
@@ -259,7 +349,19 @@ function FavoriteGroups({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') toggleGroup(g.name)
               }}
-              className="group flex cursor-pointer items-center gap-1.5 py-1.5 pl-1 pr-1 transition hover:bg-line/40"
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setMenu({ kind: 'group', name: g.name, x: e.clientX, y: e.clientY })
+              }}
+              onDragOver={onGroupDragOver(g.name)}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropGroup(null)
+              }}
+              onDrop={onGroupDrop(g.name)}
+              className={
+                'flex cursor-pointer items-center gap-1.5 py-1.5 pl-1 pr-1 transition hover:bg-line/40 ' +
+                (dropGroup === g.name ? 'rounded bg-seal/15 ring-1 ring-seal/50' : '')
+              }
             >
               <ChevronRight
                 size={12}
@@ -275,61 +377,45 @@ function FavoriteGroups({
               )}
               <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{g.name}</span>
               <span className="shrink-0 text-[11px] text-ink-faint">{g.items.length}</span>
-              <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
-                <button
-                  type="button"
-                  title={t('重命名分组')}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setRenamingGroup(g.name)
-                  }}
-                  className="flex h-5 w-5 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-ink"
-                >
-                  <Pencil size={11} />
-                </button>
-                <button
-                  type="button"
-                  title={t('拆掉分组（收藏回到顶层）')}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onRemoveGroup(g.name)
-                  }}
-                  className="flex h-5 w-5 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-seal"
-                >
-                  <FolderMinus size={11} />
-                </button>
-              </span>
             </div>
           )}
-          {!collapsed.has(g.name) &&
-            g.items.map((f) => (
-              <FavRow
-                key={favoriteKey(f)}
-                item={f}
-                indent
-                title={titleOf(f)}
-                renaming={renamingKey === favoriteKey(f)}
-                onRenameCommit={(name) => {
-                  setRenamingKey(null)
-                  if (name.trim()) onRenameTitle(f, name)
-                }}
-                onRenameCancel={() => setRenamingKey(null)}
-                onOpen={() => onOpen(f)}
-                onRemove={() => onRemove(f)}
-                onMove={(x, y) => setMenu({ key: favoriteKey(f), x, y, newGroup: false })}
-                onRenameStart={() => setRenamingKey(favoriteKey(f))}
-              />
-            ))}
+          {!collapsed.has(g.name) && g.items.map((f) => favRow(f, true))}
         </div>
       ))}
 
-      {menu && menuKey && (
+      {menu?.kind === 'fav' && menuFav && (
+        <FavMenu
+          menu={menu}
+          item={menuFav}
+          groupNames={groupsAll.map((g) => g.name)}
+          onOpen={() => {
+            onOpen(menuFav)
+            setMenu(null)
+          }}
+          onSetGroup={(group) => {
+            onSetGroup(menuFav, group)
+            setMenu(null)
+          }}
+          onRename={() => {
+            setRenamingKey(menu.key)
+            setMenu(null)
+          }}
+          onRemove={() => {
+            onRemove(menuFav)
+            setMenu(null)
+          }}
+          onClose={() => setMenu(null)}
+        />
+      )}
+      {menu?.kind === 'group' && (
         <GroupMenu
           menu={menu}
-          item={menuKey}
-          groupNames={groupNames}
-          onPick={(group) => {
-            onSetGroup(menuKey, group)
+          onRename={() => {
+            setRenamingGroup(menu.name)
+            setMenu(null)
+          }}
+          onRemove={() => {
+            onRemoveGroup(menu.name)
             setMenu(null)
           }}
           onClose={() => setMenu(null)}
@@ -340,9 +426,8 @@ function FavoriteGroups({
 }
 
 /**
- * 收藏的一行：类型图标（与页签栏同一套）+ 标题 + 悬停的三个动作键。
- * 网页行多了「移入分组」与「改名」；改名是行内输入（同工作区改名一个手感）。
- * 完整的网址 / 路径放 title——「我收藏的是哪个 notes.md、哪一页」悬停就能确认。
+ * 收藏的一行：类型图标 + 标题，**行上没有任何按钮**——打开靠点击，
+ * 整理靠右键菜单，拖出去就是引用。完整网址 / 路径放 title，悬停能确认。
  */
 function FavRow({
   item,
@@ -352,9 +437,7 @@ function FavRow({
   onRenameCommit,
   onRenameCancel,
   onOpen,
-  onRemove,
-  onMove,
-  onRenameStart,
+  onMenu,
 }: {
   item: FavoriteItem
   title: string
@@ -365,10 +448,7 @@ function FavRow({
   onRenameCommit: (name: string) => void
   onRenameCancel: () => void
   onOpen: () => void
-  onRemove: () => void
-  /** 悬停的「移入分组」键：弹出小菜单（右键同样弹它） */
-  onMove?: (x: number, y: number) => void
-  onRenameStart?: () => void
+  onMenu: (x: number, y: number) => void
 }) {
   if (renaming) {
     return (
@@ -381,6 +461,7 @@ function FavRow({
       />
     )
   }
+  const payload = chipPayloadOfFavorite(item)
   return (
     <div
       role="button"
@@ -390,12 +471,20 @@ function FavRow({
         if (e.key === 'Enter') onOpen()
       }}
       onContextMenu={(e) => {
-        if (!onMove) return
         e.preventDefault()
-        onMove(e.clientX, e.clientY)
+        onMenu(e.clientX, e.clientY)
       }}
       title={item.kind === 'web' ? item.url : item.kind === 'local' ? item.path : title}
-      className={'group flex cursor-pointer items-center gap-1.5 py-1.5 pr-1 transition hover:bg-line/40 ' + (indent ? 'pl-3.5' : 'pl-1.5')}
+      draggable={!!payload}
+      onDragStart={(e) => {
+        if (!payload) return
+        // 两份都带：CHIP_MIME 给文档区 / 输入框（开页签 / 变引用），FAV_KEY_MIME 给
+        // 分组行（快速归类时要知道拖的是哪一条收藏）
+        e.dataTransfer.setData('application/x-moji-chip', chipJson(payload))
+        e.dataTransfer.setData(FAV_KEY_MIME, favoriteKey(item))
+        e.dataTransfer.effectAllowed = 'copyMove'
+      }}
+      className={'flex cursor-pointer items-center gap-1.5 py-1.5 pr-1 transition hover:bg-line/40 ' + (indent ? 'pl-3.5' : 'pl-1.5')}
     >
       {/* 网页行显示**站点图标**（收藏那一刻记下的 favicon，与页签栏同一颗组件；没记到退回地球），
           其余类型用类型图标——同一个东西在页签栏与收藏夹里长得一样。
@@ -408,45 +497,6 @@ function FavRow({
         <DocTypeIcon kind={item.kind} size={13} />
       )}
       <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{title}</span>
-      <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
-        {item.kind === 'web' && onMove && (
-          <button
-            type="button"
-            title={t('移入分组')}
-            onClick={(e) => {
-              e.stopPropagation()
-              onMove(e.clientX, e.clientY)
-            }}
-            className="flex h-5 w-5 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-ink"
-          >
-            <FolderInput size={11} />
-          </button>
-        )}
-        {item.kind === 'web' && onRenameStart && (
-          <button
-            type="button"
-            title={t('改这条收藏显示的名字')}
-            onClick={(e) => {
-              e.stopPropagation()
-              onRenameStart()
-            }}
-            className="flex h-5 w-5 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-ink"
-          >
-            <Pencil size={11} />
-          </button>
-        )}
-      </span>
-      <button
-        type="button"
-        title={t('从收藏里移除')}
-        onClick={(e) => {
-          e.stopPropagation()
-          onRemove()
-        }}
-        className="hidden h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-seal group-hover:flex"
-      >
-        <X size={12} />
-      </button>
     </div>
   )
 }
@@ -485,24 +535,31 @@ function InlineName({
 }
 
 /**
- * 「移入分组」的小菜单：已有的组一个个列出来（当前所在组打勾），
- * 底下是「新建分组…」——选中后原地变成一条输入框，回车即移入新组。
+ * 收藏的右键菜单：打开 / 移入分组（已有组逐个列 + 新建分组）/ 重命名 / 删除。
+ * 排版与资源管理器行菜单同一套骨架（图标一列 + 左对齐标签）。
  */
-function GroupMenu({
+function FavMenu({
   menu,
   item,
   groupNames,
-  onPick,
+  onOpen,
+  onSetGroup,
+  onRename,
+  onRemove,
   onClose,
 }: {
-  menu: { x: number; y: number; newGroup: boolean }
+  menu: { x: number; y: number }
   item: FavoriteItem
   groupNames: string[]
-  onPick: (group: string | null) => void
+  onOpen: () => void
+  onSetGroup: (group: string | null) => void
+  onRename: () => void
+  onRemove: () => void
   onClose: () => void
 }) {
   const ref = useRef<HTMLDivElement | null>(null)
-  const [creating, setCreating] = useState(menu.newGroup)
+  const [picking, setPicking] = useState(false)
+  const [creating, setCreating] = useState(false)
   useDismissOn({ onClose })
   useClampToViewport(ref, menu)
   return (
@@ -514,52 +571,135 @@ function GroupMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[70] min-w-[180px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[70] min-w-[190px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
-      {creating ? (
-        <InlineName
-          initial=""
-          placeholder={t('新分组名，回车确认')}
-          onCommit={(name) => {
-            if (name.trim()) onPick(name)
-            else onClose()
-          }}
-          onCancel={onClose}
-        />
+      {picking || creating ? (
+        creating ? (
+          <InlineName
+            initial=""
+            placeholder={t('新分组名，回车确认')}
+            onCommit={(name) => {
+              if (name.trim()) onSetGroup(name)
+              else onClose()
+            }}
+            onCancel={onClose}
+          />
+        ) : (
+          <>
+            {item.group && (
+              <button type="button" role="menuitem" onClick={() => onSetGroup(null)} className={MENU_ROW}>
+                <span className="flex w-[14px] shrink-0 items-center justify-center">
+                  <FolderMinus size={13} className="text-ink-soft" />
+                </span>
+                {t('移出分组')}
+              </button>
+            )}
+            {groupNames
+              .filter((name) => name !== item.group)
+              .map((name) => (
+                <button key={name} type="button" role="menuitem" onClick={() => onSetGroup(name)} className={MENU_ROW}>
+                  <span className="flex w-[14px] shrink-0 items-center justify-center">
+                    <Folder size={13} className="text-ink-soft" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{name}</span>
+                </button>
+              ))}
+            <span aria-hidden="true" className="my-1 block h-px bg-line" />
+            <button type="button" role="menuitem" onClick={() => setCreating(true)} className={MENU_ROW}>
+              <span className="flex w-[14px] shrink-0 items-center justify-center">
+                <FolderInput size={13} className="text-ink-soft" />
+              </span>
+              {t('新建分组…')}
+            </button>
+          </>
+        )
       ) : (
         <>
-          {item.group && (
-            <button type="button" role="menuitem" onClick={() => onPick(null)} className={MENU_ROW}>
-              <span className="flex w-[14px] shrink-0 items-center justify-center">
-                <FolderMinus size={13} className="text-ink-soft" />
-              </span>
-              {t('移出分组')}
-            </button>
-          )}
-          {groupNames
-            .filter((name) => name !== item.group)
-            .map((name) => (
-              <button key={name} type="button" role="menuitem" onClick={() => onPick(name)} className={MENU_ROW}>
-                <span className="flex w-[14px] shrink-0 items-center justify-center">
-                  <Folder size={13} className="text-ink-soft" />
-                </span>
-                <span className="min-w-0 flex-1 truncate">{name}</span>
-              </button>
-            ))}
-          <span aria-hidden="true" className="my-1 block h-px bg-line" />
-          <button type="button" role="menuitem" onClick={() => setCreating(true)} className={MENU_ROW}>
+          <button type="button" role="menuitem" onClick={onOpen} className={MENU_ROW}>
+            <span className="flex w-[14px] shrink-0 items-center justify-center">
+              <ExternalLink size={13} className="text-ink-soft" />
+            </span>
+            {t('打开')}
+          </button>
+          <button type="button" role="menuitem" onClick={() => setPicking(true)} className={MENU_ROW}>
             <span className="flex w-[14px] shrink-0 items-center justify-center">
               <FolderInput size={13} className="text-ink-soft" />
             </span>
-            {t('新建分组…')}
+            <span className="min-w-0 flex-1 truncate">
+              {t('移入分组')}
+              {item.group && <span className="text-ink-faint">（{t('现属：{0}', item.group)}）</span>}
+            </span>
+          </button>
+          {item.kind === 'web' && (
+            <button type="button" role="menuitem" onClick={onRename} className={MENU_ROW}>
+              <span className="flex w-[14px] shrink-0 items-center justify-center">
+                <Pencil size={13} className="text-ink-soft" />
+              </span>
+              {t('重命名')}
+            </button>
+          )}
+          <span aria-hidden="true" className="my-1 block h-px bg-line" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={onRemove}
+            className={MENU_ROW + ' text-seal-deep hover:bg-seal/10'}
+          >
+            <span className="flex w-[14px] shrink-0 items-center justify-center">
+              <X size={13} />
+            </span>
+            {t('从收藏里移除')}
           </button>
         </>
       )}
-      {!creating && item.group && (
-        <div className="truncate px-2.5 py-1 text-[10.5px] text-ink-faint">
-          {t('现属：{0}', item.group)}
-        </div>
-      )}
+    </div>
+  )
+}
+
+/** 分组行的右键菜单：改名 / 删除（成员回顶层） */
+function GroupMenu({
+  menu,
+  onRename,
+  onRemove,
+  onClose,
+}: {
+  menu: { x: number; y: number }
+  onRename: () => void
+  onRemove: () => void
+  onClose: () => void
+}) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  useDismissOn({ onClose })
+  useClampToViewport(ref, menu)
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      onMouseDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }}
+      className="moji-in-soft fixed z-[70] min-w-[190px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+    >
+      <button type="button" role="menuitem" onClick={onRename} className={MENU_ROW}>
+        <span className="flex w-[14px] shrink-0 items-center justify-center">
+          <Pencil size={13} className="text-ink-soft" />
+        </span>
+        {t('重命名分组')}
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        title={t('收藏回到顶层，分组本身删掉')}
+        onClick={onRemove}
+        className={MENU_ROW + ' text-seal-deep hover:bg-seal/10'}
+      >
+        <span className="flex w-[14px] shrink-0 items-center justify-center">
+          <FolderMinus size={13} />
+        </span>
+        {t('删除分组')}
+      </button>
     </div>
   )
 }
@@ -641,12 +781,10 @@ export function Section({
 export function LocalRow({
   file,
   onOpen,
-  onRemove,
   onMenu,
 }: {
   file: LocalFile
   onOpen: () => void
-  onRemove: () => void
   onMenu: (x: number, y: number) => void
 }) {
   return (
@@ -672,17 +810,6 @@ export function LocalRow({
     >
       <DocTypeIcon kind="local" size={13} />
       <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{file.name}</span>
-      <button
-        type="button"
-        title={t('从列表里移除（不会删除文件本身）')}
-        onClick={(e) => {
-          e.stopPropagation()
-          onRemove()
-        }}
-        className="hidden h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-seal group-hover:flex"
-      >
-        <X size={12} />
-      </button>
     </div>
   )
 }

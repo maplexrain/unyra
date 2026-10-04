@@ -59,3 +59,12 @@ export function wsAllocateName(want: string, taken: ReadonlySet<string>): string
   }
   return want + ' ' + Date.now()
 }
+
+/**
+ * 工作区**内部**移动 / 复制的拖拽 MIME（payload 是 JSON：{rel, dir}）。
+ *
+ * 与 CHIP_MIME 故意分开：同一枚文件拖出去带两份数据——落在文档区 / 输入框上是
+ * 「打开 / 引用」（消费 CHIP_MIME），落在工作区目录行上是「移动 / Ctrl=复制」
+ * （消费这一份）。两类落点各自只认自己的 MIME，互不误触。
+ */
+export const WS_MOVE_MIME = 'application/x-moji-ws-move'

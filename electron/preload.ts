@@ -64,6 +64,8 @@ export type LocalReadResult = { ok: true; content: string } | { ok: false; error
 /** 文档区截图（window.capture）的返回：dataUrl 是 PNG */
 export type CaptureResult = { ok: true; dataUrl: string } | { ok: false; error: string }
 export type LocalWriteResult = { ok: boolean; error?: string }
+/** 本地媒体文件的读取结果（多媒体预览页签用） */
+export type LocalMediaResult = { ok: true; mime: string; dataUrl: string } | { ok: false; error: string }
 
 export type StorageReadResult = { ok: true; content: string | null } | StorageFail
 export type StorageListResult = { ok: true; entries: StorageEntry[] } | StorageFail
@@ -131,6 +133,8 @@ const api = {
    */
   local: {
     read: (path: string): Promise<LocalReadResult> => ipcRenderer.invoke('local:read', path),
+    /** 读本地媒体文件（多媒体预览页签用）：回 mime + base64 data URL */
+    readMedia: (path: string): Promise<LocalMediaResult> => ipcRenderer.invoke('local:readMedia', path),
     write: (path: string, content: string): Promise<LocalWriteResult> =>
       ipcRenderer.invoke('local:write', path, content),
     reveal: (path: string): Promise<StorageOk | StorageFail> => ipcRenderer.invoke('local:reveal', path),
@@ -199,6 +203,10 @@ const api = {
     /** 移动文件或整个目录。改标题时用它把资源库整个挪到新目录下 */
     move: (from: string, to: string): Promise<StorageOk | StorageFail> =>
       ipcRenderer.invoke('storage:move', from, to),
+
+    /** 复制文件或整个目录（工作区拖拽的 Ctrl 分支）；目标已存在时拒绝 */
+    copy: (from: string, to: string): Promise<StorageOk | StorageFail> =>
+      ipcRenderer.invoke('storage:copy', from, to),
 
     /** 删除文件或整个目录 */
     remove: (rel: string): Promise<StorageOk | StorageFail> => ipcRenderer.invoke('storage:remove', rel),

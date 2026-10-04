@@ -4,21 +4,17 @@ import { fileNameOf } from './tabs'
 /**
  * 本地文件列表：拖进归一浏览过的**外部**文件（不在数据目录里的那些）。
  *
- * 只收文本类：txt 与 markdown 是需求里点名的，html 一并收下（它也能预览）。
- * 别的扩展名（图片、pdf、二进制）不在这里——拖进来只会是一串乱码，
- * 与其让它进列表再报错，不如在拖入那一刻就说清楚。
+ * 曾经只收 md / txt / html：拖别的一律拒收。现在的口径是**来者不拒**——
+ * 文本类（一大串后缀，见 electron/storage/local 的 LOCAL_TEXT_EXTS）开编辑器，
+ * 图片 / 音频 / 视频开媒体预览页签；预览不了的也在列表里留着路径。
  */
-
-/** 能拖进来浏览的扩展名 */
-const LOCAL_EXTS = ['.md', '.markdown', '.txt', '.html', '.htm']
 
 /** 列表上限：这是「最近打开」而不是收藏夹，留着最常用的一批就够 */
 export const LOCAL_FILE_LIMIT = 30
 
-/** 这个文件名能不能拖进来（大小写不敏感） */
-export function isSupportedLocalFile(name: string): boolean {
-  const base = fileNameOf(name).toLowerCase()
-  return LOCAL_EXTS.some((ext) => base.endsWith(ext))
+/** 这个文件名能不能拖进来：现在一律可以（文本 / 媒体各走各的视图，见 learn/tabs 的 viewOf） */
+export function isSupportedLocalFile(_name: string): boolean {
+  return true
 }
 
 /**

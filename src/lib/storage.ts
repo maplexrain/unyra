@@ -239,6 +239,20 @@ export async function movePath(from: string, to: string): Promise<boolean> {
   return res.ok
 }
 
+/** 相对当前用户目录的两条路径（movePath 的用户内包装，工作区拖拽复制用） */
+export async function copyUserPath(from: string, to: string): Promise<boolean> {
+  const a = userPath(from)
+  const b = userPath(to)
+  return a && b ? copyPath(a, b) : false
+}
+
+/** 复制文件或整个目录（工作区拖拽的 Ctrl 分支）。目标已存在时主进程拒绝，这里返回 false */
+export async function copyPath(from: string, to: string): Promise<boolean> {
+  const res = await native().storage.copy(from, to)
+  if (!res.ok) console.warn('[storage] 复制失败：', from, '→', to, res.error)
+  return res.ok
+}
+
 /**
  * 在系统文件管理器里定位某个文件（知识节点右键菜单的「在资源管理器中打开」）。
  * 返回是否成功——失败只提示，不抛出：磁盘上的事不该把界面打断。

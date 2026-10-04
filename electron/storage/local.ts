@@ -13,14 +13,42 @@ import { t } from '../i18n'
 /* ---------- 外部文件（拖进来浏览的那些） ---------- */
 
 /**
- * 允许通过 local:* 通道读写的外部文件类型。
+ * 允许通过 local:read / local:write 读写的外部**文本**文件类型。
  *
  * 与 storage:* 的根本差别：这里的路径是**绝对路径**——拖进来的文件本来就不在
  * 用户的数据目录里，套那套相对路径校验根本走不通。既然开了这道口子，就把范围
- * 收在「归一能浏览的文本文件」上：这条通道是给「拖进来看一眼、顺手改两句」用的，
- * 不是通用文件系统入口。
+ * 收在「常见文本后缀」上：这条通道是给「拖进来看一眼、顺手改两句」用的，
+ * 不是通用文件系统入口。媒体文件（图片 / 音频 / 视频）走下面的 readLocalMedia。
  */
-const LOCAL_TEXT_EXTS = new Set(['.md', '.markdown', '.txt', '.html', '.htm'])
+const LOCAL_TEXT_EXTS = new Set([
+  '.md', '.markdown', '.txt', '.html', '.htm',
+  '.json', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.css', '.scss', '.less',
+  '.py', '.rb', '.php', '.java', '.kt', '.swift', '.c', '.h', '.cpp', '.hpp', '.cc', '.cs',
+  '.rs', '.go', '.sh', '.bash', '.zsh', '.bat', '.cmd', '.ps1',
+  '.yml', '.yaml', '.toml', '.ini', '.cfg', '.conf', '.properties',
+  '.xml', '.csv', '.tsv', '.log', '.sql', '.vue', '.svelte', '.dart', '.lua', '.r', '.tex',
+  '.graphql', '.gql', '.diff', '.patch', '.dockerfile', '.zig', '.hs', '.scala', '.ex',
+])
+
+/** 本地文件的**媒体预览**扩展名：与 learn/tabs 的 MEDIA_EXTS 一张表拆两处（一边后缀、一边渲染） */
+const LOCAL_MEDIA_EXTS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.avif',
+  '.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.opus',
+  '.mp4', '.webm', '.mkv', '.mov', '.m4v',
+])
+
+const MEDIA_MIME: Record<string, string> = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.webp': 'image/webp', '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.ico': 'image/x-icon',
+  '.avif': 'image/avif',
+  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.flac': 'audio/flac',
+  '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.opus': 'audio/opus',
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mkv': 'video/x-matroska', '.mov': 'video/quicktime',
+  '.m4v': 'video/mp4',
+}
+
+/** 媒体预览的体积上限：一段 45 分钟的课大约 200MB，再大的就让用户用系统播放器 */
+const MEDIA_MAX_BYTES = 200 * 1024 * 1024
 
 /** 校验一个外部文件路径：必须绝对、扩展名在白名单里 */
 function localFile(raw: unknown): string | null {
@@ -29,9 +57,31 @@ function localFile(raw: unknown): string | null {
   return LOCAL_TEXT_EXTS.has(path.extname(p).toLowerCase()) ? p : null
 }
 
+/** 读本地媒体文件：回 base64 data URL（多媒体预览页签用，见 LocalDoc 的 media 视图） */
+export async function readLocalMedia(
+  raw: unknown,
+): Promise<{ ok: boolean; mime?: string; dataUrl?: string; error?: string }> {
+  const p = typeof raw === 'string' ? raw.trim() : ''
+  const ext = p ? path.extname(p).toLowerCase() : ''
+  if (!p || !path.isAbsolute(p) || !LOCAL_MEDIA_EXTS.has(ext)) {
+    return { ok: false, error: t('这个文件类型不能在这里预览') }
+  }
+  try {
+    const stat = await fsp.stat(p)
+    if (!stat.isFile()) return { ok: false, error: t('这不是一个文件') }
+    if (stat.size > MEDIA_MAX_BYTES) return { ok: false, error: t('文件太大（超过 200MB），用系统播放器打开吧') }
+    const mime = MEDIA_MIME[ext] ?? 'application/octet-stream'
+    const buf = await fsp.readFile(p)
+    return { ok: true, mime, dataUrl: `data:${mime};base64,${buf.toString('base64')}` }
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    return { ok: false, error: code === 'ENOENT' ? t('文件不在了（可能已被移动或删除）') : t('读取失败') }
+  }
+}
+
 export async function readLocal(raw: unknown): Promise<{ ok: boolean; content?: string; error?: string }> {
   const p = localFile(raw)
-  if (!p) return { ok: false, error: t('这个文件类型不能在这里打开（只支持 md / txt / html）') }
+  if (!p) return { ok: false, error: t('这个文件类型不能在这里编辑（文本类：md / txt / 代码等；媒体文件会自动进预览）') }
   try {
     return { ok: true, content: await fsp.readFile(p, 'utf-8') }
   } catch (err) {
@@ -168,14 +218,14 @@ export async function revealLocal(raw: unknown): Promise<{ ok: boolean; error?: 
   return { ok: true }
 }
 
-/** 从系统对话框里挑几个本地文件（拖拽之外的第二个入口） */
+/** 从系统对话框里挑几个本地文件（拖拽之外的第二个入口）：不设扩展名过滤，文本 / 媒体都能进 */
 export async function pickLocal(): Promise<{ ok: boolean; canceled?: boolean; paths?: string[] }> {
   const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? undefined
   const { canceled, filePaths } = await dialog.showOpenDialog(win!, {
     title: t('打开本地文件'),
     properties: ['openFile', 'multiSelections'],
-    filters: [{ name: t('文本文件'), extensions: ['md', 'markdown', 'txt', 'html', 'htm'] }],
+    filters: [{ name: t('全部文件'), extensions: ['*'] }],
   })
   if (canceled || !filePaths?.length) return { ok: false, canceled: true }
-  return { ok: true, paths: filePaths.filter((p) => LOCAL_TEXT_EXTS.has(path.extname(p).toLowerCase())) }
+  return { ok: true, paths: filePaths }
 }

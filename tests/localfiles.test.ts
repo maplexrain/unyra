@@ -29,9 +29,9 @@ describe('收哪些文件', () => {
     }
   })
 
-  it('别的类型不收：图片、pdf、二进制拖进来只会是一串乱码', () => {
-    for (const name of ['a.png', 'a.pdf', 'a.docx', 'a', 'a.md.bak']) {
-      expect(isSupportedLocalFile(name)).toBe(false)
+  it('来者不拒：图片、pdf 也能拖进来（媒体开预览页签，其余按文本尝试，见 viewOf）', () => {
+    for (const name of ['a.png', 'a.pdf', 'a.docx', 'a', 'a.md.bak', 'a.md']) {
+      expect(isSupportedLocalFile(name)).toBe(true)
     }
   })
 })

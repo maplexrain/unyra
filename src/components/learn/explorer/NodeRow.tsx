@@ -331,7 +331,7 @@ export function NodeRow({
           文件与子目录就是磁盘上实际有的那些（用户放进去的、导师用 workspace.write 写的都在）。
           一直显示：真实目录永远存在，藏起来反而让人以为没有。
         */}
-        <WorkspaceRow node={node} store={store} ws={ws} onOpenMenu={onOpenMenu} onOpen={onOpenWs} />
+        <WorkspaceRow node={node} store={store} ws={ws} onOpenMenu={onOpenMenu} onOpen={onOpenWs} onTransfer={ws.transfer} />
 
         {children.map((child) => (
           <div key={child.id} className="ml-3 border-l border-line pl-1.5">

@@ -136,6 +136,8 @@ export interface WsActions {
   create: (dirRel: string, kind: 'dir' | 'file') => void
   /** 真实改名（move，绝不覆盖已有目标；名字不合法 / 撞名由宿主用 toast 说清） */
   rename: (fromRel: string, toRel: string) => void
+  /** 拖拽移动 / 复制到某个目录（Ctrl = 复制；撞名自动避开，目录进自己由宿主拒绝） */
+  transfer: (fromRel: string, toDirRel: string, copy: boolean) => void
 }
 
 /** 行的右键菜单要的东西（见 RowMenu）：菜单当前的位置与目标行 + 它作用的那一类行能做的事 */

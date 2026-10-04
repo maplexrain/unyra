@@ -88,6 +88,8 @@ export interface NativeBridge {
    */
   local: {
     read(path: string): Promise<{ ok: true; content: string } | { ok: false; error: string }>
+    /** 读本地媒体文件（多媒体预览页签用）：mime + base64 data URL */
+    readMedia(path: string): Promise<{ ok: true; mime: string; dataUrl: string } | { ok: false; error: string }>
     write(path: string, content: string): Promise<{ ok: boolean; error?: string }>
     reveal(path: string): Promise<StorageOk | StorageFail>
     /** 弹原生多选框挑几个本地文件（拖拽之外的第二个入口） */
@@ -130,6 +132,8 @@ export interface NativeBridge {
     readBinary(rel: string): Promise<StorageImage>
     /** 移动文件或整个目录（改名时用它保住目录下的二进制资源） */
     move(from: string, to: string): Promise<StorageOk | StorageFail>
+    /** 复制文件或整个目录（工作区拖拽的 Ctrl 分支）；目标已存在时拒绝 */
+    copy(from: string, to: string): Promise<StorageOk | StorageFail>
     remove(rel: string): Promise<StorageOk | StorageFail>
     /** 新建一个目录（父目录连带建起；已存在同名时拒绝，见 electron/storage 的 mkdirPath） */
     mkdir(rel: string): Promise<StorageOk | StorageFail>

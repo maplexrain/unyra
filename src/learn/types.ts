@@ -499,8 +499,8 @@ export type TabRef =
    */
   | { kind: 'web'; url: string; key: string }
 
-/** 文档区的两种视图：源码（可编辑）与预览（渲染后） */
-export type DocView = 'source' | 'preview'
+/** 文档区的视图：源码（可编辑）、预览（渲染后）与媒体预览（图片 / 音频 / 视频的本地文件） */
+export type DocView = 'source' | 'preview' | 'media'
 
 /**
  * web 页签的**活信息**：只活在会话里、不落盘（learn/state 的 buildState 不挑它）。
@@ -666,6 +666,12 @@ export interface LearnStore {
    * 与网页地址栏的星标都在它里面增删；指向已删除东西的收藏由 normalize 在读盘时剪掉。
    */
   favorites?: FavoriteItem[]
+  /**
+   * 收藏的**分组文件夹**登记表（名字清单，见 learn/favorites）。组名同时长在成员身上
+   * （FavoriteItem.group），这里登记的是「组本身」——空组（还没移进任何收藏）也要能存在，
+   * 「新建分组」按钮创建的就是它。**可选字段**：旧 state.json 里没有它，`?? []` 兜底。
+   */
+  favGroups?: string[]
 }
 
 /**

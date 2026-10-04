@@ -76,11 +76,12 @@ interface Props {
   onOpenFavorite: (ref: FavoriteRef) => void
   /** 收藏区：把一行摘出收藏夹（不动文档本身） */
   onRemoveFavorite: (ref: FavoriteRef) => void
-  /** 收藏分组（网页收藏的管理，见 learn/favorites）：移入 / 组改名 / 拆组 / 改收藏显示名 */
+  /** 收藏分组（见 learn/favorites）：移入 / 组改名 / 删组 / 改收藏显示名 / 新建组 */
   onSetFavoriteGroup: (ref: FavoriteRef, group: string | null) => void
   onRenameFavoriteGroup: (from: string, to: string) => void
   onRemoveFavoriteGroup: (group: string) => void
   onRenameFavoriteTitle: (ref: FavoriteRef, title: string) => void
+  onCreateFavoriteGroup: (name: string) => void
   /** 收藏行的标题（节点名 / 考试名要查数据，见 learn/favorites 的 favoriteTitle） */
   favoriteTitleOf: (ref: FavoriteRef) => string
   /** 节点下面那些文档的动作：新建、打开、改名、删除、定位 */
@@ -116,6 +117,7 @@ export default function ExplorerSidebar({
   onRenameFavoriteGroup,
   onRemoveFavoriteGroup,
   onRenameFavoriteTitle,
+  onCreateFavoriteGroup,
   favoriteTitleOf,
   docs,
   exams,
@@ -238,6 +240,7 @@ export default function ExplorerSidebar({
               放在「我有什么」的两区之间才找得到；空列表整块不显示 */}
           <FavoriteSection
             items={store.favorites ?? []}
+            groups={store.favGroups ?? []}
             open={sectionOpen('favorites')}
             onToggle={() => toggleSection('favorites')}
             titleOf={favoriteTitleOf}
@@ -247,6 +250,7 @@ export default function ExplorerSidebar({
             onRenameGroup={onRenameFavoriteGroup}
             onRemoveGroup={onRemoveFavoriteGroup}
             onRenameTitle={onRenameFavoriteTitle}
+            onCreateGroup={onCreateFavoriteGroup}
           />
 
           {locals.length > 0 && (
@@ -272,7 +276,6 @@ export default function ExplorerSidebar({
                     key={f.path}
                     file={f}
                     onOpen={() => onOpenLocal(f.path)}
-                    onRemove={() => onRemoveLocal(f.path)}
                     onMenu={(x, y) => openMenu(x, y, { kind: 'local', file: f })}
                   />
                 ))}
