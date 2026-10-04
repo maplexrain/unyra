@@ -97,10 +97,14 @@ export function tabRefFromChip(store: LearnStore, p: ChipPayload): TabRef | null
     const abs = userAbsPath(rel)
     return abs ? { kind: 'local', path: abs } : null
   }
-  // 考试：只有「某一次的副本」能开成页签；原件返回 null（opener 走考试窗口）
-  if (p.type === 'exam') {
+  // 考试：只有「某一次的副本」能开成页签。attempt 型（拖考试副本进输入框、exam.read
+  // 回执里给的）与带 attemptId 的 exam 型是同一个落点；attemptId 必须真在 attempts 里——
+  // 放过去只会开出一张「这份试卷已经被删了」的空页签，宁可打不开。
+  // 原件（exam 不带 attemptId）返回 null，opener 分流到考试窗口。
+  if (p.type === 'exam' || p.type === 'attempt') {
     const exam = p.examId ? store.exams.find((e) => e.id === p.examId) : undefined
     if (!exam || !p.attemptId) return null
+    if (!exam.attempts.some((a) => a.id === p.attemptId)) return null
     return { kind: 'exam', nodeId: exam.nodeId, examId: exam.id, attemptId: p.attemptId }
   }
 

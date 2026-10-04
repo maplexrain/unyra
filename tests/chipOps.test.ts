@@ -14,6 +14,7 @@ import { createChipOps } from '../src/learn/ops/chip'
 import { wsRelOf } from '../src/learn/workspace'
 import { nodeDocPath } from '../src/learn/files/build'
 import { parseChipToken } from '../src/lib/chipSyntax'
+import { tabRefFromChip } from '../src/learn/chipRef'
 
 const NOW = 1700000000000
 
@@ -199,5 +200,24 @@ describe('chip.check：交付前自查', () => {
     expect(r.valid).toBe(1)
     expect(r.invalid).toBe(0)
     expect(r.note).toContain('可以交付')
+  })
+})
+
+describe('chip 点击打开：attempt 型还原成考试副本页签', () => {
+  it('attempt 与带 attemptId 的 exam 都开出 {kind:exam}；attempt 不存在则打不开', () => {
+    const store = fixture()
+    expect(tabRefFromChip(store, { type: 'attempt', nodeId: 'c1', examId: 'ex1', attemptId: 'at1' })).toEqual({
+      kind: 'exam',
+      nodeId: 'c1',
+      examId: 'ex1',
+      attemptId: 'at1',
+    })
+    expect(
+      tabRefFromChip(store, { type: 'exam', nodeId: 'c1', examId: 'ex1', attemptId: 'at1' }),
+    ).toMatchObject({ kind: 'exam', attemptId: 'at1' })
+    // attemptId 不在 history 里：宁可打不开，也不开一张「试卷已被删」的空页签
+    expect(tabRefFromChip(store, { type: 'exam', examId: 'ex1', attemptId: 'nope' })).toBeNull()
+    // 试卷原件（不带 attemptId）没有页签形态：opener 对它走考试窗口
+    expect(tabRefFromChip(store, { type: 'exam', examId: 'ex1' })).toBeNull()
   })
 })

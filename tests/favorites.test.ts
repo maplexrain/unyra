@@ -15,6 +15,10 @@ import {
   favoriteRefOfTab,
   favoriteTitle,
   removeFavorite,
+  removeFavoriteGroup,
+  renameFavoriteGroup,
+  renameWebFavorite,
+  setFavoriteGroup,
   tabRefOfFavorite,
   toggleFavorite,
 } from '../src/learn/favorites'
@@ -205,5 +209,59 @@ describe('落盘往返（buildState）', () => {
     const withFavs = { ...emptyLearnStore(), favorites: [{ kind: 'web', url: 'https://a.dev', at }] as FavoriteItem[] }
     expect(buildState(withFavs).favorites).toEqual([{ kind: 'web', url: 'https://a.dev', at }])
     expect('favorites' in buildState(emptyLearnStore())).toBe(false)
+  })
+})
+
+describe('分组文件夹', () => {
+  const web = (url: string, group?: string): FavoriteItem =>
+    ({ kind: 'web', url, at, ...(group ? { group } : {}) })
+  const list = (): FavoriteItem[] => [web('https://a.dev'), web('https://b.dev', '文档'), web('https://c.dev', '文档')]
+
+  it('移入 / 移出：只动目标那一条，身份不变', () => {
+    const next = setFavoriteGroup(list(), 'u:https://a.dev', '资料')
+    expect(next[0]).toEqual({ kind: 'web', url: 'https://a.dev', at, group: '资料' })
+    expect(next[1]).toEqual({ kind: 'web', url: 'https://b.dev', at, group: '文档' })
+    // 移回顶层：group 字段整个摘掉（不是存空串）
+    const back = setFavoriteGroup(next, 'u:https://a.dev', null)
+    expect(back[0]).toEqual({ kind: 'web', url: 'https://a.dev', at })
+  })
+
+  it('改组名：成员原样跟着走', () => {
+    const next = renameFavoriteGroup(list(), '文档', '学习资料')
+    expect(next.map((f) => f.group)).toEqual([undefined, '学习资料', '学习资料'])
+    // 名字没变（或清成了空）就不动
+    expect(renameFavoriteGroup(list(), '文档', '文档')).toEqual(list())
+  })
+
+  it('拆组：成员回顶层，一条不丢', () => {
+    const next = removeFavoriteGroup(list(), '文档')
+    expect(next).toHaveLength(3)
+    expect(next.every((f) => !f.group)).toBe(true)
+  })
+
+  it('改网页收藏的显示名：只认 web、清掉空白不动', () => {
+    const next = renameWebFavorite(list(), 'u:https://a.dev', '  Unyra 仓库  ')
+    expect(next[0].kind === 'web' && next[0].title).toBe('Unyra 仓库')
+    expect(renameWebFavorite(list(), 'u:https://a.dev', '   ')).toEqual(list())
+    // 本地文件没有可存的显示名，不动
+    const locals: FavoriteItem[] = [{ kind: 'local', path: 'C:\\a.md', at }]
+    expect(renameWebFavorite(locals, 'l:C:\\a.md', 'x')).toEqual(locals)
+  })
+
+  it('normalize 读盘：group 合法的保留、形状不对的当没有', () => {
+    const out = normalizeFavorites(
+      [
+        { kind: 'web', url: 'https://a.dev', at, group: '  资料站  ' },
+        { kind: 'web', url: 'https://b.dev', at, group: '   ' },
+        { kind: 'web', url: 'https://c.dev', at, group: 42 },
+        { kind: 'web', url: 'https://d.dev', at, group: 'x'.repeat(80) },
+      ],
+      new Map(),
+      [],
+    )
+    expect(out[0]).toMatchObject({ url: 'https://a.dev', group: '资料站' })
+    expect(out[1]).toEqual({ kind: 'web', url: 'https://b.dev', at })
+    expect(out[2]).toEqual({ kind: 'web', url: 'https://c.dev', at })
+    expect(out[3].group).toHaveLength(64)
   })
 })

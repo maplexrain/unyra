@@ -122,16 +122,19 @@ export function normalizeFavorites(
   if (!Array.isArray(raw)) return []
   const now = Date.now()
   const out: FavoriteItem[] = []
-  const push = (ref: FavoriteRef, at: number): void => {
+  const push = (ref: FavoriteRef, at: number, group?: string): void => {
     if (out.some((f) => favoriteKey(f) === favoriteKey(ref))) return
-    out.push({ ...ref, at: Number.isFinite(at) && at > 0 ? at : now })
+    // 分组名是展示与管理用的附件（见 learn/favorites）：形状不对就当没有
+    const g = typeof group === 'string' ? group.trim().slice(0, 64) : ''
+    out.push({ ...ref, at: Number.isFinite(at) && at > 0 ? at : now, ...(g ? { group: g } : {}) })
   }
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue
     const r = item as Record<string, unknown>
     const at = typeof r.at === 'number' ? r.at : NaN
+    const group = typeof r.group === 'string' ? r.group : undefined
     if (r.kind === 'local') {
-      if (typeof r.path === 'string' && r.path) push({ kind: 'local', path: r.path }, at)
+      if (typeof r.path === 'string' && r.path) push({ kind: 'local', path: r.path }, at, group)
       continue
     }
     if (r.kind === 'web') {
@@ -140,29 +143,29 @@ export function normalizeFavorites(
         // 标题与站点图标是收藏那一刻记下的展示信息（见 types 的 web 分支）；形状不对或超长就弃掉/截断
         if (typeof r.title === 'string' && r.title.trim()) fav.title = r.title.trim().slice(0, 200)
         if (typeof r.icon === 'string' && /^https?:\/\//i.test(r.icon)) fav.icon = r.icon
-        push(fav, at)
+        push(fav, at, group)
       }
       continue
     }
     const nodeId = typeof r.nodeId === 'string' ? r.nodeId : ''
     const node = byId.get(nodeId)
     if (!node) continue
-    if (r.kind === 'teach') push({ kind: 'teach', nodeId }, at)
-    else if (r.kind === 'outline') push({ kind: 'outline', nodeId }, at)
+    if (r.kind === 'teach') push({ kind: 'teach', nodeId }, at, group)
+    else if (r.kind === 'outline') push({ kind: 'outline', nodeId }, at, group)
     else if (r.kind === 'note') {
       const note = typeof r.note === 'string' ? r.note : ''
       if (note && (node.notes ?? []).some((n) => n.name.toLowerCase() === note.toLowerCase()))
-        push({ kind: 'note', nodeId, note }, at)
+        push({ kind: 'note', nodeId, note }, at, group)
     } else if (r.kind === 'super') {
       const name = typeof r.name === 'string' ? r.name : ''
       if (name && (node.superdocs ?? []).some((n) => n.name.toLowerCase() === name.toLowerCase()))
-        push({ kind: 'super', nodeId, name }, at)
+        push({ kind: 'super', nodeId, name }, at, group)
     } else if (r.kind === 'exam') {
       const examId = typeof r.examId === 'string' ? r.examId : ''
       const attemptId = typeof r.attemptId === 'string' ? r.attemptId : ''
       const exam = exams.find((e) => e.id === examId)
       if (examId && attemptId && exam?.attempts.some((a) => a.id === attemptId))
-        push({ kind: 'exam', nodeId, examId, attemptId }, at)
+        push({ kind: 'exam', nodeId, examId, attemptId }, at, group)
     }
   }
   return out
