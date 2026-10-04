@@ -119,10 +119,12 @@ export default function SourceEditor({
   const ref = useRef<HTMLDivElement | null>(null)
   /**
    * 「界面上此刻的字」——不是 React 的 value，而是编辑区实际显示的那份。
-   * value 与它一致就是「刚输入的 / 已经画上去的」，不必动 DOM；不一致才是
-   * 外部改动（暂存被撤、外部文件变了），那时才整块重写。
+   * 初始是 **null**：挂载那一趟必须画（contenteditable 的 div 自己没有内容，
+   * 不画的话编辑区是空的，直到高亮异步做完才冒出正文）。value 与它一致就是
+   * 「刚输入的 / 已经画上去的」，不必动 DOM；不一致才是外部改动（暂存被撤、
+   * 外部文件变了），那时才整块重写。
    */
-  const shownRef = useRef(value)
+  const shownRef = useRef<string | null>(null)
   /** 重排高亮的定时器；每次输入都会重排一次，防抖别让逐键 tokenize 卡手 */
   const hlTimer = useRef<number | null>(null)
   /** 在途高亮的作废标记：value 已变 / 组件已卸载时，晚到的结果不再写 DOM */
@@ -243,6 +245,14 @@ export default function SourceEditor({
             focusedRef.current = false
           }}
           onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              // 换行必须由我们插：plaintext-only 下浏览器自作的换行不一定是真正的
+              // 「\n」文本（<br> 一类，textContent 拼不出来）——重高亮一替换，
+              // 刚敲的那一行就弹没了。insertText 塞一个真换行字符，pre-wrap 下可见可数。
+              e.preventDefault()
+              document.execCommand('insertText', false, '\n')
+              return
+            }
             if (e.key !== 'Tab') return
             // Tab 在正文里该是缩进。不挡掉的话焦点会跑出去，改到一半跳走最恼人
             e.preventDefault()
