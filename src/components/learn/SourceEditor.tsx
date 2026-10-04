@@ -72,7 +72,7 @@ const editorTheme = EditorView.theme({
   '&': { height: '100%', backgroundColor: 'transparent', color: 'var(--color-ink)' },
   '.cm-scroller': { overflow: 'auto', fontFamily: 'inherit', lineHeight: '1.75' },
   '.cm-content': {
-    paddingTop: '44px',
+    paddingTop: '20px',
     paddingBottom: '20px',
     paddingLeft: '10px',
     paddingRight: '22px',
@@ -230,8 +230,8 @@ export default function SourceEditor({
   return (
     <div className="print-flat flex min-h-0 flex-1 flex-col bg-card">
       {/*
-        pt-11 交给 .cm-content 的内边距（见 editorTheme）：文档区右上角浮着那排按钮
-        （悬浮组），画面窄的时候它正压在首行上——首行从这里往下让开一整条按钮的高度。
+        正文内边距走 .cm-content（见 editorTheme）：上下 20px、与左右同一尺度。
+        右上那排悬浮按钮压着首行就压着——它平时是透明的，不占版面。
       */}
       <div ref={hostRef} className="min-h-0 flex-1 overflow-hidden" />
 
