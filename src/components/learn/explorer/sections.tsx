@@ -363,13 +363,11 @@ function FavoriteGroups({
                 (dropGroup === g.name ? 'rounded bg-seal/15 ring-1 ring-seal/50' : '')
               }
             >
-              <ChevronRight
-                size={12}
-                className={
-                  'shrink-0 text-ink-faint transition-transform duration-200 ease-out motion-reduce:transition-none ' +
-                  (collapsed.has(g.name) ? '' : 'rotate-90')
-                }
-              />
+              {/*
+                组头不再放展开箭头：文件夹图标自己是开 / 合的状态（Folder / FolderOpen），
+                而它必须站在**最左**——成员行的图标在 pl-3.5（缩进的一层），
+                组的图标缩进得比成员还深，层级就反了。
+              */}
               {collapsed.has(g.name) ? (
                 <Folder size={13} className="shrink-0 text-ink-faint" />
               ) : (
