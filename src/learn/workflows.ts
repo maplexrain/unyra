@@ -150,11 +150,17 @@ const EXAM_INSTRUCTION = [
   '第二步｜问一次：用 api.ask 出一张表单，两道题——① 试卷类型（单选：随堂小测 / 小考 / 大考，选项里写清各自的题量规模）；② 难度（单选：简易 / 中等 / 难 / 极难）。最多再加一道「有没有特别想考的章节」。**不要多问**：响铃与切到对话主位已由系统在你这一轮开始前做好，不必再调 tiktok / ui.switchMain。',
   '第三步｜定时限：除随堂小测（不限时，minutes 不用给）外，按题量与难度认真估一个 **minutes**（分钟）。下限是题目数 × 2，那只是地板——要写过程、要计算的题都要多留时间；宁可宽一点，也别让用户做不完。',
   '第四步｜出题：api.exam.create({ title, kind, level, minutes, questions })，kind 取 "quiz"（随堂小测）| "test"（小考）| "exam"（大考），level 取 "easy" | "medium" | "hard" | "extreme"，并据此拟定一个简短的试卷标题。',
-  '每道题写成 { type, stem, options, answer, rubric, points }：' +
+  '每道题写成 { type, stem, image, options, answer, rubric, points }：' +
     'type 取 \'single\'（单选）| \'multiple\'（多选）| \'truefalse\'（对错）| \'fill\'（填空）| \'short\'（简答）；' +
     'stem 是题干；options 写成 [{ id: \'A\', text: \'选项文字\' }, { id: \'B\', text: \'…\' }]（对错题不用给）；' +
     'answer 是选项 id 数组如 [\'A\']（单选/多选/对错必给；对错题写 [\'true\'] / [\'false\']，也不用给 options；' +
     '填空给 [\'答案\'] 则由系统判分），rubric 写评分要点或解析，points 是分值（默认 1）。',
+  '题面两条硬规矩：**① 涉及数学公式时必须用 LaTeX 写进 stem / options**（行内 $…$、独立公式 $$…$$，' +
+    '渲染器按 Markdown+KaTeX 出）——不要用 Unicode 上下标（x²、√3）或纯文本近似糊弄；' +
+    '**② 需要图形的题（几何图、函数图像、受力示意、流程图…）给 image 字段**：值是完整的 SVG 源码' +
+    '（以 <svg 开头、</svg> 结尾，带 viewBox 与坐标数据，一张图一段 SVG）——canvas 存不下来，' +
+    '不要用 canvas，也不要用图片链接。出完卷宿主会用视觉自检一遍图像渲染，坏图自动修复，你不用管。',
+  '**所有题目一次性出完**：全部题目放进同一次 api.exam.create 的 questions 里，不要先出一部分再补第二次。',
   '格式或时限写错时这次调用不会生效，结果最前面会写清「哪里不对、该写成什么」——照那句话改一次就好，不要另出一份试着看，也不要为了确认再调一次读接口（api.exam.read() 随时能看）。',
   '出完就在对话里说一句「卷子出好了，去文档区右侧的试卷列表点「考试」」，不要在对话里重复列出题目。',
 ].join('\n')

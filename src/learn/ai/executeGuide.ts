@@ -186,8 +186,9 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
 - 资源库 res.*：本目标 static/ 的文件，uuid 寻址；res.read 看图不回数据、图挂你的下一步，
   一次只看真正需要的；文档里引用写 ![说明](moji:static/uuid)。
 - 试卷 exam.*：两层结构（试卷/考试），考试窗口用户自己开、你没有开考的 api。
-  exam.create({ title, kind, level, minutes, questions: [{ type: "single"|"multiple"|"truefalse"|"fill"|"short", stem, options: [{ id, text }], answer: ["A"], rubric, points }] })——
+  exam.create({ title, kind, level, minutes, questions: [{ type: "single"|"multiple"|"truefalse"|"fill"|"short", stem, image, options: [{ id, text }], answer: ["A"], rubric, points }] })——
   单选/多选/对错必给 answer；除小测外 minutes ≥ 题目数 × 2；判分 grade、讲解 explain 看模块。
+  题面按 Markdown 渲染：数学公式必须 LaTeX（$…$ / $$…$$）；带图题给 image（完整 SVG 源码，canvas 不行）。
 - 间隔复习 review.*：计划系统建（+1/+3/+7/+14/+30），你只带复习与落账；完成不看对错；
   合并复习必须先 ask 征得同意。
 - 工作区 workspace.*：节点的真实磁盘目录，文本整份覆盖写；回执 rel 是引用 chip 要抄的 path。

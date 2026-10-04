@@ -44,6 +44,13 @@ export interface ExamQuestion {
   answer?: string[]
   /** 给 Agent 的评分要点 / 参考答案说明 */
   rubric?: string
+  /**
+   * 题目配图：**完整的 SVG 源码**（以 <svg 开头）。
+   * 入库前过一遍 sanitizeExamSvg（见 exam/svg）——配图是「画出来的题面」，不是可信
+   * HTML，script / 事件属性 / foreignObject 这些口子在入库前剥干净。
+   * canvas 没法持久保存（存下的是代码不是图），绘图一律以 SVG 表达。
+   */
+  image?: string
   points: number
 }
 

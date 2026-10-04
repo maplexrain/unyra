@@ -374,6 +374,11 @@ function QuestionReview({
       {/* 题干必须走 Markdown 渲染：出题时公式与代码块都写在 stem 里 */}
       <MarkdownView html={renderNote(q.stem)} className="moji-agent-md mb-2" />
 
+      {q.image && (
+        /* 配图：题干的一部分。SVG 源码在入库前已消毒（见 learn/exam/svg），这里直接渲染 */
+        <div className="moji-exam-figure mb-2" dangerouslySetInnerHTML={{ __html: q.image }} />
+      )}
+
       {q.type === 'single' || q.type === 'multiple' || q.type === 'truefalse' ? (
         <div className="flex flex-col gap-1">
           {(q.options ?? []).map((o) => {

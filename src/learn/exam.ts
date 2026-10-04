@@ -28,6 +28,7 @@ export type {
 
 export type { QuestionsParse } from './exam/parse'
 export { EXAM_SHAPE_HINT, normalizeQuestions, parseQuestions } from './exam/parse'
+export { sanitizeExamSvg } from './exam/svg'
 
 export {
   examTotalPoints,

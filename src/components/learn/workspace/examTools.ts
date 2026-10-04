@@ -36,6 +36,7 @@ import {
 } from '../../../learn/graph'
 import type { CreateExamPayload, ExamToolDeps } from '../../../agent/tools'
 import { t } from '../../../i18n'
+import { figureSelfCheckNote, hasExamFigures, selfCheckExamFigures } from './examImageCheck'
 
 /** 宿主交给考试工具的能力（见 LearnWorkspace 里 openTabRef 为什么是 ref 而不是函数） */
 export interface ExamToolHost {
@@ -135,6 +136,13 @@ export function makeExamDeps(host: ExamToolHost, nodeId: string): ExamToolDeps {
       // 出题完成要让人看到试卷：收起目标创建页，避免面板被它挡住
       setCreating(false)
       onToast(t('已生成「{0}」，共 {1} 题', title, questions.length))
+      /*
+       * 带图的题：宿主在后台跑一轮视觉自检（渲染成位图交给模型看，坏图自动重画修复）。
+       * 跑在出卷之后而不是 exam.create 里面——沙箱一次 execute 只有 15 秒，两跳视觉
+       * 请求等不起（见 examImageCheck 顶部说明）。这里只负责点火 + 在回执里交代一声。
+       */
+      const figureNote = figureSelfCheckNote(questions)
+      if (hasExamFigures(questions)) void selfCheckExamFigures({ getLatest, set, onToast }, exam.id, questions)
       // 回执里带上题型分布：模型据此确认自己写的题型被认成了什么（写 judge 会被算成对错题）
       const mix = questionsMix(questions)
       const limit = mins.minutes > 0 ? '时限 ' + mins.minutes + ' 分钟' : '不限时'
@@ -143,7 +151,8 @@ export function makeExamDeps(host: ExamToolHost, nodeId: string): ExamToolDeps {
         message:
           `已生成《${title}》，共 ${questions.length} 题（${mix}），${limit}，满分 ${examTotalPoints(exam)}。` +
           '学习者会在文档区右侧的试卷列表里点「考试」进考试窗口作答——**你不要替他开考**，' +
-          '也不要在这里重复列出题目。',
+          '也不要在这里重复列出题目。' +
+          (figureNote ? '\n' + figureNote : ''),
       }
     },
 

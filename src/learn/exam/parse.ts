@@ -1,6 +1,7 @@
 /** 本文件负责：出题入参的容错解析——把模型写出来的题型 / 选项 / 答案的各种写法归一化成 ExamQuestion（解析的两条原则见本文件末尾 parseQuestions 上方的长注释）。 */
 
 import type { ExamOption, ExamQuestion, ExamQuestionType } from './types'
+import { sanitizeExamSvg } from './svg'
 
 /* ---------- 出题入参：能认就认，认不出就说清楚是哪里 ---------- */
 
@@ -18,9 +19,12 @@ export type QuestionsParse = { ok: true; questions: ExamQuestion[] } | { ok: fal
 export const EXAM_SHAPE_HINT =
   '{ title:"试卷标题", kind:"quiz"|"test"|"exam", level:"easy"|"medium"|"hard"|"extreme", ' +
   'questions:[{ type:"single"|"multiple"|"truefalse"|"fill"|"short", stem:"题干", ' +
-  'options:[{ id:"A", text:"选项文字" }, { id:"B", text:"…" }], answer:["A"], rubric:"解析", points:2 }] }' +
+  'image:"<svg>…</svg>", options:[{ id:"A", text:"选项文字" }, { id:"B", text:"…" }], answer:["A"], rubric:"解析", points:2 }] }' +
   '　—— 对错题不用给 options（选项固定是「正确 / 错误」），answer 写 ["true"] 或 ["false"]；' +
-  '填空 / 简答把参考答案写在 answer 里，可以不给 options。'
+  '填空 / 简答把参考答案写在 answer 里，可以不给 options；' +
+  'stem / options 里的数学公式一律写 LaTeX（行内 $…$、独立公式 $$…$$），不要用 Unicode 上下标或纯文本近似；' +
+  '需要配图的题给 image 字段：值是**完整的 SVG 源码**（以 <svg 开头、</svg> 结尾，含 viewBox），' +
+  '不要用 canvas（存不下来）或图片链接。'
 
 const TYPE_LIST = 'single（单选）/ multiple（多选）/ truefalse（对错）/ fill（填空）/ short（简答）'
 
@@ -259,6 +263,23 @@ function parseOneQuestion(
   const stem = pickString(r, ['stem', 'question', 'content', 'title', 'text', 'prompt', 'q'])
   if (!stem) return { ok: false, message: '没有题干：要写 stem（question / content / title 也认）' }
 
+  // 配图（image / svg / figure 都认）：必须能抠出一段 <svg>…</svg>，入库前消毒（见 ./svg）。
+  // 认不出不硬吞——错误信息回给模型，它改一次就对（与题型/答案的容错同一原则）。
+  const rawImage = r.image ?? r.svg ?? r.figure ?? r.illustration
+  let image: string | undefined
+  if (rawImage !== undefined && rawImage !== null && rawImage !== '') {
+    const cleaned = sanitizeExamSvg(rawImage)
+    if (!cleaned) {
+      return {
+        ok: false,
+        message:
+          'image 里没有可用的 <svg>…</svg>：配图要给**完整的 SVG 源码**（以 <svg 开头、</svg> 结尾，含 viewBox；' +
+          '收到的是 ' + describeValue(rawImage) + '）。canvas 保存不了——把同样的图用 SVG 画出来。',
+      }
+    }
+    image = cleaned
+  }
+
   const rawOptions = r.options ?? r.choices ?? r.opts
   let options: ExamOption[] | undefined
   let correct: string[] = []
@@ -330,6 +351,7 @@ function parseOneQuestion(
   if (answer.length) question.answer = answer
   const rubric = pickString(r, ['rubric', 'analysis', 'explanation', 'explain', 'comment', 'note'])
   if (rubric) question.rubric = rubric
+  if (image) question.image = image
   return { ok: true, question }
 }
 

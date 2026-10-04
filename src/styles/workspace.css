@@ -67,3 +67,19 @@
   display: none;
 }
 
+/*
+ * ---------- 试卷配图（题干下的 SVG 插图，见 learn/exam/svg 与 workspace/examImageCheck） ----------
+ *
+ * 图的源码是模型给的，宽高自己带一套——这里统一收成「按容器宽度自适应」，
+ * 不让一张 2000px 的 svg 把卷面撑破。
+ */
+.moji-exam-figure {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+.moji-exam-figure svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
