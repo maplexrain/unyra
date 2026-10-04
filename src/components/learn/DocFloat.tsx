@@ -160,8 +160,11 @@ export default function DocFloat({
           标题大纲：悬停弹出一份 tip（见 DocOutline），列出当前 markdown 的标题，
           点一条跳到那一节。rel 包着按钮与浮层：从按钮移进浮层不算「离开」，
           从浮层出来才收（有 LEAVE_GRACE_MS 的宽限）。
+          **只在预览模式出现**：大纲是从渲染后的正文里抽出来的（标题层级跟着
+          渲染结果走），源码 / 媒体视图里它没有可列的东西。
         */}
-        <div className="relative" onMouseEnter={openNow} onMouseLeave={closeSoon}>
+        {view === 'preview' && (
+          <div className="relative" onMouseEnter={openNow} onMouseLeave={closeSoon}>
           <button
             type="button"
             title={t('标题大纲：鼠标停留展开，点一条跳到对应标题')}
@@ -180,6 +183,7 @@ export default function DocFloat({
             />
           )}
         </div>
+      )}
 
         {/*
           源码 / 预览**合成一颗**（用户定的）：这两件事本来就是同一个开关的两端
