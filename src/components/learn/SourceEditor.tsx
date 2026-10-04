@@ -1,28 +1,27 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
+import { Compartment, EditorState, type Extension } from '@codemirror/state'
+import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { HighlightStyle, syntaxHighlighting, LanguageDescription } from '@codemirror/language'
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
+import { languages as codeLanguages } from '@codemirror/language-data'
+import { tags } from '@lezer/highlight'
 import { useDocScroll } from '../../lib/docScroll'
 import { t } from '../../i18n'
-import { resolveLanguageId } from '../../syntax/LanguageAliases'
-import { highlight } from '../../syntax/SyntaxHighlighter'
-import { AUTO_THEME, renderHighlight } from '../../syntax/Theme'
 
 /**
- * 源码视图：直接编辑文档源文。
+ * 源码视图：直接编辑文档源文。编辑器是 **CodeMirror 6**——轻量（按模块打包，
+ * 用到的语言解析器才进包）、完全本地（没有一行代码走网络）、markdown 与几十门
+ * 语言的开箱高亮全都是现成的。上一版手写的 contenteditable 在「换行该是什么
+ * 节点」这类浏览器细节上反复反弹，这类问题正是成熟编辑器的立身之本，不再自造。
  *
- * 输入区是 **div + contenteditable="plaintext-only"**（不是 textarea，也不是引来的
- * CodeMirror/Monaco）：plaintext-only 是 Chromium 原生的「纯文本可编辑」——输入、
- * 删除、粘贴都自动是纯文本，富文本粘贴 / 拖花样进不来，正好是「编辑器不是 IDE」
- * 这条需求的实现方式。语法高亮按**文件扩展名**选语言（复用正文代码块那套
- * TextMate 管线），只上颜色，没有补全、没有诊断——毕竟这不是正式的 IDE。
- *
- * 高亮与光标的关系：输入时先把纯文本交给上层（onChange 进暂存区），停手一小段
- * 再重新 tokenize；替换 innerHTML 之前记下光标的文本偏移、替换后还原——改到一半
- * 光标不该跳回行首。太大的文件 tokenize 会超闸（见 SyntaxHighlighter 的上限），
- * 那就保持纯文本，正文照样可见可编辑。
+ * 颜色全部落在 `--color-code-*` 这组 CSS 变量上（与正文代码块同一份配色，
+ * 见 styles/code.css）：切主题只是换变量，编辑器里那段文档不必重新解析。
  *
  * 组件本身**不存内容**：value 由上层给、onChange 交回上层（上层把它记进暂存区，
- * 见 learn/drafts）。Ctrl+S 不在这里处理：它是一条登记在快捷键注册表里的动作
- * （见 lib/shortcuts 的 learn.save），写死在这儿的话，用户在设置里改的那个键
- * 就成了一句空话。
+ * 见 learn/drafts）。value 与编辑器不一致才是外部改动（暂存被撤、外部文件变了），
+ * 那时才整段替换。Ctrl+S 不在这里处理：它是一条登记在快捷键注册表里的动作
+ * （见 lib/shortcuts 的 learn.save）。
  */
 
 export type SaveState = 'saved' | 'dirty' | 'saving' | 'error'
@@ -41,44 +40,59 @@ const STATE_TONE: Record<SaveState, string> = {
   error: 'text-seal-deep',
 }
 
-/** 光标（折叠选区）在整段文本里的偏移：跨元素地数，内容怎么包 span 都不影响 */
-function caretOffset(el: HTMLElement): number {
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) return 0
-  const range = sel.getRangeAt(0).cloneRange()
-  const pre = document.createRange()
-  pre.selectNodeContents(el)
-  try {
-    pre.setEnd(range.endContainer, range.endOffset)
-  } catch {
-    return 0
-  }
-  return pre.toString().length
-}
+/** 语法高亮配色：tags → `--color-code-*`（与 .tok-* 的映射一字不差，见 styles/code.css） */
+const highlight = HighlightStyle.define([
+  { tag: tags.comment, color: 'var(--color-code-comment)', fontStyle: 'italic' },
+  { tag: [tags.string, tags.special(tags.string)], color: 'var(--color-code-string)' },
+  { tag: [tags.number, tags.bool, tags.atom], color: 'var(--color-code-number)' },
+  {
+    tag: [
+      tags.keyword,
+      tags.modifier,
+      tags.operatorKeyword,
+      tags.definitionKeyword,
+      tags.controlKeyword,
+      tags.moduleKeyword,
+    ],
+    color: 'var(--color-code-keyword)',
+  },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: 'var(--color-code-function)' },
+  { tag: [tags.typeName, tags.className, tags.namespace], color: 'var(--color-code-type)' },
+  { tag: tags.variableName, color: 'var(--color-code-variable)' },
+  { tag: tags.tagName, color: 'var(--color-code-tag)' },
+  { tag: [tags.standard(tags.variableName), tags.standard(tags.name)], color: 'var(--color-code-builtin)' },
+  { tag: tags.meta, color: 'var(--color-code-meta)' },
+  { tag: [tags.operator, tags.punctuation, tags.separator, tags.bracket], color: 'var(--color-code-punct)' },
+  { tag: tags.invalid, color: 'var(--color-code-invalid)' },
+])
 
-/** 把光标放回文本偏移处（按 text 节点逐个数过去）；越界就落到末尾 */
-function setCaretOffset(el: HTMLElement, offset: number): void {
-  const sel = window.getSelection()
-  if (!sel) return
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-  let remaining = offset
-  while (walker.nextNode()) {
-    const node = walker.currentNode as Text
-    if (remaining <= node.data.length) {
-      const range = document.createRange()
-      range.setStart(node, Math.max(0, remaining))
-      range.collapse(true)
-      sel.removeAllRanges()
-      sel.addRange(range)
-      return
-    }
-    remaining -= node.data.length
-  }
-  const range = document.createRange()
-  range.selectNodeContents(el)
-  range.collapse(false)
-  sel.removeAllRanges()
-  sel.addRange(range)
+/** 编辑器外观：底色透明（贴着面板走）、字体跟应用、正文留白与旧 textarea 一致 */
+const editorTheme = EditorView.theme({
+  '&': { height: '100%', backgroundColor: 'transparent', color: 'var(--color-ink)' },
+  '.cm-scroller': { overflow: 'auto', fontFamily: 'inherit', lineHeight: '1.75' },
+  '.cm-content': {
+    paddingTop: '44px',
+    paddingBottom: '20px',
+    paddingLeft: '10px',
+    paddingRight: '22px',
+    caretColor: 'var(--color-seal)',
+  },
+  '&.cm-focused': { outline: 'none' },
+  '.cm-placeholder': { color: 'var(--color-ink-faint)' },
+  '.cm-selectionBackground': { backgroundColor: 'color-mix(in srgb, var(--color-seal) 22%, transparent) !important' },
+  '.cm-cursor': { borderLeftColor: 'var(--color-seal)' },
+})
+
+/** 语言按扩展名现配（markdown 内嵌代码块也各自高亮）；其余扩展名交给 language-data 的表 */
+const langComp = new Compartment()
+const readOnlyComp = new Compartment()
+
+async function languageExtensions(ext?: string): Promise<Extension[]> {
+  if (!ext || /\.(md|markdown)$/i.test(ext)) return [markdown({ base: markdownLanguage, codeLanguages })]
+  const desc = LanguageDescription.matchFilename(codeLanguages, 'x' + ext)
+  if (!desc) return []
+  const support = await desc.load().catch(() => null)
+  return support ? [support] : []
 }
 
 interface Props {
@@ -116,157 +130,103 @@ export default function SourceEditor({
   scrollTop,
   onScrollTop,
 }: Props) {
-  const ref = useRef<HTMLDivElement | null>(null)
-  /**
-   * 「界面上此刻的字」——不是 React 的 value，而是编辑区实际显示的那份。
-   * 初始是 **null**：挂载那一趟必须画（contenteditable 的 div 自己没有内容，
-   * 不画的话编辑区是空的，直到高亮异步做完才冒出正文）。value 与它一致就是
-   * 「刚输入的 / 已经画上去的」，不必动 DOM；不一致才是外部改动（暂存被撤、
-   * 外部文件变了），那时才整块重写。
-   */
-  const shownRef = useRef<string | null>(null)
-  /** 重排高亮的定时器；每次输入都会重排一次，防抖别让逐键 tokenize 卡手 */
-  const hlTimer = useRef<number | null>(null)
-  /** 在途高亮的作废标记：value 已变 / 组件已卸载时，晚到的结果不再写 DOM */
-  const hlToken = useRef(0)
-  /** 外部改动是否要保光标（编辑中外部覆盖极少见，但一旦发生不该把人甩回行首） */
-  const focusedRef = useRef(false)
+  const hostRef = useRef<HTMLDivElement | null>(null)
+  const viewRef = useRef<EditorView | null>(null)
+  /** 上层给进来的最新 value：updateListener 里只把「用户真的改了」交出去 */
+  const valueRef = useRef(value)
+  const changeRef = useRef(onChange)
+  useEffect(() => {
+    changeRef.current = onChange
+  }, [onChange])
 
   /**
-   * 取容器的那只回调必须是**稳定**的：useDocScroll 拿它当 effect 依赖，每轮渲染现写的
-   * 箭头会让滚动监听被反复拆掉重挂——而拆的时候还要补发一次位置上报，等于白写盘。
-   * 编辑区是常驻的（见下面的 JSX，没有任何条件包裹），所以它一直取同一个元素。
+   * 取滚动元素的那只回调必须是**稳定**的：useDocScroll 拿它当 effect 依赖，每轮渲染
+   * 现写的箭头会让滚动监听被反复拆掉重挂——而拆的时候还要补发一次位置上报，等于白写盘。
+   * view 常驻到卸载（语言变化走 compartment 重配，不重建实例），scrollDOM 一直是同一个。
    */
-  const scrollBox = useCallback(() => ref.current, [])
+  const getScrollEl = useCallback((): HTMLElement | null => viewRef.current?.scrollDOM ?? null, [])
   // 编辑位置与阅读位置各记各的（键由上层分开）：共用一格的话，切换视图会互相拽
-  useDocScroll(scrollBox, scrollTop, onScrollTop, true)
+  useDocScroll(getScrollEl, scrollTop, onScrollTop, true)
 
-  const languageId = resolveLanguageId(ext?.replace(/^\./, '') ?? null)
-
-  /** 把一段代码画进编辑区（高亮失败 / 太大就画纯文本，正文不能消失）。
-      style 是主题的 token 颜色变量（--tok-*），必须落在编辑区上颜色才生效 */
-  const paint = useCallback(
-    (code: string, html: string | null, style?: Record<string, string>): void => {
-      const el = ref.current
-      if (!el) return
-      if (html === null) {
-        if (el.textContent !== code) el.textContent = code
-        return
-      }
-      const keep = focusedRef.current ? caretOffset(el) : -1
-      el.innerHTML = html
-      if (style) for (const [name, v] of Object.entries(style)) el.style.setProperty(name, v)
-      if (keep >= 0) setCaretOffset(el, keep)
-    },
-    [],
-  )
-
-  /** 排一次重高亮：防抖合并连续输入；晚到的结果用 token 作废 */
-  const scheduleHighlight = useCallback(
-    (code: string) => {
-      if (hlTimer.current !== null) window.clearTimeout(hlTimer.current)
-      const token = ++hlToken.current
-      hlTimer.current = window.setTimeout(() => {
-        hlTimer.current = null
-        void highlight(code, languageId).then((result) => {
-          if (token !== hlToken.current) return
-          const el = ref.current
-          // 卸载了的编辑区（isConnected=false）不再写：晚到的 innerHTML 写进废弃节点是白写
-          if (!el || !el.isConnected || el.textContent !== code) return
-          if (result.plain) {
-            paint(code, null)
-            return
-          }
-          const rendered = renderHighlight(result, AUTO_THEME)
-          paint(code, rendered.html || null, rendered.style)
-        })
-      }, 260)
-    },
-    [languageId, paint],
-  )
-
-  // value 变了（外部改动 / 首次挂载 / 切视图回来）：整块重画。立即画纯文本保证可见，
-  // 高亮随后异步补上
-  useLayoutEffect(() => {
-    if (value === shownRef.current) return
-    shownRef.current = value
-    paint(value, null)
-    scheduleHighlight(value)
-  }, [value, paint, scheduleHighlight])
-
-  // 挂载与语言变化时补一次高亮（value 的高亮由输入路径与上面的 effect 负责——
-  // value 刻意不进依赖：外部改动那一趟已经在 useLayoutEffect 里排过了）
+  // 挂载：创建 view；卸载：销毁
   useEffect(() => {
-    scheduleHighlight(value)
+    const view = new EditorView({
+      parent: hostRef.current ?? undefined,
+      state: EditorState.create({
+        doc: valueRef.current,
+        extensions: [
+          history(),
+          keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
+          EditorView.lineWrapping,
+          readOnlyComp.of([]),
+          langComp.of([]),
+          cmPlaceholder(placeholder ?? ''),
+          syntaxHighlighting(highlight),
+          editorTheme,
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              const next = update.state.doc.toString()
+              valueRef.current = next
+              changeRef.current(next)
+            }
+          }),
+        ],
+      }),
+    })
+    viewRef.current = view
+    view.focus()
+    return () => {
+      view.destroy()
+      viewRef.current = null
+    }
+    // value / onChange / placeholder 都走 ref 或按初值：这只 effect 一辈子只跑一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scheduleHighlight])
-
-  /**
-   * 挂载时把焦点给正文：从预览切到源码，用户按下去的那些键理应立即进正文。
-   * 不把光标放到末尾——切过来多半是想接着改，而末尾未必是他刚看到的那一段。
-   */
-  useEffect(() => {
-    ref.current?.focus()
   }, [])
+
+  // 外部改动（暂存被撤、外部文件被换）：与编辑器当前内容不一致才整段替换
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    if (value === view.state.doc.toString()) return
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } })
+  }, [value])
+
+  // 只读：走 compartment 重配，不重建实例
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    view.dispatch({
+      effects: readOnlyComp.reconfigure([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
+    })
+  }, [readOnly])
+
+  // 语言：按扩展名加载（异步——语言解析器是本地按需的 ESM 包）
+  useEffect(() => {
+    let alive = true
+    void languageExtensions(ext).then((extensions) => {
+      if (!alive) return
+      viewRef.current?.dispatch({ effects: langComp.reconfigure(extensions) })
+    })
+    return () => {
+      alive = false
+    }
+  }, [ext])
+
+  // 字号系数：直接写在根元素上，与预览共用同一个设置
+  useEffect(() => {
+    const view = viewRef.current
+    if (view) view.dom.style.fontSize = Math.round(13 * scale * 10) / 10 + 'px'
+  }, [scale])
 
   const chars = value.replace(/\s/g, '').length
 
   return (
     <div className="print-flat flex min-h-0 flex-1 flex-col bg-card">
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {/*
-         * pt-11（44px）而不是 py-5：文档区右上角浮着那排按钮（悬浮组），
-         * 画面窄的时候它正压在首行上——首行从这里往下让开一整条按钮的高度。
-         * 左右是 pl-[32px] pr-[22px]，与预览那一列的正文左右对齐——同一份文档在
-         * 源码 / 预览之间来回切时，字不会左右跳这 8px。
-         * doc-measure 与预览共用同一列宽（见 index.css）。
-         * contentEditable 用 'plaintext-only'（React 会当成未知值原样落属性）：
-         * Chromium 的原生纯文本编辑，输入 / 粘贴自动不带任何样式。
-         */}
-        <div
-          ref={ref}
-          contentEditable={readOnly ? false : 'plaintext-only'}
-          suppressContentEditableWarning
-          role="textbox"
-          aria-multiline="true"
-          aria-label={label}
-          spellCheck={false}
-          data-placeholder={placeholder}
-          onInput={(e) => {
-            const next = e.currentTarget.textContent ?? ''
-            shownRef.current = next
-            onChange(next)
-            scheduleHighlight(next)
-          }}
-          onFocus={() => {
-            focusedRef.current = true
-          }}
-          onBlur={() => {
-            focusedRef.current = false
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              // 换行必须由我们插：plaintext-only 下浏览器自作的换行不一定是真正的
-              // 「\n」文本（<br> 一类，textContent 拼不出来）——重高亮一替换，
-              // 刚敲的那一行就弹没了。insertText 塞一个真换行字符，pre-wrap 下可见可数。
-              e.preventDefault()
-              document.execCommand('insertText', false, '\n')
-              return
-            }
-            if (e.key !== 'Tab') return
-            // Tab 在正文里该是缩进。不挡掉的话焦点会跑出去，改到一半跳走最恼人
-            e.preventDefault()
-            document.execCommand('insertText', false, '  ')
-          }}
-          onPaste={(e) => {
-            // plaintext-only 本就只收纯文本，但剪贴板里只有图片 / 文件时默认行为
-            // 会把它塞进编辑区——这种「粘贴了却看不见」的输入一律挡掉
-            if (e.clipboardData.files.length) e.preventDefault()
-          }}
-          className="moji-source-editor doc-measure block h-full overflow-auto whitespace-pre-wrap break-words bg-transparent pl-[32px] pr-[22px] pt-11 pb-5 text-ink outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-ink-faint"
-          style={{ fontSize: Math.round(13 * scale * 10) / 10 + 'px' }}
-        />
-      </div>
+      {/*
+        pt-11 交给 .cm-content 的内边距（见 editorTheme）：文档区右上角浮着那排按钮
+        （悬浮组），画面窄的时候它正压在首行上——首行从这里往下让开一整条按钮的高度。
+      */}
+      <div ref={hostRef} className="min-h-0 flex-1 overflow-hidden" />
 
       {/* 底栏：这是哪一份文件、多少字、存了没有。三件事都只在编辑时才需要，所以放最下面 */}
       <div className="no-print flex shrink-0 items-center gap-3 border-t border-line px-4 py-1 text-[11px] text-ink-faint">
