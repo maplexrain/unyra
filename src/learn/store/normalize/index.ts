@@ -257,7 +257,10 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       // 收藏夹按「东西还在不在」校验（与页签的口径一致）：节点没了、笔记改名了的收藏当场丢
       favorites: normalizeFavorites(d.favorites, byId, exams),
     }
-  } catch {
+  } catch (err) {
+    // 静默吞掉等于「启动整库读空、下一次保存把好数据覆盖掉」——收藏就是这么丢的。
+    // 至少要把这一声喊出来：修数据的线索全在这一条日志里。
+    console.error('[learn] 学习数据解析失败，本次启动按空库处理：', err)
     return null
   }
 }
@@ -266,7 +269,9 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
 export function parseLearnStore(raw: string): LearnStore | null {
   try {
     return normalizeLearnStore(JSON.parse(raw))
-  } catch {
+  } catch (err) {
+    // 与上面同一件事：导入备份解析失败也不该是一声不吭的 null
+    console.error('[learn] 备份数据解析失败：', err)
     return null
   }
 }
