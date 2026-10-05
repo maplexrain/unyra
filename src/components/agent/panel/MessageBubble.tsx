@@ -39,7 +39,7 @@ import { toolLabel } from './toolLabel'
 import { useFold } from './useFold'
 import { isInterruptedNotice } from '../../../learn/agent/inflight'
 import { hydrateChipTokens, openChipRef, type ChipPayload } from '../../../lib/docChip'
-import { chipLabel, chipSvg, chipToken, splitChips } from '../../../lib/chipSyntax'
+import { chipLabel, chipSvg, chipToken, maskChipTokens, restoreChipTokens, splitChips } from '../../../lib/chipSyntax'
 import { promptModuleByKey } from '../../../learn/ai/promptModules'
 import { t, useLocale } from '../../../i18n'
 
@@ -667,12 +667,17 @@ function ChipText({ text }: { text: string }) {
 }
 
 function TextBlock({ text }: { text: string }) {
-  const html = useMemo(() => renderNote(text), [text])
   /*
    * 导师交付里写的 #[{…}] 在 DOM 提交之后换成可点击的 chip——markdown 渲染是纯函数
    * （产物按源文缓存），chip 的解析与打开是另一层的事（与图片就地加载同一套做法）。
    */
   const hostRef = useRef<HTMLDivElement | null>(null)
+  const html = useMemo(() => {
+    // 裸网址会被 GFM 自动链接包成 <a>，把 token 拆碎在相邻文本节点里、hydrate 凑不齐
+    //（引用里带链接必踩）：渲染前把 token 掩蔽成哨兵，渲染后复原
+    const { masked, tokens } = maskChipTokens(text)
+    return restoreChipTokens(renderNote(masked), tokens)
+  }, [text])
   useEffect(() => {
     const el = hostRef.current
     if (!el) return
