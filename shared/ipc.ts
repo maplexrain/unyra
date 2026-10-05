@@ -77,6 +77,8 @@ export interface WebPageFetchReq {
   timeoutMs?: number
   maxBody?: number
   offset?: number
+  /** 页面侧采文本的上限（toTmp 全文模式把 64k 提到 256k） */
+  maxText?: number
 }
 
 /**
@@ -121,6 +123,21 @@ export interface WebScrollReq {
 }
 export type WebScrollResult =
   | { ok: true; scrollY: number; scrollHeight: number; viewport: number; atBottom: boolean; atTop: boolean }
+  | { error: string }
+
+/** browser.waitFor 的入参与返回：等条件成立（「等一下、再取一次、还是空」循环的替代品）。
+ *  谓词全是固定原语（selector/text/urlIncludes/networkIdle/load），agent 传不进自由 JS。
+ *  谁在用：主进程 web:waitFor（250ms 轮询），渲染层 browserOps 的 api.browser.waitFor。 */
+export interface WebWaitReq {
+  selector?: string
+  text?: string
+  urlIncludes?: string
+  networkIdle?: boolean
+  load?: boolean
+  timeoutMs?: number
+}
+export type WebWaitResult =
+  | { ok: true; matched: 'selector' | 'text' | 'url' | 'networkIdle' | 'load'; waitedMs: number; url: string }
   | { error: string }
 
 /** browser.record 的返回：start 回水位，stop 回这段区间的清单视图。谁在用：主进程 web:record，渲染层 browserOps。 */

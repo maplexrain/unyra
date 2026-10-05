@@ -274,6 +274,7 @@ export async function apiNameTests() {
     'browser.record': "'w:probe', 'stop'",
     'browser.text': "'w:probe', { ref: 1 }",
     'browser.scroll': "'w:probe', { by: 800 }",
+    'browser.waitFor': "'w:probe', { selector: '.done' }",
   }
   let s = staticStore()
   let tmpStore: Record<string, unknown> = {}
@@ -362,6 +363,7 @@ export async function apiNameTests() {
         action === 'start' ? { ok: true as const, action: 'start' as const, since: 0 } : { lines: [], shown: 0, totalConsole: 0, totalNetwork: 0, latestSeq: 0, truncated: false, action: 'stop' as const },
       text: async () => ({ text: '正文', chars: 2 }),
       scroll: async () => ({ ok: true as const, scrollY: 800, scrollHeight: 4000, viewport: 900, atBottom: false, atTop: false }),
+      waitFor: async () => ({ ok: true as const, matched: 'selector' as const, waitedMs: 250, url: 'https://example.com' }),
     },
     // 子代理管理：桩（并发、等待与介入的行为由 tests/subagent.test.ts 用假流钉住）
     subagent: {

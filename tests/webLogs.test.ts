@@ -64,6 +64,18 @@ describe('webLogs：清单折叠与过滤', () => {
     expect(v.totalNetwork).toBe(4)
   })
 
+  it('meta:true 顺手回结构化条目（折叠组取第一条；静态行没有）', () => {
+    const buf = seed()
+    const v = queryWebLogs(buf, { kind: 'network', meta: true })
+    expect(v.entries).toEqual([
+      { seq: 4, kind: 'network', method: 'GET', url: 'https://api.x.com/feed?cursor=2&limit=20', status: 200, type: 'XHR' },
+      { seq: 6, kind: 'network', method: 'POST', url: 'https://api.x.com/like', status: 429, type: 'XHR' },
+    ])
+    const c = queryWebLogs(buf, { kind: 'console', level: 'all', meta: true })
+    expect(c.entries?.[0]).toEqual({ seq: 1, kind: 'console', level: 'error', text: 'TypeError: x is undefined' })
+    expect(queryWebLogs(buf, {}).entries).toBeUndefined()
+  })
+
   it('afterSeq 是无状态分页游标：只看之后的；limit 截断并打 truncated 标', () => {
     const buf = seed()
     expect(queryWebLogs(buf, { afterSeq: 4 }).totalNetwork).toBe(3)

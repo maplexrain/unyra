@@ -31,6 +31,8 @@ import type {
   WebScrollResult,
   WebSnapshotResult,
   WebTextResult,
+  WebWaitReq,
+  WebWaitResult,
 } from '../../shared/ipc'
 import {
   apiPathKey,
@@ -163,6 +165,12 @@ const DOM_OPS: Record<string, { fn: string; takesArg: boolean }> = {
   },
   attr: {
     fn: 'function (n) { const v = this.getAttribute(String(n)); if (v != null) return v.slice(0, 500); const p = this[String(n)]; return p == null || typeof p === "function" ? null : String(p).slice(0, 500) }',
+    takesArg: true,
+  },
+  press: {
+    // 键盘事件：React/站点自己的 keydown 监听认它（fill+submit 走不通的搜索框靠它）。
+    // keyCode/which 构造器不收，老页面又认——构造后 defineProperty 补上。
+    fn: 'function (k) { const name = String(k); const map = { Enter: 13, Escape: 27, Tab: 9, Backspace: 8, Delete: 46, ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39, Home: 36, End: 35 }; const keyCode = map[name] ?? (name.length === 1 ? name.toUpperCase().charCodeAt(0) : 0); this.focus && this.focus(); for (const type of ["keydown", "keypress", "keyup"]) { const e = new KeyboardEvent(type, { key: name, bubbles: true, cancelable: true }); Object.defineProperty(e, "keyCode", { get: () => keyCode }); Object.defineProperty(e, "which", { get: () => keyCode }); this.dispatchEvent(e); } return keyCode }',
     takesArg: true,
   },
 }
@@ -472,7 +480,8 @@ const PAGE_FETCH_FN =
   '    let text = "";' +
   '    if (!contentType || /^(text\\/|application\\/(json|javascript|xml|xhtml|\\+json|\\+xml|urlencoded|form-data))/i.test(contentType)) {' +
   '      text = await res.text();' +
-  '      if (text.length > 65536) text = text.slice(0, 65536);' +
+  '      const cap = spec.maxText || 65536;' +
+  '      if (text.length > cap) text = text.slice(0, cap);' +
   '    }' +
   '    return { status: res.status, statusText: res.statusText, contentType: contentType, url: res.url, text: text, textBytes: text.length };' +
   '  } catch (e) {' +
@@ -570,6 +579,7 @@ function startCapture(contents: WebContents): void {
       if (!entry) return
       entry.size = typeof p.encodedDataLength === 'number' ? Math.round(p.encodedDataLength) : entry.size
       entry.ms = at - entry.at
+      inflight.delete(String(p.requestId)) // 挂起台账：完了就出列（waitFor 的 networkIdle 数它）
       // API 响应体现采一份（XHR/Fetch、文本类）：详情与「分析网页发了什么」都靠它
       if (
         entry.cdpRequestId &&
@@ -753,6 +763,7 @@ function registerLogIpc(): void {
           ...(Object.keys(headers).length ? { headers } : {}),
           body: req.body !== undefined ? String(req.body) : entry.postData,
           timeoutMs: clampTimeout(req.timeoutMs),
+          ...(maxTextOf(req) ? { maxText: maxTextOf(req) } : {}),
         }
       } else {
         const url = typeof req.url === 'string' ? req.url.trim() : ''
@@ -765,6 +776,7 @@ function registerLogIpc(): void {
           ...(capHeaders(req.headers) ? { headers: capHeaders(req.headers) } : {}),
           body: req.body !== undefined ? String(req.body) : undefined,
           timeoutMs: clampTimeout(req.timeoutMs),
+          ...(maxTextOf(req) ? { maxText: maxTextOf(req) } : {}),
         }
       }
       if (spec.method === 'GET' || spec.method === 'HEAD') delete spec.body
@@ -803,13 +815,15 @@ function registerLogIpc(): void {
           }
         }
         const maxBody = typeof req.maxBody === 'number' && Number.isFinite(req.maxBody)
-          ? Math.min(Math.max(Math.floor(req.maxBody), 200), 32_000)
+          ? Math.min(Math.max(Math.floor(req.maxBody), 200), 262_144)
           : 4_000
         const text = v.text ?? ''
         const offset = typeof req.offset === 'number' && Number.isFinite(req.offset)
-          ? Math.min(Math.max(Math.floor(req.offset), 0), text.length)
+          ? Math.min(Math.max(Math.floor(req.offset), 0), Math.max(text.length - 1, 0))
           : 0
-        const body = text.slice(offset, offset + maxBody)
+        // offset 越过末尾不再静默回空：带一句说明（实测教训：agent 以为分段坏了白试一轮）
+        const pastEnd = offset >= text.length
+        const body = pastEnd ? '' : text.slice(offset, offset + maxBody)
         const nextOffset = offset + body.length < text.length ? offset + body.length : undefined
         const replayed = typeof req.reqId === 'number'
           ? { url: spec.url, method: spec.method }
@@ -824,9 +838,11 @@ function registerLogIpc(): void {
           ...(v.url ? { url: v.url } : {}),
           ...(body
             ? { body, ...(body.length < text.length - offset || nextOffset !== undefined ? { bodyTruncated: true } : {}) }
-            : text.length
-              ? { note: '响应不是文本类，不回内容' }
-              : {}),
+            : pastEnd
+              ? { note: 'offset 已越过响应末尾（全文共 ' + text.length + ' 字符）——没有更多内容了' }
+              : text.length
+                ? { note: '响应不是文本类，不回内容' }
+                : {}),
           ...(text.length ? { chars: v.textBytes ?? text.length, ...(offset ? { offset } : {}), ...(nextOffset !== undefined ? { nextOffset } : {}) } : {}),
           ...(replayBounced
             ? { note: '重放拿到 ' + v.status + '：捕获的请求头可能含一次性签名（x-client-transaction-id 之类）已过期——回 UI 重新触发一次同样的操作拿新 reqId，或直接用网址直发让页面自己带头' }
@@ -837,10 +853,91 @@ function registerLogIpc(): void {
       }
     },
   )
+
+  // 等条件成立（browser.waitFor）：「wait 一下、再取一次、还是空」循环的替代品。
+  // 谓词全是固定原语——selector/text/url 在页面里跑固定表达式，networkIdle 数挂起台账，
+  // agent 传不进自由 JS。250ms 轮询到成立或超时，超时回执带页面现状（url）供判断下一步。
+  ipcMain.handle('web:waitFor', async (_e, wcId: number, raw: unknown): Promise<WebWaitResult> => {
+    const wc = guestOf(wcId)
+    if (!wc) return { error: '这一页签的网页已经不在了' }
+    const req = (raw ?? {}) as WebWaitReq
+    const selector = typeof req.selector === 'string' && req.selector.trim() ? req.selector.trim() : undefined
+    const text = typeof req.text === 'string' && req.text.trim() ? req.text.trim() : undefined
+    const urlIncludes = typeof req.urlIncludes === 'string' && req.urlIncludes.trim() ? req.urlIncludes.trim() : undefined
+    const predicates: string[] = []
+    if (req.load === true) predicates.push('load')
+    if (selector) predicates.push('selector')
+    if (text) predicates.push('text')
+    if (urlIncludes) predicates.push('url')
+    if (req.networkIdle === true) predicates.push('networkIdle')
+    if (!predicates.length) {
+      return { error: '要给至少一个等待条件：{ selector } / { text } / { urlIncludes } / { networkIdle: true } / { load: true }' }
+    }
+    const timeoutMs =
+      typeof req.timeoutMs === 'number' && Number.isFinite(req.timeoutMs)
+        ? Math.min(Math.max(Math.floor(req.timeoutMs), 500), 30_000)
+        : 8_000
+    const deadline = Date.now() + timeoutMs
+    const dbg = (() => {
+      try {
+        return ensureDebugger(wc)
+      } catch {
+        return null // DevTools 占着插槽：selector/text 等不了，load/url/networkIdle 照样能等
+      }
+    })()
+    for (;;) {
+      let matched: 'selector' | 'text' | 'url' | 'networkIdle' | 'load' | null = null
+      if (predicates.includes('load') && !wc.isLoading()) matched = 'load'
+      if (!matched && selector && dbg) {
+        try {
+          const r = await cdp<{ result?: { value?: boolean } }>(dbg, 'Runtime.evaluate', {
+            expression: '!!document.querySelector(' + JSON.stringify(selector) + ')',
+            returnByValue: true,
+          })
+          if (r.result?.value === true) matched = 'selector'
+        } catch {
+          /* 页面正在跳转的瞬间会失败：当作还没满足，下一拍再试 */
+        }
+      }
+      if (!matched && text && dbg) {
+        try {
+          const r = await cdp<{ result?: { value?: boolean } }>(dbg, 'Runtime.evaluate', {
+            expression: '!!(document.body && document.body.innerText && document.body.innerText.indexOf(' + JSON.stringify(text) + ') >= 0)',
+            returnByValue: true,
+          })
+          if (r.result?.value === true) matched = 'text'
+        } catch {
+          /* 同上 */
+        }
+      }
+      if (!matched && urlIncludes && wc.getURL().includes(urlIncludes)) matched = 'url'
+      if (!matched && req.networkIdle === true && !wc.isLoading() && (netInflight.get(wcId)?.size ?? 0) === 0) {
+        matched = 'networkIdle'
+      }
+      if (matched !== null) {
+        return { ok: true, matched, waitedMs: timeoutMs - Math.max(deadline - Date.now(), 0), url: wc.getURL() }
+      }
+      if (Date.now() >= deadline) {
+        return {
+          error:
+            '等了 ' + timeoutMs + 'ms 条件没满足（' + predicates.join(' / ') + '）——页面当前在 ' + wc.getURL() +
+            '：把条件放宽（比如先 scroll 再等 text）、拉长 timeoutMs，或改用截图看页面到底长什么样',
+        }
+      }
+      await new Promise((r) => setTimeout(r, 250))
+    }
+  })
 }
 
 function clampTimeout(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(Math.max(Math.floor(v), 1000), 60_000) : 15_000
+}
+
+/** 页面侧采文本上限：toTmp 全文模式把默认 64k 放宽（wrap 侧只在 toTmp 时设置） */
+function maxTextOf(req: WebPageFetchReq): number | undefined {
+  return typeof req.maxText === 'number' && Number.isFinite(req.maxText)
+    ? Math.min(Math.max(Math.floor(req.maxText), 65_536), 262_144)
+    : undefined
 }
 
 /**
