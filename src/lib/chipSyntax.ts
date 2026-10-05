@@ -142,6 +142,37 @@ export function splitChips(text: string): Array<{ kind: 'text'; text: string } |
   return out
 }
 
+/* ---------- markdown 隔离：token 别让渲染器拆碎 ---------- */
+
+/**
+ * markdown 渲染会把 token 里的裸网址包成 <a>（GFM 自动链接，连结尾的 `"}]` 都吞进
+ * 链接文字），`#[{…}]` 就此拆碎在相邻文本节点里——hydrate 按单个文本节点找 token，
+ * 永远凑不齐，凡是引用里带链接的都必踩。解法：渲染前把解析得开的 token 换成哨兵
+ * （Unicode 私用区字符，markdown 无任何含义、原样穿过），渲染后换回转义过的原文，
+ * token 便完整落在一个文本节点里，hydrate 照常接手。
+ */
+const CHIP_MASK_START = '\uE000'
+const CHIP_MASK_END = '\uE001'
+
+/** 渲染前的掩蔽：解析得开的 token 换成哨兵；解析不开的原样留着（与 splitChips 同一口径） */
+export function maskChipTokens(text: string): { masked: string; tokens: string[] } {
+  const tokens: string[] = []
+  const masked = text.replace(/#\[\s*\{[\s\S]*?\}\s*\]/g, (m) => {
+    if (!parseChipToken(m)) return m
+    tokens.push(m)
+    return CHIP_MASK_START + (tokens.length - 1) + CHIP_MASK_END
+  })
+  return { masked, tokens }
+}
+
+/** 渲染后的复原：哨兵换回转义过的 token（落的是文本节点，不是标签）；认不出的哨兵直接消失 */
+export function restoreChipTokens(html: string, tokens: string[]): string {
+  return html.replace(/\uE000(\d+)\uE001/g, (_m, i: string) => {
+    const token = tokens[Number(i)]
+    return token === undefined ? '' : escapeHtml(token)
+  })
+}
+
 /* ---------- 外观 ---------- */
 
 /** 显示名：title 优先，其余按类型的自然兜底（web 没带 title 显示域名） */

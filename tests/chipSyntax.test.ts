@@ -5,10 +5,15 @@ import {
   chipLabel,
   chipSvg,
   chipToken,
+  escapeHtml,
+  maskChipTokens,
   parseChipJson,
   parseChipToken,
+  restoreChipTokens,
   splitChips,
 } from '../src/lib/chipSyntax'
+import { renderNote } from '../src/lib/markdown'
+import { hydrateChipTokens } from '../src/lib/docChip'
 
 const doc = { type: 'doc' as const, path: 'docs/极限/夹逼定理.md', title: '夹逼定理' }
 
@@ -94,5 +99,40 @@ describe('chipSyntax：DOM 形态与显示名', () => {
     const svg = chipSvg('note')
     expect(svg).toContain('<svg')
     expect(svg).toContain('#d9962e')
+  })
+})
+
+describe('chipSyntax：markdown 隔离（mask/restore）', () => {
+  // 病灶原文：token 里的裸网址会被 GFM 自动链接包成 <a>，把 token 拆碎在相邻文本节点里
+  const LINKED = '* #[{"type":"web","url":"https://x.com/search?q=AI&src=typed_query&f=live"}] —— AI 搜索页'
+
+  it('maskChipTokens：解析得开的 token 换成哨兵，解析不开的原样留着', () => {
+    const { masked, tokens } = maskChipTokens(`前 ${chipToken(doc)} 中 #[{type:"???"}] 后`)
+    expect(tokens).toEqual([chipToken(doc)])
+    expect(masked).toBe('前 \uE0000\uE001 中 #[{type:"???"}] 后')
+  })
+
+  it('restoreChipTokens：哨兵换回转义过的 token；认不出的哨兵消失', () => {
+    expect(restoreChipTokens('<p>\uE0000\uE001</p>', [chipToken(doc)])).toBe('<p>' + escapeHtml(chipToken(doc)) + '</p>')
+    expect(restoreChipTokens('<p>\uE0007\uE001</p>', [])).toBe('<p></p>')
+  })
+
+  it('端到端：不掩蔽时 renderNote 把 token 拆出 <a>；掩蔽复原后 token 完整、能被 hydrate 成 chip', () => {
+    // 复现病灶：裸渲染，token 中段进了链接
+    expect(renderNote(LINKED)).toContain('<a ')
+    // 掩蔽 → 渲染 → 复原
+    const { masked, tokens } = maskChipTokens(LINKED)
+    const html = restoreChipTokens(renderNote(masked), tokens)
+    expect(html).not.toContain('<a ')
+    expect(html).toContain('&quot;type&quot;:&quot;web&quot;')
+    // 落到 DOM 里 hydrate：token 完整地待在一个文本节点里，换得出 chip
+    const host = document.createElement('div')
+    host.innerHTML = html
+    const cleanup = hydrateChipTokens(host)
+    const chip = host.querySelector('[data-moji-doc-chip]')
+    expect(chip).not.toBeNull()
+    expect(chip?.getAttribute('data-chip')).toContain('x.com/search')
+    expect(host.querySelector('.moji-chip-label')?.textContent).toBe('x.com')
+    cleanup()
   })
 })
