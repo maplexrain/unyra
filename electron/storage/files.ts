@@ -56,9 +56,14 @@ export async function readText(rel: unknown): Promise<ReadResult> {
  * state.json——下次启动读不出来，整个状态被按空处理：教学文档还能从 docs/ 里解析回来，
  * **只存在 state.json 里的东西（收藏、对话、页签布局）就全灭了**，再一保存连盘上的旧数据
  * 一起覆盖掉。rename 在同一目录内是同卷的，本身就是原子操作。
+ *
+ * 临时名带序号（而不是固定 full + '.tmp'）：万一有写绕过下面的排队，两个写也不会
+ * 共享同一个临时文件互相搬走。
  */
+let tmpSeq = 0
+
 async function atomicWrite(full: string, content: string): Promise<void> {
-  const tmp = full + '.tmp'
+  const tmp = `${full}.${process.pid}.${++tmpSeq}.tmp`
   await fsp.writeFile(tmp, content, 'utf-8')
   try {
     await fsp.rename(tmp, full)
@@ -80,16 +85,34 @@ async function atomicWrite(full: string, content: string): Promise<void> {
   }
 }
 
+/*
+ * 同一目标文件的写**排队串行**：并发写同一份文件时，前一次 rename 会把临时文件搬走，
+ * 后一次 rename 就 ENOENT——reading-tick.json / state.json 这类高频写最容易撞上，
+ * 表现就是控制台里一串「写入失败 … rename … ENOENT」，后写的那份内容被丢掉。
+ * 链条只关心「前面的写完成没有」：前一次失败也继续排（这一次照写，失败由自己回）。
+ */
+const writeChains = new Map<string, Promise<unknown>>()
+
 export async function writeText(rel: unknown, content: unknown): Promise<Result> {
   const t = target(rel)
   if ('error' in t) return { ok: false, error: t.error }
-  try {
-    await fsp.mkdir(path.dirname(t.full), { recursive: true })
-    await atomicWrite(t.full, typeof content === 'string' ? content : '')
-    return { ok: true }
-  } catch (err) {
-    return { ok: false, error: errText(err) }
+  const run = async (): Promise<Result> => {
+    try {
+      await fsp.mkdir(path.dirname(t.full), { recursive: true })
+      await atomicWrite(t.full, typeof content === 'string' ? content : '')
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: errText(err) }
+    }
   }
+  const prev = writeChains.get(t.full) ?? Promise.resolve()
+  const job = prev.then(run, run)
+  writeChains.set(t.full, job)
+  // 收尾清账：这条链跑完且没有新写接上时，把句柄从表里摘掉（防 Map 无界生长）
+  void job.finally(() => {
+    if (writeChains.get(t.full) === job) writeChains.delete(t.full)
+  })
+  return job
 }
 
 /* ---------- 移动（改名用） ---------- */

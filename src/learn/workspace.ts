@@ -37,9 +37,15 @@ export function wsRevealOfAbs(
   userPrefix: string | null,
 ): { nodeId: string; rel: string } | null {
   if (!userPrefix) return null
+  /*
+   * 两边都归一成斜杠再比：数据根在 Windows 上是反斜杠路径（C:\…\unyra），
+   * userAbsPath 拼出来的绝对路径是「反斜杠的根 + 斜杠的后半段」的混血——
+   * 不归一的话 startsWith 永远对不上，工作区文件的定位整个哑掉。
+   */
+  const prefix = userPrefix.replace(/\\/g, '/')
   const norm = abs.replace(/\\/g, '/')
-  if (!norm.startsWith(userPrefix + '/')) return null
-  const rest = norm.slice(userPrefix.length + 1)
+  if (!norm.startsWith(prefix + '/')) return null
+  const rest = norm.slice(prefix.length + 1)
   const layouts = nodeLayout(store)
   for (const n of store.nodes) {
     const layout = layouts.get(n.id)

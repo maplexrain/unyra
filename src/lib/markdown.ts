@@ -73,7 +73,9 @@ function buildKatexCharMacros(): Record<string, string> {
 export const KATEX_CHAR_MACROS = buildKatexCharMacros()
 
 // nonStandard：允许公式紧贴中文字符（两侧无空格），符合中文书写习惯
-marked.use(markedKatex({ throwOnError: false, nonStandard: true, macros: KATEX_CHAR_MACROS }))
+// strict 关掉：笔记里会往公式里打 emoji / 中文（✅、变量名都是汉字），
+// KaTeX 本来就渲染不出这些字符，默认的 strict:'warn' 只剩下刷控制台的份
+marked.use(markedKatex({ throwOnError: false, nonStandard: true, macros: KATEX_CHAR_MACROS, strict: 'ignore' }))
 marked.use({ gfm: true, breaks: true })
 
 /* ---------- 围栏 → 插件 ---------- */
@@ -240,6 +242,7 @@ function mathInText(text: string): string {
       return katex.renderToString(tex, {
         throwOnError: false,
         displayMode: display !== undefined,
+        strict: 'ignore',
         // 与 marked-katex 用同一套字符宏，图注里的公式才不会又冒出警告
         macros: KATEX_CHAR_MACROS,
       })
