@@ -592,6 +592,11 @@
     outline: 3px solid var(--color-seal);
     outline-offset: 2px;
   }
+  /* 资源管理器的定位落点：不闪，只留一小片底色（同样由 reveal.ts 的定时器摘掉） */
+  .moji-reveal-flash {
+    animation: none;
+    background-color: color-mix(in srgb, var(--color-seal) 12%, transparent);
+  }
   /* 输入区不能只留 opacity:0：它是靠位移出场的，少了动画就会停在原位 */
   .moji-sheet-out {
     transform: translateY(100%);

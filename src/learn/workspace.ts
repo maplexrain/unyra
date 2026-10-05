@@ -26,6 +26,31 @@ export function wsRelOf(store: LearnStore, nodeId: string): string | null {
 }
 
 /**
+ * 反查：磁盘上的一份文件落在**哪个节点的工作区里**（资源管理器的页签定位用）。
+ * userPrefix 是用户目录的公共前缀（{root}/users/{uid}，见 lib/storage 的 userAbsPath）——
+ * 剥掉它剩下的才与 docs 布局同一种「相对当前用户」的口径；不落进任何节点工作区时 null。
+ * 一次布局现推、整表对着比，不逐节点重算 nodeLayout（那会摊成平方）。
+ */
+export function wsRevealOfAbs(
+  store: LearnStore,
+  abs: string,
+  userPrefix: string | null,
+): { nodeId: string; rel: string } | null {
+  if (!userPrefix) return null
+  const norm = abs.replace(/\\/g, '/')
+  if (!norm.startsWith(userPrefix + '/')) return null
+  const rest = norm.slice(userPrefix.length + 1)
+  const layouts = nodeLayout(store)
+  for (const n of store.nodes) {
+    const layout = layouts.get(n.id)
+    if (!layout) continue
+    const base = [DOCS_DIR, ...layout.dir, WORKSPACE_DIR].join('/')
+    if (rest.startsWith(base + '/')) return { nodeId: n.id, rel: rest }
+  }
+  return null
+}
+
+/**
  * 在节点的工作区目录下拼一个子路径（文件或子目录）。
  * 逐段挡掉空的、「.」「..」与带斜杠/反斜杠的段——主进程的 resolveInside 还会再挡一道，
  * 这里先挡是为了把错误说成人话，而不是让一句「路径不合法」飘回去。

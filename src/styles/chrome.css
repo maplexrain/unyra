@@ -187,3 +187,25 @@ a {
   animation: moji-msg-flash 1.1s cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
 
+/*
+ * 资源管理器定位（当前页签 → 侧栏那一行）的落点提示：底色轻轻泛起一拍印章色。
+ * 与上面的 moji-msg-flash 同一族但换手法：消息气泡本身是深底，描边看得清；
+ * 侧栏的行是浅底小行，描边会把行框戳出去，换底色泛起更合适。
+ * 类什么时候摘由 JS 的定时器说了算（见 explorer/reveal 的 revealRow）——
+ * reduced-motion 下没有 animationend 可等。
+ */
+@keyframes moji-reveal-flash {
+  0% {
+    background-color: transparent;
+  }
+  30% {
+    background-color: color-mix(in srgb, var(--color-seal) 16%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.moji-reveal-flash {
+  animation: moji-reveal-flash 1.2s ease-out both;
+}
+

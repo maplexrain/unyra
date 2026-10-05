@@ -1,20 +1,11 @@
 /**
- * 这个文件负责：侧栏里与知识树、右键菜单无关的那几块小零件——可折叠分区（Section / Collapse）、
- * 本地文件行（LocalRow）、以及「最近打开」那一段（RecentSection / RecentRow）。
- * 它们只被 ExplorerSidebar 直接渲染。
+ * 这个文件负责：侧栏里与知识树、右键菜单无关的那几行——本地文件行（LocalRow）、
+ * 「最近打开」那一段（RecentSection / RecentRow）、收藏区（FavoriteSection / FavRow /
+ * 右键菜单）。可折叠分类夹的零件（Section / FolderRow / Collapse / Indent）在 explorer/Folder，
+ * 页签定位的广播在 explorer/reveal——这里只管一行行画什么、点了做什么。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  ChevronRight,
-  ExternalLink,
-  Folder,
-  FolderInput,
-  FolderMinus,
-  FolderOpen,
-  FolderPlus,
-  Pencil,
-  X,
-} from 'lucide-react'
+import { ExternalLink, Folder, FolderInput, FolderMinus, FolderPlus, Pencil, X } from 'lucide-react'
 import type { FavoriteItem, FavoriteRef, LearnStore, LocalFile } from '../../../learn/types'
 import { chipPayloadOfFavorite, favoriteKey } from '../../../learn/favorites'
 import { useClampToViewport, useDismissOn } from '../../../lib/useDismiss'
@@ -26,6 +17,8 @@ import StatusBranch from '../StatusBranch'
 import { DocTypeIcon, WebTabTypeIcon } from '../docTypes'
 import { chipJson } from '../../../lib/chipSyntax'
 import { t } from '../../../i18n'
+import { Collapse, FolderRow, Indent, Section, SectionAction } from './Folder'
+import { subscribeReveal } from './reveal'
 
 /**
  * 「最近打开」：节点与本地文件混排（见 learn/recents），点一下接着看。
@@ -80,7 +73,7 @@ export function RecentRow({ item, now, onOpen }: { item: RecentOpen; now: number
         if (e.key === 'Enter') onOpen()
       }}
       title={item.tip}
-      className="flex cursor-pointer items-center gap-1.5 py-1.5 pl-1.5 pr-1.5 transition hover:bg-line/40"
+      className="flex cursor-pointer items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-1.5 transition hover:bg-line/40"
     >
       {item.kind === 'node' ? (
         <span className="flex h-4 w-4 shrink-0 items-center justify-center">
@@ -120,6 +113,7 @@ const FAV_KEY_MIME = 'application/x-moji-fav'
  * **分组文件夹**：组名登记在 store.favGroups（「新建分组」按钮创建的就是它），
  * 成员身上同时带着自己的组名（FavoriteItem.group）。收藏行可以**拖**：
  * 拖到文档区开页签、拖到对话输入框变引用 chip、拖到某个分组行上快速归类。
+ * 分组行与树里的目录行是同一种行（FolderRow），成员的缩进与展开动画也同一套。
  */
 export function FavoriteSection({
   items,
@@ -162,14 +156,9 @@ export function FavoriteSection({
       open={open}
       onToggle={onToggle}
       action={
-        <button
-          type="button"
-          title={t('新建分组')}
-          onClick={() => onCreateGroupClick()}
-          className="hidden h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-ink group-hover:flex"
-        >
-          <FolderPlus size={12} />
-        </button>
+        <SectionAction title={t('新建分组')} onClick={() => onCreateGroupClick()}>
+          <FolderPlus size={13} />
+        </SectionAction>
       }
     >
       <FavoriteGroups
@@ -239,6 +228,22 @@ function FavoriteGroups({
     return () => window.removeEventListener('moji-fav-new-group', open)
   }, [])
 
+  // 页签定位要落到分组里的一条收藏上：收着的分组在这里被广播叫开（只开不收）
+  useEffect(
+    () =>
+      subscribeReveal((req) => {
+        const group = req.favGroup
+        if (!group) return
+        setCollapsed((prev) => {
+          if (!prev.has(group)) return prev
+          const next = new Set(prev)
+          next.delete(group)
+          return next
+        })
+      }),
+    [],
+  )
+
   // 顶层（没分组的）与各分组：登记表里的组在前（含空组），成员带出来的野组随后；
   // 成员保持收藏的先后
   const { top, groupsAll } = useMemo(() => {
@@ -298,11 +303,10 @@ function FavoriteGroups({
     setDropGroup(group)
   }
 
-  const favRow = (f: FavoriteItem, indent: boolean) => (
+  const favRow = (f: FavoriteItem) => (
     <FavRow
       key={favoriteKey(f)}
       item={f}
-      indent={indent}
       title={titleOf(f)}
       renaming={renamingKey === favoriteKey(f)}
       onRenameCommit={(name) => {
@@ -328,7 +332,7 @@ function FavoriteGroups({
           onCancel={() => setCreating(false)}
         />
       )}
-      {top.map((f) => favRow(f, false))}
+      {top.map((f) => favRow(f))}
       {groupsAll.map((g) => (
         <div key={g.name}>
           {renamingGroup === g.name ? (
@@ -342,42 +346,31 @@ function FavoriteGroups({
               onCancel={() => setRenamingGroup(null)}
             />
           ) : (
+            /*
+              拖放落点的三件事（拖过亮起、离开熄掉、松手归类）挂在包住行的那一层，
+              高亮（dropActive）画在行自己身上——行是圆角的，圈也得是圆的。
+            */
             <div
-              role="button"
-              tabIndex={0}
-              onClick={() => toggleGroup(g.name)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') toggleGroup(g.name)
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                setMenu({ kind: 'group', name: g.name, x: e.clientX, y: e.clientY })
-              }}
               onDragOver={onGroupDragOver(g.name)}
               onDragLeave={(e) => {
                 if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropGroup(null)
               }}
               onDrop={onGroupDrop(g.name)}
-              className={
-                'flex cursor-pointer items-center gap-1.5 py-1.5 pl-1 pr-1 transition hover:bg-line/40 ' +
-                (dropGroup === g.name ? 'rounded bg-seal/15 ring-1 ring-seal/50' : '')
-              }
             >
-              {/*
-                组头不再放展开箭头：文件夹图标自己是开 / 合的状态（Folder / FolderOpen），
-                而它必须站在**最左**——成员行的图标在 pl-3.5（缩进的一层），
-                组的图标缩进得比成员还深，层级就反了。
-              */}
-              {collapsed.has(g.name) ? (
-                <Folder size={13} className="shrink-0 text-ink-faint" />
-              ) : (
-                <FolderOpen size={13} className="shrink-0 text-ink-faint" />
-              )}
-              <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{g.name}</span>
-              <span className="shrink-0 text-[11px] text-ink-faint">{g.items.length}</span>
+              <FolderRow
+                label={g.name}
+                open={!collapsed.has(g.name)}
+                count={g.items.length}
+                dropActive={dropGroup === g.name}
+                onClick={() => toggleGroup(g.name)}
+                onMenu={(x, y) => setMenu({ kind: 'group', name: g.name, x, y })}
+              />
             </div>
           )}
-          {!collapsed.has(g.name) && g.items.map((f) => favRow(f, true))}
+          {/* 成员与树里同一层的行共用一条缩进与一条左边线；展开收起同一拍动画 */}
+          <Collapse open={!collapsed.has(g.name)}>
+            <Indent>{g.items.map((f) => favRow(f))}</Indent>
+          </Collapse>
         </div>
       ))}
 
@@ -430,7 +423,6 @@ function FavoriteGroups({
 function FavRow({
   item,
   title,
-  indent,
   renaming,
   onRenameCommit,
   onRenameCancel,
@@ -439,8 +431,6 @@ function FavRow({
 }: {
   item: FavoriteItem
   title: string
-  /** 在分组里：往右缩一格，层级一眼可见 */
-  indent?: boolean
   /** 正在行内改名：整行让给输入框 */
   renaming?: boolean
   onRenameCommit: (name: string) => void
@@ -451,7 +441,6 @@ function FavRow({
   if (renaming) {
     return (
       <InlineName
-        indent={indent}
         initial={item.kind === 'web' ? (item.title ?? title) : title}
         placeholder={t('收藏名，回车确认')}
         onCommit={onRenameCommit}
@@ -482,11 +471,11 @@ function FavRow({
         e.dataTransfer.setData(FAV_KEY_MIME, favoriteKey(item))
         e.dataTransfer.effectAllowed = 'copyMove'
       }}
-      className={'flex cursor-pointer items-center gap-1.5 py-1.5 pr-1 transition hover:bg-line/40 ' + (indent ? 'pl-3.5' : 'pl-1.5')}
+      data-reveal={'row:fav:' + favoriteKey(item)}
+      className="flex cursor-pointer items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-1.5 transition hover:bg-line/40"
     >
       {/* 网页行显示**站点图标**（收藏那一刻记下的 favicon，与页签栏同一颗组件；没记到退回地球），
-          其余类型用类型图标——同一个东西在页签栏与收藏夹里长得一样。
-          网页包一层 16px 格子与 DocTypeIcon 的占位对齐，标题的左边缘才不会因行而异。 */}
+          其余类型用类型图标——同一个东西在页签栏与收藏夹里长得一样。 */}
       {item.kind === 'web' ? (
         <span className="flex h-4 w-4 shrink-0 items-center justify-center">
           <WebTabTypeIcon favicon={item.icon} size={13} />
@@ -503,18 +492,16 @@ function FavRow({
 function InlineName({
   initial,
   placeholder,
-  indent,
   onCommit,
   onCancel,
 }: {
   initial: string
   placeholder: string
-  indent?: boolean
   onCommit: (name: string) => void
   onCancel: () => void
 }) {
   return (
-    <div className={'py-0.5 ' + (indent ? 'pl-3.5' : 'pl-1.5')}>
+    <div className="py-0.5 pl-1.5">
       <input
         autoFocus
         defaultValue={initial}
@@ -703,74 +690,6 @@ function GroupMenu({
 }
 
 /**
- * 展开 / 收起的那一段动画。
- *
- * 用 grid-template-rows 从 0fr 到 1fr：这是**唯一**能对「高度未知」的内容做过渡的办法——
- * height 从 0 到 auto 不可动画，而预先量高度要么写死（内容一变就错），要么每帧读一次布局。
- * 内层 overflow-hidden + min-h-0 把内容裁住。
- *
- * 收起时子树**仍然挂着**（只是裁成 0 高），换来的是两个方向都有动画；
- * 树大到几百个节点时这里会成为负担，那时再改成「收起动画播完再卸载」。
- * inert：裁掉的那部分不该还能被 Tab 选中。
- */
-export function Collapse({ open, children }: { open: boolean; children: React.ReactNode }) {
-  return (
-    <div
-      className={
-        'grid grid-cols-[minmax(0,1fr)] transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ' +
-        (open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')
-      }
-      inert={!open}
-    >
-      <div className="min-h-0 overflow-hidden">{children}</div>
-    </div>
-  )
-}
-
-/** 一个可折叠的分区：标题一行 + 内容（见文件头对「为什么分区」的说明） */
-export function Section({
-  title,
-  count,
-  open,
-  onToggle,
-  action,
-  children,
-}: {
-  title: string
-  count: number
-  open: boolean
-  onToggle: () => void
-  action?: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <section className="mb-1">
-      <div className="group flex items-center gap-1 px-3 py-1">
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-1 text-left text-[12.5px] font-medium tracking-wide text-ink-soft uppercase transition hover:text-ink"
-        >
-          {/* 单箭头旋转（与 Collapse 的高度动画同拍），不再两颗图标硬切换 */}
-          <ChevronRight
-            size={13}
-            className={
-              'shrink-0 transition-transform duration-200 ease-out motion-reduce:transition-none ' +
-              (open ? 'rotate-90' : '')
-            }
-          />
-          <span className="truncate">{title}</span>
-          <span className="shrink-0 text-[11.5px] font-normal text-ink-faint normal-case">{count}</span>
-        </button>
-        {action}
-      </div>
-      <Collapse open={open}>{children}</Collapse>
-    </section>
-  )
-}
-
-/**
  * 本地文件列表里的一行。
  *
  * 显示的是文件名而不是完整路径（路径太长，侧栏只有 288px）；完整路径放 title，
@@ -798,13 +717,14 @@ export function LocalRow({
         onMenu(e.clientX, e.clientY)
       }}
       title={file.path}
+      data-reveal={'row:local:' + file.path}
       // 拖出去 = 外部文件的引用：拖到页签栏开成 l: 页签，拖到输入框是一枚引用
       draggable
       onDragStart={(e) => {
         e.dataTransfer.setData('application/x-moji-chip', chipJson({ type: 'local', path: file.path, title: file.name }))
         e.dataTransfer.effectAllowed = 'copy'
       }}
-      className="group flex cursor-pointer items-center gap-1.5 py-1.5 pl-1.5 pr-1 transition hover:bg-line/40"
+      className="flex cursor-pointer items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-1.5 transition hover:bg-line/40"
     >
       <DocTypeIcon kind="local" size={13} />
       <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{file.name}</span>

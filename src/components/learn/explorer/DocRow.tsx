@@ -2,6 +2,7 @@
  * 这个文件负责：节点底下那些**文档行**——大纲与学习文档（各自一行）、
  * 笔记 / 试卷 / 试卷副本 / 超级文档共用的一行（DocRow）、笔记的就地改名行（NoteRenameRow），
  * 以及「一份试卷 + 它历次考试」那一段（ExamList）。
+ * 目录行（「文档」/ 收藏分组 / 工作区）不长这样——它们是 explorer/Folder 的 FolderRow。
  */
 import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { ChevronRight } from 'lucide-react'
@@ -11,7 +12,7 @@ import { attemptBrief, examTotalPoints } from '../../../learn/exam'
 import type { KnowledgeNode, TabRef } from '../../../learn/types'
 import { DocTypeIcon } from '../docTypes'
 import { examNeedsWork, type ExamActions, type MenuTarget, type NodeDocActions } from './types'
-import { Collapse } from './sections'
+import { Collapse, Indent } from './Folder'
 import { chipJson, type ChipPayload } from '../../../lib/chipSyntax'
 import { t } from '../../../i18n'
 
@@ -34,7 +35,7 @@ export function DocRow({
   onMenu,
   expandable = false,
   open = false,
-  nested = false,
+  revealKey,
   dragChip,
   onDragExtra,
 }: {
@@ -63,8 +64,8 @@ export function DocRow({
   /** 还有下一层（试卷的历次考试）：右端给一根小箭头 */
   expandable?: boolean
   open?: boolean
-  /** 第三层（某一次考试）：再往里缩一档 */
-  nested?: boolean
+  /** 页签定位的目标键（data-reveal）：侧栏要把「正开着的那份」亮出来 */
+  revealKey?: string
   /**
    * 这一行能拖出的那份引用（见 lib/chipSyntax 的 ChipPayload）：拖到页签栏开成页签、
    * 拖到对话输入框变成一枚引用。不给就是这一行不参与拖拽（比如就地改名行）。
@@ -83,6 +84,7 @@ export function DocRow({
       role="button"
       tabIndex={0}
       title={hint}
+      data-reveal={revealKey}
       draggable={!!dragChip}
       onDragStart={(e) => {
         const p = dragChip?.()
@@ -104,14 +106,13 @@ export function DocRow({
           : undefined
       }
       className={
-        'group flex w-full items-center gap-1.5 py-1 pr-1.5 text-left text-[12px] transition ' +
+        'group flex w-full items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-1.5 text-left text-[12.5px] transition ' +
         (active
           ? 'bg-line/60 text-ink-strong '
-          : 'text-ink-soft hover:bg-line/40 hover:text-ink ') +
-        (nested ? 'pl-5' : 'pl-1.5')
+          : 'text-ink-soft hover:bg-line/40 hover:text-ink ')
       }
     >
-      {icon ?? (kind ? <DocTypeIcon kind={kind} size={12} /> : null)}
+      {icon ?? (kind ? <DocTypeIcon kind={kind} size={13} /> : null)}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {badge}
       {action}
@@ -262,7 +263,7 @@ export function ExamList({
             />
             {/* 历次考试走 Collapse：展开收起有高度动画（与目录、节点同一拍） */}
             <Collapse open={openThis}>
-              <div className="ml-3 border-l border-line pl-1.5">
+              <Indent>
                 {attempts.length === 0 && (
                   <p className="py-1 pl-1.5 pr-2 text-[11px] leading-relaxed text-ink-faint">
                     {t('还没考过。右键这一行选「考试」开始第一次。')}
@@ -298,7 +299,7 @@ export function ExamList({
                         t('打开这一次的试卷副本：作答、判分与错题讲解') +
                         (brief.hasExplanation ? t('（导师已经写了讲解）') : t('（还没有讲解）'))
                       }
-                      nested
+                      revealKey={`row:doc:attempt:${node.id}:${exam.id}:${attempt.id}`}
                       active={
                         activeTab?.kind === 'exam' &&
                         activeTab.examId === exam.id &&
@@ -319,7 +320,7 @@ export function ExamList({
                     />
                   )
                 })}
-              </div>
+              </Indent>
             </Collapse>
           </div>
         )

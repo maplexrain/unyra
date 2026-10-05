@@ -2,9 +2,10 @@
  * 这个文件负责：知识树的展开状态——用户的手动开关（manual）优先，没手动指定过的节点看
  * 自动展开的累积记忆（autoOpen）；箭头要的 isOpen / toggle 由这里出去。
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { LearnStore } from '../../../learn/types'
 import { ancestors } from '../../../learn/graph'
+import { subscribeReveal } from './reveal'
 
 export function useTreeExpand(store: LearnStore, activeNodeId: string | null) {
   // 展开状态：用户手动开关优先；未手动指定的节点，默认展开当前节点的祖先，
@@ -35,5 +36,26 @@ export function useTreeExpand(store: LearnStore, activeNodeId: string | null) {
       next.set(id, !(prev.get(id) ?? autoOpen.has(id)))
       return next
     })
+  /*
+   * 页签定位的广播也要展开节点链：定位是用户「我要看这一份」的明确时刻，
+   * 沿路的门都该推开——手动的「收起」被顶开也是应该的（要收起再自己点箭头）。
+   * setState 收在订阅回调里（与各行对文档目录 / 收藏分组的反应同一套写法）。
+   */
+  useEffect(
+    () =>
+      subscribeReveal((req) => {
+        if (!req.nodes.length) return
+        setManual((prev) => {
+          let next: Map<string, boolean> | null = null
+          for (const id of req.nodes) {
+            if (prev.get(id) ?? autoOpen.has(id)) continue
+            if (!next) next = new Map(prev)
+            next.set(id, true)
+          }
+          return next ?? prev
+        })
+      }),
+    [autoOpen],
+  )
   return { isOpen, toggle }
 }

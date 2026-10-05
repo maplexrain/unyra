@@ -6,7 +6,7 @@
  * 与上面的三个文档目录（笔记 / 试卷 / 超级文档）本质不同：那些是应用记账出来的
  * （store 序列化成什么，目录里就显示什么），这里列出的是磁盘上**实际有的**文件与子目录
  * ——用户放进去的、导师用 workspace.write 写的、右键新建出来的，全部原样出现。
- * 展开才列目录（一次 IPC），每层各自记住自己开过没有。
+ * 目录挂载即列一次（行尾的数量标记不用展开就有），每层各自缓存自己的清单。
  *
  * 右键菜单给**新建目录 / 新建文件 / 重命名**（IO 在 LearnWorkspace 的 wsActions 里，
  * 真实地落在磁盘上）；动完 notifyWsChanged()，展开过的目录听见就各自重列一遍。
@@ -22,8 +22,8 @@ import { FileText, Folder } from 'lucide-react'
 import type { KnowledgeNode, LearnStore } from '../../../learn/types'
 import { listUserDir } from '../../../lib/storage'
 import { WS_MOVE_MIME, wsJoin, wsRelOf } from '../../../learn/workspace'
-import { DocFolderIcon } from '../docTypes'
-import { Collapse } from './sections'
+import { Collapse, FolderRow, Indent } from './Folder'
+import { peekReveal, subscribeReveal } from './reveal'
 import { DocRow } from './DocRow'
 import { subscribeWsChanged } from './wsChanges'
 import type { MenuTarget, WsActions } from './types'
@@ -40,11 +40,6 @@ interface WsEntry {
 /** 目录在前、名字按本地序（与 docs 树「结构先于内容」的排序同一句话） */
 const sorted = (list: WsEntry[]): WsEntry[] =>
   [...list].sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name, 'zh') : a.dir ? -1 : 1))
-
-/** 目录行尾的数量标记（与 NodeRow 的 countBadge 同一款） */
-const countBadge = (n: number) => (
-  <span className="shrink-0 rounded bg-line/70 px-1.5 py-px text-[10px] leading-4 text-ink-faint">{n}</span>
-)
 
 /** 就地改名的那一行（工作区的目录 / 文件）：回车提交、Esc 取消、失焦也算提交（与笔记的改名行同一套） */
 function WsRenameRow({
@@ -127,20 +122,40 @@ function WsDir({
   const full = segments.length ? (wsJoin(base, segments) ?? base) : base
   // 改自己的名字要落回父目录：父目录的路径从 base + 去掉最后一段推出来
   const parentFull = segments.length > 1 ? (wsJoin(base, segments.slice(0, -1)) ?? base) : base
-  const toggle = async () => {
-    const next = !open
-    setOpen(next)
-    // 展开才列目录：真实目录可能很大，没展开就不花那次 IPC
-    if (next && entries === null) setEntries(sorted(await listUserDir(full)))
-  }
-  // 展开过的目录听那一声「变了」的铃：新建 / 改名之后各自重列，缓存才不会说谎
-  const loaded = entries !== null
+  const toggle = () => setOpen((v) => !v)
+  /*
+   * 目录**挂载即列一次**（不再等展开才列）：行尾的数量标记是目录行的一部分——
+   * 「里面有几份」要点开才知道，目录就白画了。工作区目录通常就几项，这一次 IPC 值得；
+   * 真正的大目录展开后自然会有展开的那次等待，这里只是把清单提前拿到手。
+   * 展开过的目录听那一声「变了」的铃：新建 / 改名之后各自重列，缓存才不会说谎。
+   */
   useEffect(() => {
-    if (!loaded) return
-    return subscribeWsChanged(() => {
-      void listUserDir(full).then((list) => setEntries(sorted(list)))
-    })
-  }, [full, loaded])
+    let alive = true
+    const refresh = (): void => {
+      void listUserDir(full).then((list) => {
+        if (alive) setEntries(sorted(list))
+      })
+    }
+    refresh()
+    const off = subscribeWsChanged(refresh)
+    return () => {
+      alive = false
+      off()
+    }
+  }, [full])
+
+  /*
+   * 页签定位落到本目录底下的文件时：把这一层打开。子目录要等本层列完盘才挂载，
+   * 所以除了订阅广播，挂载时还补看一眼当前这条（publishReveal 会把广播留几秒）——
+   * 逐层接力，最深那层的文件行挂出来后由 revealRow 滚过去。
+   */
+  useEffect(() => {
+    const maybe = (req: { keys: readonly string[] } | null): void => {
+      if (req?.keys.some((k) => k.startsWith('row:ws:' + full + '/'))) setOpen(true)
+    }
+    maybe(peekReveal())
+    return subscribeReveal(maybe)
+  }, [full])
 
   /** 提交改名：交给 ws.rename 真实地 move（名字不合法 / 撞名由那头用 toast 说清） */
   const commitRename = (rel: string, parent: string, oldName: string) => (raw: string) => {
@@ -190,15 +205,18 @@ function WsDir({
           onCancel={ws.endRename}
         />
       ) : (
-        <div {...dropHandlers} className={'rounded ' + (dropHover ? 'ring-1 ring-seal/60 bg-seal/10' : '')}>
-          <DocRow
-            icon={<DocFolderIcon open={open} />}
+        /*
+          拖放落点挂在包住行的那一层，高亮（dropActive）画在行自己身上——
+          与收藏分组行同一个做法（见 sections.tsx 的 FavoriteGroups）。
+        */
+        <div {...dropHandlers}>
+          <FolderRow
             label={label}
             hint={hint}
-            badge={entries && entries.length > 0 ? countBadge(entries.length) : undefined}
-            expandable
             open={open}
-            onClick={() => void toggle()}
+            count={entries?.length}
+            dropActive={dropHover}
+            onClick={() => toggle()}
             // 目录也能拖成引用：点击跳到所属节点（ws 目录没有页签形态，见 learn/chipRef）
             dragChip={segments.length === 0 ? undefined : () => ({ type: 'ws', path: full, nodeId: node.id, title: label, dir: true })}
             onDragExtra={segments.length === 0 ? undefined : dragExtra(full)}
@@ -209,7 +227,7 @@ function WsDir({
         </div>
       )}
       <Collapse open={open}>
-        <div className="ml-3 border-l border-line pl-1.5">
+        <Indent>
           {entries?.length === 0 && (
             <p className="py-1 pl-1.5 pr-2 text-[11px] leading-relaxed text-ink-faint">
               {t('空目录——右键目录行新建，或把文件放进系统的这个文件夹')}
@@ -255,6 +273,7 @@ function WsDir({
                 }
                 label={e.name}
                 hint={t('工作区文件「{0}」（点击在页签打开；可拖拽：到目录行移动 / Ctrl 复制，到文档区或对话打开）', e.name)}
+                revealKey={'row:ws:' + childRel}
                 onClick={() => onOpen(childRel)}
                 dragChip={() => ({ type: 'ws', path: childRel, nodeId: node.id, title: e.name })}
                 onDragExtra={dragExtra(childRel)}
@@ -262,7 +281,7 @@ function WsDir({
               />
             )
           })}
-        </div>
+        </Indent>
       </Collapse>
     </div>
   )
@@ -290,7 +309,7 @@ export function WorkspaceRow({
   // 没进任何目标目录的节点（理论上不该有）：不画，免得点开是一场空
   if (!base) return null
   return (
-    <div className="ml-3 border-l border-line pl-1.5">
+    <Indent>
       <WsDir
         node={node}
         base={base}
@@ -302,6 +321,6 @@ export function WorkspaceRow({
         onOpen={onOpen}
         onTransfer={onTransfer}
       />
-    </div>
+    </Indent>
   )
 }
