@@ -103,6 +103,8 @@ export interface WebLogsQuery {
   limit?: number
   /** 只看 seq 大于它的（上一份清单的 latestSeq）——无状态分页游标 */
   afterSeq?: number
+  /** 顺手回结构化条目（shown 行对应的 {seq, kind, …}）——agent 就不用拿正则从行文本里扒条目号了 */
+  meta?: boolean
 }
 
 export interface WebLogsView {
@@ -114,7 +116,13 @@ export interface WebLogsView {
   /** 缓冲里最新的 seq：翻页就把它当下一查询的 afterSeq */
   latestSeq: number
   truncated: boolean
+  /** { meta: true } 时回：shown 行的结构化原形（折叠组取第一条；静态行没有条目） */
+  entries?: WebLogMetaEntry[]
 }
+
+export type WebLogMetaEntry =
+  | { seq: number; kind: 'console'; level: WebLogLevel; text: string }
+  | { seq: number; kind: 'network'; method: string; url: string; status: number | null; type: string }
 
 /** 查询参数消毒（主进程与宿主层共用）：认不出的值一律落回默认，limit/afterSeq 夹紧 */
 export function sanitizeLogsQuery(raw: unknown): WebLogsQuery {
@@ -135,6 +143,7 @@ export function sanitizeLogsQuery(raw: unknown): WebLogsQuery {
     ...(o.only === 'api' || o.only === 'fail' ? { only: o.only } : {}),
     ...(limit !== undefined ? { limit } : {}),
     ...(afterSeq !== undefined ? { afterSeq } : {}),
+    ...(o.meta === true ? { meta: true } : {}),
   }
 }
 
@@ -201,6 +210,8 @@ export function queryWebLogs(buf: WebLogBuffer, q: WebLogsQuery = {}): WebLogsVi
   const wantNetwork = !q.kind || q.kind === 'network'
 
   const lines: Array<{ seq: number; line: string }> = []
+  /** seq → 结构化原形（meta:true 时按 shown 行配齐；折叠组取第一条） */
+  const metaBySeq = new Map<number, WebLogMetaEntry>()
   let truncated = false
 
   if (wantConsole) {
@@ -220,6 +231,7 @@ export function queryWebLogs(buf: WebLogBuffer, q: WebLogsQuery = {}): WebLogsVi
         line:
           '[c' + e.seq + '] ' + CONSOLE_TAG[e.level] + ' ' + e.text + (g.count > 1 ? ' ×' + g.count : ''),
       })
+      if (q.meta) metaBySeq.set(e.seq, { seq: e.seq, kind: 'console', level: e.level, text: e.text })
     }
   }
 
@@ -259,6 +271,16 @@ export function queryWebLogs(buf: WebLogBuffer, q: WebLogsQuery = {}): WebLogsVi
         seq: e.seq,
         line: '[n' + e.seq + '] ' + e.method + ' ' + shortUrl(e.url) + ' → ' + verdict.trim(),
       })
+      if (q.meta) {
+        metaBySeq.set(e.seq, {
+          seq: e.seq,
+          kind: 'network',
+          method: e.method,
+          url: shortUrl(e.url, 300),
+          status: e.status,
+          type: e.type,
+        })
+      }
     }
     for (const g of api.values()) {
       const e = g.first
@@ -269,11 +291,21 @@ export function queryWebLogs(buf: WebLogBuffer, q: WebLogsQuery = {}): WebLogsVi
           (e.size !== undefined ? ' · ' + humanSize(e.size) : '') +
           (g.count > 1 ? ' ×' + g.count : ''),
       })
+      if (q.meta) {
+        metaBySeq.set(e.seq, {
+          seq: e.seq,
+          kind: 'network',
+          method: e.method,
+          url: shortUrl(e.url, 300),
+          status: e.status,
+          type: e.type,
+        })
+      }
     }
     netLines.sort((a, b) => a.seq - b.seq)
     lines.push(...netLines)
     if (staticCount > 0) {
-      // 静态摘要在行尾垫底（截断也保留它——它是最便宜的一行）；不入 seq 排序
+      // 静态摘要在行尾垫底（截断也保留它——它是最便宜的一行）；不入 seq 排序，也没有结构化条目
       lines.push({ seq: Number.MAX_SAFE_INTEGER, line: '[static] 静态资源 ×' + staticCount + '（已折叠，不看）' })
     }
   }
@@ -291,6 +323,7 @@ export function queryWebLogs(buf: WebLogBuffer, q: WebLogsQuery = {}): WebLogsVi
     totalNetwork: wantNetwork ? buf.network.filter((e) => e.seq > after).length : 0,
     latestSeq: buf.nextSeq - 1,
     truncated,
+    ...(q.meta ? { entries: shown.map((l) => metaBySeq.get(l.seq)).filter((e) => e !== undefined) } : {}),
   }
 }
 

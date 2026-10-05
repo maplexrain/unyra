@@ -1115,6 +1115,8 @@ export default function LearnWorkspace({
         isElectron() ? native().browser.text(wcId, target) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
       scroll: (wcId, req) =>
         isElectron() ? native().browser.scroll(wcId, req) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
+      waitFor: (wcId, req) =>
+        isElectron() ? native().browser.waitFor(wcId, req) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
     }
   })
 

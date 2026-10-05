@@ -95,6 +95,10 @@ function makeDeps(store: LearnStore, webMeta: Record<string, WebTabMeta> = {}) {
       scrollCalls.push([wcId, req])
       return { ok: true as const, scrollY: 800, scrollHeight: 4000, viewport: 900, atBottom: false, atTop: false }
     },
+    waitFor: async (wcId, req) => {
+      scrollCalls.push([wcId, req])
+      return { ok: true as const, matched: 'selector' as const, waitedMs: 250, url: 'https://x.com/' }
+    },
   }
   return { deps, opened, activated, closed, snapshotted, pointed, domOps, readHtmls, logCalls, fetchCalls, textCalls, scrollCalls }
 }
@@ -268,13 +272,14 @@ describe('makeBrowserOps：browser.* 的宿主实现（纯逻辑 + 假元素，N
     await expect(ops2.read(undefined)).rejects.toThrow('焦点格里没有正看着的网页页签')
   })
 
-  it('activate / close 落到宿主动作；不存在的页签报错', () => {
-    const { deps, activated, closed } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
+  it('activate / close 落到宿主动作；close 认数组批量；不存在的页签报错', () => {
+    const { deps, activated, closed } = makeDeps(storeWith([webTab('a', 'https://x.com'), webTab('b', 'https://y.com')], 'w:a'))
     const ops = makeBrowserOps(deps, 'goal1')
     expect(ops.activate('w:a')).toEqual({ ok: true })
     expect(activated).toEqual(['w:a'])
     expect(ops.close('w:a')).toEqual({ ok: true })
-    expect(closed).toEqual([['g1', 'w:a']])
+    expect(ops.close(['w:a', 'w:b'])).toEqual({ ok: true })
+    expect(closed).toEqual([['g1', 'w:a'], ['g1', 'w:a'], ['g1', 'w:b']])
     expect(() => ops.activate('w:ghost')).toThrow('没有这个网页页签')
     expect(() => ops.close('w:ghost')).toThrow('没有这个网页页签')
   })

@@ -565,7 +565,7 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     wrapApi(api, 'browser.open', (args) => browser.open(asText(args[0]).trim()), log)
     wrapApi(api, 'browser.tabs', () => browser.tabs(), log)
     wrapApi(api, 'browser.activate', (args) => browser.activate(asText(args[0]).trim()), log)
-    wrapApi(api, 'browser.close', (args) => browser.close(asText(args[0]).trim()), log)
+    wrapApi(api, 'browser.close', (args) => browser.close(Array.isArray(args[0]) ? (args[0].map((v) => asText(v).trim()) as string[]) : asText(args[0]).trim()), log)
     wrapApi(api, 'browser.snapshot', (args) => {
       const tabId = args.length ? asText(args[0]).trim() || undefined : undefined
       return browser.snapshot(tabId, asRecord(args[1]))
@@ -594,12 +594,16 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
       const rest = tabId ? args.slice(1) : args
       return browser.point(tabId, targetOf(rest[0]))
     }, log)
-    // dom 两种写法：dom(ref, op, arg?) 与 dom(tabId, ref, op, arg?)
+    // dom 两种写法：dom(ref, op, arg?) 与 dom(tabId, ref, op, arg?)；ref 认数字或 { ref }（与 text/point 一致）
     wrapApi(api, 'browser.dom', (args) => {
       const tabId = tabIdOf(args[0])
       const rest = tabId ? args.slice(1) : args
-      const ref = Number(rest[0])
-      if (!Number.isFinite(ref)) throw new Error('ref 要给 browser.snapshot 清单里的编号数字')
+      const refRaw = rest[0]
+      const ref =
+        typeof refRaw === 'object' && refRaw !== null
+          ? Number(asRecord(refRaw).ref)
+          : Number(refRaw)
+      if (!Number.isFinite(ref)) throw new Error('ref 要给编号数字或 { ref }（browser.snapshot 清单里的，两种写法都认）')
       const arg = rest[2] === undefined ? undefined : asText(rest[2])
       return browser.dom(tabId, ref, asText(rest[1]).trim(), arg)
     }, log)
@@ -622,7 +626,36 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
       if (typeof target !== 'string' && !('reqId' in (target as Record<string, unknown>))) {
         throw new Error('目标要给 http(s) 网址，或 { reqId }（browser.logs 网络清单里的条目号）')
       }
-      return browser.fetch(requireTabId(args[0], 'browser.fetch'), target as string | { reqId: number }, asRecord(args[2]))
+      const o = asRecord(args[2])
+      const toTmp = typeof o.toTmp === 'string' && o.toTmp.trim() ? o.toTmp.trim() : undefined
+      if (toTmp) {
+        // 全文落 tmp：上限放宽到 256k（页面侧同步放宽采文本上限），正文不进上下文
+        o.maxBody = 262_144
+        o.maxText = 262_144
+      }
+      const p = browser.fetch(requireTabId(args[0], 'browser.fetch'), target as string | { reqId: number }, o)
+      if (!toTmp) return p
+      return Promise.resolve(p).then((r) => {
+        const rec = r as Record<string, unknown>
+        const body = typeof rec.body === 'string' ? rec.body : undefined
+        if (body === undefined) return r
+        if (!tmp) return { ...rec, note: 'toTmp 需要临时变量（当前注入里没有 tmp）——去掉 toTmp 直接拿 body' }
+        tmp.set(toTmp, rec)
+        return {
+          status: rec.status,
+          ...(rec.contentType ? { contentType: rec.contentType } : {}),
+          ...(rec.chars ? { chars: rec.chars } : {}),
+          ...(rec.replayed ? { replayed: rec.replayed } : {}),
+          tmp: toTmp,
+          preview: body.slice(0, 400),
+          note:
+            '全文已落 tmp.' + toTmp + '（含 status/contentType/body）：在代码里 api.tmp.get(\'' + toTmp + '\') 取出来 JSON.parse 解析，只把提炼结果 return——别把全文交回来',
+        }
+      })
+    }, log)
+    wrapApi(api, 'browser.waitFor', (args) => {
+      const req = asRecord(args[1])
+      return browser.waitFor(requireTabId(args[0], 'browser.waitFor'), req)
     }, log)
     wrapApi(api, 'browser.record', (args) => {
       const action = asText(args[1]).trim()

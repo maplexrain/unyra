@@ -696,8 +696,8 @@ export interface BrowserOps {
   tabs(): { tabs: BrowserTabInfo[] }
   /** 把某个页签切到前台 */
   activate(tabId: string): { ok: true }
-  /** 关掉某个页签（不弹确认） */
-  close(tabId: string): { ok: true }
+  /** 关掉某个页签（不弹确认）；给数组就批量关（试错页签收尾用——用户自己开的别关） */
+  close(tabId: string | string[]): { ok: true }
   /**
    * 页面快照：可交互元素列成**带 ref 的清单**（role + 名称 + 输入值，≤200 条）——
    * 「看」的文本通道，比截图省；DOM 变了 ref 会过期，重新 snapshot 即可。
@@ -715,10 +715,11 @@ export interface BrowserOps {
   point(tabId: string | undefined, target: BrowserTarget): Promise<{ ok: true }>
   /**
    * 对 snapshot 清单里的 ref 做受控 DOM 操作：op = "click" / "fill"(文字，触发
-   * input/change，React 受控输入也认) / "focus" / "submit"(所在表单) / "text"(元素文字，
-   * ≤4000 字) / "attr"(属性名)。result 是操作自己的小结果（fill 回新值、attr 回属性值）。
+   * input/change，React 受控输入也认) / "focus" / "submit"(所在表单) / "press"(键盘键，
+   * 如 "Enter"——fill+submit 走不通的搜索框靠它) / "text"(元素文字，≤4000 字) / "attr"(属性名)。
+   * ref 认编号数字或 { ref } 两种写法（与 text/point 一致）。result 是操作自己的小结果。
    */
-  dom(tabId: string | undefined, ref: number, op: string, arg?: string): Promise<{ ok: true; result?: unknown }>
+  dom(tabId: string | undefined, ref: number | { ref: number }, op: string, arg?: string): Promise<{ ok: true; result?: unknown }>
   /** 整页转 markdown（与 web.webFetch 同一条管线：短的回全文，长的落盘回大纲 + uuid）；
    *  opts { maxChars?, offset? } 把回文切段（doc.readRange 同一哲学） */
   read(tabId?: string, opts?: Record<string, unknown>): Promise<unknown>
@@ -754,6 +755,12 @@ export interface BrowserOps {
   /** 滚页面（无限滚动信息流的引擎）：{ by: 像素 } 或 { to: "top"|"bottom"|选择器 } 或 { ref }；
    *  回滚动后的几何（scrollY/scrollHeight/atBottom——判断要不要等新内容） */
   scroll(tabId: string, req: Record<string, unknown>): Promise<unknown>
+  /**
+   * 等条件成立（250ms 轮询，默认 8s、上限 30s）——「wait 一下、再取一次、还是空」循环的替代品。
+   * 谓词全是固定原语：{ selector } 元素出现 / { text } 正文含这段字 / { urlIncludes } 地址包含 /
+   * { networkIdle: true } 请求挂起清零 / { load: true } 加载完。回 { matched, waitedMs, url }。
+   */
+  waitFor(tabId: string, req: Record<string, unknown>): Promise<unknown>
 }
 
 /**

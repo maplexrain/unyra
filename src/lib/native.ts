@@ -16,7 +16,7 @@ import type {
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
   VoiceReadResult, WebDomOpResult, WebFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult,
   WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult,
-  WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget,
+  WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebWaitReq, WebWaitResult,
 } from '../../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（与 electron/preload.ts 共用一份，见该文件顶部）：
@@ -29,7 +29,7 @@ export type {
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
   VoiceReadResult, WebDomOpResult, WebFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult,
   WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult,
-  WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget,
+  WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebWaitReq, WebWaitResult,
 }
 
 export type PluginList =
@@ -347,6 +347,8 @@ export interface NativeBridge {
     text(wcId: number, target: WebTextTarget): Promise<WebTextResult>
     /** 滚页面（by/to/ref）：browser.scroll */
     scroll(wcId: number, req: WebScrollReq): Promise<WebScrollResult>
+    /** 等条件成立（selector/text/urlIncludes/networkIdle/load）：browser.waitFor */
+    waitFor(wcId: number, req: WebWaitReq): Promise<WebWaitResult>
   }
 }
 

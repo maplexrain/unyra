@@ -11,6 +11,8 @@ import type {
   WebSnapshotElement,
   WebTextResult,
   WebTextTarget,
+  WebWaitReq,
+  WebWaitResult,
 } from '../../../shared/ipc'
 import type { LearnStore, TabRef, WebTabMeta } from '../types'
 import { findTab, focusedGroup, groupIdOfTab } from '../groups'
@@ -63,6 +65,8 @@ export interface BrowserDeps {
   text: (wcId: number, target: WebTextTarget) => Promise<WebTextResult>
   /** 滚页面（by/to/ref），回滚动后的几何 */
   scroll: (wcId: number, req: WebScrollReq) => Promise<WebScrollResult>
+  /** 等条件成立（selector/text/urlIncludes/networkIdle/load） */
+  waitFor: (wcId: number, req: WebWaitReq) => Promise<WebWaitResult>
 }
 
 type WebTabRef = Extract<TabRef, { kind: 'web' }>
@@ -191,11 +195,15 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
       return { ok: true }
     },
     close(tabId) {
-      const group = groupIdOfTab(deps.getLatest().docArea, tabId)
-      if (!group) {
-        throw new Error('没有这个网页页签：' + tabId + '。先 api.browser.tabs() 看一眼存活的页签。')
+      // 单签或批量（试错页签收尾 close([…ids])）——用户自己开的别关，纪律在提示词里
+      const ids = Array.isArray(tabId) ? tabId : [tabId]
+      for (const id of ids) {
+        const group = groupIdOfTab(deps.getLatest().docArea, id)
+        if (!group) {
+          throw new Error('没有这个网页页签：' + id + '。先 api.browser.tabs() 看一眼存活的页签。')
+        }
+        deps.closeTab(group, id, 'self', { confirm: false })
       }
-      deps.closeTab(group, tabId, 'self', { confirm: false })
       return { ok: true }
     },
     async snapshot(tabId, opts) {
@@ -272,12 +280,22 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
     async capture(tabId) {
       const { tabId: id, ref } = resolveTab(tabId)
       const wv = element(id)
-      const image = await withTimeout(wv.capturePage(), '截图')
+      // capturePage 偶发超时（实测：同一秒 activate 一下就好）——自动重试一次再认输
+      let image: Awaited<ReturnType<WebviewTag['capturePage']>>
+      try {
+        image = await withTimeout(wv.capturePage(), '截图')
+      } catch {
+        await new Promise((r) => setTimeout(r, 400))
+        image = await withTimeout(wv.capturePage(), '截图（重试）')
+      }
       const saved = await saveScreenshot(deps.getLatest, deps.set, goalId, image.toDataURL(), '网页截图')
       if (!saved.ok) return { ok: false as const, error: saved.error }
       return {
         ok: true as const,
-        note: '截图已存进资源库（res.list 里能看到），并附在你的下一步里。页面：' + titleOf(id, ref),
+        // uuid 直接带回：引用进文档就是 ![说明](moji:static/<uuid>)，不用再去 res.list 翻
+        uuid: saved.image.id,
+        note:
+          '截图已存进资源库，并附在你的下一步里。引用写 ![说明](moji:static/' + saved.image.id + ')。页面：' + titleOf(id, ref),
         images: [saved.image],
       }
     },
@@ -364,6 +382,27 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
       }
       await settle(wv)
       const out = await withTimeout(deps.scroll(wcIdOf(wv), r), '滚动')
+      if ('error' in out) throw new Error(out.error)
+      return out
+    },
+    async waitFor(tabId, req) {
+      const { tabId: id } = resolveTabStrict(tabId, 'browser.waitFor')
+      const wv = element(id)
+      const o = (req ?? {}) as Record<string, unknown>
+      const hasAny =
+        (typeof o.selector === 'string' && o.selector.trim()) ||
+        (typeof o.text === 'string' && o.text.trim()) ||
+        (typeof o.urlIncludes === 'string' && o.urlIncludes.trim()) ||
+        o.networkIdle === true ||
+        o.load === true
+      if (!hasAny) {
+        throw new Error('要给至少一个等待条件：{ selector } / { text } / { urlIncludes } / { networkIdle: true } / { load: true }')
+      }
+      const out = await withTimeout(
+        deps.waitFor(wcIdOf(wv), o as WebWaitReq),
+        '等待条件',
+        (typeof o.timeoutMs === 'number' && Number.isFinite(o.timeoutMs) ? o.timeoutMs : 8_000) + 15_000,
+      )
       if ('error' in out) throw new Error(out.error)
       return out
     },

@@ -137,8 +137,10 @@ export const PROMPT_MODULES: PromptModule[] = [
     **动态页面的快路**：先 UI 摸清一次请求形态，同类动作在 execute 循环里直发——循环里直发
     零推理成本，比一次次的 snapshot+dom 便宜一个量级。**写操作（POST/PUT/DELETE）与批量
     直发是不可逆动作，必须先 api.ask**；循环要节流（宁慢勿封）；触发本地逻辑（上传/支付/
-    复杂前端状态）的动作仍走 UI。重放撞 403/404 多半是捕获的头里有一次性签名——回 UI 重触发
-    一次拿新 reqId。
+    复杂前端状态）的动作仍走 UI。**重放的时间窗（实测）**：捕获后几秒内 {reqId} 重放通常能成
+    （且站点只认首批若干条）；隔了轮次再重放大概率 403/404——捕获的头里有一次性签名，
+    过期就要回 UI 重新触发一次拿新 reqId，别在旧条目上耗轮次。长响应别整段 return：
+    { toTmp: 'key' } 全文（≤256k）落临时变量，代码里 tmp.get 出来解析，只把提炼结果交回来。
   - api.browser.record(tabId, "start" | "stop")：录制区间——start 钉水位，请用户做你做不了的操作
     （登录/验证码），stop 回**这段区间**的折叠清单。配 api.ask 用。
   - api.browser.scroll(tabId, { by: 像素 } | { to: "top"|"bottom"|选择器 } | { ref })：滚**页面**（无限

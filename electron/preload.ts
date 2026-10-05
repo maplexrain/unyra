@@ -27,7 +27,7 @@ import type {
   VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceReadResult, WebDomOpResult,
   WebFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult, WebPageFetchReq,
   WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult, WebScrollReq,
-  WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget,
+  WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebWaitReq, WebWaitResult,
 } from '../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（渲染层与主进程共用一份，见该文件顶部）：
@@ -548,6 +548,9 @@ const api = {
     /** 滚页面（by/to/ref）——browser.scroll */
     scroll: (wcId: number, req: WebScrollReq): Promise<WebScrollResult> =>
       ipcRenderer.invoke('web:scroll', wcId, req),
+    /** 等条件成立（selector/text/urlIncludes/networkIdle/load）——browser.waitFor */
+    waitFor: (wcId: number, req: WebWaitReq): Promise<WebWaitResult> =>
+      ipcRenderer.invoke('web:waitFor', wcId, req),
   },
 
   shell: {
