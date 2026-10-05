@@ -574,6 +574,12 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
      */
     const tabIdOf = (v: unknown): string | undefined =>
       typeof v === 'string' && v.startsWith('w:') ? v : undefined
+    /** 日志/直发这组**必须显式给 tabId**（跟着页签走，不吃焦点默认）——少参数就指路 */
+    const requireTabId = (v: unknown, what: string): string => {
+      const id = tabIdOf(v)
+      if (!id) throw new Error(what + ' 必须显式给 tabId（browser.tabs() 里查的 w: 开头页签号）——日志与请求都跟着页签走，不吃焦点默认')
+      return id
+    }
     const targetOf = (v: unknown): string | { ref: number } => {
       if (typeof v === 'string' && v.trim()) return v.trim()
       const o = asRecord(v)
@@ -596,6 +602,28 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     }, log)
     wrapApi(api, 'browser.read', (args) => browser.read(args.length ? asText(args[0]).trim() || undefined : undefined), log)
     wrapApi(api, 'browser.capture', (args) => browser.capture(args.length ? asText(args[0]).trim() || undefined : undefined), log)
+    /*
+     * 日志与直发这四条**必须显式给 tabId**（跟着页签走，不吃焦点默认）；
+     * fetch 的目标认两种写法：网址字符串，或 { reqId }（重放网络清单里捕获的请求）。
+     */
+    wrapApi(api, 'browser.logs', (args) => browser.logs(requireTabId(args[0], 'browser.logs'), asRecord(args[1])), log)
+    wrapApi(api, 'browser.logDetail', (args) => {
+      const seq = Number(args[1])
+      if (!Number.isFinite(seq)) throw new Error('seq 要给清单行里的条目号数字（[c#] / [n#]）')
+      return browser.logDetail(requireTabId(args[0], 'browser.logDetail'), seq, asRecord(args[2]))
+    }, log)
+    wrapApi(api, 'browser.fetch', (args) => {
+      const target = typeof args[1] === 'string' ? args[1].trim() : asRecord(args[1])
+      if (typeof target !== 'string' && !('reqId' in (target as Record<string, unknown>))) {
+        throw new Error('目标要给 http(s) 网址，或 { reqId }（browser.logs 网络清单里的条目号）')
+      }
+      return browser.fetch(requireTabId(args[0], 'browser.fetch'), target as string | { reqId: number }, asRecord(args[2]))
+    }, log)
+    wrapApi(api, 'browser.record', (args) => {
+      const action = asText(args[1]).trim()
+      if (action !== 'start' && action !== 'stop') throw new Error('record 的动作只有 "start" / "stop"')
+      return browser.record(requireTabId(args[0], 'browser.record'), action, asRecord(args[2]))
+    }, log)
   }
 
   // 学习者画像：get 回给模型看的那份（不含头像），update 是增量的（只写传进来的字段）

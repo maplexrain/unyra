@@ -181,6 +181,11 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
 - 内置浏览器 browser.*：操作界面上开着的网页页签——看页面用 snapshot（元素清单）/ read
   （整页 markdown），动手 = browser.dom 对 ref 做受控操作，capture 截图是最后手段；
   动手前先 browser.tabs 清点，别重复开同一个网址。
+  动态页面的快路：browser.logs(tabId, …) 看页面自己发的请求与报错（清单折叠过，行带条目号），
+  可疑行 browser.logDetail 细看；同类动作摸清请求形态后 browser.fetch(tabId, 网址 | {reqId},
+  {method, headers, body}) 直发（继承登录态）代替一次次 UI 点击——execute 循环里直发零推理成本。
+  **写操作与批量直发是不可逆动作，先 ask**；循环要节流（宁慢勿封）；触发本地逻辑的动作
+  （上传/支付/复杂前端状态）仍走 UI。日志录制 record(tabId, "start"/"stop") 拿用户操作的日志。
 - 读网页与搜索 web.*：webFetch 抓一页（长文落盘回大纲树 + uuid，web.read 按节取）；
   web.search 多引擎（缺省 baidu，engines 并行 ≤3，全挂自动降级补搜、回 searchedAt）。
 - 资源库 res.*：本目标 static/ 的文件，uuid 寻址；res.read 看图不回数据、图挂你的下一步，

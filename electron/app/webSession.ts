@@ -18,7 +18,35 @@ import { canOpenExternal } from '../link-core'
 import { mainWindow } from './mainWindow'
 import { t } from '../i18n'
 import { axNodesToElements, type AxRawNode } from '../../shared/axTree'
-import type { WebDomOpResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult } from '../../shared/ipc'
+import type {
+  WebDomOpResult,
+  WebLogDetailResult,
+  WebLogsResult,
+  WebPageFetchReq,
+  WebPageFetchResult,
+  WebPointResult,
+  WebReadHtmlResult,
+  WebRecordResult,
+  WebSnapshotResult,
+} from '../../shared/ipc'
+import {
+  capBodyText,
+  capHeaders,
+  flattenConsoleArgs,
+  flattenStack,
+  isTextualMime,
+  newWebLogBuffer,
+  pushConsoleLog,
+  pushNetLog,
+  queryWebLogs,
+  replayHeadersOf,
+  sanitizeLogsQuery,
+  webLogDetail,
+  WEB_LOG_DETAIL_BODY_MAX,
+  type WebFetchSpec,
+  type WebLogBuffer,
+  type WebNetLogEntry,
+} from '../../shared/webLogs'
 
 /**
  * 内置浏览器的分区。渲染层 <webview partition> 与这里是**同一个字符串**（两处必须一致，
@@ -295,6 +323,368 @@ function registerSnapshotIpc(): void {
 /** 右键按下后的横向位移台账（wcId → 起点 x 与是否已算「划过」）：划过的右键不弹菜单 */
 const markDrag = new Map<number, { x0: number; moved: boolean }>()
 
+/* ---------- 页签日志采集（browser.logs / logDetail / record / fetch 的地基，见 shared/webLogs） ---------- */
+
+const logBuffers = new Map<number, WebLogBuffer>()
+/** 录制水位（browser.record(start) 钉下、stop 取走并清掉） */
+const recMarks = new Map<number, number>()
+/** cdp requestId → 网络条目：响应/加载完成回填用（重定向换条目，map 跟着改指） */
+const netInflight = new Map<number, Map<string, WebNetLogEntry>>()
+
+function bufferOf(wcId: number): WebLogBuffer {
+  let buf = logBuffers.get(wcId)
+  if (!buf) {
+    buf = newWebLogBuffer()
+    logBuffers.set(wcId, buf)
+  }
+  return buf
+}
+
+/** browser.fetch 在页面上下文跑的固定函数：参数是值（JSON 注入），函数体是死的——
+ *  与 DOM_OPS 同一条纪律，没有任意 JS 的口子。credentials: 'include' 是「以这个页签
+ *  登录态的身份」语义；同源 API 调用无 CORS 问题，跨域照样受页面自己的 CORS 约束。 */
+const PAGE_FETCH_FN =
+  'async function (spec) {' +
+  '  const ctrl = new AbortController();' +
+  '  const timer = setTimeout(function () { ctrl.abort() }, spec.timeoutMs || 15000);' +
+  '  try {' +
+  '    const res = await fetch(spec.url, {' +
+  '      method: spec.method,' +
+  '      headers: spec.headers,' +
+  '      body: spec.method === "GET" || spec.method === "HEAD" || spec.body === undefined ? undefined : spec.body,' +
+  '      credentials: "include",' +
+  '      signal: ctrl.signal,' +
+  '    });' +
+  '    const contentType = res.headers.get("content-type") || "";' +
+  '    let text = "";' +
+  '    if (!contentType || /^(text\\/|application\\/(json|javascript|xml|xhtml|\\+json|\\+xml|urlencoded|form-data))/i.test(contentType)) {' +
+  '      text = await res.text();' +
+  '      if (text.length > 65536) text = text.slice(0, 65536);' +
+  '    }' +
+  '    return { status: res.status, statusText: res.statusText, contentType: contentType, url: res.url, text: text, textBytes: text.length };' +
+  '  } catch (e) {' +
+  '    return { error: String((e && e.message) || e) };' +
+  '  } finally {' +
+  '    clearTimeout(timer);' +
+  '  }' +
+  '}'
+
+/** webview 一挂上就开采集：Runtime/Log/Network 的事件流进环形缓冲。
+ *  加载期的错误与请求（chunk 挂了、启动异常、首屏 API 失败）是诊断金矿，
+ *  等第一次查询才挂通道就全漏了。DevTools（检查元素）要独占调试插槽：让它，关掉再收回。 */
+function startCapture(contents: WebContents): void {
+  const wcId = contents.id
+  bufferOf(wcId)
+  const dbg = contents.debugger
+  try {
+    dbg.attach('1.3')
+  } catch {
+    return // 槽位被占（创建时理论上不会）：采集缺席，查询回空，操作型 api 走 ensureDebugger 自己的报错
+  }
+  const inflight = new Map<string, WebNetLogEntry>()
+  netInflight.set(wcId, inflight)
+  const enable = (): void => {
+    for (const domain of ['Runtime.enable', 'Log.enable', 'Network.enable']) {
+      void dbg.sendCommand(domain).catch(() => {})
+    }
+  }
+  enable()
+  const onMessage = (_e: Electron.Event, method: string, params: Record<string, unknown>): void => {
+    const buf = logBuffers.get(wcId)
+    if (!buf) return
+    const p = params ?? {}
+    const at = Date.now()
+    if (method === 'Runtime.consoleAPICalled') {
+      const type = String(p.type ?? 'log')
+      const level = type === 'error' ? 'error' : type === 'warning' ? 'warn' : type === 'debug' ? 'debug' : 'info'
+      const stack = type === 'trace' ? flattenStack(p.stackTrace) : undefined
+      pushConsoleLog(buf, at, { level, text: flattenConsoleArgs(p.args), ...(stack ? { stack } : {}) })
+    } else if (method === 'Runtime.exceptionThrown') {
+      const d = (p.exceptionDetails ?? {}) as {
+        text?: string
+        url?: string
+        exception?: { description?: string }
+        stackTrace?: { callFrames?: unknown }
+      }
+      const text = d.exception?.description ?? [d.text, d.url].filter(Boolean).join(' （') + (d.url ? '）' : '')
+      pushConsoleLog(buf, at, {
+        level: 'error',
+        text: text.slice(0, 2000),
+        ...(flattenStack(d.stackTrace?.callFrames) ? { stack: flattenStack(d.stackTrace?.callFrames) } : {}),
+      })
+    } else if (method === 'Log.entryAdded') {
+      const e = (p.entry ?? {}) as { source?: string; level?: string; text?: string; url?: string }
+      const level = e.level === 'error' ? 'error' : e.level === 'warning' ? 'warn' : e.level === 'verbose' ? 'debug' : 'info'
+      const extra = e.url && !(e.text ?? '').includes(e.url) ? '（' + e.url + '）' : ''
+      pushConsoleLog(buf, at, {
+        level,
+        text: ((e.text ?? '') + extra).slice(0, 2000),
+      })
+    } else if (method === 'Network.requestWillBeSent') {
+      const req = (p.request ?? {}) as { url?: string; method?: string; headers?: unknown; postData?: string }
+      const redirect = p.redirectResponse as Record<string, unknown> | undefined
+      if (redirect) {
+        // 重定向：同一 requestId 的上一跳落定，续跳开新条目
+        const prev = inflight.get(String(p.requestId))
+        if (prev) {
+          prev.status = Number(redirect.status) || null
+          prev.statusText = typeof redirect.statusText === 'string' ? redirect.statusText : undefined
+          prev.mime = typeof redirect.mimeType === 'string' ? redirect.mimeType : undefined
+          prev.ms = at - prev.at
+        }
+      }
+      const entry = pushNetLog(buf, at, {
+        method: String(req.method ?? 'GET').toUpperCase(),
+        url: String(req.url ?? ''),
+        status: null,
+        type: String(p.type ?? 'Other'),
+        ...(capHeaders(req.headers) ? { headers: capHeaders(req.headers) } : {}),
+        ...(req.postData !== undefined ? { postData: capBodyText(String(req.postData)) } : {}),
+        cdpRequestId: String(p.requestId),
+      })
+      inflight.set(String(p.requestId), entry)
+    } else if (method === 'Network.responseReceived') {
+      const entry = inflight.get(String(p.requestId))
+      const res = (p.response ?? {}) as { status?: number; statusText?: string; mimeType?: string }
+      if (entry) {
+        entry.status = typeof res.status === 'number' ? res.status : entry.status
+        entry.statusText = res.statusText || undefined
+        entry.mime = res.mimeType || undefined
+        if (typeof p.type === 'string' && p.type !== 'Other') entry.type = p.type
+      }
+    } else if (method === 'Network.loadingFinished') {
+      const entry = inflight.get(String(p.requestId))
+      if (!entry) return
+      entry.size = typeof p.encodedDataLength === 'number' ? Math.round(p.encodedDataLength) : entry.size
+      entry.ms = at - entry.at
+      // API 响应体现采一份（XHR/Fetch、文本类）：详情与「分析网页发了什么」都靠它
+      if (
+        entry.cdpRequestId &&
+        (entry.type === 'XHR' || entry.type === 'Fetch') &&
+        isTextualMime(entry.mime) &&
+        dbg.isAttached()
+      ) {
+        void dbg
+          .sendCommand('Network.getResponseBody', { requestId: entry.cdpRequestId })
+          .then((r) => {
+            const body = (r as { body?: string; base64?: boolean }) ?? {}
+            if (body.body !== undefined && !body.base64) {
+              entry.body = {
+                text: capBodyText(body.body),
+                truncated: body.body.length > capBodyText(body.body).length,
+                mime: entry.mime ?? '',
+              }
+            }
+          })
+          .catch(() => {})
+      }
+    } else if (method === 'Network.loadingFailed') {
+      const entry = inflight.get(String(p.requestId))
+      if (!entry) return
+      entry.errorText = String(p.errorText ?? '失败') + (p.canceled ? '（已取消）' : '')
+      entry.ms = at - entry.at
+      inflight.delete(String(p.requestId))
+    }
+  }
+  dbg.on('message', onMessage)
+  contents.once('destroyed', () => {
+    try {
+      dbg.removeListener('message', onMessage)
+      if (dbg.isAttached()) dbg.detach()
+    } catch {
+      /* 页签都没了，收尾失败无所谓 */
+    }
+    logBuffers.delete(wcId)
+    recMarks.delete(wcId)
+    netInflight.delete(wcId)
+  })
+  // 检查元素/用户 DevTools 要占调试插槽：让位（这页签的采集中断），关掉再收回
+  contents.on('devtools-opened', () => {
+    try {
+      if (dbg.isAttached()) dbg.detach()
+    } catch {
+      /* 同上 */
+    }
+    inflight.clear()
+  })
+  contents.on('devtools-closed', () => {
+    try {
+      if (!dbg.isAttached()) {
+        dbg.attach('1.3')
+        enable()
+      }
+    } catch {
+      /* 另一路（snapshot 等）先挂上了就归它 */
+    }
+  })
+}
+
+/** 检查元素前先给 DevTools 让出调试插槽（否则开不出/打不开面板） */
+function yieldDebuggerToDevtools(contents: WebContents): void {
+  try {
+    const dbg = contents.debugger
+    if (dbg.isAttached()) {
+      dbg.detach()
+      netInflight.get(contents.id)?.clear()
+    }
+  } catch {
+    /* 让位失败就让它去报「调试通道被占用」 */
+  }
+}
+
+/** 日志查询与直发请求的四个通道（browser.logs / logDetail / fetch / record） */
+function registerLogIpc(): void {
+  ipcMain.handle('web:logs', (_e, wcId: number, opts: unknown): WebLogsResult => {
+    const buf = logBuffers.get(Number(wcId))
+    if (!buf) return { error: '这一页签的日志缓冲不在了（页签已关）——api.browser.tabs() 换个活页签' }
+    return queryWebLogs(buf, sanitizeLogsQuery(opts))
+  })
+
+  ipcMain.handle(
+    'web:logDetail',
+    async (_e, wcId: number, seq: number, opts: unknown): Promise<WebLogDetailResult> => {
+      const buf = logBuffers.get(Number(wcId))
+      if (!buf) return { error: '这一页签的日志缓冲不在了（页签已关）' }
+      const detail = webLogDetail(buf, Number(seq))
+      if (!detail) {
+        return { error: '缓冲里没有这条（太旧被挤掉了，或条目号不对）——api.browser.logs 重拿现行清单' }
+      }
+      // 响应体按缓冲里存的回；不够长再向页面现查一次（缓冲淘汰后查不回，尽力而为）
+      const maxBody = (() => {
+        const v = (opts as { maxBody?: unknown } | null | undefined)?.maxBody
+        return typeof v === 'number' && Number.isFinite(v) ? Math.min(Math.max(Math.floor(v), 200), WEB_LOG_DETAIL_BODY_MAX) : WEB_LOG_DETAIL_BODY_MAX
+      })()
+      if (detail.kind === 'network') {
+        const entry = buf.network.find((e) => e.seq === Number(seq))
+        if (entry?.cdpRequestId && (!detail.responseBody || detail.responseBody.truncated)) {
+          const wc = guestOf(wcId)
+          if (wc) {
+            try {
+              const dbg = await ensureDebugger(wc)
+              const r = (await cdp<{ body?: string; base64?: boolean }>(
+                dbg,
+                'Network.getResponseBody',
+                { requestId: entry.cdpRequestId },
+              )) ?? {}
+              if (r.body !== undefined && !r.base64) {
+                const text = capBodyText(r.body, maxBody)
+                detail.responseBody = {
+                  text,
+                  truncated: r.body.length > text.length,
+                  mime: entry.mime ?? '',
+                }
+              }
+            } catch {
+              /* 页面变了/体已被回收：保留缓冲里那份（可能没有） */
+            }
+          }
+        }
+      }
+      return { detail }
+    },
+  )
+
+  ipcMain.handle('web:record', (_e, wcId: number, action: string, opts: unknown): WebRecordResult => {
+    const buf = logBuffers.get(Number(wcId))
+    if (!buf) return { error: '这一页签的日志缓冲不在了（页签已关）——api.browser.tabs() 换个活页签' }
+    if (action === 'start') {
+      const since = buf.nextSeq - 1
+      recMarks.set(wcId, since)
+      return { ok: true, action: 'start', since }
+    }
+    if (action === 'stop') {
+      const mark = recMarks.get(wcId)
+      if (mark === undefined) {
+        return { error: '这个页签没有进行中的录制——先 browser.record(tabId, "start") 起录' }
+      }
+      recMarks.delete(wcId)
+      return { ...queryWebLogs(buf, { ...sanitizeLogsQuery(opts), afterSeq: mark }), action: 'stop' as const }
+    }
+    return { error: 'record 的动作只有 "start" / "stop"' }
+  })
+
+  ipcMain.handle(
+    'web:pageFetch',
+    async (_e, wcId: number, raw: unknown): Promise<WebPageFetchResult> => {
+      const wc = guestOf(wcId)
+      if (!wc) return { error: '这一页签的网页已经不在了' }
+      const req = (raw ?? {}) as WebPageFetchReq
+      let spec: WebFetchSpec
+      if (typeof req.reqId === 'number' && Number.isFinite(req.reqId)) {
+        const entry = logBuffers.get(wcId)?.network.find((e) => e.seq === req.reqId)
+        if (!entry) {
+          return { error: '缓冲里没有这条网络请求（太旧被挤掉了，或条目号不对）——api.browser.logs 重拿现行清单' }
+        }
+        const headers = {
+          ...replayHeadersOf(entry.headers),
+          ...(capHeaders(req.headers) ?? {}),
+        }
+        spec = {
+          url: typeof req.url === 'string' && req.url.trim() ? req.url.trim() : entry.url,
+          method: String(req.method ?? entry.method ?? 'GET').toUpperCase(),
+          ...(Object.keys(headers).length ? { headers } : {}),
+          body: req.body !== undefined ? String(req.body) : entry.postData,
+          timeoutMs: clampTimeout(req.timeoutMs),
+        }
+      } else {
+        const url = typeof req.url === 'string' ? req.url.trim() : ''
+        if (!/^https?:\/\//i.test(url)) {
+          return { error: '要给 http(s) 网址，或 { reqId }（网络清单里的条目号）来重放页面发过的请求' }
+        }
+        spec = {
+          url,
+          method: String(req.method ?? 'GET').toUpperCase(),
+          ...(capHeaders(req.headers) ? { headers: capHeaders(req.headers) } : {}),
+          body: req.body !== undefined ? String(req.body) : undefined,
+          timeoutMs: clampTimeout(req.timeoutMs),
+        }
+      }
+      if (spec.method === 'GET' || spec.method === 'HEAD') delete spec.body
+      try {
+        const dbg = ensureDebugger(wc)
+        const r = await cdp<{
+          result?: { value?: { error?: string; status?: number; statusText?: string; contentType?: string; url?: string; text?: string; textBytes?: number } }
+          exceptionDetails?: { exception?: { description?: string } }
+        }>(
+          dbg,
+          'Runtime.evaluate',
+          { expression: '(' + PAGE_FETCH_FN + ')(' + JSON.stringify(spec) + ')', awaitPromise: true, returnByValue: true, userGesture: true },
+          spec.timeoutMs + 10_000,
+        )
+        if (r.exceptionDetails) {
+          return { error: '页面里请求失败：' + (r.exceptionDetails.exception?.description ?? '未知异常').slice(0, 300) }
+        }
+        const v = r.result?.value
+        if (!v || typeof v.status !== 'number') {
+          return { error: '页面里请求失败：' + (v?.error ?? '拿不到响应') }
+        }
+        if (v.error) {
+          return { error: '页面里请求失败：' + v.error + '——同源 API 没这个问题；跨域要过页面自己的 CORS' }
+        }
+        const maxBody = typeof req.maxBody === 'number' && Number.isFinite(req.maxBody)
+          ? Math.min(Math.max(Math.floor(req.maxBody), 200), 32_000)
+          : 4_000
+        const text = v.text ?? ''
+        const body = text.slice(0, maxBody)
+        return {
+          status: v.status,
+          ...(v.statusText ? { statusText: v.statusText } : {}),
+          ...(v.contentType ? { contentType: v.contentType } : {}),
+          ...(v.url ? { url: v.url } : {}),
+          ...(body ? { body, ...(body.length < text.length ? { bodyTruncated: true } : {}) } : v.textBytes ? { note: '响应不是文本类，不回内容' } : {}),
+          ...(text.length ? { bytes: v.textBytes ?? text.length } : {}),
+        }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : '页面请求失败' }
+      }
+    },
+  )
+}
+
+function clampTimeout(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(Math.max(Math.floor(v), 1000), 60_000) : 15_000
+}
+
 /**
  * guest 的指针事件上报（见 electron/guestPreload）：校验形状后原样转给主窗口，
  * 渲染层据此在对应的 <webview> 元素上合成可冒泡的 PointerEvent——「网页里触发的事件
@@ -324,6 +714,7 @@ export function setupWebBrowser(): void {
   const ses = session.fromPartition(WEB_PARTITION)
   registerSnapshotIpc()
   registerGuestInputIpc()
+  registerLogIpc()
 
   // 只摘掉 Electron/… 尾巴，版本号用真实 Chromium 的，其余照抄正常 Chrome 的桌面 UA
   ses.setUserAgent(
@@ -353,6 +744,9 @@ export function setupWebBrowser(): void {
       return
     }
     if (contents.getType() !== 'webview') return
+
+    // 页签一挂上就开日志采集（Runtime/Log/Network → 环形缓冲），页签销毁时随台账一起清
+    startCapture(contents)
 
     // 页签销毁：ref 台账随手摘掉（台账按 wcId 记，留着也是幽灵键）
     contents.once('destroyed', () => snapshotRefs.delete(contents.id))
@@ -390,6 +784,8 @@ export function setupWebBrowser(): void {
         {
           label: t('检查元素'),
           click: () => {
+            // DevTools 要独占调试插槽：先把日志采集让位（暂停），关掉 DevTools 会自动收回
+            yieldDebuggerToDevtools(contents)
             if (!contents.isDevToolsOpened()) contents.openDevTools({ mode: 'detach' })
             contents.inspectElement(params.x, params.y)
           },

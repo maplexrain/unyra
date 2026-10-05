@@ -125,6 +125,11 @@ const API_NAMES = [
   'browser.dom',
   'browser.read',
   'browser.capture',
+  // 页签日志与直发请求（采集在主进程 CDP，缓冲/折叠见 shared/webLogs；tabId 必给）
+  'browser.logs',
+  'browser.logDetail',
+  'browser.fetch',
+  'browser.record',
   // 子代理管理（导师专用）：并发派出、后台跑、wait 收交付。子代理的 apiAllow 白名单
   // 里永远没有这一组——不递归在通道口硬挡（实现见 agent/subagent/manager）
   'subagent.create',

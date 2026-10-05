@@ -29,6 +29,8 @@ function makeDeps(store: LearnStore, webMeta: Record<string, WebTabMeta> = {}) {
   const pointed: Array<[number, { ref: number } | { selector: string }]> = []
   const domOps: Array<[number, number, string, string | undefined]> = []
   const readHtmls: number[] = []
+  const logCalls: Array<[number, unknown]> = []
+  const fetchCalls: Array<[number, unknown]> = []
   const deps: BrowserDeps = {
     getLatest: () => store,
     set: () => {},
@@ -65,8 +67,26 @@ function makeDeps(store: LearnStore, webMeta: Record<string, WebTabMeta> = {}) {
         title: '测试页',
       }
     },
+    logs: async (wcId, opts) => {
+      logCalls.push([wcId, opts])
+      return { lines: ['[n1] GET https://x.com/api → 200'], shown: 1, totalConsole: 0, totalNetwork: 1, latestSeq: 1, truncated: false }
+    },
+    logDetail: async (wcId, seq) => {
+      logCalls.push([wcId, seq])
+      return { detail: { kind: 'network', seq, method: 'GET', url: 'https://x.com/api', status: 200, type: 'XHR' } }
+    },
+    pageFetch: async (wcId, req) => {
+      fetchCalls.push([wcId, req])
+      return { status: 200, body: '{"ok":true}' }
+    },
+    record: async (wcId, action) => {
+      logCalls.push([wcId, action])
+      return action === 'start'
+        ? { ok: true as const, action: 'start' as const, since: 0 }
+        : { lines: [], shown: 0, totalConsole: 0, totalNetwork: 0, latestSeq: 0, truncated: false, action: 'stop' as const }
+    },
   }
-  return { deps, opened, activated, closed, snapshotted, pointed, domOps, readHtmls }
+  return { deps, opened, activated, closed, snapshotted, pointed, domOps, readHtmls, logCalls, fetchCalls }
 }
 
 /** 假 webview：只有 browserOps 真正用到的方法（定位/读 DOM 都在主进程 CDP） */
@@ -213,5 +233,49 @@ describe('makeBrowserOps：browser.* 的宿主实现（纯逻辑 + 假元素，N
     expect(closed).toEqual([['g1', 'w:a']])
     expect(() => ops.activate('w:ghost')).toThrow('没有这个网页页签')
     expect(() => ops.close('w:ghost')).toThrow('没有这个网页页签')
+  })
+
+  it('logs / logDetail / record：tabId 必给（不吃焦点默认），seq 必须是数字，透传到宿主', async () => {
+    const { deps, logCalls } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
+    const el = fakeWv().el
+    const ops = makeBrowserOps(deps, 'goal1')
+    await withWv('w:a', el, async () => {
+      await ops.logs('w:a', { level: 'all' })
+      await ops.logDetail('w:a', 7)
+      await ops.record('w:a', 'start')
+      await ops.record('w:a', 'stop', { level: 'all' })
+      expect(logCalls).toEqual([
+        [424242, { level: 'all' }],
+        [424242, 7],
+        [424242, 'start'],
+        [424242, 'stop'],
+      ])
+      // tabId 缺失：新组不吃「焦点格正看着的」这种隐式状态
+      await expect(ops.logs('')).rejects.toThrow('必须显式给 tabId')
+      await expect(ops.fetch(undefined as unknown as string, 'https://x.com/api')).rejects.toThrow('必须显式给 tabId')
+      await expect(ops.logDetail('w:a', Number.NaN)).rejects.toThrow('条目号数字')
+      await expect(ops.record('w:a', 'pause' as never)).rejects.toThrow('start')
+    })
+  })
+
+  it('fetch：网址与 {reqId} 两种寻址都透传；空目标拒绝；宿主报错原样抛', async () => {
+    const { deps, fetchCalls } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
+    const el = fakeWv().el
+    const ops = makeBrowserOps(deps, 'goal1')
+    await withWv('w:a', el, async () => {
+      await ops.fetch('w:a', 'https://x.com/api', { method: 'POST', body: '{"a":1}' })
+      await ops.fetch('w:a', { reqId: 12 })
+      expect(fetchCalls).toEqual([
+        [424242, { url: 'https://x.com/api', method: 'POST', body: '{"a":1}' }],
+        [424242, { reqId: 12 }],
+      ])
+      await expect(ops.fetch('w:a', '不是网址')).rejects.toThrow('http(s) 网址')
+      await expect(ops.fetch('w:a', {} as unknown as { reqId: number })).rejects.toThrow('http(s) 网址')
+      const broken = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
+      broken.deps.pageFetch = async () => ({ error: '页面里请求失败：CSP' })
+      await withWv('w:a', el, async () => {
+        await expect(makeBrowserOps(broken.deps, 'goal1').fetch('w:a', 'https://x.com/api')).rejects.toThrow('CSP')
+      })
+    })
   })
 })

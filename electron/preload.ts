@@ -25,7 +25,8 @@ import type {
   PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
   StorageInfo, StorageOk, StorageRootResult, UpdateFail, UpdatePhase, UpdateState,
   VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceReadResult, WebDomOpResult,
-  WebFetchResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult,
+  WebFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult, WebPageFetchReq,
+  WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult, WebSnapshotResult,
 } from '../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（渲染层与主进程共用一份，见该文件顶部）：
@@ -528,6 +529,18 @@ const api = {
       ipcRenderer.invoke('web:domOp', wcId, ref, op, arg),
     /** 拿当前页的整份 DOM HTML（渲染层走 webFetch 同一条 markdown 管线，browser.read） */
     readHtml: (wcId: number): Promise<WebReadHtmlResult> => ipcRenderer.invoke('web:readHtml', wcId),
+    /** 页签日志清单（折叠去重，见 shared/webLogs）——browser.logs */
+    logs: (wcId: number, opts?: WebLogsOpts): Promise<WebLogsResult> =>
+      ipcRenderer.invoke('web:logs', wcId, opts ?? {}),
+    /** 单条日志详情（完整头/栈/响应体）——browser.logDetail */
+    logDetail: (wcId: number, seq: number, opts?: { maxBody?: number }): Promise<WebLogDetailResult> =>
+      ipcRenderer.invoke('web:logDetail', wcId, seq, opts ?? {}),
+    /** 页面上下文直发 HTTP（继承页签登录态；{reqId} 重放捕获的请求）——browser.fetch */
+    pageFetch: (wcId: number, req: WebPageFetchReq): Promise<WebPageFetchResult> =>
+      ipcRenderer.invoke('web:pageFetch', wcId, req),
+    /** 日志录制（start 钉水位 / stop 回区间清单）——browser.record */
+    record: (wcId: number, action: 'start' | 'stop', opts?: WebLogsOpts): Promise<WebRecordResult> =>
+      ipcRenderer.invoke('web:record', wcId, action, opts ?? {}),
   },
 
   shell: {
