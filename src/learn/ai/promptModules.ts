@@ -99,7 +99,7 @@ export const PROMPT_MODULES: PromptModule[] = [
   {
     key: 'browser',
     title: '内置浏览器',
-    text: `内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.snapshot / browser.point / browser.dom / browser.read / browser.capture）——这份规范在你第一次操作内置浏览器时注入：
+    text: `内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.snapshot / browser.point / browser.dom / browser.read / browser.capture / browser.logs / browser.logDetail / browser.fetch / browser.record）——这份规范在你第一次操作内置浏览器时注入：
 - 这一组操作的是**界面上开着的网页页签**（文档区里那种地球图标页签）。没有页签就先
   api.browser.open('https://…') 开一个：纯关键词会当搜索词处理；返回 tabId，那时首屏已基本加载完。
 - api.browser.tabs()：列出存活的页签。**browser.open 之前先查它**：目标网址已经开着就 activate
@@ -119,6 +119,19 @@ export const PROMPT_MODULES: PromptModule[] = [
   - 个别检测程序化点击的站点点不动：api.browser.point 把元素高亮给用户、请用户手点。
 - **指给用户看**：api.browser.point(tabId?, 目标)——页面像锚点跳转一样滚到目标元素，并注入一圈
   短暂的脉冲高亮。目标可以是 { ref } 或 CSS 选择器。汇报「我说的是这个元素」时用它。
+- **日志与直发（logs / logDetail / fetch / record，tabId 一律必给，不吃焦点默认）**：
+  - api.browser.logs(tabId, { kind?, level?, limit?, afterSeq? }?)：页签的 console 报错 + 页面自己发的
+    网络请求**清单**——重复折叠 ×N、静态资源压一行、失败永不折叠，每行带 [c#]/[n#] 条目号。
+    动作没生效/页面静默失败先看它（level 默认 error；翻页拿上一份的 latestSeq 当 afterSeq）。
+  - api.browser.logDetail(tabId, seq)：单条详情——网络的给完整网址/请求头/postData/截断响应体。
+  - api.browser.fetch(tabId, 网址 | { reqId }, { method?, headers?, body? }?)：在页面上下文直发 HTTP，
+    **继承该页签登录态**；{ reqId } = 重放网络清单里那条请求（头全带上，覆盖项落其上）。
+    **动态页面的快路**：先 UI 摸清一次请求形态，同类动作在 execute 循环里直发——循环里直发
+    零推理成本，比一次次的 snapshot+dom 便宜一个量级。**写操作（POST/PUT/DELETE）与批量
+    直发是不可逆动作，必须先 api.ask**；循环要节流（宁慢勿封）；触发本地逻辑（上传/支付/
+    复杂前端状态）的动作仍走 UI。
+  - api.browser.record(tabId, "start" | "stop")：录制区间——start 钉水位，请用户做你做不了的操作
+    （登录/验证码），stop 回**这段区间**的折叠清单。配 api.ask 用。
 - **编排纪律（少一轮是一轮）**：
   - 一段 execute 把整条链写完：snapshot → 按清单判断 → dom 的 fill/submit 连招 → read 收尾，
     不要每个动作单独一轮。

@@ -718,6 +718,22 @@ export interface BrowserOps {
   read(tabId?: string): Promise<unknown>
   /** 页面截图 → 资源库 + 挂到下一跳（与 ui.screenshot 同一条通道）——snapshot/read 拿不到时才用 */
   capture(tabId?: string): Promise<{ ok: true; note?: string; images: MessageImage[] } | { ok: false; error: string }>
+  /**
+   * 页签日志清单（console + 网络请求，折叠去重，失败永不折叠；行自带 [c#]/[n#] 条目号）。
+   * **tabId 必给**：日志跟着页签走，没有焦点默认。level 默认 error；afterSeq 是无状态分页游标。
+   */
+  logs(tabId: string, opts?: Record<string, unknown>): Promise<unknown>
+  /** 单条日志详情：console 给完整文本与调用栈，网络给请求头/postData/响应体（截断）。seq 来自清单行 */
+  logDetail(tabId: string, seq: number, opts?: Record<string, unknown>): Promise<unknown>
+  /**
+   * 页面上下文直发 HTTP（继承该页签的登录态）：target 是 http(s) 网址，或 { reqId }（网络清单
+   * 里的条目号——原样重放页面发过的请求，headers/postData 用捕获的，覆盖项落在其上）。
+   * HTTP 4xx/5xx 是正常回执（带 status），不是 error。
+   */
+  fetch(tabId: string, target: string | { reqId: number }, opts?: Record<string, unknown>): Promise<unknown>
+  /** 日志录制：action = "start" 钉水位 / "stop" 回这段区间的折叠清单并清水位——「发起录制 →
+   *  ask 用户做 agent 做不了的操作 → 停止录制 → 分析」这条链的骨架 */
+  record(tabId: string, action: string, opts?: Record<string, unknown>): Promise<unknown>
 }
 
 /**

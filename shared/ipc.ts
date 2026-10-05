@@ -47,6 +47,56 @@ export type WebDomOpResult = { ok: true; result?: unknown } | { error: string }
  *  渲染层 src/learn/web/browserOps 与 src/learn/webDocs 的 livePageForAgent。 */
 export type WebReadHtmlResult = { html: string; url: string; title: string } | { error: string }
 
+/* ---------- 页签日志与直发请求（browser.logs / logDetail / fetch / record，见 shared/webLogs） ---------- */
+
+/** browser.logs 的过滤参数。谁在用：preload browser.logs ↔ 主进程 web:logs（折叠与缓冲见 shared/webLogs）。 */
+export interface WebLogsOpts {
+  kind?: 'console' | 'network'
+  level?: 'error' | 'warn' | 'all'
+  limit?: number
+  afterSeq?: number
+}
+
+/** browser.logs / browser.record(stop) 的返回：折叠后的清单视图，或一句人话错误。谁在用：同上。 */
+export type WebLogsResult = import('./webLogs').WebLogsView | { error: string }
+
+/** browser.logDetail 的返回：单条详情（形状见 shared/webLogs 的 webLogDetail），或一句人话错误。
+ *  谁在用：主进程 web:logDetail，渲染层 browserOps 的 api.browser.logDetail。 */
+export type WebLogDetailResult = { detail: Record<string, unknown> } | { error: string }
+
+/** browser.fetch 的入参：url 直发，或 { reqId } 重放捕获的请求（覆盖项落在其上）。
+ *  谁在用：preload browser.pageFetch ↔ 主进程 web:pageFetch（页面上下文固定函数执行）。 */
+export interface WebPageFetchReq {
+  url?: string
+  reqId?: number
+  method?: string
+  headers?: Record<string, string>
+  body?: string
+  timeoutMs?: number
+  maxBody?: number
+}
+
+/** browser.fetch 的返回：状态与截断的响应体（HTTP 4xx/5xx 是正常回执，不是 error），或一句人话错误。
+ *  谁在用：同上。 */
+export type WebPageFetchResult =
+  | {
+      status: number
+      statusText?: string
+      contentType?: string
+      url?: string
+      body?: string
+      bodyTruncated?: boolean
+      bytes?: number
+      note?: string
+    }
+  | { error: string }
+
+/** browser.record 的返回：start 回水位，stop 回这段区间的清单视图。谁在用：主进程 web:record，渲染层 browserOps。 */
+export type WebRecordResult =
+  | { ok: true; action: 'start'; since: number }
+  | (import('./webLogs').WebLogsView & { action: 'stop' })
+  | { error: string }
+
 /* ---------- 窗口外壳 / 数据落盘 ---------- */
 
 /**

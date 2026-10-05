@@ -321,6 +321,10 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
       { name: 'browser.dom', signature: 'browser.dom(tabId?, ref, op, arg?)', summary: '对 snapshot 清单里的 ref 做受控 DOM 操作：op = "click" / "fill"(文字，触发 input/change) / "focus" / "submit"(所在表单) / "text"(元素文字 ≤4000 字) / "attr"(属性名)；result 回操作自己的小结果', availability: 'browser' },
       { name: 'browser.read', signature: 'browser.read(tabId?)', summary: '整页转 markdown（与 webFetch 同一条管线）：短的回全文，长的落盘回大纲树（每节字数）+ uuid，再用 web.read 按节读——登录态页面也能读', availability: 'browser' },
       { name: 'browser.capture', signature: 'browser.capture(tabId?)', summary: '页面截图 → 存进资源库并附在下一跳（与 ui.screenshot 同一条通道）——**最后手段**：snapshot/read 拿不到的信息才用它', availability: 'browser' },
+      { name: 'browser.logs', signature: 'browser.logs(tabId, { kind?, level?, limit?, afterSeq? }?)', summary: '页签日志**清单**（tabId 必给）：console 报错 + 页面自己发的网络请求，重复折叠成 ×N 一行、静态资源压一行、失败（4xx/5xx/挂了）永不折叠；每行带 [c#]/[n#] 条目号。动作没生效/页面静默失败先看它；level 默认 error，要全量给 {level:"all"}；翻页拿上一份的 latestSeq 当 afterSeq', availability: 'browser' },
+      { name: 'browser.logDetail', signature: 'browser.logDetail(tabId, seq)', summary: '按条目号取**单条详情**：console 给完整文本与调用栈；网络给完整网址、请求头、postData、截断的响应体——清单里看到可疑行再来细看', availability: 'browser' },
+      { name: 'browser.fetch', signature: 'browser.fetch(tabId, 网址 | { reqId }, { method?, headers?, body? }?)', summary: '在页面上下文直发 HTTP，**继承该页签的登录态**（cookie 自动带上）：{ reqId } 是网络清单里的条目号——原样重放页面发过的请求（请求头全带上），覆盖项落在其上。动态页面的快路：UI 摸清一次请求形态，同类动作在 execute 循环里直发（零推理成本）。**写操作（POST/PUT/DELETE）与批量直发是不可逆动作，先 ask**；循环要节流，宁慢勿封', availability: 'browser' },
+      { name: 'browser.record', signature: 'browser.record(tabId, "start" | "stop")', summary: '日志录制区间：start 钉下水位 →（ask 用户做你做不了的操作：登录、验证码…）→ stop 回**这段区间**的折叠清单并清水位——专拿「用户操作产生」的日志来分析', availability: 'browser' },
     ],
   },
   {

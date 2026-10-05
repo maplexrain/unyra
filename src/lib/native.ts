@@ -14,7 +14,8 @@ import type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
-  VoiceReadResult, WebDomOpResult, WebFetchResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult,
+  VoiceReadResult, WebDomOpResult, WebFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult,
+  WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult, WebSnapshotResult,
 } from '../../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（与 electron/preload.ts 共用一份，见该文件顶部）：
@@ -25,7 +26,8 @@ export type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
-  VoiceReadResult, WebDomOpResult, WebFetchResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult,
+  VoiceReadResult, WebDomOpResult, WebFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult,
+  WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult, WebSnapshotResult,
 }
 
 export type PluginList =
@@ -331,6 +333,14 @@ export interface NativeBridge {
     domOp(wcId: number, ref: number, op: string, arg?: string): Promise<WebDomOpResult>
     /** 拿当前页的整份 DOM HTML（渲染层走 webFetch 同一条 markdown 管线，browser.read） */
     readHtml(wcId: number): Promise<WebReadHtmlResult>
+    /** 页签日志清单（折叠去重，见 shared/webLogs）：browser.logs */
+    logs(wcId: number, opts?: WebLogsOpts): Promise<WebLogsResult>
+    /** 单条日志详情（完整头/栈/响应体）：browser.logDetail */
+    logDetail(wcId: number, seq: number, opts?: { maxBody?: number }): Promise<WebLogDetailResult>
+    /** 页面上下文直发 HTTP（继承页签登录态；{reqId} 重放捕获的请求）：browser.fetch */
+    pageFetch(wcId: number, req: WebPageFetchReq): Promise<WebPageFetchResult>
+    /** 日志录制（start 钉水位 / stop 回区间清单）：browser.record */
+    record(wcId: number, action: 'start' | 'stop', opts?: WebLogsOpts): Promise<WebRecordResult>
   }
 }
 

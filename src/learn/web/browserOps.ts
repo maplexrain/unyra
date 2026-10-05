@@ -1,6 +1,13 @@
 import type { WebviewTag } from 'electron'
 import type { BrowserOps, BrowserTabInfo } from '../../agent/sandbox/types'
-import type { WebSnapshotElement } from '../../../shared/ipc'
+import type {
+  WebLogDetailResult,
+  WebLogsResult,
+  WebPageFetchReq,
+  WebPageFetchResult,
+  WebRecordResult,
+  WebSnapshotElement,
+} from '../../../shared/ipc'
 import type { LearnStore, TabRef, WebTabMeta } from '../types'
 import { findTab, focusedGroup, groupIdOfTab } from '../groups'
 import { normalizeWebInput } from '../webUrl'
@@ -40,6 +47,14 @@ export interface BrowserDeps {
   domOp: (wcId: number, ref: number, op: string, arg?: string) => Promise<{ ok: true; result?: unknown } | { error: string }>
   /** 拿当前页的整份 DOM HTML（主进程 CDP：DOM.getOuterHTML），渲染层走 webFetch 同一条管线 */
   readHtml: (wcId: number) => Promise<{ html: string; url: string; title: string } | { error: string }>
+  /** 页签日志清单（折叠去重，缓冲在主进程，见 shared/webLogs） */
+  logs: (wcId: number, opts: Record<string, unknown>) => Promise<WebLogsResult>
+  /** 单条日志详情（完整头/栈/响应体，截断） */
+  logDetail: (wcId: number, seq: number, opts: Record<string, unknown>) => Promise<WebLogDetailResult>
+  /** 页面上下文直发 HTTP（继承页签登录态；{reqId} 重放捕获的请求） */
+  pageFetch: (wcId: number, req: WebPageFetchReq) => Promise<WebPageFetchResult>
+  /** 日志录制（start 钉水位 / stop 回区间清单） */
+  record: (wcId: number, action: 'start' | 'stop', opts: Record<string, unknown>) => Promise<WebRecordResult>
 }
 
 type WebTabRef = Extract<TabRef, { kind: 'web' }>
@@ -57,10 +72,10 @@ async function settle(wv: WebviewTag, timeoutMs = 8000): Promise<void> {
   }
 }
 
-/** 页面级调用有 12s 兜底：页面卡死不该把整轮沙箱拖到空闲超时 */
-function withTimeout<T>(p: Promise<T>, what: string): Promise<T> {
+/** 页面级调用有兜底超时（默认 12s，fetch 类可放宽）：页面卡死不该把整轮沙箱拖到空闲超时 */
+function withTimeout<T>(p: Promise<T>, what: string, ms = 12_000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(what + '超时（页面可能没有响应）')), 12_000)
+    const t = setTimeout(() => reject(new Error(what + '超时（页面可能没有响应）')), ms)
     p.then(
       (v) => {
         clearTimeout(t)
@@ -116,6 +131,17 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
     } catch {
       throw new Error('网页还没挂上（刚开的那一拍）——稍等再试')
     }
+  }
+
+  /**
+   * 日志/直发这组新 api 的页签解析：**必须显式给 tabId**。日志与请求都跟着页签走，
+   * 「焦点格正看着的那个」是隐式状态——这组不吃它，调错页签的代价太贵。
+   */
+  const resolveTabStrict = (tabId: unknown, what: string): { tabId: string; ref: WebTabRef } => {
+    if (typeof tabId !== 'string' || !tabId.trim()) {
+      throw new Error(what + ' 必须显式给 tabId（api.browser.tabs() 里查）——日志与请求都跟着页签走，不吃焦点默认')
+    }
+    return resolveTab(tabId)
   }
 
   return {
@@ -215,5 +241,64 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
         images: [saved.image],
       }
     },
+    async logs(tabId, opts) {
+      const { tabId: id } = resolveTabStrict(tabId, 'browser.logs')
+      const wv = element(id)
+      const r = await withTimeout(deps.logs(wcIdOf(wv), (opts ?? {}) as Record<string, unknown>), '读取日志')
+      if ('error' in r) throw new Error(r.error)
+      return r
+    },
+    async logDetail(tabId, seq, opts) {
+      const { tabId: id } = resolveTabStrict(tabId, 'browser.logDetail')
+      const wv = element(id)
+      if (typeof seq !== 'number' || !Number.isFinite(seq)) {
+        throw new Error('seq 要给清单行里的条目号数字（[c#] / [n#]）')
+      }
+      const r = await withTimeout(deps.logDetail(wcIdOf(wv), seq, (opts ?? {}) as Record<string, unknown>), '读取日志详情')
+      if ('error' in r) throw new Error(r.error)
+      return r.detail
+    },
+    async fetch(tabId, target, opts) {
+      const { tabId: id } = resolveTabStrict(tabId, 'browser.fetch')
+      const wv = element(id)
+      const o = (opts ?? {}) as Record<string, unknown>
+      const req: WebPageFetchReq = {}
+      if (typeof target === 'string' && target.trim()) {
+        if (!/^https?:\/\//i.test(target.trim())) {
+          throw new Error('目标要给 http(s) 网址，或 { reqId }（browser.logs 网络清单里的条目号，重放页面发过的请求）')
+        }
+        req.url = target.trim()
+      } else if (target && typeof target === 'object' && typeof (target as { reqId?: unknown }).reqId === 'number') {
+        req.reqId = (target as { reqId: number }).reqId
+      } else {
+        throw new Error('目标要给 http(s) 网址，或 { reqId }（browser.logs 网络清单里的条目号，重放页面发过的请求）')
+      }
+      if (typeof o.method === 'string' && o.method.trim()) req.method = o.method.trim()
+      if (o.headers && typeof o.headers === 'object') req.headers = o.headers as Record<string, string>
+      if (typeof o.body === 'string') req.body = o.body
+      if (typeof o.maxBody === 'number') req.maxBody = o.maxBody
+      if (typeof o.timeoutMs === 'number') req.timeoutMs = o.timeoutMs
+      const r = await withTimeout(deps.pageFetch(wcIdOf(wv), req), '直发请求', clampFetchTimeoutMs(o))
+      if ('error' in r) throw new Error(r.error)
+      return r
+    },
+    async record(tabId, action, opts) {
+      const { tabId: id } = resolveTabStrict(tabId, 'browser.record')
+      const wv = element(id)
+      if (action !== 'start' && action !== 'stop') {
+        throw new Error('record 的动作只有 "start"（起录） / "stop"（停并回这段的清单）')
+      }
+      const r =
+        action === 'start'
+          ? await deps.record(wcIdOf(wv), 'start', {})
+          : await withTimeout(deps.record(wcIdOf(wv), 'stop', (opts ?? {}) as Record<string, unknown>), '结束录制')
+      if ('error' in r) throw new Error(r.error)
+      return r
+    },
   }
+}
+
+/** 直发请求的兜底上限跟页内超时走（主进程侧已夹到 60s） */
+function clampFetchTimeoutMs(o: Record<string, unknown>): number {
+  return (typeof o.timeoutMs === 'number' && Number.isFinite(o.timeoutMs) ? o.timeoutMs : 15_000) + 15_000
 }

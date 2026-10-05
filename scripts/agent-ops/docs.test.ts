@@ -268,6 +268,10 @@ export async function apiNameTests() {
     'browser.dom': "'w:probe', 1, 'click'",
     'browser.read': "''",
     'browser.capture': "''",
+    'browser.logs': "'w:probe'",
+    'browser.logDetail': "'w:probe', 1",
+    'browser.fetch': "'w:probe', 'https://example.com/api'",
+    'browser.record': "'w:probe', 'stop'",
   }
   let s = staticStore()
   let tmpStore: Record<string, unknown> = {}
@@ -349,6 +353,11 @@ export async function apiNameTests() {
       dom: async (_tabId: string | undefined, ref: number, op: string) => { sawBrowserDom = ref + ':' + op; return { ok: true } },
       read: async () => ({ ok: true, uuid: 'deadbeef', url: 'https://example.com', title: '示例页', chars: 3, text: '正文' }),
       capture: async () => ({ ok: true, note: '（桩）', images: [] }),
+      logs: async () => ({ lines: ['[n1] GET https://example.com/api → 200'], shown: 1, totalConsole: 0, totalNetwork: 1, latestSeq: 1, truncated: false }),
+      logDetail: async (_tabId: string, seq: number) => ({ detail: { kind: 'network', seq, method: 'GET', url: 'https://example.com/api', status: 200, type: 'XHR' } }),
+      fetch: async () => ({ status: 200, body: '{"ok":true}' }),
+      record: async (_tabId: string, action: string) =>
+        action === 'start' ? { ok: true as const, action: 'start' as const, since: 0 } : { lines: [], shown: 0, totalConsole: 0, totalNetwork: 0, latestSeq: 0, truncated: false, action: 'stop' as const },
     },
     // 子代理管理：桩（并发、等待与介入的行为由 tests/subagent.test.ts 用假流钉住）
     subagent: {
