@@ -88,6 +88,16 @@ export function userAbsPath(rel: string): string | null {
   return [cachedRoot.replace(/[\\/]+$/, ''), 'users', scopeUid, ...segs].join('/')
 }
 
+/**
+ * 用户目录的**公共前缀**（{root}/users/{uid}）：userAbsPath 的反查方向——
+ * 拿一条磁盘绝对路径问「这是不是我们管的工作区文件」时，先剥掉这一截再对 docs 布局
+ * （见 learn/workspace 的 wsRevealOfAbs）。未登录 / 数据根没拉到时 null，同 userAbsPath。
+ */
+export function userAbsPrefix(): string | null {
+  if (!cachedRoot || !scopeUid) return null
+  return [cachedRoot.replace(/[\\/]+$/, ''), 'users', scopeUid].join('/')
+}
+
 /* ---------- 基本读写 ---------- */
 
 export async function storageInfo(): Promise<StorageInfo> {

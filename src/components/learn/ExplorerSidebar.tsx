@@ -1,18 +1,23 @@
 /**
- * 这个文件负责：资源管理器侧栏的**外壳**——aside 那一块、右边那条拖宽把手、三个分区
- * （知识节点 / 本地文件 / 最近打开）的接线，以及节点行与右键菜单的挂载。
- * 树在 explorer/NodeRow，菜单在 explorer/RowMenu，展开状态与宽度分别由
- * explorer/useTreeExpand、explorer/useSidebarWidth 管。
+ * 这个文件负责：资源管理器侧栏的**外壳**——aside 那一块、右边那条拖宽把手、四个分区
+ * （学习目标 / 收藏 / 本地文件 / 最近打开）的接线，以及节点行与右键菜单的挂载。
+ * 树在 explorer/NodeRow，菜单在 explorer/RowMenu，分类夹的零件（Section / FolderRow /
+ * Collapse / Indent）在 explorer/Folder，展开状态与宽度分别由 explorer/useTreeExpand、
+ * explorer/useSidebarWidth 管；「当前页签 → 树里那一行」的定位在 explorer/reveal，
+ * 外壳只负责发令（算出目标、展开、广播、滚动）。
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FavoriteRef, KnowledgeNode, LearnStore, TabRef } from '../../learn/types'
 import { nodeById } from '../../learn/graph'
 import { EXPLORER_WIDTH_MAX, EXPLORER_WIDTH_MIN } from '../../lib/appearance'
+import { userAbsPrefix } from '../../lib/storage'
 import Logo from '../Logo'
 import { NewGoalIcon, OpenLocalIcon } from '../icons'
 import { NodeRow } from './explorer/NodeRow'
 import { RowMenu } from './explorer/RowMenu'
-import { FavoriteSection, LocalRow, RecentSection, Section } from './explorer/sections'
+import { FavoriteSection, LocalRow, RecentSection } from './explorer/sections'
+import { Section, SectionAction } from './explorer/Folder'
+import { publishReveal, revealOfTab, revealRow, revealSigOf, subscribeReveal } from './explorer/reveal'
 import SystemAudioWave from './SystemAudioWave'
 import { useSidebarWidth } from './explorer/useSidebarWidth'
 import { useTreeExpand } from './explorer/useTreeExpand'
@@ -142,6 +147,35 @@ export default function ExplorerSidebar({
       return next
     })
 
+  // 定位广播轮到分区这一层：目标所在的分区收着就打开（只开不收）。
+  // 分区 / 节点链 / 文档目录 / 试卷 / 收藏分组 / 工作区逐层，全是对同一条广播各就各位。
+  useEffect(
+    () =>
+      subscribeReveal((req) => {
+        const section = req.section
+        if (!section) return
+        setCollapsed((prev) => (prev.get(section) ? new Map(prev).set(section, false) : prev))
+      }),
+    [],
+  )
+
+  /*
+   * 页签定位的发令：焦点格开着的那一份，在资源管理器里把它亮出来。同一枚页签只发一次
+   * （签名见 reveal.ts）；栏收着 / 纯净阅读时不折腾。展开与滚动都由广播的订阅者与
+   * revealRow 自己完成——这里只算出目标、喊出去（直接 setState 的 effect 是 lint 拦的写法）。
+   */
+  const lastReveal = useRef('')
+  useEffect(() => {
+    if (!open || pure || !activeTab) return
+    const sig = revealSigOf(activeTab)
+    if (sig === lastReveal.current) return
+    lastReveal.current = sig
+    const req = revealOfTab(activeTab, store, userAbsPrefix())
+    if (!req) return
+    publishReveal(req)
+    revealRow(asideRef.current, req.keys)
+  }, [activeTab, open, pure, store, asideRef])
+
   const roots = useMemo(
     () => store.goals.map((g) => nodeById(store, g.rootNodeId)).filter((n): n is KnowledgeNode => !!n),
     [store],
@@ -195,14 +229,9 @@ export default function ExplorerSidebar({
             open={sectionOpen('nodes')}
             onToggle={() => toggleSection('nodes')}
             action={
-              <button
-                type="button"
-                title={t('新建学习目标')}
-                onClick={onNewGoal}
-                className="flex h-6 w-6 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-ink"
-              >
-                <NewGoalIcon size={15} />
-              </button>
+              <SectionAction title={t('新建学习目标')} onClick={onNewGoal}>
+                <NewGoalIcon size={13} />
+              </SectionAction>
             }
           >
             <div className="px-2">
@@ -260,14 +289,9 @@ export default function ExplorerSidebar({
               open={sectionOpen('local')}
               onToggle={() => toggleSection('local')}
               action={
-              <button
-                type="button"
-                title={t('打开本地文件')}
-                onClick={onPickLocal}
-                className="flex h-6 w-6 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-ink"
-              >
-                <OpenLocalIcon size={15} />
-              </button>
+                <SectionAction title={t('打开本地文件')} onClick={onPickLocal}>
+                  <OpenLocalIcon size={13} />
+                </SectionAction>
               }
             >
               <div className="px-2">

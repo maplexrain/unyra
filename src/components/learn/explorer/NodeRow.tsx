@@ -3,16 +3,16 @@
  * 学习文档与大纲（各自一行置顶）、文档目录（笔记 / 试卷 / 超级文档三合一，可开合）、
  * 工作区目录，与「哪一份试卷展开着历次考试」这个状态。
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronRight, Loader2 } from 'lucide-react'
 import type { KnowledgeNode, LearnStore, TabRef } from '../../../learn/types'
 import { superDocsOf } from '../../../learn/types'
 import { examsOfNode, nodeById, prereqIds } from '../../../learn/graph'
 import { STATUS_META } from '../mastery'
 import StatusBranch from '../StatusBranch'
-import { Collapse } from './sections'
+import { Collapse, FolderRow, Indent } from './Folder'
+import { subscribeReveal } from './reveal'
 import { DocRow, ExamList, NoteRenameRow } from './DocRow'
-import { DocFolderIcon } from '../docTypes'
 import { WorkspaceRow } from './WorkspaceRow'
 import type { ExamActions, MenuTarget, NodeDocActions, WsActions } from './types'
 import { chipJson, type ChipPayload } from '../../../lib/chipSyntax'
@@ -91,19 +91,29 @@ export function NodeRow({
    * 文档目录（笔记 / 试卷 / 超级文档三合一）的开合，**默认收着**（用户定的）：
    * 目录行的职责是先让人看见「有什么、有几份」，内容要点开才铺开——不然文档多的
    * 节点刚展开就又是一大片。与历次考试的开合一样是本地状态，收了哪层记到重挂为止。
+   * 页签定位会经由广播把它们叫开（reveal.ts）：正开着的那份笔记 / 试卷副本，
+   * 它所在的目录得先铺开才看得见。
    */
   const [docsOpen, setDocsOpen] = useState(false)
   /** 焦点格是「这个节点的哪份文档」——学习文档 / 大纲 / 笔记 / 超级文档各行自己比一遍 */
   const teachActive = activeTab?.kind === 'teach' && activeTab.nodeId === node.id
   const outlineActive = activeTab?.kind === 'outline' && activeTab.nodeId === node.id
   const nodeTitle = node.title || t('未命名')
-  /** 目录行尾的数量：一眼知道这一层有几份，不必展开去数 */
-  const countBadge = (n: number) => (
-    <span className="shrink-0 rounded bg-line/70 px-1.5 py-px text-[10px] leading-4 text-ink-faint">{n}</span>
-  )
   /** 展开一个空目录时的那一行话：新建的入口在右键菜单上，得告诉人去哪儿点 */
   const emptyHint = (text: string) => (
     <p className="py-1 pl-1.5 pr-2 text-[11px] leading-relaxed text-ink-faint">{text}</p>
+  )
+
+  // 定位广播轮到这个节点：展开它的「文档」目录、开出正在看的那份试卷的历次考试。
+  // 树整棵常挂（Collapse 收起只是裁成 0 高），订阅一直活着，广播来了就地展开。
+  useEffect(
+    () =>
+      subscribeReveal((req) => {
+        if (req.docs.includes(node.id)) setDocsOpen(true)
+        const exam = req.exams.find((e) => e.nodeId === node.id)
+        if (exam) setOpenExam(exam.examId)
+      }),
+    [node.id],
   )
 
   /**
@@ -168,7 +178,7 @@ export function NodeRow({
             e.preventDefault()
             onOpenMenu(e.clientX, e.clientY, { kind: 'node', node })
           }}
-          className={'flex cursor-pointer items-start gap-1 py-1 pl-1.5 pr-2 transition ' +
+          className={'flex cursor-pointer items-start gap-1 rounded-md py-1 pl-1.5 pr-1.5 transition ' +
             (active ? 'bg-line/60' : 'hover:bg-line/40')}
         >
           <button
@@ -226,7 +236,7 @@ export function NodeRow({
         目录不画出来就没有地方右键，第一次初始化就无从下手。各段同一层缩进、同一条左边线。
       */}
       <Collapse open={open}>
-        <div className="ml-3 border-l border-line pl-1.5">
+        <Indent>
           {/*
             大纲行与学习文档行**各自一行、大纲在上**（用户定的）。老数据没有大纲也照常显示——
             点开是「还没有大纲」的占位页，上面有「请导师生成大纲」。
@@ -236,6 +246,7 @@ export function NodeRow({
             label={t('大纲')}
             hint={t('打开「{0}」的大纲页（这一层的路线图：子目标与各自的学习情况）', nodeTitle)}
             active={outlineActive}
+            revealKey={`row:doc:outline:${node.id}`}
             dragChip={outlineChip}
             onClick={() => docs.onOpenOutline(node.id)}
             onMenu={(x, y) => onOpenMenu(x, y, { kind: 'outline', node })}
@@ -245,34 +256,33 @@ export function NodeRow({
             label={nodeTitle}
             hint={t('打开学习文档「{0}」（与节点绑定：删除它就是删除节点）', nodeTitle)}
             active={teachActive}
+            revealKey={`row:doc:teach:${node.id}`}
             dragChip={teachChip}
             onClick={() => onSelectNode(node.id)}
             onMenu={(x, y) => onOpenMenu(x, y, { kind: 'teach', node })}
           />
-        </div>
+        </Indent>
 
-        <div className="ml-3 border-l border-line pl-1.5">
+        <Indent>
           {/*
             文档目录：笔记 / 试卷 / 超级文档三合一（用户定的）。展开后按 笔记 → 试卷（带历次
             考试）→ 超级文档 排开，一份份行的图标与颜色各是各的类型，混排也认得出。
+            目录行与收藏的分组行是同一种行（FolderRow）：数量标记常驻在行尾——不用点开去数。
           */}
-          <DocRow
-            // 目录行用文件夹图标（开合跟着展开状态走），与下面一份份的文档行（类型图标）区分开
-            icon={<DocFolderIcon open={docsOpen} />}
+          <FolderRow
             label={t('文档')}
             hint={
               docTotal > 0
                 ? t('这个节点全部文档的目录（笔记 / 试卷 / 超级文档，共 {0} 份）；点行收起 / 展开，右键新建', docTotal)
                 : t('这个节点还没有文档；右键这一行新建')
             }
-            badge={docTotal > 0 ? countBadge(docTotal) : undefined}
-            expandable
+            count={docTotal}
             open={docsOpen}
             onClick={() => setDocsOpen((v) => !v)}
             onMenu={(x, y) => onOpenMenu(x, y, { kind: 'folder', node, folder: 'docs' })}
           />
           <Collapse open={docsOpen}>
-            <div className="ml-3 border-l border-line pl-1.5">
+            <Indent>
               {docTotal === 0 && emptyHint(t('还没有文档——右键「文档」这一行新建'))}
               {notes.map((n) =>
                 renamingNote === n.name ? (
@@ -293,6 +303,7 @@ export function NodeRow({
                     label={n.name}
                     hint={t('打开笔记「{0}」（右键：改名 / 在资源管理器中打开 / 删除）', n.name)}
                     active={activeTab?.kind === 'note' && activeTab.nodeId === node.id && activeTab.note === n.name}
+                    revealKey={`row:doc:note:${node.id}:${n.name}`}
                     dragChip={() => noteChip(n.name)}
                     onClick={() => docs.onOpenNote(node.id, n.name)}
                     onMenu={(x, y) => onOpenMenu(x, y, { kind: 'note', node, name: n.name })}
@@ -316,14 +327,15 @@ export function NodeRow({
                   label={d.name}
                   hint={t('打开超级文档「{0}」（右键：在资源管理器中打开 / 删除）', d.name)}
                   active={activeTab?.kind === 'super' && activeTab.nodeId === node.id && activeTab.name === d.name}
+                  revealKey={`row:doc:super:${node.id}:${d.name}`}
                   dragChip={() => superChip(d.name)}
                   onClick={() => docs.onOpenSuperDoc(node.id, d.name)}
                   onMenu={(x, y) => onOpenMenu(x, y, { kind: 'super', node, name: d.name })}
                 />
               ))}
-            </div>
+            </Indent>
           </Collapse>
-        </div>
+        </Indent>
 
         {/*
           工作区目录：这个节点目录下的**真实子文件夹**（users/<uid>/docs/<目标>/<节点>/workspace/，
@@ -334,7 +346,7 @@ export function NodeRow({
         <WorkspaceRow node={node} store={store} ws={ws} onOpenMenu={onOpenMenu} onOpen={onOpenWs} onTransfer={ws.transfer} />
 
         {children.map((child) => (
-          <div key={child.id} className="ml-3 border-l border-line pl-1.5">
+          <Indent key={child.id}>
             <NodeRow
               node={child}
               store={store}
@@ -352,7 +364,7 @@ export function NodeRow({
               onOpenWs={onOpenWs}
               ws={ws}
             />
-          </div>
+          </Indent>
         ))}
       </Collapse>
     </div>
