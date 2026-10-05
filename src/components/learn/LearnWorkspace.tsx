@@ -233,7 +233,13 @@ export default function LearnWorkspace({
   const agentSettings = useSyncExternalStore(subscribeAgentSettings, loadAgentSettings)
   const [creating, setCreating] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  /*
+  /**
+   * 「这一拍有页签开始被浏览」的拍号：开页签 / 点页签（含重开当前正开着的）都 +1。
+   * 资源管理器的定位跟着拍走——不能只盯 activeTab 的值变化：导师重开当前已聚焦的
+   * 文档、chip 点开已打开的文档，值都没变，但「用户此刻在看它」这件事值得再定位一次。
+   */
+  const [browseNonce, setBrowseNonce] = useState(0)
+  const bumpBrowse = useCallback(() => setBrowseNonce((n) => n + 1), [])  /*
    * 学习状态与试卷**都没有应用内的窗口**：两块都是文档区右上角悬浮组里的一块 tip
    * （鼠标经过即展开，见 components/learn/DocFloat），试卷的作答在独立的考试窗口里
    * （见 learn/useExamBridge 与 ExamWindow）。所以这里没有它们的开关。
@@ -802,10 +808,11 @@ export default function LearnWorkspace({
         ...base,
         docArea: openInGroup(base.docArea, base.docArea.focus, ref, Date.now(), startView),
       })
+      bumpBrowse()
       setSidebarOpen(false)
       setCreating(false)
     },
-    [getLatest, retargetNode, set],
+    [getLatest, retargetNode, set, bumpBrowse],
   )
   // 回填放在 effect 里（渲染期不许写 ref）：openTab 的身份随依赖变，每次渲染后换成最新的一份
   useEffect(() => {
@@ -857,8 +864,9 @@ export default function LearnWorkspace({
       const base = nodeId ? retargetNode(s, nodeId) : s
       // activateIn 顺手把焦点挪到那一格：点别处的页签，接下来的动作（开文档、Ctrl+W）都该落在那一格
       set({ ...base, docArea: activateIn(base.docArea, group, id) })
+      bumpBrowse()
     },
-    [getLatest, retargetNode, set],
+    [getLatest, retargetNode, set, bumpBrowse],
   )
 
   /* ---------- 内置浏览器（网页页签，见 components/learn/web） ---------- */
@@ -885,9 +893,10 @@ export default function LearnWorkspace({
       // ref 当场算好（页签身份就是 tabKey），开完直接回页签 id——browser.open 靠它指名
       const ref: TabRef = { kind: 'web', url: normalizeWebInput(url), key: newWebKey() }
       set({ ...s, docArea: openInGroup(s.docArea, s.docArea.focus, ref, Date.now()) })
+      bumpBrowse()
       return tabKey(ref)
     },
-    [getLatest, set],
+    [getLatest, set, bumpBrowse],
   )
 
   /** 把当前地址回写进页签（主框架导航时）：重启回到离开时的那一页 */
@@ -2446,6 +2455,8 @@ export default function LearnWorkspace({
         activeTab={activeTab?.ref ?? null}
         busyNodeId={agent.running ? activeNodeId : null}
         open={sidebarOpen}
+        // 「这一拍开始浏览某个页签」的拍号：定位跟着它走（连着重开当前这份也重新定位）
+        browseNonce={browseNonce}
         // 纯净阅读：资源管理器整栏向左让位（靠负外边距真让位，见 ExplorerSidebar）
         pure={pure}
         onClose={() => setSidebarOpen(false)}
