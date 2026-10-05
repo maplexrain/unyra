@@ -55,6 +55,12 @@ interface Props {
   activeTab: TabRef | null
   busyNodeId: string | null
   open: boolean
+  /**
+   * 「这一拍开始浏览某个页签」的拍号（开页签 / 点页签时 +1，见 LearnWorkspace）：
+   * 定位不只发生在「页签换了」——导师重开当前已聚焦的文档、chip 点开已打开的文档，
+   * 值没变但该重新定位，外壳就跟着拍号再发一次令。
+   */
+  browseNonce: number
   /** 纯净阅读：整栏收起让位（见 LearnWorkspace 的 F11）；窄屏下本来就是个抽屉，不必管 */
   pure: boolean
   onClose: () => void
@@ -103,6 +109,7 @@ export default function ExplorerSidebar({
   activeTab,
   busyNodeId,
   open,
+  browseNonce,
   pure,
   onClose,
   onSelectNode,
@@ -160,23 +167,25 @@ export default function ExplorerSidebar({
   )
 
   /*
-   * 页签定位的发令：焦点格开着的那一份，在资源管理器里把它亮出来。同一枚页签只发一次
-   * （签名见 reveal.ts）；纯净阅读时整栏都不可见，不折腾。**不看 open**：桌面端侧栏
-   * 常驻显示（md:translate-x-0），sidebarOpen 只是移动端抽屉的开关，默认就是 false——
-   * 拿它当守卫会把桌面端的定位整个杀掉（真实翻过车）。展开与滚动由广播的订阅者与
-   * revealRow 自己完成——这里只算出目标、喊出去（直接 setState 的 effect 是 lint 拦的写法）。
+   * 页签定位的发令：焦点格开着的那一份，在资源管理器里把它亮出来。两个信号都会发——
+   * **页签换了**（关页签带出的邻位激活、聚焦另一格分屏，值变化当场就能看出来）与
+   * **拍号走了**（重开当前正开着的这份：值没变，但「开始浏览」值得再定位一次）。
+   * 纯净阅读时整栏不可见，不折腾。展开与滚动由广播的订阅者与 revealRow 自己完成——
+   * 这里只算出目标、喊出去（直接 setState 的 effect 是 lint 拦的写法）。
    */
-  const lastReveal = useRef('')
+  const lastSig = useRef('')
+  const lastNonce = useRef(-1)
   useEffect(() => {
     if (pure || !activeTab) return
     const sig = revealSigOf(activeTab)
-    if (sig === lastReveal.current) return
-    lastReveal.current = sig
+    if (sig === lastSig.current && browseNonce === lastNonce.current) return
+    lastSig.current = sig
+    lastNonce.current = browseNonce
     const req = revealOfTab(activeTab, store, userAbsPrefix())
     if (!req) return
     publishReveal(req)
     revealRow(asideRef.current, req.keys)
-  }, [activeTab, pure, store, asideRef])
+  }, [activeTab, pure, store, browseNonce, asideRef])
 
   const roots = useMemo(
     () => store.goals.map((g) => nodeById(store, g.rootNodeId)).filter((n): n is KnowledgeNode => !!n),
