@@ -13,6 +13,7 @@ const dict: Record<string, string> = {
   '前进': 'Forward',
   '刷新': 'Reload',
   '停止加载': 'Stop loading',
+  '检查元素': 'Inspect element',
   '在系统浏览器打开': 'Open in system browser',
   '在上方输入网址，回车打开': 'Type an address above and press Enter',
   '无法打开这个地址': 'This page could not be loaded',

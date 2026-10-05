@@ -381,6 +381,19 @@ export function setupWebBrowser(): void {
         { label: t('粘贴'), role: 'paste', enabled: params.editFlags.canPaste },
         { type: 'separator' },
         { label: t('刷新'), click: () => contents.reload() },
+        { type: 'separator' },
+        /*
+         * 检查元素：开的是 **guest** 的 DevTools（inspectElement 作用于这份 WebContents），
+         * 与宿主窗口自己的 DevTools 互不相干。默认 dock 进宿主窗口会把网页区挤一条缝，
+         * 所以先按应用的惯例开成独立窗（windows.ts 同款），再定位到点的那个元素。
+         */
+        {
+          label: t('检查元素'),
+          click: () => {
+            if (!contents.isDevToolsOpened()) contents.openDevTools({ mode: 'detach' })
+            contents.inspectElement(params.x, params.y)
+          },
+        },
       ]).popup({ window: BrowserWindow.fromWebContents(contents.hostWebContents ?? contents) ?? undefined })
     })
 
