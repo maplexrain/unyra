@@ -566,7 +566,10 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     wrapApi(api, 'browser.tabs', () => browser.tabs(), log)
     wrapApi(api, 'browser.activate', (args) => browser.activate(asText(args[0]).trim()), log)
     wrapApi(api, 'browser.close', (args) => browser.close(asText(args[0]).trim()), log)
-    wrapApi(api, 'browser.snapshot', (args) => browser.snapshot(args.length ? asText(args[0]).trim() || undefined : undefined), log)
+    wrapApi(api, 'browser.snapshot', (args) => {
+      const tabId = args.length ? asText(args[0]).trim() || undefined : undefined
+      return browser.snapshot(tabId, asRecord(args[1]))
+    }, log)
     /*
      * 带目标的方法（point）收两种写法：方法(目标) 与 方法(tabId, 目标)。
      * tabId 一定是 tabs() 回的 w: 开头的 id，而 CSS 选择器不可能以 w: 开头，
@@ -608,8 +611,10 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
      */
     wrapApi(api, 'browser.logs', (args) => browser.logs(requireTabId(args[0], 'browser.logs'), asRecord(args[1])), log)
     wrapApi(api, 'browser.logDetail', (args) => {
-      const seq = Number(args[1])
-      if (!Number.isFinite(seq)) throw new Error('seq 要给清单行里的条目号数字（[c#] / [n#]）')
+      // 条目号照抄清单行也认：96 / 'n96' / 'c96'
+      const raw = args[1]
+      const seq = typeof raw === 'number' ? raw : Number(String(asText(raw)).replace(/^[nc]/i, ''))
+      if (!Number.isFinite(seq)) throw new Error('seq 要给清单行里的条目号（96、"n96" 都行）')
       return browser.logDetail(requireTabId(args[0], 'browser.logDetail'), seq, asRecord(args[2]))
     }, log)
     wrapApi(api, 'browser.fetch', (args) => {
@@ -623,6 +628,18 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
       const action = asText(args[1]).trim()
       if (action !== 'start' && action !== 'stop') throw new Error('record 的动作只有 "start" / "stop"')
       return browser.record(requireTabId(args[0], 'browser.record'), action, asRecord(args[2]))
+    }, log)
+    // 区域文本：目标认 '选择器' 或 { ref }（同 point 的双写法，但不吃焦点默认）
+    wrapApi(api, 'browser.text', (args) => {
+      const target = typeof args[1] === 'string' ? args[1].trim() : asRecord(args[1])
+      if (typeof target !== 'string' && !('ref' in (target as Record<string, unknown>))) {
+        throw new Error('目标要给 snapshot 清单里的 { ref } 或 CSS 选择器')
+      }
+      return browser.text(requireTabId(args[0], 'browser.text'), target as string | { ref: number }, asRecord(args[2]))
+    }, log)
+    wrapApi(api, 'browser.scroll', (args) => {
+      const req = asRecord(args[1])
+      return browser.scroll(requireTabId(args[0], 'browser.scroll'), req)
     }, log)
   }
 

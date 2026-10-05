@@ -55,7 +55,7 @@ describe('webLogs：清单折叠与过滤', () => {
     expect(vAll.lines[1]).toBe('[c2] W deprecated api')
   })
 
-  it('网络：同 path 异 query 折 ×N（query 只留参数名）；失败永不折叠；静态资源压一行', () => {
+  it('网络：同 path 异 query 折 ×N（query 只留参数名）；失败永不折叠；静态资源压一行垫底', () => {
     const v = queryWebLogs(seed(), { kind: 'network' })
     expect(v.lines).toHaveLength(3)
     expect(v.lines[0]).toBe('[n4] GET https://api.x.com/feed?cursor=2&limit=20 → 200 · 82KB ×2')
@@ -83,6 +83,30 @@ describe('webLogs：清单折叠与过滤', () => {
       afterSeq: 7,
     })
     expect(sanitizeLogsQuery({ limit: 9999 })).toEqual({ limit: 200 })
+    expect(sanitizeLogsQuery({ only: 'api' })).toEqual({ only: 'api' })
+    expect(sanitizeLogsQuery({ only: 'everything' })).toEqual({})
+  })
+
+  it('only 收窄与扩展名静态兜底：type=Other 的 bundle 按网址长相折掉；only:fail 专看失败', () => {
+    const buf = newWebLogBuffer()
+    pushNetLog(buf, 1, { method: 'GET', url: 'https://abs.twimg.com/bundle.Conversation.95a1.js', status: 200, type: 'Other', size: 0 })
+    pushNetLog(buf, 2, { method: 'GET', url: 'https://api.x.com/SearchTimeline?query=AI', status: 200, type: 'XHR', size: 65_536 })
+    pushNetLog(buf, 3, { method: 'POST', url: 'https://api.x.com/like', status: 429, type: 'XHR' })
+    // type=Other 但扩展名是 .js → 静态桶
+    expect(queryWebLogs(buf, { kind: 'network' }).lines).toEqual([
+      '[n2] GET https://api.x.com/SearchTimeline?query=AI → 200 · 64KB',
+      '[n3] POST https://api.x.com/like → 429',
+      '[static] 静态资源 ×1（已折叠，不看）',
+    ])
+    // only:'api' 只按类型收窄（XHR/Fetch，含其中的失败——429 也是 API 调用）
+    expect(queryWebLogs(buf, { kind: 'network', only: 'api' }).lines).toEqual([
+      '[n2] GET https://api.x.com/SearchTimeline?query=AI → 200 · 64KB',
+      '[n3] POST https://api.x.com/like → 429',
+    ])
+    // only:'fail' 专看失败
+    expect(queryWebLogs(buf, { kind: 'network', only: 'fail' }).lines).toEqual([
+      '[n3] POST https://api.x.com/like → 429',
+    ])
   })
 })
 

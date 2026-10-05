@@ -27,9 +27,13 @@ import type {
   WebPointResult,
   WebReadHtmlResult,
   WebRecordResult,
+  WebScrollReq,
+  WebScrollResult,
   WebSnapshotResult,
+  WebTextResult,
 } from '../../shared/ipc'
 import {
+  apiPathKey,
   capBodyText,
   capHeaders,
   flattenConsoleArgs,
@@ -181,6 +185,27 @@ const POINT_FN =
   '  return true;' +
   '}'
 
+/** browser.text 的固定函数：取渲染后的文本（innerText），按 maxChars 截——SPA 上不用截图读 */
+const PAGE_TEXT_FN =
+  'function (maxChars) {' +
+  '  const t = ((this.innerText || this.textContent || "") + "").replace(/\\n{3,}/g, "\\n\\n").trim();' +
+  '  return { text: t.slice(0, maxChars), chars: t.length };' +
+  '}'
+
+/** browser.scroll 的固定函数：滚页面（无限滚动信息流的引擎）；选择器是值参数，不是代码 */
+const PAGE_SCROLL_FN =
+  'function (arg) {' +
+  '  if (arg.to === "top") { window.scrollTo({ top: 0, behavior: "instant" }); return { ok: true }; }' +
+  '  if (arg.to === "bottom") { window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" }); return { ok: true }; }' +
+  '  if (typeof arg.to === "string" && arg.to) { const el = document.querySelector(arg.to); if (!el) return { error: "页面上找不到这个选择器：" + arg.to }; el.scrollIntoView({ block: "center", behavior: "instant" }); return { ok: true }; }' +
+  '  if (typeof arg.by === "number") { window.scrollBy({ top: arg.by, behavior: "instant" }); return { ok: true }; }' +
+  '  return { error: "要给 { by: 像素 } 或 { to: \\"top\\" | \\"bottom\\" | 选择器 }" };' +
+  '}'
+
+/** 滚动后的页面几何（scroll 两条路都要回） */
+const PAGE_GEOMETRY_EXPR =
+  '(() => ({ y: window.scrollY, h: document.documentElement.scrollHeight, vh: window.innerHeight }))()'
+
 /** 在某个 DOM 节点上执行我们的固定函数（参数只走值），回可序列化的小结果 */
 async function callOnElement<T>(
   dbg: Debugger,
@@ -316,6 +341,94 @@ function registerSnapshotIpc(): void {
       return { html: outerHTML, url: wc.getURL(), title: wc.getTitle() }
     } catch (err) {
       return { error: err instanceof Error ? err.message : '读取页面 DOM 失败' }
+    }
+  })
+
+  // 区域文本（browser.text）：按 ref/selector 取渲染后的 innerText——SPA 上唯一的文本通道，
+  // 提取管线对纯前端页面无能为力时（web:readHtml 那条），靠它而不是靠截图
+  ipcMain.handle('web:text', async (_e, wcId: number, target: unknown): Promise<WebTextResult> => {
+    const wc = guestOf(wcId)
+    if (!wc) return { error: '这一页签的网页已经不在了' }
+    const t = (target ?? {}) as { ref?: unknown; selector?: unknown; maxChars?: unknown }
+    const maxChars =
+      typeof t.maxChars === 'number' && Number.isFinite(t.maxChars)
+        ? Math.min(Math.max(Math.floor(t.maxChars), 200), 20_000)
+        : 4_000
+    let label = ''
+    try {
+      const dbg = ensureDebugger(wc)
+      await cdp(dbg, 'DOM.enable').catch(() => {})
+      const hit = await backendOf(dbg, wcId, typeof t.ref === 'number' ? { ref: t.ref } : { selector: String(t.selector ?? '') })
+      if ('error' in hit) return hit
+      label = hit.label
+      const r = await callOnElement<{ text?: string; chars?: number }>(dbg, hit.backendNodeId, PAGE_TEXT_FN, [
+        { value: String(maxChars) },
+      ])
+      const text = r?.text ?? ''
+      return {
+        text,
+        chars: r?.chars ?? text.length,
+        ...(r?.chars !== undefined && r.chars > text.length ? { truncated: true } : {}),
+      }
+    } catch (err) {
+      return {
+        error: '取文本失败' + label + '：' + (err instanceof Error ? err.message : '页面可能已经变了——重新 api.browser.snapshot'),
+      }
+    }
+  })
+
+  // 滚页面（browser.scroll）：无限滚动信息流的引擎；ref 走台账，by/to 走 evaluate 固定函数
+  ipcMain.handle('web:scroll', async (_e, wcId: number, raw: unknown): Promise<WebScrollResult> => {
+    const wc = guestOf(wcId)
+    if (!wc) return { error: '这一页签的网页已经不在了' }
+    const req = (raw ?? {}) as WebScrollReq
+    try {
+      const dbg = ensureDebugger(wc)
+      await cdp(dbg, 'DOM.enable').catch(() => {})
+      if (typeof req.ref === 'number') {
+        const hit = await backendOf(dbg, wcId, { ref: req.ref })
+        if ('error' in hit) return hit
+        await callOnElement(dbg, hit.backendNodeId, 'function () { this.scrollIntoView({ block: "center", behavior: "instant" }); return true }')
+      } else {
+        const arg = {
+          by: typeof req.by === 'number' && Number.isFinite(req.by) ? Math.round(req.by) : undefined,
+          to: typeof req.to === 'string' && req.to.trim() ? req.to.trim() : undefined,
+        }
+        if (arg.by === undefined && arg.to === undefined) {
+          return { error: '要给 { by: 像素 } 或 { to: "top" | "bottom" | 选择器 }（或 snapshot 清单里的 { ref }）' }
+        }
+        const r = await cdp<{
+          result?: { value?: { error?: string } }
+          exceptionDetails?: { exception?: { description?: string } }
+        }>(dbg, 'Runtime.evaluate', {
+          expression: '(' + PAGE_SCROLL_FN + ')(' + JSON.stringify(arg) + ')',
+          awaitPromise: true,
+          returnByValue: true,
+        })
+        if (r.exceptionDetails) {
+          return { error: '页面里滚动失败：' + (r.exceptionDetails.exception?.description ?? '未知异常').slice(0, 200) }
+        }
+        if (r.result?.value?.error) return { error: r.result.value.error }
+      }
+      const g = await cdp<{ result?: { value?: { y?: number; h?: number; vh?: number } } }>(
+        dbg,
+        'Runtime.evaluate',
+        { expression: PAGE_GEOMETRY_EXPR, returnByValue: true },
+      )
+      const v = g.result?.value ?? {}
+      const y = v.y ?? 0
+      const h = v.h ?? 0
+      const vh = v.vh ?? 0
+      return {
+        ok: true,
+        scrollY: Math.round(y),
+        scrollHeight: Math.round(h),
+        viewport: Math.round(vh),
+        atBottom: y + vh >= h - 2,
+        atTop: y <= 2,
+      }
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : '滚动失败' }
     }
   })
 }
@@ -579,6 +692,21 @@ function registerLogIpc(): void {
             }
           }
         }
+        // 详情瘦身（实测教训：GraphQL 的全量 URL 单条 3000+ 字符，agent 只是想拿个地址）：
+        // 头每值截 500；补一个「host + 路径 + 参数名」的短形态，全量 url 仍在
+        const headers = detail.requestHeaders as Record<string, string> | undefined
+        if (headers) {
+          const trimmed: Record<string, string> = {}
+          for (const [k, v] of Object.entries(headers)) trimmed[k] = v.length > 500 ? v.slice(0, 499) + '…' : v
+          detail.requestHeaders = trimmed
+        }
+        if (typeof detail.url === 'string') {
+          try {
+            detail.urlPath = new URL(detail.url).host + apiPathKey(detail.url)
+          } catch {
+            /* url 不合法就不补短形态 */
+          }
+        }
       }
       return { detail }
     },
@@ -655,24 +783,54 @@ function registerLogIpc(): void {
           return { error: '页面里请求失败：' + (r.exceptionDetails.exception?.description ?? '未知异常').slice(0, 300) }
         }
         const v = r.result?.value
-        if (!v || typeof v.status !== 'number') {
-          return { error: '页面里请求失败：' + (v?.error ?? '拿不到响应') }
+        if (!v || (typeof v.status !== 'number' && !v.error)) {
+          return { error: '页面里请求失败：拿不到响应' }
         }
+        /*
+         * **请求级失败不抛异常**：没拿到响应（CSP/CORS/超时/中止）回值 { status:0, failed, reason }，
+         * agent 按值分支；只有参数/页签类错误才走上面的 error（抛给 execute）。
+         * 实测教训：跨域被拒时 throw 会把整批 execute 连带已成功的结果一起带走。
+         */
         if (v.error) {
-          return { error: '页面里请求失败：' + v.error + '——同源 API 没这个问题；跨域要过页面自己的 CORS' }
+          const reason = String(v.error)
+          const timedOut = /abort/i.test(reason)
+          return {
+            status: 0,
+            failed: true,
+            reason: timedOut
+              ? '超时：' + Math.round(spec.timeoutMs / 1000) + 's 内页面没回来（fetch 被中止）'
+              : '页面里请求失败：' + reason + '——同源 API 没这个问题；跨域要过页面自己的 CORS/CSP',
+          }
         }
         const maxBody = typeof req.maxBody === 'number' && Number.isFinite(req.maxBody)
           ? Math.min(Math.max(Math.floor(req.maxBody), 200), 32_000)
           : 4_000
         const text = v.text ?? ''
-        const body = text.slice(0, maxBody)
+        const offset = typeof req.offset === 'number' && Number.isFinite(req.offset)
+          ? Math.min(Math.max(Math.floor(req.offset), 0), text.length)
+          : 0
+        const body = text.slice(offset, offset + maxBody)
+        const nextOffset = offset + body.length < text.length ? offset + body.length : undefined
+        const replayed = typeof req.reqId === 'number'
+          ? { url: spec.url, method: spec.method }
+          : undefined
+        const replayBounced = replayed && (v.status === 403 || v.status === 404)
+        const status = typeof v.status === 'number' ? v.status : 0
         return {
-          status: v.status,
+          status,
+          ...(replayed ? { replayed } : {}),
           ...(v.statusText ? { statusText: v.statusText } : {}),
           ...(v.contentType ? { contentType: v.contentType } : {}),
           ...(v.url ? { url: v.url } : {}),
-          ...(body ? { body, ...(body.length < text.length ? { bodyTruncated: true } : {}) } : v.textBytes ? { note: '响应不是文本类，不回内容' } : {}),
-          ...(text.length ? { bytes: v.textBytes ?? text.length } : {}),
+          ...(body
+            ? { body, ...(body.length < text.length - offset || nextOffset !== undefined ? { bodyTruncated: true } : {}) }
+            : text.length
+              ? { note: '响应不是文本类，不回内容' }
+              : {}),
+          ...(text.length ? { chars: v.textBytes ?? text.length, ...(offset ? { offset } : {}), ...(nextOffset !== undefined ? { nextOffset } : {}) } : {}),
+          ...(replayBounced
+            ? { note: '重放拿到 ' + v.status + '：捕获的请求头可能含一次性签名（x-client-transaction-id 之类）已过期——回 UI 重新触发一次同样的操作拿新 reqId，或直接用网址直发让页面自己带头' }
+            : {}),
         }
       } catch (err) {
         return { error: err instanceof Error ? err.message : '页面请求失败' }

@@ -97,6 +97,8 @@ export interface WebLogsQuery {
   kind?: 'console' | 'network'
   /** console 档位：默认 error（未捕获异常 / console.error / 被拦的请求），warn 含警告，all 全量 */
   level?: 'error' | 'warn' | 'all'
+  /** 网络侧再收窄：'api' 只看 XHR/Fetch（API 调用），'fail' 只看失败的 */
+  only?: 'api' | 'fail'
   /** 最多回多少行（默认 40，上限 200）——折叠后的行数 */
   limit?: number
   /** 只看 seq 大于它的（上一份清单的 latestSeq）——无状态分页游标 */
@@ -130,6 +132,7 @@ export function sanitizeLogsQuery(raw: unknown): WebLogsQuery {
   return {
     ...(kind ? { kind } : {}),
     ...(level ? { level } : {}),
+    ...(o.only === 'api' || o.only === 'fail' ? { only: o.only } : {}),
     ...(limit !== undefined ? { limit } : {}),
     ...(afterSeq !== undefined ? { afterSeq } : {}),
   }
@@ -149,6 +152,13 @@ const STATIC_TYPES = new Set([
   'Signaling',
   'Preflight',
 ])
+
+/** 静态资源的扩展名兜底：CDP 的 type 有时给 Other（预加载/缓存命中），按网址长相再折一道 */
+const STATIC_EXT_RE = /\.(?:m?js|mjs|css|m3u8|mp4|webm|mov|mp3|woff2?|ttf|otf|png|jpe?g|gif|svg|ico|webp|avif|bmp|wasm|map)(?:[?#]|$)/i
+
+function isStaticNet(e: WebNetLogEntry): boolean {
+  return STATIC_TYPES.has(e.type) || e.method === 'OPTIONS' || STATIC_EXT_RE.test(e.url)
+}
 
 function levelPasses(level: 'error' | 'warn' | 'all' | undefined, e: WebLogLevel): boolean {
   if (!level || level === 'error') return e === 'error'
@@ -218,12 +228,16 @@ export function queryWebLogs(buf: WebLogBuffer, q: WebLogsQuery = {}): WebLogsVi
     const api = new Map<string, NetGroup<WebNetLogEntry>>()
     const failures: WebNetLogEntry[] = []
     let staticCount = 0
-    let staticSeq = Number.MAX_SAFE_INTEGER
     for (const e of seen) {
+      if (q.only === 'fail') {
+        // only:'fail' 专看失败：静态与成功的都不占行
+        if (e.errorText !== undefined || (e.status !== null && e.status >= 400)) failures.push(e)
+        continue
+      }
+      if (q.only === 'api' && e.type !== 'XHR' && e.type !== 'Fetch') continue
       const failed = e.errorText !== undefined || (e.status !== null && e.status >= 400)
-      if (STATIC_TYPES.has(e.type) || e.method === 'OPTIONS') {
+      if (isStaticNet(e)) {
         staticCount++
-        staticSeq = Math.min(staticSeq, e.seq)
         continue
       }
       if (failed) {
@@ -259,7 +273,8 @@ export function queryWebLogs(buf: WebLogBuffer, q: WebLogsQuery = {}): WebLogsVi
     netLines.sort((a, b) => a.seq - b.seq)
     lines.push(...netLines)
     if (staticCount > 0) {
-      lines.push({ seq: staticSeq, line: '[static] 静态资源 ×' + staticCount + '（已折叠，不看）' })
+      // 静态摘要在行尾垫底（截断也保留它——它是最便宜的一行）；不入 seq 排序
+      lines.push({ seq: Number.MAX_SAFE_INTEGER, line: '[static] 静态资源 ×' + staticCount + '（已折叠，不看）' })
     }
   }
 

@@ -1111,6 +1111,10 @@ export default function LearnWorkspace({
         isElectron() ? native().browser.pageFetch(wcId, req) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
       record: (wcId, action, opts) =>
         isElectron() ? native().browser.record(wcId, action, opts) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
+      text: (wcId, target) =>
+        isElectron() ? native().browser.text(wcId, target) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
+      scroll: (wcId, req) =>
+        isElectron() ? native().browser.scroll(wcId, req) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
     }
   })
 

@@ -130,6 +130,9 @@ const API_NAMES = [
   'browser.logDetail',
   'browser.fetch',
   'browser.record',
+  // 区域文本与滚动（SPA 上「按区域取文本」和「无限滚动」的两块拼图；tabId 必给）
+  'browser.text',
+  'browser.scroll',
   // 子代理管理（导师专用）：并发派出、后台跑、wait 收交付。子代理的 apiAllow 白名单
   // 里永远没有这一组——不递归在通道口硬挡（实现见 agent/subagent/manager）
   'subagent.create',

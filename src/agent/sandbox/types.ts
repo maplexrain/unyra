@@ -692,8 +692,8 @@ export type BrowserTarget = string | { ref: number }
 export interface BrowserOps {
   /** 开一个网页页签（纯关键词当搜索词处理）；回 tabId，返回时首屏基本加载完 */
   open(url: string): Promise<{ tabId: string; url: string; note?: string }>
-  /** 全部存活的网页页签 */
-  tabs(): BrowserTabInfo[]
+  /** 全部存活的网页页签（信封 { tabs }——同组接口一致，别回裸数组） */
+  tabs(): { tabs: BrowserTabInfo[] }
   /** 把某个页签切到前台 */
   activate(tabId: string): { ok: true }
   /** 关掉某个页签（不弹确认） */
@@ -701,8 +701,13 @@ export interface BrowserOps {
   /**
    * 页面快照：可交互元素列成**带 ref 的清单**（role + 名称 + 输入值，≤200 条）——
    * 「看」的文本通道，比截图省；DOM 变了 ref 会过期，重新 snapshot 即可。
+   * 过滤参数：role（只要这个角色）、contains（名称含这段文字）、limit（最多几条）——
+   * 大页面上别整份捞，5k token 换 2 条信息是真实发生过的账。
    */
-  snapshot(tabId?: string): Promise<{
+  snapshot(
+    tabId?: string,
+    opts?: Record<string, unknown>,
+  ): Promise<{
     elements: Array<{ ref: number; role: string; name: string; value?: string }>
     truncated?: boolean
   }>
@@ -714,26 +719,41 @@ export interface BrowserOps {
    * ≤4000 字) / "attr"(属性名)。result 是操作自己的小结果（fill 回新值、attr 回属性值）。
    */
   dom(tabId: string | undefined, ref: number, op: string, arg?: string): Promise<{ ok: true; result?: unknown }>
-  /** 整页转 markdown（与 web.webFetch 同一条管线：短的回全文，长的落盘回大纲 + uuid） */
-  read(tabId?: string): Promise<unknown>
+  /** 整页转 markdown（与 web.webFetch 同一条管线：短的回全文，长的落盘回大纲 + uuid）；
+   *  opts { maxChars?, offset? } 把回文切段（doc.readRange 同一哲学） */
+  read(tabId?: string, opts?: Record<string, unknown>): Promise<unknown>
   /** 页面截图 → 资源库 + 挂到下一跳（与 ui.screenshot 同一条通道）——snapshot/read 拿不到时才用 */
   capture(tabId?: string): Promise<{ ok: true; note?: string; images: MessageImage[] } | { ok: false; error: string }>
   /**
    * 页签日志清单（console + 网络请求，折叠去重，失败永不折叠；行自带 [c#]/[n#] 条目号）。
-   * **tabId 必给**：日志跟着页签走，没有焦点默认。level 默认 error；afterSeq 是无状态分页游标。
+   * **tabId 必给**：日志跟着页签走，没有焦点默认。level 默认 error；only:'api' 只看 XHR/Fetch、
+   * 'fail' 只看失败；afterSeq 是无状态分页游标。
    */
   logs(tabId: string, opts?: Record<string, unknown>): Promise<unknown>
-  /** 单条日志详情：console 给完整文本与调用栈，网络给请求头/postData/响应体（截断）。seq 来自清单行 */
-  logDetail(tabId: string, seq: number, opts?: Record<string, unknown>): Promise<unknown>
+  /** 单条日志详情：console 给完整文本与调用栈，网络给请求头/postData/响应体（截断）。
+   *  seq 认清单行里的条目号：96、'n96'、'c96' 都行 */
+  logDetail(tabId: string, seq: number | string, opts?: Record<string, unknown>): Promise<unknown>
   /**
    * 页面上下文直发 HTTP（继承该页签的登录态）：target 是 http(s) 网址，或 { reqId }（网络清单
    * 里的条目号——原样重放页面发过的请求，headers/postData 用捕获的，覆盖项落在其上）。
-   * HTTP 4xx/5xx 是正常回执（带 status），不是 error。
+   * **请求级失败不抛异常**：没拿到响应（CSP/CORS/超时）回 { status: 0, failed: true, reason }，
+   * 按值分支，不用 try/catch；只有参数/页签错误才抛。HTTP 4xx/5xx 是正常回执。
+   * 长响应分段读：{ offset, maxBody } → { body, chars, nextOffset }。
    */
-  fetch(tabId: string, target: string | { reqId: number }, opts?: Record<string, unknown>): Promise<unknown>
+  fetch(
+    tabId: string,
+    target: string | { reqId: number },
+    opts?: Record<string, unknown>,
+  ): Promise<unknown>
   /** 日志录制：action = "start" 钉水位 / "stop" 回这段区间的折叠清单并清水位——「发起录制 →
    *  ask 用户做 agent 做不了的操作 → 停止录制 → 分析」这条链的骨架 */
   record(tabId: string, action: string, opts?: Record<string, unknown>): Promise<unknown>
+  /** 区域文本：按 选择器字符串 / { ref } 取**渲染后**的 innerText（≤ maxChars，默认 4000）——
+   *  SPA 上唯一的文本通道，提取管线失灵时靠它而不是截图 */
+  text(tabId: string, target: string | { ref: number }, opts?: Record<string, unknown>): Promise<unknown>
+  /** 滚页面（无限滚动信息流的引擎）：{ by: 像素 } 或 { to: "top"|"bottom"|选择器 } 或 { ref }；
+   *  回滚动后的几何（scrollY/scrollHeight/atBottom——判断要不要等新内容） */
+  scroll(tabId: string, req: Record<string, unknown>): Promise<unknown>
 }
 
 /**

@@ -15,7 +15,8 @@ import type {
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
   VoiceReadResult, WebDomOpResult, WebFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult,
-  WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult, WebSnapshotResult,
+  WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult,
+  WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget,
 } from '../../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（与 electron/preload.ts 共用一份，见该文件顶部）：
@@ -27,7 +28,8 @@ export type {
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
   VoiceReadResult, WebDomOpResult, WebFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult,
-  WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult, WebSnapshotResult,
+  WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult,
+  WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget,
 }
 
 export type PluginList =
@@ -341,6 +343,10 @@ export interface NativeBridge {
     pageFetch(wcId: number, req: WebPageFetchReq): Promise<WebPageFetchResult>
     /** 日志录制（start 钉水位 / stop 回区间清单）：browser.record */
     record(wcId: number, action: 'start' | 'stop', opts?: WebLogsOpts): Promise<WebRecordResult>
+    /** 区域文本（渲染后的 innerText，按 ref/selector 取）：browser.text */
+    text(wcId: number, target: WebTextTarget): Promise<WebTextResult>
+    /** 滚页面（by/to/ref）：browser.scroll */
+    scroll(wcId: number, req: WebScrollReq): Promise<WebScrollResult>
   }
 }
 

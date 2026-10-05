@@ -272,6 +272,8 @@ export async function apiNameTests() {
     'browser.logDetail': "'w:probe', 1",
     'browser.fetch': "'w:probe', 'https://example.com/api'",
     'browser.record': "'w:probe', 'stop'",
+    'browser.text': "'w:probe', { ref: 1 }",
+    'browser.scroll': "'w:probe', { by: 800 }",
   }
   let s = staticStore()
   let tmpStore: Record<string, unknown> = {}
@@ -345,7 +347,7 @@ export async function apiNameTests() {
     },
     browser: {
       open: async (url: string) => { sawBrowserOpen = url; return { tabId: 'w:probe', url } },
-      tabs: () => [{ tabId: 'w:probe', url: 'https://example.com', title: '示例页', active: true, group: 'g1' }],
+      tabs: () => ({ tabs: [{ tabId: 'w:probe', url: 'https://example.com', title: '示例页', active: true, group: 'g1' }] }),
       activate: (tabId: string) => { sawBrowserActivate = tabId; return { ok: true } },
       close: (tabId: string) => { sawBrowserClose = tabId; return { ok: true } },
       snapshot: async () => ({ elements: [{ ref: 1, role: 'button', name: '提交' }] }),
@@ -358,6 +360,8 @@ export async function apiNameTests() {
       fetch: async () => ({ status: 200, body: '{"ok":true}' }),
       record: async (_tabId: string, action: string) =>
         action === 'start' ? { ok: true as const, action: 'start' as const, since: 0 } : { lines: [], shown: 0, totalConsole: 0, totalNetwork: 0, latestSeq: 0, truncated: false, action: 'stop' as const },
+      text: async () => ({ text: '正文', chars: 2 }),
+      scroll: async () => ({ ok: true as const, scrollY: 800, scrollHeight: 4000, viewport: 900, atBottom: false, atTop: false }),
     },
     // 子代理管理：桩（并发、等待与介入的行为由 tests/subagent.test.ts 用假流钉住）
     subagent: {

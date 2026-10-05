@@ -67,7 +67,12 @@ export async function fetchForAgent(rawUrl: string): Promise<unknown> {
   const parsed = res.kind === 'html' ? parseWebPage(res.text) : null
   const markdown = parsed ? treeToMarkdown(parsed.tree, res.finalUrl) : tidyText(res.text)
   if (!markdown.trim()) {
-    return { error: '这一页没提取出正文（可能是纯前端渲染的页面，或者正文全在脚本里）', url: res.finalUrl }
+    // 文案要指对路（实测教训：把 agent 引去怀疑网络/渲染，白烧两轮）：
+    // 是**提取管线**对纯前端 SPA 无能为力，页面本身多半渲染得好好的——出路是 browser.text
+    return {
+      error: '这一页没提取出正文——提取管线对纯前端渲染的 SPA 无效，页面本身多半显示正常：改用 api.browser.text(tabId, 选择器或{ref}) 取渲染后的文本，整页结构要 api.browser.snapshot',
+      url: res.finalUrl,
+    }
   }
   const title = clip(parsed?.title || firstHeading(markdown) || res.finalUrl, 200)
   const fetchedAt = Date.now()
@@ -129,7 +134,11 @@ export async function livePageForAgent(rawHtml: string, rawUrl: string): Promise
   const parsed = parseWebPage(html)
   const markdown = parsed ? treeToMarkdown(parsed.tree, url) : ''
   if (!markdown.trim()) {
-    return { error: '这一页没提取出正文（可能是纯前端渲染的页面，或者正文全在脚本里）', url }
+    // 文案要指对路（同 webFetch 那条）：提取管线对 SPA 无效，页面本身多半显示正常——出路是 browser.text
+    return {
+      error: '这一页没提取出正文——提取管线对纯前端渲染的 SPA 无效，页面本身多半显示正常：改用 api.browser.text(tabId, 选择器或{ref}) 取渲染后的文本，整页结构要 api.browser.snapshot',
+      url,
+    }
   }
   const title = clip(parsed?.title || firstHeading(markdown) || url, 200)
   const outline = outlineLines(markdown)
