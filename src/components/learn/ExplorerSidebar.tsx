@@ -161,12 +161,14 @@ export default function ExplorerSidebar({
 
   /*
    * 页签定位的发令：焦点格开着的那一份，在资源管理器里把它亮出来。同一枚页签只发一次
-   * （签名见 reveal.ts）；栏收着 / 纯净阅读时不折腾。展开与滚动都由广播的订阅者与
+   * （签名见 reveal.ts）；纯净阅读时整栏都不可见，不折腾。**不看 open**：桌面端侧栏
+   * 常驻显示（md:translate-x-0），sidebarOpen 只是移动端抽屉的开关，默认就是 false——
+   * 拿它当守卫会把桌面端的定位整个杀掉（真实翻过车）。展开与滚动由广播的订阅者与
    * revealRow 自己完成——这里只算出目标、喊出去（直接 setState 的 effect 是 lint 拦的写法）。
    */
   const lastReveal = useRef('')
   useEffect(() => {
-    if (!open || pure || !activeTab) return
+    if (pure || !activeTab) return
     const sig = revealSigOf(activeTab)
     if (sig === lastReveal.current) return
     lastReveal.current = sig
@@ -174,7 +176,7 @@ export default function ExplorerSidebar({
     if (!req) return
     publishReveal(req)
     revealRow(asideRef.current, req.keys)
-  }, [activeTab, open, pure, store, asideRef])
+  }, [activeTab, pure, store, asideRef])
 
   const roots = useMemo(
     () => store.goals.map((g) => nodeById(store, g.rootNodeId)).filter((n): n is KnowledgeNode => !!n),

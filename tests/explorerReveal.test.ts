@@ -127,4 +127,16 @@ describe('工作区反查（wsRevealOfAbs）', () => {
       rel: 'docs/节点n1/workspace/a.md',
     })
   })
+
+  it('真实形状：反斜杠数据根 + 斜杠拼接的后半段（userAbsPath 的混血路径），两边都归一再比', () => {
+    // Windows 上 userAbsPrefix 的真实形状：cachedRoot 是反斜杠路径，join 用的是斜杠
+    const winPrefix = 'C:\\Users\\me\\AppData\\Roaming\\unyra/users/u1'
+    const winAbsAllBack = 'C:\\Users\\me\\AppData\\Roaming\\unyra\\users\\u1\\docs\\节点n1\\workspace\\a.md'
+    expect(wsRevealOfAbs(store, winAbsAllBack, winPrefix)).toEqual({ nodeId: 'n1', rel: 'docs/节点n1/workspace/a.md' })
+    // 页签里存的是 userAbsPath 的原样输出（根反斜杠、后半段斜杠）——同样要认得出
+    const winAbsMixed = 'C:\\Users\\me\\AppData\\Roaming\\unyra/users/u1/docs/节点n1/workspace/a.md'
+    const reveal = revealOfTab({ kind: 'local', path: winAbsMixed }, store, winPrefix)
+    expect(reveal!.keys).toEqual(['row:ws:docs/节点n1/workspace/a.md'])
+    expect(reveal!.nodes).toEqual(['n1'])
+  })
 })
