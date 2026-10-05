@@ -178,14 +178,18 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
 的一行提示与 api 回执行事，不要瞎猜细节，也不要重复试探）：
 - 超级文档 sdoc.*：节点上的可交互 HTML 小工具——正文一律装进 <moji-markdown>，颜色用
   var(--color-*)，脚本顶层初始化、唯一对外通道 api.method.call；写完 api.ui.superdoc 打开给用户。
-- 内置浏览器 browser.*：操作界面上开着的网页页签——看页面用 snapshot（元素清单）/ read
-  （整页 markdown），动手 = browser.dom 对 ref 做受控操作，capture 截图是最后手段；
-  动手前先 browser.tabs 清点，别重复开同一个网址。
-  动态页面的快路：browser.logs(tabId, …) 看页面自己发的请求与报错（清单折叠过，行带条目号），
-  可疑行 browser.logDetail 细看；同类动作摸清请求形态后 browser.fetch(tabId, 网址 | {reqId},
-  {method, headers, body}) 直发（继承登录态）代替一次次 UI 点击——execute 循环里直发零推理成本。
-  **写操作与批量直发是不可逆动作，先 ask**；循环要节流（宁慢勿封）；触发本地逻辑的动作
-  （上传/支付/复杂前端状态）仍走 UI。日志录制 record(tabId, "start"/"stop") 拿用户操作的日志。
+- 内置浏览器 browser.*：操作界面上开着的网页页签——看页面用 snapshot（可给 {role,contains,limit}
+  过滤）/ text（区域文本，SPA 就靠它）/ read（整页 markdown，可 {maxChars,offset} 切段），
+  动手 = browser.dom 对 ref 做受控操作，capture 截图是最后手段；动手前先 browser.tabs 清点
+  （回 {tabs:[…]} 信封），别重复开同一个网址。
+  动态页面的快路：browser.logs(tabId, …) 看页面自己发的请求与报错（清单折叠过，行带条目号；
+  {only:"api"} 只看 XHR/Fetch），可疑行 browser.logDetail 细看（96、"n96" 都认）；同类动作摸清
+  请求形态后 browser.fetch(tabId, 网址 | {reqId}, {method, headers, body}) 直发（继承登录态）代替
+  一次次 UI 点击——execute 循环里直发零推理成本；**请求级失败不抛异常**（回 {status:0,failed,reason}），
+  长响应 {offset} 分段续读。**写操作与批量直发是不可逆动作，先 ask**；循环要节流（宁慢勿封）；
+  触发本地逻辑的动作（上传/支付/复杂前端状态）仍走 UI。无限滚动信息流用 browser.scroll
+  （滚完看 atBottom，等一拍再滚）；拿用户操作的日志用 record(tabId, "start"/"stop")。
+  logs/logDetail/fetch/record/text/scroll 这六条 tabId 必给，不吃焦点默认。
 - 读网页与搜索 web.*：webFetch 抓一页（长文落盘回大纲树 + uuid，web.read 按节取）；
   web.search 多引擎（缺省 baidu，engines 并行 ≤3，全挂自动降级补搜、回 searchedAt）。
 - 资源库 res.*：本目标 static/ 的文件，uuid 寻址；res.read 看图不回数据、图挂你的下一步，

@@ -6,7 +6,11 @@ import type {
   WebPageFetchReq,
   WebPageFetchResult,
   WebRecordResult,
+  WebScrollReq,
+  WebScrollResult,
   WebSnapshotElement,
+  WebTextResult,
+  WebTextTarget,
 } from '../../../shared/ipc'
 import type { LearnStore, TabRef, WebTabMeta } from '../types'
 import { findTab, focusedGroup, groupIdOfTab } from '../groups'
@@ -40,7 +44,7 @@ export interface BrowserDeps {
   /** web 页签的活信息（真标题/加载态）；每次渲染都是最新的一份 */
   webMeta: Record<string, WebTabMeta>
   /** 页面快照（主进程：Accessibility 树 → 带 ref 的可交互元素清单，见 shared/axTree） */
-  snapshot: (wcId: number) => Promise<{ elements: WebSnapshotElement[]; truncated?: boolean } | { error: string }>
+  snapshot: (wcId: number, opts: Record<string, unknown>) => Promise<{ elements: WebSnapshotElement[]; truncated?: boolean } | { error: string }>
   /** 页面滚到目标元素并高亮突出（主进程 CDP：scrollIntoView + 脉冲描边） */
   point: (wcId: number, target: { ref: number } | { selector: string }) => Promise<{ ok: true } | { error: string }>
   /** 对 snapshot 的 ref 执行受控 DOM 操作（主进程 CDP：固定函数 + 值参数） */
@@ -55,6 +59,10 @@ export interface BrowserDeps {
   pageFetch: (wcId: number, req: WebPageFetchReq) => Promise<WebPageFetchResult>
   /** 日志录制（start 钉水位 / stop 回区间清单） */
   record: (wcId: number, action: 'start' | 'stop', opts: Record<string, unknown>) => Promise<WebRecordResult>
+  /** 区域文本（渲染后的 innerText，按 ref/selector 取） */
+  text: (wcId: number, target: WebTextTarget) => Promise<WebTextResult>
+  /** 滚页面（by/to/ref），回滚动后的几何 */
+  scroll: (wcId: number, req: WebScrollReq) => Promise<WebScrollResult>
 }
 
 type WebTabRef = Extract<TabRef, { kind: 'web' }>
@@ -172,7 +180,8 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
           })
         }
       }
-      return out
+      // 信封 { tabs }：同组接口一致（snapshot → {elements}、logs → {lines}），裸数组逼 agent 靠失败猜
+      return { tabs: out }
     },
     activate(tabId) {
       if (!groupIdOfTab(deps.getLatest().docArea, tabId)) {
@@ -189,12 +198,26 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
       deps.closeTab(group, tabId, 'self', { confirm: false })
       return { ok: true }
     },
-    async snapshot(tabId) {
+    async snapshot(tabId, opts) {
       const { tabId: id } = resolveTab(tabId)
       const wv = element(id)
-      const r = await deps.snapshot(wcIdOf(wv))
+      const r = await deps.snapshot(wcIdOf(wv), (opts ?? {}) as Record<string, unknown>)
       if ('error' in r) throw new Error(r.error)
-      return { elements: r.elements, ...(r.truncated ? { truncated: r.truncated } : {}) }
+      // 过滤在宿主侧做（纯后处理）：大页面上别整份捞——5k token 换 2 条信息是真实发生过的账
+      const o = (opts ?? {}) as { role?: unknown; contains?: unknown; limit?: unknown }
+      let elements = r.elements
+      const roleFilter = typeof o.role === 'string' ? o.role.trim().toLowerCase() : ''
+      const containsFilter = typeof o.contains === 'string' ? o.contains.trim() : ''
+      if (roleFilter) {
+        elements = elements.filter((e) => e.role.toLowerCase() === roleFilter)
+      }
+      if (containsFilter) {
+        elements = elements.filter((e) => (e.name + ' ' + (e.value ?? '')).includes(containsFilter))
+      }
+      const limit = typeof o.limit === 'number' && Number.isFinite(o.limit) ? Math.max(Math.floor(o.limit), 1) : undefined
+      const truncated = limit !== undefined && elements.length > limit
+      if (limit !== undefined) elements = elements.slice(0, limit)
+      return { elements, ...(truncated ? { truncated: true } : {}) }
     },
     async point(tabId, target) {
       const { tabId: id } = resolveTab(tabId)
@@ -221,13 +244,30 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
       if ('error' in r) throw new Error(r.error)
       return r
     },
-    async read(tabId) {
+    async read(tabId, opts) {
       const { tabId: id, ref } = resolveTab(tabId)
       const wv = element(id)
       const raw = await withTimeout(deps.readHtml(wcIdOf(wv)), '读取页面')
       if ('error' in raw) throw new Error(raw.error)
       // 与 web.webFetch 同一条管线：转换、长文落盘、大纲树都在 webDocs（uuid 互通，web.read 接着读）
-      return livePageForAgent(raw.html, raw.url || ref.url)
+      const out = (await livePageForAgent(raw.html, raw.url || ref.url)) as Record<string, unknown>
+      // 切段（doc.readRange 同一哲学）：短页面别整页灌，{ maxChars, offset } 取需要的段
+      const o = (opts ?? {}) as { maxChars?: unknown; offset?: unknown }
+      if (typeof out.text === 'string') {
+        const offset = typeof o.offset === 'number' && Number.isFinite(o.offset) ? Math.max(Math.floor(o.offset), 0) : 0
+        const maxChars = typeof o.maxChars === 'number' && Number.isFinite(o.maxChars)
+          ? Math.min(Math.max(Math.floor(o.maxChars), 200), 100_000)
+          : undefined
+        const text = out.text as string
+        if (offset > 0 || maxChars !== undefined) {
+          const sliced = text.slice(offset, maxChars !== undefined ? offset + maxChars : undefined)
+          out.text = sliced
+          out.chars = text.length
+          if (offset > 0) out.offset = offset
+          if (offset + sliced.length < text.length) out.nextOffset = offset + sliced.length
+        }
+      }
+      return out
     },
     async capture(tabId) {
       const { tabId: id, ref } = resolveTab(tabId)
@@ -251,10 +291,12 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
     async logDetail(tabId, seq, opts) {
       const { tabId: id } = resolveTabStrict(tabId, 'browser.logDetail')
       const wv = element(id)
-      if (typeof seq !== 'number' || !Number.isFinite(seq)) {
-        throw new Error('seq 要给清单行里的条目号数字（[c#] / [n#]）')
+      // seq 认清单行里的条目号原样：96 / 'n96' / 'c96' 都行（照抄清单别再被格式绊一跤）
+      const seqNum = typeof seq === 'number' ? seq : Number(String(seq).replace(/^[nc]/i, ''))
+      if (!Number.isFinite(seqNum)) {
+        throw new Error('seq 要给清单行里的条目号（96、"n96" 都行）')
       }
-      const r = await withTimeout(deps.logDetail(wcIdOf(wv), seq, (opts ?? {}) as Record<string, unknown>), '读取日志详情')
+      const r = await withTimeout(deps.logDetail(wcIdOf(wv), seqNum, (opts ?? {}) as Record<string, unknown>), '读取日志详情')
       if ('error' in r) throw new Error(r.error)
       return r.detail
     },
@@ -294,6 +336,36 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
           : await withTimeout(deps.record(wcIdOf(wv), 'stop', (opts ?? {}) as Record<string, unknown>), '结束录制')
       if ('error' in r) throw new Error(r.error)
       return r
+    },
+    async text(tabId, target, opts) {
+      const { tabId: id } = resolveTabStrict(tabId, 'browser.text')
+      const wv = element(id)
+      const o = (opts ?? {}) as { maxChars?: unknown }
+      let t: WebTextTarget
+      if (target && typeof target === 'object' && typeof (target as { ref?: unknown }).ref === 'number') {
+        t = { ref: (target as { ref: number }).ref }
+      } else if (typeof target === 'string' && target.trim()) {
+        t = { selector: target.trim() }
+      } else {
+        throw new Error('目标要给 snapshot 清单里的 { ref } 或 CSS 选择器')
+      }
+      if (typeof o.maxChars === 'number') t.maxChars = o.maxChars
+      await settle(wv)
+      const r = await withTimeout(deps.text(wcIdOf(wv), t), '取文本')
+      if ('error' in r) throw new Error(r.error)
+      return r
+    },
+    async scroll(tabId, req) {
+      const { tabId: id } = resolveTabStrict(tabId, 'browser.scroll')
+      const wv = element(id)
+      const r = (req ?? {}) as WebScrollReq
+      if (typeof r.by !== 'number' && typeof r.to !== 'string' && typeof r.ref !== 'number') {
+        throw new Error('要给 { by: 像素 } 或 { to: "top" | "bottom" | 选择器 } 或 { ref }')
+      }
+      await settle(wv)
+      const out = await withTimeout(deps.scroll(wcIdOf(wv), r), '滚动')
+      if ('error' in out) throw new Error(out.error)
+      return out
     },
   }
 }

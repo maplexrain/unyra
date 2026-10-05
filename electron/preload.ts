@@ -26,7 +26,8 @@ import type {
   StorageInfo, StorageOk, StorageRootResult, UpdateFail, UpdatePhase, UpdateState,
   VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceReadResult, WebDomOpResult,
   WebFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult, WebPageFetchReq,
-  WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult, WebSnapshotResult,
+  WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult, WebScrollReq,
+  WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget,
 } from '../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（渲染层与主进程共用一份，见该文件顶部）：
@@ -541,6 +542,12 @@ const api = {
     /** 日志录制（start 钉水位 / stop 回区间清单）——browser.record */
     record: (wcId: number, action: 'start' | 'stop', opts?: WebLogsOpts): Promise<WebRecordResult> =>
       ipcRenderer.invoke('web:record', wcId, action, opts ?? {}),
+    /** 区域文本（渲染后的 innerText，按 ref/selector 取）——browser.text */
+    text: (wcId: number, target: WebTextTarget): Promise<WebTextResult> =>
+      ipcRenderer.invoke('web:text', wcId, target),
+    /** 滚页面（by/to/ref）——browser.scroll */
+    scroll: (wcId: number, req: WebScrollReq): Promise<WebScrollResult> =>
+      ipcRenderer.invoke('web:scroll', wcId, req),
   },
 
   shell: {

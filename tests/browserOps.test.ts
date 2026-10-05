@@ -31,6 +31,8 @@ function makeDeps(store: LearnStore, webMeta: Record<string, WebTabMeta> = {}) {
   const readHtmls: number[] = []
   const logCalls: Array<[number, unknown]> = []
   const fetchCalls: Array<[number, unknown]> = []
+  const textCalls: Array<[number, unknown]> = []
+  const scrollCalls: Array<[number, unknown]> = []
   const deps: BrowserDeps = {
     getLatest: () => store,
     set: () => {},
@@ -85,8 +87,16 @@ function makeDeps(store: LearnStore, webMeta: Record<string, WebTabMeta> = {}) {
         ? { ok: true as const, action: 'start' as const, since: 0 }
         : { lines: [], shown: 0, totalConsole: 0, totalNetwork: 0, latestSeq: 0, truncated: false, action: 'stop' as const }
     },
+    text: async (wcId, target) => {
+      textCalls.push([wcId, target])
+      return { text: '正文文本', chars: 4 }
+    },
+    scroll: async (wcId, req) => {
+      scrollCalls.push([wcId, req])
+      return { ok: true as const, scrollY: 800, scrollHeight: 4000, viewport: 900, atBottom: false, atTop: false }
+    },
   }
-  return { deps, opened, activated, closed, snapshotted, pointed, domOps, readHtmls, logCalls, fetchCalls }
+  return { deps, opened, activated, closed, snapshotted, pointed, domOps, readHtmls, logCalls, fetchCalls, textCalls, scrollCalls }
 }
 
 /** 假 webview：只有 browserOps 真正用到的方法（定位/读 DOM 都在主进程 CDP） */
@@ -125,14 +135,16 @@ describe('makeBrowserOps：browser.* 的宿主实现（纯逻辑 + 假元素，N
     await expect(ops.open('  ')).rejects.toThrow('要给出网址')
   })
 
-  it('tabs 列出存活的网页页签：真标题优先、缺了用域名兜底，active 标激活', () => {
+  it('tabs 列出存活的网页页签（{tabs} 信封，同组一致）：真标题优先、缺了用域名兜底，active 标激活', () => {
     const store = storeWith([webTab('a', 'https://x.com/a'), webTab('b', 'https://y.com')], 'w:a')
     const { deps } = makeDeps(store, { 'w:a': { ...META, title: 'X 首页' } })
     const ops = makeBrowserOps(deps, 'goal1')
-    expect(ops.tabs()).toEqual([
-      { tabId: 'w:a', url: 'https://x.com/a', title: 'X 首页', active: true, group: 'g1' },
-      { tabId: 'w:b', url: 'https://y.com', title: 'y.com', active: false, group: 'g1' },
-    ])
+    expect(ops.tabs()).toEqual({
+      tabs: [
+        { tabId: 'w:a', url: 'https://x.com/a', title: 'X 首页', active: true, group: 'g1' },
+        { tabId: 'w:b', url: 'https://y.com', title: 'y.com', active: false, group: 'g1' },
+      ],
+    })
   })
 
   it('snapshot 把主进程的元素清单原样带回；主进程报错变成可读的失败', async () => {
@@ -148,6 +160,38 @@ describe('makeBrowserOps：browser.* 的宿主实现（纯逻辑 + 假元素，N
     broken.deps.snapshot = async () => ({ error: '调试通道被占用' })
     await withWv('w:a', el, async () => {
       await expect(makeBrowserOps(broken.deps, 'goal1').snapshot('w:a')).rejects.toThrow('调试通道被占用')
+    })
+  })
+
+  it('snapshot 的过滤参数在宿主侧后处理：role/contains/limit，ref 台账不受影响', async () => {
+    const { deps } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
+    const ops = makeBrowserOps(deps, 'goal1')
+    deps.snapshot = async () => ({
+      elements: [
+        { ref: 1, role: 'link', name: '@Gustavo' },
+        { ref: 2, role: 'button', name: '0 回复。回复' },
+        { ref: 3, role: 'link', name: 'AI 搜索页' },
+        { ref: 4, role: 'textbox', name: '搜索', value: 'AI' },
+      ],
+    })
+    const { el } = fakeWv()
+    await withWv('w:a', el, async () => {
+      expect(await ops.snapshot('w:a', { role: 'link' })).toEqual({
+        elements: [
+          { ref: 1, role: 'link', name: '@Gustavo' },
+          { ref: 3, role: 'link', name: 'AI 搜索页' },
+        ],
+      })
+      expect(await ops.snapshot('w:a', { contains: 'AI' })).toEqual({
+        // 名称与输入值都参与匹配（带已输入文字的搜索框也能找回来）
+        elements: [
+          { ref: 3, role: 'link', name: 'AI 搜索页' },
+          { ref: 4, role: 'textbox', name: '搜索', value: 'AI' },
+        ],
+      })
+      const cut = await ops.snapshot('w:a', { limit: 2 })
+      expect(cut.elements).toHaveLength(2)
+      expect(cut.truncated).toBe(true)
     })
   })
 
@@ -253,7 +297,7 @@ describe('makeBrowserOps：browser.* 的宿主实现（纯逻辑 + 假元素，N
       // tabId 缺失：新组不吃「焦点格正看着的」这种隐式状态
       await expect(ops.logs('')).rejects.toThrow('必须显式给 tabId')
       await expect(ops.fetch(undefined as unknown as string, 'https://x.com/api')).rejects.toThrow('必须显式给 tabId')
-      await expect(ops.logDetail('w:a', Number.NaN)).rejects.toThrow('条目号数字')
+      await expect(ops.logDetail('w:a', Number.NaN)).rejects.toThrow('条目号')
       await expect(ops.record('w:a', 'pause' as never)).rejects.toThrow('start')
     })
   })
@@ -276,6 +320,43 @@ describe('makeBrowserOps：browser.* 的宿主实现（纯逻辑 + 假元素，N
       await withWv('w:a', el, async () => {
         await expect(makeBrowserOps(broken.deps, 'goal1').fetch('w:a', 'https://x.com/api')).rejects.toThrow('CSP')
       })
+    })
+  })
+
+  it('logDetail 的条目号照抄清单行也认：96 / "n96" / "c96"', async () => {
+    const { deps, logCalls } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
+    const el = fakeWv().el
+    const ops = makeBrowserOps(deps, 'goal1')
+    await withWv('w:a', el, async () => {
+      await ops.logDetail('w:a', 96)
+      await ops.logDetail('w:a', 'n96')
+      await ops.logDetail('w:a', 'c12')
+      expect(logCalls.map((c) => c[1])).toEqual([96, 96, 12])
+      await expect(ops.logDetail('w:a', 'nonsense')).rejects.toThrow('条目号')
+    })
+  })
+
+  it('text：ref/选择器双寻址透传；scroll：by/to/ref 校验后透传；都要 tabId', async () => {
+    const { deps, textCalls, scrollCalls } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
+    const el = fakeWv().el
+    const ops = makeBrowserOps(deps, 'goal1')
+    await withWv('w:a', el, async () => {
+      await ops.text('w:a', { ref: 3 }, { maxChars: 2000 })
+      await ops.text('w:a', 'main article')
+      expect(textCalls).toEqual([
+        [424242, { ref: 3, maxChars: 2000 }],
+        [424242, { selector: 'main article' }],
+      ])
+      await ops.scroll('w:a', { by: 1500 })
+      await ops.scroll('w:a', { to: 'bottom' })
+      await ops.scroll('w:a', { ref: 5 })
+      expect(scrollCalls).toEqual([
+        [424242, { by: 1500 }],
+        [424242, { to: 'bottom' }],
+        [424242, { ref: 5 }],
+      ])
+      await expect(ops.scroll('w:a', {})).rejects.toThrow('{ by')
+      await expect(ops.text('w:a', { nope: 1 } as never)).rejects.toThrow('{ ref }')
     })
   })
 })
