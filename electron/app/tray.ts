@@ -38,6 +38,8 @@ export function createTray(): void {
   // 单击与双击都还原窗口：Windows 上两种习惯都有
   tray.on('click', () => showMainWindow())
   tray.on('double-click', () => showMainWindow())
+  // 点气泡通知同样把窗口叫回来——通知的意义就是「回来」（见 showTrayBalloon）
+  tray.on('balloon-click', () => showMainWindow())
 }
 
 /**
@@ -62,6 +64,26 @@ export function rebuildTrayMenu(): void {
  */
 export function currentTray(): Tray | null {
   return tray
+}
+
+/**
+ * 托盘气泡通知。守卫 agent 的分心警告与隐私熔断走它，而不是 `new Notification()`：
+ * WinRT 的 toast 通知要求 AppUserModelID 在系统里注册过（打包安装后才有），
+ * dev 未打包的实例上 AUMID 是个没注册的空号，toast 会被 Windows **静默丢弃**——
+ * 「点了严格专注却一条通知都不来」就是这个。气泡（Win10+ 同样渲染成 toast）
+ * 不依赖 AUMID 注册，dev 与打包都亮；「收进托盘」的提示用的也是这条路。
+ *
+ * 回是否真的发了：托盘不在或非 Windows 回 false，调用方退回 Notification。
+ */
+export function showTrayBalloon(title: string, body: string): boolean {
+  if (!tray || process.platform !== 'win32') return false
+  try {
+    tray.displayBalloon({ title, content: body })
+    return true
+  } catch {
+    // 系统关掉了气泡通知（专注助手/通知设置）：不是错误，让调用方走兜底
+    return false
+  }
 }
 
 let trayHintShown = false

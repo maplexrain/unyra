@@ -20,7 +20,7 @@ import { registerExamIpc } from './examWindow'
 import { applyAppIcon } from './applyIcon'
 import { rebuildAppMenu, logoSvgPath, appIcon } from './icon'
 import { showMainWindow } from './windows'
-import { rebuildTrayMenu, hideToTray, quitApp } from './tray'
+import { rebuildTrayMenu, hideToTray, quitApp, showTrayBalloon } from './tray'
 import { pdfFooter, pdfPageSize, saveFilters } from './exportPdf'
 import type { ExportPdfPayload } from './exportPdf'
 
@@ -94,15 +94,21 @@ export function registerIpc(): void {
   })
 
   /**
-   * 一条系统级通知（Windows 的 toast）。守卫 agent 的分心警告与隐私熔断用它：
-   * 用户分心时多半正在别的应用里（守卫也正是因此才拍得到分心的画面），
-   * 应用内的弹窗那时候是看不见的。点通知把主窗口叫到前台。
+   * 一条系统级通知。守卫 agent 的分心警告与隐私熔断用它：用户分心时多半正在
+   * 别的应用里（守卫也正是因此才拍得到分心的画面），应用内的弹窗那时候看不见。
+   *
+   * Windows 走托盘气泡（showTrayBalloon）：WinRT toast 要 AUMID 注册过才亮，
+   * dev 未打包的实例上会被系统静默丢弃；气泡 dev 与打包都亮，点它同样把主窗口
+   * 叫到前台。其他平台走 Notification，点了 showMainWindow。
    */
   ipcMain.handle('notify', (_e, payload: unknown) => {
     const p = (payload ?? {}) as { title?: unknown; body?: unknown }
     if (typeof p.title !== 'string' || !p.title.trim()) return { ok: false, error: t('通知标题缺失') }
+    const title = p.title
+    const body = typeof p.body === 'string' ? p.body : ''
+    if (showTrayBalloon(title, body)) return { ok: true }
     if (!Notification.isSupported()) return { ok: false, error: t('此系统不支持通知') }
-    const n = new Notification({ title: p.title, body: typeof p.body === 'string' ? p.body : '', icon: appIcon() })
+    const n = new Notification({ title, body, icon: appIcon() })
     n.on('click', () => showMainWindow())
     n.show()
     return { ok: true }
