@@ -62,6 +62,9 @@ export function tabKey(ref: TabRef): string {
   if (ref.kind === 'outline') return 'o:' + ref.nodeId
   // 网页按**开签那一刻生成的 key**（而不是网址）认身份：同一个网址可以开两枚，起始页也不冲突
   if (ref.kind === 'web') return 'w:' + ref.key
+  // 守卫上下文全局只有一份（当前那次严格专注的会话）；报告按报告 id 一份一签
+  if (ref.kind === 'guard') return 'g:guard'
+  if (ref.kind === 'report') return 'r:' + ref.reportId
   return 'l:' + ref.path
 }
 
@@ -69,9 +72,11 @@ export function makeTab(ref: TabRef, at: number, view?: DocView): LearnTab {
   return { id: tabKey(ref), ref, ...(view ? { view } : {}), createdAt: at }
 }
 
-/** 页签挂在哪个节点上；本地文件与网页页签不属于任何节点 */
+/** 页签挂在哪个节点上；本地文件、网页、守卫与报告都不属于任何节点 */
 export function tabNodeId(ref: TabRef): string | null {
-  return ref.kind === 'local' || ref.kind === 'web' ? null : ref.nodeId
+  return ref.kind === 'local' || ref.kind === 'web' || ref.kind === 'guard' || ref.kind === 'report'
+    ? null
+    : ref.nodeId
 }
 
 /**
@@ -119,6 +124,9 @@ export function tabTitle(
       return ref.url
     }
   }
+  // 守卫上下文只有当前会话这一份，标题不随内容变；报告的时段画在正文里，页签上一律叫「专注报告」
+  if (ref.kind === 'guard') return t('守卫 Agent')
+  if (ref.kind === 'report') return t('专注报告')
   return fileNameOf(ref.path)
 }
 
@@ -132,6 +140,8 @@ export function tabTitle(
 export function tabTrail(ref: TabRef, nodePath: (nodeId: string) => string): string {
   if (ref.kind === 'exam') return ''
   if (ref.kind === 'web') return ''
+  // 守卫与报告不挂在节点上，也没有「住在哪儿」可言
+  if (ref.kind === 'guard' || ref.kind === 'report') return ''
   if (ref.kind === 'local') {
     const i = Math.max(ref.path.lastIndexOf('/'), ref.path.lastIndexOf('\\'))
     return i > 0 ? ref.path.slice(0, i) : ''

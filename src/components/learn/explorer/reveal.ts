@@ -30,7 +30,7 @@ export interface RevealRequest {
   /** 要展开的收藏分组（null = 顶层收藏，或不适用） */
   favGroup: string | null
   /** 目标行所在的分区（收着的先打开；null = 不属于哪个分区） */
-  section: 'nodes' | 'favorites' | 'local' | null
+  section: 'nodes' | 'favorites' | 'local' | 'reports' | null
   /** 广播的轮次：行用它认「这条广播是不是新来的」 */
   nonce: number
 }
@@ -190,6 +190,19 @@ export function revealOfTab(
       }
       return null
     }
+    case 'guard':
+      // 守卫上下文不在侧栏的任何一行里，没有可定位的东西
+      return null
+    case 'report':
+      // 专注报告住在资源管理器自己的分类夹里；守卫页签不在侧栏，落不进来（不定位）
+      return {
+        keys: [`row:focus:${tab.reportId}`],
+        nodes: [],
+        docs: [],
+        exams: [],
+        favGroup: null,
+        section: 'reports',
+      }
   }
 }
 

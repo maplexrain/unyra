@@ -7,10 +7,11 @@
  * 这里只负责把数据算成那三个纯展示按钮要的形状。
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { Eye, ShieldCheck } from 'lucide-react'
 import type { LearnStore } from '../../../learn/types'
 import { nodeById } from '../../../learn/graph'
-import PomodoroButton from '../PomodoroButton'
+import PomodoroButton, { type FocusMonitors } from '../PomodoroButton'
 import CheckinButton, { type CheckinGoalTab } from '../CheckinButton'
 import ReviewButton, { type ReviewGoalTab, type ReviewTaskRow, type ReviewUpcomingRow } from '../ReviewButton'
 import ReadingButton, {
@@ -45,6 +46,27 @@ import {
 import { useClock } from '../../../lib/clock'
 import { useReadingDay, useReadingPulse } from '../../../lib/readingPulse'
 import { t } from '../../../i18n'
+import { supportsImage } from '../../../ai/settings'
+import {
+  ensureStream,
+  getStream,
+  guardSnapshot,
+  stopStream,
+  subscribeGuard,
+  subscribeGuardStreams,
+} from '../../../agent/guardRuntime'
+
+/** 严格专注勾选的持久化：下次打开 tip 还记得上次勾了什么（与「下一段多长」同一种待遇） */
+const MONITORS_KEY = 'moji-focus-monitors'
+
+function loadMonitors(): FocusMonitors {
+  try {
+    const raw = JSON.parse(localStorage.getItem(MONITORS_KEY) ?? '{}') as Partial<FocusMonitors>
+    return { screen: raw.screen === true, camera: raw.camera === true }
+  } catch {
+    return { screen: false, camera: false }
+  }
+}
 
 /**
  * 番茄钟入口。
@@ -52,33 +74,95 @@ import { t } from '../../../i18n'
  * 时钟与倒计时**只在这一小块里**每秒重渲染：放到学习区那一层，等于每秒把正文与
  * 对话栏一起重画一遍。数据仍然来自 store（它是唯一真相），这里只负责算「还剩多久」。
  *
- * 两个设置（一段多长、做几组）是**这个组件自己的 state**：它们是「下一次开始」的参数，
- * 不是学习数据，没有理由进 store；跑起来之后以会话里的那一份为准（面板上会锁住不让改），
- * 所以这里不必把用户临时拖过的值同步回去。
+ * 三个设置（一段多长、做几组、勾哪几路监控）是**这个组件自己的 state**：它们是
+ * 「下一次开始」的参数，不是学习数据，没有理由进 store；跑起来之后以会话里的那一份
+ * 为准（面板上会锁住不让改）。勾选监控会当场起媒体流——实时画面就出现在 tip 里，
+ * 用户对着它把摄像头角度调好、确认没拍到不该拍的东西，再点开始。
  *
- * 到点收尾调一次 onTick：记账落在 store 上、提醒走全局 toast——两者都不该由这个展示块自己决定。
+ * 到点收尾调一次 onTick：记账落在 store 上、提醒走全局 toast——两者都不该由这个
+ * 展示块自己决定。守卫的判定与动作（暂停/警告/熔断）同样不在这里：Dock 只显示状态。
  */
 export function PomodoroDock({
   store,
   onStart,
   onStop,
   onTick,
+  onOpenGuard,
 }: {
   store: LearnStore
-  onStart: (focusMinutes: number, groups: number) => void
+  onStart: (focusMinutes: number, groups: number, monitors: FocusMonitors) => void
   onStop: () => void
   onTick: () => void
+  onOpenGuard: () => void
 }) {
   // 秒针走 useClock：只有这一小块订阅它，正文与对话栏不会被每秒带着重渲
   const now = useClock(1000)
   const status = pomodoroStatus(store, now)
   const [focusMinutes, setFocusMinutes] = useState(DEFAULT_FOCUS_MINUTES)
   const [groups, setGroups] = useState(DEFAULT_GROUPS)
+  const [monitors, setMonitors] = useState<FocusMonitors>(loadMonitors)
   // 已经过了点、但还没收尾：收尾一次（onTick 会把这一段翻过去，所以只会走一次）
   const over = status.over
   useEffect(() => {
     if (over) onTick()
   }, [over, onTick])
+
+  /** 勾/去一路监控：当场起停媒体流（预览跟着亮/熄），起不来就退回未勾。
+      先算好下一份再 set：updater 要保持纯净（起停流与落 localStorage 都是副作用） */
+  const toggleMonitor = (kind: 'screen' | 'camera') => {
+    const next = { ...monitors, [kind]: !monitors[kind] }
+    setMonitors(next)
+    try {
+      localStorage.setItem(MONITORS_KEY, JSON.stringify(next))
+    } catch {
+      // 存不进去就只活在本场会话里，不碍事
+    }
+    if (next[kind]) {
+      void ensureStream(kind).then((stream) => {
+        if (!stream) setMonitors((cur) => (cur[kind] ? { ...cur, [kind]: false } : cur))
+      })
+    } else {
+      stopStream(kind)
+    }
+  }
+
+  // 守卫的会话与媒体流都是模块级单例（agent/guardRuntime）：这里只订阅它的快照
+  const guard = useSyncExternalStore(subscribeGuard, guardSnapshot)
+  const guardOn = guard.session?.state === 'running' || guard.session?.state === 'paused'
+  // 勾了监控但当前模型看不了图：严格专注发不了画面，提前说清，别等点了开始才扑空
+  const strictHint = useMemo(
+    () =>
+      monitors.screen || monitors.camera
+        ? supportsImage()
+          ? null
+          : t('当前的模型不支持看图——严格专注需要能看图的模型，换一个或关闭勾选。')
+        : null,
+    [monitors.screen, monitors.camera],
+  )
+  const previews =
+    monitors.screen || monitors.camera ? (
+      <div className="mt-2 grid grid-cols-2 gap-1.5">
+        {monitors.screen && <GuardPreviewTile kind="screen" />}
+        {monitors.camera && <GuardPreviewTile kind="camera" />}
+      </div>
+    ) : null
+  const guardStatus = guardOn ? (
+    <div className="mt-2 flex items-center gap-2 rounded-md border border-seal/30 bg-seal/5 px-2.5 py-1.5">
+      <ShieldCheck size={13} className="shrink-0 text-seal" />
+      <span className="min-w-0 flex-1 truncate text-[11px] text-ink">
+        {guard.session!.state === 'paused'
+          ? t('守卫暂停中——等你回来')
+          : t('守卫当值 · 已看 {0} 眼', guard.session!.rounds.length)}
+      </span>
+      <button
+        type="button"
+        onClick={onOpenGuard}
+        className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-seal-deep transition hover:bg-seal/10"
+      >
+        <Eye size={11} /> {t('查看守卫')}
+      </button>
+    </div>
+  ) : null
 
   const cur = status.session
   return (
@@ -90,9 +174,49 @@ export function PomodoroDock({
       groups={groups}
       onFocusMinutes={setFocusMinutes}
       onGroups={setGroups}
-      onStart={() => onStart(focusMinutes, groups)}
+      onStart={() => onStart(focusMinutes, groups, monitors)}
       onStop={onStop}
+      monitors={monitors}
+      onMonitorToggle={toggleMonitor}
+      previews={previews}
+      guardStatus={guardStatus}
+      paused={status.paused}
+      strictHint={strictHint}
     />
+  )
+}
+
+/**
+ * 严格专注 tip 里的一块实时画面（屏幕或摄像头）。
+ *
+ * 媒体流在守卫运行时手里（它才是抽帧的来源）；这里只挂一个观众 <video>——
+ * tile 卸了（tip 收起）流还在，守卫照常工作。没有流时给一块暗底占位：
+ * 权限没批、设备被占、或者会话已经收掉（媒体流随会话结束全部停掉）。
+ */
+export function GuardPreviewTile({ kind }: { kind: 'screen' | 'camera' }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [version, setVersion] = useState(0)
+  // 流的来去由 toggle / 会话收尾触发：订阅它，来了就挂上、断了就熄灭
+  useEffect(() => subscribeGuardStreams(() => setVersion((n) => n + 1)), [])
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const stream = getStream(kind)
+    if (video.srcObject !== stream) video.srcObject = stream
+    if (stream) void video.play().catch(() => {})
+  }, [version, kind])
+  return (
+    <div className="relative aspect-video overflow-hidden rounded-md border border-line bg-black/80">
+      <video ref={videoRef} muted playsInline className="h-full w-full object-contain" />
+      <span className="absolute bottom-1 left-1.5 rounded bg-black/55 px-1 py-px text-[9.5px] text-white/90">
+        {kind === 'screen' ? t('屏幕') : t('摄像头')}
+      </span>
+      {!getStream(kind) && (
+        <span className="absolute inset-0 flex items-center justify-center text-[10px] text-white/50">
+          {t('等待画面…')}
+        </span>
+      )}
+    </div>
   )
 }
 

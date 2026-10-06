@@ -20,12 +20,21 @@ import { attachCloseGuard } from './tray'
  * display-media 通道：渲染层 getDisplayMedia 要「屏幕 + 声音」时，画面给主显示器、
  * 声音给「系统回环」（Windows 的 WASAPI loopback）——渲染层到手就停掉视频轨，
  * 实际只消费声音。不弹系统选择器：这条请求只服务于波形，固定给主屏即可。
+ *
+ * 严格专注的屏幕监控（守卫 agent，见 agent/guardRuntime）走的是同一条通道：
+ * 它只要画面（audioRequested 为 false），就不硬塞回环音轨——多余一路音频会话
+ * 纯属浪费，还可能让系统的「正在共享」提示多挂一份。
  */
 function attachLoopbackAudio(): void {
-  session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     void desktopCapturer
       .getSources({ types: ['screen'] })
-      .then((sources) => callback({ video: sources[0], audio: 'loopback' }))
+      .then((sources) =>
+        callback({
+          video: sources[0],
+          ...(request.audioRequested ? { audio: 'loopback' as const } : {}),
+        }),
+      )
   })
 }
 

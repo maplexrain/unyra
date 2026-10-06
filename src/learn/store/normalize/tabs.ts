@@ -45,6 +45,12 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
     if (url && !/^https?:\/\//i.test(url)) return null
     return { kind: 'web', url, key: typeof r.key === 'string' && r.key ? r.key : newWebKey() }
   }
+  // 专注报告：id 就是全部身份（文件丢了由视图自己说「报告不见了」）。
+  // 守卫页签**故意没有分支**：上下文只活在会话里，重启读回来就丢（下一次严格专注再建）
+  if (r.kind === 'report') {
+    const reportId = typeof r.reportId === 'string' ? r.reportId : ''
+    return reportId ? { kind: 'report', reportId } : null
+  }
   const nodeId = typeof r.nodeId === 'string' ? r.nodeId : ''
   const node = byId.get(nodeId)
   if (!node) return null

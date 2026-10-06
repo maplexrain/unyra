@@ -1,4 +1,4 @@
-import { AppWindow, BookOpen, Folder, FolderOpen, Globe, GraduationCap, HardDrive, ListTree, Loader2, NotebookPen } from 'lucide-react'
+import { AppWindow, BookOpen, FileClock, Folder, FolderOpen, Globe, GraduationCap, HardDrive, ListTree, Loader2, NotebookPen, ShieldCheck } from 'lucide-react'
 
 /**
  * 文档类型的**视觉身份**：一种类型一个图标、一个颜色。
@@ -9,7 +9,7 @@ import { AppWindow, BookOpen, Folder, FolderOpen, Globe, GraduationCap, HardDriv
  * 颜色**不跟主题变量走**：类型身份要恒定，切到深色或粉色主题，蓝的还是蓝的、紫的还是紫的，
  * 靠颜色认类型才认得稳。这几个色都取中等亮度，浅色纸面与深色纸面上都看得清。
  */
-export type DocKindKey = 'teach' | 'note' | 'super' | 'exam' | 'outline' | 'local' | 'web'
+export type DocKindKey = 'teach' | 'note' | 'super' | 'exam' | 'outline' | 'local' | 'web' | 'guard' | 'report'
 
 const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   teach: '#4a8fd4', // 蓝：教学文档
@@ -19,6 +19,8 @@ const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   outline: '#2e8b6e', // 松绿：大纲页（结构化的路线图）
   local: '#98928a', // 中性灰：外部文件
   web: '#2aa1b8', // 青：网页（内置浏览器）
+  guard: '#d4577b', // 绯粉：守卫 agent 的上下文（警戒色——它在盯梢）
+  report: '#7a6a54', // 褐灰：专注模式报告（收场的凭据）
 }
 
 /**
@@ -39,6 +41,10 @@ export function DocTypeIcon({ kind, size = 11 }: { kind: DocKindKey; size?: numb
       <ListTree size={size} />
     ) : kind === 'web' ? (
       <Globe size={size} />
+    ) : kind === 'guard' ? (
+      <ShieldCheck size={size} />
+    ) : kind === 'report' ? (
+      <FileClock size={size} />
     ) : (
       <HardDrive size={size} />
     )

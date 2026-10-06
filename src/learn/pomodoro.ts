@@ -8,9 +8,11 @@
  *
  * 四条定死的规则，改这个文件之前先读一遍：
  *
- * 1. **只能停，不能暂停**。停下来这一段就作废（不记账）；要接着跑只能重新开始，
- *    而重新开始会**重新算**（新的一段、从第一组起）。于是这里没有 paused 这种状态，
- *    也没有「恢复」这条路径。
+ * 1. **用户手里只有「停」**。点停止这一段就作废（不记账）；要接着跑只能重新开始，
+ *    而重新开始会**重新算**（新的一段、从第一组起）。暂停不是用户按出来的——
+ *    它只属于严格专注的守卫（见 learn/focusGuard）：判定人不在屏幕前就自动暂停
+ *    计时与监控，回来一交互自动续上。pausedAt 因此只有一个写入口（pausePomodoro），
+ *    界面上没有「暂停」按钮。
  * 2. **只有完整的专注段才记账**，休息段不算，半途停掉的不算。一组 = 一段专注。
  * 3. **切屏照走**：它记的是「你按下了一个计时器」，不是「你真的在学」——后者是有效阅读
  *    （见 learn/reading）的事。所以这里没有可见性判断、没有静默超时，时间照走。
@@ -69,6 +71,11 @@ export interface PomodoroSession {
   phase: PomodoroPhase
   /** 当前这一段的起点（进休息、进下一组时改写） */
   phaseStartedAt: number
+  /**
+   * 守卫判离开而暂停的那一刻（null = 在跑）。暂停期间剩余时间**冻结在这一刻**，
+   * 恢复时把 phaseStartedAt 往后挪暂停的时长——计时不知道自己停过。
+   */
+  pausedAt?: number | null
 }
 
 /**
@@ -111,10 +118,11 @@ export function phaseEndsAt(session: PomodoroSession): number {
   return session.phaseStartedAt + phaseMsOf(session)
 }
 
-/** 剩余毫秒（没在跑就是 null）；已经到点返回 0，由调用方决定收尾 */
+/** 剩余毫秒（没在跑就是 null）；已经到点返回 0，由调用方决定收尾。暂停期间冻结在暂停那一刻 */
 export function remainingMsOf(session: PomodoroSession | null, now = Date.now()): number | null {
   if (!session) return null
-  return Math.max(0, phaseEndsAt(session) - now)
+  const frozenAt = session.pausedAt ?? now
+  return Math.max(0, phaseEndsAt(session) - frozenAt)
 }
 
 export function phaseLabel(phase: PomodoroPhase): string {
@@ -162,6 +170,30 @@ export function stopPomodoro(store: PomodoroStore): PomodoroStore {
   return { ...store, current: null }
 }
 
+/**
+ * 暂停：守卫判「人不在」时由运行时调（见文件头规则 1——用户界面上没有这个按钮）。
+ * 没在跑、或已经在暂停里，原样返回同一个 store（调用方据此不写盘）。
+ */
+export function pausePomodoro(store: PomodoroStore, now = Date.now()): PomodoroStore {
+  const current = store.current
+  if (!current || current.pausedAt) return store
+  return { ...store, current: { ...current, pausedAt: now } }
+}
+
+/**
+ * 恢复：把这一段的起点往后挪暂停的时长，然后当什么都没发生过。
+ * 没在暂停里就是空操作（同一个 store 原样返回）。
+ */
+export function resumePomodoro(store: PomodoroStore, now = Date.now()): PomodoroStore {
+  const current = store.current
+  if (!current?.pausedAt) return store
+  const pausedFor = Math.max(0, now - current.pausedAt)
+  return {
+    ...store,
+    current: { ...current, phaseStartedAt: current.phaseStartedAt + pausedFor, pausedAt: null },
+  }
+}
+
 export interface PomodoroTick {
   store: PomodoroStore
   /** 这一次收尾记下的专注段（新 → 旧，与 log 同序） */
@@ -185,6 +217,8 @@ export interface PomodoroTick {
  */
 export function tickPomodoro(store: PomodoroStore, now = Date.now(), graceMs = LATE_GRACE_MS): PomodoroTick {
   let current = store.current
+  // 暂停中的会话不推进：倒计时冻结在 pausedAt，恢复时起点整体后挪（见 resumePomodoro）
+  if (current?.pausedAt) return { store, records: [], finished: false, dropped: false }
   const done: PomodoroRecord[] = []
   let finished = false
   let dropped = false
@@ -237,6 +271,8 @@ export interface PomodoroStatus {
   phaseMs: number | null
   /** 已经到点、还没收尾 */
   over: boolean
+  /** 守卫判离开而暂停中（计时冻结，恢复等交互） */
+  paused: boolean
   /** 今天完成了几组专注、共多少分钟 */
   todayRounds: number
   todayMinutes: number
@@ -252,7 +288,8 @@ export function pomodoroStatus(store: { pomodoro?: PomodoroStore }, now = Date.n
     session,
     remainingMs,
     phaseMs: session ? phaseMsOf(session) : null,
-    over: remainingMs !== null && remainingMs <= 0,
+    over: remainingMs !== null && remainingMs <= 0 && !session?.pausedAt,
+    paused: !!session?.pausedAt,
     todayRounds: today.length,
     todayMinutes: today.reduce((n, r) => n + r.minutes, 0),
   }
@@ -328,6 +365,8 @@ function normalizeSession(raw: unknown): PomodoroSession | null {
     index: Math.min(groups, Math.max(1, Math.round(num(r.index)) || 1)),
     phase,
     phaseStartedAt,
+    // 暂停时刻也留着：关掉应用时正被守卫暂停着，回来依旧冻结（没人给它恢复，见 LearnWorkspace）
+    ...(typeof r.pausedAt === 'number' && r.pausedAt > 0 ? { pausedAt: r.pausedAt } : {}),
   }
 }
 
