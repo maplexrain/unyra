@@ -103,8 +103,15 @@ function translateUsage(raw: Record<string, unknown>): ChatUsage {
   return {
     input: num(raw.prompt_tokens) || num(raw.input_tokens),
     output: num(raw.completion_tokens) || num(raw.output_tokens),
-    cacheRead: num(details.cached_tokens) || num(raw.prompt_cache_hit_tokens),
-    cacheWrite: num(details.cache_creation_tokens),
+    // 命中缓存的字段各家写法不同，这里一次收齐：
+    // - OpenAI / 多数中转：prompt_tokens_details.cached_tokens
+    // - DeepSeek：prompt_cache_hit_tokens
+    // - Anthropic 线格式的字段出现在 OpenAI 兼容端点上（个别网关混着报）：cache_read_input_tokens
+    cacheRead:
+      num(details.cached_tokens) ||
+      num(raw.prompt_cache_hit_tokens) ||
+      num(raw.cache_read_input_tokens),
+    cacheWrite: num(details.cache_creation_tokens) || num(raw.cache_creation_input_tokens),
   }
 }
 
