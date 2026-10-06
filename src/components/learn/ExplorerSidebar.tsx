@@ -15,7 +15,7 @@ import Logo from '../Logo'
 import { NewGoalIcon, OpenLocalIcon } from '../icons'
 import { NodeRow } from './explorer/NodeRow'
 import { RowMenu } from './explorer/RowMenu'
-import { FavoriteSection, LocalRow, RecentSection } from './explorer/sections'
+import { FavoriteSection, FocusReportsSection, LocalRow, RecentSection } from './explorer/sections'
 import { Section, SectionAction } from './explorer/Folder'
 import { publishReveal, revealOfTab, revealRow, revealSigOf, subscribeReveal } from './explorer/reveal'
 import SystemAudioWave from './SystemAudioWave'
@@ -77,6 +77,8 @@ interface Props {
   ws: WsActions
   /** 打开一个本地文件（列表项点击、或从对话框挑回来） */
   onOpenLocal: (path: string) => void
+  /** 打开一份专注模式报告（只读页签，见 FocusReportView） */
+  onOpenReport: (reportId: string) => void
   /** 从列表里移除（不动磁盘上的文件） */
   onRemoveLocal: (path: string) => void
   /** 在系统文件管理器里定位这个本地文件 */
@@ -120,6 +122,7 @@ export default function ExplorerSidebar({
   onOpenWs,
   ws,
   onOpenLocal,
+  onOpenReport,
   onRemoveLocal,
   onRevealLocal,
   onPickLocal,
@@ -317,6 +320,9 @@ export default function ExplorerSidebar({
               </div>
             </Section>
           )}
+
+          {/* 专注报告：一次专注的收场凭据（普通专注也有——只是账目没有守卫轮次） */}
+          <FocusReportsSection open={sectionOpen('reports')} onToggle={() => toggleSection('reports')} onOpen={onOpenReport} />
 
           {/* 最近打开排在最后：「我有什么」在前、「我刚才在看什么」在后 */}
           <RecentSection

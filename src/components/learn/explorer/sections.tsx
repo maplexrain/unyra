@@ -4,8 +4,8 @@
  * 右键菜单）。可折叠分类夹的零件（Section / FolderRow / Collapse / Indent）在 explorer/Folder，
  * 页签定位的广播在 explorer/reveal——这里只管一行行画什么、点了做什么。
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ExternalLink, Folder, FolderInput, FolderMinus, FolderPlus, Pencil, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ExternalLink, FileClock, Folder, FolderInput, FolderMinus, FolderPlus, Pencil, X } from 'lucide-react'
 import type { FavoriteItem, FavoriteRef, LearnStore, LocalFile } from '../../../learn/types'
 import { chipPayloadOfFavorite, favoriteKey } from '../../../learn/favorites'
 import { useClampToViewport, useDismissOn } from '../../../lib/useDismiss'
@@ -17,6 +17,7 @@ import StatusBranch from '../StatusBranch'
 import { DocTypeIcon, WebTabTypeIcon } from '../docTypes'
 import { chipJson } from '../../../lib/chipSyntax'
 import { t } from '../../../i18n'
+import { listFocusReports, REPORTS_CHANGED, type FocusReportMeta } from '../../../learn/focusReports'
 import { Collapse, FolderRow, Indent, Section, SectionAction } from './Folder'
 import { subscribeReveal } from './reveal'
 
@@ -728,6 +729,76 @@ export function LocalRow({
     >
       <DocTypeIcon kind="local" size={13} />
       <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{file.name}</span>
+    </div>
+  )
+}
+
+/**
+ * 专注报告：一次次严格/普通专注收场后的凭据清单（见 learn/focusReports）。
+ *
+ * 报告不进 store——它们是「历史凭证」，一份一个 JSON 文件住在用户目录的 focus/ 里。
+ * 列表在挂载与写完新报告的广播（REPORTS_CHANGED）时现读；坏掉的文件安静地缺席。
+ * 点一行在文档区开成只读页签，页签定位也认这里的行（reveal 的 row:focus:*）。
+ */
+export function FocusReportsSection({
+  open,
+  onToggle,
+  onOpen,
+}: {
+  open: boolean
+  onToggle: () => void
+  onOpen: (reportId: string) => void
+}) {
+  const [reports, setReports] = useState<FocusReportMeta[] | null>(null)
+  const refresh = useCallback(() => {
+    void listFocusReports().then(setReports)
+  }, [])
+  useEffect(() => {
+    refresh()
+    window.addEventListener(REPORTS_CHANGED, refresh)
+    return () => window.removeEventListener(REPORTS_CHANGED, refresh)
+  }, [refresh])
+  if (!reports?.length) return null
+  return (
+    <Section title={t('专注报告')} count={reports.length} open={open} onToggle={onToggle}>
+      <div className="px-2">
+        {reports.map((meta) => (
+          <FocusReportRow key={meta.id} meta={meta} onOpen={() => onOpen(meta.id)} />
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+/** 报告的收场方式：行首的小圆点用颜色把「跑完了/停了/熔断了」说清 */
+const OUTCOME_DOT: Record<FocusReportMeta['outcome'], string> = {
+  completed: 'bg-ok',
+  stopped: 'bg-ink-faint',
+  fused: 'bg-seal-deep',
+}
+
+function FocusReportRow({ meta, onOpen }: { meta: FocusReportMeta; onOpen: () => void }) {
+  const start = new Date(meta.startedAt)
+  const p = (n: number): string => String(n).padStart(2, '0')
+  const minutes = Math.max(1, Math.round((meta.endedAt - meta.startedAt) / 60_000))
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onOpen()
+      }}
+      title={t('{0} 开始的一场专注（{1} 分钟）', `${start.getMonth() + 1} 月 ${start.getDate()} 日 ${p(start.getHours())}:${p(start.getMinutes())}`, minutes)}
+      data-reveal={'row:focus:' + meta.id}
+      className="flex cursor-pointer items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-1.5 transition hover:bg-line/40"
+    >
+      <FileClock size={13} className="shrink-0 text-ink-faint" />
+      <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">
+        {t('{0}-{1} {2}:{3}', p(start.getMonth() + 1), p(start.getDate()), p(start.getHours()), p(start.getMinutes()))}
+      </span>
+      <span className={'h-1.5 w-1.5 shrink-0 rounded-full ' + OUTCOME_DOT[meta.outcome]} />
+      <span className="shrink-0 text-[10.5px] tabular-nums text-ink-faint">{t('{0} 分', minutes)}</span>
     </div>
   )
 }

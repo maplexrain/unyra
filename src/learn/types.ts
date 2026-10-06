@@ -498,6 +498,14 @@ export type TabRef =
    * 同一个网址可以开两枚页签，空地址（起始页，url === ''）也可以同时开好几枚。
    */
   | { kind: 'web'; url: string; key: string }
+  /**
+   * 守卫 agent 的上下文页签（严格专注的监控轮次：截图帧、模型思考与判定，见 GuardView）。
+   * 上下文只活在会话里，**不落盘**——normalizeTab 不认它，重启后自然消失；
+   * 下一次严格专注开始时会再建一份。
+   */
+  | { kind: 'guard' }
+  /** 一份专注模式报告（只读，见 learn/focusGuard 的 FocusReport 与 FocusReportView） */
+  | { kind: 'report'; reportId: string }
 
 /** 文档区的视图：源码（可编辑）、预览（渲染后）与媒体预览（图片 / 音频 / 视频的本地文件） */
 export type DocView = 'source' | 'preview' | 'media'

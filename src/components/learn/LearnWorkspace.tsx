@@ -169,6 +169,12 @@ import { learnSandboxOps } from '../../learn/useAgent'
 import { buildStandaloneApi } from '../../agent/tools'
 import { isElectron, native } from '../../lib/native'
 import DocFloat from './DocFloat'
+import GuardView from './GuardView'
+import FocusReportView from './FocusReportView'
+import { collectGuardFacts, startGuard, stopGuard, type GuardHooks } from '../../agent/guardRuntime'
+import { buildFocusReport, REPORT_MIN_MS, type FocusOutcome, type GuardMonitors } from '../../learn/focusGuard'
+import { writeFocusReport } from '../../learn/focusReports'
+import { formatClock, pomodoroStatus } from '../../learn/pomodoro'
 import LocalDoc from './LocalDoc'
 import SourceEditor from './SourceEditor'
 import type { DocSource } from './NodeNote'
@@ -356,6 +362,8 @@ export default function LearnWorkspace({
     if (ref.kind === 'exam') {
       return { type: 'attempt', nodeId: ref.nodeId, examId: ref.examId, attemptId: ref.attemptId, title }
     }
+    // 守卫上下文与专注报告没有可引用的 chip 形态：从文档区拖不出引用
+    if (ref.kind === 'guard' || ref.kind === 'report') return null
     const docPath = (kind: 'teaching' | 'note' | 'outline', note?: string): string | undefined =>
       nodeDocPath(s, ref.nodeId, { kind, ...(note ? { note } : {}) }) ?? undefined
     if (ref.kind === 'teach') return { type: 'doc', nodeId: ref.nodeId, path: docPath('teaching'), title }
@@ -1507,8 +1515,131 @@ export default function LearnWorkspace({
 
   /*
    * 番茄钟动作在 usePomodoroFlow、导师工作流启动器在 useWorkflowStarters（都在 workspace/）。
+   * 守卫 agent（严格专注的监控，见 agent/guardRuntime）挂在这之后：
+   * 开始/停止/到点收尾三个入口都从这里转发，报告与守卫上下文才不会漏掉一场。
    */
-  const { startFocus, stopFocus, tickFocus } = usePomodoroFlow({ getLatest, set, onToast })
+  const { startFocus, stopFocus, pauseFocus, resumeFocus, tickFocus } = usePomodoroFlow({ getLatest, set, onToast })
+
+  /* ---------- 严格专注：守卫 agent 与专注报告 ---------- */
+
+  /** 这一场专注的参数：报告的账目（开始时刻、设的时长与组数）从它算；收场即清空 */
+  const focusMeta = useRef<{ startedAt: number; focusMinutes: number; groups: number } | null>(null)
+  /** 守卫的分心警告弹窗（同一时间最多一条，新的顶掉旧的） */
+  const [guardWarn, setGuardWarn] = useState<{ reason: string } | null>(null)
+  /** 熔断弹窗：隐私底线被触发，这次专注已强制结束 */
+  const [guardFuse, setGuardFuse] = useState<{ reason: string } | null>(null)
+
+  /**
+   * 一场专注收场 → 写报告。正常跑完、开始三分钟后停止、熔断，各得一份；
+   * 更短的停止就是误触，不记账。守卫事实是可选的：普通专注的报告只有计时账目。
+   */
+  const finishFocus = useCallback(
+    (outcome: FocusOutcome) => {
+      const meta = focusMeta.current
+      focusMeta.current = null
+      if (!meta) return
+      const endedAt = Date.now()
+      if (outcome === 'stopped' && endedAt - meta.startedAt < REPORT_MIN_MS) return
+      const s = getLatest()
+      const facts = collectGuardFacts(endedAt)
+      const report = buildFocusReport({
+        startedAt: meta.startedAt,
+        endedAt,
+        focusMinutes: meta.focusMinutes,
+        groups: meta.groups,
+        completedGroups: (s.pomodoro?.log ?? []).filter((r) => r.at >= meta.startedAt).length,
+        monitors: facts?.monitors ?? { screen: false, camera: false },
+        outcome,
+        pausedMs: facts?.pausedMs ?? 0,
+        pauseCount: facts?.pauseCount ?? 0,
+        pauseSpans: facts?.pauseSpans ?? [],
+        warnings: facts?.warnings ?? [],
+        ...(facts?.fused ? { fused: facts.fused } : {}),
+        rounds: facts?.rounds ?? [],
+      })
+      void writeFocusReport(report)
+      onToast(t('专注报告已生成——资源管理器的「专注报告」里看'))
+    },
+    [getLatest, onToast],
+  )
+
+  /** 守卫的动作出口：判定翻译成番茄钟的暂停/恢复、界面上的警告与熔断弹窗 */
+  const guardHooks = useMemo<GuardHooks>(
+    () => ({
+      onPause: (reason) => {
+        pauseFocus()
+        onToast(t('守卫：{0}——番茄钟已暂停，回到应用就继续', reason))
+      },
+      onResume: () => {
+        resumeFocus()
+        onToast(t('守卫：欢迎回来，番茄钟继续'))
+      },
+      onWarn: (reason) => setGuardWarn({ reason }),
+      onFuse: (reason) => {
+        // 熔断：媒体流守卫那边已经停了，这里把表停掉、写报告、把话说明白
+        stopFocus()
+        finishFocus('fused')
+        setGuardFuse({ reason })
+      },
+      onToast,
+      contextLine: () => {
+        const st = pomodoroStatus(getLatest())
+        if (!st.session) return t('番茄钟没有在跑')
+        return t(
+          '番茄钟：第 {0}/{1} 组{2}，还剩 {3}',
+          st.session.index,
+          st.session.groups,
+          st.session.phase === 'rest' ? t('（休息）') : '',
+          formatClock(st.remainingMs ?? 0),
+        )
+      },
+    }),
+    [pauseFocus, resumeFocus, stopFocus, finishFocus, onToast, getLatest],
+  )
+
+  /** 点「开始专注」：先把表跑起来；勾了监控就让守卫同一场开跑（媒体流拿不到会自动降级成普通专注） */
+  const handleStartFocus = useCallback(
+    (minutes: number, groups: number, monitors: GuardMonitors) => {
+      startFocus(minutes, groups)
+      focusMeta.current = { startedAt: Date.now(), focusMinutes: minutes, groups }
+      if (!monitors.screen && !monitors.camera) return
+      void startGuard(monitors, guardHooks)
+    },
+    [startFocus, guardHooks],
+  )
+
+  /** 点「停止」：守卫一并收摊（媒体流立即断），三分钟以上的场子写报告 */
+  const handleStopFocus = useCallback(() => {
+    stopGuard('user stopped')
+    stopFocus()
+    finishFocus('stopped')
+  }, [stopFocus, finishFocus])
+
+  /** 到点收尾（每秒的钟发现到点才调）：跑完的场子写「跑完了」的报告，守卫一起收 */
+  const handleTickFocus = useCallback(() => {
+    const out = tickFocus()
+    if (out.finished) {
+      stopGuard('completed')
+      finishFocus('completed')
+    } else if (out.dropped) {
+      // 应用不在的那段时间把整次会话丢了：守卫也一起收，账目照写（那一刻起早过了三分钟）
+      stopGuard('dropped')
+      finishFocus('stopped')
+    }
+  }, [tickFocus, finishFocus])
+
+  /**
+   * 重启后没人守着的暂停：守卫上下文不跨重启活着，暂停中的番茄钟永远等不来
+   * 「回来了」的那一下——直接续上（暂停的那段时间本来就没在计时）。
+   */
+  useEffect(() => {
+    if (getLatest().pomodoro?.current?.pausedAt) resumeFocus()
+  }, [getLatest, resumeFocus])
+
+  /** 守卫上下文页签（全局一份，见 GuardView）与专注报告页签的入口 */
+  const openGuardTab = useCallback(() => openTab({ kind: 'guard' }), [openTab])
+  const openReportTab = useCallback((reportId: string) => openTab({ kind: 'report', reportId }), [openTab])
+
   const {
     startCheckin,
     startReview,
@@ -2150,6 +2281,19 @@ export default function LearnWorkspace({
                   {t('这份试卷已经被删了，这一次考试的内容也一并没了。')}
                 </div>
               )
+            ) : gTab?.ref.kind === 'guard' ? (
+              /*
+                守卫 agent 的上下文：严格专注期间每轮监控的图像、思考与判定。
+                会话活在 agent/guardRuntime 里，与页签开不开无关——这只是旁路观察窗，
+                页签没开守卫也照常工作；会话只活在内存里，重启后这里是空的占位。
+              */
+              <GuardView />
+            ) : gTab?.ref.kind === 'report' ? (
+              /*
+                专注模式报告：只读凭据，按 id 从用户目录现读（文件没了它自己会说）。
+                key 绑报告 id：换一份报告重挂，加载态从头来。
+              */
+              <FocusReportView key={gTab.ref.reportId} reportId={gTab.ref.reportId} />
             ) : gTab?.ref.kind === 'outline' && g.node ? (
               /*
                 大纲页：结构化计划的交互视图（见 OutlineView）。它不走源码/预览、
@@ -2468,6 +2612,7 @@ export default function LearnWorkspace({
         onOpenWs={openWsFile}
         ws={wsActions}
         onOpenLocal={openLocalFile}
+        onOpenReport={openReportTab}
         onRemoveLocal={dropLocalFile}
         onRevealLocal={(path) => void revealLocalFile(path)}
         onPickLocal={() => void pickLocal()}
@@ -2587,7 +2732,15 @@ export default function LearnWorkspace({
             onToast={onToast}
             /* 番茄钟与打卡都是「自给自足的小块」：时钟/倒计时只在这一块里每秒重渲染，
                不会把整个学习区（正文 + 对话栏）一起带上 */
-            pomodoro={<PomodoroDock store={store} onStart={startFocus} onStop={stopFocus} onTick={tickFocus} />}
+            pomodoro={
+              <PomodoroDock
+                store={store}
+                onStart={handleStartFocus}
+                onStop={handleStopFocus}
+                onTick={handleTickFocus}
+                onOpenGuard={openGuardTab}
+              />
+            }
             checkin={<CheckinDock store={store} onCheckin={startCheckin} />}
             review={<ReviewDock store={store} onReview={startReview} onBackfill={backfillReviewPlan} />}
             reading={<ReadingDock store={store} onOpenNode={selectNode} />}
@@ -2870,6 +3023,29 @@ export default function LearnWorkspace({
           confirmLabel={pendingDelete.isRoot ? t('删除目标') : t('删除')}
           onConfirm={commitRemoveNode}
           onCancel={() => setPendingDelete(null)}
+        />
+      )}
+
+      {/*
+        守卫的两条弹窗：分心警告（计时还在走，提醒即可）与隐私熔断（这次专注已经被
+        强制结束，媒体流也停了——画面不会保存，这里只是把话说清）。
+      */}
+      {guardWarn && (
+        <ConfirmDialog
+          title={t('守卫提醒：屏幕上的内容与学习无关')}
+          message={t('{0}（误判可直接忽略，这一条也会记进专注报告。）', guardWarn.reason)}
+          confirmLabel={t('回到学习')}
+          onConfirm={() => setGuardWarn(null)}
+          onCancel={() => setGuardWarn(null)}
+        />
+      )}
+      {guardFuse && (
+        <ConfirmDialog
+          title={t('严格专注已熔断')}
+          message={t('守卫在画面里看到了涉及隐私的内容（{0}），已立即停止监控并结束这次专注；看到的画面不会保存。', guardFuse.reason)}
+          confirmLabel={t('知道了')}
+          onConfirm={() => setGuardFuse(null)}
+          onCancel={() => setGuardFuse(null)}
         />
       )}
     </div>

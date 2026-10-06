@@ -51,10 +51,14 @@ const tab = (ref: TabRef): LearnTab => ({
           : ref.kind === 'exam'
             ? 'e:' + ref.examId + ':' + ref.attemptId
             : ref.kind === 'outline'
-              ? 'o:' + ref.nodeId
-              : ref.kind === 'web'
-                ? 'w:' + ref.key
-                : 'l:' + ref.path,
+            ? 'o:' + ref.nodeId
+            : ref.kind === 'web'
+              ? 'w:' + ref.key
+              : ref.kind === 'guard'
+                ? 'g:guard'
+                : ref.kind === 'report'
+                  ? 'r:' + ref.reportId
+                  : 'l:' + ref.path,
   ref,
   createdAt: AT,
 })

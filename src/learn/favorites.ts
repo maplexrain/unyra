@@ -26,15 +26,18 @@ export function favoriteKey(ref: FavoriteRef): string {
   return 'u:' + ref.url
 }
 
-/** 页签指向的东西的收藏身份；起始页（还没有网址）没有可收藏的东西，返回 null */
+/** 页签指向的东西的收藏身份；起始页（还没有网址）没有可收藏的东西，返回 null。
+    守卫上下文与专注报告同样不可收藏（它们不是「某个内容」，是会话与凭据） */
 export function favoriteKeyOfTab(ref: TabRef): string | null {
+  if (ref.kind === 'guard' || ref.kind === 'report') return null
   if (ref.kind === 'web') return ref.url ? favoriteKey(ref) : null
   return favoriteKey(ref)
 }
 
-/** 页签 → 收藏：网页只留网址；起始页返回 null（没有可收藏的东西） */
+/** 页签 → 收藏：网页只留网址；起始页与守卫/报告页签返回 null（没有可收藏的东西） */
 export function favoriteRefOfTab(ref: TabRef): FavoriteRef | null {
   if (ref.kind === 'web') return ref.url ? { kind: 'web', url: ref.url } : null
+  if (ref.kind === 'guard' || ref.kind === 'report') return null
   return ref
 }
 
