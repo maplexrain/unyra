@@ -1574,12 +1574,18 @@ export default function LearnWorkspace({
         resumeFocus()
         onToast(t('守卫：欢迎回来，番茄钟继续'))
       },
-      onWarn: (reason) => setGuardWarn({ reason }),
+      onWarn: (reason) => {
+        setGuardWarn({ reason })
+        // 系统级推送：分心时用户多半正在别的应用里（守卫也正是因此才拍得到分心的画面），
+        // 应用内弹窗那时候看不见。系统通知点一下能把主窗口叫回来。
+        if (isElectron()) void native().window.notify({ title: t('守卫提醒：屏幕上的内容与学习无关'), body: reason })
+      },
       onFuse: (reason) => {
         // 熔断：媒体流守卫那边已经停了，这里把表停掉、写报告、把话说明白
         stopFocus()
         finishFocus('fused')
         setGuardFuse({ reason })
+        if (isElectron()) void native().window.notify({ title: t('严格专注已熔断'), body: reason })
       },
       onToast,
       contextLine: () => {

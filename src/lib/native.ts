@@ -215,6 +215,8 @@ export interface NativeBridge {
     logoSource(): Promise<string>
     /** 把染色后的 PNG 设为窗口（任务栏）与托盘图标 */
     setAppIcon(dataUrl: string): Promise<boolean>
+    /** 一条系统级通知（Windows toast）：点击把主窗口叫到前台。守卫的警告与熔断用它 */
+    notify(payload: { title: string; body?: string }): Promise<{ ok: boolean; error?: string }>
   }
   /**
    * 考试窗口的**主窗口那一侧**。考试窗口是第二个 BrowserWindow，加载同一份渲染产物

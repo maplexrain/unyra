@@ -388,6 +388,9 @@ const api = {
     logoSource: (): Promise<string> => ipcRenderer.invoke('app:logoSource'),
     /** 把染色后的 PNG 设为窗口（任务栏）与托盘图标 */
     setAppIcon: (dataUrl: string): Promise<boolean> => ipcRenderer.invoke('app:setAppIcon', dataUrl),
+    /** 一条系统级通知（Windows toast）：点击把主窗口叫到前台。守卫的警告与熔断用它 */
+    notify: (payload: { title: string; body?: string }): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('notify', payload),
   },
 
   /**
