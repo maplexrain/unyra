@@ -326,14 +326,19 @@ export function pauseGuard(reason: string): void {
   hooks?.onPause(reason)
 }
 
-/** 交互回来了：续上计时与监控 */
+/** 交互回来了：续上计时与监控。第一轮不抢拍——回到正常轮询节奏，等满一个间隔再检查 */
 export function resumeGuard(): void {
   if (!session || session.state !== 'paused') return
   const spans = session.pauseSpans.map((s, i) => (i === session!.pauseSpans.length - 1 ? { ...s, resumedAt: Date.now() } : s))
   session = { ...session, state: 'running', pauseSpans: spans }
   publish()
   hooks?.onResume()
-  scheduleRound(1_000)
+  /*
+   * 恢复后等满一轮（而不是立刻看一眼）：刚坐回来的这一分钟是热身——坐下、
+   * 把界面切回学习内容都需要时间，落座就拍一张大概率拍到「正在切换」的
+   * 中间态，白白吃一次警告。计时恢复是即时的，等的只是下一次监控。
+   */
+  scheduleRound(GUARD_ROUND_MS)
 }
 
 /** 熔断：先停媒体流（晚一拍都是事故），再交给宿主停番茄钟、写报告、弹窗 */
