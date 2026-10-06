@@ -33,6 +33,12 @@ import {
 
 /** 单轮模型调用的超时：带图请求不快，但不能无限等 */
 const ROUND_TIMEOUT_MS = 90_000
+/**
+ * 单轮输出预算。给小了推理模型的思考会把预算烧成空/截断输出（learn/title 当年
+ * 「标题永远失败」的同一口坑），而且截断的响应有些后端不写缓存——下一轮前缀
+ * 从头冷起。判定本身只有几十个 token，预算大头留给思考。
+ */
+const ROUND_MAX_TOKENS = 2048
 /** 开跑后第一轮等多久：给个首查，也让用户马上看到守卫「动了」 */
 const FIRST_ROUND_DELAY_MS = 5_000
 /** 抽帧的画面宽度：屏幕要看清内容给 800，摄像头认人给 480 */
@@ -382,7 +388,7 @@ async function runRound(): Promise<void> {
       ...images.map((img) => ({ type: 'image' as const, mime: img.mime, data: img.data })),
       { type: 'text' as const, text: context },
     ]
-    const userMessage: ChatMessage = { role: 'user', content: parts }
+    const liveMessage: ChatMessage = { role: 'user', content: parts }
 
     let raw = ''
     let reasoning = ''
@@ -393,8 +399,8 @@ async function runRound(): Promise<void> {
       const abort = setTimeout(() => controller.abort(), ROUND_TIMEOUT_MS)
       try {
         const res = await streamChatWith(provider, model, {
-          messages: historyWith(userMessage),
-          maxTokens: 600,
+          messages: historyWith(liveMessage),
+          maxTokens: ROUND_MAX_TOKENS,
           reasoningEffort: 'low',
           signal: controller.signal,
         })
@@ -425,8 +431,22 @@ async function runRound(): Promise<void> {
     }
     session = { ...session, rounds: [...session.rounds, round] }
 
-    // 历史同样记下这一问一答（图也在内）：模型记得上一轮看见了什么，判断才有连续性
-    history.push(userMessage, { role: 'assistant', content: raw || (error ?? '') })
+    /*
+     * 历史里记的是**纯文本**的一问一答（帧只活在当前这条消息里），判定有连续性
+     * 靠的是历史里的判定原文，不是重看旧帧。带图的历史是前缀缓存的毒药：
+     * 一来不少服务商的前缀缓存不认图像 token，图进前缀就整段永远命不中；
+     * 二来请求体积按轮数线性膨胀（40 轮 × 2 图 ≈ 每请求 8 万 token 的重传）。
+     * 这一轮附了什么画面用一句固定的注记说清——它在历史里必须逐字节稳定。
+     */
+    const framesNote = round.screen && round.camera
+      ? t('（附屏幕截图与摄像头画面）')
+      : round.screen
+        ? t('（附屏幕截图）')
+        : t('（附摄像头画面）')
+    history.push(
+      { role: 'user', content: context + framesNote },
+      { role: 'assistant', content: raw || (error ?? '') },
+    )
     trimHistory()
 
     if (verdict) {

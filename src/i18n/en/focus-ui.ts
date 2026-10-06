@@ -110,4 +110,7 @@ export default {
   '距上一次与应用交互 {0} 秒': '{0} s since the last interaction with the app',
   '回复不是约定的 JSON，这一轮没有动作': 'The reply was not the agreed JSON — no action this round',
   '（模型没给说明）': '(the model gave no explanation)',
+  '（附屏幕截图与摄像头画面）': ' (a screen capture and a camera frame are attached)',
+  '（附屏幕截图）': ' (a screen capture is attached)',
+  '（附摄像头画面）': ' (a camera frame is attached)',
 } as Record<string, string>
