@@ -50,6 +50,10 @@ export interface LearnState {
   pomodoro?: unknown
   /** 旧字段：页签之前，「文档区在看教学文档还是笔记」。保留只为读回旧文件 */
   activeDoc?: DocKind
+  /** agent 栏的页签（见 learn/agentTabs）。原样落盘，校验交给 normalizeLearnStore */
+  agentTabs?: unknown
+  /** agent 栏当前激活的页签（agentTabKey 的结果） */
+  agentActiveTab?: unknown
 }
 
 export function buildState(store: LearnStore): Record<string, unknown> {
@@ -90,6 +94,12 @@ export function buildState(store: LearnStore): Record<string, unknown> {
      * （阅读与打卡不在这里：它们按目标写在各自目录里，见 buildDocs。）
      */
     ...(hasPomodoro(store.pomodoro) ? { pomodoro: store.pomodoro } : {}),
+    /*
+     * agent 栏的页签：只在真有页签时写（与 favorites 同一条纪律）。
+     * 激活项跟着页签走——没有页签时的 null 是默认值，不值得占一个字段。
+     */
+    ...(store.agentTabs?.length ? { agentTabs: store.agentTabs } : {}),
+    ...(store.agentActiveTab ? { agentActiveTab: store.agentActiveTab } : {}),
   }
 }
 

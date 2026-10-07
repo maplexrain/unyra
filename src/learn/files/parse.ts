@@ -208,6 +208,9 @@ export function parseDocs(files: Map<string, string>, state: unknown): LearnStor
     reading: { byGoal: readingByGoal },
     checkin: { byGoal: checkinByGoal },
     pomodoro: s.pomodoro ?? null,
+    // agent 栏页签原样交给 normalizeLearnStore：对着「目标/会话/子代理会话还活着吗」校验
+    agentTabs: s.agentTabs ?? null,
+    agentActiveTab: s.agentActiveTab ?? null,
   })
 }
 

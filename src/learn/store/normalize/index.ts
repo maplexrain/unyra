@@ -15,6 +15,7 @@ import type {
 import type { Exam } from '../../exam'
 import { focusedTab, normalizeDocs } from '../../groups'
 import { tabNodeId } from '../../tabs'
+import { normalizeAgentTabs } from '../../agentTabs'
 import { normalizeDrafts } from '../../drafts'
 import { BUILTIN_WORKFLOW_IDS, normalizeWorkflowEfforts, normalizeWorkflowEntries } from '../../workflows'
 import { normalizeReadingBook } from '../../reading'
@@ -220,6 +221,25 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
     const tabNodeId2 = activeTabNode ? tabNodeId(activeTabNode.ref) : null
     const nextActiveNodeId = tabNodeId2 && ids.has(tabNodeId2) ? tabNodeId2 : activeNodeId
 
+    // agent 栏页签：目标没了 / 会话或子代理会话没了的当场剪掉，激活项对齐留下的页签
+    let agentTabsState = normalizeAgentTabs(d.agentTabs, d.agentActiveTab, {
+      goals: goalIds,
+      conversations,
+    })
+    /*
+     * 升级路径：老 state.json 里没有 agent 页签（那时还是单面板），但「上次在看哪段对话」
+     * 有存——把那段会话的目标折成第一枚导师页签，重开应用对话栏不因此空白。
+     */
+    if (!agentTabsState.tabs.length && activeConversationId) {
+      const conv = conversations.find((c) => c.id === activeConversationId)
+      if (conv) {
+        agentTabsState = {
+          tabs: [{ kind: 'goal', goalId: conv.goalId, conversationId: conv.id }],
+          active: 'ga:' + conv.goalId,
+        }
+      }
+    }
+
     return {
       version: 2,
       nodes: fixedNodes,
@@ -257,6 +277,8 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       favGroups: normalizeFavGroups(d.favGroups),
       // 收藏夹按「东西还在不在」校验（与页签的口径一致）：节点没了、笔记改名了的收藏当场丢
       favorites: normalizeFavorites(d.favorites, byId, exams),
+      agentTabs: agentTabsState.tabs,
+      agentActiveTab: agentTabsState.active,
     }
   } catch (err) {
     // 静默吞掉等于「启动整库读空、下一次保存把好数据覆盖掉」——收藏就是这么丢的。

@@ -25,9 +25,15 @@ const TIP_EXIT_MS = 160
 export default function PersonaPicker({
   persona,
   onPick,
+  placement = 'down',
 }: {
   persona: PersonaId
   onPick: (id: PersonaId) => void
+  /**
+   * 面板展开的方向。'down'（默认）是原来住在标题里的样子；搬进输入框下面的
+   * 状态行之后要 'up'——再往下展开就出了窗口。
+   */
+  placement?: 'down' | 'up'
 }) {
   // 这一处与顶栏那几个入口同一套时序，只是多了一档「停够才展」（HOVER_OPEN_MS）
   const { open, setOpen, mounted, wrapProps, buttonProps, panelProps } = useHoverMenu({
@@ -56,15 +62,17 @@ export default function PersonaPicker({
           (open ? 'bg-seal/10 text-seal-deep' : 'text-ink-faint hover:text-seal-deep')
         }
       >
-        {t('（{0}）', t(current.short))}
+        {/* 住在状态行里（placement='up'）就不再带括号：它前面没有「超级导师」给它当补语了 */}
+        {placement === 'up' ? t(current.short) : t('（{0}）', t(current.short))}
       </button>
 
       {mounted && (
         /*
           pt-1 是「桥」：按钮与面板之间那道缝必须落在本组件里，
           否则指针穿过去的一瞬间就会被判成离开（与 DocFloat 的 tip 同一套）。
+          placement='up' 时面板从下往上展开（bottom-full + mb-1），桥改到面板自己那侧。
         */
-        <div className="absolute left-0 top-full z-40 pt-1">
+        <div className={'absolute left-0 z-40 ' + (placement === 'up' ? 'bottom-full mb-1' : 'top-full pt-1')}>
           <div className={panelProps.className}>
             <div className="w-[300px] rounded-lg border border-line-strong bg-card p-1.5 shadow-[0_12px_36px_rgba(31,27,23,0.22)]">
               <div className="flex items-baseline gap-1.5 px-1 pb-1.5">
