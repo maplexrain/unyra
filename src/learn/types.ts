@@ -506,6 +506,12 @@ export type TabRef =
   | { kind: 'guard' }
   /** 一份专注模式报告（只读，见 learn/focusGuard 的 FocusReport 与 FocusReportView） */
   | { kind: 'report'; reportId: string }
+  /**
+   * 设置面板：文档区的一枚页签（不再是弹窗）。全局只有一份（tabKey 恒定），
+   * 从哪个入口打开都是切到它；面板本身见 components/settings/SettingsPanel。
+   * 它跟着 docArea 持久化——重启后还开在那儿，与「上次开着哪些页签」同一句话。
+   */
+  | { kind: 'settings' }
 
 /**
  * agent 栏的页签指向什么（见 learn/agentTabs 与 components/agent/AgentTabStrip）。

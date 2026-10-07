@@ -135,6 +135,7 @@ export async function generateConversationTitle(opts: {
      * reasoning 的请求见到 temperature 会直接 400——少一个字段就少一种起名失败。
      */
     signal: opts.signal,
+    purpose: 'title',
   })
   const title = cleanTitle(raw)
   if (!title) throw new AiRequestError('AI 未能生成标题')

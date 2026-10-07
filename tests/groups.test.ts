@@ -58,7 +58,11 @@ const tab = (ref: TabRef): LearnTab => ({
                 ? 'g:guard'
                 : ref.kind === 'report'
                   ? 'r:' + ref.reportId
-                  : 'l:' + ref.path,
+                  : ref.kind === 'settings'
+                    ? 'set:settings'
+                    : ref.kind === 'local'
+                      ? 'l:' + ref.path
+                      : '',
   ref,
   createdAt: AT,
 })

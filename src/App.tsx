@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createDefaultProvider, loadAiSettings, saveAiSettings } from './ai/settings'
-import SettingsModal from './components/SettingsModal'
 import LearnWorkspace from './components/learn/LearnWorkspace'
 import Toast, { type ToastData } from './components/Toast'
 import KeyCast from './components/KeyCast'
@@ -40,7 +39,6 @@ export default function App({ boot }: Props) {
   // 这样即便某处忘了走 navigate，未登录也绝不可能落到受保护的页面。
   const [wanted, setWanted] = useState<Route>('learn')
   const route = guardRoute(signedIn, wanted)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [userOpen, setUserOpen] = useState(false)
   /**
    * 更新确认弹窗。状态很薄：开不开这一件事，其余（有没有新版本、下没下完）
@@ -164,7 +162,6 @@ export default function App({ boot }: Props) {
     setActiveUserId(s.userId)
     setUserEpoch((n) => n + 1)
     setUserOpen(false)
-    setSettingsOpen(false)
     setWanted('learn')
   }, [])
 
@@ -175,7 +172,6 @@ export default function App({ boot }: Props) {
     setSession(null)
     setActiveUserId(null)
     setUserOpen(false)
-    setSettingsOpen(false)
     // 主动登出应回到干净的登录页，而不是被守卫拦下的样子
     setWanted('login')
   }, [])
@@ -222,21 +218,13 @@ export default function App({ boot }: Props) {
         // 换用户时重挂载：学习数据按作用域从本地重新载入
         key={`user-${userEpoch}`}
         user={activeUserRecord}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onRootChanged={handleRootChanged}
         onOpenUser={() => setUserOpen(true)}
         onSignOut={handleSignOut}
         onToast={showToast}
         onOpenUpdate={() => setUpdateOpen(true)}
       />
       {updateOpen && <UpdateDialog onClose={() => setUpdateOpen(false)} />}
-      {settingsOpen && (
-        <SettingsModal
-          onClose={() => setSettingsOpen(false)}
-          onSaved={() => showToast(t('AI 设置已保存'))}
-          onRootChanged={handleRootChanged}
-          onToast={showToast}
-        />
-      )}
       {userOpen && activeUserRecord && (
         <UserDialog
           users={users}

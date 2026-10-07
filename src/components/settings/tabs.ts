@@ -5,6 +5,7 @@
 import {
   AppWindow,
   Bot,
+  ChartColumn,
   HardDrive,
   Info,
   Keyboard,
@@ -15,7 +16,17 @@ import {
 } from 'lucide-react'
 import { isDevUnlocked } from '../../lib/devMode'
 
-export type TabKey = 'ai' | 'appearance' | 'input' | 'window' | 'storage' | 'plugins' | 'update' | 'about' | 'dev'
+export type TabKey =
+  | 'ai'
+  | 'usage'
+  | 'appearance'
+  | 'input'
+  | 'window'
+  | 'storage'
+  | 'plugins'
+  | 'update'
+  | 'about'
+  | 'dev'
 
 /**
  * 上次停在哪一页：记在 localStorage。开发者分页只有解锁过才允许作为「上次的选择」
@@ -27,7 +38,7 @@ export const loadSavedTab = (): TabKey => {
   try {
     const v = localStorage.getItem(TAB_STORAGE_KEY)
     if (v === 'dev') return isDevUnlocked() ? 'dev' : 'ai'
-    const keys: TabKey[] = ['ai', 'appearance', 'input', 'window', 'storage', 'plugins', 'update', 'about']
+    const keys: TabKey[] = ['ai', 'usage', 'appearance', 'input', 'window', 'storage', 'plugins', 'update', 'about']
     return keys.includes(v as TabKey) ? (v as TabKey) : 'ai'
   } catch {
     return 'ai'
@@ -44,6 +55,8 @@ export const saveTab = (key: TabKey): void => {
 
 export const TABS: Array<{ key: TabKey; label: string; icon: typeof Bot }> = [
   { key: 'ai', label: '模型', icon: Bot },
+  // 「用量」紧挨着模型：token 花在哪一眼就能对上「用的是哪一家」（见 settings/UsagePanel）
+  { key: 'usage', label: '用量', icon: ChartColumn },
   { key: 'appearance', label: '外观', icon: Palette },
   // 「输入」= 键盘与麦克风：改键、语音转文字。它们都是「怎么把话喂进这个应用」，
   // 放在一起才找得到（教学模式那个开关在外观里，它管的是显示）

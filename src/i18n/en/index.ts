@@ -11,6 +11,7 @@ import learnViews from './learn-views'
 import libUi from './lib-ui'
 import shellUi from './shell-ui'
 import stores from './stores'
+import usageUi from './usage-ui'
 import webUi from './web-ui'
 
 export const en: Record<string, string> = {
@@ -21,5 +22,6 @@ export const en: Record<string, string> = {
   ...libUi,
   ...shellUi,
   ...stores,
+  ...usageUi,
   ...webUi,
 }

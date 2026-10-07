@@ -187,6 +187,7 @@ export async function selfCheckExamFigures(
     const raw = await chatCompleteWith(provider, model, {
       messages: buildCheckMessages(figures),
       signal: AbortSignal.timeout(STEP_TIMEOUT_MS),
+      purpose: 'exam',
     })
     const results = extractJson(raw)?.results
     const verdicts = new Map<number, string>()
@@ -216,6 +217,7 @@ export async function selfCheckExamFigures(
       const fixRaw = await chatCompleteWith(provider, model, {
         messages: buildFixMessages(broken),
         signal: AbortSignal.timeout(STEP_TIMEOUT_MS),
+        purpose: 'exam',
       })
       const fixes = extractJson(fixRaw)?.fixes
       if (Array.isArray(fixes)) {

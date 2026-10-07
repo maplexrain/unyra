@@ -7,12 +7,14 @@
  * 每一项的「为什么是这个数」都写在它自己的注释里，改之前先读一遍。
  */
 
+import type { SwitchRootResult } from '../../../lib/boot'
 import type { User } from '../../../user/types'
 
 export interface Props {
   /** 当前用户（含画像）：顶栏展示头像与昵称 */
   user: User | null
-  onOpenSettings: () => void
+  /** 换用户数据目录（设置里的存储页用）：整份数据换一套，交给 App 重新载入 */
+  onRootChanged: (dir?: string) => Promise<SwitchRootResult>
   onOpenUser: () => void
   onSignOut: () => void
   onToast: (msg: string) => void

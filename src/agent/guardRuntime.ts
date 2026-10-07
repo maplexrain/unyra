@@ -408,6 +408,7 @@ async function runRound(): Promise<void> {
           maxTokens: ROUND_MAX_TOKENS,
           reasoningEffort: 'low',
           signal: controller.signal,
+          purpose: 'guard',
         })
         raw = res.content
         reasoning = res.reasoning
