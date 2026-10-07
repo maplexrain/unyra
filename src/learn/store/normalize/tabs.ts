@@ -53,6 +53,8 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
   }
   // 设置页与用量页：全局各只有一份，没有需要校验的「指向」，形状对就收下
   if (r.kind === 'settings' || r.kind === 'usage') return { kind: r.kind }
+  // 记忆管理与超级导师设置同上：全局一份的页面签
+  if (r.kind === 'mind' || r.kind === 'agentSettings') return { kind: r.kind }
   const nodeId = typeof r.nodeId === 'string' ? r.nodeId : ''
   const node = byId.get(nodeId)
   if (!node) return null

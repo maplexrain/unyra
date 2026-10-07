@@ -120,7 +120,9 @@ import {
 import { makeConversation, makeGoal, nodeDocRel } from '../../learn/store'
 import { loadAgentSettings, saveAgentSettings, subscribeAgentSettings } from '../../agent/settings'
 import { personaOf } from '../../agent/persona'
-import AgentSettingsModal from '../AgentSettingsModal'
+import AgentSettingsPanel from '../AgentSettingsPanel'
+import MindPanel from '../agent/MindPanel'
+import { clearMinds, deleteMind, mindsOf, updateMind, writeMind } from '../../learn/mind'
 import ExportDialog from './ExportDialog'
 import FloatWindow from '../FloatWindow'
 import { usePresence } from '../../lib/presence'
@@ -279,9 +281,7 @@ export default function LearnWorkspace({
    * （鼠标经过即展开，见 components/learn/DocFloat），试卷的作答在独立的考试窗口里
    * （见 learn/useExamBridge 与 ExamWindow）。所以这里没有它们的开关。
    */
-  // 超级导师设置：一个弹窗（与全局设置分开的另一份配置，见 agent/settings）
-  const [agentSettingsOpen, setAgentSettingsOpen] = useState(false)
-  /** 上下文比对调试器：悬浮窗口（可拖动），只在开发者模式里打开（见 AgentSettingsModal） */
+  /** 上下文比对调试器：悬浮窗口（可拖动），只在开发者模式里打开（见 AgentSettingsPanel 的开发者分页） */
   const debugWin = usePresence()
   /*
    * 文档区查找 / 替换条：null = 关着，'find' = 只有查找行，'replace' = 展开替换行。
@@ -339,6 +339,28 @@ export default function LearnWorkspace({
   const activeNode = activeNodeId ? (nodeById(store, activeNodeId) ?? null) : null
   const activeGoal = activeNode ? (store.goals.find((g) => g.id === activeNode.goalId) ?? null) : null
   const activeGoalId = activeGoal?.id ?? null
+
+  /*
+   * 记忆管理页（kind 'mind'）的写入口：落点 = store.activeGoalId（agent 栏「现在看谁」
+   * 的那个目标）。不用 activeGoal 推——记忆页签自己没有节点，用它推目标会是空的；
+   * store.activeGoalId 是「上一个落点」，页签全关了也还认得目标。
+   */
+  const mindWrite = (input: { key?: string; text: string }) => {
+    if (!store.activeGoalId) return
+    set(writeMind(getLatest(), store.activeGoalId, input))
+  }
+  const mindUpdate = (id: string, text: string) => {
+    if (!store.activeGoalId) return
+    set(updateMind(getLatest(), store.activeGoalId, id, text))
+  }
+  const mindDelete = (idOrKey: string) => {
+    if (!store.activeGoalId) return
+    set(deleteMind(getLatest(), store.activeGoalId, idOrKey))
+  }
+  const mindClear = () => {
+    if (!store.activeGoalId) return
+    set(clearMinds(getLatest(), store.activeGoalId))
+  }
 
   /*
    * agent 栏的页签（见 learn/agentTabs）：agent 面板「现在看谁」全由它决定。
@@ -452,12 +474,14 @@ export default function LearnWorkspace({
     if (ref.kind === 'exam') {
       return { type: 'attempt', nodeId: ref.nodeId, examId: ref.examId, attemptId: ref.attemptId, title }
     }
-    // 守卫上下文、专注报告与系统页（设置/用量）没有可引用的 chip 形态：从文档区拖不出引用
+    // 守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置）没有可引用的 chip 形态：从文档区拖不出引用
     if (
       ref.kind === 'guard' ||
       ref.kind === 'report' ||
       ref.kind === 'settings' ||
-      ref.kind === 'usage'
+      ref.kind === 'usage' ||
+      ref.kind === 'mind' ||
+      ref.kind === 'agentSettings'
     )
       return null
     const docPath = (kind: 'teaching' | 'note' | 'outline', note?: string): string | undefined =>
@@ -2725,6 +2749,40 @@ export default function LearnWorkspace({
                 从任何入口打开都是切到它；分页与内容都在面板内部（见 settings/SettingsPanel）。
               */
               <SettingsPanel onRootChanged={onRootChanged} onToast={onToast} />
+            ) : gTab?.ref.kind === 'mind' ? (
+              /*
+                记忆管理：导师长期记忆（learn/mind）的查看与编辑。页签全局一枚，
+                内容跟着活动目标（store.activeGoalId）走——切目标即换一份记忆。
+              */
+              <MindPanel
+                goalId={store.activeGoalId}
+                goalTitle={store.goals.find((g) => g.id === store.activeGoalId)?.question ?? ''}
+                entries={store.activeGoalId ? mindsOf(store, store.activeGoalId) : []}
+                onWrite={mindWrite}
+                onUpdate={mindUpdate}
+                onDelete={mindDelete}
+                onClear={mindClear}
+                onToast={onToast}
+              />
+            ) : gTab?.ref.kind === 'agentSettings' ? (
+              /*
+                超级导师设置：原先是弹窗，现在是文档区的一枚页签。数据是 agent/settings
+                那一份（与全局设置分开），改动当场生效。
+              */
+              <AgentSettingsPanel
+                settings={agentSettings}
+                hasKey={hasKey}
+                model={globalSummary()}
+                onChange={(next) => {
+                  saveAgentSettings(next)
+                  onToast(t('超级导师设置已保存'))
+                }}
+                onOpenContextDebugger={() => debugWin.setOpen(true)}
+                flowRows={workflowRows}
+                onRunWorkflow={runWorkflowRow}
+                onRemoveWorkflow={removeWorkflowRow}
+                onWorkflowEffort={setWorkflowEffortRow}
+              />
             ) : gTab?.ref.kind === 'local' ? (
               /*
                 本地文件：内容不在数据目录里，读取与落盘都由它自己管（见 LocalDoc）。
@@ -2967,7 +3025,7 @@ export default function LearnWorkspace({
             节点的工具（笔记 / 超级文档 / 学习状态 / 试卷），右半边是这份文档的动作
             （源码 / 预览 / 导出）。一个页签都没有的空格子不画。
           */}
-          {gTab && gTab.ref.kind !== 'web' && gTab.ref.kind !== 'settings' && gTab.ref.kind !== 'usage' && (
+          {gTab && gTab.ref.kind !== 'web' && gTab.ref.kind !== 'settings' && gTab.ref.kind !== 'usage' && gTab.ref.kind !== 'mind' && gTab.ref.kind !== 'agentSettings' && (
             <DocFloat
               /*
                * key 绑「格 + 节点」：换节点时重挂，各块 tip 的展开状态自然回到收起；
@@ -3293,7 +3351,8 @@ export default function LearnWorkspace({
                             onModelChanged={() => setSettingsEpoch((n) => n + 1)}
                             vision={vision}
                             onNotice={onToast}
-                            onOpenAgentSettings={() => setAgentSettingsOpen(true)}
+                            onOpenAgentSettings={() => openTab({ kind: 'agentSettings' })}
+                            onOpenMinds={() => openTab({ kind: 'mind' })}
                             // 斜杠 /effort：全局推理等级，与 ModelPicker 里那条滑条写的是同一个设置
                             effort={effort}
                             onSetEffort={setGlobalEffort}
@@ -3370,29 +3429,6 @@ export default function LearnWorkspace({
             })
           }}
           onClose={() => setExportOpen(false)}
-        />
-      )}
-
-      {/*
-        超级导师设置：一个弹窗（不是独立窗口，也不是全局设置里的一个分页）。
-        它改的是 agent/settings 那一份数据，与顶栏「设置」里的模型配置互不相干。
-      */}
-      {agentSettingsOpen && (
-        <AgentSettingsModal
-          settings={agentSettings}
-          hasKey={hasKey}
-          model={globalSummary()}
-          onChange={(next) => {
-            saveAgentSettings(next)
-            onToast(t('超级导师设置已保存'))
-          }}
-          onOpenContextDebugger={() => debugWin.setOpen(true)}
-          // 工作流分页：三级列表 + 从列表直接跑 / 删除登记的工作流 / 改思考档位
-          flowRows={workflowRows}
-          onRunWorkflow={runWorkflowRow}
-          onRemoveWorkflow={removeWorkflowRow}
-          onWorkflowEffort={setWorkflowEffortRow}
-          onClose={() => setAgentSettingsOpen(false)}
         />
       )}
 

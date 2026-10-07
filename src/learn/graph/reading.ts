@@ -113,14 +113,16 @@ export function deleteGoal(store: LearnStore, goalId: string): LearnStore {
   }
 }
 
-/** 页签挂在哪个节点上；本地文件、网页、守卫、报告与系统页（设置/用量）返回空串（不属于任何节点，删节点不该关掉它们） */
+/** 页签挂在哪个节点上；本地文件、网页、守卫、报告与系统页（设置/用量/记忆/导师设置）返回空串（不属于任何节点，删节点不该关掉它们） */
 function tabNodeIdOf(ref: TabRef): string {
   return ref.kind === 'local' ||
     ref.kind === 'web' ||
     ref.kind === 'guard' ||
     ref.kind === 'report' ||
     ref.kind === 'settings' ||
-    ref.kind === 'usage'
+    ref.kind === 'usage' ||
+    ref.kind === 'mind' ||
+    ref.kind === 'agentSettings'
     ? ''
     : ref.nodeId
 }

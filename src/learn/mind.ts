@@ -62,6 +62,20 @@ export function deleteMind(store: LearnStore, goalId: string, idOrKey: string): 
   return { ...store, minds: { ...(store.minds ?? {}), [goalId]: next } }
 }
 
+/**
+ * 按覆盖写一条（记忆管理页的编辑用）：条目身份与 key 都不动，只换正文。
+ *
+ * 不走 writeMind——它按 key 认条目，没有 key 的条目会被它当成新增而非改写。
+ */
+export function updateMind(store: LearnStore, goalId: string, id: string, text: string): LearnStore {
+  const clipped = text.trim().slice(0, MIND_MAX_CHARS)
+  if (!clipped) return store
+  const list = mindsOf(store, goalId)
+  if (!list.some((m) => m.id === id)) return store
+  const next = list.map((m) => (m.id === id ? { ...m, text: clipped, updatedAt: Date.now() } : m))
+  return { ...store, minds: { ...(store.minds ?? {}), [goalId]: next } }
+}
+
 /** 清空一个目标的全部记忆 */
 export function clearMinds(store: LearnStore, goalId: string): LearnStore {
   if (!mindsOf(store, goalId).length) return store

@@ -195,6 +195,8 @@ export function revealOfTab(
       return null
     case 'settings':
     case 'usage':
+    case 'mind':
+    case 'agentSettings':
       // 设置页与用量页是文档区的页签，但侧栏里没有它们的行（入口在顶栏），不定位
       return null
     case 'report':

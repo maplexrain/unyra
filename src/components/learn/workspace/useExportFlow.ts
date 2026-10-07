@@ -85,8 +85,13 @@ export function useExportFlow(deps: ExportFlowDeps) {
         onToast(t('没有打开的文档'))
         return
       }
-      // 设置页与用量页没有可以导出的正文：说一句比弹一个空壳导出框强
-      if (tab.ref.kind === 'settings' || tab.ref.kind === 'usage') {
+      // 系统页没有可以导出的正文：说一句比弹一个空壳导出框强
+      if (
+        tab.ref.kind === 'settings' ||
+        tab.ref.kind === 'usage' ||
+        tab.ref.kind === 'mind' ||
+        tab.ref.kind === 'agentSettings'
+      ) {
         onToast(t('这一页没有可以导出的内容'))
         return
       }

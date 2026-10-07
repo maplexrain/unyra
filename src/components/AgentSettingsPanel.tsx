@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { useEscapeKey } from '../lib/useEscape'
 import TabButton from './TabButton'
-import { Bug, Sparkles, Terminal, Workflow, X } from 'lucide-react'
+import { Bug, Sparkles, Terminal, Workflow } from 'lucide-react'
 import {
   COMPACT_THRESHOLD_MAX,
   COMPACT_THRESHOLD_MIN,
@@ -16,13 +15,12 @@ import { REASONING_EFFORTS, REASONING_LABEL } from '../ai/types'
 import { BUILTIN_EFFORT, type WorkflowEffortSetting, type WorkflowRow, type WorkflowTier } from '../learn/workflows'
 import ConfirmDialog from './ConfirmDialog'
 import DevUnlock from './DevUnlock'
-import ModalScrim from './ModalScrim'
 import { pane } from './Pane'
 import Switch from './Switch'
 import { t } from '../i18n'
 
 /**
- * 超级导师设置。与全局设置一样是**带分页的窗口**，但数据是另一份（见 agent/settings）：
+ * 超级导师设置。文档区的一枚页签（原先是弹窗），数据与全局设置是两份（见 agent/settings）：
  * 全局设置回答「用哪家的哪个模型、Key 是什么」，这里回答「这个 Agent 自己怎么跑」。
  *
  * 分页：
@@ -41,7 +39,6 @@ interface Props {
   /** 「提供商 · 模型」，说明这些设置作用在谁身上 */
   model: string
   onChange: (next: AgentSettings) => void
-  onClose: () => void
   /** 打开上下文比对调试器（悬浮窗由工作区渲染，见 LearnWorkspace） */
   onOpenContextDebugger: () => void
   /** 工作流列表（内置 + 全局 + 当前目标，见 learn/workflows）；不传就整个分页不显示 */
@@ -84,12 +81,11 @@ const rememberTab = (key: TabKey): void => {
   }
 }
 
-export default function AgentSettingsModal({
+export default function AgentSettingsPanel({
   settings,
   hasKey,
   model,
   onChange,
-  onClose,
   onOpenContextDebugger,
   flowRows,
   onRunWorkflow,
@@ -109,8 +105,6 @@ export default function AgentSettingsModal({
     rememberTab(key)
   }
 
-  useEscapeKey(onClose)
-
   const patchDev = (patch: Partial<AgentDevSettings>) => {
     const next = { ...settings, dev: { ...settings.dev, ...patch } }
     onChange(next)
@@ -119,67 +113,53 @@ export default function AgentSettingsModal({
   }
 
   return (
-    <ModalScrim z="z-[60]" onClose={onClose}>
-      <div
-        role="dialog"
-        aria-label={t('超级导师设置')}
-        className="moji-dialog-in flex h-[min(680px,90vh)] w-full max-w-3xl overflow-hidden rounded-2xl border border-line-strong bg-paper shadow-[0_24px_64px_rgba(31,27,23,0.3)]"
-      >
-        <nav className="flex w-[168px] shrink-0 flex-col gap-1 border-r border-line bg-paper-deep px-3 py-4">
-          {/* 三击标题 = 开发者分页的入口；e.detail 是连击数 */}
-          <div
-            className="flex items-center gap-2 px-2 pb-3 text-[15px] font-semibold text-ink-strong"
-            onClick={(e) => {
-              if (e.detail >= 3) setDevEntry(true)
-            }}
-          >
-            <Sparkles size={15} className="shrink-0 text-seal" />
-            {t('超级导师')}
-          </div>
-          {tabs.map((tb) => (
-            <TabButton
-              key={tb.key}
-              icon={tb.icon}
-              label={t(tb.label)}
-              active={tab === tb.key}
-              onClick={() => select(tb.key)}
-            />
-          ))}
-        </nav>
-
-        {/* min-h-0：这一列自己是 flex 项，不带它内容会把列撑破、内层 overflow-y-auto 永远不滚 */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="flex shrink-0 items-center gap-2 border-b border-line px-5 py-3">
-            <h2 className="text-[15px] font-semibold text-ink-strong">
-              {tab === 'dev' ? t('开发者') : tab === 'flow' ? t('工作流') : t('超级导师设置')}
-            </h2>
-            <span className="min-w-0 flex-1 truncate text-[11.5px] text-ink-faint">
-              {tab === 'dev'
-                ? t('调试工具，全部默认关闭')
-                : tab === 'flow'
-                  ? t('导师可以代跑的任务模板；触发时指令以 user 消息进上下文')
-                  : t('只影响对话区里的超级导师，与全局设置分开')}
-            </span>
-            <button
-              type="button"
-              title={t('关闭')}
-              onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-ink-soft transition hover:bg-line/70 hover:text-ink"
-            >
-              <X size={15} />
-            </button>
-          </header>
-
-          {tab === 'chat' ? (
-            <ChatTab settings={settings} hasKey={hasKey} model={model} onChange={onChange} />
-          ) : tab === 'flow' && flowRows && onRunWorkflow && onRemoveWorkflow && onWorkflowEffort ? (
-            <FlowTab rows={flowRows} onRun={onRunWorkflow} onRemove={onRemoveWorkflow} onEffort={onWorkflowEffort} />
-          ) : (
-            <DevTab settings={settings} onPatchDev={patchDev} onOpenContextDebugger={onOpenContextDebugger} />
-          )}
+    <div className="flex h-full min-h-0 w-full min-w-0 bg-paper">
+      <nav className="flex w-[168px] shrink-0 flex-col gap-1 border-r border-line bg-paper-deep px-3 py-4">
+        {/* 三击标题 = 开发者分页的入口；e.detail 是连击数 */}
+        <div
+          className="flex items-center gap-2 px-2 pb-3 text-[15px] font-semibold text-ink-strong"
+          onClick={(e) => {
+            if (e.detail >= 3) setDevEntry(true)
+          }}
+        >
+          <Sparkles size={15} className="shrink-0 text-seal" />
+          {t('超级导师')}
         </div>
+        {tabs.map((tb) => (
+          <TabButton
+            key={tb.key}
+            icon={tb.icon}
+            label={t(tb.label)}
+            active={tab === tb.key}
+            onClick={() => select(tb.key)}
+          />
+        ))}
+      </nav>
+
+      {/* min-h-0：这一列自己是 flex 项，不带它内容会把列撑破、内层 overflow-y-auto 永远不滚 */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="flex shrink-0 items-center gap-2 border-b border-line px-5 py-3">
+          <h2 className="text-[15px] font-semibold text-ink-strong">
+            {tab === 'dev' ? t('开发者') : tab === 'flow' ? t('工作流') : t('超级导师设置')}
+          </h2>
+          <span className="min-w-0 flex-1 truncate text-[11.5px] text-ink-faint">
+            {tab === 'dev'
+              ? t('调试工具，全部默认关闭')
+              : tab === 'flow'
+                ? t('导师可以代跑的任务模板；触发时指令以 user 消息进上下文')
+                : t('只影响对话区里的超级导师，与全局设置分开')}
+          </span>
+        </header>
+
+        {tab === 'chat' ? (
+          <ChatTab settings={settings} hasKey={hasKey} model={model} onChange={onChange} />
+        ) : tab === 'flow' && flowRows && onRunWorkflow && onRemoveWorkflow && onWorkflowEffort ? (
+          <FlowTab rows={flowRows} onRun={onRunWorkflow} onRemove={onRemoveWorkflow} onEffort={onWorkflowEffort} />
+        ) : (
+          <DevTab settings={settings} onPatchDev={patchDev} onOpenContextDebugger={onOpenContextDebugger} />
+        )}
       </div>
-    </ModalScrim>
+    </div>
   )
 }
 

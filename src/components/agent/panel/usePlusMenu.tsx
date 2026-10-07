@@ -8,6 +8,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Archive,
+  Brain,
   ChevronRight,
   FlaskConical,
   Flame,
@@ -59,8 +60,10 @@ export interface PlusMenuArgs {
   onBrowserUse: () => void
   /** 更多 → 压缩上下文：把前面的对话折成一份摘要 */
   onCompact: () => void
-  /** 更多 → 超级导师设置：打开超级导师自己的设置窗口（与全局设置不是同一个） */
+  /** 更多 → 超级导师设置：打开超级导师自己的设置页签（与全局设置不是同一个） */
   onOpenAgentSettings: () => void
+  /** 更多 → 记忆：打开导师长期记忆的管理页签（learn/mind） */
+  onOpenMinds: () => void
   /** 更多 → 文件：走系统对话框挑附件（由 useComposer 提供） */
   onAttach: () => void
 }
@@ -115,6 +118,7 @@ export function usePlusMenu({
   onBrowserUse,
   onCompact,
   onOpenAgentSettings,
+  onOpenMinds,
   onAttach,
 }: PlusMenuArgs): PlusMenuApi {
   /** 现在停在哪一级：null = 一级；二级只有「工作流」与「对话历史」两项 */
@@ -176,6 +180,13 @@ export function usePlusMenu({
       icon: <Archive size={14} />,
       disabled: compacting || running,
       run: onCompact,
+    },
+    {
+      key: 'minds',
+      label: t('记忆'),
+      hint: t('查看与编辑导师写下的长期记忆'),
+      icon: <Brain size={14} />,
+      run: onOpenMinds,
     },
     {
       key: 'settings',
