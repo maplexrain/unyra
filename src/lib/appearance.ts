@@ -167,12 +167,13 @@ export const SCALE_ZOOM_STEP = 1.07
 export const SCALE_HUD_MS = 1300
 
 /**
- * 右栏宽度范围：再窄放不下工具卡片与代码块；上限给到 800——宽屏下对话与文档各占一半也放得下。
+ * 右栏宽度范围：再窄放不下工具卡片与代码块，页签栏一排页签也挤成一团（下限 500，
+ * 用户钉死的值）；上限给到 800——宽屏下对话与文档各占一半也放得下。
  * 默认 600：默认布局是「对话在左、文档在右」（见 agentLeft），于是这 600px 量的是文档栏——
  * 读文档的那一栏不该比这更窄。对话栏拿走剩下的宽度（宽屏下绰绰有余），
  * 因此它到底多宽由窗口决定，消息定位条显不显示也看那个实际宽度（见 AgentPanel 的 RAIL_MIN_WIDTH）。
  */
-export const AGENT_WIDTH_MIN = 400
+export const AGENT_WIDTH_MIN = 500
 export const AGENT_WIDTH_MAX = 800
 export const AGENT_WIDTH_DEFAULT = 600
 
