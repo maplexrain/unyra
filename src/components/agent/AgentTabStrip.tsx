@@ -259,7 +259,7 @@ export default function AgentTabStrip({
       */}
       <div
         className={
-          'no-print relative flex shrink-0 items-stretch gap-2 px-2 pt-1.5 pb-0 ' +
+          'no-print relative flex shrink-0 items-stretch gap-2 pt-1.5 pb-0 ' +
           (tabs.length ? 'bg-paper/40 ' : '') +
           (snap ? 'moji-tab-snap' : '')
         }
@@ -267,7 +267,9 @@ export default function AgentTabStrip({
         <div
           ref={stripRef}
           role="tablist"
-          className="moji-tab-strip flex min-w-0 flex-1 items-end gap-[3px] overflow-x-auto"
+          // 横向内边距住在滚动容器里（不在外栏上）：激活页签的反向圆角要伸出页签两侧，
+          // 贴边那枚的方块必须落在滚动口之内（见 workspace.css 的 moji-tab-flare 说明）
+          className="moji-tab-strip flex min-w-0 flex-1 items-end gap-[3px] overflow-x-auto px-2"
         >
           {tabs.map((ref, i) => {
             const key = agentTabKey(ref)
@@ -305,7 +307,7 @@ export default function AgentTabStrip({
                 style={{ transform: offset ? 'translateX(' + offset + 'px)' : undefined }}
                 className={
                   'moji-tab group relative flex h-7 min-w-[120px] max-w-[220px] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] ' +
-                  (on ? 'moji-agent-tab-on z-10 font-medium ' : '') +
+                  (on ? 'moji-tab-flare z-10 font-medium ' : '') +
                   (dragging
                     ? 'z-10 cursor-grabbing border-line-strong bg-card text-ink-strong shadow-md '
                     : 'transition-transform duration-150 ') +
