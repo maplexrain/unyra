@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react'
-import { Check } from 'lucide-react'
+import { Check, Drama } from 'lucide-react'
 import { PERSONAS, personaOf, type PersonaId } from '../../agent/persona'
 import { useHoverMenu } from '../../lib/hoverMenu'
 import { t } from '../../i18n'
@@ -66,6 +66,9 @@ export default function PersonaPicker({
           (open ? 'bg-seal/10 text-seal-deep' : 'text-ink-faint hover:text-seal-deep')
         }
       >
+        {/* 面具（Drama）：人格的隐喻——「现在跟谁在说话」。颜色跟按钮文字走，
+            悬停/展开时与文字一起染成印章色，不用单独的状态色抢戏 */}
+        <Drama size={13} className="shrink-0" aria-hidden="true" />
         {/* 住在状态行里（placement='up'）就不再带括号：它前面没有「超级导师」给它当补语了 */}
         {placement === 'up' ? t(current.short) : t('（{0}）', t(current.short))}
       </button>
