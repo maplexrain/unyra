@@ -83,13 +83,17 @@ describe('页签的身份', () => {
     expect(tabTrail({ kind: 'exam', nodeId: 'n1', examId: 'e1', attemptId: 'a1' }, path)).toBe('')
   })
 
-  it('设置页全局只有一份：key 恒定、不挂节点、没有路径后缀', () => {
-    const ref: TabRef = { kind: 'settings' }
+  it('系统页全局各只有一份：key 恒定、不挂节点、没有路径后缀', () => {
+    const settings: TabRef = { kind: 'settings' }
     // 恒定的 key 意味着从哪个入口打开都是同一枚页签（openTab 按 key 去重）
-    expect(tabKey(ref)).toBe('set:settings')
-    expect(tabNodeId(ref)).toBeNull()
-    expect(tabTrail(ref, () => '极限')).toBe('')
-    expect(tabTitle(ref, () => '随便')).toBe('设置')
+    expect(tabKey(settings)).toBe('set:settings')
+    expect(tabNodeId(settings)).toBeNull()
+    expect(tabTrail(settings, () => '极限')).toBe('')
+    expect(tabTitle(settings, () => '随便')).toBe('设置')
+    const usage: TabRef = { kind: 'usage' }
+    expect(tabKey(usage)).toBe('u:usage')
+    expect(tabNodeId(usage)).toBeNull()
+    expect(tabTitle(usage, () => '随便')).toBe('用量统计')
   })
 })
 

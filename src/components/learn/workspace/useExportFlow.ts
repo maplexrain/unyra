@@ -85,9 +85,9 @@ export function useExportFlow(deps: ExportFlowDeps) {
         onToast(t('没有打开的文档'))
         return
       }
-      // 设置页签没有可以导出的正文：说一句比弹一个空壳导出框强
-      if (tab.ref.kind === 'settings') {
-        onToast(t('设置页没有可以导出的内容'))
+      // 设置页与用量页没有可以导出的正文：说一句比弹一个空壳导出框强
+      if (tab.ref.kind === 'settings' || tab.ref.kind === 'usage') {
+        onToast(t('这一页没有可以导出的内容'))
         return
       }
       // 只抓**这一格**显示着的那一片：常驻的隐藏页签里也有图，混进来张数就跟正文对不上了

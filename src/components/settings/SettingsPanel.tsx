@@ -48,7 +48,6 @@ import { DevPanel } from './DevPanel'
 import { PluginsPanel } from './PluginsPanel'
 import { ProviderListPage } from './ProviderListPage'
 import { ProviderConfigPage } from './ProviderConfigPage'
-import UsagePanel from './UsagePanel'
 
 interface Props {
   /** 换用户数据目录：整份数据换一套，交给上层重新载入 */
@@ -215,31 +214,27 @@ export default function SettingsPanel({ onRootChanged, onToast }: Props) {
             </button>
           )}
           <h2 className="text-[15px] font-semibold text-ink-strong">
-            {tab === 'usage'
-              ? t('用量统计')
-              : tab === 'appearance'
-                ? t('外观')
-                : tab === 'window'
-                  ? t('窗口')
-                  : tab === 'storage'
-                    ? t('数据存储')
-                    : tab === 'plugins'
-                      ? t('插件')
-                      : tab === 'update'
-                      ? t('更新')
-                    : tab === 'about'
-                      ? t('关于')
-                      : tab === 'dev'
-                        ? t('开发者')
-                      : page.view === 'list'
-                        ? t('模型设置')
-                        : t('提供商配置')}
+            {tab === 'appearance'
+              ? t('外观')
+              : tab === 'window'
+                ? t('窗口')
+                : tab === 'storage'
+                  ? t('数据存储')
+                  : tab === 'plugins'
+                    ? t('插件')
+                    : tab === 'update'
+                    ? t('更新')
+                  : tab === 'about'
+                    ? t('关于')
+                    : tab === 'dev'
+                      ? t('开发者')
+                    : page.view === 'list'
+                      ? t('模型设置')
+                      : t('提供商配置')}
           </h2>
         </header>
 
-        {tab === 'usage' ? (
-          <UsagePanel />
-        ) : tab === 'ai' ? (
+        {tab === 'ai' ? (
           <form
             className="flex min-h-0 flex-1 flex-col"
             onSubmit={(e) => {

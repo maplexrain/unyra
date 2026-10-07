@@ -194,7 +194,8 @@ export function revealOfTab(
       // 守卫上下文不在侧栏的任何一行里，没有可定位的东西
       return null
     case 'settings':
-      // 设置页是文档区的页签，但侧栏里没有它的行（入口都在顶栏与工具里），不定位
+    case 'usage':
+      // 设置页与用量页是文档区的页签，但侧栏里没有它们的行（入口在顶栏），不定位
       return null
     case 'report':
       // 专注报告住在资源管理器自己的分类夹里；守卫页签不在侧栏，落不进来（不定位）

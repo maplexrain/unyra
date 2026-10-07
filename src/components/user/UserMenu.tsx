@@ -1,4 +1,4 @@
-import { LogOut, Settings, UserCog } from 'lucide-react'
+import { ChartColumn, LogOut, Settings, UserCog } from 'lucide-react'
 import type { User } from '../../user/types'
 import { displayName } from '../../user/profile'
 import { useHoverMenu } from '../../lib/hoverMenu'
@@ -11,6 +11,8 @@ interface Props {
   onOpenUser: () => void
   /** 打开设置（AI / 外观） */
   onOpenSettings: () => void
+  /** 打开用量统计页签（文档区的一枚页签，见 learn/types 的 kind 'usage'） */
+  onOpenUsage: () => void
   onSignOut: () => void
   /** 菜单项：是否显示「用户」（登录页无此入口） */
   showProfile?: boolean
@@ -26,7 +28,14 @@ const MENU_EXIT_MS = 160
  * 展开是从右上角向左下「擦」出来的一块（见 index.css 的 .moji-wipe-corner-*）。
  * 目前只有学习页顶栏用它；showProfile 留着给没有用户管理入口的页面复用。
  */
-export default function UserMenu({ user, onOpenUser, onOpenSettings, onSignOut, showProfile = true }: Props) {
+export default function UserMenu({
+  user,
+  onOpenUser,
+  onOpenSettings,
+  onOpenUsage,
+  onSignOut,
+  showProfile = true,
+}: Props) {
   // 浮层要等退场动画播完才卸载，所以展开状态交给 useHoverMenu 管（与顶栏那几个入口同一套时序）
   const { open, setOpen, mounted, wrapProps, buttonProps, panelProps } = useHoverMenu({
     closeMs: HOVER_CLOSE_MS,
@@ -106,6 +115,17 @@ export default function UserMenu({ user, onOpenUser, onOpenSettings, onSignOut, 
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] text-ink transition hover:bg-line/60"
             >
               <Settings size={14} className="text-ink-faint" /> {t('设置')}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false)
+                onOpenUsage()
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] text-ink transition hover:bg-line/60"
+            >
+              <ChartColumn size={14} className="text-ink-faint" /> {t('用量统计')}
             </button>
             <button
               type="button"

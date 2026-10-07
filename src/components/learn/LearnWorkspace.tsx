@@ -195,6 +195,7 @@ import type { DocSource } from './NodeNote'
 import ConfirmDialog from '../ConfirmDialog'
 import AgentPanel from '../agent/AgentPanel'
 import SettingsPanel from '../settings/SettingsPanel'
+import UsagePanel from '../settings/UsagePanel'
 import AgentTabStrip from '../agent/AgentTabStrip'
 import ContextDebugger from '../agent/ContextDebugger'
 import { resetPrefixGate } from '../../agent/prefixGate'
@@ -451,8 +452,14 @@ export default function LearnWorkspace({
     if (ref.kind === 'exam') {
       return { type: 'attempt', nodeId: ref.nodeId, examId: ref.examId, attemptId: ref.attemptId, title }
     }
-    // 守卫上下文、专注报告与设置页没有可引用的 chip 形态：从文档区拖不出引用
-    if (ref.kind === 'guard' || ref.kind === 'report' || ref.kind === 'settings') return null
+    // 守卫上下文、专注报告与系统页（设置/用量）没有可引用的 chip 形态：从文档区拖不出引用
+    if (
+      ref.kind === 'guard' ||
+      ref.kind === 'report' ||
+      ref.kind === 'settings' ||
+      ref.kind === 'usage'
+    )
+      return null
     const docPath = (kind: 'teaching' | 'note' | 'outline', note?: string): string | undefined =>
       nodeDocPath(s, ref.nodeId, { kind, ...(note ? { note } : {}) }) ?? undefined
     if (ref.kind === 'teach') return { type: 'doc', nodeId: ref.nodeId, path: docPath('teaching'), title }
@@ -1115,6 +1122,12 @@ export default function LearnWorkspace({
     openTabRef.current = openTab
     openSettingsRef.current = () => openTab({ kind: 'settings' })
   })
+
+  /**
+   * 用量统计页签的入口（顶栏用户菜单）。只在 Topbar 一处用到（声明在 openTab 之后），
+   * 不需要晚绑定把手——直接依赖 openTab 即可。
+   */
+  const onOpenUsage = useCallback(() => openTab({ kind: 'usage' }), [openTab])
 
   /**
    * api.ui.point：打开/切到某个节点的文档页签并定位。
@@ -2528,7 +2541,12 @@ export default function LearnWorkspace({
           const s = getLatest()
           if (s.docArea.focus !== groupId) set({ ...s, docArea: setFocus(s.docArea, groupId) })
         }}
-        className="flex min-h-0 min-w-0 flex-1 flex-col"
+        /*
+         * 整格铺 bg-paper：文档、设置、用量、守卫报告……各类页签的正文底色共用这同一层。
+         * 有的页签内容自己不带背景（用量页、空格子），不铺的话它们会露出更底层的深色，
+         * 切页签时整个文档区一明一暗地跳。
+         */
+        className="flex min-h-0 min-w-0 flex-1 flex-col bg-paper"
       >
         {/*
           页签栏：纯净阅读时整条收起。
@@ -2681,6 +2699,12 @@ export default function LearnWorkspace({
                 WebTabLayer 常驻层显示——这里只让出位置，别画任何东西。
               */
               null
+            ) : gTab?.ref.kind === 'usage' ? (
+              /*
+                用量统计：独立的一枚页签（入口在顶栏用户菜单）。它读的是「台账」
+                （ai/usageLog）而不是配置，所以不挤在设置里；页面自己订阅台账重渲染。
+              */
+              <UsagePanel />
             ) : gTab?.ref.kind === 'settings' ? (
               /*
                 设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），
@@ -2929,7 +2953,7 @@ export default function LearnWorkspace({
             节点的工具（笔记 / 超级文档 / 学习状态 / 试卷），右半边是这份文档的动作
             （源码 / 预览 / 导出）。一个页签都没有的空格子不画。
           */}
-          {gTab && gTab.ref.kind !== 'web' && gTab.ref.kind !== 'settings' && (
+          {gTab && gTab.ref.kind !== 'web' && gTab.ref.kind !== 'settings' && gTab.ref.kind !== 'usage' && (
             <DocFloat
               /*
                * key 绑「格 + 节点」：换节点时重挂，各块 tip 的展开状态自然回到收起；
@@ -3180,6 +3204,7 @@ export default function LearnWorkspace({
             onOpenUser={onOpenUser}
             onSignOut={onSignOut}
             onOpenSettings={onOpenSettings}
+            onOpenUsage={onOpenUsage}
             onOpenUpdate={onOpenUpdate}
             onToast={onToast}
             /* 番茄钟与打卡都是「自给自足的小块」：时钟/倒计时只在这一块里每秒重渲染，

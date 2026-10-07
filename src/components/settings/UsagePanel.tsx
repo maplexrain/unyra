@@ -467,35 +467,39 @@ function Legend({ color, label }: { color: string; label: string }) {
 
 /**
  * 每日堆叠柱：一段一根 div，高度按当日总量占满纵轴的百分比。
- * 鼠标停上去给一行完整数字（title）：柱子上不放文字，量级对比靠高矮就够了。
+ *
+ * 柱子**封顶 44px**：天数少（比如只看「今天」）时不满铺——统计图要的是「高矮对比」，
+ * 一根横贯全场的柱子只剩色块，没有信息量。日期标签长在每根柱子的正下方（而不是整行
+ * justify-between）：柱子封顶之后两侧会留白，标签跟着柱子走才不会对不上。
  */
 function DayChart({ buckets }: { buckets: DayBucket[] }) {
   const max = Math.max(1, ...buckets.map((b) => b.cacheRead + b.inputFresh + b.output))
   const step = Math.max(1, Math.ceil(buckets.length / 8))
   return (
-    <div>
-      <div className="flex h-36 items-end gap-[3px]">
-        {buckets.map((b) => {
-          const pct = (n: number): string => (n > 0 ? `${(n / max) * 100}%` : '0')
-          return (
+    <div className="flex items-end gap-[3px]">
+      {buckets.map((b, i) => {
+        const pct = (n: number): string => (n > 0 ? `${(n / max) * 100}%` : '0')
+        // 每隔 step 根标一个 + 最后一根；最后一根挨着上一个刻度时让位（两条挤在一起只会互相糊）
+        const showLabel = i % step === 0 || (i === buckets.length - 1 && i % step !== 0)
+        return (
+          <div key={b.day} className="flex min-w-0 max-w-[44px] flex-1 flex-col">
             <div
-              key={b.day}
+              className="flex h-36 items-end"
               title={`${fmtDay(b.day)} · ${t('输入')} ${fmtTok(b.cacheRead + b.inputFresh)}（${t('缓存')} ${fmtTok(b.cacheRead)}）· ${t('输出')} ${fmtTok(b.output)}`}
-              className="group flex h-full min-w-[5px] flex-1 flex-col justify-end gap-px"
             >
               {/* 三段自上而下：输出 / 新算输入 / 缓存命中——输入沉底，输出的一天天变化最显眼 */}
-              <div className="w-full rounded-t-[2px] bg-seal" style={{ height: pct(b.output) }} />
-              <div className="w-full bg-[#98928a]" style={{ height: pct(b.inputFresh) }} />
-              <div className="w-full bg-[#2e8b6e]" style={{ height: pct(b.cacheRead) }} />
+              <div className="flex h-full w-full flex-col justify-end gap-px">
+                <div className="w-full rounded-t-[2px] bg-seal" style={{ height: pct(b.output) }} />
+                <div className="w-full bg-[#98928a]" style={{ height: pct(b.inputFresh) }} />
+                <div className="w-full bg-[#2e8b6e]" style={{ height: pct(b.cacheRead) }} />
+              </div>
             </div>
-          )
-        })}
-      </div>
-      <div className="mt-1 flex justify-between text-[10px] tabular-nums text-ink-faint">
-        {buckets.map((b, i) =>
-          i % step === 0 || i === buckets.length - 1 ? <span key={b.day}>{fmtDay(b.day)}</span> : null,
-        )}
-      </div>
+            <span className="mt-1 h-3.5 text-center text-[10px] leading-[14px] tabular-nums text-ink-faint">
+              {showLabel ? fmtDay(b.day) : ''}
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }

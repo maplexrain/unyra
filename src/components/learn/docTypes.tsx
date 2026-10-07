@@ -1,4 +1,4 @@
-import { AppWindow, BookOpen, FileClock, Folder, FolderOpen, Globe, GraduationCap, HardDrive, ListTree, Loader2, NotebookPen, Settings2, ShieldCheck } from 'lucide-react'
+import { AppWindow, BookOpen, ChartColumn, FileClock, Folder, FolderOpen, Globe, GraduationCap, HardDrive, ListTree, Loader2, NotebookPen, Settings2, ShieldCheck } from 'lucide-react'
 
 /**
  * 文档类型的**视觉身份**：一种类型一个图标、一个颜色。
@@ -20,6 +20,7 @@ export type DocKindKey =
   | 'guard'
   | 'report'
   | 'settings'
+  | 'usage'
 
 const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   teach: '#4a8fd4', // 蓝：教学文档
@@ -31,7 +32,8 @@ const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   web: '#2aa1b8', // 青：网页（内置浏览器）
   guard: '#d4577b', // 绯粉：守卫 agent 的上下文（警戒色——它在盯梢）
   report: '#7a6a54', // 褐灰：专注模式报告（收场的凭据）
-  settings: '#7c8698', // 蓝灰：设置页（系统页，与哪一类学习内容都不同族）
+  settings: '#7c8698', // 蓝灰：系统页（设置）——与哪一类学习内容都不同族
+  usage: '#7c8698', // 蓝灰：系统页（用量统计），与设置同族同色、图标不同
 }
 
 /**
@@ -58,6 +60,8 @@ export function DocTypeIcon({ kind, size = 11 }: { kind: DocKindKey; size?: numb
       <FileClock size={size} />
     ) : kind === 'settings' ? (
       <Settings2 size={size} />
+    ) : kind === 'usage' ? (
+      <ChartColumn size={size} />
     ) : (
       <HardDrive size={size} />
     )
