@@ -43,6 +43,7 @@ export function Topbar({
   onOpenUser,
   onSignOut,
   onOpenSettings,
+  onOpenUsage,
   onOpenUpdate,
   onToast,
   pomodoro,
@@ -69,6 +70,8 @@ export function Topbar({
   onOpenUser: () => void
   onSignOut: () => void
   onOpenSettings: () => void
+  /** 打开用量统计页签（入口在用户菜单，见 UserMenu） */
+  onOpenUsage: () => void
   onOpenUpdate: () => void
   /** 顶栏那几个「还没做好」的按钮据此说明一句，而不是点了没反应 */
   onToast: (msg: string) => void
@@ -134,6 +137,7 @@ export function Topbar({
           user={user}
           onOpenUser={onOpenUser}
           onOpenSettings={onOpenSettings}
+          onOpenUsage={onOpenUsage}
           onSignOut={onSignOut}
         />
 

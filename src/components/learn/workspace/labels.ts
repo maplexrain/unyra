@@ -48,13 +48,14 @@ export function examDeleteWarn(exam: Exam): string {
  */
 export function savedTextOf(store: LearnStore, ref: TabRef): string {
   // 网页页签没有暂存正文（没有编辑器），与本地文件同路；
-  // 守卫上下文、专注报告与设置页同样没有编辑器，自然也没有暂存
+  // 守卫上下文、专注报告与系统页（设置/用量）同样没有编辑器，自然也没有暂存
   if (
     ref.kind === 'local' ||
     ref.kind === 'web' ||
     ref.kind === 'guard' ||
     ref.kind === 'report' ||
-    ref.kind === 'settings'
+    ref.kind === 'settings' ||
+    ref.kind === 'usage'
   )
     return ''
   const node = nodeById(store, ref.nodeId)

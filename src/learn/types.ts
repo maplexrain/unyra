@@ -512,6 +512,11 @@ export type TabRef =
    * 它跟着 docArea 持久化——重启后还开在那儿，与「上次开着哪些页签」同一句话。
    */
   | { kind: 'settings' }
+  /**
+   * 用量统计页：同样全局一枚页签（入口在顶栏用户菜单）。它读的是「台账」
+   * （ai/usageLog）而不是配置，所以不从设置里走；页面自己订阅台账重渲染。
+   */
+  | { kind: 'usage' }
 
 /**
  * agent 栏的页签指向什么（见 learn/agentTabs 与 components/agent/AgentTabStrip）。
