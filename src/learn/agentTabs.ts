@@ -11,6 +11,7 @@
  */
 
 import type { AgentTabRef } from './types'
+import type { TabCloseMode } from './tabs'
 
 /** 页签 id：目标级 `ga:<goalId>`、子代理 `sa:<sessionId>`。目标级页签一个目标只有一枚 */
 export function agentTabKey(ref: AgentTabRef): string {
@@ -137,4 +138,37 @@ export function withAgentTabs<S extends { agentTabs?: AgentTabRef[]; agentActive
   const prevActive = store.agentActiveTab ?? null
   if (prevTabs === tabs && prevActive === active) return store
   return { ...store, agentTabs: tabs, agentActiveTab: active }
+}
+
+/**
+ * 拖拽排序：按页签 key 的新顺序重排。只动顺序、不动激活态——拖动是「把这一项挪个位置」，
+ * 不是「切到这一项」。keys 没覆盖到的页签（并发改动）按原顺序接在后面；对不上总数时
+ * 原样返回（拖动快照过时了，这一下不作数）。
+ */
+export function reorderAgentTabs(tabs: AgentTabRef[], keys: string[]): AgentTabRef[] {
+  if (keys.length !== tabs.length) return tabs
+  const byKey = new Map(tabs.map((t) => [agentTabKey(t), t] as const))
+  const next: AgentTabRef[] = []
+  for (const k of keys) {
+    const t = byKey.get(k)
+    if (!t) return tabs
+    next.push(t)
+  }
+  return next
+}
+
+/**
+ * 右键菜单「按位置关一批」要关的页签 key（与文档区 closeTabs 同一套位置语义，
+ * 见 learn/tabs 的 TabCloseMode）。**只算名单、不动状态**：名单里的每一枚还要过
+ * 关闭守卫（文档区还开着 / 正在跑的拦下），拦与关都在调用方做。
+ */
+export function agentTabCloseSet(tabs: AgentTabRef[], key: string, mode: TabCloseMode): string[] {
+  const keys = tabs.map(agentTabKey)
+  const idx = keys.indexOf(key)
+  if (idx < 0) return []
+  if (mode === 'all') return keys
+  if (mode === 'self') return [key]
+  if (mode === 'left') return keys.slice(0, idx)
+  if (mode === 'right') return keys.slice(idx + 1)
+  return keys.filter((k) => k !== key)
 }

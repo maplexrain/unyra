@@ -45,6 +45,30 @@
 }
 
 /*
+ * agent 栏激活页签的**反向圆角**（仿浏览器页签）：两块 7px 的小方块贴在激活页签
+ * 底部两角的外侧，径向渐变把靠外的四分之一圆抠成透明——页签的底色于是「弯」进了
+ * 面板的顶边，与下面盖住下边框（见 AgentTabStrip 那条线）一起构成「从正文里长出来」。
+ * 色值必须与页签自己的 bg-card 同源（--color-card），不然两截会对不上。
+ */
+.moji-agent-tab-on::before,
+.moji-agent-tab-on::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 7px;
+  height: 7px;
+  pointer-events: none;
+}
+.moji-agent-tab-on::before {
+  left: -7px;
+  background: radial-gradient(circle 7px at 0 100%, transparent 0 6.5px, var(--color-card) 7px);
+}
+.moji-agent-tab-on::after {
+  right: -7px;
+  background: radial-gradient(circle 7px at 100% 100%, transparent 0 6.5px, var(--color-card) 7px);
+}
+
+/*
  * 源码视图的正文：**与预览同一族字体**（用户定的）。
  *
  * 从前这里用等宽字体：Markdown 源文的缩进看着更"对齐"，但中文字在等宽字体下

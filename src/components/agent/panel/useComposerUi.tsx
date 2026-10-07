@@ -59,6 +59,10 @@ export interface ComposerUiProps {
   subMode?: { name: string; running: boolean }
   /** 子代理会话入口（按钮 + 弹出列表），插在模型选择器左侧 */
   subAgentSlot?: ReactNode
+  /** 导师人格入口：插在子代理按钮的右侧，与提供商切换同一排 */
+  personaSlot?: ReactNode
+  /** 这枚面板是不是眼前的页签（原样透传给 Composer：隐藏面板不登记 chip 落点） */
+  active?: boolean
 }
 
 export function ComposerUi(props: ComposerUiProps): ReactNode {

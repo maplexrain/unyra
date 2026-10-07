@@ -94,9 +94,7 @@ interface Props {
   /** 自动压缩阈值（0~1），菜单项上如实说明「到多少会自己压」 */
   compactThreshold: number
   /**
-   * 导师人格（见 agent/persona）：标题后面括号里那两个字，鼠标经过向下展开三种可选。
-   *
-   * 它住在标题里而不是菜单里——人格是「现在跟谁在说话」，那是状态，不是又一个动作。
+   * 导师人格（见 agent/persona）：显示与选择在输入框底行（子代理按钮右侧），切换即时写进设置。
    */
   persona: PersonaId
   onPickPersona: (id: PersonaId) => void
@@ -113,6 +111,12 @@ interface Props {
    * 面板内走 ref 转发保持回调身份恒定——memo 过的消息行不因它每次渲染换身份而整列重渲染。
    */
   onResumeInterrupted?: () => void
+  /**
+   * 这一枚面板是不是「眼前那一枚」（agent 栏页签化后所有页签常挂——keepalive）。
+   * 从隐藏切回可见时重新量一遍定位条锚点：display:none 里量到的全是零矩形，
+   * 不补这一遍，消息定位条要等下一次滚动才恢复。
+   */
+  active?: boolean
   /**
    * 待回答的结构化表单（api.ask 发起的）：显示在输入框上方，提交前沙箱一直阻塞着。
    * id 是这一次表单的身份（重开一张表单时 key 换掉，旧答案不会串）。
@@ -192,6 +196,7 @@ export default function AgentPanel({
   sub,
   viewSubId = null,
   onOpenSub,
+  active = true,
 }: Props) {
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
   /** 点开看大图的附件。两种来源各一份状态：已进资源库的气泡图与还在内存里的待发送图 */
@@ -347,6 +352,17 @@ export default function AgentPanel({
     resumeRef.current = onResumeInterrupted
   })
   const resumeInterrupted = useCallback(() => resumeRef.current?.(), [])
+
+  /*
+   * keepalive：页签从隐藏切回可见的那一刻重新量锚点。display:none 期间量到的全是
+   * 零矩形（元素没有布局），不补这一遍，定位条要等下一次消息或滚动才恢复；
+   * 顺带让跟随状态落回它该在的位置（贴底的照旧贴底，脱离的不动）。
+   */
+  useEffect(() => {
+    if (!active) return
+    measureAnchors()
+    stickToBottom()
+  }, [active, measureAnchors, stickToBottom])
 
   /**
    * 保存编辑：id 与文本由消息行带上来（原来是从 editing 那份状态里读的，两者在调用点上等值——
@@ -556,12 +572,17 @@ export default function AgentPanel({
           subAgentSlot={
             <SubAgentMenu sessions={sub?.sessions ?? []} defs={sub?.defs ?? []} onOpen={(id) => onOpenSub?.(id)} />
           }
+          // 人格入口：输入框底行、子代理按钮右侧（原顶栏撤除后的新家；向上展开——它已贴近窗口底缘）
+          personaSlot={<PersonaPicker persona={persona} onPick={onPickPersona} placement="up" />}
+          // keepalive：隐藏面板不登记 chip 落点（模块级单槽，谁最后登记谁赢）
+          active={active}
         />
 
         {/*
-          状态行：输入框底下的一条细字，原来只有三个数。顶栏撤掉之后它接过了「这一栏
-          在看谁」——左边是「正在辅导哪个节点 / 这段对话叫什么」（子代理页签则是这场
-          任务的履历），右边是轮数 / 速度 / token 与人格。一行读全：在看谁、跑到哪、花了多少。
+          状态行：输入框底下的一条细字。左边是「正在辅导哪个节点 / 这段对话叫什么」
+          （子代理页签则是这场任务的履历），右边是轮数 / 速度 / token——一行读全：
+          在看谁、跑到哪、花了多少。人格选择器不在这行：它搬进了输入框底行，
+          与提供商切换同一排（见 ComposerUi 的 personaSlot）。
         */}
         <div className="flex min-w-0 items-center gap-2.5 px-1 pb-1.5 pt-1.5">
           {subSession ? (
@@ -599,7 +620,6 @@ export default function AgentPanel({
           )}
           <span className="min-w-0 flex-1" aria-hidden="true" />
           <PaceStrip turns={turns} tps={tpsNow} tokens={tokensTotal} />
-          <PersonaPicker persona={persona} onPick={onPickPersona} placement="up" />
         </div>
       </div>
 

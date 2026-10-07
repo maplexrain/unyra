@@ -77,13 +77,15 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
    * 为什么先判：资格不够时跑一轮 AI 是纯浪费（还可能被它安慰式放行）。
    * 但最终把关仍在 checkin.settle——门槛与次数由 learn/checkin 复核。
    */
-  const startCheckin = useCallback(() => {
+  const startCheckin = useCallback((nodeId?: string) => {
     // 先把这一场结掉：门槛复核读的是 store，而它每 30 秒才更新一次。
     // 不结的话会出现「顶栏说读够了，点下去说还差 20 秒」这种最恼人的不一致。
     requestReadingSettle()
     const s = getLatest()
-    const goalId = s.activeGoalId ?? ''
-    // 打卡是按**目标**的账（见 learn/checkin 的 CheckinBook）：判资格只读当前目标那一本
+    // 指名的节点（keepalive 的页签面板各自绑自己的落点）决定目标归属；缺省 = 当前节点
+    const named = nodeId ? nodeById(s, nodeId) : null
+    const goalId = named?.goalId ?? s.activeGoalId ?? ''
+    // 打卡是按**目标**的账（见 learn/checkin 的 CheckinBook）：判资格只读这一目标那一本
     const e = checkinEligible(readingOfGoal(s.reading, goalId), checkinOfGoal(s.checkin, goalId), {
       titleOf: (id) => nodeById(s, id)?.title,
     })
@@ -96,22 +98,24 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
       onOpenSettings()
       return
     }
-    const nodeId = activeNodeId ?? activeGoal?.rootNodeId ?? null
-    if (!nodeId) return
-    agent.runWorkflow('checkin', { nodeId })
+    const nid = named?.id ?? activeNodeId ?? activeGoal?.rootNodeId ?? null
+    if (!nid) return
+    agent.runWorkflow('checkin', { nodeId: nid })
   }, [activeGoal, activeNodeId, agent, getLatest, hasKey, onToast, onOpenSettings, providerName])
 
   /** 浏览器操作：交给导师用内置浏览器代办（看=截图、输入=模拟鼠标键盘），低档推理走快流程 */
-  const startBrowserUse = useCallback(() => {
-    const nodeId = activeNodeId ?? activeGoal?.rootNodeId ?? null
-    if (!nodeId) return
+  const startBrowserUse = useCallback((nodeId?: string) => {
+    // 指名的节点（keepalive 的页签面板）优先；缺省 = 当前节点
+    const named = nodeId ? nodeById(getLatest(), nodeId) : null
+    const nid = named?.id ?? activeNodeId ?? activeGoal?.rootNodeId ?? null
+    if (!nid) return
     if (!hasKey) {
       onToast(t('浏览器操作要先在设置中填写「{0}」的 API Key', providerName))
       onOpenSettings()
       return
     }
-    agent.runWorkflow('browser-use', { nodeId })
-  }, [activeGoal, activeNodeId, agent, hasKey, onToast, onOpenSettings, providerName])
+    agent.runWorkflow('browser-use', { nodeId: nid })
+  }, [activeGoal, activeNodeId, agent, getLatest, hasKey, onToast, onOpenSettings, providerName])
 
   /**
    * 新增一份试卷：**不先问类型与难度**，直接跑内置工作流「出卷」——导师会自己 ask 用户

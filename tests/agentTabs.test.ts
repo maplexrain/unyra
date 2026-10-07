@@ -10,8 +10,10 @@ import { describe, expect, it } from 'vitest'
 import type { AgentTabRef } from '../src/learn/types'
 import {
   agentTabCloseBlock,
+  agentTabCloseSet,
   agentTabKey,
   normalizeAgentTabs,
+  reorderAgentTabs,
   removeAgentTab,
   upsertAgentTab,
 } from '../src/learn/agentTabs'
@@ -68,6 +70,37 @@ describe('removeAgentTab', () => {
   it('关不存在的页签原样返回', () => {
     const tabs = [goal('g1')]
     expect(removeAgentTab(tabs, 'ga:g1', 'ga:ghost')).toEqual({ tabs, active: 'ga:g1' })
+  })
+})
+
+describe('reorderAgentTabs', () => {
+  it('按 key 的新顺序重排，内容原样保留', () => {
+    const tabs = [goal('g1', 'c1'), goal('g2', 'c2'), goal('g3', 'c3')]
+    const next = reorderAgentTabs(tabs, ['ga:g3', 'ga:g1', 'ga:g2'])
+    expect(next.map((t) => (t.kind === 'goal' ? t.goalId : ''))).toEqual(['g3', 'g1', 'g2'])
+    expect(next).not.toBe(tabs)
+  })
+
+  it('数量对不上或 key 认不出时原样返回（拖动快照过时了不作数）', () => {
+    const tabs = [goal('g1'), goal('g2')]
+    expect(reorderAgentTabs(tabs, ['ga:g1'])).toBe(tabs)
+    expect(reorderAgentTabs(tabs, ['ga:g1', 'ga:ghost'])).toBe(tabs)
+  })
+})
+
+describe('agentTabCloseSet', () => {
+  const tabs = [goal('g1'), goal('g2'), goal('g3'), goal('g4')]
+
+  it('位置语义与文档区 closeTabs 同一套（self/left/right/others/all）', () => {
+    expect(agentTabCloseSet(tabs, 'ga:g2', 'self')).toEqual(['ga:g2'])
+    expect(agentTabCloseSet(tabs, 'ga:g3', 'left')).toEqual(['ga:g1', 'ga:g2'])
+    expect(agentTabCloseSet(tabs, 'ga:g2', 'right')).toEqual(['ga:g3', 'ga:g4'])
+    expect(agentTabCloseSet(tabs, 'ga:g2', 'others')).toEqual(['ga:g1', 'ga:g3', 'ga:g4'])
+    expect(agentTabCloseSet(tabs, 'ga:g1', 'all')).toEqual(['ga:g1', 'ga:g2', 'ga:g3', 'ga:g4'])
+  })
+
+  it('key 不在名单里返回空（调用方不动状态）', () => {
+    expect(agentTabCloseSet(tabs, 'ga:ghost', 'self')).toEqual([])
   })
 })
 

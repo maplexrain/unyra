@@ -279,6 +279,24 @@ export default function TabBar({
     })
   }, [activeId])
 
+  /*
+   * 滚轮横滚：鼠标的纵向滚轮也滚这条栏（触摸板的横向手势本来就能滚，注释见上方
+   * workspace.css 的 moji-tab-strip）。React 的 onWheel 是被动监听，preventDefault
+   * 会被浏览器拒——与 agent 栏页签同一条路：原生监听、passive: false。
+   */
+  useEffect(() => {
+    const el = stripRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      const dx = Math.abs(e.deltaX) >= Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+      if (!dx || el.scrollWidth <= el.clientWidth) return
+      el.scrollLeft += dx
+      e.preventDefault()
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
   /* 卸载时把没跑完的「下一帧」撤掉（它里面是 setState）；拖到一半的影子与输入框高亮一并收掉 */
   useEffect(() => () => {
     if (raf.current) cancelAnimationFrame(raf.current)
