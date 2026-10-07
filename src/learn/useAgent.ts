@@ -26,7 +26,9 @@ import { ensureActivityListeners, userIdleMs } from '../lib/userActivity'
 import { recordContext } from '../agent/contextFilter'
 import { assertPrefixStable, resetPrefixGate } from '../agent/prefixGate'
 import { globalContextWindow, hasApiKey, loadAiSettings, resolveGlobal } from '../ai/settings'
-import type { ReasoningEffort } from '../ai/types'
+import type { ChatMessage, ReasoningEffort } from '../ai/types'
+import { streamChatWith } from '../ai/client'
+import { appendFreeMessage, freeConversationById, mutateFreeConversation } from './freeChat'
 import { loadAgentSettings } from '../agent/settings'
 import type { LearnStore } from './types'
 import { buildTeacherSystem } from './ai'
@@ -948,6 +950,175 @@ export function useAgent(opts: {
   )
 
   /**
+   * 自由聊天的一轮（agent 栏最左那枚固定页签）：**没有系统提示词、没有工具、
+   * 没有人格与提示词模块**——就是一段裸对话。流式骨架（streaming/running/tps 的
+   * 分槽记账、中止器、串行化）与 runTurn 共用同一套，所以页签的运行点、停止键、
+   * 状态条都不必知道「这是不是自由聊天」。
+   *
+   * 会话存 learn/freeChat（users/{uid}/free-chat.json），不在 store.conversations 里——
+   * 那里的每一段都挂在目标上、写进 {目标}/chat.json，自由聊天没有目标可挂。
+   */
+  const sendFree = useCallback(
+    (conversationId: string, text: string, opts?: { files?: PendingFile[]; images?: PendingImage[] }) => {
+      if (!text.trim()) return
+      if (!freeConversationById(conversationId)) return
+      if (!hasApiKey(loadAiSettings())) {
+        onNeedKeyRef.current()
+        return
+      }
+      // 图片附件在这里没有去处（static 资源库按目标目录落盘，自由聊天没有目标目录）
+      if (opts?.images?.length) onNoticeRef.current?.(t('自由聊天暂不支持图片，图片已去掉'))
+      const chain = turnChainRef.current
+      const prev = chain.get(conversationId)
+      let release!: () => void
+      const ticket = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      chain.set(conversationId, ticket)
+      void (async () => {
+        try {
+          if (prev) await prev
+          // 文本附件直接拼进正文：附件的 text 在拾取时已按上限读好/截断（见 PendingFile）
+          const attach = (opts?.files ?? [])
+            .filter((f) => f.text)
+            .map((f) => '\n\n【附件 ' + f.name + '】\n' + f.text)
+            .join('')
+          appendFreeMessage(conversationId, {
+            id: crypto.randomUUID(),
+            role: 'user',
+            parts: [{ type: 'text', text: text.trim() + attach }],
+            ts: Date.now(),
+          })
+          const stored = freeConversationById(conversationId)
+          if (!stored) return
+          // 历史就是纯文本一问一答：不经过 toChatHistory（那里还原的是导师轮的工具调用/模块/压缩）
+          const messages: ChatMessage[] = stored.messages
+            .filter((m) => m.role === 'user' || m.role === 'assistant')
+            .map((m) => ({
+              role: m.role as 'user' | 'assistant',
+              content: m.parts.filter((p) => p.type === 'text').map((p) => p.text).join(''),
+            }))
+            .filter((m) => m.content.trim())
+          const settings = loadAiSettings()
+          const global = resolveGlobal(settings)
+          const window = globalContextWindow(settings)
+          const assistantId = crypto.randomUUID()
+          const convKey = conversationId
+          const think: AgentPart & { type: 'thinking'; text: string } = { type: 'thinking', text: '' }
+          const answer: AgentPart & { type: 'text'; text: string } = { type: 'text', text: '' }
+          const parts: AgentPart[] = []
+          const syncParts = () => {
+            const next = [
+              ...(think.text ? [think] : []),
+              ...(answer.text ? [answer] : []),
+            ]
+            parts.length = 0
+            parts.push(...next)
+            setStreaming((prev2) => ({
+              ...prev2,
+              [convKey]: { conversationId: convKey, messageId: assistantId, parts: [...parts] },
+            }))
+          }
+          setStreaming((prev2) => ({ ...prev2, [convKey]: { conversationId: convKey, messageId: assistantId, parts: [] } }))
+          setRunning((prev2) => (prev2[convKey] ? prev2 : { ...prev2, [convKey]: true }))
+          const ctrl = new AbortController()
+          abortMapRef.current.set(convKey, ctrl)
+          try {
+            const result = await streamChatWith(global.provider, global.model, {
+              messages,
+              reasoningEffort: global.effort,
+              signal: ctrl.signal,
+              purpose: 'chat',
+              onDelta: (d) => {
+                if (d.reasoning) think.text += d.reasoning
+                if (d.content) answer.text += d.content
+                syncParts()
+              },
+            })
+            const usage = result.usage
+            const finalParts: AgentPart[] = [
+              ...(think.text ? [{ type: 'thinking' as const, text: think.text }] : []),
+              ...(answer.text ? [{ type: 'text' as const, text: answer.text }] : []),
+            ]
+            const cur = freeConversationById(convKey)
+            if (cur && finalParts.length) {
+              mutateFreeConversation(convKey, (c) =>
+                upsertAssistantInFlight(
+                  c,
+                  {
+                    id: assistantId,
+                    role: 'assistant',
+                    parts: finalParts,
+                    ...(usage
+                      ? {
+                          usage: {
+                            contextTokens: usage.input,
+                            contextWindow: window,
+                            totalTokens: usage.input,
+                            outputTokens: usage.output,
+                            cacheReadTokens: usage.cacheRead,
+                            cacheMissTokens: Math.max(0, usage.input - usage.cacheRead),
+                            estimated: usage.estimated === true,
+                          },
+                        }
+                      : {}),
+                    ts: Date.now(),
+                  },
+                  true,
+                ),
+              )
+            }
+          } catch (err: unknown) {
+            // 中断与出错都把已有的半截话收口——与 runTurn 的收口同一条规矩
+            const cur = freeConversationById(convKey)
+            if (cur && parts.length) {
+              mutateFreeConversation(convKey, (c) =>
+                upsertAssistantInFlight(c, { id: assistantId, role: 'assistant', parts: [...parts], ts: Date.now() }, true),
+              )
+            }
+            if ((err as Error)?.name !== 'AbortError') {
+              console.warn('[freeChat] 一轮失败：', err)
+              onNoticeRef.current?.(t('这一轮没有跑完：{0}', (err as Error)?.message ?? String(err)))
+            }
+          } finally {
+            if (abortMapRef.current.get(convKey) === ctrl) abortMapRef.current.delete(convKey)
+            setRunning((prev2) => {
+              if (!prev2[convKey]) return prev2
+              const next = { ...prev2 }
+              delete next[convKey]
+              return next
+            })
+            setStreaming((prev2) => {
+              if (!(convKey in prev2)) return prev2
+              const next = { ...prev2 }
+              delete next[convKey]
+              return next
+            })
+          }
+          // 第一句话进来给这段对话起名（与导师对话同一套起名器，只是不挂目标问题）
+          const after = freeConversationById(convKey)
+          if (after && !after.title && !namingRef.current.has(convKey)) {
+            const source = namingSource(after, '')
+            if (source) {
+              namingRef.current.add(convKey)
+              void generateConversationTitle({ text: source })
+                .then((title) => {
+                  mutateFreeConversation(convKey, (c) => (c.title ? c : { ...c, title }))
+                })
+                .catch((err2: unknown) => console.warn('[freeChat] 起名失败', err2))
+                .finally(() => namingRef.current.delete(convKey))
+            }
+          }
+        } finally {
+          release()
+          if (chain.get(conversationId) === ticket) chain.delete(conversationId)
+        }
+      })()
+    },
+    [],
+  )
+
+  /**
    * 手动压缩上下文（输入区「更多 → 压缩上下文」）。
    *
    * 与自动压缩共用 summarize，差别只在谁触发（记进摘要里，界面上那句说明会跟着变）。
@@ -1224,6 +1395,7 @@ export function useAgent(opts: {
     compactingConvId: compactingConv,
     compacting: !!compactingConv,
     send,
+    sendFree,
     autoTeach,
     runHidden,
     /** 继续被中断的一轮（消息列表中断说明旁的「继续」按钮），见上方说明 */

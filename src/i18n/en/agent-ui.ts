@@ -334,6 +334,12 @@ const dict: Record<string, string> = {
   '{0} 枚页签被拦下（文档区还开着，或导师正在跑）':
     '{0} tab(s) were blocked (document tabs still open, or a tutor is running)',
 
+  /* ---------- 固定聊天（agent 栏最左侧的常驻页签，纯聊天） ---------- */
+  '聊天': 'Chat',
+  '自由聊天暂不支持图片，图片已去掉': 'Free chat does not support images yet — images were dropped',
+  '这一轮没有跑完：{0}': 'This turn did not finish: {0}',
+  '这一段正在运行，先停止再删除': 'This conversation is running — stop it before deleting',
+
   /* ---------- 记忆管理（文档区 kind 'mind' 页签，入口在「+」菜单） ---------- */
   '记忆': 'Memory',
   '查看与编辑本目标的导师记忆': 'View and edit the tutor memory of this goal',

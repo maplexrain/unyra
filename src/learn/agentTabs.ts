@@ -13,8 +13,9 @@
 import type { AgentTabRef } from './types'
 import type { TabCloseMode } from './tabs'
 
-/** 页签 id：目标级 `ga:<goalId>`、子代理 `sa:<sessionId>`。目标级页签一个目标只有一枚 */
+/** 页签 id：固定聊天 `free`（常驻，不落 store）、目标级 `ga:<goalId>`、子代理 `sa:<sessionId>`。目标级页签一个目标只有一枚 */
 export function agentTabKey(ref: AgentTabRef): string {
+  if (ref.kind === 'free') return 'free'
   return ref.kind === 'goal' ? 'ga:' + ref.goalId : 'sa:' + ref.sessionId
 }
 
@@ -30,7 +31,7 @@ export function agentTabCloseBlock(
   ref: AgentTabRef,
   ctx: { hasDocTabs: boolean; running: boolean },
 ): AgentTabCloseBlock {
-  if (ref.kind === 'sub') return 'none'
+  if (ref.kind === 'free' || ref.kind === 'sub') return 'none'
   if (ctx.hasDocTabs) return 'docs'
   if (ctx.running) return 'running'
   return 'none'
@@ -119,9 +120,12 @@ export function normalizeAgentTabs(
     }
   }
   const active =
-    typeof rawActive === 'string' && tabs.some((t) => agentTabKey(t) === rawActive)
-      ? rawActive
-      : (tabs[0] ? agentTabKey(tabs[0]) : null)
+    // 固定聊天页签不在 store 的页签列表里（界面合成置左），但它是合法的激活项
+    rawActive === 'free'
+      ? 'free'
+      : typeof rawActive === 'string' && tabs.some((t) => agentTabKey(t) === rawActive)
+        ? rawActive
+        : (tabs[0] ? agentTabKey(tabs[0]) : null)
   return { tabs, active }
 }
 
@@ -163,7 +167,8 @@ export function reorderAgentTabs(tabs: AgentTabRef[], keys: string[]): AgentTabR
  * 关闭守卫（文档区还开着 / 正在跑的拦下），拦与关都在调用方做。
  */
 export function agentTabCloseSet(tabs: AgentTabRef[], key: string, mode: TabCloseMode): string[] {
-  const keys = tabs.map(agentTabKey)
+  // 固定聊天页签不参与任何「关一批」：它关不掉，批量关闭也要绕开它
+  const keys = tabs.map(agentTabKey).filter((k) => k !== 'free')
   const idx = keys.indexOf(key)
   if (idx < 0) return []
   if (mode === 'all') return keys
