@@ -509,8 +509,8 @@ export default function AgentPanel({
                 'linear-gradient(to bottom, color-mix(in srgb, var(--color-paper-deep) 40%, var(--color-paper)), transparent)',
             }}
           />
-          {/* 字号系数挂在这一层、而不是滚动容器上：滚动条与内边距不该跟着缩放 */}
-          <div className="pt-3" style={{ zoom: chatScale } as CSSProperties}>
+          {/* 字号系数挂在这一层、而不是滚动容器上：滚动条与内边距不该跟着缩放（上边距 20px：列表内容与页签栏之间留一口呼吸） */}
+          <div className="pt-5" style={{ zoom: chatScale } as CSSProperties}>
             {messageList}
           </div>
         </div>

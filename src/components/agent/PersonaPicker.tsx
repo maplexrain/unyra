@@ -58,7 +58,11 @@ export default function PersonaPicker({
         {...buttonProps}
         onClick={() => setOpen(!open)}
         className={
-          'rounded px-0.5 text-[13px] font-medium transition ' +
+          // 住在输入框底行（placement='up'）时与同行按钮同一副骨架（h-8 居中，
+          // 见 SubAgentMenu / ModelPicker 的触发钮）——纯文字没有行高骨架，会浮着不对齐
+          (placement === 'up'
+            ? 'flex h-8 items-center rounded-lg px-1.5 text-[12.5px] font-medium transition '
+            : 'rounded px-0.5 text-[13px] font-medium transition ') +
           (open ? 'bg-seal/10 text-seal-deep' : 'text-ink-faint hover:text-seal-deep')
         }
       >
