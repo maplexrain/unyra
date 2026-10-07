@@ -843,7 +843,8 @@ export default function LearnWorkspace({
     (key: string) => {
       const s = getLatest()
       if (s.agentActiveTab === key) return
-      if (!(s.agentTabs ?? []).some((t) => agentTabKey(t) === key)) return
+      // 固定聊天页签不在 store 的页签列表里（界面合成置左），但它是合法的激活项
+      if (key !== 'free' && !(s.agentTabs ?? []).some((t) => agentTabKey(t) === key)) return
       set(withAgentTabs(s, s.agentTabs ?? [], key))
     },
     [getLatest, set],
