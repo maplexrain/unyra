@@ -78,11 +78,13 @@ import { normalizeWebInput } from '../../learn/webUrl'
 import type { BrowserDeps } from '../../learn/web/browserOps'
 import {
   addConversation,
+  conversationById,
   deleteConversation,
   deleteMessage,
   deleteNode,
   ensureConversation,
   goalSubtreeIds,
+  latestConversation,
   nodeById,
   nodeStructure,
   normalizeKey,
@@ -90,6 +92,8 @@ import {
   touchNode,
   updateMessageText,
 } from '../../learn/graph'
+import { agentTabKey, agentTabCloseBlock, removeAgentTab, upsertAgentTab, withAgentTabs } from '../../learn/agentTabs'
+import type { AgentTabRef } from '../../learn/types'
 import { attemptBrief, examAttempted, examTotalPoints } from '../../learn/exam'
 import type { Exam } from '../../learn/exam'
 import { useExamBridge } from '../../learn/useExamBridge'
@@ -180,6 +184,7 @@ import SourceEditor from './SourceEditor'
 import type { DocSource } from './NodeNote'
 import ConfirmDialog from '../ConfirmDialog'
 import AgentPanel from '../agent/AgentPanel'
+import AgentTabStrip from '../agent/AgentTabStrip'
 import ContextDebugger from '../agent/ContextDebugger'
 import { resetPrefixGate } from '../../agent/prefixGate'
 import { docAreaElement, locateNeedle, scrollToDoc, visibleDocBody } from '../../lib/docDom'
@@ -207,6 +212,16 @@ import { usePomodoroFlow } from './workspace/usePomodoroFlow'
 import { useWorkflowStarters } from './workspace/useWorkflowStarters'
 import { examNeedingWork, makeExamDeps } from './workspace/examTools'
 import { t } from '../../i18n'
+
+/**
+ * 每个目标「最近被看过哪个节点」：agent 页签是目标级的，发送目标却是节点——
+ * 用户在文档区看过哪个节点，导师那一轮就冲着哪个节点去（没看过的目标回落到它的总目标）。
+ *
+ * 走**模块级槽**而不是 ref：agentView 在渲染期读它，而渲染期读 ref 会犯 react-compiler
+ * 的 refs 线（与 OutlineHandle 的槽同一套解法）。它是「最后落点」的缓存，不进页签、
+ * 不持久化，重启后回落各目标的总节点；写入只发生在 retargetNode（事件路径）。
+ */
+const goalFocusByGoal = new Map<string, string>()
 
 export default function LearnWorkspace({
   user,
@@ -310,7 +325,68 @@ export default function LearnWorkspace({
   const activeNode = activeNodeId ? (nodeById(store, activeNodeId) ?? null) : null
   const activeGoal = activeNode ? (store.goals.find((g) => g.id === activeNode.goalId) ?? null) : null
   const activeGoalId = activeGoal?.id ?? null
-  const activeConversationId = store.activeConversationId
+
+  /*
+   * agent 栏的页签（见 learn/agentTabs）：agent 面板「现在看谁」全由它决定。
+   *
+   * 页签与文档区的页签是两回事：文档区回答「眼前读着哪份文档」，agent 页签回答
+   * 「正跟哪位导师说话」——打开某个目标下的文档会把它的导师页签自动开好并置前
+   * （见 retargetNode），但反过来点导师页签不动文档区。两条线在 retargetNode 汇合。
+   */
+  const agentTabs = useMemo(() => store.agentTabs ?? [], [store.agentTabs])
+  const activeAgentTab = useMemo(
+    () => agentTabs.find((t) => agentTabKey(t) === store.agentActiveTab) ?? agentTabs[0] ?? null,
+    [agentTabs, store.agentActiveTab],
+  )
+  const activeAgentTabId = activeAgentTab ? agentTabKey(activeAgentTab) : null
+  /**
+   * 激活页签解析出的面板视图：目标级页签 → 那个目标当前展示的会话 + 落点节点；
+   * 子代理页签 → 它的父会话（subagent 的数据都住在导师对话上）与它自己的会话 id。
+   */
+  const agentView = useMemo(() => {
+    if (!activeAgentTab) return null
+    if (activeAgentTab.kind === 'sub') {
+      const conv = conversationById(store, activeAgentTab.conversationId)
+      return {
+        tab: activeAgentTab,
+        goalId: conv?.goalId ?? null,
+        nodeId: conv ? (goalFocusByGoal.get(conv.goalId) ?? null) : null,
+        conversationId: activeAgentTab.conversationId,
+        sessionId: activeAgentTab.sessionId as string | null,
+      }
+    }
+    const goal = store.goals.find((g) => g.id === activeAgentTab.goalId) ?? null
+    // 页签里记的会话丢了（被删过会话）就回落到该目标最近的一段
+    const convId =
+      activeAgentTab.conversationId &&
+      conversationById(store, activeAgentTab.conversationId)?.goalId === activeAgentTab.goalId
+        ? activeAgentTab.conversationId
+        : (latestConversation(store, activeAgentTab.goalId)?.id ?? null)
+    const focusId = goalFocusByGoal.get(activeAgentTab.goalId) ?? goal?.rootNodeId ?? null
+    return {
+      tab: activeAgentTab,
+      goalId: activeAgentTab.goalId,
+      nodeId: focusId,
+      conversationId: convId,
+      sessionId: null as string | null,
+    }
+    // goalFocusByGoal 是模块级槽：读它不参与依赖（它的更新总伴随 store 变化，渲染会跟上）
+  }, [activeAgentTab, store])
+
+  /** 激活的目标级页签的目标 id（子代理页签不参与） */
+  const activeGoalTabId = activeAgentTab?.kind === 'goal' ? activeAgentTab.goalId : null
+  /**
+   * 目标级页签必须有会话可看：激活页签解析不出会话（目标还没开过讲、或旧备份里
+   * 目标没有会话）就现场建一段。会话是「每目标至少一段」的（deleteConversation 的兜底），
+   * 这里是唯一可能真空的地方。
+   */
+  useEffect(() => {
+    if (!activeGoalTabId) return
+    const s = getLatest()
+    if (latestConversation(s, activeGoalTabId)) return
+    const ensured = ensureConversation(s, activeGoalTabId)
+    set(ensured.store)
+  }, [activeGoalTabId, getLatest, set])
 
   /**
    * 侧栏里该高亮哪一个节点。**它跟着页签走**，不是「上次点过的节点」——
@@ -450,10 +526,10 @@ export default function LearnWorkspace({
 
   /** 正文字号系数：预览与源码共用同一个（Ctrl + 滚轮在预览里改，见 NodeNote） */
   const { docScale } = useAppearance()
-  /** 会话属于目标，因此对话列表也按目标取 */
+  /** 会话属于目标，agent 栏显示的是激活页签那一目标对话列表（子代理页签 = 父会话的目标） */
   const goalConversations = useMemo(
-    () => (activeGoalId ? store.conversations.filter((c) => c.goalId === activeGoalId) : []),
-    [store.conversations, activeGoalId],
+    () => (agentView?.goalId ? store.conversations.filter((c) => c.goalId === agentView.goalId) : []),
+    [store.conversations, agentView],
   )
 
   // settingsEpoch：模型选择器改了全局提供商/模型后自增，把这次渲染重新跑一遍。
@@ -641,19 +717,29 @@ export default function LearnWorkspace({
   const openTabRef = useRef<(ref: TabRef) => void>(() => {})
   /** browser.* 的宿主依赖槽：真正的值在 web 块里（openWebTab / webMeta 声明靠后），effect 里回填 */
   const browserDepsRef = useRef<BrowserDeps | null>(null)
+  /**
+   * openAgentTab 的晚绑定把手（与 openTabRef 同一套做法）：useAgent 的 onSubRunStart
+   * 要调它，而 openAgentTab 声明在 agent 回调块里——晚于 useAgent 本体。
+   */
+  const openAgentTabRef = useRef<(ref: AgentTabRef, activate?: boolean) => void>(() => {})
 
   const agent = useAgent({
     store,
     set,
     getLatest,
-    goalId: activeGoalId,
-    nodeId: activeNodeId,
-    conversationId: activeConversationId,
+    // 面板跟着 agent 栏的激活页签走（不再是文档区的落点）：页签解析出的目标 / 落点节点 / 会话
+    goalId: agentView?.goalId ?? null,
+    nodeId: agentView?.nodeId ?? null,
+    conversationId: agentView?.conversationId ?? null,
     onNeedKey: () => {
       onToast(t('请先在设置中填写「{0}」的 API Key', providerName))
       onOpenSettings()
     },
     onNotice: onToast,
+    // 子代理任务开跑：把它的页签开好（不抢激活——后台派活不该拽走眼前的对话）
+    onSubRunStart: (conversationId, sessionId) => {
+      openAgentTabRef.current({ kind: 'sub', conversationId, sessionId }, false)
+    },
     examDeps: (nodeId) =>
       makeExamDeps({ getLatest, set, onToast, openTabRef, setCreating }, nodeId),
     // ui.* 的宿主能力：都是「界面在场才有的动作」，见 AgentUiDeps
@@ -677,6 +763,146 @@ export default function LearnWorkspace({
     // browser.*：依赖在 web 块里（openWebTab / webMeta 声明在 useAgent 之后），这里只给取法
     browserDeps: () => browserDepsRef.current ?? undefined,
   })
+
+  /* ---------- agent 栏页签（见 learn/agentTabs 与 AgentTabStrip） ---------- */
+
+  /** 开（或更新）一枚 agent 页签；子代理任务自动开签走 openAgentTabRef（不抢激活） */
+  const openAgentTab = useCallback(
+    (ref: AgentTabRef, activate = true) => {
+      const s = getLatest()
+      const next = upsertAgentTab(s.agentTabs ?? [], s.agentActiveTab ?? null, ref, activate)
+      set(withAgentTabs(s, next.tabs, next.active))
+    },
+    [getLatest, set],
+  )
+  // 回填放在 effect 里（渲染期不许写 ref）：openAgentTab 的身份随依赖变，每次渲染后换最新的一份
+  useEffect(() => {
+    openAgentTabRef.current = openAgentTab
+  })
+
+  /** 点一枚页签：置前（目标级页签展示哪段对话以页签里记的为准，见 agentView） */
+  const activateAgentTab = useCallback(
+    (key: string) => {
+      const s = getLatest()
+      if (s.agentActiveTab === key) return
+      if (!(s.agentTabs ?? []).some((t) => agentTabKey(t) === key)) return
+      set(withAgentTabs(s, s.agentTabs ?? [], key))
+    },
+    [getLatest, set],
+  )
+
+  /**
+   * 文档区里哪些目标还开着页签：目标级导师页签的关闭守卫读它——
+   * 需求原文：「如果文档区还存在某个目标的页签，那么就无法关闭 agent 栏中其对应的 agent」。
+   */
+  const docGoalIds = useMemo(() => {
+    const out = new Set<string>()
+    for (const t of tabs) {
+      const nid = tabNodeId(t.ref)
+      const n = nid ? nodeById(store, nid) : null
+      if (n) out.add(n.goalId)
+    }
+    return out
+  }, [tabs, store])
+
+  const closeAgentTab = useCallback(
+    (key: string) => {
+      const s = getLatest()
+      const ref = (s.agentTabs ?? []).find((t) => agentTabKey(t) === key)
+      if (!ref) return
+      const convId =
+        ref.kind === 'goal'
+          ? ref.conversationId && conversationById(s, ref.conversationId)?.goalId === ref.goalId
+            ? ref.conversationId
+            : (latestConversation(s, ref.goalId)?.id ?? null)
+          : null
+      const block = agentTabCloseBlock(ref, {
+        hasDocTabs: ref.kind === 'goal' ? docGoalIds.has(ref.goalId) : false,
+        running: ref.kind === 'goal' ? !!(convId && agent.runningByConversation[convId]) : false,
+      })
+      if (block === 'docs') {
+        onToast(t('文档区还开着这个目标的页签，先关掉它们才能关闭导师'))
+        return
+      }
+      if (block === 'running') {
+        onToast(t('导师正在运行，先停止这一轮再关闭'))
+        return
+      }
+      const next = removeAgentTab(s.agentTabs ?? [], s.agentActiveTab ?? null, key)
+      set(withAgentTabs(s, next.tabs, next.active))
+    },
+    [getLatest, set, docGoalIds, agent.runningByConversation, onToast],
+  )
+
+  /** 子代理会话入口被点：把它的页签开好并置前（父会话就是眼前这段导师对话） */
+  const openSubTab = useCallback(
+    (sessionId: string) => {
+      const convId = agentView?.conversationId
+      if (!convId) return
+      openAgentTab({ kind: 'sub', conversationId: convId, sessionId }, true)
+    },
+    [agentView, openAgentTab],
+  )
+
+  /** 页签标题：目标级 = 目标的标题（总目标节点名，回落目标问题）；子代理 = 定义名 */
+  const agentTabTitle = useCallback(
+    (ref: AgentTabRef): string => {
+      if (ref.kind === 'goal') {
+        const goal = store.goals.find((g) => g.id === ref.goalId)
+        const title = goal ? (nodeById(store, goal.rootNodeId)?.title ?? goal.question) : ''
+        return title || t('目标')
+      }
+      const conv = conversationById(store, ref.conversationId)
+      const session = conv?.subagents?.sessions.find((x) => x.id === ref.sessionId)
+      const def = session ? conv?.subagents?.defs.find((d) => d.key === session.defKey) : undefined
+      return def?.name ?? session?.defKey ?? t('子代理')
+    },
+    [store],
+  )
+
+  /** 页签的运行态：目标级看那张「谁在跑」的表；子代理看会话状态（后台跑的也算跑着） */
+  const agentTabRunning = useCallback(
+    (ref: AgentTabRef): boolean => {
+      if (ref.kind === 'goal') {
+        const convId =
+          ref.conversationId && conversationById(store, ref.conversationId)?.goalId === ref.goalId
+            ? ref.conversationId
+            : (latestConversation(store, ref.goalId)?.id ?? null)
+        return !!(convId && agent.runningByConversation[convId])
+      }
+      const conv = conversationById(store, ref.conversationId)
+      return conv?.subagents?.sessions.find((x) => x.id === ref.sessionId)?.status === 'running'
+    },
+    [store, agent.runningByConversation],
+  )
+
+  /**
+   * 删会话 / 删目标之后收拾 agent 页签：指向被删会话的目标级页签改指该目标最近的一段，
+   * 已死会话的子代理页签与已死目标的目标级页签整枚丢掉。读盘归一有同一条规矩
+   * （normalizeAgentTabs），这里是活删的即时版。
+   */
+  const fixAgentTabsAfter = (s: LearnStore): LearnStore => {
+    const tabs0 = s.agentTabs ?? []
+    if (!tabs0.length) return s
+    const fixed = tabs0
+      .filter((t) => {
+        if (t.kind === 'goal') return s.goals.some((g) => g.id === t.goalId)
+        const conv = conversationById(s, t.conversationId)
+        return !!conv?.subagents?.sessions.some((x) => x.id === t.sessionId)
+      })
+      .map((t) =>
+        t.kind === 'goal' &&
+        t.conversationId &&
+        conversationById(s, t.conversationId)?.goalId !== t.goalId
+          ? { ...t, conversationId: latestConversation(s, t.goalId)?.id ?? null }
+          : t,
+      )
+    const active =
+      s.agentActiveTab && fixed.some((t) => agentTabKey(t) === s.agentActiveTab)
+        ? s.agentActiveTab
+        : (fixed[0] ? agentTabKey(fixed[0]) : null)
+    return withAgentTabs(s, fixed, active)
+  }
 
   /**
    * 超级文档的 method 桥：一份**常驻**的沙箱 api + 执行持久化函数的回调。
@@ -757,26 +983,48 @@ export default function LearnWorkspace({
    *
    * 页签栏点一下（activateTab）、关页签的落点（closeTab）、从侧栏/大纲跳节点（openTab）
    * 三条路都走这里，别再各写一份——这份判断漏一处，用户看到的就是「界面换了、对话没换」。
+   *
+   * agent 栏的页签也在这里汇合：看向某个目标下的文档，它的导师页签就自动开好并置前
+   * （需求原文：「只要打开了某个目标下的文件，那么就自动打开其对应的 agent」）。
+   * 页签里展示的会话跟着文档区走——在哪个会话的上下文里读，回来就还在哪个会话说。
    */
   const retargetNode = useCallback(
     (s: LearnStore, nodeId: string): LearnStore => {
       const node = nodeById(s, nodeId)
       if (!node) return s
-      const conv = s.activeConversationId
-        ? s.conversations.find((c) => c.id === s.activeConversationId)
+      // 「这个目标最近被看到的是哪个节点」：发送目标（agentView.nodeId）与忙态标记都读它。
+      // 写在 retargetNode 里而不是每个调用方——closeTab 的落点也走这里，漏了它就会偏一格。
+      goalFocusByGoal.set(node.goalId, node.id)
+      // 目标级导师页签：开好、置前，并把页签的会话对齐到这一刻的落点
+      const convId = s.activeConversationId &&
+        s.conversations.some((c) => c.id === s.activeConversationId && c.goalId === node.goalId)
+        ? s.activeConversationId
+        : (latestConversation(s, node.goalId)?.id ?? null)
+      const tabbed0 = upsertAgentTab(s.agentTabs ?? [], s.agentActiveTab ?? null, { kind: 'goal', goalId: node.goalId, conversationId: convId }, true)
+      const tabbed = withAgentTabs(s, tabbed0.tabs, tabbed0.active)
+      const conv = tabbed.activeConversationId
+        ? tabbed.conversations.find((c) => c.id === tabbed.activeConversationId)
         : undefined
       if (conv && conv.goalId === node.goalId) {
-        if (node.id === s.activeNodeId && s.activeGoalId === node.goalId) return s
-        return { ...s, activeGoalId: node.goalId, activeNodeId: node.id }
+        if (node.id === tabbed.activeNodeId && tabbed.activeGoalId === node.goalId) return tabbed
+        return { ...tabbed, activeGoalId: node.goalId, activeNodeId: node.id }
       }
       /*
        * ensureConversation 只调一次：目标里一段对话都没有时它会**新建**一段，
        * 调两次就会建出两段不同的（各带一个 uuid），而 store 里只留了前一段、
        * activeConversationId 却是后一个——对话栏于是指向一段不存在的对话，一片空白。
+       * 页签里记的会话也一并对齐到新建的这段（upsert 时它还没有会话）。
        */
-      const ensured = ensureConversation(s, node.goalId)
+      const ensured = ensureConversation(tabbed, node.goalId)
+      const retabbed0 = upsertAgentTab(
+        ensured.store.agentTabs ?? [],
+        ensured.store.agentActiveTab ?? null,
+        { kind: 'goal', goalId: node.goalId, conversationId: ensured.conversationId },
+        true,
+      )
+      const retabbed = withAgentTabs(ensured.store, retabbed0.tabs, retabbed0.active)
       return {
-        ...ensured.store,
+        ...retabbed,
         activeGoalId: node.goalId,
         activeNodeId: node.id,
         activeConversationId: ensured.conversationId,
@@ -1328,17 +1576,43 @@ export default function LearnWorkspace({
 
   const selectNode = switchNode
 
-  /** 换一段对话：会话属于目标，所以切对话不换节点 */
+  /**
+   * 换一段对话：会话属于目标，所以切对话不换节点。目标级页签里也记下这一段——
+   * 面板读的是页签（见 agentView），activeConversationId 同步写一份给文档区那条旧读口。
+   */
   const selectConversation = (conversationId: string) => {
-    set({ ...getLatest(), activeConversationId: conversationId })
+    const s = getLatest()
+    const conv = conversationById(s, conversationId)
+    let next: LearnStore = { ...s, activeConversationId: conversationId }
+    if (conv && activeAgentTab?.kind === 'goal' && conv.goalId === activeAgentTab.goalId) {
+      const t0 = upsertAgentTab(
+        s.agentTabs ?? [],
+        s.agentActiveTab ?? null,
+        { kind: 'goal', goalId: conv.goalId, conversationId },
+        false,
+      )
+      next = withAgentTabs(next, t0.tabs, t0.active)
+    }
+    set(next)
     setSidebarOpen(false)
   }
 
   /** 在当前目标里另起一段对话（同一个目标可以有并行几段上下文） */
   const newConversation = () => {
-    if (!activeGoalId) return
-    const { store: withConv, conversation } = addConversation(getLatest(), activeGoalId)
-    set({ ...withConv, activeConversationId: conversation.id })
+    const goalId = agentView?.goalId ?? activeGoalId
+    if (!goalId) return
+    const { store: withConv, conversation } = addConversation(getLatest(), goalId)
+    let next: LearnStore = { ...withConv, activeConversationId: conversation.id }
+    if (activeAgentTab?.kind === 'goal' && activeAgentTab.goalId === goalId) {
+      const t0 = upsertAgentTab(
+        next.agentTabs ?? [],
+        next.agentActiveTab ?? null,
+        { kind: 'goal', goalId, conversationId: conversation.id },
+        false,
+      )
+      next = withAgentTabs(next, t0.tabs, t0.active)
+    }
+    set(next)
   }
 
   /**
@@ -1368,7 +1642,7 @@ export default function LearnWorkspace({
     // 删除会话（或删掉同目标最后一段时清空它的消息）是设计内的历史改写：这一会话的
     // 前缀账重新开始记（见 agent/prefixGate）
     resetPrefixGate(conversationId)
-    const next = deleteConversation(getLatest(), conversationId)
+    const next = fixAgentTabsAfter(deleteConversation(getLatest(), conversationId))
     if (next.activeConversationId || !next.activeNodeId) {
       set(next)
       pruneImagesOf(next)
@@ -1428,11 +1702,18 @@ export default function LearnWorkspace({
     }
     const goal = makeGoal(rootNode.id, q, goalId)
     const conversation = makeConversation(goalId)
+    // agent 栏的导师页签当场开好并置前：这一轮大纲工作流的交付物要有一个看得见的地方
+    const tab0 = upsertAgentTab(
+      store.agentTabs ?? [],
+      store.agentActiveTab ?? null,
+      { kind: 'goal', goalId, conversationId: conversation.id },
+      true,
+    )
     // 新目标当场把**大纲页**开成页签：导师这一轮的交付物就是它（「学习大纲」工作流往里写），
     // 用户点完「开始学习」就该看见路线逐条长出来，教学文档从大纲页里点进去
     const rootRef: TabRef = { kind: 'outline', nodeId: rootNode.id }
     const next: LearnStore = {
-      ...store,
+      ...withAgentTabs(store, tab0.tabs, tab0.active),
       nodes: [...store.nodes, rootNode],
       goals: [goal, ...store.goals],
       conversations: [...store.conversations, conversation],
@@ -1684,21 +1965,31 @@ export default function LearnWorkspace({
     () => (activeNodeId ? examNeedingWork(store, activeNodeId) : null),
     [store, activeNodeId],
   )
-  // 判分 / 讲解是否进行中：由「Agent 是否在跑」与「有没有等着收尾的考试」组合推导，
-  // 不用额外的 state + effect（否则每次状态变化都会多一轮渲染）
-  const grading = agent.running && !!pendingWork
+  /**
+   * 「哪位导师在跑」按会话查表（agent 栏页签化之后不止一位）：判分 / 讲解的隐藏指令
+   * 由 runHidden 按节点归属落进**节点目标**的会话——判卷忙态也按同一条口径查，
+   * 不能再看「眼前激活的导师页签在不在跑」。
+   */
+  const grading = useMemo(() => {
+    if (!pendingWork) return false
+    const node = nodeById(store, pendingWork.exam.nodeId)
+    const convId = node ? (latestConversation(store, node.goalId)?.id ?? null) : null
+    return !!(convId && agent.runningByConversation[convId])
+  }, [pendingWork, store, agent.runningByConversation])
 
   /**
    * 当前文档为什么还是空的——文档区据此显示等待动画，而不是留一片白让用户怀疑卡了。
    *
-   * 判据只有一条：Agent 正在跑，而且这一轮是系统代发的隐藏指令（节点刚建好）。
-   * 少了后半句，用户在空文档的节点里自己提个问，也会被说成「正在撰写教学文档」。
+   * 判据只有一条：Agent 正在跑（讲这份文档的会话），而且这一轮是系统代发的隐藏指令
+   * （节点刚建好）。少了后半句，用户在空文档的节点里自己提个问，也会被说成「正在撰写教学文档」。
    */
   const docPending = useMemo(() => {
     if (!docSource || docSource.content.trim()) return false
-    const msgs = agent.conversation?.messages ?? []
-    return agent.running && msgs[msgs.length - 1]?.hidden === true
-  }, [docSource, agent.running, agent.conversation])
+    const convId = docNode ? (latestConversation(store, docNode.goalId)?.id ?? null) : null
+    if (!convId || !agent.runningByConversation[convId]) return false
+    const msgs = conversationById(store, convId)?.messages ?? []
+    return msgs[msgs.length - 1]?.hidden === true
+  }, [docSource, docNode, store, agent.runningByConversation])
 
   /* ---------- 其余操作 ---------- */
 
@@ -1913,7 +2204,8 @@ export default function LearnWorkspace({
     // 先备货再动手：撤回项捕获的是删除前那一刻的旧引用（整棵子树、边、试卷、会话与两本账）
     const entry = captureNodeDelete(getLatest(), pending.nodeId)
     if (entry) pushUndo(entry)
-    set(deleteNode(getLatest(), pending.nodeId))
+    // agent 栏的页签跟着收拾：整目标被删时它的导师页签一并退场（读盘归一是同一条规矩）
+    set(fixAgentTabsAfter(deleteNode(getLatest(), pending.nodeId)))
     onToast(pending.isRoot ? t('已删除该学习目标，可按 Ctrl+Z 撤回') : t('已删除该节点，可按 Ctrl+Z 撤回'))
   }
 
@@ -2603,7 +2895,12 @@ export default function LearnWorkspace({
         activeNodeId={selectedNodeId}
         // 文档行也一样：焦点格开着哪份笔记 / 试卷副本 / 超级文档 / 学习文档，那一行就亮
         activeTab={activeTab?.ref ?? null}
-        busyNodeId={agent.running ? activeNodeId : null}
+        // 忙的是「正在跑的那位导师冲着的节点」——页签化之后它与眼前选中的节点是两回事
+        busyNodeId={
+          agentView && agentView.conversationId && agent.runningByConversation[agentView.conversationId]
+            ? agentView.nodeId
+            : null
+        }
         open={sidebarOpen}
         // 「这一拍开始浏览某个页签」的拍号：定位跟着它走（连着重开当前这份也重新定位）
         browseNonce={browseNonce}
@@ -2690,7 +2987,12 @@ export default function LearnWorkspace({
           onClearMistake: (nodeId, pattern) => clearMistake(nodeId, pattern),
           onRecall: (nodeId) => startRecall(nodeId),
           onProbe: (nodeId) => startProbe(nodeId),
-          busy: agent.running,
+          // 忙态按节点算：正在跑的导师冲着这个节点才标忙（页签化之后「在跑」不再全局）
+          busy:
+            !!agentView?.nodeId &&
+            !!agentView.conversationId &&
+            !!agent.runningByConversation[agentView.conversationId] &&
+            agentView.nodeId === activeNodeId,
         }}
       />
 
@@ -2771,81 +3073,118 @@ export default function LearnWorkspace({
             side={side}
             docsSlot={renderLayout(docs.layout)}
             agentSlot={
-              <AgentPanel
-                // key 绑定「目标 + 对话」：切节点**不重挂**（上下文是目标级的，收起的对话下拉
-                // 不该因为换个节点又跳出来），换一段对话才重挂 —— 那时滚动位置、跟随状态、
-                // 编辑态都该从头开始，而这正是 key 该管的事（见 AgentPanel 的 pinned）
-                key={(activeGoalId ?? 'none') + ':' + (activeConversationId ?? 'none')}
-                nodeTitle={activeNode.title}
-                conversation={agent.conversation}
-                conversations={goalConversations}
-                streaming={agent.streaming}
-                streamingMessageId={agent.streamingMessageId}
-                running={agent.running}
-                hasKey={hasKey}
-                providerLabel={providerName}
-                onModelChanged={() => setSettingsEpoch((n) => n + 1)}
-                vision={vision}
-                // 待发送的附件原样交给 useAgent：转存发生在真正开跑那一轮（见它的说明）
-                onSend={(text, images, files) =>
-                  agent.send(
-                    text,
-                    images.length || files.length
-                      ? { images: images.length ? images : undefined, files: files.length ? files : undefined }
-                      : undefined,
-                  )
-                }
-                onNotice={onToast}
-                // 更多 → 工作流 → 回忆：与文档区那颗按钮同一件事，只是这里不再二次确认（见 AgentPanel 的说明）
-                onRecall={() => startRecall()}
-                // 更多 → 工作流 → 超级实验室：问清想做什么实验，生成一份可交互的超级文档（内置工作流）
-                onSuperLab={startSuperLab}
-                onCheckin={startCheckin}
-                onBrowserUse={startBrowserUse}
-                onCompact={() => void agent.compactNow()}
-                compacting={agent.compacting}
-                onOpenAgentSettings={() => setAgentSettingsOpen(true)}
-                // 斜杠 /exam：与资源管理器右键「新增试卷」是同一个 newExam（不指名节点 = 当前节点）
-                onExam={() => newExam()}
-                // 斜杠 /effort：全局推理等级，与 ModelPicker 里那条滑条写的是同一个设置
-                effort={effort}
-                onSetEffort={setGlobalEffort}
-                compactThreshold={agentSettings.compact.threshold}
-                // 导师人格（见 agent/persona）：标题后面括号里那两个字，切换即时写进设置
-                persona={agentSettings.persona}
-                onPickPersona={(id) => {
-                  saveAgentSettings({ ...agentSettings, persona: id })
-                  onToast(t('导师人格已切到「{0}」，从下一轮开始生效', personaOf(id).label))
-                }}
-                onStop={agent.stop}
-                onNewConversation={newConversation}
-                onSelectConversation={selectConversation}
-                onDeleteConversation={removeConversation}
-                onEditMessage={(messageId, text) => {
-                  // 改写消息正文 = 设计内的历史改写：这一会话的前缀账重新开始记（见 agent/prefixGate）
-                  resetPrefixGate(activeConversationId ?? '')
-                  set(updateMessageText(getLatest(), activeConversationId ?? '', messageId, text))
-                }}
-                onDeleteMessage={(messageId) => {
-                  // 同上：删除消息之后的历史与已实发的那份不再前缀一致
-                  resetPrefixGate(activeConversationId ?? '')
-                  const next = deleteMessage(getLatest(), activeConversationId ?? '', messageId)
-                  set(next)
-                  pruneImagesOf(next)
-                }}
-                // 中断说明旁的「继续」：接着被应用退出打断的那一轮往下做（见 useAgent.resumeInterrupted）
-                onResumeInterrupted={() => agent.resumeInterrupted()}
-                // api.ask 的表单卡（渲染在输入框上方）
-                ask={agent.pendingAsk}
-                onAskSubmit={agent.submitAsk}
-                onAskCancel={agent.cancelAsk}
-                // 状态条要的实时吐字速度（空闲时面板自己回退到消息里的存量）
-                tps={agent.tps}
-                // 上下文占用圆环的实时账（每跳 usage 重算；轮末随落库一起清）
-                liveUsage={agent.liveUsage}
-                // 子代理（见 docs/subagent-architecture.md）：会话列表、实时槽与子会话视图的数据源
-                sub={agent.sub}
-              />
+              agentTabs.length && activeAgentTab && agentView ? (
+                <div className="flex h-full min-h-0 flex-col">
+                  {/*
+                    agent 栏的页签条：一页签一份独立的上下文与运行时。目标级导师的关闭守卫
+                    （文档区还有它的页签 / 还在跑）与子代理页签的随时可关，见 AgentTabStrip。
+                  */}
+                  <AgentTabStrip
+                    tabs={agentTabs}
+                    activeId={activeAgentTabId}
+                    titleOf={agentTabTitle}
+                    runningOf={agentTabRunning}
+                    docTabsOf={(ref) => (ref.kind === 'goal' ? docGoalIds.has(ref.goalId) : false)}
+                    onActivate={activateAgentTab}
+                    onClose={closeAgentTab}
+                  />
+                  <div className="min-h-0 flex-1">
+                    <AgentPanel
+                      // key 绑「页签 + 会话」：点别的页签、换页签里展示的对话才重挂——
+                      // 那时滚动位置、跟随状态、编辑态都该从头开始（见 AgentPanel 的 pinned）。
+                      // 同一页签里切节点不重挂（上下文是目标级的）
+                      key={activeAgentTabId + ':' + (agentView.conversationId ?? 'none')}
+                      // 「正在辅导谁」：页签的落点节点（子代理页签不显示这句，面板自己分支）
+                      nodeTitle={
+                        (agentView.nodeId ? nodeById(store, agentView.nodeId)?.title : undefined) ??
+                        agentTabTitle(activeAgentTab)
+                      }
+                      conversation={agent.conversation}
+                      conversations={goalConversations}
+                      streaming={agent.streaming}
+                      streamingMessageId={agent.streamingMessageId}
+                      running={agent.running}
+                      hasKey={hasKey}
+                      providerLabel={providerName}
+                      onModelChanged={() => setSettingsEpoch((n) => n + 1)}
+                      vision={vision}
+                      // 待发送的附件原样交给 useAgent：转存发生在真正开跑那一轮（见它的说明）
+                      onSend={(text, images, files) =>
+                        agent.send(
+                          text,
+                          images.length || files.length
+                            ? { images: images.length ? images : undefined, files: files.length ? files : undefined }
+                            : undefined,
+                        )
+                      }
+                      onNotice={onToast}
+                      // 更多 → 工作流 → 回忆：与文档区那颗按钮同一件事，只是这里不再二次确认（见 AgentPanel 的说明）
+                      onRecall={() => startRecall()}
+                      // 更多 → 工作流 → 超级实验室：问清想做什么实验，生成一份可交互的超级文档（内置工作流）
+                      onSuperLab={startSuperLab}
+                      onCheckin={startCheckin}
+                      onBrowserUse={startBrowserUse}
+                      onCompact={() => void agent.compactNow()}
+                      compacting={agent.compacting}
+                      onOpenAgentSettings={() => setAgentSettingsOpen(true)}
+                      // 斜杠 /exam：与资源管理器右键「新增试卷」是同一个 newExam（不指名节点 = 当前节点）
+                      onExam={() => newExam()}
+                      // 斜杠 /effort：全局推理等级，与 ModelPicker 里那条滑条写的是同一个设置
+                      effort={effort}
+                      onSetEffort={setGlobalEffort}
+                      compactThreshold={agentSettings.compact.threshold}
+                      // 导师人格（见 agent/persona）：住在输入框下面的状态行里，切换即时写进设置
+                      persona={agentSettings.persona}
+                      onPickPersona={(id) => {
+                        saveAgentSettings({ ...agentSettings, persona: id })
+                        onToast(t('导师人格已切到「{0}」，从下一轮开始生效', personaOf(id).label))
+                      }}
+                      onStop={agent.stop}
+                      onNewConversation={newConversation}
+                      onSelectConversation={selectConversation}
+                      onDeleteConversation={removeConversation}
+                      onEditMessage={(messageId, text) => {
+                        // 改写消息正文 = 设计内的历史改写：这一会话的前缀账重新开始记（见 agent/prefixGate）
+                        resetPrefixGate(agentView.conversationId ?? '')
+                        set(updateMessageText(getLatest(), agentView.conversationId ?? '', messageId, text))
+                      }}
+                      onDeleteMessage={(messageId) => {
+                        // 同上：删除消息之后的历史与已实发的那份不再前缀一致
+                        resetPrefixGate(agentView.conversationId ?? '')
+                        const next = deleteMessage(getLatest(), agentView.conversationId ?? '', messageId)
+                        set(next)
+                        pruneImagesOf(next)
+                      }}
+                      // 中断说明旁的「继续」：接着被应用退出打断的那一轮往下做（见 useAgent.resumeInterrupted）
+                      onResumeInterrupted={() => agent.resumeInterrupted()}
+                      // api.ask 的表单卡（渲染在输入框上方）
+                      ask={agent.pendingAsk}
+                      onAskSubmit={agent.submitAsk}
+                      onAskCancel={agent.cancelAsk}
+                      // 状态行要的实时吐字速度（空闲时面板自己回退到消息里的存量）
+                      tps={agent.tps}
+                      // 上下文占用圆环的实时账（每跳 usage 重算；轮末随落库一起清）
+                      liveUsage={agent.liveUsage}
+                      // 子代理（见 docs/subagent-architecture.md）：会话列表、实时槽与子会话视图的数据源
+                      sub={agent.sub}
+                      // 看哪个子代理会话由页签决定（agent 栏页签化）；菜单点开的会话从页签进
+                      viewSubId={activeAgentTab.kind === 'sub' ? activeAgentTab.sessionId : null}
+                      onOpenSub={openSubTab}
+                    />
+                  </div>
+                </div>
+              ) : (
+                /*
+                  一枚页签都没有：还没有任何目标被打开过（或用户把导师都关了）。
+                  说清「导师从哪里来」——打开一份目标下的文档，它的导师会自己出现。
+                */
+                <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
+                  <span className="text-[13px] font-medium text-ink-soft">{t('超级导师')}</span>
+                  <p className="max-w-[240px] text-[11.5px] leading-relaxed text-ink-faint">
+                    {t('打开一份目标下的文档，它的导师会在这里出现。')}
+                  </p>
+                </div>
+              )
             }
           />
         )}

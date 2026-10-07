@@ -32,7 +32,7 @@ import type { LearnStore } from './types'
 import { buildTeacherSystem } from './ai'
 import { MIN_ACTIVE_MESSAGES, activeMessages, applyCompaction, shouldCompact } from './compact'
 import { needsPersonaAnnounce, personaMessage } from '../agent/persona'
-import { conversationById, nodeById } from './graph'
+import { conversationById, nodeById, latestConversation, addConversation } from './graph'
 import { currentNodeBlock, makeExamTool } from './agentOps'
 import { findWorkflow, renderWorkflowInstruction, resolveWorkflowEffort, workflowPrep, workflowModules } from './workflows'
 import { generateConversationTitle, namingSource } from './title'
@@ -88,6 +88,11 @@ export function useAgent(opts: {
   ui?: AgentUiDeps
   /** browser.* 的宿主依赖工厂（web 页签动作与活信息，见 learn/web/browserOps）；不注入就没有这一组 */
   browserDeps?: () => BrowserDeps | undefined
+  /**
+   * 一场子代理任务开跑（见 subagent/manager 的 onRunStart）：宿主据此把它的页签
+   * 开好（agent 栏页签化后，子代理从页签看）。只管开、不抢激活——正在看的对话不因后台派活被拽走。
+   */
+  onSubRunStart?: (conversationId: string, sessionId: string) => void
 }) {
   const { store, set, getLatest, goalId, nodeId, conversationId, onNeedKey, examDeps } = opts
   /**
@@ -101,34 +106,44 @@ export function useAgent(opts: {
     uiRef.current = opts.ui
     browserFnRef.current = opts.browserDeps
   })
-  const [streaming, setStreaming] = useState<{ conversationId: string; messageId: string; parts: AgentPart[] } | null>(
-    null,
+  const [streaming, setStreaming] = useState<Record<string, { conversationId: string; messageId: string; parts: AgentPart[] }>>(
+    {},
   )
-  const [running, setRunning] = useState(false)
-  const abortRef = useRef<AbortController | null>(null)
+  /**
+   * 在跑的轮次按**会话**记（agent 栏页签化之后，几位导师可以同时各跑各的；
+   * 键 = conversationId）。UI 读的是当前会话那一份，页签的关闭守卫读整张表——
+   * 「导师正在跑」的判定与「眼前看的是哪位」是两回事。
+   */
+  const [running, setRunning] = useState<Record<string, true>>({})
+  /** 每个会话一个中止器：停止按钮只停当前会话，别的导师不受牵连 */
+  const abortMapRef = useRef(new Map<string, AbortController>())
   /** 同一会话的轮次串行化（见 runTurn 的说明）：conversationId → 在途轮次的结束承诺 */
   const turnChainRef = useRef(new Map<string, Promise<void>>())
   const onNeedKeyRef = useRef(onNeedKey)
   /** 转存失败之类的话要能说出来，但不该进 runTurn 的依赖（回调每次渲染都是新的） */
   const onNoticeRef = useRef(opts.onNotice)
+  /** 子代理任务开跑：宿主据此把它的页签开好（agent 栏页签化，见 AgentTabStrip） */
+  const onSubRunStartRef = useRef(opts.onSubRunStart)
   /**
-   * api.ask 的待回答表单与它的「收卷人」。ask 在工具执行里阻塞等待，
-   * 表单提交 / 取消 / 停止按钮三条路都要能把它唤醒（见 runTurn 里的装配）。
+   * api.ask 的待回答表单**按会话各挂各的**（表单卡只渲染在发起它的那个会话的输入框上方），
+   * 与它的「收卷人」。ask 在工具执行里阻塞等待，表单提交 / 取消 / 停止按钮三条路
+   * 都要能把它唤醒（见 runTurn 里的装配）；收卷人按表单 id 认领——并发时多个导师
+   * 各问各的，交卷必须落到问话的那一位手里。
    */
-  const [pendingAsk, setPendingAsk] = useState<{ id: string; form: AskFormPayload } | null>(null)
-  const askWaiterRef = useRef<((value: unknown) => void) | null>(null)
+  const [pendingAsk, setPendingAsk] = useState<Record<string, { id: string; form: AskFormPayload }>>({})
+  const askWaitersRef = useRef(new Map<string, (value: unknown) => void>())
   /**
    * 最近一跳实测的输出速度（tok/s，见 ChatUsage.tps）。轮次开始时清零，
    * 每跳 usage 带着它来就更新——输入区的状态条读它（跑完之后回退到消息里的存量）。
    */
-  const [tps, setTps] = useState<number | null>(null)
+  const [tps, setTps] = useState<Record<string, number>>({})
   /**
-   * 正在跑的这一轮**到目前为止**的账（每跳 usage 来就重算一份）。
+   * 正在跑的这一轮**到目前为止**的账（每跳 usage 来就重算一份），按会话分开。
    * 输入区的上下文占用圆环要的是「现在这一跳结束时占了多少」，而不是整轮跑完、
    * 落进会话的那一份——一轮里模型要来回好几跳，每跳输入都在涨，等轮末才更新
    * 圆环就错过了全程。轮次结束随落库一起清空（圆环回退到持久化的那份）。
    */
-  const [liveUsage, setLiveUsage] = useState<MessageUsage | null>(null)
+  const [liveUsage, setLiveUsage] = useState<Record<string, MessageUsage>>({})
 
   /**
    * 子代理会话住在 Conversation.subagents 上、随 chat.json 落盘（生命周期 = 这段
@@ -144,11 +159,12 @@ export function useAgent(opts: {
   useEffect(() => {
     onNeedKeyRef.current = onNeedKey
     onNoticeRef.current = opts.onNotice
+    onSubRunStartRef.current = opts.onSubRunStart
   })
 
   useEffect(
     () => () => {
-      abortRef.current?.abort()
+      for (const c of abortMapRef.current.values()) c.abort()
       for (const m of subManagersRef.current.values()) m.abortAll()
     },
     [],
@@ -201,6 +217,9 @@ export function useAgent(opts: {
           onRunEnd: (_sessionId, runId) => {
             setSubRuns((prev) => prev.filter((r) => r.runId !== runId))
           },
+          onRunStart: (sessionId) => {
+            onSubRunStartRef.current?.(conversationId, sessionId)
+          },
         })
         subManagersRef.current.set(conversationId, m)
       }
@@ -241,20 +260,26 @@ export function useAgent(opts: {
     [getLatest, persist],
   )
 
-  /** 用户在表单卡里点了「提交」：把答案交回给阻塞中的沙箱 */
-  const submitAsk = useCallback((answers: AskAnswers) => {
-    askWaiterRef.current?.({ ok: true, cancelled: false, answers })
-  }, [])
+  /** 用户在表单卡里点了「提交」：把答案交回给阻塞中的沙箱（表单认当前会话挂着的这一张） */
+  const submitAsk = useCallback(
+    (answers: AskAnswers) => {
+      const ask = pendingAsk[conversationId ?? '']
+      if (ask) askWaitersRef.current.get(ask.id)?.({ ok: true, cancelled: false, answers })
+    },
+    [pendingAsk, conversationId],
+  )
 
   /** 用户点了「不回答了」：告诉沙箱没有答案（不是失败，别让它把取消当成错误重试） */
   const cancelAsk = useCallback(() => {
-    askWaiterRef.current?.({
+    const ask = pendingAsk[conversationId ?? '']
+    if (!ask) return
+    askWaitersRef.current.get(ask.id)?.({
       ok: true,
       cancelled: true,
       answers: [],
       note: '用户取消了表单，没有给出任何回答。不要假设他的偏好或答案；把要问的话直接写进回复里，或先继续不需要回答的部分。',
     })
-  }, [])
+  }, [pendingAsk, conversationId])
 
   /**
    * runTurn 的本体，不做并发控制（守卫与排队在 runTurn 里）。
@@ -472,12 +497,19 @@ export function useAgent(opts: {
           ask: (form) =>
             new Promise<unknown>((resolve) => {
               let idleTimer: ReturnType<typeof setInterval> | null = null
+              const askId = crypto.randomUUID()
               const finish = (value: unknown): void => {
-                if (askWaiterRef.current !== finish) return
-                askWaiterRef.current = null
+                if (askWaitersRef.current.get(askId) !== finish) return
+                askWaitersRef.current.delete(askId)
                 signal.removeEventListener('abort', onAbort)
                 if (idleTimer) clearInterval(idleTimer)
-                setPendingAsk(null)
+                // 只收走自己挂的那一张：并发时别的会话可能也挂着表单
+                setPendingAsk((prev) => {
+                  if (prev[target.conversationId]?.id !== askId) return prev
+                  const next = { ...prev }
+                  delete next[target.conversationId]
+                  return next
+                })
                 // 标了 userInfo 的题目：答案在**用户提交的那一刻**就落进画像（见 user/fields），
                 // 导师拿到答案时画像已经写好了——不必再 update 一遍，也就没有「转述走样」这一步
                 void applyAskToProfile(form, value).then(resolve, () => resolve(value))
@@ -485,8 +517,8 @@ export function useAgent(opts: {
               const onAbort = () =>
                 finish({ ok: false, content: '用户停止了这一轮，表单已关闭。不要假设用户的回答。' })
               signal.addEventListener('abort', onAbort, { once: true })
-              askWaiterRef.current = finish
-              setPendingAsk({ id: crypto.randomUUID(), form })
+              askWaitersRef.current.set(askId, finish)
+              setPendingAsk((prev) => ({ ...prev, [target.conversationId]: { id: askId, form } }))
               /*
                * 表单限时：挂出一分钟后用户**没有任何操作**（鼠标键盘都不动，任意操作都会续住它，
                * 见 lib/userActivity）就自动收起并带回 timedOut——agent 据此自行决定继续或交付，
@@ -494,7 +526,7 @@ export function useAgent(opts: {
                */
               ensureActivityListeners()
               idleTimer = setInterval(() => {
-                if (askWaiterRef.current !== finish) return
+                if (askWaitersRef.current.get(askId) !== finish) return
                 if (userIdleMs() >= ASK_IDLE_TIMEOUT_MS) {
                   finish({
                     ok: false,
@@ -586,12 +618,23 @@ export function useAgent(opts: {
        * （contextWindow 在上面的工具装配处已取好——子代理要用同一个数。）
        */
       const tally = { context: 0, total: 0, output: 0, read: 0, miss: 0, estimated: false, turns: 0, tps: 0 }
-      setStreaming({ conversationId: target.conversationId, messageId: assistantId, parts: [] })
-      setRunning(true)
-      setTps(null)
-      setLiveUsage(null)
+      const convKey = target.conversationId
+      setStreaming((prev) => ({ ...prev, [convKey]: { conversationId: convKey, messageId: assistantId, parts: [] } }))
+      setRunning((prev) => (prev[convKey] ? prev : { ...prev, [convKey]: true }))
+      setTps((prev) => {
+        if (!(convKey in prev)) return prev
+        const next = { ...prev }
+        delete next[convKey]
+        return next
+      })
+      setLiveUsage((prev) => {
+        if (!(convKey in prev)) return prev
+        const next = { ...prev }
+        delete next[convKey]
+        return next
+      })
       // ctrl 在上面的工具装配处创建（ask / wait 的中止语义需要它），这里只挂到 ref 上
-      abortRef.current = ctrl
+      abortMapRef.current.set(convKey, ctrl)
       try {
         await runAgent({
           provider: global.provider,
@@ -679,32 +722,36 @@ export function useAgent(opts: {
               // 留最后一跳的值：状态条要的是「现在吐字多快」，不是全程平均
               if (e.usage.tps) {
                 tally.tps = e.usage.tps
-                setTps(e.usage.tps)
+                setTps((prev) => ({ ...prev, [convKey]: e.usage.tps as number }))
               }
               // 圆环的实时账：每跳结束就重算一份（与轮末落库的 shape 完全一致）
-              setLiveUsage({
-                contextTokens: tally.context,
-                contextWindow: window,
-                totalTokens: tally.total,
-                outputTokens: tally.output,
-                cacheReadTokens: tally.read,
-                cacheMissTokens: tally.miss,
-                estimated: tally.estimated,
-                ...(tally.tps ? { tps: tally.tps } : {}),
-              })
+              setLiveUsage((prev) => ({
+                ...prev,
+                [convKey]: {
+                  contextTokens: tally.context,
+                  contextWindow: window,
+                  totalTokens: tally.total,
+                  outputTokens: tally.output,
+                  cacheReadTokens: tally.read,
+                  cacheMissTokens: tally.miss,
+                  estimated: tally.estimated,
+                  ...(tally.tps ? { tps: tally.tps } : {}),
+                },
+              }))
             } else if (e.type === 'pace') {
               // 输出中的实时估算：每秒一条，先撑起数字，结束时由精确值替换
-              setTps(e.tps)
+              setTps((prev) => ({ ...prev, [convKey]: e.tps }))
             }
             applyEvent(parts, e)
             // 里程碑立即落库，流式内容节流（见 flushTurn 的说明）
             if (e.type === 'tool-call' || e.type === 'tool-result' || e.type === 'notice') scheduleFlush(true)
             else if (e.type === 'text' || e.type === 'thinking') scheduleFlush(false)
-            setStreaming({ conversationId: target.conversationId, messageId: assistantId, parts: [...parts] })
+            setStreaming((prev) => ({ ...prev, [convKey]: { conversationId: convKey, messageId: assistantId, parts: [...parts] } }))
           },
         })
       } finally {
-        abortRef.current = null
+        // 只摘自己的中止器：并发时后启动的轮次可能已经换了这一格
+        if (abortMapRef.current.get(convKey) === ctrl) abortMapRef.current.delete(convKey)
         if (flushTimer) {
           clearTimeout(flushTimer)
           flushTimer = null
@@ -761,12 +808,38 @@ export function useAgent(opts: {
             }
           }
         }
-        setRunning(false)
-        setStreaming(null)
-        // 实时账功成身退：落库的那一份已经进会话，圆环从它读同一口径的数
-        setLiveUsage(null)
+        // 只清自己这一场：并发的其他导师的实时槽各归各
+        setRunning((prev) => {
+          if (!prev[convKey]) return prev
+          const next = { ...prev }
+          delete next[convKey]
+          return next
+        })
+        setStreaming((prev) => {
+          if (!(convKey in prev)) return prev
+          const next = { ...prev }
+          delete next[convKey]
+          return next
+        })
+        setTps((prev) => {
+          if (!(convKey in prev)) return prev
+          const next = { ...prev }
+          delete next[convKey]
+          return next
+        })
+        setLiveUsage((prev) => {
+          if (!(convKey in prev)) return prev
+          const next = { ...prev }
+          delete next[convKey]
+          return next
+        })
         // 表单若还挂着（异常路径）也一并收掉
-        setPendingAsk(null)
+        setPendingAsk((prev) => {
+          if (!(convKey in prev)) return prev
+          const next = { ...prev }
+          delete next[convKey]
+          return next
+        })
 
         /*
          * 本轮 loop 结束——**这里**才应用压缩。
@@ -882,7 +955,9 @@ export function useAgent(opts: {
    * 触发一个工作流（内置或登记过的）。指令以 **user 角色**整段进入上下文（隐藏消息，
    * 带名字作分界条），不碰系统提示词——这是「工作流」与「提示词」的分界，登记表也照此语义存储。
    *
-   * target 缺省按当前会话目标（runHidden 的老规矩）；autoTeach 那类「节点刚建、状态还没切过去」
+   * target 缺省**按节点归属解析**（与 runHidden 同一条口径）：nodeId 所属目标的会话收这条指令——
+   * agent 栏页签化之后，「眼前看的是哪位导师」与「这件事该归哪位导师」是两回事；
+   * 节点属于当前会话的目标时才直接用当前会话。autoTeach 那类「节点刚建、状态还没切过去」
    * 的调用方传显式 target。
    *
    * 触发前那两下（响铃、切主位）**只有 prep: 'ask' 才做**，见下面那一段的说明。
@@ -901,11 +976,18 @@ export function useAgent(opts: {
         target?: AgentRunTarget
       },
     ) => {
-      const target =
-        opts?.target ??
-        (goalId && conversationId && (opts?.nodeId ?? nodeId)
-          ? { goalId, nodeId: opts?.nodeId ?? (nodeId as string), conversationId }
-          : null)
+      let target = opts?.target ?? null
+      if (!target) {
+        const nid = opts?.nodeId ?? nodeId
+        const node = nid ? nodeById(getLatest(), nid) : null
+        if (node) {
+          const conv =
+            conversationId && conversationById(getLatest(), conversationId)?.goalId === node.goalId
+              ? conversationId
+              : (latestConversation(getLatest(), node.goalId)?.id ?? null)
+          if (conv) target = { goalId: node.goalId, nodeId: node.id, conversationId: conv }
+        }
+      }
       if (!target) return
       const found = findWorkflow(getLatest(), target.goalId, ref)
       if (!found) {
@@ -947,7 +1029,7 @@ export function useAgent(opts: {
         workflowModules(found),
       )
     },
-    [goalId, nodeId, conversationId, getLatest, runTurn],
+    [nodeId, conversationId, getLatest, runTurn],
   )
 
   /**
@@ -1019,21 +1101,37 @@ export function useAgent(opts: {
    * 发起一次隐藏指令（交卷后的自动阅卷、一键出题）。
    * nodeId 可覆盖：这些指令有时是冲着刚切过去的那个节点发的，
    * 但那一帧 store.activeNodeId 还没更新。
+   *
+   * 目标归属**按节点算**，不再借用当前会话：agent 栏页签化之后，「眼前看的是哪位导师」
+   * 与「这件事该归哪位导师」是两回事——交卷的节点属于目标 B 时，哪怕页签停在 A 的
+   * 导师上，阅卷也得进 B 的会话。目标没有会话时现场建一段（addConversation 不换激活态）。
    */
   const runHidden = useCallback(
     (text: string, on?: string, mark?: string) => {
-      if (!goalId || !conversationId) return
+      const s = getLatest()
       const target = on ?? nodeId
-      if (!target) return
-      void runTurn({ goalId, nodeId: target, conversationId }, text, true, undefined, undefined, undefined, undefined, mark)
+      const node = target ? nodeById(s, target) : null
+      if (!node) return
+      // 节点属于当前会话的目标时直接用当前会话；否则落到该目标最近的一段（没有就新建）
+      const conv =
+        conversationId && conversationById(s, conversationId)?.goalId === node.goalId
+          ? conversationId
+          : (latestConversation(s, node.goalId)?.id ??
+            (() => {
+              const made = addConversation(s, node.goalId)
+              set(made.store)
+              return made.conversation.id
+            })())
+      void runTurn({ goalId: node.goalId, nodeId: node.id, conversationId: conv }, text, true, undefined, undefined, undefined, undefined, mark)
     },
-    [goalId, nodeId, conversationId, runTurn],
+    [nodeId, conversationId, getLatest, set, runTurn],
   )
 
   const stop = useCallback(() => {
-    abortRef.current?.abort()
+    if (!conversationId) return
+    abortMapRef.current.get(conversationId)?.abort()
     // 子代理在后台跑：停止这一轮时把当前对话所有在跑的一并中断（级联）
-    if (conversationId) subManagersRef.current.get(conversationId)?.abortAll()
+    subManagersRef.current.get(conversationId)?.abortAll()
   }, [conversationId])
 
   /**
@@ -1062,7 +1160,11 @@ export function useAgent(opts: {
     )
   }, [goalId, nodeId, conversationId, running, runTurn])
 
-  const streamingLive = streaming && streaming.conversationId === conversationId ? streaming : null
+  /**
+   * 当前会话的实时槽。分槽之后同一时刻可能有几位导师都在跑，这里只交出
+   * **眼前这一位**的那一份——面板渲染的是激活页签；页签守卫读的是整张表（见下）。
+   */
+  const streamingLive = conversationId ? (streaming[conversationId] ?? null) : null
   const streamingParts = streamingLive?.parts ?? null
 
   /**
@@ -1076,7 +1178,12 @@ export function useAgent(opts: {
     streaming: streamingParts,
     /** 轮次进行中那条回复的固定 id：AgentPanel 据此把它从静态列表里剔掉（渲染走 streaming） */
     streamingMessageId: streamingLive?.messageId ?? null,
-    running,
+    running: !!running[conversationId ?? ''],
+    /**
+     * 整张「谁在跑」的表（键 = conversationId）：agent 栏页签的关闭守卫读它——
+     * 「那位导师正在跑」与「眼前看的是哪位」是两回事。
+     */
+    runningByConversation: running as Record<string, boolean>,
     compacting,
     send,
     autoTeach,
@@ -1088,13 +1195,13 @@ export function useAgent(opts: {
     compactNow,
     stop,
     /** api.ask 的表单状态与两条出口（由 AgentPanel 渲染成输入框上方的卡片） */
-    pendingAsk,
+    pendingAsk: conversationId ? (pendingAsk[conversationId] ?? null) : null,
     submitAsk,
     cancelAsk,
     /** 最近一跳实测的输出速度（tok/s）；没在跑、或服务端没流式回包时为 null */
-    tps,
+    tps: conversationId ? (tps[conversationId] ?? null) : null,
     /** 正在跑的这一轮到目前为止的账（每跳 usage 重算）：上下文占用圆环的实时数据源 */
-    liveUsage,
+    liveUsage: conversationId ? (liveUsage[conversationId] ?? null) : null,
     /** 子代理：当前对话的会话与各场在跑任务的实时流（见 docs/subagent-architecture.md） */
     sub: {
       sessions: subBucket?.sessions ?? [],

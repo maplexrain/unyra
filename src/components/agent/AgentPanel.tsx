@@ -7,9 +7,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react'
-import { ArrowLeft, Bot, Brain } from 'lucide-react'
-import type {
-  AgentPart,
+import type {  AgentPart,
   Conversation,
   MessageImage,
   MessageUsage,
@@ -142,6 +140,15 @@ interface Props {
     /** 每场在跑任务的实时流式（并发时多场同时在跑，按会话挑自己那一份） */
     live: Array<{ sessionId: string; runId: string; parts: AgentPart[] }>
   }
+  /**
+   * 子会话视图：看哪个子代理会话由**页签**决定（agent 栏页签化，见 AgentTabStrip）——
+   * 页签指着哪个会话，整个面板就看哪一边。消息列表、流式输出、状态条与定位条的输入
+   * 全部换成子会话那一份——渲染机制与导师视图完全同一套，换的只是数据源；
+   * 传 null 就是导师对话本身。
+   */
+  viewSubId?: string | null
+  /** 子代理会话入口被点：宿主把它的页签开好并置前（替代旧的面板内视图切换） */
+  onOpenSub?: (sessionId: string) => void
 }
 
 export default function AgentPanel({
@@ -183,6 +190,8 @@ export default function AgentPanel({
   tps,
   liveUsage,
   sub,
+  viewSubId = null,
+  onOpenSub,
 }: Props) {
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
   /** 点开看大图的附件。两种来源各一份状态：已进资源库的气泡图与还在内存里的待发送图 */
@@ -214,11 +223,8 @@ export default function AgentPanel({
   )
 
   /**
-   * 子会话视图：viewSubId 指着哪个会话，整个面板就看哪一边。消息列表、流式输出、
-   * 状态条与定位条的输入全部换成子会话那一份——渲染机制与导师视图完全同一套，
-   * 换的只是数据源；返回导师就是把 viewSubId 清掉。
+   * 子会话视图的解析（viewSubId 由页签给，见 Props 的说明）。
    */
-  const [viewSubId, setViewSubId] = useState<string | null>(null)
   const subSession = useMemo(
     () => (sub && viewSubId ? (sub.sessions.find((s) => s.id === viewSubId) ?? null) : null),
     [sub, viewSubId],
@@ -237,7 +243,6 @@ export default function AgentPanel({
   const viewRunning = subSession ? !!(subLive || subSession.status === 'running') : running
   /** 子会话头部要显示的定义信息（名字 / 内置标记） */
   const subDef = subSession ? (sub?.defs ?? []).find((d) => d.key === subSession.defKey) : undefined
-  const backToTutor = useCallback(() => setViewSubId(null), [])
   /**
    * 这个对话里所有回复的 token 账，圆环与浮层据此汇总。
    * 跑着的时候把**实时账**追加在最后（每跳 usage 重算）：一轮里模型来回好几跳，
@@ -454,75 +459,13 @@ export default function AgentPanel({
     <div ref={rootRef} className="relative flex h-full min-h-0 flex-col bg-paper-deep/40">
       {/*
         内容上限 768px：这一栏的容器可以被拉到 800 宽，两列对调之后还会占住左边那一大块，
-        但对话本身（表头 / 消息 / 输入区）始终不超过 768——一行拉得太长就读不动了。
+        但对话本身（消息 / 输入区）始终不超过 768——一行拉得太长就读不动了。
         三段各写一次同一个上限，而不是外面再包一层：这样底色的铺满范围不变，
         宽出来的部分就是这一栏自己的留白，三段的左右边缘也正好对齐。
-      */}
-      {subSession ? (
-        /*
-          顶栏不画下边框、也不自带底色：它和消息列表共用面板同一层背景（bg-paper-deep/40），
-          去掉那条线之后整块就是一体的——与下面「输入区与列表之间不画分隔线」同一条道理。
-          子会话的表头：左上角**返回按钮**（回导师对话）、机器人图标、会话名与
-          实时状态。任务次数放右边——它是这个会话的履历，不是又一个动作。
-        */
-        <header className="mx-auto flex h-11 w-full max-w-[768px] shrink-0 items-center gap-2 px-3.5">
-          <button
-            type="button"
-            title={t('返回导师对话')}
-            onClick={backToTutor}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-soft transition hover:bg-line/60 hover:text-ink"
-          >
-            <ArrowLeft size={15} />
-          </button>
-          <Bot size={15} className="shrink-0 text-seal" />
-          <span className="shrink-0 text-[13px] font-medium text-ink-strong">
-            {subDef?.name ?? subSession.defKey}
-          </span>
-          {viewRunning ? (
-            <span className="shrink-0 text-[11px] text-seal">{t('任务进行中')}</span>
-          ) : (
-            <span className="shrink-0 text-[11px] text-ink-faint">
-              {subSession.status === 'interrupted'
-                ? t('上次被中断')
-                : subSession.status === 'error'
-                  ? t('上次出错')
-                  : t('空闲')}
-            </span>
-          )}
-          <span className="min-w-0 flex-1 truncate text-right text-[11px] text-ink-faint">
-            {t('独立上下文 · {0} 次任务', subSession.runs)}
-          </span>
-        </header>
-      ) : (
-        <header className="mx-auto flex h-11 w-full max-w-[768px] shrink-0 items-center gap-2 px-3.5">
-          <Brain size={15} className="shrink-0 text-seal" />
-          <span className="shrink-0 text-[13px] font-medium text-ink-strong">{t('超级导师')}</span>
-          <PersonaPicker persona={persona} onPick={onPickPersona} />
-          <span className="min-w-0 flex-1 truncate text-[11px] text-ink-faint">{t('正在辅导「{0}」', nodeTitle)}</span>
 
-          {/*
-            这一段对话叫什么。名字由模型读第一句话起（见 learn/title），还没起好时**什么都不显示**——
-            挂一个「对话 1」占着地方，等于告诉用户"它叫这个"，而它其实还没名字。
-          */}
-          {conversation?.title && (
-            <span
-              title={conversation.title}
-              className="max-w-[240px] shrink-0 truncate rounded-md bg-line/50 px-1.5 py-0.5 text-[11px] text-ink-soft"
-            >
-              {conversation.title}
-            </span>
-          )}
-          {/*
-            切换 / 删除 / 新建对话**都不在这里**：它们搬进了输入框左下角那颗「+」
-            （见「更多 → 对话历史」与「更多 → 新建对话」）。顶栏右上角这个位置留给
-            「这一段是什么」，而不是又一个动作按钮。
-          */}
-        </header>
-      )}
-
-      {/*
-        列表外面多包一层（relative）：脱离自动滚动后那颗「回到最新」按钮要浮在右下角，
-        而按钮不能放进滚动容器里——那样它会跟着内容滚走，恰好在该出现的时候消失。
+        顶栏（超级导师 + 人格 + 「正在辅导」）随 agent 栏页签化撤掉：页签自己就回答着
+        「现在跟谁在说」——目标级页签的标题就是目标的标题，子代理页签就是会话名。
+        「正在辅导」与对话标题搬到了输入框下面的状态行（见下面那一行）。
       */}
       <div className="relative mx-auto min-h-0 w-full max-w-[768px] flex-1">
         {/* moji-selectable：聊天列表是全站仅有的两处「可选文字、可拖拽」的区域之一
@@ -611,17 +554,53 @@ export default function AgentPanel({
           onOpenPreview={setPreview}
           subMode={subSession ? { name: subDef?.name ?? subSession.defKey, running: viewRunning } : undefined}
           subAgentSlot={
-            <SubAgentMenu sessions={sub?.sessions ?? []} defs={sub?.defs ?? []} onOpen={setViewSubId} />
+            <SubAgentMenu sessions={sub?.sessions ?? []} defs={sub?.defs ?? []} onOpen={(id) => onOpenSub?.(id)} />
           }
         />
 
         {/*
-          状态条：输入框底下的一条细字。它回答的是「这场辅导进行到哪了」——
-          聊了多少轮、干了多少步活、模型吐字多快、一共花了多少 token。
-          平时几乎不占地方（一行 10.5px 的灰字），但对着它心里有数：
-          「是不是卡住了」（tps 还在跳）、「这次怎么这么贵」（Σ 的数字）都一眼可见。
+          状态行：输入框底下的一条细字，原来只有三个数。顶栏撤掉之后它接过了「这一栏
+          在看谁」——左边是「正在辅导哪个节点 / 这段对话叫什么」（子代理页签则是这场
+          任务的履历），右边是轮数 / 速度 / token 与人格。一行读全：在看谁、跑到哪、花了多少。
         */}
-        <PaceStrip turns={turns} tps={tpsNow} tokens={tokensTotal} />
+        <div className="flex min-w-0 items-center gap-2.5 px-1 pb-1.5 pt-1.5">
+          {subSession ? (
+            <>
+              <span
+                className={'shrink-0 text-[11px] leading-none ' + (viewRunning ? 'text-seal' : 'text-ink-faint')}
+              >
+                {viewRunning
+                  ? t('任务进行中')
+                  : subSession.status === 'interrupted'
+                    ? t('上次被中断')
+                    : subSession.status === 'error'
+                      ? t('上次出错')
+                      : t('空闲')}
+              </span>
+              <span className="min-w-0 truncate text-[11px] leading-none text-ink-faint">
+                {t('独立上下文 · {0} 次任务', subSession.runs)}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="shrink-0 text-[11px] leading-none text-ink-faint">
+                {t('正在辅导「{0}」', nodeTitle)}
+              </span>
+              {/*
+                这一段对话叫什么。名字由模型读第一句话起（见 learn/title），还没起好时**什么都不显示**——
+                挂一个「对话 1」占着地方，等于告诉用户"它叫这个"，而它其实还没名字。
+              */}
+              {conversation?.title && (
+                <span title={conversation.title} className="min-w-0 truncate text-[11px] leading-none text-ink-soft">
+                  {conversation.title}
+                </span>
+              )}
+            </>
+          )}
+          <span className="min-w-0 flex-1" aria-hidden="true" />
+          <PaceStrip turns={turns} tps={tpsNow} tokens={tokensTotal} />
+          <PersonaPicker persona={persona} onPick={onPickPersona} placement="up" />
+        </div>
       </div>
 
       {/*

@@ -321,6 +321,16 @@ const dict: Record<string, string> = {
   '子会话只接受导师的调度——回到导师对话给它派任务。':
     'Sub-sessions only take orders from the tutor — go back to the tutor conversation to dispatch tasks.',
   '子代理正在准备': 'Sub-agent is preparing',
+
+  /* ---------- agent 栏页签（AgentTabStrip / AgentPanel 状态行） ---------- */
+  '关闭页签': 'Close tab',
+  '目标': 'Goal',
+  '子代理': 'Sub-agent',
+  '文档区还开着这个目标的页签，先关掉它们才能关闭导师':
+    'This goal still has document tabs open — close them before closing its tutor',
+  '导师正在运行，先停止这一轮再关闭': 'The tutor is running — stop the turn before closing this tab',
+  '打开一份目标下的文档，它的导师会在这里出现。':
+    'Open a document under a goal and its tutor will appear here.',
 }
 
 export default dict

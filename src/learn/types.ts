@@ -507,6 +507,19 @@ export type TabRef =
   /** 一份专注模式报告（只读，见 learn/focusGuard 的 FocusReport 与 FocusReportView） */
   | { kind: 'report'; reportId: string }
 
+/**
+ * agent 栏的页签指向什么（见 learn/agentTabs 与 components/agent/AgentTabStrip）。
+ *
+ * 目标级导师：一个目标一枚页签——上下文按目标隔离（graph/conversations），页签里
+ * 可以在目标的几段对话之间切换（conversationId 记的是**当前展示**的那一段，
+ * 为 null 表示还没有会话，激活时现场建）。
+ * 子代理会话：页签随时可关（任务在后台继续跑，见 subagent/manager），所以
+ * conversationId + sessionId 都要存——会话的渲染数据住在那一段导师对话上。
+ */
+export type AgentTabRef =
+  | { kind: 'goal'; goalId: string; conversationId: string | null }
+  | { kind: 'sub'; conversationId: string; sessionId: string }
+
 /** 文档区的视图：源码（可编辑）、预览（渲染后）与媒体预览（图片 / 音频 / 视频的本地文件） */
 export type DocView = 'source' | 'preview' | 'media'
 
@@ -680,6 +693,14 @@ export interface LearnStore {
    * 「新建分组」按钮创建的就是它。**可选字段**：旧 state.json 里没有它，`?? []` 兜底。
    */
   favGroups?: string[]
+  /**
+   * agent 栏开着的页签（见 learn/agentTabs）。**可选字段**：旧 state.json 里没有它，
+   * 读回来的旧数据不必补。与 docArea 同一类「界面状态」：关掉应用再打开，
+   * 上次开着哪几位导师、正看着哪一位，都还是那个样子。
+   */
+  agentTabs?: AgentTabRef[]
+  /** agent 栏当前激活的页签（agentTabKey 的结果）；null = 没有选中项（页签也为空时） */
+  agentActiveTab?: string | null
 }
 
 /**
