@@ -140,7 +140,7 @@ export async function runAgent(opts: AgentRunOptions): Promise<void> {
   }))
   // 默认走真实客户端；测试可注入替身，从而在不联网的情况下驱动整个循环
   const call = (o: StreamChatOptions): Promise<StreamChatResult> =>
-    opts.stream ? opts.stream(o) : streamChatWith(provider, model, o)
+    opts.stream ? opts.stream(o) : streamChatWith(provider, model, { ...o, purpose: 'chat' })
   let resourceRetries = 0
 
   /**

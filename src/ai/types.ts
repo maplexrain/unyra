@@ -356,6 +356,13 @@ export const asReasoningEffort = (v: unknown): ReasoningEffort =>
  */
 export type EffortMap = { [K in ReasoningEffort]?: string }
 
+/**
+ * 一次请求是**干什么**的：用量台账按它分桶（见 ai/usageLog 与设置里的用量页）。
+ * 埋点在 client 的两个出口（streamChatWith / chatCompleteWith），调用方自己声明；
+ * 没声明的落 'other'——宁可进「其他」也不该猜。
+ */
+export type UsagePurpose = 'chat' | 'guard' | 'title' | 'annotate' | 'exam' | 'test' | 'other'
+
 /** 一次流式补全的入参：提供商信息由 client 注入，这里只描述「说什么」 */
 export interface StreamChatOptions {
   messages: ChatMessage[]
@@ -366,6 +373,8 @@ export interface StreamChatOptions {
   reasoningEffort?: ReasoningEffort
   signal?: AbortSignal
   onDelta?: (d: { content?: string; reasoning?: string }) => void
+  /** 这次请求的用途（只进用量台账，不发到服务端） */
+  purpose?: UsagePurpose
 }
 
 /** 与 StreamChatOptions 同构，流式补全函数的签名（测试可注入替身） */

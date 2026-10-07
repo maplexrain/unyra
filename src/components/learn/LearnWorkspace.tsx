@@ -194,6 +194,7 @@ import SourceEditor from './SourceEditor'
 import type { DocSource } from './NodeNote'
 import ConfirmDialog from '../ConfirmDialog'
 import AgentPanel from '../agent/AgentPanel'
+import SettingsPanel from '../settings/SettingsPanel'
 import AgentTabStrip from '../agent/AgentTabStrip'
 import ContextDebugger from '../agent/ContextDebugger'
 import { resetPrefixGate } from '../../agent/prefixGate'
@@ -237,7 +238,7 @@ const goalFocusByGoal = new Map<string, string>()
 
 export default function LearnWorkspace({
   user,
-  onOpenSettings,
+  onRootChanged,
   onOpenUser,
   onSignOut,
   onToast,
@@ -450,8 +451,8 @@ export default function LearnWorkspace({
     if (ref.kind === 'exam') {
       return { type: 'attempt', nodeId: ref.nodeId, examId: ref.examId, attemptId: ref.attemptId, title }
     }
-    // 守卫上下文与专注报告没有可引用的 chip 形态：从文档区拖不出引用
-    if (ref.kind === 'guard' || ref.kind === 'report') return null
+    // 守卫上下文、专注报告与设置页没有可引用的 chip 形态：从文档区拖不出引用
+    if (ref.kind === 'guard' || ref.kind === 'report' || ref.kind === 'settings') return null
     const docPath = (kind: 'teaching' | 'note' | 'outline', note?: string): string | undefined =>
       nodeDocPath(s, ref.nodeId, { kind, ...(note ? { note } : {}) }) ?? undefined
     if (ref.kind === 'teach') return { type: 'doc', nodeId: ref.nodeId, path: docPath('teaching'), title }
@@ -722,6 +723,13 @@ export default function LearnWorkspace({
    * 就是它）。所以这里放一个 ref：声明之后随时回填，调用时刻一定已经是最新的一份。
    */
   const openTabRef = useRef<(ref: TabRef) => void>(() => {})
+  /**
+   * 设置页签的晚绑定把手。设置现在是文档区的一枚页签（set:settings，见 learn/tabs），
+   * 而 openTab 声明靠后——React Compiler 对「声明前引用」一律按可变量处理
+   * （见 openTabRef 的说明）。这里先给一份稳定身份，下面的回填 effect 每次渲染换成最新的一份。
+   */
+  const openSettingsRef = useRef<() => void>(() => {})
+  const onOpenSettings = useCallback(() => openSettingsRef.current(), [])
   /** browser.* 的宿主依赖槽：真正的值在 web 块里（openWebTab / webMeta 声明靠后），effect 里回填 */
   const browserDepsRef = useRef<BrowserDeps | null>(null)
 
@@ -1105,6 +1113,7 @@ export default function LearnWorkspace({
   // 回填放在 effect 里（渲染期不许写 ref）：openTab 的身份随依赖变，每次渲染后换成最新的一份
   useEffect(() => {
     openTabRef.current = openTab
+    openSettingsRef.current = () => openTab({ kind: 'settings' })
   })
 
   /**
@@ -2672,6 +2681,12 @@ export default function LearnWorkspace({
                 WebTabLayer 常驻层显示——这里只让出位置，别画任何东西。
               */
               null
+            ) : gTab?.ref.kind === 'settings' ? (
+              /*
+                设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），
+                从任何入口打开都是切到它；分页与内容都在面板内部（见 settings/SettingsPanel）。
+              */
+              <SettingsPanel onRootChanged={onRootChanged} onToast={onToast} />
             ) : gTab?.ref.kind === 'local' ? (
               /*
                 本地文件：内容不在数据目录里，读取与落盘都由它自己管（见 LocalDoc）。
@@ -2914,7 +2929,7 @@ export default function LearnWorkspace({
             节点的工具（笔记 / 超级文档 / 学习状态 / 试卷），右半边是这份文档的动作
             （源码 / 预览 / 导出）。一个页签都没有的空格子不画。
           */}
-          {gTab && gTab.ref.kind !== 'web' && (
+          {gTab && gTab.ref.kind !== 'web' && gTab.ref.kind !== 'settings' && (
             <DocFloat
               /*
                * key 绑「格 + 节点」：换节点时重挂，各块 tip 的展开状态自然回到收起；

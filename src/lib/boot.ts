@@ -17,6 +17,7 @@ import { loadUiLocale } from './uiLocale'
 import { refreshShortcuts } from './shortcuts'
 import { flushCommits, flushCommitsSync, setRoot } from './storage'
 import { hydrateUserSettings } from './userSettings'
+import { hydrateUsageLog } from '../ai/usageLog'
 import { t } from '../i18n'
 import { bootstrapUsers } from '../user/store'
 import { restoreSession, type Session } from '../user/session'
@@ -38,6 +39,9 @@ export async function enterUserScope(uid: string | null): Promise<void> {
   startupMark('r:scope-start')
   await hydrateUserSettings(uid)
   startupMark('r:settings-done')
+  // 用量台账跟着用户走（users/{uid}/usage.json）：与设置同一时刻换作用域。
+  // 待写的尾巴在这里先落掉（旧目录的数据不动），然后才清缓存读新的
+  await hydrateUsageLog(uid)
   await hydrateLearnStore(uid)
   startupMark('r:learn-done')
   refreshAppearance()

@@ -19,6 +19,7 @@ import { httpFetch } from './http'
 import {
   AiRequestError,
   cacheHitRate,
+  estimateUsage,
   type ChatMessage,
   type ChatToolDef,
   type ChatToolCall,
@@ -28,8 +29,10 @@ import {
   type ReasoningEffort,
   type StreamChatResult,
   type StreamChatOptions,
+  type UsagePurpose,
 } from './types'
 import type { ProviderQuirks } from './providers'
+import { recordUsage } from './usageLog'
 import { num } from '../lib/num'
 import { t } from '../i18n'
 
@@ -222,14 +225,40 @@ function logUsageLine(
 }
 
 /**
+ * 把一次完成的请求记进用量台账（见 ai/usageLog）：设置里的「用量」页就吃这份账。
+ * 服务端没回报用量时记本地估算（带 estimated 标记）——请求数与耗时仍然是真的。
+ */
+function recordRequest(
+  provider: ResolvedProvider,
+  model: string,
+  purpose: UsagePurpose | undefined,
+  usage: ChatUsage,
+  ms: number,
+): void {
+  recordUsage({
+    providerId: provider.id,
+    provider: provider.label,
+    model,
+    purpose: purpose ?? 'other',
+    input: usage.input,
+    output: usage.output,
+    cacheRead: usage.cacheRead,
+    cacheWrite: usage.cacheWrite,
+    ...(usage.estimated ? { estimated: true } : {}),
+    ms,
+  })
+}
+
+/**
  * 流式 Chat 补全，支持 function calling，供 AI Agent 使用。
  * 通过 onDelta 增量抛出正文与思维链，返回累积后的完整结果。
  *
  * 按协议分派：OpenAI 兼容走 SSE，Command Code 走私有网关的 NDJSON。
  * 两者的实现互不干扰，调用方只看到统一的返回值。
  *
- * 每次请求成功返回后，把该次的缓存命中率打到控制台（见 logUsageLine）——
- * 前缀缓存是否真的生效，只能拿逐请求的数字对着看。
+ * 每次请求成功返回后做两件事：把缓存命中率打到控制台（见 logUsageLine），并把
+ * 这一条请求记进用量台账（见 recordRequest）——前缀缓存是否真的生效，只能拿
+ * 逐请求的数字对着看；长期花销则看台账。
  */
 export async function streamChatWith(
   provider: ResolvedProvider,
@@ -250,7 +279,10 @@ export async function streamChatWith(
   }
   const startedAt = Date.now()
   const result = await dispatch()
-  logUsageLine(provider, model, result.usage, Date.now() - startedAt)
+  const ms = Date.now() - startedAt
+  logUsageLine(provider, model, result.usage, ms)
+  // 服务端没回报用量就按字符估算（界面上同一条路）：请求数与耗时不能因此缺账
+  recordRequest(provider, model, opts.purpose, result.usage ?? estimateUsage(opts.messages, opts.tools, result.content), ms)
   return result
 }
 
@@ -391,7 +423,8 @@ async function openAiStream(
 
 /**
  * 一次性 Chat 补全（stream: false），供生成描述、短释义等场景使用。
- * 与流式补全共用同一套鉴权、错误翻译与取消语义。
+ * 与流式补全共用同一套鉴权、错误翻译与取消语义；完成后同样记进用量台账
+ * （opts.purpose 声明这次请求是干什么的）。
  *
  * Command Code 网关只有流式（`stream: true` 是信封里的固定字段），
  * 因此那里退化成「跑一次流式、只取正文」——对调用方完全无感。
@@ -408,18 +441,24 @@ export async function chatCompleteWith(
     /** 要求返回严格 JSON（response_format: json_object）；网关不支持时忽略 */
     json?: boolean
     signal?: AbortSignal
+    /** 这次请求的用途（只进用量台账，不发到服务端） */
+    purpose?: UsagePurpose
   },
 ): Promise<string> {
+  const startedAt = Date.now()
   if (provider.protocol === 'commandcode') {
     const result = await commandCodeStream(provider, model, opts)
+    recordRequest(provider, model, opts.purpose, result.usage ?? estimateUsage(opts.messages, undefined, result.content), Date.now() - startedAt)
     return result.content
   }
   if (provider.protocol === 'anthropic') {
     const result = await anthropicStream(provider, model, opts)
+    recordRequest(provider, model, opts.purpose, result.usage ?? estimateUsage(opts.messages, undefined, result.content), Date.now() - startedAt)
     return result.content
   }
   if (provider.protocol === 'responses') {
     const result = await responsesStream(provider, model, opts)
+    recordRequest(provider, model, opts.purpose, result.usage ?? estimateUsage(opts.messages, undefined, result.content), Date.now() - startedAt)
     return result.content
   }
   const url = endpoint(rootOf(provider.baseUrl), '/chat/completions')
@@ -441,8 +480,12 @@ export async function chatCompleteWith(
   }
   const data = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>
+    usage?: Record<string, unknown>
   }
-  return data.choices?.[0]?.message?.content ?? ''
+  const content = data.choices?.[0]?.message?.content ?? ''
+  // 非流式响应的 usage 就在信封里（OpenAI 兼容协议的约定）；没有就退回估算
+  recordRequest(provider, model, opts.purpose, data.usage ? translateUsage(data.usage) : estimateUsage(opts.messages, undefined, content), Date.now() - startedAt)
+  return content
 }
 
 /**

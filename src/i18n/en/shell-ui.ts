@@ -57,7 +57,8 @@ const dict: Record<string, string> = {
   教学模式: 'Teaching mode',
   显示按键浮层: 'Show the key overlay',
   '打开后左下角常驻一块小窗，实时显示你按下的键（Ctrl + K 这样）。录屏讲课时观众看得见操作，而不是只看结果在变。它不挡点击，也不改任何按键行为。': 'Pins a small overlay in the lower-left corner that shows the keys you press (e.g. Ctrl + K) as you press them. Made for recorded lessons: viewers see the keys being pressed, not just the result. It blocks no clicks and changes no key behavior.',
-  '外观改动即时生效并自动保存，关闭窗口即可。': 'Appearance changes apply and save immediately; just close the window.',
+  '外观改动即时生效并自动保存。': 'Appearance changes apply and save immediately.',
+  '设置页没有可以导出的内容': 'Nothing to export on the settings page',
 
   /* ---------- 通用（components 根级） ---------- */
   '应用启动失败': 'Failed to start the app',

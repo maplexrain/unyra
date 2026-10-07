@@ -82,6 +82,15 @@ describe('页签的身份', () => {
     // 试卷副本的名字里已经带着考试时间，再加路径只是噪声
     expect(tabTrail({ kind: 'exam', nodeId: 'n1', examId: 'e1', attemptId: 'a1' }, path)).toBe('')
   })
+
+  it('设置页全局只有一份：key 恒定、不挂节点、没有路径后缀', () => {
+    const ref: TabRef = { kind: 'settings' }
+    // 恒定的 key 意味着从哪个入口打开都是同一枚页签（openTab 按 key 去重）
+    expect(tabKey(ref)).toBe('set:settings')
+    expect(tabNodeId(ref)).toBeNull()
+    expect(tabTrail(ref, () => '极限')).toBe('')
+    expect(tabTitle(ref, () => '随便')).toBe('设置')
+  })
 })
 
 describe('默认视图', () => {

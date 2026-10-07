@@ -51,6 +51,8 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
     const reportId = typeof r.reportId === 'string' ? r.reportId : ''
     return reportId ? { kind: 'report', reportId } : null
   }
+  // 设置页：全局只有一份，没有需要校验的「指向」，形状对就收下
+  if (r.kind === 'settings') return { kind: 'settings' }
   const nodeId = typeof r.nodeId === 'string' ? r.nodeId : ''
   const node = byId.get(nodeId)
   if (!node) return null

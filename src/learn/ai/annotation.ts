@@ -43,6 +43,7 @@ export async function generateShortAnnotation(opts: {
     reasoningEffort: effort === 'max' ? 'low' : effort,
     temperature: 0.4,
     signal: opts.signal,
+    purpose: 'annotate',
   })
   const text2 = text.trim()
   if (!text2) throw new AiRequestError('AI 未能生成释义，请重试')

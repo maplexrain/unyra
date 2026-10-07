@@ -150,6 +150,7 @@ export function ConfigBody({
       const text = await chatCompleteWith(resolveDraft(cfg, headers.value), model, {
         messages: [{ role: 'user', content: '用一句话描写秋雨：' }],
         temperature: 0.8,
+        purpose: 'test',
       })
       setStatus({ kind: 'ok', msg: text ? t('连接成功：{0}', text.slice(0, 40)) : t('连接成功') })
     } catch (err) {
