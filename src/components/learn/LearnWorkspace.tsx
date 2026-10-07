@@ -1912,14 +1912,25 @@ export default function LearnWorkspace({
         setGuardWarn({ reason })
         // 系统级推送：分心时用户多半正在别的应用里（守卫也正是因此才拍得到分心的画面），
         // 应用内弹窗那时候看不见。系统通知点一下能把主窗口叫回来。
-        if (isElectron()) void native().window.notify({ title: t('守卫提醒：屏幕上的内容与学习无关'), body: reason })
+        if (isElectron())
+          void native()
+            .window.notify({ title: t('守卫提醒：屏幕上的内容与学习无关'), body: reason })
+            .then((r) => {
+              // 失败回执不能白白丢掉：至少在控制台留一句话，开发者面板可以实测同一条链路
+              if (!r.ok) console.warn('[guard] 系统通知没有发出去：', r.error)
+            })
       },
       onFuse: (reason) => {
         // 熔断：媒体流守卫那边已经停了，这里把表停掉、写报告、把话说明白
         stopFocus()
         finishFocus('fused')
         setGuardFuse({ reason })
-        if (isElectron()) void native().window.notify({ title: t('严格专注已熔断'), body: reason })
+        if (isElectron())
+          void native()
+            .window.notify({ title: t('严格专注已熔断'), body: reason })
+            .then((r) => {
+              if (!r.ok) console.warn('[guard] 熔断通知没有发出去：', r.error)
+            })
       },
       onToast,
       contextLine: () => {
