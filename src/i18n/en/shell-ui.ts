@@ -220,6 +220,13 @@ const dict: Record<string, string> = {
   '开发者工具': 'Developer tools',
   '打开开发者工具': 'Open developer tools',
   '已经开着的话会先关掉再打开，保证它显示在最上层。': 'If already open, it is closed and reopened so it shows on top.',
+  '系统通知': 'System notifications',
+  '发送测试通知': 'Send a test notification',
+  '归一通知测试': 'Unyra notification test',
+  '这是一条测试通知：看到它，说明系统通知链路是通的。': 'This is a test notification — seeing it means the system notification path works.',
+  '系统已受理这条通知。屏幕上没看到的话，多半是 Windows 的专注助手（勿扰）或系统通知设置把它静默压掉了。': 'The system accepted this notification. If nothing showed up on screen, Windows Focus Assist (Do Not Disturb) or the system notification settings most likely silenced it.',
+  '守卫的分心警告与隐私熔断走同一条链路：这里亮不亮，就是那条链路的实况。': 'Distraction warnings and the privacy fuse from the focus guard use the same path: whether this one lights up is exactly how that path behaves.',
+  '未知错误': 'Unknown error',
   '隐藏': 'Hide',
   '显示': 'Show',
 
