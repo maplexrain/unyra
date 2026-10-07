@@ -38,7 +38,7 @@ export interface AgentSettings {
    */
   persona: PersonaId
   /**
-   * 开发者向的开关（设置里的「开发者」分页，见 components/AgentSettingsModal）。
+   * 开发者向的开关（设置里的「开发者」分页，见 components/AgentSettingsPanel）。
    * 全部默认关闭：它们是调试工具，不是功能。
    */
   dev: AgentDevSettings

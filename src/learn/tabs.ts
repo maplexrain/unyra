@@ -68,6 +68,9 @@ export function tabKey(ref: TabRef): string {
   // 设置页与用量页同样全局只有一份：从哪个入口打开都是切到它，不会开出第二枚
   if (ref.kind === 'settings') return 'set:settings'
   if (ref.kind === 'usage') return 'u:usage'
+  // 记忆管理与超级导师设置也是全局一份（入口在 agent 栏）
+  if (ref.kind === 'mind') return 'm:mind'
+  if (ref.kind === 'agentSettings') return 'set:agent'
   return 'l:' + ref.path
 }
 
@@ -82,7 +85,9 @@ export function tabNodeId(ref: TabRef): string | null {
     ref.kind === 'guard' ||
     ref.kind === 'report' ||
     ref.kind === 'settings' ||
-    ref.kind === 'usage'
+    ref.kind === 'usage' ||
+    ref.kind === 'mind' ||
+    ref.kind === 'agentSettings'
     ? null
     : ref.nodeId
 }
@@ -137,6 +142,8 @@ export function tabTitle(
   if (ref.kind === 'report') return t('专注报告')
   if (ref.kind === 'settings') return t('设置')
   if (ref.kind === 'usage') return t('用量统计')
+  if (ref.kind === 'mind') return t('记忆管理')
+  if (ref.kind === 'agentSettings') return t('超级导师设置')
   return fileNameOf(ref.path)
 }
 
@@ -150,12 +157,14 @@ export function tabTitle(
 export function tabTrail(ref: TabRef, nodePath: (nodeId: string) => string): string {
   if (ref.kind === 'exam') return ''
   if (ref.kind === 'web') return ''
-  // 守卫、报告、设置与用量页不挂在节点上，也没有「住在哪儿」可言
+  // 守卫、报告、系统页（设置/用量/记忆/导师设置）不挂在节点上，也没有「住在哪儿」可言
   if (
     ref.kind === 'guard' ||
     ref.kind === 'report' ||
     ref.kind === 'settings' ||
-    ref.kind === 'usage'
+    ref.kind === 'usage' ||
+    ref.kind === 'mind' ||
+    ref.kind === 'agentSettings'
   )
     return ''
   if (ref.kind === 'local') {

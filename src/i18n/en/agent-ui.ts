@@ -1,5 +1,5 @@
 /**
- * 英文字典：导师对话区（components/agent 全部 + AgentSettingsModal）。
+ * 英文字典：导师对话区（components/agent 全部 + AgentSettingsPanel）。
  *
  * 键 = 界面里的中文原文，逐字节一致（含全角标点）；插值用 {0} {1}。
  * 本文件只由「导师对话区」分片的接入者维护。
@@ -246,7 +246,7 @@ const dict: Record<string, string> = {
   '试卷': 'Exam paper',
   '局部修改笔记': 'Edit a note range',
 
-  /* ---------- AgentSettingsModal：对话分页 ---------- */
+  /* ---------- AgentSettingsPanel：对话分页 ---------- */
   '调试工具，全部默认关闭': 'Debugging tools — all off by default',
   '导师可以代跑的任务模板；触发时指令以 user 消息进上下文': 'Task templates the tutor can run for you; when triggered, the instructions enter the context as a user message',
   '只影响对话区里的超级导师，与全局设置分开': 'Only affects the Super Tutor in the conversation area; kept separate from global settings',
@@ -267,7 +267,7 @@ const dict: Record<string, string> = {
   '改动立即生效': 'Changes take effect immediately',
   '未配置 API Key': 'API Key not configured',
 
-  /* ---------- AgentSettingsModal：开发者分页 ---------- */
+  /* ---------- AgentSettingsPanel：开发者分页 ---------- */
   '这一页平时不显示。输入口令解锁（与全局设置里的开发者分页共用），解锁后会记住。':
     'This tab is hidden normally. Enter the passcode to unlock (shared with the developer tab in global settings); it stays unlocked afterwards.',
   '启用上下文比对调试器': 'Enable the context diff debugger',
@@ -285,7 +285,7 @@ const dict: Record<string, string> = {
   '这些都是调试工具，普通使用不需要打开它们。快照只留在内存里，关掉应用就没了；也不会发往任何服务。':
     'These are debugging tools; everyday use does not need them. Snapshots live in memory only and vanish when the app closes; nothing is sent to any service.',
 
-  /* ---------- AgentSettingsModal：工作流分页 ---------- */
+  /* ---------- AgentSettingsPanel：工作流分页 ---------- */
   '全局': 'Global',
   '目标级': 'Goal-level',
   '随应用提供，触发入口在对话与文档区里，不可删除': 'Ships with the app; triggered from the conversation and document areas; cannot be deleted',
@@ -333,6 +333,29 @@ const dict: Record<string, string> = {
     'Open a document under a goal and its tutor will appear here.',
   '{0} 枚页签被拦下（文档区还开着，或导师正在跑）':
     '{0} tab(s) were blocked (document tabs still open, or a tutor is running)',
+
+  /* ---------- 记忆管理（文档区 kind 'mind' 页签，入口在「+」菜单） ---------- */
+  '记忆': 'Memory',
+  '查看与编辑导师写下的长期记忆': 'View and edit the long-term memory the tutor has written down',
+  '记忆管理': 'Memory manager',
+  '还没有活动目标：打开任意学习目标后，这里显示导师为它写下的记忆。':
+    'No active goal yet: open any learning goal and the memory the tutor wrote for it shows up here.',
+  '当前目标': 'Current goal',
+  '再点一次确认清空': 'Click again to confirm clearing',
+  '导师用 mind.write 记下的跨对话判断与偏好。它们不自动进上下文——他要自己想起来翻，才用得上；同主题再写一次就只剩最新那条。':
+    'Cross-conversation judgements and preferences the tutor saves via mind.write. They never enter the context automatically — he has to think of looking them up; writing the same topic again keeps only the latest entry.',
+  '主题（可选，同主题只留最新一条）': 'Topic (optional; the same topic keeps only the latest entry)',
+  '内容：希望导师跨对话记住的判断、约定或偏好':
+    'Content: judgements, agreements or preferences the tutor should remember across conversations',
+  '写入': 'Write',
+  '写一条记忆': 'Write a memory',
+  '无主题': 'No topic',
+  '取消': 'Cancel',
+  '保存': 'Save',
+  '记忆已写入': 'Memory saved',
+  '记忆已更新': 'Memory updated',
+  '记忆已删除': 'Memory deleted',
+  '记忆已清空': 'Memory cleared',
 }
 
 export default dict

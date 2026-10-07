@@ -48,6 +48,8 @@ export interface ComposerUiProps {
   /** 自动压缩阈值（0~1），菜单项上如实说明「到多少会自己压」 */
   compactThreshold: number
   onOpenAgentSettings: () => void
+  /** 更多 → 记忆：打开导师长期记忆的管理页签 */
+  onOpenMinds: () => void
   /** 斜杠 /exam：跑内置工作流「出卷」 */
   onExam: () => void
   /** 全局推理等级与它的入口（斜杠 /effort） */
@@ -83,6 +85,7 @@ export function ComposerUi(props: ComposerUiProps): ReactNode {
     onBrowserUse,
     onCompact,
     onOpenAgentSettings,
+    onOpenMinds,
   } = props
   /** 拖拽悬停：高亮输入框，告诉用户「松手就放这里」 */
   const [dragOver, setDragOver] = useState(false)
@@ -109,6 +112,7 @@ export function ComposerUi(props: ComposerUiProps): ReactNode {
     onBrowserUse,
     onCompact,
     onOpenAgentSettings,
+    onOpenMinds,
     // 附件那两个入口由输入区提供（见 useComposer）
     onAttach: () => void composer.pickAttachment(),
   })

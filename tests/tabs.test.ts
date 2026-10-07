@@ -94,6 +94,15 @@ describe('页签的身份', () => {
     expect(tabKey(usage)).toBe('u:usage')
     expect(tabNodeId(usage)).toBeNull()
     expect(tabTitle(usage, () => '随便')).toBe('用量统计')
+    const mind: TabRef = { kind: 'mind' }
+    expect(tabKey(mind)).toBe('m:mind')
+    expect(tabNodeId(mind)).toBeNull()
+    expect(tabTrail(mind, () => '极限')).toBe('')
+    expect(tabTitle(mind, () => '随便')).toBe('记忆管理')
+    const agentSettings: TabRef = { kind: 'agentSettings' }
+    expect(tabKey(agentSettings)).toBe('set:agent')
+    expect(tabNodeId(agentSettings)).toBeNull()
+    expect(tabTitle(agentSettings, () => '随便')).toBe('超级导师设置')
   })
 })
 

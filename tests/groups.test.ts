@@ -62,9 +62,13 @@ const tab = (ref: TabRef): LearnTab => ({
                     ? 'set:settings'
                     : ref.kind === 'usage'
                       ? 'u:usage'
-                      : ref.kind === 'local'
-                        ? 'l:' + ref.path
-                        : '',
+                      : ref.kind === 'mind'
+                        ? 'm:mind'
+                        : ref.kind === 'agentSettings'
+                          ? 'set:agent'
+                          : ref.kind === 'local'
+                            ? 'l:' + ref.path
+                            : '',
   ref,
   createdAt: AT,
 })

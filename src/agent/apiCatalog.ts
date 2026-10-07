@@ -2,7 +2,7 @@
  * execute 沙箱的 api 目录：一组一档，每条给签名与一句说明。
  *
  * 这是「execute 工具 api 上下文管理」页（超级导师设置 → 开发者，见
- * components/AgentSettingsModal）的数据源：开发者在这里核对「当前 agent 到底
+ * components/AgentSettingsPanel）的数据源：开发者在这里核对「当前 agent 到底
  * 有哪些 api 可用、各自怎么调」，与实现互相对账。
  *
  * 注意它**只是目录，不是实现**——真正的行为在 learn/agentOps / learn/mind /

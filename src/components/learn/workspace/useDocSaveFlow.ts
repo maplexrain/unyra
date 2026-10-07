@@ -249,12 +249,14 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       if (text === undefined) return null
       // 网页页签没有编辑器，永远不该有暂存正文；真有这份草稿也没处可存
       if (tab.ref.kind === 'web') return null
-      // 守卫上下文、专注报告与系统页（设置/用量）同样没有编辑器，没有暂存这回事
+      // 守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置）同样没有编辑器，没有暂存这回事
       if (
         tab.ref.kind === 'guard' ||
         tab.ref.kind === 'report' ||
         tab.ref.kind === 'settings' ||
-        tab.ref.kind === 'usage'
+        tab.ref.kind === 'usage' ||
+        tab.ref.kind === 'mind' ||
+        tab.ref.kind === 'agentSettings'
       )
         return null
       const title = tabTitle(tab.ref, (nid) => nodeById(s, nid)?.title, examTabTitle)
