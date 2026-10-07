@@ -107,9 +107,12 @@ describe('guardSystemPrompt', () => {
     const cameraOnly = guardSystemPrompt({ screen: false, camera: true })
     expect(cameraOnly).toContain('不要对「是否在学习」下任何结论')
     expect(cameraOnly).toContain('摄像头画面')
+    // 注意力判定（手机/掌机）只在屏幕监控同开时才交代——只开摄像头时 warn 永远不会发
+    expect(cameraOnly).not.toContain('掌上游戏机')
     const both = guardSystemPrompt({ screen: true, camera: true })
     expect(both).toContain('屏幕截图')
     expect(both).toContain('privacy')
+    expect(both).toContain('掌上游戏机')
   })
 })
 
