@@ -19,7 +19,7 @@ import { registerVoiceIpc } from '../voice'
 import { registerExamIpc } from './examWindow'
 import { applyAppIcon } from './applyIcon'
 import { rebuildAppMenu, logoSvgPath, appIcon } from './icon'
-import { showMainWindow } from './windows'
+import { showMainWindow, flashMainWindow } from './windows'
 import { rebuildTrayMenu, hideToTray, quitApp, showTrayBalloon } from './tray'
 import { pdfFooter, pdfPageSize, saveFilters } from './exportPdf'
 import type { ExportPdfPayload } from './exportPdf'
@@ -79,6 +79,12 @@ export function registerIpc(): void {
     else win.maximize()
   })
   ipcMain.on('window:close', () => focusedWindow()?.close())
+
+  /*
+   * 守卫分心警告的「闪现置顶」（见 mainWindow.ts 的 flashMainWindow）：
+   * 发送型（send）就够——有没有钉上不需要回执，警告该做的事渲染层已经做了。
+   */
+  ipcMain.on('window:flashTop', () => flashMainWindow())
 
   /**
    * 渲染层明确要求「用系统浏览器打开这个地址」。
