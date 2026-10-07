@@ -60,6 +60,8 @@ export interface SlashMenuArgs {
   onOpenAgentSettings: () => void
   onExam: () => void
   onSuperLab: () => void
+  /** 自由聊天（固定页签）：导师域的命令（压缩/设置/出卷/实验室）整组收起 */
+  free?: boolean
 }
 
 export function useSlashMenu({
@@ -78,6 +80,7 @@ export function useSlashMenu({
   onOpenAgentSettings,
   onExam,
   onSuperLab,
+  free,
 }: SlashMenuArgs) {
   /** 现在停在哪一层 */
   const [level, setLevel] = useState<SlashLevel>('root')
@@ -183,10 +186,14 @@ export function useSlashMenu({
     run: () => onSetEffort(e),
   }))
 
-  /** 当前层要渲染的表：一级按已打的字母过滤，二级整表 */
+  /** 当前层要渲染的表：一级按已打的字母过滤，二级整表。
+      自由聊天没有导师域的命令：压缩/设置/出卷/实验室整组收起，只留 新建/历史/推理等级 */
+  const rootCommands = free
+    ? commands.filter((c) => c.key === 'new' || c.key === 'resume' || c.key === 'effort')
+    : commands
   const items =
     level === 'root'
-      ? commands.filter((c) => c.key.startsWith(query))
+      ? rootCommands.filter((c) => c.key.startsWith(query))
       : level === 'history'
         ? historyItems
         : effortItems

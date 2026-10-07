@@ -72,6 +72,8 @@ export interface ComposerProps {
   /** 自动压缩阈值（0~1），菜单项上如实说明「到多少会自己压」 */
   compactThreshold: number
   onOpenAgentSettings: () => void
+  /** 自由聊天（固定页签）：斜杠命令只留 新建/历史/推理等级 */
+  free?: boolean
   /** 斜杠 /exam：跑内置工作流「出卷」（导师先问类型与难度） */
   onExam: () => void
   /** 全局推理等级（斜杠 /effort 的二级菜单读它画「当前」） */
@@ -136,6 +138,7 @@ export function Composer(props: ComposerProps) {
     onCompact,
     compacting,
     onOpenAgentSettings,
+    free,
     onExam,
     effort,
     onSetEffort,
@@ -280,6 +283,7 @@ export function Composer(props: ComposerProps) {
     onOpenAgentSettings,
     onExam,
     onSuperLab,
+    free,
   })
 
   /*
