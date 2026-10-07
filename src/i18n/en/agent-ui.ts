@@ -336,7 +336,7 @@ const dict: Record<string, string> = {
 
   /* ---------- 记忆管理（文档区 kind 'mind' 页签，入口在「+」菜单） ---------- */
   '记忆': 'Memory',
-  '查看与编辑导师写下的长期记忆': 'View and edit the long-term memory the tutor has written down',
+  '查看与编辑本目标的导师记忆': 'View and edit the tutor memory of this goal',
   '记忆管理': 'Memory manager',
   '还没有活动目标：打开任意学习目标后，这里显示导师为它写下的记忆。':
     'No active goal yet: open any learning goal and the memory the tutor wrote for it shows up here.',

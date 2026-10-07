@@ -68,8 +68,8 @@ export function tabKey(ref: TabRef): string {
   // 设置页与用量页同样全局只有一份：从哪个入口打开都是切到它，不会开出第二枚
   if (ref.kind === 'settings') return 'set:settings'
   if (ref.kind === 'usage') return 'u:usage'
-  // 记忆管理与超级导师设置也是全局一份（入口在 agent 栏）
-  if (ref.kind === 'mind') return 'm:mind'
+  // 超级导师设置全局一份；记忆按目标归档，页签也一枚目标一份
+  if (ref.kind === 'mind') return 'm:' + ref.goalId
   if (ref.kind === 'agentSettings') return 'set:agent'
   return 'l:' + ref.path
 }
@@ -152,21 +152,21 @@ export function tabTitle(
  * notes.md）。只在真有重名时上层才会显示它，见 LearnWorkspace 的 tabTrails。
  *
  * 说「它住在哪儿」：节点类页签取节点到目标的路径（「极限/夹逼定理」），
- * 本地文件取所在目录。试卷副本不参与——它的名字里本来就带着考试时间。
+ * 本地文件取所在目录，记忆页签取**目标本身**（它不挂节点，goalLabel 由调用方解析）。
+ * 试卷副本不参与——它的名字里本来就带着考试时间。
  */
-export function tabTrail(ref: TabRef, nodePath: (nodeId: string) => string): string {
+export function tabTrail(
+  ref: TabRef,
+  nodePath: (nodeId: string) => string,
+  /** 记忆页签的后缀解析（目标原话）；不传时记忆页签没有后缀 */
+  goalLabel?: (goalId: string) => string,
+): string {
   if (ref.kind === 'exam') return ''
   if (ref.kind === 'web') return ''
-  // 守卫、报告、系统页（设置/用量/记忆/导师设置）不挂在节点上，也没有「住在哪儿」可言
-  if (
-    ref.kind === 'guard' ||
-    ref.kind === 'report' ||
-    ref.kind === 'settings' ||
-    ref.kind === 'usage' ||
-    ref.kind === 'mind' ||
-    ref.kind === 'agentSettings'
-  )
+  // 守卫、报告与系统页（设置/用量/导师设置）不挂在节点上，也没有「住在哪儿」可言
+  if (ref.kind === 'guard' || ref.kind === 'report' || ref.kind === 'settings' || ref.kind === 'usage' || ref.kind === 'agentSettings')
     return ''
+  if (ref.kind === 'mind') return goalLabel ? goalLabel(ref.goalId) : ''
   if (ref.kind === 'local') {
     const i = Math.max(ref.path.lastIndexOf('/'), ref.path.lastIndexOf('\\'))
     return i > 0 ? ref.path.slice(0, i) : ''

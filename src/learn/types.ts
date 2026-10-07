@@ -519,10 +519,10 @@ export type TabRef =
   | { kind: 'usage' }
   /**
    * 记忆管理页：超级导师写下的长期记忆（learn/mind 的 store.minds）的查看与编辑，
-   * 全局一枚页签（入口在 agent 栏输入框的「+」菜单）。记忆按学习目标归档，
-   * 页面里看的是**当前活动目标**的那一份。
+   * 入口在 agent 栏输入框的「+」菜单。**记忆按学习目标归档，页签也按目标一枚**
+   * （tabKey = 'm:' + goalId）——不是全局单例；目标删掉时它的记忆页签一起关。
    */
-  | { kind: 'mind' }
+  | { kind: 'mind'; goalId: string }
   /**
    * 超级导师设置页：对话压缩/工作流/开发者三块（原弹窗改的页签，见
    * components/agent/AgentSettingsPanel）。同样全局一枚，与全局设置是两份数据。

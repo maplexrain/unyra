@@ -90,8 +90,11 @@ export function deleteGoal(store: LearnStore, goalId: string): LearnStore {
     remaining.find((c) => c.id === store.activeConversationId)?.id ??
     (nextActiveGoalId ? latestConversation({ ...store, conversations: remaining }, nextActiveGoalId)?.id : null) ??
     null
-  // 整棵子树都没了：它的节点文档页签、笔记页签一并关掉（与 deleteNode 同一条规则）
-  const doomedTabs = allTabs(store.docArea).filter((t) => removed.has(tabNodeIdOf(t.ref))).map((t) => t.id)
+  // 整棵子树都没了：它的节点文档页签、笔记页签一并关掉（与 deleteNode 同一条规则）；
+  // 记忆页签挂在目标上（不挂节点，tabNodeIdOf 够不着它），目标没了也得一起关
+  const doomedTabs = allTabs(store.docArea)
+    .filter((t) => removed.has(tabNodeIdOf(t.ref)) || (t.ref.kind === 'mind' && t.ref.goalId === goalId))
+    .map((t) => t.id)
   return {
     ...store,
     goals,

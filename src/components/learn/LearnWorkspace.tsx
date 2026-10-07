@@ -341,25 +341,20 @@ export default function LearnWorkspace({
   const activeGoalId = activeGoal?.id ?? null
 
   /*
-   * 记忆管理页（kind 'mind'）的写入口：落点 = store.activeGoalId（agent 栏「现在看谁」
-   * 的那个目标）。不用 activeGoal 推——记忆页签自己没有节点，用它推目标会是空的；
-   * store.activeGoalId 是「上一个落点」，页签全关了也还认得目标。
+   * 记忆管理页（kind 'mind'）的写入口：**一枚目标一枚页签**，落点由页签自己携带的
+   * goalId 决定（ref.kind === 'mind' 时必带），不随活动目标漂移。
    */
-  const mindWrite = (input: { key?: string; text: string }) => {
-    if (!store.activeGoalId) return
-    set(writeMind(getLatest(), store.activeGoalId, input))
+  const mindWrite = (goalId: string, input: { key?: string; text: string }) => {
+    set(writeMind(getLatest(), goalId, input))
   }
-  const mindUpdate = (id: string, text: string) => {
-    if (!store.activeGoalId) return
-    set(updateMind(getLatest(), store.activeGoalId, id, text))
+  const mindUpdate = (goalId: string, id: string, text: string) => {
+    set(updateMind(getLatest(), goalId, id, text))
   }
-  const mindDelete = (idOrKey: string) => {
-    if (!store.activeGoalId) return
-    set(deleteMind(getLatest(), store.activeGoalId, idOrKey))
+  const mindDelete = (goalId: string, idOrKey: string) => {
+    set(deleteMind(getLatest(), goalId, idOrKey))
   }
-  const mindClear = () => {
-    if (!store.activeGoalId) return
-    set(clearMinds(getLatest(), store.activeGoalId))
+  const mindClear = (goalId: string) => {
+    set(clearMinds(getLatest(), goalId))
   }
 
   /*
@@ -510,10 +505,15 @@ export default function LearnWorkspace({
     const out: Record<string, string> = {}
     tabs.forEach((t, i) => {
       if ((count.get(names[i]) ?? 0) < 2) return
-      out[t.id] = tabTrail(t.ref, (id) => {
-        const node = nodeById(store, id)
-        return node ? nodePathOf(store, node.goalId, id) : ''
-      })
+      out[t.id] = tabTrail(
+        t.ref,
+        (id) => {
+          const node = nodeById(store, id)
+          return node ? nodePathOf(store, node.goalId, id) : ''
+        },
+        // 记忆页签的后缀是目标本身（多个目标各开一枚「记忆管理」时靠它区分）
+        (gid) => store.goals.find((g) => g.id === gid)?.question ?? '',
+      )
     })
     return out
   }, [tabs, store, examTabTitle])
@@ -2078,6 +2078,8 @@ export default function LearnWorkspace({
     const session = isSub ? (sessions.find((x) => x.id === tab.sessionId) ?? null) : null
     const stream = convId ? agent.streams[convId] : undefined
     return {
+      // 页签属于哪个目标（子代理经会话反查）：「记忆」入口按它开对应目标的记忆页签
+      goalId,
       nodeTitle: (nodeId ? nodeById(store, nodeId)?.title : undefined) ?? agentTabTitle(tab),
       conversation: conv,
       conversations: goalId ? store.conversations.filter((c) => c.goalId === goalId) : [],
@@ -2553,6 +2555,8 @@ export default function LearnWorkspace({
     const gTab = g.tab
     /** 这一格显示的页签 id；回调里用（TS 的收窄穿不进闭包，见下面几处 onChange） */
     const gTabId = gTab?.id ?? ''
+    /** 记忆页签携带的目标 id：同上，闭包里用（goalId 缺省只在页签不是记忆页时发生） */
+    const gMindGoalId = gTab?.ref.kind === 'mind' ? gTab.ref.goalId : ''
     const isFocused = groupId === docs.focus
     const gExam = examCopyOf(store, gTab)
     const panes = residentPanes.filter((p) => p.group === groupId)
@@ -2751,17 +2755,18 @@ export default function LearnWorkspace({
               <SettingsPanel onRootChanged={onRootChanged} onToast={onToast} />
             ) : gTab?.ref.kind === 'mind' ? (
               /*
-                记忆管理：导师长期记忆（learn/mind）的查看与编辑。页签全局一枚，
-                内容跟着活动目标（store.activeGoalId）走——切目标即换一份记忆。
+                记忆管理：导师长期记忆（learn/mind）的查看与编辑。**一枚目标一枚页签**
+                （tabKey = 'm:' + goalId），目标删掉时页签一起关（见 deleteGoal）。
+                gMindGoalId 是给下面几个闭包用的（TS 的收窄穿不进闭包，与 gTabId 同理）。
               */
               <MindPanel
-                goalId={store.activeGoalId}
-                goalTitle={store.goals.find((g) => g.id === store.activeGoalId)?.question ?? ''}
-                entries={store.activeGoalId ? mindsOf(store, store.activeGoalId) : []}
-                onWrite={mindWrite}
-                onUpdate={mindUpdate}
-                onDelete={mindDelete}
-                onClear={mindClear}
+                goalId={gTab.ref.goalId}
+                goalTitle={store.goals.find((g) => g.id === gMindGoalId)?.question ?? ''}
+                entries={mindsOf(store, gTab.ref.goalId)}
+                onWrite={(input) => mindWrite(gMindGoalId, input)}
+                onUpdate={(id, text) => mindUpdate(gMindGoalId, id, text)}
+                onDelete={(idOrKey) => mindDelete(gMindGoalId, idOrKey)}
+                onClear={() => mindClear(gMindGoalId)}
                 onToast={onToast}
               />
             ) : gTab?.ref.kind === 'agentSettings' ? (
@@ -3352,7 +3357,10 @@ export default function LearnWorkspace({
                             vision={vision}
                             onNotice={onToast}
                             onOpenAgentSettings={() => openTab({ kind: 'agentSettings' })}
-                            onOpenMinds={() => openTab({ kind: 'mind' })}
+                            // 记忆一枚目标一枚页签：开的就是这枚导师页签所属目标的记忆
+                            onOpenMinds={() => {
+                              if (props.goalId) openTab({ kind: 'mind', goalId: props.goalId })
+                            }}
                             // 斜杠 /effort：全局推理等级，与 ModelPicker 里那条滑条写的是同一个设置
                             effort={effort}
                             onSetEffort={setGlobalEffort}
