@@ -184,7 +184,7 @@ export function usePlusMenu({
     {
       key: 'minds',
       label: t('记忆'),
-      hint: t('查看与编辑导师写下的长期记忆'),
+      hint: t('查看与编辑本目标的导师记忆'),
       icon: <Brain size={14} />,
       run: onOpenMinds,
     },

@@ -53,8 +53,12 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
   }
   // 设置页与用量页：全局各只有一份，没有需要校验的「指向」，形状对就收下
   if (r.kind === 'settings' || r.kind === 'usage') return { kind: r.kind }
-  // 记忆管理与超级导师设置同上：全局一份的页面签
-  if (r.kind === 'mind' || r.kind === 'agentSettings') return { kind: r.kind }
+  // 记忆页签一枚目标一份：goalId 缺了（或不是字符串）就没法认领，丢弃
+  if (r.kind === 'mind') {
+    const goalId = typeof r.goalId === 'string' ? r.goalId : ''
+    return goalId ? { kind: 'mind', goalId } : null
+  }
+  if (r.kind === 'agentSettings') return { kind: r.kind }
   const nodeId = typeof r.nodeId === 'string' ? r.nodeId : ''
   const node = byId.get(nodeId)
   if (!node) return null

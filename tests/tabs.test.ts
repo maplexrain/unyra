@@ -94,10 +94,10 @@ describe('页签的身份', () => {
     expect(tabKey(usage)).toBe('u:usage')
     expect(tabNodeId(usage)).toBeNull()
     expect(tabTitle(usage, () => '随便')).toBe('用量统计')
-    const mind: TabRef = { kind: 'mind' }
-    expect(tabKey(mind)).toBe('m:mind')
+    const mind: TabRef = { kind: 'mind', goalId: 'g1' }
+    expect(tabKey(mind)).toBe('m:g1')
     expect(tabNodeId(mind)).toBeNull()
-    expect(tabTrail(mind, () => '极限')).toBe('')
+    expect(tabTrail(mind, () => '极限', (gid) => '目标' + gid)).toBe('目标g1')
     expect(tabTitle(mind, () => '随便')).toBe('记忆管理')
     const agentSettings: TabRef = { kind: 'agentSettings' }
     expect(tabKey(agentSettings)).toBe('set:agent')
