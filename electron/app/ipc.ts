@@ -100,17 +100,23 @@ export function registerIpc(): void {
    * Windows 走托盘气泡（showTrayBalloon）：WinRT toast 要 AUMID 注册过才亮，
    * dev 未打包的实例上会被系统静默丢弃；气泡 dev 与打包都亮，点它同样把主窗口
    * 叫到前台。其他平台走 Notification，点了 showMainWindow。
+   *
+   * 推出去的同时 shell.beep() 发一声系统提示音：toast 默认不出声，而分心场景里
+   * 用户盯着的是别的应用，声音才是真正叫得到人的那一半。兜底的 Notification
+   * 自己可能带声（macOS/Windows 都有默认音），置 silent 交给 beep 统一发，免得叠两响。
    */
   ipcMain.handle('notify', (_e, payload: unknown) => {
     const p = (payload ?? {}) as { title?: unknown; body?: unknown }
     if (typeof p.title !== 'string' || !p.title.trim()) return { ok: false, error: t('通知标题缺失') }
     const title = p.title
     const body = typeof p.body === 'string' ? p.body : ''
-    if (showTrayBalloon(title, body)) return { ok: true }
-    if (!Notification.isSupported()) return { ok: false, error: t('此系统不支持通知') }
-    const n = new Notification({ title, body, icon: appIcon() })
-    n.on('click', () => showMainWindow())
-    n.show()
+    if (!showTrayBalloon(title, body)) {
+      if (!Notification.isSupported()) return { ok: false, error: t('此系统不支持通知') }
+      const n = new Notification({ title, body, icon: appIcon(), silent: true })
+      n.on('click', () => showMainWindow())
+      n.show()
+    }
+    shell.beep()
     return { ok: true }
   })
 
