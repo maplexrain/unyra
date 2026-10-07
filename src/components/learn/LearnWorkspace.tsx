@@ -122,6 +122,7 @@ import { loadAgentSettings, saveAgentSettings, subscribeAgentSettings } from '..
 import { personaOf } from '../../agent/persona'
 import AgentSettingsPanel from '../AgentSettingsPanel'
 import MindPanel from '../agent/MindPanel'
+import { addFreeConversation, deleteFreeConversation, freeConversationById, getFreeConversations, subscribeFreeChat } from '../../learn/freeChat'
 import { clearMinds, deleteMind, mindsOf, updateMind, writeMind } from '../../learn/mind'
 import ExportDialog from './ExportDialog'
 import FloatWindow from '../FloatWindow'
@@ -365,10 +366,24 @@ export default function LearnWorkspace({
    * （见 retargetNode），但反过来点导师页签不动文档区。两条线在 retargetNode 汇合。
    */
   const agentTabs = useMemo(() => store.agentTabs ?? [], [store.agentTabs])
-  const activeAgentTab = useMemo(
-    () => agentTabs.find((t) => agentTabKey(t) === store.agentActiveTab) ?? agentTabs[0] ?? null,
-    [agentTabs, store.agentActiveTab],
+  /*
+   * 固定聊天页签：栏上最左、常驻、不落 store——每一轮渲染在列表前合成一枚。
+   * 它展示的会话 = freeConvId（点选/新建时记下），丢了就回落到最近一段。
+   */
+  const freeChats = useSyncExternalStore(subscribeFreeChat, getFreeConversations)
+  const [freeConvId, setFreeConvId] = useState<string | null>(null)
+  const currentFreeConvId =
+    freeConvId && freeConversationById(freeConvId) ? freeConvId : (freeChats[0]?.id ?? null)
+  const freeTabRef = useMemo<AgentTabRef>(
+    () => ({ kind: 'free', conversationId: currentFreeConvId }),
+    [currentFreeConvId],
   )
+  /** 页签条看到的列表 = 固定页签置左 + 其余页签原序 */
+  const stripTabs = useMemo(() => [freeTabRef, ...agentTabs], [freeTabRef, agentTabs])
+  const activeAgentTab = useMemo(() => {
+    if (store.agentActiveTab === 'free') return freeTabRef
+    return agentTabs.find((t) => agentTabKey(t) === store.agentActiveTab) ?? agentTabs[0] ?? null
+  }, [agentTabs, store.agentActiveTab, freeTabRef])
   const activeAgentTabId = activeAgentTab ? agentTabKey(activeAgentTab) : null
   /**
    * 激活页签解析出的面板视图：目标级页签 → 那个目标当前展示的会话 + 落点节点；
@@ -376,6 +391,16 @@ export default function LearnWorkspace({
    */
   const agentView = useMemo(() => {
     if (!activeAgentTab) return null
+    if (activeAgentTab.kind === 'free') {
+      // 固定聊天没有目标/节点/子代理：这里只给出会话 id（agentTabProps 的 free 分支自己解析）
+      return {
+        tab: activeAgentTab,
+        goalId: null as string | null,
+        nodeId: null as string | null,
+        conversationId: activeAgentTab.conversationId,
+        sessionId: null as string | null,
+      }
+    }
     if (activeAgentTab.kind === 'sub') {
       const conv = conversationById(store, activeAgentTab.conversationId)
       return {
@@ -892,6 +917,8 @@ export default function LearnWorkspace({
         )
         return
       }
+      // 全部关完时把激活权交给固定聊天页签——它是这一栏的底座，永远在
+      if (!cur.agentActiveTab) cur = { ...cur, agentActiveTab: 'free' }
       set(cur)
       if (blocked) onToast(t('{0} 枚页签被拦下（文档区还开着，或导师正在跑）', blocked))
     },
@@ -904,20 +931,22 @@ export default function LearnWorkspace({
     [closeAgentTabMode],
   )
 
-  /** 拖拽排序：只动顺序不动激活态（与文档区 reorderTabList 同一条规矩），顺序随 state.json 落盘 */
+  /** 拖拽排序：只动顺序不动激活态（与文档区 reorderTabList 同一条规矩），顺序随 state.json 落盘。
+      固定聊天页签不参与排序：它常驻最左，把它从钥匙串里滤掉（列表里本来也没有它） */
   const reorderAgentTabList = useCallback(
     (keys: string[]) => {
       const s = getLatest()
-      const next = reorderAgentTabs(s.agentTabs ?? [], keys)
+      const next = reorderAgentTabs(s.agentTabs ?? [], keys.filter((k) => k !== 'free'))
       if (next === (s.agentTabs ?? [])) return
       set(withAgentTabs(s, next, s.agentActiveTab ?? null))
     },
     [getLatest, set],
   )
 
-  /** 页签标题：目标级 = 目标的标题（总目标节点名，回落目标问题）；子代理 = 定义名 */
+  /** 页签标题：固定聊天 = 「聊天」；目标级 = 目标的标题（总目标节点名，回落目标问题）；子代理 = 定义名 */
   const agentTabTitle = useCallback(
     (ref: AgentTabRef): string => {
+      if (ref.kind === 'free') return t('聊天')
       if (ref.kind === 'goal') {
         const goal = store.goals.find((g) => g.id === ref.goalId)
         const title = goal ? (nodeById(store, goal.rootNodeId)?.title ?? goal.question) : ''
@@ -931,9 +960,10 @@ export default function LearnWorkspace({
     [store],
   )
 
-  /** 页签的运行态：目标级看那张「谁在跑」的表；子代理看会话状态（后台跑的也算跑着） */
+  /** 页签的运行态：固定聊天看那张「谁在跑」的表；目标级看同一张表；子代理看会话状态（后台跑的也算跑着） */
   const agentTabRunning = useCallback(
     (ref: AgentTabRef): boolean => {
+      if (ref.kind === 'free') return !!(ref.conversationId && agent.runningByConversation[ref.conversationId])
       if (ref.kind === 'goal') {
         const convId =
           ref.conversationId && conversationById(store, ref.conversationId)?.goalId === ref.goalId
@@ -958,6 +988,7 @@ export default function LearnWorkspace({
     const fixed = tabs0
       .filter((t) => {
         if (t.kind === 'goal') return s.goals.some((g) => g.id === t.goalId)
+        if (t.kind !== 'sub') return true
         const conv = conversationById(s, t.conversationId)
         return !!conv?.subagents?.sessions.some((x) => x.id === t.sessionId)
       })
@@ -2059,6 +2090,62 @@ export default function LearnWorkspace({
    * 那位导师，不借用「眼前激活的页签」。全局设置（人格 / 模型 / 档位）由所有页签共享。
    */
   const agentTabProps = (tab: AgentTabRef) => {
+    /*
+     * 固定聊天页签：会话住在 learn/freeChat（独立文件），发送走 agent.sendFree——
+     * 没有系统提示词/工具/人格，所以 ask、子代理、压缩这些导师域的槽一律置空；
+     * 界面上由 AgentPanel 的 free 模式收起对应的功能（菜单三项、无「正在辅导」）。
+     */
+    if (tab.kind === 'free') {
+      const convId = currentFreeConvId
+      const conv = freeConversationById(convId)
+      const stream = convId ? agent.streams[convId] : undefined
+      const nope = () => {}
+      return {
+        nodeTitle: '',
+        conversation: conv ?? null,
+        conversations: freeChats,
+        streaming: stream?.parts ?? null,
+        streamingMessageId: stream?.messageId ?? null,
+        running: !!(convId && agent.runningByConversation[convId]),
+        free: true,
+        onSend: (text: string, images: PendingImage[], files: PendingFile[]) => {
+          const id = convId ?? addFreeConversation().id
+          if (id !== convId) setFreeConvId(id)
+          agent.sendFree(id, text, { files, images })
+        },
+        onStop: () => agent.stop(convId ?? undefined),
+        onEditMessage: () => {},
+        onDeleteMessage: () => {},
+        onResumeInterrupted: () => {},
+        ask: null,
+        onAskSubmit: () => {},
+        onAskCancel: () => {},
+        tps: (convId ? agent.tpsByConv[convId] : null) ?? null,
+        liveUsage: (convId ? agent.liveUsageByConv[convId] : null) ?? null,
+        compacting: false,
+        onCompact: nope,
+        onRecall: nope,
+        onSuperLab: nope,
+        onCheckin: nope,
+        onBrowserUse: nope,
+        onExam: nope,
+        sub: { sessions: [], defs: [], running: false, live: [] },
+        viewSubId: null,
+        onOpenSub: () => {},
+        onNewConversation: () => {
+          setFreeConvId(addFreeConversation().id)
+        },
+        onSelectConversation: (id: string) => setFreeConvId(id),
+        onDeleteConversation: (id: string) => {
+          if (id && agent.runningByConversation[id]) {
+            onToast(t('这一段正在运行，先停止再删除'))
+            return
+          }
+          deleteFreeConversation(id)
+          if (id === currentFreeConvId) setFreeConvId(null)
+        },
+      }
+    }
     const isSub = tab.kind === 'sub'
     const goalId = isSub ? (conversationById(store, tab.conversationId)?.goalId ?? null) : tab.goalId
     // 页签里记的会话丢了（被删过）就回落到该目标最近的一段——与 agentView 同一条口径
@@ -3326,7 +3413,7 @@ export default function LearnWorkspace({
                     （文档区还有它的页签 / 还在跑）与子代理页签的随时可关，见 AgentTabStrip。
                   */}
                   <AgentTabStrip
-                    tabs={agentTabs}
+                    tabs={stripTabs}
                     activeId={activeAgentTabId}
                     titleOf={agentTabTitle}
                     runningOf={agentTabRunning}
@@ -3343,7 +3430,7 @@ export default function LearnWorkspace({
                     激活的拿到 active 标记，切回可见时重新量定位条（隐藏期间量到的全是零矩形）。
                   */}
                   <div className="relative min-h-0 flex-1">
-                    {agentTabs.map((tab) => {
+                    {stripTabs.map((tab) => {
                       const key = agentTabKey(tab)
                       const on = key === activeAgentTabId
                       const props = agentTabProps(tab)

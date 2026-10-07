@@ -64,6 +64,8 @@ export interface PlusMenuArgs {
   onOpenAgentSettings: () => void
   /** 更多 → 记忆：打开导师长期记忆的管理页签（learn/mind） */
   onOpenMinds: () => void
+  /** 自由聊天（固定页签）：一级菜单只留 新建对话/对话历史/文件 三件 */
+  free?: boolean
   /** 更多 → 文件：走系统对话框挑附件（由 useComposer 提供） */
   onAttach: () => void
 }
@@ -119,6 +121,7 @@ export function usePlusMenu({
   onCompact,
   onOpenAgentSettings,
   onOpenMinds,
+  free,
   onAttach,
 }: PlusMenuArgs): PlusMenuApi {
   /** 现在停在哪一级：null = 一级；二级只有「工作流」与「对话历史」两项 */
@@ -196,6 +199,12 @@ export function usePlusMenu({
       run: onOpenAgentSettings,
     },
   ]
+
+  /**
+   * 自由聊天（固定页签）的一级菜单：只有「新建对话 / 对话历史 / 文件」三件——
+   * 其余的项都是导师域的动作（工作流、压缩、设置、记忆），纯聊天没有它们。
+   */
+  const FREE_MENU: MenuItem[] = COMPOSER_MENU.filter((m) => m.key === 'new-chat' || m.key === 'history' || m.key === 'attach')
 
   /**
    * 「工作流」二级菜单：三件"请导师带我做点什么"的事。
@@ -400,7 +409,7 @@ export function usePlusMenu({
   const renderMenuPanel = (sub: MenuSub) => {
     if (sub === 'workflow') return WORKFLOW_MENU.map(menuItem)
     if (sub === 'history') return conversationRows
-    return COMPOSER_MENU.map(menuItem)
+    return (free ? FREE_MENU : COMPOSER_MENU).map(menuItem)
   }
 
   /**

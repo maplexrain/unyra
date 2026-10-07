@@ -26,9 +26,22 @@ const goal = (goalId: string, conversationId: string | null = 'c1'): AgentTabRef
 const sub = (conversationId: string, sessionId: string): AgentTabRef => ({ kind: 'sub', conversationId, sessionId })
 
 describe('agentTabKey', () => {
-  it('目标级按目标、子代理按会话', () => {
+  it('目标级按目标、子代理按会话、固定聊天恒定', () => {
     expect(agentTabKey(goal('g1'))).toBe('ga:g1')
     expect(agentTabKey(sub('c1', 's1'))).toBe('sa:s1')
+    expect(agentTabKey({ kind: 'free', conversationId: null })).toBe('free')
+  })
+})
+
+describe('固定聊天页签', () => {
+  it('关闭守卫不拦它，但批量关闭的名单永远绕开它', () => {
+    const ref: AgentTabRef = { kind: 'free', conversationId: null }
+    expect(agentTabCloseBlock(ref, { hasDocTabs: false, running: false })).toBe('none')
+    const tabs = [{ kind: 'free' as const, conversationId: null }, goal('g1'), goal('g2')]
+    // 对着自己（不可能出现，防御）与「全部关闭」都不该把 free 算进名单
+    expect(agentTabCloseSet(tabs, 'free', 'self')).toEqual([])
+    expect(agentTabCloseSet(tabs, 'ga:g1', 'all')).toEqual(['ga:g1', 'ga:g2'])
+    expect(agentTabCloseSet(tabs, 'ga:g2', 'left')).toEqual(['ga:g1'])
   })
 })
 
@@ -147,10 +160,12 @@ describe('normalizeAgentTabs', () => {
     expect(lonely.tabs).toEqual([goal('g1', null)])
   })
 
-  it('激活项必须是留下的页签之一，否则回落第一枚', () => {
+  it('激活项必须是留下的页签之一，否则回落第一枚；固定聊天是合法激活项', () => {
     expect(normalizeAgentTabs([goal('g1'), goal('g2')], 'ga:g2', ctx).active).toBe('ga:g2')
     expect(normalizeAgentTabs([goal('g1'), goal('g2')], 'ga:gone', ctx).active).toBe('ga:g1')
     expect(normalizeAgentTabs([], null, ctx).active).toBeNull()
+    // 固定聊天不在 store 的页签列表里（界面合成置左），但激活项可以是它
+    expect(normalizeAgentTabs([goal('g1')], 'free', ctx).active).toBe('free')
   })
 
   it('结构不合法的一律丢（非对象项、未知 kind、字段类型不对）', () => {

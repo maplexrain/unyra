@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeftToLine, ArrowRightToLine, FoldHorizontal, OctagonX, X } from 'lucide-react'
+import { ArrowLeftToLine, ArrowRightToLine, FoldHorizontal, MessageSquare, OctagonX, X } from 'lucide-react'
 import type { AgentTabRef } from '../../learn/types'
 import { agentTabCloseBlock, agentTabKey, type AgentTabCloseBlock } from '../../learn/agentTabs'
 import { TAB_CLOSE_LABEL, type TabCloseMode } from '../../learn/tabs'
@@ -275,8 +275,12 @@ export default function AgentTabStrip({
             const key = agentTabKey(ref)
             const on = key === activeId
             const running = runningOf(ref)
+            /** 固定聊天页签：栏上常驻、最左，不能关闭也不能拖拽——交互面比普通页签小一圈 */
+            const isFree = ref.kind === 'free'
             const block = agentTabCloseBlock(ref, { hasDocTabs: docTabsOf(ref), running })
-            const closable = block === 'none'
+            const closable = !isFree && block === 'none'
+            // 守卫文案只对「想关却关不掉」的页签有意义；固定页签根本没有关闭键
+            const blockHint = block === 'none' ? '' : t(BLOCK_HINT[block])
             const title = titleOf(ref)
             const dragging = drag?.key === key
             const offset = dragging ? drag.dx : shiftOf(i)
@@ -287,7 +291,7 @@ export default function AgentTabStrip({
                 role="tab"
                 aria-selected={on}
                 tabIndex={0}
-                title={title + (closable ? '' : '（' + t(BLOCK_HINT[block]) + '）')}
+                title={title + blockHint}
                 onClick={() => {
                   if (justDragged.current) return
                   onActivate(key)
@@ -295,18 +299,21 @@ export default function AgentTabStrip({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') onActivate(key)
                 }}
-                onPointerDown={(e) => onTabDown(e, key, i)}
+                onPointerDown={(e) => {
+                  if (!isFree) onTabDown(e, key, i)
+                }}
                 onPointerMove={(e) => onTabMove(e, key)}
                 onPointerUp={() => endDrag(true)}
                 onPointerCancel={() => endDrag(false)}
                 onContextMenu={(e) => {
+                  if (isFree) return
                   // 右键先在菜单里选中这一项：对着 A 右键却关掉 B，是最难解释的一类交互
                   e.preventDefault()
                   setMenu({ x: e.clientX, y: e.clientY, key })
                 }}
                 style={{ transform: offset ? 'translateX(' + offset + 'px)' : undefined }}
                 className={
-                  'moji-tab group relative flex h-7 min-w-[120px] max-w-[220px] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] ' +
+                  'moji-tab group relative flex h-7 min-w-[100px] max-w-[150px] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] ' +
                   (on ? 'moji-tab-flare z-10 font-medium ' : '') +
                   (dragging
                     ? 'z-10 cursor-grabbing border-line-strong bg-card text-ink-strong shadow-md '
@@ -316,7 +323,9 @@ export default function AgentTabStrip({
                     : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink')
                 }
               >
-                {ref.kind === 'goal' ? (
+                {isFree ? (
+                  <MessageSquare size={13} className={running ? 'text-seal' : ''} />
+                ) : ref.kind === 'goal' ? (
                   <GoalAgentIcon className={running ? 'text-seal' : ''} />
                 ) : (
                   <SubAgentIcon className={running ? 'text-seal' : ''} />
@@ -328,26 +337,29 @@ export default function AgentTabStrip({
                 {/*
                   关闭键固定在右端，鼠标扫过这一条页签时才亮出来（与文档区同一条规矩：
                   常驻的 × 是一排噪声）。被守卫拦着时它点不动，悬停提示说清为什么。
+                  固定聊天页签没有关闭键：它就是这一栏的底座。
                 */}
-                <button
-                  type="button"
-                  disabled={!closable}
-                  title={closable ? t(TAB_CLOSE_LABEL.self) : t(BLOCK_HINT[block])}
-                  aria-label={t(TAB_CLOSE_LABEL.self)}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onClose(key)
-                  }}
-                  className={
-                    'flex h-4 w-4 shrink-0 items-center justify-center rounded transition focus-visible:opacity-100 group-hover:opacity-70 ' +
-                    (closable
-                      ? 'opacity-0 hover:bg-line-strong/60'
-                      : 'cursor-not-allowed opacity-0 group-hover:opacity-40')
-                  }
-                >
-                  <X size={11} />
-                </button>
+                {!isFree && (
+                  <button
+                    type="button"
+                    disabled={!closable}
+                    title={closable ? t(TAB_CLOSE_LABEL.self) : blockHint}
+                    aria-label={t(TAB_CLOSE_LABEL.self)}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onClose(key)
+                    }}
+                    className={
+                      'flex h-4 w-4 shrink-0 items-center justify-center rounded transition focus-visible:opacity-100 group-hover:opacity-70 ' +
+                      (closable
+                        ? 'opacity-0 hover:bg-line-strong/60'
+                        : 'cursor-not-allowed opacity-0 group-hover:opacity-40')
+                    }
+                  >
+                    <X size={11} />
+                  </button>
+                )}
               </div>
             )
           })}

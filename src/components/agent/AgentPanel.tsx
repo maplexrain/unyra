@@ -47,6 +47,8 @@ interface Props {
   conversation: Conversation | null
   conversations: Conversation[]
   streaming: AgentPart[] | null
+  /** 自由聊天（固定页签）：没有导师身份——子代理、人格与「正在辅导」全部收起 */
+  free?: boolean
   /** 轮次进行中那条回复的 id：它在轮次内就分次进了会话（增量落库），列表里要剔掉防止两边都画 */
   streamingMessageId: string | null
   running: boolean
@@ -162,6 +164,7 @@ export default function AgentPanel({
   conversation,
   conversations,
   streaming,
+  free,
   streamingMessageId,
   running,
   hasKey,
@@ -574,10 +577,14 @@ export default function AgentPanel({
           onOpenPreview={setPreview}
           subMode={subSession ? { name: subDef?.name ?? subSession.defKey, running: viewRunning } : undefined}
           subAgentSlot={
-            <SubAgentMenu sessions={sub?.sessions ?? []} defs={sub?.defs ?? []} onOpen={(id) => onOpenSub?.(id)} />
+            free ? undefined : (
+              <SubAgentMenu sessions={sub?.sessions ?? []} defs={sub?.defs ?? []} onOpen={(id) => onOpenSub?.(id)} />
+            )
           }
           // 人格入口：输入框底行、子代理按钮右侧（原顶栏撤除后的新家；向上展开——它已贴近窗口底缘）
-          personaSlot={<PersonaPicker persona={persona} onPick={onPickPersona} />}
+          personaSlot={free ? undefined : <PersonaPicker persona={persona} onPick={onPickPersona} />}
+          // 自由聊天：菜单只留 新建对话 / 对话历史 / 文件（见 usePlusMenu 的 FREE_MENU）
+          free={free}
           // keepalive：隐藏面板不登记 chip 落点（模块级单槽，谁最后登记谁赢）
           active={active}
         />
@@ -605,6 +612,18 @@ export default function AgentPanel({
               <span className="min-w-0 truncate text-[11px] leading-none text-ink-faint">
                 {t('独立上下文 · {0} 次任务', subSession.runs)}
               </span>
+            </>
+          ) : free ? (
+            <>
+              {/*
+                自由聊天没有「正在辅导谁」：这里只放这段对话的名字（同一条起名规矩：
+                没起好名字时什么都不显示，不挂占位）。
+              */}
+              {conversation?.title && (
+                <span title={conversation.title} className="min-w-0 truncate text-[11px] leading-none text-ink-soft">
+                  {conversation.title}
+                </span>
+              )}
             </>
           ) : (
             <>
