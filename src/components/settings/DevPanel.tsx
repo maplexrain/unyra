@@ -28,7 +28,7 @@ export function DevPanel({ onUnlocked }: { onUnlocked: () => void }) {
   const sendTestNotify = () => {
     try {
       void native()
-        .window.notify({ title: t('归一通知测试'), body: t('这是一条测试通知：看到它，说明系统通知链路是通的。') })
+        .window.notify({ title: t('归一通知测试'), body: t('这是一条测试通知：看到它、听到提示音，说明系统通知链路是通的。') })
         .then((r) => {
           setNotifyResult(
             r.ok

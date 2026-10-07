@@ -73,12 +73,15 @@ export function currentTray(): Tray | null {
  * 「点了严格专注却一条通知都不来」就是这个。气泡（Win10+ 同样渲染成 toast）
  * 不依赖 AUMID 注册，dev 与打包都亮；「收进托盘」的提示用的也是这条路。
  *
+ * 气泡必须带自己的图标（NIIF_USER）：不带的话 toast 左下那枚显示的是**进程图标**——
+ * dev 未打包实例上就是 Electron 的默认 logo，装完才有应用的。
+ *
  * 回是否真的发了：托盘不在或非 Windows 回 false，调用方退回 Notification。
  */
 export function showTrayBalloon(title: string, body: string): boolean {
   if (!tray || process.platform !== 'win32') return false
   try {
-    tray.displayBalloon({ title, content: body })
+    tray.displayBalloon({ title, content: body, icon: appIcon().resize({ width: 32, height: 32 }) })
     return true
   } catch {
     // 系统关掉了气泡通知（专注助手/通知设置）：不是错误，让调用方走兜底
@@ -102,6 +105,7 @@ export function hideToTray(): void {
     tray?.displayBalloon({
       title: t('归一仍在后台运行'),
       content: t('点托盘图标可以重新打开窗口；右键菜单里可以退出。'),
+      icon: appIcon().resize({ width: 32, height: 32 }),
     })
   } catch {
     // 系统关掉了气泡通知：不是错误，也不再重试
