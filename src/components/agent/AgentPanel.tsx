@@ -573,7 +573,7 @@ export default function AgentPanel({
             <SubAgentMenu sessions={sub?.sessions ?? []} defs={sub?.defs ?? []} onOpen={(id) => onOpenSub?.(id)} />
           }
           // 人格入口：输入框底行、子代理按钮右侧（原顶栏撤除后的新家；向上展开——它已贴近窗口底缘）
-          personaSlot={<PersonaPicker persona={persona} onPick={onPickPersona} placement="up" />}
+          personaSlot={<PersonaPicker persona={persona} onPick={onPickPersona} />}
           // keepalive：隐藏面板不登记 chip 落点（模块级单槽，谁最后登记谁赢）
           active={active}
         />
