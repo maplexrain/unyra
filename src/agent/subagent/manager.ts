@@ -51,8 +51,6 @@ export interface SubAgentManagerDeps {
   onEvent?: (sessionId: string, runId: string, e: AgentEvent) => void
   /** 一次任务结束（无论成败）：宿主清掉那一场的实时槽 */
   onRunEnd?: (sessionId: string, runId: string) => void
-  /** 一场任务开始跑：宿主据此把它的页签开好（agent 栏页签化后，子代理从页签看） */
-  onRunStart?: (sessionId: string, runId: string) => void
   /** 测试注入替身流 */
   stream?: StreamFn
 }
@@ -167,7 +165,6 @@ export function createSubAgentManager(deps: SubAgentManagerDeps): SubAgentManage
     }
     running.set(session.id, handle)
     saveSession(withRunning(session, true))
-    deps.onRunStart?.(session.id, handle.runId)
     void drive(def, session, handle)
   }
 

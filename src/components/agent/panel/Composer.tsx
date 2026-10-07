@@ -87,6 +87,10 @@ export interface ComposerProps {
   subMode?: { name: string; running: boolean }
   /** 子代理会话入口（按钮 + 弹出列表），插在模型选择器左侧；没有会话时不渲染 */
   subAgentSlot?: ReactNode
+  /** 导师人格入口：插在子代理按钮的右侧、与提供商切换同一排（原顶栏撤除后搬到这里） */
+  personaSlot?: ReactNode
+  /** 这枚面板是不是眼前的页签（keepalive 常挂时隐藏面板不登记 chip 落点，见 chipHover 的 effect） */
+  active?: boolean
   /** 拖拽悬停：高亮输入框，告诉用户「松手就放这里」 */
   dragOver: boolean
   onDragOver: (e: React.DragEvent) => void
@@ -137,9 +141,12 @@ export function Composer(props: ComposerProps) {
     onSetEffort,
     onSuperLab,
     onOpenPreview,
-    subMode,
-    subAgentSlot,
-    dragOver,
+  subMode,
+  subAgentSlot,
+  personaSlot,
+  /** 这枚面板是不是眼前的页签（keepalive 常挂时隐藏面板不登记 chip 落点，见上面的 effect） */
+  active = true,
+  dragOver,
     onDragOver,
     onDragLeave,
     onDrop,
@@ -189,9 +196,11 @@ export function Composer(props: ComposerProps) {
    */
   const [chipHover, setChipHover] = useState(false)
   useEffect(() => {
-    // 登记的是整张输入卡片（附件列、工具条都算落点），不是只有正文那一块
+    // 登记的是整张输入卡片（附件列、工具条都算落点），不是只有正文那一块。
+    // keepalive 之后所有页签的面板常挂——**只有可见的那一枚**能登记：
+    // 落点是模块级单槽，谁最后登记谁赢，隐藏面板抢走它，chip 就拖不进眼前的输入框了。
     const el = cardRef.current
-    if (!el || subMode) return
+    if (!el || subMode || !active) return
     registerDocChipTarget({
       el,
       hover: setChipHover,
@@ -204,7 +213,7 @@ export function Composer(props: ComposerProps) {
       },
     })
     return () => registerDocChipTarget(null)
-  }, [subMode])
+  }, [subMode, active])
 
   /** 粘贴：图片走附件那条路；文本拍平插进来，其中完整的 #[{…}] 直接落成 chip */
   const onPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
@@ -579,6 +588,7 @@ export function Composer(props: ComposerProps) {
               贴图这条路照旧：拖进来、Ctrl+V 都行，本来就是习惯动作，不必有按钮。
             */}
             {subAgentSlot}
+            {!subMode && personaSlot}
             {!subMode && <ModelPicker onChanged={onModelChanged} />}
             {!subMode && <ContextRing usages={usages} />}
             {running ? (

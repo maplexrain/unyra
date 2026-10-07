@@ -331,6 +331,8 @@ const dict: Record<string, string> = {
   '导师正在运行，先停止这一轮再关闭': 'The tutor is running — stop the turn before closing this tab',
   '打开一份目标下的文档，它的导师会在这里出现。':
     'Open a document under a goal and its tutor will appear here.',
+  '{0} 枚页签被拦下（文档区还开着，或导师正在跑）':
+    '{0} tab(s) were blocked (document tabs still open, or a tutor is running)',
 }
 
 export default dict

@@ -88,11 +88,6 @@ export function useAgent(opts: {
   ui?: AgentUiDeps
   /** browser.* 的宿主依赖工厂（web 页签动作与活信息，见 learn/web/browserOps）；不注入就没有这一组 */
   browserDeps?: () => BrowserDeps | undefined
-  /**
-   * 一场子代理任务开跑（见 subagent/manager 的 onRunStart）：宿主据此把它的页签
-   * 开好（agent 栏页签化后，子代理从页签看）。只管开、不抢激活——正在看的对话不因后台派活被拽走。
-   */
-  onSubRunStart?: (conversationId: string, sessionId: string) => void
 }) {
   const { store, set, getLatest, goalId, nodeId, conversationId, onNeedKey, examDeps } = opts
   /**
@@ -122,8 +117,6 @@ export function useAgent(opts: {
   const onNeedKeyRef = useRef(onNeedKey)
   /** 转存失败之类的话要能说出来，但不该进 runTurn 的依赖（回调每次渲染都是新的） */
   const onNoticeRef = useRef(opts.onNotice)
-  /** 子代理任务开跑：宿主据此把它的页签开好（agent 栏页签化，见 AgentTabStrip） */
-  const onSubRunStartRef = useRef(opts.onSubRunStart)
   /**
    * api.ask 的待回答表单**按会话各挂各的**（表单卡只渲染在发起它的那个会话的输入框上方），
    * 与它的「收卷人」。ask 在工具执行里阻塞等待，表单提交 / 取消 / 停止按钮三条路
@@ -159,7 +152,6 @@ export function useAgent(opts: {
   useEffect(() => {
     onNeedKeyRef.current = onNeedKey
     onNoticeRef.current = opts.onNotice
-    onSubRunStartRef.current = opts.onSubRunStart
   })
 
   useEffect(
@@ -217,9 +209,6 @@ export function useAgent(opts: {
           onRunEnd: (_sessionId, runId) => {
             setSubRuns((prev) => prev.filter((r) => r.runId !== runId))
           },
-          onRunStart: (sessionId) => {
-            onSubRunStartRef.current?.(conversationId, sessionId)
-          },
         })
         subManagersRef.current.set(conversationId, m)
       }
@@ -260,26 +249,29 @@ export function useAgent(opts: {
     [getLatest, persist],
   )
 
-  /** 用户在表单卡里点了「提交」：把答案交回给阻塞中的沙箱（表单认当前会话挂着的这一张） */
+  /** 用户在表单卡里点了「提交」：把答案交回给阻塞中的沙箱（缺省 = 当前会话挂着的那一张） */
   const submitAsk = useCallback(
-    (answers: AskAnswers) => {
-      const ask = pendingAsk[conversationId ?? '']
+    (answers: AskAnswers, convId?: string) => {
+      const ask = pendingAsk[convId ?? conversationId ?? '']
       if (ask) askWaitersRef.current.get(ask.id)?.({ ok: true, cancelled: false, answers })
     },
     [pendingAsk, conversationId],
   )
 
   /** 用户点了「不回答了」：告诉沙箱没有答案（不是失败，别让它把取消当成错误重试） */
-  const cancelAsk = useCallback(() => {
-    const ask = pendingAsk[conversationId ?? '']
-    if (!ask) return
-    askWaitersRef.current.get(ask.id)?.({
-      ok: true,
-      cancelled: true,
-      answers: [],
-      note: '用户取消了表单，没有给出任何回答。不要假设他的偏好或答案；把要问的话直接写进回复里，或先继续不需要回答的部分。',
-    })
-  }, [pendingAsk, conversationId])
+  const cancelAsk = useCallback(
+    (convId?: string) => {
+      const ask = pendingAsk[convId ?? conversationId ?? '']
+      if (!ask) return
+      askWaitersRef.current.get(ask.id)?.({
+        ok: true,
+        cancelled: true,
+        answers: [],
+        note: '用户取消了表单，没有给出任何回答。不要假设他的偏好或答案；把要问的话直接写进回复里，或先继续不需要回答的部分。',
+      })
+    },
+    [pendingAsk, conversationId],
+  )
 
   /**
    * runTurn 的本体，不做并发控制（守卫与排队在 runTurn 里）。
@@ -926,11 +918,24 @@ export function useAgent(opts: {
   const send = useCallback(
     (
       text: string,
-      opts?: { context?: string; quote?: MessageQuote; images?: PendingImage[]; files?: PendingFile[] },
+      opts?: {
+        context?: string
+        quote?: MessageQuote
+        images?: PendingImage[]
+        files?: PendingFile[]
+        /**
+         * 显式目标：keepalive 的页签面板各自绑定自己的会话——后台页签的输入框
+         * 发出去也要落到它自己那一段对话上，不能借用「眼前激活的页签」。
+         */
+        target?: AgentRunTarget
+      },
     ) => {
-      if (!goalId || !nodeId || !conversationId) return
+      const t =
+        opts?.target ??
+        (goalId && nodeId && conversationId ? { goalId, nodeId, conversationId } : null)
+      if (!t) return
       void runTurn(
-        { goalId, nodeId, conversationId },
+        t,
         text,
         false,
         opts?.context,
@@ -949,7 +954,8 @@ export function useAgent(opts: {
    * 跑着的时候不让压：这一轮结束时还要往会话里写回复，中途把历史换掉，
    * 那一轮的结果就落在一份已经作废的历史上了。
    */
-  const [compacting, setCompacting] = useState(false)
+  /** 正在手动压缩的是哪一段会话（null = 没在压）：keepalive 后多个面板要各认各的 */
+  const [compactingConv, setCompactingConv] = useState<string | null>(null)
 
   /**
    * 触发一个工作流（内置或登记过的）。指令以 **user 角色**整段进入上下文（隐藏消息，
@@ -1033,29 +1039,40 @@ export function useAgent(opts: {
   )
 
   /**
-   * 手动压缩（「更多 → 压缩上下文」）：跑一轮**压缩工作流**。
+   * 手动压缩（「更多 → 压缩上下文」）：跑一轮**压缩工作流**。convId 缺省 = 当前会话；
+   * keepalive 的页签面板各自传自己的会话（压缩中标记也按会话记，见 compactingConv）。
    *
    * 与上一版的分别：不再由宿主另起一次「把历史重发一遍再总结」的模型请求——
    * 导师本来就看得到整段上下文，让它自己把摘要写出来（见 learn/compact 与工作流指令）。
    * 「旧消息失活」发生在那轮 loop 结束时（见 runTurn 的 finally）。
    */
-  const compactNow = useCallback(async () => {
-    if (!conversationId) return
-    if (running) {
+  const compactNow = useCallback(async (convId?: string) => {
+    const id = convId ?? conversationId
+    if (!id) return
+    if (running[id]) {
       onNoticeRef.current?.(t('导师正在回答，等这一轮结束再压缩'))
       return
     }
-    const conv = conversationById(getLatest(), conversationId)
+    const latest = getLatest()
+    const conv = conversationById(latest, id)
     if (!conv) return
     if (activeMessages(conv.messages).length < MIN_ACTIVE_MESSAGES) {
       onNoticeRef.current?.(t('这一段对话还很短，现在压缩省不下什么'))
       return
     }
-    setCompacting(true)
+    setCompactingConv(id)
     try {
-      await runWorkflow('compact')
+      // 显式会话：目标整份给全（nodeId 取该目标的总目标节点，压缩轮不看节点，只为凑齐 target）
+      if (convId && id !== conversationId) {
+        const goal = latest.goals.find((g) => g.id === conv.goalId)
+        await runWorkflow('compact', {
+          target: { goalId: conv.goalId, nodeId: goal?.rootNodeId ?? '', conversationId: id },
+        })
+      } else {
+        await runWorkflow('compact')
+      }
     } finally {
-      setCompacting(false)
+      setCompactingConv(null)
     }
   }, [conversationId, running, getLatest, runWorkflow])
 
@@ -1127,38 +1144,48 @@ export function useAgent(opts: {
     [nodeId, conversationId, getLatest, set, runTurn],
   )
 
-  const stop = useCallback(() => {
-    if (!conversationId) return
-    abortMapRef.current.get(conversationId)?.abort()
-    // 子代理在后台跑：停止这一轮时把当前对话所有在跑的一并中断（级联）
-    subManagersRef.current.get(conversationId)?.abortAll()
-  }, [conversationId])
+  const stop = useCallback(
+    (convId?: string) => {
+      const id = convId ?? conversationId
+      if (!id) return
+      abortMapRef.current.get(id)?.abort()
+      // 子代理在后台跑：停止这一轮时把当前对话所有在跑的一并中断（级联）
+      subManagersRef.current.get(id)?.abortAll()
+    },
+    [conversationId],
+  )
 
   /**
    * 继续「应用退出时被中断」的那一轮（消息列表中断说明旁的「继续」按钮）。
+   * target 缺省按当前会话；keepalive 的页签面板各自传自己的目标。
    *
    * 走一条**隐藏指令**起一轮新的 loop：被中断的那条回复已经收口（恢复是载入时做的，
    * inflight 标记已清），旧轮次本身救不回来——能做的是让导师读到中断说明后接着做。
    * 指令不显示（中断说明本身已经把事情讲清楚了，再来一个用户气泡只会占地方），
    * 但带 mark：对话里落一条「继续」分界条，这一轮在长对话里找得回来。
    */
-  const resumeInterrupted = useCallback(() => {
-    if (!goalId || !nodeId || !conversationId) return
-    if (running) {
-      onNoticeRef.current?.(t('导师正在回答，等这一轮结束再继续'))
-      return
-    }
-    void runTurn(
-      { goalId, nodeId, conversationId },
-      t('上一轮回复在应用退出时被中断，以上是中断前保存的进度。请从中断处接着做，把没完成的部分完成；已经完成的部分不要重做。'),
-      true,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      t('继续'),
-    )
-  }, [goalId, nodeId, conversationId, running, runTurn])
+  const resumeInterrupted = useCallback(
+    (override?: AgentRunTarget) => {
+      // 局部变量避开 t：外层那个 t 是 i18n 函数，指令文本要用它
+      const tgt = override ?? (goalId && nodeId && conversationId ? { goalId, nodeId, conversationId } : null)
+      if (!tgt) return
+      if (running[tgt.conversationId]) {
+        onNoticeRef.current?.(t('导师正在回答，等这一轮结束再继续'))
+        return
+      }
+      void runTurn(
+        tgt,
+        t('上一轮回复在应用退出时被中断，以上是中断前保存的进度。请从中断处接着做，把没完成的部分完成；已经完成的部分不要重做。'),
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        t('继续'),
+      )
+    },
+    [goalId, nodeId, conversationId, running, runTurn],
+  )
 
   /**
    * 当前会话的实时槽。分槽之后同一时刻可能有几位导师都在跑，这里只交出
@@ -1184,7 +1211,18 @@ export function useAgent(opts: {
      * 「那位导师正在跑」与「眼前看的是哪位」是两回事。
      */
     runningByConversation: running as Record<string, boolean>,
-    compacting,
+    /**
+     * 分槽的**原始数据**（键 = conversationId）：keepalive 的页签面板每枚各取自己
+     * 会话的那一份——后台页签的流式、表单、账目与眼前这位互不借用。
+     */
+    streams: streaming,
+    pendingAskByConv: pendingAsk,
+    tpsByConv: tps,
+    liveUsageByConv: liveUsage,
+    /** 全部在跑的子代理实时槽（带 conversationId）：每枚页签的 sub 数据各筛各的 */
+    subRunsAll: subRuns,
+    compactingConvId: compactingConv,
+    compacting: !!compactingConv,
     send,
     autoTeach,
     runHidden,
