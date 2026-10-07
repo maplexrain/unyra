@@ -67,8 +67,10 @@ export default function PersonaPicker({
         }
       >
         {/* 面具（Drama）：人格的隐喻——「现在跟谁在说话」。颜色跟按钮文字走，
-            悬停/展开时与文字一起染成印章色，不用单独的状态色抢戏 */}
-        <Drama size={13} className="shrink-0" aria-hidden="true" />
+            悬停/展开时与文字一起染成印章色，不用单独的状态色抢戏。
+            mr-1.5：与文字留一口缝——flex 底行与旧的行内形态都用这一颗外边距，
+            不必给按钮加 gap（两种形态的排布方式不一样） */}
+        <Drama size={13} className="mr-1.5 shrink-0" aria-hidden="true" />
         {/* 住在状态行里（placement='up'）就不再带括号：它前面没有「超级导师」给它当补语了 */}
         {placement === 'up' ? t(current.short) : t('（{0}）', t(current.short))}
       </button>
