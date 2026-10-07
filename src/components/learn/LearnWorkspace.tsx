@@ -1919,6 +1919,9 @@ export default function LearnWorkspace({
               // 失败回执不能白白丢掉：至少在控制台留一句话，开发者面板可以实测同一条链路
               if (!r.ok) console.warn('[guard] 系统通知没有发出去：', r.error)
             })
+        // 闪现置顶：窗口直接钉到最上层亮出警告，但不抢焦点（Windows 前台锁下硬抢
+        // 不可靠，见 mainWindow.ts 的 flashMainWindow）；点回来或 15s 后自动解除
+        if (isElectron()) native().window.flashTop()
       },
       onFuse: (reason) => {
         // 熔断：媒体流守卫那边已经停了，这里把表停掉、写报告、把话说明白

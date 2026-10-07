@@ -217,6 +217,8 @@ export interface NativeBridge {
     setAppIcon(dataUrl: string): Promise<boolean>
     /** 一条系统级通知（Windows toast）：点击把主窗口叫到前台。守卫的警告与熔断用它 */
     notify(payload: { title: string; body?: string }): Promise<{ ok: boolean; error?: string }>
+    /** 主窗口「闪现置顶」：钉在最上层但不抢焦点，拿到焦点或超时自动解除。守卫的分心警告用它 */
+    flashTop(): void
   }
   /**
    * 考试窗口的**主窗口那一侧**。考试窗口是第二个 BrowserWindow，加载同一份渲染产物

@@ -214,7 +214,7 @@ export function hardenLinks(contents: WebContents): void {
   })
 }
 
-/* 主窗口是哪一个、怎么把它叫到前面来，住在 ./mainWindow：
+/* 主窗口是哪一个、怎么把它叫到前面来（含守卫警告的闪现置顶），住在 ./mainWindow：
    托盘那边要用它们，而这里要用托盘那边的 attachCloseGuard，放在这儿会与托盘成环。
-   从本文件仍然取得到这两个名字（下面转出）。 */
-export { mainWindow, showMainWindow } from './mainWindow'
+   从本文件仍然取得到这几个名字（下面转出）。 */
+export { mainWindow, showMainWindow, flashMainWindow } from './mainWindow'

@@ -391,6 +391,11 @@ const api = {
     /** 一条系统级通知（Windows toast）：点击把主窗口叫到前台。守卫的警告与熔断用它 */
     notify: (payload: { title: string; body?: string }): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('notify', payload),
+    /**
+     * 主窗口「闪现置顶」：钉在最上层亮出来但不抢焦点，拿到焦点或超时自动解除
+     * （见 electron/app/mainWindow.ts 的 flashMainWindow）。守卫的分心警告用它。
+     */
+    flashTop: (): void => ipcRenderer.send('window:flashTop'),
   },
 
   /**
