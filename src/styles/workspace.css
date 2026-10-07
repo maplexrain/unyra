@@ -45,13 +45,21 @@
 }
 
 /*
- * agent 栏激活页签的**反向圆角**（仿浏览器页签）：两块 7px 的小方块贴在激活页签
- * 底部两角的外侧，径向渐变把靠外的四分之一圆抠成透明——页签的底色于是「弯」进了
- * 面板的顶边，与下面盖住下边框（见 AgentTabStrip 那条线）一起构成「从正文里长出来」。
+ * 激活页签的**反向圆角**（仿浏览器页签，agent 栏与文档区共用）：两块 7px 的小方块
+ * 贴在激活页签底部两角的**外侧**，径向渐变把靠外的四分之一圆抠成透明——页签的底色
+ * 于是「弯」进了面板的顶边，与盖住下边框（各自 TabBar/AgentTabStrip 那条线）一起
+ * 构成「从正文里长出来」。
+ *
+ * 两个坐标细节缺一不可：
+ * - 偏移是相对**内边距盒**的，页签自己有 1px 描边——写 -8px（描边 1px + 方块 7px）
+ *   才贴在描边外侧；写 -7px 色块会压进描边里，页签底部两段边框就像被咬掉了一块。
+ * - 方块伸出页签两侧，而页签条是横向滚动容器（overflow-x:auto 会连纵向一起裁）——
+ *   所以页签条自身必须留出横向内边距（px-2，见 TabBar / AgentTabStrip），让第一枚、
+ *   最后一枚页签的方块落在滚动口之内，否则贴边的反向圆角会被裁掉半截。
  * 色值必须与页签自己的 bg-card 同源（--color-card），不然两截会对不上。
  */
-.moji-agent-tab-on::before,
-.moji-agent-tab-on::after {
+.moji-tab-flare::before,
+.moji-tab-flare::after {
   content: '';
   position: absolute;
   bottom: 0;
@@ -59,12 +67,12 @@
   height: 7px;
   pointer-events: none;
 }
-.moji-agent-tab-on::before {
-  left: -7px;
+.moji-tab-flare::before {
+  left: -8px;
   background: radial-gradient(circle 7px at 0 100%, transparent 0 6.5px, var(--color-card) 7px);
 }
-.moji-agent-tab-on::after {
-  right: -7px;
+.moji-tab-flare::after {
+  right: -8px;
   background: radial-gradient(circle 7px at 100% 100%, transparent 0 6.5px, var(--color-card) 7px);
 }
 
