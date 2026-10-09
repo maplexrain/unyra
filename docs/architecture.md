@@ -50,7 +50,14 @@
   那个网页顶掉；判定是纯函数，见 `electron/link-core.ts` 与 `tests/linkNav.test.ts`）；
   单实例锁防止双开并发写同一份本地数据
 - **壳上的 logo**：窗口图标（任务栏 / Alt+Tab）与托盘图标都用 `public/logo.png`，
-  与应用内左上角那个是同一份文件，不另存副本
+  与应用内左上角那个是同一份文件，不另存副本。**任务栏那颗另有出处**：Windows 按
+  AppUserModelID 找带这个身份的开始菜单快捷方式、取它的图标，窗口自己的 `icon` 只在
+  没有那条快捷方式时才算数（见 `electron/app/identity.ts`）
+- **应用身份（AppUserModelID）**：打包版用 `com.moji.guiyi`（与 `electron-builder.yml` 的
+  `appId`、安装器建的快捷方式一致），**源码运行用 `com.moji.guiyi.dev`**。分两个身份是因为
+  源码运行的 exe 是 node_modules 里的 electron.exe：把开发版固定到任务栏 / 开始菜单时，
+  Windows 写下的那条快捷方式目标是 electron.exe、图标是 Electron 原子，而 AUMID 抄的是
+  当时那个窗口的——**从此安装版的任务栏图标也变成原子**（2026-10 踩过）
 - **托盘**：应用启动即常驻通知区，点它把窗口叫回来（最小化状态会先还原），
   右键菜单里是「显示主窗口 / 收进托盘 / 退出」
 - **关窗行为**（设置 → 窗口；**全局设置**，跟机器走、不属于任何用户）：**询问**（默认）/ 直接关闭 /
