@@ -1,5 +1,5 @@
 /**
- * 上下文占用圆环：挂在「提供商 · 模型」选择器右边，一眼看出这个对话有多满。
+ * 上下文占用圆环：挂在输入框底下那行状态里（累计 token 的右边），一眼看出这个对话有多满。
  *
  * 分子是最近一条回复的输入量（= 下一句话要送进去的规模），分母是模型的上下文窗口。
  * 窗口没填时不算百分比，只画一个灰环——宁可不显示，也不给一个看起来确定、其实错的数。
@@ -14,12 +14,14 @@ import { usePresence } from '../../lib/presence'
 import { t } from '../../i18n'
 
 /**
- * 圆环尺寸：外径 16、线宽 2。
- * 原来 20/2.5 摆在「提供商 · 模型」旁边偏大，抢了选择器的视觉重心；
- * 收到 16 后与按钮图标同一个量级，线宽按比例收，粗细观感不变。
+ * 圆环尺寸：外径 12、线宽 1.5。
+ *
+ * 它现在住在底部状态行里（轮数 / 速度 / 累计 token 那一排，见 PaceStrip），
+ * 同行那几个图标都是 lucide 的 12px——圆环按同一个口径量，这一行才是齐的
+ * （它是这一排里唯一不能按 size 缩的图形：线宽要跟着外径按比例收，16/2 收到 12/1.5）。
  */
-const SIZE = 16
-const STROKE = 2
+const SIZE = 12
+const STROKE = 1.5
 const RADIUS = (SIZE - STROKE) / 2
 const CIRC = 2 * Math.PI * RADIUS
 
@@ -40,17 +42,18 @@ export default function ContextRing({ usages }: { usages: MessageUsage[] }) {
   const avg = totals ? averageHitRate(totals) : null
 
   return (
-    <div
-      className="relative flex h-8 items-center"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
+    <div className="relative flex items-center" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      {/*
+        可见的格子就是圆环自己的 12px（与同行的图标等高，这一行才不会被它撑高）；
+        可点的范围靠一层透明伪元素补到 24px（before:-inset-1.5）——不占布局，
+        也不会让状态行长高。
+      */}
       <button
         type="button"
         aria-label={ratio === null ? t('上下文占用未知') : t('上下文已用 {0}%', percent)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
-        className="flex h-8 w-6 items-center justify-center rounded-lg text-ink-faint"
+        className="relative flex h-3 w-3 items-center justify-center text-ink-faint before:absolute before:-inset-1.5 before:content-['']"
       >
         <svg width={SIZE} height={SIZE} viewBox={'0 0 ' + SIZE + ' ' + SIZE} className="-rotate-90">
           <circle cx={SIZE / 2} cy={SIZE / 2} r={RADIUS} fill="none" strokeWidth={STROKE} className="stroke-line" />

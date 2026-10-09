@@ -87,6 +87,12 @@ export default function ModelPicker({ onChanged }: Props) {
   const model = globalModel(settings)
   // 按钮上优先显示模型的展示名（配了才有），否则用 ID
   const modelLabel = provider ? modelEntriesOf(provider).find((m) => m.id === model)?.name || model : ''
+  /*
+   * 按钮上只留**模型名那一段**：「deepseek/deepseek-v4」这类带提供商前缀的名字在
+   * 右下角那一排里太占地方，而提供商此刻是哪一家，点开菜单第一层就写着。
+   * 菜单里的行仍然显示全名——在那里前缀是有用的（区分同名的两家）。
+   */
+  const shortLabel = modelLabel.includes('/') ? modelLabel.slice(modelLabel.lastIndexOf('/') + 1) : modelLabel
   const effort = globalEffort(settings)
 
   useEffect(
@@ -258,7 +264,9 @@ export default function ModelPicker({ onChanged }: Props) {
         className="flex h-8 max-w-[240px] items-center gap-1.5 rounded-lg px-2.5 text-[11.5px] text-ink-soft transition hover:text-ink"
       >
         <Cpu size={12} className="shrink-0 text-ink-faint" />
-        <span className="min-w-0 truncate font-mono">{modelLabel || t('未选模型')}</span>
+        <span className="min-w-0 truncate font-mono" title={modelLabel || undefined}>
+          {shortLabel || t('未选模型')}
+        </span>
         <span className="flex shrink-0 items-center gap-1 rounded bg-line/70 px-1 text-[10px] text-ink-soft">
           {/* 荧光点与滑条同色：收起状态下也能看出当前开到哪一档 */}
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: REASONING_NEON[effort] }} />

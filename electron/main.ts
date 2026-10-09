@@ -35,6 +35,7 @@ import { createWindow, showMainWindow } from './app/windows'
 import { setupWebBrowser } from './app/webSession'
 import { closeExamWindow } from './app/examWindow'
 import { createTray, markQuitting } from './app/tray'
+import { appUserModelId } from './app/identity'
 import { installAppMenu } from './app/icon'
 import { registerIpc } from './app/ipc'
 import { installLocalFileCsp } from './app/exportPdf'
@@ -106,8 +107,9 @@ function main(): void {
   }
 
   // Windows 的任务栏、通知与固定项都按 AppUserModelID 归组；不设这一条，
-  // 它们会挂到「Electron」名下，图标也跟着变成 Electron 的
-  app.setAppUserModelId('com.moji.guiyi')
+  // 它们会挂到「Electron」名下，图标也跟着变成 Electron 的。
+  // 打包版用 appId（与安装器建的快捷方式一致），源码运行另起一个 —— 两条理由见 app/identity
+  app.setAppUserModelId(appUserModelId(app.isPackaged))
 
   app.whenReady().then(() => {
     lap('main:ready')

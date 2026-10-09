@@ -143,4 +143,20 @@ describe('整页 HTML', () => {
       'class="export-meta"',
     )
   })
+
+  it('正文里的 Tailwind 样式跟着文件走，作用域类挂在这一列上', () => {
+    const withCss = standaloneHtml({
+      title: 't',
+      meta: [],
+      body: '<div class="grid grid-cols-2">x</div>',
+      docCss: '.moji-doc-tw.moji-doc-tw .grid {display: grid}',
+      theme: 'light',
+      stamp: '',
+    })
+    expect(withCss).toContain('class="note-preview moji-doc-tw"')
+    expect(withCss).toContain('.moji-doc-tw.moji-doc-tw .grid')
+    // 没给就没有那第二块 <style>（正文一个工具类都没有时不该多出一段空样式）
+    expect(withCss.split('<style>').length - 1).toBe(2)
+    expect(html.split('<style>').length - 1).toBe(1)
+  })
 })

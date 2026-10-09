@@ -110,6 +110,13 @@ marked.use({
         ' loading="lazy">'
       )
     },
+    /**
+     * 手写 HTML 块里的公式（见上面「HTML 块里的公式」）：没有 $ 时原样返回，
+     * 与 marked 的默认渲染逐字相同——绝大多数 HTML 块在这条路上零开销。
+     */
+    html(token) {
+      return token.text.includes('$') ? mathInFragment(token.text) : token.text
+    },
   },
 })
 
@@ -215,18 +222,20 @@ export function normalizeMathDelimiters(source: string): string {
   return out.join('\n')
 }
 
-/* ---------- figcaption 里的公式 ---------- */
+/* ---------- HTML 块里的公式 ---------- */
 
 /**
- * <figcaption> 属于 Markdown 的「HTML 块」：整块原样透传，块内不再走行内解析，
- * 于是写在里面的 $…$ 不会经过 marked-katex，只会以源码的样子显示出来。
- * 这里补一遍：把其中的公式按同一套 KaTeX 渲染出来，让图注与正文一致。
+ * 手写的 HTML 块（<figure>、<div class="…">、<figcaption> 这些）在 Markdown 里是
+ * **原样透传**的：块内不再走行内解析，写在里面的 $…$ 到不了 marked-katex，
+ * 只会以源码的样子显示出来（图注从前正是这么坏的）。
+ *
+ * 这里补一遍：在 html 渲染器里把块内文字的公式按同一套 KaTeX 渲染出来。
+ * 挑 html 令牌而不是渲染完的整篇 HTML 再扫一遍，是因为那时已经分不清
+ * 「这段文字来自 HTML 块」还是「来自 Markdown 正文」——后者早就由 marked-katex 处理过了。
  *
  * 放在消毒**之前**做：注入的是 KaTeX 自己产出的标记，接下来还要过一遍 DOMPurify，
  * 等于没绕过任何一道检查。
  */
-const FIGCAPTION_BLOCK = /(<figcaption\b[^>]*>)([\s\S]*?)(<\/figcaption>)/gi
-
 /** 这些元素里的 $ 是字面量（代码），不该被当成公式 */
 const MATH_SKIP_TAGS = new Set(['code', 'pre', 'script', 'style', 'annotation'])
 
@@ -270,15 +279,6 @@ function mathInFragment(fragment: string): string {
   }
   const tail = fragment.slice(last)
   return out + (skip > 0 ? tail : mathInText(tail))
-}
-
-function renderFigcaptionMath(html: string): string {
-  if (!html.includes('<figcaption')) return html
-  return html.replace(
-    FIGCAPTION_BLOCK,
-    (_all: string, open: string, inner: string, close: string) =>
-      `${open}${mathInFragment(inner)}${close}`,
-  )
 }
 
 /* ---------- 渲染结果缓存 ---------- */
@@ -348,7 +348,7 @@ export function renderNote(source: string): string {
   const cached = cacheGet(source)
   if (cached !== undefined) return cached
   const html = marked.parse(normalizeMathDelimiters(source), { async: false }) as string
-  const sanitized = sanitizeHtml(renderFigcaptionMath(html))
+  const sanitized = sanitizeHtml(html)
   cacheSet(source, sanitized)
   return sanitized
 }
@@ -367,7 +367,7 @@ export function renderNoteGfm(source: string): string {
   const cached = cacheGet(key)
   if (cached !== undefined) return cached
   const html = marked.parse(normalizeMathDelimiters(source), { async: false, breaks: false }) as string
-  const sanitized = sanitizeHtml(renderFigcaptionMath(html))
+  const sanitized = sanitizeHtml(html)
   cacheSet(key, sanitized)
   return sanitized
 }

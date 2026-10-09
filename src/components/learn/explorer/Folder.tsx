@@ -56,7 +56,7 @@ export function CountBadge({ n }: { n: number }) {
  */
 export function Indent({ children }: { children: ReactNode }) {
   return (
-    <div className="ml-3 border-l border-line pl-1.5">{children}</div>
+    <div className="ml-2 border-l border-line pl-1">{children}</div>
   )
 }
 
@@ -196,7 +196,7 @@ export function FolderRow({
       }
       data-reveal={revealKey}
       className={
-        'flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-1.5 transition ' +
+        'flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1.5 transition ' +
         (dropActive ? 'bg-seal/10 ring-1 ring-seal/50' : 'hover:bg-line/40')
       }
     >

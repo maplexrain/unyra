@@ -4,36 +4,81 @@
  * 子代理的指南已搬进提示词模块（learn/ai/promptModules，首次派活时注入）。
  */
 /**
- * 富内容写作指南：告诉 Agent 渲染器放行些什么。
- * 宗旨是「Markdown 为主、HTML 为辅」——能用 Markdown 表达就不要用 HTML，
- * HTML/SVG 只用来做 Markdown 做不了的事（示意动画、可交互演示）。
+ * 正文写作指南：教学文档长什么样、HTML 与 Markdown 各占什么位置。
+ *
+ * 策略在 v0.5.8 整体换过一次：从「Markdown 为主、HTML 为辅」改成
+ * 「**HTML + Tailwind 工具类为主**」。三条理由：
+ * - 讲义真正要的是排版（分栏、对照、图表、时间轴），Markdown 表达不了，最后总要内嵌 HTML；
+ *   两套语法混着写，模型的力气一半花在「这段能不能用 Markdown」上；
+ * - 渲染器现在带一份**运行时 Tailwind**（见 lib/docTailwind）：文档里写的工具类现算成样式，
+ *   作用域限死在正文这一块，用的还是应用自己的主题令牌（深浅色自动跟随）；
+ * - 颜色、间距、字号因此成了一等公民，讲义的样子可以被真正设计出来，而不只是「排得整齐」。
+ *
+ * Markdown 没有退场：文件格式仍是 .md（源文、导出、按行定位、源码视图都认它），
+ * 公式、图片、列表、表格照写。变的只是「正文主体怎么写」。
  */
-export const RICH_CONTENT_GUIDE = `富内容写作（重要）：
+export const RICH_CONTENT_GUIDE = `正文写作（重要）：教学文档以 **HTML + Tailwind 工具类**为主，Markdown 只作补充。
 
-以 Markdown 为主体，HTML 只作为补充手段。Markdown 能表达的（标题、列表、表格、引用、
-代码块、公式、图片）一律用 Markdown；只有当 Markdown 表达不了、而它又能显著帮助理解时，
-才少量内嵌 HTML/SVG。不要为了炫技而堆砌，也不要把整篇写成 HTML。
+**先记住这一条：只写 <h2>/<h3>/<p> 等于没有排版。** 渲染器给裸标签的只是兜底样式，
+交出去就是一篇没人排过版的草稿——这是最常犯、也最容易被忽略的一种「写完了但不好看」。
+一份教学文档里应当能数出**至少 2~3 处结构性元素**（提示框、两栏对照、步骤条、数据行、
+图表、可折叠推导），段落也各自带上字号与墨色，而不是清一色的 <p>。
 
-渲染器已放行、可以放心使用的写法：
-- **图片**：数据目录里与文档放在一起的图片，用**相对路径**引用——\`![图注](hero.png)\`、
-  \`![](shots/a.png)\`（把图片文件放进该文档所在的目录或其子目录即可，按文档所在文件夹算相对位置）；
-  资源库里的图照旧用 \`moji:static/<uuid>\`；远程图片直接写完整的 https URL。
+文档文件本身仍是 Markdown（.md）：公式 $…$ / $$…$$、图片、列表照旧。但正文主体请直接写 HTML
+元素，样式用 Tailwind 工具类写在 class 上——渲染器认得 Tailwind（运行时编译，作用域只在正文这一块）。
+
+**默认字号表**（照这套走，不必每次重新想层级；正文基准 15.5px）：
+- 正文段落：<p class="text-[0.9em] leading-[1.85] text-ink">
+- 次要说明、图注：text-[0.8em] leading-relaxed text-ink-faint
+- 小节标题：<h3 class="mt-7 mb-2 text-[1em] font-semibold text-ink-strong">
+- 卡片标题 text-[0.9em] font-semibold text-ink-strong，卡片正文 text-[0.88em] leading-relaxed
+- 关键数字：text-[1.45em] font-semibold tabular-nums text-ink-strong
+
+**字号一律用 em（相对正文），不要写 px**：正文有一个字号系数（Ctrl + 滚轮、设置里的字号），
+它按 em 等比缩放整篇——写成 px 的那部分不跟手，一篇文档里就会出现「一半字放大了、一半没动」。
+间距、圆角、图宽照旧用 px 或 rem（Tailwind 的 p-4 / h-40 / w-[360px] 都是）。
+
+- **尺度（先看这条再下笔）**：正文列宽上限 800px，去掉左右内边距后**可用内容宽度约 745px**。
+  两栏按每栏约 350px 排，三栏约 230px；自己画的 SVG 的 viewBox 宽度按 720 给。超过 745px
+  的元素会溢出（出横向滚动条），窄窗口下还会更窄——排多栏、定宽图时留出余量。
+- **颜色优先用应用自己的主题令牌**（深浅色主题自动跟随），不要堆调色板硬色：
+  bg-paper（纸面）/ bg-card（卡面）/ bg-sunken（沉底，放推导与引用）/ bg-inset（更深一档）、
+  text-ink / text-ink-strong / text-ink-soft / text-ink-faint（由深到浅的四档文字）、
+  border-line / border-line-strong（边线）、text-seal / bg-seal（印章红，点睛用）、
+  text-ok / text-warn（对与错的语义色）、bg-mark（像荧光笔一样的标记底）。
+  bg-red-100 这类固定色在深色主题下会刺眼，只在画图需要区分数据系列时少量用。
+- 结构：标题用 <h2>/<h3>（大纲栏与「跳到这一行」都认它），段落用 <p>，强调用 <strong>、
+  <em>，行内代码用 <code>。一屏之内不要出现七八种字号与颜色：层级靠两三档字号加令牌色。
+- **块内的文字不解析 Markdown 的行内语法**（最容易踩的一条）：**加粗**、*斜体*、
+  [文字](链接) 都不会生效，请写 <strong>、<em>、<a href="…">。**公式是例外**——
+  $…$ 在哪个位置都渲染。
+- 反过来，要让一段内容照 Markdown 解析（列表、段落、加粗）：在块级元素里用**空行**把它与
+  标签隔开，渲染器会把这段 Markdown 放进那个容器；整块的组件（表格、SVG、图表）内部
+  则不要留空行。
+- 图表：柱状图 / 折线图 / 流程图 / 时间轴用 <div> 与 <svg> 手绘（配方见「提示词模块 ·
+  文档排版与图表」，第一次写教学文档时自动注入）；**函数图像仍用 plot 围栏**（三个反引号 + plot，
+  见下）——它画的是可交互的函数曲线，不是示意图。
+- 动画只用现成的四个：animate-doc-fade（淡入）、animate-doc-rise（自下浮起）、
+  animate-doc-grow（纵向长出来，配 origin-bottom 做柱子）、animate-doc-draw（描线，配
+  pathLength="1" 与 stroke-dasharray="1" 画折线）。**一屏最多一两个**，动起来是为了讲清过程。
+- **图片**：数据目录里与文档放在一起的图片，用**相对路径**引用——![图注](hero.png)、
+  ![](shots/a.png)（按文档所在文件夹算相对位置）；资源库里的图用 moji:static/<uuid>；
+  远程图片直接写完整的 https URL。
 - 可折叠面板（把推导、证明、答案收起来，先让读者自己想）：
   <details class="md-fold"><summary>点开看推导</summary>
 
   这里可以继续写 **Markdown** 与公式 $a^2+b^2=c^2$。
 
   </details>
-- 图示与图注（放在 <figure class="md-fig"> 里，配 <figcaption> 说明）：
-  <figure class="md-fig"><svg viewBox="0 0 200 80">…</svg><figcaption>图 1：……</figcaption></figure>
-- 动画（SVG SMIL 动画、内嵌 CSS 动画）：需要「动起来才看得懂」的过程演示时才用；
-  写 <animate> 或 <style> @keyframes 时，完整写法与配色 / 前缀 / 克制的规矩会作为
-  「提示词模块 · 富媒体动画写法」自动注入，照它来。
+- <style> 只在现成工具类确实做不到时才用：选择器必须加本项目独有的前缀（如 .doc-xxx），
+  **不要写 @apply**（文档里不编译它）。<script> 一律不写——那是超级文档（sdoc）的事。
 硬性要求：
-- **不要在教学文档里写「自查清单 / 打勾清单」**（\`<input type="checkbox">\` 那种），也不要写
+- **不要在教学文档里写「自查清单 / 打勾清单」**（<input type="checkbox"> 那种），也不要写
   「学完请自查」「对照下表打勾」这类收尾表：用户明确不要——教学文档是**读物**，不是待办表；
   要交互就做成超级文档（sdoc），别把正文变成表单。
-- 内嵌 HTML 必须闭合良好；不确定能否渲染的写法就退回纯 Markdown。`
+- 内嵌 HTML 必须闭合良好；不确定能否渲染的写法就退回纯 Markdown 或 <p>。
+- **交付前自查**：正文里的 class 出现在几个元素上？如果只有列表间距、其余全是裸标签，
+  说明你退回成了 HTML 草稿——照「文档排版与图表」的配方重排一次再交。`
 
 /**
  * 引用 chip 的**生成与交付纪律**。`#[{…}]` 的编解码与外观在 lib/chipSyntax（纯语法），

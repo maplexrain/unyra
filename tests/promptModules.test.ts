@@ -73,7 +73,7 @@ describe('触发映射', () => {
     expect(promptModuleForApiName('code.save')).toBe('code')
     expect(promptModuleForApiName('compact')).toBe('compact')
     expect(promptModuleForApiName('subagent.run')).toBe('subagent')
-    expect(promptModuleForApiName('ui.switchMain')).toBe('ui')
+    expect(promptModuleForApiName('ui.point')).toBe('ui')
     expect(promptModuleForApiName('reading.get')).toBe('learning-process')
     expect(promptModuleForApiName('attention.get')).toBe('learning-process')
     expect(promptModuleForApiName('checkin.status')).toBe('learning-process')
@@ -96,6 +96,14 @@ describe('触发映射', () => {
     const both = promptModuleForContent('```plot\n{}\n``` <animate a/>')
     expect(both).toContain('plot-forms')
     expect(both).toContain('rich-animation')
+  })
+
+  it('写教学文档就带上排版配方：不挑内容（纯 Markdown 的正文也要能学到新写法），超级文档不算', () => {
+    expect(promptModuleForContent('## 一段纯 Markdown 讲解', 'doc.write')).toEqual(['doc-html'])
+    expect(promptModuleForContent('<div class="grid grid-cols-2">x</div>', 'doc.append')).toContain('doc-html')
+    expect(promptModuleForContent('{ content: "改写" }', 'doc.replace')).toContain('doc-html')
+    // 超级文档渲染在 iframe 里，装的是另一套写法（见 sdoc 模块）
+    expect(promptModuleForContent('<p class="sd-card">页</p>', 'sdoc.write')).toEqual([])
   })
 
   it('写入参数的嗅探面：doc.write/append 取第二参、doc.replace 取 payload.content、sdoc.write 取 html，其它调用不嗅探', () => {
@@ -185,7 +193,7 @@ describe('系统提示词确实瘦了（减负的验收线）', () => {
     expect(system).toContain('api.state.mistake')
     expect(system).toContain('api.ask')
     expect(system).toContain('需求解耦')
-    expect(system).toContain('switchMain')
+    expect(system).toContain('api.ui.point')
   })
 
   it('删除的 api 与历史漂移一并清掉', () => {

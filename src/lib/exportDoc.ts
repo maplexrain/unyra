@@ -26,6 +26,7 @@ import { STATIC_SCHEME, uuidFromHref } from '../learn/static'
 import { t } from '../i18n'
 import { applyAnnotation } from './annotation'
 import { highlightCodeIn } from './codeHighlight'
+import { DOC_TW_CLASS, docTailwindCss } from './docTailwind'
 import { renderNote } from './markdown'
 import { escapeHtml } from './htmlEscape'
 import EXPORT_CSS from './export.css?raw'
@@ -113,6 +114,11 @@ export interface HtmlDocInput {
   meta: string[]
   /** 正文 HTML（见 exportBody） */
   body: string
+  /**
+   * 正文里 Tailwind 工具类的样式（见 exportBody 的 css 与 lib/docTailwind）。
+   * 预览里那份是运行时注入 <head> 的，带不进文件；不给就整块不出现。
+   */
+  docCss?: string
   theme: ExportTheme
   /** 页脚右侧的落款（导出时间） */
   stamp: string
@@ -137,18 +143,24 @@ export function standaloneHtml(input: HtmlDocInput): string {
     '<style>',
     EXPORT_CSS.trim(),
     '</style>',
+  ]
+  // 文档 Tailwind 那一份单独一块：它是按这篇文档的类名现算的，混进 EXPORT_CSS 会让人以为
+  // 那份静态样式里本来就该有这些类。它的选择器全部带 .moji-doc-tw 前缀（见 lib/docTailwind），
+  // 下面 <main> 上的这个类就是它的作用域。
+  if (input.docCss) out.push('<style>', input.docCss, '</style>')
+  out.push(
     '</head>',
     '<body>',
     '<div class="page">',
     '<header class="export-head">',
     '<div class="export-kicker">' + t('归一 UNYRA · 学习文档') + '</div>',
     '<h1 class="export-title">' + escapeHtml(input.title) + '</h1>',
-  ]
+  )
   if (input.meta.length) {
     out.push('<div class="export-meta">' + input.meta.map((m) => '<span>' + escapeHtml(m) + '</span>').join('') + '</div>')
   }
   out.push('</header>')
-  out.push('<main class="note-preview">')
+  out.push('<main class="note-preview ' + DOC_TW_CLASS + '">')
   out.push(input.body)
   out.push('</main>')
   out.push('<footer class="export-foot">')
@@ -221,7 +233,14 @@ export interface BodyInput {
  * 这里**不再消毒**：renderNote 的产物已经过 DOMPurify，之后我们只做「把属性改成
  * 我们自己的值」这一件事（src / title / class），没有一处把外部文本拼进 HTML。
  */
-export async function exportBody(input: BodyInput): Promise<string> {
+/** 一次导出正文的产物：HTML 本身，以及它用到的 Tailwind 样式（见 BodyInput 的说明） */
+export interface ExportBody {
+  html: string
+  /** 这篇正文用到的 Tailwind 工具类算出来的样式；正文里一个类名都没有时是空串 */
+  css: string
+}
+
+export async function exportBody(input: BodyInput): Promise<ExportBody> {
   const root = document.createElement('div')
   root.innerHTML = renderNote(input.source)
 
@@ -296,5 +315,8 @@ export async function exportBody(input: BodyInput): Promise<string> {
     a.classList.add('moji-x-link')
   }
 
-  return root.innerHTML
+  /* ⑤ 文档 Tailwind：正文里的工具类在导出件里也要有样式。放在最后一步算——
+        前面几步（图像、链接、函数图像快照）会改写 DOM，按改写完的样子收类名才不会漏。 */
+  const css = await docTailwindCss(root)
+  return { html: root.innerHTML, css }
 }

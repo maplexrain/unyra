@@ -24,7 +24,8 @@ import type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginListResult,
   PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
   StorageInfo, StorageOk, StorageRootResult, UpdateFail, UpdatePhase, UpdateState,
-  VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceReadResult, WebDomOpResult,
+  VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceTranscribeRequest,
+  VoiceTranscribeResult, WebDomOpResult,
   WebFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult, WebPageFetchReq,
   WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult, WebScrollReq,
   WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebWaitReq, WebWaitResult,
@@ -38,7 +39,8 @@ export type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginListResult,
   PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
   StorageInfo, StorageOk, StorageRootResult, UpdateFail, UpdatePhase, UpdateState,
-  VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceReadResult, WebDomOpResult,
+  VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceTranscribeRequest,
+  VoiceTranscribeResult, WebDomOpResult,
   WebFetchResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult,
 }
 
@@ -292,28 +294,33 @@ const api = {
   },
 
   /**
-   * 语音模型：下载、读取字节、换一份、删掉。
-   * 判定与联网都在主进程（见 electron/voice.ts）：渲染层的 CSP 连不上外网，
-   * 而且 57 MB 的二进制该直接落盘，不该先经过渲染进程的内存。
+   * 语音：模型的下载与状态，以及一次识别。
+   * **整条链都在主进程**（见 electron/voice.ts）：渲染层的 CSP 连不上外网，
+   * 而推理走的是 sherpa-onnx 的原生构建——228 MB 的模型该直接落盘，
+   * 音频也只在这一趟 IPC 里过一下，不写盘、不留存。
    */
   voice: {
     modelStatus: (): Promise<VoiceModelStatus> => ipcRenderer.invoke('voice:modelStatus'),
 
-    /** 从 HuggingFace 下一份 base q5_1（约 57 MB）；进度走 onModelProgress */
+    /** 下一份 SenseVoiceSmall（约 228 MB）；进度走 onModelProgress */
     downloadModel: (): Promise<VoiceDownloadResult> => ipcRenderer.invoke('voice:downloadModel'),
 
     cancelDownload: (): Promise<boolean> => ipcRenderer.invoke('voice:cancelDownload'),
 
-    /** 从本机挑一个 .bin 模型（离线、或用户早就下过） */
+    /** 从本机挑一份 model.int8.onnx（词表从同一个目录里找） */
     chooseModel: (): Promise<{ ok: boolean; canceled?: boolean; error?: string; bytes?: number }> =>
       ipcRenderer.invoke('voice:chooseModel'),
 
-    /** 把模型字节交给渲染层（一次会话读一次，调用方自己缓存） */
-    readModel: (): Promise<VoiceReadResult> => ipcRenderer.invoke('voice:readModel'),
-
     removeModel: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('voice:removeModel'),
 
-    /** 在文件管理器里定位模型文件 */
+    /** 识别一段 16 kHz 单声道 PCM：结果里带「这一趟用了多久」与后端 */
+    transcribe: (req: VoiceTranscribeRequest): Promise<VoiceTranscribeResult> =>
+      ipcRenderer.invoke('voice:transcribe', req),
+
+    /** 这台机器上有没有显卡：设置页拿它决定「GPU 加速」的默认值 */
+    gpuInfo: (): Promise<{ hasGpu: boolean; name: string }> => ipcRenderer.invoke('voice:gpuInfo'),
+
+    /** 在文件管理器里定位模型目录 */
     revealModel: (): Promise<boolean> => ipcRenderer.invoke('voice:revealModel'),
 
     /** 订阅下载进度；返回取消订阅函数 */

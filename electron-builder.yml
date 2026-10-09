@@ -22,19 +22,27 @@ directories:
 electronDist: node_modules/electron/dist
 
 files:
-  # 只装运行时要用的三样。
+  # 只装运行时要用的那几样。
   # 不排掉 node_modules 的话，electron-builder 会把 production dependencies 整份拷进 asar
   # （react / marked / katex / tailwind 都挂在 dependencies 上），而运行时一个都不需要：
-  # dist/ 是 vite 打好的整包、dist-electron/*.cjs 是 esbuild 打好的单文件，
-  # 三个产物里出现过的 require 只有 electron 与 node: 内置模块。
+  # dist/ 是 vite 打好的整包、dist-electron/*.cjs 是 esbuild 打好的单文件。
+  # **唯一的例外是语音识别的原生运行时**（见 electron/voice.ts）：它是 .node + 几个 DLL，
+  # esbuild 打不进去，只能按目录带进包并解到 asar 外面（asarUnpack）。
   - dist/**/*
   - dist-electron/**/*
   - package.json
   - '!node_modules/**/*'
+  - 'node_modules/sherpa-onnx-node/**/*'
+  - 'node_modules/sherpa-onnx-win-x64/**/*'
   # 源码映射不进包：发布构建本来就不生成，这里再兜一道（免得哪天手工构建时漏进去）
   - '!**/*.map'
 
 asar: true # 资源打进单文件包；Electron 对 fs / nativeImage 的读取是 asar 透明的
+# 原生模块（.node/.dll）必须解到 asar 外面：操作系统加载 DLL 走的是文件系统，
+# 认不出 asar 里的虚拟路径
+asarUnpack:
+  - 'node_modules/sherpa-onnx-node/**/*'
+  - 'node_modules/sherpa-onnx-win-x64/**/*'
 
 win:
   target:

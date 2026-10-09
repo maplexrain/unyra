@@ -106,7 +106,7 @@ export function DocRow({
           : undefined
       }
       className={
-        'group flex w-full items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-1.5 text-left text-[12.5px] transition ' +
+        'group flex w-full items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1.5 text-left text-[12.5px] transition ' +
         (active
           ? 'bg-line/60 text-ink-strong '
           : 'text-ink-soft hover:bg-line/40 hover:text-ink ')

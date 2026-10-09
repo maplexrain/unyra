@@ -24,8 +24,13 @@ import { t } from '../i18n'
 import type { PluginEntry as PluginFileEntry } from './native'
 import { native } from './native'
 
-/** 插件类别。目前只有一类；加新的一类时在这里加一个取值，并实现一份 spec */
-export type PluginCategory = 'markdown'
+/**
+ * 插件类别。加新的一类时在这里加一个取值，并实现一份 spec（definePluginCategory）——
+ * 宿主本身对类别一无所知。目前两类：
+ * - markdown：文档里的一种语法 / 一段正文加工（lib/renderPlugins）；
+ * - functional：给**应用**加一项能力（lib/functionalPlugins，目前是语音输入）。
+ */
+export type PluginCategory = 'markdown' | 'functional'
 
 /** 所有插件共有的字段；各类插件在自己的 spec 里补上自己的钩子 */
 export interface PluginBase {
@@ -40,6 +45,8 @@ export interface PluginBase {
   defaultEnabled: boolean
   /** 用户插件来自哪个文件（只用于显示与报错） */
   origin?: string
+  /** 有二级配置页（设置页里点这一行进得去）。目前只有功能性插件会用它 */
+  configurable?: boolean
 }
 
 export interface PluginCategorySpec {
@@ -57,10 +64,16 @@ export interface PluginCategorySpec {
 const specs = new Map<PluginCategory, PluginCategorySpec>()
 let defaultCategory: PluginCategory | null = null
 
-/** 类别模块在导入时登记自己；第一个登记的成为默认类别（用户插件不写 category 时按它算） */
-export function definePluginCategory(spec: PluginCategorySpec): void {
+/**
+ * 类别模块在导入时登记自己。
+ *
+ * opts.fallback：用户插件不写 category 时按哪一类算。**只有 Markdown 文档插件该要它**
+ * （数据目录里那些 .js 本来就是写文档语法的），而且必须显式声明——早先按「谁先登记谁算」，
+ * 于是新加一类插件时，默认类别会随着 import 顺序悄悄换人。
+ */
+export function definePluginCategory(spec: PluginCategorySpec, opts?: { fallback?: boolean }): void {
   specs.set(spec.id, spec)
-  if (!defaultCategory) defaultCategory = spec.id
+  if (opts?.fallback) defaultCategory = spec.id
 }
 
 export const pluginCategories = (): PluginCategorySpec[] => [...specs.values()]
@@ -172,6 +185,8 @@ export interface PluginStatus {
   error?: string
   /** 这个插件做了什么（来自类别的 describe） */
   summary: string[]
+  /** 有二级配置页（见 PluginBase.configurable） */
+  configurable?: boolean
 }
 
 let statuses: PluginStatus[] = []
@@ -186,13 +201,51 @@ export const pluginStatuses = (): PluginStatus[] => statuses
 export const pluginListError = (): string => listError
 export const pluginDir = (): string => pluginsDirPath
 
+/**
+ * 最近一次读到的内置开关。给「同步问一句这个插件开着没有」用（见 builtinPluginOn）——
+ * 界面上的按钮要在渲染期就知道该不该画，而读开关是异步的。
+ */
+let builtinToggles: Record<string, boolean> = {}
+
 /** 内置插件的开关（只有被显式改过的那些在里面）；读不到就当空——内置保持默认 */
 async function readBuiltinToggles(): Promise<Record<string, boolean>> {
   try {
     const res = await native().plugins.toggles()
-    return res.ok ? res.toggles : {}
+    builtinToggles = res.ok ? res.toggles : {}
   } catch {
-    return {}
+    builtinToggles = {}
+  }
+  return builtinToggles
+}
+
+/**
+ * 内置插件此刻开着没有（同步）。没被显式开关过时用它自己的默认值；
+ * 还没读到过开关（启动之前）也按默认值——对「默认关」的插件来说这是保守的那一侧。
+ */
+export function builtinPluginOn(id: string): boolean {
+  const declared = builtins.find((p) => p.id === id)
+  return builtinToggles[id] ?? declared?.defaultEnabled ?? false
+}
+
+/**
+ * 「能不能开」的守卫：有些插件开了也没用（语音输入没有模型时就是），那就在**保存开关之前**
+ * 问一句。守卫由插件自己登记（见 lib/voice/plugin），宿主不知道它为什么拦——只知道拦下来时
+ * 要交给用户一句能照着做的话。
+ */
+const enableGuards = new Map<string, () => Promise<string | null>>()
+
+export function setPluginEnableGuard(id: string, guard: () => Promise<string | null>): void {
+  enableGuards.set(id, guard)
+}
+
+/** 问一句「现在能不能开这个插件」：能开给 null，不能给一句原因（设置页拿它把开关置灰） */
+export async function pluginEnableBlocker(id: string): Promise<string | null> {
+  const guard = enableGuards.get(id)
+  if (!guard) return null
+  try {
+    return await guard()
+  } catch {
+    return t('暂时判断不了能不能启用（应用没跑在 Electron 里？）')
   }
 }
 
@@ -249,6 +302,7 @@ export async function refreshPlugins(): Promise<PluginStatus[]> {
       active: registry.has(plugin.id),
       defaultEnabled: plugin.defaultEnabled,
       summary: describeOf(plugin),
+      configurable: plugin.configurable === true,
     })
   }
 
@@ -364,6 +418,11 @@ export async function loadPlugins(): Promise<void> {
 
 /** 开关一个插件；成功给 null，失败给一句错误。**重启后生效**。 */
 export async function setPluginEnabled(id: string, enabled: boolean): Promise<string | null> {
+  // 开的这一侧先过守卫：没准备好的插件不该被打开（见 setPluginEnableGuard）
+  if (enabled) {
+    const blocked = await pluginEnableBlocker(id)
+    if (blocked) return blocked
+  }
   const builtin = builtins.find((p) => p.id === id)
   try {
     const res = builtin ? await native().plugins.setToggle(id, enabled) : await native().plugins.setEnabled(id, enabled)

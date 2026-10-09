@@ -51,8 +51,9 @@ export function baseBuildOptions(entryPoints, outdir) {
     // 产物必须是 .cjs：package.json 里 "type": "module"，
     // 若输出 .js，Node/Electron 会把它当 ESM 加载，CJS 的 module.exports 直接失效。
     outExtension: { '.js': '.cjs' },
-    // electron 由运行时提供，不能打进来
-    external: ['electron'],
+    // electron 由运行时提供；sherpa-onnx-node 是原生模块（.node + DLL），
+    // esbuild 打不进去也不该打——它由 node_modules / asar.unpacked 在运行时提供
+    external: ['electron', 'sherpa-onnx-node'],
     minify: release,
     sourcemap: !release,
     logLevel: 'info',

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 英文字典：lib 层的用户可见文案（菜单、浮层、导出、语音等）。
  *
  * 键 = 界面里的中文原文，逐字节一致（含全角标点）；插值用 {0} {1}。
@@ -147,16 +147,13 @@ const dict: Record<string, string> = {
   '修改': 'Edit',
   '删除这条笔记': 'Delete this note',
 
-  /* ---------- lib/voice/session.ts：语音输入的提示与错误 ---------- */
-  '有声音但没认出字——检查系统默认输入设备，或者靠近一点、说慢一点':
-    'There was sound but no words came out — check the default system input device, move closer, or speak more slowly',
-  '转写失败': 'Transcription failed',
-  '话筒一点声音都没进来（设备：{0}）。检查系统默认输入设备、麦克风静音键，以及系统是否允许本应用使用麦克风':
-    'No sound reached the microphone at all (device: {0}). Check the default system input device, the microphone mute switch, and whether the system allows this app to use the microphone',
-  '把光标放进输入框里再用语音输入': 'Put the cursor into an input field before using voice input',
+  /* ---------- lib/voice/session.ts：一次录音的提示与错误 ---------- */
+  '还没下载语音模型：到「设置 → 插件 → 语音输入」里下载':
+    'The speech model is not downloaded yet: get it in Settings → Plugins → Voice input',
+  '识别失败': 'Recognition failed',
+  '这一段没有听清（{0} 秒），再说一次试试': 'Nothing was recognised in those {0} seconds — try again',
+  '语音输入需要先下载模型': 'Voice input needs the model first',
   '正在准备语音模型…': 'Preparing the voice model...',
-  '还没下载语音模型：设置 → 输入 → 语音转文字，下一份（约 57 MB）': 'The voice model is not downloaded yet: Settings → Input → Speech to text, download it (about 57 MB)',
-  '语音输入启动失败': 'Voice input failed to start',
 
   /* ---------- lib/voice/mic.ts：话筒错误与设备描述 ---------- */
   '没有音轨': 'No audio track',
@@ -176,35 +173,56 @@ const dict: Record<string, string> = {
   '输出设备变了，重新接系统音频': 'Output device changed, reconnecting to system audio',
   '系统音频拿不到：{0}': 'System audio is unavailable: {0}',
 
-  /* ---------- lib/voice/engine.ts ---------- */
-  '语音 worker 启动失败：{0}': 'The voice worker failed to start: {0}',
-  '语音引擎还没准备好': 'The voice engine is not ready yet',
+  /* ---------- lib/voice/plugin.ts 与函数性插件的守卫 ---------- */
+  '语音输入': 'Voice input',
+  '先下载语音模型（{0}，约 {1} MB）才能打开——点进这一项去下。':
+    'Download the speech model first ({0}, about {1} MB) — open this entry to do it.',
+  '暂时判断不了能不能启用（应用没跑在 Electron 里？）': 'Cannot tell right now whether this can be enabled (is the app running outside Electron?)',
+  '功能性插件': 'Functional plugins',
+  '给应用加一项能力。默认关着：点名字进去把它需要的东西准备好，再打开。':
+    'Adds a capability to the app itself. Off by default: open the entry, get what it needs ready, then switch it on.',
+  '可配置': 'configurable',
+  '开箱即用': 'works out of the box',
+  '配置': 'Configure',
+  '返回插件列表': 'Back to the plugin list',
+  '用户插件（数据目录里那些 .js）与归一同权：启用之后它读得到正文与你的全部笔记，也用得上应用与磁盘之间的那条通道。只装自己看得懂、或者来源可信的插件。功能性插件是应用自己带的，没有这一层风险。':
+    'User plugins (the .js files in your data folder) have the same rights as Unyra: once enabled they can read your documents and every note, and they can use the channel between the app and the disk. Only install plugins you can read or trust. Functional plugins ship with the app and carry no such risk.',
 
-  /* ---------- lib/voice/model.ts ---------- */
-  '读不到语音模型': 'Could not read the voice model',
+  /* ---------- 语音输入的配置页（settings/PluginVoicePage） ---------- */
+  '模型': 'Model',
+  '识别': 'Recognition',
+  '还没下完（{0} / {1}）': 'Still downloading ({0} / {1})',
+  '还没下载（约 {0} MB）': 'Not downloaded yet (about {0} MB)',
+  '「用本机文件」挑的是 model.int8.onnx，词表 tokens.txt 要放在同一个目录里（从 HuggingFace 整份下下来的目录就是这个样子）。模型存在系统用户目录下，不属于任何一份学习数据——换用户、换数据目录都还在。':
+    '"Use a local file" wants model.int8.onnx, with tokens.txt in the same folder (that is how a full download from HuggingFace looks). The model lives under your system user folder and belongs to no single set of study data — it survives switching users or data folders.',
+  '识别语言': 'Language',
+  '默认自动：SenseVoice 自己判断这一段是哪种语言，中英混说也不用切。话里夹着专业词、或者它认错了语种时，指定一种会更准。':
+    'Auto by default: SenseVoice detects the language of each clip, so mixing Chinese and English needs no switching. Name one when the audio is full of jargon or the guess goes wrong.',
+  '自动': 'Auto',
+  '中文': 'Chinese',
+  '粤语': 'Cantonese',
+  'GPU 加速': 'GPU acceleration',
+  '检测到显卡：{0}。默认就走它；语音运行时没带 GPU 版时会自己退回 CPU，识别照样出字，只是慢一点。':
+    'GPU detected: {0}. It is used by default; if the speech runtime ships without a GPU build it falls back to the CPU on its own — recognition still works, just slower.',
+  '有显卡': 'a GPU',
+  '这台机器上没有检测到独立显卡，识别跑在 CPU 上——一段 5 秒的话约 0.2 秒，够用。':
+    'No discrete GPU on this machine, so recognition runs on the CPU — about 0.2 s for a five-second clip, which is plenty.',
+  '现在是「跟随设备」：上面这个值是按这台机器检测出来的，拨一下就固定下来（以后换机器也不会自己变）。':
+    'Currently following the device: the value above was detected on this machine. Toggle it to pin it down (it then survives moving to another machine).',
+  '已经手动固定成「{0}」；想交回自动判断，把开关拨回检测到的那一侧即可。':
+    'Pinned to "{0}" by hand; to hand it back to auto-detection, toggle it back to the detected side.',
+  '开': 'on',
+  '关': 'off',
+  '识别跑在应用主进程里的 sherpa-onnx 原生运行时（{0}）：录音在你按下结束之后才送去识别，一次出结果，不是边说边出字。':
+    'Recognition runs in the sherpa-onnx native runtime inside the main process ({0}): the recording is sent off only after you stop it, and one pass produces the whole result — nothing comes out while you speak.',
+  '音频只在这一次识别里存在内存中，不写盘、不出本机。': 'Audio exists in memory for that one recognition only: never written to disk, never sent off this machine.',
 
-  /* ---------- lib/voice/whisper/engine.ts：引擎错误 ---------- */
-  '语音识别引擎已释放（dispose），请重新创建引擎。': 'The speech engine has been disposed; create a new engine.',
-  '语音识别引擎尚未就绪：请先 await init() 并 await loadModel(bytes)。': 'The speech engine is not ready: await init() and await loadModel(bytes) first.',
-  'loadModel 需要 Uint8Array（模型文件的完整字节）。': 'loadModel requires a Uint8Array (the complete bytes of the model file).',
-  'loadModel 收到的模型字节为空。': 'loadModel received empty model bytes.',
-  'whisper 模型加载失败：{0}': 'Failed to load the whisper model: {0}',
-  '语音转写失败：{0}': 'Transcription failed: {0}',
-  'transcribe 需要 Float32Array（16 kHz 单声道，-1..1）。': 'transcribe requires a Float32Array (16 kHz mono, -1..1).',
+  /* ---------- 输入框上的麦克风按钮（agent/panel/MicButton） ---------- */
+  '语音输入：点一下开始录，说完按空格结束': 'Voice input: click to start recording, press Space when you are done',
+  '正在录音（{0}）——按空格或再点一下结束，Esc 丢弃': 'Recording ({0}) — press Space or click again to stop, Esc to discard',
+  '空格结束': 'Space to stop',
+  '空格': 'Space',
 
-  /* ---------- lib/voice/whisper/runtime.ts：wasm 运行时错误 ---------- */
-  'wasm 资源请求失败（{0}）：{1}。若页面是 file://，请确认 Electron 允许同源 file:// fetch；若配了 CSP，请确认 connect-src 放行 \'self\'。':
-    'The wasm asset request failed ({0}): {1}. If the page is file://, make sure Electron allows same-origin file:// fetch; if a CSP is configured, make sure connect-src allows \'self\'.',
-  'wasm 资源返回 HTTP {0}（{1}）。': 'The wasm asset returned HTTP {0} ({1}).',
-  'wasm 资源是空文件（{0}）。': 'The wasm asset is an empty file ({0}).',
-  '加载到的是 whisper.cpp 的多线程 WASM 构建，本应用没有 SharedArrayBuffer，无法运行。请确认引入的是 wasm/whisper-node.wasm（单线程）而不是 wasm/whisper-node.threads.wasm。':
-    'The loaded WASM build of whisper.cpp is the multi-threaded one, which this app cannot run (no SharedArrayBuffer). Make sure wasm/whisper-node.wasm (single-threaded) is used, not wasm/whisper-node.threads.wasm.',
-  'WASM 运行时没有导出预期的 whisper 入口（__wasm_init_whisper / __wasm_transcribe / __wasm_free_whisper）。本模块针对 @fugood/node-whisper-wasm@{0} 编写，依赖被升级过的话需要同步调整。':
-    'The WASM runtime does not export the expected whisper entry points (__wasm_init_whisper / __wasm_transcribe / __wasm_free_whisper). This module targets @fugood/node-whisper-wasm@{0}; adjust it if the dependency was upgraded.',
-  '模型写入 WASM 内存文件系统失败：{0}': 'Failed to write the model into the WASM memory file system: {0}',
-  'whisper 上下文创建失败：{0}': 'Failed to create the whisper context: {0}',
-  '模型文件无法解析': 'The model file could not be parsed',
-  'whisper 推理没有返回结果': 'whisper inference returned no result',
 }
 
 export default dict

@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { AlertTriangle, FolderOpen } from 'lucide-react'
+import { AlertTriangle, ChevronRight, FolderOpen } from 'lucide-react'
 import { pane } from '../Pane'
 import Switch from '../Switch'
 import {
@@ -13,6 +13,7 @@ import {
   pluginStatuses,
   refreshPlugins,
   revealPluginDir,
+  pluginEnableBlocker,
   setPluginEnabled,
   type PluginStatus,
 } from '../../lib/plugins'
@@ -33,13 +34,24 @@ import { pluginHint } from './pluginHints'
  * 摘不下来、渲染结果又按源文缓存。做成热更新只会换来「一半内容用了新语法、
  * 另一半还是代码块」的界面，不如让用户重启一次。
  */
-export function PluginsPanel({ onToast }: { onToast: (msg: string) => void }) {
+interface Props {
+  onToast: (msg: string) => void
+  /** 点一个功能性插件的名字 → 进它自己的配置页（见 SettingsPanel 的二级页） */
+  onOpenConfig: (id: string) => void
+}
+
+export function PluginsPanel({ onToast, onOpenConfig }: Props) {
   const [list, setList] = useState<PluginStatus[]>(() => pluginStatuses())
   const [listError, setListError] = useState(() => pluginListError())
   const [busy, setBusy] = useState('')
   /** 代码块的伪编译产物有几份、无输出标记有几个（见 lib/codeArtifacts）：都给一颗「清空」 */
   const [artifacts, setArtifacts] = useState(() => artifactCount())
   const [silent, setSilent] = useState(() => silentCount())
+  /**
+   * 「现在还不能开」的插件 → 为什么（见 lib/plugins 的 setPluginEnableGuard）。
+   * 只问没开的那些：已经开着的不必拦，而拦话要给的是「下一步做什么」，不是「不可用」。
+   */
+  const [blockers, setBlockers] = useState<Record<string, string>>({})
 
   const reload = () =>
     refreshPlugins().then((next) => {
@@ -59,6 +71,23 @@ export function PluginsPanel({ onToast }: { onToast: (msg: string) => void }) {
       setSilent(silentCount())
     })
   }, [])
+
+  // 守卫是异步的（语音输入要去问模型下齐了没有），所以每次重列插件之后问一遍
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      const next: Record<string, string> = {}
+      for (const p of list) {
+        if (p.enabled) continue
+        const why = await pluginEnableBlocker(p.id)
+        if (why) next[p.id] = why
+      }
+      if (alive) setBlockers(next)
+    })()
+    return () => {
+      alive = false
+    }
+  }, [list])
 
   const toggle = async (id: string, on: boolean) => {
     setBusy(id)
@@ -115,25 +144,52 @@ export function PluginsPanel({ onToast }: { onToast: (msg: string) => void }) {
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
-                  {rows.map((p) => (
-                    <div key={p.id}>
-                      <Switch
-                        on={p.enabled}
-                        disabled={busy === p.id}
-                        onChange={(next) => {
-                          void toggle(p.id, next)
-                        }}
-                        label={t(p.name)}
-                        hint={pluginHint(p)}
-                      />
-                      {p.error && (
-                        <div className="mt-1 flex items-start gap-1.5 px-3 text-[11px] leading-relaxed text-seal-deep">
-                          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-                          <span className="min-w-0">{t(p.error)}</span>
+                  {rows.map((p) => {
+                    const blocked = !p.enabled ? blockers[p.id] : undefined
+                    return (
+                      <div key={p.id}>
+                        {/*
+                          开关与「配置」并排，不嵌套：Switch 整行本身就是一个 button，
+                          里面再放一个 button 既不合 HTML 规矩，点起来也会打架。
+                        */}
+                        <div className="flex items-stretch gap-2">
+                          <div className="min-w-0 flex-1">
+                            <Switch
+                              on={p.enabled}
+                              disabled={busy === p.id || !!blocked}
+                              onChange={(next) => {
+                                void toggle(p.id, next)
+                              }}
+                              label={t(p.name)}
+                              hint={pluginHint(p)}
+                            />
+                          </div>
+                          {p.configurable && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenConfig(p.id)}
+                              className="flex shrink-0 items-center gap-1 rounded-lg border border-line bg-card px-2.5 text-[11.5px] text-ink-soft transition hover:border-seal/50 hover:text-seal-deep"
+                            >
+                              {t('配置')}
+                              <ChevronRight size={13} />
+                            </button>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  ))}
+                        {/* 不能开的时候把「下一步做什么」写在这儿：这是用户唯一能读到它的地方 */}
+                        {blocked && (
+                          <div className="mt-1 flex items-start gap-1.5 px-3 text-[11px] leading-relaxed text-ink-faint">
+                            <span className="min-w-0">{blocked}</span>
+                          </div>
+                        )}
+                        {p.error && (
+                          <div className="mt-1 flex items-start gap-1.5 px-3 text-[11px] leading-relaxed text-seal-deep">
+                            <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                            <span className="min-w-0">{t(p.error)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 
@@ -184,7 +240,7 @@ export function PluginsPanel({ onToast }: { onToast: (msg: string) => void }) {
           <AlertTriangle size={12} />
           {t('插件与归一同权')}
         </div>
-        {t('启用之后，插件读得到正文与你的全部笔记，也用得上应用与磁盘之间的那条通道。只装自己看得懂、或者来源可信的插件。')}
+        {t('用户插件（数据目录里那些 .js）与归一同权：启用之后它读得到正文与你的全部笔记，也用得上应用与磁盘之间的那条通道。只装自己看得懂、或者来源可信的插件。功能性插件是应用自己带的，没有这一层风险。')}
       </div>
     </div>
   )

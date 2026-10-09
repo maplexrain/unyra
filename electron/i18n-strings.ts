@@ -138,22 +138,27 @@ const dict: Record<string, string> = {
   '目录不可写：{0}': "The directory isn't writable: {0}",
   '设置未能保存：{0}': "The settings couldn't be saved: {0}",
 
-  /* ---------- voice.ts：语音模型 ---------- */
+  /* ---------- voice.ts：语音模型（SenseVoiceSmall）与识别 ---------- */
   'HuggingFace 官方': 'HuggingFace (official)',
   'hf-mirror 镜像': 'hf-mirror (mirror)',
-  '只下回来 {0} MB，不像是完整模型（源可能返回了错误页）': "Only {0} MB came down — that doesn't look like a complete model (the source may have returned an error page)",
+  '备用源': 'a fallback source',
   '已经在下一次了': 'A download is already in progress',
-  '正在从{0}下载…': 'Downloading from {0}…',
+  '正在下载 {0}…': 'Downloading {0}…',
+  '正在从{0}下载 {1}…': 'Downloading {1} from {0}…',
+  '{0} 只下回来 {1} MB（应有 {2} MB），不像是完整文件': '{0} came down at only {1} MB (expected {2} MB) — that does not look like a complete file',
   '已取消': 'Canceled',
   '{0}：{1}': '{0}: {1}',
   '；': '; ',
-  '每个下载源都不通——{0}。也可以在设置里用「用本机文件」挑一份已经下好的 ggml-base-q5_1.bin': 'None of the download sources worked — {0}. You can also pick an already downloaded ggml-base-q5_1.bin with "Use a local file" in Settings.',
-  '选择 whisper 模型（*.bin）': 'Choose a whisper model (*.bin)',
-  'whisper 模型': 'whisper model',
-  '这个文件只有 {0} MB，base 模型应该有 50 MB 以上': 'This file is only {0} MB; the base model should be over 50 MB',
+  '每个下载源都不通——{0}。也可以在这台机器上用「用本机文件」挑一份下好的模型目录': 'None of the download sources worked — {0}. You can also point "Use a local file" at a model you already have on this machine.',
+  '选择 SenseVoice 模型（model.int8.onnx）': 'Choose the SenseVoice model (model.int8.onnx)',
+  'ONNX 模型': 'ONNX model',
+  '这个文件只有 {0} MB，int8 的 SenseVoice 应该接近 {1} MB': 'This file is only {0} MB; the int8 SenseVoice model should be close to {1} MB',
+  '同一个目录里没有找到 tokens.txt——两份文件要放在一起': 'No tokens.txt next to it — the two files have to sit in the same folder',
   '复制失败': 'Copy failed',
-  '模型文件不完整，重新下载一次': 'The model file is incomplete; download it again',
   '删除失败': 'Delete failed',
+  '还没下载语音模型': 'The speech model has not been downloaded yet',
+  '这段录音是空的': 'That recording is empty',
+  '识别失败：{0}': 'Recognition failed: {0}',
 }
 
 export default dict

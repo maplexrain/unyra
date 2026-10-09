@@ -36,6 +36,12 @@ npm run icons         # 从 public/logo.svg 重新生成 logo.png 与安装包�
   `build/icon.png`（1024²，electron-builder 由它生成 exe 与安装包的多尺寸 .ico）。
   为什么要生成而不是直接放位图：nativeImage 与 electron-builder 都不吃 SVG，而换 logo 时
   只需改一个 SVG。生成物要一起提交，构建不依赖这个脚本（它用 Electron 自己渲染，零新依赖）。
+  ⚠️ **任务栏那颗图标另有出处**：Windows 按 AppUserModelID 去找带这个身份的**开始菜单快捷方式**，
+  取它的图标；窗口自己的 `icon` 只在「没有那条快捷方式」时才算数。所以 `electron-builder.yml` 的
+  `appId` 必须与运行时设的 AUMID 逐字一致（`electron/app/identity.ts`，用例钉着），
+  而源码运行另用 `.dev` 后缀的身份——不分的话，把开发版固定到开始菜单会写下一条
+  「目标 electron.exe、图标＝Electron 原子」的快捷方式，**安装版的任务栏图标也跟着变成原子**
+  （2026-10 真踩过：用户开始菜单里多出一条「Electron」，删掉它图标立刻恢复）。
   ⚠️ 界面里引用图标必须是**相对路径**（`./logo.png`）：打包后页面以 `file://` 加载，
   绝对路径会解析到文件系统根目录而裂图，而开发时 Vite 服务 public/ 一切正常——
   这个差异只在打包后才暴露（踩过一次，见 `components/Logo.tsx`）。

@@ -49,11 +49,26 @@ const DRAG_MIN = 4
 const TAB_GAP = 3
 
 /**
+ * 三种页签图标各自的**类型色**：颜色不跟主题变量走，只跟「这是哪一种页签」走——
+ * 与文档区页签的 DocTypeIcon 同一条规矩（切到深色或粉色主题，灰的还是灰的、蓝的还是蓝的，
+ * 靠颜色认「这一格是谁」才认得稳）。同一栏上三种页签并排，形状之外再给一层颜色级差：
+ * 中性灰=固定聊天（栏的底座） / 教学蓝=目标级导师（它就是写教学文档的那位） /
+ * 分身紫=子代理（派出去的分身）。
+ *
+ * 「在跑」不在这份颜色里——那是状态，由右边那颗呼吸点说（见下面的运行点）。
+ */
+const AGENT_TAB_COLOR: Record<AgentTabRef['kind'], string> = {
+  free: '#98928a',
+  goal: '#4a8fd4',
+  sub: '#a066d6',
+}
+
+/**
  * 目标级导师的页签图标：靶心。目标（goal）的靶子在正中，环一圈套一圈——
  * 与文档区页签的 DocTypeIcon 同一套 lucide 几何（24 视窗、2 描边、圆角端点），
  * 渲染成 13px。
  */
-function GoalAgentIcon({ className }: { className?: string }) {
+function GoalAgentIcon() {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -65,7 +80,6 @@ function GoalAgentIcon({ className }: { className?: string }) {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      className={'shrink-0 ' + (className ?? '')}
     >
       <circle cx="12" cy="12" r="9" />
       <circle cx="12" cy="12" r="4.5" />
@@ -78,7 +92,7 @@ function GoalAgentIcon({ className }: { className?: string }) {
  * 派生子代理的页签图标：一 node 出两支（share-2 的几何）——导师派出去的分身，
  * 源头与分身连成一张小网。与靶心并排摆在同一条栏上，级差一眼可辨。
  */
-function SubAgentIcon({ className }: { className?: string }) {
+function SubAgentIcon() {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -90,7 +104,6 @@ function SubAgentIcon({ className }: { className?: string }) {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      className={'shrink-0 ' + (className ?? '')}
     >
       <circle cx="18" cy="5" r="3" />
       <circle cx="6" cy="12" r="3" />
@@ -313,7 +326,7 @@ export default function AgentTabStrip({
                 }}
                 style={{ transform: offset ? 'translateX(' + offset + 'px)' : undefined }}
                 className={
-                  'moji-tab group relative flex h-7 min-w-[100px] max-w-[150px] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] ' +
+                  'moji-tab group relative flex h-7 min-w-[60px] max-w-[150px] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] ' +
                   (on ? 'moji-tab-flare z-10 font-medium ' : '') +
                   (dragging
                     ? 'z-10 cursor-grabbing border-line-strong bg-card text-ink-strong shadow-md '
@@ -323,13 +336,23 @@ export default function AgentTabStrip({
                     : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink')
                 }
               >
-                {isFree ? (
-                  <MessageSquare size={13} className={running ? 'text-seal' : ''} />
-                ) : ref.kind === 'goal' ? (
-                  <GoalAgentIcon className={running ? 'text-seal' : ''} />
-                ) : (
-                  <SubAgentIcon className={running ? 'text-seal' : ''} />
-                )}
+                {/*
+                  类型图标：颜色是**身份**（见 AGENT_TAB_COLOR），不跟着选中与运行变——
+                  选中由页签自己的底色说，运行由右边那颗呼吸点说。
+                */}
+                <span
+                  aria-hidden="true"
+                  className="flex h-4 w-4 shrink-0 items-center justify-center"
+                  style={{ color: AGENT_TAB_COLOR[ref.kind] }}
+                >
+                  {isFree ? (
+                    <MessageSquare size={13} />
+                  ) : ref.kind === 'goal' ? (
+                    <GoalAgentIcon />
+                  ) : (
+                    <SubAgentIcon />
+                  )}
+                </span>
                 <span className="min-w-0 flex-1 truncate">{title}</span>
                 {running && (
                   <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-seal" />

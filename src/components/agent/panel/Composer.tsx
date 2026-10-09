@@ -9,17 +9,17 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowUp, Bot, ChevronRight, Square } from 'lucide-react'
 import type { AskAnswers, AskFormPayload } from '../../../agent/tools'
-import type { Conversation, MessageUsage, PendingImage } from '../../../agent/types'
+import type { Conversation, PendingImage } from '../../../agent/types'
 import type { ReasoningEffort } from '../../../ai/types'
 import ModelPicker from '../ModelPicker'
-import ContextRing from '../ContextRing'
 import { AskFormCard } from './AskFormCard'
 import { FileChip, ImageThumb } from './Images'
+import MicButton from './MicButton'
 import { PlusMenu } from './PlusMenu'
 import { useSlashMenu, type SlashItem } from './useSlashMenu'
 import type { ComposerApi } from './useComposer'
 import type { MenuSub } from './types'
-import { caretAtEnd, expandChipTokens, placeCaretEnd, serializeEditable } from '../../../lib/composerDoc'
+import { caretAtEnd, expandChipTokens, insertTextAtCaret, placeCaretEnd, serializeEditable } from '../../../lib/composerDoc'
 import { openChipRef, payloadOfChipAttr, registerDocChipTarget } from '../../../lib/docChip'
 import { buildChipHtml, escapeHtml, splitChips } from '../../../lib/chipSyntax'
 import { t } from '../../../i18n'
@@ -56,7 +56,6 @@ export interface ComposerProps {
   onAskSubmit: (answers: AskAnswers) => void
   onAskCancel: () => void
   /** 这个对话里所有回复的 token 账：圆环据此汇总 */
-  usages: MessageUsage[]
   onModelChanged: () => void
   onStop: () => void
   onNewConversation: () => void
@@ -128,8 +127,7 @@ export function Composer(props: ComposerProps) {
     ask,
     onAskSubmit,
     onAskCancel,
-    usages,
-    onModelChanged,
+      onModelChanged,
     onStop,
     onNewConversation,
     conversations,
@@ -594,7 +592,19 @@ export function Composer(props: ComposerProps) {
             {subAgentSlot}
             {!subMode && personaSlot}
             {!subMode && <ModelPicker onChanged={onModelChanged} />}
-            {!subMode && <ContextRing usages={usages} />}
+            {/*
+              语音输入：发送键左边那颗话筒（见 MicButton 与 lib/voice）。
+              只有插件开着时才画——它是「设置 → 插件」里的一项功能。
+              识别结果插到光标处：认得 chip、也不吃掉用户已经写好的字。
+            */}
+            {!subMode && (
+              <MicButton
+                onText={(text) => {
+                  const el = editorRef.current
+                  if (el) insertTextAtCaret(el, text)
+                }}
+              />
+            )}
             {running ? (
               <button
                 type="button"

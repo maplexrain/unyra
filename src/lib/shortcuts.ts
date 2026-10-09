@@ -12,9 +12,9 @@
  * 2. **组合键用字符串存**（`Ctrl+Shift+K`），不是对象。setting.yaml 是给人看的，
  *    字符串最直白；解析/格式化都收在 lib/keyCombo 里，外部只见字符串。
  *
- * 3. **按住型与点按型共用一套**。语音输入要求「按住说话、松开结束」，
- *    所以回调分成 down / up 两个；点按型只用 down 就行（up 传不传随意）。
- *    自动重复（长按一个键时的连续 keydown）一律忽略，否则按住说话会不停重启。
+ * 3. **按住型与点按型共用一套**。回调分成 down / up 两个，点按型只用 down 就行
+ *    （up 传不传随意）。自动重复（长按一个键时的连续 keydown）一律忽略，
+ *    否则「按住」类功能会不停重启。
  *
  * 还有一条规矩写在 shouldFire：**焦点在输入框里时，不带修饰键的组合不触发**。
  * 否则把某个功能绑到「K」上之后，聊天框里就打不出这个字母了。
@@ -55,8 +55,6 @@ export interface ShortcutDef {
   hint: string
   /** 默认组合（规范写法，见 formatCombo） */
   def: string
-  /** 按住型：按下开始、松开结束（语音输入） */
-  hold?: boolean
 }
 
 /**
@@ -64,13 +62,7 @@ export interface ShortcutDef {
  * id 是存储用的键，一旦发布就别改（改了等于把用户的改键丢掉）。
  */
 export const SHORTCUT_DEFS: ShortcutDef[] = [
-  {
-    id: 'voice.input',
-    label: '语音转文字',
-    hint: '光标在任意输入框里时按住说话，松开结束；说的字会实时落到光标处',
-    def: 'Ctrl+T',
-    hold: true,
-  },
+
   {
     id: 'learn.save',
     label: '保存文档',

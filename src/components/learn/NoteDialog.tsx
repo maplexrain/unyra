@@ -189,7 +189,7 @@ export default function NoteDialog({
     >
       {/*
         面板按 w-[768px] 居中：这是当初定下的尺寸，**不跟着正文列一起变**——它是一块
-        升起来的输入区，比正文列（850，见 index.css 的 .doc-measure）窄一档，又不
+        升起来的输入区，比正文列（800，见 index.css 的 .doc-measure）窄一档，又不
         像满宽那样把整列都盖住。max-w-full 兜住窄窗口：列宽不够时先缩，不撑破列。
         高度铺满占位层（h-full），占位层多高由上面那个 effect 决定。
       */}

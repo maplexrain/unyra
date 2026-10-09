@@ -24,6 +24,9 @@ import { bootstrapUsers } from '../user/store'
 import { restoreSession, type Session } from '../user/session'
 import { hydrateLearnStore } from '../learn/store'
 import { loadPlugins } from './plugins'
+// 内置功能性插件要在 loadPlugins 之前完成登记（开关按 id 认它，见 lib/plugins）
+import './voice/plugin'
+import { refreshVoiceGpuDefault } from './voice/settings'
 import { startupMark } from './startupTrace'
 import type { User } from '../user/types'
 
@@ -59,6 +62,8 @@ export async function bootApp(): Promise<BootResult> {
   await loadUiLocale()
   // 插件要在第一帧之前装好：renderNote 一旦跑过，没人认领的语法就只能当代码块显示了
   await loadPlugins()
+  // 设备上有没有显卡：语音输入的「GPU 加速」默认值跟着它（见 lib/voice/settings）
+  await refreshVoiceGpuDefault()
   startupMark('r:plugins-done')
   const users = await bootstrapUsers()
   startupMark('r:users-done')

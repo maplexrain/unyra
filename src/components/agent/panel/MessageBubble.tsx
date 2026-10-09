@@ -1,11 +1,11 @@
 /**
  * 一条消息长什么样：引文、气泡里的附件、操作按钮、编辑框，以及正文里的
- * 消息组（思考与工具调用）/ 文本块 / 提示块，外加列表右下角那颗「回到最新」。
+ * 消息组（思考 / 工具调用 / 注入的提示词模块）/ 文本块 / 提示块，外加列表右下角那颗「回到最新」。
  *
  * 层级与用色的规矩：**只有用户消息保留气泡本尊**（同色系、深一档的底色圆角）；其余一律无壳——
  * 导师的正文、思考气泡、工具调用气泡、消息组的收拢容器都不带边框与底色，
- * 分层靠排版与缩进。相邻至少两条的思考 / 工具调用才收进消息组，落单的
- * 不成组，自己就是一条气泡。
+ * 分层靠排版与缩进。相邻至少两条的过程件才收进消息组，落单的不成组，
+ * 自己就是一条气泡。
  *
  * 全是纯展示组件——它们只认 props，不改任何状态；消息数据、编辑与删除
  * 都由 AgentPanel 通过 MessageList 传下来。
@@ -38,6 +38,7 @@ import { lastLineOf } from './preview'
 import { toolLabel } from './toolLabel'
 import { useFold } from './useFold'
 import { isInterruptedNotice } from '../../../learn/agent/inflight'
+import { groupParts, isProcessPart, type ProcessPart } from './partGroups'
 import { hydrateChipTokens, openChipRef, type ChipPayload } from '../../../lib/docChip'
 import { chipLabel, chipSvg, chipToken, maskChipTokens, restoreChipTokens, splitChips } from '../../../lib/chipSyntax'
 import { promptModuleByKey } from '../../../learn/ai/promptModules'
@@ -307,38 +308,22 @@ function EditBox({
   )
 }
 
-/** 一轮 agent loop 里的「过程件」：思考与工具调用。消息组只收这两种。 */
-type ProcessPart = Extract<AgentPart, { type: 'thinking' } | { type: 'tool' }>
-
 /**
- * 把一条消息的部件序列归组：**相邻且至少两条**的思考与工具调用合进一个消息组，
- * 其余一律独立成条——正文、运行时提示在组外，落单的思考 / 工具调用也自己就是
- * 一条气泡（孤零零一件没有可收拢的东西，硬套组壳等于多一次点击）。
+ * 把一条消息的部件序列排成一段段：**相邻的过程件**（思考 / 工具调用 / 注入的提示词模块）
+ * 连成的候选组，以及其余独立成条的东西（正文、运行时提示）。归组规则本身是纯函数、
+ * 住在 panel/partGroups 里（有单元用例钉着）——这里只管「怎么画」。
  *
- * 切组的规则：**正文一出，组就闭合**。hop 是跳边界标记（界面上不画），不切断组
- * ——一轮循环跨了几跳，都是同一段过程；notice 是异常提示，藏进默认折叠的组里
- * 等于藏起警告，所以它也留在组外（并切断组）。历史消息与正在流式的那一段走的是
- * 同一个函数，归组行为天然一致。
+ * 只有一个成员的组按单条画：孤零零一件没有可收拢的东西，硬套组壳等于多一次点击。
  */
 function Parts({ parts, onResumeNotice }: { parts: AgentPart[]; onResumeNotice?: () => void }) {
-  const groups: Array<{ kind: 'group'; items: ProcessPart[] } | { kind: 'single'; part: AgentPart }> = []
-  for (const p of parts) {
-    if (p.type === 'hop') continue
-    if (p.type === 'thinking' || p.type === 'tool') {
-      const last = groups[groups.length - 1]
-      if (last && last.kind === 'group') last.items.push(p)
-      else groups.push({ kind: 'group', items: [p] })
-    } else {
-      groups.push({ kind: 'single', part: p })
-    }
-  }
+  const groups = groupParts(parts)
   return (
     <div className="flex flex-col gap-2">
       {groups.map((g, i) => {
         if (g.kind === 'group' && g.items.length > 1) return <ProcessGroup key={i} items={g.items} />
         const part = g.kind === 'single' ? g.part : g.items[0]
         // 落单的过程件与组一样带一道下边框，和后面的正文分割开；正文与提示不带
-        return part.type === 'thinking' || part.type === 'tool' ? (
+        return isProcessPart(part) ? (
           <div key={i} className="border-b border-line pb-2">
             <SinglePart part={part} />
           </div>
@@ -360,27 +345,36 @@ function SinglePart({ part, onResumeNotice }: { part: AgentPart; onResumeNotice?
 }
 
 /**
- * 消息组：**相邻且至少两条**的思考与工具调用合进来，默认折叠。组本身**不画壳**——
- * 没有边框、没有底色、没有内边距，收拢关系全靠标题行与展开后的缩进表达；底部
- * 一道下边框把它和后面的正文分割开。展开后里面是一条条独立的思考气泡
- * （ThinkingBlock）与工具调用气泡（ToolCard），各自管各自的展开收起，底部还有
- * 组级的「收起」。
+ * 消息组：**相邻且至少两条**的过程件（思考 / 工具调用 / 注入的提示词模块）合进来，
+ * 默认折叠。组本身**不画壳**——没有边框、没有底色、没有内边距，收拢关系全靠标题行
+ * 与展开后的缩进表达；底部一道下边框把它和后面的正文分割开。展开后里面是一条条
+ * 独立的思考气泡（ThinkingBlock）、工具调用气泡（ToolCard）与提示词模块块
+ * （PromptModuleBlock），各自管各自的展开收起，底部还有组级的「收起」。
  *
  * 折叠态不是一行死标题——它持续显示组里**当前最后一件**的内容，与思考气泡
  * 同一个意图：模型可能安静十几秒，一行不断往左滚的字，一眼就能看出「它还在写」。
- * 思考件取最后一行（lastLineOf，只扫末尾窗口），工具件取那一步的标题；组里
- * 新进来一件，预览就跟着换过去。模型的正文永远在组外（见 Parts 的归组规则），
- * 那才是用户要直接读的话。
+ * 思考件取最后一行（lastLineOf，只扫末尾窗口），工具件取那一步的标题，
+ * 提示词模块取模块名；组里新进来一件，预览就跟着换过去。模型的正文永远在组外
+ * （见 Parts 的归组规则），那才是用户要直接读的话。
+ *
+ * 标题里的「提示词」只在组里真有模块时才写：常驻一个用不上的词，等于把「这一步
+ * 是什么」这件事说糊（模块本来就是低频的十几条之一）。
  */
 function ProcessGroup({ items }: { items: ProcessPart[] }) {
   const { open, shown, toggle } = useFold()
   const last = items[items.length - 1]
+  const hasModule = items.some((p) => p.type === 'prompt-module')
   /**
    * 预览不进 useMemo：流式时 applyEvent 是**原地改 part 对象**的（setStreaming 只换
    * 数组壳，对象身份不变），认对象会让预览冻在第一帧——思考在长，组上却看不见。
    * lastLineOf 只扫末尾一个窗口，每次渲染现算也花不了几个钱。
    */
-  const tail = last.type === 'thinking' ? lastLineOf(last.text) || '…' : toolLabel(last.name, last.args)
+  const tail =
+    last.type === 'thinking'
+      ? lastLineOf(last.text) || '…'
+      : last.type === 'prompt-module'
+        ? t('提示词模块 · {0}', promptModuleByKey(last.key)?.title ?? last.key)
+        : toolLabel(last.name, last.args)
 
   return (
     <div className="border-b border-line pb-2">
@@ -391,7 +385,9 @@ function ProcessGroup({ items }: { items: ProcessPart[] }) {
       >
         {/* 折叠指示：与思考气泡、工具气泡同一套 chevron 词汇 */}
         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-        <span className="shrink-0">{t('思考与工具 · {0} 步', items.length)}</span>
+        <span className="shrink-0">
+          {hasModule ? t('思考、工具与提示词 · {0} 步', items.length) : t('思考与工具 · {0} 步', items.length)}
+        </span>
         {!open && (
           /*
             一行预览，看的是组里最后一件。靠 CSS 贴右端而不是 useLayoutEffect 里写
@@ -412,6 +408,8 @@ function ProcessGroup({ items }: { items: ProcessPart[] }) {
               {items.map((p, i) =>
                 p.type === 'thinking' ? (
                   <ThinkingBlock key={i} text={p.text} />
+                ) : p.type === 'prompt-module' ? (
+                  <PromptModuleBlock key={'m' + i} part={p} />
                 ) : (
                   <ToolCard key={p.id || i} part={p} />
                 ),
@@ -575,16 +573,19 @@ export function HiddenDivider({
 /**
  * 动态注入的提示词模块（见 learn/ai/promptModules）在回复**内部**的折叠块。
  *
- * 它与思考、工具调用是同一层——轮次进行中的一个片段，**不分割轮次**：折叠时一行
- * 「提示词模块 · 界面操作 · 已注入上下文」（与消息组同一套 chevron 词汇），
- * 展开看注入的全文。透明化是这套机制的立身之本：上下文里被注入了什么，用户
- * 随时点开就能看到。
+ * 它与思考、工具调用是同一层——轮次进行中的一个片段，**不分割轮次**，也一起进消息组
+ * （见 Parts 与 ProcessGroup）：折叠时一行「提示词模块 · 界面操作 · 已注入上下文」
+ * （与消息组同一套 chevron 词汇），展开看注入的全文。透明化是这套机制的立身之本：
+ * 上下文里被注入了什么，用户随时点开就能看到。
+ *
+ * 自己**不画**那道下边框：落单时由 Parts 的包裹层给，进组时由组给——同一处边框
+ * 画两遍，组里就会多出一道把「过程」切成两截的横线。
  */
 function PromptModuleBlock({ part }: { part: Extract<AgentPart, { type: 'prompt-module' }> }) {
   const [open, setOpen] = useState(false)
   const title = promptModuleByKey(part.key)?.title ?? part.key
   return (
-    <div className="border-b border-line pb-2">
+    <div>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

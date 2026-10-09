@@ -8,6 +8,7 @@ import {
   type AnnotationActions,
 } from '../lib/annotation'
 import { parseStyle, serializeStyle } from '../lib/annotationStyle'
+import { DOC_TW_CLASS, hydrateDocTailwind } from '../lib/docTailwind'
 import { hydrateDocImages, type LocalImageResolver } from '../lib/docImages'
 import {
   markLearnLinks,
@@ -132,6 +133,10 @@ export default function MarkdownView({
     const el = ref.current
     if (!el) return
     el.innerHTML = html
+    // 正文里的 Tailwind 工具类现算成样式（见 lib/docTailwind）：趁正文还是原样先收一遍类名，
+    // 之后注解、插件还会往这棵树上加它们自己的类（.moji-anno、.tok-*），那些与应用 CSS 一对，
+    // 收进来只是白算。同步返回，编译在后台跑。
+    hydrateDocTailwind(el)
     const parsed = parseAnnos(annoKey)
     appliedRef.current = parsed
     const undoAnno = hydrateAnnotations(el, parsed, annotationActions)
@@ -189,7 +194,11 @@ export default function MarkdownView({
   return (
     <div
       ref={ref}
-      className={className}
+      /*
+       * 作用域类：文档里的 Tailwind 工具类只在这棵子树里生效（见 lib/docTailwind）。
+       * 它跟着每一个渲染正文的地方走，因此对话气泡里引用的组件样式也一并对上。
+       */
+      className={className ? className + ' ' + DOC_TW_CLASS : DOC_TW_CLASS}
       onClick={(e) => {
         /*
          * 锚点链接（`[文字](#某标题)`）：滚到正文里对应的标题。

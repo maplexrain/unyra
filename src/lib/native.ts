@@ -14,7 +14,8 @@ import type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
-  VoiceReadResult, WebDomOpResult, WebFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult,
+  VoiceTranscribeRequest, VoiceTranscribeResult, WebDomOpResult, WebFetchResult, WebLogDetailResult,
+  WebLogsOpts, WebLogsResult,
   WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult,
   WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebWaitReq, WebWaitResult,
 } from '../../shared/ipc'
@@ -27,7 +28,8 @@ export type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
-  VoiceReadResult, WebDomOpResult, WebFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult,
+  VoiceTranscribeRequest, VoiceTranscribeResult, WebDomOpResult, WebFetchResult, WebLogDetailResult,
+  WebLogsOpts, WebLogsResult,
   WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult,
   WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebWaitReq, WebWaitResult,
 }
@@ -263,7 +265,7 @@ export interface NativeBridge {
     allowClose(): void
   }
   /**
-   * 语音模型：下载、读取字节、换一份、删掉。
+   * 语音：模型的状态与下载、一次识别、这台机器上有没有显卡。
    * 与 electron/preload.ts 那份是同一套（渲染层不能 import 主进程的文件，只能各声明一份）。
    */
   voice: {
@@ -271,8 +273,11 @@ export interface NativeBridge {
     downloadModel(): Promise<VoiceDownloadResult>
     cancelDownload(): Promise<boolean>
     chooseModel(): Promise<{ ok: boolean; canceled?: boolean; error?: string; bytes?: number }>
-    readModel(): Promise<VoiceReadResult>
     removeModel(): Promise<{ ok: boolean; error?: string }>
+    /** 识别一段 16 kHz 单声道 PCM（推理在主进程，见 electron/voice.ts） */
+    transcribe(req: VoiceTranscribeRequest): Promise<VoiceTranscribeResult>
+    /** 有没有显卡：设置页拿它决定 GPU 开关的默认值 */
+    gpuInfo(): Promise<{ hasGpu: boolean; name: string }>
     revealModel(): Promise<boolean>
     onModelProgress(cb: (p: VoiceModelProgress) => void): () => void
   }

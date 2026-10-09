@@ -1,11 +1,15 @@
 /**
- * 输入框底下的状态行（AgentPanel）：轮数 / 输出速度 / 累计 token。
+ * 输入框底下的状态行（AgentPanel）：轮数 / 输出速度 / 累计 token / 上下文占用。
  *
  * 数据由 AgentPanel 现推（它才知道消息与实时账），这里只负责怎么摆。
+ * 上下文圆环原本挂在输入框右下角那颗「提供商 · 模型」旁边，2026-11 搬到这儿：
+ * 它与左边这几个数是一路货（都是「这个对话的账」），而右下角那颗按钮那一排要留给动作。
  */
 
 import { MessagesSquare, Sigma, Zap } from 'lucide-react'
+import type { MessageUsage } from '../../../agent/types'
 import { formatTokens } from '../../../lib/usage'
+import ContextRing from '../ContextRing'
 import { t } from '../../../i18n'
 
 /**
@@ -19,10 +23,13 @@ export function PaceStrip({
   turns,
   tps,
   tokens,
+  usages,
 }: {
   turns: number
   tps: number | null
   tokens: number
+  /** 每一轮的用量：圆环按它算上下文占用（见 ContextRing） */
+  usages: MessageUsage[]
 }) {
   if (turns <= 0) return null
   return (
@@ -43,6 +50,8 @@ export function PaceStrip({
           {formatTokens(tokens)}
         </span>
       )}
+      {/* 上下文占用：紧跟在累计 token 之后——「花了多少」与「还剩多少地方」是同一件事的两面 */}
+      <ContextRing usages={usages} />
     </div>
   )
 }

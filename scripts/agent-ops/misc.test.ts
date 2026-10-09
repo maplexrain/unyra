@@ -101,7 +101,7 @@ export function proxyTests() {
 /**
  * 快捷键：组合串的解析 / 格式化 / 规范化，以及注册表本身的两条纪律。
  *
- * 这一层错了界面也不会报错——用户按下 Ctrl+T 什么都不发生，或者改完键存进 setting.yaml
+ * 这一层错了界面也不会报错——用户按下一个组合什么都不发生，或者改完键存进 setting.yaml
  * 之后读回来变成另一个键。所以把「字符串 ↔ 组合」这条往返钉在这里。
  */
 export function shortcutTests(): void {
@@ -122,8 +122,9 @@ export function shortcutTests(): void {
   const ids = SHORTCUT_DEFS.map((d) => d.id)
   ok(new Set(ids).size === ids.length, 'id 不重复（重复会让改键改到另一条上）')
   ok(SHORTCUT_DEFS.every((d) => parseCombo(d.def) !== null), '每条默认组合都解析得出来')
-  const voice = SHORTCUT_DEFS.find((d) => d.id === 'voice.input')
-  ok(voice?.def === 'Ctrl+T' && voice?.hold === true, '语音输入默认是按住型 Ctrl+T（需求里写死的那一条）')
+  // 语音输入 2026-11 从「按住 Ctrl+T 说话」改成了输入框上的话筒按钮（录完再识别，空格结束），
+  // 那条绑定随之取消：**它不该再挂在任何组合上**——留着只会让人按下去什么都不发生。
+  ok(!ids.includes('voice.input'), '语音输入不再占快捷键（入口是输入框上的话筒）')
   ok(SHORTCUT_DEFS.map((d) => d.def).length === new Set(SHORTCUT_DEFS.map((d) => d.def)).size, '默认组合之间不撞')
 }
 

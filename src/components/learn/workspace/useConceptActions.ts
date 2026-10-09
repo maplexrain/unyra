@@ -115,7 +115,7 @@ export function useConceptActions(deps: ConceptActionsDeps) {
    * 换过来的好处**在上下文**：导师已经知道这个目标讲过什么、他哪里卡过，
    * 写出来的释义与对话是连贯的；一次性那条路每次都是一段陌生的文档 + 一个陌生的词。
    *
-   * prep 是 'show'：只响一声铃、不抢主位——交付物就画在用户盯着的那段文字旁边。
+   * prep 是 'show'：只响一声铃——交付物就画在用户盯着的那段文字旁边，别的不必做。
    */
   const understandConcept = (nodeId: string, term: string, occurrence?: number, snippet?: string) => {
     const node = nodeById(getLatest(), nodeId)

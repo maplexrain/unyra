@@ -14,7 +14,15 @@
   color: var(--color-ink-soft);
   font-size: 12px;
   line-height: 20px;
-  vertical-align: baseline;
+  /*
+   * 垂直对齐：inline-flex 的基线取的是**第一个 flex 项**的基线，而这里第一项是图标
+   * （没有基线的替换元素）——它的基线就是自己的下边缘。于是整枚 chip 拿「图标底边」
+   * 去对文字基线，看起来比周围文字高一截（Chromium 实测：12px 字号下高 2.5px）。
+   * 这 -2.5px 把它补回来：胶囊里的文字正好落在正文基线上，框也跟着在文字两侧居中。
+   * 用绝对长度而不是 em——这 2.5px 来自图标与内边距那一套固定几何，与外层字号无关
+   * （13.5px 的聊天气泡与 15px 的正文里实测都是 2.5px，见 scripts 里的量法）。
+   */
+  vertical-align: -2.5px;
   cursor: pointer;
   white-space: nowrap;
   transition: border-color 0.15s ease, background 0.15s ease;

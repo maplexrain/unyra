@@ -16,6 +16,12 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     globals: false,
     /*
+     * 处理 CSS：默认（css: false）下所有 CSS 导入都被换成空串，**连 ?raw 也是空的**。
+     * 导出（export.css?raw）与文档 Tailwind（doc-theme.css / theme.css?raw）全靠 ?raw 取文本，
+     * 空串会让「导出件里有没有这套样式」的断言全部空转（看着是绿的，其实什么都没测）。
+     */
+    css: true,
+    /*
      * 覆盖率只做报告、不做门禁（npm run test:coverage）：先看数字找盲区。
      * 不定阈值——阈值一旦拦人，就会诱导出凑行数的用例；这里要的是「哪里没测到」的地图。
      * include 收窄到 src/ 的代码文件（tests 与 scripts 不是被测对象）；vitest 5 起
