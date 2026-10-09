@@ -1,13 +1,13 @@
 # 快捷键与语音
 
-两个模块各自一份说明：**快捷键**只回答「谁占了哪个组合」，**语音**只回答「按住说话时字怎么出来」。
+两个模块各自一份说明：**快捷键**只回答「谁占了哪个组合」，**语音输入**只回答「点一下开始录、说完怎么出字」。
 
 ## 快捷键（`lib/shortcuts`）
 
 **只有一份全局监听**：功能通过 `subscribeShortcut` / `useShortcut` 登记，谁占了哪个组合只有一个地方
 说得清，冲突检测才有意义。组合键以字符串存进 `setting.yaml` 的 `shortcuts`，改过的才写、没改的用
-代码里的默认值；按住型（语音）与点按型（保存）共用同一套，回调分 `down` / `up`，**自动重复一律忽略**
-（否则按住说话会不停重启）。`Ctrl` 在 macOS 上当 `Cmd` 使——一边是 Windows 的写法，一边是 Mac 的
+代码里的默认值；回调分 `down` / `up`（点按型只用 `down`），**自动重复一律忽略**（否则「按住」类功能
+会不停重启）。`Ctrl` 在 macOS 上当 `Cmd` 使——一边是 Windows 的写法，一边是 Mac 的
 手感，两边都该响。
 
 默认七条：
@@ -33,41 +33,52 @@
 还有一条规矩：**焦点在输入框里时，不带 `Ctrl` / `Alt` / `Win` 的组合不触发**——否则绑一个字母
 就把那个字母打不出来了。
 
-## 语音（`lib/voice`）
+## 语音输入（`lib/voice` + `electron/voice.ts`）
 
-光标放在**任意输入框**里，按住 `Ctrl+T` 说话、松开结束，说的字**实时**落到光标处（不是等说完一次性
-插入）。输入框上沿浮一条「正在听」：电平条 + 秒数 + 已经认出来的文字。
+它是**一件内置的功能性插件**（设置 → 插件 → 功能性插件 → 语音输入），**默认关**，
+而且**没有模型时开关按不动**（守卫见 `lib/voice/plugin`：拦下来时给的是一句「点进去下载」）。
+
+用起来只有两个动作：点输入框右侧那颗**话筒**（发送键左边）开始录，说完**按空格**结束。
+识别在结束之后一次做完，文字插到光标处——不是边说边出字（理由见下）。录音时按 Esc 丢弃这一段。
 
 分四层，各管一段：
 
 | 层 | 文件 | 干什么 |
 | --- | --- | --- |
 | 采集 | `voice/mic.ts` | 话筒 → 16 kHz 单声道 Float32（`getUserMedia` + `AudioWorklet`／`ScriptProcessor`） |
-| 引擎 | `voice/whisper/**` | whisper.cpp 的 WASM 构建，`init` / `loadModel` / `transcribe` |
-| 宿主 | `voice/engine.ts` + `engine.worker.ts` | 把引擎放进 Worker，主线程只发 PCM、收文本 |
-| 会话 | `voice/session.ts` | 「按住说话」的状态机：认目标输入框、按时重跑、把字写回去 |
+| 会话 | `voice/session.ts` | 「点一下开始、再点一下（或空格）结束」的状态机，出字交给登记的接收方 |
+| 按钮 | `components/agent/panel/MicButton.tsx` | 手绘 SVG 的话筒：录音态、秒数、空格结束；结果插进输入框 |
+| 推理 | `electron/voice.ts` | 模型下载与 **SenseVoiceSmall** 的识别，跑在**主进程**的 sherpa-onnx 原生运行时里 |
 
-引擎是 **whisper.cpp 编译成的 WASM**，模型是 **base 多语言模型的 q5_1 量化版**（约 57 MB）。
-引擎跑在**单独的 Worker** 里——CPU 那一趟要十几秒，占着主线程会把界面卡死。
+### 为什么是「录完再解」
 
-### 速度靠 WebGPU
+模型是 **SenseVoiceSmall**（非流式）：一次吃一整段音频、吐一整段文字。
+本机实测（int8 ONNX，CPU，2 线程）：**5.6 秒音频解码 228 ms**（约 24 倍实时），
+加载一次约 1.2 秒、之后常驻。既然一趟就是终版，就没有必要「边录边把整段重跑一遍」——
+那套是为了绕开 whisper「每趟固定十几秒、与音频长短无关」的毛病，SenseVoice 没有这个毛病。
 
-**默认开，起不来自动退回 CPU。** 同一台机器上实测差 40 倍：base q5_1 解 3 秒音频，
-CPU（单线程 WASM）要 **16.4 秒**、WebGPU 只要 **1.3 秒**，11 秒音频 **0.41 秒**。
+### 为什么推理搬到主进程
 
-所以「边说边出字」成立：GPU 上每约 1 秒重跑一遍未定稿的那一段，文字随说话往外长；
-CPU 上那条路每趟都要十几秒（whisper 每次都把输入补齐到 30 秒过一遍编码器，与音频长短无关），
-于是退化成「攒够 8 秒才跑一趟」。**间隔按上一趟的实测耗时自适应，不写死。**
+2026-11 把能进渲染层的路都试过一遍：
 
-两条走不通的路，都实测过：
+- npm 上的 **sherpa-onnx 是 Node 目标的 wasm**（胶水里 `require("fs")`，Vite 打不进去），
+  **transformers.js 不支持 SenseVoice**，官方的浏览器 wasm 只发在 GitHub release 里、要自己
+  vendor 十几 MB 进仓库；
+- 自己拿 `onnxruntime-web` + 手写前端（fbank / LFR / CMVN / CTC 解码）意味着把**最容易错的那一段**
+  重写一遍；线程版 wasm 还要 `SharedArrayBuffer`，而生产页面是 `file://` + 一段 CSP，实测
+  `crossOriginIsolated === false`。
 
-- **线程版 WASM 用不了**：它要 `SharedArrayBuffer`，而那要求页面 cross-origin isolated；
-  生产页面是 `file://` + 一段 CSP，实测 `crossOriginIsolated === false`；
-- **Web Speech API 也不行**：Electron 里没有 Google 的语音 API key，`start()` 直接报 `network`。
+所以走**原生**：`sherpa-onnx-node` + `sherpa-onnx-win-x64`（约 23 MB 的 `.node` 与 DLL，
+打包时按 `asarUnpack` 解到 asar 外面）。代价是安装包大一点，换来的是官方那份前端与解码。
 
-### 模型从哪来
+### GPU 与模型
 
-在**设置 → 输入**里下载：官方源与国内镜像**并发探测**，谁先应答用谁；也可以「用本机文件」
-指一份已经下好的 `ggml-base-q5_1.bin`。当前用的是 WebGPU 还是 CPU 也在那一页看得到。
+「GPU 加速」**默认跟着设备走**：启动时问一次 `app.getGPUInfo`，有显卡就开（`provider: 'directml'`）。
+运行时不带 GPU 版时会自己退回 CPU（sherpa 内部那条回退），识别照样出字。CPU 上已经够快，
+所以这个开关是「有就用上」，不是「不开就没法用」。
 
-**音频不出本机、也不写盘。** 细节与实测数字见 `src/lib/voice/whisper/README.md`。
+模型在那一页下载（约 228 MB）：官方源与国内镜像**并发探测**，谁先应答用谁；
+也可以「用本机文件」指一份 `model.int8.onnx`（词表 `tokens.txt` 要放在同一个目录里）。
+模型存在 `%APPDATA%\unyra\voice-models\` 下，**不属于任何一份学习数据**。
+
+**音频不出本机、也不写盘**：录到的 PCM 只在那一趟 IPC 里过一下，解完就丢。

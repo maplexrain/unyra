@@ -46,6 +46,8 @@ import { UpdatePanel } from './UpdatePanel'
 import { StoragePanel } from './StoragePanel'
 import { DevPanel } from './DevPanel'
 import { PluginsPanel } from './PluginsPanel'
+import { PluginVoicePage } from './PluginVoicePage'
+import { VOICE_PLUGIN_ID } from '../../lib/voice/plugin'
 import { ProviderListPage } from './ProviderListPage'
 import { ProviderConfigPage } from './ProviderConfigPage'
 
@@ -76,6 +78,11 @@ export default function SettingsPanel({ onRootChanged, onToast }: Props) {
   }
   const [draft, setDraft] = useState<AiSettings>(initial)
   const [page, setPage] = useState<Page>({ view: 'list' })
+  /**
+   * 「插件」那一页的二级页：非空 = 正停在某个功能性插件的配置页上（值是插件 id）。
+   * 与提供商的 page 分开存：两种二级页各自属于各自的页签，切页签回来不该串台。
+   */
+  const [pluginPage, setPluginPage] = useState<string | null>(null)
   const [status, setStatus] = useState<StatusState>({ kind: 'idle' })
   const [appearance, setAppearanceState] = useState(loadAppearance)
   // 界面语言是全局设置（跟机器走），不属 appearance；订阅它让这页的选中态跟着换
@@ -213,6 +220,16 @@ export default function SettingsPanel({ onRootChanged, onToast }: Props) {
               <ArrowLeft size={16} />
             </button>
           )}
+          {tab === 'plugins' && pluginPage && (
+            <button
+              type="button"
+              title={t('返回插件列表')}
+              onClick={() => setPluginPage(null)}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-ink-soft transition hover:bg-line/70 hover:text-ink"
+            >
+              <ArrowLeft size={16} />
+            </button>
+          )}
           <h2 className="text-[15px] font-semibold text-ink-strong">
             {tab === 'appearance'
               ? t('外观')
@@ -221,7 +238,9 @@ export default function SettingsPanel({ onRootChanged, onToast }: Props) {
                 : tab === 'storage'
                   ? t('数据存储')
                   : tab === 'plugins'
-                    ? t('插件')
+                    ? pluginPage
+                      ? t('语音输入')
+                      : t('插件')
                     : tab === 'update'
                     ? t('更新')
                   : tab === 'about'
@@ -371,7 +390,13 @@ export default function SettingsPanel({ onRootChanged, onToast }: Props) {
         ) : tab === 'storage' ? (
           <StoragePanel onRootChanged={onRootChanged} onToast={onToast} />
         ) : tab === 'plugins' ? (
-          <PluginsPanel onToast={onToast} />
+          pluginPage === VOICE_PLUGIN_ID ? (
+            <div className={pane(4, true)}>
+              <PluginVoicePage onToast={onToast} />
+            </div>
+          ) : (
+            <PluginsPanel onToast={onToast} onOpenConfig={setPluginPage} />
+          )
         ) : tab === 'update' ? (
           <UpdatePanel />
         ) : tab === 'about' ? (
