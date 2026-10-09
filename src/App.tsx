@@ -3,7 +3,6 @@ import { createDefaultProvider, loadAiSettings, saveAiSettings } from './ai/sett
 import LearnWorkspace from './components/learn/LearnWorkspace'
 import Toast, { type ToastData } from './components/Toast'
 import KeyCast from './components/KeyCast'
-import VoiceInput from './components/VoiceInput'
 import CloseDialog from './components/CloseDialog'
 import UserDialog from './components/user/UserDialog'
 import LoginPage from './components/user/LoginPage'
@@ -207,7 +206,6 @@ export default function App({ boot }: Props) {
         {closeAsk && <CloseDialog onDecide={handleCloseDecision} />}
         <Toast toast={toast} onHide={() => setToast(null)} />
         <KeyCast />
-        <VoiceInput />
       </div>
     )
   }
@@ -242,8 +240,6 @@ export default function App({ boot }: Props) {
       <Toast toast={toast} onHide={() => setToast(null)} />
       {/* 教学模式下的按键浮层：跟着外观开关走，四个路由分支都挂着（见 KeyCast） */}
       <KeyCast />
-      {/* 语音输入：光标在任意输入框里按住快捷键说话（见 VoiceInput / lib/voice） */}
-      <VoiceInput />
     </>
   )
 }

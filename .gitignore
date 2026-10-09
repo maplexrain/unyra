@@ -37,3 +37,9 @@ release-licgen
 # 授权签发器的打包配置——只给卖家自用，绝不进公开仓库
 electron-builder.licgen.yml
 coverage/
+
+# 图标工具集的临时依赖（npm run icons 现下的 resvg/vips wasm，约 8 MB）
+build/.icon-toolset/
+
+# DSH 沙箱 ACL 修复时留下的诊断报告——本机排障产物，与项目无关
+.dsh-acl-recovery/

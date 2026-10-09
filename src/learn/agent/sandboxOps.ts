@@ -31,7 +31,6 @@ export interface AgentRunTarget {
  * 都在那儿）。不注入就没有 ui 这一组——沙箱里调了会得到「沙箱里没有这个 api」。
  */
 export interface AgentUiDeps {
-  switchMain?: (main: 'agent' | 'doc') => void
   /** 打开/切换到某个节点的文档并定位（path 已由工具层解析好） */
   point?: (req: UiPointRequest) => Promise<{ located: boolean }> | { located: boolean }
   scroll?: (req: UiScrollRequest) => void
@@ -62,12 +61,15 @@ export function learnSandboxOps(deps: {
   nodeId: () => string | null
   /** 会话与 path 的基准目标 */
   goalId: () => string
+  /** wf.invoke 的落点（见 AgentOpsDeps.invokeWorkflow）：不注入时 wf.invoke 明说这里触发不了 */
+  invokeWorkflow?: (ref: string, opts: { params?: Record<string, string | number> }) => unknown
 }): AgentOps {
   return createAgentOps({
     getLatest: deps.getLatest,
     set: deps.set,
     nodeId: deps.nodeId,
     goalId: deps.goalId,
+    ...(deps.invokeWorkflow ? { invokeWorkflow: deps.invokeWorkflow } : {}),
     /**
      * 资源库的磁盘能力。图片走 loadImageByRel：与聊天气泡共用同一份缓存，
      * 同一张图既挂在消息里、又被文档引用时只读一次盘。

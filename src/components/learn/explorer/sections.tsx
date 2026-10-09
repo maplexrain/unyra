@@ -74,7 +74,7 @@ export function RecentRow({ item, now, onOpen }: { item: RecentOpen; now: number
         if (e.key === 'Enter') onOpen()
       }}
       title={item.tip}
-      className="flex cursor-pointer items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-1.5 transition hover:bg-line/40"
+      className="flex cursor-pointer items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1.5 transition hover:bg-line/40"
     >
       {item.kind === 'node' ? (
         <span className="flex h-4 w-4 shrink-0 items-center justify-center">
@@ -473,7 +473,7 @@ function FavRow({
         e.dataTransfer.effectAllowed = 'copyMove'
       }}
       data-reveal={'row:fav:' + favoriteKey(item)}
-      className="flex cursor-pointer items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-1.5 transition hover:bg-line/40"
+      className="flex cursor-pointer items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1.5 transition hover:bg-line/40"
     >
       {/* 网页行显示**站点图标**（收藏那一刻记下的 favicon，与页签栏同一颗组件；没记到退回地球），
           其余类型用类型图标——同一个东西在页签栏与收藏夹里长得一样。 */}
@@ -725,7 +725,7 @@ export function LocalRow({
         e.dataTransfer.setData('application/x-moji-chip', chipJson({ type: 'local', path: file.path, title: file.name }))
         e.dataTransfer.effectAllowed = 'copy'
       }}
-      className="flex cursor-pointer items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-1.5 transition hover:bg-line/40"
+      className="flex cursor-pointer items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1.5 transition hover:bg-line/40"
     >
       <DocTypeIcon kind="local" size={13} />
       <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{file.name}</span>
@@ -791,7 +791,7 @@ function FocusReportRow({ meta, onOpen }: { meta: FocusReportMeta; onOpen: () =>
       }}
       title={t('{0} 开始的一场专注（{1} 分钟）', `${start.getMonth() + 1} 月 ${start.getDate()} 日 ${p(start.getHours())}:${p(start.getMinutes())}`, minutes)}
       data-reveal={'row:focus:' + meta.id}
-      className="flex cursor-pointer items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-1.5 transition hover:bg-line/40"
+      className="flex cursor-pointer items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1.5 transition hover:bg-line/40"
     >
       <FileClock size={13} className="shrink-0 text-ink-faint" />
       <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">

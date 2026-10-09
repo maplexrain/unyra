@@ -33,6 +33,15 @@ export interface AgentOpsDeps {
    * 这里只把界面层给的实现接上去，agentOps 自己仍然可以在 Node 里裸跑。
    */
   web?: WebOps
+  /**
+   * wf.invoke 的落点（见 WorkflowOps.invoke）：沙箱里触发工作流只是**排队**，
+   * 真正起那一轮的是宿主（一轮对话里就是 useAgent 的 runWorkflow）。
+   *
+   * 为什么不在这里直接跑：工作流的指令要作为一条新的 user 消息进上下文，
+   * 而调用它的那一轮还在跑——在正在跑的循环底下插一条用户消息是不行的。
+   * 不注入时 wf.invoke 回一句「这个执行环境触发不了」（超级文档的桥那一侧就是如此）。
+   */
+  invokeWorkflow?: (ref: string, opts: { params?: Record<string, string | number> }) => unknown
 }
 
 /**

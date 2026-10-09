@@ -642,7 +642,7 @@ export default function AgentPanel({
             </>
           )}
           <span className="min-w-0 flex-1" aria-hidden="true" />
-          <PaceStrip turns={turns} tps={tpsNow} tokens={tokensTotal} />
+          <PaceStrip turns={turns} tps={tpsNow} tokens={tokensTotal} usages={usages} />
         </div>
       </div>
 

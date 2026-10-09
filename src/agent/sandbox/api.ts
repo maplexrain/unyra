@@ -486,6 +486,12 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     wrapApi(api, 'wf.list', () => wfs.list(), log)
     wrapApi(api, 'wf.create', (args) => wfs.create(asRecord(args[0])), log)
     wrapApi(api, 'wf.remove', (args) => wfs.remove(asText(args[0]).trim()), log)
+    /*
+     * 触发（wf.invoke）：把这件事交给某条流程。它**不当场跑**那个流程——工作流的指令要
+     * 作为一条新的 user 消息进上下文，而当前这一轮还在跑（在正在跑的循环底下插一条
+     * 用户消息是不行的），只能等本轮收口后由宿主另起一轮。所以这里只把意图递上去排队。
+     */
+    wrapApi(api, 'wf.invoke', (args) => wfs.invoke(asText(args[0]).trim(), asRecord(args[1])), log)
   }
 
   // 代码块伪编译：导师把转译好的 JS 交回宿主（见 lib/codeArtifacts）
@@ -710,17 +716,6 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
 
   if (opts.ui) {
     const ui = opts.ui
-    if (ui.switchMain) {
-      const switchMain = ui.switchMain
-      wrapApi(api, 'ui.switchMain', (args) => {
-        const main = asText(args[0])
-        if (main !== 'agent' && main !== 'doc') {
-          return { error: "main 只认 'agent'（对话栏放主位）或 'doc'（文档栏放主位），收到「" + main + "」" }
-        }
-        switchMain(main)
-        return { ok: true, main, note: main === 'agent' ? '对话栏已换到主位' : '文档栏已换到主位' }
-      }, log)
-    }
     if (ui.toast) {
       const toast = ui.toast
       wrapApi(api, 'ui.toast', (args) => {

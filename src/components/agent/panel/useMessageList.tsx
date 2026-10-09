@@ -24,8 +24,8 @@ import { t } from '../../../i18n'
  * 相邻的分割线在 HiddenDivider 里融成一条——不归段的话，工作流连着触发的两下
  * 就画出两条紧贴的横线（见 HiddenDivider 的说明）。
  * 动态注入的提示词模块**不在这一层**：mid-loop 注入记成回复里的 prompt-module
- * 片段，由 Parts 渲染成轮内折叠块（不分割轮次）；只有工作流轮开始时注入的那种
- * 独立隐藏消息走 HiddenDivider（它本来就在轮与轮之间）。
+ * 片段，由 Parts 并进「思考与工具」那个消息组（不分割轮次）；只有工作流轮开始时
+ * 注入的那种独立隐藏消息走 HiddenDivider（它本来就在轮与轮之间）。
  */
 type Segment =
   | { kind: 'marks'; msgs: ConversationMessage[]; start: number }

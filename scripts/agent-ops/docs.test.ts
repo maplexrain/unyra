@@ -63,6 +63,27 @@ export async function toolTests() {
     '「笔记」与「笔记/错题本」各自读到自己那份',
     rBoth.content.slice(0, 200),
   )
+  // 排版提醒（见 ops/assemble 的 layoutHintOf）：文档好不好看模型自己看不见，回执得说一句。
+  // 四条边界一起钉住：整篇写入 + 教学文档 + 够长 + 一处 class 都没有，才提醒。
+  // 这几条会把当前节点的教学文档整篇覆盖掉——而它是**共享 fixture**（后面的 doc.find 等用例
+  // 还在这份正文上找东西），所以先原样存一份，测完写回去。
+  const keepTeaching = h.store().nodes.find((n) => n.id === childId)?.docs.teaching ?? ''
+  const plainDoc = '这一段讲解只有最朴素的段落。'.repeat(40)
+  const rPlain = await h.run('((api)=>{ return await api.doc.write("", ' + JSON.stringify(plainDoc) + ') })')
+  ok(rPlain.ok && rPlain.content.includes('排版工具类'), '整篇写入的教学文档没有工具类时，回执点一句排版提醒', rPlain.content.slice(0, 200))
+  const richDoc = '<div class="my-5 rounded-lg bg-sunken p-4"><p class="m-0 text-[14px] text-ink">' + plainDoc + '</p></div>'
+  const rRich = await h.run('((api)=>{ return await api.doc.write("", ' + JSON.stringify(richDoc) + ') })')
+  ok(rRich.ok && !rRich.content.includes('排版工具类'), '带了工具类就不提醒', rRich.content.slice(0, 160))
+  const rNotePlain = await h.run('((api)=>{ return await api.doc.write("笔记/摘录", ' + JSON.stringify(plainDoc) + ') })')
+  ok(rNotePlain.ok && !rNotePlain.content.includes('排版工具类'), '笔记不提醒（那是学习者自己写的地方）', rNotePlain.content.slice(0, 160))
+  const rTiny = await h.run('((api)=>{ return await api.doc.write("", "先占个位") })')
+  ok(rTiny.ok && !rTiny.content.includes('排版工具类'), '太短的文档不提醒（占位很正常）', rTiny.content.slice(0, 160))
+  await h.run('((api)=>{ return await api.doc.write("", ' + JSON.stringify(keepTeaching) + ') })')
+  ok(
+    h.store().nodes.find((n) => n.id === childId)?.docs.teaching === keepTeaching,
+    '共享 fixture 的教学文档已原样写回（后面的用例还要在它上面找东西）',
+    h.store().nodes.find((n) => n.id === childId)?.docs.teaching,
+  )
   const r4 = await h.run('((api)=>{ return await api.doc.replace("", { start: 0, end: 2, content: "改", expected: "不对的内容" }) })')
   ok(!r4.ok && r4.content.includes('位置校验失败') && r4.content.includes('没有生效'), 'expected 不符时工具级失败，并说清是哪个 api 没生效', r4.content.slice(0, 200))
   const r5 = await h.run('((api)=>{ await api.doc.write("微积分/笔记", "目标自己的笔记"); return (await api.doc.read("微积分/笔记")).content })')
@@ -198,6 +219,9 @@ export async function apiNameTests() {
     'wf.list': '',
     'wf.create': "{ name: '探针流程', instruction: '第一步：api.tiktok()；第二步：return \"ok\"' }",
     'wf.remove': "'探针流程'",
+    // 触发：只排队（真起那一轮的是宿主，探针里就是下面那个桩）。
+    // 用内置的「回忆」指名——它不随上面 create / remove 的先后而变化
+    'wf.invoke': "'recall'",
     // 伪编译交货：key 是宿主发出去的那串（探针这里没有待编译登记，走的是「key 对不上」那条路）
     'code.save': "{ key: '0123456789abcdef', js: 'console.log(1)', note: '探针' }",
     'code.silent': "{ key: '0123456789abcdef', reason: '探针：只有定义' }",
@@ -208,7 +232,6 @@ export async function apiNameTests() {
     'wait': '0',
     'ask': "{ title: '确认', questions: [{ type: 'short', prompt: '怎么继续？' }] }",
     'tiktok': '',
-    'ui.switchMain': "'agent'",
     'ui.toast': "'你好'",
     'ui.point': "{ line: 1 }",
     'ui.scroll': "{ to: 'top' }",
@@ -279,6 +302,8 @@ export async function apiNameTests() {
   let s = staticStore()
   let tmpStore: Record<string, unknown> = {}
   let sawTmpWrite = false
+  /** wf.invoke 的落点：真宿主是 useAgent 的队列（本轮收口后另起一轮），这里只记下交给它的是哪一条 */
+  let sawInvoke = ''
   // 资源那一组要磁盘：给它一份假的，名单检查才走得通（见 fakeResourceIo）
   const { io: resIo } = fakeResourceIo(
     new Map<string, string>([[MD_REL, '# 速查']]),
@@ -309,6 +334,8 @@ export async function apiNameTests() {
       update: async (patch) => ({ ...emptyProfile(), nickname: '探针用户', ...patch }),
     },
     tmp: () => ({ nodeId: childId, entries: tmpStore as never, onChange: (next) => { tmpStore = next; if (Object.keys(next).length) sawTmpWrite = true } }),
+    // wf.invoke：接受排队就是成功（真起那一轮的是宿主）
+    invokeWorkflow: (id) => { sawInvoke = id; return { ok: true } },
     // 桩：这一组只查「名字真的注册了吗」，行为由 examTests 与用例各自覆盖
     exam: {
       create: () => ({ ok: true, content: '（桩）' }),
@@ -320,7 +347,6 @@ export async function apiNameTests() {
   })
   // 人机协作与界面那一组：wait / ask / tiktok / ui 都是桩（行为由界面接线保证），
   // mind 用真的 createMindOps（它是纯 store 逻辑，Node 里就能跑）
-  let sawMain = ''
   let sawToast = ''
   let sawScroll: unknown = null
   let sawOpenSuper: string | null = null
@@ -338,7 +364,6 @@ export async function apiNameTests() {
     ask: async () => ({ ok: true, cancelled: false, answers: [] }),
     tiktok: async () => {},
     ui: {
-      switchMain: (main) => { sawMain = main },
       toast: (msg) => { sawToast = msg },
       point: () => ({ located: false }),
       scroll: (req) => { sawScroll = req },
@@ -397,7 +422,8 @@ export async function apiNameTests() {
   ok(catalogNames.length === nameSet.size, '目录与名单的条数一致（没有重复、没有漏）', { catalog: catalogNames.length, names: nameSet.size })
 
   // 新 api 的行为抽两条钉住：ui.dom 的门面真的可用
-  ok(sawMain === 'agent' && sawToast === '你好' && !!sawScroll, 'ui.switchMain / ui.toast / ui.scroll 都到了宿主')
+  ok(sawToast === '你好' && !!sawScroll, 'ui.toast / ui.scroll 都到了宿主')
+  ok(sawInvoke === 'recall', 'wf.invoke 把要触发的那一条交给了宿主（按 id 交出去）', sawInvoke)
   ok(sawOpenSuper === '探针文档', 'ui.superdoc 把要开的文档名递给了宿主', sawOpenSuper)
   ok(
     sawBrowserOpen === 'https://example.com' &&

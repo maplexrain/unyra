@@ -21,7 +21,7 @@ README 只负责介绍项目（它是什么、能做什么、怎么装）。**�
 | [workspace.md](workspace.md) | 文档区：自由页签、分割、源码 / 预览、暂存区、查找替换、导出、大纲 |
 | [rendering.md](rendering.md) | 文档渲染插件：接口与边界、正文文字规则、代码块高亮 |
 | [code-run.md](code-run.md) | 代码块的伪编译与运行：工作流、运行沙箱、产物寻址 |
-| [shortcuts-and-voice.md](shortcuts-and-voice.md) | 快捷键改键与语音转文字（whisper.cpp + WebGPU） |
+| [shortcuts-and-voice.md](shortcuts-and-voice.md) | 快捷键改键与语音输入（SenseVoiceSmall，功能性插件） |
 
 ## 学习闭环
 

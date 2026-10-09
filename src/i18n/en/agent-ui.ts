@@ -167,6 +167,7 @@ const dict: Record<string, string> = {
   '编辑': 'Edit',
   '确认': 'Confirm',
   '思考与工具 · {0} 步': 'Thinking & tools · {0} steps',
+  '思考、工具与提示词 · {0} 步': 'Thinking, tools & prompts · {0} steps',
   '思考过程': 'Thinking',
   '回到最新消息（恢复自动滚动）': 'Back to the latest message (resume auto-scroll)',
 

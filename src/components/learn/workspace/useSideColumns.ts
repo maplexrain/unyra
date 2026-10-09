@@ -356,9 +356,8 @@ export function useSideColumns() {
    * 所以对调之后（默认就是对话在左）对话栏占左边那一大块，文档落进右边那条窄的。
    * 与拖动不同，这个开关触发一次就是最终结果，没有「松手」那一刻，立即写进设置。
    *
-   * 把中间栏换成谁：true = 对话栏进主位，false = 文档栏回主位。
-   * 抽成显式目标（而不是只有「对调」）是因为两个入口：双击分隔线是「换一下」，
-   * api.ui.switchMain 是「指名要谁」——后者不能依赖此刻的状态取反。
+   * 参数是「谁进主位」：true = 对话栏，false = 文档栏。写成显式目标而不是取反，
+   * 是为了调用方不必自己读一遍此刻的状态（当下的入口只有双击分隔线的 swapSides）。
    */
   const swapTo = useCallback(
     (next: boolean) => {
@@ -434,7 +433,6 @@ export function useSideColumns() {
     onAgentResizeUp,
     toggleSide,
     expandSide,
-    swapTo,
     swapSides,
   }
 }

@@ -79,10 +79,11 @@ const API_NAMES = [
   'sdoc.read',
   'sdoc.write',
   'sdoc.delete',
-  // 工作流登记表：管理（看/登记/删）；触发永远由用户在界面上点，没有 wf.run（见 learn/workflows）
+  // 工作流登记表：管理（看/登记/删）+ 触发（invoke 只排队，本轮收口后宿主另起一轮，见 learn/workflows）
   'wf.list',
   'wf.create',
   'wf.remove',
+  'wf.invoke',
   // 代码块伪编译：交付转译好的 JS（key 由代码块的菜单给，见 lib/codeArtifacts）
   'code.save',
   // 同上：判定「这段代码没有输出」，当场停止编译并标记那一块
@@ -154,7 +155,6 @@ const API_NAMES = [
   'wait',
   'ask',
   'tiktok',
-  'ui.switchMain',
   'ui.toast',
   'ui.point',
   'ui.scroll',

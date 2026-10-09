@@ -575,8 +575,8 @@ export interface OutlineOps {
  * wf.* 的宿主实现（见 learn/workflows）：三级任务模板（内置 / 全局 / 目标级）的登记处。
  *
  * 与 method 的分界：method 存**可执行代码**（沙箱当场执行），wf 存**指令文本**——
- * 被触发时才以 user 消息整段进上下文，不进系统提示词。这里只有管理三件事：
- * 看、登记、删；「触发」永远由用户在界面上点，沙箱里没有 wf.run。
+ * 被触发时才以 user 消息整段进上下文，不进系统提示词。看、登记、删三件事之外，
+ * 还有 invoke：让导师自己把活交给一条流程（见 invoke 的说明）。
  */
 export interface WorkflowOps {
   /** 全部工作流（内置 + 全局 + 当前目标），带 id、名字、分级与指令体量 */
@@ -585,6 +585,12 @@ export interface WorkflowOps {
   create: (input: unknown) => unknown
   /** 按 id 或名字删一条；内置的删不掉 */
   remove: (ref: string) => unknown
+  /**
+   * wf.invoke：把这件事交给某条工作流去做。**不当场执行**——指令要作为一条新的 user
+   * 消息进上下文，而这一轮还在跑，只能等本轮收口后由宿主另起一轮。所以这里只负责
+   * 校验（有没有这条流程）与登记排队，回执说清「已排队、别再重复调」。
+   */
+  invoke: (ref: string, opts: Record<string, unknown>) => unknown
 }
 
 /* ---------- code：代码块伪编译 ---------- */
@@ -651,8 +657,6 @@ export type UiCaptureResult =
   | { ok: false; error: string }
 
 export interface UiOps {
-  /** 'agent' = 对话栏放到主位；'doc' = 文档栏放回主位 */
-  switchMain?: (main: 'agent' | 'doc') => void
   toast?: (message: string) => void
   /** 打开/切换到某节点的文档页签并定位；located 说明定位是否成功 */
   point?: (req: UiPointRequest) => Promise<{ located: boolean }> | { located: boolean }

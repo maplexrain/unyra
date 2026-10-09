@@ -363,16 +363,7 @@ export const PROMPT_MODULES: PromptModule[] = [
   {
     key: 'ui',
     title: '界面操作',
-    text: `界面操作（ui；文档区没有打开的文档时，point / scroll / screenshot / dom 会明确失败）——这份规范在你第一次操作界面时注入（switchMain 的判断标准见系统提示词，那里是它的主场）：
-- api.ui.switchMain('agent' | 'doc')：交换主栏，决定用户此刻看哪一边。**多用它**——
-  它不改任何数据，代价只有一次调用，而用户被切到正确的那一栏才不会「答着答着发现文档被压在后面」。
-  判断标准是「**接下来这几秒用户该看哪边**」，不是某个特定动作：
-  - 交付物在文档区（写完 / 改完教学文档、超级文档、学习大纲，或改完一段正文）→ 切 'doc'，
-    然后用一两句话说明看什么；**讲完一段该他读的时候也要切**，别让文档压在对话后面。
-  - 需要用户动作（ask 表单、让他口答、让他点超级文档里的按钮、让他自己写一段）→ 切 'agent'，
-    这一类**必须在提问或等待之前切**，否则他在看文档、看不见问题。
-  - 一轮里可以切多次：写文档 → 'doc'，接着要摸底 → 'agent'，再写文档 → 又回 'doc'。
-    不要只在一轮结束时切一次，也不要切完不吭声（配一句「请看文档第 3 节」）。
+    text: `界面操作（ui；文档区没有打开的文档时，point / scroll / screenshot / dom 会明确失败）——这份规范在你第一次操作界面时注入：
 - api.ui.toast('一句话')：弹一条吐司提示（轻量的告知；需要用户做动作的用 ask）。
 - api.ui.point(path?, { line?, regex?, flags? })：在页签里打开/切到某个节点的文档
   （path 规则与 doc.* 一致，省略 = 当前节点的教学文档）。line 定位到某一行，
@@ -412,7 +403,11 @@ export const PROMPT_MODULES: PromptModule[] = [
   {
     key: 'rich-animation',
     title: '富媒体动画写法',
-    text: `富媒体动画（SVG SMIL 与内嵌 CSS 动画）——这份规范在你第一次写动画内容时注入。前提规矩不变：Markdown 能表达的一律用 Markdown；动画要克制，同一屏最多一两个，服务于讲解本身，不做装饰性干扰。
+    text: `富媒体动画（现成的文档动画、SVG SMIL 与内嵌 CSS 动画）——这份规范在你第一次写动画内容时注入。
+动画要克制：同一屏最多一两个，服务于讲解本身，不做装饰性干扰。
+- **先用现成的四个**（正文里当工具类写，见「文档排版与图表」那份规范）：animate-doc-fade、
+  animate-doc-rise、animate-doc-grow（配 origin-bottom 做柱子）、animate-doc-draw
+  （配 pathLength="1" 与 stroke-dasharray="1" 描线）。九成的「动起来才看得懂」用这四个就够。
 - SVG 内嵌动画（用 SMIL，适合「动起来才看得懂」的过程：波的传播、向量旋转、
   极限逼近、函数变换）。可用 <animate>、<animateTransform>、<animateMotion>、<set>，
   并为动画加上 repeatCount="indefinite" 让它循环：
@@ -427,6 +422,110 @@ export const PROMPT_MODULES: PromptModule[] = [
 - SVG 里给 fill / stroke 用具体颜色或 currentColor，深色与浅色模式下都要能看清
   （不要只用纯黑或纯白）。
 - 内嵌 HTML 必须闭合良好；不确定能否渲染的写法就退回纯 Markdown。`,
+  },
+  {
+    key: 'doc-html',
+    title: '文档排版与图表',
+    text: `文档排版与图表（教学文档的 HTML + Tailwind 配方）——「开讲」「学习大纲」这两条工作流会在动笔之前
+把它交给你；其它场合则在你第一次写教学文档之后注入。
+
+**先看这一条**：通篇只写 <h2>/<h3>/<p> 的文档不算讲义（渲染器给裸标签的只是兜底样式）。
+每一份教学文档至少要落下 2~3 处结构性元素，下面六个配方就是为这件事准备的。
+
+同一段内容的两种写法，差别就是「草稿」与「讲义」：
+  草稿：<h3>三种变化率</h3><p>平均变化率是一段区间上的快慢，瞬时变化率是把区间压到零。</p>
+  讲义：<h3 class="mt-7 mb-2 text-[1em] font-semibold text-ink-strong">三种变化率</h3>
+        <div class="my-4 rounded-lg border-l-4 border-seal bg-sunken px-4 py-3">
+        <p class="m-0 text-[0.88em] leading-relaxed text-ink">平均变化率是一段区间上的快慢，
+        瞬时变化率是把区间压到零。</p>
+        </div>
+（同一个标题、同一句话，只是把「兜底样式」换成了显式的字号、墨色与层次——这一步不做，
+用户看到的永远是左边那种。）
+前提与系统提示词里「正文写作」一节同一套：正文列宽上限 800px、**可用内容宽度约 745px**；
+颜色优先用应用的主题令牌（bg-paper / bg-card / bg-sunken / bg-inset、text-ink / text-ink-strong /
+text-ink-soft / text-ink-faint、border-line / border-line-strong、text-seal / bg-seal、
+text-ok / text-warn、bg-mark），它们跟着浅色/深色主题自动变。
+
+能用的是**标准 Tailwind 工具类**（v4），常打交道的几组：
+- 布局：flex / grid / grid-cols-2 / grid-cols-3 / items-center / items-end / justify-between / shrink-0
+- 间距：gap-3 / gap-5 / p-4 / px-5 / py-3 / mt-6 / my-5 / space-y-2
+- 文字：**字号一律用 em**（text-[0.9em] / text-[0.85em] / text-[0.75em] / text-[1.45em]）——
+  正文有一个整篇的字号系数，它只缩放 em；写 px 的那部分不会跟着放大，一篇里就会一半大一半小。
+  行距与字重：leading-relaxed / leading-[1.85] / font-semibold；数字对齐：tabular-nums
+- 数字：tabular-nums（表格与图表里的数字务必加上，位数才会对齐）
+- 形状：rounded-sm / rounded-lg（纸墨风，别用大圆角）/ border / border-l-4 / shadow-sm（少用）
+- 任意值也认：w-[360px] / grid-cols-[1fr_auto] / [animation-delay:120ms] / bg-[#f3f4f6]
+
+下面六个配方照抄改字即可（省略号处填你自己的内容）。注意每个配方的标签之间**不留空行**——
+空行会把一个 HTML 块切成两半。
+
+一、提示框（结论 / 易错点 / 记忆点）：
+<div class="my-4 rounded-lg border-l-4 border-seal bg-sunken px-4 py-3">
+<p class="m-0 text-[0.88em] leading-relaxed text-ink">结论写在这里。</p>
+</div>
+（结论用 border-ok、易错用 border-warn；整篇不要到处套盒子，一屏一个就够）
+
+二、两栏对照（每栏约 350px）：
+<div class="my-5 grid grid-cols-2 gap-5">
+<div class="rounded-lg bg-sunken p-4"><h3 class="m-0 text-[0.95em] font-semibold text-ink-strong">甲说法</h3>
+<p class="mt-2 text-[0.88em] leading-relaxed text-ink-soft">……</p></div>
+<div class="rounded-lg bg-card p-4">……</div>
+</div>
+
+三、步骤 / 时间轴：
+<div class="my-5 space-y-3">
+<div class="flex gap-3">
+<span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-seal text-[0.78em] text-white">1</span>
+<p class="m-0 text-[0.9em] leading-relaxed text-ink">第一步做什么。</p>
+</div>
+（第二步、第三步照写，序号改成 2、3）
+</div>
+
+四、横向条形图（比大小最直观）：
+<div class="my-5 space-y-2 text-[0.85em]">
+<div class="flex items-center gap-3">
+<span class="w-[92px] shrink-0 text-ink-soft">甲</span>
+<div class="h-3 flex-1 rounded-sm bg-inset"><div class="h-3 rounded-sm bg-seal/80" style="width:72%"></div></div>
+<span class="w-[36px] shrink-0 text-right tabular-nums text-ink-faint">72</span>
+</div>
+（每组一行；宽度按「这一项 ÷ 最大值」算百分比，最大的那一项给 100%）
+</div>
+
+五、柱状图（柱子自己长出来）：
+<div class="my-5">
+<div class="flex h-40 items-end gap-4 border-b border-line px-2">
+<div class="flex h-full flex-1 flex-col items-center justify-end"><div class="w-[58%] origin-bottom animate-doc-grow rounded-t-sm bg-seal/85" style="height:64%"></div></div>
+<div class="flex h-full flex-1 flex-col items-center justify-end"><div class="w-[58%] origin-bottom animate-doc-grow rounded-t-sm bg-seal/85" style="height:100%"></div></div>
+</div>
+<div class="mt-2 flex gap-4 px-2 text-[0.75em] text-ink-faint">
+<span class="flex-1 text-center">一季度</span>
+<span class="flex-1 text-center">二季度</span>
+</div>
+</div>
+（每组一列，结构照抄：**列必须是 h-full**，柱子写百分比高度才量得出来；把柱子直接放进
+items-end 的容器里写百分比高度会算成 0——高度全没了，这是这条配方最容易踩空的一处。
+要错峰入场就给柱子加 [animation-delay:120ms]，一列往后推一档）
+
+六、折线与曲线（手画 SVG，线自己描出来）：
+<figure class="md-fig my-5">
+<svg viewBox="0 0 720 220" class="w-full">
+<line x1="40" y1="190" x2="700" y2="190" stroke="currentColor" class="text-line" />
+<path d="M40 170 L200 120 L360 132 L520 62 L700 44" fill="none" stroke="currentColor" stroke-width="2.5" class="text-seal animate-doc-draw" pathLength="1" stroke-dasharray="1" />
+</svg>
+<figcaption>图 1：一句话说清这张图要看哪一处。</figcaption>
+</figure>
+（viewBox 宽度按 720 给，正好铺满正文那一列；坐标自己算：x 均匀分布，y 按数值映射）
+
+另外两个常用的：**数字并排**（grid grid-cols-3 gap-4 text-center，大数字用 text-[1.45em]
+font-semibold tabular-nums）；**进度条**（外层 h-2 rounded-full bg-inset，内层同高 rounded-full
+bg-ok，宽度用 style="width:38%"）。
+
+三条纪律：
+- **动画只用在过程上**：生长（animate-doc-grow）、描线（animate-doc-draw）、浮现
+  （animate-doc-fade / animate-doc-rise）。同一屏最多一两个，静态讲得清就别动。
+- 每张图配一句 <figcaption>，正文里也点一句「这张图看哪里」——图是讲解的一部分，不是装饰。
+- **不要把整篇切成一张张卡片**：留白、字号层级和一条细分隔线（border-line）比边框与底色耐读。
+  标题、表格、公式、代码块沿用渲染器自带的样子即可，不必自己重做。`,
   },
 ]
 
@@ -470,8 +569,12 @@ export function promptModuleForApiName(name: string): string | null {
  * 动画时，对应的数据形态 / 动画写法模块就该在场。宿主在 execute 的 doc / sdoc 写入
  * 参数上嗅探（见 sandbox/execute 的 callApi）。
  */
-export function promptModuleForContent(content: string): string[] {
+export function promptModuleForContent(content: string, apiName?: string): string[] {
   const out: string[] = []
+  // 写教学文档（doc.write / append / replace）就注入排版配方：这一条不挑内容——
+  // 模型要是压根不知道正文能用 HTML + Tailwind，它写出来的永远是纯 Markdown，
+  // 「写出了 class 才注入」就永远等不到那一刻。超级文档（sdoc）不算：那是 iframe 里的另一套写法。
+  if (apiName?.startsWith('doc.')) out.push('doc-html')
   if (content.includes('```plot')) out.push('plot-forms')
   if (content.includes('<animate') || content.includes('@keyframes')) out.push('rich-animation')
   return out

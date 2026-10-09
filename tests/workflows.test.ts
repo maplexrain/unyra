@@ -21,6 +21,7 @@ import {
   resolveWorkflowEffort,
   setWorkflowEffort,
   upsertWorkflow,
+  workflowModules,
   workflowPrep,
   WORKFLOW_NAME_MAX,
 } from '../src/learn/workflows'
@@ -99,19 +100,29 @@ describe('内置工作流', () => {
     expect(byId.get('code-compile')?.params).toEqual(['language', 'key', 'code'])
   })
 
-  it('切主位只给问询类：show 与没有 prep 的一律不动主栏', () => {
-    // 'ask'：第一步是一张压在输入框上方的表单，不回答就走不下去——值得把视线抢过来
-    expect(workflowPrep('ask')).toEqual({ beep: true, takeMain: true })
-    // 'show'（伪编译）：交付物在对话里，但回执画在用户点的地方（代码块上的转圈 → 运行亮起），
-    // 把面板拽到眼前反而打断他正在读的文档
-    expect(workflowPrep('show')).toEqual({ beep: true, takeMain: false })
-    // 没有 prep 的（回忆 / 探针 / 大纲 / 压缩 / 阅卷）：连铃都不响
-    expect(workflowPrep(undefined)).toEqual({ beep: false, takeMain: false })
-    // 内置表里对得上：会切主位的只有那几个 'ask'（复习的第一步也是「请他合上文档讲一遍」）
-    const takeMain = builtinWorkflowRows()
-      .filter((r) => workflowPrep(r.prep).takeMain)
+  it('触发前只做响铃：带 prep 的响，没带的不响；主栏一概不动', () => {
+    // 'ask'：第一步是一张压在输入框上方的表单，用户盯着文档时听不见——响一声提醒他
+    expect(workflowPrep('ask')).toEqual({ beep: true })
+    // 'show'（伪编译 / 了解）：交付物就在他盯着的地方，响一声让他知道结果在对话里
+    expect(workflowPrep('show')).toEqual({ beep: true })
+    // 没有 prep 的（回忆 / 探针 / 大纲 / 压缩 / 阅卷）：连铃都不响——那是用户自己点出来的
+    expect(workflowPrep(undefined)).toEqual({ beep: false })
+    // 内置表里对得上：会响铃的就是带 prep 的那几条
+    const beeping = builtinWorkflowRows()
+      .filter((r) => workflowPrep(r.prep).beep)
       .map((r) => r.id)
-    expect(takeMain).toEqual(['teach-node', 'exam', 'superlab', 'checkin', 'review'])
+    expect(beeping).toEqual([
+      'teach-node',
+      'outline',
+      'exam',
+      'explain',
+      'superlab',
+      'code-compile',
+      'checkin',
+      'review',
+    ])
+    // 切主位那一条规矩随 api.ui.switchMain 一起撤了：谁都不许动用户的主栏
+    expect(builtinWorkflowRows().some((r) => 'takeMain' in workflowPrep(r.prep))).toBe(false)
   })
 
   it('伪编译指令：三个占位符都被换掉，代码与围栏都在（这段文本是给模型看的）', () => {
@@ -135,12 +146,11 @@ describe('内置工作流', () => {
     expect(text).toContain('第零步')
     expect(text).toContain('api.code.silent')
     expect(text.indexOf('api.code.silent')).toBeLessThan(text.indexOf('api.code.save'))
-    // 不抢主位：宿主那一侧不切（见 workflowPrep），指令里也得说住模型别自己去切——
-    // 系统提示词里那句「需要用户动作就切 agent」很容易被它顺手用在这一轮上
-    expect(text).toContain('不要调 api.ui.switchMain')
+    // 主栏归用户：指令里不该再出现任何「切主位」的说法（那条 api 已经撤了）
+    expect(text).not.toContain('switchMain')
   })
 
-  it('了解指令：三个占位符都被换掉，交货那条 api 点名了、而且不抢主位', () => {
+  it('了解指令：三个占位符都被换掉，交货那条 api 点名了、而且不打断他', () => {
     const row = builtinWorkflowRows().find((r) => r.id === 'explain')
     expect(row).toBeTruthy()
     // 词条、序号、选段都由触发方补齐：缺一样它就会去猜，而猜错的后果是注解标错地方
@@ -159,8 +169,8 @@ describe('内置工作流', () => {
     expect(text).not.toContain('{{')
     // 交货那条 api 必须点名，否则模型只会把解释贴在对话里、正文上什么都不出现
     expect(text).toContain('api.doc.annotate')
-    // 解释要挂在用户盯着的那段文字旁边，把对话栏拽到眼前是打断（同伪编译）
-    expect(text).toContain('不要调 api.ui.switchMain')
+    // 解释要挂在用户盯着的那段文字旁边，别把视线拽到对话栏（同伪编译）
+    expect(text).not.toContain('switchMain')
   })
 })
 
@@ -341,5 +351,19 @@ describe('思考档位（三态配置）', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.store.workflows?.efforts?.['teach-node']).toBe('chat')
+  })
+  it('写教学文档的两条内置工作流，配方在动笔之前就注入（doc-html）', () => {
+    const rows = builtinWorkflowRows()
+    // 「开讲」与新目标的「学习大纲」是仅有的两条会写教学文档的内置工作流。
+    // 它们必须带 promptModule：靠 doc.* 写入触发只会晚一轮，第一份文档就永远是纯 HTML 草稿。
+    for (const id of ['teach-node', 'goal-outline']) {
+      const row = rows.find((r) => r.id === id)
+      expect(row, id).toBeTruthy()
+      expect(row?.promptModule, id).toBe('doc-html')
+      expect(workflowModules(row!).map((m) => m.key), id).toEqual(['doc-html'])
+    }
+    // 其余内置条目照旧：没配 promptModule 也没有 prompt 的就是空
+    const probe = rows.find((r) => r.id === 'probe')!
+    expect(workflowModules(probe)).toEqual([])
   })
 })

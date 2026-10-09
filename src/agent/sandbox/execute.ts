@@ -179,7 +179,7 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
           // 内容触发：这次写入的东西里带 plot 围栏或动画标记，对应模块就该在场
           if (opts.onPromptModule) {
             const content = writableContentOf(name, callArgs)
-            if (content) for (const key of promptModuleForContent(content)) moduleKeys.add(key)
+            if (content) for (const key of promptModuleForContent(content, name)) moduleKeys.add(key)
           }
           const value = await fn(...callArgs)
           const images = imagesOf(value)

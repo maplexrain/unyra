@@ -24,8 +24,10 @@ EXECUTE_GUIDE 曾把十几个低频域的手册整段压在系统提示词里（
 | 触发 | 检测点 | 例子 |
 | --- | --- | --- |
 | api 组 | execute 编排结束后按 `log` 里的组前缀报给宿主（`onPromptModule`） | 第一次调 `sdoc.write` → `sdoc` |
-| 写入内容 | execute 在 doc/sdoc 写入参数上嗅探标记 | 写出 ` ```plot ` → `plot-forms`；写出 `<animate>`/`@keyframes` → `rich-animation` |
-| 工作流 | 触发时随指令注入（内置条目的 `promptModule` / 登记条目的 `prompt` 字段） | 「超级实验室」工作流 → `sdoc` |
+| 写入内容 | execute 在 doc/sdoc 写入参数上嗅探标记（`writableContentOf` + api 名） | 写出 ` ```plot ` → `plot-forms`；写出 `<animate>`/`@keyframes` → `rich-animation` |
+| 写入目标 | 同上，但认的是 **api 名**而不是内容 | 第一次写教学文档（`doc.write`/`append`/`replace`）→ `doc-html`（正文的 HTML + Tailwind 配方）。这一条**不挑内容**：模型要是压根不知道正文能写 HTML，它写出来的永远是纯 Markdown，「写出了 class 才注入」就等不到那一刻 |
+| 工作流 | 触发时随指令注入（内置条目的 promptModule / 登记条目的 prompt 字段） | 「超级实验室」→ sdoc；**「开讲」与「学习大纲」→ doc-html** |
+| | | ↑ 后两条是**动笔之前**就要在场的那一类：靠 doc.* 写入触发只会晚一轮，第一份教学文档就永远是纯 HTML 草稿 |
 
 **去重判据**（`missingPromptModules`）：扫一遍会话消息，`promptModule === key` 且**未失活**
 （`retired` 不算数）的消息已存在 → 不注入。判据只认消息上的结构化标记字段，不认文案——

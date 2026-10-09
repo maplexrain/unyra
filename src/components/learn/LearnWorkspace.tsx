@@ -612,7 +612,7 @@ export default function LearnWorkspace({
    * 那两条收起动画都要看它——它们的时长与两列是同一档，只有把这 300ms 算进来，
    * 几条边才是**一起**收好、一起放开的，而不是各收各的。
    */
-  const { agentLeft, sideCollapsed, toggleSide, expandSide, swapTo, pure, pureMoving, setPure } = side
+  const { agentLeft, sideCollapsed, toggleSide, expandSide, pure, pureMoving, setPure } = side
 
   /**
    * 切换纯净阅读：**F11、Esc、文档区悬浮组那颗按钮**走的是同一个动作。
@@ -806,7 +806,6 @@ export default function LearnWorkspace({
       makeExamDeps({ getLatest, set, onToast, openTabRef, setCreating }, nodeId),
     // ui.* 的宿主能力：都是「界面在场才有的动作」，见 AgentUiDeps
     ui: {
-      switchMain: (main) => swapTo(main === 'agent'),
       point: (req) => pointToDoc(req),
       scroll: (req) => {
         scrollToDoc(req)

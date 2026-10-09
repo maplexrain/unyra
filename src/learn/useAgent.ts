@@ -69,6 +69,15 @@ export { learnSandboxOps }
 export type { AgentRunTarget, AgentUiDeps }
 
 /**
+ * wf.invoke 允许连着的触发次数（见 pendingWfRef 那一段）。
+ *
+ * 链本身是合法的编排：开讲 → 出卷 → 阅卷，一条跟着一条走。要防的是**无限的链**——
+ * 一条指令里写着「做完再触发它自己」的工作流，会一轮接一轮地烧下去，而每一轮都要真花钱。
+ * 三次之后再调就当场拒掉，并把话说给模型听（它该收尾了，而不是再排一条）。
+ */
+const MAX_WF_CHAIN = 3
+
+/**
  * 把 Agent 运行时绑定到学习 store。
  * - 上下文按**目标**隔离：一个目标一份会话，目标下的节点共用它，切节点不换上下文
  * - send 支持指定目标（用于刚创建节点后的自动开讲，避免切换状态未生效）
@@ -94,7 +103,7 @@ export function useAgent(opts: {
   const { store, set, getLatest, goalId, nodeId, conversationId, onNeedKey, examDeps } = opts
   /**
    * 界面侧能力（ui.*）走 ref 而不是闭包：runTurn 的依赖数组不追它，
-   * 直接解构会永远拿到首轮那份旧回调（agentLeft 一变，switchMain 就指错方向）。
+   * 直接解构会永远拿到首轮那份旧回调（页签换过之后，point 就指到别的文档上去了）。
    */
   const uiRef = useRef(opts.ui)
   /** browser.* 的宿主依赖（web 页签动作与活信息）：同 uiRef 的理由，每渲染刷新 */
@@ -116,6 +125,14 @@ export function useAgent(opts: {
   const abortMapRef = useRef(new Map<string, AbortController>())
   /** 同一会话的轮次串行化（见 runTurn 的说明）：conversationId → 在途轮次的结束承诺 */
   const turnChainRef = useRef(new Map<string, Promise<void>>())
+  /**
+   * wf.invoke 的队列（键 = conversationId）：导师在一轮里把活交给某条工作流时先排在这儿，
+   * 这一轮收口后才由宿主起（见 WorkflowOps.invoke 与 wfDrainRef）。几位导师各跑各的，
+   * 谁交的活归谁那一轮。
+   */
+  const pendingWfRef = useRef(new Map<string, Array<{ id: string; params?: Record<string, string | number> }>>())
+  /** 这条会话上连着触发了几条工作流（见 MAX_WF_CHAIN）；链一断就归零 */
+  const wfChainRef = useRef(new Map<string, number>())
   const onNeedKeyRef = useRef(onNeedKey)
   /** 转存失败之类的话要能说出来，但不该进 runTurn 的依赖（回调每次渲染都是新的） */
   const onNoticeRef = useRef(opts.onNotice)
@@ -436,6 +453,35 @@ export function useAgent(opts: {
         // 这一轮冲着来的节点是沙箱里的「当前节点」——不是界面上此刻选中的那个
         nodeId: () => target.nodeId,
         goalId: () => target.goalId,
+        /**
+         * wf.invoke 的落点（见 WorkflowOps.invoke）：**只排队，不当场跑**。
+         * 这一轮还在跑，工作流的指令要作为一条新的 user 消息进上下文，只能等收口（见下面 finally）。
+         *
+         * 两条克制：一次编排最多排一条（工作流是独占一轮的流程，排两条等于让模型自己编排两轮
+         * 对话）；同一条不重复排（它在同一轮里被调两次，意图只有一个）。上限见 MAX_WF_CHAIN。
+         */
+        invokeWorkflow: (id, wfOpts) => {
+          const depth = wfChainRef.current.get(target.conversationId) ?? 0
+          if (depth >= MAX_WF_CHAIN) {
+            return {
+              error:
+                '这条链上已经连着触发了 ' + MAX_WF_CHAIN + ' 条工作流，不能再排了。请就此打住：' +
+                '把已经做完的事、看到的结论与下一步交给用户。',
+            }
+          }
+          const q = pendingWfRef.current.get(target.conversationId) ?? []
+          if (q.some((x) => x.id === id)) return { ok: true }
+          if (q.length) {
+            return {
+              error:
+                '这一轮已经排了一条工作流（它本轮收口后就跑）。不要一次交两件活——' +
+                '真要连着做，就把第二件写进你这一轮的收尾，让用户决定。',
+            }
+          }
+          q.push({ id, ...(wfOpts.params ? { params: wfOpts.params } : {}) })
+          pendingWfRef.current.set(target.conversationId, q)
+          return { ok: true }
+        },
       })
       /**
        * 子代理管理器：喂给这一轮的模型配置与沙箱基座；它启动的子代理任务用
@@ -539,7 +585,6 @@ export function useAgent(opts: {
             }
           },
           ui: {
-            ...(uiDeps?.switchMain ? { switchMain: uiDeps.switchMain } : {}),
             ...(uiDeps?.point ? { point: uiDeps.point } : {}),
             ...(uiDeps?.scroll ? { scroll: uiDeps.scroll } : {}),
             ...(uiDeps?.domRoot ? { domRoot: uiDeps.domRoot } : {}),
@@ -836,6 +881,13 @@ export function useAgent(opts: {
         })
 
         /*
+         * wf.invoke 的出口（见 WorkflowOps.invoke）：这一轮里导师把活交给了某条工作流，
+         * 在这一刻起它——工作流的指令要作为一条 user 消息进上下文，而刚才那一轮还在跑，
+         * 在正在跑的循环底下插用户消息是不行的。drained 也用来挡掉顺手的那次自动压缩：
+         * 两件事都要新起一轮，挨在一起只会互相插队（压缩本身会让刚排的指令一起失活）。
+         */
+        const drained = wfDrainRef.current?.(target) ?? false
+        /*
          * 本轮 loop 结束——**这里**才应用压缩。
          *
          * api.compact 在跑到一半时就可能被调用，但把上下文从正在跑的循环底下抽走是不行的
@@ -852,7 +904,7 @@ export function useAgent(opts: {
           // （见 agent/prefixGate）
           resetPrefixGate(target.conversationId)
           onNoticeRef.current?.(applied.label)
-        } else if (after && autoCompactRef.current && !isCompactTurn) {
+        } else if (after && !drained && autoCompactRef.current && !isCompactTurn) {
           /*
            * 没压成，看看该不该自动压：判据是**上一轮报回来的上下文占用**（服务端真的收了多少 token），
            * 不是估算。压缩轮自己不会再触发（它一定产生了 applied.label），所以不会自激。
@@ -1137,7 +1189,8 @@ export function useAgent(opts: {
    * 节点属于当前会话的目标时才直接用当前会话。autoTeach 那类「节点刚建、状态还没切过去」
    * 的调用方传显式 target。
    *
-   * 触发前那两下（响铃、切主位）**只有 prep: 'ask' 才做**，见下面那一段的说明。
+   * 触发前的响铃**只有带 prep 的才做**（见 workflowPrep）；主栏不再由这里切——
+   * agent 栏页签化之后，「眼前看的是哪位导师」由用户自己决定。
    */
   const runWorkflow = useCallback(
     (
@@ -1171,20 +1224,14 @@ export function useAgent(opts: {
         onNoticeRef.current?.(t('没有叫「{0}」的工作流（列表见超级导师设置，或让导师 api.wf.list()）', ref))
         return
       }
-      /*
-       * 触发前那两下：响铃归两种 prep，**切主位只归 'ask'**（规矩与理由见 workflowPrep）。
-       * 一句话：切主位是从用户手里抢视线，只有「不回答就走不下去」的表单才值得；
-       * 「伪编译」那种交付物在对话里的，回执画在他点的地方，不该把面板拽过来。
-       */
-      const pre = workflowPrep(found.prep)
-      if (pre.beep) {
+      // 响铃：workflowPrep 说该响就响一声（提醒用户「导师要问你东西了」）
+      if (workflowPrep(found.prep).beep) {
         try {
           native().window.beep()
         } catch {
           // 测试环境没有 native 桥：提醒本来就是「尽力」
         }
       }
-      if (pre.takeMain) uiRef.current?.switchMain?.('agent')
       // 这一轮的思考档位按三态配置解析：'default' 用内置推荐、'chat' 跟随滑条、其余固定档。
       // 聊天滑条只对聊天轮直接生效——工作流的档位独立于它（见 resolveWorkflowEffort）。
       const effort = resolveWorkflowEffort(found, resolveGlobal().effort)
@@ -1255,10 +1302,32 @@ export function useAgent(opts: {
    * 压缩轮自己不会再触发（它一定产生了 applied.label），所以不会自激。
    */
   const autoCompactRef = useRef<((ratio: number) => void) | null>(null)
+  /**
+   * wf.invoke 的出队口：一轮收口时把导师交出去的活起起来（见 pendingWfRef 与 runTurn 的 finally）。
+   *
+   * 与 autoCompactRef 同一条理由——runWorkflow 声明在 runTurn 之后，前面那个闭包要么
+   * 追一个新依赖（把 runTurn 整段重建），要么挂在这个每次渲染刷新的 ref 上。
+   *
+   * 返回值 = 「这一轮真的排了工作流」：调用方据此跳过顺手的那次自动压缩（见 finally）。
+   */
+  const wfDrainRef = useRef<((target: AgentRunTarget) => boolean) | null>(null)
   useEffect(() => {
     autoCompactRef.current = (ratio: number) => {
       onNoticeRef.current?.(t('上下文已用到 {0}%，正在压缩前面的对话…', Math.round(ratio * 100)))
       void runWorkflow('compact')
+    }
+    wfDrainRef.current = (target: AgentRunTarget) => {
+      const q = pendingWfRef.current.get(target.conversationId)
+      if (!q || !q.length) {
+        // 链断了（这一轮没再交活）：这条会话的触发计数归零，下次重新数
+        wfChainRef.current.delete(target.conversationId)
+        return false
+      }
+      const next = q.shift() as { id: string; params?: Record<string, string | number> }
+      if (!q.length) pendingWfRef.current.delete(target.conversationId)
+      wfChainRef.current.set(target.conversationId, (wfChainRef.current.get(target.conversationId) ?? 0) + 1)
+      void runWorkflow(next.id, { params: next.params, target })
+      return true
     }
   })
 

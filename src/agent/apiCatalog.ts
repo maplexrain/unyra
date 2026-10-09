@@ -180,13 +180,14 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     key: 'wf',
     label: '工作流 · wf',
     intro:
-      '三级任务模板（内置 / 全局 / 目标级）的登记处：它们**不进系统提示词**，被触发（用户在界面上点）时，' +
-      'instruction 才作为一条 user 消息整段进入上下文。用户说「把这套流程做成工作流」就用 wf.create 落地。' +
-      '没有 wf.run——触发永远由用户在界面上点。',
+      '三级任务模板（内置 / 全局 / 目标级）的登记处：它们**不进系统提示词**，被触发时 instruction 才作为一条' +
+      'user 消息整段进入上下文——用户在界面上点是一种触发，导师自己用 wf.invoke 交活（多为出卷、复习、' +
+      '大纲这类要独占一轮的流程）是另一种。用户说「把这套流程做成工作流」就用 wf.create 落地。',
     items: [
       { name: 'wf.list', signature: 'wf.list()', summary: '全部工作流（内置 + 全局 + 当前目标），带 id、分级与完整指令', availability: 'always' },
       { name: 'wf.create', signature: 'wf.create({ name, instruction, description?, tier?, prompt? })', summary: '登记一条工作流；instruction 写成能独立执行的步骤清单，tier 缺省 goal（global 则所有目标可用）；prompt（可选）是每次触发都要在场的规程知识——按 wf:<id> 作键、同一上下文只注入一次，之后触发只发 instruction；同名覆盖', availability: 'always' },
       { name: 'wf.remove', signature: 'wf.remove(idOrName)', summary: '删除一条登记的工作流（内置的删不掉）', availability: 'always' },
+      { name: 'wf.invoke', signature: "wf.invoke(idOrName, { params? })", summary: '把这件事交给某条工作流：**不当场执行**，本轮收口后宿主另起一轮，instruction 作为一条 user 消息进上下文（params 填 {{占位符}}）；一次编排最多触发一条，一条链上最多连着触发三次', availability: 'always' },
     ],
   },
   {
@@ -353,7 +354,6 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     label: '界面操作 · ui',
     intro: '都需要界面在场；文档区没有打开的文档时 point / scroll / screenshot / dom 会明确失败。',
     items: [
-      { name: 'ui.switchMain', signature: "ui.switchMain('agent' | 'doc')", summary: '交换主栏：把对话栏或文档栏放到用户视线的主位', availability: 'ui' },
       { name: 'ui.toast', signature: "ui.toast('一句话')", summary: '弹吐司提示', availability: 'ui' },
       { name: 'ui.point', signature: 'ui.point(path?, { line?, regex?, flags? })', summary: '在页签里打开/切到某节点的文档；可定位到一行或选中正则第一处匹配', availability: 'ui' },
       { name: 'ui.scroll', signature: "ui.scroll({ to?: 'top'|'bottom', by? })", summary: '滚动文档区（by 为像素，负数往上）', availability: 'ui' },

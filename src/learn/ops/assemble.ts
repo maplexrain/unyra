@@ -42,6 +42,26 @@ import { createReviewOps } from './review'
 import { createWorkspaceOps } from './workspace'
 import { createChipOps } from './chip'
 
+/**
+ * 排版提醒：整篇写入教学文档、而正文里一处 class 都没有时，在回执里点一句。
+ *
+ * 为什么值得写在回执里：文档的质量**看不见**。模型交出一篇没有版式的纯 HTML，
+ * 拿到的回执同样是「教学文档已整体写入（1695 字）」——它没有任何信号说明自己做砸了什么。
+ * 提示词里的规范会被长对话冲淡，而回执是每一轮都摆在眼前的东西。
+ *
+ * 三条边界，都是「别唠叨」：只认教学文档（笔记是学习者自己写的地方）；
+ * 只认整篇写入（追加一段散文、改一处措辞本来就不该带排版）；太短的不算（先占个位很正常）。
+ */
+const LAYOUT_HINT =
+  '\n（提醒：这份正文里一处排版工具类都没有。教学文档的样子靠 Tailwind 工具类排出来，' +
+  '裸的 <h2>/<p> 只是兜底样式——按「文档排版与图表」的规范补上提示框 / 两栏 / 步骤 / 图表，' +
+  '再覆盖写入一次。）'
+
+function layoutHintOf(kind: SandboxDocKind, content: string): string {
+  if (kind !== 'teaching') return ''
+  if (content.length < 400) return ''
+  return /class\s*=/.test(content) ? '' : LAYOUT_HINT
+}
 export function createAgentOps(deps: AgentOpsDeps): AgentOps {
   const store0 = () => deps.getLatest()
   const scope = (): PathScope => ({ goalId: deps.goalId(), currentNodeId: deps.nodeId() })
@@ -381,7 +401,9 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
         if (!r.ok) return { ok: false, content: '写入失败：这个节点已经不在了' }
         return {
           ok: true,
-          content: docLabel(kind, r.note ?? note) + '已整体写入（' + content.length + ' 字）',
+          content:
+            docLabel(kind, r.note ?? note) + '已整体写入（' + content.length + ' 字）' +
+            layoutHintOf(kind, content),
         }
       },
       replace: replaceDocRange,
