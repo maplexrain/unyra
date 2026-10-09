@@ -195,7 +195,7 @@ export function useExportFlow(deps: ExportFlowDeps) {
 
       // 资源只在节点文档里有出处（本地文件不属于任何目标，它里面的 moji:static 也无从查起）
       const goalId = tab.ref.kind === 'local' ? null : (docNode?.goalId ?? null)
-      const body = await exportBody({
+      const exported = await exportBody({
         source,
         annotations: opts.annotations ? docNode?.annotations : undefined,
         embedImages: opts.embedImages,
@@ -214,7 +214,10 @@ export function useExportFlow(deps: ExportFlowDeps) {
       const html = standaloneHtml({
         title,
         meta: exportMeta,
-        body,
+        body: exported.html,
+        // 正文里的 Tailwind 工具类现算一份带进文件（见 lib/docTailwind）：
+        // 预览那份是注入页面的，导出件里没有它，文档会整篇掉样式
+        docCss: exported.css,
         theme: opts.theme,
         stamp: new Date().toLocaleString('zh-CN', { hour12: false }),
       })

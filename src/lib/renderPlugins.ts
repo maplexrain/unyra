@@ -220,7 +220,8 @@ definePluginCategory({
   hint: '文档里的语法与渲染：认领围栏语言、加工正文文字、挂载 DOM。',
   normalize,
   describe,
-})
+  // 用户插件（数据目录里的 .js）不写 category 时按这一类算：那些文件本来就是写文档语法的
+}, { fallback: true })
 
 /* ---------- 这类插件自己的查表 ---------- */
 

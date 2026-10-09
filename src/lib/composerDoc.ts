@@ -71,6 +71,34 @@ export function expandChipTokens(root: HTMLElement): void {
   }
 }
 
+/**
+ * 把一段文字插到**光标处**（语音识别的结果落进输入框走这条路）。
+ *
+ * 为什么不用 execCommand('insertText')：这棵树里有 chip（contenteditable=false 的整体元素），
+ * 手插 Range 才能保证「chip 还在、光标落在插入的文字之后」这两件事都由我们自己说了算。
+ * 插完派发一次 input：composer.value 那份镜像、斜杠菜单、占位符都靠它同步。
+ *
+ * 选区不在这个编辑区里（比如用户刚点完麦克风按钮）时插到末尾——那正是「接着写」的位置。
+ */
+export function insertTextAtCaret(el: HTMLElement, text: string): void {
+  if (!text) return
+  el.focus()
+  const selection = window.getSelection()
+  const inside = selection !== null && selection.rangeCount > 0 && el.contains(selection.getRangeAt(0).startContainer)
+  const range = inside && selection ? selection.getRangeAt(0) : document.createRange()
+  if (!inside) range.selectNodeContents(el)
+  range.deleteContents()
+  const node = document.createTextNode(text)
+  range.insertNode(node)
+  range.setStartAfter(node)
+  range.collapse(true)
+  if (selection) {
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+  el.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
 /** 光标推到编辑区末尾并聚焦：「接着写」的位置——Ctrl+Q 聚焦、拖进页签都落在这里 */
 export function placeCaretEnd(el: HTMLElement): void {
   el.focus()
