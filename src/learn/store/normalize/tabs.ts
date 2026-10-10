@@ -37,7 +37,9 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Record<string, unknown>
   if (r.kind === 'local') {
-    return typeof r.path === 'string' && r.path ? { kind: 'local', path: r.path } : null
+    return typeof r.path === 'string' && r.path
+      ? { kind: 'local', path: r.path, ...(typeof r.title === 'string' && r.title ? { title: r.title } : {}) }
+      : null
   }
   // 网页页签不挂节点：只认 http(s) 与空（起始页）；身份 key 缺了现场补一枚（页签各自独立）
   if (r.kind === 'web') {
@@ -164,7 +166,9 @@ export function normalizeFavorites(
     const at = typeof r.at === 'number' ? r.at : NaN
     const group = typeof r.group === 'string' ? r.group : undefined
     if (r.kind === 'local') {
-      if (typeof r.path === 'string' && r.path) push({ kind: 'local', path: r.path }, at, group)
+      if (typeof r.path === 'string' && r.path) {
+        push({ kind: 'local', path: r.path, ...(typeof r.title === 'string' && r.title ? { title: r.title } : {}) }, at, group)
+      }
       continue
     }
     if (r.kind === 'web') {

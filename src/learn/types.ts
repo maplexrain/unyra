@@ -490,7 +490,7 @@ export type TabRef =
    */
   | { kind: 'outline'; nodeId: string }
   /** 磁盘上的外部文件（绝对路径） */
-  | { kind: 'local'; path: string }
+  | { kind: 'local'; path: string; title?: string }
   /**
    * 内置浏览器的网页页签（<webview>，见 electron/app/webSession 与 components/learn/web）。
    * url 是**当前**地址——页面每次主框架导航都回写进来，重启回到离开时的那一页；
@@ -616,7 +616,7 @@ export type FavoriteRef =
   /** 某个目标的大纲页 */
   | { kind: 'outline'; nodeId: string }
   /** 磁盘上的外部文件（绝对路径） */
-  | { kind: 'local'; path: string }
+  | { kind: 'local'; path: string; title?: string }
   /**
    * 一个网页（内置浏览器；认网址）。收藏那一刻顺手记下页面的**标题与站点图标**——
    * 网页标题没有活的数据源可查（文档改名有节点可查，页面标题只在打开时才知道），

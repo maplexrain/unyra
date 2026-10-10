@@ -144,7 +144,7 @@ export function tabTitle(
   if (ref.kind === 'usage') return t('用量统计')
   if (ref.kind === 'mind') return t('记忆管理')
   if (ref.kind === 'agentSettings') return t('超级导师设置')
-  return fileNameOf(ref.path)
+  return ref.title || fileNameOf(ref.path)
 }
 
 /**
