@@ -1,7 +1,7 @@
 {
   "name": "unyra",
   "private": true,
-  "version": "0.5.8",
+  "version": "0.6.0",
   "description": "归一 Unyra · 探索式学习：本地优先的 AI 学习辅助桌面应用",
   "author": "maplexrain",
   "type": "module",
