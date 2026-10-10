@@ -1,12 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { WebviewTag } from 'electron'
-import { ArrowLeft, ArrowRight, ExternalLink, RotateCw, Star, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ExternalLink, Globe, RotateCw, Star, X } from 'lucide-react'
 import type { LearnTab, TabRef, WebTabMeta } from '../../../learn/types'
 import { normalizeWebInput } from '../../../learn/webUrl'
 import { isElectron, native } from '../../../lib/native'
 import { t } from '../../../i18n'
 import { setAddressFocus } from './addressFocus'
 import { registerWebview, webviewByWcId, webviewOf } from '../../../learn/web/webviewRegistry'
+import {
+  recordWebHistory,
+  removeWebHistoryEntry,
+  searchWebHistory,
+  updateWebHistoryMeta,
+} from '../../../learn/web/webHistory'
+import BlankWebPage from './BlankWebPage'
 
 /** web 页签：ref 一定是 web 分支（调用方按 kind 过滤过） */
 export type WebTab = LearnTab & { ref: Extract<TabRef, { kind: 'web' }> }
@@ -163,27 +170,58 @@ function WebToolbar({
   onToggleFavorite: () => void
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const blurTimerRef = useRef<number | null>(null)
   // 展示值：页签自己的活 url 优先，还没收到过事件的（刚重启回来）拿 ref.url 兜底
   const url = m?.url ?? tab.ref.url
   const [draft, setDraft] = useState(url)
-  // url 变了（多半是页面里点了链接）就把草稿跟上去——「渲染期对齐派生状态」的官方写法：
-  // 导航可能随时从页面那头冒出来，走 effect 会慢一拍还犯 set-state-in-effect 的规矩
   const [prevUrl, setPrevUrl] = useState(url)
   if (prevUrl !== url) {
     setPrevUrl(url)
     setDraft(url)
   }
+
+  const [openSuggestions, setOpenSuggestions] = useState(false)
+  const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [historyKey, setHistoryKey] = useState(0)
+
+  // 历史补全待选项
+  const suggestions = useMemo(() => {
+    if (!openSuggestions) return []
+    return searchWebHistory(draft, 8)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSuggestions, draft, historyKey])
+
+  const pickSuggestion = (targetUrl: string) => {
+    if (blurTimerRef.current) window.clearTimeout(blurTimerRef.current)
+    setOpenSuggestions(false)
+    setDraft(targetUrl)
+    onAddress(targetUrl)
+  }
+
+  const removeSuggestion = (e: React.MouseEvent, targetUrl: string) => {
+    e.stopPropagation()
+    e.preventDefault()
+    removeWebHistoryEntry(targetUrl)
+    setHistoryKey((k) => k + 1)
+  }
+
   // Ctrl+L 的落点：光标进地址栏并全选（见 addressFocus）
   useEffect(() => {
     setAddressFocus(() => {
       inputRef.current?.focus()
       inputRef.current?.select()
+      setOpenSuggestions(true)
     })
-    return () => setAddressFocus(null)
+    return () => {
+      setAddressFocus(null)
+      if (blurTimerRef.current) window.clearTimeout(blurTimerRef.current)
+    }
   }, [])
+
   const loading = m?.loading ?? false
+
   return (
-    <div className="flex shrink-0 items-center gap-0.5 border-b border-line px-1.5 py-1">
+    <div className="relative flex shrink-0 items-center gap-0.5 border-b border-line px-1.5 py-1">
       <button type="button" title={t('后退')} aria-label={t('后退')} disabled={!m?.canBack} onClick={onBack} className={BTN}>
         <ArrowLeft size={14} />
       </button>
@@ -199,20 +237,118 @@ function WebToolbar({
           <RotateCw size={13} />
         </button>
       )}
-      <input
-        ref={inputRef}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onFocus={(e) => e.target.select()}
-        spellCheck={false}
-        onKeyDown={(e) => {
-          if (e.key !== 'Enter') return
-          const target = normalizeWebInput(draft)
-          if (target) onAddress(target)
-        }}
-        placeholder={t('搜索或输入网址')}
-        className="h-7 min-w-0 flex-1 rounded-md border border-line bg-paper/60 px-2.5 text-[12px] text-ink outline-none transition placeholder:text-ink-faint focus:border-seal/60"
-      />
+
+      {/* 地址栏与补全下拉框容器 */}
+      <div className="relative min-w-0 flex-1">
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            setOpenSuggestions(true)
+            setSelectedIndex(-1)
+          }}
+          onFocus={(e) => {
+            e.target.select()
+            setOpenSuggestions(true)
+          }}
+          onBlur={() => {
+            blurTimerRef.current = window.setTimeout(() => {
+              setOpenSuggestions(false)
+            }, 180)
+          }}
+          spellCheck={false}
+          onKeyDown={(e) => {
+            if (openSuggestions && suggestions.length > 0) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                setSelectedIndex((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0))
+                return
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                setSelectedIndex((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1))
+                return
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                setOpenSuggestions(false)
+                return
+              }
+            }
+            if (e.key === 'Enter') {
+              if (selectedIndex >= 0 && suggestions[selectedIndex]) {
+                const target = suggestions[selectedIndex].url
+                setOpenSuggestions(false)
+                onAddress(target)
+                return
+              }
+              setOpenSuggestions(false)
+              const target = normalizeWebInput(draft)
+              if (target) onAddress(target)
+            }
+          }}
+          placeholder={t('搜索或输入网址')}
+          className="h-7 w-full rounded-md border border-line bg-paper/60 px-2.5 text-[12px] text-ink outline-none transition placeholder:text-ink-faint focus:border-seal/60"
+        />
+
+        {/* 自动补全待选列表浮层 */}
+        {openSuggestions && suggestions.length > 0 && (
+          <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-xl border border-line-strong/60 bg-card p-1 shadow-[0_12px_28px_rgba(31,27,23,0.18)]">
+            <div className="flex items-center justify-between px-2 py-1 text-[10px] font-medium text-ink-faint">
+              <span>{t('历史访问记录')}</span>
+              <span>{t('↑↓ 键切换 · 回车打开')}</span>
+            </div>
+            {suggestions.map((item, idx) => {
+              const isSelected = idx === selectedIndex
+              return (
+                <div
+                  key={item.url}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    pickSuggestion(item.url)
+                  }}
+                  onMouseEnter={() => setSelectedIndex(idx)}
+                  className={`group flex items-center gap-2 rounded-lg px-2.5 py-1.5 cursor-pointer transition ${
+                    isSelected ? 'bg-line/70 text-ink-strong' : 'hover:bg-line/50 text-ink'
+                  }`}
+                >
+                  {item.favicon ? (
+                    <img
+                      src={item.favicon}
+                      alt=""
+                      className="h-3.5 w-3.5 shrink-0 rounded"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none'
+                      }}
+                    />
+                  ) : (
+                    <Globe size={13} className="shrink-0 text-ink-faint" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[12px] font-medium">{item.title}</div>
+                    <div className="truncate text-[10.5px] text-ink-faint">{item.url}</div>
+                  </div>
+                  {item.visitCount > 1 && (
+                    <span className="shrink-0 rounded bg-line/60 px-1 py-0.2 text-[9.5px] text-ink-faint">
+                      {t('{0}次', item.visitCount)}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    title={t('删除此条历史')}
+                    onClick={(e) => removeSuggestion(e, item.url)}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint opacity-0 group-hover:opacity-100 hover:bg-line hover:text-ink transition"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
       {/*
         收藏星标：实心 = 这一页在收藏夹里，点一下取消；空心 = 还没收藏。
         网页收藏认网址（同一网址开几枚页签都指向同一条收藏，见 learn/favorites），
@@ -280,7 +416,10 @@ function WebPage({
       const url = (e as unknown as { url?: string }).url ?? ''
       onMeta(id, { url, loading: false, error: null, ...navState() })
       // 主框架地址回写进页签（重启回到离开时的那一页）；页内跳转（hash）只改活信息
-      if (/^https?:/i.test(url)) onCommitUrl(id, url)
+      if (/^https?:/i.test(url)) {
+        onCommitUrl(id, url)
+        recordWebHistory(url)
+      }
     }
     const onNavigateInPage = (e: Event): void => {
       const url = (e as unknown as { url?: string }).url
@@ -288,11 +427,19 @@ function WebPage({
     }
     const onTitle = (e: Event): void => {
       const title = (e as unknown as { title?: string }).title
-      if (title) onMeta(id, { title })
+      if (title) {
+        onMeta(id, { title })
+        const currentUrl = m?.url || tab.ref.url
+        if (currentUrl) updateWebHistoryMeta(currentUrl, { title })
+      }
     }
     const onFavicon = (e: Event): void => {
       const favicon = (e as unknown as { favicons?: string[] }).favicons?.[0]
-      if (favicon) onMeta(id, { favicon })
+      if (favicon) {
+        onMeta(id, { favicon })
+        const currentUrl = m?.url || tab.ref.url
+        if (currentUrl) updateWebHistoryMeta(currentUrl, { favicon })
+      }
     }
     const onFail = (e: Event): void => {
       const d = e as unknown as { errorCode?: number; errorDescription?: string; isMainFrame?: boolean }
@@ -313,8 +460,9 @@ function WebPage({
       wv.style.position = ''
       wv.style.inset = ''
       wv.style.zIndex = ''
-      wv.style.width = ''
-      wv.style.height = ''
+      wv.style.width = '100%'
+      wv.style.height = '100%'
+      wv.style.display = 'flex'
     }
     wv.addEventListener('did-start-loading', onStart)
     wv.addEventListener('did-stop-loading', onStopLoad)
@@ -349,8 +497,8 @@ function WebPage({
 
   if (!src) {
     return (
-      <div style={shellStyle} className="flex flex-col items-center justify-center gap-2 text-ink-faint">
-        <p className="text-[12.5px]">{t('在上方输入网址，回车打开')}</p>
+      <div style={shellStyle} className="h-full w-full overflow-y-auto bg-card">
+        <BlankWebPage onOpenUrl={(targetUrl) => onCommitUrl(id, targetUrl)} />
       </div>
     )
   }
