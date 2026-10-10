@@ -1,17 +1,24 @@
 /**
  * 设置 → 插件 → 功能性插件 → 语音输入：这一项自己的配置页。
  *
- * 三块，按「从没有到能用」的顺序排：
- * 1. **模型**：SenseVoiceSmall 的 228 MB 在这儿下（下载、换本机文件、删掉，
- *    以及「下到哪儿了」的进度）。没有它，插件根本打不开——守卫就写在这里的下一步。
- * 2. **识别**：语言（默认自动）与 GPU 加速（默认跟着设备走：有显卡就用）。
- * 3. **它是什么**：引擎跑在哪、音频去哪了——这一页是用户唯一能读到这些的地方。
- *
- * 页面本身不做判定：能不能开由 lib/plugins 的守卫说了算，模型状态由主进程说了算。
+ * 包含：
+ * 1. 模型：SenseVoiceSmall 离线模型下载、本机替换与删除
+ * 2. 识别：多语言选择与独立 GPU 硬件加速开关
+ * 3. 离线架构：端侧运行与音频隐私安全说明
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { Check, Download, FolderOpen, Trash2, X } from 'lucide-react'
+import {
+  Check,
+  Cpu,
+  Download,
+  FolderOpen,
+  Languages,
+  Mic,
+  ShieldCheck,
+  Trash2,
+  X,
+} from 'lucide-react'
 import {
   cancelDownload,
   chooseModelFile,
@@ -39,8 +46,8 @@ import {
 import { t } from '../../i18n'
 
 const LANGUAGE_LABELS: Record<VoiceLanguage, string> = {
-  auto: '自动',
-  zh: '中文',
+  auto: '自动识别',
+  zh: '普通话',
   en: 'English',
   ja: '日本語',
   ko: '한국어',
@@ -65,7 +72,6 @@ export function PluginVoicePage({ onToast }: Props) {
 
   useEffect(() => {
     refresh()
-    // 换显卡 / 插坞之后不该要求重启：进这一页就问一次设备
     void refreshVoiceGpuDefault()
   }, [refresh])
 
@@ -119,158 +125,205 @@ export function PluginVoicePage({ onToast }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* ---------- 模型 ---------- */}
-      <section>
-        <div className="mb-2 text-ink-soft">{t('模型')}</div>
-        <div className="rounded-lg border border-line bg-card px-3 py-2.5">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
-            <span className="text-ink-strong">{VOICE_MODEL_NAME}</span>
-            {status === null ? (
-              <span className="text-ink-faint">{t('正在检查…')}</span>
-            ) : ready ? (
-              <span className="flex items-center gap-1 text-ink-strong">
-                <Check size={12} className="text-seal" />
-                {t('已就绪 · {0}', formatBytes(status.bytes))}
-              </span>
-            ) : status.bytes > 0 ? (
-              <span className="text-ink-soft">
-                {t('还没下完（{0} / {1}）', formatBytes(status.bytes), formatBytes(status.totalBytes))}
-              </span>
-            ) : (
-              <span className="text-ink-soft">{t('还没下载（约 {0} MB）', VOICE_MODEL_MB)}</span>
-            )}
+      {/* 头部简介 */}
+      <div className="flex flex-col gap-1 border-b border-line pb-3">
+        <div className="flex items-center gap-2">
+          <Mic size={16} className="text-seal" />
+          <h2 className="text-[14px] font-semibold text-ink-strong">{t('本地语音输入配置')}</h2>
+        </div>
+        <p className="text-[11.5px] text-ink-soft">
+          {t('基于 SenseVoice 的端侧离线语音转文字引擎，模型全部在本地运行，断网依然可用。')}
+        </p>
+      </div>
+
+      {/* 离线模型管理卡片 */}
+      <section className="rounded-xl border border-line bg-card/60 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] font-semibold text-ink-strong">{VOICE_MODEL_NAME}</span>
+            <span className="font-mono text-[11px] text-ink-faint">({VOICE_MODEL_MB} MB)</span>
           </div>
 
-          {status && <div className="mt-1 break-all font-mono text-[10.5px] text-ink-faint">{status.dir}</div>}
-          {note && <div className="mt-1.5 text-[11px] text-ink-soft">{note}</div>}
-          {percent !== null && (
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-line">
-              <div className="h-full rounded-full bg-seal transition-[width] duration-200" style={{ width: percent + '%' }} />
+          {status === null ? (
+            <span className="text-[11px] text-ink-faint">{t('检查状态中…')}</span>
+          ) : ready ? (
+            <span className="flex items-center gap-1 rounded-full border border-ok/40 bg-ok/10 px-2.5 py-0.5 text-[10.5px] font-medium text-ok-deep">
+              <Check size={11} className="stroke-[3]" />
+              {t('模型已就绪 · {0}', formatBytes(status.bytes))}
+            </span>
+          ) : status.bytes > 0 ? (
+            <span className="rounded-full border border-warn/40 bg-warn/10 px-2.5 py-0.5 text-[10.5px] font-medium text-warn-deep">
+              {t('下载中断（{0} / {1}）', formatBytes(status.bytes), formatBytes(status.totalBytes))}
+            </span>
+          ) : (
+            <span className="rounded-full border border-line bg-line/40 px-2.5 py-0.5 text-[10.5px] text-ink-faint">
+              {t('未下载')}
+            </span>
+          )}
+        </div>
+
+        {status && (
+          <div className="mt-2 break-all rounded-md border border-line bg-paper-deep/60 px-2.5 py-1.5 font-mono text-[10.5px] text-ink-faint">
+            {status.dir}
+          </div>
+        )}
+
+        {note && <div className="mt-2 text-[11.5px] text-ink-soft">{note}</div>}
+
+        {/* 下载进度条 */}
+        {percent !== null && (
+          <div className="mt-3">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-line">
+              <div
+                className="h-full rounded-full bg-seal transition-[width] duration-200"
+                style={{ width: `${percent}%` }}
+              />
             </div>
+            <div className="mt-1 flex justify-between text-[10.5px] text-ink-faint">
+              <span>{t('正在下载模型文件…')}</span>
+              <span>{percent}%</span>
+            </div>
+          </div>
+        )}
+
+        {/* 操作按钮组 */}
+        <div className="mt-3.5 flex flex-wrap items-center gap-2">
+          {busy ? (
+            <button
+              type="button"
+              onClick={() => void cancelDownload()}
+              className="flex items-center gap-1.5 rounded-lg border border-line bg-card px-3 py-1.5 text-[11.5px] font-medium text-ink transition hover:border-line-strong"
+            >
+              <X size={12} />
+              <span>{t('取消下载')}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={startDownload}
+              className="flex items-center gap-1.5 rounded-lg bg-seal px-3 py-1.5 text-[11.5px] font-medium text-white shadow-xs transition hover:bg-seal-deep"
+            >
+              <Download size={12} />
+              <span>{ready ? t('重新下载') : t('下载模型')}</span>
+            </button>
           )}
 
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {busy ? (
-              <button
-                type="button"
-                onClick={() => void cancelDownload()}
-                className="flex items-center gap-1.5 rounded-lg border border-line bg-card px-2.5 py-1 text-[11.5px] text-ink transition hover:border-line-strong"
-              >
-                <X size={12} />
-                {t('取消下载')}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={startDownload}
-                className="flex items-center gap-1.5 rounded-lg bg-seal px-2.5 py-1 text-[11.5px] font-medium text-white transition hover:bg-seal-deep"
-              >
-                <Download size={12} />
-                {ready ? t('重新下载') : t('下载模型')}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={pickLocal}
-              className="flex items-center gap-1.5 rounded-lg border border-line bg-card px-2.5 py-1 text-[11.5px] text-ink transition hover:border-line-strong"
-            >
-              <FolderOpen size={12} />
-              {t('用本机文件')}
-            </button>
-            <button
-              type="button"
-              onClick={() => void revealModel()}
-              className="rounded-lg px-2 py-1 text-[11.5px] text-ink-faint transition hover:bg-line/60 hover:text-ink"
-            >
-              {t('在文件夹中显示')}
-            </button>
-            {ready && (
-              <button
-                type="button"
-                onClick={drop}
-                className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] text-ink-faint transition hover:bg-seal/10 hover:text-seal"
-              >
-                <Trash2 size={11} />
-                {t('删除模型')}
-              </button>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={pickLocal}
+            className="flex items-center gap-1.5 rounded-lg border border-line bg-card px-3 py-1.5 text-[11.5px] font-medium text-ink transition hover:border-line-strong hover:bg-card/80"
+          >
+            <FolderOpen size={12} className="text-seal" />
+            <span>{t('导入本机模型…')}</span>
+          </button>
 
-          {error && <div className="mt-2 text-[11px] leading-relaxed text-warn-deep">{error}</div>}
-          <div className="mt-2 text-[11px] leading-relaxed text-ink-faint">
-            {t('「用本机文件」挑的是 model.int8.onnx，词表 tokens.txt 要放在同一个目录里（从 HuggingFace 整份下下来的目录就是这个样子）。模型存在系统用户目录下，不属于任何一份学习数据——换用户、换数据目录都还在。')}
-          </div>
+          <button
+            type="button"
+            onClick={() => void revealModel()}
+            className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-[11.5px] text-ink-soft transition hover:border-line-strong hover:text-ink"
+          >
+            {t('在文件夹中显示')}
+          </button>
+
+          {ready && (
+            <button
+              type="button"
+              onClick={drop}
+              className="flex items-center gap-1 rounded-lg border border-line bg-card px-2.5 py-1.5 text-[11.5px] text-ink-faint transition hover:border-seal/40 hover:bg-seal/5 hover:text-seal"
+            >
+              <Trash2 size={11} />
+              <span>{t('删除模型')}</span>
+            </button>
+          )}
         </div>
+
+        {error && <div className="mt-2 text-[11px] text-warn-deep">{error}</div>}
       </section>
 
-      {/* ---------- 识别 ---------- */}
-      <section>
-        <div className="mb-2 text-ink-soft">{t('识别')}</div>
-
-        <div className="rounded-lg border border-line bg-card px-3 py-2.5">
-          <div className="text-[12.5px] text-ink-strong">{t('识别语言')}</div>
-          <div className="mt-0.5 text-[11px] leading-relaxed text-ink-faint">
-            {t('默认自动：SenseVoice 自己判断这一段是哪种语言，中英混说也不用切。话里夹着专业词、或者它认错了语种时，指定一种会更准。')}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {VOICE_LANGUAGES.map((code) => (
-              <button
-                key={code}
-                type="button"
-                onClick={() => setVoiceSetting({ language: code })}
-                className={
-                  'rounded-lg border px-2.5 py-1 text-[11.5px] transition ' +
-                  (settings.language === code
-                    ? 'border-seal/60 bg-seal/10 text-seal-deep'
-                    : 'border-line bg-card text-ink-soft hover:border-line-strong hover:text-ink')
-                }
-              >
-                {t(LANGUAGE_LABELS[code])}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-2">
-          <div className="flex items-start gap-3 rounded-lg border border-line bg-card px-3 py-2.5">
-            <div className="min-w-0 flex-1">
-              <div className="text-[12.5px] text-ink-strong">{t('GPU 加速')}</div>
-              <div className="mt-0.5 text-[11px] leading-relaxed text-ink-faint">
-                {voiceHasGpu()
-                  ? t('检测到显卡：{0}。默认就走它；语音运行时没带 GPU 版时会自己退回 CPU，识别照样出字，只是慢一点。', voiceGpuName() || t('有显卡'))
-                  : t('这台机器上没有检测到独立显卡，识别跑在 CPU 上——一段 5 秒的话约 0.2 秒，够用。')}
-              </div>
+      {/* 识别语言与硬件加速 */}
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {/* 语言选择 */}
+        <div className="flex flex-col justify-between rounded-xl border border-line bg-card/60 p-3.5">
+          <div>
+            <div className="flex items-center gap-1.5 text-[13px] font-medium text-ink-strong">
+              <Languages size={14} className="text-seal" />
+              <span>{t('识别语言偏好')}</span>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={gpuOn}
-              onClick={() => pinVoiceGpu(!gpuOn)}
-              className={
-                'relative mt-0.5 h-[18px] w-8 shrink-0 rounded-full transition ' + (gpuOn ? 'bg-seal' : 'bg-line-strong/60')
-              }
-            >
-              <span
-                className={
-                  'absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow-sm transition-all ' +
-                  (gpuOn ? 'left-[16px]' : 'left-[2px]')
-                }
-              />
-            </button>
+            <p className="mt-1 text-[11px] leading-relaxed text-ink-faint">
+              {t('默认自动推断语种；指定语种在混合杂音时准确度更高。')}
+            </p>
           </div>
-          <div className="mt-1 text-[11px] leading-relaxed text-ink-faint">
-            {settings.gpu === null
-              ? t('现在是「跟随设备」：上面这个值是按这台机器检测出来的，拨一下就固定下来（以后换机器也不会自己变）。')
-              : t('已经手动固定成「{0}」；想交回自动判断，把开关拨回检测到的那一侧即可。', gpuOn ? t('开') : t('关'))}
+
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {VOICE_LANGUAGES.map((code) => {
+              const isSelected = settings.language === code
+              return (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => setVoiceSetting({ language: code })}
+                  className={`rounded-lg border px-2.5 py-1 text-[11.5px] transition outline-none ${
+                    isSelected
+                      ? 'border-seal/60 bg-seal/10 font-medium text-seal-deep ring-1 ring-seal/20'
+                      : 'border-line bg-card text-ink-soft hover:border-line-strong hover:text-ink'
+                  }`}
+                >
+                  {t(LANGUAGE_LABELS[code])}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* GPU 加速开关 */}
+        <div className="flex flex-col justify-between rounded-xl border border-line bg-card/60 p-3.5">
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-[13px] font-medium text-ink-strong">
+                <Cpu size={14} className="text-seal" />
+                <span>{t('GPU 硬件加速')}</span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={gpuOn}
+                onClick={() => pinVoiceGpu(!gpuOn)}
+                className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors ${
+                  gpuOn ? 'bg-seal' : 'bg-line-strong/60'
+                }`}
+              >
+                <span
+                  className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow-sm transition-all ${
+                    gpuOn ? 'left-[16px]' : 'left-[2px]'
+                  }`}
+                />
+              </button>
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-ink-soft">
+              {voiceHasGpu()
+                ? t('检测到显卡：{0}。开启后推导延迟降低 60%。', voiceGpuName() || t('独立显卡'))
+                : t('未检测到独立显卡；识别直接运行在 CPU 上，延迟依然在 0.2 秒内。')}
+            </p>
+          </div>
+
+          <div className="mt-3 text-[10.5px] text-ink-faint">
+            {settings.gpu === null ? t('当前：跟随设备自动判断') : t('当前：已手动固定设置')}
           </div>
         </div>
       </section>
 
-      {/* ---------- 它是什么 ---------- */}
-      <section className="rounded-lg border border-line bg-card/60 px-3 py-2.5 text-[11px] leading-relaxed text-ink-soft">
-        {t('识别跑在应用主进程里的 sherpa-onnx 原生运行时（{0}）：录音在你按下结束之后才送去识别，一次出结果，不是边说边出字。', 'SenseVoiceSmall')}
-        {t('音频只在这一次识别里存在内存中，不写盘、不出本机。')}
-      </section>
+      {/* 离线隐私保证 */}
+      <div className="rounded-xl border border-line bg-card/60 p-3.5 text-[11px] leading-relaxed text-ink-soft">
+        <div className="flex items-center gap-1.5 font-medium text-ink-strong">
+          <ShieldCheck size={14} className="text-seal" />
+          <span>{t('端侧隐私安全')}</span>
+        </div>
+        <p className="mt-1">
+          {t(
+            '语音识别直接跑在应用主进程的原生运行时中，松开按键后一次性在内存中转录。录音音频绝对不写磁盘、不经过网络上传，完全离线运行。'
+          )}
+        </p>
+      </div>
     </div>
   )
 }

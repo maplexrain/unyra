@@ -125,7 +125,14 @@ function headersFor(p: ResolvedProvider): Record<string, string> {
     ...p.extraHeaders,
   }
   const key = p.apiKey.trim()
-  if (key) headers.Authorization = `Bearer ${key}`
+  if (key) {
+    if (p.protocol === 'anthropic') {
+      headers['x-api-key'] = key
+      headers['anthropic-version'] = p.apiVersion || '2023-06-01'
+    } else {
+      headers.Authorization = `Bearer ${key}`
+    }
+  }
   return headers
 }
 
@@ -497,12 +504,30 @@ export async function chatCompleteWith(
  * - goPlanOnly 时按 Go 套餐筛选——目录会给全部模型，而套餐外的选了会被网关拒绝。
  */
 export async function listModelsWith(provider: ResolvedProvider): Promise<string[]> {
-  const url = endpoint(rootOf(provider.baseUrl), provider.modelsPath ?? '/models')
+  const defaultPath = provider.protocol === 'anthropic' ? '/v1/models' : '/models'
+  const primaryUrl = endpoint(rootOf(provider.baseUrl), provider.modelsPath ?? defaultPath)
   let res: Response
   try {
-    res = await httpFetch(url, {
+    res = await httpFetch(primaryUrl, {
       headers: headersFor(provider),
     })
+    // 兼容回退：如果默认端点报 404 且未指定自定义 modelsPath，尝试备选路径
+    if (res.status === 404 && !provider.modelsPath) {
+      // 1. 如果原先是 /models，尝试 /v1/models；反之亦然
+      const altPath = primaryUrl.endsWith('/models') ? '/v1/models' : '/models'
+      const altUrl = endpoint(rootOf(provider.baseUrl), altPath)
+      const altRes = await httpFetch(altUrl, { headers: headersFor(provider) }).catch(() => null)
+      if (altRes && altRes.ok) {
+        res = altRes
+      } else {
+        // 2. 尝试 Ollama 专有标签端点 /api/tags
+        const ollamaUrl = endpoint(rootOf(provider.baseUrl), '/api/tags')
+        const ollamaRes = await httpFetch(ollamaUrl, { headers: headersFor(provider) }).catch(() => null)
+        if (ollamaRes && ollamaRes.ok) {
+          res = ollamaRes
+        }
+      }
+    }
   } catch {
     throw new AiRequestError(t('网络请求失败，请检查网络连接'))
   }
@@ -510,9 +535,29 @@ export async function listModelsWith(provider: ResolvedProvider): Promise<string
     const body = await res.text().catch(() => '')
     throw new AiRequestError(toMessage(provider.label, res.status, body))
   }
-  const data = (await res.json()) as { data?: Array<{ id?: string }> }
-  return (data.data ?? [])
-    .map((m) => m.id ?? '')
+  let raw: unknown
+  try {
+    raw = await res.json()
+  } catch {
+    return []
+  }
+  let list: unknown[] = []
+  if (Array.isArray(raw)) {
+    list = raw
+  } else if (raw && typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>
+    if (Array.isArray(obj.data)) list = obj.data
+    else if (Array.isArray(obj.models)) list = obj.models
+  }
+  return list
+    .map((item) => {
+      if (typeof item === 'string') return item.trim()
+      if (item && typeof item === 'object') {
+        const o = item as Record<string, unknown>
+        return typeof o.id === 'string' ? o.id.trim() : typeof o.name === 'string' ? o.name.trim() : ''
+      }
+      return ''
+    })
     .filter(Boolean)
     .filter((id) => !provider.goPlanOnly || isGoPlanModel(id))
     .sort()

@@ -8,7 +8,17 @@ import { NO_AUTOFILL_SECRET } from '../../lib/autofill'
 import { t } from '../../i18n'
 import { inputBase } from './fields'
 
-export function KeyField({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
+export function KeyField({
+  id,
+  value,
+  onChange,
+  onBlur,
+}: {
+  id: string
+  value: string
+  onChange: (v: string) => void
+  onBlur?: () => void
+}) {
   const [show, setShow] = useState(false)
   return (
     <div className="flex items-center gap-1.5">
@@ -17,6 +27,7 @@ export function KeyField({ id, value, onChange }: { id: string; value: string; o
         type={show ? 'text' : 'password'}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         placeholder="sk-…"
         spellCheck={false}
         className={`${inputBase} flex-1 font-mono`}

@@ -71,27 +71,13 @@ export interface PresetField {
 export type PresetFieldKey = 'apiKey' | 'baseUrl' | 'apiVersion' | 'extraHeaders' | 'maxTokens'
 
 /**
- * 预设里「已知模型」的元信息。
- *
- * 它**不是**用户已配置的模型，只是填模型时的便利数据：
- * 输入框里键入一模一样的 ID 时，自动把上下文与模态带出来，省得手敲。
- * 用户配了哪些模型一律以 ProviderConfig.models 为准——绝不用预设去补，
- * 否则会出现「预设里的模型删不掉」这种怪事。
- */
-export interface KnownModel {
-  id: string
-  /** 上下文窗口（token） */
-  contextWindow: number
-  /** 输入模态；拿不准的一律只写 text，宁可少报 */
-  inputModalities: InputModality[]
-}
-
-/**
  * 一条提供商预设。
  *
  * 预设只是**创建提供商时的模板**：它提供地址、端点、鉴权方式与表单字段。
  * 用户从预设创建出提供商之后，那条配置就完全归用户所有——
  * 改 Key、加删模型都不再受预设影响。
+ *
+ * 模型迭代迅速，不预设死固定的模型列表，配置后自动拉取提供商模型目录或由用户输入。
  */
 export interface ProviderPreset {
   id: string
@@ -104,8 +90,6 @@ export interface ProviderPreset {
    * 只有自定义提供商才要用户自己填。
    */
   baseUrl: string
-  /** 已知模型的元信息，仅用于填模型时自动补全上下文与模态 */
-  knownModels: KnownModel[]
   /** 是否支持工具调用（超级导师读写笔记、出题、阅卷都依赖它） */
   toolCalls: boolean
   /** 申请 Key 的控制台地址；没有就省略 */
@@ -175,13 +159,6 @@ const extraHeadersField = (): PresetField => ({
   hint: '选填，JSON 对象。部分网关要求 App 标识或版本号。',
 })
 
-/** 已知模型：少写几个常用规格，够自动补全即可 */
-const known = (id: string, contextWindow: number, image = false): KnownModel => ({
-  id,
-  contextWindow,
-  inputModalities: image ? ['text', 'image'] : ['text'],
-})
-
 /**
  * Go 套餐目录入口（免鉴权，Go Key 在标准端点上本来也会被拒）。
  * 列表只给 id / name / context_length，因此套餐归属要在客户端自行筛选。
@@ -218,26 +195,10 @@ export function isGoPlanModel(id: string): boolean {
 }
 
 /**
- * 内置提供商预设。顺序即设置页的展示顺序，第一项是默认项。
- *
- * 每条预设都是**自描述**的：除了 baseUrl / 模型推荐 / 协议差异，
- * 还用 `form` 声明自己需要填哪些字段、以及字段上的警示与提示。
- * 表单照着 `form` 渲染——所以不同预设的配置页长得不一样，
- * 差异来自数据，而不是界面里的 if。
- *
- * 模型列表只求「开箱可用」，不追求穷举：用户点「获取模型列表」会从
- * 账户实际可用的模型里拉取，也可以直接手填。
- */
-/**
  * 内置提供商预设（仅作为「创建提供商」时的模板）。
  *
- * 每条预设都是**自描述**的：提供地址、端点、鉴权方式、已知模型元信息，
- * 并用 `form` 声明要填哪些字段。表单照着 `form` 渲染，差异来自数据。
- *
- * 两条重要约定：
- * 1. 预设已内置地址，因此 form 里**不含 baseUrl**——选了预设就不用填地址；
- * 2. `knownModels` 只用于「键入模型 ID 时自动补全上下文与模态」，
- *    它**不是**用户已配置的模型列表，绝不参与 modelsOf 的取值。
+ * 每条预设提供地址、端点、鉴权方式，并用 `form` 声明要填哪些字段。
+ * 模型迭代迅速，不再内置硬编码的模型预设，填入 API 地址与 Key 后自动向提供商获取可用模型列表。
  */
 export const PROVIDERS: ProviderPreset[] = [
   {
@@ -245,15 +206,7 @@ export const PROVIDERS: ProviderPreset[] = [
     label: 'DeepSeek 官方',
     note: '中文与推理能力强，支持工具调用。',
     baseUrl: 'https://api.deepseek.com',
-    knownModels: [
-      // deepseek-flash 是建号时预置的那一个（见 settings 的 createDefaultProvider）
-      known('deepseek-flash', 1_000_000, true),
-      known('deepseek-chat', 128_000),
-      known('deepseek-reasoner', 128_000),
-    ],
     toolCalls: true,
-    // 档位映射：DeepSeek 只认 low / high / max（high 是官方的平衡默认档），
-    // 没有 medium——四档里的 medium 落到 high，其余原样直通
     effortMap: { medium: 'high' },
     consoleUrl: 'https://platform.deepseek.com/api_keys',
     chatPath: '/chat/completions',
@@ -268,7 +221,6 @@ export const PROVIDERS: ProviderPreset[] = [
     label: '月之暗面 Kimi',
     note: '长上下文见长，Kimi K2 系列支持工具调用。',
     baseUrl: 'https://api.moonshot.cn/v1',
-    knownModels: [known('kimi-k2-turbo-preview', 256_000), known('moonshot-v1-128k', 128_000)],
     toolCalls: true,
     consoleUrl: 'https://platform.moonshot.cn/console/api-keys',
     chatPath: '/chat/completions',
@@ -280,10 +232,7 @@ export const PROVIDERS: ProviderPreset[] = [
     label: '智谱 GLM',
     note: 'GLM 系列，工具调用稳定，国内直连。',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    knownModels: [known('glm-4.6', 200_000), known('glm-4-plus', 128_000), known('glm-4-flash', 128_000)],
     toolCalls: true,
-    // 档位映射：GLM 5.3 起与 DeepSeek 同构（reasoning_effort 只有 low / high / max，
-    // 思考强制开启），medium 同样落到官方的平衡默认档 high
     effortMap: { medium: 'high' },
     consoleUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
     chatPath: '/chat/completions',
@@ -295,10 +244,7 @@ export const PROVIDERS: ProviderPreset[] = [
     label: '阿里云百炼（通义千问）',
     note: '百炼平台的 OpenAI 兼容模式，Qwen 系列支持工具调用。',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    knownModels: [known('qwen3-max', 256_000), known('qwen-plus', 128_000), known('qwen-turbo', 1_000_000)],
     toolCalls: true,
-    // Qwen 的思考开关是布尔 enable_thinking，官方没有公认的档位字段——
-    // reasoning_effort 不发（发了也白发，个别网关还挑刺），档位交给模型默认
     quirks: { omitReasoningEffort: true },
     consoleUrl: 'https://bailian.console.aliyun.com/',
     chatPath: '/chat/completions',
@@ -308,9 +254,8 @@ export const PROVIDERS: ProviderPreset[] = [
   {
     id: 'volcengine',
     label: '火山方舟（豆包）',
-    note: '字节跳动方舟平台。多数模型要用「推理接入点 ID」（形如 ep-…）当模型名，填模型列表时注意。',
+    note: '字节跳动方舟平台，支持推理接入点与常用大模型。',
     baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-    knownModels: [known('doubao-seed-1-6-250615', 256_000, true)],
     toolCalls: true,
     consoleUrl: 'https://console.volcengine.com/ark',
     chatPath: '/chat/completions',
@@ -320,13 +265,8 @@ export const PROVIDERS: ProviderPreset[] = [
   {
     id: 'siliconflow',
     label: '硅基流动 SiliconFlow',
-    note: '一家托管多家开源模型的聚合平台，性价比高。',
+    note: '托管多家开源大模型的聚合平台，性价比高。',
     baseUrl: 'https://api.siliconflow.cn/v1',
-    knownModels: [
-      known('deepseek-ai/DeepSeek-V3', 128_000),
-      known('Qwen/Qwen3-235B-A22B-Instruct-2507', 256_000),
-      known('moonshotai/Kimi-K2-Instruct-0905', 256_000),
-    ],
     toolCalls: true,
     consoleUrl: 'https://cloud.siliconflow.cn/account/ak',
     chatPath: '/chat/completions',
@@ -336,14 +276,8 @@ export const PROVIDERS: ProviderPreset[] = [
   {
     id: 'openrouter',
     label: 'OpenRouter',
-    note: '聚合网关，一个 Key 调用多家模型；模型名形如 vendor/model。',
+    note: '聚合网关，一个 Key 调用全球主流模型；模型名形如 vendor/model。',
     baseUrl: 'https://openrouter.ai/api/v1',
-    knownModels: [
-      known('deepseek/deepseek-chat', 128_000),
-      known('anthropic/claude-sonnet-4.5', 200_000, true),
-      known('google/gemini-2.5-pro', 1_000_000, true),
-      known('openai/gpt-5', 400_000, true),
-    ],
     toolCalls: true,
     consoleUrl: 'https://openrouter.ai/keys',
     chatPath: '/chat/completions',
@@ -364,10 +298,9 @@ export const PROVIDERS: ProviderPreset[] = [
   },
   {
     id: 'openai',
-    label: 'OpenAI',
-    note: '官方 API。新版推理模型走 max_completion_tokens。',
+    label: 'OpenAI 官方',
+    note: 'GPT-4o、o1、o3 等官方模型，新版推理模型走 max_completion_tokens。',
     baseUrl: 'https://api.openai.com/v1',
-    knownModels: [known('gpt-5', 400_000, true), known('gpt-5-mini', 400_000, true), known('gpt-4o', 128_000, true)],
     toolCalls: true,
     consoleUrl: 'https://platform.openai.com/api-keys',
     quirks: { tokenParam: 'max_completion_tokens' },
@@ -387,11 +320,24 @@ export const PROVIDERS: ProviderPreset[] = [
     }),
   },
   {
+    id: 'anthropic',
+    label: 'Anthropic Claude',
+    note: 'Claude 系列模型官方 API，长文本与代码推理能力强。',
+    baseUrl: 'https://api.anthropic.com',
+    toolCalls: true,
+    protocol: 'anthropic',
+    consoleUrl: 'https://console.anthropic.com/settings/keys',
+    chatPath: '/v1/messages',
+    authHint: 'x-api-key: <Key> + anthropic-version: 2023-06-01',
+    form: presetForm({
+      keyHint: '到 console.anthropic.com 申请；仅保存在本机。',
+    }),
+  },
+  {
     id: 'gemini',
     label: 'Google Gemini',
-    note: '走 Gemini 的 OpenAI 兼容端点。',
+    note: 'Gemini 系列模型，走 Gemini 的 OpenAI 兼容端点。',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    knownModels: [known('gemini-2.5-pro', 1_000_000, true), known('gemini-2.5-flash', 1_000_000, true)],
     toolCalls: true,
     consoleUrl: 'https://aistudio.google.com/apikey',
     chatPath: '/chat/completions',
@@ -401,9 +347,8 @@ export const PROVIDERS: ProviderPreset[] = [
   {
     id: 'xai',
     label: 'xAI Grok',
-    note: 'Grok 系列，OpenAI 兼容。',
+    note: 'xAI Grok 系列，OpenAI 兼容协议。',
     baseUrl: 'https://api.x.ai/v1',
-    knownModels: [known('grok-4', 256_000, true), known('grok-4-fast', 2_000_000, true)],
     toolCalls: true,
     consoleUrl: 'https://console.x.ai/',
     chatPath: '/chat/completions',
@@ -411,16 +356,22 @@ export const PROVIDERS: ProviderPreset[] = [
     form: presetForm(),
   },
   {
+    id: 'ollama',
+    label: 'Ollama 本地模型',
+    note: '本地离线运行的开源模型服务，默认端口 11434。',
+    baseUrl: 'http://localhost:11434/v1',
+    toolCalls: true,
+    chatPath: '/chat/completions',
+    authHint: '本地通常无需 API Key（留空即可）',
+    form: presetForm({
+      keyHint: '本地运行默认留空；若配置了反代鉴权则在此填写。',
+    }),
+  },
+  {
     id: 'commandcode',
     label: 'Command Code Go 套餐',
     note: 'Go 订阅专用：官方限制第三方接入，Go 套餐调标准端点会返回 403，必须走 CLI 私有网关。',
     baseUrl: COMMANDCODE_BASE_URL,
-    knownModels: [
-      known('deepseek/deepseek-v4.1-flash', 1_000_000, true),
-      known('moonshotai/Kimi-K2.5', 256_000, true),
-      known('MiniMaxAI/MiniMax-M3', 1_000_000, true),
-      known('Qwen/Qwen3.8-Flash', 1_000_000, true),
-    ],
     toolCalls: true,
     consoleUrl: 'https://commandcode.ai/studio',
     protocol: 'commandcode',
@@ -461,19 +412,13 @@ export const getPreset = (id: string): ProviderPreset | undefined =>
  */
 export const presetOf = getPreset
 
-/**
- * 按模型 ID 查预设里的已知元信息（上下文与模态），用于填模型时自动补全。
- * 查不到返回 undefined，调用方按「未知」处理。
- */
-export function knownModelOf(presetId: string, modelId: string): KnownModel | undefined {
-  return getPreset(presetId)?.knownModels.find((m) => m.id === modelId.trim())
+export function knownModelOf(_presetId: string, _modelId: string): undefined {
+  return undefined
 }
 
 export const isBuiltinId = (id: string): boolean => BUILTIN_IDS.has(id)
 
-/** 该预设的第一个已知模型 ID；没有已知模型时返回空串 */
-export const firstKnownModelId = (preset: ProviderPreset | undefined): string =>
-  preset?.knownModels[0]?.id ?? ''
+export const firstKnownModelId = (_preset: ProviderPreset | undefined): string => ''
 
 /**
  * 拼接端点地址：baseUrl 末尾的 `/` 去掉，再补上路径。

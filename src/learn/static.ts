@@ -55,7 +55,7 @@ export {
 
 export { MANIFEST_VERSION, manifestText, normalizeResourceList, parseManifest } from './static/manifest'
 
-export { goalDirOf, goalStaticDir, manifestPathOf, resourceRel } from './static/location'
+export { goalDirOf, goalStaticDir, manifestPathOf, resourceRel, retargetStaticRefs } from './static/location'
 
 export {
   addResource,

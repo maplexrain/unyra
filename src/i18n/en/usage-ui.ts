@@ -54,7 +54,15 @@ export default {
 
   /* ---------- 最近请求 ---------- */
   最近请求: 'Recent requests',
-  '（最多 {0} 条，新的在前）': '(up to {0}, newest first)',
+  '共 {0} 条': '{0} in total',
+  '（每页 {0} 条，新的在前）': '({0} per page, newest first)',
+  '第 {0} / {1} 页': 'Page {0} of {1}',
+  '显示第 {0} - {1} 条，共 {2} 条': 'Showing {0}-{1} of {2}',
+  上一页: 'Previous',
+  下一页: 'Next',
+  前往: 'Go to',
+  页: 'page',
+  '本地估算 token': 'Locally estimated tokens',
   时间: 'Time',
   用途: 'Purpose',
   耗时: 'Time',

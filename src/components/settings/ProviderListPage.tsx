@@ -1,9 +1,9 @@
 /**
- * 这个文件负责：模型设置的一级页面：已配置的提供商列表、默认提供商 / 模型、思考程度。
+ * 模型设置的一级页面：已配置的提供商列表、创建提供商（官方 Logo 预设展示）、默认提供商与思考程度。
  */
 
 import { useState } from 'react'
-import { Cpu, Plus, Settings2, Sparkles, Star } from 'lucide-react'
+import { Plus, Settings2, Sparkles, Star } from 'lucide-react'
 import {
   labelOf,
   modelEntriesOf,
@@ -16,8 +16,7 @@ import { PROVIDERS, type ProviderPreset } from '../../ai/providers'
 import { REASONING_HINT, REASONING_LABEL, compatLabel, type ReasoningEffort } from '../../ai/types'
 import { t } from '../../i18n'
 import EffortSlider from '../agent/EffortSlider'
-
-/* ---------- 一级：提供商列表页 ---------- */
+import { ProviderLogo } from './ProviderLogo'
 
 export function ProviderListPage({
   draft,
@@ -49,26 +48,33 @@ export function ProviderListPage({
     <>
       <section>
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-ink-soft">
+          <span className="text-[12.5px] font-medium text-ink-strong">
             {t('已配置的提供商')}
-            <span className="ml-2 text-[11px] text-ink-faint">{t('点击进入配置')}</span>
+            <span className="ml-2 text-[11px] font-normal text-ink-faint">
+              {t('点击进入配置（配置会自动保存）')}
+            </span>
           </span>
           <button
             type="button"
             onClick={() => setCreating((v) => !v)}
-            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] text-ink-soft transition hover:bg-line/60 hover:text-seal-deep"
+            className="flex items-center gap-1 rounded-lg border border-line bg-card px-2.5 py-1 text-[11.5px] font-medium text-ink transition hover:border-seal/50 hover:bg-seal/5 hover:text-seal-deep"
           >
             <Plus size={12} />
-            {t('创建提供商')}
+            {t('添加新提供商')}
           </button>
         </div>
 
         {configured.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-[12px] leading-relaxed text-ink-faint">
-            {t('还没有提供商。点右上「创建提供商」，从预设里挑一家，或用自定义接入中转 / 内网 / 本地模型。')}
-          </p>
+          <div className="rounded-xl border border-dashed border-line bg-card/40 px-4 py-8 text-center">
+            <p className="text-[12.5px] font-medium text-ink-strong">
+              {t('尚未添加任何模型提供商')}
+            </p>
+            <p className="mt-1 text-[11.5px] text-ink-faint">
+              {t('点击右上角「添加新提供商」，选择 DeepSeek、OpenAI、Kimi 等官方预设或接入自定义模型。')}
+            </p>
+          </div>
         ) : (
-          <ul className="flex flex-col gap-1.5">
+          <ul className="flex flex-col gap-2">
             {configured.map((p) => {
               const entries = modelEntriesOf(p)
               return (
@@ -76,28 +82,32 @@ export function ProviderListPage({
                   <button
                     type="button"
                     onClick={() => onOpen(p.id)}
-                    className="flex w-full items-center gap-3 rounded-xl border border-line bg-card px-3 py-2.5 text-left transition hover:border-seal/40 hover:bg-seal/[0.03]"
+                    className="flex w-full items-center gap-3.5 rounded-xl border border-line bg-card px-3.5 py-3 text-left shadow-2xs transition hover:border-seal/40 hover:bg-seal/[0.02]"
                   >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-line/60 text-ink-soft">
-                      <Cpu size={15} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line/80 bg-paper shadow-2xs">
+                      <ProviderLogo id={p.id} protocol={protocolOf(p)} size={22} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
                         <span className="truncate text-[13px] font-medium text-ink-strong">{t(labelOf(p))}</span>
-                        <span className="shrink-0 rounded bg-line/70 px-1.5 py-0.5 text-[10px] text-ink-soft">
+                        <span className="shrink-0 rounded bg-line/60 px-1.5 py-0.5 text-[10px] text-ink-soft">
                           {t(compatLabel(protocolOf(p)))}
                         </span>
                         {p.id === draft.global.providerId && (
-                          <span className="flex shrink-0 items-center gap-0.5 rounded bg-seal/10 px-1.5 py-0.5 text-[10px] text-seal-deep">
+                          <span className="flex shrink-0 items-center gap-0.5 rounded bg-seal/10 px-1.5 py-0.5 text-[10.5px] font-medium text-seal-deep">
                             <Star size={9} />
                             {t('默认')}
                           </span>
                         )}
-                      </span>
-                      <span className="mt-0.5 block truncate font-mono text-[11px] text-ink-faint">
-                        {entries.length ? entries.map((m) => m.id).join(' · ') : t('还没有模型')}
-                      </span>
-                    </span>
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-faint">
+                        <span className="truncate font-mono">
+                          {entries.length
+                            ? entries.map((m) => m.id).join(' · ')
+                            : t('未配置模型（点击添加）')}
+                        </span>
+                      </div>
+                    </div>
                     <Settings2 size={14} className="shrink-0 text-ink-faint" />
                   </button>
                 </li>
@@ -106,53 +116,92 @@ export function ProviderListPage({
           </ul>
         )}
 
+        {/* 弹出/展开的预设选择面板 */}
         {creating && (
-          <div className="mt-2 rounded-xl border border-seal/30 bg-card px-3.5 py-3">
-            <div className="mb-1.5 text-[12px] font-medium text-ink-strong">{t('选择预设')}</div>
-            <div className="flex flex-wrap gap-1.5">
-              {PROVIDERS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  disabled={createdIds.has(p.id)}
-                  onClick={() => onPickPreset(p)}
-                  title={createdIds.has(p.id) ? t('已经创建过了') : t(p.note)}
-                  className={`rounded-lg border px-2.5 py-1 text-[11.5px] transition ${
-                    createdIds.has(p.id)
-                      ? 'cursor-not-allowed border-line bg-line/40 text-ink-faint'
-                      : 'border-line bg-card text-ink-soft hover:border-seal/40 hover:text-seal-deep'
-                  }`}
-                >
-                  {t(p.label)}
-                </button>
-              ))}
-            </div>
-            <div className="mt-2.5 flex items-center gap-2 border-t border-line pt-2.5">
-              <span className="text-[11.5px] text-ink-soft">{t('或')}</span>
+          <div className="mt-3 rounded-2xl border border-seal/30 bg-card/90 p-4 shadow-sm">
+            <div className="mb-2.5 flex items-center justify-between">
+              <div>
+                <h4 className="text-[13px] font-semibold text-ink-strong">{t('选择要添加的模型提供商')}</h4>
+                <p className="mt-0.5 text-[11px] text-ink-faint">
+                  {t('已内置各家官方接入协议与接口地址，选中后只需填入 API Key')}
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={onAddCustom}
-                className="rounded-lg border border-line bg-card px-2.5 py-1 text-[11.5px] text-ink-soft transition hover:border-seal/40 hover:text-seal-deep"
+                onClick={() => setCreating(false)}
+                className="text-[11.5px] text-ink-faint hover:text-ink"
               >
-                {t('自定义提供商（OpenAI / Anthropic / Responses 兼容）')}
+                {t('收起')}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+              {PROVIDERS.map((p) => {
+                const added = createdIds.has(p.id)
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    disabled={added}
+                    onClick={() => {
+                      setCreating(false)
+                      onPickPreset(p)
+                    }}
+                    title={added ? t('该提供商已添加') : t(p.note)}
+                    className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-left transition ${
+                      added
+                        ? 'cursor-not-allowed border-line bg-line/30 opacity-60'
+                        : 'border-line bg-paper hover:border-seal/50 hover:bg-seal/[0.04] hover:shadow-2xs'
+                    }`}
+                  >
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line/60 bg-card">
+                      <ProviderLogo id={p.id} size={18} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[11.5px] font-medium text-ink-strong">
+                        {t(p.label)}
+                      </div>
+                      <div className="truncate text-[10px] text-ink-faint">
+                        {added ? t('已添加') : t(p.note)}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="mt-3 flex items-center justify-between border-t border-line/70 pt-2.5">
+              <span className="text-[11.5px] text-ink-soft">
+                {t('没有找到您使用的平台？')}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreating(false)
+                  onAddCustom()
+                }}
+                className="rounded-lg border border-line bg-paper px-3 py-1 text-[11.5px] font-medium text-ink-soft transition hover:border-seal/40 hover:text-seal-deep"
+              >
+                {t('+ 自定义接入（OpenAI / Anthropic / Responses 兼容）')}
               </button>
             </div>
           </div>
         )}
       </section>
 
-      <section className="rounded-xl border border-seal/25 bg-seal/[0.04] px-3.5 py-3">
-        <div className="mb-2 flex items-center gap-1.5">
+      {/* 默认模型与全局思考等级 */}
+      <section className="rounded-xl border border-seal/25 bg-seal/[0.03] p-4">
+        <div className="mb-2.5 flex items-center gap-1.5">
           <Star size={13} className="text-seal" />
-          <span className="text-[12.5px] font-medium text-seal-deep">{t('默认提供商与默认模型')}</span>
-          <span className="text-[11px] text-ink-faint">{t('超级导师与后续 AI 功能都用这一组')}</span>
+          <span className="text-[12.5px] font-medium text-seal-deep">{t('默认提供商与主用模型')}</span>
+          <span className="text-[11px] text-ink-faint">{t('超级导师与核心 AI 功能均以此为基准')}</span>
         </div>
         {configured.length === 0 ? (
           <p className="text-[11.5px] leading-relaxed text-ink-faint">
-            {t('还没有配置好的提供商。配好任意一家后会自动设为默认。')}
+            {t('还没有配置好的提供商。添加任意一家后将自动设为默认。')}
           </p>
         ) : (
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="min-w-0">
               <span className="mb-1 block text-[11.5px] text-ink-soft">{t('默认提供商')}</span>
               <select
@@ -181,7 +230,7 @@ export function ProviderListPage({
                     </option>
                   ))}
                 {(!defaultProvider || !modelEntriesOf(defaultProvider).length) && (
-                  <option value="">{t('（该提供商还没有模型）')}</option>
+                  <option value="">{t('（尚未添加模型）')}</option>
                 )}
               </select>
             </label>
@@ -189,14 +238,13 @@ export function ProviderListPage({
         )}
       </section>
 
-      <section className="rounded-xl border border-line bg-card/60 px-3.5 py-3">
+      {/* 思考等级滑块 */}
+      <section className="rounded-xl border border-line bg-card/60 p-4">
         <div className="mb-2 flex items-center gap-1.5">
           <Sparkles size={13} className="text-seal" />
-          <span className="text-[12.5px] font-medium text-ink-strong">{t('思考程度')}</span>
-          <span className="text-[11px] text-ink-faint">{t('全局设置，不绑提供商与模型')}</span>
+          <span className="text-[12.5px] font-medium text-ink-strong">{t('全局思考程度')}</span>
+          <span className="text-[11px] text-ink-faint">{t('对所有支持推理思考的模型生效')}</span>
         </div>
-        {/* 和 agent 栏里的模型选择器用同一个滑条：同一件事在两处长得一样，
-            用户不必分别学一遍；底色即当前档位的荧光色 */}
         <EffortSlider value={draft.global.effort} onChange={onEffort} />
         <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
           {REASONING_LABEL[draft.global.effort]}：{t(REASONING_HINT[draft.global.effort])}

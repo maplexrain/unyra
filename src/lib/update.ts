@@ -22,10 +22,65 @@ export type { UpdateFail, UpdateState }
 let snapshot: UpdateState | null = null
 const listeners = new Set<() => void>()
 let started = false
+let mockActive = false
 
 function publish(next: UpdateState): void {
   snapshot = next
   for (const notify of listeners) notify()
+}
+
+/** 当前是否处于开发者模拟更新状态 */
+export function isMockUpdateActive(): boolean {
+  return mockActive && snapshot?.phase === 'ready'
+}
+
+/**
+ * 开发者模式：模拟新版本下载完成推送（用于测试顶栏按钮、Tip 与更新弹窗 UI）。
+ */
+export function mockUpdatePush(custom?: Partial<UpdateState>): void {
+  mockActive = true
+  const mock: UpdateState = {
+    phase: 'ready',
+    current: snapshot?.current || '1.0.0',
+    version: '1.2.0',
+    releaseName: '归一 v1.2.0 重大更新',
+    notes: `
+      <h3>✨ 归一 v1.2.0 正式发布</h3>
+      <p>本次版本全面升级了学习节奏系统与 AI 导师交互体验，并优化了多项视觉交互细节：</p>
+      <h4>🚀 新增与改进</h4>
+      <ul>
+        <li><b>思考档位切换组件重构</b>：深度支持轻量思考与多级拆解，切换更平滑直观。</li>
+        <li><b>顶栏学习节奏全景升级</b>：专注番茄钟、阅读时长、目标打卡日历与间隔复习卡片化微交互。</li>
+        <li><b>浏览器历史记录智能补全</b>：地址栏输入时即时检索历史访问记录，支持键盘上下方向键导航与快捷删除。</li>
+        <li><b>资源管理器全新灵动音频可视化</b>：更细腻自然的频段律动波形与流体动画。</li>
+      </ul>
+      <h4>🐞 问题修复与体验优化</h4>
+      <ul>
+        <li>修复「设置 - 更新」中自动更新开关圆球滑块溢出偏移的问题。</li>
+        <li>修复内置浏览器中视频元素全屏还原后高度异常坍塌至 150px 的 Bug。</li>
+        <li>大幅优化多页签切换时的渲染性能与本地缓存响应速度。</li>
+      </ul>
+    `,
+    fileName: 'moji-notes-v1.2.0-setup.exe',
+    size: 89_420_000,
+    releaseUrl: 'https://github.com/maplexrain/unyra/releases',
+    checkedAt: Date.now(),
+    ...custom,
+  }
+  publish(mock)
+}
+
+/**
+ * 清除开发者模拟更新状态并复位为空闲。
+ */
+export function clearMockUpdate(): void {
+  mockActive = false
+  const idle: UpdateState = {
+    phase: 'idle',
+    current: snapshot?.current || '1.0.0',
+    checkedAt: Date.now(),
+  }
+  publish(idle)
 }
 
 /**
@@ -241,11 +296,21 @@ const NOTES_ATTR = ['href', 'title', 'src', 'alt']
 export function notesHtml(notes?: string): string | null {
   const raw = notes?.trim()
   if (!raw) return null
-  const clean = DOMPurify.sanitize(raw, {
-    ALLOWED_TAGS: NOTES_TAGS,
-    ALLOWED_ATTR: NOTES_ATTR,
-    FORBID_TAGS: ['style', 'script', 'iframe', 'form', 'input', 'button'],
-  })
+  const purifier =
+    typeof DOMPurify.sanitize === 'function'
+      ? DOMPurify
+      : typeof DOMPurify === 'function' && typeof window !== 'undefined'
+        ? (DOMPurify as unknown as (w: unknown) => { sanitize: (html: string, config: unknown) => string })(window)
+        : null
+
+  const clean = purifier
+    ? purifier.sanitize(raw, {
+        ALLOWED_TAGS: NOTES_TAGS,
+        ALLOWED_ATTR: NOTES_ATTR,
+        FORBID_TAGS: ['style', 'script', 'iframe', 'form', 'input', 'button'],
+      })
+    : raw.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+
   if (!clean.trim()) return null
   return clean.replace(/<a\s/gi, '<a target="_blank" rel="noreferrer" ')
 }

@@ -24,7 +24,6 @@ import {
   DEFAULT_PROVIDER_ID,
   MODALITY_LABEL,
   PROVIDERS,
-  knownModelOf,
   presetOf,
   type InputModality,
 } from './providers'
@@ -240,22 +239,15 @@ export function createDefaultProvider(apiKey: string): ProviderConfig {
   }
   return {
     ...base,
-    models: [withKnownModelMeta(base, makeModelEntry(DEFAULT_MODEL_ID, { name: 'DeepSeek Flash' }))],
+    models: [makeModelEntry(DEFAULT_MODEL_ID, { name: 'DeepSeek Flash', contextWindow: 128000 })],
   }
 }
 
 /**
- * 按模型 ID 自动补全元信息（上下文与模态），供「添加模型」时用。
- * 数据来自当前提供商的预设（若它来自预设），查不到就原样返回。
+ * 兼容保留接口：模型元信息补全（不再依赖硬编码预设）
  */
-export function withKnownModelMeta(c: ProviderConfig, entry: ModelEntry): ModelEntry {
-  const known = knownModelOf(c.id, entry.id)
-  if (!known) return entry
-  return {
-    ...entry,
-    contextWindow: entry.contextWindow || known.contextWindow,
-    inputModalities: entry.inputModalities.length > 1 ? entry.inputModalities : known.inputModalities,
-  }
+export function withKnownModelMeta(_c: ProviderConfig, entry: ModelEntry): ModelEntry {
+  return entry
 }
 
 /**
