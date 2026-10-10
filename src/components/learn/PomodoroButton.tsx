@@ -119,180 +119,239 @@ export default function PomodoroButton({
       <button
         type="button"
         title={running ? t('第 {0}/{1} 组 · {2}', running.index, running.groups, t(phaseLabel(running.phase))) + (left ? t(' · 还剩 {0}', left) : '') : t('番茄钟：设好时长与组数，点开始')}
-        // 展开靠指针经过；点一下也展开（键盘 Tab 过来回车走的就是这条）。
-        // 不做「再点收起」——鼠标用户点的时候面板本来就已经开着，再点反而把它关了
         {...buttonProps}
         aria-expanded={open}
-        className={`flex h-8 items-center gap-1.5 rounded-md px-2 transition ${open ? 'bg-line/70' : 'hover:bg-line/70'}`}
+        className={`group relative flex h-8 items-center gap-1.5 rounded-lg border-0 bg-transparent px-2 text-[12px] font-medium transition-all duration-150 ${
+          running ? 'text-ink' : open ? 'text-ink' : 'text-ink-soft hover:text-ink'
+        }`}
       >
-        <Timer size={14} className={'shrink-0 ' + (running ? 'text-seal' : 'text-ink-faint')} />
-        {/*
-          折叠态只说两件事：现在是什么状态（专注/休息、第几组）与还剩多久。
-          以前这里还挂着一个墙上时钟（yyyy/mm/dd hh:mm:ss），它把这颗按钮撑得很长，
-          而且和邻居们（有效阅读的 mm:ss、打卡的两个字）不是一个量级——
-          顶栏是共用的，越短越安静越好。要看得见时间的是**倒计时**，不是现在几点。
-        */}
+        <div className={`relative flex items-center justify-center ${running ? (paused ? 'text-warn-deep' : 'text-seal') : open ? 'text-ink' : 'text-ink-faint group-hover:text-ink'}`}>
+          <Timer size={14} />
+          {running && !paused && (
+            <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-seal opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-seal" />
+            </span>
+          )}
+        </div>
         {running ? (
           <>
-            {paused && <Pause size={12} className="shrink-0 text-warn-deep" />}
-            <span className="shrink-0 text-[12.5px] text-ink">
+            {paused && <Pause size={12} className="shrink-0 text-warn-deep animate-pulse" />}
+            <span className="shrink-0 text-[12px] font-medium text-ink">
               {t(phaseLabel(running.phase))} {running.index}/{running.groups}
             </span>
-            {/* 折叠态固定用 seal + 加粗：它同时是「正在计时」的信号，不该等最后一分钟才亮起来 */}
             {left !== null && (
-              <RollingDigits text={left} className={'shrink-0 text-[12.5px] font-semibold ' + (urgent ? 'text-warn-deep' : 'text-seal')} />
+              <RollingDigits
+                text={left}
+                className={`shrink-0 tabular-nums font-semibold ${urgent ? 'text-warn-deep' : 'text-seal'}`}
+              />
             )}
           </>
         ) : (
-          <span className="shrink-0 text-[12.5px] text-ink-faint">{t('专注')}</span>
+          <span className="shrink-0 text-[12px]">{t('专注')}</span>
         )}
       </button>
 
       {mounted && (
-        /*
-          pt-1 这一层是「桥」：按钮与面板之间那 4px 缝必须落在本组件内，
-          否则指针穿过缝的一瞬间就会触发 wrapper 的 mouseleave，面板当场收起。
-          动画与外观都作用在里面真正的面板上（与 UserMenu 一致）。
-        */
-        <div className="absolute right-0 top-full z-30 pt-1">
+        <div className="absolute right-0 top-full z-30 pt-1.5">
           <div
-            className={`w-[304px] rounded-lg border border-line-strong bg-card p-2.5 shadow-[0_8px_28px_rgba(31,27,23,0.18)] ${panelProps.className}`}
+            className={`w-[324px] rounded-2xl border border-line-strong/70 bg-card/95 p-3.5 shadow-2xl backdrop-blur-md ${panelProps.className}`}
           >
-            {/* --- 1. 现在走到哪了：大字数 + 一条进度条 --- */}
-            <div className="flex items-baseline justify-between gap-2 px-0.5">
-              <span className={'text-[22px] font-semibold leading-none ' + (running ? (urgent ? 'text-warn-deep' : 'text-seal') : 'text-ink-faint')}>
-                {left !== null ? <RollingDigits text={left} /> : formatClock(shownMinutes * 60_000)}
+            {/* --- 顶部标题与状态标签 --- */}
+            <div className="flex items-center justify-between gap-2 px-0.5">
+              <div className="flex items-center gap-1.5">
+                <span className="flex h-5 w-5 items-center justify-center rounded-md bg-seal/10 text-seal">
+                  <Timer size={12} />
+                </span>
+                <span className="text-[13px] font-semibold text-ink-strong">{t('番茄专注')}</span>
+              </div>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10.5px] font-medium ${
+                  running
+                    ? running.phase === 'rest'
+                      ? 'bg-ok/15 text-ok-deep'
+                      : 'bg-seal/12 text-seal-deep'
+                    : 'bg-line/50 text-ink-faint'
+                }`}
+              >
+                {running ? t('第 {0}/{1} 组 · {2}', running.index, running.groups, t(phaseLabel(running.phase))) : t('就绪')}
               </span>
-              <span className="min-w-0 truncate text-[11px] text-ink-faint">
-                {running ? t('第 {0}/{1} 组 · {2}', running.index, running.groups, t(phaseLabel(running.phase))) : t('还没开始')}
-              </span>
-            </div>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line/60">
-              <div
-                className={'h-full rounded-full transition-[width] duration-1000 ease-linear ' + (running?.phase === 'rest' ? 'bg-ok' : 'bg-seal')}
-                style={{ width: pct + '%' }}
-              />
             </div>
 
-            {/* 守卫判离开：计时冻结着，告诉用户怎么续上（交互监听在守卫运行时手里） */}
+            {/* --- 1. 现在走到哪了：卡片式大字时钟 + 平滑进度条 --- */}
+            <div className="mt-3 flex flex-col items-center justify-center rounded-xl border border-line/50 bg-paper/50 px-3.5 py-3 dark:bg-paper/20">
+              <div className={`text-3xl font-bold tracking-tight tabular-nums ${running ? (urgent ? 'text-warn-deep' : 'text-seal') : 'text-ink-strong'}`}>
+                {left !== null ? <RollingDigits text={left} /> : formatClock(shownMinutes * 60_000)}
+              </div>
+              <div className="mt-1 text-[11px] text-ink-faint">
+                {running
+                  ? running.phase === 'rest'
+                    ? t('休息放松中，喝口水活动一下')
+                    : t('保持专注，系统正在持续记录')
+                  : t('设定专注时长与组数后开启')}
+              </div>
+              <div className="mt-3 w-full">
+                <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-line/60">
+                  <div
+                    className={`h-full rounded-full transition-all duration-1000 ease-linear ${
+                      running?.phase === 'rest' ? 'bg-ok' : 'bg-seal'
+                    }`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                {running && (
+                  <div className="mt-1 flex justify-between text-[10px] text-ink-faint tabular-nums">
+                    <span>{running.phase === 'rest' ? t('休息阶段') : t('专注阶段')}</span>
+                    <span>{Math.round(pct)}%</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 守卫判离开：计时冻结着，告诉用户怎么续上 */}
             {running && paused && (
-              <div className="mt-2 rounded-md border border-warn/40 bg-warn/10 px-2 py-1.5 text-[11px] leading-relaxed text-warn-deep">
-                {t('守卫发现你不在屏幕前，计时已暂停——回到应用随便点一下或敲个键就继续')}
+              <div className="mt-2.5 flex items-start gap-2 rounded-lg border border-warn/40 bg-warn/10 p-2.5 text-[11px] leading-relaxed text-warn-deep">
+                <Pause size={13} className="shrink-0 mt-0.5" />
+                <span>{t('守卫发现你不在屏幕前，计时已暂停——回到应用随便点一下或敲个键就继续')}</span>
               </div>
             )}
 
-            {/* --- 2. 开始之前可以先调：时长滑块 + 组数 --- */}
-            <div className="mt-2.5 rounded-md border border-line bg-paper-deep/40 px-2.5 py-2">
-              <div className="flex items-baseline gap-2">
-                <span className="text-[12px] text-ink-strong">{t('一段专注多长')}</span>
-                <span className="ml-auto text-[12px] font-medium tabular-nums text-seal-deep">{t('{0} 分钟', shownMinutes)}</span>
+            {/* --- 2. 时长滑块 + 组数 --- */}
+            <div className="mt-3 space-y-2.5 rounded-xl border border-line/50 bg-paper/40 p-2.5 dark:bg-paper/20">
+              <div>
+                <div className="flex items-center justify-between text-[12px]">
+                  <span className="font-medium text-ink-strong">{t('一段专注多长')}</span>
+                  <span className="rounded-md bg-seal/10 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-seal-deep">
+                    {t('{0} 分钟', shownMinutes)}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={MIN_FOCUS_MINUTES}
+                  max={MAX_FOCUS_MINUTES}
+                  step={5}
+                  value={shownMinutes}
+                  disabled={locked}
+                  onChange={(e) => onFocusMinutes(Number(e.target.value))}
+                  className="mt-2 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-line/70 accent-[var(--color-seal)] disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+                <div className="mt-1 flex justify-between text-[10px] text-ink-faint tabular-nums">
+                  <span>{MIN_FOCUS_MINUTES}m</span>
+                  <span>30m</span>
+                  <span>45m</span>
+                  <span>{MAX_FOCUS_MINUTES}m</span>
+                </div>
               </div>
-              <input
-                type="range"
-                min={MIN_FOCUS_MINUTES}
-                max={MAX_FOCUS_MINUTES}
-                step={5}
-                value={shownMinutes}
-                disabled={locked}
-                onChange={(e) => onFocusMinutes(Number(e.target.value))}
-                className="mt-1.5 w-full accent-[var(--color-seal)] disabled:opacity-50"
-              />
-              <div className="mt-1 flex items-baseline gap-2">
-                <span className="text-[12px] text-ink-strong">{t('做几组')}</span>
-                <span className="ml-auto text-[11px] text-ink-faint">
-                  {t('每组之后休息 {0} 分钟（专注的 1/5）', restMinutes)}
-                </span>
-              </div>
-              <div className="mt-1.5 flex gap-1">
-                {GROUP_CHOICES.map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    disabled={locked}
-                    onClick={() => onGroups(n)}
-                    title={t('做 {0} 组', n)}
-                    className={
-                      'h-6 flex-1 rounded-md border text-[11px] tabular-nums transition disabled:cursor-not-allowed ' +
-                      (n === shownGroups
-                        ? 'border-seal/60 bg-seal/10 font-medium text-seal-deep'
-                        : 'border-line text-ink-soft enabled:hover:bg-line/50') +
-                      (locked ? ' opacity-60' : '')
-                    }
-                  >
-                    {n}
-                  </button>
-                ))}
+
+              <div className="border-t border-line/40 pt-2">
+                <div className="flex items-center justify-between text-[12px]">
+                  <span className="font-medium text-ink-strong">{t('做几组')}</span>
+                  <span className="text-[10.5px] text-ink-faint">
+                    {t('每组休息 {0} 分钟', restMinutes)}
+                  </span>
+                </div>
+                <div className="mt-1.5 grid grid-cols-6 gap-1">
+                  {GROUP_CHOICES.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      disabled={locked}
+                      onClick={() => onGroups(n)}
+                      title={t('做 {0} 组', n)}
+                      className={`h-6.5 rounded-md border text-[11px] font-medium tabular-nums transition-all ${
+                        n === shownGroups
+                          ? 'border-seal bg-seal text-white shadow-2xs'
+                          : 'border-line/70 bg-card/60 text-ink-soft hover:bg-card hover:text-ink hover:border-line-strong'
+                      } ${locked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* --- 3. 严格专注：勾了任意一路就是严格模式，守卫按拿到的画面调整策略 --- */}
+            {/* --- 3. 严格专注 --- */}
             {showStrict && (
-              <div className="mt-2 rounded-md border border-line bg-paper-deep/40 px-2.5 py-2">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-[12px] text-ink-strong">{t('严格专注')}</span>
-                  <span className="ml-auto text-[11px] text-ink-faint">
-                    {monitors.screen || monitors.camera ? t('守卫 agent 每分钟看一眼') : t('勾选即开启')}
+              <div className="mt-2.5 rounded-xl border border-line/50 bg-paper/40 p-2.5 dark:bg-paper/20">
+                <div className="flex items-center justify-between text-[12px]">
+                  <span className="font-medium text-ink-strong">{t('严格专注')}</span>
+                  <span className="text-[10.5px] text-ink-faint">
+                    {monitors.screen || monitors.camera ? t('守卫 agent 每分钟巡检') : t('勾选即开启')}
                   </span>
                 </div>
-                <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-[12px] text-ink">
-                  <input
-                    type="checkbox"
-                    checked={monitors.screen}
-                    disabled={locked}
-                    onChange={() => onMonitorToggle('screen')}
-                    className="accent-[var(--color-seal)] disabled:cursor-not-allowed disabled:opacity-50"
-                  />
-                  {t('监控屏幕')}
-                </label>
-                <label className="mt-1 flex cursor-pointer items-center gap-2 text-[12px] text-ink">
-                  <input
-                    type="checkbox"
-                    checked={monitors.camera}
-                    disabled={locked}
-                    onChange={() => onMonitorToggle('camera')}
-                    className="accent-[var(--color-seal)] disabled:cursor-not-allowed disabled:opacity-50"
-                  />
-                  {t('监控摄像头')}
-                </label>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <label
+                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11.5px] transition-all ${
+                      monitors.screen
+                        ? 'border-seal/40 bg-seal/10 text-seal-deep font-medium'
+                        : 'border-line/60 bg-card/40 text-ink-soft hover:bg-card hover:text-ink'
+                    } ${locked ? 'cursor-not-allowed opacity-60' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={monitors.screen}
+                      disabled={locked}
+                      onChange={() => onMonitorToggle('screen')}
+                      className="accent-[var(--color-seal)] rounded"
+                    />
+                    <span>{t('监控屏幕')}</span>
+                  </label>
+                  <label
+                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11.5px] transition-all ${
+                      monitors.camera
+                        ? 'border-seal/40 bg-seal/10 text-seal-deep font-medium'
+                        : 'border-line/60 bg-card/40 text-ink-soft hover:bg-card hover:text-ink'
+                    } ${locked ? 'cursor-not-allowed opacity-60' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={monitors.camera}
+                      disabled={locked}
+                      onChange={() => onMonitorToggle('camera')}
+                      className="accent-[var(--color-seal)] rounded"
+                    />
+                    <span>{t('监控摄像头')}</span>
+                  </label>
+                </div>
                 {strictHint && <p className="mt-1.5 text-[10.5px] leading-relaxed text-warn-deep">{strictHint}</p>}
                 {previews}
-                <p className="mt-1.5 text-[10.5px] leading-relaxed text-ink-faint">
-                  {t('画面只用于判断学习状态、逐轮发给模型，不落盘；出现隐私画面会立即熔断停止专注。')}
+                <p className="mt-1.5 text-[10px] leading-relaxed text-ink-faint">
+                  {t('画面仅用于实时状态判定，不落盘；若检测到隐私内容将熔断停止。')}
                 </p>
               </div>
             )}
-            {/* 严格专注跑起来：守卫的实时状态 + 打开上下文页签的入口 */}
+            {/* 严格专注跑起来：守卫状态 */}
             {guardStatus}
 
-            {/* --- 4. 开始 / 停止 --- */}
+            {/* --- 4. 开始 / 停止操作按钮 --- */}
             {running ? (
               <button
                 type="button"
                 onClick={onStop}
-                className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-line text-[12.5px] font-medium text-ink-soft transition hover:border-warn/50 hover:bg-warn/10 hover:text-warn-deep"
+                className="mt-3 flex h-8.5 w-full items-center justify-center gap-1.5 rounded-lg border border-warn/40 bg-warn/5 text-[12.5px] font-medium text-warn-deep transition-all hover:bg-warn/15 hover:border-warn active:scale-[0.99]"
               >
-                <Square size={11} /> {t('停止')}
+                <Square size={12} /> {t('停止')}
               </button>
             ) : (
               <button
                 type="button"
                 onClick={onStart}
-                className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-seal text-[12.5px] font-medium text-white transition hover:bg-seal-deep"
+                className="mt-3 flex h-8.5 w-full items-center justify-center gap-1.5 rounded-lg bg-seal text-[12.5px] font-medium text-white shadow-sm transition-all hover:bg-seal-deep active:scale-[0.99]"
               >
-                <Play size={11} /> {t('开始专注')}
+                <Play size={12} className="fill-current" /> {t('开始专注')}
               </button>
             )}
 
-            {/* --- 5. 收尾小字：把两条规则说清（停止作废、只有完整的专注段算数） --- */}
-            <div className="my-1.5 h-px bg-line" />
-            <p className="text-[10.5px] leading-relaxed text-ink-faint">
-              {t('停下来这一段就不算数，要接着跑只能重新开始；只有跑完的专注段会记一笔。')}
+            {/* --- 5. 收尾提示 --- */}
+            <div className="mt-2.5 border-t border-line/40 pt-2 text-[10px] leading-relaxed text-ink-faint">
+              {t('中途停止不计入有效记录，跑完的组别将自动归档。')}
               {monitors.screen || monitors.camera
-                ? t('守卫发现你离开会自动暂停计时，回来后自动继续。')
+                ? t('离开屏幕时自动挂起计时。')
                 : running
-                  ? t('切屏不打断计时。')
-                  : t('到点会提醒你。')}
-            </p>
+                  ? t('后台切屏不会打断计时。')
+                  : t('专注与休息交替提醒。')}
+            </div>
           </div>
         </div>
       )}

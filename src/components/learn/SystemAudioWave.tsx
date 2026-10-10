@@ -4,43 +4,36 @@ import { startLoopback, type LoopbackSession } from '../../lib/audio/loopback'
 import { addBreath, applyGravity, barCount, barRanges, sampleBars, smoothBars } from '../../lib/audio/bars'
 
 /**
- * 顶栏的系统音频柱形频谱：电脑正在播的声音，实时画成一排柱。
+ * 资源管理器底部的系统音频律动频谱：电脑正在播的声音，实时画成灵动光波。
  *
- * **挂在侧栏底端当一台小电台**：资源管理器滚动区与拖拽提示行之间的一条专属
- * 底带，**满宽**（高 48px）；柱数/柱宽/间隙全部按实际宽度现算（bars.barCount），
- * 侧栏拖宽拖窄都跟着重排，无需任何固定宽度。
- *
- * 数据从系统回环来（src/lib/audio/loopback），这里只管画。三条自我约束与
- * GoalParticles 同一套：
- * - 纯装饰、不挂任何事件——pointer-events 放行，鼠标划过去还是在拖窗口；
- * - 颜色从 CSS 变量读（--color-seal / --color-seal-deep / --color-line-strong），
- *   主题自动跟随；
- * - 尊重「减少动效」：降到约 8fps，柱子还在呼吸，只是不逐帧刷新。
- *
- * 采不到系统音频时（Linux 无回环、无声卡、权限被拒）只剩一排 2px 底座，原因
- * 写进 canvas 的 title——频谱缺席是可理解的降级，不值得为它弹吐司。
+ * **挂在侧栏底端当一台小电台**：
+ * - 纯装饰、无文字、无边框、无背景底色，与侧栏底色融为一体；
+ * - 响应主题色切换（--color-seal / --color-seal-deep / --color-line-strong）；
+ * - 采用流体极光底衬、双层高质感光柱、悬浮流光珠与环境自然呼吸律动；
+ * - 鼠标划过带有轻盈的交互声波荡漾，整体灵动、现代且通透。
  */
 
 /** 下降重力：每帧回落的全高占比（涨即时、落缓慢，见 bars.applyGravity） */
-const BAR_FALL = 0.04
+const BAR_FALL = 0.045
 
-/** 峰值帽的下落速度：比柱身慢一截，柱子落下去之后帽还悬在上面（Monstercat 的招牌细节） */
-const CAP_FALL = 0.012
+/** 峰值帽的下落速度：比柱身慢一截，柱子落下去之后流光珠还缓缓悬浮漂移 */
+const CAP_FALL = 0.014
 
-/** 静音呼吸的涟漪幅度（0..1 全高占比 ≈ 3px）：无声时柱子缓缓起伏，整块「活着在听」 */
-const BREATH_AMP = 0.055
+/** 静音呼吸的涟漪幅度（0..1 全高占比） */
+const BREATH_AMP = 0.06
 
-/** 静音线：峰值帽的最高点低于它 = 周围一秒没声，柱子从空心切回实心待机 */
-const SILENCE_LEVEL = 0.04
+/** 静音判定线：峰值低于此值判定为静音状态 */
+const SILENCE_LEVEL = 0.035
 
-/** 接连失败的重试上限：约半分钟都接不上就放弃（title 里留着原因），不再空转 */
+/** 接连失败的重试上限 */
 const MAX_RETRIES = 10
 
-/** 主题切换只改 CSS 变量，画布收不到通知；按帧数隔一阵重读一次（GoalParticles 同款） */
+/** 主题切换按帧数隔一阵重读一次 */
 const COLOR_REFRESH_FRAMES = 90
 
 export default function SystemAudioWave() {
   const ref = useRef<HTMLCanvasElement | null>(null)
+  const mouseRef = useRef<{ x: number; active: boolean }>({ x: -1, active: false })
 
   useEffect(() => {
     const canvas = ref.current
@@ -55,24 +48,20 @@ export default function SystemAudioWave() {
     let seal = '#a8432f'
     let sealDeep = '#8c3524'
     let line = '#d0c6b1'
-    let grad: CanvasGradient | null = null
     let disposed = false
     let session: LoopbackSession | null = null
     let retryTimer = 0
     let attempts = 0
 
-    // 频谱缓冲与频段表按「会话 × 当前宽度」现分配：会话重连、侧栏拖宽拖窄都会重算
+    // 频谱缓冲与频段表
     let freq: Uint8Array<ArrayBuffer> | null = null
     let ranges: Array<[number, number]> | null = null
     let bars = 0
     let target = new Float32Array(0)
     let shown = new Float32Array(0)
-    // 峰值帽：独立于柱身的第二套高度轨迹，落得更慢（见 bars.applyGravity）
     let caps = new Float32Array(0)
-    // 实际画出去的柱高 = 柱身重力 + 静音呼吸；单开一份，别把呼吸喂回重力的状态里
     let drawn = new Float32Array(0)
 
-    /** 柱数变了就重排缓冲与频段表（顺带清零重力状态） */
     const realloc = (n: number): void => {
       bars = n
       target = new Float32Array(n)
@@ -87,10 +76,6 @@ export default function SystemAudioWave() {
       seal = cs.getPropertyValue('--color-seal').trim() || seal
       sealDeep = cs.getPropertyValue('--color-seal-deep').trim() || sealDeep
       line = cs.getPropertyValue('--color-line-strong').trim() || line
-      // 柱身渐变：底部深、顶部强调色；换主题/换尺寸时重建
-      grad = ctx.createLinearGradient(0, height, 0, 0)
-      grad.addColorStop(0, sealDeep)
-      grad.addColorStop(1, seal)
     }
 
     const setTip = (text: string) => {
@@ -101,7 +86,6 @@ export default function SystemAudioWave() {
       void (async () => {
         try {
           const s = await startLoopback({
-            // 输出设备切换/拔掉会让回环音轨结束：接上来重连（不计入重试上限）
             onEnded: () => {
               if (disposed) return
               session?.stop()
@@ -127,7 +111,6 @@ export default function SystemAudioWave() {
           ranges = null
           const msg = err instanceof Error ? err.message : String(err)
           setTip(t('系统音频拿不到：{0}', msg))
-          console.warn('[sys-audio] 采集失败：', err)
           if (attempts < MAX_RETRIES) {
             attempts++
             retryTimer = window.setTimeout(start, 3000)
@@ -139,82 +122,156 @@ export default function SystemAudioWave() {
     const draw = (now: number): void => {
       ctx.clearRect(0, 0, width, height)
 
-      // 柱数/柱宽/间隙全部按实际宽度现算（侧栏拖宽拖窄跟着重排）；间隙按柱距的
-      // 一成半走（夹在 0.75..2px），宽度变了疏密关系不变
       const n = barCount(Math.max(1, width))
       if (n !== bars) realloc(n)
       const step = width / n
-      const gap = Math.min(2, Math.max(0.75, step * 0.15))
-      const barW = Math.max(1, step - gap)
+      const gap = Math.min(2.5, Math.max(1, step * 0.16))
+      const barW = Math.max(1.5, step - gap)
+      const baseY = height - 4
+      const usableHeight = Math.max(10, baseY - 8)
 
-      // 底座：每柱常驻 2px，静音时也能看出这里是一排频谱柱
-      ctx.fillStyle = line
-      ctx.globalAlpha = 0.35
-      for (let i = 0; i < n; i++) {
-        ctx.fillRect(i * step, height - 2, barW, 2)
-      }
+      let realAudioPlaying = false
 
       if (session && freq && ranges && session.spectrum(freq)) {
         sampleBars(freq, ranges, target)
-        // 段间平滑：相邻柱互相带一带，消掉单柱独有的抖毛刺
         smoothBars(target)
         applyGravity(shown, caps, target, BAR_FALL, CAP_FALL)
         drawn.set(shown)
         addBreath(drawn, now, BREATH_AMP)
 
-        // 有声/无声两种形态：峰值帽的最高点就是「最近有没有声」的现成指标——
-        // 帽瞬顶（有声）画空心描边，帽落到底（静音）切回实心待机。切换发生在
-        // 柱子只剩几个像素的地方，肉眼看不出跳变
         let capPeak = 0
         for (let i = 0; i < n; i++) if (caps[i] > capPeak) capPeak = caps[i]
-        const solid = capPeak < SILENCE_LEVEL
-
-        if (solid) {
-          // 实心待机：圆角顶填充，跟着静音呼吸缓缓起伏
-          ctx.fillStyle = grad ?? seal
-          ctx.globalAlpha = 0.5
-          for (let i = 0; i < n; i++) {
-            const h = drawn[i] * (height - 2)
-            if (h < 0.5) continue
-            const r = Math.min(barW / 2, h)
-            ctx.beginPath()
-            ctx.roundRect(i * step, height - 2 - h, barW, h, [r, r, 0, 0])
-            ctx.fill()
-          }
-        } else {
-          // 空心：开口朝下的圆角轮廓（两侧 + 圆角顶，不画底边），坐在底座上
-          // 像一排小试管；描边走主题渐变、半透明，压在内容底下不闷
-          ctx.strokeStyle = grad ?? seal
-          ctx.globalAlpha = 0.5
-          ctx.lineWidth = 1.5
-          ctx.lineJoin = 'round'
-          for (let i = 0; i < n; i++) {
-            const h = drawn[i] * (height - 2)
-            if (h < 0.5) continue
-            const left = i * step
-            const top = height - 2 - h
-            const r = Math.min(barW / 2, h)
-            ctx.beginPath()
-            ctx.moveTo(left, height - 2)
-            ctx.lineTo(left, top + r)
-            ctx.quadraticCurveTo(left, top, left + r, top)
-            ctx.lineTo(left + barW - r, top)
-            ctx.quadraticCurveTo(left + barW, top, left + barW, top + r)
-            ctx.lineTo(left + barW, height - 2)
-            ctx.stroke()
-          }
-        }
-
-        // 峰值帽：骑在柱顶正上方 2px 的小节，比柱身亮、落得比柱身慢——
-        // 一眼能看出刚才的峰有多高
-        ctx.fillStyle = seal
-        ctx.globalAlpha = 0.85
+        realAudioPlaying = capPeak > SILENCE_LEVEL
+      } else {
+        // 无声音输入或静音待机时：赋予灵动自然的双频正弦有机呼吸波（使界面具备呼吸感生命力）
         for (let i = 0; i < n; i++) {
-          const ch = caps[i] * (height - 2)
-          if (ch < 1.5) continue
-          ctx.fillRect(i * step, height - 2 - ch - 2, barW, 2)
+          const t1 = now * 0.0016
+          const t2 = now * 0.0008
+          const wave1 = Math.sin(t1 + i * 0.32)
+          const wave2 = Math.cos(t2 - i * 0.2)
+          const wave3 = Math.sin(t1 * 0.5 + i * 0.12)
+          const idleVal = 0.05 + 0.065 * (wave1 * 0.5 + wave2 * 0.3 + wave3 * 0.2 + 0.5)
+
+          drawn[i] = Math.max(drawn[i] * 0.94, idleVal)
+          caps[i] = Math.max(caps[i] * 0.96, drawn[i])
         }
       }
+
+      // 鼠标划过微交互波动：靠近鼠标指针的柱产生优雅的微隆起波澜
+      const mouse = mouseRef.current
+      if (mouse.active && mouse.x >= 0) {
+        for (let i = 0; i < n; i++) {
+          const barCenterX = i * step + barW / 2
+          const dist = Math.abs(barCenterX - mouse.x)
+          if (dist < 45) {
+            const factor = (1 - dist / 45) * 0.16
+            drawn[i] = Math.min(1, drawn[i] + factor)
+            if (drawn[i] > caps[i]) caps[i] = drawn[i]
+          }
+        }
+      }
+
+
+      // --- 图层 1：极光流体呼吸底衬（柔光平滑曲线） ---
+      ctx.beginPath()
+      ctx.moveTo(0, baseY)
+      for (let i = 0; i < n; i++) {
+        const cx = i * step + barW / 2
+        const cy = baseY - drawn[i] * usableHeight
+        if (i === 0) {
+          ctx.lineTo(cx, cy)
+        } else {
+          const prevCx = (i - 1) * step + barW / 2
+          const prevCy = baseY - drawn[i - 1] * usableHeight
+          const midX = (prevCx + cx) / 2
+          const midY = (prevCy + cy) / 2
+          ctx.quadraticCurveTo(prevCx, prevCy, midX, midY)
+        }
+      }
+      const lastCx = (n - 1) * step + barW / 2
+      const lastCy = baseY - drawn[n - 1] * usableHeight
+      ctx.lineTo(lastCx, lastCy)
+      ctx.lineTo(width, baseY)
+      ctx.closePath()
+
+      const auroraGrad = ctx.createLinearGradient(0, baseY - usableHeight, 0, baseY)
+      auroraGrad.addColorStop(0, seal)
+      auroraGrad.addColorStop(1, 'transparent')
+      ctx.fillStyle = auroraGrad
+      ctx.globalAlpha = realAudioPlaying ? 0.15 : 0.08
+      ctx.fill()
+
+      // --- 图层 2：底座基垫（半透明圆角底托） ---
+      ctx.fillStyle = line
+      ctx.globalAlpha = 0.22
+      for (let i = 0; i < n; i++) {
+        const bx = i * step
+        ctx.beginPath()
+        ctx.roundRect(bx, baseY - 1.5, barW, 2, 1)
+        ctx.fill()
+      }
+
+      // --- 图层 3：主频谱光柱（丰富渐变 + 顶部高光） ---
+      const barGrad = ctx.createLinearGradient(0, baseY, 0, baseY - usableHeight)
+      barGrad.addColorStop(0, sealDeep)
+      barGrad.addColorStop(0.65, seal)
+      barGrad.addColorStop(1, seal)
+
+      for (let i = 0; i < n; i++) {
+        const h = Math.max(2, drawn[i] * usableHeight)
+        const bx = i * step
+        const by = baseY - h
+        const r = Math.min(barW / 2, 2.5)
+
+        ctx.fillStyle = barGrad
+        ctx.globalAlpha = realAudioPlaying ? 0.85 : 0.65
+        ctx.beginPath()
+        ctx.roundRect(bx, by, barW, h, [r, r, 0.5, 0.5])
+        ctx.fill()
+
+        // 较高柱顶部的微弱反光珠，增添琉璃通透感
+        if (h > 8) {
+          ctx.fillStyle = '#ffffff'
+          ctx.globalAlpha = 0.3
+          ctx.beginPath()
+          ctx.roundRect(bx + 0.5, by + 0.5, barW - 1, Math.min(2, h * 0.18), 1)
+          ctx.fill()
+        }
+      }
+
+      // --- 图层 4：悬浮流光峰值珠（慢速漂浮回落） ---
+      for (let i = 0; i < n; i++) {
+        const ch = caps[i] * usableHeight
+        if (ch < 3) continue
+        const bx = i * step
+        const beadY = baseY - ch - 3
+        const beadH = 2
+
+        ctx.save()
+        ctx.fillStyle = seal
+        ctx.globalAlpha = realAudioPlaying ? 0.95 : 0.75
+        if (realAudioPlaying) {
+          ctx.shadowColor = seal
+          ctx.shadowBlur = 4
+        }
+        ctx.beginPath()
+        ctx.roundRect(bx, beadY, barW, beadH, 1)
+        ctx.fill()
+        ctx.restore()
+      }
+
+      // --- 图层 5：底部微倒影 ---
+      ctx.save()
+      ctx.globalAlpha = 0.08
+      for (let i = 0; i < n; i++) {
+        const rh = Math.min(4, drawn[i] * usableHeight * 0.2)
+        if (rh <= 0.5) continue
+        const bx = i * step
+        ctx.fillStyle = seal
+        ctx.fillRect(bx, baseY + 1, barW, rh)
+      }
+      ctx.restore()
+
       ctx.globalAlpha = 1
     }
 
@@ -227,7 +284,6 @@ export default function SystemAudioWave() {
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect()
-      // 上限 2 倍：4K 屏按 3 倍渲染是白烧 GPU，肉眼也看不出差别
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
       width = Math.max(1, rect.width)
       height = Math.max(1, rect.height)
@@ -253,5 +309,18 @@ export default function SystemAudioWave() {
     }
   }, [])
 
-  return <canvas ref={ref} aria-hidden="true" className="block h-12 w-full" />
+  return (
+    <div
+      className="relative w-full"
+      onMouseMove={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect()
+        mouseRef.current = { x: e.clientX - rect.left, active: true }
+      }}
+      onMouseLeave={() => {
+        mouseRef.current = { x: -1, active: false }
+      }}
+    >
+      <canvas ref={ref} aria-hidden="true" className="block h-10 w-full cursor-pointer" />
+    </div>
+  )
 }

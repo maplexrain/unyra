@@ -75,8 +75,9 @@ export async function transferPendingFiles(
   let changed = false
   let error: string | undefined
   for (const p of pending) {
+    if (p.image) continue
     if (p.text === undefined || p.binary) {
-      files.push({ name: p.name, bytes: p.bytes, binary: true })
+      files.push({ name: p.name, bytes: p.bytes, binary: true, ...(p.path ? { path: p.path } : {}) })
       continue
     }
     const res = await saveStaticText(store, goalId, p.name, p.text)
@@ -87,7 +88,11 @@ export async function transferPendingFiles(
     // 同一份内容再发一次会拿到同一条资源（指纹去重），addResource 按 uuid 覆盖即可
     store = addResource(store, goalId, res.resource)
     changed = true
-    files.push(p.truncated ? { ...res.file, truncated: true } : res.file)
+    files.push({
+      ...res.file,
+      ...(p.truncated ? { truncated: true } : {}),
+      ...(p.path ? { path: p.path } : {}),
+    })
   }
   if (changed) set(store)
   return { files, error }

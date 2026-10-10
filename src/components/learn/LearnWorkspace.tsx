@@ -207,7 +207,8 @@ import { publishReadingDay } from '../../lib/readingPulse'
 import { residentIds, useRecentTabs } from '../../learn/resident'
 import type { UiPointRequest } from '../../agent/tools'
 import type { AskAnswers } from '../../agent/tools'
-import type { PendingFile, PendingImage } from '../../agent/types'
+import type { Conversation, ConversationMessage, MessageFile, MessageImage, PendingFile, PendingImage } from '../../agent/types'
+import { transferPendingFiles, transferPendingImages } from '../../learn/agent/transfer'
 import type { Props } from './workspace/constants'
 import { SRC_SCROLL_SUFFIX, SIDE_ANIM_MS } from './workspace/constants'
 import { ZONE_BOX } from './workspace/drag'
@@ -215,7 +216,7 @@ import { examDeleteWarn } from './workspace/labels'
 import { conceptKeysOf, emptyNote, examCopyOf, paneInfo, paneOf } from './workspace/panes'
 import { DocPane } from './workspace/DocPane'
 import { CheckinDock, PomodoroDock, ReadingDock, ReviewDock } from './workspace/docks'
-import { EmptyDoc, GoalInput, NodeHints, Topbar } from './workspace/chrome'
+import { EmptyDoc, GoalInput, Topbar } from './workspace/chrome'
 import { useSideColumns } from './workspace/useSideColumns'
 import SplitRow from './workspace/SplitRow'
 import { useDocSaveFlow } from './workspace/useDocSaveFlow'
@@ -1771,9 +1772,9 @@ export default function LearnWorkspace({
 
   /* ---------- 新建学习目标 ---------- */
 
-  const startGoal = async (raw: string) => {
+  const startGoal = async (raw: string, files?: PendingFile[]) => {
     const q = raw.trim()
-    if (!q) return
+    if (!q && (!files || !files.length)) return
     // 未配置 API Key 就不创建目标：没有超级导师，目标只剩一个空节点，
     // 既无大纲也开不了讲。这里现读一次设置（而非用渲染时的 hasKey），
     // 保证用户刚在设置里填完 Key 回来点「开始学习」能立刻通过。
@@ -1784,6 +1785,8 @@ export default function LearnWorkspace({
     }
     const goalId = crypto.randomUUID()
     const now = Date.now()
+
+    const effectiveTitle = q || (files && files[0] ? files[0].name.replace(/\.[^.]+$/, '') : t('未命名目标'))
     /**
      * 根节点先拿用户原话当临时标题占位，立刻建出来；正式标题与描述都交给 Agent
      * （见内置工作流「学习大纲」的「三件事」，learn/workflows）。
@@ -1794,8 +1797,8 @@ export default function LearnWorkspace({
      */
     const rootNode: KnowledgeNode = {
       id: crypto.randomUUID(),
-      title: q,
-      key: normalizeKey(q),
+      title: effectiveTitle,
+      key: normalizeKey(effectiveTitle),
       description: '',
       docs: emptyDocs(),
       notes: [],
@@ -1808,12 +1811,54 @@ export default function LearnWorkspace({
       createdAt: now,
       updatedAt: now,
     }
-    const goal = makeGoal(rootNode.id, q, goalId)
-    const conversation = makeConversation(goalId)
+    const goal = makeGoal(rootNode.id, effectiveTitle, goalId)
+
+    // 先把目标与根节点注入 store，以便随后 transferPendingFiles / transferPendingImages
+    // 能正常解析出目标的数据目录（docs/{目标}/static/），避免找不到目录导致附件转存失败
+    const curStore = getLatest()
+    const baseStore: LearnStore = {
+      ...curStore,
+      nodes: [...curStore.nodes, rootNode],
+      goals: [goal, ...curStore.goals],
+    }
+    set(baseStore)
+
+    // 存在附件时转存进新目标的资源库，并备好消息中的 MessageFile / MessageImage
+    const imageFiles: PendingImage[] = (files ?? [])
+      .filter((x) => x.image)
+      .map((x) => ({ id: x.id, name: x.name, bytes: x.bytes, file: x.image as File, previewUrl: '' }))
+    const attachedImages = imageFiles.length
+      ? await transferPendingImages(getLatest, set, goalId, imageFiles)
+      : { images: [] as MessageImage[] }
+    if (attachedImages.error) onToast(attachedImages.error)
+
+    const docFiles = (files ?? []).filter((x) => !x.image)
+    const attachedFiles = docFiles.length
+      ? await transferPendingFiles(getLatest, set, goalId, docFiles)
+      : { files: [] as MessageFile[] }
+    if (attachedFiles.error) onToast(attachedFiles.error)
+
+    // 将用户的问题与上传的附件记录在首条用户消息中，回显给用户并在模型上下文生效
+    const initialUserMsg: ConversationMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      parts: [{ type: 'text', text: q || t('请参考上传的附件资料，为我制定体系化的阶段目标与学习大纲。') }],
+      ts: now,
+      ...(attachedImages.images.length ? { images: attachedImages.images } : {}),
+      ...(attachedFiles.files.length ? { files: attachedFiles.files } : {}),
+    }
+
+    const conversation: Conversation = {
+      ...makeConversation(goalId),
+      messages: [initialUserMsg],
+      updatedAt: now,
+    }
+
+    const latest = getLatest()
     // agent 栏的导师页签当场开好并置前：这一轮大纲工作流的交付物要有一个看得见的地方
     const tab0 = upsertAgentTab(
-      store.agentTabs ?? [],
-      store.agentActiveTab ?? null,
+      latest.agentTabs ?? [],
+      latest.agentActiveTab ?? null,
       { kind: 'goal', goalId, conversationId: conversation.id },
       true,
     )
@@ -1821,21 +1866,25 @@ export default function LearnWorkspace({
     // 用户点完「开始学习」就该看见路线逐条长出来，教学文档从大纲页里点进去
     const rootRef: TabRef = { kind: 'outline', nodeId: rootNode.id }
     const next: LearnStore = {
-      ...withAgentTabs(store, tab0.tabs, tab0.active),
-      nodes: [...store.nodes, rootNode],
-      goals: [goal, ...store.goals],
-      conversations: [...store.conversations, conversation],
+      ...latest,
+      ...withAgentTabs(latest, tab0.tabs, tab0.active),
+      conversations: [...latest.conversations, conversation],
       activeGoalId: goalId,
       activeNodeId: rootNode.id,
       activeConversationId: conversation.id,
-      docArea: openInGroup(store.docArea, store.docArea.focus, rootRef, now),
+      docArea: openInGroup(latest.docArea, latest.docArea.focus, rootRef, now),
     }
     set(next)
     setCreating(false)
     setSidebarOpen(false)
 
-    // Key 已在上面校验过，此处可直接进入 AI 流程
-    agent.autoTeach({ goalId, nodeId: rootNode.id, conversationId: conversation.id }, true)
+    // Key 已在上面校验过，此处可直接进入 AI 流程；将附件同时透传给大纲生成工作流
+    agent.autoTeach(
+      { goalId, nodeId: rootNode.id, conversationId: conversation.id },
+      true,
+      undefined,
+      { images: imageFiles, files: docFiles },
+    )
   }
 
   /*
@@ -2599,6 +2648,109 @@ export default function LearnWorkspace({
     },
   })
 
+  /**
+   * 鼠标侧键前进 / 后退（Back / Forward 按钮）切换当前显示的页签：
+   *
+   * 绝大多数五键鼠标带有侧边双键（常见为大拇指侧的前进与后退键）：
+   * - 侧键后退（MouseEvent e.button === 3 或系统键盘事件 BrowserBack / AppBack）：向左切换上一个页签；
+   * - 侧键前进（MouseEvent e.button === 4 或系统键盘事件 BrowserForward / AppForward）：向右切换下一个页签。
+   *
+   * 全局捕获并 preventDefault() 阻止 Chromium 默认的网页路由历史跳转，
+   * 并在当前分屏组或工作区全部页签内前后循环切换，自然伴随过场滑入动效。
+   */
+  const stepActiveTab = useCallback(
+    (direction: 'back' | 'forward') => {
+      const s = getLatest()
+      const group = focusedGroup(s.docArea)
+      if (!group) return
+
+      // 1. 若当前焦点格有多个页签，在当前格内循环切换
+      if (group.tabs.length > 1) {
+        const curIdx = group.tabs.findIndex((t) => t.id === group.active)
+        const idx = curIdx >= 0 ? curIdx : 0
+        const nextIdx =
+          direction === 'back'
+            ? (idx - 1 + group.tabs.length) % group.tabs.length
+            : (idx + 1) % group.tabs.length
+        activateTab(group.tabs[nextIdx].id)
+        return
+      }
+
+      // 2. 兜底：若当前格仅有 1 个页签，但工作区内有多个页签（跨格分屏时）
+      const all = allTabs(s.docArea)
+      if (all.length > 1) {
+        const curIdx = all.findIndex((t) => t.id === activeTabId)
+        const idx = curIdx >= 0 ? curIdx : 0
+        const nextIdx =
+          direction === 'back'
+            ? (idx - 1 + all.length) % all.length
+            : (idx + 1) % all.length
+        activateTab(all[nextIdx].id)
+      }
+    },
+    [getLatest, activateTab, activeTabId],
+  )
+
+  useEffect(() => {
+    let lastNavTime = 0
+    const trigger = (dir: 'back' | 'forward') => {
+      const now = Date.now()
+      if (now - lastNavTime < 160) return
+      lastNavTime = now
+      stepActiveTab(dir)
+    }
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 3 || e.button === 4) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button === 3) {
+        e.preventDefault()
+        e.stopPropagation()
+        trigger('back')
+      } else if (e.button === 4) {
+        e.preventDefault()
+        e.stopPropagation()
+        trigger('forward')
+      }
+    }
+
+    const onAuxClick = (e: MouseEvent) => {
+      if (e.button === 3 || e.button === 4) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'BrowserBack' || e.key === 'AppBack' || e.code === 'BrowserBack') {
+        e.preventDefault()
+        e.stopPropagation()
+        trigger('back')
+      } else if (e.key === 'BrowserForward' || e.key === 'AppForward' || e.code === 'BrowserForward') {
+        e.preventDefault()
+        e.stopPropagation()
+        trigger('forward')
+      }
+    }
+
+    window.addEventListener('mousedown', onMouseDown, true)
+    window.addEventListener('mouseup', onMouseUp, true)
+    window.addEventListener('auxclick', onAuxClick, true)
+    window.addEventListener('keydown', onKeyDown, true)
+
+    return () => {
+      window.removeEventListener('mousedown', onMouseDown, true)
+      window.removeEventListener('mouseup', onMouseUp, true)
+      window.removeEventListener('auxclick', onAuxClick, true)
+      window.removeEventListener('keydown', onKeyDown, true)
+    }
+  }, [stepActiveTab])
+
   const hasContent = store.goals.length > 0 && activeNode
 
   /*
@@ -2746,16 +2898,11 @@ export default function LearnWorkspace({
                 focused={isFocused}
                 // 栏上空白处的右键菜单要开新网页页签（见 TabBar 的 BarMenu）
                 onOpenWebTab={() => openWebTab('')}
+                store={store}
               />
             </div>
           </div>
         </div>
-
-        {/*
-          前置缺口：它说的是**这一格显示的节点**（与正开着哪份文档无关），
-          因此留在各自那一格顶上，不跟着页签走。
-        */}
-        {g.node && <NodeHints node={g.node} store={store} />}
 
         {/*
           文档内容 + 右上角悬浮组。悬浮组是绝对定位的，所以这一层必须 relative，
@@ -2820,7 +2967,7 @@ export default function LearnWorkspace({
               if (el.closest('button, input, textarea, a, iframe, [contenteditable="true"], [role="button"]')) return
               toggleZen()
             }}
-            className="flex min-h-0 flex-1 flex-col"
+            className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
           >
             {gTab?.ref.kind === 'web' ? (
               /*
@@ -3117,7 +3264,13 @@ export default function LearnWorkspace({
             节点的工具（笔记 / 超级文档 / 学习状态 / 试卷），右半边是这份文档的动作
             （源码 / 预览 / 导出）。一个页签都没有的空格子不画。
           */}
-          {gTab && gTab.ref.kind !== 'web' && gTab.ref.kind !== 'settings' && gTab.ref.kind !== 'usage' && gTab.ref.kind !== 'mind' && gTab.ref.kind !== 'agentSettings' && (
+          {gTab &&
+            gTab.ref.kind !== 'web' &&
+            gTab.ref.kind !== 'settings' &&
+            gTab.ref.kind !== 'usage' &&
+            gTab.ref.kind !== 'mind' &&
+            gTab.ref.kind !== 'agentSettings' &&
+            gTab.ref.kind !== 'outline' && (
             <DocFloat
               /*
                * key 绑「格 + 节点」：换节点时重挂，各块 tip 的展开状态自然回到收起；
@@ -3125,13 +3278,12 @@ export default function LearnWorkspace({
                */
               key={groupId + ':' + (g.node?.id ?? gTab.id)}
               view={g.view}
-              // 大纲页没有源码/预览之分（它本来就不是文档）：把视图开关按住，只留「回教学文档」
-              previewable={g.previewable && gTab.ref.kind !== 'outline'}
+              previewable={g.previewable}
               previewHint={
                 g.emptyNote ? t('这份笔记还是空的：先在源码视图里写点东西，才有得预览') : undefined
               }
               onSwitchView={(v) => setTabView(gTabId, v)}
-              showBackToDoc={gTab.ref.kind === 'note' || gTab.ref.kind === 'super' || gTab.ref.kind === 'outline'}
+              showBackToDoc={gTab.ref.kind === 'note' || gTab.ref.kind === 'super'}
               onBackToDoc={() => g.node && openTab({ kind: 'teach', nodeId: g.node.id })}
               // 纯净阅读那颗：它与 F11 / Esc 是同一个动作（见 toggleZen）。
               // 每一格的悬浮组都画一颗，而状态是**全局一个**——点哪一格都是同一件事
@@ -3337,11 +3489,11 @@ export default function LearnWorkspace({
           平时必须放开，顶栏里的账号菜单、模型菜单都是向下探出去的（见 Topbar 顶上那段
           z-index 的说明），裁了它们就只剩半个。
 
-          z-20 跟着顶栏一起搬上来：顶栏是层叠上下文，里面的下拉菜单靠它压在正文之上。
+          z-30 跟着顶栏一起搬上来：顶栏是层叠上下文，里面的下拉菜单与弹窗靠它压在正文与侧栏分割按钮之上。
         */}
         <div
           className={
-            'no-print relative z-20 shrink-0 transition-[height,opacity,visibility] duration-300 ease-out ' +
+            'no-print relative z-30 shrink-0 transition-[height,opacity,visibility] duration-300 ease-out ' +
             // 裁溢出只在收起与补间那一段：平时必须放开——顶栏里的账号菜单、模型菜单
             // 都是向下探出去的（见 Topbar 顶上那段 z-index 的说明），裁了它们就只剩半个。
             // 用 overflow-clip 而不是 hidden：hidden 会生成一个滚动容器，焦点落到里面
@@ -3370,6 +3522,7 @@ export default function LearnWorkspace({
             onOpenSettings={onOpenSettings}
             onOpenUsage={onOpenUsage}
             onOpenUpdate={onOpenUpdate}
+            onOpenWebTab={() => openWebTab('')}
             onToast={onToast}
             /* 番茄钟与打卡都是「自给自足的小块」：时钟/倒计时只在这一块里每秒重渲染，
                不会把整个学习区（正文 + 对话栏）一起带上 */
@@ -3459,6 +3612,12 @@ export default function LearnWorkspace({
                               onToast(t('导师人格已切到「{0}」，从下一轮开始生效', personaOf(id).label))
                             }}
                             onDeleteConversation={removeConversation}
+                            onOpenFile={(pathOrRel, title) => {
+                              const norm = pathOrRel.replace(/\\/g, '/')
+                              const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(norm)
+                              const abs = isAbs ? norm : (userAbsPath(norm) ?? norm)
+                              openTab({ kind: 'local', path: abs, ...(title ? { title } : {}) })
+                            }}
                             {...props}
                           />
                         </div>

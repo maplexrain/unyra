@@ -32,7 +32,7 @@ import UsageLine from '../UsageLine'
 import { renderNote } from '../../../lib/markdown'
 import { focusQuote } from '../../../lib/quoteFocus'
 import { NO_AUTOFILL } from '../../../lib/autofill'
-import { BubbleImage } from './Images'
+import { BubbleFile, BubbleImage } from './Images'
 import { ToolCard } from './ToolCard'
 import { lastLineOf } from './preview'
 import { toolLabel } from './toolLabel'
@@ -71,6 +71,8 @@ interface MessageRowProps {
   onDelete: (id: string) => void
   setEditing: React.Dispatch<React.SetStateAction<{ id: string; text: string } | null>>
   setBubblePreview: React.Dispatch<React.SetStateAction<MessageImage | null>>
+  /** 点击文件/图片附件时在标签页中打开 */
+  onOpenFile?: (pathOrRel: string, title?: string) => void
 }
 
 /**
@@ -97,7 +99,8 @@ export const MessageRow = memo(function MessageRow({
   onSaveEdit,
   onDelete,
   setEditing,
-  setBubblePreview,
+  setBubblePreview: _setBubblePreview,
+  onOpenFile,
 }: MessageRowProps) {
   // memo 挡住了 props 浅比较相等的重渲染：界面语言变化要自己订阅才跟得上
   useLocale()
@@ -137,7 +140,29 @@ export const MessageRow = memo(function MessageRow({
             {!!m.images?.length && (
               <div className="mb-1.5 flex flex-wrap justify-end gap-1.5">
                 {m.images.map((img) => (
-                  <BubbleImage key={img.id} image={img} onOpen={() => setBubblePreview(img)} />
+                  <BubbleImage
+                    key={img.id}
+                    image={img}
+                    onOpen={() => {
+                      const target = img.rel
+                      if (target) onOpenFile?.(target, img.name)
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            {/* 外部文件附件回显：点击在标签页打开 */}
+            {!!m.files?.length && (
+              <div className="mb-1.5 flex flex-wrap justify-end gap-1.5">
+                {m.files.map((file, idx) => (
+                  <BubbleFile
+                    key={file.uuid ?? `${file.name}-${idx}`}
+                    file={file}
+                    onOpen={() => {
+                      const target = file.path || file.rel
+                      if (target) onOpenFile?.(target, file.name)
+                    }}
+                  />
                 ))}
               </div>
             )}

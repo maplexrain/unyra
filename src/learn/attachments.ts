@@ -38,11 +38,16 @@ export function isTextName(name: string): boolean {
   return typeOfExt(extOf(name)) === 'text'
 }
 
-/** 附件的标题行：上下文里那一小段说明，也是界面上那一行字 */
-export function attachHead(f: MessageFile): string {
+/** 附件的标题行：上下文里那一小段说明，包含序号、文件名、大小与用于在应用中定位打开的元信息路径 */
+export function attachHead(f: MessageFile, index = 1, total = 1): string {
+  const prefix = total > 1 ? `附件 ${index}（共 ${total} 份）` : `附件 ${index}`
   const size = f.chars ? '共 ' + f.chars + ' 字' + (f.truncated ? '，只附上了开头一部分' : '') : formatBytes(f.bytes)
-  if (f.binary) return f.name + '（' + formatBytes(f.bytes) + '，二进制文件，没有文本内容）'
-  return f.name + '（' + size + '）'
+  const meta: string[] = [f.name]
+  if (f.binary) meta.push(formatBytes(f.bytes) + '，二进制文件，没有文本内容')
+  else meta.push(size)
+  const loc = f.path || f.rel
+  if (loc) meta.push('路径：' + loc)
+  return `${prefix}：${meta.join(' · ')}`
 }
 
 /**
@@ -64,23 +69,22 @@ function fenceFor(text: string): string {
 /**
  * 把附件拼成一段文字，接在用户消息的正文之后。
  *
- * 这段文字会**逐字进入上下文**，因此格式一旦定下就不能随手改：改一次，
- * 之前所有轮次发出去的历史就与新的对不上，服务端的前缀缓存从这一处起整段作废。
+ * 这段文字会**逐字进入上下文**，包含清晰的序号与路径元信息，方便模型结合文件位置分析并在应用中打开。
  */
 export function fileBlock(files: MessageFile[], texts: Map<string, string>): string {
   const parts: string[] = []
-  for (const f of files) {
+  const total = files.length
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i]
+    const header = '【' + attachHead(f, i + 1, total) + '】'
     const text = f.uuid ? texts.get(f.uuid) : undefined
     if (!text) {
-      parts.push('【附件：' + attachHead(f) + '】')
+      parts.push(header)
       continue
     }
     const fence = fenceFor(text)
     const lang = extOf(f.name)
-    parts.push(
-      '【附件：' + attachHead(f) + '】\n' +
-        fence + lang + '\n' + text + '\n' + fence,
-    )
+    parts.push(header + '\n' + fence + lang + '\n' + text + '\n' + fence)
   }
   return parts.length ? parts.join('\n\n') : ''
 }
@@ -108,16 +112,17 @@ function clip(text: string): { text: string; truncated: boolean } {
 export async function pendingFromFile(file: File): Promise<PendingFile> {
   const id = crypto.randomUUID()
   const name = file.name || '未命名文件'
+  const path = typeof (file as { path?: unknown }).path === 'string' && (file as { path?: string }).path ? (file as { path?: string }).path : undefined
   if (file.type.startsWith('image/')) {
-    return { id, name, bytes: file.size, image: file }
+    return { id, name, bytes: file.size, image: file, path }
   }
-  if (!isTextName(name)) return { id, name, bytes: file.size, binary: true }
+  if (!isTextName(name)) return { id, name, bytes: file.size, binary: true, path }
   try {
     const raw = await file.text()
     const { text, truncated } = clip(raw)
-    return { id, name, bytes: file.size, text, truncated }
+    return { id, name, bytes: file.size, text, truncated, path }
   } catch {
-    return { id, name, bytes: file.size, binary: true }
+    return { id, name, bytes: file.size, binary: true, path }
   }
 }
 

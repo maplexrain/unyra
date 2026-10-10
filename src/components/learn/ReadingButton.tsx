@@ -148,48 +148,64 @@ export default function ReadingButton({
         title={empty ? t('今天还没有有效阅读') : t('今天读了 {0}', todayMs >= 60_000 ? minutesText(Math.floor(todayMs / 60_000)) : readingClockText(todayMs))}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={'flex h-8 items-center gap-1.5 rounded-md px-1.5 transition ' + (open ? 'bg-line/70' : 'hover:bg-line/70')}
+        className={`group relative flex h-8 items-center gap-1.5 rounded-lg border-0 bg-transparent px-2 text-[12px] font-medium transition-all duration-150 ${
+          todayMs > 0 ? 'text-ink' : open ? 'text-ink' : 'text-ink-soft hover:text-ink'
+        }`}
       >
-        <BookOpen size={14} className={todayMs > 0 ? 'text-seal' : 'text-ink-faint'} />
-        {/* 12.5px 而不是 12px：顶栏这一行里其它几个字都是 12.5px，差半个像素时
-            文字的顶边会差 0.37px——眼睛看不出来，但量得出来，而且没有理由不一致 */}
-        <span className={'hidden text-[12.5px] tabular-nums sm:inline ' + (todayMs > 0 ? 'text-ink-soft' : 'text-ink-faint')}>
-          {/* mm:ss：这一栏要让人看见它正在走（见 readingClockText）。
-              跳字（RollingDigits）只动变了的那一位，所以「走」看得出来，又不会整串在闪 */}
+        <BookOpen size={14} className={todayMs > 0 ? 'text-seal' : open ? 'text-ink' : 'text-ink-faint group-hover:text-ink'} />
+        <span className={'hidden text-[12px] tabular-nums sm:inline ' + (todayMs > 0 ? 'font-medium text-ink' : '')}>
           {todayMs > 0 ? <RollingDigits text={readingClockText(todayMs)} /> : t('阅读')}
         </span>
       </button>
 
       {mounted && (
-        // pt-1 是桥：那 4px 缝必须落在本组件内，否则指针穿过去就会触发 mouseleave
-        <div className="absolute right-0 top-full z-30 pt-1">
+        <div className="absolute right-0 top-full z-30 pt-1.5">
           <div
             role="menu"
-            className={
-              'min-h-[300px] w-[560px] rounded-lg border border-line-strong bg-card p-2.5 shadow-[0_8px_28px_rgba(31,27,23,0.18)] ' +
-              panelProps.className
-            }
+            className={`min-h-[320px] w-[580px] rounded-2xl border border-line-strong/70 bg-card/95 p-3.5 shadow-2xl backdrop-blur-md ${panelProps.className}`}
           >
-            <div className="flex items-baseline gap-2 px-0.5">
-              <span className="text-[15px] font-medium text-ink-strong">
-                {todayMs > 0 ? <RollingDigits text={readingClockText(todayMs)} /> : t('今天还没开始')}
-              </span>
-              <span className="text-[11px] text-ink-faint">
-                {scopeId === 'all' ? t('全部目标') : scopeLabel}
-              </span>
-              <span className="ml-auto text-[11px] text-ink-faint">
-                {weekMinutes > 0 ? t('最近一周 {0} 分', weekMinutes) : ''}
-              </span>
-            </div>
-            <div className="mt-0.5 px-0.5 text-[11px] text-ink-faint">{t('只算「窗口在前台、页签在主位、真的在读」的时间')}</div>
+            {/* --- 顶部卡片：标题、今日计时与统计标签 --- */}
+            <div className="flex items-center justify-between gap-3 border-b border-line/40 pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-seal/10 text-seal">
+                  <BookOpen size={14} />
+                </span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-semibold text-ink-strong">{t('有效阅读')}</span>
+                    <span className="text-[11px] text-ink-faint">
+                      · {scopeId === 'all' ? t('全部目标') : scopeLabel}
+                    </span>
+                  </div>
+                  <div className="text-[10.5px] text-ink-faint">
+                    {t('仅在窗口前台且正文处于主位时计入')}
+                  </div>
+                </div>
+              </div>
 
-            <div className="mt-2.5 flex gap-3">
-              {/* --- 左：过滤栏（竖排）。选哪一档只影响右边那份统计。
-                      目标多过一栏时在栏内滚动、不把面板撑长；滚动条藏掉（moji-scroll-none），
-                      那条位置本来就窄，滚轮与触控板照常用 --- */}
-              <div className="w-[128px] shrink-0 border-r border-line pr-2">
+              <div className="flex items-center gap-2">
+                <div className="text-right">
+                  <div className="text-[16px] font-bold tabular-nums text-seal">
+                    {todayMs > 0 ? <RollingDigits text={readingClockText(todayMs)} /> : '00:00'}
+                  </div>
+                  <div className="text-[10px] text-ink-faint">{t('今日累计')}</div>
+                </div>
+                {weekMinutes > 0 && (
+                  <span className="rounded-full bg-paper px-2 py-0.5 text-[10.5px] font-medium tabular-nums text-ink-soft border border-line/50">
+                    {t('近 7 天 {0} 分', weekMinutes)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-3 flex gap-3">
+              {/* --- 左：过滤栏（目标选择） --- */}
+              <div className="w-[136px] shrink-0 border-r border-line/50 pr-2.5">
+                <div className="mb-1.5 px-1 text-[10.5px] font-medium text-ink-faint">
+                  {t('学习目标')}
+                </div>
                 <div
-                  className="space-y-0.5 overflow-y-auto moji-scroll-none"
+                  className="space-y-1 overflow-y-auto moji-scroll-none"
                   style={{ maxHeight: TABS_MAX_H }}
                 >
                   {tabs.map((tab) => {
@@ -205,90 +221,139 @@ export default function ReadingButton({
                           onScope(tab.id)
                         }}
                         title={tab.label}
-                        className={
-                          'flex w-full items-baseline gap-1.5 rounded-md px-2 py-1 text-left transition ' +
-                          (active ? 'bg-seal/12 text-seal-deep' : 'text-ink-soft hover:bg-line/50 hover:text-ink')
-                        }
+                        className={`flex w-full items-center justify-between gap-1.5 rounded-lg px-2 py-1.5 text-left transition-all ${
+                          active
+                            ? 'bg-seal/12 text-seal-deep font-medium border-l-2 border-seal shadow-2xs'
+                            : 'text-ink-soft hover:bg-line/40 hover:text-ink'
+                        }`}
                       >
-                        <span className="min-w-0 flex-1 truncate text-[12px]">{tab.label}</span>
-                        <span className="shrink-0 text-[10.5px] tabular-nums opacity-80">{tabMinutes(tab.todayMs)}</span>
+                        <span className="min-w-0 flex-1 truncate text-[11.5px]">{tab.label}</span>
+                        <span className="shrink-0 text-[10px] tabular-nums opacity-75">
+                          {tabMinutes(tab.todayMs)}
+                        </span>
                       </button>
                     )
                   })}
                 </div>
               </div>
 
-              {/* --- 右：这一档的按节点统计（每页 10 条、按最近阅读时间降序）+ 最近一周 --- */}
-              <div className="min-w-0 flex-1">
-                {empty ? (
-                  <p className="rounded-md bg-paper-deep/50 px-2.5 py-2 text-[11.5px] leading-relaxed text-ink-soft">
-                    {t('这一档还没有阅读记录。打开一份文档读一会儿，这里会出现读了多久、读到哪一节。')}
-                  </p>
-                ) : (
-                  <>
-                    <div className="min-h-[196px] space-y-0.5">
-                      {pageRows.map((row) => (
-                        <button
-                          key={row.nodeId}
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setOpen(false)
-                            onOpenNode(row.nodeId)
-                          }}
-                          className="flex w-full items-baseline gap-2 rounded-md px-2 py-1 text-left transition hover:bg-line/50"
-                        >
-                          <span className="min-w-0 flex-1 truncate text-[12px] text-ink">{row.title}</span>
-                          <span className="w-[64px] shrink-0 truncate text-right text-[10.5px] text-ink-faint">
-                            {scopeId === 'all' ? (row.goal ?? '') : ''}
-                          </span>
-                          <span className="shrink-0 text-[11px] tabular-nums text-ink-soft">{t('{0} 分钟', row.minutes)}</span>
-                          <span className="w-[60px] shrink-0 text-right text-[10.5px] text-ink-faint">
-                            {row.done ? t('读完') : row.progress}
-                          </span>
-                        </button>
-                      ))}
+              {/* --- 右：节点明细列表 + 7 天趋势柱图 --- */}
+              <div className="flex min-w-0 flex-1 flex-col justify-between">
+                <div>
+                  {empty ? (
+                    <div className="flex flex-col items-center justify-center rounded-xl bg-paper/40 py-8 px-4 text-center dark:bg-paper/20">
+                      <BookOpen size={24} className="text-ink-faint mb-1.5 opacity-50" />
+                      <p className="text-[12px] text-ink-soft">
+                        {t('这一档暂无阅读记录')}
+                      </p>
+                      <p className="mt-0.5 text-[10.5px] text-ink-faint">
+                        {t('在学习区打开文档阅读片刻，此处将同步更新进度。')}
+                      </p>
                     </div>
-                    {pageCount > 1 && (
-                      <div className="flex items-center justify-between px-2 pt-1 text-[10.5px] text-ink-faint">
-                        <button
-                          type="button"
-                          disabled={safe <= 0}
-                          onClick={() => setPage(Math.max(0, safe - 1))}
-                          className={'rounded px-1.5 py-0.5 transition ' + (safe <= 0 ? 'opacity-40' : 'hover:bg-line/50 hover:text-ink')}
-                        >
-                          {t('‹ 上一页')}
-                        </button>
-                        <span className="tabular-nums">{t('{0} / {1} 页 · 共 {2} 个节点', safe + 1, pageCount, nodes.length)}</span>
-                        <button
-                          type="button"
-                          disabled={safe >= pageCount - 1}
-                          onClick={() => setPage(Math.min(pageCount - 1, safe + 1))}
-                          className={'rounded px-1.5 py-0.5 transition ' + (safe >= pageCount - 1 ? 'opacity-40' : 'hover:bg-line/50 hover:text-ink')}
-                        >
-                          {t('下一页 ›')}
-                        </button>
+                  ) : (
+                    <>
+                      <div className="min-h-[175px] space-y-1">
+                        {pageRows.map((row) => (
+                          <button
+                            key={row.nodeId}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setOpen(false)
+                              onOpenNode(row.nodeId)
+                            }}
+                            className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-all hover:bg-line/50"
+                          >
+                            <span className="min-w-0 flex-1 truncate text-[12px] text-ink group-hover:text-ink-strong">
+                              {row.title}
+                            </span>
+                            {scopeId === 'all' && row.goal && (
+                              <span className="max-w-[70px] shrink-0 truncate rounded bg-line/40 px-1 py-0.5 text-[9.5px] text-ink-faint">
+                                {row.goal}
+                              </span>
+                            )}
+                            <span className="shrink-0 rounded-md bg-paper px-1.5 py-0.5 text-[10.5px] font-medium tabular-nums text-ink-soft border border-line/40">
+                              {t('{0} 分钟', row.minutes)}
+                            </span>
+                            <span
+                              className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] tabular-nums ${
+                                row.done
+                                  ? 'bg-ok/15 text-ok-deep font-medium'
+                                  : 'text-ink-faint bg-line/30'
+                              }`}
+                            >
+                              {row.done ? t('已读完') : row.progress}
+                            </span>
+                          </button>
+                        ))}
                       </div>
-                    )}
-                  </>
-                )}
 
-                {/* 最近七天：柱子按峰值归一，今天用封泥色标出来。
-                    总量（需求里那句「最近一周阅读总时长」）在上面右上角，这里画的是它的形状 */}
-                <div className="mt-2 flex items-end gap-1 border-t border-line pt-2">
-                  {week.map((d) => (
-                    <div key={d.day} className="flex flex-1 flex-col items-center gap-1" title={t('{0} 日 · {1} 分钟', d.label, d.minutes)}>
+                      {pageCount > 1 && (
+                        <div className="mt-1 flex items-center justify-between border-t border-line/30 px-1 pt-1.5 text-[10.5px] text-ink-faint">
+                          <button
+                            type="button"
+                            disabled={safe <= 0}
+                            onClick={() => setPage(Math.max(0, safe - 1))}
+                            className={`rounded-md px-2 py-0.5 transition ${
+                              safe <= 0 ? 'opacity-40' : 'hover:bg-line/50 hover:text-ink'
+                            }`}
+                          >
+                            {t('‹ 上一页')}
+                          </button>
+                          <span className="tabular-nums">
+                            {t('{0} / {1} 页 · 共 {2} 个节点', safe + 1, pageCount, nodes.length)}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={safe >= pageCount - 1}
+                            onClick={() => setPage(Math.min(pageCount - 1, safe + 1))}
+                            className={`rounded-md px-2 py-0.5 transition ${
+                              safe >= pageCount - 1 ? 'opacity-40' : 'hover:bg-line/50 hover:text-ink'
+                            }`}
+                          >
+                            {t('下一页 ›')}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* --- 最近七天迷你趋势图 --- */}
+                <div className="mt-2.5 rounded-xl border border-line/40 bg-paper/40 p-2 dark:bg-paper/20">
+                  <div className="mb-1.5 flex items-center justify-between px-0.5 text-[10px] text-ink-faint">
+                    <span>{t('近 7 天每日阅读趋势')}</span>
+                    <span className="tabular-nums">{t('峰值 {0} 分钟', peak)}</span>
+                  </div>
+                  <div className="flex items-end gap-1.5 h-7">
+                    {week.map((d) => (
                       <div
-                        className="w-full rounded-sm"
-                        style={{
-                          height: Math.max(2, Math.round((d.minutes / peak) * 20)) + 'px',
-                          background: d.today ? 'var(--color-seal)' : 'var(--color-line-strong)',
-                          opacity: d.minutes > 0 ? (d.today ? 0.85 : 0.7) : 0.35,
-                        }}
-                      />
-                      <span className={'text-[9.5px] tabular-nums ' + (d.today ? 'text-seal' : 'text-ink-faint')}>{d.label}</span>
-                    </div>
-                  ))}
+                        key={d.day}
+                        className="group relative flex flex-1 flex-col items-center justify-end h-full"
+                        title={t('{0} 日 · {1} 分钟', d.label, d.minutes)}
+                      >
+                        <div
+                          className={`w-full rounded-xs transition-all duration-300 ${
+                            d.today
+                              ? 'bg-seal shadow-2xs'
+                              : d.minutes > 0
+                                ? 'bg-ink-soft/40 hover:bg-ink-soft/60'
+                                : 'bg-line/50'
+                          }`}
+                          style={{
+                            height: Math.max(3, Math.round((d.minutes / peak) * 22)) + 'px',
+                          }}
+                        />
+                        <span
+                          className={`mt-1 text-[9px] tabular-nums leading-none ${
+                            d.today ? 'font-bold text-seal' : 'text-ink-faint'
+                          }`}
+                        >
+                          {d.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>

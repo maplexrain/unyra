@@ -7,11 +7,14 @@
  * 原先它们与工作区本体挤在同一个文件里，搬出来之后「改顶栏一颗按钮」不必再翻三千行正文。
  */
 
-import { useMemo, useRef, useState, type ReactNode } from 'react'
-import { ArrowUp, BookOpen, Check, Contact, Loader2, Menu, Monitor, Moon, Sun } from 'lucide-react'
+import { useRef, useState, type ReactNode } from 'react'
+import { ArrowUp, BookOpen, Check, Contact, Globe, Loader2, Menu, Paperclip } from 'lucide-react'
+import type { PendingFile } from '../../../agent/types'
 import type { KnowledgeNode, LearnStore } from '../../../learn/types'
-import { nodeById, pathToRoot, unmetPrereqs } from '../../../learn/graph'
+import { nodeById, pathToRoot } from '../../../learn/graph'
 import { plainSnippet } from '../../../learn/text'
+import { pendingFromFile, pendingFromRead } from '../../../learn/attachments'
+import { isElectron, native } from '../../../lib/native'
 import { NO_AUTOFILL } from '../../../lib/autofill'
 import { useClampToViewport, useDismissOn } from '../../../lib/useDismiss'
 import {
@@ -19,7 +22,6 @@ import {
   THEME_MODES,
   THEME_SWATCH,
   getAppearance,
-  isDarkTheme,
   setAppearance,
   useAppearance,
   type ThemeMode,
@@ -31,6 +33,7 @@ import WindowControls from '../../WindowControls'
 import Bullseye from '../../Bullseye'
 import GoalParticles from '../GoalParticles'
 import ModelPicker from '../../agent/ModelPicker'
+import { FileChip } from '../../agent/panel/Images'
 import { t } from '../../../i18n'
 
 export function Topbar({
@@ -45,6 +48,7 @@ export function Topbar({
   onOpenSettings,
   onOpenUsage,
   onOpenUpdate,
+  onOpenWebTab,
   onToast,
   pomodoro,
   checkin,
@@ -73,6 +77,8 @@ export function Topbar({
   /** 打开用量统计页签（入口在用户菜单，见 UserMenu） */
   onOpenUsage: () => void
   onOpenUpdate: () => void
+  /** 打开新浏览器标签页 */
+  onOpenWebTab?: () => void
   /** 顶栏那几个「还没做好」的按钮据此说明一句，而不是点了没反应 */
   onToast: (msg: string) => void
 }) {
@@ -96,7 +102,7 @@ export function Topbar({
         type="button"
         title={t('打开知识节点')}
         onClick={onOpenSidebar}
-        className="flex h-8 w-8 items-center justify-center rounded-md text-ink-soft transition hover:bg-line/70 hover:text-ink md:hidden"
+        className="flex h-8 w-8 items-center justify-center rounded-md border-0 bg-transparent text-ink-soft transition hover:text-ink md:hidden"
       >
         <Menu size={17} />
       </button>
@@ -126,6 +132,18 @@ export function Topbar({
       <div className="ml-auto flex items-center gap-1.5">
         {/* 更新入口：只有新版本**下载完成**之后它才存在，见 components/update/UpdateButton */}
         <UpdateButton onOpenUpdate={onOpenUpdate} />
+        {/* 新建浏览器标签页入口 */}
+        {onOpenWebTab && (
+          <button
+            type="button"
+            title={t('新建浏览器标签页')}
+            onClick={onOpenWebTab}
+            className="group relative flex h-8 items-center gap-1.5 rounded-lg border-0 bg-transparent px-2 text-[12px] font-medium text-ink-soft transition-all duration-150 hover:text-ink"
+          >
+            <Globe size={14} className="text-ink-faint transition group-hover:text-seal" />
+            <span className="hidden text-[12px] sm:inline">{t('浏览器')}</span>
+          </button>
+        )}
         {/* 四个入口都是「我今天的节奏」，与账号那一簇同属右侧。
             番茄钟排在最前：它是唯一一个「开始之后不看也要一直在跑」的东西，
             固定在最左边，开关它的时候手指不必每次都去找位置 */}
@@ -151,7 +169,8 @@ export function Topbar({
           主题：快速按钮只在「跟随系统 → 浅色 → 深色」之间轮换（高频的小动作）；
           粉 / 蓝 / 绿 / 纯白 / 纯黑这些独立配色是低频选择，入口归设置页——
           从扩展主题点这一下会先落到浅色，再点就是熟悉的三档轮换。
-        */}
+        <div className="mx-0.5 h-4 w-px bg-line/60" />
+
         <button
           type="button"
           title={t('主题：{0}（点击切换，右键看全部主题）', t(THEME_LABEL[appearance.theme]))}
@@ -171,14 +190,14 @@ export function Topbar({
                     : 'light'
             setAppearance({ ...getAppearance(), theme: next })
           }}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-ink-soft transition hover:bg-line/70 hover:text-ink"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft transition-all hover:bg-line/60 hover:text-ink"
         >
           {appearance.theme === 'system' ? (
-            <Monitor size={16} />
+            <Monitor size={15} />
           ) : isDarkTheme(appearance.theme) ? (
-            <Moon size={16} />
+            <Moon size={15} />
           ) : (
-            <Sun size={16} />
+            <Sun size={15} />
           )}
         </button>
 
@@ -187,17 +206,17 @@ export function Topbar({
           type="button"
           title={t('文档')}
           onClick={() => onToast(t('「文档」还在做：之后这里放教学文档的入口'))}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/70 hover:text-ink"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-faint transition-all hover:bg-line/60 hover:text-ink"
         >
-          <BookOpen size={16} />
+          <BookOpen size={15} />
         </button>
         <button
           type="button"
           title={t('联系方式')}
           onClick={() => onToast(t('「联系方式」还是空的：之后放反馈与作者的入口'))}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/70 hover:text-ink"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-faint transition-all hover:bg-line/60 hover:text-ink"
         >
-          <Contact size={16} />
+          <Contact size={15} />
         </button>
 
         <WindowControls />
@@ -302,19 +321,8 @@ function ThemeMenu({
  * 与那棵树说了算（状态现在是侧栏标题前的那颗标记）。一句每次都冒出来的提示，
  * 只会把正文往下挤。
  */
-export function NodeHints({ node, store }: { node: KnowledgeNode; store: LearnStore }) {
-  const rootId = store.goals.find((g) => g.id === node.goalId)?.rootNodeId ?? null
-  const unmet = useMemo(() => unmetPrereqs(store, node.id), [store, node])
-
-  if (node.status === 'mastered' || node.id === rootId || !unmet.length) return null
-
-  return (
-    <div className="no-print shrink-0 border-b border-line bg-paper/30">
-      <p className="px-3 py-1.5 text-[11.5px] leading-relaxed text-ink-faint">
-        {t('还差这些前置未掌握：{0}', unmet.map((u) => u.title).join('、'))}
-      </p>
-    </div>
-  )
+export function NodeHints(_props: { node?: KnowledgeNode; store?: LearnStore }) {
+  return null
 }
 
 /**
@@ -428,19 +436,98 @@ export function GoalInput({
 }: {
   busy: boolean
   hasGoals: boolean
-  onSubmit: (q: string) => void
+  onSubmit: (q: string, files?: PendingFile[]) => void
   /** 模型选择器改了全局默认后的回调（外层据此刷新 hasKey 等派生状态） */
   onModelChanged: () => void
 }) {
   const [value, setValue] = useState('')
+  const [files, setFiles] = useState<PendingFile[]>([])
+  const [isDraggingOver, setIsDraggingOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const addFiles = (newFiles: PendingFile[]) => {
+    if (!newFiles.length) return
+    setFiles((prev) => {
+      const existing = new Set(prev.map((f) => f.name + '_' + f.bytes))
+      const toAdd = newFiles.filter((f) => !existing.has(f.name + '_' + f.bytes))
+      return [...prev, ...toAdd]
+    })
+  }
+
+  const handlePickAttach = async () => {
+    // 桌面端环境：统一走 Electron 原生文件选择对话框，绝不触发 input.click 导致弹出双窗口
+    if (isElectron()) {
+      try {
+        const res = await native().local.pickAttach()
+        if (!res || !res.ok || !res.paths?.length) return
+        const picked: PendingFile[] = []
+        for (const p of res.paths) {
+          const read = await native().local.readAttach(p)
+          if (read.ok) {
+            const item = pendingFromRead(read, p)
+            if (item) picked.push(item)
+          }
+        }
+        if (picked.length > 0) {
+          addFiles(picked)
+        }
+      } catch (err) {
+        console.error('Electron pickAttach failed:', err)
+      }
+      return
+    }
+
+    // 纯 Web 环境：走浏览器 input 元素
+    fileInputRef.current?.click()
+  }
+
+  const onFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files
+    if (!list || !list.length) return
+    const picked: PendingFile[] = []
+    for (let i = 0; i < list.length; i++) {
+      picked.push(await pendingFromFile(list[i]))
+    }
+    addFiles(picked)
+    e.target.value = ''
+  }
+
+  const removeFile = (id: string) => {
+    setFiles((prev) => prev.filter((f) => f.id !== id))
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDraggingOver(false)
+    const droppedFiles = e.dataTransfer.files
+    if (!droppedFiles || !droppedFiles.length) return
+    const picked: PendingFile[] = []
+    for (let i = 0; i < droppedFiles.length; i++) {
+      picked.push(await pendingFromFile(droppedFiles[i]))
+    }
+    addFiles(picked)
+  }
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    if (e.clipboardData.files && e.clipboardData.files.length > 0) {
+      e.preventDefault()
+      const pasted: PendingFile[] = []
+      for (let i = 0; i < e.clipboardData.files.length; i++) {
+        pasted.push(await pendingFromFile(e.clipboardData.files[i]))
+      }
+      addFiles(pasted)
+    }
+  }
+
   const submit = () => {
-    if (!value.trim() || busy) return
-    onSubmit(value)
+    const text = value.trim()
+    if ((!text && files.length === 0) || busy) return
+    onSubmit(text, files.length > 0 ? files : undefined)
   }
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto bg-card px-6 py-10">
-      {/* 背景粒子：只在最外面这层铺满，内容层用 relative 压在上面 */}
+      {/* 背景粒子与“归一”回溯心流动画 */}
       <GoalParticles />
 
       {/* 加宽到 860px：输入框更接近参考图那种「一横条」的观感 */}
@@ -454,46 +541,102 @@ export function GoalInput({
               {hasGoals ? t('开始一个新的学习目标') : t('从一个目标开始')}
             </h1>
             <p className="mt-0.5 text-[12.5px] text-ink-soft">
-              {t('写下想弄懂的问题，超级导师会陪你把它逐层拆开')}
+              {t('写下想弄懂的问题或上传参考资料，超级导师会陪你从基础逐层逆向拆解并回溯归一')}
             </p>
           </div>
         </div>
 
         {/*
-          输入区做成一个整体卡片（参照参考图）：
-          上半是输入框，下半是一条工具条——左侧放操作、右侧放模型选择与发送。
-          两者同在一个边框里，视觉上是一个整体而不是「输入框 + 一排按钮」。
+          输入区卡片：参照 Agent 栏 Composer 结构与视觉风格，
+          附件栏置顶横向排列、无斜杠菜单、左下角为上传附件按钮
         */}
-        <div className="mt-5 rounded-2xl border border-line bg-paper shadow-sm transition focus-within:border-seal/50 focus-within:ring-2 focus-within:ring-seal/10">
-          <textarea
-            value={value}
-            autoFocus
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              // 直接 Enter 就开讲（Shift+Enter 换行）；输入法组字期间不拦，
-              // 否则中文候选词选到一半就被提交了
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault()
-                submit()
+        <div
+          onDragOver={(e) => {
+            e.preventDefault()
+            setIsDraggingOver(true)
+          }}
+          onDragLeave={() => setIsDraggingOver(false)}
+          onDrop={handleDrop}
+          onPaste={handlePaste}
+          className={`mt-5 rounded-2xl border bg-transparent backdrop-blur-[2px] transition ${
+            isDraggingOver
+              ? 'border-seal/60 ring-2 ring-seal/20'
+              : 'border-line/80 focus-within:border-seal/50 focus-within:ring-2 focus-within:ring-seal/10'
+          }`}
+        >
+          {/* 待发送附件列表：与 Agent 栏 Composer 一致置于文字区上方 */}
+          {files.length > 0 && (
+            <div className="flex items-center gap-2 border-b border-line/60 px-2.5 py-2">
+              <div className="moji-scroll-x flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+                {files.map((file) => (
+                  <FileChip key={file.id} file={file} onRemove={() => removeFile(file.id)} />
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setFiles([])}
+                title={t('移除全部附件')}
+                className="shrink-0 rounded-md px-1.5 py-1 text-[10.5px] text-ink-faint transition hover:bg-line/60 hover:text-ink"
+              >
+                {t('清空')}
+              </button>
+            </div>
+          )}
+
+          <div className="relative">
+            <textarea
+              value={value}
+              autoFocus
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => {
+                // 直接 Enter 就开讲（Shift+Enter 换行）；输入法组字期间不拦
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault()
+                  submit()
+                }
+              }}
+              rows={files.length > 0 ? 3 : 4}
+              placeholder={
+                files.length > 0
+                  ? t('已添加附件。可在输入框补充说明（例如：根据附件资料制定学习计划），直接回车亦可开始…')
+                  : t('例如：为什么 Transformer 能处理长距离依赖？')
               }
-            }}
-            rows={4}
-            placeholder={t('例如：为什么 Transformer 能处理长距离依赖？')}
-            className="block min-h-[112px] w-full resize-none rounded-t-2xl bg-transparent px-4 pt-3.5 pb-2 text-[14px] leading-relaxed text-ink outline-none placeholder:text-ink-faint"
-            {...NO_AUTOFILL}
-          />
+              className="block min-h-[80px] w-full resize-none rounded-t-2xl bg-transparent px-3.5 pt-3 pb-2 text-[13.5px] leading-relaxed text-ink outline-none placeholder:text-ink-faint"
+              {...NO_AUTOFILL}
+            />
+          </div>
 
-          <div className="flex items-center gap-2 rounded-b-2xl px-3 py-2">
-            {/* 左：留白（没有快捷提问，也不放别的元素，保持输入区干净） */}
-            <div className="min-w-0 flex-1" />
+          <div className="flex items-center gap-2 rounded-b-2xl px-2.5 py-2">
+            {/* 左侧：原 Composer 更多菜单位置，替换为上传附件按钮 */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={onFileInputChange}
+            />
+            <button
+              type="button"
+              onClick={handlePickAttach}
+              title={t('上传附件（支持图片、Markdown、TXT、代码等）')}
+              aria-label={t('上传附件')}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-soft transition hover:bg-line/60 hover:text-ink"
+            >
+              <Paperclip size={16} />
+            </button>
+            {isDraggingOver && (
+              <span className="text-[11.5px] font-medium text-seal animate-pulse">
+                {t('松开鼠标放入文件')}
+              </span>
+            )}
 
-            {/* 右：模型选择 + 发送，与参考图的右下角一致 */}
-            <div className="flex shrink-0 items-center gap-1.5">
+            {/* 右侧：提供商/模型选择 + 开始学习按钮 */}
+            <div className="ml-auto flex shrink-0 items-center gap-1.5">
               <ModelPicker onChanged={onModelChanged} />
               <button
                 type="button"
                 onClick={submit}
-                disabled={!value.trim() || busy}
+                disabled={(!value.trim() && files.length === 0) || busy}
                 title={t('开始学习（Enter）')}
                 className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink text-paper shadow-sm transition hover:bg-ink-strong disabled:pointer-events-none disabled:opacity-35"
               >
@@ -503,9 +646,10 @@ export function GoalInput({
           </div>
         </div>
 
-        {/* 不再放「取消」按钮：这一页要么提交，要么点左上角换目标，多一个出口只是噪音 */}
-        <div className="mt-3 flex items-center justify-end">
-          <span className="text-[11px] text-ink-faint">{t('Enter 开始 · Shift + Enter 换行')}</span>
+        {/* 底部快捷键与拖拽说明 */}
+        <div className="mt-3 flex items-center justify-between text-[11px] text-ink-faint">
+          <span>{t('支持点击添加、拖入或粘贴文件作为目标参考')}</span>
+          <span>{t('Enter 开始 · Shift + Enter 换行')}</span>
         </div>
       </div>
     </div>

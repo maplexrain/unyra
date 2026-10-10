@@ -358,9 +358,9 @@ export function useAgent(opts: {
       const attached = allImages.length
         ? await transferPendingImages(getLatest, set, target.goalId, allImages)
         : { images: [] as MessageImage[], error: undefined }
-      if (attached.error) onNoticeRef.current?.(attached.error)
-      const attachedFiles = files?.length
-        ? await transferPendingFiles(getLatest, set, target.goalId, files)
+      const docFiles = (files ?? []).filter((x) => !x.image)
+      const attachedFiles = docFiles.length
+        ? await transferPendingFiles(getLatest, set, target.goalId, docFiles)
         : { files: [] as MessageFile[], error: undefined }
       if (attachedFiles.error) onNoticeRef.current?.(attachedFiles.error)
 
@@ -1204,6 +1204,10 @@ export function useAgent(opts: {
         hint?: string
         /** 显式目标：节点刚创建、hook 状态还没跟上时用 */
         target?: AgentRunTarget
+        /** 附带的图片附件 */
+        images?: PendingImage[]
+        /** 附带的文件附件 */
+        files?: PendingFile[]
       },
     ) => {
       let target = opts?.target ?? null
@@ -1242,8 +1246,8 @@ export function useAgent(opts: {
         true,
         opts?.hint,
         undefined,
-        undefined,
-        undefined,
+        opts?.images,
+        opts?.files,
         found.name,
         // 压缩轮跑完不再触发自动压缩（否则写不成摘要时会一轮接一轮，见 isCompactTurn 的说明）
         found.id === 'compact',
@@ -1346,10 +1350,21 @@ export function useAgent(opts: {
   /**
    * 创建节点后自动开讲（隐藏指令，不展示给用户）；目标节点走大纲指令。
    * extra 是额外上下文（如 AI 大纲里那句定位说明），跟着这一轮进模型。
+   * attachments 是目标创建或新建节点时带进来的图片与文件附件。
    */
   const autoTeach = useCallback(
-    (target: AgentRunTarget, goal = false, extra?: string) => {
-      runWorkflow(goal ? 'goal-outline' : 'teach-node', { target, hint: extra })
+    (
+      target: AgentRunTarget,
+      goal = false,
+      extra?: string,
+      attachments?: { images?: PendingImage[]; files?: PendingFile[] },
+    ) => {
+      runWorkflow(goal ? 'goal-outline' : 'teach-node', {
+        target,
+        hint: extra,
+        images: attachments?.images,
+        files: attachments?.files,
+      })
     },
     [runWorkflow],
   )

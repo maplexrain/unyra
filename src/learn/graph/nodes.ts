@@ -14,6 +14,7 @@ import { nodeById } from './lookup'
 import { addEdge, parentIds, pathToRoot, prereqIds } from './edges'
 import { ensureConversation } from './conversations'
 import { deleteGoal, onNodeReadingPatch } from './reading'
+import { retargetStaticRefs } from '../static/location'
 
 export { goalById, nodeById } from './lookup'
 
@@ -102,7 +103,14 @@ export function updateNode(
   if (!node) return store
   const next: KnowledgeNode = { ...node, ...patch, updatedAt: Date.now() }
   if (patch.title !== undefined) next.key = normalizeKey(patch.title)
-  return replaceNode(store, next)
+  const replaced = replaceNode(store, next)
+  if (patch.title !== undefined && patch.title.trim() !== node.title.trim()) {
+    const goal = store.goals.find((g) => g.rootNodeId === id)
+    if (goal) {
+      return retargetStaticRefs(replaced, goal.id)
+    }
+  }
+  return replaced
 }
 
 /**
