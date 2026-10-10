@@ -37,4 +37,6 @@ export interface MessageListProps {
   /** 点中断说明旁的「继续」：恢复被中断的一轮（身份恒定，见 AgentPanel） */
   onResumeNotice?: () => void
   setBubblePreview: React.Dispatch<React.SetStateAction<MessageImage | null>>
+  /** 点击文件附件时在标签页中打开 */
+  onOpenFile?: (pathOrRel: string, title?: string) => void
 }

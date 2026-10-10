@@ -21,7 +21,7 @@ import { BUILTIN_WORKFLOW_IDS, normalizeWorkflowEfforts, normalizeWorkflowEntrie
 import { normalizeReadingBook } from '../../reading'
 import { normalizeCheckinBook } from '../../checkin'
 import { normalizePomodoro } from '../../pomodoro'
-import { normalizeResourceList, type StaticResource } from '../../static'
+import { normalizeResourceList, retargetStaticRefs, type StaticResource } from '../../static'
 import { normalizeTmpStore, pruneTmpToNodes } from '../../../lib/tmpStore'
 import { normalizeNode } from './node'
 import { normalizeConversation } from './conversation'
@@ -240,7 +240,7 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       }
     }
 
-    return {
+    const store: LearnStore = {
       version: 2,
       nodes: fixedNodes,
       edges,
@@ -280,6 +280,7 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       agentTabs: agentTabsState.tabs,
       agentActiveTab: agentTabsState.active,
     }
+    return retargetStaticRefs(store)
   } catch (err) {
     // 静默吞掉等于「启动整库读空、下一次保存把好数据覆盖掉」——收藏就是这么丢的。
     // 至少要把这一声喊出来：修数据的线索全在这一条日志里。

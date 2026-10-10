@@ -82,6 +82,7 @@ function normalizeFiles(raw: unknown): MessageFile[] {
       ...(typeof r.chars === 'number' && Number.isFinite(r.chars) ? { chars: r.chars } : {}),
       ...(r.truncated === true ? { truncated: true } : {}),
       ...(r.binary === true ? { binary: true } : {}),
+      ...(typeof r.path === 'string' && r.path ? { path: r.path } : {}),
     })
   }
   return out

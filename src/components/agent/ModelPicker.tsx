@@ -40,6 +40,7 @@ import {
 import { useHoverMenu } from '../../lib/hoverMenu'
 import { t } from '../../i18n'
 import EffortSlider from './EffortSlider'
+import { ProviderLogo } from '../settings/ProviderLogo'
 
 /** 三层菜单的层号 */
 type Level = 1 | 2 | 3
@@ -174,7 +175,13 @@ export default function ModelPicker({ onChanged }: Props) {
             onClick={() => go(2)}
             className="flex w-full items-center gap-2 px-2.5 py-2 text-left transition hover:bg-line/50"
           >
-            <Server size={13} className="text-ink-faint" />
+            <ProviderLogo
+              id={provider?.id}
+              protocol={provider ? protocolOf(provider) : undefined}
+              size={14}
+              className="shrink-0"
+              fallback={<Server size={13} className="text-ink-faint" />}
+            />
             <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-strong">{t('切换提供商 · 模型')}</span>
             <ChevronRight size={13} className="shrink-0 text-ink-faint" />
           </button>
@@ -201,9 +208,17 @@ export default function ModelPicker({ onChanged }: Props) {
                 onClick={() => pickProvider(p)}
                 className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition hover:bg-line/50"
               >
-                <span
-                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${ready ? 'bg-ok' : 'bg-line-strong'}`}
-                  title={ready ? t('已配置 Key') : t('未配置 Key')}
+                <ProviderLogo
+                  id={p.id}
+                  protocol={protocolOf(p)}
+                  size={16}
+                  className="shrink-0"
+                  fallback={
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${ready ? 'bg-ok' : 'bg-line-strong'}`}
+                      title={ready ? t('已配置 Key') : t('未配置 Key')}
+                    />
+                  }
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[12.5px] text-ink-strong">{labelOf(p)}</span>
@@ -263,7 +278,13 @@ export default function ModelPicker({ onChanged }: Props) {
         title={t('切换提供商与模型')}
         className="flex h-8 max-w-[240px] items-center gap-1.5 rounded-lg px-2.5 text-[11.5px] text-ink-soft transition hover:text-ink"
       >
-        <Cpu size={12} className="shrink-0 text-ink-faint" />
+        <ProviderLogo
+          id={provider?.id}
+          protocol={provider ? protocolOf(provider) : undefined}
+          size={14}
+          className="shrink-0"
+          fallback={<Cpu size={12} className="shrink-0 text-ink-faint" />}
+        />
         <span className="min-w-0 truncate font-mono" title={modelLabel || undefined}>
           {shortLabel || t('未选模型')}
         </span>

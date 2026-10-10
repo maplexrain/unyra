@@ -156,43 +156,66 @@ export default function CheckinButton({
       <button
         type="button"
         title={readyCount > 0 ? t('现在有 {0} 个目标可以打卡', readyCount) : t('打卡（按学习目标分开算）')}
-        // 展开靠指针经过；点一下也展开（键盘 Tab 过来回车走的就是这条）。
-        // 不做「再点收起」——鼠标用户点的时候面板本来就已经开着，再点反而把它关了
         {...buttonProps}
         aria-expanded={open}
-        className={'flex h-8 items-center gap-1.5 rounded-md px-2 transition ' + (open ? 'bg-line/70' : 'hover:bg-line/70')}
+        className={`group relative flex h-8 items-center gap-1.5 rounded-lg border-0 bg-transparent px-2 text-[12px] font-medium transition-all duration-150 ${
+          readyCount > 0 ? 'text-ink' : open ? 'text-ink' : 'text-ink-soft hover:text-ink'
+        }`}
       >
-        <Flame size={14} className={'shrink-0 ' + (readyCount > 0 ? 'text-seal' : 'text-ink-faint')} />
-        {/* 顶栏只留入口（需求）：具体哪个目标差多少、能不能打，全在 tip 里说 */}
-        <span className="shrink-0 text-[12.5px] text-ink-soft">{t('打卡')}</span>
-        {/* 有目标现在就能打：点一颗小点。顶栏塞不下「是哪个目标」，但那件事得看得见 */}
-        {readyCount > 0 && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-seal" />}
+        <div className={`relative flex items-center justify-center ${readyCount > 0 ? 'text-seal' : open ? 'text-ink' : 'text-ink-faint group-hover:text-ink'}`}>
+          <Flame size={14} className={readyCount > 0 ? 'fill-seal/20' : ''} />
+          {readyCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-seal opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-seal" />
+            </span>
+          )}
+        </div>
+        <span className={`shrink-0 ${readyCount > 0 ? 'font-medium text-ink' : ''}`}>{t('打卡')}</span>
       </button>
 
       {mounted && (
-        /*
-          pt-1 这一层是「桥」：按钮与面板之间那 4px 缝必须落在本组件内，
-          否则指针穿过缝的一瞬间就会触发 wrapper 的 mouseleave，面板当场收起。
-          动画与外观都作用在里面真正的面板上（与 UserMenu / PomodoroButton 一致）。
-        */
-        <div className="absolute right-0 top-full z-30 pt-1">
+        <div className="absolute right-0 top-full z-30 pt-1.5">
           <div
-            className={'min-h-[300px] w-[440px] rounded-lg border border-line-strong bg-card p-2.5 shadow-[0_8px_28px_rgba(31,27,23,0.18)] ' +
-              panelProps.className}
+            className={`min-h-[320px] w-[500px] rounded-2xl border border-line-strong/70 bg-card/95 p-3.5 shadow-2xl backdrop-blur-md ${panelProps.className}`}
           >
-            {/* --- 1. 今天有几个目标备好了 --- */}
-            <div className="flex items-baseline justify-between gap-2 px-0.5">
-              <span className={'shrink-0 text-[14px] font-semibold ' + (readyCount > 0 ? 'text-ink-strong' : 'text-ink-soft')}>
-                {readyCount > 0 ? t('{0} 个目标可以打卡', readyCount) : t('今天还没有能打卡的目标')}
+            {/* --- 顶部卡片：标题与当前可打卡总数 --- */}
+            <div className="flex items-center justify-between gap-3 border-b border-line/40 pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-seal/10 text-seal">
+                  <Flame size={14} />
+                </span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-semibold text-ink-strong">{t('目标打卡')}</span>
+                    <span className="text-[11px] text-ink-faint">
+                      · {t('按学习目标独立结算')}
+                    </span>
+                  </div>
+                  <div className="text-[10.5px] text-ink-faint">
+                    {t('每日完成导师题目或达成有效阅读即可打卡')}
+                  </div>
+                </div>
+              </div>
+
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium border ${
+                  readyCount > 0
+                    ? 'border-seal/30 bg-seal/10 text-seal-deep shadow-2xs'
+                    : 'border-line/40 bg-line/30 text-ink-faint'
+                }`}
+              >
+                {readyCount > 0 ? t('{0} 个目标可打卡', readyCount) : t('今日尚无待打卡')}
               </span>
-              <span className="min-w-0 truncate text-[11px] text-ink-faint">{t('按目标分开算')}</span>
             </div>
 
-            <div className="mt-2.5 flex gap-3">
-              {/* --- 2. 左：目标 tab 栏。每个 tab 一本独立的打卡账（需求）；
-                      目标多过一栏时在栏内滚动、滚动条藏掉（与有效阅读的过滤栏同一条规则） --- */}
-              <div className="w-[128px] shrink-0 border-r border-line pr-2">
-                <div className="space-y-0.5 overflow-y-auto moji-scroll-none" style={{ maxHeight: TABS_MAX_H }}>
+            <div className="mt-3 flex gap-3">
+              {/* --- 左：目标选择列表 --- */}
+              <div className="w-[136px] shrink-0 border-r border-line/50 pr-2.5">
+                <div className="mb-1.5 px-1 text-[10.5px] font-medium text-ink-faint">
+                  {t('目标账本')}
+                </div>
+                <div className="space-y-1 overflow-y-auto moji-scroll-none" style={{ maxHeight: TABS_MAX_H }}>
                   {tabs.map((tab) => {
                     const active = tab.goalId === selected?.goalId
                     const mark = tabMark(tab)
@@ -204,19 +227,26 @@ export default function CheckinButton({
                         aria-checked={active}
                         onClick={() => onSelect(tab.goalId)}
                         title={tab.label + (tab.note ? '（' + tab.note + '）' : '')}
-                        className={
-                          'flex w-full items-baseline gap-1.5 rounded-md px-2 py-1 text-left transition ' +
-                          (active ? 'bg-seal/12 text-seal-deep' : 'text-ink-soft hover:bg-line/50 hover:text-ink')
-                        }
+                        className={`flex w-full items-center justify-between gap-1.5 rounded-lg px-2 py-1.5 text-left transition-all ${
+                          active
+                            ? 'bg-seal/12 text-seal-deep font-medium border-l-2 border-seal shadow-2xs'
+                            : 'text-ink-soft hover:bg-line/40 hover:text-ink'
+                        }`}
                       >
-                        <span className="min-w-0 flex-1 truncate text-[12px]">{tab.label}</span>
-                        {mark.dot && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-seal" />}
+                        <span className="min-w-0 flex-1 truncate text-[11.5px]">{tab.label}</span>
+                        {mark.dot && (
+                          <span className="relative flex h-2 w-2">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-seal opacity-75" />
+                            <span className="relative inline-flex h-2 w-2 rounded-full bg-seal" />
+                          </span>
+                        )}
                         {mark.text && (
                           <span
-                            className={
-                              'shrink-0 text-[10.5px] tabular-nums ' +
-                              (tab.state === 'done' ? 'text-ok-deep' : 'opacity-80')
-                            }
+                            className={`shrink-0 rounded px-1 py-0.5 text-[9.5px] tabular-nums ${
+                              tab.state === 'done'
+                                ? 'bg-ok/15 text-ok-deep font-medium'
+                                : 'bg-line/40 text-ink-faint'
+                            }`}
                           >
                             {mark.text}
                           </span>
@@ -227,88 +257,108 @@ export default function CheckinButton({
                 </div>
               </div>
 
-              {/* --- 3. 右：当前目标那一本账——状态、连续天数、日历 --- */}
-              <div className="min-w-0 flex-1">
+              {/* --- 右：目标打卡面板（状态 / 打卡按钮 / 日历） --- */}
+              <div className="flex min-w-0 flex-1 flex-col justify-between">
                 {selected ? (
                   <>
-                    <div className="flex min-h-[26px] items-center justify-between gap-2 px-0.5">
-                      {selected.state === 'ready' ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOpen(false)
-                            onCheckin(selected.goalId)
-                          }}
-                          className="shrink-0 rounded-md bg-seal px-2.5 py-1 text-[11.5px] font-medium text-white shadow-sm transition hover:bg-seal-deep"
-                        >
-                          {t('打卡')}
-                        </button>
-                      ) : (
-                        <span
-                          className={
-                            'min-w-0 truncate text-[11.5px] ' +
-                            (selected.state === 'done' ? 'text-ok-deep' : 'text-ink-faint')
-                          }
-                        >
-                          {selected.note}
-                        </span>
-                      )}
-                      {(selected.streak > 0 || selected.best > 0) && (
-                        <span className="shrink-0 text-[10.5px] tabular-nums text-ink-faint">
-                          {t('连续 {0} 天 · 最长 {1} 天', selected.streak, selected.best)}
-                        </span>
-                      )}
+                    {/* 顶部操作与连胜说明 */}
+                    <div className="rounded-xl border border-line/50 bg-paper/50 p-2.5 dark:bg-paper/20">
+                      <div className="flex items-center justify-between gap-2">
+                        {selected.state === 'ready' ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[12px] font-medium text-seal-deep">{t('今日条件已达成')}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpen(false)
+                                onCheckin(selected.goalId)
+                              }}
+                              className="flex items-center gap-1.5 rounded-lg bg-seal px-3 py-1 text-[11.5px] font-medium text-white shadow-sm transition-all hover:bg-seal-deep active:scale-[0.98]"
+                            >
+                              <Flame size={12} className="fill-current" /> {t('立即打卡')}
+                            </button>
+                          </div>
+                        ) : (
+                          <span
+                            className={`min-w-0 truncate text-[11.5px] ${
+                              selected.state === 'done' ? 'font-medium text-ok-deep' : 'text-ink-soft'
+                            }`}
+                          >
+                            {selected.state === 'done' ? t('✓ 今日已打卡') : selected.note}
+                          </span>
+                        )}
+
+                        {(selected.streak > 0 || selected.best > 0) && (
+                          <span className="shrink-0 rounded-md bg-card/60 px-2 py-0.5 text-[10.5px] font-medium tabular-nums text-ink-soft border border-line/40">
+                            {t('连续 {0} 天', selected.streak)}
+                            {selected.best > 0 && <span className="text-ink-faint ml-1">({t('最高 {0}', selected.best)})</span>}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {fresh && (
-                      <p className="mt-1.5 rounded-md bg-line/25 px-2.5 py-2 text-[11.5px] leading-relaxed text-ink-soft">
-                        {t('从今天开始：在这个目标下完成导师当天的题、读够有效时长，就算打过卡（试卷第一次考试及格也算）。')}
+                      <p className="mt-2 rounded-xl bg-line/20 p-2 text-[10.5px] leading-relaxed text-ink-soft border border-line/30">
+                        {t('从今天开始：完成导师出题、阅读达标或考试及格，均会自动记入打卡。')}
                       </p>
                     )}
-                    <div className="mt-1.5 px-0.5 text-[10.5px] text-ink-faint">{selected.monthLabel}</div>
-                    <div className="mt-1 grid grid-cols-7 gap-1">
-                      {WEEKDAYS.map((w) => (
-                        <span key={w} className="text-center text-[10px] text-ink-faint">
-                          {t(w)}
-                        </span>
-                      ))}
-                      {weeks.map((row, ri) =>
-                        row.map((cell, ci) =>
-                          cell === null ? (
-                            // 补位格什么都不画，但必须占住位置：否则第一行的星期就对不齐了
-                            <span key={'gap-' + ri + '-' + ci} />
-                          ) : (
-                            <span
-                              key={cell.day}
-                              title={cellTitle(cell)}
-                              className={'flex h-7 items-center justify-center rounded-md text-[11px] tabular-nums ' + cellClass(cell)}
-                            >
-                              {cell.label}
-                            </span>
+
+                    {/* 日历模块 */}
+                    <div className="mt-2.5 rounded-xl border border-line/40 bg-paper/30 p-2.5 dark:bg-paper/20">
+                      <div className="mb-1.5 flex items-center justify-between px-0.5">
+                        <span className="text-[11px] font-medium text-ink-strong">{selected.monthLabel}</span>
+                        <span className="text-[10px] text-ink-faint">{t('最近 5 周记录')}</span>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1">
+                        {WEEKDAYS.map((w) => (
+                          <span key={w} className="text-center text-[10px] text-ink-faint py-0.5">
+                            {t(w)}
+                          </span>
+                        ))}
+                        {weeks.map((row, ri) =>
+                          row.map((cell, ci) =>
+                            cell === null ? (
+                              <span key={'gap-' + ri + '-' + ci} />
+                            ) : (
+                              <span
+                                key={cell.day}
+                                title={cellTitle(cell)}
+                                className={`flex h-6.5 items-center justify-center rounded-md text-[10.5px] tabular-nums transition-all ${cellClass(cell)}`}
+                              >
+                                {cell.label}
+                              </span>
+                            ),
                           ),
-                        ),
-                      )}
-                    </div>
-                    {/* 图例：三种格子的颜色差得不算远，第一次看的人分不出那个实心块是「打过卡」还是「今天」 */}
-                    <div className="mt-1.5 flex items-center gap-3 px-0.5 text-[10px] text-ink-faint">
-                      <span className="flex items-center gap-1">
-                        <span className="h-2.5 w-2.5 rounded-sm bg-seal" />
-                        {t('打过卡')}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="h-2.5 w-2.5 rounded-sm bg-seal/15" />
-                        {t('考了没过')}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="h-2.5 w-2.5 rounded-sm bg-line/25" />
-                        {t('没打卡')}
-                      </span>
+                        )}
+                      </div>
+
+                      {/* 图例 */}
+                      <div className="mt-2 flex items-center justify-center gap-4 border-t border-line/30 pt-1.5 text-[9.5px] text-ink-faint">
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-xs bg-seal" />
+                          {t('已打卡')}
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-xs bg-seal/20" />
+                          {t('考了没过')}
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-xs bg-line/40" />
+                          {t('未打卡')}
+                        </span>
+                      </div>
                     </div>
                   </>
                 ) : (
-                  <p className="px-1.5 py-1 text-[11.5px] leading-relaxed text-ink-soft">
-                    {t('还没有学习目标：新建一个目标之后，打卡就按目标分开算。')}
-                  </p>
+                  <div className="flex flex-col items-center justify-center rounded-xl bg-paper/40 py-8 px-4 text-center dark:bg-paper/20">
+                    <Flame size={24} className="text-ink-faint mb-1.5 opacity-50" />
+                    <p className="text-[11.5px] text-ink-soft">
+                      {t('暂无学习目标')}
+                    </p>
+                    <p className="mt-0.5 text-[10.5px] text-ink-faint">
+                      {t('新建目标后即可开启专属打卡账本。')}
+                    </p>
+                  </div>
                 )}
               </div>
             </div>

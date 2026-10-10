@@ -6,6 +6,7 @@ import { readLocalFile, readLocalMediaFile } from '../../lib/localFiles'
 import { renderNoteGfm } from '../../lib/markdown'
 import { createLocalDocImageResolver } from '../../lib/docImages'
 import { copySelectionAsMarkdown } from '../../lib/copySource'
+import { readUserImage, readUserText, userAbsPrefix } from '../../lib/storage'
 import type { OutlineHandle } from '../../lib/outline'
 import MarkdownView from '../MarkdownView'
 import SourceEditor, { type SaveState } from './SourceEditor'
@@ -95,7 +96,23 @@ export default function LocalDoc({
     // 媒体文件不走文本读取（白名单也会拒它）：下面专门有一个 effect 读它
     if (media) return
     let alive = true
-    void readLocalFile(path).then((r) => {
+    void (async () => {
+      let r = await readLocalFile(path)
+      if (!r.ok) {
+        const prefix = userAbsPrefix()
+        let rel: string | null = null
+        if (prefix && path.startsWith(prefix)) {
+          rel = path.slice(prefix.length).replace(/^[/\\]+/, '').replace(/\\/g, '/')
+        } else if (!/^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(path)) {
+          rel = path.replace(/\\/g, '/')
+        }
+        if (rel) {
+          const userContent = await readUserText(rel)
+          if (userContent !== null) {
+            r = { ok: true, content: userContent }
+          }
+        }
+      }
       if (!alive) return
       setLoading(false)
       if (!r.ok) {
@@ -104,7 +121,7 @@ export default function LocalDoc({
         return
       }
       setContent(r.content)
-    })
+    })()
     return () => {
       alive = false
     }
@@ -114,7 +131,34 @@ export default function LocalDoc({
   useEffect(() => {
     if (!media) return
     let alive = true
-    void readLocalMediaFile(path).then((r) => {
+    void (async () => {
+      let r = await readLocalMediaFile(path)
+      if (!r.ok) {
+        const prefix = userAbsPrefix()
+        let rel: string | null = null
+        if (prefix && path.startsWith(prefix)) {
+          rel = path.slice(prefix.length).replace(/^[/\\]+/, '').replace(/\\/g, '/')
+        } else if (!/^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(path)) {
+          rel = path.replace(/\\/g, '/')
+        }
+        if (rel) {
+          const dataUrl = await readUserImage(rel)
+          if (dataUrl) {
+            const ext = extOf(path).toLowerCase()
+            const mime =
+              ext === '.png'
+                ? 'image/png'
+                : ext === '.jpg' || ext === '.jpeg'
+                  ? 'image/jpeg'
+                  : ext === '.webp'
+                    ? 'image/webp'
+                    : ext === '.gif'
+                      ? 'image/gif'
+                      : 'image/png'
+            r = { ok: true, mime, dataUrl }
+          }
+        }
+      }
       if (!alive) return
       setLoading(false)
       if (!r.ok) {
@@ -122,7 +166,7 @@ export default function LocalDoc({
         return
       }
       setMediaSrc({ mime: r.mime ?? '', dataUrl: r.dataUrl ?? '' })
-    })
+    })()
     return () => {
       alive = false
     }

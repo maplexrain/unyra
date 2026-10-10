@@ -64,6 +64,7 @@ export function useMessageList({
   clickDelete,
   onResumeNotice,
   setBubblePreview,
+  onOpenFile,
 }: MessageListProps) {
   return (
     <>
@@ -117,6 +118,7 @@ export function useMessageList({
             onDelete={clickDelete}
             setEditing={setEditing}
             setBubblePreview={setBubblePreview}
+            onOpenFile={onOpenFile}
           />
         )
       })}

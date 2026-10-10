@@ -7,8 +7,8 @@
  */
 
 import { useEffect, useState } from 'react'
-import { FileText, X } from 'lucide-react'
-import type { MessageImage, PendingFile, PendingImage } from '../../../agent/types'
+import { ExternalLink, FileText, X } from 'lucide-react'
+import type { MessageFile, MessageImage, PendingFile, PendingImage } from '../../../agent/types'
 import {
   cachedImageUrl,
   formatBytes,
@@ -138,6 +138,47 @@ export function BubbleImage({ image, onOpen }: { image: MessageImage; onOpen: ()
       ) : (
         <ThumbPlaceholder className="h-full w-full" />
       )}
+    </button>
+  )
+}
+
+/**
+ * 气泡里的外部文件附件回显：展示文件名、体积/字数，点击在标签页打开。
+ */
+export function BubbleFile({ file, onOpen }: { file: MessageFile; onOpen: () => void }) {
+  const note = file.binary
+    ? t('{0} · 二进制', formatBytes(file.bytes))
+    : file.chars
+      ? `${formatBytes(file.bytes)} · ${t('共 {0} 字', file.chars.toLocaleString())}`
+      : formatBytes(file.bytes)
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={
+        file.path
+          ? t('点击在标签页中打开本地文件：\n{0}', file.path)
+          : t('点击在标签页中打开「{0}」', file.name)
+      }
+      className="group/file flex max-w-[280px] items-center gap-2.5 rounded-xl border border-line bg-card/85 px-3 py-2 text-left shadow-2xs transition-all hover:border-seal/45 hover:bg-card hover:shadow-xs active:scale-[0.98]"
+    >
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-seal/10 text-seal transition group-hover/file:bg-seal/15">
+        <FileText size={16} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[12px] font-medium text-ink transition group-hover/file:text-seal-deep">
+          {file.name}
+        </div>
+        <div className="truncate text-[10.5px] text-ink-faint">
+          {note}
+          {file.truncated ? t('（已截断）') : ''}
+        </div>
+      </div>
+      <ExternalLink
+        size={13}
+        className="shrink-0 text-ink-faint opacity-50 transition group-hover/file:text-seal group-hover/file:opacity-100"
+      />
     </button>
   )
 }
