@@ -19,45 +19,20 @@ describe('computeTabRelation', () => {
     ],
   } as unknown as LearnStore
 
-  const tabRootDoc: LearnTab = {
-    id: 't-root-doc',
-    ref: { kind: 'teach', nodeId: 'node-root' },
-  }
+  const makeTab = (id: string, ref: any): LearnTab => ({
+    id,
+    ref,
+    createdAt: 1700000000000,
+  })
 
-  const tabMidDoc: LearnTab = {
-    id: 't-mid-doc',
-    ref: { kind: 'teach', nodeId: 'node-mid' },
-  }
-
-  const tabLeafDoc: LearnTab = {
-    id: 't-leaf-doc',
-    ref: { kind: 'teach', nodeId: 'node-leaf' },
-  }
-
-  const tabSubleafDoc: LearnTab = {
-    id: 't-subleaf-doc',
-    ref: { kind: 'teach', nodeId: 'node-subleaf' },
-  }
-
-  const tabDeepDoc: LearnTab = {
-    id: 't-deep-doc',
-    ref: { kind: 'teach', nodeId: 'node-deep' },
-  }
-
-  const tabMidNote: LearnTab = {
-    id: 't-mid-note',
-    ref: { kind: 'note', nodeId: 'node-mid', noteId: 'note-1' },
-  }
-
-  const tabMidOutline: LearnTab = {
-    id: 't-mid-outline',
-    ref: { kind: 'outline', nodeId: 'node-mid' },
-  }
-
-  const tabWeb: LearnTab = {
-    id: 't-web',
-    ref: { kind: 'web', tabId: 'web-1' },
-  }
+  const tabRootDoc = makeTab('t-root-doc', { kind: 'teach', nodeId: 'node-root' })
+  const tabMidDoc = makeTab('t-mid-doc', { kind: 'teach', nodeId: 'node-mid' })
+  const tabLeafDoc = makeTab('t-leaf-doc', { kind: 'teach', nodeId: 'node-leaf' })
+  const tabSubleafDoc = makeTab('t-subleaf-doc', { kind: 'teach', nodeId: 'node-subleaf' })
+  const tabDeepDoc = makeTab('t-deep-doc', { kind: 'teach', nodeId: 'node-deep' })
+  const tabMidNote = makeTab('t-mid-note', { kind: 'note', nodeId: 'node-mid', note: 'note-1' })
+  const tabMidOutline = makeTab('t-mid-outline', { kind: 'outline', nodeId: 'node-mid' })
+  const tabWeb = makeTab('t-web', { kind: 'web', key: 'web-1' })
 
   it('拓扑距离计算 directedDistance 正确', () => {
     expect(directedDistance(mockStore, 'node-root', 'node-mid')).toBe(1)
@@ -108,10 +83,11 @@ describe('computeTabRelation', () => {
   })
 
   it('非教学文档（笔记/大纲等）不会被判定为跨节点父子级箭头', () => {
-    const tabRootNote: LearnTab = {
-      id: 't-root-note',
-      ref: { kind: 'note', nodeId: 'node-root', noteId: 'note-root-1' },
-    }
+    const tabRootNote = makeTab('t-root-note', {
+      kind: 'note',
+      nodeId: 'node-root',
+      note: 'note-root-1',
+    })
     // 激活子节点 leaf，查看根节点的笔记：不应判定为 parent，应保持原样 none
     expect(computeTabRelation(tabRootNote, tabLeafDoc, mockStore)).toEqual({ kind: 'none', depth: 0 })
   })
