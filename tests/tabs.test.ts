@@ -83,6 +83,11 @@ describe('页签的身份', () => {
     expect(tabTrail({ kind: 'exam', nodeId: 'n1', examId: 'e1', attemptId: 'a1' }, path)).toBe('')
   })
 
+  it('本地文件页签标题优先使用自定义 title，缺省退回文件名', () => {
+    expect(tabTitle({ kind: 'local', path: 'C:/docs/static/uuid-123.png', title: '示例图片.png' }, () => undefined)).toBe('示例图片.png')
+    expect(tabTitle({ kind: 'local', path: 'C:/docs/static/uuid-123.png' }, () => undefined)).toBe('uuid-123.png')
+  })
+
   it('系统页全局各只有一份：key 恒定、不挂节点、没有路径后缀', () => {
     const settings: TabRef = { kind: 'settings' }
     // 恒定的 key 意味着从哪个入口打开都是同一枚页签（openTab 按 key 去重）

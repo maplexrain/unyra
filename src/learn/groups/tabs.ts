@@ -79,7 +79,16 @@ export function openInGroup(
 ): DocWorkspace {
   const id = tabKey(ref)
   const home = groupIdOfTab(docs, id)
-  if (home) return activateIn(docs, home, id)
+  if (home) {
+    if (ref.kind === 'local' && ref.title) {
+      const updated = withGroup(docs, home, (g) => ({
+        ...g,
+        tabs: g.tabs.map((t) => (t.id === id && t.ref.kind === 'local' && t.ref.title !== ref.title ? { ...t, ref: { ...t.ref, title: ref.title } } : t)),
+      }))
+      return activateIn(updated, home, id)
+    }
+    return activateIn(docs, home, id)
+  }
   const target = groupOf(docs, groupId) ? groupId : focusedGroup(docs).id
   const next = withGroup(docs, target, (g) => ({
     ...g,

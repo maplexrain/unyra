@@ -200,6 +200,8 @@ export interface MessageFile {
   truncated?: boolean
   /** 二进制：读不出文本内容 */
   binary?: boolean
+  /** 来源文件在本地磁盘上的绝对路径（拖入或对话框选取的文件有此属性，点击可在标签页中打开） */
+  path?: string
 }
 
 /**

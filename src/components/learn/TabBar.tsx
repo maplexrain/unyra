@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowLeftToLine, ArrowRightToLine, FoldHorizontal, Globe, OctagonX, Star, X } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { ArrowLeftToLine, ArrowRightToLine, ChevronDown, ChevronUp, FoldHorizontal, Globe, OctagonX, Star, X } from 'lucide-react'
 import { DocTypeIcon, WebTabTypeIcon } from './docTypes'
-import type { LearnTab, TabRef, WebTabMeta } from '../../learn/types'
-import { TAB_CLOSE_LABEL, dragSlotDelta, type TabCloseMode } from '../../learn/tabs'
+import type { LearnStore, LearnTab, TabRef, WebTabMeta } from '../../learn/types'
+import { TAB_CLOSE_LABEL, dragSlotDelta, tabNodeId, type TabCloseMode } from '../../learn/tabs'
+import { parentIds } from '../../learn/graph'
 import { setTabMarkHandlers } from '../../lib/tabMark'
 import { docChipDrop, docChipHover, type ChipPayload } from '../../lib/docChip'
 import { CHIP_MIME, parseChipJson } from '../../lib/chipSyntax'
@@ -92,12 +94,174 @@ interface Props {
    * 开一个新的浏览器页签，以及把这一格的页签全部关掉。不给就没有这张菜单。
    */
   onOpenWebTab?: () => void
-  /**
-   * 文档区里按住右键横向拖动的进度：在当前页签的背景里画出来。
-   * dir 是方向（1 = 往右拖，进度从左往右长；-1 = 往左拖，从右往左长），
-   * ratio 是「这一格拖了多少」（0~1，满一格就换页签）。
-   */
+  /** 全局 store：用于计算标签页之间的父级/子级/同概念关联 */
+  store?: LearnStore
+}
 
+/**
+ * 沿 store.edges 的有向边计算从 fromNodeId 到 toNodeId 的最短拓扑距离。
+ * edge.from 为父级（上位节点），edge.to 为子级（下位节点）。
+ * 相邻父子为 1，爷孙为 2，曾祖孙为 3，以此类推；若不可达则返回 null。
+ */
+export function directedDistance(
+  store: LearnStore,
+  fromNodeId: string,
+  toNodeId: string,
+): number | null {
+  if (fromNodeId === toNodeId) return 0
+  if (!store.edges || !store.edges.length) return null
+
+  const visited = new Set<string>([fromNodeId])
+  const queue: Array<[string, number]> = [[fromNodeId, 0]]
+
+  while (queue.length > 0) {
+    const [current, dist] = queue.shift()!
+    for (const edge of store.edges) {
+      if (edge.from === current) {
+        if (edge.to === toNodeId) {
+          return dist + 1
+        }
+        if (!visited.has(edge.to)) {
+          visited.add(edge.to)
+          queue.push([edge.to, dist + 1])
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+export type TabRelationKind = 'none' | 'parent' | 'child' | 'same-node'
+
+export interface TabRelation {
+  kind: TabRelationKind
+  depth: number
+}
+
+export function isTeachDocTab(ref: TabRef): boolean {
+  return ref.kind === 'teach' || (ref.kind as string) === 'doc'
+}
+
+export function computeTabRelation(
+  targetTab: LearnTab,
+  baseTab: LearnTab | null,
+  store: LearnStore | null | undefined,
+): TabRelation {
+  if (!baseTab || !store || targetTab.id === baseTab.id) return { kind: 'none', depth: 0 }
+
+  const bNodeId = tabNodeId(baseTab.ref)
+  const tNodeId = tabNodeId(targetTab.ref)
+  if (!bNodeId || !tNodeId) return { kind: 'none', depth: 0 }
+
+  // 同一节点的外围页签（如大纲、笔记、试卷记录、超级文档等）
+  if (tNodeId === bNodeId) {
+    return { kind: 'same-node', depth: 0 }
+  }
+
+  // 跨节点箭头与层级仅适用于教学文档（TabRef 中的 kind === 'teach'）
+  if (!isTeachDocTab(targetTab.ref)) {
+    return { kind: 'none', depth: 0 }
+  }
+
+  // 上位节点（父级、爷级、曾祖等）：沿 edges 存在从 tNodeId 到 bNodeId 的路径
+  const ancestorDist = directedDistance(store, tNodeId, bNodeId)
+  if (ancestorDist !== null && ancestorDist > 0) {
+    return { kind: 'parent', depth: Math.min(ancestorDist, 4) }
+  }
+
+  // 下位节点（子级、孙级、曾孙等）：沿 edges 存在从 bNodeId 到 tNodeId 的路径
+  const descendantDist = directedDistance(store, bNodeId, tNodeId)
+  if (descendantDist !== null && descendantDist > 0) {
+    return { kind: 'child', depth: Math.min(descendantDist, 4) }
+  }
+
+  return { kind: 'none', depth: 0 }
+}
+
+function chevronPath(direction: 'up' | 'down', apexY: number, span = 4.2, wingH = 2.8): string {
+  if (direction === 'up') {
+    const x1 = (8 - span).toFixed(1)
+    const x2 = (8 + span).toFixed(1)
+    const yWing = (apexY + wingH).toFixed(1)
+    return `M ${x1} ${yWing} L 8 ${apexY.toFixed(1)} L ${x2} ${yWing}`
+  } else {
+    const x1 = (8 - span).toFixed(1)
+    const x2 = (8 + span).toFixed(1)
+    const yWing = (apexY - wingH).toFixed(1)
+    return `M ${x1} ${yWing} L 8 ${apexY.toFixed(1)} L ${x2} ${yWing}`
+  }
+}
+
+/**
+ * 依据相距层级叠加显示的矢量折角图标（1-4 个箭头叠加）
+ */
+export function StackedChevron({
+  direction,
+  count,
+  className,
+  style,
+}: {
+  direction: 'up' | 'down'
+  count: number
+  className?: string
+  style?: React.CSSProperties
+}) {
+  const n = Math.min(Math.max(count, 1), 4)
+  const paths: string[] = []
+
+  if (direction === 'up') {
+    if (n === 1) {
+      paths.push(chevronPath('up', 6.2, 4.4, 3.6))
+    } else if (n === 2) {
+      paths.push(chevronPath('up', 4.6, 4.2, 2.8))
+      paths.push(chevronPath('up', 8.6, 4.2, 2.8))
+    } else if (n === 3) {
+      paths.push(chevronPath('up', 3.6, 3.9, 2.3))
+      paths.push(chevronPath('up', 6.8, 3.9, 2.3))
+      paths.push(chevronPath('up', 10.0, 3.9, 2.3))
+    } else {
+      paths.push(chevronPath('up', 2.7, 3.7, 2.0))
+      paths.push(chevronPath('up', 5.3, 3.7, 2.0))
+      paths.push(chevronPath('up', 7.9, 3.7, 2.0))
+      paths.push(chevronPath('up', 10.5, 3.7, 2.0))
+    }
+  } else {
+    if (n === 1) {
+      paths.push(chevronPath('down', 9.8, 4.4, 3.6))
+    } else if (n === 2) {
+      paths.push(chevronPath('down', 11.4, 4.2, 2.8))
+      paths.push(chevronPath('down', 7.4, 4.2, 2.8))
+    } else if (n === 3) {
+      paths.push(chevronPath('down', 12.4, 3.9, 2.3))
+      paths.push(chevronPath('down', 9.2, 3.9, 2.3))
+      paths.push(chevronPath('down', 6.0, 3.9, 2.3))
+    } else {
+      paths.push(chevronPath('down', 13.3, 3.7, 2.0))
+      paths.push(chevronPath('down', 10.7, 3.7, 2.0))
+      paths.push(chevronPath('down', 8.1, 3.7, 2.0))
+      paths.push(chevronPath('down', 5.5, 3.7, 2.0))
+    }
+  }
+
+  const strokeWidth = n === 1 ? 2.2 : n === 2 ? 2.0 : 1.8
+
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className ?? 'h-3.5 w-3.5'}
+      style={style}
+    >
+      {paths.map((d, i) => (
+        <path key={i} d={d} />
+      ))}
+    </svg>
+  )
 }
 
 /** 拖动一个页签要挪动这么多像素才算「在拖」，低于它仍是点击 */
@@ -167,7 +331,12 @@ export default function TabBar({
   onToggleFavorite,
   onOpenWebTab,
   focused = false,
+  store,
 }: Props) {
+  const activeTab = useMemo(
+    () => (activeId ? tabs.find((t) => t.id === activeId) ?? null : null),
+    [activeId, tabs],
+  )
   const rootRef = useRef<HTMLDivElement | null>(null)
   const stripRef = useRef<HTMLDivElement | null>(null)
   /** 上边框上那颗棱形：它停在**当前页签**正上方，右键拖它就换页签 */
@@ -697,6 +866,47 @@ export default function TabBar({
           // 三种位移只会有一个生效：拖着的跟手（拖出栏后的影子模式里它留在槽位上）、
           // 刚落下的在归位、其余在让位
           const offset = dragging && !lifted ? drag.dx : settling ? settle.offset : shift
+
+          // 计算当前 tab 与当前激活 tab 之间的知识图谱关联
+          const relation = computeTabRelation(tab, activeTab, store)
+          const relationCls =
+            relation.kind === 'same-node'
+              ? 'border-transparent bg-sky-500/[0.04] hover:bg-sky-500/[0.08] dark:bg-sky-400/[0.03] dark:hover:bg-sky-400/[0.06] text-ink-soft hover:text-ink '
+              : relation.kind === 'parent'
+                ? 'border-transparent bg-amber-500/[0.04] hover:bg-amber-500/[0.08] dark:bg-amber-400/[0.03] dark:hover:bg-amber-400/[0.06] text-ink-soft hover:text-ink '
+                : relation.kind === 'child'
+                  ? 'border-transparent bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08] dark:bg-emerald-400/[0.03] dark:hover:bg-emerald-400/[0.06] text-ink-soft hover:text-ink '
+                  : ''
+
+          const relationTooltip =
+            activeTab && relation.kind === 'parent'
+              ? t(
+                  relation.depth === 1
+                    ? '（父节点文档，属于「{0}」）'
+                    : relation.depth === 2
+                      ? '（祖父节点文档，属于「{0}」）'
+                      : relation.depth === 3
+                        ? '（曾祖节点文档，属于「{0}」）'
+                        : '（上位第 {0} 级节点文档，属于「{1}」）',
+                  relation.depth <= 3 ? titleOf(activeTab.ref) : relation.depth,
+                  titleOf(activeTab.ref),
+                )
+              : activeTab && relation.kind === 'child'
+                ? t(
+                    relation.depth === 1
+                      ? '（子节点文档，属于「{0}」）'
+                      : relation.depth === 2
+                        ? '（孙节点文档，属于「{0}」）'
+                        : relation.depth === 3
+                          ? '（曾孙节点文档，属于「{0}」）'
+                          : '（下位第 {0} 级节点文档，属于「{1}」）',
+                    relation.depth <= 3 ? titleOf(activeTab.ref) : relation.depth,
+                    titleOf(activeTab.ref),
+                  )
+                : activeTab && relation.kind === 'same-node'
+                  ? t('（同属节点「{0}」）', titleOf(activeTab.ref))
+                  : ''
+
           /*
            * min-w：页签的宽度本来由标题撑开，短标题（「导数」两个字）就窄得只剩一个
            * 可以点的小方块，一排页签看着也参差不齐。给它一个下限，短标题一样好按。
@@ -710,10 +920,11 @@ export default function TabBar({
             (on ? 'moji-tab-flare z-10 font-medium ' : '') +
             (dragging || settling
               ? 'z-10 cursor-grabbing border-line-strong bg-card text-ink-strong shadow-md'
-              : 'transition-transform duration-150 ' +
-                (on
-                  ? 'border-line-strong bg-card text-ink-strong'
-                  : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink')) +
+              : 'transition-all duration-200 ' +
+                (relationCls ||
+                  (on
+                    ? 'border-line-strong bg-card text-ink-strong'
+                    : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink'))) +
             // 拖出栏后栏里这枚只剩个淡占位：正文跟着指针（影子）走了
             (lifted ? ' opacity-40' : '')
           return (
@@ -726,6 +937,7 @@ export default function TabBar({
               // 未保存时顺带说一句：那颗圆点本身没有 tooltip（它是 aria-hidden 的装饰）
               title={
                 (trail ? trail + ' · ' + title : title) +
+                relationTooltip +
                 (dirty ? t('（有未保存的改动，Ctrl+S 保存）') : '')
               }
               onClick={() => {
@@ -749,15 +961,56 @@ export default function TabBar({
               className={cls}
             >
               {/*
-                左边这格是**页签类型的标识图标**（教学文档 / 笔记 / 超级文档 / 外部文件），
-                与右边那颗关闭键等宽（都是 16px）：标题因此还是在整条页签里居中，
-                而空档本身也成了有用的信息。
+                左边这格是**页签类型的标识图标**：
+                - 仅教学文档（kind === 'teach'）显示折角层级箭头（上位向上暖金，下位向下翠绿）；
+                - 平级同一节点外围页签（笔记/大纲/试卷等）：保留原本类型图标，由外层 relationCls 柔和晴蓝底色标识；
+                - 平常或无关联：展示标准类型图标。
               */}
-              <TabTypeIcon
-                tab={tab.ref}
-                favicon={tab.ref.kind === 'web' ? wmeta?.favicon : undefined}
-                loading={wmeta?.loading}
-              />
+              {isTeachDocTab(tab.ref) && relation.kind === 'parent' ? (
+                <div
+                  className="flex h-4 w-4 shrink-0 items-center justify-center text-amber-500/80 dark:text-amber-400/80"
+                  title={
+                    relation.depth === 1
+                      ? t('父级知识点文档')
+                      : relation.depth === 2
+                        ? t('祖父级知识点文档')
+                        : relation.depth === 3
+                          ? t('曾祖级知识点文档')
+                          : t('上位第 {0} 级祖先文档', relation.depth)
+                  }
+                >
+                  <StackedChevron
+                    direction="up"
+                    count={relation.depth}
+                    className="h-3.5 w-3.5 shrink-0"
+                  />
+                </div>
+              ) : isTeachDocTab(tab.ref) && relation.kind === 'child' ? (
+                <div
+                  className="flex h-4 w-4 shrink-0 items-center justify-center text-emerald-500/80 dark:text-emerald-400/80"
+                  title={
+                    relation.depth === 1
+                      ? t('下级子知识点文档')
+                      : relation.depth === 2
+                        ? t('孙级知识点文档')
+                        : relation.depth === 3
+                          ? t('曾孙级知识点文档')
+                          : t('下位第 {0} 级子孙文档', relation.depth)
+                  }
+                >
+                  <StackedChevron
+                    direction="down"
+                    count={relation.depth}
+                    className="h-3.5 w-3.5 shrink-0"
+                  />
+                </div>
+              ) : (
+                <TabTypeIcon
+                  tab={tab.ref}
+                  favicon={tab.ref.kind === 'web' ? wmeta?.favicon : undefined}
+                  loading={wmeta?.loading}
+                />
+              )}
               {/*
                 标题居中：外层 flex-1 占住两边等宽的空档、内层按内容宽。
                 不直接写 text-center + truncate 是因为那样**长标题会把开头切掉**：
@@ -819,41 +1072,45 @@ export default function TabBar({
         <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-line-strong" />
       )}
 
-      {barMenu && onOpenWebTab && (
-        <BarMenu
-          menu={barMenu}
-          canCloseAll={tabs.length > 0}
-          count={tabs.length}
-          onOpenWebTab={() => {
-            onOpenWebTab()
-            setBarMenu(null)
-          }}
-          onCloseAll={() => {
-            // 「全部关闭」不吃页签 id：给谁都一样，mode 说了算（见 learn/tabs 的 closeTabs）
-            onClose(activeId ?? tabs[0]?.id ?? '', 'all')
-            setBarMenu(null)
-          }}
-          onClose={() => setBarMenu(null)}
-        />
-      )}
+      {barMenu && onOpenWebTab && typeof document !== 'undefined' &&
+        createPortal(
+          <BarMenu
+            menu={barMenu}
+            canCloseAll={tabs.length > 0}
+            count={tabs.length}
+            onOpenWebTab={() => {
+              onOpenWebTab()
+              setBarMenu(null)
+            }}
+            onCloseAll={() => {
+              // 「全部关闭」不吃页签 id：给谁都一样，mode 说了算（见 learn/tabs 的 closeTabs）
+              onClose(activeId ?? tabs[0]?.id ?? '', 'all')
+              setBarMenu(null)
+            }}
+            onClose={() => setBarMenu(null)}
+          />,
+          document.body,
+        )}
 
-      {menu && (
-        <TabMenu
-          menu={menu}
-          label={menuLabel}
-          tabs={tabs}
-          favorited={menuTab ? (favoriteOf?.(menuTab.ref) ?? false) : false}
-          onToggleFavorite={() => {
-            if (menuTab && onToggleFavorite) onToggleFavorite(menuTab)
-            setMenu(null)
-          }}
-          onClose={() => setMenu(null)}
-          onPick={(mode) => {
-            onClose(menu.id, mode)
-            setMenu(null)
-          }}
-        />
-      )}
+      {menu && typeof document !== 'undefined' &&
+        createPortal(
+          <TabMenu
+            menu={menu}
+            label={menuLabel}
+            tabs={tabs}
+            favorited={menuTab ? (favoriteOf?.(menuTab.ref) ?? false) : false}
+            onToggleFavorite={() => {
+              if (menuTab && onToggleFavorite) onToggleFavorite(menuTab)
+              setMenu(null)
+            }}
+            onClose={() => setMenu(null)}
+            onPick={(mode) => {
+              onClose(menu.id, mode)
+              setMenu(null)
+            }}
+          />,
+          document.body,
+        )}
     </div>
   )
 }
@@ -891,7 +1148,7 @@ function BarMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[70] min-w-[196px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[90] min-w-[196px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
       <button type="button" role="menuitem" onClick={onOpenWebTab} className={ROW}>
         <span className={ICON}>
@@ -982,7 +1239,7 @@ function TabMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[70] min-w-[196px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[90] min-w-[196px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
       {/*
         抬头：这一下是对着哪一份文档。与节点、笔记那两张菜单同一条规矩——

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ArrowLeftToLine, ArrowRightToLine, FoldHorizontal, MessageSquare, OctagonX, X } from 'lucide-react'
 import type { AgentTabRef } from '../../learn/types'
 import { agentTabCloseBlock, agentTabKey, type AgentTabCloseBlock } from '../../learn/agentTabs'
@@ -397,21 +398,23 @@ export default function AgentTabStrip({
         )}
       </div>
 
-      {menu && menuTab && (
-        <AgentTabMenu
-          menu={menu}
-          label={menuLabel}
-          count={tabs.length}
-          leftCount={Math.max(0, menuIndex)}
-          rightCount={Math.max(0, tabs.length - menuIndex - 1)}
-          otherCount={Math.max(0, tabs.length - 1)}
-          onPick={(mode) => {
-            onCloseMode(menu.key, mode)
-            setMenu(null)
-          }}
-          onClose={() => setMenu(null)}
-        />
-      )}
+      {menu && menuTab && typeof document !== 'undefined' &&
+        createPortal(
+          <AgentTabMenu
+            menu={menu}
+            label={menuLabel}
+            count={tabs.length}
+            leftCount={Math.max(0, menuIndex)}
+            rightCount={Math.max(0, tabs.length - menuIndex - 1)}
+            otherCount={Math.max(0, tabs.length - 1)}
+            onPick={(mode) => {
+              onCloseMode(menu.key, mode)
+              setMenu(null)
+            }}
+            onClose={() => setMenu(null)}
+          />,
+          document.body,
+        )}
     </>
   )
 }
@@ -452,7 +455,7 @@ function AgentTabMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[70] min-w-[196px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[90] min-w-[196px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
       {/* 抬头：这一下是对着哪一位导师（与文档区菜单同一条规矩） */}
       <div className="truncate px-2.5 py-1 text-[10.5px] text-ink-faint" title={label}>
