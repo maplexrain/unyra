@@ -1,11 +1,8 @@
 import { useState } from 'react'
 import {
   BookOpen,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Clock,
-  GraduationCap,
   Plus,
   Sparkles,
 } from 'lucide-react'

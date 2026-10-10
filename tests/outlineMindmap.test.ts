@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { KnowledgeNode, LearnStore } from '../src/learn/types'
 import { emptyOutline } from '../src/learn/types'
+import { emptyLearnStore } from '../src/learn/store/empty'
 import { buildMindmapTree } from '../src/components/learn/outline/MindmapView'
 
 const NOW = 1700000000000
@@ -74,18 +75,16 @@ describe('大纲思维导图构建 (Mindmap Tree)', () => {
     })
 
     const store: LearnStore = {
-      version: 1,
-      goals: [{ id: 'g1', rootNodeId: 'n_parent', title: '高数', createdAt: NOW, updatedAt: NOW }],
+      ...emptyLearnStore(),
+      goals: [{ id: 'g1', rootNodeId: 'n_parent', question: '高数', createdAt: NOW, updatedAt: NOW }],
       activeNodeId: 'n_current',
       activeGoalId: 'g1',
       nodes: [parent, current, child, grandchild],
       edges: [
-        { from: 'n_parent', to: 'n_current', relation: 'child' },
-        { from: 'n_current', to: 'n_child', relation: 'child' },
-        { from: 'n_child', to: 'n_grandchild', relation: 'child' },
+        { from: 'n_parent', to: 'n_current', createdAt: NOW },
+        { from: 'n_current', to: 'n_child', createdAt: NOW },
+        { from: 'n_child', to: 'n_grandchild', createdAt: NOW },
       ],
-      docArea: { focus: 'g1', groups: [], layout: 'g1' },
-      exams: [],
     }
 
     // 以 current 节点构建思维导图

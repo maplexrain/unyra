@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BookOpen,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   FolderMinus,
   FolderPlus,
   Maximize2,
@@ -12,7 +10,7 @@ import {
   RotateCcw,
   Sparkles,
 } from 'lucide-react'
-import type { KnowledgeNode, LearnStore, OutlineEntry } from '../../../learn/types'
+import type { KnowledgeNode, LearnStore, MasteryStatus, OutlineEntry } from '../../../learn/types'
 import { MASTERY_LABEL } from '../../../learn/types'
 import { outlineChildNodeOf } from '../../../learn/outline'
 import { t } from '../../../i18n'
@@ -111,7 +109,7 @@ export interface MindmapNodeData {
   key: string
   title: string
   summary: string
-  status: 'uncreated' | 'active' | 'review' | 'mastered'
+  status: MasteryStatus | 'uncreated'
   mastery?: number
   isRoot: boolean
   depth: number
@@ -134,7 +132,7 @@ interface MindmapEdge {
   y1: number
   x2: number
   y2: number
-  status: 'uncreated' | 'active' | 'review' | 'mastered'
+  status: MasteryStatus | 'uncreated'
   branchIndex: number
 }
 
@@ -720,7 +718,7 @@ export default function MindmapView({
                     {goalBadge}
                   </span>
                   <span className="text-[11px] font-medium text-ink-soft">
-                    {t(MASTERY_LABEL[item.status])}
+                    {item.status === 'uncreated' ? t('未规划') : t(MASTERY_LABEL[item.status])}
                   </span>
                 </div>
                 <div className="min-w-0">
@@ -761,7 +759,6 @@ export default function MindmapView({
           const isUncreated = item.status === 'uncreated'
 
           // 依据分支调色板计算卡片高质感样式
-          const branchBorderColor = pal ? pal.border : 'var(--color-line-strong)'
           const branchColor = pal ? pal.color : 'var(--color-seal)'
 
           return (
