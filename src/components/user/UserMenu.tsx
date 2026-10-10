@@ -50,37 +50,36 @@ export default function UserMenu({
       <button
         type="button"
         title={user ? t('{0} · 账号', displayName(user.profile)) : t('账号')}
-        // 展开靠指针经过；点一下也展开（键盘 Tab 过来回车走的就是这条）。
-        // 不做「再点收起」——鼠标用户点的时候菜单本来就已经开着，再点一下反而把它关了
         {...buttonProps}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`flex h-8 items-center gap-1.5 rounded-md px-1.5 transition ${
-          open ? 'bg-line/70' : 'hover:bg-line/70'
+        className={`group relative flex h-8 items-center gap-1.5 rounded-lg border-0 bg-transparent px-1.5 text-[12px] font-medium transition-all duration-150 ${
+          open ? 'text-ink' : 'text-ink-soft hover:text-ink'
         }`}
       >
-        {user && <UserAvatar profile={user.profile} seed={user.id} size={24} />}
-        <span className="hidden max-w-[7em] truncate text-[12px] text-ink-soft sm:inline">
+        {user && (
+          <div className="shrink-0 overflow-hidden rounded-full ring-1 ring-line-strong/40">
+            <UserAvatar profile={user.profile} seed={user.id} size={22} />
+          </div>
+        )}
+        <span className="hidden max-w-[7.5em] truncate text-[12px] font-medium text-ink-strong sm:inline">
           {user ? displayName(user.profile) : t('账号')}
         </span>
       </button>
 
       {mounted && (
-        /*
-          pt-1 这一层是「桥」：菜单与头像之间那 4px 缝必须落在本组件内，
-          否则指针穿过缝的一瞬间就会触发 wrapper 的 mouseleave，菜单当场收起。
-          动画与外观都作用在里面真正的面板上。
-        */
-        <div className="absolute right-0 top-full z-30 pt-1">
+        <div className="absolute right-0 top-full z-30 pt-1.5">
           <div
             role="menu"
-            className={`w-52 rounded-lg border border-line-strong bg-card p-1 shadow-[0_8px_28px_rgba(31,27,23,0.18)] ${panelProps.className}`}
+            className={`w-56 rounded-2xl border border-line-strong/70 bg-card/95 p-1.5 shadow-2xl backdrop-blur-md ${panelProps.className}`}
           >
             {user && (
-              <div className="flex items-center gap-2 px-2 py-1.5">
-                <UserAvatar profile={user.profile} seed={user.id} size={28} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12.5px] font-medium text-ink-strong">
+              <div className="mb-1 flex items-center gap-2.5 rounded-xl border border-line/40 bg-paper/50 p-2.5 dark:bg-paper/30">
+                <div className="shrink-0 overflow-hidden rounded-full ring-2 ring-seal/20 shadow-2xs">
+                  <UserAvatar profile={user.profile} seed={user.id} size={32} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-semibold text-ink-strong">
                     {displayName(user.profile)}
                   </span>
                   {(user.profile.role || user.profile.major) && (
@@ -88,56 +87,73 @@ export default function UserMenu({
                       {[user.profile.role, user.profile.major].filter(Boolean).join(' · ')}
                     </span>
                   )}
-                </span>
+                </div>
               </div>
             )}
-            <div className="my-1 h-px bg-line" />
-            {showProfile && (
+
+            <div className="space-y-0.5">
+              {showProfile && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false)
+                    onOpenUser()
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-ink transition-all hover:bg-line/60"
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-line/40 text-ink-soft">
+                    <UserCog size={13} />
+                  </span>
+                  <span>{t('用户画像')}</span>
+                </button>
+              )}
               <button
                 type="button"
                 role="menuitem"
                 onClick={() => {
                   setOpen(false)
-                  onOpenUser()
+                  onOpenSettings()
                 }}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] text-ink transition hover:bg-line/60"
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-ink transition-all hover:bg-line/60"
               >
-                <UserCog size={14} className="text-ink-faint" /> {t('用户')}
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-line/40 text-ink-soft">
+                  <Settings size={13} />
+                </span>
+                <span>{t('设置')}</span>
               </button>
-            )}
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false)
-                onOpenSettings()
-              }}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] text-ink transition hover:bg-line/60"
-            >
-              <Settings size={14} className="text-ink-faint" /> {t('设置')}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false)
-                onOpenUsage()
-              }}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] text-ink transition hover:bg-line/60"
-            >
-              <ChartColumn size={14} className="text-ink-faint" /> {t('用量统计')}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false)
-                onSignOut()
-              }}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] text-ink transition hover:bg-seal/10 hover:text-seal-deep"
-            >
-              <LogOut size={14} className="text-ink-faint" /> {t('退出登录')}
-            </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false)
+                  onOpenUsage()
+                }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-ink transition-all hover:bg-line/60"
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-line/40 text-ink-soft">
+                  <ChartColumn size={13} />
+                </span>
+                <span>{t('用量统计')}</span>
+              </button>
+
+              <div className="my-1 border-t border-line/40" />
+
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false)
+                  onSignOut()
+                }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-ink-soft transition-all hover:bg-warn/10 hover:text-warn-deep"
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-line/30 text-ink-faint">
+                  <LogOut size={13} />
+                </span>
+                <span>{t('退出登录')}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

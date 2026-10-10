@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { ExternalLink, RefreshCw } from 'lucide-react'
+import { CheckCircle2, ExternalLink, PackageCheck, RefreshCw, Sparkles } from 'lucide-react'
 import { usePresence } from '../../lib/presence'
-import { notesHtml, openReleasePage, useUpdateState } from '../../lib/update'
+import { formatBytes, notesHtml, openReleasePage, useUpdateState } from '../../lib/update'
 import { useEscapeKey } from '../../lib/useEscape'
 import { t } from '../../i18n'
 
@@ -31,7 +31,7 @@ interface Props {
 
 export default function UpdateButton({ onOpenUpdate }: Props) {
   const state = useUpdateState()
-  const { setOpen, mounted, closing } = usePresence(false, PANEL_EXIT_MS)
+  const { setOpen, mounted, closing, open } = usePresence(false, PANEL_EXIT_MS)
   const closeTimer = useRef<number | null>(null)
   const notes = state?.notes
   const html = useMemo(() => notesHtml(notes), [notes])
@@ -75,57 +75,96 @@ export default function UpdateButton({ onOpenUpdate }: Props) {
           onOpenUpdate()
         }}
         onFocus={openNow}
-        className="flex h-8 items-center gap-1.5 rounded-md bg-seal/10 px-2 text-[12px] font-medium text-seal-deep transition hover:bg-seal/20"
+        className={`group relative flex h-8 items-center gap-1.5 rounded-lg border-0 bg-transparent px-2 text-[12px] font-medium transition-all duration-150 ${
+          open ? 'text-seal-deep font-semibold' : 'text-seal-deep'
+        }`}
       >
-        <RefreshCw size={13} />
-        {t('更新')}
+        <div className="relative flex items-center justify-center text-seal">
+          <Sparkles size={13} className="animate-pulse" />
+          <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-seal opacity-75" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-seal" />
+          </span>
+        </div>
+        <span className="font-semibold">{t('新版本')}</span>
+        <span className="rounded-md bg-seal/15 px-1 py-0.2 font-mono text-[10.5px] font-medium text-seal">
+          v{state.version}
+        </span>
       </button>
 
       {mounted && (
-        /* pt-1 是「桥」：按钮与面板之间那 4px 缝必须落在本组件内，否则指针穿过缝会立刻收起 */
-        <div className="absolute right-0 top-full z-30 pt-1">
+        <div className="absolute right-0 top-full z-30 pt-1.5">
           <div
-            className={
-              'w-[22rem] max-w-[80vw] rounded-lg border border-line-strong bg-card p-3 shadow-[0_8px_28px_rgba(31,27,23,0.18)] ' +
-              (closing ? 'moji-wipe-corner-out pointer-events-none' : 'moji-wipe-corner-in')
-            }
+            className={`w-[360px] max-w-[85vw] rounded-2xl border border-line-strong/70 bg-card/95 p-3.5 shadow-2xl backdrop-blur-md ${
+              closing ? 'moji-wipe-corner-out pointer-events-none' : 'moji-wipe-corner-in'
+            }`}
           >
-            <div className="flex items-center gap-2">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-seal/12 text-seal">
-                <RefreshCw size={11} />
-              </span>
-              <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-ink-strong">
-                {state.releaseName?.trim() || t('归一 v{0}', state.version ?? '')}
-              </span>
-              <span className="shrink-0 rounded-full bg-ok/15 px-1.5 py-0.5 text-[10px] text-ok-deep">
-                {t('已下载')}
+            {/* 顶部标题栏 */}
+            <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-line/40">
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-seal/15 text-seal shadow-2xs">
+                  <PackageCheck size={15} />
+                </span>
+                <div>
+                  <div className="text-[13px] font-semibold text-ink-strong truncate max-w-[190px]">
+                    {state.releaseName?.trim() || t('归一 v{0}', state.version ?? '')}
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-ink-faint">
+                    <span>v{state.current}</span>
+                    <span>→</span>
+                    <span className="font-medium text-seal-deep">v{state.version}</span>
+                  </div>
+                </div>
+              </div>
+
+              <span className="rounded-full border border-ok/30 bg-ok/10 px-2 py-0.5 text-[10.5px] font-medium text-ok-deep shrink-0">
+                {t('已就绪 · 可直接安装')}
               </span>
             </div>
 
-            <div className="mt-2 max-h-[46vh] overflow-y-auto border-t border-line pt-2">
+            {/* 更新说明正文 */}
+            <div className="mt-2.5 max-h-[38vh] overflow-y-auto rounded-xl border border-line/40 bg-paper/50 p-2.5 moji-scroll-none dark:bg-paper/20">
               {html ? (
-                /*
-                  更新说明来自 GitHub Release 正文，是 HTML：已过 DOMPurify（见 lib/update）。
-                  复用文档那套排版（.moji-agent-md），标题、列表、代码块不必再写一遍样式。
-                */
-                <div className="moji-agent-md" dangerouslySetInnerHTML={{ __html: html }} />
+                <div className="moji-agent-md text-[12px]" dangerouslySetInnerHTML={{ __html: html }} />
               ) : (
-                <p className="text-[12px] leading-relaxed text-ink-faint">{t('这次发布没有写更新说明。')}</p>
+                <p className="text-[11.5px] leading-relaxed text-ink-faint">{t('这次发布没有附加更新说明。')}</p>
               )}
             </div>
 
-            <div className="mt-2 flex items-center gap-2 border-t border-line pt-2">
-              <span className="flex-1 text-[11px] text-ink-faint">
-                {t('当前 v{0} · 点击这里立即更新', state.current)}
-              </span>
+            {/* 安装包信息 */}
+            {state.fileName && (
+              <div className="mt-2 flex items-center justify-between px-1 text-[10px] text-ink-faint">
+                <span className="truncate max-w-[200px]" title={state.fileName}>
+                  {state.fileName}
+                </span>
+                {state.size && <span className="tabular-nums">{formatBytes(state.size)}</span>}
+              </div>
+            )}
+
+            {/* 立即安装操作按钮 */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                onOpenUpdate()
+              }}
+              className="mt-2.5 flex h-8.5 w-full items-center justify-center gap-1.5 rounded-lg bg-seal text-[12.5px] font-medium text-white shadow-sm transition-all hover:bg-seal-deep active:scale-[0.99]"
+            >
+              <CheckCircle2 size={13} />
+              <span>{t('立即安装并重启')}</span>
+            </button>
+
+            {/* 底部附注与发布页链接 */}
+            <div className="mt-2 flex items-center justify-between border-t border-line/30 pt-2 text-[10.5px] text-ink-faint">
+              <span>{t('当前会话与笔记已实时就绪')}</span>
               {state.releaseUrl && (
                 <button
                   type="button"
                   title={t('在浏览器里打开这次发布的页面')}
                   onClick={() => void openReleasePage()}
-                  className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-ink-faint transition hover:bg-line/60 hover:text-ink"
+                  className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
                 >
-                  <ExternalLink size={11} /> {t('发布页')}
+                  <ExternalLink size={10} /> {t('GitHub 发布页')}
                 </button>
               )}
             </div>
