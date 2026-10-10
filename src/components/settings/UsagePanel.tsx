@@ -541,8 +541,8 @@ export default function UsagePanel() {
                     </tr>
                   </thead>
                   <tbody className="tabular-nums">
-                    {pagedRecent.map((r) => (
-                      <RecentRow key={r.id} r={r} />
+                    {pagedRecent.map((r, idx) => (
+                      <RecentRow key={`${r.ts}-${idx}`} r={r} />
                     ))}
                   </tbody>
                 </table>

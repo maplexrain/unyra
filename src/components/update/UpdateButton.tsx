@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { CheckCircle2, ExternalLink, PackageCheck, RefreshCw, Sparkles } from 'lucide-react'
+import { CheckCircle2, ExternalLink, PackageCheck, Sparkles } from 'lucide-react'
 import { usePresence } from '../../lib/presence'
 import { formatBytes, notesHtml, openReleasePage, useUpdateState } from '../../lib/update'
 import { useEscapeKey } from '../../lib/useEscape'
