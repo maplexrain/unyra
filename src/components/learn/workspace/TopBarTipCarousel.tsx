@@ -107,7 +107,7 @@ export default function TopBarTipCarousel() {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       title={t('小技巧（每10秒自动切换，点击切换下一条）')}
-      className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-line/60 bg-paper/60 px-3 py-1 text-[11.5px] text-ink-soft shadow-xs backdrop-blur-xs transition hover:border-line-strong hover:bg-card hover:text-ink select-none max-w-[40vw] text-left"
+      className="pointer-events-auto flex max-w-full items-center gap-1.5 rounded-full border border-line/60 bg-paper/60 px-3 py-1 text-[11.5px] text-ink-soft shadow-xs backdrop-blur-xs transition hover:border-line-strong hover:bg-card hover:text-ink select-none text-left"
     >
       <Sparkles size={12} className="shrink-0 text-seal/80 animate-pulse" />
       <span

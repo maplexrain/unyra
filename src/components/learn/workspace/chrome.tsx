@@ -128,16 +128,16 @@ export function Topbar({
       {/* 当前位置（面包屑）：从文档区顶上那条面包屑行上移过来，正文区因此省下一行 */}
       <NodeTrail node={activeNode} store={store} onSelect={onSelectNode} />
 
-      {/* 居中轮播 Tip：隐藏小技巧 */}
+      {/* 居中轮播 Tip：隐藏小技巧（置于中间自适应弹性空间中居中，永不遮挡右侧按钮） */}
       {appearance.showTips !== false && (
-        <div className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center lg:flex">
+        <div className="mx-2 hidden min-w-0 flex-1 items-center justify-center overflow-hidden lg:flex">
           <TopBarTipCarousel />
         </div>
       )}
 
       {/* 右侧只留账号与窗口控制：保存状态与「新建目标」都不再放进顶栏——
           数据本就是实时保存的，而新建目标与知识节点栏右上角那颗按钮是同一件事 */}
-      <div className="ml-auto flex items-center gap-1.5">
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
         {/* 更新入口：只有新版本**下载完成**之后它才存在，见 components/update/UpdateButton */}
         <UpdateButton onOpenUpdate={onOpenUpdate} />
         {/* 新建浏览器标签页入口 */}
@@ -486,7 +486,7 @@ export function NodeTrail({
     <div
       ref={scrollRef}
       style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-      className="no-drag flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-[11px] text-ink-faint [&::-webkit-scrollbar]:hidden"
+      className="no-drag flex min-w-0 max-w-[28vw] shrink-0 items-center gap-1 overflow-x-auto text-[11px] text-ink-faint [&::-webkit-scrollbar]:hidden"
     >
       <span className="mx-0.5 h-5 w-px shrink-0 bg-line-strong/60" />
 
