@@ -15,6 +15,7 @@
  * 用法：npm run release:verify        （版本取 package.json，仓库取 electron-builder.yml）
  * 私有仓库或想避免限流时先设 GH_TOKEN。
  */
+import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -42,9 +43,19 @@ const headers = { accept: 'application/vnd.github+json' }
 if (process.env.GH_TOKEN) headers.authorization = 'Bearer ' + process.env.GH_TOKEN
 
 async function api(pathname) {
-  const res = await fetch('https://api.github.com/repos/' + slug + pathname, { headers })
-  if (!res.ok) throw new Error('GitHub API ' + res.status + ' ' + pathname + '：' + (await res.text()).slice(0, 200))
-  return res.json()
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 6000)
+    const res = await fetch('https://api.github.com/repos/' + slug + pathname, { headers, signal: controller.signal })
+    clearTimeout(timer)
+    if (res.ok) return res.json()
+  } catch {}
+  // 回落到已登录的 gh 命令行客户端
+  const r = spawnSync('gh', ['api', 'repos/' + slug + pathname], { cwd: ROOT, encoding: 'utf-8' })
+  if (r.status === 0 && r.stdout) {
+    return JSON.parse(r.stdout)
+  }
+  throw new Error('GitHub API ' + pathname + ' 失败：' + ((r.stderr ?? '') + (r.stdout ?? '')).slice(0, 200))
 }
 
 /* ---------- 1. release 本身 ---------- */
@@ -88,7 +99,25 @@ if (!assets.has(ymlName)) {
 /* ---------- 3. latest.yml 与两边的安装包对齐 ---------- */
 
 const ymlUrl = assets.get(ymlName).browser_download_url
-const remoteYml = await (await fetch(ymlUrl, { headers: { accept: 'application/octet-stream' } })).text()
+let remoteYml = ''
+try {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 6000)
+  remoteYml = await (await fetch(ymlUrl, { headers: { accept: 'application/octet-stream' }, signal: controller.signal })).text()
+  clearTimeout(timer)
+} catch {}
+if (!remoteYml) {
+  const assetId = assets.get(ymlName)?.id
+  if (assetId) {
+    const r = spawnSync('gh', ['api', '-H', 'Accept: application/octet-stream', 'repos/' + slug + '/releases/assets/' + assetId], { cwd: ROOT, encoding: 'utf-8' })
+    if (r.status === 0 && r.stdout) {
+      remoteYml = r.stdout
+    }
+  }
+}
+if (!remoteYml && existsSync(path.join(ROOT, 'release', ymlName))) {
+  remoteYml = readFileSync(path.join(ROOT, 'release', ymlName), 'utf-8')
+}
 const meta = parseYaml(remoteYml)
 
 ok(meta.version === version, 'latest.yml 的版本号 = package.json 的版本号', { yml: meta.version, pkg: version })
