@@ -220,7 +220,7 @@ export function ConfigBody({
     setStatus({ kind: 'busy' })
     try {
       const text = await chatCompleteWith(resolveDraft(cfg, headers.value), model, {
-        messages: [{ role: 'user', content: '测试连接' }],
+        messages: [{ role: 'user', content: t('测试连接') }],
         temperature: 0.5,
         purpose: 'test',
       })
@@ -359,7 +359,7 @@ export function ConfigBody({
                   }}
                 />
                 <p className="mt-1.5 text-[11px] text-ink-faint">
-                  {t(preset?.setupHint ?? 'API Key 仅安全保存在您的本地设备上。')}
+                  {preset?.setupHint ? t(preset.setupHint) : t('API Key 仅安全保存在您的本地设备上。')}
                 </p>
               </div>
 
@@ -628,7 +628,7 @@ export function ConfigBody({
           {/* ③ 额外请求头 */}
           <div className="rounded-xl border border-line bg-card/50 p-4">
             <label htmlFor="moji-field-extraHeaders" className="mb-1.5 block text-[12px] font-medium text-ink-strong">
-              {t(extraHeaderField?.label ?? '自定义额外请求头 (JSON)')}
+              {extraHeaderField?.label ? t(extraHeaderField.label) : t('自定义额外请求头 (JSON)')}
             </label>
             <textarea
               id="moji-field-extraHeaders"

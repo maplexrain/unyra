@@ -496,6 +496,7 @@ function WebPage({
   }
 
   if (!src) {
+    if (!active) return null
     return (
       <div style={shellStyle} className="h-full w-full overflow-y-auto bg-card">
         <BlankWebPage onOpenUrl={(targetUrl) => onCommitUrl(id, targetUrl)} />

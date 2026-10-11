@@ -5,7 +5,7 @@
  * 词条是否还注解得了（cannotAnnotate）由上层传进来：「了解」那条路也要用同一个判断，
  * 判断必须落在**渲染结果**上（见 NodeNote 里那段说明），口径只能有一份。
  */
-import { useEffect, useState, type ReactNode, type RefObject } from 'react'
+import { useEffect, useMemo, useState, type ReactNode, type RefObject } from 'react'
 import NoteDialog from '../NoteDialog'
 import type { Annotation, AnnotationStyle } from '../../../learn/types'
 import { endAnnotationPreview, previewAnnotationStyle, type AnnotationActions } from '../../../lib/annotation'
@@ -99,12 +99,16 @@ export function useAnnotationLayer({
   }, [noteDialog])
 
   /** 正文里那条注解浮层上的「修改/删除」，接到同一套开合上（见 DocBody 的 annotationActions） */
-  const annotationActions: AnnotationActions = {
-    // 浮层里的「修改」直接开输入区，预填已有内容；
-    // 出现序号沿用这条注解记着的那个，否则改完再存会把它挪到第一次出现
-    onEdit: (term) => setNoteDialog({ term, occurrence: annotationOf(term)?.occurrence ?? 0, editing: true }),
-    onDelete: onDeleteAnnotation,
-  }
+  const annotationActions = useMemo<AnnotationActions>(
+    () => ({
+      // 浮层里的「修改」直接开输入区，预填已有内容；
+      // 出现序号沿用这条注解记着的那个，否则改完再存会把它挪到第一次出现
+      onEdit: (term) => setNoteDialog({ term, occurrence: annotationOf(term)?.occurrence ?? 0, editing: true }),
+      onDelete: onDeleteAnnotation,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [annotations, onDeleteAnnotation],
+  )
 
   const dialog: ReactNode = noteDialog ? (
     <NoteDialog

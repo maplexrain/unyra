@@ -16,8 +16,7 @@ const dict: Record<string, string> = {
   '导师人格：{0}，点击切换': 'Tutor persona: {0} — click to switch',
   '导师人格': 'Tutor persona',
   '换一种讲法，知识不变': 'A different way to explain — same knowledge',
-  '切换从下一轮开始生效。人格是以一条隐藏指令进入上下文的，不改系统提示词， 之前的对话一条都不会重发。':
-    'Takes effect from the next turn on. The persona enters the context as one hidden instruction and the system prompt is untouched; none of the earlier conversation is sent again.',
+  '切换从下一轮开始生效。人格是以一条隐藏指令进入上下文的，不改系统提示词， 之前的对话一条都不会重发。': 'Takes effect from the next turn on. The persona enters the context as one hidden instruction and the system prompt is untouched; none of the earlier conversation is sent again.',
 
   /* ---------- EffortSlider（REASONING_HINT 四档） ---------- */
   '思考等级': 'Reasoning effort',
@@ -41,12 +40,10 @@ const dict: Record<string, string> = {
 
   /* ---------- ContextDebugger ---------- */
   '上下文比对调试器': 'Context diff debugger',
-  '每次把上下文发往 API 前记录一份快照；选两份比对，差异定位到消息与字符。':
-    'Records a snapshot before each context goes to the API; pick two to diff, down to the message and the character.',
+  '每次把上下文发往 API 前记录一份快照；选两份比对，差异定位到消息与字符。': 'Records a snapshot before each context goes to the API; pick two to diff, down to the message and the character.',
   '清空记录': 'Clear records',
   '还没有记录': 'No records yet',
-  '在对话里发一条消息（或让导师跑一轮工具），每次请求发出前都会在这里留一份快照。':
-    'Send a message in the conversation (or let the tutor run a tool) — a snapshot is kept here before every request.',
+  '在对话里发一条消息（或让导师跑一轮工具），每次请求发出前都会在这里留一份快照。': 'Send a message in the conversation (or let the tutor run a tool) — a snapshot is kept here before every request.',
   '系统 {0} 字 · {1} 条消息': 'System {0} chars · {1} messages',
   '比较 #{0} → #{1}：': 'Compare #{0} → #{1}: ',
   '完全一致（前缀缓存可以命中）': 'Byte-identical (the prefix cache can hit)',
@@ -63,10 +60,8 @@ const dict: Record<string, string> = {
   '这条是新增的（A 里没有）': 'Added (not present in A)',
   '这条没了（B 里没有）': 'Gone (not present in B)',
   '第 {0} 字起变化（{1} → {2} 字）': 'Changes from character {0} ({1} → {2} chars)',
-  '内容变了（{0} → {1} 字）；两份原文里有一份已裁掉，无法给出字符位置':
-    'Content changed ({0} → {1} chars); one of the two originals was trimmed, so no character position is available',
-  '这两份上下文逐字节一致。命中率仍然低的话，问题不在这两份之间——往上翻更早的记录， 或确认服务端真的支持前缀缓存（部分中转不回传用量也不做缓存）。':
-    'These two contexts are byte-identical. If the hit rate is still low, the problem is not between these two — scroll up to earlier records, or confirm the server really supports prefix caching (some proxies neither return usage nor cache).',
+  '内容变了（{0} → {1} 字）；两份原文里有一份已裁掉，无法给出字符位置': 'Content changed ({0} → {1} chars); one of the two originals was trimmed, so no character position is available',
+  '这两份上下文逐字节一致。命中率仍然低的话，问题不在这两份之间——往上翻更早的记录， 或确认服务端真的支持前缀缓存（部分中转不回传用量也不做缓存）。': 'These two contexts are byte-identical. If the hit rate is still low, the problem is not between these two — scroll up to earlier records, or confirm the server really supports prefix caching (some proxies neither return usage nor cache).',
   '设为对比基准': 'Set as baseline (A)',
   '设为对比对象': 'Set as comparison (B)',
   '＋ 新增': '+ Added',
@@ -87,8 +82,7 @@ const dict: Record<string, string> = {
   '本对话输入': 'Input in this conversation',
   '本对话输出': 'Output in this conversation',
   '平均缓存命中': 'Avg. cache hit',
-  '按每次请求的输入量加权：一轮编排里的每一跳都各自计入（命中总量 ÷ 输入总量）， 不是只拿每轮最后一条回复来平均。':
-    'Weighted by the input size of each request: every hop in an orchestration round counts (total hits ÷ total input), instead of averaging only the last reply of each round.',
+  '按每次请求的输入量加权：一轮编排里的每一跳都各自计入（命中总量 ÷ 输入总量）， 不是只拿每轮最后一条回复来平均。': 'Weighted by the input size of each request: every hop in an orchestration round counts (total hits ÷ total input), instead of averaging only the last reply of each round.',
   '部分数据是服务端未返回用量时的估算值': 'Some figures are estimates from requests where the server returned no usage',
 
   /* ---------- UsageLine ---------- */
@@ -102,8 +96,7 @@ const dict: Record<string, string> = {
   '{0} 轮': '{0} turns',
   '累计执行的编排步数（导师每跑一次代码算一步）': 'Orchestration steps so far (each code run by the tutor counts as one)',
   '{0} 步': '{0} steps',
-  '当前输出速度：最近几秒的实时吞吐（请求结束后换成该跳的精确平均）':
-    'Current output speed: live throughput of the last few seconds (replaced by the exact average of that hop once the request ends)',
+  '当前输出速度：最近几秒的实时吞吐（请求结束后换成该跳的精确平均）': 'Current output speed: live throughput of the last few seconds (replaced by the exact average of that hop once the request ends)',
   '这个对话累计消耗的 token（输入 + 输出）': 'Tokens spent in this conversation so far (input + output)',
 
   /* ---------- 「+」菜单（PlusMenu / usePlusMenu） ---------- */
@@ -146,8 +139,7 @@ const dict: Record<string, string> = {
   '↑↓ 选 · Enter 执行 · 退格返回': '↑↓ select · Enter to run · Backspace to go back',
 
   /* ---------- Composer ---------- */
-  '尚未配置「{0}」的 API Key，请到顶栏设置中填写（也可在那里更换提供商）。':
-    'No API Key configured for "{0}" yet — fill it in under the top-bar Settings (you can switch providers there too).',
+  '尚未配置「{0}」的 API Key，请到顶栏设置中填写（也可在那里更换提供商）。': 'No API Key configured for "{0}" yet — fill it in under the top-bar Settings (you can switch providers there too).',
   '移除全部附件': 'Remove all attachments',
   '向超级导师提问…（/ 可用斜杠命令，可拖入文件、页签、图片）': 'Ask the Super Tutor… (/ for slash commands; drop files, tabs, or images)',
   '发送（Enter）': 'Send (Enter)',
@@ -173,10 +165,8 @@ const dict: Record<string, string> = {
 
   /* ---------- 空状态（useMessageList） ---------- */
   '让 AI 把这一概念讲清楚。': 'Have the AI explain this concept clearly.',
-  '它会把讲解直接写进左侧的教学文档。选中文档里的陌生词汇就能创建下级节点继续深入；想要一份自己的笔记，直接说「把刚才讲的要点整理进我的笔记」。':
-    'The explanation goes straight into the lesson document on the left. Select an unfamiliar word there to create a child node and dig deeper; for your own notes, just say "organize the key points into my notes".',
-  '试试：「用直觉解释这个概念」「给我一个具体例子」「我卡在这里了，帮我拆开」':
-    'Try: "Explain this concept intuitively", "Give me a concrete example", "I am stuck here — help me break it down"',
+  '它会把讲解直接写进左侧的教学文档。选中文档里的陌生词汇就能创建下级节点继续深入；想要一份自己的笔记，直接说「把刚才讲的要点整理进我的笔记」。': 'The explanation goes straight into the lesson document on the left. Select an unfamiliar word there to create a child node and dig deeper; for your own notes, just say "organize the key points into my notes".',
+  '试试：「用直觉解释这个概念」「给我一个具体例子」「我卡在这里了，帮我拆开」': 'Try: "Explain this concept intuitively", "Give me a concrete example", "I am stuck here — help me break it down"',
 
   /* ---------- CompactionDivider ---------- */
   '收起摘要': 'Hide summary',
@@ -191,8 +181,7 @@ const dict: Record<string, string> = {
   /* ---------- AskFormCard（结构化表单） ---------- */
   '导师想先确认几件事': 'The tutor wants to confirm a few things first',
   '第 {0} / {1} 题': 'Question {0} / {1}',
-  '这一题的答案会直接存进你的画像（头像菜单 →「用户」里能改、能清空），导师以后不用再问':
-    'This answer is saved straight into your profile (view or clear it under the avatar menu → "User"); the tutor will not need to ask again',
+  '这一题的答案会直接存进你的画像（头像菜单 →「用户」里能改、能清空），导师以后不用再问': 'This answer is saved straight into your profile (view or clear it under the avatar menu → "User"); the tutor will not need to ask again',
   '存进我的资料': 'Save to my profile',
   '其他：': 'Other: ',
   '写在这里': 'Write here',
@@ -200,8 +189,7 @@ const dict: Record<string, string> = {
   '前面的选择让所有后续问题都跳过了，直接提交即可。': 'Your earlier choices skipped all remaining questions — just submit.',
   '回到上一题（答案都留着）': 'Previous question (answers are kept)',
   '上一题': 'Previous',
-  '想答的答，懒得答的留空直接提交也可以；一分钟没有任何操作会自动收起':
-    'Answer what you like; leaving blanks and submitting directly is fine too — the form closes itself after a minute of no activity',
+  '想答的答，懒得答的留空直接提交也可以；一分钟没有任何操作会自动收起': 'Answer what you like; leaving blanks and submitting directly is fine too — the form closes itself after a minute of no activity',
   '不回答了': 'Not answering',
   '提交': 'Submit',
   '下一题': 'Next',
@@ -253,38 +241,29 @@ const dict: Record<string, string> = {
   '只影响对话区里的超级导师，与全局设置分开': 'Only affects the Super Tutor in the conversation area; kept separate from global settings',
   '当前模型': 'Current model',
   '还没选模型': 'No model selected',
-  '这个提供商还没有填 API Key：压缩上下文要用一次模型，填好之后才能用。 模型本身在顶栏的全局设置里换。':
-    'No API Key filled in for this provider yet: compacting the context makes one model call, so fill the Key in first. The model itself is switched in the top-bar global settings.',
+  '这个提供商还没有填 API Key：压缩上下文要用一次模型，填好之后才能用。 模型本身在顶栏的全局设置里换。': 'No API Key filled in for this provider yet: compacting the context makes one model call, so fill the Key in first. The model itself is switched in the top-bar global settings.',
   '上下文快满时自动压缩': 'Auto-compact when the context is nearly full',
-  '到达下面的阈值时，让导师把前面的对话折成一份交接摘要（旧消息随即失活），不必等用户动手':
-    'When the threshold below is reached, the tutor folds the earlier conversation into a handoff summary (older messages are retired at once) — no need to wait for the user',
+  '到达下面的阈值时，让导师把前面的对话折成一份交接摘要（旧消息随即失活），不必等用户动手': 'When the threshold below is reached, the tutor folds the earlier conversation into a handoff summary (older messages are retired at once) — no need to wait for the user',
   '自动压缩阈值': 'Auto-compact threshold',
   '上下文占用到 {0}% 时压一次': 'Compact once when the context reaches {0}%',
-  '窗口占用由服务端上一轮报回来的用量算，不是估算。留三成余量是有意的： 一轮里模型要来回好几跳，每一跳的输入都比上一跳大，压到只剩一点余量时最后一跳容易顶着窗口报错。 压缩本身是一轮工作流（导师自己写摘要，见「更多 → 压缩上下文」）。':
-    'Window usage comes from the usage the server reported last round, not an estimate. The 30% headroom is deliberate: one round takes several hops and each hop reads more than the last — compress too close to the limit and the final hop can hit the window and error out. Compaction itself is one workflow round (the tutor writes the summary itself; see "More → Compact context").',
-  '压缩之后，被压掉的那些消息**不再进入上下文，只在界面上显示**（原来的内容一条都不会删）—— 对话区里那条虚线就是分界线，点「看摘要」能核对导师到底记住了什么。 想立刻压一次，用输入框左下角「更多 → 压缩上下文」。':
-    'After compaction the folded-away messages no longer enter the context and remain visible in the UI only (nothing is deleted). The dashed line in the conversation is the boundary — click "View summary" to check what the tutor actually remembered. To compact right away, use "More → Compact context" at the bottom-left of the input box.',
+  '窗口占用由服务端上一轮报回来的用量算，不是估算。留三成余量是有意的： 一轮里模型要来回好几跳，每一跳的输入都比上一跳大，压到只剩一点余量时最后一跳容易顶着窗口报错。 压缩本身是一轮工作流（导师自己写摘要，见「更多 → 压缩上下文」）。': 'Window usage comes from the usage the server reported last round, not an estimate. The 30% headroom is deliberate: one round takes several hops and each hop reads more than the last — compress too close to the limit and the final hop can hit the window and error out. Compaction itself is one workflow round (the tutor writes the summary itself; see "More → Compact context").',
+  '压缩之后，被压掉的那些消息**不再进入上下文，只在界面上显示**（原来的内容一条都不会删）—— 对话区里那条虚线就是分界线，点「看摘要」能核对导师到底记住了什么。 想立刻压一次，用输入框左下角「更多 → 压缩上下文」。': 'After compaction the folded-away messages no longer enter the context and remain visible in the UI only (nothing is deleted). The dashed line in the conversation is the boundary — click "View summary" to check what the tutor actually remembered. To compact right away, use "More → Compact context" at the bottom-left of the input box.',
   '恢复默认（自动 · 70% · 保留 8 条）': 'Reset to defaults (auto · 70% · keep 8)',
   '改动立即生效': 'Changes take effect immediately',
   '未配置 API Key': 'API Key not configured',
 
   /* ---------- AgentSettingsPanel：开发者分页 ---------- */
-  '这一页平时不显示。输入口令解锁（与全局设置里的开发者分页共用），解锁后会记住。':
-    'This tab is hidden normally. Enter the passcode to unlock (shared with the developer tab in global settings); it stays unlocked afterwards.',
+  '这一页平时不显示。输入口令解锁（与全局设置里的开发者分页共用），解锁后会记住。': 'This tab is hidden normally. Enter the passcode to unlock (shared with the developer tab in global settings); it stays unlocked afterwards.',
   '启用上下文比对调试器': 'Enable the context diff debugger',
-  '每次把上下文发往 API 之前记录一份快照（系统提示词 + 全部消息 + 工具声明）':
-    'Records a snapshot before each context goes to the API (system prompt + all messages + tool declarations)',
-  '前缀缓存按逐字节匹配，命中率低几乎总是「某段上下文在两轮之间悄悄变了」。 调试器把两份快照逐条比对，差异直接定位到第几条消息、第几个字符。':
-    'Prefix caching matches byte for byte — a low hit rate almost always means some part of the context quietly changed between two rounds. The debugger diffs two snapshots item by item and pins the difference down to the message and the character.',
+  '每次把上下文发往 API 之前记录一份快照（系统提示词 + 全部消息 + 工具声明）': 'Records a snapshot before each context goes to the API (system prompt + all messages + tool declarations)',
+  '前缀缓存按逐字节匹配，命中率低几乎总是「某段上下文在两轮之间悄悄变了」。 调试器把两份快照逐条比对，差异直接定位到第几条消息、第几个字符。': 'Prefix caching matches byte for byte — a low hit rate almost always means some part of the context quietly changed between two rounds. The debugger diffs two snapshots item by item and pins the difference down to the message and the character.',
   '打开调试器': 'Open debugger',
   'execute 工具 api 上下文管理': 'execute tool API context management',
-  '当前 agent 在沙箱里可用的全部 api。用法写进系统提示词的那份（learn/ai 的 EXECUTE_GUIDE） 与这里是同一份能力的两个视图；模型调了不存在的 api 会得到「沙箱里没有这个 api」。':
-    'Every API the agent can use inside the sandbox. This is the same capability set as the prompt-side reference (EXECUTE_GUIDE in learn/ai), seen from the other side; calling a nonexistent API gets the model "no such API in the sandbox".',
+  '当前 agent 在沙箱里可用的全部 api。用法写进系统提示词的那份（learn/ai 的 EXECUTE_GUIDE） 与这里是同一份能力的两个视图；模型调了不存在的 api 会得到「沙箱里没有这个 api」。': 'Every API the agent can use inside the sandbox. This is the same capability set as the prompt-side reference (EXECUTE_GUIDE in learn/ai), seen from the other side; calling a nonexistent API gets the model "no such API in the sandbox".',
   '{0} 个 api': '{0} APIs',
   '有考试工具时': 'While exam tools are present',
   '主窗口界面在场时': 'While the main window UI is up',
-  '这些都是调试工具，普通使用不需要打开它们。快照只留在内存里，关掉应用就没了；也不会发往任何服务。':
-    'These are debugging tools; everyday use does not need them. Snapshots live in memory only and vanish when the app closes; nothing is sent to any service.',
+  '这些都是调试工具，普通使用不需要打开它们。快照只留在内存里，关掉应用就没了；也不会发往任何服务。': 'These are debugging tools; everyday use does not need them. Snapshots live in memory only and vanish when the app closes; nothing is sent to any service.',
 
   /* ---------- AgentSettingsPanel：工作流分页 ---------- */
   '全局': 'Global',
@@ -293,21 +272,18 @@ const dict: Record<string, string> = {
   '每个学习目标的导师都能用': 'Available to the tutor of every learning goal',
   '只在当前学习目标里可用': 'Available only in the current learning goal',
   '{0} 条 · {1}': '{0} entries · {1}',
-  '工作流是「不由一条消息直接驱动」的任务模板：开讲、回忆、出卷、超级实验室…… 它们不进系统提示词——被触发时，指令才以一条 user 消息整段进入上下文（对话里是一条分界条）。 想登记新的工作流，在对话里让超级导师用':
-    'Workflows are task templates not driven directly by a single message: Teach, Recall, Generate exam, Super Lab… They never enter the system prompt — only when triggered do the instructions enter the context as one user message (a divider in the conversation). To register a new workflow, ask the Super Tutor in the conversation to use ',
+  '工作流是「不由一条消息直接驱动」的任务模板：开讲、回忆、出卷、超级实验室…… 它们不进系统提示词——被触发时，指令才以一条 user 消息整段进入上下文（对话里是一条分界条）。 想登记新的工作流，在对话里让超级导师用': 'Workflows are task templates not driven directly by a single message: Teach, Recall, Generate exam, Super Lab… They never enter the system prompt — only when triggered do the instructions enter the context as one user message (a divider in the conversation). To register a new workflow, ask the Super Tutor in the conversation to use ',
   '完成，这里会立刻看到。': 'to set it up — it will show up here right away.',
   '触发要参数：{0}': 'Needs parameters to trigger: {0}',
   '指令 {0} 字': 'Instruction: {0} chars',
-  '思考档位：工作流轮的档位独立于聊天滑条。默认 = 内置推荐档；跟随聊天 = 用滑条那档':
-    'Reasoning effort: workflow rounds use their own effort, independent of the chat slider. Default = the built-in recommendation; Follow chat = use the chat slider level',
+  '思考档位：工作流轮的档位独立于聊天滑条。默认 = 内置推荐档；跟随聊天 = 用滑条那档': 'Reasoning effort: workflow rounds use their own effort, independent of the chat slider. Default = the built-in recommendation; Follow chat = use the chat slider level',
   '思考': 'Effort',
   '默认（{0}）': 'Default ({0})',
   '跟随聊天': 'Follow chat',
   '运行': 'Run',
   '（还没有登记的工作流）': '(no workflows registered yet)',
   '删除工作流「{0}」？': 'Delete workflow "{0}"?',
-  '删除后这个触发入口就没了，指令文本也无法恢复；需要时可以让超级导师重新登记一份。':
-    'Deleting removes this trigger for good and the instruction text cannot be recovered; you can always ask the Super Tutor to register a new one.',
+  '删除后这个触发入口就没了，指令文本也无法恢复；需要时可以让超级导师重新登记一份。': 'Deleting removes this trigger for good and the instruction text cannot be recovered; you can always ask the Super Tutor to register a new one.',
 
   /* ---------- 子代理（SubAgentMenu / AgentPanel 子会话视图 / Composer 子会话模式） ---------- */
   '子代理会话': 'Sub-agent sessions',
@@ -319,21 +295,17 @@ const dict: Record<string, string> = {
   '空闲': 'Idle',
   '独立上下文 · {0} 次任务': 'Independent context · {0} tasks',
   '子会话只读': 'sub-session is read-only',
-  '子会话只接受导师的调度——回到导师对话给它派任务。':
-    'Sub-sessions only take orders from the tutor — go back to the tutor conversation to dispatch tasks.',
+  '子会话只接受导师的调度——回到导师对话给它派任务。': 'Sub-sessions only take orders from the tutor — go back to the tutor conversation to dispatch tasks.',
   '子代理正在准备': 'Sub-agent is preparing',
 
   /* ---------- agent 栏页签（AgentTabStrip / AgentPanel 状态行） ---------- */
   '关闭页签': 'Close tab',
   '目标': 'Goal',
   '子代理': 'Sub-agent',
-  '文档区还开着这个目标的页签，先关掉它们才能关闭导师':
-    'This goal still has document tabs open — close them before closing its tutor',
+  '文档区还开着这个目标的页签，先关掉它们才能关闭导师': 'This goal still has document tabs open — close them before closing its tutor',
   '导师正在运行，先停止这一轮再关闭': 'The tutor is running — stop the turn before closing this tab',
-  '打开一份目标下的文档，它的导师会在这里出现。':
-    'Open a document under a goal and its tutor will appear here.',
-  '{0} 枚页签被拦下（文档区还开着，或导师正在跑）':
-    '{0} tab(s) were blocked (document tabs still open, or a tutor is running)',
+  '打开一份目标下的文档，它的导师会在这里出现。': 'Open a document under a goal and its tutor will appear here.',
+  '{0} 枚页签被拦下（文档区还开着，或导师正在跑）': '{0} tab(s) were blocked (document tabs still open, or a tutor is running)',
 
   /* ---------- 固定聊天（agent 栏最左侧的常驻页签，纯聊天） ---------- */
   '聊天': 'Chat',
@@ -345,15 +317,12 @@ const dict: Record<string, string> = {
   '记忆': 'Memory',
   '查看与编辑本目标的导师记忆': 'View and edit the tutor memory of this goal',
   '记忆管理': 'Memory manager',
-  '还没有活动目标：打开任意学习目标后，这里显示导师为它写下的记忆。':
-    'No active goal yet: open any learning goal and the memory the tutor wrote for it shows up here.',
+  '还没有活动目标：打开任意学习目标后，这里显示导师为它写下的记忆。': 'No active goal yet: open any learning goal and the memory the tutor wrote for it shows up here.',
   '当前目标': 'Current goal',
   '再点一次确认清空': 'Click again to confirm clearing',
-  '导师用 mind.write 记下的跨对话判断与偏好。它们不自动进上下文——他要自己想起来翻，才用得上；同主题再写一次就只剩最新那条。':
-    'Cross-conversation judgements and preferences the tutor saves via mind.write. They never enter the context automatically — he has to think of looking them up; writing the same topic again keeps only the latest entry.',
+  '导师用 mind.write 记下的跨对话判断与偏好。它们不自动进上下文——他要自己想起来翻，才用得上；同主题再写一次就只剩最新那条。': 'Cross-conversation judgements and preferences the tutor saves via mind.write. They never enter the context automatically — he has to think of looking them up; writing the same topic again keeps only the latest entry.',
   '主题（可选，同主题只留最新一条）': 'Topic (optional; the same topic keeps only the latest entry)',
-  '内容：希望导师跨对话记住的判断、约定或偏好':
-    'Content: judgements, agreements or preferences the tutor should remember across conversations',
+  '内容：希望导师跨对话记住的判断、约定或偏好': 'Content: judgements, agreements or preferences the tutor should remember across conversations',
   '写入': 'Write',
   '写一条记忆': 'Write a memory',
   '无主题': 'No topic',
@@ -363,6 +332,7 @@ const dict: Record<string, string> = {
   '记忆已更新': 'Memory updated',
   '记忆已删除': 'Memory deleted',
   '记忆已清空': 'Memory cleared',
+
 }
 
 export default dict

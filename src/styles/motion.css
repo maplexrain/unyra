@@ -54,6 +54,24 @@
 }
 
 /*
+ * Agent 消息列表：分段缓冲渲染的段落进场动画。
+ * 每个段落独立挂载时播放不透明度渐进动画（0 -> 1），
+ * 视觉平滑柔和，一段一段清晰输出。不使用 transform，避免占用持久合成图层。
+ */
+@keyframes moji-paragraph-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.moji-paragraph-in {
+  animation: moji-paragraph-in 0.22s ease-out;
+}
+
+/*
  * 横向可滚、但看不见滚动条。
  *
  * 思考气泡收起时那一行「最后一行预览」用它：内容是滚动的，脚本每次把它推到最右端，
@@ -629,6 +647,11 @@
   .moji-head-hit,
   .moji-head-hit::before {
     animation: none;
+  }
+  .moji-paragraph-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
   }
 }
 

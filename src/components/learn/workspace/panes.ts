@@ -114,7 +114,11 @@ export function paneInfo(
     title: tab ? tabTitle(tab.ref, (id) => nodeById(store, id)?.title, examTitle) : '',
     // 空笔记也能预览（它就是一片空白）：与「这份文件不能预览」是两回事，按钮的说明不一样
     previewable:
-      !!tab && tab.ref.kind !== 'web' && !empty && (tab.ref.kind !== 'local' || isPreviewable(tab.ref.path)),
+      !!tab &&
+      tab.ref.kind !== 'web' &&
+      tab.ref.kind !== 'newGoal' &&
+      !empty &&
+      (tab.ref.kind !== 'local' || isPreviewable(tab.ref.path)),
     emptyNote: empty,
   }
 }

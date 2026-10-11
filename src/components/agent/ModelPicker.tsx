@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, ChevronRight, Cpu, Server } from 'lucide-react'
 import {
   globalEffort,
@@ -75,6 +76,16 @@ export default function ModelPicker({ onChanged }: Props) {
   const [bodyH, setBodyH] = useState<number | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const leaveTimer = useRef<number | null>(null)
+  const [pos, setPos] = useState<{ right: number; bottom: number } | null>(null)
+
+  useLayoutEffect(() => {
+    if (!mounted || !wrapProps.ref.current) return
+    const rect = wrapProps.ref.current.getBoundingClientRect()
+    setPos({
+      right: Math.max(8, window.innerWidth - rect.right),
+      bottom: Math.max(8, window.innerHeight - rect.top + 8),
+    })
+  }, [mounted, open, wrapProps.ref])
   /**
    * 直接订阅设置，而不是挂载时取一次快照：
    * 设置面板里加完提供商/模型后，这个组件并没有重新挂载（它是盖在设置面板
@@ -296,72 +307,81 @@ export default function ModelPicker({ onChanged }: Props) {
         <ChevronRight size={12} className={`shrink-0 text-ink-faint transition ${open ? 'rotate-90' : ''}`} />
       </button>
 
-      {mounted && (
-        <div
-          className={`absolute right-0 bottom-full z-30 mb-2 w-[290px] overflow-hidden rounded-xl border border-line-strong bg-card shadow-[0_16px_44px_rgba(31,27,23,0.22)] ${
-            // 从面板底边中点向上、向左右展开（见 index.css 的 .moji-bloom-up-*）
-            panelProps.className
-          }`}
-        >
-          {/* 面包屑：点回上一层（滑动方向随之反向） */}
-          <div className="flex items-center gap-1 border-b border-line bg-paper-deep/60 px-2.5 py-2 text-[11px]">
-            <button
-              type="button"
-              onClick={() => go(1)}
-              className={level === 1 ? 'font-medium text-ink-strong' : 'text-ink-soft hover:text-ink'}
-            >
-              {t('思考等级')}
-            </button>
-            {level >= 2 && (
-              <>
-                <ChevronRight size={11} className="text-ink-faint" />
-                <button
-                  type="button"
-                  onClick={() => go(2)}
-                  className={level === 2 ? 'font-medium text-ink-strong' : 'truncate text-ink-soft hover:text-ink'}
-                >
-                  {t('提供商')}
-                </button>
-              </>
-            )}
-            {level >= 3 && (
-              <>
-                <ChevronRight size={11} className="text-ink-faint" />
-                <span className="truncate font-medium text-ink-strong">{t('模型')}</span>
-              </>
-            )}
-          </div>
-
-          {/*
-            两层叠着做滑动：当前层在流内（撑出高度），离开的那层绝对定位盖在上面。
-            外层 overflow-hidden 裁掉滑出去的部分，滑完再卸载。
-          */}
+      {mounted && pos && typeof document !== 'undefined' &&
+        createPortal(
           <div
-            className="relative overflow-hidden transition-[height] duration-200 ease-out"
-            style={bodyH === null ? undefined : { height: bodyH }}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              right: pos.right,
+              bottom: pos.bottom,
+              zIndex: 90,
+            }}
+            className={`w-[290px] overflow-hidden rounded-xl border border-line-strong bg-card shadow-[0_16px_44px_rgba(31,27,23,0.22)] ${
+              // 从面板底边中点向上、向左右展开（见 index.css 的 .moji-bloom-up-*）
+              panelProps.className
+            }`}
           >
-            {leaving && (
-              <div
-                className={`absolute inset-x-0 top-0 ${
-                  leaving.dir === 1 ? 'moji-slide-out-forward' : 'moji-slide-out-back'
-                }`}
-                aria-hidden="true"
+            {/* 面包屑：点回上一层（滑动方向随之反向） */}
+            <div className="flex items-center gap-1 border-b border-line bg-paper-deep/60 px-2.5 py-2 text-[11px]">
+              <button
+                type="button"
+                onClick={() => go(1)}
+                className={level === 1 ? 'font-medium text-ink-strong' : 'text-ink-soft hover:text-ink'}
               >
-                <div className="max-h-[300px] overflow-y-auto py-1">{renderPanel(leaving.level)}</div>
-              </div>
-            )}
-            <div
-              ref={panelRef}
-              key={level}
-              className={`relative ${
-                leaving ? (dir === 1 ? 'moji-slide-in-forward' : 'moji-slide-in-back') : ''
-              }`}
-            >
-              <div className="max-h-[300px] overflow-y-auto py-1">{renderPanel(level)}</div>
+                {t('思考等级')}
+              </button>
+              {level >= 2 && (
+                <>
+                  <ChevronRight size={11} className="text-ink-faint" />
+                  <button
+                    type="button"
+                    onClick={() => go(2)}
+                    className={level === 2 ? 'font-medium text-ink-strong' : 'truncate text-ink-soft hover:text-ink'}
+                  >
+                    {t('提供商')}
+                  </button>
+                </>
+              )}
+              {level >= 3 && (
+                <>
+                  <ChevronRight size={11} className="text-ink-faint" />
+                  <span className="truncate font-medium text-ink-strong">{t('模型')}</span>
+                </>
+              )}
             </div>
-          </div>
-        </div>
-      )}
+
+            {/*
+              两层叠着做滑动：当前层在流内（撑出高度），离开的那层绝对定位盖在上面。
+              外层 overflow-hidden 裁掉滑出去的部分，滑完再卸载。
+            */}
+            <div
+              className="relative overflow-hidden transition-[height] duration-200 ease-out"
+              style={bodyH === null ? undefined : { height: bodyH }}
+            >
+              {leaving && (
+                <div
+                  className={`absolute inset-x-0 top-0 ${
+                    leaving.dir === 1 ? 'moji-slide-out-forward' : 'moji-slide-out-back'
+                  }`}
+                  aria-hidden="true"
+                >
+                  <div className="max-h-[300px] overflow-y-auto py-1">{renderPanel(leaving.level)}</div>
+                </div>
+              )}
+              <div
+                ref={panelRef}
+                key={level}
+                className={`relative ${
+                  leaving ? (dir === 1 ? 'moji-slide-in-forward' : 'moji-slide-in-back') : ''
+                }`}
+              >
+                <div className="max-h-[300px] overflow-y-auto py-1">{renderPanel(level)}</div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

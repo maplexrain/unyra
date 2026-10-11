@@ -178,6 +178,7 @@ const dict: Record<string, string> = {
 
   // ---------- 资源管理器侧栏 ----------
   '学习目标': 'Learning goals',
+  '新建目标': 'New goal',
   '新建学习目标': 'New learning goal',
   '还没有学习记录': 'No learning history yet',
   '从一个目标开始吧': 'Start with a goal',
@@ -377,6 +378,14 @@ const dict: Record<string, string> = {
   '开始一个新的学习目标': 'Start a new learning goal',
   '从一个目标开始': 'Start with a goal',
   '写下想弄懂的问题，超级导师会陪你把它逐层拆开': 'Write down what you want to understand — Super Tutor will break it down layer by layer with you',
+  '写下想弄懂的问题或上传参考资料，超级导师会陪你从基础逐层逆向拆解并回溯归一': 'Write down questions or upload materials; Super Tutor will guide you through step-by-step reverse breakdown and back to fundamentals',
+  '移除全部附件': 'Remove all attachments',
+  '清空': 'Clear',
+  '已添加附件。可在输入框补充说明（例如：根据附件资料制定学习计划），直接回车亦可开始…': 'Attachments added. You can add extra instructions in the input box, or press Enter to begin directly...',
+  '上传附件（支持图片、Markdown、TXT、代码等）': 'Upload attachments (supports images, Markdown, TXT, code, etc.)',
+  '上传附件': 'Upload attachments',
+  '松开鼠标放入文件': 'Release to drop files',
+  '支持点击添加、拖入或粘贴文件作为目标参考': 'Supports clicking to add, dragging, or pasting files as reference',
   '例如：为什么 Transformer 能处理长距离依赖？': 'e.g. Why can Transformers handle long-range dependencies?',
   '开始学习（Enter）': 'Start learning (Enter)',
   'Enter 开始 · Shift + Enter 换行': 'Enter to start · Shift + Enter for a new line',

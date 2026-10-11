@@ -226,9 +226,9 @@ export function PluginsPanel({ onToast, onOpenConfig }: Props) {
 
               {cat.id === 'markdown' && dir && (
                 <div className="rounded-lg border border-line bg-card/40 px-3 py-2 text-[11px] leading-relaxed text-ink-faint">
-                  {t('往插件目录中放置 .js 脚本即可扩展语法规则：脚本内调用 ')}
-                  <code className="font-mono text-seal">register(...)</code>
-                  {t(' 认领代码语言或正文过滤器。目录：')}
+                  {t('往插件目录中放置 .js 脚本即可扩展语法规则：脚本内调用')}{' '}
+                  <code className="font-mono text-seal">register(...)</code>{' '}
+                  {t('认领代码语言或正文过滤器。目录：')}{' '}
                   <span className="break-all font-mono text-ink-soft">{dir}</span>
                 </div>
               )}
@@ -246,11 +246,7 @@ export function PluginsPanel({ onToast, onOpenConfig }: Props) {
             <div>
               <div className="text-[13px] font-medium text-ink-strong">{t('代码块编译缓存')}</div>
               <p className="mt-0.5 text-[11px] leading-relaxed text-ink-soft">
-                {t(
-                  '共 {0} 份编译产物缓存；清理仅清除本地生成的执行缓存，下次点击代码块运行依然会自动重新编译。另有 {1} 块被判定为无输出。',
-                  artifacts,
-                  silent
-                )}
+                {t('共 {0} 份编译产物缓存；清理仅清除本地生成的执行缓存，下次点击代码块运行依然会自动重新编译。另有 {1} 块被判定为无输出。', artifacts, silent)}
               </p>
             </div>
           </div>
@@ -279,9 +275,7 @@ export function PluginsPanel({ onToast, onOpenConfig }: Props) {
           <span>{t('插件运行安全机制')}</span>
         </div>
         <p className="mt-1">
-          {t(
-            '用户放置在数据目录下的本地插件具备与应用同等的运行权限（可读取笔记内容与访问本地磁盘）。请仅安装来源可靠、内容清晰的脚本插件。内置功能性插件（如语音输入）为官方打包集成，安全隔离运行。'
-          )}
+          {t('用户放置在数据目录下的本地插件具备与应用同等的运行权限（可读取笔记内容与访问本地磁盘）。请仅安装来源可靠、内容清晰的脚本插件。内置功能性插件（如语音输入）为官方打包集成，安全隔离运行。')}
         </p>
       </div>
     </div>

@@ -331,7 +331,7 @@ export default function UsagePanel() {
                 iconBg="bg-amber-500/10"
                 label={t('总 token')}
                 value={fmtTok(totals.tokens)}
-                sub={`${t('输入')} ${fmtTok(totals.input)} · ${t('输出')} ${fmtTok(totals.output)}`}
+                sub={t('输入 {0} · 输出 {1}', fmtTok(totals.input), fmtTok(totals.output))}
               />
               <Stat
                 icon={<Zap size={16} className="text-emerald-500 dark:text-emerald-400" />}
@@ -640,7 +640,12 @@ function DayChart({ buckets }: { buckets: DayBucket[] }) {
             <div key={b.day} className="flex min-w-0 max-w-[48px] flex-1 flex-col">
               <div
                 className="group flex h-40 cursor-default items-end rounded-t-sm transition-all hover:bg-line/20"
-                title={`${fmtDay(b.day)} · ${t('输入')} ${fmtTok(b.cacheRead + b.inputFresh)}（${t('缓存')} ${fmtTok(b.cacheRead)}）· ${t('输出')} ${fmtTok(b.output)}`}
+                title={t('{0} · 输入 {1}（缓存 {2}）· 输出 {3}',
+                  fmtDay(b.day),
+                  fmtTok(b.cacheRead + b.inputFresh),
+                  fmtTok(b.cacheRead),
+                  fmtTok(b.output),
+                )}
               >
                 {/* 三段自上而下：输出 / 新算输入 / 缓存命中 */}
                 <div className="flex h-full w-full flex-col justify-end gap-0.5">

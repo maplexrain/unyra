@@ -24,7 +24,6 @@ import {
   Fragment,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -73,7 +72,7 @@ import {
   setFocus,
   type DocLayout,
 } from '../../learn/groups'
-import { makeTab, newWebKey, tabIndex, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
+import { makeTab, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
 import { normalizeWebInput } from '../../learn/webUrl'
 import type { BrowserDeps } from '../../learn/web/browserOps'
 import {
@@ -127,10 +126,10 @@ import { clearMinds, deleteMind, mindsOf, updateMind, writeMind } from '../../le
 import ExportDialog from './ExportDialog'
 import FloatWindow from '../FloatWindow'
 import { usePresence } from '../../lib/presence'
-import { animate } from 'animejs'
 import ExamCopyView from './ExamCopyView'
 import OutlineView from './OutlineView'
 import { pruneImages } from '../../learn/images'
+import { dropDrafts } from '../../learn/drafts'
 import {
   cachedResourceUrl,
   findResource,
@@ -196,7 +195,7 @@ import LocalDoc from './LocalDoc'
 import SourceEditor from './SourceEditor'
 import type { DocSource } from './NodeNote'
 import ConfirmDialog from '../ConfirmDialog'
-import AgentPanel from '../agent/AgentPanel'
+import { AgentTabPane } from './workspace/AgentTabPane'
 import SettingsPanel from '../settings/SettingsPanel'
 import UsagePanel from '../settings/UsagePanel'
 import AgentTabStrip from '../agent/AgentTabStrip'
@@ -270,7 +269,7 @@ export default function LearnWorkspace({
    * 在独立窗口里改了之后宿主这边的快照要能跟着变——订阅是唯一能拿到那次通知的口子。
    */
   const agentSettings = useSyncExternalStore(subscribeAgentSettings, loadAgentSettings)
-  const [creating, setCreating] = useState(false)
+  const [creatingGoalBusy, setCreatingGoalBusy] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   /**
    * 「这一拍有页签开始被浏览」的拍号：开页签 / 点页签（含重开当前正开着的）都 +1。
@@ -327,8 +326,6 @@ export default function LearnWorkspace({
   const [pendingSuperDelete, setPendingSuperDelete] = useState<{ nodeId: string; name: string } | null>(null)
   /** 切换过场要用的容器：动画只加在正文那一层上，悬浮组不跟着晃 */
   const docBox = useRef<HTMLDivElement | null>(null)
-  /** 上一个激活的页签：过场的方向（往左切还是往右切）由它和当前项比出来 */
-  const prevTab = useRef<{ id: string | null; index: number }>({ id: null, index: -1 })
 
   // 挂载时按当前用户的配置同步一次代理白名单：
   // 每个用户的提供商地址各不相同（自定义中转尤其），换用户后必须重新同步，
@@ -495,14 +492,15 @@ export default function LearnWorkspace({
     if (ref.kind === 'exam') {
       return { type: 'attempt', nodeId: ref.nodeId, examId: ref.examId, attemptId: ref.attemptId, title }
     }
-    // 守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置）没有可引用的 chip 形态：从文档区拖不出引用
+    // 守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置/新建目标）没有可引用的 chip 形态：从文档区拖不出引用
     if (
       ref.kind === 'guard' ||
       ref.kind === 'report' ||
       ref.kind === 'settings' ||
       ref.kind === 'usage' ||
       ref.kind === 'mind' ||
-      ref.kind === 'agentSettings'
+      ref.kind === 'agentSettings' ||
+      ref.kind === 'newGoal'
     )
       return null
     const docPath = (kind: 'teaching' | 'note' | 'outline', note?: string): string | undefined =>
@@ -787,6 +785,21 @@ export default function LearnWorkspace({
    */
   const openSettingsRef = useRef<() => void>(() => {})
   const onOpenSettings = useCallback(() => openSettingsRef.current(), [])
+  /** 兼容外部调用（makeExamDeps / useConceptActions / useWorkflowStarters）：创建页现已改为 tab 页 */
+  const setCreating = useCallback(
+    (v: boolean) => {
+      if (v) {
+        openTabRef.current({ kind: 'newGoal' })
+      } else {
+        const s = getLatest()
+        const newGoalIds = allTabs(s.docArea).filter((t) => t.ref.kind === 'newGoal').map((t) => t.id)
+        if (newGoalIds.length > 0) {
+          set({ ...s, docArea: closeIds(s.docArea, newGoalIds) })
+        }
+      }
+    },
+    [getLatest, set],
+  )
   /** browser.* 的宿主依赖槽：真正的值在 web 块里（openWebTab / webMeta 声明靠后），effect 里回填 */
   const browserDepsRef = useRef<BrowserDeps | null>(null)
 
@@ -894,6 +907,38 @@ export default function LearnWorkspace({
       const doomed = agentTabCloseSet(list, key, mode)
       if (!doomed.length) return
       let cur = s
+
+      // 强制模式：连同文档区关联的tab一起关闭
+      const isForce = mode === 'force' || mode === 'forceOthers'
+      if (isForce) {
+        const doomedGoalIds = new Set<string>()
+        for (const k of doomed) {
+          const ref = (cur.agentTabs ?? []).find((t) => agentTabKey(t) === k)
+          if (ref && ref.kind === 'goal') doomedGoalIds.add(ref.goalId)
+        }
+        if (doomedGoalIds.size > 0) {
+          const all = allTabs(cur.docArea)
+          const docIdsToClose = all
+            .filter((t) => {
+              if (t.ref.kind === 'mind') return doomedGoalIds.has(t.ref.goalId)
+              const nid = tabNodeId(t.ref)
+              if (nid) {
+                const n = nodeById(cur, nid)
+                if (n && doomedGoalIds.has(n.goalId)) return true
+              }
+              return false
+            })
+            .map((t) => t.id)
+          if (docIdsToClose.length > 0) {
+            cur = {
+              ...cur,
+              docArea: closeIds(cur.docArea, docIdsToClose),
+              drafts: dropDrafts(cur.drafts, docIdsToClose),
+            }
+          }
+        }
+      }
+
       let closed = 0
       let blocked = 0
       let blockedDocs = 0
@@ -901,7 +946,7 @@ export default function LearnWorkspace({
         const ref = (cur.agentTabs ?? []).find((t) => agentTabKey(t) === k)
         if (!ref) continue
         const block = closeBlockOf(cur, ref)
-        if (block !== 'none') {
+        if (block !== 'none' && !isForce) {
           blocked++
           if (block === 'docs') blockedDocs++
           continue
@@ -1169,7 +1214,6 @@ export default function LearnWorkspace({
       })
       bumpBrowse()
       setSidebarOpen(false)
-      setCreating(false)
     },
     [getLatest, retargetNode, set, bumpBrowse],
   )
@@ -1178,6 +1222,21 @@ export default function LearnWorkspace({
     openTabRef.current = openTab
     openSettingsRef.current = () => openTab({ kind: 'settings' })
   })
+
+  /**
+   * 目标库为空（初次使用或删光所有目标）且没有打开任何页签时，自动开启「新建目标」页签。
+   */
+  const initialGoalChecked = useRef(false)
+  useEffect(() => {
+    if (!initialGoalChecked.current) {
+      initialGoalChecked.current = true
+      if (store.goals.length === 0 && allTabs(store.docArea).length === 0) {
+        queueMicrotask(() => {
+          openTab({ kind: 'newGoal' })
+        })
+      }
+    }
+  }, [store.goals.length, store.docArea, openTab])
 
   /**
    * 用量统计页签的入口（顶栏用户菜单）。只在 Topbar 一处用到（声明在 openTab 之后），
@@ -1577,50 +1636,7 @@ export default function LearnWorkspace({
     window.addEventListener('pointercancel', onUp)
   }
 
-  /**
-   * 切页签的过场：新内容从切换方向那一侧轻轻滑进来。
-   *
-   * 用 Web Animations 而不是给容器换一个带动画的 class：同一个 class 连续设两次
-   * 不会重播（第二次「往右切」就没有动画了），要重播就得先把元素卸载再挂回来——
-   * 而重挂会把正文的滚动位置、正在编辑的光标一起丢掉。el.animate() 每次都是新动画，
-   * 也不碰 DOM。
-   *
-   * 关掉动效偏好时整个跳过：这一段只是「换了」的润色，不是信息本身。
-   */
-  useLayoutEffect(() => {
-    const id = activeTabId
-    const prev = prevTab.current
-    const nextIndex = tabIndex(tabs, id)
-    prevTab.current = { id, index: nextIndex }
-    if (!id || prev.id === null || prev.id === id) return
-    const el = docBox.current
-    if (!el) return
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    const forward = prev.index < 0 || nextIndex >= prev.index
-    const dx = forward ? 14 : -14
-    /*
-     * 起步值**先手动写进内联样式**，再交给 anime 收尾。
-     *
-     * 这是「不闪」的关键：anime 的动画在下一个 rAF 才真正开始写样式，
-     * 而那之前浏览器已经要画一帧了——那一帧画的是**最终状态**（内容整个跳到位、
-     * 亮度也已经满了），下一帧才回到起点重来，看上去就是一闪。
-     * 先自己把起点写上，第一帧画出来就是起点；anime 从解析到的当前值出发走到 0。
-     *
-     * 放在 useLayoutEffect（而不是 useEffect）里同理：它在浏览器绘制之前跑完。
-     */
-    el.style.opacity = '0.5'
-    el.style.transform = 'translateX(' + dx + 'px)'
-    animate(el, {
-      opacity: 1,
-      x: 0,
-      duration: 220,
-      ease: 'out(3)',
-      onComplete: () => {
-        el.style.opacity = ''
-        el.style.transform = ''
-      },
-    })
-  }, [activeTabId, tabs])
+
 
   /**
    * 切某一份文档的视图（源码 / 预览）：只改**那一个页签**自己的选择。
@@ -1673,7 +1689,7 @@ export default function LearnWorkspace({
 
   /** 打开「新建目标」页 */
   const startCreatingGoal = () => {
-    setCreating(true)
+    openTab({ kind: 'newGoal' })
     setSidebarOpen(false)
   }
 
@@ -1783,108 +1799,116 @@ export default function LearnWorkspace({
       onOpenSettings()
       return
     }
-    const goalId = crypto.randomUUID()
-    const now = Date.now()
 
-    const effectiveTitle = q || (files && files[0] ? files[0].name.replace(/\.[^.]+$/, '') : t('未命名目标'))
-    /**
-     * 根节点先拿用户原话当临时标题占位，立刻建出来；正式标题与描述都交给 Agent
-     * （见内置工作流「学习大纲」的「三件事」，learn/workflows）。
-     *
-     * 这样点「开始学习」当场就有节点、有侧栏条目、有对话开始跑，用户马上看到东西在动；
-     * 旧流程要先等一次「生成描述」的模型往返，那几秒里界面是空的。标题随后会被
-     * api.node.rename 改掉，数据目录名跟着变（改标题＝目录改名，早已支持）。
-     */
-    const rootNode: KnowledgeNode = {
-      id: crypto.randomUUID(),
-      title: effectiveTitle,
-      key: normalizeKey(effectiveTitle),
-      description: '',
-      docs: emptyDocs(),
-      notes: [],
-      annotations: [],
-      status: 'learning',
-      origin: 'user',
-      goalId,
-      // 大纲与教学文档创建时同时成形（与 addNode 的脚手架同一口径；根节点是手工建的，这里补上）
-      outline: { ...emptyOutline(), updatedAt: now },
-      createdAt: now,
-      updatedAt: now,
+    setCreatingGoalBusy(true)
+    try {
+      const goalId = crypto.randomUUID()
+      const now = Date.now()
+
+      const effectiveTitle = q || (files && files[0] ? files[0].name.replace(/\.[^.]+$/, '') : t('未命名目标'))
+      /**
+       * 根节点先拿用户原话当临时标题占位，立刻建出来；正式标题与描述都交给 Agent
+       * （见内置工作流「学习大纲」的「三件事」，learn/workflows）。
+       *
+       * 这样点「开始学习」当场就有节点、有侧栏条目、有对话开始跑，用户马上看到东西在动；
+       * 旧流程要先等一次「生成描述」的模型往返，那几秒里界面是空的。标题随后会被
+       * api.node.rename 改掉，数据目录名跟着变（改标题＝目录改名，早已支持）。
+       */
+      const rootNode: KnowledgeNode = {
+        id: crypto.randomUUID(),
+        title: effectiveTitle,
+        key: normalizeKey(effectiveTitle),
+        description: '',
+        docs: emptyDocs(),
+        notes: [],
+        annotations: [],
+        status: 'learning',
+        origin: 'user',
+        goalId,
+        // 大纲与教学文档创建时同时成形（与 addNode 的脚手架同一口径；根节点是手工建的，这里补上）
+        outline: { ...emptyOutline(), updatedAt: now },
+        createdAt: now,
+        updatedAt: now,
+      }
+      const goal = makeGoal(rootNode.id, effectiveTitle, goalId)
+
+      // 先把目标与根节点注入 store，以便随后 transferPendingFiles / transferPendingImages
+      // 能正常解析出目标的数据目录（docs/{目标}/static/），避免找不到目录导致附件转存失败
+      const curStore = getLatest()
+      const baseStore: LearnStore = {
+        ...curStore,
+        nodes: [...curStore.nodes, rootNode],
+        goals: [goal, ...curStore.goals],
+      }
+      set(baseStore)
+
+      // 存在附件时转存进新目标的资源库，并备好消息中的 MessageFile / MessageImage
+      const imageFiles: PendingImage[] = (files ?? [])
+        .filter((x) => x.image)
+        .map((x) => ({ id: x.id, name: x.name, bytes: x.bytes, file: x.image as File, previewUrl: '' }))
+      const attachedImages = imageFiles.length
+        ? await transferPendingImages(getLatest, set, goalId, imageFiles)
+        : { images: [] as MessageImage[] }
+      if (attachedImages.error) onToast(attachedImages.error)
+
+      const docFiles = (files ?? []).filter((x) => !x.image)
+      const attachedFiles = docFiles.length
+        ? await transferPendingFiles(getLatest, set, goalId, docFiles)
+        : { files: [] as MessageFile[] }
+      if (attachedFiles.error) onToast(attachedFiles.error)
+
+      // 将用户的问题与上传的附件记录在首条用户消息中，回显给用户并在模型上下文生效
+      const initialUserMsg: ConversationMessage = {
+        id: crypto.randomUUID(),
+        role: 'user',
+        parts: [{ type: 'text', text: q || t('请参考上传的附件资料，为我制定体系化的阶段目标与学习大纲。') }],
+        ts: now,
+        ...(attachedImages.images.length ? { images: attachedImages.images } : {}),
+        ...(attachedFiles.files.length ? { files: attachedFiles.files } : {}),
+      }
+
+      const conversation: Conversation = {
+        ...makeConversation(goalId),
+        messages: [initialUserMsg],
+        updatedAt: now,
+      }
+
+      const latest = getLatest()
+      // agent 栏的导师页签当场开好并置前：这一轮大纲工作流的交付物要有一个看得见的地方
+      const tab0 = upsertAgentTab(
+        latest.agentTabs ?? [],
+        latest.agentActiveTab ?? null,
+        { kind: 'goal', goalId, conversationId: conversation.id },
+        true,
+      )
+      // 新目标当场把**大纲页**开成页签：导师这一轮的交付物就是它（「学习大纲」工作流往里写），
+      // 用户点完「开始学习」就该看见路线逐条长出来，教学文档从大纲页里点进去；
+      // 同时自动关闭目标创建页签（ref.kind === 'newGoal'）
+      const rootRef: TabRef = { kind: 'outline', nodeId: rootNode.id }
+      const newGoalTabIds = allTabs(latest.docArea).filter((t) => t.ref.kind === 'newGoal').map((t) => t.id)
+      const docAreaAfterClose = newGoalTabIds.length > 0 ? closeIds(latest.docArea, newGoalTabIds) : latest.docArea
+      const next: LearnStore = {
+        ...latest,
+        ...withAgentTabs(latest, tab0.tabs, tab0.active),
+        conversations: [...latest.conversations, conversation],
+        activeGoalId: goalId,
+        activeNodeId: rootNode.id,
+        activeConversationId: conversation.id,
+        docArea: openInGroup(docAreaAfterClose, docAreaAfterClose.focus, rootRef, now),
+      }
+      set(next)
+      setSidebarOpen(false)
+
+      // Key 已在上面校验过，此处可直接进入 AI 流程；将附件同时透传给大纲生成工作流
+      agent.autoTeach(
+        { goalId, nodeId: rootNode.id, conversationId: conversation.id },
+        true,
+        undefined,
+        { images: imageFiles, files: docFiles },
+      )
+    } finally {
+      setCreatingGoalBusy(false)
     }
-    const goal = makeGoal(rootNode.id, effectiveTitle, goalId)
-
-    // 先把目标与根节点注入 store，以便随后 transferPendingFiles / transferPendingImages
-    // 能正常解析出目标的数据目录（docs/{目标}/static/），避免找不到目录导致附件转存失败
-    const curStore = getLatest()
-    const baseStore: LearnStore = {
-      ...curStore,
-      nodes: [...curStore.nodes, rootNode],
-      goals: [goal, ...curStore.goals],
-    }
-    set(baseStore)
-
-    // 存在附件时转存进新目标的资源库，并备好消息中的 MessageFile / MessageImage
-    const imageFiles: PendingImage[] = (files ?? [])
-      .filter((x) => x.image)
-      .map((x) => ({ id: x.id, name: x.name, bytes: x.bytes, file: x.image as File, previewUrl: '' }))
-    const attachedImages = imageFiles.length
-      ? await transferPendingImages(getLatest, set, goalId, imageFiles)
-      : { images: [] as MessageImage[] }
-    if (attachedImages.error) onToast(attachedImages.error)
-
-    const docFiles = (files ?? []).filter((x) => !x.image)
-    const attachedFiles = docFiles.length
-      ? await transferPendingFiles(getLatest, set, goalId, docFiles)
-      : { files: [] as MessageFile[] }
-    if (attachedFiles.error) onToast(attachedFiles.error)
-
-    // 将用户的问题与上传的附件记录在首条用户消息中，回显给用户并在模型上下文生效
-    const initialUserMsg: ConversationMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      parts: [{ type: 'text', text: q || t('请参考上传的附件资料，为我制定体系化的阶段目标与学习大纲。') }],
-      ts: now,
-      ...(attachedImages.images.length ? { images: attachedImages.images } : {}),
-      ...(attachedFiles.files.length ? { files: attachedFiles.files } : {}),
-    }
-
-    const conversation: Conversation = {
-      ...makeConversation(goalId),
-      messages: [initialUserMsg],
-      updatedAt: now,
-    }
-
-    const latest = getLatest()
-    // agent 栏的导师页签当场开好并置前：这一轮大纲工作流的交付物要有一个看得见的地方
-    const tab0 = upsertAgentTab(
-      latest.agentTabs ?? [],
-      latest.agentActiveTab ?? null,
-      { kind: 'goal', goalId, conversationId: conversation.id },
-      true,
-    )
-    // 新目标当场把**大纲页**开成页签：导师这一轮的交付物就是它（「学习大纲」工作流往里写），
-    // 用户点完「开始学习」就该看见路线逐条长出来，教学文档从大纲页里点进去
-    const rootRef: TabRef = { kind: 'outline', nodeId: rootNode.id }
-    const next: LearnStore = {
-      ...latest,
-      ...withAgentTabs(latest, tab0.tabs, tab0.active),
-      conversations: [...latest.conversations, conversation],
-      activeGoalId: goalId,
-      activeNodeId: rootNode.id,
-      activeConversationId: conversation.id,
-      docArea: openInGroup(latest.docArea, latest.docArea.focus, rootRef, now),
-    }
-    set(next)
-    setCreating(false)
-    setSidebarOpen(false)
-
-    // Key 已在上面校验过，此处可直接进入 AI 流程；将附件同时透传给大纲生成工作流
-    agent.autoTeach(
-      { goalId, nodeId: rootNode.id, conversationId: conversation.id },
-      true,
-      undefined,
-      { images: imageFiles, files: docFiles },
-    )
   }
 
   /*
@@ -1950,6 +1974,70 @@ export default function LearnWorkspace({
     if (agent.running && !wasRunning.current && !agentLeft && !pure) expandSide()
     wasRunning.current = agent.running
   }, [agent.running, agentLeft, expandSide, pure])
+
+  /**
+   * 文档区在右侧栏（agentLeft）且收起时，若文档区发生变动（文件变动/tab变动）则自动弹出。
+   *
+   * 对应场景：
+   * 1. tab 变动：打开新页签、关闭页签、切换激活页签、分屏或焦点变化。
+   * 2. 文件变动：导师改写/追加教学文档（api.doc.write）、笔记修改、超级文档保存、试卷提交或草稿更新。
+   *
+   * 守卫与约束：
+   * - 首次挂载只记录初始快照，不触发弹出（避免应用启动时违背用户上一次保存的收起偏好）。
+   * - 纯净阅读（pure）模式下不弹（同导师栏策略，Zen 模式优先保护全屏沉浸）。
+   */
+  const docAreaSig = useMemo(() => {
+    const groupParts = Object.values(docs.groups)
+      .map((g) => `${g.id}:${g.active}:[${g.tabs.map((t) => `${t.id}:${tabKey(t.ref)}`).join(',')}]`)
+      .join('|')
+    const tabSig = `${docs.focus}::${groupParts}`
+
+    const contentParts: string[] = []
+    for (const t of tabs) {
+      const ref = t.ref
+      if (ref.kind === 'teach') {
+        const node = nodeById(store, ref.nodeId)
+        contentParts.push(`${t.id}:teach:${node?.docs?.teaching?.length ?? 0}:${node?.updatedAt ?? 0}`)
+      } else if (ref.kind === 'note') {
+        const node = nodeById(store, ref.nodeId)
+        const n = node?.notes.find((item) => item.name === ref.note)
+        contentParts.push(`${t.id}:note:${n?.content?.length ?? 0}:${n?.updatedAt ?? 0}`)
+      } else if (ref.kind === 'super') {
+        const s = readSuperDoc(store, ref.nodeId, ref.name)
+        contentParts.push(`${t.id}:super:${s?.html?.length ?? 0}:${s?.updatedAt ?? 0}`)
+      } else if (ref.kind === 'exam') {
+        const exam = store.exams.find((e) => e.id === ref.examId)
+        const attempt = exam?.attempts.find((a) => a.id === ref.attemptId)
+        contentParts.push(`${t.id}:exam:${attempt?.endedAt ?? attempt?.startedAt ?? 0}`)
+      } else if (ref.kind === 'outline') {
+        const node = nodeById(store, ref.nodeId)
+        contentParts.push(`${t.id}:outline:${node?.updatedAt ?? 0}`)
+      }
+      const draft = store.drafts[t.id]
+      if (draft) {
+        contentParts.push(`${t.id}:draft:${draft.length}`)
+      }
+    }
+    const contentSig = contentParts.join(';')
+
+    return { tabSig, contentSig }
+  }, [docs, tabs, store])
+
+  const prevDocAreaSig = useRef<{ tabSig: string; contentSig: string } | null>(null)
+  useEffect(() => {
+    if (prevDocAreaSig.current === null) {
+      prevDocAreaSig.current = docAreaSig
+      return
+    }
+    const tabChanged = prevDocAreaSig.current.tabSig !== docAreaSig.tabSig
+    const contentChanged = prevDocAreaSig.current.contentSig !== docAreaSig.contentSig
+    prevDocAreaSig.current = docAreaSig
+
+    if ((tabChanged || contentChanged) && agentLeft && sideCollapsed && !pure) {
+      expandSide()
+    }
+  }, [docAreaSig, agentLeft, sideCollapsed, pure, expandSide])
+
 
   /*
    * 番茄钟动作在 usePomodoroFlow、导师工作流启动器在 useWorkflowStarters（都在 workspace/）。
@@ -2751,8 +2839,6 @@ export default function LearnWorkspace({
     }
   }, [stepActiveTab])
 
-  const hasContent = store.goals.length > 0 && activeNode
-
   /*
    * 文档区分屏（页签拖拽与格间分割线）整体在 useTabDnd（workspace/）。
    * zoneAt 只被它自己的两个回调消费，这里不解构。
@@ -2875,7 +2961,7 @@ export default function LearnWorkspace({
                 titleOf={(ref) => tabTitle(ref, (id) => nodeById(store, id)?.title, examTabTitle)}
                 trailOf={(ref) => tabTrails[tabKey(ref)] ?? ''}
                 onActivate={activateTab}
-                onClose={(id, mode) => closeTab(groupId, id, mode)}
+                onClose={(id, mode, opts) => closeTab(groupId, id, mode, opts)}
                 onReorder={(ids) => reorderTabList(groupId, ids)}
                 unsaved={unsavedIds}
                 onDragMove={onTabDragMove}
@@ -2975,6 +3061,16 @@ export default function LearnWorkspace({
                 WebTabLayer 常驻层显示——这里只让出位置，别画任何东西。
               */
               null
+            ) : gTab?.ref.kind === 'newGoal' ? (
+              /*
+                目标创建页：创建新学习目标，创建完成后自动关闭。
+              */
+              <GoalInput
+                busy={creatingGoalBusy}
+                hasGoals={store.goals.length > 0}
+                onModelChanged={() => setSettingsEpoch((n) => n + 1)}
+                onSubmit={startGoal}
+              />
             ) : gTab?.ref.kind === 'usage' ? (
               /*
                 用量统计：独立的一枚页签（入口在顶栏用户菜单）。它读的是「台账」
@@ -3138,7 +3234,11 @@ export default function LearnWorkspace({
                 />
               ) : null /* 预览那一份由下面的常驻列表渲染（见 DocPane） */
             ) : (
-              <EmptyDoc onPickLocal={() => void pickLocal()} onOpenWeb={() => openWebTab('')} />
+              <EmptyDoc
+                onPickLocal={() => void pickLocal()}
+                onOpenWeb={() => openWebTab('')}
+                onNewGoal={startCreatingGoal}
+              />
             )}
 
             {/*
@@ -3270,7 +3370,8 @@ export default function LearnWorkspace({
             gTab.ref.kind !== 'usage' &&
             gTab.ref.kind !== 'mind' &&
             gTab.ref.kind !== 'agentSettings' &&
-            gTab.ref.kind !== 'outline' && (
+            gTab.ref.kind !== 'outline' &&
+            gTab.ref.kind !== 'newGoal' && (
             <DocFloat
               /*
                * key 绑「格 + 节点」：换节点时重挂，各块 tip 的展开状态自然回到收起；
@@ -3545,18 +3646,10 @@ export default function LearnWorkspace({
           两列：文档区与超级导师对话栏。骨架（两格、分割线、收起按钮、拖动读数）在
           SplitRow，宽度与拖动机制在 useSideColumns；左格自适应、右格固定宽（--side-w，可拖），
           宽度属于「格子」而不属于内容，对调时只换内容、不换宽度（见 lib/appearance 的 agentLeft）。
-          这里只决定「有没有这两列」（创建目标页时只有 GoalInput），并把两格的内容装进去。
+          目标创建页现已移入文档区作为普通页签（kind: 'newGoal'）渲染。
         */}
-        {creating || !hasContent ? (
-          <GoalInput
-            busy={false}
-            hasGoals={store.goals.length > 0}
-            onModelChanged={() => setSettingsEpoch((n) => n + 1)}
-            onSubmit={startGoal}
-          />
-        ) : (
-          <SplitRow
-            side={side}
+        <SplitRow
+          side={side}
             docsSlot={renderLayout(docs.layout)}
             agentSlot={
               activeAgentTab ? (
@@ -3588,39 +3681,36 @@ export default function LearnWorkspace({
                       const on = key === activeAgentTabId
                       const props = agentTabProps(tab)
                       return (
-                        <div key={key} hidden={!on} className="absolute inset-0">
-                          <AgentPanel
-                            active={on}
-                            hasKey={hasKey}
-                            providerLabel={providerName}
-                            onModelChanged={() => setSettingsEpoch((n) => n + 1)}
-                            vision={vision}
-                            onNotice={onToast}
-                            onOpenAgentSettings={() => openTab({ kind: 'agentSettings' })}
-                            // 记忆一枚目标一枚页签：开的就是这枚导师页签所属目标的记忆
-                            onOpenMinds={() => {
-                              if (props.goalId) openTab({ kind: 'mind', goalId: props.goalId })
-                            }}
-                            // 斜杠 /effort：全局推理等级，与 ModelPicker 里那条滑条写的是同一个设置
-                            effort={effort}
-                            onSetEffort={setGlobalEffort}
-                            compactThreshold={agentSettings.compact.threshold}
-                            // 导师人格（见 agent/persona）：住在输入框底行，切换即时写进设置
-                            persona={agentSettings.persona}
-                            onPickPersona={(id) => {
-                              saveAgentSettings({ ...agentSettings, persona: id })
-                              onToast(t('导师人格已切到「{0}」，从下一轮开始生效', personaOf(id).label))
-                            }}
-                            onDeleteConversation={removeConversation}
-                            onOpenFile={(pathOrRel, title) => {
-                              const norm = pathOrRel.replace(/\\/g, '/')
-                              const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(norm)
-                              const abs = isAbs ? norm : (userAbsPath(norm) ?? norm)
-                              openTab({ kind: 'local', path: abs, ...(title ? { title } : {}) })
-                            }}
-                            {...props}
-                          />
-                        </div>
+                        <AgentTabPane
+                          key={key}
+                          tabKey={key}
+                          active={on}
+                          hasKey={hasKey}
+                          providerLabel={providerName}
+                          onModelChanged={() => setSettingsEpoch((n) => n + 1)}
+                          vision={vision}
+                          onNotice={onToast}
+                          onOpenAgentSettings={() => openTab({ kind: 'agentSettings' })}
+                          onOpenMinds={() => {
+                            if (props.goalId) openTab({ kind: 'mind', goalId: props.goalId })
+                          }}
+                          effort={effort}
+                          onSetEffort={setGlobalEffort}
+                          compactThreshold={agentSettings.compact.threshold}
+                          persona={agentSettings.persona}
+                          onPickPersona={(id) => {
+                            saveAgentSettings({ ...agentSettings, persona: id })
+                            onToast(t('导师人格已切到「{0}」，从下一轮开始生效', personaOf(id).label))
+                          }}
+                          onDeleteConversation={removeConversation}
+                          onOpenFile={(pathOrRel, title) => {
+                            const norm = pathOrRel.replace(/\\/g, '/')
+                            const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(norm)
+                            const abs = isAbs ? norm : (userAbsPath(norm) ?? norm)
+                            openTab({ kind: 'local', path: abs, ...(title ? { title } : {}) })
+                          }}
+                          {...props}
+                        />
                       )
                     })}
                   </div>
@@ -3639,7 +3729,6 @@ export default function LearnWorkspace({
               )
             }
           />
-        )}
       </div>
 
       {/*

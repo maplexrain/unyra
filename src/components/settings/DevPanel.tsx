@@ -30,9 +30,7 @@ export function DevPanel({ onUnlocked }: { onUnlocked: () => void }) {
             r.ok
               ? {
                   ok: true,
-                  text: t(
-                    '系统已受理这条通知。屏幕上没看到的话，多半是 Windows 的专注助手（勿扰）或系统通知设置把它静默压掉了。'
-                  ),
+                  text: t('系统已受理这条通知。屏幕上没看到的话，多半是 Windows 的专注助手（勿扰）或系统通知设置把它静默压掉了。'),
                 }
               : { ok: false, text: r.error ?? t('未知错误') }
           )

@@ -60,7 +60,7 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
     const goalId = typeof r.goalId === 'string' ? r.goalId : ''
     return goalId ? { kind: 'mind', goalId } : null
   }
-  if (r.kind === 'agentSettings') return { kind: r.kind }
+  if (r.kind === 'agentSettings' || r.kind === 'newGoal') return { kind: r.kind }
   const nodeId = typeof r.nodeId === 'string' ? r.nodeId : ''
   const node = byId.get(nodeId)
   if (!node) return null

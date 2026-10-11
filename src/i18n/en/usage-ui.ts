@@ -68,8 +68,9 @@ export default {
   耗时: 'Time',
   '≈ 表示该条的 token 数是本地估算（服务端没回报用量）。': '≈ marks locally estimated tokens (the server did not report usage).',
 
-  /* ---------- 空态 ---------- */
   还没有用量记录: 'No usage recorded yet',
-  '从这一版开始，每次 AI 请求的 token 数、缓存命中率与耗时都会记在这里（跟着当前用户走）。':
-    'From this version on, every AI request logs its tokens, cache hit rate and duration here (tracked per user).',
+  '从这一版开始，每次 AI 请求的 token 数、缓存命中率与耗时都会记在这里（跟着当前用户走）。': 'From this version on, every AI request logs its tokens, cache hit rate and duration here (tracked per user).',
+  '输入 {0} · 输出 {1}': 'Input {0} · Output {1}',
+  '缓存': 'Cache',
+  '{0} · 输入 {1}（缓存 {2}）· 输出 {3}': '{0} · Input {1} (Cache {2}) · Output {3}',
 } as Record<string, string>

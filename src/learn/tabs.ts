@@ -71,6 +71,7 @@ export function tabKey(ref: TabRef): string {
   // 超级导师设置全局一份；记忆按目标归档，页签也一枚目标一份
   if (ref.kind === 'mind') return 'm:' + ref.goalId
   if (ref.kind === 'agentSettings') return 'set:agent'
+  if (ref.kind === 'newGoal') return 'goal:new'
   return 'l:' + ref.path
 }
 
@@ -87,7 +88,8 @@ export function tabNodeId(ref: TabRef): string | null {
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'mind' ||
-    ref.kind === 'agentSettings'
+    ref.kind === 'agentSettings' ||
+    ref.kind === 'newGoal'
     ? null
     : ref.nodeId
 }
@@ -144,6 +146,7 @@ export function tabTitle(
   if (ref.kind === 'usage') return t('用量统计')
   if (ref.kind === 'mind') return t('记忆管理')
   if (ref.kind === 'agentSettings') return t('超级导师设置')
+  if (ref.kind === 'newGoal') return t('新建目标')
   return ref.title || fileNameOf(ref.path)
 }
 
@@ -163,8 +166,15 @@ export function tabTrail(
 ): string {
   if (ref.kind === 'exam') return ''
   if (ref.kind === 'web') return ''
-  // 守卫、报告与系统页（设置/用量/导师设置）不挂在节点上，也没有「住在哪儿」可言
-  if (ref.kind === 'guard' || ref.kind === 'report' || ref.kind === 'settings' || ref.kind === 'usage' || ref.kind === 'agentSettings')
+  // 守卫、报告与系统页（设置/用量/导师设置/新建目标）不挂在节点上，也没有「住在哪儿」可言
+  if (
+    ref.kind === 'guard' ||
+    ref.kind === 'report' ||
+    ref.kind === 'settings' ||
+    ref.kind === 'usage' ||
+    ref.kind === 'agentSettings' ||
+    ref.kind === 'newGoal'
+  )
     return ''
   if (ref.kind === 'mind') return goalLabel ? goalLabel(ref.goalId) : ''
   if (ref.kind === 'local') {
@@ -222,12 +232,27 @@ export function tabIdsOfNode(tabs: LearnTab[], nodeId: string): string[] {
   return tabs.filter((t) => tabNodeId(t.ref) === nodeId).map((t) => t.id)
 }
 
-/** 右键菜单里的五种关闭方式 */
-export type TabCloseMode = 'self' | 'left' | 'right' | 'others' | 'all'
+/** 判断一个页签是否为真正文档（教学文档、笔记、超级文档、外部文件文档） */
+export function isDocumentTab(ref: TabRef): boolean {
+  return ref.kind === 'teach' || ref.kind === 'note' || ref.kind === 'super' || ref.kind === 'local'
+}
+
+/** 右键菜单里的关闭方式 */
+export type TabCloseMode =
+  | 'self'
+  | 'left'
+  | 'right'
+  | 'others'
+  | 'all'
+  | 'unrelated'
+  | 'children'
+  | 'parents'
+  | 'nonDocs'
+  | 'force'
+  | 'forceOthers'
 
 /**
- * 右键菜单里的文案。**短**：菜单只有两百来像素宽，而「关闭左侧」四个字已经把
- * 「关的是哪一边」说全了——原先写成「关闭左侧文件」，右侧那枚数字反而被挤到看不见。
+ * 右键菜单里的文案。
  */
 export const TAB_CLOSE_LABEL: Record<TabCloseMode, string> = {
   self: '关闭',
@@ -235,6 +260,12 @@ export const TAB_CLOSE_LABEL: Record<TabCloseMode, string> = {
   right: '关闭右侧',
   others: '关闭其他',
   all: '全部关闭',
+  unrelated: '关闭无关联',
+  children: '关闭子级',
+  parents: '关闭父级',
+  nonDocs: '关闭非文档',
+  force: '关闭（强制）',
+  forceOthers: '关闭其他（强制）',
 }
 
 /**
@@ -249,18 +280,23 @@ export function closeTabs(
   id: string,
   mode: TabCloseMode,
   active: string | null,
+  closingIds?: string[],
 ): { tabs: LearnTab[]; active: string | null } {
   const idx = tabs.findIndex((t) => t.id === id)
   if (idx < 0) return { tabs, active }
   const closing = new Set<string>()
-  if (mode === 'all') {
+  if (closingIds && closingIds.length > 0) {
+    for (const cid of closingIds) closing.add(cid)
+  } else if (mode === 'all') {
     for (const t of tabs) closing.add(t.id)
-  } else if (mode === 'self') {
+  } else if (mode === 'self' || mode === 'force') {
     closing.add(tabs[idx].id)
   } else if (mode === 'left') {
     for (let i = 0; i < idx; i++) closing.add(tabs[i].id)
   } else if (mode === 'right') {
     for (let i = idx + 1; i < tabs.length; i++) closing.add(tabs[i].id)
+  } else if (mode === 'nonDocs') {
+    for (const t of tabs) if (!isDocumentTab(t.ref)) closing.add(t.id)
   } else {
     for (const t of tabs) if (t.id !== id) closing.add(t.id)
   }

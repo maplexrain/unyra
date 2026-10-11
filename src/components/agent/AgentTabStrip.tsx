@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeftToLine, ArrowRightToLine, FoldHorizontal, MessageSquare, OctagonX, X } from 'lucide-react'
+import { FoldHorizontal, MessageSquare, OctagonX, ShieldAlert, X } from 'lucide-react'
 import type { AgentTabRef } from '../../learn/types'
 import { agentTabCloseBlock, agentTabKey, type AgentTabCloseBlock } from '../../learn/agentTabs'
 import { TAB_CLOSE_LABEL, type TabCloseMode } from '../../learn/tabs'
@@ -38,9 +38,10 @@ interface Props {
   onReorder: (keys: string[]) => void
 }
 
-const BLOCK_HINT: Record<Exclude<AgentTabCloseBlock, 'none'>, string> = {
-  docs: '文档区还开着这个目标的页签，先关掉它们才能关闭导师',
-  running: '导师正在运行，先停止这一轮再关闭',
+function blockHintOf(block: AgentTabCloseBlock): string {
+  if (block === 'docs') return t('文档区还开着这个目标的页签，先关掉它们才能关闭导师')
+  if (block === 'running') return t('导师正在运行，先停止这一轮再关闭')
+  return ''
 }
 
 /** 拖动一个页签要挪动这么多像素才算「在拖」，低于它仍是点击 */
@@ -262,7 +263,6 @@ export default function AgentTabStrip({
   const [menu, setMenu] = useState<{ x: number; y: number; key: string } | null>(null)
   const menuTab = menu ? tabs.find((tb) => agentTabKey(tb) === menu.key) : undefined
   const menuLabel = menuTab ? titleOf(menuTab) : ''
-  const menuIndex = menu ? tabs.findIndex((tb) => agentTabKey(tb) === menu.key) : -1
 
   return (
     <>
@@ -274,7 +274,7 @@ export default function AgentTabStrip({
       <div
         className={
           'no-print relative flex shrink-0 items-stretch gap-2 pt-1.5 pb-0 ' +
-          (tabs.length ? 'bg-paper/40 ' : '') +
+          (tabs.length ? 'bg-paper-deep/40 ' : '') +
           (snap ? 'moji-tab-snap' : '')
         }
       >
@@ -294,7 +294,7 @@ export default function AgentTabStrip({
             const block = agentTabCloseBlock(ref, { hasDocTabs: docTabsOf(ref), running })
             const closable = !isFree && block === 'none'
             // 守卫文案只对「想关却关不掉」的页签有意义；固定页签根本没有关闭键
-            const blockHint = block === 'none' ? '' : t(BLOCK_HINT[block])
+            const blockHint = blockHintOf(block)
             const title = titleOf(ref)
             const dragging = drag?.key === key
             const offset = dragging ? drag.dx : shiftOf(i)
@@ -404,8 +404,6 @@ export default function AgentTabStrip({
             menu={menu}
             label={menuLabel}
             count={tabs.length}
-            leftCount={Math.max(0, menuIndex)}
-            rightCount={Math.max(0, tabs.length - menuIndex - 1)}
             otherCount={Math.max(0, tabs.length - 1)}
             onPick={(mode) => {
               onCloseMode(menu.key, mode)
@@ -420,15 +418,12 @@ export default function AgentTabStrip({
 }
 
 /**
- * 页签的右键菜单：与文档区 TabMenu 同一套骨架与文案（TAB_CLOSE_LABEL），
- * 少了收藏那一组——导师页签没有可收藏的形态。
+ * 页签的右键菜单：关闭 / 关闭（强制） / 关闭其他 / 关闭其他（强制） / 全部关闭。
  */
 function AgentTabMenu({
   menu,
   label,
   count,
-  leftCount,
-  rightCount,
   otherCount,
   onPick,
   onClose,
@@ -436,8 +431,6 @@ function AgentTabMenu({
   menu: { x: number; y: number }
   label: string
   count: number
-  leftCount: number
-  rightCount: number
   otherCount: number
   onPick: (mode: TabCloseMode) => void
   onClose: () => void
@@ -455,15 +448,16 @@ function AgentTabMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[90] min-w-[196px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[90] min-w-[200px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
-      {/* 抬头：这一下是对着哪一位导师（与文档区菜单同一条规矩） */}
+      {/* 抬头：这一下是对着哪一位导师 */}
       <div className="truncate px-2.5 py-1 text-[10.5px] text-ink-faint" title={label}>
         {label}
       </div>
 
       <span aria-hidden="true" className="my-1 block h-px bg-line" />
 
+      {/* 关闭当前导师 */}
       <button type="button" role="menuitem" onClick={() => onPick('self')} className={ROW}>
         <span className={ICON}>
           <X size={13} className="text-ink-soft" />
@@ -471,34 +465,60 @@ function AgentTabMenu({
         {t(TAB_CLOSE_LABEL.self)}
       </button>
 
+      {/* 关闭（强制）：连同文档区关联的tab一起关闭 */}
+      <button
+        type="button"
+        role="menuitem"
+        title={t('连同文档区关联的页签一起关闭')}
+        onClick={() => onPick('force')}
+        className={ROW}
+      >
+        <span className={ICON}>
+          <ShieldAlert size={13} className="text-seal" />
+        </span>
+        {t(TAB_CLOSE_LABEL.force)}
+      </button>
+
       <span aria-hidden="true" className="my-1 block h-px bg-line" />
-      <button type="button" role="menuitem" disabled={leftCount === 0} onClick={() => onPick('left')} className={ROW}>
+
+      {/* 关闭其他 */}
+      <button
+        type="button"
+        role="menuitem"
+        disabled={otherCount === 0}
+        onClick={() => onPick('others')}
+        className={ROW}
+      >
         <span className={ICON}>
-          <ArrowLeftToLine size={13} className="text-seal" />
-        </span>
-        {t(TAB_CLOSE_LABEL.left)}
-        <span className={COUNT}>{leftCount}</span>
-      </button>
-      <button type="button" role="menuitem" disabled={rightCount === 0} onClick={() => onPick('right')} className={ROW}>
-        <span className={ICON}>
-          <ArrowRightToLine size={13} className="text-seal" />
-        </span>
-        {t(TAB_CLOSE_LABEL.right)}
-        <span className={COUNT}>{rightCount}</span>
-      </button>
-      <button type="button" role="menuitem" disabled={otherCount === 0} onClick={() => onPick('others')} className={ROW}>
-        <span className={ICON}>
-          <FoldHorizontal size={13} className="text-seal" />
+          <FoldHorizontal size={13} className="text-ink-soft" />
         </span>
         {t(TAB_CLOSE_LABEL.others)}
         <span className={COUNT}>{otherCount}</span>
       </button>
 
-      <span aria-hidden="true" className="my-1 block h-px bg-line" />
+      {/* 关闭其他（强制）：连同文档区关联的tab一起关闭 */}
       <button
         type="button"
         role="menuitem"
-        title={t('这一格里的页签全部关掉（含当前这一个）')}
+        disabled={otherCount === 0}
+        title={t('连同文档区关联的页签一起关闭')}
+        onClick={() => onPick('forceOthers')}
+        className={ROW}
+      >
+        <span className={ICON}>
+          <FoldHorizontal size={13} className="text-seal" />
+        </span>
+        {t(TAB_CLOSE_LABEL.forceOthers)}
+        <span className={COUNT}>{otherCount}</span>
+      </button>
+
+      <span aria-hidden="true" className="my-1 block h-px bg-line" />
+
+      {/* 全部关闭 */}
+      <button
+        type="button"
+        role="menuitem"
+        title={t('关闭所有导师页签')}
         onClick={() => onPick('all')}
         className={ROW + ' text-seal-deep hover:bg-seal/10'}
       >

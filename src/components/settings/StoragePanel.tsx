@@ -149,7 +149,7 @@ export function StoragePanel({ onRootChanged, onToast }: Props) {
         <div className="text-[12.5px] font-medium text-ink-strong">{t('目录数据结构')}</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <div className="rounded-xl border border-line bg-card p-3">
-            <div className="font-mono text-[12px] font-medium text-seal-deep">users/{'{用户}'}/</div>
+            <div className="font-mono text-[12px] font-medium text-seal-deep">users/{'{' + t('用户') + '}'}/</div>
             <p className="mt-1 text-[11px] leading-relaxed text-ink-soft">
               {t('用户偏好配置、个人画像与专属学习记录。')}
             </p>

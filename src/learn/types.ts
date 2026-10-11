@@ -528,6 +528,8 @@ export type TabRef =
    * components/agent/AgentSettingsPanel）。同样全局一枚，与全局设置是两份数据。
    */
   | { kind: 'agentSettings' }
+  /** 目标创建页：创建新学习目标，创建完成后自动关闭 */
+  | { kind: 'newGoal' }
 
 /**
  * agent 栏的页签指向什么（见 learn/agentTabs 与 components/agent/AgentTabStrip）。

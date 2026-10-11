@@ -197,7 +197,8 @@ export function revealOfTab(
     case 'usage':
     case 'mind':
     case 'agentSettings':
-      // 设置页与用量页是文档区的页签，但侧栏里没有它们的行（入口在顶栏），不定位
+    case 'newGoal':
+      // 设置页、用量页与新建目标是文档区的页签，但侧栏里没有它们的行（入口在顶栏或菜单），不定位
       return null
     case 'report':
       // 专注报告住在资源管理器自己的分类夹里；守卫页签不在侧栏，落不进来（不定位）
@@ -227,11 +228,19 @@ export function revealRow(root: HTMLElement | null, keys: readonly string[]): vo
   const tick = (): void => {
     const el = root?.querySelector<HTMLElement>(query)
     if (el && !el.closest('[inert]')) {
-      const show = (): void => el.scrollIntoView({ block: 'nearest' })
+      const show = (): void => {
+        const er = el.getBoundingClientRect()
+        const rr = root?.getBoundingClientRect()
+        if (!rr || er.top < rr.top || er.bottom > rr.bottom) {
+          el.scrollIntoView({ block: 'nearest' })
+        }
+      }
       el.classList.remove('moji-reveal-flash')
-      void el.offsetWidth
-      el.classList.add('moji-reveal-flash')
-      show()
+      // 使用 requestAnimationFrame 消除 void el.offsetWidth 引发的强制同步重排（Layout Thrashing）
+      requestAnimationFrame(() => {
+        el.classList.add('moji-reveal-flash')
+        show()
+      })
       window.setTimeout(show, 260)
       window.setTimeout(() => el.classList.remove('moji-reveal-flash'), 1500)
       return

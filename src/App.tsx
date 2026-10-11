@@ -21,6 +21,8 @@ import {
   type CloseAction,
 } from './lib/closeBehavior'
 import { getLocale, setLocaleBridge, t, useLocale } from './i18n'
+import GlobalBackground from './components/background/GlobalBackground'
+import { isDarkTheme, useAppearance } from './lib/appearance'
 
 /**
  * 启动结果（用户列表 + 会话）由 main.tsx 读盘后传进来：
@@ -51,6 +53,11 @@ export default function App({ boot }: Props) {
   // 切换用户时自增，作为 LearnWorkspace 的 key，强制它按新作用域重新挂载
   const [userEpoch, setUserEpoch] = useState(0)
   const toastTimer = useRef<number | null>(null)
+  const appearance = useAppearance()
+  const isDark =
+    appearance.theme === 'system'
+      ? typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
+      : isDarkTheme(appearance.theme)
   // 界面语言：根部订阅（切换时整树重渲染），并把变化推给主进程——
   // 菜单与原生对话框说不了 React 的语言（见 electron/i18n）。桥断了就断：尽力而为。
   useLocale()
@@ -196,6 +203,7 @@ export default function App({ boot }: Props) {
   if (route === 'login') {
     return (
       <div className="flex h-full flex-col">
+        <GlobalBackground customBg={appearance.customBg} isDark={isDark} />
         <LoginPage
           users={users}
           onSignIn={handleSignIn}
@@ -212,6 +220,7 @@ export default function App({ boot }: Props) {
 
   return (
     <>
+      <GlobalBackground customBg={appearance.customBg} isDark={isDark} />
       <LearnWorkspace
         // 换用户时重挂载：学习数据按作用域从本地重新载入
         key={`user-${userEpoch}`}

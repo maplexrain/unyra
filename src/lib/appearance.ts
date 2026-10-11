@@ -19,6 +19,11 @@
 import { useEffect, useState } from 'react'
 import { readUserSettings, writeUserSettings } from './userSettings'
 import { syncAppIcon } from './appIcon'
+import {
+  type CustomBackgroundConfig,
+  DEFAULT_CUSTOM_BACKGROUND,
+  normalizeCustomBackground,
+} from './customBackground'
 
 /**
  * 主题取值。
@@ -94,6 +99,8 @@ export interface Appearance {
    * 调节方式一样是 Ctrl + 滚轮（见 AgentPanel），所以也属于用户级设置。
    */
   chatScale: number
+  /** 全局图片背景与幻灯片设置 */
+  customBg?: CustomBackgroundConfig
 }
 
 /** 全部主题取值，顺序即设置页的展示顺序：跟随系统、基础两套、浅色扩展、深色扩展 */
@@ -209,6 +216,7 @@ const DEFAULT: Appearance = {
   sideCollapsed: false,
   teachingMode: false,
   chatScale: 1,
+  customBg: DEFAULT_CUSTOM_BACKGROUND,
 }
 
 /**
@@ -252,6 +260,7 @@ function normalize(raw: unknown): Appearance {
     // 教学模式默认关：它是录屏时才需要的东西，平时留着只挡画面
     teachingMode: r.teachingMode === true,
     chatScale: clampChatScale(typeof r.chatScale === 'number' ? r.chatScale : DEFAULT.chatScale),
+    customBg: normalizeCustomBackground(r.customBg),
   }
 }
 
@@ -272,6 +281,16 @@ function paint(): void {
    */
   const theme = current.theme === 'system' ? (prefersDark() ? 'dark' : 'light') : current.theme
   document.documentElement.dataset.theme = theme
+
+  if (current.customBg?.enabled) {
+    document.documentElement.dataset.hasCustomBg = 'true'
+    const opacity = current.customBg.uiOpacity ?? 70
+    document.documentElement.style.setProperty('--ui-opacity', `${opacity}%`)
+  } else {
+    delete document.documentElement.dataset.hasCustomBg
+    document.documentElement.style.removeProperty('--ui-opacity')
+  }
+
   /*
    * 窗口 / 任务栏 / 托盘图标跟着强调色一起换（渲染层染色，见 lib/appIcon）：尽力而为。
    *

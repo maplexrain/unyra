@@ -5,16 +5,20 @@ import { useEffect, useRef } from 'react'
  *
  * 核心哲学表达与完整生命周期（Recursive Spiral Convergence - 5/4/3/2 四层分形）：
  * 1. 【一之初始 (0.00~0.04)】：正中根节点素白安坐，伴随微弱星尘平静呼吸。
- * 2. 【Phase 1 根节点转一圈甩出 5 节点 (0.04~0.16)】：平分 360° (每 72°)，生长 5 个一级节点。
- * 3. 【Phase 2 一级各转甩出 4 节点 (0.16~0.28)】：平分 360° (每 90°)，衍生 20 个二级节点。
- * 4. 【Phase 3 二级各转甩出 3 节点 (0.28~0.40)】：平分 360° (每 120°)，衍生 60 个三级节点。
- * 5. 【Phase 4 三级各转甩出 2 叶子 (0.40~0.51)】：平分 360° (每 180° 对称)，衍生 120 个四级叶子节点（共 206 节点曼陀罗全域展开）。
+ * 2. 【Phase 1 根节点转动甩出 5 枝藤蔓 (0.04~0.16)】：平分 360° (每 72°)，沿固定曲线像藤蔓般生长出 5 个一级节点。
+ * 3. 【Phase 2 一级各转甩出 4 枝藤蔓 (0.16~0.28)】：平分 360° (每 90°)，沿固定曲线生长出 20 个二级节点。
+ * 4. 【Phase 3 二级各转甩出 3 枝藤蔓 (0.28~0.40)】：平分 360° (每 120°)，沿固定曲线生长出 60 个三级节点。
+ * 5. 【Phase 4 三级各转甩出 2 枝叶梢 (0.40~0.51)】：平分 360° (每 180° 对称)，沿固定曲线生长出 120 个四级叶子节点（共 206 节点曼陀罗全域展开）。
  * 6. 【Phase 5 叶子色彩觉醒绽放 (0.51~0.60)】：120 个叶子节点显化 120 种高饱和璀璨光谱宝石色，全景展开呼吸。
- * 7. 【Phase 6 三级倒转收回·双色合成 (0.60~0.69)】：60 个三级节点倒转，收回 120 个叶子，双色计算合成新颜色赋给三级节点。
- * 8. 【Phase 7 二级倒转收回·三色合成 (0.69~0.77)】：20 个二级节点倒转，收回 60 个三级节点，三色计算合成新颜色赋给二级节点。
- * 9. 【Phase 8 一级倒转收回·四色合成 (0.77~0.84)】：5 个一级节点倒转，收回 20 个二级节点，四色计算合成新颜色赋给一级节点。
- * 10.【Phase 9 根节点倒转·五色归一 (0.84~0.91)】：根节点倒转，收回 5 个一级节点，五色汇入正中，爆发出同心归一光晕。
+ * 7. 【Phase 6 三级倒转收回·双色合成 (0.60~0.69)】：60 个三级节点沿固定藤蔓原路收回 120 个叶子，双色计算合成新颜色赋给三级节点。
+ * 8. 【Phase 7 二级倒转收回·三色合成 (0.69~0.77)】：20 个二级节点沿固定藤蔓原路收回 60 个三级节点，三色计算合成新颜色赋给二级节点。
+ * 9. 【Phase 8 一级倒转收回·四色合成 (0.77~0.84)】：5 个一级节点沿固定藤蔓原路收回 20 个二级节点，四色计算合成新颜色赋给一级节点。
+ * 10.【Phase 9 根节点倒转·五色归一 (0.84~0.91)】：根节点沿固定藤蔓收回 5 个一级节点，五色汇入正中，爆发出同心归一光晕。
  * 11.【Phase 10 两秒纯白过渡·周而复始 (0.91~1.00)】：根节点在最后整整两秒（2000ms）内匀滑过渡恢复为纯白，随后无缝循环。
+ *
+ * 视觉优化关键点：
+ * - 整体不透明度降低为 40% (opacity: 0.4)，柔和融入卡片背景。
+ * - 连接曲线采用 de Casteljau 截取固定贝塞尔路径，绝无整体等比放大/变形的缩放感，而是如真实藤蔓般从根基静止扎根、末梢向前推进延伸。
  */
 
 interface RGB {
@@ -23,9 +27,20 @@ interface RGB {
   b: number
 }
 
-// 120 种璀璨光谱色彩（高饱和度、高辨识度宝石色系，象征万千不同知识点）
+interface Point {
+  x: number
+  y: number
+}
+
+interface BezierCurve {
+  p0: Point
+  p1: Point
+  p2: Point
+  p3: Point
+}
+
+// 120 种璀璨光谱色彩（高饱和度宝石色系，象征万千不同知识点）
 const LEAF_COLORS: RGB[] = Array.from({ length: 120 }, (_, i) => {
-  // 采用黄金角分布确保相邻分支的叶子色差分明，融合时产生惊艳渐变
   const hue = ((i * 137.508) % 360 + 360) % 360
   const s = 0.88
   const l = 0.62
@@ -45,7 +60,7 @@ const LEAF_COLORS: RGB[] = Array.from({ length: 120 }, (_, i) => {
     g1 = c
     b1 = x
   } else if (hue < 240) {
-    g1 = x
+    r1 = x
     b1 = c
   } else if (hue < 300) {
     r1 = x
@@ -105,6 +120,46 @@ function easeOutQuad(t: number): number {
 
 function clamp(v: number, min = 0, max = 1): number {
   return Math.min(Math.max(v, min), max)
+}
+
+// 沿固定贝塞尔曲线截取 [0, t] 段（de Casteljau 算法：已生长的曲线部分在空间中绝对固定，藤蔓末梢向前延伸）
+function trimBezier(c: BezierCurve, t: number): BezierCurve {
+  if (t >= 0.999) return c
+  if (t <= 0.001) {
+    return { p0: c.p0, p1: c.p0, p2: c.p0, p3: c.p0 }
+  }
+  const { p0, p1, p2, p3 } = c
+  const mt = 1 - t
+  const p01 = { x: mt * p0.x + t * p1.x, y: mt * p0.y + t * p1.y }
+  const p12 = { x: mt * p1.x + t * p2.x, y: mt * p1.y + t * p2.y }
+  const p23 = { x: mt * p2.x + t * p3.x, y: mt * p2.y + t * p3.y }
+  const p012 = { x: mt * p01.x + t * p12.x, y: mt * p01.y + t * p12.y }
+  const p123 = { x: mt * p12.x + t * p23.x, y: mt * p12.y + t * p23.y }
+  const p0123 = { x: mt * p012.x + t * p123.x, y: mt * p012.y + t * p123.y }
+  return { p0, p1: p01, p2: p012, p3: p0123 }
+}
+
+// 创建起点到终点的固定螺旋贝塞尔曲线（曲率手性固定）
+function createBranchCurve(pStart: Point, pEnd: Point, curlFactor: number): BezierCurve {
+  const dx = pEnd.x - pStart.x
+  const dy = pEnd.y - pStart.y
+  const dist = Math.hypot(dx, dy)
+  if (dist < 0.001) {
+    return { p0: pStart, p1: pStart, p2: pEnd, p3: pEnd }
+  }
+  const nx = -dy / dist
+  const ny = dx / dist
+  const arcOffset = dist * curlFactor
+
+  const p1 = {
+    x: pStart.x + dx * 0.35 + nx * arcOffset,
+    y: pStart.y + dy * 0.35 + ny * arcOffset,
+  }
+  const p2 = {
+    x: pStart.x + dx * 0.75 + nx * (arcOffset * 0.65),
+    y: pStart.y + dy * 0.75 + ny * (arcOffset * 0.65),
+  }
+  return { p0: pStart, p1, p2, p3: pEnd }
 }
 
 // ==========================================
@@ -190,35 +245,19 @@ export default function GoalParticles({ className = '' }: { className?: string }
     const ro = new ResizeObserver(handleResize)
     ro.observe(canvas)
 
-    // 绘制具有自然螺旋扭曲的平滑三次贝塞尔曲线（曲率手性始终保持正向一致）
-    const drawSpiralArm = (
-      x1: number,
-      y1: number,
-      x2: number,
-      y2: number,
-      curlFactor: number,
+    // 绘制沿固定路径生长的藤蔓分枝（绝不整体等比缩放）
+    const drawGrowingVine = (
+      curve: BezierCurve,
+      growth: number,
       color: RGB,
       alpha: number,
       lineWidth = 1.4,
     ) => {
-      const dx = x2 - x1
-      const dy = y2 - y1
-      const dist = Math.hypot(dx, dy)
-      if (dist < 0.5 || alpha <= 0.001) return
-
-      // 法向量与切线旋转偏移形成优雅螺旋弧度
-      const nx = -dy / dist
-      const ny = dx / dist
-      const arcOffset = dist * curlFactor
-
-      const cp1x = x1 + dx * 0.35 + nx * arcOffset
-      const cp1y = y1 + dy * 0.35 + ny * arcOffset
-      const cp2x = x1 + dx * 0.75 + nx * (arcOffset * 0.65)
-      const cp2y = y1 + dy * 0.75 + ny * (arcOffset * 0.65)
-
+      if (growth <= 0.001 || alpha <= 0.001) return
+      const sub = trimBezier(curve, growth)
       ctx.beginPath()
-      ctx.moveTo(x1, y1)
-      ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x2, y2)
+      ctx.moveTo(sub.p0.x, sub.p0.y)
+      ctx.bezierCurveTo(sub.p1.x, sub.p1.y, sub.p2.x, sub.p2.y, sub.p3.x, sub.p3.y)
       ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha.toFixed(3)})`
       ctx.lineWidth = lineWidth * dpr
       ctx.lineCap = 'round'
@@ -299,9 +338,9 @@ export default function GoalParticles({ className = '' }: { className?: string }
       }
 
       // ==========================
-      // 1. 各阶段进度与伸展/自转解算
+      // 1. 各层藤蔓生长进度（顺次波浪推进与原路收回）
       // ==========================
-      // Phase 1 (0.04 ~ 0.16): 根节点转一圈甩出 5 个 L1 节点 (平分 360°)
+      // Phase 1 (0.04 ~ 0.16): 根节点转动甩出 5 个 L1 节点 (平分 360°)
       // Phase 2 (0.16 ~ 0.28): 5 个 L1 节点各甩出 4 个 L2 节点 (平分 360°)
       // Phase 3 (0.28 ~ 0.40): 20 个 L2 节点各甩出 3 个 L3 节点 (平分 360°)
       // Phase 4 (0.40 ~ 0.51): 60 个 L3 节点各甩出 2 个 L4 叶子节点 (平分 360°)
@@ -312,98 +351,37 @@ export default function GoalParticles({ className = '' }: { className?: string }
       // Phase 9 (0.84 ~ 0.909): 根节点倒转收回 L1，合成五色归一
       // Phase 10 (0.909 ~ 1.00): 最后整整两秒 (2000ms) 根节点过渡回纯白
 
-      // Level 1 伸展与自转
-      let scale1 = 0
-      let rot1 = 0
-      if (progress < 0.04) {
-        scale1 = 0
-        rot1 = 0
-      } else if (progress < 0.16) {
-        const t = easeInOutCubic((progress - 0.04) / 0.12)
-        scale1 = t
-        rot1 = t * Math.PI * 2
-      } else if (progress < 0.84) {
-        scale1 = 1
-        rot1 = Math.PI * 2
-      } else if (progress < 0.909) {
-        const t = 1 - easeInOutCubic((progress - 0.84) / 0.069)
-        scale1 = t
-        rot1 = t * Math.PI * 2
-      } else {
-        scale1 = 0
-        rot1 = 0
-      }
-
-      // Level 2 伸展与自转
-      let scale2 = 0
-      let rot2 = 0
-      if (progress < 0.16) {
-        scale2 = 0
-        rot2 = 0
-      } else if (progress < 0.28) {
-        const t = easeInOutCubic((progress - 0.16) / 0.12)
-        scale2 = t
-        rot2 = t * Math.PI * 2
-      } else if (progress < 0.77) {
-        scale2 = 1
-        rot2 = Math.PI * 2
-      } else if (progress < 0.84) {
-        const t = 1 - easeInOutCubic((progress - 0.77) / 0.07)
-        scale2 = t
-        rot2 = t * Math.PI * 2
-      } else {
-        scale2 = 0
-        rot2 = 0
-      }
-
-      // Level 3 伸展与自转
-      let scale3 = 0
-      let rot3 = 0
-      if (progress < 0.28) {
-        scale3 = 0
-        rot3 = 0
-      } else if (progress < 0.40) {
-        const t = easeInOutCubic((progress - 0.28) / 0.12)
-        scale3 = t
-        rot3 = t * Math.PI * 2
-      } else if (progress < 0.69) {
-        scale3 = 1
-        rot3 = Math.PI * 2
-      } else if (progress < 0.77) {
-        const t = 1 - easeInOutCubic((progress - 0.69) / 0.08)
-        scale3 = t
-        rot3 = t * Math.PI * 2
-      } else {
-        scale3 = 0
-        rot3 = 0
-      }
-
-      // Level 4 叶子伸展与自转
-      let scale4 = 0
-      let rot4 = 0
-      if (progress < 0.40) {
-        scale4 = 0
-        rot4 = 0
-      } else if (progress < 0.51) {
-        const t = easeInOutCubic((progress - 0.4) / 0.11)
-        scale4 = t
-        rot4 = t * Math.PI * 2
-      } else if (progress < 0.60) {
-        scale4 = 1
-        rot4 = Math.PI * 2
-      } else if (progress < 0.69) {
-        const t = 1 - easeInOutCubic((progress - 0.6) / 0.09)
-        scale4 = t
-        rot4 = t * Math.PI * 2
-      } else {
-        scale4 = 0
-        rot4 = 0
+      // 计算某一分支在指定时间区间的藤蔓生长率（带顺次相移，产生甩出波浪感）
+      const calcGrowth = (
+        p: number,
+        growStart: number,
+        growDur: number,
+        holdEnd: number,
+        retractStart: number,
+        retractDur: number,
+        itemIdx: number,
+        totalItems: number,
+      ): number => {
+        if (p < growStart) return 0
+        if (p < growStart + growDur) {
+          const u = (p - growStart) / growDur
+          const stagger = (itemIdx / totalItems) * 0.35
+          const t = clamp((u - stagger) / 0.65)
+          return easeInOutCubic(t)
+        }
+        if (p < holdEnd) return 1
+        if (p < retractStart + retractDur) {
+          const u = (p - retractStart) / retractDur
+          const stagger = ((totalItems - 1 - itemIdx) / totalItems) * 0.35
+          const t = clamp((u - stagger) / 0.65)
+          return 1 - easeInOutCubic(t)
+        }
+        return 0
       }
 
       // ==========================
       // 2. 递归色彩合成与变色解算
       // ==========================
-      // 叶子绽放
       const colorBloom = easeOutQuad(clamp((progress - 0.51) / 0.09))
       const currentLeafColors: RGB[] = LEAF_COLORS.map((target) =>
         blendRGB(NEUTRAL_COLOR, target, 1 - colorBloom),
@@ -445,180 +423,207 @@ export default function GoalParticles({ className = '' }: { className?: string }
       const rootRadius = 8.5 * breathe
 
       // ==========================
-      // 3. 几何拓扑解算与分层绘制
+      // 3. 固定藤蔓几何拓扑解算与分层绘制
       // ==========================
       // 螺旋弯曲系数（曲率恒为正值，倒转收回绝不翻转圆弧朝向）
-      const spiralCurl1 = 0.25
-      const spiralCurl2 = 0.25
-      const spiralCurl3 = 0.26
-      const spiralCurl4 = 0.26
+      const spiralCurl1 = 0.28
+      const spiralCurl2 = 0.28
+      const spiralCurl3 = 0.30
+      const spiralCurl4 = 0.30
 
-      interface NodePos {
-        x: number
-        y: number
+      const pRoot: Point = { x: cx, y: cy }
+
+      interface ResolvedNode {
+        pos: Point
         color: RGB
         alpha: number
+        growth: number
       }
 
-      const l1Nodes: NodePos[] = []
-      const l2Nodes: NodePos[] = []
-      const l3Nodes: NodePos[] = []
-      const l4Nodes: NodePos[] = []
-
-      // --- 计算 Level 1 (5 个节点，平分 360 度，每 72 度) ---
+      // --- Level 1 (5 枝藤蔓，平分 360 度，每 72 度) ---
+      const l1Nodes: ResolvedNode[] = []
+      const l1Curves: BezierCurve[] = []
       const l1AngleStep = (Math.PI * 2) / 5
+
       for (let i = 0; i < 5; i++) {
-        const baseAngle = globalAmbientRot + rot1 + i * l1AngleStep
-        const dist = d1 * scale1
-        const x = cx + Math.cos(baseAngle) * dist
-        const y = cy + Math.sin(baseAngle) * dist
-        const alpha = clamp(scale1 * 1.5)
-        l1Nodes.push({ x, y, color: currentL1Colors[i], alpha })
+        const theta1 = globalAmbientRot + i * l1AngleStep
+        const targetPos: Point = {
+          x: cx + Math.cos(theta1) * d1,
+          y: cy + Math.sin(theta1) * d1,
+        }
+        const curve = createBranchCurve(pRoot, targetPos, spiralCurl1)
+        l1Curves.push(curve)
+
+        const growth = calcGrowth(progress, 0.04, 0.12, 0.84, 0.84, 0.069, i, 5)
+        const tipPos = growth <= 0.001 ? pRoot : trimBezier(curve, growth).p3
+        const alpha = clamp(growth * 1.5)
+        l1Nodes.push({ pos: tipPos, color: currentL1Colors[i], alpha, growth })
       }
 
-      // --- 计算 Level 2 (20 个节点，每个父节点甩出 4 个，平分 360 度，每 90 度) ---
+      // --- Level 2 (20 枝藤蔓，每个 L1 节点甩出 4 个，平分 360 度，每 90 度) ---
+      const l2Nodes: ResolvedNode[] = []
+      const l2Curves: BezierCurve[] = []
       const l2AngleStep = (Math.PI * 2) / 4
+
       for (let i = 0; i < 5; i++) {
-        const parent = l1Nodes[i]
-        const l1Angle = globalAmbientRot + rot1 + i * l1AngleStep
-        const l1SelfRot = l1Angle + rot2
+        const parentCurve = l1Curves[i]
+        const parentTarget = parentCurve.p3
+        const theta1 = globalAmbientRot + i * l1AngleStep
 
         for (let j = 0; j < 4; j++) {
           const l2Idx = i * 4 + j
-          const branchAngle = l1SelfRot + j * l2AngleStep
-          const dist = d2 * scale2
-          const x = parent.x + Math.cos(branchAngle) * dist
-          const y = parent.y + Math.sin(branchAngle) * dist
-          const alpha = clamp(scale2 * 1.5) * parent.alpha
-          l2Nodes.push({ x, y, color: currentL2Colors[l2Idx], alpha })
+          const theta2 = theta1 + j * l2AngleStep
+          const targetPos: Point = {
+            x: parentTarget.x + Math.cos(theta2) * d2,
+            y: parentTarget.y + Math.sin(theta2) * d2,
+          }
+          const curve = createBranchCurve(parentTarget, targetPos, spiralCurl2)
+          l2Curves.push(curve)
+
+          const growth = calcGrowth(progress, 0.16, 0.12, 0.77, 0.77, 0.07, j, 4)
+          const tipPos = growth <= 0.001 ? parentTarget : trimBezier(curve, growth).p3
+          const alpha = clamp(growth * 1.5) * l1Nodes[i].alpha
+          l2Nodes.push({ pos: tipPos, color: currentL2Colors[l2Idx], alpha, growth })
         }
       }
 
-      // --- 计算 Level 3 (60 个节点，每个父节点甩出 3 个，平分 360 度，每 120 度) ---
+      // --- Level 3 (60 枝藤蔓，每个 L2 节点甩出 3 个，平分 360 度，每 120 度) ---
+      const l3Nodes: ResolvedNode[] = []
+      const l3Curves: BezierCurve[] = []
       const l3AngleStep = (Math.PI * 2) / 3
+
       for (let i = 0; i < 5; i++) {
+        const theta1 = globalAmbientRot + i * l1AngleStep
         for (let j = 0; j < 4; j++) {
           const l2Idx = i * 4 + j
-          const parent = l2Nodes[l2Idx]
-          const l1Angle = globalAmbientRot + rot1 + i * l1AngleStep
-          const branchAngle = l1Angle + rot2 + j * l2AngleStep
-          const l2SelfRot = branchAngle + rot3
+          const parentCurve = l2Curves[l2Idx]
+          const parentTarget = parentCurve.p3
+          const theta2 = theta1 + j * l2AngleStep
 
           for (let k = 0; k < 3; k++) {
             const l3Idx = l2Idx * 3 + k
-            const subAngle = l2SelfRot + k * l3AngleStep
-            const dist = d3 * scale3
-            const x = parent.x + Math.cos(subAngle) * dist
-            const y = parent.y + Math.sin(subAngle) * dist
-            const alpha = clamp(scale3 * 1.5) * parent.alpha
-            l3Nodes.push({ x, y, color: currentL3Colors[l3Idx], alpha })
+            const theta3 = theta2 + k * l3AngleStep
+            const targetPos: Point = {
+              x: parentTarget.x + Math.cos(theta3) * d3,
+              y: parentTarget.y + Math.sin(theta3) * d3,
+            }
+            const curve = createBranchCurve(parentTarget, targetPos, spiralCurl3)
+            l3Curves.push(curve)
+
+            const growth = calcGrowth(progress, 0.28, 0.12, 0.69, 0.69, 0.08, k, 3)
+            const tipPos = growth <= 0.001 ? parentTarget : trimBezier(curve, growth).p3
+            const alpha = clamp(growth * 1.5) * l2Nodes[l2Idx].alpha
+            l3Nodes.push({ pos: tipPos, color: currentL3Colors[l3Idx], alpha, growth })
           }
         }
       }
 
-      // --- 计算 Level 4 (120 个叶子节点，每个父节点甩出 2 个，平分 360 度，每 180 度对称) ---
+      // --- Level 4 (120 枝叶梢藤蔓，每个 L3 节点甩出 2 个，平分 360 度，每 180 度对称) ---
+      const l4Nodes: ResolvedNode[] = []
+      const l4Curves: BezierCurve[] = []
       const l4AngleStep = (Math.PI * 2) / 2
+
       for (let i = 0; i < 5; i++) {
+        const theta1 = globalAmbientRot + i * l1AngleStep
         for (let j = 0; j < 4; j++) {
+          const l2Idx = i * 4 + j
+          const theta2 = theta1 + j * l2AngleStep
           for (let k = 0; k < 3; k++) {
-            const l2Idx = i * 4 + j
             const l3Idx = l2Idx * 3 + k
-            const parent = l3Nodes[l3Idx]
-            const l1Angle = globalAmbientRot + rot1 + i * l1AngleStep
-            const branchAngle = l1Angle + rot2 + j * l2AngleStep
-            const subAngle = branchAngle + rot3 + k * l3AngleStep
-            const l3SelfRot = subAngle + rot4
+            const parentCurve = l3Curves[l3Idx]
+            const parentTarget = parentCurve.p3
+            const theta3 = theta2 + k * l3AngleStep
 
             for (let m = 0; m < 2; m++) {
               const l4Idx = l3Idx * 2 + m
-              const leafAngle = l3SelfRot + m * l4AngleStep
-              const dist = d4 * scale4
-              const x = parent.x + Math.cos(leafAngle) * dist
-              const y = parent.y + Math.sin(leafAngle) * dist
-              const alpha = clamp(scale4 * 1.5) * parent.alpha
-              l4Nodes.push({ x, y, color: currentLeafColors[l4Idx], alpha })
+              const theta4 = theta3 + m * l4AngleStep
+              const targetPos: Point = {
+                x: parentTarget.x + Math.cos(theta4) * d4,
+                y: parentTarget.y + Math.sin(theta4) * d4,
+              }
+              const curve = createBranchCurve(parentTarget, targetPos, spiralCurl4)
+              l4Curves.push(curve)
+
+              const growth = calcGrowth(progress, 0.40, 0.11, 0.60, 0.60, 0.09, m, 2)
+              const tipPos = growth <= 0.001 ? parentTarget : trimBezier(curve, growth).p3
+              const alpha = clamp(growth * 1.5) * l3Nodes[l3Idx].alpha
+              l4Nodes.push({ pos: tipPos, color: currentLeafColors[l4Idx], alpha, growth })
             }
           }
         }
       }
 
       // ==========================
-      // 4. 绘制连线 (由外向内逐层绘制贝塞尔螺旋分支)
+      // 4. 绘制藤蔓曲线（沿固定贝塞尔路径伸长或缩回）
       // ==========================
-      // L3 -> L4 (120 条微螺旋分支)
-      if (scale4 > 0.01) {
-        for (let i = 0; i < 120; i++) {
-          const pIdx = Math.floor(i / 2)
-          const p = l3Nodes[pIdx]
-          const c = l4Nodes[i]
-          const armAlpha = c.alpha * 0.55
-          drawSpiralArm(p.x, p.y, c.x, c.y, spiralCurl4, c.color, armAlpha, 0.8)
+      // L3 -> L4 (120 枝叶梢藤蔓)
+      for (let i = 0; i < 120; i++) {
+        const node = l4Nodes[i]
+        if (node.growth > 0.001) {
+          const armAlpha = node.alpha * 0.55
+          drawGrowingVine(l4Curves[i], node.growth, node.color, armAlpha, 0.8)
         }
       }
 
-      // L2 -> L3 (60 条螺旋分支)
-      if (scale3 > 0.01) {
-        for (let i = 0; i < 60; i++) {
-          const pIdx = Math.floor(i / 3)
-          const p = l2Nodes[pIdx]
-          const c = l3Nodes[i]
-          const armAlpha = c.alpha * 0.65
-          drawSpiralArm(p.x, p.y, c.x, c.y, spiralCurl3, c.color, armAlpha, 1.05)
+      // L2 -> L3 (60 枝三级藤蔓)
+      for (let i = 0; i < 60; i++) {
+        const node = l3Nodes[i]
+        if (node.growth > 0.001) {
+          const armAlpha = node.alpha * 0.65
+          drawGrowingVine(l3Curves[i], node.growth, node.color, armAlpha, 1.1)
         }
       }
 
-      // L1 -> L2 (20 条螺旋分支)
-      if (scale2 > 0.01) {
-        for (let i = 0; i < 20; i++) {
-          const pIdx = Math.floor(i / 4)
-          const p = l1Nodes[pIdx]
-          const c = l2Nodes[i]
-          const armAlpha = c.alpha * 0.75
-          drawSpiralArm(p.x, p.y, c.x, c.y, spiralCurl2, c.color, armAlpha, 1.35)
+      // L1 -> L2 (20 枝二级藤蔓)
+      for (let i = 0; i < 20; i++) {
+        const node = l2Nodes[i]
+        if (node.growth > 0.001) {
+          const armAlpha = node.alpha * 0.75
+          drawGrowingVine(l2Curves[i], node.growth, node.color, armAlpha, 1.4)
         }
       }
 
-      // Root -> L1 (5 条主螺旋臂)
-      if (scale1 > 0.01) {
-        for (let i = 0; i < 5; i++) {
-          const c = l1Nodes[i]
-          const armAlpha = c.alpha * 0.85
-          drawSpiralArm(cx, cy, c.x, c.y, spiralCurl1, c.color, armAlpha, 1.8)
+      // Root -> L1 (5 枝主藤蔓)
+      for (let i = 0; i < 5; i++) {
+        const node = l1Nodes[i]
+        if (node.growth > 0.001) {
+          const armAlpha = node.alpha * 0.85
+          drawGrowingVine(l1Curves[i], node.growth, node.color, armAlpha, 1.8)
         }
       }
 
       // ==========================
-      // 5. 绘制所有实体节点
+      // 5. 绘制所有实体节点（位于藤蔓生长末梢）
       // ==========================
       // L4 叶子节点 (120 个)
-      if (scale4 > 0.01) {
-        for (let i = 0; i < 120; i++) {
-          const node = l4Nodes[i]
-          drawNode(node.x, node.y, 2.0, node.color, node.alpha, 1.1)
+      for (let i = 0; i < 120; i++) {
+        const node = l4Nodes[i]
+        if (node.growth > 0.001) {
+          drawNode(node.pos.x, node.pos.y, 2.0, node.color, node.alpha, 1.1)
         }
       }
 
       // L3 节点 (60 个)
-      if (scale3 > 0.01) {
-        for (let i = 0; i < 60; i++) {
-          const node = l3Nodes[i]
-          drawNode(node.x, node.y, 2.8, node.color, node.alpha, 1.2)
+      for (let i = 0; i < 60; i++) {
+        const node = l3Nodes[i]
+        if (node.growth > 0.001) {
+          drawNode(node.pos.x, node.pos.y, 2.8, node.color, node.alpha, 1.2)
         }
       }
 
       // L2 节点 (20 个)
-      if (scale2 > 0.01) {
-        for (let i = 0; i < 20; i++) {
-          const node = l2Nodes[i]
-          drawNode(node.x, node.y, 4.0, node.color, node.alpha, 1.3)
+      for (let i = 0; i < 20; i++) {
+        const node = l2Nodes[i]
+        if (node.growth > 0.001) {
+          drawNode(node.pos.x, node.pos.y, 4.0, node.color, node.alpha, 1.3)
         }
       }
 
       // L1 节点 (5 个)
-      if (scale1 > 0.01) {
-        for (let i = 0; i < 5; i++) {
-          const node = l1Nodes[i]
-          drawNode(node.x, node.y, 5.8, node.color, node.alpha, 1.4)
+      for (let i = 0; i < 5; i++) {
+        const node = l1Nodes[i]
+        if (node.growth > 0.001) {
+          drawNode(node.pos.x, node.pos.y, 5.8, node.color, node.alpha, 1.4)
         }
       }
 
@@ -653,7 +658,10 @@ export default function GoalParticles({ className = '' }: { className?: string }
   }, [])
 
   return (
-    <div className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`}>
+    <div
+      className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`}
+      style={{ opacity: 0.4 }}
+    >
       <canvas ref={canvasRef} className="h-full w-full" />
     </div>
   )

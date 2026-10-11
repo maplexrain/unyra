@@ -121,10 +121,16 @@ export function reorderIn(docs: DocWorkspace, groupId: string, ids: string[]): D
  * 取舍：留着是为了让「一个页签都没有」的那一屏还有块地方放空态（空库、全关掉了）；
  * 多于一组时它只是一块碍事的空白，收掉它，兄弟那一格自然铺满。
  */
-export function closeIn(docs: DocWorkspace, groupId: string, tabId: string, mode: TabCloseMode): DocWorkspace {
+export function closeIn(
+  docs: DocWorkspace,
+  groupId: string,
+  tabId: string,
+  mode: TabCloseMode,
+  closingIds?: string[],
+): DocWorkspace {
   const g = groupOf(docs, groupId)
   if (!g) return docs
-  const r = closeTabs(g.tabs, tabId, mode, g.active)
+  const r = closeTabs(g.tabs, tabId, mode, g.active, closingIds)
   const next = withDocs(docs, {
     groups: docs.groups.map((x) => (x.id === groupId ? { ...x, tabs: r.tabs, active: r.active } : x)),
   })

@@ -137,9 +137,7 @@ export function WindowPanel({ onToast }: { onToast: (msg: string) => void }) {
             <div>
               <div className="text-[13px] font-medium text-ink-strong">{t('系统托盘控制')}</div>
               <p className="mt-0.5 text-[11px] leading-relaxed text-ink-faint">
-                {t(
-                  '将窗口立即收进系统右下角托盘，应用将继续在后台运行。单击托盘图标即可随时唤醒展开，右键可选择完全退出。'
-                )}
+                {t('将窗口立即收进系统右下角托盘，应用将继续在后台运行。单击托盘图标即可随时唤醒展开，右键可选择完全退出。')}
               </p>
             </div>
           </div>

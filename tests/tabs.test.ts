@@ -108,6 +108,11 @@ describe('页签的身份', () => {
     expect(tabKey(agentSettings)).toBe('set:agent')
     expect(tabNodeId(agentSettings)).toBeNull()
     expect(tabTitle(agentSettings, () => '随便')).toBe('超级导师设置')
+    const newGoal: TabRef = { kind: 'newGoal' }
+    expect(tabKey(newGoal)).toBe('goal:new')
+    expect(tabNodeId(newGoal)).toBeNull()
+    expect(tabTrail(newGoal, () => '极限')).toBe('')
+    expect(tabTitle(newGoal, () => '随便')).toBe('新建目标')
   })
 })
 

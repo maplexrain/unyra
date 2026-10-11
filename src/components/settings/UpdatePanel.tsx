@@ -245,9 +245,7 @@ export function UpdatePanel() {
           <div>
             <div className="text-[13px] font-medium text-ink-strong">{t('自动检查与静默下载')}</div>
             <p className="mt-1 text-[11px] leading-relaxed text-ink-soft">
-              {t(
-                '开启后：应用启动时检查一次，运行期间每 5 分钟在后台静默检查。发现新版本后在后台安静下载，下载完成后在顶栏显示更新提示。关闭后完全停止自动网络检查。'
-              )}
+              {t('开启后：应用启动时检查一次，运行期间每 5 分钟在后台静默检查。发现新版本后在后台安静下载，下载完成后在顶栏显示更新提示。关闭后完全停止自动网络检查。')}
             </p>
           </div>
           <button

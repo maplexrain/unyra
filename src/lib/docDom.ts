@@ -42,7 +42,11 @@ export function docAreaOf(groupId?: string): HTMLElement | null {
 export function docBodyOf(groupId?: string): HTMLElement | null {
   const area = docAreaOf(groupId)
   if (!area) return null
-  return area.querySelector<HTMLElement>('[data-doc-pane]:not([hidden])') ?? area
+  return (
+    area.querySelector<HTMLElement>('[data-doc-pane="active"]') ??
+    area.querySelector<HTMLElement>('[data-doc-pane]:not([hidden])') ??
+    area
+  )
 }
 
 /**

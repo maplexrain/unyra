@@ -7,8 +7,8 @@
  * 原先它们与工作区本体挤在同一个文件里，搬出来之后「改顶栏一颗按钮」不必再翻三千行正文。
  */
 
-import { useRef, useState, type ReactNode } from 'react'
-import { ArrowUp, BookOpen, Check, Contact, Globe, Loader2, Menu, Paperclip } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { ArrowUp, BookOpen, Check, Compass, Contact, FolderOpen, Globe, Loader2, Menu, Paperclip, Sparkles } from 'lucide-react'
 import type { PendingFile } from '../../../agent/types'
 import type { KnowledgeNode, LearnStore } from '../../../learn/types'
 import { nodeById, pathToRoot } from '../../../learn/graph'
@@ -97,7 +97,7 @@ export function Topbar({
       取 20 是留出层次：正文浮层（z-30）在它上面，移动端抽屉与其遮罩（z-30/40）、
         各类弹窗（z-50/60）也在它上面。
       */}
-      <div className="app-drag no-print relative z-20 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-gradient-to-b from-card/90 to-paper/70 px-3 backdrop-blur">
+      <div className="app-drag no-print relative z-20 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-gradient-to-b from-card/90 to-paper/70 px-3">
       <button
         type="button"
         title={t('打开知识节点')}
@@ -120,7 +120,7 @@ export function Topbar({
             </span>
           </>
         ) : (
-          <span className="text-[13px] font-medium tracking-wide text-ink-soft">归一</span>
+          <span className="text-[13px] font-medium tracking-wide text-ink-soft">{t('归一')}</span>
         )}
       </div>
 
@@ -331,33 +331,95 @@ export function NodeHints(_props: { node?: KnowledgeNode; store?: LearnStore }) 
  * 页签是可以全部关掉的（右键菜单里就有「全部关闭」），那时给一句话说清去哪儿找东西，
  * 而不是留一片白——空白面板看起来像坏了。
  */
-export function EmptyDoc({ onPickLocal, onOpenWeb }: { onPickLocal: () => void; onOpenWeb?: () => void }) {
+export function EmptyDoc({
+  onPickLocal,
+  onOpenWeb,
+  onNewGoal,
+}: {
+  onPickLocal: () => void
+  onOpenWeb?: () => void
+  onNewGoal?: () => void
+}) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-      <p className="text-[13px] text-ink-soft">{t('没有打开的文档')}</p>
-      <p className="max-w-[380px] text-[11.5px] leading-relaxed text-ink-faint">
-        {t('点左侧资源管理器里的知识点，会在这里开一个页签；也可以把 txt / markdown 文件 拖进窗口，或')}
-        <button
-          type="button"
-          onClick={onPickLocal}
-          className="mx-0.5 rounded px-1 text-seal-deep underline decoration-dotted underline-offset-2 transition hover:bg-seal/10"
-        >
-          {t('打开一个本地文件')}
-        </button>
-        {onOpenWeb && (
-          <>
-            {t('，或')}
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-6 text-center select-none animate-in fade-in duration-300">
+      <div className="flex w-full max-w-[520px] flex-col items-center rounded-2xl border border-line/70 bg-card/40 p-7 shadow-xs backdrop-blur-md">
+        {/* 印章/图章风格图标徽标 */}
+        <div className="relative mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-seal/25 bg-seal/[0.06] text-seal shadow-inner">
+          <BookOpen size={24} className="stroke-[1.75]" />
+          <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-seal text-[9px] font-bold text-white shadow-xs">
+            墨
+          </span>
+        </div>
+
+        {/* 标题与副标题 */}
+        <h3 className="text-[16px] font-medium tracking-wide text-ink-strong">
+          {t('书卷未启 · 随思落墨')}
+        </h3>
+        <p className="mt-1.5 max-w-[380px] text-[12px] leading-relaxed text-ink-soft">
+          {t('点选左侧目录知识点开启研读，或通过下方快捷入口探索文件与网络。')}
+        </p>
+
+        {/* 快捷操作卡片组 */}
+        <div className="mt-6 grid w-full grid-cols-1 gap-2.5 sm:grid-cols-3">
+          <button
+            type="button"
+            onClick={onPickLocal}
+            className="group flex flex-col items-center rounded-xl border border-line bg-card/70 p-3.5 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-seal/40 hover:bg-card hover:shadow-xs focus-visible:ring-2 focus-visible:ring-seal/50"
+          >
+            <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg border border-line/60 bg-paper/60 text-ink-soft transition-colors group-hover:border-seal/30 group-hover:bg-seal/10 group-hover:text-seal">
+              <FolderOpen size={17} />
+            </div>
+            <span className="text-[12.5px] font-medium text-ink group-hover:text-seal-deep">
+              {t('打开本地文件')}
+            </span>
+            <span className="mt-0.5 text-[10.5px] text-ink-faint">
+              {t('Markdown / TXT / 代码')}
+            </span>
+          </button>
+
+          {onOpenWeb && (
             <button
               type="button"
               onClick={onOpenWeb}
-              className="mx-0.5 rounded px-1 text-seal-deep underline decoration-dotted underline-offset-2 transition hover:bg-seal/10"
+              className="group flex flex-col items-center rounded-xl border border-line bg-card/70 p-3.5 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-seal/40 hover:bg-card hover:shadow-xs focus-visible:ring-2 focus-visible:ring-seal/50"
             >
-              {t('打开一个网页')}
+              <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg border border-line/60 bg-paper/60 text-ink-soft transition-colors group-hover:border-seal/30 group-hover:bg-seal/10 group-hover:text-seal">
+                <Globe size={17} />
+              </div>
+              <span className="text-[12.5px] font-medium text-ink group-hover:text-seal-deep">
+                {t('浏览网络网页')}
+              </span>
+              <span className="mt-0.5 text-[10.5px] text-ink-faint">
+                {t('双链速记与知识批注')}
+              </span>
             </button>
-          </>
-        )}
-        。
-      </p>
+          )}
+
+          {onNewGoal && (
+            <button
+              type="button"
+              onClick={onNewGoal}
+              className="group flex flex-col items-center rounded-xl border border-line bg-card/70 p-3.5 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-seal/40 hover:bg-card hover:shadow-xs focus-visible:ring-2 focus-visible:ring-seal/50"
+            >
+              <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg border border-line/60 bg-paper/60 text-ink-soft transition-colors group-hover:border-seal/30 group-hover:bg-seal/10 group-hover:text-seal">
+                <Compass size={17} />
+              </div>
+              <span className="text-[12.5px] font-medium text-ink group-hover:text-seal-deep">
+                {t('新建学习目标')}
+              </span>
+              <span className="mt-0.5 text-[10.5px] text-ink-faint">
+                {t('AI 生成体系化知识树')}
+              </span>
+            </button>
+          )}
+        </div>
+
+        {/* 底部拖拽与快捷操作提示 */}
+        <div className="mt-5 flex items-center gap-1.5 text-[11px] text-ink-faint">
+          <Sparkles size={11} className="text-seal/70" />
+          <span>{t('小提示：可直接拖动外部文档或图片至窗口中任意位置查看')}</span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -383,13 +445,41 @@ export function NodeTrail({
   store: LearnStore
   onSelect: (id: string) => void
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
   const rootId = node ? (store.goals.find((g) => g.id === node.goalId)?.rootNodeId ?? null) : null
+
+  /*
+   * 滚轮横滚：鼠标纵向滚轮也能横向平滑滚动面包屑，类似 tab 栏。
+   */
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      const dx = Math.abs(e.deltaX) >= Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+      if (!dx || el.scrollWidth <= el.clientWidth) return
+      el.scrollLeft += dx
+      e.preventDefault()
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
+  // 当前节点切换时，平滑滚动至最右端（当前节点）
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' })
+  }, [node?.id])
 
   if (!node) return null
   const trail = (rootId ? pathToRoot(store, rootId, node.id) : null) ?? []
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-1 text-[11px] text-ink-faint">
+    <div
+      ref={scrollRef}
+      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      className="no-drag flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-[11px] text-ink-faint [&::-webkit-scrollbar]:hidden"
+    >
       <span className="mx-0.5 h-5 w-px shrink-0 bg-line-strong/60" />
 
       {/* 面包屑本身就是入口：点任意一级回到那个祖先节点 */}
@@ -399,15 +489,15 @@ export function NodeTrail({
           if (!n) return null
           const last = i === trail.length - 1
           return (
-            <span key={id} className="flex min-w-0 items-center gap-1">
-              {i > 0 && <span className="shrink-0 text-line-strong">›</span>}
+            <span key={id} className="flex shrink-0 items-center gap-1">
+              {i > 0 && <span className="shrink-0 select-none text-line-strong">›</span>}
               <button
                 type="button"
                 onClick={() => onSelect(id)}
                 disabled={last}
                 // 悬停显示该节点的描述（描述不再占用正文版面）
                 title={n.description ? `${n.title}\n\n${plainSnippet(n.description, 600)}` : n.title}
-                className={`min-w-0 max-w-[11em] truncate rounded px-1 py-px transition ${
+                className={`max-w-[120px] truncate rounded px-1 py-px transition ${
                   last ? 'font-medium text-ink-strong' : 'hover:bg-line/60 hover:text-ink'
                 }`}
               >

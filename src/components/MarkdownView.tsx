@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useEffect } from 'react'
+import { memo, useLayoutEffect, useMemo, useRef, useEffect } from 'react'
 import type { Annotation } from '../learn/types'
 import {
   endAnnotationPreview,
@@ -66,7 +66,44 @@ interface Props {
  * 学习集变化只重标链接外观。老版本把它们塞进同一个 effect，
  * 于是「改一条注解」也要把整篇正文重写一遍——那正是画面闪一下的来源。
  */
-export default function MarkdownView({
+function sameConceptKeys(a?: Set<string>, b?: Set<string>): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  if (a.size !== b.size) return false
+  for (const k of a) {
+    if (!b.has(k)) return false
+  }
+  return true
+}
+
+function sameAnnotations(a?: Annotation[], b?: Annotation[]): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]
+    const y = b[i]
+    if (x.term !== y.term || x.body !== y.body || x.kind !== y.kind || x.occurrence !== y.occurrence) {
+      return false
+    }
+  }
+  return true
+}
+
+function areMarkdownPropsEqual(prev: Props, next: Props): boolean {
+  if (prev.html !== next.html) return false
+  if (prev.className !== next.className) return false
+  if (prev.resolveLocalImage !== next.resolveLocalImage) return false
+  if (!sameAnnotations(prev.annotations, next.annotations)) return false
+  if (!sameConceptKeys(prev.knownConceptKeys, next.knownConceptKeys)) return false
+  // 浮层回调更新：只换全局引用，正文 DOM 无需重跑 layout effect
+  if (prev.annotationActions !== next.annotationActions && next.annotationActions) {
+    setAnnotationActions(next.annotationActions)
+  }
+  return true
+}
+
+const MarkdownView = memo(function MarkdownView({
   html,
   annotations,
   knownConceptKeys,
@@ -246,7 +283,9 @@ export default function MarkdownView({
       }}
     />
   )
-}
+}, areMarkdownPropsEqual)
+
+export default MarkdownView
 
 /** annoKey → 注解数组。样式要解回来（否则样式会在这一层被丢掉），occurrence 也要带过去 */
 function parseAnnos(annoKey: string): Annotation[] {

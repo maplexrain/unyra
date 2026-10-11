@@ -4,6 +4,9 @@
   --color-paper: #f5f2eb;
   --color-paper-deep: #eee9dd;
   --color-card: #fcfbf7;
+  --raw-paper: #f5f2eb;
+  --raw-paper-deep: #eee9dd;
+  --raw-card: #fcfbf7;
   --color-ink: #2e2a25;
   --color-ink-strong: #1f1b17;
   --color-ink-soft: #6e665b;
@@ -72,6 +75,9 @@
 /* ---------- 深色模式 ---------- */
 /* 覆盖 @theme 定义的变量：属性选择器与 :root 同元素但优先级更高，可稳定覆盖 */
 :root[data-theme='dark'] {
+  --raw-paper: #17150f;
+  --raw-paper-deep: #120f0b;
+  --raw-card: #1e1b16;
   --color-paper: #17150f;
   --color-paper-deep: #120f0b;
   --color-card: #1e1b16;
@@ -120,6 +126,9 @@
  * 这是刻意接受的代价（内容色没法跟着换肤）。
  */
 :root[data-theme='pink'] {
+  --raw-paper: #fbf3f4;
+  --raw-paper-deep: #f5e6e8;
+  --raw-card: #fff9fa;
   --color-paper: #fbf3f4;
   --color-paper-deep: #f6e9ec;
   --color-card: #fffdfd;
@@ -155,6 +164,9 @@
 }
 
 :root[data-theme='blue'] {
+  --raw-paper: #eef3f7;
+  --raw-paper-deep: #e1e9f1;
+  --raw-card: #f7fafd;
   --color-paper: #eef3f7;
   --color-paper-deep: #e4ebf2;
   --color-card: #fafcfd;
@@ -190,6 +202,9 @@
 }
 
 :root[data-theme='green'] {
+  --raw-paper: #f1f6ee;
+  --raw-paper-deep: #e5efe0;
+  --raw-card: #f8fbf6;
   --color-paper: #f1f6ee;
   --color-paper-deep: #e7efe2;
   --color-card: #fafcf6;
@@ -226,6 +241,9 @@
 
 /* 纯白：把「纸」推到无色，结构全靠边框与灰阶层级撑起来；印章红照旧点睛 */
 :root[data-theme='white'] {
+  --raw-paper: #ffffff;
+  --raw-paper-deep: #f4f4f4;
+  --raw-card: #ffffff;
   --color-paper: #ffffff;
   --color-paper-deep: #f5f5f6;
   --color-card: #ffffff;
@@ -262,6 +280,9 @@
 
 /* 纯黑：OLED 取向，底色压到真黑；语义色沿用深色块的提亮值，-*deep 保持「更亮」语义 */
 :root[data-theme='black'] {
+  --raw-paper: #000000;
+  --raw-paper-deep: #000000;
+  --raw-card: #000000;
   --color-paper: #000000;
   --color-paper-deep: #050505;
   --color-card: #131316;
@@ -307,6 +328,9 @@
  *   因为所有「强调色上叠白字」的按钮（bg-seal + text-white）在亮黄/亮青上都不可读。
  */
 :root[data-theme='sepia'] {
+  --raw-paper: #faf6ea;
+  --raw-paper-deep: #f2ece0;
+  --raw-card: #fffdf6;
   --color-paper: #f2ead7;
   --color-paper-deep: #e9dcbd;
   --color-card: #faf4e6;
@@ -342,6 +366,9 @@
 }
 
 :root[data-theme='amber'] {
+  --raw-paper: #f9f3e6;
+  --raw-paper-deep: #f0e8d4;
+  --raw-card: #fefaf0;
   --color-paper: #faf0e3;
   --color-paper-deep: #f4e4cf;
   --color-card: #fef9f2;
@@ -377,6 +404,9 @@
 }
 
 :root[data-theme='purple'] {
+  --raw-paper: #f2f0f6;
+  --raw-paper-deep: #e7e3ef;
+  --raw-card: #f9f7fc;
   --color-paper: #f2f0f6;
   --color-paper-deep: #e9e5f0;
   --color-card: #fbfafd;
@@ -412,6 +442,9 @@
 }
 
 :root[data-theme='graphite'] {
+  --raw-paper: #1b1b1d;
+  --raw-paper-deep: #141416;
+  --raw-card: #232326;
   --color-paper: #1b1b1d;
   --color-paper-deep: #141416;
   --color-card: #232326;
@@ -447,6 +480,9 @@
 }
 
 :root[data-theme='navy'] {
+  --raw-paper: #10141f;
+  --raw-paper-deep: #0b0e17;
+  --raw-card: #171c2a;
   --color-paper: #10141f;
   --color-paper-deep: #0c0f18;
   --color-card: #181d2b;
@@ -482,6 +518,9 @@
 }
 
 :root[data-theme='contrast'] {
+  --raw-paper: #000000;
+  --raw-paper-deep: #000000;
+  --raw-card: #0a0a0a;
   --color-paper: #000000;
   --color-paper-deep: #000000;
   --color-card: #08080a;
@@ -591,6 +630,64 @@ body {
   letter-spacing: 0.015em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* ---------- 全局图片背景激活时的半透明透出与渐变头帘隐藏 ---------- */
+:root[data-has-custom-bg='true'] {
+  --color-paper: color-mix(in srgb, var(--raw-paper) var(--ui-opacity, 70%), transparent) !important;
+  --color-paper-deep: color-mix(in srgb, var(--raw-paper-deep) var(--ui-opacity, 70%), transparent) !important;
+  --color-card: color-mix(in srgb, var(--raw-card) var(--ui-opacity, 70%), transparent) !important;
+}
+
+:root[data-has-custom-bg='true'],
+:root[data-has-custom-bg='true'] body,
+:root[data-has-custom-bg='true'] #root {
+  background-color: transparent !important;
+}
+
+/* 显式给主要面板表面施加半透明，保证在任意 Tailwind 编译或嵌套环境下均能稳固透出背景 */
+:root[data-has-custom-bg='true'] .bg-paper,
+:root[data-has-custom-bg='true'] [class~='bg-paper'] {
+  background-color: color-mix(in srgb, var(--raw-paper) var(--ui-opacity, 70%), transparent) !important;
+}
+
+:root[data-has-custom-bg='true'] aside.bg-paper-deep,
+:root[data-has-custom-bg='true'] .bg-paper-deep,
+:root[data-has-custom-bg='true'] [class~='bg-paper-deep'],
+:root[data-has-custom-bg='true'] .bg-paper-deep\/40 {
+  background-color: color-mix(in srgb, var(--raw-paper-deep) var(--ui-opacity, 70%), transparent) !important;
+}
+
+:root[data-has-custom-bg='true'] .bg-card,
+:root[data-has-custom-bg='true'] [class~='bg-card'] {
+  background-color: color-mix(in srgb, var(--raw-card) var(--ui-opacity, 70%), transparent) !important;
+}
+
+/* 消除文档区内的背景双层叠加（LearnWorkspace 的 bg-paper 与 NodeNote/SourceEditor 的 bg-card 重叠导致透光率乘方衰减变黑） */
+:root[data-has-custom-bg='true'] .bg-paper .print-flat.bg-card,
+:root[data-has-custom-bg='true'] .bg-paper [data-doc-pane] > div {
+  background-color: transparent !important;
+}
+
+/* TabBar 栏在文档区已有底层透明背景，自身不重复叠加 */
+:root[data-has-custom-bg='true'] .bg-paper\/40 {
+  background-color: transparent !important;
+}
+
+/* 正文底部固定信息条使用半透明底色，去除实色遮挡 */
+:root[data-has-custom-bg='true'] .doc-measure .sticky {
+  background-color: color-mix(in srgb, var(--raw-card) var(--ui-opacity, 70%), transparent) !important;
+  backdrop-filter: none !important;
+}
+
+/* 顶栏统一使用半透明底色，消除实色遮挡 */
+:root[data-has-custom-bg='true'] .app-drag {
+  background: color-mix(in srgb, var(--raw-paper) var(--ui-opacity, 70%), transparent) !important;
+}
+
+/* 全局图片背景模式下，隐藏 Agent 栏消息列表顶部的渐变头帘 */
+:root[data-has-custom-bg='true'] .agent-msg-fade-curtain {
+  display: none !important;
 }
 
 /* 选中态：浅色下用淡印章红；深色下底色深、对比不足，改用更亮的红并提亮文字 */

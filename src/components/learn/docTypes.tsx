@@ -1,4 +1,5 @@
 import { AppWindow, Bot, BookOpen, Brain, ChartColumn, FileClock, Folder, FolderOpen, Globe, GraduationCap, HardDrive, ListTree, Loader2, NotebookPen, Settings2, ShieldCheck } from 'lucide-react'
+import Bullseye from '../Bullseye'
 
 /**
  * 文档类型的**视觉身份**：一种类型一个图标、一个颜色。
@@ -23,6 +24,7 @@ export type DocKindKey =
   | 'usage'
   | 'mind'
   | 'agentSettings'
+  | 'newGoal'
 
 const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   teach: '#4a8fd4', // 蓝：教学文档
@@ -38,6 +40,7 @@ const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   usage: '#7c8698', // 蓝灰：系统页（用量统计），与设置同族同色、图标不同
   mind: '#7c8698', // 蓝灰：系统页（记忆管理），系统页同族
   agentSettings: '#7c8698', // 蓝灰：系统页（超级导师设置），系统页同族
+  newGoal: '#a8432f', // 赭红：目标创建页（与 Bullseye 靶心同色）
 }
 
 /**
@@ -70,6 +73,8 @@ export function DocTypeIcon({ kind, size = 11 }: { kind: DocKindKey; size?: numb
       <Brain size={size} />
     ) : kind === 'agentSettings' ? (
       <Bot size={size} />
+    ) : kind === 'newGoal' ? (
+      <Bullseye size={size} />
     ) : (
       <HardDrive size={size} />
     )

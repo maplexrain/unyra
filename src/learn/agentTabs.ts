@@ -172,7 +172,7 @@ export function agentTabCloseSet(tabs: AgentTabRef[], key: string, mode: TabClos
   const idx = keys.indexOf(key)
   if (idx < 0) return []
   if (mode === 'all') return keys
-  if (mode === 'self') return [key]
+  if (mode === 'self' || mode === 'force') return [key]
   if (mode === 'left') return keys.slice(0, idx)
   if (mode === 'right') return keys.slice(idx + 1)
   return keys.filter((k) => k !== key)

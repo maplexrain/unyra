@@ -125,7 +125,7 @@ export function useMessageList({
 
       {streaming && streaming.length > 0 && (
         <div className="mb-4">
-          <Parts parts={streaming} />
+          <Parts parts={streaming} streaming={true} />
         </div>
       )}
 

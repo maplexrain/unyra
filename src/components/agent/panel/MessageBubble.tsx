@@ -42,6 +42,7 @@ import { groupParts, isProcessPart, type ProcessPart } from './partGroups'
 import { hydrateChipTokens, openChipRef, type ChipPayload } from '../../../lib/docChip'
 import { chipLabel, chipSvg, chipToken, maskChipTokens, restoreChipTokens, splitChips } from '../../../lib/chipSyntax'
 import { promptModuleByKey } from '../../../learn/ai/promptModules'
+import { splitParagraphs } from './paragraphBuffer'
 import { t, useLocale } from '../../../i18n'
 
 /**
@@ -340,7 +341,15 @@ function EditBox({
  *
  * 只有一个成员的组按单条画：孤零零一件没有可收拢的东西，硬套组壳等于多一次点击。
  */
-function Parts({ parts, onResumeNotice }: { parts: AgentPart[]; onResumeNotice?: () => void }) {
+function Parts({
+  parts,
+  onResumeNotice,
+  streaming = false,
+}: {
+  parts: AgentPart[]
+  onResumeNotice?: () => void
+  streaming?: boolean
+}) {
   const groups = groupParts(parts)
   return (
     <div className="flex flex-col gap-2">
@@ -350,18 +359,26 @@ function Parts({ parts, onResumeNotice }: { parts: AgentPart[]; onResumeNotice?:
         // 落单的过程件与组一样带一道下边框，和后面的正文分割开；正文与提示不带
         return isProcessPart(part) ? (
           <div key={i} className="border-b border-line pb-2">
-            <SinglePart part={part} />
+            <SinglePart part={part} streaming={streaming} />
           </div>
         ) : (
-          <SinglePart key={i} part={part} onResumeNotice={onResumeNotice} />
+          <SinglePart key={i} part={part} onResumeNotice={onResumeNotice} streaming={streaming} />
         )
       })}
     </div>
   )
 }
 
-function SinglePart({ part, onResumeNotice }: { part: AgentPart; onResumeNotice?: () => void }) {
-  if (part.type === 'text') return <TextBlock text={part.text} />
+function SinglePart({
+  part,
+  onResumeNotice,
+  streaming = false,
+}: {
+  part: AgentPart
+  onResumeNotice?: () => void
+  streaming?: boolean
+}) {
+  if (part.type === 'text') return <TextBlock text={part.text} streaming={streaming} />
   if (part.type === 'notice') return <NoticeBlock level={part.level} text={part.text} onResume={onResumeNotice} />
   if (part.type === 'thinking') return <ThinkingBlock text={part.text} />
   if (part.type === 'tool') return <ToolCard part={part} />
@@ -692,28 +709,57 @@ function ChipText({ text }: { text: string }) {
   )
 }
 
-function TextBlock({ text }: { text: string }) {
-  /*
-   * 导师交付里写的 #[{…}] 在 DOM 提交之后换成可点击的 chip——markdown 渲染是纯函数
-   * （产物按源文缓存），chip 的解析与打开是另一层的事（与图片就地加载同一套做法）。
-   */
+/**
+ * 单个独立段落：memo 包装。
+ *
+ * 为什么独立 memo：
+ * 分段缓冲输出时，每多输出一段，历史已经渲染好的段落不会重新 reconcile 或重跑 marked.parse。
+ * 新段落独立挂载并带有 moji-paragraph-in 渐进动画。
+ */
+const ParagraphBlock = memo(function ParagraphBlock({
+  rawText,
+  animate = false,
+}: {
+  rawText: string
+  animate?: boolean
+}) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const html = useMemo(() => {
     // 裸网址会被 GFM 自动链接包成 <a>，把 token 拆碎在相邻文本节点里、hydrate 凑不齐
     //（引用里带链接必踩）：渲染前把 token 掩蔽成哨兵，渲染后复原
-    const { masked, tokens } = maskChipTokens(text)
+    const { masked, tokens } = maskChipTokens(rawText)
     return restoreChipTokens(renderNote(masked), tokens)
-  }, [text])
+  }, [rawText])
+
   useEffect(() => {
     const el = hostRef.current
     if (!el) return
     return hydrateChipTokens(el)
   }, [html])
+
   return (
-    <div ref={hostRef}>
+    <div ref={hostRef} className={animate ? 'moji-paragraph-in' : undefined}>
       <MarkdownView html={html} className="moji-agent-md" />
+    </div>
+  )
+})
+
+/**
+ * 导师正文分段缓冲渲染：
+ * 按照换行符（\n / \n\n）与 Markdown 块级语法切分为独立段落。流式输出时每累加一段即渲染一段，
+ * 各段落通过 ParagraphBlock 独立 memo，追加新段落时已渲染的历史段落绝对不重渲染，
+ * 每个段落初次挂载时带有渐进动画（moji-paragraph-in）。
+ */
+function TextBlock({ text, streaming = false }: { text: string; streaming?: boolean }) {
+  const segments = useMemo(() => splitParagraphs(text, { streaming }), [text, streaming])
+
+  return (
+    <div className="flex flex-col gap-2">
+      {segments.map((seg, idx) => (
+        <ParagraphBlock key={idx} rawText={seg} animate={streaming} />
+      ))}
     </div>
   )
 }
 
-export { QuoteChip, MessageActions, EditBox, Parts }
+export { QuoteChip, MessageActions, EditBox, Parts, TextBlock, ParagraphBlock }

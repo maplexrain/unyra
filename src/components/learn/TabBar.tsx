@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeftToLine, ArrowRightToLine, FoldHorizontal, Globe, OctagonX, Star, X } from 'lucide-react'
+import { BookOpen, CornerDownRight, CornerLeftUp, FileX, FoldHorizontal, Globe, OctagonX, Star, Unlink, X } from 'lucide-react'
 import { DocTypeIcon, WebTabTypeIcon } from './docTypes'
-import type { LearnStore, LearnTab, TabRef, WebTabMeta } from '../../learn/types'
-import { TAB_CLOSE_LABEL, dragSlotDelta, tabNodeId, type TabCloseMode } from '../../learn/tabs'
+import type { DependencyEdge, LearnStore, LearnTab, TabRef, WebTabMeta } from '../../learn/types'
+import { TAB_CLOSE_LABEL, dragSlotDelta, isDocumentTab, tabNodeId, type TabCloseMode } from '../../learn/tabs'
 import { setTabMarkHandlers } from '../../lib/tabMark'
 import { docChipDrop, docChipHover, type ChipPayload } from '../../lib/docChip'
 import { CHIP_MIME, parseChipJson } from '../../lib/chipSyntax'
@@ -36,7 +36,7 @@ interface Props {
    */
   trailOf?: (ref: TabRef) => string
   onActivate: (id: string) => void
-  onClose: (id: string, mode: TabCloseMode) => void
+  onClose: (id: string, mode: TabCloseMode, opts?: { closingIds?: string[] }) => void
   /** 拖动结束后给出的新顺序（页签 id 列表，只在栏内排序时用得上） */
   onReorder: (ids: string[]) => void
   /** 有未保存改动的页签 id（暂存区里有它的正文，见 learn/drafts）：关闭键画成一颗圆点 */
@@ -110,20 +110,31 @@ export function directedDistance(
   if (fromNodeId === toNodeId) return 0
   if (!store.edges || !store.edges.length) return null
 
+  // 建立邻接表索引，避免在 BFS 的每一步线性扫描全图边集
+  const adj = new Map<string, string[]>()
+  for (const edge of store.edges) {
+    let list = adj.get(edge.from)
+    if (!list) {
+      list = []
+      adj.set(edge.from, list)
+    }
+    list.push(edge.to)
+  }
+
   const visited = new Set<string>([fromNodeId])
   const queue: Array<[string, number]> = [[fromNodeId, 0]]
 
   while (queue.length > 0) {
     const [current, dist] = queue.shift()!
-    for (const edge of store.edges) {
-      if (edge.from === current) {
-        if (edge.to === toNodeId) {
-          return dist + 1
-        }
-        if (!visited.has(edge.to)) {
-          visited.add(edge.to)
-          queue.push([edge.to, dist + 1])
-        }
+    const neighbors = adj.get(current)
+    if (!neighbors) continue
+    for (const next of neighbors) {
+      if (next === toNodeId) {
+        return dist + 1
+      }
+      if (!visited.has(next)) {
+        visited.add(next)
+        queue.push([next, dist + 1])
       }
     }
   }
@@ -140,6 +151,111 @@ export interface TabRelation {
 
 export function isTeachDocTab(ref: TabRef): boolean {
   return ref.kind === 'teach' || (ref.kind as string) === 'doc'
+}
+
+/**
+ * 一次性计算基准节点与知识图谱中所有节点的拓扑关系距离。
+ * 使用正向和反向邻接表各执行一次单源 BFS，时间复杂度 O(V + E)，避免对 N 个页签重复进行 2*N 次全图遍历。
+ */
+export function buildDirectedDistanceMaps(
+  edges: readonly DependencyEdge[] | null | undefined,
+  baseNodeId: string | null | undefined,
+): { ancestorDistMap: Map<string, number>; descendantDistMap: Map<string, number> } {
+  const ancestorDistMap = new Map<string, number>()
+  const descendantDistMap = new Map<string, number>()
+
+  if (!baseNodeId || !edges || edges.length === 0) {
+    return { ancestorDistMap, descendantDistMap }
+  }
+
+  const forwardAdj = new Map<string, string[]>()
+  const reverseAdj = new Map<string, string[]>()
+  for (const edge of edges) {
+    let fList = forwardAdj.get(edge.from)
+    if (!fList) {
+      fList = []
+      forwardAdj.set(edge.from, fList)
+    }
+    fList.push(edge.to)
+
+    let rList = reverseAdj.get(edge.to)
+    if (!rList) {
+      rList = []
+      reverseAdj.set(edge.to, rList)
+    }
+    rList.push(edge.from)
+  }
+
+  // 1. 正向 BFS：从 baseNodeId 往下找子代（descendant）
+  const descQueue: Array<[string, number]> = [[baseNodeId, 0]]
+  const descVisited = new Set<string>([baseNodeId])
+  while (descQueue.length > 0) {
+    const [curr, d] = descQueue.shift()!
+    if (d > 0) descendantDistMap.set(curr, d)
+    const nexts = forwardAdj.get(curr)
+    if (nexts) {
+      for (const next of nexts) {
+        if (!descVisited.has(next)) {
+          descVisited.add(next)
+          descQueue.push([next, d + 1])
+        }
+      }
+    }
+  }
+
+  // 2. 反向 BFS：从 baseNodeId 往上找祖先（ancestor）
+  const ancQueue: Array<[string, number]> = [[baseNodeId, 0]]
+  const ancVisited = new Set<string>([baseNodeId])
+  while (ancQueue.length > 0) {
+    const [curr, d] = ancQueue.shift()!
+    if (d > 0) ancestorDistMap.set(curr, d)
+    const prevs = reverseAdj.get(curr)
+    if (prevs) {
+      for (const prev of prevs) {
+        if (!ancVisited.has(prev)) {
+          ancVisited.add(prev)
+          ancQueue.push([prev, d + 1])
+        }
+      }
+    }
+  }
+
+  return { ancestorDistMap, descendantDistMap }
+}
+
+export function computeTabRelationWithMaps(
+  targetTab: LearnTab,
+  baseTab: LearnTab | null,
+  ancestorDistMap: Map<string, number>,
+  descendantDistMap: Map<string, number>,
+): TabRelation {
+  if (!baseTab || targetTab.id === baseTab.id) return { kind: 'none', depth: 0 }
+
+  const bNodeId = tabNodeId(baseTab.ref)
+  const tNodeId = tabNodeId(targetTab.ref)
+  if (!bNodeId || !tNodeId) return { kind: 'none', depth: 0 }
+
+  // 同一节点的外围页签（如大纲、笔记、试卷记录、超级文档等）
+  if (tNodeId === bNodeId) {
+    return { kind: 'same-node', depth: 0 }
+  }
+
+  // 跨节点箭头与层级仅适用于教学文档（TabRef 中的 kind === 'teach'）
+  if (!isTeachDocTab(targetTab.ref)) {
+    return { kind: 'none', depth: 0 }
+  }
+
+  const ancDist = ancestorDistMap.get(tNodeId)
+  if (ancDist !== undefined && ancDist > 0) {
+    return { kind: 'parent', depth: Math.min(ancDist, 4) }
+  }
+
+  const descDist = descendantDistMap.get(tNodeId)
+  if (descDist !== undefined && descDist > 0) {
+    return { kind: 'child', depth: Math.min(descDist, 4) }
+  }
+
+  return { kind: 'none', depth: 0 }
 }
 
 export function computeTabRelation(
@@ -336,6 +452,25 @@ export default function TabBar({
     () => (activeId ? tabs.find((t) => t.id === activeId) ?? null : null),
     [activeId, tabs],
   )
+  const activeBaseNodeId = activeTab ? tabNodeId(activeTab.ref) : null
+  const edges = store?.edges
+
+  const { ancestorDistMap, descendantDistMap } = useMemo(() => {
+    return buildDirectedDistanceMaps(edges, activeBaseNodeId)
+  }, [edges, activeBaseNodeId])
+
+  const tabRelationMap = useMemo(() => {
+    const map = new Map<string, TabRelation>()
+    if (!activeTab) return map
+    for (const tab of tabs) {
+      map.set(
+        tab.id,
+        computeTabRelationWithMaps(tab, activeTab, ancestorDistMap, descendantDistMap),
+      )
+    }
+    return map
+  }, [tabs, activeTab, ancestorDistMap, descendantDistMap])
+  const activeTabTitle = activeTab ? titleOf(activeTab.ref) : ''
   const rootRef = useRef<HTMLDivElement | null>(null)
   const stripRef = useRef<HTMLDivElement | null>(null)
   /** 上边框上那颗棱形：它停在**当前页签**正上方，右键拖它就换页签 */
@@ -440,10 +575,11 @@ export default function TabBar({
     const er = el.getBoundingClientRect()
     const max = strip.scrollWidth - strip.clientWidth
     const target = strip.scrollLeft + (er.left + er.width / 2 - (sr.left + sr.width / 2))
-    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const clampedTarget = Math.max(0, Math.min(max, target))
+    if (Math.abs(strip.scrollLeft - clampedTarget) < 4) return
     strip.scrollTo({
-      left: Math.max(0, Math.min(max, target)),
-      behavior: still ? 'auto' : 'smooth',
+      left: clampedTarget,
+      behavior: 'auto',
     })
   }, [activeId])
 
@@ -866,8 +1002,8 @@ export default function TabBar({
           // 刚落下的在归位、其余在让位
           const offset = dragging && !lifted ? drag.dx : settling ? settle.offset : shift
 
-          // 计算当前 tab 与当前激活 tab 之间的知识图谱关联
-          const relation = computeTabRelation(tab, activeTab, store)
+          // O(1) 取出预先计算好的知识图谱关联，无需重复遍历图拓扑
+          const relation = tabRelationMap.get(tab.id) ?? { kind: 'none', depth: 0 }
           const relationCls =
             relation.kind === 'same-node'
               ? 'border-transparent bg-sky-500/[0.04] hover:bg-sky-500/[0.08] dark:bg-sky-400/[0.03] dark:hover:bg-sky-400/[0.06] text-ink-soft hover:text-ink '
@@ -879,31 +1015,23 @@ export default function TabBar({
 
           const relationTooltip =
             activeTab && relation.kind === 'parent'
-              ? t(
-                  relation.depth === 1
-                    ? '（父节点文档，属于「{0}」）'
-                    : relation.depth === 2
-                      ? '（祖父节点文档，属于「{0}」）'
-                      : relation.depth === 3
-                        ? '（曾祖节点文档，属于「{0}」）'
-                        : '（上位第 {0} 级节点文档，属于「{1}」）',
-                  relation.depth <= 3 ? titleOf(activeTab.ref) : relation.depth,
-                  titleOf(activeTab.ref),
-                )
+              ? relation.depth === 1
+                ? t('（父节点文档，属于「{0}」）', activeTabTitle)
+                : relation.depth === 2
+                  ? t('（祖父节点文档，属于「{0}」）', activeTabTitle)
+                  : relation.depth === 3
+                    ? t('（曾祖节点文档，属于「{0}」）', activeTabTitle)
+                    : t('（上位第 {0} 级节点文档，属于「{1}」）', relation.depth, activeTabTitle)
               : activeTab && relation.kind === 'child'
-                ? t(
-                    relation.depth === 1
-                      ? '（子节点文档，属于「{0}」）'
-                      : relation.depth === 2
-                        ? '（孙节点文档，属于「{0}」）'
-                        : relation.depth === 3
-                          ? '（曾孙节点文档，属于「{0}」）'
-                          : '（下位第 {0} 级节点文档，属于「{1}」）',
-                    relation.depth <= 3 ? titleOf(activeTab.ref) : relation.depth,
-                    titleOf(activeTab.ref),
-                  )
+                ? relation.depth === 1
+                  ? t('（子节点文档，属于「{0}」）', activeTabTitle)
+                  : relation.depth === 2
+                    ? t('（孙节点文档，属于「{0}」）', activeTabTitle)
+                    : relation.depth === 3
+                      ? t('（曾孙节点文档，属于「{0}」）', activeTabTitle)
+                      : t('（下位第 {0} 级节点文档，属于「{1}」）', relation.depth, activeTabTitle)
                 : activeTab && relation.kind === 'same-node'
-                  ? t('（同属节点「{0}」）', titleOf(activeTab.ref))
+                  ? t('（同属节点「{0}」）', activeTabTitle)
                   : ''
 
           /*
@@ -919,8 +1047,7 @@ export default function TabBar({
             (on ? 'moji-tab-flare z-10 font-medium ' : '') +
             (dragging || settling
               ? 'z-10 cursor-grabbing border-line-strong bg-card text-ink-strong shadow-md'
-              : 'transition-all duration-200 ' +
-                (relationCls ||
+              : (relationCls ||
                   (on
                     ? 'border-line-strong bg-card text-ink-strong'
                     : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink'))) +
@@ -1055,7 +1182,10 @@ export default function TabBar({
           )
         })}
         {!tabs.length && (
-          <span className="px-2 pb-1 text-[11.5px] text-ink-faint">{t('没有打开的文档')}</span>
+          <div className="flex items-center gap-1.5 px-3 pb-1 text-[11.5px] text-ink-faint select-none">
+            <BookOpen size={12} className="opacity-50" />
+            <span>{t('暂无打开的页签')}</span>
+          </div>
         )}
       </div>
 
@@ -1097,14 +1227,15 @@ export default function TabBar({
             menu={menu}
             label={menuLabel}
             tabs={tabs}
+            store={store}
             favorited={menuTab ? (favoriteOf?.(menuTab.ref) ?? false) : false}
             onToggleFavorite={() => {
               if (menuTab && onToggleFavorite) onToggleFavorite(menuTab)
               setMenu(null)
             }}
             onClose={() => setMenu(null)}
-            onPick={(mode) => {
-              onClose(menu.id, mode)
+            onPick={(mode, closingIds) => {
+              onClose(menu.id, mode, { closingIds })
               setMenu(null)
             }}
           />,
@@ -1182,19 +1313,11 @@ const ICON = 'flex w-[14px] shrink-0 items-center justify-center'
 const COUNT = 'ml-auto pl-3 text-[11px] tabular-nums text-ink-faint'
 
 /**
- * 页签右键菜单：收藏（或取消收藏）/ 关闭 / 关闭左侧 / 关闭右侧 / 关闭其他 / 全部关闭。
+ * 页签右键菜单：收藏（或取消收藏）/ 关闭 / 关闭其他 / 关闭无关联 / 关闭子级 / 关闭父级 / 关闭非文档 / 全部关闭。
  *
- * 排版只有一条规矩：**一枚图标 + 一个左对齐的标签**，图标对齐在同一列上。
- * 前一版把图标撒在文字的左右两侧（这边一个箭头、那边一个箭头、中间再夹一枚叉），
- * 每一行的对齐方式都不一样，整张菜单看着像四段不同的东西拼起来的。
- * 方向感交给图标本身，文字只负责说人话：
- * - ⇤ 朝左收进竖线 = 这一项左边的一起关；⇥ 朝右收进竖线 = 右边的；
- * - ⇹ 两枚箭头收向中间 = 左右两侧都关（留下这一项）；
- * - ⊗ 一枚叉装进八角框 = 连这一项一起，全都关（这一张菜单里最狠的一个，取印章红）。
- * 右侧那枚淡淡的数字是**会关掉几项**：这一眼比「关闭其他」四个字更能说明后果。
- *
- * 没有可关的那些项置灰：对着最左边那一项点「关闭左侧」，
- * 它本来就没事可做，做成可点的只会让人以为点漏了。
+ * 排版规矩：一枚图标 + 一个左对齐的标签，图标对齐在同一列上。
+ * 右侧那枚淡淡的数字是会关掉几项。
+ * 没有可关的那些项置灰。
  */
 function TabMenu({
   menu,
@@ -1204,6 +1327,7 @@ function TabMenu({
   onToggleFavorite,
   onClose,
   onPick,
+  store,
 }: {
   menu: { x: number; y: number; id: string }
   /** 这一项的名字（抬头那一行）：右键菜单先说清「是对着哪一个」 */
@@ -1213,14 +1337,56 @@ function TabMenu({
   favorited: boolean
   onToggleFavorite: () => void
   onClose: () => void
-  onPick: (mode: TabCloseMode) => void
+  onPick: (mode: TabCloseMode, closingIds?: string[]) => void
+  store?: LearnStore
 }) {
   const ref = useRef<HTMLDivElement | null>(null)
-  const idx = tabs.findIndex((tab) => tab.id === menu.id)
-  /** 三种「按位置关」各自会关掉几项：右侧那个淡数就是它（负数一律夹成 0） */
-  const leftCount = Math.max(0, idx)
-  const rightCount = idx < 0 ? 0 : Math.max(0, tabs.length - idx - 1)
   const otherCount = Math.max(0, tabs.length - 1)
+  const targetTab = useMemo(() => tabs.find((t) => t.id === menu.id) ?? null, [tabs, menu.id])
+  const targetBaseNodeId = targetTab ? tabNodeId(targetTab.ref) : null
+
+  const { ancestorDistMap, descendantDistMap } = useMemo(() => {
+    return buildDirectedDistanceMaps(store?.edges, targetBaseNodeId)
+  }, [store?.edges, targetBaseNodeId])
+
+  // 1. 关闭无关联：与 targetTab 无拓扑/同节点关联的其它页签
+  const unrelatedIds = useMemo(() => {
+    if (!targetTab) return []
+    return tabs
+      .filter((t) => {
+        if (t.id === targetTab.id) return false
+        const rel = computeTabRelationWithMaps(t, targetTab, ancestorDistMap, descendantDistMap)
+        return rel.kind === 'none'
+      })
+      .map((t) => t.id)
+  }, [tabs, targetTab, ancestorDistMap, descendantDistMap])
+
+  // 2. 关闭子级：拓扑上的下位知识点页签
+  const childrenIds = useMemo(() => {
+    if (!targetTab) return []
+    return tabs
+      .filter((t) => {
+        const rel = computeTabRelationWithMaps(t, targetTab, ancestorDistMap, descendantDistMap)
+        return rel.kind === 'child'
+      })
+      .map((t) => t.id)
+  }, [tabs, targetTab, ancestorDistMap, descendantDistMap])
+
+  // 3. 关闭父级：拓扑上的上位知识点页签
+  const parentsIds = useMemo(() => {
+    if (!targetTab) return []
+    return tabs
+      .filter((t) => {
+        const rel = computeTabRelationWithMaps(t, targetTab, ancestorDistMap, descendantDistMap)
+        return rel.kind === 'parent'
+      })
+      .map((t) => t.id)
+  }, [tabs, targetTab, ancestorDistMap, descendantDistMap])
+
+  // 4. 关闭非文档：不是 teach/note/super/local 的非纯文档类页签（web、系统设置等）
+  const nonDocIds = useMemo(() => {
+    return tabs.filter((t) => !isDocumentTab(t.ref)).map((t) => t.id)
+  }, [tabs])
 
   /*
    * 点别处 / 滚动 / Esc / 改窗口大小都收起，并把菜单夹进视口：这两条与资源管理器
@@ -1265,7 +1431,7 @@ function TabMenu({
 
       <span aria-hidden="true" className="my-1 block h-px bg-line" />
 
-      {/* 关闭这一项：一枚普通的叉，中性色——最常用、也最不「狠」的一个 */}
+      {/* 关闭这一项：一枚普通的叉，中性色 */}
       <button type="button" role="menuitem" onClick={() => onPick('self')} className={ROW}>
         <span className={ICON}>
           <X size={13} className="text-ink-soft" />
@@ -1273,37 +1439,7 @@ function TabMenu({
         {t(TAB_CLOSE_LABEL.self)}
       </button>
 
-      {/*
-        「按位置关」的三项：它们是同一类事，用一道分隔线单独成组，
-        与上面「只关这一项」和下面「全都关掉」都分开。
-      */}
-      <span aria-hidden="true" className="my-1 block h-px bg-line" />
-      <button
-        type="button"
-        role="menuitem"
-        disabled={leftCount === 0}
-        onClick={() => onPick('left')}
-        className={ROW}
-      >
-        <span className={ICON}>
-          <ArrowLeftToLine size={13} className="text-seal" />
-        </span>
-        {t(TAB_CLOSE_LABEL.left)}
-        <span className={COUNT}>{leftCount}</span>
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        disabled={rightCount === 0}
-        onClick={() => onPick('right')}
-        className={ROW}
-      >
-        <span className={ICON}>
-          <ArrowRightToLine size={13} className="text-seal" />
-        </span>
-        {t(TAB_CLOSE_LABEL.right)}
-        <span className={COUNT}>{rightCount}</span>
-      </button>
+      {/* 关闭其他 */}
       <button
         type="button"
         role="menuitem"
@@ -1318,11 +1454,62 @@ function TabMenu({
         <span className={COUNT}>{otherCount}</span>
       </button>
 
-      {/*
-        全部关闭：与上面那一组分开——它是这一张菜单里唯一「一个都不留」的动作。
-        图标是一枚叉装进八角框（OctagonX）：比普通的叉多一层「整个停掉」的意思，
-        文字与图标一并取印章红，与删除、危险动作同一套语言。
-      */}
+      {/* 关联与类型关闭操作组 */}
+      <span aria-hidden="true" className="my-1 block h-px bg-line" />
+      <button
+        type="button"
+        role="menuitem"
+        disabled={unrelatedIds.length === 0}
+        onClick={() => onPick('unrelated', unrelatedIds)}
+        className={ROW}
+      >
+        <span className={ICON}>
+          <Unlink size={13} className="text-seal" />
+        </span>
+        {t(TAB_CLOSE_LABEL.unrelated)}
+        <span className={COUNT}>{unrelatedIds.length}</span>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        disabled={childrenIds.length === 0}
+        onClick={() => onPick('children', childrenIds)}
+        className={ROW}
+      >
+        <span className={ICON}>
+          <CornerDownRight size={13} className="text-seal" />
+        </span>
+        {t(TAB_CLOSE_LABEL.children)}
+        <span className={COUNT}>{childrenIds.length}</span>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        disabled={parentsIds.length === 0}
+        onClick={() => onPick('parents', parentsIds)}
+        className={ROW}
+      >
+        <span className={ICON}>
+          <CornerLeftUp size={13} className="text-seal" />
+        </span>
+        {t(TAB_CLOSE_LABEL.parents)}
+        <span className={COUNT}>{parentsIds.length}</span>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        disabled={nonDocIds.length === 0}
+        onClick={() => onPick('nonDocs', nonDocIds)}
+        className={ROW}
+      >
+        <span className={ICON}>
+          <FileX size={13} className="text-seal" />
+        </span>
+        {t(TAB_CLOSE_LABEL.nonDocs)}
+        <span className={COUNT}>{nonDocIds.length}</span>
+      </button>
+
+      {/* 全部关闭 */}
       <span aria-hidden="true" className="my-1 block h-px bg-line" />
       <button
         type="button"

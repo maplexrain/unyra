@@ -513,7 +513,7 @@ export default function AgentPanel({
           */}
           <div
             aria-hidden="true"
-            className="pointer-events-none sticky top-0 z-[1] -mb-12 h-12 shrink-0"
+            className="agent-msg-fade-curtain pointer-events-none sticky top-0 z-[1] -mb-12 h-12 shrink-0"
             style={{
               background:
                 'linear-gradient(to bottom, color-mix(in srgb, var(--color-paper-deep) 40%, var(--color-paper)), transparent)',

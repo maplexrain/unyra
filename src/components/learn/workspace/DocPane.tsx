@@ -82,10 +82,8 @@ export const DocPane = memo(function DocPane({
 
   return (
     /*
-      隐藏用 hidden 属性 + **不给任何 className**：Tailwind 的 .flex/.hidden 都是普通工具类，
-      与 preflight 的 [hidden] 规则同优先级——隐藏的那一片若还带着 .flex，它就会照旧显示。
-      干脆不给类：UA 样式表的 [hidden] { display: none } 说了算，也不会白算一遍样式。
-      对外能认出来「哪一片在显示」靠 data-doc-pane + hidden 这两个属性（见 lib/docDom）。
+      隐藏用 hidden 属性（display:none）：它彻底移出排版树，不参与样式重算、排版与绘制。
+      拖动两栏分割线改宽度时，未激活的常驻正文完全不参与每帧的几何重排，保证拖拽 60fps 丝滑跟手。
     */
     <div
       data-doc-pane={active ? 'active' : 'idle'}

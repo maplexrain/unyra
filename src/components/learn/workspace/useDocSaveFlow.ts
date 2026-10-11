@@ -149,9 +149,9 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
    * 那时该看的是接管焦点的那一格显示什么，而不是一个已经不存在的组。
    */
   const applyClose = useCallback(
-    (group: string, id: string, mode: TabCloseMode) => {
+    (group: string, id: string, mode: TabCloseMode, closingIds?: string[]) => {
       const s = getLatest()
-      const docArea = closeIn(s.docArea, group, id, mode)
+      const docArea = closeIn(s.docArea, group, id, mode, closingIds)
       const landing = focusedGroup(docArea)
       const nextRef = landing.tabs.find((t) => t.id === landing.active)?.ref ?? null
       const nextNodeId = nextRef ? tabNodeId(nextRef) : null
@@ -177,11 +177,16 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
    * 照旧直接关，不打断流程。
    */
   const closeTab = useCallback(
-    (group: string, id: string, mode: TabCloseMode, opts?: { confirm?: boolean }) => {
+    (
+      group: string,
+      id: string,
+      mode: TabCloseMode,
+      opts?: { confirm?: boolean; closingIds?: string[] },
+    ) => {
       const s = getLatest()
       const g = groupOf(s.docArea, group)
       if (!g) return
-      const r = closeTabs(g.tabs, id, mode, g.active)
+      const r = closeTabs(g.tabs, id, mode, g.active, opts?.closingIds)
       const closingIds = g.tabs.filter((t) => !r.tabs.some((k) => k.id === t.id)).map((t) => t.id)
       const dirtyIds = closingIds.filter((tid) => s.drafts[tid] !== undefined)
       if (dirtyIds.length && opts?.confirm !== false) {
@@ -192,7 +197,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         setPendingClose({ group, id, mode, closingIds, dirtyIds, names })
         return
       }
-      applyClose(group, id, mode)
+      applyClose(group, id, mode, opts?.closingIds)
     },
     [examTabTitle, getLatest, applyClose],
   )
@@ -249,14 +254,15 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       if (text === undefined) return null
       // 网页页签没有编辑器，永远不该有暂存正文；真有这份草稿也没处可存
       if (tab.ref.kind === 'web') return null
-      // 守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置）同样没有编辑器，没有暂存这回事
+      // 守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置/新建目标）同样没有编辑器，没有暂存这回事
       if (
         tab.ref.kind === 'guard' ||
         tab.ref.kind === 'report' ||
         tab.ref.kind === 'settings' ||
         tab.ref.kind === 'usage' ||
         tab.ref.kind === 'mind' ||
-        tab.ref.kind === 'agentSettings'
+        tab.ref.kind === 'agentSettings' ||
+        tab.ref.kind === 'newGoal'
       )
         return null
       const title = tabTitle(tab.ref, (nid) => nodeById(s, nid)?.title, examTabTitle)
@@ -387,7 +393,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
           return
         }
       }
-      applyClose(group, id, mode)
+      applyClose(group, id, mode, closingIds)
     },
     [applyClose, getLatest, onToast, saveTab],
   )
@@ -420,7 +426,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         return next
       })
     }
-    applyClose(p.group, p.id, p.mode)
+    applyClose(p.group, p.id, p.mode, p.closingIds)
   }, [applyClose, getLatest, pendingClose, set])
 
   /** 冲突框：覆盖外部那一版照常保存；处于关闭流程时接着把剩下的关完 */

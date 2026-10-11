@@ -6,7 +6,7 @@
  * 选词菜单是浮在正文上的，但定位与开合都不在这里——它作为 overlay 插回原来那一层，
  * 免得把它挪出正文区之后 fixed 定位的夹取与滚动容器的关系变了。
  */
-import type { CSSProperties, ReactNode, RefObject } from 'react'
+import { memo, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import MarkdownView from '../../MarkdownView'
 import WaveBars from '../../WaveBars'
 import type { Annotation, DocKind } from '../../../learn/types'
@@ -43,8 +43,47 @@ interface Props {
   overlay?: ReactNode
 }
 
+function sameConceptKeys(a?: Set<string>, b?: Set<string>): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  if (a.size !== b.size) return false
+  for (const k of a) {
+    if (!b.has(k)) return false
+  }
+  return true
+}
+
+function sameAnnotations(a?: Annotation[], b?: Annotation[]): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]
+    const y = b[i]
+    if (x.term !== y.term || x.body !== y.body || x.kind !== y.kind || x.occurrence !== y.occurrence) {
+      return false
+    }
+  }
+  return true
+}
+
+function areDocBodyPropsEqual(prev: Props, next: Props): boolean {
+  if (prev.html !== next.html) return false
+  if (prev.content !== next.content) return false
+  if (prev.docScale !== next.docScale) return false
+  if (prev.pending !== next.pending) return false
+  if (prev.kind !== next.kind) return false
+  if (prev.wordCount !== next.wordCount) return false
+  if (prev.overlay !== next.overlay) return false
+  if (prev.resolveLocalImage !== next.resolveLocalImage) return false
+  if (prev.scrollRef !== next.scrollRef || prev.bodyRef !== next.bodyRef) return false
+  if (!sameAnnotations(prev.annotations, next.annotations)) return false
+  if (!sameConceptKeys(prev.knownConceptKeys, next.knownConceptKeys)) return false
+  return true
+}
+
 /** 正文区：从滚动容器到页脚那一行，整块都是它 */
-export function DocBody({
+export const DocBody = memo(function DocBody({
   scrollRef,
   bodyRef,
   docScale,
@@ -114,7 +153,7 @@ export function DocBody({
       </div>
     </div>
   )
-}
+}, areDocBodyPropsEqual)
 
 /**
  * 空的笔记文档。

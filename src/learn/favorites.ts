@@ -27,7 +27,7 @@ export function favoriteKey(ref: FavoriteRef): string {
 }
 
 /** 页签指向的东西的收藏身份；起始页（还没有网址）没有可收藏的东西，返回 null。
-    守卫上下文、报告与系统页（设置/用量/记忆/导师设置）同样不可收藏（它们不是「某个内容」） */
+    守卫上下文、报告与系统页（设置/用量/记忆/导师设置/新建目标）同样不可收藏（它们不是「某个内容」） */
 export function favoriteKeyOfTab(ref: TabRef): string | null {
   if (
     ref.kind === 'guard' ||
@@ -35,7 +35,8 @@ export function favoriteKeyOfTab(ref: TabRef): string | null {
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'mind' ||
-    ref.kind === 'agentSettings'
+    ref.kind === 'agentSettings' ||
+    ref.kind === 'newGoal'
   )
     return null
   if (ref.kind === 'web') return ref.url ? favoriteKey(ref) : null
@@ -51,7 +52,8 @@ export function favoriteRefOfTab(ref: TabRef): FavoriteRef | null {
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'mind' ||
-    ref.kind === 'agentSettings'
+    ref.kind === 'agentSettings' ||
+    ref.kind === 'newGoal'
   )
     return null
   return ref

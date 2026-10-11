@@ -206,7 +206,7 @@ export default function SplitRow({
         onPointerCancel={onAgentResizeUp}
         onDoubleClick={swapSides}
         className={
-          'no-print absolute inset-y-0 right-[var(--side-w)] z-[5] w-2 cursor-col-resize touch-none ' +
+          'no-print absolute inset-y-0 right-[var(--side-w)] z-[2] w-2 cursor-col-resize touch-none ' +
           // 文档栏占主位时整条挪到线的**右侧**（导师栏那一格里）：探进文档栏的那 4px
           // 正好压住它贴在分界线上的滚动条，鼠标按不住（用户报的）；骑线那种排布照旧
           (keepDocEdge ? 'translate-x-full ' : 'translate-x-1/2 ') +
@@ -253,7 +253,7 @@ export default function SplitRow({
          * 它整高透明、又没有交互，本来就不该参与命中测试。
          */
         className={
-          'no-print pointer-events-none absolute inset-y-0 z-10 items-center ' +
+          'no-print pointer-events-none absolute inset-y-0 z-[3] items-center ' +
           (agentAway ? 'hidden ' : 'hidden lg:flex ') +
           (resizingAgent ? 'transition-none' : 'transition-[right] duration-300 ease-out')
         }
