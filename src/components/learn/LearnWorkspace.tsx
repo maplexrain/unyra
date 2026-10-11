@@ -22,6 +22,7 @@
 
 import {
   Fragment,
+  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -167,7 +168,11 @@ import {
 } from '../../ai/settings'
 import { REASONING_LABEL, type ReasoningEffort } from '../../ai/types'
 import { useAgent } from '../../learn/useAgent'
-import ExplorerSidebar from './ExplorerSidebar'
+import ExplorerSidebar, {
+  type ExamActions,
+  type NodeDocActions,
+  type NodeStateActions,
+} from './ExplorerSidebar'
 import { focusAgentInput } from '../../lib/agentFocus'
 import { moveTabMark, resetTabMark } from '../../lib/tabMark'
 import { setChipOpener, type ChipPayload } from '../../lib/docChip'
@@ -540,7 +545,7 @@ export default function LearnWorkspace({
       )
     })
     return out
-  }, [tabs, store, examTabTitle])
+  }, [tabs, store.nodes, store.goals, examTabTitle])
 
   /**
    * 焦点格那一份文档的全部派生值（节点、正文、视图、标题、暂存…）。
@@ -1288,7 +1293,9 @@ export default function LearnWorkspace({
       const nodeId = tabNodeId(tab.ref)
       const base = nodeId ? retargetNode(s, nodeId) : s
       // activateIn 顺手把焦点挪到那一格：点别处的页签，接下来的动作（开文档、Ctrl+W）都该落在那一格
-      set({ ...base, docArea: activateIn(base.docArea, group, id) })
+      startTransition(() => {
+        set({ ...base, docArea: activateIn(base.docArea, group, id) })
+      })
       bumpBrowse()
     },
     [getLatest, retargetNode, set, bumpBrowse],
@@ -3472,6 +3479,68 @@ export default function LearnWorkspace({
     )
   }
 
+  const explorerDocs = useMemo<NodeDocActions>(
+    () => ({
+      onOpenTeach: (nodeId) => selectNode(nodeId),
+      onOpenOutline: (nodeId) => openTab({ kind: 'outline', nodeId }),
+      onNewNote: (nodeId) => createNodeNote(nodeId),
+      onNewExam: (nodeId) => newExam(nodeId),
+      onNewSuperDoc: (nodeId) => startSuperLab(nodeId),
+      onOpenNote: (nodeId, name) => openTab({ kind: 'note', nodeId, note: name }),
+      onRenameNote: (nodeId, from, to) => renameNodeNote(nodeId, from, to),
+      onDeleteNote: (nodeId, name) => setPendingNoteDelete({ nodeId, name }),
+      onOpenSuperDoc: (nodeId, name) => openTab({ kind: 'super', nodeId, name }),
+      onDeleteSuperDoc: (nodeId, name) => setPendingSuperDelete({ nodeId, name }),
+      onOpenAttempt: (nodeId, examId, attemptId) => openExamCopy(nodeId, examId, attemptId),
+      onReveal: (nodeId, what) => {
+        if (what.kind === 'note') void revealNoteFile(nodeId, what.note ?? '')
+        else if (what.kind === 'outline') void revealOutlineFile(nodeId)
+        else void revealNodeFile(nodeId)
+      },
+      onReplanOutline: (nodeId) => startOutline(nodeId),
+      onExport: (ref) => exportTab(ref),
+    }),
+    [selectNode, openTab, createNodeNote, newExam, startSuperLab, renameNodeNote, openExamCopy, startOutline, exportTab],
+  )
+
+  const explorerExams = useMemo<ExamActions>(
+    () => ({
+      onStart: (nodeId, examId) => {
+        if (exam.live && exam.live.examId !== examId) {
+          onToast(t('有一场考试正在进行，先把它考完或放弃'))
+          exam.reveal()
+          return
+        }
+        selectNode(nodeId)
+        exam.openExam(examId)
+      },
+      onGrade: (nodeId) => requestGrading(nodeId),
+      onDelete: (target) => {
+        setPendingExamDelete(target)
+        setExamDeleteStage(examAttempted(target) ? 'warn' : 'final')
+      },
+      liveExamId: exam.live?.examId ?? null,
+      grading,
+    }),
+    [exam, selectNode, onToast, requestGrading, grading],
+  )
+
+  const explorerState = useMemo<NodeStateActions>(
+    () => ({
+      structure: (nodeId) => nodeStructure(store, nodeId),
+      onSetSelf: (nodeId, self) => setSelfReport(nodeId, self),
+      onClearMistake: (nodeId, pattern) => clearMistake(nodeId, pattern),
+      onRecall: (nodeId) => startRecall(nodeId),
+      onProbe: (nodeId) => startProbe(nodeId),
+      busy:
+        !!agentView?.nodeId &&
+        !!agentView.conversationId &&
+        !!agent.runningByConversation[agentView.conversationId] &&
+        agentView.nodeId === activeNodeId,
+    }),
+    [store, setSelfReport, clearMistake, startRecall, startProbe, agentView, agent.runningByConversation, activeNodeId],
+  )
+
   return (
     <div className="print-flat flex h-full overflow-hidden">
       <ExplorerSidebar
@@ -3513,72 +3582,9 @@ export default function LearnWorkspace({
         onRenameFavoriteTitle={renameFavTitle}
         onCreateFavoriteGroup={createFavGroup}
         favoriteTitleOf={favoriteTitleOf}
-        /*
-         * 侧栏里那些文档行的动作。每一个都走与别处**同一个入口**：
-         * 新建交给同一套流程（笔记由 learn/notes 起名、试卷与超级文档交给导师的工作流），
-         * 打开走 openTab / openExamCopy，删除走同一批确认框——两条路各写一套，
-         * 迟早会出现「从侧栏开出来的页签」与从别处开出来的不是同一个东西。
-         */
-        docs={{
-          // 学习文档行（与节点绑定、置顶）的打开：与「切到这个节点」同一件事
-          onOpenTeach: (nodeId) => selectNode(nodeId),
-          // 大纲页（交互页，见 OutlineView）：右键菜单的「打开大纲」与大纲页里的入口都走它
-          onOpenOutline: (nodeId) => openTab({ kind: 'outline', nodeId }),
-          onNewNote: (nodeId) => createNodeNote(nodeId),
-          onNewExam: (nodeId) => newExam(nodeId),
-          onNewSuperDoc: (nodeId) => startSuperLab(nodeId),
-          onOpenNote: (nodeId, name) => openTab({ kind: 'note', nodeId, note: name }),
-          onRenameNote: (nodeId, from, to) => renameNodeNote(nodeId, from, to),
-          onDeleteNote: (nodeId, name) => setPendingNoteDelete({ nodeId, name }),
-          onOpenSuperDoc: (nodeId, name) => openTab({ kind: 'super', nodeId, name }),
-          onDeleteSuperDoc: (nodeId, name) => setPendingSuperDelete({ nodeId, name }),
-          onOpenAttempt: (nodeId, examId, attemptId) => openExamCopy(nodeId, examId, attemptId),
-          onReveal: (nodeId, what) => {
-            if (what.kind === 'note') void revealNoteFile(nodeId, what.note ?? '')
-            else if (what.kind === 'outline') void revealOutlineFile(nodeId)
-            else void revealNodeFile(nodeId)
-          },
-          // 让导师规划 / 重排这个目标的大纲（内置工作流「生成大纲」，大纲行右键菜单）
-          onReplanOutline: (nodeId) => startOutline(nodeId),
-          onExport: (ref) => exportTab(ref),
-        }}
-        /*
-         * 考试那一侧的动作。它们原先住在文档区右上角那块「试卷」tip 里（那颗按钮已经删掉）：
-         * **开考只有用户能做**（导师没有开考试窗口的 api），所以这些入口必须有个新家。
-         */
-        exams={{
-          onStart: (nodeId, examId) => {
-            if (exam.live && exam.live.examId !== examId) {
-              onToast(t('有一场考试正在进行，先把它考完或放弃'))
-              exam.reveal()
-              return
-            }
-            // 开考要认准是哪个节点的卷子：主窗口这边只负责落盘与遮罩，见 useExamBridge
-            selectNode(nodeId)
-            exam.openExam(examId)
-          },
-          onGrade: (nodeId) => requestGrading(nodeId),
-          onDelete: (target) => {
-            setPendingExamDelete(target)
-            setExamDeleteStage(examAttempted(target) ? 'warn' : 'final')
-          },
-          liveExamId: exam.live?.examId ?? null,
-          grading,
-        }}
-        /* 学习状态那块 tip：节点右键菜单里悬停展开，内容与原先那颗按钮上的完全一样 */
-        state={{
-          structure: (nodeId) => nodeStructure(store, nodeId),
-          onSetSelf: (nodeId, self) => setSelfReport(nodeId, self),
-          onClearMistake: (nodeId, pattern) => clearMistake(nodeId, pattern),
-          onRecall: (nodeId) => startRecall(nodeId),
-          onProbe: (nodeId) => startProbe(nodeId),
-          // 忙态按节点算：正在跑的导师冲着这个节点才标忙（页签化之后「在跑」不再全局）
-          busy:
-            !!agentView?.nodeId &&
-            !!agentView.conversationId &&
-            !!agent.runningByConversation[agentView.conversationId] &&
-            agentView.nodeId === activeNodeId,
-        }}
+        docs={explorerDocs}
+        exams={explorerExams}
+        state={explorerState}
       />
 
       <div className="print-flat flex min-w-0 flex-1 flex-col">

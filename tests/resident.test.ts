@@ -16,9 +16,9 @@ describe('markActive（最近激活过的页签）', () => {
   })
 
   it('超出上限的丢掉（上限是内存的闸门）', () => {
-    const many = ['a', 'b', 'c', 'd', 'e']
-    expect(markActive(many, 'f')).toEqual(['f', 'a', 'b', 'c'])
-    expect(markActive(many, 'f').length).toBe(RESIDENT_MAX)
+    const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i']
+    expect(markActive(many, 'z')).toEqual(['z', 'a', 'b', 'c', 'd', 'e', 'f', 'g'])
+    expect(markActive(many, 'z').length).toBe(RESIDENT_MAX)
   })
 
   it('上限为 0 就什么都不记（关掉这个特性的开关）', () => {
@@ -42,7 +42,9 @@ describe('residentIds（这一轮常驻哪几片）', () => {
   })
 
   it('名额用完就不再往下拿', () => {
-    expect(residentIds(open, ['t1'], ['t1', 't2', 't3', 't4', 't5'])).toEqual(['t1', 't2', 't3', 't4'])
+    const manyOpen = ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9', 't10']
+    const manyRecent = ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9']
+    expect(residentIds(manyOpen, ['t1'], manyRecent).length).toBe(RESIDENT_MAX)
     expect(residentIds(open, ['t1'], ['t1', 't2', 't3', 't4', 't5'], 2)).toEqual(['t1', 't2'])
   })
 

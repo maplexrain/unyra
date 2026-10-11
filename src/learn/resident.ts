@@ -20,8 +20,8 @@
 
 import { useSyncExternalStore } from 'react'
 
-/** 常驻几片。四片够覆盖「一边看文档一边对着另一个节点问」这类来回切，再多就是白占内存 */
-export const RESIDENT_MAX = 4
+/** 常驻几片。默认提升至 8 片，充分覆盖多文档对照与来回切换，避免 5 个页签以上频繁反复销毁与重建 DOM */
+export const RESIDENT_MAX = 8
 
 /** 记一次激活：最新的排最前，去重，超出上限的丢掉 */
 export function markActive(recent: readonly string[], id: string, cap: number = RESIDENT_MAX): string[] {

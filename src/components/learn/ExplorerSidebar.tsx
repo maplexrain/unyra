@@ -6,7 +6,7 @@
  * explorer/useSidebarWidth 管；「当前页签 → 树里那一行」的定位在 explorer/reveal，
  * 外壳只负责发令（算出目标、展开、广播、滚动）。
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, memo } from 'react'
 import type { FavoriteRef, KnowledgeNode, LearnStore, TabRef } from '../../learn/types'
 import { nodeById } from '../../learn/graph'
 import { EXPLORER_WIDTH_MAX, EXPLORER_WIDTH_MIN } from '../../lib/appearance'
@@ -105,7 +105,7 @@ interface Props {
   state: NodeStateActions
 }
 
-export default function ExplorerSidebar({
+function ExplorerSidebarComponent({
   store,
   activeNodeId,
   activeTab,
@@ -380,3 +380,5 @@ export default function ExplorerSidebar({
     </>
   )
 }
+
+export default memo(ExplorerSidebarComponent)

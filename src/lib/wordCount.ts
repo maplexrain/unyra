@@ -32,9 +32,16 @@ const BLOCK_CLEANERS = [
   /<div class="moji-run-(?:menu|out)"[\s\S]*?<\/div>/gi,
 ]
 
+const htmlWordCountCache = new Map<string, number>()
+const HTML_WORD_CACHE_MAX = 64
+
 /** 从渲染后的 HTML 字符串中提取可视文字字符数 */
 export function countVisibleWordsFromHtml(html: string): number {
   if (!html || typeof html !== 'string') return 0
+  const cached = htmlWordCountCache.get(html)
+  if (cached !== undefined) return cached
+
+  let count = 0
   if (typeof DOMParser !== 'undefined') {
     try {
       const doc = new DOMParser().parseFromString(html, 'text/html')
@@ -42,33 +49,46 @@ export function countVisibleWordsFromHtml(html: string): number {
         doc.querySelectorAll(sel).forEach((el) => el.remove())
       }
       const text = doc.body.textContent || ''
-      return text.replace(/\s/g, '').length
+      count = text.replace(/\s/g, '').length
     } catch {
       // 降级到正则清洗
     }
   }
-  // 降级正则清洗
-  let cleaned = html
-  for (const re of BLOCK_CLEANERS) {
-    cleaned = cleaned.replace(re, '')
+
+  if (count === 0 && html.trim()) {
+    // 降级正则清洗
+    let cleaned = html
+    for (const re of BLOCK_CLEANERS) {
+      cleaned = cleaned.replace(re, '')
+    }
+    cleaned = cleaned.replace(/<[^>]+>/g, '')
+    count = cleaned.replace(/\s/g, '').length
   }
-  cleaned = cleaned.replace(/<[^>]+>/g, '')
-  return cleaned.replace(/\s/g, '').length
+
+  if (htmlWordCountCache.size >= HTML_WORD_CACHE_MAX) {
+    const oldest = htmlWordCountCache.keys().next().value
+    if (oldest) htmlWordCountCache.delete(oldest)
+  }
+  htmlWordCountCache.set(html, count)
+  return count
 }
 
 /** 从渲染容器 DOM 节点中提取实际可视文字字符数 */
 export function countVisibleWords(container: HTMLElement | null, fallbackHtml?: string): number {
+  if (fallbackHtml) {
+    return countVisibleWordsFromHtml(fallbackHtml)
+  }
   if (!container || typeof document === 'undefined') {
-    return fallbackHtml ? countVisibleWordsFromHtml(fallbackHtml) : 0
+    return 0
   }
   try {
     const clone = container.cloneNode(true) as HTMLElement
     for (const sel of EXCLUDE_SELECTORS) {
       clone.querySelectorAll(sel).forEach((el) => el.remove())
     }
-    const text = clone.innerText || clone.textContent || ''
+    const text = clone.textContent || ''
     return text.replace(/\s/g, '').length
   } catch {
-    return fallbackHtml ? countVisibleWordsFromHtml(fallbackHtml) : 0
+    return 0
   }
 }

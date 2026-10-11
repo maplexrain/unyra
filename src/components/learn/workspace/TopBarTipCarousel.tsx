@@ -6,11 +6,11 @@ import { t } from '../../../i18n'
 const TIPS: Array<{ key: string; text: string }> = [
   {
     key: 'swap-pane',
-    text: '双击顶栏空白处可快速将文档与导师对话栏对调位置',
+    text: '双击文档与导师栏中间的分隔线，可快速对调左右两侧位置',
   },
   {
     key: 'zen-mode',
-    text: '按 F11 或点击右上角纯净阅读，沉浸无干扰阅读正文',
+    text: '按 F11、点击右上角或双击文档空白处，即可快速进入纯净阅读',
   },
   {
     key: 'zoom-font',
@@ -18,7 +18,19 @@ const TIPS: Array<{ key: string; text: string }> = [
   },
   {
     key: 'select-text',
-    text: '划选文档文字可「学习」、「了解」、「注解」或「询问」',
+    text: '划选文档文字后，可按 1~4 快捷选择「学习」、「了解」、「注解」或「询问」',
+  },
+  {
+    key: 'agent-toggle',
+    text: '按 Ctrl + Q 可一键收起或展开导师对话栏，光标自动聚焦输入框',
+  },
+  {
+    key: 'doc-export',
+    text: '按 Ctrl + E 可将当前文档一键导出为 Markdown、HTML 网页或 PDF',
+  },
+  {
+    key: 'doc-search',
+    text: '按 Ctrl + F 快速在文档内搜索关键词，源码模式下按 Ctrl + H 支持文本替换',
   },
   {
     key: 'custom-bg',
@@ -26,11 +38,23 @@ const TIPS: Array<{ key: string; text: string }> = [
   },
   {
     key: 'outline-nav',
-    text: '点击文档区右上角「大纲」按钮可快速跳转小节',
+    text: '点击文档区右上角「大纲」按钮可快速跳转小节，支持思维导图视图',
   },
   {
     key: 'code-compile',
-    text: '代码块右上角可一键复制代码或交给超级导师编译',
+    text: '代码块右上角可复制代码、交由导师编译，并支持在沙箱中直接运行调试',
+  },
+  {
+    key: 'tab-wheel',
+    text: '鼠标悬停在页签栏上时，滑动滚轮可横向平滑滚动标签页',
+  },
+  {
+    key: 'tab-context',
+    text: '右键点击页签可执行批量管理：关闭无关联、关闭子级或关闭非文档',
+  },
+  {
+    key: 'web-browser',
+    text: '按 Ctrl + L 可在当前分栏快速开启内置网页浏览器标签页',
   },
   {
     key: 'pomodoro',

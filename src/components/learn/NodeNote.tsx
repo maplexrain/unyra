@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AnnotationStyle, DocKind, KnowledgeNode } from '../../learn/types'
 import type { LocalImageResolver } from '../../lib/docImages'
 import { canAnnotate } from '../../lib/annotation'
@@ -257,7 +257,7 @@ export default function NodeNote({
 
   // 预览模式只统计实际渲染呈现给用户的可视文字（过滤 Markdown/HTML/LaTeX 语法符号）
   const [wordCount, setWordCount] = useState(() => countVisibleWordsFromHtml(html))
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (bodyRef.current) {
       setWordCount(countVisibleWords(bodyRef.current, html))
     }

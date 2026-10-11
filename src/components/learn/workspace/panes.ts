@@ -146,7 +146,21 @@ export function paneOf(store: LearnStore, tab: LearnTab): { node: KnowledgeNode;
   return source ? { node, source } : null
 }
 
+const conceptKeysCache = new WeakMap<KnowledgeNode[], Map<string, Set<string>>>()
+
 /** 同一目标下已存在的节点 key：正文里的学习链接据此分「已创建 / 未创建」 */
 export function conceptKeysOf(store: LearnStore, node: KnowledgeNode): Set<string> {
-  return new Set(store.nodes.filter((n) => n.goalId === node.goalId).map((n) => n.key))
+  const nodes = store.nodes
+  let goalMap = conceptKeysCache.get(nodes)
+  if (!goalMap) {
+    goalMap = new Map<string, Set<string>>()
+    conceptKeysCache.set(nodes, goalMap)
+  }
+  let cached = goalMap.get(node.goalId)
+  if (!cached) {
+    cached = new Set(nodes.filter((n) => n.goalId === node.goalId).map((n) => n.key))
+    goalMap.set(node.goalId, cached)
+  }
+  return cached
 }
+

@@ -3,7 +3,7 @@
  * 它的下级节点递归，以及直接挂在节点目录下的文档（笔记 / 试卷 / 超级文档平铺，无文档时不渲染）、
  * 工作区目录，与「哪一份试卷展开着历次考试」这个状态。
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import { ChevronRight, ListTree, Loader2 } from 'lucide-react'
 import type { KnowledgeNode, LearnStore, TabRef } from '../../../learn/types'
 import { superDocsOf } from '../../../learn/types'
@@ -19,15 +19,53 @@ import { chipJson, type ChipPayload } from '../../../lib/chipSyntax'
 import { nodeDocPath } from '../../../learn/files'
 import { t } from '../../../i18n'
 
-/**
- * 知识树里的一行：**节点标题链接 + 大纲按钮 + 下级节点 + 这个节点自己的其他文档与工作区**。
- *
- * 教学文档作为节点的本体，直接通过节点文字的链接样式呈现，点击文字即可打开；
- * 大纲作为节点路线图，以节点行右对齐的图标按钮呈现，点击打开大纲；
- * 点击节点行非文字区域则展开 / 折叠下级节点与文档内容。
- * 节点的笔记、试卷、超级文档直接平铺在节点展开项下，无文档时不渲染多余的空目录。
- */
-export function NodeRow({
+interface NodeRowProps {
+  node: KnowledgeNode
+  store: LearnStore
+  isOpen: (id: string) => boolean
+  onToggle: (id: string) => void
+  activeNodeId: string | null
+  activeTab: TabRef | null
+  busyNodeId: string | null
+  onSelectNode: (id: string) => void
+  onOpenMenu: (x: number, y: number, target: MenuTarget) => void
+  docs: NodeDocActions
+  exams: ExamActions
+  renamingNote: string | null
+  onEndRename: () => void
+  onOpenWs: (rel: string) => void
+  ws: WsActions
+}
+
+function areNodeRowPropsEqual(prev: NodeRowProps, next: NodeRowProps): boolean {
+  if (prev.node !== next.node) return false
+  if (prev.renamingNote !== next.renamingNote) return false
+  if (prev.ws !== next.ws || prev.docs !== next.docs || prev.exams !== next.exams) return false
+  if (prev.onToggle !== next.onToggle || prev.onSelectNode !== next.onSelectNode || prev.onOpenMenu !== next.onOpenMenu) return false
+
+  const nodeId = next.node.id
+  const wasActive = prev.activeNodeId === nodeId
+  const isActive = next.activeNodeId === nodeId
+  if (wasActive !== isActive) return false
+
+  const wasBusy = prev.busyNodeId === nodeId
+  const isBusy = next.busyNodeId === nodeId
+  if (wasBusy !== isBusy) return false
+
+  if (prev.isOpen(nodeId) !== next.isOpen(nodeId)) return false
+
+  const prevTabRelates = prev.activeTab && 'nodeId' in prev.activeTab && prev.activeTab.nodeId === nodeId
+  const nextTabRelates = next.activeTab && 'nodeId' in next.activeTab && next.activeTab.nodeId === nodeId
+  if (prevTabRelates || nextTabRelates) {
+    if (prev.activeTab !== next.activeTab) return false
+  }
+
+  if (prev.store.edges !== next.store.edges) return false
+
+  return true
+}
+
+function NodeRowComponent({
   node,
   store,
   isOpen,
@@ -43,28 +81,7 @@ export function NodeRow({
   onEndRename,
   onOpenWs,
   ws,
-}: {
-  node: KnowledgeNode
-  store: LearnStore
-  isOpen: (id: string) => boolean
-  onToggle: (id: string) => void
-  activeNodeId: string | null
-  /** 焦点格正在显示的那份文档：树里的文档行据此亮起来（与节点行同一套选中样式） */
-  activeTab: TabRef | null
-  busyNodeId: string | null
-  onSelectNode: (id: string) => void
-  onOpenMenu: (x: number, y: number, target: MenuTarget) => void
-  docs: NodeDocActions
-  exams: ExamActions
-  /** 正在就地改名的那份笔记名（改名请求来自右键菜单，所以状态由侧栏统一持有） */
-  renamingNote: string | null
-  /** 改名结束（提交或取消都走它）：清掉侧栏那一层的状态 */
-  onEndRename: () => void
-  /** 工作区文件在页签里打开（解析不解析看后缀，见 LearnWorkspace 的 openWsFile） */
-  onOpenWs: (rel: string) => void
-  /** 工作区的新建与改名（真实文件 / 目录，IO 在宿主那一头，见 WsActions） */
-  ws: WsActions
-}) {
+}: NodeRowProps) {
   const open = isOpen(node.id)
   const children = prereqIds(store, node.id)
     .map((id) => nodeById(store, id))
@@ -340,4 +357,6 @@ export function NodeRow({
     </div>
   )
 }
+
+export const NodeRow = memo(NodeRowComponent, areNodeRowPropsEqual)
 

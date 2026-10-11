@@ -270,14 +270,16 @@ export default function SystemAudioWave() {
         ctx.fillStyle = seal
         ctx.fillRect(bx, baseY + 1, barW, rh)
       }
-      ctx.restore()
-
       ctx.globalAlpha = 1
+      lastAudioActive = realAudioPlaying
     }
+
+    let lastAudioActive = false
 
     const step = (now: number): void => {
       frames++
-      if (!reduce || frames % 8 === 0) draw(now)
+      const shouldDraw = lastAudioActive ? (!reduce || frames % 4 === 0) : frames % 2 === 0
+      if (shouldDraw) draw(now)
       if (frames % COLOR_REFRESH_FRAMES === 0) readColors()
       raf = window.requestAnimationFrame(step)
     }

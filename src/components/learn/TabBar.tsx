@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BookOpen, CornerDownRight, CornerLeftUp, FileX, FoldHorizontal, Globe, OctagonX, Star, Unlink, X } from 'lucide-react'
 import { DocTypeIcon, WebTabTypeIcon } from './docTypes'
@@ -157,16 +157,30 @@ export function isTeachDocTab(ref: TabRef): boolean {
  * 一次性计算基准节点与知识图谱中所有节点的拓扑关系距离。
  * 使用正向和反向邻接表各执行一次单源 BFS，时间复杂度 O(V + E)，避免对 N 个页签重复进行 2*N 次全图遍历。
  */
+const distanceMapsCache = new WeakMap<
+  readonly DependencyEdge[],
+  Map<string, { ancestorDistMap: Map<string, number>; descendantDistMap: Map<string, number> }>
+>()
+
 export function buildDirectedDistanceMaps(
   edges: readonly DependencyEdge[] | null | undefined,
   baseNodeId: string | null | undefined,
 ): { ancestorDistMap: Map<string, number>; descendantDistMap: Map<string, number> } {
+  const empty = { ancestorDistMap: new Map<string, number>(), descendantDistMap: new Map<string, number>() }
+  if (!baseNodeId || !edges || edges.length === 0) {
+    return empty
+  }
+
+  let nodeCache = distanceMapsCache.get(edges)
+  if (!nodeCache) {
+    nodeCache = new Map()
+    distanceMapsCache.set(edges, nodeCache)
+  }
+  const cached = nodeCache.get(baseNodeId)
+  if (cached) return cached
+
   const ancestorDistMap = new Map<string, number>()
   const descendantDistMap = new Map<string, number>()
-
-  if (!baseNodeId || !edges || edges.length === 0) {
-    return { ancestorDistMap, descendantDistMap }
-  }
 
   const forwardAdj = new Map<string, string[]>()
   const reverseAdj = new Map<string, string[]>()
@@ -220,7 +234,9 @@ export function buildDirectedDistanceMaps(
     }
   }
 
-  return { ancestorDistMap, descendantDistMap }
+  const result = { ancestorDistMap, descendantDistMap }
+  nodeCache.set(baseNodeId, result)
+  return result
 }
 
 export function computeTabRelationWithMaps(
@@ -571,10 +587,8 @@ export default function TabBar({
       (n) => n.dataset.tab === activeId,
     )
     if (!el) return
-    const sr = strip.getBoundingClientRect()
-    const er = el.getBoundingClientRect()
     const max = strip.scrollWidth - strip.clientWidth
-    const target = strip.scrollLeft + (er.left + er.width / 2 - (sr.left + sr.width / 2))
+    const target = el.offsetLeft - (strip.clientWidth - el.offsetWidth) / 2
     const clampedTarget = Math.max(0, Math.min(max, target))
     if (Math.abs(strip.scrollLeft - clampedTarget) < 4) return
     strip.scrollTo({
@@ -801,19 +815,19 @@ export default function TabBar({
    */
   const measureMark = useCallback(() => {
     const root = rootRef.current
-    const el = stripRef.current?.querySelector<HTMLElement>('[data-tab="' + activeId + '"]')
-    if (!root || !el) return
-    const rr = root.getBoundingClientRect()
-    const tr = el.getBoundingClientRect()
-    if (markRef.current) markRef.current.style.left = tr.left - rr.left + tr.width / 2 + 'px'
+    const strip = stripRef.current
+    const el = strip?.querySelector<HTMLElement>('[data-tab="' + activeId + '"]')
+    if (!root || !strip || !el) return
+    const left = strip.offsetLeft + el.offsetLeft - strip.scrollLeft + el.offsetWidth / 2
+    if (markRef.current) markRef.current.style.left = left + 'px'
   }, [activeId])
 
-  // 换页签、增删页签、拖完排序之后都要重量一次（页签的宽度与位置都会变）。
-  // 拖动会话进行中不重量：激活页签在拖动里会一路跟着指针换，一换就把棱形吸回
-  // 新页签正上方，「相对距离」就断了——松手时 endMarkSession 会把它摆回去。
-  useLayoutEffect(() => {
+  // 换页签、增删页签、拖完排序之后都要重量一次。
+  // 通过 requestAnimationFrame 调度，避免在 React 提交 DOM 后同步读取几何属性引发 110ms 强制全树重排（Layout Thrashing）
+  useEffect(() => {
     if (markSession.current) return
-    measureMark()
+    const raf = requestAnimationFrame(measureMark)
+    return () => cancelAnimationFrame(raf)
   }, [measureMark, tabs.length, drag, settle])
 
   /** 右键按下：只记位置，等它动起来（见 markDrag 的说明） */
