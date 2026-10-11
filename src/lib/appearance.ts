@@ -64,16 +64,16 @@ export interface Appearance {
    * 窄屏下不生效：那时两栏上下叠放，各自整宽。
    *
    * 注意它量的是「位置」而不是「哪一栏」：宽度属于右格，不属于 AI 对话栏——
-   * 默认对话在左（见 agentLeft），于是这一格装的是文档，而宽度仍是这个数。
+   * 默认文档在左（主位，见 agentLeft），于是这一格装的是对话栏，而宽度仍是这个数。
    */
   agentWidth: number
   /**
-   * AI 对话栏是否放在左边。**默认 true**：导师在左、文档在右；
+   * AI 对话栏是否放在左边。**默认 false**：文档在左（主位）、导师在右；
    * 双击两栏中间那条线换个位置（见 LearnWorkspace 的 swapSides）。
    *
    * 与 agentWidth 同理：换的是位置，不是宽度。左格始终自适应（拿走剩下的宽度），
-   * 右格始终是 agentWidth 那么宽，于是默认这一版里对话栏占左边那一大块，
-   * 文档落进右边那条窄的——这正是「原位置的宽度不跟着对调」的意思。
+   * 右格始终是 agentWidth 那么宽，于是默认文档占主位那一大块，
+   * 对话落进右边那条可收起的侧栏——这正是「原位置的宽度不跟着对调」的意思。
    */
   agentLeft: boolean
   /**
@@ -101,6 +101,16 @@ export interface Appearance {
   chatScale: number
   /** 全局图片背景与幻灯片设置 */
   customBg?: CustomBackgroundConfig
+  /** 全局字体族（空为跟随系统默认） */
+  fontFamily?: string
+  /** 是否开启文字描边 */
+  textStrokeEnabled?: boolean
+  /** 文字描边颜色（十六进制颜色值） */
+  textStrokeColor?: string
+  /** 文字描边厚度（px，范围 0.0 - 1.0） */
+  textStrokeWidth?: number
+  /** 是否在顶栏居中显示实用小技巧轮播 */
+  showTips?: boolean
 }
 
 /** 全部主题取值，顺序即设置页的展示顺序：跟随系统、基础两套、浅色扩展、深色扩展 */
@@ -176,8 +186,8 @@ export const SCALE_HUD_MS = 1300
 /**
  * 右栏宽度范围：再窄放不下工具卡片与代码块，页签栏一排页签也挤成一团（下限 500，
  * 用户钉死的值）；上限给到 800——宽屏下对话与文档各占一半也放得下。
- * 默认 600：默认布局是「对话在左、文档在右」（见 agentLeft），于是这 600px 量的是文档栏——
- * 读文档的那一栏不该比这更窄。对话栏拿走剩下的宽度（宽屏下绰绰有余），
+ * 默认 600：默认布局是「文档在左（主位）、对话在右」（见 agentLeft），于是这 600px 量的是右侧对话栏——
+ * 对话栏不该比这更窄。主位文档栏拿走剩下的宽度（宽屏下绰绰有余），
  * 因此它到底多宽由窗口决定，消息定位条显不显示也看那个实际宽度（见 AgentPanel 的 RAIL_MIN_WIDTH）。
  */
 export const AGENT_WIDTH_MIN = 500
@@ -205,19 +215,26 @@ export function clampAgentWidth(v: number): number {
   return Math.round(Math.min(AGENT_WIDTH_MAX, Math.max(AGENT_WIDTH_MIN, v)))
 }
 
-const DEFAULT: Appearance = {
+export const DEFAULT_APPEARANCE: Appearance = {
   theme: 'system',
   docScale: 1,
   agentWidth: AGENT_WIDTH_DEFAULT,
   explorerWidth: EXPLORER_WIDTH_DEFAULT,
-  // 默认对话在左、文档在右（见 agentLeft 的说明）
-  agentLeft: true,
+  // 默认文档在左（主位）、对话在右（见 agentLeft 的说明）
+  agentLeft: false,
   // 默认两栏都展开：收起是「这一会儿想多看点正文」时的手动动作
   sideCollapsed: false,
   teachingMode: false,
   chatScale: 1,
   customBg: DEFAULT_CUSTOM_BACKGROUND,
+  fontFamily: '',
+  textStrokeEnabled: false,
+  textStrokeColor: '#1f1b17',
+  textStrokeWidth: 1.0,
+  showTips: true,
 }
+
+const DEFAULT = DEFAULT_APPEARANCE
 
 /**
  * 夹到范围内，并取整到 0.1%。
@@ -242,7 +259,7 @@ export function clampChatScale(v: number): number {
   return clampScale(v, DEFAULT.chatScale)
 }
 
-function normalize(raw: unknown): Appearance {
+export function normalizeAppearance(raw: unknown): Appearance {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT }
   const r = raw as Record<string, unknown>
   return {
@@ -253,16 +270,26 @@ function normalize(raw: unknown): Appearance {
     explorerWidth: clampExplorerWidth(
       typeof r.explorerWidth === 'number' ? r.explorerWidth : DEFAULT.explorerWidth,
     ),
-    // 老设置文件里没有这一项，缺省按默认的 true 走；明确存过 false 的仍然留在右边
-    agentLeft: r.agentLeft !== false,
+    // 默认文档在主位（false）；明确存过 true 的才把对话放主位
+    agentLeft: r.agentLeft === true,
     // 同一条纪律：老设置文件里没有就按「展开」走
     sideCollapsed: r.sideCollapsed === true,
     // 教学模式默认关：它是录屏时才需要的东西，平时留着只挡画面
     teachingMode: r.teachingMode === true,
     chatScale: clampChatScale(typeof r.chatScale === 'number' ? r.chatScale : DEFAULT.chatScale),
     customBg: normalizeCustomBackground(r.customBg),
+    fontFamily: typeof r.fontFamily === 'string' ? r.fontFamily : DEFAULT.fontFamily,
+    textStrokeEnabled: r.textStrokeEnabled === true,
+    textStrokeColor: typeof r.textStrokeColor === 'string' ? r.textStrokeColor : DEFAULT.textStrokeColor,
+    textStrokeWidth:
+      typeof r.textStrokeWidth === 'number' && Number.isFinite(r.textStrokeWidth)
+        ? Math.round(Math.min(1.0, Math.max(0.0, r.textStrokeWidth)) * 100) / 100
+        : DEFAULT.textStrokeWidth,
+    showTips: r.showTips !== false,
   }
 }
+
+const normalize = normalizeAppearance
 
 let current: Appearance = { ...DEFAULT }
 let media: MediaQueryList | null = null
@@ -289,6 +316,27 @@ function paint(): void {
   } else {
     delete document.documentElement.dataset.hasCustomBg
     document.documentElement.style.removeProperty('--ui-opacity')
+  }
+
+  // 全局字体
+  if (current.fontFamily && current.fontFamily.trim()) {
+    document.documentElement.style.setProperty('--font-sans', current.fontFamily)
+    document.body.style.fontFamily = current.fontFamily
+  } else {
+    document.documentElement.style.removeProperty('--font-sans')
+    document.body.style.removeProperty('font-family')
+  }
+
+  // 文字描边
+  if (current.textStrokeEnabled) {
+    document.documentElement.dataset.hasTextStroke = 'true'
+    document.documentElement.style.setProperty('--text-stroke-color', current.textStrokeColor || '#1f1b17')
+    const strokeWidth = typeof current.textStrokeWidth === 'number' ? current.textStrokeWidth : 1.0
+    document.documentElement.style.setProperty('--text-stroke-width', `${strokeWidth}px`)
+  } else {
+    delete document.documentElement.dataset.hasTextStroke
+    document.documentElement.style.removeProperty('--text-stroke-color')
+    document.documentElement.style.removeProperty('--text-stroke-width')
   }
 
   /*

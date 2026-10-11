@@ -67,10 +67,27 @@ type Page = { view: 'list' } | { view: 'config'; providerId: string }
 export default function SettingsPanel({ onRootChanged, onToast }: Props) {
   const initial = loadAiSettings()
   const [tab, setTab] = useState<TabKey>(loadSavedTab)
+  const [activeSubTab, setActiveSubTab] = useState<string>('theme')
+  const [highlightSubTab, setHighlightSubTab] = useState<{ key: string; nonce: number } | null>(null)
+  const highlightNonceRef = useRef(0)
   /** 换分页一律走它：选择跟着落盘，下次打开设置还停在这一页 */
   const selectTab = (key: TabKey) => {
     setTab(key)
     saveTab(key)
+    const targetItem = tabs.find((t) => t.key === key)
+    if (targetItem?.subTabs && targetItem.subTabs.length > 0) {
+      setActiveSubTab(targetItem.subTabs[0].key)
+    }
+  }
+
+  const handleSubTabClick = (subKey: string) => {
+    setActiveSubTab(subKey)
+    highlightNonceRef.current += 1
+    setHighlightSubTab({ key: subKey, nonce: highlightNonceRef.current })
+    const el = document.getElementById(`settings-section-${subKey}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
   }
   const [draft, setDraft] = useState<AiSettings>(initial)
   const [page, setPage] = useState<Page>({ view: 'list' })
@@ -200,10 +217,10 @@ export default function SettingsPanel({ onRootChanged, onToast }: Props) {
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 bg-paper">
-      <nav className="flex w-[176px] shrink-0 flex-col gap-1 border-r border-line bg-paper-deep px-3 py-4">
+      <nav className="flex w-[184px] shrink-0 flex-col gap-1 border-r border-line bg-paper-deep px-3 py-4 overflow-y-auto">
         {/* 三击「设置」二字是开发者分页的隐藏入口：e.detail 就是连击数 */}
         <div
-          className="flex items-center gap-2 px-2 pb-3 text-[15px] font-semibold text-ink-strong"
+          className="flex items-center gap-2 px-2 pb-3 text-[15px] font-semibold text-ink-strong cursor-default select-none"
           onClick={(e) => {
             if (e.detail >= 3) setDevEntry(true)
           }}
@@ -212,62 +229,118 @@ export default function SettingsPanel({ onRootChanged, onToast }: Props) {
           {t('设置')}
         </div>
         {tabs.map((tb) => (
-          <TabButton
-            key={tb.key}
-            icon={tb.icon}
-            label={t(tb.label)}
-            active={tab === tb.key}
-            onClick={() => selectTab(tb.key)}
-          />
+          <div key={tb.key} className="flex flex-col">
+            <TabButton
+              icon={tb.icon}
+              label={t(tb.label)}
+              active={tab === tb.key}
+              onClick={() => selectTab(tb.key)}
+            />
+            {tb.key === tab && tb.subTabs && tb.subTabs.length > 0 && (
+              <div className="ml-3.5 my-1 flex flex-col gap-0.5 border-l border-line/80 pl-2">
+                {tb.subTabs.map((sub) => {
+                  const isSubActive = activeSubTab === sub.key
+                  return (
+                    <button
+                      key={sub.key}
+                      type="button"
+                      onClick={() => handleSubTabClick(sub.key)}
+                      className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] transition ${
+                        isSubActive
+                          ? 'bg-seal/10 font-semibold text-seal-deep shadow-2xs'
+                          : 'text-ink-soft hover:bg-card/60 hover:text-ink'
+                      }`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full transition-transform ${
+                          isSubActive ? 'bg-seal scale-110' : 'bg-line-strong/60'
+                        }`}
+                      />
+                      <span className="truncate">{t(sub.label)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         ))}
       </nav>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-2 border-b border-line px-5 py-3">
-          {tab === 'ai' && page.view === 'config' && (
-            <button
-              type="button"
-              title={t('返回提供商列表')}
-              onClick={() => {
-                setPage({ view: 'list' })
-                setStatus({ kind: 'idle' })
-              }}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-ink-soft transition hover:bg-line/70 hover:text-ink"
-            >
-              <ArrowLeft size={16} />
-            </button>
-          )}
-          {tab === 'plugins' && pluginPage && (
-            <button
-              type="button"
-              title={t('返回插件列表')}
-              onClick={() => setPluginPage(null)}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-ink-soft transition hover:bg-line/70 hover:text-ink"
-            >
-              <ArrowLeft size={16} />
-            </button>
-          )}
-          <h2 className="text-[15px] font-semibold text-ink-strong">
-            {tab === 'appearance'
-              ? t('外观')
-              : tab === 'window'
-                ? t('窗口')
-                : tab === 'storage'
-                  ? t('数据存储')
-                  : tab === 'plugins'
-                    ? pluginPage
-                      ? t('语音输入')
-                      : t('插件')
-                    : tab === 'update'
-                    ? t('更新')
-                  : tab === 'about'
-                    ? t('关于')
-                    : tab === 'dev'
-                      ? t('开发者')
-                    : page.view === 'list'
-                      ? t('模型设置')
-                      : t('提供商配置')}
-          </h2>
+        <header className="flex items-center justify-between border-b border-line px-5 py-2.5 min-h-[46px]">
+          <div className="flex items-center gap-2">
+            {tab === 'ai' && page.view === 'config' && (
+              <button
+                type="button"
+                title={t('返回提供商列表')}
+                onClick={() => {
+                  setPage({ view: 'list' })
+                  setStatus({ kind: 'idle' })
+                }}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-ink-soft transition hover:bg-line/70 hover:text-ink"
+              >
+                <ArrowLeft size={16} />
+              </button>
+            )}
+            {tab === 'plugins' && pluginPage && (
+              <button
+                type="button"
+                title={t('返回插件列表')}
+                onClick={() => setPluginPage(null)}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-ink-soft transition hover:bg-line/70 hover:text-ink"
+              >
+                <ArrowLeft size={16} />
+              </button>
+            )}
+            <h2 className="text-[15px] font-semibold text-ink-strong">
+              {tab === 'appearance'
+                ? t('外观')
+                : tab === 'window'
+                  ? t('窗口')
+                  : tab === 'storage'
+                    ? t('数据存储')
+                    : tab === 'plugins'
+                      ? pluginPage
+                        ? t('语音输入')
+                        : t('插件')
+                      : tab === 'update'
+                      ? t('更新')
+                    : tab === 'about'
+                      ? t('关于')
+                      : tab === 'dev'
+                        ? t('开发者')
+                      : page.view === 'list'
+                        ? t('模型设置')
+                        : t('提供商配置')}
+            </h2>
+          </div>
+
+          {/* 当前 Tab 具有二级分页时，在 Header 右侧呈现横向二级定位胶囊 */}
+          {(() => {
+            const currentItem = tabs.find((t) => t.key === tab)
+            if (!currentItem?.subTabs || currentItem.subTabs.length === 0) return null
+            return (
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar rounded-lg border border-line/70 bg-paper-deep/50 p-0.5">
+                {currentItem.subTabs.map((sub) => {
+                  const isSubActive = activeSubTab === sub.key
+                  return (
+                    <button
+                      key={sub.key}
+                      type="button"
+                      onClick={() => handleSubTabClick(sub.key)}
+                      className={`rounded-md px-2.5 py-0.5 text-[11px] transition whitespace-nowrap ${
+                        isSubActive
+                          ? 'bg-card font-medium text-seal-deep shadow-xs ring-1 ring-seal/20'
+                          : 'text-ink-soft hover:bg-card/40 hover:text-ink'
+                      }`}
+                    >
+                      {t(sub.label)}
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })()}
         </header>
 
         {tab === 'ai' ? (
@@ -317,6 +390,9 @@ export default function SettingsPanel({ onRootChanged, onToast }: Props) {
             appearance={appearance}
             onChange={applyAppearance}
             onToast={onToast}
+            activeSubTab={activeSubTab}
+            highlightSubTab={highlightSubTab}
+            onSubTabChange={setActiveSubTab}
           />
         ) : tab === 'input' ? (
           <InputPanel onToast={onToast} />

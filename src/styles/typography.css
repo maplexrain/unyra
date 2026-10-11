@@ -207,7 +207,7 @@
   margin: 1em 0;
   padding: 0.5em 1.1em;
   border-left: 3px solid var(--color-seal);
-  background: var(--color-inset);
+  background: color-mix(in srgb, var(--color-inset) 72%, transparent);
   border-radius: 0 8px 8px 0;
   color: var(--color-quote-ink);
 }
@@ -217,7 +217,7 @@
 .note-preview code {
   font-family: var(--font-mono);
   font-size: 0.86em;
-  background: var(--color-code);
+  background: color-mix(in srgb, var(--color-code) 65%, transparent);
   border: 1px solid var(--color-line);
   border-radius: 5px;
   padding: 0.08em 0.4em;
@@ -227,7 +227,7 @@
   margin: 1em 0;
   padding: 0.9em 1.1em;
   overflow-x: auto;
-  background: var(--color-sunken);
+  background: color-mix(in srgb, var(--color-sunken) 75%, transparent);
   border: 1px solid var(--color-line);
   border-radius: 10px;
   line-height: 1.65;
@@ -252,12 +252,12 @@
   text-align: center;
 }
 .note-preview th {
-  background: var(--color-inset);
+  background: color-mix(in srgb, var(--color-inset) 72%, transparent);
   font-weight: 600;
   color: var(--color-ink-strong);
 }
 .note-preview tbody tr:nth-child(even) {
-  background: var(--color-sunken);
+  background: color-mix(in srgb, var(--color-sunken) 45%, transparent);
 }
 .note-preview hr {
   margin: 2em 0;
@@ -285,7 +285,7 @@
   margin: 1em 0;
   border: 1px solid var(--color-line);
   border-radius: 10px;
-  background: var(--color-sunken);
+  background: color-mix(in srgb, var(--color-sunken) 70%, transparent);
   padding: 0.5em 0.9em;
 }
 .note-preview details.md-fold > summary {

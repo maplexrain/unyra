@@ -82,7 +82,6 @@ function areDocBodyPropsEqual(prev: Props, next: Props): boolean {
   return true
 }
 
-/** 正文区：从滚动容器到页脚那一行，整块都是它 */
 export const DocBody = memo(function DocBody({
   scrollRef,
   bodyRef,
@@ -99,56 +98,43 @@ export const DocBody = memo(function DocBody({
   overlay,
 }: Props) {
   return (
-    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-      {/* 左侧留白给得多一点：标题定位栏就在旁边，正文（以及跳转高亮的底色）不贴过去。
-          min-h-full + flex-col + 页脚 mt-auto：正文短时页脚被撑到底部，长时跟着正文走 */}
-      <div className="doc-measure relative flex min-h-full flex-col pt-6 pl-[32px] pr-[22px]">
-        {/* 正文还没来时的占位：说明在等什么，而不是留一片白 */}
-        {pending && !content.trim() && <DocPending />}
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {/* 左上角悬浮字数统计（预览模式只统计可视文字） */}
+      <div className="no-print pointer-events-none absolute left-3 top-2 z-10 flex items-center rounded-md border border-line/60 bg-card/75 px-2 py-0.5 text-[11px] text-ink-faint backdrop-blur-xs select-none shadow-xs">
+        <span className="tabular-nums">{t('{0} 字', wordCount)}</span>
+      </div>
 
-        {/* 空的笔记：说清它可以怎么被填上，而不是留一片白 */}
-        {!pending && kind === 'note' && !content.trim() && <EmptyNote />}
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        {/* 左侧留白给得多一点：标题定位栏就在旁边，正文（以及跳转高亮的底色）不贴过去 */}
+        <div className="doc-measure relative flex min-h-full flex-col pt-6 pl-[32px] pr-[22px]">
+          {/* 正文还没来时的占位：说明在等什么，而不是留一片白 */}
+          {pending && !content.trim() && <DocPending />}
 
-        {/* --doc-scale 是正文唯一的字号系数，index.css 里所有排版都按它等比缩放 */}
-        {/*
-          复制走源文：在预览里选中一段，进剪贴板的应当是它在 Markdown 里的原文
-          （公式的渲染产物、注解标记、视觉换行都不该跟着走，见 lib/copySource）；
-          映射不出来时它自己放行，默认复制照旧。
-        */}
-        <div
-          ref={bodyRef}
-          className="note-preview moji-node-note"
-          style={{ '--doc-scale': docScale } as CSSProperties}
-          onCopy={(e) => copySelectionAsMarkdown(e, bodyRef.current, content)}
-        >
-          <MarkdownView
-            html={html}
-            annotations={annotations}
-            knownConceptKeys={knownConceptKeys}
-            annotationActions={annotationActions}
-            resolveLocalImage={resolveLocalImage}
-          />
-        </div>
+          {/* 空的笔记：说清它可以怎么被填上，而不是留一片白 */}
+          {!pending && kind === 'note' && !content.trim() && <EmptyNote />}
 
-        {overlay}
+          {/* --doc-scale 是正文唯一的字号系数，index.css 里所有排版都按它等比缩放 */}
+          {/*
+            复制走源文：在预览里选中一段，进剪贴板的应当是它在 Markdown 里的原文
+            （公式的渲染产物、注解标记、视觉换行都不该跟着走，见 lib/copySource）；
+            映射不出来时它自己放行，默认复制照旧。
+          */}
+          <div
+            ref={bodyRef}
+            className="note-preview moji-node-note"
+            style={{ '--doc-scale': docScale } as CSSProperties}
+            onCopy={(e) => copySelectionAsMarkdown(e, bodyRef.current, content)}
+          >
+            <MarkdownView
+              html={html}
+              annotations={annotations}
+              knownConceptKeys={knownConceptKeys}
+              annotationActions={annotationActions}
+              resolveLocalImage={resolveLocalImage}
+            />
+          </div>
 
-        {/*
-          底部信息：字数与选区提示。
-          要点是「始终在正文区底部」：
-          - mt-auto 管正文短的时候，被上面的内容顶到底部；
-          - sticky bottom-0 管正文长的时候，滚到哪儿它都贴在下沿，不会跟着内容跑到
-            文档末尾去（那等于要滚到底才看得见）。
-          贴底就会压住滚过去的正文，所以给一层半透明底 + 模糊，并用一道上边框把
-          它和正文分开。高度按一行算：窄窗口下那行提示不该折成两行（折了会白占
-          一行，还把这条栏撑高），所以单行 + 溢出省略。
-          必须待在 min-h-full 这一层**里面**：摆到外面就成了滚动容器的兄弟节点，
-          mt-auto 无处可推，整行会被顶到视口下一个屏幕，看起来就像「不见了」。
-        */}
-        <div className="sticky bottom-0 mt-auto flex items-center gap-3 border-t border-line bg-card/95 py-1.5 text-[11px] text-ink-faint backdrop-blur-sm">
-          <span className="shrink-0">{t('{0} 字', wordCount)}</span>
-          <span className="ml-auto min-w-0 truncate">
-            {t('选中文字可「学习」（新建节点）、「了解」（AI 释义）、「注解」（自己记）或「询问」（提问）')}
-          </span>
+          {overlay}
         </div>
       </div>
     </div>

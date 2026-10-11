@@ -690,6 +690,36 @@ body {
   display: none !important;
 }
 
+/* 文字描边特性：使用 text-shadow 实现硬描边、无扩散，厚度跟随 --text-stroke-width (0.0 - 1.0px) */
+:root[data-has-text-stroke='true'] body,
+:root[data-has-text-stroke='true'] .note-preview,
+:root[data-has-text-stroke='true'] .moji-agent-md,
+:root[data-has-text-stroke='true'] p,
+:root[data-has-text-stroke='true'] span:not([class*='lucide']),
+:root[data-has-text-stroke='true'] h1,
+:root[data-has-text-stroke='true'] h2,
+:root[data-has-text-stroke='true'] h3,
+:root[data-has-text-stroke='true'] h4,
+:root[data-has-text-stroke='true'] h5,
+:root[data-has-text-stroke='true'] h6,
+:root[data-has-text-stroke='true'] li,
+:root[data-has-text-stroke='true'] a,
+:root[data-has-text-stroke='true'] button,
+:root[data-has-text-stroke='true'] label,
+:root[data-has-text-stroke='true'] blockquote,
+:root[data-has-text-stroke='true'] th,
+:root[data-has-text-stroke='true'] td {
+  text-shadow:
+    calc(-1 * var(--text-stroke-width, 1px)) calc(-1 * var(--text-stroke-width, 1px)) 0 var(--text-stroke-color, currentColor),
+    0 calc(-1 * var(--text-stroke-width, 1px)) 0 var(--text-stroke-color, currentColor),
+    var(--text-stroke-width, 1px) calc(-1 * var(--text-stroke-width, 1px)) 0 var(--text-stroke-color, currentColor),
+    calc(-1 * var(--text-stroke-width, 1px)) 0 0 var(--text-stroke-color, currentColor),
+    var(--text-stroke-width, 1px) 0 0 var(--text-stroke-color, currentColor),
+    calc(-1 * var(--text-stroke-width, 1px)) var(--text-stroke-width, 1px) 0 var(--text-stroke-color, currentColor),
+    0 var(--text-stroke-width, 1px) 0 var(--text-stroke-color, currentColor),
+    var(--text-stroke-width, 1px) var(--text-stroke-width, 1px) 0 var(--text-stroke-color, currentColor);
+}
+
 /* 选中态：浅色下用淡印章红；深色下底色深、对比不足，改用更亮的红并提亮文字 */
 ::selection {
   background-color: rgba(168, 67, 47, 0.2);

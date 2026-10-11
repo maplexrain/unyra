@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { TriangleAlert as FileWarning, Loader2 } from 'lucide-react'
 import type { DocView } from '../../learn/types'
 import { extOf, fileNameOf, isMediaFile, isPreviewable } from '../../learn/tabs'
 import { readLocalFile, readLocalMediaFile } from '../../lib/localFiles'
 import { renderNoteGfm } from '../../lib/markdown'
+import { countVisibleWords, countVisibleWordsFromHtml } from '../../lib/wordCount'
 import { createLocalDocImageResolver } from '../../lib/docImages'
 import { copySelectionAsMarkdown } from '../../lib/copySource'
 import { readUserImage, readUserText, userAbsPrefix } from '../../lib/storage'
@@ -231,6 +232,15 @@ export default function LocalDoc({
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const { outline, activeIndex, jumpTo } = useDocOutline({ bodyRef, scrollRef, html })
+
+  // 预览模式只统计可视文字
+  const [wordCount, setWordCount] = useState(() => countVisibleWordsFromHtml(html))
+  useLayoutEffect(() => {
+    if (bodyRef.current) {
+      setWordCount(countVisibleWords(bodyRef.current, html))
+    }
+  }, [html])
+
   useEffect(() => {
     if (outlineSlot) outlineSlot.current = outline.length ? { items: outline, activeIndex, jump: jumpTo } : null
   })
@@ -335,15 +345,22 @@ export default function LocalDoc({
   }
 
   return (
-    <div ref={scrollRef} className="print-flat min-h-0 flex-1 overflow-y-auto bg-card">
-      {/* 复制同样走源文：预览里选的这一段，进剪贴板的该是它 Markdown 的样子（见 lib/copySource） */}
-      <div
-        ref={bodyRef}
-        className="note-preview moji-node-note doc-measure px-7 py-6"
-        style={{ '--doc-scale': scale } as CSSProperties}
-        onCopy={(e) => copySelectionAsMarkdown(e, e.currentTarget, text)}
-      >
-        <MarkdownView html={html} resolveLocalImage={resolveLocalImage} />
+    <div className="print-flat relative min-h-0 flex-1 flex flex-col bg-card">
+      {/* 左上角悬浮字数统计（预览模式只统计可视文字） */}
+      <div className="no-print pointer-events-none absolute left-3 top-2 z-10 flex items-center rounded-md border border-line/60 bg-card/75 px-2 py-0.5 text-[11px] text-ink-faint backdrop-blur-xs select-none shadow-xs">
+        <span className="tabular-nums">{t('{0} 字', wordCount)}</span>
+      </div>
+
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        {/* 复制同样走源文：预览里选的这一段，进剪贴板的该是它 Markdown 的样子（见 lib/copySource） */}
+        <div
+          ref={bodyRef}
+          className="note-preview moji-node-note doc-measure px-7 py-6"
+          style={{ '--doc-scale': scale } as CSSProperties}
+          onCopy={(e) => copySelectionAsMarkdown(e, e.currentTarget, text)}
+        >
+          <MarkdownView html={html} resolveLocalImage={resolveLocalImage} />
+        </div>
       </div>
     </div>
   )

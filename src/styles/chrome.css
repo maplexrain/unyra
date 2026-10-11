@@ -209,3 +209,48 @@ a {
   animation: moji-reveal-flash 1.2s ease-out both;
 }
 
+/*
+ * 设置项快速定位高亮动效：从二级 Tab 定位跳转时，标题 Label 播放突出的吸睛强调动画。
+ * 包含缩放微弹、印章色文字变色与背景扩散柔光。
+ */
+@keyframes moji-setting-highlight {
+  0% {
+    transform: scale(1);
+    background-color: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
+  20% {
+    transform: scale(1.05) translateX(3px);
+    color: var(--color-seal-deep);
+    background-color: color-mix(in srgb, var(--color-seal) 18%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-seal) 25%, transparent), 0 2px 8px color-mix(in srgb, var(--color-seal) 30%, transparent);
+  }
+  45% {
+    transform: scale(1.02) translateX(1px);
+    color: var(--color-seal);
+    background-color: color-mix(in srgb, var(--color-seal) 14%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-seal) 18%, transparent), 0 1px 4px color-mix(in srgb, var(--color-seal) 20%, transparent);
+  }
+  75% {
+    transform: scale(1.01);
+    background-color: color-mix(in srgb, var(--color-seal) 6%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-seal) 8%, transparent);
+  }
+  100% {
+    transform: scale(1);
+    background-color: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.moji-setting-highlight {
+  animation: moji-setting-highlight 1.5s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  border-radius: 6px;
+  padding: 1px 6px;
+  margin-left: -6px;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  will-change: transform, box-shadow;
+}
+

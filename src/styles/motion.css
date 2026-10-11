@@ -615,6 +615,10 @@
     animation: none;
     background-color: color-mix(in srgb, var(--color-seal) 12%, transparent);
   }
+  .moji-setting-highlight {
+    animation: none;
+    background-color: color-mix(in srgb, var(--color-seal) 16%, transparent);
+  }
   /* 输入区不能只留 opacity:0：它是靠位移出场的，少了动画就会停在原位 */
   .moji-sheet-out {
     transform: translateY(100%);

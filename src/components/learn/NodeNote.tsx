@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AnnotationStyle, DocKind, KnowledgeNode } from '../../learn/types'
 import type { LocalImageResolver } from '../../lib/docImages'
 import { canAnnotate } from '../../lib/annotation'
 import { renderNote } from '../../lib/markdown'
+import { countVisibleWords, countVisibleWordsFromHtml } from '../../lib/wordCount'
 import { useReadingTracker } from '../../learn/useReadingTracker'
 import { readingDocKey, type ReadingDelta } from '../../learn/reading'
 import type { OutlineHandle } from '../../lib/outline'
@@ -254,7 +255,13 @@ export default function NodeNote({
     openNote(term, at)
   }
 
-  const wordCount = content.replace(/\s/g, '').length
+  // 预览模式只统计实际渲染呈现给用户的可视文字（过滤 Markdown/HTML/LaTeX 语法符号）
+  const [wordCount, setWordCount] = useState(() => countVisibleWordsFromHtml(html))
+  useLayoutEffect(() => {
+    if (bodyRef.current) {
+      setWordCount(countVisibleWords(bodyRef.current, html))
+    }
+  }, [html])
 
   /*
    * 有效阅读的采集（见 learn/useReadingTracker）。放在这里是因为「有效」要看的东西

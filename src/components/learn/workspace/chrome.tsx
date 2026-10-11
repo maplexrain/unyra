@@ -34,6 +34,7 @@ import Bullseye from '../../Bullseye'
 import GoalParticles from '../GoalParticles'
 import ModelPicker from '../../agent/ModelPicker'
 import { FileChip } from '../../agent/panel/Images'
+import TopBarTipCarousel from './TopBarTipCarousel'
 import { t } from '../../../i18n'
 
 export function Topbar({
@@ -126,6 +127,13 @@ export function Topbar({
 
       {/* 当前位置（面包屑）：从文档区顶上那条面包屑行上移过来，正文区因此省下一行 */}
       <NodeTrail node={activeNode} store={store} onSelect={onSelectNode} />
+
+      {/* 居中轮播 Tip：隐藏小技巧 */}
+      {appearance.showTips !== false && (
+        <div className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center lg:flex">
+          <TopBarTipCarousel />
+        </div>
+      )}
 
       {/* 右侧只留账号与窗口控制：保存状态与「新建目标」都不再放进顶栏——
           数据本就是实时保存的，而新建目标与知识节点栏右上角那颗按钮是同一件事 */}

@@ -2,7 +2,7 @@
  * 设置 → 外观：主题配色、界面语言与教学模式。
  */
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Check,
   Eye,
@@ -14,9 +14,11 @@ import {
   Play,
   Plus,
   Presentation,
+  RefreshCw,
   Shuffle,
   Sparkles,
   Trash2,
+  Type,
   Upload,
 } from 'lucide-react'
 import {
@@ -61,6 +63,9 @@ interface Props {
   appearance: Appearance
   onChange: (patch: Partial<Appearance>) => void
   onToast: (msg: string) => void
+  activeSubTab?: string
+  highlightSubTab?: { key: string; nonce: number } | null
+  onSubTabChange?: (sub: string) => void
 }
 
 interface ThemeGroup {
@@ -97,15 +102,136 @@ const LOCALE_INFO: Record<string, { sub: string }> = {
   en: { sub: 'English' },
 }
 
-export function AppearancePanel({ appearance, onChange, onToast }: Props) {
+const PRESET_FONTS = [
+  { label: '系统默认 (跟随系统)', value: '' },
+  { label: '微软雅黑 (Microsoft YaHei)', value: "'Microsoft YaHei', sans-serif" },
+  { label: '苹方 (PingFang SC)', value: "'PingFang SC', sans-serif" },
+  { label: '思源黑体 (Source Han Sans)', value: "'Source Han Sans SC', 'Noto Sans SC', sans-serif" },
+  { label: '鸿蒙字体 (HarmonyOS Sans)', value: "'HarmonyOS Sans SC', sans-serif" },
+  { label: '霞鹜文楷 (LXGW WenKai)', value: "'LXGW WenKai', cursive, sans-serif" },
+  { label: '思源宋体 (Source Han Serif)', value: "'Source Han Serif SC', 'Noto Serif SC', serif" },
+  { label: '楷体 (KaiTi)', value: "'KaiTi', 'STKaiti', serif" },
+  { label: '宋体 (SimSun)', value: "'SimSun', 'STSong', serif" },
+  { label: '仿宋 (FangSong)', value: "'FangSong', 'STFangsong', serif" },
+  { label: 'Segoe UI', value: "'Segoe UI', sans-serif" },
+  { label: 'Inter', value: "'Inter', sans-serif" },
+  { label: 'Cascadia Mono', value: "'Cascadia Mono', monospace" },
+]
+
+const STROKE_PRESET_COLORS = ['#1f1b17', '#ffffff', '#a8432f', '#6e665b', '#000000', '#d0705a', '#5c7a3f', '#2f6ea8']
+
+export function AppearancePanel({
+  appearance,
+  onChange,
+  onToast,
+  highlightSubTab,
+  onSubTabChange,
+}: Props) {
   const locale = useLocale()
   const customBg = appearance.customBg ?? DEFAULT_CUSTOM_BACKGROUND
+  const containerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploadTargetGroupId, setUploadTargetGroupId] = useState<string | null>(null)
   const [isCreatingGroup, setIsCreatingGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [isAddingUrl, setIsAddingUrl] = useState(false)
   const [imageUrlInput, setImageUrlInput] = useState('')
+  const [systemFonts, setSystemFonts] = useState<string[]>([])
+  const [scanningFonts, setScanningFonts] = useState(false)
+  const [customFontInput, setCustomFontInput] = useState(appearance.fontFamily || '')
+
+  // 调色盘本地草稿与防抖：避免拖拽选色过程中高频触发全局重绘和存储导致严重卡顿
+  const [strokeColorDraft, setStrokeColorDraft] = useState(appearance.textStrokeColor || '#1f1b17')
+  const [prevStrokeColor, setPrevStrokeColor] = useState(appearance.textStrokeColor)
+  if (appearance.textStrokeColor !== prevStrokeColor) {
+    setPrevStrokeColor(appearance.textStrokeColor)
+    setStrokeColorDraft(appearance.textStrokeColor || '#1f1b17')
+  }
+  const strokeTimerRef = useRef<number | null>(null)
+
+  // 描边厚度本地草稿与防抖 (0.0 - 1.0)
+  const [strokeWidthDraft, setStrokeWidthDraft] = useState<number>(appearance.textStrokeWidth ?? 1.0)
+  const [prevStrokeWidth, setPrevStrokeWidth] = useState(appearance.textStrokeWidth)
+  if (appearance.textStrokeWidth !== prevStrokeWidth) {
+    setPrevStrokeWidth(appearance.textStrokeWidth)
+    setStrokeWidthDraft(appearance.textStrokeWidth ?? 1.0)
+  }
+  const strokeWidthTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (strokeTimerRef.current) {
+        window.clearTimeout(strokeTimerRef.current)
+      }
+      if (strokeWidthTimerRef.current) {
+        window.clearTimeout(strokeWidthTimerRef.current)
+      }
+    }
+  }, [])
+
+  const isHighlighted = (sub: string) => highlightSubTab?.key === sub
+  const getHighlightKey = (sub: string) =>
+    highlightSubTab?.key === sub ? `${sub}-${highlightSubTab.nonce}` : sub
+
+  const commitStrokeColor = (val: string) => {
+    if (strokeTimerRef.current) {
+      window.clearTimeout(strokeTimerRef.current)
+      strokeTimerRef.current = null
+    }
+    setStrokeColorDraft(val)
+    onChange({ textStrokeColor: val })
+  }
+
+  const handleColorPickerChange = (val: string) => {
+    setStrokeColorDraft(val)
+    if (strokeTimerRef.current) {
+      window.clearTimeout(strokeTimerRef.current)
+    }
+    // 防抖 350ms：在调色盘拖拽或输入颜色时不立即频繁触发全局重绘和存储，避免卡顿
+    strokeTimerRef.current = window.setTimeout(() => {
+      onChange({ textStrokeColor: val })
+    }, 350)
+  }
+
+  const handleStrokeWidthChange = (val: number) => {
+    const clamped = Math.round(Math.min(1.0, Math.max(0.0, val)) * 100) / 100
+    setStrokeWidthDraft(clamped)
+    // 实时更新当前页面 CSS 变量以获取 60fps 丝滑拖拽手感
+    if (appearance.textStrokeEnabled) {
+      document.documentElement.style.setProperty('--text-stroke-width', `${clamped}px`)
+    }
+    if (strokeWidthTimerRef.current) {
+      window.clearTimeout(strokeWidthTimerRef.current)
+    }
+    strokeWidthTimerRef.current = window.setTimeout(() => {
+      onChange({ textStrokeWidth: clamped })
+    }, 200)
+  }
+
+  // 二级 tab 滚动联动监听：当用户在面板内滚动时，自动高亮视口上方的对应二级 tab
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || !onSubTabChange) return
+
+    const subIds = ['theme', 'background', 'typography', 'locale', 'features']
+    const handleScroll = () => {
+      const cTop = container.getBoundingClientRect().top
+      let currentSub = subIds[0]
+      for (const id of subIds) {
+        const el = document.getElementById(`settings-section-${id}`)
+        if (el) {
+          const rect = el.getBoundingClientRect()
+          if (rect.top - cTop <= 100) {
+            currentSub = id
+          }
+        }
+      }
+      onSubTabChange(currentSub)
+    }
+
+    container.addEventListener('scroll', handleScroll, { passive: true })
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [onSubTabChange])
 
   const activeGroup =
     customBg.groups.find((g) => g.id === customBg.activeGroupId) ??
@@ -204,8 +330,31 @@ export function AppearancePanel({ appearance, onChange, onToast }: Props) {
     setIsAddingUrl(false)
   }
 
+  const handleScanSystemFonts = async () => {
+    if (typeof window !== 'undefined' && 'queryLocalFonts' in window) {
+      setScanningFonts(true)
+      try {
+        // @ts-expect-error queryLocalFonts API in modern chromium
+        const fonts = await window.queryLocalFonts()
+        const names = new Set<string>()
+        for (const f of fonts) {
+          if (f.family) names.add(f.family)
+        }
+        const list = Array.from(names).sort()
+        setSystemFonts(list)
+        onToast(t('已成功获取 {0} 个系统可用字体', list.length))
+      } catch {
+        onToast(t('获取系统字体未授权或当前环境受限'))
+      } finally {
+        setScanningFonts(false)
+      }
+    } else {
+      onToast(t('当前环境不支持枚举系统字体，可在下方输入框直接填写本机字体名称'))
+    }
+  }
+
   return (
-    <div className={pane(5, true)}>
+    <div ref={containerRef} className={pane(5, true)}>
       {/* 头部简介 */}
       <div className="flex items-center justify-between border-b border-line pb-3">
         <div>
@@ -224,9 +373,14 @@ export function AppearancePanel({ appearance, onChange, onToast }: Props) {
       </div>
 
       {/* 主题选择卡片网格 */}
-      <section className="flex flex-col gap-4">
+      <section id="settings-section-theme" className="flex flex-col gap-4 scroll-mt-4">
         <div>
-          <div className="flex items-center gap-1.5 text-[13px] font-medium text-ink-strong">
+          <div
+            key={getHighlightKey('theme')}
+            className={`flex items-center gap-1.5 text-[13px] font-medium text-ink-strong ${
+              isHighlighted('theme') ? 'moji-setting-highlight' : ''
+            }`}
+          >
             <span>{t('主题配色')}</span>
             <span className="text-[11px] font-normal text-ink-faint">
               ({t('当前：{0}', t(THEME_LABEL[appearance.theme]))})
@@ -337,7 +491,7 @@ export function AppearancePanel({ appearance, onChange, onToast }: Props) {
       </section>
 
       {/* 全局图片背景与幻灯片 */}
-      <section className="flex flex-col gap-4 rounded-xl border border-line bg-card/60 p-4">
+      <section id="settings-section-background" className="flex flex-col gap-4 rounded-xl border border-line bg-card/60 p-4 scroll-mt-4">
         {/* 隐藏的文件输入框 */}
         <input
           ref={fileInputRef}
@@ -354,7 +508,12 @@ export function AppearancePanel({ appearance, onChange, onToast }: Props) {
               <ImageIcon size={15} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div
+                key={getHighlightKey('background')}
+                className={`flex items-center gap-2 ${
+                  isHighlighted('background') ? 'moji-setting-highlight' : ''
+                }`}
+              >
                 <span className="text-[13px] font-medium text-ink-strong">{t('全局图片背景')}</span>
                 {customBg.enabled && (
                   <span className="rounded-full bg-seal/10 px-2 py-0.5 text-[10px] font-medium text-seal-deep">
@@ -753,9 +912,236 @@ export function AppearancePanel({ appearance, onChange, onToast }: Props) {
         )}
       </section>
 
+      {/* 全局字体与文字描边 */}
+      <section id="settings-section-typography" className="flex flex-col gap-3 rounded-xl border border-line bg-card/60 p-3.5 scroll-mt-4">
+        <div className="flex items-center justify-between">
+          <div
+            key={getHighlightKey('typography')}
+            className={`flex items-center gap-1.5 text-[13px] font-medium text-ink-strong ${
+              isHighlighted('typography') ? 'moji-setting-highlight' : ''
+            }`}
+          >
+            <Type size={14} className="text-seal" />
+            <span>{t('全局字体与排版')}</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleScanSystemFonts}
+            disabled={scanningFonts}
+            className="flex items-center gap-1 rounded-md border border-line bg-card px-2 py-0.5 text-[11px] text-ink-soft hover:border-seal hover:text-seal transition disabled:opacity-50"
+            title={t('扫描操作系统已安装的所有字体')}
+          >
+            <RefreshCw size={11} className={scanningFonts ? 'animate-spin' : ''} />
+            <span>{scanningFonts ? t('扫描中…') : t('检测系统字体')}</span>
+          </button>
+        </div>
+        <p className="text-[11px] leading-relaxed text-ink-faint">
+          {t('选择全局渲染所使用的字体族。支持直接选用操作系统包含的字体，或选择常用精选中西文字体。')}
+        </p>
+
+        {/* 字体选择下拉与自定义输入 */}
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={
+                PRESET_FONTS.some((f) => f.value === appearance.fontFamily)
+                  ? appearance.fontFamily
+                  : systemFonts.includes(appearance.fontFamily || '')
+                    ? appearance.fontFamily
+                    : '__custom__'
+              }
+              onChange={(e) => {
+                const val = e.target.value
+                if (val !== '__custom__') {
+                  setCustomFontInput(val)
+                  onChange({ fontFamily: val })
+                }
+              }}
+              className="flex-1 min-w-[200px] rounded-lg border border-line bg-card px-2.5 py-1.5 text-[12px] text-ink outline-none focus:border-seal"
+            >
+              <optgroup label={t('精选字体预设')}>
+                {PRESET_FONTS.map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {t(f.label)}
+                  </option>
+                ))}
+              </optgroup>
+              {systemFonts.length > 0 && (
+                <optgroup label={t('系统已安装字体 ({0})', systemFonts.length)}>
+                  {systemFonts.map((fam) => (
+                    <option key={fam} value={`'${fam}', sans-serif`}>
+                      {fam}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              <option value="__custom__">{t('自定义字体名称…')}</option>
+            </select>
+
+            <div className="flex items-center gap-1.5 flex-1 min-w-[180px]">
+              <input
+                type="text"
+                placeholder={t('或直接输入本机字体名称，如 "楷体", "Fira Code"…')}
+                value={customFontInput}
+                onChange={(e) => {
+                  setCustomFontInput(e.target.value)
+                  onChange({ fontFamily: e.target.value })
+                }}
+                className="w-full rounded-lg border border-line bg-paper/60 px-2.5 py-1.5 text-[11.5px] text-ink outline-none focus:border-seal font-mono"
+              />
+              {appearance.fontFamily && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomFontInput('')
+                    onChange({ fontFamily: '' })
+                  }}
+                  className="shrink-0 text-[11px] text-ink-faint hover:text-seal px-1.5 py-1"
+                  title={t('恢复系统默认字体')}
+                >
+                  {t('重置')}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 文字描边 */}
+        <div className="mt-1 border-t border-line/50 pt-2.5 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[12.5px] font-medium text-ink-strong">{t('文字描边')}</div>
+              <div className="text-[10.5px] text-ink-faint">
+                {t('在开启自定义背景图片时强化文字轮廓，避免复杂壁纸干扰阅读。')}
+              </div>
+            </div>
+            <Switch
+              on={Boolean(appearance.textStrokeEnabled)}
+              onChange={(next) => onChange({ textStrokeEnabled: next })}
+              label=""
+            />
+          </div>
+
+          {appearance.textStrokeEnabled && (
+            <div className="flex flex-col gap-2.5 rounded-lg border border-line/60 bg-card/40 p-2.5 text-[11.5px]">
+              {/* 描边颜色选择 */}
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-ink-soft shrink-0">{t('描边颜色')}：</span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="color"
+                    value={strokeColorDraft}
+                    onChange={(e) => handleColorPickerChange(e.target.value)}
+                    onBlur={() => commitStrokeColor(strokeColorDraft)}
+                    className="h-6 w-7 cursor-pointer rounded border border-line bg-transparent p-0"
+                  />
+                  <input
+                    type="text"
+                    value={strokeColorDraft}
+                    onChange={(e) => handleColorPickerChange(e.target.value)}
+                    onBlur={() => commitStrokeColor(strokeColorDraft)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitStrokeColor(strokeColorDraft)
+                    }}
+                    className="w-20 rounded border border-line bg-card px-2 py-0.5 font-mono text-[11px] text-ink outline-none focus:border-seal"
+                  />
+                  {strokeColorDraft.toLowerCase() !== (appearance.textStrokeColor || '#1f1b17').toLowerCase() && (
+                    <button
+                      type="button"
+                      onClick={() => commitStrokeColor(strokeColorDraft)}
+                      className="rounded bg-seal px-2 py-0.5 text-[10.5px] font-medium text-white shadow-xs transition hover:bg-seal-deep"
+                      title={t('立即应用')}
+                    >
+                      {t('应用')}
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1 ml-auto">
+                  {STROKE_PRESET_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => commitStrokeColor(c)}
+                      title={c}
+                      style={{ backgroundColor: c }}
+                      className={`h-4 w-4 rounded-full border transition ${
+                        strokeColorDraft.toLowerCase() === c.toLowerCase()
+                          ? 'border-seal scale-110 shadow-xs ring-1 ring-seal'
+                          : 'border-line/70 opacity-80 hover:opacity-100'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* 描边厚度滑块 (0.0 - 1.0) */}
+              <div className="flex items-center gap-3 border-t border-line/40 pt-2">
+                <span className="text-ink-soft shrink-0">{t('描边厚度')}：</span>
+                <div className="flex flex-1 items-center gap-2.5 max-w-xs">
+                  <input
+                    type="range"
+                    min={0.0}
+                    max={1.0}
+                    step={0.05}
+                    value={strokeWidthDraft}
+                    onChange={(e) => handleStrokeWidthChange(Number(e.target.value))}
+                    className="h-1.5 flex-1 cursor-pointer accent-seal"
+                  />
+                  <span className="w-12 font-mono text-[11px] font-medium text-seal text-right">
+                    {strokeWidthDraft.toFixed(2)}px
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 text-[10.5px] text-ink-faint">
+                  {[0.3, 0.5, 0.8, 1.0].map((w) => (
+                    <button
+                      key={w}
+                      type="button"
+                      onClick={() => handleStrokeWidthChange(w)}
+                      className={`rounded border px-1.5 py-0.5 transition ${
+                        Math.abs(strokeWidthDraft - w) < 0.02
+                          ? 'border-seal bg-seal/10 font-medium text-seal-deep shadow-2xs'
+                          : 'border-line bg-card hover:border-seal hover:text-seal'
+                      }`}
+                    >
+                      {w.toFixed(1)}px
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 字体与描边即时效果预览框 */}
+        <div
+          className="rounded-lg border border-line/80 bg-paper/70 p-3 text-center transition select-none"
+          style={{
+            fontFamily: appearance.fontFamily || undefined,
+            textShadow: appearance.textStrokeEnabled
+              ? `-${strokeWidthDraft}px -${strokeWidthDraft}px 0 ${strokeColorDraft}, 0 -${strokeWidthDraft}px 0 ${strokeColorDraft}, ${strokeWidthDraft}px -${strokeWidthDraft}px 0 ${strokeColorDraft}, -${strokeWidthDraft}px 0 0 ${strokeColorDraft}, ${strokeWidthDraft}px 0 0 ${strokeColorDraft}, -${strokeWidthDraft}px ${strokeWidthDraft}px 0 ${strokeColorDraft}, 0 ${strokeWidthDraft}px 0 ${strokeColorDraft}, ${strokeWidthDraft}px ${strokeWidthDraft}px 0 ${strokeColorDraft}`
+              : undefined,
+          }}
+        >
+          <div className="text-[14px] font-medium text-ink">
+            {t('纸墨相发，研精覃思。')} The quick brown fox jumps over the lazy dog.
+          </div>
+          <div className="mt-1 text-[11px] text-ink-soft">
+            {t('当前字体')}：{appearance.fontFamily || t('系统默认')}
+            {appearance.textStrokeEnabled &&
+              ` · ${t('已启用硬描边')} (${strokeWidthDraft.toFixed(2)}px · ${strokeColorDraft})`}
+          </div>
+        </div>
+      </section>
+
       {/* 界面语言 */}
-      <section className="flex flex-col gap-2 rounded-xl border border-line bg-card/60 p-3.5">
-        <div className="flex items-center gap-1.5 text-[13px] font-medium text-ink-strong">
+      <section id="settings-section-locale" className="flex flex-col gap-2 rounded-xl border border-line bg-card/60 p-3.5 scroll-mt-4">
+        <div
+          key={getHighlightKey('locale')}
+          className={`flex items-center gap-1.5 text-[13px] font-medium text-ink-strong ${
+            isHighlighted('locale') ? 'moji-setting-highlight' : ''
+          }`}
+        >
           <Languages size={14} className="text-seal" />
           <span>{t('界面语言')}</span>
         </div>
@@ -795,29 +1181,63 @@ export function AppearancePanel({ appearance, onChange, onToast }: Props) {
         </div>
       </section>
 
-      {/* 教学与演示模式 */}
-      <section className="rounded-xl border border-line bg-card/60 p-3.5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex gap-2.5">
-            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line bg-card text-seal">
-              <Presentation size={15} />
-            </div>
-            <div>
-              <div className="text-[13px] font-medium text-ink-strong">{t('教学演示模式')}</div>
-              <div className="mt-0.5 text-[11px] leading-relaxed text-ink-faint">
-                {t('打开后左下角常驻一块小窗，实时显示你按下的键（Ctrl + K 这样）。录屏讲课时观众看得见操作，而不是只看结果在变。它不挡点击，也不改任何按键行为。')}
+      {/* 辅助与提示（教学演示模式 + 顶栏小技巧提示） */}
+      <div id="settings-section-features" className="flex flex-col gap-3 scroll-mt-4">
+        {/* 教学与演示模式 */}
+        <section className="rounded-xl border border-line bg-card/60 p-3.5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex gap-2.5">
+              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line bg-card text-seal">
+                <Presentation size={15} />
+              </div>
+              <div>
+                <div
+                  key={getHighlightKey('features')}
+                  className={`text-[13px] font-medium text-ink-strong ${
+                    isHighlighted('features') ? 'moji-setting-highlight' : ''
+                  }`}
+                >
+                  {t('教学演示模式')}
+                </div>
+                <div className="mt-0.5 text-[11px] leading-relaxed text-ink-faint">
+                  {t('打开后左下角常驻一块小窗，实时显示你按下的键（Ctrl + K 这样）。录屏讲课时观众看得见操作，而不是只看结果在变。它不挡点击，也不改任何按键行为。')}
+                </div>
               </div>
             </div>
+            <div className="shrink-0 pt-0.5">
+              <Switch
+                on={appearance.teachingMode}
+                onChange={(next) => onChange({ teachingMode: next })}
+                label=""
+              />
+            </div>
           </div>
-          <div className="shrink-0 pt-0.5">
-            <Switch
-              on={appearance.teachingMode}
-              onChange={(next) => onChange({ teachingMode: next })}
-              label=""
-            />
+        </section>
+
+        {/* 顶栏小技巧提示 */}
+        <section className="rounded-xl border border-line bg-card/60 p-3.5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex gap-2.5">
+              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line bg-card text-seal">
+                <Sparkles size={15} />
+              </div>
+              <div>
+                <div className="text-[13px] font-medium text-ink-strong">{t('顶栏技巧提示')}</div>
+                <div className="mt-0.5 text-[11px] leading-relaxed text-ink-faint">
+                  {t('在应用顶栏居中显示实用隐藏小技巧与快捷键轮播。每 10 秒平滑切换，鼠标悬停时暂停播放，点击可直接跳到下一条。')}
+                </div>
+              </div>
+            </div>
+            <div className="shrink-0 pt-0.5">
+              <Switch
+                on={appearance.showTips !== false}
+                onChange={(next) => onChange({ showTips: next })}
+                label=""
+              />
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
 
       {/* 自动保存状态提示条 */}
       <div className="flex items-center gap-1.5 rounded-lg border border-line bg-card/50 px-3 py-2 text-[11px] text-ink-soft">

@@ -58,7 +58,7 @@
 .moji-agent-md code {
   font-family: var(--font-mono);
   font-size: 0.88em;
-  background: var(--color-code);
+  background: color-mix(in srgb, var(--color-code) 65%, transparent);
   border: 1px solid var(--color-line);
   border-radius: 4px;
   padding: 0.05em 0.32em;
@@ -68,7 +68,7 @@
   margin: 0.6em 0;
   padding: 0.6em 0.8em;
   overflow-x: auto;
-  background: var(--color-sunken);
+  background: color-mix(in srgb, var(--color-sunken) 75%, transparent);
   border: 1px solid var(--color-line);
   border-radius: 8px;
   line-height: 1.6;
@@ -83,7 +83,7 @@
   margin: 0.6em 0;
   padding: 0.35em 0.8em;
   border-left: 3px solid var(--color-seal);
-  background: var(--color-inset);
+  background: color-mix(in srgb, var(--color-inset) 70%, transparent);
   border-radius: 0 6px 6px 0;
   color: var(--color-quote-ink);
 }
@@ -101,8 +101,11 @@
   padding: 0.3em 0.6em;
 }
 .moji-agent-md th {
-  background: var(--color-inset);
+  background: color-mix(in srgb, var(--color-inset) 70%, transparent);
   font-weight: 600;
+}
+.moji-agent-md tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--color-sunken) 45%, transparent);
 }
 .moji-agent-md hr {
   margin: 0.9em 0;

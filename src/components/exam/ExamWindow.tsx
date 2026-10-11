@@ -1,45 +1,46 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlarmClock, Check, ChevronDown, Flag, Play, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Award,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Flag,
+  Play,
+  ShieldCheck,
+  Timer,
+  X,
+} from 'lucide-react'
 import { native } from '../../lib/native'
 import { renderInline } from '../../lib/markdown'
 import Switch from '../Switch'
 import type { ExamQuestion } from '../../learn/exam'
-import { EXAM_KIND_LABEL, EXAM_LEVEL_LABEL, QUESTION_TYPE_LABEL, formatDuration } from '../../learn/exam'
+import {
+  EXAM_KIND_LABEL,
+  EXAM_LEVEL_LABEL,
+  EXAM_PASS_RATIO,
+  QUESTION_TYPE_LABEL,
+  formatDuration,
+} from '../../learn/exam'
 import type { ExamWindowState } from '../../learn/useExamBridge'
 import { t } from '../../i18n'
 
 /**
- * 考试窗口：一个独立的 Electron 窗口（见 electron/main.ts 的「考试窗口」一节），
- * 加载同一份渲染产物、走 `?examWindow=1` 分支（见 main.tsx）。
+ * 考试窗口：一个独立的 Electron 窗口。
  *
- * 三条规矩，都是这次重构定下来的：
- * 1. **它一笔数据都不写**：作答、切屏、交卷全部 emit 回主窗口，由主窗口落盘
- *    （见 learn/useExamBridge）。这里没有 store，也没有任何存储调用——考试窗口崩了，
- *    已经记下的东西也一条不丢。
- * 2. **开始之前什么都不会发生**：intro 阶段退出 = 直接关窗，主窗口那边一条记录都不会有。
- *    一旦开始，就只有「交卷」与「放弃」两条路（关窗也算放弃，由主进程拦下来先问一次）。
- * 3. **计时不靠界面配合**：单题耗时由主窗口按「这一次落定答案 − 上一次落定答案」推出来
- *    （见 learn/examRecords）。所以这里没有计时区、也没有「把题滚进某个带子里」那种要求——
- *    用户怎么翻、怎么跳、怎么改答案都不影响记账。
- *
- * 版面是**动态分列**：一列放不下就加一列，最多三列，三列还放不下就翻页（见 learn/examLayout）。
- * 题目本身不画卡片（没有边框与底色），靠分栏与留白分开——一屏能多看点。
+ * 设计规矩：
+ * 1. 数据完全由主窗口管理：作答、切屏、交卷全部 emit 回主窗口落盘。
+ * 2. 高密度纸墨排版：严禁滥用大圆角卡牌，空间利用率优先，一屏可阅读多道题目。
+ * 3. 单题耗时按落定答案次序自动推算，无需任何界面配合打点。
  */
 
-/** 卷面四周的留白：底部那一块是留给题号条的 */
-const PAD_X = 40
-const PAD_TOP = 32
-const PAD_BOTTOM = 120
-/**
- * 卷面宽度：**单栏、768px**。
- *
- * 试过动态分列（一列放不下加一列、最多三列、溢出翻页），实际读起来不如窄栏舒服：
- * 一行太长眼睛要横扫，而试卷的题干本来就短。768 是这里独立定下的数，不跟着文档区
- * 的正文列走（那一列现在是 800，见 index.css 的 .doc-measure）。
- */
+const PAD_X = 20
+const PAD_TOP = 16
+const PAD_BOTTOM = 64
 const PAPER_MAX_W = 768
 
-/** 还没拿到状态时的空题目表：常量身份，好让它进 useCallback 的依赖 */
 const EMPTY_QUESTIONS: ExamQuestion[] = []
 
 interface Draft {
@@ -48,6 +49,14 @@ interface Draft {
 }
 
 const emptyDraft: Draft = { value: [], text: '' }
+
+const TYPE_THEMES: Record<string, { cls: string }> = {
+  single: { cls: 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300' },
+  multiple: { cls: 'border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300' },
+  truefalse: { cls: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' },
+  fill: { cls: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300' },
+  short: { cls: 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300' },
+}
 
 export default function ExamWindow() {
   const guest = useMemo(() => {
@@ -64,8 +73,7 @@ export default function ExamWindow() {
   const [forceSubmit, setForceSubmit] = useState(true)
   const [confirm, setConfirm] = useState<null | 'submit' | 'abandon'>(null)
   const [localStart, setLocalStart] = useState<number | null>(null)
-  /** 题号条收起 / 展开 */
-  const [stripOpen, setStripOpen] = useState(true)
+  const [stripOpen, setStripOpen] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef(new Map<string, HTMLDivElement>())
@@ -82,7 +90,7 @@ export default function ExamWindow() {
   const remainingMs = deadline ? deadline - now : 0
   const past = !!deadline && remainingMs <= 0
 
-  /* ---------- 与主窗口的通道 ---------- */
+  /* ---------- 与主窗口的通信 ---------- */
 
   useEffect(() => {
     if (!guest) return
@@ -91,7 +99,6 @@ export default function ExamWindow() {
       if (!next || typeof next !== 'object') return
       setState(next)
       if (next.phase === 'running' && next.attempt) {
-        // 以主窗口那份为准初始化作答（重开窗口也能接着答）
         setAnswers((prev) => {
           if (Object.keys(prev).length) return prev
           const out: Record<string, Draft> = {}
@@ -100,14 +107,12 @@ export default function ExamWindow() {
         })
       }
     })
-    // 「我准备好了」：open 的那份载荷不保证送达（见 lib/native），状态一律走这条握手
     guest.emit({ type: 'ready' })
     return off
   }, [guest])
 
   useEffect(() => {
     if (!guest) return
-    // 依赖里带上 running：退出是否等于「放弃」取决于此刻开考没有
     return guest.onConfirmClose(() => {
       if (running) {
         setConfirm('abandon')
@@ -118,7 +123,7 @@ export default function ExamWindow() {
     })
   }, [guest, running])
 
-  /* ---------- 时间：秒针、到点 ---------- */
+  /* ---------- 时间与到点判定 ---------- */
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 1000)
@@ -127,12 +132,11 @@ export default function ExamWindow() {
 
   useEffect(() => {
     if (!running || !past || !forceSubmit || submittedRef.current) return
-    // 用户选了「到点强制交卷」：到点就替他把卷子交了（超时标记由时间戳自己说话）
     submittedRef.current = true
     guest?.emit({ type: 'submit', at: Date.now() })
   }, [running, past, forceSubmit, guest])
 
-  /* ---------- 切屏记录 ---------- */
+  /* ---------- 切屏监听 ---------- */
 
   useEffect(() => {
     const onBlur = (): void => {
@@ -151,7 +155,7 @@ export default function ExamWindow() {
     }
   }, [guest, running])
 
-  /* ---------- 作答 ---------- */
+  /* ---------- 作答与翻题 ---------- */
 
   const scrollToQuestion = useCallback(
     (questionId: string, smooth = true) => {
@@ -172,10 +176,6 @@ export default function ExamWindow() {
   const setAnswer = useCallback(
     (q: ExamQuestion, next: Draft, advance = false) => {
       setAnswers((prev) => ({ ...prev, [q.id]: next }))
-      /*
-       * 只发答案：单题耗时由主窗口按「这次落定的时间戳 − 上一次落定的时间戳」推出来
-       * （见 learn/examRecords 的 recordInput），这里不报任何时间。
-       */
       guest?.emit({
         type: 'input',
         questionId: q.id,
@@ -184,7 +184,6 @@ export default function ExamWindow() {
         at: Date.now(),
       })
       if (!advance) return
-      // 往后找第一道还没答的题（当前这道已排除在候选之外，先答后跳不会原地打转）
       const idx = questions.findIndex((x) => x.id === q.id)
       const rest = questions.slice(idx + 1).concat(questions.slice(0, idx))
       const target = rest.find((x) => isBlank(x, answers[x.id])) ?? rest[0]
@@ -207,10 +206,30 @@ export default function ExamWindow() {
   )
 
   const answeredCount = questions.filter((q) => !isBlank(q, answers[q.id])).length
+  const totalCount = questions.length || 1
+  const answeredPercent = Math.round((answeredCount / totalCount) * 100)
+
   const lastAnswered = (() => {
     for (let i = questions.length - 1; i >= 0; i--) if (!isBlank(questions[i], answers[questions[i].id])) return questions[i].id
     return ''
   })()
+
+  const currentIdx = questions.findIndex((q) => q.id === lastAnswered)
+  const activeIdx = currentIdx >= 0 ? currentIdx : 0
+
+  const gotoPrev = () => {
+    if (activeIdx > 0) {
+      const target = questions[activeIdx - 1]
+      if (target) gotoQuestion(target.id)
+    }
+  }
+
+  const gotoNext = () => {
+    if (activeIdx < questions.length - 1) {
+      const target = questions[activeIdx + 1]
+      if (target) gotoQuestion(target.id)
+    }
+  }
 
   const start = (): void => {
     const at = Date.now()
@@ -229,56 +248,116 @@ export default function ExamWindow() {
 
   if (!state) {
     return (
-      <div className="flex h-screen items-center justify-center bg-paper text-[13px] text-ink-faint">{t('正在打开试卷…')}</div>
+      <div className="flex h-screen items-center justify-center bg-paper text-[13px] text-ink-faint">
+        <div className="flex items-center gap-2">
+          <Clock size={15} className="animate-spin text-seal" />
+          <span>{t('正在打开试卷…')}</span>
+        </div>
+      </div>
     )
   }
 
   return (
-    <div className="flex h-screen flex-col bg-paper text-ink">
-      <header className="app-drag flex shrink-0 items-center gap-3 border-b border-line bg-card/60 px-5 py-3">
-        <AlarmClock size={15} className="shrink-0 text-seal" />
-        <span className="min-w-0 truncate text-[13.5px] font-medium text-ink-strong">{state.title}</span>
-        <span className="shrink-0 text-[11px] text-ink-faint">
-          {t(EXAM_KIND_LABEL[state.kind])} · {t(EXAM_LEVEL_LABEL[state.level])} · {t('{0} 题 · 满分 {1}', questions.length, state.totalPoints)}
-        </span>
-        <span className="min-w-0 flex-1" />
+    <div className="flex h-screen flex-col bg-paper text-ink select-none">
+      {/* 紧凑顶栏 HUD */}
+      <header className="app-drag relative flex shrink-0 items-center justify-between border-b border-line bg-card/90 px-4 h-12">
+        {/* 左侧：标题与卷面属性 */}
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-seal/10 text-seal">
+            <Timer size={13} />
+          </div>
+          <span className="truncate text-[13px] font-semibold text-ink-strong max-w-[220px] sm:max-w-[320px]" title={state.title}>
+            {state.title}
+          </span>
+          <div className="hidden sm:flex items-center gap-1 text-[10.5px]">
+            <span className="rounded bg-line/60 px-1.5 py-px text-ink-soft">{t(EXAM_KIND_LABEL[state.kind])}</span>
+            <span className="rounded bg-line/60 px-1.5 py-px text-ink-soft">{t(EXAM_LEVEL_LABEL[state.level])}</span>
+            <span className="text-ink-faint tabular-nums ml-0.5">
+              {t('{0} 题 · 满分 {1}', questions.length, state.totalPoints)}
+            </span>
+          </div>
+        </div>
+
+        {/* 中间：紧凑计时器 */}
         {running && (
-          <>
-            <span className="shrink-0 text-[11.5px] tabular-nums text-ink-soft">
-              {t('已答 {0}/{1}', answeredCount, questions.length)}
-            </span>
-            <span
-              className={
-                'shrink-0 rounded-md px-2 py-1 text-[12.5px] tabular-nums ' +
-                (past ? 'bg-amber-500/15 text-amber-700' : 'bg-line/60 text-ink-strong')
-              }
-              title={deadline ? t('到点后是否强制交卷由你在开考前选') : t('这份卷子不限时')}
-            >
-              {deadline
-                ? past
-                  ? t('超时 {0}', formatDuration(overtimeMs))
-                  : t('剩余 {0}', formatDuration(remainingMs))
-                : t('计时 {0}', formatDuration(now - (startedAt ?? now)))}
-            </span>
-            <button
-              type="button"
-              onClick={() => setConfirm('abandon')}
-              className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11.5px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
-            >
-              {t('放弃考试')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirm('submit')}
-              className="flex shrink-0 items-center gap-1 rounded-lg bg-ink px-3 py-1.5 text-[11.5px] font-medium text-paper transition hover:bg-ink-strong"
-            >
-              <Flag size={12} />
-              {t('交卷')}
-            </button>
-          </>
+          <div className="flex shrink-0 items-center justify-center">
+            {deadline ? (
+              past ? (
+                <div
+                  className="flex items-center gap-1.5 rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-0.5 text-[11.5px] font-semibold tabular-nums text-red-600 dark:text-red-400 animate-pulse"
+                  title={t('到点后是否强制交卷由你在开考前选')}
+                >
+                  <Clock size={12} />
+                  <span>{t('超时 {0}', formatDuration(overtimeMs))}</span>
+                </div>
+              ) : remainingMs < 300_000 ? (
+                <div
+                  className="flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[11.5px] font-semibold tabular-nums text-amber-700 dark:text-amber-400"
+                  title={t('到点后是否强制交卷由你在开考前选')}
+                >
+                  <Clock size={12} />
+                  <span>{t('剩余 {0}', formatDuration(remainingMs))}</span>
+                </div>
+              ) : (
+                <div
+                  className="flex items-center gap-1.5 rounded-md border border-line bg-paper/70 px-2.5 py-0.5 text-[11.5px] font-medium tabular-nums text-ink-strong"
+                  title={t('到点后是否强制交卷由你在开考前选')}
+                >
+                  <Clock size={12} className="text-seal" />
+                  <span>{t('剩余 {0}', formatDuration(remainingMs))}</span>
+                </div>
+              )
+            ) : (
+              <div
+                className="flex items-center gap-1.5 rounded-md border border-line bg-paper/70 px-2.5 py-0.5 text-[11.5px] font-medium tabular-nums text-ink-strong"
+                title={t('这份卷子不限时')}
+              >
+                <Clock size={12} className="text-seal" />
+                <span>{t('计时 {0}', formatDuration(now - (startedAt ?? now)))}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 右侧：作答进度与交卷操作 */}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {running && (
+            <>
+              <div className="flex items-center gap-1 rounded border border-line bg-paper/60 px-2 py-0.5 text-[11px] tabular-nums text-ink-soft">
+                <span>{t('已答 {0}/{1}', answeredCount, questions.length)}</span>
+                <span className="text-[10px] text-ink-faint">({answeredPercent}%)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirm('abandon')}
+                className="rounded px-2 py-1 text-[11px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
+              >
+                {t('放弃考试')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirm('submit')}
+                className="flex items-center gap-1 rounded bg-seal px-3 py-1 text-[11.5px] font-semibold text-paper shadow-2xs hover:bg-seal-deep transition active:scale-[0.98]"
+              >
+                <Flag size={11} />
+                <span>{t('交卷')}</span>
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* 顶部平滑微进度线 */}
+        {running && (
+          <div className="absolute inset-x-0 bottom-0 h-[1.5px] bg-line/40 overflow-hidden">
+            <div
+              className="h-full bg-seal transition-all duration-300 ease-out"
+              style={{ width: `${answeredPercent}%` }}
+            />
+          </div>
         )}
       </header>
 
+      {/* 开考指引台 */}
       {phase === 'intro' && (
         <IntroScreen
           state={state}
@@ -289,23 +368,26 @@ export default function ExamWindow() {
         />
       )}
 
+      {/* 结算提示页 */}
       {phase === 'settled' && (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2">
-          <Check size={22} className="text-seal" />
-          <p className="text-[13px] text-ink-strong">{state.notice}</p>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2.5 p-6">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-seal/10 text-seal">
+            <Check size={22} strokeWidth={2.5} />
+          </div>
+          <p className="text-[14px] font-semibold text-ink-strong">{state.notice}</p>
           <p className="text-[11.5px] text-ink-faint">{t('这个窗口马上会关掉；试卷列表里能看到这一次的记录。')}</p>
         </div>
       )}
 
+      {/* 考中单栏题目流与悬浮答题坞 */}
       {running && (
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div
             ref={scrollRef}
             className="min-h-0 flex-1 overflow-y-auto"
-            style={{ padding: PAD_TOP + 'px ' + PAD_X + 'px ' + PAD_BOTTOM + 'px' }}
+            style={{ padding: `${PAD_TOP}px ${PAD_X}px ${PAD_BOTTOM}px` }}
           >
-            {/* 单栏 768px：不分栏、不翻页，一路往下读 */}
-            <div className="mx-auto flex w-full flex-col gap-7" style={{ maxWidth: PAPER_MAX_W }}>
+            <div className="mx-auto flex w-full flex-col gap-4" style={{ maxWidth: PAPER_MAX_W }}>
               {questions.map((q, i) => (
                 <QuestionBlock
                   key={q.id}
@@ -323,14 +405,11 @@ export default function ExamWindow() {
             </div>
           </div>
 
-          {/*
-            题号条：**水平、固定在底部、不占版面**（absolute，浮在卷面之上），可以收起展开。
-            每个号码上带一道状态：答过的实心、没答的空心——一眼看得出还差哪几题。
-          */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center">
-            <div className="pointer-events-auto flex max-w-[min(94vw,1000px)] flex-col items-center gap-2">
+          {/* 紧凑悬浮答题坞 */}
+          <div className="pointer-events-none fixed inset-x-0 bottom-3 z-20 flex justify-center">
+            <div className="pointer-events-auto flex max-w-[min(94vw,900px)] flex-col items-center gap-1.5">
               {stripOpen && (
-                <div className="moji-in-soft flex flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-line-strong bg-card/95 px-3 py-2 shadow-[0_12px_36px_rgba(31,27,23,0.22)] backdrop-blur">
+                <div className="moji-in-soft flex max-h-[120px] flex-wrap items-center justify-center gap-1 overflow-y-auto rounded-lg border border-line-strong/80 bg-card/95 p-2 shadow-md backdrop-blur">
                   {questions.map((q, i) => {
                     const done = !isBlank(q, answers[q.id])
                     const current = q.id === lastAnswered
@@ -344,11 +423,11 @@ export default function ExamWindow() {
                             (done ? t('已作答') : t('还没答')) + (current ? ' · ' + t('刚答过这题') : ''))
                         }
                         className={
-                          'flex h-7 min-w-7 items-center justify-center rounded-lg border px-1.5 text-[11.5px] tabular-nums transition ' +
+                          'flex h-6 min-w-6 items-center justify-center rounded border px-1 text-[11px] tabular-nums transition ' +
                           (done
-                            ? 'border-seal/50 bg-seal/15 font-medium text-seal-deep'
-                            : 'border-dashed border-line-strong bg-transparent text-ink-faint hover:text-ink') +
-                          (current ? ' ring-2 ring-seal/30' : '')
+                            ? 'border-seal/50 bg-seal/15 font-semibold text-seal-deep'
+                            : 'border-dashed border-line-strong bg-paper/30 text-ink-faint hover:border-line hover:text-ink') +
+                          (current ? ' ring-1.5 ring-seal/50 font-bold' : '')
                         }
                       >
                         {i + 1}
@@ -357,43 +436,89 @@ export default function ExamWindow() {
                   })}
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => setStripOpen((v) => !v)}
-                title={stripOpen ? t('收起题号条') : t('展开题号条')}
-                className="flex items-center gap-1.5 rounded-full border border-line-strong bg-card/95 px-3 py-1.5 text-[11.5px] text-ink-soft shadow-sm backdrop-blur transition hover:text-ink"
-              >
-                {t('已答 {0}/{1}', answeredCount, questions.length)}
-                <ChevronDown
-                  size={12}
-                  className={'transition-transform duration-200 ' + (stripOpen ? '' : 'rotate-180')}
-                />
-              </button>
+              <div className="flex items-center gap-0.5 rounded-full border border-line-strong/80 bg-card/95 px-1.5 py-0.5 shadow-sm backdrop-blur">
+                <button
+                  type="button"
+                  onClick={gotoPrev}
+                  disabled={activeIdx <= 0}
+                  title={t('上一题')}
+                  className="flex h-6 w-6 items-center justify-center rounded text-ink-soft transition hover:bg-line/50 hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
+                >
+                  <ChevronLeft size={12} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStripOpen((v) => !v)}
+                  title={stripOpen ? t('收起题号条') : t('展开题号条')}
+                  className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-ink-soft transition hover:text-ink"
+                >
+                  <span>{t('已答 {0}/{1}', answeredCount, questions.length)}</span>
+                  <ChevronDown
+                    size={11}
+                    className={'transition-transform duration-200 ' + (stripOpen ? '' : 'rotate-180')}
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={gotoNext}
+                  disabled={activeIdx >= questions.length - 1}
+                  title={t('下一题')}
+                  className="flex h-6 w-6 items-center justify-center rounded text-ink-soft transition hover:bg-line/50 hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
+                >
+                  <ChevronRight size={12} />
+                </button>
+              </div>
             </div>
           </div>
-
         </div>
       )}
 
+      {/* 确认弹窗 */}
       {confirm && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 backdrop-blur-[1px]">
-          <div className="moji-dialog-in w-[380px] rounded-xl border border-line-strong bg-paper p-4 shadow-[0_24px_64px_rgba(0,0,0,0.4)]">
-            <h3 className="text-[14px] font-semibold text-ink-strong">
-              {confirm === 'submit' ? t('现在交卷？') : t('放弃这次考试？')}
-            </h3>
-            <p className="mt-2 text-[12px] leading-relaxed text-ink-soft">
-              {confirm === 'submit'
-                ? t('交卷后导师会判分并写错题讲解。') +
-                  (answeredCount < questions.length
-                    ? t('还有 {0} 题没作答，它们会记 0 分。', questions.length - answeredCount)
-                    : '')
-                : t('放弃会**直接记 0 分**，导师不会判分、也不会写错题讲解。这份卷子以后还能重考。')}
-            </p>
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 backdrop-blur-[2px]">
+          <div className="moji-dialog-in w-[380px] rounded-xl border border-line-strong bg-card p-4 shadow-xl">
+            <div className="flex items-center gap-2">
+              <div
+                className={
+                  'flex h-7 w-7 shrink-0 items-center justify-center rounded ' +
+                  (confirm === 'submit' ? 'bg-seal/10 text-seal' : 'bg-red-500/10 text-red-600')
+                }
+              >
+                {confirm === 'submit' ? <Flag size={14} /> : <AlertTriangle size={14} />}
+              </div>
+              <h3 className="text-[14px] font-bold text-ink-strong">
+                {confirm === 'submit' ? t('现在交卷？') : t('放弃这次考试？')}
+              </h3>
+            </div>
+
+            <div className="mt-2.5 text-[12px] leading-relaxed text-ink-soft">
+              {confirm === 'submit' ? (
+                <>
+                  <p>{t('交卷后导师会判分并写错题讲解。')}</p>
+                  {answeredCount < questions.length ? (
+                    <div className="mt-2 flex items-start gap-1.5 rounded border border-amber-500/30 bg-amber-500/10 p-2 text-amber-800 dark:text-amber-300 text-[11.5px]">
+                      <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                      <span>{t('还有 {0} 题没作答，它们会记 0 分。', questions.length - answeredCount)}</span>
+                    </div>
+                  ) : (
+                    <div className="mt-2 flex items-center gap-1.5 rounded border border-emerald-500/30 bg-emerald-500/10 p-2 text-emerald-800 dark:text-emerald-300 text-[11.5px]">
+                      <Check size={13} className="shrink-0" />
+                      <span>{t('所有题目均已完成作答。')}</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="rounded border border-red-500/30 bg-red-500/10 p-2.5 text-red-800 dark:text-red-300 text-[11.5px]">
+                  <p>{t('放弃会**直接记 0 分**，导师不会判分、也不会写错题讲解。这份卷子以后还能重考。')}</p>
+                </div>
+              )}
+            </div>
+
             <div className="mt-4 flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setConfirm(null)}
-                className="rounded-lg px-3 py-1.5 text-[12px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
+                className="rounded border border-line bg-paper/60 px-3 py-1.5 text-[11.5px] font-medium text-ink-soft transition hover:bg-line/60 hover:text-ink"
               >
                 {t('继续作答')}
               </button>
@@ -401,11 +526,11 @@ export default function ExamWindow() {
                 type="button"
                 onClick={() => submit(confirm)}
                 className={
-                  'rounded-lg px-3 py-1.5 text-[12px] font-medium text-paper transition ' +
-                  (confirm === 'submit' ? 'bg-ink hover:bg-ink-strong' : 'bg-seal-deep hover:bg-seal')
+                  'rounded px-3.5 py-1.5 text-[11.5px] font-semibold text-paper shadow-2xs transition ' +
+                  (confirm === 'submit' ? 'bg-seal hover:bg-seal-deep' : 'bg-red-600 hover:bg-red-700')
                 }
               >
-                {confirm === 'submit' ? t('交卷') : t('放弃并记 0 分')}
+                {confirm === 'submit' ? t('确认交卷') : t('放弃并记 0 分')}
               </button>
             </div>
           </div>
@@ -415,14 +540,13 @@ export default function ExamWindow() {
   )
 }
 
-/** 这道题答没答（空串与空数组都算没答） */
 function isBlank(q: ExamQuestion, draft: Draft | undefined): boolean {
   if (!draft) return true
   if (q.type === 'fill' || q.type === 'short') return !draft.text.trim()
   return draft.value.length === 0
 }
 
-/** 开考前那一屏：把这场考试的规矩一次说清，然后才是「开始」 */
+/** 紧凑开考指引台 */
 function IntroScreen({
   state,
   forceSubmit,
@@ -437,25 +561,73 @@ function IntroScreen({
   onQuit: () => void
 }) {
   const limit = state.minutes > 0 ? t('{0} 分钟', state.minutes) : t('不限时')
-  return (
-    <div className="flex min-h-0 flex-1 items-center justify-center px-8">
-      <div className="w-[520px] rounded-2xl border border-line bg-card p-6 shadow-sm">
-        <h1 className="text-[17px] font-semibold text-ink-strong">{state.title}</h1>
-        <p className="mt-1.5 text-[12px] text-ink-faint">
-          {t(EXAM_KIND_LABEL[state.kind])} · {t(EXAM_LEVEL_LABEL[state.level])} ·{' '}
-          {t('{0} 题 · 满分 {1} · 时限 {2}', state.questions.length, state.totalPoints, limit)}
-        </p>
+  const passScore = Math.round(state.totalPoints * EXAM_PASS_RATIO)
 
-        <ul className="mt-4 flex flex-col gap-1.5 text-[12px] leading-relaxed text-ink-soft">
-          <li>· {t('开始后窗口会全屏，归一主窗口会盖上一层黑遮罩，避免一边答题一边翻文档。')}</li>
-          <li>· {t('一旦开始，只有**交卷**与**放弃**两条路；放弃直接记 0 分，不判分也不写错题讲解。')}</li>
-          <li>· {t('卷面是单栏 768px，一路往下读；底部那条题号条可以跳题、也能收起。')}</li>
-          <li>· {t('每题用时按你**落定答案的先后**推算（这一笔减上一笔），不用你配合任何计时动作。')}</li>
-          <li>· {t('作答与切屏次数都会被记下来，导师据此判断你的薄弱项。')}</li>
-        </ul>
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center p-4 overflow-y-auto">
+      <div className="w-full max-w-[480px] rounded-xl border border-line-strong bg-card p-5 shadow-lg">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-seal/10 text-seal">
+            <Award size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="rounded bg-line/60 px-1.5 py-px text-[10.5px] font-medium text-ink-soft">
+                {t(EXAM_KIND_LABEL[state.kind])}
+              </span>
+              <span className="rounded bg-line/60 px-1.5 py-px text-[10.5px] font-medium text-ink-soft">
+                {t(EXAM_LEVEL_LABEL[state.level])}
+              </span>
+              <span className="rounded bg-seal/10 px-1.5 py-px text-[10.5px] font-medium text-seal-deep">
+                {limit}
+              </span>
+            </div>
+            <h1 className="mt-1 truncate text-[16px] font-bold text-ink-strong">{state.title}</h1>
+          </div>
+        </div>
+
+        {/* 紧凑 4 项指标条 */}
+        <div className="mt-4 grid grid-cols-4 gap-2">
+          <div className="rounded border border-line/70 bg-paper/40 p-2 text-center">
+            <div className="text-[10px] text-ink-faint">{t('题量')}</div>
+            <div className="mt-0.5 text-[14px] font-bold text-ink-strong tabular-nums">
+              {state.questions.length} <span className="text-[10px] font-normal text-ink-faint">{t('题')}</span>
+            </div>
+          </div>
+          <div className="rounded border border-line/70 bg-paper/40 p-2 text-center">
+            <div className="text-[10px] text-ink-faint">{t('满分')}</div>
+            <div className="mt-0.5 text-[14px] font-bold text-ink-strong tabular-nums">
+              {state.totalPoints} <span className="text-[10px] font-normal text-ink-faint">{t('分')}</span>
+            </div>
+          </div>
+          <div className="rounded border border-line/70 bg-paper/40 p-2 text-center">
+            <div className="text-[10px] text-ink-faint">{t('时限')}</div>
+            <div className="mt-0.5 text-[13px] font-bold text-ink-strong">{limit}</div>
+          </div>
+          <div className="rounded border border-line/70 bg-paper/40 p-2 text-center">
+            <div className="text-[10px] text-ink-faint">{t('及格标准')}</div>
+            <div className="mt-0.5 text-[14px] font-bold text-ok-deep tabular-nums">
+              {passScore} <span className="text-[10px] font-normal text-ink-faint">{t('分')}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 守则提示 */}
+        <div className="mt-3.5 rounded-lg border border-line bg-paper/30 p-3">
+          <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-ink-strong">
+            <ShieldCheck size={13} className="text-seal" />
+            <span>{t('考试须知与考场守则')}</span>
+          </div>
+          <ul className="mt-1.5 flex flex-col gap-1 text-[11px] leading-relaxed text-ink-soft">
+            <li>· {t('开始后窗口会全屏，归一主窗口会盖上一层黑遮罩，避免一边答题一边翻文档。')}</li>
+            <li>· {t('一旦开始，只有**交卷**与**放弃**两条路；放弃直接记 0 分，不判分也不写错题讲解。')}</li>
+            <li>· {t('每题用时按你**落定答案的先后**推算（这一笔减上一笔），不用你配合任何计时动作。')}</li>
+            <li>· {t('作答与切屏次数都会被记下来，导师据此判断你的薄弱项。')}</li>
+          </ul>
+        </div>
 
         {state.minutes > 0 && (
-          <div className="mt-4 rounded-lg border border-line bg-paper/60 px-3 py-2.5">
+          <div className="mt-3 rounded-lg border border-line bg-paper/50 px-3 py-2 text-[11.5px]">
             <Switch
               on={forceSubmit}
               onChange={onForceSubmit}
@@ -465,19 +637,19 @@ function IntroScreen({
           </div>
         )}
 
-        <div className="mt-5 flex items-center gap-2">
+        <div className="mt-4 flex items-center gap-2">
           <button
             type="button"
             onClick={onStart}
-            className="flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-[12.5px] font-medium text-paper transition hover:bg-ink-strong"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-seal px-4 py-2 text-[12px] font-semibold text-paper shadow-2xs transition hover:bg-seal-deep active:scale-[0.99]"
           >
-            <Play size={13} />
+            <Play size={13} fill="currentColor" />
             {t('开始考试')}
           </button>
           <button
             type="button"
             onClick={onQuit}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
+            className="flex items-center justify-center gap-1 rounded-lg border border-line bg-paper/60 px-3.5 py-2 text-[12px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
           >
             <X size={13} />
             {t('退出（什么都不发生）')}
@@ -488,12 +660,7 @@ function IntroScreen({
   )
 }
 
-/**
- * 一道题。
- *
- * **不是卡片**：没有边框、没有底色、没有圆角——一屏要放三列，卡片会把可用宽度吃掉一圈。
- * 分隔靠的是与下一题之间的留白（列内 gap）与标题行的字号。
- */
+/** 紧凑题目卡片：排版舒适，杜绝臃肿卡牌 */
 function QuestionBlock({
   index,
   question,
@@ -505,16 +672,11 @@ function QuestionBlock({
   index: number
   question: ExamQuestion
   draft: Draft
-  /** 刚答过的那一题：给一道细边提示「你在这儿」 */
   current: boolean
   onChange: (next: Draft, advance?: boolean) => void
   register: (el: HTMLDivElement | null) => void
 }) {
   const stemHtml = useMemo(() => renderInline(question.stem), [question.stem])
-  /*
-   * 对错题**不显示序号**：它的 id 是 true / false，摆在选项前面只会让人读成英文单词。
-   * 两个选项本身也写成「对 / 错」——最短的说法，一行并排还占不到一半宽度。
-   */
   const isJudgement = question.type === 'truefalse'
   const options = isJudgement
     ? [
@@ -532,98 +694,147 @@ function QuestionBlock({
     onChange({ value: has ? draft.value.filter((x) => x !== id) : [...draft.value, id], text: '' }, false)
   }
 
+  const isDone = !isBlank(question, draft)
+  const typeTheme = TYPE_THEMES[question.type] ?? {
+    cls: 'border-line bg-line/50 text-ink-soft',
+  }
+
   return (
     <div
       ref={register}
-      className={'scroll-mt-6 ' + (current ? 'border-l-2 border-seal/40 pl-3' : 'pl-3.5')}
+      className={
+        'rounded-lg border transition-colors duration-150 scroll-mt-16 p-4 ' +
+        (current
+          ? 'border-seal/60 bg-card shadow-2xs ring-1 ring-seal/25'
+          : 'border-line/70 bg-card/90 hover:border-line-strong')
+      }
     >
-      {/*
-        题干与序号**同一行**：「1. （单选题）题干……（2分）」。
-        一行里把「第几题、什么题型、多少分」都交代掉，比原来三行抬头省下两行——
-        一屏能多读一道题，翻卷时也更容易扫。
-        题干走 renderInline（行内渲染）：它把单个段落的外壳去掉，才能接在序号后面；
-        多段题干会自然落到下面几行，仍然读得通。
-      */}
-      <div className="text-[13px] leading-[1.85] text-ink">
-        <span className="mr-1 font-medium text-ink-strong tabular-nums">{index}.</span>
-        <span className="text-ink-faint">{t('（{0}）', t(QUESTION_TYPE_LABEL[question.type]))}</span>{' '}
-        <span dangerouslySetInnerHTML={{ __html: stemHtml }} />
-        <span className="ml-1 text-[11.5px] text-ink-faint tabular-nums">{t('（{0} 分）', question.points)}</span>
+      {/* 题头栏：题号、题型、分值、作答状态 */}
+      <div className="flex items-center justify-between gap-2 border-b border-line/40 pb-2">
+        <div className="flex items-center gap-1.5">
+          <span
+            className={
+              'flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold tabular-nums transition-colors ' +
+              (isDone
+                ? 'bg-seal/15 text-seal-deep border border-seal/30'
+                : 'bg-line/60 text-ink-soft')
+            }
+          >
+            {index}
+          </span>
+          <span className={'rounded px-1.5 py-px text-[10.5px] font-medium border ' + typeTheme.cls}>
+            {t(QUESTION_TYPE_LABEL[question.type])}
+          </span>
+          <span className="text-[10.5px] tabular-nums text-ink-faint">
+            {t('（{0} 分）', question.points)}
+          </span>
+        </div>
+        <div>
+          {isDone ? (
+            <span className="flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-0.5 text-[10.5px] font-medium text-emerald-700 dark:text-emerald-400">
+              <Check size={10} strokeWidth={2.5} />
+              {t('已作答')}
+            </span>
+          ) : (
+            <span className="rounded bg-line/40 px-2 py-0.5 text-[10.5px] text-ink-faint">
+              {t('待作答')}
+            </span>
+          )}
+        </div>
       </div>
 
+      {/* 题干 */}
+      <div className="mt-2.5 text-[13px] leading-[1.75] text-ink-strong" dangerouslySetInnerHTML={{ __html: stemHtml }} />
+
       {question.image && (
-        /* 配图：题干的一部分，摆题干下、作答区上。SVG 源码在入库前已消毒（见 learn/exam/svg） */
-        <div className="moji-exam-figure" dangerouslySetInnerHTML={{ __html: question.image }} />
+        <div className="my-2.5 flex justify-center rounded border border-line/60 bg-paper/30 p-2.5 moji-exam-figure" dangerouslySetInnerHTML={{ __html: question.image }} />
       )}
 
+      {/* 作答区：高空间利用率，无臃肿大卡片 */}
       {question.type === 'fill' ? (
-        <input
-          value={draft.text}
-          onChange={(e) => onChange({ value: [], text: e.target.value })}
-          placeholder={t('在这里填写答案')}
-          spellCheck={false}
-          className="mt-2.5 w-full rounded-lg border border-line bg-paper/60 px-3 py-2 text-[13px] text-ink outline-none transition placeholder:text-ink-faint focus:border-seal/50"
-        />
+        <div className="mt-3">
+          <input
+            value={draft.text}
+            onChange={(e) => onChange({ value: [], text: e.target.value })}
+            placeholder={t('在这里填写答案')}
+            spellCheck={false}
+            className="w-full rounded border border-line bg-paper/40 px-3 py-1.5 text-[13px] text-ink outline-none transition placeholder:text-ink-faint focus:border-seal/60 focus:bg-card focus:ring-1 focus:ring-seal/15"
+          />
+        </div>
       ) : question.type === 'short' ? (
-        <textarea
-          value={draft.text}
-          onChange={(e) => onChange({ value: [], text: e.target.value })}
-          rows={3}
-          placeholder={t('在这里作答（可写推导过程）')}
-          spellCheck={false}
-          className="mt-2.5 w-full resize-y rounded-lg border border-line bg-paper/60 px-3 py-2 text-[13px] leading-relaxed text-ink outline-none transition placeholder:text-ink-faint focus:border-seal/50"
-        />
-      ) : (
-        /*
-          选项走**弹性布局 + 自动换行**：短的选项一行并排好几个（「对 / 错」这种一眼看完），
-          长的（带公式的那种）自己占满一行再换行——不必每个选项都独占一行，白省半屏。
-          **没有边框、没有底色**：一张卷子几十个选项，框子一多整页都是线，反而看不清题干；
-          选中与否靠序号与文字的颜色（被选中的序号变强调色加粗、文字变深）——那才是真正要看的差别。
-        */
-        <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1">
+        <div className="mt-3">
+          <textarea
+            value={draft.text}
+            onChange={(e) => onChange({ value: [], text: e.target.value })}
+            rows={3}
+            placeholder={t('在这里作答（可写推导过程）')}
+            spellCheck={false}
+            className="w-full resize-y rounded border border-line bg-paper/40 px-3 py-1.5 text-[13px] leading-relaxed text-ink outline-none transition placeholder:text-ink-faint focus:border-seal/60 focus:bg-card focus:ring-1 focus:ring-seal/15"
+          />
+        </div>
+      ) : isJudgement ? (
+        <div className="mt-3 grid grid-cols-2 gap-2">
           {options.map((o) => {
             const on = draft.value.includes(o.id)
+            const isTrue = o.id === 'true'
             return (
-              /*
-               * 一行选项 = 「序号 · 表单控件 · 内容」。
-               *
-               * 用 <label> 包一个真的 <input>（单选 type=radio / 多选 type=checkbox），
-               * 不是自己画的按钮：点了就中的是原生控件，键盘（Tab / 空格 / 方向键）、
-               * 读屏、以及「这个控件叫什么」全都白拿；自己用 div 画一个假的，
-               * 这些都得一样样补回来。同题的 radio 用同一个 name，浏览器自己保证互斥。
-               */
               <label
                 key={o.id}
                 className={
-                  'flex max-w-full cursor-pointer items-start gap-1.5 text-left text-[13px] leading-[1.9] transition ' +
-                  (on ? 'font-medium text-ink-strong' : 'text-ink hover:text-ink-strong')
+                  'flex cursor-pointer items-center justify-center gap-2 rounded border py-1.5 px-3 transition-colors select-none text-[13px] ' +
+                  (on
+                    ? (isTrue
+                        ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 font-semibold'
+                        : 'border-rose-500/60 bg-rose-500/10 text-rose-800 dark:text-rose-300 font-semibold')
+                    : 'border-line/70 bg-paper/30 text-ink hover:border-line-strong hover:bg-paper/70')
                 }
               >
-                {!isJudgement && (
-                  // 序号比正文大一档（15px）且无边框：它是「我要选这一个」的落点，得先被看见
-                  <span
-                    className={
-                      'shrink-0 text-[15px] leading-[1.65] tabular-nums transition ' +
-                      (on ? 'font-semibold text-seal-deep' : 'text-ink-faint')
-                    }
-                  >
-                    {o.id}
-                  </span>
-                )}
                 <input
-                  type={question.type === 'multiple' ? 'checkbox' : 'radio'}
-                  // 同题的选项共享一个 name：单选的互斥交给浏览器（我们这边也拦一道）
+                  type="radio"
                   name={'exam-q-' + question.id}
                   checked={on}
                   onChange={() => toggle(o.id)}
-                  className="mt-[6px] h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--color-seal)]"
+                  className="sr-only"
                 />
-                {/*
-                  选项文字走 Markdown 行内渲染：理科题的选项里全是公式（$x^2$、\lim），
-                  按纯文本显示会把美元符号原样摆出来（见 lib/markdown 的 renderInline）。
-                  用 div 而不是 span：行内渲染偶尔会产出块级元素，span 里嵌块级是非法 HTML。
-                */}
-                <div className="min-w-0" dangerouslySetInnerHTML={{ __html: renderInline(o.text) }} />
+                {isTrue ? <Check size={14} strokeWidth={2.5} /> : <X size={14} strokeWidth={2.5} />}
+                <span>{o.text}</span>
+              </label>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="mt-3 flex flex-col gap-1.5">
+          {options.map((o) => {
+            const on = draft.value.includes(o.id)
+            return (
+              <label
+                key={o.id}
+                className={
+                  'group flex items-start gap-2.5 rounded px-2.5 py-1.5 cursor-pointer transition-colors select-none text-[13px] border ' +
+                  (on
+                    ? 'border-seal/40 bg-seal/[0.08] text-ink-strong font-medium'
+                    : 'border-transparent text-ink hover:bg-paper/60')
+                }
+              >
+                <span
+                  className={
+                    'flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-bold transition-colors ' +
+                    (on ? 'bg-seal text-paper' : 'bg-line/60 text-ink-soft group-hover:bg-line')
+                  }
+                >
+                  {o.id}
+                </span>
+                <div
+                  className="min-w-0 flex-1 leading-snug"
+                  dangerouslySetInnerHTML={{ __html: renderInline(o.text) }}
+                />
+                <input
+                  type={question.type === 'multiple' ? 'checkbox' : 'radio'}
+                  name={'exam-q-' + question.id}
+                  checked={on}
+                  onChange={() => toggle(o.id)}
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-seal"
+                />
               </label>
             )
           })}

@@ -17,6 +17,18 @@ import { isDevUnlocked } from '../../lib/devMode'
 
 export type TabKey = 'ai' | 'appearance' | 'input' | 'window' | 'storage' | 'plugins' | 'update' | 'about' | 'dev'
 
+export interface SubTab {
+  key: string
+  label: string
+}
+
+export interface SettingsTabItem {
+  key: TabKey
+  label: string
+  icon: typeof Bot
+  subTabs?: SubTab[]
+}
+
 /**
  * 上次停在哪一页：记在 localStorage。开发者分页只有解锁过才允许作为「上次的选择」
  * 回来——凭据没了（换机器、清了存储）就不能凭一个存下来的键绕过口令。
@@ -42,9 +54,20 @@ export const saveTab = (key: TabKey): void => {
   }
 }
 
-export const TABS: Array<{ key: TabKey; label: string; icon: typeof Bot }> = [
+export const TABS: SettingsTabItem[] = [
   { key: 'ai', label: '模型', icon: Bot },
-  { key: 'appearance', label: '外观', icon: Palette },
+  {
+    key: 'appearance',
+    label: '外观',
+    icon: Palette,
+    subTabs: [
+      { key: 'theme', label: '主题配色' },
+      { key: 'background', label: '全局壁纸' },
+      { key: 'typography', label: '字体与描边' },
+      { key: 'locale', label: '界面语言' },
+      { key: 'features', label: '辅助与提示' },
+    ],
+  },
   // 「输入」= 键盘与麦克风：改键、语音转文字。它们都是「怎么把话喂进这个应用」，
   // 放在一起才找得到（教学模式那个开关在外观里，它管的是显示）
   { key: 'input', label: '输入', icon: Keyboard },
@@ -66,7 +89,7 @@ export const TABS: Array<{ key: TabKey; label: string; icon: typeof Bot }> = [
  * 「开发者」分页不常驻：解锁过（凭据在 localStorage 里）或这次对标题三击过，
  * 它才会出现在左侧分页列表里。见 lib/devMode。
  */
-export const DEV_TAB: { key: TabKey; label: string; icon: typeof Bot } = {
+export const DEV_TAB: SettingsTabItem = {
   key: 'dev',
   label: '开发者',
   icon: Terminal,

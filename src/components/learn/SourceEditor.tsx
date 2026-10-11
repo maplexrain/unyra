@@ -7,6 +7,7 @@ import { HighlightStyle, syntaxHighlighting, indentOnInput, indentUnit, bracketM
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages as codeLanguages } from '@codemirror/language-data'
 import { tags } from '@lezer/highlight'
+import { countSourceWords } from '../../lib/wordCount'
 import { useDocScroll } from '../../lib/docScroll'
 import { t } from '../../i18n'
 
@@ -225,29 +226,30 @@ export default function SourceEditor({
     if (view) view.dom.style.fontSize = Math.round(13 * scale * 10) / 10 + 'px'
   }, [scale])
 
-  const chars = value.replace(/\s/g, '').length
+  const chars = countSourceWords(value)
 
   return (
-    <div className="print-flat flex min-h-0 flex-1 flex-col bg-card">
-      {/*
-        正文内边距走 .cm-content（见 editorTheme）：上下 20px、与左右同一尺度。
-        右上那排悬浮按钮压着首行就压着——它平时是透明的，不占版面。
-      */}
-      <div ref={hostRef} className="min-h-0 flex-1 overflow-hidden" />
-
-      {/* 底栏：这是哪一份文件、多少字、存了没有。三件事都只在编辑时才需要，所以放最下面 */}
-      <div className="no-print flex shrink-0 items-center gap-3 border-t border-line px-4 py-1 text-[11px] text-ink-faint">
-        <span className="min-w-0 flex-1 truncate" title={label}>
-          {label}
-        </span>
-        <span className="shrink-0 tabular-nums">{t('{0} 字', chars)}</span>
+    <div className="print-flat relative flex min-h-0 flex-1 flex-col bg-card">
+      {/* 左上角悬浮字数与保存状态（编辑模式统计源码字符） */}
+      <div
+        title={label}
+        className="no-print pointer-events-none absolute left-3 top-2 z-10 flex items-center gap-1.5 rounded-md border border-line/60 bg-card/75 px-2 py-0.5 text-[11px] text-ink-faint backdrop-blur-xs select-none shadow-xs"
+      >
+        <span className="tabular-nums">{t('{0} 字', chars)}</span>
+        <span className="h-3 w-px bg-line-strong/60" />
         <span
-          className={'shrink-0 ' + STATE_TONE[state]}
+          className={STATE_TONE[state]}
           title={state === 'error' ? error : t(STATE_TEXT[state])}
         >
           {t(STATE_TEXT[state])}
         </span>
       </div>
+
+      {/*
+        正文内边距走 .cm-content（见 editorTheme）：上下 20px、与左右同一尺度。
+        右上那排悬浮按钮压着首行就压着——它平时是透明的，不占版面。
+      */}
+      <div ref={hostRef} className="min-h-0 flex-1 overflow-hidden" />
     </div>
   )
 }
