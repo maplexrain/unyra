@@ -606,8 +606,10 @@ export function useAgent(opts: {
                     if (!saved.ok) return { ok: false as const, error: saved.error }
                     return {
                       ok: true as const,
+                      path: saved.image.rel,
+                      uuid: saved.image.id,
                       note:
-                        '截图已存进资源库（res.list 里能看到），并附在你的下一步里——它同时会出现在文档侧的资源清单中。',
+                        `截图已保存为文件 "${saved.image.rel}"（可通过 api.files.read 读取），并已注入视觉上下文。`,
                       images: [saved.image],
                     }
                   },

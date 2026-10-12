@@ -14,6 +14,7 @@ import { asExamPayload, asIndex, asOptionalPath, asRecord, asText } from './refs
 import type { DocRef, NodeRef } from './refs'
 import type { SandboxCall, SandboxOptions } from './types'
 import { vfsBus } from '../../vfs'
+import { userAbsPath, userAbsPrefix } from '../../lib/storage'
 
 /** 把结果裁到上限：宁可给模型一段被截断的内容，也不要它被 413 顶回来 */
 export function clip(text: string, limit = MAX_RESULT_CHARS): string {
@@ -29,13 +30,8 @@ interface BuiltApi {
 }
 
 /**
- * api 的失败有两种表达方式：
- * - 抛异常：api 不存在、参数根本没法用；
- * - 返回 `{ ok:false }` 或 `{ error }`：路径找不到、位置校验失败这类「正常的失败」——
- *   它们必须当成值回给模型（它要读那句话才知道怎么改），所以不能抛。
- *
- * 因此这里两种都要认，否则失败计数只会数到抛异常那一类，
- * 「改了但没改成」会被当成一次成功的编排。
+ * api 的失败表达方式：
+ * 结构性失败一律回 { ok:false, error }，作为值回给模型，避免抛异常带崩同批次其它调用。
  */
 function isFailedValue(v: unknown): boolean {
   if (!v || typeof v !== 'object') return false
@@ -61,25 +57,24 @@ function markFailed(record: SandboxCall, value: unknown): void {
   if (text) record.message = text.replace(/\s+/g, ' ').trim().slice(0, 300)
 }
 
-/** 把工具动作包成 api 方法：每次调用记一笔（供界面显示与结果顶部的失败清单），异常转成可读错误 */
+/** 把工具动作包成 api 方法：每次调用记一笔，异常转为结构化失败返回值，防止炸掉整批编排 */
 function wrapApi(api: Record<string, unknown>, name: string, fn: (args: unknown[]) => unknown, log: SandboxCall[]) {
   const wrapped = (...args: unknown[]): unknown => {
     const record: SandboxCall = { name, ok: true }
     if (log.length < MAX_LOGGED_CALLS) log.push(record)
     try {
       const value = fn(args)
-      // 异步 api（res.* 那一组要碰磁盘）：失败判定要等 promise 落地才知道
+      // 异步 api:
       if (value instanceof Promise) {
         return value.then(
           (settled) => {
             markFailed(record, settled)
             return settled
           },
-          // 异步 api 抛出来的（文件系统出错之类）：也要记账，否则清单会说「全都成功了」
           (err: unknown) => {
             record.ok = false
             record.message = err instanceof Error ? err.message : 'api 调用失败'
-            throw err
+            return { ok: false, error: record.message }
           },
         )
       }
@@ -88,7 +83,7 @@ function wrapApi(api: Record<string, unknown>, name: string, fn: (args: unknown[
     } catch (err) {
       record.ok = false
       record.message = err instanceof Error ? err.message : 'api 调用失败'
-      throw new Error(record.message)
+      return { ok: false, error: record.message }
     }
   }
   const segs = name.split('.')
@@ -229,12 +224,44 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     return { path: r.ref.label, id: r.ref.id, title: r.ref.title }
   }, log)
 
+  if (opts.nodeOps.paths) {
+    const np = opts.nodeOps.paths
+    wrapApi(api, 'node.paths', (args) => {
+      const p = args.length ? asText(args[0]).trim() : undefined
+      const r = nodeRef(p)
+      if ('error' in r) return { error: r.error }
+      return np(r.ref.id)
+    }, log)
+  }
+
   wrapApi(api, 'node.rename', (args) => {
-    const r = nodeRef(args[0])
+    const raw = asText(args[0]).trim()
+    if (!raw) return { ok: false, error: 'node.rename 必须指定要重命名的节点路径或 ID，不允许省略节点路径' }
+    const r = nodeRef(raw)
     if ('error' in r) return { error: r.error }
     const title = asText(args[1]).trim()
     if (!title) return { error: '新标题不能为空' }
     return opts.nodeOps.update(r.ref.id, { title })
+  }, log)
+
+  wrapApi(api, 'node.annotate', (args) => {
+    const first = args[0]
+    const payloadFirst = !!first && typeof first === 'object'
+    const r = nodeRef(payloadFirst ? '' : first)
+    if ('error' in r) return { error: r.error }
+    const a = asRecord(payloadFirst ? first : args[1])
+    if (opts.nodeOps.annotate) {
+      return opts.nodeOps.annotate(r.ref.id, {
+        term: asText(a.term),
+        occurrence: asIndex(a.occurrence),
+        body: asText(a.body ?? a.content ?? a.text),
+      })
+    }
+    return opts.docOps.annotate(r.ref.id, {
+      term: asText(a.term),
+      occurrence: asIndex(a.occurrence),
+      body: asText(a.body ?? a.content ?? a.text),
+    })
   }, log)
 
   wrapApi(api, 'node.update', (args) => {
@@ -279,10 +306,7 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     }
     const pr = nodeRef(rawParent)
     if ('error' in pr) return { error: pr.error }
-    return opts.nodeOps.create(pr.ref.id, {
-      title,
-      description: typeof a.description === 'string' ? a.description : undefined,
-    })
+    return opts.nodeOps.create(pr.ref.id, { ...a, title })
   }, log)
 
   wrapApi(api, 'node.move', (args) => {
@@ -296,7 +320,8 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
   wrapApi(api, 'node.delete', (args) => {
     const r = nodeRef(args[0])
     if ('error' in r) return { error: r.error }
-    return opts.nodeOps.remove(r.ref.id)
+    const opt = args.length > 1 ? asRecord(args[1]) : undefined
+    return opts.nodeOps.remove(r.ref.id, opt ? { cascade: opt.cascade === true, dryRun: opt.dryRun === true } : undefined)
   }, log)
 
   wrapApi(api, 'description.read', (args) => {
@@ -485,7 +510,17 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
 
   if (opts.workflows) {
     const wfs = opts.workflows
-    wrapApi(api, 'wf.list', () => wfs.list(), log)
+    wrapApi(api, 'wf.list', (args) => {
+      const opt = asRecord(args[0])
+      return wfs.list(opt)
+    }, log)
+    if (wfs.get) {
+      wrapApi(api, 'wf.get', (args) => {
+        const ref = asText(args[0]).trim()
+        if (!ref) return { ok: false, error: 'wf.get 需要工作流 ID 或名称，例如 wf.get("recall")' }
+        return wfs.get!(ref)
+      }, log)
+    }
     wrapApi(api, 'wf.create', (args) => wfs.create(asRecord(args[0])), log)
     wrapApi(api, 'wf.remove', (args) => wfs.remove(asText(args[0]).trim()), log)
     /*
@@ -553,7 +588,12 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
   // 读网页：抓取与落盘都在界面层（见 learn/webDocs），这里只是几个入口
   if (opts.web) {
     const web = opts.web
-    wrapApi(api, 'web.webFetch', (args) => web.fetch(asText(args[0]).trim()), log)
+    wrapApi(api, 'web.webFetch', (args) => {
+      const first = args[0]
+      const url = (typeof first === 'object' && first !== null ? asText((first as Record<string, unknown>).url) : asText(first)).trim()
+      if (!url) return { ok: false, error: 'web.webFetch 需要有效的 url 参数，例如 web.webFetch("https://...") 或 web.webFetch({ url: "https://..." })' }
+      return web.fetch(url)
+    }, log)
     wrapApi(api, 'web.read', (args) => web.read(asText(args[0]).trim(), asText(args[1]).trim() || undefined), log)
     // 多引擎搜索（见 learn/webSearch）：不注入 search 就没有这一条（子代理按 apiAllow 决定）
     if (web.search) {
@@ -695,8 +735,25 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
   if (opts.wait) {
     const wait = opts.wait
     wrapApi(api, 'wait', (args) => {
-      const raw = typeof args[0] === 'number' ? args[0] : Number(args[0])
-      const ms = Number.isFinite(raw) ? Math.min(120_000, Math.max(0, Math.round(raw))) : 0
+      const first = args[0]
+      let ms = 0
+      if (typeof first === 'object' && first !== null) {
+        const obj = first as Record<string, unknown>
+        if (typeof obj.seconds === 'number') {
+          if (obj.seconds < 0) return { ok: false, error: 'wait 时间不能为负数' }
+          ms = Math.round(obj.seconds * 1000)
+        } else if (typeof obj.ms === 'number') {
+          if (obj.ms < 0) return { ok: false, error: 'wait 时间不能为负数' }
+          ms = Math.round(obj.ms)
+        }
+      } else {
+        const raw = typeof first === 'number' ? first : Number(first)
+        if (Number.isFinite(raw)) {
+          if (raw < 0) return { ok: false, error: 'wait 时间不能为负数' }
+          ms = Math.round(raw)
+        }
+      }
+      ms = Math.min(120_000, ms)
       return wait(ms).then(() => ({ ok: true, waited: ms }))
     }, log)
   }
@@ -765,13 +822,16 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
           ...(needle ? { needle } : {}),
           ...(fallbackRatio !== undefined ? { fallbackRatio } : {}),
         })
+        const hasSpecificTarget = !!needle || !!pattern || asIndex(obj.line) !== undefined
         return {
           ok: true,
           path: ref.docLabel,
           located: res.located,
-          note: res.located
-            ? '已在页签里打开并定位，用户看得到。'
-            : '文档已打开；没能在正文里精确选中（这一行可能是公式或代码），已按大致位置滚动。要指给用户看，请说明去看什么。',
+          note: !hasSpecificTarget
+            ? '已在页签里打开教学文档，用户看得到。'
+            : res.located
+              ? '已在页签里打开并定位，用户看得到。'
+              : '文档已打开；没能在正文里精确选中（这一行可能是公式或代码），已按大致位置滚动。要指给用户看，请说明去看什么。',
         }
       }, log)
     }
@@ -806,7 +866,7 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
           opened: res.opened,
           note: res.opened
             ? '已在页签里打开「' + name + '」，用户看得到。'
-            : '这个节点下没有叫「' + name + '」的超级文档，页签没有开。用 api.sdoc.list(path) 核对名字，或先用 sdoc.write 写一份。',
+            : '这个节点下尚未找到叫「' + name + '」的超级文档（请确认已通过 api.files.write 写入对应节点的 superdocs/' + name + '.html 文件）。',
         }
       }, log)
     }
@@ -855,7 +915,11 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     wrapApi(api, 'subagent.interrupt', (args) => sa.interrupt(asText(args[0]).trim()), log)
     wrapApi(api, 'subagent.view', (args) => sa.view(asText(args[0]).trim()), log)
     wrapApi(api, 'subagent.delete', (args) => sa.remove(asText(args[0]).trim()), log)
-    wrapApi(api, 'subagent.wait', (args) => sa.wait(asRecord(args[0])), log)
+    wrapApi(api, 'subagent.wait', (args) => {
+      const first = args[0]
+      const payload = typeof first === 'number' ? { seconds: first } : asRecord(first)
+      return sa.wait(payload)
+    }, log)
   }
 
   // 基础系统真实文件系统与受控系统进程 (files.* / process.*)
@@ -875,79 +939,255 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     return null
   }
 
+  /**
+   * 将 Agent 传入的相对路径映射到当前活跃用户的作用域根目录。
+   * 彻底解决数据契约路径错位 (A3) 并防止泄露应用根的私有文件 (C5)。
+   */
+  const resolveSandboxedPath = (raw: string): string => {
+    let p = raw.trim().replace(/\\/g, '/')
+    if (!p || p === '.') {
+      return userAbsPrefix()?.replace(/\\/g, '/') ?? p
+    }
+
+    // 快捷形式支持：若以 笔记/ 或 notes/ 开头，自动解析至当前打开节点的笔记目录
+    if (p.startsWith('笔记/') || p.startsWith('notes/')) {
+      const noteName = p.replace(/^(?:笔记|notes)\//, '').replace(/\.md$/, '')
+      const curDoc = opts.resolveDoc('')
+      if (curDoc.ok) {
+        const label = curDoc.ref.label.replace(/\\/g, '/')
+        p = `docs/${label}.notes/${noteName}.md`
+      }
+    }
+
+    // 绝对路径（Windows 盘符如 C:/ 或 POSIX 绝对路径）原样放行，供白名单校验
+    if (/^[A-Za-z]:\//.test(p) || p.startsWith('/')) {
+      return p
+    }
+    // 显式以 users/ 开头的路径已自带相对根前缀
+    if (p.startsWith('users/')) {
+      return p
+    }
+    // 相对路径（docs/...、workflows/...、stats/...、tmp/...）一律解析为当前用户目录下的绝对路径
+    const abs = userAbsPath(p)
+    return abs ? abs.replace(/\\/g, '/') : p
+  }
+
+  /**
+   * 将写入磁盘的教学正文或大纲双向同步至当前内存 Store 及快照。
+   * 彻底根治 A2（正文写入被 UI 空 Store 覆盖清空为 0 字节的问题）。
+   */
+  const syncFileToStore = (filePath: string, content?: string) => {
+    if (typeof content !== 'string') return
+    try {
+      const norm = filePath.replace(/\\/g, '/')
+      const matchDoc = norm.match(/(?:^|\/)docs\/(.+)$/)
+      if (!matchDoc) return
+      const relDoc = matchDoc[1] // 例如 '微积分/极限/极限.md' 或 '微积分/极限/极限.outline.json' 或 '微积分/极限.notes/错题本.md'
+      const isOutline = relDoc.endsWith('.outline.json')
+      const isMd = relDoc.endsWith('.md')
+      if (!isOutline && !isMd) return
+
+      // 处理笔记模式: *.notes/*.md
+      const noteMatch = relDoc.match(/(?:^|\/)([^/]+)\.notes\/([^/]+)\.md$/)
+      if (noteMatch) {
+        const nodeTarget = noteMatch[1]
+        const noteName = noteMatch[2]
+        const resolved = opts.resolveDoc(nodeTarget)
+        if (resolved.ok && opts.docOps?.write) {
+          opts.docOps.write(resolved.ref.id, 'note', noteName, content)
+        }
+        return
+      }
+
+      const cleanTarget = relDoc
+        .replace(/\.outline\.json$/, '')
+        .replace(/\.md$/, '')
+      const resolved = opts.resolveDoc(cleanTarget)
+      if (!resolved.ok) return
+      const nodeId = resolved.ref.id
+
+      if (isMd && opts.docOps?.write) {
+        const kind = resolved.ref.kind === 'note' ? 'note' : 'teaching'
+        opts.docOps.write(nodeId, kind, resolved.ref.note, content)
+      } else if (isOutline && opts.outline?.write) {
+        try {
+          const parsed = JSON.parse(content)
+          opts.outline.write(nodeId, parsed)
+        } catch {
+          // 忽略非标准 json
+        }
+      }
+    } catch {
+      // 容错捕获，保证 files.write/edit 主通道不受干扰
+    }
+  }
+
+  const isProtectedChatFile = (p: string): boolean => {
+    const norm = p.replace(/\\/g, '/').toLowerCase()
+    return norm === 'chat.json' || norm.endsWith('/chat.json')
+  }
+
+  const resolveSandboxedDocPath = (raw: string): { ok: true; path: string } | { ok: false; error: string } => {
+    const trimmed = raw.trim()
+    if (!trimmed) {
+      const curDoc = opts.resolveDoc('')
+      if (curDoc.ok) {
+        if (opts.nodeOps.paths) {
+          const info = opts.nodeOps.paths(curDoc.ref.id) as { ok?: boolean; doc?: string }
+          if (info && info.ok && typeof info.doc === 'string') {
+            return { ok: true, path: resolveSandboxedPath(info.doc) }
+          }
+        }
+        const label = curDoc.ref.label.replace(/\\/g, '/')
+        const title = curDoc.ref.title
+        return { ok: true, path: resolveSandboxedPath(`docs/${label}/${title}.md`) }
+      }
+      return { ok: false, error: '未指定文件路径且当前无激活的教学节点，请显式提供目标文件路径（例如 "docs/..." 或使用 api.node.paths() 获取路径）' }
+    }
+    return { ok: true, path: resolveSandboxedPath(trimmed) }
+  }
+
   wrapApi(api, 'files.read', async (args) => {
-    const p = asText(args[0])
-    const opt = asRecord(args[1])
+    const rawP = asText(args[0])
+    const resolved = resolveSandboxedDocPath(rawP)
+    if (!resolved.ok) return { ok: false, error: resolved.error }
+    const p = resolved.path
+    const optArg = args[1]
+    const opt = typeof optArg === 'string' ? { encoding: optArg } : asRecord(optArg)
     const nf = getNativeFiles()
     if (!nf) return { ok: true, content: '', encoding: 'utf8', size: 0 }
     return await nf.read(p, {
       encoding: opt.encoding === 'base64' ? 'base64' : opt.encoding === 'binary' ? 'binary' : 'utf8',
+      offset: typeof opt.offset === 'number' ? opt.offset : undefined,
       maxBytes: typeof opt.maxBytes === 'number' ? opt.maxBytes : undefined,
     })
   }, log)
 
-    wrapApi(api, 'files.write', async (args) => {
-    const p = asText(args[0])
-    const content = asText(args[1])
+  wrapApi(api, 'files.write', async (args) => {
+    const rawP = asText(args[0])
+    const resolved = resolveSandboxedDocPath(rawP)
+    if (!resolved.ok) return { ok: false, error: resolved.error }
+    const p = resolved.path
+    if (isProtectedChatFile(p)) {
+      return { ok: false, error: 'chat.json 属于系统核心会话状态，禁止由脚本直接写入或修改' }
+    }
+    const rawContent = args[1]
+    if (rawContent === undefined || rawContent === null) {
+      return { ok: false, error: 'files.write 的 content 参数不能为空 (undefined/null)' }
+    }
+    const content =
+      typeof rawContent === 'string'
+        ? rawContent
+        : typeof rawContent === 'object'
+          ? JSON.stringify(rawContent, null, 2)
+          : String(rawContent)
     const opt = asRecord(args[2])
     const nf = getNativeFiles()
-    if (!nf) return { ok: true, path: p, bytesWritten: content.length }
+    if (!nf) {
+      syncFileToStore(rawP, content)
+      return { ok: true, path: p, bytesWritten: Buffer.byteLength(content, 'utf8') }
+    }
     const res = await nf.write(p, content, {
       encoding: opt.encoding === 'base64' ? 'base64' : 'utf8',
       overwrite: opt.overwrite !== false,
     })
     if (res.ok) {
+      syncFileToStore(rawP, content)
       vfsBus.notifyExternalChange({ path: p, action: 'write', content, source: 'agent' })
     }
     return res
   }, log)
 
   wrapApi(api, 'files.edit', async (args) => {
-    const p = asText(args[0])
+    const rawP = asText(args[0])
+    const resolved = resolveSandboxedDocPath(rawP)
+    if (!resolved.ok) return { ok: false, error: resolved.error }
+    const p = resolved.path
+    if (isProtectedChatFile(p)) {
+      return { ok: false, error: 'chat.json 属于系统核心会话状态，禁止由脚本直接修改' }
+    }
     const opt = asRecord(args[1])
     const nf = getNativeFiles()
     if (!nf) return { ok: true, path: p, modified: false }
     const replaceObj = opt.replace ? asRecord(opt.replace) : undefined
+    const editsArr = Array.isArray(opt.edits) ? opt.edits.map(asRecord) : undefined
     const res = await nf.edit(p, {
-      replace: replaceObj ? {
-        target: asText(replaceObj.target),
-        replacement: asText(replaceObj.replacement),
-        all: replaceObj.all === true,
-      } : undefined,
+      replace: replaceObj
+        ? {
+            target: asText(replaceObj.target ?? replaceObj.old ?? replaceObj.search ?? replaceObj.find),
+            replacement: asText(replaceObj.replacement ?? replaceObj.new ?? replaceObj.replace),
+            all: replaceObj.all === true,
+          }
+        : undefined,
+      edits: editsArr
+        ? editsArr.map((e) => ({
+            ...e,
+            target: e.target ?? e.old ?? e.search ?? e.find ? asText(e.target ?? e.old ?? e.search ?? e.find) : undefined,
+            replacement: e.replacement ?? e.new ?? e.replace ? asText(e.replacement ?? e.new ?? e.replace) : undefined,
+            append: typeof e.append === 'string' ? e.append : undefined,
+            prepend: typeof e.prepend === 'string' ? e.prepend : undefined,
+            insert: typeof e.insert === 'string' ? e.insert : undefined,
+            after: typeof e.after === 'string' ? e.after : undefined,
+            before: typeof e.before === 'string' ? e.before : undefined,
+            all: e.all === true,
+          }))
+        : undefined,
       content: typeof opt.content === 'string' ? opt.content : undefined,
+      append: typeof opt.append === 'string' ? opt.append : undefined,
+      prepend: typeof opt.prepend === 'string' ? opt.prepend : undefined,
       start: typeof opt.start === 'number' ? opt.start : undefined,
       end: typeof opt.end === 'number' ? opt.end : undefined,
     })
     if (res.ok) {
-      vfsBus.notifyExternalChange({ path: p, action: 'edit', source: 'agent' })
+      let latestContent: string | undefined
+      try {
+        const latest = await nf.read(p, { encoding: 'utf8' })
+        if (latest.ok && typeof latest.content === 'string') {
+          latestContent = latest.content
+          syncFileToStore(rawP, latest.content)
+        }
+      } catch {
+        // ignore
+      }
+      vfsBus.notifyExternalChange({ path: p, action: 'edit', content: latestContent, source: 'agent' })
     }
     return res
   }, log)
 
   wrapApi(api, 'files.list', async (args) => {
-    const p = args.length ? asText(args[0]) : undefined
+    const rawP = args.length ? asText(args[0]) : '.'
+    const p = resolveSandboxedPath(rawP)
     const nf = getNativeFiles()
-    if (!nf) return { ok: true, path: p ?? '', entries: [] }
-    return await nf.list(p)
+    if (!nf) return { ok: true, path: p, entries: [] }
+    const res = (await nf.list(p)) as { ok: boolean; path?: string; entries?: Array<string | { name?: string }> }
+    if (res && res.ok && Array.isArray(res.entries)) {
+      res.entries = res.entries.filter((e) => {
+        const name = typeof e === 'string' ? e : e?.name
+        return name !== 'chat.json'
+      })
+    }
+    return res
   }, log)
 
   wrapApi(api, 'files.stat', async (args) => {
-    const p = asText(args[0])
+    const rawP = asText(args[0])
+    const p = resolveSandboxedPath(rawP)
     const nf = getNativeFiles()
     if (!nf) return { ok: true, stat: { exists: true, isDirectory: false, isFile: true, size: 0, mtimeMs: 0, ctimeMs: 0 } }
     return await nf.stat(p)
   }, log)
 
   wrapApi(api, 'files.mkdir', async (args) => {
-    const p = asText(args[0])
+    const rawP = asText(args[0])
+    const p = resolveSandboxedPath(rawP)
     const nf = getNativeFiles()
     if (!nf) return { ok: true }
     return await nf.mkdir(p)
   }, log)
 
   wrapApi(api, 'files.copy', async (args) => {
-    const from = asText(args[0])
-    const to = asText(args[1])
+    const from = resolveSandboxedPath(asText(args[0]))
+    const to = resolveSandboxedPath(asText(args[1]))
     const opt = asRecord(args[2])
     const nf = getNativeFiles()
     if (!nf) return { ok: true }
@@ -955,15 +1195,19 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
   }, log)
 
   wrapApi(api, 'files.move', async (args) => {
-    const from = asText(args[0])
-    const to = asText(args[1])
+    const from = resolveSandboxedPath(asText(args[0]))
+    const to = resolveSandboxedPath(asText(args[1]))
     const nf = getNativeFiles()
     if (!nf) return { ok: true }
     return await nf.move(from, to)
   }, log)
 
   wrapApi(api, 'files.delete', async (args) => {
-    const p = asText(args[0])
+    const rawP = asText(args[0])
+    const p = resolveSandboxedPath(rawP)
+    if (isProtectedChatFile(p)) {
+      return { ok: false, error: 'chat.json 属于系统核心会话状态，禁止由脚本删除' }
+    }
     const nf = getNativeFiles()
     if (!nf) return { ok: true }
     const res = await nf.delete(p)
@@ -971,6 +1215,24 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
       vfsBus.notifyExternalChange({ path: p, action: 'delete', source: 'agent' })
     }
     return res
+  }, log)
+
+  // 自描述 api.help()
+  wrapApi(api, 'help', () => {
+    return {
+      ok: true,
+      groups: [
+        'node', 'method', 'wf', 'code', 'web', 'browser',
+        'subagent', 'compact', 'chip', 'wait', 'ask', 'tiktok',
+        'ui', 'files', 'process', 'log',
+      ],
+      description: '当前沙箱提供 16 组核心能力。全量数据读写与状态管理已收敛为 files.*。',
+      files: 'api.files: read, write, edit, list, stat, mkdir, copy, move, delete（真实文件读写，相对路径默认解析到当前学习数据目录）',
+      node: 'api.node: list, read, paths, create, title, rename, update, annotate, delete, move（节点结构管理）',
+      browser: 'api.browser: open, tabs, activate, close, snapshot, point, dom, read, capture, logs, logDetail, fetch, waitFor, record, text, scroll（内置网页浏览器）',
+      web: 'api.web: webFetch, read, search（网页抓取与多引擎搜索）',
+      process: 'api.process: create, start, status, output, stop, list, get, delete（原生子进程管理）',
+    }
   }, log)
 
   wrapApi(api, 'process.create', async (args) => {
@@ -1032,6 +1294,13 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     const np = getNativeProcess()
     if (!np) return { ok: true, process: { process_id: pid, command: '', args: [], cwd: '', running: false, exited: true, exitCode: 0, signal: null } }
     return await np.get(pid)
+  }, log)
+
+  wrapApi(api, 'process.delete', async (args) => {
+    const pid = asText(args[0])
+    const np = getNativeProcess()
+    if (!np) return { ok: true, process_id: pid, deleted: true }
+    return await np.delete(pid)
   }, log)
 
   return { api, tmp }

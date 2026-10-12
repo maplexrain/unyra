@@ -12,7 +12,6 @@ import { MASTERY_LABEL, SELF_REPORT_LABEL, docOf, superDocsOf, type KnowledgeNod
 import { NOTE_DEFAULT_NAME, findNote, notesOf } from '../notes'
 import {
   addAnnotation,
-  addEdge,
   appendNote,
   createNodeUnder,
   createNote,
@@ -29,6 +28,8 @@ import {
 import { nodePathOf, docsInfoOf, docPathOf, resolveDoc, resolveNode, type PathScope } from '../paths'
 import { writeOutline } from '../outline'
 import { ensureReviewPlan } from '../review'
+import { nodeLayout } from '../layout'
+import { docFileName } from '../files/names'
 import { clipText } from './text'
 import { createLearningOps } from './learning'
 import { createSuperDocOps } from './superdoc'
@@ -162,11 +163,15 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
           status: n.status,
           isGoal: s.goals.some((g) => g.rootNodeId === n.id),
           description: clipText(n.description, 120),
-          chars: info.map((d) => d.label + ' ' + d.chars).join('，'),
+          charsSummary: info.map((d) => d.label + ' ' + d.chars).join('，'),
+          chars: info.reduce((acc, d) => acc + d.chars, 0),
           // 规划路径要看的是「他会不会」，所以清单里带上掌握度与自评（见 design 的第二节）
           mastery: typeof n.learning?.mastery === 'number' ? n.learning.mastery : null,
           self: n.learning?.self ? SELF_REPORT_LABEL[n.learning.self] : null,
           mistakes: n.learning?.mistakes?.length ?? 0,
+          children: prereqIds(s, n.id)
+            .map((id) => nodeById(s, id)?.title)
+            .filter((t): t is string => !!t),
           prereqs: prereqIds(s, n.id)
             .map((id) => nodeById(s, id)?.title)
             .filter((t): t is string => !!t),
@@ -180,8 +185,11 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
     const s = store0()
     const n = nodeById(s, nodeId)
     if (!n) return { error: '这个节点已经不存在了（可能刚被删除）' }
+    const layout = nodeLayout(s).get(n.id)
+    const docPath = layout ? 'docs/' + layout.dir.join('/') + '/' + docFileName(layout.base) : undefined
     return {
       path: nodePathOf(s, deps.goalId(), n.id),
+      docPath,
       id: n.id,
       title: n.title,
       description: n.description,
@@ -193,29 +201,110 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
       parents: parentIds(s, n.id)
         .map((id) => nodeById(s, id)?.title)
         .filter((t): t is string => !!t),
+      children: prereqIds(s, n.id)
+        .map((id) => nodeById(s, id)?.title)
+        .filter((t): t is string => !!t),
       prereqs: prereqIds(s, n.id)
         .map((id) => nodeById(s, id)?.title)
         .filter((t): t is string => !!t),
     }
   }
 
-  const createNode = (parentId: string, input: { title: string; description?: string }): AgentToolResult => {
+  /**
+   * 节点的标准物理路径索引：给出该节点的全部磁盘路径。
+   */
+  const nodePaths = (nodeId: string): unknown => {
+    const s = store0()
+    const n = nodeById(s, nodeId)
+    if (!n) return { ok: false, error: '这个节点已经不存在了' }
+    const layout = nodeLayout(s).get(n.id)
+    const dir = layout ? 'docs/' + layout.dir.join('/') : 'docs/' + n.title
+    const doc = layout ? dir + '/' + docFileName(layout.base) : dir + '/' + n.title + '.md'
+    const notesDir = layout ? dir + '/' + layout.base + '.notes' : dir + '/' + n.title + '.notes'
+    const outline = layout ? dir + '/' + layout.base + '.outline.json' : dir + '/' + n.title + '.outline.json'
+    const meta = layout ? dir + '/' + layout.base + '.meta.json' : dir + '/' + n.title + '.meta.json'
+    const superdocsDir = dir + '/superdocs'
+    const examsDir = dir + '/exams'
+    const workspaceDir = dir + '/workspace'
+    const path = nodePathOf(s, deps.goalId(), n.id)
+    return {
+      ok: true,
+      id: n.id,
+      title: n.title,
+      path,
+      dir,
+      doc,
+      notesDir,
+      outline,
+      meta,
+      superdocsDir,
+      examsDir,
+      workspaceDir,
+    }
+  }
+
+  const createNode = (
+    parentId: string,
+    input: { title: string; description?: string; status?: MasteryStatus; [k: string]: unknown },
+  ): AgentToolResult => {
     const s = store0()
     const parent = nodeById(s, parentId)
     if (!parent) return { ok: false, content: '父节点不存在' }
-    const r = createNodeUnder(s, parentId, input)
-    // 目标内已有同名节点时复用：仍然要把它挂到这次请求的父节点之下
-    const next = r.created ? r.store : addEdge(r.store, parentId, r.node.id).store
-    deps.set(next)
-    const label = nodePathOf(next, deps.goalId(), r.node.id)
+
+    // 校验未知属性，拒绝静默吞未知键 (B4 / 假成功)
+    const allowedKeys = new Set(['parent', 'title', 'description', 'status'])
+    for (const key of Object.keys(input)) {
+      if (!allowedKeys.has(key)) {
+        return {
+          ok: false,
+          content: `不支持的属性「${key}」。node.create 仅支持: parent, title, description, status（learning / mastered）`,
+        }
+      }
+    }
+
+    const rawTitle = String(input.title ?? '').trim()
+    if (!rawTitle) return { ok: false, content: '标题不能为空' }
+    if (rawTitle.includes('/') || rawTitle.includes('\\')) {
+      return { ok: false, content: '节点标题不能包含斜杠（/ 或 \\），这会破坏路径寻址。' }
+    }
+
+    if (input.status !== undefined) {
+      if (typeof input.status !== 'string' || !['learning', 'mastered'].includes(input.status)) {
+        return { ok: false, content: '状态必须是 learning / mastered 之一' }
+      }
+    }
+
+    const r = createNodeUnder(s, parentId, {
+      title: rawTitle,
+      description: typeof input.description === 'string' ? input.description : undefined,
+    })
+    const label = nodePathOf(r.store, deps.goalId(), r.node.id)
+
+    // 目标内已有同名节点时拒绝创建，防止写文件时覆盖串节点 (B4)
+    if (!r.created) {
+      return {
+        ok: false,
+        content:
+          '本目标里已经有叫「' + r.node.title + '」（路径 ' + label + '）的节点了。同名节点会导致后续写文件冲突，请换一个唯一的标题。',
+      }
+    }
+
+    let finalStore = r.store
+    if (input.status) {
+      finalStore = updateNode(finalStore, r.node.id, { status: input.status as MasteryStatus })
+    }
+    deps.set(finalStore)
+
+    const layout = nodeLayout(finalStore).get(r.node.id)
+    const docRelPath = layout
+      ? 'docs/' + layout.dir.join('/') + '/' + docFileName(layout.base)
+      : 'docs/.../' + r.node.title + '.md'
+
     return {
       ok: true,
-      content: r.created
-        ? '已创建节点「' + r.node.title + '」（路径 ' + label + '，id #' + r.node.id +
-          '）。教学文档与大纲两份文件已同时就位（都还是空的），接着写：api.description.update、' +
-          'api.doc.write（教学文档）与 api.outline.write（大纲，只写直接子层级一层）。'
-        : '本目标里已经有「' + r.node.title + '」（路径 ' + label + '），没有重复创建；' +
-          '已把它挂到「' + parent.title + '」之下。',
+      content:
+        '已创建节点「' + r.node.title + '」（路径 ' + label + '，id #' + r.node.id +
+        '）。教学文档与大纲两份文件已同时就位（都还是空的），接着写：api.files.write(\'' + docRelPath + '\', 讲义内容)；修改描述用 api.node.update(\'#' + r.node.id + '\', { description })。',
     }
   }
 
@@ -247,6 +336,9 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
     if (patch.title !== undefined) {
       const title = patch.title.trim()
       if (!title) return { ok: false, content: '标题不能为空' }
+      if (title.includes('/') || title.includes('\\')) {
+        return { ok: false, content: '节点标题不能包含斜杠（/ 或 \\），这会破坏路径寻址。' }
+      }
       // 同目标内标题必须唯一：路径寻址全靠它，重名之后 path 就指不明白是谁了
       const clash = titleTaken(s, node.goalId, title, nodeId)
       if (clash) {
@@ -271,7 +363,7 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
     return { ok: true, content: done.join('；') + '。它现在的路径是「' + label + '」。' }
   }
 
-  const removeNode = (nodeId: string): AgentToolResult => {
+  const removeNode = (nodeId: string, opts?: { cascade?: boolean; dryRun?: boolean }): AgentToolResult => {
     const s = store0()
     const node = nodeById(s, nodeId)
     if (!node) return { ok: false, content: '这个节点已经不存在了' }
@@ -285,13 +377,65 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
         content: '「' + node.title + '」是学习目标本身，不能这样删。要删目标请让用户在界面上删。',
       }
     }
-    const kids = prereqIds(s, nodeId).length
-    deps.set(deleteNode(s, nodeId))
+
+    const kidIds = prereqIds(s, nodeId)
+    const kids = kidIds.map((id) => nodeById(s, id)?.title ?? id)
+    const parents = parentIds(s, nodeId)
+    const goal = s.goals.find((g) => g.id === node.goalId)
+    const fallbackParentId = parents[0] ?? goal?.rootNodeId ?? ''
+    const fallbackParent = fallbackParentId ? nodeById(s, fallbackParentId) : undefined
+
+    if (opts?.dryRun) {
+      return {
+        ok: true,
+        content:
+          `[dry-run] 将删除节点「${node.title}」` +
+          (opts.cascade
+            ? `，并级联删除下级节点: ${kids.join('、') || '无'}`
+            : `；其 ${kids.length} 个下级节点将自动上浮挂载至「${fallbackParent?.title ?? '根节点'}」`),
+      }
+    }
+
+    if (opts?.cascade) {
+      deps.set(deleteNode(s, nodeId))
+      return {
+        ok: true,
+        content:
+          `已级联删除节点「${node.title}」` +
+          (kids.length ? `及其连带的 ${kids.length} 个下级节点（${kids.join('、')}）` : '') +
+          '。',
+      }
+    }
+
+    // 默认行为：保护数据不丢失！子节点自动上浮挂载至父节点
+    let nextStore = s
+    if (fallbackParentId) {
+      for (const kidId of kidIds) {
+        const hasEdge = nextStore.edges.some((e) => e.from === fallbackParentId && e.to === kidId)
+        if (!hasEdge) {
+          nextStore = {
+            ...nextStore,
+            edges: [...nextStore.edges, { from: fallbackParentId, to: kidId, createdAt: Date.now() }],
+          }
+        }
+      }
+    }
+    // 移除 nodeId 本身及与之直接相连的边
+    nextStore = {
+      ...nextStore,
+      nodes: nextStore.nodes.filter((n) => n.id !== nodeId),
+      edges: nextStore.edges.filter((e) => e.from !== nodeId && e.to !== nodeId),
+      exams: nextStore.exams.filter((e) => e.nodeId !== nodeId),
+    }
+    deps.set(nextStore)
+
     return {
       ok: true,
       content:
-        '已删除节点「' + node.title + '」' +
-        (kids ? '（它原有 ' + kids + ' 个下级节点，这些节点本身保留，只是不再挂在它下面）' : '') + '。',
+        `已删除节点「${node.title}」` +
+        (kids.length
+          ? `。其原有的 ${kids.length} 个下级节点（${kids.join('、')}）已自动上浮挂载至「${fallbackParent?.title ?? '根节点'}」，知识内容未丢失。`
+          : '。'),
     }
   }
 
@@ -443,6 +587,20 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
       update: updateNodeRef,
       remove: removeNode,
       move: moveNodeRef,
+      paths: nodePaths,
+      annotate: (nodeId, input) => {
+        const term = input.term.trim()
+        if (!term) return { ok: false, content: '词条为空' }
+        if (!input.body.trim()) return { ok: false, content: '注解正文为空' }
+        const s = store0()
+        if (!s.nodes.some((n) => n.id === nodeId)) return { ok: false, content: '写入失败：节点不存在' }
+        const existed = nodeById(s, nodeId)?.annotations.some((a) => a.term === term) ?? false
+        deps.set(addAnnotation(s, nodeId, term, input.body, 'understand', undefined, input.occurrence))
+        return {
+          ok: true,
+          content: (existed ? '已更新' : '已添加') + '「' + term + '」的注解（' + input.body.trim().length + ' 字）',
+        }
+      },
     },
     /**
      * 目标大纲（见 learn/outline）：结构化的计划，read 整份回、write 整份覆盖。

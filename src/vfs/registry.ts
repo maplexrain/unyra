@@ -146,7 +146,53 @@ export const FILE_ENTITIES: FileEntityDef[] = [
     defaultValue: () => ({ version: 1, entries: {} }),
   },
 
-  // 8. 试卷与考核记录（结构化 JSON 数据）
+  // 8. 节点试卷与考核定义（结构化 JSON 数据）
+  {
+    id: 'node-exam',
+    pattern: 'docs/:path*/exams/:examId.json',
+    category: 'data',
+    format: 'json',
+    title: '知识点独立试卷与考核记录',
+    description: '挂在特定知识点下的试卷定义、题库与历次答题批次记录。出卷写题目，阅卷写评分与错题讲解。',
+    typeDefinition: `{
+  id: string,
+  nodeId: string,
+  goalId?: string,
+  title: string,
+  kind: "quiz" | "test" | "exam", // quiz(随堂测) | test(单元测) | exam(综合考)
+  level: "easy" | "medium" | "hard" | "extreme",
+  minutes: number, // 考试限时分钟数（0 为不限时；有题目时建议 >= 题目数 * 2）
+  createdAt: number,
+  questions: Array<{
+    id: string,
+    type: "single" | "multiple" | "truefalse" | "fill" | "short",
+    stem: string, // Markdown 题干，支持公式
+    points: number,
+    options?: Array<{ id: string, text: string }>,
+    answer?: string[], // 参考答案
+    rubric?: string,
+    image?: string // 可选 SVG 源码
+  }>,
+  attempts: Array<{
+    id: string,
+    startedAt: number,
+    endedAt?: number,
+    status: "ongoing" | "submitted" | "graded" | "abandoned",
+    answers: Array<{ questionId: string, value: string[], text?: string }>, // 用户答案（只读）
+    results?: Array<{ questionId: string, correct: boolean | null, score: number, maxScore: number, comment?: string, by: "system" | "agent" }>,
+    passed?: boolean,
+    summary?: string,
+    explanation?: string // 深度错题剖析（Markdown）
+  }>
+}`,
+    itemShape: 'questions 列表为试题对象；attempts 列表为历次考试记录',
+    defaultValue: () => ({ id: '', nodeId: '', title: '', kind: 'quiz', level: 'easy', minutes: 15, questions: [], attempts: [] }),
+    params: [
+      { name: 'path*', description: '所属节点路径，可从 api.node.paths().dir 获取', example: '高等数学/极限' },
+      { name: 'examId', description: '试卷唯一标识（不要带 .json 后缀）', example: 'ex_limit_1' },
+    ],
+  },
+  // 8b. 全局独立试卷
   {
     id: 'exam-item',
     pattern: 'exams/:examId.json',
@@ -156,21 +202,16 @@ export const FILE_ENTITIES: FileEntityDef[] = [
     description: '包含特定考卷的题目列表、试卷属性与分值。',
     typeDefinition: `{
   id: string,
+  nodeId: string,
   title: string,
-  kind: "quiz" | "exam" | "recall",
-  level: number,
+  kind: "quiz" | "test" | "exam",
+  level: "easy" | "medium" | "hard" | "extreme",
   minutes: number,
-  questions: Array<{
-    id: string,
-    type: "single" | "multiple" | "truefalse" | "fill" | "short",
-    stem: string,
-    answer: string[] | boolean[] | string,
-    options?: string[],
-    analysis?: string
-  }>
+  questions: Array<{ id: string, type: string, stem: string, points: number, answer?: string[] }>,
+  attempts: Array<{ id: string, status: string, answers: any[], results?: any[] }>
 }`,
-    itemShape: 'questions 列表元素为试题对象 { id, type, stem, answer, options?, analysis? }',
-    defaultValue: () => ({ id: '', title: '', kind: 'quiz', level: 1, minutes: 15, questions: [] }),
+    itemShape: 'questions 列表为试题对象；attempts 列表为历次作答记录',
+    defaultValue: () => ({ id: '', nodeId: '', title: '', kind: 'quiz', level: 'easy', minutes: 15, questions: [], attempts: [] }),
   },
   // 9. 超级文档（可交互 HTML 页面）
   {
@@ -179,8 +220,12 @@ export const FILE_ENTITIES: FileEntityDef[] = [
     category: 'document',
     format: 'html',
     title: '节点超级可交互 HTML 文档',
-    description: '绑定知识点的可交互独立页面（含定制样式、按钮与脚本）。用 ui.superdoc 在界面打开。',
-    defaultValue: () => '<div></div>',
+    description: '绑定知识点的可交互独立页面（HTML/SVG/JS），支持 var(--color-*) 主题变量、<moji-markdown> 标签及 api.method.call 持久化脚本调用。写入后用 api.ui.superdoc(path, name) 在界面展示。',
+    defaultValue: () => '<!DOCTYPE html><html><body></body></html>',
+    params: [
+      { name: 'path*', description: '所属节点路径，可从 api.node.paths().dir 获取', example: '高等数学/极限' },
+      { name: 'name', description: '超级文档名称（不要带 .html 后缀）', example: '极限收敛实验' },
+    ],
   },
   // 10. 目标静态素材与多媒体资源
   {
@@ -320,11 +365,14 @@ function getCompiled(pattern: string) {
  * 将任意路径规范化为无前导与尾随斜杠的正斜杠相对路径
  */
 export function normalizeRelativePath(rawPath: string): string {
-  return rawPath
+  let p = (rawPath ?? '')
     .replace(/\\/g, '/')
     .replace(/^\/+|\/+$/g, '')
     .replace(/\/+/g, '/')
     .trim()
+  const m = p.match(/^users\/[^/]+\/(.+)$/)
+  if (m) p = m[1]
+  return p
 }
 
 /**

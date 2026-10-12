@@ -32,69 +32,44 @@ export const PROMPT_MODULES: PromptModule[] = [
   {
     key: 'sdoc',
     title: '超级文档',
-    text: `超级文档（sdoc，绑定节点的可交互 HTML）——这份规范在你第一次使用超级文档时注入：
-- 超级文档是一份**完整的 HTML**（可以带 <style> 与 <script>），绑定在某个节点上，
-  一个节点可以有好几份，名字即身份，write 同名覆盖。用途是「可复用的交互小工具」：
-  句号计数器、抽问卡片……用户在页签里点，文档干活并显示结果。
-  **说明文字、列表、数学公式不要手写 HTML**——一律装进内置的 <moji-markdown> 元素
-  （写法见下）：里面直接写 markdown，公式用 LaTeX，宿主会渲染成排版好的正文。
-- api.sdoc.list(path?) / sdoc.read(path?, name) / sdoc.write(path?, name, html) / sdoc.delete(path?, name)：
-  path 规则与 doc.* 一致（省略 = 当前节点）。write 成功后用 api.ui.superdoc(path, name) 打开给用户。
-- **脚本怎么跑（务必照此写）**：渲染在沙箱化的 iframe 里，你的 <script> 正常执行、
-  可以随意操作文档自己的 DOM（document.getElementById、addEventListener 都行），
-  **但没有 fetch，也碰不到应用页面**。脚本里唯一的对外通道是预先注入好的全局 api：
+    text: `超级文档（Superdoc）——自包含单页交互应用（HTML / SVG / JS / CSS），独立渲染在主文档区页签：
 
-      <button id="btn">统计</button><p id="out"></p>
-      <script>
-        var btn = document.getElementById('btn')
-        btn.addEventListener('click', async () => {
-          document.getElementById('out').textContent = '统计中…'
-          const r = await api.method.call('统计句号', '极限')   // 调持久化函数，宿主执行后把结果送回来
-          document.getElementById('out').textContent = '句号 ' + r.count + ' 个'
-        })
-      </script>
+一、物理路径体系与命名契约
+- 节点超级文档（推荐）：每个知识点节点下可包含多个超级文档，物理存放于 docs/.../superdocs/<名称>.html。
+  - 获取当前节点路径：先调用 const p = await api.node.paths()，返回对象中包含 dir、superdocsDir。
+  - 完整物理文件路径形如：\`\${p.dir}/superdocs/\${name}.html\`（例如 docs/微积分/superdocs/极限动态演化.html）。
+- 目标根级超级文档：存放于 \`superdocs/\${name}.html\`。
+- 命名契约：文件名强制以 .html 结尾；在界面中与 api.ui.superdoc 中引用的名称 name 不含 .html 后缀。
 
-  - api.method.call 返回 Promise（结果必须可 JSON 序列化；失败会 reject，配 try/catch 或 .catch）。
-  - 重逻辑放 method 函数里（那边有全套 api），脚本只管「取输入 → 调用 → 显示结果」。
-  - **样式与颜色（务必照做）**：颜色一律用主题变量，不要写死颜色值——这些变量
-    **实时跟随应用的浅色/深色主题**（用户切主题，文档配色立刻跟着变），
-    写死的颜色在另一套主题下会看不清。常用：var(--color-paper)（纸面底）/
-    var(--color-card)（卡面底）/ var(--color-ink)（正文）/ var(--color-ink-soft)（次要文字）/
-    var(--color-ink-faint)（弱文字）/ var(--color-line)（边线）/ var(--color-seal)（点睛红），
-    语义色还有 --color-ok / --color-ok-text / --color-warn / --color-sunken / --color-code 等全套；
-    字体用 var(--font-sans) / var(--font-mono)。哪怕什么都不写，正文颜色与字体也已经是主题色——
-    自己写样式时延续这套变量即可。样式写在文档自己的 <style> 里，选择器加文档内独有的前缀（.sd-xxx）：
+二、怎么读与怎么写（核心动线）
+1. 读取已有超级文档：
+   - 查验列表：await api.files.list(\`\${p.dir}/superdocs/\`)；
+   - 读取源码：await api.files.read(\`\${p.dir}/superdocs/\${name}.html\`)。
+2. 创建与写入：
+   - 使用标准文件写入：await api.files.write(\`\${p.dir}/superdocs/\${name}.html\`, htmlCode)。
+   - 写入后立即在文档区展示：await api.ui.superdoc(p.path, name)（若为当前激活节点可直接 await api.ui.superdoc(name)）。
+   - 局部改动：await api.files.edit(\`\${p.dir}/superdocs/\${name}.html\`, { replace: { old: '...', new: '...' } }) 或 files.write 整体覆写。
+   - 响应式同步机制已打通：api.files 写入或修改后，底层 VFS 事件总线会在 0ms 乐观同步至应用内存状态并驱动 React 实时刷新，绝不会发生 0 字节清空或静默还原。
 
-      <style>
-        .sd-card { background: var(--color-card); color: var(--color-ink);
-                   border: 1px solid var(--color-line); padding: 16px;
-                   font-family: var(--font-sans); }
-        .sd-btn { background: var(--color-seal); color: #fff; border: 0; border-radius: 6px;
-                  padding: 6px 14px; cursor: pointer; }
-      </style>
-      <div class="sd-card"><button class="sd-btn" id="btn">点我</button><p id="out"></p></div>
+三、技术格式规范
+- 自包含单页：HTML 中直接书写完整结构、<style> 内联样式与 <script> 交互代码。
+- 主题变量：自适应系统深浅色外观，使用 CSS 变量：
+  - 背景容器：var(--color-bg)、var(--color-sunken)、var(--color-surface)
+  - 文本排版：var(--color-ink)、var(--color-ink-strong)、var(--color-ink-soft)
+  - 边框与点缀：var(--color-seal)、var(--color-line)、var(--color-warn)、var(--color-success)
+- 富文本说明组件：在页面中嵌入 <moji-markdown># 实验原理\\nLaTeX数学公式 $f(x)=\\\\lim...$ 与要点</moji-markdown>，宿主会自动解析渲染为结构化 Markdown。
+- 沙箱脚本联动（持久化方法）：
+  - 页面内的按钮或交互如需执行复杂的计算、数据汇总或跨节点分析，可在沙箱中通过 api.method.create({ name: 'calc', code: '((api, ...args) => { ... })' }) 创建持久化方法。
+  - 超级文档内部 JS 通过 window.api.method.call('calc', ...args) 调用该方法。
+- 内置超链接协议：
+  - 静态资源：moji:static/{uuid}
+  - 超级文档跳转：moji:super/{name}
+  - 节点跳转：moji:node/{nodeId}
 
-  - **布局要整洁**：按文档流排——标题、段落、列表、表格、分隔线，像一份排版讲究的讲义。
-    **不要把内容包成一堆圆角卡片**，不要阴影、渐变、彩色底块堆砌；容器不用圆角（最多 2px），
-    只有按钮/输入框这类控件可以有不超过 6px 的圆角。留白与层级靠字号和 var(--color-ink-faint)
-    的弱色区分，不靠把每块东西都装进盒子里。
-  - 内置元素 <moji-markdown>（**说明文字、列表、数学公式一律用它**，这是硬规矩——
-    直接写在 HTML 里的 $ 符号与 \\( 不会被渲染）：元素里直接写 markdown（**顶格写，别缩进**——
-    四格缩进会变成代码块；内容里不要有裸的 <，要写 &lt;），渲染时自动解析成排版好的正文——
-    标题、列表、代码块、表格都认，下面的 moji: 链接也能点。公式写 LaTeX：
-    行内 $E = mc^2$，独立成行用 $$…$$，宿主用 KaTeX 渲染。示例：
-
-      <moji-markdown>
-        ## 实验说明
-        当 $v_0 > 0$ 时抛体做减速运动；总位移为
-        $$x = v_0 t - \\frac{1}{2} g t^2$$
-        点击 **开始** 观察曲线变化；拖动滑块可以调初速度。
-      </moji-markdown>
-
-  - 跳转语法：[文字](moji:super/文档名) 点击即打开**本节点**的另一份超级文档（实验之间互相引用
-    就用它）；跨节点写 [文字](moji:super/节点id/文档名)，节点 id 从 api.node.list 拿。
-    文档名里有空格要先 URL 编码；指名不存在的文档会提示一句「没有这份超级文档」，不会开出空页签。
-  - 脚本每次打开文档都会重新执行：把初始化写在顶层，别依赖上次点按留下的状态。`,
+四、读写边界与严禁行为
+- ✅ 能写：纯 HTML/CSS/JS 代码、SVG 矢量动画、moji-markdown 讲解、调用 window.api.method.call。
+- ❌ 严禁调用退役桩：api.sdoc.write / api.sdoc.read（调用即抛异常，已被收敛为 api.files）。
+- ❌ 严禁写入非法路径：不要脱离 superdocs/ 目录写入未归档的 HTML 文件。`,
   },
   {
     key: 'browser',
@@ -172,123 +147,108 @@ export const PROMPT_MODULES: PromptModule[] = [
   **换一家或换措辞再试**，别在一家上反复重试。**engines 全挂时缺省会自动用 baidu/bing 补搜一轮**
   （onEngineFail:"strict" 才原样回报失败），weak 列出「只回标题没摘要」的引擎——那种细节必须
   webFetch 核实再用。要实时信息、要核实事实时用它；摘要已含要点，引用前确需细节再 web.webFetch 读原文。
-- 只能 http/https，且**不能抓本机与内网**；一页最多 4MB、20 秒超时。
+- 只能 http/https，且**不能抓本机与内网**；一页最多 4MB、20秒超时。
 - 引用网页内容时写明来源（标题 + 链接），并且**区分「网页这么说」与「事实如此」**：
   它是一份材料，不是你的结论。抓之前先想清楚要找什么，别一个接一个地抓。`,
   },
   {
     key: 'res',
     title: '资源库',
-    text: `资源库（本目标 static/ 里的文件，用 uuid 寻址；用户往输入框贴的图片就转存在这里）——这份规范在你第一次读写资源时注入：
-- api.res.list()：全部资源——uuid、文件名、类型、大小、上传/修改日期、描述、被引用数。
-- api.res.info(uuid)：单条详情（含它被哪些文档引用）。
-- api.res.read(uuid)：**文本**回正文（可给区间 { start, end } 局部读）；
-  **图片不回数据**——它会附在你的下一步里，你直接看得见；其它二进制只回元数据。
-- api.res.create({ name, ext, content })：新建一份文本资源（md/txt/json/csv…），返回 uuid。
-- api.res.update(uuid, { name, description, content })：改展示名 / 描述 / 文本内容
-  （二进制只能改名称与描述，内容改不了）。**描述由你写**：一句「这是什么、用在哪、谁给的」。
-- api.res.delete(uuid, { force })：删除。还被文档引用着会拒绝，先 res.refs 看清楚再 force。
-- api.res.refs(uuid)：谁在引用它；不传 uuid 就是一次全量扫描——列出每条资源的引用数，
-  未被引用的会单独点出来（那是「可能可以清理」的候选，不等于没用）。
-- 文档里引用资源写 ![说明](moji:static/uuid)：图片会内联显示，别的文件显示成可点开的卡片。
-  引用存的是 uuid，**给资源改名不会让引用失效**。
-- 读图是有代价的：挂上来的图会一直留在上下文里（直到被裁掉），所以先用 res.list() 挑，
-  一次只看真正需要的那一两张，不要「把图都看一遍」。
-- **图挂在你的下一次调用里**，不会出现在这一次 body 的后续步骤中。所以别在同一次编排里
-  读完图就接着按「图里画了什么」下判断——把「看图」与「用图」分成两次 body：
-  先读图，看到图之后再决定下一步怎么做。
-- **内容一样不会重复存**：每条资源带一个内容指纹（res.list 里的 hash 是它的前 12 位，
-  相同即同一份内容）。res.create 若撞上库里已有的内容，会直接复用那一条并告诉你，
-  不会新建文件；所以不要为了「再存一份」换个名字重复建。`,
+    text: `目标资源库已收敛为真实文件系统：
+- 图片与静态资源直接使用 api.files 读写 docs/目标/static/ 目录（如 docs/.../static/{uuid}.png）。
+- 在文档和讲义中引用静态资源使用标准 Markdown 格式：![说明](moji:static/{uuid})。`,
   },
   {
     key: 'exam',
     title: '试卷与考试',
-    text: `试卷（exam；作用在**当前节点**上，不跟 path 走）——这份规范在你第一次读写试卷时注入：
-- 两层结构：一份**试卷**可以有**很多次考试**。试卷是题目、类型、难度与时限；一次考试是「谁在什么时候考的」——
-  作答、输入顺序、单题耗时、切屏记录、判分与错题讲解都挂在那一次上。同一份卷子可以反复考，
-  重考不复制题目。**考试窗口由用户自己开**：你不要替他开考。
-- api.exam.create({ title, kind, level, minutes, questions })：出一份试卷。
-  kind 认 'quiz'（随堂小测，**不限时**）| 'test'（小考）| 'exam'（大考）；level 认 'easy' | 'medium' | 'hard' | 'extreme'；
-  **minutes 是时限（分钟）**，除小测外必给，且不得低于**题目数 × 2**（代码强制，写小了这次调用不生效）。
-  那只是地板——按题量与难度认真估（要写过程、要计算的题多留时间）。类型与难度该问用户就问（见「出卷」工作流）。
-  题面按 Markdown 渲染：**涉及数学公式必须用 LaTeX** 写进 stem / options（行内 $…$、独立 $$…$$），
-  不要用 Unicode 上下标或纯文本近似；需要图形的题在题目上加 **image 字段**（值是完整的 SVG 源码，
-  <svg…</svg> 一段，带 viewBox；canvas 存不下来，图片链接也不要）。所有题目一次出完，不要分批。
-- api.exam.read(attemptId?)：**任何时候都能调**，读的是这个知识点。不给 attemptId 就是最新一份试卷的最新一次考试；
-  给了就读那一次。回给你的有：paper（类型/难度/时限/满分）、attempt（状态、用时、超时、切屏、作答进度）、
-  questions（题目 + 他的作答 + 系统已判好的客观题），以及 **history**——历次考试，每条带 weak（那次考错的题）。
-  status 有 none / unattempted（出好了还没考）/ ongoing（正在考，别判分）/ submitted（交卷待判分）/
-  graded（已判分，可能还缺讲解）/ abandoned（放弃了：记 0 分，不判分也不讲解，这是用户的选择）。
-  没有卷子不是错误，它就是一种答案——所以它永远不会出现在「没有生效」那份清单里。
-- api.exam.grade({ attemptId?, results, summary, passed })：判分。results 里逐题给 { questionId, correct, score, comment }，
-  客观题的分数以系统为准（你补 comment 就行）；passed 与 summary 必给。attemptId 省略就判「等着判分的那一次」。
-- api.exam.explain({ content, attemptId? })：**错题讲解**（Markdown），写在同一次考试上，显示在只读的试卷副本页签里。
-  它是判分之后的**第二步**，而且要先看 history 里反复出现的错法——「这次错在哪」和「他反复错在哪」是两句不同的话。
-- api.exam.delete({ id })：删一份试卷，id 省略就是最新那份。**只有一次都没考过的能删**：
-  考过的是学习记录（作答、耗时、切屏、判分、讲解），要删得由用户在试卷列表里删——那里会列清连带删掉什么。
-- 阶段约束：有考试等着判分（或判完还缺讲解）时不能再出卷；判分与讲解都属于那个阶段，一起做完。`,
+    text: `试卷与考试（Exam & ExamAttempt）——数据文件收敛于真实文件系统，两层结构与严密读写边界：
+
+一、两层架构与物理路径契约
+- 试卷是严密的【两层分离结构】：
+  - Exam（试卷本体）：题目、类型、难度、时限，是静态试题模板。
+  - ExamAttempt（历次考试记录）：用户的实际作答、击键流水、耗时统计、切屏记录与判分结论。同一试卷可反复考核，历次记录按 startedAt 升序保存在 attempts 数组中。
+- 物理路径契约：
+  - 节点试卷（推荐）：docs/.../exams/{examId}.json。先调用 const p = await api.node.paths()，其返回 dir 与 examsDir，路径为 \`\${p.dir}/exams/\${examId}.json\`。
+  - 目标级试卷：exams/{examId}.json。
+  - 命名契约：文件名强制为 {examId}.json，且与 JSON 内的 id 字段必须严格一致。
+  - 批改错题报告（辅助）：可在同目录下保存 Markdown 讲解，如 \`\${p.dir}/exams/\${examId}_批改.md\`。
+
+二、完整 JSON Schema 规范
+试卷文件必须严格符合以下 JSON 契约：
+{
+  "id": "exam_uuid", // 试卷唯一 ID（与文件名一致）
+  "nodeId": "node_id", // 所属知识点节点 ID
+  "goalId": "goal_id", // 所属学习目标 ID
+  "title": "试卷标题",
+  "kind": "quiz" | "test" | "exam", // 随堂小测(quiz) | 单元测验(test) | 综合大考(exam)
+  "level": "easy" | "medium" | "hard" | "extreme", // 简易 | 中等 | 难 | 极难
+  "minutes": 15, // 时限(分钟)；0 为不限时(随堂小测)，其余强制不低于题目数 × 2
+  "createdAt": 1728000000000,
+  "questions": [
+    {
+      "id": "q1",
+      "type": "single" | "multiple" | "truefalse" | "fill" | "short",
+      "stem": "题干内容（支持 Markdown 与 LaTeX 公式，如 $x^2 + y^2 = 1$）",
+      "options": [ // 单选、多选、对错必给；对错题选项为 true/false
+        { "id": "A", "text": "选项文字" },
+        { "id": "B", "text": "选项文字" }
+      ],
+      "answer": ["A"], // 参考答案选项 id 数组（如 ["A"]、["A","B"]、["true"]；填空题给 ["答案"]；简答通常留空）
+      "rubric": "给 Agent 的评分标准与解析说明",
+      "image": "<svg ...>完整的SVG配图源码（可选）</svg>",
+      "points": 2 // 本题分值
+    }
+  ],
+  "attempts": [] // 历次考试记录；Agent 出题时初始化为空数组 []
+}
+
+三、两阶段工作流：教 Agent 怎么读、怎么写
+1. 出题阶段（阶段一，Agent 生成试卷）：
+   - 读：先读节点讲义与掌握度；用 api.ask 询问用户期望的试卷类型与难度。
+   - 写：构造符合上述 Schema 的试卷 JSON，写入 await api.files.write(\`\${p.dir}/exams/\${examId}.json\`, JSON.stringify(exam, null, 2))。
+   - 纪律：出题阶段 attempts 必须传空数组 []，不要伪造或预置任何作答数据。
+2. 阅卷阶段（阶段二，用户交卷后批改）：
+   - 读：调用 await api.files.read(\`\${p.dir}/exams/\${examId}.json\`) 读取试卷与最新作答（exam.attempts[exam.attempts.length - 1]，携带 attemptId）。
+   - 判分：客观题严格核对 answer；填空题与简答题依据 rubric 评判，生成 results 数组。
+   - 更新并写回：更新该 attempt 的评价字段后，用 api.files.write 写回整份试卷 JSON。
+   - 更新状态：调用 api.node.update(path, { status: passed ? 'mastered' : 'learning' }) 同步节点掌握状态。
+
+四、读写权限与严格边界（哪些能写、哪些绝对禁止篡改）
+- 🔒 用户事实层（只读！Agent 绝对禁止篡改）：
+  - attempt.id（attemptId）、startedAt、endedAt、forceSubmit、overtimeMs：真实的开考与交卷时戳；
+  - attempt.dwell（各题驻留毫秒数）、attempt.blurs（切屏记录）：衡量作答犹豫度与防作弊的事实数据；
+  - attempt.answers（用户填写的最终答案）、attempt.inputs（用户作答敲击流记录）：用户的原始作答铁证。
+  - ⚠️ Agent 严禁修改用户的 answers、inputs、dwell、blurs 中的任何一个字符或数据项！
+- ✏️ Agent 评价层（Agent 唯一允许填写的字段）：
+  - attempt.status：设为 "graded"；
+  - attempt.results：逐题判分数组 [{ questionId, correct: boolean, score, maxScore, comment: "错题点拨", by: "agent" }]；
+  - attempt.passed：是否通过（boolean）；
+  - attempt.summary：综合成绩与掌握分析（字符串）；
+  - attempt.explanation：针对错题的详尽步骤推导与 Markdown 解析。
+- ❌ 严禁行为：
+  - 绝不调用退役桩 api.exam.create / api.exam.read / api.exam.grade（调用即抛异常）；
+  - 绝不改动或覆盖之前的历史 attempts 作答轮次。`,
   },
   {
     key: 'learning-process',
-    title: '学习过程（阅读 · 注意力 · 打卡 · 番茄钟）',
-    text: `学习过程（reading / attention / checkin / pomodoro）——这份规范在你第一次读学习过程记录时注入：
-- **有效阅读记的是事实**：窗口在前台、页签在主位、没静坐超时的那些时间才算数；读到哪一节按
-  「这一节进入过视口的比例」算（reach ≥ 0.6 才算读到）。它的用途是排计划、判断「接着上次从哪讲」、
-  以及给打卡出题——**不是**给你打分用的。
-- api.reading.get(path?)：该节点读到哪了（有效时长、打开次数、每份文档各节的 reach 与摊到的分钟数、
-  最近会话）。**动笔讲一个新节点之前先看它**：已经读过一半的，别从第一节重新讲。
-- api.reading.list()：当前目标每个有记录的节点一行（未读的节、最后阅读时间、时长、文档是否读完）。
-  排学习顺序、决定「今天该推哪个」时用它；api.reading.day(day?) 是某一天读了什么。
-- api.attention.get(path?)：把阅读事实折成档位（focused / steady / fragmented / drifting / unknown）
-  与五个维度，并给出 **focusMinutes**（按他的连续时长算的建议专注块长）与一句教学建议。
-  confidence 为 low（样本还少）时档位不可当真，只读 line 里的事实。
-  **这是「怎么教」的输入，不是「算不算学」的判据**——掌握度与打卡都不看它。
-- 教学策略怎么跟着它变：drifting / fragmented 就先降难度、换题型、切短块（10~15 分钟一件事），
-  别一上来讲长推导；focused 就可以放整段推导与难题。别把档位念给用户听，也别拿它说教。
-- api.checkin.status() / api.checkin.settle(...)：打卡（一天最多 3 次机会）。**没有「直接打卡成功」的调用**：
-  status 给出今天可出题的节（只来自今天真正读到的内容）、建议题数与通过线，你用 api.ask 出选择题、
-  自己判分，再 settle 记结果——门槛与次数由系统复核。用户点了顶栏的打卡时，工作流「打卡」会把整套步骤给你。
-- api.pomodoro.status()：番茄钟的**记录**。它是一个纯计时器：一段专注多长（10~90 分钟）、
-  做几组（1~6）由用户自己设，休息固定是专注的 1/5，只有完整的专注段才记账，而且切屏照走
-  （它记的是「按下了一个计时器」，不是「你真的在学」——后者是有效阅读的事）。
-  **你只能读**：开始、停止、改时长都在他顶栏那颗按钮上，你没有对应的 api，回执里的 note 也写了这条。
-  想建议节奏时参考 attention.get 的 focusMinutes，但不要催他「现在就开始」。`,
+    title: '学习过程',
+    text: `学习过程记录已收敛为真实数据文件管理：
+- 有效阅读事实与打卡记录直接使用 api.files 读写 docs/目标/reading.json 与 checkin.json。
+- 专注记录与学习状态从数据文件中读取，无需调用过时的专属接口。`,
   },
   {
     key: 'review',
     title: '间隔复习',
-    text: `间隔复习（review；节点首次变「已掌握」时系统自动建计划）——这份规范在你第一次读写复习计划时注入：
-- 计划不是你建的，也没有让你建的口子：+1/+3/+7/+14/+30 五个阶段到了期没做就保持待复习（不自动顺延）。
-  完成更靠后的阶段时，更早没做的阶段会自动并入——不要为「补课」重复落账。
-- api.review.read(path?)：到期阶段（侧重、逾期天数）、下次到期、补充任务、合并组成员、
-  可合并的候选（candidates，带结构关系）、历次记录与错误记忆（fixed: false 的才是活薄弱项）。
-- api.review.record({ complete, items, missed, mistakes, fixed, mastery, note, ... })：落账。
-  complete 判「交互做完了吗」——**答对答错都算完成**，不要让他重做；错法写进 mistakes
-  （pattern 与 state.mistake 同一条规矩：说法稳定），这次答对了的旧薄弱项写进 fixed（标记已修复），
-  mastery / note 照 state.update 的口径修正。合并组里每个成员各自 record（node 参数指名）。
-- 合并复习：candidates 里有**强相关**节点（同父、前后置、常一起用）才提议——先 api.ask
-  问用户（列出节点让他勾选，写一句为什么相关），同意后 api.review.merge({ nodeIds })。
-  他不同意就只复习当前节点，不要问第二遍。
-- api.review.extend({ focus, days? })：给具体薄弱点加一条补充复习；api.review.adjust({ action })：
-  postpone（用户说最近忙，顺延几天）/ split（退出合并组）。`,
+    text: `间隔复习已收敛为真实数据文件管理：
+- 复习计划与阶段记录（+1/+3/+7/+14/+30 阶段）直接使用 api.files 读写对应目标下的 review.json 或对应节点的 .meta.json。
+- 掌握度更新和薄弱点归档通过直接更新节点元数据或复习数据文件完成。`,
   },
   {
     key: 'workspace',
     title: '工作区',
-    text: `工作区（workspace；每个节点在磁盘上的真实目录）——这份规范在你第一次读写工作区文件时注入：
-- 目录是真的：users/<uid>/docs/<目标>/<节点>/workspace/（就在节点目录里），用户在系统资源管理器里
-  看得见、自己也能放文件。
-  路径写法与文档同构——节点路径在前、文件在后（极限/数据/实验.csv），省略 path 就是当前节点；
-  「节点/workspace/文件」（极限/workspace/要点.md）这种把工作区目录写全的格式也认。
-- api.workspace.list(path?)：先看有什么再动手；目录还不存在时回空清单。
-- api.workspace.read(path)：读文本文件；二进制读不了，太长会截断（totalChars 是全文长度）。
-- api.workspace.write({ path, content })：整份覆盖地写，父目录自动建；回执里 created / updated
-  说明是新建还是覆盖——**覆盖之前想一想**，那是用户的真实文件。
-- 回执里的 **rel** 是这份文件的磁盘路径（docs/…/workspace/…）：要在回复里引用工作区文件
-  （ws 引用 chip 的 path）就**原样抄它**；「节点路径 + 文件段」那种写法（path 字段）只在
-  workspace api 之间通用，拿去当 chip 的 path 点击时定位不到。
-- 要交付「拿得走的文件」（整理好的资料、数据、代码）就写在这里，别只留在对话里。`,
+    text: `工作区目录已统一收敛为真实文件系统：
+- 每个节点的工作区物理目录为 docs/.../workspace/，在磁盘上真实存在。
+- 直接使用 api.files.* 进行文件与目录的读写、列表、删除及管理，交付给用户的物理文件均落盘在此。`,
   },
   {
     key: 'method',
@@ -297,7 +257,7 @@ export const PROMPT_MODULES: PromptModule[] = [
 - api.method.create({ name, code })：把一段**可执行的函数源码**存进这个目标的函数库。
   code 写成匿名 async 函数，**第一个参数是 api**（整套沙箱 api 都在），其余参数是调用方传的实参：
 
-      api.method.create({ name: '统计句号', code: "((api, path) => { const d = await api.doc.read(path); return { count: (d.content.match(/。/g) ?? []).length, chars: d.chars } })" })
+      api.method.create({ name: '统计句号', code: "((api, path) => { const d = await api.files.read(path); return { count: (d.content.match(/。/g) ?? []).length, size: d.size } })" })
 
 - 同名 create 就是**覆盖**（那是更新一个函数，不是重复建）。创建时会编译校验，
   编不过的当场被拒并给出原因。list() 只回名字与体量；delete(name) 删一个。
@@ -559,6 +519,7 @@ const GROUP_MODULE: Record<string, string> = {
 }
 
 export function promptModuleForApiName(name: string): string | null {
+  if (name === 'ui.superdoc') return 'sdoc'
   const dot = name.indexOf('.')
   const group = dot < 0 ? name : name.slice(0, dot)
   return GROUP_MODULE[group] ?? null
@@ -571,10 +532,8 @@ export function promptModuleForApiName(name: string): string | null {
  */
 export function promptModuleForContent(content: string, apiName?: string): string[] {
   const out: string[] = []
-  // 写教学文档（doc.write / append / replace）就注入排版配方：这一条不挑内容——
-  // 模型要是压根不知道正文能用 HTML + Tailwind，它写出来的永远是纯 Markdown，
-  // 「写出了 class 才注入」就永远等不到那一刻。超级文档（sdoc）不算：那是 iframe 里的另一套写法。
-  if (apiName?.startsWith('doc.')) out.push('doc-html')
+  // 写教学文档（files.write / files.edit / doc.write / append / replace）就注入排版配方
+  if (apiName === 'files.write' || apiName === 'files.edit' || apiName?.startsWith('doc.')) out.push('doc-html')
   if (content.includes('```plot')) out.push('plot-forms')
   if (content.includes('<animate') || content.includes('@keyframes')) out.push('rich-animation')
   return out
@@ -582,11 +541,24 @@ export function promptModuleForContent(content: string, apiName?: string): strin
 
 /**
  * 从一次写入调用的参数里取出要嗅探的正文（供内容触发用，见 sandbox/execute 的 callApi）：
- * doc.write / doc.append 的第二个参数、doc.replace 的 payload.content、sdoc.write 的 html。
- * 其余调用（读、删、改节点……）不携带可嗅探的正文，回 null。
+ * files.write 第二参数、files.edit 的 content 或 replace、doc.write / doc.append 第二参数等。
+ * 其余调用不携带可嗅探的正文，回 null。
  */
 export function writableContentOf(name: string, args: unknown[]): string | null {
-  if (name === 'doc.write' || name === 'doc.append') return typeof args[1] === 'string' ? args[1] : null
+  if (name === 'files.write' || name === 'doc.write' || name === 'doc.append') return typeof args[1] === 'string' ? args[1] : null
+  if (name === 'files.edit') {
+    const payload = args[1]
+    if (payload && typeof payload === 'object') {
+      const p = payload as Record<string, unknown>
+      if (typeof p.content === 'string') return p.content
+      if (p.replace && typeof p.replace === 'object') {
+        const rep = p.replace as Record<string, unknown>
+        if (typeof rep.replacement === 'string') return rep.replacement
+        if (typeof rep.new === 'string') return rep.new
+      }
+    }
+    return null
+  }
   if (name === 'doc.replace') {
     const payload = args[1]
     const content =

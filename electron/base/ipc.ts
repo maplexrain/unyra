@@ -15,6 +15,7 @@ import {
 } from './files'
 import {
   baseProcessCreate,
+  baseProcessDelete,
   baseProcessGet,
   baseProcessList,
   baseProcessOutput,
@@ -88,6 +89,7 @@ export function registerBaseIpc(): void {
   )
   ipcMain.handle('base:process:list', () => baseProcessList())
   ipcMain.handle('base:process:get', (_e, id: unknown) => baseProcessGet(String(id ?? '')))
+  ipcMain.handle('base:process:delete', (_e, id: unknown) => baseProcessDelete(String(id ?? '')))
 }
 
 export { cleanupAllProcesses }

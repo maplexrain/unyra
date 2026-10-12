@@ -12,19 +12,26 @@ import raw from './sandboxRuntime.js?raw'
 
 /** 沙箱里可用的 api；顺序无所谓，Worker 会按点号拆成 api.<组>.<方法> */
 const API_NAMES = [
-  // 节点：列 / 看 / 建 / 改 / 删 / 移（一次编排可以同时操作多个节点）
+  // 节点：列 / 看 / 路径 / 建 / 改 / 注解 / 删 / 移（一次编排可以同时操作多个节点）
   'node.list',
   'node.read',
+  'node.paths',
   'node.create',
   'node.title',
   'node.rename',
   'node.update',
+  'node.annotate',
   'node.delete',
   // 迁移节点到另一个节点之下（改父线；见 graph/nodes 的 moveNode）
   'node.move',
-  // 目标级持久化函数：执行已保存的源码（源码管理已统一收敛为 files.*）
+  // 目标级持久化函数：创建 / 列出 / 删除 / 执行
+  'method.list',
+  'method.create',
+  'method.delete',
   'method.call',
-  // 工作流触发：invoke 只排队，本轮收口后宿主另起一轮（登记管理已统一收敛为 files.*）
+  // 工作流触发与列表（登记管理统一收敛为 files.*）
+  'wf.list',
+  'wf.get',
   'wf.invoke',
   // 代码块伪编译：交付转译好的 JS（key 由代码块的菜单给，见 lib/codeArtifacts）
   'code.save',
@@ -99,6 +106,9 @@ const API_NAMES = [
   'process.stop',
   'process.list',
   'process.get',
+  'process.delete',
+  // 自描述能力索引
+  'help',
 ]
 
 export const SANDBOX_API_NAMES = API_NAMES

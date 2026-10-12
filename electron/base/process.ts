@@ -7,11 +7,13 @@
  * 3. 严格绑定应用生命周期：应用退出、断电、关窗、崩溃等任何终止事件均触发级联清理，绝不残留孤儿进程。
  */
 import { spawn, type ChildProcess, execSync } from 'node:child_process'
+import { existsSync, statSync } from 'node:fs'
 import { checkPathPermission } from './permissions'
 import { currentRoot } from '../storage'
 import type {
   BaseProcessCreateOpts,
   BaseProcessCreateResult,
+  BaseProcessDeleteResult,
   BaseProcessGetResult,
   BaseProcessInfo,
   BaseProcessListResult,
@@ -116,6 +118,17 @@ export async function baseProcessCreate(opts: BaseProcessCreateOpts): Promise<Ba
   if (!perm.allowed) {
     return { ok: false, error: perm.error || '工作目录权限受限' }
   }
+  if (!existsSync(perm.normalized)) {
+    return { ok: false, error: `工作目录不存在：${perm.normalized}` }
+  }
+  try {
+    const st = statSync(perm.normalized)
+    if (!st.isDirectory()) {
+      return { ok: false, error: `工作目录不是一个有效目录：${perm.normalized}` }
+    }
+  } catch (err) {
+    return { ok: false, error: `无法访问工作目录：${err instanceof Error ? err.message : String(err)}` }
+  }
 
   const id = `proc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
   const args = Array.isArray(opts?.args) ? opts.args.map(String) : []
@@ -157,10 +170,21 @@ export async function baseProcessStart(processId: string): Promise<BaseProcessSt
   }
 
   try {
-    const child = spawn(proc.command, proc.args, {
+    // 处理参数：脱去可能残留的外层单引号（Linux 传参习惯），避免 Windows 原生进程收到非法的单引号包裹
+    const sanitizedArgs = proc.args.map((arg) => {
+      if (typeof arg === 'string' && arg.startsWith("'") && arg.endsWith("'") && arg.length >= 2) {
+        return arg.slice(1, -1)
+      }
+      return arg
+    })
+
+    const isWindows = process.platform === 'win32'
+    const needsShell = isWindows && /\.(cmd|bat)$/i.test(proc.command)
+
+    const child = spawn(proc.command, sanitizedArgs, {
       cwd: proc.cwd,
       env: { ...process.env, ...proc.env },
-      shell: process.platform === 'win32',
+      shell: needsShell,
     })
 
     proc.child = child
@@ -253,7 +277,7 @@ export async function baseProcessStop(
   }
 
   if (!proc.running || !proc.pid) {
-    return { ok: true, process_id: processId, stopped: true }
+    return { ok: true, process_id: processId, stopped: false, message: '进程未在运行或已提前退出' }
   }
 
   const pid = proc.pid
@@ -312,4 +336,23 @@ export async function baseProcessGet(processId: string): Promise<BaseProcessGetR
     return { ok: false, error: `找不到进程任务：${processId}` }
   }
   return { ok: true, process: toProcessInfo(proc) }
+}
+
+/**
+ * base.process.delete: 销毁并删除已结束或运行中的进程记录（若在运行则强制杀死）
+ */
+export async function baseProcessDelete(processId: string): Promise<BaseProcessDeleteResult> {
+  const proc = processes.get(processId)
+  if (!proc) {
+    return { ok: false, error: `找不到进程任务：${processId}` }
+  }
+  if (proc.running && proc.pid) {
+    killProcessTree(proc.pid, 'SIGKILL')
+    proc.running = false
+    proc.exited = true
+    proc.signal = 'SIGKILL'
+    proc.exitTime = Date.now()
+  }
+  processes.delete(processId)
+  return { ok: true, process_id: processId, deleted: true }
 }

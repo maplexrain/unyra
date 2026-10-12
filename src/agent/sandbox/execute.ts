@@ -30,10 +30,11 @@ const EXECUTE_PARAMETERS = {
         '返回值会被回给你（超过 3.2 万字符会截断）。' +
         '**写操作的失败不抛异常**：回 { ok:false, content:"哪一步没做成、该怎么改" }，并汇总在结果最前面' +
         '那份「没有生效」清单里——判断成败看清单，不要用 try/catch，也不要追加读接口确认。' +
-        'path 省略 = 当前节点的教学文档，"笔记" = 当前节点的笔记，"笔记/错题本" = 指名某一份（没有就新建）。' +
+        '所有数据与真实文件读写统一使用 api.files.*（省略路径或传空字符串缺省为当前节点的教学文档）；' +
+        '原生系统进程任务使用 api.process.*。' +
         'api 上有什么、各组的完整签名与使用时机，全部见系统提示词的 execute 一节；' +
-        '低频组（sdoc / browser / web / res / exam / review / workspace / method / code / subagent / ui 细节等）' +
-        '的规范会在你第一次调用该组时自动注入。调试用 api.log(...)，输出随结果一起回给你。' +
+        '按需组（browser / web / method / code / subagent / ui 等）的规范会在你第一次调用该组时自动注入。' +
+        '调试用 api.log(...)，输出随结果一起回给你。' +
         '沙箱里没有 window / document / fetch。',
     },
   },
@@ -83,10 +84,10 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
     description: opts.apiBrief
       ? '执行一段 JS 来完成任务：api 按本会话的授权开放（完整签名见参数说明）。' +
         '多步、批量、需要判断或循环的活用代码一次做完，不要把中间结果写进对话；' +
-        '体量大的中间数据用 api.tmp 暂存，只把键名或结论带回来。'
-      : '执行一段 JS 来操作学习数据——**唯一的工具**：文档读写、节点增删改、描述、试卷、临时变量、' +
+        '体量大的中间数据用 api.files.write 存为真实文件，只把文件名或结论带回来。'
+      : '执行一段 JS 来操作学习数据——**唯一的工具**：文档读写、节点增删改、' +
         '人机协作与界面操作都只能通过这里调用。多步、批量、需要判断或循环的活用代码一次做完，' +
-        '不要把中间结果写进对话；体量大的用 api.tmp 暂存，只把键名或结论带回来。' +
+        '不要把中间结果写进对话；体量大的用 api.files.write 存为真实文件，只把文件名或结论带回来。' +
         '各 api 组的签名与使用时机见系统提示词的 execute 一节（低频组的完整规范在首次调用时自动注入）。',
     parameters: executeParameters(opts.apiBrief),
     run: async (args) => {
@@ -188,7 +189,12 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
             const content = writableContentOf(name, callArgs)
             if (content) for (const key of promptModuleForContent(content, name)) moduleKeys.add(key)
           }
-          const value = await fn(...callArgs)
+          let value: unknown
+          try {
+            value = await fn(...callArgs)
+          } catch (err) {
+            return { ok: false, error: err instanceof Error ? err.message : String(err) }
+          }
           const images = imagesOf(value)
           if (!images.length) return value
           for (const img of images) {
@@ -230,7 +236,12 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
           ? '\n这条报错与上一次**完全同类**，同样的写法再试也不会有不同结果：请换一种策略，' +
             '或先用最小调用（例如 return 1）确认沙箱语义，再回来改这段。连续失败两次以上就先停下来告诉我卡在哪。'
           : ''
-        return { ok: false, content: '执行失败' + detail + '：' + reply.error + advice }
+        const head = failureHeader(log)
+        const tail = [whatHappened(log), logs.length ? '日志：\n' + logs.join('\n') : ''].filter(Boolean).join('\n')
+        return {
+          ok: false,
+          content: clip(head + '执行失败' + detail + '：' + reply.error + advice + (tail ? '\n\n' + tail : '')),
+        }
       }
       lastFailure = ''
       const result =

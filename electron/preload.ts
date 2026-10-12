@@ -20,8 +20,8 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 import type {
-  AttachReadResult, BaseFileEditResult, BaseFileEntry, BaseFileListResult, BaseFileOpResult, BaseFileReadResult,
-  BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessGetResult,
+  AttachReadResult, BaseFileEditOpts, BaseFileEditResult, BaseFileEntry, BaseFileListResult, BaseFileOpResult, BaseFileReadResult,
+  BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
   BaseProcessInfo, BaseProcessListResult, BaseProcessOutputResult, BaseProcessStartResult, BaseProcessStatusResult,
   BaseProcessStopResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginListResult,
@@ -39,7 +39,7 @@ import type {
 // 这里按原样转出去，外部从 electron/preload 引这些类型的写法不用改。
 export type {
   AttachReadResult, BaseFileEditResult, BaseFileEntry, BaseFileListResult, BaseFileOpResult, BaseFileReadResult,
-  BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessGetResult,
+  BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
   BaseProcessInfo, BaseProcessListResult, BaseProcessOutputResult, BaseProcessStartResult, BaseProcessStatusResult,
   BaseProcessStopResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginListResult,
@@ -606,11 +606,11 @@ const api = {
   },
 
   files: {
-    read: (p: string, opts?: { encoding?: 'utf8' | 'base64' | 'binary'; maxBytes?: number }): Promise<BaseFileReadResult> =>
+    read: (p: string, opts?: { encoding?: 'utf8' | 'base64' | 'binary'; maxBytes?: number; offset?: number }): Promise<BaseFileReadResult> =>
       ipcRenderer.invoke('base:files:read', p, opts),
     write: (p: string, content: string, opts?: { encoding?: 'utf8' | 'base64'; overwrite?: boolean }): Promise<BaseFileWriteResult> =>
       ipcRenderer.invoke('base:files:write', p, content, opts),
-    edit: (p: string, opts?: { replace?: { target: string; replacement: string; all?: boolean }; content?: string; start?: number; end?: number }): Promise<BaseFileEditResult> =>
+    edit: (p: string, opts?: BaseFileEditOpts): Promise<BaseFileEditResult> =>
       ipcRenderer.invoke('base:files:edit', p, opts),
     list: (p?: string): Promise<BaseFileListResult> =>
       ipcRenderer.invoke('base:files:list', p),
@@ -646,6 +646,8 @@ const api = {
       ipcRenderer.invoke('base:process:list'),
     get: (id: string): Promise<BaseProcessGetResult> =>
       ipcRenderer.invoke('base:process:get', id),
+    delete: (id: string): Promise<BaseProcessDeleteResult> =>
+      ipcRenderer.invoke('base:process:delete', id),
   },
 
   syncPermissions: (dirs: string[]): Promise<{ ok: boolean }> =>
@@ -653,11 +655,11 @@ const api = {
 
   base: {
     files: {
-      read: (p: string, opts?: { encoding?: 'utf8' | 'base64' | 'binary'; maxBytes?: number }): Promise<BaseFileReadResult> =>
+      read: (p: string, opts?: { encoding?: 'utf8' | 'base64' | 'binary'; maxBytes?: number; offset?: number }): Promise<BaseFileReadResult> =>
         ipcRenderer.invoke('base:files:read', p, opts),
       write: (p: string, content: string, opts?: { encoding?: 'utf8' | 'base64'; overwrite?: boolean }): Promise<BaseFileWriteResult> =>
         ipcRenderer.invoke('base:files:write', p, content, opts),
-      edit: (p: string, opts?: { replace?: { target: string; replacement: string; all?: boolean }; content?: string; start?: number; end?: number }): Promise<BaseFileEditResult> =>
+      edit: (p: string, opts?: BaseFileEditOpts): Promise<BaseFileEditResult> =>
         ipcRenderer.invoke('base:files:edit', p, opts),
       list: (p?: string): Promise<BaseFileListResult> =>
         ipcRenderer.invoke('base:files:list', p),
@@ -692,6 +694,8 @@ const api = {
         ipcRenderer.invoke('base:process:list'),
       get: (id: string): Promise<BaseProcessGetResult> =>
         ipcRenderer.invoke('base:process:get', id),
+      delete: (id: string): Promise<BaseProcessDeleteResult> =>
+        ipcRenderer.invoke('base:process:delete', id),
     },
     syncPermissions: (dirs: string[]): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke('base:permissions:sync', dirs),

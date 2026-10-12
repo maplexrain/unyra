@@ -7,6 +7,7 @@ import type { Exam } from '../exam'
 import { DOCS_DIR, MANIFEST_FILE, STATIC_DIR, nodeLayout } from '../layout'
 import { manifestText } from '../static/manifest'
 import { docFileName, noteFileName, outlineFileName } from './names'
+import { sanitizeSegment } from '../segments'
 import { CHAT_VERSION, META_VERSION, jsonText, tmpText, type MetaFile } from './meta'
 
 /**
@@ -113,6 +114,16 @@ export function buildDocs(store: LearnStore): Map<string, string> {
      */
     for (const note of node.notes ?? []) {
       if (note.content.trim()) files.set(`${path}/${noteFileName(base, note.name)}`, note.content)
+    }
+    // 超级文档独立文件落盘：{path}/superdocs/{name}.html
+    for (const sdoc of node.superdocs ?? []) {
+      if (sdoc.html.trim()) {
+        files.set(`${path}/superdocs/${sanitizeSegment(sdoc.name)}.html`, sdoc.html)
+      }
+    }
+    // 试卷独立文件落盘：{path}/exams/{id}.json
+    for (const exam of examsOf.get(node.id) ?? []) {
+      files.set(`${path}/exams/${exam.id}.json`, jsonText(exam))
     }
     /**
      * 这个节点的 meta 一个字都没动就直接用上一份文本（见 MetaCacheEntry）：
@@ -233,6 +244,19 @@ export function buildDocs(store: LearnStore): Map<string, string> {
      */
     const tmp = tmpText(store.tmp?.[node.id])
     if (tmp) files.set(`${path}/tmp.json`, tmp)
+  }
+
+  // 兜底未匹配到节点的试卷（写入根级 exams/{id}.json）
+  const placedExamIds = new Set<string>()
+  for (const node of store.nodes) {
+    for (const exam of examsOf.get(node.id) ?? []) {
+      placedExamIds.add(exam.id)
+    }
+  }
+  for (const exam of store.exams) {
+    if (!placedExamIds.has(exam.id)) {
+      files.set(`exams/${exam.id}.json`, jsonText(exam))
+    }
   }
 
   // 整张换上去：这一轮没走到的节点（删掉的、读不出来的）自然就从缓存里消失了

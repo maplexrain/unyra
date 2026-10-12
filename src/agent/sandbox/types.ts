@@ -4,7 +4,7 @@
  * 实现见同目录的 api / body / askForm / worker / execute。
  */
 import type { AgentTool, AgentToolResult, MessageImage } from '../types'
-import type { TmpEntry } from '../../learn/types'
+import type { TmpEntry, MasteryStatus } from '../../learn/types'
 import type { ProfileField } from '../../user/fields'
 /* SandboxDocKind 定义在 ./refs（DocRef 要用它），这里既要它进本文件的作用域、又要对外转出：
    import type 管前者，export type ... from 管后者——少写前者，下面那些引用会全变成「找不到名字」。 */
@@ -105,14 +105,18 @@ export interface SandboxOptions {
   nodeOps: {
     list: () => unknown
     read: (nodeId: string) => unknown
-    create: (parentId: string, input: { title: string; description?: string }) => AgentToolResult
+    create: (parentId: string, input: { title: string; description?: string; status?: MasteryStatus; [k: string]: unknown }) => AgentToolResult
     update: (
       nodeId: string,
-      patch: { title?: string; description?: string; status?: 'learning' | 'mastered' },
+      patch: { title?: string; description?: string; status?: MasteryStatus },
     ) => AgentToolResult
-    remove: (nodeId: string) => AgentToolResult
+    remove: (nodeId: string, opts?: { cascade?: boolean; dryRun?: boolean }) => AgentToolResult
     /** 迁移节点到另一个节点之下（改父线；根/跨目标/成环会被拒，见 graph/nodes 的 moveNode） */
     move: (nodeId: string, newParentId: string) => AgentToolResult
+    /** 获取节点的完整物理路径索引（{ id, title, path, dir, doc, notesDir, outline, meta }） */
+    paths?: (nodeId: string) => unknown
+    /** 划词注解：挂在节点上 */
+    annotate?: (nodeId: string, input: { term: string; occurrence?: number; body: string }) => AgentToolResult
   }
   /** 临时变量：拿最新的一份，写入时回调给 store 落盘。作用域是当前节点；不注入就没有 tmp 这一组 */
   tmp?: () => {
@@ -580,16 +584,13 @@ export interface OutlineOps {
  */
 export interface WorkflowOps {
   /** 全部工作流（内置 + 全局 + 当前目标），带 id、名字、分级与指令体量 */
-  list: () => unknown
+  list: (opts?: unknown) => unknown
+  /** 获取单条工作流的完整详情与指令 */
+  get?: (ref: string) => unknown
   /** 登记一条（global 或 goal 级，同名覆盖）；校验失败回 { error } */
   create: (input: unknown) => unknown
   /** 按 id 或名字删一条；内置的删不掉 */
   remove: (ref: string) => unknown
-  /**
-   * wf.invoke：把这件事交给某条工作流去做。**不当场执行**——指令要作为一条新的 user
-   * 消息进上下文，而这一轮还在跑，只能等本轮收口后由宿主另起一轮。所以这里只负责
-   * 校验（有没有这条流程）与登记排队，回执说清「已排队、别再重复调」。
-   */
   invoke: (ref: string, opts: Record<string, unknown>) => unknown
 }
 

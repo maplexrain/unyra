@@ -567,12 +567,46 @@ export interface BaseFileStat {
 }
 
 export type BaseFileReadResult =
-  | { ok: true; content: string; encoding: string; size: number }
+  | { ok: true; content: string; encoding: string; size: number; sizeBytes?: number; chars?: number; totalChars?: number }
   | { ok: false; error: string }
 
 export type BaseFileWriteResult =
   | { ok: true; path: string; bytesWritten?: number }
   | { ok: false; error: string }
+
+export interface BaseFileEditOpts {
+  replace?: {
+    target?: string
+    replacement?: string
+    old?: string
+    new?: string
+    find?: string
+    search?: string
+    replace?: string
+    all?: boolean
+  }
+  edits?: Array<{
+    target?: string
+    replacement?: string
+    old?: string
+    new?: string
+    find?: string
+    search?: string
+    replace?: string
+    append?: string
+    prepend?: string
+    insert?: string
+    after?: string
+    before?: string
+    all?: boolean
+    [k: string]: unknown
+  }>
+  content?: string
+  append?: string
+  prepend?: string
+  start?: number
+  end?: number
+}
 
 export type BaseFileEditResult =
   | { ok: true; path: string; modified: boolean }
@@ -583,7 +617,7 @@ export type BaseFileListResult =
   | { ok: false; error: string }
 
 export type BaseFileStatResult =
-  | { ok: true; stat: BaseFileStat }
+  | { ok: true; exists?: boolean; stat: BaseFileStat }
   | { ok: false; error: string }
 
 export type BaseFileOpResult =
@@ -628,7 +662,11 @@ export type BaseProcessOutputResult =
   | { ok: false; error: string }
 
 export type BaseProcessStopResult =
-  | { ok: true; process_id: string; stopped: boolean }
+  | { ok: true; process_id: string; stopped: boolean; message?: string }
+  | { ok: false; error: string }
+
+export type BaseProcessDeleteResult =
+  | { ok: true; process_id: string; deleted: boolean; message?: string }
   | { ok: false; error: string }
 
 export type BaseProcessListResult =

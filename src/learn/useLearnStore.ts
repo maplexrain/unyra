@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LearnStore } from './types'
 import { emptyLearnStore, flushLearnStore, loadLearnStore, saveLearnStore } from './store'
 import { flushCommitsSync } from '../lib/storage'
+import { initVfsStoreSync, registerStoreSyncListener } from '../vfs'
 
 /**
  * 学习数据的 React 状态容器：单一 state、500ms 防抖落盘、卸载/关闭页签前兜底保存。
@@ -45,6 +46,15 @@ export function useLearnStore() {
     }
     window.addEventListener('beforeunload', flush)
     return () => window.removeEventListener('beforeunload', flush)
+  }, [])
+
+  useEffect(() => {
+    initVfsStoreSync()
+    return registerStoreSyncListener((updater) => {
+      const next = updater(storeRef.current)
+      storeRef.current = next
+      setStore(next)
+    })
   }, [])
 
   /**

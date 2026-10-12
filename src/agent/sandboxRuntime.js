@@ -134,7 +134,31 @@ function makeApi() {
       .join(' ')
     call('log', [line]).catch(() => {})
   }
+
   return api
+}
+
+const DEPRECATED_HINTS = {
+  doc: 'api.doc 已收敛为 api.files：读取教学文档请用 await api.files.read("docs/.../节点名.md")，写入用 await api.files.write("docs/.../节点名.md", 讲义内容)。',
+  docs: 'api.docs 已收敛为 api.files：文件读写请使用 api.files.*。',
+  outline: 'api.outline 已收敛为 api.files：大纲请用 await api.files.write("docs/.../节点名.outline.json", JSON.stringify(大纲对象))。',
+  description: 'api.description 不存在：修改节点描述请用 await api.node.update(path, { description })。',
+  userInfo: 'api.userInfo 已收敛为 api.files：画像请用 await api.files.read("user.yaml")。',
+  state: 'api.state 已收敛为 api.files：界面状态请用 await api.files.read("state.json") 或对应节点的 .meta.json。',
+  tmp: 'api.tmp 已收敛为 api.files：中间数据请存为真实文件，如 await api.files.write("docs/目标/tmp.json", ...)。',
+  exam: 'api.exam 已收敛为 api.files：试卷数据请直接读写相关数据文件。',
+  review: 'api.review 已收敛为 api.files：复习计划请直接读写对应目标下的数据文件。',
+  res: 'api.res 已收敛为 api.files：目标资源文件请直接使用 api.files.* 读写 static/ 目录。',
+  sdoc: 'api.sdoc 已收敛为 api.files：超级文档请使用 api.files.* 读写 superdocs/ 目录。',
+  workspace: 'api.workspace 已收敛为 api.files：工作区真实文件请直接使用 api.files.*。',
+  retrieval: 'api.retrieval 已收敛为 api.files：检索数据请读写相关索引文件。',
+  note: 'api.note 已收敛为 api.files：笔记请用 await api.files.read("docs/.../节点.notes/笔记名.md")，写入用 await api.files.write(...)。',
+  stats: 'api.stats 在本沙箱中不存在：阅读与打卡数据请使用 api.files 读写 docs/目标/reading.json 与 checkin.json。',
+  memory: 'api.memory 在本沙箱中不存在：状态与事实数据已收敛为真实数据文件。',
+  mind: 'api.mind 在本沙箱中不存在：知识图谱结构请通过 node.* 操作，文档内容通过 files.* 读写。',
+  checkin: 'api.checkin 已收敛为 api.files：打卡记录请使用 api.files 读写 docs/目标/checkin.json。',
+  plot: 'api.plot 已收敛为 api.files：绘图与静态资源请直接使用 api.files 读写 static/ 目录。',
+  methods: 'api.methods 不存在：方法调用请使用 api.method.call(name, ...args)。',
 }
 
 async function run(body, timeoutMs) {
@@ -179,7 +203,14 @@ async function run(body, timeoutMs) {
     const e = err || {}
     const stack = typeof e.stack === 'string' ? String(e.stack) : ''
     const where = stack ? stack.split('\n').slice(0, 3).join(' | ') : ''
-    const message = e.message ? String(e.message) : String(err)
+    let message = e.message ? String(e.message) : String(err)
+    for (const [key, hint] of Object.entries(DEPRECATED_HINTS)) {
+      const reg = new RegExp(`\\bapi\\.${key}\\b`)
+      if (reg.test(body) || message.includes(`'${key}'`) || message.includes(`"${key}"`)) {
+        message += `\n［提示：${hint}］`
+        break
+      }
+    }
     self.postMessage({ kind: 'done', ok: false, error: message + (where ? '［' + where + '］' : '') })
   }
 }

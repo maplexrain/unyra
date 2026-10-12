@@ -126,7 +126,7 @@ export async function toolTests() {
   const r13 = await h.run('((api)=>{ return await api.description.update("只有内容的老写法") })')
   ok(r13.ok && h.store().nodes.find((n) => n.id === childId)?.description === '只有内容的老写法', 'description.update 单参数兼容旧写法', r13.content)
   const r14 = await h.run('((api)=>{ return await api.note.read() })')
-  ok(!r14.ok && r14.content.includes('doc.read'), '旧 api 名给出新写法', r14.content.slice(0, 200))
+  ok(!r14.ok && r14.content.includes('files.read'), '旧 api 名给出新写法', r14.content.slice(0, 200))
   const r15 = await h.run('((api)=>{ return await api.exam.read() })')
   ok(!r15.ok && r15.content.includes('沙箱里没有这个 api'), '未注入 exam 时该组不存在', r15.content.slice(0, 160))
   const r16 = await h.run('((api)=>{ await api.doc.write("", "# 正文"); await api.node.update("", { status: "mastered" }); return "ok" })')
@@ -154,17 +154,26 @@ export async function apiNameTests() {
   const calls: Record<string, string> = {
     'node.list': '',
     'node.read': "''",
+    'node.paths': "''",
     'node.create': "{ parent: '微积分', title: '临时节点' }",
     'node.title': "''",
-    'node.rename': "'', '临时节点'",
+    'node.rename': "'临时节点', '新临时节点'",
     'node.update': "'', { description: '临时描述' }",
+    'node.annotate': "'', { term: '极限', body: '基本概念' }",
     'node.delete': "''",
     // 迁移：把刚建的临时节点挂到根之下（它已在根之下时回一句「已经在」，同样证明 api 在）
     'node.move': "'临时节点', '微积分'",
-    // 持久化函数调用（执行源码）：源码管理已统一收敛为 files.*
+    // 持久化函数（创建/列表/删除/调用）
+    'method.list': '',
+    'method.create': "{ name: '探针函数', code: '((api)=>{ return 1 })' }",
+    'method.delete': "'探针函数'",
     'method.call': "'探针函数', 21",
+    // 自描述能力索引
+    'help': '',
     // 工作流触发：只排队（真起那一轮的是宿主，探针里就是下面那个桩）
     'wf.invoke': "'recall'",
+    'wf.list': '',
+    'wf.get': "'recall'",
     // 伪编译交货：key 是宿主发出去的那串（探针这里没有待编译登记，走的是「key 对不上」那条路）
     'code.save': "{ key: '0123456789abcdef', js: 'console.log(1)', note: '探针' }",
     'code.silent': "{ key: '0123456789abcdef', reason: '探针：只有定义' }",
@@ -234,6 +243,7 @@ export async function apiNameTests() {
     'process.stop': "'proc_test'",
     'process.list': '',
     'process.get': "'proc_test'",
+    'process.delete': "'proc_test'",
   }
   let s = staticStore()
   let tmpStore: Record<string, unknown> = {}

@@ -6,7 +6,7 @@ import type { LearnStore, MethodEntry, MethodStore } from './types'
  *
  * 它解决的是「复用」：超级文档里的按钮调 api.method.call('函数名', 实参)，
  * 宿主编译那份持久化的函数源码、注入整套沙箱 api 执行，把结果送回文档。
- * 函数体里照样能 await api.doc.read(...)，于是「统计某文档有多少个句号」
+ * 函数体里照样能 await api.files.read(...)，于是「统计某文档有多少个句号」
  * 这类活写一次，任何一份超级文档都能调。
  *
  * 存储与 minds 同构：按目标归档、跟着 state.json 落盘。name 就是身份

@@ -10,6 +10,7 @@ import type {
   MethodEntry,
   MindEntry,
   NoteFile,
+  SuperDocFile,
   TmpEntry,
   WorkflowEntry,
 } from '../types'
@@ -126,7 +127,55 @@ export function parseDocs(files: Map<string, string>, state: unknown): LearnStor
     if (readingFile) readingByGoal[goal.id] = readingFile
     const checkinFile = parseJson<CheckinStore>(files.get(`${dir}/checkin.json`))
     if (checkinFile) checkinByGoal[goal.id] = checkinFile
-    if (Array.isArray(meta.exams)) for (const e of meta.exams) exams.push(e as Exam)
+    // 1. 读回超级文档：扫描 ${dir}/superdocs/*.html
+    const superdocsPrefix = `${dir}/superdocs/`
+    const sdocsFromFiles: SuperDocFile[] = []
+    const sdocSeen = new Set<string>()
+    for (const [rel, html] of files) {
+      if (rel.startsWith(superdocsPrefix) && rel.endsWith('.html')) {
+        const name = rel.slice(superdocsPrefix.length, -5)
+        if (name && !name.includes('/')) {
+          sdocSeen.add(name.toLowerCase())
+          sdocsFromFiles.push({
+            name,
+            html,
+            createdAt: meta.createdAt || Date.now(),
+            updatedAt: meta.updatedAt || Date.now(),
+          })
+        }
+      }
+    }
+    // 兼容 meta.superdocs 中的旧数据（未在物理文件中的补上）
+    if (Array.isArray(meta.superdocs)) {
+      for (const d of meta.superdocs as SuperDocFile[]) {
+        if (d && typeof d.name === 'string' && !sdocSeen.has(d.name.toLowerCase())) {
+          sdocsFromFiles.push(d)
+        }
+      }
+    }
+
+    // 2. 读回试卷：扫描 ${dir}/exams/*.json
+    const examsPrefix = `${dir}/exams/`
+    const examSeen = new Set<string>()
+    for (const [rel, rawJson] of files) {
+      if (rel.startsWith(examsPrefix) && rel.endsWith('.json')) {
+        const parsedExam = parseJson<Exam>(rawJson)
+        if (parsedExam && parsedExam.id) {
+          if (!parsedExam.nodeId) parsedExam.nodeId = meta.id
+          if (!parsedExam.goalId) parsedExam.goalId = goal.id
+          examSeen.add(parsedExam.id)
+          exams.push(parsedExam)
+        }
+      }
+    }
+    // 兼容 meta.exams 中的旧数据（未在物理文件中的补上）
+    if (Array.isArray(meta.exams)) {
+      for (const e of meta.exams as Exam[]) {
+        if (e && e.id && !examSeen.has(e.id)) {
+          exams.push(e)
+        }
+      }
+    }
 
     const outlineParsed = normalizeOutline(parseJson(files.get(`${dir}/${outlineFileName(base)}`)))
     nodes.push({
@@ -136,9 +185,7 @@ export function parseDocs(files: Map<string, string>, state: unknown): LearnStor
       description: meta.description,
       docs: { teaching: files.get(`${dir}/${docFileName(base)}`) ?? '' },
       notes: readNotes(files, dir, base, meta),
-      // 超级文档整份在 meta 里（缺这一项的旧节点交给 normalizeSuperDocs 收成空清单）
-      superdocs: meta.superdocs,
-      // 大纲是与教学文档配对的独立文件（{节点}.outline.json）；旧数据没有，交给 normalizeNode 留空
+      superdocs: sdocsFromFiles,
       ...(outlineParsed ? { outline: outlineParsed } : {}),
       annotations: meta.annotations,
       status: meta.status,
@@ -155,6 +202,16 @@ export function parseDocs(files: Map<string, string>, state: unknown): LearnStor
     for (const dep of meta.dependencies ?? []) {
       if (!dep || typeof dep.to !== 'string' || !dep.to) continue
       edges.push({ from: meta.id, to: dep.to, createdAt: dep.createdAt })
+    }
+  }
+
+  // 读回根级 exams/*.json
+  for (const [rel, rawJson] of files) {
+    if (rel.startsWith('exams/') && rel.endsWith('.json')) {
+      const parsedExam = parseJson<Exam>(rawJson)
+      if (parsedExam && parsedExam.id && !exams.some((e) => e.id === parsedExam.id)) {
+        exams.push(parsedExam)
+      }
     }
   }
 

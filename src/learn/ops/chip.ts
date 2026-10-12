@@ -70,8 +70,7 @@ export function createChipOps(deps: AgentOpsDeps) {
         return {
           ok: false,
           problem:
-            'chip.build 的 type 只认：' + BUILD_TYPES.join(' / ') +
-            '。要引用什么就给什么字段：path 类给 path（省略 = 当前节点）、web 给 url、exam/attempt 给 examId（attempt 再带 attemptId）、super 带 name、note 带 note。',
+            'chip.build 的 type 只认：教学文档(doc)、笔记(note)、大纲(outline)、超级文档(super)、试卷(exam/attempt)、工作区文件(ws)、网页(web) 或本地文件(local)。要引用什么就给什么字段：文档类给 path（省略 = 当前节点）、web 给 url、exam/attempt 给 examId、super 带 name、note 带 note。',
         }
       }
       const str = (k: string): string | undefined => {
@@ -170,29 +169,57 @@ export function createChipOps(deps: AgentOpsDeps) {
     },
 
     /**
-     * 交付前自查：任意一段文字（通常是回复草稿）里每一颗 `#[{…}]` 都对 store
-     * 验一遍定位。长得像 chip 但解析不开的段落单独点出来——那也是要修的。
+     * 交付前自查：自查文本中的 #[{…}] 引用 chip 及 [文案](moji:doc/...) 跳转链接。
+     * 避免误放行假绿 (B2)，准确定位每个引用的真实性。
      */
     check: (text: string) => {
-      const likeChip = (text.match(/#\[\s*\{/g) ?? []).length
-      const chips = splitChips(text ?? '').filter((s) => s.kind === 'chip')
+      const rawText = String(text ?? '')
+      const likeChip = (rawText.match(/#\[\s*\{/g) ?? []).length
+      const chips = splitChips(rawText).filter((s) => s.kind === 'chip')
       const problems: Array<{ chip: string; problem: string }> = []
+
       for (const c of chips) {
         const problem = chipResolveProblem(store0(), c.payload)
         if (problem) problems.push({ chip: c.token, problem })
       }
-      const unparsed = likeChip - chips.length
-      const valid = chips.length - problems.length
+
+      // 提取 Markdown moji:doc/... 链接并校验目标
+      const linkRegex = /\[([^\]]+)\]\(moji:doc\/([^)#@\s]+)(?:#[^)]*)?\)/g
+      let linkCount = 0
+      let linkValid = 0
+      for (let m = linkRegex.exec(rawText); m; m = linkRegex.exec(rawText)) {
+        linkCount++
+        const targetPath = m[2].trim()
+        const resolved = resolveNode(store0(), scope(), targetPath)
+        if (resolved.ok) {
+          linkValid++
+        } else {
+          problems.push({ chip: m[0], problem: `链接引用的目标节点「${targetPath}」不存在：${resolved.message}` })
+        }
+      }
+
+      const unparsed = Math.max(0, likeChip - chips.length)
+      const chipValid = chips.length - problems.filter((p) => p.chip.startsWith('#[')).length
+      const total = chips.length + linkCount
+      const valid = chipValid + linkValid
+      const invalid = problems.length
+
+      let note = ''
+      if (total === 0 && unparsed === 0) {
+        note = '文本中未检测到任何引用 chip 或跳转链接。若回复中引用了知识点或文档，请使用 api.chip.build 生成标准引用。'
+      } else if (invalid === 0 && unparsed === 0) {
+        note = '全部引用与跳转链接均定位成功，可以交付。'
+      } else {
+        note = '存在未能成功定位的引用，请根据 problems 清单修改（用 api.chip.build 重新生成或修正跳转目标）。'
+      }
+
       return {
-        total: chips.length,
+        total,
         valid,
-        invalid: problems.length,
+        invalid,
         ...(unparsed > 0 ? { unparsed } : {}),
         ...(problems.length ? { problems } : {}),
-        note:
-          valid === chips.length && unparsed === 0
-            ? '全部 chip 都定位得到，可以交付。'
-            : '坏的照 problem 改——用 build 重新生成再原样抄回来，不要手改 JSON。',
+        note,
       }
     },
   }

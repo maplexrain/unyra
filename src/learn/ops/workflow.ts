@@ -39,8 +39,10 @@ export function createWorkflowOps(deps: AgentOpsDeps): WorkflowOps {
   const goal = () => deps.goalId()
 
   return {
-    list: () => {
+    list: (opts?: unknown) => {
+      const o = opts && typeof opts === 'object' ? (opts as Record<string, unknown>) : {}
       const rows = listWorkflowRows(store0(), goal())
+      const isFull = o.full === true || o.brief === false
       return {
         count: rows.length,
         items: rows.map((r) => ({
@@ -49,13 +51,31 @@ export function createWorkflowOps(deps: AgentOpsDeps): WorkflowOps {
           tier: r.tier,
           description: r.description,
           chars: r.instruction.length,
-          instruction: r.instruction,
+          ...(isFull ? { instruction: r.instruction } : {}),
         })),
         note:
-          'tier: builtin=内置（随应用提供、不可删）/ global=所有目标可用 / goal=仅当前目标。' +
-          '工作流**不进系统提示词**：被触发时（用户在界面上点，或你用 wf.invoke 交出去），' +
-          'instruction 才作为一条 user 消息整段进入你的上下文。' +
-          '要独占一整轮的活（出卷、复习、大纲、压缩）用 wf.invoke(idOrName, { params }) 交出去，比你自己照着做更稳。',
+          'tier: builtin=内置 / global=全局 / goal=目标级。' +
+          '指令默认简略以节省上下文，可调用 api.wf.get(idOrName) 查看单条完整指令，或调 api.wf.list({ full: true })。' +
+          '要独占一整轮的活（出卷、复习、大纲、压缩）用 wf.invoke(idOrName, { params }) 交出去。',
+      }
+    },
+
+    get: (ref: string) => {
+      const key = String(ref ?? '').trim().toLowerCase()
+      const hit = listWorkflowRows(store0(), goal()).find(
+        (r) => r.id.toLowerCase() === key || r.name.toLowerCase() === key,
+      )
+      if (!hit) {
+        return { ok: false, error: '没有这个工作流：' + (ref || '（空）') }
+      }
+      return {
+        ok: true,
+        id: hit.id,
+        name: hit.name,
+        tier: hit.tier,
+        description: hit.description,
+        instruction: hit.instruction,
+        params: hit.params,
       }
     },
 
@@ -82,7 +102,7 @@ export function createWorkflowOps(deps: AgentOpsDeps): WorkflowOps {
       const key = ref.trim().toLowerCase()
       const hit = listWorkflowRows(s, goal()).find((r) => r.id.toLowerCase() === key || r.name.toLowerCase() === key)
       if (!hit) {
-        return { error: '没有这个工作流：' + (ref || '（空）') + '。用 wf.list() 核对 id 或名字。' }
+        return { error: '没有这个工作流：' + (ref || '（空）') + '。可调 api.wf.list() 核对 id 或名字，或查看当前目标的 workflow.json。' }
       }
       if (hit.tier === 'builtin') {
         return { error: '「' + hit.name + '」是内置工作流，删不掉。' }
@@ -102,7 +122,7 @@ export function createWorkflowOps(deps: AgentOpsDeps): WorkflowOps {
     invoke: (ref, opts) => {
       const hit = findWorkflow(store0(), goal(), ref)
       if (!hit) {
-        return { error: '没有叫「' + (ref || '（空）') + '」的工作流。用 wf.list() 核对 id 或名字。' }
+        return { error: '没有叫「' + (ref || '（空）') + '」的工作流。可调 api.wf.list() 核对 id 或名字，或查看当前目标的 workflow.json。' }
       }
       const run = deps.invokeWorkflow
       if (!run) {

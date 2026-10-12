@@ -2,6 +2,7 @@ import type { KnowledgeNode, LearnStore, DocKind } from './types'
 import { isDocKind } from './types'
 import { nodeById, normalizeKey, pathToRoot, prereqIds } from './graph'
 import { notesOf } from './notes'
+import { sanitizeSegment } from './segments'
 
 /**
  * 路径寻址：Agent 在沙箱里怎么指名「哪个节点的哪份文档」。
@@ -78,11 +79,21 @@ export function splitDocPath(path: string | undefined): SplitDocPath {
     .split('/')
     .map((s) => s.trim())
     .filter(Boolean)
+
+  // 支持 *.notes/笔记名.md 真实物理路径模式
+  const notesIdx = segments.findIndex((s) => /\.notes$/i.test(s))
+  if (notesIdx >= 0) {
+    const nodeSeg = segments[notesIdx].replace(/\.notes$/i, '')
+    const nodeSegments = [...segments.slice(0, notesIdx), nodeSeg]
+    const noteName = segments.slice(notesIdx + 1).join('/').replace(/\.md$/i, '').trim()
+    return { segments: nodeSegments, kind: 'note', ...(noteName ? { note: noteName } : {}) }
+  }
+
   const i = segments.findIndex((s) => docKindOfWord(s) !== null)
   if (i < 0) return { segments, kind: 'teaching' }
   const kind = docKindOfWord(segments[i]) as DocKind
   if (kind === 'teaching') return { segments: segments.slice(0, i), kind }
-  const note = segments.slice(i + 1).join('/').trim()
+  const note = segments.slice(i + 1).join('/').replace(/\.md$/i, '').trim()
   return { segments: segments.slice(0, i), kind, ...(note ? { note } : {}) }
 }
 
@@ -91,7 +102,7 @@ function goalRoot(store: LearnStore, goalId: string): KnowledgeNode | undefined 
   return goal ? nodeById(store, goal.rootNodeId) : undefined
 }
 
-/** 按「id（# 前缀）」或「标题（目标内唯一）」找节点 */
+/** 按「id（# 前缀）」或「标题（目标内唯一）」找节点，兼容长标题截断名与前缀模糊匹配 */
 export function findNodeByRef(store: LearnStore, goalId: string, ref: string): KnowledgeNode | undefined {
   const r = ref.trim()
   if (!r) return undefined
@@ -100,7 +111,28 @@ export function findNodeByRef(store: LearnStore, goalId: string, ref: string): K
     return store.nodes.find((n) => n.id === id)
   }
   const key = normalizeKey(r)
-  return store.nodes.find((n) => n.goalId === goalId && n.key === key)
+  const exact = store.nodes.find((n) => n.goalId === goalId && n.key === key)
+  if (exact) return exact
+
+  // 兜底 1: 比较标题的 sanitizeSegment（长标题截断为 48 字/拼音/空格下划线兼容）
+  const segR = sanitizeSegment(r).toLowerCase()
+  const bySanitize = store.nodes.find(
+    (n) => n.goalId === goalId && sanitizeSegment(n.title).toLowerCase() === segR,
+  )
+  if (bySanitize) return bySanitize
+
+  // 兜底 2: 如果 r 是前缀截断，前缀匹配长标题（解决长标题截断导致的寻址错位）
+  const byPrefix = store.nodes.find(
+    (n) =>
+      n.goalId === goalId &&
+      (n.title.startsWith(r) ||
+        r.startsWith(n.title) ||
+        sanitizeSegment(n.title).toLowerCase().startsWith(segR) ||
+        segR.startsWith(sanitizeSegment(n.title).toLowerCase())),
+  )
+  if (byPrefix) return byPrefix
+
+  return undefined
 }
 
 /** 该节点在本目标里的标题路径，如「极限/夹逼定理」；找不到根时退回标题 */

@@ -131,17 +131,31 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
     return { tabId: tab.id, ref: tab.ref }
   }
 
-  const element = (tabId: string): WebviewTag => {
+  const getWebviewAndWcId = async (tabId: string, timeoutMs = 3000): Promise<{ wv: WebviewTag; wcId: number }> => {
+    const start = Date.now()
+    while (Date.now() - start < timeoutMs) {
+      const candidate = webviewOf(tabId)
+      if (candidate) {
+        try {
+          const wcId = candidate.getWebContentsId()
+          if (typeof wcId === 'number' && wcId > 0) {
+            return { wv: candidate, wcId }
+          }
+        } catch {
+          // not mounted yet
+        }
+      }
+      await new Promise((r) => setTimeout(r, 100))
+    }
     const wv = webviewOf(tabId)
-    if (!wv) throw new Error('这一页签的网页元素不在了（可能刚开还没挂上，或已被关掉）：' + tabId)
-    return wv
-  }
-
-  const wcIdOf = (wv: WebviewTag): number => {
+    if (!wv) {
+      throw new Error('这一页签的网页元素不在了（尚未就绪或已被关闭）：' + tabId)
+    }
     try {
-      return wv.getWebContentsId()
+      const wcId = wv.getWebContentsId()
+      return { wv, wcId }
     } catch {
-      throw new Error('网页还没挂上（刚开的那一拍）——稍等再试')
+      throw new Error('网页 WebContents 挂载超时（刚开的那一拍）——稍等再试：' + tabId)
     }
   }
 
@@ -161,7 +175,13 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
       const target = normalizeWebInput(url)
       if (!target) throw new Error('要给出网址：api.browser.open("https://…")')
       const tabId = deps.openWebTab(target)
-      const wv = webviewOf(tabId)
+      let wv: WebviewTag | null | undefined = null
+      const start = Date.now()
+      while (Date.now() - start < 1500) {
+        wv = webviewOf(tabId)
+        if (wv) break
+        await new Promise((r) => setTimeout(r, 80))
+      }
       if (wv) await settle(wv)
       return {
         tabId,
@@ -208,8 +228,8 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
     },
     async snapshot(tabId, opts) {
       const { tabId: id } = resolveTab(tabId)
-      const wv = element(id)
-      const r = await deps.snapshot(wcIdOf(wv), (opts ?? {}) as Record<string, unknown>)
+      const { wcId } = await getWebviewAndWcId(id)
+      const r = await deps.snapshot(wcId, (opts ?? {}) as Record<string, unknown>)
       if ('error' in r) throw new Error(r.error)
       // 过滤在宿主侧做（纯后处理）：大页面上别整份捞——5k token 换 2 条信息是真实发生过的账
       const o = (opts ?? {}) as { role?: unknown; contains?: unknown; limit?: unknown }
@@ -229,18 +249,18 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
     },
     async point(tabId, target) {
       const { tabId: id } = resolveTab(tabId)
-      const wv = element(id)
+      const { wv, wcId } = await getWebviewAndWcId(id)
       await settle(wv)
       const t: { ref: number } | { selector: string } =
         typeof target === 'string' ? { selector: target.trim() } : { ref: target.ref }
       if ('selector' in t && !t.selector) throw new Error('目标要给 snapshot 清单里的 { ref } 或 CSS 选择器')
-      const r = await withTimeout(deps.point(wcIdOf(wv), t), '定位元素')
+      const r = await withTimeout(deps.point(wcId, t), '定位元素')
       if ('error' in r) throw new Error(r.error)
       return { ok: true }
     },
     async dom(tabId, ref, op, arg) {
       const { tabId: id } = resolveTab(tabId)
-      const wv = element(id)
+      const { wv, wcId } = await getWebviewAndWcId(id)
       if (typeof ref !== 'number' || !Number.isFinite(ref)) {
         throw new Error('ref 要给 browser.snapshot 清单里的编号数字')
       }
@@ -248,14 +268,14 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
         throw new Error('要给出 dom 操作：click / fill / focus / submit / text / attr')
       }
       await settle(wv)
-      const r = await withTimeout(deps.domOp(wcIdOf(wv), ref, op.trim(), arg), 'dom.' + op.trim())
+      const r = await withTimeout(deps.domOp(wcId, ref, op.trim(), arg), 'dom.' + op.trim())
       if ('error' in r) throw new Error(r.error)
       return r
     },
     async read(tabId, opts) {
       const { tabId: id, ref } = resolveTab(tabId)
-      const wv = element(id)
-      const raw = await withTimeout(deps.readHtml(wcIdOf(wv)), '读取页面')
+      const { wcId } = await getWebviewAndWcId(id)
+      const raw = await withTimeout(deps.readHtml(wcId), '读取页面')
       if ('error' in raw) throw new Error(raw.error)
       // 与 web.webFetch 同一条管线：转换、长文落盘、大纲树都在 webDocs（uuid 互通，web.read 接着读）
       const out = (await livePageForAgent(raw.html, raw.url || ref.url)) as Record<string, unknown>
@@ -279,7 +299,7 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
     },
     async capture(tabId) {
       const { tabId: id, ref } = resolveTab(tabId)
-      const wv = element(id)
+      const { wv } = await getWebviewAndWcId(id)
       // capturePage 偶发超时（实测：同一秒 activate 一下就好）——自动重试一次再认输
       let image: Awaited<ReturnType<WebviewTag['capturePage']>>
       try {
@@ -301,26 +321,26 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
     },
     async logs(tabId, opts) {
       const { tabId: id } = resolveTabStrict(tabId, 'browser.logs')
-      const wv = element(id)
-      const r = await withTimeout(deps.logs(wcIdOf(wv), (opts ?? {}) as Record<string, unknown>), '读取日志')
+      const { wcId } = await getWebviewAndWcId(id)
+      const r = await withTimeout(deps.logs(wcId, (opts ?? {}) as Record<string, unknown>), '读取日志')
       if ('error' in r) throw new Error(r.error)
       return r
     },
     async logDetail(tabId, seq, opts) {
       const { tabId: id } = resolveTabStrict(tabId, 'browser.logDetail')
-      const wv = element(id)
+      const { wcId } = await getWebviewAndWcId(id)
       // seq 认清单行里的条目号原样：96 / 'n96' / 'c96' 都行（照抄清单别再被格式绊一跤）
       const seqNum = typeof seq === 'number' ? seq : Number(String(seq).replace(/^[nc]/i, ''))
       if (!Number.isFinite(seqNum)) {
         throw new Error('seq 要给清单行里的条目号（96、"n96" 都行）')
       }
-      const r = await withTimeout(deps.logDetail(wcIdOf(wv), seqNum, (opts ?? {}) as Record<string, unknown>), '读取日志详情')
+      const r = await withTimeout(deps.logDetail(wcId, seqNum, (opts ?? {}) as Record<string, unknown>), '读取日志详情')
       if ('error' in r) throw new Error(r.error)
       return r.detail
     },
     async fetch(tabId, target, opts) {
       const { tabId: id } = resolveTabStrict(tabId, 'browser.fetch')
-      const wv = element(id)
+      const { wcId } = await getWebviewAndWcId(id)
       const o = (opts ?? {}) as Record<string, unknown>
       const req: WebPageFetchReq = {}
       if (typeof target === 'string' && target.trim()) {
@@ -338,26 +358,26 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
       if (typeof o.body === 'string') req.body = o.body
       if (typeof o.maxBody === 'number') req.maxBody = o.maxBody
       if (typeof o.timeoutMs === 'number') req.timeoutMs = o.timeoutMs
-      const r = await withTimeout(deps.pageFetch(wcIdOf(wv), req), '直发请求', clampFetchTimeoutMs(o))
+      const r = await withTimeout(deps.pageFetch(wcId, req), '直发请求', clampFetchTimeoutMs(o))
       if ('error' in r) throw new Error(r.error)
       return r
     },
     async record(tabId, action, opts) {
       const { tabId: id } = resolveTabStrict(tabId, 'browser.record')
-      const wv = element(id)
+      const { wcId } = await getWebviewAndWcId(id)
       if (action !== 'start' && action !== 'stop') {
         throw new Error('record 的动作只有 "start"（起录） / "stop"（停并回这段的清单）')
       }
       const r =
         action === 'start'
-          ? await deps.record(wcIdOf(wv), 'start', {})
-          : await withTimeout(deps.record(wcIdOf(wv), 'stop', (opts ?? {}) as Record<string, unknown>), '结束录制')
+          ? await deps.record(wcId, 'start', {})
+          : await withTimeout(deps.record(wcId, 'stop', (opts ?? {}) as Record<string, unknown>), '结束录制')
       if ('error' in r) throw new Error(r.error)
       return r
     },
     async text(tabId, target, opts) {
       const { tabId: id } = resolveTabStrict(tabId, 'browser.text')
-      const wv = element(id)
+      const { wv, wcId } = await getWebviewAndWcId(id)
       const o = (opts ?? {}) as { maxChars?: unknown }
       let t: WebTextTarget
       if (target && typeof target === 'object' && typeof (target as { ref?: unknown }).ref === 'number') {
@@ -369,25 +389,25 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
       }
       if (typeof o.maxChars === 'number') t.maxChars = o.maxChars
       await settle(wv)
-      const r = await withTimeout(deps.text(wcIdOf(wv), t), '取文本')
+      const r = await withTimeout(deps.text(wcId, t), '取文本')
       if ('error' in r) throw new Error(r.error)
       return r
     },
     async scroll(tabId, req) {
       const { tabId: id } = resolveTabStrict(tabId, 'browser.scroll')
-      const wv = element(id)
+      const { wv, wcId } = await getWebviewAndWcId(id)
       const r = (req ?? {}) as WebScrollReq
       if (typeof r.by !== 'number' && typeof r.to !== 'string' && typeof r.ref !== 'number') {
         throw new Error('要给 { by: 像素 } 或 { to: "top" | "bottom" | 选择器 } 或 { ref }')
       }
       await settle(wv)
-      const out = await withTimeout(deps.scroll(wcIdOf(wv), r), '滚动')
+      const out = await withTimeout(deps.scroll(wcId, r), '滚动')
       if ('error' in out) throw new Error(out.error)
       return out
     },
     async waitFor(tabId, req) {
       const { tabId: id } = resolveTabStrict(tabId, 'browser.waitFor')
-      const wv = element(id)
+      const { wcId } = await getWebviewAndWcId(id)
       const o = (req ?? {}) as Record<string, unknown>
       const hasAny =
         (typeof o.selector === 'string' && o.selector.trim()) ||
@@ -399,7 +419,7 @@ export function makeBrowserOps(deps: BrowserDeps, goalId: string): BrowserOps {
         throw new Error('要给至少一个等待条件：{ selector } / { text } / { urlIncludes } / { networkIdle: true } / { load: true }')
       }
       const out = await withTimeout(
-        deps.waitFor(wcIdOf(wv), o as WebWaitReq),
+        deps.waitFor(wcId, o as WebWaitReq),
         '等待条件',
         (typeof o.timeoutMs === 'number' && Number.isFinite(o.timeoutMs) ? o.timeoutMs : 8_000) + 15_000,
       )

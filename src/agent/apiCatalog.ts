@@ -33,10 +33,12 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     items: [
       { name: 'node.list', signature: 'node.list()', summary: '全部节点：路径、id、标题、状态、描述摘要、文档字数、掌握度', availability: 'always' },
       { name: 'node.read', signature: 'node.read(path)', summary: '单个节点详情（含上级与各笔记字数）', availability: 'always' },
+      { name: 'node.paths', signature: 'node.paths(path?)', summary: '查询节点的物理存储结构与全套路径（id / title / 路径 / 所在目录 / 教学文档 / 笔记目录 / 大纲文件 / 元数据文件）', availability: 'always' },
       { name: 'node.title', signature: 'node.title(path)', summary: '读标题', availability: 'always' },
       { name: 'node.rename', signature: 'node.rename(path, 新标题)', summary: '改名（数据目录名跟着变）', availability: 'always' },
       { name: 'node.update', signature: 'node.update(path, { title?, description?, status? })', summary: '改标题 / 描述 / 状态（learning | mastered）', availability: 'always' },
-      { name: 'node.create', signature: 'node.create({ parent, title, description? })', summary: '建下级节点；parent 必填（标题 / 路径 / #id，不再隐式当前节点）；同名复用不重复建；创建时教学文档与大纲两份文件同时就位', availability: 'always' },
+      { name: 'node.annotate', signature: 'node.annotate(path?, { term, body, occurrence? })', summary: '在节点文档中向某词条追加术语解析或概念批注', availability: 'always' },
+      { name: 'node.create', signature: 'node.create({ parent, title, description? })', summary: '建下级节点；parent 必填（标题 / 路径 / #id）；同名节点会明确拒绝，标题禁止包含斜杠；创建时教学文档与大纲两份文件同时就位', availability: 'always' },
       { name: 'node.move', signature: 'node.move(path, 新父节点)', summary: '迁移节点到另一个节点之下（改父线；目标的根不能移、跨目标不能移、不能移成环）', availability: 'always' },
       { name: 'node.delete', signature: 'node.delete(path)', summary: '删除节点（学习目标本身不能删）', availability: 'always' },
     ],
@@ -60,6 +62,9 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
       '执行已保存的持久化 JS 函数源码（源码管理已统一收敛为 files.* 读写 docs/:goal/methods/:name.js）。' +
       '超级文档里的脚本亦用 api.method.call(name, ...args) 调它们——写一次，处处复用。',
     items: [
+      { name: 'method.list', signature: 'method.list()', summary: '列出当前目标已有的函数名清单', availability: 'always' },
+      { name: 'method.create', signature: 'method.create({ name, code })', summary: '把一段可执行的函数源码存进当前目标的函数库', availability: 'always' },
+      { name: 'method.delete', signature: 'method.delete(name)', summary: '删除当前目标函数库里的某个函数', availability: 'always' },
       { name: 'method.call', signature: 'method.call(name, ...args)', summary: '执行一个函数（注入当前编排的 api），返回它的返回值', availability: 'always' },
     ],
   },
@@ -70,6 +75,8 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
       '三级任务模板的触发调用（工作流的定义与修改已统一收敛为 files.* 读写 workflows/:name.json）。' +
       '导师用 wf.invoke 交活（多为出卷、复习等独占流程），instruction 作为一条 user 消息整段进入上下文。',
     items: [
+      { name: 'wf.list', signature: 'wf.list(opts?)', summary: '列出所有可用工作流（内置/全局/目标级）的名称与简短描述（默认 brief 模式节约上下文；传 { full: true } 含完整指令）', availability: 'always' },
+      { name: 'wf.get', signature: 'wf.get(idOrName)', summary: '获取指定工作流的完整定义与执行指令模板（含参数占位符）', availability: 'always' },
       { name: 'wf.invoke', signature: "wf.invoke(idOrName, { params? })", summary: '把这件事交给某条工作流：**不当场执行**，本轮收口后宿主另起一轮，instruction 作为一条 user 消息进上下文（params 填 {{占位符}}）；一次编排最多触发一条，一条链上最多连着触发三次', availability: 'always' },
     ],
   },
@@ -240,6 +247,15 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
       { name: 'process.stop', signature: 'process.stop(process_id, { timeoutMs?, force? }?)', summary: '请求终止进程，并定义超时后的强制终止策略', availability: 'always' },
       { name: 'process.list', signature: 'process.list()', summary: '列出当前 Agent 有权访问的进程任务清单', availability: 'always' },
       { name: 'process.get', signature: 'process.get(process_id)', summary: '根据 process_id 获取进程详情', availability: 'always' },
+      { name: 'process.delete', signature: 'process.delete(process_id)', summary: '销毁并删除已结束或运行中的进程记录（若在运行则强制杀死）', availability: 'always' },
+    ],
+  },
+  {
+    key: 'help',
+    label: '帮助与自描述 · help',
+    intro: '查询当前沙箱开放的能力组与 API 签名清单。',
+    items: [
+      { name: 'help', signature: 'help()', summary: '返回当前沙箱 16 组核心能力清单、分组描述与各组常用方法', availability: 'always' },
     ],
   },
 ]

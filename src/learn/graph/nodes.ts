@@ -278,24 +278,38 @@ export function deleteNode(store: LearnStore, id: string): LearnStore {
   const node = nodeById(store, id)
   if (!node) return store
   const parents = parentIds(store, id)
-  // 节点没了，指着它的页签也得关掉：留着就成了「打开着一份不存在的东西」
-  //（关完可能有一格空了，closeIds 顺手把它收掉，兄弟那一格自然铺满）
-  const doomed = tabIdsOfNode(allTabs(store.docArea), id)
-  const nodes = store.nodes.filter((n) => n.id !== id)
+
+  // 级联找出所有仅依赖被删节点及其后代的孤儿节点，一并清理，防止残留孤儿节点 (B5)
+  const doomedNodes = new Set<string>([id])
+  let expanded = true
+  while (expanded) {
+    expanded = false
+    for (const n of store.nodes) {
+      if (doomedNodes.has(n.id)) continue
+      const ps = parentIds(store, n.id)
+      if (ps.length > 0 && ps.every((p) => doomedNodes.has(p))) {
+        doomedNodes.add(n.id)
+        expanded = true
+      }
+    }
+  }
+
+  const doomed = Array.from(doomedNodes).flatMap((did) => tabIdsOfNode(allTabs(store.docArea), did))
+  const nodes = store.nodes.filter((n) => !doomedNodes.has(n.id))
   return {
     ...store,
     nodes,
     // 它的有效阅读记录也一起清掉：留着就是一条指向不存在节点的空索引（见 learn/reading 的 pruneReading）。
     // 一个节点只属于一个目标，所以只动那一本账
     ...onNodeReadingPatch(store, node, (rec) => pruneReading(rec, new Set(nodes.map((n) => n.id)))),
-    edges: store.edges.filter((e) => e.from !== id && e.to !== id),
-    exams: store.exams.filter((e) => e.nodeId !== id),
+    edges: store.edges.filter((e) => !doomedNodes.has(e.from) && !doomedNodes.has(e.to)),
+    exams: store.exams.filter((e) => !doomedNodes.has(e.nodeId)),
     // 节点没了，它那份临时变量（可能是几十万字符的中间数据）也不该留着
-    tmp: withoutTmpNodes(store.tmp, new Set([id])),
+    tmp: withoutTmpNodes(store.tmp, doomedNodes),
     docArea: closeIds(store.docArea, doomed),
     // 节点没了，它那几份没保存的正文也没有落点了（同页签：留着只会占着键）
     drafts: dropDrafts(store.drafts, doomed),
-    activeNodeId: store.activeNodeId === id ? (parents[0] ?? null) : store.activeNodeId,
+    activeNodeId: doomedNodes.has(store.activeNodeId ?? '') ? (parents[0] ?? null) : store.activeNodeId,
   }
 }
 

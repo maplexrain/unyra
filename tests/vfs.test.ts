@@ -10,7 +10,10 @@ import {
   normalizeRelativePath,
   quickHash,
   resolveEntityPath,
+  syncVfsEventToStore,
 } from '../src/vfs'
+import type { LearnStore } from '../src/learn/types'
+import { emptyLearnStore } from '../src/learn/store/empty'
 
 describe('VFS 声明式实体注册与路由匹配', () => {
   it('注册表实体定义自洽且非空', () => {
@@ -200,3 +203,126 @@ describe('VFS 响应式总线与防回环过滤 (ReactiveVfsBus)', () => {
     expect(bus.getCached(filePath)).toBeUndefined()
   })
 })
+
+describe('VFS 到 LearnStore 的响应式双向同步 (storeSync)', () => {
+  const createMockStore = (): LearnStore => ({
+    ...emptyLearnStore(),
+    activeGoalId: 'goal_1',
+    activeNodeId: 'node_1',
+    nodes: [
+      {
+        id: 'node_1',
+        key: '导数',
+        origin: 'ai',
+        goalId: 'goal_1',
+        title: '导数',
+        description: '导数基础',
+        status: 'learning',
+        docs: { teaching: '旧教学内容' },
+        notes: [],
+        annotations: [],
+        superdocs: [],
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+    ],
+    goals: [{ id: 'goal_1', name: '微积分', createdAt: 1000, updatedAt: 1000 } as any],
+  })
+
+  it('超级文档写入实时同步到 node.superdocs', () => {
+    const store = createMockStore()
+    const htmlContent = '<h1>极限动态演化</h1><p>演示</p>'
+    const next = syncVfsEventToStore(
+      {
+        path: 'docs/微积分/导数/superdocs/极限动态演化.html',
+        relativePath: 'docs/微积分/导数/superdocs/极限动态演化.html',
+        content: htmlContent,
+        action: 'write',
+        source: 'vfs',
+      },
+      store,
+    )
+
+    const node = next.nodes.find((n) => n.id === 'node_1')
+    expect(node?.superdocs).toHaveLength(1)
+    expect(node?.superdocs?.[0]?.name).toBe('极限动态演化')
+    expect(node?.superdocs?.[0]?.html).toBe(htmlContent)
+  })
+
+  it('试卷写入实时同步到 store.exams', () => {
+    const store = createMockStore()
+    const examJson = JSON.stringify({
+      id: 'ex_123',
+      nodeId: 'node_1',
+      goalId: 'goal_1',
+      title: '导数随堂测试',
+      kind: 'quiz',
+      level: 'easy',
+      minutes: 10,
+      questions: [{ id: 'q1', type: 'single', stem: '导数定义', points: 1 }],
+      attempts: [],
+    })
+
+    const next = syncVfsEventToStore(
+      {
+        path: 'docs/微积分/导数/exams/ex_123.json',
+        relativePath: 'docs/微积分/导数/exams/ex_123.json',
+        content: examJson,
+        action: 'write',
+        source: 'vfs',
+      },
+      store,
+    )
+
+    expect(next.exams).toHaveLength(1)
+    expect(next.exams[0].id).toBe('ex_123')
+    expect(next.exams[0].title).toBe('导数随堂测试')
+    expect(next.exams[0].minutes).toBe(10)
+  })
+
+  it('教学文档与笔记写入实时同步', () => {
+    const store = createMockStore()
+    const nextDoc = syncVfsEventToStore(
+      {
+        path: 'docs/微积分/导数/导数.md',
+        relativePath: 'docs/微积分/导数/导数.md',
+        content: '# 新教学正文',
+        action: 'write',
+        source: 'vfs',
+      },
+      store,
+    )
+    expect(nextDoc.nodes[0].docs.teaching).toBe('# 新教学正文')
+
+    const nextNote = syncVfsEventToStore(
+      {
+        path: 'docs/微积分/导数.notes/错题.md',
+        relativePath: 'docs/微积分/导数.notes/错题.md',
+        content: '错题记录',
+        action: 'write',
+        source: 'vfs',
+      },
+      store,
+    )
+    expect(nextNote.nodes[0].notes).toHaveLength(1)
+    expect(nextNote.nodes[0].notes?.[0]?.name).toBe('错题')
+    expect(nextNote.nodes[0].notes?.[0]?.content).toBe('错题记录')
+  })
+
+  it('元数据 .meta.json 实时同步描述与掌握状态', () => {
+    const store = createMockStore()
+    const next = syncVfsEventToStore(
+      {
+        path: 'docs/微积分/导数.meta.json',
+        relativePath: 'docs/微积分/导数.meta.json',
+        content: JSON.stringify({ description: '新描述', status: 'mastered' }),
+        action: 'write',
+        source: 'vfs',
+      },
+      store,
+    )
+    expect(next.nodes[0].description).toBe('新描述')
+    expect(next.nodes[0].status).toBe('mastered')
+  })
+})
+
