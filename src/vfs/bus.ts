@@ -56,12 +56,15 @@ export class ReactiveVfsBus {
    */
   private setupAutoPrune() {
     if (typeof setInterval !== 'undefined') {
-      setInterval(() => {
+      const timer = setInterval(() => {
         const now = Date.now()
         this.recentWrites = this.recentWrites.filter(
           (w) => now - w.timestamp < this.echoWindowMs,
         )
       }, 5000)
+      if (typeof timer === 'object' && timer !== null && 'unref' in timer && typeof (timer as any).unref === 'function') {
+        (timer as any).unref()
+      }
     }
   }
 
