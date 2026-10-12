@@ -12,15 +12,6 @@ import raw from './sandboxRuntime.js?raw'
 
 /** 沙箱里可用的 api；顺序无所谓，Worker 会按点号拆成 api.<组>.<方法> */
 const API_NAMES = [
-  // 文档：全部按 path 寻址（path 省略 = 当前节点的教学文档）
-  'doc.read',
-  'doc.readRange',
-  'doc.find',
-  'doc.write',
-  'doc.replace',
-  'doc.append',
-  // 注解：在正文上划一条词条注解（挂在节点上，一个词一条；见 learn/agentOps 的 annotate）
-  'doc.annotate',
   // 节点：列 / 看 / 建 / 改 / 删 / 移（一次编排可以同时操作多个节点）
   'node.list',
   'node.read',
@@ -31,55 +22,14 @@ const API_NAMES = [
   'node.delete',
   // 迁移节点到另一个节点之下（改父线；见 graph/nodes 的 moveNode）
   'node.move',
-  'exam.create',
-  'exam.read',
-  'exam.grade',
-  // 错题讲解：判分之后的第二步，落在同一次考试上
-  'exam.explain',
-  'exam.delete',
-  // 资源库：本目标 static/ 下的文件（见 learn/static）
-  'res.list',
-  'res.info',
-  'res.read',
-  'res.create',
-  'res.update',
-  'res.delete',
-  'res.refs',
-  // 目标级持久化函数：method.call 会把当前编排的 api 注入给那份持久化的源码（见 learn/methods）
-  'method.create',
-  'method.list',
+  // 目标级持久化函数：执行已保存的源码（源码管理已统一收敛为 files.*）
   'method.call',
-  'method.delete',
-  // 超级文档：绑定节点的可交互 HTML（见 learn/superdocs）
-  'sdoc.list',
-  'sdoc.read',
-  'sdoc.write',
-  'sdoc.delete',
-  // 工作流登记表：管理（看/登记/删）+ 触发（invoke 只排队，本轮收口后宿主另起一轮，见 learn/workflows）
-  'wf.list',
-  'wf.create',
-  'wf.remove',
+  // 工作流触发：invoke 只排队，本轮收口后宿主另起一轮（登记管理已统一收敛为 files.*）
   'wf.invoke',
   // 代码块伪编译：交付转译好的 JS（key 由代码块的菜单给，见 lib/codeArtifacts）
   'code.save',
   // 同上：判定「这段代码没有输出」，当场停止编译并标记那一块
   'code.silent',
-  // 学习过程：有效阅读的事实、注意力评级、打卡、番茄钟（见 learn/reading 等）
-  // 打卡没有「直接成功」的口子：status 给资格与题源，settle 记结果且系统复核门槛；
-  // 番茄钟只有一个只读的 status——开始、停止、改时长都是用户按顶栏那颗按钮
-  'reading.get',
-  'reading.list',
-  'reading.day',
-  'attention.get',
-  'checkin.status',
-  'checkin.settle',
-  // 间隔复习：计划系统建，导师只读计划 / 落账 / 经用户同意后调整（见 learn/review）
-  'review.read',
-  'review.record',
-  'review.merge',
-  'review.extend',
-  'review.adjust',
-  'pomodoro.status',
   // 读网页：抓取在主进程、正文提取在渲染层、落盘在当前用户目录（见 learn/webDocs）
   'web.webFetch',
   'web.read',

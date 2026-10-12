@@ -152,13 +152,6 @@ export async function toolTests() {
  */
 export async function apiNameTests() {
   const calls: Record<string, string> = {
-    'doc.read': "''",
-    'doc.readRange': "'', 0, 5",
-    'doc.find': "'', '极限'",
-    'doc.write': "'', '# 临时测试'",
-    'doc.replace': "'', { start: 0, end: 1, content: 'x' }",
-    'doc.append': "'', '附言'",
-    'doc.annotate': "{ term: '极限', body: '临时注解' }",
     'node.list': '',
     'node.read': "''",
     'node.create': "{ parent: '微积分', title: '临时节点' }",
@@ -168,36 +161,9 @@ export async function apiNameTests() {
     'node.delete': "''",
     // 迁移：把刚建的临时节点挂到根之下（它已在根之下时回一句「已经在」，同样证明 api 在）
     'node.move': "'临时节点', '微积分'",
-    'res.list': '',
-    'res.info': "'" + PNG_UUID + "'",
-    'res.read': "'" + MD_UUID + "'",
-    'res.create': "{ name: '临时资源', ext: 'txt', content: 'x' }",
-    'res.update': "'" + MD_UUID + "', { description: '临时描述' }",
-    'res.delete': "'" + MD_UUID + "'",
-    'res.refs': '',
-    // exam 这一组以前整组跳过，于是「名单里有、实现里没有」正好漏在它身上；
-    // 现在给它一份桩依赖，四个方法一起点名（delete 的判据另有 examDeleteBlock 的用例）
-    'exam.create': "{ kind: 'quiz', questions: [{ type: 'truefalse', stem: '临时题', answer: ['true'] }] }",
-    'exam.read': '',
-    'exam.grade': "{ summary: '临时', passed: false }",
-    'exam.explain': "{ content: '错在把无穷小当成 0。' }",
-    'exam.delete': '',
-    // 持久化函数：create 先建（call 才有东西可调），delete 收尾；代码先过一遍编译校验
-    'method.create': "{ name: '探针函数', code: '((api, n) => n * 2)' }",
-    'method.list': '',
+    // 持久化函数调用（执行源码）：源码管理已统一收敛为 files.*
     'method.call': "'探针函数', 21",
-    'method.delete': "'探针函数'",
-    // 超级文档：write 先写一份，read/delete 才有的可操作
-    'sdoc.list': "'微积分'",
-    'sdoc.write': "'微积分', '探针文档', '<p>探针</p>'",
-    'sdoc.read': "'微积分', '探针文档'",
-    'sdoc.delete': "'微积分', '探针文档'",
-    // 工作流：create 登记（list 才有的看、remove 才有的删），走真的 createWorkflowOps
-    'wf.list': '',
-    'wf.create': "{ name: '探针流程', instruction: '第一步：api.tiktok()；第二步：return \"ok\"' }",
-    'wf.remove': "'探针流程'",
-    // 触发：只排队（真起那一轮的是宿主，探针里就是下面那个桩）。
-    // 用内置的「回忆」指名——它不随上面 create / remove 的先后而变化
+    // 工作流触发：只排队（真起那一轮的是宿主，探针里就是下面那个桩）
     'wf.invoke': "'recall'",
     // 伪编译交货：key 是宿主发出去的那串（探针这里没有待编译登记，走的是「key 对不上」那条路）
     'code.save': "{ key: '0123456789abcdef', js: 'console.log(1)', note: '探针' }",
@@ -213,24 +179,6 @@ export async function apiNameTests() {
     'ui.superdoc': "'微积分', '探针文档'",
     // ui.dom 走进程内直调通道：回调在宿主拿到门面（真沙箱由 Worker 侧建门面，行为一致）
     'ui.dom': "async (root) => ({ e: await root.exists('p'), c: await root.count('p') })",
-    /*
-     * 学习过程那一组：全是纯 store 逻辑，Node 里就能真跑。
-     * 顺序有意：settle 先记一次结果（checkin.status 才有「今天已经打过卡」可看）。
-     * 番茄钟那一组只有只读的 status（开始、停止、改时长都是用户按顶栏那颗按钮）。
-     */
-    'reading.list': '',
-    'reading.day': "''",
-    'reading.get': "''",
-    'attention.get': "''",
-    'checkin.settle': "{ correct: 3, total: 4, threshold: 3, passed: true }",
-    'checkin.status': '',
-    // 间隔复习：record 在没有计划的节点上会说明「计划由系统建」，正好核对报错文案
-    'review.read': "''",
-    'review.record': "{ complete: true }",
-    'review.merge': "{ nodeIds: [] }",
-    'review.extend': "{ focus: '收敛与有界' }",
-    'review.adjust': "{ action: 'postpone', days: 2 }",
-    'pomodoro.status': '',
     // 读网页：抓取要网络、落盘要磁盘，探针里给一份假的实现（真链路见 tests/webPage.test.ts）
     'web.webFetch': "'https://example.com/a'",
     'web.read': "'deadbeef', '一级标题'",

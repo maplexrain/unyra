@@ -27,20 +27,6 @@ export interface ApiGroup {
 
 export const SANDBOX_API_CATALOG: ApiGroup[] = [
   {
-    key: 'doc',
-    label: '文档 · doc',
-    intro: '全部按 path 寻址；path 省略 = 当前节点的教学文档，"笔记" = 当前节点的笔记，"极限/笔记/错题本" = 指名某一份。',
-    items: [
-      { name: 'doc.read', signature: 'doc.read(path?)', summary: '整篇文档（占上下文，慎用）→ { content, chars }', availability: 'always' },
-      { name: 'doc.readRange', signature: 'doc.readRange(path?, start, end?)', summary: '只读一段；省略 end 读 start 后约 1500 字', availability: 'always' },
-      { name: 'doc.find', signature: 'doc.find(path?, 文字, { from?, limit? }?)', summary: '查位置与前后文，不把整篇读进来；改长文档前先定位', availability: 'always' },
-      { name: 'doc.write', signature: 'doc.write(path?, content)', summary: '整篇写入（指向不存在的笔记时新建）', availability: 'always' },
-      { name: 'doc.replace', signature: 'doc.replace(path?, { start?, end?, content, expected? })', summary: '区间替换；expected 与现状不符会拒绝', availability: 'always' },
-      { name: 'doc.append', signature: 'doc.append(path?, content)', summary: '追加到末尾', availability: 'always' },
-      { name: 'doc.annotate', signature: 'doc.annotate(path?, { term, occurrence?, body })', summary: '在正文上划一条注解（挂在节点上；一个词一条，重复写即覆盖）', availability: 'always' },
-    ],
-  },
-  {
     key: 'node',
     label: '节点 · node',
     intro: '一次编排可以同时操作多个节点；本目标内标题唯一，写标题一定指得明白。',
@@ -68,74 +54,22 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     ],
   },
   {
-    key: 'exam',
-    label: '试卷 · exam',
-    intro:
-      '两层：一份**试卷**可以考很多次，每次是一条**考试记录**（作答、输入顺序、单题耗时、切屏、判分、错题讲解）。' +
-      '考试窗口由用户自己开——你不要替他开考。读永远可用，写看阶段：有待判分（或判完缺讲解）的那一次时不能出卷，' +
-      '判分与讲解要一起做完。',
-    items: [
-      { name: 'exam.create', signature: 'exam.create({ title?, kind, level, minutes, questions })', summary: '出一份试卷；题型 single/multiple/truefalse/fill/short；除小测外 minutes 不得低于题目数 × 2；题面按 Markdown 渲染——数学公式必须 LaTeX（$…$/$$…$$），带图题给 image（完整 SVG 源码）', availability: 'exam' },
-      { name: 'exam.read', signature: 'exam.read(attemptId?)', summary: '任何时候都能调；回题目、作答、系统判分与历次考试（含每次考错的题）', availability: 'exam' },
-      { name: 'exam.grade', signature: 'exam.grade({ attemptId?, passed, summary, results })', summary: '判分：客观题以系统为准，你补 comment（要先有人交卷）', availability: 'exam' },
-      { name: 'exam.explain', signature: 'exam.explain({ content, attemptId? })', summary: '错题讲解（判分之后的第二步）：看历史错题定薄弱项，写进那一次考试', availability: 'exam' },
-      { name: 'exam.delete', signature: 'exam.delete({ id? })', summary: '删一份试卷；只认一次都没考过的（考过的要用户在列表里删）', availability: 'exam' },
-    ],
-  },
-  {
-    key: 'res',
-    label: '资源库 · res',
-    intro: '本目标 static/ 下的文件，用 uuid 寻址；读图不回数据，图片直接附在下一跳。',
-    items: [
-      { name: 'res.list', signature: 'res.list()', summary: '全部资源（含引用数与指纹）', availability: 'always' },
-      { name: 'res.info', signature: 'res.info(uuid)', summary: '单条详情', availability: 'always' },
-      { name: 'res.read', signature: 'res.read(uuid, { start?, end? }?)', summary: '文本回正文；图片挂到下一步', availability: 'always' },
-      { name: 'res.create', signature: 'res.create({ name, ext, content })', summary: '新建文本资源（内容相同自动复用）', availability: 'always' },
-      { name: 'res.update', signature: 'res.update(uuid, { name?, description?, content? })', summary: '改名 / 描述 / 内容', availability: 'always' },
-      { name: 'res.delete', signature: 'res.delete(uuid, { force? })', summary: '删除（被引用时要 force）', availability: 'always' },
-      { name: 'res.refs', signature: 'res.refs(uuid?)', summary: '引用扫描', availability: 'always' },
-    ],
-  },
-  {
     key: 'method',
     label: '持久化函数 · method',
     intro:
-      '按学习目标归档、跨对话有效的 **js 函数源码**库。code 写成匿名 async 函数，第一个参数是 api，' +
-      '其余是调用实参：((api, path, n) => { ... })。同名 create 即覆盖（那就是更新）。' +
-      '超级文档里的脚本用 api.method.call(name, ...args) 调它们——写一次，处处复用。',
+      '执行已保存的持久化 JS 函数源码（源码管理已统一收敛为 files.* 读写 docs/:goal/methods/:name.js）。' +
+      '超级文档里的脚本亦用 api.method.call(name, ...args) 调它们——写一次，处处复用。',
     items: [
-      { name: 'method.create', signature: 'method.create({ name, code })', summary: '新建/覆盖一个函数；语法在创建时就编译校验', availability: 'always' },
-      { name: 'method.list', signature: 'method.list()', summary: '全部函数（名字、体量、更新时间；不带源码）', availability: 'always' },
       { name: 'method.call', signature: 'method.call(name, ...args)', summary: '执行一个函数（注入当前编排的 api），返回它的返回值', availability: 'always' },
-      { name: 'method.delete', signature: 'method.delete(name)', summary: '删除一个函数', availability: 'always' },
-    ],
-  },
-  {
-    key: 'sdoc',
-    label: '超级文档 · sdoc',
-    intro:
-      '绑定在节点上的**可交互 HTML 文档**（按钮、表单、自己的 <style>/<script>），一个节点可以有好几份，' +
-      '名字即身份，write 同名覆盖。渲染在沙箱化的 iframe 里：脚本永远不跑在应用页面本身，' +
-      '脚本里唯一的对外通道是 api.method.call(...)。写完用 api.ui.superdoc(path, name) 打开给用户。' +
-      '内置 <moji-markdown> 元素可直接写 markdown（自动渲染）；[文字](moji:super/文档名) 点击跳到本节点的另一份超级文档。',
-    items: [
-      { name: 'sdoc.list', signature: 'sdoc.list(path?)', summary: '该节点的全部超级文档（名字、体量、更新时间）', availability: 'always' },
-      { name: 'sdoc.read', signature: 'sdoc.read(path?, name)', summary: '读一份的 HTML 源码', availability: 'always' },
-      { name: 'sdoc.write', signature: 'sdoc.write(path?, name, html)', summary: '写入（同名覆盖、没有就新建）；名字省略给默认名', availability: 'always' },
-      { name: 'sdoc.delete', signature: 'sdoc.delete(path?, name)', summary: '删除一份', availability: 'always' },
     ],
   },
   {
     key: 'wf',
-    label: '工作流 · wf',
+    label: '工作流触发 · wf',
     intro:
-      '三级任务模板（内置 / 全局 / 目标级）的登记处：它们**不进系统提示词**，被触发时 instruction 才作为一条' +
-      'user 消息整段进入上下文——用户在界面上点是一种触发，导师自己用 wf.invoke 交活（多为出卷、复习、' +
-      '大纲这类要独占一轮的流程）是另一种。用户说「把这套流程做成工作流」就用 wf.create 落地。',
+      '三级任务模板的触发调用（工作流的定义与修改已统一收敛为 files.* 读写 workflows/:name.json）。' +
+      '导师用 wf.invoke 交活（多为出卷、复习等独占流程），instruction 作为一条 user 消息整段进入上下文。',
     items: [
-      { name: 'wf.list', signature: 'wf.list()', summary: '全部工作流（内置 + 全局 + 当前目标），带 id、分级与完整指令', availability: 'always' },
-      { name: 'wf.create', signature: 'wf.create({ name, instruction, description?, tier?, prompt? })', summary: '登记一条工作流；instruction 写成能独立执行的步骤清单，tier 缺省 goal（global 则所有目标可用）；prompt（可选）是每次触发都要在场的规程知识——按 wf:<id> 作键、同一上下文只注入一次，之后触发只发 instruction；同名覆盖', availability: 'always' },
-      { name: 'wf.remove', signature: 'wf.remove(idOrName)', summary: '删除一条登记的工作流（内置的删不掉）', availability: 'always' },
       { name: 'wf.invoke', signature: "wf.invoke(idOrName, { params? })", summary: '把这件事交给某条工作流：**不当场执行**，本轮收口后宿主另起一轮，instruction 作为一条 user 消息进上下文（params 填 {{占位符}}）；一次编排最多触发一条，一条链上最多连着触发三次', availability: 'always' },
     ],
   },
@@ -164,42 +98,6 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
           '看到这种代码就**立刻停止编译**、不要写 js，调它并给一句 reason；那块代码从此不再显示编译与运行',
         availability: 'always',
       },
-    ],
-  },
-  {
-    key: 'reading',
-    label: '学习过程 · reading / attention / checkin / pomodoro',
-    intro:
-      '有效阅读记的是**事实**（会话、读到哪一节、有效时长、中断与交互），注意力评级是它的派生判断，' +
-      '打卡用它出题。**阅读、注意力、打卡都按学习目标分开**（一个人同时学几门课是常态）：' +
-      '这一组的 api 说的都是**当前目标**那一本账，别的目标的记录不在这条链上。' +
-      '三条边界：① 时长只算「窗口在前台、页签在主位、没静坐超时」的时间；' +
-      '② 评级不落盘、冷启动不给档位（样本不足时 confidence 是 low）；③ 打卡没有「直接成功」，' +
-      '番茄钟是用户自己设时长与组数的纯计时器——这里只有只读的 status，没有开始与停止。',
-    items: [
-      { name: 'reading.get', signature: 'reading.get(path?)', summary: '该节点读到哪了：有效时长、打开次数、每份文档各节覆盖（reach<0.6 就是没读到）、最近会话', availability: 'always' },
-      { name: 'reading.list', signature: 'reading.list()', summary: '当前目标里每个有记录的节点一行：未读的节、最后阅读时间、时长、文档完成情况', availability: 'always' },
-      { name: 'reading.day', signature: 'reading.day(day?)', summary: '**当前目标**某个学习日（缺省今天，格式 2026-09-20）读了什么：有效时长、节点、交互印记', availability: 'always' },
-      { name: 'attention.get', signature: 'attention.get(path?)', summary: '注意力评级：档位（focused/steady/fragmented/drifting/unknown）、五个维度、一句事实话、一句教学建议、建议的专注块长度 focusMinutes', availability: 'always' },
-      { name: 'checkin.status', signature: 'checkin.status()', summary: '**当前目标**今天能不能打卡：有效阅读与门槛、可出题的节（题源，来自今天真正读到的内容）、还剩几次机会、建议题数与通过线；该目标下试卷首次考试及格（卷面 ≥ 60%）会自动打卡', availability: 'always' },
-      { name: 'checkin.settle', signature: 'checkin.settle({ correct, total, threshold, passed, note? })', summary: '记一次**当前目标**的打卡结果：门槛与次数由系统复核（没到门槛一律不算过），note 写一句明天该补什么', availability: 'always' },
-      { name: 'pomodoro.status', signature: 'pomodoro.status()', summary: '番茄钟记录（只读）：正在跑的是第几组/专注还是休息/还剩多久、今天几组多少分钟、最近七天与最近几条', availability: 'always' },
-    ],
-  },
-  {
-    key: 'review',
-    label: '复习 · review',
-    intro:
-      '间隔复习的计划账。**计划是系统建的**：节点首次变「已掌握」时自动铺好 +1/+3/+7/+14/+30 五个阶段，' +
-      '到了期没做也不顺延。你的活是带他做（先主动提取，再按阶段检查）与落账（record）；' +
-      '完成不看对错——交互做完就算完成，答错的内容进错误记忆供下次复习针对。' +
-      '把强相关节点的复习合到一次（merge）必须先经 ask 征得用户同意。',
-    items: [
-      { name: 'review.read', signature: 'review.read(path?)', summary: '这个节点的复习计划：到期阶段（侧重与逾期天数）、下次到期、补充任务、合并组成员、可合并的候选（candidates，带相关关系）、历次记录与错误记忆（fixed: false 的才是活薄弱项）', availability: 'always' },
-      { name: 'review.record', signature: 'review.record({ complete, items?, missed?, mistakes?, fixed?, mastery?, note?, stage?, node?, extraId? })', summary: '落一次复习的账：完成当前（或 stage 指定的）阶段 / extraId 指定的补充任务；更早没做的阶段自动并入这一次；mistakes 记这次暴露的错法、fixed 标答对了的旧薄弱项、mastery 修正掌握度', availability: 'always' },
-      { name: 'review.merge', signature: 'review.merge({ nodeIds })', summary: '把处于同一阶段的相关节点（含当前节点）的复习合成一组，后续阶段整组一起复习、落账各管各的；**必须先经 ask 征得用户同意**；拆组用 review.adjust', availability: 'always' },
-      { name: 'review.extend', signature: 'review.extend({ focus, days? })', summary: '针对具体薄弱点追加一条补充复习（days 缺省 3 天后到期）；没有具体薄弱点就不要用', availability: 'always' },
-      { name: 'review.adjust', signature: "review.adjust({ action: 'postpone' | 'split', days?, stage? })", summary: '调整计划：postpone 把到期日顺延几天（用户说最近忙时用）；split 退出合并组', availability: 'always' },
     ],
   },
   {

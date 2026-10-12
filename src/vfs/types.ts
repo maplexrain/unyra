@@ -8,7 +8,7 @@
  * 4. 自动反向派生系统提示词（Data Manifest），彻底消除实现与文档的对账成本。
  */
 
-export type FileDataFormat = 'json' | 'text' | 'markdown' | 'yaml'
+export type FileDataFormat = 'json' | 'text' | 'markdown' | 'yaml' | 'html' | 'binary'
 
 export interface FileEntityParamDef {
   name: string

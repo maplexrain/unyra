@@ -28,26 +28,25 @@ export const EXECUTE_GUIDE = `唯一的工具是 execute(description, body)：
 - 最外层函数无条件可用 \`await\`，内部多次 api 调用按书写顺序依次生效；
 - **写操作的失败不抛异常**，返回一个值：\`{ ok:false, content: "哪一步没做成、该怎么改" }\` 并汇总于结果最前面的清单里。**不能靠 try/catch 判断成败**，亦不要追加读接口验证；
 - 参数形状错（如缺少必填参数）会抛异常中断整批；拿不准时先发极小的冒烟调用确认；
-- **避免用 api.doc.read 全篇读取**（占上下文）；例行检查或局部读写优先用 api.doc.readRange 或 api.doc.find 定位；
+- 参数形状错（如缺少必填参数）会抛异常中断整批；拿不准时先发极小的冒烟调用确认；
+- **文件与数据操作统一使用 files.* API**；按「数据资产与存储文件契约」直接读写真实文件，按需分段读取（maxBytes / offset），例行修改优先用 files.edit 或局部替换；
 - 笔记是学习者自己的，过程性信息与调试日志严禁写入笔记。
 
-示例（正文很长时只改其中一段，中间结果进临时变量）：
+示例（读取教学文档局部、编辑文档与读写数据）：
     ((api)=>{
-      const seg = await api.doc.readRange('', 0, 1200)
-      await api.tmp.set({ key: '原文备份', value: seg.text, ttlMs: 600000 })
-      await api.doc.replace('', { start: 0, end: seg.end, content: '改写后的内容', expected: seg.text })
-      await api.doc.append('笔记/错题本', '今天卡住的地方：…')
-      return { total: seg.total, replaced: seg.end }
+      // 1. 读取知识点教学文档（支持 offset / maxBytes 分段）
+      const doc = await api.files.read('docs/高等数学/极限/极限.md')
+      // 2. 读取学习状态数据并解析
+      const metaRaw = await api.files.read('docs/高等数学/极限/极限.meta.json')
+      const meta = JSON.parse(metaRaw.content)
+      // 3. 修改文档并更新掌握度状态
+      await api.files.edit('docs/高等数学/极限/极限.md', {
+        replace: { target: '旧内容', replacement: '新解析' }
+      })
+      meta.learning = { mastery: 85, selfRating: 'mastered' }
+      await api.files.write('docs/高等数学/极限/极限.meta.json', JSON.stringify(meta, null, 2))
+      return { ok: true, updatedMastery: 85 }
     })
-
-api 一览（文档类的第一个参数都是 path，省略即「当前节点的教学文档」）：
-- api.doc.read(path) → { path, doc, chars, content }：整篇文档（慎用，占上下文）。
-- api.doc.readRange(path, start, end) → { text, start, end, total }：只读这一段，省略 end 时读 start 后约 1500 字。
-- api.doc.find(path, 要找的文字, { from, limit }) → { total, matches, hits:[{ start, end, around }] }：定位文字偏移与前后文。
-- api.doc.write(path, content)：整篇写入（覆盖原内容；笔记不存在时新建）。
-- api.doc.replace(path, { start, end, content, expected })：区间替换，expected 用于内容防冲突校验。
-- api.doc.append(path, content)：追加到该文档末尾。
-- api.doc.annotate(path, { term, occurrence?, body })：划词注解（虚线 + 悬停浮层），body 两三句 Markdown。
 
 节点管理：
 - api.node.list()：本目标全部节点（路径、id、标题、状态、描述摘要、字数等）。
@@ -66,7 +65,7 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
   - 题目上写 userInfo: '字段名' 时，答案提交时自动落进画像。
 
 基础文件系统与系统进程（最底层基础能力，沙箱中既支持 api.files.* / api.process.*，亦可直接写 files.* / process.*）：
-- api.files.read(path, encoding?) → { ok, path, content, size, encoding }：读取真实路径文件，支持 utf8/base64 等各种文本与二进制。
+- api.files.read(path, encoding?) → { ok, path, content, size, encoding }：读取真实路径文件，支持 utf8/base64 等各种文本与二进制；支持 { offset, maxBytes } 切片。
 - api.files.write(path, content, encoding?) → { ok, path, bytes }：写入真实路径文件，不存在自动递归创建父目录。
 - api.files.edit(path, { content?, edits? }) → { ok, path }：修改已存在的文件，支持全量替换或行切片修改。
 - api.files.list(path) → { ok, path, items: [{ name, isDirectory, isFile, size }] }：列出指定路径下所有文件与子目录。
@@ -87,29 +86,32 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
 数据资产与存储文件契约（所有状态读写真实文件；文档直接读写，数据文件读后 JSON.parse 反序列化，写时 JSON.stringify）：
 - 知识点教学文档: docs/:goal/.../:title.md（文档文件，Markdown 纯文本，files.read/write/edit）
 - 个人笔记文档: docs/:goal/.../:title.notes/:name.md（文档文件，Markdown 纯文本）
+- 超级交互文档: docs/:goal/.../superdocs/:name.html（文档文件，HTML 页面源码，ui.superdoc 打开）
+- 目标静态素材: docs/:goal/static/:filename（多媒体/静态文件，正文 Markdown 直接引用）
 - 知识点元数据与状态: docs/:goal/.../:title.meta.json（数据文件，JSON 对象）
   结构: { id: string, title: string, description: string, status: "learning"|"mastered", learning?: { mastery: 0~100, selfRating: string, mistakes: [{ pattern: string, count: number }] } }
 - 结构化大纲: docs/:goal/.../outline.json（数据文件，JSON 对象）
   结构: { intro: string, children: [{ key: string, title: string, summary: string }] }，列表元素形状: { key, title, summary }
+- 划词注解列表: docs/:goal/.../annotations.json（数据文件，JSON 数组: Array<{ term, occurrence?, body }>）
 - 长期跨轮记忆: mind/:key.json（数据文件，JSON 对象: { key: string, text: string, updatedAt: number }）
 - 学习者画像: user/profile.json（数据文件，JSON 对象: { nickname: string, education?: string, major?: string, masteredSkills: string[] }）
 - 目标临时变量: docs/:goal/tmp.json（数据文件，JSON 对象: { version: 1, entries: Record<string, { key, value }> }）
-- 试卷考核: exams/:examId.json（数据文件，JSON 对象: { id, title, kind, level, minutes, questions: [{ id, type, stem, answer, options? }] }）
+- 试卷与考核记录: exams/:examId.json（数据文件，JSON 对象: { id, title, kind, level, minutes, questions: [...] }）
+- 阅读事实账本: docs/:goal/stats/reading.json（数据文件，记录各章节有效阅读时长与到达率）
+- 间隔复习计划: docs/:goal/stats/review.json（数据文件，记录复习周期与计划）
+- 打卡记录数据: docs/:goal/stats/checkin.json（数据文件，记录每日打卡与连续天数）
+- 持久化函数源码: docs/:goal/methods/:name.js（源码文件，执行调 api.method.call(name, ...args)）
+- 工作流规程模板: workflows/:name.json（规程定义文件，触发调 api.wf.invoke(name, params)）
 
 **按需加载的能力**（以下组的完整规范在首次调用对应 api 或写出对应标记时作为提示词模块自动注入，此处仅列索引）：
 - doc-html：教学文档以 HTML + Tailwind 工具类排版（两栏、提示框、时间轴、手绘 SVG 图表配方），写教学文档时自动注入。
-- sdoc.*：超级文档（绑定节点的独立可交互 HTML 小工具）。
 - browser.*：内置浏览器交互（snapshot / text / dom 控制、fetch 直发与控制台日志）。
 - web.*：网页全文抓取与多引擎搜索（web.read / web.search）。
-- res.*：目标静态资源库（res.read 看图，moji:static/uuid 引用）。
-- exam.*：试卷生成（exam.create）与小测评估。
-- review.*：间隔复习计划与记录（+1/+3/+7/+14/+30）。
-- method.*：持久化函数注册与执行（供超级文档跨环境调用）。
-- code.*：伪编译保存（code.save）。
+- method.call：执行目标级持久化函数源码。
+- code.*：伪编译保存（code.save / code.silent）。
 - compact：上下文压缩与交接摘要（api.compact）。
 - subagent.*：子代理并发派活（subagent.create/run/wait，处理长文档通读与繁重检索）。
-- wf.*：工作流登记与转派（wf.invoke）。
-- learning-process：学习过程只读指标（reading / attention / checkin / pomodoro）。
+- wf.invoke：工作流异步触发与转派。
 - ui.*：界面滚动、截屏与交互控制。
 - plot-forms：函数图像高级形态（极坐标、参数方程、散点、隐函数）。
 - rich-animation：SVG 与 CSS 动画设计规范。

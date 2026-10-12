@@ -172,6 +172,100 @@ export const FILE_ENTITIES: FileEntityDef[] = [
     itemShape: 'questions 列表元素为试题对象 { id, type, stem, answer, options?, analysis? }',
     defaultValue: () => ({ id: '', title: '', kind: 'quiz', level: 1, minutes: 15, questions: [] }),
   },
+  // 9. 超级文档（可交互 HTML 页面）
+  {
+    id: 'superdoc-item',
+    pattern: 'docs/:path*/superdocs/:name.html',
+    category: 'document',
+    format: 'html',
+    title: '节点超级可交互 HTML 文档',
+    description: '绑定知识点的可交互独立页面（含定制样式、按钮与脚本）。用 ui.superdoc 在界面打开。',
+    defaultValue: () => '<div></div>',
+  },
+  // 10. 目标静态素材与多媒体资源
+  {
+    id: 'static-res',
+    pattern: 'docs/:goal/static/:filename',
+    category: 'document',
+    format: 'binary',
+    title: '目标静态媒体与素材库',
+    description: '当前学习目标下的图片、音频、PDF 等文件，正文以标准 Markdown 语法直接引用。',
+    defaultValue: () => '',
+  },
+  // 11. 目标级持久化函数源码
+  {
+    id: 'method-code',
+    pattern: 'docs/:goal/methods/:name.js',
+    category: 'data',
+    format: 'text',
+    title: '目标级持久化函数源码',
+    description: '跨对话复用的 JS 函数源码，第一个参数为 api，可由 method.call 或超级文档调用。',
+    defaultValue: () => '((api, ...args) => {})',
+  },
+  // 12. 工作流定义与规程模版
+  {
+    id: 'workflow-def',
+    pattern: 'workflows/:name.json',
+    category: 'data',
+    format: 'json',
+    title: '工作流规程配置与任务指令',
+    description: '三级任务模板定义，触发时通过 wf.invoke(name, params) 入队启动。',
+    typeDefinition: `{
+  id: string,
+  name: string,
+  instruction: string,
+  description?: string,
+  prompt?: string,
+  tier?: "builtin" | "global" | "goal"
+}`,
+    defaultValue: () => ({ id: '', name: '', instruction: '' }),
+  },
+  // 13. 有效阅读事实与进展账本
+  {
+    id: 'reading-stats',
+    pattern: 'docs/:goal/stats/reading.json',
+    category: 'data',
+    format: 'json',
+    title: '有效阅读事实与进展账本',
+    description: '记录当前目标下各知识点与小节的有效阅读时长、视口到达比例（reach ≥ 0.6）与阅读会话明细。',
+    defaultValue: () => ({ sessions: [], sections: {} }),
+  },
+  // 14. 间隔复习计划与记录
+  {
+    id: 'review-plan',
+    pattern: 'docs/:goal/stats/review.json',
+    category: 'data',
+    format: 'json',
+    title: '艾宾浩斯间隔复习计划与账本',
+    description: '记录各知识点的到期复习阶段（+1/+3/+7/+14/+30）、薄弱点记录与完成历史。',
+    defaultValue: () => ({ plans: {}, history: [] }),
+  },
+  // 15. 打卡资格与历史记录
+  {
+    id: 'checkin-records',
+    pattern: 'docs/:goal/stats/checkin.json',
+    category: 'data',
+    format: 'json',
+    title: '学习打卡资格与历次结算记录',
+    description: '记录每日有效阅读门槛达成情况、已出题源与连续打卡天数。',
+    defaultValue: () => ({ date: '', passed: false, streak: 0, attempts: [] }),
+  },
+  // 16. 正文划词注解清单
+  {
+    id: 'node-annotations',
+    pattern: 'docs/:path*/annotations.json',
+    category: 'data',
+    format: 'json',
+    title: '知识点正文划词注解清单',
+    description: '记录在知识点文档正文上划词的术语解释（词条、出现序号、Markdown 说明）。',
+    typeDefinition: `Array<{
+  term: string,
+  occurrence?: number,
+  body: string
+}>`,
+    itemShape: '{ term: string, occurrence?: number, body: string }',
+    defaultValue: () => [],
+  },
 ]
 
 /**

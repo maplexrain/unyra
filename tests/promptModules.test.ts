@@ -172,7 +172,7 @@ describe('系统提示词确实瘦了（减负的验收线）', () => {
   it('搬走的域只剩一行索引，完整手册不再整段压在系统提示词里', () => {
     // 索引行在场（模型必须知道能力存在）
     expect(system).toContain('按需加载的能力')
-    expect(system).toContain('sdoc.*')
+    expect(system).toContain('method.call')
     expect(system).toContain('browser.*')
     expect(system).toContain('subagent.*')
     // 完整手册的标志性长文不在了
@@ -189,7 +189,7 @@ describe('系统提示词确实瘦了（减负的验收线）', () => {
   it('每轮必用的语法与判断标准一条不丢', () => {
     expect(system).toContain('唯一的工具是 execute')
     expect(system).toContain('写操作的失败不抛异常')
-    expect(system).toContain('api.doc.readRange')
+    expect(system).not.toContain('api.doc.readRange')
     expect(system).toContain('api.files.read')
     expect(system).toContain('数据资产与存储文件契约')
     expect(system).toContain('api.ask')
