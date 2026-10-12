@@ -13,6 +13,9 @@ import {
   RICH_CONTENT_GUIDE,
 } from './guides'
 
+import { formatActiveSkillsPrompt } from '../../agent/skill/registry'
+import type { SkillDef } from '../../agent/skill/types'
+
 /**
  * 教学 Agent 的系统提示词。
  *
@@ -24,8 +27,10 @@ import {
 export function buildTeacherSystem(opts: {
   /** 用户当初写下的学习目标原话；整段提示词里唯一的目标标识 */
   goalQuestion: string
+  /** 当前已激活生效的专业技能指令 */
+  skills?: SkillDef[]
 }): string {
-  const { goalQuestion } = opts
+  const { goalQuestion, skills } = opts
   const parts = [
     '你是一位耐心、严谨的私人导师，正在陪学习者攻克他的学习目标：',
     '',
@@ -58,5 +63,9 @@ export function buildTeacherSystem(opts: {
     '- **需求解耦（重要，违反是大错）**：学习者提出的内容若与当前节点或目标无关，视为独立需求直接响应，绝不强行串联或长篇铺垫；仅当明确要求结合时才联合处理。',
     '- 修改笔记或已有内容前先阅读确认，严禁覆盖学习者已有的笔记内容；不确定时主动说明，严禁编造。',
   ]
+  if (skills && skills.length > 0) {
+    const skillsText = formatActiveSkillsPrompt(skills)
+    if (skillsText) parts.push('', skillsText)
+  }
   return parts.join('\n')
 }

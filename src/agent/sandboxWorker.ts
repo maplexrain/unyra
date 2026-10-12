@@ -162,6 +162,24 @@ const API_NAMES = [
   'ui.superdoc',
   // ui.dom 特殊：回调无法穿过 Worker 边界，Worker 侧特判成「建会话 + 逐个操作」
   'ui.dom',
+  // 基础系统文件操作：真实路径读写与管理 (files.*)
+  'files.read',
+  'files.write',
+  'files.edit',
+  'files.list',
+  'files.stat',
+  'files.mkdir',
+  'files.copy',
+  'files.move',
+  'files.delete',
+  // 基础系统进程任务：生命周期绑定与增量输出 (process.*)
+  'process.create',
+  'process.start',
+  'process.status',
+  'process.output',
+  'process.stop',
+  'process.list',
+  'process.get',
 ]
 
 export const SANDBOX_API_NAMES = API_NAMES

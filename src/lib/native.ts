@@ -10,7 +10,10 @@
 
 import { t } from '../i18n'
 import type {
-  AttachReadResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
+  AttachReadResult, BaseFileEditResult, BaseFileListResult, BaseFileOpResult, BaseFileReadResult,
+  BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessGetResult,
+  BaseProcessListResult, BaseProcessOutputResult, BaseProcessStartResult, BaseProcessStatusResult,
+  BaseProcessStopResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
@@ -358,6 +361,54 @@ export interface NativeBridge {
     scroll(wcId: number, req: WebScrollReq): Promise<WebScrollResult>
     /** 等条件成立（selector/text/urlIncludes/networkIdle/load）：browser.waitFor */
     waitFor(wcId: number, req: WebWaitReq): Promise<WebWaitResult>
+  }
+  /**
+   * 基础真实文件系统与受控系统进程 (files.* / process.*)。
+   * 受目标目录与用户权限白名单保护。
+   */
+  files: {
+    read(path: string, opts?: { encoding?: 'utf8' | 'base64' | 'binary'; maxBytes?: number }): Promise<BaseFileReadResult>
+    write(path: string, content: string, opts?: { encoding?: 'utf8' | 'base64'; overwrite?: boolean }): Promise<BaseFileWriteResult>
+    edit(path: string, opts?: { replace?: { target: string; replacement: string; all?: boolean }; content?: string; start?: number; end?: number }): Promise<BaseFileEditResult>
+    list(path?: string): Promise<BaseFileListResult>
+    stat(path: string): Promise<BaseFileStatResult>
+    mkdir(path: string): Promise<BaseFileOpResult>
+    copy(from: string, to: string, opts?: { overwrite?: boolean }): Promise<BaseFileOpResult>
+    move(from: string, to: string): Promise<BaseFileOpResult>
+    delete(path: string): Promise<BaseFileOpResult>
+  }
+  process: {
+    create(opts: BaseProcessCreateOpts): Promise<BaseProcessCreateResult>
+    start(process_id: string): Promise<BaseProcessStartResult>
+    status(process_id: string): Promise<BaseProcessStatusResult>
+    output(process_id: string, opts?: { offset?: number; reset?: boolean }): Promise<BaseProcessOutputResult>
+    stop(process_id: string, opts?: { timeoutMs?: number; force?: boolean }): Promise<BaseProcessStopResult>
+    list(): Promise<BaseProcessListResult>
+    get(process_id: string): Promise<BaseProcessGetResult>
+  }
+  syncPermissions(allowedDirs: string[]): Promise<{ ok: boolean }>
+  base?: {
+    files: {
+      read(path: string, opts?: { encoding?: 'utf8' | 'base64' | 'binary'; maxBytes?: number }): Promise<BaseFileReadResult>
+      write(path: string, content: string, opts?: { encoding?: 'utf8' | 'base64'; overwrite?: boolean }): Promise<BaseFileWriteResult>
+      edit(path: string, opts?: { replace?: { target: string; replacement: string; all?: boolean }; content?: string; start?: number; end?: number }): Promise<BaseFileEditResult>
+      list(path?: string): Promise<BaseFileListResult>
+      stat(path: string): Promise<BaseFileStatResult>
+      mkdir(path: string): Promise<BaseFileOpResult>
+      copy(from: string, to: string, opts?: { overwrite?: boolean }): Promise<BaseFileOpResult>
+      move(from: string, to: string): Promise<BaseFileOpResult>
+      delete(path: string): Promise<BaseFileOpResult>
+    }
+    process: {
+      create(opts: BaseProcessCreateOpts): Promise<BaseProcessCreateResult>
+      start(process_id: string): Promise<BaseProcessStartResult>
+      status(process_id: string): Promise<BaseProcessStatusResult>
+      output(process_id: string, opts?: { offset?: number; reset?: boolean }): Promise<BaseProcessOutputResult>
+      stop(process_id: string, opts?: { timeoutMs?: number; force?: boolean }): Promise<BaseProcessStopResult>
+      list(): Promise<BaseProcessListResult>
+      get(process_id: string): Promise<BaseProcessGetResult>
+    }
+    syncPermissions(allowedDirs: string[]): Promise<{ ok: boolean }>
   }
 }
 

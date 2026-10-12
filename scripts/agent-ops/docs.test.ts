@@ -298,6 +298,24 @@ export async function apiNameTests() {
     'browser.text': "'w:probe', { ref: 1 }",
     'browser.scroll': "'w:probe', { by: 800 }",
     'browser.waitFor': "'w:probe', { selector: '.done' }",
+    // 基础文件系统：真实路径操作（Node 探针下回假桩，真机走主进程 IPC）
+    'files.read': "''",
+    'files.write': "'', '内容'",
+    'files.edit': "'', { content: '新内容' }",
+    'files.list': "''",
+    'files.stat': "''",
+    'files.mkdir': "''",
+    'files.copy': "'', ''",
+    'files.move': "'', ''",
+    'files.delete': "''",
+    // 基础系统进程任务
+    'process.create': "{ command: 'node' }",
+    'process.start': "'proc_test'",
+    'process.status': "'proc_test'",
+    'process.output': "'proc_test'",
+    'process.stop': "'proc_test'",
+    'process.list': '',
+    'process.get': "'proc_test'",
   }
   let s = staticStore()
   let tmpStore: Record<string, unknown> = {}

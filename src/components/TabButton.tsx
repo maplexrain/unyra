@@ -9,9 +9,11 @@ interface Props {
   /** 选中态：底色与字重一起变，图标也跟着换色 */
   active: boolean
   onClick: () => void
+  /** 右侧辅助徽标（如数字、状态标签） */
+  badge?: React.ReactNode
 }
 
-export default function TabButton({ icon: Icon, label, active, onClick }: Props) {
+export default function TabButton({ icon: Icon, label, active, onClick, badge }: Props) {
   return (
     <button
       type="button"
@@ -29,6 +31,9 @@ export default function TabButton({ icon: Icon, label, active, onClick }: Props)
         }`}
       />
       <span className="min-w-0 flex-1 truncate">{label}</span>
+      {badge !== undefined && (
+        <span className="shrink-0 text-[10.5px] tabular-nums">{badge}</span>
+      )}
       {active && (
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-seal" />
       )}

@@ -62,7 +62,7 @@ export function PlusMenu({
           ref={panelMount}
           role="menu"
           className={
-            'absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-xl border border-line-strong bg-card shadow-[0_12px_36px_rgba(31,27,23,0.22)] ' +
+            'absolute bottom-full left-0 right-0 z-30 mb-2 max-h-[360px] overflow-hidden rounded-2xl border border-line-strong bg-card/95 backdrop-blur-xl shadow-[0_16px_48px_rgba(0,0,0,0.18)] ' +
             // 收起时断掉指针事件：免得点到一颗正在消失的菜单项
             (menuClosing ? 'moji-bloom-up-out pointer-events-none' : 'moji-bloom-up-in')
           }
@@ -71,32 +71,36 @@ export function PlusMenu({
             面包屑：一级永远是「更多」，进到二级就多一截。它也是退回上一层的那条路
             （与 ModelPicker 的层级菜单同一套观感：层级关系看得见，而不是"啪"地换一屏）。
           */}
-          <div className="flex items-center gap-1 border-b border-line bg-paper-deep/60 px-2.5 py-1.5 text-[11px]">
+          <div className="flex items-center gap-1.5 border-b border-line bg-paper-deep/75 px-3 py-2 text-[11.5px]">
             {menuSub === null ? (
-              <span className="font-medium text-ink-strong">{t('更多')}</span>
+              <span className="font-semibold text-ink-strong">{t('更多选项')}</span>
             ) : (
               <>
                 <button
                   type="button"
                   onClick={goRoot}
-                  className="text-ink-soft transition hover:text-ink"
+                  className="font-medium text-ink-soft transition hover:text-ink"
                 >
                   {t('更多')}
                 </button>
                 <ChevronRight size={11} className="text-ink-faint" />
-                <span className="truncate font-medium text-ink-strong">
-                  {menuSub === 'workflow' ? t('工作流') : t('对话历史')}
+                <span className="truncate font-semibold text-ink-strong">
+                  {menuSub === 'workflow' ? t('工作流模板') : t('对话历史')}
                 </span>
               </>
             )}
+            <span className="ml-auto flex items-center gap-1 text-[10px] text-ink-faint">
+              <kbd className="rounded bg-line/60 px-1 py-0.5 font-mono text-[9.5px]">Esc</kbd>
+              <span>{t('收起')}</span>
+            </span>
           </div>
           {/*
             两层叠着做滑动：当前层在流内（撑出高度），离开的那层绝对定位盖在上面。
-            外层 overflow-hidden 裁掉滑出去的部分，滑完再卸载。
+            外层 max-h-[300px] overflow-y-auto 保证任何长列表都优雅滚动，不撑破窗口。
           */}
           <div
-            className="relative overflow-hidden transition-[height] duration-200 ease-out"
-            style={menuBodyH === null ? undefined : { height: menuBodyH }}
+            className="relative max-h-[300px] overflow-y-auto transition-[height] duration-200 ease-out"
+            style={menuBodyH === null ? undefined : { height: Math.min(300, menuBodyH) }}
           >
             {menuLeaving && (
               <div
@@ -106,7 +110,7 @@ export function PlusMenu({
                 }
                 aria-hidden="true"
               >
-                <div className="p-1">{renderMenuPanel(menuLeaving.sub)}</div>
+                <div className="p-1.5">{renderMenuPanel(menuLeaving.sub)}</div>
               </div>
             )}
             <div
@@ -117,7 +121,7 @@ export function PlusMenu({
                 (menuLeaving ? (menuDir === 1 ? 'moji-slide-in-forward' : 'moji-slide-in-back') : '')
               }
             >
-              <div className="p-1">{renderMenuPanel(menuSub)}</div>
+              <div className="p-1.5">{renderMenuPanel(menuSub)}</div>
             </div>
           </div>
         </div>

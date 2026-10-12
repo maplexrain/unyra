@@ -78,16 +78,24 @@ function makeApi() {
   for (const full of API_NAMES) {
     // ui.dom 走下面那条特判通道：它要传回调函数，结构化克隆带不过去
     if (full === 'ui.dom') continue
-    const dot = full.indexOf('.')
-    if (dot < 0) {
+    const segs = full.split('.')
+    if (segs.length === 1) {
       // 不带点的顶层 api（wait / tiktok…）：直接挂在 api 上
       api[full] = (...callArgs) => call(full, callArgs)
       continue
     }
-    const group = full.slice(0, dot)
-    const method = full.slice(dot + 1)
-    const bucket = api[group] || (api[group] = {})
-    bucket[method] = (...callArgs) => call(full, callArgs)
+    let cur = api
+    for (let i = 0; i < segs.length - 1; i++) {
+      cur = cur[segs[i]] || (cur[segs[i]] = {})
+    }
+    cur[segs[segs.length - 1]] = (...callArgs) => call(full, callArgs)
+  }
+  // 暴露全局 files 与 process 变量，使得 await files.read(...) 与 await api.files.read(...) 均可直接调用
+  if (api.files) {
+    globalThis.files = api.files
+  }
+  if (api.process) {
+    globalThis.process = api.process
   }
   api.ui = api.ui || {}
   /**
@@ -146,8 +154,8 @@ async function run(body, timeoutMs) {
      * 时，await 能不能用取决于 body 自身的形状——同一句 await 时通时不通，
      * 那种不可预测比报错更糟。现在 await 无条件可用。
      */
-    const evaluated = new Function('api', 'return (' + body + ')')()
-    const raw = typeof evaluated === 'function' ? await evaluated(api) : await evaluated
+    const evaluated = new Function('api', 'files', 'process', 'return (' + body + ')')()
+    const raw = typeof evaluated === 'function' ? await evaluated(api, api.files, api.process) : await evaluated
     timerMs = 0
     clearTimeout(runTimer)
     runTimer = null

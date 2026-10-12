@@ -30,6 +30,8 @@ import type { ChatMessage, ReasoningEffort } from '../ai/types'
 import { streamChatWith } from '../ai/client'
 import { appendFreeMessage, freeConversationById, mutateFreeConversation } from './freeChat'
 import { loadAgentSettings } from '../agent/settings'
+import { createMcpAgentTools } from '../agent/mcp/agentTools'
+import { getActiveSkills } from '../agent/skill/registry'
 import type { LearnStore } from './types'
 import { buildTeacherSystem } from './ai'
 import { MIN_ACTIVE_MESSAGES, activeMessages, applyCompaction, shouldCompact } from './compact'
@@ -497,6 +499,7 @@ export function useAgent(opts: {
       })
       // subagent api 挂进沙箱（导师专用；子代理的 apiAllow 白名单里没有这一组）
       sandboxBase.subagent = manager.api
+      const agentSettings = loadAgentSettings()
       const tools = [
         createExecuteTool({
           ...sandboxBase,
@@ -614,6 +617,7 @@ export function useAgent(opts: {
           // 内置浏览器（browser.*）：宿主依赖在场的回合才有这一组（见 learn/web/browserOps）
           ...(browserDeps ? { browser: makeBrowserOps(browserDeps, target.goalId) } : {}),
         }),
+        ...createMcpAgentTools(agentSettings.mcp),
       ]
       const parts: AgentPart[] = []
 
@@ -689,6 +693,7 @@ export function useAgent(opts: {
            */
           system: buildTeacherSystem({
             goalQuestion: getLatest().goals.find((g) => g.id === target.goalId)?.question ?? '',
+            skills: getActiveSkills(agentSettings.skills),
             // 画像**不在这里传**：导师要贴合这个人时自己 api.userInfo.get() 取（见 ai 的说明）
           }),
           /**

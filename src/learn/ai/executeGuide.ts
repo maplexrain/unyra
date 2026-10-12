@@ -82,6 +82,25 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
   - when: { id, oneOf: [...] } 联动条件；
   - 题目上写 userInfo: '字段名' 时，答案提交时自动落进画像，无需再调 update。
 
+基础文件系统与系统进程（最底层基础能力，沙箱中既支持 api.files.* / api.process.*，亦可直接写 files.* / process.*）：
+- api.files.read(path, encoding?) → { ok, path, content, size, encoding }：读取真实路径文件，支持 utf8/base64 等各种文本与二进制。
+- api.files.write(path, content, encoding?) → { ok, path, bytes }：写入真实路径文件，不存在自动递归创建父目录。
+- api.files.edit(path, { content?, edits? }) → { ok, path }：修改已存在的文件，支持全量替换或行切片修改。
+- api.files.list(path) → { ok, path, items: [{ name, isDirectory, isFile, size }] }：列出指定路径下所有文件与子目录。
+- api.files.stat(path) → { ok, path, size, isDirectory, isFile, mtimeMs, ctimeMs }：查看文件/目录元数据与属性。
+- api.files.mkdir(path) → { ok, path }：创建目录（自动递归创建父目录）。
+- api.files.copy(from, to) → { ok, from, to }：复制文件或目录。
+- api.files.move(from, to) → { ok, from, to }：移动或重命名文件/目录。
+- api.files.delete(path) → { ok, path }：删除指定文件或目录。
+- api.process.create({ command, args?, cwd?, env? }) → { ok, process_id }：创建受控进程任务定义（执行程序、参数、工作目录与环境变量），默认不执行。
+- api.process.start(process_id) → { ok, process_id, pid, running }：启动已创建的任务，返回 process_id 与系统 PID。
+- api.process.status(process_id) → { ok, process_id, running, pid, exitCode }：查询进程是否正在运行、是否已退出及退出码。
+- api.process.output(process_id, { since?, clear? }) → { ok, stdout, stderr, totalStdout, totalStderr }：读取标准输出与标准错误（支持增量读取）。
+- api.process.stop(process_id, { force?, timeoutMs? }) → { ok, process_id, killed }：终止进程（支持超时强杀）。
+- api.process.list() → { ok, processes: [...] }：列出当前 Agent 有权访问的所有受控进程。
+- api.process.get(process_id) → { ok, process: {...} }：根据 process_id 获取进程详情。
+- 权限与生命周期边界：对当前学习目标根目录拥有完全读写权限，操作外部路径需用户在设置「工具」页加入白名单；进程生命周期与主应用强绑定，应用退出或中断时子进程自动级联清理。
+
 **按需加载的能力**（以下组的完整规范在首次调用对应 api 或写出对应标记时作为提示词模块自动注入，此处仅列索引）：
 - doc-html：教学文档以 HTML + Tailwind 工具类排版（两栏、提示框、时间轴、手绘 SVG 图表配方），写教学文档时自动注入。
 - sdoc.*：超级文档（绑定节点的独立可交互 HTML 小工具）。

@@ -386,4 +386,38 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
       { name: 'subagent.delete', signature: 'subagent.delete(agent)', summary: '删定义与会话（含挂起的交付；在跑的先中断）', availability: 'subagent' },
     ],
   },
+  {
+    key: 'files',
+    label: '真实文件系统 · files',
+    intro:
+      '直接读写操作系统真实路径下的文件与目录，支持各种文件类型（文本或 base64 二进制）。' +
+      '权限受限保护：仅对当前目标目录及在设置中放行的目录拥有完全权限，其余路径将被安全拦截。',
+    items: [
+      { name: 'files.read', signature: 'files.read(path, { encoding?, maxBytes? }?)', summary: '读取真实路径的文件，允许读各种类型', availability: 'always' },
+      { name: 'files.write', signature: 'files.write(path, content, { encoding?, overwrite? }?)', summary: '写入某个真实路径文件，没有就创建，允许写各种类型', availability: 'always' },
+      { name: 'files.edit', signature: 'files.edit(path, { replace?, content?, start?, end? })', summary: '修改已存在的文件，支持字符串替换与区间更新', availability: 'always' },
+      { name: 'files.list', signature: 'files.list(path?)', summary: '列出某个路径下所有文件的名称与属性', availability: 'always' },
+      { name: 'files.stat', signature: 'files.stat(path)', summary: '查看某个文件的详细信息（大小、修改时间、文件类型等）', availability: 'always' },
+      { name: 'files.mkdir', signature: 'files.mkdir(path)', summary: '创建目录（默认递归建起父级）', availability: 'always' },
+      { name: 'files.copy', signature: 'files.copy(from, to, { overwrite? }?)', summary: '复制文件或目录', availability: 'always' },
+      { name: 'files.move', signature: 'files.move(from, to)', summary: '移动或重命名文件或目录', availability: 'always' },
+      { name: 'files.delete', signature: 'files.delete(path)', summary: '删除文件或目录', availability: 'always' },
+    ],
+  },
+  {
+    key: 'process',
+    label: '系统进程任务 · process',
+    intro:
+      '创建与管理原生进程任务，支持增量捕获标准输出和标准错误。' +
+      '生命周期绑定：进程任务与宿主应用进程强绑定，应用退出或中断终止时所有进程均被自动清理。',
+    items: [
+      { name: 'process.create', signature: 'process.create({ command, args?, cwd?, env? })', summary: '创建进程任务，定义执行程序、参数、工作目录和环境变量；默认不执行', availability: 'always' },
+      { name: 'process.start', signature: 'process.start(process_id)', summary: '启动已创建的任务，返回 process_id 与 pid', availability: 'always' },
+      { name: 'process.status', signature: 'process.status(process_id)', summary: '查询进程是否正在运行、是否已退出，以及退出码', availability: 'always' },
+      { name: 'process.output', signature: 'process.output(process_id, { offset?, reset? }?)', summary: '读取标准输出和标准错误，支持增量读取', availability: 'always' },
+      { name: 'process.stop', signature: 'process.stop(process_id, { timeoutMs?, force? }?)', summary: '请求终止进程，并定义超时后的强制终止策略', availability: 'always' },
+      { name: 'process.list', signature: 'process.list()', summary: '列出当前 Agent 有权访问的进程任务清单', availability: 'always' },
+      { name: 'process.get', signature: 'process.get(process_id)', summary: '根据 process_id 获取进程详情', availability: 'always' },
+    ],
+  },
 ]

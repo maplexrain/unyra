@@ -62,12 +62,16 @@ export function SubAgentMenu({ sessions, defs, onOpen }: SubAgentMenuProps) {
       </button>
 
       {open && (
-        <div className="moji-bloom-up-in absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-xl border border-line-strong bg-card shadow-[0_12px_36px_rgba(31,27,23,0.22)]">
-          <div className="flex items-center gap-1.5 border-b border-line bg-paper-deep/60 px-3 py-1.5 text-[11px] font-medium text-ink-strong">
-            <Bot size={12} className="text-seal" />
-            {t('子代理会话')}
+        <div className="moji-bloom-up-in absolute bottom-full left-0 right-0 z-30 mb-2 max-h-[360px] overflow-hidden rounded-2xl border border-line-strong bg-card/95 backdrop-blur-xl shadow-[0_16px_48px_rgba(0,0,0,0.18)]">
+          <div className="flex items-center gap-1.5 border-b border-line bg-paper-deep/75 px-3 py-2 text-[11.5px] font-semibold text-ink-strong">
+            <Bot size={13} className="text-seal" />
+            <span>{t('子代理会话')}</span>
+            <span className="ml-auto flex items-center gap-1 text-[10px] text-ink-faint">
+              <kbd className="rounded bg-line/60 px-1 py-0.5 font-mono text-[9.5px]">Esc</kbd>
+              <span>{t('收起')}</span>
+            </span>
           </div>
-          <div className="max-h-[280px] overflow-y-auto p-1">
+          <div className="max-h-[260px] overflow-y-auto p-1.5 space-y-0.5">
             {sessions.map((s) => {
               const def = defOf(s.defKey)
               const status = statusOf(s)

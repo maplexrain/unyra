@@ -46,4 +46,11 @@ describe('agent 设置的归一化', () => {
     expect(s.compact.auto).toBe(false)
     expect(s.compact.threshold).toBe(0.7)
   })
+
+  it('permissions 权限白名单字段归一化为有效字符串数组', () => {
+    const s = normalizeAgentSettings({ permissions: { allowedDirs: [' E:\\docs ', '', 123 as unknown as string] } })
+    expect(s.permissions?.allowedDirs).toEqual(['E:\\docs', '123'])
+    const sEmpty = normalizeAgentSettings({})
+    expect(sEmpty.permissions?.allowedDirs).toEqual([])
+  })
 })

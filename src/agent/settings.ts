@@ -13,6 +13,9 @@ import { DEFAULT_PERSONA, personaOf, type PersonaId } from './persona'
  * 同一份文件、同一个生命周期，分开的只是模块。
  */
 
+import { DEFAULT_SKILL_SETTINGS, type SkillSettings } from './skill/types'
+import { DEFAULT_MCP_SETTINGS, type McpSettings } from './mcp/types'
+
 export interface CompactSettings {
   /** 到阈值自动压缩；关掉之后只有手动「压缩上下文」会压 */
   auto: boolean
@@ -42,6 +45,26 @@ export interface AgentSettings {
    * 全部默认关闭：它们是调试工具，不是功能。
    */
   dev: AgentDevSettings
+  /**
+   * 专长技能 (Skill) 配置：
+   * 扩展导师的思维模式、认知框架与特定领域行动指南。
+   */
+  skills?: SkillSettings
+  /**
+   * Model Context Protocol (MCP) 基础设施配置：
+   * 支持通过标准协议挂载外部工具与上下文服务。
+   */
+  mcp?: McpSettings
+  /**
+   * 基础原生工具安全权限配置：
+   * 目标数据目录默认完全放行；外部真实系统目录需在此白名单放行。
+   */
+  permissions?: AgentPermissionsSettings
+}
+
+export interface AgentPermissionsSettings {
+  /** 外部允许直接访问的白名单目录列表 */
+  allowedDirs: string[]
 }
 
 export interface AgentDevSettings {
@@ -61,6 +84,11 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   // 默认「标准导师」：不追求极致效率也不追求极致趣味，大多数情况下最自然的那一个
   persona: DEFAULT_PERSONA,
   dev: { contextDebugger: false },
+  skills: DEFAULT_SKILL_SETTINGS,
+  mcp: DEFAULT_MCP_SETTINGS,
+  permissions: {
+    allowedDirs: [],
+  },
 }
 
 const clamp = (v: unknown, lo: number, hi: number, fallback: number): number => {
@@ -76,6 +104,10 @@ export function normalizeAgentSettings(raw: unknown): AgentSettings {
   const src = (raw && typeof raw === 'object' ? raw : {}) as Partial<AgentSettings>
   const compact = (src.compact && typeof src.compact === 'object' ? src.compact : {}) as Partial<CompactSettings>
   const dev = (src.dev && typeof src.dev === 'object' ? src.dev : {}) as Partial<AgentDevSettings>
+  const skills = (src.skills && typeof src.skills === 'object' ? src.skills : {}) as Partial<SkillSettings>
+  const mcp = (src.mcp && typeof src.mcp === 'object' ? src.mcp : {}) as Partial<McpSettings>
+  const permissions = (src.permissions && typeof src.permissions === 'object' ? src.permissions : {}) as Partial<AgentPermissionsSettings>
+
   return {
     version: 1,
     compact: {
@@ -88,6 +120,19 @@ export function normalizeAgentSettings(raw: unknown): AgentSettings {
       contextDebugger:
         typeof dev.contextDebugger === 'boolean' ? dev.contextDebugger : DEFAULT_AGENT_SETTINGS.dev.contextDebugger,
     },
+    skills: {
+      enabled: typeof skills.enabled === 'boolean' ? skills.enabled : DEFAULT_SKILL_SETTINGS.enabled,
+      skills: Array.isArray(skills.skills) ? skills.skills : DEFAULT_SKILL_SETTINGS.skills,
+    },
+    mcp: {
+      enabled: typeof mcp.enabled === 'boolean' ? mcp.enabled : DEFAULT_MCP_SETTINGS.enabled,
+      servers: Array.isArray(mcp.servers) ? mcp.servers : DEFAULT_MCP_SETTINGS.servers,
+    },
+    permissions: {
+      allowedDirs: Array.isArray(permissions.allowedDirs)
+        ? permissions.allowedDirs.map(String).map((d) => d.trim()).filter(Boolean)
+        : [],
+    },
   }
 }
 
@@ -98,10 +143,21 @@ let cache: { key: string; value: AgentSettings } | null = null
 
 const cacheKey = (): string => `${settingsUid() ?? ''}#${settingsRevision()}`
 
+function syncNativePermissions(dirs: string[]): void {
+  try {
+    if (typeof window !== 'undefined' && window.mojiNative?.base?.syncPermissions) {
+      window.mojiNative.base.syncPermissions(dirs).catch(() => {})
+    }
+  } catch {
+    // 忽略非 Electron 或未初始化环境
+  }
+}
+
 export function loadAgentSettings(): AgentSettings {
   const key = cacheKey()
   if (cache && cache.key === key) return cache.value
   cache = { key, value: normalizeAgentSettings(readUserSettings('agent')) }
+  syncNativePermissions(cache.value.permissions?.allowedDirs || [])
   return cache.value
 }
 
@@ -109,6 +165,7 @@ export function saveAgentSettings(next: AgentSettings): void {
   const value = normalizeAgentSettings(next)
   cache = { key: cacheKey(), value }
   writeUserSettings('agent', value)
+  syncNativePermissions(value.permissions?.allowedDirs || [])
   for (const listener of [...listeners]) listener()
 }
 

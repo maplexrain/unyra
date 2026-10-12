@@ -90,16 +90,17 @@ function wrapApi(api: Record<string, unknown>, name: string, fn: (args: unknown[
       throw new Error(record.message)
     }
   }
-  const dot = name.indexOf('.')
-  if (dot < 0) {
-    // 不带点的顶层 api（wait / tiktok…）：直接挂在 api 上，没有组这一层
+  const segs = name.split('.')
+  if (segs.length === 1) {
     api[name] = wrapped
     return
   }
-  const [group, method] = name.split('.')
-  const bucket = (api[group] as Record<string, unknown>) ?? {}
-  bucket[method] = wrapped
-  api[group] = bucket
+  let cur = api
+  for (let i = 0; i < segs.length - 1; i++) {
+    const k = segs[i]
+    cur = ((cur[k] as Record<string, unknown>) || (cur[k] = {})) as Record<string, unknown>
+  }
+  cur[segs[segs.length - 1]] = wrapped
 }
 
 /**
@@ -855,6 +856,170 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     wrapApi(api, 'subagent.delete', (args) => sa.remove(asText(args[0]).trim()), log)
     wrapApi(api, 'subagent.wait', (args) => sa.wait(asRecord(args[0])), log)
   }
+
+  // 基础系统真实文件系统与受控系统进程 (files.* / process.*)
+  const getNativeFiles = () => {
+    if (typeof window !== 'undefined') {
+      if (window.mojiNative?.files) return window.mojiNative.files
+      if (window.mojiNative?.base?.files) return window.mojiNative.base.files
+    }
+    return null
+  }
+
+  const getNativeProcess = () => {
+    if (typeof window !== 'undefined') {
+      if (window.mojiNative?.process) return window.mojiNative.process
+      if (window.mojiNative?.base?.process) return window.mojiNative.base.process
+    }
+    return null
+  }
+
+  wrapApi(api, 'files.read', async (args) => {
+    const p = asText(args[0])
+    const opt = asRecord(args[1])
+    const nf = getNativeFiles()
+    if (!nf) return { ok: true, content: '', encoding: 'utf8', size: 0 }
+    return await nf.read(p, {
+      encoding: opt.encoding === 'base64' ? 'base64' : opt.encoding === 'binary' ? 'binary' : 'utf8',
+      maxBytes: typeof opt.maxBytes === 'number' ? opt.maxBytes : undefined,
+    })
+  }, log)
+
+  wrapApi(api, 'files.write', async (args) => {
+    const p = asText(args[0])
+    const content = asText(args[1])
+    const opt = asRecord(args[2])
+    const nf = getNativeFiles()
+    if (!nf) return { ok: true, path: p, bytesWritten: content.length }
+    return await nf.write(p, content, {
+      encoding: opt.encoding === 'base64' ? 'base64' : 'utf8',
+      overwrite: opt.overwrite !== false,
+    })
+  }, log)
+
+  wrapApi(api, 'files.edit', async (args) => {
+    const p = asText(args[0])
+    const opt = asRecord(args[1])
+    const nf = getNativeFiles()
+    if (!nf) return { ok: true, path: p, modified: false }
+    const replaceObj = opt.replace ? asRecord(opt.replace) : undefined
+    return await nf.edit(p, {
+      replace: replaceObj ? {
+        target: asText(replaceObj.target),
+        replacement: asText(replaceObj.replacement),
+        all: replaceObj.all === true,
+      } : undefined,
+      content: typeof opt.content === 'string' ? opt.content : undefined,
+      start: typeof opt.start === 'number' ? opt.start : undefined,
+      end: typeof opt.end === 'number' ? opt.end : undefined,
+    })
+  }, log)
+
+  wrapApi(api, 'files.list', async (args) => {
+    const p = args.length ? asText(args[0]) : undefined
+    const nf = getNativeFiles()
+    if (!nf) return { ok: true, path: p ?? '', entries: [] }
+    return await nf.list(p)
+  }, log)
+
+  wrapApi(api, 'files.stat', async (args) => {
+    const p = asText(args[0])
+    const nf = getNativeFiles()
+    if (!nf) return { ok: true, stat: { exists: true, isDirectory: false, isFile: true, size: 0, mtimeMs: 0, ctimeMs: 0 } }
+    return await nf.stat(p)
+  }, log)
+
+  wrapApi(api, 'files.mkdir', async (args) => {
+    const p = asText(args[0])
+    const nf = getNativeFiles()
+    if (!nf) return { ok: true }
+    return await nf.mkdir(p)
+  }, log)
+
+  wrapApi(api, 'files.copy', async (args) => {
+    const from = asText(args[0])
+    const to = asText(args[1])
+    const opt = asRecord(args[2])
+    const nf = getNativeFiles()
+    if (!nf) return { ok: true }
+    return await nf.copy(from, to, { overwrite: opt.overwrite !== false })
+  }, log)
+
+  wrapApi(api, 'files.move', async (args) => {
+    const from = asText(args[0])
+    const to = asText(args[1])
+    const nf = getNativeFiles()
+    if (!nf) return { ok: true }
+    return await nf.move(from, to)
+  }, log)
+
+  wrapApi(api, 'files.delete', async (args) => {
+    const p = asText(args[0])
+    const nf = getNativeFiles()
+    if (!nf) return { ok: true }
+    return await nf.delete(p)
+  }, log)
+
+  wrapApi(api, 'process.create', async (args) => {
+    const opt = asRecord(args[0])
+    const np = getNativeProcess()
+    if (!np) return { ok: true, process_id: 'proc_mock_1', command: asText(opt.command), args: [], cwd: '' }
+    return await np.create({
+      command: asText(opt.command),
+      args: Array.isArray(opt.args) ? opt.args.map(asText) : undefined,
+      cwd: typeof opt.cwd === 'string' ? opt.cwd : undefined,
+      env: opt.env && typeof opt.env === 'object' ? (opt.env as Record<string, string>) : undefined,
+    })
+  }, log)
+
+  wrapApi(api, 'process.start', async (args) => {
+    const pid = asText(args[0])
+    const np = getNativeProcess()
+    if (!np) return { ok: true, process_id: pid, pid: 1234 }
+    return await np.start(pid)
+  }, log)
+
+  wrapApi(api, 'process.status', async (args) => {
+    const pid = asText(args[0])
+    const np = getNativeProcess()
+    if (!np) return { ok: true, status: { process_id: pid, command: '', args: [], cwd: '', running: false, exited: true, exitCode: 0, signal: null } }
+    return await np.status(pid)
+  }, log)
+
+  wrapApi(api, 'process.output', async (args) => {
+    const pid = asText(args[0])
+    const opt = asRecord(args[1])
+    const np = getNativeProcess()
+    if (!np) return { ok: true, stdout: '', stderr: '', text: '', offset: 0, next_offset: 0 }
+    return await np.output(pid, {
+      offset: typeof opt.offset === 'number' ? opt.offset : undefined,
+      reset: opt.reset === true,
+    })
+  }, log)
+
+  wrapApi(api, 'process.stop', async (args) => {
+    const pid = asText(args[0])
+    const opt = asRecord(args[1])
+    const np = getNativeProcess()
+    if (!np) return { ok: true, process_id: pid, stopped: true }
+    return await np.stop(pid, {
+      timeoutMs: typeof opt.timeoutMs === 'number' ? opt.timeoutMs : undefined,
+      force: opt.force === true,
+    })
+  }, log)
+
+  wrapApi(api, 'process.list', async () => {
+    const np = getNativeProcess()
+    if (!np) return { ok: true, processes: [] }
+    return await np.list()
+  }, log)
+
+  wrapApi(api, 'process.get', async (args) => {
+    const pid = asText(args[0])
+    const np = getNativeProcess()
+    if (!np) return { ok: true, process: { process_id: pid, command: '', args: [], cwd: '', running: false, exited: true, exitCode: 0, signal: null } }
+    return await np.get(pid)
+  }, log)
 
   return { api, tmp }
 }

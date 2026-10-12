@@ -370,22 +370,24 @@ export function Composer(props: ComposerProps) {
       }}
       onMouseEnter={() => slash.hover(i)}
       className={
-        'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-ink transition disabled:pointer-events-none disabled:opacity-40 ' +
-        (i === slash.highlight ? 'bg-line/60' : '')
+        'group flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-[12px] text-ink transition disabled:pointer-events-none disabled:opacity-40 ' +
+        (i === slash.highlight ? 'bg-line/60 font-medium' : 'hover:bg-line/35')
       }
     >
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center text-ink-faint">{item.icon}</span>
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-paper-deep text-ink-soft transition group-hover:bg-seal/15 group-hover:text-seal-deep">
+        {item.icon}
+      </span>
       {slash.level === 'root' && (
-        <span className="w-[72px] shrink-0 font-mono text-[11.5px] text-ink-soft">/{item.key}</span>
+        <span className="w-[72px] shrink-0 font-mono text-[11.5px] font-semibold text-seal-deep">/{item.key}</span>
       )}
-      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      <span className="min-w-0 flex-1 truncate font-medium text-ink-strong">{item.label}</span>
       {item.current && (
-        <span className="shrink-0 rounded bg-seal/15 px-1 py-px text-[10px] text-seal-deep">{t('当前')}</span>
+        <span className="shrink-0 rounded bg-seal/15 px-1.5 py-px text-[10px] font-medium text-seal-deep">{t('当前')}</span>
       )}
       {slash.level === 'root' && item.hint && (
         <span className="shrink-0 text-[10.5px] text-ink-faint">{item.hint}</span>
       )}
-      {item.sub && <ChevronRight size={13} className="shrink-0 text-ink-faint" />}
+      {item.sub && <ChevronRight size={13} className="shrink-0 text-ink-faint transition group-hover:translate-x-0.5" />}
     </button>
   )
 
@@ -419,11 +421,11 @@ export function Composer(props: ComposerProps) {
       {slash.active && (
         <div
           role="menu"
-          className="moji-bloom-up-in absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-xl border border-line-strong bg-card shadow-[0_12px_36px_rgba(31,27,23,0.22)]"
+          className="moji-bloom-up-in absolute bottom-full left-0 right-0 z-30 mb-2 max-h-[360px] overflow-hidden rounded-2xl border border-line-strong bg-card/95 backdrop-blur-xl shadow-[0_16px_48px_rgba(0,0,0,0.18)]"
         >
-          <div className="flex items-center gap-1 border-b border-line bg-paper-deep/60 px-2.5 py-1.5 text-[11px]">
+          <div className="flex items-center gap-1.5 border-b border-line bg-paper-deep/75 px-3 py-2 text-[11.5px]">
             {slash.level === 'root' ? (
-              <span className="font-medium text-ink-strong">{t('斜杠命令')}</span>
+              <span className="font-semibold text-ink-strong">{t('斜杠命令')}</span>
             ) : (
               <>
                 <button
@@ -432,19 +434,20 @@ export function Composer(props: ComposerProps) {
                     slash.back()
                     editorRef.current?.focus()
                   }}
-                  className="text-ink-soft transition hover:text-ink"
+                  className="font-medium text-ink-soft transition hover:text-ink"
                 >
                   {t('命令')}
                 </button>
                 <ChevronRight size={11} className="text-ink-faint" />
-                <span className="truncate font-medium text-ink-strong">{slash.title}</span>
+                <span className="truncate font-semibold text-ink-strong">{slash.title}</span>
               </>
             )}
-            <span className="ml-auto shrink-0 text-[10px] text-ink-faint">
-              {slash.level === 'root' ? t('↑↓ 选 · Enter 执行 · Esc 取消') : t('↑↓ 选 · Enter 执行 · 退格返回')}
+            <span className="ml-auto flex items-center gap-1 text-[10px] text-ink-faint">
+              <kbd className="rounded bg-line/60 px-1 py-0.5 font-mono text-[9.5px]">Esc</kbd>
+              <span>{slash.level === 'root' ? t('取消') : t('返回')}</span>
             </span>
           </div>
-          <div className="max-h-[300px] overflow-y-auto p-1">
+          <div className="max-h-[280px] overflow-y-auto p-1.5 space-y-0.5">
             {slash.items.length === 0 ? (
               <p className="px-2.5 py-3 text-center text-[11.5px] text-ink-faint">{slash.emptyHint}</p>
             ) : (

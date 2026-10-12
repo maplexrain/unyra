@@ -263,14 +263,18 @@ export function usePlusMenu({
         setMenuOpen(false)
         item.run?.()
       }}
-      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] text-ink transition hover:bg-line/60 disabled:pointer-events-none disabled:opacity-40"
+      className="group flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left transition hover:bg-line/50 disabled:pointer-events-none disabled:opacity-40"
     >
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center text-ink-faint">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-paper-deep text-seal transition group-hover:bg-seal/15 group-hover:text-seal-deep">
         {item.icon}
       </span>
-      <span className="min-w-0 flex-1 truncate">{item.label}</span>
-      {item.hint && <span className="shrink-0 text-[10.5px] text-ink-faint">{item.hint}</span>}
-      {item.sub && <ChevronRight size={13} className="shrink-0 text-ink-faint" />}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[12.5px] font-medium text-ink-strong">{item.label}</span>
+        {item.hint && <span className="block truncate text-[10.5px] text-ink-faint">{item.hint}</span>}
+      </span>
+      {item.sub && (
+        <ChevronRight size={13} className="shrink-0 text-ink-faint transition group-hover:translate-x-0.5 group-hover:text-ink-soft" />
+      )}
     </button>
   )
 
@@ -299,36 +303,29 @@ export function usePlusMenu({
   )
 
   /**
-   * 面板高度跟着**当前这一层**的内容走。
-   *
-   * 两层是绝对定位叠着做滑动的，不把外层定高就会塌成 0；高度还得跟着内容变
-   * （对话列表多一段就高一截），所以用 ResizeObserver 盯住当前那一层，
-   * 且只在真的变了时才写回 state（每次回调都写会白白重渲染一遍）。
+   * 面板高度跟着**当前这一层**的内容走（严格限制最大高度 300px，溢出滚动）。
    */
   useLayoutEffect(() => {
     const el = panelBodyEl.current
     if (!menuMounted || !el) return
-    const sync = () => setMenuBodyH((prev) => (prev === el.offsetHeight ? prev : el.offsetHeight))
+    const MAX_H = 300
+    const sync = () =>
+      setMenuBodyH((prev) => {
+        const h = Math.min(MAX_H, el.offsetHeight)
+        return prev === h ? prev : h
+      })
     sync()
     const ro = new ResizeObserver(sync)
     ro.observe(el)
     return () => ro.disconnect()
-    // panelBodyEl 是 ref：这里读的是当下挂上的那一层
   }, [menuMounted, menuSub, conversations.length])
 
   /**
    * 每段对话的「可见条数」（菜单上那个「N 条消息」）。
-   *
-   * 为什么可以这么省：这个数只由每条消息自己的 hidden 标记决定，而 hidden 是消息**创建时**
-   * 定下的（导师的内部指令那种），此后不会再变——真变了也必然是换了一个新的 messages 数组，
-   * 也就换了一个新的 conversations（store 的更新一律整份换新，见 learn/store），缓存当场失效。
-   * 于是按对话列表缓存一次就够，不必每次渲染都把**所有对话的所有消息**（含压缩掉的几千条）
-   * 重新 filter 一遍：数出来的值与 filter(...).length 逐字相同，只是不再每轮重数。
    */
   const visibleCounts = useMemo(
     () =>
       conversations.map((c) => {
-        // 一次遍历数一遍，不额外分配中间数组
         let n = 0
         for (const m of c.messages) if (!m.hidden) n++
         return n
@@ -338,16 +335,10 @@ export function usePlusMenu({
 
   /**
    * 「对话历史」二级菜单：当前目标下的全部对话。
-   *
-   * 只列这一段目标自己的对话（上下文是按目标隔离的，别的目标那几段与这里无关）。
-   * 标题是模型起的（见 learn/title），还没起好就退回「对话 N」。
-   *
-   * 顶部摆一颗「新建对话」：翻到这一层的人多半在找「上一段聊到哪了」，而
-   * 「另起一段」与「挑一段旧的」是同一件事的两面——回到一级再点一次反而绕。
    */
   const conversationRows = (
-    <div>
-      <div className="p-1 pb-0.5">
+    <div className="space-y-1">
+      <div className="p-0.5">
         <button
           type="button"
           role="menuitem"
@@ -356,60 +347,80 @@ export function usePlusMenu({
             setMenuOpen(false)
             onNewConversation()
           }}
-          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] text-ink transition hover:bg-line/60"
+          className="group flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left transition hover:bg-line/50"
         >
-          <span className="flex h-4 w-4 shrink-0 items-center justify-center text-ink-faint">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-seal/10 text-seal">
             <NewChatIcon />
           </span>
-          <span className="min-w-0 flex-1 truncate">{t('新建对话')}</span>
+          <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-ink-strong">{t('新建对话')}</span>
         </button>
       </div>
-      <span aria-hidden="true" className="mx-2 mb-1 block h-px bg-line" />
-      {/* 对话多了就在这一层里滚：面板是往上长的，一屏塞不下十几段对话 */}
-      <div className="max-h-[300px] overflow-y-auto">
-      {conversations.map((c, i) => {
-        const count = visibleCounts[i]
-        const active = c.id === conversation?.id
-        return (
-          <div
-            key={c.id}
-            className={'group/c flex items-center gap-1 rounded-lg px-1 transition ' + (active ? 'bg-line/40' : 'hover:bg-line/40')}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                onSelectConversation(c.id)
-                setMenuOpen(false)
-              }}
-              className={'min-w-0 flex-1 px-1.5 py-1.5 text-left text-[12px] ' + (active ? 'font-medium text-ink-strong' : 'text-ink')}
+      <span aria-hidden="true" className="mx-2 block h-px bg-line/60" />
+      {/* 对话多了就在这一层里滚：限制最大高度 240px，溢出滚动 */}
+      <div className="max-h-[240px] overflow-y-auto space-y-0.5 p-0.5">
+        {conversations.map((c, i) => {
+          const count = visibleCounts[i]
+          const active = c.id === conversation?.id
+          return (
+            <div
+              key={c.id}
+              className={
+                'group/c flex items-center gap-1 rounded-xl px-2 py-1 transition ' +
+                (active ? 'bg-seal/10 text-seal-deep' : 'hover:bg-line/40')
+              }
             >
-              <span className="block truncate">{c.title || t('对话 {0}', i + 1)}</span>
-              <span className="block text-[10.5px] text-ink-faint">
-                {count ? t('{0} 条消息', count) : t('还没有消息')}
-              </span>
-            </button>
-            {conversations.length > 1 && (
               <button
                 type="button"
-                title={t('删除该对话')}
-                onClick={() => onDeleteConversation(c.id)}
-                className="hidden h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-seal group-hover/c:flex"
+                onClick={() => {
+                  onSelectConversation(c.id)
+                  setMenuOpen(false)
+                }}
+                className={
+                  'min-w-0 flex-1 text-left text-[12px] ' +
+                  (active ? 'font-medium text-seal-deep' : 'text-ink')
+                }
               >
-                <Trash2 size={11} />
+                <span className="block truncate">{c.title || t('对话 {0}', i + 1)}</span>
+                <span className="block text-[10.5px] text-ink-faint">
+                  {count ? t('{0} 条消息', count) : t('还没有消息')}
+                </span>
               </button>
-            )}
-          </div>
-        )
-      })}
+              {conversations.length > 1 && (
+                <button
+                  type="button"
+                  title={t('删除该对话')}
+                  onClick={() => onDeleteConversation(c.id)}
+                  className="hidden h-6 w-6 shrink-0 items-center justify-center rounded-lg text-ink-faint transition hover:bg-seal/15 hover:text-seal-deep group-hover/c:flex"
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
 
   /** 一层的内容。抽成函数是因为过渡期间要同时渲染"新来的"与"正走的"两层 */
   const renderMenuPanel = (sub: MenuSub) => {
-    if (sub === 'workflow') return WORKFLOW_MENU.map(menuItem)
+    if (sub === 'workflow') return <div className="space-y-0.5">{WORKFLOW_MENU.map(menuItem)}</div>
     if (sub === 'history') return conversationRows
-    return (free ? FREE_MENU : COMPOSER_MENU).map(menuItem)
+    const items = free ? FREE_MENU : COMPOSER_MENU
+    return (
+      <div className="space-y-0.5">
+        {items.map((item) => {
+          const isDivider =
+            !free && (item.key === 'attach' || item.key === 'workflow' || item.key === 'settings')
+          return (
+            <div key={item.key}>
+              {isDivider && <span aria-hidden="true" className="mx-2 my-1 block h-px bg-line/60" />}
+              {menuItem(item)}
+            </div>
+          )
+        })}
+      </div>
+    )
   }
 
   /**

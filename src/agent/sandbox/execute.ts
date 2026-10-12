@@ -169,9 +169,16 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
             }
             return await fn(makeDomFacade(root))
           }
-          const [group, method] = name.split('.')
-          const bucket = api[group] as Record<string, (...a: unknown[]) => unknown> | undefined
-          const fn = method ? bucket?.[method] : (bucket as unknown as (...a: unknown[]) => unknown)
+          const segs = name.split('.')
+          let targetObj: unknown = api
+          for (const s of segs) {
+            if (!targetObj || typeof targetObj !== 'object') {
+              targetObj = undefined
+              break
+            }
+            targetObj = (targetObj as Record<string, unknown>)[s]
+          }
+          const fn = typeof targetObj === 'function' ? (targetObj as (...a: unknown[]) => unknown) : undefined
           if (!fn) {
             const hint = RENAMED_API_HINT[name]
             throw new Error('沙箱里没有这个 api：' + name + (hint ? '。它已改名，现在写作 ' + hint : ''))

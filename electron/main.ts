@@ -39,6 +39,7 @@ import { appUserModelId } from './app/identity'
 import { installAppMenu } from './app/icon'
 import { registerIpc } from './app/ipc'
 import { installLocalFileCsp } from './app/exportPdf'
+import { cleanupAllProcesses, registerBaseIpc } from './base/ipc'
 
 /* ---------- 启动追踪 ---------- */
 
@@ -116,6 +117,7 @@ function main(): void {
     registerProxyProtocol()
     installLocalFileCsp()
     installAppMenu()
+    registerBaseIpc()
     // 内置浏览器的会话与守门（网页页签）：分区、UA 伪装、权限、弹窗与快捷键转发
     setupWebBrowser()
     /*
@@ -137,11 +139,13 @@ function main(): void {
   })
 
   app.on('window-all-closed', () => {
+    cleanupAllProcesses()
     if (process.platform !== 'darwin') app.quit()
   })
   // 真的在退出（托盘菜单、系统关机、或策略就是「直接关闭」）：
   // 放开关窗拦截，否则窗口会被自己拦下来，程序退不掉
   app.on('before-quit', () => {
+    cleanupAllProcesses()
     markQuitting()
     // 考试窗口那层「关窗前问一次」的拦截对退出流程也必须放行：不放的话它会拦住自己，
     // 进程被一个孤儿窗口吊着不退（用户在主窗口里已经点了退出，却什么都没发生）
