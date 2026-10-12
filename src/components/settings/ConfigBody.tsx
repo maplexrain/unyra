@@ -21,9 +21,11 @@ import {
 import {
   ALL_MODALITIES,
   CONTEXT_PRESETS,
+  CUSTOM_PREFIX,
   MODALITY_LABEL,
   baseUrlOf,
   isCustomConfig,
+  isCustomId,
   labelOf,
   makeModelEntry,
   modelEntriesOf,
@@ -40,7 +42,7 @@ import { NO_AUTOFILL } from '../../lib/autofill'
 import { t } from '../../i18n'
 import { KeyField } from './KeyField'
 import { formatContext, headersToText, inputBase, parseHeaders } from './fields'
-import { blankLocal, resolveDraft, type StatusState } from './providerDraft'
+import { resolveDraft, type StatusState } from './providerDraft'
 import { ProviderLogo } from './ProviderLogo'
 
 export function ConfigBody({
@@ -69,8 +71,8 @@ export function ConfigBody({
   const [manualModelId, setManualModelId] = useState('')
   const busy = status.kind === 'busy' || fetchingModels
 
-  const preset = presetOf(cfg.id)
   const custom = isCustomConfig(cfg)
+  const preset = custom ? undefined : presetOf(cfg.id)
   const entries = modelEntriesOf(cfg)
   const headers = parseHeaders(headerText)
   const key = cfg.apiKey.trim()
@@ -82,7 +84,8 @@ export function ConfigBody({
   /* ---- 预设 / 兼容格式切换 ---- */
 
   const switchPreset = (p: ProviderPreset) => {
-    if (p.id === cfg.id) return
+    // 已经处于该预设且非自定义时，无需重复切换
+    if (!custom && p.id === cfg.id) return
     if (takenIds.includes(p.id)) {
       setStatus({ kind: 'fail', msg: t('已经有一条「{0}」配置了，不能再切过来', p.label) })
       return
@@ -95,21 +98,45 @@ export function ConfigBody({
       baseUrl: '',
       apiKey: cfg.apiKey,
       models: cfg.models,
+      extraHeaders: cfg.extraHeaders,
     })
     setStatus({ kind: 'ok', msg: t('已切换为 {0}', p.label) })
   }
 
-  const switchCompat = (c: ProviderProtocol) => {
+  const switchToCustom = () => {
+    if (custom) return
     setStatus({ kind: 'idle' })
+    const newId = isCustomId(cfg.id) ? cfg.id : `${CUSTOM_PREFIX}${crypto.randomUUID()}`
+    const defaultProtocol: ProviderProtocol = 'openai'
     replaceConfig(cfg.id, {
-      ...blankLocal(cfg.id, 'custom'),
-      compat: c,
+      id: newId,
+      kind: 'custom',
+      compat: defaultProtocol,
+      label: cfg.label || (preset ? t('{0}（自定义）', preset.label) : t('自定义配置')),
+      baseUrl: cfg.baseUrl || COMPAT_META[defaultProtocol].defaultBaseUrl,
       apiKey: cfg.apiKey,
       models: cfg.models,
-      baseUrl: cfg.baseUrl || COMPAT_META[c].defaultBaseUrl,
-      label: custom ? cfg.label : '',
+      extraHeaders: cfg.extraHeaders,
     })
-    setStatus({ kind: 'ok', msg: t('已切换为 {0}', compatLabel(c)) })
+    setStatus({ kind: 'ok', msg: t('已切换为无预设自定义配置（默认 OpenAI 兼容协议）') })
+  }
+
+  const switchProtocol = (c: ProviderProtocol) => {
+    if (!custom) return
+    if (cfg.compat === c) return
+    setStatus({ kind: 'idle' })
+    const oldMeta = cfg.compat ? COMPAT_META[cfg.compat] : undefined
+    const newMeta = COMPAT_META[c]
+    const nextBaseUrl =
+      !cfg.baseUrl || (oldMeta && cfg.baseUrl === oldMeta.defaultBaseUrl)
+        ? newMeta.defaultBaseUrl
+        : cfg.baseUrl
+
+    patchProvider(cfg.id, {
+      compat: c,
+      baseUrl: nextBaseUrl,
+    })
+    setStatus({ kind: 'ok', msg: t('已切换协议为 {0}', compatLabel(c)) })
   }
 
   /* ---- 模型管理 ---- */
@@ -541,12 +568,18 @@ export function ConfigBody({
       {/* ==================== 2. 高级配置 ==================== */}
       {activeTab === 'advanced' && (
         <div className="flex flex-col gap-4">
-          {/* ① 切换预设或兼容协议 */}
+          {/* ① 切换预设或自定义 */}
           <div className="rounded-xl border border-line bg-card/50 p-4">
-            <h4 className="mb-2 text-[12px] font-medium text-ink-strong">{t('更换预设与协议')}</h4>
+            <div className="mb-2 flex items-center justify-between">
+              <h4 className="text-[12px] font-medium text-ink-strong">{t('预设与协议')}</h4>
+              <span className="text-[11px] text-ink-faint">
+                {custom ? t('当前：无预设自定义配置') : t('当前：{0} 预设', preset?.label ?? cfg.id)}
+              </span>
+            </div>
+
             <div className="flex flex-wrap gap-1.5">
               {PROVIDERS.map((p) => {
-                const on = cfg.id === p.id && !custom
+                const on = !custom && cfg.id === p.id
                 return (
                   <button
                     key={p.id}
@@ -554,7 +587,7 @@ export function ConfigBody({
                     onClick={() => !on && switchPreset(p)}
                     className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11.5px] transition ${
                       on
-                        ? 'border-seal/50 bg-seal/10 font-medium text-seal-deep'
+                        ? 'border-seal/50 bg-seal/10 font-medium text-seal-deep shadow-2xs'
                         : 'border-line bg-card text-ink-soft hover:border-line-strong hover:text-ink'
                     }`}
                   >
@@ -563,28 +596,58 @@ export function ConfigBody({
                   </button>
                 )
               })}
+
+              {/* 与预设同级的「无预设自定义」选项 */}
+              <button
+                type="button"
+                onClick={() => !custom && switchToCustom()}
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11.5px] transition ${
+                  custom
+                    ? 'border-seal/50 bg-seal/10 font-medium text-seal-deep shadow-2xs'
+                    : 'border-line bg-card text-ink-soft hover:border-line-strong hover:text-ink'
+                }`}
+              >
+                <SlidersHorizontal size={13} className={custom ? 'text-seal' : 'text-ink-faint'} />
+                <span>{t('无预设自定义')}</span>
+              </button>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line/70 pt-2.5">
-              <span className="text-[11.5px] text-ink-soft">{t('自定义协议格式：')}</span>
-              {COMPAT_PROTOCOLS.map((c) => {
-                const on = custom && protocol === c
-                return (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => switchCompat(c)}
-                    className={`rounded-lg border px-2.5 py-1 text-[11.5px] transition ${
-                      on
-                        ? 'border-seal/50 bg-seal/10 font-medium text-seal-deep'
-                        : 'border-line bg-card text-ink-soft hover:border-line-strong hover:text-ink'
-                    }`}
-                  >
-                    {t(compatLabel(c))}
-                  </button>
-                )
-              })}
-            </div>
+            {/* 协议部分：预设与自定义不同展示 */}
+            {custom ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line/70 pt-2.5">
+                <span className="text-[11.5px] font-medium text-ink-strong">{t('协议格式：')}</span>
+                {COMPAT_PROTOCOLS.map((c) => {
+                  const on = protocol === c
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => switchProtocol(c)}
+                      className={`rounded-lg border px-2.5 py-1 text-[11.5px] transition ${
+                        on
+                          ? 'border-seal/50 bg-seal/10 font-medium text-seal-deep'
+                          : 'border-line bg-card text-ink-soft hover:border-line-strong hover:text-ink'
+                      }`}
+                    >
+                      {t(compatLabel(c))}
+                    </button>
+                  )
+                })}
+                <span className="text-[11px] text-ink-faint">
+                  {t('（自定义配置可自由切换协议，默认 OpenAI 兼容）')}
+                </span>
+              </div>
+            ) : (
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line/70 pt-2.5 text-[11.5px]">
+                <span className="text-ink-soft">{t('协议格式：')}</span>
+                <span className="rounded bg-line/60 px-2 py-0.5 font-medium text-ink-strong">
+                  {t(compatLabel(protocol))}
+                </span>
+                <span className="text-[11px] text-ink-faint">
+                  {t('预设已内置协议，无需单独切换。如需自由切换协议，请选用「无预设自定义」。')}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* ② 自定义显示名称 & 单轮 Token 限制 */}

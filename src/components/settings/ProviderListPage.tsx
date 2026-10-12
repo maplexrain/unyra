@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react'
-import { Plus, Settings2, Sparkles, Star } from 'lucide-react'
+import { Plus, Settings2, SlidersHorizontal, Sparkles, Star } from 'lucide-react'
 import {
   labelOf,
   modelEntriesOf,
@@ -168,6 +168,28 @@ export function ProviderListPage({
                   </button>
                 )
               })}
+
+              {/* 无预设自定义（与预设同级） */}
+              <button
+                type="button"
+                onClick={() => {
+                  setCreating(false)
+                  onAddCustom()
+                }}
+                className="flex items-center gap-2.5 rounded-xl border border-line bg-paper p-2.5 text-left transition hover:border-seal/50 hover:bg-seal/[0.04] hover:shadow-2xs"
+              >
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line/60 bg-card text-ink-soft">
+                  <SlidersHorizontal size={15} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[11.5px] font-medium text-ink-strong">
+                    {t('无预设自定义')}
+                  </div>
+                  <div className="truncate text-[10px] text-ink-faint">
+                    {t('自由切换协议')}
+                  </div>
+                </div>
+              </button>
             </div>
 
             <div className="mt-3 flex items-center justify-between border-t border-line/70 pt-2.5">

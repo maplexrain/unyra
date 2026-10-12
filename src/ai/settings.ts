@@ -548,7 +548,15 @@ export function subscribeAiSettings(listener: () => void): () => void {
 }
 
 function emitAiSettings(): void {
-  for (const listener of [...listeners]) listener()
+  // 异步微任务派发，彻底解耦存储持久化与 React 当前组件的渲染阶段，
+  // 避免在某一组件渲染或状态计算时同步触发其它订阅组件（如 ModelPicker）的更新。
+  if (typeof queueMicrotask === 'function') {
+    queueMicrotask(() => {
+      for (const listener of [...listeners]) listener()
+    })
+  } else {
+    for (const listener of [...listeners]) listener()
+  }
 }
 
 /* ---------- 全局选择（所有 AI 功能的共同基底） ---------- */
@@ -669,7 +677,7 @@ export function globalSummary(settings: AiSettings = loadAiSettings()): string {
 export function resolveProvider(settings: AiSettings = loadAiSettings()): ResolvedProvider {
   const cfg = globalProvider(settings)
   if (!cfg) throw new AiRequestError('尚未配置任何 AI 提供商，请先在设置里创建')
-  const preset = presetOf(cfg.id)
+  const preset = isCustomConfig(cfg) ? undefined : presetOf(cfg.id)
   return {
     id: cfg.id,
     label: labelOf(cfg),

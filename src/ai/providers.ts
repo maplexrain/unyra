@@ -421,10 +421,31 @@ export const isBuiltinId = (id: string): boolean => BUILTIN_IDS.has(id)
 export const firstKnownModelId = (_preset: ProviderPreset | undefined): string => ''
 
 /**
- * 拼接端点地址：baseUrl 末尾的 `/` 去掉，再补上路径。
- * 这样用户粘贴带不带尾斜杠的地址都能用。
+ * 拼接端点地址：
+ * 1. baseUrl 末尾的 `/` 去掉，再补上路径；
+ * 2. 如果 baseUrl 已经包含了该目标路径（用户误填完整端点），直接返回，避免重复拼接；
+ * 3. 智能消除 `/v1` 重叠：如果 baseUrl 已以 `/v1` 结尾，而 path 以 `/v1/` 开头（如 Anthropic 的 /v1/messages），
+ *    自动消除重复的 `/v1`，避免中转站统一使用 .../v1 时拼成 .../v1/v1/messages；
+ * 4. 同样如果 baseUrl 已经以 `/messages` 结尾而 path 是 `/v1/messages`，避免重复拼接。
  */
 export function endpoint(baseUrl: string, path: string): string {
   const base = baseUrl.trim().replace(/\/+$/, '')
-  return `${base}${path}`
+  const normPath = path.startsWith('/') ? path : `/${path}`
+
+  // 如果 base 已经以该完整路径结尾，直接返回，避免重复拼接
+  if (base.endsWith(normPath)) {
+    return base
+  }
+
+  // 消除 baseUrl 与 path 之间的 /v1 重叠（例如 base 为 'https://proxy.com/v1' 且 path 为 '/v1/messages'）
+  if (base.endsWith('/v1') && normPath.startsWith('/v1/')) {
+    return `${base}${normPath.slice(3)}`
+  }
+
+  // 避免用户填入完整 /messages 后缀时与 /v1/messages 重叠
+  if (normPath.startsWith('/v1/') && base.endsWith(normPath.slice(3))) {
+    return base
+  }
+
+  return `${base}${normPath}`
 }

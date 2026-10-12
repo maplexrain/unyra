@@ -109,6 +109,8 @@ export default function SettingsPanel({ onRootChanged, onToast }: Props) {
   const tabs = devUnlocked || devEntry ? [...TABS, DEV_TAB] : TABS
 
   const saveTimerRef = useRef<number | null>(null)
+  const draftRef = useRef(draft)
+  draftRef.current = draft
 
   const persistSettings = useCallback((next: AiSettings) => {
     const gp = next.providers.find((p) => p.id === next.global.providerId) ?? next.providers[0]
@@ -119,18 +121,17 @@ export default function SettingsPanel({ onRootChanged, onToast }: Props) {
 
   const updateDraft = useCallback(
     (updater: (prev: AiSettings) => AiSettings, immediate = false) => {
-      setDraft((prev) => {
-        const next = updater(prev)
-        if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
-        if (immediate) {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+      const next = updater(draftRef.current)
+      draftRef.current = next
+      setDraft(next)
+      if (immediate) {
+        persistSettings(next)
+      } else {
+        saveTimerRef.current = window.setTimeout(() => {
           persistSettings(next)
-        } else {
-          saveTimerRef.current = window.setTimeout(() => {
-            persistSettings(next)
-          }, 300)
-        }
-        return next
-      })
+        }, 300)
+      }
     },
     [persistSettings],
   )

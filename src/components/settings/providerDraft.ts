@@ -11,7 +11,7 @@ export type StatusState = { kind: 'idle' } | { kind: 'busy' } | { kind: 'ok'; ms
 
 /** 把一条配置解析成可发请求的形式（与 settings 的 resolveProvider 同口径） */
 export function resolveDraft(cfg: ProviderConfig, extraHeaders?: Record<string, string>): ResolvedProvider {
-  const preset = presetOf(cfg.id)
+  const preset = cfg.kind === 'custom' ? undefined : presetOf(cfg.id)
   return {
     id: cfg.id,
     label: labelOf(cfg),
