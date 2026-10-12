@@ -557,7 +557,7 @@ function FavMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[70] min-w-[190px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[70] min-w-[190px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
       {picking || creating ? (
         creating ? (
@@ -666,7 +666,7 @@ function GroupMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[70] min-w-[190px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[70] min-w-[190px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
       <button type="button" role="menuitem" onClick={onRename} className={MENU_ROW}>
         <span className="flex w-[14px] shrink-0 items-center justify-center">

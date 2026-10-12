@@ -115,9 +115,16 @@ export function RowMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[70] min-w-[190px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[70] min-w-[190px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
-      <div className="truncate px-2.5 py-1 text-[10.5px] text-ink-faint" title={title}>
+      <div
+        className="truncate px-2.5 py-1 text-[10.5px] text-ink-faint"
+        title={
+          node && target.kind !== 'node' && target.kind !== 'teach' && target.kind !== 'outline' && target.kind !== 'folder'
+            ? `${title} · ${node.title}`
+            : title
+        }
+      >
         {title}
         {node && target.kind !== 'node' && target.kind !== 'teach' && target.kind !== 'outline' && target.kind !== 'folder' ? (
           <span> · {node.title}</span>

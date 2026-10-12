@@ -1292,7 +1292,7 @@ function BarMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[90] min-w-[196px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[90] min-w-[196px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
       <button type="button" role="menuitem" onClick={onOpenWebTab} className={ROW}>
         <span className={ICON}>
@@ -1398,9 +1398,17 @@ function TabMenu({
   }, [tabs, targetTab, ancestorDistMap, descendantDistMap])
 
   // 4. 关闭非文档：不是 teach/note/super/local 的非纯文档类页签（web、系统设置等）
+  // 当总页签数只剩1个且为非文档时，该动作与关闭当前项完全一致，无需展示
   const nonDocIds = useMemo(() => {
+    if (tabs.length <= 1) return []
     return tabs.filter((t) => !isDocumentTab(t.ref)).map((t) => t.id)
   }, [tabs])
+
+  const hasRelationClose =
+    unrelatedIds.length > 0 ||
+    childrenIds.length > 0 ||
+    parentsIds.length > 0 ||
+    nonDocIds.length > 0
 
   /*
    * 点别处 / 滚动 / Esc / 改窗口大小都收起，并把菜单夹进视口：这两条与资源管理器
@@ -1418,7 +1426,7 @@ function TabMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[90] min-w-[196px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[90] min-w-[196px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
       {/*
         抬头：这一下是对着哪一份文档。与节点、笔记那两张菜单同一条规矩——
@@ -1453,91 +1461,104 @@ function TabMenu({
         {t(TAB_CLOSE_LABEL.self)}
       </button>
 
-      {/* 关闭其他 */}
-      <button
-        type="button"
-        role="menuitem"
-        disabled={otherCount === 0}
-        onClick={() => onPick('others')}
-        className={ROW}
-      >
-        <span className={ICON}>
-          <FoldHorizontal size={13} className="text-seal" />
-        </span>
-        {t(TAB_CLOSE_LABEL.others)}
-        <span className={COUNT}>{otherCount}</span>
-      </button>
+      {/* 关闭其他：有其他页签时才显示 */}
+      {otherCount > 0 && (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => onPick('others')}
+          className={ROW}
+        >
+          <span className={ICON}>
+            <FoldHorizontal size={13} className="text-seal" />
+          </span>
+          {t(TAB_CLOSE_LABEL.others)}
+          <span className={COUNT}>{otherCount}</span>
+        </button>
+      )}
 
-      {/* 关联与类型关闭操作组 */}
-      <span aria-hidden="true" className="my-1 block h-px bg-line" />
-      <button
-        type="button"
-        role="menuitem"
-        disabled={unrelatedIds.length === 0}
-        onClick={() => onPick('unrelated', unrelatedIds)}
-        className={ROW}
-      >
-        <span className={ICON}>
-          <Unlink size={13} className="text-seal" />
-        </span>
-        {t(TAB_CLOSE_LABEL.unrelated)}
-        <span className={COUNT}>{unrelatedIds.length}</span>
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        disabled={childrenIds.length === 0}
-        onClick={() => onPick('children', childrenIds)}
-        className={ROW}
-      >
-        <span className={ICON}>
-          <CornerDownRight size={13} className="text-seal" />
-        </span>
-        {t(TAB_CLOSE_LABEL.children)}
-        <span className={COUNT}>{childrenIds.length}</span>
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        disabled={parentsIds.length === 0}
-        onClick={() => onPick('parents', parentsIds)}
-        className={ROW}
-      >
-        <span className={ICON}>
-          <CornerLeftUp size={13} className="text-seal" />
-        </span>
-        {t(TAB_CLOSE_LABEL.parents)}
-        <span className={COUNT}>{parentsIds.length}</span>
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        disabled={nonDocIds.length === 0}
-        onClick={() => onPick('nonDocs', nonDocIds)}
-        className={ROW}
-      >
-        <span className={ICON}>
-          <FileX size={13} className="text-seal" />
-        </span>
-        {t(TAB_CLOSE_LABEL.nonDocs)}
-        <span className={COUNT}>{nonDocIds.length}</span>
-      </button>
+      {/* 关联与类型关闭操作组：存在实际可关目标时才渲染 */}
+      {hasRelationClose && (
+        <>
+          <span aria-hidden="true" className="my-1 block h-px bg-line" />
+          {unrelatedIds.length > 0 && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => onPick('unrelated', unrelatedIds)}
+              className={ROW}
+            >
+              <span className={ICON}>
+                <Unlink size={13} className="text-seal" />
+              </span>
+              {t(TAB_CLOSE_LABEL.unrelated)}
+              <span className={COUNT}>{unrelatedIds.length}</span>
+            </button>
+          )}
+          {childrenIds.length > 0 && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => onPick('children', childrenIds)}
+              className={ROW}
+            >
+              <span className={ICON}>
+                <CornerDownRight size={13} className="text-seal" />
+              </span>
+              {t(TAB_CLOSE_LABEL.children)}
+              <span className={COUNT}>{childrenIds.length}</span>
+            </button>
+          )}
+          {parentsIds.length > 0 && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => onPick('parents', parentsIds)}
+              className={ROW}
+            >
+              <span className={ICON}>
+                <CornerLeftUp size={13} className="text-seal" />
+              </span>
+              {t(TAB_CLOSE_LABEL.parents)}
+              <span className={COUNT}>{parentsIds.length}</span>
+            </button>
+          )}
+          {nonDocIds.length > 0 && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => onPick('nonDocs', nonDocIds)}
+              className={ROW}
+            >
+              <span className={ICON}>
+                <FileX size={13} className="text-seal" />
+              </span>
+              {t(TAB_CLOSE_LABEL.nonDocs)}
+              <span className={COUNT}>{nonDocIds.length}</span>
+            </button>
+          )}
+        </>
+      )}
 
-      {/* 全部关闭 */}
-      <span aria-hidden="true" className="my-1 block h-px bg-line" />
-      <button
-        type="button"
-        role="menuitem"
-        title={t('这一格里的页签全部关掉（含当前这一个）')}
-        onClick={() => onPick('all')}
-        className={ROW + ' text-seal-deep hover:bg-seal/10'}
-      >
-        <span className={ICON}>
-          <OctagonX size={13} />
-        </span>
-        {t(TAB_CLOSE_LABEL.all)}
-        <span className={COUNT}>{tabs.length}</span>
-      </button>
+      {/* 全部关闭：只在页签数大于1时渲染（仅剩1个时与关闭无区别） */}
+      {tabs.length > 1 && (
+        <>
+          <span aria-hidden="true" className="my-1 block h-px bg-line" />
+          <button
+            type="button"
+            role="menuitem"
+            title={t('这一格里的页签全部关掉（含当前这一个）')}
+            onClick={() => onPick('all')}
+            className={ROW + ' text-seal-deep hover:bg-seal/10'}
+          >
+            <span className={ICON}>
+              <OctagonX size={13} />
+            </span>
+            {t(TAB_CLOSE_LABEL.all)}
+            <span className={COUNT}>{tabs.length}</span>
+          </button>
+        </>
+      )}
     </div>
   )
 }

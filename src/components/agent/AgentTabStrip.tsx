@@ -403,8 +403,8 @@ export default function AgentTabStrip({
           <AgentTabMenu
             menu={menu}
             label={menuLabel}
-            count={tabs.length}
-            otherCount={Math.max(0, tabs.length - 1)}
+            count={tabs.filter((t) => t.kind !== 'free').length}
+            otherCount={Math.max(0, tabs.filter((t) => t.kind !== 'free').length - 1)}
             onPick={(mode) => {
               onCloseMode(menu.key, mode)
               setMenu(null)
@@ -448,7 +448,7 @@ function AgentTabMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[90] min-w-[200px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[90] min-w-[200px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
       {/* 抬头：这一下是对着哪一位导师 */}
       <div className="truncate px-2.5 py-1 text-[10.5px] text-ink-faint" title={label}>
@@ -479,55 +479,58 @@ function AgentTabMenu({
         {t(TAB_CLOSE_LABEL.force)}
       </button>
 
-      <span aria-hidden="true" className="my-1 block h-px bg-line" />
+      {/* 关闭其他 / 关闭其他（强制）：仅在存在其他可关闭页签时显示 */}
+      {otherCount > 0 && (
+        <>
+          <span aria-hidden="true" className="my-1 block h-px bg-line" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => onPick('others')}
+            className={ROW}
+          >
+            <span className={ICON}>
+              <FoldHorizontal size={13} className="text-ink-soft" />
+            </span>
+            {t(TAB_CLOSE_LABEL.others)}
+            <span className={COUNT}>{otherCount}</span>
+          </button>
 
-      {/* 关闭其他 */}
-      <button
-        type="button"
-        role="menuitem"
-        disabled={otherCount === 0}
-        onClick={() => onPick('others')}
-        className={ROW}
-      >
-        <span className={ICON}>
-          <FoldHorizontal size={13} className="text-ink-soft" />
-        </span>
-        {t(TAB_CLOSE_LABEL.others)}
-        <span className={COUNT}>{otherCount}</span>
-      </button>
+          <button
+            type="button"
+            role="menuitem"
+            title={t('连同文档区关联的页签一起关闭')}
+            onClick={() => onPick('forceOthers')}
+            className={ROW}
+          >
+            <span className={ICON}>
+              <FoldHorizontal size={13} className="text-seal" />
+            </span>
+            {t(TAB_CLOSE_LABEL.forceOthers)}
+            <span className={COUNT}>{otherCount}</span>
+          </button>
+        </>
+      )}
 
-      {/* 关闭其他（强制）：连同文档区关联的tab一起关闭 */}
-      <button
-        type="button"
-        role="menuitem"
-        disabled={otherCount === 0}
-        title={t('连同文档区关联的页签一起关闭')}
-        onClick={() => onPick('forceOthers')}
-        className={ROW}
-      >
-        <span className={ICON}>
-          <FoldHorizontal size={13} className="text-seal" />
-        </span>
-        {t(TAB_CLOSE_LABEL.forceOthers)}
-        <span className={COUNT}>{otherCount}</span>
-      </button>
-
-      <span aria-hidden="true" className="my-1 block h-px bg-line" />
-
-      {/* 全部关闭 */}
-      <button
-        type="button"
-        role="menuitem"
-        title={t('关闭所有导师页签')}
-        onClick={() => onPick('all')}
-        className={ROW + ' text-seal-deep hover:bg-seal/10'}
-      >
-        <span className={ICON}>
-          <OctagonX size={13} />
-        </span>
-        {t(TAB_CLOSE_LABEL.all)}
-        <span className={COUNT}>{count}</span>
-      </button>
+      {/* 全部关闭：仅在可关闭页签数大于1时显示（仅剩1个时与关闭无差别） */}
+      {count > 1 && (
+        <>
+          <span aria-hidden="true" className="my-1 block h-px bg-line" />
+          <button
+            type="button"
+            role="menuitem"
+            title={t('关闭所有导师页签')}
+            onClick={() => onPick('all')}
+            className={ROW + ' text-seal-deep hover:bg-seal/10'}
+          >
+            <span className={ICON}>
+              <OctagonX size={13} />
+            </span>
+            {t(TAB_CLOSE_LABEL.all)}
+            <span className={COUNT}>{count}</span>
+          </button>
+        </>
+      )}
     </div>
   )
 }

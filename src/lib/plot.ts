@@ -334,21 +334,6 @@ function fail(el: HTMLElement, stage: HTMLElement, message: string, source: stri
  * polyline / scatter 才会切到 builtIn 采样器，否则运行时会抛错。
  * 变量名由采样器固定传参决定：参数曲线用 t，极坐标用 theta。
  */
-export const PLOT_SYNTAX_GUIDE = `函数图像：用三个反引号 + plot 包一段 JSON，即可在笔记里插入可交互的函数图像。
-
-基本结构（除 data 外都可省略）：
-- title：图标题；需要公式时用行内 LaTeX（$...$），会被正确排版
-- xAxis / yAxis：{ "domain": [min, max], "label": "x", "grid": true }；type 可选 "log"；
-  label 同样支持 $...$ 公式
-- data：图形数组（显式函数最常用：{ "fn": "x^2" }；参数曲线、极坐标、散点、向量、
-  隐函数等各形态的完整写法，第一次写图像时「提示词模块 · 函数图像的数据形态」会自动注入）
-- annotations：[{ "x": 1, "y": 1, "label": "切点" }]
-
-写法要求：
-- 乘号必须写出来（2*x 而不是 2x），乘方用 ^；支持 sin cos tan exp log sqrt nthRoot abs 等。
-- **开方只能写 sqrt(x)（平方根）或 nthRoot(x,3)（三次方根），不要写 x^(1/3) 这类分数次幂**：
-  区间采样器只认整数指数，碰到分数会当成空集，那条曲线一个点都画不出来。
-  （真写了也不会错：渲染时 x^(1/3) 会被自动改写成 nthRoot(x,3)，但自己写清楚更稳，
-  而且 nthRoot 在自变量为负时也画得出来——奇数次方根对负数是有定义的。）
-- 表达式里只能用数学函数与四则运算，不要出现浏览器对象或函数定义。
-- 只在图像确实有助于理解时使用，一张图配一两句文字说明。`
+export const PLOT_SYNTAX_GUIDE = `函数图像：用三个反引号 + plot 包一段 JSON 插入可交互图像（如 \`\`\`plot { "data": [{ "fn": "x^2" }] } \`\`\`）。
+- 支持 title, xAxis, yAxis, data, annotations；支持 LaTeX 公式。
+- 表达式写明乘号 (*)，开方写 sqrt(x) 或 nthRoot(x, 3)，避免分数指数。极坐标/参数方程等高级形态写出图像时由 \`plot-forms\` 自动注入。`

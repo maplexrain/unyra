@@ -281,7 +281,7 @@ function ThemeMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[70] max-h-[70vh] min-w-[172px] overflow-y-auto rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[70] max-h-[70vh] min-w-[172px] max-w-[240px] overflow-y-auto rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
       {THEME_MODES.map((mode) => {
         const on = mode === current
