@@ -1,7 +1,7 @@
 /**
  * 注册 base.files.* 与 base.process.* 的主进程 IPC 通道。
  */
-import { ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import {
   baseFileCopy,
   baseFileDelete,
@@ -26,6 +26,14 @@ import {
 import { syncAllowedDirs } from './permissions'
 import type { BaseProcessCreateOpts } from '../../shared/ipc'
 
+function broadcastFileChanged(filePath: string, action: 'write' | 'edit' | 'delete', content?: string) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('base:files:changed', { path: filePath, action, content })
+    }
+  }
+}
+
 export function registerBaseIpc(): void {
   // 权限白名单同步
   ipcMain.handle('base:permissions:sync', (_e, dirs: unknown) => {
@@ -37,12 +45,20 @@ export function registerBaseIpc(): void {
   ipcMain.handle('base:files:read', (_e, p: unknown, opts: unknown) =>
     baseFileRead(p, opts as { encoding?: 'utf8' | 'base64' | 'binary'; maxBytes?: number }),
   )
-  ipcMain.handle('base:files:write', (_e, p: unknown, content: unknown, opts: unknown) =>
-    baseFileWrite(p, content, opts as { encoding?: 'utf8' | 'base64'; overwrite?: boolean }),
-  )
-  ipcMain.handle('base:files:edit', (_e, p: unknown, opts: unknown) =>
-    baseFileEdit(p, opts as { replace?: { target: string; replacement: string; all?: boolean }; content?: string; start?: number; end?: number }),
-  )
+  ipcMain.handle('base:files:write', async (_e, p: unknown, content: unknown, opts: unknown) => {
+    const res = await baseFileWrite(p, content, opts as { encoding?: 'utf8' | 'base64'; overwrite?: boolean })
+    if (res.ok) {
+      broadcastFileChanged(String(p ?? ''), 'write', typeof content === 'string' ? content : undefined)
+    }
+    return res
+  })
+  ipcMain.handle('base:files:edit', async (_e, p: unknown, opts: unknown) => {
+    const res = await baseFileEdit(p, opts as { replace?: { target: string; replacement: string; all?: boolean }; content?: string; start?: number; end?: number })
+    if (res.ok) {
+      broadcastFileChanged(String(p ?? ''), 'edit')
+    }
+    return res
+  })
   ipcMain.handle('base:files:list', (_e, p: unknown) => baseFileList(p))
   ipcMain.handle('base:files:stat', (_e, p: unknown) => baseFileStat(p))
   ipcMain.handle('base:files:mkdir', (_e, p: unknown) => baseFileMkdir(p))
@@ -50,7 +66,13 @@ export function registerBaseIpc(): void {
     baseFileCopy(from, to, opts as { overwrite?: boolean }),
   )
   ipcMain.handle('base:files:move', (_e, from: unknown, to: unknown) => baseFileMove(from, to))
-  ipcMain.handle('base:files:delete', (_e, p: unknown) => baseFileDelete(p))
+  ipcMain.handle('base:files:delete', async (_e, p: unknown) => {
+    const res = await baseFileDelete(p)
+    if (res.ok) {
+      broadcastFileChanged(String(p ?? ''), 'delete')
+    }
+    return res
+  })
 
   // base.process.* 通道
   ipcMain.handle('base:process:create', (_e, opts: unknown) =>

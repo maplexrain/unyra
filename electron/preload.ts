@@ -624,6 +624,11 @@ const api = {
       ipcRenderer.invoke('base:files:move', from, to),
     delete: (p: string): Promise<BaseFileOpResult> =>
       ipcRenderer.invoke('base:files:delete', p),
+    onChanged: (cb: (payload: { path: string; action: string; content?: string }) => void): (() => void) => {
+      const listener = (_e: unknown, payload: { path: string; action: string; content?: string }) => cb(payload)
+      ipcRenderer.on('base:files:changed', listener)
+      return () => ipcRenderer.removeListener('base:files:changed', listener)
+    },
   },
 
   process: {
@@ -666,6 +671,11 @@ const api = {
         ipcRenderer.invoke('base:files:move', from, to),
       delete: (p: string): Promise<BaseFileOpResult> =>
         ipcRenderer.invoke('base:files:delete', p),
+      onChanged: (cb: (payload: { path: string; action: string; content?: string }) => void): (() => void) => {
+        const listener = (_e: unknown, payload: { path: string; action: string; content?: string }) => cb(payload)
+        ipcRenderer.on('base:files:changed', listener)
+        return () => ipcRenderer.removeListener('base:files:changed', listener)
+      },
     },
     process: {
       create: (opts: BaseProcessCreateOpts): Promise<BaseProcessCreateResult> =>

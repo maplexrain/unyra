@@ -13,6 +13,7 @@ import { MAX_LOGGED_CALLS, MAX_RESULT_CHARS } from './limits'
 import { asExamPayload, asIndex, asOptionalPath, asRecord, asText } from './refs'
 import type { DocRef, NodeRef } from './refs'
 import type { SandboxCall, SandboxOptions } from './types'
+import { vfsBus } from '../../vfs'
 
 /** 把结果裁到上限：宁可给模型一段被截断的内容，也不要它被 413 顶回来 */
 export function clip(text: string, limit = MAX_RESULT_CHARS): string {
@@ -885,16 +886,20 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     })
   }, log)
 
-  wrapApi(api, 'files.write', async (args) => {
+    wrapApi(api, 'files.write', async (args) => {
     const p = asText(args[0])
     const content = asText(args[1])
     const opt = asRecord(args[2])
     const nf = getNativeFiles()
     if (!nf) return { ok: true, path: p, bytesWritten: content.length }
-    return await nf.write(p, content, {
+    const res = await nf.write(p, content, {
       encoding: opt.encoding === 'base64' ? 'base64' : 'utf8',
       overwrite: opt.overwrite !== false,
     })
+    if (res.ok) {
+      vfsBus.notifyExternalChange({ path: p, action: 'write', content, source: 'agent' })
+    }
+    return res
   }, log)
 
   wrapApi(api, 'files.edit', async (args) => {
@@ -903,7 +908,7 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     const nf = getNativeFiles()
     if (!nf) return { ok: true, path: p, modified: false }
     const replaceObj = opt.replace ? asRecord(opt.replace) : undefined
-    return await nf.edit(p, {
+    const res = await nf.edit(p, {
       replace: replaceObj ? {
         target: asText(replaceObj.target),
         replacement: asText(replaceObj.replacement),
@@ -913,6 +918,10 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
       start: typeof opt.start === 'number' ? opt.start : undefined,
       end: typeof opt.end === 'number' ? opt.end : undefined,
     })
+    if (res.ok) {
+      vfsBus.notifyExternalChange({ path: p, action: 'edit', source: 'agent' })
+    }
+    return res
   }, log)
 
   wrapApi(api, 'files.list', async (args) => {
@@ -957,7 +966,11 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     const p = asText(args[0])
     const nf = getNativeFiles()
     if (!nf) return { ok: true }
-    return await nf.delete(p)
+    const res = await nf.delete(p)
+    if (res.ok) {
+      vfsBus.notifyExternalChange({ path: p, action: 'delete', source: 'agent' })
+    }
+    return res
   }, log)
 
   wrapApi(api, 'process.create', async (args) => {

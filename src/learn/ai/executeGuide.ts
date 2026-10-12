@@ -101,6 +101,18 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
 - api.process.get(process_id) → { ok, process: {...} }：根据 process_id 获取进程详情。
 - 权限与生命周期边界：对当前学习目标根目录拥有完全读写权限，操作外部路径需用户在设置「工具」页加入白名单；进程生命周期与主应用强绑定，应用退出或中断时子进程自动级联清理。
 
+数据资产与存储文件契约（所有状态读写真实文件；文档直接读写，数据文件读后 JSON.parse 反序列化，写时 JSON.stringify）：
+- 知识点教学文档: docs/:goal/.../:title.md（文档文件，Markdown 纯文本，files.read/write/edit）
+- 个人笔记文档: docs/:goal/.../:title.notes/:name.md（文档文件，Markdown 纯文本）
+- 知识点元数据与状态: docs/:goal/.../:title.meta.json（数据文件，JSON 对象）
+  结构: { id: string, title: string, description: string, status: "learning"|"mastered", learning?: { mastery: 0~100, selfRating: string, mistakes: [{ pattern: string, count: number }] } }
+- 结构化大纲: docs/:goal/.../outline.json（数据文件，JSON 对象）
+  结构: { intro: string, children: [{ key: string, title: string, summary: string }] }，列表元素形状: { key, title, summary }
+- 长期跨轮记忆: mind/:key.json（数据文件，JSON 对象: { key: string, text: string, updatedAt: number }）
+- 学习者画像: user/profile.json（数据文件，JSON 对象: { nickname: string, education?: string, major?: string, masteredSkills: string[] }）
+- 目标临时变量: docs/:goal/tmp.json（数据文件，JSON 对象: { version: 1, entries: Record<string, { key, value }> }）
+- 试卷考核: exams/:examId.json（数据文件，JSON 对象: { id, title, kind, level, minutes, questions: [{ id, type, stem, answer, options? }] }）
+
 **按需加载的能力**（以下组的完整规范在首次调用对应 api 或写出对应标记时作为提示词模块自动注入，此处仅列索引）：
 - doc-html：教学文档以 HTML + Tailwind 工具类排版（两栏、提示框、时间轴、手绘 SVG 图表配方），写教学文档时自动注入。
 - sdoc.*：超级文档（绑定节点的独立可交互 HTML 小工具）。

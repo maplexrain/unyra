@@ -376,6 +376,7 @@ export interface NativeBridge {
     copy(from: string, to: string, opts?: { overwrite?: boolean }): Promise<BaseFileOpResult>
     move(from: string, to: string): Promise<BaseFileOpResult>
     delete(path: string): Promise<BaseFileOpResult>
+    onChanged?(cb: (payload: { path: string; action: string; content?: string }) => void): () => void
   }
   process: {
     create(opts: BaseProcessCreateOpts): Promise<BaseProcessCreateResult>
@@ -398,6 +399,7 @@ export interface NativeBridge {
       copy(from: string, to: string, opts?: { overwrite?: boolean }): Promise<BaseFileOpResult>
       move(from: string, to: string): Promise<BaseFileOpResult>
       delete(path: string): Promise<BaseFileOpResult>
+      onChanged?(cb: (payload: { path: string; action: string; content?: string }) => void): () => void
     }
     process: {
       create(opts: BaseProcessCreateOpts): Promise<BaseProcessCreateResult>

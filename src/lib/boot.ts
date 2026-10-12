@@ -29,6 +29,7 @@ import './voice/plugin'
 import { refreshVoiceGpuDefault } from './voice/settings'
 import { loadSkillsFromDisk } from '../agent/skill/fs'
 import { startupMark } from './startupTrace'
+import { vfsBus } from '../vfs'
 import type { User } from '../user/types'
 
 export interface BootResult {
@@ -121,6 +122,19 @@ function installFlushHooks(): void {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') idle()
   })
+
+  // 绑定 VFS 真实文件变动监听（来自主进程或外部修改）
+  const filesApi = window.mojiNative?.files ?? window.mojiNative?.base?.files
+  if (filesApi?.onChanged) {
+    filesApi.onChanged((payload) => {
+      vfsBus.notifyExternalChange({
+        path: payload.path,
+        action: payload.action as 'write' | 'edit' | 'delete',
+        content: payload.content,
+        source: 'watcher',
+      })
+    })
+  }
 }
 
 installFlushHooks()
