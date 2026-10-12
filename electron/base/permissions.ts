@@ -36,12 +36,13 @@ export function checkPathPermission(targetPath: string): {
     return { allowed: false, normalized: '', error: '路径不合法' }
   }
 
-  const normalized = path.resolve(targetPath)
-  const roots = [currentRoot(), ...allowedDirsCache].filter(Boolean).map((d) => path.resolve(d))
+  const root = currentRoot()
+  const normalized = path.isAbsolute(targetPath) ? path.resolve(targetPath) : path.resolve(root, targetPath)
+  const roots = [root, ...allowedDirsCache].filter(Boolean).map((d) => path.resolve(d))
 
-  const allowed = roots.some((root) => {
-    if (normalized === root) return true
-    const prefix = root.endsWith(path.sep) ? root : root + path.sep
+  const allowed = roots.some((r) => {
+    if (normalized === r) return true
+    const prefix = r.endsWith(path.sep) ? r : r + path.sep
     return normalized.startsWith(prefix)
   })
 

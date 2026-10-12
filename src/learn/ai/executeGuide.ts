@@ -54,33 +54,16 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
 - api.node.read(path)：单个节点详情（含上级与各笔记字数）。
 - api.node.title(path) 读标题；api.node.rename(path, 新标题) 改名。
 - api.node.update(path, { title, description, status })：改属性（status: 'mastered' 为已掌握）。
-- api.description.read(path) 与 update(path, content)：描述读写。
 - api.node.create({ parent, title, description })：新建子节点，**parent 必填**（标题/路径/#id）。
 - api.node.move(path, 新父节点) 迁移父子层级；api.node.delete(path) 删除节点（学习目标本身不能删）。
 
-目标大纲（outline）：
-- api.outline.read(path?) → { intro, children: [{ key, title, summary }] }：读取结构化大纲。
-- api.outline.write(path?, { intro, children })：整份写入。**只写直接子层级（一层为止）**，孙辈规划留给子节点自身。
-
-学习状态（state）：
-- api.state.read(path?)：自评、掌握度 (0~100)、错误记忆与检验时间线。
-- api.state.update(path?, { self, by, mastery, note })：改自评（mastered/familiar/unknown/unsure，用户亲口用 by:'user'，AI推断用 by:'ai'）或掌握度。
-- api.state.mistake(path?, { pattern, cause })：记一次错误模式（描述错法，同类模式复犯自动累加）。
-- api.state.forget(path?, pattern?)：清除错误记忆（纠正后才清）。
-- api.state.check(path?, { kind, score, question, answer, mentioned, missed, misconceptions, note })：记检验记录（probe/exam/recall/review）。
-
-临时变量、长期记忆与画像：
-- api.tmp.set({ key, value, ttlMs }) / get / del / list / clear：当前节点临时变量（大中间结果暂存，不进上下文）。
-- api.mind.list() / read(idOrKey) / write({ key?, text }) / delete / clear：跨轮长期记忆（存约定与风格偏好，写结论+边界条件，读取请读全文）。
-- api.userInfo.get() / update({ 字段: 值 })：画像读写（增量更新，未填字段勿臆断）。
+人机协作与辅助控制：
 - api.tiktok() 提示音；api.wait(ms) 阻塞等待；api.log(...) 调试输出；api.ui.point(path?, tab?) 在文档区打开并定位。
-
-人机协作（api.ask）：
 - api.ask({ title?, questions })：向用户展示结构化表单并阻塞等待作答（超时 1 分钟未操作返回 timedOut:true）。
   每题 { type ('single'|'multiple'|'short'), prompt, options?, when?, userInfo?, id? }：
   - options 写 2~8 项，界面自动附「其他」；
   - when: { id, oneOf: [...] } 联动条件；
-  - 题目上写 userInfo: '字段名' 时，答案提交时自动落进画像，无需再调 update。
+  - 题目上写 userInfo: '字段名' 时，答案提交时自动落进画像。
 
 基础文件系统与系统进程（最底层基础能力，沙箱中既支持 api.files.* / api.process.*，亦可直接写 files.* / process.*）：
 - api.files.read(path, encoding?) → { ok, path, content, size, encoding }：读取真实路径文件，支持 utf8/base64 等各种文本与二进制。
@@ -121,7 +104,6 @@ api 一览（文档类的第一个参数都是 path，省略即「当前节点�
 - res.*：目标静态资源库（res.read 看图，moji:static/uuid 引用）。
 - exam.*：试卷生成（exam.create）与小测评估。
 - review.*：间隔复习计划与记录（+1/+3/+7/+14/+30）。
-- workspace.*：节点磁盘工作区文件读写。
 - method.*：持久化函数注册与执行（供超级文档跨环境调用）。
 - code.*：伪编译保存（code.save）。
 - compact：上下文压缩与交接摘要（api.compact）。

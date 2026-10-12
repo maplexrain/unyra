@@ -168,17 +168,6 @@ export async function apiNameTests() {
     'node.delete': "''",
     // 迁移：把刚建的临时节点挂到根之下（它已在根之下时回一句「已经在」，同样证明 api 在）
     'node.move': "'临时节点', '微积分'",
-    // 大纲：读回 null 或整份对象都行（这一步只问「api 在不在」；行为在 toolTests 里钉）
-    'outline.read': "'微积分'",
-    'outline.write': "'微积分', { intro: '探针导语', children: [{ title: '探针子目标', summary: '探针' }] }",
-    'description.read': "''",
-    'description.update': "'', '临时描述'",
-    'tmp.set': "{ key: 'k', value: 1 }",
-    'tmp.get': "'k'",
-    'tmp.has': "'k'",
-    'tmp.del': "'k'",
-    'tmp.list': '',
-    'tmp.clear': '',
     'res.list': '',
     'res.info': "'" + PNG_UUID + "'",
     'res.read': "'" + MD_UUID + "'",
@@ -186,12 +175,6 @@ export async function apiNameTests() {
     'res.update': "'" + MD_UUID + "', { description: '临时描述' }",
     'res.delete': "'" + MD_UUID + "'",
     'res.refs': '',
-    // state 这一组：先写一个错法再删掉，正好把 mistake 与 forget 两条路都走一遍
-    'state.read': '',
-    'state.update': "{ mastery: 60 }",
-    'state.mistake': "'临时错法'",
-    'state.forget': "'临时错法'",
-    'state.check': "{ kind: 'probe', score: 60 }",
     // exam 这一组以前整组跳过，于是「名单里有、实现里没有」正好漏在它身上；
     // 现在给它一份桩依赖，四个方法一起点名（delete 的判据另有 examDeleteBlock 的用例）
     'exam.create': "{ kind: 'quiz', questions: [{ type: 'truefalse', stem: '临时题', answer: ['true'] }] }",
@@ -199,12 +182,6 @@ export async function apiNameTests() {
     'exam.grade': "{ summary: '临时', passed: false }",
     'exam.explain': "{ content: '错在把无穷小当成 0。' }",
     'exam.delete': '',
-    // 长期记忆：走真的 createMindOps（纯 store 逻辑），写一条再删一条
-    'mind.list': '',
-    'mind.read': "'探针主题'",
-    'mind.write': "{ key: '探针主题', text: '记住的事' }",
-    'mind.delete': "'探针主题'",
-    'mind.clear': '',
     // 持久化函数：create 先建（call 才有东西可调），delete 收尾；代码先过一遍编译校验
     'method.create': "{ name: '探针函数', code: '((api, n) => n * 2)' }",
     'method.list': '',
@@ -225,9 +202,6 @@ export async function apiNameTests() {
     // 伪编译交货：key 是宿主发出去的那串（探针这里没有待编译登记，走的是「key 对不上」那条路）
     'code.save': "{ key: '0123456789abcdef', js: 'console.log(1)', note: '探针' }",
     'code.silent': "{ key: '0123456789abcdef', reason: '探针：只有定义' }",
-    // 学习者画像：宿主是一份内存画像（见下面 userInfoTests 的行为用例）
-    'userInfo.get': '',
-    'userInfo.update': "{ education: '本科' }",
     // 人机协作与界面：宿主能力是桩（见下面 createExecuteTool 的注入）
     'wait': '0',
     'ask': "{ title: '确认', questions: [{ type: 'short', prompt: '怎么继续？' }] }",
@@ -277,10 +251,6 @@ export async function apiNameTests() {
     // 引用 chip：生成（当场对 store 验证可定位）与交付前自查（见 learn/ops/chip）
     'chip.build': "{ type: 'doc' }",
     'chip.check': "'看：#[{type:\"doc\", path:\"微积分\"}]'",
-    // 工作区目录：真实文件在主进程，探针给一份假的（见 fakeWorkspaceIo）
-    'workspace.list': "''",
-    'workspace.read': "'极限/要点.md'",
-    'workspace.write': "{ path: '极限/要点.md', content: '# 要点' }",
     // 内置浏览器：webview 元素在真实渲染层，探针给一份假的宿主（见下面 browser 桩）
     'browser.open': "'https://example.com'",
     'browser.tabs': '',
@@ -456,8 +426,6 @@ export async function apiNameTests() {
   ok(plainLineOf('## 微积分基本定理') === '微积分基本定理', '标题行剥掉井号', plainLineOf('## 微积分基本定理'))
   ok(plainLineOf('- [导数](moji:learn "变化率") 是基础') === '导数 是基础', '链接行只留链接文字', plainLineOf('- [导数](moji:learn "变化率") 是基础'))
   ok(plainLineOf('1. **重点**：看 `这里`') === '重点：看 这里', '强调与行内代码剥掉标记', plainLineOf('1. **重点**：看 `这里`'))
-  // tmp 这一组真的能用（上面每次调用都走了一遍）
-  ok(sawTmpWrite, 'tmp 这一组真的能写进暂存区（clear 之后也留有痕迹）', Object.keys(tmpStore).length)
   // 选配的组没注入时应当不存在——用另起一个不带 exam 的工具来验，别和上面那份混着用
   const bare = createExecuteTool({ ...ops, exam: undefined, runSandbox: fakeRunner })
   const exam = await bare.run({ description: '名单检查', body: '((api)=>{ return await api.exam.read() })' }, { nodeId: childId, goalId })

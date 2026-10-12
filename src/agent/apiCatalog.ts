@@ -42,7 +42,7 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
   },
   {
     key: 'node',
-    label: '节点 · node / description',
+    label: '节点 · node',
     intro: '一次编排可以同时操作多个节点；本目标内标题唯一，写标题一定指得明白。',
     items: [
       { name: 'node.list', signature: 'node.list()', summary: '全部节点：路径、id、标题、状态、描述摘要、文档字数、掌握度', availability: 'always' },
@@ -53,20 +53,6 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
       { name: 'node.create', signature: 'node.create({ parent, title, description? })', summary: '建下级节点；parent 必填（标题 / 路径 / #id，不再隐式当前节点）；同名复用不重复建；创建时教学文档与大纲两份文件同时就位', availability: 'always' },
       { name: 'node.move', signature: 'node.move(path, 新父节点)', summary: '迁移节点到另一个节点之下（改父线；目标的根不能移、跨目标不能移、不能移成环）', availability: 'always' },
       { name: 'node.delete', signature: 'node.delete(path)', summary: '删除节点（学习目标本身不能删）', availability: 'always' },
-      { name: 'description.read', signature: 'description.read(path?)', summary: '读描述', availability: 'always' },
-      { name: 'description.update', signature: 'description.update(path?, content)', summary: '写描述', availability: 'always' },
-    ],
-  },
-  {
-    key: 'state',
-    label: '学习状态 · state',
-    intro: '写的是「系统对这个学习者的判断」；值域校验严格，乱值会被列着可选项拒收。',
-    items: [
-      { name: 'state.read', signature: 'state.read(path?)', summary: '自评、掌握度、错误记忆、检验时间线', availability: 'always' },
-      { name: 'state.update', signature: 'state.update(path?, { self?, by?, mastery?, note? })', summary: '改自评（四档）或掌握度（0~100），note 写依据', availability: 'always' },
-      { name: 'state.mistake', signature: 'state.mistake(path?, { pattern, cause? })', summary: '记一次错误；pattern 写「错成了什么样」', availability: 'always' },
-      { name: 'state.forget', signature: 'state.forget(path?, pattern?)', summary: '清掉一条（或全部）错误记忆', availability: 'always' },
-      { name: 'state.check', signature: 'state.check(path?, { kind, ... })', summary: '记一次检验（probe / exam / recall）', availability: 'always' },
     ],
   },
   {
@@ -79,19 +65,6 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     items: [
       { name: 'chip.build', signature: 'chip.build({ type, path?, url?, note?, name?, examId?, attemptId?, dir?, title? })', summary: '生成一颗引用 chip 并当场验证可定位，返回 { chip, type, title }——把 chip 原样抄进回复。type 认 doc/note/outline/super/exam/attempt/ws/web/local；path 寻址与 doc.* 同构（省略 = 当前节点）', availability: 'always' },
       { name: 'chip.check', signature: 'chip.check(text)', summary: '交付前自查：解析文本里每一颗 #[{…}] 并验证定位，回 { total, valid, invalid, problems }——坏的用 build 重新生成', availability: 'always' },
-    ],
-  },
-  {
-    key: 'tmp',
-    label: '临时变量 · tmp',
-    intro: '按节点存放、可设过期、不进上下文；体量大的中间数据放这里，只把键名带回对话。',
-    items: [
-      { name: 'tmp.set', signature: 'tmp.set({ key, value, ttlMs? })', summary: '存（单值上限 20 万字符，必须可 JSON 序列化）', availability: 'always' },
-      { name: 'tmp.get', signature: 'tmp.get(key)', summary: '取（found + value）', availability: 'always' },
-      { name: 'tmp.has', signature: 'tmp.has(key)', summary: '存在与否', availability: 'always' },
-      { name: 'tmp.del', signature: 'tmp.del(key)', summary: '删除一条', availability: 'always' },
-      { name: 'tmp.list', signature: 'tmp.list()', summary: '只回键名与剩余时间，不回值', availability: 'always' },
-      { name: 'tmp.clear', signature: 'tmp.clear()', summary: '清空当前节点的全部临时变量', availability: 'always' },
     ],
   },
   {
@@ -124,18 +97,6 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     ],
   },
   {
-    key: 'mind',
-    label: '长期记忆 · mind',
-    intro: '按学习目标归档、跨对话有效。记忆不会自动进上下文——需要时必须主动 read；写入一条一个主题。',
-    items: [
-      { name: 'mind.list', signature: 'mind.list()', summary: '全部记忆（摘要；全文要 read）', availability: 'always' },
-      { name: 'mind.read', signature: 'mind.read(idOrKey)', summary: '按 id 或 key 读全文', availability: 'always' },
-      { name: 'mind.write', signature: 'mind.write({ key?, text })', summary: '写入；同 key 覆盖（同主题只留最新判断）', availability: 'always' },
-      { name: 'mind.delete', signature: 'mind.delete(idOrKey)', summary: '删除一条', availability: 'always' },
-      { name: 'mind.clear', signature: 'mind.clear()', summary: '清空本目标的全部记忆', availability: 'always' },
-    ],
-  },
-  {
     key: 'method',
     label: '持久化函数 · method',
     intro:
@@ -162,18 +123,6 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
       { name: 'sdoc.read', signature: 'sdoc.read(path?, name)', summary: '读一份的 HTML 源码', availability: 'always' },
       { name: 'sdoc.write', signature: 'sdoc.write(path?, name, html)', summary: '写入（同名覆盖、没有就新建）；名字省略给默认名', availability: 'always' },
       { name: 'sdoc.delete', signature: 'sdoc.delete(path?, name)', summary: '删除一份', availability: 'always' },
-    ],
-  },
-  {
-    key: 'outline',
-    label: '目标大纲 · outline',
-    intro:
-      '每个节点一份的**结构化计划**（导语 + 一层子目标），不是 Markdown——页签里打开是交互页面，' +
-      '条目带着学习情况、可以展开（读的是子目标自己的大纲）。深度规矩是硬性的：只写直接子层级一层，' +
-      '「爷爷知道儿子的存在，但不知道孙子的存在」。',
-    items: [
-      { name: 'outline.read', signature: 'outline.read(path?)', summary: '读大纲 → { intro, children:[{ key, title, summary }] }；还没写过时回 null（不是错误）', availability: 'always' },
-      { name: 'outline.write', signature: 'outline.write(path?, { intro, children:[{ title, summary }] })', summary: '整份写入（覆盖）；key 由标题自动生成，children 最多 24 条、只此一层', availability: 'always' },
     ],
   },
   {
@@ -218,17 +167,6 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     ],
   },
   {
-    key: 'userInfo',
-    label: '学习者画像 · userInfo',
-    intro:
-      '画像是**问出来的**、不是塞进提示词的：需要贴合这个人时自己 get 一次。缺什么就照 missing 用 ask 问，' +
-      "题目上写 userInfo: '字段名'，用户提交那一刻回答直接落库——这是补全画像最省事的路子。",
-    items: [
-      { name: 'userInfo.get', signature: 'userInfo.get()', summary: '昵称、年龄、性别、语言、教育程度、专业背景、当前身份、工作经验、已掌握技能，外加 filled / missing（还缺哪些）', availability: 'always' },
-      { name: 'userInfo.update', signature: "userInfo.update({ 字段: 值 })", summary: '增量写（只改给的字段）；认不出的字段与写不进去的值会逐条说明，不会整单丢弃', availability: 'always' },
-    ],
-  },
-  {
     key: 'reading',
     label: '学习过程 · reading / attention / checkin / pomodoro',
     intro:
@@ -262,20 +200,6 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
       { name: 'review.merge', signature: 'review.merge({ nodeIds })', summary: '把处于同一阶段的相关节点（含当前节点）的复习合成一组，后续阶段整组一起复习、落账各管各的；**必须先经 ask 征得用户同意**；拆组用 review.adjust', availability: 'always' },
       { name: 'review.extend', signature: 'review.extend({ focus, days? })', summary: '针对具体薄弱点追加一条补充复习（days 缺省 3 天后到期）；没有具体薄弱点就不要用', availability: 'always' },
       { name: 'review.adjust', signature: "review.adjust({ action: 'postpone' | 'split', days?, stage? })", summary: '调整计划：postpone 把到期日顺延几天（用户说最近忙时用）；split 退出合并组', availability: 'always' },
-    ],
-  },
-  {
-    key: 'workspace',
-    label: '工作区 · workspace',
-    intro:
-      '节点在磁盘上的**真实目录**（users/<uid>/docs/<目标>/<节点>/workspace/，用户在系统资源管理器里' +
-      '看得见、也能自己放文件进去）。路径与文档同构——节点路径在前、文件在后（极限/数据/实验.csv），' +
-      '省略 path 就是当前节点。只收文本；写是整份覆盖、父目录自动建。要交付「拿得走的文件」' +
-      '（整理好的资料、数据、代码）就放这里，别只留在对话里。',
-    items: [
-      { name: 'workspace.list', signature: 'workspace.list(path?)', summary: '列目录：节点（或节点路径 + 子目录）下真实有哪些文件与子目录（目录在前）；还没有文件时回空清单', availability: 'always' },
-      { name: 'workspace.read', signature: 'workspace.read(path)', summary: '读一个文本文件；不存在会明说，二进制读不出文本，太长截断并带 totalChars', availability: 'always' },
-      { name: 'workspace.write', signature: 'workspace.write({ path, content })', summary: '写一个文本文件（**整份覆盖**；父目录自动建）。回执带 created / updated——覆盖用户的真实文件前想一想', availability: 'always' },
     ],
   },
   {

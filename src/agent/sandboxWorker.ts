@@ -31,30 +31,12 @@ const API_NAMES = [
   'node.delete',
   // 迁移节点到另一个节点之下（改父线；见 graph/nodes 的 moveNode）
   'node.move',
-  // 目标大纲：结构化的计划（导语 + 一层子目标），页签里打开是交互页面（见 learn/outline）
-  'outline.read',
-  'outline.write',
-  // 描述：实际上是 node.update 的便捷写法，保留旧名免得模型改不过来
-  'description.read',
-  'description.update',
   'exam.create',
   'exam.read',
   'exam.grade',
   // 错题讲解：判分之后的第二步，落在同一次考试上
   'exam.explain',
   'exam.delete',
-  // 学习状态：自评 / 掌握度 / 错误记忆 / 检验记录（见 learn/learning）
-  'state.read',
-  'state.update',
-  'state.mistake',
-  'state.forget',
-  'state.check',
-  'tmp.set',
-  'tmp.get',
-  'tmp.has',
-  'tmp.del',
-  'tmp.list',
-  'tmp.clear',
   // 资源库：本目标 static/ 下的文件（见 learn/static）
   'res.list',
   'res.info',
@@ -63,12 +45,6 @@ const API_NAMES = [
   'res.update',
   'res.delete',
   'res.refs',
-  // 长期记忆：跨对话有效，但**不会**自动进上下文（见 learn/mind）
-  'mind.list',
-  'mind.read',
-  'mind.write',
-  'mind.delete',
-  'mind.clear',
   // 目标级持久化函数：method.call 会把当前编排的 api 注入给那份持久化的源码（见 learn/methods）
   'method.create',
   'method.list',
@@ -88,9 +64,6 @@ const API_NAMES = [
   'code.save',
   // 同上：判定「这段代码没有输出」，当场停止编译并标记那一块
   'code.silent',
-  // 学习者画像：**不在系统提示词里**，要用得自己 get（见 user/fields 与 learn/agentOps）
-  'userInfo.get',
-  'userInfo.update',
   // 学习过程：有效阅读的事实、注意力评级、打卡、番茄钟（见 learn/reading 等）
   // 打卡没有「直接成功」的口子：status 给资格与题源，settle 记结果且系统复核门槛；
   // 番茄钟只有一个只读的 status——开始、停止、改时长都是用户按顶栏那颗按钮
@@ -106,10 +79,6 @@ const API_NAMES = [
   'review.merge',
   'review.extend',
   'review.adjust',
-  // 工作区目录：节点目录下的真实系统子目录（docs/<目标>/<节点>/workspace/…），只收文本（见 learn/workspace）
-  'workspace.list',
-  'workspace.read',
-  'workspace.write',
   'pomodoro.status',
   // 读网页：抓取在主进程、正文提取在渲染层、落盘在当前用户目录（见 learn/webDocs）
   'web.webFetch',
