@@ -244,6 +244,13 @@ export async function apiNameTests() {
     'process.list': '',
     'process.get': "'proc_test'",
     'process.delete': "'proc_test'",
+    // 专业技能系统
+    'skill.paths': "''",
+    'skill.list': '',
+    'skill.read': "'test-skill'",
+    'skill.run': "'test-skill', 'test.js'",
+    'skill.write': "{ id: 'test-skill', name: '测试' }",
+    'skill.delete': "'test-skill'",
   }
   let s = staticStore()
   let tmpStore: Record<string, unknown> = {}
