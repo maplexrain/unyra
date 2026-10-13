@@ -314,7 +314,7 @@ async function openAiStream(
   }
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    throw new AiRequestError(toMessage(provider.label, res.status, body))
+    throw new AiRequestError(toMessage(provider.label, res.status, body), res.status)
   }
   if (!res.body) throw new AiRequestError(t('服务未返回数据流'))
 
@@ -411,7 +411,11 @@ async function openAiStream(
   } catch (err) {
     // 用户主动取消：向上抛原错误，由调用方按取消语义吞掉
     if (opts.signal?.aborted) throw err
-    if (err instanceof AiRequestError) throw new AiRequestError(t('{0}（已接收 {1} 字后就断了）', err.message, content.length))
+    if (err instanceof AiRequestError)
+      throw new AiRequestError(
+        t('{0}（已接收 {1} 字后就断了）', err.message, content.length),
+        err.status,
+      )
     throw err
   } finally {
     if (idle) clearTimeout(idle)
@@ -483,7 +487,7 @@ export async function chatCompleteWith(
   }
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    throw new AiRequestError(toMessage(provider.label, res.status, body))
+    throw new AiRequestError(toMessage(provider.label, res.status, body), res.status)
   }
   const data = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>
@@ -533,7 +537,7 @@ export async function listModelsWith(provider: ResolvedProvider): Promise<string
   }
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    throw new AiRequestError(toMessage(provider.label, res.status, body))
+    throw new AiRequestError(toMessage(provider.label, res.status, body), res.status)
   }
   let raw: unknown
   try {

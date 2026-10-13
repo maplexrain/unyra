@@ -443,7 +443,8 @@ const dict: Record<string, string> = {
   '头像': 'Avatar',
   '上传图片': 'Upload image',
   '移除': 'Remove',
-  '未上传时用昵称首字作为文字头像。图片会压缩后仅存本机。': 'Without an upload, the first character of the nickname becomes the avatar. Images are compressed and stored only on this machine.',
+  '未上传时用昵称首字作为文字头像。图片会压缩后存进用户目录的 assets/，画像里只记一个地址。':
+    'Without an upload, the first character of the nickname becomes the avatar. Uploaded images are compressed into the user folder’s assets/ directory — the profile keeps only a URL.',
   '界面上的称呼': 'How the interface addresses you',
   '性别': 'Gender',
   '男': 'Male',
@@ -822,6 +823,9 @@ const dict: Record<string, string> = {
   "输入图片 URL 地址 (http/https)...": "Enter image URL (http/https)...",
   "网络壁纸": "Web wallpaper",
   "请选择图片格式文件": "Please choose an image file",
+  "背景图处理失败": "Could not process the background image",
+  "这里只能填图片地址（http / https）。本地图片请用上面的「上传图片」":
+    "Only an image URL (http / https) goes here. For a local image, use “Upload image” above.",
   "已添加图片「{0}」": "Added image \"{0}\"",
   "内置离线雅致壁纸库（随时一键添加）": "Built-in offline elegant wallpapers (one-click add)",
   "已在图组中，点击直接设为当前壁纸": "Already in group; click to set as wallpaper",

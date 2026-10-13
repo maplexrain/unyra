@@ -1,211 +1,176 @@
 /*
- * 这个文件负责：大纲页（页签 kind 'outline'）——一个目标的路线图。
+ * 这个文件负责：大纲页（页签 kind 'outline'）——一个**目标**的路线图。
  *
- * 它支持两种视图无缝切换：
- * 1. 线性大纲列表：分层条目卡片、学习情况标签与下级折叠展开；
- * 2. 完全展开的思维导图：以当前节点为根，完全展开其下级子孙节点（不包含父级节点）。
+ * 它是目标级的（不是节点级）：页签由目标根节点打开，页上只有一张思维导图，
+ * 目标的路线怎么展开、哪些节点建了、哪些还在计划里，一眼看全。
+ *
+ * 页头设计（重构版）：
+ * - 左侧是「目标身份区」：路线图标 + 目标级别徽章 + 标题 + 掌握状态，
+ *   一眼回答「这是哪个目标、现在走到哪了」；
+ * - 右侧是「进度统计区」：子目标总数 / 已创建 / 已掌握三枚计数 + 一条进度条，
+ *   把整张导图的信息浓缩成数字——图看结构，数看进度，两者互补；
+ * - 页头通栏铺开（不再限 960px 居中）：导图画布本来就是通栏的，
+ *   页头缩在中间反而和画布对不齐。
+ *
+ * 动作依旧全在图里（节点卡片自带文档入口与生成按钮），页头只读不写。
  */
 
-import { useState } from 'react'
-import {
-  BookOpen,
-  ChevronDown,
-  ChevronUp,
-  GitFork,
-  ListTree,
-  Sparkles,
-} from 'lucide-react'
-import type { KnowledgeNode, LearnStore, OutlineEntry } from '../../learn/types'
+import { useMemo } from 'react'
+import { Route } from 'lucide-react'
+import type { KnowledgeNode, LearnStore, OutlineEntry, TabRef } from '../../learn/types'
 import { MASTERY_LABEL } from '../../learn/types'
-import MarkdownView from '../MarkdownView'
-import { renderNote } from '../../lib/markdown'
+import type { ExamActions, NodeDocActions } from './explorer/types'
 import { t } from '../../i18n'
-import LinearOutlineView from './outline/LinearOutlineView'
-import MindmapView from './outline/MindmapView'
+import MindmapView, { buildMindmapTree, type MindmapNodeData } from './outline/MindmapView'
 
 export interface OutlineViewProps {
   store: LearnStore
   /** 这一页大纲属于哪个目标 */
   node: KnowledgeNode
-  /** 嵌套深度：0 是页签根（带页头） */
-  depth?: number
   /** 打开某个子目标的教学文档 */
   onOpenNode: (nodeId: string) => void
   /** 把大纲里还没创建的子目标真的建出来（交给导师开讲） */
   onCreateChild: (parentNode: KnowledgeNode, entry: OutlineEntry) => void
   /** 请导师规划 / 重排某个节点的大纲 */
   onGenerate: (node: KnowledgeNode) => void
+  /** 改某个节点的自定义颜色（右键节点改色）；null = 回到「随分支」 */
+  onSetTint: (nodeId: string, tint: string | null) => void
+  /** 节点 tip 里的文档动作（与侧栏资源管理器同一份） */
+  docs: NodeDocActions
+  /** 考试那一侧的动作 */
+  exams: ExamActions
+  /** 焦点格里正开着的那份文档（tip 里对应行要亮） */
+  activeTab: TabRef | null
 }
 
-export type OutlineViewMode = 'linear' | 'mindmap'
+/** 整棵树的进度统计（不含根节点自己：它代表目标，不是「要走的子目标」） */
+interface OutlineStats {
+  total: number
+  created: number
+  mastered: number
+  /** 掌握度百分比：已掌握 / 总数（没有子目标时为 0） */
+  pct: number
+}
 
-const STORAGE_KEY = 'moji_outline_view_mode_v2'
+function collectStats(root: MindmapNodeData): OutlineStats {
+  let total = 0
+  let created = 0
+  let mastered = 0
+  const walk = (n: MindmapNodeData) => {
+    if (!n.isRoot) {
+      total += 1
+      if (n.realNode) {
+        created += 1
+        if (n.status === 'mastered') mastered += 1
+      }
+    }
+    n.children.forEach(walk)
+  }
+  walk(root)
+  return { total, created, mastered, pct: total > 0 ? Math.round((mastered / total) * 100) : 0 }
+}
 
 export default function OutlineView({
   store,
   node,
-  depth = 0,
   onOpenNode,
   onCreateChild,
   onGenerate,
+  onSetTint,
+  docs,
+  exams,
+  activeTab,
 }: OutlineViewProps) {
-  const outline = node.outline ?? null
-  const descHtml = node.description ? renderNote(node.description) : ''
-  const introHtml = outline?.intro ? renderNote(outline.intro) : ''
-
-  const [viewMode, setViewMode] = useState<OutlineViewMode>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved === 'linear' || saved === 'mindmap') return saved
-    } catch {
-      // ignore
-    }
-    return 'mindmap'
-  })
-
-  const [detailsOpen, setDetailsOpen] = useState(false)
-
-  const switchMode = (mode: OutlineViewMode) => {
-    setViewMode(mode)
-    try {
-      localStorage.setItem(STORAGE_KEY, mode)
-    } catch {
-      // ignore
-    }
-  }
-
   const isRootGoal = store.goals.some((g) => g.rootNodeId === node.id)
   const goalBadge = isRootGoal ? t('总目标') : t('阶段目标')
-  const hasNotesOrIntro = !!(node.description || outline?.intro)
+  const mastered = node.status === 'mastered'
+
+  // 与导图同一份树（buildMindmapTree 是纯函数，树通常很小，开销可忽略）
+  const stats = useMemo(() => collectStats(buildMindmapTree(store, node)), [store, node])
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-paper dark:bg-card/30">
-      {/* 顶部大纲工具栏与视图切换器 */}
-      <header className="shrink-0 border-b border-line/50 bg-paper/95 px-6 py-4 shadow-2xs backdrop-blur-md dark:bg-card/90">
-        <div className="mx-auto flex max-w-[960px] flex-wrap items-center justify-between gap-x-4 gap-y-2.5">
-          {/* 左侧：目标标题与身份徽标 */}
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className="shrink-0 rounded-full border border-seal/30 bg-seal/10 px-2 py-0.5 text-[11px] font-semibold text-seal">
-              {goalBadge}
-            </span>
-            <h2 className="truncate text-[16px] font-bold text-ink" title={node.title}>
+      {/* 页头：目标身份（左）+ 进度统计（右） */}
+      <header className="shrink-0 border-b border-line/50 bg-paper/95 shadow-2xs backdrop-blur-md dark:bg-card/90">
+        <div className="flex min-w-0 items-center gap-4 px-6 py-3.5">
+          {/* 身份区 */}
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-seal/25 bg-seal/10 text-seal">
+            <Route size={18} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 rounded-full border border-seal/30 bg-seal/10 px-2 py-px text-[10.5px] font-semibold text-seal">
+                {goalBadge}
+              </span>
+              <span
+                className={
+                  'shrink-0 rounded-full px-2 py-px text-[10.5px] font-medium ' +
+                  (mastered
+                    ? 'bg-ok/12 text-ok'
+                    : 'bg-paper-deep text-ink-soft dark:bg-card')
+                }
+              >
+                {t(MASTERY_LABEL[node.status])}
+              </span>
+              {typeof node.learning?.mastery === 'number' && (
+                <span className="shrink-0 font-mono text-[10.5px] text-ink-faint">
+                  {node.learning.mastery}
+                  {t('分')}
+                </span>
+              )}
+            </div>
+            <h2 className="mt-1 truncate text-[16px] leading-tight font-bold text-ink" title={node.title}>
               {node.title}
             </h2>
-            <span className="shrink-0 rounded-md bg-paper-deep px-1.5 py-0.5 text-[11px] font-medium text-ink-soft dark:bg-card">
-              {t(MASTERY_LABEL[node.status])}
-            </span>
-
-            {hasNotesOrIntro && (
-              <button
-                type="button"
-                onClick={() => setDetailsOpen((v) => !v)}
-                className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11.5px] text-ink-faint transition hover:bg-paper-deep hover:text-ink"
-              >
-                <span>{detailsOpen ? t('收起导语') : t('查看导语')}</span>
-                {detailsOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-              </button>
-            )}
           </div>
 
-          {/* 右侧：视图切换 Tab 与动作按钮 */}
-          <div className="flex items-center gap-2.5">
-            {/* 视图切换器 Tab（线性大纲 / 思维导图） */}
-            <div className="flex items-center rounded-xl border border-line/60 bg-paper-deep/70 p-0.5 dark:bg-card">
-              <button
-                type="button"
-                onClick={() => switchMode('linear')}
-                className={
-                  'flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-medium transition-all ' +
-                  (viewMode === 'linear'
-                    ? 'bg-paper text-ink shadow-xs dark:bg-card dark:text-ink-strong'
-                    : 'text-ink-soft hover:text-ink')
-                }
-              >
-                <ListTree size={13} className={viewMode === 'linear' ? 'text-seal' : ''} />
-                <span>{t('线性大纲')}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => switchMode('mindmap')}
-                className={
-                  'flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-medium transition-all ' +
-                  (viewMode === 'mindmap'
-                    ? 'bg-paper text-ink shadow-xs dark:bg-card dark:text-ink-strong'
-                    : 'text-ink-soft hover:text-ink')
-                }
-              >
-                <GitFork size={13} className={viewMode === 'mindmap' ? 'text-seal' : ''} />
-                <span>{t('思维导图')}</span>
-              </button>
+          {/* 统计区：有子目标才出现（还没大纲时，图上的空态会引导生成） */}
+          {stats.total > 0 && (
+            <div className="flex shrink-0 items-center gap-5">
+              <Stat label={t('子目标')} value={stats.total} tone="text-ink" />
+              <Stat label={t('已创建')} value={stats.created} tone="text-seal" />
+              <Stat label={t('已掌握')} value={stats.mastered} tone="text-ok" />
+              <div className="w-36">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[10.5px] text-ink-faint">{t('掌握进度')}</span>
+                  <span className="font-mono text-[11px] font-semibold text-ink">{stats.pct}%</span>
+                </div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line/50">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-ok-deep to-ok transition-[width] duration-300"
+                    style={{ width: `${stats.pct}%` }}
+                  />
+                </div>
+              </div>
             </div>
-
-            <div className="h-4 w-px bg-line/50" />
-
-            {/* 导师大纲操作 */}
-            <button
-              type="button"
-              onClick={() => onGenerate(node)}
-              className="flex items-center gap-1.5 rounded-xl border border-line px-2.5 py-1 text-[12px] text-ink-soft transition hover:border-seal/60 hover:text-seal"
-            >
-              <Sparkles size={12} />
-              <span>{outline ? t('重排大纲') : t('请导师生成大纲')}</span>
-            </button>
-
-            {/* 打开当前目标教学文档 */}
-            <button
-              type="button"
-              onClick={() => onOpenNode(node.id)}
-              title={t('打开当前目标的教学文档')}
-              className="flex items-center gap-1 rounded-xl border border-line px-2 py-1 text-[12px] text-ink-soft transition hover:border-line-strong hover:text-ink"
-            >
-              <BookOpen size={12} />
-              <span>{t('教学文档')}</span>
-            </button>
-          </div>
+          )}
         </div>
-
-        {/* 展开的导语与说明 */}
-        {detailsOpen && hasNotesOrIntro && (
-          <div className="mx-auto mt-3 max-w-[960px] rounded-xl border border-line/50 bg-paper-deep/40 p-3.5 dark:bg-card/40">
-            {node.description && (
-              <MarkdownView html={descHtml} className="moji-agent-md moji-outline-desc text-[12.5px]" />
-            )}
-            {outline?.intro && (
-              <MarkdownView
-                html={introHtml}
-                className="moji-agent-md moji-outline-intro mt-2 border-l-2 border-seal/40 pl-3 text-[12.5px]"
-              />
-            )}
-          </div>
-        )}
       </header>
 
-      {/* 视图内容区 */}
+      {/* 视图内容区：只有思维导图 */}
       <div className="relative min-h-0 flex-1">
-        {viewMode === 'mindmap' ? (
-          <MindmapView
-            store={store}
-            node={node}
-            onOpenNode={onOpenNode}
-            onCreateChild={onCreateChild}
-            onGenerate={onGenerate}
-          />
-        ) : (
-          <div className="h-full overflow-y-auto px-6 py-6">
-            <div className="mx-auto w-full max-w-[840px]">
-              <LinearOutlineView
-                store={store}
-                node={node}
-                depth={depth}
-                onOpenNode={onOpenNode}
-                onCreateChild={onCreateChild}
-                onGenerate={onGenerate}
-              />
-            </div>
-          </div>
-        )}
+        <MindmapView
+          store={store}
+          node={node}
+          onOpenNode={onOpenNode}
+          onCreateChild={onCreateChild}
+          onGenerate={onGenerate}
+          onSetTint={onSetTint}
+          docs={docs}
+          exams={exams}
+          activeTab={activeTab}
+        />
       </div>
+    </div>
+  )
+}
+
+/** 页头右侧的一枚计数：上数字、下标签，竖排居右 */
+function Stat({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className="text-right">
+      <div className={`font-mono text-[16px] leading-none font-bold ${tone}`}>{value}</div>
+      <div className="mt-1 text-[10.5px] text-ink-faint">{label}</div>
     </div>
   )
 }

@@ -80,3 +80,17 @@ export {
 export { DROP_EDGE, zoneAtPoint } from './groups/drop'
 
 export { normalizeDocs } from './groups/normalize'
+
+export {
+  PUBLIC_OWNER,
+  claimTab,
+  dropTab,
+  dropTabs,
+  focusTabsInGroup,
+  reconcileOwners,
+  refOwner,
+  tabsOf,
+  visibleTabs,
+  withOwners,
+} from './groups/goals'
+export type { TabOwners } from './groups/goals'

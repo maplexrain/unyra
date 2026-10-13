@@ -93,6 +93,19 @@ export function writeOutline(
 }
 
 /**
+ * 一个条目的去重键：自带的那份不可用时就按标题现算，绝不返回 undefined。
+ *
+ * 为什么要多这一层：`key` 是 normalizeOutline / writeOutline 算出来的，
+ * 但把大纲交到 store 手上不止这一条路（外部写的 `{节点}.outline.json`、
+ * 手改的数据都可能只有 `{ title, summary }`——工作流里就是这么教模型的，
+ * 「key 由标题自动生成，不要自己编」）。缺了 key 的条目会让同一层的多个
+ * 占位节点在图上塌成同一个 id，React 于是报 duplicate key。
+ */
+export function outlineEntryKey(entry: OutlineEntry): string {
+  return entry.key || normalizeKey(entry.title || '')
+}
+
+/**
  * 大纲条目 → 真实节点；还没创建过（或已改名对不上号）时为 null。
  *
  * 对上号的依据是 key（= normalizeKey(title)）：条目的标题与创建节点时用的标题一致，

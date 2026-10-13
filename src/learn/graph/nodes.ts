@@ -95,7 +95,7 @@ export function updateNode(
   patch: Partial<
     Pick<
       KnowledgeNode,
-      'title' | 'description' | 'docs' | 'notes' | 'status' | 'goalId' | 'annotations'
+      'title' | 'description' | 'docs' | 'notes' | 'status' | 'goalId' | 'annotations' | 'tint'
     >
   >,
 ): LearnStore {

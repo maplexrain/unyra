@@ -13,7 +13,7 @@ import type {
   WorkflowBook,
 } from '../../types'
 import type { Exam } from '../../exam'
-import { focusedTab, normalizeDocs } from '../../groups'
+import { allTabs, focusedTab, normalizeDocs, reconcileOwners, withOwners } from '../../groups'
 import { tabNodeId } from '../../tabs'
 import { normalizeAgentTabs } from '../../agentTabs'
 import { normalizeDrafts } from '../../drafts'
@@ -214,7 +214,18 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
      * 文档区：新版读 docs，旧版读顶层的 tabs / activeTab（自动折成单组，见 groups 的
      * normalizeDocs）。两种数据都要认——用户升级之后第一次打开，看到的该还是那排页签。
      */
-    const docArea = normalizeDocs(d.docArea, legacy, (raw) => normalizeTab(raw, byId))
+    const docArea0 = normalizeDocs(d.docArea, legacy, (raw) => normalizeTab(raw, byId))
+    /*
+     * 目标页签归属（见 groups/goals）：旧数据里没有这张表，现算补一份。
+     *
+     * 补得对不对直接决定「升级之后第一次打开会不会看到页签集体消失」——所以这一步
+     * 必须在读盘时做，而不是等界面第一次过滤时才发现表是空的。判据取自节点自己的
+     * goalId（页签上带着 nodeId），于是补出来的归属与用户当初的直觉一致。
+     */
+    const docArea: typeof docArea0 = (() => {
+      const owners = reconcileOwners(docArea0.tabOwners, allTabs(docArea0), (nodeId) => byId.get(nodeId)?.goalId ?? null)
+      return withOwners(docArea0, owners)
+    })()
     // 「当前节点」跟着焦点格里激活的页签走：两者都是上次退出时存的，一个被手改过或者
     // 指向了已经删掉的节点时，让它们重新对齐（页签是用户看得见的那个，以它为准）
     const activeTabNode = focusedTab(docArea)

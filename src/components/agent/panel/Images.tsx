@@ -266,4 +266,4 @@ export function PendingLightbox({ image, onClose }: { image: PendingImage; onClo
   return <LightboxFrame url={image.previewUrl} name={image.name} bytes={image.bytes} onClose={onClose} />
 }
 
-/* 建图与放图那两个配套动作住在 imagePending.ts（本文件只导出「看得见的东西」：组件） */
+/* 建图与放图那两个配套动作住在 learn/images（本文件只导出「看得见的东西」：组件） */

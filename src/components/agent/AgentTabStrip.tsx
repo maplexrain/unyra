@@ -5,6 +5,7 @@ import type { AgentTabRef } from '../../learn/types'
 import { agentTabCloseBlock, agentTabKey, type AgentTabCloseBlock } from '../../learn/agentTabs'
 import { TAB_CLOSE_LABEL, type TabCloseMode } from '../../learn/tabs'
 import { useClampToViewport, useDismissOn } from '../../lib/useDismiss'
+import { TAB_EXIT_MS, useTabPresence } from '../../lib/tabPresence'
 import { t } from '../../i18n'
 
 /**
@@ -146,6 +147,12 @@ export default function AgentTabStrip({
 }: Props) {
   const stripRef = useRef<HTMLDivElement | null>(null)
   /**
+   * 进出场（与文档区同一套，见 lib/tabPresence）：关掉的那枚要按住一会儿才放走，
+   * 否则 React 一卸载节点，退场动画就没机会跑。栏上画的是这一份（含正在退场的），
+   * 菜单与拖动仍旧只认活的 `tabs`。
+   */
+  const presence = useTabPresence(tabs, agentTabKey, TAB_EXIT_MS)
+  /**
    * 激活的页签要**尽量落在正中间**（与文档区同一套算法，见 TabBar 的同名 effect）：
    * 不用 scrollIntoView——它只保证「露出来」，而且会连祖先容器一起滚。
    */
@@ -163,7 +170,8 @@ export default function AgentTabStrip({
     const target = strip.scrollLeft + (er.left + er.width / 2 - (sr.left + sr.width / 2))
     const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     strip.scrollTo({ left: Math.max(0, Math.min(max, target)), behavior: still ? 'auto' : 'smooth' })
-  }, [activeId])
+    // presence 也在依赖里：新开的那一枚比 props 晚一帧才进栏（见 lib/tabPresence 的手法）
+  }, [activeId, presence])
 
   /*
    * 滚轮横滚：鼠标的纵向滚轮也滚这条栏（触摸板的横向手势本来就能滚）。
@@ -221,7 +229,12 @@ export default function AgentTabStrip({
       setSnap(true)
       window.clearTimeout(snapTimer.current)
       snapTimer.current = window.setTimeout(() => setSnap(false), 50)
-      onReorder(keys)
+      /*
+       * 正在退场的那一枚不写回：算落位时要带上它（它还占着一个位置），
+       * 写回时得摘掉——它下一帧就没了，不该被记进 state.json。
+       */
+      const alive = new Set(tabs.map(agentTabKey))
+      onReorder(keys.filter((k) => alive.has(k)))
     }
     setDrag(null)
   }
@@ -242,7 +255,8 @@ export default function AgentTabStrip({
       startX: e.clientX,
       width: rects[index]?.width ?? 0,
       rects,
-      keys: tabs.map(agentTabKey),
+      // 与文档区同一条口径：落位在「栏上此刻画着的」这一份里算（含正在退场的那一枚）
+      keys: presence.map((p) => p.key),
     }
   }
 
@@ -274,7 +288,8 @@ export default function AgentTabStrip({
       <div
         className={
           'no-print relative flex shrink-0 items-stretch gap-2 pt-1.5 pb-0 ' +
-          (tabs.length ? 'bg-paper-deep/40 ' : '') +
+          // 用 presence（含正在退场的那一枚）：关掉最后一枚时底色要跟着一起走
+          (presence.length ? 'bg-paper-deep/40 ' : '') +
           (snap ? 'moji-tab-snap' : '')
         }
       >
@@ -285,7 +300,7 @@ export default function AgentTabStrip({
           // 贴边那枚的方块必须落在滚动口之内（见 workspace.css 的 moji-tab-flare 说明）
           className="moji-tab-strip flex min-w-0 flex-1 items-end gap-[3px] overflow-x-auto px-2"
         >
-          {tabs.map((ref, i) => {
+          {presence.map(({ item: ref, leaving, exiting, entering }, i) => {
             const key = agentTabKey(ref)
             const on = key === activeId
             const running = runningOf(ref)
@@ -304,7 +319,8 @@ export default function AgentTabStrip({
                 data-tab={key}
                 role="tab"
                 aria-selected={on}
-                tabIndex={0}
+                // 正在退场的这一枚已经不算栏上的一员了：读屏与键盘都绕开它
+                {...(leaving ? { 'aria-hidden': true, tabIndex: -1 } : { tabIndex: 0 })}
                 title={title + blockHint}
                 onClick={() => {
                   if (justDragged.current) return
@@ -334,7 +350,10 @@ export default function AgentTabStrip({
                     : 'transition-transform duration-150 ') +
                   (on
                     ? 'border-line-strong bg-card text-ink-strong'
-                    : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink')
+                    : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink') +
+                  // 进出场：与文档区共用同一套 class（见 workspace.css 与 lib/tabPresence）
+                  (entering ? ' moji-tab-in' : '') +
+                  (exiting ? ' moji-tab-out' : '')
                 }
               >
                 {/*
@@ -393,7 +412,7 @@ export default function AgentTabStrip({
           栏与正文之间的下边框：绝对定位的一条线（粗细与页签描边一致），
           选中的页签用 z-10 的背景把它盖掉——线在两侧继续、到这里「断开」。
         */}
-        {!!tabs.length && (
+        {!!presence.length && (
           <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-line-strong" />
         )}
       </div>

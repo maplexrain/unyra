@@ -13,6 +13,7 @@ import { vfsBus } from './bus'
 import type { FileChangeEvent } from './types'
 import { normalizeRelativePath } from './registry'
 import { nodeLayout } from '../learn/layout'
+import { normalizeOutline } from '../learn/outline'
 import { parseJson } from '../learn/files/meta'
 import type { Exam } from '../learn/exam'
 
@@ -163,7 +164,22 @@ export function syncVfsEventToStore(event: FileChangeEvent, store: LearnStore): 
       const content = typeof event.content === 'string' ? event.content : JSON.stringify(event.data)
       const parsed = parseJson(content)
       if (parsed && typeof parsed === 'object') {
-        return updateNodeInStore(store, targetNode.id, { outline: parsed as any })
+        /*
+         * 不能直接把 parsed 塞进 node.outline：磁盘这份是 Agent 用 files.write 写的，
+         * 条目只有 { title, summary }（workflows 里就是这么教的——key 由标题生成，
+         * 模型不用也不能自己编）。少了归一这一道，store 里的条目就带着 undefined 的 key：
+         * 大纲里的条目永远对不上已创建的节点（全变成「还没创建」），
+         * 思维导图上同一层的占位节点还会塌成同一个 id，React 报 duplicate key。
+         *
+         * children 缺失时补一个空数组：normalizeOutline 见不到数组就当「没有大纲」，
+         * 而这里明摆着写了一个文件（哪怕只写了 intro），该同步的就得同步进去。
+         */
+        const raw = parsed as Record<string, unknown>
+        const outline = normalizeOutline({
+          ...raw,
+          children: Array.isArray(raw.children) ? raw.children : [],
+        })
+        if (outline) return updateNodeInStore(store, targetNode.id, { outline })
       }
     }
   }

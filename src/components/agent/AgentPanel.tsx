@@ -17,6 +17,7 @@ import type {  AgentPart,
 import type { AskAnswers, AskFormPayload } from '../../agent/tools'
 import type { PersonaId } from '../../agent/persona'
 import type { SubAgentDef, SubAgentSession } from '../../agent/subagent/types'
+import type { QueuedMessage, SendOutcome } from '../../learn/agentQueue'
 import type { ReasoningEffort } from '../../ai/types'
 import PersonaPicker from './PersonaPicker'
 import { ImageLightbox, PendingLightbox } from './panel/Images'
@@ -62,8 +63,18 @@ interface Props {
   /**
    * 发送。images / files 是**还没落盘**的待发送附件（见 agent/types 的 PendingImage、PendingFile）：
    * 转存由 learn/useAgent 在真正开始这一轮时做（那时候才知道这条消息发不发得出去）。
+   *
+   * 返回值 = 附件被谁接管（见 learn/agentQueue 的 SendOutcome）：`sent` = 直接发了，
+   * 输入区立刻放掉预览地址；`queued` = 排进了等待队列，附件随条目一起交给队列。
    */
-  onSend: (text: string, images: PendingImage[], files: PendingFile[]) => void
+  onSend: (text: string, images: PendingImage[], files: PendingFile[]) => SendOutcome
+  /**
+   * 等待队列（agent 正在跑时发出去的那些，按会话存在 learn/useAgent 里）：
+   * 面板把它画在输入框上方，撤回 / 立即发送两条路原样交回去。
+   */
+  queue: QueuedMessage[]
+  onQueueDrop: (id: string) => void
+  onQueueSendNow: (id: string) => void
   /**
    * 更多 → 工作流 → 回忆：请超级导师带用户做一次主动回忆。
    *
@@ -174,6 +185,9 @@ export default function AgentPanel({
   onModelChanged,
   vision,
   onSend,
+  queue,
+  onQueueDrop,
+  onQueueSendNow,
   onNotice,
   onRecall,
   onSuperLab,
@@ -335,7 +349,6 @@ export default function AgentPanel({
   }, [measureAnchors, viewStreaming, viewRunning, chatScale])
 
   const composer = useComposer({
-    running,
     vision,
     onSend,
     onNotice,
@@ -555,6 +568,9 @@ export default function AgentPanel({
           running={running}
           hasKey={hasKey}
           providerLabel={providerLabel}
+          queue={queue}
+          onQueueDrop={onQueueDrop}
+          onQueueSendNow={onQueueSendNow}
           ask={ask}
           onAskSubmit={onAskSubmit}
           onAskCancel={onAskCancel}

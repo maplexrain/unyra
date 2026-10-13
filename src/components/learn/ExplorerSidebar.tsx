@@ -65,6 +65,14 @@ interface Props {
   pure: boolean
   onClose: () => void
   onSelectNode: (nodeId: string) => void
+  /**
+   * 点**目标节点**文字：切到它的目标页签组（大纲 + 这个目标下开着的东西）。
+   * 与 onSelectNode（打开教学文档）分开，是因为两者现在语义不同（见 LearnWorkspace 的
+   * openGoalGroup 与 switchNode）。
+   */
+  onSelectGoal: (nodeId: string) => void
+  /** 当前活动目标 id：目标行拿它判高亮 */
+  activeGoalId: string | null
   onNewGoal: () => void
   onDeleteNode: (nodeId: string) => void
   /** 在系统文件管理器里定位该节点的正文文件（节点右键菜单） */
@@ -115,6 +123,8 @@ function ExplorerSidebarComponent({
   pure,
   onClose,
   onSelectNode,
+  onSelectGoal,
+  activeGoalId,
   onNewGoal,
   onDeleteNode,
   onRevealNode,
@@ -254,12 +264,15 @@ function ExplorerSidebarComponent({
                   key={root.id}
                   node={root}
                   store={store}
+                  isRoot
                   isOpen={isOpen}
                   onToggle={toggle}
                   activeNodeId={activeNodeId}
                   activeTab={activeTab}
+                  activeGoalId={activeGoalId}
                   busyNodeId={busyNodeId}
                   onSelectNode={onSelectNode}
+                  onSelectGoal={onSelectGoal}
                   onOpenMenu={openMenu}
                   docs={docs}
                   exams={exams}

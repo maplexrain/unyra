@@ -4,10 +4,16 @@
  * 挂载在应用视口最底层（z-0 / fixed inset-0），UI 各面板降低透明度以透出背景。
  * 支持单张壁纸、图组轮播播放（顺序/随机）、平滑淡入淡出补间过渡、
  * 缩放填充策略（cover/contain/center/repeat）、高斯模糊与暗度遮罩。
+ *
+ * 配置里存的是**地址**（`preset:` / `asset:` / 外链），不是图片本身（见 lib/customBackground
+ * 的文件头）。所以这里先把整组的地址解析成能直接用的 src 再画——**整组一起解析**，
+ * 而不是轮到哪张才读哪张：轮播每隔几十秒换一张，那时才去读盘会看得见一次白闪，
+ * 而一整组也就三五张。
  */
 
 import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_CUSTOM_BACKGROUND, type CustomBackgroundConfig } from '../../lib/customBackground'
+import { useBackgroundSrcs } from './useBackgroundSrc'
 
 interface Props {
   customBg?: CustomBackgroundConfig
@@ -33,14 +39,26 @@ export default function GlobalBackground({ customBg }: Props) {
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? groups[0]
   const groupImages = activeGroup?.images ?? []
 
+  /*
+   * 把这一组地址解析成能画的 src（见 useBackgroundSrcs：它按「一组地址」缓存结果）。
+   * 单张模式也得把图组的地址一并解出来——用户随时可能切到幻灯片，而多解几张
+   * 只是几个文件的读取，换来的是一次切换不必等。
+   */
+  const srcMap = useBackgroundSrcs([
+    singleImageUrl,
+    ...groupImages.map((img) => img.url),
+  ])
+  /** 地址 → 能画的 src；解析不出来的（文件没了）当作没有这张 */
+  const srcOf = (url: string): string => (url ? (srcMap[url] ?? '') : '')
+
   // 当前播放的图片索引
   const [currentIndex, setCurrentIndex] = useState(0)
 
-  // 决定当前主展示的图片 URL
-  let targetUrl = singleImageUrl
+  // 决定当前主展示的图片地址（还没解析出来时为空串，两层都不画，就是一片空底）
+  let targetUrl = srcOf(singleImageUrl)
   if (mode === 'slideshow' && groupImages.length > 0) {
     const safeIdx = currentIndex % groupImages.length
-    targetUrl = groupImages[safeIdx]?.url || singleImageUrl
+    targetUrl = srcOf(groupImages[safeIdx]?.url ?? '') || targetUrl
   }
 
   // 双层交叉淡入淡出（Cross-fade）状态管理：A 层与 B 层

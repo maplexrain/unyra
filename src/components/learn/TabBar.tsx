@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { BookOpen, CornerDownRight, CornerLeftUp, FileX, FoldHorizontal, Globe, OctagonX, Star, Unlink, X } from 'lucide-react'
+import { BookOpen, CornerDownRight, CornerLeftUp, FileX, FoldHorizontal, Globe, OctagonX, Plus, Star, Unlink, X } from 'lucide-react'
 import { DocTypeIcon, WebTabTypeIcon } from './docTypes'
 import type { DependencyEdge, LearnStore, LearnTab, TabRef, WebTabMeta } from '../../learn/types'
 import { TAB_CLOSE_LABEL, dragSlotDelta, isDocumentTab, tabNodeId, type TabCloseMode } from '../../learn/tabs'
@@ -8,6 +8,7 @@ import { setTabMarkHandlers } from '../../lib/tabMark'
 import { docChipDrop, docChipHover, type ChipPayload } from '../../lib/docChip'
 import { CHIP_MIME, parseChipJson } from '../../lib/chipSyntax'
 import { useClampToViewport, useDismissOn } from '../../lib/useDismiss'
+import { TAB_EXIT_MS, useTabPresence } from '../../lib/tabPresence'
 import { t } from '../../i18n'
 
 /**
@@ -93,6 +94,15 @@ interface Props {
    * 开一个新的浏览器页签，以及把这一格的页签全部关掉。不给就没有这张菜单。
    */
   onOpenWebTab?: () => void
+  /**
+   * 「新页签」那颗按钮（排在最后一枚页签后面）。
+   *
+   * 原先它长在顶栏右侧，与「保存状态 / 账号 / 窗口控制」挤在一起——可它做的事是
+   * **这一格文档区的事**，跟顶栏那些全局入口不是一类。搬到这里之后，
+   * 加一个页签的位置正好是「页签会长出来的地方」，找它不用再往右上角跑。
+   * 不给这条就不画那颗按钮（比如某些只读场景）。
+   */
+  onNewTab?: () => void
   /** 全局 store：用于计算标签页之间的父级/子级/同概念关联 */
   store?: LearnStore
 }
@@ -404,6 +414,9 @@ const LIFT_PAD = 8
 /** 页签之间的间距，与下面那个 gap-[3px] 是一对 */
 const TAB_GAP = 3
 
+/** 认一枚页签的身份（进出场用它比对前后两版列表）；模块级是为了让它一直是同一个函数 */
+const tabIdOf = (tab: LearnTab): string => tab.id
+
 /*
  * 页签类型的标识图标：一眼分清这一排里哪种文档是哪种。
  * 图标与颜色与左侧资源管理器共用一份（见 components/learn/docTypes）——
@@ -461,6 +474,7 @@ export default function TabBar({
   favoriteOf,
   onToggleFavorite,
   onOpenWebTab,
+  onNewTab,
   focused = false,
   store,
 }: Props) {
@@ -468,6 +482,12 @@ export default function TabBar({
     () => (activeId ? tabs.find((t) => t.id === activeId) ?? null : null),
     [activeId, tabs],
   )
+  /**
+   * 页签的进出场（见 lib/tabPresence）：关掉的那枚要**被按住一会儿**才放走，
+   * 否则 React 一卸载节点，退场动画根本没机会跑。栏上画的是这一份（含正在退场的），
+   * 别的逻辑（菜单、拖动落点）仍旧只认活的 `tabs`。
+   */
+  const presence = useTabPresence(tabs, tabIdOf, TAB_EXIT_MS)
   const activeBaseNodeId = activeTab ? tabNodeId(activeTab.ref) : null
   const edges = store?.edges
 
@@ -595,7 +615,12 @@ export default function TabBar({
       left: clampedTarget,
       behavior: 'auto',
     })
-  }, [activeId])
+    /*
+     * presence 也在依赖里：**新开的那一枚比 props 晚一帧才进栏**（见 tabPresence 的手法）。
+     * 少了这一项，「打开一份新文档 → 它的页签滚到中间」会悄悄不生效——
+     * activeId 变了的那一帧，DOM 里还没有那一枚，找不着就直接返回了。
+     */
+  }, [activeId, presence])
 
   /*
    * 滚轮横滚：鼠标的纵向滚轮也滚这条栏（触摸板的横向手势本来就能滚，注释见上方
@@ -752,12 +777,22 @@ export default function TabBar({
     docChipHover(-1, -1)
     if (!d?.moved) return
     justDragged.current = true
-    const ids = tabs.map((tab) => tab.id)
+    /*
+     * 落位要在**栏上此刻画着的**那一份里算：拖动时量到的下标（from / to）就是这一份的下标，
+     * 正在退场的那一枚还占着位置，算进去才不会错开一格。
+     * 写回之前再把退场中的摘掉——它们下一帧就没了，不该被记进 state.json。
+     */
+    const shown = presence.map((p) => p.key)
+    const alive = new Set(presence.filter((p) => !p.leaving).map((p) => p.key))
     // 影子模式下不存在「栏内落点」：松手要么被输入框/别的格接走，要么取消回原位
+    let order = shown
     if (commit && !d.lifted && d.to !== d.from) {
-      const [moved] = ids.splice(d.from, 1)
-      ids.splice(d.to, 0, moved)
+      const next = [...shown]
+      const [moved] = next.splice(d.from, 1)
+      next.splice(d.to, 0, moved)
+      order = next
     }
+    const ids = order.filter((id) => alive.has(id))
     /*
      * 先问对话输入框：页签落在输入卡片上 = 把这份文档交给导师（变成一枚引用）。
      * 接住了就到此为止——这不是排序也不是分屏，本栏什么都不用做。
@@ -828,7 +863,8 @@ export default function TabBar({
     if (markSession.current) return
     const raf = requestAnimationFrame(measureMark)
     return () => cancelAnimationFrame(raf)
-  }, [measureMark, tabs.length, drag, settle])
+    // presence.length 而不是 tabs.length：新开 / 关掉那一枚是跟着栏上这一份进出场的
+  }, [measureMark, presence.length, drag, settle])
 
   /** 右键按下：只记位置，等它动起来（见 markDrag 的说明） */
   const onMarkDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -959,7 +995,9 @@ export default function TabBar({
       }}
       className={
         'no-print relative flex shrink-0 items-stretch gap-2 pt-1.5 pb-0 ' +
-        (tabs.length ? 'bg-paper/40' : '') +
+        // 用 presence（含正在退场的那一枚）而不是 tabs：最后一枚关掉时，
+        // 栏的底色要跟着它一起走，不然底色先没、页签还浮在半空
+        (presence.length ? 'bg-paper/40' : '') +
         (snap ? ' moji-tab-snap' : '')
       }
     >
@@ -968,7 +1006,7 @@ export default function TabBar({
         右键按住它左右拖 = 换页签——这件事原来靠在正文里右键横拖，那个手势既看不见、
         又和「右键菜单」抢同一颗键。位置由 measureMark 与拖动时直接写 DOM 来管（见上）。
       */}
-      {tabs.length > 0 && (
+      {presence.length > 0 && (
         <span
           ref={markRef}
           aria-hidden="true"
@@ -1001,7 +1039,7 @@ export default function TabBar({
         }}
         className="moji-tab-strip flex min-w-0 flex-1 items-end gap-[3px] overflow-x-auto px-2"
       >
-        {tabs.map((tab, i) => {
+        {presence.map(({ item: tab, leaving, exiting, entering }, i) => {
           const on = tab.id === activeId
           const wmeta = webMetaOf?.(tab)
           const title = (tab.ref.kind === 'web' ? wmeta?.title : undefined) ?? titleOf(tab.ref)
@@ -1066,14 +1104,22 @@ export default function TabBar({
                     ? 'border-line-strong bg-card text-ink-strong'
                     : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink'))) +
             // 拖出栏后栏里这枚只剩个淡占位：正文跟着指针（影子）走了
-            (lifted ? ' opacity-40' : '')
+            (lifted ? ' opacity-40' : '') +
+            /*
+             * 进出场：新开的浮上来（moji-tab-in 是 animation，跟着 class 走，
+             * 所以这个 class 在整个动画期间都在——见 lib/tabPresence 的说明），
+             * 关掉的收拢淡出（moji-tab-out 是 transition，靠下一帧改宽度来补间）。
+             */
+            (entering ? ' moji-tab-in' : '') +
+            (exiting ? ' moji-tab-out' : '')
           return (
             <div
               key={tab.id}
               data-tab={tab.id}
               role="tab"
               aria-selected={on}
-              tabIndex={0}
+              // 正在退场的这一枚已经不算「栏上的一员」了：读屏与键盘都绕开它
+              {...(leaving ? { 'aria-hidden': true, tabIndex: -1 } : { tabIndex: 0 })}
               // 未保存时顺带说一句：那颗圆点本身没有 tooltip（它是 aria-hidden 的装饰）
               title={
                 (trail ? trail + ' · ' + title : title) +
@@ -1200,6 +1246,26 @@ export default function TabBar({
             <BookOpen size={12} className="opacity-50" />
             <span>{t('暂无打开的页签')}</span>
           </div>
+        )}
+        {/*
+          「新页签」：紧跟在**最后一枚页签后面**（需求原文：「改为文档区 tab 栏最后一个 tab
+          后面增加一个新页签的按钮」）。它长在页签条里、跟着页签一起横向滚动——
+          「下一个页签会出现在哪儿」与「点哪能加一个」因此是同一个位置，不必解释。
+
+          刻意**不带 data-tab**：栏里的拖动排序、让位、滚动定位全靠 `[data-tab]` 选元素，
+          给它挂上就会被当成一枚页签参与排位（拖到它旁边会算错落点）。
+
+          也刻意**不抢焦点、不选中**：它只负责开一个新页签，页签自己会变成激活项。
+        */}
+        {onNewTab && (
+          <button
+            type="button"
+            title={t('新页签')}
+            onClick={onNewTab}
+            className="group/newtab flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/50 hover:text-seal"
+          >
+            <Plus size={14} />
+          </button>
         )}
       </div>
 

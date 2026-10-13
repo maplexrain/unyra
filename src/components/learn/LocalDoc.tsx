@@ -11,6 +11,7 @@ import { readUserImage, readUserText, userAbsPrefix } from '../../lib/storage'
 import type { OutlineHandle } from '../../lib/outline'
 import MarkdownView from '../MarkdownView'
 import SourceEditor, { type SaveState } from './SourceEditor'
+import { DocStatChip } from './DocFloat'
 import { useDocOutline } from './note/useDocView'
 import { t } from '../../i18n'
 
@@ -346,10 +347,10 @@ export default function LocalDoc({
 
   return (
     <div className="print-flat relative min-h-0 flex-1 flex flex-col bg-card">
-      {/* 左上角悬浮字数统计（预览模式只统计可视文字） */}
-      <div className="no-print pointer-events-none absolute left-3 top-2 z-10 flex items-center rounded-md border border-line/60 bg-card/75 px-2 py-0.5 text-[11px] text-ink-faint backdrop-blur-xs select-none shadow-xs">
+      {/* 字数统计：排在右上角悬浮组的正下方（见 DocFloat 的 DocStatChip） */}
+      <DocStatChip>
         <span className="tabular-nums">{t('{0} 字', wordCount)}</span>
-      </div>
+      </DocStatChip>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {/* 复制同样走源文：预览里选的这一段，进剪贴板的该是它 Markdown 的样子（见 lib/copySource） */}

@@ -14,6 +14,7 @@ import {
 } from '../src/vfs'
 import type { LearnStore } from '../src/learn/types'
 import { emptyLearnStore } from '../src/learn/store/empty'
+import { normalizeKey } from '../src/learn/graph'
 
 describe('VFS 声明式实体注册与路由匹配', () => {
   it('注册表实体定义自洽且非空', () => {
@@ -323,6 +324,60 @@ describe('VFS 到 LearnStore 的响应式双向同步 (storeSync)', () => {
     )
     expect(next.nodes[0].description).toBe('新描述')
     expect(next.nodes[0].status).toBe('mastered')
+  })
+
+  /**
+   * 大纲这条路要格外当心：磁盘那份是 Agent 自己落的 `{节点}.outline.json`，
+   * 条目只有 { title, summary }（工作流里就是这么教的——key 由标题生成）。
+   * 同步时必须补齐 key，否则 store 里的条目全是 undefined key：
+   * 大纲页永远认不出「已经建出来的子目标」，思维导图的占位节点还会塌成同一个 id。
+   */
+  it('大纲文件同步回 store 时按标题补齐 key，并去掉重名条目', () => {
+    const store = createMockStore()
+    const next = syncVfsEventToStore(
+      {
+        path: 'docs/微积分/导数.outline.json',
+        relativePath: 'docs/微积分/导数.outline.json',
+        content: JSON.stringify({
+          intro: '导数这一层怎么走',
+          children: [
+            { title: '导数的定义', summary: '从极限看' },
+            { title: '四则运算法则', summary: '加减乘除' },
+            { title: '导数的定义', summary: '写重了的一条' },
+            { title: '   ', summary: '空标题的这一条会被丢掉' },
+          ],
+        }),
+        action: 'write',
+        source: 'vfs',
+      },
+      store,
+    )
+
+    const outline = next.nodes[0].outline
+    expect(outline?.intro).toBe('导数这一层怎么走')
+    expect(outline?.children.map((c) => c.title)).toEqual(['导数的定义', '四则运算法则'])
+    // 关键：每条都得有 key
+    for (const c of outline?.children ?? []) {
+      expect(typeof c.key).toBe('string')
+      expect(c.key.length).toBeGreaterThan(0)
+    }
+    expect(outline?.children[0].key).toBe(normalizeKey('导数的定义'))
+  })
+
+  it('只写了 intro 的大纲文件也照样同步进去（children 缺失时按空清单处理）', () => {
+    const store = createMockStore()
+    const next = syncVfsEventToStore(
+      {
+        path: 'docs/微积分/导数.outline.json',
+        relativePath: 'docs/微积分/导数.outline.json',
+        content: JSON.stringify({ intro: '只写了导语' }),
+        action: 'write',
+        source: 'vfs',
+      },
+      store,
+    )
+    expect(next.nodes[0].outline?.intro).toBe('只写了导语')
+    expect(next.nodes[0].outline?.children).toEqual([])
   })
 })
 

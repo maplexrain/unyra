@@ -1,5 +1,7 @@
 import { emptyProfile, makeUser, type User, type UserProfile } from './types'
 import { normalizeProfile } from './profile'
+import { ASSETS_DIR, assetUrl } from './assets'
+import { AVATAR_FILE_PREFIX, migrateDataUrlAvatar } from './avatar'
 import { listDir, readYaml, removePath, userRel, writeYaml } from '../lib/storage'
 
 /**
@@ -10,7 +12,13 @@ import { listDir, readYaml, removePath, userRel, writeYaml } from '../lib/storag
  *   {root}/users/{uid}/user.yaml        用户信息（这个文件）
  *   {root}/users/{uid}/setting.yaml     用户配置（外观 + AI，见 lib/userSettings）
  *   {root}/users/{uid}/state.json       学习区界面状态
+ *   {root}/users/{uid}/assets/…         静态资源（头像等，见 user/assets）
  *   {root}/users/{uid}/docs/…           教学文档（见 learn/files）
+ *
+ * `assets/` 里放的是**真实文件**（头像就是一张 png），user.yaml 里只记一个
+ * `asset:文件名` 的短地址。从前头像是把 base64 直接写进 user.yaml 的，那份文件因此
+ * 动辄几百 KB、每次启动都要整份解析——这一版改掉了（见 user/types 的 avatar 字段）。
+ * 目录**按需出现**：没有静态资源的用户在磁盘上就没有这个目录。
  *
  * **用户列表就是 users/ 下的目录列表**：不再有一份单独的索引文件——目录即索引，
  * 少一份需要保持同步的数据。目录名即 uid，也是 user.yaml 里的 id 的权威来源。
@@ -53,6 +61,34 @@ function normalizeUser(raw: unknown, fallbackId: string): User | null {
   }
 }
 
+/**
+ * 把老数据里那段 base64 头像迁成 assets/ 下的真实文件（见 user/avatar 的
+ * migrateDataUrlAvatar）。
+ *
+ * **必须在 normalizeProfile 之前动手**：normalizeAvatar 现在会把 `data:` 一律丢掉，
+ * 先归一就等于当场把用户的头像删了——迁移就再也看不到它。所以在**原始** yaml 上改，
+ * 改完再归一。
+ *
+ * 迁移失败（写盘失败、data URL 形状不认）时原样返回，用户至少还留着那段 base64；
+ * 下一次启动会再试一遍。
+ */
+async function migrateAvatarIfNeeded(uid: string, raw: unknown): Promise<unknown> {
+  if (!raw || typeof raw !== 'object') return raw
+  const r = raw as Record<string, unknown>
+  const profile = r.profile
+  if (!profile || typeof profile !== 'object') return raw
+  const p = profile as Record<string, unknown>
+  const avatar = typeof p.avatar === 'string' ? p.avatar.trim() : ''
+  if (!/^data:image\//i.test(avatar)) return raw
+
+  const next = await migrateDataUrlAvatar(uid, avatar)
+  if (next === avatar) return raw
+  const migrated = { ...r, profile: { ...p, avatar: next } }
+  // 迁移后的 yaml 立刻写回：下一次启动读到的就是新形态，不会反复迁
+  await writeYaml(userRelOf(uid), migrated)
+  return migrated
+}
+
 /** user.yaml 的内容。id 与目录名同值：图个可读，读回时以目录名为准 */
 function userDoc(user: User): Record<string, unknown> {
   return {
@@ -61,6 +97,26 @@ function userDoc(user: User): Record<string, unknown> {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     profile: user.profile,
+  }
+}
+
+/**
+ * 清扫某个用户 `assets/` 里不再被引用的头像文件。
+ *
+ * 「不再被引用」只有两种来路：换头像时留下的旧文件，以及在对话框里上传之后
+ * **没保存就关掉**的那一张。两种都不该让 assets/ 一直攒下去；而它们的名字都带
+ * `avatar-` 前缀，所以按「前缀 + 不等于当前在用的那一个」来清就够精确了——
+ * 用户自己往 assets/ 里放的别的东西（这个目录本来就不只是给头像用的）不会被碰。
+ *
+ * 这里一律用**相对数据根**的路径（`listDir` / `removePath` + `userRel(uid, …)`），
+ * 不走 `*User*` 那一组：bootstrap 时当前用户还没定，那一组会静默地什么都不做。
+ */
+async function pruneAvatarAssets(uid: string, keep: string): Promise<void> {
+  const entries = await listDir(userRel(uid, ASSETS_DIR))
+  for (const e of entries) {
+    if (e.dir || !e.name.startsWith(AVATAR_FILE_PREFIX)) continue
+    if (assetUrl(e.name) === keep) continue
+    await removePath(userRel(uid, ASSETS_DIR, e.name))
   }
 }
 
@@ -82,10 +138,19 @@ export async function bootstrapUsers(): Promise<User[]> {
   const loaded: User[] = []
   for (const uid of dirs) {
     const raw = await readYaml<Record<string, unknown>>(userRelOf(uid))
+    /*
+     * 先迁头像、再归一（顺序不能反，见 migrateAvatarIfNeeded 的说明）。
+     * 顺手把 assets/ 里不再被引用的旧头像清掉：换过几次头像的用户，或者上传之后
+     * 没保存就关掉的那一次，都会在那里留下文件——启动是唯一「一定会经过」的时点。
+     */
+    const migrated = await migrateAvatarIfNeeded(uid, raw)
     // 目录在、user.yaml 读不出来（被手工删了、损坏了）：当作空画像的用户收下，
     // 至少不让人凭空消失，之后保存时会把这个文件补回来
-    const user = normalizeUser(raw, uid)
-    if (user) loaded.push(user)
+    const user = normalizeUser(migrated, uid)
+    if (user) {
+      await pruneAvatarAssets(uid, user.profile.avatar)
+      loaded.push(user)
+    }
   }
   loaded.sort((a, b) => a.createdAt - b.createdAt)
 
@@ -143,12 +208,14 @@ export async function updateUser(id: string, patch: Partial<UserProfile>): Promi
   if (!existing) return null
   const merged: User = {
     ...existing,
-    // 逐字段归一，避免把非法值（超大头像、越界年龄）写进存储
+    // 逐字段归一，避免把非法值（超长头像地址、越界年龄）写进存储
     profile: { ...emptyProfile(), ...normalizeProfile({ ...existing.profile, ...patch }) },
     updatedAt: Date.now(),
   }
   users = users.map((u) => (u.id === id ? merged : u))
   await writeUser(merged)
+  // 头像换过之后，旧的那个文件就没人引用了（清掉；同名/外链一律不受影响）
+  await pruneAvatarAssets(id, merged.profile.avatar)
   return merged
 }
 

@@ -143,6 +143,19 @@ const dict: Record<string, string> = {
   '移除全部附件': 'Remove all attachments',
   '向超级导师提问…（/ 可用斜杠命令，可拖入文件、页签、图片）': 'Ask the Super Tutor… (/ for slash commands; drop files, tabs, or images)',
   '发送（Enter）': 'Send (Enter)',
+  '导师正在回答…这条发出去会排进等待队列，等它答完自动发送': 'The tutor is replying… sending now puts this in the queue; it goes out once the reply finishes',
+  '排进等待队列（当前回答结束后自动发送）': 'Add to the waiting queue (sent automatically after the current reply)',
+  /* ---------- 等待队列（agent 正在跑时发出去的那些，见 panel/QueuedMessages） ---------- */
+  '等待执行': 'Waiting to run',
+  '{0} 条': '{0} queued',
+  '当前回答结束后自动按顺序发送': 'Sent in order once the current reply finishes',
+  '（只有附件）': '(attachments only)',
+  '{0} 张图': '{0} image(s)',
+  '{0} 个文件': '{0} file(s)',
+  '撤回': 'Withdraw',
+  '撤回：这条不再发送': 'Withdraw: this message will not be sent',
+  '立即发送': 'Send now',
+  '立即发送：中止当前回答，先跑这条': 'Send now: stop the current reply and run this one first',
 
   /* ---------- ToolCard ---------- */
   '执行中': 'Running',

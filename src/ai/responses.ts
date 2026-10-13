@@ -192,7 +192,7 @@ export async function responsesStream(
   }
   if (!res.ok) {
     const raw = await res.text().catch(() => '')
-    throw new AiRequestError(describeResponsesError(res.status, raw))
+    throw new AiRequestError(describeResponsesError(res.status, raw), res.status)
   }
   if (!res.body) throw new AiRequestError('服务未返回数据流')
 
@@ -311,7 +311,7 @@ export async function responsesStream(
   } catch (err) {
     if (opts.signal?.aborted) throw err
     if (err instanceof AiRequestError) {
-      throw new AiRequestError(`${err.message}（已接收 ${content.length} 字后就断了）`)
+      throw new AiRequestError(`${err.message}（已接收 ${content.length} 字后就断了）`, err.status)
     }
     throw err
   } finally {

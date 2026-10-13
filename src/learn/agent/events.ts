@@ -39,6 +39,21 @@ export function applyEvent(parts: AgentPart[], e: AgentEvent): void {
     case 'notice':
       parts.push({ type: 'notice', level: e.level, text: e.message })
       break
+    /**
+     * 请求失败、要重发了：把这一趟吐出去的正文 / 思考（连同上一趟那条「正在重试」）
+     * 一起撤掉——重发是从头再生成一遍，留着就会和新回答叠成两段。
+     *
+     * 只从**末尾**往回撤：失败的那趟只能在这条消息的尾部留下东西
+     * （工具卡片与更早的正文都属于前面已经跑通的跳，不能动）。
+     */
+    case 'retry': {
+      while (parts.length) {
+        const last = parts[parts.length - 1]
+        if (last.type !== 'text' && last.type !== 'thinking' && last.type !== 'notice') break
+        parts.pop()
+      }
+      break
+    }
     // 跳边界：只记一个标记（见 agent/types 的 hop 说明），toChatHistory 按它分段还原
     case 'hop':
       parts.push({ type: 'hop' })

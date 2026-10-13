@@ -47,6 +47,9 @@ function sameAgentTabPane(prev: AgentTabPaneProps, next: AgentTabPaneProps): boo
     prev.compactThreshold === next.compactThreshold &&
     prev.tps === next.tps &&
     prev.liveUsage === next.liveUsage &&
+    // 等待队列（输入框上方那一块）：排进一条、撤回、被派发都要当场画出来。
+    // 队列按会话存、没动过的会话数组还是同一个引用，所以这一条不会误伤别的页签
+    prev.queue === next.queue &&
     prev.ask === next.ask &&
     prev.sub === next.sub &&
     prev.viewSubId === next.viewSubId

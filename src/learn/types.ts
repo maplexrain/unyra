@@ -437,6 +437,14 @@ export interface KnowledgeNode {
   outline?: OutlineDoc
   /** 「了解」注解；渲染期套在正文对应词上，不改动 content */
   annotations: Annotation[]
+  /**
+   * 思维导图上这个节点自定义的底色（右键节点改色）。
+   *
+   * 存的是调色板的**名字**（见 components/learn/outline/mindmapTint 的 TINT_PALETTE），
+   * 不是色值——色值跟着主题走（浅色/深色/纸色几套主题各有一套映射），存色值会在换主题时
+   * 变成一块对不上号的颜色。没这一项就是「随分支走」（默认）。
+   */
+  tint?: string
   status: MasteryStatus
   /** 学习状态（自评 / 掌握度 / 错误记忆 / 检验记录 / 学习行为）；没评估过就没有这一项 */
   learning?: LearningState

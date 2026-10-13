@@ -1,6 +1,7 @@
 /** 这个文件负责：文档区的**形状**——布局树、每格的页签、焦点与拖动落点；只有类型，没有一行逻辑 */
 
 import type { LearnTab } from '../types'
+import type { TabOwners } from './goals'
 
 /** 一组页签：自己一条页签栏、自己一个激活项 */
 export interface DocGroup {
@@ -47,6 +48,14 @@ export interface DocWorkspace {
   layout: DocLayout
   groups: DocGroup[]
   focus: string
+  /**
+   * **目标页签归属**：哪些页签属于哪个目标（键见 groups/goals 的 PUBLIC_OWNER）。
+   *
+   * 页签组（DocGroup）管的是排版，这一张管的是「这份文档在为哪个目标服务」——
+   * 两者会交叉（一个目标的文档可以被拖到任何一格），所以分开记（见 groups/goals）。
+   * **可选字段**：旧 state.json 里没有它，读回来由 reconcileOwners 按页签现算补上。
+   */
+  tabOwners?: TabOwners
 }
 
 /**

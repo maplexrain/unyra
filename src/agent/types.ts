@@ -386,6 +386,15 @@ export type AgentEvent =
   /** 非错误的运行时提示：输出被截断、步数用尽、正在重试等 */
   | { type: 'notice'; level: 'warn' | 'info'; message: string }
   /**
+   * 一次请求失败、即将退避重发（见 agent/retry 的判据与上限）。
+   *
+   * 它的作用只有一个：**让界面把这一趟已经吐出去的字撤掉**。重发是从头再生成一遍，
+   * 留着那些半截正文，新的回答就会接在旧答案后面，看着像说了一半又从头说。
+   * 紧跟在后面的 notice 才是给用户看的那句「正在重试（第 n 次）」——
+   * 顺序不能反，反过来那条提示自己也会被撤掉。
+   */
+  | { type: 'retry'; attempt: number; max: number; message: string }
+  /**
    * 输出中的实时速度（tok/s）：输出期间每秒重算一次「累计输出 ÷ 首个 chunk 以来的时长」。
    * 它是**估算值**（按字符折算，口径与 estimateUsage 一致）；请求结束时的 usage 事件
    * 会带着服务端的精确 tps 来替换它。

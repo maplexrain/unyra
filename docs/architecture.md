@@ -94,12 +94,17 @@
   只放用例，业务代码不放这里
 - `src/agent/` —— 框架无关的 Agent 核心：`types` 定义会话片段与事件，`tools` 是唯一那个 `execute`
   工具（模型写一段 JS，经沙箱里的 api 编排一切），`sandboxWorker` / `sandboxRuntime.js` 负责在
-  Worker 里跑这段代码并把 api 调用转回宿主，`runtime` 负责「思考 → 工具 → 观察」循环（不设轮次上限）
+  Worker 里跑这段代码并把 api 调用转回宿主，`runtime` 负责「思考 → 工具 → 观察」循环（不设轮次上限），
+  `retry` 是请求失败后的两条纯判据——哪类错值得重发、等多久再发（运行时只照它行事）
 - `src/agent/persona.ts` —— 导师人格：三种模式的指令文本、共同底线、以及「这一轮要不要补一句」的
   判据（纯函数）；人格以隐藏 user 消息进上下文，不进系统提示词。见 [agent.md](agent.md)
 - `src/learn/` —— 学习领域：`types`（`NoteFile` 的一节点多笔记模型、`LearnTab` 页签与
   `LearningState`）/ `groups`（文档区的分组与分割：布局树、页签的移动与落点、关掉之后谁接管焦点，
-  纯函数）/ `learning`（学习状态的纯函数：值域校验、错误记忆的累加、检验时间线的裁剪）、
+  纯函数；`groups/goals` 另管**目标页签归属**——哪些页签属于哪个目标、切目标看得见哪些，
+  见下「目标页签组」）/ `outline`（一个目标的结构化计划：intro + 直接子条目，落盘为
+  `{节点}.outline.json`；**所有把文件读回 store 的路都过 normalizeOutline**——启动读盘、
+  VFS 的文件变更回灌也一样，条目的 key 一律按标题重算：文件里那一环只保证
+  `{ title, summary }`，缺 key 的条目会让导图上一整层占位节点塌成同一个 id）/ `learning`（学习状态的纯函数：值域校验、错误记忆的累加、检验时间线的裁剪）、
   `reading`（有效阅读的事实：会话、节锚、学习日索引与有界压缩）、`useReadingTracker`（把「真的在读」
   变成增量的采集器）、`attention`（把事实折成档位与建议的纯函数）、`checkin`（打卡：资格、门槛复核、
   连续天数与日历）、`pomodoro`（导师排计划、用户点开始的专注计时）/ `graph`（纯函数 DAG 操作，
@@ -112,14 +117,29 @@
   `images`（消息附件：缩放、落盘、读取、清理）/ `useAgent`（把运行时接到 store，流式渲染）
 - `src/user/` —— 用户与画像：`types` / `profile`（归一化与提示词块）/ `store`（用户列表，
   即 `users/` 下的目录 + 数据作用域）/ `session`（登录态，导航守卫已搬到 `lib/route`）/
-  `api`（仓储接口，预留远端账号体系）
+  `api`（仓储接口，预留远端账号体系）/ `assets`（`{user}/assets/` 的地址约定：`asset:` 引用）
+  / `avatar` 与 `background`（头像与全局背景图这两类静态资源的落盘、取用与老数据迁移——
+  配置里只放地址，图片本体是磁盘上的文件，理由见 data-and-privacy.md）
 - `src/components/learn/` —— 学习页的几块界面：`LearnWorkspace`（工作区与顶栏）/
-  `ExplorerSidebar`（资源管理器）/ `docTypes`（文档类型的图标与配色，页签栏与侧栏共用一份）/
+  `ExplorerSidebar`（资源管理器）/ `OutlineView`（大纲页：目标级的思维导图）/
+  `outline/MindmapView`（导图本体：相机、选中、折叠、连线跳转、节点底栏的文档 tip。
+  **相机的拖动与滚轮不经过 React**：手势期间只改 ref + 直接写那一层的 `style.transform`，
+  松手（或滚轮停下）才提交给 state——一次 mousemove 一次 setState 会让整棵导图每秒重
+  协调上百遍，那是「拖起来卡」的直接原因；同一趟里还会把这层提到合成层，
+  让带 backdrop-blur 的卡片平移时只剩 GPU 上的位移）/
+  `outline/mindmapNav`（导图导航的纯算术：选中后镜头怎么摆、点连线跳到哪一端）/
+  `outline/mindmapTint`（节点自定义颜色的调色板与归一，读盘那一侧也要用，故独立成 .ts）/
+  `docTypes`（文档类型的图标与配色，页签栏与侧栏共用一份）/
   `TabBar`（**一格自己的**页签栏）/ `agent/PersonaPicker` / `DocFloat`（右上角悬浮组）/
   `NodeStatePanel` / `NodeNote`（文档渲染与选词菜单）/ `SourceEditor` / `LocalDoc` /
   `ExamCopyView` / `NoteDialog` / `DocOutline` / `ExportDialog`
+- `src/lib/tabPresence.ts` —— 两处页签栏（文档区与导师栏）共用的**进出场**：新开的浮上来、
+  关掉的那枚按住 160ms 再放走（React 一卸载就没得画了，所以栏上画的是 hook 自己那份名单）
 - `src/components/agent/` —— `AgentPanel.tsx`（agent 栏：消息列表、消息定位条、输入卡片）与
-  `ModelPicker.tsx`（右下角的「提供商 · 模型 · 思考等级」三级菜单）
+  `panel/`（输入区那一套：`Composer` 画卡片、`QueuedMessages` 画输入框上方的等待队列、
+  `useComposer` 管草稿与附件、`usePlusMenu` 管「+」菜单）与
+  `ModelPicker.tsx`（右下角的「提供商 · 模型 · 思考等级」三级菜单）。队列的**状态**不在这里，
+  它随对话住在 `learn/agentQueue`（类型与纯判据）+ `learn/useAgent`（收发与派发）
 - `src/components/` 其余 —— `WindowControls.tsx`（无边框窗口的自绘窗口控制）、`CloseDialog.tsx`、
   `update/`（`UpdateButton` + `UpdateDialog`；开关、手动检查与进度在设置面板的「更新」分页）
 - `src/lib/web/` —— 读网页：`dom.ts`（DOMParser 提取正文那一块）、`page.ts`（树 → markdown、
@@ -148,6 +168,26 @@
   `providers`（内置提供商注册表）、`settings`（`{ providers[], global }` 与迁移）、
   `http`（渲染层的网络出口，改写地址并同步白名单）、`client`（统一客户端）、
   `anthropic` / `responses` / `commandcode`（另外三种协议）。见 [ai-providers.md](ai-providers.md)
+
+## 目标页签组
+
+文档区的页签按**目标**归属：点资源管理器里的目标节点，就从「当前看的那几份」切到**这个目标
+的那一套页签**上；切走再切回来，上次在这个目标里开着的文档原样还在。公共页签（设置、超级导师
+设置、外部文件、网页……）不属于任何目标，切目标时一直留在栏上。
+
+- **归属是一张单独的登记表**（`DocWorkspace.tabOwners`，见 `src/learn/groups/goals.ts`），
+  键是目标 id（`PUBLIC_OWNER` = 公共），值是页签 id 列表。它不挂在 `DocGroup` 上，因为分组是
+  **排版**（哪一格、怎么摆）、归属是**内容**（这份文档在为哪个目标服务），两者会交叉——一个目标的
+  文档可以被拖到任何一格里。
+- **判据是页签指向的节点属于哪个目标**（`refOwner`）：教学文档、笔记、超级文档、试卷副本，
+  只要那个节点在目标的树里，就都算这个目标的（「所有当前目标下任意层级的文档打开都会被记录」）。
+- **切目标只换「看得到的」**：页签实体一直住在 `docArea` 里，`visibleTabs` 只决定栏上画哪几张，
+  `focusTabsInGroup` 把本目标的排在前面、公共的跟在后面。
+- **首次切到某个目标**会把它的**大纲页**开成页签并置前（`goalTabGroup`）——那是一个目标的入口，
+  教学文档一律从大纲里点进去。因此资源管理器里点目标文字 = **切目标页签组**，不再打开教学文档。
+- 旧 `state.json` 没有这张表，读盘时由 `reconcileOwners` 按页签现算补一份（见
+  `src/learn/store/normalize`），升级即正确，不会出现「页签集体消失」。纯函数用例在
+  `tests/goalTabs.test.ts`。
 
 ## 扩展方式
 

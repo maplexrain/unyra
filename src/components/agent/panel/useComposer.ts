@@ -1,21 +1,25 @@
 /**
- * 输入区的状态：草稿文字、待发送的图片与文件、拖进来的东西、发送与停止。
+ * 输入区的状态：草稿文字、待发送的图片与文件、拖进来的东西、发送（含交棒）。
  *
  * 「待发送」这四个字是这一块的关键：附件**只在内存里**（见 agent/types 的 PendingImage），
  * 贴进来不落盘、不进资源库，真正发送时才由 learn/useAgent 转存——所以放掉预览地址、
  * 卸载时清一遍都归这里管。画出来的是 Composer.tsx，菜单是 PlusMenu.tsx。
+ *
+ * 导师正在跑时发送**不再是禁用**：那条消息排进等待队列（见 learn/agentQueue），
+ * 这里只按 onSend 的返回值决定附件的去留——直接发出去的就地放掉预览地址，排队的
+ * 交给队列持有（见 submit）。
  */
 
 import { useEffect, useRef, useState } from 'react'
 import type { PendingFile, PendingImage } from '../../../agent/types'
 import { MAX_FILES, pendingFromFile, pendingFromRead } from '../../../learn/attachments'
-import { MAX_IMAGES, MAX_SOURCE_BYTES } from '../../../learn/images'
+import type { SendOutcome } from '../../../learn/agentQueue'
+import { MAX_IMAGES, MAX_SOURCE_BYTES, makePendingImage, releasePending } from '../../../learn/images'
 import { setAgentFocusHandler } from '../../../lib/agentFocus'
 import { placeCaretEnd } from '../../../lib/composerDoc'
 import { native } from '../../../lib/native'
 import { usePresence } from '../../../lib/presence'
 import { MENU_EXIT_MS } from './constants'
-import { makePendingImage, releasePending } from './imagePending'
 import { t } from '../../../i18n'
 
 export interface ComposerApi {
@@ -39,7 +43,10 @@ export interface ComposerApi {
   addPendingFiles: (list: PendingFile[]) => void
   /** 「更多 → 文件」：走系统对话框，把选中的文件读成待发送的附件（见 PlusMenu） */
   pickAttachment: () => Promise<void>
-  /** 发送。交出去的是 File 原件；预览地址此刻就可以放掉了（转存读的是 file，不是它） */
+  /**
+   * 发送。把附件交出去，同时**把它们的生命周期也交出去**（见 onSend 的返回值约定）：
+   * 直接发的那条由这里放掉预览地址，排队的那条留给队列。
+   */
   submit: () => void
   /** 输入框（contenteditable）的挂载回调。名字不带 Ref：见下面的说明 */
   editorMount: (el: HTMLDivElement | null) => void
@@ -59,10 +66,20 @@ export interface ComposerApi {
 }
 
 export interface ComposerOptions {
-  running: boolean
   /** 当前模型收不收图（决定能不能贴图）。见 ai/settings 的 supportsImage */
   vision: boolean
-  onSend: (text: string, images: PendingImage[], files: PendingFile[]) => void
+  /**
+   * 发送。**返回附件被谁接管**（见 learn/agentQueue 的 SendOutcome）：
+   *
+   * - `sent`：这条直接发出去了。输入区立刻放掉预览地址——转存读的是 File 原件，
+   *   地址只服务于预览，留着就是内存泄漏；
+   * - `queued`：导师正在跑，这条排进了等待队列。队列**持有附件**（那张图要等到
+   *   它真正跑起来才转存），所以这里绝不能放——放了，轮到时发出去的就是一张空图。
+   *
+   * 这个返回值不是为了好看：它是「谁负责放掉预览地址」的唯一判据，漏掉一边就是
+   * 要么泄漏、要么把用户的图弄丢。
+   */
+  onSend: (text: string, images: PendingImage[], files: PendingFile[]) => SendOutcome
   /** 提示一句话（图片不合适、模型不支持图片输入等） */
   onNotice: (message: string) => void
   /** 主动发问就是想看回复：发送后回到跟随状态（见 useScrollFollow 的 restoreFollow） */
@@ -70,7 +87,6 @@ export interface ComposerOptions {
 }
 
 export function useComposer({
-  running,
   vision,
   onSend,
   onNotice,
@@ -260,14 +276,19 @@ export function useComposer({
     [],
   );
 
+  /**
+   * 发送。导师没在跑就直接发；正在跑就排进等待队列（由宿主决定，见 ComposerOptions.onSend）——
+   * 换句话说「正在跑」不再是发送键的禁用条件：用户想说的事现在不说，等轮到了就不想说了。
+   */
   const submit = () => {
     const text = value.trim()
     // 只有附件没有字也允许发：贴一张图问「这是什么问题」、丢一份文件说「看看这个」都是常见用法
-    if ((!text && !images.length && !files.length) || running) return
-    // 交出去的是 File 原件；预览地址此刻就可以放掉了（转存读的是 file，不是它）
-    onSend(text, images, files)
+    if (!text && !images.length && !files.length) return
+    const outcome = onSend(text, images, files)
+    // 直接发出去的那条：预览地址此刻就放掉（转存读的是 File 原件，不是它）。
+    // 排队的那条放不得——附件还在队列手上，等它跑起来还要用（见 onSend 的说明）。
+    if (outcome !== 'queued') releasePending(images)
     setValue('')
-    releasePending(images)
     setImages([])
     setFiles([])
     // 主动发问就是想看回复：无论刚才读到哪儿，都回到跟随状态

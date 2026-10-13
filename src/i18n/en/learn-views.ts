@@ -422,27 +422,58 @@ const dict: Record<string, string> = {
   '（层数说的是知识依赖，不是你的基础）': '(depth counts knowledge dependencies, not your background)',
 
   // ---------- 大纲页 ----------
-  '掌握度 {0}': 'Mastery {0}',
-  '自评「{0}」': 'Self-assessment "{0}"',
+  /*
+   * 这一块里原来还有九条（掌握度 / 自评 / 最近{0} / 考过 {0} 场 / 待复习 / 下次复习……），
+   * 属于**线性大纲**那一版的左侧信息栏。线性视图已经下线（大纲页只剩思维导图），
+   * 那些文案在代码里再也找不到，留着只会让 i18n 对账一直报一堆假阳性——所以整批删掉。
+   */
   '错误记忆 {0}': 'Mistake memory {0}',
-  '最近{0} {1} 分': 'Last {0} {1} pts',
-  '最近{0}': 'Last {0}',
-  '上次学习 {0}': 'Last studied {0}',
-  '考过 {0} 场': '{0} exams taken',
-  '待复习 · {0}{1}': 'Due for review · {0}{1}',
-  '（逾期 {0} 天）': '({0} days overdue)',
-  '下次复习 {0} · {1}': 'Next review {0} · {1}',
   '总目标': 'Main goal',
   '阶段目标': 'Stage goal',
-  '重排大纲': 'Rework the outline',
   '请导师生成大纲': 'Ask the tutor to draft the outline',
-  '大纲只列直接子层级；展开一个子目标，看到的是它自己的大纲': 'The outline lists direct children only; expand a child to see its own outline',
   '的大纲': "'s outline",
-  '这个目标还没有大纲（较早创建的节点不会自动补）。点上面那颗按钮，请导师把这一层的计划立起来。': 'This goal has no outline yet (older nodes are not backfilled). Click the button above to have the tutor lay out this level.',
-  '这一层还没有规划子目标。': 'No children planned at this level yet.',
-  '打开这个目标的教学文档': 'Open the study document of this goal',
   '创建并开讲': 'Create and teach',
-  '生成它的大纲': 'Draft its outline',
+
+  /*
+   * 思维导图（components/learn/outline/MindmapView）。
+   * 「教学文档」那一颗按钮已经去掉——标题自己就是链接，所以链接的 tooltip
+   * （'打开「{0}」的教学文档'）是这里唯一说明「标题点了会开什么」的一句。
+   */
+  '这个目标还没有大纲': 'This goal has no outline yet',
+  '大纲是这一层的路线图：拆成哪几个子目标、先学哪个。请导师把它立起来，这张图上就会长出分支。':
+    'The outline is the roadmap for this level: which sub-goals to split into, and what to learn first. Have the tutor lay it out and branches will grow on this map.',
+  '打开「{0}」的教学文档': 'Open the study document of "{0}"',
+  '请导师给「{0}」规划大纲': 'Ask the tutor to plan the outline of "{0}"',
+  '生成': 'Draft',
+  '未创建': 'Not created',
+  '节点颜色': 'Node color',
+  '默认（随分支）': 'Default (follow the branch)',
+  '右键节点可改色': 'Right-click a node to recolor it',
+  '点这条线，跳到「{0}」': 'Click this line to jump to "{0}"',
+  '展开子分支（{0} 个下级）': 'Expand the child branch ({0} below)',
+  '折叠子分支': 'Collapse the child branch',
+  '全部展开': 'Expand all',
+  '全展': 'Expand',
+  '折叠': 'Collapse',
+  '折叠到一级分支': 'Collapse to first level',
+  '缩小 (滚轮下)': 'Zoom out (scroll down)',
+  '放大 (滚轮上)': 'Zoom in (scroll up)',
+  '重置为 100%': 'Reset to 100%',
+  '自适应画布（双击空白同效）': 'Fit to canvas (or double-click empty space)',
+  '归位': 'Reset view',
+  // 节点底栏的文档按钮与它们的 tip
+  '{0}（{1}）—— 点开查看 / 新增 / 删除': '{0} ({1}) — click to view, add or delete',
+  '新建': 'New',
+  '新建一份笔记': 'New note',
+  '让导师出一份卷子': 'Have the tutor set a paper',
+  '开一个超级实验室，让导师写一份可交互文档': 'Open a super lab and have the tutor write an interactive document',
+  '删除《{0}》': 'Delete "{0}"',
+  '打开《{0}》': 'Open "{0}"',
+  '打开《{0}》；双击改名': 'Open "{0}"; double-click to rename',
+  '还没有笔记。点右上「新建」写一份。': 'No notes yet. Click New at the top right to write one.',
+  '还没考过。点右上「出卷」让导师出一份。': 'No exams yet. Click Set paper at the top right to have the tutor make one.',
+  '还没有超级文档。点右上「新建」开一个。':
+    'No super docs yet. Click New at the top right to open one.',
 
   // ---------- 试卷副本 ----------
   '{0} 年 ': '{0} ',

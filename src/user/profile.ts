@@ -1,11 +1,12 @@
 import {
-  AVATAR_MAX_BYTES,
+  AVATAR_MAX_URL,
   GENDER_LABEL,
   GENDER_OPTIONS,
   emptyProfile,
   type Gender,
   type UserProfile,
 } from './types'
+import { isAssetUrl } from './assets'
 
 /**
  * 用户画像的纯函数：解析、展示用派生值、以及一段写给模型看的画像说明。
@@ -20,14 +21,31 @@ import {
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
 
-/** 头像只接受 data:image/... 的 data URL：避免存进远程地址或 javascript: 之类的值 */
+/**
+ * 头像只接受 **URL**：内置资源（`asset:头像文件.png`，图片落在 `{user}/assets/`）或外链
+ * （http / https）。其余一律当没填。
+ *
+ * 两道闸都是为了同一件事——**别让字节混进画像字段**：
+ *
+ * - `data:` 直接拒（需求原文：「不再使用base64，因为太过庞大」，还特意点了
+ *   「避免其他手段传入base64」）。从前这里反过来，只认 data:image/，于是画像被
+ *   一段三百多 KB 的 base64 撑满，每次启动都要整份解析。现在它是最先被挡掉的那种；
+ * - 长度卡在 AVATAR_MAX_URL：就算将来有什么形态绕过了前缀判断，255 字符也放不下
+ *   一张图——从**体积**上再堵一次。
+ *
+ * 不合法一律返回空串（退回昵称首字的文字头像），与 normalizeProfile 里其余字段
+ * 「任何非法输入都退回空值，绝不抛异常」的纪律一致。
+ */
 export function normalizeAvatar(v: unknown): string {
-  const s = typeof v === 'string' ? v : ''
-  if (!s.startsWith('data:image/')) return ''
-  // 约按 base64 膨胀 4/3 估算，超出上限就丢弃。
-  // 头像会随画像写进 user.yaml，也在每次读写时进出内存，不该动辄几百 KB。
-  if (s.length > AVATAR_MAX_BYTES * 1.4) return ''
-  return s
+  const s = typeof v === 'string' ? v.trim() : ''
+  if (!s || s.length > AVATAR_MAX_URL) return ''
+  // base64 / 任何 data URI：明确拒绝，这也是这一版改动的由头
+  if (/^data:/i.test(s)) return ''
+  // 内置资源：形状由 user/assets 说了算（一个纯文件名，不可能指到 assets/ 之外）
+  if (isAssetUrl(s)) return s
+  // 外链：只要 http(s)。javascript: 、file: 、协议相对地址之类一律不放行
+  if (/^https?:\/\/[^\s]+$/i.test(s)) return s
+  return ''
 }
 
 function normalizeAge(v: unknown): number | null {

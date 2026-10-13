@@ -21,6 +21,7 @@ import { hydrateUsageLog } from '../ai/usageLog'
 import { hydrateFreeChat } from '../learn/freeChat'
 import { t } from '../i18n'
 import { bootstrapUsers } from '../user/store'
+import { reconcileBackgroundAssets } from '../user/background'
 import { restoreSession, type Session } from '../user/session'
 import { hydrateLearnStore } from '../learn/store'
 import { loadPlugins } from './plugins'
@@ -53,6 +54,15 @@ export async function enterUserScope(uid: string | null): Promise<void> {
   await hydrateLearnStore(uid)
   startupMark('r:learn-done')
   refreshAppearance()
+  /*
+   * 全局背景图对账：把老设置里那段 base64 背景迁进 assets/，顺手清掉没人引用的旧文件。
+   * 放在这里是因为这一刻才同时具备三件事：设置已经读进来（知道引用了哪几张）、
+   * 用户作用域已经设好（知道往谁的 assets/ 里写）、而界面还没渲染（第一帧就该用上新地址）。
+   *
+   * **不 await**：它要读要写好几张图，几十毫秒起步，而背景图晚一拍显示出来没人看得出来；
+   * 卡在启动链上却是实打实的。写完之后 setAppearance 会通知订阅者，界面自己会跟上来。
+   */
+  void reconcileBackgroundAssets()
   // 快捷键跟着用户走（见 lib/shortcuts）：与外观同一时刻载入，之后都是同步读内存
   refreshShortcuts()
 }

@@ -61,7 +61,24 @@ export function renameTabRef(docs: DocWorkspace, from: TabRef, to: TabRef): DocW
       active: g.active === fromId ? toId : g.active,
     }
   })
-  return hit ? settle(withDocs(docs, { groups })) : docs
+  if (!hit) return docs
+  /*
+   * 目标归属跟着页签 id 一起搬（见 goals）：笔记改名换的是页签身份，
+   * 但它服务的还是同一个目标——不搬的话它会变成「没登记过的页签」，
+   * 虽然 reconcileOwners 兜得回来（按 nodeId 现算），但那一刻它已经在栏上闪一下位置了。
+   */
+  const owners = docs.tabOwners
+  const tabOwners = owners
+    ? Object.fromEntries(
+        Object.entries(owners).map(([owner, ids]) => [
+          owner,
+          ids.map((id) => (id === fromId ? toId : id)),
+        ]),
+      )
+    : undefined
+  return settle(
+    withDocs(docs, { groups, ...(tabOwners ? { tabOwners } : {}) }),
+  )
 }
 
 /**

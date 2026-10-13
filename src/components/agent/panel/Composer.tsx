@@ -10,12 +10,14 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { ArrowUp, Bot, ChevronRight, Square } from 'lucide-react'
 import type { AskAnswers, AskFormPayload } from '../../../agent/tools'
 import type { Conversation, PendingImage } from '../../../agent/types'
+import type { QueuedMessage } from '../../../learn/agentQueue'
 import type { ReasoningEffort } from '../../../ai/types'
 import ModelPicker from '../ModelPicker'
 import { AskFormCard } from './AskFormCard'
 import { FileChip, ImageThumb } from './Images'
 import MicButton from './MicButton'
 import { PlusMenu } from './PlusMenu'
+import { QueuedMessages } from './QueuedMessages'
 import { useSlashMenu, type SlashItem } from './useSlashMenu'
 import type { ComposerApi } from './useComposer'
 import type { MenuSub } from './types'
@@ -92,6 +94,15 @@ export interface ComposerProps {
   personaSlot?: ReactNode
   /** 这枚面板是不是眼前的页签（keepalive 常挂时隐藏面板不登记 chip 落点，见 chipHover 的 effect） */
   active?: boolean
+  /**
+   * 等待队列（agent 正在跑时发出去的那些，见 learn/agentQueue）：画在输入卡片上方。
+   * 队列本身按会话存在宿主里——这里只是画它，以及把两个动作交上去。
+   */
+  queue: QueuedMessage[]
+  /** 撤回队列里的一条 */
+  onQueueDrop: (id: string) => void
+  /** 立即发送队列里的一条（当前这一轮若还在跑会先被中止） */
+  onQueueSendNow: (id: string) => void
   /** 拖拽悬停：高亮输入框，告诉用户「松手就放这里」 */
   dragOver: boolean
   onDragOver: (e: React.DragEvent) => void
@@ -147,12 +158,20 @@ export function Composer(props: ComposerProps) {
   personaSlot,
   /** 这枚面板是不是眼前的页签（keepalive 常挂时隐藏面板不登记 chip 落点，见上面的 effect） */
   active = true,
+  queue,
+  onQueueDrop,
+  onQueueSendNow,
   dragOver,
     onDragOver,
     onDragLeave,
     onDrop,
   } = props
   const { value, images, files, submit, setValue, pasteImages, removeImage, removeFile, clearAttachments } = composer
+  /**
+   * 输入框里有东西吗（文字或附件）：发送键画不画、能不能点都看它。
+   * 附件也算——只有一张图、没有字的那条同样发得出去（见 useComposer 的 submit）。
+   */
+  const hasDraft = value.trim() !== '' || images.length > 0 || files.length > 0
 
   /**
    * 输入框自己的 ref：斜杠菜单的项被点掉之后把焦点送回去（点菜单项会把焦点带到
@@ -409,10 +428,18 @@ export function Composer(props: ComposerProps) {
         整张卡片 = 加高的输入框 + 底部一条工具条（无分割线）。
         右下角依次是模型选择器与圆形发送键。
 
-        外面这一层 relative 只管一件事：当「+」菜单的定位参照。菜单 absolute 弹在卡片上方，
-        宽度与卡片一致（见 PlusMenu 里的 left-0 right-0）——所谓「等宽且不占位」就是它。
+        外面这一层 relative 是两块地皮共同的定位参照：上边的等待队列（流内、占位）
+        与卡片本身。两个 absolute 的浮层（「+」菜单、斜杠菜单）都按 bottom-full
+        往这一整块的上方长——队列在流内，浮层因此不会压在它身上。
       */}
       <div className="relative">
+      {/*
+        等待队列：agent 正在跑时发出去的消息排在这里，就在输入卡片的上沿之上——
+        「我接着要说的话」（输入框）与「我已经说了、还没轮到的话」（队列）挨着放。
+        它在流内（会占位），于是上面那条斜杠菜单按 bottom-full 落到整块之上，
+        不会与它叠在一起。
+      */}
+      <QueuedMessages items={queue} onDrop={onQueueDrop} onSendNow={onQueueSendNow} />
       {/*
         斜杠命令菜单：输入框里是「/ + 一截字母」时出现，弹在卡片上方（与「+」菜单同一块地皮，
         同一个定位参照——外面这层 relative）。定位与观感照搬「+」菜单：等宽、不占位、
@@ -516,7 +543,10 @@ export function Composer(props: ComposerProps) {
             >
               {subMode
                 ? t('子会话只接受导师的调度——回到导师对话给它派任务。')
-                : t('向超级导师提问…（/ 可用斜杠命令，可拖入文件、页签、图片）')}
+                : running
+                  ? // 正在跑：说清「现在发出去会发生什么」——排队，不是等用户自己按住
+                    t('导师正在回答…这条发出去会排进等待队列，等它答完自动发送')
+                  : t('向超级导师提问…（/ 可用斜杠命令，可拖入文件、页签、图片）')}
             </span>
           )}
           <div
@@ -608,6 +638,30 @@ export function Composer(props: ComposerProps) {
                 }}
               />
             )}
+            {/*
+              发送键那两个分支的规矩：
+
+              - **空闲**：一颗实心键（主行动就是这个）；
+              - **正在跑**：停键照旧，但输入框里**有东西**时再多一颗「排队发送」键——
+                用户在导师回答时写的字照样发得出去，它不是被拦下的，是排到下一轮
+                （见 learn/agentQueue）。输入框空着就不画它：空按一下什么都不会发生。
+
+              排队发送键**刻意长得不一样**（描边 + 虚边 + seal 淡底，与实心那颗和旁边
+              那颗中性的停键都不同）：它发出去的结果不是「立刻开始」，而是「排进队列」，
+              同一颗实心按钮会让人以为点下去导师马上就听。停键排在它右边——
+              最靠角的那颗是「停下来」，这是这颗面板里最需要闭着眼也点得准的动作。
+            */}
+            {running && !subMode && hasDraft && (
+              <button
+                type="button"
+                title={t('排进等待队列（当前回答结束后自动发送）')}
+                onClick={submit}
+                disabled={slash.active}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-dashed border-seal/60 bg-seal/5 text-seal-deep shadow-none transition hover:border-seal hover:bg-seal/15 disabled:pointer-events-none disabled:opacity-35"
+              >
+                <ArrowUp size={15} />
+              </button>
+            )}
             {running ? (
               <button
                 type="button"
@@ -626,7 +680,7 @@ export function Composer(props: ComposerProps) {
                  * 斜杠命令打着的时候发不得：那截文字是命令，不是消息（Enter 在斜杠菜单里
                  * 已经被拦下，这颗按钮是同一道闸的鼠标侧）。
                  */
-                disabled={!!subMode || slash.active || (!value.trim() && !images.length && !files.length)}
+                disabled={!!subMode || slash.active || !hasDraft}
                 className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink text-paper shadow-sm transition hover:bg-ink-strong disabled:pointer-events-none disabled:opacity-35"
               >
                 <ArrowUp size={15} />

@@ -15,7 +15,7 @@
  * 不会读到旧内容——这也是「换个模型重发一次，前缀仍然逐字节相同」的前提。
  */
 
-import type { ConversationMessage, MessageImage } from '../agent/types'
+import type { ConversationMessage, MessageImage, PendingImage } from '../agent/types'
 import type { LearnStore } from './types'
 import { DOCS_DIR, IMAGES_DIR, nodeLayout } from './layout'
 import { listUserDir, readUserImage, removeUserPath } from '../lib/storage'
@@ -254,6 +254,30 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+/*
+ * 待发送图片的一对配套动作：建一个（贴进来时）、放掉一个（移除 / 清空 / 发送 / 卸载时）。
+ *
+ * 它们住在这里而不是输入区组件里（原先是 agent/panel/imagePending.ts）：**待发送队列
+ * 也要用**——排队等执行的消息攥着同样的 PendingImage，撤回时要放地址、发出去时才算交棒。
+ * 队列住在 learn/（见 agentQueue），组件目录不能反过来被它 import，所以往下挪了一层。
+ */
+
+/** 贴进来的一张图：只占内存，发送时才转存（见 agent/types 的 PendingImage） */
+export function makePendingImage(file: File, index: number): PendingImage {
+  return {
+    id: crypto.randomUUID(),
+    name: file.name?.trim() || t('粘贴的图片 {0}', index + 1),
+    bytes: file.size,
+    file,
+    previewUrl: URL.createObjectURL(file),
+  }
+}
+
+/** 放掉待发送图片的预览地址：移除、清空、发送、卸载都要走它，否则 object URL 会一直攒着 */
+export function releasePending(list: PendingImage[]): void {
+  for (const p of list) URL.revokeObjectURL(p.previewUrl)
 }
 
 

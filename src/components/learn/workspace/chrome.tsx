@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowUp, BookOpen, Check, Compass, Contact, FolderOpen, Globe, Loader2, Menu, Paperclip, Plus, Sparkles } from 'lucide-react'
+import { ArrowUp, BookOpen, Check, Compass, Contact, FolderOpen, Globe, Loader2, Menu, Paperclip, Sparkles } from 'lucide-react'
 import type { PendingFile } from '../../../agent/types'
 import type { KnowledgeNode, LearnStore } from '../../../learn/types'
 import { nodeById, pathToRoot } from '../../../learn/graph'
@@ -49,8 +49,6 @@ export function Topbar({
   onOpenSettings,
   onOpenUsage,
   onOpenUpdate,
-  onNewTab,
-  onOpenWebTab,
   onToast,
   pomodoro,
   checkin,
@@ -79,10 +77,6 @@ export function Topbar({
   /** 打开用量统计页签（入口在用户菜单，见 UserMenu） */
   onOpenUsage: () => void
   onOpenUpdate: () => void
-  /** 新建页签入口 */
-  onNewTab?: () => void
-  /** 打开新浏览器标签页 */
-  onOpenWebTab?: () => void
   /** 顶栏那几个「还没做好」的按钮据此说明一句，而不是点了没反应 */
   onToast: (msg: string) => void
 }) {
@@ -138,23 +132,12 @@ export function Topbar({
         </div>
       )}
 
-      {/* 右侧只留账号与窗口控制：保存状态与「新建目标」都不再放进顶栏——
-          数据本就是实时保存的，而新建目标与知识节点栏右上角那颗按钮是同一件事 */}
+      {/* 右侧只留账号与窗口控制：保存状态、「新建目标」与「新页签」都不在顶栏——
+          数据本就是实时保存的；新建目标与知识节点栏右上角那颗按钮是同一件事；
+          新页签搬去了它真正长出来的地方（文档区页签栏最后一枚页签后面，见 TabBar 的 onNewTab） */}
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         {/* 更新入口：只有新版本**下载完成**之后它才存在，见 components/update/UpdateButton */}
         <UpdateButton onOpenUpdate={onOpenUpdate} />
-        {/* 新建页签入口 */}
-        {(onNewTab || onOpenWebTab) && (
-          <button
-            type="button"
-            title={t('新页签')}
-            onClick={onNewTab ?? onOpenWebTab}
-            className="group relative flex h-8 items-center gap-1.5 rounded-lg border-0 bg-transparent px-2 text-[12px] font-medium text-ink-soft transition-all duration-150 hover:text-ink"
-          >
-            <Plus size={14} className="text-ink-faint transition group-hover:text-seal" />
-            <span className="hidden text-[12px] sm:inline">{t('新页签')}</span>
-          </button>
-        )}
         {/* 四个入口都是「我今天的节奏」，与账号那一簇同属右侧。
             番茄钟排在最前：它是唯一一个「开始之后不看也要一直在跑」的东西，
             固定在最左边，开关它的时候手指不必每次都去找位置 */}
@@ -341,6 +324,11 @@ export function NodeHints(_props: { node?: KnowledgeNode; store?: LearnStore }) 
  *
  * 页签是可以全部关掉的（右键菜单里就有「全部关闭」），那时给一句话说清去哪儿找东西，
  * 而不是留一片白——空白面板看起来像坏了。
+ *
+ * 它**没有卡片外壳**（用户定的）：原先这一块是 `rounded-2xl border bg-card/40 shadow-xs`
+ * 围出来的一张卡片，可它底下本来就是空的——一层底色加一道边框，只把「这里什么都没有」
+ * 又说了一遍，还把画布（粒子背景）挡掉一块。现在只剩图标、标题、三个入口与那行提示，
+ * 直接落在背景上。
  */
 export function EmptyDoc({
   onPickLocal,
@@ -353,7 +341,7 @@ export function EmptyDoc({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-6 text-center select-none animate-in fade-in duration-300">
-      <div className="flex w-full max-w-[520px] flex-col items-center rounded-2xl border border-line/70 bg-card/40 p-7 shadow-xs backdrop-blur-md">
+      <div className="flex w-full max-w-[520px] flex-col items-center p-7">
         {/* 印章/图章风格图标徽标 */}
         <div className="relative mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-seal/25 bg-seal/[0.06] text-seal shadow-inner">
           <BookOpen size={24} className="stroke-[1.75]" />

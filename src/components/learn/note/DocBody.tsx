@@ -1,6 +1,7 @@
 /**
  * 这个文件负责什么：正文那一块——滚动容器、正文本身（MarkdownView 渲染出来的 HTML）、
- * 正文还没来 / 笔记还空着时的两种占位，以及底部那行字数与选区提示。
+ * 正文还没来 / 笔记还空着时的两种占位，以及右上角悬浮组下方那条字数统计
+ * （见 DocFloat 的 DocStatChip）。
  *
  * 它不碰任何状态：字号系数、正文 HTML、注解都从上层传进来（见 NodeNote）。
  * 选词菜单是浮在正文上的，但定位与开合都不在这里——它作为 overlay 插回原来那一层，
@@ -13,6 +14,7 @@ import type { Annotation, DocKind } from '../../../learn/types'
 import type { AnnotationActions } from '../../../lib/annotation'
 import type { LocalImageResolver } from '../../../lib/docImages'
 import { copySelectionAsMarkdown } from '../../../lib/copySource'
+import { DocStatChip } from '../DocFloat'
 import { t } from '../../../i18n'
 
 interface Props {
@@ -37,7 +39,7 @@ interface Props {
   annotationActions: AnnotationActions
   /** 就地图片解析器（见 lib/docImages）：文档目录旁的相对路径图片据此显示；上层按文档注入 */
   resolveLocalImage?: LocalImageResolver
-  /** 正文字数（去掉空白）：页脚那行用 */
+  /** 正文字数（去掉空白）：右上角那条统计用（见 DocStatChip） */
   wordCount: number
   /** 浮在正文这一层上的东西（选词菜单）：位置与开合由上层管，这里只负责插回原位 */
   overlay?: ReactNode
@@ -99,10 +101,10 @@ export const DocBody = memo(function DocBody({
 }: Props) {
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      {/* 左上角悬浮字数统计（预览模式只统计可视文字） */}
-      <div className="no-print pointer-events-none absolute left-3 top-2 z-10 flex items-center rounded-md border border-line/60 bg-card/75 px-2 py-0.5 text-[11px] text-ink-faint backdrop-blur-xs select-none shadow-xs">
+      {/* 字数统计：排在右上角悬浮组的正下方（见 DocFloat 的 DocStatChip） */}
+      <DocStatChip>
         <span className="tabular-nums">{t('{0} 字', wordCount)}</span>
-      </div>
+      </DocStatChip>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {/* 左侧留白给得多一点：标题定位栏就在旁边，正文（以及跳转高亮的底色）不贴过去 */}

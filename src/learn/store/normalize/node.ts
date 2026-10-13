@@ -8,6 +8,7 @@ import { normalizeOutline } from '../../outline'
 import { normalizeReviewPlan } from '../../review'
 import { uniqueNoteName } from '../../notes'
 import { uniqueSuperDocName } from '../../superdocs'
+import { normalizeTint } from '../../../components/learn/outline/mindmapTint'
 
 /** 旧的 'unknown' 迁移为 'learning'；无法识别的一律当作学习中 */
 const toStatus = (v: unknown): MasteryStatus =>
@@ -126,6 +127,8 @@ export function normalizeNode(raw: unknown): KnowledgeNode | null {
   const outline = normalizeOutline(r.outline)
   // 复习计划同上（见 learn/review）
   const review = normalizeReviewPlan(r.review)
+  // 思维导图上的自定义色：只认调色板里那几个名字，认不出来的当「没改过」
+  const tint = normalizeTint(r.tint)
   return {
     id: r.id,
     title,
@@ -136,6 +139,7 @@ export function normalizeNode(raw: unknown): KnowledgeNode | null {
     superdocs: normalizeSuperDocs(r),
     ...(outline ? { outline } : {}),
     annotations: normalizeAnnotations(r.annotations),
+    ...(tint ? { tint } : {}),
     status: toStatus(r.status),
     ...(learning ? { learning } : {}),
     ...(review ? { review } : {}),

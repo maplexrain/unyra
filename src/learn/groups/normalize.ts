@@ -2,6 +2,7 @@
 
 import type { LearnTab } from '../types'
 import { settle } from './core'
+import type { TabOwners } from './goals'
 import { FIRST_GROUP, attachMissing, emptyDocs, newId, normalizeSizes } from './layout'
 import type { DocGroup, DocLayout, DocWorkspace } from './types'
 
@@ -15,6 +16,10 @@ import type { DocGroup, DocLayout, DocWorkspace } from './types'
  *
  * tabOf 由 store 传进来负责校验单个页签（节点还在不在、笔记还在不在），这里只管结构：
  * 认不出的组、重复的页签、坏掉的树一律丢掉，坏数据不该让整个文档区打不开。
+ *
+ * 目标页签归属（tabOwners）只认形状（键是字符串、值是字符串数组），
+ * 「页签还在不在」「该补到哪个目标名下」由 store 那边过手（见 groups/goals 的 reconcileOwners）——
+ * 那一层才知道每个节点属于哪个目标。
  */
 export function normalizeDocs(
   raw: unknown,
@@ -55,11 +60,35 @@ export function normalizeDocs(
     groups.map((g) => g.id),
   )
   // settle：手改过的 state.json 里可能留着一块空格子，读盘是唯一一次全量过手的机会
+  const owners = normalizeOwners(r.tabOwners)
   return settle({
     layout,
     groups,
     focus: typeof r.focus === 'string' && known.has(r.focus) ? r.focus : groups[0].id,
+    ...(owners ? { tabOwners: owners } : {}),
   })
+}
+
+/**
+ * 归属表的形状校验：键与值都必须是字符串（值去重、空串丢掉）。
+ *
+ * 只做形状——「这个页签还在不在」「它该归哪个目标」都不是这一层能判的（它不认识 store），
+ * 由 groups/goals 的 reconcileOwners 在读盘之后补。认不出形状时整个字段丢掉：
+ * 宁可当它没有（下次 reconcile 会按页签现算补一份正确的），也不要留半张错表。
+ */
+function normalizeOwners(raw: unknown): TabOwners | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const out: TabOwners = {}
+  for (const [owner, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(value)) continue
+    const ids: string[] = []
+    for (const id of value) {
+      if (typeof id !== 'string' || !id || ids.includes(id)) continue
+      ids.push(id)
+    }
+    if (ids.length > 0) out[owner] = ids
+  }
+  return Object.keys(out).length > 0 ? out : null
 }
 
 function legacyDocs(

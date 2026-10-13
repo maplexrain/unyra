@@ -9,6 +9,7 @@ import { languages as codeLanguages } from '@codemirror/language-data'
 import { tags } from '@lezer/highlight'
 import { countSourceWords } from '../../lib/wordCount'
 import { useDocScroll } from '../../lib/docScroll'
+import { DocStatChip } from './DocFloat'
 import { t } from '../../i18n'
 
 /**
@@ -230,11 +231,12 @@ export default function SourceEditor({
 
   return (
     <div className="print-flat relative flex min-h-0 flex-1 flex-col bg-card">
-      {/* 左上角悬浮字数与保存状态（编辑模式统计源码字符） */}
-      <div
-        title={label}
-        className="no-print pointer-events-none absolute left-3 top-2 z-10 flex items-center gap-1.5 rounded-md border border-line/60 bg-card/75 px-2 py-0.5 text-[11px] text-ink-faint backdrop-blur-xs select-none shadow-xs"
-      >
+      {/*
+        字数与保存状态：排在右上角悬浮组的正下方（见 DocFloat 的 DocStatChip）。
+        保存状态跟着字数一起搬——它俩本来就是同一条读数（「这份文档现在多大、存了没」），
+        拆成两块钉在屏幕两侧会更难找。编辑模式统计的是源码字符，不是渲染后的可视字数。
+      */}
+      <DocStatChip title={label}>
         <span className="tabular-nums">{t('{0} 字', chars)}</span>
         <span className="h-3 w-px bg-line-strong/60" />
         <span
@@ -243,11 +245,12 @@ export default function SourceEditor({
         >
           {t(STATE_TEXT[state])}
         </span>
-      </div>
+      </DocStatChip>
 
       {/*
         正文内边距走 .cm-content（见 editorTheme）：上下 20px、与左右同一尺度。
         右上那排悬浮按钮压着首行就压着——它平时是透明的，不占版面。
+        下面那条统计也浮在正文上，但它比按钮更低一行，压不住首行。
       */}
       <div ref={hostRef} className="min-h-0 flex-1 overflow-hidden" />
     </div>

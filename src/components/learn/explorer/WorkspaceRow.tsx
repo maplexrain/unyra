@@ -287,6 +287,149 @@ function WsDir({
   )
 }
 
+/**
+ * 目标节点展开后的**工作区内容**：工作区根层的目录与文件直接挂在目标底下，
+ * 不再有「工作区」那一层。
+ *
+ * 为什么去掉那一层（需求原文：「不是包含工作区目录，是工作区下的目录文件统一挂到目标下」）：
+ * 目标节点展开之后，用户要看的是「这个目标底下我有哪些东西」——
+ * 「工作区」只是磁盘布局里的一个中间文件夹名，对用户没有意义，
+ * 多一层缩进只是让人多按一次。
+ *
+ * 子目录仍是 `WsDir`（往下每层是磁盘上真实的一个目录，这个层级是真的要看）；
+ * 根层这里只把它的**孩子**平铺出来。空工作区不渲染任何行——
+ * 与原来「工作区」那一行（永远画着）不同：没有内容时，目标展开后干干净净，
+ * 想往里放东西可以右键目标节点（见 RowMenu 的 ws 菜单）。
+ */
+export function WorkspaceFlat({
+  store,
+  node,
+  ws,
+  onOpenMenu,
+  onOpen,
+  onTransfer,
+}: {
+  store: LearnStore
+  node: KnowledgeNode
+  ws: WsActions
+  onOpenMenu: (x: number, y: number, target: MenuTarget) => void
+  onOpen: (rel: string) => void
+  onTransfer: (fromRel: string, toDirRel: string, copy: boolean) => void
+}) {
+  const base = wsRelOf(store, node.id)
+  const [entries, setEntries] = useState<WsEntry[] | null>(null)
+  /** 拖着工作区条目悬在这一片上（高亮提示「松手放回工作区根」） */
+  const [dropHover, setDropHover] = useState(false)
+  const loaded = !!base
+  useEffect(() => {
+    if (!loaded || !base) return
+    let alive = true
+    const refresh = (): void => {
+      void listUserDir(base).then((list) => {
+        if (alive) setEntries(sorted(list))
+      })
+    }
+    refresh()
+    const off = subscribeWsChanged(refresh)
+    return () => {
+      alive = false
+      off()
+    }
+  }, [loaded, base])
+  // 定位广播落到工作区里的某个文件时，文件行就在这一层，revealRow 自己会滚过去
+  if (!base) return null
+  const commitRename = (rel: string, parent: string, oldName: string) => (raw: string) => {
+    ws.endRename()
+    const name = raw.trim()
+    if (!name || name === oldName) return
+    ws.rename(rel, parent + '/' + name)
+  }
+  const dragExtra = (rel: string) => (e: React.DragEvent<HTMLDivElement>) => {
+    e.dataTransfer.setData(WS_MOVE_MIME, JSON.stringify({ rel }))
+  }
+  /** 根层也是拖放落点（把子目录里的东西挪回工作区根） */
+  const dropHandlers = {
+    onDragOver: (e: React.DragEvent<HTMLDivElement>) => {
+      if (!e.dataTransfer.types.includes(WS_MOVE_MIME)) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move'
+      setDropHover(true)
+    },
+    onDragLeave: (e: React.DragEvent<HTMLDivElement>) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropHover(false)
+    },
+    onDrop: (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setDropHover(false)
+      const raw = e.dataTransfer.getData(WS_MOVE_MIME)
+      if (!raw) return
+      try {
+        const { rel } = JSON.parse(raw) as { rel?: string }
+        if (rel) onTransfer(rel, base, e.ctrlKey)
+      } catch {
+        /* 坏数据就当没拖 */
+      }
+    },
+  }
+  return (
+    <div
+      {...dropHandlers}
+      className={dropHover ? 'rounded-md bg-seal/5 ring-1 ring-inset ring-seal/25 transition' : 'transition'}
+    >
+      {entries?.map((e) => {
+        const childRel = base + '/' + e.name
+        if (e.dir) {
+          return (
+            <Indent key={e.name}>
+              <WsDir
+                node={node}
+                base={base}
+                segments={[e.name]}
+                label={e.name}
+                hint={t('工作区子目录「{0}」（磁盘上真实存在的文件夹；点行展开 / 收起，右键新建 / 改名）', e.name)}
+                ws={ws}
+                onOpenMenu={onOpenMenu}
+                onOpen={onOpen}
+                onTransfer={onTransfer}
+              />
+            </Indent>
+          )
+        }
+        return ws.renaming === childRel ? (
+          <WsRenameRow
+            key={'rename:' + e.name}
+            dir={false}
+            initial={e.name}
+            onCommit={commitRename(childRel, base, e.name)}
+            onCancel={ws.endRename}
+          />
+        ) : (
+          <DocRow
+            key={e.name}
+            icon={
+              <span
+                aria-hidden="true"
+                className="flex h-4 w-4 shrink-0 items-center justify-center"
+                style={{ color: GRAY }}
+              >
+                <FileText size={12} />
+              </span>
+            }
+            label={e.name}
+            hint={t('工作区文件「{0}」（点击在页签打开；可拖拽：到目录行移动 / Ctrl 复制，到文档区或对话打开）', e.name)}
+            revealKey={'row:ws:' + childRel}
+            onClick={() => onOpen(childRel)}
+            dragChip={() => ({ type: 'ws', path: childRel, nodeId: node.id, title: e.name })}
+            onDragExtra={dragExtra(childRel)}
+            onMenu={(x, y) => onOpenMenu(x, y, { kind: 'ws', node, rel: childRel, dir: false })}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
 /** 节点下的「工作区」那一行：真实目录的根。一直显示——真实目录永远存在，藏起来反而让人以为没有。 */
 export function WorkspaceRow({
   store,

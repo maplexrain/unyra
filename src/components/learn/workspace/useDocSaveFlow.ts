@@ -30,7 +30,7 @@ import {
   fileNameOf as localFileNameOf,
   type TabCloseMode,
 } from '../../../learn/tabs'
-import { allTabs, closeIn, findTab, focusedGroup, focusedTab, groupOf } from '../../../learn/groups'
+import { allTabs, closeIn, dropTabs, findTab, focusedGroup, focusedTab, groupOf, withOwners } from '../../../learn/groups'
 import { nodeById, updateDoc, writeNote } from '../../../learn/graph'
 import { findNote } from '../../../learn/notes'
 import { readSuperDoc, writeSuperDoc } from '../../../learn/superdocs'
@@ -151,7 +151,16 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
   const applyClose = useCallback(
     (group: string, id: string, mode: TabCloseMode, closingIds?: string[]) => {
       const s = getLatest()
-      const docArea = closeIn(s.docArea, group, id, mode, closingIds)
+      const before = allTabs(s.docArea).map((t) => t.id)
+      const docArea0 = closeIn(s.docArea, group, id, mode, closingIds)
+      /*
+       * 归属表跟着页签一起收：页签关掉了，它在这一格（以及任何一格）的条目都不该留着。
+       * 不主动收也不会出错（reconcileOwners 会在下次读盘时扫掉），但那样 state.json 里
+       * 会攒下一串指向空处的 id，切到那个目标时才发现——不如关的这一下就顺手清掉。
+       */
+      const live = new Set(allTabs(docArea0).map((t) => t.id))
+      const gone = before.filter((tid) => !live.has(tid))
+      const docArea = gone.length > 0 ? withOwners(docArea0, dropTabs(docArea0.tabOwners, gone)) : docArea0
       const landing = focusedGroup(docArea)
       const nextRef = landing.tabs.find((t) => t.id === landing.active)?.ref ?? null
       const nextNodeId = nextRef ? tabNodeId(nextRef) : null

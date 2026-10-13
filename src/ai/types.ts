@@ -7,8 +7,24 @@
  * 这样新增一个提供商不需要改动 runtime、tools 与业务代码。
  */
 
-/** 请求失败（含网络与 HTTP 错误），调用方按此区分「可提示给用户的错误」与其它异常 */
-export class AiRequestError extends Error {}
+/**
+ * 请求失败（含网络与 HTTP 错误），调用方按此区分「可提示给用户的错误」与其它异常。
+ *
+ * `status` 是**服务端明确给过的** HTTP 状态码。网络故障、流中途断开、空响应都没有它。
+ * 它唯一的用处是给重试判据（见 agent/runtime 的 isRetryable）：
+ * - 5xx / 429 / 408 这类是瞬时故障，重发一次很可能就过了；
+ * - 401 / 403 / 404 / 422 这类再发几次也不会变绿，不该让用户干等；
+ * - **没有状态码的一律按瞬时故障处理**——宁可多试一次，也不要把一次网络抖动
+ *   当成永久失败。这条默认值让「某个适配点忘了带 status」退化成多试几次，
+ *   而不是退化成「明明能恢复的错却直接报错」。
+ */
+export class AiRequestError extends Error {
+  readonly status?: number
+  constructor(message: string, status?: number) {
+    super(message)
+    this.status = status
+  }
+}
 
 /**
  * 线上协议（= 兼容格式）。这是接入维度的核心取值：

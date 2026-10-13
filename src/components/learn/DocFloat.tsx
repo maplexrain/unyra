@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { BookOpen, Eye, ListTree, Maximize2, Minimize2, SquareCode } from 'lucide-react'
 import type { OutlineHandle } from '../../lib/outline'
 import type { DocView } from '../../learn/types'
@@ -67,6 +67,33 @@ const LEAVE_GRACE_MS = 180
 const HIDE_MS = 150
 /** 浮层开着时跟随「当前读到哪一节」的刷新节奏（activeIndex 变了才动） */
 const FOLLOW_MS = 300
+
+/**
+ * 悬浮组下方那一条**文档统计**（字数，源码模式还带保存状态）。
+ *
+ * 它原先长在正文**左上角**（`left-3 top-2`，见 LocalDoc / SourceEditor / note/DocBody
+ * 各自的旧实现）：正文字号大、行又长，那一条正好压在第一个自然段上，读起来总像有东西
+ * 粘在页眉；而右上角明明已经有一条工具条，多出来的这点信息却没跟着它。
+ * 现在它排在悬浮组**正下方**（需求原文：「移到右侧悬浮组的下方」），一竖列收在右侧，
+ * 正文从左上角开始干干净净。
+ *
+ * 为什么和 DocFloat 住在同一个文件、位置也写死在类名里：这一条的位置是
+ * **相对上面那条工具条**定的——`top-12` 正是「`top-2` + 按钮的 `h-8` + 8px 间隙」。
+ * 这两个数要是分在三个视图文件里各写一遍，改一处漏一处的那天它们就会叠在一起，
+ * 而那种错得等到有人正好打开那一份文档才看得见。
+ *
+ * `pointer-events-none`：它是**读数**不是控件，不该抢正文上的选字与点击。
+ */
+export function DocStatChip({ title, children }: { title?: string; children: ReactNode }) {
+  return (
+    <div
+      title={title}
+      className="no-print pointer-events-none absolute right-3 top-12 z-10 flex items-center gap-1.5 rounded-md border border-line/60 bg-card/75 px-2 py-0.5 text-[11px] text-ink-faint shadow-xs backdrop-blur-xs select-none"
+    >
+      {children}
+    </div>
+  )
+}
 
 export default function DocFloat({
   view,

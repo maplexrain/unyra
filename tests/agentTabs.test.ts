@@ -12,10 +12,12 @@ import {
   agentTabCloseBlock,
   agentTabCloseSet,
   agentTabKey,
+  agentTabOwner,
   normalizeAgentTabs,
   reorderAgentTabs,
   removeAgentTab,
   upsertAgentTab,
+  visibleAgentTabs,
 } from '../src/learn/agentTabs'
 
 const goal = (goalId: string, conversationId: string | null = 'c1'): AgentTabRef => ({
@@ -175,5 +177,43 @@ describe('normalizeAgentTabs', () => {
       ctx,
     )
     expect(tabs).toEqual([])
+  })
+})
+
+/*
+ * 导师是**按目标分身**的（见 learn/agentTabs 的 visibleAgentTabs）：栏上只画当前目标名下的
+ * 页签，切目标 = 切导师。判错了的界面表现是「把这句话说给了另一个目标听」——不报错，
+ * 也不容易被当成 bug 报回来，所以在这里钉住。
+ */
+describe('页签归属与目标绑定', () => {
+  /** 会话 → 它属于哪个目标（子代理的归属按它那段对话算） */
+  const convGoal: Record<string, string> = { c1: 'g1', c2: 'g2' }
+  const goalOfConversation = (id: string): string | null => convGoal[id] ?? null
+
+  it('目标级归它自己，子代理归派它出去的那个目标，固定聊天无归属', () => {
+    const free: AgentTabRef = { kind: 'free', conversationId: null }
+    expect(agentTabOwner(goal('g1'), goalOfConversation)).toBe('g1')
+    expect(agentTabOwner(sub('c2', 's1'), goalOfConversation)).toBe('g2')
+    expect(agentTabOwner(free, goalOfConversation)).toBeNull()
+  })
+
+  it('会话已经没了的子代理页签不属于任何目标（读盘归一那一步会把它丢掉）', () => {
+    expect(agentTabOwner(sub('gone', 's9'), goalOfConversation)).toBeNull()
+    expect(visibleAgentTabs([sub('gone', 's9')], 'g1', goalOfConversation)).toEqual([])
+  })
+
+  it('栏上只有当前目标的导师与它的子代理', () => {
+    const tabs = [goal('g1'), goal('g2'), sub('c1', 's1'), sub('c2', 's2')]
+    expect(visibleAgentTabs(tabs, 'g1', goalOfConversation).map(agentTabKey)).toEqual(['ga:g1', 'sa:s1'])
+    expect(visibleAgentTabs(tabs, 'g2', goalOfConversation).map(agentTabKey)).toEqual(['ga:g2', 'sa:s2'])
+  })
+
+  it('固定聊天不参与过滤（它常驻栏上，由调用方另加在最左）', () => {
+    const free: AgentTabRef = { kind: 'free', conversationId: null }
+    expect(visibleAgentTabs([free, goal('g1')], 'g1', goalOfConversation)).toEqual([goal('g1')])
+  })
+
+  it('没有当前目标时一枚都不留：那一栏由界面说「打开一份文档，导师就来了」', () => {
+    expect(visibleAgentTabs([goal('g1'), sub('c1', 's1')], null, goalOfConversation)).toEqual([])
   })
 })

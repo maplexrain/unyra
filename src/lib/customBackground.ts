@@ -4,6 +4,15 @@
  * 属于外观设置的一部分，存放在用户的 setting.yaml 中，跟随用户配置走。
  * 提供预设相册、自定义相册管理、本地图片与 URL 导入、显示策略（cover/contain/repeat/center）、
  * 虚化与遮罩调节、以及界面半透明毛玻璃效果。
+ *
+ * **配置里只放地址，图片本体放在别处**（用户定的纪律，与头像同一条）：
+ * - `asset:bg-1730000000000.png` —— 用户上传的图，落在 `{user}/assets/`（见 user/assets）；
+ * - `preset:preset-xuan` —— 内置壁纸，本体是这个文件里的那个 SVG 常量；
+ * - `https://…` —— 外链。
+ *
+ * 从前上传的图是用 FileReader 读成 data URL 直接写进配置的，setting.yaml 会被几张照片
+ * 撑到几 MB、每次启动都要整份解析。内置壁纸更有意思：它本来就在代码里，配置里却存着
+ * **另一份拷贝**——壁纸改了，老用户的配置里还是旧的那张。现在两边都只记一个引用。
  */
 
 export type BackgroundFit = 'cover' | 'contain' | 'center' | 'repeat'
@@ -12,6 +21,7 @@ export type SlideshowOrder = 'sequence' | 'random'
 export interface BackgroundImageItem {
   id: string
   name: string
+  /** 图片地址：`asset:` / `preset:` / `http(s):`（见文件头），绝不存图片字节 */
   url: string
   isPreset?: boolean
 }
@@ -203,17 +213,80 @@ export const PRESET_IMAGES: BackgroundImageItem[] = [
 
 export const PRESET_WALLPAPERS = PRESET_IMAGES
 
+/* ---------- 图片引用：配置里只记地址 ---------- */
+
+/**
+ * 内置壁纸的引用前缀：`preset:preset-xuan`。
+ *
+ * 为什么内置壁纸也要走引用：它本来就住在这个文件里（PRESET_IMAGES 的 url），
+ * 配置里再存一份拷贝，就多了一份**会过期的数据**——哪天把那张 SVG 调好看一点，
+ * 老用户的配置里还是旧的那张，谁也没法知道该以哪一份为准。记 id 之后，
+ * 壁纸永远跟着代码走，配置里那一个短字符串也再不会被误当成「用户自己的图」。
+ */
+export const PRESET_SCHEME = 'preset:'
+
+/** 内置壁纸 id → 它在配置里的地址 */
+export function presetRef(id: string): string {
+  return PRESET_SCHEME + id
+}
+
+/** `preset:xxx` → id；认不出来（不是引用、或没有这张壁纸）时 null */
+export function presetIdOf(v: string): string | null {
+  if (!v.startsWith(PRESET_SCHEME)) return null
+  const id = v.slice(PRESET_SCHEME.length)
+  return PRESET_IMAGES.some((p) => p.id === id) ? id : null
+}
+
+/** `preset:xxx` → 那张内置壁纸的 data URL（内置矢量图，常量就是它的本体） */
+export function presetSrcOf(v: string): string | null {
+  const id = presetIdOf(v)
+  if (!id) return null
+  return PRESET_IMAGES.find((p) => p.id === id)?.url ?? null
+}
+
+/** 这张图该以什么地址进配置：内置壁纸记 id 引用，其余记它自己的 url */
+export function backgroundRefOf(item: BackgroundImageItem): string {
+  return presetIdOf(item.url) ? item.url : item.isPreset ? presetRef(item.id) : item.url
+}
+
+/** 老配置里把内置壁纸的整段 SVG 存了进来：按 url 认出来，好换成 id 引用 */
+function presetIdByUrl(url: string): string | null {
+  if (!url.startsWith('data:')) return null
+  return PRESET_IMAGES.find((p) => p.url === url)?.id ?? null
+}
+
+/**
+ * 把一段存下来的地址归一成「引用」形态。
+ *
+ * 两种改写：
+ * - 内置壁纸的整段 SVG（老配置）→ `preset:<id>`——顺手消化掉那份拷贝；
+ * - 其余原样留着，**包括 data: 开头的**：用户上传的老图此刻还只是一段 base64，
+ *   落盘要读要写（异步），不是这个纯函数该干的事。它由启动时的
+ *   reconcileBackgroundAssets 迁进 assets/，在那之前留着至少图还看得见。
+ */
+function normalizeImageRef(raw: string): string {
+  const byPreset = presetIdByUrl(raw)
+  return byPreset ? presetRef(byPreset) : raw
+}
+
+/** 内置图组（配置形态：里面的地址已经是 `preset:` 引用） */
 export const PRESET_GROUPS: BackgroundGroup[] = [
   {
     id: 'group-ink-aesthetic',
     name: '纸墨雅集',
-    images: [PRESET_IMAGES[0], PRESET_IMAGES[1], PRESET_IMAGES[2]],
+    images: [PRESET_IMAGES[0], PRESET_IMAGES[1], PRESET_IMAGES[2]].map((img) => ({
+      ...img,
+      url: presetRef(img.id),
+    })),
     isPreset: true,
   },
   {
     id: 'group-nature-scenery',
     name: '山河天光',
-    images: [PRESET_IMAGES[3], PRESET_IMAGES[4], PRESET_IMAGES[5]],
+    images: [PRESET_IMAGES[3], PRESET_IMAGES[4], PRESET_IMAGES[5]].map((img) => ({
+      ...img,
+      url: presetRef(img.id),
+    })),
     isPreset: true,
   },
 ]
@@ -221,7 +294,7 @@ export const PRESET_GROUPS: BackgroundGroup[] = [
 export const DEFAULT_CUSTOM_BACKGROUND: CustomBackgroundConfig = {
   enabled: false,
   mode: 'single',
-  singleImageUrl: PRESET_IMAGES[0].url,
+  singleImageUrl: presetRef(PRESET_IMAGES[0].id),
   activeGroupId: PRESET_GROUPS[0].id,
   groups: [...PRESET_GROUPS],
   slideshowInterval: 60, // 默认 1 分钟轮播
@@ -241,7 +314,7 @@ export function normalizeCustomBackground(raw: unknown): CustomBackgroundConfig 
   const mode = r.mode === 'slideshow' ? 'slideshow' : 'single'
   const singleImageUrl =
     typeof r.singleImageUrl === 'string' && r.singleImageUrl.trim()
-      ? r.singleImageUrl
+      ? normalizeImageRef(r.singleImageUrl.trim())
       : DEFAULT_CUSTOM_BACKGROUND.singleImageUrl
   const activeGroupId =
     typeof r.activeGroupId === 'string' && r.activeGroupId.trim()
@@ -257,11 +330,14 @@ export function normalizeCustomBackground(raw: unknown): CustomBackgroundConfig 
       const images: BackgroundImageItem[] = Array.isArray(gObj.images)
         ? gObj.images.map((img, iIdx) => {
             const iObj = img as Record<string, unknown>
+            const url = typeof iObj.url === 'string' ? normalizeImageRef(iObj.url.trim()) : ''
             return {
               id: typeof iObj.id === 'string' && iObj.id.trim() ? iObj.id : `img-${idx}-${iIdx}`,
               name: typeof iObj.name === 'string' && iObj.name.trim() ? iObj.name : `图片 ${iIdx + 1}`,
-              url: typeof iObj.url === 'string' ? iObj.url : '',
-              isPreset: iObj.isPreset === true,
+              url,
+              // 是不是内置壁纸**由地址说了算**，不看存下来的那个标记：
+              // 老配置里存着整段 SVG 时它可能是空的，而地址迁成 preset: 之后它就是内置的
+              isPreset: presetIdOf(url) !== null,
             }
           }).filter((img) => Boolean(img.url))
         : []

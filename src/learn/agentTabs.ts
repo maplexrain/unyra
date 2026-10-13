@@ -23,6 +23,40 @@ export function agentTabKey(ref: AgentTabRef): string {
 export type AgentTabCloseBlock = 'none' | 'docs' | 'running'
 
 /**
+ * 一枚 agent 页签属于哪个目标；固定聊天返回 null（它是栏的底座，不属于任何目标）。
+ *
+ * 与文档区页签的归属（groups/goals 的 refOwner）是同一条思路：目标级页签的归属就写在
+ * 它自己身上，子代理页签则跟着**它那段对话**走——子代理的数据本来就住在导师的对话上
+ * （见 subagent/manager），派它出去的是哪个目标，它就属于哪个目标。
+ */
+export function agentTabOwner(
+  ref: AgentTabRef,
+  goalOfConversation: (conversationId: string) => string | null,
+): string | null {
+  if (ref.kind === 'free') return null
+  if (ref.kind === 'goal') return ref.goalId
+  return goalOfConversation(ref.conversationId)
+}
+
+/**
+ * agent 栏当前该画哪几枚页签：**只画当前目标名下的**（固定聊天由调用方另加在最左）。
+ *
+ * 为什么也要按目标过滤：文档区早就是「一个目标一套页签」（见 groups/goals），
+ * 而导师是**按目标分身**的——栏上同时摆着三四个目标的导师，点错的代价是
+ * 把这句话说给了另一个目标听。跟着目标走之后，切目标 = 切导师，两者永远一致。
+ *
+ * 没有当前目标时一枚都不留（那时空态由界面自己说「打开一份文档，导师就来了」）。
+ */
+export function visibleAgentTabs(
+  tabs: readonly AgentTabRef[],
+  goalId: string | null,
+  goalOfConversation: (conversationId: string) => string | null,
+): AgentTabRef[] {
+  if (!goalId) return []
+  return tabs.filter((t) => agentTabOwner(t, goalOfConversation) === goalId)
+}
+
+/**
  * 关闭守卫。目标级页签：文档区还有它的页签时不能关（导师还在辅导看得见的东西）；
  * 这一轮还没跑完时也不能关（运行时页签禁止关闭——停了才许走）。两条同时命中时
  * 报 'docs'：先关文档是更靠前的因果。子代理页签**永远不拦**：任务在后台继续跑。

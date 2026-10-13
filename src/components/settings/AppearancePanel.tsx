@@ -2,7 +2,7 @@
  * 设置 → 外观：主题配色、界面语言与教学模式。
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from 'react'
 import {
   Check,
   Eye,
@@ -32,11 +32,14 @@ import {
   DEFAULT_CUSTOM_BACKGROUND,
   PRESET_WALLPAPERS,
   PRESET_GROUPS,
+  presetRef,
   type BackgroundFit,
   type BackgroundGroup,
   type BackgroundImageItem,
   type CustomBackgroundConfig,
 } from '../../lib/customBackground'
+import { saveBackgroundImage } from '../../user/background'
+import { useBackgroundSrcs } from '../background/useBackgroundSrc'
 import { LOCALES, LOCALE_LABEL, t, useLocale } from '../../i18n'
 import { changeUiLocale } from '../../lib/uiLocale'
 import Switch from '../Switch'
@@ -238,6 +241,19 @@ export function AppearancePanel({
     customBg.groups[0] ??
     PRESET_GROUPS[0]
 
+  /*
+   * 缩略图要的 src：配置里存的是地址（`preset:` / `asset:` / 外链），不是图片本身
+   * （见 lib/customBackground 的文件头），所以先解析成能画的 src 再铺。
+   * 只解当前这一组的：别的组等切过去再解。
+   */
+  const activeGroupImages = activeGroup.images
+  const bgSrcs = useBackgroundSrcs(activeGroupImages.map((img) => img.url))
+  const bgSrc = (url: string): string => (url ? (bgSrcs[url] ?? '') : '')
+  const bgStyle = (url: string): CSSProperties => {
+    const src = bgSrc(url)
+    return src ? { backgroundImage: `url("${src}")` } : {}
+  }
+
   const updateCustomBg = (patch: Partial<CustomBackgroundConfig>) => {
     onChange({ customBg: { ...customBg, ...patch } })
   }
@@ -273,11 +289,14 @@ export function AppearancePanel({
     onToast(t('已删除图组'))
   }
 
-  const handleAddImage = (groupId: string, img: { name: string; url: string }) => {
+  const handleAddImage = (groupId: string, img: { name: string; url: string; isPreset?: boolean }) => {
     const newItem: BackgroundImageItem = {
       id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       name: img.name,
-      url: img.url,
+      // 内置壁纸记 id 引用、上传的记 asset: 地址——地址该长什么样由这里定死，
+      // 别处只负责把图片放好（见 lib/customBackground 的 backgroundRefOf）
+      url: img.isPreset ? presetRef(img.url) : img.url,
+      ...(img.isPreset ? { isPreset: true } : {}),
     }
     const nextGroups = customBg.groups.map((g) => {
       if (g.id !== groupId) return g
@@ -285,7 +304,7 @@ export function AppearancePanel({
     })
     updateCustomBg({
       groups: nextGroups,
-      singleImageUrl: customBg.singleImageUrl || img.url,
+      singleImageUrl: customBg.singleImageUrl || newItem.url,
     })
     onToast(t('已添加图片「{0}」', t(img.name)))
   }
@@ -298,30 +317,40 @@ export function AppearancePanel({
     updateCustomBg({ groups: nextGroups })
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  /**
+   * 本地图片走 assets/：图片本身写进 `{user}/assets/`，配置里只留一个 `asset:` 地址
+   * （见 user/background）。从前是 FileReader 读成 data URL 直接塞进配置，
+   * 几张照片就能把 setting.yaml 撑到几 MB。
+   */
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/')) {
       onToast(t('请选择图片格式文件'))
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        const targetId = uploadTargetGroupId || activeGroup.id
-        handleAddImage(targetId, {
-          name: file.name.replace(/\.[^/.]+$/, ''),
-          url: reader.result,
-        })
-      }
+    try {
+      const url = await saveBackgroundImage(file)
+      const targetId = uploadTargetGroupId || activeGroup.id
+      handleAddImage(targetId, { name: file.name.replace(/\.[^/.]+$/, ''), url })
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : t('背景图处理失败'))
+    } finally {
+      e.target.value = ''
     }
-    reader.readAsDataURL(file)
-    e.target.value = ''
   }
 
   const handleAddUrlSubmit = () => {
     const url = imageUrlInput.trim()
     if (!url) return
+    /*
+     * 明确挡掉 data: ——它是图片字节本身，不是地址。这一条既保住了「配置里只有地址」
+     * 的纪律，也顺手把「拷一段 base64 粘进来」这条路堵上（要放本地图，走上面的上传）。
+     */
+    if (url.startsWith('data:')) {
+      onToast(t('这里只能填图片地址（http / https）。本地图片请用上面的「上传图片」'))
+      return
+    }
     handleAddImage(activeGroup.id, {
       name: t('网络壁纸') + ' ' + (activeGroup.images.length + 1),
       url,
@@ -782,7 +811,7 @@ export function AppearancePanel({
                           onToast(t('已设为当前壁纸：{0}', t(img.name)))
                         }}
                         className="relative h-20 w-full cursor-pointer overflow-hidden rounded-lg bg-cover bg-center shadow-inner transition group-hover:scale-[1.02]"
-                        style={{ backgroundImage: `url("${img.url}")` }}
+                        style={bgStyle(img.url)}
                       >
                         {isCurrentSingle && customBg.mode === 'single' && (
                           <div className="absolute top-1 left-1 flex h-4 w-4 items-center justify-center rounded-full bg-seal text-white shadow-xs">
@@ -875,17 +904,27 @@ export function AppearancePanel({
                 </div>
                 <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
                   {PRESET_WALLPAPERS.map((preset) => {
-                    const alreadyInGroup = activeGroup.images.some((img) => img.url === preset.url)
+                    /*
+                     * 内置壁纸在配置里记的是 `preset:<id>` 引用（见 lib/customBackground）——
+                     * 图组里的那一份与这张卡片上的是同一张，所以比对的是引用而不是那段 SVG。
+                     */
+                    const ref = presetRef(preset.id)
+                    const alreadyInGroup = activeGroup.images.some((img) => img.url === ref)
                     return (
                       <button
                         key={preset.id}
                         type="button"
                         onClick={() => {
                           if (alreadyInGroup) {
-                            updateCustomBg({ singleImageUrl: preset.url })
+                            updateCustomBg({ singleImageUrl: ref })
                             onToast(t('已设为当前壁纸：{0}', t(preset.name)))
                           } else {
-                            handleAddImage(activeGroup.id, { name: preset.name, url: preset.url })
+                            // 传 id 而不是 url：本体的 data URL 只在本文件里当图用，不进配置
+                            handleAddImage(activeGroup.id, {
+                              name: preset.name,
+                              url: preset.id,
+                              isPreset: true,
+                            })
                           }
                         }}
                         title={alreadyInGroup ? t('已在图组中，点击直接设为当前壁纸') : t('点击添加至当前图组')}

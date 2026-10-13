@@ -59,22 +59,30 @@ import {
 } from '../../learn/favorites'
 import { getOutlineSlot } from '../../lib/outline'
 import {
+  PUBLIC_OWNER,
   activateIn,
   activeIdsOf,
   allTabs,
+  claimTab,
   closeIds,
   closeIn,
   findTab,
+  focusTabsInGroup,
   focusedGroup,
   focusedTab,
   groupIdOfTab,
   openInGroup,
   patchTab,
+  reconcileOwners,
+  refOwner,
   reorderIn,
   setFocus,
   settle,
+  visibleTabs,
   withGroup,
+  withOwners,
   type DocLayout,
+  type TabOwners,
 } from '../../learn/groups'
 import { makeTab, newBlankKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
 import { pickLocalFiles } from '../../lib/localFiles'
@@ -96,6 +104,7 @@ import {
   removeExam,
   touchNode,
   updateMessageText,
+  updateNode,
 } from '../../learn/graph'
 import {
   agentTabCloseBlock,
@@ -104,6 +113,7 @@ import {
   reorderAgentTabs,
   removeAgentTab,
   upsertAgentTab,
+  visibleAgentTabs,
   withAgentTabs,
   type AgentTabCloseBlock,
 } from '../../learn/agentTabs'
@@ -136,6 +146,7 @@ import ExamCopyView from './ExamCopyView'
 import OutlineView from './OutlineView'
 import { pruneImages } from '../../learn/images'
 import { dropDrafts } from '../../learn/drafts'
+import { queueOf, shouldEnqueue } from '../../learn/agentQueue'
 import {
   cachedResourceUrl,
   findResource,
@@ -250,6 +261,19 @@ import { t } from '../../i18n'
  */
 const goalFocusByGoal = new Map<string, string>()
 
+/**
+ * 一枚页签当前归哪个目标（按页签 **id** 反查）。
+ *
+ * 与 groups/goals 的 refOwner 同一份判据，只是那边收的是 TabRef、这里收的是 id。
+ * 归属表里查不到时退回现算（页签自己带着 nodeId），保证「这个页签是不是本目标的」
+ * 永远有答案——拿不准时按「不是」算，于是切目标照样会把它收起来。
+ */
+function ownerOfTabId(s: LearnStore, tabId: string, owners: TabOwners): string {
+  for (const [owner, ids] of Object.entries(owners)) if (ids.includes(tabId)) return owner
+  const tab = findTab(s.docArea, tabId)
+  return tab ? refOwner(tab.ref, (nodeId) => nodeById(s, nodeId)?.goalId ?? null) : PUBLIC_OWNER
+}
+
 export default function LearnWorkspace({
   user,
   onRootChanged,
@@ -268,9 +292,51 @@ export default function LearnWorkspace({
    * - docs.layout / docs.groups：界面按它把几格摆出来（见下面的 renderLayout）。
    */
   const docs = store.docArea
+  /** 全部页签，按**布局顺序**排——它仍是「页签是否已被打开过」的判据（见 openTab / 常驻名额） */
   const tabs = useMemo(() => allTabs(docs), [docs])
   const activeTab = useMemo(() => focusedTab(docs), [docs])
   const activeTabId = activeTab?.id ?? null
+
+  /**
+   * **当前目标**：页签栏按它过滤（见 groups/goals）。
+   *
+   * 取的是 store.activeGoalId——它由 retargetNode 在每次「看某个目标的文档」时对齐，
+   * 因此点侧栏某个目标节点、点大纲里的节点、点某个目标下的教学文档，落点都是它。
+   * 目标都被删光时是 null，那时只看得见公共页签（设置 / 外部文件）。
+   */
+  const tabGoalId = store.activeGoalId
+  /** 节点 → 它属于哪个目标；页签归属现算时用它（见 groups/goals 的 refOwner） */
+  const goalOfNode = useCallback(
+    (nodeId: string) => nodeById(getLatest(), nodeId)?.goalId ?? null,
+    [getLatest],
+  )
+  /**
+   * 归属表：**保底补全**后再交出去。
+   *
+   * 正常路径上它已经在读盘时补好了（见 store/normalize），但运行时也可能出现没登记的
+   * 页签（新加一种页签类型而忘了在 refOwner 里登记、或某个入口绕过了 claimTab）——
+   * 这里再过一次 reconcileOwners，保证「看不到的页签」这件事不会发生。
+   */
+  const tabOwners = useMemo(
+    () => reconcileOwners(docs.tabOwners, tabs, goalOfNode),
+    [docs.tabOwners, tabs, goalOfNode],
+  )
+  /**
+   * 当前该显示的页签（公共 + 当前目标）。页签栏读它，正文区仍按「格」渲染——
+   * 一格里同时混着公共与目标页签是正常的（正是需求里那条栏的样子）。
+   */
+  /**
+   * 每一格**正在看**的那一片（分屏时同时有好几片）。
+   *
+   * 它们是页签栏的保底名额（见 visibleTabs 的 pinned）：左右两半各看一个目标是分屏的常态，
+   * 而「正文在眼前、它的页签却不在栏上」最难解释——用户会以为那份文档丢了。
+   */
+  const paneActiveIds = useMemo(() => new Set(activeIdsOf(docs)), [docs])
+  const shownTabs = useMemo(
+    () => visibleTabs(tabs, tabOwners, tabGoalId, paneActiveIds),
+    [tabs, tabOwners, tabGoalId, paneActiveIds],
+  )
+  const shownTabIds = useMemo(() => new Set(shownTabs.map((t) => t.id)), [shownTabs])
 
   /**
    * agent 自己的设置（压缩阈值等）。
@@ -386,12 +452,40 @@ export default function LearnWorkspace({
     () => ({ kind: 'free', conversationId: currentFreeConvId }),
     [currentFreeConvId],
   )
-  /** 页签条看到的列表 = 固定页签置左 + 其余页签原序 */
-  const stripTabs = useMemo(() => [freeTabRef, ...agentTabs], [freeTabRef, agentTabs])
+  /*
+   * agent 页签**跟着目标走**（见 learn/agentTabs 的 visibleAgentTabs）：
+   * 栏上只画当前目标名下的导师与子代理，切换目标时那一栏跟着换。
+   * 子代理的归属按它那段对话算（谁派出去的就属于谁），因此 `goalOfConversation` 由这里注入。
+   */
+  const goalOfConversation = useCallback(
+    (id: string) => conversationById(store, id)?.goalId ?? null,
+    [store],
+  )
+  const goalAgentTabs = useMemo(
+    () => visibleAgentTabs(agentTabs, store.activeGoalId, goalOfConversation),
+    [agentTabs, store.activeGoalId, goalOfConversation],
+  )
+  /** 页签条看到的列表 = 固定页签置左 + 本目标的页签原序 */
+  const stripTabs = useMemo(() => [freeTabRef, ...goalAgentTabs], [freeTabRef, goalAgentTabs])
+  /**
+   * 面板常挂的列表：**所有**页签（不按目标过滤）。
+   *
+   * 栏上按目标过滤是「别把话说错人」，面板不跟着过滤是另一件事——输入框里打到一半的
+   * 话是组件自己的 state（不落盘），面板一卸载就没了。切走一个目标再切回来，
+   * 半句话还在不在，差别就在这一行。
+   */
+  const agentPanes = useMemo(() => [freeTabRef, ...agentTabs], [freeTabRef, agentTabs])
   const activeAgentTab = useMemo(() => {
     if (store.agentActiveTab === 'free') return freeTabRef
-    return agentTabs.find((t) => agentTabKey(t) === store.agentActiveTab) ?? agentTabs[0] ?? null
-  }, [agentTabs, store.agentActiveTab, freeTabRef])
+    const hit = goalAgentTabs.find((t) => agentTabKey(t) === store.agentActiveTab)
+    if (hit) return hit
+    /*
+     * 记着的激活项不在这个目标名下（切了目标、或它是别家目标的子代理）：
+     * 落到本目标这一枚——导师是跟着目标走的，切了目标却还对着上一个目标的导师说话最危险。
+     * 本目标一枚都没有时返回 null：那一栏由界面自己说「打开一份文档，导师就来了」。
+     */
+    return goalAgentTabs.find((t) => t.kind === 'goal') ?? null
+  }, [goalAgentTabs, store.agentActiveTab, freeTabRef])
   const activeAgentTabId = activeAgentTab ? agentTabKey(activeAgentTab) : null
   /**
    * 激活页签解析出的面板视图：目标级页签 → 那个目标当前展示的会话 + 落点节点；
@@ -1147,6 +1241,56 @@ export default function LearnWorkspace({
    * （需求原文：「只要打开了某个目标下的文件，那么就自动打开其对应的 agent」）。
    * 页签里展示的会话跟着文档区走——在哪个会话的上下文里读，回来就还在哪个会话说。
    */
+  /**
+   * 目标页签组：**切到某个目标**时把文档区挪到那个目标的那一套页签上。
+   *
+   * 需求原文：「资源管理器的目标节点的文字原本是点击打开教学文档，重构为点击创建一个 tab 组，
+   * 所有当前目标下的任何层级的文档文件打开都会被 tab 组记录」——落地成这条规则：
+   *
+   * - 目标自己的页签**一直在文档区里开着**（不是切走就关掉），切目标只是换一套**看得到的**；
+   * - 因此切回来时「前一回在这个目标里看的那些文档」原样还在；
+   * - 首次切到某个目标时，把它的**大纲页**开成页签并置前：那是一个目标的入口，
+   *   教学文档一律从大纲里点进去（需求原文：「以后教学文档打开统一经过大纲 tab 去打开」）。
+   *
+   * 落点是**焦点格**（与 openTab 同一条口径）：切目标不动分屏布局，
+   * 只在当前那一格里换文档——用户分好的左右两半不该被一次切目标打散。
+   *
+   * `toOutline`（点侧栏里那个目标的标题）时**焦点一定落在大纲上**：此刻看着的即使是
+   * 同一个目标的教学文档，点目标名要的也是「回到这一层的入口」，停在原处等于点了没反应。
+   * 大纲页开在另一格里时就切到那一格（不重开第二枚，与 openTab 同一条规矩）。
+   */
+  const goalTabGroup = useCallback(
+    (s: LearnStore, goalId: string, toOutline = false): LearnStore => {
+      const goal = s.goals.find((x) => x.id === goalId)
+      if (!goal) return s
+      const rootRef: TabRef = { kind: 'outline', nodeId: goal.rootNodeId }
+      const rootId = tabKey(rootRef)
+      const owners = s.docArea.tabOwners ?? {}
+      const claimed = claimTab(owners, goalId, rootId)
+      // 已经开着（哪怕在别格）就沿用那一枚；没有才在焦点格里开
+      const home = groupIdOfTab(s.docArea, rootId)
+      let docArea = home ? s.docArea : openInGroup(s.docArea, s.docArea.focus, rootRef, Date.now())
+      if (toOutline) {
+        const at = groupIdOfTab(docArea, rootId)
+        // activateIn 顺带把焦点挪到那一格：大纲在右格，就该看到右格那一张
+        if (at) docArea = activateIn(docArea, at, rootId)
+      } else {
+        /*
+         * 别处切过来的（点链接、改落点）只在「焦点格此刻看的不是本目标的东西」时才切：
+         * 若停在上一个目标的教学文档上不动，用户只会觉得「点了没反应」；
+         * 但同一个目标里点来点去（点教学文档、点笔记）时不该被打回大纲。
+         */
+        const focusGroup = focusedGroup(docArea)
+        const activeOwner = focusGroup?.active ? ownerOfTabId(s, focusGroup.active, owners) : goalId
+        if (focusGroup && focusGroup.active !== rootId && activeOwner !== goalId) {
+          docArea = activateIn(docArea, focusGroup.id, rootId)
+        }
+      }
+      return { ...s, docArea: withOwners(docArea, claimed) }
+    },
+    [],
+  )
+
   const retargetNode = useCallback(
     (s: LearnStore, nodeId: string): LearnStore => {
       const node = nodeById(s, nodeId)
@@ -1164,9 +1308,19 @@ export default function LearnWorkspace({
       const conv = tabbed.activeConversationId
         ? tabbed.conversations.find((c) => c.id === tabbed.activeConversationId)
         : undefined
+      /*
+       * 目标页签组：**只有目标真的换了**才动文档区。
+       *
+       * 同一个目标里换节点（点教学文档、点笔记、点大纲里的另一个节点）时页签栏本来就
+       * 停在那一套上，再切一次会把用户刚点开的那份文档顶掉——所以判据是与上一刻的
+       * activeGoalId 比，而不是「这次落点在哪个目标」。
+       */
+      const goalChanged = s.activeGoalId !== node.goalId
+      const withGoalTabs = (next: LearnStore): LearnStore =>
+        goalChanged ? goalTabGroup(next, node.goalId) : next
       if (conv && conv.goalId === node.goalId) {
-        if (node.id === tabbed.activeNodeId && tabbed.activeGoalId === node.goalId) return tabbed
-        return { ...tabbed, activeGoalId: node.goalId, activeNodeId: node.id }
+        if (node.id === tabbed.activeNodeId && tabbed.activeGoalId === node.goalId) return withGoalTabs(tabbed)
+        return withGoalTabs({ ...tabbed, activeGoalId: node.goalId, activeNodeId: node.id })
       }
       /*
        * ensureConversation 只调一次：目标里一段对话都没有时它会**新建**一段，
@@ -1182,14 +1336,14 @@ export default function LearnWorkspace({
         true,
       )
       const retabbed = withAgentTabs(ensured.store, retabbed0.tabs, retabbed0.active)
-      return {
+      return withGoalTabs({
         ...retabbed,
         activeGoalId: node.goalId,
         activeNodeId: node.id,
         activeConversationId: ensured.conversationId,
-      }
+      })
     },
-    [],
+    [goalTabGroup],
   )
 
   /**
@@ -1219,10 +1373,14 @@ export default function LearnWorkspace({
        */
       const startView: DocView | undefined =
         ref.kind === 'note' && emptyNote(s, makeTab(ref, 0)) ? 'source' : undefined
-      set({
-        ...base,
-        docArea: openInGroup(base.docArea, base.docArea.focus, ref, Date.now(), startView),
-      })
+      const opened = openInGroup(base.docArea, base.docArea.focus, ref, Date.now(), startView)
+      /*
+       * 登记归属（见 groups/goals）：这枚页签从此记在它所属的目标名下，
+       * 于是切到那个目标时它就出现在栏上、切走时跟着收起来——「所有这个目标下任何层级
+       * 的文档打开都会被 tab 组记录」正是这一行。
+       */
+      const owner = refOwner(ref, (id) => nodeById(base, id)?.goalId ?? null)
+      set({ ...base, docArea: withOwners(opened, claimTab(opened.tabOwners, owner, tabKey(ref))) })
       bumpBrowse()
       setSidebarOpen(false)
     },
@@ -1284,6 +1442,31 @@ export default function LearnWorkspace({
   const switchNode = useCallback((nodeId: string) => openTab({ kind: 'teach', nodeId }), [openTab])
 
   /**
+   * 点资源管理器里的**目标节点**：切到它的目标页签组，并把焦点落到它的大纲上。
+   *
+   * 需求原文：「资源管理器的目标节点的文字原本是点击打开教学文档，重构为点击创建一个 tab 组」；
+   * 后来又补了一条：「如果当前显示的标签不是大纲就跳到大纲，即使当前打开的是教学文档也要跳到大纲」。
+   * 于是这里的落点**一律是大纲页**——它是这一层的入口，教学文档从大纲里点进去。
+   *
+   * 具体做两件事：
+   * 1. 把「当前目标」挪到它（retargetNode 一条路，对话栏/agent 页签都跟着对齐）；
+   * 2. 把文档区切到它那一套页签上，并把该目标的大纲页置前（见 goalTabGroup 的 toOutline）——
+   *    目标自己的页签在这个目标下都还在，切回来时原样可见。
+   */
+  const openGoalGroup = useCallback(
+    (nodeId: string) => {
+      const s = getLatest()
+      const node = nodeById(s, nodeId)
+      if (!node) return
+      const base = touchNode(retargetNode(s, node.id), node.id)
+      set(goalTabGroup(base, node.goalId, true))
+      bumpBrowse()
+      setSidebarOpen(false)
+    },
+    [getLatest, retargetNode, goalTabGroup, set, bumpBrowse],
+  )
+
+  /**
    * 激活已经开着的一个页签（点页签栏）。
    *
    * 节点类页签顺着把「当前节点」也挪过去——点的是别个节点的标签页，看的、谈的都该是那个节点。
@@ -1330,7 +1513,9 @@ export default function LearnWorkspace({
       const s = getLatest()
       // ref 当场算好（页签身份就是 tabKey），开完直接回页签 id——browser.open 靠它指名
       const ref: TabRef = { kind: 'web', url: normalizeWebInput(url), key: newWebKey() }
-      set({ ...s, docArea: openInGroup(s.docArea, s.docArea.focus, ref, Date.now()) })
+      const opened = openInGroup(s.docArea, s.docArea.focus, ref, Date.now())
+      // 网页页签不属于任何目标（公共）：登记成公共，切目标时它留栏上（见 groups/goals）
+      set({ ...s, docArea: withOwners(opened, claimTab(opened.tabOwners, PUBLIC_OWNER, tabKey(ref))) })
       bumpBrowse()
       return tabKey(ref)
     },
@@ -1341,7 +1526,9 @@ export default function LearnWorkspace({
   const openBlankTab = useCallback((): string => {
     const s = getLatest()
     const ref: TabRef = { kind: 'blank', key: newBlankKey() }
-    set({ ...s, docArea: openInGroup(s.docArea, s.docArea.focus, ref, Date.now()) })
+    const opened = openInGroup(s.docArea, s.docArea.focus, ref, Date.now())
+    // 空白页签同样是公共的（它不属于任何目标）
+    set({ ...s, docArea: withOwners(opened, claimTab(opened.tabOwners, PUBLIC_OWNER, tabKey(ref))) })
     return tabKey(ref)
   }, [getLatest, set])
 
@@ -2241,6 +2428,15 @@ export default function LearnWorkspace({
   })
 
   /**
+   * 这条消息该不该排进等待队列（而不是直接发出去）：导师正在跑、或队列里已经排着人。
+   *
+   * 判据只有 learn/agentQueue 的 shouldEnqueue 一处——「先来后到」是队列语义的全部，
+   * 写死在这两个调用点上迟早分叉。附件与正文都原样交给队列，它持有到真正发出去那一刻。
+   */
+  const shouldWaitInLine = (convId: string) =>
+    shouldEnqueue(queueOf(agent.queues, convId).length, !!agent.runningByConversation[convId])
+
+  /**
    * 一枚 agent 页签的整份面板 props（keepalive 的每枚页签各取各的，见挂载处的循环）。
    *
    * 数据全部按页签解析：会话与它的流式/表单/账目、子代理桶、目标会话列表；动作也
@@ -2269,7 +2465,20 @@ export default function LearnWorkspace({
         onSend: (text: string, images: PendingImage[], files: PendingFile[]) => {
           const id = convId ?? addFreeConversation().id
           if (id !== convId) setFreeConvId(id)
+          // 正跑着（或队里排着人）：排进等待队列，等这一轮收口再发（见 learn/agentQueue）
+          if (shouldWaitInLine(id)) {
+            agent.enqueueMessage({ conversationId: id, free: true, text, images, files })
+            return 'queued' as const
+          }
           agent.sendFree(id, text, { files, images })
+          return 'sent' as const
+        },
+        queue: queueOf(agent.queues, convId),
+        onQueueDrop: (id: string) => {
+          if (convId) agent.dropQueuedMessage(convId, id)
+        },
+        onQueueSendNow: (id: string) => {
+          if (convId) agent.sendQueuedNow(convId, id)
         },
         onStop: () => agent.stop(convId ?? undefined),
         onEditMessage: () => {},
@@ -2332,13 +2541,36 @@ export default function LearnWorkspace({
       streamingMessageId: stream?.messageId ?? null,
       running: !!(convId && agent.runningByConversation[convId]),
       onSend: (text: string, images: PendingImage[], files: PendingFile[]) => {
-        if (!target) return
+        if (!target) return 'sent' as const
+        /*
+         * 导师正在跑（或队里还排着人）：这条排进等待队列，不挤进正在跑的那一轮——
+         * 一轮 Agent 是一次完整的模型循环，半路塞一条用户消息会让这一轮实发的上下文
+         * 自相矛盾（前缀门禁会当场拦下，见 agent/prefixGate）。
+         */
+        if (shouldWaitInLine(target.conversationId)) {
+          agent.enqueueMessage({
+            conversationId: target.conversationId,
+            target,
+            text,
+            images,
+            files,
+          })
+          return 'queued' as const
+        }
         agent.send(text, {
           target,
           ...(images.length || files.length
             ? { images: images.length ? images : undefined, files: files.length ? files : undefined }
             : {}),
         })
+        return 'sent' as const
+      },
+      queue: queueOf(agent.queues, convId),
+      onQueueDrop: (id: string) => {
+        if (convId) agent.dropQueuedMessage(convId, id)
+      },
+      onQueueSendNow: (id: string) => {
+        if (convId) agent.sendQueuedNow(convId, id)
       },
       onStop: () => agent.stop(convId ?? undefined),
       onEditMessage: (messageId: string, text: string) => {
@@ -2994,8 +3226,19 @@ export default function LearnWorkspace({
     const isFocused = groupId === docs.focus
     const gExam = examCopyOf(store, gTab)
     const panes = residentPanes.filter((p) => p.group === groupId)
+    /**
+     * 这一格**看得见**的页签：公共 + 当前目标，且本目标的排在前面（见 groups/goals）。
+     *
+     * 页签实体仍全部住在 groups 里（切目标不关页签，切回来原样还在），
+     * 这里只是决定「这一格现在把哪几张画在栏上」——所以它同时是页签栏的顺序来源。
+     */
+    const gVisibleTabs = focusTabsInGroup(
+      (g.group?.tabs ?? []).filter((t) => shownTabIds.has(t.id)),
+      tabOwners,
+      activeGoalId,
+    )
     /** 这一格挂着的网页页签：WebTabLayer 常驻层只挂一份，切页签只藏不卸（见下） */
-    const gWebTabs = (g.group?.tabs ?? []).filter((x): x is WebTab => x.ref.kind === 'web')
+    const gWebTabs = gVisibleTabs.filter((x): x is WebTab => x.ref.kind === 'web')
     /** 这一格的正文层：切页签的过场、查找条与数据属性都挂在它身上 */
     const boxProps = {
       'data-doc-area': groupId,
@@ -3065,7 +3308,7 @@ export default function LearnWorkspace({
               }
             >
               <TabBar
-                tabs={g.group?.tabs ?? []}
+                tabs={gVisibleTabs}
                 activeId={g.group?.active ?? null}
                 titleOf={(ref) => tabTitle(ref, (id) => nodeById(store, id)?.title, examTabTitle)}
                 trailOf={(ref) => tabTrails[tabKey(ref)] ?? ''}
@@ -3093,6 +3336,8 @@ export default function LearnWorkspace({
                 focused={isFocused}
                 // 栏上空白处的右键菜单要开新网页页签（见 TabBar 的 BarMenu）
                 onOpenWebTab={() => openWebTab('')}
+                // 「新页签」就长在最后一枚页签后面（原先在顶栏，见 TabBar 的 onNewTab）
+                onNewTab={() => openBlankTab()}
                 store={store}
               />
             </div>
@@ -3288,9 +3533,10 @@ export default function LearnWorkspace({
               <FocusReportView key={gTab.ref.reportId} reportId={gTab.ref.reportId} />
             ) : gTab?.ref.kind === 'outline' && g.node ? (
               /*
-                大纲页：结构化计划的交互视图（见 OutlineView）。它不走源码/预览、
-                不进常驻列表、也没有暂存——层级计划要改，就在页上点「重排大纲」交给导师。
-                key 绑节点：换一个目标就重挂，展开状态从头开始（那是「这一页」的状态）。
+                大纲页：目标级的思维导图（见 OutlineView）。它不走源码/预览、不进常驻列表、
+                也没有暂存——路线要改，就在图里点某个节点的「生成大纲」交给导师。
+                教学文档从这里点进去（大纲是唯一入口）。
+                key 绑目标根节点：换一个目标就重挂，相机与选中状态从头开始。
               */
               <OutlineView
                 key={g.node.id}
@@ -3299,6 +3545,10 @@ export default function LearnWorkspace({
                 onOpenNode={(id) => openTab({ kind: 'teach', nodeId: id })}
                 onCreateChild={createOutlineChild}
                 onGenerate={(n) => startOutline(n.id)}
+                onSetTint={setNodeTint}
+                docs={explorerDocs}
+                exams={explorerExams}
+                activeTab={gTab?.ref ?? null}
               />
             ) : gTab?.ref.kind === 'super' && g.node && g.superDoc ? (
               /*
@@ -3637,6 +3887,23 @@ export default function LearnWorkspace({
     [exam, selectNode, onToast, requestGrading, grading],
   )
 
+  /**
+   * 改某个节点在思维导图上的自定义颜色（右键节点改色）。
+   *
+   * 只是节点上的一笔（KnowledgeNode.tint），走 updateNode 那条正规写路径：跟着
+   * store 一起落盘，因此刷新、重启、换设备都还在。传 null = 回到「随分支走」，
+   * 这时写回空串——updateNode 的对象展开会留一个值为 undefined 的键，落盘（JSON）
+   * 时它自己会消失，读盘那一侧也把空串当「没有」，两头都不留一个悬空的值。
+   */
+  const setNodeTint = useCallback(
+    (nodeId: string, tint: string | null) => {
+      const s = getLatest()
+      if (!nodeById(s, nodeId)) return
+      set(updateNode(s, nodeId, { tint: tint ?? '' }))
+    },
+    [getLatest, set],
+  )
+
   const explorerState = useMemo<NodeStateActions>(
     () => ({
       structure: (nodeId) => nodeStructure(store, nodeId),
@@ -3674,6 +3941,10 @@ export default function LearnWorkspace({
         pure={pure}
         onClose={() => setSidebarOpen(false)}
         onSelectNode={selectNode}
+        // 点目标节点的文字 = 切到它的目标页签组（不再直接开教学文档）
+        onSelectGoal={openGoalGroup}
+        // 目标行的高亮：当前正在看的那个目标
+        activeGoalId={tabGoalId}
         onNewGoal={startCreatingGoal}
         onDeleteNode={requestRemoveNode}
         onRevealNode={(nodeId) => void revealNodeFile(nodeId)}
@@ -3741,7 +4012,6 @@ export default function LearnWorkspace({
             onOpenSettings={onOpenSettings}
             onOpenUsage={onOpenUsage}
             onOpenUpdate={onOpenUpdate}
-            onNewTab={() => openBlankTab()}
             onToast={onToast}
             /* 番茄钟与打卡都是「自给自足的小块」：时钟/倒计时只在这一块里每秒重渲染，
                不会把整个学习区（正文 + 对话栏）一起带上 */
@@ -3794,7 +4064,8 @@ export default function LearnWorkspace({
                     激活的拿到 active 标记，切回可见时重新量定位条（隐藏期间量到的全是零矩形）。
                   */}
                   <div className="relative min-h-0 flex-1">
-                    {stripTabs.map((tab) => {
+                    {/* 常挂的是全部页签（见 agentPanes 的说明），栏上画哪几枚由 stripTabs 决定 */}
+                    {agentPanes.map((tab) => {
                       const key = agentTabKey(tab)
                       const on = key === activeAgentTabId
                       const props = agentTabProps(tab)

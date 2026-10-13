@@ -21,6 +21,8 @@ const dict: Record<string, string> = {
   '{0}。本轮内容可能不完整{1}，可回复「继续」让我接着完成。': '{0}. This turn may be incomplete{1}; reply "Continue" and I will pick it up from there.',
   '（未执行的工具调用已丢弃）': ' (pending tool calls were discarded)',
   'AI 请求失败': 'The AI request failed',
+  '请求失败：{0}，正在重试（第 {1}/{2} 次）…': 'The request failed: {0}; retrying (attempt {1}/{2})...',
+  '已重试 {0} 次仍然失败：{1}': 'Still failing after {0} retries: {1}',
 
   // ---------- ai/client：API 错误 ----------
   'API Key 无效或没有访问权限': 'The API key is invalid or has no access',

@@ -9,6 +9,7 @@
 import { useState, type ReactNode } from 'react'
 import type { AskAnswers, AskFormPayload } from '../../../agent/tools'
 import type { Conversation, MessageUsage, PendingImage } from '../../../agent/types'
+import type { QueuedMessage } from '../../../learn/agentQueue'
 import type { ReasoningEffort } from '../../../ai/types'
 import { Composer } from './Composer'
 import type { ComposerApi } from './useComposer'
@@ -22,6 +23,10 @@ export interface ComposerUiProps {
   hasKey: boolean
   /** 当前提供商的显示名，仅用于「未配置」提示 */
   providerLabel: string
+  /** 等待队列（agent 正在跑时发出去的那些）：原样透传给 Composer 画在输入框上方 */
+  queue: QueuedMessage[]
+  onQueueDrop: (id: string) => void
+  onQueueSendNow: (id: string) => void
   /**
    * 待回答的结构化表单（api.ask 发起的）：显示在输入框上方，提交前沙箱一直阻塞着。
    * id 是这一次表单的身份（重开一张表单时 key 换掉，旧答案不会串）。

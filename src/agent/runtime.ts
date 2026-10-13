@@ -18,6 +18,7 @@ import {
   type MessageImage,
 } from './types'
 import type { ContextSnapshot } from './contextFilter'
+import { MAX_REQUEST_RETRIES, isRetryable, retryDelayMs, sleepMs } from './retry'
 import { t } from '../i18n'
 
 /**
@@ -34,6 +35,11 @@ import { t } from '../i18n'
  *    insufficient_system_resource 等）——本轮输出是不完整的；
  * 2. 流中途断掉——由 ai/client 的空闲超时兜住，这里收到错误。
  * 两种情况都会发 notice 事件，让界面能明确告诉用户「为什么停了、怎么继续」。
+ *
+ * 关于「请求失败」：一次请求失败不再直接结束这一轮，而是按 agent/retry 的判据
+ * 退避重发，**最多 5 次**（网络抖动、5xx、限流都值得再试；401 这类与前缀门禁
+ * 不重试——它们重发几次也不会变绿）。重发之前会发 retry 事件，请界面把那一趟
+ * 已经吐出去的字撤掉：重发是从头再生成一遍，留着就会和新回答叠成两段。
  *
  * 循环没有轮次上限，单轮输出也不设上限：长任务（写大纲 → 逐个展开 → 出题）
  * 由模型自己决定何时收尾，需要中断时由用户点「停止」。
@@ -67,6 +73,11 @@ export interface AgentRunOptions {
   loadImages?: (images: MessageImage[]) => Promise<Map<string, { mime: string; data: string }>>
   /** 流式补全实现；默认用真实的 client，测试时可注入替身 */
   stream?: StreamFn
+  /**
+   * 重试之间的退避等待；默认按 agent/retry 的 sleepMs（可被中止打断）。
+   * 做成可注入同样是为了测试：不必真的等满那几档退避。
+   */
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>
   /**
    * 上下文过滤器钩子：**每一次**把上下文发往 API 之前调用（此时 system、messages、
    * 工具声明都已拼装完成，拿到的是与实发完全一致的那一份）。调试器据此记录快照、
@@ -141,7 +152,11 @@ export async function runAgent(opts: AgentRunOptions): Promise<void> {
   // 默认走真实客户端；测试可注入替身，从而在不联网的情况下驱动整个循环
   const call = (o: StreamChatOptions): Promise<StreamChatResult> =>
     opts.stream ? opts.stream(o) : streamChatWith(provider, model, { ...o, purpose: 'chat' })
+  // 重试之间的退避；测试可注入替身，不必真的等（见 AgentRunOptions.sleep）
+  const sleep = opts.sleep ?? sleepMs
   let resourceRetries = 0
+  /** 当前这一跳已经重试了几次（收场那句「已重试 N 次」要用；每跳开头清零） */
+  let retriesUsed = 0
 
   /**
    * 上报一次请求的用量；服务端没回就按字符估算，并标记出来。
@@ -172,67 +187,116 @@ export async function runAgent(opts: AgentRunOptions): Promise<void> {
       }
       // 上下文过滤器：此刻的 system / messages 就是即将发出去的那一份
       opts.onContext?.({ system, messages, tools: opts.tools })
-      /** 首末正文 chunk 的时刻：结束时算「这一跳的平均速度」用（门槛见 reportUsage） */
-      const pace = { first: 0, last: 0 }
-      /**
-       * 实时速度：**最近 3 秒的滚动窗口**。每个正文 chunk 记下 (时刻, 估算 token)，
-       * 每秒重算一次「窗口内的 token ÷ 窗口实际跨度」。
+      /*
+       * 发一次请求（连同它这一趟的掐表）。
        *
-       * 为什么不用「首 chunk 以来的累计平均」：那在两种真实场景下都会失真——
-       * 开头的密集 chunk 会把平均值顶上天（后来慢了它还赖着不降），
-       * 而思考停顿期间累计时长照涨、平均被拖向 0。滚动窗口只看最近几秒，
-       * 快慢变化立刻反映，突发的一坨也会在 3 秒后自然滑出窗口。
+       * 抽成函数是因为**重试就是再发一次**：掐表与滚动窗口都得从头来过——
+       * 上一趟吐到一半就断了，那些样本跟着那一趟一起作废。
        */
-      const samples: Array<{ at: number; tokens: number }> = []
-      const ticker = setInterval(() => {
-        const now = Date.now()
-        while (samples.length && samples[0].at < now - PACE_WINDOW_MS) samples.shift()
-        if (!samples.length) return
-        const spanMs = now - samples[0].at
-        // 窗口还不足 1 秒不发：一整块内容瞬间砸下来时的「速度」只是噪声
-        if (spanMs < 1000) return
-        const sum = samples.reduce((n, s) => n + s.tokens, 0)
-        // 兜顶与 reportUsage 同一条线：现实里没有 >1000 tok/s 的流式
-        const tps = Math.min(1000, Math.round(sum / (spanMs / 1000)))
-        if (tps > 0) onEvent({ type: 'pace', tps })
-      }, 1000)
-      let result: StreamChatResult
-      try {
-        result = await call({
-          messages,
-          tools: toolSchema,
-          temperature: opts.temperature ?? 0.5,
-          /**
-           * 常规情况不传 maxTokens：把单轮输出长度交给模型/服务端的默认值，
-           * 避免我们这边的上限先于模型自己的收尾把输出截断。
-           *
-           * 但提供商若声明了硬上限（如 Command Code 网关的 64000，超了会被拒），
-           * 或用户在设置里显式填了值，就必须带上——provider.maxTokens 已在
-           * ai/settings 的 resolveProvider 里把这两种来源合并好。
-           */
-          maxTokens: provider.maxTokens,
-          signal,
-          reasoningEffort: opts.reasoningEffort,
-          onDelta: (d) => {
-            if (d.reasoning) onEvent({ type: 'thinking', delta: d.reasoning })
-            if (d.content) {
-              const now = Date.now()
-              // 掐表从第一个正文 chunk 起算（思考 chunk 不算——它不是给用户看的输出）
-              if (!pace.first) pace.first = now
-              pace.last = now
-              // 这个 chunk 的 token 估算：与 estimateUsage 同口径（CJK 1 字 1 token、其余约 4 字符 1）
-              let cjk = 0
-              for (const ch of d.content) if ((ch.codePointAt(0) ?? 0) > 0x2e7f) cjk++
-              samples.push({ at: now, tokens: Math.ceil(cjk + (d.content.length - cjk) / 4) })
-              onEvent({ type: 'text', delta: d.content })
-            }
-          },
-        })
-      } finally {
-        clearInterval(ticker)
+      const requestOnce = async (): Promise<{
+        result: StreamChatResult
+        pace: { first: number; last: number }
+      }> => {
+        /** 首末正文 chunk 的时刻：结束时算「这一跳的平均速度」用（门槛见 reportUsage） */
+        const pace = { first: 0, last: 0 }
+        /**
+         * 实时速度：**最近 3 秒的滚动窗口**。每个正文 chunk 记下 (时刻, 估算 token)，
+         * 每秒重算一次「窗口内的 token ÷ 窗口实际跨度」。
+         *
+         * 为什么不用「首 chunk 以来的累计平均」：那在两种真实场景下都会失真——
+         * 开头的密集 chunk 会把平均值顶上天（后来慢了它还赖着不降），
+         * 而思考停顿期间累计时长照涨、平均被拖向 0。滚动窗口只看最近几秒，
+         * 快慢变化立刻反映，突发的一坨也会在 3 秒后自然滑出窗口。
+         */
+        const samples: Array<{ at: number; tokens: number }> = []
+        const ticker = setInterval(() => {
+          const now = Date.now()
+          while (samples.length && samples[0].at < now - PACE_WINDOW_MS) samples.shift()
+          if (!samples.length) return
+          const spanMs = now - samples[0].at
+          // 窗口还不足 1 秒不发：一整块内容瞬间砸下来时的「速度」只是噪声
+          if (spanMs < 1000) return
+          const sum = samples.reduce((n, s) => n + s.tokens, 0)
+          // 兜顶与 reportUsage 同一条线：现实里没有 >1000 tok/s 的流式
+          const tps = Math.min(1000, Math.round(sum / (spanMs / 1000)))
+          if (tps > 0) onEvent({ type: 'pace', tps })
+        }, 1000)
+        try {
+          const result = await call({
+            messages,
+            tools: toolSchema,
+            temperature: opts.temperature ?? 0.5,
+            /**
+             * 常规情况不传 maxTokens：把单轮输出长度交给模型/服务端的默认值，
+             * 避免我们这边的上限先于模型自己的收尾把输出截断。
+             *
+             * 但提供商若声明了硬上限（如 Command Code 网关的 64000，超了会被拒），
+             * 或用户在设置里显式填了值，就必须带上——provider.maxTokens 已在
+             * ai/settings 的 resolveProvider 里把这两种来源合并好。
+             */
+            maxTokens: provider.maxTokens,
+            signal,
+            reasoningEffort: opts.reasoningEffort,
+            onDelta: (d) => {
+              if (d.reasoning) onEvent({ type: 'thinking', delta: d.reasoning })
+              if (d.content) {
+                const now = Date.now()
+                // 掐表从第一个正文 chunk 起算（思考 chunk 不算——它不是给用户看的输出）
+                if (!pace.first) pace.first = now
+                pace.last = now
+                // 这个 chunk 的 token 估算：与 estimateUsage 同口径（CJK 1 字 1 token、其余约 4 字符 1）
+                let cjk = 0
+                for (const ch of d.content) if ((ch.codePointAt(0) ?? 0) > 0x2e7f) cjk++
+                samples.push({ at: now, tokens: Math.ceil(cjk + (d.content.length - cjk) / 4) })
+                onEvent({ type: 'text', delta: d.content })
+              }
+            },
+          })
+          return { result, pace }
+        } finally {
+          clearInterval(ticker)
+        }
       }
 
-      reportUsage(result, pace)
+      /*
+       * 失败就退避重发，最多 MAX_REQUEST_RETRIES 次（哪类错值得重发见 agent/retry）。
+       * 预算是**每跳**的：这一跳走通了，下一跳重新从 0 开始数。
+       */
+      retriesUsed = 0
+      let result: StreamChatResult
+      for (;;) {
+        try {
+          const shot = await requestOnce()
+          result = shot.result
+          reportUsage(shot.result, shot.pace)
+          break
+        } catch (err) {
+          // 用户点了「停止」：不重试，交给最外层按取消收场
+          if (signal?.aborted) throw err
+          const why = err instanceof Error ? err.message : t('AI 请求失败')
+          if (retriesUsed >= MAX_REQUEST_RETRIES || !isRetryable(err)) throw err
+          retriesUsed++
+          /*
+           * retry 事件必须排在 notice **之前**：它让界面把这趟已经吐出去的半截正文
+           * 撤掉（重发是从头再生成一遍，留着就叠成两段），而 notice 是本趟的新内容。
+           */
+          onEvent({ type: 'retry', attempt: retriesUsed, max: MAX_REQUEST_RETRIES, message: why })
+          onEvent({
+            type: 'notice',
+            level: 'info',
+            message: t(
+              '请求失败：{0}，正在重试（第 {1}/{2} 次）…',
+              why,
+              retriesUsed,
+              MAX_REQUEST_RETRIES,
+            ),
+          })
+          await sleep(retryDelayMs(retriesUsed), signal)
+          // 退避期间被中止：同样按取消收场（不必白等满这一档再去发一次）
+          if (signal?.aborted) throw err
+        }
+      }
+
       const abnormal = describeReason(result.finishReason)
       if (abnormal) {
         // 输出在语义上是不完整的：工具参数可能被截成非法 JSON，绝不能拿去执行
@@ -374,7 +438,13 @@ export async function runAgent(opts: AgentRunOptions): Promise<void> {
       onEvent({ type: 'done' })
       return
     }
-    onEvent({ type: 'error', message: err instanceof Error ? err.message : t('AI 请求失败') })
+    const why = err instanceof Error ? err.message : t('AI 请求失败')
+    onEvent({
+      type: 'error',
+      // 重试过就把次数说出来：否则用户只看到最后那一次的错误，
+      // 不知道刚才已经白等了五轮（也就不知道该去查网络还是去查 Key）
+      message: retriesUsed > 0 ? t('已重试 {0} 次仍然失败：{1}', retriesUsed, why) : why,
+    })
   }
 }
 

@@ -45,6 +45,59 @@
 }
 
 /*
+ * 页签的进出场（见 lib/tabPresence，文档区与导师栏共用这一套）。
+ *
+ * 入场是**动画**（animation）：只在新开那一枚挂上 moji-tab-in，150ms 从下方 4px 浮上来。
+ * 短是有意的——页签是「开了就要去看」的东西，慢一点就变成在拦人。
+ *
+ * 退场是**过渡**（transition）：关掉的那枚宽度收拢、淡出。宽度要 min-width 与 max-width
+ * 一起收——页签自带 min-w（短标题也好按），只收 max-width 的话 min-width 会在最后一刻
+ * 把宽度顶回去，槽位合不上。两道一起收，它才是真的闭上，邻居滑过来也顺。
+ * 不加 !important：与上面那条同理，这里是无层样式，压得住 @layer utilities 的 min-w / max-w。
+ */
+@keyframes moji-tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.moji-tab-in {
+  animation: moji-tab-in 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.moji-tab-out {
+  min-width: 0;
+  max-width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateY(2px) scale(0.96);
+  /* 收的过程中不该还能点：它的槽位正在消失，点上去不知道会命中谁 */
+  pointer-events: none;
+  transition:
+    min-width 160ms ease-in,
+    max-width 160ms ease-in,
+    padding 160ms ease-in,
+    opacity 110ms ease-in,
+    transform 160ms ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .moji-tab-in {
+    animation: none;
+  }
+  .moji-tab-out {
+    transition-duration: 1ms;
+  }
+}
+
+/*
  * 激活页签的**反向圆角**（仿浏览器页签，agent 栏与文档区共用）：两块 7px 的小方块
  * 贴在激活页签底部两角的**外侧**，径向渐变把靠外的四分之一圆抠成透明——页签的底色
  * 于是「弯」进了面板的顶边，与盖住下边框（各自 TabBar/AgentTabStrip 那条线）一起
@@ -115,3 +168,36 @@
   height: auto;
 }
 
+
+/* ---------- 思维导图的网格底（见 components/learn/outline/MindmapView） ---------- */
+
+/*
+ * 画布的底子：一层点阵 + 一层更稀的细网格。
+ *
+ * 为什么要有它：思维导图是一张可以无限平移的空白，没有底纹的时候「拖到哪儿了」
+ * 完全没有参照——四张卡片孤零零浮在米色上，挪动和缩放的量感只能靠卡片自己猜。
+ * 点阵给一个稳定的参照物，人一拖就知道自己走了多远。
+ *
+ * 两层用 background-image 叠（顺序即图层顺序，点在上、格在下）：点阵密而弱、
+ * 网格稀而更弱，合起来是一张「纸上有格」的底，而不是两个图案叠出来的花。
+ * 颜色取主题的 --color-line（随主题变），透明度压到很低——底纹是背景，
+ * 抢了卡片（前景）的注意力就本末倒置了。
+ *
+ * background-size 用 24px / 120px 这组：24 是卡片间距（GAP_X=88, GAP_Y=22）量级上的
+ * 一个整数分格，120 点阵正好五格——缩放时两层各自走各自的节奏，不至于重合出摩尔纹。
+ */
+.bg-dot-grid {
+  background-color: var(--color-paper);
+  background-image:
+    radial-gradient(circle, color-mix(in srgb, var(--color-line-strong) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(to right, color-mix(in srgb, var(--color-line) 60%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-line) 60%, transparent) 1px, transparent 1px);
+  background-size:
+    24px 24px,
+    120px 120px,
+    120px 120px;
+  background-position:
+    0 0,
+    0 0,
+    0 0;
+}

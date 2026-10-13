@@ -13,7 +13,7 @@ import {
   type UserProfile,
 } from '../../user/types'
 import { displayName } from '../../user/profile'
-import { readAvatarFile } from '../../user/avatar'
+import { saveAvatarFile } from '../../user/avatar'
 import { NO_AUTOFILL, NO_AUTOFILL_SECRET } from '../../lib/autofill'
 import { useLeaving } from '../../lib/presence'
 import { t } from '../../i18n'
@@ -106,10 +106,18 @@ export default function UserDialog({
     onToast(t('已保存，之后的讲解会据此调整'))
   }
 
+  /**
+   * 上传头像：图片压好写进 `{user}/assets/`，草稿里只留它的 `asset:` 地址
+   * （画像字段不再放 base64，见 user/avatar）。
+   *
+   * 这里**不删旧文件**：此刻还只是草稿，用户可能直接关掉对话框。旧文件交给
+   * updateUser 与启动时的清扫——判据是「谁还被引用着」，所以放弃改动不会误删。
+   * 反过来，这次新写下的图片在放弃改动后也会成为孤儿，同样由那次清扫收掉。
+   */
   const uploadAvatar = async (file: File) => {
     setBusy(true)
     try {
-      const avatar = await readAvatarFile(file)
+      const avatar = await saveAvatarFile(file)
       set('avatar', avatar)
     } catch (err) {
       onToast(err instanceof Error ? err.message : t('头像处理失败'))
@@ -337,7 +345,7 @@ export default function UserDialog({
                   )}
                 </div>
                 <p className="mt-1.5 text-[11px] text-ink-faint">
-                  {t('未上传时用昵称首字作为文字头像。图片会压缩后仅存本机。')}
+                  {t('未上传时用昵称首字作为文字头像。图片会压缩后存进用户目录的 assets/，画像里只记一个地址。')}
                 </p>
               </div>
             </section>
