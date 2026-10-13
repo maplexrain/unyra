@@ -489,10 +489,28 @@ bg-ok，宽度用 style="width:38%"）。
   },
 ]
 
+import { getLoadedSkills } from '../../agent/skill/registry'
+
 const MODULE_BY_KEY = new Map(PROMPT_MODULES.map((m) => [m.key, m]))
 
 export function promptModuleByKey(key: string): PromptModule | null {
-  return MODULE_BY_KEY.get(key) ?? null
+  const mod = MODULE_BY_KEY.get(key)
+  if (mod) return mod
+
+  if (key.startsWith('skill:')) {
+    const skillId = key.slice('skill:'.length)
+    const skills = getLoadedSkills()
+    const target = skills.find((s) => s.id === skillId)
+    if (target) {
+      return {
+        key,
+        title: `技能 · ${target.name}`,
+        text: `### 专业技能规范与执行纪律：${target.name} (${target.id})\n\n${target.instructions.trim()}`,
+      }
+    }
+  }
+
+  return null
 }
 
 /**

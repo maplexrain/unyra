@@ -31,7 +31,8 @@ const EXECUTE_PARAMETERS = {
         '**写操作的失败不抛异常**：回 { ok:false, content:"哪一步没做成、该怎么改" }，并汇总在结果最前面' +
         '那份「没有生效」清单里——判断成败看清单，不要用 try/catch，也不要追加读接口确认。' +
         '所有数据与真实文件读写统一使用 api.files.*（省略路径或传空字符串缺省为当前节点的教学文档）；' +
-        '原生系统进程任务使用 api.process.*。' +
+        '原生系统进程任务使用 api.process.*；' +
+        '专业技能管理与脚本执行使用 api.skill.*（api.skill.paths / api.skill.list / api.skill.read / api.skill.run / api.skill.write / api.skill.delete），亦可使用 api.files.* 直接读写 skills/ 目录；' +
         'api 上有什么、各组的完整签名与使用时机，全部见系统提示词的 execute 一节；' +
         '按需组（browser / web / method / code / subagent / ui 等）的规范会在你第一次调用该组时自动注入。' +
         '调试用 api.log(...)，输出随结果一起回给你。' +
@@ -85,8 +86,8 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
       ? '执行一段 JS 来完成任务：api 按本会话的授权开放（完整签名见参数说明）。' +
         '多步、批量、需要判断或循环的活用代码一次做完，不要把中间结果写进对话；' +
         '体量大的中间数据用 api.files.write 存为真实文件，只把文件名或结论带回来。'
-      : '执行一段 JS 来操作学习数据——**唯一的工具**：文档读写、节点增删改、' +
-        '人机协作与界面操作都只能通过这里调用。多步、批量、需要判断或循环的活用代码一次做完，' +
+      : '执行一段 JS 来操作学习数据与专业技能——**唯一的工具**：文档读写、节点增删改、' +
+        '专业技能查阅与脚本执行（api.skill.*）、人机协作与界面操作都只能通过这里调用。多步、批量、需要判断或循环的活用代码一次做完，' +
         '不要把中间结果写进对话；体量大的用 api.files.write 存为真实文件，只把文件名或结论带回来。' +
         '各 api 组的签名与使用时机见系统提示词的 execute 一节（低频组的完整规范在首次调用时自动注入）。',
     parameters: executeParameters(opts.apiBrief),

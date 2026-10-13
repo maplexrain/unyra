@@ -11,27 +11,19 @@ import { normalizeAgentSettings } from '../src/agent/settings'
 
 describe('Agent 技能 (Skills) 与 MCP 设施测试', () => {
   describe('Skills 聚合与系统提示词注入', () => {
-    it('内置技能库包含 5 项核心技能', () => {
-      expect(BUILTIN_SKILLS.length).toBeGreaterThanOrEqual(5)
-      const ids = BUILTIN_SKILLS.map((s) => s.id)
-      expect(ids).toContain('socratic-tutor')
-      expect(ids).toContain('reverse-breakdown')
-      expect(ids).toContain('feynman-simplifier')
-      expect(ids).toContain('code-architect')
-      expect(ids).toContain('paper-deep-dive')
+    it('内置技能库已清空，全部技能通过用户自定义或磁盘安装', () => {
+      expect(BUILTIN_SKILLS).toEqual([])
     })
 
-    it('无自定义配置时返回默认内置技能且开关生效', () => {
+    it('无自定义配置且无磁盘技能时返回空', () => {
       const skills = getEffectiveSkills(null)
-      expect(skills.length).toBe(BUILTIN_SKILLS.length)
+      expect(skills.length).toBe(0)
 
       const active = getActiveSkills(null)
-      // 苏格拉底、逆向拆解、费曼重构默认启用
-      expect(active.length).toBeGreaterThan(0)
-      expect(active.some((s) => s.id === 'socratic-tutor')).toBe(true)
+      expect(active).toEqual([])
     })
 
-    it('用户自定义配置可覆盖内置技能状态，并支持新增自定义技能', () => {
+    it('用户自定义技能可正确解析生效并生成发现层提示词', () => {
       const customSkill = {
         id: 'custom-math',
         name: '数学公理验证师',
@@ -42,27 +34,17 @@ describe('Agent 技能 (Skills) 与 MCP 设施测试', () => {
 
       const settings = {
         enabled: true,
-        skills: [
-          {
-            ...BUILTIN_SKILLS[0],
-            enabled: false, // 禁用苏格拉底导学
-          },
-          customSkill,
-        ],
+        skills: [customSkill],
       }
 
       const effective = getEffectiveSkills(settings)
-      const socratic = effective.find((s) => s.id === 'socratic-tutor')
-      expect(socratic?.enabled).toBe(false)
-
       const math = effective.find((s) => s.id === 'custom-math')
       expect(math?.enabled).toBe(true)
       expect(math?.builtin).toBe(false)
 
       const prompt = formatActiveSkillsPrompt(effective)
       expect(prompt).toContain('数学公理验证师')
-      expect(prompt).toContain('严格依据集合论推导')
-      expect(prompt).not.toContain('苏格拉底式启发导学')
+      expect(prompt).toContain('严格检查公理体系')
     })
 
     it('技能总开关为 false 时，getActiveSkills 返回空', () => {

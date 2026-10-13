@@ -31,7 +31,7 @@ import { streamChatWith } from '../ai/client'
 import { appendFreeMessage, freeConversationById, mutateFreeConversation } from './freeChat'
 import { loadAgentSettings } from '../agent/settings'
 import { createMcpAgentTools } from '../agent/mcp/agentTools'
-import { getActiveSkills } from '../agent/skill/registry'
+import { getActiveSkills, getSkillsDigest, needsSkillsAnnounce, skillsAnnounceMessage } from '../agent/skill/registry'
 import type { LearnStore } from './types'
 import { buildTeacherSystem } from './ai'
 import { MIN_ACTIVE_MESSAGES, activeMessages, applyCompaction, shouldCompact } from './compact'
@@ -45,6 +45,7 @@ import { saveScreenshot } from './screenshots'
 import { makeBrowserOps, type BrowserDeps } from './web/browserOps'
 import { loadImagesById, loadImagesFor } from './images'
 import { native } from '../lib/native'
+import { storageAbsPath } from '../lib/storage'
 import { applyEvent } from './agent/events'
 import { toChatHistory } from './agent/history'
 import { TURN_FLUSH_MS, upsertAssistantInFlight } from './agent/inflight'
@@ -399,22 +400,56 @@ export function useAgent(opts: {
        * 它之后的内容，前面的前缀照旧命中服务端缓存（见 agent/persona 顶部那段说明）。
        * 一条对话里同一个人格只补一次；人格变了就是新 id，自然再补一次。
        */
-      const personaId = loadAgentSettings().persona
+      const agentSettings = loadAgentSettings()
+      const personaId = agentSettings.persona
       const announcer = needsPersonaAnnounce(conv.messages, personaId)
         ? [personaMessage(personaId, Date.now(), crypto.randomUUID())]
         : []
+
+      // 动态技能清单注入：不在系统提示词中硬编码，而在消息流中按需注入与变更更新（保持前缀缓存稳定）
+      const activeSkills = getActiveSkills(agentSettings.skills)
+      const currentSkillsDigest = getSkillsDigest(activeSkills)
+      const hasPreviousSkillsAnnounce = conv.messages.some((m) => !m.retired && m.skillsDigest !== undefined)
+      const skillsAnnouncer = needsSkillsAnnounce(conv.messages, currentSkillsDigest)
+        ? [
+            skillsAnnounceMessage(
+              activeSkills,
+              storageAbsPath('skills') ?? undefined,
+              Date.now(),
+              crypto.randomUUID(),
+              currentSkillsDigest,
+              hasPreviousSkillsAnnounce,
+            ),
+          ]
+        : []
+
+      // 提示词模块与技能 Slash 命令检测：支持用户以 /<skill-id> 显式指定，提前将技能注入上下文
+      const effectiveModules = [...(modules ?? [])]
+      const slashMatch = trimmed.match(/^\/([a-zA-Z0-9_-]+)(?:\s+([\s\S]*))?$/)
+      if (slashMatch) {
+        const cmd = slashMatch[1].toLowerCase()
+        const availableSkills = getActiveSkills(agentSettings.skills)
+        const matchedSkill = availableSkills.find((s) => s.id === cmd || s.id.startsWith(cmd + '-'))
+        if (matchedSkill) {
+          const skillMod = promptModuleByKey(`skill:${matchedSkill.id}`)
+          if (skillMod && !effectiveModules.some((m) => m.key === skillMod.key)) {
+            effectiveModules.push(skillMod)
+          }
+        }
+      }
+
       // 提示词模块：与人格补发同一位置、同一条纪律（retired 的不算数，压缩后自动重注）
-      const moduleMsgs = modules?.length
-        ? missingPromptModules(conv.messages, modules.map((m) => m.key))
+      const moduleMsgs = effectiveModules.length
+        ? missingPromptModules(conv.messages, effectiveModules.map((m) => m.key))
             .map((key) => {
-              const mod = promptModuleByKey(key) ?? modules.find((m) => m.key === key)
+              const mod = promptModuleByKey(key) ?? effectiveModules.find((m) => m.key === key)
               return mod ? promptModuleMessage(mod, crypto.randomUUID(), Date.now()) : null
             })
             .filter((m): m is ConversationMessage => m !== null)
         : []
       conv = {
         ...conv,
-        messages: [...conv.messages, ...announcer, ...moduleMsgs, userMsg],
+        messages: [...conv.messages, ...announcer, ...skillsAnnouncer, ...moduleMsgs, userMsg],
         updatedAt: Date.now(),
         // 在途标记：这一轮没收口（进程被杀）时，载入恢复据此找到这条回复（见 learn/agent/inflight）
         inflight: { messageId: assistantId, startedAt: Date.now() },
@@ -499,7 +534,6 @@ export function useAgent(opts: {
       })
       // subagent api 挂进沙箱（导师专用；子代理的 apiAllow 白名单里没有这一组）
       sandboxBase.subagent = manager.api
-      const agentSettings = loadAgentSettings()
       const tools = [
         createExecuteTool({
           ...sandboxBase,
@@ -695,7 +729,6 @@ export function useAgent(opts: {
            */
           system: buildTeacherSystem({
             goalQuestion: getLatest().goals.find((g) => g.id === target.goalId)?.question ?? '',
-            skills: getActiveSkills(agentSettings.skills),
             // 画像**不在这里传**：导师要贴合这个人时自己 api.userInfo.get() 取（见 ai 的说明）
           }),
           /**

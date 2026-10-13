@@ -72,11 +72,22 @@ export function tabKey(ref: TabRef): string {
   if (ref.kind === 'mind') return 'm:' + ref.goalId
   if (ref.kind === 'agentSettings') return 'set:agent'
   if (ref.kind === 'newGoal') return 'goal:new'
+  if (ref.kind === 'blank') return 'b:' + ref.key
   return 'l:' + ref.path
 }
 
 export function makeTab(ref: TabRef, at: number, view?: DocView): LearnTab {
   return { id: tabKey(ref), ref, ...(view ? { view } : {}), createdAt: at }
+}
+
+/** 空白页签的身份后缀：开签那一刻生成 */
+export function newBlankKey(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+}
+
+/** 构造一枚空白页签（底页） */
+export function makeBlankTab(at = Date.now()): LearnTab {
+  return makeTab({ kind: 'blank', key: newBlankKey() }, at)
 }
 
 /** 页签挂在哪个节点上；本地文件、网页、守卫、报告、设置与用量页都不属于任何节点 */
@@ -89,7 +100,8 @@ export function tabNodeId(ref: TabRef): string | null {
     ref.kind === 'usage' ||
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
-    ref.kind === 'newGoal'
+    ref.kind === 'newGoal' ||
+    ref.kind === 'blank'
     ? null
     : ref.nodeId
 }
@@ -147,6 +159,7 @@ export function tabTitle(
   if (ref.kind === 'mind') return t('记忆管理')
   if (ref.kind === 'agentSettings') return t('超级导师设置')
   if (ref.kind === 'newGoal') return t('新建目标')
+  if (ref.kind === 'blank') return t('新页签')
   return ref.title || fileNameOf(ref.path)
 }
 
@@ -166,16 +179,18 @@ export function tabTrail(
 ): string {
   if (ref.kind === 'exam') return ''
   if (ref.kind === 'web') return ''
-  // 守卫、报告与系统页（设置/用量/导师设置/新建目标）不挂在节点上，也没有「住在哪儿」可言
+  // 守卫、报告与系统页（设置/用量/导师设置/新建目标/空白页签）不挂在节点上，也没有「住在哪儿」可言
   if (
     ref.kind === 'guard' ||
     ref.kind === 'report' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'agentSettings' ||
-    ref.kind === 'newGoal'
+    ref.kind === 'newGoal' ||
+    ref.kind === 'blank'
   )
     return ''
+
   if (ref.kind === 'mind') return goalLabel ? goalLabel(ref.goalId) : ''
   if (ref.kind === 'local') {
     const i = Math.max(ref.path.lastIndexOf('/'), ref.path.lastIndexOf('\\'))

@@ -90,12 +90,15 @@ function makeApi() {
     }
     cur[segs[segs.length - 1]] = (...callArgs) => call(full, callArgs)
   }
-  // 暴露全局 files 与 process 变量，使得 await files.read(...) 与 await api.files.read(...) 均可直接调用
+  // 暴露全局 files、process 与 skill 变量，使得 await files.read(...) 与 await api.files.read(...) 均可直接调用
   if (api.files) {
     globalThis.files = api.files
   }
   if (api.process) {
     globalThis.process = api.process
+  }
+  if (api.skill) {
+    globalThis.skill = api.skill
   }
   api.ui = api.ui || {}
   /**

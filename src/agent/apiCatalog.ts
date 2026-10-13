@@ -251,11 +251,27 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     ],
   },
   {
+    key: 'skill',
+    label: '专业技能 · skill',
+    intro:
+      '渐进式开示专业能力与规范：发现层仅常驻极简索引，在需要时通过 api.skill.read 获取详细 Instructions；' +
+      '并通过 api.skill.run 受控执行技能目录专属的 scripts 脚本。' +
+      'Agent 拥有对 skills/ 目录的完全读写权限，既可使用 api.files.* 直接读写技能文件与参考资料，亦可通过 skill.* 规范化管理。',
+    items: [
+      { name: 'skill.paths', signature: 'skill.paths(id?)', summary: '获取技能根目录或指定技能各层级（dir, scriptsDir, referencesDir, skillMd）的绝对物理路径', availability: 'always' },
+      { name: 'skill.list', signature: 'skill.list()', summary: '列出全部已启用的专业技能（含绝对物理路径 dir）与附属专属脚本清单', availability: 'always' },
+      { name: 'skill.read', signature: 'skill.read(id)', summary: '获取指定技能的完整工作流程规范、物理路径与指导要求（调用即激活到当前上下文）', availability: 'always' },
+      { name: 'skill.run', signature: 'skill.run(id, script, args?)', summary: '安全执行该技能目录专属脚本（skills/:id/scripts/:script）并获取执行输出与退出码', availability: 'always' },
+      { name: 'skill.write', signature: 'skill.write(def)', summary: '结构化创建或更新技能规范（自动序列化为 YAML frontmatter 并落盘至 skills/:id/SKILL.md）', availability: 'always' },
+      { name: 'skill.delete', signature: 'skill.delete(id)', summary: '删除磁盘上对应的技能目录及附属全部文件', availability: 'always' },
+    ],
+  },
+  {
     key: 'help',
     label: '帮助与自描述 · help',
     intro: '查询当前沙箱开放的能力组与 API 签名清单。',
     items: [
-      { name: 'help', signature: 'help()', summary: '返回当前沙箱 16 组核心能力清单、分组描述与各组常用方法', availability: 'always' },
+      { name: 'help', signature: 'help()', summary: '返回当前沙箱 17 组核心能力清单、分组描述与各组常用方法', availability: 'always' },
     ],
   },
 ]

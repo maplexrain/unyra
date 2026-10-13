@@ -126,7 +126,8 @@ function tabNodeIdOf(ref: TabRef): string {
     ref.kind === 'usage' ||
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
-    ref.kind === 'newGoal'
+    ref.kind === 'newGoal' ||
+    ref.kind === 'blank'
     ? ''
     : ref.nodeId
 }

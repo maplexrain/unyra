@@ -91,7 +91,8 @@ export function useExportFlow(deps: ExportFlowDeps) {
         tab.ref.kind === 'usage' ||
         tab.ref.kind === 'mind' ||
         tab.ref.kind === 'agentSettings' ||
-        tab.ref.kind === 'newGoal'
+        tab.ref.kind === 'newGoal' ||
+        tab.ref.kind === 'blank'
       ) {
         onToast(t('这一页没有可以导出的内容'))
         return

@@ -58,7 +58,8 @@ export function savedTextOf(store: LearnStore, ref: TabRef): string {
     ref.kind === 'usage' ||
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
-    ref.kind === 'newGoal'
+    ref.kind === 'newGoal' ||
+    ref.kind === 'blank'
   )
     return ''
   const node = nodeById(store, ref.nodeId)

@@ -530,6 +530,8 @@ export type TabRef =
   | { kind: 'agentSettings' }
   /** 目标创建页：创建新学习目标，创建完成后自动关闭 */
   | { kind: 'newGoal' }
+  /** 空白页签（底页）：显示无页签引导卡片，用于快捷新建或作为保底页签 */
+  | { kind: 'blank'; key: string }
 
 /**
  * agent 栏的页签指向什么（见 learn/agentTabs 与 components/agent/AgentTabStrip）。

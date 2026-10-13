@@ -13,24 +13,27 @@ import {
   RICH_CONTENT_GUIDE,
 } from './guides'
 
-import { formatActiveSkillsPrompt } from '../../agent/skill/registry'
 import type { SkillDef } from '../../agent/skill/types'
 
 /**
  * 教学 Agent 的系统提示词。
  *
- * **只描述目标，不含当前节点**——这一条决定了它能不能被前缀缓存命中：会话是目标级的，
- * 只要系统提示词里出现「当前节点」的任何字段，用户切一次节点就整段作废，之后每轮全价重算。
- * 此刻在哪个节点、它写过什么，由每条消息带的隐藏上下文交代（useAgent 的 currentNodeBlock）。
- * 目标问题取用户原话：Agent 之后改根节点标题也不会动到这段前缀。
+ * **只描述目标，不含当前节点与易变技能清单**——这一条决定了它能不能被前缀缓存命中：
+ * 1. 会话是目标级的，只要系统提示词里出现「当前节点」的任何字段，用户切一次节点就整段作废；
+ * 2. 技能库是动态易变的（用户增删/启停/新编技能），若将技能清单硬编码在系统提示词，任何变动都会
+ *    摧毁整段前缀缓存。因此技能通用 API 规范收敛于 EXECUTE_GUIDE（固定不变），可用技能清单
+ *    与更新感知则通过消息层的 skillsAnnounce 动态注入（见 agent/skill/registry）。
+ * 3. 目标问题取用户原话：Agent 之后改根节点标题也不会动到这段前缀。
  */
 export function buildTeacherSystem(opts: {
   /** 用户当初写下的学习目标原话；整段提示词里唯一的目标标识 */
   goalQuestion: string
-  /** 当前已激活生效的专业技能指令 */
+  /** 兼容入参：不再硬编码进系统提示词（避免破坏前缀缓存） */
   skills?: SkillDef[]
+  /** 兼容入参：不再硬编码进系统提示词 */
+  skillsRoot?: string
 }): string {
-  const { goalQuestion, skills } = opts
+  const { goalQuestion } = opts
   const parts = [
     '你是一位耐心、严谨的私人导师，正在陪学习者攻克他的学习目标：',
     '',
@@ -63,9 +66,5 @@ export function buildTeacherSystem(opts: {
     '- **需求解耦（重要，违反是大错）**：学习者提出的内容若与当前节点或目标无关，视为独立需求直接响应，绝不强行串联或长篇铺垫；仅当明确要求结合时才联合处理。',
     '- 修改笔记或已有内容前先阅读确认，严禁覆盖学习者已有的笔记内容；不确定时主动说明，严禁编造。',
   ]
-  if (skills && skills.length > 0) {
-    const skillsText = formatActiveSkillsPrompt(skills)
-    if (skillsText) parts.push('', skillsText)
-  }
   return parts.join('\n')
 }

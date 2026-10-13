@@ -1,8 +1,8 @@
-import { listDir, readText, revealPath, storageInfo, writeText, removePath } from '../../lib/storage'
+import { listDir, readText, revealPath, storageInfo, storageAbsPath, writeText, removePath } from '../../lib/storage'
 import { isElectron } from '../../lib/native'
 import { BUILTIN_SKILLS } from './builtins'
 import { getLoadedSkills, setLoadedSkills, subscribeSkills } from './registry'
-import type { SkillCategory, SkillDef } from './types'
+import type { SkillCategory, SkillDef, SkillScriptDef } from './types'
 
 export { getLoadedSkills, subscribeSkills }
 
@@ -15,6 +15,7 @@ export const SKILLS_REL_DIR = 'skills'
  * ---
  * name: 技能名称
  * description: 技能描述
+ * whenToUse: 适用时机简述
  * category: learning
  * tags:
  *   - 标签1
@@ -90,16 +91,32 @@ export function parseSkillMd(content: string, dirName: string): SkillDef {
     }
   }
 
+  const whenToUseVal =
+    typeof meta.whenToUse === 'string' && meta.whenToUse.trim()
+      ? meta.whenToUse.trim()
+      : typeof meta.when_to_use === 'string' && meta.when_to_use.trim()
+      ? meta.when_to_use.trim()
+      : undefined
+
+  const scriptsVal: SkillScriptDef[] = Array.isArray(meta.scripts)
+    ? meta.scripts.map((s) => (typeof s === 'string' ? { name: s } : (s as SkillScriptDef)))
+    : []
+
+  const referencesVal: string[] = Array.isArray(meta.references) ? meta.references.map(String) : []
+
   return {
     id: dirName,
     name: typeof meta.name === 'string' && meta.name.trim() ? meta.name.trim() : dirName,
     description: typeof meta.description === 'string' ? meta.description.trim() : '',
+    whenToUse: whenToUseVal,
     instructions,
     enabled: typeof meta.enabled === 'boolean' ? meta.enabled : true,
     category: (meta.category as SkillCategory) || 'general',
     tags: Array.isArray(meta.tags) ? meta.tags.map(String) : [],
     icon: typeof meta.icon === 'string' ? meta.icon : 'Sparkles',
     builtin: typeof meta.builtin === 'boolean' ? meta.builtin : false,
+    scripts: scriptsVal,
+    references: referencesVal,
     updatedAt: typeof meta.updatedAt === 'number' ? meta.updatedAt : undefined,
   }
 }
@@ -112,6 +129,9 @@ export function serializeSkillMd(skill: SkillDef): string {
   lines.push(`name: ${skill.name}`)
   if (skill.description) {
     lines.push(`description: ${skill.description}`)
+  }
+  if (skill.whenToUse) {
+    lines.push(`whenToUse: ${skill.whenToUse}`)
   }
   if (skill.category) {
     lines.push(`category: ${skill.category}`)
@@ -128,6 +148,18 @@ export function serializeSkillMd(skill: SkillDef): string {
   lines.push(`enabled: ${skill.enabled}`)
   if (skill.builtin) {
     lines.push('builtin: true')
+  }
+  if (skill.scripts && skill.scripts.length > 0) {
+    lines.push('scripts:')
+    for (const sc of skill.scripts) {
+      lines.push(`  - ${sc.name}`)
+    }
+  }
+  if (skill.references && skill.references.length > 0) {
+    lines.push('references:')
+    for (const ref of skill.references) {
+      lines.push(`  - ${ref}`)
+    }
   }
   if (skill.updatedAt) {
     lines.push(`updatedAt: ${skill.updatedAt}`)
@@ -212,6 +244,35 @@ export async function loadSkillsFromDisk(): Promise<SkillDef[]> {
         if (builtinIds.has(skillId)) {
           parsed.builtin = true
         }
+
+        // 动态扫描附属 scripts/ 与 references/ 物理子目录
+        try {
+          const scriptsEntries = await listDir(`${SKILLS_REL_DIR}/${skillId}/scripts`)
+          const fileScripts = scriptsEntries.filter((e) => !e.dir).map((e) => ({ name: e.name }))
+          if (fileScripts.length > 0) {
+            const map = new Map<string, SkillScriptDef>()
+            for (const sc of parsed.scripts ?? []) map.set(sc.name, sc)
+            for (const f of fileScripts) {
+              if (!map.has(f.name)) map.set(f.name, f)
+            }
+            parsed.scripts = Array.from(map.values())
+          }
+        } catch {
+          // 忽略
+        }
+
+        try {
+          const refEntries = await listDir(`${SKILLS_REL_DIR}/${skillId}/references`)
+          const fileRefs = refEntries.filter((e) => !e.dir).map((e) => e.name)
+          if (fileRefs.length > 0) {
+            const set = new Set(parsed.references ?? [])
+            for (const r of fileRefs) set.add(r)
+            parsed.references = Array.from(set)
+          }
+        } catch {
+          // 忽略
+        }
+
         loaded.push(parsed)
       }
     }
@@ -239,6 +300,18 @@ export async function saveSkillToDisk(skill: SkillDef): Promise<boolean> {
     ...skill,
     id: safeId,
     updatedAt: Date.now(),
+  }
+
+  if (!isElectron()) {
+    const current = [...getLoadedSkills()]
+    const idx = current.findIndex((s) => s.id === safeId)
+    if (idx >= 0) {
+      current[idx] = updated
+    } else {
+      current.push(updated)
+    }
+    setLoadedSkills(current)
+    return true
   }
 
   const content = serializeSkillMd(updated)
@@ -282,6 +355,12 @@ export async function deleteSkillFromDisk(skillId: string): Promise<boolean> {
   const safeId = sanitizeSkillId(skillId)
   if (!safeId) return false
 
+  if (!isElectron()) {
+    const next = getLoadedSkills().filter((s) => s.id !== safeId)
+    setLoadedSkills(next)
+    return true
+  }
+
   const ok = await removePath(`${SKILLS_REL_DIR}/${safeId}`)
   if (ok) {
     const next = getLoadedSkills().filter((s) => s.id !== safeId)
@@ -305,6 +384,10 @@ export async function revealSkillsDir(skillId?: string): Promise<boolean> {
  * 获取技能根目录的绝对物理路径（展示在界面上）
  */
 export async function getSkillsAbsPath(): Promise<string> {
+  const syncAbs = storageAbsPath(SKILLS_REL_DIR)
+  if (syncAbs) {
+    return syncAbs.replace(/\//g, '\\')
+  }
   try {
     const info = await storageInfo()
     if (info && info.root) {
@@ -316,3 +399,63 @@ export async function getSkillsAbsPath(): Promise<string> {
   }
   return `${SKILLS_REL_DIR}\\`
 }
+
+/**
+ * 获取某个技能的绝对物理目录
+ */
+export async function getSkillAbsDir(skillId: string): Promise<string | null> {
+  const safeId = sanitizeSkillId(skillId)
+  if (!safeId) return null
+  try {
+    const info = await storageInfo()
+    if (info && info.root) {
+      const cleanRoot = info.root.replace(/[\\/]+$/, '')
+      return `${cleanRoot}/${SKILLS_REL_DIR}/${safeId}`.replace(/\//g, '\\')
+    }
+  } catch {
+    // 忽略异常
+  }
+  return `${SKILLS_REL_DIR}\\${safeId}`
+}
+
+/**
+ * 获取技能专属脚本的磁盘绝对路径（进行安全沙箱与相对越界校验）
+ */
+export async function getSkillScriptAbsPath(skillId: string, scriptName: string): Promise<string | null> {
+  const safeId = sanitizeSkillId(skillId)
+  const cleanScript = scriptName.trim().replace(/^['"]|['"]$/g, '')
+  if (!safeId || !cleanScript || cleanScript.includes('..') || cleanScript.includes('/') || cleanScript.includes('\\')) {
+    return null
+  }
+  const dir = await getSkillAbsDir(safeId)
+  if (!dir) return null
+  return `${dir}\\scripts\\${cleanScript}`
+}
+
+/**
+ * 获取技能根目录或指定技能各层级的完整物理路径索引
+ */
+export async function getSkillPathsInfo(skillId?: string): Promise<{
+  ok: boolean
+  root: string
+  dir?: string
+  scriptsDir?: string
+  referencesDir?: string
+  skillMd?: string
+}> {
+  const root = await getSkillsAbsPath()
+  if (!skillId) {
+    return { ok: true, root }
+  }
+  const safeId = sanitizeSkillId(skillId)
+  const dir = safeId ? `${root}\\${safeId}` : `${root}\\${skillId}`
+  return {
+    ok: true,
+    root,
+    dir,
+    scriptsDir: `${dir}\\scripts`,
+    referencesDir: `${dir}\\references`,
+    skillMd: `${dir}\\SKILL.md`,
+  }
+}
+

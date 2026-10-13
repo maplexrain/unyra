@@ -99,6 +99,7 @@ const dict: Record<string, string> = {
   '新建学习目标': 'New learning goal',
   'AI 生成体系化知识树': 'AI generated knowledge tree',
   '小提示：可直接拖动外部文档或图片至窗口中任意位置查看': 'Tip: You can drag and drop external documents or images anywhere to open',
+  '新页签': 'New Tab',
 }
 
 export default dict

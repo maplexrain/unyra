@@ -1,7 +1,8 @@
 /** 这个文件负责：工作区级不可变更新的地基——按 id 找组、打补丁、每次收尾的 settle 与 setSizes（各模块都从这里取） */
 
-import { FIRST_GROUP, attachMissing, groupIdsOf, mapSplit, normalizeSizes, removeLeaf } from './layout'
+import { FIRST_GROUP, attachMissing, emptyDocs, groupIdsOf, mapSplit, normalizeSizes, removeLeaf } from './layout'
 import type { DocGroup, DocLayout, DocWorkspace } from './types'
+import { makeBlankTab } from '../tabs'
 
 export function groupOf(docs: DocWorkspace, id: string): DocGroup | undefined {
   return docs.groups.find((g) => g.id === id)
@@ -26,7 +27,7 @@ export function withGroup(docs: DocWorkspace, id: string, fn: (g: DocGroup) => D
  *
  * 1. **空格子**：多于一格时它只是一块空白（页签栏空着、正文写着「没有打开的文档」），
  *    而用户在那一格里什么也做不了——收掉它，兄弟那一格自然铺满。
- *    只剩一格时**留着**：那是「一个文档都没开」的那一屏，空态总得有地方放。
+ *    只剩一格时若所有页签都关了，自动创建一枚空白页签作为保底（不再有无页签状态）。
  * 2. **有页签却没选中**（active 为 null）：那一格会显示空态，而它的页签栏明明有东西——
  *    看起来就像「文档丢了」。把最后一个页签当落点（关页签用的是更讲究的落点规则，
  *    见 closeTabs；这里只是兜底，正常路径不会走到）。
@@ -34,11 +35,14 @@ export function withGroup(docs: DocWorkspace, id: string, fn: (g: DocGroup) => D
  * 因为所有操作都过这一道，「页签还在、格子却空了」这种状态在数据层就构造不出来。
  */
 export function settle(docs: DocWorkspace): DocWorkspace {
-  const repaired = docs.groups.some((g) => g.tabs.length > 0 && !g.active)
+  if (!docs.groups.length) return emptyDocs()
+  const repaired = docs.groups.some((g) => g.tabs.length > 0 && (!g.active || !g.tabs.some((t) => t.id === g.active)))
     ? {
         ...docs,
         groups: docs.groups.map((g) =>
-          g.tabs.length && !g.active ? { ...g, active: g.tabs[g.tabs.length - 1].id } : g,
+          g.tabs.length && (!g.active || !g.tabs.some((t) => t.id === g.active))
+            ? { ...g, active: g.tabs[g.tabs.length - 1].id }
+            : g,
         ),
       }
     : docs
@@ -50,15 +54,26 @@ export function settle(docs: DocWorkspace): DocWorkspace {
   const grounded = repaired.groups.every((g) => inTree.has(g.id))
     ? repaired
     : withDocs(repaired, { layout: attachMissing(repaired.layout, repaired.groups.map((g) => g.id)) })
-  if (grounded.groups.length <= 1) return grounded
+  if (grounded.groups.length <= 1) {
+    if (!grounded.groups.length) return emptyDocs()
+    const g = grounded.groups[0]
+    if (g.tabs.length === 0) {
+      const fallback = makeBlankTab()
+      const filled = { ...g, tabs: [fallback], active: fallback.id }
+      return withDocs(grounded, { groups: [filled], layout: { kind: 'group', group: filled.id } })
+    }
+    return grounded
+  }
   const alive = grounded.groups.filter((g) => g.tabs.length > 0)
   /*
    * 全空了（agent 一次删掉了一整棵子树、或「全部关闭」）：留**焦点那一格**，
-   * 其余连同布局一起收掉——那正是「只剩一格」的样子，空态也出现在用户刚才待的地方。
+   * 自动创建空白页签作为保底，其余连同布局一起收掉。
    */
   if (!alive.length) {
     const keep = groupOf(grounded, grounded.focus) ?? grounded.groups[0]
-    return withDocs(grounded, { groups: [keep], layout: { kind: 'group', group: keep.id } })
+    const fallback = makeBlankTab()
+    const filled = { ...keep, tabs: [fallback], active: fallback.id }
+    return withDocs(grounded, { groups: [filled], layout: { kind: 'group', group: filled.id } })
   }
   if (alive.length === grounded.groups.length) return grounded
   let layout: DocLayout | null = grounded.layout

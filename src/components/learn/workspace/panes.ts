@@ -99,7 +99,8 @@ export function paneInfo(
     tab.ref.kind !== 'super' &&
     tab.ref.kind !== 'exam' &&
     tab.ref.kind !== 'outline' &&
-    tab.ref.kind !== 'web'
+    tab.ref.kind !== 'web' &&
+    tab.ref.kind !== 'blank'
       ? sourceOf(store, tab, node)
       : null
   const empty = emptyNote(store, tab)
@@ -117,6 +118,7 @@ export function paneInfo(
       !!tab &&
       tab.ref.kind !== 'web' &&
       tab.ref.kind !== 'newGoal' &&
+      tab.ref.kind !== 'blank' &&
       !empty &&
       (tab.ref.kind !== 'local' || isPreviewable(tab.ref.path)),
     emptyNote: empty,

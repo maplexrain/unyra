@@ -3,7 +3,7 @@
 import type { DocScroll, DocView, FavoriteItem, FavoriteRef, KnowledgeNode, LearnTab, LocalFile, TabRef } from '../../types'
 import type { Exam } from '../../exam'
 import { sortLocalFiles } from '../../localfiles'
-import { newWebKey, tabKey } from '../../tabs'
+import { newBlankKey, newWebKey, tabKey } from '../../tabs'
 import { favoriteKey } from '../../favorites'
 
 /* ---------- 页签与本地文件列表 ---------- */
@@ -61,6 +61,9 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
     return goalId ? { kind: 'mind', goalId } : null
   }
   if (r.kind === 'agentSettings' || r.kind === 'newGoal') return { kind: r.kind }
+  if (r.kind === 'blank') {
+    return { kind: 'blank', key: typeof r.key === 'string' && r.key ? r.key : newBlankKey() }
+  }
   const nodeId = typeof r.nodeId === 'string' ? r.nodeId : ''
   const node = byId.get(nodeId)
   if (!node) return null

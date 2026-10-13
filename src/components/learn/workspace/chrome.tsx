@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowUp, BookOpen, Check, Compass, Contact, FolderOpen, Globe, Loader2, Menu, Paperclip, Sparkles } from 'lucide-react'
+import { ArrowUp, BookOpen, Check, Compass, Contact, FolderOpen, Globe, Loader2, Menu, Paperclip, Plus, Sparkles } from 'lucide-react'
 import type { PendingFile } from '../../../agent/types'
 import type { KnowledgeNode, LearnStore } from '../../../learn/types'
 import { nodeById, pathToRoot } from '../../../learn/graph'
@@ -49,6 +49,7 @@ export function Topbar({
   onOpenSettings,
   onOpenUsage,
   onOpenUpdate,
+  onNewTab,
   onOpenWebTab,
   onToast,
   pomodoro,
@@ -78,6 +79,8 @@ export function Topbar({
   /** 打开用量统计页签（入口在用户菜单，见 UserMenu） */
   onOpenUsage: () => void
   onOpenUpdate: () => void
+  /** 新建页签入口 */
+  onNewTab?: () => void
   /** 打开新浏览器标签页 */
   onOpenWebTab?: () => void
   /** 顶栏那几个「还没做好」的按钮据此说明一句，而不是点了没反应 */
@@ -140,16 +143,16 @@ export function Topbar({
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         {/* 更新入口：只有新版本**下载完成**之后它才存在，见 components/update/UpdateButton */}
         <UpdateButton onOpenUpdate={onOpenUpdate} />
-        {/* 新建浏览器标签页入口 */}
-        {onOpenWebTab && (
+        {/* 新建页签入口 */}
+        {(onNewTab || onOpenWebTab) && (
           <button
             type="button"
-            title={t('新建浏览器标签页')}
-            onClick={onOpenWebTab}
+            title={t('新页签')}
+            onClick={onNewTab ?? onOpenWebTab}
             className="group relative flex h-8 items-center gap-1.5 rounded-lg border-0 bg-transparent px-2 text-[12px] font-medium text-ink-soft transition-all duration-150 hover:text-ink"
           >
-            <Globe size={14} className="text-ink-faint transition group-hover:text-seal" />
-            <span className="hidden text-[12px] sm:inline">{t('浏览器')}</span>
+            <Plus size={14} className="text-ink-faint transition group-hover:text-seal" />
+            <span className="hidden text-[12px] sm:inline">{t('新页签')}</span>
           </button>
         )}
         {/* 四个入口都是「我今天的节奏」，与账号那一簇同属右侧。

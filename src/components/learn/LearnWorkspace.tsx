@@ -63,6 +63,7 @@ import {
   activeIdsOf,
   allTabs,
   closeIds,
+  closeIn,
   findTab,
   focusedGroup,
   focusedTab,
@@ -71,9 +72,13 @@ import {
   patchTab,
   reorderIn,
   setFocus,
+  settle,
+  withGroup,
   type DocLayout,
 } from '../../learn/groups'
-import { makeTab, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
+import { makeTab, newBlankKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
+import { pickLocalFiles } from '../../lib/localFiles'
+import { addLocalFile } from '../../learn/localfiles'
 import { normalizeWebInput } from '../../learn/webUrl'
 import type { BrowserDeps } from '../../learn/web/browserOps'
 import {
@@ -505,7 +510,8 @@ export default function LearnWorkspace({
       ref.kind === 'usage' ||
       ref.kind === 'mind' ||
       ref.kind === 'agentSettings' ||
-      ref.kind === 'newGoal'
+      ref.kind === 'newGoal' ||
+      ref.kind === 'blank'
     )
       return null
     const docPath = (kind: 'teaching' | 'note' | 'outline', note?: string): string | undefined =>
@@ -1330,6 +1336,14 @@ export default function LearnWorkspace({
     },
     [getLatest, set, bumpBrowse],
   )
+
+  /** 打开空白页签 */
+  const openBlankTab = useCallback((): string => {
+    const s = getLatest()
+    const ref: TabRef = { kind: 'blank', key: newBlankKey() }
+    set({ ...s, docArea: openInGroup(s.docArea, s.docArea.focus, ref, Date.now()) })
+    return tabKey(ref)
+  }, [getLatest, set])
 
   /** 把当前地址回写进页签（主框架导航时）：重启回到离开时的那一页 */
   const commitWebUrl = useCallback(
@@ -2882,6 +2896,94 @@ export default function LearnWorkspace({
     set({ ...base, docArea: openInGroup(base.docArea, groupId, ref, Date.now()) })
   }
 
+  /**
+   * 在当前空白页签中就地替换打开一个目标页签；
+   * 如果该目标已经存在，则直接跳转到它并关闭当前空白页签。
+   */
+  const openInPlace = useCallback(
+    (groupId: string, currentTabId: string, targetRef: TabRef) => {
+      const s = getLatest()
+      const targetId = tabKey(targetRef)
+      const existingGroup = groupIdOfTab(s.docArea, targetId)
+      if (existingGroup) {
+        // 如果已经存在：跳转到它，并关闭自身空白页签
+        let docArea = closeIn(s.docArea, groupId, currentTabId, 'self')
+        const targetGroup = groupIdOfTab(docArea, targetId)
+        if (targetGroup) {
+          docArea = activateIn(docArea, targetGroup, targetId)
+        }
+        const nodeId = tabNodeId(targetRef)
+        const base = nodeId ? retargetNode(s, nodeId) : s
+        set({ ...base, docArea })
+        return
+      }
+      // 不存在：在本页签快速打开（替换当前页签）
+      const docArea = settle(
+        withGroup(s.docArea, groupId, (g) => ({
+          ...g,
+          tabs: g.tabs.map((t) => (t.id === currentTabId ? makeTab(targetRef, t.createdAt) : t)),
+          active: targetId,
+        })),
+      )
+      const nodeId = tabNodeId(targetRef)
+      const base = nodeId ? retargetNode(s, nodeId) : s
+      set({ ...base, docArea })
+    },
+    [getLatest, retargetNode, set],
+  )
+
+  const openWebInPlace = useCallback(
+    (groupId: string, currentTabId: string) => {
+      openInPlace(groupId, currentTabId, { kind: 'web', url: '', key: newWebKey() })
+      bumpBrowse()
+    },
+    [bumpBrowse, openInPlace],
+  )
+
+  const openNewGoalInPlace = useCallback(
+    (groupId: string, currentTabId: string) => {
+      openInPlace(groupId, currentTabId, { kind: 'newGoal' })
+    },
+    [openInPlace],
+  )
+
+  const pickLocalInPlace = useCallback(
+    async (groupId: string, currentTabId: string) => {
+      const paths = await pickLocalFiles()
+      if (!paths.length) return
+      const s = getLatest()
+      let next = { ...s, localFiles: addLocalFile(s.localFiles, paths[0], Date.now()) }
+      for (let i = 1; i < paths.length; i++) {
+        next = { ...next, localFiles: addLocalFile(next.localFiles, paths[i], Date.now() + i) }
+      }
+      const firstRef: TabRef = { kind: 'local', path: paths[0] }
+      const firstId = tabKey(firstRef)
+      const existingGroup = groupIdOfTab(next.docArea, firstId)
+      let docArea = next.docArea
+      if (existingGroup) {
+        docArea = closeIn(docArea, groupId, currentTabId, 'self')
+        const targetGroup = groupIdOfTab(docArea, firstId)
+        if (targetGroup) {
+          docArea = activateIn(docArea, targetGroup, firstId)
+        }
+      } else {
+        docArea = settle(
+          withGroup(docArea, groupId, (g) => ({
+            ...g,
+            tabs: g.tabs.map((t) => (t.id === currentTabId ? makeTab(firstRef, t.createdAt) : t)),
+            active: firstId,
+          })),
+        )
+      }
+      let at = Date.now() + 10
+      for (let i = 1; i < paths.length; i++) {
+        docArea = openInGroup(docArea, groupId, { kind: 'local', path: paths[i] }, at++)
+      }
+      set({ ...next, docArea })
+    },
+    [getLatest, set],
+  )
+
   const renderGroup = (groupId: string) => {
     const g = paneInfo(store, docs, groupId, examTabTitle)
     const gTab = g.tab
@@ -3068,6 +3170,16 @@ export default function LearnWorkspace({
                 WebTabLayer 常驻层显示——这里只让出位置，别画任何东西。
               */
               null
+            ) : gTab?.ref.kind === 'blank' ? (
+              /*
+                空白页签（底页）：显示无页签引导卡片（打开本地文件 / 浏览网络 / 新建目标），
+                并在当前页签中快速就地打开。
+              */
+              <EmptyDoc
+                onPickLocal={() => void pickLocalInPlace(groupId, gTab.id)}
+                onOpenWeb={() => openWebInPlace(groupId, gTab.id)}
+                onNewGoal={() => openNewGoalInPlace(groupId, gTab.id)}
+              />
             ) : gTab?.ref.kind === 'newGoal' ? (
               /*
                 目标创建页：创建新学习目标，创建完成后自动关闭。
@@ -3242,9 +3354,9 @@ export default function LearnWorkspace({
               ) : null /* 预览那一份由下面的常驻列表渲染（见 DocPane） */
             ) : (
               <EmptyDoc
-                onPickLocal={() => void pickLocal()}
-                onOpenWeb={() => openWebTab('')}
-                onNewGoal={startCreatingGoal}
+                onPickLocal={() => void pickLocalInPlace(groupId, gTabId)}
+                onOpenWeb={() => openWebInPlace(groupId, gTabId)}
+                onNewGoal={() => openNewGoalInPlace(groupId, gTabId)}
               />
             )}
 
@@ -3629,7 +3741,7 @@ export default function LearnWorkspace({
             onOpenSettings={onOpenSettings}
             onOpenUsage={onOpenUsage}
             onOpenUpdate={onOpenUpdate}
-            onOpenWebTab={() => openWebTab('')}
+            onNewTab={() => openBlankTab()}
             onToast={onToast}
             /* 番茄钟与打卡都是「自给自足的小块」：时钟/倒计时只在这一块里每秒重渲染，
                不会把整个学习区（正文 + 对话栏）一起带上 */

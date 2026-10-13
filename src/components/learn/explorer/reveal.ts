@@ -198,6 +198,7 @@ export function revealOfTab(
     case 'mind':
     case 'agentSettings':
     case 'newGoal':
+    case 'blank':
       // 设置页、用量页与新建目标是文档区的页签，但侧栏里没有它们的行（入口在顶栏或菜单），不定位
       return null
     case 'report':

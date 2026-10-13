@@ -54,6 +54,11 @@ export const EXECUTE_GUIDE = `唯一的工具是 execute(description, body)：
 
 人机协作与辅助控制：
 - api.tiktok() 提示音；api.wait(ms) 阻塞等待；api.log(...) 调试输出；api.ui.point(path?, tab?) 在文档区打开并定位。
+- api.skill.paths(skillId?) → { ok, root, dir?, scriptsDir?, referencesDir?, skillMd? }：获取技能根目录或指定技能各层级的绝对物理路径。
+- api.skill.list() → { ok, root, skills: [...] }：列出当前全部已启用的专业技能（含绝对物理路径 dir）与专属脚本清单。
+- api.skill.read(skillId) → { ok, id, dir, name, instructions, scripts, references }：获取技能完整规范与物理路径（调用即激活到短期上下文）。
+- api.skill.run(skillId, scriptName, args?) → { ok, output, exitCode }：受控执行技能专属脚本（skills/:id/scripts/:scriptName）并获取标准输出与退出码。
+- api.skill.write(skillDef) / api.skill.delete(skillId)：结构化维护技能；Agent 拥有技能目录完全读写权限，亦可直接使用 api.files.* 自由读写 skills/ 下的文件与脚本。
 - api.ask({ title?, questions })：向用户展示结构化表单并阻塞等待作答（超时 1 分钟未操作返回 timedOut:true）。
   每题 { type ('single'|'multiple'|'short'), prompt, options?, when?, userInfo?, id? }：
   - options 写 2~8 项，界面自动附「其他」；

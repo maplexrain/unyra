@@ -90,9 +90,13 @@ export function openInGroup(
     return activateIn(docs, home, id)
   }
   const target = groupOf(docs, groupId) ? groupId : focusedGroup(docs).id
+  const targetGroup = groupOf(docs, target)
+  const shouldReplaceBlank =
+    targetGroup && targetGroup.tabs.length === 1 && targetGroup.tabs[0].ref.kind === 'blank' && ref.kind !== 'blank'
+  const newTab = makeTab(ref, at, view)
   const next = withGroup(docs, target, (g) => ({
     ...g,
-    tabs: [...g.tabs, makeTab(ref, at, view)],
+    tabs: shouldReplaceBlank ? [newTab] : [...g.tabs, newTab],
     active: id,
   }))
   return settle(withDocs(next, { focus: target }))

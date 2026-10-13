@@ -52,7 +52,7 @@ export {
   splitSpecOf,
 } from './groups/layout'
 
-export { groupOf, setSizes } from './groups/core'
+export { groupOf, setSizes, settle, withDocs, withGroup } from './groups/core'
 
 export {
   findTab,

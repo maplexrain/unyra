@@ -107,6 +107,13 @@ const API_NAMES = [
   'process.list',
   'process.get',
   'process.delete',
+  // 专业技能管理与脚本执行 (skill.*)
+  'skill.list',
+  'skill.read',
+  'skill.paths',
+  'skill.run',
+  'skill.write',
+  'skill.delete',
   // 自描述能力索引
   'help',
 ]

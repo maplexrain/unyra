@@ -1,6 +1,7 @@
 /** 这个文件负责：布局树本身——id 与空工作区、树的查找、拆分与合并、占比 sizes 与落点怎么拆 */
 
 import type { DocLayout, DocSplit, DocWorkspace, DropZoneKind, SplitDir } from './types'
+import { makeBlankTab } from '../tabs'
 
 /** 第一组的固定 id：空库与旧数据迁移都用它，界面上没有第二处依赖这个名字 */
 export const FIRST_GROUP = 'g0'
@@ -17,11 +18,12 @@ export function newId(prefix: string): string {
   return prefix + Date.now().toString(36) + '-' + seq.toString(36)
 }
 
-/** 一个干净的工作区：一组、没有页签 */
+/** 一个干净的工作区：一组、一枚保底空白页签 */
 export function emptyDocs(): DocWorkspace {
+  const initial = makeBlankTab()
   return {
     layout: { kind: 'group', group: FIRST_GROUP },
-    groups: [{ id: FIRST_GROUP, tabs: [], active: null }],
+    groups: [{ id: FIRST_GROUP, tabs: [initial], active: initial.id }],
     focus: FIRST_GROUP,
   }
 }

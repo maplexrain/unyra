@@ -153,6 +153,11 @@ export interface ConversationMessage {
    */
   promptModule?: string
   /**
+   * 这是「可用专业技能库索引」那条隐藏指令的指纹（见 agent/skill/registry）。
+   * 动态按需注入，随技能增删实时重注入，避免修改系统提示词破坏前缀缓存。
+   */
+  skillsDigest?: string
+  /**
    * 附加上下文（如「询问」的选段位置），随消息一起送给模型但不展示。
    * 与 hidden 的区别：hidden 连正文都不显示，context 只补充说明、正文照常显示。
    */

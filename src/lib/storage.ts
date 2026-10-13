@@ -98,6 +98,26 @@ export function userAbsPrefix(): string | null {
   return [cachedRoot.replace(/[\\/]+$/, ''), 'users', scopeUid].join('/')
 }
 
+/**
+ * 当前数据存储的绝对根目录。未就绪或未选择时返回 null。
+ */
+export function storageRoot(): string | null {
+  return cachedRoot
+}
+
+/**
+ * 将「相对数据根目录」的路径解析为宿主真实绝对路径（{root}/{rel}，例如 skills/、users/ 等）。
+ * rel 里带 `..` 的一律拒绝，保障安全防穿透。
+ */
+export function storageAbsPath(rel: string): string | null {
+  if (!cachedRoot) return null
+  const clean = rel.replace(/\\/g, '/')
+  const segs = clean.split('/').filter(Boolean)
+  if (!segs.length || segs.some((s) => s === '..')) return null
+  return [cachedRoot.replace(/[\\/]+$/, ''), ...segs].join('/')
+}
+
+
 /* ---------- 基本读写 ---------- */
 
 export async function storageInfo(): Promise<StorageInfo> {

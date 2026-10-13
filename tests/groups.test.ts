@@ -85,12 +85,13 @@ function withTabs(...refs: TabRef[]) {
 }
 
 describe('emptyDocs / 读', () => {
-  it('空库就是一组、没有页签，焦点也在它身上', () => {
+  it('空库就是一组、一枚保底空白页签，焦点也在它身上', () => {
     const docs = emptyDocs()
     expect(groupIdsOf(docs.layout)).toEqual([FIRST_GROUP])
-    expect(allTabs(docs)).toEqual([])
-    expect(focusedTab(docs)).toBeNull()
-    expect(activeIdsOf(docs)).toEqual([])
+    expect(allTabs(docs)).toHaveLength(1)
+    expect(allTabs(docs)[0].ref.kind).toBe('blank')
+    expect(focusedTab(docs)?.ref.kind).toBe('blank')
+    expect(activeIdsOf(docs)).toHaveLength(1)
   })
 
   it('allTabs 按布局顺序排（左格那一排在前面）', () => {
@@ -187,10 +188,11 @@ describe('分割（splitWith）', () => {
 })
 
 describe('关页签（closeIn / closeIds）', () => {
-  it('只剩一格时，关光了留着那个空格子（空态还有地方可放）', () => {
+  it('只剩一格时，关光了自动提供空白保底页签', () => {
     const docs = closeIn(withTabs(teach('a')), FIRST_GROUP, 't:a', 'self')
     expect(groupIdsOf(docs.layout)).toEqual([FIRST_GROUP])
-    expect(allTabs(docs)).toEqual([])
+    expect(allTabs(docs)).toHaveLength(1)
+    expect(allTabs(docs)[0].ref.kind).toBe('blank')
   })
 
   it('多于一格时，关空了的那一格当场消失，兄弟铺满', () => {
@@ -211,9 +213,10 @@ describe('关页签（closeIn / closeIds）', () => {
     let docs = withTabs(teach('a'), teach('b'))
     docs = splitWith(docs, FIRST_GROUP, 'row', 'after', idOf(teach('b')))
     docs = closeIds(docs, ['t:a', 't:b'])
-    // 两格都空了：留最后收剩下的那一格（不然屏幕上什么都没有了）
+    // 两格都空了：留最后收剩下的那一格，并补充空白页签保底
     expect(groupIdsOf(docs.layout)).toHaveLength(1)
-    expect(allTabs(docs)).toEqual([])
+    expect(allTabs(docs)).toHaveLength(1)
+    expect(allTabs(docs)[0].ref.kind).toBe('blank')
   })
 
   it('关掉一半时只收掉空掉的那一格', () => {
@@ -358,10 +361,11 @@ describe('读盘（normalizeDocs）', () => {
     expect(focusedGroup(docs).id).toBe('g2')
   })
 
-  it('页签全部认不出时退回一个干净的空库', () => {
+  it('页签全部认不出时退回一个干净的空库（带保底空白页签）', () => {
     const docs = normalizeDocs({ groups: [{ id: 'g1', tabs: [{}], active: null }] }, {}, tabOf)
     expect(docs.groups).toHaveLength(1)
-    expect(allTabs(docs)).toEqual([])
+    expect(allTabs(docs)).toHaveLength(1)
+    expect(allTabs(docs)[0].ref.kind).toBe('blank')
   })
 
   it('往返：拆分出来的布局再读回来还是那个样子', () => {

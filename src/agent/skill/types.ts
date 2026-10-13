@@ -9,6 +9,13 @@
 
 export type SkillCategory = 'learning' | 'coding' | 'research' | 'productivity' | 'general'
 
+export interface SkillScriptDef {
+  /** 脚本文件名，如 'lint.js' 或 'evaluate.py' */
+  name: string
+  /** 脚本功能简述 */
+  description?: string
+}
+
 export interface SkillDef {
   /** 唯一标识，如 'socratic-tutor' */
   id: string
@@ -16,7 +23,9 @@ export interface SkillDef {
   name: string
   /** 简明描述 */
   description: string
-  /** 技能提示词指令（核心 System Prompt 扩充） */
+  /** 适用场景与时机（用于常驻发现层索引，若未填则使用 description） */
+  whenToUse?: string
+  /** 技能提示词指令（核心规范与工作流程） */
   instructions: string
   /** 是否启用 */
   enabled: boolean
@@ -28,6 +37,10 @@ export interface SkillDef {
   tags?: string[]
   /** 图标或 emoji 标识 */
   icon?: string
+  /** 该技能专属的可执行脚本列表（存放于 skills/{id}/scripts/） */
+  scripts?: SkillScriptDef[]
+  /** 该技能专属的参考资料清单（存放于 skills/{id}/references/） */
+  references?: string[]
   /** 更新时间戳 */
   updatedAt?: number
 }

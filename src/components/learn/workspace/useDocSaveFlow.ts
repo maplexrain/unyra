@@ -262,7 +262,8 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         tab.ref.kind === 'usage' ||
         tab.ref.kind === 'mind' ||
         tab.ref.kind === 'agentSettings' ||
-        tab.ref.kind === 'newGoal'
+        tab.ref.kind === 'newGoal' ||
+        tab.ref.kind === 'blank'
       )
         return null
       const title = tabTitle(tab.ref, (nid) => nodeById(s, nid)?.title, examTabTitle)
