@@ -56,6 +56,15 @@ export interface DocWorkspace {
    * **可选字段**：旧 state.json 里没有它，读回来由 reconcileOwners 按页签现算补上。
    */
   tabOwners?: TabOwners
+  /**
+   * **停靠场**：被卸载的目标页签组（键 = 目标 id）。
+   *
+   * 大纲页是一组的锚：关掉大纲 = 整组卸载——该目标名下还开着的页签收进来停靠
+   * （页签对象原样保存，视图选择与创建时间都在），等大纲再开时原样归队
+   * （见 groups/tabs 的 restoreParkedTabs 与 openOutlineTab）。
+   * **可选字段**：旧 state.json 里没有它，读回来由 normalizeDocs 按形状认回。
+   */
+  parkedTabs?: Record<string, LearnTab[]>
 }
 
 /**

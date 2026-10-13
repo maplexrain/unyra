@@ -4,6 +4,7 @@ import type { DocView, LearnTab, TabRef } from '../types'
 import { closeTabs, makeTab, reorderTabs, tabKey, type TabCloseMode } from '../tabs'
 import { groupOf, settle, withDocs, withGroup } from './core'
 import { findTab, focusedGroup, groupIdOfTab } from './focus'
+import { claimTab, withOwners, withParked } from './goals'
 import { groupIdsOf, insertBeside, newId, replaceLeaf } from './layout'
 import type { DocLayout, DocWorkspace, SplitDir } from './types'
 
@@ -148,10 +149,11 @@ export function closeIn(
   tabId: string,
   mode: TabCloseMode,
   closingIds?: string[],
+  preferVisible?: (t: LearnTab) => boolean,
 ): DocWorkspace {
   const g = groupOf(docs, groupId)
   if (!g) return docs
-  const r = closeTabs(g.tabs, tabId, mode, g.active, closingIds)
+  const r = closeTabs(g.tabs, tabId, mode, g.active, closingIds, preferVisible)
   const next = withDocs(docs, {
     groups: docs.groups.map((x) => (x.id === groupId ? { ...x, tabs: r.tabs, active: r.active } : x)),
   })
@@ -287,4 +289,53 @@ export function splitWith(
       focus: id,
     }),
   )
+}
+
+/* ---------- 大纲页 = 组锚：卸载停靠与归队 ---------- */
+
+/**
+ * 让某个目标**停靠中**的页签原样归队（见 DocWorkspace.parkedTabs）。
+ *
+ * 归队做的事：按停靠时的顺序逐枚开进焦点格（openInGroup 认得「已在别格开着」的，
+ * 不会开出第二枚；空白页签会被第一枚真文档顶掉，见 openInGroup 的 shouldReplaceBlank）、
+ * 归属重新登记回本目标名下、停靠场里的这一份清掉。**不动激活项**——落点回大纲
+ * 是 openOutlineTab 的事（那边才知道大纲开在哪一格）。
+ *
+ * 没有停靠（组本来就没卸载）时原样返回同一个对象。
+ */
+export function restoreParkedTabs(docs: DocWorkspace, goalId: string): DocWorkspace {
+  const parked = docs.parkedTabs?.[goalId]
+  if (!parked || parked.length === 0) return docs
+  let next = docs
+  let owners = docs.tabOwners
+  for (const t of parked) {
+    next = openInGroup(next, next.focus, t.ref, t.createdAt, t.view)
+    owners = claimTab(owners, goalId, tabKey(t.ref))
+  }
+  const rest = { ...(next.parkedTabs ?? {}) }
+  delete rest[goalId]
+  return withParked(withOwners(next, owners), Object.keys(rest).length > 0 ? rest : undefined)
+}
+
+/**
+ * 开一枚**大纲页**——目标页签组的锚（见 DocWorkspace.parkedTabs 的说明）。
+ *
+ * 与普通开页签的差别：大纲开好的同时，这个目标若有一组**停靠中**的页签
+ * （上次关大纲时整组卸载停进停靠场的），原样归队，落点回到大纲——
+ * 它是这一组的入口，「打开大纲时恢复」说的就是这一下。
+ */
+export function openOutlineTab(
+  docs: DocWorkspace,
+  groupId: string,
+  ref: TabRef & { kind: 'outline' },
+  goalOfNode: (nodeId: string) => string | null,
+  at: number,
+): DocWorkspace {
+  const opened = openInGroup(docs, groupId, ref, at)
+  const gid = goalOfNode(ref.nodeId)
+  if (!gid) return opened
+  const restored = restoreParkedTabs(opened, gid)
+  if (restored === opened) return opened
+  const home = groupIdOfTab(restored, tabKey(ref))
+  return home ? activateIn(restored, home, tabKey(ref)) : restored
 }

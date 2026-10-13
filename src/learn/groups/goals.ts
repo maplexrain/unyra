@@ -98,10 +98,35 @@ export function visibleTabs(
 
 /** 这个页签当前记在哪个目标名下；没登记过返回 null */
 function knownOwner(owners: TabOwners, tabId: string): string | null {
-  for (const [owner, ids] of Object.entries(owners)) {
-    if (ids.includes(tabId)) return owner
-  }
+  return ownerOfTab(owners, tabId)
+}
+
+/**
+ * 这个页签此刻记在哪个目标名下；没登记过返回 null。
+ *
+ * 显示层对没登记过的页签按当前目标兜底显示（见 visibleTabs），落点挑选沿用同一条
+ * 兜底——所以判据读的是**归属表**而不是 refOwner 现算：表是显示过滤的唯一依据，
+ * 落点跟着表走才不会「落点算看得见、栏上却不画它」。
+ */
+export function ownerOfTab(owners: TabOwners | undefined, tabId: string): string | null {
+  for (const [owner, ids] of Object.entries(owners ?? {})) if (ids.includes(tabId)) return owner
   return null
+}
+
+/**
+ * 这枚页签此刻是否在为「当前这个目标」服务（refOwner 的判据 + 与当前目标对上号）。
+ *
+ * 关页签落点的**跟随门禁**（见 useDocSaveFlow 的 applyClose）：落点是本目标的页签，
+ * 当前节点/会话才跟着它走；公共页签不跟（既有口径——「从知识点切到磁盘文件」，
+ * 回来该还在原知识点），**别目标的页签更不能跟**——跟过去就会把 activeGoalId 翻走，
+ * 整栏页签当场换成另一套，看起来像「全组被关掉」。
+ */
+export function servesGoal(
+  ref: TabRef,
+  goalOfNode: (nodeId: string) => string | null,
+  goalId: string | null,
+): boolean {
+  return goalId !== null && refOwner(ref, goalOfNode) === goalId
 }
 
 /** 某个目标名下的页签 id 列表（没登记过就是空的） */
@@ -224,4 +249,43 @@ export function withOwners(docs: DocWorkspace, owners: TabOwners | undefined): D
     return rest
   }
   return { ...docs, tabOwners: owners }
+}
+
+/**
+ * 目标名下**还开着**的页签（卸载一组时收拢用）。
+ *
+ * 判据与 refOwner 同源：登记在本目标名下的照表收，没登记过但按页签现算得出是它的
+ * 也收（某个入口绕过了 claimTab 时，卸载不该把它漏在格子里）。
+ * 传进来的 `tabs` 已是布局顺序（见 allTabs），收出来的顺序就是它——归队时按原顺序开回。
+ */
+export function goalTabsOf(
+  owners: TabOwners | undefined,
+  tabs: readonly LearnTab[],
+  goalOfNode: (nodeId: string) => string | null,
+  goalId: string,
+): LearnTab[] {
+  const out: LearnTab[] = []
+  for (const tab of tabs) {
+    const known = ownerOfTab(owners, tab.id)
+    if (known === goalId || (known === null && refOwner(tab.ref, goalOfNode) === goalId)) out.push(tab)
+  }
+  return out
+}
+
+/**
+ * 工作区上带着**停靠场**的新一份（不可变更新，`DocWorkspace.parkedTabs` 是可选字段）。
+ *
+ * 显式传 `undefined` 时把字段抹掉（回到「没有这张表」的旧形态）——
+ * 与 withOwners 同一条规矩：归一化时不希望一个空对象被写进 state.json。
+ */
+export function withParked(
+  docs: DocWorkspace,
+  parked: Record<string, LearnTab[]> | undefined,
+): DocWorkspace {
+  if (!parked || Object.keys(parked).length === 0) {
+    if (docs.parkedTabs === undefined) return docs
+    const { parkedTabs: _drop, ...rest } = docs
+    return rest
+  }
+  return { ...docs, parkedTabs: parked }
 }

@@ -61,11 +61,13 @@ export function normalizeDocs(
   )
   // settle：手改过的 state.json 里可能留着一块空格子，读盘是唯一一次全量过手的机会
   const owners = normalizeOwners(r.tabOwners)
+  const parkedTabs = normalizeParked(r.parkedTabs, tabOf)
   return settle({
     layout,
     groups,
     focus: typeof r.focus === 'string' && known.has(r.focus) ? r.focus : groups[0].id,
     ...(owners ? { tabOwners: owners } : {}),
+    ...(parkedTabs ? { parkedTabs } : {}),
   })
 }
 
@@ -87,6 +89,34 @@ function normalizeOwners(raw: unknown): TabOwners | null {
       ids.push(id)
     }
     if (ids.length > 0) out[owner] = ids
+  }
+  return Object.keys(out).length > 0 ? out : null
+}
+
+/**
+ * 停靠场（被卸载的目标页签组，见 DocWorkspace.parkedTabs）的形状校验。
+ *
+ * 每枚停靠页签走与组内同一道 `tabOf`：指向的节点已经不在了的就地丢弃——
+ * 归队开不出一份「已删除的节点」，停靠场也不该替它保存。只做形状，
+ * 「归队后该登记到哪个目标名下」由 restoreParkedTabs 的 claimTab 现算。
+ */
+function normalizeParked(
+  raw: unknown,
+  tabOf: (raw: unknown) => LearnTab | null,
+): Record<string, LearnTab[]> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const out: Record<string, LearnTab[]> = {}
+  for (const [goalId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!goalId || !Array.isArray(value)) continue
+    const tabs: LearnTab[] = []
+    const seen = new Set<string>()
+    for (const item of value) {
+      const t = tabOf(item)
+      if (!t || seen.has(t.id)) continue
+      seen.add(t.id)
+      tabs.push(t)
+    }
+    if (tabs.length > 0) out[goalId] = tabs
   }
   return Object.keys(out).length > 0 ? out : null
 }

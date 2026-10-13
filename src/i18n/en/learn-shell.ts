@@ -66,6 +66,7 @@ const dict: Record<string, string> = {
   '关闭': 'Close',
   '没有打开的文档': 'No documents open',
   '这一格里的页签全部关掉（含当前这一个）': 'Closes all tabs in this pane (including the current one)',
+  '这一格里的页签全部关掉（含当前这一个与其他目标藏着的页签）': 'Closes all tabs in this pane (including the current one and tabs hidden under other goals)',
   '关闭左侧': 'Close tabs to the left',
   '关闭右侧': 'Close tabs to the right',
   '关闭其他': 'Close others',

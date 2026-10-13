@@ -289,6 +289,13 @@ export const TAB_CLOSE_LABEL: Record<TabCloseMode, string> = {
  * 落点规则与 vscode 一致：先往**右**找最近的一个还留着的页签，右边没有了才往左。
  * 「全部关闭」自然落在 null 上（一个不剩）。被关掉的那一片里不含当前页签时，
  * 当前页签保持不变——关别人不该把我正在看的这个换掉。
+ *
+ * `preferVisible` 是目标页签组带来的修正（见 groups/goals 的 visibleTabs）：页签实体
+ * 全住在格子里，栏上却只画「公共 + 当前目标」那一套——物理顺序里因此躺着大量
+ * **栏上看不见的页签**。落点若照物理顺序挑，会落到一枚栏上没有的页签上，上层跟着它
+ * retarget 就会把当前目标翻走，整栏页签当场换成另一套，看起来像「全组被关掉」。
+ * 传了它，落点先在看得见的那批里按同一条右-左规则挑；整格都看不见时**不落任何一枚
+ * 藏着的页签**——补一枚空白页签当落点（见下）。不传则维持纯物理行为（程序化关闭等场景）。
  */
 export function closeTabs(
   tabs: LearnTab[],
@@ -296,6 +303,7 @@ export function closeTabs(
   mode: TabCloseMode,
   active: string | null,
   closingIds?: string[],
+  preferVisible?: (t: LearnTab) => boolean,
 ): { tabs: LearnTab[]; active: string | null } {
   const idx = tabs.findIndex((t) => t.id === id)
   if (idx < 0) return { tabs, active }
@@ -319,7 +327,23 @@ export function closeTabs(
   if (active && keep.some((t) => t.id === active)) return { tabs: keep, active }
   const anchor = mode === 'all' ? 0 : idx
   const rest = tabs.map((t, i) => ({ t, i })).filter((x) => !closing.has(x.t.id))
-  const landing = rest.find((x) => x.i >= anchor) ?? rest[rest.length - 1]
+  // 落点先在「看得见」的那批里挑：右边的看得见就落右边，右边没有才往左找。
+  let landing: { t: LearnTab; i: number } | undefined
+  if (preferVisible) {
+    const shown = rest.filter((x) => preferVisible(x.t))
+    landing = shown.find((x) => x.i >= anchor) ?? shown.filter((x) => x.i < anchor).pop()
+    if (!landing && rest.length > 0) {
+      /*
+       * 看不见的保底也不落：这一格还剩的全是别的目标藏起来的页签，把哪一枚顶到眼前
+       * 都是在「退到别的 tab 组」——用户得把它们一枚一枚关掉，没完没了。改补一枚
+       * 空白页签当落点：藏着的保持沉睡（不激活就不进栏），切到它们的目标时原样还在。
+       * 「全部关闭」走不到这里（rest 为空）：落点交给 settle 兜底——单格补空白、多格收格。
+       */
+      const blank = makeBlankTab()
+      return { tabs: [...keep, blank], active: blank.id }
+    }
+  }
+  landing = landing ?? rest.find((x) => x.i >= anchor) ?? rest[rest.length - 1]
   return { tabs: keep, active: landing ? landing.t.id : null }
 }
 

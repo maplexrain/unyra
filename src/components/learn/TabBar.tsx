@@ -28,6 +28,12 @@ import { t } from '../../i18n'
 
 interface Props {
   tabs: LearnTab[]
+  /**
+   * 这一格的**物理**页签总数（含被目标过滤藏起来的，见 groups/goals 的 visibleTabs）。
+   * 「全部关闭」的口径是整格，计数与提示要按它说——只按栏上画的数，菜单会一边报 3、
+   * 一边把别的目标藏着的页签一起关掉。不给就按 tabs.length 算（不分目标的场景两者相等）。
+   */
+  paneTotal?: number
   activeId: string | null
   /** 页签标题：教学文档显示节点名（不再是「教学文档」四个字，见 learn/tabs 的 tabTitle） */
   titleOf: (ref: TabRef) => string
@@ -458,6 +464,7 @@ interface DragState {
 
 export default function TabBar({
   tabs,
+  paneTotal,
   activeId,
   titleOf,
   trailOf,
@@ -1286,7 +1293,7 @@ export default function TabBar({
           <BarMenu
             menu={barMenu}
             canCloseAll={tabs.length > 0}
-            count={tabs.length}
+            count={paneTotal ?? tabs.length}
             onOpenWebTab={() => {
               onOpenWebTab()
               setBarMenu(null)
@@ -1307,6 +1314,7 @@ export default function TabBar({
             menu={menu}
             label={menuLabel}
             tabs={tabs}
+            paneTotal={paneTotal}
             store={store}
             favorited={menuTab ? (favoriteOf?.(menuTab.ref) ?? false) : false}
             onToggleFavorite={() => {
@@ -1403,6 +1411,7 @@ function TabMenu({
   menu,
   label,
   tabs,
+  paneTotal,
   favorited,
   onToggleFavorite,
   onClose,
@@ -1413,6 +1422,8 @@ function TabMenu({
   /** 这一项的名字（抬头那一行）：右键菜单先说清「是对着哪一个」 */
   label: string
   tabs: LearnTab[]
+  /** 这一格的物理页签总数（「全部关闭」按整格算，见 TabBar 的 Props.paneTotal） */
+  paneTotal?: number
   /** 这一项收藏了没有（决定星标是实是虚、文案是「收藏」还是「取消收藏」） */
   favorited: boolean
   onToggleFavorite: () => void
@@ -1527,12 +1538,15 @@ function TabMenu({
         {t(TAB_CLOSE_LABEL.self)}
       </button>
 
-      {/* 关闭其他：有其他页签时才显示 */}
+      {/* 关闭其他：有其他页签时才显示。
+          显式按**栏上这份列表**给 id：物理格里还躺着别的目标藏起来的页签（切目标不关页签），
+          不给 id 时 closeTabs 会按物理顺序把它们一起关掉——菜单明明写着还有几项，
+          用户却会平白丢掉看不见的那些。别的目标名下的页签归它们自己的组管。 */}
       {otherCount > 0 && (
         <button
           type="button"
           role="menuitem"
-          onClick={() => onPick('others')}
+          onClick={() => onPick('others', tabs.filter((x) => x.id !== menu.id).map((x) => x.id))}
           className={ROW}
         >
           <span className={ICON}>
@@ -1606,14 +1620,20 @@ function TabMenu({
         </>
       )}
 
-      {/* 全部关闭：只在页签数大于1时渲染（仅剩1个时与关闭无区别） */}
+      {/* 全部关闭：只在页签数大于1时渲染（仅剩1个时与关闭无区别）。
+          它的口径是**整格**（物理上把别的目标藏起来的页签也一起关，关完这一格干干净净），
+          所以计数与提示都按 paneTotal 说——栏上只画得到过滤后的那几张，按它报数就是在撒谎。 */}
       {tabs.length > 1 && (
         <>
           <span aria-hidden="true" className="my-1 block h-px bg-line" />
           <button
             type="button"
             role="menuitem"
-            title={t('这一格里的页签全部关掉（含当前这一个）')}
+            title={
+              paneTotal !== undefined && paneTotal > tabs.length
+                ? t('这一格里的页签全部关掉（含当前这一个与其他目标藏着的页签）')
+                : t('这一格里的页签全部关掉（含当前这一个）')
+            }
             onClick={() => onPick('all')}
             className={ROW + ' text-seal-deep hover:bg-seal/10'}
           >
@@ -1621,7 +1641,7 @@ function TabMenu({
               <OctagonX size={13} />
             </span>
             {t(TAB_CLOSE_LABEL.all)}
-            <span className={COUNT}>{tabs.length}</span>
+            <span className={COUNT}>{paneTotal ?? tabs.length}</span>
           </button>
         </>
       )}

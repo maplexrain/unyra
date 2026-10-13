@@ -8,15 +8,29 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LearnTab, TabRef } from '../src/learn/types'
-import { allTabs, emptyDocs, openInGroup, renameTabRef } from '../src/learn/groups'
+import {
+  allTabs,
+  emptyDocs,
+  focusedTab,
+  goalTabsOf,
+  normalizeDocs,
+  openInGroup,
+  openOutlineTab,
+  renameTabRef,
+  restoreParkedTabs,
+  withParked,
+} from '../src/learn/groups'
+import { closeTabs } from '../src/learn/tabs'
 import {
   PUBLIC_OWNER,
   claimTab,
   dropTab,
   dropTabs,
   focusTabsInGroup,
+  ownerOfTab,
   reconcileOwners,
   refOwner,
+  servesGoal,
   tabsOf,
   visibleTabs,
   withOwners,
@@ -325,5 +339,212 @@ describe('改名（renameTabRef）与归属', () => {
     const docs = renameTabRef(withOwners(openInGroup(emptyDocs(), 'g0', from, 0), { goalA: ['n:childA:旧名'] }), from, to)
     const tabs = allTabs(docs)
     expect(visibleTabs(tabs, docs.tabOwners, 'goalA').map((t) => t.id)).toEqual(['n:childA:新名'])
+  })
+})
+
+/* ---------- 关页签的落点跟随判据 ---------- */
+
+describe('servesGoal（落点跟随的门禁）', () => {
+  it('当前目标自己的页签才跟', () => {
+    expect(servesGoal({ kind: 'teach', nodeId: 'childA' }, goalOfNode, 'goalA')).toBe(true)
+    expect(servesGoal({ kind: 'outline', nodeId: 'rootA' }, goalOfNode, 'goalA')).toBe(true)
+    expect(servesGoal({ kind: 'note', nodeId: 'childA', note: 'x' }, goalOfNode, 'goalA')).toBe(true)
+  })
+
+  it('公共页签与别目标的页签都不跟', () => {
+    expect(servesGoal({ kind: 'local', path: 'b.txt' }, goalOfNode, 'goalA')).toBe(false)
+    expect(servesGoal({ kind: 'settings' }, goalOfNode, 'goalA')).toBe(false)
+    // 跟过去会把 activeGoalId 翻走，整栏页签当场换成另一套——看起来像「全组被关掉」
+    expect(servesGoal({ kind: 'teach', nodeId: 'rootB' }, goalOfNode, 'goalA')).toBe(false)
+    expect(servesGoal({ kind: 'mind', goalId: 'goalB' }, goalOfNode, 'goalA')).toBe(false)
+  })
+
+  it('没有当前目标时谁都不跟', () => {
+    expect(servesGoal({ kind: 'teach', nodeId: 'childA' }, goalOfNode, null)).toBe(false)
+  })
+})
+
+describe('ownerOfTab（归属表反查）', () => {
+  it('登记过的查表得出归属，没登记过的返回 null', () => {
+    const owners = claimTab(undefined, 'goalA', 't:childA')
+    expect(ownerOfTab(owners, 't:childA')).toBe('goalA')
+    expect(ownerOfTab(owners, 'l:b.txt')).toBeNull()
+  })
+
+  it('没有归属表时一律 null', () => {
+    expect(ownerOfTab(undefined, 't:childA')).toBeNull()
+  })
+})
+
+/* ---------- 关页签的可见优先落点 ---------- */
+
+/**
+ * 与 useDocSaveFlow 的 applyClose 同一条判据：栏上画得出来的才算「看得见」
+ * （见 groups/goals 的 visibleTabs——登记过的按归属，没登记的按当前目标兜底显示）。
+ */
+const preferVisibleOf = (owners: TabOwners, gid: string) => (t: LearnTab): boolean => {
+  const known = ownerOfTab(owners, t.id)
+  return known === null || known === gid || known === PUBLIC_OWNER
+}
+
+describe('closeTabs 的可见优先落点', () => {
+  // goalA 正在看：a1 / a2 是它自己的页签；bh 是 goalB 的（在栏上被藏起来）；f 是公共的本地文件
+  const a1 = tab({ kind: 'teach', nodeId: 'childA' })
+  const a2 = tab({ kind: 'note', nodeId: 'childA', note: 'n' })
+  const bh = tab({ kind: 'teach', nodeId: 'rootB' })
+  const bh2 = tab({ kind: 'teach', nodeId: 'rootB2' }, 't:rootB2')
+  const f = tab({ kind: 'local', path: 'b.txt' })
+  const owners: TabOwners = { goalA: [a1.id, a2.id], goalB: [bh.id, bh2.id], [PUBLIC_OWNER]: [f.id] }
+  const prefer = preferVisibleOf(owners, 'goalA')
+
+  it('右邻是被藏起来的页签时，落到左边看得见的（不把目标翻走）', () => {
+    // 物理顺序 [a1, f, bh]：正在看 f，关掉它，物理右邻 bh 在 goalA 的栏上根本没有这枚
+    const r = closeTabs([a1, f, bh], f.id, 'self', f.id, undefined, prefer)
+    expect(r.tabs.map((t) => t.id)).toEqual([a1.id, bh.id])
+    expect(r.active).toBe(a1.id)
+  })
+
+  it('物理最后一枚是被藏起来的页签时，也不落它', () => {
+    // 物理顺序 [a1, bh, f]：关掉 f，物理上最后留着的是 bh——照旧规则会落它
+    const r = closeTabs([a1, bh, f], f.id, 'self', f.id, undefined, prefer)
+    expect(r.active).toBe(a1.id)
+  })
+
+  it('右边有看得见的仍优先落右边（与原规则同向）', () => {
+    const r = closeTabs([a1, f, a2], f.id, 'self', f.id, undefined, prefer)
+    expect(r.active).toBe(a2.id)
+  })
+
+  it('整格都看不见：补一枚空白页签当落点，藏着的页签保持沉睡', () => {
+    // 这一格只剩 goalB 藏着的页签：不把哪一枚顶到眼前（那是「退到别的 tab 组」，
+    // 用户得一枚一枚关掉，没完没了）——补一枚空白页签；藏着的原样留在格里，切到 goalB 还在
+    const r = closeTabs([bh, f, bh2], f.id, 'self', f.id, undefined, prefer)
+    expect(r.tabs).toHaveLength(3)
+    expect(r.tabs[0].id).toBe(bh.id)
+    expect(r.tabs[1].id).toBe(bh2.id)
+    expect(r.tabs[2].ref.kind).toBe('blank')
+    expect(r.active).toBe(r.tabs[2].id)
+  })
+
+  it('关掉空白页签后仍没有看得见的：再补一枚，藏着的继续沉睡', () => {
+    const blank1 = tab({ kind: 'blank', key: 'k1' }, 'b:k1')
+    const r = closeTabs([bh, blank1], blank1.id, 'self', blank1.id, undefined, prefer)
+    expect(r.tabs).toHaveLength(2)
+    expect(r.tabs[0].id).toBe(bh.id)
+    expect(r.tabs[1].ref.kind).toBe('blank')
+    expect(r.active).toBe(r.tabs[1].id)
+  })
+
+  it('关的不是当前页签时，当前页签不动', () => {
+    const r = closeTabs([a1, f, bh], f.id, 'self', a1.id, undefined, prefer)
+    expect(r.active).toBe(a1.id)
+  })
+
+  it('全部关闭仍按整格收（连藏着的页签一起，落点为空）', () => {
+    const r = closeTabs([a1, f, bh], a1.id, 'all', a1.id, undefined, prefer)
+    expect(r.tabs).toEqual([])
+    expect(r.active).toBeNull()
+  })
+
+  it('不传 preferVisible 时维持原物理落点（回归锚）', () => {
+    // 旧规则：右边有就落右边——落的正是那枚看不见的 bh，这正是要修掉的行为
+    const r = closeTabs([a1, f, bh], f.id, 'self', f.id)
+    expect(r.active).toBe(bh.id)
+  })
+})
+
+/* ---------- 大纲页 = 组锚：卸载停靠与归队 ---------- */
+
+describe('goalTabsOf（卸载一组时收拢它名下的页签）', () => {
+  it('登记在本目标名下的照表收；公共的与别目标的不收', () => {
+    const owners: TabOwners = { goalA: ['t:childA'], goalB: ['t:rootB'], [PUBLIC_OWNER]: ['l:f.txt'] }
+    const tabs = [
+      tab({ kind: 'teach', nodeId: 'childA' }),
+      tab({ kind: 'local', path: 'f.txt' }, 'l:f.txt'),
+      tab({ kind: 'teach', nodeId: 'rootB' }),
+    ]
+    expect(goalTabsOf(owners, tabs, goalOfNode, 'goalA').map((t) => t.id)).toEqual(['t:childA'])
+  })
+
+  it('没登记过但按页签算得出来是它的也收（漏登记的不丢在格子里）', () => {
+    const tabs = [tab({ kind: 'note', nodeId: 'childA', note: 'n' })]
+    expect(goalTabsOf(undefined, tabs, goalOfNode, 'goalA')).toHaveLength(1)
+    expect(goalTabsOf(undefined, tabs, goalOfNode, 'goalB')).toHaveLength(0)
+  })
+})
+
+describe('withParked（停靠场）', () => {
+  const docs = { layout: { kind: 'group' as const, group: 'g0' }, groups: [], focus: 'g0' }
+
+  it('有内容挂上；空表与 undefined 抹掉（不给 state.json 留空壳）', () => {
+    expect(withParked(docs, { goalA: [tab({ kind: 'teach', nodeId: 'childA' })] }).parkedTabs).toBeDefined()
+    expect(withParked(docs, {}).parkedTabs).toBeUndefined()
+    expect(withParked(docs, undefined).parkedTabs).toBeUndefined()
+  })
+})
+
+describe('大纲页 = 组锚（restoreParkedTabs / openOutlineTab）', () => {
+  it('归队：停靠的页签按原顺序开回、归属重登记、停靠场清空', () => {
+    const doc = tab({ kind: 'teach', nodeId: 'childA' })
+    const parked = withParked(emptyDocs(), { goalA: [doc] })
+    const restored = restoreParkedTabs(parked, 'goalA')
+    expect(allTabs(restored).map((t) => t.id)).toEqual([doc.id])
+    expect(restored.tabOwners?.goalA).toContain(doc.id)
+    expect(restored.parkedTabs).toBeUndefined()
+  })
+
+  it('视图选择跟着页签一起归队', () => {
+    const doc: LearnTab = { ...tab({ kind: 'teach', nodeId: 'childA' }), view: 'source' }
+    const restored = restoreParkedTabs(withParked(emptyDocs(), { goalA: [doc] }), 'goalA')
+    expect(allTabs(restored)[0]?.view).toBe('source')
+  })
+
+  it('没有停靠时归队是空操作（原对象原样返回）', () => {
+    const docs = emptyDocs()
+    expect(restoreParkedTabs(docs, 'goalA')).toBe(docs)
+  })
+
+  it('openOutlineTab：开大纲的同时让停靠的组归队，落点回到大纲', () => {
+    const doc = tab({ kind: 'teach', nodeId: 'childA' })
+    const parked = withParked(emptyDocs(), { goalA: [doc] })
+    const opened = openOutlineTab(parked, parked.focus, { kind: 'outline', nodeId: 'rootA' }, goalOfNode, 0)
+    expect(allTabs(opened).map((t) => t.id)).toEqual(['o:rootA', doc.id])
+    expect(opened.tabOwners?.goalA).toContain(doc.id)
+    expect(opened.parkedTabs).toBeUndefined()
+    expect(focusedTab(opened)?.id).toBe('o:rootA')
+  })
+
+  it('openOutlineTab：没有停靠时就只是开大纲', () => {
+    const docs = emptyDocs()
+    const opened = openOutlineTab(docs, docs.focus, { kind: 'outline', nodeId: 'rootA' }, goalOfNode, 0)
+    expect(allTabs(opened).map((t) => t.id)).toEqual(['o:rootA'])
+    expect(opened.parkedTabs).toBeUndefined()
+  })
+})
+
+describe('normalizeDocs 认回停靠场', () => {
+  const tabOf = (raw: unknown): LearnTab | null => {
+    const t = raw as LearnTab | null
+    return t && typeof t === 'object' && typeof t.id === 'string' ? t : null
+  }
+  const rawDocs = {
+    layout: { kind: 'group', group: 'g0' },
+    groups: [{ id: 'g0', tabs: [], active: null }],
+    focus: 'g0',
+  }
+
+  it('形状对的照单认回', () => {
+    const docs = normalizeDocs(
+      { ...rawDocs, parkedTabs: { goalA: [{ id: 't:childA', ref: { kind: 'teach', nodeId: 'childA' }, createdAt: 0 }] } },
+      {},
+      tabOf,
+    )
+    expect(docs.parkedTabs?.goalA).toHaveLength(1)
+    expect(docs.parkedTabs?.goalA?.[0]?.id).toBe('t:childA')
+  })
+
+  it('形状不对整个字段丢掉（宁可当它没有）', () => {
+    const docs = normalizeDocs({ ...rawDocs, parkedTabs: '垃圾' }, {}, tabOf)
+    expect(docs.parkedTabs).toBeUndefined()
   })
 })

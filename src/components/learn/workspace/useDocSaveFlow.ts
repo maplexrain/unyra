@@ -30,7 +30,22 @@ import {
   fileNameOf as localFileNameOf,
   type TabCloseMode,
 } from '../../../learn/tabs'
-import { allTabs, closeIn, dropTabs, findTab, focusedGroup, focusedTab, groupOf, withOwners } from '../../../learn/groups'
+import {
+  PUBLIC_OWNER,
+  allTabs,
+  closeIds,
+  closeIn,
+  dropTabs,
+  findTab,
+  focusedGroup,
+  focusedTab,
+  goalTabsOf,
+  groupOf,
+  ownerOfTab,
+  servesGoal,
+  withOwners,
+  withParked,
+} from '../../../learn/groups'
 import { nodeById, updateDoc, writeNote } from '../../../learn/graph'
 import { findNote } from '../../../learn/notes'
 import { readSuperDoc, writeSuperDoc } from '../../../learn/superdocs'
@@ -151,19 +166,60 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
   const applyClose = useCallback(
     (group: string, id: string, mode: TabCloseMode, closingIds?: string[]) => {
       const s = getLatest()
-      const before = allTabs(s.docArea).map((t) => t.id)
-      const docArea0 = closeIn(s.docArea, group, id, mode, closingIds)
+      const beforeTabs = allTabs(s.docArea)
+      const goalOfNode = (nodeId: string) => nodeById(s, nodeId)?.goalId ?? null
+      /*
+       * 落点只在「栏上看得见」的页签里挑，判据与页签栏同一套（见 groups/goals 的 visibleTabs）：
+       * 页签实体全住在格子里、栏上只画「公共 + 当前目标」，物理顺序里因此躺着别的目标
+       * 藏起来的页签——照物理顺序落，会落到一枚栏上没有的页签上。
+       */
+      const owners = s.docArea.tabOwners
+      const gid = s.activeGoalId ?? PUBLIC_OWNER
+      const preferVisible = (tab: LearnTab): boolean => {
+        const known = ownerOfTab(owners, tab.id)
+        return known === null || known === gid || known === PUBLIC_OWNER
+      }
+      const docArea0 = closeIn(s.docArea, group, id, mode, closingIds, preferVisible)
       /*
        * 归属表跟着页签一起收：页签关掉了，它在这一格（以及任何一格）的条目都不该留着。
        * 不主动收也不会出错（reconcileOwners 会在下次读盘时扫掉），但那样 state.json 里
        * 会攒下一串指向空处的 id，切到那个目标时才发现——不如关的这一下就顺手清掉。
        */
       const live = new Set(allTabs(docArea0).map((t) => t.id))
-      const gone = before.filter((tid) => !live.has(tid))
-      const docArea = gone.length > 0 ? withOwners(docArea0, dropTabs(docArea0.tabOwners, gone)) : docArea0
+      const goneIds = beforeTabs.filter((t) => !live.has(t.id)).map((t) => t.id)
+      /*
+       * 大纲页是目标页签组的**锚**（见 groups/tabs 的 openOutlineTab）：它被关掉，
+       * 整组就算卸载——该目标名下还开着的页签一并收进停靠场 parkedTabs（页签对象
+       * 原样保存，打开大纲时归队）。目标已经不在了（连树一起删的）就不停靠：
+       * 那组页签本来就该陪葬。
+       */
+      let docArea1 = docArea0
+      let parkedNext: Record<string, LearnTab[]> | null = null
+      const parkedIds: string[] = []
+      for (const dead of beforeTabs) {
+        if (live.has(dead.id) || dead.ref.kind !== 'outline') continue
+        const deadGoal = goalOfNode(dead.ref.nodeId)
+        if (!deadGoal) continue
+        const victims = goalTabsOf(docArea1.tabOwners, allTabs(docArea1), goalOfNode, deadGoal)
+        if (!victims.length) continue
+        parkedNext = { ...(parkedNext ?? docArea0.parkedTabs ?? {}), [deadGoal]: victims }
+        for (const v of victims) parkedIds.push(v.id)
+        docArea1 = closeIds(docArea1, victims.map((v) => v.id))
+      }
+      const allGone = parkedIds.length > 0 ? [...goneIds, ...parkedIds] : goneIds
+      let docArea = allGone.length > 0 ? withOwners(docArea1, dropTabs(docArea1.tabOwners, allGone)) : docArea1
+      if (parkedNext) docArea = withParked(docArea, parkedNext)
       const landing = focusedGroup(docArea)
       const nextRef = landing.tabs.find((t) => t.id === landing.active)?.ref ?? null
-      const nextNodeId = nextRef ? tabNodeId(nextRef) : null
+      /*
+       * 落点跟随只跟**当前目标自己的页签**走（见 groups/goals 的 servesGoal）：
+       * 公共页签与空白页签不动当前节点——那说明用户从「某个知识点」切到了别处，
+       * 回来时该还在原来那个知识点上；别目标的页签更不能跟——跟过去就会把
+       * activeGoalId 翻走，整栏页签当场换成另一套，看起来像「这组页签被全部关掉了」。
+       * 正常路径落不到它们（可见候选耗尽时落的是空白页签，见 learn/tabs 的 closeTabs），
+       * 这道门禁留给一切仍会落到别目标页签的路径。
+       */
+      const nextNodeId = nextRef && servesGoal(nextRef, goalOfNode, s.activeGoalId) ? tabNodeId(nextRef) : null
       // 落点也一样：新落到的页签属于别的节点时，节点与会话都得跟着它走（见 retargetNode）
       const base = nextNodeId ? retargetNode(s, nextNodeId) : s
       set({ ...base, docArea })

@@ -71,9 +71,11 @@ export {
   landingAfter,
   moveTab,
   openInGroup,
+  openOutlineTab,
   patchTab,
   renameTabRef,
   reorderIn,
+  restoreParkedTabs,
   splitWith,
 } from './groups/tabs'
 
@@ -87,10 +89,14 @@ export {
   dropTab,
   dropTabs,
   focusTabsInGroup,
+  goalTabsOf,
+  ownerOfTab,
   reconcileOwners,
   refOwner,
+  servesGoal,
   tabsOf,
   visibleTabs,
   withOwners,
+  withParked,
 } from './groups/goals'
 export type { TabOwners } from './groups/goals'

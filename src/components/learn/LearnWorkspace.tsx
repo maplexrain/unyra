@@ -72,6 +72,7 @@ import {
   focusedTab,
   groupIdOfTab,
   openInGroup,
+  openOutlineTab,
   patchTab,
   reconcileOwners,
   refOwner,
@@ -1267,9 +1268,13 @@ export default function LearnWorkspace({
       const rootId = tabKey(rootRef)
       const owners = s.docArea.tabOwners ?? {}
       const claimed = claimTab(owners, goalId, rootId)
-      // 已经开着（哪怕在别格）就沿用那一枚；没有才在焦点格里开
+      // 已经开着（哪怕在别格）就沿用那一枚；没有才在焦点格里开。
+      // 开的是**组锚**（见 groups/tabs 的 openOutlineTab）：上次关大纲卸载掉的那组
+      // 页签若在停靠场里，随这一下原样归队
       const home = groupIdOfTab(s.docArea, rootId)
-      let docArea = home ? s.docArea : openInGroup(s.docArea, s.docArea.focus, rootRef, Date.now())
+      let docArea = home
+        ? s.docArea
+        : openOutlineTab(s.docArea, s.docArea.focus, rootRef, (id) => nodeById(s, id)?.goalId ?? null, Date.now())
       if (toOutline) {
         const at = groupIdOfTab(docArea, rootId)
         // activateIn 顺带把焦点挪到那一格：大纲在右格，就该看到右格那一张
@@ -1373,7 +1378,12 @@ export default function LearnWorkspace({
        */
       const startView: DocView | undefined =
         ref.kind === 'note' && emptyNote(s, makeTab(ref, 0)) ? 'source' : undefined
-      const opened = openInGroup(base.docArea, base.docArea.focus, ref, Date.now(), startView)
+      const goalOf = (id: string) => nodeById(base, id)?.goalId ?? null
+      // 大纲页是组锚（见 groups/tabs 的 openOutlineTab）：开着它的同时让停靠的那组页签归队
+      const opened =
+        ref.kind === 'outline'
+          ? openOutlineTab(base.docArea, base.docArea.focus, ref, goalOf, Date.now())
+          : openInGroup(base.docArea, base.docArea.focus, ref, Date.now(), startView)
       /*
        * 登记归属（见 groups/goals）：这枚页签从此记在它所属的目标名下，
        * 于是切到那个目标时它就出现在栏上、切走时跟着收起来——「所有这个目标下任何层级
@@ -3125,7 +3135,12 @@ export default function LearnWorkspace({
     if (!ref) return
     const nodeId = tabNodeId(ref)
     const base = nodeId ? retargetNode(s, nodeId) : s
-    set({ ...base, docArea: openInGroup(base.docArea, groupId, ref, Date.now()) })
+    // 大纲页走组锚那条路（开着它的同时让停靠的组页签归队，见 groups/tabs 的 openOutlineTab）
+    const docArea =
+      ref.kind === 'outline'
+        ? openOutlineTab(base.docArea, groupId, ref, (id) => nodeById(base, id)?.goalId ?? null, Date.now())
+        : openInGroup(base.docArea, groupId, ref, Date.now())
+    set({ ...base, docArea })
   }
 
   /**
@@ -3309,6 +3324,7 @@ export default function LearnWorkspace({
             >
               <TabBar
                 tabs={gVisibleTabs}
+                paneTotal={g.group?.tabs.length}
                 activeId={g.group?.active ?? null}
                 titleOf={(ref) => tabTitle(ref, (id) => nodeById(store, id)?.title, examTabTitle)}
                 trailOf={(ref) => tabTrails[tabKey(ref)] ?? ''}
