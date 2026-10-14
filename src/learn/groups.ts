@@ -68,8 +68,11 @@ export {
   allTabs,
   closeIds,
   closeIn,
+  isAnchorOutline,
   landingAfter,
   moveTab,
+  openAnchorOutline,
+  openGroupedDoc,
   openInGroup,
   openOutlineTab,
   patchTab,
@@ -77,6 +80,7 @@ export {
   reorderIn,
   restoreParkedTabs,
   splitWith,
+  unloadAnchoredGroups,
 } from './groups/tabs'
 
 export { DROP_EDGE, zoneAtPoint } from './groups/drop'

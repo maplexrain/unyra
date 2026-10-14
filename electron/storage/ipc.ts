@@ -21,6 +21,7 @@ import {
 } from './files'
 import { flushSync } from './flush'
 import { pickLocal, readLocal, readLocalMedia, revealLocal, setLocalWatchList, writeLocal } from './local'
+import { setWsWatchList } from './ws'
 import { closeBehavior, currentRoot, defaultRoot, loadGlobal, pickRoot, setCloseBehavior, setRoot } from './settings'
 
 /* ---------- IPC 注册 ---------- */
@@ -68,6 +69,9 @@ export function registerStorageIpc(): void {
   ipcMain.handle('local:pick', () => pickLocal())
   // 外部文件的改动监听：渲染层把「开着页签的路径清单」推过来，变化经 local:changed 推回
   ipcMain.handle('local:watch', (_e, list: unknown) => setLocalWatchList(list))
+  // 工作区目录的改动监听：渲染层把「展开着的目录清单」推过来，变化经 ws:changed 推回
+  //（与 local:watch 同一套差量规矩；见 electron/storage/ws 的说明）
+  ipcMain.handle('ws:watch', (_e, list: unknown) => setWsWatchList(list))
   // 附件：任意扩展名，读了内容直接交给渲染层（见 readAttach 的说明）
   ipcMain.handle('local:pickAttach', () => pickAttach())
   ipcMain.handle('local:readAttach', (_e, p: unknown) => readAttach(p))

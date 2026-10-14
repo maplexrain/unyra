@@ -1125,8 +1125,15 @@ export default function TabBar({
               data-tab={tab.id}
               role="tab"
               aria-selected={on}
-              // 正在退场的这一枚已经不算「栏上的一员」了：读屏与键盘都绕开它
-              {...(leaving ? { 'aria-hidden': true, tabIndex: -1 } : { tabIndex: 0 })}
+              /*
+               * 正在退场的这一枚已经不算「栏上的一员」了：读屏与键盘都绕开它。
+               * 挂 inert，不挂 aria-hidden：点关闭键的那一下，焦点正停在这枚页签里头的
+               * 关闭键上——给「留住焦点的元素之祖先」挂 aria-hidden 会被浏览器拦下不生效
+               * （控制台报 Blocked aria-hidden…），读屏其实并没有绕开；而 inert 会把焦点
+               * 一并收走（落回 body；这枚节点再过百余毫秒本来就要被移除），
+               * 「绕开」这件事才落到实处。CSS 那边（.moji-tab-out）只管住了指针这一路。
+               */
+              {...(leaving ? { inert: true } : { tabIndex: 0 })}
               // 未保存时顺带说一句：那颗圆点本身没有 tooltip（它是 aria-hidden 的装饰）
               title={
                 (trail ? trail + ' · ' + title : title) +

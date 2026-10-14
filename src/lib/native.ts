@@ -14,7 +14,8 @@ import type {
   BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
   BaseProcessListResult, BaseProcessOutputResult, BaseProcessStartResult, BaseProcessStatusResult,
   BaseProcessStopResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
-  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginTogglesResult, SaveFilter,
+  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
+  PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
   VoiceTranscribeRequest, VoiceTranscribeResult, WebDomOpResult, WebFetchResult, WebLogDetailResult,
@@ -28,7 +29,8 @@ import type {
 // 这里按原样转出去，外部从 src/lib/native 引这些类型的写法不用改。
 export type {
   AttachReadResult, BaseProcessDeleteResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
-  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginTogglesResult, SaveFilter,
+  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
+  PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
   VoiceTranscribeRequest, VoiceTranscribeResult, WebDomOpResult, WebFetchResult, WebLogDetailResult,
@@ -116,6 +118,31 @@ export interface NativeBridge {
     watch(paths: string[]): Promise<StorageOk | StorageFail>
     /** 订阅外部文件变化（参数是绝对路径）；返回取消订阅函数 */
     onChanged(cb: (path: string) => void): () => void
+  }
+
+  /**
+   * 工作区目录的**外部变化**（资源管理器里项目 / 子目录在被应用外的增删改名）：
+   * 把「此刻展开着的目录」清单（绝对路径）推给主进程按目录挂 watcher；目录一有变化
+   * 就经 onChanged 推回来。与 local 那条的差别：不带具体路径——重列是幂等的，
+   * 收到就是「工作区变过」，各层行各自重列（见 explorer/wsChanges）。
+   */
+  ws: {
+    watch(dirs: string[]): Promise<StorageOk | StorageFail>
+    /** 订阅工作区变化（无参数）；返回取消订阅函数 */
+    onChanged(cb: () => void): () => void
+  }
+
+  /**
+   * 外部 MCP 服务（**stdio 传输**）的本地进程会话：命令在主进程里起
+   * （渲染层拿不到 child_process），JSON-RPC 走子进程的 stdin/stdout，
+   * 会话按服务配置复用（见 electron/mcp）。SSE 传输不走这里——那条由渲染层
+   * 直接 fetch（见 src/agent/mcp/client 的 sse 分支）。
+   */
+  mcp: {
+    discover(server: McpStdioServerPayload): Promise<McpStdioToolsResult>
+    call(server: McpStdioServerPayload, tool: string, args: Record<string, unknown>): Promise<McpStdioCallResult>
+    /** 停掉某个服务的会话（设置里禁用 / 删除时来一发，不留没用的子进程）；省略 = 停掉全部 */
+    stop(serverId?: string): Promise<StorageOk | StorageFail>
   }
 
   /**

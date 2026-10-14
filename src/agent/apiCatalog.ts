@@ -15,7 +15,7 @@ export interface ApiEntry {
   signature: string
   summary: string
   /** 什么时候才可用（绝大多数恒可用；条件注入的少数要写明） */
-  availability?: 'always' | 'exam' | 'ui' | 'browser' | 'subagent'
+  availability?: 'always' | 'exam' | 'ui' | 'browser' | 'subagent' | 'mcp'
 }
 
 export interface ApiGroup {
@@ -162,6 +162,19 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     ],
   },
   {
+    key: 'mcp',
+    label: '外部 MCP 服务 · mcp',
+    intro:
+      '用户配置的 **Model Context Protocol** 服务（数据库、文件系统、网页服务等真实外部工具；见 agent/mcp）。' +
+      '先 list 看有哪些服务与工具，调用的参数按工具公布的说明给；服务是真实外部系统，' +
+      '写操作与不可逆动作先 api.ask 确认，别猜着调。',
+    items: [
+      { name: 'mcp.list', signature: 'mcp.list()', summary: '已启用服务与各自缓存的工具清单（id、名称、传输、状态）；**调用外部工具先看它**', availability: 'mcp' },
+      { name: 'mcp.discover', signature: 'mcp.discover(server?)', summary: '现场探测工具清单（省略 = 全部已启用服务）：清单为空或工具报「不存在」时刷新用；单探一个失败即失败，全量探查逐服务回报', availability: 'mcp' },
+      { name: 'mcp.call', signature: 'mcp.call(server, tool, args?)', summary: '调用某服务的一个工具（服务可给 id 或名称）；失败不抛异常，回 { ok:false }——按值判断', availability: 'mcp' },
+    ],
+  },
+  {
     key: 'flow',
     label: '人机协作 · wait / ask / tiktok',
     intro: 'ask 会阻塞到用户提交；调用前先 tiktok 响一声。一次把要问的都放进一张表单。',
@@ -271,7 +284,7 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     label: '帮助与自描述 · help',
     intro: '查询当前沙箱开放的能力组与 API 签名清单。',
     items: [
-      { name: 'help', signature: 'help()', summary: '返回当前沙箱 17 组核心能力清单、分组描述与各组常用方法', availability: 'always' },
+      { name: 'help', signature: 'help()', summary: '返回当前沙箱 18 组核心能力清单、分组描述与各组常用方法', availability: 'always' },
     ],
   },
 ]

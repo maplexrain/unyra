@@ -3,7 +3,7 @@
  * 其中节点的菜单里挂着「学习状态」那块二级 tip（含它往左还是往右伸的边界翻转）。
  */
 import { useRef, useState } from 'react'
-import { Download, FilePlus, FolderPlus, FolderOpen, GraduationCap, ListTree, NotebookPen, Pencil, Play, RotateCcw, Trash2 } from 'lucide-react'
+import { Download, FilePlus, FolderPlus, FolderOpen, GraduationCap, ListTree, NotebookPen, Package, Pencil, Play, RotateCcw, Trash2 } from 'lucide-react'
 import { STATUS_META } from '../mastery'
 import StatusBranch from '../StatusBranch'
 import { DocTypeIcon } from '../docTypes'
@@ -178,7 +178,48 @@ export function RowMenu({
         </>
       )}
 
-      {target.kind === 'node' && (
+      {/*
+        节点行的菜单分两档：**目标节点（root）**与普通节点。
+        目标行只留「这一层的入口」能做的事——打开大纲（组锚）、新建项目、在资源管理器中
+        打开、删除；「打开学习文档 / 导出教学文档 / 新建笔记 / 新增试卷 / 新建超级文档 /
+        学习状态」六项是节点级动作（用户定的：目标级的路由都交给大纲页统一管），
+        从目标行删掉。普通节点保持原样。
+      */}
+      {target.kind === 'node' && target.root && (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={run(() => docs.onOpenOutline(target.node.id))}
+            className={MENU_ITEM + ' text-ink hover:bg-line/60'}
+          >
+            <DocTypeIcon kind="outline" size={13} />
+            {t('打开大纲')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={run(() => docs.onNewProject(target.node.id))}
+            className={MENU_ITEM + ' text-ink hover:bg-line/60'}
+          >
+            <Package size={13} className="shrink-0 text-ink-soft" />
+            {t('新建项目')}
+          </button>
+          <RevealItem onSelect={run(() => onRevealNode(target.node.id))} />
+          <span aria-hidden="true" className="my-1 block h-px bg-line" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={run(() => onDeleteNode(target.node.id))}
+            className={MENU_ITEM + ' text-seal-deep hover:bg-seal/10'}
+          >
+            <Trash2 size={13} className="shrink-0" />
+            {t('删除')}
+          </button>
+        </>
+      )}
+
+      {target.kind === 'node' && !target.root && (
         <>
           <button
             type="button"

@@ -191,8 +191,13 @@ export function setLocalWatchList(raw: unknown): { ok: boolean } {
   const list = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : []
   const next = new Set<string>()
   for (const item of list) {
-    const p = localFile(item)
-    if (p) next.add(path.normalize(p))
+    /*
+     * 只认「绝对路径」这一个条件，**不套 LOCAL_TEXT_EXTS**：这份清单只用来按目录挂
+     * watcher（读 / 写另有白名单把关），媒体文件也该跟着外部变化走——图片换了、
+     * 音视频被删了，页签同样该刷新 / 收场。
+     */
+    const p = item.trim()
+    if (p && path.isAbsolute(p)) next.add(path.normalize(p))
   }
   const current = new Set<string>()
   for (const [dir, entry] of localWatchers) {

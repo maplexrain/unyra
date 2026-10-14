@@ -18,6 +18,7 @@ import {
 import type { McpPreset, McpServerConfig, McpSettings, McpTransport } from '../../agent/mcp/types'
 import { MCP_PRESETS } from '../../agent/mcp/types'
 import { McpClient } from '../../agent/mcp/client'
+import { native } from '../../lib/native'
 import ConfirmDialog from '../ConfirmDialog'
 import Switch from '../Switch'
 import { pane } from '../Pane'
@@ -40,6 +41,19 @@ export function McpTab({ settings, onChange }: McpTabProps) {
   const [deletingServer, setDeletingServer] = useState<McpServerConfig | null>(null)
   const [showPresets, setShowPresets] = useState(false)
 
+  /**
+   * 停掉主进程里 stdio 服务的本地会话：进程是主进程起的，禁用 / 删除 / 关总开关时
+   * 在这里收尾（不留下已经没人会用的子进程）。省略 id = 停掉全部。
+   * 非桌面环境（或极老 preload）没有这条通道——静默跳过，禁用本身不依赖它。
+   */
+  const stopSession = (id?: string) => {
+    try {
+      void native().mcp.stop(id).catch(() => {})
+    } catch {
+      // 没有主进程桥可停
+    }
+  }
+
   const updateServer = (updated: McpServerConfig) => {
     const nextList = [...servers]
     const idx = nextList.findIndex((s) => s.id === updated.id)
@@ -55,6 +69,7 @@ export function McpTab({ settings, onChange }: McpTabProps) {
   }
 
   const toggleServer = (server: McpServerConfig) => {
+    if (server.enabled) stopSession(server.id)
     updateServer({
       ...server,
       enabled: !server.enabled,
@@ -64,6 +79,7 @@ export function McpTab({ settings, onChange }: McpTabProps) {
   }
 
   const removeServer = (id: string) => {
+    stopSession(id)
     const nextList = servers.filter((s) => s.id !== id)
     onChange({
       enabled: globalEnabled,
@@ -195,9 +211,12 @@ export function McpTab({ settings, onChange }: McpTabProps) {
         <div className="mt-3.5 border-t border-line/60 pt-3">
           <Switch
             on={globalEnabled}
-            onChange={(next) => onChange({ enabled: next, servers })}
+            onChange={(next) => {
+              if (!next) stopSession()
+              onChange({ enabled: next, servers })
+            }}
             label={t('启用 MCP 工具调度')}
-            hint={t('开启后，所有已启用的 MCP 服务工具将作为原生能力注入超级导师')}
+            hint={t('开启后，MCP 服务工具将注入超级导师的 execute 沙箱（api.mcp.list / discover / call）')}
           />
         </div>
       </section>

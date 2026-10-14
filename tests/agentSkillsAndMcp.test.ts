@@ -6,7 +6,7 @@ import {
   getEffectiveSkills,
 } from '../src/agent/skill/registry'
 import { MCP_PRESETS, type McpSettings } from '../src/agent/mcp/types'
-import { createMcpAgentTools } from '../src/agent/mcp/agentTools'
+import { makeMcpOps } from '../src/agent/mcp/ops'
 import { normalizeAgentSettings } from '../src/agent/settings'
 
 describe('Agent 技能 (Skills) 与 MCP 设施测试', () => {
@@ -53,65 +53,205 @@ describe('Agent 技能 (Skills) 与 MCP 设施测试', () => {
     })
   })
 
-  describe('MCP 工具转原生 AgentTool', () => {
+  describe('MCP 服务接入 execute 沙箱（agent/mcp/ops：mcp.list / discover / call）', () => {
     it('预设列表中包含 fetch, filesystem 等标准服务', () => {
       expect(MCP_PRESETS.length).toBeGreaterThanOrEqual(3)
       expect(MCP_PRESETS.some((p) => p.id === 'mcp-fetch')).toBe(true)
       expect(MCP_PRESETS.some((p) => p.id === 'mcp-filesystem')).toBe(true)
     })
 
-    it('已启用的 MCP 服务工具可正确转化为 AgentTool 接口规范', () => {
-      const mcpSettings: McpSettings = {
-        enabled: true,
-        servers: [
-          {
-            id: 'fetch-srv',
-            name: 'FetchServer',
-            transport: 'stdio',
-            enabled: true,
-            tools: [
-              {
-                name: 'fetch_url',
-                description: '抓取指定网页内容',
-                inputSchema: {
-                  type: 'object',
-                  properties: { url: { type: 'string' } },
-                  required: ['url'],
-                },
-              },
-            ],
-          },
-          {
-            id: 'disabled-srv',
-            name: 'DisabledServer',
-            transport: 'sse',
-            enabled: false,
-            tools: [{ name: 'dummy' }],
-          },
-        ],
-      }
-
-      const agentTools = createMcpAgentTools(mcpSettings)
-      expect(agentTools.length).toBe(1)
-      expect(agentTools[0].name).toBe('mcp_fetch_srv_fetch_url')
-      expect(agentTools[0].description).toContain('[MCP: FetchServer]')
-      expect(agentTools[0].parameters).toHaveProperty('properties')
+    const mkSettings = (): McpSettings => ({
+      enabled: true,
+      servers: [
+        {
+          id: 'fetch-srv',
+          name: 'FetchServer',
+          transport: 'stdio',
+          command: 'npx',
+          args: ['-y', '@tokenizin/mcp-npx-fetch'],
+          enabled: true,
+          tools: [{ name: 'fetch_url', description: '抓取指定网页内容' }],
+        },
+        {
+          id: 'disabled-srv',
+          name: 'DisabledServer',
+          transport: 'sse',
+          enabled: false,
+          tools: [{ name: 'dummy' }],
+        },
+      ],
     })
 
-    it('总开关关闭时，不输出任何 MCP 工具', () => {
-      const mcpSettings: McpSettings = {
-        enabled: false,
-        servers: [
-          {
-            id: 'test',
-            name: 'Test',
-            transport: 'stdio',
-            enabled: true,
-            tools: [{ name: 't1' }],
-          },
-        ],
+    /**
+     * 装一个假的主进程 MCP 桥（native() 读的是 window.mojiNative）；返回还原函数。
+     * 真桥的两端在 electron/mcp（主进程）与真进程用例 tests/mcpStdio.test.ts——
+     * 这里只验「渲染层把什么递过去、把什么带回来」。
+     */
+    const withMcpBridge = <T>(
+      bridge: { discover?: unknown; call?: unknown },
+      fn: () => Promise<T>,
+    ): Promise<T> => {
+      const g = globalThis as { window?: unknown }
+      const orig = g.window
+      g.window = { mojiNative: { mcp: bridge } }
+      return fn().finally(() => {
+        if (orig === undefined) delete g.window
+        else g.window = orig
+      })
+    }
+
+    it('mcp.list 只列已启用服务与缓存的工具清单（禁用的不出现）', () => {
+      const listed = makeMcpOps(mkSettings())!.list() as {
+        ok: boolean
+        servers: Array<{ id: string; tools: Array<{ name: string }> }>
       }
-      expect(createMcpAgentTools(mcpSettings)).toEqual([])
+      expect(listed.ok).toBe(true)
+      expect(listed.servers.map((s) => s.id)).toEqual(['fetch-srv'])
+      expect(listed.servers[0].tools[0].name).toBe('fetch_url')
+    })
+
+    it('总开关关闭时 makeMcpOps 返回 null（宿主据此不注入这一组）', () => {
+      expect(makeMcpOps({ ...mkSettings(), enabled: false })).toBeNull()
+      expect(makeMcpOps(null)).toBeNull()
+    })
+
+    it('mcp.discover：stdio 委托主进程桥做真实探测（渲染层不直接起进程、不吃缓存）', async () => {
+      const seen: Array<Record<string, unknown>> = []
+      const r = (await withMcpBridge(
+        {
+          discover: async (payload: Record<string, unknown>) => {
+            seen.push(payload)
+            return { ok: true, tools: [{ name: 'fetch_markdown', description: '抓取并转 Markdown' }] }
+          },
+        },
+        () => makeMcpOps(mkSettings())!.discover('fetch-srv'),
+      )) as { ok: boolean; servers: Array<{ id: string; ok: boolean; tools: Array<{ name: string }> }> }
+      expect(r.ok).toBe(true)
+      expect(r.servers[0].id).toBe('fetch-srv')
+      // 回来的必须是桥给的实时清单（不是设置里那份缓存）
+      expect(r.servers[0].tools[0].name).toBe('fetch_markdown')
+      expect(seen[0]).toMatchObject({ id: 'fetch-srv', name: 'FetchServer', command: 'npx' })
+    })
+
+    it('mcp.call：stdio 把服务配置与参数递给主进程，回执原样映射', async () => {
+      const seen: Array<unknown[]> = []
+      const r = (await withMcpBridge(
+        {
+          call: async (...args: unknown[]) => {
+            seen.push(args)
+            return { ok: true, isError: false, content: [{ type: 'text', text: '外部结果：极限' }] }
+          },
+        },
+        () => makeMcpOps(mkSettings())!.call('FetchServer', 'fetch_markdown', { url: 'https://example.com' }),
+      )) as Record<string, unknown>
+      expect(r.ok).toBe(true)
+      expect(r.server).toBe('fetch-srv')
+      expect(r.tool).toBe('fetch_markdown')
+      expect(r.content).toBe('外部结果：极限')
+      expect(seen[0][0]).toMatchObject({ id: 'fetch-srv', command: 'npx', args: ['-y', '@tokenizin/mcp-npx-fetch'] })
+      expect(seen[0][1]).toBe('fetch_markdown')
+      expect(seen[0][2]).toEqual({ url: 'https://example.com' })
+    })
+
+    it('没有主进程桥（非桌面环境）：给出可读错误而不是假成功', async () => {
+      const g = globalThis as { window?: unknown }
+      const saved = g.window
+      delete g.window
+      const r = (await makeMcpOps(mkSettings())!.call('fetch-srv', 'fetch_url', {})) as {
+        ok: boolean
+        content: string
+      }
+      expect(r.ok).toBe(false)
+      expect(r.content).toContain('桌面应用环境')
+      if (saved !== undefined) g.window = saved
+    })
+
+    it('未启用的服务给出可读原因（不静默失败）', async () => {
+      const r = (await makeMcpOps(mkSettings())!.call('DisabledServer', 'dummy')) as { ok: boolean; error?: string }
+      expect(r.ok).toBe(false)
+      expect(r.error).toContain('未启用')
+    })
+
+    it('未知服务报出可读错误与现有服务清单', async () => {
+      const r = (await makeMcpOps(mkSettings())!.discover('不存在')) as { ok: boolean; error?: string }
+      expect(r.ok).toBe(false)
+      expect(r.error).toContain('没有找到')
+      expect(r.error).toContain('FetchServer')
+    })
+
+    it('call 参数不是对象时拒绝（不把字符串塞给服务端）', async () => {
+      const r = (await makeMcpOps(mkSettings())!.call('fetch-srv', 'fetch_url', '不是对象')) as {
+        ok: boolean
+        error?: string
+      }
+      expect(r.ok).toBe(false)
+      expect(r.error).toContain('对象')
+    })
+
+    it('SSE 服务的 call 走 JSON-RPC tools/call（fetch 打桩，不碰网络）', async () => {
+      const orig = globalThis.fetch
+      const seen: string[] = []
+      globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+        const payload = JSON.parse(String(init?.body))
+        seen.push(String(payload.method) + ':' + String(payload.params?.name))
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jsonrpc: '2.0',
+            id: payload.id,
+            result: { content: [{ type: 'text', text: '外部结果：' + payload.params.arguments.q }] },
+          }),
+        } as unknown as Response
+      }) as typeof fetch
+      try {
+        const ops = makeMcpOps({
+          enabled: true,
+          servers: [
+            {
+              id: 's1',
+              name: '远端服务',
+              transport: 'sse',
+              url: 'http://localhost:9/sse',
+              enabled: true,
+              tools: [{ name: 'query' }],
+            },
+          ],
+        })!
+        const r = (await ops.call('s1', 'query', { q: '极限' })) as Record<string, unknown>
+        expect(r.ok).toBe(true)
+        expect(r.content).toBe('外部结果：极限')
+        expect(seen).toEqual(['tools/call:query'])
+      } finally {
+        globalThis.fetch = orig
+      }
+    })
+
+    it('工具级报错（isError）转成 ok:false 且保留错误文本', async () => {
+      const orig = globalThis.fetch
+      globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+        const payload = JSON.parse(String(init?.body))
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jsonrpc: '2.0',
+            id: payload.id,
+            result: { isError: true, content: [{ type: 'text', text: '参数不对' }] },
+          }),
+        } as unknown as Response
+      }) as typeof fetch
+      try {
+        const ops = makeMcpOps({
+          enabled: true,
+          servers: [{ id: 's1', name: '远端服务', transport: 'sse', url: 'http://localhost:9/sse', enabled: true }],
+        })!
+        const r = (await ops.call('s1', 'query', {})) as Record<string, unknown>
+        expect(r.ok).toBe(false)
+        expect(r.content).toBe('参数不对')
+      } finally {
+        globalThis.fetch = orig
+      }
     })
   })
 
@@ -140,6 +280,26 @@ describe('Agent 技能 (Skills) 与 MCP 设施测试', () => {
       expect(normalized.skills?.skills.length).toBe(1)
       expect(normalized.mcp?.servers.length).toBe(1)
       expect(normalized.mcp?.servers[0].id).toBe('m1')
+    })
+
+    it('老预设的死参数会被迁移：404 包名与 ./workspace 换成能跑的形态', () => {
+      const normalized = normalizeAgentSettings({
+        mcp: {
+          enabled: true,
+          servers: [
+            { id: 'f', name: 'F', transport: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-fetch'], enabled: true },
+            { id: 's', name: 'S', transport: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-sqlite', '--db-path', 'data.db'], enabled: true },
+            { id: 'fs', name: 'FS', transport: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', './workspace'], enabled: true },
+            // 用户自己改过的（别的包）原样不动
+            { id: 'mine', name: 'Mine', transport: 'stdio', command: 'node', args: ['/my/server.js'], enabled: true },
+          ],
+        },
+      })
+      const byId = (id: string) => normalized.mcp?.servers.find((s) => s.id === id)
+      expect(byId('f')?.args).toEqual(['-y', '@tokenizin/mcp-npx-fetch'])
+      expect(byId('s')?.args).toEqual(['-y', 'mcp-sqlite-server'])
+      expect(byId('fs')?.args).toEqual(['-y', '@modelcontextprotocol/server-filesystem', '.'])
+      expect(byId('mine')?.args).toEqual(['/my/server.js'])
     })
   })
 

@@ -18,7 +18,8 @@ import {
   updateDoc,
   updateNode,
 } from '../../../learn/graph'
-import { openInGroup } from '../../../learn/groups'
+import { claimTab, openGroupedDoc, withOwners } from '../../../learn/groups'
+import { tabKey } from '../../../learn/tabs'
 import { plainSnippet, offsetToLineCol } from '../../../learn/text'
 import { replaceTermWithLink, setLearnLinkHandler } from '../../../lib/nodeLink'
 import type { DocSource } from '../NodeNote'
@@ -74,14 +75,26 @@ export function useConceptActions(deps: ConceptActionsDeps) {
       if (linkedContent !== parentDoc) next = updateDoc(next, parentId, linkedContent)
     }
     // 跳过去时一定落在教学文档上：Agent 正要往那里写东西。
-    // 页签照旧只开一次：这个概念已经开着的话，这里只是把它激活
+    // 页签照旧只开一次：这个概念已经开着的话，这里只是把它激活。
+    // 走 openGroupedDoc：教学文档要先过它的「组」（对应大纲在就落回那一组，
+    // 不在就先开大纲把组建起来，见 groups/tabs）——「学习」是从正文里点的，
+    // 正是「不是从大纲打开」的那条路。
     const childRef: TabRef = { kind: 'teach', nodeId: r.node.id }
+    const goalOf = (id: string) => nodeById(next, id)?.goalId ?? null
+    const opened = openGroupedDoc(
+      next.docArea,
+      childRef,
+      next.goals.find((g) => g.id === parent.goalId)?.rootNodeId ?? null,
+      goalOf,
+      Date.now(),
+    )
     set({
       ...next,
       activeGoalId: parent.goalId,
       activeNodeId: r.node.id,
       activeConversationId: r.conversationId,
-      docArea: openInGroup(next.docArea, next.docArea.focus, childRef, Date.now()),
+      // 登记归属：与 openTab 同一行（漏登记的话这枚页签切目标时到处飘、关锚也收不利索）
+      docArea: withOwners(opened, claimTab(opened.tabOwners, parent.goalId, tabKey(childRef))),
     })
     setCreating(false)
 

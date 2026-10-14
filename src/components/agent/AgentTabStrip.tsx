@@ -319,8 +319,13 @@ export default function AgentTabStrip({
                 data-tab={key}
                 role="tab"
                 aria-selected={on}
-                // 正在退场的这一枚已经不算栏上的一员了：读屏与键盘都绕开它
-                {...(leaving ? { 'aria-hidden': true, tabIndex: -1 } : { tabIndex: 0 })}
+                /*
+                 * 正在退场的这一枚已经不算栏上的一员了：读屏与键盘都绕开它。
+                 * 与文档区页签栏同一条规矩：挂 inert，不挂 aria-hidden——点关闭键那一下
+                 * 焦点正停在这枚页签里，给「留住焦点的元素之祖先」挂 aria-hidden 会被
+                 * 浏览器拦下（控制台报 Blocked aria-hidden…）；inert 才能把焦点一并收走。
+                 */
+                {...(leaving ? { inert: true } : { tabIndex: 0 })}
                 title={title + blockHint}
                 onClick={() => {
                   if (justDragged.current) return

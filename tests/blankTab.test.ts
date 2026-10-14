@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   FIRST_GROUP,
+  claimTab,
   closeIds,
   closeIn,
   emptyDocs,
   openInGroup,
+  withOwners,
 } from '../src/learn/groups'
 import { makeBlankTab, newBlankKey, tabKey, tabNodeId, tabTitle, tabTrail } from '../src/learn/tabs'
 import type { TabRef } from '../src/learn/types'
@@ -63,6 +65,41 @@ describe('空白页签（Blank Tab）与保底机制', () => {
     expect(docs.groups[0].tabs[0].ref.kind).toBe('note')
     expect(docs.groups[0].tabs[0].id).toBe('n:n1:我的笔记')
     expect(docs.groups[0].tabs[0].id).not.toBe(blankId)
+  })
+
+  /*
+   * 下面两条是「栏上只剩新标签页时，从其他地方打开新 tab，占位必须消失」的加固
+   * （需求原文；见 groups/tabs 的 blankYieldsTo）：判据按**栏上看得见什么**算，
+   * 不是按格子里物理躺着什么——切目标之后，格子里还睡着别目标的一排页签。
+   */
+  it('栏上只剩空白占位、格子里还躺着别目标的页签时，新开页签照样让占位消失', () => {
+    const goalOf = (id: string): string | null => (id.startsWith('a') ? 'gA' : 'gB')
+    let docs = emptyDocs()
+    const teachA: TabRef = { kind: 'teach', nodeId: 'a1' }
+    docs = openInGroup(docs, FIRST_GROUP, teachA, 1, undefined, goalOf)
+    docs = withOwners(docs, claimTab(docs.tabOwners, 'gA', tabKey(teachA)))
+    // 用户开了一枚空白占位（此刻 A 的页签还看得见，不顶替）
+    const blankRef: TabRef = { kind: 'blank', key: 'bk1' }
+    docs = openInGroup(docs, FIRST_GROUP, blankRef, 2, undefined, goalOf)
+    expect(docs.groups[0].tabs).toHaveLength(2)
+    // 「切到 gB」：上层换的是 activeGoalId 的过滤（A 的页签自此不显示），这里由 goalOf 表达
+    const teachB: TabRef = { kind: 'teach', nodeId: 'b1' }
+    docs = openInGroup(docs, FIRST_GROUP, teachB, 3, undefined, goalOf)
+    expect(docs.groups[0].tabs.map((t) => t.ref.kind)).toEqual(['teach', 'teach'])
+    expect(docs.groups[0].active).toBe(tabKey(teachB))
+  })
+
+  it('栏上不是只剩空白（有看得见的别的页签）时，空白占位留下', () => {
+    // 没登记归属的页签按「看得见」兜底（见 groups/goals 的 visibleTabs）
+    const noGoal = (): string | null => null
+    let docs = emptyDocs()
+    const teachA: TabRef = { kind: 'teach', nodeId: 'a1' }
+    docs = openInGroup(docs, FIRST_GROUP, teachA, 1, undefined, noGoal)
+    const blankRef: TabRef = { kind: 'blank', key: 'bk1' }
+    docs = openInGroup(docs, FIRST_GROUP, blankRef, 2, undefined, noGoal)
+    docs = openInGroup(docs, FIRST_GROUP, { kind: 'teach', nodeId: 'b1' }, 3, undefined, noGoal)
+    expect(docs.groups[0].tabs).toHaveLength(3)
+    expect(docs.groups[0].tabs.some((t) => t.ref.kind === 'blank')).toBe(true)
   })
 
   it('在已有其它页签的情况下打开空白页签，作为新页签追加', () => {

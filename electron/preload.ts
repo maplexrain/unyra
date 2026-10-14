@@ -24,7 +24,8 @@ import type {
   BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
   BaseProcessInfo, BaseProcessListResult, BaseProcessOutputResult, BaseProcessStartResult, BaseProcessStatusResult,
   BaseProcessStopResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
-  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginListResult,
+  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
+  PluginEntry, PluginListResult,
   PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
   StorageInfo, StorageOk, StorageRootResult, UpdateFail, UpdatePhase, UpdateState,
   VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceTranscribeRequest,
@@ -42,7 +43,8 @@ export type {
   BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
   BaseProcessInfo, BaseProcessListResult, BaseProcessOutputResult, BaseProcessStartResult, BaseProcessStatusResult,
   BaseProcessStopResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
-  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, PluginEntry, PluginListResult,
+  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
+  PluginEntry, PluginListResult,
   PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
   StorageInfo, StorageOk, StorageRootResult, UpdateFail, UpdatePhase, UpdateState,
   VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceTranscribeRequest,
@@ -167,6 +169,39 @@ const api = {
       ipcRenderer.on('local:changed', listener)
       return () => ipcRenderer.removeListener('local:changed', listener)
     },
+  },
+
+  /**
+   * 工作区目录的外部变化监听（给资源管理器）：渲染层把「此刻展开着的工作区目录」清单
+   * （绝对路径）推过来，主进程按目录挂 fs.watch；目录里一有增删改名就经 onChanged 推回。
+   * 与 local 那条的差别：不带具体路径、也不过滤文件名——重列是幂等的（只刷新列表，
+   * 不重挂编辑器），收到就是「工作区变过」，各层行各自重列。见 electron/storage/ws。
+   */
+  ws: {
+    watch: (dirs: string[]): Promise<StorageOk> => ipcRenderer.invoke('ws:watch', dirs),
+    onChanged: (cb: () => void): (() => void) => {
+      const listener = () => cb()
+      ipcRenderer.on('ws:changed', listener)
+      return () => ipcRenderer.removeListener('ws:changed', listener)
+    },
+  },
+
+  /**
+   * 外部 MCP 服务（**stdio 传输**）的本地进程会话：命令在主进程里起
+   * （渲染层拿不到 child_process），JSON-RPC 走子进程的 stdin/stdout，
+   * 会话按服务配置复用（见 electron/mcp）。SSE 传输不走这里——那条由渲染层
+   * 直接 fetch（见 src/agent/mcp/client）。
+   */
+  mcp: {
+    discover: (server: McpStdioServerPayload): Promise<McpStdioToolsResult> =>
+      ipcRenderer.invoke('mcp:discover', server),
+    call: (
+      server: McpStdioServerPayload,
+      tool: string,
+      args: Record<string, unknown>,
+    ): Promise<McpStdioCallResult> => ipcRenderer.invoke('mcp:call', server, tool, args),
+    /** 停掉某个服务的会话（设置里禁用 / 删除时来一发，不留没用的子进程）；省略 = 停掉全部 */
+    stop: (serverId?: string): Promise<StorageOk> => ipcRenderer.invoke('mcp:stop', serverId),
   },
 
   /**

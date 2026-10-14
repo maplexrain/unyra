@@ -14,9 +14,8 @@ import { DOCS_DIR, WORKSPACE_DIR } from './layout'
 import { nodeById } from './graph/lookup'
 import { normalizeKey, prereqIds } from './graph'
 import { newWebKey } from './tabs'
-import { wsJoin, wsRelOf } from './workspace'
+import { wsJoin, wsRefOfRel, wsRelOf } from './workspace'
 import { notesOf, type KnowledgeNode, type LearnStore, type TabRef } from './types'
-import { userAbsPath } from '../lib/storage'
 
 /** 规整外来路径：反斜杠 → 斜杠、去掉开头的 ./（导师与文件管理器给的写法不统一） */
 function normPath(p: string): string {
@@ -88,14 +87,13 @@ export function tabRefFromChip(store: LearnStore, p: ChipPayload): TabRef | null
   if (p.type === 'web') return p.url ? { kind: 'web', url: p.url, key: newWebKey() } : null
   // 外部文件：路径就是身份
   if (p.type === 'local') return p.path ? { kind: 'local', path: p.path } : null
-  // 工作区文件：两种写法都接（见 wsChipUserRel），落点必须是同一个文件
-  //（解析不解析看后缀，见 learn/tabs 的 viewOf）；目录没有页签形态——跳到所属节点
+  // 工作区文件：两种写法都接（见 wsChipUserRel），落点必须是同一个文件。
+  // 落点是**内部文件**页签（ws，挂在它工作区所属的节点上——打开时过目标的组）；
+  // 解析不解析看后缀（见 learn/tabs 的 viewOf）；目录没有页签形态——跳到所属节点
   if (p.type === 'ws') {
     if (p.dir) return p.nodeId ? { kind: 'teach', nodeId: p.nodeId } : null
     const rel = p.path ? wsChipUserRel(store, p.path) : null
-    if (!rel) return null
-    const abs = userAbsPath(rel)
-    return abs ? { kind: 'local', path: abs } : null
+    return rel ? wsRefOfRel(store, rel) : null
   }
   // 考试：只有「某一次的副本」能开成页签。attempt 型（拖考试副本进输入框、exam.read
   // 回执里给的）与带 attemptId 的 exam 型是同一个落点；attemptId 必须真在 attempts 里——

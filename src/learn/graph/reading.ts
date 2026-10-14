@@ -116,7 +116,7 @@ export function deleteGoal(store: LearnStore, goalId: string): LearnStore {
   }
 }
 
-/** 页签挂在哪个节点上；本地文件、网页、守卫、报告与系统页（设置/用量/记忆/导师设置/新建目标）返回空串（不属于任何节点，删节点不该关掉它们） */
+/** 页签挂在哪个节点上；本地文件、网页、守卫、报告与系统页（设置/用量/记忆/导师设置/新建目标）返回空串（不属于任何节点，删节点不该关掉它们）；工作区内部文件挂在它的节点上——节点没了，它的工作区文件也跟着没了，页签该一起关 */
 function tabNodeIdOf(ref: TabRef): string {
   return ref.kind === 'local' ||
     ref.kind === 'web' ||

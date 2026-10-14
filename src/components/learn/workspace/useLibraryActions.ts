@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect } from 'react'
 import type { LearnStore, TabRef } from '../../../learn/types'
-import { createNote, deleteNote, renameNoteFile } from '../../../learn/graph'
+import { createNote, deleteNote, nodeById, renameNoteFile } from '../../../learn/graph'
 import { removeSuperDoc } from '../../../learn/superdocs'
 import { captureLocalRemove, captureNoteDelete, captureSuperDelete, type ExplorerUndo } from '../../../learn/undo'
 import { nodeDocRel } from '../../../learn/store'
@@ -53,7 +53,7 @@ export function useLibraryActions({ getLatest, set, flush, onToast, openTab, pus
       set({
         ...r.store,
         // 新建的笔记一定是空的：直接开在编辑视图里（用户点「新建」就是要往里写）
-        docArea: openInGroup(r.store.docArea, r.store.docArea.focus, ref, Date.now(), 'source'),
+        docArea: openInGroup(r.store.docArea, r.store.docArea.focus, ref, Date.now(), 'source', (id) => nodeById(r.store, id)?.goalId ?? null),
         activeNodeId: nodeId,
       })
       onToast(t('已新建笔记「{0}」', r.name))
@@ -126,13 +126,14 @@ export function useLibraryActions({ getLatest, set, flush, onToast, openTab, pus
       let next = s
       let at = Date.now()
       let docArea = s.docArea
+      const goalOf = (id: string) => nodeById(next, id)?.goalId ?? null
       for (const p of usable) {
         next = { ...next, localFiles: addLocalFile(next.localFiles, p, at++) }
-        docArea = openInGroup(docArea, docArea.focus, { kind: 'local', path: p }, at)
+        docArea = openInGroup(docArea, docArea.focus, { kind: 'local', path: p }, at, undefined, goalOf)
       }
       // 全部开成页签，但**只有第一个是激活的**：后面的排在那儿，想看哪一个点一下就行
       const first: TabRef = { kind: 'local', path: usable[0] }
-      set({ ...next, docArea: openInGroup(docArea, docArea.focus, first, at) })
+      set({ ...next, docArea: openInGroup(docArea, docArea.focus, first, at, undefined, goalOf) })
     },
     [getLatest, set],
   )

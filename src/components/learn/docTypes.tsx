@@ -1,4 +1,4 @@
-import { AppWindow, Bot, BookOpen, Brain, ChartColumn, FileClock, Folder, FolderOpen, Globe, GraduationCap, HardDrive, ListTree, Loader2, NotebookPen, Plus, Settings2, ShieldCheck } from 'lucide-react'
+import { AppWindow, Bot, BookOpen, Brain, ChartColumn, FileClock, Folder, FolderOpen, Globe, GraduationCap, HardDrive, ListTree, Loader2, NotebookPen, Package, Plus, Settings2, ShieldCheck } from 'lucide-react'
 import Bullseye from '../Bullseye'
 
 /**
@@ -17,6 +17,7 @@ export type DocKindKey =
   | 'exam'
   | 'outline'
   | 'local'
+  | 'ws'
   | 'web'
   | 'guard'
   | 'report'
@@ -34,6 +35,7 @@ const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   exam: '#c0563a', // 朱：试卷（含它的历次考试）
   outline: '#2e8b6e', // 松绿：大纲页（结构化的路线图）
   local: '#98928a', // 中性灰：外部文件
+  ws: '#7c8f4f', // 橄榄：工作区（项目）内部文件——与外部文件的灰明确分开
   web: '#2aa1b8', // 青：网页（内置浏览器）
   guard: '#d4577b', // 绯粉：守卫 agent 的上下文（警戒色——它在盯梢）
   report: '#7a6a54', // 褐灰：专注模式报告（收场的凭据）
@@ -79,6 +81,9 @@ export function DocTypeIcon({ kind, size = 11 }: { kind: DocKindKey; size?: numb
       <Bullseye size={size} />
     ) : kind === 'blank' ? (
       <Plus size={size} />
+    ) : kind === 'ws' ? (
+      // 工作区（项目）内部文件：盒子形状，与「新建项目」菜单项同一个图示
+      <Package size={size} />
     ) : (
       <HardDrive size={size} />
     )

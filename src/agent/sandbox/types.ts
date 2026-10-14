@@ -214,6 +214,12 @@ export interface SandboxOptions {
    * 未注入就没有这一组。
    */
   browser?: BrowserOps
+  /**
+   * 外部 MCP 服务（mcp.*，见 agent/mcp/ops）：用户配置的真实外部工具
+   * （list 看服务与工具 / discover 现场探测 / call 调用）。
+   * MCP 总开关关着就没有这一组——与旧做法「关闭时不注入任何 MCP 工具」同一口径。
+   */
+  mcp?: McpOps
   /** 一次编排的中止信号：用户点「停止」时，正在等用户的 ask 等调用要能立刻退出 */
   signal?: AbortSignal
   timeoutMs?: number
@@ -766,6 +772,27 @@ export interface BrowserOps {
    * { networkIdle: true } 请求挂起清零 / { load: true } 加载完。回 { matched, waitedMs, url }。
    */
   waitFor(tabId: string, req: Record<string, unknown>): Promise<unknown>
+}
+
+/**
+ * mcp.*：用户配置的外部 **MCP（Model Context Protocol）服务**（见 agent/mcp/ops）。
+ *
+ * 与别的组不同：这一组不是固定几条签名，而是三个通用入口——外部工具清单与连接
+ * 都由用户在设置里配置、运行时才知道。服务按 id 或名称指名（名称撞重时用 id）。
+ *
+ * 由宿主在「MCP 总开关开着」时注入（见 useAgent）；子代理的白名单里没有它——
+ * MCP 这一组目前只敞给导师（它调的是真实外部系统，写操作要有确认纪律）。
+ */
+export interface McpOps {
+  /** 已启用服务与各自**缓存的**工具清单（不发网络请求） */
+  list: () => unknown
+  /**
+   * 现场探测工具清单：给 server 就只探它（失败即 ok:false），
+   * 省略则探全部已启用服务（逐服务回报，ok 由服务级字段表达）。
+   */
+  discover: (server?: string) => Promise<unknown>
+  /** 调用某服务的一个工具；args 传对象（按工具公布的说明给），省略为空对象 */
+  call: (server: string, tool: string, args?: unknown) => Promise<unknown>
 }
 
 /**

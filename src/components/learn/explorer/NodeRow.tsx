@@ -202,10 +202,11 @@ function NodeRowComponent({
           onContextMenu={(e) => {
             /*
              * 只弹菜单，不顺手打开这个节点（用户定的）：右键是在问「这一行能做什么」，
-             * 不是「把它打开」。
+             * 不是「把它打开」。root 标出这是**目标节点**——它的菜单与普通节点不一样
+             * （教学文档 / 导出 / 三样新建 / 学习状态都从目标行撤了，见 RowMenu）。
              */
             e.preventDefault()
-            onOpenMenu(e.clientX, e.clientY, { kind: 'node', node })
+            onOpenMenu(e.clientX, e.clientY, { kind: 'node', node, root: isRoot })
           }}
           className={'group flex cursor-pointer items-center gap-1 rounded-md py-1 pl-1.5 pr-1.5 transition ' +
             (active ? 'bg-line/60' : 'hover:bg-line/40')}

@@ -89,6 +89,19 @@ export function userAbsPath(rel: string): string | null {
 }
 
 /**
+ * 磁盘路径的**比较键**：统一成正斜杠再比（不落盘、不传主进程，只用于「两次拿到的是不是
+ * 同一个文件」这类判断）。
+ *
+ * 为什么必须有它：工作区内部文件的绝对路径是 userAbsPath 拼出来的**混血形**
+ * （反斜杠的根 + 斜杠的后半段），而主进程 watcher 报回来的路径是 path.join 的**原生形**
+ * （Windows 上全是反斜杠）——同一份文件、两种写法，直接相等永远对不上。少这一步，
+ * 「外部删掉 / 改了文件，页签没反应」就是它。
+ */
+export function diskPathKey(p: string): string {
+  return p.replace(/\\/g, '/')
+}
+
+/**
  * 用户目录的**公共前缀**（{root}/users/{uid}）：userAbsPath 的反查方向——
  * 拿一条磁盘绝对路径问「这是不是我们管的工作区文件」时，先剥掉这一截再对 docs 布局
  * （见 learn/workspace 的 wsRevealOfAbs）。未登录 / 数据根没拉到时 null，同 userAbsPath。

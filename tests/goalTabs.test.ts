@@ -14,8 +14,8 @@ import {
   focusedTab,
   goalTabsOf,
   normalizeDocs,
+  openAnchorOutline,
   openInGroup,
-  openOutlineTab,
   renameTabRef,
   restoreParkedTabs,
   withParked,
@@ -483,7 +483,7 @@ describe('withParked（停靠场）', () => {
   })
 })
 
-describe('大纲页 = 组锚（restoreParkedTabs / openOutlineTab）', () => {
+describe('大纲页 = 组锚（restoreParkedTabs / openAnchorOutline）', () => {
   it('归队：停靠的页签按原顺序开回、归属重登记、停靠场清空', () => {
     const doc = tab({ kind: 'teach', nodeId: 'childA' })
     const parked = withParked(emptyDocs(), { goalA: [doc] })
@@ -504,21 +504,22 @@ describe('大纲页 = 组锚（restoreParkedTabs / openOutlineTab）', () => {
     expect(restoreParkedTabs(docs, 'goalA')).toBe(docs)
   })
 
-  it('openOutlineTab：开大纲的同时让停靠的组归队，落点回到大纲', () => {
+  it('openAnchorOutline：开组锚的同时让停靠的组归队，落点回到大纲', () => {
     const doc = tab({ kind: 'teach', nodeId: 'childA' })
     const parked = withParked(emptyDocs(), { goalA: [doc] })
-    const opened = openOutlineTab(parked, parked.focus, { kind: 'outline', nodeId: 'rootA' }, goalOfNode, 0)
+    const opened = openAnchorOutline(parked, parked.focus, { kind: 'outline', nodeId: 'rootA' }, goalOfNode, 0)
     expect(allTabs(opened).map((t) => t.id)).toEqual(['o:rootA', doc.id])
     expect(opened.tabOwners?.goalA).toContain(doc.id)
     expect(opened.parkedTabs).toBeUndefined()
     expect(focusedTab(opened)?.id).toBe('o:rootA')
   })
 
-  it('openOutlineTab：没有停靠时就只是开大纲', () => {
+  it('openAnchorOutline：没有停靠时就只是开大纲（归属照同一行登记上）', () => {
     const docs = emptyDocs()
-    const opened = openOutlineTab(docs, docs.focus, { kind: 'outline', nodeId: 'rootA' }, goalOfNode, 0)
+    const opened = openAnchorOutline(docs, docs.focus, { kind: 'outline', nodeId: 'rootA' }, goalOfNode, 0)
     expect(allTabs(opened).map((t) => t.id)).toEqual(['o:rootA'])
     expect(opened.parkedTabs).toBeUndefined()
+    expect(opened.tabOwners?.goalA).toContain('o:rootA')
   })
 })
 

@@ -15,7 +15,9 @@ import { groupOf, setFocus } from '../../../learn/groups'
 import { viewOf } from '../../../learn/tabs'
 import { nodePathOf } from '../../../learn/paths'
 import { fileNameOf, findResource, isImageExt, loadResourceImage } from '../../../learn/static'
+import { wsRelOfTab } from '../../../learn/workspace'
 import { native } from '../../../lib/native'
+import { readUserText } from '../../../lib/storage'
 import { exportBody, exportFileName, plotSnapshots, standaloneHtml } from '../../../lib/exportDoc'
 import { renderEmbeddedMarkdown } from '../../../lib/superdocHtml'
 import { docBodyOf } from '../../../lib/docDom'
@@ -57,7 +59,11 @@ export function useExportFlow(deps: ExportFlowDeps) {
   const exportMeta = useMemo(() => {
     const lines: string[] = []
     if (activeTab?.ref.kind === 'local') lines.push(activeTab.ref.path)
-    else if (docNode) lines.push(nodePathOf(store, docNode.goalId, docNode.id))
+    else if (activeTab?.ref.kind === 'ws') {
+      // 工作区内部文件：显示它在磁盘上的相对路径（docs/…/workspace/…）——那是它真实的住处
+      const rel = wsRelOfTab(store, activeTab.ref)
+      if (rel) lines.push(rel)
+    } else if (docNode) lines.push(nodePathOf(store, docNode.goalId, docNode.id))
     if (activeTab?.ref.kind === 'super') {
       lines.push(t('超级文档「{0}」', activeTab.ref.name))
       if (superDoc?.html.length) lines.push(t('{0} 字符', superDoc.html.length))
@@ -172,6 +178,17 @@ export function useExportFlow(deps: ExportFlowDeps) {
           if (!read.ok) return { ok: false, error: read.error }
           source = read.content
         }
+      } else if (tab.ref.kind === 'ws') {
+        // 工作区内部文件与本地文件同一条路：暂存优先，否则从磁盘现读（走受守的用户通道）
+        const staged = draftOf(store.drafts, tab.id)
+        if (staged !== undefined) {
+          source = staged
+        } else {
+          const rel = wsRelOfTab(store, tab.ref)
+          const text = rel ? await readUserText(rel) : null
+          if (text === null) return { ok: false, error: t('读不到这个工作区文件') }
+          source = text
+        }
       } else {
         // 节点文档那条路，docSource 已经把暂存区叠上去了（见它的说明）
         source = docSource?.content ?? ''
@@ -199,7 +216,9 @@ export function useExportFlow(deps: ExportFlowDeps) {
       const goalId = tab.ref.kind === 'local' ? null : (docNode?.goalId ?? null)
       const exported = await exportBody({
         source,
-        annotations: opts.annotations ? docNode?.annotations : undefined,
+        // 注解是节点文档的东西：工作区内部文件不套（它在节点下，但正文不归注释那套管）；
+        // 本地文件的 docNode 本来就是 null，天然不套
+        annotations: opts.annotations && tab.ref.kind !== 'ws' ? docNode?.annotations : undefined,
         embedImages: opts.embedImages,
         plots: exportPlots,
         resolveAsset: async (uuid) => {

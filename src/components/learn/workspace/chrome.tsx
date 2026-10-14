@@ -7,10 +7,13 @@
  * 原先它们与工作区本体挤在同一个文件里，搬出来之后「改顶栏一颗按钮」不必再翻三千行正文。
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowUp, BookOpen, Check, Compass, Contact, FolderOpen, Globe, Loader2, Menu, Paperclip, Sparkles } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { ArrowUp, BookOpen, Check, ChevronDown, Compass, Contact, FolderOpen, Globe, History, Loader2, Menu, Paperclip, Sparkles, Star } from 'lucide-react'
 import type { PendingFile } from '../../../agent/types'
-import type { KnowledgeNode, LearnStore } from '../../../learn/types'
+import type { FavoriteItem, FavoriteRef, KnowledgeNode, LearnStore } from '../../../learn/types'
+import { favoriteKey } from '../../../learn/favorites'
+import type { RecentOpen } from '../../../learn/recents'
+import { useClock } from '../../../lib/clock'
 import { nodeById, pathToRoot } from '../../../learn/graph'
 import { plainSnippet } from '../../../learn/text'
 import { pendingFromFile, pendingFromRead } from '../../../learn/attachments'
@@ -31,9 +34,12 @@ import UserMenu from '../../user/UserMenu'
 import UpdateButton from '../../update/UpdateButton'
 import WindowControls from '../../WindowControls'
 import Bullseye from '../../Bullseye'
+import Logo from '../../Logo'
 import GoalParticles from '../GoalParticles'
 import ModelPicker from '../../agent/ModelPicker'
 import { FileChip } from '../../agent/panel/Images'
+import { RecentRow } from '../explorer/sections'
+import { DocTypeIcon, WebTabTypeIcon } from '../docTypes'
 import TopBarTipCarousel from './TopBarTipCarousel'
 import { t } from '../../../i18n'
 
@@ -41,6 +47,8 @@ export function Topbar({
   activeNode,
   onSelectNode,
   goalQuestion,
+  tabGroups,
+  onSwitchGoalGroup,
   store,
   user,
   onOpenSidebar,
@@ -68,6 +76,13 @@ export function Topbar({
   /** 面包屑点某一级 → 跳到那个祖先节点 */
   onSelectNode: (id: string) => void
   goalQuestion: string
+  /**
+   * **存活的 tab 组**：目标名下还有实体页签留在文档区里的目标（看得见 + 切走收起来的
+   * 都算），按目标的先后排。目标名点开的下拉菜单列的就是它，点一行切过去。
+   */
+  tabGroups: Array<{ goalId: string; title: string; count: number; current: boolean }>
+  /** 切到一个目标的 tab 组（不强制落回大纲：那个组正开着什么就接着看什么） */
+  onSwitchGoalGroup: (goalId: string) => void
   store: LearnStore
   user: User | null
   onOpenSidebar: () => void
@@ -83,6 +98,8 @@ export function Topbar({
   const appearance = useAppearance()
   /** 主题按钮的右键菜单：完整主题列表弹在这；null = 没弹 */
   const [themeMenu, setThemeMenu] = useState<{ x: number; y: number } | null>(null)
+  /** 目标名的下拉菜单（存活的 tab 组列表）；null = 没弹 */
+  const [goalMenu, setGoalMenu] = useState<{ x: number; y: number } | null>(null)
 
   return (
     <>
@@ -107,15 +124,30 @@ export function Topbar({
 
       {/* 目标名：应用的身份区，同时也是拖窗口的手感区。
           logo 与「已掌握 x/y」都不在这里了——侧栏本来就有 logo，掌握进度要看去状态面板，
-          顶栏每多一个徽标，真正要看的「目标是什么」就淡一分 */}
+          顶栏每多一个徽标，真正要看的「目标是什么」就淡一分。
+          点它弹**存活的 tab 组**下拉（见 GoalGroupsMenu）：切目标不必绕回侧栏树。 */}
       <div className="flex min-w-0 items-center gap-2.5">
         {goalQuestion ? (
           <>
             <Bullseye size={14} className="shrink-0 text-seal" />
             {/* 宽度收窄一档：右边还挤着「当前位置」那一簇（见 NodeTrail） */}
-            <span className="max-w-[26vw] truncate text-[13px] text-ink-strong" title={goalQuestion}>
-              {goalQuestion}
-            </span>
+            <button
+              type="button"
+              title={t('切换目标页签组')}
+              aria-haspopup="menu"
+              aria-expanded={!!goalMenu}
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect()
+                setGoalMenu((cur) => (cur ? null : { x: r.left, y: r.bottom + 4 }))
+              }}
+              className={
+                'flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[13px] font-medium transition hover:bg-line/60 ' +
+                (goalMenu ? 'bg-line/60 text-ink-strong' : 'text-ink-strong')
+              }
+            >
+              <span className="max-w-[24vw] truncate">{goalQuestion}</span>
+              <ChevronDown size={12} className="shrink-0 text-ink-faint" />
+            </button>
           </>
         ) : (
           <span className="text-[13px] font-medium tracking-wide text-ink-soft">{t('归一')}</span>
@@ -220,7 +252,19 @@ export function Topbar({
       {/*
         主题菜单必须渲染在顶栏那个 div **外面**：顶栏的 backdrop-blur 会把自己变成
         fixed 定位的包含块，菜单的 fixed 坐标会被解释成「相对顶栏」，弹到视口外去。
+        目标名的 tab 组菜单同一个道理。
       */}
+      {goalMenu && (
+        <GoalGroupsMenu
+          menu={goalMenu}
+          groups={tabGroups}
+          onPick={(goalId) => {
+            onSwitchGoalGroup(goalId)
+            setGoalMenu(null)
+          }}
+          onClose={() => setGoalMenu(null)}
+        />
+      )}
       {themeMenu && (
         <ThemeMenu
           menu={themeMenu}
@@ -300,8 +344,68 @@ function ThemeMenu({
   )
 }
 
-/* ---------- 文档列里的节点提示 / 空态 ---------- */
+/**
+ * 顶栏目标名的下拉菜单：**存活的 tab 组**列表，点一行切过去。
+ *
+ * 「存活」= 这个目标的页签此刻真的有实体留在文档区里（看得见的那几枚 + 切走时收起来
+ * 的那几枚都算）。空组（还没开过 / 全关光了）不在这里出现——那种目标从侧栏切就行；
+ * 这里回答的是「我刚才那几个目标分别开着什么，一按切回去」。行尾的数字是那一组的页签数，
+ * 当前所在的一组带勾。菜单与主题菜单同一套开合与夹取（见 useDismissOn / useClampToViewport）。
+ */
+function GoalGroupsMenu({
+  menu,
+  groups,
+  onPick,
+  onClose,
+}: {
+  menu: { x: number; y: number }
+  groups: Array<{ goalId: string; title: string; count: number; current: boolean }>
+  onPick: (goalId: string) => void
+  onClose: () => void
+}) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  useDismissOn({ onClose })
+  useClampToViewport(ref, menu)
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      onMouseDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }}
+      className="moji-in-soft fixed z-[70] min-w-[220px] max-w-[330px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+    >
+      <div className="px-2.5 py-1 text-[10.5px] text-ink-faint">{t('目标页签组（点一行切过去）')}</div>
+      {groups.length ? (
+        groups.map((g) => (
+          <button
+            key={g.goalId}
+            type="button"
+            role="menuitem"
+            onClick={() => onPick(g.goalId)}
+            className={
+              'flex w-full items-center gap-2 rounded-md py-1.5 pl-2 pr-2.5 text-left text-[12px] transition hover:bg-line/60 ' +
+              (g.current ? 'font-medium text-ink-strong' : 'text-ink')
+            }
+          >
+            <Bullseye size={12} className={'shrink-0 ' + (g.current ? 'text-seal' : 'text-ink-faint')} />
+            <span className="min-w-0 flex-1 truncate">{g.title}</span>
+            <span className="shrink-0 font-mono text-[10.5px] text-ink-faint">{g.count}</span>
+            {g.current && <Check size={12} className="shrink-0 text-seal" />}
+          </button>
+        ))
+      ) : (
+        <div className="px-2.5 py-2 text-[11px] leading-relaxed text-ink-faint">
+          {t('还没有存活的页签组：切到某个目标，开一份文档就会出现在这里')}
+        </div>
+      )}
+    </div>
+  )
+}
 
+/* ---------- 文档列里的节点提示 / 空态 ---------- */
 
 /**
  * 节点关系提示：还差哪些前置没掌握。
@@ -320,106 +424,188 @@ export function NodeHints(_props: { node?: KnowledgeNode; store?: LearnStore }) 
 }
 
 /**
- * 一个页签都没有时的文档区。
+ * 一个页签都没有时的文档区，同时也是「新页签」开出来的那一页（空白页签）。
  *
  * 页签是可以全部关掉的（右键菜单里就有「全部关闭」），那时给一句话说清去哪儿找东西，
  * 而不是留一片白——空白面板看起来像坏了。
  *
- * 它**没有卡片外壳**（用户定的）：原先这一块是 `rounded-2xl border bg-card/40 shadow-xs`
- * 围出来的一张卡片，可它底下本来就是空的——一层底色加一道边框，只把「这里什么都没有」
- * 又说了一遍，还把画布（粒子背景）挡掉一块。现在只剩图标、标题、三个入口与那行提示，
- * 直接落在背景上。
+ * 它**没有卡片外壳**（用户定的）：它是画布上的落墨处，不是一张浮起来的卡片。
+ * 版式按设计稿定的四条：
+ * - 整体**上移**（不再垂直居中），从上方一块留白起步；
+ * - 顶部是**应用标志**：不带徽章边框与底色，就是 logo 本身；
+ * - 三个快捷入口的图标**加大、去掉边框与背景**，悬停反馈落在图标与文字的颜色上；
+ * - 底部并排两栏：**收藏**与**最近打开**（原资源管理器侧栏的「最近打开」区挪到这里，
+ *   见 learn/recents）；两栏都空时各自给一句「去哪儿攒」的说明。
+ *
+ * 数据与回调全部由 props 传入（收藏、最近打开、三个入口、拖拽提示），组件自己不读 store。
  */
 export function EmptyDoc({
   onPickLocal,
   onOpenWeb,
   onNewGoal,
+  favorites = [],
+  favoriteTitleOf,
+  onOpenFavorite,
+  recents = [],
+  onOpenRecent,
 }: {
   onPickLocal: () => void
   onOpenWeb?: () => void
   onNewGoal?: () => void
+  /** 收藏栏的数据：store.favorites（按收藏时间倒序展示，见下） */
+  favorites?: FavoriteItem[]
+  /** 收藏行的标题（节点名 / 考试名要现查，与侧栏收藏区共用一份） */
+  favoriteTitleOf?: (ref: FavoriteRef) => string
+  onOpenFavorite?: (ref: FavoriteRef) => void
+  /** 最近打开栏的数据：recentOpens(store) 的那一份 */
+  recents?: RecentOpen[]
+  onOpenRecent?: (item: RecentOpen) => void
 }) {
+  /** 那一列相对时间（「刚刚」→「3 分钟前」）要跟着真实时间走：时钟只订在这一页上 */
+  const now = useClock(30_000)
+  /** 收藏按收藏时间倒序：这一栏是「快速入口」，刚收进来的排前面 */
+  const favs = useMemo(() => [...favorites].sort((a, b) => b.at - a.at), [favorites])
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-6 text-center select-none animate-in fade-in duration-300">
-      <div className="flex w-full max-w-[520px] flex-col items-center p-7">
-        {/* 印章/图章风格图标徽标 */}
-        <div className="relative mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-seal/25 bg-seal/[0.06] text-seal shadow-inner">
-          <BookOpen size={24} className="stroke-[1.75]" />
-          <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-seal text-[9px] font-bold text-white shadow-xs">
-            墨
-          </span>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto p-6 text-center select-none animate-in fade-in duration-300">
+      {/* 整体上移：从上方一块留白（8vh）起步，不再垂直居中 */}
+      <div className="flex w-full max-w-[560px] flex-col items-center pt-[8vh] pb-10">
+        {/* 应用标志：不带边框与底色，就是 logo 本身 */}
+        <Logo size={52} />
 
         {/* 标题与副标题 */}
-        <h3 className="text-[16px] font-medium tracking-wide text-ink-strong">
+        <h3 className="mt-4 text-[16px] font-medium tracking-wide text-ink-strong">
           {t('书卷未启 · 随思落墨')}
         </h3>
-        <p className="mt-1.5 max-w-[380px] text-[12px] leading-relaxed text-ink-soft">
+        <p className="mt-1.5 max-w-[400px] text-[12px] leading-relaxed text-ink-soft">
           {t('点选左侧目录知识点开启研读，或通过下方快捷入口探索文件与网络。')}
         </p>
 
-        {/* 快捷操作卡片组 */}
-        <div className="mt-6 grid w-full grid-cols-1 gap-2.5 sm:grid-cols-3">
-          <button
-            type="button"
+        {/* 快捷操作组：图标加大、去掉边框与背景，悬停反馈落在图标与文字上 */}
+        <div className="mt-8 grid w-full grid-cols-1 gap-3 sm:grid-cols-3">
+          <QuickEntry
+            icon={<FolderOpen size={22} className="stroke-[1.75]" />}
+            label={t('打开本地文件')}
+            hint={t('Markdown / TXT / 代码')}
             onClick={onPickLocal}
-            className="group flex flex-col items-center rounded-xl border border-line bg-card/70 p-3.5 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-seal/40 hover:bg-card hover:shadow-xs focus-visible:ring-2 focus-visible:ring-seal/50"
-          >
-            <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg border border-line/60 bg-paper/60 text-ink-soft transition-colors group-hover:border-seal/30 group-hover:bg-seal/10 group-hover:text-seal">
-              <FolderOpen size={17} />
-            </div>
-            <span className="text-[12.5px] font-medium text-ink group-hover:text-seal-deep">
-              {t('打开本地文件')}
-            </span>
-            <span className="mt-0.5 text-[10.5px] text-ink-faint">
-              {t('Markdown / TXT / 代码')}
-            </span>
-          </button>
-
+          />
           {onOpenWeb && (
-            <button
-              type="button"
+            <QuickEntry
+              icon={<Globe size={22} className="stroke-[1.75]" />}
+              label={t('浏览网络网页')}
+              hint={t('双链速记与知识批注')}
               onClick={onOpenWeb}
-              className="group flex flex-col items-center rounded-xl border border-line bg-card/70 p-3.5 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-seal/40 hover:bg-card hover:shadow-xs focus-visible:ring-2 focus-visible:ring-seal/50"
-            >
-              <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg border border-line/60 bg-paper/60 text-ink-soft transition-colors group-hover:border-seal/30 group-hover:bg-seal/10 group-hover:text-seal">
-                <Globe size={17} />
-              </div>
-              <span className="text-[12.5px] font-medium text-ink group-hover:text-seal-deep">
-                {t('浏览网络网页')}
-              </span>
-              <span className="mt-0.5 text-[10.5px] text-ink-faint">
-                {t('双链速记与知识批注')}
-              </span>
-            </button>
+            />
           )}
-
           {onNewGoal && (
-            <button
-              type="button"
+            <QuickEntry
+              icon={<Compass size={22} className="stroke-[1.75]" />}
+              label={t('新建学习目标')}
+              hint={t('AI 生成体系化知识树')}
               onClick={onNewGoal}
-              className="group flex flex-col items-center rounded-xl border border-line bg-card/70 p-3.5 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-seal/40 hover:bg-card hover:shadow-xs focus-visible:ring-2 focus-visible:ring-seal/50"
-            >
-              <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg border border-line/60 bg-paper/60 text-ink-soft transition-colors group-hover:border-seal/30 group-hover:bg-seal/10 group-hover:text-seal">
-                <Compass size={17} />
-              </div>
-              <span className="text-[12.5px] font-medium text-ink group-hover:text-seal-deep">
-                {t('新建学习目标')}
-              </span>
-              <span className="mt-0.5 text-[10.5px] text-ink-faint">
-                {t('AI 生成体系化知识树')}
-              </span>
-            </button>
+            />
           )}
         </div>
 
+        {/* 最近打开 / 收藏 两栏（用户定的：原侧栏的「最近打开」区挪到空白页上，栏序左近右收） */}
+        <div className="mt-8 grid w-full grid-cols-1 gap-x-8 gap-y-5 text-left sm:grid-cols-2">
+          <BlankColumn title={t('最近打开')} icon={<History size={12} />}>
+            {recents.length ? (
+              <div className="max-h-[196px] overflow-y-auto">
+                {recents.map((item) => (
+                  <RecentRow
+                    key={item.kind + ':' + item.id}
+                    item={item}
+                    now={now}
+                    onOpen={() => onOpenRecent?.(item)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <BlankColumnEmpty text={t('还没有最近打开：读过的文档会记在这里')} />
+            )}
+          </BlankColumn>
+          <BlankColumn title={t('收藏')} icon={<Star size={12} />}>
+            {favs.length ? (
+              <div className="max-h-[196px] overflow-y-auto">
+                {favs.map((f) => (
+                  <FavoriteRow
+                    key={favoriteKey(f)}
+                    item={f}
+                    title={favoriteTitleOf ? favoriteTitleOf(f) : ''}
+                    onOpen={onOpenFavorite ? () => onOpenFavorite(f) : undefined}
+                  />
+                ))}
+              </div>
+            ) : (
+              <BlankColumnEmpty text={t('还没有收藏：在页签上右键即可收藏文档与网页')} />
+            )}
+          </BlankColumn>
+        </div>
+
         {/* 底部拖拽与快捷操作提示 */}
-        <div className="mt-5 flex items-center gap-1.5 text-[11px] text-ink-faint">
+        <div className="mt-6 flex items-center gap-1.5 text-[11px] text-ink-faint">
           <Sparkles size={11} className="text-seal/70" />
           <span>{t('小提示：可直接拖动外部文档或图片至窗口中任意位置查看')}</span>
         </div>
       </div>
     </div>
+  )
+}
+
+/** 空白页上的快捷入口：图标加大、无边框无底色，悬停时图标与文字一起染上印章色 */
+function QuickEntry({ icon, label, hint, onClick }: { icon: ReactNode; label: string; hint: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex flex-col items-center gap-2 rounded-xl px-3 py-3.5 transition-colors duration-200 hover:bg-line/40 focus-visible:ring-2 focus-visible:ring-seal/50"
+    >
+      <span className="text-ink-soft transition-colors group-hover:text-seal">{icon}</span>
+      <span className="text-[12.5px] font-medium text-ink transition-colors group-hover:text-seal-deep">{label}</span>
+      <span className="text-[10.5px] text-ink-faint">{hint}</span>
+    </button>
+  )
+}
+
+/** 空白页底部两栏共同的骨架：一枚小图标 + 栏名 + 内容（或空态说明） */
+function BlankColumn({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
+  return (
+    <section className="min-w-0">
+      <div className="flex items-center gap-1.5 px-2 pb-1 text-ink-faint">
+        {icon}
+        <span className="text-[11px] font-medium">{title}</span>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+/** 栏空着时的一句话：说清「去哪儿攒」，而不是干摆一个空壳 */
+function BlankColumnEmpty({ text }: { text: string }) {
+  return <div className="px-2 py-2 text-[11px] leading-relaxed text-ink-faint/80">{text}</div>
+}
+
+/**
+ * 收藏一行的紧凑版：侧栏 FavRow 的轻装（这里不打右键菜单、不拖拽，点一下就开）。
+ * 图示与侧栏同一套：网页用站点图标，其余类型用类型图标——同一个东西在哪儿都长一样。
+ */
+function FavoriteRow({ item, title, onOpen }: { item: FavoriteItem; title: string; onOpen?: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={item.kind === 'web' ? item.url : item.kind === 'local' ? item.path : title}
+      className="flex w-full items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1.5 text-left transition hover:bg-line/40"
+    >
+      {item.kind === 'web' ? (
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+          <WebTabTypeIcon favicon={item.icon} size={13} />
+        </span>
+      ) : (
+        <DocTypeIcon kind={item.kind} size={13} />
+      )}
+      <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{title}</span>
+    </button>
   )
 }
 

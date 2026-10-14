@@ -45,6 +45,9 @@ export function refOwner(ref: TabRef, goalOfNode: (nodeId: string) => string | n
     case 'super':
     case 'outline':
     case 'exam':
+    // 工作区内部文件：跟着它的工作区所属节点的目标走——「项目挂载在目标节点下」这件事
+    // 在归属上就是这一行（打开过它的页签因此进那个目标的组，切走收起、切回还在）
+    case 'ws':
       return goalOfNode(ref.nodeId) ?? PUBLIC_OWNER
     // 记忆页签本身就是「一枚目标一份」的（见 tabs 的 `m:` + goalId），归属直接照抄
     case 'mind':

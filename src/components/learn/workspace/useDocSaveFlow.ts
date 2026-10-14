@@ -21,7 +21,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react'
-import { notesOf, type LearnStore, type LearnTab } from '../../../learn/types'
+import { notesOf, type LearnStore, type LearnTab, type TabRef } from '../../../learn/types'
 import { draftOf, dropDraft, dropDrafts, putDraft, stageDraft } from '../../../learn/drafts'
 import {
   closeTabs,
@@ -33,26 +33,40 @@ import {
 import {
   PUBLIC_OWNER,
   allTabs,
-  closeIds,
   closeIn,
   dropTabs,
   findTab,
   focusedGroup,
   focusedTab,
-  goalTabsOf,
   groupOf,
   ownerOfTab,
   servesGoal,
+  unloadAnchoredGroups,
   withOwners,
-  withParked,
 } from '../../../learn/groups'
 import { nodeById, updateDoc, writeNote } from '../../../learn/graph'
 import { findNote } from '../../../learn/notes'
 import { readSuperDoc, writeSuperDoc } from '../../../learn/superdocs'
 import { writeLocalFile } from '../../../lib/localFiles'
+import { diskPathKey, userAbsPath, writeUserText } from '../../../lib/storage'
+import { wsRelOfTab } from '../../../learn/workspace'
 import { native } from '../../../lib/native'
 import { savedTextOf } from './labels'
 import { t } from '../../../i18n'
+
+/**
+ * 一枚页签指向的**磁盘绝对路径**：本地外部文件 = 它自己的 path；工作区内部文件 = 从节点
+ * 工作区现推再换算（节点改名跟着走）。冲突记录、外部监听与保存写回都按这个键对齐；
+ * 两类之外的页签（节点文档等）没有磁盘路径，返回 null。
+ */
+function diskPathOf(store: LearnStore, ref: TabRef): string | null {
+  if (ref.kind === 'local') return ref.path
+  if (ref.kind === 'ws') {
+    const rel = wsRelOfTab(store, ref)
+    return rel ? userAbsPath(rel) : null
+  }
+  return null
+}
 
 /** 宿主交给这一套流程的能力与现成的派生值（见 useDocSaveFlow 的参数说明） */
 export interface DocSaveFlowDeps {
@@ -150,12 +164,13 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
    */
   const localConflicts = useMemo(() => {
     const out: Record<string, true> = {}
+    const s = getLatest()
     for (const p of Object.keys(rawConflicts)) {
-      const tab = tabs.find((t) => t.ref.kind === 'local' && t.ref.path === p)
+      const tab = tabs.find((t) => diskPathOf(s, t.ref) === p)
       if (tab && drafts[tab.id] !== undefined) out[p] = true
     }
     return out
-  }, [rawConflicts, tabs, drafts])
+  }, [getLatest, rawConflicts, tabs, drafts])
 
   /**
    * 关闭动作的本体：closeIn 算落点（那一格收了或换了激活项）、节点与会话跟着新落点走。
@@ -168,6 +183,8 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       const s = getLatest()
       const beforeTabs = allTabs(s.docArea)
       const goalOfNode = (nodeId: string) => nodeById(s, nodeId)?.goalId ?? null
+      /** 「目标 → 根节点」：组锚判据的第二跳（见 groups/tabs 的 isAnchorOutline） */
+      const rootOf = (goalId: string) => s.goals.find((g) => g.id === goalId)?.rootNodeId ?? null
       /*
        * 落点只在「栏上看得见」的页签里挑，判据与页签栏同一套（见 groups/goals 的 visibleTabs）：
        * 页签实体全住在格子里、栏上只画「公共 + 当前目标」，物理顺序里因此躺着别的目标
@@ -181,34 +198,23 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       }
       const docArea0 = closeIn(s.docArea, group, id, mode, closingIds, preferVisible)
       /*
+       * 组锚卸载（见 groups/tabs 的 unloadAnchoredGroups）：这一批里被关掉的若是
+       * **目标根节点的大纲**（组锚），该目标名下还开着的页签一并收进停靠场，等锚再开时
+       * 归队。被关掉的若是**阶段大纲**（某个子节点的大纲入口），这里什么都不做——
+       * 它只是一枚普通页签。「从别处打开文档 → 关掉另一枚大纲 → 那份文档被弹走」
+       * 正是旧判据（凡是 outline 都算锚）的事故现场。目标已经不在了（连树一起删的）
+       * 也不停靠：那组页签本来就该陪葬。
+       */
+      let docArea1 = unloadAnchoredGroups(docArea0, beforeTabs, goalOfNode, rootOf)
+      /*
        * 归属表跟着页签一起收：页签关掉了，它在这一格（以及任何一格）的条目都不该留着。
        * 不主动收也不会出错（reconcileOwners 会在下次读盘时扫掉），但那样 state.json 里
        * 会攒下一串指向空处的 id，切到那个目标时才发现——不如关的这一下就顺手清掉。
+       * （停靠进停靠场的那几枚由 unloadAnchoredGroups 里面收，不在这里。）
        */
       const live = new Set(allTabs(docArea0).map((t) => t.id))
       const goneIds = beforeTabs.filter((t) => !live.has(t.id)).map((t) => t.id)
-      /*
-       * 大纲页是目标页签组的**锚**（见 groups/tabs 的 openOutlineTab）：它被关掉，
-       * 整组就算卸载——该目标名下还开着的页签一并收进停靠场 parkedTabs（页签对象
-       * 原样保存，打开大纲时归队）。目标已经不在了（连树一起删的）就不停靠：
-       * 那组页签本来就该陪葬。
-       */
-      let docArea1 = docArea0
-      let parkedNext: Record<string, LearnTab[]> | null = null
-      const parkedIds: string[] = []
-      for (const dead of beforeTabs) {
-        if (live.has(dead.id) || dead.ref.kind !== 'outline') continue
-        const deadGoal = goalOfNode(dead.ref.nodeId)
-        if (!deadGoal) continue
-        const victims = goalTabsOf(docArea1.tabOwners, allTabs(docArea1), goalOfNode, deadGoal)
-        if (!victims.length) continue
-        parkedNext = { ...(parkedNext ?? docArea0.parkedTabs ?? {}), [deadGoal]: victims }
-        for (const v of victims) parkedIds.push(v.id)
-        docArea1 = closeIds(docArea1, victims.map((v) => v.id))
-      }
-      const allGone = parkedIds.length > 0 ? [...goneIds, ...parkedIds] : goneIds
-      let docArea = allGone.length > 0 ? withOwners(docArea1, dropTabs(docArea1.tabOwners, allGone)) : docArea1
-      if (parkedNext) docArea = withParked(docArea, parkedNext)
+      const docArea = goneIds.length > 0 ? withOwners(docArea1, dropTabs(docArea1.tabOwners, goneIds)) : docArea1
       const landing = focusedGroup(docArea)
       const nextRef = landing.tabs.find((t) => t.id === landing.active)?.ref ?? null
       /*
@@ -285,21 +291,23 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
     (tabId: string, content: string) => {
       const s = getLatest()
       const tab = findTab(s.docArea, tabId)
-      // 本地文件、试卷副本与大纲页都没有「暂存」这回事：一个自己管落盘，一个只读，一个不是文档
-      if (!tab || tab.ref.kind === 'local' || tab.ref.kind === 'exam' || tab.ref.kind === 'outline') return
+      // 本地文件、工作区内部文件（各自在 LocalDoc 里走 stageLocalDraft）、试卷副本与
+      // 大纲页都没有「节点文档」那套暂存：一个自己管落盘，一个只读，一个不是文档
+      if (!tab || tab.ref.kind === 'local' || tab.ref.kind === 'ws' || tab.ref.kind === 'exam' || tab.ref.kind === 'outline') return
       set({ ...s, drafts: stageDraft(s.drafts, tab.id, content, savedTextOf(s, tab.ref)) })
     },
     [getLatest, set],
   )
 
   /**
-   * 本地文件的暂存（见 LocalDoc）：它自己知道磁盘上那一份是什么，改回去时传 null。
+   * 本地文件 / 工作区内部文件的暂存（见 LocalDoc）：它自己知道磁盘上那一份是什么，
+   * 改回去时传 null。
    */
   const stageLocalDraft = useCallback(
     (tabId: string, text: string | null) => {
       const s = getLatest()
       const tab = findTab(s.docArea, tabId)
-      if (!tab || tab.ref.kind !== 'local') return
+      if (!tab || (tab.ref.kind !== 'local' && tab.ref.kind !== 'ws')) return
       set({ ...s, drafts: text === null ? dropDraft(s.drafts, tab.id) : putDraft(s.drafts, tab.id, text) })
     },
     [getLatest, set],
@@ -333,22 +341,39 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         return null
       const title = tabTitle(tab.ref, (nid) => nodeById(s, nid)?.title, examTabTitle)
       setDocSaving(true)
-      if (tab.ref.kind === 'local') {
-        // 属性收窄穿不进下面的回调：先把路径提取出来（见 saveTab 其余分支的同款处理）
-        const localPath = tab.ref.path
-        const err = await writeLocalFile(localPath, text)
+      if (tab.ref.kind === 'local' || tab.ref.kind === 'ws') {
+        /*
+         * 本地外部文件与工作区内部文件同一条保存路，差别只在**写回哪条通道**：
+         * - 外部文件走 local 通道（它就是用户挑的那份任意文件）；
+         * - 内部文件在数据目录里，走 storage 的受守通道（写「相对当前用户」的路径），
+         *   这也正是「不能当外部文件看」在落盘这一层的体现。
+         * 属性收窄穿不进下面的回调：先把两样都提取出来（与其它分支同款处理）。
+         */
+        const ref = tab.ref
+        const rel = ref.kind === 'ws' ? wsRelOfTab(s, ref) : null
+        const diskPath = ref.kind === 'local' ? ref.path : rel ? userAbsPath(rel) : null
+        if (!diskPath) {
+          setDocSaving(false)
+          return t('「{0}」已经不在了，没能保存', title)
+        }
+        const err =
+          ref.kind === 'local'
+            ? await writeLocalFile(diskPath, text)
+            : (await writeUserText(rel as string, text))
+              ? null
+              : t('写入失败')
         if (err) {
           setDocSaving(false)
           setDocSaveError(err)
           return t('保存「{0}」失败：{1}', title, err)
         }
         setDocSaveError(undefined)
-        setLocalSaved({ path: localPath, text })
+        setLocalSaved({ path: diskPath, text })
         // 存成了，外部改动已被这一版盖过：冲突标记撤掉
         setRawConflicts((m) => {
-          if (!m[localPath]) return m
+          if (!m[diskPath]) return m
           const next = { ...m }
-          delete next[localPath]
+          delete next[diskPath]
           return next
         })
         set({ ...s, drafts: dropDraft(s.drafts, tab.id) })
@@ -408,8 +433,9 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       onToast(t('已是最新，没有未保存的改动'))
       return
     }
-    if (tab.ref.kind === 'local' && localConflicts[tab.ref.path]) {
-      setPendingConflict({ path: tab.ref.path, tabId: tab.id, phase: 'save' })
+    const conflictPath = diskPathOf(s, tab.ref)
+    if (conflictPath && localConflicts[conflictPath]) {
+      setPendingConflict({ path: conflictPath, tabId: tab.id, phase: 'save' })
       return
     }
     const err = await saveTab(tab)
@@ -440,9 +466,10 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         const tab = findTab(s.docArea, rest[idx])
         rest = rest.slice(idx + 1)
         if (!tab) continue
-        if (tab.ref.kind === 'local' && conflictsRef.current[tab.ref.path]) {
+        const conflictPath = diskPathOf(s, tab.ref)
+        if (conflictPath && conflictsRef.current[conflictPath]) {
           setPendingConflict({
-            path: tab.ref.path,
+            path: conflictPath,
             tabId: tab.id,
             phase: 'close',
             rest,
@@ -479,10 +506,11 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
     setPendingClose(null)
     const s = getLatest()
     set({ ...s, drafts: dropDrafts(s.drafts, p.dirtyIds) })
-    // 被放弃的本地文件：冲突标记一并作废——重开之后编辑器的基准就是磁盘上那一版
+    // 被放弃的本地 / 工作区内部文件：冲突标记一并作废——重开之后编辑器的基准就是磁盘上那一版
     const droppedPaths = p.dirtyIds.flatMap((tid) => {
       const tab = findTab(s.docArea, tid)
-      return tab && tab.ref.kind === 'local' ? [tab.ref.path] : []
+      const disk = tab ? diskPathOf(s, tab.ref) : null
+      return disk ? [disk] : []
     })
     if (droppedPaths.length) {
       setRawConflicts((m) => {
@@ -552,38 +580,52 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
 
   /**
    * 外部文件变了：应用里有没有暂存决定两件事——
-   * - 没暂存：外部就是新的「已保存版」，版本号 +1 让页签重挂重读，当场同步；
+   * - 没暂存：外部就是新的「已保存版」，版本号 +1 让页签重挂重读，当场同步（文件被外部
+   *   删掉时读到「读不到」，走既有的「提示 + 关页签」兜底，删除因此同样及时收场）；
    * - 有暂存：用户手上的版本不能被动覆盖，只记一个冲突标记，等他保存时再问覆盖还是另存。
+   *
+   * 路径要**归一着比**（diskPathKey）：主进程 watcher 报回来的是 path.join 的原生形
+   * （Windows 上全反斜杠），而工作区内部文件的路径是 userAbsPath 的混血形（反斜杠的根 +
+   * 斜杠的后半段）——直接相等永远对不上，「外部删掉文件、页签没反应」正是这么来的。
+   * 比中之后，下面所有的键（冲突标记 / 版本号 / 刚保存的正文）都用**这枚页签自己的路径
+   * 形式**（diskPathOf），与渲染那边（LocalDoc 的 key、savedText、localTicks 的查表）
+   * 才是同一套。
    */
   const handleLocalChange = useCallback(
     (p: string) => {
       const s = getLatest()
-      const tab = allTabs(s.docArea).find((t) => t.ref.kind === 'local' && t.ref.path === p)
+      const wanted = diskPathKey(p)
+      const tab = allTabs(s.docArea).find((t) => {
+        const dp = diskPathOf(s, t.ref)
+        return dp !== null && diskPathKey(dp) === wanted
+      })
       if (!tab) return
+      const key = diskPathOf(s, tab.ref)
+      if (!key) return
       if (s.drafts[tab.id] !== undefined) {
-        if (!conflictsRef.current[p]) {
+        if (!conflictsRef.current[key]) {
           // ref 先行（事件处理里写 ref 不违反渲染纪律）：同一次外部保存连发的两拍只提醒一次
-          conflictsRef.current = { ...conflictsRef.current, [p]: true }
-          onToast(t('「{0}」在外部被改动过；保存时会请你选覆盖还是另存', localFileNameOf(p)))
+          conflictsRef.current = { ...conflictsRef.current, [key]: true }
+          onToast(t('「{0}」在外部被改动过；保存时会请你选覆盖还是另存', localFileNameOf(key)))
         }
-        setRawConflicts((m) => (m[p] ? m : { ...m, [p]: true }))
+        setRawConflicts((m) => (m[key] ? m : { ...m, [key]: true }))
         return
       }
       // 保存后残留的「刚保存的正文」要撤掉：它比磁盘上这份旧，留着会在重挂后盖住新内容。
       // 冲突标记也一并作废：重挂之后编辑器的基准就是磁盘上这一版，旧的「外部改过」不再成立。
-      setLocalSaved((cur) => (cur?.path === p ? null : cur))
+      setLocalSaved((cur) => (cur?.path === key ? null : cur))
       setRawConflicts((m) => {
-        if (!m[p]) return m
+        if (!m[key]) return m
         const next = { ...m }
-        delete next[p]
+        delete next[key]
         return next
       })
-      if (conflictsRef.current[p]) {
+      if (conflictsRef.current[key]) {
         const nextRef = { ...conflictsRef.current }
-        delete nextRef[p]
+        delete nextRef[key]
         conflictsRef.current = nextRef
       }
-      setLocalTicks((m) => ({ ...m, [p]: (m[p] ?? 0) + 1 }))
+      setLocalTicks((m) => ({ ...m, [key]: (m[key] ?? 0) + 1 }))
       // setLocalSaved 是宿主 useState 的 dispatch（身份稳定）：列进来只为过 exhaustive-deps，不改行为
     },
     [getLatest, onToast, setLocalSaved],
@@ -593,10 +635,16 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
     localChangeRef.current = handleLocalChange
   })
 
-  /** 开着的本地文件页签：这就是主进程要盯的文件清单（关掉页签就不再盯） */
+  /** 开着的本地 / 工作区内部文件页签：这就是主进程要盯的文件清单（关掉页签就不再盯） */
   const openLocalPaths = useMemo(
-    () => tabs.flatMap((t) => (t.ref.kind === 'local' ? [t.ref.path] : [])),
-    [tabs],
+    () => {
+      const s = getLatest()
+      return tabs.flatMap((t) => {
+        const p = diskPathOf(s, t.ref)
+        return p ? [p] : []
+      })
+    },
+    [getLatest, tabs],
   )
   useEffect(() => {
     let off: (() => void) | undefined

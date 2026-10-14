@@ -152,6 +152,20 @@ export const PROMPT_MODULES: PromptModule[] = [
   它是一份材料，不是你的结论。抓之前先想清楚要找什么，别一个接一个地抓。`,
   },
   {
+    key: 'mcp',
+    title: 'MCP 外部服务',
+    text: `外部 MCP 服务（Model Context Protocol——用户配置的真实外部工具）——这份规范在你第一次调用 mcp.* 时注入：
+- api.mcp.list()：已启用的服务与各自缓存的工具清单（id、名称、传输、状态）。要调外部工具**先看它**；
+  服务按 id 或名称指名都认（名称撞重时用 id）。
+- api.mcp.discover(server?)：现场探测最新工具清单（SSE 服务实时请求，可能要等几秒；省略 = 探全部已启用服务）。
+  清单为空、或某个工具报「不存在」时用它刷新；单独探一个失败即失败，全量探查在 servers 里逐服务回报。
+- api.mcp.call(server, tool, args?)：调用一个工具。**参数按该工具公布在 list / discover 里的说明给**——
+  拿不准就先看工具的 description，不要猜。返回服务端的文本结果；失败不抛异常（回 { ok:false }），
+  按值判断，不要用 try/catch。
+- 这些是真实外部系统（数据库、文件、网页服务……）：**写操作与不可逆动作先 api.ask 确认**；
+  一次编排里把 list → call 的链路写完，中间结果不要写进对话。`,
+  },
+  {
     key: 'res',
     title: '资源库',
     text: `目标资源库已收敛为真实文件系统：
@@ -521,6 +535,7 @@ const GROUP_MODULE: Record<string, string> = {
   sdoc: 'sdoc',
   browser: 'browser',
   web: 'web',
+  mcp: 'mcp',
   res: 'res',
   exam: 'exam',
   reading: 'learning-process',

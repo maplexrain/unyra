@@ -60,6 +60,8 @@ export function tabKey(ref: TabRef): string {
   if (ref.kind === 'super') return 's:' + ref.nodeId + ':' + ref.name
   if (ref.kind === 'exam') return 'e:' + ref.examId + ':' + ref.attemptId
   if (ref.kind === 'outline') return 'o:' + ref.nodeId
+  // 工作区内部文件：节点 + 「相对工作区目录」的路径段（目录改名不影响它，见 types 的 ws 分支）
+  if (ref.kind === 'ws') return 'ws:' + ref.nodeId + ':' + ref.seg
   // 网页按**开签那一刻生成的 key**（而不是网址）认身份：同一个网址可以开两枚，起始页也不冲突
   if (ref.kind === 'web') return 'w:' + ref.key
   // 守卫上下文全局只有一份（当前那次严格专注的会话）；报告按报告 id 一份一签
@@ -90,7 +92,7 @@ export function makeBlankTab(at = Date.now()): LearnTab {
   return makeTab({ kind: 'blank', key: newBlankKey() }, at)
 }
 
-/** 页签挂在哪个节点上；本地文件、网页、守卫、报告、设置与用量页都不属于任何节点 */
+/** 页签挂在哪个节点上；本地文件、网页、守卫、报告、设置与用量页都不属于任何节点（工作区内部文件挂在它的节点上） */
 export function tabNodeId(ref: TabRef): string | null {
   return ref.kind === 'local' ||
     ref.kind === 'web' ||
@@ -115,8 +117,15 @@ export function tabNodeId(ref: TabRef): string | null {
 export function tabIdNodeId(id: string): string | null {
   // e: 开头的试卷副本不带 nodeId（它由 examId 决定归属），所以这里也返回 null——
   // 暂存区按它判断「这个页签指向的节点还在不在」，而试卷副本本来就没有暂存这回事
-  if (!id.startsWith('t:') && !id.startsWith('n:') && !id.startsWith('s:') && !id.startsWith('o:')) return null
-  const rest = id.slice(2)
+  if (
+    !id.startsWith('t:') &&
+    !id.startsWith('n:') &&
+    !id.startsWith('s:') &&
+    !id.startsWith('o:') &&
+    !id.startsWith('ws:')
+  )
+    return null
+  const rest = id.slice(id.startsWith('ws:') ? 3 : 2)
   const cut = rest.indexOf(':')
   return cut < 0 ? rest : rest.slice(0, cut)
 }
@@ -160,6 +169,8 @@ export function tabTitle(
   if (ref.kind === 'agentSettings') return t('超级导师设置')
   if (ref.kind === 'newGoal') return t('新建目标')
   if (ref.kind === 'blank') return t('新页签')
+  // 工作区内部文件：显示文件名（相对段可能带几层目录）
+  if (ref.kind === 'ws') return fileNameOf(ref.seg)
   return ref.title || fileNameOf(ref.path)
 }
 
@@ -196,6 +207,11 @@ export function tabTrail(
     const i = Math.max(ref.path.lastIndexOf('/'), ref.path.lastIndexOf('\\'))
     return i > 0 ? ref.path.slice(0, i) : ''
   }
+  // 工作区内部文件：后缀是它在工作区里的目录（`项目A/src`）——两个项目各有一个 README.md 时靠它分
+  if (ref.kind === 'ws') {
+    const i = ref.seg.lastIndexOf('/')
+    return i > 0 ? ref.seg.slice(0, i) : ''
+  }
   return nodePath(ref.nodeId)
 }
 
@@ -213,11 +229,12 @@ export function tabTrail(
 export function viewOf(tab: LearnTab, empty = false): DocView {
   if (tab.view) return tab.view
   if (empty) return 'source'
-  if (tab.ref.kind === 'local') {
-    // 媒体文件：没有「源码」可看，直接进媒体预览
-    if (isMediaFile(tab.ref.path)) return 'media'
+  // 工作区内部文件与本地文件同一套默认：媒体进媒体预览、markdown 进预览、其余落到源码
+  if (tab.ref.kind === 'local' || tab.ref.kind === 'ws') {
+    const name = tab.ref.kind === 'local' ? tab.ref.path : tab.ref.seg
+    if (isMediaFile(name)) return 'media'
     // 需求口径：markdown 默认预览，**其余文本一律默认编辑**（html 也不例外）
-    return /\.(md|markdown)$/i.test(tab.ref.path) ? 'preview' : 'source'
+    return /\.(md|markdown)$/i.test(name) ? 'preview' : 'source'
   }
   return 'preview'
 }
@@ -247,9 +264,15 @@ export function tabIdsOfNode(tabs: LearnTab[], nodeId: string): string[] {
   return tabs.filter((t) => tabNodeId(t.ref) === nodeId).map((t) => t.id)
 }
 
-/** 判断一个页签是否为真正文档（教学文档、笔记、超级文档、外部文件文档） */
+/** 判断一个页签是否为真正文档（教学文档、笔记、超级文档、外部文件与工作区内部文件） */
 export function isDocumentTab(ref: TabRef): boolean {
-  return ref.kind === 'teach' || ref.kind === 'note' || ref.kind === 'super' || ref.kind === 'local'
+  return (
+    ref.kind === 'teach' ||
+    ref.kind === 'note' ||
+    ref.kind === 'super' ||
+    ref.kind === 'local' ||
+    ref.kind === 'ws'
+  )
 }
 
 /** 右键菜单里的关闭方式 */

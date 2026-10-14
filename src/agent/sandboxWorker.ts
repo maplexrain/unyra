@@ -62,6 +62,10 @@ const API_NAMES = [
   'browser.scroll',
   // 等条件成立（selector/text/urlIncludes/networkIdle/load）——「wait 再取还是空」循环的替代品
   'browser.waitFor',
+  // 外部 MCP 服务：用户配置的真实外部工具（列服务 / 现场探测 / 调用；见 agent/mcp/ops）
+  'mcp.list',
+  'mcp.discover',
+  'mcp.call',
   // 子代理管理（导师专用）：并发派出、后台跑、wait 收交付。子代理的 apiAllow 白名单
   // 里永远没有这一组——不递归在通道口硬挡（实现见 agent/subagent/manager）
   'subagent.create',

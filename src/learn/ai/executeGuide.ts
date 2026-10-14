@@ -106,13 +106,14 @@ export const EXECUTE_GUIDE = `唯一的工具是 execute(description, body)：
 - doc-html：教学文档以 HTML + Tailwind 工具类排版（两栏、提示框、时间轴、手绘 SVG 图表配方），写教学文档时自动注入。
 - browser.*：内置浏览器交互（snapshot / text / dom 控制、fetch 直发与控制台日志）。
 - web.*：网页抓取与搜索（web.webFetch 抓取生成 uuid / web.read 按节读长文 / web.search 多引擎搜索）。
+- mcp.*：外部 MCP 服务（用户配置的真实工具：mcp.list 看服务与工具 / mcp.discover 现场探测 / mcp.call 调用）。
 - method.*：目标级持久化函数源码库（method.list / method.create / method.delete / method.call）。
 - code.*：伪编译保存（code.save / code.silent）。
 - compact：上下文压缩与交接摘要（api.compact）。
 - subagent.*：子代理并发派活（subagent.create/run/wait，处理长文档通读与繁重检索）。
 - wf.invoke：工作流异步触发与转派。
 - ui.*：界面滚动、截屏与交互控制。
-- help()：随时调用 api.help() 打印全部 16 组已开放的能力列表与签名。
+- help()：随时调用 api.help() 打印全部已开放的能力组清单与签名。
 - plot-forms：函数图像高级形态（极坐标、参数方程、散点、隐函数）。
 - rich-animation：SVG 与 CSS 动画设计规范。
 

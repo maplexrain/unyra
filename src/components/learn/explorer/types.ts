@@ -22,6 +22,11 @@ export interface NodeDocActions {
   onReplanOutline: (nodeId: string) => void
   /** 新建一份笔记并当场打开（名字由 learn/notes 分配，默认「笔记」，撞名加序号） */
   onNewNote: (nodeId: string) => void
+  /**
+   * 新建一个**项目**：在节点的工作区目录下开一层目录（真实落盘，落完进就地改名）。
+   * 项目挂载在目标节点下（资源管理器里展开目标就能看到），里面的文件都是内部文件。
+   */
+  onNewProject: (nodeId: string) => void
   /** 新增一份试卷：跑内置工作流「出卷」，导师会先问类型与难度 */
   onNewExam: (nodeId: string) => void
   /** 新建一份超级文档：跑内置工作流「超级实验室」 */
@@ -89,7 +94,12 @@ export interface NodeStateActions {
  * 'folder' 是**文档目录行**（笔记 / 试卷 / 超级文档三合一的收纳层），菜单上给三种「新建」。
  */
 export type MenuTarget =
-  | { kind: 'node'; node: KnowledgeNode }
+  /**
+   * 节点行。root = 它是**目标节点**（根节点）：目标行的菜单只有「打开大纲 / 新建项目 /
+   * 在资源管理器中打开 / 删除」——教学文档、导出、三样新建与学习状态都是**节点级**的动作，
+   * 目标级的东西由大纲页统一管（用户定的：目标节点菜单删掉那六项）。
+   */
+  | { kind: 'node'; node: KnowledgeNode; root?: boolean }
   | { kind: 'teach'; node: KnowledgeNode }
   | { kind: 'outline'; node: KnowledgeNode }
   | { kind: 'folder'; node: KnowledgeNode; folder: 'docs' }

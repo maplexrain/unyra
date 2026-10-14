@@ -500,6 +500,16 @@ export type TabRef =
   /** 磁盘上的外部文件（绝对路径） */
   | { kind: 'local'; path: string; title?: string }
   /**
+   * 工作区（项目）里的**内部文件**：nodeId 是它的工作区所属的节点（目标根节点就是
+   * `docs/{目标}/workspace/`），seg 是**相对那个工作区目录**的路径（如 `项目A/README.md`）。
+   *
+   * 为什么存相对段而不是完整磁盘路径：节点目录会随标题改名跟着搬（见 learn/workspace）——
+   * 存相对段，名字怎么改都还指得准。它与 local 的本质区别是**归属**：内部文件属于那个节点
+   * 的目标（见 groups/goals 的 refOwner），打开时先过它的组（openGroupedDoc），
+   * 跟着切目标收起 / 归队；外部文件不属于任何目标，也不进「本地文件」那套账。
+   */
+  | { kind: 'ws'; nodeId: string; seg: string }
+  /**
    * 内置浏览器的网页页签（<webview>，见 electron/app/webSession 与 components/learn/web）。
    * url 是**当前**地址——页面每次主框架导航都回写进来，重启回到离开时的那一页；
    * key 是开签那一刻生成的唯一身份（learn/tabs 的 newWebKey），导航不换：

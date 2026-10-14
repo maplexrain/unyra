@@ -734,6 +734,30 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     }, log)
   }
 
+  // 外部 MCP 服务（mcp.*，见 agent/mcp/ops）：用户配置的真实外部工具。
+  // MCP 总开关关着就没有这一组——与旧做法「关闭时不注入任何 MCP 工具」同一口径。
+  if (opts.mcp) {
+    const mcp = opts.mcp
+    wrapApi(api, 'mcp.list', () => mcp.list(), log)
+    wrapApi(
+      api,
+      'mcp.discover',
+      (args) => mcp.discover(args.length ? asText(args[0]).trim() || undefined : undefined),
+      log,
+    )
+    wrapApi(api, 'mcp.call', (args) => {
+      const server = asText(args[0]).trim()
+      const tool = asText(args[1]).trim()
+      if (!server || !tool) {
+        return {
+          ok: false,
+          error: 'mcp.call 需要服务与工具名：mcp.call(服务, 工具, 参数对象?)——服务和工具名见 api.mcp.list()',
+        }
+      }
+      return mcp.call(server, tool, args[2])
+    }, log)
+  }
+
   // 学习者画像：get 回给模型看的那份（不含头像），update 是增量的（只写传进来的字段）
   if (opts.userInfo) {
     const userInfo = opts.userInfo
@@ -1246,14 +1270,15 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     return {
       ok: true,
       groups: [
-        'node', 'method', 'wf', 'code', 'web', 'browser',
+        'node', 'method', 'wf', 'code', 'web', 'browser', 'mcp',
         'subagent', 'compact', 'chip', 'wait', 'ask', 'tiktok',
         'ui', 'files', 'process', 'skill', 'log',
       ],
-      description: '当前沙箱提供 17 组核心能力。全量数据读写与状态管理已收敛为 files.*。',
+      description: '当前沙箱提供 18 组核心能力。全量数据读写与状态管理已收敛为 files.*。',
       files: 'api.files: read, write, edit, list, stat, mkdir, copy, move, delete（真实文件读写，相对路径默认解析到当前学习数据目录）',
       node: 'api.node: list, read, paths, create, title, rename, update, annotate, delete, move（节点结构管理）',
       browser: 'api.browser: open, tabs, activate, close, snapshot, point, dom, read, capture, logs, logDetail, fetch, waitFor, record, text, scroll（内置网页浏览器）',
+      mcp: 'api.mcp: list, discover, call（用户配置的外部 MCP 服务：先 list 看服务与工具，再 call 调用）',
       web: 'api.web: webFetch, read, search（网页抓取与多引擎搜索）',
       process: 'api.process: create, start, status, output, stop, list, get, delete（原生子进程管理）',
       skill: 'api.skill: list, read, run（专业技能库：发现与按需查阅规范，受控执行专属脚本）',

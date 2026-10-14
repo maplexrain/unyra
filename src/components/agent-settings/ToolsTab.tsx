@@ -619,7 +619,9 @@ export function ToolsTab({ settings, onChange, onOpenContextDebugger }: ToolsTab
                                   ? t('考试在场')
                                   : item.availability === 'subagent'
                                     ? t('导师专用')
-                                    : t('窗口界面')}
+                                    : item.availability === 'mcp'
+                                      ? t('已配置 MCP 时')
+                                      : t('窗口界面')}
                               </span>
                             )}
                           </div>

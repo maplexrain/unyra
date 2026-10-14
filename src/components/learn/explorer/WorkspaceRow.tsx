@@ -8,13 +8,19 @@
  * ——用户放进去的、导师用 workspace.write 写的、右键新建出来的，全部原样出现。
  * 目录挂载即列一次（行尾的数量标记不用展开就有），每层各自缓存自己的清单。
  *
+ * 清单的保鲜有两条路（见 explorer/wsChanges）：
+ * - 应用内动作（新建 / 改名 / 拖拽 / 新建项目）落盘后调 notifyWsChanged，列过的层各自重列；
+ * - 应用**外**的增删改名：展开着的层在主进程按目录挂着 fs.watch（见 electron/storage/ws），
+ *   一有动静推 ws:changed 回来摇同一声铃；收起过的层在**展开时**顺手重列一次补齐。
+ *
  * 右键菜单给**新建目录 / 新建文件 / 重命名**（IO 在 LearnWorkspace 的 wsActions 里，
  * 真实地落在磁盘上）；动完 notifyWsChanged()，展开过的目录听见就各自重列一遍。
  * 「工作区」根行不给改名：它的名字是布局定死的（nodeLayout 的分段 + workspace），
  * 磁盘上改了也会被下一次随标题的搬家改回来。
  *
- * 文件行点了在**页签里打开**（local 页签，解析不解析看后缀，见 learn/tabs 的 viewOf）；
- * 目录行点了展开 / 收起。两类行都可拖拽——拖到对话输入框变成 ws 引用（见 lib/chipSyntax），
+ * 文件行点了在**页签里打开**（内部文件页签 ws，属于这个节点的目标、打开时带着它的
+ * tab 组，见 learn/types 的 ws 分支与 groups/tabs 的 openGroupedDoc）；目录行点了
+ * 展开 / 收起。两类行都可拖拽——拖到对话输入框变成 ws 引用（见 lib/chipSyntax），
  * 拖到文档区页签栏直接开在这格里。
  */
 import { useEffect, useRef, useState } from 'react'
@@ -25,7 +31,7 @@ import { WS_MOVE_MIME, wsJoin, wsRelOf } from '../../../learn/workspace'
 import { Collapse, FolderRow, Indent } from './Folder'
 import { peekReveal, subscribeReveal } from './reveal'
 import { DocRow } from './DocRow'
-import { subscribeWsChanged } from './wsChanges'
+import { registerWsWatch, subscribeWsChanged } from './wsChanges'
 import type { MenuTarget, WsActions } from './types'
 import { t } from '../../../i18n'
 
@@ -122,12 +128,22 @@ function WsDir({
   const full = segments.length ? (wsJoin(base, segments) ?? base) : base
   // 改自己的名字要落回父目录：父目录的路径从 base + 去掉最后一段推出来
   const parentFull = segments.length > 1 ? (wsJoin(base, segments.slice(0, -1)) ?? base) : base
-  const toggle = () => setOpen((v) => !v)
+  /**
+   * 重新列这一层的把手（挂载、收到 wsChanged 的铃、**展开时**、定位广播叫开时都走它）：
+   * 收起的那段窗口不盯盘（见下面登记的 effect），展开时补一次——外部新加的文件不必
+   * 等广播就出现。写成 ref 是因为 toggle / 广播订阅都在列清单的 effect 之外。
+   */
+  const refreshRef = useRef<() => void>(() => {})
+  const toggle = () => {
+    if (!open) refreshRef.current()
+    setOpen((v) => !v)
+  }
   /*
    * 目录**挂载即列一次**（不再等展开才列）：行尾的数量标记是目录行的一部分——
    * 「里面有几份」要点开才知道，目录就白画了。工作区目录通常就几项，这一次 IPC 值得；
    * 真正的大目录展开后自然会有展开的那次等待，这里只是把清单提前拿到手。
-   * 展开过的目录听那一声「变了」的铃：新建 / 改名之后各自重列，缓存才不会说谎。
+   * 列过的目录听那一声「变了」的铃（应用内动作与主进程 watcher 走同一个，见 wsChanges）：
+   * 各自重列，缓存才不会说谎。
    */
   useEffect(() => {
     let alive = true
@@ -136,22 +152,37 @@ function WsDir({
         if (alive) setEntries(sorted(list))
       })
     }
+    refreshRef.current = refresh
     refresh()
     const off = subscribeWsChanged(refresh)
     return () => {
       alive = false
       off()
+      refreshRef.current = () => {}
     }
   }, [full])
+
+  /*
+   * 展开着才盯着盘：主进程按「展开的目录」按目录挂 fs.watch（见 electron/storage/ws），
+   * 收起 / 卸载就注销——深层的目录可以成千上百，没开的不值得盯；收起期间的外部变化
+   * 由上面「展开时重列」补齐。
+   */
+  useEffect(() => {
+    if (!open) return
+    return registerWsWatch(full)
+  }, [open, full])
 
   /*
    * 页签定位落到本目录底下的文件时：把这一层打开。子目录要等本层列完盘才挂载，
    * 所以除了订阅广播，挂载时还补看一眼当前这条（publishReveal 会把广播留几秒）——
    * 逐层接力，最深那层的文件行挂出来后由 revealRow 滚过去。
+   * 顺带重列一次：这一层此前可能一直收着（没在盯盘），不重列的话定位不到外部新加的文件。
    */
   useEffect(() => {
     const maybe = (req: { keys: readonly string[] } | null): void => {
-      if (req?.keys.some((k) => k.startsWith('row:ws:' + full + '/'))) setOpen(true)
+      if (!req?.keys.some((k) => k.startsWith('row:ws:' + full + '/'))) return
+      refreshRef.current()
+      setOpen(true)
     }
     maybe(peekReveal())
     return subscribeReveal(maybe)
@@ -288,10 +319,11 @@ function WsDir({
 }
 
 /**
- * 目标节点展开后的**工作区内容**：工作区根层的目录与文件直接挂在目标底下，
- * 不再有「工作区」那一层。
+ * 目标节点展开后的**项目区**：工作区目录（docs/{目标}/workspace/）里的一层目录与文件
+ * 直接挂在目标底下，不再有「工作区」那一层——那里的每一层目录就是一个**项目**
+ * （右键目标节点「新建项目」建出来的就是它，见 LearnWorkspace 的 newProject）。
  *
- * 为什么去掉那一层（需求原文：「不是包含工作区目录，是工作区下的目录文件统一挂到目标下」）：
+ * 为什么去掉「工作区」那一层（需求原文：「不是包含工作区目录，是工作区下的目录文件统一挂到目标下」）：
  * 目标节点展开之后，用户要看的是「这个目标底下我有哪些东西」——
  * 「工作区」只是磁盘布局里的一个中间文件夹名，对用户没有意义，
  * 多一层缩进只是让人多按一次。
@@ -299,7 +331,7 @@ function WsDir({
  * 子目录仍是 `WsDir`（往下每层是磁盘上真实的一个目录，这个层级是真的要看）；
  * 根层这里只把它的**孩子**平铺出来。空工作区不渲染任何行——
  * 与原来「工作区」那一行（永远画着）不同：没有内容时，目标展开后干干净净，
- * 想往里放东西可以右键目标节点（见 RowMenu 的 ws 菜单）。
+ * 想建点什么就右键目标节点选「新建项目」。
  */
 export function WorkspaceFlat({
   store,
@@ -336,6 +368,15 @@ export function WorkspaceFlat({
       off()
     }
   }, [loaded, base])
+  /*
+   * 这一片**一直盯着盘**（它是目标的工作区根、行本来就少）：在应用外直接建的目录也是
+   * 项目——主进程 watcher 一报变化就重列，「新建项目」之外的路子（文件管理器里自己
+   * 建一个文件夹）照样会作为项目出现。
+   */
+  useEffect(() => {
+    if (!base) return
+    return registerWsWatch(base)
+  }, [base])
   // 定位广播落到工作区里的某个文件时，文件行就在这一层，revealRow 自己会滚过去
   if (!base) return null
   const commitRename = (rel: string, parent: string, oldName: string) => (raw: string) => {
@@ -387,7 +428,7 @@ export function WorkspaceFlat({
                 base={base}
                 segments={[e.name]}
                 label={e.name}
-                hint={t('工作区子目录「{0}」（磁盘上真实存在的文件夹；点行展开 / 收起，右键新建 / 改名）', e.name)}
+                hint={t('项目「{0}」（挂在这个目标下的真实目录；点行展开 / 收起，右键新建 / 改名）', e.name)}
                 ws={ws}
                 onOpenMenu={onOpenMenu}
                 onOpen={onOpen}

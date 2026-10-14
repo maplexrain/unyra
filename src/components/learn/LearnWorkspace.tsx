@@ -57,6 +57,7 @@ import {
   tabRefOfFavorite,
   toggleFavorite as toggleInFavorites,
 } from '../../learn/favorites'
+import { recentOpens, type RecentOpen } from '../../learn/recents'
 import { getOutlineSlot } from '../../lib/outline'
 import {
   PUBLIC_OWNER,
@@ -70,7 +71,11 @@ import {
   focusTabsInGroup,
   focusedGroup,
   focusedTab,
+  goalTabsOf,
   groupIdOfTab,
+  isAnchorOutline,
+  openAnchorOutline,
+  openGroupedDoc,
   openInGroup,
   openOutlineTab,
   patchTab,
@@ -158,8 +163,8 @@ import {
 import { nodePathOf } from '../../learn/paths'
 import { nodeDocPath } from '../../learn/files'
 import { createNodeDocImageResolver } from '../../lib/docImages'
-import { revealLocalFile, revealPath, revealUserPath, userAbsPath, refreshStorageRoot, listUserDir, mkdirUserPath, moveUserPath, copyUserPath, writeUserText } from '../../lib/storage'
-import { wsAllocateName, wsNameOk } from '../../learn/workspace'
+import { revealLocalFile, revealPath, revealUserPath, userAbsPath, listUserDir, mkdirUserPath, moveUserPath, copyUserPath, writeUserText } from '../../lib/storage'
+import { wsAllocateName, wsNameOk, wsRefOfRel, wsRelOf, wsRelOfTab } from '../../learn/workspace'
 import { notifyWsChanged } from './explorer/wsChanges'
 import { setStaticView } from '../../lib/staticView'
 import {
@@ -588,6 +593,11 @@ export default function LearnWorkspace({
     const s = getLatest()
     const title = tabTitle(ref, (id) => nodeById(s, id)?.title, examTabTitle)
     if (ref.kind === 'local') return { type: 'local', path: ref.path, title }
+    // 工作区内部文件：ws 型引用带磁盘路径（chipRef 的两种写法都认）与 nodeId，
+    // 点击免于按路径反查——「不能当外部文件看」在引用这一层就是**不是 local 型**
+    if (ref.kind === 'ws') {
+      return { type: 'ws', path: wsRelOfTab(s, ref) ?? undefined, nodeId: ref.nodeId, title }
+    }
     if (ref.kind === 'web') {
       // 起始页没有可引用的东西；网页引用带网址与活标题（没拿到标题时 chipLabel 显示域名兜底）
       if (!ref.url) return null
@@ -1264,17 +1274,16 @@ export default function LearnWorkspace({
     (s: LearnStore, goalId: string, toOutline = false): LearnStore => {
       const goal = s.goals.find((x) => x.id === goalId)
       if (!goal) return s
-      const rootRef: TabRef = { kind: 'outline', nodeId: goal.rootNodeId }
+      const rootRef: TabRef & { kind: 'outline' } = { kind: 'outline', nodeId: goal.rootNodeId }
       const rootId = tabKey(rootRef)
       const owners = s.docArea.tabOwners ?? {}
-      const claimed = claimTab(owners, goalId, rootId)
       // 已经开着（哪怕在别格）就沿用那一枚；没有才在焦点格里开。
-      // 开的是**组锚**（见 groups/tabs 的 openOutlineTab）：上次关大纲卸载掉的那组
+      // 开的是**组锚**（见 groups/tabs 的 openAnchorOutline）：上次关锚卸载掉的那组
       // 页签若在停靠场里，随这一下原样归队
       const home = groupIdOfTab(s.docArea, rootId)
       let docArea = home
         ? s.docArea
-        : openOutlineTab(s.docArea, s.docArea.focus, rootRef, (id) => nodeById(s, id)?.goalId ?? null, Date.now())
+        : openAnchorOutline(s.docArea, s.docArea.focus, rootRef, (id) => nodeById(s, id)?.goalId ?? null, Date.now())
       if (toOutline) {
         const at = groupIdOfTab(docArea, rootId)
         // activateIn 顺带把焦点挪到那一格：大纲在右格，就该看到右格那一张
@@ -1291,7 +1300,12 @@ export default function LearnWorkspace({
           docArea = activateIn(docArea, focusGroup.id, rootId)
         }
       }
-      return { ...s, docArea: withOwners(docArea, claimed) }
+      /*
+       * 归属登记在**操作之后**的表上算：openAnchorOutline 归队停靠组时也登记了那几枚
+       * （见 restoreParkedTabs），拿操作前那份 claimed 盖回去会把它们全抹掉——
+       * 归队的页签从此在归属表里查无此人，切一次目标就跟着「没登记过的」到处飘。
+       */
+      return { ...s, docArea: withOwners(docArea, claimTab(docArea.tabOwners, goalId, rootId)) }
     },
     [],
   )
@@ -1379,11 +1393,24 @@ export default function LearnWorkspace({
       const startView: DocView | undefined =
         ref.kind === 'note' && emptyNote(s, makeTab(ref, 0)) ? 'source' : undefined
       const goalOf = (id: string) => nodeById(base, id)?.goalId ?? null
-      // 大纲页是组锚（见 groups/tabs 的 openOutlineTab）：开着它的同时让停靠的那组页签归队
+      /** 「目标 → 根节点」：组锚判据的第二跳（见 groups/tabs 的 isAnchorOutline） */
+      const rootOf = (goalId: string) => base.goals.find((g) => g.id === goalId)?.rootNodeId ?? null
+      /*
+       * 三种页签三条路（判据与规矩全在 groups/tabs，这里只做分派）：
+       * - 组锚（目标根节点的大纲）：带着停靠的整组一起归队（openAnchorOutline）；
+       * - 阶段大纲（某个子节点的大纲入口）：只是一枚普通页签，开关都不牵动任何一组；
+       * - 组关联的文档（教学文档、工作区内部文件）：先过它的「组」再进门
+       *   （openGroupedDoc，需求原文见那边的文档串）。从大纲里点进来的那条路
+       *   （OutlineView 的 onOpenNode）是恒等的——大纲就在焦点格，落回原处。
+       */
       const opened =
         ref.kind === 'outline'
-          ? openOutlineTab(base.docArea, base.docArea.focus, ref, goalOf, Date.now())
-          : openInGroup(base.docArea, base.docArea.focus, ref, Date.now(), startView)
+          ? isAnchorOutline(ref, goalOf, rootOf)
+            ? openAnchorOutline(base.docArea, base.docArea.focus, ref, goalOf, Date.now())
+            : openOutlineTab(base.docArea, base.docArea.focus, ref, goalOf, Date.now())
+          : (ref.kind === 'teach' || ref.kind === 'ws') && node
+            ? openGroupedDoc(base.docArea, ref, rootOf(node.goalId), goalOf, Date.now(), startView)
+            : openInGroup(base.docArea, base.docArea.focus, ref, Date.now(), startView, goalOf)
       /*
        * 登记归属（见 groups/goals）：这枚页签从此记在它所属的目标名下，
        * 于是切到那个目标时它就出现在栏上、切走时跟着收起来——「所有这个目标下任何层级
@@ -1416,6 +1443,44 @@ export default function LearnWorkspace({
       }
     }
   }, [store.goals.length, store.docArea, openTab])
+
+  /**
+   * 存活的 tab 组（顶栏目标名的下拉菜单，见 Topbar 的 tabGroups）：某个目标名下还有
+   * 实体页签留在文档区里（看得见 + 切走收起来的都算），它就活着一行；空组不出现——
+   * 那种目标从侧栏切就行。数字给那一组的页签数，当前组带勾。
+   */
+  const aliveGoalTabGroups = useMemo(() => {
+    const owners = store.docArea.tabOwners
+    const all = allTabs(store.docArea)
+    const goalOfNode = (nodeId: string) => nodeById(store, nodeId)?.goalId ?? null
+    return store.goals
+      .map((g) => ({
+        goalId: g.id,
+        title: g.question,
+        count: goalTabsOf(owners, all, goalOfNode, g.id).length,
+        current: g.id === store.activeGoalId,
+      }))
+      .filter((x) => x.count > 0)
+  }, [store])
+
+  /**
+   * 顶栏目标名菜单：切到某个目标的页签组。
+   *
+   * 与 openGoalGroup（侧栏点目标名）的差别只有一个：**不强制落回大纲**——那个组正开着
+   * 哪份文档，切回去就接着看哪份（「快速切换 tab 组」的本意）；组是空的兜底仍由
+   * goalTabGroup 管（没开过就在焦点格里开大纲）。
+   */
+  const switchGoalGroup = useCallback(
+    (goalId: string) => {
+      const s = getLatest()
+      const goal = s.goals.find((g) => g.id === goalId)
+      if (!goal) return
+      const base = touchNode(retargetNode(s, goal.rootNodeId), goal.rootNodeId)
+      set(goalTabGroup(base, goalId))
+      bumpBrowse()
+    },
+    [getLatest, retargetNode, goalTabGroup, set, bumpBrowse],
+  )
 
   /**
    * 用量统计页签的入口（顶栏用户菜单）。只在 Topbar 一处用到（声明在 openTab 之后），
@@ -1523,7 +1588,7 @@ export default function LearnWorkspace({
       const s = getLatest()
       // ref 当场算好（页签身份就是 tabKey），开完直接回页签 id——browser.open 靠它指名
       const ref: TabRef = { kind: 'web', url: normalizeWebInput(url), key: newWebKey() }
-      const opened = openInGroup(s.docArea, s.docArea.focus, ref, Date.now())
+      const opened = openInGroup(s.docArea, s.docArea.focus, ref, Date.now(), undefined, (id) => nodeById(s, id)?.goalId ?? null)
       // 网页页签不属于任何目标（公共）：登记成公共，切目标时它留栏上（见 groups/goals）
       set({ ...s, docArea: withOwners(opened, claimTab(opened.tabOwners, PUBLIC_OWNER, tabKey(ref))) })
       bumpBrowse()
@@ -1920,6 +1985,19 @@ export default function LearnWorkspace({
 
   const selectNode = switchNode
 
+  /* ---------- 空白页签上的两栏（收藏 / 最近打开） ---------- */
+
+  /**
+   * 「最近打开」那一栏的数据（原侧栏的「最近打开」区，现挪到空白页签上，见 EmptyDoc）。
+   */
+  const blankRecents = useMemo(() => recentOpens(store), [store])
+
+  /** 点最近打开的一行：节点接着看（教学文档）、本地文件直接打开——与侧栏那个区同一条路 */
+  const openRecent = useCallback(
+    (item: RecentOpen) => (item.kind === 'node' ? selectNode(item.id) : openLocalFile(item.id)),
+    [selectNode, openLocalFile],
+  )
+
   /**
    * 换一段对话：会话属于目标，所以切对话不换节点。keepalive 的页签面板各自绑自己
    * 的页签——换的是**那一枚页签**里展示的会话；被换的正是激活页签时，
@@ -2102,7 +2180,7 @@ export default function LearnWorkspace({
       // 新目标当场把**大纲页**开成页签：导师这一轮的交付物就是它（「学习大纲」工作流往里写），
       // 用户点完「开始学习」就该看见路线逐条长出来，教学文档从大纲页里点进去；
       // 同时自动关闭目标创建页签（ref.kind === 'newGoal'）
-      const rootRef: TabRef = { kind: 'outline', nodeId: rootNode.id }
+      const rootRef: TabRef & { kind: 'outline' } = { kind: 'outline', nodeId: rootNode.id }
       const newGoalTabIds = allTabs(latest.docArea).filter((t) => t.ref.kind === 'newGoal').map((t) => t.id)
       const docAreaAfterClose = newGoalTabIds.length > 0 ? closeIds(latest.docArea, newGoalTabIds) : latest.docArea
       const next: LearnStore = {
@@ -2112,7 +2190,10 @@ export default function LearnWorkspace({
         activeGoalId: goalId,
         activeNodeId: rootNode.id,
         activeConversationId: conversation.id,
-        docArea: openInGroup(docAreaAfterClose, docAreaAfterClose.focus, rootRef, now),
+        // 开的是**组锚**（见 groups/tabs 的 openAnchorOutline）：新目标没有停靠组，
+        // 走这条路的实际作用是「开大纲 + 当场登记归属」——归属漏登记的话，
+        // 用户一关大纲它就会在归属表里查无此人，切目标时到处飘
+        docArea: openAnchorOutline(docAreaAfterClose, docAreaAfterClose.focus, rootRef, (id) => nodeById(latest, id)?.goalId ?? null, now),
       }
       set(next)
       setSidebarOpen(false)
@@ -2787,24 +2868,22 @@ export default function LearnWorkspace({
   }
 
   /**
-   * 工作区文件在页签里打开：rel（相对当前用户）换算成磁盘绝对路径，开一份 local 页签——
+   * 工作区文件在页签里打开：rel（相对当前用户）反查成**内部文件页签**（`{kind:'ws'}`，
+   * 见 learn/workspace 的 wsRefOfRel）。它是内部文件而不是外部文件——openTab 会先把它
+   * 所属目标的那一组立起来再进门（见 groups/tabs 的 openGroupedDoc），
+   * 于是「打开项目里的任何一个文件就打开关联的 tab 组」。
    * 解析不解析看后缀（md/html 有预览，其余看源码，见 learn/tabs 的 viewOf）。
-   * 数据根缓存还没就绪时现场刷一次再换算（启动头几拍点进来的兜底）。
    */
   const openWsFile = useCallback(
-    async (rel: string) => {
-      let abs = userAbsPath(rel)
-      if (!abs) {
-        await refreshStorageRoot()
-        abs = userAbsPath(rel)
-      }
-      if (!abs) {
-        onToast(t('现在打不开这个工作区文件（没有登录用户，或存储位置还没就绪）'))
+    (rel: string) => {
+      const ref = wsRefOfRel(getLatest(), rel)
+      if (!ref) {
+        onToast(t('现在打不开这个工作区文件（它不属于任何节点的工作区）'))
         return
       }
-      openTab({ kind: 'local', path: abs })
+      openTab(ref)
     },
-    [openTab, onToast],
+    [getLatest, openTab, onToast],
   )
 
   /** 工作区里正在就地改名的那条路径（null = 没有在改名） */
@@ -2869,6 +2948,38 @@ export default function LearnWorkspace({
       })()
     },
   }
+
+  /**
+   * 新建项目：在目标的工作区目录下开一个**项目目录**（真实落盘），并当场进就地改名。
+   *
+   * 「项目」就是工作区里的一层目录（需求原文：「新建项目是在 workspace 目录中增加一个
+   * 项目目录……项目是挂载目标节点下的」）——资源管理器里目标节点展开后看到的那几行目录
+   * 就是它；项目里的文件是**内部文件**（页签是 ws 型，打开就带着目标的 tab 组）。
+   *
+   * 与 wsActions.create('dir') 同一套习惯：先按「新建项目」避开撞名落一个真名，
+   * 再让用户改名（名字就是磁盘上的目录名，改的当场是真实目录）。
+   */
+  const newProject = useCallback(
+    (nodeId: string) => {
+      const base = wsRelOf(getLatest(), nodeId)
+      if (!base) {
+        onToast(t('这个节点还没有工作区目录'))
+        return
+      }
+      void (async () => {
+        const taken = new Set((await listUserDir(base)).map((e) => e.name))
+        const name = wsAllocateName(t('新建项目'), taken)
+        const rel = base + '/' + name
+        if (!(await mkdirUserPath(rel))) {
+          onToast(t('未能创建项目（那里已经有同名目录）'))
+          return
+        }
+        notifyWsChanged()
+        setRenamingWs(rel)
+      })()
+    },
+    [getLatest, onToast],
+  )
   const goalSubtreeSize = (rootId: string): number => {
     const goal = getLatest().goals.find((g) => g.rootNodeId === rootId)
     return goal ? goalSubtreeIds(getLatest(), goal.id).size : 1
@@ -3135,12 +3246,27 @@ export default function LearnWorkspace({
     if (!ref) return
     const nodeId = tabNodeId(ref)
     const base = nodeId ? retargetNode(s, nodeId) : s
-    // 大纲页走组锚那条路（开着它的同时让停靠的组页签归队，见 groups/tabs 的 openOutlineTab）
+    const goalOf = (id: string) => nodeById(base, id)?.goalId ?? null
+    /** 「目标 → 根节点」：组锚判据的第二跳（见 groups/tabs 的 isAnchorOutline） */
+    const rootOf = (goalId: string) => base.goals.find((g) => g.id === goalId)?.rootNodeId ?? null
+    /*
+     * 与 openTab 同一条分派：组关联的文档（教学文档 / 工作区内部文件）先过它的「组」——
+     * 拖放明确落在哪一格，文档就进哪一格（into 传 groupId；组可以横跨几格，见 groups/goals
+     * 的说明）；组锚大纲带着停靠组归队；阶段大纲与其余页签都是普通开法。
+     */
     const docArea =
-      ref.kind === 'outline'
-        ? openOutlineTab(base.docArea, groupId, ref, (id) => nodeById(base, id)?.goalId ?? null, Date.now())
-        : openInGroup(base.docArea, groupId, ref, Date.now())
-    set({ ...base, docArea })
+      ref.kind === 'teach' || ref.kind === 'ws'
+        ? openGroupedDoc(base.docArea, ref, rootOf(goalOf(ref.nodeId) ?? ''), goalOf, Date.now(), undefined, groupId)
+        : ref.kind === 'outline'
+          ? isAnchorOutline(ref, goalOf, rootOf)
+            ? openAnchorOutline(base.docArea, groupId, ref, goalOf, Date.now())
+            : openOutlineTab(base.docArea, groupId, ref, goalOf, Date.now())
+          : openInGroup(base.docArea, groupId, ref, Date.now(), undefined, goalOf)
+    /*
+     * 登记归属（与 openTab 同一行；漏登记的话这枚页签在归属表里查无此人，
+     * 切目标时到处飘、关锚时也收不利索）。
+     */
+    set({ ...base, docArea: withOwners(docArea, claimTab(docArea.tabOwners, refOwner(ref, goalOf), tabKey(ref))) })
   }
 
   /**
@@ -3224,7 +3350,7 @@ export default function LearnWorkspace({
       }
       let at = Date.now() + 10
       for (let i = 1; i < paths.length; i++) {
-        docArea = openInGroup(docArea, groupId, { kind: 'local', path: paths[i] }, at++)
+        docArea = openInGroup(docArea, groupId, { kind: 'local', path: paths[i] }, at++, undefined, (id) => nodeById(next, id)?.goalId ?? null)
       }
       set({ ...next, docArea })
     },
@@ -3440,6 +3566,12 @@ export default function LearnWorkspace({
                 onPickLocal={() => void pickLocalInPlace(groupId, gTab.id)}
                 onOpenWeb={() => openWebInPlace(groupId, gTab.id)}
                 onNewGoal={() => openNewGoalInPlace(groupId, gTab.id)}
+                // 收藏 / 最近打开两栏（原侧栏的「最近打开」区挪到这里，见 EmptyDoc）
+                favorites={store.favorites ?? []}
+                favoriteTitleOf={favoriteTitleOf}
+                onOpenFavorite={openFavorite}
+                recents={blankRecents}
+                onOpenRecent={openRecent}
               />
             ) : gTab?.ref.kind === 'newGoal' ? (
               /*
@@ -3521,6 +3653,39 @@ export default function LearnWorkspace({
                 // 空 md 默认进编辑（空预览是一片白）：读完内容发现是空的，从预览切过来
                 onNeedEdit={() => setTabView(gTab.id, 'source')}
               />
+            ) : gTab?.ref.kind === 'ws' ? (
+              /*
+                工作区（项目）内部文件：渲染与本地文件共用 LocalDoc（读 / 改 / 保存体验同一套），
+                差别只在路径的来源——rel 从节点工作区现推（节点改名跟着走），再换算绝对路径。
+                推不出来（节点刚被删）给一句话，而不是留一片白。
+              */
+              (() => {
+                const rel = wsRelOfTab(store, gTab.ref)
+                const abs = rel ? userAbsPath(rel) : null
+                if (!abs) {
+                  return (
+                    <div className="flex min-h-0 flex-1 items-center justify-center text-[12.5px] text-ink-faint">
+                      {t('这份工作区文件已经不在了（节点或项目被删掉了）')}
+                    </div>
+                  )
+                }
+                return (
+                  <LocalDoc
+                    key={abs + '#' + (localTicks[abs] ?? 0)}
+                    path={abs}
+                    view={g.view}
+                    scale={docScale}
+                    draft={g.draft}
+                    savedText={localSaved?.path === abs ? localSaved.text : undefined}
+                    onDraft={(text) => stageLocalDraft(gTabId, text)}
+                    saving={docSaving}
+                    saveError={docSaveError}
+                    onMissing={() => closeTab(groupId, gTab.id, 'self', { confirm: false })}
+                    outlineSlot={getOutlineSlot(gTab.id)}
+                    onNeedEdit={() => setTabView(gTab.id, 'source')}
+                  />
+                )
+              })()
             ) : gTab?.ref.kind === 'exam' ? (
               /*
                 试卷副本：只读的一次考试（卷子原件 + 那次作答 + 判分 + 错题讲解）。
@@ -3623,6 +3788,11 @@ export default function LearnWorkspace({
                 onPickLocal={() => void pickLocalInPlace(groupId, gTabId)}
                 onOpenWeb={() => openWebInPlace(groupId, gTabId)}
                 onNewGoal={() => openNewGoalInPlace(groupId, gTabId)}
+                favorites={store.favorites ?? []}
+                favoriteTitleOf={favoriteTitleOf}
+                onOpenFavorite={openFavorite}
+                recents={blankRecents}
+                onOpenRecent={openRecent}
               />
             )}
 
@@ -3862,6 +4032,7 @@ export default function LearnWorkspace({
       onOpenTeach: (nodeId) => selectNode(nodeId),
       onOpenOutline: (nodeId) => openTab({ kind: 'outline', nodeId }),
       onNewNote: (nodeId) => createNodeNote(nodeId),
+      onNewProject: (nodeId) => newProject(nodeId),
       onNewExam: (nodeId) => newExam(nodeId),
       onNewSuperDoc: (nodeId) => startSuperLab(nodeId),
       onOpenNote: (nodeId, name) => openTab({ kind: 'note', nodeId, note: name }),
@@ -3878,7 +4049,7 @@ export default function LearnWorkspace({
       onReplanOutline: (nodeId) => startOutline(nodeId),
       onExport: (ref) => exportTab(ref),
     }),
-    [selectNode, openTab, createNodeNote, newExam, startSuperLab, renameNodeNote, openExamCopy, startOutline, exportTab],
+    [selectNode, openTab, createNodeNote, newExam, startSuperLab, renameNodeNote, openExamCopy, startOutline, exportTab, newProject],
   )
 
   const explorerExams = useMemo<ExamActions>(
@@ -4020,6 +4191,9 @@ export default function LearnWorkspace({
             activeNode={docNode}
             onSelectNode={selectNode}
             goalQuestion={activeGoal?.question ?? ''}
+            // 目标名点开的下拉菜单：存活的 tab 组（点一行切过去，见 switchGoalGroup）
+            tabGroups={aliveGoalTabGroups}
+            onSwitchGoalGroup={switchGoalGroup}
             store={store}
             user={user}
             onOpenSidebar={() => setSidebarOpen(true)}

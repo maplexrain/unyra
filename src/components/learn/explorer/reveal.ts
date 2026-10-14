@@ -15,7 +15,7 @@
  */
 import type { LearnStore, TabRef } from '../../../learn/types'
 import { ancestors } from '../../../learn/graph'
-import { wsRevealOfAbs } from '../../../learn/workspace'
+import { wsRelOfTab, wsRevealOfAbs } from '../../../learn/workspace'
 
 /** 一次定位请求：目标行 + 沿路要展开的东西（全是「打开」，绝不顺手收起） */
 export interface RevealRequest {
@@ -189,6 +189,19 @@ export function revealOfTab(
         }
       }
       return null
+    }
+    case 'ws': {
+      // 工作区内部文件：与「落进工作区的外部文件」同一条定位键（row:ws:rel），逐层展开到那一行
+      const rel = wsRelOfTab(store, tab)
+      if (!rel) return null
+      return {
+        keys: [`row:ws:${rel}`],
+        nodes: chain(tab.nodeId),
+        docs: [],
+        exams: [],
+        favGroup: null,
+        section: 'nodes',
+      }
     }
     case 'guard':
       // 守卫上下文不在侧栏的任何一行里，没有可定位的东西

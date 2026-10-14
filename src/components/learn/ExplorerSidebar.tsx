@@ -1,10 +1,14 @@
 /**
- * 这个文件负责：资源管理器侧栏的**外壳**——aside 那一块、右边那条拖宽把手、四个分区
- * （学习目标 / 收藏 / 本地文件 / 最近打开）的接线，以及节点行与右键菜单的挂载。
+ * 这个文件负责：资源管理器侧栏的**外壳**——aside 那一块、右边那条拖宽把手、三个分区
+ * （学习目标 / 收藏 / 本地文件）的接线，以及节点行与右键菜单的挂载。
  * 树在 explorer/NodeRow，菜单在 explorer/RowMenu，分类夹的零件（Section / FolderRow /
  * Collapse / Indent）在 explorer/Folder，展开状态与宽度分别由 explorer/useTreeExpand、
  * explorer/useSidebarWidth 管；「当前页签 → 树里那一行」的定位在 explorer/reveal，
  * 外壳只负责发令（算出目标、展开、广播、滚动）。
+ *
+ * 「最近打开」不再在这里（用户定的）：那个区挪去了文档区的**空白页签**（见
+ * workspace/chrome 的 EmptyDoc）——「我刚才在看什么」放在「正要开始看」的那一页上，
+ * 点开就是接着看，比在侧栏里另起一区更顺路。
  */
 import { useEffect, useMemo, useRef, useState, memo } from 'react'
 import type { FavoriteRef, KnowledgeNode, LearnStore, TabRef } from '../../learn/types'
@@ -15,9 +19,11 @@ import Logo from '../Logo'
 import { NewGoalIcon, OpenLocalIcon } from '../icons'
 import { NodeRow } from './explorer/NodeRow'
 import { RowMenu } from './explorer/RowMenu'
-import { FavoriteSection, FocusReportsSection, LocalRow, RecentSection } from './explorer/sections'
+import { FavoriteSection, FocusReportsSection, LocalRow } from './explorer/sections'
 import { Section, SectionAction } from './explorer/Folder'
 import { publishReveal, revealOfTab, revealRow, revealSigOf, subscribeReveal } from './explorer/reveal'
+import { notifyWsChanged } from './explorer/wsChanges'
+import { native } from '../../lib/native'
 import SystemAudioWave from './SystemAudioWave'
 import { useSidebarWidth } from './explorer/useSidebarWidth'
 import { useTreeExpand } from './explorer/useTreeExpand'
@@ -180,6 +186,20 @@ function ExplorerSidebarComponent({
   )
 
   /*
+   * 工作区目录的**外部变化**：主进程按「展开着的目录」挂 watcher（清单由各层行登记，
+   * 见 explorer/wsChanges），目录里一有增删改名就推 ws:changed 回来——在这里摇一次
+   * wsChanged 的铃，挂载过的各层行各自重列。订阅一处、挂在这里：侧栏只有一份。
+   */
+  useEffect(() => {
+    try {
+      return native().ws.onChanged(() => notifyWsChanged())
+    } catch {
+      // 纯 Web 开发态没有主进程：这个功能整体缺席，不影响其它
+      return
+    }
+  }, [])
+
+  /*
    * 页签定位的发令：焦点格开着的那一份，在资源管理器里把它亮出来。两个信号都会发——
    * **页签换了**（关页签带出的邻位激活、聚焦另一格分屏，值变化当场就能看出来）与
    * **拍号走了**（重开当前正开着的这份：值没变，但「开始浏览」值得再定位一次）。
@@ -336,15 +356,6 @@ function ExplorerSidebarComponent({
 
           {/* 专注报告：一次专注的收场凭据（普通专注也有——只是账目没有守卫轮次） */}
           <FocusReportsSection open={sectionOpen('reports')} onToggle={() => toggleSection('reports')} onOpen={onOpenReport} />
-
-          {/* 最近打开排在最后：「我有什么」在前、「我刚才在看什么」在后 */}
-          <RecentSection
-            store={store}
-            open={sectionOpen('recent')}
-            onToggle={() => toggleSection('recent')}
-            onSelectNode={onSelectNode}
-            onOpenLocal={onOpenLocal}
-          />
         </div>
 
         {/* 系统音频柱形频谱：挂在侧栏底端当一台小电台（采集见 src/lib/audio/loopback）。

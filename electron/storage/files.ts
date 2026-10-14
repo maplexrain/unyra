@@ -8,6 +8,7 @@ import path from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 // 文案函数在这份里叫 tr：下面满地的 const t = target(rel) 会把它遮住
 import { t as tr } from '../i18n'
+import { markLocalOwnWrite } from './local'
 import { currentRoot, errText, isMissing, sessionPath, type ReadResult, type Result } from './settings'
 
 /* ---------- 路径校验 ---------- */
@@ -100,6 +101,13 @@ export async function writeText(rel: unknown, content: unknown): Promise<Result>
     try {
       await fsp.mkdir(path.dirname(t.full), { recursive: true })
       await atomicWrite(t.full, typeof content === 'string' ? content : '')
+      /*
+       * 应用自己写的：给外部变化监听记一笔（见 local 的 ownWriteAt）——这份文件可能正开着
+       * 页签（本地文件 / 工作区内部文件都走这一条存储通道），不记的话 watcher 会把这次保存
+       * 当成「外部改动」回声回来，页签白白重挂一次（源码视图的滚动位置会跟着跳）。
+       * local:write 那条也有同一笔（记在它自己的读写里）。
+       */
+      markLocalOwnWrite(t.full)
       return { ok: true }
     } catch (err) {
       return { ok: false, error: errText(err) }

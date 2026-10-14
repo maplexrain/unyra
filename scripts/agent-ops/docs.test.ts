@@ -225,6 +225,10 @@ export async function apiNameTests() {
     'browser.text': "'w:probe', { ref: 1 }",
     'browser.scroll': "'w:probe', { by: 800 }",
     'browser.waitFor': "'w:probe', { selector: '.done' }",
+    // 外部 MCP 服务：探针里给一份假的宿主（真实现见 agent/mcp/ops）
+    'mcp.list': '',
+    'mcp.discover': "'探针服务'",
+    'mcp.call': "'探针服务', 'probe_tool', { q: 'hello' }",
     // 基础文件系统：真实路径操作（Node 探针下回假桩，真机走主进程 IPC）
     'files.read': "''",
     'files.write': "'', '内容'",
@@ -308,6 +312,8 @@ export async function apiNameTests() {
   let sawBrowserDom = ''
   let sawBrowserActivate = ''
   let sawBrowserClose = ''
+  // mcp 桩：同样只问「这三个 api 在不在」，行为断言看下面的 sawMcpCall
+  let sawMcpCall = ''
   const stubRoot = { querySelectorAll: () => [] } as unknown as Element
   const tool = createExecuteTool({
     ...ops,
@@ -342,6 +348,18 @@ export async function apiNameTests() {
       text: async () => ({ text: '正文', chars: 2 }),
       scroll: async () => ({ ok: true as const, scrollY: 800, scrollHeight: 4000, viewport: 900, atBottom: false, atTop: false }),
       waitFor: async () => ({ ok: true as const, matched: 'selector' as const, waitedMs: 250, url: 'https://example.com' }),
+    },
+    // 外部 MCP 服务：桩（名单检查只问「这三个 api 在不在」；真行为见 tests/agentSkillsAndMcp.test.ts）
+    mcp: {
+      list: () => ({
+        ok: true,
+        servers: [{ id: 'probe-srv', name: '探针服务', transport: 'sse', status: 'idle', tools: [{ name: 'probe_tool', description: '探针工具' }] }],
+      }),
+      discover: async () => ({ ok: true, servers: [{ id: 'probe-srv', name: '探针服务', ok: true, tools: [{ name: 'probe_tool' }] }] }),
+      call: async (server: string, tool: string, args?: unknown) => {
+        sawMcpCall = server + ':' + tool + ':' + JSON.stringify(args ?? {})
+        return { ok: true, server, tool, content: '（桩）外部结果' }
+      },
     },
     // 子代理管理：桩（并发、等待与介入的行为由 tests/subagent.test.ts 用假流钉住）
     subagent: {
@@ -385,6 +403,11 @@ export async function apiNameTests() {
       sawBrowserClose === 'w:probe',
     'browser 这一组真的到了宿主（开站 / dom 操作 / 切页签 / 关页签）',
     { sawBrowserOpen, sawBrowserDom },
+  )
+  ok(
+    sawMcpCall === '探针服务:probe_tool:{"q":"hello"}',
+    'mcp 这一组真的到了宿主（服务 / 工具 / 参数原样递过去）',
+    sawMcpCall,
   )
   // ui.point 的行号定位：源文行要先剥成渲染文本里找得到的纯文字——
   // agent 实测拿原始源文行去搜渲染结果，除了纯散文行一律 located:false

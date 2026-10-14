@@ -47,10 +47,11 @@ export function examDeleteWarn(exam: Exam): string {
  * 读回来的内容，由 LocalDoc 自己拿着（见它的 edit）。
  */
 export function savedTextOf(store: LearnStore, ref: TabRef): string {
-  // 网页页签没有暂存正文（没有编辑器），与本地文件同路；
-  // 守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置/新建目标）同样没有编辑器，自然也没有暂存
+  // 网页页签没有暂存正文（没有编辑器），与本地文件同路；工作区内部文件与本地文件同路
+  //（基准由 LocalDoc 自己拿着）；守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置/新建目标）同样没有暂存
   if (
     ref.kind === 'local' ||
+    ref.kind === 'ws' ||
     ref.kind === 'web' ||
     ref.kind === 'guard' ||
     ref.kind === 'report' ||

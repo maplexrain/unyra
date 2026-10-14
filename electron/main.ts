@@ -40,6 +40,7 @@ import { installAppMenu } from './app/icon'
 import { registerIpc } from './app/ipc'
 import { installLocalFileCsp } from './app/exportPdf'
 import { cleanupAllProcesses, registerBaseIpc } from './base/ipc'
+import { cleanupAllMcpSessions, registerMcpIpc } from './mcp/ipc'
 
 /* ---------- 启动追踪 ---------- */
 
@@ -73,6 +74,8 @@ function main(): void {
   // 抓网页：只有 web:fetch 一个频道（见 electron/web）。放这里是因为它与其余 IPC 一样，
   // 必须在 app ready 之前就把 handler 挂上——渲染层可能很早就来问
   registerWebIpc()
+  // 外部 MCP 服务的本地进程会话（stdio 传输，见 electron/mcp）：同样是「随时可能来问」
+  registerMcpIpc()
   lap('main:ipc')
 
   /*
@@ -140,12 +143,14 @@ function main(): void {
 
   app.on('window-all-closed', () => {
     cleanupAllProcesses()
+    cleanupAllMcpSessions()
     if (process.platform !== 'darwin') app.quit()
   })
   // 真的在退出（托盘菜单、系统关机、或策略就是「直接关闭」）：
   // 放开关窗拦截，否则窗口会被自己拦下来，程序退不掉
   app.on('before-quit', () => {
     cleanupAllProcesses()
+    cleanupAllMcpSessions()
     markQuitting()
     // 考试窗口那层「关窗前问一次」的拦截对退出流程也必须放行：不放的话它会拦住自己，
     // 进程被一个孤儿窗口吊着不退（用户在主窗口里已经点了退出，却什么都没发生）

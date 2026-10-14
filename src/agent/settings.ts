@@ -14,7 +14,7 @@ import { DEFAULT_PERSONA, personaOf, type PersonaId } from './persona'
  */
 
 import { DEFAULT_SKILL_SETTINGS, type SkillSettings } from './skill/types'
-import { DEFAULT_MCP_SETTINGS, type McpSettings } from './mcp/types'
+import { DEFAULT_MCP_SETTINGS, type McpServerConfig, type McpSettings } from './mcp/types'
 
 export interface CompactSettings {
   /** 到阈值自动压缩；关掉之后只有手动「压缩上下文」会压 */
@@ -97,6 +97,37 @@ const clamp = (v: unknown, lo: number, hi: number, fallback: number): number => 
 }
 
 /**
+ * 老预设的修复迁移（幂等）：内置预设一度指向**不存在的 npm 包**或死路径——
+ * `@modelcontextprotocol/server-fetch` / `server-sqlite` 在 npm 上都是 404，
+ * filesystem 的 `./workspace` 在数据根下也不存在。配过那些预设的服务存下来的
+ * 就是这些死参数，只换预设定义救不了它们。这里按**包名精确匹配**替换：
+ * 用户自己改过的参数（别的包、别的路径）一律不碰。
+ */
+function migrateMcpServers(servers: McpServerConfig[]): McpServerConfig[] {
+  let touched = false
+  const next = servers.map((s) => {
+    if (!s || typeof s !== 'object') return s
+    const args = Array.isArray(s.args) ? s.args.map(String) : []
+    if (s.transport !== 'stdio' || !args.length) return s
+    if (args.includes('@modelcontextprotocol/server-fetch')) {
+      touched = true
+      return { ...s, args: args.map((a) => (a === '@modelcontextprotocol/server-fetch' ? '@tokenizin/mcp-npx-fetch' : a)) }
+    }
+    if (args.includes('@modelcontextprotocol/server-sqlite')) {
+      // 旧包不存在，且新包形态完全不同（--db-path 取消，数据库路径按调用传）
+      touched = true
+      return { ...s, args: ['-y', 'mcp-sqlite-server'] }
+    }
+    if (args.includes('@modelcontextprotocol/server-filesystem') && args.includes('./workspace')) {
+      touched = true
+      return { ...s, args: args.map((a) => (a === './workspace' ? '.' : a)) }
+    }
+    return s
+  })
+  return touched ? next : servers
+}
+
+/**
  * 归一化。存进来的可能是旧版本、手改过的 YAML，也可能是别的版本写的——
  * 一律按「缺什么补什么、越界就夹回去」处理，绝不抛异常：设置读不出来不该让应用起不来。
  */
@@ -126,7 +157,7 @@ export function normalizeAgentSettings(raw: unknown): AgentSettings {
     },
     mcp: {
       enabled: typeof mcp.enabled === 'boolean' ? mcp.enabled : DEFAULT_MCP_SETTINGS.enabled,
-      servers: Array.isArray(mcp.servers) ? mcp.servers : DEFAULT_MCP_SETTINGS.servers,
+      servers: Array.isArray(mcp.servers) ? migrateMcpServers(mcp.servers) : DEFAULT_MCP_SETTINGS.servers,
     },
     permissions: {
       allowedDirs: Array.isArray(permissions.allowedDirs)

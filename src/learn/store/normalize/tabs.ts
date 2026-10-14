@@ -85,6 +85,14 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
   // 大纲页只认节点：大纲内容有没有（老节点可能还没有）不影响页签的合法性——
   // 页签自己会显示「还没有大纲」的占位
   if (r.kind === 'outline') return { kind: 'outline', nodeId }
+  // 工作区内部文件：节点在（上面查过）就收下；文件本身在不在磁盘**不查**——
+  // 与本地文件同一条纪律（查存在性要逐个访问磁盘，而这一步在启动的关键路径上），
+  // 点开时读不到会由 LocalDoc 说一句「文件不在了」并关掉页签。seg 是判空的全部要求。
+  if (r.kind === 'ws') {
+    const seg = typeof r.seg === 'string' ? r.seg.trim().replace(/\\/g, '/') : ''
+    if (!seg || seg.startsWith('/') || seg.split('/').some((s) => !s || s === '.' || s === '..')) return null
+    return { kind: 'ws', nodeId, seg }
+  }
   return null
 }
 

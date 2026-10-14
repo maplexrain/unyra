@@ -27,7 +27,9 @@ export function favoriteKey(ref: FavoriteRef): string {
 }
 
 /** 页签指向的东西的收藏身份；起始页（还没有网址）没有可收藏的东西，返回 null。
-    守卫上下文、报告与系统页（设置/用量/记忆/导师设置/新建目标）同样不可收藏（它们不是「某个内容」） */
+    守卫上下文、报告与系统页（设置/用量/记忆/导师设置/新建目标）同样不可收藏（它们不是「某个内容」）。
+    工作区内部文件（ws）也不进收藏：收藏那一套是「外部的东西」的身份体系（需求原文——
+    项目文件「不能当作外部文件看」），内部文件的快速入口是它们的项目本身与最近打开。 */
 export function favoriteKeyOfTab(ref: TabRef): string | null {
   if (
     ref.kind === 'guard' ||
@@ -37,7 +39,8 @@ export function favoriteKeyOfTab(ref: TabRef): string | null {
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
     ref.kind === 'newGoal' ||
-    ref.kind === 'blank'
+    ref.kind === 'blank' ||
+    ref.kind === 'ws'
   )
     return null
   if (ref.kind === 'web') return ref.url ? favoriteKey(ref) : null
@@ -55,7 +58,8 @@ export function favoriteRefOfTab(ref: TabRef): FavoriteRef | null {
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
     ref.kind === 'newGoal' ||
-    ref.kind === 'blank'
+    ref.kind === 'blank' ||
+    ref.kind === 'ws'
   )
     return null
   return ref

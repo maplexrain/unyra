@@ -26,6 +26,40 @@ export function wsRelOf(store: LearnStore, nodeId: string): string | null {
 }
 
 /**
+ * 工作区内部文件（页签的 ws 身份 {nodeId, seg}）的**相对当前用户**路径：
+ * `工作区目录 + seg` 现推——节点目录改名之后这条路径跟着变，页签照样指得准。
+ * 推不出（节点已删）返回 null。
+ */
+export function wsRelOfTab(store: LearnStore, ref: { nodeId: string; seg: string }): string | null {
+  const base = wsRelOf(store, ref.nodeId)
+  return base ? base + '/' + ref.seg : null
+}
+
+/**
+ * 反查（wsRelOfTab 的反方向）：一份工作区文件（相对当前用户的路径）落进**哪个节点
+ * 的工作区**，换算成页签身份 {nodeId, seg}——打开工作区文件、解析 ws chip 走的都是它。
+ * 不落进任何节点工作区时返回 null。
+ *
+ * 口径与 wsRevealOfAbs 同源（一次布局现推、整表对着比）；这边收的是「相对当前用户」
+ * 的路径，所以不必再剥用户前缀。
+ */
+export function wsRefOfRel(
+  store: LearnStore,
+  rel: string,
+): { kind: 'ws'; nodeId: string; seg: string } | null {
+  const norm = rel.replace(/\\/g, '/').replace(/^\.\//, '')
+  if (!norm) return null
+  const layouts = nodeLayout(store)
+  for (const n of store.nodes) {
+    const layout = layouts.get(n.id)
+    if (!layout) continue
+    const base = [DOCS_DIR, ...layout.dir, WORKSPACE_DIR].join('/')
+    if (norm.startsWith(base + '/')) return { kind: 'ws', nodeId: n.id, seg: norm.slice(base.length + 1) }
+  }
+  return null
+}
+
+/**
  * 反查：磁盘上的一份文件落在**哪个节点的工作区里**（资源管理器的页签定位用）。
  * userPrefix 是用户目录的公共前缀（{root}/users/{uid}，见 lib/storage 的 userAbsPath）——
  * 剥掉它剩下的才与 docs 布局同一种「相对当前用户」的口径；不落进任何节点工作区时 null。

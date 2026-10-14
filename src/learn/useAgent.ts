@@ -30,7 +30,7 @@ import type { ChatMessage, ReasoningEffort } from '../ai/types'
 import { streamChatWith } from '../ai/client'
 import { appendFreeMessage, freeConversationById, mutateFreeConversation } from './freeChat'
 import { loadAgentSettings } from '../agent/settings'
-import { createMcpAgentTools } from '../agent/mcp/agentTools'
+import { makeMcpOps } from '../agent/mcp/ops'
 import { getActiveSkills, getSkillsDigest, needsSkillsAnnounce, skillsAnnounceMessage } from '../agent/skill/registry'
 import type { LearnStore } from './types'
 import { buildTeacherSystem } from './ai'
@@ -564,6 +564,14 @@ export function useAgent(opts: {
       })
       // subagent api 挂进沙箱（导师专用；子代理的 apiAllow 白名单里没有这一组）
       sandboxBase.subagent = manager.api
+      /*
+       * MCP 外部服务挂进沙箱（mcp.list / mcp.discover / mcp.call，见 agent/mcp/ops）。
+       * 配置是这一轮现取的快照：用户改了 MCP 设置，下一轮就生效；
+       * 总开关关着时不注入——与旧做法「关闭时不注入任何 MCP 工具」同一口径。
+       * 子代理的 apiAllow 白名单里没有 mcp，subsetSandbox 也不带它——只敞给导师。
+       */
+      const mcpOps = makeMcpOps(agentSettings.mcp)
+      if (mcpOps) sandboxBase.mcp = mcpOps
       const tools = [
         createExecuteTool({
           ...sandboxBase,
@@ -683,7 +691,6 @@ export function useAgent(opts: {
           // 内置浏览器（browser.*）：宿主依赖在场的回合才有这一组（见 learn/web/browserOps）
           ...(browserDeps ? { browser: makeBrowserOps(browserDeps, target.goalId) } : {}),
         }),
-        ...createMcpAgentTools(agentSettings.mcp),
       ]
       const parts: AgentPart[] = []
 

@@ -13,6 +13,7 @@ import { docOf, notesOf } from '../../../learn/types'
 import { nodeById } from '../../../learn/graph'
 import { readSuperDoc } from '../../../learn/superdocs'
 import { focusedTab } from '../../../learn/groups'
+import { wsRefOfRel, wsRelOfTab } from '../../../learn/workspace'
 import { needleForDoc, locateNeedle } from '../../../lib/docDom'
 import { setNodeLinkHandler, setDocLinkHandler, setSuperLinkHandler, setMarkdownPathHandler } from '../../../lib/nodeLink'
 import { resolveLocalPath } from '../../../lib/localFiles'
@@ -123,13 +124,24 @@ export function useLinkHandlers({ getLatest, openTab, createNodeNote, onToast }:
    */
   useEffect(() => {
     setMarkdownPathHandler((raw) => {
-      const cur = focusedTab(getLatest().docArea)?.ref
+      const s = getLatest()
+      const cur = focusedTab(s.docArea)?.ref
       if (cur?.kind === 'local') {
         openTab({ kind: 'local', path: resolveLocalPath(cur.path, raw) })
         return
       }
+      if (cur?.kind === 'ws') {
+        // 工作区内部文件里的相对链接（`[x](src/y.md)`）：按它所在目录解析，
+        // 落点仍是**内部文件页签**——解析出界（不在任何工作区里）就落到下面的兜底
+        const rel = wsRelOfTab(s, cur)
+        const ref = rel ? wsRefOfRel(s, resolveUserRel(rel, raw)) : null
+        if (ref) {
+          openTab(ref)
+          return
+        }
+      }
       const name = raw.split(/[\\/]/).pop()?.trim() ?? ''
-      const hit = getLatest().nodes.find((n) => notesOf(n).some((note) => note.name === name))
+      const hit = s.nodes.find((n) => notesOf(n).some((note) => note.name === name))
       if (hit) {
         openTab({ kind: 'note', nodeId: hit.id, note: name })
         return
@@ -138,4 +150,23 @@ export function useLinkHandlers({ getLatest, openTab, createNodeNote, onToast }:
     })
     return () => setMarkdownPathHandler(null)
   }, [getLatest, openTab, onToast])
+}
+
+/**
+ * 在「相对当前用户」的路径上解析一条相对链接（工作区文件里的 `[x](src/y.md)`）。
+ * 只做纯字符串的目录拼接与 `..` 归并；越出数据根由调用方的反查（wsRefOfRel）兜住。
+ */
+function resolveUserRel(fromRel: string, raw: string): string {
+  const dir = fromRel.slice(0, Math.max(0, fromRel.lastIndexOf('/')))
+  const segs = (dir + '/' + raw.replace(/\\/g, '/')).split('/')
+  const out: string[] = []
+  for (const seg of segs) {
+    if (!seg || seg === '.') continue
+    if (seg === '..') {
+      out.pop()
+      continue
+    }
+    out.push(seg)
+  }
+  return out.join('/')
 }

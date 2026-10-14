@@ -1,16 +1,19 @@
 /**
  * 这个文件负责：侧栏里与知识树、右键菜单无关的那几行——本地文件行（LocalRow）、
- * 「最近打开」那一段（RecentSection / RecentRow）、收藏区（FavoriteSection / FavRow /
- * 右键菜单）。可折叠分类夹的零件（Section / FolderRow / Collapse / Indent）在 explorer/Folder，
+ * 收藏区（FavoriteSection / FavRow / 右键菜单）、专注报告区，以及**最近打开那一行**
+ * （RecentRow）。可折叠分类夹的零件（Section / FolderRow / Collapse / Indent）在 explorer/Folder，
  * 页签定位的广播在 explorer/reveal——这里只管一行行画什么、点了做什么。
+ *
+ * 「最近打开」的**区**（RecentSection）已经不在这里了（用户定的）：整区挪去了文档区的
+ * 空白页签（见 workspace/chrome 的 EmptyDoc），RecentRow 留在本文件供它复用——
+ * 一行「最近打开」的图示、说明与相对时间四处共用，不另起一份。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ExternalLink, FileClock, Folder, FolderInput, FolderMinus, FolderPlus, Pencil, X } from 'lucide-react'
-import type { FavoriteItem, FavoriteRef, LearnStore, LocalFile } from '../../../learn/types'
+import type { FavoriteItem, FavoriteRef, LocalFile } from '../../../learn/types'
 import { chipPayloadOfFavorite, favoriteKey } from '../../../learn/favorites'
 import { useClampToViewport, useDismissOn } from '../../../lib/useDismiss'
-import { recentOpens, type RecentOpen } from '../../../learn/recents'
-import { useClock } from '../../../lib/clock'
+import type { RecentOpen } from '../../../learn/recents'
 import { relativeTime } from '../../../lib/time'
 import { STATUS_META } from '../mastery'
 import StatusBranch from '../StatusBranch'
@@ -22,47 +25,9 @@ import { Collapse, FolderRow, Indent, Section, SectionAction } from './Folder'
 import { subscribeReveal } from './reveal'
 
 /**
- * 「最近打开」：节点与本地文件混排（见 learn/recents），点一下接着看。
- *
- * 单独一个组件只为了一件事：那一列相对时间（「刚刚」→「3 分钟前」）要跟着真实时间走，
- * 而时钟只能订在**用到它的那一小块**上——订在外层，整棵节点树会跟着每 30 秒重渲染一遍
- * （见 lib/clock 的说明）。空列表整块不显示，与本地文件区同一条规矩。
- */
-export function RecentSection({
-  store,
-  open,
-  onToggle,
-  onSelectNode,
-  onOpenLocal,
-}: {
-  store: LearnStore
-  open: boolean
-  onToggle: () => void
-  onSelectNode: (nodeId: string) => void
-  onOpenLocal: (path: string) => void
-}) {
-  const now = useClock(30_000)
-  const items = useMemo(() => recentOpens(store), [store])
-  if (!items.length) return null
-  return (
-    <Section title={t('最近打开')} count={items.length} open={open} onToggle={onToggle}>
-      <div className="px-2">
-        {items.map((item) => (
-          <RecentRow
-            key={item.kind + ':' + item.id}
-            item={item}
-            now={now}
-            onOpen={() => (item.kind === 'node' ? onSelectNode(item.id) : onOpenLocal(item.id))}
-          />
-        ))}
-      </div>
-    </Section>
-  )
-}
-
-/**
  * 最近打开的一行：状态圆点（节点，与节点树同一套写法）/ 文件图标，标题，它在什么里面，
  * 以及相对时间。完整路径放 title——「我打开的是哪一个 notes.md」在这里同样要紧。
+ * 现在的消费者是空白页签上的「最近打开」栏（见 workspace/chrome 的 EmptyDoc）。
  */
 export function RecentRow({ item, now, onOpen }: { item: RecentOpen; now: number; onOpen: () => void }) {
   return (
