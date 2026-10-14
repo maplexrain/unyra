@@ -2,7 +2,7 @@
 
 import { FIRST_GROUP, attachMissing, emptyDocs, groupIdsOf, mapSplit, normalizeSizes, removeLeaf } from './layout'
 import type { DocGroup, DocLayout, DocWorkspace } from './types'
-import { makeBlankTab } from '../tabs'
+import { isBlankTab, makeBlankTab } from '../tabs'
 
 export function groupOf(docs: DocWorkspace, id: string): DocGroup | undefined {
   return docs.groups.find((g) => g.id === id)
@@ -36,16 +36,38 @@ export function withGroup(docs: DocWorkspace, id: string, fn: (g: DocGroup) => D
  */
 export function settle(docs: DocWorkspace): DocWorkspace {
   if (!docs.groups.length) return emptyDocs()
-  const repaired = docs.groups.some((g) => g.tabs.length > 0 && (!g.active || !g.tabs.some((t) => t.id === g.active)))
+  /*
+   * 「一个页签栏有且只有一枚新页签」——在 settle 这一道拦下来，数据层就构造不出
+   * 「一格两枚新页签」的状态。主路（用户点「新页签」）已经在 openInGroup 里处理好了
+   * （已有的直接激活，见那里），但空白占位还会从别处冒出来：关闭时的落点要补一枚
+   * （见 tabs 的 closeTabs），以后还会有别的新入口。保留**第一枚**（用户先看到的那个），
+   * 多余的丢掉；被丢掉的那枚正好是 active 时，下面的 active 兜底会把它指回格子里的最后一个。
+   */
+  const deduped = docs.groups.some((g) => g.tabs.filter(isBlankTab).length > 1)
     ? {
         ...docs,
-        groups: docs.groups.map((g) =>
+        groups: docs.groups.map((g) => {
+          let seen = false
+          const tabs = g.tabs.filter((t) => {
+            if (!isBlankTab(t)) return true
+            if (seen) return false
+            seen = true
+            return true
+          })
+          return tabs.length === g.tabs.length ? g : { ...g, tabs }
+        }),
+      }
+    : docs
+  const repaired = deduped.groups.some((g) => g.tabs.length > 0 && (!g.active || !g.tabs.some((t) => t.id === g.active)))
+    ? {
+        ...deduped,
+        groups: deduped.groups.map((g) =>
           g.tabs.length && (!g.active || !g.tabs.some((t) => t.id === g.active))
             ? { ...g, active: g.tabs[g.tabs.length - 1].id }
             : g,
         ),
       }
-    : docs
+    : deduped
   /*
    * 布局树里没提到的组：补到最右边。树与组脱节时宁可在界面上多出一格，
    * 也不能让那一格的页签凭空消失（它们是用户开着的文档）。

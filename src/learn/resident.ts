@@ -85,11 +85,11 @@ function subscribeRecent(onChange: () => void): () => void {
   }
 }
 
-function readRecent(): readonly string[] {
+export function readRecentTabs(): readonly string[] {
   return snapshot
 }
 
-/** 最近激活过的页签（新的在前）；只有常驻名单这一处读它 */
+/** 最近激活过的页签（新的在前）；需要响应排序变化的调用方才订阅它 */
 export function useRecentTabs(): readonly string[] {
-  return useSyncExternalStore(subscribeRecent, readRecent)
+  return useSyncExternalStore(subscribeRecent, readRecentTabs)
 }

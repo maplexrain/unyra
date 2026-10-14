@@ -1,4 +1,4 @@
-import { AppWindow, Bot, BookOpen, Brain, ChartColumn, FileClock, Folder, FolderOpen, Globe, GraduationCap, HardDrive, ListTree, Loader2, NotebookPen, Package, Plus, Settings2, ShieldCheck } from 'lucide-react'
+import { AppWindow, Bot, BookOpen, Brain, ChartColumn, FileClock, FilePlus, Folder, FolderOpen, Globe, GraduationCap, HardDrive, ListTree, Loader2, NotebookPen, Package, Plus, Settings2, ShieldCheck } from 'lucide-react'
 import Bullseye from '../Bullseye'
 
 /**
@@ -27,6 +27,7 @@ export type DocKindKey =
   | 'agentSettings'
   | 'newGoal'
   | 'blank'
+  | 'draft'
 
 const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   teach: '#4a8fd4', // 蓝：教学文档
@@ -45,6 +46,7 @@ const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   agentSettings: '#7c8698', // 蓝灰：系统页（超级导师设置），系统页同族
   newGoal: '#a8432f', // 赭红：目标创建页（与 Bullseye 靶心同色）
   blank: '#8c8c8c', // 浅中性灰：空白页签
+  draft: '#6f8fb0', // 雾蓝：新建文件（还没落定的那一份，与「外部文件的灰」分开）
 }
 
 /**
@@ -81,6 +83,8 @@ export function DocTypeIcon({ kind, size = 11 }: { kind: DocKindKey; size?: numb
       <Bullseye size={size} />
     ) : kind === 'blank' ? (
       <Plus size={size} />
+    ) : kind === 'draft' ? (
+      <FilePlus size={size} />
     ) : kind === 'ws' ? (
       // 工作区（项目）内部文件：盒子形状，与「新建项目」菜单项同一个图示
       <Package size={size} />

@@ -10,7 +10,7 @@
  * workspace/chrome 的 EmptyDoc）——「我刚才在看什么」放在「正要开始看」的那一页上，
  * 点开就是接着看，比在侧栏里另起一区更顺路。
  */
-import { useEffect, useMemo, useRef, useState, memo } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, memo } from 'react'
 import type { FavoriteRef, KnowledgeNode, LearnStore, TabRef } from '../../learn/types'
 import { nodeById } from '../../learn/graph'
 import { EXPLORER_WIDTH_MAX, EXPLORER_WIDTH_MIN } from '../../lib/appearance'
@@ -21,7 +21,15 @@ import { NodeRow } from './explorer/NodeRow'
 import { RowMenu } from './explorer/RowMenu'
 import { FavoriteSection, FocusReportsSection, LocalRow } from './explorer/sections'
 import { Section, SectionAction } from './explorer/Folder'
-import { publishReveal, revealOfTab, revealRow, revealSigOf, subscribeReveal } from './explorer/reveal'
+import {
+  publishReveal,
+  revealOfTab,
+  revealRequestVersion,
+  revealRow,
+  revealSigOf,
+  subscribeReveal,
+  subscribeRevealRequest,
+} from './explorer/reveal'
 import { notifyWsChanged } from './explorer/wsChanges'
 import { native } from '../../lib/native'
 import SystemAudioWave from './SystemAudioWave'
@@ -61,12 +69,6 @@ interface Props {
   activeTab: TabRef | null
   busyNodeId: string | null
   open: boolean
-  /**
-   * 「这一拍开始浏览某个页签」的拍号（开页签 / 点页签时 +1，见 LearnWorkspace）：
-   * 定位不只发生在「页签换了」——导师重开当前已聚焦的文档、chip 点开已打开的文档，
-   * 值没变但该重新定位，外壳就跟着拍号再发一次令。
-   */
-  browseNonce: number
   /** 纯净阅读：整栏收起让位（见 LearnWorkspace 的 F11）；窄屏下本来就是个抽屉，不必管 */
   pure: boolean
   onClose: () => void
@@ -125,7 +127,6 @@ function ExplorerSidebarComponent({
   activeTab,
   busyNodeId,
   open,
-  browseNonce,
   pure,
   onClose,
   onSelectNode,
@@ -162,6 +163,8 @@ function ExplorerSidebarComponent({
    */
   const [renaming, setRenaming] = useState<{ nodeId: string; name: string } | null>(null)
   const { width, resizing, asideRef, onWidthDown, onWidthMove, onWidthUp } = useSidebarWidth()
+  // 同一枚页签重复激活时，只唤醒侧栏自身，不让 LearnWorkspace 整树重渲染。
+  const browseNonce = useSyncExternalStore(subscribeRevealRequest, revealRequestVersion)
 
   /** 两个分区各自的折叠状态；没记过的一律按展开（见文件头的说明） */
   const [collapsed, setCollapsed] = useState<Map<string, boolean>>(new Map())

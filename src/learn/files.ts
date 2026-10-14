@@ -68,7 +68,7 @@ export type { NodeLayout } from './layout'
 
 export { docFileName, noteFileName } from './files/names'
 
-export { buildDocs, nodeDocPath } from './files/build'
+export { buildDocs, buildDocsChunked, nodeDocPath } from './files/build'
 
 export { parseDocs } from './files/parse'
 

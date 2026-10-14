@@ -6,9 +6,11 @@ import {
   closeIn,
   emptyDocs,
   openInGroup,
+  settle,
+  withGroup,
   withOwners,
 } from '../src/learn/groups'
-import { makeBlankTab, newBlankKey, tabKey, tabNodeId, tabTitle, tabTrail } from '../src/learn/tabs'
+import { closeTabs, makeBlankTab, makeDraftTab, newBlankKey, tabKey, tabNodeId, tabTitle, tabTrail } from '../src/learn/tabs'
 import type { TabRef } from '../src/learn/types'
 
 describe('空白页签（Blank Tab）与保底机制', () => {
@@ -125,5 +127,79 @@ describe('空白页签（Blank Tab）与保底机制', () => {
     docs = closeIds(docs, [tabKey(t1), tabKey(t2)])
     expect(docs.groups[0].tabs).toHaveLength(1)
     expect(docs.groups[0].tabs[0].ref.kind).toBe('blank')
+  })
+})
+
+/*
+ * 「一个页签栏有且只有一枚新页签」——需求原文。
+ *
+ * 三条路都要挡住：开页签那条主路（openInGroup 直接切到已有的那枚）、关闭时的落点
+ * （closeTabs 要补空白占位，别补第二枚）、以及任何别的路径（settle 这一道不变量兜底）。
+ * 前两条是「行为正确」，第三条是「数据层构造不出坏状态」——少哪一条，
+ * 用户都会在某次关闭之后看到两枚「新页签」并排躺在栏上。
+ */
+describe('一个页签栏有且只有一枚新页签', () => {
+  it('这一格已经有新页签时再开一枚：切到已有那枚，不追加第二枚', () => {
+    let docs = emptyDocs()
+    const first = docs.groups[0].tabs[0]
+    expect(first.ref.kind).toBe('blank')
+
+    docs = openInGroup(docs, FIRST_GROUP, { kind: 'blank', key: newBlankKey() }, 2)
+
+    expect(docs.groups[0].tabs, '仍然只有一枚').toHaveLength(1)
+    expect(docs.groups[0].tabs[0].id, '还是原来那枚（新开的那个 key 被丢掉了）').toBe(first.id)
+    expect(docs.groups[0].active).toBe(first.id)
+  })
+
+  it('已经有了别的页签时再开新页签：追加一枚（不是替换），但只此一枚', () => {
+    let docs = emptyDocs()
+    docs = openInGroup(docs, FIRST_GROUP, { kind: 'teach', nodeId: 'n1' }, 1)
+    docs = openInGroup(docs, FIRST_GROUP, { kind: 'blank', key: newBlankKey() }, 2)
+    expect(docs.groups[0].tabs).toHaveLength(2)
+
+    // 再点一次「新页签」：不该冒出第三枚
+    docs = openInGroup(docs, FIRST_GROUP, { kind: 'blank', key: newBlankKey() }, 3)
+    expect(docs.groups[0].tabs).toHaveLength(2)
+    expect(docs.groups[0].tabs.filter((t) => t.ref.kind === 'blank')).toHaveLength(1)
+  })
+
+  it('新建文件页签不受这条限制：草稿可以同时开好几份', () => {
+    let docs = emptyDocs()
+    docs = openInGroup(docs, FIRST_GROUP, { kind: 'draft', key: 'k1' }, 1)
+    docs = openInGroup(docs, FIRST_GROUP, { kind: 'draft', key: 'k2' }, 2)
+    expect(docs.groups[0].tabs.filter((t) => t.ref.kind === 'draft')).toHaveLength(2)
+  })
+
+  it('关闭时的落点要补空白占位：这一格已经有新页签就用它，不补第二枚', () => {
+    const blank = makeBlankTab()
+    // 一枚空白 + 两枚别的目标藏着的页签：关掉其中一枚时，可见候选耗尽，落点走「补空白」那条路
+    const hiddenA = { id: 't:h1', ref: { kind: 'teach', nodeId: 'h1' } as TabRef, createdAt: 1 }
+    const hiddenB = { id: 't:h2', ref: { kind: 'teach', nodeId: 'h2' } as TabRef, createdAt: 2 }
+    const r = closeTabs([blank, hiddenA, hiddenB], hiddenA.id, 'self', hiddenA.id, undefined, () => false)
+    expect(r.tabs.filter((t) => t.ref.kind === 'blank'), '不该多出第二枚').toHaveLength(1)
+    expect(r.active, '落点就是那一枚已有的新页签').toBe(blank.id)
+  })
+
+  it('settle 兜底：两枚新页签躺在一格里时只留第一枚', () => {
+    const first = makeBlankTab()
+    const second = makeBlankTab()
+    let docs = emptyDocs()
+    // 绕过所有入口直接造出坏状态：withGroup 不收拾，settle 才收拾
+    docs = withGroup(docs, FIRST_GROUP, (g) => ({ ...g, tabs: [first, second], active: second.id }))
+
+    docs = settle(docs)
+
+    expect(docs.groups[0].tabs).toHaveLength(1)
+    expect(docs.groups[0].tabs[0].id, '留用户先看到的那一枚').toBe(first.id)
+    expect(docs.groups[0].active, '被丢掉的那枚正好是 active：兜底指回格子里剩的那一枚').toBe(first.id)
+  })
+
+  it('settle 不动草稿：去重只针对新页签', () => {
+    const a = makeDraftTab()
+    const b = makeDraftTab()
+    let docs = emptyDocs()
+    docs = withGroup(docs, FIRST_GROUP, (g) => ({ ...g, tabs: [a, b], active: b.id }))
+    docs = settle(docs)
+    expect(docs.groups[0].tabs).toHaveLength(2)
   })
 })

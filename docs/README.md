@@ -39,6 +39,7 @@ README 只负责介绍项目（它是什么、能做什么、怎么装）。**�
 | --- | --- |
 | [architecture.md](architecture.md) | 主进程与渲染层、窗口与原生能力、模块地图、扩展方式 |
 | [ai-providers.md](ai-providers.md) | 预设与兼容格式、配置结构、思考程度、Command Code Go 套餐 |
+| [performance.md](performance.md) | 怎么录性能日志、怎么把它读成数字、已知的常驻性能负担与实验台 |
 | [development.md](development.md) | 开发环境、脚本、测试的分工与约定 |
 | [packaging-and-release.md](packaging-and-release.md) | 构建产物、反篡改开关、自动更新与发布流程 |
 

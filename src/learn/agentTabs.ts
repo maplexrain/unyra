@@ -71,10 +71,23 @@ export function agentTabCloseBlock(
   return 'none'
 }
 
+/** 页签引用的字段相等判断：避免每次 retarget 都替换一枚语义未变的对象。 */
+function sameAgentTabRef(a: AgentTabRef, b: AgentTabRef): boolean {
+  if (a.kind !== b.kind) return false
+  if (a.kind === 'free' && b.kind === 'free') return a.conversationId === b.conversationId
+  if (a.kind === 'goal' && b.kind === 'goal') {
+    return a.goalId === b.goalId && a.conversationId === b.conversationId
+  }
+  return a.kind === 'sub' && b.kind === 'sub' && a.conversationId === b.conversationId && a.sessionId === b.sessionId
+}
+
 /**
  * 开（或更新）一枚页签。已存在时**原位替换**（目标级页签的 conversationId 会随
  * 文档区的落点刷新），并按 activate 决定是否置前；新页签在没有任何激活项时
  * 即使不要求激活也会成为激活项——一枚孤零零的页签不该配一个空面板。
+ *
+ * 当页签和激活项都没有语义变化时，保留原数组引用；这条路径会被 retargetNode
+ * 高频调用，不能因为一次重复定位就牵连整棵工作区。
  */
 export function upsertAgentTab(
   tabs: AgentTabRef[],
@@ -83,9 +96,16 @@ export function upsertAgentTab(
   activate: boolean,
 ): { tabs: AgentTabRef[]; active: string | null } {
   const key = agentTabKey(ref)
-  const exists = tabs.some((t) => agentTabKey(t) === key)
-  const nextTabs = exists ? tabs.map((t) => (agentTabKey(t) === key ? ref : t)) : [...tabs, ref]
-  return { tabs: nextTabs, active: activate ? key : (active ?? key) }
+  const nextActive = activate ? key : (active ?? key)
+  const index = tabs.findIndex((t) => agentTabKey(t) === key)
+  if (index >= 0) {
+    if (sameAgentTabRef(tabs[index], ref) && active === nextActive) return { tabs, active }
+    if (sameAgentTabRef(tabs[index], ref)) return { tabs, active: nextActive }
+    const nextTabs = tabs.slice()
+    nextTabs[index] = ref
+    return { tabs: nextTabs, active: nextActive }
+  }
+  return { tabs: [...tabs, ref], active: nextActive }
 }
 
 /**

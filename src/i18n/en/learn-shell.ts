@@ -112,6 +112,19 @@ const dict: Record<string, string> = {
   '还没有最近打开：读过的文档会记在这里': 'Nothing opened recently — documents you read will show up here',
   '小提示：可直接拖动外部文档或图片至窗口中任意位置查看': 'Tip: You can drag and drop external documents or images anywhere to open',
   '新页签': 'New Tab',
+  '新建文件': 'New File',
+  '空白编辑页 · 保存时定类型': 'Blank page · type set when saved',
+  '保存…': 'Save…',
+  '在这里写点什么…': 'Start writing…',
+  '还没保存的新文件：按 Ctrl+S 选路径、文件名与后缀（默认 .txt），保存之后才定下它的类型':
+    'An unsaved new file: press Ctrl+S to choose a path, file name and extension (default .txt) — its type is settled only after saving',
+  '保存新建文件': 'Save New File',
+  '全部文件': 'All files',
+  '没有拿到保存路径': 'No save path was returned',
+  '已存到 {0}，但这个后缀归一打不开（只认文本类）。改个后缀再存一次吧':
+    'Saved to {0}, but Unyra cannot open this extension (text types only). Save again with a different extension.',
+  '已取消保存，先不关闭了': 'Save canceled — not closing',
+  '已取消保存': 'Save canceled',
 }
 
 export default dict

@@ -25,6 +25,7 @@ import { notesOf, type LearnStore, type LearnTab, type TabRef } from '../../../l
 import { draftOf, dropDraft, dropDrafts, putDraft, stageDraft } from '../../../learn/drafts'
 import {
   closeTabs,
+  draftFileName,
   tabTitle,
   tabNodeId,
   fileNameOf as localFileNameOf,
@@ -40,6 +41,7 @@ import {
   focusedTab,
   groupOf,
   ownerOfTab,
+  renameTabRef,
   servesGoal,
   unloadAnchoredGroups,
   withOwners,
@@ -47,6 +49,7 @@ import {
 import { nodeById, updateDoc, writeNote } from '../../../learn/graph'
 import { findNote } from '../../../learn/notes'
 import { readSuperDoc, writeSuperDoc } from '../../../learn/superdocs'
+import { addLocalFile } from '../../../learn/localfiles'
 import { writeLocalFile } from '../../../lib/localFiles'
 import { diskPathKey, userAbsPath, writeUserText } from '../../../lib/storage'
 import { wsRelOfTab } from '../../../learn/workspace'
@@ -89,6 +92,18 @@ export interface DocSaveFlowDeps {
   docTitle: string
   onToast: (msg: string) => void
 }
+
+/**
+ * saveTab 的结果。
+ *
+ * 为什么是三态而不是原来的「错误字符串 or null」：新建文件那条路要走**另存对话框**，
+ * 而用户在对话框上按「取消」既不是失败、也绝不能当成「存成了」——关闭流程拿到「存成了」
+ * 就会把没写住的东西关掉。第三种状态就是为这一下准备的。
+ */
+export type SaveTabResult =
+  | { ok: true }
+  | { ok: false; canceled: true }
+  | { ok: false; error: string }
 
 /**
  * 文档的保存 / 关闭 / 冲突流。
@@ -314,19 +329,36 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
   )
 
   /**
+   * 新建文件页签的暂存（见 DraftDoc）：它的基准是**空文档**——还没有落点，
+   * 磁盘上什么都没有。因此「改回空串」就等于「又回到没写过」，那一条暂存自己消失，
+   * 页签上那颗圆点也跟着消失（关它不该弹「有未保存的改动」）。
+   */
+  const stageNewFileDraft = useCallback(
+    (tabId: string, text: string) => {
+      const s = getLatest()
+      const tab = findTab(s.docArea, tabId)
+      if (!tab || tab.ref.kind !== 'draft') return
+      set({ ...s, drafts: stageDraft(s.drafts, tab.id, text, '') })
+    },
+    [getLatest, set],
+  )
+
+  /**
    * 保存一个页签的暂存改动（Ctrl+S 与「关闭未保存页签」两条路共用这一份）。
    *
-   * 返回 null = 存成了（或本来就没东西可存）；返回一句**用户能直接读**的失败说明——
-   * 调用方原样弹吐司，据此决定要不要继续（关闭流程失败就停，不把没存上的东西丢掉）。
+   * 返回 `{ ok: true }` = 存成了（或本来就没东西可存）；`{ ok: false, canceled: true }` =
+   * 用户在另存对话框上取消了（什么都没发生，调用方**不能**当成存成了继续往下走）；
+   * 其余给一句**用户能直接读**的失败说明——调用方原样弹吐司，据此决定要不要继续
+   * （关闭流程失败就停，不把没存上的东西丢掉）。
    * 冲突弹窗不在这里出：Ctrl+S 路径在调用前判断，关闭路径自己在遍历时判断。
    */
   const saveTab = useCallback(
-    async (tab: LearnTab): Promise<string | null> => {
+    async (tab: LearnTab): Promise<SaveTabResult> => {
       const s = getLatest()
       const text = draftOf(s.drafts, tab.id)
-      if (text === undefined) return null
+      if (text === undefined) return { ok: true }
       // 网页页签没有编辑器，永远不该有暂存正文；真有这份草稿也没处可存
-      if (tab.ref.kind === 'web') return null
+      if (tab.ref.kind === 'web') return { ok: true }
       // 守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置/新建目标）同样没有编辑器，没有暂存这回事
       if (
         tab.ref.kind === 'guard' ||
@@ -338,9 +370,79 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         tab.ref.kind === 'newGoal' ||
         tab.ref.kind === 'blank'
       )
-        return null
+        return { ok: true }
       const title = tabTitle(tab.ref, (nid) => nodeById(s, nid)?.title, examTabTitle)
       setDocSaving(true)
+      /*
+       * 新建文件：**保存这一步才定下它是什么**。
+       *
+       * 它原先没有落点、也没有类型——用户在空白页上点「新建文件」说的只是「我要写点东西」。
+       * 所以这里要问的不是「存不存」，而是「存到哪儿、叫什么、什么后缀」（默认 .txt）。
+       * 原生对话框把内容一并写下（file:saveText 自己 fsp.writeFile），拿到路径之后
+       * 页签当场换成指向那个文件的 local 页签：后缀是什么，它就是什么类型
+       * （md 进预览、txt 进编辑、图片进媒体预览，见 learn/tabs 的 viewOf）。
+       */
+      if (tab.ref.kind === 'draft') {
+        let saved: { ok: boolean; canceled?: boolean; path?: string; error?: string }
+        try {
+          saved = await native().saveText({
+            suggestedName: draftFileName(),
+            content: text,
+            title: t('保存新建文件'),
+            filters: [
+              { name: t('文本文件'), extensions: ['txt'] },
+              { name: t('Markdown'), extensions: ['md', 'markdown'] },
+              { name: t('网页'), extensions: ['html', 'htm'] },
+              { name: t('全部文件'), extensions: ['*'] },
+            ],
+          })
+        } catch {
+          setDocSaving(false)
+          return { ok: false, error: t('保存失败：应用没有跑在 Electron 里') }
+        }
+        if (!saved.ok) {
+          setDocSaving(false)
+          // 取消不是失败：什么都不做，页签与草稿原样留着
+          return saved.canceled ? { ok: false, canceled: true } : { ok: false, error: saved.error ?? t('保存失败') }
+        }
+        const path = saved.path
+        if (!path) {
+          setDocSaving(false)
+          return { ok: false, error: t('没有拿到保存路径') }
+        }
+        /*
+         * 文件已经落盘（主进程写的）。回读一次确认这个后缀归一打得开：
+         * local 通道只放行文本类后缀（见 electron/storage/local 的白名单），
+         * 用户手打一个别的后缀时，留一枚读不出内容的页签比说清楚更糟。
+         * 打不开就**不转换**：草稿原样留在编辑区，用户改个后缀再来一次。
+         */
+        try {
+          const probe = await native().local.read(path)
+          if (!probe.ok) {
+            setDocSaving(false)
+            return {
+              ok: false,
+              error: t('已存到 {0}，但这个后缀归一打不开（只认文本类）。改个后缀再存一次吧', path),
+            }
+          }
+        } catch {
+          /* 桥不可用：上面 saveText 已经成功了，说明桥在，这里不拦 */
+        }
+        const ref: TabRef = { kind: 'local', path }
+        set({
+          ...s,
+          docArea: renameTabRef(s.docArea, tab.ref, ref),
+          drafts: dropDraft(s.drafts, tab.id),
+          // 新建的文件就是一份外部文件：进「本地文件」清单，之后还能从那儿再打开它
+          localFiles: addLocalFile(s.localFiles, path, Date.now()),
+        })
+        setLocalSaved({ path, text })
+        setDocSaveError(undefined)
+        // 手动保存的意思就是「现在就写下去」：立刻落盘，不等 500ms 防抖
+        await flush()
+        setDocSaving(false)
+        return { ok: true }
+      }
       if (tab.ref.kind === 'local' || tab.ref.kind === 'ws') {
         /*
          * 本地外部文件与工作区内部文件同一条保存路，差别只在**写回哪条通道**：
@@ -354,7 +456,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         const diskPath = ref.kind === 'local' ? ref.path : rel ? userAbsPath(rel) : null
         if (!diskPath) {
           setDocSaving(false)
-          return t('「{0}」已经不在了，没能保存', title)
+          return { ok: false, error: t('「{0}」已经不在了，没能保存', title) }
         }
         const err =
           ref.kind === 'local'
@@ -365,7 +467,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         if (err) {
           setDocSaving(false)
           setDocSaveError(err)
-          return t('保存「{0}」失败：{1}', title, err)
+          return { ok: false, error: t('保存「{0}」失败：{1}', title, err) }
         }
         setDocSaveError(undefined)
         setLocalSaved({ path: diskPath, text })
@@ -391,7 +493,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
           (tab.ref.kind === 'super' && !readSuperDoc(s, tab.ref.nodeId, tab.ref.name))
         if (gone) {
           setDocSaving(false)
-          return t('「{0}」已经不在了，没能保存', title)
+          return { ok: false, error: t('「{0}」已经不在了，没能保存', title) }
         }
         const next =
           tab.ref.kind === 'note'
@@ -402,14 +504,14 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         // 超级文档那条路在节点消失时会返回 null（上面 gone 查过一拍，异步入口仍要兜底）
         if (!next) {
           setDocSaving(false)
-          return t('「{0}」已经不在了，没能保存', title)
+          return { ok: false, error: t('「{0}」已经不在了，没能保存', title) }
         }
         set({ ...next, drafts: dropDraft(next.drafts, tab.id) })
       }
       // 暂存清掉之后立刻落盘：手动保存的意思就是「现在就写下去」，不是「等下一次防抖」
       await flush()
       setDocSaving(false)
-      return null
+      return { ok: true }
     },
     [examTabTitle, flush, getLatest, set, setDocSaveError, setDocSaving, setLocalSaved],
   )
@@ -438,12 +540,14 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       setPendingConflict({ path: conflictPath, tabId: tab.id, phase: 'save' })
       return
     }
-    const err = await saveTab(tab)
-    if (err) {
-      onToast(err)
+    const r = await saveTab(tab)
+    if (!r.ok) {
+      // 在另存对话框上取消：什么都不说，也别弹「已保存」——用户知道自己在做什么
+      if ('error' in r) onToast(r.error)
       return
     }
-    onToast(t('已保存「{0}」', docTitle))
+    // 新建文件那条路存完就换了身份（draft → local）：此刻拿它的旧标题说「已保存『未命名』」是错的
+    onToast(tab.ref.kind === 'draft' ? t('已保存') : t('已保存「{0}」', docTitle))
   }, [docTitle, flush, getLatest, localConflicts, onToast, saveTab])
 
   /* ---------- 关页签 / 保存冲突的两条确认流 ---------- */
@@ -480,9 +584,9 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
           })
           return
         }
-        const err = await saveTab(tab)
-        if (err) {
-          onToast(t('{0}，先不关闭了', err))
+        const r = await saveTab(tab)
+        if (!r.ok) {
+          onToast('error' in r ? t('{0}，先不关闭了', r.error) : t('已取消保存，先不关闭了'))
           return
         }
       }
@@ -532,9 +636,10 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       const s = getLatest()
       const tab = findTab(s.docArea, p.tabId)
       if (!tab) return
-      const err = await saveTab(tab)
-      if (err) {
-        onToast(p.phase === 'close' ? t('{0}，先不关闭了', err) : err)
+      const r = await saveTab(tab)
+      if (!r.ok) {
+        if ('error' in r) onToast(p.phase === 'close' ? t('{0}，先不关闭了', r.error) : r.error)
+        else onToast(p.phase === 'close' ? t('已取消保存，先不关闭了') : t('已取消保存'))
         return
       }
       if (p.phase === 'close' && p.rest && p.closingIds && p.group && p.id && p.mode) {
@@ -667,6 +772,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
   return {
     editDocSource,
     stageLocalDraft,
+    stageNewFileDraft,
     saveDocNow,
     closeTab,
     localTicks,

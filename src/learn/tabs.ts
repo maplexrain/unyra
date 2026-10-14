@@ -75,6 +75,8 @@ export function tabKey(ref: TabRef): string {
   if (ref.kind === 'agentSettings') return 'set:agent'
   if (ref.kind === 'newGoal') return 'goal:new'
   if (ref.kind === 'blank') return 'b:' + ref.key
+  // 新建文件页签：还没有落点，身份只能是开签那一刻的随机后缀
+  if (ref.kind === 'draft') return 'd:' + ref.key
   return 'l:' + ref.path
 }
 
@@ -92,6 +94,35 @@ export function makeBlankTab(at = Date.now()): LearnTab {
   return makeTab({ kind: 'blank', key: newBlankKey() }, at)
 }
 
+/**
+ * 新建文件页签的身份后缀：开签那一刻生成。
+ *
+ * 与空白页签同一种随机后缀（两者都不指向任何已有东西，没有别的身份可用），
+ * 但前缀不同（`d:` vs `b:`），所以「一个栏只有一枚新页签」那条规矩不会把新建文件页签
+ * 也算进去——用户完全可以同时开好几份没保存的草稿。
+ */
+export function newDraftKey(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+}
+
+/** 构造一枚新建文件页签（临时编辑页） */
+export function makeDraftTab(at = Date.now()): LearnTab {
+  return makeTab({ kind: 'draft', key: newDraftKey() }, at)
+}
+
+/** 新建文件的默认文件名后缀：需求口径是 txt */
+export const DRAFT_DEFAULT_EXT = '.txt'
+
+/** 保存新建文件时对话框里的默认文件名（用户改掉就是他的选择） */
+export function draftFileName(ext: string = DRAFT_DEFAULT_EXT): string {
+  return t('未命名') + ext
+}
+
+/** 这是不是一枚「新页签」（空白底页）；新建文件页签不算 */
+export function isBlankTab(tab: LearnTab): boolean {
+  return tab.ref.kind === 'blank'
+}
+
 /** 页签挂在哪个节点上；本地文件、网页、守卫、报告、设置与用量页都不属于任何节点（工作区内部文件挂在它的节点上） */
 export function tabNodeId(ref: TabRef): string | null {
   return ref.kind === 'local' ||
@@ -103,7 +134,9 @@ export function tabNodeId(ref: TabRef): string | null {
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
     ref.kind === 'newGoal' ||
-    ref.kind === 'blank'
+    ref.kind === 'blank' ||
+    // 新建文件页签还没有落点：保存那一刻才知道它属于哪儿（见 types 的 draft 分支）
+    ref.kind === 'draft'
     ? null
     : ref.nodeId
 }
@@ -169,6 +202,8 @@ export function tabTitle(
   if (ref.kind === 'agentSettings') return t('超级导师设置')
   if (ref.kind === 'newGoal') return t('新建目标')
   if (ref.kind === 'blank') return t('新页签')
+  // 新建文件页签：还没有文件名，就叫「未命名」——保存之后它变成 local 页签，显示真实文件名
+  if (ref.kind === 'draft') return t('未命名')
   // 工作区内部文件：显示文件名（相对段可能带几层目录）
   if (ref.kind === 'ws') return fileNameOf(ref.seg)
   return ref.title || fileNameOf(ref.path)
@@ -190,7 +225,8 @@ export function tabTrail(
 ): string {
   if (ref.kind === 'exam') return ''
   if (ref.kind === 'web') return ''
-  // 守卫、报告与系统页（设置/用量/导师设置/新建目标/空白页签）不挂在节点上，也没有「住在哪儿」可言
+  // 守卫、报告与系统页（设置/用量/导师设置/新建目标/空白页签）不挂在节点上，也没有「住在哪儿」可言；
+  // 新建文件页签同样还没有落点——保存之后它换成 local，后缀才会出现
   if (
     ref.kind === 'guard' ||
     ref.kind === 'report' ||
@@ -198,7 +234,8 @@ export function tabTrail(
     ref.kind === 'usage' ||
     ref.kind === 'agentSettings' ||
     ref.kind === 'newGoal' ||
-    ref.kind === 'blank'
+    ref.kind === 'blank' ||
+    ref.kind === 'draft'
   )
     return ''
 
@@ -228,6 +265,8 @@ export function tabTrail(
  */
 export function viewOf(tab: LearnTab, empty = false): DocView {
   if (tab.view) return tab.view
+  // 新建文件页签还没有类型可言：它就是一张用来写的纸，永远进编辑视图
+  if (tab.ref.kind === 'draft') return 'source'
   if (empty) return 'source'
   // 工作区内部文件与本地文件同一套默认：媒体进媒体预览、markdown 进预览、其余落到源码
   if (tab.ref.kind === 'local' || tab.ref.kind === 'ws') {
@@ -271,7 +310,9 @@ export function isDocumentTab(ref: TabRef): boolean {
     ref.kind === 'note' ||
     ref.kind === 'super' ||
     ref.kind === 'local' ||
-    ref.kind === 'ws'
+    ref.kind === 'ws' ||
+    // 新建文件页签算文档：它装着用户正在写的东西，「关闭非文档」不该把它一起收掉
+    ref.kind === 'draft'
   )
 }
 
@@ -361,7 +402,12 @@ export function closeTabs(
        * 都是在「退到别的 tab 组」——用户得把它们一枚一枚关掉，没完没了。改补一枚
        * 空白页签当落点：藏着的保持沉睡（不激活就不进栏），切到它们的目标时原样还在。
        * 「全部关闭」走不到这里（rest 为空）：落点交给 settle 兜底——单格补空白、多格收格。
+       *
+       * 补之前先看这一格里是不是已经有一枚新页签：**一个栏有且只有一枚**（见 openInGroup），
+       * 有就用它当落点，别再补第二枚。
        */
+      const existingBlank = keep.find((t) => t.ref.kind === 'blank')
+      if (existingBlank) return { tabs: keep, active: existingBlank.id }
       const blank = makeBlankTab()
       return { tabs: [...keep, blank], active: blank.id }
     }

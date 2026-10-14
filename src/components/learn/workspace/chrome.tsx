@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ArrowUp, BookOpen, Check, ChevronDown, Compass, Contact, FolderOpen, Globe, History, Loader2, Menu, Paperclip, Sparkles, Star } from 'lucide-react'
+import { ArrowUp, BookOpen, Check, ChevronDown, Compass, Contact, FilePlus, FolderOpen, Globe, History, Loader2, Menu, Paperclip, Sparkles, Star } from 'lucide-react'
 import type { PendingFile } from '../../../agent/types'
 import type { FavoriteItem, FavoriteRef, KnowledgeNode, LearnStore } from '../../../learn/types'
 import { favoriteKey } from '../../../learn/favorites'
@@ -433,13 +433,18 @@ export function NodeHints(_props: { node?: KnowledgeNode; store?: LearnStore }) 
  * 版式按设计稿定的四条：
  * - 整体**上移**（不再垂直居中），从上方一块留白起步；
  * - 顶部是**应用标志**：不带徽章边框与底色，就是 logo 本身；
- * - 三个快捷入口的图标**加大、去掉边框与背景**，悬停反馈落在图标与文字的颜色上；
- * - 底部并排两栏：**收藏**与**最近打开**（原资源管理器侧栏的「最近打开」区挪到这里，
+ * - 快捷入口的图标**加大、去掉边框与背景**，悬停反馈落在图标与文字的颜色上；
+ * - 底部上下两栏：**收藏**在上、**最近打开**在下（原资源管理器侧栏的「最近打开」区挪到这里，
  *   见 learn/recents）；两栏都空时各自给一句「去哪儿攒」的说明。
  *
- * 数据与回调全部由 props 传入（收藏、最近打开、三个入口、拖拽提示），组件自己不读 store。
+ * 快捷入口的第一个是**新建文件**（用户定的）：它是这一页自己的正事——「我要写点东西」。
+ * 点它就地换成一枚新建文件页签（还没有类型，保存时才定，见 learn/types 的 draft 分支），
+ * 所以它排在「打开本地文件」前面。
+ *
+ * 数据与回调全部由 props 传入（收藏、最近打开、四个入口、拖拽提示），组件自己不读 store。
  */
 export function EmptyDoc({
+  onNewFile,
   onPickLocal,
   onOpenWeb,
   onNewGoal,
@@ -449,6 +454,8 @@ export function EmptyDoc({
   recents = [],
   onOpenRecent,
 }: {
+  /** 新建文件：就地换成一枚临时编辑页签（见 learn/types 的 draft） */
+  onNewFile?: () => void
   onPickLocal: () => void
   onOpenWeb?: () => void
   onNewGoal?: () => void
@@ -480,8 +487,18 @@ export function EmptyDoc({
           {t('点选左侧目录知识点开启研读，或通过下方快捷入口探索文件与网络。')}
         </p>
 
-        {/* 快捷操作组：图标加大、去掉边框与背景，悬停反馈落在图标与文字上 */}
-        <div className="mt-8 grid w-full grid-cols-1 gap-3 sm:grid-cols-3">
+        {/* 快捷操作组：图标加大、去掉边框与背景，悬停反馈落在图标与文字上。
+            四个入口排成 2×2：三个时用三列最平衡，第四个进来之后三列会把
+            「浏览网络网页」那一格挤得放不下它的说明 */}
+        <div className="mt-8 grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
+          {onNewFile && (
+            <QuickEntry
+              icon={<FilePlus size={22} className="stroke-[1.75]" />}
+              label={t('新建文件')}
+              hint={t('空白编辑页 · 保存时定类型')}
+              onClick={onNewFile}
+            />
+          )}
           <QuickEntry
             icon={<FolderOpen size={22} className="stroke-[1.75]" />}
             label={t('打开本地文件')}
@@ -506,24 +523,8 @@ export function EmptyDoc({
           )}
         </div>
 
-        {/* 最近打开 / 收藏 两栏（用户定的：原侧栏的「最近打开」区挪到空白页上，栏序左近右收） */}
-        <div className="mt-8 grid w-full grid-cols-1 gap-x-8 gap-y-5 text-left sm:grid-cols-2">
-          <BlankColumn title={t('最近打开')} icon={<History size={12} />}>
-            {recents.length ? (
-              <div className="max-h-[196px] overflow-y-auto">
-                {recents.map((item) => (
-                  <RecentRow
-                    key={item.kind + ':' + item.id}
-                    item={item}
-                    now={now}
-                    onOpen={() => onOpenRecent?.(item)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <BlankColumnEmpty text={t('还没有最近打开：读过的文档会记在这里')} />
-            )}
-          </BlankColumn>
+        {/* 收藏 / 最近打开 两栏（用户定的：原侧栏的「最近打开」区挪到空白页上，上下排列，收藏在上、最近打开在下） */}
+        <div className="mt-8 flex w-full flex-col gap-5 text-left">
           <BlankColumn title={t('收藏')} icon={<Star size={12} />}>
             {favs.length ? (
               <div className="max-h-[196px] overflow-y-auto">
@@ -538,6 +539,22 @@ export function EmptyDoc({
               </div>
             ) : (
               <BlankColumnEmpty text={t('还没有收藏：在页签上右键即可收藏文档与网页')} />
+            )}
+          </BlankColumn>
+          <BlankColumn title={t('最近打开')} icon={<History size={12} />}>
+            {recents.length ? (
+              <div className="max-h-[196px] overflow-y-auto">
+                {recents.map((item) => (
+                  <RecentRow
+                    key={item.kind + ':' + item.id}
+                    item={item}
+                    now={now}
+                    onOpen={() => onOpenRecent?.(item)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <BlankColumnEmpty text={t('还没有最近打开：读过的文档会记在这里')} />
             )}
           </BlankColumn>
         </div>
@@ -611,6 +628,15 @@ function FavoriteRow({ item, title, onOpen }: { item: FavoriteItem; title: strin
 
 
 /**
+ * 滚到最右端用的「足够大」的值。
+ *
+ * 为什么不是 `el.scrollWidth`：读它会把待处理的样式与布局**就地结算掉**（一次完整的
+ * 布局，日志里量到约 0.5ms），而这一步在每次当前节点变化时都要走。给一个远超任何
+ * 面包屑宽度的值，浏览器自己会夹到真实的最大滚动位置——同样滚到最右端，但不读几何。
+ */
+const SCROLL_TO_END = 1e7
+
+/**
  * 顶栏里的「我在哪」：一条面包屑。
  *
  * 这一簇原先是文档区顶上的一条独立行，现在提到顶栏：左边是「学什么」（目标），
@@ -653,7 +679,7 @@ export function NodeTrail({
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' })
+    el.scrollTo({ left: SCROLL_TO_END, behavior: 'smooth' })
   }, [node?.id])
 
   if (!node) return null

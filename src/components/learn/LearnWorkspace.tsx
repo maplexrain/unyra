@@ -90,7 +90,7 @@ import {
   type DocLayout,
   type TabOwners,
 } from '../../learn/groups'
-import { makeTab, newBlankKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
+import { makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
 import { pickLocalFiles } from '../../lib/localFiles'
 import { addLocalFile } from '../../learn/localfiles'
 import { normalizeWebInput } from '../../learn/webUrl'
@@ -195,6 +195,7 @@ import ExplorerSidebar, {
   type NodeDocActions,
   type NodeStateActions,
 } from './ExplorerSidebar'
+import { requestReveal } from './explorer/reveal'
 import { focusAgentInput } from '../../lib/agentFocus'
 import { moveTabMark, resetTabMark } from '../../lib/tabMark'
 import { setChipOpener, type ChipPayload } from '../../lib/docChip'
@@ -219,6 +220,7 @@ import { buildFocusReport, REPORT_MIN_MS, type FocusOutcome, type GuardMonitors 
 import { writeFocusReport } from '../../learn/focusReports'
 import { formatClock, pomodoroStatus } from '../../learn/pomodoro'
 import LocalDoc from './LocalDoc'
+import DraftDoc from './DraftDoc'
 import SourceEditor from './SourceEditor'
 import type { DocSource } from './NodeNote'
 import ConfirmDialog from '../ConfirmDialog'
@@ -230,7 +232,7 @@ import ContextDebugger from '../agent/ContextDebugger'
 import { resetPrefixGate } from '../../agent/prefixGate'
 import { docAreaElement, locateNeedle, scrollToDoc, visibleDocBody } from '../../lib/docDom'
 import { publishReadingDay } from '../../lib/readingPulse'
-import { residentIds, useRecentTabs } from '../../learn/resident'
+import { readRecentTabs, residentIds } from '../../learn/resident'
 import type { UiPointRequest } from '../../agent/tools'
 import type { AskAnswers } from '../../agent/tools'
 import type { Conversation, ConversationMessage, MessageFile, MessageImage, PendingFile, PendingImage } from '../../agent/types'
@@ -353,13 +355,7 @@ export default function LearnWorkspace({
   const agentSettings = useSyncExternalStore(subscribeAgentSettings, loadAgentSettings)
   const [creatingGoalBusy, setCreatingGoalBusy] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  /**
-   * 「这一拍有页签开始被浏览」的拍号：开页签 / 点页签（含重开当前正开着的）都 +1。
-   * 资源管理器的定位跟着拍走——不能只盯 activeTab 的值变化：导师重开当前已聚焦的
-   * 文档、chip 点开已打开的文档，值都没变，但「用户此刻在看它」这件事值得再定位一次。
-   */
-  const [browseNonce, setBrowseNonce] = useState(0)
-  const bumpBrowse = useCallback(() => setBrowseNonce((n) => n + 1), [])  /*
+  /*
    * 学习状态与试卷**都没有应用内的窗口**：两块都是文档区右上角悬浮组里的一块 tip
    * （鼠标经过即展开，见 components/learn/DocFloat），试卷的作答在独立的考试窗口里
    * （见 learn/useExamBridge 与 ExamWindow）。所以这里没有它们的开关。
@@ -607,7 +603,8 @@ export default function LearnWorkspace({
     if (ref.kind === 'exam') {
       return { type: 'attempt', nodeId: ref.nodeId, examId: ref.examId, attemptId: ref.attemptId, title }
     }
-    // 守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置/新建目标）没有可引用的 chip 形态：从文档区拖不出引用
+    // 守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置/新建目标）没有可引用的 chip 形态：从文档区拖不出引用；
+    // 新建文件页签同样没有——它还没有落点，引用一个「还不存在的文件」没有意义
     if (
       ref.kind === 'guard' ||
       ref.kind === 'report' ||
@@ -616,7 +613,8 @@ export default function LearnWorkspace({
       ref.kind === 'mind' ||
       ref.kind === 'agentSettings' ||
       ref.kind === 'newGoal' ||
-      ref.kind === 'blank'
+      ref.kind === 'blank' ||
+      ref.kind === 'draft'
     )
       return null
     const docPath = (kind: 'teaching' | 'note' | 'outline', note?: string): string | undefined =>
@@ -679,8 +677,9 @@ export default function LearnWorkspace({
    */
   const superDoc = pane.superDoc
 
-  // 最近激活过的页签（常驻名额按它排，见 learn/resident 的 touchRecent）
-  const recentTabs = useRecentTabs()
+  // 只读取最近页签快照，不订阅它的通知：touchRecent 不再让整个工作区追加一轮渲染。
+  // 下一次工作区本来就会发生的 store/layout 渲染会自然读到最新快照。
+  const recentTabs = readRecentTabs()
 
   const openTabIds = useMemo(() => tabs.map((t) => t.id), [tabs])
   /** 每一格当前显示的那一片：分割之后同时有好几片正文在眼前，它们都得常驻 */
@@ -1385,6 +1384,7 @@ export default function LearnWorkspace({
       const nodeId = tabNodeId(ref)
       const node = nodeId ? nodeById(s, nodeId) : undefined
       if (nodeId && !node) return
+      const wasActive = focusedTab(s.docArea)?.id === tabKey(ref)
       const base = node ? touchNode(retargetNode(s, node.id), node.id) : s
       /*
        * 空笔记当场定下「源码（编辑）视图」：这个默认值是按正文现算的，
@@ -1418,10 +1418,10 @@ export default function LearnWorkspace({
        */
       const owner = refOwner(ref, (id) => nodeById(base, id)?.goalId ?? null)
       set({ ...base, docArea: withOwners(opened, claimTab(opened.tabOwners, owner, tabKey(ref))) })
-      bumpBrowse()
+      if (wasActive) requestReveal()
       setSidebarOpen(false)
     },
-    [getLatest, retargetNode, set, bumpBrowse],
+    [getLatest, retargetNode, set],
   )
   // 回填放在 effect 里（渲染期不许写 ref）：openTab 的身份随依赖变，每次渲染后换成最新的一份
   useEffect(() => {
@@ -1476,10 +1476,11 @@ export default function LearnWorkspace({
       const goal = s.goals.find((g) => g.id === goalId)
       if (!goal) return
       const base = touchNode(retargetNode(s, goal.rootNodeId), goal.rootNodeId)
-      set(goalTabGroup(base, goalId))
-      bumpBrowse()
+      const next = goalTabGroup(base, goalId)
+      set(next)
+      if (focusedTab(s.docArea)?.id === focusedTab(next.docArea)?.id) requestReveal()
     },
-    [getLatest, retargetNode, goalTabGroup, set, bumpBrowse],
+    [getLatest, retargetNode, goalTabGroup, set],
   )
 
   /**
@@ -1534,11 +1535,12 @@ export default function LearnWorkspace({
       const node = nodeById(s, nodeId)
       if (!node) return
       const base = touchNode(retargetNode(s, node.id), node.id)
-      set(goalTabGroup(base, node.goalId, true))
-      bumpBrowse()
+      const next = goalTabGroup(base, node.goalId, true)
+      set(next)
+      if (focusedTab(s.docArea)?.id === focusedTab(next.docArea)?.id) requestReveal()
       setSidebarOpen(false)
     },
-    [getLatest, retargetNode, goalTabGroup, set, bumpBrowse],
+    [getLatest, retargetNode, goalTabGroup, set],
   )
 
   /**
@@ -1556,13 +1558,15 @@ export default function LearnWorkspace({
       if (!tab || !group) return
       const nodeId = tabNodeId(tab.ref)
       const base = nodeId ? retargetNode(s, nodeId) : s
+      const wasActive = focusedTab(s.docArea)?.id === id && s.docArea.focus === group
       // activateIn 顺手把焦点挪到那一格：点别处的页签，接下来的动作（开文档、Ctrl+W）都该落在那一格
       startTransition(() => {
         set({ ...base, docArea: activateIn(base.docArea, group, id) })
       })
-      bumpBrowse()
+      // 同一枚页签没有 activeTab 变化，单独唤醒侧栏完成重复定位。
+      if (wasActive) requestReveal()
     },
-    [getLatest, retargetNode, set, bumpBrowse],
+    [getLatest, retargetNode, set],
   )
 
   /* ---------- 内置浏览器（网页页签，见 components/learn/web） ---------- */
@@ -1591,10 +1595,9 @@ export default function LearnWorkspace({
       const opened = openInGroup(s.docArea, s.docArea.focus, ref, Date.now(), undefined, (id) => nodeById(s, id)?.goalId ?? null)
       // 网页页签不属于任何目标（公共）：登记成公共，切目标时它留栏上（见 groups/goals）
       set({ ...s, docArea: withOwners(opened, claimTab(opened.tabOwners, PUBLIC_OWNER, tabKey(ref))) })
-      bumpBrowse()
       return tabKey(ref)
     },
-    [getLatest, set, bumpBrowse],
+    [getLatest, set],
   )
 
   /** 打开空白页签 */
@@ -1775,6 +1778,7 @@ export default function LearnWorkspace({
   const {
     editDocSource,
     stageLocalDraft,
+    stageNewFileDraft,
     saveDocNow,
     closeTab,
     localTicks,
@@ -3308,14 +3312,27 @@ export default function LearnWorkspace({
   const openWebInPlace = useCallback(
     (groupId: string, currentTabId: string) => {
       openInPlace(groupId, currentTabId, { kind: 'web', url: '', key: newWebKey() })
-      bumpBrowse()
     },
-    [bumpBrowse, openInPlace],
+    [openInPlace],
   )
 
   const openNewGoalInPlace = useCallback(
     (groupId: string, currentTabId: string) => {
       openInPlace(groupId, currentTabId, { kind: 'newGoal' })
+    },
+    [openInPlace],
+  )
+
+  /**
+   * 新建文件：把当前这枚空白页签**就地**换成新建文件页签（见 learn/types 的 draft）。
+   *
+   * 为什么是就地换而不是新开一枚：用户点的就是「新页签」那一页上的按钮，他想要的是
+   * 「这一页变成能写字的地方」，而不是「再多一枚页签、还留着一枚空白的」。
+   * 这也顺带保住了「一个栏只有一枚新页签」那条规矩——不换的话，那枚占位还留着。
+   */
+  const openNewFileInPlace = useCallback(
+    (groupId: string, currentTabId: string) => {
+      openInPlace(groupId, currentTabId, { kind: 'draft', key: newDraftKey() })
     },
     [openInPlace],
   )
@@ -3563,6 +3580,7 @@ export default function LearnWorkspace({
                 并在当前页签中快速就地打开。
               */
               <EmptyDoc
+                onNewFile={() => openNewFileInPlace(groupId, gTab.id)}
                 onPickLocal={() => void pickLocalInPlace(groupId, gTab.id)}
                 onOpenWeb={() => openWebInPlace(groupId, gTab.id)}
                 onNewGoal={() => openNewGoalInPlace(groupId, gTab.id)}
@@ -3629,6 +3647,21 @@ export default function LearnWorkspace({
                 onRunWorkflow={runWorkflowRow}
                 onRemoveWorkflow={removeWorkflowRow}
                 onWorkflowEffort={setWorkflowEffortRow}
+              />
+            ) : gTab?.ref.kind === 'draft' ? (
+              /*
+                新建文件：还没有落点、也没有类型的那一份正文（见 DraftDoc）。
+                正文住在暂存区里（基准是空文档），保存那一步才问路径与文件名，
+                后缀一确定，这枚页签当场换成指向那个文件的本地文件页签。
+                没有 key：它不指向任何外部东西，也就没有「重挂重读」这回事。
+              */
+              <DraftDoc
+                draft={g.draft}
+                scale={docScale}
+                onDraft={(text) => stageNewFileDraft(gTabId, text)}
+                saving={docSaving}
+                saveError={docSaveError}
+                onSave={() => void saveDocNow()}
               />
             ) : gTab?.ref.kind === 'local' ? (
               /*
@@ -4122,8 +4155,6 @@ export default function LearnWorkspace({
             : null
         }
         open={sidebarOpen}
-        // 「这一拍开始浏览某个页签」的拍号：定位跟着它走（连着重开当前这份也重新定位）
-        browseNonce={browseNonce}
         // 纯净阅读：资源管理器整栏向左让位（靠负外边距真让位，见 ExplorerSidebar）
         pure={pure}
         onClose={() => setSidebarOpen(false)}

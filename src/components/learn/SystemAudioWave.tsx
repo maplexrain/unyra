@@ -11,6 +11,14 @@ import { addBreath, applyGravity, barCount, barRanges, sampleBars, smoothBars } 
  * - 响应主题色切换（--color-seal / --color-seal-deep / --color-line-strong）；
  * - 采用流体极光底衬、双层高质感光柱、悬浮流光珠与环境自然呼吸律动；
  * - 鼠标划过带有轻盈的交互声波荡漾，整体灵动、现代且通透。
+ *
+ * **看不见就停**：它是装饰，没人看的时候不该占着主线程。三件事都会让它停下 rAF——
+ * canvas 滚出视口（IntersectionObserver）、页面被切到后台（visibilitychange）、
+ * 组件卸载；回来时自动续上。采集那一侧（loopback 会话）不停：停掉再起要重新
+ * 握手，还可能赶上「输出设备变了」的重试，而画不画才是这里要省的那笔账。
+ *
+ * 主题色改由 MutationObserver 盯着 `data-theme` / `style` 变，不再按帧数轮询
+ * `getComputedStyle`——那是一次强制样式结算，而主题切换本来就是低频事件。
  */
 
 /** 下降重力：每帧回落的全高占比（涨即时、落缓慢，见 bars.applyGravity） */
@@ -27,9 +35,6 @@ const SILENCE_LEVEL = 0.035
 
 /** 接连失败的重试上限 */
 const MAX_RETRIES = 10
-
-/** 主题切换按帧数隔一阵重读一次 */
-const COLOR_REFRESH_FRAMES = 90
 
 export default function SystemAudioWave() {
   const ref = useRef<HTMLCanvasElement | null>(null)
@@ -275,13 +280,35 @@ export default function SystemAudioWave() {
     }
 
     let lastAudioActive = false
+    /** rAF 是否在跑。看不见 / 页面隐藏时它是 false */
+    let running = false
+    /** canvas 此刻是否落在视口里（由 IntersectionObserver 维护） */
+    let onScreen = true
 
     const step = (now: number): void => {
       frames++
       const shouldDraw = lastAudioActive ? (!reduce || frames % 4 === 0) : frames % 2 === 0
       if (shouldDraw) draw(now)
-      if (frames % COLOR_REFRESH_FRAMES === 0) readColors()
       raf = window.requestAnimationFrame(step)
+    }
+
+    const play = (): void => {
+      if (running || disposed) return
+      running = true
+      raf = window.requestAnimationFrame(step)
+    }
+
+    const pause = (): void => {
+      if (!running) return
+      running = false
+      if (raf) window.cancelAnimationFrame(raf)
+      raf = 0
+    }
+
+    /** 「该不该跑」只有一个判据：在视口里 且 页面可见 */
+    const sync = (): void => {
+      if (onScreen && document.visibilityState !== 'hidden') play()
+      else pause()
     }
 
     const resize = () => {
@@ -298,14 +325,38 @@ export default function SystemAudioWave() {
 
     const ro = new ResizeObserver(resize)
     ro.observe(canvas)
+
+    // 滚出视口就停（侧栏收起、窗口太窄、用户滚到别处）
+    const io = typeof IntersectionObserver !== 'undefined' ? new IntersectionObserver((entries) => {
+      onScreen = entries.some((e) => e.isIntersecting)
+      sync()
+    }) : null
+    io?.observe(canvas)
+
+    // 页面切到后台也停
+    document.addEventListener('visibilitychange', sync)
+
+    /*
+     * 主题换了才重读颜色。原先是在 step 里按帧数轮询（每 90 帧一次 getComputedStyle），
+     * 而 getComputedStyle 会把待处理的样式就地结算掉——低频事件没必要按帧付这个钱。
+     */
+    const themeWatch = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => readColors()) : null
+    themeWatch?.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme', 'class', 'style'],
+    })
+
     resize()
     start()
-    raf = window.requestAnimationFrame(step)
+    sync()
 
     return () => {
       disposed = true
       ro.disconnect()
-      if (raf) window.cancelAnimationFrame(raf)
+      io?.disconnect()
+      themeWatch?.disconnect()
+      document.removeEventListener('visibilitychange', sync)
+      pause()
       window.clearTimeout(retryTimer)
       session?.stop()
     }

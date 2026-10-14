@@ -5,7 +5,8 @@ import { flushCommitsSync } from '../lib/storage'
 import { initVfsStoreSync, registerStoreSyncListener } from '../vfs'
 
 /**
- * 学习数据的 React 状态容器：单一 state、500ms 防抖落盘、卸载/关闭页签前兜底保存。
+ * 学习数据的 React 状态容器：单一 store state、500ms 防抖落盘、卸载/关闭页签前兜底保存。
+ * 持久化进度不单独建 React state，避免保存完成时把整棵学习区再渲染一次。
  *
  * 数据在启动时就已经读进内存（见 lib/boot.ts），所以这里的初始值仍是同步取的，
  * 界面不必等一个「载入中」。写盘是异步的，防抖窗口内的最后一次改动由
@@ -16,8 +17,6 @@ import { initVfsStoreSync, registerStoreSyncListener } from '../vfs'
  */
 export function useLearnStore() {
   const [store, setStore] = useState<LearnStore>(() => loadLearnStore() ?? emptyLearnStore())
-  const [dirty, setDirty] = useState(false)
-  const [lastSavedAt, setLastSavedAt] = useState(() => Date.now())
 
   // ref 只在 set 里同步更新（不在 render 期赋值）：异步流程 await 之后能拿到最新快照
   const storeRef = useRef(store)
@@ -28,11 +27,8 @@ export function useLearnStore() {
       firstRender.current = false
       return
     }
-    setDirty(true)
     const t = window.setTimeout(() => {
       saveLearnStore(storeRef.current)
-      setDirty(false)
-      setLastSavedAt(Date.now())
     }, 500)
     return () => window.clearTimeout(t)
   }, [store])
@@ -109,9 +105,7 @@ export function useLearnStore() {
   const flush = useCallback(async () => {
     saveLearnStore(storeRef.current)
     await flushLearnStore()
-    setDirty(false)
-    setLastSavedAt(Date.now())
   }, [])
 
-  return { store, set, getLatest, patchQuiet, flush, dirty, lastSavedAt }
+  return { store, set, getLatest, patchQuiet, flush }
 }

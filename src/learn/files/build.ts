@@ -9,6 +9,7 @@ import { manifestText } from '../static/manifest'
 import { docFileName, noteFileName, outlineFileName } from './names'
 import { sanitizeSegment } from '../segments'
 import { CHAT_VERSION, META_VERSION, jsonText, tmpText, type MetaFile } from './meta'
+import { yieldToMain } from '../../lib/yieldToMain'
 
 /**
  * 一个节点上一次序列化出来的 meta.json 文本（见 buildDocs 里的复用判断）。
@@ -54,8 +55,12 @@ function metaReusable(
  * 少一层前缀就会「写得进去、读不回来」。
  *
  * 保存时拿它与上一次的快照比对，只写真正变了的文件。
+ *
+ * 它是**生成器**：每处理完一个节点就 `yield` 一次，由调用方决定要不要真的把主线程
+ * 让出去（见下面的 buildDocs / buildDocsChunked）。做成生成器而不是写两份实现，
+ * 是因为这段逻辑是落盘的正身——同步版与分片版必须逐字节一致，抄一份迟早会漂。
  */
-export function buildDocs(store: LearnStore): Map<string, string> {
+function* buildDocsSteps(store: LearnStore): Generator<void, Map<string, string>, void> {
   const files = new Map<string, string>()
   const byId = new Map(store.nodes.map((n) => [n.id, n]))
 
@@ -244,6 +249,9 @@ export function buildDocs(store: LearnStore): Map<string, string> {
      */
     const tmp = tmpText(store.tmp?.[node.id])
     if (tmp) files.set(`${path}/tmp.json`, tmp)
+
+    // 一个节点摊完：把控制权交回调用方（同步版会立刻继续，分片版可能在这里让出主线程）
+    yield
   }
 
   // 兜底未匹配到节点的试卷（写入根级 exams/{id}.json）
@@ -262,6 +270,39 @@ export function buildDocs(store: LearnStore): Map<string, string> {
   // 整张换上去：这一轮没走到的节点（删掉的、读不出来的）自然就从缓存里消失了
   metaCache = nextMetaCache
   return files
+}
+
+/** 同步摊平：一次跑完，中途不让出主线程 */
+export function buildDocs(store: LearnStore): Map<string, string> {
+  const steps = buildDocsSteps(store)
+  let step = steps.next()
+  while (!step.done) step = steps.next()
+  return step.value
+}
+
+/** 一次摊平里，两片之间最多连着跑多久 */
+const SLICE_BUDGET_MS = 6
+
+/**
+ * 分片摊平：每片最多连着跑 `budgetMs` 毫秒，片间 `await yieldToMain()`。
+ *
+ * 为什么要它：摊平一份大 store 是几十毫秒的纯计算，而它原先是在防抖回调里**同步**跑完的
+ * ——日志里量到 98.77ms 一次，主线程整段被占住，期间的点击只能排队。切碎之后总时长不变，
+ * 但片与片之间浏览器能处理输入、能画一帧。
+ *
+ * 小 store 一片就跑完（第一次判断就 done），因此不会为「没什么可摊」的情况白付让出的开销。
+ */
+export async function buildDocsChunked(store: LearnStore, budgetMs = SLICE_BUDGET_MS): Promise<Map<string, string>> {
+  const steps = buildDocsSteps(store)
+  let sliceStart = performance.now()
+  for (;;) {
+    const step = steps.next()
+    if (step.done) return step.value
+    if (performance.now() - sliceStart >= budgetMs) {
+      await yieldToMain()
+      sliceStart = performance.now()
+    }
+  }
 }
 
 /**

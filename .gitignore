@@ -43,3 +43,10 @@ build/.icon-toolset/
 
 # DSH 沙箱 ACL 修复时留下的诊断报告——本机排障产物，与项目无关
 .dsh-acl-recovery/
+
+# 性能实验台的构建产物（npm run perf:lab 生成的单文件 HTML；shell.html 是模板源码，要进库）
+perf-lab/tab-switch-lab*.html
+
+# workbuddy 助手的本机记忆目录（会话产物，与项目无关）
+.workbuddy/
+.workbuddy-ai/

@@ -189,6 +189,9 @@ export function useExportFlow(deps: ExportFlowDeps) {
           if (text === null) return { ok: false, error: t('读不到这个工作区文件') }
           source = text
         }
+      } else if (tab.ref.kind === 'draft') {
+        // 新建文件：还没有落点，正文就在暂存区里（基准是空文档）。导出的该是眼前这一版
+        source = draftOf(store.drafts, tab.id) ?? ''
       } else {
         // 节点文档那条路，docSource 已经把暂存区叠上去了（见它的说明）
         source = docSource?.content ?? ''

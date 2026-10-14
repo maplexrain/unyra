@@ -57,6 +57,13 @@ describe('upsertAgentTab', () => {
     expect(again.active).toBe('ga:g1')
   })
 
+  it('语义没有变化时保留数组和激活项引用', () => {
+    const first = upsertAgentTab([], null, goal('g1', 'c1'), true)
+    const again = upsertAgentTab(first.tabs, first.active, goal('g1', 'c1'), true)
+    expect(again.tabs).toBe(first.tabs)
+    expect(again.active).toBe(first.active)
+  })
+
   it('新页签不要求激活时保持原激活项；没有任何激活项时补上自己', () => {
     const base = upsertAgentTab([], null, goal('g1'), true)
     const added = upsertAgentTab(base.tabs, base.active, goal('g2'), false)

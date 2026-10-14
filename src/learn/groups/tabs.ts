@@ -1,7 +1,7 @@
 /** 这个文件负责：每格的页签列——开关、激活、顺序、常驻名额，以及跨格拖动与拖出去分割 */
 
 import type { DocView, LearnTab, TabRef } from '../types'
-import { closeTabs, makeTab, reorderTabs, tabKey, type TabCloseMode } from '../tabs'
+import { closeTabs, isBlankTab, makeTab, reorderTabs, tabKey, type TabCloseMode } from '../tabs'
 import { groupOf, settle, withDocs, withGroup } from './core'
 import { findTab, focusedGroup, groupIdOfTab } from './focus'
 import { PUBLIC_OWNER, claimTab, dropTabs, goalTabsOf, ownerOfTab, refOwner, withOwners, withParked } from './goals'
@@ -114,6 +114,16 @@ export function openInGroup(
     return activateIn(docs, home, id)
   }
   const target = groupOf(docs, groupId) ? groupId : focusedGroup(docs).id
+  /*
+   * 「一个页签栏有且只有一枚新页签」：这一格已经有空白占位了就直接切过去，
+   * 不再追加第二枚。判据是**这一格**而不是栏上看得见什么——页签实体一直住在格子里，
+   * 栏上画哪些由目标过滤决定（见 groups/goals 的 visibleTabs）；第二枚占位一旦落进格子，
+   * 切回那个目标时两枚就会一起冒出来。
+   */
+  if (ref.kind === 'blank') {
+    const existing = groupOf(docs, target)?.tabs.find(isBlankTab)
+    if (existing) return activateIn(docs, target, existing.id)
+  }
   const newTab = makeTab(ref, at, view)
   const next = withGroup(docs, target, (g) => ({
     ...g,

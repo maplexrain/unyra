@@ -42,6 +42,27 @@ let current: RevealRequest | null = null
 let clearTimer: number | undefined
 const listeners = new Set<(req: RevealRequest) => void>()
 
+/*
+ * 重新定位同一枚页签时只需要唤醒资源管理器，不需要让 LearnWorkspace 整棵树重渲染。
+ * 这是一个独立的小信号：ExplorerSidebar 自己订阅，宿主动作只负责递增它。
+ */
+let requestVersion = 0
+const requestListeners = new Set<() => void>()
+
+export function requestReveal(): void {
+  requestVersion += 1
+  for (const listener of requestListeners) listener()
+}
+
+export function subscribeRevealRequest(listener: () => void): () => void {
+  requestListeners.add(listener)
+  return () => requestListeners.delete(listener)
+}
+
+export function revealRequestVersion(): number {
+  return requestVersion
+}
+
 /**
  * 广播一条定位请求：订阅者当场各就各位。current 留几秒再清——工作区的子目录要等
  * 父目录列完盘才挂载，晚生的行靠 peekReveal 补看；过期的展开指令不该永远有效。
@@ -212,7 +233,9 @@ export function revealOfTab(
     case 'agentSettings':
     case 'newGoal':
     case 'blank':
-      // 设置页、用量页与新建目标是文档区的页签，但侧栏里没有它们的行（入口在顶栏或菜单），不定位
+    case 'draft':
+      // 设置页、用量页与新建目标是文档区的页签，但侧栏里没有它们的行（入口在顶栏或菜单），不定位；
+      // 新建文件页签同样没有——它还没有落点，侧栏里不可能有一行指向它（保存之后它才变成 local）
       return null
     case 'report':
       // 专注报告住在资源管理器自己的分类夹里；守卫页签不在侧栏，落不进来（不定位）

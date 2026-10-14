@@ -45,10 +45,13 @@ export function examDeleteWarn(exam: Exam): string {
  *
  * 本地文件不在 store 里（内容不进数据目录），返回空串——那条路的比较基准是刚从磁盘
  * 读回来的内容，由 LocalDoc 自己拿着（见它的 edit）。
+ * 新建文件页签同样返回空串：它还没有落点，磁盘上什么都没有，基准就是**空文档**
+ * （改回空串 = 又回到没写过，那条暂存自己消失）。
  */
 export function savedTextOf(store: LearnStore, ref: TabRef): string {
   // 网页页签没有暂存正文（没有编辑器），与本地文件同路；工作区内部文件与本地文件同路
-  //（基准由 LocalDoc 自己拿着）；守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置/新建目标）同样没有暂存
+  //（基准由 LocalDoc 自己拿着）；守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置/新建目标）
+  // 同样没有暂存；新建文件页签的基准是空文档（见上）
   if (
     ref.kind === 'local' ||
     ref.kind === 'ws' ||
@@ -60,7 +63,8 @@ export function savedTextOf(store: LearnStore, ref: TabRef): string {
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
     ref.kind === 'newGoal' ||
-    ref.kind === 'blank'
+    ref.kind === 'blank' ||
+    ref.kind === 'draft'
   )
     return ''
   const node = nodeById(store, ref.nodeId)

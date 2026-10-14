@@ -22,6 +22,7 @@ import {
   DOCS_DIR,
   assetMoves,
   buildDocs,
+  buildDocsChunked,
   buildState,
   diffDocs,
   parseDocs,
@@ -171,10 +172,14 @@ export function saveLearnStore(store: LearnStore): void {
    * JSON.stringify(…, null, 2) 一遍，主线程被整份序列化占住。挪进已经防抖的回调之后，
    * 这笔账只在真要写盘的那一次付。
    *
-   * 为什么不是「各算各的」：run 与 runSync 只会走其中一条（见 lib/storage 的
-   * flushCommits / flushCommitsSync），但两条路必须拿到**同一份清单**——
-   * 下面的 assetMoves 与 diffDocs 都要用同一个 desired，算两份就可能对不上。
-   * 于是这里只算一次、两条路共用（关窗前那条同步路径照样是当场同步算出来的）。
+   * **但防抖只是把成本推后，没有把它挪出主线程**：回调里全是同步代码，日志里量到
+   * 98.77ms 一次（buildDocs 72.8 + diffDocs 16.8 + assetMoves 6）。所以异步这条路
+   * 改用 buildDocsChunked——按节点切片、片间把主线程让出去；同步那条（关窗前）没有
+   * 「稍后」可言，仍然一次算完。
+   *
+   * 为什么两条路都要 `plan` 这份备忘录：run 与 runSync 只会走其中一条（见 lib/storage 的
+   * flushCommits / flushCommitsSync），但两条路必须拿到**同一份清单**——下面的 assetMoves
+   * 与 diffDocs 都要用同一个 desired，算两份就可能对不上。
    */
   type Plan = {
     desired: Map<string, string>
@@ -182,9 +187,8 @@ export function saveLearnStore(store: LearnStore): void {
     moves: ReturnType<typeof assetMoves>
   }
   let plan: Plan | null = null
-  const planOf = (): Plan => {
-    if (plan) return plan
-    const desired = buildDocs(store)
+
+  const finishPlan = (desired: Map<string, string>): Plan => {
     const next: Plan = {
       desired,
       state: buildState(store),
@@ -200,9 +204,16 @@ export function saveLearnStore(store: LearnStore): void {
     plan = next
     return next
   }
+
+  /** 同步算完（关窗前那条路） */
+  const planOfSync = (): Plan => plan ?? finishPlan(buildDocs(store))
+
+  /** 分片算完（平时的异步路径）：主线程在片间有机会处理输入 */
+  const planOfChunked = async (): Promise<Plan> => plan ?? finishPlan(await buildDocsChunked(store))
+
   scheduleCommit(`docs:${uid}`, {
     run: async () => {
-      const { desired, state, moves } = planOf()
+      const { desired, state, moves } = await planOfChunked()
       const { writes, removes } = diffDocs(snapshot ?? new Map(), desired)
       // 先搬后删：搬空之后，diff 给出的「删掉旧目录」才是安全的（工作区目录也在 ASSET_DIRS 里）
       const stranded = await moveAssets(uid, moves)
@@ -215,7 +226,7 @@ export function saveLearnStore(store: LearnStore): void {
     },
     // 关窗前的同步版：按同一套差异算出要写/要删的清单；move 项必须排在 remove 之前
     runSync: () => {
-      const { desired, state, moves } = planOf()
+      const { desired, state, moves } = planOfSync()
       const { writes, removes } = diffDocs(snapshot ?? new Map(), desired)
       /**
        * 同步路径查不了「搬家的目标是否已存在」，因此对**搬家的源目录**一律不下删除指令：

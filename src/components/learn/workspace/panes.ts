@@ -100,7 +100,8 @@ export function paneInfo(
     tab.ref.kind !== 'exam' &&
     tab.ref.kind !== 'outline' &&
     tab.ref.kind !== 'web' &&
-    tab.ref.kind !== 'blank'
+    tab.ref.kind !== 'blank' &&
+    tab.ref.kind !== 'draft'
       ? sourceOf(store, tab, node)
       : null
   const empty = emptyNote(store, tab)
@@ -113,12 +114,14 @@ export function paneInfo(
     view: tab ? viewOf(tab, empty) : 'preview',
     draft: draftOf(store.drafts, tab?.id ?? null),
     title: tab ? tabTitle(tab.ref, (id) => nodeById(store, id)?.title, examTitle) : '',
-    // 空笔记也能预览（它就是一片空白）：与「这份文件不能预览」是两回事，按钮的说明不一样
+    // 空笔记也能预览（它就是一片空白）：与「这份文件不能预览」是两回事，按钮的说明不一样。
+    // 新建文件页签同样不能预览：它还没有类型，也就没有「渲染成什么样」可言（见 learn/tabs 的 viewOf）
     previewable:
       !!tab &&
       tab.ref.kind !== 'web' &&
       tab.ref.kind !== 'newGoal' &&
       tab.ref.kind !== 'blank' &&
+      tab.ref.kind !== 'draft' &&
       !empty &&
       (tab.ref.kind !== 'local' || isPreviewable(tab.ref.path)),
     emptyNote: empty,
