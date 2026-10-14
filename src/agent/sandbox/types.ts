@@ -242,12 +242,45 @@ export interface SandboxOptions {
    */
   subagent?: SubAgentSandboxApi
   /**
+   * permission 组（list / revoke / request）：外部路径放行的查看、撤销与审批。
+   * **导师专用**——SUBAGENT_ALLOWED_GROUPS 不含这一组（改放行配置是导师与用户
+   * 之间的事，不从子代理手里过）。宿主实现见 agent/permissions。
+   */
+  permission?: PermissionOps
+  /**
    * 动态提示词注入的触发回调（**导师专用**，见 learn/ai/promptModules）：本次编排里
    * 模型第一次用到某个低频 api 组（或写出了 plot / 动画内容）时，execute 把对应的
    * 模块 key 报给宿主；宿主负责去重（同一上下文只注入一次）与落库。子代理不注入——
    * 它们的规范在各自 def 的 system 里。
    */
   onPromptModule?: (key: string) => void
+}
+
+/* ---------- permission：路径放行 ---------- */
+
+/** permission.request 的入参（api 层已把 path 归一化为非空字符串） */
+export interface PermissionRequestPayload {
+  /** 要放行的目录（绝对路径，或相对数据根的路径） */
+  path: string
+  /** 为什么需要它——原样显示在审批卡片上 */
+  reason?: string
+}
+
+/**
+ * permission 组的宿主实现：外部路径放行的查看 / 撤销 / 审批（行为在 agent/permissions）。
+ *
+ * 与 ask 的分工：ask 是 agent-用户-agent（答案回到模型手里，怎么用由模型决定）；
+ * permission.request 是 agent-用户-系统——用户批准后**由宿主直接把目录写进放行配置**
+ * （agent/settings 的 permissions.allowedDirs，saveAgentSettings 会同步到主进程），
+ * 模型只拿到「批准了没有」。可访问作用域 = 数据根目录（恒可访问、不可撤销）+ 放行清单。
+ */
+export interface PermissionOps {
+  /** 当前可访问的作用域：数据根 root + 已放行目录 allowedDirs */
+  list(): unknown
+  /** 撤销一个已放行的目录（归一化后精确匹配；数据根不在清单里、无可撤销） */
+  revoke(path: string): unknown
+  /** 请求放行：弹审批并阻塞到用户抉择，批准由宿主落配置；返回值带 approved */
+  request(payload: PermissionRequestPayload): Promise<unknown>
 }
 
 /** subagent.wait 的一条交付：交付正文（中断 / 出错为 null）与为什么 */
@@ -265,8 +298,7 @@ export interface SubWaitRunning {
   name: string
 }
 
-/** subagent.wait 的回执：error 存在即参数不对；timedOut / aborted 见字段说明 */
-export interface SubWaitResult {
+/** subagent.wait 的回执：error 存在即参数不对；timedOut / aborted 见字段说明 */export interface SubWaitResult {
   error?: string
   deliveries: SubWaitDelivery[]
   running: SubWaitRunning[]

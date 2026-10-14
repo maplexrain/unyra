@@ -9,6 +9,7 @@
  */
 import { createAgentOps } from '../../src/learn/agentOps'
 import { createExecuteTool, plainLineOf } from '../../src/agent/tools'
+import { makePermissionOps } from '../../src/agent/permissions'
 import { createMindOps } from '../../src/learn/mind'
 import { SANDBOX_API_NAMES } from '../../src/agent/sandboxWorker'
 import { SANDBOX_API_CATALOG } from '../../src/agent/apiCatalog'
@@ -255,6 +256,11 @@ export async function apiNameTests() {
     'skill.run': "'test-skill', 'test.js'",
     'skill.write': "{ id: 'test-skill', name: '测试' }",
     'skill.delete': "'test-skill'",
+    // 路径放行（导师专用）：宿主给真实现（makePermissionOps + 专用桩 ask 总是选「放行」）——
+    // Node 探针里设置只在内存（uid 为空，writeUserSettings 不落盘）
+    'permission.list': '',
+    'permission.revoke': "'C:/probe/not-allowed'",
+    'permission.request': "{ path: 'C:/probe-approval', reason: '探针：外部数据集' }",
   }
   let s = staticStore()
   let tmpStore: Record<string, unknown> = {}
@@ -372,6 +378,14 @@ export async function apiNameTests() {
       remove: () => ({ ok: true, agent: 'probe' }),
       wait: async () => ({ deliveries: [], running: [] }),
     },
+    // 路径放行：真实现（agent/permissions）+ 专用桩 ask（总是选「放行」），审批闭环在探针里走通
+    permission: makePermissionOps({
+      ask: async () => ({
+        ok: true,
+        cancelled: false,
+        answers: [{ id: 'approve', type: 'single', prompt: '放行？', picked: ['放行'], pickedIds: ['yes'] }],
+      }),
+    }),
   })
   for (const name of SANDBOX_API_NAMES) {
     const args = calls[name]
@@ -409,6 +423,15 @@ export async function apiNameTests() {
     'mcp 这一组真的到了宿主（服务 / 工具 / 参数原样递过去）',
     sawMcpCall,
   )
+  // permission 这一组走的是真实现（agent/permissions + 桩 ask 总是批准）：
+  // 名单检查里 permission.request 已经过一次审批——这里钉「agent-用户-系统」的闭环：
+  // 批准由宿主落进放行配置（Node 里是内存份），清单查得到、重复放行不再弹、撤销真的撤。
+  const permList = await tool.run({ description: '放行清单', body: '((api)=>{ return await api.permission.list() })' }, { nodeId: childId, goalId })
+  ok(permList.ok && permList.content.includes('C:/probe-approval'), '批准过的目录出现在 permission.list 里', permList.content.slice(0, 220))
+  const permAgain = await tool.run({ description: '重复放行', body: "((api)=>{ return await api.permission.request({ path: 'C:/probe-approval' }) })" }, { nodeId: childId, goalId })
+  ok(permAgain.ok && permAgain.content.includes('alreadyAccessible'), '已在作用域内时不再弹审批', permAgain.content.slice(0, 200))
+  const permRevoke = await tool.run({ description: '撤销放行', body: "((api)=>{ return await api.permission.revoke('C:/probe-approval') })" }, { nodeId: childId, goalId })
+  ok(permRevoke.ok && permRevoke.content.includes('"removed"'), 'permission.revoke 撤掉已放行的目录', permRevoke.content.slice(0, 200))
   // ui.point 的行号定位：源文行要先剥成渲染文本里找得到的纯文字——
   // agent 实测拿原始源文行去搜渲染结果，除了纯散文行一律 located:false
   ok(plainLineOf('## 微积分基本定理') === '微积分基本定理', '标题行剥掉井号', plainLineOf('## 微积分基本定理'))

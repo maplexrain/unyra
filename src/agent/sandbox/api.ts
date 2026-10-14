@@ -956,6 +956,26 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     }, log)
   }
 
+  // 路径放行（permission.*）：外部目录的查看、撤销与审批。宿主实现见 agent/permissions；
+  // **导师专用**——SUBAGENT_ALLOWED_GROUPS 里没有这一组，改放行配置不从子代理手里过。
+  if (opts.permission) {
+    const perm = opts.permission
+    wrapApi(api, 'permission.list', () => perm.list(), log)
+    wrapApi(api, 'permission.revoke', (args) => {
+      const raw = asText(args[0]).trim()
+      if (!raw) return { ok: false, error: 'permission.revoke 需要一个 path（要撤销放行的目录）' }
+      return perm.revoke(raw)
+    }, log)
+    wrapApi(api, 'permission.request', (args) => {
+      const a = asRecord(args[0])
+      const rawPath = asText(a.path).trim()
+      if (!rawPath) {
+        return { ok: false, error: 'permission.request 需要 path（要放行的目录），可附 reason 说明给用户看' }
+      }
+      return perm.request({ path: rawPath, ...(asText(a.reason).trim() ? { reason: asText(a.reason).trim() } : {}) })
+    }, log)
+  }
+
   // 基础系统真实文件系统与受控系统进程 (files.* / process.*)
   const getNativeFiles = () => {
     if (typeof window !== 'undefined') {
@@ -1272,10 +1292,11 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
       groups: [
         'node', 'method', 'wf', 'code', 'web', 'browser', 'mcp',
         'subagent', 'compact', 'chip', 'wait', 'ask', 'tiktok',
-        'ui', 'files', 'process', 'skill', 'log',
+        'ui', 'files', 'process', 'skill', 'permission', 'log',
       ],
-      description: '当前沙箱提供 18 组核心能力。全量数据读写与状态管理已收敛为 files.*。',
+      description: '当前沙箱提供 19 组核心能力。全量数据读写与状态管理已收敛为 files.*。',
       files: 'api.files: read, write, edit, list, stat, mkdir, copy, move, delete（真实文件读写，相对路径默认解析到当前学习数据目录）',
+      permission: 'api.permission: list, revoke, request（外部路径放行：查看作用域 / 撤销放行 / 请求用户审批，批准由宿主直接落配置）',
       node: 'api.node: list, read, paths, create, title, rename, update, annotate, delete, move（节点结构管理）',
       browser: 'api.browser: open, tabs, activate, close, snapshot, point, dom, read, capture, logs, logDetail, fetch, waitFor, record, text, scroll（内置网页浏览器）',
       mcp: 'api.mcp: list, discover, call（用户配置的外部 MCP 服务：先 list 看服务与工具，再 call 调用）',

@@ -229,6 +229,20 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     ],
   },
   {
+    key: 'permission',
+    label: '路径放行 · permission',
+    intro:
+      '外部真实路径的放行管理（files.* 与 process.* 的每次真实读写都在主进程按放行清单校验）。' +
+      '可访问作用域 = 数据根目录（及其子树，恒可访问、不可撤销）+ 用户放行的外部目录。' +
+      'request 会弹一张审批卡片给用户，**批准后由宿主直接写进放行配置**（设置「工具」页那份清单' +
+      '同步更新）——你只拿到批准与否。被拒绝就别反复重试同一个路径。',
+    items: [
+      { name: 'permission.list', signature: 'permission.list()', summary: '当前可访问作用域：数据根 root + 已放行目录 allowedDirs', availability: 'always' },
+      { name: 'permission.revoke', signature: 'permission.revoke(path)', summary: '撤销某个已放行的目录（归一化后精确匹配；数据根不在清单里、无可撤销；没放行过会回当前清单）', availability: 'always' },
+      { name: 'permission.request', signature: 'permission.request({ path, reason? })', summary: '请求放行一个外部目录：阻塞等用户在审批卡片上抉择；approved:true 即已生效（alreadyAccessible:true 表示本来就可访问）；拒绝 / 取消 / 超时都回 approved:false', availability: 'always' },
+    ],
+  },
+  {
     key: 'files',
     label: '真实文件系统 · files',
     intro:

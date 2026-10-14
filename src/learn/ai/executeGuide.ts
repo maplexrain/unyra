@@ -82,7 +82,10 @@ export const EXECUTE_GUIDE = `唯一的工具是 execute(description, body)：
 - api.process.stop(process_id, { force?, timeoutMs? }) → { ok, process_id, killed }：终止进程（支持超时强杀）。
 - api.process.list() → { ok, processes: [...] }：列出当前 Agent 有权访问的所有受控进程。
 - api.process.get(process_id) → { ok, process: {...} }：根据 process_id 获取进程详情。
-- 权限与生命周期边界：对当前学习目标根目录拥有完全读写权限，操作外部路径需用户在设置「工具」页加入白名单；进程生命周期与主应用强绑定，应用退出或中断时子进程自动级联清理。
+- 权限与生命周期边界：对当前学习目标根目录拥有完全读写权限，操作外部路径需用户在设置「工具」页加入白名单（或经 api.permission.request 请用户审批）；进程生命周期与主应用强绑定，应用退出或中断时子进程自动级联清理。
+- api.permission.list() → { ok, root, allowedDirs }：当前可访问作用域（数据根 + 用户放行的外部目录）。
+- api.permission.revoke(path)：撤销一个已放行的外部目录（归一化后精确匹配；数据根不在清单里、无可撤销）。
+- api.permission.request({ path, reason? })：请求放行外部目录——弹审批卡片给用户并阻塞等待；approved:true 即宿主已把该目录写进放行配置、立刻生效（alreadyAccessible:true 表示本来就可访问）；拒绝 / 取消 / 超时都回 approved:false，**被拒后不要反复重试同一个路径**，把需要它的原因讲给用户或改用数据根内的路径。
 
 数据资产与存储文件契约（所有状态读写真实物理文件；文档直接读写，数据文件读后 JSON.parse 反序列化，写时 JSON.stringify）：
 - 知识点教学文档: docs/:goal/.../:title.md（文档文件，Markdown 纯文本，files.read/write/edit）

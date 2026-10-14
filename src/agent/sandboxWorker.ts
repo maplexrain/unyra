@@ -92,6 +92,11 @@ const API_NAMES = [
   'ui.superdoc',
   // ui.dom 特殊：回调无法穿过 Worker 边界，Worker 侧特判成「建会话 + 逐个操作」
   'ui.dom',
+  // 路径放行（导师专用）：查看作用域 / 撤销放行 / 请求用户审批——批准由宿主直接落配置，
+  // 审批复用 ask 的表单通道（见 agent/permissions）。SUBAGENT_ALLOWED_GROUPS 不含这一组。
+  'permission.list',
+  'permission.revoke',
+  'permission.request',
   // 基础系统文件操作：真实路径读写与管理 (files.*)
   'files.read',
   'files.write',
