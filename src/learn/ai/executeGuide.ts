@@ -102,6 +102,7 @@ export const EXECUTE_GUIDE = `唯一的工具是 execute(description, body)：
 - 学习者画像: user.yaml（配置文件，记录水平与背景偏好，files.read("user.yaml") 读取）
 - 界面状态数据: state.json（数据文件，记录活跃视图与页签状态，files.read("state.json") 读取）
 - 超级交互文档: docs/:goal/.../superdocs/:name.html（文档文件，HTML 页面源码，ui.superdoc 打开）
+- 节点工作区文件: docs/:goal/.../workspace/:filename（用户产物——文件 / 项目 / 代码等交付物统一放这里）
 - 目标静态素材: docs/:goal/static/:filename（多媒体/静态文件，正文 Markdown 直接引用）
 - 持久化函数源码: docs/:goal/methods/:name.js（源码文件，执行调 api.method.call(name, ...args)）
 
