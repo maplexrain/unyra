@@ -12,6 +12,18 @@
  * - 用户在设置里点「检查最新版本」时，任何时候都问。
  * 上面三种都走 shouldCheck()——关掉「自动检查更新」之后，自动的那两次连请求都不发。
  *
+ * 更新策略（正式版 / 尝鲜版，见 update-core 的 UPDATE_CHANNELS）决定**收哪一档版本**：
+ * - 正式版：只静默下载正式发行版（vX.Y.Z）。开关是 allowPrerelease=false——这个版本的
+ *   GitHub provider 会走 `/releases/latest`，而尝鲜版发布时标了 prerelease、不占 Latest
+ *   （见 scripts/release.mjs），所以正式用户只会拿到正式版；
+ * - 尝鲜版：静默下载所有更新（含 vX.Y.Z-beta.N）。开关是 allowPrerelease=true——
+ *   provider 直接取 releases.atom 的第一条，也就是最新发布的那一版。
+ * 正式策略另有一道独立防线：update-available 时还要过 channelAllowsVersion，
+ * 就算发布端把预发布误标成了 Latest，正式用户也拿不到尝鲜版（只挡这一处，
+ * 判定口径与测试都收在 update-core 里）。
+ * 策略随时可切（setUpdateChannel）：立刻按新策略重新认定；若切换时正有下载在跑，
+ * 让它下完，但下完后按新策略重查一遍（staleDownload）。
+ *
  * 状态机：
  *
  *   disabled     这个构建不参与自动更新（开发运行、非 Windows）
@@ -38,10 +50,16 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import fs from 'node:fs'
 import path from 'node:path'
-import { autoUpdate as autoUpdateSetting, setAutoUpdate as persistAutoUpdate } from './storage'
+import {
+  autoUpdate as autoUpdateSetting,
+  setAutoUpdate as persistAutoUpdate,
+  setUpdateChannel as persistChannel,
+  updateChannel as channelSetting,
+} from './storage'
 import {
   FIRST_CHECK_DELAY_MS,
   POLL_INTERVAL_MS,
+  channelAllowsVersion,
   failDetailOf,
   failReasonOf,
   notesText,
@@ -52,9 +70,14 @@ import {
   type UpdatePhase,
 } from './update-core'
 
+import type { UpdateChannel } from '../shared/ipc'
+
 export type { UpdatePhase }
 
-/** 更新状态（形状在 electron/preload.ts 与 src/lib/native.ts 各声明一份，改动要同步） */
+/**
+ * 更新状态（主进程自己这一份；同一形状在 shared/ipc.ts 还有一份，
+ * preload 与渲染层用的是那份——改动要两边同步）
+ */
 export interface UpdateState {
   phase: UpdatePhase
   /** 当前运行的版本 */
@@ -114,6 +137,15 @@ function updaterEnabled(): boolean {
 
 let state: UpdateState = { phase: 'idle', current: '0.0.0' }
 
+/**
+ * 「手上这次下载是旧策略认定的版本」标记。
+ *
+ * 用户在下到一半时切换更新策略：下载没法半途取消，让它下完最省事；但它代表的是
+ * 旧策略的选择，下完后不当作 ready，而是按新策略重新查一次（见 update-downloaded）。
+ * 由 setUpdateChannel 置位，beginDownload 清掉——新起的下载按定义属于新策略。
+ */
+let staleDownload = false
+
 function setState(patch: Partial<UpdateState>): void {
   state = { ...state, ...patch }
   for (const win of BrowserWindow.getAllWindows()) {
@@ -122,9 +154,41 @@ function setState(patch: Partial<UpdateState>): void {
   }
 }
 
+/**
+ * 「这次查到的版本」相关字段全清。三处用到——没查到新版本、按策略忽略、
+ * 切策略后重查前——语义一样：下一次检查查到什么，界面上就说什么。
+ * （releaseUrl 也一起清：它属于上一个版本的发布页，留着会让界面挂一个对不上的链接。）
+ */
+function clearedInfo(): Partial<UpdateState> {
+  return {
+    version: undefined,
+    releaseName: undefined,
+    notes: undefined,
+    fileName: undefined,
+    size: undefined,
+    percent: undefined,
+    transferred: undefined,
+    bytesPerSecond: undefined,
+    reason: undefined,
+    detail: undefined,
+    releaseUrl: undefined,
+  }
+}
+
 /* ---------- 配置 ---------- */
 
 let configured = false
+
+/**
+ * 把「更新策略」翻译成 electron-updater 的取版开关（两种策略的完整语义见文件头）。
+ * 配置时与每次切换策略时都要调用。
+ *
+ * 不设 autoUpdater.channel：它的 setter 会顺手把 allowDowngrade 打开
+ * （所以下面还要把 allowDowngrade 钉死在 false）。
+ */
+function applyChannel(): void {
+  autoUpdater.allowPrerelease = channelSetting() === 'beta'
+}
 
 function configureUpdater(): void {
   if (configured) return
@@ -175,10 +239,11 @@ function configureUpdater(): void {
   /*
    * 明确写出来：allowDowngrade 平时是 false，但给它设 channel 的那个 setter
    * 会顺手把它置真。我们不设 channel，这里再钉一道，免得将来有人加了 channel
-   * 就悄悄允许把用户降级回旧版本。
+   * 就悄悄允许把用户降级回旧版本。尝鲜版用户在切回正式版后停在原版本，
+   * 等正式版版本号超过它再升——也是这条的预期行为。
    */
   autoUpdater.allowDowngrade = false
-  autoUpdater.allowPrerelease = false
+  applyChannel()
   // 我们只发完整安装包，不发 web installer（那种包自己没有签名校验）
   autoUpdater.disableWebInstaller = true
   // 不接日志就是全静音：出问题时终端里什么都看不到
@@ -190,20 +255,20 @@ function configureUpdater(): void {
 
   autoUpdater.on('checking-for-update', () => setState({ phase: 'checking' }))
   autoUpdater.on('update-not-available', () =>
-    setState({
-      phase: 'idle',
-      version: undefined,
-      releaseName: undefined,
-      notes: undefined,
-      fileName: undefined,
-      size: undefined,
-      percent: undefined,
-      transferred: undefined,
-      bytesPerSecond: undefined,
-      checkedAt: Date.now(),
-    }),
+    setState({ ...clearedInfo(), phase: 'idle', checkedAt: Date.now() }),
   )
   autoUpdater.on('update-available', (info) => {
+    /*
+     * 正式策略的独立防线（第一道是 allowPrerelease，见 applyChannel）：
+     * 万一发布端把预发布标成了 Latest，正式用户到这一步也必须停下——
+     * 不进「可下载」、更不自动下载，就当这次没查到（状态回 idle）。
+     * 尝鲜策略不做任何过滤：所有更新都收。
+     */
+    if (!channelAllowsVersion(channelSetting(), info.version)) {
+      console.warn('[update] 按当前策略忽略版本 ' + info.version + '（正式版策略不接收预发布版本）')
+      setState({ ...clearedInfo(), phase: 'idle', checkedAt: Date.now() })
+      return
+    }
     // 安装包信息：文件名给界面显示，体积给进度条当分母（进度事件里还会再给一次 total）
     const fileInfo = info.files?.[0]
     const base: Partial<UpdateState> = {
@@ -228,7 +293,19 @@ function configureUpdater(): void {
       bytesPerSecond: p.bytesPerSecond,
     }),
   )
-  autoUpdater.on('update-downloaded', (info) =>
+  autoUpdater.on('update-downloaded', (info) => {
+    /*
+     * 下完的这份是旧策略认定的版本（用户在下载途中切了策略，见 setUpdateChannel）：
+     * 不当 ready，按新策略重新查一次——新策略若还认它，同一份缓存会立刻复用
+     * （哈希对得上，库不会重下）；若不认（比如切到正式版时下的正是尝鲜包），
+     * 它就留在缓存里不再提起（下次下载别的版本时由库自己清）。
+     */
+    if (staleDownload) {
+      staleDownload = false
+      setState({ ...clearedInfo(), phase: 'idle' })
+      void checkNow('auto')
+      return
+    }
     setState({
       phase: 'ready',
       version: info.version,
@@ -242,8 +319,8 @@ function configureUpdater(): void {
       reason: undefined,
       detail: undefined,
       checkedAt: Date.now(),
-    }),
-  )
+    })
+  })
   /*
    * 任何一步出错都只落到状态里。version 留着（如果是下载阶段挂的），
    * 这样界面上还能说出「1.0.2 没下下来」，而不是一句无头无尾的失败。
@@ -272,6 +349,8 @@ function configureUpdater(): void {
  * 这种不一致悄悄长出来。
  */
 function beginDownload(patch: Partial<UpdateState> = {}): void {
+  // 新起的下载按定义属于当前策略：清掉上一个策略留下的标记（见 staleDownload）
+  staleDownload = false
   setState({ ...patch, phase: 'downloading', percent: 0, transferred: 0, bytesPerSecond: undefined })
   void autoUpdater.downloadUpdate().catch((err) => {
     // 失败通常已经由 error 事件报过；这里是兜底，免得状态永远卡在「下载中」
@@ -317,6 +396,39 @@ export function downloadNow(): UpdateState {
   if (state.phase !== 'available') return state
   beginDownload()
   return state
+}
+
+/* ---------- 更新策略（正式版 / 尝鲜版） ---------- */
+
+/**
+ * 切更新策略（设置 → 更新里的两选一）。落盘 → 让库按新档取版本 →
+ * 清掉旧策略留下的状态 → 按新策略重新认定一次。
+ *
+ * 三个特殊相位：
+ * - installing：安装即将拉起、应用马上退出，什么都不动；
+ * - disabled：这个构建压根不参与更新（开发运行等），只落盘不动状态——
+ *   不能把「不参与」重置成 idle，否则界面会开始显示一个不存在的更新通道；
+ * - downloading：下载没法半途取消，让它下完（打上 staleDownload，见 update-downloaded）。
+ *
+ * 重查走 auto 这一档，于是尊重「自动检查更新」开关：关着就只清状态、不联网
+ * （与 shouldCheck 同一条纪律），用户手动点「检查最新版本」时自然按新策略来。
+ *
+ * 注意 allowDowngrade 仍是 false：尝鲜版用户切回正式版后，会停在当前版本，
+ * 等正式版的版本号真的超过它再升——不把人降级回旧版本。
+ */
+export function setUpdateChannel(value: unknown): UpdateChannel {
+  const next = persistChannel(value)
+  applyChannel()
+  if (state.phase === 'installing' || state.phase === 'disabled') return next
+  if (state.phase === 'downloading') {
+    staleDownload = true
+    return next
+  }
+  // 旧策略查到的那个版本不再作数；checkedAt 也清掉——新策略还没查过，
+  // 界面显示「尚未检查过更新」才是实话（紧接着的这次自动检查会补上它）
+  setState({ ...clearedInfo(), phase: 'idle', checkedAt: undefined })
+  void checkNow('auto')
+  return next
 }
 
 /**
@@ -404,4 +516,12 @@ export function registerUpdateIpc(): void {
     if (next && state.phase === 'available') beginDownload()
     return next
   })
+
+  /*
+   * 「更新策略」也是全局设置（appdata 的 global.yaml，与自动更新开关同一处）。
+   * setChannel 不只写盘：它还让库按新档取版本、清掉旧策略的状态、必要时重新查一次
+   * （见 setUpdateChannel），所以这里不能写成直接透传 storage 的 setter。
+   */
+  ipcMain.handle('update:getChannel', () => channelSetting())
+  ipcMain.handle('update:setChannel', (_e, value: unknown) => setUpdateChannel(value))
 }

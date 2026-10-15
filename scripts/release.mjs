@@ -15,6 +15,10 @@
  *   npm run release:win      只构建，不上传
  *   npm run release:publish  构建完上传到公开的发布仓库（用已登录的 gh，不需要 GH_TOKEN）
  *
+ * 两个通道（客户端「更新策略」按它们分档，格式由上面的门禁钉死）：
+ *   正式版 = 不带后缀的 X.Y.Z；尝鲜版 = X.Y.Z-beta.N。发尝鲜版就是改好版本号后
+ *   照常跑 release:publish——脚本按 `-` 自动把它标成 prerelease、不占 Latest。
+ *
  * **上传为什么不用 electron-builder 的 --publish**：实测它会在「创建 release」那一步
  * 吃 422 already_exists 中断（即使 release 并不存在），而且一旦中断，latest.yml
  * 压根不会被生成——最后线上只剩一个安装包，客户端报「缺少更新所需的文件」。
@@ -113,9 +117,28 @@ function syncReadmeBadge() {
 }
 
 if (publish) {
-  // 发布前的三道闸。它们拦的都是「传上去才发现不对」的情况
+  // 发布前的几道闸。它们拦的都是「传上去才发现不对」的情况
   if (version === '0.0.0') {
     console.error('[release] package.json 的 version 还是占位值 0.0.0，先定一个真版本号再发。')
+    process.exit(1)
+  }
+  /*
+   * 版本号格式门禁：更新策略（正式版 / 尝鲜版）把版本号当作通道标记在用。
+   * 客户端按「有没有预发布后缀」分档（electron/update-core.ts 的 channelOfVersion），
+   * 这个脚本也按 `-` 决定 Release 标不标 prerelease——所以格式必须钉死：
+   *   正式版 X.Y.Z（tag vX.Y.Z）→ 占 Latest，正式客户端会收到；
+   *   尝鲜版 X.Y.Z-beta.N（tag vX.Y.Z-beta.N）→ 标 prerelease、不占 Latest，
+   *   只有尝鲜策略的客户端会收到。
+   * 为什么必须是 `beta` 这个后缀：electron-updater 的 GitHub provider 内置 alpha/beta
+   * 两条标准预发布通道（见 node_modules/electron-updater/out/providers/GitHubProvider.js），
+   * 换别的后缀（rc / dev…）会被当成自定义通道，正在跑尝鲜版的客户端会**收不到**新尝鲜版，
+   * 且不报任何错。这种事不能在发布之后才发现。
+   */
+  const stableFormat = /^\d+\.\d+\.\d+$/
+  const betaFormat = /^\d+\.\d+\.\d+-beta\.\d+$/
+  if (!stableFormat.test(version) && !betaFormat.test(version)) {
+    console.error('[release] 版本号格式不符合发布约定：' + version)
+    console.error('          正式版用 X.Y.Z（如 0.7.0）；尝鲜版用 X.Y.Z-beta.N（如 0.7.0-beta.1）。')
     process.exit(1)
   }
   const dirty = git(['status', '--porcelain', '--untracked-files=no'])
@@ -162,9 +185,9 @@ const title = '归一 Unyra ' + tag
 const notesFile = path.join(ROOT, 'release-notes', tag + '.md')
 const notesArgs = existsSync(notesFile) ? ['--notes-file', notesFile] : ['--generate-notes']
 /*
- * 预发布（版本号带 `-`，如 0.4.10-alpha）：标成 prerelease，且**不占 Latest**——
- * Latest 永远是最新稳定版，稳定版客户端的更新检查才不会被推进 alpha。
- * electron-updater 自己也会按语义化版本把关（默认不装 prerelease），这里是对齐。
+ * 预发布（版本号带 `-`，只有 `X.Y.Z-beta.N` 一种，格式门禁在上面）：标成 prerelease，
+ * 且**不占 Latest**——Latest 永远是最新稳定版，正式策略客户端的更新检查才不会被推进尝鲜版。
+ * 与客户端两侧对齐：正式/尝鲜的分档口径同样是「有没有预发布后缀」，见 electron/update-core.ts。
  */
 const prerelease = version.includes('-')
 const visibilityArgs = prerelease ? ['--prerelease'] : ['--latest']

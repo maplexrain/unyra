@@ -13,9 +13,9 @@
 import DOMPurify from 'dompurify'
 import { useSyncExternalStore } from 'react'
 import { t } from '../i18n'
-import { native, type UpdateFail, type UpdateState } from './native'
+import { native, type UpdateChannel, type UpdateFail, type UpdateState } from './native'
 
-export type { UpdateFail, UpdateState }
+export type { UpdateChannel, UpdateFail, UpdateState }
 
 /* ---------- 快照 ---------- */
 
@@ -176,6 +176,44 @@ export async function setAutoUpdate(value: boolean): Promise<boolean> {
     console.warn('[update] 保存自动更新开关失败：', err)
     return value
   }
+}
+
+/* ---------- 更新策略（正式版 / 尝鲜版，全局设置，跟机器走） ---------- */
+
+/**
+ * 读一次「更新策略」。与自动更新开关同一套路：**没有本地缓存**——
+ * 真正按它办事的是主进程（取哪一档版本、让不让下载都在那边），
+ * 缓存一份只会多一处可能与主进程不一致的地方。
+ */
+export async function loadChannel(): Promise<UpdateChannel> {
+  try {
+    return await native().update.getChannel()
+  } catch (err) {
+    console.warn('[update] 读取更新策略失败：', err)
+    return 'stable'
+  }
+}
+
+/**
+ * 切更新策略；以主进程存盘后返回的值为准。
+ * 主进程那边顺手做的事（清旧状态、按新策略重新认定一次）见 electron/update.ts。
+ */
+export async function setChannel(value: UpdateChannel): Promise<UpdateChannel> {
+  try {
+    return await native().update.setChannel(value)
+  } catch (err) {
+    console.warn('[update] 保存更新策略失败：', err)
+    return value
+  }
+}
+
+/**
+ * 这个版本号是不是尝鲜版（预发布）。**只用于显示**——真正决定收哪一档版本、
+ * 让不让下载的是主进程（见 electron/update-core.ts 的 channelAllowsVersion）。
+ * 判据与发布侧同源：版本号里有 `-` 就是尝鲜版（vX.Y.Z-beta.N）。
+ */
+export function isPrereleaseVersion(version?: string): boolean {
+  return !!version && version.includes('-')
 }
 
 /** 立即更新：主进程会关掉应用、静默安装、装完自动启动。返回后界面通常已经没了 */

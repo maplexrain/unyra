@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { CheckCircle2, ExternalLink, PackageCheck, Sparkles } from 'lucide-react'
 import { usePresence } from '../../lib/presence'
+import ChannelBadge from './ChannelBadge'
 import { formatBytes, notesHtml, openReleasePage, useUpdateState } from '../../lib/update'
 import { useEscapeKey } from '../../lib/useEscape'
 import { t } from '../../i18n'
@@ -113,6 +114,7 @@ export default function UpdateButton({ onOpenUpdate }: Props) {
                     <span>v{state.current}</span>
                     <span>→</span>
                     <span className="font-medium text-seal-deep">v{state.version}</span>
+                    <ChannelBadge version={state.version} size="sm" />
                   </div>
                 </div>
               </div>

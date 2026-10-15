@@ -1,6 +1,6 @@
 /**
- * 这个文件负责全局设置（跟机器走的那一份）：数据根目录、关窗行为、自动更新开关、内置插件开关，
- * 以及开窗用的主题底色。globalCache 这份模块级缓存与读写它的函数都在这里，不许拆开。
+ * 这个文件负责全局设置（跟机器走的那一份）：数据根目录、关窗行为、自动更新开关与更新策略、
+ * 内置插件开关，以及开窗用的主题底色。globalCache 这份模块级缓存与读写它的函数都在这里，不许拆开。
  *
  * 另：storage 各子模块共用的 errText / isMissing 与两个结果类型也放在这一份——它不依赖任何兄弟
  * 模块，是依赖图的最底层；为了这四行再开一个文件不值当。
@@ -10,9 +10,10 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
+import { isUpdateChannel } from '../update-core'
 import { getLocale, t } from '../i18n'
 
-import type { CloseBehavior } from '../../shared/ipc'
+import type { CloseBehavior, UpdateChannel } from '../../shared/ipc'
 
 // CloseBehavior 原先在这里也写了一份（与 electron/preload.ts、src/lib/native.ts 逐字重复）：
 // 现在统一用 shared/ipc.ts，并按原样转出去（electron/storage.ts 仍在转它）。
@@ -41,6 +42,11 @@ export interface GlobalSettings {
    * 设置里的「检查最新版本」仍然能在用户明确要求时查一次。
    */
   autoUpdate: boolean
+  /**
+   * 更新策略（正式版 / 尝鲜版）：按哪一档接收新版本，同样跟机器走。
+   * 默认正式版——最稳；想要尝鲜的人自己去设置里切（判据与语义见 update-core 的注释）。
+   */
+  updateChannel: UpdateChannel
   /**
    * 内置插件的开关：插件 id → 要不要开（只记被改过的那些，没记的按各自的默认值）。
    *
@@ -123,6 +129,8 @@ export function loadGlobal(): GlobalSettings {
   let uiLocale: 'zh' | 'en' = getLocale()
   // 默认开：装了新版本才修得上 bug，这是绝大多数人想要的默认
   let autoUpdate = true
+  // 默认正式版：最稳的那一档；尝鲜要用户自己在设置里明确切过去
+  let updateChannel: UpdateChannel = 'stable'
   const plugins: Record<string, boolean> = {}
   try {
     const raw = parseYaml(fs.readFileSync(globalPath(), 'utf-8')) as Partial<GlobalSettings> | null
@@ -131,13 +139,14 @@ export function loadGlobal(): GlobalSettings {
     if (raw && isCloseBehavior(raw.closeBehavior)) closeBehavior = raw.closeBehavior
     if (raw && (raw.uiLocale === 'zh' || raw.uiLocale === 'en')) uiLocale = raw.uiLocale
     if (raw && typeof raw.autoUpdate === 'boolean') autoUpdate = raw.autoUpdate
+    if (raw && isUpdateChannel(raw.updateChannel)) updateChannel = raw.updateChannel
     if (raw && raw.plugins && typeof raw.plugins === 'object') {
       for (const [id, on] of Object.entries(raw.plugins)) if (typeof on === 'boolean') plugins[id] = on
     }
   } catch {
     // 文件不存在或损坏：用默认值，不算错误
   }
-  globalCache = { version: 1, root, closeBehavior, uiLocale, autoUpdate, plugins }
+  globalCache = { version: 1, root, closeBehavior, uiLocale, autoUpdate, updateChannel, plugins }
   return globalCache
 }
 
@@ -271,6 +280,29 @@ export function setAutoUpdate(value: unknown): boolean {
     // 存不下来：本次运行照样按新的来
   }
   return next.autoUpdate
+}
+
+/* ---------- 更新策略（正式版 / 尝鲜版） ---------- */
+
+/** 当前更新策略（默认 stable 正式版） */
+export function updateChannel(): UpdateChannel {
+  return loadGlobal().updateChannel
+}
+
+/**
+ * 改更新策略并落盘。认不出来的值忽略（调用方拿返回值当准）；
+ * 写不进去也只在这次运行里生效——与其余几项同一条纪律。
+ */
+export function setUpdateChannel(value: unknown): UpdateChannel {
+  if (!isUpdateChannel(value)) return updateChannel()
+  const next: GlobalSettings = { ...loadGlobal(), updateChannel: value }
+  globalCache = next
+  try {
+    persistGlobal()
+  } catch {
+    // 存不下来：本次运行照样按新的来
+  }
+  return next.updateChannel
 }
 
 /* ---------- 选择目录 ---------- */

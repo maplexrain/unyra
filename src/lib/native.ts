@@ -16,7 +16,7 @@ import type {
   BaseProcessStopResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   PluginEntry, PluginTogglesResult, SaveFilter,
-  SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
+  SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
   VoiceTranscribeRequest, VoiceTranscribeResult, WebDomOpResult, WebFetchResult, WebLogDetailResult,
   WebLogsOpts, WebLogsResult,
@@ -31,7 +31,7 @@ export type {
   AttachReadResult, BaseProcessDeleteResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   PluginEntry, PluginTogglesResult, SaveFilter,
-  SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateFail,
+  SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
   UpdatePhase, UpdateState, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
   VoiceTranscribeRequest, VoiceTranscribeResult, WebDomOpResult, WebFetchResult, WebLogDetailResult,
   WebLogsOpts, WebLogsResult,
@@ -323,6 +323,10 @@ export interface NativeBridge {
     /** 自动检查并下载更新（全局设置，跟机器走） */
     getAuto(): Promise<boolean>
     setAuto(value: boolean): Promise<boolean>
+    /** 当前更新策略（stable 正式版 / beta 尝鲜版，全局设置，跟机器走） */
+    getChannel(): Promise<UpdateChannel>
+    /** 切更新策略；主进程按新策略立刻重新认定一次，返回存盘后生效的值 */
+    setChannel(value: UpdateChannel): Promise<UpdateChannel>
     install(): Promise<{ ok: boolean }>
     openRelease(): Promise<boolean>
     /** 订阅状态变化；返回取消订阅函数 */

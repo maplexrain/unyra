@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Download,
   ExternalLink,
+  FlaskConical,
   Loader2,
   RefreshCw,
   ShieldCheck,
@@ -22,14 +23,18 @@ import {
   installUpdate,
   isMockUpdateActive,
   loadAutoUpdate,
+  loadChannel,
   mockUpdatePush,
   notesHtml,
   openReleasePage,
   setAutoUpdate,
+  setChannel,
   updateCheckedText,
   updateFailText,
   useUpdateState,
+  type UpdateChannel,
 } from '../../lib/update'
+import ChannelBadge from '../update/ChannelBadge'
 import { isDevUnlocked } from '../../lib/devMode'
 import { pane } from '../Pane'
 import { t } from '../../i18n'
@@ -38,10 +43,12 @@ export function UpdatePanel() {
   const state = useUpdateState()
   const [busy, setBusy] = useState(false)
   const [auto, setAuto] = useState<boolean | null>(null)
+  const [channel, setChannelState] = useState<UpdateChannel | null>(null)
   const html = useMemo(() => notesHtml(state?.notes), [state?.notes])
 
   useEffect(() => {
     void loadAutoUpdate().then(setAuto)
+    void loadChannel().then(setChannelState)
   }, [])
 
   const check = () => {
@@ -54,6 +61,17 @@ export function UpdatePanel() {
     const next = !on
     setAuto(next)
     void setAutoUpdate(next).then(setAuto)
+  }
+
+  /**
+   * 切策略：先改本地的选中态（点下去立刻有反馈），再以主进程存盘后的值为准。
+   * 主进程那边还会顺手清掉旧策略查到的新版本、按新策略重新认定一次（见 electron/update.ts），
+   * 所以这里不必也不能自己动更新状态。
+   */
+  const pickChannel = (next: UpdateChannel) => {
+    if (next === channel) return
+    setChannelState(next)
+    void setChannel(next).then(setChannelState)
   }
 
   const phase = state?.phase ?? 'idle'
@@ -77,22 +95,25 @@ export function UpdatePanel() {
   } else if (phase === 'available') {
     statusIcon = <Sparkles size={18} className="text-seal" />
     statusText = (
-      <span className="font-medium text-ink-strong">
-        {t('发现新版本 v{0}，准备就绪可开始下载。', state?.version ?? '')}
+      <span className="flex flex-wrap items-center gap-1.5 font-medium text-ink-strong">
+        <span>{t('发现新版本 v{0}，准备就绪可开始下载。', state?.version ?? '')}</span>
+        <ChannelBadge version={state?.version} size="sm" />
       </span>
     )
   } else if (phase === 'downloading') {
     statusIcon = <Download size={18} className="animate-bounce text-seal" />
     statusText = (
-      <span className="font-medium text-ink-strong">
-        {t('正在后台下载新版本 v{0}…', state?.version ?? '')}
+      <span className="flex flex-wrap items-center gap-1.5 font-medium text-ink-strong">
+        <span>{t('正在后台下载新版本 v{0}…', state?.version ?? '')}</span>
+        <ChannelBadge version={state?.version} size="sm" />
       </span>
     )
   } else if (phase === 'ready') {
     statusIcon = <CheckCircle2 size={18} className="text-seal" />
     statusText = (
-      <span className="font-semibold text-seal-deep">
-        {t('新版本 v{0} 已下载完成，随时可以安装并重启。', state?.version ?? '')}
+      <span className="flex flex-wrap items-center gap-1.5 font-semibold text-seal-deep">
+        <span>{t('新版本 v{0} 已下载完成，随时可以安装并重启。', state?.version ?? '')}</span>
+        <ChannelBadge version={state?.version} size="sm" />
       </span>
     )
   } else if (phase === 'installing') {
@@ -128,6 +149,7 @@ export function UpdatePanel() {
           <code className="rounded-lg border border-line bg-card px-2.5 py-1 font-mono text-[11.5px] font-semibold text-ink-strong shadow-2xs">
             v{state?.current ?? __APP_VERSION__}
           </code>
+          <ChannelBadge version={state?.current ?? __APP_VERSION__} size="sm" />
           {state?.checkedAt && (
             <span className="text-[11px] text-ink-faint">
               {t(updateCheckedText(state.checkedAt))}
@@ -236,6 +258,54 @@ export function UpdatePanel() {
               <span>{isMockUpdateActive() ? t('清除模拟更新') : t('模拟更新推送')}</span>
             </button>
           )}
+        </div>
+      </section>
+
+      {/* 更新策略选择卡片：正式版 / 尝鲜版 */}
+      <section className="rounded-xl border border-line bg-card/60 p-3.5">
+        <div className="text-[13px] font-medium text-ink-strong">{t('更新策略')}</div>
+        <p className="mt-1 text-[11px] leading-relaxed text-ink-soft">
+          {t('选择按哪一档接收新版本。切换后立即按新策略检查；已查到但未安装的版本会按新策略重新认定，也不会把当前版本降级。')}
+        </p>
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            aria-pressed={channel === 'stable'}
+            onClick={() => pickChannel('stable')}
+            className={`rounded-lg border p-3 text-left transition ${
+              channel === 'stable'
+                ? 'border-seal/60 bg-seal/10 shadow-xs'
+                : 'border-line bg-paper/50 hover:border-line-strong'
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <ShieldCheck size={14} className={channel === 'stable' ? 'text-seal' : 'text-ink-soft'} />
+              <span className="text-[12.5px] font-medium text-ink-strong">{t('正式版')}</span>
+              {channel === 'stable' && <CheckCircle2 size={12} className="ml-auto text-seal" />}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-ink-soft">
+              {t('只接收 vX.Y.Z 正式发行版，最稳定，更新节奏较慢。')}
+            </p>
+          </button>
+          <button
+            type="button"
+            aria-pressed={channel === 'beta'}
+            onClick={() => pickChannel('beta')}
+            className={`rounded-lg border p-3 text-left transition ${
+              channel === 'beta'
+                ? 'border-seal/60 bg-seal/10 shadow-xs'
+                : 'border-line bg-paper/50 hover:border-line-strong'
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <FlaskConical size={14} className={channel === 'beta' ? 'text-seal' : 'text-ink-soft'} />
+              <span className="text-[12.5px] font-medium text-ink-strong">{t('尝鲜版')}</span>
+              {channel === 'beta' && <CheckCircle2 size={12} className="ml-auto text-seal" />}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-ink-soft">
+              {t('正式版与 vX.Y.Z-beta.N 尝鲜版都接收，更新频繁、新功能来得快，但可能不够稳定。')}
+            </p>
+          </button>
         </div>
       </section>
 

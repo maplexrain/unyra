@@ -115,9 +115,33 @@ fuses 只改打包产物，开发跑的是 `node_modules` 里的 electron。
 - **开关：自动检查并下载更新**（全局设置，存在 `global.yaml`，跟机器走）。
   关掉之后启动检查与轮询都不发请求，但「检查最新版本」随时仍然可用——
   不打扰必须包括不产生网络请求；
+- **更新策略：正式版 / 尝鲜版**（下面单独一节）；
 - **检查最新版本**：手动那一下任何时候都有效；
 - **安装包与进度**：新版本的文件名、体积、已下载字节、速度与百分比（十进制单位，
   与发布页上 GitHub 显示的口径一致）。
+
+### 更新策略（正式版 / 尝鲜版）
+
+客户端按哪一档接收新版本：在 设置 → 更新 里选，存在 `global.yaml`（跟机器走），默认正式版。
+
+| 策略 | 收哪些版本 | 落到 electron-updater 的开关 |
+| --- | --- | --- |
+| 正式版 | 只收 `vX.Y.Z` 正式发行版 | `allowPrerelease = false`——GitHub provider 走 `/releases/latest`，而尝鲜版发布时标了 prerelease、不占 Latest |
+| 尝鲜版 | 正式版 + `vX.Y.Z-beta.N` 尝鲜版全收 | `allowPrerelease = true`——provider 直接取 `releases.atom` 第一条，最新发布的哪一档都算 |
+
+- **版本号就是通道标记**：有没有预发布后缀决定分档（`-beta.1` 算尝鲜），客户端与发布
+  两侧同一条口径（`electron/update-core.ts` 的 `channelOfVersion` / `release.mjs` 的
+  prerelease 判定）。发布脚本还有一道格式门禁：正式版只认 `X.Y.Z`、尝鲜版只认
+  `X.Y.Z-beta.N`——`beta` 是 electron-updater 的内置预发布通道名，换 `rc` 之类的后缀
+  会让正在跑尝鲜版的客户端**收不到**新尝鲜版，且不报任何错；
+- **正式策略是双保险**：除了 `allowPrerelease = false`，主进程在 `update-available`
+  时还会用 `channelAllowsVersion` 再挡一道——就算发布端误把预发布标成了 Latest，
+  正式用户也拿不到尝鲜版；
+- **切换即时生效**：换策略会清掉旧策略查到的新版本、按新策略重新认定一次（尊重
+  「自动检查更新」开关：关着就只清状态、不联网）。正有下载在跑时让它下完，
+  但下完后按新策略重查一遍（`staleDownload`）；
+- **不降级**：尝鲜版用户切回正式版后，停在当前版本，等正式版版本号真的超过它再升
+  （`allowDowngrade = false`）。
 
 ## 分发
 
@@ -154,6 +178,11 @@ npm run release:publish
 `app-update.yml` 由它生成，客户端按它知道去哪里取更新。
 
 想只核对线上的那份（比如手工传过文件之后）：`npm run release:verify`。
+
+发**尝鲜版**：把 `package.json` 的 version 改成 `X.Y.Z-beta.N`（如 `0.7.0-beta.1`）后
+照常跑 `npm run release:publish`——脚本按 `-` 自动把它标成 prerelease、不占 Latest，
+只有尝鲜策略的客户端会收到；正式版客户端不受影响。发布前的格式门禁会挡住
+不合约定的写法（比如 `0.7.0-rc.1`）。
 
 第 4 步不是走过场：**发布这一步错了不会当场报错**，只会让所有买家那边悄悄坏掉。
 真实踩到过一次——上传中途失败，Release 建出来了、安装包也传上去了，但 `latest.yml`
@@ -208,13 +237,15 @@ $env:MOJI_UPDATE_FEED='http://127.0.0.1:8788'; npm run dev     # 客户端指向
 > electron-updater 的单槽缓存会直接复用（哈希一样就不重下），于是「下载」这一步压根没发生。
 > 想真跑一遍下载，得让包真的不一样。
 
-`npm run test:update` 是纯 Node 的探针（不需要 Electron、不联网），钉三类事：
+`npm run test:update` 是纯 Node 的探针（不需要 Electron、不联网），钉四类事：
 
 1. **发布配置的一致性**——发布仓库地址同时出现在 `electron-builder.yml`（安装包真的去哪取）
    与 `update-core.ts`（界面「发布页」指向哪），写岔了不报错、只是更新永远不来；
    还有 `releaseType` 与产物命名；
 2. **失败归类**——「连不上 GitHub」和「仓库里还没有正式发布」是两件要分头处理的事；
-3. **构建产物自检**——`latest.yml` 的版本号、文件名、sha512 与那个 exe 必须对得上，
+3. **更新策略**——版本号按预发布后缀分档、正式策略不收尝鲜版、尝鲜策略全收；
+   这条错了的表现是「正式用户收到了尝鲜版」或「尝鲜用户收不到新尝鲜版」，都不报错；
+4. **构建产物自检**——`latest.yml` 的版本号、文件名、sha512 与那个 exe 必须对得上，
    而装进包里的 `app-update.yml` 必须指向公开仓库。这几条正是「真发布之后才发现
    所有客户端都卡在下载上」的那类问题，本地几十秒就能查出来。
 

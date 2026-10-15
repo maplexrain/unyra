@@ -11,8 +11,52 @@
  * 「检查更新永远说已是最新」或「详情链接 404」，所以测试里有一条专门比对这两处。
  */
 
+// 只引类型，编译时会被抹掉：这一份仍要能被纯 Node 直接跑（见文件头）
+import type { UpdateChannel } from '../shared/ipc'
+
 /** 发布仓库（开源，就是本仓库）。安装包与版本元数据都在它的 Releases 里 */
 export const RELEASE_REPO = 'maplexrain/unyra'
+
+/* ---------- 更新策略（正式版 / 尝鲜版） ---------- */
+
+/**
+ * 更新策略：这个客户端按哪一档接收新版本。落在全局设置（global.yaml，跟机器走）。
+ *
+ * - stable 正式版：只收正式发行版（vX.Y.Z），更新周期长、更稳；
+ * - beta 尝鲜版：正式版与尝鲜版（vX.Y.Z-beta.N）都收，更新频繁、可能不稳。
+ *
+ * 类型本体在 shared/ipc.ts（它要过 preload 桥）；这里放的是与更新判定有关的纯逻辑：
+ * 校验、版本分档、以及「这条策略收不收这个版本」。真正让库按档取版本的开关是
+ * update.ts 里的 allowPrerelease——它的语义在那边写清，这里只保证口径一致。
+ */
+export const UPDATE_CHANNELS: readonly UpdateChannel[] = ['stable', 'beta']
+
+export const isUpdateChannel = (v: unknown): v is UpdateChannel =>
+  typeof v === 'string' && (UPDATE_CHANNELS as readonly string[]).includes(v)
+
+/**
+ * 一个版本号属于哪一档：有没有预发布后缀。
+ *
+ * 判据就是这个 `-`，与发布流程完全同源（scripts/release.mjs 同样按它把版本标成
+ * GitHub prerelease、不占 Latest），也和 electron-updater 的语义化版本判断一致。
+ * 不引 semver 解析器：这里只需要「是不是预发布」这一个事实，
+ * 而这个文件要能在纯 Node 里跑（见文件头）。
+ */
+export function channelOfVersion(version: string): UpdateChannel {
+  return version.includes('-') ? 'beta' : 'stable'
+}
+
+/**
+ * 这条策略收不收这个版本。
+ *
+ * stable 只收正式版，并且**这是一道独立的本地防线**：正式策略问的是 GitHub 的
+ * `/releases/latest`（Latest 由发布时有没有标 prerelease 决定），万一发布端标错，
+ * 这里也把预发布挡在下载之外——正式用户永远拿不到尝鲜版。
+ * beta 全收：「尝鲜策略静默下载所有更新」。
+ */
+export function channelAllowsVersion(channel: UpdateChannel, version: string): boolean {
+  return channel === 'beta' ? true : channelOfVersion(version) === 'stable'
+}
 
 /**
  * 更新状态机的相位。放在这里而不是 update.ts：它是**纯描述**，

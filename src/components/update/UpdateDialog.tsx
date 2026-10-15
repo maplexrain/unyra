@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { Loader2, RefreshCw, X } from 'lucide-react'
 import { useLeaving } from '../../lib/presence'
 import ModalScrim from '../ModalScrim'
+import ChannelBadge from './ChannelBadge'
 import { t } from '../../i18n'
 import { installUpdate, notesHtml, openReleasePage, updateFailText, useUpdateState } from '../../lib/update'
 
@@ -82,6 +83,7 @@ export default function UpdateDialog({ onClose }: Props) {
                 <code className="rounded bg-seal/10 px-1.5 py-0.5 font-mono text-[12px] font-medium text-seal-deep">
                   v{state?.version ?? ''}
                 </code>
+                <ChannelBadge version={state?.version} size="sm" />
               </div>
               <p className="mt-2 text-ink-soft">
                 {t('新版本已经下载完成，可以直接安装。归一会在安装前关闭，装好后自动重新打开。')}

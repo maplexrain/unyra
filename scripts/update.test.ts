@@ -13,7 +13,10 @@
  * 3. **检查时机**：什么时候该去问更新源（启动那次、5 分钟一次的轮询、手动那一下）。
  *    这条错了的表现是「关掉了自动更新还在偷偷联网」，或者「挂着跑一天也等不到新版本」，
  *    两种都不会报错。
- * 4. **构建产物自检**：latest.yml 里的版本号、文件名、sha512 与实际那个 exe
+ * 4. **更新策略（正式版 / 尝鲜版）**：版本号按预发布后缀分档、各档收哪些版本。
+ *    这条错了的表现是「正式用户收到了尝鲜版」，或「尝鲜用户收不到新尝鲜版」——
+ *    两种都不会当场报错，只会让人以为「没有新版」。
+ * 5. **构建产物自检**：latest.yml 里的版本号、文件名、sha512 与实际那个 exe
  *    必须对得上。这是更新链路上最容易错、也最贵的一环——真发布之后才发现，
  *    所有客户端都会卡在下载上。release/ 不存在时这一节跳过。
  *
@@ -28,8 +31,12 @@ import {
   FIRST_CHECK_DELAY_MS,
   POLL_INTERVAL_MS,
   RELEASE_REPO,
+  UPDATE_CHANNELS,
+  channelAllowsVersion,
+  channelOfVersion,
   failDetailOf,
   failReasonOf,
+  isUpdateChannel,
   notesText,
   releasePageUrl,
   shouldCheck,
@@ -193,13 +200,46 @@ ok(shouldCheck('available', 'auto', true) === true, '停在「可下载」时仍
 const phases: UpdatePhase[] = ['disabled', 'idle', 'checking', 'available', 'downloading', 'ready', 'installing', 'error']
 ok(phases.length === 8, '相位就是这八档（渲染层与 preload 各镜像了一份，改动要同步）')
 
-/* ---------- 6. 构建产物自检 ---------- */
+/* ---------- 6. 更新策略（正式版 / 尝鲜版） ---------- */
 
-console.log('6. 构建产物（release/）')
+console.log('6. 更新策略')
+
+ok(
+  UPDATE_CHANNELS.length === 2 && UPDATE_CHANNELS[0] === 'stable' && UPDATE_CHANNELS[1] === 'beta',
+  '策略就是正式版与尝鲜版两档',
+  UPDATE_CHANNELS,
+)
+ok(isUpdateChannel('stable') && isUpdateChannel('beta'), '两档都是合法值')
+ok(
+  !isUpdateChannel('nightly') && !isUpdateChannel('') && !isUpdateChannel(null) && !isUpdateChannel(true),
+  '认不出来的值不算合法（回落默认值的活由 storage 那侧干）',
+)
+
+// 版本分档：判据是预发布后缀——与 release.mjs 按 `-` 判 prerelease 是同一条口径
+ok(channelOfVersion('0.7.0') === 'stable', 'X.Y.Z 分到正式版')
+ok(channelOfVersion('0.7.0-beta.1') === 'beta', 'X.Y.Z-beta.N 分到尝鲜版')
+
+// 各档收哪些版本：正式策略这条是 allowPrerelease=false 之外的第二道防线
+ok(channelAllowsVersion('stable', '0.7.0') === true, '正式策略收正式版')
+ok(channelAllowsVersion('stable', '0.7.0-beta.1') === false, '正式策略不收尝鲜版（发布端误标 Latest 也挡得住）')
+ok(channelAllowsVersion('beta', '0.7.0') === true, '尝鲜策略收正式版')
+ok(channelAllowsVersion('beta', '0.7.0-beta.1') === true, '尝鲜策略也收尝鲜版——「静默下载所有更新」')
+ok(channelAllowsVersion('beta', '0.7.0-rc.1') === true, '尝鲜策略不挑预发布后缀（收不收由库的通道逻辑再把关）')
+
+/* ---------- 7. 构建产物自检 ---------- */
+
+console.log('7. 构建产物（release/）')
 
 const releaseDir = path.join(ROOT, 'release')
 const pkgVersion = (JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf-8')) as { version: string })
   .version
+
+// 版本号格式是发布约定的一部分（release.mjs 发布前还有同样一道门禁，这里对着当前仓库核一眼）
+ok(
+  /^\d+\.\d+\.\d+$/.test(pkgVersion) || /^\d+\.\d+\.\d+-beta\.\d+$/.test(pkgVersion),
+  'package.json 的版本号符合发布约定（正式版 X.Y.Z / 尝鲜版 X.Y.Z-beta.N）',
+  pkgVersion,
+)
 
 if (!existsSync(path.join(releaseDir, 'latest.yml'))) {
   skip('release/latest.yml 不存在（先跑一次 npm run release:win）')

@@ -9,7 +9,7 @@
  * - `llm-proxy:setHosts` / `llm-proxy:getHosts` —— 同步代理白名单
  * - `file:saveText` / `file:openText` / `file:exportPdf` —— 原生导入导出对话框（退出为 PDF）
  * - `storage:*` —— 全局设置（存储位置）、会话与本机文件读写
- * - `update:*` —— 自动更新状态、手动检查、安装已下载的新版本
+ * - `update:*` —— 自动更新状态、手动检查、安装已下载的新版本、更新策略（正式版 / 尝鲜版）
  * - `window:*` —— 窗口最小化/最大化/关闭、收进托盘、关窗询问的回答
  * - `exam:*` —— 考试窗口（第二个 BrowserWindow）的开窗、状态推送与事件转发
  * - `web:fetch` —— 抓一个网页的字节（主进程去取，渲染层受同源策略约束）
@@ -27,7 +27,7 @@ import type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   PluginEntry, PluginListResult,
   PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
-  StorageInfo, StorageOk, StorageRootResult, UpdateFail, UpdatePhase, UpdateState,
+  StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail, UpdatePhase, UpdateState,
   VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceTranscribeRequest,
   VoiceTranscribeResult, WebDomOpResult,
   WebFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult, WebPageFetchReq,
@@ -46,7 +46,7 @@ export type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   PluginEntry, PluginListResult,
   PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
-  StorageInfo, StorageOk, StorageRootResult, UpdateFail, UpdatePhase, UpdateState,
+  StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail, UpdatePhase, UpdateState,
   VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceTranscribeRequest,
   VoiceTranscribeResult, WebDomOpResult,
   WebFetchResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult,
@@ -390,6 +390,16 @@ const api = {
 
     /** 改这个开关；返回存盘后真正生效的值 */
     setAuto: (value: boolean): Promise<boolean> => ipcRenderer.invoke('update:setAuto', value),
+
+    /** 当前更新策略（stable 正式版 / beta 尝鲜版，全局设置，跟机器走） */
+    getChannel: (): Promise<UpdateChannel> => ipcRenderer.invoke('update:getChannel'),
+
+    /**
+     * 切更新策略；返回存盘后真正生效的值。
+     * 主进程会顺手按新策略重新认定一次（旧策略查到的版本不再作数），见 electron/update.ts。
+     */
+    setChannel: (value: UpdateChannel): Promise<UpdateChannel> =>
+      ipcRenderer.invoke('update:setChannel', value),
 
     /** 立即更新：关掉应用、静默安装、装完自动启动。只在 ready 时有效 */
     install: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('update:install'),

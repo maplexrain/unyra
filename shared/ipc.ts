@@ -417,6 +417,21 @@ export type StorageRootResult = { ok: boolean; root: string; error?: string }
 /* ---------- 自动更新 ---------- */
 
 /**
+ * 更新策略（通道）：这个客户端按哪一档接收新版本。
+ *
+ * - stable 正式版：只收正式发行版（版本号 vX.Y.Z），最稳，节奏慢；
+ * - beta 尝鲜版：正式版与尝鲜版（vX.Y.Z-beta.N）都收，新功能来得快、可能不稳。
+ *
+ * 落在全局设置（appdata 的 global.yaml，跟机器走）；真正决定取哪个版本的是
+ * 主进程的 autoUpdater.allowPrerelease（见 electron/update.ts），
+ * 渲染层只负责选择与展示。
+ *
+ * 谁在用：主进程 electron/update.ts 与 electron/storage/settings.ts、
+ * preload 的 update.*，渲染层 src/lib/update.ts 与 src/components/settings/UpdatePanel.tsx。
+ */
+export type UpdateChannel = 'stable' | 'beta'
+
+/**
  * 自动更新处在哪一档。判定、联网、下载全在主进程（见 electron/update.ts）；
  * 渲染层只做两件事：把它推过来的状态画出来、在用户点了之后说一声「装」。
  *

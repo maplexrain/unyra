@@ -34,8 +34,10 @@ export {
   setCloseBehavior,
   setPluginToggle,
   setUiLocale,
+  setUpdateChannel,
   startupBackground,
   uiLocale,
+  updateChannel,
 } from './storage/settings'
 export { markLocalOwnWrite, setLocalWatchList } from './storage/local'
 export { registerStorageIpc } from './storage/ipc'
