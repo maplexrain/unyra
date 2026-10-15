@@ -99,6 +99,21 @@ const dict: Record<string, string> = {
   '导师人格 · 标准导师': 'Tutor persona · Standard Tutor',
   '导师人格 · ADHD 导师': 'Tutor persona · ADHD Tutor',
 
+  // ---------- docFormat：文档格式策略名与分界条（见 agent/docFormat） ----------
+  '文档格式 · {0}': 'Document format · {0}',
+  '混合（Markdown 为主）': 'Hybrid (Markdown-first)',
+  '纯 Markdown': 'Markdown only',
+  '纯 HTML': 'HTML only',
+  // 格式选择器里的短名（按钮提示用）与一句话说明（二级菜单副标题）
+  '混合': 'Hybrid',
+  'Markdown 优先，HTML 只做交互与复杂结构': 'Markdown first — HTML only for interaction and complex structure',
+  '只用 Markdown 语法（含 LaTeX / plot），最大兼容': 'Markdown syntax only (including LaTeX / plot), maximum compatibility',
+  '整篇 HTML 表达，仅公式保留 $$': 'HTML throughout, formulas stay as $$',
+  // 同人格的处置：生成侧 t() 已把格式名展开进 mark，三种组合逐个登记
+  '文档格式 · 混合（Markdown 为主）': 'Document format · Hybrid (Markdown-first)',
+  '文档格式 · 纯 Markdown': 'Document format · Markdown only',
+  '文档格式 · 纯 HTML': 'Document format · HTML only',
+
   // ---------- learning.checkLine 的得分（「分」= points；分钟走 '{0} 分钟'，见 learn-views） ----------
   '{0} 分': '{0} pts',
 

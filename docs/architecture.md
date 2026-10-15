@@ -130,7 +130,7 @@
   `outline/mindmapNav`（导图导航的纯算术：选中后镜头怎么摆、点连线跳到哪一端）/
   `outline/mindmapTint`（节点自定义颜色的调色板与归一，读盘那一侧也要用，故独立成 .ts）/
   `docTypes`（文档类型的图标与配色，页签栏与侧栏共用一份）/
-  `TabBar`（**一格自己的**页签栏）/ `agent/PersonaPicker` / `DocFloat`（右上角悬浮组）/
+  `TabBar`（**一格自己的**页签栏）/ `agent/StrategyPicker` / `DocFloat`（右上角悬浮组）/
   `NodeStatePanel` / `NodeNote`（文档渲染与选词菜单）/ `SourceEditor` / `LocalDoc` /
   `ExamCopyView` / `NoteDialog` / `DocOutline` / `ExportDialog`
 - `src/lib/tabPresence.ts` —— 两处页签栏（文档区与导师栏）共用的**进出场**：新开的浮上来、

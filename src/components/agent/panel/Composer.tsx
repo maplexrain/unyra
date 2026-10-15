@@ -90,8 +90,8 @@ export interface ComposerProps {
   subMode?: { name: string; running: boolean }
   /** 子代理会话入口（按钮 + 弹出列表），插在模型选择器左侧；没有会话时不渲染 */
   subAgentSlot?: ReactNode
-  /** 导师人格入口：插在子代理按钮的右侧、与提供商切换同一排（原顶栏撤除后搬到这里） */
-  personaSlot?: ReactNode
+  /** 写作策略入口（导师人格 + 文档格式）：插在子代理按钮的右侧、与提供商切换同一排 */
+  strategySlot?: ReactNode
   /** 这枚面板是不是眼前的页签（keepalive 常挂时隐藏面板不登记 chip 落点，见 chipHover 的 effect） */
   active?: boolean
   /**
@@ -155,7 +155,7 @@ export function Composer(props: ComposerProps) {
     onOpenPreview,
   subMode,
   subAgentSlot,
-  personaSlot,
+  strategySlot,
   /** 这枚面板是不是眼前的页签（keepalive 常挂时隐藏面板不登记 chip 落点，见上面的 effect） */
   active = true,
   queue,
@@ -623,7 +623,7 @@ export function Composer(props: ComposerProps) {
               贴图这条路照旧：拖进来、Ctrl+V 都行，本来就是习惯动作，不必有按钮。
             */}
             {subAgentSlot}
-            {!subMode && personaSlot}
+            {!subMode && strategySlot}
             {!subMode && <ModelPicker onChanged={onModelChanged} />}
             {/*
               语音输入：发送键左边那颗话筒（见 MicButton 与 lib/voice）。

@@ -1,5 +1,5 @@
 /**
- * HTML 为主的正文怎么写、渲染器就得怎么认（见 learn/ai/guides 的「正文写作」与 docs/rendering.md）。
+ * HTML 正文怎么写、渲染器就得怎么认（见 learn/ai/guides 的「正文排版规范」与 docs/rendering.md）。
  *
  * 提示词给模型的三条承诺，这里是它们的对账：
  * 1. HTML 块**原样透传**（class 一个不改，交给 lib/docTailwind 现算样式）；
@@ -16,7 +16,7 @@ import { renderNote } from '../src/lib/markdown'
 
 const katexCount = (html: string): number => (html.match(/class="katex"/g) ?? []).length
 
-describe('HTML 为主的正文', () => {
+describe('HTML 正文的渲染', () => {
   it('空行隔出来的 Markdown 落进那个容器里，行内语法照常解析', () => {
     const out = renderNote(
       [

@@ -141,6 +141,7 @@ import {
 import { makeConversation, makeGoal, nodeDocRel } from '../../learn/store'
 import { loadAgentSettings, saveAgentSettings, subscribeAgentSettings } from '../../agent/settings'
 import { personaOf } from '../../agent/persona'
+import { docFormatOf } from '../../agent/docFormat'
 import AgentSettingsPanel from '../AgentSettingsPanel'
 import MindPanel from '../agent/MindPanel'
 import { addFreeConversation, deleteFreeConversation, freeConversationById, getFreeConversations, subscribeFreeChat } from '../../learn/freeChat'
@@ -4311,6 +4312,11 @@ export default function LearnWorkspace({
                           onPickPersona={(id) => {
                             saveAgentSettings({ ...agentSettings, persona: id })
                             onToast(t('导师人格已切到「{0}」，从下一轮开始生效', personaOf(id).label))
+                          }}
+                          docFormat={agentSettings.docFormat}
+                          onPickDocFormat={(id) => {
+                            saveAgentSettings({ ...agentSettings, docFormat: id })
+                            onToast(t('文档格式已切到「{0}」，从下一轮开始生效', docFormatOf(id).label))
                           }}
                           onDeleteConversation={removeConversation}
                           onOpenFile={(pathOrRel, title) => {
