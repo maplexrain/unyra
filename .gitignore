@@ -15,6 +15,8 @@ dist-ssr
 # 打包产物（npm run release:win）
 release
 release-*/
+# 例外：release-notes/ 要进版本库（上面的 release-*/ 会连带匹配到它）
+!release-notes/
 # 授权签发器的构建产物（npm run licgen:gui）
 dist-licgen
 # 签发器的免安装单 exe（npm run licgen:exe）——卖家自用，不进版本库、不发布
