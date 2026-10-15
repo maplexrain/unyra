@@ -618,9 +618,15 @@ export default function TabBar({
     const target = el.offsetLeft - (strip.clientWidth - el.offsetWidth) / 2
     const clampedTarget = Math.max(0, Math.min(max, target))
     if (Math.abs(strip.scrollLeft - clampedTarget) < 4) return
+    /*
+     * 缓动滚过去，不瞬移（与 agent 栏页签同一条口径，见 AgentTabStrip 的同名 effect）：
+     * 从大纲链接跳过来、或拖动换页签时，用户看得见那枚页签是从哪一侧滑进中间的。
+     * 系统开了「减弱动态效果」就退回瞬移。
+     */
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     strip.scrollTo({
       left: clampedTarget,
-      behavior: 'auto',
+      behavior: still ? 'auto' : 'smooth',
     })
     /*
      * presence 也在依赖里：**新开的那一枚比 props 晚一帧才进栏**（见 tabPresence 的手法）。
