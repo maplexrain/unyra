@@ -24,8 +24,7 @@ export interface HoverMenuOptions {
   /**
    * 指针停够这么久才展开（不给就是**立刻**展开）。
    *
-   * 只有带有「划过时不该闪出一张面板」顾虑的调用点才给这个值
-   * （见 PersonaPicker 的 HOVER_OPEN_MS）。
+   * 只有带有「划过时不该闪出一张面板」顾虑的调用点才给这个值。
    */
   openMs?: number
   /**
@@ -69,8 +68,7 @@ interface HoverWrapProps {
  * 都会冒上来触发「展开」。UserMenu 那三项菜单的写法是「先 setOpen(false) 再执行动作」，
  * 于是变成「点一项 → 它把自己关掉 → 同一串冒泡又把它打开」。挂在按钮上才与拆分前逐字一致。
  *
- * PersonaPicker 的按钮自己有一条 `onClick={() => setOpen(!open)}`（切换），那条留在它的 JSX 里；
- * 它的 `openMs` 只作用于 focus 那一条。
+ * StrategyPicker 的按钮自己有一条 `onClick={() => setOpen(!open)}`（切换），那条留在它的 JSX 里。
  */
 interface HoverButtonProps {
   onClick?: () => void

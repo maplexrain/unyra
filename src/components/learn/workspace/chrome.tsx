@@ -475,7 +475,7 @@ export function EmptyDoc({
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto p-6 text-center select-none animate-in fade-in duration-300">
       {/* 整体上移：从上方一块留白（8vh）起步，不再垂直居中 */}
-      <div className="flex w-full max-w-[560px] flex-col items-center pt-[8vh] pb-10">
+      <div className="flex w-full max-w-[680px] flex-col items-center pt-[8vh] pb-10">
         {/* 应用标志：不带边框与底色，就是 logo 本身 */}
         <Logo size={52} />
 
@@ -488,9 +488,9 @@ export function EmptyDoc({
         </p>
 
         {/* 快捷操作组：图标加大、去掉边框与背景，悬停反馈落在图标与文字上。
-            四个入口排成 2×2：三个时用三列最平衡，第四个进来之后三列会把
-            「浏览网络网页」那一格挤得放不下它的说明 */}
-        <div className="mt-8 grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
+            四个入口**排成一行**（用户定的）：容器宽 680 时四张的说明文字都放得下，
+            更窄时说明自动折行、卡片等高，不会挤坏；小屏退回一列 */}
+        <div className="mt-8 grid w-full grid-cols-1 gap-3 sm:grid-cols-4">
           {onNewFile && (
             <QuickEntry
               icon={<FilePlus size={22} className="stroke-[1.75]" />}
@@ -575,7 +575,7 @@ function QuickEntry({ icon, label, hint, onClick }: { icon: ReactNode; label: st
     <button
       type="button"
       onClick={onClick}
-      className="group flex flex-col items-center gap-2 rounded-xl px-3 py-3.5 transition-colors duration-200 hover:bg-line/40 focus-visible:ring-2 focus-visible:ring-seal/50"
+      className="group flex flex-col items-center gap-2 rounded-xl px-2.5 py-3.5 transition-colors duration-200 hover:bg-line/40 focus-visible:ring-2 focus-visible:ring-seal/50"
     >
       <span className="text-ink-soft transition-colors group-hover:text-seal">{icon}</span>
       <span className="text-[12.5px] font-medium text-ink transition-colors group-hover:text-seal-deep">{label}</span>

@@ -41,6 +41,7 @@ export function buildTeacherSystem(opts: {
     '',
     '目标下由知识节点构成树状结构，每个节点包含一份「教学文档」（默认讲解正文）与若干份「笔记」（按名字存取）：',
     '- 讲解直接写入教学文档，认准本轮写入目标；动其他节点或笔记显式传 path。',
+    '- **非文档类产物统一进工作区**：用户要的交付物（文件、项目、代码、报告等），凡与教学文档 / 笔记 / 超级文档 / 试卷无关的，一律写到当前节点的 `docs/.../workspace/`（api.node.paths() 的 workspaceDir）下，不要散落到数据目录的其他位置。',
     '- 读写与操作一律经由 execute 工具编写 JS 调用沙箱 api 完成。',
     '- **新建节点后的四件事**：① api.node.title 确认标题，若不准用 rename 修正；② api.node.update(path, { description }) 写 150~300 字概念描述；③ 撰写教学文档（api.files.write）；④ 若有下级子阶段，api.files.write("docs/.../节点名.outline.json", JSON.stringify(大纲)) 列出直接子层级（一层为止）。全部做完再回复。',
     '- 讲解循序渐进：直觉/例子引入 → 定义与必要推导；数学使用 LaTeX；写入或讲完用 api.ui.point 打开并指引阅读位置。',

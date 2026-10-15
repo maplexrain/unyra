@@ -3,6 +3,8 @@
  * （编译 body → 建 api → 跑沙箱 → 收失败与图片 → 拼回执）与结果顶部的失败清单，以及几个体量上限。
  */
 import { domOp } from '../../lib/docDom'
+import { docFormatAllowsModule } from '../docFormat'
+import { loadAgentSettings } from '../settings'
 import { promptModuleForApiName, promptModuleForContent, writableContentOf } from '../../learn/ai/promptModules'
 import { MAX_TOOL_IMAGES, type MessageImage } from '../types'
 import { buildApi, clip, imagesOf } from './api'
@@ -185,10 +187,16 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
             const hint = RENAMED_API_HINT[name]
             throw new Error('沙箱里没有这个 api：' + name + (hint ? '。它已改名，现在写作 ' + hint : ''))
           }
-          // 内容触发：这次写入的东西里带 plot 围栏或动画标记，对应模块就该在场
+          // 内容触发：这次写入的东西里带 plot 围栏或动画标记，对应模块就该在场。
+          // 格式策略过滤：纯 Markdown 不注入 doc-html（HTML 排版配方与策略冲突，见 agent/docFormat）
           if (opts.onPromptModule) {
             const content = writableContentOf(name, callArgs)
-            if (content) for (const key of promptModuleForContent(content, name)) moduleKeys.add(key)
+            if (content) {
+              const docFormat = loadAgentSettings().docFormat
+              for (const key of promptModuleForContent(content, name)) {
+                if (docFormatAllowsModule(key, docFormat)) moduleKeys.add(key)
+              }
+            }
           }
           let value: unknown
           try {

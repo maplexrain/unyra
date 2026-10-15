@@ -37,6 +37,7 @@ import type { LearnStore } from './types'
 import { buildTeacherSystem } from './ai'
 import { MIN_ACTIVE_MESSAGES, activeMessages, applyCompaction, shouldCompact } from './compact'
 import { needsPersonaAnnounce, personaMessage } from '../agent/persona'
+import { needsDocFormatAnnounce, docFormatMessage, docFormatAllowsModule } from '../agent/docFormat'
 import { conversationById, nodeById, latestConversation, addConversation } from './graph'
 import { currentNodeBlock, makeExamTool } from './agentOps'
 import { findWorkflow, renderWorkflowInstruction, resolveWorkflowEffort, workflowPrep, workflowModules } from './workflows'
@@ -437,6 +438,15 @@ export function useAgent(opts: {
         ? [personaMessage(personaId, Date.now(), crypto.randomUUID())]
         : []
 
+      /*
+       * 文档格式策略：与人格同一位置、同一条纪律（见 agent/docFormat）——
+       * 一条对话里同一种格式只补一次；格式变了就是新 id，自然再补一次；
+       * 被压缩掉（retired）之后自动补回来。
+       */
+      const formatAnnouncer = needsDocFormatAnnounce(conv.messages, agentSettings.docFormat)
+        ? [docFormatMessage(agentSettings.docFormat, Date.now(), crypto.randomUUID())]
+        : []
+
       // 动态技能清单注入：不在系统提示词中硬编码，而在消息流中按需注入与变更更新（保持前缀缓存稳定）
       const activeSkills = getActiveSkills(agentSettings.skills)
       const currentSkillsDigest = getSkillsDigest(activeSkills)
@@ -455,7 +465,11 @@ export function useAgent(opts: {
         : []
 
       // 提示词模块与技能 Slash 命令检测：支持用户以 /<skill-id> 显式指定，提前将技能注入上下文
-      const effectiveModules = [...(modules ?? [])]
+      //
+      // 工作流指定的模块同样要过格式策略过滤（「开讲」「学习大纲」会强制带上 doc-html）：
+      // 纯 Markdown 策略下那份 HTML 配方与格式指令直接冲突，拦在这里——
+      // 内容触发那一头的同一个过滤拦在 sandbox/execute 的注入点（见 agent/docFormat）。
+      const effectiveModules = (modules ?? []).filter((m) => docFormatAllowsModule(m.key, agentSettings.docFormat))
       const slashMatch = trimmed.match(/^\/([a-zA-Z0-9_-]+)(?:\s+([\s\S]*))?$/)
       if (slashMatch) {
         const cmd = slashMatch[1].toLowerCase()
@@ -480,7 +494,7 @@ export function useAgent(opts: {
         : []
       conv = {
         ...conv,
-        messages: [...conv.messages, ...announcer, ...skillsAnnouncer, ...moduleMsgs, userMsg],
+        messages: [...conv.messages, ...announcer, ...formatAnnouncer, ...skillsAnnouncer, ...moduleMsgs, userMsg],
         updatedAt: Date.now(),
         // 在途标记：这一轮没收口（进程被杀）时，载入恢复据此找到这条回复（见 learn/agent/inflight）
         inflight: { messageId: assistantId, startedAt: Date.now() },

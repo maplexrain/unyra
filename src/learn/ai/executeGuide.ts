@@ -102,11 +102,12 @@ export const EXECUTE_GUIDE = `唯一的工具是 execute(description, body)：
 - 学习者画像: user.yaml（配置文件，记录水平与背景偏好，files.read("user.yaml") 读取）
 - 界面状态数据: state.json（数据文件，记录活跃视图与页签状态，files.read("state.json") 读取）
 - 超级交互文档: docs/:goal/.../superdocs/:name.html（文档文件，HTML 页面源码，ui.superdoc 打开）
+- 节点工作区文件: docs/:goal/.../workspace/:filename（用户产物——文件 / 项目 / 代码等交付物统一放这里）
 - 目标静态素材: docs/:goal/static/:filename（多媒体/静态文件，正文 Markdown 直接引用）
 - 持久化函数源码: docs/:goal/methods/:name.js（源码文件，执行调 api.method.call(name, ...args)）
 
 **按需加载的能力**（以下组的完整规范在首次调用对应 api 或写出对应标记时作为提示词模块自动注入，此处仅列索引）：
-- doc-html：教学文档以 HTML + Tailwind 工具类排版（两栏、提示框、时间轴、手绘 SVG 图表配方），写教学文档时自动注入。
+- doc-html：教学文档的结构配方（两栏、提示框、时间轴、手绘 SVG 图表；HTML + Tailwind 写法），写教学文档时自动注入。
 - browser.*：内置浏览器交互（snapshot / text / dom 控制、fetch 直发与控制台日志）。
 - web.*：网页抓取与搜索（web.webFetch 抓取生成 uuid / web.read 按节读长文 / web.search 多引擎搜索）。
 - mcp.*：外部 MCP 服务（用户配置的真实工具：mcp.list 看服务与工具 / mcp.discover 现场探测 / mcp.call 调用）。

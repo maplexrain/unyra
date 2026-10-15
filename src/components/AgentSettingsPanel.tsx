@@ -350,6 +350,7 @@ function ChatTab({
               ...DEFAULT_AGENT_SETTINGS,
               dev: settings.dev,
               persona: settings.persona,
+              docFormat: settings.docFormat,
               skills: settings.skills,
               mcp: settings.mcp,
             })
