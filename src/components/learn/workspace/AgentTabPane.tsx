@@ -44,6 +44,7 @@ function sameAgentTabPane(prev: AgentTabPaneProps, next: AgentTabPaneProps): boo
     prev.vision === next.vision &&
     prev.effort === next.effort &&
     prev.persona === next.persona &&
+    prev.docFormat === next.docFormat &&
     prev.compactThreshold === next.compactThreshold &&
     prev.tps === next.tps &&
     prev.liveUsage === next.liveUsage &&

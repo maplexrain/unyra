@@ -12,11 +12,14 @@ const dict: Record<string, string> = {
   '导师正在准备': 'Your tutor is preparing',
   '正在{0}…': '{0}…',
 
-  /* ---------- PersonaPicker ---------- */
-  '导师人格：{0}，点击切换': 'Tutor persona: {0} — click to switch',
+  /* ---------- StrategyPicker（写作策略：人格 + 文档格式） ---------- */
   '导师人格': 'Tutor persona',
-  '换一种讲法，知识不变': 'A different way to explain — same knowledge',
-  '切换从下一轮开始生效。人格是以一条隐藏指令进入上下文的，不改系统提示词， 之前的对话一条都不会重发。': 'Takes effect from the next turn on. The persona enters the context as one hidden instruction and the system prompt is untouched; none of the earlier conversation is sent again.',
+  '写作策略': 'Writing strategy',
+  '写作策略：{0} · {1}，点击切换': 'Writing strategy: {0} · {1} — click to switch',
+  '文档格式': 'Document format',
+  '默认': 'Default',
+  '人格与格式都以一条隐藏指令进入上下文：切换从下一轮开始生效，不改系统提示词、不重发历史。': 'Both persona and format enter the context as one hidden instruction: switches take effect from the next turn — no system-prompt change, no history resent.',
+  '文档格式已切到「{0}」，从下一轮开始生效': 'Document format switched to "{0}", effective from the next turn',
 
   /* ---------- EffortSlider（REASONING_HINT 四档） ---------- */
   '思考等级': 'Reasoning effort',

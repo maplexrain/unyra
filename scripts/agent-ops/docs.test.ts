@@ -8,6 +8,7 @@
  * 共享 fixture（ok / baseStore / harness / fakeRunner / staticStore / fakeResourceIo 与四个 uuid 常量）在 ./harness。
  */
 import { createAgentOps } from '../../src/learn/agentOps'
+import { loadAgentSettings, saveAgentSettings } from '../../src/agent/settings'
 import { createExecuteTool, plainLineOf } from '../../src/agent/tools'
 import { makePermissionOps } from '../../src/agent/permissions'
 import { createMindOps } from '../../src/learn/mind'
@@ -65,21 +66,35 @@ export async function toolTests() {
     rBoth.content.slice(0, 200),
   )
   // 排版提醒（见 ops/assemble 的 layoutHintOf）：文档好不好看模型自己看不见，回执得说一句。
-  // 四条边界一起钉住：整篇写入 + 教学文档 + 够长 + 一处 class 都没有，才提醒。
+  // 边界一起钉住：整篇写入 + 教学文档 + 够长 + HTML 与 Markdown 结构痕迹都没有，才提醒；
+  // 纯 Markdown 策略下整体不提（那档的正文本来就不该有 class，见 agent/docFormat）。
   // 这几条会把当前节点的教学文档整篇覆盖掉——而它是**共享 fixture**（后面的 doc.find 等用例
   // 还在这份正文上找东西），所以先原样存一份，测完写回去。
   const keepTeaching = h.store().nodes.find((n) => n.id === childId)?.docs.teaching ?? ''
   const plainDoc = '这一段讲解只有最朴素的段落。'.repeat(40)
   const rPlain = await h.run('((api)=>{ return await api.doc.write("", ' + JSON.stringify(plainDoc) + ') })')
-  ok(rPlain.ok && rPlain.content.includes('排版工具类'), '整篇写入的教学文档没有工具类时，回执点一句排版提醒', rPlain.content.slice(0, 200))
+  ok(rPlain.ok && rPlain.content.includes('排版痕迹'), '整篇写入的教学文档没有排版痕迹时，回执点一句排版提醒', rPlain.content.slice(0, 200))
   const richDoc = '<div class="my-5 rounded-lg bg-sunken p-4"><p class="m-0 text-[14px] text-ink">' + plainDoc + '</p></div>'
   const rRich = await h.run('((api)=>{ return await api.doc.write("", ' + JSON.stringify(richDoc) + ') })')
-  ok(rRich.ok && !rRich.content.includes('排版工具类'), '带了工具类就不提醒', rRich.content.slice(0, 160))
+  ok(rRich.ok && !rRich.content.includes('排版痕迹'), '带了工具类就不提醒', rRich.content.slice(0, 160))
+  const mdStructured = '> 引用块也是一种结构痕迹。\n\n' + plainDoc
+  const rMdStruct = await h.run('((api)=>{ return await api.doc.write("", ' + JSON.stringify(mdStructured) + ') })')
+  ok(
+    rMdStruct.ok && !rMdStruct.content.includes('排版痕迹'),
+    'Markdown 结构（引用 / 表格 / plot 围栏）同样算「有排版」，不提醒',
+    rMdStruct.content.slice(0, 160),
+  )
   const rNotePlain = await h.run('((api)=>{ return await api.doc.write("笔记/摘录", ' + JSON.stringify(plainDoc) + ') })')
-  ok(rNotePlain.ok && !rNotePlain.content.includes('排版工具类'), '笔记不提醒（那是学习者自己写的地方）', rNotePlain.content.slice(0, 160))
+  ok(rNotePlain.ok && !rNotePlain.content.includes('排版痕迹'), '笔记不提醒（那是学习者自己写的地方）', rNotePlain.content.slice(0, 160))
   const rTiny = await h.run('((api)=>{ return await api.doc.write("", "先占个位") })')
-  ok(rTiny.ok && !rTiny.content.includes('排版工具类'), '太短的文档不提醒（占位很正常）', rTiny.content.slice(0, 160))
+  ok(rTiny.ok && !rTiny.content.includes('排版痕迹'), '太短的文档不提醒（占位很正常）', rTiny.content.slice(0, 160))
+  // 纯 Markdown 策略：同样的纯段落正文也不提醒（正文本来就不该有 class，提醒只会把人往反方向推）
+  const keepSettings = loadAgentSettings()
+  saveAgentSettings({ ...keepSettings, docFormat: 'markdown' })
+  const rMdPlain = await h.run('((api)=>{ return await api.doc.write("", ' + JSON.stringify(plainDoc) + ') })')
+  saveAgentSettings(keepSettings)
   await h.run('((api)=>{ return await api.doc.write("", ' + JSON.stringify(keepTeaching) + ') })')
+  ok(rMdPlain.ok && !rMdPlain.content.includes('排版痕迹'), '纯 Markdown 策略下不提醒排版', rMdPlain.content.slice(0, 160))
   ok(
     h.store().nodes.find((n) => n.id === childId)?.docs.teaching === keepTeaching,
     '共享 fixture 的教学文档已原样写回（后面的用例还要在它上面找东西）',

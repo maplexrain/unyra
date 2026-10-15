@@ -7,6 +7,7 @@
 
 import type { AgentToolResult } from '../../agent/types'
 import type { DocRef, NodeRef, ResolvedDocRef, ResolvedNodeRef, SandboxDocKind } from '../../agent/tools'
+import { loadAgentSettings } from '../../agent/settings'
 import type { AgentOps, AgentOpsDeps } from './deps'
 import { MASTERY_LABEL, SELF_REPORT_LABEL, docOf, superDocsOf, type KnowledgeNode, type MasteryStatus, type NoteFile } from '../types'
 import { NOTE_DEFAULT_NAME, findNote, notesOf } from '../notes'
@@ -44,24 +45,34 @@ import { createWorkspaceOps } from './workspace'
 import { createChipOps } from './chip'
 
 /**
- * 排版提醒：整篇写入教学文档、而正文里一处 class 都没有时，在回执里点一句。
+ * 排版提醒：整篇写入教学文档、而正文里一处排版痕迹都没有时，在回执里点一句。
  *
  * 为什么值得写在回执里：文档的质量**看不见**。模型交出一篇没有版式的纯 HTML，
  * 拿到的回执同样是「教学文档已整体写入（1695 字）」——它没有任何信号说明自己做砸了什么。
  * 提示词里的规范会被长对话冲淡，而回执是每一轮都摆在眼前的东西。
  *
+ * **格式策略参与判定**（见 agent/docFormat）：纯 Markdown 那一档整体不提——它的正文
+ * 本来就不该有 class，提醒只会把模型往反方向推；混合与纯 HTML 下，HTML 的 class 与
+ * Markdown 的结构痕迹（引用 / 表格 / 图表围栏）都算「有排版」，一样都没有才算草稿。
+ *
  * 三条边界，都是「别唠叨」：只认教学文档（笔记是学习者自己写的地方）；
  * 只认整篇写入（追加一段散文、改一处措辞本来就不该带排版）；太短的不算（先占个位很正常）。
  */
 const LAYOUT_HINT =
-  '\n（提醒：这份正文里一处排版工具类都没有。教学文档的样子靠 Tailwind 工具类排出来，' +
-  '裸的 <h2>/<p> 只是兜底样式——按「文档排版与图表」的规范补上提示框 / 两栏 / 步骤 / 图表，' +
+  '\n（提醒：这份正文里一处排版痕迹都没有。教学文档要有结构——Markdown 的引用 / 表格 / 图表围栏，' +
+  '或按「文档排版与图表」补上提示框 / 两栏 / 步骤 / 图表（以当前「文档格式」策略为准），' +
   '再覆盖写入一次。）'
+
+/** Markdown 侧的结构痕迹：行首引用块、表格行、plot 围栏（与 HTML 的 class 一起算「有排版」） */
+const MD_STRUCTURE = /(?:^>|^\s*\|.*\||^```plot)/m
 
 function layoutHintOf(kind: SandboxDocKind, content: string): string {
   if (kind !== 'teaching') return ''
   if (content.length < 400) return ''
-  return /class\s*=/.test(content) ? '' : LAYOUT_HINT
+  if (loadAgentSettings().docFormat === 'markdown') return ''
+  if (/class\s*=/.test(content)) return ''
+  if (MD_STRUCTURE.test(content)) return ''
+  return LAYOUT_HINT
 }
 export function createAgentOps(deps: AgentOpsDeps): AgentOps {
   const store0 = () => deps.getLatest()
