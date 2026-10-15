@@ -1,5 +1,6 @@
 import { readUserSettings, settingsRevision, settingsUid, writeUserSettings } from '../lib/userSettings'
 import { DEFAULT_PERSONA, personaOf, type PersonaId } from './persona'
+import { DEFAULT_DOC_FORMAT, docFormatOf, type DocFormatId } from './docFormat'
 
 /**
  * 超级导师自己的设置（与全局设置分开）。
@@ -40,6 +41,15 @@ export interface AgentSettings {
    * （下一轮生效，见 useAgent 的 runTurn）——所以换人格不重发历史、不破前缀缓存。
    */
   persona: PersonaId
+  /**
+   * 文档格式策略（见 agent/docFormat）：教学文档「怎么排、用什么写」——
+   * 混合（Markdown 为主，默认）/ 纯 Markdown / 纯 HTML。
+   *
+   * 与人格同一套注入机制：不改系统提示词，切换时补一条隐藏 user 消息（下一轮生效）。
+   * 两种覆盖态（纯 Markdown / 纯 HTML）靠这条指令在上下文里把口径从系统提示词的
+   * 「Markdown 为主」掰到各自的写法上——所以它必须和人格一样能补、能重补（压缩后）。
+   */
+  docFormat: DocFormatId
   /**
    * 开发者向的开关（设置里的「开发者」分页，见 components/AgentSettingsPanel）。
    * 全部默认关闭：它们是调试工具，不是功能。
@@ -83,6 +93,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   compact: { auto: true, threshold: 0.7 },
   // 默认「标准导师」：不追求极致效率也不追求极致趣味，大多数情况下最自然的那一个
   persona: DEFAULT_PERSONA,
+  // 默认「混合（Markdown 为主）」：与系统提示词的正文排版规范一致
+  docFormat: DEFAULT_DOC_FORMAT,
   dev: { contextDebugger: false },
   skills: DEFAULT_SKILL_SETTINGS,
   mcp: DEFAULT_MCP_SETTINGS,
@@ -147,6 +159,8 @@ export function normalizeAgentSettings(raw: unknown): AgentSettings {
     },
     // 认不出的人格（老设置文件、手改成了别的词）就按默认那个走：设置读不出来不该让对话哑掉
     persona: personaOf(src.persona).id,
+    // 同理：认不出的格式（老设置文件里根本没有这一项）按默认的「混合」走
+    docFormat: docFormatOf(src.docFormat).id,
     dev: {
       contextDebugger:
         typeof dev.contextDebugger === 'boolean' ? dev.contextDebugger : DEFAULT_AGENT_SETTINGS.dev.contextDebugger,

@@ -16,10 +16,11 @@ import type {  AgentPart,
 } from '../../agent/types'
 import type { AskAnswers, AskFormPayload } from '../../agent/tools'
 import type { PersonaId } from '../../agent/persona'
+import type { DocFormatId } from '../../agent/docFormat'
 import type { SubAgentDef, SubAgentSession } from '../../agent/subagent/types'
 import type { QueuedMessage, SendOutcome } from '../../learn/agentQueue'
 import type { ReasoningEffort } from '../../ai/types'
-import PersonaPicker from './PersonaPicker'
+import StrategyPicker from './StrategyPicker'
 import { ImageLightbox, PendingLightbox } from './panel/Images'
 import { MsgRail } from './panel/MsgRail'
 import type { MsgAnchor } from './panel/types'
@@ -109,10 +110,13 @@ interface Props {
   /** 自动压缩阈值（0~1），菜单项上如实说明「到多少会自己压」 */
   compactThreshold: number
   /**
-   * 导师人格（见 agent/persona）：显示与选择在输入框底行（子代理按钮右侧），切换即时写进设置。
+   * 写作策略（见 agent/persona 与 agent/docFormat）：导师人格 + 文档格式。
+   * 显示与选择在输入框底行（子代理按钮右侧），切换即时写进设置、下一轮生效。
    */
   persona: PersonaId
   onPickPersona: (id: PersonaId) => void
+  docFormat: DocFormatId
+  onPickDocFormat: (id: DocFormatId) => void
   /** 提示一句话（图片不合适、模型不支持图片输入等） */
   onNotice: (message: string) => void
   onStop: () => void
@@ -203,6 +207,8 @@ export default function AgentPanel({
   compactThreshold,
   persona,
   onPickPersona,
+  docFormat,
+  onPickDocFormat,
   onStop,
   onNewConversation,
   onSelectConversation,
@@ -601,8 +607,17 @@ export default function AgentPanel({
               <SubAgentMenu sessions={sub?.sessions ?? []} defs={sub?.defs ?? []} onOpen={(id) => onOpenSub?.(id)} />
             )
           }
-          // 人格入口：输入框底行、子代理按钮右侧（原顶栏撤除后的新家；向上展开——它已贴近窗口底缘）
-          personaSlot={free ? undefined : <PersonaPicker persona={persona} onPick={onPickPersona} />}
+          // 写作策略入口：输入框底行、子代理按钮右侧（向上展开——它已贴近窗口底缘）
+          strategySlot={
+            free ? undefined : (
+              <StrategyPicker
+                persona={persona}
+                onPickPersona={onPickPersona}
+                docFormat={docFormat}
+                onPickDocFormat={onPickDocFormat}
+              />
+            )
+          }
           // 自由聊天：菜单只留 新建对话 / 对话历史 / 文件（见 usePlusMenu 的 FREE_MENU）
           free={free}
           // keepalive：隐藏面板不登记 chip 落点（模块级单槽，谁最后登记谁赢）
@@ -612,8 +627,8 @@ export default function AgentPanel({
         {/*
           状态行：输入框底下的一条细字。左边是「正在辅导哪个节点 / 这段对话叫什么」
           （子代理页签则是这场任务的履历），右边是轮数 / 速度 / token——一行读全：
-          在看谁、跑到哪、花了多少。人格选择器不在这行：它搬进了输入框底行，
-          与提供商切换同一排（见 ComposerUi 的 personaSlot）。
+          在看谁、跑到哪、花了多少。人格与格式选择器不在这行：它们搬进了输入框底行，
+          与提供商切换同一排（见 ComposerUi 的 strategySlot）。
         */}
         <div className="flex min-w-0 items-center gap-2.5 px-1 pb-1.5 pt-1.5">
           {subSession ? (

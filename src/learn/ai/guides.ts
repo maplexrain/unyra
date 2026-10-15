@@ -1,17 +1,17 @@
 /**
- * 这个文件负责什么：系统提示词里除 execute 用法之外的几段指南——富内容写作、学习目标大纲、
+ * 这个文件负责什么：系统提示词里除 execute 用法之外的几段指南——正文排版规范、学习目标大纲、
  * 「点击学习」与文档跳转两种链接语法、学习状态的用法（拼装见 ai/teacherSystem.ts）。
  * 详细排版配方与低频能力已搬进提示词模块（learn/ai/promptModules）。
  */
 
 /**
- * 正文排版指南：教学文档长什么样、HTML 与 Markdown 各占什么位置。
+ * 正文排版指南：教学文档长什么样、Markdown 与 HTML 各占什么位置。
  */
-export const RICH_CONTENT_GUIDE = `正文排版规范（重要）：教学文档以 **HTML + Tailwind 工具类**为主，Markdown 为辅。
-- 正文段落带上字号与墨色：如 \`<p class="text-[0.9em] leading-[1.85] text-ink">\`；小节标题使用带间距的语义标签。
+export const RICH_CONTENT_GUIDE = `正文排版规范（重要）：教学文档**以标准 Markdown 为主**——Markdown 能表达的一律用 Markdown（标题、列表、强调、表格、引用、代码块）；HTML + Tailwind 只作补充，用在 Markdown 做不到的地方：交互（按钮、折叠）与复杂结构（两栏对照、提示框、时间轴、图表容器）。
+- 用 HTML 时带上字号与墨色：正文段落如 \`<p class="text-[0.9em] leading-[1.85] text-ink">\`；小节标题使用带间距的语义标签。
 - **字号一律使用 em（相对正文）**，禁止写 px（正文支持等比缩放）；布局宽度上限 800px，可用内容宽度约 745px。
 - 颜色优先采用应用主题令牌（bg-paper / bg-card / bg-sunken / text-ink / text-ink-strong / text-seal 等），自动跟随深浅色主题。
-- 数学公式无论在何处一律使用 LaTeX（$…$ / $$…$$）。
+- **LaTeX 兼容性（重要注意事项）**：公式必须写成**最标准、最大程度兼容**的写法——行内 $…$、独立公式 $$…$$（不用 \\(…\\)、\\[…\\] 定界）；命令只用核心子集，不用 \\usepackage、\\newcommand、\\label/\\ref 这类宏包与交叉引用；**不要用 Unicode 字符近似数学**（直接写 \\alpha、x^2、\\sqrt{2}，不要写 α、x²、√2）；非必要不在公式里写中文，需要时放 \\text{…} 里——要保证公式在渲染器与主流 Markdown 编辑器里都能原样显示。
 - 严禁在教学文档中编写待办/打勾清单（如 <input type="checkbox">），文档是读物而非表单。
 - 完整排版配方（两栏对照、提示框、时间轴、带动画的 SVG 柱状/折线图）在首次写入教学文档时由 \`doc-html\` 模块自动注入。`
 

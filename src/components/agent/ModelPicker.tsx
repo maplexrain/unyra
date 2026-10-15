@@ -62,7 +62,7 @@ interface Props {
 
 export default function ModelPicker({ onChanged }: Props) {
   // 浮层要等退场动画播完才卸载，展开状态交给 useHoverMenu 管（不自带悬停开合：这颗按钮是点开的）
-  // 这一处的外点 / Esc 监听挂在 document 上（原样保留）；PersonaPicker 与顶栏那几个挂的是 window
+  // 这一处的外点 / Esc 监听挂在 document 上（原样保留）；StrategyPicker 同款，顶栏那几个挂的是 window
   const { open, setOpen, mounted, wrapProps, panelProps } = useHoverMenu({
     exitMs: PANEL_EXIT_MS,
     outsideClick: true,

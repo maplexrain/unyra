@@ -145,6 +145,13 @@ export interface ConversationMessage {
    */
   persona?: string
   /**
+   * 这是「文档格式策略」那一条隐藏指令，值是格式 id（见 agent/docFormat）。
+   *
+   * 与 persona 同一条纪律：去重判据认字段不认文案（见 needsDocFormatAnnounce），
+   * 一条对话里同一种格式只补一次，被压缩掉之后自动补回来。
+   */
+  docFormat?: string
+  /**
    * 这是「动态注入的提示词模块」那条隐藏指令，值是模块 key（见 learn/ai/promptModules）。
    *
    * 与 persona 同一条道理：去重判据认字段不认文案。宿主注入前扫一遍活着的消息

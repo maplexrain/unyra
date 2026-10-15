@@ -20,7 +20,8 @@
 
 ## 文档里的 Tailwind（正文为什么能写 HTML）
 
-教学文档的正文以 **HTML + Tailwind 工具类**写（`<div class="grid grid-cols-2 gap-4">`），
+教学文档的正文可以内嵌 HTML + Tailwind 工具类（`<div class="grid grid-cols-2 gap-4">`，
+默认「混合」策略下 HTML 只做补充；纯 HTML 策略下整篇都是），
 而工具类是**运行时才知道**的：类名不在任何源码文件里，`@tailwindcss/vite` 只扫 `src/**`，
 构建期能生成的永远只有应用自己用过的那几十个类。所以文档这一路**自己起一个 Tailwind 编译器**
 （`lib/docTailwind`）：
