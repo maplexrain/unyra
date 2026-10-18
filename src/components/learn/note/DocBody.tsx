@@ -8,6 +8,7 @@
  * 免得把它挪出正文区之后 fixed 定位的夹取与滚动容器的关系变了。
  */
 import { memo, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { BookOpen, Sparkles } from 'lucide-react'
 import MarkdownView from '../../MarkdownView'
 import WaveBars from '../../WaveBars'
 import type { Annotation, DocKind } from '../../../learn/types'
@@ -27,6 +28,10 @@ interface Props {
   docScale: number
   /** 这份文档还在等 Agent 写：为空时显示等待动画，不给用户一片空白 */
   pending: boolean
+  /** 当前 Agent 是否正在运行 */
+  agentRunning?: boolean
+  /** 触发生成教学文档 */
+  onGenerateDoc?: () => void
   /** 正在看的是哪一类文档：空的笔记与空的正文要说的不是一回事 */
   kind: DocKind
   content: string
@@ -75,6 +80,8 @@ function areDocBodyPropsEqual(prev: Props, next: Props): boolean {
   if (prev.content !== next.content) return false
   if (prev.docScale !== next.docScale) return false
   if (prev.pending !== next.pending) return false
+  if (prev.agentRunning !== next.agentRunning) return false
+  if (prev.onGenerateDoc !== next.onGenerateDoc) return false
   if (prev.kind !== next.kind) return false
   if (prev.wordCount !== next.wordCount) return false
   if (prev.overlay !== next.overlay) return false
@@ -90,6 +97,8 @@ export const DocBody = memo(function DocBody({
   bodyRef,
   docScale,
   pending,
+  agentRunning,
+  onGenerateDoc,
   kind,
   content,
   html,
@@ -111,8 +120,13 @@ export const DocBody = memo(function DocBody({
         {/* 左侧留白给得多一点：标题定位栏就在旁边，正文（以及跳转高亮的底色）不贴过去 */}
         <div className="doc-measure relative flex min-h-full flex-col pt-6 pl-[32px] pr-[22px]">
           <ZenResizeHandles />
-          {/* 正文还没来时的占位：说明在等什么，而不是留一片白 */}
-          {pending && !content.trim() && <DocPending />}
+          {/* 教学文档尚未生成或正在生成时的美观静态占位 */}
+          {kind === 'teaching' && !content.trim() && (
+            <EmptyTeachingDoc
+              pending={pending || agentRunning}
+              onGenerate={onGenerateDoc}
+            />
+          )}
 
           {/* 空的笔记：说清它可以怎么被填上，而不是留一片白 */}
           {!pending && kind === 'note' && !content.trim() && <EmptyNote />}
@@ -162,51 +176,81 @@ function EmptyNote() {
   )
 }
 
+interface EmptyTeachingDocProps {
+  pending?: boolean
+  onGenerate?: () => void
+}
+
 /**
- * 正文还没落地时的占位。
- *
- * 价值全在「说明在等什么」：节点建好到正文出现之间有十几秒到几十秒，这段时间
- * 文档区原本是一片纯白，用户只能猜是不是卡死。这里给出波浪 + 骨架，
- * 并把两条不同的等待说清楚——写描述和写正文是两件事，用户能看懂走到哪一步了。
- *
- * 骨架要铺满整个正文区：等待时整片区域都是「内容正在来的样子」，而不是顶上一条
- * 占位、下面一大片空白。为此行数给足并裁掉多余的，且**整块骨架脱离文档流**——
- * 只要它还占着高度，容器就会跟着长高，整块被顶到视口以外（页脚也跟着掉下去）。
+ * 空的教学文档占位：
+ * 采用美观静态元素进行结构化排版占位，避免刺眼的移动骨架屏。
+ * 若 Agent 尚未运行，展示「生成教学文档」操作按钮供用户一键生成。
  */
-
-/** 骨架行的宽度循环：宽窄交替才像文字，全一样宽就成了表格 */
-const SKELETON_WIDTHS = [100, 93, 78, 96, 62, 88, 71, 99, 84, 66]
-
-/** 行数按「够铺满最高的窗口」给，多出来的被裁掉，因此不必去量容器高度 */
-const SKELETON_ROWS = 48
-
-function DocPending() {
-  const label = t('超级导师正在准备这个节点…')
-  const hint = t('先拟标题与描述，正文紧接着就写；等待期间可以在右侧继续追问。')
-  return (
-    // 不加边框与底色：它是「教学文档还没来」的骨架，属于正文区本身，
-    // 不该看起来像一张浮在正文里的卡片
-    <div className="moji-in-soft mb-6 flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2.5 text-[12.5px]">
-        <WaveBars className="text-seal" />
-        <span className="font-medium text-ink">{label}</span>
+function EmptyTeachingDoc({ pending, onGenerate }: EmptyTeachingDocProps) {
+  if (pending) {
+    return (
+      <div className="moji-in-soft mb-8 flex min-h-0 flex-1 flex-col items-center justify-center py-12 px-6 text-center select-none">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-seal/10 text-seal">
+          <BookOpen size={28} className="stroke-[1.75]" />
+        </div>
+        <div className="flex items-center gap-2 text-[15px] font-semibold text-ink-strong">
+          <WaveBars className="text-seal" />
+          <span>{t('超级导师正在编写教学文档…')}</span>
+        </div>
+        <p className="mt-2 max-w-md text-[12.5px] leading-relaxed text-ink-faint">
+          {t('正在结合知识脉络与权威资料为当前节点编写系统化讲义；等待期间可在右侧对话中继续提问。')}
+        </p>
+        {/* 美观的静态结构占位元素（无骨架闪烁动画） */}
+        <div
+          className="mt-8 flex w-full max-w-md flex-col gap-3 rounded-xl border border-dashed border-line-strong/30 bg-paper/40 p-5 text-left"
+          aria-hidden="true"
+        >
+          <div className="h-4 w-1/3 rounded bg-line-strong/20" />
+          <div className="h-3 w-5/6 rounded bg-line-strong/10" />
+          <div className="h-3 w-4/6 rounded bg-line-strong/10" />
+          <div className="mt-2 flex flex-col gap-2 rounded-lg border border-line-strong/20 bg-card/50 p-3.5">
+            <div className="h-3.5 w-1/4 rounded bg-seal/20" />
+            <div className="h-2.5 w-full rounded bg-line-strong/10" />
+            <div className="h-2.5 w-4/5 rounded bg-line-strong/10" />
+          </div>
+        </div>
       </div>
-      <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-faint">{hint}</p>
-      <div className="relative mt-3 min-h-0 flex-1 overflow-hidden" aria-hidden="true">
-        {/* 行高与行距按正文的实际行距给（15.81px × 1.9 ≈ 30px 一行）：
-            太密就成了一片条纹，看不出是「一行行文字」 */}
-        <div className="absolute inset-0 space-y-4">
-          {Array.from({ length: SKELETON_ROWS }, (_, i) => (
-            <div
-              key={i}
-              className="moji-skeleton h-4"
-              style={{
-                width: `${SKELETON_WIDTHS[i % SKELETON_WIDTHS.length]}%`,
-                // 延迟按 5 拍循环，波峰一样是一波推着一波，不因为行多而变慢
-                animationDelay: `${(i % 5) * 90}ms`,
-              }}
-            />
-          ))}
+    )
+  }
+
+  return (
+    <div className="moji-in-soft mb-8 flex min-h-0 flex-1 flex-col items-center justify-center py-12 px-6 text-center select-none">
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-seal/10 text-seal">
+        <BookOpen size={28} className="stroke-[1.75]" />
+      </div>
+      <div className="text-[15px] font-semibold text-ink-strong">
+        {t('教学文档尚未生成')}
+      </div>
+      <p className="mt-2 max-w-md text-[12.5px] leading-relaxed text-ink-faint">
+        {t('当前知识节点暂无教学内容。你可以让超级导师根据知识树脉络与权威资料自动撰写系统化的教学内容。')}
+      </p>
+      {onGenerate && (
+        <button
+          type="button"
+          onClick={onGenerate}
+          className="mt-6 flex items-center gap-2 rounded-xl bg-seal px-4 py-2 text-[13px] font-medium text-white shadow-sm transition hover:bg-seal-deep cursor-pointer"
+        >
+          <Sparkles size={15} />
+          <span>{t('生成教学文档')}</span>
+        </button>
+      )}
+      {/* 美观的静态结构占位元素 */}
+      <div
+        className="mt-8 flex w-full max-w-md flex-col gap-3 rounded-xl border border-dashed border-line-strong/30 bg-paper/40 p-5 text-left"
+        aria-hidden="true"
+      >
+        <div className="h-4 w-1/3 rounded bg-line-strong/20" />
+        <div className="h-3 w-5/6 rounded bg-line-strong/10" />
+        <div className="h-3 w-4/6 rounded bg-line-strong/10" />
+        <div className="mt-2 flex flex-col gap-2 rounded-lg border border-line-strong/20 bg-card/50 p-3.5">
+          <div className="h-3.5 w-1/4 rounded bg-seal/20" />
+          <div className="h-2.5 w-full rounded bg-line-strong/10" />
+          <div className="h-2.5 w-4/5 rounded bg-line-strong/10" />
         </div>
       </div>
     </div>

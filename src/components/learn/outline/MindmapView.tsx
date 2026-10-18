@@ -825,13 +825,6 @@ export default memo(function MindmapView({
   const closePreviewRef = useRef(closePreview)
   closePreviewRef.current = closePreview
 
-  // 当相机缩放尺寸小于 80% (0.8) 时，如果场上存在预览节点则自动收起
-  useEffect(() => {
-    if (zoom < 0.8 && activePreview && !isClosingPreview) {
-      closePreview()
-    }
-  }, [zoom, activePreview, isClosingPreview, closePreview])
-
   useEffect(() => {
     return () => {
       if (closeTimerRef.current) clearTimeout(closeTimerRef.current)

@@ -98,6 +98,7 @@ export function hydrateChipTokens(root: HTMLElement): () => void {
     const el = t.closest('[data-moji-doc-chip]')
     if (!el || !root.contains(el)) return
     e.preventDefault()
+    e.stopPropagation()
     const payload = parseChipJson(el.getAttribute('data-chip') ?? '')
     if (payload) opener?.(payload)
   }

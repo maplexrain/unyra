@@ -2995,7 +2995,16 @@ export default function LearnWorkspace({
         return
       }
       if (p.type === 'web' && p.url) {
-        openWebTab(p.url)
+        const targetUrl = normalizeWebInput(p.url)
+        const group = focusedGroup(s.docArea)
+        const existingTab = group?.tabs.find(
+          (t) => t.ref.kind === 'web' && normalizeWebInput(t.ref.url) === targetUrl,
+        )
+        if (existingTab) {
+          activateTab(existingTab.id)
+          return
+        }
+        openWebTab(targetUrl)
         return
       }
       const ref = tabRefFromChip(s, p)
@@ -3005,7 +3014,7 @@ export default function LearnWorkspace({
       }
       openTab(ref)
     },
-    [getLatest, openTab, openWebTab, selectNode, exam, onToast],
+    [getLatest, openTab, openWebTab, activateTab, selectNode, exam, onToast],
   )
 
   // chip 的「点击打开」全走这一份登记（消息列表、输入框都不认识 store，见 lib/docChip）
@@ -3222,6 +3231,26 @@ export default function LearnWorkspace({
       startOutline(n.id)
     },
     [startOutline],
+  )
+
+  const generateTeachingDoc = useCallback(
+    (targetNode: KnowledgeNode) => {
+      if (!hasKey) {
+        onToast(t('生成教学文档需要 AI，请先在设置中填写「{0}」的 API Key', providerName))
+        onOpenSettings()
+        return
+      }
+      const s = getLatest()
+      let convId = latestConversation(s, targetNode.goalId)?.id
+      if (!convId) {
+        const { store: nextStore, conversation } = addConversation(s, targetNode.goalId)
+        set(nextStore)
+        convId = conversation.id
+      }
+      agent.autoTeach({ goalId: targetNode.goalId, nodeId: targetNode.id, conversationId: convId }, false)
+      onToast(t('已开始为「{0}」生成教学文档', targetNode.title))
+    },
+    [hasKey, providerName, onToast, onOpenSettings, getLatest, set, agent],
   )
 
   const handleOutlineFocusHandled = useCallback(() => {
@@ -4121,6 +4150,8 @@ export default function LearnWorkspace({
             */}
             {panes.map(({ tab, node, source }) => {
               const paneActive = tab.id === gTab?.id && dg.view === 'preview'
+              const goalConvId = latestConversation(store, node.goalId)?.id ?? null
+              const isAgentRunning = !!(goalConvId && agent.runningByConversation[goalConvId])
               return (
                 <DocPane
                   key={tab.id}
@@ -4130,6 +4161,8 @@ export default function LearnWorkspace({
                   source={source}
                   // 待写提示说的是「agent 正在给这个节点写文档」，只有眼前这一片才有意义
                   pending={paneActive && docPending}
+                  agentRunning={isAgentRunning}
+                  onGenerateDoc={() => generateTeachingDoc(node)}
                   knownConceptKeys={conceptKeysOf(store, node)}
                   readingPaused={!!exam.live}
                   // 大纲句柄槽：每片正文对应自己页签的那一份（见 lib/outline 的 OutlineHandle）

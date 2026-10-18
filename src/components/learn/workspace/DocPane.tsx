@@ -25,6 +25,10 @@ export interface DocPaneProps {
   node: KnowledgeNode
   source: DocSource
   pending: boolean
+  /** 当前 Agent 是否正在运行 */
+  agentRunning?: boolean
+  /** 触发生成教学文档 */
+  onGenerateDoc?: () => void
   knownConceptKeys?: Set<string>
   readingPaused: boolean
   /** 文档栏在不在中间主位（导师栏占着主位时为 false）：有效阅读据此停表 */
@@ -64,6 +68,8 @@ export const DocPane = memo(function DocPane({
   node,
   source,
   pending,
+  agentRunning,
+  onGenerateDoc,
   knownConceptKeys,
   readingPaused,
   mainPane,
@@ -100,6 +106,8 @@ export const DocPane = memo(function DocPane({
         node={node}
         doc={source}
         pending={pending}
+        agentRunning={agentRunning}
+        onGenerateDoc={onGenerateDoc}
         knownConceptKeys={knownConceptKeys}
         readingPaused={readingPaused}
         mainPane={mainPane}

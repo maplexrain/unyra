@@ -14,7 +14,7 @@
  * 没变过的历史消息不该跟着把整棵子树重新 reconcile 一遍。
  */
 
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   Brain,
@@ -39,7 +39,7 @@ import { toolLabel } from './toolLabel'
 import { useFold } from './useFold'
 import { isInterruptedNotice } from '../../../learn/agent/inflight'
 import { groupParts, isProcessPart, type ProcessPart } from './partGroups'
-import { hydrateChipTokens, openChipRef, type ChipPayload } from '../../../lib/docChip'
+import { openChipRef, type ChipPayload } from '../../../lib/docChip'
 import { chipLabel, chipSvg, chipToken, maskChipTokens, restoreChipTokens, splitChips } from '../../../lib/chipSyntax'
 import { promptModuleByKey } from '../../../learn/ai/promptModules'
 import { splitParagraphs } from './paragraphBuffer'
@@ -690,7 +690,15 @@ export function FollowLatestButton({ onClick }: { onClick: () => void }) {
  */
 function ChipView({ payload }: { payload: ChipPayload }) {
   return (
-    <button type="button" className="moji-chip" title={chipToken(payload)} onClick={() => openChipRef(payload)}>
+    <button
+      type="button"
+      className="moji-chip"
+      title={chipToken(payload)}
+      onClick={(e) => {
+        e.stopPropagation()
+        openChipRef(payload)
+      }}
+    >
       <span aria-hidden="true" dangerouslySetInnerHTML={{ __html: chipSvg(payload.type) }} />
       <span className="moji-chip-label">{chipLabel(payload)}</span>
     </button>
@@ -723,7 +731,6 @@ const ParagraphBlock = memo(function ParagraphBlock({
   rawText: string
   animate?: boolean
 }) {
-  const hostRef = useRef<HTMLDivElement | null>(null)
   const html = useMemo(() => {
     // 裸网址会被 GFM 自动链接包成 <a>，把 token 拆碎在相邻文本节点里、hydrate 凑不齐
     //（引用里带链接必踩）：渲染前把 token 掩蔽成哨兵，渲染后复原
@@ -731,14 +738,8 @@ const ParagraphBlock = memo(function ParagraphBlock({
     return restoreChipTokens(renderNote(masked), tokens)
   }, [rawText])
 
-  useEffect(() => {
-    const el = hostRef.current
-    if (!el) return
-    return hydrateChipTokens(el)
-  }, [html])
-
   return (
-    <div ref={hostRef} className={animate ? 'moji-paragraph-in' : undefined}>
+    <div className={animate ? 'moji-paragraph-in' : undefined}>
       <MarkdownView html={html} className="moji-agent-md" />
     </div>
   )

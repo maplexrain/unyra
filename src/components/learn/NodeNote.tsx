@@ -37,6 +37,10 @@ interface Props {
   doc: DocSource
   /** 这份文档还在等 Agent 写：为空时文档区显示等待动画，不给用户一片空白 */
   pending?: boolean
+  /** 当前 Agent 是否正在运行 */
+  agentRunning?: boolean
+  /** 触发生成教学文档 */
+  onGenerateDoc?: () => void
   /** 选中词条 → 展开一个下级节点（深入学习） */
   onLearnConcept: (term: string) => void
   /** 选中词条 → 只在原文挂一段短释义（了解），不改动知识树 */
@@ -114,6 +118,8 @@ export default memo(function NodeNote({
   node,
   doc,
   pending = false,
+  agentRunning = false,
+  onGenerateDoc,
   onLearnConcept,
   onUnderstand,
   onAsk,
@@ -319,6 +325,8 @@ export default memo(function NodeNote({
           bodyRef={bodyRef}
           docScale={docScale}
           pending={pending}
+          agentRunning={agentRunning}
+          onGenerateDoc={onGenerateDoc}
           kind={doc.kind}
           content={content}
           html={html}
