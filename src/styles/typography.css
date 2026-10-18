@@ -271,14 +271,26 @@
   border: none;
   border-top: 1px solid var(--color-line-strong);
 }
+/*
+ * 正文里的图片：宽度不许超过容器，高度按比例走。
+ *
+ * `display` 这一条是**修 bug**，不是随手加的：Tailwind 的 preflight 把所有
+ * `img` 设成了 `display: block`（它认为图片是「一块内容」）。于是 README 顶上那排
+ * 徽章——`[![Python](…)](…)` 一行一枚连着写——每一枚都独占一行，在 GitHub 上并排
+ * 流开的一排徽章，到了这里竖着摞成一列；句子中间的图也会把整行顶断。
+ * 正文里的图是**文字流的一员**，这里显式改回行内；`vertical-align: middle`
+ * 顺带消掉行内图片下方那截基线空隙（不然徽章会与相邻文字错开半行）。
+ * preflight 由 `@import 'tailwindcss'` 带进来，动不了它，只能在正文这一层改回来。
+ */
 .note-preview img {
+  display: inline-block;
+  vertical-align: middle;
   max-width: 100%;
   border-radius: 4px;
 }
 /*
- * 图片外面包着的链接（`[![图](x)](y)`）：照 GitHub 的样子保持**行内**——
- * 链接是文字流里的一员，图跟着它待在文字中间，而不是把整行占成一块。
- * marked 渲出来的本来就是行内结构，这里只是把话挑明，防个别壳层把它顶成块。
+ * 图片外面包着的链接（`[![图](x)](y)`）：链接跟着图一起留在文字流里，
+ * 别把整行占成一块（图本身的行内由上面那条保证，链接若被顶成块，图照样另起一行）。
  */
 .note-preview a:has(> img),
 .moji-agent-md a:has(> img) {

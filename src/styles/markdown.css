@@ -54,8 +54,13 @@
  * 这条原先只写在 .note-preview img 上，而对话气泡与公告弹窗用的是 .moji-agent-md——
  * 少了它，一张稍微大点的图会把气泡/弹窗横向撑破（图片的固有宽度不认容器）。
  * 远程图片（https:）是正经内容，CSP 的 img-src 已放行，见 electron/csp.ts。
+ *
+ * `display: inline-block` 与 .note-preview img 上那条同源（见 styles/typography.css）：
+ * preflight 把 img 设成了块级，徽章与行内插图因此会各占一行。
  */
 .moji-agent-md img {
+  display: inline-block;
+  vertical-align: middle;
   max-width: 100%;
   height: auto;
   border-radius: 6px;
