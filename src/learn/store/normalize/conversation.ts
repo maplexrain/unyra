@@ -150,6 +150,8 @@ function normalizePart(raw: unknown): AgentPart | null {
       result: typeof r.result === 'string' ? r.result : '',
       ok: r.ok !== false,
       status: r.status === 'running' || r.status === 'error' ? r.status : 'done',
+      // 调用级失败（api 调用没生效，代码本身跑通了）：丢了它，重启后那一步会从黄变回红
+      ...(r.soft === true ? { soft: true } : {}),
       ...(images.length ? { images } : {}),
     }
   }

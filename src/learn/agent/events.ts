@@ -30,7 +30,13 @@ export function applyEvent(parts: AgentPart[], e: AgentEvent): void {
       if (p) {
         p.result = e.result
         p.ok = e.ok
-        p.status = e.ok ? 'done' : 'error'
+        p.soft = e.soft
+        /*
+         * 三档，不是两档：只有「这段代码根本跑不起来」才算失败；「跑完了，但其中某几次
+         * api 调用没有生效」是调用级失败——代码这一层已经交付了，状态仍是完成，
+         * 只是界面上点一枚黄（见 ToolCard）。
+         */
+        p.status = e.ok || e.soft ? 'done' : 'error'
         // 工具附带的图片（如 res.read 看了一张图）：只存引用，字节在磁盘上
         if (e.images?.length) p.images = e.images
       }

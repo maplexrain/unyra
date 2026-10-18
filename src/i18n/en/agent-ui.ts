@@ -163,6 +163,7 @@ const dict: Record<string, string> = {
   /* ---------- ToolCard ---------- */
   '执行中': 'Running',
   '失败': 'Failed',
+  '这段代码跑完了，但其中有 api 调用没有生效': 'The code ran, but some api calls did not take effect',
   '代码': 'Code',
   '参数': 'Params',
   '结果': 'Result',

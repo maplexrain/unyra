@@ -262,13 +262,23 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
       /**
        * 有一次 api 调用没有生效（例如 expected 与现状不符），整次编排就算失败：
        * 光把 { ok: false } 交给模型是不够的——它可能没检查返回值就接着往下走，
-       * 于是「明明没改成功」却被当成做完了。这里把它提成工具级失败，界面上也是红的。
+       * 于是「明明没改成功」却被当成做完了。这里把它提成工具级失败，但**只标成
+       * 调用级失败（soft）**：代码这一层已经跑完了，界面上是黄色的「完成」，
+       * 不是红色的「失败」（见 ToolCard）。
        */
       const head = failureHeader(log)
       const tail = [whatHappened(log), logs.length ? '日志：\n' + logs.join('\n') : ''].filter(Boolean).join('\n')
+      /** 这次是「跑完了，但有几步没做成」还是「这段代码根本跑不起来」，见下面的 ok / soft */
+      const allOk = log.every((c) => c.ok)
       return {
-        // 工具级的成败：有一次没生效就是失败（界面上是红的），但结果照旧交给模型去读
-        ok: log.every((c) => c.ok),
+        // 工具级的成败：有一次没生效就是失败（模型据此判断），但结果照旧交给模型去读
+        ok: allOk,
+        /*
+         * 调用级失败：代码跑通了，只是某几次 api 调用没有生效。它与上面「编译不过 /
+         * 运行抛错 / 超时」那几条 early return 是两种东西——那几条没有 soft，
+         * 界面上是红的「失败」；这一条是黄的「完成」（见 ToolCard）。
+         */
+        soft: !allOk,
         content: clip(head + result + (tail ? '\n\n' + tail : '')),
         ...(attached.length
           ? {

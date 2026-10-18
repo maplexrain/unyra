@@ -24,6 +24,12 @@ export function ToolCard({ part }: { part: Extract<AgentPart, { type: 'tool' }> 
   const { open, shown, toggle } = useFold()
   const [preview, setPreview] = useState<MessageImage | null>(null)
   const running = part.status === 'running'
+  const failed = part.status === 'error'
+  /**
+   * 调用级失败：代码跑完了，但其中某几次 api 调用没有生效（见 agent/types 的 soft）。
+   * 它不是「这一步没跑成」——状态仍是完成，只是用黄色点出来，展开能看到没生效的那几条。
+   */
+  const soft = !running && !failed && !!part.soft
   const param = useMemo(() => paramOf(part), [part])
   const result = useMemo(() => (part.result ? toolResultView(part.result) : null), [part.result])
 
@@ -32,19 +38,28 @@ export function ToolCard({ part }: { part: Extract<AgentPart, { type: 'tool' }> 
       <button
         type="button"
         onClick={toggle}
+        title={soft ? t('这段代码跑完了，但其中有 api 调用没有生效') : undefined}
         className="flex w-full items-center gap-1.5 py-0.5 text-left text-[12.5px] text-ink-soft transition hover:text-ink"
       >
         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         {running ? (
           <Loader2 size={12} className="animate-spin text-seal-deep" />
         ) : (
-          <Wrench size={12} className={part.status === 'error' ? 'text-seal' : 'text-ok-text'} />
+          <Wrench
+            size={12}
+            className={failed ? 'text-seal' : soft ? 'text-warn' : 'text-ok-text'}
+          />
         )}
-        <span className={'font-medium ' + (part.status === 'error' ? 'text-seal' : '')}>
+        <span className={'font-medium ' + (failed ? 'text-seal' : '')}>
           {toolLabel(part.name, part.args)}
         </span>
-        <span className="ml-auto truncate text-[11.5px] text-ink-faint">
-          {running ? t('执行中') : part.status === 'error' ? t('失败') : t('完成')}
+        <span
+          className={
+            'ml-auto truncate text-[11.5px] ' +
+            (soft ? 'text-warn' : failed ? 'text-seal' : 'text-ink-faint')
+          }
+        >
+          {running ? t('执行中') : failed ? t('失败') : t('完成')}
         </span>
       </button>
       {/*
@@ -73,7 +88,15 @@ export function ToolCard({ part }: { part: Extract<AgentPart, { type: 'tool' }> 
               {!running && result && (
                 <div className="py-1.5">
                   <div className="mb-1 text-[11.5px] uppercase tracking-wider text-ink-faint">{t('结果')}</div>
-                  {result.lead && <MetaLines text={result.lead} className="mb-1.5" />}
+                  {/* 没生效的那几条清单：调用级失败时用黄色框一下，与红着的「失败」区分开 */}
+                  {result.lead &&
+                    (soft ? (
+                      <div className="mb-1.5 rounded-md border border-warn/35 bg-warn/10 px-2 py-1.5">
+                        <MetaLines text={result.lead} />
+                      </div>
+                    ) : (
+                      <MetaLines text={result.lead} className="mb-1.5" />
+                    ))}
                   {result.body && (
                     <CodePane text={result.body} lang={result.lang} wrap={result.lang === 'text'} />
                   )}

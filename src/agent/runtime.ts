@@ -360,6 +360,8 @@ export async function runAgent(opts: AgentRunOptions): Promise<void> {
             name: tc.name,
             result: r.content,
             ok: r.ok,
+            // 调用级失败（见 AgentToolResult.soft）：界面据此用黄色而不是红色
+            ...(r.soft ? { soft: true } : {}),
             ...(r.images?.length ? { images: r.images } : {}),
           })
           messages.push({ role: 'tool', tool_call_id: tc.id, content: r.content })
