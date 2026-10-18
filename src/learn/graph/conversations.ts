@@ -22,13 +22,59 @@ export function latestConversation(store: LearnStore, goalId: string): Conversat
 }
 
 /**
- * 保证目标至少有一个会话：有就返回最近的那个，没有就新建。
+ * 解析某目标当前在界面上显示/激活的会话上下文。
+ * 优先级：
+ * 1. 若当前激活的 Agent 页签为该目标页签，且记有有效会话，优先采用；
+ * 2. 若当前激活的 Agent 页签为子代理页签，其父会话属于该目标，采用该会话；
+ * 3. 若全局 activeConversationId 属于该目标，采用该会话；
+ * 4. 若 agentTabs 中存在该目标的页签且记有有效会话，采用之；
+ * 5. 兜底回退到该目标最近的一段会话（latestConversation）。
+ */
+export function resolveDisplayedConversation(store: LearnStore, goalId: string): string | null {
+  const activeTabKey = store.agentActiveTab
+  if (activeTabKey && activeTabKey.startsWith('ga:')) {
+    const activeTabGoalId = activeTabKey.slice(3)
+    if (activeTabGoalId === goalId) {
+      const activeTab = store.agentTabs?.find((t) => t.kind === 'goal' && t.goalId === goalId)
+      if (activeTab?.conversationId) {
+        const conv = conversationById(store, activeTab.conversationId)
+        if (conv && conv.goalId === goalId) return conv.id
+      }
+    }
+  }
+
+  if (activeTabKey && activeTabKey.startsWith('sa:')) {
+    const activeTab = store.agentTabs?.find((t) => t.kind === 'sub' && 'sa:' + t.sessionId === activeTabKey)
+    if (activeTab?.conversationId) {
+      const conv = conversationById(store, activeTab.conversationId)
+      if (conv && conv.goalId === goalId) return conv.id
+    }
+  }
+
+  if (store.activeConversationId) {
+    const conv = conversationById(store, store.activeConversationId)
+    if (conv && conv.goalId === goalId) return conv.id
+  }
+
+  const tab = store.agentTabs?.find((t) => t.kind === 'goal' && t.goalId === goalId)
+  if (tab?.conversationId) {
+    const conv = conversationById(store, tab.conversationId)
+    if (conv && conv.goalId === goalId) return conv.id
+  }
+
+  return latestConversation(store, goalId)?.id ?? null
+}
+
+/**
+ * 保证目标至少有一个会话：优先返回当前显示的会话，次之最近的那个，没有就新建。
  * 切换节点、切回某个目标时用它决定右侧展示哪个对话。
  */
 export function ensureConversation(
   store: LearnStore,
   goalId: string,
 ): { store: LearnStore; conversationId: string } {
+  const displayed = resolveDisplayedConversation(store, goalId)
+  if (displayed) return { store, conversationId: displayed }
   const existing = latestConversation(store, goalId)
   if (existing) return { store, conversationId: existing.id }
   const conv = makeConversation(goalId)

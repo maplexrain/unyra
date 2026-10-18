@@ -62,6 +62,7 @@ export {
   deleteMessage,
   ensureConversation,
   latestConversation,
+  resolveDisplayedConversation,
   updateMessageText,
 } from './graph/conversations'
 

@@ -109,6 +109,7 @@ import {
   ensureConversation,
   goalSubtreeIds,
   latestConversation,
+  resolveDisplayedConversation,
   nodeById,
   nodeStructure,
   normalizeKey,
@@ -542,12 +543,12 @@ export default function LearnWorkspace({
       }
     }
     const goal = store.goals.find((g) => g.id === activeAgentTab.goalId) ?? null
-    // 页签里记的会话丢了（被删过会话）就回落到该目标最近的一段
+    // 页签里记的会话丢了（被删过会话）就回落到该目标当前显示或最近的一段
     const convId =
       activeAgentTab.conversationId &&
       conversationById(store, activeAgentTab.conversationId)?.goalId === activeAgentTab.goalId
         ? activeAgentTab.conversationId
-        : (latestConversation(store, activeAgentTab.goalId)?.id ?? null)
+        : (resolveDisplayedConversation(store, activeAgentTab.goalId) ?? null)
     const focusId = goalFocusByGoal.get(activeAgentTab.goalId) ?? goal?.rootNodeId ?? null
     return {
       tab: activeAgentTab,
@@ -1036,7 +1037,7 @@ export default function LearnWorkspace({
             s.goals.find((g) => g.id === targetTab.goalId)?.rootNodeId ??
             s.activeNodeId
           const convId =
-            targetTab.conversationId ?? latestConversation(s, targetTab.goalId)?.id ?? null
+            targetTab.conversationId ?? resolveDisplayedConversation(s, targetTab.goalId) ?? null
           next = {
             ...s,
             activeGoalId: targetTab.goalId,
@@ -1080,7 +1081,7 @@ export default function LearnWorkspace({
         ref.kind === 'goal'
           ? ref.conversationId && conversationById(s, ref.conversationId)?.goalId === ref.goalId
             ? ref.conversationId
-            : (latestConversation(s, ref.goalId)?.id ?? null)
+            : (resolveDisplayedConversation(s, ref.goalId) ?? null)
           : null
       const hasDocTabs =
         ref.kind === 'goal'
@@ -1220,7 +1221,7 @@ export default function LearnWorkspace({
         const convId =
           ref.conversationId && conversationById(store, ref.conversationId)?.goalId === ref.goalId
             ? ref.conversationId
-            : (latestConversation(store, ref.goalId)?.id ?? null)
+            : (resolveDisplayedConversation(store, ref.goalId) ?? null)
         return !!(convId && agent.runningByConversation[convId])
       }
       const conv = conversationById(store, ref.conversationId)
@@ -1248,7 +1249,7 @@ export default function LearnWorkspace({
         t.kind === 'goal' &&
         t.conversationId &&
         conversationById(s, t.conversationId)?.goalId !== t.goalId
-          ? { ...t, conversationId: latestConversation(s, t.goalId)?.id ?? null }
+          ? { ...t, conversationId: resolveDisplayedConversation(s, t.goalId) ?? null }
           : t,
       )
     const active =
@@ -1411,7 +1412,7 @@ export default function LearnWorkspace({
       const convId = s.activeConversationId &&
         s.conversations.some((c) => c.id === s.activeConversationId && c.goalId === node.goalId)
         ? s.activeConversationId
-        : (latestConversation(s, node.goalId)?.id ?? null)
+        : (resolveDisplayedConversation(s, node.goalId) ?? null)
       const tabbed0 = upsertAgentTab(s.agentTabs ?? [], s.agentActiveTab ?? null, { kind: 'goal', goalId: node.goalId, conversationId: convId }, true)
       const tabbed = withAgentTabs(s, tabbed0.tabs, tabbed0.active)
       const conv = tabbed.activeConversationId
@@ -2806,7 +2807,7 @@ export default function LearnWorkspace({
       : tab.conversationId &&
           conversationById(store, tab.conversationId)?.goalId === tab.goalId
         ? tab.conversationId
-        : (latestConversation(store, tab.goalId)?.id ?? null)
+        : (resolveDisplayedConversation(store, tab.goalId) ?? null)
     const nodeId = goalId
       ? (goalFocusByGoal.get(goalId) ?? store.goals.find((g) => g.id === goalId)?.rootNodeId ?? null)
       : null
@@ -2926,7 +2927,7 @@ export default function LearnWorkspace({
   const grading = useMemo(() => {
     if (!pendingWork) return false
     const node = nodeById(store, pendingWork.exam.nodeId)
-    const convId = node ? (latestConversation(store, node.goalId)?.id ?? null) : null
+    const convId = node ? (resolveDisplayedConversation(store, node.goalId) ?? null) : null
     return !!(convId && agent.runningByConversation[convId])
   }, [pendingWork, store, agent.runningByConversation])
 
@@ -2938,7 +2939,7 @@ export default function LearnWorkspace({
    */
   const docPending = useMemo(() => {
     if (!docSource || docSource.content.trim()) return false
-    const convId = docNode ? (latestConversation(store, docNode.goalId)?.id ?? null) : null
+    const convId = docNode ? (resolveDisplayedConversation(store, docNode.goalId) ?? null) : null
     if (!convId || !agent.runningByConversation[convId]) return false
     const msgs = conversationById(store, convId)?.messages ?? []
     return msgs[msgs.length - 1]?.hidden === true
@@ -3241,7 +3242,7 @@ export default function LearnWorkspace({
         return
       }
       const s = getLatest()
-      let convId = latestConversation(s, targetNode.goalId)?.id
+      let convId = resolveDisplayedConversation(s, targetNode.goalId)
       if (!convId) {
         const { store: nextStore, conversation } = addConversation(s, targetNode.goalId)
         set(nextStore)
@@ -4150,7 +4151,7 @@ export default function LearnWorkspace({
             */}
             {panes.map(({ tab, node, source }) => {
               const paneActive = tab.id === gTab?.id && dg.view === 'preview'
-              const goalConvId = latestConversation(store, node.goalId)?.id ?? null
+              const goalConvId = resolveDisplayedConversation(store, node.goalId) ?? null
               const isAgentRunning = !!(goalConvId && agent.runningByConversation[goalConvId])
               return (
                 <DocPane

@@ -822,8 +822,6 @@ export default memo(function MindmapView({
   activePreviewRef.current = activePreview
   const isClosingPreviewRef = useRef(isClosingPreview)
   isClosingPreviewRef.current = isClosingPreview
-  const closePreviewRef = useRef(closePreview)
-  closePreviewRef.current = closePreview
 
   useEffect(() => {
     return () => {
@@ -1478,9 +1476,6 @@ export default memo(function MindmapView({
         gestureRef.current = true
         panRef.current = { x: nextPanX, y: nextPanY }
         zoomRef.current = nextZoom
-        if (nextZoom < 0.8 && activePreviewRef.current && !isClosingPreviewRef.current) {
-          closePreviewRef.current()
-        }
         schedulePaint()
         scheduleCommit()
       } else {
@@ -1554,9 +1549,6 @@ export default memo(function MindmapView({
     zoomRef.current = nextZoom
     setPan(nextPan)
     setZoom(nextZoom)
-    if (nextZoom < 0.8 && activePreview && !isClosingPreview) {
-      closePreview()
-    }
   }, [triggerTransition])
 
   const resetZoom = useCallback(() => {

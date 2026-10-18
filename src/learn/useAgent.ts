@@ -39,7 +39,7 @@ import type { SandboxOptions } from '../agent/sandbox/types'
 import { MIN_ACTIVE_MESSAGES, activeMessages, applyCompaction, shouldCompact } from './compact'
 import { needsPersonaAnnounce, personaMessage } from '../agent/persona'
 import { needsDocFormatAnnounce, docFormatMessage, docFormatAllowsModule } from '../agent/docFormat'
-import { conversationById, nodeById, latestConversation, addConversation } from './graph'
+import { conversationById, nodeById, resolveDisplayedConversation, addConversation } from './graph'
 import { currentNodeBlock, makeExamTool } from './agentOps'
 import { findWorkflow, renderWorkflowInstruction, resolveWorkflowEffort, workflowPrep, workflowModules } from './workflows'
 import { generateConversationTitle, namingSource } from './title'
@@ -1096,9 +1096,24 @@ export function useAgent(opts: {
         target?: AgentRunTarget
       },
     ) => {
-      const t =
-        opts?.target ??
-        (goalId && nodeId && conversationId ? { goalId, nodeId, conversationId } : null)
+      let t = opts?.target ?? null
+      if (!t) {
+        const s = getLatest()
+        const effectiveGoalId = goalId ?? s.activeGoalId ?? null
+        if (effectiveGoalId) {
+          const effectiveConvId =
+            (conversationId && conversationById(s, conversationId)?.goalId === effectiveGoalId
+              ? conversationId
+              : null) ?? resolveDisplayedConversation(s, effectiveGoalId)
+          const effectiveNodeId =
+            (nodeId && nodeById(s, nodeId)?.goalId === effectiveGoalId ? nodeId : null) ??
+            s.goals.find((g) => g.id === effectiveGoalId)?.rootNodeId ??
+            null
+          if (effectiveConvId && effectiveNodeId) {
+            t = { goalId: effectiveGoalId, nodeId: effectiveNodeId, conversationId: effectiveConvId }
+          }
+        }
+      }
       if (!t) return
       void runTurn(
         t,
@@ -1110,7 +1125,7 @@ export function useAgent(opts: {
         opts?.files,
       )
     },
-    [goalId, nodeId, conversationId, runTurn],
+    [goalId, nodeId, conversationId, runTurn, getLatest],
   )
 
   /**
@@ -1379,35 +1394,26 @@ export function useAgent(opts: {
     ) => {
       let target = opts?.target ?? null
       if (!target) {
-        // 外部触发的工作流必须优先使用当前正在使用的活跃上下文（即当前用户正在交互的导师会话）
-        if (goalId && conversationId) {
-          const currentConv = conversationById(getLatest(), conversationId)
-          if (currentConv && currentConv.goalId === goalId) {
-            let nid = opts?.nodeId ?? nodeId
-            if (nid) {
-              const checkNode = nodeById(getLatest(), nid)
-              if (!checkNode || checkNode.goalId !== goalId) {
-                nid = nodeId ?? getLatest().goals.find((g) => g.id === goalId)?.rootNodeId ?? null
-              }
-            } else {
-              nid = nodeId ?? getLatest().goals.find((g) => g.id === goalId)?.rootNodeId ?? null
-            }
-            if (nid) {
-              target = { goalId, nodeId: nid, conversationId }
-            }
-          }
-        }
+        const s = getLatest()
+        const targetNodeId = opts?.nodeId ?? nodeId ?? s.activeNodeId ?? null
+        const targetNode = targetNodeId ? nodeById(s, targetNodeId) : null
+        const targetGoalId = targetNode?.goalId ?? goalId ?? s.activeGoalId ?? null
 
-        // 兜底回退：若当前没有活跃的导师上下文，按传入的 nodeId 解析归属
-        if (!target) {
-          const nid = opts?.nodeId ?? nodeId
-          const node = nid ? nodeById(getLatest(), nid) : null
-          if (node) {
-            const conv =
-              conversationId && conversationById(getLatest(), conversationId)?.goalId === node.goalId
-                ? conversationId
-                : (latestConversation(getLatest(), node.goalId)?.id ?? null)
-            if (conv) target = { goalId: node.goalId, nodeId: node.id, conversationId: conv }
+        if (targetGoalId) {
+          // 外部触发的工作流必须优先使用当前显示的上下文（正在交互的导师会话）
+          const convId =
+            (conversationId && conversationById(s, conversationId)?.goalId === targetGoalId
+              ? conversationId
+              : null) ?? resolveDisplayedConversation(s, targetGoalId)
+
+          const nid =
+            (targetNode && targetNode.goalId === targetGoalId ? targetNode.id : null) ??
+            (nodeId && nodeById(s, nodeId)?.goalId === targetGoalId ? nodeId : null) ??
+            s.goals.find((g) => g.id === targetGoalId)?.rootNodeId ??
+            null
+
+          if (convId && nid) {
+            target = { goalId: targetGoalId, nodeId: nid, conversationId: convId }
           }
         }
       }
@@ -1573,16 +1579,17 @@ export function useAgent(opts: {
       const target = on ?? nodeId
       const node = target ? nodeById(s, target) : null
       if (!node) return
-      // 节点属于当前会话的目标时直接用当前会话；否则落到该目标最近的一段（没有就新建）
+      // 节点属于当前会话的目标时直接用当前会话；否则落到该目标当前显示的上下文（没有就新建）
       const conv =
-        conversationId && conversationById(s, conversationId)?.goalId === node.goalId
+        (conversationId && conversationById(s, conversationId)?.goalId === node.goalId
           ? conversationId
-          : (latestConversation(s, node.goalId)?.id ??
-            (() => {
-              const made = addConversation(s, node.goalId)
-              set(made.store)
-              return made.conversation.id
-            })())
+          : null) ??
+        resolveDisplayedConversation(s, node.goalId) ??
+        (() => {
+          const made = addConversation(s, node.goalId)
+          set(made.store)
+          return made.conversation.id
+        })()
       void runTurn({ goalId: node.goalId, nodeId: node.id, conversationId: conv }, text, true, undefined, undefined, undefined, undefined, mark)
     },
     [nodeId, conversationId, getLatest, set, runTurn],

@@ -15,6 +15,7 @@ import {
   createChildNode,
   nodeById,
   removeAnnotation,
+  resolveDisplayedConversation,
   updateDoc,
   updateNode,
 } from '../../../learn/graph'
@@ -223,7 +224,13 @@ export function useConceptActions(deps: ConceptActionsDeps) {
         `【选段位置】我在${docName}里选中了一段渲染后的内容，但没能把它映射回 Markdown 源文` +
         `（可能跨了代码块等结构）。请先用 api.doc.readRange 读一读${docName}再回答我的疑问。`
     }
-    agent.send(question, { context, quote })
+    const s = getLatest()
+    const convId = resolveDisplayedConversation(s, node.goalId)
+    agent.send(question, {
+      context,
+      quote,
+      ...(convId ? { target: { goalId: node.goalId, nodeId: node.id, conversationId: convId } } : {}),
+    })
     onToast(t('已就选段提问，回复见右侧对话框'))
   }
 
