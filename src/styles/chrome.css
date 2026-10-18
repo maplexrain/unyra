@@ -13,6 +13,15 @@
   .moji-run-out {
     display: none !important;
   }
+  /* 折起的图表在纸上要整张露出来：折是屏幕上的事（见 lib/mermaid 的 foldIfTall） */
+  .moji-mermaid-stage {
+    max-height: none !important;
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+  }
+  .moji-mermaid-fold {
+    display: none !important;
+  }
   .print-flat,
   .print-flat * {
     overflow: visible !important;

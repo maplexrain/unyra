@@ -369,6 +369,38 @@
   max-width: 100%;
   height: auto;
 }
+/*
+ * 超高的图表先折起（阈值见 lib/mermaid 的 MERMAID_FOLD_*，那边的 min(460px, 58vh)
+ * 与这里的 max-height 必须同值）。竖链图的高度随节点数线性长，十来节就是一屏多，
+ * 正文被它整段顶走；折起之后一屏里还看得见上下文，想细看再点「展开图表」。
+ */
+.moji-mermaid-tall:not(.moji-mermaid-open) .moji-mermaid-stage {
+  max-height: min(460px, 58vh);
+  overflow: hidden;
+  /* 折起时不许垂直居中：居中的话被切掉的是**上下两边**，图的头也会没 */
+  align-items: flex-start;
+  /* 底部渐隐：一眼看出「下面还有」，而不是被硬切一刀 */
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+}
+.moji-mermaid-fold {
+  display: block;
+  margin: 6px auto 0;
+  padding: 3px 12px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 999px;
+  background: var(--color-card);
+  color: var(--color-ink-soft);
+  font-size: 11.5px;
+  line-height: 1.6;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.moji-mermaid-fold:hover {
+  color: var(--color-seal-deep);
+  border-color: color-mix(in srgb, var(--color-seal) 45%, var(--color-line-strong));
+  background: color-mix(in srgb, var(--color-seal) 6%, var(--color-card));
+}
 .moji-mermaid-hint {
   padding: 14px 4px;
   text-align: center;

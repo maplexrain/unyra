@@ -142,6 +142,10 @@ const dict: Record<string, string> = {
   '函数图像表达式含有不被允许的内容': 'The plot expression contains disallowed content',
   '正在绘制函数图像…': 'Drawing the plot...',
 
+  /* ---------- lib/mermaid.ts：超高图表的折叠 ---------- */
+  '展开图表': 'Expand chart',
+  '收起图表': 'Collapse chart',
+
   /* ---------- lib/annotation/popup.ts：浮层上的「修改 / 删除」 ---------- */
   '修改这条笔记': 'Edit this note',
   '修改': 'Edit',
