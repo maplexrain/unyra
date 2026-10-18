@@ -73,25 +73,29 @@ describe('内置工作流', () => {
     expect(BUILTIN_EFFORT['compact']).toBe('none')
   })
 
-  it('学习大纲先分形态：任务型只写根节点文档，学习型才建大纲树', () => {
+  it('学习大纲由导师判断形态：任务型只写根节点文档，学习型才建大纲树', () => {
     const row = builtinWorkflowRows().find((r) => r.id === 'goal-outline')
     expect(row).toBeTruthy()
-    // 形态是必填占位参数：从创建目标页带下来（learn / task），缺省由 runWorkflow 补 auto
-    expect(row?.params).toEqual(['mode'])
+    // 形态不靠用户勾选，所以没有占位参数要补
+    expect(row?.params).toBeUndefined()
 
-    const task = renderWorkflowInstruction(row!.instruction, { mode: 'task' })
-    const learn = renderWorkflowInstruction(row!.instruction, { mode: 'learn' })
-    // 两条分支都在指令里，形态只决定走哪一条
-    expect(task).toContain('本次目标形态：task')
-    expect(learn).toContain('本次目标形态：learn')
-    // 任务型那条明确禁止建树、禁止写大纲
-    expect(task).toContain('不要**调用 api.node.createTree')
-    expect(task).toContain('不要**写 outline.json')
-    // 学习型那条仍按创建模式走
-    expect(learn).toContain('选择目标创建模式')
-    expect(learn).toContain('api.node.createTree')
-    // 占位符不会漏进指令（没替换掉的话模型会读到字面量 {{mode}}）
-    expect(task).not.toContain('{{mode}}')
+    const text = row!.instruction
+    // 判断依据写死在指令里：先看制品、再看长期意图、都没有按任务型
+    expect(text).toContain('先看有没有具体制品')
+    expect(text).toContain('再看有没有长期意图')
+    expect(text).toContain('按**任务型**处理')
+    // 询问是最后手段：只有一种情况才问
+    expect(text).toContain('只有一种情况值得问')
+    expect(text).toContain('除此之外不要问')
+    // 任务型分支明确禁止建树、禁止写大纲，并要求先打开文档
+    expect(text).toContain('不要**调用 api.node.createTree')
+    expect(text).toContain('不要**写 outline.json')
+    expect(text).toContain('先把文档打开')
+    // 学习型分支仍按创建模式走
+    expect(text).toContain('选择目标创建模式')
+    expect(text).toContain('api.node.createTree')
+    // 没有漏出来的占位符
+    expect(text).not.toContain('{{mode}}')
   })
 
   it('问询类（开讲/出卷/超级实验室）触发前响铃；阅卷不能从列表直接跑', () => {

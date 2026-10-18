@@ -1435,15 +1435,9 @@ export function useAgent(opts: {
       // 聊天滑条只对聊天轮直接生效——工作流的档位独立于它（见 resolveWorkflowEffort）。
       const effort = resolveWorkflowEffort(found, resolveGlobal().effort)
       // 把这一轮的 promise 交回给调用方：手动压缩要知道「这一轮什么时候跑完」（见 compactNow）
-      /*
-       * 占位参数：目标形态决定「学习大纲」建不建大纲树，所以 {{mode}} 必须有值。
-       * 从工作流列表或 wf.invoke 触发时没人补它——落成 auto，由导师自己判断并问一次。
-       */
-      const params =
-        found.id === 'goal-outline' ? { mode: 'auto', ...opts?.params } : opts?.params
       return runTurn(
         target,
-        renderWorkflowInstruction(found.instruction, params),
+        renderWorkflowInstruction(found.instruction, opts?.params),
         true,
         opts?.hint,
         undefined,
@@ -1559,18 +1553,12 @@ export function useAgent(opts: {
       goal = false,
       extra?: string,
       attachments?: { images?: PendingImage[]; files?: PendingFile[] },
-      /**
-       * 工作流占位参数（如「学习大纲」的 mode：learn / task）。
-       * 形态决定建不建大纲树，所以必须随指令一起下去，而不是靠模型猜。
-       */
-      params?: Record<string, string | number>,
     ) => {
       runWorkflow(goal ? 'goal-outline' : 'teach-node', {
         target,
         hint: extra,
         images: attachments?.images,
         files: attachments?.files,
-        params,
       })
     },
     [runWorkflow],

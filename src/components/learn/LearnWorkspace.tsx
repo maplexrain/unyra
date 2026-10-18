@@ -253,7 +253,7 @@ import { examDeleteWarn } from './workspace/labels'
 import { conceptKeysOf, emptyNote, examCopyOf, paneInfo, paneOf } from './workspace/panes'
 import { DocPane } from './workspace/DocPane'
 import { PomodoroDock, ReadingDock } from './workspace/docks'
-import { EmptyDoc, GoalInput, Topbar, type GoalMode } from './workspace/chrome'
+import { EmptyDoc, GoalInput, Topbar } from './workspace/chrome'
 import { useSideColumns } from './workspace/useSideColumns'
 import SplitRow from './workspace/SplitRow'
 import { useDocSaveFlow } from './workspace/useDocSaveFlow'
@@ -2279,7 +2279,7 @@ export default function LearnWorkspace({
 
   /* ---------- 新建学习目标 ---------- */
 
-  const startGoal = async (raw: string, files?: PendingFile[], mode: GoalMode = 'learn') => {
+  const startGoal = async (raw: string, files?: PendingFile[]) => {
     const q = raw.trim()
     if (!q && (!files || !files.length)) return
     // 未配置 API Key 就不创建目标：没有超级导师，目标只剩一个空节点，
@@ -2317,8 +2317,9 @@ export default function LearnWorkspace({
         origin: 'user',
         goalId,
         // 大纲与教学文档创建时同时成形（与 addNode 的脚手架同一口径；根节点是手工建的，这里补上）。
-        // 任务型不建大纲：没有这份脚手架，也就不会写出一份永远空着的 outline 文件。
-        ...(mode === 'learn' ? { outline: { ...emptyOutline(), updatedAt: now } } : {}),
+        // 建不建树由导师在「学习大纲」工作流里判断（见 learn/workflows），这一层不做取舍：
+        // 脚手架先备好，判成任务型时它保持空白即可。
+        outline: { ...emptyOutline(), updatedAt: now },
         createdAt: now,
         updatedAt: now,
       }
@@ -2373,25 +2374,13 @@ export default function LearnWorkspace({
         { kind: 'goal', goalId, conversationId: conversation.id },
         true,
       )
-      // 打开哪一枚页签，取决于目标形态：
-      // - 学习型：开**大纲页**（导师这一轮的交付物就是它，教学文档从大纲页里点进去）；
-      // - 任务型：开**根节点文档**——它才是这一轮的交付物，没有大纲可看。
+      // 新目标当场把**大纲页**开成页签：学习型这一轮的交付物就是它（「学习大纲」工作流往里写），
+      // 用户点完「开始学习」就该看见路线逐条长出来，教学文档从大纲页里点进去；
+      // 判成任务型时导师会 api.ui.point() 把根节点文档切到前面（指令里要求先打开再写）。
       // 两种情况都要把目标创建页签（ref.kind === 'newGoal'）自动关掉。
+      const rootRef: TabRef & { kind: 'outline' } = { kind: 'outline', nodeId: rootNode.id }
       const newGoalTabIds = allTabs(latest.docArea).filter((t) => t.ref.kind === 'newGoal').map((t) => t.id)
       const docAreaAfterClose = newGoalTabIds.length > 0 ? closeIds(latest.docArea, newGoalTabIds) : latest.docArea
-      const goalOfNode = (id: string) => nodeById(latest, id)?.goalId ?? null
-      let docArea: typeof latest.docArea
-      if (mode === 'task') {
-        // 普通开法 + 当场登记归属（同 openWebTab）：漏登记的话，切目标时这枚页签会到处飘
-        const docRef: TabRef = { kind: 'teach', nodeId: rootNode.id }
-        const opened = openInGroup(docAreaAfterClose, docAreaAfterClose.focus, docRef, now, undefined, goalOfNode)
-        docArea = withOwners(opened, claimTab(opened.tabOwners, goalId, tabKey(docRef)))
-      } else {
-        // 开的是**组锚**（见 groups/tabs 的 openAnchorOutline）：新目标没有停靠组，
-        // 走这条路的实际作用是「开大纲 + 当场登记归属」
-        const rootRef: TabRef & { kind: 'outline' } = { kind: 'outline', nodeId: rootNode.id }
-        docArea = openAnchorOutline(docAreaAfterClose, docAreaAfterClose.focus, rootRef, goalOfNode, now)
-      }
       const next: LearnStore = {
         ...latest,
         ...withAgentTabs(latest, tab0.tabs, tab0.active),
@@ -2399,19 +2388,20 @@ export default function LearnWorkspace({
         activeGoalId: goalId,
         activeNodeId: rootNode.id,
         activeConversationId: conversation.id,
-        docArea,
+        // 开的是**组锚**（见 groups/tabs 的 openAnchorOutline）：新目标没有停靠组，
+        // 走这条路的实际作用是「开大纲 + 当场登记归属」——归属漏登记的话，
+        // 用户一关大纲它就会在归属表里查无此人，切目标时到处飘
+        docArea: openAnchorOutline(docAreaAfterClose, docAreaAfterClose.focus, rootRef, (id) => nodeById(latest, id)?.goalId ?? null, now),
       }
       set(next)
       setSidebarOpen(false)
 
       // Key 已在上面校验过，此处可直接进入 AI 流程；将附件同时透传给大纲生成工作流
-      // 形态随工作流参数一起下去（{{mode}}）：指令据此决定建不建大纲树（见 learn/workflows）
       agent.autoTeach(
         { goalId, nodeId: rootNode.id, conversationId: conversation.id },
         true,
         undefined,
         { images: imageFiles, files: docFiles },
-        { mode },
       )
     } finally {
       setCreatingGoalBusy(false)
