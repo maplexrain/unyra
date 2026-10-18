@@ -160,8 +160,8 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
   /**
    * 生成 / 重排一个节点的大纲（内置工作流「生成大纲」，指令见 learn/workflows）。
    *
-   * 入口在大纲页上（「还没有大纲」的占位与页头的那颗按钮）：那里说的是
-   * 「眼前这个节点」，所以必须指名——按可省 nodeId 的同一套口径收参。
+   * 入口在页头那颗按钮与卡片底栏的「生成」上：那里说的是「眼前这个节点」，
+   * 所以必须指名——按可省 nodeId 的同一套口径收参。
    */
   const startOutline = (nodeId?: string) => {
     const target = nodeId ? nodeById(getLatest(), nodeId) : activeNode

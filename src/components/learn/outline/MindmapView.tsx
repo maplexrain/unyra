@@ -262,7 +262,7 @@ const PADDING = 56
  * 连线表达，卡片自己不必再长得不一样。
  */
 const CARD_W = 224
-const CARD_H = 98
+const CARD_H = 104
 
 /**
  * tip 那个气泡尖角的边长（px）。
@@ -1867,7 +1867,7 @@ export default memo(function MindmapView({
               }}
               className={
                 CARD_BASE +
-                ' flex flex-col justify-between px-3.5 pt-2.5 pb-2 ' +
+                ' flex flex-col justify-between px-3.5 pt-2.5 pb-3.5 ' +
                 /*
                  * 层级是**会变的**：tip 从卡片下沿探出去，会盖在别的卡片上，而卡片之间
                  * 靠 DOM 顺序分前后——不把开着 tip 的这一张顶到最高，它就会被画在后面的
@@ -2005,8 +2005,9 @@ export default memo(function MindmapView({
                 {/*
                   「生成」的出场条件：这个节点底下**还没有分支**（没有大纲，或大纲里一条都没列）。
                   从前只认「没有大纲」，于是一个空白大纲（建节点时总会生成的那一份）会让
-                  按钮消失——而那恰恰是最该请导师来规划的时候。底下的空态面板收起之后，
-                  它就是这条路的唯一入口（见下面那块面板的说明）。
+                  按钮消失——而那恰恰是最该请导师来规划的时候。
+                  画布上那块「还没有大纲」的浮层已经撤掉（一次性任务本来就没有大纲，
+                  那是正常状态，不该被当成待办），所以这颗按钮是这条路的**唯一入口**。
                 */}
                 {item.realNode && item.children.length === 0 && (
                   <button
@@ -2121,38 +2122,6 @@ export default memo(function MindmapView({
           )
         })}
       </div>
-
-      {/*
-        空态：目标还没有大纲时，别让画布只剩一张孤零零的根卡片——
-        给出解释与最直接的动作（请导师生成）。
-        选中了节点就收起来：卡片在选中时会顶到 z-30/z-40（见卡片那里），
-        会正好压在这块面板上，把唯一的按钮埋掉——而那时卡片底栏的「生成」就是同一个动作，
-        用户不会因此少一条路。
-      */}
-      {rawTree.children.filter((c) => !c.isPreview).length === 0 && selectedId === null && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
-          <div className="pointer-events-auto flex max-w-sm flex-col items-center rounded-2xl border border-line/60 bg-paper/90 px-8 py-7 text-center shadow-lg backdrop-blur-md dark:bg-card/90">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-seal/25 bg-seal/10 text-seal">
-              <Sparkles size={20} />
-            </span>
-            <h3 className="mt-3 text-[14px] font-semibold text-ink">{t('这个目标还没有大纲')}</h3>
-            <p className="mt-1.5 text-[12px] leading-relaxed text-ink-faint">
-              {t('大纲是这一层的路线图：拆成哪几个子目标、先学哪个。请导师把它立起来，这张图上就会长出分支。')}
-            </p>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                onGenerate(node)
-              }}
-              className="mt-4 flex items-center gap-1.5 rounded-xl bg-seal px-4 py-2 text-[12.5px] font-medium text-white shadow-sm transition hover:brightness-110 active:scale-[0.98]"
-            >
-              <Sparkles size={13} />
-              <span>{t('请导师生成大纲')}</span>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* 右键改色菜单 */}
       {tintMenu && <TintMenu state={tintMenu} store={store} onSet={onSetTint} onClose={() => setTintMenu(null)} />}

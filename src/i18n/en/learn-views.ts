@@ -391,7 +391,6 @@ const dict: Record<string, string> = {
   '错误记忆 {0}': 'Mistake memory {0}',
   '总目标': 'Main goal',
   '阶段目标': 'Stage goal',
-  '请导师生成大纲': 'Ask the tutor to draft the outline',
   '的大纲': "'s outline",
   '创建并开讲': 'Create and teach',
 
@@ -400,9 +399,6 @@ const dict: Record<string, string> = {
    * 「教学文档」那一颗按钮已经去掉——标题自己就是链接，所以链接的 tooltip
    * （'打开「{0}」的教学文档'）是这里唯一说明「标题点了会开什么」的一句。
    */
-  '这个目标还没有大纲': 'This goal has no outline yet',
-  '大纲是这一层的路线图：拆成哪几个子目标、先学哪个。请导师把它立起来，这张图上就会长出分支。':
-    'The outline is the roadmap for this level: which sub-goals to split into, and what to learn first. Have the tutor lay it out and branches will grow on this map.',
   '打开「{0}」的教学文档': 'Open the study document of "{0}"',
   '请导师给「{0}」规划大纲': 'Ask the tutor to plan the outline of "{0}"',
   '生成': 'Draft',
