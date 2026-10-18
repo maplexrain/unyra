@@ -3254,6 +3254,22 @@ export default function LearnWorkspace({
     [hasKey, providerName, onToast, onOpenSettings, getLatest, set, agent],
   )
 
+  /**
+   * 递给正文区的「生成教学文档」回调——**身份必须稳定**。
+   *
+   * DocPane / NodeNote / DocBody 都是 memo，且 DocBody 的比较器显式比了这个 prop。
+   * 在渲染里现造闭包（`() => generateTeachingDoc(node)`）会让比较恒为不等，
+   * 于是每次工作区渲染——包括 Agent 每一跳流式——都把当前正文整棵重渲一遍。
+   * 真正的那份实现依赖 agent 等易变对象，注定每轮都是新的；这里用 ref 转发，
+   * 只把「稳定的一层壳」交给 props，点下去时读到的仍是最新实现。
+   */
+  const generateDocRef = useRef(generateTeachingDoc)
+  generateDocRef.current = generateTeachingDoc
+  const requestGenerateDoc = useCallback(
+    (n: KnowledgeNode) => generateDocRef.current(n),
+    [],
+  )
+
   const handleOutlineFocusHandled = useCallback(() => {
     setOutlineFocus(null)
   }, [])
@@ -4163,7 +4179,7 @@ export default function LearnWorkspace({
                   // 待写提示说的是「agent 正在给这个节点写文档」，只有眼前这一片才有意义
                   pending={paneActive && docPending}
                   agentRunning={isAgentRunning}
-                  onGenerateDoc={() => generateTeachingDoc(node)}
+                  onGenerateDoc={requestGenerateDoc}
                   knownConceptKeys={conceptKeysOf(store, node)}
                   readingPaused={!!exam.live}
                   // 大纲句柄槽：每片正文对应自己页签的那一份（见 lib/outline 的 OutlineHandle）

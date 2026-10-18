@@ -39,8 +39,8 @@ interface Props {
   pending?: boolean
   /** 当前 Agent 是否正在运行 */
   agentRunning?: boolean
-  /** 触发生成教学文档 */
-  onGenerateDoc?: () => void
+  /** 触发生成教学文档。带 node 参数：上层因此能传一份身份稳定的回调（见 LearnWorkspace） */
+  onGenerateDoc?: (node: KnowledgeNode) => void
   /** 选中词条 → 展开一个下级节点（深入学习） */
   onLearnConcept: (term: string) => void
   /** 选中词条 → 只在原文挂一段短释义（了解），不改动知识树 */
@@ -314,6 +314,18 @@ export default memo(function NodeNote({
     onDeleteAnnotation,
   })
 
+  /*
+   * 交给 DocBody 的「生成教学文档」零参回调。
+   *
+   * DocBody 的比较器显式比这个 prop，所以它必须**每轮都是同一个身份**：
+   * 上层给的是稳定的 (node) => void，node 在 store 不变时也是同一个对象，
+   * 于是这里 useMemo 出来的闭包一直复用；否则每次工作区渲染都会把正文重渲一遍。
+   */
+  const generateDoc = useMemo(
+    () => (onGenerateDoc ? () => onGenerateDoc(node) : undefined),
+    [onGenerateDoc, node],
+  )
+
   return (
     <div ref={rootRef} className="print-flat relative flex min-h-0 flex-1 flex-col bg-card">
       {/* 正文。文档切换的标签不在这里——它在文档区顶上的
@@ -326,7 +338,7 @@ export default memo(function NodeNote({
           docScale={docScale}
           pending={pending}
           agentRunning={agentRunning}
-          onGenerateDoc={onGenerateDoc}
+          onGenerateDoc={generateDoc}
           kind={doc.kind}
           content={content}
           html={html}
