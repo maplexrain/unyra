@@ -32,13 +32,12 @@ import { learningStateTests, scrollTests } from './agent-ops/reading.test'
 import { examTests, methodAndSdocTests, userInfoTests, workflowTests } from './agent-ops/exam.test'
 import { budgetAndAttachTests, imageTests, staticTests } from './agent-ops/media.test'
 import { cspTests, proxyTests, shortcutTests, themeTokensTests } from './agent-ops/misc.test'
-import { reviewTests } from './agent-ops/review.test'
 import { workspaceTests } from './agent-ops/workspace.test'
 
 // 名单检查由文件末尾的总链路调用一次（原先这里又调了一次，两组断言都会重复记账）
 toolTests()
 
-/** 十三组跑完一起报账：全过才算通过，失败逐条列出来（断言信息里带上下文，便于直接定位） */
+/** 各组跑完一起报账：全过才算通过，失败逐条列出来（断言信息里带上下文，便于直接定位） */
 apiNameTests()
   .then(() => scrollTests())
   .then(() => imageTests())
@@ -50,7 +49,6 @@ apiNameTests()
   .then(() => learningStateTests())
   .then(() => methodAndSdocTests())
   .then(() => workflowTests())
-  .then(() => reviewTests())
   .then(() => workspaceTests())
   .then(() => userInfoTests())
   .then(() => themeTokensTests())

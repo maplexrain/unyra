@@ -110,22 +110,36 @@ export function Section({
 /**
  * 分区标题行右侧的动作钮。三个分区原先各画各的（6px 的、20px 的、常驻的、悬停才现身的），
  * 现在统一成一种：悬停分区标题行才现身（占位不动、只淡入，行不抖），键盘焦点同样现身。
+ *
+ * `always` + `large` 是给「学习目标」那一颗留的（用户定的）：新建目标是这一栏最常用的动作，
+ * 藏起来等于逼用户先猜「鼠标扫过标题行才会出来」——它要一直看得见，而且比那两颗一档大，
+ * 一眼就认得出是按钮而不是标题行的一部分。
  */
 export function SectionAction({
   title,
   onClick,
   children,
+  always = false,
+  large = false,
 }: {
   title: string
   onClick: () => void
   children: ReactNode
+  /** 常显（不做 opacity-0 → hover 淡入那一套） */
+  always?: boolean
+  /** 大一号（h-7 w-7，配 16px 的图标） */
+  large?: boolean
 }) {
   return (
     <button
       type="button"
       title={title}
       onClick={onClick}
-      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-ink-faint opacity-0 transition hover:bg-line/70 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+      className={
+        'flex shrink-0 items-center justify-center rounded-md transition hover:bg-line/70 hover:text-ink ' +
+        (large ? 'h-7 w-7' : 'h-5 w-5') +
+        (always ? ' text-ink-soft' : ' text-ink-faint opacity-0 focus-visible:opacity-100 group-hover:opacity-100')
+      }
     >
       {children}
     </button>

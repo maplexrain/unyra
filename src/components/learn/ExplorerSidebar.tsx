@@ -276,8 +276,8 @@ function ExplorerSidebarComponent({
             open={sectionOpen('nodes')}
             onToggle={() => toggleSection('nodes')}
             action={
-              <SectionAction title={t('新建学习目标')} onClick={onNewGoal}>
-                <NewGoalIcon size={13} />
+              <SectionAction title={t('新建学习目标')} onClick={onNewGoal} always large>
+                <NewGoalIcon size={16} />
               </SectionAction>
             }
           >

@@ -6,7 +6,7 @@
  * 接线在 useComposerUi.tsx；这里只负责画和接。
  */
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowUp, Bot, ChevronRight, Square } from 'lucide-react'
 import type { AskAnswers, AskFormPayload } from '../../../agent/tools'
 import type { Conversation, PendingImage } from '../../../agent/types'
@@ -21,7 +21,7 @@ import { QueuedMessages } from './QueuedMessages'
 import { useSlashMenu, type SlashItem } from './useSlashMenu'
 import type { ComposerApi } from './useComposer'
 import type { MenuSub } from './types'
-import { caretAtEnd, expandChipTokens, insertTextAtCaret, placeCaretEnd, serializeEditable } from '../../../lib/composerDoc'
+import { beginVoiceTyping, caretAtEnd, expandChipTokens, placeCaretEnd, serializeEditable, type VoiceTyping } from '../../../lib/composerDoc'
 import { openChipRef, payloadOfChipAttr, registerDocChipTarget } from '../../../lib/docChip'
 import { buildChipHtml, escapeHtml, splitChips } from '../../../lib/chipSyntax'
 import { t } from '../../../i18n'
@@ -181,6 +181,19 @@ export function Composer(props: ComposerProps) {
     composer.editorMount(el)
     editorRef.current = el
   }
+
+  /**
+   * 语音输入的落字器：**一份 Composer 只造一个**。
+   * 它记着「这一段文字落在哪个文本节点、从第几个字符开始」；每次渲染换一个新实例，
+   * 下一次 update 就找不到旧落点、会把整段重新插一遍（变成重复文字）。
+   */
+  const voiceTypingRef = useRef<VoiceTyping | null>(null)
+  const makeVoiceSink = useCallback((): VoiceTyping | null => {
+    const el = editorRef.current
+    if (!el) return null
+    if (!voiceTypingRef.current) voiceTypingRef.current = beginVoiceTyping(el)
+    return voiceTypingRef.current
+  }, [])
 
   /** IME 组合中不做 chip 展开（会打断输入法）；组合结束那一下会再走一遍 onEdit */
   const composingRef = useRef(false)
@@ -618,12 +631,7 @@ export function Composer(props: ComposerProps) {
             {!subMode && <ModelPicker onChanged={onModelChanged} />}
             {!subMode && strategySlot}
             {!subMode && (
-              <MicButton
-                onText={(text) => {
-                  const el = editorRef.current
-                  if (el) insertTextAtCaret(el, text)
-                }}
-              />
+              <MicButton active={active} makeSink={makeVoiceSink} />
             )}
             {/*
               发送键那两个分支的规矩：

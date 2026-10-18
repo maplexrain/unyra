@@ -35,6 +35,7 @@ import { ExternalLink, Globe } from 'lucide-react'
 import type {
   DocKind,
   DocView,
+  EssayCommit,
   EssayDockRect,
   EssayEntry,
   FavoriteRef,
@@ -235,6 +236,15 @@ import DraftDoc from './DraftDoc'
 import SourceEditor from './SourceEditor'
 import EssayDock from './essay/EssayDock'
 import { createEssay, deleteEssay, updateEssay } from '../../learn/essays'
+import {
+  changesSummary,
+  commitFeed,
+  commitsOf,
+  createEssayCommit,
+  diffNoteChanges,
+  noteFingerprint,
+  updateEssayCommit,
+} from '../../learn/essayCommits'
 import { useDoubleShift } from '../../lib/useDoubleShift'
 import type { DocSource } from './NodeNote'
 import ConfirmDialog from '../ConfirmDialog'
@@ -289,6 +299,8 @@ const goalFocusByGoal = new Map<string, string>()
  * 每次渲染现造一个 `[]` 会让 EssayDock 的 props 每次都变（它没有 memo，但列表要重排一遍）。
  */
 const EMPTY_ESSAYS: EssayEntry[] = []
+/** 没有提交记录时的空数组：理由同上（同一个常量，避免每次渲染都换引用） */
+const EMPTY_COMMITS: EssayCommit[] = []
 
 /**
  * 一枚页签当前归哪个目标（按页签 **id** 反查）。
@@ -2195,6 +2207,116 @@ export default function LearnWorkspace({
     [patchQuiet],
   )
 
+  /* ---------- 随笔提交（见 learn/essayCommits） ---------- */
+
+  /** 这个目标的提交记录（新的在前）；没有就是同一个空数组 */
+  const essayCommits = (essayGoalId ? store.essayCommits?.[essayGoalId] : null) ?? EMPTY_COMMITS
+
+  /**
+   * 跑一次「随笔整理」。
+   *
+   * 为什么先拍笔记指纹再触发：整理是 Agent 在沙箱里异步写笔记，**不能等它回来说
+   * 「我改了哪几份」**——它记错 / 漏报的时候，提交记录就成了假的。宿主在触发前把所有
+   * 笔记的正文拍一份快照，跑完再拍一份，两份一对比，改了什么就是什么。
+   */
+  const organizeEssayCommit = useCallback(
+    (goalId: string, commit: EssayCommit) => {
+      const s = getLatest()
+      const goal = s.goals.find((g) => g.id === goalId)
+      if (!goal) return
+      if (!hasKey) {
+        set(
+          updateEssayCommit(getLatest(), goalId, commit.id, {
+            status: 'error',
+            error: t('还没配置 AI：快照已经保存，配好 API Key 后可以重试整理'),
+          }),
+        )
+        return
+      }
+      const before = noteFingerprint(s, goalId)
+      let convId = resolveDisplayedConversation(s, goalId)
+      if (!convId) {
+        const { store: nextStore, conversation } = addConversation(s, goalId)
+        set(nextStore)
+        convId = conversation.id
+      }
+      const run = agent.runWorkflow('essay-commit', {
+        target: { goalId, nodeId: goal.rootNodeId, conversationId: convId },
+        // 增量材料：之前的整理记录 + 本次新增全文 + 本次修改的差异（见 commitFeed）
+        params: { message: commit.message, feed: commitFeed(commitsOf(s, goalId), commit) },
+      })
+      if (!run) {
+        set(
+          updateEssayCommit(getLatest(), goalId, commit.id, {
+            status: 'error',
+            error: t('没能启动整理：目标或会话已经不在'),
+          }),
+        )
+        return
+      }
+      void run
+        .then(() => {
+          // 整理完成：对比前后两份指纹，把真正动过的笔记记到这次提交上
+          const after = getLatest()
+          const changes = diffNoteChanges(before, noteFingerprint(after, goalId))
+          set(updateEssayCommit(getLatest(), goalId, commit.id, { status: 'done', changes }))
+          onToast(t('随笔整理完成：{0}', changesSummary(changes)))
+        })
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err)
+          // 中途失败也可能已经写了几份笔记：照样对比一次，别把已经发生的事藏起来
+          const partial = diffNoteChanges(before, noteFingerprint(getLatest(), goalId))
+          set(
+            updateEssayCommit(getLatest(), goalId, commit.id, {
+              status: 'error',
+              error: message,
+              changes: partial,
+            }),
+          )
+          onToast(t('随笔整理失败：{0}', message))
+        })
+    },
+    [agent, getLatest, set, hasKey, onToast],
+  )
+
+  /** 提交这一批随笔：封快照 → 立刻返回 id（界面据此打开详情）→ 后台开始整理 */
+  const essayCommit = useCallback(
+    (message: string): string | null => {
+      const goalId = essayGoalId
+      if (!goalId) return null
+      const created = createEssayCommit(getLatest(), goalId, message, Date.now())
+      if (!created) {
+        onToast(t('没有新的随笔可以提交'))
+        return null
+      }
+      set(created.store)
+      organizeEssayCommit(goalId, created.commit)
+      return created.commit.id
+    },
+    [essayGoalId, getLatest, set, organizeEssayCommit, onToast],
+  )
+
+  /** 重试一次失败的整理（快照还在，重跑就行，不必重新提交） */
+  const essayCommitRetry = useCallback(
+    (id: string) => {
+      const goalId = essayGoalId
+      if (!goalId) return
+      const commit = commitsOf(getLatest(), goalId).find((c) => c.id === id)
+      if (!commit) return
+      set(updateEssayCommit(getLatest(), goalId, id, { status: 'running', changes: [], error: undefined }))
+      organizeEssayCommit(goalId, commit)
+    },
+    [essayGoalId, getLatest, set, organizeEssayCommit],
+  )
+
+  /** 从提交详情里点开一份被整理过的笔记：按普通笔记页签打开 */
+  const essayOpenNote = useCallback(
+    (nodeId: string, noteName: string) => {
+      openTab({ kind: 'note', nodeId, note: noteName })
+    },
+    [openTab],
+  )
+
   // 双击 Shift：唤出 / 收起随笔窗口（没有目标时什么也不做——随笔是目标级的）
   useDoubleShift(() => {
     if (!essayGoalId) return
@@ -2813,7 +2935,6 @@ export default function LearnWorkspace({
       const stream = convId ? agent.streams[convId] : undefined
       const nope = () => {}
       return {
-        nodeTitle: '',
         conversation: conv ?? null,
         conversations: freeChats,
         streaming: stream?.parts ?? null,
@@ -2890,7 +3011,6 @@ export default function LearnWorkspace({
     return {
       // 页签属于哪个目标（子代理经会话反查）：「记忆」入口按它开对应目标的记忆页签
       goalId,
-      nodeTitle: (nodeId ? nodeById(store, nodeId)?.title : undefined) ?? agentTabTitle(tab),
       conversation: conv,
       conversations: goalId ? store.conversations.filter((c) => c.goalId === goalId) : [],
       streaming: stream?.parts ?? null,
@@ -4368,6 +4488,10 @@ export default function LearnWorkspace({
             悬浮组（这一格右上角，横向一条，见 components/learn/DocFloat）：左半边是这个
             节点的工具（笔记 / 超级文档 / 学习状态 / 试卷），右半边是这份文档的动作
             （源码 / 预览 / 导出）。一个页签都没有的空格子不画。
+
+            **新建文件页不画**（用户报的：那一条会压住页头右侧的「保存…」按钮）：
+            这一页右上角是它自己的页头，保存按钮就长在那儿；而悬浮组里的东西对它也
+            基本没意义——还没有类型，切不了预览，大纲也不存在。纯净阅读仍可用 F11。
           */}
           {gTab &&
             gTab.ref.kind !== 'web' &&
@@ -4376,7 +4500,8 @@ export default function LearnWorkspace({
             gTab.ref.kind !== 'mind' &&
             gTab.ref.kind !== 'agentSettings' &&
             gTab.ref.kind !== 'outline' &&
-            gTab.ref.kind !== 'newGoal' && (
+            gTab.ref.kind !== 'newGoal' &&
+            gTab.ref.kind !== 'draft' && (
             <DocFloat
               /*
                * key 绑「格 + 节点」：换节点时重挂，各块 tip 的展开状态自然回到收起；
@@ -4692,6 +4817,11 @@ export default function LearnWorkspace({
                     open={essayOpen}
                     onOpenChange={setEssayOpen}
                     essays={essayList}
+                    // 提交记录与提交动作（见 learn/essayCommits）：历史、快照与整理结果都在窗口里看
+                    commits={essayCommits}
+                    onCommit={essayCommit}
+                    onRetryCommit={essayCommitRetry}
+                    onOpenNote={essayOpenNote}
                     geometry={store.essayDock ?? null}
                     onGeometry={essayGeometry}
                     onCreate={essayCreate}

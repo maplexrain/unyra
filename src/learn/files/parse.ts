@@ -6,6 +6,7 @@ import type { Conversation } from '../../agent/types'
 import { migrateConversation } from '../compact'
 import type { Exam } from '../exam'
 import type {
+  EssayCommit,
   EssayEntry,
   LearnStore,
   MethodEntry,
@@ -64,6 +65,8 @@ export function parseDocs(files: Map<string, string>, state: unknown): LearnStor
   const readingByGoal: Record<string, ReadingStore> = {}
   /** 目标 id → 随笔（见 learn/essays） */
   const essaysByGoal: Record<string, EssayEntry[]> = {}
+  /** 目标 id → 随笔提交记录（见 learn/essayCommits，与随笔同一份文件） */
+  const essayCommitsByGoal: Record<string, EssayCommit[]> = {}
 
   // 目标目录必须是顶层（docs/{seg}）且自己那份 meta 在：结构不完整就整棵树跳过
   for (const [dir, { meta }] of metas) {
@@ -125,9 +128,14 @@ export function parseDocs(files: Map<string, string>, state: unknown): LearnStor
     const readingFile = parseJson<ReadingStore>(files.get(`${dir}/reading.json`))
     if (readingFile) readingByGoal[goal.id] = readingFile
     // 随笔同上（essay.json，与 reading.json 同层同纪律）：空清单不写文件，所以读不到就是没有
-    const essayFile = parseJson<{ essays?: EssayEntry[] }>(files.get(`${dir}/essay.json`))
+    const essayFile = parseJson<{ essays?: EssayEntry[]; commits?: EssayCommit[] }>(
+      files.get(`${dir}/essay.json`),
+    )
     if (Array.isArray(essayFile?.essays) && essayFile.essays.length) {
       essaysByGoal[goal.id] = essayFile.essays
+    }
+    if (Array.isArray(essayFile?.commits) && essayFile.commits.length) {
+      essayCommitsByGoal[goal.id] = essayFile.commits
     }
     // 1. 读回超级文档：扫描 ${dir}/superdocs/*.html
     const superdocsPrefix = `${dir}/superdocs/`
@@ -265,6 +273,8 @@ export function parseDocs(files: Map<string, string>, state: unknown): LearnStor
     reading: { byGoal: readingByGoal },
     // 随笔按目标存在各自目录（essay.json）：目标没了那本账跟着没（normalize 里校验）
     essays: essaysByGoal,
+    // 提交记录与随笔同一份文件，归一化时同样按「目标还活着吗」筛（见 learn/essayCommits）
+    essayCommits: essayCommitsByGoal,
     // 随笔窗口的几何是界面状态：跟着 state.json 走（与 docScroll / docArea 同一类）
     essayDock: s.essayDock ?? null,
     pomodoro: s.pomodoro ?? null,

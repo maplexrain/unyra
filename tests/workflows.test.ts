@@ -49,7 +49,7 @@ const store = (workflows?: LearnStore['workflows']): LearnStore => ({
 })
 
 describe('内置工作流', () => {
-  it('十个内置都在：开讲、学习大纲、生成大纲、出卷、阅卷、了解、超级实验室、伪编译、压缩上下文、浏览器操作', () => {
+  it('十一个内置都在：开讲、学习大纲、生成大纲、出卷、阅卷、了解、超级实验室、伪编译、压缩上下文、浏览器操作、随笔整理', () => {
     const rows = builtinWorkflowRows()
     expect(rows.map((r) => r.id)).toEqual([
       'teach-node',
@@ -62,6 +62,7 @@ describe('内置工作流', () => {
       'code-compile',
       'compact',
       'browser-use',
+      'essay-commit',
     ])
     for (const r of rows) {
       expect(r.tier).toBe('builtin')
@@ -71,6 +72,8 @@ describe('内置工作流', () => {
     expect(BUILTIN_EFFORT['browser-use']).toBe('low')
     // 压缩上下文是摘录式改写，不需要额外推理：推荐档钉在 none
     expect(BUILTIN_EFFORT['compact']).toBe('none')
+    // 随笔整理要归类、合并、改写，推荐档给 high
+    expect(BUILTIN_EFFORT['essay-commit']).toBe('high')
   })
 
   it('学习大纲由导师判断形态：任务型只写根节点文档，学习型才建大纲树', () => {

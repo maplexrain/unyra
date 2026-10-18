@@ -60,8 +60,10 @@ export default function EssayEditor({ value, onChange, placeholder }: Props) {
       }),
     })
     viewRef.current = view
-    // 窗口一开就等着写字：光标直接落进输入区（它是「随手记」，不该再点一下）
+    // 窗口一开就等着写字：光标直接落进输入区，并且停在**末尾**（它是「随手记」，
+    // 而且打开时自动接上的是今天那条——继续往下写，不是回到开头去改历史）
     view.focus()
+    view.dispatch({ selection: { anchor: view.state.doc.length }, scrollIntoView: true })
     return () => {
       view.destroy()
       viewRef.current = null

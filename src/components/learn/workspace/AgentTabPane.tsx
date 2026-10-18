@@ -37,7 +37,6 @@ function sameAgentTabPane(prev: AgentTabPaneProps, next: AgentTabPaneProps): boo
     prev.streaming === next.streaming &&
     prev.streamingMessageId === next.streamingMessageId &&
     prev.running === next.running &&
-    prev.nodeTitle === next.nodeTitle &&
     prev.compacting === next.compacting &&
     prev.hasKey === next.hasKey &&
     prev.providerLabel === next.providerLabel &&

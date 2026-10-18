@@ -240,8 +240,9 @@ function* buildDocsSteps(store: LearnStore): Generator<void, Map<string, string>
        * ——一条都没有就不写文件。它是人随手写的，与目标同生共死。
        */
       const goalEssays = store.essays?.[goal.id] ?? []
-      if (goalEssays.length) {
-        files.set(`${path}/essay.json`, jsonText({ version: 1, essays: goalEssays }))
+      const goalCommits = store.essayCommits?.[goal.id] ?? []
+      if (goalEssays.length || goalCommits.length) {
+        files.set(`${path}/essay.json`, jsonText({ version: 2, essays: goalEssays, commits: goalCommits }))
       }
     }
     /**

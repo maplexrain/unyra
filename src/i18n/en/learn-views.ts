@@ -638,6 +638,60 @@ const dict: Record<string, string> = {
   '写下第一个字，它就成了一条随笔': 'Type the first character and it becomes a jotting',
   '拖动调整大小': 'Drag to resize',
   '{0} 年 {1} 月 {2} 日': '{0}/{1}/{2}',
+
+  // ---------- 随笔提交（learn/essayCommits + 随笔窗口的提交/历史） ----------
+  '随笔整理': 'Jottings digest',
+  '随笔整理 · {0}': 'Jottings digest · {0}',
+  '按提交历史把这次新增 / 改动的随笔增量整理进知识树对应节点的笔记':
+    'Incrementally file the new or changed jottings into notes on the matching knowledge nodes, using the commit history',
+  '选择要编辑的随笔': 'Choose a jotting to edit',
+  '空白（新的一条）': 'Blank (new jotting)',
+  '提交…': 'Commit…',
+  '提交这批随笔：封存快照，交给 AI 整理进对应节点的笔记':
+    'Commit these jottings: freeze a snapshot and let the AI file them into notes on the matching nodes',
+  '还没有写过的内容，先写点什么再提交': 'Nothing written yet — jot something down first',
+  '提交记录：快照与每次整理动过的笔记': 'Commit history: snapshots and the notes each digest touched',
+  '提交记录': 'Commit history',
+  '提交随笔': 'Commit jottings',
+  '提交详情': 'Commit details',
+  '提交后 AI 会按内容把这些随笔整理进对应节点的笔记；整理结果会记在这次提交上，随时可以回看。':
+    'After committing, the AI files these jottings into notes on the matching nodes. The result is recorded on this commit and can be reviewed anytime.',
+  '提交说明': 'Commit message',
+  '这次随笔在整理什么？': 'What are these jottings about?',
+  '本次快照': 'Snapshot',
+  '{0} 条随笔': '{0} jottings',
+  '没有新的随笔可以提交': 'No new jottings to commit',
+  '提交并整理': 'Commit & file',
+  '已整理': 'Filed',
+  '整理失败': 'Digest failed',
+  '整理中': 'Filing…',
+  '正在整理…整理完成后这里会列出动过的笔记':
+    'Filing… the notes it touches will appear here when it is done',
+  '整理失败，可以重试': 'Filing failed — you can retry',
+  '重试整理': 'Retry filing',
+  '整理结果': 'Result',
+  '这次整理没有改动任何笔记': 'This digest did not change any notes',
+  '打开这份笔记': 'Open this note',
+  '（未知节点）': '(unknown node)',
+  '更新': 'Update',
+  '快照': 'Snapshot',
+  '这条提交记录已经不在了': 'This commit record no longer exists',
+  '还没有提交记录：把随笔提交一次，这里会留下快照与每次整理动过的笔记。':
+    'No commits yet. Commit your jottings once and the snapshots plus the notes each digest touched will appear here.',
+  '没有改动任何笔记': 'No notes changed',
+  '更新了 {0} 份笔记': 'Updated {0} notes',
+  '新建了 {0} 份笔记': 'Created {0} notes',
+  '新建 {0} 份、更新 {1} 份笔记': 'Created {0}, updated {1} notes',
+  '上次整理没有跑完（应用关闭或中断），可以重试':
+    'The last digest did not finish (the app closed or was interrupted) — you can retry',
+  '还没配置 AI：快照已经保存，配好 API Key 后可以重试整理':
+    'AI is not configured: the snapshot is saved — set up an API key, then retry filing',
+  '没能启动整理：目标或会话已经不在': 'Could not start filing: the goal or conversation no longer exists',
+  '随笔整理完成：{0}': 'Jottings digest finished: {0}',
+  '随笔整理失败：{0}': 'Jottings digest failed: {0}',
+  '提交后仍可继续写；下次提交只整理新增和改动':
+    'You can keep writing after committing; the next commit files only what is new or changed',
+  '继续写随笔': 'Keep writing',
 }
 
 export default dict

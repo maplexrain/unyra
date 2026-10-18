@@ -20,6 +20,7 @@ import { normalizeDrafts } from '../../drafts'
 import { BUILTIN_WORKFLOW_IDS, normalizeWorkflowEfforts, normalizeWorkflowEntries } from '../../workflows'
 import { normalizeReadingBook } from '../../reading'
 import { normalizeEssayDock, normalizeEssays } from '../../essays'
+import { normalizeEssayCommits } from '../../essayCommits'
 import { normalizePomodoro } from '../../pomodoro'
 import { normalizeResourceList, retargetStaticRefs, type StaticResource } from '../../static'
 import { normalizeTmpStore, pruneTmpToNodes } from '../../../lib/tmpStore'
@@ -278,6 +279,8 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       methods,
       // 随笔同样是目标级的：目标没了的整本丢掉，空文本条目丢掉（见 learn/essays）
       essays: normalizeEssays(d.essays, goalIds),
+      // 提交记录与随笔同一份 essay.json：目标没了的、认不出的丢掉；running 降成「未完成可重试」
+      essayCommits: normalizeEssayCommits(d.essayCommits, goalIds),
       // 窗口几何只校验是不是数；夹进视口是打开那一刻的事（见 EssayDock）
       ...(essayDock ? { essayDock } : {}),
       workflows,

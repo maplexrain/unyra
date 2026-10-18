@@ -72,31 +72,88 @@ export function expandChipTokens(root: HTMLElement): void {
 }
 
 /**
- * 把一段文字插到**光标处**（语音识别的结果落进输入框走这条路）。
+ * 语音输入的「实时落字器」：这一段的文字会随着识别结果不断被**整段替换**。
  *
- * 为什么不用 execCommand('insertText')：这棵树里有 chip（contenteditable=false 的整体元素），
- * 手插 Range 才能保证「chip 还在、光标落在插入的文字之后」这两件事都由我们自己说了算。
- * 插完派发一次 input：composer.value 那份镜像、斜杠菜单、占位符都靠它同步。
- *
- * 选区不在这个编辑区里（比如用户刚点完麦克风按钮）时插到末尾——那正是「接着写」的位置。
+ * 为什么不是每次 append 一段：分段识别每次给的是**这一段到目前为止的全文**，
+ * 后面的结果还会修正前面的词（"这个" → "这一句"）。所以记住这一段第一次插在
+ * 哪个文本节点、从第几个字符开始、上一次写的是什么，之后只替换这几个字符。
+ * 用户手动改过这一段（节点内容对不上）就放弃替换、另起一段——宁可分成两段，
+ * 也不覆盖用户自己写的东西。
  */
-export function insertTextAtCaret(el: HTMLElement, text: string): void {
-  if (!text) return
-  el.focus()
-  const selection = window.getSelection()
-  const inside = selection !== null && selection.rangeCount > 0 && el.contains(selection.getRangeAt(0).startContainer)
-  const range = inside && selection ? selection.getRangeAt(0) : document.createRange()
-  if (!inside) range.selectNodeContents(el)
-  range.deleteContents()
-  const node = document.createTextNode(text)
-  range.insertNode(node)
-  range.setStartAfter(node)
-  range.collapse(true)
-  if (selection) {
-    selection.removeAllRanges()
-    selection.addRange(range)
+export interface VoiceTyping {
+  /** 用这一段的**全文**替换上一次写进去的同段文字 */
+  update(text: string): void
+  /** 这一段定稿：下一次 update 在光标处另起一段 */
+  commit(): void
+}
+
+export function beginVoiceTyping(el: HTMLElement): VoiceTyping {
+  /** 这一段落在哪个文本节点、从第几个字符开始、上次写进去的全文 */
+  let node: Text | null = null
+  let from = 0
+  let last = ''
+
+  const selection = () => window.getSelection()
+
+  /** 第一次：插到光标处（选区不在编辑区里就落到末尾），并记住落点 */
+  const insert = (text: string): void => {
+    el.focus()
+    const sel = selection()
+    const inside = sel !== null && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).startContainer)
+    const range = inside && sel ? sel.getRangeAt(0) : document.createRange()
+    if (!inside) {
+      // 没有选区落在编辑区里：落到**末尾**接着写（不是清空整块！）
+      range.selectNodeContents(el)
+      range.collapse(false)
+    }
+    range.deleteContents()
+    const n = document.createTextNode(text)
+    range.insertNode(n)
+    range.setStartAfter(n)
+    range.collapse(true)
+    if (sel) {
+      sel.removeAllRanges()
+      sel.addRange(range)
+    }
+    node = n
+    from = 0
+    last = text
+    el.dispatchEvent(new Event('input', { bubbles: true }))
   }
-  el.dispatchEvent(new Event('input', { bubbles: true }))
+
+  /** 光标本来就在这一段里（collapse 在节点上）时，跟着段尾走 */
+  const caretToEnd = (n: Text): void => {
+    const sel = selection()
+    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed || sel.anchorNode !== n) return
+    const range = document.createRange()
+    range.setStart(n, n.data.length)
+    range.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(range)
+  }
+
+  return {
+    update(text: string): void {
+      if (!text) return
+      const n = node
+      const intact =
+        n !== null && n.isConnected && el.contains(n) && n.data.slice(from, from + last.length) === last
+      if (!n || !intact) {
+        insert(text)
+        return
+      }
+      if (text === last) return
+      n.replaceData(from, last.length, text)
+      last = text
+      caretToEnd(n)
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    },
+    commit(): void {
+      node = null
+      from = 0
+      last = ''
+    },
+  }
 }
 
 /** 光标推到编辑区末尾并聚焦：「接着写」的位置——Ctrl+Q 聚焦、拖进页签都落在这里 */

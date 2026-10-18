@@ -26,15 +26,27 @@ export interface VoiceSettings {
    * 真出了问题（识别报错、慢得反常）再让他关掉。
    */
   gpu: boolean | null
+  /**
+   * 降噪强度（0–100）：越高越不容易把环境噪声当成说话，也越容易漏掉轻声。
+   *
+   * 这一档必须交给用户：话筒增益、房间噪声与说话音量千差万别，同一个门限
+   * 在 A 的机器上「全是噪声」、在 B 的机器上「一个字都不出」。默认取中间偏左的一档
+   * （30）——先保证听得见，嫌吵再往右调。
+   */
+  noiseGate: number
 }
 
-const DEFAULT: VoiceSettings = { language: 'auto', gpu: null }
+const DEFAULT: VoiceSettings = { language: 'auto', gpu: null, noiseGate: 30 }
 
 function normalize(raw: unknown): VoiceSettings {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT }
   const r = raw as Record<string, unknown>
   const language = VOICE_LANGUAGES.includes(r.language as VoiceLanguage) ? (r.language as VoiceLanguage) : 'auto'
-  return { language, gpu: typeof r.gpu === 'boolean' ? r.gpu : null }
+  const gate =
+    typeof r.noiseGate === 'number' && Number.isFinite(r.noiseGate)
+      ? Math.min(100, Math.max(0, Math.round(r.noiseGate)))
+      : DEFAULT.noiseGate
+  return { language, gpu: typeof r.gpu === 'boolean' ? r.gpu : null, noiseGate: gate }
 }
 
 const listeners = new Set<() => void>()

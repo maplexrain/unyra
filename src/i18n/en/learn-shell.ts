@@ -95,7 +95,7 @@ const dict: Record<string, string> = {
   '点选左侧目录知识点开启研读，或通过下方快捷入口探索文件与网络。': 'Select a knowledge node from the explorer to begin, or use the shortcuts below to explore files and web.',
   '打开本地文件': 'Open local file',
   'Markdown / TXT / 代码': 'Markdown / TXT / Code',
-  '浏览网络网页': 'Browse web page',
+  '浏览网页': 'Browse web',
   '双链速记与知识批注': 'Bi-directional notes & annotations',
   '新建学习目标': 'New learning goal',
   'AI 生成体系化知识树': 'AI generated knowledge tree',

@@ -1,17 +1,15 @@
 /**
- * 输入框里的麦克风按钮与实时语音识别输入浮窗。
+ * 输入框里的麦克风按钮与录音中的小计时器。
  *
  * 交互与视觉规范：
- * 1. 点按话筒开始实时录音与流式识别，话筒变为红晕呼吸态；
- * 2. 录音时上方弹出毛玻璃实时识别浮窗，展示跳动声波、时长、实时转写文字流与操作按钮；
- * 3. 敲空格、回车或点「完成」立即收尾并把最终文字插入光标处；
- * 4. 敲 Esc 或点「取消」丢弃本段录音；
- * 5. 错误提示可自关闭，不遮挡输入区。
+ * 1. 点一下话筒开始录音；识别出来的文字**分块直接写进输入框**（没有预览浮窗、没有缓存区）；
+ * 2. 录音时按钮左边亮出一颗红点与计时，点它、敲空格 / 回车都结束这一段；Esc 丢弃；
+ * 3. 识别与音频缓存的节制在 lib/voice/session（分块、静音 3 秒丢缓存），这里只管画；
+ * 4. 错误提示可自关闭，贴在按钮上方，不遮挡输入区。
  */
 
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { createPortal } from 'react-dom'
-import { Check, Loader2, X } from 'lucide-react'
+import { useEffect, useSyncExternalStore } from 'react'
+import { Loader2, X } from 'lucide-react'
 import {
   cancelRecording,
   clearVoiceMessage,
@@ -20,6 +18,7 @@ import {
   stopRecording,
   subscribeVoice,
   voiceState,
+  type VoiceSink,
 } from '../../../lib/voice/session'
 import { voicePluginOn } from '../../../lib/voice/plugin'
 import { t } from '../../../i18n'
@@ -53,33 +52,32 @@ function clock(seconds: number): string {
 const subscribe = (cb: () => void) => subscribeVoice(cb)
 
 interface Props {
-  /** 识别出来的文字：调用方插进输入框（见 Composer 的 editorRef） */
-  onText: (text: string) => void
+  /**
+   * 这一份输入框是不是眼前的那一份。
+   * 页签是 keepalive 的：每枚面板都挂着一个麦克风，只有可见的那一枚能登记接收方——
+   * 否则转录出来的字会落进别的那一页的输入框（落点是模块级单槽）。
+   */
+  active?: boolean
+  /**
+   * 造一个「实时落字器」：输入框那一侧负责两件事——
+   * 用这一段的全文替换上一次写进去的同段文字；这一段定稿时收口。
+   */
+  makeSink: () => VoiceSink | null
 }
 
-export default function MicButton({ onText }: Props) {
+export default function MicButton({ makeSink, active = true }: Props) {
   const state = useSyncExternalStore(subscribe, voiceState)
   const recording = state.phase === 'recording'
   const working = state.phase === 'working'
   const hasError = state.phase === 'error' && !!state.message
 
-  const btnWrapRef = useRef<HTMLDivElement | null>(null)
-  const [pos, setPos] = useState<{ right: number; bottom: number } | null>(null)
-
-  // 结果交回输入框；组件卸载时注销，免得文字落到一个已经不在的输入框上
+  // 把落字器登记给会话；切到后台 / 卸载时注销（注销只对「最后一次登记」生效）
   useEffect(() => {
-    setVoiceSink(onText)
-    return () => setVoiceSink(null)
-  }, [onText])
-
-  useLayoutEffect(() => {
-    if (!recording || !btnWrapRef.current) return
-    const rect = btnWrapRef.current.getBoundingClientRect()
-    setPos({
-      right: Math.max(12, window.innerWidth - rect.right - 10),
-      bottom: Math.max(12, window.innerHeight - rect.top + 10),
-    })
-  }, [recording])
+    if (!active) return
+    const next = makeSink()
+    if (!next) return
+    return setVoiceSink(next)
+  }, [makeSink, active])
 
   /**
    * 录音期间快捷键：空格或回车结束、Esc 取消。
@@ -105,13 +103,13 @@ export default function MicButton({ onText }: Props) {
   if (!voicePluginOn()) return null
 
   const title = recording
-    ? t('正在录音（{0}）——按空格/回车或再点一下完成，Esc 取消', clock(state.seconds))
+    ? t('正在录音（{0}）——按空格/回车或再点一下完成，Esc 丢弃剩余录音', clock(state.seconds))
     : working
       ? t('识别处理中…')
-      : t('语音实时输入：点一下开始，实时边说边出字')
+      : t('语音输入：点一下开始，边说边写进输入框')
 
   return (
-    <div ref={btnWrapRef} className="relative">
+    <div className="relative flex items-center gap-1">
       {/* 报错小弹条 */}
       {hasError && (
         <div className="absolute bottom-full right-0 mb-2 z-50 flex w-[280px] items-start gap-2 rounded-xl border border-warn/40 bg-card/95 p-2.5 text-[11px] leading-snug text-ink shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-md">
@@ -127,91 +125,28 @@ export default function MicButton({ onText }: Props) {
         </div>
       )}
 
-      {/* 实时录音与流式识别浮窗 */}
-      {recording && pos && typeof document !== 'undefined' &&
-        createPortal(
-          <div
-            onMouseDown={(e) => e.stopPropagation()}
-            style={{
-              position: 'fixed',
-              right: pos.right,
-              bottom: pos.bottom,
-              zIndex: 90,
-            }}
-            className="w-[360px] max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-line-strong bg-card/95 backdrop-blur-md shadow-[0_16px_48px_rgba(0,0,0,0.22)] transition-all moji-bloom-up-in"
-          >
-            {/* 顶栏：指示点 + 状态 + 跳动声波 + 计时 */}
-            <div className="flex items-center justify-between border-b border-line bg-paper-deep/60 px-3.5 py-2">
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-seal opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-seal" />
-                </span>
-                <span className="text-[12px] font-medium text-ink-strong">{t('实时语音输入')}</span>
-                <span className="font-mono text-[11px] tabular-nums text-ink-faint">
-                  {clock(state.seconds)}
-                </span>
-              </div>
-
-              {/* 随音量起伏跳动的声波柱（根据实时电平计算高度） */}
-              <div className="flex items-center gap-1 h-3.5 px-1">
-                {[0.6, 1.2, 0.9, 1.5, 0.7].map((factor, i) => {
-                  const h = Math.max(3, Math.min(14, (state.level * 28 + 3) * factor))
-                  return (
-                    <span
-                      key={i}
-                      className="w-[2.5px] rounded-full bg-seal transition-[height] duration-75"
-                      style={{ height: `${h}px` }}
-                    />
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* 识别文本流式实时展示 */}
-            <div className="min-h-[64px] max-h-[140px] overflow-y-auto px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-strong">
-              {state.interimText ? (
-                <p className="whitespace-pre-wrap break-words">
-                  {state.interimText}
-                  <span className="ml-0.5 inline-block h-3.5 w-[2px] animate-pulse bg-seal align-middle" />
-                </p>
-              ) : (
-                <div className="flex items-center gap-2 text-ink-faint text-[12px] py-1">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-seal animate-pulse" />
-                  <span>{t('正在倾听并实时识别…')}</span>
-                </div>
-              )}
-            </div>
-
-            {/* 底栏：操作提示与按钮 */}
-            <div className="flex items-center justify-between border-t border-line bg-paper-deep/30 px-3 py-2">
-              <span className="text-[10.5px] text-ink-faint">
-                {t('空格 / 回车完成 · Esc 取消')}
-              </span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => cancelRecording()}
-                  className="flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] text-ink-soft hover:bg-line/60 hover:text-ink transition"
-                  title={t('丢弃当前录音（Esc）')}
-                >
-                  <X size={13} />
-                  <span>{t('取消')}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void stopRecording()}
-                  className="flex h-7 items-center gap-1 rounded-lg bg-seal px-2.5 text-[11px] font-medium text-white shadow-sm hover:bg-seal-deep transition"
-                  title={t('完成并填入输入框（空格）')}
-                >
-                  <Check size={13} />
-                  <span>{t('完成')}</span>
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
+      {/*
+        录音中的小计时器：一颗红点 + 秒数。它同时也是一条「结束」按钮——
+        文字已经在输入框里了，这里只管「什么时候收工」，不再占一块预览区。
+      */}
+      {recording && (
+        <button
+          type="button"
+          onClick={() => void stopRecording()}
+          title={t('完成（空格 / 回车）')}
+          className="flex h-7 items-center gap-1.5 rounded-md bg-seal/10 px-2 text-[11px] tabular-nums text-seal-deep transition hover:bg-seal/15"
+        >
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-seal opacity-70" />
+            {/* 声音越大点越大：没有预览浮窗之后，这一点放大就是「它在听」的反馈 */}
+            <span
+              className="relative inline-flex h-1.5 w-1.5 rounded-full bg-seal transition-transform duration-100"
+              style={{ transform: 'scale(' + (1 + Math.min(0.8, state.level * 6)).toFixed(2) + ')' }}
+            />
+          </span>
+          {clock(state.seconds)}
+        </button>
+      )}
 
       {/* 话筒主按钮 */}
       <button

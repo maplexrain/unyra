@@ -187,7 +187,7 @@ export async function apiNameTests() {
     // 自描述能力索引
     'help': '',
     // 工作流触发：只排队（真起那一轮的是宿主，探针里就是下面那个桩）
-    'wf.invoke': "'recall'",
+    'wf.invoke': "'compact'",
     'wf.list': '',
     'wf.get': "'recall'",
     // 伪编译交货：key 是宿主发出去的那串（探针这里没有待编译登记，走的是「key 对不上」那条路）
@@ -417,7 +417,7 @@ export async function apiNameTests() {
 
   // 新 api 的行为抽两条钉住：ui.dom 的门面真的可用
   ok(sawToast === '你好' && !!sawScroll, 'ui.toast / ui.scroll 都到了宿主')
-  ok(sawInvoke === 'recall', 'wf.invoke 把要触发的那一条交给了宿主（按 id 交出去）', sawInvoke)
+  ok(sawInvoke === 'compact', 'wf.invoke 把要触发的那一条交给了宿主（按 id 交出去）', sawInvoke)
   ok(sawOpenSuper === '探针文档', 'ui.superdoc 把要开的文档名递给了宿主', sawOpenSuper)
   ok(
     sawBrowserOpen === 'https://example.com' &&

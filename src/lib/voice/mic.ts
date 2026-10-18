@@ -1,7 +1,7 @@
 /**
- * 麦克风采集：把话筒里的声音变成 whisper 要的那一种数据。
+ * 麦克风采集：把话筒里的声音变成识别引擎要的那一种数据。
  *
- * whisper.cpp 只认 **16 kHz 单声道 Float32**（-1..1）。三条路走到这个形状：
+ * SenseVoice 只认 **16 kHz 单声道 Float32**（-1..1）。三条路走到这个形状：
  *
  * 1. `new AudioContext({ sampleRate: 16000 })` 让 Chromium 自己重采样——最省事，
  *    实际拿到的可能不是 16000（设备不支持时它会给别的），所以下面还留了一手线性插值；
@@ -13,21 +13,36 @@
  *    worklet 要 `ctx.audioWorklet.addModule(url)`，在 `file://` 页面下不一定成（成了更好，
  *    不成就退回旧的，功能不受影响）。
  *
- * 采集到的数据一路追加在内存里：转写是「拿整段重跑一遍」（见 session.ts 的说明），
- * 所以这一层只负责「给得出从按下到现在为止的全部采样」，外加几个查问题用的读数
- * （收到了多少、什么设备、什么参数）——出问题时这几行字比任何猜测都值钱。
+ * 采集到的数据攒在内存里，由外层 `drain()` **一截一截取走**（见 session.ts）：
+ * 取走的那一段立刻从缓存里删掉，于是缓存长度由外层控制（转写按段进行，不会越攒越长）。
+ * 这一层另外给几个查问题用的读数（收到了多少、什么设备、什么参数）——出问题时
+ * 这几行字比任何猜测都值钱。
  */
 import { t } from '../../i18n'
 
-/** whisper 要的采样率 */
+/** 识别引擎要的采样率 */
 export const SAMPLE_RATE = 16000
 
 /** 等这么久还没收到任何采样，就换一套约束重开话筒 */
 const SILENCE_SWITCH_MS = 1500
 
+export interface MicChunk {
+  /** 这一截的采样（16 kHz 单声道） */
+  samples: Float32Array
+  /**
+   * 这一截里最大的 RMS（0..1）。
+   * 判断「这一段有没有人声」用它，而不是拿 `level()` 逐帧采样：话筒一块可能是 8ms、
+   * 也可能是 256ms，按拍读最后一个值会漏掉大部分声音。
+   */
+  peak: number
+}
+
 export interface MicSession {
-  /** 到目前为止的全部采样（16 kHz 单声道）。每次调用都会重新拼一份，别在高频循环里调 */
-  read(): Float32Array
+  /**
+   * 取走「上次取走之后」新到的全部采样（取完即清空）。
+   * 分段识别靠它：每次送进模型的音频是完整的一段话，缓存不会越攒越长。
+   */
+  drain(): MicChunk
   /** 已经录了多久（秒） */
   seconds(): number
   /** 已经收到的采样总数——用来分辨「没声音」与「没在采」 */
@@ -170,9 +185,13 @@ export async function startMic(): Promise<MicSession> {
   }
 
   const chunks: Float32Array[] = []
+  /** 已经收到的全部采样数（seconds 用，永不回退） */
   let total = 0
+  /** 还没被 drain 取走的采样数（缓存里现在有多少） */
+  let buffered = 0
   let level = 0
-  let cached: Float32Array | null = null
+  /** 自上次 drain 以来见过的最大 RMS：人声门限读它 */
+  let peak = 0
   let stopped = false
 
   const push = (raw: Float32Array): void => {
@@ -180,10 +199,11 @@ export async function startMic(): Promise<MicSession> {
     // 拷贝一份：调用方给的那块内存下一帧还会被复用
     chunks.push(new Float32Array(pcm))
     total += pcm.length
+    buffered += pcm.length
     let sum = 0
     for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i]
     level = Math.sqrt(sum / Math.max(1, pcm.length))
-    cached = null
+    if (level > peak) peak = level
   }
 
   let source = ctx.createMediaStreamSource(stream)
@@ -230,16 +250,19 @@ export async function startMic(): Promise<MicSession> {
   }, SILENCE_SWITCH_MS)
 
   return {
-    read(): Float32Array {
-      if (cached) return cached
-      const out = new Float32Array(total)
+    drain(): MicChunk {
+      const seen = peak
+      peak = 0
+      if (!buffered) return { samples: new Float32Array(0), peak: seen }
+      const out = new Float32Array(buffered)
       let at = 0
       for (const c of chunks) {
         out.set(c, at)
         at += c.length
       }
-      cached = out
-      return out
+      chunks.length = 0
+      buffered = 0
+      return { samples: out, peak: seen }
     },
     seconds: () => total / SAMPLE_RATE,
     samples: () => total,

@@ -111,6 +111,7 @@ export function mergeLearnStore(base: LearnStore, incoming: LearnStore): LearnSt
     methods: base.methods,
     // 随笔与窗口几何同理：是「我写过什么、我把它摆在哪」，不跟着别人的备份走
     essays: base.essays,
+    essayCommits: base.essayCommits,
     ...(base.essayDock ? { essayDock: base.essayDock } : {}),
     workflows: base.workflows,
     reading: base.reading,

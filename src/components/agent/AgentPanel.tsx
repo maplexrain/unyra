@@ -45,7 +45,6 @@ import { t, useLocale } from '../../i18n'
  */
 
 interface Props {
-  nodeTitle: string
   conversation: Conversation | null
   conversations: Conversation[]
   streaming: AgentPart[] | null
@@ -164,7 +163,6 @@ interface Props {
 }
 
 export default function AgentPanel({
-  nodeTitle,
   conversation,
   conversations,
   streaming,
@@ -610,10 +608,11 @@ export default function AgentPanel({
         />
 
         {/*
-          状态行：输入框底下的一条细字。左边是「正在辅导哪个节点 / 这段对话叫什么」
-          （子代理页签则是这场任务的履历），右边是轮数 / 速度 / token——一行读全：
-          在看谁、跑到哪、花了多少。人格与格式选择器不在这行：它们搬进了输入框底行，
-          与提供商切换同一排（见 ComposerUi 的 strategySlot）。
+          状态行：输入框底下的一条细字。左边只放**这段对话叫什么**，右边是轮数 / 速度 / token——
+          一行读全：在聊什么、跑到哪、花了多少。
+          （「正在辅导「哪个节点」」已按需求撤掉：页签与左侧目录已经回答了「在学什么」，
+          这一行再写一遍只是重复，还占掉了对话标题的地方。）
+          人格与格式选择器不在这行：它们搬进了输入框底行，与提供商切换同一排（见 ComposerUi 的 strategySlot）。
         */}
         <div className="flex min-w-0 items-center gap-2.5 px-1 pb-1.5 pt-1.5">
           {subSession ? (
@@ -647,9 +646,6 @@ export default function AgentPanel({
             </>
           ) : (
             <>
-              <span className="shrink-0 text-[11px] leading-none text-ink-faint">
-                {t('正在辅导「{0}」', nodeTitle)}
-              </span>
               {/*
                 这一段对话叫什么。名字由模型读第一句话起（见 learn/title），还没起好时**什么都不显示**——
                 挂一个「对话 1」占着地方，等于告诉用户"它叫这个"，而它其实还没名字。

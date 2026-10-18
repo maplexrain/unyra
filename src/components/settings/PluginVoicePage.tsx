@@ -3,7 +3,7 @@
  *
  * 包含：
  * 1. 模型：SenseVoiceSmall 离线模型下载、本机替换与删除
- * 2. 识别：多语言选择与独立 GPU 硬件加速开关
+ * 2. 识别：多语言选择、独立 GPU 硬件加速开关、降噪强度
  * 3. 离线架构：端侧运行与音频隐私安全说明
  */
 
@@ -16,6 +16,7 @@ import {
   Languages,
   Mic,
   ShieldCheck,
+  SlidersHorizontal,
   Trash2,
   X,
 } from 'lucide-react'
@@ -312,6 +313,37 @@ export function PluginVoicePage({ onToast }: Props) {
         </div>
       </section>
 
+      {/*
+        降噪强度：话筒增益、房间噪声与说话音量千差万别，同一个门限在 A 的机器上
+        「全是噪声」、在 B 的机器上「一个字都不出」。这一档必须交给用户自己听。
+      */}
+      <section className="rounded-xl border border-line bg-card/60 p-3.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-[13px] font-medium text-ink-strong">
+            <SlidersHorizontal size={14} className="text-seal" />
+            <span>{t('降噪强度')}</span>
+          </div>
+          <span className="font-mono text-[11px] tabular-nums text-ink-soft">{settings.noiseGate}%</span>
+        </div>
+        <p className="mt-1 text-[11px] leading-relaxed text-ink-faint">
+          {t('越高越不容易把环境噪声当成说话，也越容易漏掉轻声。识别不到时往左调，噪声多时往右调；改动立即生效。')}
+        </p>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={5}
+          value={settings.noiseGate}
+          onChange={(e) => setVoiceSetting({ noiseGate: Number(e.target.value) })}
+          aria-label={t('降噪强度')}
+          className="mt-3 w-full cursor-pointer accent-seal"
+        />
+        <div className="mt-1 flex justify-between text-[10px] text-ink-faint">
+          <span>{t('更灵敏（0）')}</span>
+          <span>{t('更抗噪（100）')}</span>
+        </div>
+      </section>
+
       {/* 离线隐私保证 */}
       <div className="rounded-xl border border-line bg-card/60 p-3.5 text-[11px] leading-relaxed text-ink-soft">
         <div className="flex items-center gap-1.5 font-medium text-ink-strong">
@@ -319,7 +351,7 @@ export function PluginVoicePage({ onToast }: Props) {
           <span>{t('端侧隐私安全')}</span>
         </div>
         <p className="mt-1">
-          {t('语音识别直接跑在应用主进程的原生运行时中，松开按键后一次性在内存中转录。录音音频绝对不写磁盘、不经过网络上传，完全离线运行。')}
+          {t('语音识别直接跑在应用主进程的原生运行时中，边说边在内存中转写。录音音频绝对不写磁盘、不经过网络上传，完全离线运行。')}
         </p>
       </div>
     </div>

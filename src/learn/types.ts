@@ -645,6 +645,11 @@ export interface LearnStore {
    * 落盘在各自目标目录的 essay.json（这个目标一条都没有就不写文件）。
    */
   essays?: EssayStore
+  /**
+   * 随笔提交记录（见 learn/essayCommits）。可选字段，理由同 essays。
+   * 与随笔同一份 essay.json：提交是「这一批随笔被封存的那一刻」，分开存反而会失去对应关系。
+   */
+  essayCommits?: EssayCommitStore
   /** 随笔窗口拖到哪儿、多大（界面状态，跟 state.json 走；见 EssayDockRect） */
   essayDock?: EssayDockRect
   /**
@@ -776,6 +781,46 @@ export interface EssayEntry {
 
 /** 目标 id → 随笔清单（新的在前）。落盘在各自目标目录的 essay.json */
 export type EssayStore = Record<string, EssayEntry[]>
+
+/**
+ * 一次随笔提交里「动过的一份笔记」。
+ *
+ * 由宿主在整理前后对比 store 得出（见 learn/essayCommits 的 noteFingerprint / diffNoteChanges），
+ * **不靠模型自报**——模型说「我改了 A」而实际改的是 B 时，记录仍然是真的。
+ */
+export interface EssayCommitChange {
+  nodeId: string
+  /** 提交时的节点标题（之后节点改名了，也看得懂当时动的是哪儿） */
+  nodeTitle: string
+  /** 笔记名（一个节点可以有多份笔记） */
+  noteName: string
+  kind: 'created' | 'updated'
+}
+
+/**
+ * 一次随笔提交：**快照 + 整理结果**，像一次 git commit。
+ *
+ * - 快照里是提交那一刻的随笔全文：之后随笔被改写、删除，这一份仍然是当时的原样；
+ * - Agent 把这批随笔整理进知识树对应节点的笔记，`changes` 记下它实际动了哪几份；
+ * - `status` 说清这次整理跑到哪了（应用在整理途中被关掉时，读回来会当作「未完成，可重试」）。
+ */
+export interface EssayCommit {
+  id: string
+  /** 提交时刻：也是「哪些随笔还没提交」的分界（updatedAt > at 的算新改动） */
+  at: number
+  /** 提交说明（用户写，或默认的「随笔整理 · 日期」） */
+  message: string
+  /** 快照：提交那一刻的随笔（正文即全部内容，随笔本来就没有标题） */
+  snapshot: Array<{ id: string; createdAt: number; text: string }>
+  status: 'running' | 'done' | 'error'
+  /** Agent 整理后实际动过的节点笔记 */
+  changes: EssayCommitChange[]
+  /** 失败原因（没配 AI、模型报错、中途被关掉……） */
+  error?: string
+}
+
+/** 目标 id → 提交记录（新的在前）。落盘在各自目标目录的 essay.json 里 */
+export type EssayCommitStore = Record<string, EssayCommit[]>
 
 /**
  * 随笔窗口的几何（左上角 + 宽高，视口坐标）。

@@ -7,7 +7,6 @@
 const dict: Record<string, string> = {
   /* ---------- AgentPanel：标题、状态行、字号提示 ---------- */
   '超级导师': 'Super Tutor',
-  '正在辅导「{0}」': 'Tutoring "{0}"',
   '思考中…': 'Thinking…',
   '导师正在准备': 'Your tutor is preparing',
   '正在{0}…': '{0}…',
