@@ -3,11 +3,11 @@ import { Compartment, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { HighlightStyle, syntaxHighlighting, indentOnInput, indentUnit, bracketMatching, LanguageDescription } from '@codemirror/language'
+import { syntaxHighlighting, indentOnInput, indentUnit, bracketMatching, LanguageDescription } from '@codemirror/language'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages as codeLanguages } from '@codemirror/language-data'
-import { tags } from '@lezer/highlight'
 import { countSourceWords } from '../../lib/wordCount'
+import { markdownEditorTheme, markdownHighlight } from '../../lib/cmMarkdown'
 import { takeSourceReveal, type SourceReveal } from '../../lib/docReveal'
 import { useDocScroll } from '../../lib/docScroll'
 import { DocStatChip } from './DocFloat'
@@ -44,48 +44,11 @@ const STATE_TONE: Record<SaveState, string> = {
   error: 'text-seal-deep',
 }
 
-/** 语法高亮配色：tags → `--color-code-*`（与 .tok-* 的映射一字不差，见 styles/code.css） */
-const highlight = HighlightStyle.define([
-  { tag: tags.comment, color: 'var(--color-code-comment)', fontStyle: 'italic' },
-  { tag: [tags.string, tags.special(tags.string)], color: 'var(--color-code-string)' },
-  { tag: [tags.number, tags.bool, tags.atom], color: 'var(--color-code-number)' },
-  {
-    tag: [
-      tags.keyword,
-      tags.modifier,
-      tags.operatorKeyword,
-      tags.definitionKeyword,
-      tags.controlKeyword,
-      tags.moduleKeyword,
-    ],
-    color: 'var(--color-code-keyword)',
-  },
-  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: 'var(--color-code-function)' },
-  { tag: [tags.typeName, tags.className, tags.namespace], color: 'var(--color-code-type)' },
-  { tag: tags.variableName, color: 'var(--color-code-variable)' },
-  { tag: tags.tagName, color: 'var(--color-code-tag)' },
-  { tag: [tags.standard(tags.variableName), tags.standard(tags.name)], color: 'var(--color-code-builtin)' },
-  { tag: tags.meta, color: 'var(--color-code-meta)' },
-  { tag: [tags.operator, tags.punctuation, tags.separator, tags.bracket], color: 'var(--color-code-punct)' },
-  { tag: tags.invalid, color: 'var(--color-code-invalid)' },
-])
-
-/** 编辑器外观：底色透明（贴着面板走）、字体跟应用、正文留白与旧 textarea 一致 */
-const editorTheme = EditorView.theme({
-  '&': { height: '100%', backgroundColor: 'transparent', color: 'var(--color-ink)' },
-  '.cm-scroller': { overflow: 'auto', fontFamily: 'inherit', lineHeight: '1.75' },
-  '.cm-content': {
-    paddingTop: '20px',
-    paddingBottom: '20px',
-    paddingLeft: '10px',
-    paddingRight: '22px',
-    caretColor: 'var(--color-seal)',
-  },
-  '&.cm-focused': { outline: 'none' },
-  '.cm-placeholder': { color: 'var(--color-ink-faint)' },
-  '.cm-selectionBackground': { backgroundColor: 'color-mix(in srgb, var(--color-seal) 22%, transparent) !important' },
-  '.cm-cursor': { borderLeftColor: 'var(--color-seal)' },
-})
+/**
+ * 配色与主题在 lib/cmMarkdown（随笔窗口用的是同一份）：文档源码视图的内边距
+ * 按 doc-measure 那一列调（上 20 / 下 20 / 左 10 / 右 22）。
+ */
+const editorTheme = markdownEditorTheme({ top: 20, bottom: 20, left: 10, right: 22 })
 
 /** 语言按扩展名现配（markdown 内嵌代码块也各自高亮）；其余扩展名交给 language-data 的表 */
 const langComp = new Compartment()
@@ -195,7 +158,7 @@ export default function SourceEditor({
           readOnlyComp.of([]),
           langComp.of([]),
           cmPlaceholder(placeholder ?? ''),
-          syntaxHighlighting(highlight),
+          syntaxHighlighting(markdownHighlight),
           editorTheme,
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {

@@ -641,6 +641,13 @@ export interface LearnStore {
    */
   methods?: MethodStore
   /**
+   * 目标级随笔（见 learn/essays）。可选字段，理由同 methods。
+   * 落盘在各自目标目录的 essay.json（这个目标一条都没有就不写文件）。
+   */
+  essays?: EssayStore
+  /** 随笔窗口拖到哪儿、多大（界面状态，跟 state.json 走；见 EssayDockRect） */
+  essayDock?: EssayDockRect
+  /**
    * 工作流登记表（wf.*，见 learn/workflows）。可选字段，理由同 methods。
    * global 存进 state.json（跨目标跟着用户走）；byGoal 存进各自目标目录的 workflow.json。
    */
@@ -751,6 +758,38 @@ export interface MindEntry {
 
 /** 目标 id → 记忆条目。跟着 state.json 一起落盘 */
 export type MindStore = Record<string, MindEntry[]>
+
+/**
+ * 一条随笔（见 learn/essays）：**目标级**的随手记，没有标题、不挂节点。
+ *
+ * 与 MindEntry 的区别：记忆是**导师**写给自己（或关于学习者）的判断，只有 agent 主动
+ * api.mind.read 才看得到；随笔是**人写给自己**的，就摆在文档区右下角那个小窗口里。
+ */
+export interface EssayEntry {
+  id: string
+  /** 正文（Markdown）。随笔没有标题——列表里的那一行是它抹平后的预览 */
+  text: string
+  /** 写下的时刻：列表按它归到哪一天，也是排序依据 */
+  createdAt: number
+  updatedAt: number
+}
+
+/** 目标 id → 随笔清单（新的在前）。落盘在各自目标目录的 essay.json */
+export type EssayStore = Record<string, EssayEntry[]>
+
+/**
+ * 随笔窗口的几何（左上角 + 宽高，视口坐标）。
+ *
+ * 属于**界面状态**（跟 state.json 走），不是学习数据：换台机器、导一份别人的备份，
+ * 都不该把「我把那个小窗口拖到哪儿了」也换掉。
+ */
+export interface EssayDockRect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
 
 /**
  * 一条工作流（见 learn/workflows）：**不由用户消息直接驱动**的任务模板。

@@ -19,6 +19,7 @@ import { normalizeAgentTabs } from '../../agentTabs'
 import { normalizeDrafts } from '../../drafts'
 import { BUILTIN_WORKFLOW_IDS, normalizeWorkflowEfforts, normalizeWorkflowEntries } from '../../workflows'
 import { normalizeReadingBook } from '../../reading'
+import { normalizeEssayDock, normalizeEssays } from '../../essays'
 import { normalizePomodoro } from '../../pomodoro'
 import { normalizeResourceList, retargetStaticRefs, type StaticResource } from '../../static'
 import { normalizeTmpStore, pruneTmpToNodes } from '../../../lib/tmpStore'
@@ -260,6 +261,9 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       }
     }
 
+    /** 随笔窗口的几何（认不出就是没有：下次打开按默认位置摆） */
+    const essayDock = normalizeEssayDock(d.essayDock)
+
     const store: LearnStore = {
       version: 2,
       nodes: fixedNodes,
@@ -272,6 +276,10 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       resources,
       minds,
       methods,
+      // 随笔同样是目标级的：目标没了的整本丢掉，空文本条目丢掉（见 learn/essays）
+      essays: normalizeEssays(d.essays, goalIds),
+      // 窗口几何只校验是不是数；夹进视口是打开那一刻的事（见 EssayDock）
+      ...(essayDock ? { essayDock } : {}),
       workflows,
       /*
        * 阅读 / 打卡 / 番茄钟：认不出的部分各自丢掉，坏数据不该拖垮整库。

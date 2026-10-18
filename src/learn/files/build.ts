@@ -235,6 +235,14 @@ function* buildDocsSteps(store: LearnStore): Generator<void, Map<string, string>
       if (goalReading && (goalReading.sessions.length || Object.keys(goalReading.days).length)) {
         files.set(`${path}/reading.json`, jsonText(goalReading))
       }
+      /**
+       * 随笔（见 learn/essays）也是**目标级**的：写在目标目录里，与 reading.json 同一条纪律
+       * ——一条都没有就不写文件。它是人随手写的，与目标同生共死。
+       */
+      const goalEssays = store.essays?.[goal.id] ?? []
+      if (goalEssays.length) {
+        files.set(`${path}/essay.json`, jsonText({ version: 1, essays: goalEssays }))
+      }
     }
     /**
      * 临时变量（Agent 的大块中间数据）写在 chat.json 旁边。

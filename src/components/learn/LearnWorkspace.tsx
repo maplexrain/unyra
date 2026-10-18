@@ -35,6 +35,8 @@ import { ExternalLink, Globe } from 'lucide-react'
 import type {
   DocKind,
   DocView,
+  EssayDockRect,
+  EssayEntry,
   FavoriteRef,
   KnowledgeNode,
   LearnStore,
@@ -231,6 +233,9 @@ import { formatClock, pomodoroStatus } from '../../learn/pomodoro'
 import LocalDoc from './LocalDoc'
 import DraftDoc from './DraftDoc'
 import SourceEditor from './SourceEditor'
+import EssayDock from './essay/EssayDock'
+import { createEssay, deleteEssay, updateEssay } from '../../learn/essays'
+import { useDoubleShift } from '../../lib/useDoubleShift'
 import type { DocSource } from './NodeNote'
 import ConfirmDialog from '../ConfirmDialog'
 import { AgentTabPane } from './workspace/AgentTabPane'
@@ -278,6 +283,12 @@ import { t } from '../../i18n'
  * 不持久化，重启后回落各目标的总节点；写入只发生在 retargetNode（事件路径）。
  */
 const goalFocusByGoal = new Map<string, string>()
+
+/**
+ * 没有随笔时的空数组：**同一个常量**。
+ * 每次渲染现造一个 `[]` 会让 EssayDock 的 props 每次都变（它没有 memo，但列表要重排一遍）。
+ */
+const EMPTY_ESSAYS: EssayEntry[] = []
 
 /**
  * 一枚页签当前归哪个目标（按页签 **id** 反查）。
@@ -2139,6 +2150,68 @@ export default function LearnWorkspace({
     },
     [patchQuiet],
   )
+
+  /* ---------- 随笔（见 learn/essays 与 components/learn/essay） ---------- */
+
+  /**
+   * 随笔窗口开着没有。窗口本身在 EssayDock 里，开合只由这里的一个布尔值决定——
+   * 这样「双击 Shift」（见下面的 useDoubleShift）与按钮点开走的是同一条路。
+   */
+  const [essayOpen, setEssayOpen] = useState(false)
+  /** 随笔跟着**眼前这份文档的目标**走：目标级的东西，切到别的目标就不该还开着 */
+  const essayGoalId = docNode?.goalId ?? null
+  const essayList = (essayGoalId ? store.essays?.[essayGoalId] : null) ?? EMPTY_ESSAYS
+
+  /*
+   * 三条写入。都用 getLatest() 现取最新快照再算：输入是去抖的，
+   * 上一次写入可能刚被别的动作（删一条、切目标）改过。
+   */
+  const essayCreate = useCallback(
+    (goalId: string, text: string): string | null => {
+      const created = createEssay(getLatest(), goalId, text, Date.now())
+      if (!created) return null
+      set(created.store)
+      return created.entry.id
+    },
+    [getLatest, set],
+  )
+  const essayUpdate = useCallback(
+    (goalId: string, id: string, text: string) => {
+      set(updateEssay(getLatest(), goalId, id, text, Date.now()))
+    },
+    [getLatest, set],
+  )
+  const essayDelete = useCallback(
+    (goalId: string, id: string) => {
+      set(deleteEssay(getLatest(), goalId, id))
+    },
+    [getLatest, set],
+  )
+  /** 窗口几何：纯界面状态，安静写盘就够（窗口自己已经摆好了，不必为它重渲染整棵学习区） */
+  const essayGeometry = useCallback(
+    (rect: EssayDockRect) => {
+      patchQuiet((s) => ({ ...s, essayDock: rect }))
+    },
+    [patchQuiet],
+  )
+
+  // 双击 Shift：唤出 / 收起随笔窗口（没有目标时什么也不做——随笔是目标级的）
+  useDoubleShift(() => {
+    if (!essayGoalId) return
+    setEssayOpen((v) => !v)
+  })
+
+  /*
+   * 换目标就把窗口收起来：随笔是目标级的东西，切到另一门课还挂着上一个目标的窗口
+   * （而且刚重挂成空白的）只会让人以为刚才写的东西没了。
+   * 上一份的收尾由 EssayDock 的 key 变化触发卸载时做（见下面的 key）。
+   */
+  const lastEssayGoal = useRef<string | null>(null)
+  useEffect(() => {
+    if (lastEssayGoal.current === essayGoalId) return
+    lastEssayGoal.current = essayGoalId
+    setEssayOpen(false)
+  }, [essayGoalId])
 
   /*
    * 资源管理器的撤回（Ctrl+Z）：删除类动作先捕获再动手，栈与键盘监听都在 useExplorerUndo。
@@ -4596,7 +4669,38 @@ export default function LearnWorkspace({
         */}
         <SplitRow
           side={side}
-            docsSlot={renderLayout(docs.layout)}
+            /*
+              随笔的入口与窗口挂在这一层：它是**文档区**的浮层（右下角那颗按钮），
+              不属于某一份文档——切页签、切节点都不该把它连根拔掉（目标变了才换一本账）。
+              外面这层 relative 是它的定位基准，且**没有** overflow-hidden：
+              按钮贴着文档区的角，窗口则 portal 到 body（见 EssayDock）。
+            */
+            docsSlot={
+              <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+                {renderLayout(docs.layout)}
+                {essayGoalId && (
+                  <EssayDock
+                    /*
+                     * key 绑目标：换目标是**换一本账**。重挂会让上一份的收尾（把没落库的
+                     * 那一下写掉）用**旧目标**的闭包跑完，而新的一份从空白开始——
+                     * 不这么做的话，切目标时那一笔会写进新目标的账里。
+                     */
+                    key={essayGoalId}
+                    goalId={essayGoalId}
+                    // 入口只在教学文档上露脸（需求：教学文档右下角）；窗口开着时另说
+                    showEntry={activeTab?.ref.kind === 'teach'}
+                    open={essayOpen}
+                    onOpenChange={setEssayOpen}
+                    essays={essayList}
+                    geometry={store.essayDock ?? null}
+                    onGeometry={essayGeometry}
+                    onCreate={essayCreate}
+                    onUpdate={essayUpdate}
+                    onDelete={essayDelete}
+                  />
+                )}
+              </div>
+            }
             agentSlot={
               activeAgentTab ? (
                 <div className="flex h-full min-h-0 flex-col">

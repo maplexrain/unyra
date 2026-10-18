@@ -622,6 +622,22 @@ const dict: Record<string, string> = {
   '没能在源文里定位到这一段，先选中一段正文再粘贴': 'Could not locate this passage in the source — select some text first',
   '读不到剪贴板里的文字': 'Could not read text from the clipboard',
   '没能在源码里定位到这一段': 'Could not locate this passage in the source',
+
+  // ---------- 随笔（components/learn/essay） ----------
+  '随笔': 'Jottings',
+  '随笔（双击 Shift 也能唤出）': 'Jottings (double-press Shift)',
+  '{0} 条': '{0} entries',
+  '今天': 'Today',
+  '空白': 'Blank',
+  '回到空白：写下第一个字就是新的一条': 'Back to a blank page: the first character you type starts a new jotting',
+  '收起（Esc）': 'Collapse (Esc)',
+  '还没有随笔。想到什么，写下来就是了。': 'No jottings yet. Whatever comes to mind, just write it down.',
+  '（空）': '(empty)',
+  '删除这条随笔': 'Delete this jotting',
+  '随手记点什么…（支持 Markdown，停手即存）': 'Jot something down... (Markdown supported, saved as you pause)',
+  '写下第一个字，它就成了一条随笔': 'Type the first character and it becomes a jotting',
+  '拖动调整大小': 'Drag to resize',
+  '{0} 年 {1} 月 {2} 日': '{0}/{1}/{2}',
 }
 
 export default dict
