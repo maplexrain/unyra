@@ -1,24 +1,14 @@
 /**
- * 有效阅读与打卡**按学习目标分开**（见 learn/reading 的 ReadingBook、learn/checkin 的 CheckinBook）。
+ * 有效阅读**按学习目标分开**（见 learn/reading 的 ReadingBook）。
  *
- * 这一条是口径变更：从前它们记在**用户**头上，一个人学两门课时，两门课的时长混在一条曲线里，
- * 「今天读了多久」「连续几天打卡」都不再是任何一门课的事实。改成按目标之后有三件事必须成立：
+ * 这一条是口径变更：从前它记在**用户**头上，一个人学两门课时，两门课的时长混在一条曲线里，
+ * 「今天读了多久」不再是任何一门课的事实。改成按目标之后有两件事必须成立：
  * 1. 两本账互不串门（写一本不动另一本）；
- * 2. 门槛与连续天数各算各的（这是「分开」的全部意义）；
- * 3. 各自落在自己的目标目录里（删目标即随之消失）。
+ * 2. 各自落在自己的目标目录里（删目标即随之消失）。
  */
 import { describe, expect, it } from 'vitest'
 
 import { applyReadingDelta, emptyReading, readingDay, readingOfGoal, withGoalReading } from '../src/learn/reading'
-import {
-  applyCheckinAttempt,
-  checkinEligible,
-  checkinOfGoal,
-  emptyCheckin,
-  normalizeCheckinBook,
-  streakOf,
-  withGoalCheckin,
-} from '../src/learn/checkin'
 import { emptyDocs } from '../src/learn/groups'
 import { buildDocs } from '../src/learn/files'
 import type { LearnStore } from '../src/learn/types'
@@ -60,45 +50,10 @@ describe('两本账互不串门', () => {
     expect(readingDay(readingOfGoal(both, 'g1'), day)?.activeMs).toBe(30 * MIN)
     expect(readingDay(readingOfGoal(both, 'g2'), day)?.activeMs).toBe(5 * MIN)
   })
-
-  it('打卡账同理（withGoalCheckin）', () => {
-    const one = applyCheckinAttempt(emptyCheckin(), { day, correct: 3, total: 4, threshold: 3, passed: true }, now).store
-    const book = withGoalCheckin(undefined, 'g1', one)
-    expect(checkinOfGoal(book, 'g1')?.days[day]?.passed).toBe(true)
-    expect(checkinOfGoal(book, 'g2')).toBeUndefined()
-  })
 })
 
-describe('门槛与连续天数各算各的', () => {
-  it('一个目标读够了、另一个没读够：前者的资格不代表后者', () => {
-    const enough = readIn('n1', 20 * MIN, day)
-    const little = readIn('n2', 5 * MIN, day)
-    const e1 = checkinEligible(enough, undefined, { now, titleOf: () => '极限' })
-    const e2 = checkinEligible(little, undefined, { now, titleOf: () => '极限' })
-    expect(e1.ok).toBe(true)
-    expect(e2.ok).toBe(false)
-    expect(e2.reason).toContain('还差 10 分钟')
-  })
-
-  it('连续天数各数各的：A 连了两天，B 只有今天', () => {
-    const yesterday = '2026-09-19'
-    let a = emptyCheckin()
-    a = applyCheckinAttempt(a, { day: yesterday, correct: 3, total: 4, threshold: 3, passed: true }, now).store
-    a = applyCheckinAttempt(a, { day, correct: 3, total: 4, threshold: 3, passed: true }, now).store
-    const b = applyCheckinAttempt(emptyCheckin(), { day, correct: 3, total: 4, threshold: 3, passed: true }, now).store
-    expect(streakOf(a, now).current).toBe(2)
-    expect(streakOf(b, now).current).toBe(1)
-  })
-})
-
-describe('读回与落盘', () => {
-  it('目标没了的整本丢掉（normalizeCheckinBook）', () => {
-    const one = applyCheckinAttempt(emptyCheckin(), { day, correct: 3, total: 4, threshold: 3, passed: true }, now).store
-    const book = normalizeCheckinBook({ byGoal: { g1: one, gone: one } }, new Set(['g1']))
-    expect(Object.keys(book.byGoal)).toEqual(['g1'])
-  })
-
-  it('落盘落在**各自的目标目录**里（reading.json / checkin.json）', () => {
+describe('落盘', () => {
+  it('落在**各自的目标目录**里（reading.json）', () => {
     const node = (id: string, goalId: string): KnowledgeNode => ({
       id,
       title: '节点 ' + id,
@@ -144,7 +99,5 @@ describe('读回与落盘', () => {
       const rec = JSON.parse(files.get(p) as string) as { days: Record<string, { activeMs: number }> }
       expect(rec.days[day].activeMs).toBeGreaterThan(0)
     }
-    // 打卡没记录就不写文件（与 mind.json / method.json 同一条纪律）
-    expect([...files.keys()].some((p) => p.endsWith('/checkin.json'))).toBe(false)
   })
 })

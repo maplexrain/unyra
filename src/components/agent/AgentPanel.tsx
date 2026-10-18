@@ -76,22 +76,8 @@ interface Props {
   queue: QueuedMessage[]
   onQueueDrop: (id: string) => void
   onQueueSendNow: (id: string) => void
-  /**
-   * 更多 → 工作流 → 回忆：请超级导师带用户做一次主动回忆。
-   *
-   * 与文档区悬浮组那颗「回忆」按钮是同一件事，但**这里不二次确认**：那边是鼠标
-   * 扫过右边顺手点一下，这里是用户主动翻菜单找出来的——误触概率差着一个量级（见 DocFloat）。
-   */
-  onRecall: () => void
   /** 更多 → 工作流 → 超级实验室：触发内置工作流「超级实验室」——导师先问想做什么实验，再生成一份可交互的超级文档 */
   onSuperLab: () => void
-  /**
-   * 更多 → 工作流 → 打卡：请导师按今天读到的内容出几道题，答到门槛才算打卡。
-   *
-   * 与顶栏那颗打卡是同一件事：那边是「顺手看一眼今天还差什么」，这里是
-   * 「翻菜单主动找出来做」——所以这里也不二次确认，直接跑。
-   */
-  onCheckin: () => void
   /** 更多 → 工作流 → 浏览器操作：替用户驱动内置浏览器完成任务（看=截图、输入=模拟鼠标键盘） */
   onBrowserUse: () => void
   /** 更多 → 压缩上下文：把前面的对话折成一份摘要 */
@@ -194,9 +180,7 @@ export default function AgentPanel({
   onQueueDrop,
   onQueueSendNow,
   onNotice,
-  onRecall,
   onSuperLab,
-  onCheckin,
   onBrowserUse,
   onCompact,
   compacting,
@@ -244,9 +228,9 @@ export default function AgentPanel({
   const confirmDelRef = useRef<string | null>(null)
 
   /*
-   * 隐藏指令照旧不显示，**但带 mark 的那种要显示成一条分界条**（回忆 / 探针 / 出卷 / 阅卷 / 开讲）：
+   * 隐藏指令照旧不显示，**但带 mark 的那种要显示成一条分界条**（出卷 / 阅卷 / 开讲）：
    * 它们是导师自己发起的动作，对话里没有任何用户消息可以当锚点——不画出来的话，
-   * 「导师带我做的那次回忆」在长对话里就再也找不回来了（消息定位条也点不到）。
+   * 「导师带我做的那次练习」在长对话里就再也找不回来了（消息定位条也点不到）。
    */
   const messages = useMemo(
     () =>
@@ -590,9 +574,7 @@ export default function AgentPanel({
           conversation={conversation}
           onSelectConversation={onSelectConversation}
           onDeleteConversation={onDeleteConversation}
-          onRecall={onRecall}
           onSuperLab={onSuperLab}
-          onCheckin={onCheckin}
           onBrowserUse={onBrowserUse}
           onCompact={onCompact}
           compacting={compacting}

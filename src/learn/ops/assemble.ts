@@ -28,7 +28,6 @@ import {
 } from '../graph'
 import { nodePathOf, docsInfoOf, docPathOf, resolveDoc, resolveNode, type PathScope } from '../paths'
 import { writeOutline } from '../outline'
-import { ensureReviewPlan } from '../review'
 import { nodeLayout } from '../layout'
 import { docFileName } from '../files/names'
 import { clipText } from './text'
@@ -39,8 +38,7 @@ import { createCodeOps } from './code'
 import { createWorkflowOps } from './workflow'
 import { createUserInfoOps } from './userinfo'
 import { createResourceOps } from './resource'
-import { createAttentionOps, createCheckinOps, createCompactOps, createPomodoroOps, createReadingOps } from './process'
-import { createReviewOps } from './review'
+import { createAttentionOps, createCompactOps, createPomodoroOps, createReadingOps } from './process'
 import { createWorkspaceOps } from './workspace'
 import { createChipOps } from './chip'
 
@@ -448,10 +446,7 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
       }
     }
     const next = updateNode(s, nodeId, patch)
-    // 状态首次变「已掌握」：复习计划在这里跟着建（与 setNodeStatus 同一条系统侧钩子，见 learn/review）。
-    // nodeOps.update 不走 setNodeStatus（标题/描述/状态一次一单），所以这条钩子得单独挂
-    const withPlan = patch.status === 'mastered' ? ensureReviewPlan(next, nodeId, Date.now()) : next
-    deps.set(withPlan)
+    deps.set(next)
     const label = nodePathOf(next, deps.goalId(), nodeId)
     const done: string[] = []
     if (patch.title !== undefined) done.push('标题改为「' + patch.title.trim() + '」')
@@ -734,12 +729,10 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
     workflows: createWorkflowOps(deps),
     // 代码块伪编译的交付口：纯渲染层逻辑（产物表 + 待编译登记），总是可用
     code: createCodeOps(),
-    // 学习过程：阅读事实、注意力评级、打卡、番茄钟——都是纯 store 逻辑，总是可用
-    // （见 learn/reading、learn/attention、learn/checkin、learn/pomodoro）
+    // 学习过程：阅读事实、注意力评级、番茄钟——都是纯 store 逻辑，总是可用
+    // （见 learn/reading、learn/attention、learn/pomodoro）
     reading: createReadingOps(deps),
     attention: createAttentionOps(deps),
-    checkin: createCheckinOps(deps),
-    review: createReviewOps(deps),
     pomodoro: createPomodoroOps(deps),
     ...(deps.userInfo ? { userInfo: createUserInfoOps(deps.userInfo) } : {}),
     ...(deps.tmp ? { tmp: deps.tmp } : {}),

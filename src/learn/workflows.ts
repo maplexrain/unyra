@@ -140,26 +140,6 @@ const OUTLINE_INSTRUCTION = [
   '写完用 api.ui.point() 把这份文档在文档区打开，让用户在大纲页里看这一层的路线。',
 ].join('\n')
 
-/** 「回忆」：{{title}} 由触发方用当前节点标题补上。 */
-const RECALL_INSTRUCTION =
-  '请带用户做一次主动回忆（针对当前知识点「{{title}}」）：' +
-  '**这一轮不要复述文档内容，也不要贴任何讲解**，只用一两句话请他合上文档、用自己的话讲一遍' +
-  '（可以点明该讲哪几点，但别把答案摆出来）。等他把话说完，你要给出三样东西并当场纠正错误：' +
-  '① 讲到了的要点；② 没讲到但本该讲的；③ 说错或说歪的地方——第三样最要紧，要具体指出错在哪、为什么。' +
-  '不要只回一句「说得不错」。然后先调 await api.node.paths() 获取当前节点物理路径（或从 node.read 获取），' +
-  '按表现用 api.node.update(\'{{title}}\', { status: \'mastered\' }) 或更新对应掌握状态，' +
-  '并用 api.files.write 把回忆记录与错题要点记入当前节点的笔记或错题本中（如 docs/.../节点.notes/回忆.md）。'
-
-/** 「探针」：一两道极短的问题当场验证。 */
-const PROBE_INSTRUCTION =
-  '请对当前知识点做一次**极短**的探针，用来验证用户是不是真的会：' +
-  '先用 api.node.read() 查看当前节点状态与掌握度，然后出 1~2 个不用计算、能当场回答的问题——' +
-  '优先戳理解盲点或容易混淆的概念，例如' +
-  '「不用计算，简单解释一下为什么复合函数求导要乘上内部函数的导数」。' +
-  '**现在不要给答案**，等他回答。' +
-  '等他答完，按回答用 api.node.update(path, { status }) 修正掌握状态，' +
-  '并用 api.files.write 将答错要点记进当前节点的错题记录（如 docs/.../节点.notes/错题.md）。'
-
 /**
  * 「出卷」：类型与难度由 Agent 问用户，出题后直接保存试卷文件。
  */
@@ -198,17 +178,6 @@ const SUPERLAB_INSTRUCTION = [
   '第二步｜先想后写：确定这个实验演示什么规律或验证什么结论、用户怎么交互（按什么、改什么、看什么结果）、界面按什么顺序排。',
   '第三步｜落盘 HTML：先调用 const p = await api.node.paths() 获取当前节点目录，使用 api.files.write 写入一份完整可运行的自包含 HTML 文件（路径必须为 `${p.dir}/superdocs/${实验名}.html`，样式变量使用 var(--color-*)，说明装进 <moji-markdown>）。若包含复杂的计算函数，可通过 api.method.create 保存并通过 window.api.method.call 调用。',
   '第四步｜用 api.ui.superdoc(p.path, \'实验名\') 打开该超级文档页签，再用一两句话告诉用户这个实验能玩什么。',
-].join('\n')
-
-/**
- * 「打卡」：用出题验证过的学习，不是点一下签到。
- */
-const CHECKIN_INSTRUCTION = [
-  '用户要打卡。打卡**不是签到**：必须用出题验证今天真的学进去了。严格按下面的顺序做，不要跳步。',
-  '第一步｜看今天读了什么：用 api.files.read(\'docs/目标/reading.json\') 查看今天的有效阅读时长与各章节阅读记录。若尚未产生有效阅读或时长过短，把原因直说给用户，不要放行。',
-  '第二步｜出题：挑今天真正读到的章节出 2~3 道单选/多选题目（干扰项要贴合真实易错点），用 api.ask 出一张表单让用户作答。',
-  '第三步｜判分与记录：用户提交后对照答案判定通过与否，用 api.files.write(\'docs/目标/checkin.json\', JSON.stringify({ date: new Date().toISOString().slice(0, 10), passed: true, note: \'...\' }, null, 2)) 记录今日打卡。',
-  '第四步｜回话：告知用户打卡结果（连续第几天、答对几题），并指出最该巩固的一个知识要点。',
 ].join('\n')
 
 /**
@@ -266,26 +235,6 @@ const CODE_COMPILE_INSTRUCTION = [
 ].join('\n')
 
 /**
- * 「复习」：间隔复习会话。
- */
-const REVIEW_INSTRUCTION = [
-  '开始一次**复习**（{{titles}}；阶段：{{stage}}）。复习不是重新讲课，也不是考试：' +
-    '目标是帮他在隔了一段时间之后**主动从记忆里提取**知识，并把暴露的薄弱处记下来供下次复习针对。严格按顺序：',
-  '第一步｜看清这次复习：先调用 api.files.read 读取复习计划（docs/目标/review.json 或对应节点的 .meta.json），了解这一阶段的侧重（{{focus}}）与历史薄弱项。',
-  '第二步｜主动提取优先：**先**请他不看教学内容，用自己的话讲一遍这个阶段该提取的核心内容。他开口之前不给答案、不给提示。',
-  '第三步｜按阶段做检查与变式提问：',
-  '　- 回忆/理解阶段：以简答与概念辨析为主；',
-  '　- 应用阶段起加入**变式**：改背景、改条件、改问法；',
-  '　- 迁移/长期保持阶段：给陌生情境让他判断该调用什么知识。',
-  '第四步｜判与落账：逐条指出漏了什么、错在哪，然后用 api.node.update(path, { status }) 修正掌握度，并用 api.files.write 将本次复习记录、薄弱错法记录在 docs/.../节点.notes/复习.md 或更新 review.json。',
-  '第五步｜收尾一两句：说清这次记下了哪些薄弱项以及下次复习的建议。',
-  '',
-  '复习节点：{{titles}}',
-  '阶段：{{stage}}',
-  '这一阶段的侧重：{{focus}}',
-].join('\n')
-
-/**
  * 「浏览器操作」：替用户驱动内置浏览器完成任务。之所以特化成工作流：网页是
  * **看图干活**的场景，普通对话里模型容易去猜页面内容、或想找条「读文字」的近路——
  * 这里把「看 = 截图、动手 = 模拟鼠标键盘」钉成唯一的路子，并把连招塞进同一次
@@ -335,7 +284,7 @@ const BROWSER_USE_INSTRUCTION = [
 
 /**
  * 内置条目的定义形：没有时间戳（它们不是「登记」出来的），runnable 可以不给（默认能跑）。
- * effort 是**推荐档**——交付物型的厚（教学文档、出卷）、对话型的薄（探针、注解），
+ * effort 是**推荐档**——交付物型的厚（教学文档、出卷）、对话型的薄（了解、压缩），
  * 逐条写在定义里；这是产品对「这项功能的底线质量」的表态，用户随时可以覆盖。
  */
 type BuiltinDef = Omit<WorkflowRow, 'tier' | 'runnable' | 'createdAt' | 'updatedAt' | 'effort'> & {
@@ -343,7 +292,7 @@ type BuiltinDef = Omit<WorkflowRow, 'tier' | 'runnable' | 'createdAt' | 'updated
   effort?: ReasoningEffort
 }
 
-/** 内置工作流的定义：id 稳定（触发与探针都靠它），名字就是对话里的分界条文案。 */
+/** 内置工作流的定义：id 稳定（触发与校验都靠它），名字就是对话里的分界条文案。 */
 const BUILTIN_DEFS: BuiltinDef[] = [
   {
     id: 'teach-node',
@@ -379,23 +328,6 @@ const BUILTIN_DEFS: BuiltinDef[] = [
     effort: 'high',
   },
   {
-    id: 'recall',
-    name: '回忆',
-    description: '合上文档，让用户讲一遍，当场纠正并记录',
-    instruction: RECALL_INSTRUCTION,
-    params: ['title'],
-    // 对话交互，跟人的节奏走；材料是用户说的话，想太深反而拖节奏
-    effort: 'medium',
-  },
-  {
-    id: 'probe',
-    name: '探针',
-    description: '一两道极短的口答题，当场验证是不是真的会',
-    instruction: PROBE_INSTRUCTION,
-    // 极短输出、快响应优先；唯一要克制的是别出成表面题，low 保留薄思考
-    effort: 'low',
-  },
-  {
     id: 'exam',
     name: '出卷',
     description: '先问清类型与难度，再出一份带时限的试卷',
@@ -414,7 +346,7 @@ const BUILTIN_DEFS: BuiltinDef[] = [
     promptModule: 'exam',
     // 必须先有人交卷：从列表里空跑只会得到「没有需要讲解的考试」
     runnable: false,
-    // 判分记错账会污染复习计划，讲解要质量；判分对照本身偏机械，max 的边际收益不值多等的
+    // 判分记错账会污染掌握度，讲解要质量；判分对照本身偏机械，max 的边际收益不值多等的
     effort: 'high',
   },
   {
@@ -462,32 +394,8 @@ const BUILTIN_DEFS: BuiltinDef[] = [
     instruction: COMPACT_INSTRUCTION,
     // api.compact 的生效时机与参数口径随这条工作流注入一次
     promptModule: 'compact',
-    // 摘要失真会带坏之后所有轮次：low 会丢细节，medium 保真与速度平衡
-    effort: 'medium',
-  },
-  {
-    id: 'checkin',
-    name: '打卡',
-    description: '按今天读到的内容出几道题，答到门槛才算打卡',
-    instruction: CHECKIN_INSTRUCTION,
-    // 它的交付物就是一张 ask 表单（压在输入框上方）：响一声铃并把对话栏切到主位
-    prep: 'ask',
-    // 每日仪式要快；题目只基于当日内容，范围小
-    effort: 'medium',
-  },
-  {
-    id: 'review',
-    name: '复习',
-    description: '按间隔复习计划带用户做一次复习：先主动提取，再按阶段检查并落账',
-    instruction: REVIEW_INSTRUCTION,
-    // 复习的第一步就是「请他合上文档讲一遍」：响铃 + 把对话栏切到主位，等他说
-    prep: 'ask',
-    // 触发方按到期阶段补齐（见 useWorkflowStarters 的 startReview）；
-    // 从列表空跑拿不到 titles / stage / focus，所以不开放——入口在顶栏的复习面板
-    params: ['titles', 'stage', 'focus'],
-    runnable: false,
-    // 主动提取的对话体验优先
-    effort: 'medium',
+    // 压缩是摘录式改写：材料全在上下文里，不需要额外推理，None 最快也最省
+    effort: 'none',
   },
   {
     id: 'browser-use',
@@ -513,7 +421,7 @@ export const BUILTIN_EFFORT: Record<string, ReasoningEffort> = Object.fromEntrie
  * 一条工作流触发前，宿主该做什么。
  *
  * 规则只有一条：**带 prep 的响一声铃**（问询类的表单要用户抬眼、展示类的交付要他知道
- * 结果在对话里），没带 prep 的（回忆 / 探针 / 大纲 / 压缩 / 阅卷）连铃都不响——
+ * 结果在对话里），没带 prep 的（了解 / 大纲 / 压缩 / 阅卷）连铃都不响——
  * 那些是用户自己点出来的，他本来就在看着。
  *
  * 这里**不再切主位**（原先是 'ask' 才切）：主栏归用户管，页签化之后「眼前看哪一边」
@@ -530,7 +438,7 @@ export function workflowPrep(prep: WorkflowRow['prep']): { beep: boolean } {
  * 一轮该用哪档思考。行上没配（用户没动过）时：内置用推荐档、登记的跟随聊天；
  * 'chat' 跟随聊天滑条；'default' 取内置推荐（登记的没有推荐，回落聊天）；
  * 其余即固定档，原样。聊天滑条只对聊天框发起的轮直接生效——工作流轮的档位
- * **独立于它**（这是有意设计：出卷要深、探针要快，一个全局滑条伺候不了所有任务）。
+ * **独立于它**（这是有意设计：出卷要深、了解要快，一个全局滑条伺候不了所有任务）。
  * 抽成纯函数与 workflowPrep 同一条理由：配置解析要有能被钉住的地方。
  */
 export function resolveWorkflowEffort(

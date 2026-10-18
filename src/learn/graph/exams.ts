@@ -3,10 +3,8 @@
  */
 import type { Exam, ExamAttempt } from '../exam'
 import type { LearnStore } from '../types'
-import { attemptScore, examTotalPoints, EXAM_PASS_RATIO, gradeObjectiveAll, isAutoGradable } from '../exam'
+import { attemptScore, examTotalPoints, gradeObjectiveAll, isAutoGradable } from '../exam'
 import { newAttempt, settleAttempt } from '../examRecords'
-import { applyExamCheckin, checkinDay, checkinOfGoal, emptyCheckin, withGoalCheckin } from '../checkin'
-import { studyDayOf } from '../reading'
 import { addCheck, setNodeStatus } from './state'
 
 /* ---------- 考试 ---------- */
@@ -208,21 +206,6 @@ export function applyGradeResult(
       score: total > 0 ? Math.round((got / total) * 100) : 0,
       note: '《' + exam.title + '》' + got + '/' + total + ' 分，' + (payload.passed ? '判定已完全掌握' : '尚未完全掌握'),
     })
-    /*
-     * 打卡的另一种方式（需求）：这个目标的试卷**第一次考试**就达到及格线（卷面 ≥ 60%），
-     * 今天自动打卡。为什么由这里落账、而不是让 Agent 顺手调 checkin.settle：
-     * 成绩是系统算出来的确定值，经一次模型往返再写回来只会多一个「模型忘了」的缺口
-     * （与上面 addCheck 同一条理由）。重考及格不算——奖励的是「第一次就考过」；
-     * 今天已经打过卡的也不再重复记（applyExamCheckin 里还有一道同样的闸）。
-     */
-    if (exam.attempts[0]?.id === attemptId && total > 0 && got / total >= EXAM_PASS_RATIO) {
-      const day = studyDayOf(Date.now())
-      const book = checkinOfGoal(next.checkin, exam.goalId) ?? emptyCheckin()
-      if (!checkinDay(book, day)?.passed) {
-        const out = applyExamCheckin(book, { day, at: Date.now(), title: exam.title, score: got, total })
-        if (out.ok) next = { ...next, checkin: withGoalCheckin(next.checkin, exam.goalId, out.store) }
-      }
-    }
   }
   return { store: next, ok: true, message: payload.passed ? '已记录：完全掌握' : '已记录：尚未完全掌握' }
 }

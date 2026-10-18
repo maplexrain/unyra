@@ -63,13 +63,6 @@ const dict: Record<string, string> = {
   '这份试卷已经在了，没有重复撤回': 'This exam paper is already back; nothing was restored',
   '这个文件已经在列表里，没有重复撤回': 'This file is already in the list; nothing was restored',
 
-  // ---------- checkin：打卡 ----------
-  '今天已经打过卡了': 'Already checked in today',
-  '今天的机会用完了，明天再来': 'No attempts left today; come back tomorrow',
-  '今天的有效阅读还差 {0}': 'You still need {0} of effective reading today',
-  '今天读到的东西还太少，出不了题（至少读透两节）': 'Too little was read today to generate questions (read at least two sections thoroughly)',
-  '{0} 年 {1} 月': '{0}/{1}',
-
   // ---------- compact：压缩说明 ----------
   '上下文已压缩：前面 {0} 条消息（约 {1}k 字）已折进摘要，只在对话里留作查看': 'Context compacted: the previous {0} messages (about {1}k characters) were folded into the summary, kept in the conversation for reference only',
   '；未完成的 {0} 件事按原样保留': '; {0} unfinished tasks kept as they are',

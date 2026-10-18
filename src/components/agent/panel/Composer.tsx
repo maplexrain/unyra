@@ -65,9 +65,7 @@ export interface ComposerProps {
   conversation: Conversation | null
   onSelectConversation: (id: string) => void
   onDeleteConversation: (id: string) => void
-  onRecall: () => void
   onSuperLab: () => void
-  onCheckin: () => void
   onCompact: () => void
   compacting: boolean
   /** 自动压缩阈值（0~1），菜单项上如实说明「到多少会自己压」 */

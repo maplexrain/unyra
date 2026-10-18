@@ -252,7 +252,7 @@ import { ZONE_BOX } from './workspace/drag'
 import { examDeleteWarn } from './workspace/labels'
 import { conceptKeysOf, emptyNote, examCopyOf, paneInfo, paneOf } from './workspace/panes'
 import { DocPane } from './workspace/DocPane'
-import { CheckinDock, PomodoroDock, ReadingDock, ReviewDock } from './workspace/docks'
+import { PomodoroDock, ReadingDock } from './workspace/docks'
 import { EmptyDoc, GoalInput, Topbar } from './workspace/chrome'
 import { useSideColumns } from './workspace/useSideColumns'
 import SplitRow from './workspace/SplitRow'
@@ -2681,15 +2681,10 @@ export default function LearnWorkspace({
   const openReportTab = useCallback((reportId: string) => openTab({ kind: 'report', reportId }), [openTab])
 
   const {
-    startCheckin,
-    startReview,
-    backfillReviewPlan,
     newExam,
     requestGrading,
     setSelfReport,
     clearMistake,
-    startRecall,
-    startProbe,
     startSuperLab,
     startBrowserUse,
     startOutline,
@@ -2777,9 +2772,7 @@ export default function LearnWorkspace({
         liveUsage: (convId ? agent.liveUsageByConv[convId] : null) ?? null,
         compacting: false,
         onCompact: nope,
-        onRecall: nope,
         onSuperLab: nope,
-        onCheckin: nope,
         onBrowserUse: nope,
         onExam: nope,
         sub: { sessions: [], defs: [], running: false, live: [] },
@@ -2888,13 +2881,9 @@ export default function LearnWorkspace({
         if (convId) void agent.compactNow(convId)
       },
       // 菜单动作绑到这一枚页签的落点节点（节点归属的解析见 runWorkflow）
-      onRecall: () => {
-        if (nodeId) startRecall(nodeId)
-      },
       onSuperLab: () => {
         if (nodeId) startSuperLab(nodeId)
       },
-      onCheckin: () => startCheckin(nodeId ?? undefined),
       onBrowserUse: () => startBrowserUse(nodeId ?? undefined),
       onExam: () => newExam(nodeId ?? undefined),
       sub: {
@@ -4450,15 +4439,8 @@ export default function LearnWorkspace({
       structure: (nodeId) => nodeStructure(store, nodeId),
       onSetSelf: (nodeId, self) => setSelfReport(nodeId, self),
       onClearMistake: (nodeId, pattern) => clearMistake(nodeId, pattern),
-      onRecall: (nodeId) => startRecall(nodeId),
-      onProbe: (nodeId) => startProbe(nodeId),
-      busy:
-        !!agentView?.nodeId &&
-        !!agentView.conversationId &&
-        !!agent.runningByConversation[agentView.conversationId] &&
-        agentView.nodeId === activeNodeId,
     }),
-    [store, setSelfReport, clearMistake, startRecall, startProbe, agentView, agent.runningByConversation, activeNodeId],
+    [store, setSelfReport, clearMistake],
   )
 
   return (
@@ -4557,7 +4539,7 @@ export default function LearnWorkspace({
             onOpenUpdate={onOpenUpdate}
             onOpenNotice={onOpenNotice}
             onToast={onToast}
-            /* 番茄钟与打卡都是「自给自足的小块」：时钟/倒计时只在这一块里每秒重渲染，
+            /* 番茄钟是「自给自足的小块」：时钟/倒计时只在这一块里每秒重渲染，
                不会把整个学习区（正文 + 对话栏）一起带上 */
             pomodoro={
               <PomodoroDock
@@ -4568,8 +4550,6 @@ export default function LearnWorkspace({
                 onOpenGuard={openGuardTab}
               />
             }
-            checkin={<CheckinDock store={store} onCheckin={startCheckin} />}
-            review={<ReviewDock store={store} onReview={startReview} onBackfill={backfillReviewPlan} />}
             reading={<ReadingDock store={store} onOpenNode={selectNode} />}
           />
         </div>

@@ -44,7 +44,7 @@ export interface LearnState {
    * 所以这里漏一个字段就等于「写下去了、读不回来」——曾经真漏过。
    *
    * 阅读记录与打卡曾经也在这儿，现在它们按目标落在各自目录（`{目标}/reading.json`、
-   * `checkin.json`，见 learn/reading 的 ReadingBook）。旧的那两个字段**不再读**：
+   * 见 learn/reading 的 ReadingBook）。旧的那两个字段**不再读**：
    * 改口径不迁移数据，从前那份用户级的账直接丢掉（见 parseDocs 里的说明）。
    */
   pomodoro?: unknown

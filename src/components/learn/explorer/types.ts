@@ -78,10 +78,6 @@ export interface NodeStateActions {
   structure: (nodeId: string) => NodeStructure
   onSetSelf: (nodeId: string, self: SelfReport) => void
   onClearMistake: (nodeId: string, pattern: string) => void
-  onRecall: (nodeId: string) => void
-  onProbe: (nodeId: string) => void
-  /** Agent 正在跑：那时候再发隐藏指令只会排队，按钮先禁掉 */
-  busy: boolean
 }
 
 /**

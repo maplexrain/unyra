@@ -262,15 +262,8 @@ export const PROMPT_MODULES: PromptModule[] = [
     key: 'learning-process',
     title: '学习过程',
     text: `学习过程记录已收敛为真实数据文件管理：
-- 有效阅读事实与打卡记录直接使用 api.files 读写 docs/目标/reading.json 与 checkin.json。
+- 有效阅读事实直接使用 api.files 读写 docs/目标/reading.json。
 - 专注记录与学习状态从数据文件中读取，无需调用过时的专属接口。`,
-  },
-  {
-    key: 'review',
-    title: '间隔复习',
-    text: `间隔复习已收敛为真实数据文件管理：
-- 复习计划与阶段记录（+1/+3/+7/+14/+30 阶段）直接使用 api.files 读写对应目标下的 review.json 或对应节点的 .meta.json。
-- 掌握度更新和薄弱点归档通过直接更新节点元数据或复习数据文件完成。`,
   },
   {
     key: 'workspace',
@@ -557,9 +550,7 @@ const GROUP_MODULE: Record<string, string> = {
   exam: 'exam',
   reading: 'learning-process',
   attention: 'learning-process',
-  checkin: 'learning-process',
   pomodoro: 'learning-process',
-  review: 'review',
   workspace: 'workspace',
   method: 'method',
   code: 'code',

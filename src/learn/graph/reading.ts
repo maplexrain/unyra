@@ -42,13 +42,11 @@ export function onNodeReadingPatch(
   return { reading: withGoalReading(store.reading, goalId, fn(rec)) }
 }
 
-/** 目标没了：阅读与打卡两本账一起摘掉（见 deleteGoal） */
+/** 目标没了：阅读这本账一起摘掉（见 deleteGoal） */
 function withoutGoalReading(store: LearnStore, goalId: string): Partial<LearnStore> {
   const reading = { ...(store.reading?.byGoal ?? {}) }
-  const checkin = { ...(store.checkin?.byGoal ?? {}) }
   delete reading[goalId]
-  delete checkin[goalId]
-  return { reading: { byGoal: reading }, checkin: { byGoal: checkin } }
+  return { reading: { byGoal: reading } }
 }
 
 /**

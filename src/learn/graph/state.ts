@@ -4,20 +4,12 @@
  */
 import type { CheckRecord, LearningState, LearnStore, MasteryStatus, MistakeRecord } from '../types'
 import { withCheck, withLearning, withMistake } from '../learning'
-import { ensureReviewPlan } from '../review'
 import { nodeById } from './lookup'
 import { parentIds, prereqIds } from './edges'
 import { knowledgeDepth, replaceNode, updateNode } from './nodes'
 
 export function setNodeStatus(store: LearnStore, id: string, status: MasteryStatus): LearnStore {
-  const next = updateNode(store, id, { status })
-  /*
-   * 状态首次变为「已掌握」：系统在这里给节点建复习计划（见 learn/review）。
-   * 钩子放系统侧而不是导师那边——确定性的转变不经过模型，且必须幂等（重复置为
-   * mastered 不能重建计划）。学习到一半的计划 ensureReviewPlan 自己会避开。
-   */
-  if (status === 'mastered') return ensureReviewPlan(next, id, Date.now())
-  return next
+  return updateNode(store, id, { status })
 }
 
 /* ---------- 学习状态（见 learn/learning） ---------- */

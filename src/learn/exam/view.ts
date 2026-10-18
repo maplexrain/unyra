@@ -165,7 +165,7 @@ export function attemptDurationMs(attempt: ExamAttempt, now = Date.now()): numbe
 }
 
 /**
- * 及格线：卷面 60%。打卡的「考试通道」按它判（见 learn/checkin 的 applyExamCheckin）——
+ * 及格线：卷面 60%。
  * 这与 Agent 判分写的 attempt.passed（=完全掌握）是两条不同的线：及格是卷面分数的事，
  * 不必等 Agent 回来裁决。
  */

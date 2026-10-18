@@ -82,7 +82,6 @@ function fixture(): LearnStore {
     docScroll: {},
     localFiles: [{ path: 'C:/外部/速查.md', name: '速查.md', openedAt: NOW }],
     reading: { byGoal: { g1: readingBook } },
-    checkin: { byGoal: { g1: { version: 1, days: {}, best: 0 } } },
   }
 }
 
@@ -254,7 +253,6 @@ describe('撤回：捕获与恢复和删除级联互逆', () => {
     expect(s.nodes.filter((n) => n.goalId === 'g1').length).toBe(3)
     expect(s.conversations.some((c) => c.id === 'c1')).toBe(true)
     expect(s.reading!.byGoal.g1).toBe(bookBefore)
-    expect(s.checkin!.byGoal.g1).toBeDefined()
   })
 
   it('删笔记：正文与那一片阅读记录回来', () => {

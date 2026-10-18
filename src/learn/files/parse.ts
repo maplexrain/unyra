@@ -16,11 +16,9 @@ import type {
 } from '../types'
 import { normalizeLearnStore } from '../store/normalize'
 import { normalizeOutline } from '../outline'
-import { normalizeReviewPlan } from '../review'
 import { parseManifest } from '../static/manifest'
 import type { StaticResource } from '../static/types'
 import type { ReadingStore } from '../reading'
-import type { CheckinStore } from '../checkin'
 import { DOCS_DIR, MANIFEST_FILE, NOTES_SUFFIX, STATIC_DIR } from '../layout'
 import { LEGACY_NOTE_SUFFIX, docFileName, outlineFileName } from './names'
 import { at, parseJson, type MetaFile } from './meta'
@@ -63,8 +61,6 @@ export function parseDocs(files: Map<string, string>, state: unknown): LearnStor
   const workflowsByGoal: Record<string, WorkflowEntry[]> = {}
   /** 目标 id → 那个目标的有效阅读账（见 learn/reading） */
   const readingByGoal: Record<string, ReadingStore> = {}
-  /** 目标 id → 那个目标的打卡账（见 learn/checkin） */
-  const checkinByGoal: Record<string, CheckinStore> = {}
 
   // 目标目录必须是顶层（docs/{seg}）且自己那份 meta 在：结构不完整就整棵树跳过
   for (const [dir, { meta }] of metas) {
@@ -122,11 +118,9 @@ export function parseDocs(files: Map<string, string>, state: unknown): LearnStor
     if (Array.isArray(workflowFile?.workflows) && workflowFile.workflows.length) {
       workflowsByGoal[goal.id] = workflowFile.workflows
     }
-    // 有效阅读与打卡同上（reading.json / checkin.json，与 workflow.json 同层同纪律）
+    // 有效阅读同上（reading.json，与 workflow.json 同层同纪律）
     const readingFile = parseJson<ReadingStore>(files.get(`${dir}/reading.json`))
     if (readingFile) readingByGoal[goal.id] = readingFile
-    const checkinFile = parseJson<CheckinStore>(files.get(`${dir}/checkin.json`))
-    if (checkinFile) checkinByGoal[goal.id] = checkinFile
     // 1. 读回超级文档：扫描 ${dir}/superdocs/*.html
     const superdocsPrefix = `${dir}/superdocs/`
     const sdocsFromFiles: SuperDocFile[] = []
@@ -191,8 +185,6 @@ export function parseDocs(files: Map<string, string>, state: unknown): LearnStor
       status: meta.status,
       // 旧数据没有这一项：交给 normalizeLearning 收成 undefined，不进内存
       learning: meta.learning,
-      // 复习计划同上（老节点没有；读不出形状的交给 normalizeReviewPlan 收成 undefined，见 learn/review）
-      ...(meta.review ? { review: normalizeReviewPlan(meta.review) } : {}),
       origin: meta.origin,
       goalId: goal.id,
       createdAt: meta.createdAt,
@@ -258,12 +250,11 @@ export function parseDocs(files: Map<string, string>, state: unknown): LearnStor
     favorites: s.favorites ?? null,
     favGroups: s.favGroups ?? null,
     /*
-     * 阅读与打卡现在按目标存在各自目录里（reading.json / checkin.json，见上面）。
+     * 阅读现在按目标存在各自目录里（reading.json，见上面）。
      * state.json 里那两个老字段**故意不读**：这次改口径不迁移数据，旧的那一份直接丢掉。
      * 番茄钟仍旧整份存在 state.json 里（它是用户级的：今天专注了几组与哪门课无关）。
      */
     reading: { byGoal: readingByGoal },
-    checkin: { byGoal: checkinByGoal },
     pomodoro: s.pomodoro ?? null,
     // agent 栏页签原样交给 normalizeLearnStore：对着「目标/会话/子代理会话还活着吗」校验
     agentTabs: s.agentTabs ?? null,

@@ -154,8 +154,6 @@ function* buildDocsSteps(store: LearnStore): Generator<void, Map<string, string>
         dependencies: (deps.get(node.id) ?? []).map((e) => ({ to: e.to, createdAt: e.createdAt })),
         exams: examsOf.get(node.id) ?? [],
         learning: node.learning,
-        // 复习计划跟着节点走（状态首次变 mastered 时系统建的，见 learn/review）；没有就不写这一项
-        ...(node.review ? { review: node.review } : {}),
         // 笔记清单（只有名字与时间，正文在 .notes/ 下的 .md 里）：顺序稳定靠它
         notes: (node.notes ?? []).map((n) => ({
           name: n.name,
@@ -227,8 +225,8 @@ function* buildDocsSteps(store: LearnStore): Generator<void, Map<string, string>
         files.set(`${path}/workflow.json`, jsonText({ version: 1, workflows: goalWorkflows }))
       }
       /**
-       * 有效阅读与打卡也是**目标级**的账（见 learn/reading 的 ReadingBook、
-       * learn/checkin 的 CheckinBook），写在目标目录里、同一条纪律：这个目标没有记录就不写文件。
+       * 有效阅读也是**目标级**的账（见 learn/reading 的 ReadingBook），
+       * 写在目标目录里、同一条纪律：这个目标没有记录就不写文件。
        *
        * 为什么不放 state.json：它们是「这门课学了多久」，与目标同生共死——
        * 删掉目标时那份记录该跟着一起走，而不是在用户账上留一段无主的时长。
@@ -236,10 +234,6 @@ function* buildDocsSteps(store: LearnStore): Generator<void, Map<string, string>
       const goalReading = store.reading?.byGoal?.[goal.id]
       if (goalReading && (goalReading.sessions.length || Object.keys(goalReading.days).length)) {
         files.set(`${path}/reading.json`, jsonText(goalReading))
-      }
-      const goalCheckin = store.checkin?.byGoal?.[goal.id]
-      if (goalCheckin && Object.keys(goalCheckin.days).length) {
-        files.set(`${path}/checkin.json`, jsonText(goalCheckin))
       }
     }
     /**

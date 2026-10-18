@@ -28,7 +28,6 @@ import type {
 } from './types'
 import type { Exam } from './exam'
 import type { Conversation } from '../agent/types'
-import type { CheckinStore } from './checkin'
 import type { DocReading, NodeReading, ReadingStore } from './reading'
 import { readingDocKey, readingOfGoal, withGoalReading } from './reading'
 import { findNote, notesOf } from './notes'
@@ -48,11 +47,10 @@ export type ExplorerUndo =
       nodes: KnowledgeNode[]
       edges: DependencyEdge[]
       exams: Exam[]
-      /** 只在删目标是根时才有：目标本体 + 会话 + 两本账 */
+      /** 只在删目标是根时才有：目标本体 + 会话 + 阅读账 */
       goal?: LearningGoal
       conversations: Conversation[]
       reading?: ReadingStore
-      checkin?: CheckinStore
       tmp: Record<string, Record<string, TmpEntry>>
       /** 单节点删除时才捕获：这个节点在阅读账里的那一片（整本账不能整份放回，见 restoreNodeReadingSlice） */
       readingSlice?: { nodeId: string; rec: NodeReading; sessions: ReadingStore['sessions']; days: string[] }
@@ -89,7 +87,6 @@ export function captureNodeDelete(store: LearnStore, nodeId: string): ExplorerUn
       goal,
       conversations: store.conversations.filter((c) => c.goalId === goal.id),
       reading: store.reading?.byGoal?.[goal.id],
-      checkin: store.checkin?.byGoal?.[goal.id],
       tmp,
     }
   }
@@ -216,19 +213,15 @@ export function applyUndo(store: LearnStore, entry: ExplorerUndo): { store: Lear
     }
     const goal = entry.goal
     if (goal && !s.goals.some((g) => g.id === goal.id)) {
-      // 目标本体也回来了，它挂着的「阅读/打卡两本账」整份放回（目标没了就不会有新写入，见类型说明）
+      // 目标本体也回来了，它挂着的那本阅读账整份放回（目标没了就不会有新写入，见类型说明）
       const reading = entry.reading
         ? { byGoal: { ...(s.reading?.byGoal ?? {}), [entry.goalId]: entry.reading } }
         : s.reading
-      const checkin = entry.checkin
-        ? { byGoal: { ...(s.checkin?.byGoal ?? {}), [entry.goalId]: entry.checkin } }
-        : s.checkin
       s = {
         ...s,
         goals: [...s.goals, goal],
         conversations: [...s.conversations, ...entry.conversations.filter((c) => !s.conversations.some((x) => x.id === c.id))],
         ...(reading !== s.reading ? { reading } : {}),
-        ...(checkin !== s.checkin ? { checkin } : {}),
       }
     }
     const edgeKey = new Set(s.edges.map((e) => e.from + '\u0001' + e.to))

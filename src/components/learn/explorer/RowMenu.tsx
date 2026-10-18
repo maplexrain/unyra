@@ -321,9 +321,6 @@ export function RowMenu({
                   structure={state.structure(target.node.id)}
                   onSetSelf={(self) => state.onSetSelf(target.node.id, self)}
                   onClearMistake={(pattern) => state.onClearMistake(target.node.id, pattern)}
-                  onRecall={() => state.onRecall(target.node.id)}
-                  onProbe={() => state.onProbe(target.node.id)}
-                  busy={state.busy}
                 />
               </div>
             )}

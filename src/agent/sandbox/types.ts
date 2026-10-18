@@ -187,10 +187,6 @@ export interface SandboxOptions {
   reading?: ReadingOps
   /** 注意力评级（attention.get，见 learn/attention）；未注入就没有它 */
   attention?: AttentionOps
-  /** 打卡（checkin.*，见 learn/checkin）；未注入就没有这一组 */
-  checkin?: CheckinOps
-  /** 间隔复习（review.*，见 learn/review）；未注入就没有这一组 */
-  review?: ReviewOps
   /** 工作区目录（workspace.*，见 learn/workspace）；未注入就没有这一组 */
   workspace?: WorkspaceOps
   /** 番茄钟（pomodoro.*，见 learn/pomodoro）；未注入就没有这一组 */
@@ -455,7 +451,7 @@ export type AskAnswers = AskAnswer[]
  * 系统提示词不拼它，agent 需要时必须主动 read，这是需求明确的边界）。
  * 返回普通对象，失败用 { error }（与 res.* 同一约定）。
  */
-/* ---------- reading / attention / checkin / pomodoro：学习过程的那一组 ---------- */
+/* ---------- reading / attention / pomodoro：学习过程的那一组 ---------- */
 
 /**
  * reading.*：文档有效阅读的事实（见 learn/reading）。
@@ -478,40 +474,6 @@ export interface ReadingOps {
 export interface AttentionOps {
   /** 当前节点（或给了 path 的节点）的注意力评级；缺省看整体 */
   get: (path?: string) => unknown
-}
-
-/**
- * checkin.*：打卡（见 learn/checkin）。
- *
- * **没有「直接打卡成功」这个口子**：status 告诉 agent 今天能不能打卡、考什么、门槛多少；
- * 考完由 agent 自己判分，再 settle 说结果。settle 里我们会复核门槛与次数——
- * agent 说「过了」但没到门槛时不算过。出题本身走 ask（见工作流「打卡」）。
- */
-export interface CheckinOps {
-  /** 今天能不能打卡：有效阅读、出题源（今天读到的节）、还剩几次机会、建议题数与门槛 */
-  status: () => unknown
-  /** 记一次结果（correct/total/threshold/passed/note）：通过则打卡完成 */
-  settle: (input: Record<string, unknown>) => unknown
-}
-
-/**
- * review.*：间隔复习（见 learn/review）。
- *
- * **计划是系统建的**（节点首次变「已掌握」时）：agent 只读它、按阶段带用户复习、落账。
- * 完成不复核对错——record 里 complete 由你判「交互做完了吗」，答错只进错误记忆不惩罚。
- * 合并复习必须先经 ask 征得用户同意再调 merge（强相关才提议）。
- */
-export interface ReviewOps {
-  /** 当前节点（或 path）的复习计划：到期阶段、下次到期、合并组成员、可合并候选、历次记录 */
-  read: (path?: string) => unknown
-  /** 落一次复习的账：完成阶段 / 补充任务（extraId）、记错法（mistakes）、标修复（fixed）、修掌握度 */
-  record: (input: Record<string, unknown>) => unknown
-  /** 合并复习组（nodeIds 含当前节点）：各节点需处于同一阶段；合并后整组一起复习、各自落账 */
-  merge: (input: Record<string, unknown>) => unknown
-  /** 针对薄弱点追加一条补充复习（focus + days，缺省 3 天后到期） */
-  extend: (input: Record<string, unknown>) => unknown
-  /** 调整计划：action 'postpone'（顺延到期日）/ 'split'（退出合并组） */
-  adjust: (input: Record<string, unknown>) => unknown
 }
 
 /**

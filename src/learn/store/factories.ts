@@ -111,7 +111,6 @@ export function mergeLearnStore(base: LearnStore, incoming: LearnStore): LearnSt
     methods: base.methods,
     workflows: base.workflows,
     reading: base.reading,
-    checkin: base.checkin,
     pomodoro: base.pomodoro,
     // agent 栏的页签同样是「这台机器上开着什么」：不跟着别人的备份走（与 docArea 同一条道理）
     agentTabs: base.agentTabs,

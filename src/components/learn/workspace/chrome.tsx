@@ -62,16 +62,10 @@ export function Topbar({
   onOpenNotice,
   onToast: _onToast,
   pomodoro,
-  checkin,
-  review,
   reading,
 }: {
   /** 番茄钟入口（墙上时钟 + 进度条 + 倒计时，见下面的 PomodoroDock） */
   pomodoro: ReactNode
-  /** 打卡入口（今天的状态 + 日历 tip，见下面的 CheckinDock） */
-  checkin: ReactNode
-  /** 复习入口（到期清单 + 未来两周 + 补建，见下面的 ReviewDock） */
-  review: ReactNode
   /** 有效阅读入口（今天读了多久 + 节点清单 + 近七天，见下面的 ReadingDock） */
   reading: ReactNode
   /** **当前文档指向的那个节点**（本地文件页签、或一个页签都没有时为 null） */
@@ -201,13 +195,11 @@ export function Topbar({
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         {/* 更新入口：只有新版本**下载完成**之后它才存在，见 components/update/UpdateButton */}
         <UpdateButton onOpenUpdate={onOpenUpdate} />
-        {/* 四个入口都是「我今天的节奏」，与账号那一簇同属右侧。
+        {/* 两个入口都是「我今天的节奏」，与账号那一簇同属右侧。
             番茄钟排在最前：它是唯一一个「开始之后不看也要一直在跑」的东西，
             固定在最左边，开关它的时候手指不必每次都去找位置 */}
         {pomodoro}
         {reading}
-        {checkin}
-        {review}
         <UserMenu
           user={user}
           onOpenUser={onOpenUser}

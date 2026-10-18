@@ -49,22 +49,18 @@ const store = (workflows?: LearnStore['workflows']): LearnStore => ({
 })
 
 describe('内置工作流', () => {
-  it('十四个内置都在：开讲、学习大纲、生成大纲、回忆、探针、出卷、阅卷、了解、超级实验室、伪编译、压缩上下文、打卡、复习、浏览器操作', () => {
+  it('十个内置都在：开讲、学习大纲、生成大纲、出卷、阅卷、了解、超级实验室、伪编译、压缩上下文、浏览器操作', () => {
     const rows = builtinWorkflowRows()
     expect(rows.map((r) => r.id)).toEqual([
       'teach-node',
       'goal-outline',
       'outline',
-      'recall',
-      'probe',
       'exam',
       'exam-grade',
       'explain',
       'superlab',
       'code-compile',
       'compact',
-      'checkin',
-      'review',
       'browser-use',
     ])
     for (const r of rows) {
@@ -73,9 +69,11 @@ describe('内置工作流', () => {
     }
     // 浏览器操作是看图干活的快流程：推荐档钉在 low（用户仍可在设置里覆盖）
     expect(BUILTIN_EFFORT['browser-use']).toBe('low')
+    // 压缩上下文是摘录式改写，不需要额外推理：推荐档钉在 none
+    expect(BUILTIN_EFFORT['compact']).toBe('none')
   })
 
-  it('问询类（开讲/出卷/超级实验室/打卡）触发前响铃切主位；阅卷不能从列表直接跑', () => {
+  it('问询类（开讲/出卷/超级实验室）触发前响铃；阅卷不能从列表直接跑', () => {
     const rows = builtinWorkflowRows()
     const byId = new Map(rows.map((r) => [r.id, r]))
     // 第一步是「用 api.ask 问用户」的，都要 prep: 'ask'——表单压在输入框上方，
@@ -88,11 +86,6 @@ describe('内置工作流', () => {
     expect(byId.get('exam')?.params).toBeUndefined()
     // 阅卷必须先有人交卷：从列表里空跑只会得到「没有需要讲解的考试」
     expect(byId.get('exam-grade')?.runnable).toBe(false)
-    // 复习的 titles / stage / focus 只有顶栏的复习面板知道（到期阶段与合并组），列表里不开放
-    expect(byId.get('review')?.runnable).toBe(false)
-    expect(byId.get('review')?.prep).toBe('ask')
-    expect(byId.get('review')?.params).toEqual(['titles', 'stage', 'focus'])
-    expect(byId.get('recall')?.params).toContain('title')
     // 伪编译由代码块菜单触发（代码、语言、key 都是它给的），列表里没有可跑的入口；
     // 它的交付物在对话里，所以是 'show'——**响铃但不切主位**
     expect(byId.get('code-compile')?.runnable).toBe(false)
@@ -105,7 +98,7 @@ describe('内置工作流', () => {
     expect(workflowPrep('ask')).toEqual({ beep: true })
     // 'show'（伪编译 / 了解）：交付物就在他盯着的地方，响一声让他知道结果在对话里
     expect(workflowPrep('show')).toEqual({ beep: true })
-    // 没有 prep 的（回忆 / 探针 / 大纲 / 压缩 / 阅卷）：连铃都不响——那是用户自己点出来的
+    // 没有 prep 的（大纲 / 压缩 / 阅卷 / 浏览器操作）：连铃都不响——那是用户自己点出来的
     expect(workflowPrep(undefined)).toEqual({ beep: false })
     // 内置表里对得上：会响铃的就是带 prep 的那几条
     const beeping = builtinWorkflowRows()
@@ -118,8 +111,6 @@ describe('内置工作流', () => {
       'explain',
       'superlab',
       'code-compile',
-      'checkin',
-      'review',
     ])
     // 切主位那一条规矩随 api.ui.switchMain 一起撤了：谁都不许动用户的主栏
     expect(builtinWorkflowRows().some((r) => 'takeMain' in workflowPrep(r.prep))).toBe(false)
@@ -317,15 +308,15 @@ describe('思考档位（三态配置）', () => {
     expect(created.ok).toBe(true)
     if (!created.ok) return
     // 内置也能配，列表行上立刻看得见
-    const withBuiltin = setWorkflowEffort(created.store, 'probe', 'max')
-    expect(withBuiltin.workflows?.efforts?.probe).toBe('max')
-    expect(listWorkflowRows(withBuiltin, null).find((x) => x.id === 'probe')?.effort).toBe('max')
+    const withBuiltin = setWorkflowEffort(created.store, 'explain', 'max')
+    expect(withBuiltin.workflows?.efforts?.explain).toBe('max')
+    expect(listWorkflowRows(withBuiltin, null).find((x) => x.id === 'explain')?.effort).toBe('max')
     // 登记的配了再删，键不残留（留键成幽灵）
     const withCustom = setWorkflowEffort(withBuiltin, created.entry.id, 'low')
     expect(withCustom.workflows?.efforts?.[created.entry.id]).toBe('low')
     const removed = removeWorkflow(withCustom, created.entry.id)
     expect(removed.workflows?.efforts?.[created.entry.id]).toBeUndefined()
-    expect(removed.workflows?.efforts?.probe).toBe('max')
+    expect(removed.workflows?.efforts?.explain).toBe('max')
     // 未知 id / 空 id：原样返回（同一引用，没有假动作）
     expect(setWorkflowEffort(withBuiltin, 'wf_notexist', 'low')).toBe(withBuiltin)
     expect(setWorkflowEffort(withBuiltin, '', 'low')).toBe(withBuiltin)
@@ -363,7 +354,7 @@ describe('思考档位（三态配置）', () => {
       expect(workflowModules(row!).map((m) => m.key), id).toEqual(['doc-html'])
     }
     // 其余内置条目照旧：没配 promptModule 也没有 prompt 的就是空
-    const probe = rows.find((r) => r.id === 'probe')!
-    expect(workflowModules(probe)).toEqual([])
+    const outline = rows.find((r) => r.id === 'outline')!
+    expect(workflowModules(outline)).toEqual([])
   })
 })

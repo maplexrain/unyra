@@ -73,7 +73,7 @@ export const SANDBOX_API_CATALOG: ApiGroup[] = [
     label: '工作流触发 · wf',
     intro:
       '三级任务模板的触发调用（工作流的定义与修改已统一收敛为 files.* 读写 workflows/:name.json）。' +
-      '导师用 wf.invoke 交活（多为出卷、复习等独占流程），instruction 作为一条 user 消息整段进入上下文。',
+      '导师用 wf.invoke 交活（多为出卷等独占流程），instruction 作为一条 user 消息整段进入上下文。',
     items: [
       { name: 'wf.list', signature: 'wf.list(opts?)', summary: '列出所有可用工作流（内置/全局/目标级）的名称与简短描述（默认 brief 模式节约上下文；传 { full: true } 含完整指令）', availability: 'always' },
       { name: 'wf.get', signature: 'wf.get(idOrName)', summary: '获取指定工作流的完整定义与执行指令模板（含参数占位符）', availability: 'always' },

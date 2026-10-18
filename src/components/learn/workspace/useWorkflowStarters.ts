@@ -1,6 +1,6 @@
 /*
  * 这个文件负责：一切「把一件事交给导师的工作流去跑」的启动按钮——
- * 出卷、补判分、主动回忆、探针、超级实验室、打卡，以及设置里工作流列表的
+ * 出卷、补判分、超级实验室、浏览器操作、大纲，以及设置里工作流列表的
  * 直接运行 / 删除、代码块菜单的「伪编译」登记。外加学习状态里两个纯本地的小动作
  * （改自评、删错误记忆），它们与工作流共享「作用于哪个节点」的同一套收参口径：
  * 可省的 nodeId 一律「省 = 当前节点，指名 = 右键的那一个」。
@@ -12,17 +12,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { KnowledgeNode, LearnStore, SelfReport, WorkflowEffortSetting } from '../../../learn/types'
 import { SELF_REPORT_LABEL } from '../../../learn/types'
-import { checkinEligible, checkinOfGoal } from '../../../learn/checkin'
-import { readingOfGoal } from '../../../learn/reading'
-import {
-  dueExtraOf,
-  dueStageOf,
-  ensureReviewPlan,
-  REVIEW_STAGE_GOAL,
-  REVIEW_STAGE_LABEL,
-  reviewGroupOf,
-} from '../../../learn/review'
-import { requestReadingSettle } from '../../../lib/readingPulse'
 import { nodeById, updateLearning } from '../../../learn/graph'
 import { listWorkflowRows, removeWorkflow, setWorkflowEffort, type WorkflowRow } from '../../../learn/workflows'
 import { setCodeHost, type CodeCompileRequest } from '../../../lib/docHost'
@@ -70,38 +59,6 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     store,
     setCreating,
   } = deps
-
-  /**
-   * 打卡：先在这里判一次资格，再把「出题 → 判分 → 记录」交给导师（见工作流「打卡」）。
-   *
-   * 为什么先判：资格不够时跑一轮 AI 是纯浪费（还可能被它安慰式放行）。
-   * 但最终把关仍在 checkin.settle——门槛与次数由 learn/checkin 复核。
-   */
-  const startCheckin = useCallback((nodeId?: string) => {
-    // 先把这一场结掉：门槛复核读的是 store，而它每 30 秒才更新一次。
-    // 不结的话会出现「顶栏说读够了，点下去说还差 20 秒」这种最恼人的不一致。
-    requestReadingSettle()
-    const s = getLatest()
-    // 指名的节点（keepalive 的页签面板各自绑自己的落点）决定目标归属；缺省 = 当前节点
-    const named = nodeId ? nodeById(s, nodeId) : null
-    const goalId = named?.goalId ?? s.activeGoalId ?? ''
-    // 打卡是按**目标**的账（见 learn/checkin 的 CheckinBook）：判资格只读这一目标那一本
-    const e = checkinEligible(readingOfGoal(s.reading, goalId), checkinOfGoal(s.checkin, goalId), {
-      titleOf: (id) => nodeById(s, id)?.title,
-    })
-    if (!e.ok) {
-      onToast(e.reason ?? t('现在还打不了卡'))
-      return
-    }
-    if (!hasKey) {
-      onToast(t('打卡要出题，请先在设置中填写「{0}」的 API Key', providerName))
-      onOpenSettings()
-      return
-    }
-    const nid = named?.id ?? activeNodeId ?? activeGoal?.rootNodeId ?? null
-    if (!nid) return
-    agent.runWorkflow('checkin', { nodeId: nid })
-  }, [activeGoal, activeNodeId, agent, getLatest, hasKey, onToast, onOpenSettings, providerName])
 
   /** 浏览器操作：交给导师用内置浏览器代办（看=截图、输入=模拟鼠标键盘），低档推理走快流程 */
   const startBrowserUse = useCallback((nodeId?: string) => {
@@ -158,58 +115,6 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     agent.runWorkflow('exam-grade', { nodeId: target.id })
   }
 
-  /**
-   * 复习：按到期阶段启动内置工作流「复习」（计划是系统建的，见 learn/review）。
-   *
-   * 这里只算「现在该复习哪一档」：到期阶段取**最晚**的那一档（拖了几天没来就按当前窗口复习，
-   * 更早的由 record 自动并入），没有到期阶段就看补充复习。合并组把整组标题交给导师——
-   * 成员各自落账靠 review.record 的 node 参数，与工作流指令的约定一致。
-   */
-  const startReview = (nodeId?: string) => {
-    const s = getLatest()
-    const target = nodeId ? nodeById(s, nodeId) : activeNode
-    if (!target) return
-    if (!hasKey) {
-      onToast(t('复习需要 AI，请先在设置中填写「{0}」的 API Key', providerName))
-      onOpenSettings()
-      return
-    }
-    const now = Date.now()
-    const plan = target.review
-    const due = plan ? dueStageOf(plan, now) : null
-    const extra = plan ? dueExtraOf(plan, now) : null
-    if (!due && !extra) {
-      onToast(t('「{0}」现在没有到期的复习', target.title))
-      return
-    }
-    const memberIds = plan?.groupId ? reviewGroupOf(s, target.id) : [target.id]
-    const titles = memberIds.map((id) => nodeById(s, id)?.title ?? id).join('、')
-    const stage = due ? REVIEW_STAGE_LABEL[due.stage] : '补充复习'
-    const focus = due ? REVIEW_STAGE_GOAL[due.stage] : (extra?.focus ?? '')
-    agent.runWorkflow('review', { nodeId: target.id, params: { titles, stage, focus } })
-    onToast(t('已开始「{0}」的复习，导师在对话框等你', target.title))
-  }
-
-  /**
-   * 给较早创建、还没计划的已掌握节点补一份复习计划（复习面板上的「补建计划」）。
-   * 计划本来就是系统建的（确定性动作），这里也不走导师。
-   */
-  const backfillReviewPlan = (nodeId: string) => {
-    const s = getLatest()
-    const target = nodeById(s, nodeId)
-    if (!target) return
-    if (target.status !== 'mastered') {
-      onToast(t('「{0}」还没到「已掌握」，先把它学完', target.title))
-      return
-    }
-    if (target.review) {
-      onToast(t('「{0}」已经有复习计划了', target.title))
-      return
-    }
-    set(ensureReviewPlan(s, nodeId, Date.now()))
-    onToast(t('已为「{0}」建好复习计划（+1/+3/+7/+14/+30 天）', target.title))
-  }
-
   /* ---------- 学习状态（自评 / 掌握度 / 错误记忆 / 检验） ---------- */
 
   /**
@@ -229,37 +134,6 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     const node = nodeById(getLatest(), nodeId)
     const kept = (node?.learning?.mistakes ?? []).filter((m) => m.pattern !== pattern)
     set(updateLearning(getLatest(), nodeId, { mistakes: kept }))
-  }
-
-  /**
-   * 主动回忆：合上文档，用自己的话讲一遍（内置工作流「回忆」，指令见 learn/workflows）。
-   *
-   * 指令里特意点明「这一轮不许先复述文档」——不写这句，模型很容易顺手把刚讲过的内容
-   * 再列一遍，那就不叫回忆了。
-   */
-  const startRecall = (nodeId?: string) => {
-    const target = nodeId ? nodeById(getLatest(), nodeId) : activeNode
-    if (!target) return
-    if (!hasKey) {
-      onToast(t('主动回忆需要超级导师，请先在设置中填写「{0}」的 API Key', providerName))
-      onOpenSettings()
-      return
-    }
-    agent.runWorkflow('recall', { nodeId: target.id, params: { title: target.title } })
-    onToast(t('已请导师带你做一次回忆，回复见右侧对话框'))
-  }
-
-  /** 探个针：不信自评，用一两个极短的问题当场验证（内置工作流「探针」，见 design 文档第五节） */
-  const startProbe = (nodeId?: string) => {
-    const target = nodeId ? nodeById(getLatest(), nodeId) : activeNode
-    if (!target) return
-    if (!hasKey) {
-      onToast(t('探针需要超级导师，请先在设置中填写「{0}」的 API Key', providerName))
-      onOpenSettings()
-      return
-    }
-    agent.runWorkflow('probe', { nodeId: target.id })
-    onToast(t('已请导师出一道探针题，回复见右侧对话框'))
   }
 
   /**
@@ -347,7 +221,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
 
   /**
    * 工作流列表（超级导师设置 → 工作流）：三级并成一张，当前目标裁剪。
-   * 从列表直接跑的入口也在这里：按当前节点补齐占位参数（回忆/探针的 title）。
+   * 从列表直接跑的入口也在这里：内置条目里能直接从列表跑的都不带占位参数。
    */
   const workflowRows = useMemo(() => listWorkflowRows(store, activeGoalId), [store, activeGoalId])
   const runWorkflowRow = (row: WorkflowRow) => {
@@ -360,9 +234,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
       onToast(t('先选一个知识点：工作流要在它的上下文里跑'))
       return
     }
-    const params =
-      row.params && row.params.includes('title') ? { title: activeNode.title } : undefined
-    agent.runWorkflow(row.id, { nodeId: activeNode.id, params })
+    agent.runWorkflow(row.id, { nodeId: activeNode.id })
     onToast(t('已启动「{0}」', t(row.name)))
   }
   /** 设置里的删除（FlowTab 先弹过确认框）：只删登记的，内置的到不了这里 */
@@ -376,15 +248,10 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
   }
 
   return {
-    startCheckin,
-    startReview,
-    backfillReviewPlan,
     newExam,
     requestGrading,
     setSelfReport,
     clearMistake,
-    startRecall,
-    startProbe,
     startSuperLab,
     startBrowserUse,
     startOutline,

@@ -97,7 +97,7 @@ CPU profile 侧的印证（按出现在采样栈里的时间算，彼此有重�
 | `commitPassiveMountOnFiber`（useEffect 冲刷） | 134.0ms | 2.6% |
 
 被反复重渲的是**整棵工作区树**：侧栏每个节点（`NodeRow`）、页签栏（`TabBar`）、
-正文、对话栏（`MessageBubble` 那一列）、四组 dock（番茄钟 / 阅读 / 打卡 / 复习）。
+正文、对话栏（`MessageBubble` 那一列）、两组 dock（番茄钟 / 阅读）。
 按渲染次数排前几的是 `NodeRowComponent`、`TabBar`、`LearnWorkspace`、
 `ProcessGroup`、`StatusBranch`、`ExplorerSidebarComponent`、`RollingDigits`、`Composer`。
 

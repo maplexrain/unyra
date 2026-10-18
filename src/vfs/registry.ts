@@ -30,7 +30,7 @@ export const FILE_ENTITIES: FileEntityDef[] = [
     category: 'data',
     format: 'json',
     title: '知识点元数据与学习状态',
-    description: '包含知识点 ID、层级依赖、掌握度评估、错题记录以及复习计划。',
+    description: '包含知识点 ID、层级依赖、掌握度评估与错题记录。',
     typeDefinition: `{
   version: number,
   id: string,
@@ -275,27 +275,7 @@ export const FILE_ENTITIES: FileEntityDef[] = [
     description: '记录当前目标下各知识点与小节的有效阅读时长、视口到达比例（reach ≥ 0.6）与阅读会话明细。',
     defaultValue: () => ({ sessions: [], sections: {} }),
   },
-  // 14. 间隔复习计划与记录
-  {
-    id: 'review-plan',
-    pattern: 'docs/:goal/stats/review.json',
-    category: 'data',
-    format: 'json',
-    title: '艾宾浩斯间隔复习计划与账本',
-    description: '记录各知识点的到期复习阶段（+1/+3/+7/+14/+30）、薄弱点记录与完成历史。',
-    defaultValue: () => ({ plans: {}, history: [] }),
-  },
-  // 15. 打卡资格与历史记录
-  {
-    id: 'checkin-records',
-    pattern: 'docs/:goal/stats/checkin.json',
-    category: 'data',
-    format: 'json',
-    title: '学习打卡资格与历次结算记录',
-    description: '记录每日有效阅读门槛达成情况、已出题源与连续打卡天数。',
-    defaultValue: () => ({ date: '', passed: false, streak: 0, attempts: [] }),
-  },
-  // 16. 正文划词注解清单
+  // 14. 正文划词注解清单
   {
     id: 'node-annotations',
     pattern: 'docs/:path*/annotations.json',

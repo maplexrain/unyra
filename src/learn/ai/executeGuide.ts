@@ -98,7 +98,6 @@ export const EXECUTE_GUIDE = `唯一的工具是 execute(description, body)：
 - 目标工作流规程: docs/:goal/workflow.json（数据文件，JSON 对象: { workflows: [...] }，触发调 api.wf.invoke(id或名字, params)）
 - 目标临时变量: docs/:goal/tmp.json（数据文件，JSON 对象: { version: 1, entries: Record<string, { key, value }> }）
 - 阅读事实账本: docs/:goal/reading.json（数据文件，记录各章节有效阅读时长与到达率）
-- 打卡记录数据: docs/:goal/checkin.json（数据文件，记录每日打卡与连续天数）
 - 划词注解列表: docs/:goal/.../annotations.json（数据文件，JSON 数组: Array<{ term, occurrence?, body }>）
 - 学习者画像: user.yaml（配置文件，记录水平与背景偏好，files.read("user.yaml") 读取）
 - 界面状态数据: state.json（数据文件，记录活跃视图与页签状态，files.read("state.json") 读取）

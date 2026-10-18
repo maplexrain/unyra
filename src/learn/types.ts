@@ -1,6 +1,5 @@
 import type { Conversation } from '../agent/types'
 import type { ReasoningEffort } from '../ai/types'
-import type { CheckinBook } from './checkin'
 import type { Drafts } from './drafts'
 import type { Exam } from './exam'
 import type { DocWorkspace } from './groups'
@@ -369,51 +368,6 @@ export interface Annotation {
   occurrence?: number
 }
 
-/** 复习阶段：默认间隔的档位（+1/+3/+7/+14/+30 天）。是默认计划，不是绝对规则 */
-export type ReviewStage = 'd1' | 'd3' | 'd7' | 'd14' | 'd30'
-
-/** 一次阶段复习的紧凑记录（每档只留最近几条）：数量级为主，细节在检验时间线与错误记忆里 */
-export interface ReviewStageHistoryEntry {
-  at: number
-  /** 这一阶段问了几个点 */
-  items: number
-  /** 其中没答上 / 答错的几个 */
-  missed: number
-  note?: string
-}
-
-export interface ReviewStageState {
-  stage: ReviewStage
-  /** 计划到期时刻（学习完成日 + 默认间隔） */
-  dueAt: number
-  /** 完成时刻；没完成就没有。**到了期没做也保持待复习**——不自动顺延 */
-  doneAt?: number
-  /** 跳过并入：完成更靠后的阶段时，此前未完成的阶段记上它（不做三次补课） */
-  mergedInto?: ReviewStage
-  history?: ReviewStageHistoryEntry[]
-}
-
-export interface ReviewExtraTask {
-  id: string
-  /** 针对哪个薄弱点（一句话，说法与错误记忆对齐） */
-  focus: string
-  dueAt: number
-  doneAt?: number
-  note?: string
-}
-
-/**
- * 一个节点的复习计划（逻辑与常量见 learn/review）。
- * 节点状态**首次**变为「已掌握」时由系统自动创建；老节点没有，复习面板上可手动补建。
- * groupId 是「合并复习组」的标记：强相关的节点经导师问过用户后合到一起复习。
- */
-export interface ReviewPlan {
-  createdAt: number
-  stages: ReviewStageState[]
-  groupId?: string
-  extra?: ReviewExtraTask[]
-}
-
 export interface KnowledgeNode {
   id: string
   title: string
@@ -448,8 +402,6 @@ export interface KnowledgeNode {
   status: MasteryStatus
   /** 学习状态（自评 / 掌握度 / 错误记忆 / 检验记录 / 学习行为）；没评估过就没有这一项 */
   learning?: LearningState
-  /** 复习计划（见 learn/review）：状态首次变 mastered 时系统自动建；没有就是「还没有计划」 */
-  review?: ReviewPlan
   origin: 'ai' | 'user'
   goalId: string
   createdAt: number
@@ -696,13 +648,11 @@ export interface LearnStore {
   /**
    * 文档有效阅读记录（见 learn/reading），**按目标分开**：目标 id → 那个目标的账。
    *
-   * 它是学习计划、注意力评级（learn/attention）与打卡（learn/checkin）共同的事实底座。
+   * 它是学习计划与注意力评级（learn/attention）共同的事实底座。
    * 分目标是因为「今天读了两小时」这句话必须属于某一门课才有意义（见 ReadingBook 的说明）；
    * 落盘在各自的目标目录（`{目标}/reading.json`），不再进 state.json。
    */
   reading?: ReadingBook
-  /** 打卡账本（见 learn/checkin），**按目标分开**：目标 id → 那个目标的账 */
-  checkin?: CheckinBook
   /** 番茄钟（见 learn/pomodoro）：正在跑的那一段 + 跑完的专注记录。可选，理由同上 */
   pomodoro?: PomodoroStore
   /**

@@ -5,7 +5,6 @@ import { STATUSES } from '../factories'
 import { normalizeAnnotationStyle } from '../../../lib/annotationStyle'
 import { normalizeLearning } from '../../learning'
 import { normalizeOutline } from '../../outline'
-import { normalizeReviewPlan } from '../../review'
 import { uniqueNoteName } from '../../notes'
 import { uniqueSuperDocName } from '../../superdocs'
 import { normalizeTint } from '../../../components/learn/outline/mindmapTint'
@@ -125,8 +124,6 @@ export function normalizeNode(raw: unknown): KnowledgeNode | null {
   const learning = normalizeLearning(r.learning)
   // 大纲同理：形状读不出来就当「还没有」（老数据没有这一项），交互页按没有处理
   const outline = normalizeOutline(r.outline)
-  // 复习计划同上（见 learn/review）
-  const review = normalizeReviewPlan(r.review)
   // 思维导图上的自定义色：只认调色板里那几个名字，认不出来的当「没改过」
   const tint = normalizeTint(r.tint)
   return {
@@ -142,7 +139,6 @@ export function normalizeNode(raw: unknown): KnowledgeNode | null {
     ...(tint ? { tint } : {}),
     status: toStatus(r.status),
     ...(learning ? { learning } : {}),
-    ...(review ? { review } : {}),
     origin: r.origin === 'ai' ? 'ai' : 'user',
     goalId: typeof r.goalId === 'string' ? r.goalId : '',
     createdAt: typeof r.createdAt === 'number' ? r.createdAt : now,

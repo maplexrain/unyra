@@ -43,9 +43,7 @@ export interface ComposerUiProps {
   conversation: Conversation | null
   onSelectConversation: (id: string) => void
   onDeleteConversation: (id: string) => void
-  onRecall: () => void
   onSuperLab: () => void
-  onCheckin: () => void
   /** 更多 → 工作流 → 浏览器操作：替用户驱动内置浏览器完成任务 */
   onBrowserUse: () => void
   onCompact: () => void
@@ -86,9 +84,7 @@ export function ComposerUi(props: ComposerUiProps): ReactNode {
     onNewConversation,
     onSelectConversation,
     onDeleteConversation,
-    onRecall,
     onSuperLab,
-    onCheckin,
     onBrowserUse,
     onCompact,
     onOpenAgentSettings,
@@ -114,9 +110,7 @@ export function ComposerUi(props: ComposerUiProps): ReactNode {
     onNewConversation,
     onSelectConversation,
     onDeleteConversation,
-    onRecall,
     onSuperLab,
-    onCheckin,
     onBrowserUse,
     onCompact,
     onOpenAgentSettings,

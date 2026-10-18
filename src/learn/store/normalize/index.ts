@@ -19,7 +19,6 @@ import { normalizeAgentTabs } from '../../agentTabs'
 import { normalizeDrafts } from '../../drafts'
 import { BUILTIN_WORKFLOW_IDS, normalizeWorkflowEfforts, normalizeWorkflowEntries } from '../../workflows'
 import { normalizeReadingBook } from '../../reading'
-import { normalizeCheckinBook } from '../../checkin'
 import { normalizePomodoro } from '../../pomodoro'
 import { normalizeResourceList, retargetStaticRefs, type StaticResource } from '../../static'
 import { normalizeTmpStore, pruneTmpToNodes } from '../../../lib/tmpStore'
@@ -280,11 +279,10 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
        * nodeId 索引的记录就成了空索引——今日阅读面板里一行 uuid、点不动的条目就是这么来的。
        * 放在这里做还能顺手清掉以前删节点时留下的旧空索引（读盘是唯一一次全量过手的机会）。
        *
-       * 阅读与打卡是**按目标**的账本（见 learn/reading 的 ReadingBook）：逐本过一遍，
+       * 阅读是**按目标**的账本（见 learn/reading 的 ReadingBook）：逐本过一遍，
        * 目标已经不在的那些直接丢掉——那是它的账，目标没了账就该跟着没。
        */
       reading: normalizeReadingBook(d.reading, ids, goalIds),
-      checkin: normalizeCheckinBook(d.checkin, goalIds),
       pomodoro: normalizePomodoro(d.pomodoro),
       activeGoalId,
       activeNodeId: nextActiveNodeId,

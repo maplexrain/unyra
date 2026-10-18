@@ -1,7 +1,7 @@
 /**
  * 这个文件负责什么：**沙箱里能调到的全部 api 的定义**。buildApi 把 SandboxOptions 上的宿主能力
  * 逐个包成 api 方法（doc / node / state / tmp / exam / mind / method / sdoc / wf / code /
- * reading / attention / checkin / pomodoro / compact / web / userInfo / wait / ask /
+ * reading / attention / pomodoro / compact / web / userInfo / wait / ask /
  * tiktok / ui / res），wrapApi 负责记账与失败判定；每个 api 都是调用时才读 opts，不持有快照。
  */
 import { needleForDoc } from '../../lib/docDom'
@@ -566,7 +566,7 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
     wrapApi(api, 'code.silent', (args) => code.silent(asRecord(args[0])), log)
   }
 
-  // 有效阅读 / 注意力 / 打卡 / 番茄钟：学习过程那一组（见 learn/reading 等）
+  // 有效阅读 / 注意力 / 番茄钟：学习过程那一组（见 learn/reading 等）
   if (opts.reading) {
     const reading = opts.reading
     wrapApi(api, 'reading.get', (args) => reading.get(asOptionalPath(args[0])), log)
@@ -576,20 +576,6 @@ export function buildApi(opts: SandboxOptions, log: SandboxCall[]): BuiltApi {  
   if (opts.attention) {
     const attention = opts.attention
     wrapApi(api, 'attention.get', (args) => attention.get(asOptionalPath(args[0])), log)
-  }
-  if (opts.checkin) {
-    const checkin = opts.checkin
-    wrapApi(api, 'checkin.status', () => checkin.status(), log)
-    wrapApi(api, 'checkin.settle', (args) => checkin.settle(asRecord(args[0])), log)
-  }
-  // 间隔复习：计划是系统建的（节点首次变 mastered），这里只有读计划 / 落账 / 经用户同意的调整
-  if (opts.review) {
-    const review = opts.review
-    wrapApi(api, 'review.read', (args) => review.read(asOptionalPath(args[0])), log)
-    wrapApi(api, 'review.record', (args) => review.record(asRecord(args[0])), log)
-    wrapApi(api, 'review.merge', (args) => review.merge(asRecord(args[0])), log)
-    wrapApi(api, 'review.extend', (args) => review.extend(asRecord(args[0])), log)
-    wrapApi(api, 'review.adjust', (args) => review.adjust(asRecord(args[0])), log)
   }
   if (opts.pomodoro) {
     const pomodoro = opts.pomodoro

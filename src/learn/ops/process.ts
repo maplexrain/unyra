@@ -1,11 +1,11 @@
 /**
- * 学习过程那一组 ops 的宿主实现：阅读事实、注意力、打卡、上下文压缩、番茄钟。
+ * 学习过程那一组 ops 的宿主实现：阅读事实、注意力、上下文压缩、番茄钟。
  *
  * 从 learn/agentOps 拆出来（见 docs/refactor-plan.md 3.5）：它们都是「读事实 / 写账本」的
  * 纯 store 逻辑，与文档、资源那几组没有耦合，所以合成一处。
  */
 
-import type { AttentionOps, CheckinOps, CompactOps, PomodoroOps, ReadingOps } from '../../agent/tools'
+import type { AttentionOps, CompactOps, PomodoroOps, ReadingOps } from '../../agent/tools'
 import type { AgentOpsDeps } from './deps'
 import type { LearnStore } from '../types'
 import { nodeById } from '../graph'
@@ -22,21 +22,10 @@ import {
   type SectionRead,
 } from '../reading'
 import { ATTENTION_LABEL, attentionOf } from '../attention'
-import {
-  DEFAULT_RATIO,
-  MAX_ATTEMPTS,
-  applyCheckinAttempt,
-  checkinDay,
-  checkinEligible,
-  checkinOfGoal,
-  emptyCheckin,
-  streakOf,
-  withGoalCheckin,
-} from '../checkin'
 import { buildSummary } from '../compact'
 import { formatClock, pomodoroDays, pomodoroStatus, restMsOf } from '../pomodoro'
 
-/* ---------- reading / attention / checkin / pomodoro：学习过程那一组 ---------- */
+/* ---------- reading / attention / pomodoro：学习过程那一组 ---------- */
 
 /** 回给模型的时间：ISO 前 16 位够读，也不用它解析毫秒 */
 const stampOf = (ts: number): string => new Date(ts).toISOString().slice(0, 16).replace('T', ' ')
@@ -193,96 +182,6 @@ export function createAttentionOps(deps: AgentOpsDeps): AttentionOps {
 const titleOf2 = (store: LearnStore, nodeId: string): string => nodeById(store, nodeId)?.title ?? nodeId
 
 /**
- * checkin.*：打卡。
- *
- * **没有「直接打卡成功」的口子**：status 给资格与题源，settle 记结果；
- * 出题与判分由 agent 用 ask 做（见工作流「打卡」）。门槛与次数在这里复核——
- * agent 说过了但没到门槛时不算过，理由原样回给它。
- */
-export function createCheckinOps(deps: AgentOpsDeps): CheckinOps {
-  const titleOf = (nodeId: string): string | undefined => nodeById(deps.getLatest(), nodeId)?.title
-  return {
-    status: () => {
-      const store = deps.getLatest()
-      const now = Date.now()
-      // 打卡按目标分开（见 learn/checkin 的 CheckinBook）：status 说的是**当前目标**这一本
-      const checkin = checkinOfGoal(store.checkin, deps.goalId())
-      const e = checkinEligible(readingOfGoal(store.reading, deps.goalId()), checkin, { now, titleOf })
-      const streak = streakOf(checkin, now)
-      return {
-        eligible: e.ok,
-        reason: e.reason ?? null,
-        day: e.day,
-        activeMinutes: minutesOf(e.activeMs),
-        requiredMinutes: minutesOf(e.requiredMs),
-        chancesLeft: e.chancesLeft,
-        alreadyPassed: !!checkinDay(checkin, e.day)?.passed,
-        streak: { current: streak.current, best: streak.best },
-        suggestQuestions: e.suggestQuestions,
-        suggestThreshold: e.suggestThreshold,
-        sources: e.sources.map((s) => ({
-          nodeId: s.nodeId,
-          node: s.title,
-          doc: s.doc,
-          section: s.text,
-          minutes: minutesOf(s.ms),
-          reach: s.reach,
-        })),
-        note:
-          '这是**当前目标**的打卡账（每个学习目标各有一条连续天数与一道门槛）。' +
-          '题目只能出在 sources（今天真正读到的节）上；题数用 suggestQuestions，' +
-          '通过线用 suggestThreshold。出题走 api.ask，答完自己判分再 checkin.settle。' +
-          '另外：这个目标的试卷**第一次考试**就达到及格线（卷面 ≥ 60%）的话，系统已自动打卡——' +
-          '那就不必再走出题流程，也别重复 settle。',
-      }
-    },
-    settle: (input) => {
-      const store = deps.getLatest()
-      const now = Date.now()
-      const correct = num(input.correct)
-      const total = num(input.total)
-      if (!total || !Number.isFinite(total)) return { error: 'checkin.settle 需要 total（这次考了几题）' }
-      const threshold = num(input.threshold) || Math.ceil(total * DEFAULT_RATIO)
-      const day = studyDayOf(now)
-      const goalId = deps.goalId()
-      const out = applyCheckinAttempt(
-        // 记在**当前目标**那一本账上（见 learn/checkin 的 CheckinBook）
-        checkinOfGoal(store.checkin, goalId) ?? emptyCheckin(),
-        {
-          day,
-          correct,
-          total,
-          threshold,
-          passed: input.passed === true || correct >= threshold,
-          note: typeof input.note === 'string' ? input.note : undefined,
-          nodeIds: Array.isArray(input.nodeIds) ? input.nodeIds.filter((x): x is string => typeof x === 'string') : undefined,
-          sectionKeys: Array.isArray(input.sectionKeys) ? input.sectionKeys.filter((x): x is string => typeof x === 'string') : undefined,
-        },
-        now,
-      )
-      deps.set({ ...store, checkin: withGoalCheckin(store.checkin, goalId, out.store) })
-      const streak = streakOf(out.store, now)
-      const passed = out.day.passed
-      const tried = out.day.attempts.length
-      return {
-        ok: out.ok,
-        passed,
-        day,
-        correct: out.day.attempts[tried - 1]?.correct ?? correct,
-        total: out.day.attempts[tried - 1]?.total ?? total,
-        threshold: out.day.attempts[tried - 1]?.threshold ?? threshold,
-        attempts: tried,
-        chancesLeft: Math.max(0, MAX_ATTEMPTS - tried),
-        streak: { current: streak.current, best: streak.best },
-        message: passed
-          ? '这个目标打卡完成：连续 ' + streak.current + ' 天' + (tried > 1 ? '（第 ' + tried + ' 次机会过的）' : '')
-          : '这次没过（对 ' + correct + '/' + total + '，通过线 ' + threshold + '）：今天还剩 ' + Math.max(0, MAX_ATTEMPTS - tried) + ' 次机会',
-      }
-    },
-  }
-}
-
-/**
  * compact：把交接摘要写进当前目标的会话（见 learn/compact）。
  *
  * 只做两件事：校验成形（buildSummary）与写进 store。**应用不在这里**——
@@ -352,8 +251,3 @@ export function createPomodoroOps(deps: AgentOpsDeps): PomodoroOps {
   }
 }
 
-/** 数字参数：模型经常把数字写成字符串 */
-const num = (v: unknown): number => {
-  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN
-  return Number.isFinite(n) ? n : 0
-}

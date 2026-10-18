@@ -45,7 +45,7 @@ describe('模块注册表', () => {
   })
 
   it('搬进模块的域都在注册表里；promptModuleByKey 认不出的回 null', () => {
-    for (const key of ['sdoc', 'browser', 'web', 'res', 'exam', 'review', 'workspace', 'method', 'code', 'compact', 'subagent', 'ui', 'learning-process', 'plot-forms', 'rich-animation']) {
+    for (const key of ['sdoc', 'browser', 'web', 'res', 'exam', 'workspace', 'method', 'code', 'compact', 'subagent', 'ui', 'learning-process', 'plot-forms', 'rich-animation']) {
       expect(promptModuleByKey(key)?.text, key).toBeTruthy()
     }
     expect(promptModuleByKey('不存在的')).toBeNull()
@@ -69,7 +69,6 @@ describe('触发映射', () => {
     expect(promptModuleForApiName('fetch')).toBe('web')
     expect(promptModuleForApiName('res.read')).toBe('res')
     expect(promptModuleForApiName('exam.create')).toBe('exam')
-    expect(promptModuleForApiName('review.record')).toBe('review')
     expect(promptModuleForApiName('workspace.list')).toBe('workspace')
     expect(promptModuleForApiName('method.call')).toBe('method')
     expect(promptModuleForApiName('code.save')).toBe('code')
@@ -78,7 +77,6 @@ describe('触发映射', () => {
     expect(promptModuleForApiName('ui.point')).toBe('ui')
     expect(promptModuleForApiName('reading.get')).toBe('learning-process')
     expect(promptModuleForApiName('attention.get')).toBe('learning-process')
-    expect(promptModuleForApiName('checkin.status')).toBe('learning-process')
     expect(promptModuleForApiName('pomodoro.status')).toBe('learning-process')
     // 每轮必用的组不触发——进了模块反而每轮都要注入一遍
     expect(promptModuleForApiName('doc.write')).toBeNull()

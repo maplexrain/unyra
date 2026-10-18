@@ -13,12 +13,12 @@ import { t } from '../../i18n'
  * 把两门课的时长混在一条曲线上，「今天读了两小时」就既不是这门课的、也不是那门课的
  * （见 learn/reading 的 ReadingBook）。
  *
- * 与打卡、番茄钟同一套时序（见 UserMenu 的注释）：wrapper 上 no-drag + relative，
+ * 与番茄钟同一套时序（见 UserMenu 的注释）：wrapper 上 no-drag + relative，
  * 离开有 90ms 宽限（按钮与面板之间有一道 pt-1 的缝），退场动画播完才卸载。
  *
  * 组件是**纯展示**的：分钟数、节点清单、柱子、过滤栏里的选项全部由 props 传入，
  * 它只记住「现在选的是哪一档」这一个本地状态——「今天」这件事由父组件算好
- * （与 CheckinButton 同一条纪律）。
+ * （与番茄钟同一条纪律）。
  */
 
 /** 过滤栏里的一档：'all' 或某个目标 */
@@ -125,7 +125,7 @@ export default function ReadingButton({
   weekMinutes,
   onOpenNode,
 }: ReadingButtonProps) {
-  // 浮层要等退场动画播完才卸载，所以展开状态交给 useHoverMenu 管（与打卡、番茄钟同一套时序）
+  // 浮层要等退场动画播完才卸载，所以展开状态交给 useHoverMenu 管（与番茄钟同一套时序）
   const { open, setOpen, mounted, wrapProps, panelProps } = useHoverMenu({
     closeMs: HOVER_CLOSE_MS,
     exitMs: TIP_EXIT_MS,

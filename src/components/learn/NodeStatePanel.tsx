@@ -12,13 +12,11 @@
  * 所以布局按 tip 的规矩来：
  * - **两栏**，不把五块信息竖着摞成一条：左边是「现在什么水平」（掌握度、自评），
  *   右边是「一路上的痕迹」（错误记忆、检验记录）。竖着摞起来，一块 tip 会长到要滚三屏。
- * - 两个动作（回忆一下 / 探个针）**放进标题栏**：它们是「现在就做」的事，
- *   摆在正文里既占竖向空间，又和「看状态」这件事混在一起。
  * - 配色与其它几块 tip 同一套：卡片 bg-card、井槽 bg-paper-deep/40、分隔线 border-line，
  *   不再自己用 bg-sunken 那一套（那扇独立窗口留下的）。
  */
 
-import { Eraser, MessageCircleQuestion, Sparkles } from 'lucide-react'
+import { Eraser } from 'lucide-react'
 import type { LearningState, SelfReport } from '../../learn/types'
 import { SELF_REPORTS, SELF_REPORT_LABEL } from '../../learn/types'
 import type { NodeStructure } from '../../learn/graph'
@@ -40,9 +38,6 @@ export function NodeStatePanel({
   structure,
   onSetSelf,
   onClearMistake,
-  onRecall,
-  onProbe,
-  busy,
 }: {
   /** 面板只用到标题与学习状态，所以收窄成这两样——调用方传整个节点也照样成立 */
   node: { id: string; title: string; learning?: LearningState }
@@ -50,10 +45,6 @@ export function NodeStatePanel({
   structure: NodeStructure
   onSetSelf: (self: SelfReport) => void
   onClearMistake: (pattern: string) => void
-  onRecall: () => void
-  onProbe: () => void
-  /** Agent 正在跑：这时候再发隐藏指令只会排队，按钮先禁掉 */
-  busy: boolean
 }) {
   const st = node.learning
   const checks = [...(st?.checks ?? [])].reverse()
@@ -70,32 +61,12 @@ export function NodeStatePanel({
 
   return (
     <div className="flex max-h-[min(70vh,540px)] w-[520px] min-h-0 flex-col overflow-hidden rounded-lg border border-line-strong bg-card p-2.5 shadow-[0_12px_36px_rgba(31,27,23,0.22)]">
-      {/* 标题栏：两个动作也在这里——它们是「现在就做」的事，占正文的竖向空间最不划算 */}
+      {/* 标题栏 */}
       <div className="flex shrink-0 items-center gap-1">
         <span className="shrink-0 text-[11.5px] font-medium text-ink-strong">{t('学习状态')}</span>
         <span className="min-w-0 flex-1 truncate text-[10.5px] text-ink-faint" title={node.title}>
           {node.title}
         </span>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onRecall}
-          title={t('合上文档，用自己的话讲一遍；导师会指出漏掉的与说错的')}
-          className="flex h-5 shrink-0 items-center gap-0.5 rounded px-1.5 text-[11px] text-ink-soft transition hover:bg-line/60 hover:text-ink disabled:pointer-events-none disabled:opacity-50"
-        >
-          <Sparkles size={12} />
-          {t('回忆一下')}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onProbe}
-          title={t('让导师出一道极短的问题，验证你是不是真的会（不是出卷）')}
-          className="flex h-5 shrink-0 items-center gap-0.5 rounded px-1.5 text-[11px] text-ink-soft transition hover:bg-line/60 hover:text-ink disabled:pointer-events-none disabled:opacity-50"
-        >
-          <MessageCircleQuestion size={12} />
-          {t('探个针')}
-        </button>
       </div>
 
       {/* 两栏：左「现在什么水平」，右「一路上的痕迹」。竖向只在各自栏里长 */}
@@ -121,7 +92,7 @@ export function NodeStatePanel({
                   ? t('依据：{0}', st.masteryNote)
                   : mastery !== null
                     ? t('导师还没写这次给分的依据。')
-                    : t('还没评估过——做过探针、考试或主动回忆之后才会有数字。')}
+                    : t('还没评估过——考过一次试之后才会有数字。')}
               </p>
             </section>
 
@@ -212,7 +183,7 @@ export function NodeStatePanel({
               </div>
               {checks.length === 0 ? (
                 <p className="mt-1 text-[10.5px] leading-relaxed text-ink-faint">
-                  {t('还没有检验过：考一次试、做一次主动回忆，或者让导师探个针，结果都会落在这里。')}
+                  {t('还没有检验过：考一次试，结果就会落在这里。')}
                 </p>
               ) : (
                 <ul className="mt-1.5 flex flex-col gap-1">

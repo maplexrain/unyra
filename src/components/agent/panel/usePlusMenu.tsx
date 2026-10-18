@@ -11,12 +11,10 @@ import {
   Brain,
   ChevronRight,
   FlaskConical,
-  Flame,
   Globe,
   MessagesSquare,
   Paperclip,
   Settings,
-  Sparkles,
   Trash2,
   Zap,
 } from 'lucide-react'
@@ -50,12 +48,8 @@ export interface PlusMenuArgs {
   onNewConversation: () => void
   onSelectConversation: (id: string) => void
   onDeleteConversation: (id: string) => void
-  /** 更多 → 工作流 → 回忆：请超级导师带用户做一次主动回忆 */
-  onRecall: () => void
   /** 更多 → 工作流 → 超级实验室 */
   onSuperLab: () => void
-  /** 更多 → 工作流 → 打卡 */
-  onCheckin: () => void
   /** 更多 → 工作流 → 浏览器操作：替用户驱动内置浏览器完成任务 */
   onBrowserUse: () => void
   /** 更多 → 压缩上下文：把前面的对话折成一份摘要 */
@@ -114,9 +108,7 @@ export function usePlusMenu({
   onNewConversation,
   onSelectConversation,
   onDeleteConversation,
-  onRecall,
   onSuperLab,
-  onCheckin,
   onBrowserUse,
   onCompact,
   onOpenAgentSettings,
@@ -143,7 +135,7 @@ export function usePlusMenu({
    * 的逻辑都不用动。带 sub 的那两项**不执行动作，往下一层走**（见 goMenu）。
    *
    * 「上下文」相关的只留「压缩上下文」在一级：它是随时可能顺手点一下的动作；
-   * 而回忆 / 超级实验室 / 打卡三件事都是"发起一轮工作流"，归到「工作流」底下。
+   * 而超级实验室 / 浏览器操作都是"发起一轮工作流"，归到「工作流」底下。
    */
   const COMPOSER_MENU: MenuItem[] = [
     {
@@ -170,7 +162,7 @@ export function usePlusMenu({
     {
       key: 'workflow',
       label: t('工作流'),
-      hint: t('回忆 / 浏览器操作 / 打卡'),
+      hint: t('超级实验室 / 浏览器操作'),
       icon: <Zap size={14} />,
       sub: 'workflow',
     },
@@ -209,18 +201,10 @@ export function usePlusMenu({
   /**
    * 「工作流」二级菜单：三件"请导师带我做点什么"的事。
    *
-   * 与文档区那几颗悬浮按钮是同一件事（回忆 / 出题），但这里**不二次确认**：
+   * 与文档区那几颗悬浮按钮是同一件事（超级实验室 / 浏览器操作），但这里**不二次确认**：
    * 那边是鼠标扫过顺手点一下，这里是用户翻菜单主动找出来的——误触概率差着一个量级。
    */
   const WORKFLOW_MENU: MenuItem[] = [
-    {
-      key: 'recall',
-      label: t('回忆'),
-      hint: t('合上文档，讲一遍'),
-      icon: <Sparkles size={14} />,
-      disabled: running || !hasKey,
-      run: onRecall,
-    },
     {
       key: 'superlab',
       label: t('超级实验室'),
@@ -228,14 +212,6 @@ export function usePlusMenu({
       icon: <FlaskConical size={14} />,
       disabled: running || !hasKey,
       run: onSuperLab,
-    },
-    {
-      key: 'checkin',
-      label: t('打卡'),
-      hint: t('用今天读到的内容出几道题，答到门槛才算过'),
-      icon: <Flame size={14} />,
-      disabled: running || !hasKey,
-      run: onCheckin,
     },
     {
       key: 'browser-use',

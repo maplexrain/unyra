@@ -79,7 +79,6 @@ function storeWith(conv: Conversation): LearnStore {
     docScroll: {},
     localFiles: [],
     reading: { byGoal: {} },
-    checkin: { byGoal: {} },
     pomodoro: emptyPomodoro(),
   }
 }

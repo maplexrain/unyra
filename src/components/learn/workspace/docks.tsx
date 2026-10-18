@@ -1,10 +1,10 @@
 /*
- * 这个文件负责：顶栏里那三块「我今天的节奏」的数据接线——
- * 番茄钟（PomodoroDock）、打卡（CheckinDock）、有效阅读（ReadingDock）。
+ * 这个文件负责：顶栏里那两块「我今天的节奏」的数据接线——
+ * 番茄钟（PomodoroDock）、有效阅读（ReadingDock）。
  *
- * 三块的共同点是「自给自足的小块」：各自的时钟只让这一小块每秒重渲染，
+ * 两块的共同点是「自给自足的小块」：各自的时钟只让这一小块每秒重渲染，
  * 不会把整个学习区（正文 + 对话栏）一起带上；数据仍然来自 store（它是唯一真相），
- * 这里只负责把数据算成那三个纯展示按钮要的形状。
+ * 这里只负责把数据算成那两个纯展示按钮要的形状。
  */
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
@@ -12,8 +12,6 @@ import { Eye, ShieldCheck } from 'lucide-react'
 import type { LearnStore } from '../../../learn/types'
 import { nodeById } from '../../../learn/graph'
 import PomodoroButton, { type FocusMonitors } from '../PomodoroButton'
-import CheckinButton, { type CheckinGoalTab } from '../CheckinButton'
-import ReviewButton, { type ReviewGoalTab, type ReviewTaskRow, type ReviewUpcomingRow } from '../ReviewButton'
 import ReadingButton, {
   type ReadingDayCell,
   type ReadingNodeRow,
@@ -26,18 +24,6 @@ import {
   readingOfGoal,
   studyDayOf,
 } from '../../../learn/reading'
-import {
-  MIN_DAY_MS,
-  calendarLabel,
-  chancesLeft,
-  checkinCalendar,
-  checkinDay,
-  checkinEligible,
-  checkinOfGoal,
-  remainingText,
-  streakOf,
-} from '../../../learn/checkin'
-import { REVIEW_DAY_MS, REVIEW_STAGE_LABEL, dueEntriesOf } from '../../../learn/review'
 import {
   DEFAULT_FOCUS_MINUTES,
   DEFAULT_GROUPS,
@@ -251,107 +237,6 @@ export function GuardPreviewTile({ kind }: { kind: 'screen' | 'camera' }) {
 }
 
 /**
- * 打卡入口。
- *
- * 资格、日历格子都在这里算好再交给纯展示的 CheckinButton：
- * 组件不读 store、不算日期，于是它的行为完全可预期（要改口径只改这一处）。
- * 「今天是周几」与「现在展开哪个目标」是唯二由外面管的事——前者因为它不解析日期，
- * 后者因为 tab 的默认落点要看「正在读哪门课」。
- */
-export function CheckinDock({ store, onCheckin }: { store: LearnStore; onCheckin: (goalId: string) => void }) {
-  /*
-   * 一秒一次：每一行都要说「还差多久」，那就得每秒都在动。
-   *
-   * 判定本身只读 store，而 store 每 30 秒才结算一次、还是 patchQuiet 写的（不触发渲染），
-   * 所以除了自己刷新，还要把「已结算但快照看不到的」与「还没结算的」补进 extraMs——
-   * 不补的话数字会憋住，只有切文档才会跳一下（那正是用户报的现象）。
-   *
-   * 打卡**按目标分开**（见 learn/checkin 的 CheckinBook）：每个目标一本账、一道门槛，
-   * 判定与「还差几分钟」都各算各的。脉搏与发布值都带 goalId，所以正在读的那一段
-   * 只会补到它所属的那个目标上。
-   */
-  const now = useClock(1000)
-  const pulse = useReadingPulse()
-  const published = useReadingDay()
-  const day = studyDayOf(now)
-  const activeGoalId = store.activeGoalId ?? ''
-  // 用户点选的 tab；没点过（null）时跟着「正在读的那门课」走
-  const [tabId, setTabId] = useState<string | null>(null)
-
-  /** 某个目标**已经落盘**的今日时长 */
-  const settledMsOf = (goalId: string): number => readingDay(readingOfGoal(store.reading, goalId), day)?.activeMs ?? 0
-  /** 某个目标今天此刻的真实时长：已落盘 + 刚结算发布的那份 + 还没结算的脉搏 */
-  const liveMsOf = (goalId: string): number => {
-    const settled = settledMsOf(goalId)
-    const pub = published.day === day && published.goalId === goalId ? Math.max(published.ms, settled) : settled
-    const live = pulse.sessionId && pulse.goalId === goalId ? pulse.unsentMs : 0
-    return pub + live
-  }
-  const titleOf = (id: string): string | undefined => nodeById(store, id)?.title
-
-  /*
-   * 目标 tab 按**最近浏览时间**降序（与有效阅读的过滤栏同一条规则）：
-   * 最近在读的那门课排最前——翻 tip 的人大概率正是要找它。
-   */
-  const goalsByRecent = [...store.goals].sort(
-    (a, b) => lastBrowseAtOf(readingOfGoal(store.reading, b.id)) - lastBrowseAtOf(readingOfGoal(store.reading, a.id)),
-  )
-
-  const tabs: CheckinGoalTab[] = goalsByRecent.map((goal) => {
-    const checkin = checkinOfGoal(store.checkin, goal.id)
-    // 还没落盘的那一段补进来，只补当前正在读的那个目标（别的目标没有在跑的一节）
-    const extraMs = goal.id === activeGoalId ? Math.max(0, liveMsOf(goal.id) - settledMsOf(goal.id)) : 0
-    const e = checkinEligible(readingOfGoal(store.reading, goal.id), checkin, { now, titleOf, extraMs })
-    const done = !!checkinDay(checkin, day)?.passed
-    const left = chancesLeft(checkin, day)
-    const need = Math.max(0, MIN_DAY_MS - e.activeMs)
-    const streak = streakOf(checkin, now)
-    const cells = checkinCalendar(checkin, now)
-    return {
-      goalId: goal.id,
-      label: goalTitle(store, goal.id),
-      state: done ? 'done' : e.ok ? 'ready' : 'hint',
-      // 能打的时候不写字（账头那行是按钮）；其余情况一律说清「差什么」。
-      // 考试通道带来的打卡要点名——「怎么过的」比「过了」更值得说
-      note: done
-        ? checkinDay(checkin, day)?.exam
-          ? t('今天已打卡（首次考试及格）')
-          : t('今天已打卡')
-        : left <= 0
-          ? t('今天的次数用完了')
-          : e.ok
-            ? ''
-            : need > 0
-              ? t('还差 {0}', remainingText(need))
-              : (e.reason ?? t('还不能打卡')),
-      streak: streak.current,
-      best: streak.best,
-      calendar: cells,
-      monthLabel: calendarLabel(cells),
-    }
-  })
-
-  // 选中的目标可能刚被删掉：退回「正在读的那门」，再退回第一本
-  const selectedId = tabId && tabs.some((t) => t.goalId === tabId)
-    ? tabId
-    : tabs.some((t) => t.goalId === activeGoalId)
-      ? activeGoalId
-      : (tabs[0]?.goalId ?? '')
-
-  // getDay() 是 0=周日；日历表头从周一起排，换算成 0=周一
-  const todayWeekday = (new Date(now).getDay() + 6) % 7
-  return (
-    <CheckinButton
-      tabs={tabs}
-      selectedId={selectedId}
-      onSelect={setTabId}
-      todayWeekday={todayWeekday}
-      onCheckin={onCheckin}
-    />
-  )
-}
-
-/**
  * 顶栏「有效阅读」入口的数据接线。
  *
  * 两个数据来源叠在一起：store 里的记录（30 秒才结算一次）与 lib/readingPulse 里
@@ -456,83 +341,6 @@ export function ReadingDock({ store, onOpenNode }: { store: LearnStore; onOpenNo
       onOpenNode={onOpenNode}
     />
   )
-}
-
-/**
- * 顶栏「复习」入口的数据接线。
- *
- * 复习计划挂在节点上（见 learn/review），但 tab 仍**按目标分**——与打卡 / 有效阅读同一套
- * 「一门课一档」的布局。到期判定是按天的事，时钟 30 秒一跳只为跨零点翻页。
- * 到期行、未来两周、待补建清单都在这里算成纯数据，交给纯展示的 ReviewButton。
- */
-export function ReviewDock({
-  store,
-  onReview,
-  onBackfill,
-}: {
-  store: LearnStore
-  onReview: (nodeId: string) => void
-  onBackfill: (nodeId: string) => void
-}) {
-  const now = useClock(30_000)
-  const [tabId, setTabId] = useState<string | null>(null)
-  const goalsByRecent = [...store.goals].sort(
-    (a, b) => lastBrowseAtOf(readingOfGoal(store.reading, b.id)) - lastBrowseAtOf(readingOfGoal(store.reading, a.id)),
-  )
-  const entries = dueEntriesOf(store, now)
-  const dayLabel = (at: number): string => {
-    const d = new Date(at)
-    return t('{0} 月 {1} 日', d.getMonth() + 1, d.getDate())
-  }
-
-  const tabs: ReviewGoalTab[] = goalsByRecent.map((goal) => {
-    const due: ReviewTaskRow[] = entries
-      .filter((e) => e.goalId === goal.id)
-      .map((e) => {
-        const titles = e.nodeIds.map((id) => nodeById(store, id)?.title).filter((t): t is string => !!t)
-        const head = titles[0] ?? ''
-        return {
-          key: e.key,
-          nodeIds: e.nodeIds,
-          title: e.grouped ? t('{0} 等 {1} 个（合并复习）', head, e.nodeIds.length) : head,
-          stageLabel: e.stage ? t(REVIEW_STAGE_LABEL[e.stage]) : t('补充复习'),
-          overdueDays: e.overdueDays,
-        }
-      })
-    // 未来 14 天内到期的阶段与补充任务（已到期的在上面那排，不重复列）
-    const horizon = now + 14 * REVIEW_DAY_MS
-    const upcomingRaw: Array<{ row: ReviewUpcomingRow; dueAt: number }> = []
-    for (const n of store.nodes) {
-      if (n.goalId !== goal.id || !n.review) continue
-      for (const s of n.review.stages) {
-        if (s.doneAt || s.mergedInto || s.dueAt <= now || s.dueAt > horizon) continue
-        upcomingRaw.push({ dueAt: s.dueAt, row: { title: n.title, stageLabel: t(REVIEW_STAGE_LABEL[s.stage]), when: dayLabel(s.dueAt) } })
-      }
-      for (const extra of n.review.extra ?? []) {
-        if (extra.doneAt || extra.dueAt <= now || extra.dueAt > horizon) continue
-        upcomingRaw.push({ dueAt: extra.dueAt, row: { title: n.title, stageLabel: t('补充复习 · {0}', extra.focus), when: dayLabel(extra.dueAt) } })
-      }
-    }
-    upcomingRaw.sort((a, b) => a.dueAt - b.dueAt)
-    const backlog = store.nodes
-      .filter((n) => n.goalId === goal.id && n.status === 'mastered' && !n.review)
-      .map((n) => ({ nodeId: n.id, title: n.title }))
-    return {
-      goalId: goal.id,
-      label: goalTitle(store, goal.id),
-      due,
-      upcoming: upcomingRaw.map((x) => x.row),
-      backlog,
-    }
-  })
-
-  // 选中的目标可能刚被删掉：退回「正在读的那门」，再退回第一本（与打卡同一套兜底）
-  const selectedId = tabId && tabs.some((t) => t.goalId === tabId)
-    ? tabId
-    : tabs.some((t) => t.goalId === (store.activeGoalId ?? ''))
-      ? (store.activeGoalId ?? '')
-      : (tabs[0]?.goalId ?? '')
-  return <ReviewButton tabs={tabs} selectedId={selectedId} onSelect={setTabId} onReview={onReview} onBackfill={onBackfill} />
 }
 
 /** 目标显示名：根节点的标题就是这门课的名字（节点没了才退回用户当初那句原话） */
