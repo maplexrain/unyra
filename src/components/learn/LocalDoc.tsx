@@ -10,8 +10,11 @@ import { createLocalDocImageResolver } from '../../lib/docImages'
 import { copySelectionAsMarkdown } from '../../lib/copySource'
 import { readUserImage, readUserText, userAbsPrefix } from '../../lib/storage'
 import type { OutlineHandle } from '../../lib/outline'
+import { localRevealKey } from '../../lib/docReveal'
 import MarkdownView from '../MarkdownView'
 import SourceEditor, { type SaveState } from './SourceEditor'
+import { DocContextMenu } from './note/docContextMenu'
+import { useDocContextMenu, type SourceSpan } from './note/useDocContextMenu'
 import { DocStatChip } from './DocFloat'
 import ZenResizeHandles from './workspace/ZenResizeHandles'
 import { useDocOutline } from './note/useDocView'
@@ -57,6 +60,13 @@ interface Props {
   outlineSlot?: { current: OutlineHandle | null }
   /** md 打开时是空的：默认视图会从预览切到编辑（空预览是一片白，用户要的是往里写） */
   onNeedEdit?: () => void
+  /**
+   * 正文右键菜单的「定位源码」：把选区在源文里的位置交给上层，由它把这个页签切到源码视图
+   * （切视图是页签上的选择，本组件只负责把请求递出去，见 lib/docReveal）。
+   */
+  onRevealSource?: (loc: SourceSpan) => void
+  /** 说一句话（读不到剪贴板、复制成功这类）：接到全局 toast 上 */
+  onToast?: (message: string) => void
 }
 
 export default function LocalDoc({
@@ -71,6 +81,8 @@ export default function LocalDoc({
   onMissing,
   outlineSlot,
   onNeedEdit,
+  onRevealSource,
+  onToast,
 }: Props) {
   const name = fileNameOf(path)
   const previewable = isPreviewable(path)
@@ -240,6 +252,29 @@ export default function LocalDoc({
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const { outline, activeIndex, jumpTo } = useDocOutline({ bodyRef, scrollRef, html })
 
+  /*
+   * 正文右键菜单（复制 / 粘贴 / 定位源码）：接线与三个动作的落地见 note/useDocContextMenu。
+   * 粘贴落进**暂存区**（edit），与在源码视图里直接改是同一套；定位源码交给上层切视图
+   * （那是页签上的选择，本组件不认识页签，只把「选中哪一段」递出去，见 lib/docReveal）。
+   */
+  const {
+    menu: ctxMenu,
+    menuRef: ctxMenuRef,
+    mounted: ctxMenuMounted,
+    closing: ctxMenuClosing,
+    close: ctxMenuClose,
+    runCopy: ctxCopy,
+    runPaste: ctxPaste,
+    runReveal: ctxReveal,
+  } = useDocContextMenu({
+    bodyRef,
+    content: text,
+    onInsert: (snippet, loc) => edit(text.slice(0, loc.start) + snippet + text.slice(loc.end)),
+    onRevealSource,
+    onError: onToast,
+    onCopied: () => onToast?.(t('已复制为 Markdown')),
+  })
+
   // 预览模式只统计可视文字
   const [wordCount, setWordCount] = useState(() => countVisibleWordsFromHtml(html))
   useLayoutEffect(() => {
@@ -328,6 +363,8 @@ export default function LocalDoc({
         label={path}
         scale={scale}
         ext={extOf(path)}
+        // 「定位源码」放下的一次性请求：挂载时按这个身份取走并选中（见 lib/docReveal）
+        revealKey={localRevealKey(path)}
       />
     )
   }
@@ -370,6 +407,22 @@ export default function LocalDoc({
           <MarkdownView html={html} resolveLocalImage={resolveLocalImage} />
         </div>
       </div>
+
+      {/* 正文右键菜单（复制 / 粘贴 / 定位源码）：fixed 定位，挂在预览这一层的外面，
+          免得被滚动容器裁掉（见 note/useDocContextMenu） */}
+      {ctxMenuMounted && (
+        <DocContextMenu
+          menu={ctxMenu}
+          menuRef={ctxMenuRef}
+          closing={ctxMenuClosing}
+          canPaste
+          canReveal={!!onRevealSource}
+          onCopy={ctxCopy}
+          onPaste={ctxPaste}
+          onReveal={ctxReveal}
+          onClose={ctxMenuClose}
+        />
+      )}
     </div>
   )
 }

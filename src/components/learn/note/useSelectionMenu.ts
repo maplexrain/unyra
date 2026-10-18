@@ -47,6 +47,12 @@ export function useSelectionMenu({ bodyRef, content, html }: Opts) {
   useEffect(() => {
     const onUp = (e: MouseEvent) => {
       if (menuRef.current?.contains(e.target as Node)) return
+      /*
+       * 只认左键松开。右键松开也会派发 mouseup，而右键那一下有它自己的菜单
+       * （复制 / 粘贴 / 定位源码，见 note/useDocContextMenu）——两个菜单同时弹出来，
+       * 会叠在同一个位置上，谁也点不着。
+       */
+      if (e.button !== 0) return
       if (asking) return
       window.setTimeout(() => {
         const body = bodyRef.current

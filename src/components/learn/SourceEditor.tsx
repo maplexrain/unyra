@@ -8,6 +8,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages as codeLanguages } from '@codemirror/language-data'
 import { tags } from '@lezer/highlight'
 import { countSourceWords } from '../../lib/wordCount'
+import { takeSourceReveal, type SourceReveal } from '../../lib/docReveal'
 import { useDocScroll } from '../../lib/docScroll'
 import { DocStatChip } from './DocFloat'
 import { t } from '../../i18n'
@@ -118,6 +119,12 @@ interface Props {
   scrollTop?: number
   /** 滚动到哪儿了的上报（与预览各记各的：编辑位置与阅读位置是两回事） */
   onScrollTop?: (top: number) => void
+  /**
+   * 「定位源码」的取件凭证（见 lib/docReveal）：预览里右键选了「定位源码」时，
+   * 上层先放下「选中哪一段」再切到这个视图，编辑器挂载时凭它取走并选中。
+   * 手动点「源码」按钮进来时槽里没有请求，取到 null，行为与从前一模一样。
+   */
+  revealKey?: string
 }
 
 export default function SourceEditor({
@@ -132,6 +139,7 @@ export default function SourceEditor({
   scale = 1,
   scrollTop,
   onScrollTop,
+  revealKey,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -143,13 +151,30 @@ export default function SourceEditor({
   }, [onChange])
 
   /**
+   * 「定位源码」的那一次请求（见 lib/docReveal）：**挂载时取一次，之后一直用这一份**。
+   *
+   * 为什么在渲染期取、还配一个 done 哨兵：
+   * - 要在 useDocScroll 之前知道「这一次是被定位过来的」——那一次**不能**恢复上次的
+   *   编辑位置，否则下一帧就把刚滚到眼前的选区拽回老地方；
+   * - 而 StrictMode 下 effect 会跑两遍（卸载重建一次编辑器），槽里的请求取走就没了，
+   *   第二遍会取到 null、选区当场丢掉。哨兵让两遍拿到同一份。
+   */
+  const revealRef = useRef<{ taken: boolean; value: SourceReveal | null }>({ taken: false, value: null })
+  if (!revealRef.current.taken) {
+    revealRef.current.taken = true
+    revealRef.current.value = revealKey ? takeSourceReveal(revealKey) : null
+  }
+  const reveal = revealRef.current.value
+
+  /**
    * 取滚动元素的那只回调必须是**稳定**的：useDocScroll 拿它当 effect 依赖，每轮渲染
    * 现写的箭头会让滚动监听被反复拆掉重挂——而拆的时候还要补发一次位置上报，等于白写盘。
    * view 常驻到卸载（语言变化走 compartment 重配，不重建实例），scrollDOM 一直是同一个。
    */
   const getScrollEl = useCallback((): HTMLElement | null => viewRef.current?.scrollDOM ?? null, [])
-  // 编辑位置与阅读位置各记各的（键由上层分开）：共用一格的话，切换视图会互相拽
-  useDocScroll(getScrollEl, scrollTop, onScrollTop, true)
+  // 编辑位置与阅读位置各记各的（键由上层分开）：共用一格的话，切换视图会互相拽。
+  // 「定位源码」过来的那一次不恢复旧位置——落点由下面那个 effect 选中并滚过去
+  useDocScroll(getScrollEl, reveal ? undefined : scrollTop, onScrollTop, true)
 
   // 挂载：创建 view；卸载：销毁
   useEffect(() => {
@@ -184,6 +209,17 @@ export default function SourceEditor({
     })
     viewRef.current = view
     view.focus()
+    /*
+     * 「定位源码」：选中那段源文并滚到眼前。之后用户可能立刻开始打字，
+     * 光标该落在他要改的那一段上（取件规矩见上面 revealRef 的说明）。
+     */
+    if (reveal) {
+      const len = view.state.doc.length
+      const from = Math.max(0, Math.min(reveal.start, len))
+      const to = Math.max(from, Math.min(reveal.end, len))
+      view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true })
+      view.focus()
+    }
     return () => {
       view.destroy()
       viewRef.current = null

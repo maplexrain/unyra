@@ -611,6 +611,17 @@ const dict: Record<string, string> = {
   '已完成 {0}%': '{0}% completed',
   '你的选择': 'Your choice',
   '你的作答：': 'Your answer:',
+
+  // ---------- 正文右键菜单（note/docContextMenu） ----------
+  '定位源码': 'Reveal source',
+  '把剪贴板里的内容替换掉选中的这一段': 'Replace the selected passage with the clipboard contents',
+  '这一段没能映射回源文，粘贴没有落点': 'This passage could not be mapped back to the source, so there is nothing to paste over',
+  '切到源码视图，并选中这段文字在源文里的位置': 'Switch to the source view and select this passage there',
+  '已复制为 Markdown': 'Copied as Markdown',
+  '复制失败：剪贴板不可用': 'Copy failed: the clipboard is unavailable',
+  '没能在源文里定位到这一段，先选中一段正文再粘贴': 'Could not locate this passage in the source — select some text first',
+  '读不到剪贴板里的文字': 'Could not read text from the clipboard',
+  '没能在源码里定位到这一段': 'Could not locate this passage in the source',
 }
 
 export default dict

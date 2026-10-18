@@ -10,6 +10,8 @@ import { readingDocKey, type ReadingDelta } from '../../learn/reading'
 import type { OutlineHandle } from '../../lib/outline'
 import ReadingPulse from './ReadingPulse'
 import { DocBody } from './note/DocBody'
+import { DocContextMenu } from './note/docContextMenu'
+import { useDocContextMenu, type SourceSpan } from './note/useDocContextMenu'
 import { useAnnotationLayer } from './note/useAnnotationLayer'
 import { useDocOutline, useDocScrollMemory, useDocZoom } from './note/useDocView'
 import { useQuoteHighlight } from './note/useQuoteHighlight'
@@ -57,6 +59,16 @@ interface Props {
   onSaveAnnotation?: (term: string, body: string, style?: AnnotationStyle, occurrence?: number) => void
   /** 删除某词条上的注解 */
   onDeleteAnnotation?: (term: string) => void
+  /**
+   * 正文被就地改了一段（右键菜单的「粘贴」）：上层把它记进暂存区（见 learn/drafts）。
+   * 预览本来是只读的，只有这一条路会写正文——用户自己按的粘贴，不算偷偷改。
+   */
+  onEditContent?: (next: string) => void
+  /**
+   * 「定位源码」：把选区在源文里的位置交给上层，由它切到源码视图
+   * （切视图是页签上的选择，见 LearnWorkspace 的 setTabView；选中由 lib/docReveal 递过去）。
+   */
+  onRevealSource?: (loc: SourceSpan) => void
   /** 提示一句话（词条已不在正文里等）；由上层接到全局 toast 上 */
   onWarn?: (message: string) => void
   /** 当前目标内已存在节点的归一化 key 集合：用于区分「已创建/未创建」的学习链接 */
@@ -125,6 +137,8 @@ export default memo(function NodeNote({
   onAsk,
   onSaveAnnotation,
   onDeleteAnnotation,
+  onEditContent,
+  onRevealSource,
   onWarn,
   knownConceptKeys,
   onReading,
@@ -187,6 +201,29 @@ export default memo(function NodeNote({
     setMenuOpen,
     dismiss,
   } = useSelectionMenu({ bodyRef, content, html })
+
+  /*
+   * 右键菜单（复制 / 粘贴 / 定位源码）：接线与三个动作的落地见 note/useDocContextMenu。
+   * 「粘贴」要拼新正文，就在这里拼完再交给上层——上层只管把它记进暂存区（onEditContent）。
+   * 定位源码则由上层切视图（那是页签上的选择，本组件不认识页签）。
+   */
+  const {
+    menu: ctxMenu,
+    menuRef: ctxMenuRef,
+    mounted: ctxMenuMounted,
+    closing: ctxMenuClosing,
+    close: ctxMenuClose,
+    runCopy: ctxCopy,
+    runPaste: ctxPaste,
+    runReveal: ctxReveal,
+  } = useDocContextMenu({
+    bodyRef,
+    content,
+    onInsert: (text, loc) => onEditContent?.(content.slice(0, loc.start) + text + content.slice(loc.end)),
+    onRevealSource,
+    onError: onWarn,
+    onCopied: () => onWarn?.(t('已复制为 Markdown')),
+  })
 
   /*
    * 文档视图：正文大纲与当前读到哪一节、Ctrl + 滚轮的字号、读到哪儿了。
@@ -373,6 +410,22 @@ export default memo(function NodeNote({
         {/* 注解输入区（见 note/useAnnotationLayer）：它占位地待在正文列底部 */}
         {noteDialogEl}
       </div>
+
+      {/* 正文的右键菜单（复制 / 粘贴 / 定位源码）：fixed 定位，挂在根节点上而不是正文里，
+          免得被滚动容器的 overflow 裁掉（见 note/useDocContextMenu） */}
+      {ctxMenuMounted && (
+        <DocContextMenu
+          menu={ctxMenu}
+          menuRef={ctxMenuRef}
+          closing={ctxMenuClosing}
+          canPaste={!!onEditContent}
+          canReveal={!!onRevealSource}
+          onCopy={ctxCopy}
+          onPaste={ctxPaste}
+          onReveal={ctxReveal}
+          onClose={ctxMenuClose}
+        />
+      )}
 
       {/*
         字号比例提示：贴在文档区右下角、页脚之上。

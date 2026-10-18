@@ -240,6 +240,7 @@ import AgentTabStrip from '../agent/AgentTabStrip'
 import ContextDebugger from '../agent/ContextDebugger'
 import { resetPrefixGate } from '../../agent/prefixGate'
 import { docAreaElement, locateNeedle, scrollToDoc, visibleDocBody } from '../../lib/docDom'
+import { localRevealKey, nodeRevealKey, requestSourceReveal } from '../../lib/docReveal'
 import { publishReadingDay } from '../../lib/readingPulse'
 import { readRecentTabs, residentIds } from '../../learn/resident'
 import type { UiPointRequest } from '../../agent/tools'
@@ -3268,8 +3269,12 @@ export default function LearnWorkspace({
 
   const noteActionsCache = useRef(new Map<string, ComponentProps<typeof DocPane>['note']>())
   const getNoteActions = useCallback(
-    (node: KnowledgeNode, source: DocSource): ComponentProps<typeof DocPane>['note'] => {
-      const key = `${node.id}:${source.kind}:${source.note ?? ''}`
+    (tabId: string, node: KnowledgeNode, source: DocSource): ComponentProps<typeof DocPane>['note'] => {
+      /*
+       * 缓存键带上页签 id：暂存区是**按页签**记的（同一份文档在两格各开一份，
+       * 改的是各格自己那一份），所以「改正文」这条回调必须认页签，不能只认文档。
+       */
+      const key = `${tabId}:${node.id}:${source.kind}:${source.note ?? ''}`
       let actions = noteActionsCache.current.get(key)
       if (!actions) {
         actions = {
@@ -3281,6 +3286,16 @@ export default function LearnWorkspace({
           onDeleteAnnotation: (term) => deleteAnnotation(node.id, term),
           onWarn: onToast,
           onAsk: (payload) => askAboutSelection(node.id, payload),
+          // 正文右键菜单的「粘贴」：改动进暂存区，与在源码视图里改是同一套（见 learn/drafts）
+          onEditContent: (next) => editDocSource(tabId, next),
+          /*
+           * 正文右键菜单的「定位源码」：先放下「选中哪一段」，再把这个页签切到源码视图。
+           * 顺序不能反——切完视图预览就卸载了，选区也随之消失（见 lib/docReveal）。
+           */
+          onRevealSource: (loc) => {
+            requestSourceReveal(nodeRevealKey(node.id, source.kind, source.note), loc.start, loc.end)
+            setTabView(tabId, 'source')
+          },
           onReading: (delta) => {
             const alive = nodeById(getLatest(), delta.nodeId)
             if (!alive) return
@@ -3305,7 +3320,7 @@ export default function LearnWorkspace({
       }
       return actions
     },
-    [openConcept, nodeImageResolver, understandConcept, saveAnnotation, deleteAnnotation, onToast, askAboutSelection, getLatest, patchQuiet],
+    [openConcept, nodeImageResolver, understandConcept, saveAnnotation, deleteAnnotation, onToast, askAboutSelection, getLatest, patchQuiet, editDocSource, setTabView],
   )
 
   // 保存：Ctrl+S 交给快捷键模块（见 lib/shortcuts）——改键与冲突检测都归它管，
@@ -4021,6 +4036,13 @@ export default function LearnWorkspace({
                 outlineSlot={getOutlineSlot(gTab.id)}
                 // 空 md 默认进编辑（空预览是一片白）：读完内容发现是空的，从预览切过来
                 onNeedEdit={() => setTabView(gTab.id, 'source')}
+                // 右键菜单的「定位源码」：先放下选中哪一段，再切到源码视图（见 lib/docReveal）
+                onRevealSource={(loc) => {
+                  if (gTab?.ref.kind !== 'local') return
+                  requestSourceReveal(localRevealKey(gTab.ref.path), loc.start, loc.end)
+                  setTabView(gTab.id, 'source')
+                }}
+                onToast={onToast}
               />
             ) : gTab?.ref.kind === 'ws' ? (
               /*
@@ -4052,6 +4074,13 @@ export default function LearnWorkspace({
                     onMissing={() => closeTab(groupId, gTab.id, 'self', { confirm: false })}
                     outlineSlot={getOutlineSlot(gTab.id)}
                     onNeedEdit={() => setTabView(gTab.id, 'source')}
+                    // 右键菜单的「定位源码」：先放下选中哪一段，再把这个页签切到源码视图
+                    // （切完预览就卸载了，选区也随之消失，顺序不能反，见 lib/docReveal）
+                    onRevealSource={(loc) => {
+                      requestSourceReveal(localRevealKey(abs), loc.start, loc.end)
+                      setTabView(gTab.id, 'source')
+                    }}
+                    onToast={onToast}
                   />
                 )
               })()
@@ -4137,6 +4166,8 @@ export default function LearnWorkspace({
                   // 切到预览又读到别处，共用一格会互相拽（见 learn/types 的 DocScroll）
                   scrollTop={store.docScroll[gTabId + SRC_SCROLL_SUFFIX]}
                   onScrollTop={(top) => rememberScroll(gTabId + SRC_SCROLL_SUFFIX, top)}
+                  // 「定位源码」放下的一次性请求：挂载时按这个身份取走并选中（见 lib/docReveal）
+                  revealKey={nodeRevealKey(dg.node.id, dg.source.kind, dg.source.note)}
                 />
               ) : null /* 预览那一份由下面的常驻列表渲染（见 DocPane） */
             ) : (
@@ -4185,7 +4216,7 @@ export default function LearnWorkspace({
                   // 读到哪儿了：记在页签 id 上，重启回来接着读（见 lib/docScroll）
                   scrollTop={store.docScroll[tab.id]}
                   onScrollTop={(top) => rememberScroll(tab.id, top)}
-                  note={getNoteActions(node, source)}
+                  note={getNoteActions(tab.id, node, source)}
                 />
               )
             })}
