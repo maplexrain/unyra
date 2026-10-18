@@ -73,6 +73,27 @@ describe('内置工作流', () => {
     expect(BUILTIN_EFFORT['compact']).toBe('none')
   })
 
+  it('学习大纲先分形态：任务型只写根节点文档，学习型才建大纲树', () => {
+    const row = builtinWorkflowRows().find((r) => r.id === 'goal-outline')
+    expect(row).toBeTruthy()
+    // 形态是必填占位参数：从创建目标页带下来（learn / task），缺省由 runWorkflow 补 auto
+    expect(row?.params).toEqual(['mode'])
+
+    const task = renderWorkflowInstruction(row!.instruction, { mode: 'task' })
+    const learn = renderWorkflowInstruction(row!.instruction, { mode: 'learn' })
+    // 两条分支都在指令里，形态只决定走哪一条
+    expect(task).toContain('本次目标形态：task')
+    expect(learn).toContain('本次目标形态：learn')
+    // 任务型那条明确禁止建树、禁止写大纲
+    expect(task).toContain('不要**调用 api.node.createTree')
+    expect(task).toContain('不要**写 outline.json')
+    // 学习型那条仍按创建模式走
+    expect(learn).toContain('选择目标创建模式')
+    expect(learn).toContain('api.node.createTree')
+    // 占位符不会漏进指令（没替换掉的话模型会读到字面量 {{mode}}）
+    expect(task).not.toContain('{{mode}}')
+  })
+
   it('问询类（开讲/出卷/超级实验室）触发前响铃；阅卷不能从列表直接跑', () => {
     const rows = builtinWorkflowRows()
     const byId = new Map(rows.map((r) => [r.id, r]))

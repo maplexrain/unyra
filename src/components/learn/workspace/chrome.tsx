@@ -761,6 +761,14 @@ export function NodeTrail({
 
 /* ---------- 初始页 ---------- */
 
+/**
+ * 新建目标的形态：决定「学习大纲」工作流走哪一条分支（见 learn/workflows）。
+ *
+ * - 'learn'：长期学习，交付物是大纲树 + 逐节点讲义；
+ * - 'task'：一次性任务（读项目 / 读论文 / 答疑），只建根节点与根节点文档，不建大纲树。
+ */
+export type GoalMode = 'learn' | 'task'
+
 export function GoalInput({
   busy,
   hasGoals,
@@ -769,12 +777,13 @@ export function GoalInput({
 }: {
   busy: boolean
   hasGoals: boolean
-  onSubmit: (q: string, files?: PendingFile[]) => void
+  onSubmit: (q: string, files?: PendingFile[], mode?: GoalMode) => void
   /** 模型选择器改了全局默认后的回调（外层据此刷新 hasKey 等派生状态） */
   onModelChanged: () => void
 }) {
   const [value, setValue] = useState('')
   const [files, setFiles] = useState<PendingFile[]>([])
+  const [mode, setMode] = useState<GoalMode>('learn')
   const [isDraggingOver, setIsDraggingOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -855,7 +864,7 @@ export function GoalInput({
   const submit = () => {
     const text = value.trim()
     if ((!text && files.length === 0) || busy) return
-    onSubmit(text, files.length > 0 ? files : undefined)
+    onSubmit(text, files.length > 0 ? files : undefined, mode)
   }
 
   return (
@@ -877,6 +886,40 @@ export function GoalInput({
               {t('写下想弄懂的问题或上传参考资料，超级导师会陪你从基础逐层逆向拆解并回溯归一')}
             </p>
           </div>
+        </div>
+
+        {/*
+          目标形态：这是「要不要一棵知识树」的分叉（见 learn/workflows 的「学习大纲」）。
+          长期学习走大纲树 + 逐节点讲义；一次性任务（读项目 / 读论文 / 答疑）只建根节点
+          与根节点文档——硬造大纲树只会留下用户永远不会点开的空节点。
+        */}
+        <div className="mt-4 flex flex-wrap items-center gap-1.5">
+          {(
+            [
+              { key: 'learn', label: t('长期学习'), hint: t('拆成知识树，逐节点生成讲义') },
+              { key: 'task', label: t('一次性任务'), hint: t('读项目 / 读论文 / 答疑：只写根节点导读文档，不建大纲树') },
+            ] as const
+          ).map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => setMode(m.key)}
+              title={m.hint}
+              aria-pressed={mode === m.key}
+              className={`rounded-full border px-3 py-1 text-[11.5px] transition ${
+                mode === m.key
+                  ? 'border-seal/50 bg-seal/10 font-medium text-seal-deep'
+                  : 'border-line/70 text-ink-soft hover:border-line-strong/60 hover:text-ink'
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+          <span className="ml-1 text-[11px] text-ink-faint">
+            {mode === 'learn'
+              ? t('我会把目标拆成知识树，逐个节点写讲义')
+              : t('只读你给的材料，产出一份导读文档；需要深入时再单独建节点')}
+          </span>
         </div>
 
         {/*
@@ -931,8 +974,12 @@ export function GoalInput({
               rows={files.length > 0 ? 3 : 4}
               placeholder={
                 files.length > 0
-                  ? t('已添加附件。可在输入框补充说明（例如：根据附件资料制定学习计划），直接回车亦可开始…')
-                  : t('例如：为什么 Transformer 能处理长距离依赖？')
+                  ? mode === 'task'
+                    ? t('已添加附件。可以说清要读哪一块（例如：先讲清入口与核心模块），直接回车亦可开始…')
+                    : t('已添加附件。可在输入框补充说明（例如：根据附件资料制定学习计划），直接回车亦可开始…')
+                  : mode === 'task'
+                    ? t('例如：帮我读一下这个项目，告诉我它怎么跑起来、核心模块在做什么')
+                    : t('例如：为什么 Transformer 能处理长距离依赖？')
               }
               className="block min-h-[80px] w-full resize-none rounded-t-2xl bg-transparent px-3.5 pt-3 pb-2 text-[13.5px] leading-relaxed text-ink outline-none placeholder:text-ink-faint"
               {...NO_AUTOFILL}
