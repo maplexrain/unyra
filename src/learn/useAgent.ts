@@ -382,7 +382,8 @@ export function useAgent(opts: {
       if (!trimmed && !(pending?.length || files?.length)) return
       const settings = loadAiSettings()
       const before = getLatest()
-      if (!nodeById(before, target.nodeId)) return
+      if (!before.goals.some((g) => g.id === target.goalId)) return
+      if (target.nodeId && !nodeById(before, target.nodeId)) return
 
       /**
        * 这一轮回复的固定身份：轮次内增量落库按它整条替换（见 flushTurn 的说明），
@@ -730,7 +731,7 @@ export function useAgent(opts: {
            * （纯装配，Node 探针钉得住）。
            */
           exam: (() => {
-            const deps = examDeps?.(target.nodeId)
+            const deps = target.nodeId ? examDeps?.(target.nodeId) : undefined
             return deps ? makeExamTool(deps) : undefined
           })(),
           // 动态提示词注入的触发口：execute 只报 key，去重与落库都在轮末（见 moduleQueue）
@@ -1218,10 +1219,10 @@ export function useAgent(opts: {
               : null) ?? resolveDisplayedConversation(s, effectiveGoalId)
           const effectiveNodeId =
             (nodeId && nodeById(s, nodeId)?.goalId === effectiveGoalId ? nodeId : null) ??
-            s.goals.find((g) => g.id === effectiveGoalId)?.rootNodeId ??
-            null
-          if (effectiveConvId && effectiveNodeId) {
-            t = { goalId: effectiveGoalId, nodeId: effectiveNodeId, conversationId: effectiveConvId }
+            (s.goals.find((g) => g.id === effectiveGoalId)?.rootNodeId || s.nodes.find((n) => n.goalId === effectiveGoalId)?.id || null)
+
+          if (effectiveConvId) {
+            t = { goalId: effectiveGoalId, nodeId: effectiveNodeId || null, conversationId: effectiveConvId }
           }
         }
       }
@@ -1531,11 +1532,11 @@ export function useAgent(opts: {
           const nid =
             (targetNode && targetNode.goalId === targetGoalId ? targetNode.id : null) ??
             (nodeId && nodeById(s, nodeId)?.goalId === targetGoalId ? nodeId : null) ??
-            s.goals.find((g) => g.id === targetGoalId)?.rootNodeId ??
-            null
+            (s.goals.find((g) => g.id === targetGoalId)?.rootNodeId || s.nodes.find((n) => n.goalId === targetGoalId)?.id || null)
 
-          if (convId && nid) {
-            target = { goalId: targetGoalId, nodeId: nid, conversationId: convId }
+
+          if (convId) {
+            target = { goalId: targetGoalId, nodeId: nid || null, conversationId: convId }
           }
         }
       }
@@ -1604,7 +1605,7 @@ export function useAgent(opts: {
       if (convId && id !== conversationId) {
         const goal = latest.goals.find((g) => g.id === conv.goalId)
         await runWorkflow('compact', {
-          target: { goalId: conv.goalId, nodeId: goal?.rootNodeId ?? '', conversationId: id },
+          target: { goalId: conv.goalId, nodeId: goal?.rootNodeId || null, conversationId: id },
         })
       } else {
         await runWorkflow('compact')
@@ -1678,7 +1679,7 @@ export function useAgent(opts: {
       runWorkflow('teach-node', {
         target,
         hint: extra,
-        params: { target: target.nodeId },
+        params: target.nodeId ? { target: target.nodeId } : {},
         images: attachments?.images,
         files: attachments?.files,
       })
@@ -1848,7 +1849,7 @@ export function useAgent(opts: {
   const resumeInterrupted = useCallback(
     (override?: AgentRunTarget) => {
       // 局部变量避开 t：外层那个 t 是 i18n 函数，指令文本要用它
-      const tgt = override ?? (goalId && nodeId && conversationId ? { goalId, nodeId, conversationId } : null)
+      const tgt = override ?? (goalId && conversationId ? { goalId, nodeId: nodeId || null, conversationId } : null)
       if (!tgt) return
       if (running[tgt.conversationId]) {
         onNoticeRef.current?.(t('导师正在回答，等这一轮结束再继续'))

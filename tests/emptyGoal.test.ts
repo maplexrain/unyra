@@ -12,6 +12,7 @@ import {
 } from '../src/learn/groups'
 import { tabKey } from '../src/learn/tabs'
 import { deriveCanvas } from '../src/components/learn/structure/structureView'
+import { learnSandboxOps, type AgentRunTarget } from '../src/learn/agent/sandboxOps'
 import type { LearnStore, TabRef } from '../src/learn/types'
 
 describe('空学习目标持久化与画布派生', () => {
@@ -144,5 +145,65 @@ describe('空学习目标持久化与画布派生', () => {
     const matched = goalTabsOf(docs.tabOwners, tabs, goalOfNode, goalId)
     expect(matched.length).toBe(1)
     expect(matched[0].id).toBe(tabKey(outlineRef))
+  })
+
+  it('无根节点的空目标可构建合法的目标级 AgentRunTarget 且沙箱能力正常运作', () => {
+    const goalId = 'goal-empty-agent'
+    const convId = 'conv-empty-agent'
+    const target: AgentRunTarget = {
+      goalId,
+      nodeId: null,
+      conversationId: convId,
+    }
+    expect(target.goalId).toBe(goalId)
+    expect(target.nodeId).toBeNull()
+    expect(target.conversationId).toBe(convId)
+
+    const store: LearnStore = {
+      version: 2,
+      nodes: [],
+      edges: [],
+      goals: [
+        {
+          id: goalId,
+          title: '空目标',
+          question: '空目标',
+          rootNodeId: '',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      ],
+      conversations: [
+        {
+          id: convId,
+          goalId,
+          messages: [],
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      ],
+      exams: [],
+      tmp: {},
+      resources: {},
+      activeGoalId: goalId,
+      activeNodeId: null,
+      activeConversationId: convId,
+      docArea: emptyDocs(),
+      drafts: {},
+      docScroll: {},
+      localFiles: [],
+    }
+
+    const ops = learnSandboxOps({
+      getLatest: () => store,
+      set: () => {},
+      nodeId: () => target.nodeId,
+      goalId: () => target.goalId,
+    })
+
+    expect(ops.nodeId()).toBeNull()
+    const listRes = ops.nodes.service().list()
+    expect(listRes.ok).toBe(true)
+    expect((listRes as Record<string, unknown>).nodes).toEqual([])
   })
 })

@@ -674,11 +674,15 @@ export default function LearnWorkspace({
       conversationById(store, activeAgentTab.conversationId)?.goalId === activeAgentTab.goalId
         ? activeAgentTab.conversationId
         : (resolveDisplayedConversation(store, activeAgentTab.goalId) ?? null)
-    const focusId = goalFocusByGoal.get(activeAgentTab.goalId) ?? goal?.rootNodeId ?? null
+    const fallbackFocusId =
+      goal?.rootNodeId ||
+      store.nodes.find((n) => n.goalId === activeAgentTab.goalId)?.id ||
+      null
+    const focusId = goalFocusByGoal.get(activeAgentTab.goalId) ?? fallbackFocusId
     return {
       tab: activeAgentTab,
       goalId: activeAgentTab.goalId,
-      nodeId: focusId,
+      nodeId: focusId || null,
       conversationId: convId,
       sessionId: null as string | null,
     }
@@ -2490,7 +2494,7 @@ export default function LearnWorkspace({
         convId = conversation.id
       }
       const run = agent.runWorkflow('essay-commit', {
-        target: { goalId, nodeId: goal.rootNodeId, conversationId: convId },
+        target: { goalId, nodeId: goal.rootNodeId || null, conversationId: convId },
         // 增量材料：之前的整理记录 + 本次新增全文 + 本次修改的差异（见 commitFeed）
         params: { message: commit.message, feed: commitFeed(commitsOf(s, goalId), commit) },
       })
@@ -3222,10 +3226,10 @@ export default function LearnWorkspace({
         ? tab.conversationId
         : (resolveDisplayedConversation(store, tab.goalId) ?? null)
     const nodeId = goalId
-      ? (goalFocusByGoal.get(goalId) ?? store.goals.find((g) => g.id === goalId)?.rootNodeId ?? null)
+      ? (goalFocusByGoal.get(goalId) ?? (store.goals.find((g) => g.id === goalId)?.rootNodeId || store.nodes.find((n) => n.goalId === goalId)?.id || null))
       : null
     const conv = convId ? (conversationById(store, convId) ?? null) : null
-    const target = goalId && nodeId && convId ? { goalId, nodeId, conversationId: convId } : null
+    const target = goalId && convId ? { goalId, nodeId: nodeId || null, conversationId: convId } : null
     const bucket = conv?.subagents
     const sessions = bucket?.sessions ?? []
     const session = isSub ? (sessions.find((x) => x.id === tab.sessionId) ?? null) : null
