@@ -1,34 +1,61 @@
 /* 本文件负责：注解与知识关联——「了解」注解、笔记标记与浮层、引文定位、知识节点链接、资源与文件卡片 */
-/* ---------- 「了解」注解：正文里带下划线的术语 + 悬停弹出释义 ---------- */
+/* ---------- 「了解」注解与「笔记」标记：透明荧光笔横划过文字的效果 ---------- */
 
-/* 注解标记是**文字自己的样式**：淡印章底 + 虚线，扫一眼就能看出哪些词有注解。
-   刻意不加任何符号占位（旧版两侧的 «» 与笔记的 ✎ 已删）——注解的存在感由
-   底色与下划线给，掺进字形只会打断阅读，被标注的词还是词本身。 */
+/*
+ * 荧光标记笔在文字上画了一笔：
+ * - 绝非圆角胶囊或整块盒式覆盖（不要圆角边框），而是模拟透明荧光笔平划过文字腰身的笔迹；
+ * - 采用直角（border-radius: 0 !important）、无外框，半透明高亮，文字清晰透出；
+ * - 划线位于字身中下部位（约 24%~86%），保留汉字上部与下部笔画露出，纯正马克笔划线手感。
+ */
 .moji-anno {
-  border-bottom: 1.5px dashed color-mix(in srgb, var(--color-seal) 78%, transparent);
-  background: color-mix(in srgb, var(--color-seal) 7%, transparent);
+  display: inline;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 0 0.05em;
+  margin: 0;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: linear-gradient(
+    180deg,
+    transparent 42%,
+    var(--color-anno-hl) 42%,
+    var(--color-anno-hl) 82%,
+    transparent 82%
+  );
   cursor: help;
   transition: background 0.15s ease;
 }
 .moji-anno:hover {
-  background: color-mix(in srgb, var(--color-seal) 20%, transparent);
-  border-bottom-style: solid;
-}
-/* 深色模式下低透明度底几乎看不见，提高底色与虚线的强度 */
-:root[data-theme='dark'] .moji-anno {
-  background: color-mix(in srgb, var(--color-seal) 14%, transparent);
-  border-bottom-color: color-mix(in srgb, var(--color-seal) 85%, transparent);
-}
-:root[data-theme='dark'] .moji-anno:hover {
-  background: color-mix(in srgb, var(--color-seal) 26%, transparent);
+  background: linear-gradient(
+    180deg,
+    transparent 42%,
+    var(--color-anno-hl-hover) 42%,
+    var(--color-anno-hl-hover) 82%,
+    transparent 82%
+  );
 }
 
-/* 「笔记」标记：与「了解」同一套浮层，只用实线与更沉的底色区分——表示「这里是我写的」。
-   两种注解的差异全在线型与底色上，不再靠角标字形。 */
 .moji-anno-note {
-  border-bottom-style: solid;
-  border-bottom-color: color-mix(in srgb, var(--color-seal) 70%, transparent);
-  background: color-mix(in srgb, var(--color-seal) 10%, transparent);
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: linear-gradient(
+    180deg,
+    transparent 42%,
+    var(--color-anno-note-hl) 42%,
+    var(--color-anno-note-hl) 82%,
+    transparent 82%
+  );
+}
+.moji-anno-note:hover {
+  background: linear-gradient(
+    180deg,
+    transparent 42%,
+    var(--color-anno-note-hl-hover) 42%,
+    var(--color-anno-note-hl-hover) 82%,
+    transparent 82%
+  );
 }
 
 /* 引文定位：点击对话气泡里的选段引文时，在正文对应文字上播放一次高亮。

@@ -13,6 +13,7 @@ import {
   isConfigured,
   labelOf,
   loadAiSettings,
+  makeModelEntry,
   modelsOf,
   newCustomProvider,
   saveAiSettings,
@@ -202,7 +203,24 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
     updateDraft(
       (d) => ({
         ...d,
-        providers: [...d.providers, { id: preset.id, kind: 'provider', label: '', baseUrl: '', apiKey: '', models: [] }],
+        providers: [
+          ...d.providers,
+          {
+            id: preset.id,
+            kind: 'provider',
+            label: '',
+            baseUrl: '',
+            apiKey: '',
+            models: (preset.knownModels ?? []).map((km) =>
+              makeModelEntry(km.id, {
+                name: km.name ?? '',
+                contextWindow: km.contextWindow,
+                inputModalities: km.inputModalities,
+                effortMap: km.effortMap,
+              })
+            ),
+          },
+        ],
       }),
       true,
     )

@@ -54,6 +54,9 @@ export default function ZenResizeHandles() {
     document.body.style.cursor = 'ew-resize'
     document.body.style.userSelect = 'none'
 
+    let rafId = 0
+    let pendingWidth = dragRef.current?.currentWidth ?? 860
+
     const onPointerMove = (e: PointerEvent) => {
       const state = dragRef.current
       if (!state) return
@@ -61,18 +64,34 @@ export default function ZenResizeHandles() {
       const delta = e.clientX - state.startX
       const mult = state.side === 'right' ? 2 : -2
       const maxW = Math.max(480, window.innerWidth - 32)
-      const nextW = Math.min(maxW, Math.max(480, Math.round(state.startWidth + delta * mult)))
+      pendingWidth = Math.min(maxW, Math.max(480, Math.round(state.startWidth + delta * mult)))
+      state.currentWidth = pendingWidth
 
-      state.currentWidth = nextW
-      document.documentElement.style.setProperty('--zen-width', `${nextW}px`)
+      // HUD 实时更新文本，无需等待
       if (hudRef.current) {
-        hudRef.current.textContent = `${nextW}px`
+        hudRef.current.textContent = `${pendingWidth}px`
+      }
+
+      // 将 DOM 样式更新合并到下一帧 requestAnimationFrame，避免高采样率鼠标事件泛滥导致排版抖动
+      if (!rafId) {
+        rafId = window.requestAnimationFrame(() => {
+          rafId = 0
+          if (dragRef.current) {
+            document.documentElement.style.setProperty('--zen-width', `${dragRef.current.currentWidth}px`)
+          }
+        })
       }
     }
 
     const onPointerUp = () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId)
+        rafId = 0
+      }
       const state = dragRef.current
       if (state) {
+        // 确保最终宽度精确落盘并更新至样式
+        document.documentElement.style.setProperty('--zen-width', `${state.currentWidth}px`)
         try {
           localStorage.setItem('moji:zen-width', String(state.currentWidth))
         } catch {}

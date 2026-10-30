@@ -62,6 +62,11 @@
   /* 注解标记可选颜色（调色板里的蓝/紫；其余复用上面的语义色） */
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
+  /* 荧光标记笔划线色（横划过文字的透明划笔效果） */
+  --color-anno-hl: rgba(234, 179, 8, 0.4);
+  --color-anno-hl-hover: rgba(234, 179, 8, 0.6);
+  --color-anno-note-hl: rgba(249, 115, 22, 0.38);
+  --color-anno-note-hl-hover: rgba(249, 115, 22, 0.58);
 
   /* 全站统一使用黑体（无衬线）：中文优先 PingFang / 鸿蒙 / 思源黑体 / 微软雅黑，
      西文回落到系统 UI 字体。不再提供衬线选项，正文与标题同族，避免宋体混排。 */
@@ -109,6 +114,11 @@
   /* 深色下提高亮度，保证在深底上可读 */
   --color-anno-blue: #7fb0dd;
   --color-anno-purple: #b79ae0;
+  /* 深色下透明荧光笔划线（青柠绿与珊瑚暖橙） */
+  --color-anno-hl: rgba(163, 230, 53, 0.45);
+  --color-anno-hl-hover: rgba(163, 230, 53, 0.65);
+  --color-anno-note-hl: rgba(251, 146, 60, 0.42);
+  --color-anno-note-hl-hover: rgba(251, 146, 60, 0.62);
 
   color-scheme: dark;
 }
@@ -159,7 +169,6 @@
 
   --color-anno-blue: #4f7fb5;
   --color-anno-purple: #9a5fb0;
-
   color-scheme: light;
 }
 
@@ -197,7 +206,6 @@
 
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #6e63b5;
-
   color-scheme: light;
 }
 
@@ -235,7 +243,6 @@
 
   --color-anno-blue: #3a7ca5;
   --color-anno-purple: #7a4fa8;
-
   color-scheme: light;
 }
 
@@ -274,7 +281,6 @@
 
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
-
   color-scheme: light;
 }
 
@@ -313,6 +319,11 @@
 
   --color-anno-blue: #7fb0dd;
   --color-anno-purple: #b79ae0;
+
+  --color-anno-hl: rgba(163, 230, 53, 0.45);
+  --color-anno-hl-hover: rgba(163, 230, 53, 0.65);
+  --color-anno-note-hl: rgba(251, 146, 60, 0.42);
+  --color-anno-note-hl-hover: rgba(251, 146, 60, 0.62);
 
   color-scheme: dark;
 }
@@ -361,7 +372,6 @@
 
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
-
   color-scheme: light;
 }
 
@@ -399,7 +409,6 @@
 
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
-
   color-scheme: light;
 }
 
@@ -437,7 +446,6 @@
 
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
-
   color-scheme: light;
 }
 
@@ -475,6 +483,11 @@
 
   --color-anno-blue: #7fb0dd;
   --color-anno-purple: #b79ae0;
+
+  --color-anno-hl: rgba(163, 230, 53, 0.45);
+  --color-anno-hl-hover: rgba(163, 230, 53, 0.65);
+  --color-anno-note-hl: rgba(251, 146, 60, 0.42);
+  --color-anno-note-hl-hover: rgba(251, 146, 60, 0.62);
 
   color-scheme: dark;
 }
@@ -514,6 +527,11 @@
   --color-anno-blue: #7fb0dd;
   --color-anno-purple: #b79ae0;
 
+  --color-anno-hl: rgba(163, 230, 53, 0.45);
+  --color-anno-hl-hover: rgba(163, 230, 53, 0.65);
+  --color-anno-note-hl: rgba(251, 146, 60, 0.42);
+  --color-anno-note-hl-hover: rgba(251, 146, 60, 0.62);
+
   color-scheme: dark;
 }
 
@@ -552,6 +570,11 @@
   --color-anno-blue: #7cc0ff;
   --color-anno-purple: #c9a2f5;
 
+  --color-anno-hl: rgba(163, 230, 53, 0.5);
+  --color-anno-hl-hover: rgba(163, 230, 53, 0.7);
+  --color-anno-note-hl: rgba(251, 146, 60, 0.48);
+  --color-anno-note-hl-hover: rgba(251, 146, 60, 0.68);
+
   color-scheme: dark;
 }
 
@@ -563,17 +586,6 @@
 :root[data-theme='contrast'] ::selection {
   background-color: color-mix(in srgb, var(--color-seal-deep) 40%, transparent);
   color: var(--color-ink-strong);
-}
-:root[data-theme='graphite'] .moji-anno,
-:root[data-theme='navy'] .moji-anno,
-:root[data-theme='contrast'] .moji-anno {
-  background: color-mix(in srgb, var(--color-seal) 14%, transparent);
-  border-bottom-color: color-mix(in srgb, var(--color-seal) 85%, transparent);
-}
-:root[data-theme='graphite'] .moji-anno:hover,
-:root[data-theme='navy'] .moji-anno:hover,
-:root[data-theme='contrast'] .moji-anno:hover {
-  background: color-mix(in srgb, var(--color-seal) 26%, transparent);
 }
 :root[data-theme='graphite'],
 :root[data-theme='navy'],
@@ -602,14 +614,6 @@
 :root[data-theme='black'] ::selection {
   background-color: rgba(224, 138, 116, 0.4);
   color: var(--color-ink-strong);
-}
-/* 标志颜色由 .moji-logo 统一给 var(--color-seal)，深色系各块的提亮值已内建 */
-:root[data-theme='black'] .moji-anno {
-  background: color-mix(in srgb, var(--color-seal) 14%, transparent);
-  border-bottom-color: color-mix(in srgb, var(--color-seal) 85%, transparent);
-}
-:root[data-theme='black'] .moji-anno:hover {
-  background: color-mix(in srgb, var(--color-seal) 26%, transparent);
 }
 /* 模态遮罩：纯黑与深色同口径 */
 :root[data-theme='black'] {

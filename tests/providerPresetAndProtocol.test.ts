@@ -591,6 +591,82 @@ describe('提供商预设与自定义协议联动及切换测试', () => {
     expect(openaiMessages[1].reasoning_content).toBeUndefined()
     expect(openaiMessages[3].reasoning_content).toBeUndefined()
   })
+  it('优化模型预设配置：验证各家官方模型元信息（包含 deepseek-flash 1M 上下文与视觉能力），以及向后兼容自动升级', async () => {
+    const { createDefaultProvider, makeModelEntry, withKnownModelMeta, normalizeAiSettings } = await import('../src/ai/settings')
+    const { knownModelOf, presetOf } = await import('../src/ai/providers')
+
+    // 1. 验证 DeepSeek 官方预设中的 deepseek-flash 具有 1M 上下文和视觉多模态能力
+    const dsPreset = presetOf('deepseek')!
+    expect(dsPreset).toBeDefined()
+    const flashModel = dsPreset.knownModels?.find((m) => m.id === 'deepseek-flash')
+    expect(flashModel).toBeDefined()
+    expect(flashModel?.contextWindow).toBe(1_000_000)
+    expect(flashModel?.inputModalities).toContain('text')
+    expect(flashModel?.inputModalities).toContain('image')
+
+    // 2. 验证 createDefaultProvider 创建的默认配置
+    const defaultProvider = createDefaultProvider('sk-test')
+    expect(defaultProvider.models).toHaveLength(1)
+    const defaultModel = defaultProvider.models[0]
+    expect(defaultModel.id).toBe('deepseek-flash')
+    expect(defaultModel.name).toBe('DeepSeek Flash')
+    expect(defaultModel.contextWindow).toBe(1_000_000)
+    expect(defaultModel.inputModalities).toEqual(['text', 'image'])
+
+    // 3. 验证 knownModelOf 跨厂商与前缀查找
+    const gpt4o = knownModelOf('openai', 'gpt-4o')
+    expect(gpt4o?.contextWindow).toBe(128_000)
+    expect(gpt4o?.inputModalities).toContain('image')
+
+    const claude = knownModelOf('anthropic', 'claude-3-7-sonnet-20250219')
+    expect(claude?.contextWindow).toBe(200_000)
+    expect(claude?.inputModalities).toContain('image')
+
+    const gemini = knownModelOf('gemini', 'gemini-2.5-pro')
+    expect(gemini?.contextWindow).toBe(1_000_000)
+    expect(gemini?.inputModalities).toContain('image')
+
+    const qwen = knownModelOf('dashscope', 'qwen-plus')
+    expect(qwen?.contextWindow).toBe(1_000_000)
+
+    // 4. 验证 withKnownModelMeta 自动补全
+    const rawEntry = makeModelEntry('deepseek-flash')
+    expect(rawEntry.contextWindow).toBe(0)
+    expect(rawEntry.inputModalities).toEqual(['text'])
+
+    const enriched = withKnownModelMeta(defaultProvider, rawEntry)
+    expect(enriched.contextWindow).toBe(1_000_000)
+    expect(enriched.inputModalities).toEqual(['text', 'image'])
+
+    // 5. 验证历史数据兼容升级：旧版本保存的 128k 单模态 deepseek-flash 自动升级为 1M 视觉多模态
+    const legacySaved = {
+      version: 3,
+      providers: [
+        {
+          id: 'deepseek',
+          kind: 'provider',
+          label: '',
+          baseUrl: '',
+          apiKey: 'sk-legacy',
+          models: [
+            {
+              id: 'deepseek-flash',
+              name: 'DeepSeek Flash',
+              contextWindow: 128000,
+              inputModalities: ['text'],
+            },
+          ],
+        },
+      ],
+      global: {
+        providerId: 'deepseek',
+        model: 'deepseek-flash',
+        effort: 'medium',
+      },
+    }
+    const upgraded = normalizeAiSettings(legacySaved)
+    const upgradedModel = upgraded.providers[0].models[0]
+    expect(upgradedModel.contextWindow).toBe(1_000_000)
+    expect(upgradedModel.inputModalities).toContain('image')
+  })
 })
-
-

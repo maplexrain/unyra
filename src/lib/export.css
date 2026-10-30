@@ -260,7 +260,7 @@ body {
   padding: 0.5em 1.1em;
   border-left: 3px solid var(--color-seal);
   background: var(--color-inset);
-  border-radius: 0 8px 8px 0;
+  border-radius: 0;
   color: var(--color-quote-ink);
 }
 
@@ -454,9 +454,23 @@ body {
 
 /* ---------- 注解、内部链接、资源引用 ---------- */
 
-/* 注解：正文里带虚线下划线，鼠标悬停能看到内容（导出件没有浮层，用 title） */
+/* 注解：正文里带透明荧光标记笔划过样式（严禁圆角边框） */
 .moji-anno {
-  border-bottom: 1px dashed var(--color-seal);
+  display: inline;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 0 0.05em;
+  margin: 0;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: linear-gradient(
+    180deg,
+    transparent 42%,
+    rgba(234, 179, 8, 0.4) 42%,
+    rgba(234, 179, 8, 0.4) 82%,
+    transparent 82%
+  );
   cursor: help;
 }
 

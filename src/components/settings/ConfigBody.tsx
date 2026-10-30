@@ -31,6 +31,7 @@ import {
   modelEntriesOf,
   modelsOf,
   protocolOf,
+  withKnownModelMeta,
   type InputModality,
   type ModelEntry,
   type ProviderConfig,
@@ -151,7 +152,7 @@ export function ConfigBody({
       setStatus({ kind: 'fail', msg: t('模型 ID「{0}」已存在', id) })
       return
     }
-    const entry = makeModelEntry(id)
+    const entry = withKnownModelMeta(cfg, makeModelEntry(id))
     patchProvider(cfg.id, { models: [...cfg.models, entry] })
     setManualModelId('')
     setStatus({ kind: 'ok', msg: t('已添加模型 {0}', id) })
@@ -207,7 +208,7 @@ export function ConfigBody({
       // 如果当前尚未配置任何模型，自动为用户生成模型配置
       if (cfg.models.length === 0) {
         // 取前 8 个常用/可用模型自动生成，避免一次塞入上百个非对话模型
-        const autoModels = ids.slice(0, 8).map((mid) => makeModelEntry(mid))
+        const autoModels = ids.slice(0, 8).map((mid) => withKnownModelMeta(cfg, makeModelEntry(mid)))
         patchProvider(cfg.id, { models: autoModels })
         setStatus({
           kind: 'ok',
