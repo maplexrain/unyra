@@ -210,7 +210,7 @@ function dropOrphans(history: ChatMessage[]): ChatMessage[] {
       out.push({
         role: 'assistant',
         content: m.content,
-        ...(m.reasoning_content ? { reasoning_content: m.reasoning_content } : {}),
+        ...(m.reasoning_content !== undefined ? { reasoning_content: m.reasoning_content } : {}),
       })
       continue
     }

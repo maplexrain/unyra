@@ -42,6 +42,7 @@ import { MIN_ACTIVE_MESSAGES, activeMessages, applyCompaction, shouldCompact } f
 import { needsPersonaAnnounce, personaMessage } from '../agent/persona'
 import { needsDocFormatAnnounce, docFormatMessage, docFormatAllowsModule } from '../agent/docFormat'
 import { conversationById, nodeById, resolveDisplayedConversation, addConversation } from './graph'
+import { resolveNode } from './paths'
 import { makeExamTool } from './agentOps'
 import { findWorkflow, renderWorkflowInstruction, workflowPrep, workflowModules } from './workflows'
 import { generateConversationTitle, namingSource } from './title'
@@ -63,7 +64,13 @@ import { storageAbsPath } from '../lib/storage'
 import { applyEvent } from './agent/events'
 import { toChatHistory } from './agent/history'
 import { TURN_FLUSH_MS, upsertAssistantInFlight } from './agent/inflight'
-import { loadAttachTexts, transferPendingFiles, transferPendingImages } from './agent/transfer'
+import {
+  loadAttachTexts,
+  transferFreePendingFiles,
+  transferFreePendingImages,
+  transferPendingFiles,
+  transferPendingImages,
+} from './agent/transfer'
 import { applyAskToProfile, learnSandboxOps, type AgentRunTarget, type AgentUiDeps } from './agent/sandboxOps'
 import { createSubAgentManager, type SubAgentManager } from '../agent/subagent/manager'
 import { EMPTY_SUB_BUCKET } from '../agent/subagent/registry'
@@ -382,7 +389,8 @@ export function useAgent(opts: {
       if (!trimmed && !(pending?.length || files?.length)) return
       const settings = loadAiSettings()
       const before = getLatest()
-      if (!nodeById(before, target.nodeId)) return
+      if (!before.goals.some((g) => g.id === target.goalId)) return
+      if (target.nodeId && !nodeById(before, target.nodeId)) return
 
       /**
        * 这一轮回复的固定身份：轮次内增量落库按它整条替换（见 flushTurn 的说明），
@@ -717,6 +725,38 @@ export function useAgent(opts: {
                     '至少要给 files 或 sources 里的一项：files: [{ path, action?: created|updated|deleted, note? }]，sources: [{ title, url }]（只收 http/https）',
                 }
               }
+              if (target.goalId) {
+                const st = getLatest()
+                for (const f of rec.files) {
+                  if (!f.goalId) f.goalId = target.goalId
+                  if (!f.nodeId) {
+                    const byId = st.nodes.find((n) => n.id === f.path || (f.path.startsWith('#') && n.id === f.path.slice(1)))
+                    if (byId) {
+                      f.nodeId = byId.id
+                      continue
+                    }
+                    const res = resolveNode(st, { goalId: target.goalId, currentNodeId: target.nodeId ?? null }, f.path)
+                    if (res.ok) {
+                      f.nodeId = res.value.id
+                      continue
+                    }
+                    const cleanPath = f.path.replace(/\.md$/i, '').trim()
+                    if (cleanPath !== f.path) {
+                      const resClean = resolveNode(st, { goalId: target.goalId, currentNodeId: target.nodeId ?? null }, cleanPath)
+                      if (resClean.ok) {
+                        f.nodeId = resClean.value.id
+                        continue
+                      }
+                    }
+                    if (target.nodeId) {
+                      const targetNode = nodeById(st, target.nodeId)
+                      if (targetNode && (cleanPath === targetNode.title || cleanPath === targetNode.id)) {
+                        f.nodeId = targetNode.id
+                      }
+                    }
+                  }
+                }
+              }
               mergeDelivery(turnDelivery, rec)
               return { ok: true, files: turnDelivery.files.length, sources: turnDelivery.sources.length }
             },
@@ -730,7 +770,7 @@ export function useAgent(opts: {
            * （纯装配，Node 探针钉得住）。
            */
           exam: (() => {
-            const deps = examDeps?.(target.nodeId)
+            const deps = target.nodeId ? examDeps?.(target.nodeId) : undefined
             return deps ? makeExamTool(deps) : undefined
           })(),
           // 动态提示词注入的触发口：execute 只报 key，去重与落库都在轮末（见 moduleQueue）
@@ -1218,10 +1258,10 @@ export function useAgent(opts: {
               : null) ?? resolveDisplayedConversation(s, effectiveGoalId)
           const effectiveNodeId =
             (nodeId && nodeById(s, nodeId)?.goalId === effectiveGoalId ? nodeId : null) ??
-            s.goals.find((g) => g.id === effectiveGoalId)?.rootNodeId ??
-            null
-          if (effectiveConvId && effectiveNodeId) {
-            t = { goalId: effectiveGoalId, nodeId: effectiveNodeId, conversationId: effectiveConvId }
+            (s.goals.find((g) => g.id === effectiveGoalId)?.rootNodeId || s.nodes.find((n) => n.goalId === effectiveGoalId)?.id || null)
+
+          if (effectiveConvId) {
+            t = { goalId: effectiveGoalId, nodeId: effectiveNodeId || null, conversationId: effectiveConvId }
           }
         }
       }
@@ -1250,10 +1290,16 @@ export function useAgent(opts: {
    */
   const sendFree = useCallback(
     (conversationId: string, text: string, opts?: { files?: PendingFile[]; images?: PendingImage[] }) => {
-      // 图片附件在这里没有去处（static 资源库按目标目录落盘，自由聊天没有目标目录）：
-      // 有图就先说一声——纯图片那条在自由聊天里没有可发的东西（下面会拦），不能闷声吞掉
-      if (opts?.images?.length) onNoticeRef.current?.(t('自由聊天暂不支持图片，图片已去掉'))
-      if (!text.trim()) return
+      const trimmed = text.trim()
+      const docFiles = (opts?.files ?? []).filter((x) => !x.image)
+      const imageFiles: PendingImage[] = [
+        ...(opts?.images ?? []),
+        ...(opts?.files ?? [])
+          .filter((x) => x.image)
+          .map((x) => ({ id: x.id, name: x.name, bytes: x.bytes, file: x.image as File, previewUrl: '' })),
+      ]
+      // 允许纯图片或纯文件发送（无字放行）
+      if (!trimmed && !docFiles.length && !imageFiles.length) return
       if (!freeConversationById(conversationId)) return
       if (!hasApiKey(loadAiSettings())) {
         onNeedKeyRef.current()
@@ -1269,30 +1315,37 @@ export function useAgent(opts: {
       void (async () => {
         try {
           if (prev) await prev
-          // 文本附件直接拼进正文：附件的 text 在拾取时已按上限读好/截断（见 PendingFile）
-          const attach = (opts?.files ?? [])
-            .filter((f) => f.text)
-            .map((f) => '\n\n【附件 ' + f.name + '】\n' + f.text)
-            .join('')
+
+          // 转存图片与文件附件至 free/static
+          const [attachedImages, attachedFiles] = await Promise.all([
+            imageFiles.length ? transferFreePendingImages(imageFiles) : Promise.resolve({ images: [] as MessageImage[], error: undefined }),
+            docFiles.length ? transferFreePendingFiles(docFiles) : Promise.resolve({ files: [] as MessageFile[], error: undefined }),
+          ])
+          if (attachedImages.error) onNoticeRef.current?.(attachedImages.error)
+          if (attachedFiles.error) onNoticeRef.current?.(attachedFiles.error)
+
           appendFreeMessage(conversationId, {
             id: crypto.randomUUID(),
             role: 'user',
-            parts: [{ type: 'text', text: text.trim() + attach }],
+            parts: [{ type: 'text', text: trimmed }],
+            ...(attachedImages.images.length ? { images: attachedImages.images } : {}),
+            ...(attachedFiles.files.length ? { files: attachedFiles.files } : {}),
             ts: Date.now(),
           })
           const stored = freeConversationById(conversationId)
           if (!stored) return
           const settings = loadAiSettings()
           const agentSettings = loadAgentSettings()
-          // 自由聊天的系统提示词同样固化进会话（见 Conversation.systemPrompt）：第一次请求抓一份、之后每轮用它
+          // 自由聊天的系统提示词同样固化进会话（见 Conversation.systemPrompt）：系统提示词变动时自动同步最新规范
+          const desiredFreeSystem = buildFreeChatSystem({
+            extraSystemPrompt:
+              agentSettings.extraSystemPromptEnabled && agentSettings.extraSystemPrompt?.trim()
+                ? agentSettings.extraSystemPrompt.trim()
+                : undefined,
+          })
           let freeSystem = stored.systemPrompt
-          if (!freeSystem) {
-            freeSystem = buildFreeChatSystem({
-              extraSystemPrompt:
-                agentSettings.extraSystemPromptEnabled && agentSettings.extraSystemPrompt?.trim()
-                  ? agentSettings.extraSystemPrompt.trim()
-                  : undefined,
-            })
+          if (!freeSystem || freeSystem !== desiredFreeSystem) {
+            freeSystem = desiredFreeSystem
             mutateFreeConversation(conversationId, (c) => ({ ...c, systemPrompt: freeSystem }))
           }
           const global = resolveGlobal(settings)
@@ -1346,13 +1399,19 @@ export function useAgent(opts: {
 
           const tally = { turns: 0, context: 0, total: 0, output: 0, read: 0, miss: 0, tps: 0, estimated: false }
 
+          // 读取整段历史中的图片与附件文本，忠实还原给模型
+          const [imagesMap, attachTexts] = await Promise.all([
+            loadImagesFor(stored.messages),
+            loadAttachTexts(stored.messages),
+          ])
+
           try {
             await runAgent({
               provider: global.provider,
               model: global.model,
               reasoningEffort: global.effort,
               system: freeSystem,
-              messages: toChatHistory(stored.messages),
+              messages: toChatHistory(stored.messages, imagesMap, { files: attachTexts }),
               tools,
               ctx: { nodeId: '', goalId: FREE_GOAL_ID },
               signal: ctrl.signal,
@@ -1531,11 +1590,11 @@ export function useAgent(opts: {
           const nid =
             (targetNode && targetNode.goalId === targetGoalId ? targetNode.id : null) ??
             (nodeId && nodeById(s, nodeId)?.goalId === targetGoalId ? nodeId : null) ??
-            s.goals.find((g) => g.id === targetGoalId)?.rootNodeId ??
-            null
+            (s.goals.find((g) => g.id === targetGoalId)?.rootNodeId || s.nodes.find((n) => n.goalId === targetGoalId)?.id || null)
 
-          if (convId && nid) {
-            target = { goalId: targetGoalId, nodeId: nid, conversationId: convId }
+
+          if (convId) {
+            target = { goalId: targetGoalId, nodeId: nid || null, conversationId: convId }
           }
         }
       }
@@ -1604,7 +1663,7 @@ export function useAgent(opts: {
       if (convId && id !== conversationId) {
         const goal = latest.goals.find((g) => g.id === conv.goalId)
         await runWorkflow('compact', {
-          target: { goalId: conv.goalId, nodeId: goal?.rootNodeId ?? '', conversationId: id },
+          target: { goalId: conv.goalId, nodeId: goal?.rootNodeId || null, conversationId: id },
         })
       } else {
         await runWorkflow('compact')
@@ -1678,7 +1737,7 @@ export function useAgent(opts: {
       runWorkflow('teach-node', {
         target,
         hint: extra,
-        params: { target: target.nodeId },
+        params: target.nodeId ? { target: target.nodeId } : {},
         images: attachments?.images,
         files: attachments?.files,
       })
@@ -1848,7 +1907,7 @@ export function useAgent(opts: {
   const resumeInterrupted = useCallback(
     (override?: AgentRunTarget) => {
       // 局部变量避开 t：外层那个 t 是 i18n 函数，指令文本要用它
-      const tgt = override ?? (goalId && nodeId && conversationId ? { goalId, nodeId, conversationId } : null)
+      const tgt = override ?? (goalId && conversationId ? { goalId, nodeId: nodeId || null, conversationId } : null)
       if (!tgt) return
       if (running[tgt.conversationId]) {
         onNoticeRef.current?.(t('导师正在回答，等这一轮结束再继续'))

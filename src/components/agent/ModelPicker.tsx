@@ -306,8 +306,11 @@ export default function ModelPicker({ onChanged }: Props) {
           {shortLabel || t('未选模型')}
         </span>
         <span className="inline-flex h-[18px] shrink-0 items-center gap-1 rounded bg-line/70 px-1.5 text-[10.5px] leading-none text-ink-soft">
-          {/* 荧光点与滑条同色：收起状态下也能看出当前开到哪一档 */}
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: REASONING_NEON[effort] }} />
+          {/* 荧光点与滑条同色：收起状态下也能看出当前开到哪一档，平滑过渡色彩 */}
+          <span
+            className="h-1.5 w-1.5 shrink-0 rounded-full transition-colors duration-300"
+            style={{ backgroundColor: REASONING_NEON[effort] }}
+          />
           <span className="leading-none">{REASONING_LABEL[effort]}</span>
         </span>
         <ChevronRight size={12} className={`shrink-0 text-ink-faint transition ${open ? 'rotate-90' : ''}`} />

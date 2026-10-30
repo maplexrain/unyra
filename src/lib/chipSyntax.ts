@@ -37,6 +37,8 @@ export interface ChipPayload {
   attemptId?: string
   /** 显示名：界面上那一小截文字。导师写的时候带上最好，缺了由 chipLabel 兜底 */
   title?: string
+  /** 目标 id：多目标下定位节点文档用，避免全局同名节点指针混淆 */
+  goalId?: string
 }
 
 /** 拖放/复制时 dataTransfer 里的 MIME */

@@ -199,7 +199,7 @@ export function layoutHintOf(kind: 'teaching' | 'note', content: string, format:
   if (MD_STRUCTURE.test(content)) return ''
   return (
     '\n（提醒：这份正文里一处排版痕迹都没有。教学文档要有结构——Markdown 的引用 / 表格 / 图表围栏，' +
-    '或按「文档排版与图表」补上提示框 / 两栏 / 步骤 / 图表（以当前「文档格式」策略为准），' +
+    '或按「文档排版与视觉呈现」补上提示框 / 两栏 / 步骤 / 图表（以当前「文档格式」策略为准），' +
     '再整份写回一次。）'
   )
 }

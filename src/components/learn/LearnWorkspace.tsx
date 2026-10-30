@@ -73,7 +73,6 @@ import {
   claimTab,
   closeIds,
   closeIn,
-  dropTabs,
   findTab,
   focusTabsInGroup,
   focusedGroup,
@@ -100,14 +99,17 @@ import {
 } from '../../learn/groups'
 import { makeBlankTab, makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
 import { setZenActive } from '../../learn/zen'
+import { closeGoalTabGroupStore } from '../../learn/groups/goalTabGroupOps'
 import { pickLocalFiles } from '../../lib/localFiles'
 import { addLocalFile } from '../../learn/localfiles'
 import { normalizeWebInput } from '../../learn/webUrl'
 import type { BrowserDeps } from '../../learn/web/browserOps'
 import {
   addConversation,
+  conversationTitle,
   conversationById,
   deleteConversation,
+  deleteGoal,
   deleteMessage,
   deleteNode,
   ensureConversation,
@@ -116,6 +118,7 @@ import {
   resolveDisplayedConversation,
   nodeById,
   nodeStructure,
+  normalizeKey,
   removeExam,
   touchNode,
   updateMessageText,
@@ -168,7 +171,6 @@ import StructOverlay from './workspace/StructOverlay'
 import { NodeService, type GNodeKind } from '../../learn/nodeKinds'
 import { noteEntityOf } from './workspace/panes'
 import { pruneImages } from '../../learn/images'
-import { dropDrafts } from '../../learn/drafts'
 import { queueOf, shouldEnqueue } from '../../learn/agentQueue'
 import {
   cachedResourceUrl,
@@ -674,11 +676,15 @@ export default function LearnWorkspace({
       conversationById(store, activeAgentTab.conversationId)?.goalId === activeAgentTab.goalId
         ? activeAgentTab.conversationId
         : (resolveDisplayedConversation(store, activeAgentTab.goalId) ?? null)
-    const focusId = goalFocusByGoal.get(activeAgentTab.goalId) ?? goal?.rootNodeId ?? null
+    const fallbackFocusId =
+      goal?.rootNodeId ||
+      store.nodes.find((n) => n.goalId === activeAgentTab.goalId)?.id ||
+      null
+    const focusId = goalFocusByGoal.get(activeAgentTab.goalId) ?? fallbackFocusId
     return {
       tab: activeAgentTab,
       goalId: activeAgentTab.goalId,
-      nodeId: focusId,
+      nodeId: focusId || null,
       conversationId: convId,
       sessionId: null as string | null,
     }
@@ -1242,7 +1248,7 @@ export default function LearnWorkspace({
       if (!doomed.length) return
       let cur = s
 
-      // 强制模式：连同文档区关联的tab一起关闭
+      // 强制模式：连同文档区关联的tab一起关闭整个目标页签组
       const isForce = mode === 'force' || mode === 'forceOthers'
       if (isForce) {
         const doomedGoalIds = new Set<string>()
@@ -1250,57 +1256,55 @@ export default function LearnWorkspace({
           const ref = (cur.agentTabs ?? []).find((t) => agentTabKey(t) === k)
           if (ref && ref.kind === 'goal') doomedGoalIds.add(ref.goalId)
         }
-        if (doomedGoalIds.size > 0) {
-          const belongsToDoomedGoal = (t: LearnTab): boolean => {
-            if (t.ref.kind === 'mind') return doomedGoalIds.has(t.ref.goalId)
-            const nid = tabNodeId(t.ref)
-            if (!nid) return false
-            const n = nodeById(cur, nid)
-            return !!n && doomedGoalIds.has(n.goalId)
-          }
-          // 活动组和停靠场都算「已打开的文档」：只扫 allTabs 会把关根大纲后停靠的
-          // 页签漏掉，稍后重开大纲时它们又会被恢复出来。
-          const stored = allStoredTabs(cur.docArea)
-          const docIdsToClose = stored.filter(belongsToDoomedGoal).map((t) => t.id)
-          if (docIdsToClose.length > 0) {
-            const closedArea = closeIds(cur.docArea, docIdsToClose, { preserveActiveAsBlank: true })
-            cur = {
-              ...cur,
-              docArea: withOwners(closedArea, dropTabs(closedArea.tabOwners, docIdsToClose)),
-              drafts: dropDrafts(cur.drafts, docIdsToClose),
-            }
-          }
+        for (const gid of doomedGoalIds) {
+          cur = closeGoalTabGroupStore(cur, gid)
         }
       }
 
       let closed = 0
       let blocked = 0
-      let blockedDocs = 0
       for (const k of doomed) {
         const ref = (cur.agentTabs ?? []).find((t) => agentTabKey(t) === k)
         if (!ref) continue
         const block = closeBlockOf(cur, ref)
         if (block !== 'none' && !isForce) {
           blocked++
-          if (block === 'docs') blockedDocs++
           continue
+        }
+        if (ref.kind === 'goal') {
+          // 检查该目标下是否还有未在 doomed 里的其他对话页签
+          const remainingTabsOfGoal = (cur.agentTabs ?? []).filter(
+            (t) => t.kind === 'goal' && t.goalId === ref.goalId && !doomed.includes(agentTabKey(t)),
+          )
+          if (remainingTabsOfGoal.length === 0) {
+            // 最后一个对话页签关闭：视为关闭整个页签组！
+            cur = closeGoalTabGroupStore(cur, ref.goalId)
+            closed++
+            continue
+          }
         }
         const next = removeAgentTab(cur.agentTabs ?? [], cur.agentActiveTab ?? null, k)
         cur = withAgentTabs(cur, next.tabs, next.active)
+        if (cur.agentActiveTab) {
+          const activeRef = (cur.agentTabs ?? []).find((t) => agentTabKey(t) === cur.agentActiveTab)
+          if (activeRef?.kind === 'goal') {
+            cur = {
+              ...cur,
+              activeGoalId: activeRef.goalId,
+              activeConversationId: activeRef.conversationId,
+            }
+          }
+        }
         closed++
       }
       if (!closed) {
-        onToast(
-          blockedDocs
-            ? t('文档区还开着这个目标的页签，先关掉它们才能关闭导师')
-            : t('导师正在运行，先停止这一轮再关闭'),
-        )
+        onToast(t('导师正在运行，先停止这一轮再关闭'))
         return
       }
       // 全部关完时把激活权交给固定聊天页签——它是这一栏的底座，永远在
       if (!cur.agentActiveTab) cur = { ...cur, agentActiveTab: 'free' }
       set(cur)
-      if (blocked) onToast(t('{0} 枚页签被拦下（文档区还开着，或导师正在跑）', blocked))
+      if (blocked) onToast(t('{0} 枚页签被拦下（导师正在跑）', blocked))
     },
     [getLatest, set, closeBlockOf, onToast],
   )
@@ -1323,14 +1327,16 @@ export default function LearnWorkspace({
     [getLatest, set],
   )
 
-  /** 页签标题：固定聊天 = 「聊天」；目标级 = 目标的标题（总目标节点名，回落目标问题）；子代理 = 定义名 */
+  /** 页签标题：固定聊天 = 「聊天」；目标级 = 对话标题或目标标题；子代理 = 定义名（任务模式使用图标前置 task chip 标识） */
   const agentTabTitle = useCallback(
     (ref: AgentTabRef): string => {
       if (ref.kind === 'free') return t('聊天')
       if (ref.kind === 'goal') {
         const goal = store.goals.find((g) => g.id === ref.goalId)
-        const title = goal ? (nodeById(store, goal.rootNodeId)?.title ?? goal.question) : ''
-        return title || t('目标')
+        const goalTitle = goal ? (nodeById(store, goal.rootNodeId)?.title ?? goal.question) : ''
+        const conv = ref.conversationId ? conversationById(store, ref.conversationId) : undefined
+        const convTitle = conv?.title || (conv && conv.messages.length > 0 ? conversationTitle(conv) : '')
+        return convTitle || goalTitle || t('新对话')
       }
       const conv = conversationById(store, ref.conversationId)
       const session = conv?.subagents?.sessions.find((x) => x.id === ref.sessionId)
@@ -1365,7 +1371,7 @@ export default function LearnWorkspace({
   const fixAgentTabsAfter = (s: LearnStore): LearnStore => {
     const tabs0 = s.agentTabs ?? []
     if (!tabs0.length) return s
-    const fixed = tabs0
+    const mapped = tabs0
       .filter((t) => {
         if (t.kind === 'goal') return s.goals.some((g) => g.id === t.goalId)
         if (t.kind !== 'sub') return true
@@ -1379,6 +1385,14 @@ export default function LearnWorkspace({
           ? { ...t, conversationId: resolveDisplayedConversation(s, t.goalId) ?? null }
           : t,
       )
+    const seen = new Set<string>()
+    const fixed: AgentTabRef[] = []
+    for (const t of mapped) {
+      const key = agentTabKey(t)
+      if (seen.has(key)) continue
+      seen.add(key)
+      fixed.push(t)
+    }
     const active =
       s.agentActiveTab && fixed.some((t) => agentTabKey(t) === s.agentActiveTab)
         ? s.agentActiveTab
@@ -2490,7 +2504,7 @@ export default function LearnWorkspace({
         convId = conversation.id
       }
       const run = agent.runWorkflow('essay-commit', {
-        target: { goalId, nodeId: goal.rootNodeId, conversationId: convId },
+        target: { goalId, nodeId: goal.rootNodeId || null, conversationId: convId },
         // 增量材料：之前的整理记录 + 本次新增全文 + 本次修改的差异（见 commitFeed）
         params: { message: commit.message, feed: commitFeed(commitsOf(s, goalId), commit) },
       })
@@ -2739,6 +2753,25 @@ export default function LearnWorkspace({
     set(patched)
     pruneImagesOf(patched)
   }
+
+  /** 在当前激活的目标下新增一段对话并作为新页签打开置前 */
+  const handleNewGoalConversation = useCallback(() => {
+    const s = getLatest()
+    if (!s.activeGoalId) return
+    const { store: withConv, conversation } = addConversation(s, s.activeGoalId)
+    const t0 = upsertAgentTab(
+      withConv.agentTabs ?? [],
+      withConv.agentActiveTab ?? null,
+      { kind: 'goal', goalId: s.activeGoalId, conversationId: conversation.id },
+      true,
+    )
+    const next: LearnStore = {
+      ...withConv,
+      activeGoalId: s.activeGoalId,
+      activeConversationId: conversation.id,
+    }
+    set(withAgentTabs(next, t0.tabs, t0.active))
+  }, [getLatest, set])
 
   /* ---------- 新建学习目标 ---------- */
 
@@ -3222,10 +3255,10 @@ export default function LearnWorkspace({
         ? tab.conversationId
         : (resolveDisplayedConversation(store, tab.goalId) ?? null)
     const nodeId = goalId
-      ? (goalFocusByGoal.get(goalId) ?? store.goals.find((g) => g.id === goalId)?.rootNodeId ?? null)
+      ? (goalFocusByGoal.get(goalId) ?? (store.goals.find((g) => g.id === goalId)?.rootNodeId || store.nodes.find((n) => n.goalId === goalId)?.id || null))
       : null
     const conv = convId ? (conversationById(store, convId) ?? null) : null
-    const target = goalId && nodeId && convId ? { goalId, nodeId, conversationId: convId } : null
+    const target = goalId && convId ? { goalId, nodeId: nodeId || null, conversationId: convId } : null
     const bucket = conv?.subagents
     const sessions = bucket?.sessions ?? []
     const session = isSub ? (sessions.find((x) => x.id === tab.sessionId) ?? null) : null
@@ -3433,22 +3466,53 @@ export default function LearnWorkspace({
       */
       if (p.type === 'doc' && p.path) {
         const wanted = p.path.replace(/\/(教学|讲义|笔记|大纲|试卷|考试|试卷记录|作答记录)$/, '')
-        const norm = (v: string): string => v.replace(/\\/g, '/').trim().replace(/\/+$/, '')
-        // 先按「节点树路径原样」对一次：api.node.list 回的就是这种，模型多半直接抄
+        const normPathStr = (v: string): string => v.replace(/\\/g, '/').trim().replace(/\/+$/, '')
+        const targetGoalId = p.goalId || s.activeGoalId
+        // 1. 如果有明确的目标作用域（或当前激活目标），优先在该目标内查找，避免多目标同名节点指针混淆
+        if (targetGoalId) {
+          const exactInGoal = s.nodes.find(
+            (n) => n.goalId === targetGoalId && normPathStr(nodePathOf(s, targetGoalId, n.id)) === normPathStr(wanted),
+          )
+          if (exactInGoal) {
+            openTab({ kind: 'teach', nodeId: exactInGoal.id })
+            return
+          }
+          const byTitleInGoal = s.nodes.find(
+            (n) => n.goalId === targetGoalId && (normPathStr(n.title) === normPathStr(wanted) || n.key === normalizeKey(wanted) || n.id === wanted),
+          )
+          if (byTitleInGoal) {
+            openTab({ kind: 'teach', nodeId: byTitleInGoal.id })
+            return
+          }
+          const gotInGoal = resolveNode(s, { goalId: targetGoalId, currentNodeId: s.activeNodeId }, wanted)
+          if (gotInGoal.ok) {
+            openTab({ kind: 'teach', nodeId: gotInGoal.value.id })
+            return
+          }
+        }
+        // 2. 兜底跨目标查找（跳过已查过的 targetGoalId）
         const exact = s.nodes.find(
-          (n) => !!n.goalId && norm(nodePathOf(s, n.goalId, n.id)) === norm(wanted),
+          (n) => (!targetGoalId || n.goalId !== targetGoalId) && !!n.goalId && normPathStr(nodePathOf(s, n.goalId, n.id)) === normPathStr(wanted),
         )
         if (exact) {
           openTab({ kind: 'teach', nodeId: exact.id })
           return
         }
-        // 再按宽容口径解析（标题 / #id / 别名都认）
         for (const g of s.goals) {
+          if (g.id === targetGoalId) continue
           const got = resolveNode(s, { goalId: g.id, currentNodeId: null }, wanted)
           if (got.ok) {
             openTab({ kind: 'teach', nodeId: got.value.id })
             return
           }
+        }
+        // 3. 若节点树里依然未找到，但路径带物理文件后缀（如 .md），尝试作为本地文件打开
+        if (/\.[a-z0-9]{1,8}$/i.test(p.path)) {
+          const fileNorm = p.path.replace(/\\/g, '/')
+          const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(fileNorm)
+          const abs = isAbs ? fileNorm : (userAbsPath(fileNorm) ?? fileNorm)
+          openTab({ kind: 'local', path: abs, title: p.path.split('/').pop() })
+          return
         }
       }
       if (p.type === 'attempt') {
@@ -3642,10 +3706,20 @@ export default function LearnWorkspace({
 
   /** 删除前先弹确认框，避免误删：看一眼「删的是哪个、连带删掉多少」再点头 */
   const requestRemoveNode = (nodeId: string) => {
-    const node = nodeById(getLatest(), nodeId)
+    const s = getLatest()
+    const goal = s.goals.find((g) => g.id === nodeId || g.rootNodeId === nodeId)
+    if (goal) {
+      const goalTitle =
+        goal.title ||
+        goal.question ||
+        (goal.rootNodeId ? nodeById(s, goal.rootNodeId)?.title : '') ||
+        t('未命名目标')
+      setPendingDelete({ nodeId: goal.id, title: goalTitle, isRoot: true, count: goalSubtreeSize(goal.id) })
+      return
+    }
+    const node = nodeById(s, nodeId)
     if (!node) return
-    const isRoot = getLatest().goals.some((g) => g.rootNodeId === nodeId)
-    setPendingDelete({ nodeId, title: node.title, isRoot, count: isRoot ? goalSubtreeSize(nodeId) : 1 })
+    setPendingDelete({ nodeId, title: node.title, isRoot: false, count: 1 })
   }
 
   /**
@@ -3793,9 +3867,10 @@ export default function LearnWorkspace({
     },
     [getLatest, onToast],
   )
-  const goalSubtreeSize = (rootId: string): number => {
-    const goal = getLatest().goals.find((g) => g.rootNodeId === rootId)
-    return goal ? goalSubtreeIds(getLatest(), goal.id).size : 1
+  const goalSubtreeSize = (rootOrGoalId: string): number => {
+    const s = getLatest()
+    const goal = s.goals.find((g) => g.id === rootOrGoalId || g.rootNodeId === rootOrGoalId)
+    return goal ? goalSubtreeIds(s, goal.id).size : 1
   }
 
   /** 删除目标/节点：含全部下级知识点、对话与试卷，先确认再删；Ctrl+Z 可撤回 */
@@ -3806,8 +3881,11 @@ export default function LearnWorkspace({
     // 先备货再动手：撤回项捕获的是删除前那一刻的旧引用（节点本身、相连的边、试卷、会话与两本账）
     const entry = captureNodeDelete(getLatest(), pending.nodeId)
     if (entry) pushUndo(entry)
-    // agent 栏的页签跟着收拾：整目标被删时它的导师页签一并退场（读盘归一是同一条规矩）
-    set(fixAgentTabsAfter(deleteNode(getLatest(), pending.nodeId)))
+    // 目标级删除走 deleteGoal，普通节点走 deleteNode
+    const nextStore = pending.isRoot
+      ? deleteGoal(getLatest(), pending.nodeId)
+      : deleteNode(getLatest(), pending.nodeId)
+    set(fixAgentTabsAfter(nextStore))
     onToast(pending.isRoot ? t('已删除该学习目标，可按 Ctrl+Z 撤回') : t('已删除该节点，可按 Ctrl+Z 撤回'))
   }
 
@@ -3924,9 +4002,11 @@ export default function LearnWorkspace({
         return { ok: true as const }
       }
       // 删根文档 = 删整个目标（根就是目标的骨架）：从画布的删除键触发也必须走两档确认
-      if (getLatest().goals.some((g) => g.rootNodeId === uuid)) {
-        const node = nodeById(getLatest(), uuid)
-        setPendingDelete({ nodeId: uuid, title: node?.title ?? uuid, isRoot: true, count: goalSubtreeSize(uuid) })
+      const goal = getLatest().goals.find((g) => g.id === uuid || g.rootNodeId === uuid)
+      if (goal) {
+        const node = goal.rootNodeId ? nodeById(getLatest(), goal.rootNodeId) : null
+        const title = goal.title || goal.question || node?.title || uuid
+        setPendingDelete({ nodeId: goal.id, title, isRoot: true, count: goalSubtreeSize(goal.id) })
         return { ok: true as const }
       }
       const r = makeNodeService().delete(uuid)
@@ -5618,6 +5698,7 @@ export default function LearnWorkspace({
                     onClose={closeAgentTab}
                     onCloseMode={closeAgentTabMode}
                     onReorder={reorderAgentTabList}
+                    onNewConversation={store.activeGoalId ? handleNewGoalConversation : undefined}
                   />
                   {/*
                     **keepalive**：所有页签的面板常挂（absolute 铺满、非激活的 display:none）——
@@ -5834,7 +5915,7 @@ export default function LearnWorkspace({
           title={pendingDelete.isRoot ? t('删除整个学习目标？') : t('删除这个阶段目标？')}
           message={
             pendingDelete.isRoot
-              ? t('「{0}」是学习目标（总目标），删除后它及其下 {1} 个阶段目标、所有对话与试卷都会一并移除，且无法恢复。', pendingDelete.title, pendingDelete.count - 1)
+              ? t('「{0}」是学习目标（总目标），删除后它及其下 {1} 个阶段目标、所有对话与试卷都会一并移除，且无法恢复。', pendingDelete.title, Math.max(0, pendingDelete.count - (getLatest().goals.find((g) => g.id === pendingDelete.nodeId)?.rootNodeId ? 1 : 0)))
               : t('只删除「{0}」本身：与它相连的线一并解开，它的下级阶段目标会留在画布上（成为没有上游的游离卡），挂在该文档上的笔记与试卷随它一起移除。删错可按 Ctrl+Z 撤回。', pendingDelete.title)
           }
           confirmLabel={pendingDelete.isRoot ? t('删除目标') : t('删除')}

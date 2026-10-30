@@ -41,11 +41,11 @@ export default function TraceWindow() {
   }, [native])
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-paper text-ink select-none dark:bg-card/30">
+    <div className="flex h-screen flex-col overflow-hidden bg-paper text-ink dark:bg-card/30">
       {/* 自绘 topbar：整条可拖，右端三个窗控按钮（app-drag 里的 button 自动 no-drag） */}
       <header
         className={
-          'app-drag flex h-10 shrink-0 items-center gap-2 border-b border-line bg-card/90 pr-1 ' +
+          'app-drag flex h-10 shrink-0 select-none items-center gap-2 border-b border-line bg-card/90 pr-1 ' +
           (native && isMac() ? 'pl-[76px]' : 'pl-3')
         }
       >
@@ -83,7 +83,7 @@ export default function TraceWindow() {
         )}
       </header>
 
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 select-text">
         <ContextTrace conversation={conversation} />
       </div>
     </div>

@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { MessageFile } from '../src/agent/types'
 import { ATTACH_MAX_CHARS, MAX_FILES, attachHead, fileBlock, isTextName } from '../src/learn/attachments'
-import { transferPendingFiles } from '../src/learn/agent/transfer'
+import { transferPendingFiles, transferFreePendingFiles, transferFreePendingImages } from '../src/learn/agent/transfer'
 import { updateNode } from '../src/learn/graph/nodes'
 import { normalizeLearnStore } from '../src/learn/store/normalize'
 import { emptyLearnStore } from '../src/learn/store/empty'
@@ -350,5 +350,119 @@ describe('附件与图片在目标改名/重载时的持久化与自愈', () => 
     expect(msg.images?.[0].rel).toBe('docs/量子力学/static/diagram.png')
     // file.path 必须被保留
     expect(msg.files?.[0].path).toBe('C:/Users/test/Desktop/sample.pdf')
+  })
+})
+
+describe('固定聊天（自由会话）附件转存 (transferFreePendingFiles & transferFreePendingImages)', () => {
+  it('文本附件与二进制文件正常转存至 free/static', async () => {
+    const written: Record<string, string> = {}
+    const origWindow = (globalThis as unknown as { window?: unknown }).window
+    ;(globalThis as unknown as { window: unknown }).window = {
+      mojiNative: {
+        storage: {
+          write: async (rel: string, data: string) => {
+            written[rel] = data
+            return { ok: true }
+          },
+          read: async (rel: string) => ({ ok: true, content: written[rel] ?? '' }),
+          info: async () => ({ root: '', defaultRoot: '', isDefault: true }),
+        },
+      },
+    }
+    const { setUserScope } = await import('../src/lib/storage')
+    setUserScope('u_free_test')
+
+    try {
+      const res = await transferFreePendingFiles([
+        { id: 'f1', name: 'main.py', text: 'print("hello")', bytes: 14, path: '/local/main.py' },
+        { id: 'f2', name: 'archive.zip', bytes: 2048, binary: true },
+      ])
+
+      expect(res.error).toBeUndefined()
+      expect(res.files.length).toBe(2)
+
+      const textFile = res.files[0]
+      expect(textFile.name).toBe('main.py')
+      expect(textFile.uuid).toBeDefined()
+      expect(textFile.rel).toContain('free/static/')
+      expect(textFile.chars).toBe(14)
+      expect(textFile.path).toBe('/local/main.py')
+
+      const binFile = res.files[1]
+      expect(binFile.name).toBe('archive.zip')
+      expect(binFile.binary).toBe(true)
+      expect(binFile.rel).toBeUndefined()
+
+      // 验证写入盘的内容
+      const { userPath } = await import('../src/lib/storage'); expect(written[userPath(textFile.rel!)!]).toBe('print("hello")')
+    } finally {
+      setUserScope(null)
+      ;(globalThis as unknown as { window?: unknown }).window = origWindow
+    }
+  })
+
+  it('transferFreePendingFiles 自动跳过图片附件', async () => {
+    const fakeImageFile = new File(['fake-bytes'], 'test.png', { type: 'image/png' })
+    const res = await transferFreePendingFiles([
+      { id: 'img1', name: 'test.png', bytes: 10, image: fakeImageFile },
+    ])
+    expect(res.files.length).toBe(0)
+  })
+
+  it('transferFreePendingImages 正常转存图片至 free/static 并记录缓存', async () => {
+    const writtenImages: Record<string, string> = {}
+    const origWindow = (globalThis as unknown as { window?: unknown }).window
+    ;(globalThis as unknown as { window: unknown }).window = {
+      mojiNative: {
+        storage: {
+          writeImage: async (rel: string, dataUrl: string) => {
+            writtenImages[rel] = dataUrl
+            return { ok: true }
+          },
+          readImage: async (rel: string) => ({ ok: true, dataUrl: writtenImages[rel] ?? '' }),
+          info: async () => ({ root: '', defaultRoot: '', isDefault: true }),
+        },
+      },
+    }
+    const { setUserScope, userPath } = await import('../src/lib/storage')
+    setUserScope('u_free_test')
+
+    const origCreateImageBitmap = globalThis.createImageBitmap
+    globalThis.createImageBitmap = async () => ({
+      width: 100,
+      height: 100,
+      close: () => {},
+    } as unknown as ImageBitmap)
+
+    class MockFileReader {
+      result = 'data:image/png;base64,aW1hZ2UtZGF0YS1tb2Nr'
+      onload: ((ev: unknown) => void) | null = null
+      onerror: ((ev: unknown) => void) | null = null
+      readAsDataURL() {
+        queueMicrotask(() => {
+          this.onload?.({ target: this })
+        })
+      }
+    }
+    const origFileReader = globalThis.FileReader
+    globalThis.FileReader = MockFileReader as unknown as typeof FileReader
+
+    try {
+      const fakeImage = new File(['image-data-mock'], 'photo.png', { type: 'image/png' })
+      const res = await transferFreePendingImages([
+        { id: 'img1', name: 'photo.png', bytes: 15, file: fakeImage, previewUrl: '' },
+      ])
+
+      expect(res.error).toBeUndefined()
+      expect(res.images.length).toBe(1)
+      expect(res.images[0].name).toBe('photo.png')
+      expect(res.images[0].rel).toContain('free/static/')
+      expect(writtenImages[userPath(res.images[0].rel)!]).toBeDefined()
+    } finally {
+      setUserScope(null)
+      globalThis.createImageBitmap = origCreateImageBitmap
+      globalThis.FileReader = origFileReader
+      ;(globalThis as unknown as { window?: unknown }).window = origWindow
+    }
   })
 })

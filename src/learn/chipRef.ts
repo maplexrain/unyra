@@ -99,10 +99,17 @@ export function findExamFromChip(store: LearnStore, p: ChipPayload): Exam | unde
   }
   if (p.path) {
     const wanted = p.path.replace(/\/(教学|讲义|笔记|大纲|试卷|考试|考试记录|试卷记录)$/, '').replace(/\\/g, '/').trim().replace(/\/+$/, '')
+    const targetGoalId = p.goalId || store.activeGoalId
+    const candidateNodes = targetGoalId
+      ? [
+          ...store.nodes.filter((n) => n.goalId === targetGoalId),
+          ...store.nodes.filter((n) => n.goalId !== targetGoalId),
+        ]
+      : store.nodes
     const targetNode =
-      store.nodes.find((n) => !!n.goalId && nodePathOf(store, n.goalId, n.id).toLowerCase() === wanted.toLowerCase()) ??
-      store.nodes.find((n) => n.title.toLowerCase() === wanted.toLowerCase() || n.key === normalizeKey(wanted)) ??
-      store.nodes.find((n) => wanted.toLowerCase().endsWith(n.title.toLowerCase()))
+      candidateNodes.find((n) => !!n.goalId && nodePathOf(store, n.goalId, n.id).toLowerCase() === wanted.toLowerCase()) ??
+      candidateNodes.find((n) => n.title.toLowerCase() === wanted.toLowerCase() || n.key === normalizeKey(wanted)) ??
+      candidateNodes.find((n) => wanted.toLowerCase().endsWith(n.title.toLowerCase()))
     if (targetNode) {
       const found = store.exams.filter((e) => e.nodeId === targetNode.id).sort((a, b) => b.createdAt - a.createdAt)[0]
       if (found) return found
@@ -170,7 +177,14 @@ export function tabRefFromChip(store: LearnStore, p: ChipPayload): TabRef | null
 
   // 兜底：chip 没带 nodeId，只有一条路径。节点量级几十个，点击时跑一次无所谓
   if (want) {
-    for (const n of store.nodes) {
+    const targetGoalId = p.goalId || store.activeGoalId
+    const orderedNodes = targetGoalId
+      ? [
+          ...store.nodes.filter((n) => n.goalId === targetGoalId),
+          ...store.nodes.filter((n) => n.goalId !== targetGoalId),
+        ]
+      : store.nodes
+    for (const n of orderedNodes) {
       const rel = nodeDocPath(store, n.id, { kind: 'teaching' })
       if (!rel || normPath(rel) !== want) continue
       if (p.type === 'doc') return { kind: 'teach', nodeId: n.id }

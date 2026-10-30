@@ -90,6 +90,8 @@ export interface ComposerProps {
   subAgentSlot?: ReactNode
   /** 写作策略入口（导师人格 + 文档格式）：插在子代理按钮的右侧、与提供商切换同一排 */
   strategySlot?: ReactNode
+  /** 消息列表定位按钮入口：插在「+」菜单右侧 */
+  msgNavSlot?: ReactNode
   /** 这枚面板是不是眼前的页签（keepalive 常挂时隐藏面板不登记 chip 落点，见 chipHover 的 effect） */
   active?: boolean
   /**
@@ -154,6 +156,7 @@ export function Composer(props: ComposerProps) {
   subMode,
   subAgentSlot,
   strategySlot,
+  msgNavSlot,
   /** 这枚面板是不是眼前的页签（keepalive 常挂时隐藏面板不登记 chip 落点，见上面的 effect） */
   active = true,
   queue,
@@ -601,24 +604,27 @@ export function Composer(props: ComposerProps) {
             按钮就会掉到卡片上方（2026-09 拆 panel/ 时就是这么错位的）。
             子会话模式下不画：那些动作都是导师域的。
           */}
-          {!subMode && (
-            <PlusMenu
-              menuMounted={menuMounted}
-              menuClosing={menuClosing}
-              menuSub={menuSub}
-              menuOpen={menuOpen}
-              menuLeaving={menuLeaving}
-              menuDir={menuDir}
-              menuBodyH={menuBodyH}
-              panelMount={panelMount}
-              panelBodyMount={panelBodyMount}
-              buttonMount={buttonMount}
-              renderMenuPanel={renderMenuPanel}
-              goRoot={goRoot}
-              toggle={toggle}
-              plusButtonClass={plusButtonClass}
-            />
-          )}
+          <div className="flex shrink-0 items-center gap-0.5">
+            {!subMode && (
+              <PlusMenu
+                menuMounted={menuMounted}
+                menuClosing={menuClosing}
+                menuSub={menuSub}
+                menuOpen={menuOpen}
+                menuLeaving={menuLeaving}
+                menuDir={menuDir}
+                menuBodyH={menuBodyH}
+                panelMount={panelMount}
+                panelBodyMount={panelBodyMount}
+                buttonMount={buttonMount}
+                renderMenuPanel={renderMenuPanel}
+                goRoot={goRoot}
+                toggle={toggle}
+                plusButtonClass={plusButtonClass}
+              />
+            )}
+            {msgNavSlot}
+          </div>
           {subMode && (
             <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-ink-faint">
               <Bot size={13} className="shrink-0 text-seal" />

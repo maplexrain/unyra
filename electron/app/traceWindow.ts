@@ -10,7 +10,7 @@
  * 是每次变化的完整快照（Conversation 的 JSON，全部可结构化克隆）。窗口开着期间
  * 主窗口随数据变化持续 push，轨迹永远反映当前会话的最新原样。
  */
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, Menu, ipcMain } from 'electron'
 import path from 'node:path'
 import { t } from '../i18n'
 import { startupBackground } from '../storage'
@@ -88,6 +88,17 @@ export async function openTraceWindow(payload: unknown): Promise<{ ok: boolean; 
   win.once('ready-to-show', () => win.show())
   attachConsoleForwarding(win)
   hardenLinks(win.webContents)
+
+  // 允许划词后右键菜单复制
+  win.webContents.on('context-menu', (_e, params) => {
+    if (!params.selectionText) return
+    const menu = Menu.buildFromTemplate([
+      { role: 'copy', label: t('复制') },
+      { type: 'separator' },
+      { role: 'selectAll', label: t('全选') },
+    ])
+    menu.popup({ window: win })
+  })
 
   win.on('closed', () => {
     traceWindow = null

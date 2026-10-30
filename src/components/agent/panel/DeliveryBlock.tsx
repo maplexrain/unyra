@@ -13,7 +13,7 @@
  */
 import { memo } from 'react'
 import { FilePenLine, FilePlus2, FileX2, Link2, PackageCheck } from 'lucide-react'
-import { hasDelivery, type DeliveryAction, type DeliveryRecord } from '../../../agent/delivery'
+import { hasDelivery, type DeliveryAction, type DeliveryFile, type DeliveryRecord } from '../../../agent/delivery'
 import { openChipRef } from '../../../lib/docChip'
 import { openWebLink } from '../../../lib/externalLink'
 import { t, useLocale } from '../../../i18n'
@@ -50,28 +50,49 @@ function hostOf(url: string): string {
  */
 const DOC_KIND_SUFFIX = /\/(教学|讲义|笔记|大纲|试卷|考试|试卷记录|作答记录)$/
 
-function openDelivered(path: string, onOpenFile?: (pathOrRel: string, title?: string) => void) {
-  const p = path.replace(/\\/g, '/').trim()
+function openDelivered(
+  file: DeliveryFile,
+  fallbackGoalId?: string,
+  onOpenFile?: (pathOrRel: string, title?: string) => void,
+) {
+  const p = file.path.replace(/\\/g, '/').trim()
   if (!p) return
+  const goalId = file.goalId || fallbackGoalId
+
+  // 1. 如果已有明确的 nodeId，直接通过 nodeId 打开节点文档
+  if (file.nodeId) {
+    openChipRef({ type: 'doc', nodeId: file.nodeId, path: p, goalId })
+    return
+  }
+
+  // 2. 检查是否有后缀名。如果后缀名不是 .md，则认为是真实物理/代码文件，交给页签打开
   const last = p.split('/').pop() ?? ''
-  if (/\.[a-z0-9]{1,8}$/i.test(last)) {
+  const extMatch = last.match(/\.([a-z0-9]{1,8})$/i)
+  if (extMatch && extMatch[1].toLowerCase() !== 'md') {
     onOpenFile?.(p, p)
     return
   }
+
+  // 3. 试卷/考试记录
   const isExam = /\/(试卷|考试|试卷记录|作答记录)$/.test(p)
   if (isExam) {
-    openChipRef({ type: 'attempt', path: p.replace(DOC_KIND_SUFFIX, '') })
+    openChipRef({ type: 'attempt', path: p.replace(DOC_KIND_SUFFIX, ''), goalId })
     return
   }
-  openChipRef({ type: 'doc', path: p.replace(DOC_KIND_SUFFIX, '') })
+
+  // 4. 普通节点文档：剥除可能由模型附加的 .md 后缀或 /教学 等类型词
+  const cleanDocPath = p.replace(/\.md$/i, '').replace(DOC_KIND_SUFFIX, '').trim()
+  openChipRef({ type: 'doc', path: cleanDocPath, goalId })
 }
 
 export const DeliveryBlock = memo(function DeliveryBlock({
   delivery,
   onOpenFile,
+  goalId,
 }: {
   delivery: DeliveryRecord
   onOpenFile?: (pathOrRel: string, title?: string) => void
+  goalId?: string
 }) {
   // memo 挡住了父组件的重渲染：语言切换要自己订阅
   useLocale()
@@ -96,7 +117,7 @@ export const DeliveryBlock = memo(function DeliveryBlock({
               <li key={'f:' + f.path} className="flex min-w-0 items-center">
                 <button
                   type="button"
-                  onClick={() => openDelivered(f.path, onOpenFile)}
+                  onClick={() => openDelivered(f, goalId, onOpenFile)}
                   title={f.path}
                   aria-label={`${actionLabel(f.action)}：${f.path}`}
                   className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-[11.5px] leading-5 text-ink-soft transition hover:text-ink"

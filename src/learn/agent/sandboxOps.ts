@@ -22,8 +22,8 @@ import { createSeeOps } from '../see'
 export interface AgentRunTarget {
   /** 上下文归属的目标：一个目标一份对话，目标下所有节点共用 */
   goalId: string
-  /** 这一轮冲着哪个节点来：它是沙箱里的「当前节点」，也是考试工具作用的对象 */
-  nodeId: string
+  /** 这一轮冲着哪个节点来：它是沙箱里的「当前节点」，也是考试工具作用的对象；无特定节点时为 null（纯目标级对话） */
+  nodeId: string | null
   conversationId: string
 }
 

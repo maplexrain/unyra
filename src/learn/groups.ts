@@ -106,3 +106,5 @@ export {
   withParked,
 } from './groups/goals'
 export type { TabOwners } from './groups/goals'
+
+export { closeGoalTabGroupStore } from './groups/goalTabGroupOps'

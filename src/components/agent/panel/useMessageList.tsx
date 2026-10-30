@@ -97,6 +97,7 @@ export function useMessageList({
   setBubblePreview,
   onOpenFile,
   onSelectPrompt,
+  goalId,
 }: MessageListProps) {
   /*
    * 分段只在 messages 变了之后重算：流式写作时 messages 身份不变（正在长的那一段
@@ -184,6 +185,7 @@ export function useMessageList({
             setEditing={setEditing}
             setBubblePreview={setBubblePreview}
             onOpenFile={onOpenFile}
+            goalId={goalId}
           />
         )
       })}

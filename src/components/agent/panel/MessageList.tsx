@@ -41,4 +41,6 @@ export interface MessageListProps {
   onOpenFile?: (pathOrRel: string, title?: string) => void
   /** 点击空态预设建议提问词时填入输入框 */
   onSelectPrompt?: (text: string) => void
+  /** 目标 id：多目标下定位节点文档用，避免全局同名节点指针混淆 */
+  goalId?: string
 }

@@ -14,8 +14,10 @@ import {
   type PendingImage,
 } from '../../agent/types'
 import type { LearnStore } from '../types'
-import { addResource, saveStaticImage, saveStaticText } from '../static'
-import { readUserText } from '../../lib/storage'
+import { addResource, extOf, saveStaticImage, saveStaticText } from '../static'
+import { readUserText, writeUserImage, writeUserText } from '../../lib/storage'
+import { blobToDataUrl, MIME_EXT, normalizeImage, rememberImage } from '../images'
+import { t } from '../../i18n'
 
 /**
  * 把输入框里**还没落盘**的附件转存进资源库。
@@ -120,4 +122,88 @@ export async function loadAttachTexts(messages: ConversationMessage[]): Promise<
     }),
   )
   return out
+}
+
+/**
+ * 固定聊天（自由会话）的文件附件转存。
+ *
+ * 自由聊天没有特定的学习目标目录（goalId），因此统一存入用户目录下的 `free/static/{uuid}.{ext}`。
+ * 文本附件存盘后，消息带上 uuid 与 rel，供 loadAttachTexts 读取进入模型上下文与回显；
+ * 二进制附件不写正文，仅记录名称、体积与路径。
+ */
+export async function transferFreePendingFiles(
+  pending: PendingFile[],
+): Promise<{ files: MessageFile[]; error?: string }> {
+  const files: MessageFile[] = []
+  let error: string | undefined
+  for (const p of pending) {
+    if (p.image) continue
+    if (p.text === undefined || p.binary) {
+      files.push({ name: p.name, bytes: p.bytes, binary: true, ...(p.path ? { path: p.path } : {}) })
+      continue
+    }
+    const ext = extOf(p.name) || 'txt'
+    const uuid = crypto.randomUUID()
+    const rel = `free/static/${uuid}.${ext}`
+    const ok = await writeUserText(rel, p.text)
+    if (!ok) {
+      error = t('附件存盘失败')
+      continue
+    }
+    files.push({
+      name: p.name,
+      bytes: p.bytes,
+      uuid,
+      rel,
+      chars: p.text.length,
+      ...(p.truncated ? { truncated: true } : {}),
+      ...(p.path ? { path: p.path } : {}),
+    })
+  }
+  return { files, error }
+}
+
+/**
+ * 固定聊天（自由会话）的图片附件转存。
+ * 统一存入 `free/static/{uuid}.{ext}`，并缓存至内存供 loadImagesFor 还原。
+ */
+export async function transferFreePendingImages(
+  pending: PendingImage[],
+): Promise<{ images: MessageImage[]; error?: string }> {
+  const images: MessageImage[] = []
+  let error: string | undefined
+  for (const [i, p] of pending.entries()) {
+    const norm = await normalizeImage(p.file)
+    if ('error' in norm) {
+      error = norm.error
+      continue
+    }
+    const ext = MIME_EXT[norm.mime] ?? 'png'
+    let url: string
+    try {
+      url = await blobToDataUrl(norm.blob)
+    } catch {
+      error = t('读取图片失败')
+      continue
+    }
+    const uuid = crypto.randomUUID()
+    const rel = `free/static/${uuid}.${ext}`
+    const ok = await writeUserImage(rel, url)
+    if (!ok) {
+      error = t('图片存盘失败')
+      continue
+    }
+    const comma = url.indexOf(',')
+    rememberImage(rel, { mime: norm.mime, data: url.slice(comma + 1), url })
+    images.push({
+      id: uuid,
+      rel,
+      name: p.name || '粘贴的图片 ' + (i + 1),
+      mime: norm.mime,
+      bytes: norm.blob.size,
+      width: norm.width,
+      height: norm.height,
+    })
+  }
+  return { images, error }
 }

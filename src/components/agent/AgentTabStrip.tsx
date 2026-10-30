@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { FoldHorizontal, MessageSquare, OctagonX, ShieldAlert, X } from 'lucide-react'
+import { FoldHorizontal, MessageSquare, OctagonX, Plus, ShieldAlert, X } from 'lucide-react'
 import type { AgentTabRef } from '../../learn/types'
-import { agentTabCloseBlock, agentTabKey, type AgentTabCloseBlock } from '../../learn/agentTabs'
+import { agentTabCloseBlock, agentTabKey, disambiguateTabTitles, type AgentTabCloseBlock } from '../../learn/agentTabs'
 import { TAB_CLOSE_LABEL, type TabCloseMode } from '../../learn/tabs'
 import { useClampToViewport, useDismissOn } from '../../lib/useDismiss'
 import { TAB_EXIT_MS, useTabPresence } from '../../lib/tabPresence'
@@ -37,6 +37,8 @@ interface Props {
   onCloseMode: (key: string, mode: TabCloseMode) => void
   /** 拖拽结束给出的新顺序（页签 key 列表） */
   onReorder: (keys: string[]) => void
+  /** 新建对话：在当前目标下新建一段对话并增加一个对话页签 */
+  onNewConversation?: () => void
 }
 
 function blockHintOf(block: AgentTabCloseBlock): string {
@@ -66,56 +68,7 @@ const AGENT_TAB_COLOR: Record<AgentTabRef['kind'], string> = {
   sub: '#a066d6',
 }
 
-/**
- * 目标级导师的页签图标：靶心。目标（goal）的靶子在正中，环一圈套一圈——
- * 与文档区页签的 DocTypeIcon 同一套 lucide 几何（24 视窗、2 描边、圆角端点），
- * 渲染成 13px。
- */
-function GoalAgentIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={13}
-      height={13}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="9" />
-      <circle cx="12" cy="12" r="4.5" />
-      <circle cx="12" cy="12" r="0.5" fill="currentColor" />
-    </svg>
-  )
-}
 
-/**
- * 派生子代理的页签图标：一 node 出两支（share-2 的几何）——导师派出去的分身，
- * 源头与分身连成一张小网。与靶心并排摆在同一条栏上，级差一眼可辨。
- */
-function SubAgentIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={13}
-      height={13}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="18" cy="5" r="3" />
-      <circle cx="6" cy="12" r="3" />
-      <circle cx="18" cy="19" r="3" />
-      <path d="M8.59 13.51l6.83 3.98" />
-      <path d="M15.41 6.51l-6.82 3.98" />
-    </svg>
-  )
-}
 
 /** 拖动期间按 midpoints 现算「应该落到哪个位置」：与文档区 TabBar 同一套算法 */
 function targetIndex(rects: Array<{ left: number; width: number }>, pointerX: number, from: number): number {
@@ -144,6 +97,7 @@ export default function AgentTabStrip({
   onClose,
   onCloseMode,
   onReorder,
+  onNewConversation,
 }: Props) {
   const stripRef = useRef<HTMLDivElement | null>(null)
   /**
@@ -272,11 +226,23 @@ export default function AgentTabStrip({
     setDrag((prev) => (prev ? { ...prev, to, dx } : prev))
   }
 
+  /**
+   * 栏上重名页签自动标序号：
+   * 仅在当前可见的页签中存在重名时按从左到右的顺序追加 1, 2, ...
+   * 单一页签保持原样。
+   */
+  const displayTitles = useMemo(() => {
+    return disambiguateTabTitles(presence, (p) => p.key, (p) => titleOf(p.item))
+  }, [presence, titleOf])
+
   /* ---------- 右键菜单 ---------- */
 
   const [menu, setMenu] = useState<{ x: number; y: number; key: string } | null>(null)
   const menuTab = menu ? tabs.find((tb) => agentTabKey(tb) === menu.key) : undefined
-  const menuLabel = menuTab ? titleOf(menuTab) : ''
+  const menuLabel = menuTab && menu ? (displayTitles.get(menu.key) ?? titleOf(menuTab)) : ''
+  const isMenuLastGoalTab =
+    menuTab?.kind === 'goal' &&
+    tabs.filter((t) => t.kind === 'goal' && t.goalId === menuTab.goalId).length <= 1
 
   return (
     <>
@@ -306,11 +272,14 @@ export default function AgentTabStrip({
             const running = runningOf(ref)
             /** 固定聊天页签：栏上常驻、最左，不能关闭也不能拖拽——交互面比普通页签小一圈 */
             const isFree = ref.kind === 'free'
+            const isLastGoalTab =
+              ref.kind === 'goal' &&
+              tabs.filter((t) => t.kind === 'goal' && t.goalId === ref.goalId).length <= 1
             const block = agentTabCloseBlock(ref, { hasDocTabs: docTabsOf(ref), running })
             const closable = !isFree && block === 'none'
             // 守卫文案只对「想关却关不掉」的页签有意义；固定页签根本没有关闭键
             const blockHint = blockHintOf(block)
-            const title = titleOf(ref)
+            const title = displayTitles.get(key) ?? titleOf(ref)
             const dragging = drag?.key === key
             const offset = dragging ? drag.dx : shiftOf(i)
             return (
@@ -326,7 +295,7 @@ export default function AgentTabStrip({
                  * 浏览器拦下（控制台报 Blocked aria-hidden…）；inert 才能把焦点一并收走。
                  */
                 {...(leaving ? { inert: true } : { tabIndex: 0 })}
-                title={title + blockHint}
+                title={title + (blockHint ? ' · ' + blockHint : '')}
                 onClick={() => {
                   if (justDragged.current) return
                   onActivate(key)
@@ -348,7 +317,7 @@ export default function AgentTabStrip({
                 }}
                 style={{ transform: offset ? 'translateX(' + offset + 'px)' : undefined }}
                 className={
-                  'moji-tab group relative flex h-7 min-w-[60px] max-w-[150px] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] ' +
+                  'moji-tab group relative flex h-7 min-w-[60px] max-w-[170px] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] ' +
                   (on ? 'moji-tab-flare z-10 font-medium ' : '') +
                   (dragging
                     ? 'z-10 cursor-grabbing border-line-strong bg-card text-ink-strong shadow-md '
@@ -362,22 +331,29 @@ export default function AgentTabStrip({
                 }
               >
                 {/*
-                  类型图标：颜色是**身份**（见 AGENT_TAB_COLOR），不跟着选中与运行变——
-                  选中由页签自己的底色说，运行由右边那颗呼吸点说。
+                  类型标识：聊天页签保留 MessageSquare 图标，任务模式页签用 chip 样式的 task 替换图标
                 */}
-                <span
-                  aria-hidden="true"
-                  className="flex h-4 w-4 shrink-0 items-center justify-center"
-                  style={{ color: AGENT_TAB_COLOR[ref.kind] }}
-                >
-                  {isFree ? (
+                {isFree ? (
+                  <span
+                    aria-hidden="true"
+                    className="flex h-4 w-4 shrink-0 items-center justify-center"
+                    style={{ color: AGENT_TAB_COLOR.free }}
+                  >
                     <MessageSquare size={13} />
-                  ) : ref.kind === 'goal' ? (
-                    <GoalAgentIcon />
-                  ) : (
-                    <SubAgentIcon />
-                  )}
-                </span>
+                  </span>
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className={
+                      'shrink-0 rounded px-1.5 py-[1.5px] text-[9.5px] font-semibold leading-none tracking-tight select-none ' +
+                      (ref.kind === 'sub'
+                        ? 'bg-violet-500/15 text-violet-700 dark:text-violet-300'
+                        : 'bg-sky-500/15 text-sky-700 dark:text-sky-300')
+                    }
+                  >
+                    task
+                  </span>
+                )}
                 <span className="min-w-0 flex-1 truncate">{title}</span>
                 {running && (
                   <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-seal" />
@@ -391,8 +367,8 @@ export default function AgentTabStrip({
                   <button
                     type="button"
                     disabled={!closable}
-                    title={closable ? t(TAB_CLOSE_LABEL.self) : blockHint}
-                    aria-label={t(TAB_CLOSE_LABEL.self)}
+                    title={closable ? (isLastGoalTab ? t('关闭整个页签组') : t(TAB_CLOSE_LABEL.self)) : blockHint}
+                    aria-label={isLastGoalTab ? t('关闭整个页签组') : t(TAB_CLOSE_LABEL.self)}
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation()
@@ -411,6 +387,17 @@ export default function AgentTabStrip({
               </div>
             )
           })}
+          {onNewConversation && (
+            <button
+              type="button"
+              title={t('新建对话')}
+              aria-label={t('新建对话')}
+              onClick={onNewConversation}
+              className="mb-0.5 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-t-md text-ink-faint transition hover:bg-line/50 hover:text-ink"
+            >
+              <Plus size={14} />
+            </button>
+          )}
         </div>
 
         {/*
@@ -427,6 +414,7 @@ export default function AgentTabStrip({
           <AgentTabMenu
             menu={menu}
             label={menuLabel}
+            isLastGoalTab={isMenuLastGoalTab}
             count={tabs.filter((t) => t.kind !== 'free').length}
             otherCount={Math.max(0, tabs.filter((t) => t.kind !== 'free').length - 1)}
             onPick={(mode) => {
@@ -447,6 +435,7 @@ export default function AgentTabStrip({
 function AgentTabMenu({
   menu,
   label,
+  isLastGoalTab,
   count,
   otherCount,
   onPick,
@@ -454,6 +443,7 @@ function AgentTabMenu({
 }: {
   menu: { x: number; y: number }
   label: string
+  isLastGoalTab?: boolean
   count: number
   otherCount: number
   onPick: (mode: TabCloseMode) => void
@@ -486,7 +476,7 @@ function AgentTabMenu({
         <span className={ICON}>
           <X size={13} className="text-ink-soft" />
         </span>
-        {t(TAB_CLOSE_LABEL.self)}
+        {isLastGoalTab ? t('关闭页签组') : t(TAB_CLOSE_LABEL.self)}
       </button>
 
       {/* 关闭（强制）：连同文档区关联的tab一起关闭 */}

@@ -33,9 +33,18 @@ export function latestConversation(store: LearnStore, goalId: string): Conversat
 export function resolveDisplayedConversation(store: LearnStore, goalId: string): string | null {
   const activeTabKey = store.agentActiveTab
   if (activeTabKey && activeTabKey.startsWith('ga:')) {
-    const activeTabGoalId = activeTabKey.slice(3)
+    const raw = activeTabKey.slice(3)
+    const colonIdx = raw.indexOf(':')
+    const activeTabGoalId = colonIdx >= 0 ? raw.slice(0, colonIdx) : raw
+    const activeConvId = colonIdx >= 0 ? raw.slice(colonIdx + 1) : null
     if (activeTabGoalId === goalId) {
-      const activeTab = store.agentTabs?.find((t) => t.kind === 'goal' && t.goalId === goalId)
+      if (activeConvId) {
+        const conv = conversationById(store, activeConvId)
+        if (conv && conv.goalId === goalId) return conv.id
+      }
+      const activeTab = store.agentTabs?.find(
+        (t) => t.kind === 'goal' && t.goalId === goalId && (!activeConvId || t.conversationId === activeConvId),
+      )
       if (activeTab?.conversationId) {
         const conv = conversationById(store, activeTab.conversationId)
         if (conv && conv.goalId === goalId) return conv.id

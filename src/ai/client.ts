@@ -168,6 +168,63 @@ export function bodyFor(
   }
 
   const tokenParam = p.quirks?.tokenParam ?? 'max_tokens'
+  const modelLower = targetModel.toLowerCase()
+  const baseLower = p.baseUrl.toLowerCase()
+  const idLower = p.id.toLowerCase()
+
+  const style = p.quirks?.thinkingStyle
+  let useThinkingType = style === 'thinking_type' || !!p.quirks?.thinkingTypeParam
+  let useEnableThinking = style === 'enable_thinking' || !!p.quirks?.enableThinkingParam
+  let useThinkingConfig = style === 'thinking_config' || !!p.quirks?.thinkingConfigParam
+  let useOllamaThink =
+    style === 'think' ||
+    !!p.quirks?.thinkParam ||
+    idLower === 'ollama' ||
+    baseLower.includes(':11434') ||
+    baseLower.includes('ollama')
+  let useOpenRouter = idLower === 'openrouter' || baseLower.includes('openrouter.ai')
+
+  // 未显式配置 quirks 时的智能推断兜底（防御用户自建提供商或未带 quirks 的历史配置）
+  if (!style && !useThinkingType && !useEnableThinking && !useThinkingConfig && !useOllamaThink && !useOpenRouter) {
+    if (idLower === 'deepseek' || baseLower.includes('deepseek') || modelLower.includes('deepseek')) {
+      useThinkingType = true
+    } else if (
+      idLower === 'dashscope' ||
+      idLower === 'siliconflow' ||
+      idLower === 'volcengine' ||
+      baseLower.includes('dashscope') ||
+      baseLower.includes('siliconflow') ||
+      baseLower.includes('volces') ||
+      baseLower.includes('aliyun') ||
+      modelLower.includes('qwen') ||
+      modelLower.includes('qwq')
+    ) {
+      useEnableThinking = true
+    } else if (
+      idLower === 'gemini' ||
+      baseLower.includes('generativelanguage.googleapis.com') ||
+      modelLower.includes('gemini')
+    ) {
+      useThinkingConfig = true
+    }
+  }
+
+  const isStrictOpenAi =
+    (idLower === 'openai' || baseLower.includes('api.openai.com') || style === 'reasoning_effort') &&
+    !modelLower.includes('deepseek')
+
+  const isThinkingModelOrActive =
+    !isNone &&
+    (useThinkingType ||
+      idLower === 'deepseek' ||
+      idLower === 'zhipu' ||
+      baseLower.includes('deepseek') ||
+      baseLower.includes('bigmodel') ||
+      modelLower.includes('deepseek') ||
+      modelLower.includes('reasoner') ||
+      modelLower.includes('glm-4') ||
+      modelLower.includes('qwq'))
+
   const body: Record<string, unknown> = {
     model: targetModel,
     /**
@@ -175,7 +232,26 @@ export function bodyFor(
      * 只有带图的消息才变成 [text, image_url] 数组（见 ai/content）。
      * 中立形态只存在于历史里——换提供商不必改写历史，前缀缓存因此不受影响。
      */
-    messages: opts.messages.map((m) => ({ ...m, content: toOpenAiContent(m.content) })),
+    messages: opts.messages.map((m) => {
+      const msg: Record<string, unknown> = {
+        role: m.role,
+        content: toOpenAiContent(m.content),
+      }
+      if (m.role === 'assistant') {
+        if (isThinkingModelOrActive) {
+          // DeepSeek 等思考模型协议规范：
+          // 在思考模式下，所有 assistant 消息回传必须携带 reasoning_content 字段；
+          // 哪怕本跳没有产生思考（或为注入/人格/格式声明等合成消息），也必须回传空字符串 ""，
+          // 缺了该字段直接引发 HTTP 400（The 'reasoning_content' in the thinking mode must be passed back to the API）。
+          msg.reasoning_content = m.reasoning_content ?? ''
+        } else if (!isStrictOpenAi && m.reasoning_content !== undefined) {
+          msg.reasoning_content = m.reasoning_content
+        }
+      }
+      if (m.tool_calls) msg.tool_calls = m.tool_calls
+      if (m.tool_call_id) msg.tool_call_id = m.tool_call_id
+      return msg
+    }),
     stream: opts.stream,
   }
   // 不传 maxTokens 就不发该字段：把单轮输出长度交给服务端默认值。
@@ -188,46 +264,6 @@ export function bodyFor(
   // 硅基流动 / Gemini thinking_config / Ollama think / OpenAI reasoning_effort / OpenRouter reasoning）。
   // 优先遵循已配置的 quirks；若未显式指定，根据 baseUrl、提供商 id 与模型名做智能自适应推断。
   if (opts.reasoningEffort !== undefined) {
-    const modelLower = targetModel.toLowerCase()
-    const baseLower = p.baseUrl.toLowerCase()
-    const idLower = p.id.toLowerCase()
-
-    const style = p.quirks?.thinkingStyle
-    let useThinkingType = style === 'thinking_type' || !!p.quirks?.thinkingTypeParam
-    let useEnableThinking = style === 'enable_thinking' || !!p.quirks?.enableThinkingParam
-    let useThinkingConfig = style === 'thinking_config' || !!p.quirks?.thinkingConfigParam
-    let useOllamaThink =
-      style === 'think' ||
-      !!p.quirks?.thinkParam ||
-      idLower === 'ollama' ||
-      baseLower.includes(':11434') ||
-      baseLower.includes('ollama')
-    let useOpenRouter = idLower === 'openrouter' || baseLower.includes('openrouter.ai')
-
-    // 未显式配置 quirks 时的智能推断兜底（防御用户自建提供商或未带 quirks 的历史配置）
-    if (!style && !useThinkingType && !useEnableThinking && !useThinkingConfig && !useOllamaThink && !useOpenRouter) {
-      if (idLower === 'deepseek' || baseLower.includes('deepseek') || modelLower.includes('deepseek')) {
-        useThinkingType = true
-      } else if (
-        idLower === 'dashscope' ||
-        idLower === 'siliconflow' ||
-        idLower === 'volcengine' ||
-        baseLower.includes('dashscope') ||
-        baseLower.includes('siliconflow') ||
-        baseLower.includes('volces') ||
-        baseLower.includes('aliyun') ||
-        modelLower.includes('qwen') ||
-        modelLower.includes('qwq')
-      ) {
-        useEnableThinking = true
-      } else if (
-        idLower === 'gemini' ||
-        baseLower.includes('generativelanguage.googleapis.com') ||
-        modelLower.includes('gemini')
-      ) {
-        useThinkingConfig = true
-      }
-    }
 
     // 1. DeepSeek 官方风格：thinking: { type: 'disabled' | 'enabled' }
     // 官方规范：禁用思考时只发 thinking.type='disabled'，严禁同时发 reasoning_effort（否则 400）；

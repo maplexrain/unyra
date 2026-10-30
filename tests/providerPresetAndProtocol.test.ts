@@ -531,6 +531,66 @@ describe('提供商预设与自定义协议联动及切换测试', () => {
 
     globalThis.fetch = origFetch
   })
+
+  it('思考模式下 assistant 消息的 reasoning_content 回传契约与跨提供商健壮性', async () => {
+    const { bodyFor } = await import('../src/ai/client')
+    const dsProvider = resolveDraft({
+      id: 'deepseek',
+      kind: 'provider',
+      label: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com',
+      apiKey: 'sk-test',
+      models: [],
+    })
+
+    const messages = [
+      { role: 'user', content: '你好' },
+      { role: 'assistant', content: '思考后回答', reasoning_content: '这是思考思维链' },
+      { role: 'tool', tool_call_id: 'call-1', content: '工具结果' },
+      // 模拟中间注入的提示词模块或合成 assistant 消息（无 reasoning_content）
+      { role: 'assistant', content: '【提示词模块】这是指导规范' },
+    ] as any
+
+    // 1. DeepSeek 在 thinking 开启下：缺失 reasoning_content 的 assistant 消息自动补充空串 ""
+    const dsBody = bodyFor(dsProvider, {
+      model: 'deepseek-chat',
+      messages,
+      stream: true,
+      reasoningEffort: 'medium',
+    })
+    const dsMessages = dsBody.messages as any[]
+    expect(dsMessages[1].reasoning_content).toBe('这是思考思维链')
+    expect(dsMessages[3].reasoning_content).toBe('')
+
+    // 2. DeepSeek 在 non-thinking (none) 下：不强制填充空串
+    const dsNoneBody = bodyFor(dsProvider, {
+      model: 'deepseek-chat',
+      messages,
+      stream: true,
+      reasoningEffort: 'none',
+    })
+    const dsNoneMessages = dsNoneBody.messages as any[]
+    expect(dsNoneMessages[3].reasoning_content).toBeUndefined()
+
+    // 3. OpenAI 官方规范：严禁向 completions 发送 reasoning_content，自动剥除
+    const openaiProvider = resolveDraft({
+      id: 'openai',
+      kind: 'provider',
+      label: 'OpenAI',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      models: [],
+    })
+    const openaiBody = bodyFor(openaiProvider, {
+      model: 'gpt-4o',
+      messages,
+      stream: true,
+      reasoningEffort: 'medium',
+    })
+    const openaiMessages = openaiBody.messages as any[]
+    expect(openaiMessages[1].reasoning_content).toBeUndefined()
+    expect(openaiMessages[3].reasoning_content).toBeUndefined()
+  })
 })
 
 
