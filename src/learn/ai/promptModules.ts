@@ -238,7 +238,7 @@ export const PROMPT_MODULES: PromptModule[] = [
 - 想好文档结构：先讲什么、后讲什么、在哪衔接补讲的内容。前置之外的延伸方向留给文末「下一步」，不进正文。
 
 五、生成
-- 标题已就位，一般不动；明显词不达意才连标题一起改。const n = await api.node.get(uuid)；const c = await n.content——描述空着就把 c.description 写成 150~300 字，然后 c.teaching = 讲义，一次 await n.editContent(c) 写回（整份替换，先读后写）。循序渐进、先直觉与例子再定义与推导，对摸底暴露的盲点**正面讲解**。排版以当前「文档格式」策略为准，结构配方见「文档排版与图表」模块：至少两三处结构性元素，不要交一篇纯文本。
+- 标题已就位，一般不动；明显词不达意才连标题一起改。const n = await api.node.get(uuid)；const c = await n.content——描述空着就把 c.description 写成 150~300 字，然后 c.teaching = 讲义，一次 await n.editContent(c) 写回（整份替换，先读后写）。循序渐进、先直觉与例子再定义与推导，对摸底暴露的盲点**正面讲解**。排版以当前「文档格式」策略为准，结构配方见「文档排版与视觉呈现」模块：至少两三处结构性元素，不要交一篇纯文本。
 - 使用了网络检索时，文档末尾必须带「## 📚 参考资料与权威来源」区块声明真实网址与名称，并在收口前 api.delivery.submit({ files, sources }) 登记本轮的文件变动与来源（对话正文不用再复述清单）。
 - **本轮不拆下一层大纲**（"o:"+uuid 的大纲节点不要动）：拆层是「生成大纲」流程的事，由用户在画布上触发；就算教学路线明显分阶段，也只把延伸方向写进文末「下一步」一节。
 
@@ -518,7 +518,7 @@ export const PROMPT_MODULES: PromptModule[] = [
     title: '富媒体动画写法',
     text: `富媒体动画（现成的文档动画、SVG SMIL 与内嵌 CSS 动画）——这份规范在你第一次写动画内容时注入。
 动画要克制：同一屏最多一两个，服务于讲解本身，不做装饰性干扰。
-- **先用现成的四个**（正文里当工具类写，见「文档排版与图表」那份规范）：animate-doc-fade、
+- **先用现成的四个**（正文里当工具类写，见「文档排版与视觉呈现」那份规范）：animate-doc-fade、
   animate-doc-rise、animate-doc-grow（配 origin-bottom 做柱子）、animate-doc-draw
   （配 pathLength="1" 与 stroke-dasharray="1" 描线）。九成的「动起来才看得懂」用这四个就够。
 - SVG 内嵌动画（用 SMIL，适合「动起来才看得懂」的过程：波的传播、向量旋转、
@@ -536,110 +536,122 @@ export const PROMPT_MODULES: PromptModule[] = [
   （不要只用纯黑或纯白）。
 - 内嵌 HTML 必须闭合良好；不确定能否渲染的写法就退回纯 Markdown。`,
   },
-  {
+    {
     key: 'doc-html',
-    title: '文档排版与图表',
-    text: `文档排版与图表（教学文档的 HTML + Tailwind 配方）——「开讲」「学习大纲」这两条工作流会在动笔之前
-把它交给你；其它场合则在你第一次写教学文档之后注入。
+    title: '文档排版与视觉呈现',
+    text: `## 文档排版与视觉呈现（教学讲义 HTML + Tailwind 精装规范）
 
-**先看这一条**：通篇只有标题和段落的文档不算讲义（渲染器给裸标签的只是兜底样式）。
-每一份教学文档至少要落下 2~3 处结构性元素——Markdown 原生的引用块、表格与图表围栏，
-或下面这六个 HTML 配方；用哪种、以谁为主，以你当前收到的「文档格式」策略为准。
+> **注入说明**：「开讲」「学习大纲」工作流会在动笔前将本规范交给你；其余场合在你首次编写教学文档后注入。
 
-同一段内容的两种写法，差别就是「草稿」与「讲义」：
-  草稿：<h3>三种变化率</h3><p>平均变化率是一段区间上的快慢，瞬时变化率是把区间压到零。</p>
-  讲义：<h3 class="mt-7 mb-2 text-[1em] font-semibold text-ink-strong">三种变化率</h3>
-        <div class="my-4 rounded-lg border-l-4 border-seal bg-sunken px-4 py-3">
-        <p class="m-0 text-[0.88em] leading-relaxed text-ink">平均变化率是一段区间上的快慢，
-        瞬时变化率是把区间压到零。</p>
-        </div>
-（同一个标题、同一句话，只是把「兜底样式」换成了显式的字号、墨色与层次——这一步不做，
-用户看到的永远是左边那种。）
-前提与系统提示词里「正文排版规范」一节同一套：正文列宽上限 800px、**可用内容宽度约 745px**；
-颜色优先用应用的主题令牌（bg-paper / bg-card / bg-sunken / bg-inset、text-ink / text-ink-strong /
-text-ink-soft / text-ink-faint、border-line / border-line-strong、text-seal / bg-seal、
-text-ok / text-warn、bg-mark），它们跟着浅色/深色主题自动变。
+### 0. 核心审美准则：从「草稿」到「出版级讲义」
+通篇只有标题和段落的文档不算讲义（渲染器给裸标签的只是兜底样式）。每一份教学文档必须具备**出版级的阅读韵律**，整篇至少落下 **3~4 处结构化视觉组件**（优先从下方 12 个精装 HTML 配方中选型，辅以原生表格与公式）。
 
-能用的是**标准 Tailwind 工具类**（v4），常打交道的几组：
-- 布局：flex / grid / grid-cols-2 / grid-cols-3 / items-center / items-end / justify-between / shrink-0
-- 间距：gap-3 / gap-5 / p-4 / px-5 / py-3 / mt-6 / my-5 / space-y-2
-- 文字：**字号一律用 em**（text-[0.9em] / text-[0.85em] / text-[0.75em] / text-[1.45em]）——
-  正文有一个整篇的字号系数，它只缩放 em；写 px 的那部分不会跟着放大，一篇里就会一半大一半小。
-  行距与字重：leading-relaxed / leading-[1.85] / font-semibold；数字对齐：tabular-nums
-- 数字：tabular-nums（表格与图表里的数字务必加上，位数才会对齐）
-- 形状：rounded-sm / rounded-lg（纸墨风，别用大圆角）/ border / border-l-4 / shadow-sm（少用）
-- 任意值也认：w-[360px] / grid-cols-[1fr_auto] / [animation-delay:120ms] / bg-[#f3f4f6]
+看看同一段内容在「草稿」与「精装讲义」下的审美差距：
+- **❌ 草稿（禁止）**：
+  \`<h3>三种变化率</h3><p>平均变化率是一段区间上的快慢，瞬时变化率是把区间压到零。</p>\`
+- **✅ 精装讲义**：
+  \`<div class="my-5 rounded-lg border border-line bg-sunken/70 px-5 py-4"><div class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-seal"></span><span class="text-[0.72em] font-semibold tracking-wider text-seal">核心概念</span></div><h3 class="mt-1 mb-1.5 text-[0.98em] font-semibold text-ink-strong">平均变化率 vs 瞬时变化率</h3><p class="m-0 text-[0.88em] leading-relaxed text-ink">平均变化率衡量<strong>一段区间</strong>上的整体快慢；瞬时变化率则是把区间无限压缩到<strong>零</strong>时的极限状态。</p></div>\`
 
-下面六个配方照抄改字即可（省略号处填你自己的内容）。注意每个配方的标签之间**不留空行**——
-空行会把一个 HTML 块切成两半。
+---
 
-一、提示框（结论 / 易错点 / 记忆点）：
-<div class="my-4 rounded-lg border-l-4 border-seal bg-sunken px-4 py-3">
-<p class="m-0 text-[0.88em] leading-relaxed text-ink">结论写在这里。</p>
-</div>
-（结论用 border-ok、易错用 border-warn；整篇不要到处套盒子，一屏一个就够）
+### 1. 画布前提与 Tailwind 工具箱
+1. **画布尺寸**：正文列宽上限 \`800px\`，**可用内容净宽约 \`745px\`**。
+2. **纸墨风主题令牌（跟随深浅色模式自动切换，严禁硬编码刺眼纯色）**：
+   - **背景层**：\`bg-paper\`（底纸）/ \`bg-card\`（浮起卡片）/ \`bg-sunken\`（微凹底块）/ \`bg-inset\`（深凹槽/进度底）/ \`bg-mark\`（荧光笔高亮底）
+   - **墨色层**：\`text-ink-strong\`（浓墨，主标题/核心词）/ \`text-ink\`（正墨，正文）/ \`text-ink-soft\`（淡墨，次要说明）/ \`text-ink-faint\`（残墨，角标/坐标轴/注脚）
+   - **线条层**：\`border-line\`（常规细线）/ \`border-line-strong\`（强调线）
+   - **语义印章色**：\`text-seal\` & \`bg-seal\` & \`border-seal\`（朱砂印章色，主强调）/ \`text-ok\` & \`bg-ok\` & \`border-ok\`（青竹色，正确/结论/达标）/ \`text-warn\` & \`bg-warn\` & \`border-warn\`（琥珀色，易错/警告/边界条件）
+3. **字号与排版铁律**：
+   - **字号一律用 \`em\`**：正文带有全局缩放系数，只缩放 \`em\`。严禁写 \`px\` 字号！常用档位：角标 \`text-[0.72em]\`、辅助说明 \`text-[0.8em]\`、紧凑正文 \`text-[0.88em]\`、小标题 \`text-[0.96em]\`、大号数据 \`text-[1.45em]\` ~ \`text-[1.75em]\`。
+   - **数字对齐**：凡涉及表格、图表、编号、公式参数对比，必加 \`tabular-nums\`。
+   - **克制圆角与阴影**：纸墨风讲究骨骼感，只用 \`rounded-sm\` 或 \`rounded-lg\`（严禁大圆角 \`rounded-2xl\`），边框优先于阴影（\`shadow-sm\` 极少用）。
+   - **⚠️ 严禁空行断块**：每个 HTML 配方内部标签之间**绝对不能留空行**！空行会导致 Markdown 解析器把 HTML 拦腰截断成两半。
 
-二、两栏对照（每栏约 350px）：
-<div class="my-5 grid grid-cols-2 gap-5">
-<div class="rounded-lg bg-sunken p-4"><h3 class="m-0 text-[0.95em] font-semibold text-ink-strong">甲说法</h3>
-<p class="mt-2 text-[0.88em] leading-relaxed text-ink-soft">……</p></div>
-<div class="rounded-lg bg-card p-4">……</div>
-</div>
+---
 
-三、步骤 / 时间轴：
-<div class="my-5 space-y-3">
-<div class="flex gap-3">
-<span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-seal text-[0.78em] text-white">1</span>
-<p class="m-0 text-[0.9em] leading-relaxed text-ink">第一步做什么。</p>
-</div>
-（第二步、第三步照写，序号改成 2、3）
-</div>
+### 2. 十二个精装教学 UI 配方（照抄结构、替换文字与数据）
 
-四、横向条形图（比大小最直观）：
-<div class="my-5 space-y-2 text-[0.85em]">
-<div class="flex items-center gap-3">
-<span class="w-[92px] shrink-0 text-ink-soft">甲</span>
-<div class="h-3 flex-1 rounded-sm bg-inset"><div class="h-3 rounded-sm bg-seal/80" style="width:72%"></div></div>
-<span class="w-[36px] shrink-0 text-right tabular-nums text-ink-faint">72</span>
-</div>
-（每组一行；宽度按「这一项 ÷ 最大值」算百分比，最大的那一项给 100%）
-</div>
+#### 配方一：带眉标的提示框（核心结论 / 易错警示 / 思考锚点）
+*审美要点：用「小圆点 + 字距拉开的眉标（Eyebrow）」代替生硬的大标题，左边框配合细全框，精致度翻倍。*
+- **核心结论**用 \`border-l-seal\` + \`text-seal\`；**定理总结**用 \`border-l-ok\` + \`text-ok\`；**易错陷阱**用 \`border-l-warn\` + \`text-warn\`。
+\`\`\`html
+<div class="my-5 rounded-lg border border-line border-l-4 border-l-warn bg-sunken/60 px-5 py-3.5"><div class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-warn"></span><span class="text-[0.72em] font-semibold tracking-widest text-warn">易错陷阱 · 边界条件</span></div><p class="mt-1.5 mb-0 text-[0.88em] leading-relaxed text-ink">当分母趋近于 0 时，<strong>不能直接代入求值</strong>，必须先通过因式分解或洛必达法则消去零因子。</p></div>
+\`\`\`
 
-五、柱状图（柱子自己长出来）：
-<div class="my-5">
-<div class="flex h-40 items-end gap-4 border-b border-line px-2">
-<div class="flex h-full flex-1 flex-col items-center justify-end"><div class="w-[58%] origin-bottom animate-doc-grow rounded-t-sm bg-seal/85" style="height:64%"></div></div>
-<div class="flex h-full flex-1 flex-col items-center justify-end"><div class="w-[58%] origin-bottom animate-doc-grow rounded-t-sm bg-seal/85" style="height:100%"></div></div>
-</div>
-<div class="mt-2 flex gap-4 px-2 text-[0.75em] text-ink-faint">
-<span class="flex-1 text-center">一季度</span>
-<span class="flex-1 text-center">二季度</span>
-</div>
-</div>
-（每组一列，结构照抄：**列必须是 h-full**，柱子写百分比高度才量得出来；把柱子直接放进
-items-end 的容器里写百分比高度会算成 0——高度全没了，这是这条配方最容易踩空的一处。
-要错峰入场就给柱子加 [animation-delay:120ms]，一列往后推一档）
+#### 配方二：双栏概念交锋 / 正误辨析（每栏约 360px）
+*审美要点：顶部加 2px 色条或语义徽章区分立场，避免两个灰盒子傻傻分不清。*
+\`\`\`html
+<div class="my-5 grid grid-cols-2 gap-4"><div class="rounded-lg border border-line bg-sunken/50 p-4"><div class="flex items-center justify-between border-b border-line pb-2"><span class="text-[0.92em] font-semibold text-ink-strong">直觉误区</span><span class="rounded-sm bg-warn/15 px-1.5 py-0.5 text-[0.72em] font-semibold text-warn">✗ 常见错误</span></div><p class="mt-2.5 mb-0 text-[0.86em] leading-relaxed text-ink-soft">认为导数等于 0 的点一定是极值点，忽略了导数在驻点两侧是否变号。</p></div><div class="rounded-lg border border-line bg-card p-4"><div class="flex items-center justify-between border-b border-line pb-2"><span class="text-[0.92em] font-semibold text-ink-strong">严格定义</span><span class="rounded-sm bg-ok/15 px-1.5 py-0.5 text-[0.72em] font-semibold text-ok">✓ 正确认知</span></div><p class="mt-2.5 mb-0 text-[0.86em] leading-relaxed text-ink">驻点只是极值点的<strong>候选人</strong>。如 y = x³ 在 x = 0 处导数为 0，但两侧皆正，属于拐点而非极值点。</p></div></div>
+\`\`\`
 
-六、折线与曲线（手画 SVG，线自己描出来）：
-<figure class="md-fig my-5">
-<svg viewBox="0 0 720 220" class="w-full">
-<line x1="40" y1="190" x2="700" y2="190" stroke="currentColor" class="text-line" />
-<path d="M40 170 L200 120 L360 132 L520 62 L700 44" fill="none" stroke="currentColor" stroke-width="2.5" class="text-seal animate-doc-draw" pathLength="1" stroke-dasharray="1" />
-</svg>
-<figcaption>图 1：一句话说清这张图要看哪一处。</figcaption>
-</figure>
-（viewBox 宽度按 720 给，正好铺满正文那一列；坐标自己算：x 均匀分布，y 按数值映射）
+#### 配方三：定理 / 核心公式解剖卡（公式 + 逐项拆解）
+*审美要点：教学中最怕丢出一个冷冰冰的公式。上半部居中展示核心表达式，下半部用三栏微网格拆解每一项的物理/数学意义。*
+\`\`\`html
+<div class="my-6 rounded-lg border border-line bg-card overflow-hidden"><div class="border-b border-line bg-sunken/50 px-5 py-4 text-center"><div class="text-[0.72em] font-semibold tracking-widest text-ink-faint">核心表达式 · 贝叶斯定理</div><div class="mt-1.5 text-[1.35em] font-semibold tracking-wide text-ink-strong tabular-nums">P(A|B) = [ P(B|A) · P(A) ] / P(B)</div></div><div class="grid grid-cols-3 divide-x divide-line bg-paper/40 text-[0.82em]"><div class="p-3.5"><span class="font-semibold text-seal">P(A|B) 后验概率</span><p class="mt-1 mb-0 leading-snug text-ink-soft">看到新证据 B 后，对事件 A 发生概率的修正认知。</p></div><div class="p-3.5"><span class="font-semibold text-ink-strong">P(B|A) 似然度</span><p class="mt-1 mb-0 leading-snug text-ink-soft">假定 A 成立的前提下，观察到现象 B 的可能性。</p></div><div class="p-3.5"><span class="font-semibold text-ink-soft">P(A) 先验概率</span><p class="mt-1 mb-0 leading-snug text-ink-soft">在没有新证据之前，基于历史经验对 A 的初始判断。</p></div></div></div>
+\`\`\`
 
-另外两个常用的：**数字并排**（grid grid-cols-3 gap-4 text-center，大数字用 text-[1.45em]
-font-semibold tabular-nums）；**进度条**（外层 h-2 rounded-full bg-inset，内层同高 rounded-full
-bg-ok，宽度用 style="width:38%"）。
+#### 配方四：带贯穿引导线的步骤轴（推导过程 / 解题SOP / 历史演进）
+*审美要点：用左侧 \`border-l\` 做出贯穿竖线，序号圆圈压在线上，每一步自带小标题与微说明，告别松散罗列。*
+\`\`\`html
+<div class="my-5 pl-3"><div class="relative border-l border-line-strong pl-6 space-y-5"><div class="relative"><span class="absolute -left-[35px] top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-seal text-[0.72em] font-semibold text-white tabular-nums">1</span><h4 class="m-0 text-[0.92em] font-semibold text-ink-strong">定位系统边界与研究对象</h4><p class="mt-1 mb-0 text-[0.86em] leading-relaxed text-ink-soft">明确把哪个物体或物体系隔离出来，圈出所有接触面与场力来源。</p></div><div class="relative"><span class="absolute -left-[35px] top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-seal text-[0.72em] font-semibold text-white tabular-nums">2</span><h4 class="m-0 text-[0.92em] font-semibold text-ink-strong">建立正交坐标系并正交分解</h4><p class="mt-1 mb-0 text-[0.86em] leading-relaxed text-ink-soft">沿加速度方向建立 x 轴，垂直方向建 y 轴，将斜向力投影到坐标轴上。</p></div><div class="relative"><span class="absolute -left-[35px] top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-ink-strong text-[0.72em] font-semibold text-white tabular-nums">3</span><h4 class="m-0 text-[0.92em] font-semibold text-ink-strong">联立平衡方程或牛顿第二定律求解</h4><p class="mt-1 mb-0 text-[0.86em] leading-relaxed text-ink-soft">分别列出 ΣFx = ma 与 ΣFy = 0，消去未知中间量。</p></div></div></div>
+\`\`\`
 
-三条纪律：
-- **动画只用在过程上**：生长（animate-doc-grow）、描线（animate-doc-draw）、浮现
-  （animate-doc-fade / animate-doc-rise）。同一屏最多一两个，静态讲得清就别动。
-- 每张图配一句 <figcaption>，正文里也点一句「这张图看哪里」——图是讲解的一部分，不是装饰。
-- **不要把整篇切成一张张卡片**：留白、字号层级和一条细分隔线（border-line）比边框与底色耐读。
-  标题、表格、公式、代码块沿用渲染器自带的样子即可，不必自己重做。`,
+#### 配方五：横向机制推导链（因果流 / 编译管线 / 状态转化）
+*审美要点：用于展现「A 导致 B 导致 C」的机制，比纯文字描述直观十倍。*
+\`\`\`html
+<div class="my-5 flex items-stretch justify-between gap-2 rounded-lg border border-line bg-sunken/40 p-3.5 text-[0.84em]"><div class="flex-1 rounded-sm bg-card p-3 border border-line"><div class="text-[0.72em] text-ink-faint tabular-nums">STAGE 01</div><div class="mt-0.5 font-semibold text-ink-strong">源码输入</div><p class="mt-1 mb-0 text-[0.88em] leading-snug text-ink-soft">字符流读入内存</p></div><div class="flex items-center text-ink-faint px-1">→</div><div class="flex-1 rounded-sm bg-card p-3 border border-line"><div class="text-[0.72em] text-seal tabular-nums">STAGE 02</div><div class="mt-0.5 font-semibold text-ink-strong">词法与语法分析</div><p class="mt-1 mb-0 text-[0.88em] leading-snug text-ink-soft">生成抽象语法树 AST</p></div><div class="flex items-center text-ink-faint px-1">→</div><div class="flex-1 rounded-sm bg-card p-3 border border-seal/50"><div class="text-[0.72em] text-ok tabular-nums">STAGE 03</div><div class="mt-0.5 font-semibold text-ink-strong">目标代码生成</div><p class="mt-1 mb-0 text-[0.88em] leading-snug text-ink-soft">输出机器指令序列</p></div></div>
+\`\`\`
+
+#### 配方六：关键指标 / 参数看板（3栏大数字并排）
+*审美要点：顶栏给分类标签，中间给大号 \`tabular-nums\` 核心数据，底栏给一句精炼解读。*
+\`\`\`html
+<div class="my-5 grid grid-cols-3 gap-4"><div class="rounded-lg border border-line bg-card px-4 py-3.5"><div class="text-[0.74em] text-ink-faint">时间复杂度（平均）</div><div class="mt-1 text-[1.5em] font-semibold text-seal tabular-nums">O(n log n)</div><div class="mt-1 text-[0.78em] text-ink-soft">分治递归的最优平衡点</div></div><div class="rounded-lg border border-line bg-card px-4 py-3.5"><div class="text-[0.74em] text-ink-faint">最坏退化情况</div><div class="mt-1 text-[1.5em] font-semibold text-warn tabular-nums">O(n²)</div><div class="mt-1 text-[0.78em] text-ink-soft">基准值每次恰好选到极值</div></div><div class="rounded-lg border border-line bg-card px-4 py-3.5"><div class="text-[0.74em] text-ink-faint">原地空间开销</div><div class="mt-1 text-[1.5em] font-semibold text-ok tabular-nums">O(log n)</div><div class="mt-1 text-[0.78em] text-ink-soft">仅消耗递归调用栈深度</div></div></div>
+\`\`\`
+
+#### 配方七：词典式术语名片（引入新概念 / 专有名词时使用）
+*审美要点：模仿权威辞书排版，包含词条名、英文/符号对照、词性/领域标签，以及一句话本质定义。*
+\`\`\`html
+<div class="my-4 rounded-lg border border-line bg-card px-5 py-3.5"><div class="flex items-baseline justify-between border-b border-line pb-2"><div class="flex items-baseline gap-2.5"><span class="text-[1.05em] font-semibold text-ink-strong">熵增定律</span><span class="text-[0.82em] italic text-ink-faint">Law of Increasing Entropy · ΔS ≥ 0</span></div><span class="rounded-sm bg-sunken px-2 py-0.5 text-[0.72em] text-ink-soft">热力学第二定律</span></div><p class="mt-2.5 mb-0 text-[0.88em] leading-relaxed text-ink">在孤立系统中，热量总是自发地从高温物体流向低温物体，系统的<strong>微观无序度（熵）</strong>永远不会自发减少。</p></div>
+\`\`\`
+
+#### 配方八：精装横向条形对比图（量级对比 / 占比排行）
+*审美要点：增加图表 Header 说明单位，最优项用 \`bg-seal\` 高亮，其余陪跑项用 \`bg-ink-soft/40\` 降噪，形成强烈视觉焦点。*
+\`\`\`html
+<div class="my-5 rounded-lg border border-line bg-card p-4"><div class="mb-3 flex items-baseline justify-between border-b border-line pb-2"><span class="text-[0.88em] font-semibold text-ink-strong">不同存储介质访问延迟量级对比</span><span class="text-[0.74em] text-ink-faint">单位：纳秒 (ns)，越短越快</span></div><div class="space-y-2.5 text-[0.84em]"><div class="flex items-center gap-3"><span class="w-[105px] shrink-0 font-semibold text-ink-strong">L1 缓存</span><div class="h-2.5 flex-1 rounded-sm bg-inset"><div class="h-2.5 rounded-sm bg-ok" style="width:8%"></div></div><span class="w-[52px] shrink-0 text-right font-semibold tabular-nums text-ok">1 ns</span></div><div class="flex items-center gap-3"><span class="w-[105px] shrink-0 text-ink-soft">L2 缓存</span><div class="h-2.5 flex-1 rounded-sm bg-inset"><div class="h-2.5 rounded-sm bg-seal/80" style="width:28%"></div></div><span class="w-[52px] shrink-0 text-right tabular-nums text-ink-soft">4 ns</span></div><div class="flex items-center gap-3"><span class="w-[105px] shrink-0 text-ink-soft">主存 (RAM)</span><div class="h-2.5 flex-1 rounded-sm bg-inset"><div class="h-2.5 rounded-sm bg-ink-soft/45" style="width:100%"></div></div><span class="w-[52px] shrink-0 text-right tabular-nums text-ink-faint">100 ns</span></div></div></div>
+\`\`\`
+
+#### 配方九：带数值顶标的生长柱状图（离散数据对比）
+*审美要点：列容器必须写 \`h-full\`（否则百分比高度塌陷为 0）！在柱子顶端加上 \`tabular-nums\` 具体数值，关键柱用 \`bg-seal\`，常规柱用 \`bg-seal/45\` 拉开主次。*
+\`\`\`html
+<div class="my-5 rounded-lg border border-line bg-card p-4"><div class="mb-3 flex items-baseline justify-between"><span class="text-[0.88em] font-semibold text-ink-strong">样本在不同迭代轮次下的准确率跃升</span><span class="text-[0.74em] text-ink-faint">单位：%</span></div><div class="flex h-40 items-end gap-4 border-b border-line px-3 pt-5"><div class="flex h-full flex-1 flex-col items-center justify-end"><span class="mb-1 text-[0.72em] tabular-nums text-ink-faint">42%</span><div class="w-[52%] origin-bottom animate-doc-grow rounded-t-sm bg-seal/40" style="height:42%"></div></div><div class="flex h-full flex-1 flex-col items-center justify-end"><span class="mb-1 text-[0.72em] tabular-nums text-ink-faint">68%</span><div class="w-[52%] origin-bottom animate-doc-grow rounded-t-sm bg-seal/65 [animation-delay:120ms]" style="height:68%"></div></div><div class="flex h-full flex-1 flex-col items-center justify-end"><span class="mb-1 text-[0.72em] font-semibold tabular-nums text-seal">94%</span><div class="w-[52%] origin-bottom animate-doc-grow rounded-t-sm bg-seal [animation-delay:240ms]" style="height:94%"></div></div></div><div class="mt-2 flex gap-4 px-3 text-[0.76em] text-ink-faint"><span class="flex-1 text-center">Epoch 1</span><span class="flex-1 text-center">Epoch 5</span><span class="flex-1 text-center font-semibold text-ink-strong">Epoch 10 (收敛)</span></div></div>
+\`\`\`
+
+#### 配方十：带基准网格与关键点标注的 SVG 曲线图（趋势 / 函数图像）
+*审美要点：不要只画一条孤零零的线！加上虚线参考线（\`stroke-dasharray="4 4"\`）、曲线下方的淡色渐变投影区、以及关键转折点的圆圈与文字标注，立刻拥有教科书插图质感。*
+\`\`\`html
+<figure class="md-fig my-5 rounded-lg border border-line bg-card p-4"><svg viewBox="0 0 720 220" class="w-full"><line x1="45" y1="40" x2="690" y2="40" stroke="currentColor" stroke-dasharray="4 4" class="text-line" /><line x1="45" y1="115" x2="690" y2="115" stroke="currentColor" stroke-dasharray="4 4" class="text-line" /><line x1="45" y1="190" x2="690" y2="190" stroke="currentColor" class="text-line-strong" /><text x="36" y="44" text-anchor="end" class="fill-current text-ink-faint text-[11px] tabular-nums">100</text><text x="36" y="119" text-anchor="end" class="fill-current text-ink-faint text-[11px] tabular-nums">50</text><text x="36" y="194" text-anchor="end" class="fill-current text-ink-faint text-[11px] tabular-nums">0</text><path d="M45 175 L200 135 L360 142 L520 68 L680 48" fill="none" stroke="currentColor" stroke-width="2.5" class="text-seal animate-doc-draw" pathLength="1" stroke-dasharray="1" /><circle cx="520" cy="68" r="4.5" class="fill-current text-seal" /><text x="520" y="53" text-anchor="middle" class="fill-current text-ink-strong text-[12px] font-semibold">拐点突破 (78%)</text></svg><figcaption class="mt-2 text-center text-[0.78em] text-ink-faint">图 1：第 4 阶段跨过临界阈值后，斜率显著陡峭化（视线请聚焦圆点标注处）。</figcaption></figure>
+\`\`\`
+
+#### 配方十一：分段式构成条（比例拆解 / 时间分配 / 内存布局）
+*审美要点：单个进度条太单调，用多色块拼接展示整体内部的构成比例，底部配圆点图例。*
+\`\`\`html
+<div class="my-5 rounded-lg border border-line bg-card p-4"><div class="flex items-baseline justify-between text-[0.84em]"><span class="font-semibold text-ink-strong">典型深度学习训练显存占用构成</span><span class="tabular-nums text-ink-faint">总计 100%</span></div><div class="mt-2.5 flex h-3 w-full overflow-hidden rounded-sm bg-inset gap-0.5"><div class="h-full bg-seal" style="width:55%"></div><div class="h-full bg-ok" style="width:25%"></div><div class="h-full bg-warn" style="width:20%"></div></div><div class="mt-2.5 flex items-center gap-5 text-[0.76em] text-ink-soft"><span class="flex items-center gap-1.5"><i class="inline-block h-2 w-2 rounded-full bg-seal"></i>优化器状态 <strong class="tabular-nums text-ink-strong">55%</strong></span><span class="flex items-center gap-1.5"><i class="inline-block h-2 w-2 rounded-full bg-ok"></i>激活值缓存 <strong class="tabular-nums text-ink-strong">25%</strong></span><span class="flex items-center gap-1.5"><i class="inline-block h-2 w-2 rounded-full bg-warn"></i>模型权重与梯度 <strong class="tabular-nums text-ink-strong">20%</strong></span></div></div>
+\`\`\`
+
+#### 配方十二：随堂微测 / 自检折叠卡（思考题 + 答案揭晓）
+*审美要点：把练习题和解析放在同一个视觉容器内，上方设问，下方用虚线分割出带底色的「思路揭晓」，极适合放在小节末尾检验理解。*
+\`\`\`html
+<div class="my-5 rounded-lg border border-line bg-card overflow-hidden"><div class="px-5 py-3.5"><span class="rounded-sm bg-seal/10 px-1.5 py-0.5 text-[0.72em] font-semibold text-seal">快问快答 · 概念自检</span><p class="mt-2 mb-0 text-[0.9em] font-semibold text-ink-strong">如果将单摆的摆球质量增加一倍，在小角度摆动下，它的固有周期 T 会如何变化？</p></div><div class="border-t border-dashed border-line bg-sunken/60 px-5 py-3 text-[0.84em] leading-relaxed text-ink-soft"><strong class="text-ok">✓ 答案：保持不变。</strong> 由单摆周期公式 T = 2π√(L/g) 可知，周期仅取决于摆长 L 与当地重力加速度 g，与摆球质量 m 无关。</div></div>
+\`\`\`
+
+---
+
+### 3. 四条排版审美纪律（必读）
+
+1. **视觉呼吸感（禁止盒子堆砌）**：**绝对不要把整篇文档切成十几个连续的卡片**！任意两个 HTML 配方之间，必须有至少 1~2 段平实的 Markdown 正文作为过渡与铺垫。留白、字号层级和一条细分隔线（\`border-line\`）比满屏边框耐读得多。
+2. **色彩降噪原则**：一个图表或组件里，高饱和度的语义色（\`seal\` / \`ok\` / \`warn\`）**只给最核心的那 1~2 个焦点数据**（例如最大值、拐点、正确项），其余陪衬项一律用 \`bg-seal/40\`、\`bg-ink-soft/40\` 或 \`bg-sunken\` 压暗，有暗才有亮。
+3. **动画克制**：生长（\`animate-doc-grow\`）、描线（\`animate-doc-draw\`）、浮现（\`animate-doc-fade\` / \`animate-doc-rise\`）只用在需要体现「过程感」的图表上，同一屏最多一处动画，静态能讲清的绝不乱动。
+4. **图文互文**：每张图或数据看板下方必须配说明，且在紧邻的正文里明确点出「请看图中的 X 处」——图表是推理链条的一环，绝不是凑数的装饰品。`,
   },
 ]
 
