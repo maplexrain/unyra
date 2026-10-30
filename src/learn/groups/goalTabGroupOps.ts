@@ -25,7 +25,7 @@ import { removeAgentTabsOfGoals, withAgentTabs } from '../agentTabs'
  * 5. 如果当前激活的目标就是它，清空激活目标与节点，文档区置空白。
  */
 export function closeGoalTabGroupStore(s: LearnStore, goalId: string): LearnStore {
-  const goalOfNode = (nodeId: string) => nodeById(s, nodeId)?.goalId ?? null
+  const goalOfNode = (nodeId: string) => nodeById(s, nodeId)?.goalId ?? (s.goals.some((g) => g.id === nodeId) ? nodeId : null)
 
   // 1. 从停靠场中彻底移除该目标的缓存
   const nextParked = { ...(s.docArea.parkedTabs ?? {}) }

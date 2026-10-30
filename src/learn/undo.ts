@@ -72,9 +72,7 @@ type NodeUndo = Extract<ExplorerUndo, { kind: 'node' }>
 
 /** 删除节点 / 目标前备货：与 deleteNode、deleteGoal 的级联逐项对应 */
 export function captureNodeDelete(store: LearnStore, nodeId: string): ExplorerUndo | null {
-  const node = nodeById(store, nodeId)
-  if (!node) return null
-  const goal = store.goals.find((g) => g.rootNodeId === nodeId)
+  const goal = store.goals.find((g) => g.id === nodeId || g.rootNodeId === nodeId)
   if (goal) {
     const removed = goalSubtreeIds(store, goal.id)
     const tmp: Record<string, Record<string, TmpEntry>> = {}
@@ -82,9 +80,14 @@ export function captureNodeDelete(store: LearnStore, nodeId: string): ExplorerUn
       const bucket = store.tmp?.[id]
       if (bucket) tmp[id] = bucket
     }
+    const goalTitle =
+      goal.title ||
+      goal.question ||
+      (goal.rootNodeId ? store.nodes.find((n) => n.id === goal.rootNodeId)?.title : '') ||
+      t('未命名目标')
     return {
       kind: 'node',
-      label: t('删除目标「{0}」', node.title),
+      label: t('删除目标「{0}」', goalTitle),
       goalId: goal.id,
       nodes: store.nodes.filter((n) => removed.has(n.id)),
       edges: store.edges.filter((e) => removed.has(e.from) || removed.has(e.to)),
@@ -96,6 +99,8 @@ export function captureNodeDelete(store: LearnStore, nodeId: string): ExplorerUn
       tmp,
     }
   }
+  const node = nodeById(store, nodeId)
+  if (!node) return null
   const book = readingOfGoal(store.reading, node.goalId)
   const rec = book?.nodes[nodeId]
   return {

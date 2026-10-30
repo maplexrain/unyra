@@ -106,7 +106,7 @@ export function updateNode(
   if (patch.title !== undefined) next.key = normalizeKey(patch.title)
   const replaced = replaceNode(store, next)
   if (patch.title !== undefined && patch.title.trim() !== node.title.trim()) {
-    const goal = store.goals.find((g) => g.rootNodeId === id)
+    const goal = store.goals.find((g) => g.id === id || g.rootNodeId === id)
     if (goal) {
       return retargetStaticRefs(replaced, goal.id)
     }
@@ -280,7 +280,7 @@ export function moveNode(
  * 那正是节点级隔离改成目标级之后该有的样子。
  */
 export function deleteNode(store: LearnStore, id: string): LearnStore {
-  const goal = store.goals.find((g) => g.rootNodeId === id)
+  const goal = store.goals.find((g) => g.id === id || g.rootNodeId === id)
   if (goal) return deleteGoal(store, goal.id)
   const node = nodeById(store, id)
   if (!node) return store

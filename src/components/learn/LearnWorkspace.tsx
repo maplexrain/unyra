@@ -109,6 +109,7 @@ import {
   conversationTitle,
   conversationById,
   deleteConversation,
+  deleteGoal,
   deleteMessage,
   deleteNode,
   ensureConversation,
@@ -3705,10 +3706,20 @@ export default function LearnWorkspace({
 
   /** 删除前先弹确认框，避免误删：看一眼「删的是哪个、连带删掉多少」再点头 */
   const requestRemoveNode = (nodeId: string) => {
-    const node = nodeById(getLatest(), nodeId)
+    const s = getLatest()
+    const goal = s.goals.find((g) => g.id === nodeId || g.rootNodeId === nodeId)
+    if (goal) {
+      const goalTitle =
+        goal.title ||
+        goal.question ||
+        (goal.rootNodeId ? nodeById(s, goal.rootNodeId)?.title : '') ||
+        t('未命名目标')
+      setPendingDelete({ nodeId: goal.id, title: goalTitle, isRoot: true, count: goalSubtreeSize(goal.id) })
+      return
+    }
+    const node = nodeById(s, nodeId)
     if (!node) return
-    const isRoot = getLatest().goals.some((g) => g.rootNodeId === nodeId)
-    setPendingDelete({ nodeId, title: node.title, isRoot, count: isRoot ? goalSubtreeSize(nodeId) : 1 })
+    setPendingDelete({ nodeId, title: node.title, isRoot: false, count: 1 })
   }
 
   /**
@@ -3856,9 +3867,10 @@ export default function LearnWorkspace({
     },
     [getLatest, onToast],
   )
-  const goalSubtreeSize = (rootId: string): number => {
-    const goal = getLatest().goals.find((g) => g.rootNodeId === rootId)
-    return goal ? goalSubtreeIds(getLatest(), goal.id).size : 1
+  const goalSubtreeSize = (rootOrGoalId: string): number => {
+    const s = getLatest()
+    const goal = s.goals.find((g) => g.id === rootOrGoalId || g.rootNodeId === rootOrGoalId)
+    return goal ? goalSubtreeIds(s, goal.id).size : 1
   }
 
   /** 删除目标/节点：含全部下级知识点、对话与试卷，先确认再删；Ctrl+Z 可撤回 */
@@ -3869,8 +3881,11 @@ export default function LearnWorkspace({
     // 先备货再动手：撤回项捕获的是删除前那一刻的旧引用（节点本身、相连的边、试卷、会话与两本账）
     const entry = captureNodeDelete(getLatest(), pending.nodeId)
     if (entry) pushUndo(entry)
-    // agent 栏的页签跟着收拾：整目标被删时它的导师页签一并退场（读盘归一是同一条规矩）
-    set(fixAgentTabsAfter(deleteNode(getLatest(), pending.nodeId)))
+    // 目标级删除走 deleteGoal，普通节点走 deleteNode
+    const nextStore = pending.isRoot
+      ? deleteGoal(getLatest(), pending.nodeId)
+      : deleteNode(getLatest(), pending.nodeId)
+    set(fixAgentTabsAfter(nextStore))
     onToast(pending.isRoot ? t('已删除该学习目标，可按 Ctrl+Z 撤回') : t('已删除该节点，可按 Ctrl+Z 撤回'))
   }
 
@@ -3987,9 +4002,11 @@ export default function LearnWorkspace({
         return { ok: true as const }
       }
       // 删根文档 = 删整个目标（根就是目标的骨架）：从画布的删除键触发也必须走两档确认
-      if (getLatest().goals.some((g) => g.rootNodeId === uuid)) {
-        const node = nodeById(getLatest(), uuid)
-        setPendingDelete({ nodeId: uuid, title: node?.title ?? uuid, isRoot: true, count: goalSubtreeSize(uuid) })
+      const goal = getLatest().goals.find((g) => g.id === uuid || g.rootNodeId === uuid)
+      if (goal) {
+        const node = goal.rootNodeId ? nodeById(getLatest(), goal.rootNodeId) : null
+        const title = goal.title || goal.question || node?.title || uuid
+        setPendingDelete({ nodeId: goal.id, title, isRoot: true, count: goalSubtreeSize(goal.id) })
         return { ok: true as const }
       }
       const r = makeNodeService().delete(uuid)
@@ -5898,7 +5915,7 @@ export default function LearnWorkspace({
           title={pendingDelete.isRoot ? t('删除整个学习目标？') : t('删除这个阶段目标？')}
           message={
             pendingDelete.isRoot
-              ? t('「{0}」是学习目标（总目标），删除后它及其下 {1} 个阶段目标、所有对话与试卷都会一并移除，且无法恢复。', pendingDelete.title, pendingDelete.count - 1)
+              ? t('「{0}」是学习目标（总目标），删除后它及其下 {1} 个阶段目标、所有对话与试卷都会一并移除，且无法恢复。', pendingDelete.title, Math.max(0, pendingDelete.count - (getLatest().goals.find((g) => g.id === pendingDelete.nodeId)?.rootNodeId ? 1 : 0)))
               : t('只删除「{0}」本身：与它相连的线一并解开，它的下级阶段目标会留在画布上（成为没有上游的游离卡），挂在该文档上的笔记与试卷随它一起移除。删错可按 Ctrl+Z 撤回。', pendingDelete.title)
           }
           confirmLabel={pendingDelete.isRoot ? t('删除目标') : t('删除')}

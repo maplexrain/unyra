@@ -8,7 +8,8 @@
 import type { LearnStore, TabRef } from '../types'
 import { withVideoMirror } from '../video/nodes'
 import { withoutTmpNodes } from '../../lib/tmpStore'
-import { allStoredTabs, closeIds, dropTabs, withOwners } from '../groups'
+import { allStoredTabs, closeIds, dropTabs, restoreParkedTabs, withOwners, withParked } from '../groups'
+import { agentTabKey, removeAgentTabsOfGoals } from '../agentTabs'
 import { dropDrafts } from '../drafts'
 import { readingOfGoal, withGoalReading, type ReadingStore } from '../reading'
 import { nodeById } from './lookup'
@@ -60,15 +61,7 @@ function withoutGoalReading(store: LearnStore, goalId: string): Partial<LearnSto
 export function goalSubtreeIds(store: LearnStore, goalId: string): Set<string> {
   const goal = store.goals.find((g) => g.id === goalId)
   if (!goal) return new Set()
-  const doomed = new Set<string>()
-  const stack = [goal.rootNodeId]
-  while (stack.length) {
-    const id = stack.pop() as string
-    if (doomed.has(id)) continue
-    doomed.add(id)
-    for (const c of prereqIds(store, id)) stack.push(c)
-  }
-  return new Set(store.nodes.filter((n) => doomed.has(n.id) && n.goalId === goalId).map((n) => n.id))
+  return new Set(store.nodes.filter((n) => n.goalId === goalId).map((n) => n.id))
 }
 
 /** 删除目标：移除其根可达的整棵子树、相关边与会话 */
@@ -79,7 +72,7 @@ export function deleteGoal(store: LearnStore, goalId: string): LearnStore {
   const goals = store.goals.filter((g) => g.id !== goalId)
   const nodes = store.nodes.filter((n) => !removed.has(n.id))
   const nextActiveNode =
-    store.activeNodeId && removed.has(store.activeNodeId)
+    store.activeNodeId && (removed.has(store.activeNodeId) || store.activeGoalId === goalId)
       ? (goals[0]?.rootNodeId ?? null)
       : store.activeNodeId
   // 目标没了，它那份上下文才跟着消失；换到别的目标时回落到那个目标的最近会话
@@ -89,41 +82,74 @@ export function deleteGoal(store: LearnStore, goalId: string): LearnStore {
     remaining.find((c) => c.id === store.activeConversationId)?.id ??
     (nextActiveGoalId ? latestConversation({ ...store, conversations: remaining }, nextActiveGoalId)?.id : null) ??
     null
-  // 整棵子树都没了：它的节点文档页签、笔记页签一并关掉（与 deleteNode 同一条规则）；
-  // 记忆页签挂在目标上（不挂节点，tabNodeIdOf 够不着它），目标没了也得一起关；
-  // 绑定视频的页签同理——它记着 ref.goalId（groups/goals 的归属判据）
+
+  const goalOwnedTabIds = new Set(store.docArea.tabOwners?.[goalId] ?? [])
   const doomedTabs = allStoredTabs(store.docArea)
     .filter(
       (t) =>
         removed.has(tabNodeIdOf(t.ref)) ||
+        goalOwnedTabIds.has(t.id) ||
         (t.ref.kind === 'mind' && t.ref.goalId === goalId) ||
-        (t.ref.kind === 'video' && t.ref.goalId === goalId),
+        (t.ref.kind === 'video' && t.ref.goalId === goalId) ||
+        (t.ref.kind === 'outline' &&
+          ((t.ref as { goalId?: string }).goalId === goalId ||
+            t.ref.nodeId === goalId ||
+            removed.has(t.ref.nodeId) ||
+            (goal.rootNodeId ? t.ref.nodeId === goal.rootNodeId : false))),
     )
     .map((t) => t.id)
+
+  const nextParked = { ...(store.docArea.parkedTabs ?? {}) }
+  delete nextParked[goalId]
+
+  const nextOwners = { ...(store.docArea.tabOwners ?? {}) }
+  delete nextOwners[goalId]
+
+  let updatedDocArea = withOwners(
+    withParked(
+      closeIds(store.docArea, doomedTabs, { preserveActiveAsBlank: true }),
+      Object.keys(nextParked).length > 0 ? nextParked : undefined,
+    ),
+    dropTabs(nextOwners, doomedTabs),
+  )
+
+  if (nextActiveGoalId && updatedDocArea.parkedTabs?.[nextActiveGoalId]) {
+    updatedDocArea = restoreParkedTabs(updatedDocArea, nextActiveGoalId)
+  }
+
+  let nextStructure = store.structure
+  if (nextStructure && goalId in nextStructure) {
+    const s = { ...nextStructure }
+    delete s[goalId]
+    nextStructure = Object.keys(s).length > 0 ? s : undefined
+  }
+  let nextDetached = store.detached
+  if (nextDetached && goalId in nextDetached) {
+    const d = { ...nextDetached }
+    delete d[goalId]
+    nextDetached = Object.keys(d).length > 0 ? d : undefined
+  }
+
+  const removedAgent = removeAgentTabsOfGoals(
+    store.agentTabs ?? [],
+    store.agentActiveTab ?? null,
+    new Set([goalId]),
+  )
+
   return {
     ...store,
     goals,
     nodes,
-    /*
-     * 视频节点跟着目标走：它名下的绑定行摘掉、视频资源上的引用镜像随之重建
-     * （资源本体与它的分段、进度都不动——视频是用户级的，删目标不该带走）。
-     */
     ...(store.videoNodes?.some((v) => v.goalId === goalId)
       ? withVideoMirror({ ...store, videoNodes: store.videoNodes.filter((v) => v.goalId !== goalId) })
       : {}),
-    /*
-     * 阅读与打卡这两本账**跟着目标一起走**（见 learn/reading 的 ReadingBook）：
-     * 目标都没了，它的账不该还留在内存里，也不该继续写在数据目录里——两本一起摘掉。
-     */
     ...withoutGoalReading(store, goalId),
     edges: store.edges.filter((e) => !removed.has(e.from) && !removed.has(e.to)),
     conversations: remaining,
-    exams: store.exams.filter((e) => !removed.has(e.nodeId)),
+    exams: store.exams.filter((e) => e.goalId !== goalId && !removed.has(e.nodeId)),
     tmp: withoutTmpNodes(store.tmp, removed),
-    /*
-     * 工作记忆也挂在目标上（见 learn/memory）：目标没了，它的那一本不该还留在内存里
-     * （否则记忆管理页会冒出一串「未知目标」的条目）。长期记忆跨目标，不在此列。
-     */
+    ...(nextStructure !== store.structure ? { structure: nextStructure } : {}),
+    ...(nextDetached !== store.detached ? { detached: nextDetached } : {}),
     ...(store.memory
       ? {
           memory: {
@@ -132,8 +158,11 @@ export function deleteGoal(store: LearnStore, goalId: string): LearnStore {
           },
         }
       : {}),
-    docArea: withOwners(closeIds(store.docArea, doomedTabs), dropTabs(store.docArea.tabOwners, doomedTabs)),
+    docArea: updatedDocArea,
     drafts: dropDrafts(store.drafts, doomedTabs),
+    agentTabs: removedAgent.tabs,
+    agentActiveTab:
+      removedAgent.active ?? (removedAgent.tabs.length > 0 ? agentTabKey(removedAgent.tabs[0]) : null),
     activeGoalId: nextActiveGoalId,
     activeNodeId: nextActiveNode,
     activeConversationId: nextActiveConv,
