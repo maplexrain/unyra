@@ -13,10 +13,13 @@
 import type { AgentTabRef } from './types'
 import type { TabCloseMode } from './tabs'
 
-/** 页签 id：固定聊天 `free`（常驻，不落 store）、目标级 `ga:<goalId>`、子代理 `sa:<sessionId>`。目标级页签一个目标只有一枚 */
+/** 页签 id：固定聊天 `free`（常驻，不落 store）、目标级 `ga:<goalId>:<conversationId>`、子代理 `sa:<sessionId>`。一个目标可收容多个会话页签 */
 export function agentTabKey(ref: AgentTabRef): string {
   if (ref.kind === 'free') return 'free'
-  return ref.kind === 'goal' ? 'ga:' + ref.goalId : 'sa:' + ref.sessionId
+  if (ref.kind === 'goal') {
+    return ref.conversationId ? `ga:${ref.goalId}:${ref.conversationId}` : `ga:${ref.goalId}`
+  }
+  return 'sa:' + ref.sessionId
 }
 
 /** 关一枚 agent 页签被什么拦着：'none' 随便关；'docs' 文档区还开着该目标的页签；'running' 导师正在跑 */
@@ -63,10 +66,9 @@ export function visibleAgentTabs(
  */
 export function agentTabCloseBlock(
   ref: AgentTabRef,
-  ctx: { hasDocTabs: boolean; running: boolean },
+  ctx: { hasDocTabs?: boolean; running: boolean },
 ): AgentTabCloseBlock {
   if (ref.kind === 'free' || ref.kind === 'sub') return 'none'
-  if (ctx.hasDocTabs) return 'docs'
   if (ctx.running) return 'running'
   return 'none'
 }
@@ -104,6 +106,14 @@ export function upsertAgentTab(
     const nextTabs = tabs.slice()
     nextTabs[index] = ref
     return { tabs: nextTabs, active: nextActive }
+  }
+  if (ref.kind === 'goal' && ref.conversationId) {
+    const nullIdx = tabs.findIndex((t) => t.kind === 'goal' && t.goalId === ref.goalId && !t.conversationId)
+    if (nullIdx >= 0) {
+      const nextTabs = tabs.slice()
+      nextTabs[nullIdx] = ref
+      return { tabs: nextTabs, active: nextActive }
+    }
   }
   return { tabs: [...tabs, ref], active: nextActive }
 }
@@ -175,13 +185,16 @@ export function normalizeAgentTabs(
       const r = raw as Record<string, unknown>
       if (r.kind === 'goal') {
         const goalId = typeof r.goalId === 'string' ? r.goalId : ''
-        if (!goalId || !ctx.goals.has(goalId) || seen.has('ga:' + goalId)) continue
+        if (!goalId || !ctx.goals.has(goalId)) continue
         // 存着的会话必须还活着且属于这个目标；丢了就回落到该目标最近的一段（可能也没有 → null）
         const convId = typeof r.conversationId === 'string' ? r.conversationId : ''
         const conv = convId ? convOf(convId) : undefined
         const valid = conv && conv.goalId === goalId ? convId : (latestConvOf(goalId)?.id ?? null)
-        seen.add('ga:' + goalId)
-        tabs.push({ kind: 'goal', goalId, conversationId: valid })
+        const tabRef: AgentTabRef = { kind: 'goal', goalId, conversationId: valid }
+        const key = agentTabKey(tabRef)
+        if (seen.has(key)) continue
+        seen.add(key)
+        tabs.push(tabRef)
       } else if (r.kind === 'sub') {
         const conversationId = typeof r.conversationId === 'string' ? r.conversationId : ''
         const sessionId = typeof r.sessionId === 'string' ? r.sessionId : ''
@@ -199,7 +212,11 @@ export function normalizeAgentTabs(
       ? 'free'
       : typeof rawActive === 'string' && tabs.some((t) => agentTabKey(t) === rawActive)
         ? rawActive
-        : (tabs[0] ? agentTabKey(tabs[0]) : null)
+        : typeof rawActive === 'string' &&
+            rawActive.startsWith('ga:') &&
+            tabs.find((t) => t.kind === 'goal' && t.goalId === rawActive.slice(3).split(':')[0])
+          ? agentTabKey(tabs.find((t) => t.kind === 'goal' && t.goalId === rawActive.slice(3).split(':')[0])!)
+          : (tabs[0] ? agentTabKey(tabs[0]) : null)
   return { tabs, active }
 }
 

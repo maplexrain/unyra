@@ -29,8 +29,9 @@ const goal = (goalId: string, conversationId: string | null = 'c1'): AgentTabRef
 const sub = (conversationId: string, sessionId: string): AgentTabRef => ({ kind: 'sub', conversationId, sessionId })
 
 describe('agentTabKey', () => {
-  it('目标级按目标、子代理按会话、固定聊天恒定', () => {
-    expect(agentTabKey(goal('g1'))).toBe('ga:g1')
+  it('目标级按目标加会话、子代理按会话、固定聊天恒定', () => {
+    expect(agentTabKey(goal('g1', 'c1'))).toBe('ga:g1:c1')
+    expect(agentTabKey(goal('g1', null))).toBe('ga:g1')
     expect(agentTabKey(sub('c1', 's1'))).toBe('sa:s1')
     expect(agentTabKey({ kind: 'free', conversationId: null })).toBe('free')
   })
@@ -43,19 +44,35 @@ describe('固定聊天页签', () => {
     const tabs = [{ kind: 'free' as const, conversationId: null }, goal('g1'), goal('g2')]
     // 对着自己（不可能出现，防御）与「全部关闭」都不该把 free 算进名单
     expect(agentTabCloseSet(tabs, 'free', 'self')).toEqual([])
-    expect(agentTabCloseSet(tabs, 'ga:g1', 'all')).toEqual(['ga:g1', 'ga:g2'])
-    expect(agentTabCloseSet(tabs, 'ga:g2', 'left')).toEqual(['ga:g1'])
+    expect(agentTabCloseSet(tabs, 'ga:g1:c1', 'all')).toEqual(['ga:g1:c1', 'ga:g2:c1'])
+    expect(agentTabCloseSet(tabs, 'ga:g2:c1', 'left')).toEqual(['ga:g1:c1'])
   })
 })
 
 describe('upsertAgentTab', () => {
-  it('同一目标重复 upsert 不加第二枚，只原位替换（conversationId 刷新）', () => {
+  it('同一目标不同会话额外开 tab，同一会话重复 upsert 原位更新并置前', () => {
     const first = upsertAgentTab([], null, goal('g1', 'c1'), true)
     expect(first.tabs).toHaveLength(1)
-    const again = upsertAgentTab(first.tabs, first.active, goal('g1', 'c2'), true)
-    expect(again.tabs).toHaveLength(1)
-    expect(again.tabs[0]).toEqual(goal('g1', 'c2'))
-    expect(again.active).toBe('ga:g1')
+    // 同一目标不同会话：额外开一个对话页签
+    const secondConv = upsertAgentTab(first.tabs, first.active, goal('g1', 'c2'), true)
+    expect(secondConv.tabs).toHaveLength(2)
+    expect(secondConv.active).toBe('ga:g1:c2')
+
+    // 同一会话重复 upsert：原位更新
+    const again = upsertAgentTab(secondConv.tabs, secondConv.active, goal('g1', 'c1'), true)
+    expect(again.tabs).toHaveLength(2)
+    expect(again.active).toBe('ga:g1:c1')
+  })
+
+  it('占位无会话的目标页签在有具体会话时原位升级', () => {
+    const placeholder = upsertAgentTab([], null, goal('g1', null), true)
+    expect(placeholder.tabs).toHaveLength(1)
+    expect(placeholder.active).toBe('ga:g1')
+
+    const upgraded = upsertAgentTab(placeholder.tabs, placeholder.active, goal('g1', 'c1'), true)
+    expect(upgraded.tabs).toHaveLength(1)
+    expect(upgraded.active).toBe('ga:g1:c1')
+    expect(upgraded.tabs[0]).toEqual(goal('g1', 'c1'))
   })
 
   it('语义没有变化时保留数组和激活项引用', () => {
@@ -68,44 +85,44 @@ describe('upsertAgentTab', () => {
   it('新页签不要求激活时保持原激活项；没有任何激活项时补上自己', () => {
     const base = upsertAgentTab([], null, goal('g1'), true)
     const added = upsertAgentTab(base.tabs, base.active, goal('g2'), false)
-    expect(added.active).toBe('ga:g1')
-    expect(added.tabs.map(agentTabKey)).toEqual(['ga:g1', 'ga:g2'])
+    expect(added.active).toBe('ga:g1:c1')
+    expect(added.tabs.map(agentTabKey)).toEqual(['ga:g1:c1', 'ga:g2:c1'])
     const coldStart = upsertAgentTab([], null, goal('g9'), false)
-    expect(coldStart.active).toBe('ga:g9')
+    expect(coldStart.active).toBe('ga:g9:c1')
   })
 })
 
 describe('removeAgentTab', () => {
   it('关掉的正是激活项时，激活权交给它原来的邻居（右边优先）', () => {
     const tabs = [goal('g1'), goal('g2'), goal('g3')]
-    const closed = removeAgentTab(tabs, 'ga:g2', 'ga:g2')
-    expect(closed.tabs.map(agentTabKey)).toEqual(['ga:g1', 'ga:g3'])
-    expect(closed.active).toBe('ga:g3')
+    const closed = removeAgentTab(tabs, 'ga:g2:c1', 'ga:g2:c1')
+    expect(closed.tabs.map(agentTabKey)).toEqual(['ga:g1:c1', 'ga:g3:c1'])
+    expect(closed.active).toBe('ga:g3:c1')
   })
 
   it('关掉最后一枚时激活权清空；关别的页签不动激活项', () => {
-    const only = removeAgentTab([goal('g1')], 'ga:g1', 'ga:g1')
+    const only = removeAgentTab([goal('g1')], 'ga:g1:c1', 'ga:g1:c1')
     expect(only).toEqual({ tabs: [], active: null })
-    const other = removeAgentTab([goal('g1'), goal('g2')], 'ga:g1', 'ga:g2')
-    expect(other.active).toBe('ga:g1')
+    const other = removeAgentTab([goal('g1'), goal('g2')], 'ga:g1:c1', 'ga:g2:c1')
+    expect(other.active).toBe('ga:g1:c1')
   })
 
   it('关不存在的页签原样返回', () => {
     const tabs = [goal('g1')]
-    expect(removeAgentTab(tabs, 'ga:g1', 'ga:ghost')).toEqual({ tabs, active: 'ga:g1' })
+    expect(removeAgentTab(tabs, 'ga:g1:c1', 'ga:ghost')).toEqual({ tabs, active: 'ga:g1:c1' })
   })
 })
 
 describe('removeAgentTabsOfGoals', () => {
   it('文档区关闭目标后只移除目标导师，保留子代理和其它目标', () => {
     const tabs = [goal('g1'), goal('g2'), sub('c1', 's1')]
-    const removed = removeAgentTabsOfGoals(tabs, 'ga:g1', new Set(['g1']))
-    expect(removed.tabs.map(agentTabKey)).toEqual(['ga:g2', 'sa:s1'])
-    expect(removed.active).toBe('ga:g2')
+    const removed = removeAgentTabsOfGoals(tabs, 'ga:g1:c1', new Set(['g1']))
+    expect(removed.tabs.map(agentTabKey)).toEqual(['ga:g2:c1', 'sa:s1'])
+    expect(removed.active).toBe('ga:g2:c1')
   })
 
   it('关闭最后一个目标导师时返回空激活项，由宿主回落到固定聊天', () => {
-    const removed = removeAgentTabsOfGoals([goal('g1')], 'ga:g1', new Set(['g1']))
+    const removed = removeAgentTabsOfGoals([goal('g1')], 'ga:g1:c1', new Set(['g1']))
     expect(removed).toEqual({ tabs: [], active: null })
   })
 })
@@ -113,15 +130,15 @@ describe('removeAgentTabsOfGoals', () => {
 describe('reorderAgentTabs', () => {
   it('按 key 的新顺序重排，内容原样保留', () => {
     const tabs = [goal('g1', 'c1'), goal('g2', 'c2'), goal('g3', 'c3')]
-    const next = reorderAgentTabs(tabs, ['ga:g3', 'ga:g1', 'ga:g2'])
+    const next = reorderAgentTabs(tabs, ['ga:g3:c3', 'ga:g1:c1', 'ga:g2:c2'])
     expect(next.map((t) => (t.kind === 'goal' ? t.goalId : ''))).toEqual(['g3', 'g1', 'g2'])
     expect(next).not.toBe(tabs)
   })
 
   it('数量对不上或 key 认不出时原样返回（拖动快照过时了不作数）', () => {
     const tabs = [goal('g1'), goal('g2')]
-    expect(reorderAgentTabs(tabs, ['ga:g1'])).toBe(tabs)
-    expect(reorderAgentTabs(tabs, ['ga:g1', 'ga:ghost'])).toBe(tabs)
+    expect(reorderAgentTabs(tabs, ['ga:g1:c1'])).toBe(tabs)
+    expect(reorderAgentTabs(tabs, ['ga:g1:c1', 'ga:ghost'])).toBe(tabs)
   })
 })
 
@@ -129,11 +146,11 @@ describe('agentTabCloseSet', () => {
   const tabs = [goal('g1'), goal('g2'), goal('g3'), goal('g4')]
 
   it('位置语义与文档区 closeTabs 同一套（self/left/right/others/all）', () => {
-    expect(agentTabCloseSet(tabs, 'ga:g2', 'self')).toEqual(['ga:g2'])
-    expect(agentTabCloseSet(tabs, 'ga:g3', 'left')).toEqual(['ga:g1', 'ga:g2'])
-    expect(agentTabCloseSet(tabs, 'ga:g2', 'right')).toEqual(['ga:g3', 'ga:g4'])
-    expect(agentTabCloseSet(tabs, 'ga:g2', 'others')).toEqual(['ga:g1', 'ga:g3', 'ga:g4'])
-    expect(agentTabCloseSet(tabs, 'ga:g1', 'all')).toEqual(['ga:g1', 'ga:g2', 'ga:g3', 'ga:g4'])
+    expect(agentTabCloseSet(tabs, 'ga:g2:c1', 'self')).toEqual(['ga:g2:c1'])
+    expect(agentTabCloseSet(tabs, 'ga:g3:c1', 'left')).toEqual(['ga:g1:c1', 'ga:g2:c1'])
+    expect(agentTabCloseSet(tabs, 'ga:g2:c1', 'right')).toEqual(['ga:g3:c1', 'ga:g4:c1'])
+    expect(agentTabCloseSet(tabs, 'ga:g2:c1', 'others')).toEqual(['ga:g1:c1', 'ga:g3:c1', 'ga:g4:c1'])
+    expect(agentTabCloseSet(tabs, 'ga:g1:c1', 'all')).toEqual(['ga:g1:c1', 'ga:g2:c1', 'ga:g3:c1', 'ga:g4:c1'])
   })
 
   it('key 不在名单里返回空（调用方不动状态）', () => {
@@ -142,9 +159,9 @@ describe('agentTabCloseSet', () => {
 })
 
 describe('agentTabCloseBlock', () => {
-  it('目标级页签：文档区还有它的页签时拦下（docs 优先于 running）', () => {
-    expect(agentTabCloseBlock(goal('g1'), { hasDocTabs: true, running: true })).toBe('docs')
-    expect(agentTabCloseBlock(goal('g1'), { hasDocTabs: true, running: false })).toBe('docs')
+  it('目标级页签：运行中拦下，非运行状态放行（关最后一个对话页签由上层联动关页签组）', () => {
+    expect(agentTabCloseBlock(goal('g1'), { hasDocTabs: true, running: true })).toBe('running')
+    expect(agentTabCloseBlock(goal('g1'), { hasDocTabs: true, running: false })).toBe('none')
     expect(agentTabCloseBlock(goal('g1'), { hasDocTabs: false, running: true })).toBe('running')
     expect(agentTabCloseBlock(goal('g1'), { hasDocTabs: false, running: false })).toBe('none')
   })
@@ -163,13 +180,13 @@ const CONVS = [
 describe('normalizeAgentTabs', () => {
   const ctx = { goals: new Set(['g1', 'g2']), conversations: CONVS }
 
-  it('目标 / 会话 / 子代理会话已经没了的页签当场剪掉，按 key 去重', () => {
+  it('目标 / 会话 / 子代理会话已经没了的页签当场剪掉，支持同目标多会话页签共存', () => {
     const { tabs } = normalizeAgentTabs(
-      [goal('g1'), goal('g9'), sub('c1', 's1'), sub('c1', 'ghost'), sub('c9', 's1'), goal('g1', 'c2')],
+      [goal('g1', 'c1'), goal('g9'), sub('c1', 's1'), sub('c1', 'ghost'), sub('c9', 's1'), goal('g1', 'c2'), goal('g1', 'c1')],
       null,
       ctx,
     )
-    expect(tabs).toEqual([goal('g1', 'c1'), sub('c1', 's1')])
+    expect(tabs).toEqual([goal('g1', 'c1'), sub('c1', 's1'), goal('g1', 'c2')])
   })
 
   it('页签里记的会话丢了回落到该目标最近的一段；目标一段会话都没有时页签留着（conversationId=null）', () => {
@@ -184,9 +201,10 @@ describe('normalizeAgentTabs', () => {
     expect(lonely.tabs).toEqual([goal('g1', null)])
   })
 
-  it('激活项必须是留下的页签之一，否则回落第一枚；固定聊天是合法激活项', () => {
-    expect(normalizeAgentTabs([goal('g1'), goal('g2')], 'ga:g2', ctx).active).toBe('ga:g2')
-    expect(normalizeAgentTabs([goal('g1'), goal('g2')], 'ga:gone', ctx).active).toBe('ga:g1')
+  it('激活项必须是留下的页签之一，支持兼容旧版 ga:<goalId> 格式，否则回落第一枚；固定聊天是合法激活项', () => {
+    expect(normalizeAgentTabs([goal('g1'), goal('g2', 'c3')], 'ga:g2:c3', ctx).active).toBe('ga:g2:c3')
+    expect(normalizeAgentTabs([goal('g1'), goal('g2', 'c3')], 'ga:g2', ctx).active).toBe('ga:g2:c3')
+    expect(normalizeAgentTabs([goal('g1'), goal('g2')], 'ga:gone', ctx).active).toBe('ga:g1:c1')
     expect(normalizeAgentTabs([], null, ctx).active).toBeNull()
     // 固定聊天不在 store 的页签列表里（界面合成置左），但激活项可以是它
     expect(normalizeAgentTabs([goal('g1')], 'free', ctx).active).toBe('free')
@@ -202,11 +220,6 @@ describe('normalizeAgentTabs', () => {
   })
 })
 
-/*
- * 导师是**按目标分身**的（见 learn/agentTabs 的 visibleAgentTabs）：栏上只画当前目标名下的
- * 页签，切目标 = 切导师。判错了的界面表现是「把这句话说给了另一个目标听」——不报错，
- * 也不容易被当成 bug 报回来，所以在这里钉住。
- */
 describe('页签归属与目标绑定', () => {
   /** 会话 → 它属于哪个目标（子代理的归属按它那段对话算） */
   const convGoal: Record<string, string> = { c1: 'g1', c2: 'g2' }
@@ -225,9 +238,9 @@ describe('页签归属与目标绑定', () => {
   })
 
   it('栏上只有当前目标的导师与它的子代理', () => {
-    const tabs = [goal('g1'), goal('g2'), sub('c1', 's1'), sub('c2', 's2')]
-    expect(visibleAgentTabs(tabs, 'g1', goalOfConversation).map(agentTabKey)).toEqual(['ga:g1', 'sa:s1'])
-    expect(visibleAgentTabs(tabs, 'g2', goalOfConversation).map(agentTabKey)).toEqual(['ga:g2', 'sa:s2'])
+    const tabs = [goal('g1', 'c1'), goal('g2', 'c2'), sub('c1', 's1'), sub('c2', 's2')]
+    expect(visibleAgentTabs(tabs, 'g1', goalOfConversation).map(agentTabKey)).toEqual(['ga:g1:c1', 'sa:s1'])
+    expect(visibleAgentTabs(tabs, 'g2', goalOfConversation).map(agentTabKey)).toEqual(['ga:g2:c2', 'sa:s2'])
   })
 
   it('固定聊天不参与过滤（它常驻栏上，由调用方另加在最左）', () => {
@@ -242,8 +255,10 @@ describe('页签归属与目标绑定', () => {
   it('upsertAgentTab 支持激活目标级页签并保持会话指向', () => {
     const tabs = [goal('g1', 'conv-1'), goal('g2', 'conv-2')]
     // 切换到 g1 的另一个会话 conv-3 并激活
-    const updated = upsertAgentTab(tabs, 'ga:g2', goal('g1', 'conv-3'), true)
-    expect(updated.active).toBe('ga:g1')
-    expect(updated.tabs.find((t) => t.kind === 'goal' && t.goalId === 'g1')).toEqual(goal('g1', 'conv-3'))
+    const updated = upsertAgentTab(tabs, 'ga:g2:conv-2', goal('g1', 'conv-3'), true)
+    expect(updated.active).toBe('ga:g1:conv-3')
+    expect(updated.tabs.find((t) => t.kind === 'goal' && t.goalId === 'g1' && t.conversationId === 'conv-3')).toEqual(
+      goal('g1', 'conv-3'),
+    )
   })
 })

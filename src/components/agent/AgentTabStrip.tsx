@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { FoldHorizontal, MessageSquare, OctagonX, ShieldAlert, X } from 'lucide-react'
+import { FoldHorizontal, MessageSquare, OctagonX, Plus, ShieldAlert, X } from 'lucide-react'
 import type { AgentTabRef } from '../../learn/types'
 import { agentTabCloseBlock, agentTabKey, type AgentTabCloseBlock } from '../../learn/agentTabs'
 import { TAB_CLOSE_LABEL, type TabCloseMode } from '../../learn/tabs'
@@ -37,6 +37,8 @@ interface Props {
   onCloseMode: (key: string, mode: TabCloseMode) => void
   /** 拖拽结束给出的新顺序（页签 key 列表） */
   onReorder: (keys: string[]) => void
+  /** 新建对话：在当前目标下新建一段对话并增加一个对话页签 */
+  onNewConversation?: () => void
 }
 
 function blockHintOf(block: AgentTabCloseBlock): string {
@@ -144,6 +146,7 @@ export default function AgentTabStrip({
   onClose,
   onCloseMode,
   onReorder,
+  onNewConversation,
 }: Props) {
   const stripRef = useRef<HTMLDivElement | null>(null)
   /**
@@ -277,6 +280,9 @@ export default function AgentTabStrip({
   const [menu, setMenu] = useState<{ x: number; y: number; key: string } | null>(null)
   const menuTab = menu ? tabs.find((tb) => agentTabKey(tb) === menu.key) : undefined
   const menuLabel = menuTab ? titleOf(menuTab) : ''
+  const isMenuLastGoalTab =
+    menuTab?.kind === 'goal' &&
+    tabs.filter((t) => t.kind === 'goal' && t.goalId === menuTab.goalId).length <= 1
 
   return (
     <>
@@ -306,6 +312,9 @@ export default function AgentTabStrip({
             const running = runningOf(ref)
             /** 固定聊天页签：栏上常驻、最左，不能关闭也不能拖拽——交互面比普通页签小一圈 */
             const isFree = ref.kind === 'free'
+            const isLastGoalTab =
+              ref.kind === 'goal' &&
+              tabs.filter((t) => t.kind === 'goal' && t.goalId === ref.goalId).length <= 1
             const block = agentTabCloseBlock(ref, { hasDocTabs: docTabsOf(ref), running })
             const closable = !isFree && block === 'none'
             // 守卫文案只对「想关却关不掉」的页签有意义；固定页签根本没有关闭键
@@ -391,8 +400,8 @@ export default function AgentTabStrip({
                   <button
                     type="button"
                     disabled={!closable}
-                    title={closable ? t(TAB_CLOSE_LABEL.self) : blockHint}
-                    aria-label={t(TAB_CLOSE_LABEL.self)}
+                    title={closable ? (isLastGoalTab ? t('关闭整个页签组') : t(TAB_CLOSE_LABEL.self)) : blockHint}
+                    aria-label={isLastGoalTab ? t('关闭整个页签组') : t(TAB_CLOSE_LABEL.self)}
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation()
@@ -411,6 +420,17 @@ export default function AgentTabStrip({
               </div>
             )
           })}
+          {onNewConversation && (
+            <button
+              type="button"
+              title={t('新建对话')}
+              aria-label={t('新建对话')}
+              onClick={onNewConversation}
+              className="mb-0.5 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-t-md text-ink-faint transition hover:bg-line/50 hover:text-ink"
+            >
+              <Plus size={14} />
+            </button>
+          )}
         </div>
 
         {/*
@@ -427,6 +447,7 @@ export default function AgentTabStrip({
           <AgentTabMenu
             menu={menu}
             label={menuLabel}
+            isLastGoalTab={isMenuLastGoalTab}
             count={tabs.filter((t) => t.kind !== 'free').length}
             otherCount={Math.max(0, tabs.filter((t) => t.kind !== 'free').length - 1)}
             onPick={(mode) => {
@@ -447,6 +468,7 @@ export default function AgentTabStrip({
 function AgentTabMenu({
   menu,
   label,
+  isLastGoalTab,
   count,
   otherCount,
   onPick,
@@ -454,6 +476,7 @@ function AgentTabMenu({
 }: {
   menu: { x: number; y: number }
   label: string
+  isLastGoalTab?: boolean
   count: number
   otherCount: number
   onPick: (mode: TabCloseMode) => void
@@ -486,7 +509,7 @@ function AgentTabMenu({
         <span className={ICON}>
           <X size={13} className="text-ink-soft" />
         </span>
-        {t(TAB_CLOSE_LABEL.self)}
+        {isLastGoalTab ? t('关闭页签组') : t(TAB_CLOSE_LABEL.self)}
       </button>
 
       {/* 关闭（强制）：连同文档区关联的tab一起关闭 */}

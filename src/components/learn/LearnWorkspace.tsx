@@ -100,6 +100,7 @@ import {
 } from '../../learn/groups'
 import { makeBlankTab, makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
 import { setZenActive } from '../../learn/zen'
+import { closeGoalTabGroupStore } from '../../learn/groups/goalTabGroupOps'
 import { pickLocalFiles } from '../../lib/localFiles'
 import { addLocalFile } from '../../learn/localfiles'
 import { normalizeWebInput } from '../../learn/webUrl'
@@ -1247,7 +1248,7 @@ export default function LearnWorkspace({
       if (!doomed.length) return
       let cur = s
 
-      // 强制模式：连同文档区关联的tab一起关闭
+      // 强制模式：连同文档区关联的tab一起关闭整个目标页签组
       const isForce = mode === 'force' || mode === 'forceOthers'
       if (isForce) {
         const doomedGoalIds = new Set<string>()
@@ -1255,57 +1256,55 @@ export default function LearnWorkspace({
           const ref = (cur.agentTabs ?? []).find((t) => agentTabKey(t) === k)
           if (ref && ref.kind === 'goal') doomedGoalIds.add(ref.goalId)
         }
-        if (doomedGoalIds.size > 0) {
-          const belongsToDoomedGoal = (t: LearnTab): boolean => {
-            if (t.ref.kind === 'mind') return doomedGoalIds.has(t.ref.goalId)
-            const nid = tabNodeId(t.ref)
-            if (!nid) return false
-            const n = nodeById(cur, nid)
-            return !!n && doomedGoalIds.has(n.goalId)
-          }
-          // 活动组和停靠场都算「已打开的文档」：只扫 allTabs 会把关根大纲后停靠的
-          // 页签漏掉，稍后重开大纲时它们又会被恢复出来。
-          const stored = allStoredTabs(cur.docArea)
-          const docIdsToClose = stored.filter(belongsToDoomedGoal).map((t) => t.id)
-          if (docIdsToClose.length > 0) {
-            const closedArea = closeIds(cur.docArea, docIdsToClose, { preserveActiveAsBlank: true })
-            cur = {
-              ...cur,
-              docArea: withOwners(closedArea, dropTabs(closedArea.tabOwners, docIdsToClose)),
-              drafts: dropDrafts(cur.drafts, docIdsToClose),
-            }
-          }
+        for (const gid of doomedGoalIds) {
+          cur = closeGoalTabGroupStore(cur, gid)
         }
       }
 
       let closed = 0
       let blocked = 0
-      let blockedDocs = 0
       for (const k of doomed) {
         const ref = (cur.agentTabs ?? []).find((t) => agentTabKey(t) === k)
         if (!ref) continue
         const block = closeBlockOf(cur, ref)
         if (block !== 'none' && !isForce) {
           blocked++
-          if (block === 'docs') blockedDocs++
           continue
+        }
+        if (ref.kind === 'goal') {
+          // 检查该目标下是否还有未在 doomed 里的其他对话页签
+          const remainingTabsOfGoal = (cur.agentTabs ?? []).filter(
+            (t) => t.kind === 'goal' && t.goalId === ref.goalId && !doomed.includes(agentTabKey(t)),
+          )
+          if (remainingTabsOfGoal.length === 0) {
+            // 最后一个对话页签关闭：视为关闭整个页签组！
+            cur = closeGoalTabGroupStore(cur, ref.goalId)
+            closed++
+            continue
+          }
         }
         const next = removeAgentTab(cur.agentTabs ?? [], cur.agentActiveTab ?? null, k)
         cur = withAgentTabs(cur, next.tabs, next.active)
+        if (cur.agentActiveTab) {
+          const activeRef = (cur.agentTabs ?? []).find((t) => agentTabKey(t) === cur.agentActiveTab)
+          if (activeRef?.kind === 'goal') {
+            cur = {
+              ...cur,
+              activeGoalId: activeRef.goalId,
+              activeConversationId: activeRef.conversationId,
+            }
+          }
+        }
         closed++
       }
       if (!closed) {
-        onToast(
-          blockedDocs
-            ? t('文档区还开着这个目标的页签，先关掉它们才能关闭导师')
-            : t('导师正在运行，先停止这一轮再关闭'),
-        )
+        onToast(t('导师正在运行，先停止这一轮再关闭'))
         return
       }
       // 全部关完时把激活权交给固定聊天页签——它是这一栏的底座，永远在
       if (!cur.agentActiveTab) cur = { ...cur, agentActiveTab: 'free' }
       set(cur)
-      if (blocked) onToast(t('{0} 枚页签被拦下（文档区还开着，或导师正在跑）', blocked))
+      if (blocked) onToast(t('{0} 枚页签被拦下（导师正在跑）', blocked))
     },
     [getLatest, set, closeBlockOf, onToast],
   )
@@ -1328,14 +1327,20 @@ export default function LearnWorkspace({
     [getLatest, set],
   )
 
-  /** 页签标题：固定聊天 = 「聊天」；目标级 = 目标的标题（总目标节点名，回落目标问题）；子代理 = 定义名 */
+  /** 页签标题：固定聊天 = 「聊天」；目标级 = 对话标题或目标标题；子代理 = 定义名 */
   const agentTabTitle = useCallback(
     (ref: AgentTabRef): string => {
       if (ref.kind === 'free') return t('聊天')
       if (ref.kind === 'goal') {
         const goal = store.goals.find((g) => g.id === ref.goalId)
-        const title = goal ? (nodeById(store, goal.rootNodeId)?.title ?? goal.question) : ''
-        return title || t('目标')
+        const goalTitle = goal ? (nodeById(store, goal.rootNodeId)?.title ?? goal.question) : ''
+        const conv = ref.conversationId ? conversationById(store, ref.conversationId) : undefined
+        const convTitle = conv?.title || (conv && conv.messages.length > 0 ? conversationTitle(conv) : '')
+        const sameGoalTabs = (store.agentTabs ?? []).filter((t) => t.kind === 'goal' && t.goalId === ref.goalId)
+        if (sameGoalTabs.length <= 1) {
+          return convTitle || goalTitle || t('新对话')
+        }
+        return convTitle || (sameGoalTabs[0] === ref ? goalTitle : '') || t('新对话')
       }
       const conv = conversationById(store, ref.conversationId)
       const session = conv?.subagents?.sessions.find((x) => x.id === ref.sessionId)
@@ -1370,7 +1375,7 @@ export default function LearnWorkspace({
   const fixAgentTabsAfter = (s: LearnStore): LearnStore => {
     const tabs0 = s.agentTabs ?? []
     if (!tabs0.length) return s
-    const fixed = tabs0
+    const mapped = tabs0
       .filter((t) => {
         if (t.kind === 'goal') return s.goals.some((g) => g.id === t.goalId)
         if (t.kind !== 'sub') return true
@@ -1384,6 +1389,14 @@ export default function LearnWorkspace({
           ? { ...t, conversationId: resolveDisplayedConversation(s, t.goalId) ?? null }
           : t,
       )
+    const seen = new Set<string>()
+    const fixed: AgentTabRef[] = []
+    for (const t of mapped) {
+      const key = agentTabKey(t)
+      if (seen.has(key)) continue
+      seen.add(key)
+      fixed.push(t)
+    }
     const active =
       s.agentActiveTab && fixed.some((t) => agentTabKey(t) === s.agentActiveTab)
         ? s.agentActiveTab
@@ -2744,6 +2757,25 @@ export default function LearnWorkspace({
     set(patched)
     pruneImagesOf(patched)
   }
+
+  /** 在当前激活的目标下新增一段对话并作为新页签打开置前 */
+  const handleNewGoalConversation = useCallback(() => {
+    const s = getLatest()
+    if (!s.activeGoalId) return
+    const { store: withConv, conversation } = addConversation(s, s.activeGoalId)
+    const t0 = upsertAgentTab(
+      withConv.agentTabs ?? [],
+      withConv.agentActiveTab ?? null,
+      { kind: 'goal', goalId: s.activeGoalId, conversationId: conversation.id },
+      true,
+    )
+    const next: LearnStore = {
+      ...withConv,
+      activeGoalId: s.activeGoalId,
+      activeConversationId: conversation.id,
+    }
+    set(withAgentTabs(next, t0.tabs, t0.active))
+  }, [getLatest, set])
 
   /* ---------- 新建学习目标 ---------- */
 
@@ -5654,6 +5686,7 @@ export default function LearnWorkspace({
                     onClose={closeAgentTab}
                     onCloseMode={closeAgentTabMode}
                     onReorder={reorderAgentTabList}
+                    onNewConversation={store.activeGoalId ? handleNewGoalConversation : undefined}
                   />
                   {/*
                     **keepalive**：所有页签的面板常挂（absolute 铺满、非激活的 display:none）——
