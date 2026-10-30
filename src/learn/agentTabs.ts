@@ -268,3 +268,51 @@ export function agentTabCloseSet(tabs: AgentTabRef[], key: string, mode: TabClos
   if (mode === 'right') return keys.slice(idx + 1)
   return keys.filter((k) => k !== key)
 }
+
+/**
+ * 为重名的页签标题追加序号：
+ * - 若原标题以数字结尾，为避免数字粘连混淆（如 "目标 2" -> "目标 2 (1)"），追加 "(序号)"；
+ * - 其余情况直接追加 " 序号"（如 "计算机网络" -> "计算机网络 1"）。
+ */
+export function formatDisambiguatedTitle(raw: string, index: number): string {
+  const trimmed = raw.trim()
+  if (/\d$/.test(trimmed)) {
+    return `${trimmed} (${index})`
+  }
+  return `${trimmed} ${index}`
+}
+
+/**
+ * 页签标题去重与自动标序号：
+ * 遍历可见页签列表，统计各基础标题出现次数。
+ * - 仅出现 1 次的标题保持原样（不加序号）；
+ * - 出现多次（重名）的标题，从左到右按出现顺序标序号：1, 2, ...
+ * 返回 key -> 最终展示标题 的 Map。
+ */
+export function disambiguateTabTitles<T>(
+  tabs: readonly T[],
+  keyOf: (t: T) => string,
+  titleOf: (t: T) => string,
+): Map<string, string> {
+  const counts = new Map<string, number>()
+  for (const t of tabs) {
+    const raw = titleOf(t)
+    counts.set(raw, (counts.get(raw) ?? 0) + 1)
+  }
+
+  const seen = new Map<string, number>()
+  const out = new Map<string, string>()
+  for (const t of tabs) {
+    const key = keyOf(t)
+    const raw = titleOf(t)
+    const total = counts.get(raw) ?? 0
+    if (total <= 1) {
+      out.set(key, raw)
+    } else {
+      const idx = (seen.get(raw) ?? 0) + 1
+      seen.set(raw, idx)
+      out.set(key, formatDisambiguatedTitle(raw, idx))
+    }
+  }
+  return out
+}

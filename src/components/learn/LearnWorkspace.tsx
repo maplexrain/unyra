@@ -1336,11 +1336,7 @@ export default function LearnWorkspace({
         const goalTitle = goal ? (nodeById(store, goal.rootNodeId)?.title ?? goal.question) : ''
         const conv = ref.conversationId ? conversationById(store, ref.conversationId) : undefined
         const convTitle = conv?.title || (conv && conv.messages.length > 0 ? conversationTitle(conv) : '')
-        const sameGoalTabs = (store.agentTabs ?? []).filter((t) => t.kind === 'goal' && t.goalId === ref.goalId)
-        if (sameGoalTabs.length <= 1) {
-          return convTitle || goalTitle || t('新对话')
-        }
-        return convTitle || (sameGoalTabs[0] === ref ? goalTitle : '') || t('新对话')
+        return convTitle || goalTitle || t('新对话')
       }
       const conv = conversationById(store, ref.conversationId)
       const session = conv?.subagents?.sessions.find((x) => x.id === ref.sessionId)

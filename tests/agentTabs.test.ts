@@ -19,6 +19,8 @@ import {
   removeAgentTabsOfGoals,
   upsertAgentTab,
   visibleAgentTabs,
+  formatDisambiguatedTitle,
+  disambiguateTabTitles,
 } from '../src/learn/agentTabs'
 
 const goal = (goalId: string, conversationId: string | null = 'c1'): AgentTabRef => ({
@@ -260,5 +262,69 @@ describe('页签归属与目标绑定', () => {
     expect(updated.tabs.find((t) => t.kind === 'goal' && t.goalId === 'g1' && t.conversationId === 'conv-3')).toEqual(
       goal('g1', 'conv-3'),
     )
+  })
+})
+
+
+describe('页签重名自动标序号 (formatDisambiguatedTitle & disambiguateTabTitles)', () => {
+  it('formatDisambiguatedTitle 针对非数字结尾追加空格加序号，数字结尾追加括号加序号', () => {
+    expect(formatDisambiguatedTitle('计算机网络', 1)).toBe('计算机网络 1')
+    expect(formatDisambiguatedTitle('计算机网络', 2)).toBe('计算机网络 2')
+    expect(formatDisambiguatedTitle('目标 2', 1)).toBe('目标 2 (1)')
+    expect(formatDisambiguatedTitle('目标 2', 2)).toBe('目标 2 (2)')
+  })
+
+  it('没有重名页签时保持原标题不加序号', () => {
+    const tabs = [
+      { key: 't1', title: '计算机网络' },
+      { key: 't2', title: '操作系统' },
+      { key: 't3', title: '聊天' },
+    ]
+    const map = disambiguateTabTitles(tabs, (t) => t.key, (t) => t.title)
+    expect(map.get('t1')).toBe('计算机网络')
+    expect(map.get('t2')).toBe('操作系统')
+    expect(map.get('t3')).toBe('聊天')
+  })
+
+  it('两个同名页签从左到右依次标记 1、2', () => {
+    const tabs = [
+      { key: 't1', title: '计算机网络' },
+      { key: 't2', title: '计算机网络' },
+    ]
+    const map = disambiguateTabTitles(tabs, (t) => t.key, (t) => t.title)
+    expect(map.get('t1')).toBe('计算机网络 1')
+    expect(map.get('t2')).toBe('计算机网络 2')
+  })
+
+  it('三个同名页签依次标记 1、2、3', () => {
+    const tabs = [
+      { key: 't1', title: '新对话' },
+      { key: 't2', title: '新对话' },
+      { key: 't3', title: '新对话' },
+    ]
+    const map = disambiguateTabTitles(tabs, (t) => t.key, (t) => t.title)
+    expect(map.get('t1')).toBe('新对话 1')
+    expect(map.get('t2')).toBe('新对话 2')
+    expect(map.get('t3')).toBe('新对话 3')
+  })
+
+  it('重名与独立页签混排时，仅重名项标序号', () => {
+    const tabs = [
+      { key: 't1', title: '计算机网络' },
+      { key: 't2', title: '聊天' },
+      { key: 't3', title: '计算机网络' },
+      { key: 't4', title: '操作系统' },
+    ]
+    const map = disambiguateTabTitles(tabs, (t) => t.key, (t) => t.title)
+    expect(map.get('t1')).toBe('计算机网络 1')
+    expect(map.get('t2')).toBe('聊天')
+    expect(map.get('t3')).toBe('计算机网络 2')
+    expect(map.get('t4')).toBe('操作系统')
+  })
+
+  it('重名页签关掉一个仅剩一个时，自动恢复为原标题不带序号', () => {
+    const tabsAfterClose = [{ key: 't2', title: '计算机网络' }]
+    const map = disambiguateTabTitles(tabsAfterClose, (t) => t.key, (t) => t.title)
+    expect(map.get('t2')).toBe('计算机网络')
   })
 })

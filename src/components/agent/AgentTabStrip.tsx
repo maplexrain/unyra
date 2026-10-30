@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { FoldHorizontal, MessageSquare, OctagonX, Plus, ShieldAlert, X } from 'lucide-react'
 import type { AgentTabRef } from '../../learn/types'
-import { agentTabCloseBlock, agentTabKey, type AgentTabCloseBlock } from '../../learn/agentTabs'
+import { agentTabCloseBlock, agentTabKey, disambiguateTabTitles, type AgentTabCloseBlock } from '../../learn/agentTabs'
 import { TAB_CLOSE_LABEL, type TabCloseMode } from '../../learn/tabs'
 import { useClampToViewport, useDismissOn } from '../../lib/useDismiss'
 import { TAB_EXIT_MS, useTabPresence } from '../../lib/tabPresence'
@@ -275,11 +275,20 @@ export default function AgentTabStrip({
     setDrag((prev) => (prev ? { ...prev, to, dx } : prev))
   }
 
+  /**
+   * 栏上重名页签自动标序号：
+   * 仅在当前可见的页签中存在重名时按从左到右的顺序追加 1, 2, ...
+   * 单一页签保持原样。
+   */
+  const displayTitles = useMemo(() => {
+    return disambiguateTabTitles(presence, (p) => p.key, (p) => titleOf(p.item))
+  }, [presence, titleOf])
+
   /* ---------- 右键菜单 ---------- */
 
   const [menu, setMenu] = useState<{ x: number; y: number; key: string } | null>(null)
   const menuTab = menu ? tabs.find((tb) => agentTabKey(tb) === menu.key) : undefined
-  const menuLabel = menuTab ? titleOf(menuTab) : ''
+  const menuLabel = menuTab ? (displayTitles.get(menu.key) ?? titleOf(menuTab)) : ''
   const isMenuLastGoalTab =
     menuTab?.kind === 'goal' &&
     tabs.filter((t) => t.kind === 'goal' && t.goalId === menuTab.goalId).length <= 1
@@ -319,7 +328,7 @@ export default function AgentTabStrip({
             const closable = !isFree && block === 'none'
             // 守卫文案只对「想关却关不掉」的页签有意义；固定页签根本没有关闭键
             const blockHint = blockHintOf(block)
-            const title = titleOf(ref)
+            const title = displayTitles.get(key) ?? titleOf(ref)
             const dragging = drag?.key === key
             const offset = dragging ? drag.dx : shiftOf(i)
             return (
@@ -335,7 +344,7 @@ export default function AgentTabStrip({
                  * 浏览器拦下（控制台报 Blocked aria-hidden…）；inert 才能把焦点一并收走。
                  */
                 {...(leaving ? { inert: true } : { tabIndex: 0 })}
-                title={title + blockHint}
+                title={title + (blockHint ? ' · ' + blockHint : '')}
                 onClick={() => {
                   if (justDragged.current) return
                   onActivate(key)
