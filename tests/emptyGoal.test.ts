@@ -202,7 +202,7 @@ describe('空学习目标持久化与画布派生', () => {
     })
 
     expect(ops.nodeId()).toBeNull()
-    const listRes = ops.nodes.service().list()
+    const listRes = ops.nodes!.service()!.list()
     expect(listRes.ok).toBe(true)
     expect((listRes as Record<string, unknown>).nodes).toEqual([])
   })

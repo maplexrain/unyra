@@ -9,14 +9,14 @@ import { addConversation, resolveDisplayedConversation } from '../src/learn/grap
 import { closeGoalTabGroupStore } from '../src/learn/groups'
 
 describe('目标页签组与 Agent 多对话 Tab 联动测试', () => {
-  const mockStore: LearnStore = {
+  const mockStore = {
     goals: [
       { id: 'g1', question: '计算机网络', rootNodeId: 'n1', createdAt: 1, updatedAt: 1 },
       { id: 'g2', question: '操作系统', rootNodeId: 'n2', createdAt: 2, updatedAt: 2 },
     ],
     nodes: [
-      { id: 'n1', goalId: 'g1', title: '计算机网络概论', description: '', docs: [], status: 'learning' },
-      { id: 'n2', goalId: 'g2', title: '进程管理', description: '', docs: [], status: 'learning' },
+      { id: 'n1', goalId: 'g1', title: '计算机网络概论', description: '', docs: { teaching: '' }, status: 'learning' },
+      { id: 'n2', goalId: 'g2', title: '进程管理', description: '', docs: { teaching: '' }, status: 'learning' },
     ],
     conversations: [
       { id: 'c1', goalId: 'g1', messages: [], createdAt: 10, updatedAt: 10, title: '初识网络' },
@@ -50,7 +50,7 @@ describe('目标页签组与 Agent 多对话 Tab 联动测试', () => {
         g1: [{ id: 'tab-parked-1', ref: { kind: 'teach', nodeId: 'n1' }, createdAt: 90 }],
       },
     },
-  }
+  } as unknown as LearnStore
 
   it('在当前目标下新建对话：额外添加一个新对话 tab 并立即激活成为当前目标会话', () => {
     const { store: withConv, conversation } = addConversation(mockStore, 'g1')

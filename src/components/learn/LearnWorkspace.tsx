@@ -73,7 +73,6 @@ import {
   claimTab,
   closeIds,
   closeIn,
-  dropTabs,
   findTab,
   focusTabsInGroup,
   focusedGroup,
@@ -107,6 +106,7 @@ import { normalizeWebInput } from '../../learn/webUrl'
 import type { BrowserDeps } from '../../learn/web/browserOps'
 import {
   addConversation,
+  conversationTitle,
   conversationById,
   deleteConversation,
   deleteMessage,
@@ -170,7 +170,6 @@ import StructOverlay from './workspace/StructOverlay'
 import { NodeService, type GNodeKind } from '../../learn/nodeKinds'
 import { noteEntityOf } from './workspace/panes'
 import { pruneImages } from '../../learn/images'
-import { dropDrafts } from '../../learn/drafts'
 import { queueOf, shouldEnqueue } from '../../learn/agentQueue'
 import {
   cachedResourceUrl,

@@ -288,7 +288,7 @@ export default function AgentTabStrip({
 
   const [menu, setMenu] = useState<{ x: number; y: number; key: string } | null>(null)
   const menuTab = menu ? tabs.find((tb) => agentTabKey(tb) === menu.key) : undefined
-  const menuLabel = menuTab ? (displayTitles.get(menu.key) ?? titleOf(menuTab)) : ''
+  const menuLabel = menuTab && menu ? (displayTitles.get(menu.key) ?? titleOf(menuTab)) : ''
   const isMenuLastGoalTab =
     menuTab?.kind === 'goal' &&
     tabs.filter((t) => t.kind === 'goal' && t.goalId === menuTab.goalId).length <= 1
