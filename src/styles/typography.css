@@ -150,13 +150,29 @@
 .note-preview a:hover {
   color: var(--color-seal-deep);
 }
-/* 加粗：加重字重之外，额外撑一点字距与左右内边距，让它在密排中文里真正跳出来 */
+/* 加粗：浓墨微温，字重加粗并撑开微小字距，与正文自然拉开层次但不过分刺眼 */
 .note-preview strong,
 .note-preview b {
   font-weight: 700;
   letter-spacing: 0.04em;
   padding: 0 0.09em;
-  color: var(--color-ink-strong);
+  color: color-mix(in srgb, var(--color-ink-strong) 88%, var(--color-seal-deep) 12%);
+}
+
+/* 斜体：倾斜字态配以典雅沉静的文墨色，与正文及粗体温和区分，差距克制不突兀 */
+.note-preview em,
+.note-preview i {
+  font-style: italic;
+  padding: 0 0.08em;
+  color: color-mix(in srgb, var(--color-quote-ink) 72%, var(--color-seal-deep) 28%);
+}
+
+/* 粗斜体双重强调 */
+.note-preview strong em,
+.note-preview em strong,
+.note-preview b i,
+.note-preview i b {
+  color: color-mix(in srgb, var(--color-ink-strong) 70%, var(--color-seal-deep) 30%);
 }
 .note-preview ul,
 .note-preview ol {
@@ -342,15 +358,17 @@
 .note-preview svg {
   max-width: 100%;
 }
-/* details 展开动画是浏览器提供的（部分内核支持），不影响内容可见性 */
+/* 数学公式：默认带有一抹印章/主题主色调的雅致深墨色（随主题自适应），既与正文自然区分，又富学术刊实质感 */
 .note-preview .katex {
   font-size: 1.06em;
+  color: var(--color-seal-deep);
 }
 .note-preview .katex-display {
   margin: 1.15em 0;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0.25em 0;
+  padding: 0.35em 0;
+  color: var(--color-seal-deep);
 }
 .note-preview .katex-display > .katex {
   font-size: 1.12em;

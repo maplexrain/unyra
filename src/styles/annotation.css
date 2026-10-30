@@ -1,34 +1,118 @@
 /* 本文件负责：注解与知识关联——「了解」注解、笔记标记与浮层、引文定位、知识节点链接、资源与文件卡片 */
-/* ---------- 「了解」注解：正文里带下划线的术语 + 悬停弹出释义 ---------- */
+/* ---------- 「了解」注解与「笔记」标记：真实荧光标记笔划过质感 ---------- */
 
-/* 注解标记是**文字自己的样式**：淡印章底 + 虚线，扫一眼就能看出哪些词有注解。
-   刻意不加任何符号占位（旧版两侧的 «» 与笔记的 ✎ 已删）——注解的存在感由
-   底色与下划线给，掺进字形只会打断阅读，被标注的词还是词本身。 */
+/* 注解标记呈现真实荧光/颜色标记笔划过的质感：
+   - 采用多层渐变模拟马克笔着纸与提笔的自然墨迹过渡；
+   - 底部微量内阴影呈现笔尖斜切面在纸张微凹处沉淀的细微墨线；
+   - box-decoration-break 保持跨行连续包裹，轻微不对称圆角赋予手绘生命感。 */
 .moji-anno {
-  border-bottom: 1.5px dashed color-mix(in srgb, var(--color-seal) 78%, transparent);
-  background: color-mix(in srgb, var(--color-seal) 7%, transparent);
+  display: inline;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 0.12em 0.32em;
+  margin: 0 0.04em;
+  border-radius: 2px 4px 3px 5px;
+  background: linear-gradient(
+    104deg,
+    rgba(255, 235, 59, 0.18) 0%,
+    rgba(255, 232, 65, 0.52) 2.5%,
+    rgba(255, 238, 95, 0.48) 96%,
+    rgba(255, 235, 59, 0.22) 100%
+  );
+  box-shadow: inset 0 -0.16em 0 rgba(228, 196, 20, 0.22);
   cursor: help;
-  transition: background 0.15s ease;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
 }
 .moji-anno:hover {
-  background: color-mix(in srgb, var(--color-seal) 20%, transparent);
-  border-bottom-style: solid;
-}
-/* 深色模式下低透明度底几乎看不见，提高底色与虚线的强度 */
-:root[data-theme='dark'] .moji-anno {
-  background: color-mix(in srgb, var(--color-seal) 14%, transparent);
-  border-bottom-color: color-mix(in srgb, var(--color-seal) 85%, transparent);
-}
-:root[data-theme='dark'] .moji-anno:hover {
-  background: color-mix(in srgb, var(--color-seal) 26%, transparent);
+  background: linear-gradient(
+    104deg,
+    rgba(255, 235, 59, 0.32) 0%,
+    rgba(255, 232, 65, 0.68) 2.5%,
+    rgba(255, 238, 95, 0.64) 96%,
+    rgba(255, 235, 59, 0.36) 100%
+  );
+  box-shadow: inset 0 -0.18em 0 rgba(215, 178, 10, 0.35);
 }
 
-/* 「笔记」标记：与「了解」同一套浮层，只用实线与更沉的底色区分——表示「这里是我写的」。
-   两种注解的差异全在线型与底色上，不再靠角标字形。 */
+/* 深色模式与深色主题下：高亮转为温润沉着的金琥珀荧光笔墨色，透光保真且不刺眼 */
+:root[data-theme='dark'] .moji-anno,
+:root[data-theme='black'] .moji-anno,
+:root[data-theme='graphite'] .moji-anno,
+:root[data-theme='navy'] .moji-anno,
+:root[data-theme='contrast'] .moji-anno {
+  background: linear-gradient(
+    104deg,
+    rgba(245, 190, 45, 0.12) 0%,
+    rgba(245, 190, 45, 0.34) 2.5%,
+    rgba(250, 200, 55, 0.31) 96%,
+    rgba(245, 190, 45, 0.15) 100%
+  );
+  box-shadow: inset 0 -0.16em 0 rgba(255, 210, 70, 0.28);
+}
+:root[data-theme='dark'] .moji-anno:hover,
+:root[data-theme='black'] .moji-anno:hover,
+:root[data-theme='graphite'] .moji-anno:hover,
+:root[data-theme='navy'] .moji-anno:hover,
+:root[data-theme='contrast'] .moji-anno:hover {
+  background: linear-gradient(
+    104deg,
+    rgba(245, 190, 45, 0.22) 0%,
+    rgba(245, 190, 45, 0.48) 2.5%,
+    rgba(250, 200, 55, 0.45) 96%,
+    rgba(245, 190, 45, 0.25) 100%
+  );
+  box-shadow: inset 0 -0.18em 0 rgba(255, 215, 80, 0.4);
+}
+
+/* 「笔记」标记：用户亲笔批注，以温暖朱砂印泥/主题印章色荧光划笔呈现，与词条了解自然呼应与区分 */
 .moji-anno-note {
-  border-bottom-style: solid;
-  border-bottom-color: color-mix(in srgb, var(--color-seal) 70%, transparent);
-  background: color-mix(in srgb, var(--color-seal) 10%, transparent);
+  background: linear-gradient(
+    104deg,
+    color-mix(in srgb, var(--color-seal) 16%, transparent) 0%,
+    color-mix(in srgb, var(--color-seal) 38%, transparent) 2.5%,
+    color-mix(in srgb, var(--color-seal) 35%, transparent) 96%,
+    color-mix(in srgb, var(--color-seal) 18%, transparent) 100%
+  );
+  box-shadow: inset 0 -0.16em 0 color-mix(in srgb, var(--color-seal-deep) 35%, transparent);
+}
+.moji-anno-note:hover {
+  background: linear-gradient(
+    104deg,
+    color-mix(in srgb, var(--color-seal) 26%, transparent) 0%,
+    color-mix(in srgb, var(--color-seal) 52%, transparent) 2.5%,
+    color-mix(in srgb, var(--color-seal) 49%, transparent) 96%,
+    color-mix(in srgb, var(--color-seal) 28%, transparent) 100%
+  );
+  box-shadow: inset 0 -0.18em 0 color-mix(in srgb, var(--color-seal-deep) 48%, transparent);
+}
+
+:root[data-theme='dark'] .moji-anno-note,
+:root[data-theme='black'] .moji-anno-note,
+:root[data-theme='graphite'] .moji-anno-note,
+:root[data-theme='navy'] .moji-anno-note,
+:root[data-theme='contrast'] .moji-anno-note {
+  background: linear-gradient(
+    104deg,
+    color-mix(in srgb, var(--color-seal) 14%, transparent) 0%,
+    color-mix(in srgb, var(--color-seal) 32%, transparent) 2.5%,
+    color-mix(in srgb, var(--color-seal) 29%, transparent) 96%,
+    color-mix(in srgb, var(--color-seal) 16%, transparent) 100%
+  );
+  box-shadow: inset 0 -0.16em 0 color-mix(in srgb, var(--color-seal-deep) 38%, transparent);
+}
+:root[data-theme='dark'] .moji-anno-note:hover,
+:root[data-theme='black'] .moji-anno-note:hover,
+:root[data-theme='graphite'] .moji-anno-note:hover,
+:root[data-theme='navy'] .moji-anno-note:hover,
+:root[data-theme='contrast'] .moji-anno-note:hover {
+  background: linear-gradient(
+    104deg,
+    color-mix(in srgb, var(--color-seal) 22%, transparent) 0%,
+    color-mix(in srgb, var(--color-seal) 46%, transparent) 2.5%,
+    color-mix(in srgb, var(--color-seal) 43%, transparent) 96%,
+    color-mix(in srgb, var(--color-seal) 24%, transparent) 100%
+  );
+  box-shadow: inset 0 -0.18em 0 color-mix(in srgb, var(--color-seal-deep) 50%, transparent);
 }
 
 /* 引文定位：点击对话气泡里的选段引文时，在正文对应文字上播放一次高亮。

@@ -70,7 +70,19 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   padding: 0 0.09em;
-  color: var(--color-ink-strong);
+  color: color-mix(in srgb, var(--color-ink-strong) 88%, var(--color-seal-deep) 12%);
+}
+.moji-agent-md em,
+.moji-agent-md i {
+  font-style: italic;
+  padding: 0 0.08em;
+  color: color-mix(in srgb, var(--color-quote-ink) 72%, var(--color-seal-deep) 28%);
+}
+.moji-agent-md strong em,
+.moji-agent-md em strong,
+.moji-agent-md b i,
+.moji-agent-md i b {
+  color: color-mix(in srgb, var(--color-ink-strong) 70%, var(--color-seal-deep) 30%);
 }
 /*
  * 过程件的展开体（提示词模块 / 注入块 / 工具旁白）：与折叠行同一档的小字与暗色。
@@ -173,9 +185,11 @@
   margin: 0.6em 0;
   overflow-x: auto;
   overflow-y: hidden;
+  color: var(--color-seal-deep);
 }
 .moji-agent-md .katex {
   font-size: 1.04em;
+  color: var(--color-seal-deep);
 }
 
 /* ---------- 回溯式学习：知识图 ---------- */

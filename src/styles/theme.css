@@ -564,17 +564,6 @@
   background-color: color-mix(in srgb, var(--color-seal-deep) 40%, transparent);
   color: var(--color-ink-strong);
 }
-:root[data-theme='graphite'] .moji-anno,
-:root[data-theme='navy'] .moji-anno,
-:root[data-theme='contrast'] .moji-anno {
-  background: color-mix(in srgb, var(--color-seal) 14%, transparent);
-  border-bottom-color: color-mix(in srgb, var(--color-seal) 85%, transparent);
-}
-:root[data-theme='graphite'] .moji-anno:hover,
-:root[data-theme='navy'] .moji-anno:hover,
-:root[data-theme='contrast'] .moji-anno:hover {
-  background: color-mix(in srgb, var(--color-seal) 26%, transparent);
-}
 :root[data-theme='graphite'],
 :root[data-theme='navy'],
 :root[data-theme='contrast'] {
@@ -602,14 +591,6 @@
 :root[data-theme='black'] ::selection {
   background-color: rgba(224, 138, 116, 0.4);
   color: var(--color-ink-strong);
-}
-/* 标志颜色由 .moji-logo 统一给 var(--color-seal)，深色系各块的提亮值已内建 */
-:root[data-theme='black'] .moji-anno {
-  background: color-mix(in srgb, var(--color-seal) 14%, transparent);
-  border-bottom-color: color-mix(in srgb, var(--color-seal) 85%, transparent);
-}
-:root[data-theme='black'] .moji-anno:hover {
-  background: color-mix(in srgb, var(--color-seal) 26%, transparent);
 }
 /* 模态遮罩：纯黑与深色同口径 */
 :root[data-theme='black'] {
