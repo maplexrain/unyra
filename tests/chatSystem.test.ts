@@ -16,7 +16,7 @@ describe('固定聊天系统提示词 (buildFreeChatSystem)', () => {
     expect(prompt).toContain('出试卷、测评、判卷或批改作业')
     expect(prompt).toContain('项目编码、修改工程代码、在工作区创建/读写文件')
     expect(prompt).toContain('你必须立即终止该任务')
-    expect(prompt).toContain('当前页签仅作为聊天，无法处理具体的任务，请打开任务处理的页签（即上方带有 (task) 标识的页签）进行操作。')
+    expect(prompt).toContain('当前页签仅作为聊天，无法处理具体的任务，请打开任务处理的页签（即上方带有 task 标识的页签）进行操作。')
   })
 
   it('支持附加自定义系统提示词', () => {

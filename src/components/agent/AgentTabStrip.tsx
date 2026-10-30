@@ -68,56 +68,7 @@ const AGENT_TAB_COLOR: Record<AgentTabRef['kind'], string> = {
   sub: '#a066d6',
 }
 
-/**
- * 目标级导师的页签图标：靶心。目标（goal）的靶子在正中，环一圈套一圈——
- * 与文档区页签的 DocTypeIcon 同一套 lucide 几何（24 视窗、2 描边、圆角端点），
- * 渲染成 13px。
- */
-function GoalAgentIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={13}
-      height={13}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="9" />
-      <circle cx="12" cy="12" r="4.5" />
-      <circle cx="12" cy="12" r="0.5" fill="currentColor" />
-    </svg>
-  )
-}
 
-/**
- * 派生子代理的页签图标：一 node 出两支（share-2 的几何）——导师派出去的分身，
- * 源头与分身连成一张小网。与靶心并排摆在同一条栏上，级差一眼可辨。
- */
-function SubAgentIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={13}
-      height={13}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="18" cy="5" r="3" />
-      <circle cx="6" cy="12" r="3" />
-      <circle cx="18" cy="19" r="3" />
-      <path d="M8.59 13.51l6.83 3.98" />
-      <path d="M15.41 6.51l-6.82 3.98" />
-    </svg>
-  )
-}
 
 /** 拖动期间按 midpoints 现算「应该落到哪个位置」：与文档区 TabBar 同一套算法 */
 function targetIndex(rects: Array<{ left: number; width: number }>, pointerX: number, from: number): number {
@@ -380,22 +331,29 @@ export default function AgentTabStrip({
                 }
               >
                 {/*
-                  类型图标：颜色是**身份**（见 AGENT_TAB_COLOR），不跟着选中与运行变——
-                  选中由页签自己的底色说，运行由右边那颗呼吸点说。
+                  类型标识：聊天页签保留 MessageSquare 图标，任务模式页签用 chip 样式的 task 替换图标
                 */}
-                <span
-                  aria-hidden="true"
-                  className="flex h-4 w-4 shrink-0 items-center justify-center"
-                  style={{ color: AGENT_TAB_COLOR[ref.kind] }}
-                >
-                  {isFree ? (
+                {isFree ? (
+                  <span
+                    aria-hidden="true"
+                    className="flex h-4 w-4 shrink-0 items-center justify-center"
+                    style={{ color: AGENT_TAB_COLOR.free }}
+                  >
                     <MessageSquare size={13} />
-                  ) : ref.kind === 'goal' ? (
-                    <GoalAgentIcon />
-                  ) : (
-                    <SubAgentIcon />
-                  )}
-                </span>
+                  </span>
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className={
+                      'shrink-0 rounded px-1.5 py-[1.5px] text-[9.5px] font-semibold leading-none tracking-tight select-none ' +
+                      (ref.kind === 'sub'
+                        ? 'bg-violet-500/15 text-violet-700 dark:text-violet-300'
+                        : 'bg-sky-500/15 text-sky-700 dark:text-sky-300')
+                    }
+                  >
+                    task
+                  </span>
+                )}
                 <span className="min-w-0 flex-1 truncate">{title}</span>
                 {running && (
                   <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-seal" />

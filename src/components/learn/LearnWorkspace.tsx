@@ -1327,7 +1327,7 @@ export default function LearnWorkspace({
     [getLatest, set],
   )
 
-  /** 页签标题：固定聊天 = 「聊天」；目标级 = 对话标题或目标标题；子代理 = 定义名；非聊天追加 (task) 标识 */
+  /** 页签标题：固定聊天 = 「聊天」；目标级 = 对话标题或目标标题；子代理 = 定义名（任务模式使用图标前置 task chip 标识） */
   const agentTabTitle = useCallback(
     (ref: AgentTabRef): string => {
       if (ref.kind === 'free') return t('聊天')
@@ -1336,14 +1336,12 @@ export default function LearnWorkspace({
         const goalTitle = goal ? (nodeById(store, goal.rootNodeId)?.title ?? goal.question) : ''
         const conv = ref.conversationId ? conversationById(store, ref.conversationId) : undefined
         const convTitle = conv?.title || (conv && conv.messages.length > 0 ? conversationTitle(conv) : '')
-        const base = convTitle || goalTitle || t('新对话')
-        return `${base} (task)`
+        return convTitle || goalTitle || t('新对话')
       }
       const conv = conversationById(store, ref.conversationId)
       const session = conv?.subagents?.sessions.find((x) => x.id === ref.sessionId)
       const def = session ? conv?.subagents?.defs.find((d) => d.key === session.defKey) : undefined
-      const base = def?.name ?? session?.defKey ?? t('子代理')
-      return `${base} (task)`
+      return def?.name ?? session?.defKey ?? t('子代理')
     },
     [store],
   )
