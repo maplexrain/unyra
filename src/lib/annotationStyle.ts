@@ -21,37 +21,37 @@ export const ANNO_COLORS: AnnoColor[] = [
     key: 'seal',
     label: '印章红',
     fg: 'var(--color-seal-deep)',
-    bg: 'color-mix(in srgb, var(--color-seal) 18%, transparent)',
+    bg: 'rgba(249, 115, 22, 0.38)',
   },
   {
     key: 'ink',
     label: '墨色',
     fg: 'var(--color-ink-strong)',
-    bg: 'color-mix(in srgb, var(--color-ink) 14%, transparent)',
+    bg: 'rgba(120, 113, 108, 0.3)',
   },
   {
     key: 'ok',
     label: '苔绿',
     fg: 'var(--color-ok-text)',
-    bg: 'color-mix(in srgb, var(--color-ok) 26%, transparent)',
+    bg: 'rgba(163, 230, 53, 0.45)',
   },
   {
     key: 'warn',
     label: '赭黄',
     fg: 'var(--color-warn-deep)',
-    bg: 'color-mix(in srgb, var(--color-warn) 28%, transparent)',
+    bg: 'rgba(234, 179, 8, 0.42)',
   },
   {
     key: 'blue',
     label: '靛蓝',
     fg: 'var(--color-anno-blue)',
-    bg: 'color-mix(in srgb, var(--color-anno-blue) 18%, transparent)',
+    bg: 'rgba(56, 189, 248, 0.4)',
   },
   {
     key: 'purple',
     label: '紫',
     fg: 'var(--color-anno-purple)',
-    bg: 'color-mix(in srgb, var(--color-anno-purple) 20%, transparent)',
+    bg: 'rgba(168, 85, 247, 0.35)',
   },
 ]
 
@@ -83,7 +83,10 @@ export function annotationCss(style?: AnnotationStyle): Record<string, string> {
   const fg = style.fg ? FG.get(style.fg) : undefined
   if (fg) out.color = fg
   const bg = style.bg ? BG.get(style.bg) : undefined
-  if (bg) out.backgroundColor = bg
+  if (bg) {
+    out.backgroundImage = `linear-gradient(180deg, transparent 24%, ${bg} 24%, ${bg} 86%, transparent 86%)`
+    out.backgroundColor = 'transparent'
+  }
   const deco: string[] = []
   if (style.underline) deco.push('underline')
   if (style.strike) deco.push('line-through')

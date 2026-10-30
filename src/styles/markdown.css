@@ -181,15 +181,33 @@
   border: none;
   border-top: 1px solid var(--color-line-strong);
 }
+.moji-agent-md .katex {
+  font-size: 1.04em;
+  color: var(--color-katex);
+  background: var(--color-katex-bg);
+  padding: 0.08em 0.28em;
+  margin: 0 0.08em;
+  border-radius: 0 !important;
+  border: none !important;
+}
 .moji-agent-md .katex-display {
   margin: 0.6em 0;
   overflow-x: auto;
   overflow-y: hidden;
-  color: var(--color-seal-deep);
+  padding: 0.45em 0.7em;
+  background: var(--color-katex-bg);
+  color: var(--color-katex);
+  border-radius: 0 !important;
+  border: none !important;
 }
-.moji-agent-md .katex {
-  font-size: 1.04em;
-  color: var(--color-seal-deep);
+.moji-agent-md .katex-display > .katex {
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+.moji-agent-md .katex * {
+  border-radius: 0 !important;
 }
 
 /* ---------- 回溯式学习：知识图 ---------- */

@@ -60,9 +60,16 @@ export const THEME_VAR_NAMES: readonly string[] = [
   '--color-code-meta',
   '--color-code-punct',
   '--color-code-invalid',
-  // 注解调色板
+  // 注解调色板与荧光划线
   '--color-anno-blue',
   '--color-anno-purple',
+  '--color-anno-hl',
+  '--color-anno-hl-hover',
+  '--color-anno-note-hl',
+  '--color-anno-note-hl-hover',
+  // 数学公式
+  '--color-katex',
+  '--color-katex-bg',
   // 遮罩（模态/抽屉的压暗层）
   '--scrim',
   // 字体

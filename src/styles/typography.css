@@ -358,19 +358,34 @@
 .note-preview svg {
   max-width: 100%;
 }
-/* 数学公式：默认带有一抹印章/主题主色调的雅致深墨色（随主题自适应），既与正文自然区分，又富学术刊实质感 */
+/* 数学公式：专属强调色与底色，直角利落排版（严禁圆角边框） */
 .note-preview .katex {
   font-size: 1.06em;
-  color: var(--color-seal-deep);
+  color: var(--color-katex);
+  background: var(--color-katex-bg);
+  padding: 0.08em 0.3em;
+  margin: 0 0.08em;
+  border-radius: 0 !important;
+  border: none !important;
 }
 .note-preview .katex-display {
   margin: 1.15em 0;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0.35em 0;
-  color: var(--color-seal-deep);
+  padding: 0.55em 0.85em;
+  background: var(--color-katex-bg);
+  color: var(--color-katex);
+  border-radius: 0 !important;
+  border: none !important;
 }
 .note-preview .katex-display > .katex {
   font-size: 1.12em;
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+.note-preview .katex * {
+  border-radius: 0 !important;
 }
 

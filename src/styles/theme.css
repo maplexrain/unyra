@@ -63,6 +63,16 @@
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
 
+  /* 数学公式 KaTeX 专属强调色与背景色 */
+  --color-katex: #1558b0;
+  --color-katex-bg: rgba(21, 88, 176, 0.08);
+
+  /* 荧光标记笔划线色（横划过文字的透明划笔效果） */
+  --color-anno-hl: rgba(234, 179, 8, 0.4);
+  --color-anno-hl-hover: rgba(234, 179, 8, 0.6);
+  --color-anno-note-hl: rgba(249, 115, 22, 0.38);
+  --color-anno-note-hl-hover: rgba(249, 115, 22, 0.58);
+
   /* 全站统一使用黑体（无衬线）：中文优先 PingFang / 鸿蒙 / 思源黑体 / 微软雅黑，
      西文回落到系统 UI 字体。不再提供衬线选项，正文与标题同族，避免宋体混排。 */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI',
@@ -109,6 +119,16 @@
   /* 深色下提高亮度，保证在深底上可读 */
   --color-anno-blue: #7fb0dd;
   --color-anno-purple: #b79ae0;
+
+  /* 深色下专属数学公式强调色（明亮清澈的天青蓝，高对比且不刺目）与底色 */
+  --color-katex: #38bdf8;
+  --color-katex-bg: rgba(56, 189, 248, 0.12);
+
+  /* 深色下透明荧光笔划线（青柠绿与珊瑚暖橙） */
+  --color-anno-hl: rgba(163, 230, 53, 0.45);
+  --color-anno-hl-hover: rgba(163, 230, 53, 0.65);
+  --color-anno-note-hl: rgba(251, 146, 60, 0.42);
+  --color-anno-note-hl-hover: rgba(251, 146, 60, 0.62);
 
   color-scheme: dark;
 }
@@ -160,6 +180,9 @@
   --color-anno-blue: #4f7fb5;
   --color-anno-purple: #9a5fb0;
 
+  --color-katex: #0284c7;
+  --color-katex-bg: rgba(2, 132, 199, 0.08);
+
   color-scheme: light;
 }
 
@@ -198,6 +221,9 @@
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #6e63b5;
 
+  --color-katex: #0284c7;
+  --color-katex-bg: rgba(2, 132, 199, 0.09);
+
   color-scheme: light;
 }
 
@@ -235,6 +261,9 @@
 
   --color-anno-blue: #3a7ca5;
   --color-anno-purple: #7a4fa8;
+
+  --color-katex: #0284c7;
+  --color-katex-bg: rgba(2, 132, 199, 0.08);
 
   color-scheme: light;
 }
@@ -275,6 +304,9 @@
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
 
+  --color-katex: #0969da;
+  --color-katex-bg: rgba(9, 105, 218, 0.08);
+
   color-scheme: light;
 }
 
@@ -313,6 +345,13 @@
 
   --color-anno-blue: #7fb0dd;
   --color-anno-purple: #b79ae0;
+
+  --color-katex: #58a6ff;
+  --color-katex-bg: rgba(88, 166, 255, 0.15);
+  --color-anno-hl: rgba(163, 230, 53, 0.45);
+  --color-anno-hl-hover: rgba(163, 230, 53, 0.65);
+  --color-anno-note-hl: rgba(251, 146, 60, 0.42);
+  --color-anno-note-hl-hover: rgba(251, 146, 60, 0.62);
 
   color-scheme: dark;
 }
@@ -362,6 +401,9 @@
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
 
+  --color-katex: #1558b0;
+  --color-katex-bg: rgba(21, 88, 176, 0.08);
+
   color-scheme: light;
 }
 
@@ -399,6 +441,9 @@
 
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
+
+  --color-katex: #1558b0;
+  --color-katex-bg: rgba(21, 88, 176, 0.08);
 
   color-scheme: light;
 }
@@ -438,6 +483,9 @@
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
 
+  --color-katex: #2563eb;
+  --color-katex-bg: rgba(37, 99, 235, 0.08);
+
   color-scheme: light;
 }
 
@@ -475,6 +523,13 @@
 
   --color-anno-blue: #7fb0dd;
   --color-anno-purple: #b79ae0;
+
+  --color-katex: #38bdf8;
+  --color-katex-bg: rgba(56, 189, 248, 0.12);
+  --color-anno-hl: rgba(163, 230, 53, 0.45);
+  --color-anno-hl-hover: rgba(163, 230, 53, 0.65);
+  --color-anno-note-hl: rgba(251, 146, 60, 0.42);
+  --color-anno-note-hl-hover: rgba(251, 146, 60, 0.62);
 
   color-scheme: dark;
 }
@@ -514,6 +569,13 @@
   --color-anno-blue: #7fb0dd;
   --color-anno-purple: #b79ae0;
 
+  --color-katex: #38bdf8;
+  --color-katex-bg: rgba(56, 189, 248, 0.13);
+  --color-anno-hl: rgba(163, 230, 53, 0.45);
+  --color-anno-hl-hover: rgba(163, 230, 53, 0.65);
+  --color-anno-note-hl: rgba(251, 146, 60, 0.42);
+  --color-anno-note-hl-hover: rgba(251, 146, 60, 0.62);
+
   color-scheme: dark;
 }
 
@@ -551,6 +613,13 @@
 
   --color-anno-blue: #7cc0ff;
   --color-anno-purple: #c9a2f5;
+
+  --color-katex: #60a5fa;
+  --color-katex-bg: rgba(96, 165, 250, 0.18);
+  --color-anno-hl: rgba(163, 230, 53, 0.5);
+  --color-anno-hl-hover: rgba(163, 230, 53, 0.7);
+  --color-anno-note-hl: rgba(251, 146, 60, 0.48);
+  --color-anno-note-hl-hover: rgba(251, 146, 60, 0.68);
 
   color-scheme: dark;
 }
