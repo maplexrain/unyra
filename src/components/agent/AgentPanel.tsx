@@ -345,7 +345,7 @@ export default function AgentPanel({
   }, [stickToBottom, viewMessages, viewStreaming, viewRunning])
 
   // 定位条排在后面：它的 useLayoutEffect 与上面那个「贴底」谁先跑与拆分前一致（见各自注释）
-  const { railWide, anchors, railHover, setRailHover, hoverAnchor, measureAnchors } = useMsgRail(
+  const { anchors, measureAnchors } = useMsgRail(
     viewMessages,
     { scrollRef, rootRef, msgRefs, railAnchorsRef },
   )
@@ -582,17 +582,7 @@ export default function AgentPanel({
         上内边距为 0：输入卡片与上面的消息列表之间只留卡片自己那圈边框，
         上面那一条 10px 的空白把「对话」与「我要说的话」切成了两段，而且它一直是空的。
       */}
-      <div className="relative mx-auto w-full max-w-[768px] shrink-0 px-3.5 pb-3 pt-0">
-        {railWide && anchors.length > 1 && (
-          <MsgRail
-            anchors={anchors}
-            railActive={railActive}
-            railHover={railHover}
-            setRailHover={setRailHover}
-            hoverAnchor={hoverAnchor}
-            onJump={jumpToMessage}
-          />
-        )}
+      <div className="mx-auto w-full max-w-[768px] shrink-0 px-3.5 pb-3 pt-0">
         <ComposerUi
           composer={composer}
           running={running}
@@ -638,6 +628,16 @@ export default function AgentPanel({
                 onOpenSettings={onOpenSettings || onOpenAgentSettings}
               />
             )
+          }
+          // 消息列表定位按钮入口：输入框底部按钮，点击弹出消息列表 tip
+          msgNavSlot={
+            anchors.length > 0 ? (
+              <MsgRail
+                anchors={anchors}
+                railActive={railActive}
+                onJump={jumpToMessage}
+              />
+            ) : undefined
           }
           // 自由聊天：菜单只留 新建对话 / 对话历史 / 文件（见 usePlusMenu 的 FREE_MENU）
           free={free}

@@ -67,6 +67,8 @@ export interface ComposerUiProps {
   strategySlot?: ReactNode
   /** 这枚面板是不是眼前的页签（原样透传给 Composer：隐藏面板不登记 chip 落点） */
   active?: boolean
+  /** 消息列表定位按钮入口：插在「+」菜单右侧 */
+  msgNavSlot?: ReactNode
 }
 
 export function ComposerUi(props: ComposerUiProps): ReactNode {

@@ -90,6 +90,8 @@ export interface ComposerProps {
   subAgentSlot?: ReactNode
   /** 写作策略入口（导师人格 + 文档格式）：插在子代理按钮的右侧、与提供商切换同一排 */
   strategySlot?: ReactNode
+  /** 消息列表定位按钮入口：插在「+」菜单右侧 */
+  msgNavSlot?: ReactNode
   /** 这枚面板是不是眼前的页签（keepalive 常挂时隐藏面板不登记 chip 落点，见 chipHover 的 effect） */
   active?: boolean
   /**
@@ -154,6 +156,7 @@ export function Composer(props: ComposerProps) {
   subMode,
   subAgentSlot,
   strategySlot,
+  msgNavSlot,
   /** 这枚面板是不是眼前的页签（keepalive 常挂时隐藏面板不登记 chip 落点，见上面的 effect） */
   active = true,
   queue,
@@ -619,6 +622,7 @@ export function Composer(props: ComposerProps) {
               plusButtonClass={plusButtonClass}
             />
           )}
+          {msgNavSlot}
           {subMode && (
             <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-ink-faint">
               <Bot size={13} className="shrink-0 text-seal" />
