@@ -49,6 +49,7 @@ import { t } from '../i18n'
 export interface AgentInjection {
   role: 'user' | 'assistant'
   content: string
+  reasoning_content?: string
 }
 
 export interface AgentRunOptions {
@@ -417,7 +418,15 @@ export async function runAgent(opts: AgentRunOptions): Promise<void> {
          */
         if (opts.injections) {
           const injected = await opts.injections()
-          if (injected !== null) messages.push({ role: injected.role, content: injected.content })
+          if (injected !== null) {
+            messages.push({
+              role: injected.role,
+              content: injected.content,
+              ...(injected.reasoning_content !== undefined
+                ? { reasoning_content: injected.reasoning_content }
+                : {}),
+            })
+          }
         }
         /*
          * 跳边界：这一跳到此为止，下面开始的是下一跳。它只服务于历史还原——
@@ -444,7 +453,13 @@ export async function runAgent(opts: AgentRunOptions): Promise<void> {
               content: result.content,
               ...(result.reasoning ? { reasoning_content: result.reasoning } : {}),
             })
-          messages.push({ role: injected.role, content: injected.content })
+          messages.push({
+            role: injected.role,
+            content: injected.content,
+            ...(injected.reasoning_content !== undefined
+              ? { reasoning_content: injected.reasoning_content }
+              : {}),
+          })
           onEvent({ type: 'hop' })
           continue
         }

@@ -206,5 +206,20 @@ describe('toChatHistory 与 runtime 实发的逐跳镜像', () => {
     const next = nextTurnRequests(userText, parts)
     expect(next.slice(0, lastHop.length)).toEqual(lastHop)
     expect(next[lastHop.length]).toMatchObject({ role: 'assistant', content: '做完了。' })
+
+    // 经 bodyFor 发往 DeepSeek 思考模型时，每条 assistant 消息必须满足 reasoning_content 契约（缺了直接报 400）
+    const { bodyFor } = await import('../src/ai/client')
+    const dsProvider = { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com', apiKey: 'k' } as ResolvedProvider
+    const outgoingBody = bodyFor(dsProvider, {
+      model: 'deepseek-chat',
+      messages: lastHop,
+      stream: true,
+      reasoningEffort: 'medium',
+    })
+    const assistantMessages = (outgoingBody.messages as ChatMessage[]).filter((m) => m.role === 'assistant')
+    expect(assistantMessages.length).toBeGreaterThan(0)
+    for (const msg of assistantMessages) {
+      expect(typeof msg.reasoning_content).toBe('string')
+    }
   })
 })
