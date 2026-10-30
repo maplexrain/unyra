@@ -378,10 +378,16 @@ export default function SystemAudioWave() {
      * 主题换了才重读颜色。原先是在 step 里按帧数轮询（每 90 帧一次 getComputedStyle），
      * 而 getComputedStyle 会把待处理的样式就地结算掉——低频事件没必要按帧付这个钱。
      */
-    const themeWatch = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => readColors()) : null
+    const themeWatch = typeof MutationObserver !== 'undefined'
+      ? new MutationObserver(() => {
+          if (onScreen && document.visibilityState !== 'hidden') {
+            readColors()
+          }
+        })
+      : null
     themeWatch?.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['data-theme', 'class', 'style'],
+      attributeFilter: ['data-theme', 'class'],
     })
 
     resize()

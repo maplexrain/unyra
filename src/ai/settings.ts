@@ -24,6 +24,7 @@ import {
   DEFAULT_PROVIDER_ID,
   MODALITY_LABEL,
   PROVIDERS,
+  knownModelOf,
   presetOf,
   type InputModality,
   type ProviderQuirks,
@@ -250,15 +251,38 @@ export function createDefaultProvider(apiKey: string): ProviderConfig {
   }
   return {
     ...base,
-    models: [makeModelEntry(DEFAULT_MODEL_ID, { name: 'DeepSeek Flash', contextWindow: 128000 })],
+    models: [
+      withKnownModelMeta(
+        base,
+        makeModelEntry(DEFAULT_MODEL_ID, {
+          name: 'DeepSeek Flash',
+          contextWindow: 1_000_000,
+          inputModalities: ['text', 'image'],
+        })
+      ),
+    ],
   }
 }
 
 /**
- * 兼容保留接口：模型元信息补全（不再依赖硬编码预设）
+ * 按模型 ID 自动补全元信息（显示名、上下文与模态），供「添加模型」时用。
+ * 数据来自当前提供商的预设（或全局预设），查不到就原样返回。
  */
-export function withKnownModelMeta(_c: ProviderConfig, entry: ModelEntry): ModelEntry {
-  return entry
+export function withKnownModelMeta(c: ProviderConfig, entry: ModelEntry): ModelEntry {
+  const known = knownModelOf(c.id, entry.id)
+  if (!known) return entry
+  return {
+    ...entry,
+    name: entry.name.trim() || known.name || '',
+    contextWindow: entry.contextWindow || known.contextWindow,
+    inputModalities:
+      entry.inputModalities.length > 1
+        ? entry.inputModalities
+        : known.inputModalities.length > 0
+          ? known.inputModalities
+          : entry.inputModalities,
+    effortMap: entry.effortMap || known.effortMap,
+  }
 }
 
 /**
@@ -342,17 +366,32 @@ function normalizeModel(raw: unknown): ModelEntry | null {
   const r = raw as Record<string, unknown>
   const id = str(r.id).trim()
   if (!id) return null
-  const modalities = Array.isArray(r.inputModalities)
+  let modalities = Array.isArray(r.inputModalities)
     ? r.inputModalities.filter((m): m is InputModality => ALL_MODALITIES.includes(m as InputModality))
     : []
-  const contextWindow =
+  let contextWindow =
     typeof r.contextWindow === 'number' && Number.isFinite(r.contextWindow) && r.contextWindow > 0
       ? Math.floor(r.contextWindow)
       : 0
+  let name = str(r.name)
+
+  // 修复历史遗留：deepseek-flash 曾被错误预设为 128k 单模态，自动升级为 1M 视觉多模态
+  if (id === DEFAULT_MODEL_ID) {
+    if (contextWindow === 128000 || contextWindow === 0) {
+      contextWindow = 1_000_000
+    }
+    if (!modalities.includes('image')) {
+      modalities = [...modalities, 'image']
+    }
+    if (!name) {
+      name = 'DeepSeek Flash'
+    }
+  }
+
   const effortMap = cleanEffortMap(r.effortMap)
   return {
     id,
-    name: str(r.name),
+    name,
     contextWindow,
     // 任何模型都至少能收文本；漏填按纯文本处理
     inputModalities: modalities.length ? [...new Set(modalities)] : ['text'],
@@ -533,7 +572,9 @@ function migrateV1(raw: Record<string, unknown>): AiSettings | null {
   }
 }
 
-function normalize(parsed: unknown): AiSettings {
+const normalize = normalizeAiSettings;
+export function normalizeAiSettings(parsed: unknown): AiSettings {
+
   const raw = (parsed ?? {}) as Record<string, unknown>
 
   // v1 没有 providers 字段
@@ -591,7 +632,7 @@ const cacheKey = (): string => `${settingsUid() ?? ''}#${settingsRevision()}`
 export function loadAiSettings(): AiSettings {
   const key = cacheKey()
   if (cache && cache.key === key) return cache.value
-  cache = { key, value: normalize(readUserSettings('ai') ?? {}) }
+  cache = { key, value: normalizeAiSettings(readUserSettings('ai') ?? {}) }
   return cache.value
 }
 
