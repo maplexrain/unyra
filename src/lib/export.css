@@ -466,10 +466,10 @@ body {
   box-shadow: none !important;
   background: linear-gradient(
     180deg,
-    transparent 24%,
-    rgba(234, 179, 8, 0.4) 24%,
-    rgba(234, 179, 8, 0.4) 86%,
-    transparent 86%
+    transparent 42%,
+    rgba(234, 179, 8, 0.4) 42%,
+    rgba(234, 179, 8, 0.4) 82%,
+    transparent 82%
   );
   cursor: help;
 }

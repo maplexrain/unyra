@@ -358,13 +358,12 @@
 .note-preview svg {
   max-width: 100%;
 }
-/* 数学公式：专属强调色与底色，直角利落排版（严禁圆角边框） */
+/* 数学公式：专属强调色，无背景底色，直角利落排版（严禁圆角边框） */
 .note-preview .katex {
   font-size: 1.06em;
   color: var(--color-katex);
-  background: var(--color-katex-bg);
-  padding: 0.08em 0.3em;
-  margin: 0 0.08em;
+  background: transparent !important;
+  padding: 0 0.08em;
   border-radius: 0 !important;
   border: none !important;
 }
@@ -372,8 +371,8 @@
   margin: 1.15em 0;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0.55em 0.85em;
-  background: var(--color-katex-bg);
+  padding: 0.35em 0;
+  background: transparent !important;
   color: var(--color-katex);
   border-radius: 0 !important;
   border: none !important;

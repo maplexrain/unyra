@@ -18,10 +18,10 @@
   box-shadow: none !important;
   background: linear-gradient(
     180deg,
-    transparent 24%,
-    var(--color-anno-hl) 24%,
-    var(--color-anno-hl) 86%,
-    transparent 86%
+    transparent 42%,
+    var(--color-anno-hl) 42%,
+    var(--color-anno-hl) 82%,
+    transparent 82%
   );
   cursor: help;
   transition: background 0.15s ease;
@@ -29,10 +29,10 @@
 .moji-anno:hover {
   background: linear-gradient(
     180deg,
-    transparent 24%,
-    var(--color-anno-hl-hover) 24%,
-    var(--color-anno-hl-hover) 86%,
-    transparent 86%
+    transparent 42%,
+    var(--color-anno-hl-hover) 42%,
+    var(--color-anno-hl-hover) 82%,
+    transparent 82%
   );
 }
 
@@ -42,19 +42,19 @@
   box-shadow: none !important;
   background: linear-gradient(
     180deg,
-    transparent 24%,
-    var(--color-anno-note-hl) 24%,
-    var(--color-anno-note-hl) 86%,
-    transparent 86%
+    transparent 42%,
+    var(--color-anno-note-hl) 42%,
+    var(--color-anno-note-hl) 82%,
+    transparent 82%
   );
 }
 .moji-anno-note:hover {
   background: linear-gradient(
     180deg,
-    transparent 24%,
-    var(--color-anno-note-hl-hover) 24%,
-    var(--color-anno-note-hl-hover) 86%,
-    transparent 86%
+    transparent 42%,
+    var(--color-anno-note-hl-hover) 42%,
+    var(--color-anno-note-hl-hover) 82%,
+    transparent 82%
   );
 }
 

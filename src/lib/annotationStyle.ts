@@ -84,7 +84,7 @@ export function annotationCss(style?: AnnotationStyle): Record<string, string> {
   if (fg) out.color = fg
   const bg = style.bg ? BG.get(style.bg) : undefined
   if (bg) {
-    out.backgroundImage = `linear-gradient(180deg, transparent 24%, ${bg} 24%, ${bg} 86%, transparent 86%)`
+    out.backgroundImage = `linear-gradient(180deg, transparent 42%, ${bg} 42%, ${bg} 82%, transparent 82%)`
     out.backgroundColor = 'transparent'
   }
   const deco: string[] = []
