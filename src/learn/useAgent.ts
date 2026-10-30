@@ -64,7 +64,13 @@ import { storageAbsPath } from '../lib/storage'
 import { applyEvent } from './agent/events'
 import { toChatHistory } from './agent/history'
 import { TURN_FLUSH_MS, upsertAssistantInFlight } from './agent/inflight'
-import { loadAttachTexts, transferPendingFiles, transferPendingImages } from './agent/transfer'
+import {
+  loadAttachTexts,
+  transferFreePendingFiles,
+  transferFreePendingImages,
+  transferPendingFiles,
+  transferPendingImages,
+} from './agent/transfer'
 import { applyAskToProfile, learnSandboxOps, type AgentRunTarget, type AgentUiDeps } from './agent/sandboxOps'
 import { createSubAgentManager, type SubAgentManager } from '../agent/subagent/manager'
 import { EMPTY_SUB_BUCKET } from '../agent/subagent/registry'
@@ -1284,10 +1290,16 @@ export function useAgent(opts: {
    */
   const sendFree = useCallback(
     (conversationId: string, text: string, opts?: { files?: PendingFile[]; images?: PendingImage[] }) => {
-      // 图片附件在这里没有去处（static 资源库按目标目录落盘，自由聊天没有目标目录）：
-      // 有图就先说一声——纯图片那条在自由聊天里没有可发的东西（下面会拦），不能闷声吞掉
-      if (opts?.images?.length) onNoticeRef.current?.(t('自由聊天暂不支持图片，图片已去掉'))
-      if (!text.trim()) return
+      const trimmed = text.trim()
+      const docFiles = (opts?.files ?? []).filter((x) => !x.image)
+      const imageFiles: PendingImage[] = [
+        ...(opts?.images ?? []),
+        ...(opts?.files ?? [])
+          .filter((x) => x.image)
+          .map((x) => ({ id: x.id, name: x.name, bytes: x.bytes, file: x.image as File, previewUrl: '' })),
+      ]
+      // 允许纯图片或纯文件发送（无字放行）
+      if (!trimmed && !docFiles.length && !imageFiles.length) return
       if (!freeConversationById(conversationId)) return
       if (!hasApiKey(loadAiSettings())) {
         onNeedKeyRef.current()
@@ -1303,15 +1315,21 @@ export function useAgent(opts: {
       void (async () => {
         try {
           if (prev) await prev
-          // 文本附件直接拼进正文：附件的 text 在拾取时已按上限读好/截断（见 PendingFile）
-          const attach = (opts?.files ?? [])
-            .filter((f) => f.text)
-            .map((f) => '\n\n【附件 ' + f.name + '】\n' + f.text)
-            .join('')
+
+          // 转存图片与文件附件至 free/static
+          const [attachedImages, attachedFiles] = await Promise.all([
+            imageFiles.length ? transferFreePendingImages(imageFiles) : Promise.resolve({ images: [] as MessageImage[], error: undefined }),
+            docFiles.length ? transferFreePendingFiles(docFiles) : Promise.resolve({ files: [] as MessageFile[], error: undefined }),
+          ])
+          if (attachedImages.error) onNoticeRef.current?.(attachedImages.error)
+          if (attachedFiles.error) onNoticeRef.current?.(attachedFiles.error)
+
           appendFreeMessage(conversationId, {
             id: crypto.randomUUID(),
             role: 'user',
-            parts: [{ type: 'text', text: text.trim() + attach }],
+            parts: [{ type: 'text', text: trimmed }],
+            ...(attachedImages.images.length ? { images: attachedImages.images } : {}),
+            ...(attachedFiles.files.length ? { files: attachedFiles.files } : {}),
             ts: Date.now(),
           })
           const stored = freeConversationById(conversationId)
@@ -1381,13 +1399,19 @@ export function useAgent(opts: {
 
           const tally = { turns: 0, context: 0, total: 0, output: 0, read: 0, miss: 0, tps: 0, estimated: false }
 
+          // 读取整段历史中的图片与附件文本，忠实还原给模型
+          const [imagesMap, attachTexts] = await Promise.all([
+            loadImagesFor(stored.messages),
+            loadAttachTexts(stored.messages),
+          ])
+
           try {
             await runAgent({
               provider: global.provider,
               model: global.model,
               reasoningEffort: global.effort,
               system: freeSystem,
-              messages: toChatHistory(stored.messages),
+              messages: toChatHistory(stored.messages, imagesMap, { files: attachTexts }),
               tools,
               ctx: { nodeId: '', goalId: FREE_GOAL_ID },
               signal: ctrl.signal,
