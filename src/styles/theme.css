@@ -62,11 +62,6 @@
   /* 注解标记可选颜色（调色板里的蓝/紫；其余复用上面的语义色） */
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
-
-  /* 数学公式 KaTeX 专属强调色与背景色 */
-  --color-katex: #165296;
-  --color-katex-bg: transparent;
-
   /* 荧光标记笔划线色（横划过文字的透明划笔效果） */
   --color-anno-hl: rgba(234, 179, 8, 0.4);
   --color-anno-hl-hover: rgba(234, 179, 8, 0.6);
@@ -119,11 +114,6 @@
   /* 深色下提高亮度，保证在深底上可读 */
   --color-anno-blue: #7fb0dd;
   --color-anno-purple: #b79ae0;
-
-  /* 深色下专属数学公式强调色（明亮清澈的天青蓝，高对比且不刺目）与底色 */
-  --color-katex: #38bdf8;
-  --color-katex-bg: transparent;
-
   /* 深色下透明荧光笔划线（青柠绿与珊瑚暖橙） */
   --color-anno-hl: rgba(163, 230, 53, 0.45);
   --color-anno-hl-hover: rgba(163, 230, 53, 0.65);
@@ -179,10 +169,6 @@
 
   --color-anno-blue: #4f7fb5;
   --color-anno-purple: #9a5fb0;
-
-  --color-katex: #be185d;
-  --color-katex-bg: transparent;
-
   color-scheme: light;
 }
 
@@ -220,10 +206,6 @@
 
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #6e63b5;
-
-  --color-katex: #0284c7;
-  --color-katex-bg: transparent;
-
   color-scheme: light;
 }
 
@@ -261,10 +243,6 @@
 
   --color-anno-blue: #3a7ca5;
   --color-anno-purple: #7a4fa8;
-
-  --color-katex: #047857;
-  --color-katex-bg: transparent;
-
   color-scheme: light;
 }
 
@@ -303,10 +281,6 @@
 
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
-
-  --color-katex: #0969da;
-  --color-katex-bg: transparent;
-
   color-scheme: light;
 }
 
@@ -346,8 +320,6 @@
   --color-anno-blue: #7fb0dd;
   --color-anno-purple: #b79ae0;
 
-  --color-katex: #38bdf8;
-  --color-katex-bg: transparent;
   --color-anno-hl: rgba(163, 230, 53, 0.45);
   --color-anno-hl-hover: rgba(163, 230, 53, 0.65);
   --color-anno-note-hl: rgba(251, 146, 60, 0.42);
@@ -400,10 +372,6 @@
 
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
-
-  --color-katex: #0e7490;
-  --color-katex-bg: transparent;
-
   color-scheme: light;
 }
 
@@ -441,10 +409,6 @@
 
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
-
-  --color-katex: #c2410c;
-  --color-katex-bg: transparent;
-
   color-scheme: light;
 }
 
@@ -482,10 +446,6 @@
 
   --color-anno-blue: #2f6ea8;
   --color-anno-purple: #7a4fa8;
-
-  --color-katex: #6d28d9;
-  --color-katex-bg: transparent;
-
   color-scheme: light;
 }
 
@@ -524,8 +484,6 @@
   --color-anno-blue: #7fb0dd;
   --color-anno-purple: #b79ae0;
 
-  --color-katex: #2dd4bf;
-  --color-katex-bg: transparent;
   --color-anno-hl: rgba(163, 230, 53, 0.45);
   --color-anno-hl-hover: rgba(163, 230, 53, 0.65);
   --color-anno-note-hl: rgba(251, 146, 60, 0.42);
@@ -569,8 +527,6 @@
   --color-anno-blue: #7fb0dd;
   --color-anno-purple: #b79ae0;
 
-  --color-katex: #38bdf8;
-  --color-katex-bg: transparent;
   --color-anno-hl: rgba(163, 230, 53, 0.45);
   --color-anno-hl-hover: rgba(163, 230, 53, 0.65);
   --color-anno-note-hl: rgba(251, 146, 60, 0.42);
@@ -614,8 +570,6 @@
   --color-anno-blue: #7cc0ff;
   --color-anno-purple: #c9a2f5;
 
-  --color-katex: #60a5fa;
-  --color-katex-bg: transparent;
   --color-anno-hl: rgba(163, 230, 53, 0.5);
   --color-anno-hl-hover: rgba(163, 230, 53, 0.7);
   --color-anno-note-hl: rgba(251, 146, 60, 0.48);

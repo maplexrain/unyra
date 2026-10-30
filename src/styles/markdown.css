@@ -183,7 +183,7 @@
 }
 .moji-agent-md .katex {
   font-size: 1.04em;
-  color: var(--color-katex);
+  color: color-mix(in srgb, var(--color-seal-deep) 65%, var(--color-ink) 35%);
   background: transparent !important;
   padding: 0 0.08em;
   border-radius: 0 !important;
@@ -195,7 +195,7 @@
   overflow-y: hidden;
   padding: 0.25em 0;
   background: transparent !important;
-  color: var(--color-katex);
+  color: color-mix(in srgb, var(--color-seal-deep) 65%, var(--color-ink) 35%);
   border-radius: 0 !important;
   border: none !important;
 }

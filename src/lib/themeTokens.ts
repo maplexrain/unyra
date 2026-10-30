@@ -67,9 +67,6 @@ export const THEME_VAR_NAMES: readonly string[] = [
   '--color-anno-hl-hover',
   '--color-anno-note-hl',
   '--color-anno-note-hl-hover',
-  // 数学公式
-  '--color-katex',
-  '--color-katex-bg',
   // 遮罩（模态/抽屉的压暗层）
   '--scrim',
   // 字体
