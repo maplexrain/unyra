@@ -260,7 +260,7 @@ body {
   padding: 0.5em 1.1em;
   border-left: 3px solid var(--color-seal);
   background: var(--color-inset);
-  border-radius: 0 8px 8px 0;
+  border-radius: 0;
   color: var(--color-quote-ink);
 }
 

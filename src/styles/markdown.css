@@ -153,7 +153,7 @@
   padding: 0.35em 0.8em;
   border-left: 3px solid var(--color-seal);
   background: color-mix(in srgb, var(--color-inset) 70%, transparent);
-  border-radius: 0 6px 6px 0;
+  border-radius: 0;
   color: var(--color-quote-ink);
 }
 .moji-agent-md blockquote p {

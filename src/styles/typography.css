@@ -231,7 +231,7 @@
   padding: 0.5em 1.1em;
   border-left: 3px solid var(--color-seal);
   background: color-mix(in srgb, var(--color-inset) 72%, transparent);
-  border-radius: 0 8px 8px 0;
+  border-radius: 0;
   color: var(--color-quote-ink);
 }
 .note-preview blockquote p {
