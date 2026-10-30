@@ -279,30 +279,45 @@ export default function EffortSlider({ value, onChange, compact = false, classNa
             step(1)
           }
         }}
-        className={`group relative flex select-none touch-none cursor-pointer items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-seal/40 bg-[#24211e] dark:bg-[#141210] border border-black/25 dark:border-white/10 shadow-[inset_0_1.5px_3.5px_rgba(0,0,0,0.45)] transition-colors duration-200 ${
+        className={`group relative flex select-none touch-none cursor-pointer items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-seal/40 bg-[#24211e] dark:bg-[#141210] border border-black/25 dark:border-white/10 shadow-[inset_0_1.5px_3.5px_rgba(0,0,0,0.45)] transition-colors duration-300 ${
           compact ? 'h-[18px]' : 'h-[22px]'
         }`}
       >
-        {/* 内部能量液层：通过 clip-path 随滑块平滑展开 */}
+        {/* 内部能量液层：通过 clip-path 随滑块平滑展开，内部多个梯度层通过 opacity 实现平滑色彩切换 (transition) */}
         <div
-          className="absolute inset-0 rounded-full transition-all duration-200 ease-out overflow-hidden"
+          className="absolute inset-0 rounded-full transition-all duration-300 ease-out overflow-hidden"
           style={{
-            background: visual.gradient,
-            boxShadow: `0 0 12px ${visual.glow}, inset 0 1px 1px rgba(255, 255, 255, 0.3)`,
+            boxShadow: `0 0 14px ${visual.glow}, inset 0 1px 1px rgba(255, 255, 255, 0.3)`,
             clipPath: `inset(0 calc(100% - ${fillWidth}) 0 0 round 9999px)`,
           }}
         >
+          {levels.map((lvl) => {
+            const v = EFFORT_VISUALS[lvl]
+            const active = lvl === value
+            return (
+              <div
+                key={lvl}
+                aria-hidden="true"
+                className="absolute inset-0 pointer-events-none transition-opacity duration-300 ease-out"
+                style={{
+                  background: v.gradient,
+                  opacity: active ? 1 : 0,
+                }}
+              />
+            )
+          })}
           {/* 流动气泡微粒画布 Canvas：气泡随流体流向白钮，活灵活现 */}
           <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
         </div>
 
-        {/* 纯白滑块圆钮 Thumb（微宝石质感纯白圆球，带立体阴影） */}
+        {/* 纯白滑块圆钮 Thumb（微宝石质感纯白圆球，带立体阴影与档位光晕，随档位平滑过渡） */}
         <div
-          className="pointer-events-none absolute top-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.42)] ring-1 ring-black/10 transition-all duration-200 ease-out z-10"
+          className="pointer-events-none absolute top-1/2 -translate-y-1/2 rounded-full bg-white ring-1 ring-black/10 transition-all duration-300 ease-out z-10"
           style={{
             left: thumbLeft,
             width: `${thumbSize}px`,
             height: `${thumbSize}px`,
+            boxShadow: `0 2px 6px rgba(0,0,0,0.42), 0 0 8px ${visual.glow}`,
           }}
         />
       </div>
@@ -321,14 +336,17 @@ export default function EffortSlider({ value, onChange, compact = false, classNa
                 ev.stopPropagation()
                 onChange(e)
               }}
-              className={`text-center leading-none transition-colors duration-150 cursor-pointer ${
+              className={`text-center leading-none transition-all duration-300 cursor-pointer ${
                 compact ? 'text-[10px]' : 'text-[11px]'
               } ${
                 isSelected
                   ? 'font-semibold'
                   : 'font-normal text-ink-faint hover:text-ink'
               }`}
-              style={isSelected ? { color: itemVisual.color } : undefined}
+              style={{
+                color: isSelected ? itemVisual.color : undefined,
+                transition: 'color 300ms ease-out',
+              }}
             >
               {REASONING_LABEL[e]}
             </button>

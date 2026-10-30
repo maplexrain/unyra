@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ChevronRight, ListTree, X } from 'lucide-react'
+import { Check, ChevronRight, Copy, ListTree, X } from 'lucide-react'
 import { deriveTraceNodes, type TraceNode } from '../../agent/contextTrace'
 import { t } from '../../i18n'
 
@@ -87,13 +87,37 @@ function highlight(text: string): Tok[] {
   return tokenizePlain(text)
 }
 
-/** <pre> 里的染色块：text 不变，span 只上色 */
+/** <pre> 里的染色块：text 不变，span 只上色，支持划词复制与一键复制 */
 function Code({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
   const toks = useMemo(() => highlight(text), [text])
+
+  const copy = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // 降级使用 document.execCommand
+    }
+  }
+
   return (
-    <pre className="max-h-[420px] overflow-auto rounded-lg border border-line bg-paper-deep/40 p-2.5 font-mono text-[10.5px] leading-[1.55] whitespace-pre-wrap break-all text-ink">
-      {toks.map((tok, i) => (tok.cls ? <span key={i} className={tok.cls}>{tok.text}</span> : <span key={i}>{tok.text}</span>))}
-    </pre>
+    <div className="group/code relative select-text">
+      <pre className="max-h-[420px] overflow-auto rounded-lg border border-line bg-paper-deep/40 p-2.5 font-mono text-[10.5px] leading-[1.55] whitespace-pre-wrap break-all text-ink select-text cursor-text">
+        {toks.map((tok, i) => (tok.cls ? <span key={i} className={tok.cls}>{tok.text}</span> : <span key={i}>{tok.text}</span>))}
+      </pre>
+      <button
+        type="button"
+        onClick={copy}
+        title={copied ? t('已复制') : t('复制')}
+        aria-label={copied ? t('已复制') : t('复制')}
+        className="absolute top-2 right-2 flex h-6 w-6 select-none items-center justify-center rounded border border-line/60 bg-card/90 text-ink-soft shadow-xs opacity-0 backdrop-blur-xs transition group-hover/code:opacity-100 hover:bg-line/60 hover:text-ink focus-visible:opacity-100"
+      >
+        {copied ? <Check size={12} className="text-emerald-600 dark:text-emerald-400" /> : <Copy size={12} />}
+      </button>
+    </div>
   )
 }
 
@@ -114,13 +138,13 @@ function Fold({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left hover:bg-line/30"
+        className="flex w-full select-none items-center gap-1.5 px-2.5 py-1.5 text-left hover:bg-line/30"
       >
         <ChevronRight size={12} className={'shrink-0 text-ink-faint transition-transform ' + (open ? 'rotate-90' : '')} />
         <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-ink-strong">{title}</span>
         {extra !== undefined && <span className="shrink-0 text-[10px] text-ink-faint tabular-nums">{extra}</span>}
       </button>
-      {open && <div className="border-t border-line/60 p-2.5">{children}</div>}
+      {open && <div className="border-t border-line/60 p-2.5 select-text">{children}</div>}
     </div>
   )
 }
@@ -139,7 +163,7 @@ function NodeCard({ node, index }: { node: TraceNode; index: number }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-line/20"
+        className="flex w-full select-none items-center gap-2 px-3 py-2 text-left hover:bg-line/20"
       >
         <ChevronRight size={13} className={'shrink-0 text-ink-faint transition-transform ' + (open ? 'rotate-90' : '')} />
         {/* role 的值原样标明：看轨迹的人在核对字节，缩写只会添乱 */}
@@ -171,9 +195,9 @@ function NodeCard({ node, index }: { node: TraceNode; index: number }) {
         )}
       </button>
       {open && (
-        <div className="flex flex-col gap-2 border-t border-line/60 p-3">
+        <div className="flex flex-col gap-2 border-t border-line/60 p-3 select-text">
           {u && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-lg border border-line bg-paper-deep/30 px-2.5 py-1.5 text-[10.5px] tabular-nums">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-lg border border-line bg-paper-deep/30 px-2.5 py-1.5 text-[10.5px] tabular-nums select-text">
               <span><span className="text-ink-faint">{t('输入')}</span> <span className="font-medium text-ink-strong">{fmt(u.contextTokens)}</span></span>
               <span><span className="text-ink-faint">{t('总输入')}</span> <span className="font-medium text-ink-strong">{fmt(u.totalTokens)}</span></span>
               <span><span className="text-ink-faint">{t('输出')}</span> <span className="font-medium text-ink-strong">{fmt(u.outputTokens)}</span></span>
@@ -201,7 +225,7 @@ export default function ContextTrace({ conversation, onClose }: Props) {
   const nodes = useMemo(() => (conversation ? deriveTraceNodes(conversation) : []), [conversation])
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col select-text">
       <header className="flex shrink-0 items-center gap-2 border-b border-line px-3.5 py-2.5">
         <ListTree size={14} className="shrink-0 text-seal" />
         <div className="min-w-0 flex-1">
@@ -224,7 +248,7 @@ export default function ContextTrace({ conversation, onClose }: Props) {
           </button>
         )}
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 select-text">
         {nodes.length === 0 ? (
           <div className="flex h-full items-center justify-center px-6 text-center text-[11.5px] leading-relaxed text-ink-faint">
             {t('这段对话还没有消息：发一条消息或跑一轮工作流，轨迹就会在这里出现。')}
