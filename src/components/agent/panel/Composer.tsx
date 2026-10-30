@@ -604,25 +604,27 @@ export function Composer(props: ComposerProps) {
             按钮就会掉到卡片上方（2026-09 拆 panel/ 时就是这么错位的）。
             子会话模式下不画：那些动作都是导师域的。
           */}
-          {!subMode && (
-            <PlusMenu
-              menuMounted={menuMounted}
-              menuClosing={menuClosing}
-              menuSub={menuSub}
-              menuOpen={menuOpen}
-              menuLeaving={menuLeaving}
-              menuDir={menuDir}
-              menuBodyH={menuBodyH}
-              panelMount={panelMount}
-              panelBodyMount={panelBodyMount}
-              buttonMount={buttonMount}
-              renderMenuPanel={renderMenuPanel}
-              goRoot={goRoot}
-              toggle={toggle}
-              plusButtonClass={plusButtonClass}
-            />
-          )}
-          {msgNavSlot}
+          <div className="flex shrink-0 items-center gap-0.5">
+            {!subMode && (
+              <PlusMenu
+                menuMounted={menuMounted}
+                menuClosing={menuClosing}
+                menuSub={menuSub}
+                menuOpen={menuOpen}
+                menuLeaving={menuLeaving}
+                menuDir={menuDir}
+                menuBodyH={menuBodyH}
+                panelMount={panelMount}
+                panelBodyMount={panelBodyMount}
+                buttonMount={buttonMount}
+                renderMenuPanel={renderMenuPanel}
+                goRoot={goRoot}
+                toggle={toggle}
+                plusButtonClass={plusButtonClass}
+              />
+            )}
+            {msgNavSlot}
+          </div>
           {subMode && (
             <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-ink-faint">
               <Bot size={13} className="shrink-0 text-seal" />
