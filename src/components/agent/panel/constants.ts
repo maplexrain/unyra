@@ -27,7 +27,7 @@ export const RAIL_PAD = 16
  * 导师栏窄于这个宽度就不显示定位条。
  * 它连同命中区要占掉 20px，窄栏里那点地方该留给消息本身——那才是要读的东西。
  */
-export const RAIL_MIN_WIDTH = 600
+export const RAIL_MIN_WIDTH = 320
 /*
  * 定位条的横向几何（三处得一起改）：
  *

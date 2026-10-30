@@ -18,6 +18,8 @@ export interface DeliveryFile {
   action: DeliveryAction
   /** 一句话说明改了什么（可省） */
   note?: string
+  goalId?: string
+  nodeId?: string
 }
 
 export interface DeliverySource {
@@ -71,12 +73,20 @@ export function normalizeDelivery(raw: unknown): DeliveryRecord | undefined {
   if (Array.isArray(r.files)) {
     for (const item of r.files) {
       if (!item || typeof item !== 'object') continue
-      const f = item as { path?: unknown; action?: unknown; note?: unknown }
+      const f = item as { path?: unknown; action?: unknown; note?: unknown; goalId?: unknown; nodeId?: unknown }
       const path = str(f.path)
       if (!path || seenPath.has(path)) continue
       seenPath.add(path)
       const note = str(f.note)
-      files.push({ path, action: isAction(f.action) ? f.action : 'updated', ...(note ? { note } : {}) })
+      const goalId = str(f.goalId)
+      const nodeId = str(f.nodeId)
+      files.push({
+        path,
+        action: isAction(f.action) ? f.action : 'updated',
+        ...(note ? { note } : {}),
+        ...(goalId ? { goalId } : {}),
+        ...(nodeId ? { nodeId } : {}),
+      })
       if (files.length >= MAX_DELIVERY_FILES) break
     }
   }
@@ -104,10 +114,15 @@ export function normalizeDelivery(raw: unknown): DeliveryRecord | undefined {
  * 同一路径 / 同一 URL 只留第一次，后到的 note 不覆盖先到的判断。
  */
 export function mergeDelivery(into: DeliveryRecord, next: DeliveryRecord): DeliveryRecord {
-  const paths = new Set(into.files.map((f) => f.path))
+  const existingByPath = new Map(into.files.map((f) => [f.path, f]))
   for (const f of next.files) {
-    if (paths.has(f.path)) continue
-    paths.add(f.path)
+    const existing = existingByPath.get(f.path)
+    if (existing) {
+      if (!existing.nodeId && f.nodeId) existing.nodeId = f.nodeId
+      if (!existing.goalId && f.goalId) existing.goalId = f.goalId
+      continue
+    }
+    existingByPath.set(f.path, f)
     if (into.files.length < MAX_DELIVERY_FILES) into.files.push(f)
   }
   const urls = new Set(into.sources.map((s) => s.url))

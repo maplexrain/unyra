@@ -488,6 +488,7 @@ export default function AgentPanel({
   // 消息列表那一段 JSX：状态与回调都在上面，这里只负责把它渲染出来
   const messageList = useMessageList({
     messages: viewMessages,
+    goalId: conversation?.goalId,
     summaryStart,
     summary,
     summaryOpen,
@@ -539,9 +540,8 @@ export default function AgentPanel({
             ref={scrollRef}
             onWheel={onWheel}
             onScroll={onScroll}
-            // 不显示滚动条（moji-scroll-none）：右边那条位置留给定位条，见 index.css。
-            // pr-9 而不是 px-3.5：最宽的那个点（18px）也要与正文留出空隙（几何见 panel/constants.ts）
-            className="moji-scroll-none moji-selectable h-full overflow-y-auto pb-3 pl-3.5 pr-9"
+            // 不显示滚动条（moji-scroll-none），左右内边距对称
+            className="moji-scroll-none moji-selectable h-full overflow-y-auto pb-3 px-3.5"
           >
             {/* 字号系数挂在这一层、而不是滚动容器上：滚动条与内边距不该跟着缩放（上边距 20px：列表内容与页签栏之间留一口呼吸） */}
             <div
@@ -582,7 +582,17 @@ export default function AgentPanel({
         上内边距为 0：输入卡片与上面的消息列表之间只留卡片自己那圈边框，
         上面那一条 10px 的空白把「对话」与「我要说的话」切成了两段，而且它一直是空的。
       */}
-      <div className="mx-auto w-full max-w-[768px] shrink-0 px-3.5 pb-3 pt-0">
+      <div className="relative mx-auto w-full max-w-[768px] shrink-0 px-3.5 pb-3 pt-0">
+        {railWide && anchors.length > 1 && (
+          <MsgRail
+            anchors={anchors}
+            railActive={railActive}
+            railHover={railHover}
+            setRailHover={setRailHover}
+            hoverAnchor={hoverAnchor}
+            onJump={jumpToMessage}
+          />
+        )}
         <ComposerUi
           composer={composer}
           running={running}
@@ -690,28 +700,7 @@ export default function AgentPanel({
         </div>
       </div>
 
-      {/*
-        消息定位条：一条用户消息一个点，从上到下就是第一条到最后一条（等距，见 useMsgRail 里的 measureAnchors）。
-        长对话里「刚才说过的那句在哪」比滚动条好用——滚动条只说相对位置，
-        这里点一下直接落到那一条上，悬停还能先看一眼预览。
 
-        挂在**整块面板**上而不是消息列里（点的 y 已经把表头那一段算进去了，见 measureAnchors）：
-        消息列有 768px 的上限、还可能居中，挂在它里面的话，面板一宽点就跑到中间去了；
-        贴着面板右边才是「随时能点到」的位置。
-        只在两个条件下出现：用户消息不止一条（一个点定位不了任何东西），
-        且这一栏够宽（见 RAIL_MIN_WIDTH）——窄栏里它挤掉的是消息本身。
-        每一项的命中区就是整个间距，上下相接：鼠标顺着条子走不会在两点之间踩空。
-      */}
-      {railWide && anchors.length > 1 && (
-        <MsgRail
-          anchors={anchors}
-          railActive={railActive}
-          railHover={railHover}
-          setRailHover={setRailHover}
-          hoverAnchor={hoverAnchor}
-          onJump={jumpToMessage}
-        />
-      )}
 
       {/* 输入框里的附件还没落盘：用 PendingLightbox（内存里的 object URL） */}
       {preview && <PendingLightbox image={preview} onClose={() => setPreview(null)} />}

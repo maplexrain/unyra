@@ -42,6 +42,7 @@ import { MIN_ACTIVE_MESSAGES, activeMessages, applyCompaction, shouldCompact } f
 import { needsPersonaAnnounce, personaMessage } from '../agent/persona'
 import { needsDocFormatAnnounce, docFormatMessage, docFormatAllowsModule } from '../agent/docFormat'
 import { conversationById, nodeById, resolveDisplayedConversation, addConversation } from './graph'
+import { resolveNode } from './paths'
 import { makeExamTool } from './agentOps'
 import { findWorkflow, renderWorkflowInstruction, workflowPrep, workflowModules } from './workflows'
 import { generateConversationTitle, namingSource } from './title'
@@ -716,6 +717,38 @@ export function useAgent(opts: {
                   sources: 0,
                   error:
                     '至少要给 files 或 sources 里的一项：files: [{ path, action?: created|updated|deleted, note? }]，sources: [{ title, url }]（只收 http/https）',
+                }
+              }
+              if (target.goalId) {
+                const st = getLatest()
+                for (const f of rec.files) {
+                  if (!f.goalId) f.goalId = target.goalId
+                  if (!f.nodeId) {
+                    const byId = st.nodes.find((n) => n.id === f.path || (f.path.startsWith('#') && n.id === f.path.slice(1)))
+                    if (byId) {
+                      f.nodeId = byId.id
+                      continue
+                    }
+                    const res = resolveNode(st, { goalId: target.goalId, currentNodeId: target.nodeId ?? null }, f.path)
+                    if (res.ok) {
+                      f.nodeId = res.value.id
+                      continue
+                    }
+                    const cleanPath = f.path.replace(/\.md$/i, '').trim()
+                    if (cleanPath !== f.path) {
+                      const resClean = resolveNode(st, { goalId: target.goalId, currentNodeId: target.nodeId ?? null }, cleanPath)
+                      if (resClean.ok) {
+                        f.nodeId = resClean.value.id
+                        continue
+                      }
+                    }
+                    if (target.nodeId) {
+                      const targetNode = nodeById(st, target.nodeId)
+                      if (targetNode && (cleanPath === targetNode.title || cleanPath === targetNode.id)) {
+                        f.nodeId = targetNode.id
+                      }
+                    }
+                  }
                 }
               }
               mergeDelivery(turnDelivery, rec)

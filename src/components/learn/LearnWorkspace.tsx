@@ -116,6 +116,7 @@ import {
   resolveDisplayedConversation,
   nodeById,
   nodeStructure,
+  normalizeKey,
   removeExam,
   touchNode,
   updateMessageText,
@@ -3437,22 +3438,53 @@ export default function LearnWorkspace({
       */
       if (p.type === 'doc' && p.path) {
         const wanted = p.path.replace(/\/(教学|讲义|笔记|大纲|试卷|考试|试卷记录|作答记录)$/, '')
-        const norm = (v: string): string => v.replace(/\\/g, '/').trim().replace(/\/+$/, '')
-        // 先按「节点树路径原样」对一次：api.node.list 回的就是这种，模型多半直接抄
+        const normPathStr = (v: string): string => v.replace(/\\/g, '/').trim().replace(/\/+$/, '')
+        const targetGoalId = p.goalId || s.activeGoalId
+        // 1. 如果有明确的目标作用域（或当前激活目标），优先在该目标内查找，避免多目标同名节点指针混淆
+        if (targetGoalId) {
+          const exactInGoal = s.nodes.find(
+            (n) => n.goalId === targetGoalId && normPathStr(nodePathOf(s, targetGoalId, n.id)) === normPathStr(wanted),
+          )
+          if (exactInGoal) {
+            openTab({ kind: 'teach', nodeId: exactInGoal.id })
+            return
+          }
+          const byTitleInGoal = s.nodes.find(
+            (n) => n.goalId === targetGoalId && (normPathStr(n.title) === normPathStr(wanted) || n.key === normalizeKey(wanted) || n.id === wanted),
+          )
+          if (byTitleInGoal) {
+            openTab({ kind: 'teach', nodeId: byTitleInGoal.id })
+            return
+          }
+          const gotInGoal = resolveNode(s, { goalId: targetGoalId, currentNodeId: s.activeNodeId }, wanted)
+          if (gotInGoal.ok) {
+            openTab({ kind: 'teach', nodeId: gotInGoal.value.id })
+            return
+          }
+        }
+        // 2. 兜底跨目标查找（跳过已查过的 targetGoalId）
         const exact = s.nodes.find(
-          (n) => !!n.goalId && norm(nodePathOf(s, n.goalId, n.id)) === norm(wanted),
+          (n) => (!targetGoalId || n.goalId !== targetGoalId) && !!n.goalId && normPathStr(nodePathOf(s, n.goalId, n.id)) === normPathStr(wanted),
         )
         if (exact) {
           openTab({ kind: 'teach', nodeId: exact.id })
           return
         }
-        // 再按宽容口径解析（标题 / #id / 别名都认）
         for (const g of s.goals) {
+          if (g.id === targetGoalId) continue
           const got = resolveNode(s, { goalId: g.id, currentNodeId: null }, wanted)
           if (got.ok) {
             openTab({ kind: 'teach', nodeId: got.value.id })
             return
           }
+        }
+        // 3. 若节点树里依然未找到，但路径带物理文件后缀（如 .md），尝试作为本地文件打开
+        if (/\.[a-z0-9]{1,8}$/i.test(p.path)) {
+          const fileNorm = p.path.replace(/\\/g, '/')
+          const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(fileNorm)
+          const abs = isAbs ? fileNorm : (userAbsPath(fileNorm) ?? fileNorm)
+          openTab({ kind: 'local', path: abs, title: p.path.split('/').pop() })
+          return
         }
       }
       if (p.type === 'attempt') {

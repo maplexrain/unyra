@@ -82,6 +82,8 @@ interface MessageRowProps {
   setBubblePreview: React.Dispatch<React.SetStateAction<MessageImage | null>>
   /** 点击文件/图片附件时在标签页中打开 */
   onOpenFile?: (pathOrRel: string, title?: string) => void
+  /** 目标 id：用于交付组件定位节点文档，避免多目标同名节点指针混淆 */
+  goalId?: string
 }
 
 /**
@@ -111,6 +113,7 @@ export const MessageRow = memo(function MessageRow({
   setEditing,
   setBubblePreview: _setBubblePreview,
   onOpenFile,
+  goalId,
 }: MessageRowProps) {
   // memo 挡住了 props 浅比较相等的重渲染：界面语言变化要自己订阅才跟得上
   useLocale()
@@ -199,7 +202,7 @@ export const MessageRow = memo(function MessageRow({
     >
       <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} />
       {/* 这一轮的交付账：有登记才出现，一行一条（见 DeliveryBlock） */}
-      {m.delivery && <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} />}
+      {m.delivery && <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={goalId} />}
       {m.usage && (
         <div className="mt-1">
           <UsageLine usage={m.usage} />

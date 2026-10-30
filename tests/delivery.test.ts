@@ -55,6 +55,15 @@ describe('normalizeDelivery', () => {
     const files = Array.from({ length: MAX_DELIVERY_FILES + 5 }, (_, i) => ({ path: 'f' + i }))
     expect(normalizeDelivery({ files })?.files).toHaveLength(MAX_DELIVERY_FILES)
   })
+
+  it('保留 goalId 与 nodeId 避免同名指针混淆', () => {
+    const d = normalizeDelivery({
+      files: [{ path: 'HTTP', goalId: 'goal-1', nodeId: 'node-101' }],
+    })
+    expect(d?.files).toEqual([
+      { path: 'HTTP', action: 'updated', goalId: 'goal-1', nodeId: 'node-101' },
+    ])
+  })
 })
 
 describe('mergeDelivery', () => {
@@ -74,6 +83,15 @@ describe('mergeDelivery', () => {
     ])
     expect(acc.sources).toHaveLength(1)
     expect(hasDelivery(acc)).toBe(true)
+  })
+
+  it('mergeDelivery 合并时可补充先前缺失的 goalId 与 nodeId', () => {
+    const acc = emptyDelivery()
+    mergeDelivery(acc, normalizeDelivery({ files: [{ path: 'HTTP' }] })!)
+    mergeDelivery(acc, normalizeDelivery({ files: [{ path: 'HTTP', goalId: 'g1', nodeId: 'n1' }] })!)
+    expect(acc.files).toEqual([
+      { path: 'HTTP', action: 'updated', goalId: 'g1', nodeId: 'n1' },
+    ])
   })
 
   it('空记录不算交付（组件不渲染）', () => {
