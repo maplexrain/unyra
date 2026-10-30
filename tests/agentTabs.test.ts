@@ -274,6 +274,23 @@ describe('页签重名自动标序号 (formatDisambiguatedTitle & disambiguateTa
     expect(formatDisambiguatedTitle('目标 2', 2)).toBe('目标 2 (2)')
   })
 
+  it('formatDisambiguatedTitle 针对带有 (task) 后缀的标题，序号插入在 (task) 之前', () => {
+    expect(formatDisambiguatedTitle('计算机网络 (task)', 1)).toBe('计算机网络 1 (task)')
+    expect(formatDisambiguatedTitle('计算机网络 (task)', 2)).toBe('计算机网络 2 (task)')
+    expect(formatDisambiguatedTitle('目标 2 (task)', 1)).toBe('目标 2 (1) (task)')
+    expect(formatDisambiguatedTitle('目标 2 (task)', 2)).toBe('目标 2 (2) (task)')
+  })
+
+  it('两个同名 task 页签从左到右依次标记 1、2 且保持 (task) 后缀在末尾', () => {
+    const tabs = [
+      { key: 't1', title: '计算机网络 (task)' },
+      { key: 't2', title: '计算机网络 (task)' },
+    ]
+    const map = disambiguateTabTitles(tabs, (t) => t.key, (t) => t.title)
+    expect(map.get('t1')).toBe('计算机网络 1 (task)')
+    expect(map.get('t2')).toBe('计算机网络 2 (task)')
+  })
+
   it('没有重名页签时保持原标题不加序号', () => {
     const tabs = [
       { key: 't1', title: '计算机网络' },

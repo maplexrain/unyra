@@ -366,7 +366,7 @@ export default function AgentTabStrip({
                 }}
                 style={{ transform: offset ? 'translateX(' + offset + 'px)' : undefined }}
                 className={
-                  'moji-tab group relative flex h-7 min-w-[60px] max-w-[150px] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] ' +
+                  'moji-tab group relative flex h-7 min-w-[60px] max-w-[170px] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] ' +
                   (on ? 'moji-tab-flare z-10 font-medium ' : '') +
                   (dragging
                     ? 'z-10 cursor-grabbing border-line-strong bg-card text-ink-strong shadow-md '

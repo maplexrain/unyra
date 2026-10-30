@@ -1318,15 +1318,16 @@ export function useAgent(opts: {
           if (!stored) return
           const settings = loadAiSettings()
           const agentSettings = loadAgentSettings()
-          // 自由聊天的系统提示词同样固化进会话（见 Conversation.systemPrompt）：第一次请求抓一份、之后每轮用它
+          // 自由聊天的系统提示词同样固化进会话（见 Conversation.systemPrompt）：系统提示词变动时自动同步最新规范
+          const desiredFreeSystem = buildFreeChatSystem({
+            extraSystemPrompt:
+              agentSettings.extraSystemPromptEnabled && agentSettings.extraSystemPrompt?.trim()
+                ? agentSettings.extraSystemPrompt.trim()
+                : undefined,
+          })
           let freeSystem = stored.systemPrompt
-          if (!freeSystem) {
-            freeSystem = buildFreeChatSystem({
-              extraSystemPrompt:
-                agentSettings.extraSystemPromptEnabled && agentSettings.extraSystemPrompt?.trim()
-                  ? agentSettings.extraSystemPrompt.trim()
-                  : undefined,
-            })
+          if (!freeSystem || freeSystem !== desiredFreeSystem) {
+            freeSystem = desiredFreeSystem
             mutateFreeConversation(conversationId, (c) => ({ ...c, systemPrompt: freeSystem }))
           }
           const global = resolveGlobal(settings)

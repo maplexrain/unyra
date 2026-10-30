@@ -271,11 +271,20 @@ export function agentTabCloseSet(tabs: AgentTabRef[], key: string, mode: TabClos
 
 /**
  * 为重名的页签标题追加序号：
+ * - 若原标题带有 "(task)" 标识，序号放置在 "(task)" 之前（如 "计算机网络 (task)" -> "计算机网络 1 (task)"）；
  * - 若原标题以数字结尾，为避免数字粘连混淆（如 "目标 2" -> "目标 2 (1)"），追加 "(序号)"；
  * - 其余情况直接追加 " 序号"（如 "计算机网络" -> "计算机网络 1"）。
  */
 export function formatDisambiguatedTitle(raw: string, index: number): string {
   const trimmed = raw.trim()
+  const taskSuffixMatch = trimmed.match(/\s*\((task)\)$/i)
+  if (taskSuffixMatch) {
+    const base = trimmed.slice(0, taskSuffixMatch.index).trim()
+    if (/\d$/.test(base)) {
+      return `${base} (${index}) (task)`
+    }
+    return `${base} ${index} (task)`
+  }
   if (/\d$/.test(trimmed)) {
     return `${trimmed} (${index})`
   }
