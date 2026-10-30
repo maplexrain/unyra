@@ -8,7 +8,6 @@ import { countVisibleWords, countVisibleWordsFromHtml } from '../../lib/wordCoun
 import { useReadingTracker } from '../../learn/useReadingTracker'
 import { readingDocKey, type ReadingDelta } from '../../learn/reading'
 import type { OutlineHandle } from '../../lib/outline'
-import ReadingPulse from './ReadingPulse'
 import { DocBody } from './note/DocBody'
 import { DocContextMenu } from './note/docContextMenu'
 import { useDocContextMenu, type SourceSpan } from './note/useDocContextMenu'
@@ -403,9 +402,6 @@ export default memo(function NodeNote({
             )
           }
         />
-
-        {/* 有效阅读的脉搏：文档区最左边那一条 2px（见 components/learn/ReadingPulse） */}
-        <ReadingPulse />
 
         {/* 注解输入区（见 note/useAnnotationLayer）：它占位地待在正文列底部 */}
         {noteDialogEl}
