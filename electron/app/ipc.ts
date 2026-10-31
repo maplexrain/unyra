@@ -4,7 +4,7 @@
  *
  * 通道名与 preload 暴露的形状是一对（见 electron/preload.ts），改动前先看那边。
  */
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, Notification, session, shell } from 'electron'
+import { app, BrowserWindow, clipboard, desktopCapturer, dialog, ipcMain, nativeImage, Notification, screen, session, shell } from 'electron'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
@@ -190,6 +190,93 @@ export function registerIpc(): void {
     } catch (err) {
       return { ok: false as const, error: err instanceof Error ? err.message : t('截图失败') }
     }
+  })
+
+  /**
+   * 工具箱：全屏/桌面截图（支持主进程多显示器桌面采集与主窗口兜底）
+   */
+  ipcMain.handle('tools:capture-screen', async () => {
+    try {
+      const primaryDisplay = screen.getPrimaryDisplay()
+      const { width, height } = primaryDisplay.bounds
+      const scaleFactor = primaryDisplay.scaleFactor || 1
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: {
+          width: Math.round(width * scaleFactor),
+          height: Math.round(height * scaleFactor),
+        },
+      })
+      if (sources && sources.length > 0 && sources[0].thumbnail && !sources[0].thumbnail.isEmpty()) {
+        return { ok: true as const, dataUrl: sources[0].thumbnail.toDataURL() }
+      }
+      const win = focusedWindow()
+      if (win && !win.isDestroyed()) {
+        const image = await win.webContents.capturePage()
+        if (!image.isEmpty()) {
+          return { ok: true as const, dataUrl: image.toDataURL() }
+        }
+      }
+      return { ok: false as const, error: t('未能获取屏幕截图画面') }
+    } catch (err) {
+      try {
+        const win = focusedWindow()
+        if (win && !win.isDestroyed()) {
+          const image = await win.webContents.capturePage()
+          if (!image.isEmpty()) {
+            return { ok: true as const, dataUrl: image.toDataURL() }
+          }
+        }
+      } catch {}
+      return { ok: false as const, error: err instanceof Error ? err.message : t('截图失败') }
+    }
+  })
+
+  /**
+   * 工具箱：将截图图片直接写入系统原生剪贴板
+   */
+  ipcMain.handle('tools:copy-image', async (_e, dataUrl: string) => {
+    try {
+      const image = nativeImage.createFromDataURL(dataUrl)
+      const clip = clipboard as unknown as { writeImage?: (img: unknown) => void }
+      if (typeof clip.writeImage === 'function') {
+        clip.writeImage(image)
+      }
+      return { ok: true as const }
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : t('写入剪贴板失败') }
+    }
+  })
+
+  /**
+   * 工具箱：保存截图到本地文件系统
+   */
+  ipcMain.handle('tools:save-image', async (_e, payload: { suggestedName?: string; dataUrl: string }) => {
+    try {
+      const win = focusedWindow()
+      const defPath = path.join(
+        app.getPath('pictures') || app.getPath('downloads'),
+        payload.suggestedName || `Screenshot_${Date.now()}.png`,
+      )
+      const res = await dialog.showSaveDialog(win ? win : (undefined as unknown as BrowserWindow), {
+        title: t('保存截图'),
+        defaultPath: defPath,
+        filters: [{ name: 'PNG Image', extensions: ['png'] }],
+      })
+      if (res.canceled || !res.filePath) return { ok: true as const, canceled: true }
+      const base64Data = payload.dataUrl.replace(/^data:image\/\w+;base64,/, '')
+      await fsp.writeFile(res.filePath, Buffer.from(base64Data, 'base64'))
+      return { ok: true as const, path: res.filePath }
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : t('保存截图失败') }
+    }
+  })
+
+  /**
+   * 工具箱：录屏工具占位
+   */
+  ipcMain.handle('tools:record-screen', async () => {
+    return { ok: false as const, error: t('录屏工具占位中') }
   })
 
   /**

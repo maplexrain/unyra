@@ -36,6 +36,7 @@ import type {
   WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult, WebScrollReq,
   WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebTranslatePayload, WebWaitReq, WebWaitResult,
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
+  ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
 } from '../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（渲染层与主进程共用一份，见该文件顶部）：
@@ -56,6 +57,7 @@ export type {
   WebFetchResult, WebBinaryFetchResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult,
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
+  ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
 }
 
 /* ---------- 只在 preload 这一侧用到的形状 ---------- */
@@ -895,6 +897,12 @@ const api = {
       ipcRenderer.on('lan:devices-changed', handler)
       return () => { ipcRenderer.removeListener('lan:devices-changed', handler) }
     },
+  },
+  tools: {
+    captureScreen: (): Promise<ScreenCaptureResult> => ipcRenderer.invoke('tools:capture-screen'),
+    copyImage: (dataUrl: string): Promise<ImageCopyResult> => ipcRenderer.invoke('tools:copy-image', dataUrl),
+    saveImage: (payload: ImageSavePayload): Promise<ImageSaveResult> => ipcRenderer.invoke('tools:save-image', payload),
+    startRecord: (): Promise<ScreenRecordResult> => ipcRenderer.invoke('tools:record-screen'),
   },
 }
 

@@ -291,6 +291,9 @@ import { examDeleteWarn } from './workspace/labels'
 import { conceptKeysOf, emptyNote, examCopyOf, paneInfo, paneOf } from './workspace/panes'
 import { DocPane } from './workspace/DocPane'
 import { FocusDock, ReadingDock, ScheduleDock } from './workspace/docks'
+import ToolsButton from '../tools/ToolsButton'
+import ScreenshotModal from '../tools/ScreenshotModal'
+import PinnedScreenshot, { type PinnedItem } from '../tools/PinnedScreenshot'
 import { EmptyDoc, Topbar } from './workspace/chrome'
 import { CreateGoalDialog } from './workspace/CreateGoalDialog'
 import { useSideColumns } from './workspace/useSideColumns'
@@ -552,6 +555,33 @@ export default function LearnWorkspace({
     setStructOverlayGoal(gid)
   }, [structOverlayGoal, activeTab, store, activeGoalId, onToast])
   useShortcut('learn.structPopout', { down: toggleStructOverlay })
+
+  /* ---------- 实用工具箱：屏幕截图与置顶贴图 ---------- */
+  const [screenshotImage, setScreenshotImage] = useState<string | null>(null)
+  const [pinnedScreenshots, setPinnedScreenshots] = useState<PinnedItem[]>([])
+  const [isCapturing, setIsCapturing] = useState(false)
+
+  const handleStartScreenshot = useCallback(async () => {
+    if (isCapturing) return
+    setIsCapturing(true)
+    try {
+      const bridge = native()
+      if (bridge.tools?.captureScreen) {
+        const res = await bridge.tools.captureScreen()
+        if (res.ok) {
+          setScreenshotImage(res.dataUrl)
+        } else {
+          onToast(res.error || t('未能获取截图画面'))
+        }
+      } else {
+        onToast(t('当前环境不支持屏幕截图'))
+      }
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : t('截图启动失败'))
+    } finally {
+      setIsCapturing(false)
+    }
+  }, [isCapturing, onToast])
 
   /**
    * 顶栏标题只在文档区确实存在目标根大纲时显示。activeNodeId 是导师上下文，关闭文档后
@@ -5619,6 +5649,8 @@ export default function LearnWorkspace({
               />
             }
             reading={<ReadingDock store={store} onOpenNode={selectNode} />}
+            /* 工具箱：截图与录屏入口 */
+            tools={<ToolsButton onScreenshot={handleStartScreenshot} onToast={onToast} />}
             /* 日程是「今天还剩什么」，与专注/阅读同属右侧那一簇；到点时的呼吸层挂在顶栏本体上 */
             schedule={
               <ScheduleDock
@@ -5967,6 +5999,26 @@ export default function LearnWorkspace({
           onClose={() => setStructOverlayGoal(null)}
         />
       )}
+
+      {/* 截图工具全屏操作浮层 */}
+      {screenshotImage && (
+        <ScreenshotModal
+          imageSrc={screenshotImage}
+          onClose={() => setScreenshotImage(null)}
+          onPin={(pinItem) => setPinnedScreenshots((prev) => [...prev, pinItem])}
+          onToast={onToast}
+        />
+      )}
+
+      {/* 置顶贴图列表 */}
+      {pinnedScreenshots.map((item) => (
+        <PinnedScreenshot
+          key={item.id}
+          item={item}
+          onClose={(id) => setPinnedScreenshots((prev) => prev.filter((p) => p.id !== id))}
+          onToast={onToast}
+        />
+      ))}
     </div>
   )
 }

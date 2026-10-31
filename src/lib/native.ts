@@ -24,6 +24,7 @@ import type {
   WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebTranslatePayload, WebWaitReq, WebWaitResult,
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
+  ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
 } from '../../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（与 electron/preload.ts 共用一份，见该文件顶部）：
@@ -41,6 +42,7 @@ export type {
   WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebTranslatePayload, WebWaitReq, WebWaitResult,
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
+  ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
 }
 
 export type PluginList =
@@ -547,6 +549,12 @@ export interface NativeBridge {
     onStatusChange(cb: (status: LanServerStatus) => void): () => void
     onFileReceived(cb: (file: LanUploadedFile) => void): () => void
     onDevicesChange(cb: (devices: LanDeviceInfo[]) => void): () => void
+  }
+  tools?: {
+    captureScreen(): Promise<ScreenCaptureResult>
+    copyImage(dataUrl: string): Promise<ImageCopyResult>
+    saveImage(payload: ImageSavePayload): Promise<ImageSaveResult>
+    startRecord?(): Promise<ScreenRecordResult>
   }
 }
 

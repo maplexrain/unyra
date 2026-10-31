@@ -60,6 +60,7 @@ export function Topbar({
   focus,
   reading,
   schedule,
+  tools,
   scheduleRinging,
 }: {
   /** 专注模式入口（守卫勾选 + 实时画面 + 状态，见 docks 的 FocusDock） */
@@ -68,6 +69,8 @@ export function Topbar({
   reading: ReactNode
   /** 日程入口（今天还有什么 + 手动安排；到点提醒的弹层也在这里，见 ScheduleButton） */
   schedule: ReactNode
+  /** 工具入口（截图、录屏等实用工具箱，见 ToolsButton） */
+  tools?: ReactNode
   /** 有日程正在响：顶栏整体渐变呼吸（样式见 styles/workspace.css 的 .moji-schedule-glow） */
   scheduleRinging?: boolean
   /** **当前文档指向的那个节点**（本地文件页签、或一个页签都没有时为 null） */
@@ -212,6 +215,7 @@ export function Topbar({
         {schedule}
         {focus}
         {reading}
+        {tools}
         <UserMenu
           user={user}
           onOpenUser={onOpenUser}
