@@ -7,6 +7,7 @@ export interface Rect {
   y: number
   width: number
   height: number
+  title?: string
 }
 
 export interface BaseObject {

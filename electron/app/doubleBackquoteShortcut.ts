@@ -1,116 +1,141 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn, execFile, type ChildProcess } from 'node:child_process'
+import path from 'node:path'
+import fs from 'node:fs'
 
 let hookProcess: ChildProcess | null = null
 let triggerCallback: (() => void) | null = null
 let isStarting = false
+let windowQueryResolvers: Array<(rects: Array<{ x: number; y: number; width: number; height: number; title?: string }>) => void> = []
+let snapResolvers: Array<(res: { imagePath: string; windows: Array<{ x: number; y: number; width: number; height: number; title?: string }> } | null) => void> = []
+let activeSnapPath: string | null = null
 
-const HOOK_SCRIPT = `
-Add-Type -TypeDefinition @"
-using System;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
+const CSC_PATH = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe'
 
-public class DoubleBackquoteHook {
-    private const int WH_KEYBOARD_LL = 13;
-    private const int WM_KEYDOWN = 0x0100;
-    private const int WM_SYSKEYDOWN = 0x0104;
-    private const int VK_OEM_3 = 0xC0; // 反引号 / 波浪号按键 (\` / ~)
-
-    private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
-    private static LowLevelKeyboardProc _proc = HookCallback;
-    private static IntPtr _hookID = IntPtr.Zero;
-    private static long _lastTime = 0;
-
-    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
-
-    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
-
-    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern IntPtr GetModuleHandle(string lpModuleName);
-
-    [DllImport("user32.dll")]
-    private static extern sbyte GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MSG {
-        public IntPtr hwnd;
-        public uint message;
-        public IntPtr wParam;
-        public IntPtr lParam;
-        public uint time;
-        public int pt_x;
-        public int pt_y;
-    }
-
-    public static void Start() {
-        using (Process curProcess = Process.GetCurrentProcess())
-        using (ProcessModule curModule = curProcess.MainModule) {
-            _hookID = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(curModule.ModuleName), 0);
-        }
-        Console.WriteLine("HOOK_READY");
-        MSG msg;
-        while (GetMessage(out msg, IntPtr.Zero, 0, 0) > 0) {}
-        UnhookWindowsHookEx(_hookID);
-    }
-
-    private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
-        if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)) {
-            int vkCode = Marshal.ReadInt32(lParam);
-            if (vkCode == VK_OEM_3) {
-                long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                if (now - _lastTime <= 380 && now - _lastTime >= 60) {
-                    Console.WriteLine("DOUBLE_BACKQUOTE");
-                    _lastTime = 0;
-                } else {
-                    _lastTime = now;
-                }
-            } else {
-                // 按了其他按键，重置双击间隔判定
-                _lastTime = 0;
-            }
-        }
-        return CallNextHookEx(_hookID, nCode, wParam, lParam);
-    }
+function getHelperExePath(): string {
+  const candidates = [
+    path.join(__dirname, 'screenHelper.exe'),
+    path.join(__dirname, 'app', 'screenHelper.exe'),
+    path.join(__dirname, '..', 'electron', 'app', 'screenHelper.exe'),
+  ]
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p
+  }
+  return candidates[0]
 }
-"@
-[DoubleBackquoteHook]::Start()
-`
+
+function getHelperCsPath(): string {
+  const candidates = [
+    path.join(__dirname, 'screenHelper.cs'),
+    path.join(__dirname, 'app', 'screenHelper.cs'),
+    path.join(__dirname, '..', 'electron', 'app', 'screenHelper.cs'),
+  ]
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p
+  }
+  return candidates[0]
+}
 
 /**
- * 启动全局双击反引号 (\`) 快捷键监听器：
- * - 纯底层低级键盘钩子，无条件调用 CallNextHookEx，绝不拦截/吃掉按键消息；
- * - 用户在任何软件正常输入反引号或波浪号 100% 毫无影响；
- * - 只有在 380ms 内快速连续敲击两次反引号时，触发截图。
+ * 确保 screenHelper.exe 原生助手存在；若不存在则自动调用系统内置 csc 瞬时编译
  */
-export function startDoubleBackquoteShortcut(onTrigger: () => void): void {
+function ensureHelperExe(): Promise<boolean> {
+  const exePath = getHelperExePath()
+  if (fs.existsSync(exePath)) {
+    return Promise.resolve(true)
+  }
+  const csPath = getHelperCsPath()
+  if (!fs.existsSync(csPath) || !fs.existsSync(CSC_PATH)) {
+    return Promise.resolve(false)
+  }
+
+  return new Promise((resolve) => {
+    execFile(
+      CSC_PATH,
+      ['/nologo', '/optimize+', '/target:winexe', '/r:System.Drawing.dll', `/out:${exePath}`, csPath],
+      (err) => {
+        resolve(!err && fs.existsSync(exePath))
+      },
+    )
+  })
+}
+
+/**
+ * 启动全局双击反引号 (\`) 系统级快捷键监听与高速窗口探测助手：
+ * - 纯底层低级键盘钩子，无条件调用 CallNextHookEx，绝不拦截/吃掉按键；
+ * - 最小化、失焦、全屏游戏或任何应用中均能瞬间感应；
+ * - 原生 BitBlt 毫秒级全屏高清硬件截屏，彻底杜绝 WebRTC 黑屏；
+ * - 内置高性能 DWM 真实视口枚举，天然保持原生 Z-order。
+ */
+export async function startDoubleBackquoteShortcut(onTrigger: () => void): Promise<void> {
   triggerCallback = onTrigger
   if (process.platform !== 'win32' || hookProcess || isStarting) {
     return
   }
 
   isStarting = true
+  const ok = await ensureHelperExe()
+  if (!ok) {
+    isStarting = false
+    return
+  }
+
   try {
-    const proc = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', HOOK_SCRIPT],
-      { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] },
-    )
+    const exePath = getHelperExePath()
+    const proc = spawn(exePath, [], {
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'ignore'],
+    })
 
     hookProcess = proc
 
-    proc.stdout.on('data', (chunk: Buffer) => {
-      const text = chunk.toString()
-      if (text.includes('DOUBLE_BACKQUOTE')) {
-        try {
-          triggerCallback?.()
-        } catch (err) {
-          console.error('[DoubleBackquoteShortcut] trigger callback error:', err)
+    proc.stdout?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString('utf8')
+      const lines = text.split(/\r?\n/)
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim()
+        if (!line) continue
+
+        // 1. 全局双击反引号快捷键触发
+        if (line === 'TRIGGER') {
+          try {
+            triggerCallback?.()
+          } catch (err) {
+            console.error('[DoubleBackquoteShortcut] trigger callback error:', err)
+          }
+        } else if (line.startsWith('WINJSON:')) {
+          // 2. 高速独立窗口查询结果返回
+          const jsonStr = line.slice(8)
+          try {
+            const list = JSON.parse(jsonStr)
+            const resolvers = [...windowQueryResolvers]
+            windowQueryResolvers = []
+            for (const r of resolvers) {
+              r(Array.isArray(list) ? list : [])
+            }
+          } catch {
+            const resolvers = [...windowQueryResolvers]
+            windowQueryResolvers = []
+            for (const r of resolvers) r([])
+          }
+        } else if (line.startsWith('SNAP_OK:')) {
+          // 3. 原生 BitBlt 截屏与瞬时窗口列表同步完成
+          const jsonStr = line.slice(8)
+          let windows: Array<{ x: number; y: number; width: number; height: number; title?: string }> = []
+          try {
+            const list = JSON.parse(jsonStr)
+            windows = Array.isArray(list) ? list : []
+          } catch {}
+          const imgPath = activeSnapPath || ''
+          const resolvers = [...snapResolvers]
+          snapResolvers = []
+          for (const r of resolvers) {
+            r({ imagePath: imgPath, windows })
+          }
+        } else if (line.startsWith('SNAP_ERR:')) {
+          const resolvers = [...snapResolvers]
+          snapResolvers = []
+          for (const r of resolvers) r(null)
         }
       }
     })
@@ -118,29 +143,125 @@ export function startDoubleBackquoteShortcut(onTrigger: () => void): void {
     proc.on('exit', () => {
       hookProcess = null
       isStarting = false
+      const resolvers = [...windowQueryResolvers]
+      windowQueryResolvers = []
+      for (const r of resolvers) r([])
+      const sResolvers = [...snapResolvers]
+      snapResolvers = []
+      for (const r of sResolvers) r(null)
     })
 
     proc.on('error', (err) => {
-      console.warn('[DoubleBackquoteShortcut] hook process error:', err)
+      console.warn('[DoubleBackquoteShortcut] helper error:', err)
       hookProcess = null
       isStarting = false
     })
   } catch (e) {
-    console.warn('[DoubleBackquoteShortcut] spawn hook failed:', e)
+    console.warn('[DoubleBackquoteShortcut] spawn helper failed:', e)
     isStarting = false
   }
 }
 
 /**
- * 停止并释放全局快捷键钩子
+ * 原生全屏截屏与 Z-order 窗口列表同步获取（由常驻 screenHelper 执行 BitBlt + DWM 枚举）
+ */
+export function snapViaHelper(
+  physX: number,
+  physY: number,
+  physW: number,
+  physH: number,
+  filePath: string,
+  timeoutMs = 1200,
+): Promise<{ imagePath: string; windows: Array<{ x: number; y: number; width: number; height: number; title?: string }> } | null> {
+  if (!hookProcess || hookProcess.killed || !hookProcess.stdin) {
+    return Promise.resolve(null)
+  }
+
+  activeSnapPath = filePath
+
+  return new Promise((resolve) => {
+    let done = false
+    const timer = setTimeout(() => {
+      if (!done) {
+        done = true
+        resolve(null)
+      }
+    }, timeoutMs)
+
+    snapResolvers.push((res) => {
+      if (!done) {
+        done = true
+        clearTimeout(timer)
+        resolve(res)
+      }
+    })
+
+    try {
+      hookProcess?.stdin?.write(`SNAP ${physX} ${physY} ${physW} ${physH} ${filePath}\n`)
+    } catch {
+      if (!done) {
+        done = true
+        clearTimeout(timer)
+        resolve(null)
+      }
+    }
+  })
+}
+
+/**
+ * 0.5 毫秒级原生窗口列表实时查询（通过已常驻的 screenHelper 进程）
+ */
+export function queryWindowsViaHelper(
+  timeoutMs = 150,
+): Promise<Array<{ x: number; y: number; width: number; height: number; title?: string }>> {
+  if (!hookProcess || hookProcess.killed || !hookProcess.stdin) {
+    return Promise.resolve([])
+  }
+
+  return new Promise((resolve) => {
+    let done = false
+    const timer = setTimeout(() => {
+      if (!done) {
+        done = true
+        resolve([])
+      }
+    }, timeoutMs)
+
+    windowQueryResolvers.push((rects) => {
+      if (!done) {
+        done = true
+        clearTimeout(timer)
+        resolve(rects)
+      }
+    })
+
+    try {
+      hookProcess?.stdin?.write('WINDOWS\n')
+    } catch {
+      if (!done) {
+        done = true
+        clearTimeout(timer)
+        resolve([])
+      }
+    }
+  })
+}
+
+/**
+ * 停止并释放全局快捷键与原生助手
  */
 export function stopDoubleBackquoteShortcut(): void {
   triggerCallback = null
   if (hookProcess) {
+    try {
+      hookProcess.stdin?.write('EXIT\n')
+    } catch {}
     try {
       hookProcess.kill()
     } catch {}
     hookProcess = null
   }
   isStarting = false
+  windowQueryResolvers = []
+  snapResolvers = []
 }

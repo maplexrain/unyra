@@ -549,26 +549,17 @@ export default function ScreenshotEditor({
       }
     }
 
-    // 3. 未确立选区且未按住光标：实时探测并吸附候选窗口
+    // 3. 未确立选区且未按住光标：实时根据当前光标位置精准吸附最优候选窗口
     if (!selection && !dragStart) {
-      const cur = hoveredWindowRectRef.current
-      if (
-        !cur ||
-        clientX < cur.x ||
-        clientX > cur.x + cur.width ||
-        clientY < cur.y ||
-        clientY > cur.y + cur.height
-      ) {
-        const detected = detectWindowUnderCursor(
-          clientX,
-          clientY,
-          offscreenCanvasRef.current,
-          systemRects,
-          window.innerWidth,
-          window.innerHeight,
-        )
-        setHoveredWindowRect(detected)
-      }
+      const detected = detectWindowUnderCursor(
+        clientX,
+        clientY,
+        offscreenCanvasRef.current,
+        systemRects,
+        window.innerWidth,
+        window.innerHeight,
+      )
+      setHoveredWindowRect(detected)
       return
     }
 

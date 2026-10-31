@@ -446,6 +446,7 @@ export function createWebNativeBridge(): NativeBridge {
       },
       notifyPinReady: () => {},
       movePin: () => {},
+      onScreenshotUpdate: () => () => {},
     },
   }
 

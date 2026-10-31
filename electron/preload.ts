@@ -903,6 +903,11 @@ const api = {
     openScreenshot: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('screenshot:open'),
     getScreenshotImage: (): Promise<string | null> => ipcRenderer.invoke('screenshot:getImage'),
     getScreenshotSystemRects: (): Promise<Array<{ x: number; y: number; width: number; height: number }>> => ipcRenderer.invoke('screenshot:getSystemRects'),
+    onScreenshotUpdate: (cb: (payload: { imageSrc: string; systemRects?: Array<{ x: number; y: number; width: number; height: number }> }) => void): (() => void) => {
+      const handler = (_: unknown, data: { imageSrc: string; systemRects?: Array<{ x: number; y: number; width: number; height: number }> }) => cb(data)
+      ipcRenderer.on('screenshot:update', handler)
+      return () => { ipcRenderer.removeListener('screenshot:update', handler) }
+    },
     notifyScreenshotReady: (): void => { ipcRenderer.send('screenshot:ready') },
     closeScreenshot: (): void => { ipcRenderer.send('screenshot:close') },
     confirmScreenshot: (dataUrl: string): Promise<ImageCopyResult> => ipcRenderer.invoke('screenshot:confirm', dataUrl),

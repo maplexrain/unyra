@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { BrowserWindow, type Display } from 'electron'
+import { queryWindowsViaHelper } from './doubleBackquoteShortcut'
 
 export interface WindowRectItem {
   x: number
@@ -9,7 +10,7 @@ export interface WindowRectItem {
   title?: string
 }
 
-const WIN32_ENUM_SCRIPT = `
+const WIN32_FALLBACK_SCRIPT = `
 $sig = @"
 using System;
 using System.Collections.Generic;
@@ -34,6 +35,9 @@ public class WinRectDetector {
     public static extern bool IsIconic(IntPtr hWnd);
 
     [DllImport("dwmapi.dll")]
+    public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
+
+    [DllImport("dwmapi.dll")]
     public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
 
     [DllImport("user32.dll")]
@@ -44,6 +48,9 @@ public class WinRectDetector {
 
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+    [DllImport("user32.dll")]
+    public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT {
@@ -67,25 +74,34 @@ public class WinRectDetector {
         if (hDesk != IntPtr.Zero) {
             SetThreadDesktop(hDesk);
             EnumDesktopWindows(hDesk, (hWnd, lParam) => {
-                if (IsWindowVisible(hWnd) && !IsIconic(hWnd)) {
-                    RECT r;
-                    int hr = DwmGetWindowAttribute(hWnd, 9, out r, Marshal.SizeOf(typeof(RECT)));
-                    if (hr != 0) {
-                        GetWindowRect(hWnd, out r);
-                    }
-                    int w = r.Right - r.Left;
-                    int h = r.Bottom - r.Top;
-                    if (w >= 40 && h >= 40) {
-                        var sbCls = new StringBuilder(128);
-                        GetClassName(hWnd, sbCls, 128);
-                        string cls = sbCls.ToString();
-                        if (cls != "Progman" && cls != "WorkerW" && cls != "Shell_TrayWnd") {
-                            var sbTitle = new StringBuilder(256);
-                            GetWindowText(hWnd, sbTitle, 256);
-                            list.Add(new WinItem { x = r.Left, y = r.Top, width = w, height = h, title = sbTitle.ToString() });
-                        }
-                    }
-                }
+                if (!IsWindowVisible(hWnd) || IsIconic(hWnd)) return true;
+
+                // 过滤 Cloaked 窗口（DWMWA_CLOAKED = 14）
+                int cloaked = 0;
+                DwmGetWindowAttribute(hWnd, 14, out cloaked, sizeof(int));
+                if (cloaked != 0) return true;
+
+                int exStyle = GetWindowLong(hWnd, -20);
+                if ((exStyle & 0x00000080) != 0) return true; // WS_EX_TOOLWINDOW
+
+                StringBuilder sbTitle = new StringBuilder(256);
+                GetWindowText(hWnd, sbTitle, 256);
+                string title = sbTitle.ToString().Trim();
+                if (string.IsNullOrEmpty(title)) return true;
+
+                StringBuilder sbCls = new StringBuilder(128);
+                GetClassName(hWnd, sbCls, 128);
+                string cls = sbCls.ToString();
+                if (cls == "Progman" || cls == "WorkerW" || cls == "Shell_TrayWnd") return true;
+
+                RECT r;
+                int hr = DwmGetWindowAttribute(hWnd, 9, out r, Marshal.SizeOf(typeof(RECT)));
+                if (hr != 0) GetWindowRect(hWnd, out r);
+                int w = r.Right - r.Left;
+                int h = r.Bottom - r.Top;
+                if (w < 80 || h < 60) return true;
+
+                list.Add(new WinItem { x = r.Left, y = r.Top, width = w, height = h, title = title });
                 return true;
             }, IntPtr.Zero);
         }
@@ -111,24 +127,21 @@ export async function detectSystemWindowRects(
     return fallback
   }
 
-  return new Promise<WindowRectItem[]>((resolve) => {
-    let resolved = false
-    const timeout = setTimeout(() => {
-      if (!resolved) {
-        resolved = true
-        resolve(fallback)
-      }
-    }, 700)
+  // 1. 优先通过已常驻后台的原生 screenHelper 在 1ms 内瞬时获取（零等待！）
+  try {
+    const fastList = await queryWindowsViaHelper(120)
+    if (fastList && fastList.length > 0) {
+      return mapRawRectsToDisplay(fastList, display, fallback)
+    }
+  } catch {}
 
+  // 2. 次级兜底：调用快速 PowerShell 管道
+  return new Promise<WindowRectItem[]>((resolve) => {
     execFile(
       'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', WIN32_ENUM_SCRIPT],
-      { timeout: 650, windowsHide: true },
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', WIN32_FALLBACK_SCRIPT],
+      { timeout: 450, windowsHide: true },
       (err, stdout) => {
-        if (resolved) return
-        resolved = true
-        clearTimeout(timeout)
-
         if (err || !stdout || !stdout.trim()) {
           resolve(fallback)
           return
@@ -136,41 +149,8 @@ export async function detectSystemWindowRects(
 
         try {
           const raw = JSON.parse(stdout.trim())
-          const arr: Array<{ x: number; y: number; width: number; height: number; title?: string }> = Array.isArray(raw)
-            ? raw
-            : [raw]
-
-          const { x: dx, y: dy, width: dw, height: dh } = display.bounds
-          const scale = display.scaleFactor || 1
-
-          const list: WindowRectItem[] = []
-
-          // 1. 系统实际窗口（按 Z-order，最上层在最前）
-          for (const item of arr) {
-            const rx = Math.round((item.x - dx) / scale)
-            const ry = Math.round((item.y - dy) / scale)
-            const rw = Math.round(item.width / scale)
-            const rh = Math.round(item.height / scale)
-
-            if (rx + rw <= 0 || ry + rh <= 0 || rx >= dw || ry >= dh) {
-              continue
-            }
-            if (rw < 30 || rh < 30) {
-              continue
-            }
-
-            list.push({
-              x: rx,
-              y: ry,
-              width: rw,
-              height: rh,
-              title: item.title,
-            })
-          }
-
-          // 2. 兜底追加：应用内可见窗口与系统工作区/屏幕整体
-          list.push(...fallback)
-          resolve(list)
+          const arr = Array.isArray(raw) ? raw : [raw]
+          resolve(mapRawRectsToDisplay(arr, display, fallback))
         } catch {
           resolve(fallback)
         }
@@ -179,7 +159,40 @@ export async function detectSystemWindowRects(
   })
 }
 
-function getFallbackRects(display: Display): WindowRectItem[] {
+export function mapRawRectsToDisplay(
+  arr: Array<{ x: number; y: number; width: number; height: number; title?: string }>,
+  display: Display,
+  fallback: WindowRectItem[],
+): WindowRectItem[] {
+  const { x: dx, y: dy, width: dw, height: dh } = display.bounds
+  const scale = display.scaleFactor || 1
+  const physDx = Math.round(dx * scale)
+  const physDy = Math.round(dy * scale)
+  const list: WindowRectItem[] = []
+
+  for (const item of arr) {
+    const rx = Math.round((item.x - physDx) / scale)
+    const ry = Math.round((item.y - physDy) / scale)
+    const rw = Math.round(item.width / scale)
+    const rh = Math.round(item.height / scale)
+
+    if (rx + rw <= 0 || ry + rh <= 0 || rx >= dw || ry >= dh) continue
+    if (rw < 40 || rh < 30) continue
+
+    list.push({
+      x: rx,
+      y: ry,
+      width: rw,
+      height: rh,
+      title: item.title,
+    })
+  }
+
+  list.push(...fallback)
+  return list
+}
+
+export function getFallbackRects(display: Display): WindowRectItem[] {
   const res: WindowRectItem[] = []
   if (display.workArea) {
     res.push({

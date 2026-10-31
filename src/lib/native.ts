@@ -555,6 +555,7 @@ export interface NativeBridge {
     openScreenshot?(): Promise<{ ok: boolean; error?: string }>
     getScreenshotImage?(): Promise<string | null>
     getScreenshotSystemRects?(): Promise<Array<{ x: number; y: number; width: number; height: number }>>
+    onScreenshotUpdate?(cb: (payload: { imageSrc: string; systemRects?: Array<{ x: number; y: number; width: number; height: number }> }) => void): () => void
     notifyScreenshotReady?(): void
     closeScreenshot?(): void
     confirmScreenshot?(dataUrl: string): Promise<ImageCopyResult>
