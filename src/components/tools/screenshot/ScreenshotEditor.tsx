@@ -883,32 +883,35 @@ export default function ScreenshotEditor({
     }
   }
 
-  // 双击事件：快速进入文字或箭头说明编辑（改文字）
+  // 双击事件：快速复制截图到粘贴板并退出（未选取时复制窗口/全屏，已选取时复制选区）
   const handleDoubleClick = (e: React.MouseEvent) => {
+    if (editingTarget) return
+
     const clientX = e.clientX
     const clientY = e.clientY
-    const hit = hitTestObject(clientX, clientY)
-    if (hit) {
-      if (hit.obj.type === 'text') {
-        setEditingTarget({
-          id: hit.obj.id,
-          type: 'text',
-          x: hit.obj.x,
-          y: hit.obj.y,
-          text: hit.obj.text,
-        })
-        setSelectedObjectId(hit.obj.id)
-      } else if (hit.obj.type === 'arrow') {
-        setEditingTarget({
-          id: hit.obj.id,
-          type: 'arrowTail',
-          x: hit.obj.x1,
-          y: hit.obj.y1,
-          text: hit.obj.text || '',
-        })
-        setSelectedObjectId(hit.obj.id)
+
+    // 1. 截图选取后：在选区内部双击快速复制截图到粘贴板并退出
+    if (selection) {
+      const inside =
+        clientX >= selection.x &&
+        clientX <= selection.x + selection.width &&
+        clientY >= selection.y &&
+        clientY <= selection.y + selection.height
+      if (inside) {
+        void handleConfirm(selection)
+        return
       }
+      return
     }
+
+    // 2. 截图后未选取：双击快速复制截图（光标悬停候选窗口或全屏画面）到粘贴板并退出
+    const target = hoveredWindowRect || {
+      x: 0,
+      y: 0,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    }
+    void handleConfirm(target)
   }
 
   // 提交文字编辑
@@ -1278,10 +1281,11 @@ export default function ScreenshotEditor({
     return () => window.removeEventListener('resize', handleResize)
   }, [drawMainCanvas])
 
-  // 生成最终高清裁切合并画布
-  const renderFinalCroppedCanvas = (): HTMLCanvasElement | null => {
-    if (!selection) return null
-    const { x, y, width, height } = selection
+  // 生成最终高清裁切合并画布（支持指定目标矩形，未指定时默认使用当前选区）
+  const renderFinalCroppedCanvas = (targetRect?: Rect | null): HTMLCanvasElement | null => {
+    const target = targetRect || selection
+    if (!target) return null
+    const { x, y, width, height } = target
     const rw = Math.round(width)
     const rh = Math.round(height)
     if (rw <= 0 || rh <= 0) return null
@@ -1315,12 +1319,14 @@ export default function ScreenshotEditor({
       rh,
     )
 
-    ctx.save()
-    ctx.translate(-x, -y)
-    for (const obj of objects) {
-      renderAnnotationObject(ctx, obj, false)
+    if (objects.length > 0) {
+      ctx.save()
+      ctx.translate(-x, -y)
+      for (const obj of objects) {
+        renderAnnotationObject(ctx, obj, false)
+      }
+      ctx.restore()
     }
-    ctx.restore()
 
     return canvas
   }
@@ -1373,9 +1379,12 @@ export default function ScreenshotEditor({
     onClose()
   }
 
-  // 确定：复制到剪贴板并退出
-  const handleConfirm = async () => {
-    const finalCanvas = renderFinalCroppedCanvas()
+  // 确定：复制到剪贴板并退出（支持指定目标矩形，如未选取时双击快速复制全屏或候选窗口）
+  const handleConfirm = async (targetRect?: Rect | null | React.MouseEvent) => {
+    const isRect = (r: unknown): r is Rect =>
+      typeof r === 'object' && r !== null && 'x' in r && 'y' in r && 'width' in r && 'height' in r
+    const rect = isRect(targetRect) ? targetRect : selection
+    const finalCanvas = renderFinalCroppedCanvas(rect)
     if (!finalCanvas) return
     const dataUrl = finalCanvas.toDataURL('image/png')
 
@@ -1512,17 +1521,17 @@ export default function ScreenshotEditor({
       {/* 尚未选取时的操作指引 */}
       {!selection && isLoaded && (
         <div className="pointer-events-none absolute top-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full border border-white/20 bg-black/85 px-4 py-1.5 text-xs text-white/95 shadow-2xl backdrop-blur-md">
-          <span>{t('单击自动选取窗口 · 拖拽自由框选 · 右键退出')}</span>
+          <span>{t('单击选取窗口 · 拖拽自由框选 · 双击复制 · 右键退出')}</span>
           <span className="text-white/40">|</span>
           <span className="text-white/60">{t('Shift 换色 · 双击反引号唤出')}</span>
         </div>
       )}
 
-      {/* 自动捕捉候选窗口的实时尺寸展示 */}
+      {/* 自动捕捉候选窗口的实时尺寸展示在左上角 */}
       {!selection && hoveredWindowRect && (
         <div
           style={{
-            left: `${Math.max(10, Math.min(window.innerWidth - 110, hoveredWindowRect.x + hoveredWindowRect.width - 92))}px`,
+            left: `${Math.max(10, Math.min(window.innerWidth - 110, hoveredWindowRect.x))}px`,
             top: `${hoveredWindowRect.y >= 32 ? hoveredWindowRect.y - 28 : hoveredWindowRect.y + 8}px`,
           }}
           className="pointer-events-none absolute z-30 flex items-center justify-center rounded-md bg-black/85 px-2 py-0.8 font-mono text-[11px] font-bold text-sky-400 shadow-lg backdrop-blur-sm border border-sky-400/30"
@@ -1531,11 +1540,11 @@ export default function ScreenshotEditor({
         </div>
       )}
 
-      {/* 实时选框尺寸展示在右上角 */}
+      {/* 实时选框尺寸展示在左上角 */}
       {selection && (selection.width > 2 || selection.height > 2) && (
         <div
           style={{
-            left: `${Math.max(10, Math.min(window.innerWidth - 110, selection.x + selection.width - 92))}px`,
+            left: `${Math.max(10, Math.min(window.innerWidth - 110, selection.x))}px`,
             top: `${selection.y >= 32 ? selection.y - 28 : selection.y + 8}px`,
           }}
           className="pointer-events-none absolute z-30 flex items-center justify-center rounded-md bg-black/85 px-2 py-0.8 font-mono text-[11px] font-bold text-sky-400 shadow-lg backdrop-blur-sm border border-sky-400/30"

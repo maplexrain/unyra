@@ -168,10 +168,103 @@ describe('实用工具箱后端与原生桥 (Tools & Screenshot)', () => {
       expect(pos).toEqual({ x: 41, y: 41 })
     })
 
-    it('选框尺寸实时格式化在右上角', () => {
+    it('选框尺寸实时格式化在左上角', () => {
       const sel = { x: 100, y: 200, width: 853.4, height: 480.2 }
       const label = `${Math.round(sel.width)} × ${Math.round(sel.height)}`
       expect(label).toBe('853 × 480')
+    })
+
+    it('窗口遮挡检测：被覆盖的下层窗口不可视时禁止自动吸附选取，仅在露出的可视区域才能选取', () => {
+      // 窗口层级（从顶到底）：
+      // 0. 上层前景大窗口 A: (100, 100, 800, 600)
+      // 1. 下层背景小窗口 B: (500, 300, 600, 400) [位于 [500..900, 300..700] 被 A 遮挡，[900..1100] 露出]
+      const sysRects = [
+        { x: 100, y: 100, width: 800, height: 600, title: 'Window A (Front)' },
+        { x: 500, y: 300, width: 600, height: 400, title: 'Window B (Back)' },
+        { x: 0, y: 0, width: 1920, height: 1040, title: 'WorkArea' },
+      ]
+
+      // 1. 光标位于 (600, 400)，处于窗口 A 与窗口 B 的重叠交集区
+      // 此时窗口 B 被前方的窗口 A 遮挡覆盖，因此不可视，绝不能选取 B，必须选取 A
+      const hitOverlap = detectWindowUnderCursor(600, 400, null, sysRects, 1920, 1080)
+      expect(hitOverlap.title).toBe('Window A (Front)')
+      expect(hitOverlap).toEqual({ x: 100, y: 100, width: 800, height: 600, title: 'Window A (Front)' })
+
+      // 2. 光标移动到 (1000, 500)，处于窗口 B 未被 A 遮挡的露出可视区域
+      // 此时 B 在该区域可视，可以被自动选取
+      const hitExposed = detectWindowUnderCursor(1000, 500, null, sysRects, 1920, 1080)
+      expect(hitExposed.title).toBe('Window B (Back)' )
+      expect(hitExposed).toEqual({ x: 500, y: 300, width: 600, height: 400, title: 'Window B (Back)' })
+
+      // 3. 被完全遮挡覆盖的完全隐蔽窗口 C (100% 覆盖)
+      const occludedSysRects = [
+        { x: 0, y: 0, width: 1920, height: 1080, title: 'Maximized Chrome' },
+        { x: 200, y: 200, width: 500, height: 400, title: 'Covered Notepad' },
+        { x: 0, y: 0, width: 1920, height: 1040, title: 'WorkArea' },
+      ]
+      // 光标在 Notepad 区域内，但因为 Notepad 被全屏 Chrome 100% 覆盖，绝不能选取 Notepad，只能选取 Chrome
+      const hitOccluded = detectWindowUnderCursor(300, 300, null, occludedSysRects, 1920, 1080)
+      expect(hitOccluded.title).toBe('Maximized Chrome')
+    })
+
+    it('未选取与选取后双击快速复制截图到粘贴板并退出', () => {
+      let isConfirmed = false
+      let confirmedTarget: { x: number; y: number; width: number; height: number } | null = null
+
+      const handleConfirm = (target: { x: number; y: number; width: number; height: number }) => {
+        isConfirmed = true
+        confirmedTarget = target
+      }
+
+      let selection: { x: number; y: number; width: number; height: number } | null = null
+      let hoveredWindowRect: { x: number; y: number; width: number; height: number } | null = null
+
+      const handleDoubleClick = (clientX: number, clientY: number) => {
+        if (selection) {
+          const inside =
+            clientX >= selection.x &&
+            clientX <= selection.x + selection.width &&
+            clientY >= selection.y &&
+            clientY <= selection.y + selection.height
+          if (inside) {
+            handleConfirm(selection)
+            return
+          }
+          return
+        }
+
+        const target = hoveredWindowRect || { x: 0, y: 0, width: 1920, height: 1080 }
+        handleConfirm(target)
+      }
+
+      // 1. 截图后未选取，悬停在候选窗口上双击：快速截取该窗口并退出
+      hoveredWindowRect = { x: 200, y: 150, width: 800, height: 600 }
+      handleDoubleClick(300, 200)
+      expect(isConfirmed).toBe(true)
+      expect(confirmedTarget).toEqual({ x: 200, y: 150, width: 800, height: 600 })
+
+      // 2. 截图后未选取，在空白桌面双击：快速截取全屏并退出
+      isConfirmed = false
+      confirmedTarget = null
+      hoveredWindowRect = null
+      handleDoubleClick(500, 500)
+      expect(isConfirmed).toBe(true)
+      expect(confirmedTarget).toEqual({ x: 0, y: 0, width: 1920, height: 1080 })
+
+      // 3. 截图选取后，在选区内部双击：快速截取当前选区并退出
+      isConfirmed = false
+      confirmedTarget = null
+      selection = { x: 100, y: 100, width: 400, height: 300 }
+      handleDoubleClick(200, 200)
+      expect(isConfirmed).toBe(true)
+      expect(confirmedTarget).toEqual({ x: 100, y: 100, width: 400, height: 300 })
+
+      // 4. 截图选取后，在选区外部双击：不触发确定
+      isConfirmed = false
+      confirmedTarget = null
+      handleDoubleClick(800, 800)
+      expect(isConfirmed).toBe(false)
+      expect(confirmedTarget).toBeNull()
     })
 
     it('窗口智能捕捉算法能从多个重叠窗口中精准匹配光标所在的最小窗口', () => {
