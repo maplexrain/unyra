@@ -1,0 +1,176 @@
+/**
+ * 这个文件负责系统层级全屏截图窗口（独立 BrowserWindow）的全部：
+ * 桌面全屏采集、无黑闪开窗、画面加载、钉图/复制/保存中转与关窗。
+ *
+ * 类似 examWindow 与 traceWindow：与主窗口共用同一份渲染产物，通过 ?screenshotWindow=1 分支。
+ * 覆盖整个目标显示器，置顶置显，零黑帧闪烁。
+ */
+import { BrowserWindow, desktopCapturer, ipcMain, screen, clipboard, nativeImage, dialog } from 'electron'
+import fsp from 'node:fs/promises'
+import path from 'node:path'
+import { t } from '../i18n'
+import { DEV_SERVER_URL } from './startup'
+import { attachConsoleForwarding } from './windows'
+
+let screenshotWindow: BrowserWindow | null = null
+let capturedImageDataUrl: string | null = null
+
+function hostWindow(): BrowserWindow | null {
+  const win = BrowserWindow.getAllWindows().find((w) => w !== screenshotWindow && !w.isDestroyed())
+  return win ?? null
+}
+
+function sendToHost(channel: string, payload: unknown): void {
+  const win = hostWindow()
+  if (!win || win.webContents.isDestroyed()) return
+  win.webContents.send(channel, payload)
+}
+
+export async function openScreenshotWindow(): Promise<{ ok: boolean; error?: string }> {
+  if (screenshotWindow && !screenshotWindow.isDestroyed()) {
+    screenshotWindow.focus()
+    return { ok: true }
+  }
+
+  try {
+    // 1. 获取光标所在显示器或主显示器
+    const cursorPoint = screen.getCursorScreenPoint()
+    const display = screen.getDisplayNearestPoint(cursorPoint) || screen.getPrimaryDisplay()
+    const { x, y, width, height } = display.bounds
+    const scaleFactor = display.scaleFactor || 1
+
+    // 2. 截取该显示器的完整高清桌面
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: {
+        width: Math.round(width * scaleFactor),
+        height: Math.round(height * scaleFactor),
+      },
+    })
+
+    if (!sources || sources.length === 0 || !sources[0].thumbnail || sources[0].thumbnail.isEmpty()) {
+      return { ok: false, error: t('未能获取屏幕截图画面') }
+    }
+
+    capturedImageDataUrl = sources[0].thumbnail.toDataURL()
+
+    // 3. 创建贴合整个屏幕的顶层全屏无边框窗口
+    const win = new BrowserWindow({
+      x,
+      y,
+      width,
+      height,
+      frame: false,
+      transparent: false,
+      backgroundColor: '#000000',
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      movable: false,
+      show: false, // 页面加载并绘制好首帧后再显示，彻底避免黑屏闪烁
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.cjs'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+      },
+    })
+
+    screenshotWindow = win
+    attachConsoleForwarding(win)
+
+    win.on('closed', () => {
+      screenshotWindow = null
+      capturedImageDataUrl = null
+    })
+
+    if (DEV_SERVER_URL) {
+      await win.loadURL(DEV_SERVER_URL + '?screenshotWindow=1')
+    } else {
+      await win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), {
+        query: { screenshotWindow: '1' },
+      })
+    }
+
+    return { ok: true }
+  } catch (err) {
+    if (screenshotWindow && !screenshotWindow.isDestroyed()) {
+      screenshotWindow.destroy()
+    }
+    screenshotWindow = null
+    capturedImageDataUrl = null
+    return { ok: false, error: err instanceof Error ? err.message : t('截图窗口创建失败') }
+  }
+}
+
+export function closeScreenshotWindow(): void {
+  if (screenshotWindow && !screenshotWindow.isDestroyed()) {
+    screenshotWindow.close()
+  }
+  screenshotWindow = null
+  capturedImageDataUrl = null
+}
+
+export function registerScreenshotIpc(): void {
+  // 1. 触发系统级全屏截图开窗
+  ipcMain.handle('screenshot:open', async () => openScreenshotWindow())
+
+  // 2. 截图窗口获取当前冻结桌面图像
+  ipcMain.handle('screenshot:getImage', () => {
+    return capturedImageDataUrl
+  })
+
+  // 3. 截图窗口首帧渲染就绪，无闪烁显示并聚焦
+  ipcMain.on('screenshot:ready', () => {
+    if (screenshotWindow && !screenshotWindow.isDestroyed()) {
+      screenshotWindow.show()
+      screenshotWindow.focus()
+    }
+  })
+
+  // 4. 退出 / 取消截图
+  ipcMain.on('screenshot:close', () => {
+    closeScreenshotWindow()
+  })
+
+  // 5. 确定：写入系统原生剪贴板并关闭截图窗口
+  ipcMain.handle('screenshot:confirm', (_e, dataUrl: string) => {
+    try {
+      const img = nativeImage.createFromDataURL(dataUrl)
+      const clip = clipboard as unknown as { writeImage?: (img: unknown) => void }
+      if (typeof clip.writeImage === 'function') {
+        clip.writeImage(img)
+      }
+      closeScreenshotWindow()
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : t('写入剪贴板失败') }
+    }
+  })
+
+  // 6. 指定（置顶贴图）：把贴图数据发送回主窗口，并关闭截图窗口
+  ipcMain.on('screenshot:pin', (_e, pinnedItem: unknown) => {
+    sendToHost('tools:pinned-screenshot', pinnedItem)
+    closeScreenshotWindow()
+  })
+
+  // 7. 下载 / 保存截图文件
+  ipcMain.handle('screenshot:save', async (_e, payload: { suggestedName?: string; dataUrl: string }) => {
+    try {
+      const win = hostWindow()
+      const defPath = payload.suggestedName || `Screenshot_${Date.now()}.png`
+      const res = await dialog.showSaveDialog(screenshotWindow || (win as BrowserWindow), {
+        title: t('保存截图'),
+        defaultPath: defPath,
+        filters: [{ name: 'PNG Image', extensions: ['png'] }],
+      })
+      if (res.canceled || !res.filePath) return { ok: true, canceled: true }
+      const base64Data = payload.dataUrl.replace(/^data:image\/\w+;base64,/, '')
+      await fsp.writeFile(res.filePath, Buffer.from(base64Data, 'base64'))
+      closeScreenshotWindow()
+      return { ok: true, path: res.filePath }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : t('保存截图失败') }
+    }
+  })
+}

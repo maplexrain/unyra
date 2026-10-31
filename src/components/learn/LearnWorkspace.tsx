@@ -561,11 +561,35 @@ export default function LearnWorkspace({
   const [pinnedScreenshots, setPinnedScreenshots] = useState<PinnedItem[]>([])
   const [isCapturing, setIsCapturing] = useState(false)
 
+  // 监听来自系统层级全屏截图窗口传回的置顶贴图
+  useEffect(() => {
+    const bridge = native()
+    if (bridge.tools?.onPinnedScreenshot) {
+      const unsub = bridge.tools.onPinnedScreenshot((item) => {
+        if (item && typeof item === 'object' && 'dataUrl' in item) {
+          setPinnedScreenshots((prev) => [...prev, item as PinnedItem])
+          onToast(t('已生成置顶贴图'))
+        }
+      })
+      return unsub
+    }
+  }, [onToast])
+
   const handleStartScreenshot = useCallback(async () => {
     if (isCapturing) return
     setIsCapturing(true)
     try {
       const bridge = native()
+      // 1. Electron 桌面端优先调起系统层级全屏截图窗口
+      if (bridge.tools?.openScreenshot) {
+        const res = await bridge.tools.openScreenshot()
+        if (!res.ok) {
+          onToast(res.error || t('未能启动截图'))
+        }
+        return
+      }
+
+      // 2. WebUI 模式通过服务端/浏览器捕获并在工作区唤起全屏编辑
       if (bridge.tools?.captureScreen) {
         const res = await bridge.tools.captureScreen()
         if (res.ok) {

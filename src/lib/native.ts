@@ -552,9 +552,17 @@ export interface NativeBridge {
   }
   tools?: {
     captureScreen(): Promise<ScreenCaptureResult>
+    openScreenshot?(): Promise<{ ok: boolean; error?: string }>
+    getScreenshotImage?(): Promise<string | null>
+    notifyScreenshotReady?(): void
+    closeScreenshot?(): void
+    confirmScreenshot?(dataUrl: string): Promise<ImageCopyResult>
+    pinScreenshot?(pinnedItem: unknown): void
+    saveScreenshot?(payload: ImageSavePayload): Promise<ImageSaveResult>
     copyImage(dataUrl: string): Promise<ImageCopyResult>
     saveImage(payload: ImageSavePayload): Promise<ImageSaveResult>
     startRecord?(): Promise<ScreenRecordResult>
+    onPinnedScreenshot?(cb: (item: unknown) => void): () => void
   }
 }
 

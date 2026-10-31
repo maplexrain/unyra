@@ -46,7 +46,7 @@ Write-Output $str;
       const res = await new Promise<{ ok: boolean; dataUrl?: string; error?: string }>((resolve) => {
         execFile(
           'powershell.exe',
-          ['-NoProfile', '-Command', script],
+          ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', script],
           { maxBuffer: 40 * 1024 * 1024, timeout: 6000 },
           (err, stdout) => {
             if (err) {

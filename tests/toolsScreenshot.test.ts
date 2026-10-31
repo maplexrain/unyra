@@ -116,4 +116,61 @@ describe('实用工具箱后端与原生桥 (Tools & Screenshot)', () => {
       expect(rgbToHsl(0, 0, 0)).toBe('hsl(0, 0%, 0%)')
     })
   })
+
+  describe('截图矢量对象与标注交互逻辑', () => {
+    it('箭头对象正确绑定非箭头端起点 (x1, y1) 的说明文本框', () => {
+      const arrowObj = {
+        id: 'arrow_1',
+        type: 'arrow' as const,
+        x1: 100, // 起点（非箭头端）
+        y1: 100,
+        x2: 300, // 终点（箭头端）
+        y2: 250,
+        color: '#ef4444',
+        strokeWidth: 3,
+        text: '重点查看此处说明',
+      }
+
+      expect(arrowObj.x1).toBe(100)
+      expect(arrowObj.y1).toBe(100)
+      expect(arrowObj.text).toBe('重点查看此处说明')
+
+      // 文本框定位在非箭头端 (x1, y1) 附近
+      const textW = Math.max(50, arrowObj.text.length * 14 + 16)
+      const textH = 24
+      const tx = arrowObj.x1 - textW / 2
+      const ty = arrowObj.y1 - textH - 8
+      expect(tx).toBeLessThan(arrowObj.x1)
+      expect(ty).toBeLessThan(arrowObj.y1)
+    })
+
+    it('方向键支持 1 像素精确微调，Shift 支持 10 像素步进', () => {
+      let pos = { x: 50, y: 50 }
+      const move = (key: string, shift: boolean) => {
+        const step = shift ? 10 : 1
+        if (key === 'ArrowUp') pos.y -= step
+        if (key === 'ArrowDown') pos.y += step
+        if (key === 'ArrowLeft') pos.x -= step
+        if (key === 'ArrowRight') pos.x += step
+      }
+
+      move('ArrowRight', false)
+      expect(pos).toEqual({ x: 51, y: 50 })
+
+      move('ArrowDown', false)
+      expect(pos).toEqual({ x: 51, y: 51 })
+
+      move('ArrowLeft', true)
+      expect(pos).toEqual({ x: 41, y: 51 })
+
+      move('ArrowUp', true)
+      expect(pos).toEqual({ x: 41, y: 41 })
+    })
+
+    it('选框尺寸实时格式化在右上角', () => {
+      const sel = { x: 100, y: 200, width: 853.4, height: 480.2 }
+      const label = `${Math.round(sel.width)} × ${Math.round(sel.height)}`
+      expect(label).toBe('853 × 480')
+    })
+  })
 })

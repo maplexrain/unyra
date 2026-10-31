@@ -37,6 +37,7 @@ import { createWindow, showMainWindow } from './app/windows'
 import { setupWebBrowser } from './app/webSession'
 import { closeExamWindow } from './app/examWindow'
 import { registerTraceIpc } from './app/traceWindow'
+import { registerScreenshotIpc } from './app/screenshotWindow'
 import { createTray, markQuitting } from './app/tray'
 import { appUserModelId } from './app/identity'
 import { installAppMenu } from './app/icon'
@@ -85,6 +86,7 @@ function main(): void {
   // 上下文轨迹窗口（trace:open / trace:push，见 app/traceWindow）：与其它 IPC 一样，
   // 必须在 app ready 之前把 handler 挂上——渲染层可能很早就来问
   registerTraceIpc()
+  registerScreenshotIpc()
   // 抓网页：只有 web:fetch 一个频道（见 electron/web）。放这里是因为它与其余 IPC 一样，
   // 必须在 app ready 之前就把 handler 挂上——渲染层可能很早就来问
   registerWebIpc()

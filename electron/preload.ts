@@ -900,9 +900,21 @@ const api = {
   },
   tools: {
     captureScreen: (): Promise<ScreenCaptureResult> => ipcRenderer.invoke('tools:capture-screen'),
+    openScreenshot: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('screenshot:open'),
+    getScreenshotImage: (): Promise<string | null> => ipcRenderer.invoke('screenshot:getImage'),
+    notifyScreenshotReady: (): void => { ipcRenderer.send('screenshot:ready') },
+    closeScreenshot: (): void => { ipcRenderer.send('screenshot:close') },
+    confirmScreenshot: (dataUrl: string): Promise<ImageCopyResult> => ipcRenderer.invoke('screenshot:confirm', dataUrl),
+    pinScreenshot: (pinnedItem: unknown): void => { ipcRenderer.send('screenshot:pin', pinnedItem) },
+    saveScreenshot: (payload: ImageSavePayload): Promise<ImageSaveResult> => ipcRenderer.invoke('screenshot:save', payload),
     copyImage: (dataUrl: string): Promise<ImageCopyResult> => ipcRenderer.invoke('tools:copy-image', dataUrl),
     saveImage: (payload: ImageSavePayload): Promise<ImageSaveResult> => ipcRenderer.invoke('tools:save-image', payload),
     startRecord: (): Promise<ScreenRecordResult> => ipcRenderer.invoke('tools:record-screen'),
+    onPinnedScreenshot: (cb: (item: unknown) => void): (() => void) => {
+      const handler = (_: unknown, item: unknown) => cb(item)
+      ipcRenderer.on('tools:pinned-screenshot', handler)
+      return () => { ipcRenderer.removeListener('tools:pinned-screenshot', handler) }
+    },
   },
 }
 
