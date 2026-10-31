@@ -1,9 +1,8 @@
 /**
  * 性能优化与监控专项测试（VFS 批处理、缓存容量封顶、常驻页签释放与指标聚合）。
  */
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
-  initVfsStoreSync,
   registerStoreSyncListener,
   flushVfsStoreSync,
   getVfsSyncStats,
@@ -26,8 +25,11 @@ describe('VFS 密集文件写入微批处理调度器', () => {
 
     // 模拟 AI 密集创建 5 个超级文档文件
     for (let i = 0; i < 5; i++) {
+      const p = `docs/test-goal/node-1/superdocs/test-${i}.html`
       queueVfsStoreEvent({
-        path: `docs/test-goal/node-1/superdocs/test-${i}.html`,
+        path: p,
+        relativePath: p,
+        source: 'agent',
         action: 'write',
         content: `<h1>实验 ${i}</h1>`,
       })
