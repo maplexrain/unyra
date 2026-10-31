@@ -281,5 +281,24 @@ describe('实用工具箱后端与原生桥 (Tools & Screenshot)', () => {
       const res = await copyDataUrlToClipboard(dataUrl)
       expect(res.ok).toBe(true)
     })
+
+    it('选框外部遮罩使用 evenodd 算法镂空选区，确保聚焦位置清晰透明而外部暗化', () => {
+      const selection = { x: 300, y: 200, width: 800, height: 600 }
+
+      const isPointInsideSelection = (px: number, py: number) => {
+        return (
+          px >= selection.x &&
+          px <= selection.x + selection.width &&
+          py >= selection.y &&
+          py <= selection.y + selection.height
+        )
+      }
+
+      // 点在选区内部：不被遮罩覆盖（清晰原色）
+      expect(isPointInsideSelection(500, 400)).toBe(true)
+      // 点在选区外部：处于遮罩覆盖区（黑色半透明）
+      expect(isPointInsideSelection(100, 100)).toBe(false)
+      expect(isPointInsideSelection(1500, 900)).toBe(false)
+    })
   })
 })

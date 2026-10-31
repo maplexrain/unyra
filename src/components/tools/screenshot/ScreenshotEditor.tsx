@@ -837,9 +837,18 @@ export default function ScreenshotEditor({
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.scale(dpr, dpr)
 
-    // 1. 已选区状态：绘制选区边框与标注对象（零变色与暗化遮罩，原图 100% 真实色彩）
+    // 1. 已选区状态：选区外部绘制黑色半透明遮罩，聚焦指示当前选框
     if (selection && (selection.width > 0 || selection.height > 0)) {
       const { x, y, width, height } = selection
+
+      // 选区外部黑色半透明遮罩（聚焦突出当前选区位置，选区内部保持原色清晰）
+      ctx.save()
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
+      ctx.beginPath()
+      ctx.rect(0, 0, w, h)
+      ctx.rect(x, y, width, height)
+      ctx.fill('evenodd')
+      ctx.restore()
 
       // 选区边框（精致天蓝边线）
       ctx.strokeStyle = '#38bdf8'
