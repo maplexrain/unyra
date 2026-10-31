@@ -26,11 +26,53 @@ interface RecentWrite {
 }
 
 export class ReactiveVfsBus {
-  /** 内存数据缓存：normalizedPath -> parsedData */
+  /** 内存数据缓存：normalizedPath -> parsedData (LRU 封顶) */
   private cache = new Map<string, unknown>()
 
-  /** 原始文本缓存：normalizedPath -> rawContent */
+  /** 原始文本缓存：normalizedPath -> rawContent (LRU 封顶) */
   private rawCache = new Map<string, string>()
+
+  /** 内存缓存最大条目上限，防止长时间运行导致老生代内存膨胀 */
+  private static readonly MAX_CACHE_ENTRIES = 300
+
+  private setRawCacheEntry(norm: string, rawStr: string): void {
+    if (this.rawCache.has(norm)) {
+      this.rawCache.delete(norm)
+    }
+    this.rawCache.set(norm, rawStr)
+    while (this.rawCache.size > ReactiveVfsBus.MAX_CACHE_ENTRIES) {
+      const oldest = this.rawCache.keys().next().value
+      if (oldest === undefined) break
+      this.rawCache.delete(oldest)
+    }
+  }
+
+  private setCacheEntry(norm: string, data: unknown): void {
+    if (this.cache.has(norm)) {
+      this.cache.delete(norm)
+    }
+    this.cache.set(norm, data)
+    while (this.cache.size > ReactiveVfsBus.MAX_CACHE_ENTRIES) {
+      const oldest = this.cache.keys().next().value
+      if (oldest === undefined) break
+      this.cache.delete(oldest)
+    }
+  }
+
+  /** 获取当前 VFS 缓存指标 */
+  public getCacheStats(): { dataCount: number; rawCount: number; maxEntries: number } {
+    return {
+      dataCount: this.cache.size,
+      rawCount: this.rawCache.size,
+      maxEntries: ReactiveVfsBus.MAX_CACHE_ENTRIES,
+    }
+  }
+
+  /** 手动清空所有内存缓存 */
+  public clearAllCache(): void {
+    this.cache.clear()
+    this.rawCache.clear()
+  }
 
   /** 实体级订阅者：entityId -> Set<Callback> */
   private entityListeners = new Map<string, Set<FileChangeCallback>>()
@@ -219,8 +261,8 @@ export class ReactiveVfsBus {
     this.recordSelfWrite(norm, hash, txId)
 
     // 0ms 乐观更新缓存
-    this.cache.set(norm, parsedData)
-    this.rawCache.set(norm, rawStr)
+    this.setCacheEntry(norm, parsedData)
+    this.setRawCacheEntry(norm, rawStr)
 
     // 派发事件给本端订阅者
     const event: FileChangeEvent<T> = {
@@ -275,13 +317,13 @@ export class ReactiveVfsBus {
       this.cache.delete(norm)
       this.rawCache.delete(norm)
     } else if (content !== undefined) {
-      this.rawCache.set(norm, content)
+      this.setRawCacheEntry(norm, content)
       parsedData = this.parseContent(
         content,
         matched?.entity.format,
         matched?.entity.defaultValue,
       )
-      this.cache.set(norm, parsedData)
+      this.setCacheEntry(norm, parsedData)
     }
 
     const event: FileChangeEvent = {

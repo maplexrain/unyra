@@ -20,7 +20,7 @@
 
 import { useSyncExternalStore } from 'react'
 
-/** 常驻几片。默认提升至 8 片，充分覆盖多文档对照与来回切换，避免 5 个页签以上频繁反复销毁与重建 DOM */
+/** 常驻几片。默认 8 片，兼顾多页签切换；支持一键释放或动态收敛以降低内存与 DOM 负荷 */
 export const RESIDENT_MAX = 8
 
 /** 记一次激活：最新的排最前，去重，超出上限的丢掉 */
@@ -92,4 +92,21 @@ export function readRecentTabs(): readonly string[] {
 /** 最近激活过的页签（新的在前）；需要响应排序变化的调用方才订阅它 */
 export function useRecentTabs(): readonly string[] {
   return useSyncExternalStore(subscribeRecent, readRecentTabs)
+}
+
+/** 清除所有非激活的常驻页签 DOM（性能监控面板或内存告警时一键释放） */
+export function clearResidentTabs(keepId?: string): void {
+  const next = keepId ? [keepId] : []
+  recent = next
+  snapshot = next
+  for (const listener of listeners) listener()
+}
+
+/** 获取常驻页签统计数据 */
+export function getResidentStats(): { count: number; max: number; ids: readonly string[] } {
+  return {
+    count: snapshot.length,
+    max: RESIDENT_MAX,
+    ids: snapshot,
+  }
 }

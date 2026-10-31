@@ -1,3 +1,21 @@
+export interface CanvasPerfStats {
+  totalCards: number
+  visibleCards: number
+  totalEdges: number
+  zoom: number
+}
+
+let lastCanvasStats: CanvasPerfStats = {
+  totalCards: 0,
+  visibleCards: 0,
+  totalEdges: 0,
+  zoom: 1,
+}
+
+export function getCanvasPerfStats(): Readonly<CanvasPerfStats> {
+  return lastCanvasStats
+}
+
 /**
  * 这个文件负责什么：**结构画布**——一张固定视角的 3D 平面上的类型化节点图
  * （页签 kind 'outline' 的新形态）。
@@ -507,6 +525,61 @@ export const StructureCanvas = memo(function StructureCanvas({
     })
   }, [cards, draft])
   const byId = useMemo(() => new Map(displayCards.map((c) => [c.uuid, c])), [displayCards])
+
+  // 性能优化：预先构建上游边索引集合与归属缓存，消除卡片渲染时的 O(N*E) 暴力搜索
+  const upstreamEdgeSet = useMemo(() => {
+    const set = new Set<string>()
+    for (const e of edges) {
+      set.add(e.to)
+    }
+    return set
+  }, [edges])
+
+  const leafOwnerCache = useMemo(() => {
+    const map = new Map<string, string | null>()
+    for (const c of displayCards) {
+      if (c.kind === 'exam' || c.kind === 'superdoc') {
+        const loc = locateUuid(store, c.uuid)
+        map.set(c.uuid, loc?.kind === 'exam' || loc?.kind === 'superdoc' ? loc.docId : null)
+      }
+    }
+    return map
+  }, [displayCards, store])
+
+  // 性能优化：计算当前视口在世界坐标系下的包围盒（保留 350px 缓冲垫防边缘闪烁）
+  const viewportBox = useMemo(() => {
+    if (!view.width || !view.height) return null
+    const z = Math.max(camera.zoom, 0.05)
+    const pad = 350
+    return {
+      left: -camera.x / z - pad,
+      top: -camera.y / z - pad,
+      right: (-camera.x + view.width) / z + pad,
+      bottom: (-camera.y + view.height) / z + pad,
+    }
+  }, [view.width, view.height, camera.x, camera.y, camera.zoom])
+
+  // 记录实时画布性能指标
+  useEffect(() => {
+    const visibleCount = !viewportBox
+      ? displayCards.length
+      : displayCards.filter((c) => {
+          const h = height(c)
+          return (
+            c.x <= viewportBox.right &&
+            c.x + CARD_W >= viewportBox.left &&
+            c.y <= viewportBox.bottom &&
+            c.y + h >= viewportBox.top
+          )
+        }).length
+    lastCanvasStats = {
+      totalCards: displayCards.length,
+      visibleCards: visibleCount,
+      totalEdges: edges.length,
+      zoom: camera.zoom,
+    }
+  }, [displayCards, edges.length, camera.zoom, viewportBox, height])
+
 
   /**
    * 从列表拖出一张卡时高亮**能当它落点**的卡。落点认类型：
@@ -1787,13 +1860,22 @@ export const StructureCanvas = memo(function StructureCanvas({
            * 树的上游：线可能落在文档卡上，也可能落在大纲卡上（接大纲的嵌套子级）。
            * 没接进树的置灰提示（游离）；入口是根，天生没有上级。
            */
-          const hasUpstream = edges.some((e) => e.to === card.uuid || e.to === outlineUuid(card.uuid))
+          // 性能优化：直接从 O(1) 索引查找
+          const hasUpstream = upstreamEdgeSet.has(card.uuid) || upstreamEdgeSet.has(outlineUuid(card.uuid))
           const unassigned = card.kind === 'doc' && !card.entry && !hasUpstream
           // 入口就是根文档自己（一张图有且只有一个）：挂「入口」徽章
           const authoritativeRoot = card.entry === true
-          // 试卷/超级文档卡「生成」的落点：挂件归属的文档（生成工作流的入口）
-          const loc = card.kind === 'exam' || card.kind === 'superdoc' ? locateUuid(store, card.uuid) : null
-          const leafOwnerNodeId = loc?.kind === 'exam' || loc?.kind === 'superdoc' ? loc.docId : null
+          // 性能优化：直接从预热缓存中获取
+          const leafOwnerNodeId = leafOwnerCache.get(card.uuid) ?? null
+
+          // 性能优化：视口包围盒裁剪，视口外的普通卡片仅渲染轻量占位容器，削减数千个复杂子 DOM
+          const inView = !viewportBox || (
+            card.x <= viewportBox.right &&
+            card.x + CARD_W >= viewportBox.left &&
+            card.y <= viewportBox.bottom &&
+            card.y + h >= viewportBox.top
+          )
+          const mustRender = inView || selected || multi || isHovered || lifted || flashId === card.uuid || (candidateIds?.has(card.uuid) ?? false) || tourOpen
           return (
             <Fragment key={card.uuid}>
             <div
@@ -1827,6 +1909,8 @@ export const StructureCanvas = memo(function StructureCanvas({
                 cursor: lifted ? 'grabbing' : undefined,
               }}
             >
+              {mustRender ? (
+                <>
               {/*
                 标题行高度**必须**等于 OUTLINE_HEAD：目标项圆点的 y 是按这个常量算的
                 （slotAnchorY = OUTLINE_HEAD + 行号 × 行高）。这里一旦改成 minHeight 或加
@@ -2109,6 +2193,12 @@ export const StructureCanvas = memo(function StructureCanvas({
                   className="pointer-events-none absolute -left-[7.5px] h-3.5 w-3.5 -translate-y-1/2 rounded-full border-2 border-card bg-seal"
                   style={{ top: EDGE_ANCHOR_Y }}
                 />
+              )}
+                </>
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-[11px] text-ink-faint/45 select-none font-medium px-2 truncate">
+                  {card.title}
+                </div>
               )}
             </div>
             {/*
