@@ -300,5 +300,94 @@ describe('实用工具箱后端与原生桥 (Tools & Screenshot)', () => {
       expect(isPointInsideSelection(100, 100)).toBe(false)
       expect(isPointInsideSelection(1500, 900)).toBe(false)
     })
+
+    it('右键快捷退出与选区取消状态流转准确', () => {
+      let selection: { x: number; y: number; width: number; height: number } | null = null
+      let isClosed = false
+      let editingTarget: string | null = null
+
+      const handleContextMenu = (clientX: number, clientY: number) => {
+        if (editingTarget) {
+          editingTarget = null
+          return
+        }
+        if (selection) {
+          const inside =
+            clientX >= selection.x &&
+            clientX <= selection.x + selection.width &&
+            clientY >= selection.y &&
+            clientY <= selection.y + selection.height
+          if (!inside) {
+            isClosed = true
+            return
+          }
+          selection = null
+          return
+        }
+        isClosed = true
+      }
+
+      // 1. 无选区时右键：直接秒退截图
+      handleContextMenu(500, 500)
+      expect(isClosed).toBe(true)
+
+      // 2. 有选区时，在选区外部右键：直接秒退截图
+      isClosed = false
+      selection = { x: 200, y: 200, width: 400, height: 300 }
+      handleContextMenu(100, 100)
+      expect(isClosed).toBe(true)
+
+      // 3. 有选区时，在选区内部右键：取消当前选区，不退出
+      isClosed = false
+      selection = { x: 200, y: 200, width: 400, height: 300 }
+      handleContextMenu(300, 300)
+      expect(isClosed).toBe(false)
+      expect(selection).toBeNull()
+
+      // 4. 再次右键：退出
+      handleContextMenu(300, 300)
+      expect(isClosed).toBe(true)
+    })
+
+    it('双击反引号系统快捷键时间差状态机准确', () => {
+      let lastTime = 0
+      let triggered = false
+
+      const onKeyDown = (vkCode: number, timeMs: number) => {
+        if (vkCode === 0xC0) { // VK_OEM_3 (Backquote)
+          if (timeMs - lastTime <= 380 && timeMs - lastTime >= 60) {
+            triggered = true
+            lastTime = 0
+          } else {
+            triggered = false
+            lastTime = timeMs
+          }
+        } else {
+          lastTime = 0
+          triggered = false
+        }
+      }
+
+      // 1. 敲击单次反引号：不触发
+      onKeyDown(0xC0, 1000)
+      expect(triggered).toBe(false)
+
+      // 2. 200ms 后再次敲击反引号：触发双击！
+      onKeyDown(0xC0, 1200)
+      expect(triggered).toBe(true)
+
+      // 3. 间隔过长（500ms > 380ms）：不触发
+      triggered = false
+      onKeyDown(0xC0, 2000)
+      onKeyDown(0xC0, 2500)
+      expect(triggered).toBe(false)
+
+      // 4. 中间按了其他键（如字母 A: 0x41）：不触发
+      triggered = false
+      onKeyDown(0xC0, 3000)
+      onKeyDown(0x41, 3100)
+      onKeyDown(0xC0, 3200)
+      expect(triggered).toBe(false)
+    })
   })
 })

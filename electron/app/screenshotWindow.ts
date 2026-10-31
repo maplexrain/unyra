@@ -13,6 +13,7 @@ import { DEV_SERVER_URL } from './startup'
 import { attachConsoleForwarding } from './windows'
 import { openPinWindow, type PinnedItemPayload } from './pinWindow'
 import { copyDataUrlToClipboard } from './clipboardHelper'
+import { detectSystemWindowRects } from './windowRectsHelper'
 
 let screenshotWindow: BrowserWindow | null = null
 let capturedImageDataUrl: string | null = null
@@ -36,7 +37,9 @@ export async function openScreenshotWindow(): Promise<{ ok: boolean; error?: str
     const { x, y, width, height } = display.bounds
     const scaleFactor = display.scaleFactor || 1
 
-    // 2. 截取该显示器的完整高清桌面
+    // 2. 并发启动：截取桌面高清图像 与 获取真实系统可见窗口边界列表（供自动吸附窗口使用）
+    const rectsPromise = detectSystemWindowRects(display).catch(() => [])
+
     let sources: DesktopCapturerSource[] = []
     try {
       sources = await desktopCapturer.getSources({
@@ -72,34 +75,8 @@ export async function openScreenshotWindow(): Promise<{ ok: boolean; error?: str
       return { ok: false, error: t('未能获取屏幕截图画面') }
     }
 
-    // 收集系统与窗口边界，供截图时自动窗口捕捉使用
-    const sysRects: Array<{ x: number; y: number; width: number; height: number }> = []
-    if (display.workArea) {
-      sysRects.push({
-        x: Math.max(0, display.workArea.x - display.bounds.x),
-        y: Math.max(0, display.workArea.y - display.bounds.y),
-        width: display.workArea.width,
-        height: display.workArea.height,
-      })
-    }
-    sysRects.push({
-      x: 0,
-      y: 0,
-      width: display.bounds.width,
-      height: display.bounds.height,
-    })
-    for (const w of BrowserWindow.getAllWindows()) {
-      if (w !== screenshotWindow && !w.isDestroyed() && w.isVisible() && !w.isMinimized()) {
-        const b = w.getBounds()
-        sysRects.push({
-          x: Math.max(0, b.x - display.bounds.x),
-          y: Math.max(0, b.y - display.bounds.y),
-          width: b.width,
-          height: b.height,
-        })
-      }
-    }
-    capturedSystemRects = sysRects
+    // 收集系统与窗口边界，供截图时自动窗口捕捉使用（由 Win32 API 与 DWM 真实视口计算）
+    capturedSystemRects = await rectsPromise
 
     // 3. 创建贴合整个屏幕的顶层全屏无边框窗口（thickFrame: false 彻底禁用 Windows DWM 开窗缩放放大动画）
     const win = new BrowserWindow({

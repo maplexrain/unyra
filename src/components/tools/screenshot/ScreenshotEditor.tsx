@@ -1460,6 +1460,44 @@ export default function ScreenshotEditor({
     }
   }
 
+  // 右键快捷退出或取消选区
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    // 1. 若当前正在编辑文字，右键取消本次文字编辑
+    if (editingTarget) {
+      setEditingTarget(null)
+      return
+    }
+
+    // 2. 若选中了对象，右键取消选中
+    if (selectedObjectId) {
+      setSelectedObjectId(null)
+      return
+    }
+
+    // 3. 若当前已确立选区：如果在选区外部右键，直接秒关退出截图；如果在选区内部，取消选区
+    if (selection) {
+      const inside =
+        e.clientX >= selection.x &&
+        e.clientX <= selection.x + selection.width &&
+        e.clientY >= selection.y &&
+        e.clientY <= selection.y + selection.height
+      if (!inside) {
+        onClose()
+        return
+      }
+      setSelection(null)
+      setObjects([])
+      setTool('none')
+      return
+    }
+
+    // 4. 无选区状态下，右键直接秒退截屏
+    onClose()
+  }
+
   return (
     <div
       ref={containerRef}
@@ -1467,6 +1505,7 @@ export default function ScreenshotEditor({
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
       onDoubleClick={handleDoubleClick}
+      onContextMenu={handleContextMenu}
       style={{ cursor: currentCursor }}
       className="fixed inset-0 z-[9999] select-none overflow-hidden"
     >
@@ -1482,9 +1521,9 @@ export default function ScreenshotEditor({
       {/* 尚未选取时的操作指引 */}
       {!selection && isLoaded && (
         <div className="pointer-events-none absolute top-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full border border-white/20 bg-black/85 px-4 py-1.5 text-xs text-white/95 shadow-2xl backdrop-blur-md">
-          <span>{t('单击自动选取窗口 · 拖拽自由框选')}</span>
+          <span>{t('单击自动选取窗口 · 拖拽自由框选 · 右键退出')}</span>
           <span className="text-white/40">|</span>
-          <span className="text-white/60">{t('Shift 切换颜色格式 · Esc 退出')}</span>
+          <span className="text-white/60">{t('Shift 换色 · 双击反引号唤出')}</span>
         </div>
       )}
 
