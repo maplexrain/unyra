@@ -191,9 +191,8 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
   /**
    * 前置知识大纲 / 拆层大纲：同一个工作流的两种落点——
    * - 文档卡（右键菜单 / 空大纲卡的按钮）：读那份文档，把「先要学会什么」落成目标项；
-   * - 游离大纲卡（挂在大纲下的那一层）：读它认领的目标项与上级上下文，规划这一层怎么拆。
-   * ownerNodeId 收两种：文档 id 或 `o:` 大纲 uuid（工作流的 target 参数原样带着，
-   * 会话一律锚在一个真实文档上——游离大纲那层锚到目标的根文档）。
+   * - 游离大纲卡 / 挂在大纲下的子大纲卡：读它认领的目标项与上级上下文，规划这一层怎么拆。
+   * ownerNodeId 收两种：文档 id 或 `o:` 大纲 uuid（工作流的 target 参数原样带着）。
    */
   const startGenerateOutline = (nodeId?: string) => {
     if (!hasKey) {
@@ -201,22 +200,97 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
       onOpenSettings()
       return
     }
-    if (nodeId && nodeId.startsWith('o:')) {
-      const found = outlineByMember(getLatest(), nodeId)
+    const currentStore = getLatest()
+    let outlineTarget = nodeId
+    let targetDocId: string | undefined
+    let targetGoalId: string | undefined
+
+    if (outlineTarget && outlineTarget.startsWith('o:')) {
+      const found = outlineByMember(currentStore, outlineTarget)
       if (found?.kind === 'free') {
-        const rootId = getLatest().goals.find((g) => g.id === found.entity.goalId)?.rootNodeId ?? activeNode?.id
-        if (!rootId) return
-        agent.runWorkflow('outline', { nodeId: rootId, params: { target: nodeId } })
-        onToast(t('已请导师规划「{0}」这一层的大纲，大纲页会随写入更新', found.entity.title))
-        return
+        targetGoalId = found.entity.goalId
+        const goal = currentStore.goals.find((g) => g.id === targetGoalId)
+        targetDocId = goal?.rootNodeId || currentStore.nodes.find((n) => n.goalId === targetGoalId)?.id || activeNode?.id
+      } else if (found?.kind === 'attached') {
+        targetDocId = found.docId
+        targetGoalId = found.doc.goalId
       }
-      // o:{文档id} 是附身大纲：按宿主文档走（与文档卡右键同一条路）
-      nodeId = found?.kind === 'attached' ? found.docId : nodeId.slice(2)
+    } else if (outlineTarget) {
+      const doc = nodeById(currentStore, outlineTarget)
+      if (doc) {
+        targetDocId = doc.id
+        targetGoalId = doc.goalId
+        outlineTarget = 'o:' + doc.id
+      }
+    } else if (activeNode) {
+      targetDocId = activeNode.id
+      targetGoalId = activeNode.goalId
+      outlineTarget = 'o:' + activeNode.id
     }
-    const target = nodeId ? nodeById(getLatest(), nodeId) : activeNode
-    if (!target) return
-    agent.runWorkflow('outline', { nodeId: target.id, params: { target: target.id } })
-    onToast(t('已请导师规划「{0}」的大纲，大纲页会随写入更新', target.title))
+
+    if (!targetGoalId && activeGoal) {
+      targetGoalId = activeGoal.id
+    }
+    if (!targetGoalId && activeGoalId) {
+      targetGoalId = activeGoalId
+    }
+    if (!targetGoalId && targetDocId) {
+      targetGoalId = nodeById(currentStore, targetDocId)?.goalId
+    }
+
+    if (!targetGoalId) {
+      onToast(t('未找到关联的学习目标，无法生成大纲'))
+      return
+    }
+
+    const finalNodeId =
+      targetDocId ||
+      currentStore.goals.find((g) => g.id === targetGoalId)?.rootNodeId ||
+      currentStore.nodes.find((n) => n.goalId === targetGoalId)?.id ||
+      activeNodeId ||
+      undefined
+
+    const finalOutlineTarget = outlineTarget || (finalNodeId ? 'o:' + finalNodeId : '')
+    const outlineEntity = finalOutlineTarget ? outlineByMember(currentStore, finalOutlineTarget) : null
+    const title =
+      outlineEntity?.kind === 'free'
+        ? outlineEntity.entity.title
+        : outlineEntity?.kind === 'attached'
+        ? outlineEntity.doc.title
+        : (finalNodeId ? nodeById(currentStore, finalNodeId)?.title : '大纲')
+
+    // 检查此大纲是否认领了上级大纲的端口（大纲连接大纲port，进一步拆分该目标项）
+    let hint: string | undefined
+    if (finalOutlineTarget) {
+      const rawTarget = finalOutlineTarget.startsWith('o:') ? finalOutlineTarget.slice(2) : finalOutlineTarget
+      const claimEdge = currentStore.edges.find((e) => (e.to === finalOutlineTarget || e.to === rawTarget || e.to === 'o:' + rawTarget) && e.portKey)
+      if (claimEdge) {
+        const upOutline = outlineByMember(currentStore, claimEdge.from.startsWith('o:') ? claimEdge.from : 'o:' + claimEdge.from)
+        const entries =
+          upOutline?.kind === 'attached'
+            ? upOutline.outline?.children ?? []
+            : upOutline?.kind === 'free'
+            ? upOutline.entity.children
+            : []
+        const slot = entries.find((c) => c.key === claimEdge.portKey)
+        const parentTitle =
+          upOutline?.kind === 'free'
+            ? upOutline.entity.title
+            : upOutline?.kind === 'attached'
+            ? upOutline.doc.title
+            : ''
+        if (slot) {
+          hint = `【子大纲细化拆解】此大纲挂在上级大纲「${parentTitle}」的目标项「${slot.title}」之下。大纲连接大纲port的目的是对该目标项进行进一步细化与拆分。请阅读认领的目标项上下文，规划这一层的阶段性子目标，不要创建新节点。`
+        }
+      }
+    }
+
+    agent.runWorkflow('outline', {
+      nodeId: finalNodeId,
+      params: { target: finalOutlineTarget },
+      hint,
+    })
+    onToast(t('已请导师规划「{0}」这一层的大纲，大纲页会随写入更新', title || '大纲'))
   }
   const startPrereqOutline = startGenerateOutline
 

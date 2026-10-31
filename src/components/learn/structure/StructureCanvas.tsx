@@ -1918,9 +1918,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                     title={card.free ? t('读它认领的目标项与上级上下文，规划这一层怎么拆') : t('读宿主文档，把「先要学会什么」铺成目标项')}
                     className="shrink-0 bg-seal/15 px-2 py-0.5 text-[11px] text-seal-deep hover:bg-seal/25"
                     onClick={() => {
-                      // 游离卡直接给 o:uuid（启动器认得出）；附身卡按宿主文档走
-                      const docId = card.free ? card.uuid : docIdOfOutlineUuid(card.uuid)
-                      if (docId) onGenerateOutline?.(docId)
+                      if (card.uuid) onGenerateOutline?.(card.uuid)
                     }}
                   >
                     {t('生成总览')}
@@ -2465,6 +2463,18 @@ export const StructureCanvas = memo(function StructureCanvas({
                   }}
                 >
                   {t('改名')}
+                </button>
+              )}
+              {menuCard.kind === 'outline' && (
+                <button
+                  type="button"
+                  className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
+                  onClick={() => {
+                    onGenerateOutline?.(menuCard.uuid)
+                    setMenu(null)
+                  }}
+                >
+                  {t('生成总览')}
                 </button>
               )}
               {menuCard.kind === 'doc' && (
