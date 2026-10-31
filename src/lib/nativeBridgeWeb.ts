@@ -444,6 +444,8 @@ export function createWebNativeBridge(): NativeBridge {
       startRecord: async () => {
         return { ok: false, error: '录屏工具占位中' }
       },
+      notifyPinReady: () => {},
+      movePin: () => {},
     },
   }
 

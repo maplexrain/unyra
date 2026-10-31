@@ -40,8 +40,9 @@ export async function openPinWindow(item: PinnedItemPayload): Promise<{ ok: bool
       alwaysOnTop: true,
       skipTaskbar: false,
       resizable: true,
+      thickFrame: false, // 禁用系统开窗缩放动画
       hasShadow: true,
-      show: true,
+      show: false, // 首帧图片解码就绪后再显示，消除空窗闪烁
       backgroundColor: '#00000000',
       webPreferences: {
         preload: path.join(__dirname, 'preload.cjs'),
@@ -55,7 +56,24 @@ export async function openPinWindow(item: PinnedItemPayload): Promise<{ ok: bool
 
     pinnedWindows.set(item.id, { id: item.id, win, data: item })
 
+    // 超时兜底显示
+    let hasShown = false
+    const showTimeout = setTimeout(() => {
+      if (!hasShown && win && !win.isDestroyed()) {
+        hasShown = true
+        win.showInactive()
+        win.focus()
+      }
+    }, 1000)
+
+    win.once('show', () => {
+      hasShown = true
+      clearTimeout(showTimeout)
+    })
+
     win.on('closed', () => {
+      hasShown = true
+      clearTimeout(showTimeout)
       pinnedWindows.delete(item.id)
     })
 
@@ -130,21 +148,49 @@ export function registerPinIpc(): void {
     }
   })
 
+  // 贴图窗口首帧图片渲染就绪
+  ipcMain.on('pin:ready', (_e, id: string) => {
+    const record = pinnedWindows.get(id)
+    if (record && !record.win.isDestroyed()) {
+      record.win.showInactive()
+      record.win.focus()
+    }
+  })
+
+  // 鼠标拖拽平移贴图窗口
+  ipcMain.on('pin:move', (_e, payload: { id: string; dx: number; dy: number }) => {
+    const record = pinnedWindows.get(payload.id)
+    if (!record || record.win.isDestroyed()) return
+    const bounds = record.win.getBounds()
+    record.win.setBounds({
+      x: bounds.x + payload.dx,
+      y: bounds.y + payload.dy,
+      width: bounds.width,
+      height: bounds.height,
+    })
+  })
+
   // 鼠标滚轮缩放贴图窗口
   ipcMain.on('pin:zoom', (_e, payload: { id: string; zoomFactor: number }) => {
     const record = pinnedWindows.get(payload.id)
     if (!record || record.win.isDestroyed()) return
     const bounds = record.win.getBounds()
-    const factor = Math.max(0.5, Math.min(3.0, payload.zoomFactor))
+    const factor = Math.max(0.2, Math.min(5.0, payload.zoomFactor))
     const origWidth = record.data.width
     const origHeight = record.data.height
     const newWidth = Math.round(origWidth * factor)
     const newHeight = Math.round(origHeight * factor)
+
+    const centerX = bounds.x + bounds.width / 2
+    const centerY = bounds.y + bounds.height / 2
+    const nextX = Math.round(centerX - newWidth / 2)
+    const nextY = Math.round(centerY - newHeight / 2)
+
     record.win.setBounds({
-      x: bounds.x,
-      y: bounds.y,
-      width: Math.max(80, newWidth),
-      height: Math.max(60, newHeight),
+      x: nextX,
+      y: nextY,
+      width: Math.max(60, newWidth),
+      height: Math.max(40, newHeight),
     })
   })
 }

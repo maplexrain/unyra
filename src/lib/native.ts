@@ -564,6 +564,8 @@ export interface NativeBridge {
     closePin?(id: string): void
     copyPin?(id: string): Promise<ImageCopyResult>
     savePin?(id: string): Promise<ImageSaveResult>
+    notifyPinReady?(id: string): void
+    movePin?(id: string, dx: number, dy: number): void
     zoomPin?(id: string, zoomFactor: number): void
     copyImage(dataUrl: string): Promise<ImageCopyResult>
     saveImage(payload: ImageSavePayload): Promise<ImageSaveResult>

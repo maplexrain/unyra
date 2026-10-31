@@ -108,8 +108,8 @@ export async function openScreenshotWindow(): Promise<{ ok: boolean; error?: str
       width,
       height,
       frame: false,
-      transparent: false,
-      backgroundColor: '#111621',
+      transparent: true, // 彻底消除开窗瞬间暗色底板 #111621 的闪烁，首帧前透明透视原生桌面
+      backgroundColor: '#00000000',
       alwaysOnTop: true,
       skipTaskbar: true,
       resizable: false,
@@ -221,7 +221,12 @@ export function registerScreenshotIpc(): void {
       }
     } catch (err) {
       console.error('[Screenshot] pin window open error:', err)
+      closeScreenshotWindow()
     }
+  })
+
+  // 6.1 贴图窗口首帧就绪通知：同一瞬间关闭截图全屏窗口，实现 100% 毫无察觉的无缝切换
+  ipcMain.on('pin:ready', () => {
     closeScreenshotWindow()
   })
 

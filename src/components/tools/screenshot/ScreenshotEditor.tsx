@@ -79,6 +79,8 @@ export default function ScreenshotEditor({
   const [currentColor, setCurrentColor] = useState<string>('#000000')
   const [currentRgb, setCurrentRgb] = useState<[number, number, number]>([0, 0, 0])
   const [copiedNotice, setCopiedNotice] = useState(false)
+  const [currentCursor, setCurrentCursor] = useState<string>('crosshair')
+  const textInputRef = useRef<HTMLInputElement>(null)
 
   // 工具条与标注对象系统
   const [tool, setTool] = useState<ToolType>('none')
@@ -177,6 +179,16 @@ export default function ScreenshotEditor({
       active = false
     }
   }, [imageSrc, onReady])
+
+  // 当调出文字输入框时，自动聚焦并选中文字
+  useEffect(() => {
+    if (editingTarget) {
+      requestAnimationFrame(() => {
+        textInputRef.current?.focus()
+        textInputRef.current?.select()
+      })
+    }
+  }, [editingTarget])
 
   // 获取系统已存在窗口与工作区边界，用于自动窗口捕捉
   useEffect(() => {
@@ -332,58 +344,37 @@ export default function ScreenshotEditor({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [editingTarget, selectedObjectId, selection, currentRgb, currentColor, colorMode, copyCurrentColor, formatColor, onClose, updateLoupe])
 
-  // 对象命中检测（支持线框、圆框、带字箭头、马赛克、文字）
-  const hitTestObject = (clientX: number, clientY: number): { obj: AnnotationObject; handle?: string } | null => {
-    // 逆序检查，优先选中最上层对象
-    for (let i = objects.length - 1; i >= 0; i--) {
-      const obj = objects[i]
+  // 辅助：获取缩放手柄对应的鼠标指针样式（提醒用户可调整尺寸）
+  const getResizeCursor = (handle: string): string => {
+    switch (handle) {
+      case 'nw':
+      case 'se':
+        return 'nwse-resize'
+      case 'ne':
+      case 'sw':
+        return 'nesw-resize'
+      case 'n':
+      case 's':
+        return 'ns-resize'
+      case 'e':
+      case 'w':
+        return 'ew-resize'
+      default:
+        return 'move'
+    }
+  }
 
-      if (obj.type === 'rect' || obj.type === 'circle' || obj.type === 'mosaic') {
-        const { x, y, width: w, height: h } = obj
-        // 检查四周手柄
-        const handles: Array<[string, number, number]> = [
-          ['nw', x, y], ['n', x + w / 2, y], ['ne', x + w, y],
-          ['e', x + w, y + h / 2], ['se', x + w, y + h],
-          ['s', x + w / 2, y + h], ['sw', x, y + h], ['w', x, y + h / 2],
-        ]
-        if (selectedObjectId === obj.id) {
-          for (const [hName, hx, hy] of handles) {
-            if (Math.hypot(clientX - hx, clientY - hy) <= 8) {
-              return { obj, handle: hName }
-            }
-          }
-        }
-        // 检查矩形/圆形框内部或边框区域
-        if (clientX >= x - 4 && clientX <= x + w + 4 && clientY >= y - 4 && clientY <= y + h + 4) {
-          return { obj }
-        }
-      } else if (obj.type === 'arrow') {
-        // 检查箭头起点手柄（非箭头端）与终点手柄（箭头端）
-        if (selectedObjectId === obj.id) {
-          if (Math.hypot(clientX - obj.x1, clientY - obj.y1) <= 10) return { obj, handle: 'p1' }
-          if (Math.hypot(clientX - obj.x2, clientY - obj.y2) <= 10) return { obj, handle: 'p2' }
-        }
-        // 检查点到箭头线段的距离
-        const dist = distToSegment({ x: clientX, y: clientY }, { x: obj.x1, y: obj.y1 }, { x: obj.x2, y: obj.y2 })
-        if (dist <= 8) return { obj }
-
-        // 检查非箭头端的连接文本框区域
-        if (obj.text) {
-          const textW = Math.max(60, obj.text.length * 14 + 16)
-          const textH = 26
-          const tx = obj.x1 - textW / 2
-          const ty = obj.y1 - textH - 6
-          if (clientX >= tx && clientX <= tx + textW && clientY >= ty && clientY <= ty + textH) {
-            return { obj, handle: 'tailText' }
-          }
-        }
-      } else if (obj.type === 'text') {
-        const w = obj.width || Math.max(40, obj.text.length * 16 + 12)
-        const h = obj.height || 26
-        if (clientX >= obj.x - 4 && clientX <= obj.x + w + 4 && clientY >= obj.y - 4 && clientY <= obj.y + h + 4) {
-          return { obj }
-        }
-      }
+  // 检测是否命中选区四周边框缩放手柄
+  const getHitSelectionHandle = (cx: number, cy: number, sel: Rect): string | null => {
+    const handleHitDist = 8
+    const { x, y, width: w, height: h } = sel
+    const points: Array<[string, number, number]> = [
+      ['nw', x, y], ['n', x + w / 2, y], ['ne', x + w, y],
+      ['e', x + w, y + h / 2], ['se', x + w, y + h],
+      ['s', x + w / 2, y + h], ['sw', x, y + h], ['w', x, y + h / 2],
+    ]
+    for (const [id, px, py] of points) {
+      if (Math.hypot(cx - px, cy - py) <= handleHitDist) return id
     }
     return null
   }
@@ -397,12 +388,140 @@ export default function ScreenshotEditor({
     return Math.hypot(p.x - (v.x + tVal * (w.x - v.x)), p.y - (v.y + tVal * (w.y - v.y)))
   }
 
+  // 对象命中检测（支持线框、圆框、带字箭头、马赛克、文字）
+  const hitTestObject = (clientX: number, clientY: number): { obj: AnnotationObject; handle?: string } | null => {
+    // 逆序检查，优先选中最上层对象
+    for (let i = objects.length - 1; i >= 0; i--) {
+      const obj = objects[i]
+
+      if (obj.type === 'rect' || obj.type === 'circle' || obj.type === 'mosaic') {
+        const { x, y, width: w, height: h } = obj
+        // 检查四周 8 个缩放手柄（拉尺寸）
+        const handles: Array<[string, number, number]> = [
+          ['nw', x, y], ['n', x + w / 2, y], ['ne', x + w, y],
+          ['e', x + w, y + h / 2], ['se', x + w, y + h],
+          ['s', x + w / 2, y + h], ['sw', x, y + h], ['w', x, y + h / 2],
+        ]
+        if (selectedObjectId === obj.id) {
+          for (const [hName, hx, hy] of handles) {
+            if (Math.hypot(clientX - hx, clientY - hy) <= 8) {
+              return { obj, handle: hName }
+            }
+          }
+        }
+        // 检查矩形/圆形框内部或边框区域（拖拽移动）
+        if (clientX >= x - 4 && clientX <= x + w + 4 && clientY >= y - 4 && clientY <= y + h + 4) {
+          return { obj }
+        }
+      } else if (obj.type === 'arrow') {
+        // 检查箭头起点手柄（非箭头端）与终点手柄（箭头端）
+        if (selectedObjectId === obj.id) {
+          if (Math.hypot(clientX - obj.x1, clientY - obj.y1) <= 10) return { obj, handle: 'p1' }
+          if (Math.hypot(clientX - obj.x2, clientY - obj.y2) <= 10) return { obj, handle: 'p2' }
+        }
+        // 检查非箭头端的连接文本框区域（改文字）
+        if (obj.text) {
+          const textW = Math.max(60, obj.text.length * 14 + 16)
+          const textH = 26
+          const tx = obj.x1 - textW / 2
+          const ty = obj.y1 - textH - 6
+          if (clientX >= tx && clientX <= tx + textW && clientY >= ty && clientY <= ty + textH) {
+            return { obj, handle: 'tailText' }
+          }
+        }
+        // 检查点到箭头线段的距离（拖拽移动）
+        const dist = distToSegment({ x: clientX, y: clientY }, { x: obj.x1, y: obj.y1 }, { x: obj.x2, y: obj.y2 })
+        if (dist <= 8) return { obj }
+      } else if (obj.type === 'text') {
+        const textW = Math.max(30, obj.text.length * (obj.fontSize * 0.75) + 16)
+        const textH = Math.max(20, obj.fontSize * 1.25)
+
+        // 1. 选中时右下角缩放手柄（拉尺寸）
+        if (selectedObjectId === obj.id) {
+          const hx = obj.x + textW + 4
+          const hy = obj.y + textH + 4
+          if (Math.hypot(clientX - hx, clientY - hy) <= 9) {
+            return { obj, handle: 'se' }
+          }
+        }
+
+        // 2. 检查文字整体区域（拖拽移动或双击编辑）
+        if (clientX >= obj.x - 6 && clientX <= obj.x + textW + 6 && clientY >= obj.y - 6 && clientY <= obj.y + textH + 6) {
+          return { obj, handle: 'textBody' }
+        }
+      }
+    }
+    return null
+  }
+
+  // 动态计算当前光标样式，提醒用户操作意图（可拖拽、可拉伸、可改文字等）
+  const computeCursor = (clientX: number, clientY: number): string => {
+    // 正在拉选框中
+    if (isSelectingRef.current) return 'crosshair'
+    // 正在整体移动选区
+    if (isMovingSelection) return 'move'
+    // 正在缩放微调选区边框
+    if (selectionResizeHandle) return getResizeCursor(selectionResizeHandle)
+    // 正在拖拽或缩放标注对象
+    if (isDraggingObject && objectDragStart) {
+      if (objectDragStart.handle === 'tailText') return 'text'
+      if (objectDragStart.handle === 'se') return 'nwse-resize'
+      if (objectDragStart.handle === 'p1' || objectDragStart.handle === 'p2') return 'crosshair'
+      if (objectDragStart.handle) return getResizeCursor(objectDragStart.handle)
+      return 'move'
+    }
+
+    // 已确立选区时
+    if (selection) {
+      // 1. 检查是否在选区缩放手柄上（拉尺寸）
+      if (tool === 'none') {
+        const selHandle = getHitSelectionHandle(clientX, clientY, selection)
+        if (selHandle) return getResizeCursor(selHandle)
+      }
+
+      // 2. 检查是否悬停在已存在的标注对象及其手柄上
+      const hit = hitTestObject(clientX, clientY)
+      if (hit) {
+        if (hit.handle === 'tailText') return 'text' // 箭头文字：改文字
+        if (hit.handle === 'se') return 'nwse-resize' // 文字缩放手柄：拉尺寸
+        if (hit.handle === 'p1' || hit.handle === 'p2') return 'crosshair' // 箭头端点
+        if (hit.handle && hit.handle !== 'textBody') return getResizeCursor(hit.handle) // 几何对象 8 向缩放手柄：拉尺寸
+        if (hit.obj.type === 'text') {
+          return tool === 'text' ? 'text' : 'move' // 文字对象：工具为文字时为 text，普通模式下为 move（可拖拽）
+        }
+        if (tool === 'none') return 'move' // 几何对象/箭头：可拖拽移动
+      }
+
+      // 3. 选区内部
+      const inside =
+        clientX >= selection.x &&
+        clientX <= selection.x + selection.width &&
+        clientY >= selection.y &&
+        clientY <= selection.y + selection.height
+      if (inside) {
+        if (tool === 'none') return 'move' // 拖拽移动整个选框
+        if (tool === 'text') return 'text' // 点击输入文字
+        return 'crosshair' // 绘制工具准星
+      }
+
+      return 'crosshair'
+    }
+
+    // 尚未拉选区时：若悬停在检测出的候选窗口上，提示可单击选取窗口
+    if (hoveredWindowRect) return 'pointer'
+    return 'crosshair'
+  }
+
   // 鼠标移动
   const handleMouseMove = (e: React.MouseEvent) => {
     const clientX = e.clientX
     const clientY = e.clientY
     setMousePos({ x: clientX, y: clientY })
     updateLoupe(clientX, clientY)
+
+    // 实时计算当前光标样式（明确提醒用户操作意图：拖拽、拉伸手柄、改文字）
+    const cursor = computeCursor(clientX, clientY)
+    setCurrentCursor(cursor)
 
     // 1. 正在自由拖拽拉框中 (高优先级：连续帧刷新选区尺寸)
     if (isSelectingRef.current && dragStart) {
@@ -519,6 +638,11 @@ export default function ScreenshotEditor({
             }
           }
           if (item.type === 'text' && orig.type === 'text') {
+            if (objectDragStart.handle === 'se') {
+              const delta = (dx + dy) / 2
+              const newFontSize = Math.round(Math.max(12, Math.min(80, orig.fontSize + delta * 0.4)))
+              return { ...item, fontSize: newFontSize }
+            }
             return { ...item, x: orig.x + dx, y: orig.y + dy }
           }
           return item
@@ -576,7 +700,8 @@ export default function ScreenshotEditor({
           })
           return
         }
-        if (hit.obj.type === 'text') {
+        if (tool === 'text' && hit.obj.type === 'text') {
+          // 当前处于文字工具模式时点击已有文字：进入编辑改文字
           setEditingTarget({
             id: hit.obj.id,
             type: 'text',
@@ -586,11 +711,12 @@ export default function ScreenshotEditor({
           })
           return
         }
+        // 允许直接拖拽对象（包括文字对象）或缩放其手柄（拉尺寸）
         setIsDraggingObject(true)
         setObjectDragStart({
           x: clientX,
           y: clientY,
-          handle: hit.handle,
+          handle: hit.handle === 'textBody' ? undefined : hit.handle,
           origObj: { ...hit.obj },
         })
         return
@@ -766,19 +892,32 @@ export default function ScreenshotEditor({
     }
   }
 
-  // 检测是否命中选区四周边框缩放手柄
-  const getHitSelectionHandle = (cx: number, cy: number, sel: Rect): string | null => {
-    const handleHitDist = 8
-    const { x, y, width: w, height: h } = sel
-    const points: Array<[string, number, number]> = [
-      ['nw', x, y], ['n', x + w / 2, y], ['ne', x + w, y],
-      ['e', x + w, y + h / 2], ['se', x + w, y + h],
-      ['s', x + w / 2, y + h], ['sw', x, y + h], ['w', x, y + h / 2],
-    ]
-    for (const [id, px, py] of points) {
-      if (Math.hypot(cx - px, cy - py) <= handleHitDist) return id
+  // 双击事件：快速进入文字或箭头说明编辑（改文字）
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    const clientX = e.clientX
+    const clientY = e.clientY
+    const hit = hitTestObject(clientX, clientY)
+    if (hit) {
+      if (hit.obj.type === 'text') {
+        setEditingTarget({
+          id: hit.obj.id,
+          type: 'text',
+          x: hit.obj.x,
+          y: hit.obj.y,
+          text: hit.obj.text,
+        })
+        setSelectedObjectId(hit.obj.id)
+      } else if (hit.obj.type === 'arrow') {
+        setEditingTarget({
+          id: hit.obj.id,
+          type: 'arrowTail',
+          x: hit.obj.x1,
+          y: hit.obj.y1,
+          text: hit.obj.text || '',
+        })
+        setSelectedObjectId(hit.obj.id)
+      }
     }
-    return null
   }
 
   // 提交文字编辑
@@ -790,6 +929,7 @@ export default function ScreenshotEditor({
       setObjects((prev) =>
         prev.map((item) => (item.id === editingTarget.id && item.type === 'arrow' ? { ...item, text } : item)),
       )
+      setSelectedObjectId(editingTarget.id)
     } else if (editingTarget.type === 'text') {
       if (text) {
         setObjects((prev) => {
@@ -811,9 +951,11 @@ export default function ScreenshotEditor({
         setSelectedObjectId(editingTarget.id)
       } else {
         setObjects((prev) => prev.filter((o) => o.id !== editingTarget.id))
+        setSelectedObjectId(null)
       }
     }
     setEditingTarget(null)
+    setTool('none') // 提交后自动切回常规选择模式，便于后续移动、改尺寸或切换颜色
   }
 
   // 画布主渲染逻辑
@@ -892,6 +1034,28 @@ export default function ScreenshotEditor({
     drawMainCanvasRef.current = drawMainCanvas
   }, [drawMainCanvas])
 
+  // 绘制几何对象选中的 8 个边框缩放手柄（提醒用户可以拉尺寸）
+  const drawObjectResizeHandles = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => {
+    const normX = Math.min(x, x + w)
+    const normY = Math.min(y, y + h)
+    const normW = Math.abs(w)
+    const normH = Math.abs(h)
+    const sz = 6
+    const half = sz / 2
+    const pts = [
+      [normX, normY], [normX + normW / 2, normY], [normX + normW, normY],
+      [normX + normW, normY + normH / 2], [normX + normW, normY + normH],
+      [normX + normW / 2, normY + normH], [normX, normY + normH], [normX, normY + normH / 2],
+    ]
+    ctx.fillStyle = '#ffffff'
+    ctx.strokeStyle = '#0284c7'
+    ctx.lineWidth = 1.2
+    for (const [px, py] of pts) {
+      ctx.fillRect(px - half, py - half, sz, sz)
+      ctx.strokeRect(px - half, py - half, sz, sz)
+    }
+  }
+
   // 绘制 8 个手柄
   const drawSelectionHandles = (ctx: CanvasRenderingContext2D, sel: Rect) => {
     const { x, y, width: w, height: h } = sel
@@ -928,6 +1092,8 @@ export default function ScreenshotEditor({
         ctx.lineWidth = 1
         ctx.setLineDash([3, 3])
         ctx.strokeRect(obj.x - 3, obj.y - 3, obj.width + 6, obj.height + 6)
+        ctx.setLineDash([])
+        drawObjectResizeHandles(ctx, obj.x, obj.y, obj.width, obj.height)
       }
     } else if (obj.type === 'circle') {
       ctx.strokeStyle = obj.color
@@ -944,6 +1110,8 @@ export default function ScreenshotEditor({
         ctx.lineWidth = 1
         ctx.setLineDash([3, 3])
         ctx.strokeRect(obj.x - 3, obj.y - 3, obj.width + 6, obj.height + 6)
+        ctx.setLineDash([])
+        drawObjectResizeHandles(ctx, obj.x, obj.y, obj.width, obj.height)
       }
     } else if (obj.type === 'mosaic') {
       // 马赛克对象处理
@@ -969,6 +1137,7 @@ export default function ScreenshotEditor({
         ctx.strokeStyle = '#38bdf8'
         ctx.lineWidth = 1.5
         ctx.strokeRect(obj.x, obj.y, obj.width, obj.height)
+        drawObjectResizeHandles(ctx, obj.x, obj.y, obj.width, obj.height)
       }
     } else if (obj.type === 'arrow') {
       ctx.strokeStyle = obj.color
@@ -1047,9 +1216,9 @@ export default function ScreenshotEditor({
         ctx.fill(); ctx.stroke()
       }
     } else if (obj.type === 'text') {
-      ctx.font = `bold ${obj.fontSize}px system-ui, sans-serif`
+      ctx.font = `bold ${obj.fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
       ctx.textBaseline = 'top'
-      ctx.strokeStyle = '#000000'
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)'
       ctx.lineWidth = 3
       ctx.strokeText(obj.text, obj.x, obj.y)
       ctx.fillStyle = obj.color
@@ -1057,10 +1226,24 @@ export default function ScreenshotEditor({
 
       if (isSelected) {
         const metrics = ctx.measureText(obj.text)
+        const textW = Math.max(30, metrics.width)
+        const textH = Math.max(16, obj.fontSize * 1.2)
         ctx.strokeStyle = '#38bdf8'
-        ctx.lineWidth = 1
+        ctx.lineWidth = 1.2
         ctx.setLineDash([3, 3])
-        ctx.strokeRect(obj.x - 4, obj.y - 4, metrics.width + 8, obj.fontSize + 8)
+        ctx.strokeRect(obj.x - 4, obj.y - 4, textW + 8, textH + 8)
+        ctx.setLineDash([])
+
+        // 右下角缩放手柄（拉尺寸）
+        const sz = 6
+        const half = sz / 2
+        const hx = obj.x + textW + 4
+        const hy = obj.y + textH + 4
+        ctx.fillStyle = '#ffffff'
+        ctx.strokeStyle = '#0284c7'
+        ctx.lineWidth = 1.2
+        ctx.fillRect(hx - half, hy - half, sz, sz)
+        ctx.strokeRect(hx - half, hy - half, sz, sz)
       }
     }
 
@@ -1283,7 +1466,9 @@ export default function ScreenshotEditor({
       onMouseMove={handleMouseMove}
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
-      className="fixed inset-0 z-[9999] select-none overflow-hidden cursor-crosshair"
+      onDoubleClick={handleDoubleClick}
+      style={{ cursor: currentCursor }}
+      className="fixed inset-0 z-[9999] select-none overflow-hidden"
     >
       {/* 底层硬件加速原图：100% 确保任何情况下屏幕画面绝无黑屏 */}
       <img
@@ -1338,18 +1523,30 @@ export default function ScreenshotEditor({
           }}
           className="text-editor-box absolute z-40"
           onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           <input
-            autoFocus
+            ref={textInputRef}
             value={editingTarget.text}
             onChange={(e) => setEditingTarget({ ...editingTarget, text: e.target.value })}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') handleCommitEditing()
+              // 中文输入法组合敲回车选字时放行
+              if (e.nativeEvent.isComposing || e.key === 'Process') return
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleCommitEditing()
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                setEditingTarget(null)
+              }
             }}
             onBlur={handleCommitEditing}
             placeholder={editingTarget.type === 'arrowTail' ? t('输入箭头说明...') : t('输入文字...')}
-            style={{ borderColor: activeColor }}
-            className="rounded-lg border-2 bg-slate-950/95 px-2.5 py-1 text-[13px] font-semibold text-white shadow-2xl outline-none min-w-[120px]"
+            style={{
+              borderColor: activeColor,
+              color: editingTarget.type === 'arrowTail' ? '#ffffff' : activeColor,
+            }}
+            className="rounded-lg border-2 bg-slate-950/95 px-2.5 py-1 text-[14px] font-semibold shadow-2xl outline-none min-w-[140px]"
           />
         </div>
       )}

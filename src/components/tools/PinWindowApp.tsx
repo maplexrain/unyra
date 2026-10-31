@@ -14,6 +14,9 @@ export default function PinWindowApp({ pinId }: PinWindowAppProps) {
   const zoomFactorRef = useRef(1.0)
   zoomFactorRef.current = zoomFactor
 
+  // JS 拖拽窗口平移（不依赖 -webkit-app-region: drag，彻底解除 Chromium 拦截 wheel 和 dblclick 事件的限制）
+  const dragStartRef = useRef<{ screenX: number; screenY: number } | null>(null)
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -37,6 +40,12 @@ export default function PinWindowApp({ pinId }: PinWindowAppProps) {
     void fetchData()
   }, [pinId])
 
+  // 首帧图片加载就绪后，通知主进程无缝呈现贴图并关闭截图全屏窗口
+  const handleImageLoaded = () => {
+    const bridge = native()
+    bridge.tools?.notifyPinReady?.(pinId)
+  }
+
   // 键盘快捷键监听
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -59,6 +68,35 @@ export default function PinWindowApp({ pinId }: PinWindowAppProps) {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [pinId, pinData])
+
+  // 鼠标拖动窗口实现（纯原生 JS 坐标，跨屏无级平滑移动）
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    if ((e.target as HTMLElement).closest('button')) return
+    dragStartRef.current = { screenX: e.screenX, screenY: e.screenY }
+  }
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragStartRef.current) return
+      const dx = e.screenX - dragStartRef.current.screenX
+      const dy = e.screenY - dragStartRef.current.screenY
+      if (dx !== 0 || dy !== 0) {
+        dragStartRef.current = { screenX: e.screenX, screenY: e.screenY }
+        const bridge = native()
+        bridge.tools?.movePin?.(pinId, dx, dy)
+      }
+    }
+    const handleMouseUp = () => {
+      dragStartRef.current = null
+    }
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [pinId])
 
   const handleClose = () => {
     const bridge = native()
@@ -98,11 +136,12 @@ export default function PinWindowApp({ pinId }: PinWindowAppProps) {
     } catch {}
   }
 
-  // 鼠标滚轮无级缩放贴图
+  // 鼠标滚轮缩放贴图窗口
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault()
+    e.stopPropagation()
     const delta = e.deltaY < 0 ? 0.1 : -0.1
-    const next = Math.max(0.5, Math.min(3.0, Math.round((zoomFactorRef.current + delta) * 10) / 10))
+    const next = Math.max(0.2, Math.min(5.0, Math.round((zoomFactorRef.current + delta) * 10) / 10))
     if (next !== zoomFactorRef.current) {
       setZoomFactor(next)
       const bridge = native()
@@ -117,23 +156,20 @@ export default function PinWindowApp({ pinId }: PinWindowAppProps) {
   return (
     <div
       onWheel={handleWheel}
+      onMouseDown={handleMouseDown}
       onDoubleClick={handleClose}
-      style={{
-        // 允许直接在整个贴图上拖拽移动独立桌面窗口
-        WebkitAppRegion: 'drag',
-      } as React.CSSProperties}
-      className="group relative h-screen w-screen cursor-move select-none overflow-hidden bg-transparent rounded-lg border border-sky-400/40 shadow-2xl"
+      className="group relative h-screen w-screen cursor-move select-none overflow-hidden bg-transparent rounded-lg border border-sky-400/50 shadow-2xl"
     >
       <img
         src={pinData.dataUrl}
         alt="pinned screenshot"
+        onLoad={handleImageLoaded}
         className="block h-full w-full object-contain pointer-events-none select-none"
         draggable={false}
       />
 
       {/* 悬停浮现的操作条 */}
       <div
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         className="absolute top-2 right-2 flex items-center gap-1 rounded-full border border-white/20 bg-slate-950/85 px-1.5 py-0.5 shadow-xl backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-150"
       >
         <button
@@ -173,12 +209,12 @@ export default function PinWindowApp({ pinId }: PinWindowAppProps) {
         </button>
       </div>
 
-      {/* 贴图尺寸徽标 */}
+      {/* 贴图尺寸与缩放徽标 */}
       <div
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        className="pointer-events-none absolute bottom-1 right-1.5 rounded bg-black/70 px-1 py-0.2 font-mono text-[9px] text-sky-400/90 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="pointer-events-none absolute bottom-1 right-1.5 flex items-center gap-1 rounded bg-black/70 px-1 py-0.2 font-mono text-[9px] text-sky-400/90 opacity-0 group-hover:opacity-100 transition-opacity"
       >
-        {Math.round(pinData.width * zoomFactor)} × {Math.round(pinData.height * zoomFactor)}
+        <span>{Math.round(pinData.width * zoomFactor)} × {Math.round(pinData.height * zoomFactor)}</span>
+        <span className="text-zinc-400">({Math.round(zoomFactor * 100)}%)</span>
       </div>
     </div>
   )
