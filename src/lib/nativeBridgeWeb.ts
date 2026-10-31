@@ -26,6 +26,8 @@ import type {
   VoiceModelStatus,
   VoiceTranscribeRequest,
   VoiceTranscribeResult,
+  ScreenCaptureResult,
+  ImageSavePayload,
 } from '../../shared/ipc'
 
 // 本地微服务的基础地址（同一主机端口，或跨端口开发调试时指定）
@@ -380,6 +382,71 @@ export function createWebNativeBridge(): NativeBridge {
         delete: (id) => apiFetch('/api/base/process/delete', { method: 'POST', body: JSON.stringify({ id }) }),
       },
       syncPermissions: (dirs) => apiFetch('/api/base/permissions/sync', { method: 'POST', body: JSON.stringify({ dirs }) }),
+    },
+
+    tools: {
+      captureScreen: async () => {
+        try {
+          const res = await apiFetch<ScreenCaptureResult>('/api/tools/capture-screen')
+          if (res.ok && res.dataUrl) return res
+        } catch {
+          // 服务端截屏未成功时，自动尝试浏览器原生屏幕共享捕获
+        }
+
+        if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getDisplayMedia) {
+          try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+              video: true,
+              audio: false,
+            })
+            const video = document.createElement('video')
+            video.srcObject = stream
+            await video.play()
+            const canvas = document.createElement('canvas')
+            canvas.width = video.videoWidth || window.innerWidth
+            canvas.height = video.videoHeight || window.innerHeight
+            const ctx = canvas.getContext('2d')
+            ctx?.drawImage(video, 0, 0, canvas.width, canvas.height)
+            stream.getTracks().forEach((track) => track.stop())
+            return { ok: true, dataUrl: canvas.toDataURL('image/png') }
+          } catch (err) {
+            return { ok: false, error: err instanceof Error ? err.message : '获取屏幕画面被取消或失败' }
+          }
+        }
+        return { ok: false, error: '当前环境不支持屏幕截图' }
+      },
+      copyImage: async (dataUrl: string) => {
+        try {
+          const res = await fetch(dataUrl)
+          const blob = await res.blob()
+          if (typeof navigator !== 'undefined' && navigator.clipboard && window.ClipboardItem) {
+            await navigator.clipboard.write([new ClipboardItem({ [blob.type || 'image/png']: blob })])
+            return { ok: true }
+          }
+          return { ok: false, error: '浏览器环境不支持写入剪贴板图片' }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : '写入剪贴板失败' }
+        }
+      },
+      saveImage: async (payload: ImageSavePayload) => {
+        try {
+          const a = document.createElement('a')
+          a.href = payload.dataUrl
+          a.download = payload.suggestedName || `Screenshot_${Date.now()}.png`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          return { ok: true }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : '保存图片失败' }
+        }
+      },
+      startRecord: async () => {
+        return { ok: false, error: '录屏工具占位中' }
+      },
+      notifyPinReady: () => {},
+      movePin: () => {},
+      onScreenshotUpdate: () => () => {},
     },
   }
 

@@ -291,6 +291,8 @@ import { examDeleteWarn } from './workspace/labels'
 import { conceptKeysOf, emptyNote, examCopyOf, paneInfo, paneOf } from './workspace/panes'
 import { DocPane } from './workspace/DocPane'
 import { FocusDock, ReadingDock, ScheduleDock } from './workspace/docks'
+import ToolsButton from '../tools/ToolsButton'
+import ScreenshotModal from '../tools/ScreenshotModal'
 import { EmptyDoc, Topbar } from './workspace/chrome'
 import { CreateGoalDialog } from './workspace/CreateGoalDialog'
 import { useSideColumns } from './workspace/useSideColumns'
@@ -552,6 +554,42 @@ export default function LearnWorkspace({
     setStructOverlayGoal(gid)
   }, [structOverlayGoal, activeTab, store, activeGoalId, onToast])
   useShortcut('learn.structPopout', { down: toggleStructOverlay })
+
+  /* ---------- 实用工具箱：屏幕截图 ---------- */
+  const [screenshotImage, setScreenshotImage] = useState<string | null>(null)
+  const [isCapturing, setIsCapturing] = useState(false)
+
+  const handleStartScreenshot = useCallback(async () => {
+    if (isCapturing) return
+    setIsCapturing(true)
+    try {
+      const bridge = native()
+      // 1. Electron 桌面端优先调起系统层级全屏截图窗口
+      if (bridge.tools?.openScreenshot) {
+        const res = await bridge.tools.openScreenshot()
+        if (!res.ok) {
+          onToast(res.error || t('未能启动截图'))
+        }
+        return
+      }
+
+      // 2. WebUI 模式通过服务端/浏览器捕获并在工作区唤起全屏编辑
+      if (bridge.tools?.captureScreen) {
+        const res = await bridge.tools.captureScreen()
+        if (res.ok) {
+          setScreenshotImage(res.dataUrl)
+        } else {
+          onToast(res.error || t('未能获取截图画面'))
+        }
+      } else {
+        onToast(t('当前环境不支持屏幕截图'))
+      }
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : t('截图启动失败'))
+    } finally {
+      setIsCapturing(false)
+    }
+  }, [isCapturing, onToast])
 
   /**
    * 顶栏标题只在文档区确实存在目标根大纲时显示。activeNodeId 是导师上下文，关闭文档后
@@ -5619,6 +5657,8 @@ export default function LearnWorkspace({
               />
             }
             reading={<ReadingDock store={store} onOpenNode={selectNode} />}
+            /* 工具箱：截图与录屏入口 */
+            tools={<ToolsButton onScreenshot={handleStartScreenshot} onToast={onToast} />}
             /* 日程是「今天还剩什么」，与专注/阅读同属右侧那一簇；到点时的呼吸层挂在顶栏本体上 */
             schedule={
               <ScheduleDock
@@ -5965,6 +6005,28 @@ export default function LearnWorkspace({
           channel={canvasChannel}
           onToast={onToast}
           onClose={() => setStructOverlayGoal(null)}
+        />
+      )}
+
+      {/* 截图工具全屏操作浮层（WebUI模式） */}
+      {screenshotImage && (
+        <ScreenshotModal
+          imageSrc={screenshotImage}
+          onClose={() => setScreenshotImage(null)}
+          onPin={(pinItem) => {
+            try {
+              sessionStorage.setItem(`pin_${pinItem.id}`, JSON.stringify(pinItem))
+              window.open(
+                `?pinWindow=${encodeURIComponent(pinItem.id)}`,
+                '_blank',
+                `width=${Math.round(pinItem.width)},height=${Math.round(pinItem.height)},menubar=no,toolbar=no`,
+              )
+              onToast(t('已生成独立置顶贴图窗口'))
+            } catch {
+              onToast(t('已生成置顶贴图'))
+            }
+          }}
+          onToast={onToast}
         />
       )}
     </div>

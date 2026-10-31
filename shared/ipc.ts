@@ -896,3 +896,26 @@ export type VideoStreamOpenResult =
 /* ---------- 局域网互联与文件传输服务 ---------- */
 export * from './lan'
 
+
+/* ---------- 屏幕截图与录屏工具 ---------- */
+
+export type ScreenCaptureResult =
+  | { ok: true; dataUrl: string }
+  | { ok: false; error: string }
+
+export type ScreenRecordResult =
+  | { ok: true; status?: string }
+  | { ok: false; error: string }
+
+export interface ImageSavePayload {
+  suggestedName?: string
+  dataUrl: string
+}
+
+export type ImageSaveResult =
+  | { ok: true; path?: string; canceled?: boolean }
+  | { ok: false; error: string }
+
+export type ImageCopyResult =
+  | { ok: true }
+  | { ok: false; error: string }

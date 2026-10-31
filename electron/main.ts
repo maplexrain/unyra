@@ -37,6 +37,9 @@ import { createWindow, showMainWindow } from './app/windows'
 import { setupWebBrowser } from './app/webSession'
 import { closeExamWindow } from './app/examWindow'
 import { registerTraceIpc } from './app/traceWindow'
+import { openScreenshotWindow, preloadScreenshotWindow, destroyScreenshotWindow, registerScreenshotIpc } from './app/screenshotWindow'
+import { registerPinIpc } from './app/pinWindow'
+import { startDoubleBackquoteShortcut, stopDoubleBackquoteShortcut } from './app/doubleBackquoteShortcut'
 import { createTray, markQuitting } from './app/tray'
 import { appUserModelId } from './app/identity'
 import { installAppMenu } from './app/icon'
@@ -85,6 +88,8 @@ function main(): void {
   // 上下文轨迹窗口（trace:open / trace:push，见 app/traceWindow）：与其它 IPC 一样，
   // 必须在 app ready 之前把 handler 挂上——渲染层可能很早就来问
   registerTraceIpc()
+  registerScreenshotIpc()
+  registerPinIpc()
   // 抓网页：只有 web:fetch 一个频道（见 electron/web）。放这里是因为它与其余 IPC 一样，
   // 必须在 app ready 之前就把 handler 挂上——渲染层可能很早就来问
   registerWebIpc()
@@ -154,6 +159,20 @@ function main(): void {
     createTray()
     lap('main:tray')
     /*
+     * 注册全局系统级快捷键：双击反引号 (`) 快速唤出全屏截图
+     */
+    void startDoubleBackquoteShortcut(() => {
+      void openScreenshotWindow()
+    })
+
+    /*
+     * 静默预热截图窗口（提前加载渲染产物，使呼出截图从 1.2s 暴降至 80ms 瞬开）
+     */
+    setTimeout(() => {
+      void preloadScreenshotWindow()
+    }, 1200)
+
+    /*
      * 更新检查排在最后，而且它自己还会再等几秒（见 update.ts）：
      * 首屏与数据载入都该先跑完。整条链路是异步的，
      * 失败了也只在状态里留一条记录——不弹窗、不阻塞、不影响当前版本。
@@ -170,6 +189,8 @@ function main(): void {
   // 真的在退出（托盘菜单、系统关机、或策略就是「直接关闭」）：
   // 放开关窗拦截，否则窗口会被自己拦下来，程序退不掉
   app.on('before-quit', () => {
+    stopDoubleBackquoteShortcut()
+    destroyScreenshotWindow()
     void lanServer.stop()
     cleanupAllProcesses()
     cleanupAllMcpSessions()

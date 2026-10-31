@@ -58,17 +58,16 @@ export class OutlineGNode extends GNode {
     const rels: NodeRelation[] = []
     if (f.kind === 'attached') {
       rels.push({ id: f.docId, type: 'up' })
-    } else {
-      /*
-       * 游离大纲的树上游（可能多个）：id 给上级的**大纲 uuid**（边里的 from 是声部——
-       * 附身大纲用宿主文档 id，这里折回 o: 前缀），portKey 跟着带上——
-       * 它认领的那条目标项靠 getPortData() 读（「上级交给这一层的任务」）。
-       */
-      for (const e of this.ctx.store().edges) {
-        if (e.to !== this.uuid) continue
-        const upId = e.from.startsWith('o:') ? e.from : 'o:' + e.from
-        rels.push({ id: upId, type: 'up', ...(e.portKey ? { portKey: e.portKey } : {}) })
-      }
+    }
+    /*
+     * 树上游（可能多个，游离大纲与附身大纲皆可挂在另一份大纲之下）：
+     * id 给上级的**大纲 uuid**（边里的 from 是声部——附身大纲用宿主文档 id，这里折回 o: 前缀），
+     * portKey 跟着带上——它认领的那条目标项靠 getPortData() 读（「上级交给这一层的任务」）。
+     */
+    for (const e of this.ctx.store().edges) {
+      if (e.to !== this.uuid && (f.kind !== 'attached' || e.to !== f.docId)) continue
+      const upId = e.from.startsWith('o:') ? e.from : 'o:' + e.from
+      rels.push({ id: upId, type: 'up', ...(e.portKey ? { portKey: e.portKey } : {}) })
     }
     for (const e of this.ctx.store().edges) {
       if (e.from === this.voice) rels.push({ id: e.to, type: 'down' })

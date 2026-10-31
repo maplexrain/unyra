@@ -14,6 +14,7 @@ import { webRouter } from './routes/web'
 import { noticeRouter } from './routes/notice'
 import { guardRouter } from './routes/guard'
 import { audioRouter } from './routes/audio'
+import { toolsRouter } from './routes/tools'
 import { getUserDataDir } from '../electron/storage/userData'
 
 const app = new Hono()
@@ -37,6 +38,7 @@ app.route('/api/web', webRouter)
 app.route('/api/notice', noticeRouter)
 app.route('/api/guard', guardRouter)
 app.route('/api/audio', audioRouter)
+app.route('/api/tools', toolsRouter)
 
 // 系统与健康检查接口
 app.get('/api/health', (c) => {

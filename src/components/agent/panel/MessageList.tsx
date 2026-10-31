@@ -43,4 +43,6 @@ export interface MessageListProps {
   onSelectPrompt?: (text: string) => void
   /** 目标 id：多目标下定位节点文档用，避免全局同名节点指针混淆 */
   goalId?: string
+  /** 自由/固定聊天页签（不是导师，空占位显示通用对话内容） */
+  free?: boolean
 }

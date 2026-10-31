@@ -507,6 +507,7 @@ export default function AgentPanel({
     setBubblePreview,
     onOpenFile,
     onSelectPrompt: handleSelectPrompt,
+    free,
   })
 
   return (

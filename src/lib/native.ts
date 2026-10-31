@@ -24,6 +24,7 @@ import type {
   WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebTranslatePayload, WebWaitReq, WebWaitResult,
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
+  ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
 } from '../../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（与 electron/preload.ts 共用一份，见该文件顶部）：
@@ -41,6 +42,7 @@ export type {
   WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebTranslatePayload, WebWaitReq, WebWaitResult,
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
+  ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
 }
 
 export type PluginList =
@@ -547,6 +549,29 @@ export interface NativeBridge {
     onStatusChange(cb: (status: LanServerStatus) => void): () => void
     onFileReceived(cb: (file: LanUploadedFile) => void): () => void
     onDevicesChange(cb: (devices: LanDeviceInfo[]) => void): () => void
+  }
+  tools?: {
+    captureScreen(): Promise<ScreenCaptureResult>
+    openScreenshot?(): Promise<{ ok: boolean; error?: string }>
+    getScreenshotImage?(): Promise<string | null>
+    getScreenshotSystemRects?(): Promise<Array<{ x: number; y: number; width: number; height: number }>>
+    onScreenshotUpdate?(cb: (payload: { imageSrc: string; systemRects?: Array<{ x: number; y: number; width: number; height: number }> }) => void): () => void
+    notifyScreenshotReady?(): void
+    closeScreenshot?(): void
+    confirmScreenshot?(dataUrl: string): Promise<ImageCopyResult>
+    pinScreenshot?(pinnedItem: unknown): void
+    saveScreenshot?(payload: ImageSavePayload): Promise<ImageSaveResult>
+    getPinData?(id: string): Promise<any>
+    closePin?(id: string): void
+    copyPin?(id: string): Promise<ImageCopyResult>
+    savePin?(id: string): Promise<ImageSaveResult>
+    notifyPinReady?(id: string): void
+    movePin?(id: string, dx: number, dy: number): void
+    zoomPin?(id: string, zoomFactor: number): void
+    copyImage(dataUrl: string): Promise<ImageCopyResult>
+    saveImage(payload: ImageSavePayload): Promise<ImageSaveResult>
+    startRecord?(): Promise<ScreenRecordResult>
+    onPinnedScreenshot?(cb: (item: unknown) => void): () => void
   }
 }
 

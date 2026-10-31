@@ -256,3 +256,49 @@ describe('落盘往返：游离大纲住目标目录的 outlines.json；旧 toOu
     expect(back?.edges.some((e) => e.from === 'r' && e.to === outlineUuid('a'))).toBe(true)
   })
 })
+
+describe('大纲挂在大纲 port 下（进一步拆分目标项）与 getPortData', () => {
+  it('附身大纲与游离大纲挂在父大纲 port 下，relations 均包含上级大纲与 portKey，getPortData 可读到认领目标项', () => {
+    const store = storeOf(false)
+    const { svc } = serviceOf(store)
+
+    // 1. 父大纲 r 包含目标项 'jichu'
+    const parentOutline = svc.get(outlineUuid('r'))!
+    expect(parentOutline.ports.some((p) => p.key === 'jichu')).toBe(true)
+
+    // 2. 将附身大纲 o:a 挂在父大纲的 'jichu' port 下（进一步拆解该目标项）
+    const attachChild = svc.get(outlineUuid('a'))!
+    const rConnect = parentOutline.connect(attachChild, 'down', 'jichu')
+    expect(rConnect).toMatchObject({ ok: true })
+
+    // 验证附身大纲 o:a 的 relations 包含父大纲与 portKey
+    const attachRels = attachChild.relations
+    expect(attachRels).toContainEqual(
+      expect.objectContaining({ id: outlineUuid('r'), type: 'up', portKey: 'jichu' })
+    )
+
+    // 验证 getPortData 读到了父大纲认领的目标项数据
+    const attachPorts = attachChild.getPortData()
+    expect(attachPorts).toHaveLength(1)
+    expect(attachPorts[0].key).toBe('jichu')
+    expect(attachPorts[0].label).toBe('基础')
+
+    // 3. 创建游离大纲 layer 并挂在父大纲的 'yingyong' port 下
+    const freeLayer = svc.create({ kind: 'outline', title: '微积分应用深入' })
+    if (!('uuid' in freeLayer)) throw new Error('Create free outline failed')
+    const freeChild = svc.get(freeLayer.uuid)!
+
+    const rFreeConnect = parentOutline.connect(freeChild, 'down', 'yingyong')
+    expect(rFreeConnect).toMatchObject({ ok: true })
+
+    const freeRels = freeChild.relations
+    expect(freeRels).toContainEqual(
+      expect.objectContaining({ id: outlineUuid('r'), type: 'up', portKey: 'yingyong' })
+    )
+
+    const freePorts = freeChild.getPortData()
+    expect(freePorts).toHaveLength(1)
+    expect(freePorts[0].key).toBe('yingyong')
+    expect(freePorts[0].label).toBe('应用')
+  })
+})

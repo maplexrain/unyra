@@ -251,11 +251,87 @@ function updateNodeInStore(
 
 let syncInitialized = false
 
-/** 初始化 VFS 全局 Store 同步监听 */
+export interface VfsSyncStats {
+  totalEvents: number
+  totalBatches: number
+  coalescedCount: number
+  lastBatchSize: number
+  lastBatchMs: number
+}
+
+const vfsStats: VfsSyncStats = {
+  totalEvents: 0,
+  totalBatches: 0,
+  coalescedCount: 0,
+  lastBatchSize: 0,
+  lastBatchMs: 0,
+}
+
+export function getVfsSyncStats(): Readonly<VfsSyncStats> {
+  return vfsStats
+}
+
+let pendingEvents: FileChangeEvent[] = []
+let batchRafId: number | null = null
+let batchTimerId: ReturnType<typeof setTimeout> | null = null
+
+function flushPendingVfsEvents(): void {
+  batchRafId = null
+  batchTimerId = null
+  if (pendingEvents.length === 0) return
+
+  const events = pendingEvents
+  pendingEvents = []
+
+  const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()
+  const count = events.length
+  vfsStats.totalEvents += count
+  vfsStats.totalBatches += 1
+  vfsStats.lastBatchSize = count
+  if (count > 1) {
+    vfsStats.coalescedCount += count - 1
+  }
+
+  dispatchStoreUpdate((prev) => {
+    let curr = prev
+    for (const evt of events) {
+      curr = syncVfsEventToStore(evt, curr)
+    }
+    return curr
+  })
+
+  const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now()
+  vfsStats.lastBatchMs = t1 - t0
+}
+
+/** 立即同步处理当前积压的所有 VFS 事件（测试或关键同步点调用） */
+export function flushVfsStoreSync(): void {
+  if (batchRafId !== null && typeof cancelAnimationFrame !== 'undefined') {
+    cancelAnimationFrame(batchRafId)
+  }
+  if (batchTimerId !== null) {
+    clearTimeout(batchTimerId)
+  }
+  flushPendingVfsEvents()
+}
+
+/** 将 VFS 事件加入 1 帧微批处理调度队列，削平瞬时密集文件写入引发的渲染风暴 */
+export function queueVfsStoreEvent(event: FileChangeEvent): void {
+  pendingEvents.push(event)
+  if (batchRafId !== null || batchTimerId !== null) return
+
+  if (typeof requestAnimationFrame !== 'undefined') {
+    batchRafId = requestAnimationFrame(flushPendingVfsEvents)
+  } else {
+    batchTimerId = setTimeout(flushPendingVfsEvents, 16)
+  }
+}
+
+/** 初始化 VFS 全局 Store 同步监听（采用帧级微批处理聚合） */
 export function initVfsStoreSync(): () => void {
   if (syncInitialized) return () => {}
   syncInitialized = true
   return vfsBus.subscribeAll((event) => {
-    dispatchStoreUpdate((prev) => syncVfsEventToStore(event, prev))
+    queueVfsStoreEvent(event)
   })
 }

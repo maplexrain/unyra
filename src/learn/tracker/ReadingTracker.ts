@@ -93,6 +93,11 @@ export class ReadingTracker {
   private order: string[] = []
   private layout: Layout[] = []
   private current: string | null = null
+  /** 几何测量轻量缓存：避免每秒强制调用 getBoundingClientRect 触发浏览器重排 */
+  private lastScrollTop = -1
+  private lastClientHeight = -1
+  private cachedBodyTop = 0
+  private lastMeasureAt = 0
   private opened = false
   private words = 0
   /** 这一场累计的有效毫秒（已结算的 + 还没结算的）：文档区那条 4px 进度条读它 */
@@ -264,9 +269,24 @@ export class ReadingTracker {
     const scroll = this.opts.scroll()
     const body = this.opts.body()
     if (!scroll || !body || !this.layout.length) return
-    const bodyTop = body.getBoundingClientRect().top - (scroll.getBoundingClientRect().top - scroll.scrollTop)
+
     const viewTop = scroll.scrollTop
-    const viewBottom = viewTop + scroll.clientHeight
+    const viewHeight = scroll.clientHeight
+    const viewBottom = viewTop + viewHeight
+
+    // 性能优化：滚动位置未变且在 3 秒窗口内，复用 bodyTop 缓存，杜绝每秒 Forced Synchronous Reflow
+    let bodyTop = this.cachedBodyTop
+    if (
+      this.lastScrollTop !== viewTop ||
+      this.lastClientHeight !== viewHeight ||
+      now - this.lastMeasureAt >= 3000
+    ) {
+      bodyTop = body.getBoundingClientRect().top - (scroll.getBoundingClientRect().top - viewTop)
+      this.cachedBodyTop = bodyTop
+      this.lastScrollTop = viewTop
+      this.lastClientHeight = viewHeight
+      this.lastMeasureAt = now
+    }
     let best: Layout | null = null
     let bestOverlap = 0
     let chars = 0

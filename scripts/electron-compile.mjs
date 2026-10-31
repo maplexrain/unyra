@@ -7,7 +7,7 @@
  * 同时导出 findTsFiles / cleanDist，供 dev.mjs 复用。
  */
 
-import { readdirSync, rmSync } from 'node:fs'
+import { readdirSync, rmSync, copyFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -82,5 +82,15 @@ export async function buildElectron(outdir = join(ROOT, 'dist-electron')) {
       outdir,
     ),
   )
+
+  // Windows 平台专属：同步携带原生极速窗口探测与全局快捷键助手产物
+  for (const name of ['screenHelper.exe', 'screenHelper.cs']) {
+    const src = join(ROOT, 'electron/app', name)
+    const dst = join(outdir, name)
+    if (existsSync(src)) {
+      copyFileSync(src, dst)
+    }
+  }
+
   return outdir
 }

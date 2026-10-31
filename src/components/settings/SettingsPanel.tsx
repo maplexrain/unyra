@@ -32,6 +32,7 @@ import { t } from '../../i18n'
 import { type SwitchRootResult } from '../../lib/boot'
 import { AppearancePanel } from './AppearancePanel'
 import { ReminderPanel } from './ReminderPanel'
+import { PerformancePanel } from './PerformancePanel'
 import type { ScheduleSound } from '../../learn/schedule'
 import InputPanel from '../InputPanel'
 import TabButton from '../TabButton'
@@ -327,6 +328,8 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
                 ? t('外观')
                 : tab === 'reminder'
                   ? t('提醒')
+                : tab === 'performance'
+                  ? t('性能')
                 : tab === 'window'
                   ? t('窗口')
                   : tab === 'storage'
@@ -437,6 +440,8 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
             sound={scheduleSound ?? { preset: 'chime', volume: 0.7 }}
             onChange={onScheduleSoundChange ?? (() => {})}
           />
+        ) : tab === 'performance' ? (
+          <PerformancePanel onToast={onToast} />
         ) : tab === 'window' ? (
           <WindowPanel onToast={onToast} />
         ) : tab === 'storage' ? (

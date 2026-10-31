@@ -36,6 +36,7 @@ import type {
   WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult, WebScrollReq,
   WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebTranslatePayload, WebWaitReq, WebWaitResult,
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
+  ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
 } from '../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（渲染层与主进程共用一份，见该文件顶部）：
@@ -56,6 +57,7 @@ export type {
   WebFetchResult, WebBinaryFetchResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult,
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
+  ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
 }
 
 /* ---------- 只在 preload 这一侧用到的形状 ---------- */
@@ -894,6 +896,37 @@ const api = {
       const handler = (_: unknown, d: LanDeviceInfo[]) => cb(d)
       ipcRenderer.on('lan:devices-changed', handler)
       return () => { ipcRenderer.removeListener('lan:devices-changed', handler) }
+    },
+  },
+  tools: {
+    captureScreen: (): Promise<ScreenCaptureResult> => ipcRenderer.invoke('tools:capture-screen'),
+    openScreenshot: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('screenshot:open'),
+    getScreenshotImage: (): Promise<string | null> => ipcRenderer.invoke('screenshot:getImage'),
+    getScreenshotSystemRects: (): Promise<Array<{ x: number; y: number; width: number; height: number }>> => ipcRenderer.invoke('screenshot:getSystemRects'),
+    onScreenshotUpdate: (cb: (payload: { imageSrc: string; systemRects?: Array<{ x: number; y: number; width: number; height: number }> }) => void): (() => void) => {
+      const handler = (_: unknown, data: { imageSrc: string; systemRects?: Array<{ x: number; y: number; width: number; height: number }> }) => cb(data)
+      ipcRenderer.on('screenshot:update', handler)
+      return () => { ipcRenderer.removeListener('screenshot:update', handler) }
+    },
+    notifyScreenshotReady: (): void => { ipcRenderer.send('screenshot:ready') },
+    closeScreenshot: (): void => { ipcRenderer.send('screenshot:close') },
+    confirmScreenshot: (dataUrl: string): Promise<ImageCopyResult> => ipcRenderer.invoke('screenshot:confirm', dataUrl),
+    pinScreenshot: (pinnedItem: unknown): void => { ipcRenderer.send('screenshot:pin', pinnedItem) },
+    saveScreenshot: (payload: ImageSavePayload): Promise<ImageSaveResult> => ipcRenderer.invoke('screenshot:save', payload),
+    getPinData: (id: string): Promise<any> => ipcRenderer.invoke('pin:getData', id),
+    closePin: (id: string): void => { ipcRenderer.send('pin:close', id) },
+    copyPin: (id: string): Promise<ImageCopyResult> => ipcRenderer.invoke('pin:copy', id),
+    savePin: (id: string): Promise<ImageSaveResult> => ipcRenderer.invoke('pin:save', id),
+    notifyPinReady: (id: string): void => { ipcRenderer.send('pin:ready', id) },
+    movePin: (id: string, dx: number, dy: number): void => { ipcRenderer.send('pin:move', { id, dx, dy }) },
+    zoomPin: (id: string, zoomFactor: number): void => { ipcRenderer.send('pin:zoom', { id, zoomFactor }) },
+    copyImage: (dataUrl: string): Promise<ImageCopyResult> => ipcRenderer.invoke('tools:copy-image', dataUrl),
+    saveImage: (payload: ImageSavePayload): Promise<ImageSaveResult> => ipcRenderer.invoke('tools:save-image', payload),
+    startRecord: (): Promise<ScreenRecordResult> => ipcRenderer.invoke('tools:record-screen'),
+    onPinnedScreenshot: (cb: (item: unknown) => void): (() => void) => {
+      const handler = (_: unknown, item: unknown) => cb(item)
+      ipcRenderer.on('tools:pinned-screenshot', handler)
+      return () => { ipcRenderer.removeListener('tools:pinned-screenshot', handler) }
     },
   },
 }

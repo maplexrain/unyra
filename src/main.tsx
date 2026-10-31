@@ -6,6 +6,8 @@ import App from './App.tsx'
 import BootError from './components/BootError'
 import ExamWindow from './components/exam/ExamWindow'
 import TraceWindow from './components/agent/TraceWindow'
+import ScreenshotApp from './components/tools/ScreenshotApp'
+import PinWindowApp from './components/tools/PinWindowApp'
 import { bootApp } from './lib/boot'
 import { reportStartupMarks, startupMark } from './lib/startupTrace'
 import { allProviderBaseUrls } from './ai/settings'
@@ -53,6 +55,10 @@ const params = new URLSearchParams(location.search)
 const inExamWindow = params.get('examWindow') === '1'
 /** 上下文轨迹窗口（第三个 BrowserWindow，见 electron/app/traceWindow）：纯只读的会话轨迹 */
 const inTraceWindow = params.get('contextTrace') === '1'
+/** 系统全屏截图窗口（见 electron/app/screenshotWindow） */
+const inScreenshotWindow = params.get('screenshotWindow') === '1'
+/** 系统独立置顶贴图窗口（见 electron/app/pinWindow） */
+const pinWindowId = params.get('pinWindow')
 
 startupMark('r:boot-start')
 bootApp()
@@ -71,6 +77,22 @@ bootApp()
       root.render(
         <StrictMode>
           <TraceWindow />
+        </StrictMode>,
+      )
+      return
+    }
+    if (inScreenshotWindow) {
+      root.render(
+        <StrictMode>
+          <ScreenshotApp />
+        </StrictMode>,
+      )
+      return
+    }
+    if (pinWindowId) {
+      root.render(
+        <StrictMode>
+          <PinWindowApp pinId={pinWindowId} />
         </StrictMode>,
       )
       return

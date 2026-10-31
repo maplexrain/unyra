@@ -227,10 +227,15 @@ const dict: Record<string, string> = {
   /* ---------- 空状态（useMessageList） ---------- */
   '超级导师已就绪': 'Super Tutor is ready',
   '针对当前知识点随思提问、拆解推导或生成笔记': 'Ask questions, unpack concepts, or take notes for the current topic',
+  '自由对话已就绪': 'Free Chat is ready',
+  '探索想法、快速答疑、方案构思或自由交流，随时随地开启对话': 'Explore ideas, ask questions, draft solutions, or brainstorm freely anytime',
   '可以这样对我说：': 'You can ask me things like:',
   '用直白的例子解释这个概念': 'Explain this concept with intuitive examples',
   '帮我梳理要点并整理进笔记': 'Summarize key takeaways into my notes',
   '针对难点出一道随堂小测验': 'Generate a quick quiz on key difficulties',
+  '帮我梳理一段思路或方案': 'Help me structure an idea or plan',
+  '快速解答一个技术或日常疑问': 'Quickly answer a technical or general question',
+  '探讨一个观点的不同视角与利弊': 'Discuss different perspectives and trade-offs of a viewpoint',
 
   /* ---------- CompactionDivider ---------- */
   '收起摘要': 'Hide summary',
