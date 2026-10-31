@@ -56,6 +56,7 @@ export default function ScreenshotEditor({
   const loupeCanvasRef = useRef<HTMLCanvasElement>(null)
   const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const imageElementRef = useRef<HTMLImageElement | null>(null)
+  const drawMainCanvasRef = useRef<() => void>(() => {})
   const [isLoaded, setIsLoaded] = useState(false)
 
   // 选区状态
@@ -147,9 +148,11 @@ export default function ScreenshotEditor({
 
   // 预加载原图，确保画面瞬时呈现绝不黑闪
   useEffect(() => {
+    let active = true
     const img = new Image()
     img.src = imageSrc
     img.onload = () => {
+      if (!active) return
       imageElementRef.current = img
       const offscreen = document.createElement('canvas')
       offscreen.width = img.naturalWidth
@@ -158,7 +161,14 @@ export default function ScreenshotEditor({
       if (ctx) ctx.drawImage(img, 0, 0)
       offscreenCanvasRef.current = offscreen
       setIsLoaded(true)
-      onReady?.()
+      // 首帧双缓冲绘制，确保就绪后再显示窗口
+      requestAnimationFrame(() => {
+        drawMainCanvasRef.current?.()
+        onReady?.()
+      })
+    }
+    return () => {
+      active = false
     }
   }, [imageSrc, onReady])
 
@@ -476,6 +486,12 @@ export default function ScreenshotEditor({
       return
     }
 
+    // 正在编辑文字时点击外部：先提交当前文字，避免误触发重新框选或新建
+    if (editingTarget) {
+      handleCommitEditing()
+      return
+    }
+
     // 1. 如果已有选区，优先检查是否点中已存在的标注对象进行交互
     if (selection) {
       const hit = hitTestObject(clientX, clientY)
@@ -492,7 +508,7 @@ export default function ScreenshotEditor({
           })
           return
         }
-        if (hit.obj.type === 'text' && tool === 'none') {
+        if (hit.obj.type === 'text') {
           setEditingTarget({
             id: hit.obj.id,
             type: 'text',
@@ -712,36 +728,36 @@ export default function ScreenshotEditor({
   // 画布主渲染逻辑
   const drawMainCanvas = useCallback(() => {
     const canvas = canvasRef.current
-    const img = imageElementRef.current
-    if (!canvas || !img) return
+    if (!canvas) return
 
     const dpr = window.devicePixelRatio || 1
     const w = window.innerWidth
     const h = window.innerHeight
-    canvas.width = w * dpr
-    canvas.height = h * dpr
-    canvas.style.width = `${w}px`
-    canvas.style.height = `${h}px`
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr)
+      canvas.height = Math.round(h * dpr)
+      canvas.style.width = `${w}px`
+      canvas.style.height = `${h}px`
+    }
 
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.scale(dpr, dpr)
 
-    // 1. 底层原图
-    ctx.drawImage(img, 0, 0, w, h)
-
-    // 2. 选区与遮罩
-    if (selection) {
+    // 选区与遮罩
+    if (selection && (selection.width > 0 || selection.height > 0)) {
       const { x, y, width, height } = selection
 
-      // 遮罩
+      // 遮罩：选区外部半透明遮罩
       ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
       ctx.fillRect(0, 0, w, y)
       ctx.fillRect(0, y + height, w, h - (y + height))
       ctx.fillRect(0, y, x, height)
       ctx.fillRect(x + width, y, w - (x + width), height)
 
-      // 选区边框
+      // 选区边框（精致天蓝）
       ctx.strokeStyle = '#38bdf8'
       ctx.lineWidth = 2
       ctx.strokeRect(x, y, width, height)
@@ -767,10 +783,15 @@ export default function ScreenshotEditor({
         drawSelectionHandles(ctx, selection)
       }
     } else {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'
+      // 尚未框选时：轻微半透明暗化遮罩，提示用户处于截图状态
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.25)'
       ctx.fillRect(0, 0, w, h)
     }
-  }, [selection, objects, draftObject, selectedObjectId, tool])
+  }, [selection, objects, draftObject, selectedObjectId, tool, isLoaded])
+
+  useEffect(() => {
+    drawMainCanvasRef.current = drawMainCanvas
+  }, [drawMainCanvas])
 
   // 绘制 8 个手柄
   const drawSelectionHandles = (ctx: CanvasRenderingContext2D, sel: Rect) => {
@@ -973,9 +994,15 @@ export default function ScreenshotEditor({
     if (stroke) ctx.stroke()
   }
 
-  // 监听画面重绘
+  // 监听画面重绘与窗口缩放
   useEffect(() => {
     drawMainCanvas()
+  }, [drawMainCanvas, isLoaded])
+
+  useEffect(() => {
+    const handleResize = () => drawMainCanvas()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
   }, [drawMainCanvas])
 
   // 生成最终高清裁切合并画布
@@ -1143,14 +1170,30 @@ export default function ScreenshotEditor({
       style={{ opacity: isLoaded ? 1 : 0 }}
       className="fixed inset-0 z-[9999] select-none overflow-hidden cursor-crosshair transition-opacity duration-100"
     >
+      {/* 底层硬件加速原图：100% 确保任何情况下屏幕画面绝无黑屏 */}
+      <img
+        src={imageSrc}
+        alt="captured desktop"
+        className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none -z-10"
+        draggable={false}
+      />
       <canvas ref={canvasRef} className="block w-full h-full" />
+
+      {/* 尚未选取时的操作指引 */}
+      {!selection && isLoaded && (
+        <div className="pointer-events-none absolute top-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full border border-white/20 bg-black/75 px-4 py-1.5 text-xs text-white/90 shadow-2xl backdrop-blur-md">
+          <span>{t('拖拽鼠标以框选截图区域')}</span>
+          <span className="text-white/40">|</span>
+          <span className="text-white/60">{t('Shift 切换颜色格式 · Esc 退出')}</span>
+        </div>
+      )}
 
       {/* 实时选框尺寸展示在右上角 */}
       {selection && (selection.width > 2 || selection.height > 2) && (
         <div
           style={{
-            left: `${selection.x + selection.width - 92}px`,
-            top: `${Math.max(8, selection.y - 28)}px`,
+            left: `${Math.max(10, Math.min(window.innerWidth - 110, selection.x + selection.width - 92))}px`,
+            top: `${selection.y >= 32 ? selection.y - 28 : selection.y + 8}px`,
           }}
           className="pointer-events-none absolute z-30 flex items-center justify-center rounded-md bg-black/85 px-2 py-0.8 font-mono text-[11px] font-bold text-sky-400 shadow-lg backdrop-blur-sm border border-sky-400/30"
         >
@@ -1183,8 +1226,8 @@ export default function ScreenshotEditor({
         </div>
       )}
 
-      {/* 像素级取色放大镜（尺度舒适，微调友好） */}
-      {mousePos.x > 0 && !editingTarget && !selectionResizeHandle && (
+      {/* 像素级取色放大镜（尺度舒适，微调友好，选取时跟随光标） */}
+      {mousePos.x > 0 && (!selection || isSelecting) && !editingTarget && !selectionResizeHandle && (
         <div
           style={getLoupeStyle()}
           className="pointer-events-none absolute z-20 flex flex-col items-center rounded-xl border border-white/20 bg-slate-950/95 p-1.5 shadow-2xl backdrop-blur-md text-white w-[115px]"

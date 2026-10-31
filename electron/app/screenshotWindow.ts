@@ -5,7 +5,7 @@
  * 类似 examWindow 与 traceWindow：与主窗口共用同一份渲染产物，通过 ?screenshotWindow=1 分支。
  * 覆盖整个目标显示器，置顶置显，零黑帧闪烁。
  */
-import { BrowserWindow, desktopCapturer, ipcMain, screen, clipboard, nativeImage, dialog } from 'electron'
+import { BrowserWindow, desktopCapturer, ipcMain, screen, clipboard, nativeImage, dialog, type DesktopCapturerSource } from 'electron'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { t } from '../i18n'
@@ -40,19 +40,40 @@ export async function openScreenshotWindow(): Promise<{ ok: boolean; error?: str
     const scaleFactor = display.scaleFactor || 1
 
     // 2. 截取该显示器的完整高清桌面
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: {
-        width: Math.round(width * scaleFactor),
-        height: Math.round(height * scaleFactor),
-      },
-    })
-
-    if (!sources || sources.length === 0 || !sources[0].thumbnail || sources[0].thumbnail.isEmpty()) {
-      return { ok: false, error: t('未能获取屏幕截图画面') }
+    let sources: DesktopCapturerSource[] = []
+    try {
+      sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: {
+          width: Math.round(width * scaleFactor),
+          height: Math.round(height * scaleFactor),
+        },
+      })
+    } catch (e) {
+      console.warn('[Screenshot] desktopCapturer getSources error:', e)
     }
 
-    capturedImageDataUrl = sources[0].thumbnail.toDataURL()
+    let targetSource = sources.find((s) => s.display_id === display.id.toString())
+    if (!targetSource || !targetSource.thumbnail || targetSource.thumbnail.isEmpty()) {
+      targetSource = sources.find((s) => s.thumbnail && !s.thumbnail.isEmpty()) || sources[0]
+    }
+
+    if (targetSource && targetSource.thumbnail && !targetSource.thumbnail.isEmpty()) {
+      capturedImageDataUrl = targetSource.thumbnail.toDataURL()
+    } else {
+      // 容错兜底：若系统级源为空或被安全会话阻断，从应用主窗口捕获画面，保证绝无黑屏
+      const host = hostWindow()
+      if (host && !host.isDestroyed()) {
+        const pageImg = await host.webContents.capturePage()
+        if (!pageImg.isEmpty()) {
+          capturedImageDataUrl = pageImg.toDataURL()
+        }
+      }
+    }
+
+    if (!capturedImageDataUrl) {
+      return { ok: false, error: t('未能获取屏幕截图画面') }
+    }
 
     // 3. 创建贴合整个屏幕的顶层全屏无边框窗口
     const win = new BrowserWindow({
@@ -62,7 +83,7 @@ export async function openScreenshotWindow(): Promise<{ ok: boolean; error?: str
       height,
       frame: false,
       transparent: false,
-      backgroundColor: '#000000',
+      backgroundColor: '#111621',
       alwaysOnTop: true,
       skipTaskbar: true,
       resizable: false,
@@ -79,7 +100,24 @@ export async function openScreenshotWindow(): Promise<{ ok: boolean; error?: str
     screenshotWindow = win
     attachConsoleForwarding(win)
 
+    // 兜底超时显示：防止网络或首帧上报异常时窗口永久隐藏
+    let hasShown = false
+    const showTimeout = setTimeout(() => {
+      if (!hasShown && screenshotWindow && !screenshotWindow.isDestroyed()) {
+        hasShown = true
+        screenshotWindow.show()
+        screenshotWindow.focus()
+      }
+    }, 1000)
+
+    win.once('show', () => {
+      hasShown = true
+      clearTimeout(showTimeout)
+    })
+
     win.on('closed', () => {
+      hasShown = true
+      clearTimeout(showTimeout)
       screenshotWindow = null
       capturedImageDataUrl = null
     })
