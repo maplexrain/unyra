@@ -5,13 +5,14 @@
  * 类似 examWindow 与 traceWindow：与主窗口共用同一份渲染产物，通过 ?screenshotWindow=1 分支。
  * 覆盖整个目标显示器，置顶置显，零黑帧闪烁。
  */
-import { BrowserWindow, desktopCapturer, ipcMain, screen, clipboard, nativeImage, dialog, type DesktopCapturerSource } from 'electron'
+import { BrowserWindow, desktopCapturer, ipcMain, screen, dialog, type DesktopCapturerSource } from 'electron'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { t } from '../i18n'
 import { DEV_SERVER_URL } from './startup'
 import { attachConsoleForwarding } from './windows'
 import { openPinWindow, type PinnedItemPayload } from './pinWindow'
+import { copyDataUrlToClipboard } from './clipboardHelper'
 
 let screenshotWindow: BrowserWindow | null = null
 let capturedImageDataUrl: string | null = null
@@ -205,18 +206,10 @@ export function registerScreenshotIpc(): void {
   })
 
   // 5. 确定：写入系统原生剪贴板并关闭截图窗口
-  ipcMain.handle('screenshot:confirm', (_e, dataUrl: string) => {
-    try {
-      const img = nativeImage.createFromDataURL(dataUrl)
-      const clip = clipboard as unknown as { writeImage?: (img: unknown) => void }
-      if (typeof clip.writeImage === 'function') {
-        clip.writeImage(img)
-      }
-      closeScreenshotWindow()
-      return { ok: true }
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : t('写入剪贴板失败') }
-    }
+  ipcMain.handle('screenshot:confirm', async (_e, dataUrl: string) => {
+    const res = await copyDataUrlToClipboard(dataUrl)
+    closeScreenshotWindow()
+    return res
   })
 
   // 6. 指定（置顶贴图）：在主进程直接创建独立的系统置顶原生窗口，不作为主窗口的一部分

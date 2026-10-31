@@ -1097,30 +1097,39 @@ export default function ScreenshotEditor({
 
   // 生成最终高清裁切合并画布
   const renderFinalCroppedCanvas = (): HTMLCanvasElement | null => {
-    if (!selection || !imageElementRef.current) return null
+    if (!selection) return null
     const { x, y, width, height } = selection
-    if (width <= 0 || height <= 0) return null
+    const rw = Math.round(width)
+    const rh = Math.round(height)
+    if (rw <= 0 || rh <= 0) return null
 
     const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
+    canvas.width = rw
+    canvas.height = rh
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
 
     const img = imageElementRef.current
-    const scaleX = img.naturalWidth / window.innerWidth
-    const scaleY = img.naturalHeight / window.innerHeight
+    const off = offscreenCanvasRef.current
+    const source: CanvasImageSource | null = img && img.naturalWidth > 0 ? img : off
+    if (!source) return null
+
+    const naturalW = img?.naturalWidth || off?.width || window.innerWidth
+    const naturalH = img?.naturalHeight || off?.height || window.innerHeight
+
+    const scaleX = naturalW / window.innerWidth
+    const scaleY = naturalH / window.innerHeight
 
     ctx.drawImage(
-      img,
+      source,
       x * scaleX,
       y * scaleY,
       width * scaleX,
       height * scaleY,
       0,
       0,
-      width,
-      height,
+      rw,
+      rh,
     )
 
     ctx.save()
@@ -1189,16 +1198,24 @@ export default function ScreenshotEditor({
 
     try {
       const bridge = native()
+      // 1. Electron 独立截图窗口环境：由主进程直接将完整系统剪贴板格式写入并安全关闭截图窗口
+      if (bridge.tools?.confirmScreenshot) {
+        const res = await bridge.tools.confirmScreenshot(dataUrl)
+        if (res && !res.ok) {
+          onToast(res.error || t('写入剪贴板失败'))
+        }
+        return
+      }
+
+      // 2. WebUI / 独立工作区环境：通过 bridge.tools.copyImage 写入
       if (bridge.tools?.copyImage) {
         await bridge.tools.copyImage(dataUrl)
-      }
-      finalCanvas.toBlob(async (blob) => {
-        if (blob && navigator.clipboard && window.ClipboardItem) {
-          try {
-            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-          } catch {}
+      } else if (navigator.clipboard && window.ClipboardItem) {
+        const blob = await new Promise<Blob | null>((resolve) => finalCanvas.toBlob(resolve, 'image/png'))
+        if (blob) {
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
         }
-      }, 'image/png')
+      }
       onToast(t('截图已复制到剪贴板'))
       onClose()
     } catch {

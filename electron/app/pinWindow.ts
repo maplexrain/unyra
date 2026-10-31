@@ -3,12 +3,13 @@
  * 支持固定多个截图，每个固定截图均为完全独立的无边框置顶原生窗口。
  * 不附属于主窗口，独立拖拽、缩放、复制、保存和关闭。
  */
-import { BrowserWindow, ipcMain, clipboard, nativeImage, dialog } from 'electron'
+import { BrowserWindow, ipcMain, dialog } from 'electron'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { t } from '../i18n'
 import { DEV_SERVER_URL } from './startup'
 import { attachConsoleForwarding } from './windows'
+import { copyDataUrlToClipboard } from './clipboardHelper'
 
 export interface PinnedItemPayload {
   id: string
@@ -103,19 +104,10 @@ export function registerPinIpc(): void {
   })
 
   // 复制贴图图像到剪贴板
-  ipcMain.handle('pin:copy', (_e, id: string) => {
+  ipcMain.handle('pin:copy', async (_e, id: string) => {
     const record = pinnedWindows.get(id)
     if (!record) return { ok: false, error: t('贴图不存在') }
-    try {
-      const img = nativeImage.createFromDataURL(record.data.dataUrl)
-      const clip = clipboard as unknown as { writeImage?: (img: unknown) => void }
-      if (typeof clip.writeImage === 'function') {
-        clip.writeImage(img)
-      }
-      return { ok: true }
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : t('复制失败') }
-    }
+    return copyDataUrlToClipboard(record.data.dataUrl)
   })
 
   // 保存贴图到文件

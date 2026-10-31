@@ -274,5 +274,12 @@ describe('实用工具箱后端与原生桥 (Tools & Screenshot)', () => {
       expect(dragStart).toBeNull()
       expect(selection).toEqual({ x: 50, y: 60, width: 50, height: 40 })
     })
+
+    it('copyDataUrlToClipboard 能正确解析 PNG Base64 并兼容写入原生剪贴板', async () => {
+      const { copyDataUrlToClipboard } = await import('../electron/app/clipboardHelper')
+      const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+      const res = await copyDataUrlToClipboard(dataUrl)
+      expect(res.ok).toBe(true)
+    })
   })
 })
