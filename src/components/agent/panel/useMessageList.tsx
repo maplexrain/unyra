@@ -13,7 +13,7 @@
  */
 
 import { useMemo } from 'react'
-import { Sparkles } from 'lucide-react'
+import { MessageSquare, Sparkles } from 'lucide-react'
 import WaveBars from '../../WaveBars'
 import { CompactionDivider } from './CompactionDivider'
 import { HiddenDivider, MessageRow, Parts } from './MessageBubble'
@@ -98,6 +98,7 @@ export function useMessageList({
   onOpenFile,
   onSelectPrompt,
   goalId,
+  free,
 }: MessageListProps) {
   /*
    * 分段只在 messages 变了之后重算：流式写作时 messages 身份不变（正在长的那一段
@@ -106,12 +107,19 @@ export function useMessageList({
    */
   const { segments, pending } = useMemo(() => toSegments(messages), [messages])
   const suggestions = useMemo(
-    () => [
-      t('用直白的例子解释这个概念'),
-      t('帮我梳理要点并整理进笔记'),
-      t('针对难点出一道随堂小测验'),
-    ],
-    [],
+    () =>
+      free
+        ? [
+            t('帮我梳理一段思路或方案'),
+            t('快速解答一个技术或日常疑问'),
+            t('探讨一个观点的不同视角与利弊'),
+          ]
+        : [
+            t('用直白的例子解释这个概念'),
+            t('帮我梳理要点并整理进笔记'),
+            t('针对难点出一道随堂小测验'),
+          ],
+    [free],
   )
 
   return (
@@ -119,13 +127,19 @@ export function useMessageList({
       {messages.length === 0 && !streaming && (
         <div className="my-auto flex flex-col items-center justify-center px-4 py-8 text-center select-none animate-in fade-in duration-300">
           <div className="flex h-11 w-11 items-center justify-center text-seal/80">
-            <Sparkles size={26} className="stroke-[1.6]" />
+            {free ? (
+              <MessageSquare size={26} className="stroke-[1.6]" style={{ color: 'var(--color-ink-soft, #98928a)' }} />
+            ) : (
+              <Sparkles size={26} className="stroke-[1.6]" />
+            )}
           </div>
           <h4 className="mt-2 text-[14.5px] font-medium tracking-wide text-ink-strong">
-            {t('超级导师已就绪')}
+            {free ? t('自由对话已就绪') : t('超级导师已就绪')}
           </h4>
           <p className="mt-1 max-w-[280px] text-[12px] leading-relaxed text-ink-soft">
-            {t('针对当前知识点随思提问、拆解推导或生成笔记')}
+            {free
+              ? t('探索想法、快速答疑、方案构思或自由交流，随时随地开启对话')
+              : t('针对当前知识点随思提问、拆解推导或生成笔记')}
           </p>
           <div className="mt-5 flex flex-col items-center gap-2 text-[11.5px] text-ink-faint">
             <span className="text-[11px] text-ink-faint/70">{t('可以这样对我说：')}</span>
