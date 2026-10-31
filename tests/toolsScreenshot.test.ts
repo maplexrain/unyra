@@ -205,5 +205,74 @@ describe('实用工具箱后端与原生桥 (Tools & Screenshot)', () => {
       expect(isClick({ x: 100, y: 100 }, { x: 105, y: 100 })).toBe(false) // 拖拽框选
       expect(isClick({ x: 100, y: 100 }, { x: 150, y: 180 })).toBe(false) // 明显拖拽
     })
+
+    it('拉选框拖拽状态机支持连续帧平滑更新选区尺寸，不发生锁死', () => {
+      let selection: { x: number; y: number; width: number; height: number } | null = null
+      let isSelecting = false
+      let dragStart: { x: number; y: number } | null = null
+
+      const onMouseDown = (x: number, y: number) => {
+        dragStart = { x, y }
+        isSelecting = false
+      }
+
+      const onMouseMove = (x: number, y: number) => {
+        if (isSelecting && dragStart) {
+          selection = {
+            x: Math.min(dragStart.x, x),
+            y: Math.min(dragStart.y, y),
+            width: Math.abs(x - dragStart.x),
+            height: Math.abs(y - dragStart.y),
+          }
+          return
+        }
+        if (dragStart) {
+          const dist = Math.hypot(x - dragStart.x, y - dragStart.y)
+          if (dist >= 4) {
+            isSelecting = true
+            selection = {
+              x: Math.min(dragStart.x, x),
+              y: Math.min(dragStart.y, y),
+              width: Math.abs(x - dragStart.x),
+              height: Math.abs(y - dragStart.y),
+            }
+          }
+        }
+      }
+
+      const onMouseUp = () => {
+        isSelecting = false
+        dragStart = null
+      }
+
+      // 1. 按下鼠标
+      onMouseDown(100, 100)
+      expect(selection).toBeNull()
+      expect(isSelecting).toBe(false)
+
+      // 2. 微小移动 (2px < 4px)，不触发拖拽
+      onMouseMove(101, 101)
+      expect(selection).toBeNull()
+      expect(isSelecting).toBe(false)
+
+      // 3. 超过 4px 阈值，进入拖拽拉框
+      onMouseMove(105, 105)
+      expect(isSelecting).toBe(true)
+      expect(selection).toEqual({ x: 100, y: 100, width: 5, height: 5 })
+
+      // 4. 后续帧连续拖拽，选区持续同步放大与更新
+      onMouseMove(300, 250)
+      expect(selection).toEqual({ x: 100, y: 100, width: 200, height: 150 })
+
+      // 5. 反向拉选框（向左上方拖拽）
+      onMouseMove(50, 60)
+      expect(selection).toEqual({ x: 50, y: 60, width: 50, height: 40 })
+
+      // 6. 松开鼠标确立选区
+      onMouseUp()
+      expect(isSelecting).toBe(false)
+      expect(dragStart).toBeNull()
+      expect(selection).toEqual({ x: 50, y: 60, width: 50, height: 40 })
+    })
   })
 })

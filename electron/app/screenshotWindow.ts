@@ -100,7 +100,7 @@ export async function openScreenshotWindow(): Promise<{ ok: boolean; error?: str
     }
     capturedSystemRects = sysRects
 
-    // 3. 创建贴合整个屏幕的顶层全屏无边框窗口
+    // 3. 创建贴合整个屏幕的顶层全屏无边框窗口（thickFrame: false 彻底禁用 Windows DWM 开窗缩放放大动画）
     const win = new BrowserWindow({
       x,
       y,
@@ -114,6 +114,9 @@ export async function openScreenshotWindow(): Promise<{ ok: boolean; error?: str
       resizable: false,
       movable: false,
       show: false, // 页面加载并绘制好首帧后再显示，彻底避免黑屏闪烁
+      thickFrame: false, // 禁用 Windows 默认窗口动画 (WS_THICKFRAME)，避免开窗出现放大动画
+      hasShadow: false, // 禁用系统阴影淡入动画
+      roundedCorners: false, // 禁用 Windows 11 圆角动画
       webPreferences: {
         preload: path.join(__dirname, 'preload.cjs'),
         nodeIntegration: false,
@@ -130,7 +133,7 @@ export async function openScreenshotWindow(): Promise<{ ok: boolean; error?: str
     const showTimeout = setTimeout(() => {
       if (!hasShown && screenshotWindow && !screenshotWindow.isDestroyed()) {
         hasShown = true
-        screenshotWindow.show()
+        screenshotWindow.showInactive()
         screenshotWindow.focus()
       }
     }, 1000)
@@ -188,10 +191,10 @@ export function registerScreenshotIpc(): void {
     return capturedSystemRects
   })
 
-  // 3. 截图窗口首帧渲染就绪，无闪烁显示并聚焦
+  // 3. 截图窗口首帧渲染就绪，无动画直接呈现并聚焦（showInactive 避免 DWM 开窗动画）
   ipcMain.on('screenshot:ready', () => {
     if (screenshotWindow && !screenshotWindow.isDestroyed()) {
-      screenshotWindow.show()
+      screenshotWindow.showInactive()
       screenshotWindow.focus()
     }
   })

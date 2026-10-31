@@ -64,7 +64,7 @@ export default function ToolsButton({ onScreenshot, onToast }: ToolsButtonProps)
                 }}
                 className="group/item flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-line/60"
               >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-seal/10 text-seal transition group-hover/item:scale-105 group-hover/item:bg-seal group-hover/item:text-white">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-seal/10 text-seal transition group-hover/item:bg-seal group-hover/item:text-white">
                   <Crop size={15} />
                 </span>
                 <div className="min-w-0 flex-1">
