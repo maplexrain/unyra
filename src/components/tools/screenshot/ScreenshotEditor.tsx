@@ -21,6 +21,7 @@ import type {
   TextObject,
   ToolType,
 } from './types'
+import { detectWindowUnderCursor } from './windowDetector'
 
 export interface ScreenshotEditorProps {
   imageSrc: string
@@ -59,10 +60,14 @@ export default function ScreenshotEditor({
   const drawMainCanvasRef = useRef<() => void>(() => {})
   const [isLoaded, setIsLoaded] = useState(false)
 
-  // 选区状态
+  // 选区与窗口自动吸附
   const [selection, setSelection] = useState<Rect | null>(null)
   const [isSelecting, setIsSelecting] = useState(false)
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null)
+  const [systemRects, setSystemRects] = useState<Rect[]>([])
+  const [hoveredWindowRect, setHoveredWindowRect] = useState<Rect | null>(null)
+  const hoveredWindowRectRef = useRef<Rect | null>(null)
+  hoveredWindowRectRef.current = hoveredWindowRect
   const [selectionResizeHandle, setSelectionResizeHandle] = useState<string | null>(null)
   const [isMovingSelection, setIsMovingSelection] = useState(false)
   const [selectionMoveStart, setSelectionMoveStart] = useState<{ x: number; y: number; orig: Rect } | null>(null)
@@ -171,6 +176,22 @@ export default function ScreenshotEditor({
       active = false
     }
   }, [imageSrc, onReady])
+
+  // 获取系统已存在窗口与工作区边界，用于自动窗口捕捉
+  useEffect(() => {
+    const fetchRects = async () => {
+      try {
+        const bridge = native()
+        if (bridge.tools?.getScreenshotSystemRects) {
+          const rects = await bridge.tools.getScreenshotSystemRects()
+          if (rects && rects.length > 0) {
+            setSystemRects(rects)
+          }
+        }
+      } catch {}
+    }
+    void fetchRects()
+  }, [])
 
   // 放大镜取样（缩放尺度调小，取样 17x17，单元格 5px，视野更广更舒适）
   const updateLoupe = useCallback((clientX: number, clientY: number) => {
@@ -288,6 +309,13 @@ export default function ScreenshotEditor({
 
       if (e.key === 'Escape') {
         e.preventDefault()
+        if (selection) {
+          setSelection(null)
+          setObjects([])
+          setTool('none')
+          setSelectedObjectId(null)
+          return
+        }
         onClose()
         return
       }
@@ -375,17 +403,56 @@ export default function ScreenshotEditor({
     setMousePos({ x: clientX, y: clientY })
     updateLoupe(clientX, clientY)
 
-    // 1. 正在拉选框中
-    if (isSelecting && dragStart) {
-      const x = Math.min(dragStart.x, clientX)
-      const y = Math.min(dragStart.y, clientY)
-      const width = Math.abs(clientX - dragStart.x)
-      const height = Math.abs(clientY - dragStart.y)
-      setSelection({ x, y, width, height })
+    // 0. 未确立选区时的交互逻辑：支持自动窗口捕捉与鼠标按下后的拖拽判断
+    if (!selection) {
+      if (isSelecting && dragStart) {
+        // 正在自由拖拽拉框中
+        const x = Math.min(dragStart.x, clientX)
+        const y = Math.min(dragStart.y, clientY)
+        const width = Math.abs(clientX - dragStart.x)
+        const height = Math.abs(clientY - dragStart.y)
+        setSelection({ x, y, width, height })
+        return
+      }
+
+      if (dragStart) {
+        // 按下后移动超过 4px：立即转为自由拉选框
+        const dist = Math.hypot(clientX - dragStart.x, clientY - dragStart.y)
+        if (dist >= 4) {
+          setIsSelecting(true)
+          setHoveredWindowRect(null)
+          const x = Math.min(dragStart.x, clientX)
+          const y = Math.min(dragStart.y, clientY)
+          const width = Math.abs(clientX - dragStart.x)
+          const height = Math.abs(clientY - dragStart.y)
+          setSelection({ x, y, width, height })
+          return
+        }
+      } else {
+        // 纯光标移动：实时探测并吸附窗口
+        const cur = hoveredWindowRectRef.current
+        if (
+          !cur ||
+          clientX < cur.x ||
+          clientX > cur.x + cur.width ||
+          clientY < cur.y ||
+          clientY > cur.y + cur.height
+        ) {
+          const detected = detectWindowUnderCursor(
+            clientX,
+            clientY,
+            offscreenCanvasRef.current,
+            systemRects,
+            window.innerWidth,
+            window.innerHeight,
+          )
+          setHoveredWindowRect(detected)
+        }
+      }
       return
     }
 
-    // 2. 正在微调选区边框手柄中
+    // 1. 正在微调选区边框手柄中
     if (selectionResizeHandle && selection && dragStart) {
       const dx = clientX - dragStart.x
       const dy = clientY - dragStart.y
@@ -612,18 +679,34 @@ export default function ScreenshotEditor({
       }
     }
 
-    // 4. 点击选区外，重新开辟新选区
+    // 4. 点击选区外，进入准备框选/窗口选取状态
     setSelectedObjectId(null)
-    setIsSelecting(true)
     setDragStart({ x: clientX, y: clientY })
-    setSelection({ x: clientX, y: clientY, width: 0, height: 0 })
     setObjects([])
     setTool('none')
     setEditingTarget(null)
+    if (selection) {
+      setSelection(null)
+    }
   }
 
   // 鼠标松开
-  const handleMouseUp = () => {
+  const handleMouseUp = (e: React.MouseEvent) => {
+    const clientX = e.clientX
+    const clientY = e.clientY
+
+    // 单击自动吸附选定窗口
+    if (!selection && dragStart) {
+      const dist = Math.hypot(clientX - dragStart.x, clientY - dragStart.y)
+      if (dist < 4 && hoveredWindowRect) {
+        setSelection(hoveredWindowRect)
+        setHoveredWindowRect(null)
+        setDragStart(null)
+        setIsSelecting(false)
+        return
+      }
+    }
+
     if (isSelecting) {
       setIsSelecting(false)
       setDragStart(null)
@@ -746,18 +829,11 @@ export default function ScreenshotEditor({
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.scale(dpr, dpr)
 
-    // 选区与遮罩
+    // 1. 已选区状态：绘制选区边框与标注对象（零变色与暗化遮罩，原图 100% 真实色彩）
     if (selection && (selection.width > 0 || selection.height > 0)) {
       const { x, y, width, height } = selection
 
-      // 遮罩：选区外部半透明遮罩
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
-      ctx.fillRect(0, 0, w, y)
-      ctx.fillRect(0, y + height, w, h - (y + height))
-      ctx.fillRect(0, y, x, height)
-      ctx.fillRect(x + width, y, w - (x + width), height)
-
-      // 选区边框（精致天蓝）
+      // 选区边框（精致天蓝边线）
       ctx.strokeStyle = '#38bdf8'
       ctx.lineWidth = 2
       ctx.strokeRect(x, y, width, height)
@@ -782,12 +858,18 @@ export default function ScreenshotEditor({
       if (tool === 'none') {
         drawSelectionHandles(ctx, selection)
       }
-    } else {
-      // 尚未框选时：轻微半透明暗化遮罩，提示用户处于截图状态
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.25)'
-      ctx.fillRect(0, 0, w, h)
+    } else if (hoveredWindowRect && !isSelecting) {
+      // 2. 悬停在窗口上时：高亮指示该窗口，无任何变色与暗化
+      ctx.strokeStyle = '#38bdf8'
+      ctx.lineWidth = 2
+      ctx.strokeRect(
+        hoveredWindowRect.x,
+        hoveredWindowRect.y,
+        hoveredWindowRect.width,
+        hoveredWindowRect.height,
+      )
     }
-  }, [selection, objects, draftObject, selectedObjectId, tool, isLoaded])
+  }, [selection, hoveredWindowRect, isSelecting, objects, draftObject, selectedObjectId, tool, isLoaded])
 
   useEffect(() => {
     drawMainCanvasRef.current = drawMainCanvas
@@ -1167,8 +1249,8 @@ export default function ScreenshotEditor({
       onMouseMove={handleMouseMove}
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
-      style={{ opacity: isLoaded ? 1 : 0 }}
-      className="fixed inset-0 z-[9999] select-none overflow-hidden cursor-crosshair transition-opacity duration-100"
+      style={{ display: isLoaded ? 'block' : 'none' }}
+      className="fixed inset-0 z-[9999] select-none overflow-hidden cursor-crosshair"
     >
       {/* 底层硬件加速原图：100% 确保任何情况下屏幕画面绝无黑屏 */}
       <img
@@ -1181,10 +1263,23 @@ export default function ScreenshotEditor({
 
       {/* 尚未选取时的操作指引 */}
       {!selection && isLoaded && (
-        <div className="pointer-events-none absolute top-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full border border-white/20 bg-black/75 px-4 py-1.5 text-xs text-white/90 shadow-2xl backdrop-blur-md">
-          <span>{t('拖拽鼠标以框选截图区域')}</span>
+        <div className="pointer-events-none absolute top-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full border border-white/20 bg-black/85 px-4 py-1.5 text-xs text-white/95 shadow-2xl backdrop-blur-md">
+          <span>{t('单击自动选取窗口 · 拖拽自由框选')}</span>
           <span className="text-white/40">|</span>
           <span className="text-white/60">{t('Shift 切换颜色格式 · Esc 退出')}</span>
+        </div>
+      )}
+
+      {/* 自动捕捉候选窗口的实时尺寸展示 */}
+      {!selection && hoveredWindowRect && (
+        <div
+          style={{
+            left: `${Math.max(10, Math.min(window.innerWidth - 110, hoveredWindowRect.x + hoveredWindowRect.width - 92))}px`,
+            top: `${hoveredWindowRect.y >= 32 ? hoveredWindowRect.y - 28 : hoveredWindowRect.y + 8}px`,
+          }}
+          className="pointer-events-none absolute z-30 flex items-center justify-center rounded-md bg-black/85 px-2 py-0.8 font-mono text-[11px] font-bold text-sky-400 shadow-lg backdrop-blur-sm border border-sky-400/30"
+        >
+          {Math.round(hoveredWindowRect.width)} × {Math.round(hoveredWindowRect.height)}
         </div>
       )}
 

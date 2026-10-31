@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { toolsRouter } from '../server/routes/tools'
 import { createWebNativeBridge } from '../src/lib/nativeBridgeWeb'
+import { detectWindowUnderCursor } from '../src/components/tools/screenshot/windowDetector'
 
 describe('实用工具箱后端与原生桥 (Tools & Screenshot)', () => {
   beforeEach(() => {
@@ -171,6 +172,38 @@ describe('实用工具箱后端与原生桥 (Tools & Screenshot)', () => {
       const sel = { x: 100, y: 200, width: 853.4, height: 480.2 }
       const label = `${Math.round(sel.width)} × ${Math.round(sel.height)}`
       expect(label).toBe('853 × 480')
+    })
+
+    it('窗口智能捕捉算法能从多个重叠窗口中精准匹配光标所在的最小窗口', () => {
+      const sysRects = [
+        { x: 0, y: 0, width: 1920, height: 1080 }, // 全屏
+        { x: 0, y: 0, width: 1920, height: 1040 }, // 工作区
+        { x: 200, y: 150, width: 1200, height: 800 }, // 主窗口
+        { x: 400, y: 300, width: 500, height: 350 }, // 弹窗/子窗口
+      ]
+
+      // 1. 光标在弹窗内部，必须精准吸附弹窗
+      const targetWindow = detectWindowUnderCursor(450, 350, null, sysRects, 1920, 1080)
+      expect(targetWindow).toEqual({ x: 400, y: 300, width: 500, height: 350 })
+
+      // 2. 光标在主窗口但弹窗外，吸附主窗口
+      const mainWindow = detectWindowUnderCursor(250, 200, null, sysRects, 1920, 1080)
+      expect(mainWindow).toEqual({ x: 200, y: 150, width: 1200, height: 800 })
+
+      // 3. 光标在桌面空白区域，回退到工作区/显示器
+      const deskWindow = detectWindowUnderCursor(1600, 100, null, sysRects, 1920, 1080)
+      expect(deskWindow).toEqual({ x: 0, y: 0, width: 1920, height: 1040 })
+    })
+
+    it('单击判定（位移 < 4px）与拖拽判定（位移 >= 4px）逻辑准确', () => {
+      const isClick = (start: { x: number; y: number }, end: { x: number; y: number }) => {
+        return Math.hypot(end.x - start.x, end.y - start.y) < 4
+      }
+
+      expect(isClick({ x: 100, y: 100 }, { x: 101, y: 102 })).toBe(true) // 单击吸附
+      expect(isClick({ x: 100, y: 100 }, { x: 100, y: 100 })).toBe(true) // 纯点击
+      expect(isClick({ x: 100, y: 100 }, { x: 105, y: 100 })).toBe(false) // 拖拽框选
+      expect(isClick({ x: 100, y: 100 }, { x: 150, y: 180 })).toBe(false) // 明显拖拽
     })
   })
 })

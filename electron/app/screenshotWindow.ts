@@ -11,19 +11,15 @@ import path from 'node:path'
 import { t } from '../i18n'
 import { DEV_SERVER_URL } from './startup'
 import { attachConsoleForwarding } from './windows'
+import { openPinWindow, type PinnedItemPayload } from './pinWindow'
 
 let screenshotWindow: BrowserWindow | null = null
 let capturedImageDataUrl: string | null = null
+let capturedSystemRects: Array<{ x: number; y: number; width: number; height: number }> = []
 
 function hostWindow(): BrowserWindow | null {
   const win = BrowserWindow.getAllWindows().find((w) => w !== screenshotWindow && !w.isDestroyed())
   return win ?? null
-}
-
-function sendToHost(channel: string, payload: unknown): void {
-  const win = hostWindow()
-  if (!win || win.webContents.isDestroyed()) return
-  win.webContents.send(channel, payload)
 }
 
 export async function openScreenshotWindow(): Promise<{ ok: boolean; error?: string }> {
@@ -74,6 +70,35 @@ export async function openScreenshotWindow(): Promise<{ ok: boolean; error?: str
     if (!capturedImageDataUrl) {
       return { ok: false, error: t('未能获取屏幕截图画面') }
     }
+
+    // 收集系统与窗口边界，供截图时自动窗口捕捉使用
+    const sysRects: Array<{ x: number; y: number; width: number; height: number }> = []
+    if (display.workArea) {
+      sysRects.push({
+        x: Math.max(0, display.workArea.x - display.bounds.x),
+        y: Math.max(0, display.workArea.y - display.bounds.y),
+        width: display.workArea.width,
+        height: display.workArea.height,
+      })
+    }
+    sysRects.push({
+      x: 0,
+      y: 0,
+      width: display.bounds.width,
+      height: display.bounds.height,
+    })
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (w !== screenshotWindow && !w.isDestroyed() && w.isVisible() && !w.isMinimized()) {
+        const b = w.getBounds()
+        sysRects.push({
+          x: Math.max(0, b.x - display.bounds.x),
+          y: Math.max(0, b.y - display.bounds.y),
+          width: b.width,
+          height: b.height,
+        })
+      }
+    }
+    capturedSystemRects = sysRects
 
     // 3. 创建贴合整个屏幕的顶层全屏无边框窗口
     const win = new BrowserWindow({
@@ -158,6 +183,11 @@ export function registerScreenshotIpc(): void {
     return capturedImageDataUrl
   })
 
+  // 2.1 获取当前屏幕与系统窗口边界（用于窗口自动吸附/捕捉）
+  ipcMain.handle('screenshot:getSystemRects', () => {
+    return capturedSystemRects
+  })
+
   // 3. 截图窗口首帧渲染就绪，无闪烁显示并聚焦
   ipcMain.on('screenshot:ready', () => {
     if (screenshotWindow && !screenshotWindow.isDestroyed()) {
@@ -186,9 +216,16 @@ export function registerScreenshotIpc(): void {
     }
   })
 
-  // 6. 指定（置顶贴图）：把贴图数据发送回主窗口，并关闭截图窗口
-  ipcMain.on('screenshot:pin', (_e, pinnedItem: unknown) => {
-    sendToHost('tools:pinned-screenshot', pinnedItem)
+  // 6. 指定（置顶贴图）：在主进程直接创建独立的系统置顶原生窗口，不作为主窗口的一部分
+  ipcMain.on('screenshot:pin', async (_e, pinnedItem: unknown) => {
+    try {
+      const item = pinnedItem as PinnedItemPayload
+      if (item && item.dataUrl) {
+        await openPinWindow(item)
+      }
+    } catch (err) {
+      console.error('[Screenshot] pin window open error:', err)
+    }
     closeScreenshotWindow()
   })
 

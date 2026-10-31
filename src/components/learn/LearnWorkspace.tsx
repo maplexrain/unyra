@@ -293,7 +293,6 @@ import { DocPane } from './workspace/DocPane'
 import { FocusDock, ReadingDock, ScheduleDock } from './workspace/docks'
 import ToolsButton from '../tools/ToolsButton'
 import ScreenshotModal from '../tools/ScreenshotModal'
-import PinnedScreenshot, { type PinnedItem } from '../tools/PinnedScreenshot'
 import { EmptyDoc, Topbar } from './workspace/chrome'
 import { CreateGoalDialog } from './workspace/CreateGoalDialog'
 import { useSideColumns } from './workspace/useSideColumns'
@@ -556,24 +555,9 @@ export default function LearnWorkspace({
   }, [structOverlayGoal, activeTab, store, activeGoalId, onToast])
   useShortcut('learn.structPopout', { down: toggleStructOverlay })
 
-  /* ---------- 实用工具箱：屏幕截图与置顶贴图 ---------- */
+  /* ---------- 实用工具箱：屏幕截图 ---------- */
   const [screenshotImage, setScreenshotImage] = useState<string | null>(null)
-  const [pinnedScreenshots, setPinnedScreenshots] = useState<PinnedItem[]>([])
   const [isCapturing, setIsCapturing] = useState(false)
-
-  // 监听来自系统层级全屏截图窗口传回的置顶贴图
-  useEffect(() => {
-    const bridge = native()
-    if (bridge.tools?.onPinnedScreenshot) {
-      const unsub = bridge.tools.onPinnedScreenshot((item) => {
-        if (item && typeof item === 'object' && 'dataUrl' in item) {
-          setPinnedScreenshots((prev) => [...prev, item as PinnedItem])
-          onToast(t('已生成置顶贴图'))
-        }
-      })
-      return unsub
-    }
-  }, [onToast])
 
   const handleStartScreenshot = useCallback(async () => {
     if (isCapturing) return
@@ -6024,25 +6008,27 @@ export default function LearnWorkspace({
         />
       )}
 
-      {/* 截图工具全屏操作浮层 */}
+      {/* 截图工具全屏操作浮层（WebUI模式） */}
       {screenshotImage && (
         <ScreenshotModal
           imageSrc={screenshotImage}
           onClose={() => setScreenshotImage(null)}
-          onPin={(pinItem) => setPinnedScreenshots((prev) => [...prev, pinItem])}
+          onPin={(pinItem) => {
+            try {
+              sessionStorage.setItem(`pin_${pinItem.id}`, JSON.stringify(pinItem))
+              window.open(
+                `?pinWindow=${encodeURIComponent(pinItem.id)}`,
+                '_blank',
+                `width=${Math.round(pinItem.width)},height=${Math.round(pinItem.height)},menubar=no,toolbar=no`,
+              )
+              onToast(t('已生成独立置顶贴图窗口'))
+            } catch {
+              onToast(t('已生成置顶贴图'))
+            }
+          }}
           onToast={onToast}
         />
       )}
-
-      {/* 置顶贴图列表 */}
-      {pinnedScreenshots.map((item) => (
-        <PinnedScreenshot
-          key={item.id}
-          item={item}
-          onClose={(id) => setPinnedScreenshots((prev) => prev.filter((p) => p.id !== id))}
-          onToast={onToast}
-        />
-      ))}
     </div>
   )
 }
