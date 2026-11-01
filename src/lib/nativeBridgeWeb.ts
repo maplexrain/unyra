@@ -80,6 +80,8 @@ function ensureWebSocket(): void {
   } catch {}
 }
 
+const webNoticeImageCache = new Map<string, string>()
+
 export function createWebNativeBridge(): NativeBridge {
   ensureWebSocket()
 
@@ -291,6 +293,15 @@ export function createWebNativeBridge(): NativeBridge {
       get: () => apiFetch<NoticeSettings>('/api/notice/get'),
       set: (patch: Partial<NoticeSettings>) =>
         apiFetch<NoticeSettings>('/api/notice/set', { method: 'POST', body: JSON.stringify(patch) }),
+      getCachedImage: (url: string) => Promise.resolve(webNoticeImageCache.get(url) ?? null),
+      cacheImage: (url: string, dataUrl: string) => {
+        webNoticeImageCache.set(url, dataUrl)
+        return Promise.resolve(true)
+      },
+      clearImageCache: () => {
+        webNoticeImageCache.clear()
+        return Promise.resolve(true)
+      },
     },
 
     shell: {

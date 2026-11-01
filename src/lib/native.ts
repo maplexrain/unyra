@@ -409,6 +409,12 @@ export interface NativeBridge {
     get(): Promise<NoticeSettings>
     /** 按字段合并着改（只改传进来的那几项） */
     set(patch: Partial<NoticeSettings>): Promise<NoticeSettings>
+    /** 读已缓存的公告图片（回 base64 data URL；未缓存回 null） */
+    getCachedImage?(url: string): Promise<string | null>
+    /** 写入公告图片缓存 */
+    cacheImage?(url: string, dataUrl: string): Promise<boolean>
+    /** 清空公告图片缓存 */
+    clearImageCache?(): Promise<boolean>
   }
   /**
    * 外壳行为：关窗策略与托盘。

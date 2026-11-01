@@ -767,6 +767,15 @@ const api = {
     /** 按字段合并着改（只改传进来的那几项） */
     set: (patch: Partial<NoticeSettings>): Promise<NoticeSettings> =>
       ipcRenderer.invoke('notice:set', patch),
+
+    getCachedImage: (url: string): Promise<string | null> =>
+      ipcRenderer.invoke('notice:getCachedImage', url),
+
+    cacheImage: (url: string, dataUrl: string): Promise<boolean> =>
+      ipcRenderer.invoke('notice:cacheImage', url, dataUrl),
+
+    clearImageCache: (): Promise<boolean> =>
+      ipcRenderer.invoke('notice:clearImageCache'),
   },
 
   files: {
