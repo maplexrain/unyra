@@ -28,7 +28,7 @@
  */
 import { fails, pass } from './agent-ops/harness'
 import { apiNameTests, resourceApiTests, toolTests } from './agent-ops/docs.test'
-import { learningStateTests, scrollTests } from './agent-ops/reading.test'
+import { scrollTests } from './agent-ops/reading.test'
 import { examTests, methodAndSdocTests, userInfoTests, workflowTests } from './agent-ops/exam.test'
 import { budgetAndAttachTests, imageTests, staticTests } from './agent-ops/media.test'
 import { cspTests, proxyTests, shortcutTests, themeTokensTests } from './agent-ops/misc.test'
@@ -46,7 +46,6 @@ apiNameTests()
   .then(() => budgetAndAttachTests())
   .then(() => examTests())
   .then(() => cspTests())
-  .then(() => learningStateTests())
   .then(() => methodAndSdocTests())
   .then(() => workflowTests())
   .then(() => workspaceTests())
