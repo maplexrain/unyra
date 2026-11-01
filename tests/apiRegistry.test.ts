@@ -42,10 +42,9 @@ describe('注册表形状', () => {
     const names = exposedApiNames()
     for (const name of [
       'node.list', 'node.get', 'node.create', 'node.delete', 'node.invoke',
-      'state.read', 'state.update', 'state.mistake', 'state.check',
       'exam.read', 'exam.grade', 'exam.explain',
       'res.read', 'workspace.write',
-      'userInfo.get', 'reading.get', 'tmp.set',
+      'userInfo.get', 'tmp.set',
       'wf.list', 'wf.get', 'wf.create', 'wf.remove', 'wf.invoke',
       // 记忆：五条全进名单（工作 / 长期两类都靠它读写）
       'memory.list', 'memory.get', 'memory.create', 'memory.update', 'memory.delete',

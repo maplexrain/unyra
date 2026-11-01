@@ -80,7 +80,7 @@ export function classifyDataPath(raw: string): DataPathVerdict {
       return { kind: 'app-data', api: 'node', note: '节点大纲' }
     }
     if (/\.meta\.json$/i.test(rest)) {
-      return { kind: 'app-data', note: '节点元数据' }
+      return { kind: 'app-data', api: 'node', note: '节点元数据（最近打开等）——动节点数据走 api.node' }
     }
     if (/\.node\.json$/i.test(rest)) {
       return {
@@ -100,9 +100,6 @@ export function classifyDataPath(raw: string): DataPathVerdict {
     }
     if (/(^|\/)method\.json$/i.test(rest)) {
       return { kind: 'app-data', api: 'method', note: '目标持久化函数' }
-    }
-    if (/(^|\/)reading\.json$/i.test(rest)) {
-      return { kind: 'app-data', api: 'reading', note: '阅读事实账本' }
     }
     if (/(^|\/)essay\.json$/i.test(rest)) {
       return { kind: 'app-data', note: '随笔（由随笔窗口管理）' }

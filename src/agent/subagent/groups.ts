@@ -25,15 +25,12 @@ export const SUBAGENT_ALLOWED_GROUPS = [
   'node',
   'memory',
   'workspace',
-  'reading',
-  'attention',
 ] as const
 
 /**
  * 从 api 目录（apiCatalog，与实现对账的那份）按组生成 execute 参数说明里的 api 清单。
  *
- * 子代理的工具描述只写它真有的 api——按名字的组前缀过滤（reading 那个目录组里
- * 混着 focus 的条目，它们不是 reading 组，不能混进去）。
+ * 子代理的工具描述只写它真有的 api——按名字的组前缀过滤，不混组。
  * 目录是单一来源：实现改了目录没改，探针会红；这里照抄目录，清单就不会漂。
  */
 export function apiBriefForGroups(groups: string[]): string {

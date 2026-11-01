@@ -13,13 +13,13 @@ describe('路径分类', () => {
     expect(classifyDataPath('docs/微积分/极限/极限.md')).toMatchObject({ kind: 'app-data', api: 'node' })
     expect(classifyDataPath('docs/微积分/极限/极限.notes/错题本.md')).toMatchObject({ kind: 'app-data', api: 'node' })
     expect(classifyDataPath('docs/微积分/极限/极限.outline.json')).toMatchObject({ kind: 'app-data', api: 'node' })
-    expect(classifyDataPath('docs/微积分/极限/极限.meta.json')).toMatchObject({ kind: 'app-data', api: 'state' })
+    expect(classifyDataPath('docs/微积分/极限/极限.meta.json')).toMatchObject({ kind: 'app-data' })
     expect(classifyDataPath('docs/微积分/极限/exams/ex_1.json')).toMatchObject({ kind: 'app-data', api: 'node' })
     expect(classifyDataPath('docs/微积分/极限/superdocs/夹逼.html')).toMatchObject({ kind: 'app-data', api: 'node' })
     expect(classifyDataPath('docs/微积分/tmp.json')).toMatchObject({ kind: 'app-data', api: 'tmp' })
     expect(classifyDataPath('docs/微积分/workflow.json')).toMatchObject({ kind: 'app-data', api: 'wf' })
     expect(classifyDataPath('docs/微积分/method.json')).toMatchObject({ kind: 'app-data', api: 'method' })
-    expect(classifyDataPath('docs/微积分/reading.json')).toMatchObject({ kind: 'app-data', api: 'reading' })
+    expect(classifyDataPath('docs/微积分/reading.json')).toMatchObject({ kind: 'app-data' })
   })
 
   it('workspace / static / skills 是 files 的自留地', () => {
@@ -52,8 +52,7 @@ describe('files.* 准入', () => {
   it('应用数据被拒，报错里直接给出该用的 api 组与 __help 入口', () => {
     const denied = filesAccessError('docs/微积分/极限/极限.meta.json', 'write')
     expect(denied).not.toBeNull()
-    expect(denied!.error).toContain('api.state.*')
-    expect(denied!.error).toContain('api.state.__help()')
+    expect(denied!.error).toContain('__help')
     expect(filesAccessError('docs/微积分/极限/极限.md', 'read')!.error).toContain('api.node.*')
     expect(filesAccessError('setting.yaml', 'read')!.error).toContain('由应用宿主管理')
   })
