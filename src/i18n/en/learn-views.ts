@@ -178,7 +178,6 @@ const dict: Record<string, string> = {
   '新增试卷': 'New exam paper',
   '新建超级文档': 'New Super Doc',
   '新建文件': 'New file',
-  '学习状态': 'Learning state',
   '让导师重排大纲': 'Have the tutor rework the outline',
   '改名': 'Rename',
   '导出': 'Export',

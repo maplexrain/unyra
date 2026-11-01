@@ -291,7 +291,7 @@ function NodeRowComponent({
           )}
 
           {/*
-            学习状态：标题前的一棵小分支（配色见 mastery 的 STATUS_META）。
+            掌握状态：标题前的一棵小分支（配色见 mastery 的 STATUS_META）。
           */}
           <span className="flex shrink-0 items-center" title={t(meta.label)}>
             <StatusBranch size={12} className={meta.mark} />
