@@ -56,10 +56,8 @@ export function savedTextOf(store: LearnStore, ref: TabRef): string {
     ref.kind === 'local' ||
     ref.kind === 'ws' ||
     ref.kind === 'web' ||
-    ref.kind === 'guard' ||
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
-    ref.kind === 'report' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||

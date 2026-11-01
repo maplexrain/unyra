@@ -20,6 +20,9 @@ import { addBreath, applyGravity, barCount, barRanges, sampleBars, smoothBars } 
  *
  * 主题色改由 MutationObserver 盯着 `data-theme` / `style` 变，不再按帧数轮询
  * `getComputedStyle`——那是一次强制样式结算，而主题切换本来就是低频事件。
+ *
+ * **状态一律 save / restore 成对**：这是个每帧跑几十次的循环，一次没配对的 save
+ * 就是状态栈每帧长一层、永不回收（细节见图层 5 那段注释）。改这个文件时先数一遍。
  */
 
 /** 下降重力：每帧回落的全高占比（涨即时、落缓慢，见 bars.applyGravity） */
@@ -36,6 +39,18 @@ const SILENCE_LEVEL = 0.035
 
 /** 接连失败的重试上限 */
 const MAX_RETRIES = 10
+
+/**
+ * 一分钟内「输出设备变了」触发的重连上限。
+ *
+ * 蓝牙耳机来回切、外接声卡被别的程序抢，onEnded 会连着来。不设上限就是每 800ms
+ * 新建一套 AudioContext + 屏幕捕获会话，几分钟就能把渲染进程的音频通道堆满
+ * （AudioContext 同时存在是有上限的，超过之后新建的会一直挂起）。
+ */
+const MAX_RECONNECTS = 5
+
+/** 重连计数的时间窗 */
+const RECONNECT_WINDOW_MS = 60_000
 
 export default function SystemAudioWave() {
   const ref = useRef<HTMLCanvasElement | null>(null)
@@ -59,6 +74,9 @@ export default function SystemAudioWave() {
     let session: LoopbackSession | null = null
     let retryTimer = 0
     let attempts = 0
+    /** 「设备变了」触发的重连计数（时间窗见 RECONNECT_WINDOW_MS） */
+    let reconnects = 0
+    let lastEndedAt = 0
 
     // 频谱缓冲与频段表
     let freq: Uint8Array<ArrayBuffer> | null = null
@@ -68,6 +86,18 @@ export default function SystemAudioWave() {
     let shown = new Float32Array(0)
     let caps = new Float32Array(0)
     let drawn = new Float32Array(0)
+
+    /*
+     * 画笔缓存：两个线性渐变原本每帧重建一次（每秒几十上百个对象），而它们只随
+     * 「canvas 高度」与「主题色」变——resize / 换肤之后重建一次就够。
+     * baseY 与 usableHeight 同理，它们只依赖 height。
+     */
+    let baseY = 0
+    let usableHeight = 0
+    let auroraGrad: CanvasGradient | null = null
+    let barGrad: CanvasGradient | null = null
+    /** 圆角半径四元组：每根柱子共用一个数组，别在循环里新建（每帧 n 个对象） */
+    const barRadii: [number, number, number, number] = [0, 0, 0.5, 0.5]
 
     const realloc = (n: number): void => {
       bars = n
@@ -83,6 +113,21 @@ export default function SystemAudioWave() {
       seal = cs.getPropertyValue('--color-seal').trim() || seal
       sealDeep = cs.getPropertyValue('--color-seal-deep').trim() || sealDeep
       line = cs.getPropertyValue('--color-line-strong').trim() || line
+    }
+
+    /** 尺寸或主题色变了之后重建渐变（不是每帧） */
+    const rebuildPaint = () => {
+      baseY = height - 4
+      usableHeight = Math.max(10, baseY - 8)
+      const aurora = ctx.createLinearGradient(0, baseY - usableHeight, 0, baseY)
+      aurora.addColorStop(0, seal)
+      aurora.addColorStop(1, 'transparent')
+      auroraGrad = aurora
+      const bar = ctx.createLinearGradient(0, baseY, 0, baseY - usableHeight)
+      bar.addColorStop(0, sealDeep)
+      bar.addColorStop(0.65, seal)
+      bar.addColorStop(1, seal)
+      barGrad = bar
     }
 
     const setTip = (text: string) => {
@@ -133,8 +178,16 @@ export default function SystemAudioWave() {
                   if (disposed) return
                   session?.stop()
                   session = null
-                  setTip(t('输出设备变了，重新接系统音频'))
                   window.clearTimeout(retryTimer)
+                  // 设备反复抖动时不无限重连：否则每次都在新建 AudioContext + 屏幕捕获
+                  const at = Date.now()
+                  reconnects = at - lastEndedAt < RECONNECT_WINDOW_MS ? reconnects + 1 : 1
+                  lastEndedAt = at
+                  if (reconnects > MAX_RECONNECTS) {
+                    setTip(t('输出设备反复中断，已停止监听系统音频'))
+                    return
+                  }
+                  setTip(t('输出设备变了，重新接系统音频'))
                   retryTimer = window.setTimeout(start, 800)
                 },
               })
@@ -142,6 +195,11 @@ export default function SystemAudioWave() {
             s.stop()
             return
           }
+          /*
+            正常路径走不到这里（重连前一定先把旧的 stop 过了），但真叠上两路的话，
+            旧的那套 AudioContext + 屏幕捕获会一直挂着——覆盖前先还回去，代价是一次判空。
+          */
+          session?.stop()
           session = s
           freq = new Uint8Array(s.bins())
           realloc(barCount(Math.max(1, width)))
@@ -163,6 +221,17 @@ export default function SystemAudioWave() {
     }
 
     const draw = (now: number): void => {
+      const aurora = auroraGrad
+      const bar = barGrad
+      // 渐变还没建好（首帧 resize 之前）就不画：尺寸相关的几何也还没算出来
+      if (!aurora || !bar) return
+
+      /*
+        整帧包在一对 save / restore 里：下面每个图层都会改 globalAlpha、fillStyle、shadow，
+        漏掉任何一处复原本该只影响这一帧，但更怕的是有人再写出一层「只 save 不 restore」。
+        帧内对称是这个文件的唯一纪律——见文件头。
+      */
+      ctx.save()
       ctx.clearRect(0, 0, width, height)
 
       const n = barCount(Math.max(1, width))
@@ -170,8 +239,6 @@ export default function SystemAudioWave() {
       const step = width / n
       const gap = Math.min(2.5, Math.max(1, step * 0.16))
       const barW = Math.max(1.5, step - gap)
-      const baseY = height - 4
-      const usableHeight = Math.max(10, baseY - 8)
 
       let realAudioPlaying = false
 
@@ -215,6 +282,12 @@ export default function SystemAudioWave() {
       }
 
 
+      /*
+        每个图层收成**一次 fill**：同一套填充色/透明度的 n 根柱子放进同一个 path，
+        比逐根 beginPath + fill 少一个数量级的绘制调用（n≈37 时每帧从一百多次降到五次）。
+        线性渐变按坐标空间定义、与拆成几条子路径无关，看着和逐根填完全一样。
+      */
+
       // --- 图层 1：极光流体呼吸底衬（柔光平滑曲线） ---
       ctx.beginPath()
       ctx.moveTo(0, baseY)
@@ -231,89 +304,80 @@ export default function SystemAudioWave() {
           ctx.quadraticCurveTo(prevCx, prevCy, midX, midY)
         }
       }
-      const lastCx = (n - 1) * step + barW / 2
-      const lastCy = baseY - drawn[n - 1] * usableHeight
-      ctx.lineTo(lastCx, lastCy)
+      ctx.lineTo((n - 1) * step + barW / 2, baseY - drawn[n - 1] * usableHeight)
       ctx.lineTo(width, baseY)
       ctx.closePath()
-
-      const auroraGrad = ctx.createLinearGradient(0, baseY - usableHeight, 0, baseY)
-      auroraGrad.addColorStop(0, seal)
-      auroraGrad.addColorStop(1, 'transparent')
-      ctx.fillStyle = auroraGrad
+      ctx.fillStyle = aurora
       ctx.globalAlpha = realAudioPlaying ? 0.15 : 0.08
       ctx.fill()
 
       // --- 图层 2：底座基垫（半透明圆角底托） ---
+      ctx.beginPath()
+      for (let i = 0; i < n; i++) ctx.roundRect(i * step, baseY - 1.5, barW, 2, 1)
       ctx.fillStyle = line
       ctx.globalAlpha = 0.22
-      for (let i = 0; i < n; i++) {
-        const bx = i * step
-        ctx.beginPath()
-        ctx.roundRect(bx, baseY - 1.5, barW, 2, 1)
-        ctx.fill()
-      }
+      ctx.fill()
 
       // --- 图层 3：主频谱光柱（丰富渐变 + 顶部高光） ---
-      const barGrad = ctx.createLinearGradient(0, baseY, 0, baseY - usableHeight)
-      barGrad.addColorStop(0, sealDeep)
-      barGrad.addColorStop(0.65, seal)
-      barGrad.addColorStop(1, seal)
-
+      const r = Math.min(barW / 2, 2.5)
+      barRadii[0] = r
+      barRadii[1] = r
+      ctx.beginPath()
       for (let i = 0; i < n; i++) {
         const h = Math.max(2, drawn[i] * usableHeight)
-        const bx = i * step
-        const by = baseY - h
-        const r = Math.min(barW / 2, 2.5)
-
-        ctx.fillStyle = barGrad
-        ctx.globalAlpha = realAudioPlaying ? 0.85 : 0.65
-        ctx.beginPath()
-        ctx.roundRect(bx, by, barW, h, [r, r, 0.5, 0.5])
-        ctx.fill()
-
-        // 较高柱顶部的微弱反光珠，增添琉璃通透感
-        if (h > 8) {
-          ctx.fillStyle = '#ffffff'
-          ctx.globalAlpha = 0.3
-          ctx.beginPath()
-          ctx.roundRect(bx + 0.5, by + 0.5, barW - 1, Math.min(2, h * 0.18), 1)
-          ctx.fill()
-        }
+        ctx.roundRect(i * step, baseY - h, barW, h, barRadii)
       }
+      ctx.fillStyle = bar
+      ctx.globalAlpha = realAudioPlaying ? 0.85 : 0.65
+      ctx.fill()
+
+      // 较高柱顶部的微弱反光珠，增添琉璃通透感
+      ctx.beginPath()
+      for (let i = 0; i < n; i++) {
+        const h = Math.max(2, drawn[i] * usableHeight)
+        if (h > 8) ctx.roundRect(i * step + 0.5, baseY - h + 0.5, barW - 1, Math.min(2, h * 0.18), 1)
+      }
+      ctx.fillStyle = '#ffffff'
+      ctx.globalAlpha = 0.3
+      ctx.fill()
 
       // --- 图层 4：悬浮流光峰值珠（慢速漂浮回落） ---
+      /*
+        这一层要开 shadowBlur（最贵的一项），单独 save/restore 包住：阴影不能漏到下面
+        那层倒影上。整排珠子共用一套填充与阴影，path 合并成一次 fill。
+      */
+      ctx.save()
+      ctx.beginPath()
       for (let i = 0; i < n; i++) {
         const ch = caps[i] * usableHeight
         if (ch < 3) continue
-        const bx = i * step
-        const beadY = baseY - ch - 3
-        const beadH = 2
-
-        ctx.save()
-        ctx.fillStyle = seal
-        ctx.globalAlpha = realAudioPlaying ? 0.95 : 0.75
-        if (realAudioPlaying) {
-          ctx.shadowColor = seal
-          ctx.shadowBlur = 4
-        }
-        ctx.beginPath()
-        ctx.roundRect(bx, beadY, barW, beadH, 1)
-        ctx.fill()
-        ctx.restore()
+        ctx.roundRect(i * step, baseY - ch - 3, barW, 2, 1)
       }
+      ctx.fillStyle = seal
+      ctx.globalAlpha = realAudioPlaying ? 0.95 : 0.75
+      if (realAudioPlaying) {
+        ctx.shadowColor = seal
+        ctx.shadowBlur = 4
+      }
+      ctx.fill()
+      ctx.restore()
 
       // --- 图层 5：底部微倒影 ---
-      ctx.save()
-      ctx.globalAlpha = 0.08
+      /*
+        这一层是最后一层，状态由开头那对整帧 save/restore 收尾——**不要再手动改 globalAlpha
+        就了事**：那正是状态栈每帧长一层的写法（详见文件头）。要局部复原就用 restore。
+      */
+      ctx.beginPath()
       for (let i = 0; i < n; i++) {
         const rh = Math.min(4, drawn[i] * usableHeight * 0.2)
         if (rh <= 0.5) continue
-        const bx = i * step
-        ctx.fillStyle = seal
-        ctx.fillRect(bx, baseY + 1, barW, rh)
+        ctx.rect(i * step, baseY + 1, barW, rh)
       }
-      ctx.globalAlpha = 1
+      ctx.fillStyle = seal
+      ctx.globalAlpha = 0.08
+      ctx.fill()
+
+      ctx.restore()
       lastAudioActive = realAudioPlaying
     }
 
@@ -325,7 +389,12 @@ export default function SystemAudioWave() {
 
     const step = (now: number): void => {
       frames++
-      const shouldDraw = lastAudioActive ? (!reduce || frames % 4 === 0) : frames % 2 === 0
+      /*
+        画不画这一帧：有声音时每帧（只有 reduced-motion 降到 15fps），静音待机时每两帧
+        ——呼吸波本来就是 4 秒一个周期的慢正弦，30fps 绰绰有余。reduced-motion 下静音
+        也降到 15fps：这条「不该动」的路径没理由比有声音时还费。
+      */
+      const shouldDraw = reduce ? frames % 4 === 0 : lastAudioActive || frames % 2 === 0
       if (shouldDraw) draw(now)
       raf = window.requestAnimationFrame(step)
     }
@@ -354,10 +423,16 @@ export default function SystemAudioWave() {
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
       width = Math.max(1, rect.width)
       height = Math.max(1, rect.height)
+      /*
+        设 width/height 会把上下文重置到默认状态（含状态栈、变换、样式）——这是规范行为，
+        所以 setTransform 等一切设置都必须排在它后面。
+      */
       canvas.width = Math.round(width * dpr)
       canvas.height = Math.round(height * dpr)
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       readColors()
+      // 几何与渐变只在尺寸 / 换肤时变，不进每帧的热路径
+      rebuildPaint()
       draw(0)
     }
 
@@ -382,6 +457,7 @@ export default function SystemAudioWave() {
       ? new MutationObserver(() => {
           if (onScreen && document.visibilityState !== 'hidden') {
             readColors()
+            rebuildPaint()
           }
         })
       : null

@@ -6,9 +6,7 @@ import type { LearnStore, NoteFile } from '../types'
 import { addNoteTo, appendNoteIn, notesOf, removeNoteFrom, renameNoteIn, writeNoteIn } from '../notes'
 import { closeIds, renameTabRef } from '../groups'
 import { dropDrafts, moveDraft } from '../drafts'
-import { moveDocReading, pruneDocReading, readingDocKey } from '../reading'
 import { nodeById, replaceNode } from './nodes'
-import { onNodeReading } from './reading'
 
 /* ---------- 笔记（一个节点可以有多份，见 learn/notes） ---------- */
 
@@ -61,13 +59,8 @@ export function renameNoteFile(
   const docArea = renameTabRef(next.docArea, { kind: 'note', nodeId, note: from }, { kind: 'note', nodeId, note: r.name })
   // 暂存区也一起搬：改到一半的正文不能因为改了个名就找不回来（见 drafts 的 moveDraft）
   const drafts = moveDraft(next.drafts, 'n:' + nodeId + ':' + from, 'n:' + nodeId + ':' + r.name)
-  // 阅读记录也跟着搬（同页签、暂存区）：名字换了而记录没换，那条记录就成了孤儿。
-  // 搬的是**这个节点所属目标**的那一本账（阅读按目标分开，见 learn/reading 的 ReadingBook）
-  const moved = onNodeReading(next, nodeId, (rec) =>
-    moveDocReading(rec, nodeId, readingDocKey('note', from), readingDocKey('note', r.name), at),
-  )
   return {
-    store: { ...moved, docArea, drafts },
+    store: { ...next, docArea, drafts },
     name: r.name,
   }
 }
@@ -84,12 +77,10 @@ export function deleteNote(store: LearnStore, nodeId: string, name: string): Lea
   const at = Date.now()
   const next = replaceNode(store, removeNoteFrom(node, name, at))
   const id = 'n:' + nodeId + ':' + name
-  // 笔记没了，它那份阅读记录也一起清掉（记录按 note:名字 存，文档没了就是一条空索引）
-  const pruned = onNodeReading(next, nodeId, (rec) => pruneDocReading(rec, nodeId, readingDocKey('note', name)))
-  // 暂存同一条道理：名字是笔记的身份，留着它会套在下一份同名笔记上
+  // 暂存里的那份也要删：名字是笔记的身份，留着它会套在下一份同名笔记上
   return {
-    ...pruned,
-    docArea: closeIds(pruned.docArea, [id]),
+    ...next,
+    docArea: closeIds(next.docArea, [id]),
     drafts: dropDrafts(next.drafts, [id]),
   }
 }

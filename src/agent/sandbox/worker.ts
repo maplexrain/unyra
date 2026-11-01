@@ -63,10 +63,17 @@ export const RENAMED_API_HINT: Record<string, string> = {
 export function runInWorker(req: SandboxRequest): Promise<SandboxReply> {
   return new Promise((resolve) => {
     let worker: Worker
+    /*
+     * blob URL 要在收尾时撤销：它把整份沙箱源码钉在文档的 URL 表里，不撤就是每次
+     * 执行漏一份（每次几 KB，重度使用一小时上百次）。撤销放在 terminate 之后——
+     * Worker 已经起来了，这时再撤不影响它。
+     */
+    let url = ''
     try {
-      const url = URL.createObjectURL(new Blob([SANDBOX_SOURCE], { type: 'text/javascript' }))
+      url = URL.createObjectURL(new Blob([SANDBOX_SOURCE], { type: 'text/javascript' }))
       worker = new Worker(url)
     } catch (err) {
+      if (url) URL.revokeObjectURL(url)
       resolve({ ok: false, error: '沙箱启动失败：' + (err instanceof Error ? err.message : String(err)) })
       return
     }
@@ -80,6 +87,7 @@ export function runInWorker(req: SandboxRequest): Promise<SandboxReply> {
       clearTimeout(timer)
       if (keepAlive) clearInterval(keepAlive)
       worker.terminate()
+      URL.revokeObjectURL(url)
       resolve(reply)
     }
     /**

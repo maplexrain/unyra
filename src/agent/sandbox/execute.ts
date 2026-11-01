@@ -38,7 +38,7 @@ const EXECUTE_PARAMETERS = {
         '**先查再用**：每个组、每条 api 都挂着 __help()——await api.<组>.__help() 看这一组有哪些 api，' +
         'await api.<组>.<api>.__help() 看这一条的参数、返回与示例；节点对象先 const n = await api.node.get(uuid)，' +
         '再 await n.help() 看它自己的内容格式与连接规则——**每个节点的 help 是动态的，别凭记忆写**。' +
-        '应用数据一律走对应 api 组（节点与内容 = api.node.*，学习状态 = api.state.*，试卷判分 = api.exam.*…）；' +
+        '应用数据一律走对应 api 组（节点与内容 = api.node.*，试卷判分 = api.exam.*…）；' +
         'api.files.* 只用于 workspace/、static/、skills/ 与外部文件，碰应用数据会被拒绝并提示该用哪一组。' +
         '调试用 api.log(...)，输出随结果一起回给你。' +
         '沙箱里没有 window / document / fetch。',
@@ -94,7 +94,7 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
       : '执行一段 JS/TS 来操作学习数据——**唯一的工具**。节点与内容的读写全走节点宇宙：' +
         'api.node.list() 查全图（带 uuid）→ const n = await api.node.get(uuid) → await n.help() 看这个节点的内容格式与连接规则（**动态的，别凭记忆写**）→ ' +
         'await n.content 读、n.editContent(...) 整份写回、a.connect(b, "down") 连线。' +
-        '其余：学习状态（api.state.*）、试卷判分与讲解（api.exam.*）、工作流（api.wf.*）、人机协作与界面操作各自的组。' +
+        '其余：试卷判分与讲解（api.exam.*）、工作流（api.wf.*）、人机协作与界面操作各自的组。' +
         '多步、批量、需要判断或循环的活用代码一次做完，不要把中间结果写进对话。' +
         '**每个组、每条 api 都有 __help()**：先查再用。应用数据不走 api.files.*——它只用于工作区、静态资源、技能与外部文件。',
     parameters: executeParameters(opts.apiBrief),

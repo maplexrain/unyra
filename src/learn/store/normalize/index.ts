@@ -19,10 +19,8 @@ import { tabNodeId } from '../../tabs'
 import { normalizeAgentTabs } from '../../agentTabs'
 import { normalizeDrafts } from '../../drafts'
 import { normalizeWorkflowEntries } from '../../workflows'
-import { normalizeReadingBook } from '../../reading'
 import { normalizeEssayDock, normalizeEssays } from '../../essays'
 import { normalizeEssayCommits } from '../../essayCommits'
-import { normalizeFocus } from '../../focus'
 import { normalizeSchedule } from '../../schedule'
 import { normalizeStructureBook } from '../../structure'
 import { normalizeOutlineEntities } from '../../outline'
@@ -48,7 +46,7 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
      * 原始那一份（不经过 LearnStore 的形状）：文件区那一块要读**旧版**字段
      * （顶层的 tabs / activeTab），而它们已经不在 LearnStore 里了——从 d 上读不到。
      */
-    const legacy = data as { tabs?: unknown; activeTab?: unknown; pomodoro?: unknown }
+    const legacy = data as { tabs?: unknown; activeTab?: unknown }
     if (!Array.isArray(d.nodes)) return null
 
     const parsed = d.nodes.map(normalizeNode).filter((n): n is KnowledgeNode => n !== null)
@@ -346,12 +344,7 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
        * nodeId 索引的记录就成了空索引——今日阅读面板里一行 uuid、点不动的条目就是这么来的。
        * 放在这里做还能顺手清掉以前删节点时留下的旧空索引（读盘是唯一一次全量过手的机会）。
        *
-       * 阅读是**按目标**的账本（见 learn/reading 的 ReadingBook）：逐本过一遍，
-       * 目标已经不在的那些直接丢掉——那是它的账，目标没了账就该跟着没。
        */
-      reading: normalizeReadingBook(d.reading, ids, goalIds),
-      // 专注于旧版是 pomodoro：读盘时就地迁移（旧 log 的 minutes 折算成 ms，见 learn/focus）
-      focus: normalizeFocus(d.focus ?? legacy.pomodoro),
       // 日程是用户级数据（见 learn/schedule）：不按目标过滤，坏条目逐条丢
       schedule: normalizeSchedule(d.schedule),
       // 视频资源（见 learn/types 的 VideoResource）：用户级、不按目标过滤，坏条目逐条丢

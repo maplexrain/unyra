@@ -30,9 +30,6 @@ export interface DocPaneProps {
   /** 触发生成教学文档。带 node 参数是为了让上层能传一份**身份稳定**的回调（见 LearnWorkspace） */
   onGenerateDoc?: (node: KnowledgeNode) => void
   knownConceptKeys?: Set<string>
-  readingPaused: boolean
-  /** 文档栏在不在中间主位（导师栏占着主位时为 false）：有效阅读据此停表 */
-  mainPane: boolean
   /** 大纲句柄槽（见 lib/outline 的 OutlineHandle）：悬浮大纲按钮据此取「眼前这份」的大纲 */
   outlineSlot: { current: OutlineHandle | null }
   /** 上一次读到哪儿 / 报到哪儿（见 lib/docScroll）；比较时**不参与**：它只影响恢复 */
@@ -41,7 +38,7 @@ export interface DocPaneProps {
   /** 已绑到本片页签节点上的回调（父组件按节点现造） */
   note: Omit<
     ComponentProps<typeof NodeNote>,
-    'node' | 'doc' | 'pending' | 'knownConceptKeys' | 'active' | 'mainPane'
+    'node' | 'doc' | 'pending' | 'knownConceptKeys' | 'active'
   >
 }
 
@@ -71,8 +68,6 @@ export const DocPane = memo(function DocPane({
   agentRunning,
   onGenerateDoc,
   knownConceptKeys,
-  readingPaused,
-  mainPane,
   outlineSlot,
   scrollTop,
   onScrollTop,
@@ -109,8 +104,6 @@ export const DocPane = memo(function DocPane({
         agentRunning={agentRunning}
         onGenerateDoc={onGenerateDoc}
         knownConceptKeys={knownConceptKeys}
-        readingPaused={readingPaused}
-        mainPane={mainPane}
         outlineSlot={outlineSlot}
         scrollTop={scrollTop}
         onScrollTop={onScrollTop}

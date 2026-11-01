@@ -47,11 +47,3 @@ export const DOC_LINK_SYNTAX = `文档间跳转语法：
 - 教学文档与笔记互跳：\`[看笔记](moji:doc/note)\` / \`[回文档](moji:doc/teaching)\`；跨节点带 id \`moji:doc/#节点id/note\`。
 - 准确定位行与内容锚点：\`[看这一步](moji:doc/teaching#L12@切线斜率)\`（自动跳转并高亮原句）。`
 
-/**
- * 怎么用学习状态。
- */
-export const LEARNING_STATE_GUIDE = `学习状态评估准则：
-- **自评是线索而非结论**：用户自称掌握记 by:'user'，但不盲目抬高 mastery，除非有检验依据。api.state.update 的 self 只有四档：**mastered / familiar / unknown / unsure**（已掌握 / 会一点 / 完全不会 / 拿不准）——四档之外一律被拒，不要现编。
-- **探针验证短平快**：1~2 句核心概念设问，用 api.state.check({ kind: 'probe', ... }) 记录并校准掌握度。
-- **错误记忆按模式归纳**：api.state.mistake 记录错成了什么样（同一错法复犯自动累计），讲解应针对错法设计，克服后用 forget 清除。
-- **主动回忆收尾**：学完收尾时请学习者复述，用 recall 记录提及点 (mentioned)、遗漏点 (missed) 与误解点 (misconceptions)。`

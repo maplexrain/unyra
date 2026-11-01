@@ -45,10 +45,26 @@ export async function startLoopback(opts?: { onEnded?: () => void }): Promise<Lo
   }
 
   const { stream, via } = await openLoopbackStream()
-  // 输出设备切换/拔掉时回环音轨会结束：报告给外层，让它重连
-  stream.getAudioTracks()[0]?.addEventListener('ended', () => opts?.onEnded?.())
+  // 输出设备切换/拔掉时回环音轨会结束：报告给外层，让它重连。
+  // 闭包留一个引用，stop 时摘掉——音轨被 stop 之后本该随流一起回收，但显式摘除更稳，
+  // 也免得将来给 track 换一个更长的生命周期时这里变成隐性泄漏。
+  const audioTrack = stream.getAudioTracks()[0]
+  const handleEnded = (): void => opts?.onEnded?.()
+  audioTrack?.addEventListener('ended', handleEnded)
 
-  const ctx = new AudioContext()
+  /*
+   * AudioContext 是这一步唯一会「外面出事」的地方：同时存在的上下文有上限，超了
+   * 构造就抛。这时流与 ended 监听都已经挂上了，不还回去就是一路常亮的录制指示灯
+   * 加一个被占住的输出设备。
+   */
+  let ctx: AudioContext
+  try {
+    ctx = new AudioContext()
+  } catch (err) {
+    audioTrack?.removeEventListener('ended', handleEnded)
+    for (const track of stream.getTracks()) track.stop()
+    throw err
+  }
   // Electron 默认不拦自动播放（autoplayPolicy = no-user-gesture-required），但别的壳
   // 不一定；挂起状态下 analyser 一个数都不会动，症状同样是「永远一行底座」
   if (ctx.state === 'suspended') {
@@ -85,6 +101,7 @@ export async function startLoopback(opts?: { onEnded?: () => void }): Promise<Lo
     stop(): void {
       if (stopped) return
       stopped = true
+      audioTrack?.removeEventListener('ended', handleEnded)
       try {
         source.disconnect()
         analyser.disconnect()

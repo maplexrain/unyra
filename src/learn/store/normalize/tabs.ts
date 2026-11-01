@@ -47,12 +47,6 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
     if (url && !/^https?:\/\//i.test(url)) return null
     return { kind: 'web', url, key: typeof r.key === 'string' && r.key ? r.key : newWebKey() }
   }
-  // 专注报告：id 就是全部身份（文件丢了由视图自己说「报告不见了」）。
-  // 守卫页签**故意没有分支**：上下文只活在会话里，重启读回来就丢（下一次专注再建）
-  if (r.kind === 'report') {
-    const reportId = typeof r.reportId === 'string' ? r.reportId : ''
-    return reportId ? { kind: 'report', reportId } : null
-  }
   // 设置页、用量页与日程表：全局各只有一份，没有需要校验的「指向」，形状对就收下
   if (r.kind === 'settings' || r.kind === 'usage' || r.kind === 'schedule') return { kind: r.kind }
   // 视频学习（实验）：同样全局一份。绑定到目标的视频页签带 goalId（页签组的归属判据，

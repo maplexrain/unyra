@@ -30,7 +30,7 @@ export function buildFreeChatSystem(opts?: { extraSystemPrompt?: string }): stri
     '',
     '⚠️ 沙箱权限约束（铁律）：',
     '本聊天会话的沙箱仅开放：api.web.*（搜索与抓取）、顶层 api.fetch（web.fetch 的别名）、api.schedule.*（用户日程）与 api.log（调试打印）。',
-    '沙箱内绝不提供教学文档（content / doc）、知识节点（graph）、试卷（exam）、本地文件（files）、工作区（workspace）或学习状态（state）接口；调用了会直接报「沙箱里没有这个 api」。',
+    '沙箱内绝不提供教学文档（content / doc）、知识节点（graph）、试卷（exam）、本地文件（files）、工作区（workspace）接口；调用了会直接报「沙箱里没有这个 api」。',
     '',
     '你可使用的官方 Web API 包括：',
     '1. api.web.search({ query, count?: 5, ori_question?, need_content? })：',

@@ -197,7 +197,7 @@ export const PROMPT_MODULES: PromptModule[] = [
   ③ **正式裁切贴题**：确认预检红框无误后，调用 **api.exam.cropAnswer({ questionId, box: [ymin, xmin, ymax, xmax], sourceImage: 0 })** 将各题手写区域正式裁切并贴在试卷对应题目上。
 - 判分：若有手写答卷，客观题与主观题均以手写内容为准由你亲自判阅，严禁机械判分；并将识别到的选项/手写文字填入 userAnswer，**一条 api.exam.grade({ attemptId, passed, summary, results }) 落账**（results = [{ questionId, correct, score, maxScore, comment, userAnswer, by: "agent" }]）。不要手写数据文件。
 - 讲解：api.exam.explain({ content, attemptId }) 写详尽的步骤推导解析（Markdown），它自动打开试卷副本。
-- 收尾：const n = await api.node.get(目标节点uuid)；const c = await n.content; c.status = passed ? "mastered" : "learning"; await n.editContent(c) 修正掌握状态；高频薄弱错法用 api.state.mistake(目标节点uuid, { pattern, cause }) 记进错误记忆。
+- 收尾：const n = await api.node.get(目标节点uuid)；const c = await n.content; c.status = passed ? "mastered" : "learning"; await n.editContent(c) 修正掌握状态。
 - 指令给了「目标节点」就只动它；**没给**就 api.node.list() 凭上下文判断（判断不了 api.ask）。`,
   },
   {
@@ -223,7 +223,7 @@ export const PROMPT_MODULES: PromptModule[] = [
     text: `「教学文档生成」方法——为知识节点产出一份针对性教学文档的完整流程。触发它的指令只给任务与参数，步骤一律照这里执行：
 
 一、先查再用
-- 本轮会用到 api.node.*、api.state.* 与 api.ask。动手前先 await api.<组>.__help() 把签名与示例查清楚，不要凭记忆猜参数。
+- 本轮会用到 api.node.* 与 api.ask。动手前先 await api.<组>.__help() 把签名与示例查清楚，不要凭记忆猜参数。
 - **取材先问简报**：api.node.brief(目标uuid) 一次给齐 self / port（认领的目标项——范围与边界以它为准）/ siblings（同层其他目标项）/ taught（全图已讲过的小节，出现过的概念别重讲）。简报失败或没有目标 uuid 时才回退 api.node.list() 全图，不要默认从全图开始。
 
 二、前置知识与权威防幻觉检索（必搜）
@@ -247,10 +247,9 @@ export const PROMPT_MODULES: PromptModule[] = [
 - 标题已就位，一般不动；明显词不达意才连标题一起改。const n = await api.node.get(uuid)；const c = await n.content——描述空着就把 c.description 写成 150~300 字，然后 c.teaching = 讲义，一次 await n.editContent(c) 写回（整份替换，先读后写）。循序渐进、先直觉与例子再定义与推导，对摸底暴露的盲点**正面讲解**。文档连接大纲 port 的核心思想是「讲解这个目标的内容」，围绕该目标项深度讲透。排版以当前「文档格式」策略为准，结构配方见「文档排版与视觉呈现」模块：至少两三处结构性元素，不要交一篇纯文本。
 - **权威引证声明与网页 Chip（必须包含）**：教学文档末尾**必须包含「## 📚 参考资料与权威来源」区块**，严格使用规范的网页 Chip（#[{"type":"web","url":"...","title":"..."}] 或 await api.chip.build({ type: 'web', url, title })）列明参考的权威站点，为讲义提供坚实的权威背书。
 
-六、状态记账与收尾
-- 动笔前先 api.state.read(uuid)：有错误记忆的话这次讲解要正面处理那个错法（这影响第四步怎么写，不是收尾才看）。
+六、收尾与交付
 - **根据学习状态主动提议完善文档（需 ask 授权）**：若在学习过程中发现学习者的状态反馈（做题错题、复述困难、提问疑惑）表明已有文档需要补充或订正，允许导师发挥主观能动性主动提议修改完善已有文档；但**必须先通过 api.ask 询问学习者是否允许修改**，列明改动理由与要点，在用户确认同意后方可调用 editContent 修改。
-- **收尾一次做完**：api.node.finish(uuid, { state: { self, note }, delivery?, open: true })——状态记账（self 四档：mastered / familiar / unknown / unsure）、交付登记、把文档指给用户看，一个调用落完；正文已在第五步写好就不必再给 content。哪一步没落上看回执里的 steps，单独补一次即可。用户留空的摸底题当「会一点」处理，不要追问；错误说法另用 api.state.mistake 记。
+- **收尾一次做完**：api.node.finish(uuid, { delivery?, open: true })——交付登记、把文档指给用户看，一个调用落完；正文已在第五步写好就不必再给 content。哪一步没落上看回执里的 steps，单独补一次即可。
 - 若用了网络检索，对话回复里必须声明参考资料链接。
 
 七、任务边界与连接思想
@@ -351,14 +350,10 @@ export const PROMPT_MODULES: PromptModule[] = [
 在对话框中向用户清晰汇报生成的视频总览文档大纲结构与选集分类分布。`,
   },
   {
-    key: 'learning-process',
-    title: '学习过程',
-    text: `学习过程记录（api.reading.* / api.attention.* / api.focus.*）：
-- 有效阅读事实走 api.reading.get / api.reading.list / api.reading.day；
-- 注意力评级走 api.attention.get，专注模式状态走 api.focus.status（只读）；
-- 日程走 api.schedule.*（list / create / update / complete / remove）：给用户排提醒，
-  到点由宿主响铃、用户自己确认或稍后提醒——不要替用户确认，也不要 sleep 等它到点；
-- 学习状态的写（掌握度/错题/检验）走 api.state.*，不要用 api.files.* 碰 reading.json 或 meta.json。`,
+    key: 'schedule',
+    title: '日程',
+    text: `日程（api.schedule.*）：list / create / update / complete / remove。
+给用户排提醒，到点由宿主响铃、用户自己确认或稍后提醒——不要替用户确认，也不要 sleep 等它到点。`,
   },
   {
     key: 'workspace',
@@ -705,10 +700,7 @@ const GROUP_MODULE: Record<string, string> = {
   mcp: 'mcp',
   res: 'res',
   exam: 'exam',
-  reading: 'learning-process',
-  attention: 'learning-process',
-  focus: 'learning-process',
-  schedule: 'learning-process',
+  schedule: 'schedule',
   workspace: 'workspace',
   method: 'method',
   code: 'code',

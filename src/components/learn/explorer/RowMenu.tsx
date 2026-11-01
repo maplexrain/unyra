@@ -1,13 +1,10 @@
 /**
  * 这个文件负责：行的右键菜单本体——**一个菜单，六种行**，每一行给出那一类东西能做的事，
- * 其中节点的菜单里挂着「学习状态」那块二级 tip（含它往左还是往右伸的边界翻转）。
+ * 其中节点的菜单给的是那一类实体能做的事。
  */
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { Download, FilePlus, FolderPlus, FolderOpen, GraduationCap, ListTree, NotebookPen, Package, Pencil, Play, RotateCcw, Trash2 } from 'lucide-react'
-import { STATUS_META } from '../mastery'
-import StatusBranch from '../StatusBranch'
 import { DocTypeIcon } from '../docTypes'
-import { NodeStatePanel } from '../NodeStatePanel'
 import { examNeedsWork, type RowMenuProps } from './types'
 import { useClampToViewport, useDismissOn } from '../../../lib/useDismiss'
 import { t } from '../../../i18n'
@@ -59,18 +56,8 @@ export function RowMenu({
   onStartRename,
   docs,
   exams,
-  state,
 }: RowMenuProps) {
   const ref = useRef<HTMLDivElement | null>(null)
-  /**
-   * 「学习状态」的二级 tip 往哪边伸。
-   *
-   * 与「历次考试」那块 tip 一样是不在菜单里的浮层（菜单只有 190px 宽），
-   * 但方向相反：菜单贴着屏幕左边，往左没有地方——**往右才是空的**。
-   * 右边实在不够（窄窗口、菜单又被夹到右边去了）时翻到左边。
-   */
-  const [stateSide, setStateSide] = useState<'right' | 'left' | null>(null)
-
   /*
    * 点别处 / 滚动 / Esc / 改窗口大小都收起，并把菜单夹进视口：这两条与页签右键菜单
    * 是同一条规矩，实现收在 lib/useDismiss 一处（「在别处右键」为什么能先关旧的再开新的、
@@ -285,47 +272,6 @@ export function RowMenu({
           </button>
 
           <span aria-hidden="true" className="my-1 block h-px bg-line" />
-          {/*
-            学习状态：悬停（或点一下）展开右边那块面板——它原先挂在文档区右上角那颗
-            「学习状态」按钮上，那颗按钮已经删掉了，这一项是它现在唯一的入口。
-            tip 与这一项包在同一个 wrapper 里：指针从按钮挪到 tip 上时不会中途被收掉。
-          */}
-          <div className="relative" onMouseLeave={() => setStateSide(null)}>
-            <button
-              type="button"
-              role="menuitem"
-              aria-haspopup="true"
-              aria-expanded={!!stateSide}
-              onMouseEnter={() => {
-                const box = ref.current?.getBoundingClientRect()
-                const room = box ? window.innerWidth - box.right > 548 : false
-                setStateSide(room ? 'right' : 'left')
-              }}
-              onFocus={() => setStateSide('right')}
-              onClick={() => setStateSide((cur) => (cur ? null : 'right'))}
-              className={MENU_ITEM + ' text-ink hover:bg-line/60'}
-            >
-              <StatusBranch size={12} className={'shrink-0 ' + STATUS_META[target.node.status].mark} />
-              {t('学习状态')}
-              <span className="ml-auto pl-2 text-[10.5px] text-ink-faint">
-                {t(STATUS_META[target.node.status].label)}
-              </span>
-            </button>
-            {stateSide && (
-              <div
-                className="absolute top-0 z-10"
-                style={stateSide === 'right' ? { left: '100%', marginLeft: 4 } : { right: '100%', marginRight: 4 }}
-              >
-                <NodeStatePanel
-                  node={target.node}
-                  structure={state.structure(target.node.id)}
-                  onSetSelf={(self) => state.onSetSelf(target.node.id, self)}
-                  onClearMistake={(pattern) => state.onClearMistake(target.node.id, pattern)}
-                />
-              </div>
-            )}
-          </div>
-
           <span aria-hidden="true" className="my-1 block h-px bg-line" />
           <button
             type="button"

@@ -64,14 +64,11 @@ export function tabKey(ref: TabRef): string {
   if (ref.kind === 'ws') return 'ws:' + ref.nodeId + ':' + ref.seg
   // 网页按**开签那一刻生成的 key**（而不是网址）认身份：同一个网址可以开两枚，起始页也不冲突
   if (ref.kind === 'web') return 'w:' + ref.key
-  // 守卫上下文全局只有一份（当前那次专注的会话）；报告按报告 id 一份一签
-  if (ref.kind === 'guard') return 'g:guard'
   // 视频学习（实验）同样全局只有一份：顶栏那颗按钮点多少次都是切回同一枚，
   // 上一次解析到哪个视频还留在页签里
   if (ref.kind === 'video') return ref.videoId ? 'v:' + ref.videoId : 'v:new'
   // 插件文档全局一份：设置里的入口点多少次都是切回同一页
   if (ref.kind === 'pluginDoc') return 'p:plugin-doc'
-  if (ref.kind === 'report') return 'r:' + ref.reportId
   // 设置页与用量页同样全局只有一份：从哪个入口打开都是切到它，不会开出第二枚
   if (ref.kind === 'settings') return 'set:settings'
   if (ref.kind === 'usage') return 'u:usage'
@@ -135,8 +132,6 @@ export function tabNodeId(ref: TabRef): string | null {
     ref.kind === 'web' ||
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
-    ref.kind === 'guard' ||
-    ref.kind === 'report' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
@@ -204,12 +199,9 @@ export function tabTitle(
       return ref.url
     }
   }
-  // 守卫上下文只有当前会话这一份，标题不随内容变；报告的时段画在正文里，页签上一律叫「专注报告」
-  if (ref.kind === 'guard') return t('守卫 Agent')
   // 视频学习（实验）页签：解析到的视频标题活在页签内容里，栏上统一叫这一个名字
   if (ref.kind === 'video') return ref.videoId ? (videoTitle?.(ref.videoId) ?? t('视频学习')) : t('新建视频')
   if (ref.kind === 'pluginDoc') return t('插件开发文档')
-  if (ref.kind === 'report') return t('专注报告')
   if (ref.kind === 'settings') return t('设置')
   if (ref.kind === 'usage') return t('用量统计')
   if (ref.kind === 'schedule') return t('日程安排')
@@ -239,13 +231,11 @@ export function tabTrail(
 ): string {
   if (ref.kind === 'exam') return ''
   if (ref.kind === 'web') return ''
-  // 守卫、报告与系统页（设置/用量/导师设置/新建目标/空白页签）不挂在节点上，也没有「住在哪儿」可言；
+  // 系统页（设置/用量/导师设置/新建目标/空白页签）不挂在节点上，也没有「住在哪儿」可言；
   // 新建文件页签同样还没有落点——保存之后它换成 local，后缀才会出现
   if (
-    ref.kind === 'guard' ||
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
-    ref.kind === 'report' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||

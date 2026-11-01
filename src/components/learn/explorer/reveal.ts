@@ -228,9 +228,6 @@ export function revealOfTab(
         section: 'nodes',
       }
     }
-    case 'guard':
-      // 守卫上下文不在侧栏的任何一行里，没有可定位的东西
-      return null
     case 'settings':
     case 'usage':
     case 'schedule':
@@ -241,16 +238,6 @@ export function revealOfTab(
       // 设置页、用量页与新建目标是文档区的页签，但侧栏里没有它们的行（入口在顶栏或菜单），不定位；
       // 新建文件页签同样没有——它还没有落点，侧栏里不可能有一行指向它（保存之后它才变成 local）
       return null
-    case 'report':
-      // 专注报告住在资源管理器自己的分类夹里；守卫页签不在侧栏，落不进来（不定位）
-      return {
-        keys: [`row:focus:${tab.reportId}`],
-        nodes: [],
-        docs: [],
-        exams: [],
-        favGroup: null,
-        section: 'reports',
-      }
   }
 }
 

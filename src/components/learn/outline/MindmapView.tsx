@@ -384,7 +384,6 @@ export function buildMindmapTree(
       title: curNode.title,
       summary: entry ? entry.summary : curNode.description || outline?.intro || '',
       status: curNode.status,
-      mastery: curNode.learning?.mastery,
       isRoot: depth === 0,
       depth,
       branchIndex,

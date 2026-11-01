@@ -12,6 +12,7 @@ import { DEV_SERVER_URL, flushStartupTrace, isDev, lap, setRendererMarks, startu
 import { attachWindowStatePersistence, loadWindowState } from './windowState'
 import { appIcon } from './icon'
 import { attachCloseGuard } from './tray'
+import { setMainWindow } from './mainWindow'
 
 /* ---------- 窗口 ---------- */
 
@@ -74,6 +75,11 @@ export async function createWindow(): Promise<void> {
       // 只有宿主需要这个开关；guest 是独立进程，默认全沙箱
       webviewTag: true,
     },
+  })
+
+  setMainWindow(win)
+  win.on('closed', () => {
+    setMainWindow(null)
   })
 
   lap('main:window')
@@ -226,4 +232,4 @@ export function hardenLinks(contents: WebContents): void {
 /* 主窗口是哪一个、怎么把它叫到前面来（含守卫警告的闪现置顶），住在 ./mainWindow：
    托盘那边要用它们，而这里要用托盘那边的 attachCloseGuard，放在这儿会与托盘成环。
    从本文件仍然取得到这几个名字（下面转出）。 */
-export { mainWindow, showMainWindow, flashMainWindow } from './mainWindow'
+export { mainWindow, setMainWindow, showMainWindow, flashMainWindow } from './mainWindow'

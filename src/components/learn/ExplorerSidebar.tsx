@@ -20,7 +20,7 @@ import { NewGoalIcon, OpenLocalIcon } from '../icons'
 import { Plus } from 'lucide-react'
 import { NodeRow } from './explorer/NodeRow'
 import { RowMenu } from './explorer/RowMenu'
-import { FavoriteSection, FocusReportsSection, LocalRow, VideoRow } from './explorer/sections'
+import { FavoriteSection, LocalRow, VideoRow } from './explorer/sections'
 import { Section, SectionAction } from './explorer/Folder'
 import {
   publishReveal,
@@ -36,11 +36,11 @@ import { native, isWeb } from '../../lib/native'
 import SystemAudioWave from './SystemAudioWave'
 import { useSidebarWidth } from './explorer/useSidebarWidth'
 import { useTreeExpand } from './explorer/useTreeExpand'
-import type { ExamActions, MenuState, MenuTarget, NodeDocActions, NodeStateActions, WsActions } from './explorer/types'
+import type { ExamActions, MenuState, MenuTarget, NodeDocActions, WsActions } from './explorer/types'
 import { t } from '../../i18n'
 
 // 原有的三个具名导出照旧从本文件出去（它们搬到了 explorer/types.ts，这里 re-export：调用方零改动）
-export type { ExamActions, NodeDocActions, NodeStateActions, WsActions } from './explorer/types'
+export type { ExamActions, NodeDocActions, WsActions } from './explorer/types'
 
 /**
  * 资源管理器侧栏：知识节点 + 本地文件两个可折叠的区。
@@ -102,8 +102,6 @@ interface Props {
   ws: WsActions
   /** 打开一个本地文件（列表项点击、或从对话框挑回来） */
   onOpenLocal: (path: string) => void
-  /** 打开一份专注模式报告（只读页签，见 FocusReportView） */
-  onOpenReport: (reportId: string) => void
   /** 从列表里移除（不动磁盘上的文件） */
   onRemoveLocal: (path: string) => void
   /** 在系统文件管理器里定位这个本地文件 */
@@ -127,7 +125,6 @@ interface Props {
   /** 考试那一侧的动作（原先都在文档区悬浮组的「试卷」tip 里） */
   exams: ExamActions
   /** 学习状态那块 tip 要的东西（节点右键菜单里的二级 tip） */
-  state: NodeStateActions
 }
 
 function ExplorerSidebarComponent({
@@ -152,7 +149,6 @@ function ExplorerSidebarComponent({
   onDeleteVideo,
   onNewVideo,
   onOpenLocal,
-  onOpenReport,
   onRemoveLocal,
   onRevealLocal,
   onPickLocal,
@@ -166,7 +162,6 @@ function ExplorerSidebarComponent({
   favoriteTitleOf,
   docs,
   exams,
-  state,
 }: Props) {
   const { isOpen, toggle } = useTreeExpand(store, activeNodeId)
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -418,8 +413,6 @@ function ExplorerSidebarComponent({
             </Section>
           )}
 
-          {/* 专注报告：一次专注的收场凭据（普通专注也有——只是账目没有守卫轮次） */}
-          <FocusReportsSection open={sectionOpen('reports')} onToggle={() => toggleSection('reports')} onOpen={onOpenReport} />
         </div>
 
         {/* 系统音频柱形频谱：挂在侧栏底端当一台小电台（采集见 src/lib/audio/loopback）。
@@ -464,7 +457,6 @@ function ExplorerSidebarComponent({
           onStartRename={(nodeId, name) => setRenaming({ nodeId, name })}
           docs={docs}
           exams={exams}
-          state={state}
         />
       )}
     </>

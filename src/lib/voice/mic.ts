@@ -159,6 +159,34 @@ async function attach(ctx: AudioContext, push: (pcm: Float32Array) => void): Pro
 }
 
 /**
+ * 把「话筒流 → 采集节点 → 静音 sink」这一小张图接起来。
+ *
+ * 单独抽出来是为了**失败时能把自己接了一半的东西摘掉**：`createMediaStreamSource`
+ * 成功、`attach` 失败的话，source 已经挂在流上；反过来也一样。调用方只管在 catch
+ * 里释放流与 AudioContext，不必知道接到第几步了。
+ */
+async function openGraph(
+  ctx: AudioContext,
+  stream: MediaStream,
+  push: (pcm: Float32Array) => void,
+): Promise<{ source: MediaStreamAudioSourceNode; capture: Capture }> {
+  const source = ctx.createMediaStreamSource(stream)
+  try {
+    const capture = await attach(ctx, push)
+    source.connect(capture.node)
+    capture.node.connect(capture.sink)
+    return { source, capture }
+  } catch (err) {
+    try {
+      source.disconnect()
+    } catch {
+      // 还没接上过：无所谓
+    }
+    throw err
+  }
+}
+
+/**
  * 打开话筒并开始采集。
  * 返回的会话里带着「收到了多少采样」——外层据此判断是不是一路静音（见 session.ts 的看门狗）。
  */
@@ -168,7 +196,19 @@ export async function startMic(): Promise<MicSession> {
   }
 
   let stream = await openStream()
-  const ctx = new AudioContext({ sampleRate: SAMPLE_RATE })
+  /*
+   * 从这一行往下每一步都可能失败，而**失败必须把已经拿到的东西还回去**：
+   * 话筒流不 stop，系统的录制指示灯就一直亮、设备一直被占；AudioContext 不 close，
+   * 它就永远占着一个音频通道（同时存在的 AudioContext 有上限，攒几个之后新建的
+   * 一律挂起，症状正是「点了语音没反应」）。原先 ctx 起不来时直接 throw，两样都留在原地。
+   */
+  let ctx: AudioContext
+  try {
+    ctx = new AudioContext({ sampleRate: SAMPLE_RATE })
+  } catch (err) {
+    for (const track of stream.getTracks()) track.stop()
+    throw new Error(t('打不开麦克风：{0}', err instanceof Error ? err.message : String(err)))
+  }
   // Electron 默认不拦自动播放（autoplayPolicy = no-user-gesture-required），但别的壳不一定：
   // 挂起状态下 process / onaudioprocess 一次都不会来，症状同样是「一个字都没有」
   if (ctx.state === 'suspended') {
@@ -179,8 +219,12 @@ export async function startMic(): Promise<MicSession> {
     }
   }
   if (ctx.state !== 'running') {
+    // 先把状态读出来：close() 之后它就不是 running 了
+    const state = ctx.state
+    for (const track of stream.getTracks()) track.stop()
+    void ctx.close().catch(() => undefined)
     throw new Error(
-      t('音频子系统没有启动（AudioContext 处于 {0}）：换个输入设备或重启应用再试', ctx.state),
+      t('音频子系统没有启动（AudioContext 处于 {0}）：换个输入设备或重启应用再试', state),
     )
   }
 
@@ -206,10 +250,18 @@ export async function startMic(): Promise<MicSession> {
     if (level > peak) peak = level
   }
 
-  let source = ctx.createMediaStreamSource(stream)
-  let capture = await attach(ctx, push)
-  source.connect(capture.node)
-  capture.node.connect(capture.sink)
+  let source: MediaStreamAudioSourceNode
+  let capture: Capture
+  try {
+    const graph = await openGraph(ctx, stream, push)
+    source = graph.source
+    capture = graph.capture
+  } catch (err) {
+    // 图没接起来：话筒和 AudioContext 都得还回去（见上面那段说明）
+    for (const track of stream.getTracks()) track.stop()
+    void ctx.close().catch(() => undefined)
+    throw err
+  }
 
   /**
    * 一路静音就换约束重开一次。
@@ -220,18 +272,31 @@ export async function startMic(): Promise<MicSession> {
     console.warn('[voice] 1.5 秒内没收到任何采样，换最简约束重开话筒')
     void (async () => {
       const previous = { source, capture, stream }
+      let nextStream: MediaStream | null = null
       try {
-        const nextStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const opened = await navigator.mediaDevices.getUserMedia({ audio: true })
+        nextStream = opened
         if (stopped) {
-          for (const track of nextStream.getTracks()) track.stop()
+          for (const track of opened.getTracks()) track.stop()
           return
         }
-        const nextSource = ctx.createMediaStreamSource(nextStream)
-        const nextCapture = await attach(ctx, push)
-        nextSource.connect(nextCapture.node)
-        nextCapture.node.connect(nextCapture.sink)
+        const nextGraph = await openGraph(ctx, opened, push)
+        if (stopped) {
+          // 接好之后才发现已经停了：新的一套（含 worklet 的 port）整份还回去
+          try {
+            nextGraph.capture.stop()
+            nextGraph.source.disconnect()
+            nextGraph.capture.node.disconnect()
+            nextGraph.capture.sink.disconnect()
+          } catch {
+            // 已经断开：无所谓
+          }
+          for (const track of opened.getTracks()) track.stop()
+          return
+        }
         // 换成功之后才拆旧的：中间那几十毫秒宁可重复，也不要断开
         try {
+          previous.capture.stop()
           previous.source.disconnect()
           previous.capture.node.disconnect()
           previous.capture.sink.disconnect()
@@ -239,11 +304,13 @@ export async function startMic(): Promise<MicSession> {
           // 已经断了：无所谓
         }
         for (const track of previous.stream.getTracks()) track.stop()
-        source = nextSource
-        capture = nextCapture
-        stream = nextStream
-        console.info('[voice] 已改用最简约束，设备：', describeTrack(nextStream))
+        source = nextGraph.source
+        capture = nextGraph.capture
+        stream = opened
+        console.info('[voice] 已改用最简约束，设备：', describeTrack(opened))
       } catch (err) {
+        // 新的一路没接上：旧的还在跑，一根线都不能拆；只把刚拿到的那条流还回去
+        if (nextStream) for (const track of nextStream.getTracks()) track.stop()
         console.warn('[voice] 换约束重开失败：', err)
       }
     })()
@@ -273,13 +340,15 @@ export async function startMic(): Promise<MicSession> {
       if (stopped) return
       stopped = true
       window.clearTimeout(switchTimer)
-      capture.stop()
+      // stop 与三处 disconnect 放进同一个 try：任何一步抛都不能把后面几步连累掉，
+      // 否则话筒指示灯会一直亮着（track 没 stop）、音频通道一直占着（ctx 没 close）
       try {
+        capture.stop()
         source.disconnect()
         capture.node.disconnect()
         capture.sink.disconnect()
       } catch {
-        // 已经断开了：无所谓
+        // 已经断开 / 已经关闭：后果与成功执行一样
       }
       for (const track of stream.getTracks()) track.stop()
       void ctx.close().catch(() => undefined)

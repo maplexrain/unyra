@@ -24,7 +24,7 @@
  *   exportPdf.ts   导出 PDF 的零件与生产环境的 CSP 注入
  */
 
-import { app, BrowserWindow, protocol } from 'electron'
+import { app, protocol } from 'electron'
 import { existsSync, renameSync } from 'node:fs'
 import path from 'node:path'
 import { registerProxyProtocol } from './proxy'
@@ -33,7 +33,7 @@ import { registerMediaRelayProtocol } from './media-relay'
 import { startUpdateChecks } from './update'
 import { registerWebIpc } from './web'
 import { bootSingleInstance, initStartupTrace, lap } from './app/startup'
-import { createWindow, showMainWindow } from './app/windows'
+import { createWindow, mainWindow, showMainWindow } from './app/windows'
 import { setupWebBrowser } from './app/webSession'
 import { closeExamWindow } from './app/examWindow'
 import { registerTraceIpc } from './app/traceWindow'
@@ -200,7 +200,8 @@ function main(): void {
     closeExamWindow('quit')
   })
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (!mainWindow()) createWindow()
+    else showMainWindow()
   })
   // 又点了一次图标：把窗口找回来（它可能正收在托盘里，光 focus 是叫不出来的）
   app.on('second-instance', () => showMainWindow())

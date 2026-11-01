@@ -74,55 +74,6 @@ export function buildApi(
     return r.ok ? { ref: r.ref } : { error: r.message }
   }
 
-  if (opts.state) {
-    const state = opts.state
-    /**
-     * path 可省略，与 doc.* 的约定一致；省略时作用在当前节点上。
-     * 判据是「有没有第二个参数」——模型写 api.state.mistake('漏乘内部导数') 时
-     * 那一个是错误说法，不是节点路径，按参数个数分比按形状猜更稳。
-     */
-    const target = (args: unknown[]): { id: string } | { error: string } => {
-      const r = nodeRef(args.length >= 2 ? args[0] : '')
-      return 'error' in r ? { error: r.error } : { id: r.ref.id }
-    }
-    const payload = (args: unknown[]): Record<string, unknown> => asRecord(args[args.length >= 2 ? 1 : 0])
-
-    wrapApi(api, 'state.read', (args) => {
-      const r = nodeRef(args.length ? args[0] : '')
-      if ('error' in r) return { error: r.error }
-      return state.read(r.ref.id)
-    }, log)
-
-    wrapApi(api, 'state.update', (args) => {
-      const t = target(args)
-      if ('error' in t) return { error: t.error }
-      const p = payload(args)
-      return state.update(t.id, { self: p.self, by: p.by, mastery: p.mastery, note: p.note })
-    }, log)
-
-    wrapApi(api, 'state.mistake', (args) => {
-      const t = target(args)
-      if ('error' in t) return { error: t.error }
-      // 只给一个参数时它就是错误说法本身（最常见的写法），不是节点路径
-      const raw = args.length < 2 && typeof args[0] === 'string' ? { pattern: args[0] } : payload(args)
-      return state.mistake(t.id, { pattern: raw.pattern, cause: raw.cause, count: raw.count })
-    }, log)
-
-    wrapApi(api, 'state.forget', (args) => {
-      const t = target(args)
-      if ('error' in t) return { error: t.error }
-      // 一个参数 = 只说错误说法（路径省略）；两个参数 = 路径 + 说法；不给 = 清空这一个节点的全部错误记忆
-      const pattern = args.length >= 2 ? asText(args[1]) : args.length === 1 ? asText(args[0]) : ''
-      return state.forget(t.id, pattern)
-    }, log)
-
-    wrapApi(api, 'state.check', (args) => {
-      const t = target(args)
-      if ('error' in t) return { error: t.error }
-      return state.check(t.id, payload(args))
-    }, log)
-  }
-
   if (tmp) {
     // 局部别名：下面几个闭包里要的是「确定非空」的那一份
     const store = tmp
@@ -270,21 +221,6 @@ export function buildApi(
     wrapApi(api, 'code.silent', (args) => code.silent(asRecord(args[0])), log)
   }
 
-  // 有效阅读 / 注意力 / 专注模式：学习过程那一组（见 learn/reading 等）
-  if (opts.reading) {
-    const reading = opts.reading
-    wrapApi(api, 'reading.get', (args) => reading.get(asOptionalPath(args[0])), log)
-    wrapApi(api, 'reading.list', () => reading.list(), log)
-    wrapApi(api, 'reading.day', (args) => reading.day(asText(args[0]).trim() || undefined), log)
-  }
-  if (opts.attention) {
-    const attention = opts.attention
-    wrapApi(api, 'attention.get', (args) => attention.get(asOptionalPath(args[0])), log)
-  }
-  if (opts.focus) {
-    const focus = opts.focus
-    wrapApi(api, 'focus.status', () => focus.status(), log)
-  }
   // 工作区目录：节点的真实系统目录（见 learn/workspace），只收文本
   if (opts.workspace) {
     const ws = opts.workspace
@@ -1414,10 +1350,6 @@ export function buildApi(
 
       const stepOf = (r: unknown, name: string, done: string): void => {
         steps[name] = r && typeof r === 'object' && typeof (r as { error?: unknown }).error !== 'undefined' ? (r as { error: unknown }).error : done
-      }
-      if (plan.state && typeof plan.state === 'object' && opts.state) {
-        const s = plan.state as Record<string, unknown>
-        stepOf(opts.state.update(node.uuid, { self: s.self, by: s.by ?? 'agent', mastery: s.mastery, note: s.note }), 'state', 'written')
       }
       if (plan.memory && typeof plan.memory === 'object' && opts.memory) {
         stepOf(opts.memory.create(plan.memory as Record<string, unknown>), 'memory', 'written')

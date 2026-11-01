@@ -432,7 +432,7 @@ export function useAgent(opts: {
        * - 沙箱的「当前节点」语义照旧（省略 path 的 doc.write / outline.write 落在
        *   target.nodeId 上，宿主解析，模型不必知道路径）；
        * - 模型需要目标 / 节点 / 规划状态时**自己去查**：api.node.list()（回执带 current
-       *   与全部节点）、节点对象 content、api.state.read()；
+       *   与全部节点）、节点对象 content；
        * - 调用方真正要交给模型的**当次参数**（画布的目标项定位、选段位置）仍走 context
        *   参数——那是指令的一部分，不是会变的背景。
        */

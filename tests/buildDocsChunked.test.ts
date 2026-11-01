@@ -44,7 +44,7 @@ function makeStore(count: number): LearnStore {
       notes: [{ id: `note-${i}`, name: `笔记${i}`, content: body.slice(0, 400), createdAt: 1, updatedAt: 2 }],
       annotations: [],
       outline: { intro: `导语${i}`, children: [], updatedAt: 1 },
-      learning: { mastery: i % 100, lastStudiedAt: 1 },
+      lastStudiedAt: 1,
       status: 'learning',
       origin: 'ai',
       goalId: 'g1',

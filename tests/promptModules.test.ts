@@ -45,7 +45,7 @@ describe('模块注册表', () => {
   })
 
   it('搬进模块的域都在注册表里；promptModuleByKey 认不出的回 null', () => {
-    for (const key of ['browser', 'web', 'res', 'exam', 'teach-method', 'outline-method', 'doc-html', 'workspace', 'method', 'code', 'compact', 'subagent', 'ui', 'learning-process', 'plot-forms', 'rich-animation']) {
+    for (const key of ['browser', 'web', 'res', 'exam', 'teach-method', 'outline-method', 'doc-html', 'workspace', 'method', 'code', 'compact', 'subagent', 'ui', 'schedule', 'plot-forms', 'rich-animation']) {
       expect(promptModuleByKey(key)?.text, key).toBeTruthy()
     }
     expect(promptModuleByKey('不存在的')).toBeNull()
@@ -80,9 +80,7 @@ describe('触发映射', () => {
     expect(promptModuleForApiName('compact')).toBe('compact')
     expect(promptModuleForApiName('subagent.run')).toBe('subagent')
     expect(promptModuleForApiName('ui.point')).toBe('ui')
-    expect(promptModuleForApiName('reading.get')).toBe('learning-process')
-    expect(promptModuleForApiName('attention.get')).toBe('learning-process')
-    expect(promptModuleForApiName('focus.status')).toBe('learning-process')
+    expect(promptModuleForApiName('schedule.create')).toBe('schedule')
     // 每轮必用的组不触发——进了模块反而每轮都要注入一遍
     expect(promptModuleForApiName('node.get')).toBeNull()
     expect(promptModuleForApiName('node.invoke')).toBeNull()
@@ -193,7 +191,7 @@ describe('系统提示词确实瘦了（减负的验收线）', () => {
   it('系统提示词只给 api 集：组索引在场，具体签名靠 __help 现查', () => {
     // 组索引在场（模型必须知道能力存在）；doc/outline/sdoc 是 legacy 旧写法，不进索引
     expect(system).toContain('api.node — 节点宇宙')
-    expect(system).toContain('api.state — 学习状态')
+    expect(system).toContain('api.schedule')
     expect(system).toContain('api.browser')
     expect(system).toContain('api.subagent')
     // 「先查再用」的纪律在场

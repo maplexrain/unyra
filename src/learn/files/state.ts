@@ -52,17 +52,6 @@ export interface LearnState {
    * 工作记忆按目标落在各自目录的 mind.json（见 buildDocs）。
    */
   memory?: { long?: MemoryItem[] }
-  /*
-   * 专注模式（见 learn/focus）**整块**存在 state.json 里，没有磁盘镜像，
-   * 所以这里漏一个字段就等于「写下去了、读不回来」——曾经真漏过。
-   *
-   * 阅读记录与打卡曾经也在这儿，现在它们按目标落在各自目录（`{目标}/reading.json`、
-   * 见 learn/reading 的 ReadingBook）。旧的那两个字段**不再读**：
-   * 改口径不迁移数据，从前那份用户级的账直接丢掉（见 parseDocs 里的说明）。
-   */
-  focus?: unknown
-  /** 旧字段（番茄钟那一版的数据）：只读，读回来后迁移成 focus 的新形状 */
-  pomodoro?: unknown
   /**
    * 视频资源（见 learn/types 的 VideoResource）：用户级，整块存在这里。
    * 新字段进 state.json 要同时改三处：buildState（写）/ parseDocs（搬）/ normalize（读），
@@ -106,15 +95,6 @@ export function buildState(store: LearnStore): Record<string, unknown> {
      * 工作记忆不在这里：它按目标写在各自目录的 mind.json（见 buildDocs）。
      */
     ...(store.memory?.long?.length ? { memory: { long: store.memory.long } } : {}),
-    /*
-     * 专注模式也只在真有东西时才写。
-     *
-     * 这份 state.json 是**整份重写**的：一份空结构每次保存都要多写几百字节，
-     * 而它承载的信息量是零。更实际的理由是——「这个字段存在」本身就是一种声明，
-     * 空对象会让以后读代码的人以为这里存过什么。
-     * （阅读与打卡不在这里：它们按目标写在各自目录里，见 buildDocs。）
-     */
-    ...(hasFocus(store.focus) ? { focus: store.focus } : {}),
     // 日程：有条目、或铃声被改过才写（默认铃声不值得占字段；改过就得记住）
     ...(hasSchedule(store.schedule) ? { schedule: store.schedule } : {}),
     /*
@@ -134,13 +114,10 @@ export function buildState(store: LearnStore): Record<string, unknown> {
   }
 }
 
-const hasFocus = (p?: { current: unknown; log: unknown[] }): boolean =>
-  !!p && (!!p.current || p.log.length > 0)
-
 /**
  * 日程要不要写进 state.json：有条目，或者铃声不是默认那一档。
  *
- * 与 hasFocus 同一条纪律（空结构不写），但多认一个条件：日程表可以是空的，
+ * 与上面同一条纪律（空结构不写），但多认一个条件：日程表可以是空的，
  * 而「我把铃声换成了钟声」这件事必须记住——它只活在这份文件里。
  */
 const hasSchedule = (s?: { items: unknown[]; sound?: { preset?: string; volume?: number } }): boolean =>

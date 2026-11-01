@@ -1,7 +1,6 @@
 import type { KnowledgeNode, LearnStore, SuperDocFile } from './types'
 import { superDocsOf } from './types'
 import { allocate } from './segments'
-import { pruneDocReading, readingDocKey, readingOfGoal, withGoalReading } from './reading'
 
 /**
  * 超级文档的纯逻辑：新建 / 覆盖 / 删除 / 找到，以及「名字怎么取才不撞车」。
@@ -89,19 +88,10 @@ export function writeSuperDoc(
 export function removeSuperDoc(store: LearnStore, nodeId: string, name: string): LearnStore {
   const node = store.nodes.find((n) => n.id === nodeId)
   if (!node) return store
-  // 记录里的键用的是文档**真实**的名字（findSuperDoc 不区分大小写），先按它找到那一条
-  const target = findSuperDoc(superDocsOf(node), name)
   const next = removeSuperDocIn(node, name, Date.now())
   if (next === node) return store
-  /*
-   * 它那份阅读记录也一起清掉：文档没了，sdoc:名字 就再也没人认领了（见 learn/reading 的 pruneDocReading）。
-   * 清的是**这个节点所属目标**的那一本账（阅读按目标分开，见 ReadingBook）。
-   */
-  const book = readingOfGoal(store.reading, node.goalId)
-  const reading = book && target ? pruneDocReading(book, nodeId, readingDocKey('sdoc', target.name)) : undefined
   return {
     ...store,
-    ...(reading ? { reading: withGoalReading(store.reading, node.goalId, reading) } : {}),
     nodes: store.nodes.map((n) => (n.id === nodeId ? next : n)),
   }
 }

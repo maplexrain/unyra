@@ -34,10 +34,8 @@ export function favoriteKey(ref: FavoriteRef): string {
     保存之后它变成 local 页签，那时才谈得上收藏。 */
 export function favoriteKeyOfTab(ref: TabRef): string | null {
   if (
-    ref.kind === 'guard' ||
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
-    ref.kind === 'report' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
@@ -52,14 +50,12 @@ export function favoriteKeyOfTab(ref: TabRef): string | null {
   return favoriteKey(ref)
 }
 
-/** 页签 → 收藏：网页只留网址；起始页、守卫/报告与系统页签返回 null（没有可收藏的东西） */
+/** 页签 → 收藏：网页只留网址；起始页与系统页签返回 null（没有可收藏的东西） */
 export function favoriteRefOfTab(ref: TabRef): FavoriteRef | null {
   if (ref.kind === 'web') return ref.url ? { kind: 'web', url: ref.url } : null
   if (
-    ref.kind === 'guard' ||
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
-    ref.kind === 'report' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||

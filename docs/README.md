@@ -29,9 +29,6 @@ README 只负责介绍项目（它是什么、能做什么、怎么装）。**�
 | 文档 | 讲什么 |
 | --- | --- |
 | [exam.md](exam.md) | 试卷与考试窗口、作答记录、判分与错题讲解 |
-| [learning-state.md](learning-state.md) | 掌握度、自评、错误记忆、探针与主动回忆 |
-| [reading-and-attention.md](reading-and-attention.md) | 有效阅读口径、注意力评级、专注模式（守卫）、读网页 |
-| [reading-mechanism.md](reading-mechanism.md) | 阅读采集的数据形状、四层节奏与落盘细节 |
 
 ## 工程
 

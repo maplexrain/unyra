@@ -5,8 +5,6 @@ import { canAnnotate } from '../../lib/annotation'
 import { renderNote } from '../../lib/markdown'
 import { maskChipTokens, restoreChipTokens } from '../../lib/chipSyntax'
 import { countVisibleWords, countVisibleWordsFromHtml } from '../../lib/wordCount'
-import { useReadingTracker } from '../../learn/useReadingTracker'
-import { readingDocKey, type ReadingDelta } from '../../learn/reading'
 import type { OutlineHandle } from '../../lib/outline'
 import { DocBody } from './note/DocBody'
 import { DocContextMenu } from './note/docContextMenu'
@@ -72,20 +70,11 @@ interface Props {
   onWarn?: (message: string) => void
   /** 当前目标内已存在节点的归一化 key 集合：用于区分「已创建/未创建」的学习链接 */
   knownConceptKeys?: Set<string>
-  /** 有效阅读的增量（见 learn/reading）；由上层安静写进 store，不参与渲染 */
-  onReading?: (delta: ReadingDelta) => void
   /**
    * 就地图片解析器（见 lib/docImages）：这份文档目录旁边的图片（相对路径引用）据此显示。
    * 由上层按「这一份文档自己的目录」注入——常驻的多片正文各是各的文档，不能共用一个「当前目录」。
    */
   resolveLocalImage?: LocalImageResolver
-  /** 这份文档此刻不算「前台」（例如考试窗口开着）：采集器停表 */
-  readingPaused?: boolean
-  /**
-   * 今天这份文档有没有阅读记录。今天还没读过时，采集器要先过「动过 + 读够 20 秒」
-   * 的门槛才开始记账（见 learn/reading 的 readToday / warmupDone）。
-   */
-  readingKnownToday?: () => boolean
   /**
    * 这一片正文此刻是不是在眼前（页签常驻之后，非当前页签也挂在那里，只是不显示）。
    *
@@ -97,10 +86,9 @@ interface Props {
   /**
    * 文档栏是不是在中间主位（导师栏占着主位时为 false）。
    *
-   * 不在主位那段时间不算有效阅读：窄栏里「跟着看」的时间可以丢（见 useReadingTracker）。
+   * 不在主位那段时间不做某些事（如目录栏宽度的量法）；这一层能拿到真实几何。
    * 缺省 true：没有这个概念的调用方照旧。
    */
-  mainPane?: boolean
   /**
    * 大纲句柄槽（见 lib/outline 的 OutlineHandle）：本组件把算好的大纲、当前读到哪一节
    * 与跳转能力装进去，文档区右上角悬浮组的「标题大纲」按钮据此弹出浮层（见 DocFloat）。
@@ -140,12 +128,8 @@ export default memo(function NodeNote({
   onRevealSource,
   onWarn,
   knownConceptKeys,
-  onReading,
   resolveLocalImage,
-  readingPaused = false,
-  readingKnownToday,
   active = true,
-  mainPane = true,
   scrollTop,
   onScrollTop,
   outlineSlot,
@@ -254,7 +238,6 @@ export default memo(function NodeNote({
     if (!menu) return
     const term = menu.text
     dismiss()
-    markReading('learn')
     onLearnConcept(term)
   }
 
@@ -265,8 +248,6 @@ export default memo(function NodeNote({
     const snippet = menu.text
     dismiss()
     if (cannotAnnotate(term)) return
-    // 「了解」是「真读了」的强证据：注意力评级里算 depth（见 learn/attention）
-    markReading('annotate')
     onUnderstand(term, menu.occurrence, snippet)
   }
 
@@ -278,7 +259,6 @@ export default memo(function NodeNote({
     setAsking(false)
     setQuestion('')
     setMenuOpen(false)
-    markReading('ask')
     // 保留选区，便于用户回看自己问的是哪一段
     void onAsk({ question: q, text, start: loc?.start, end: loc?.end })
   }
@@ -310,34 +290,6 @@ export default memo(function NodeNote({
   }, [html])
 
   /*
-   * 有效阅读的采集（见 learn/useReadingTracker）。放在这里是因为「有效」要看的东西
-   * 全在这一层：滚动容器、正文 DOM、窗口焦点……store 只该收到结论。
-   * 没有注入 onReading（例如预览场景）时它自动变成空转：tracker 照常跑，
-   * 增量没人接就丢掉了，不值得为它多开一条分支。
-   */
-  const { mark: markReading } = useReadingTracker({
-    nodeId: node.id,
-    // 阅读账按目标分开（见 learn/reading 的 ReadingBook）：采集器要把它一起带走
-    goalId: node.goalId,
-    doc: readingDocKey(doc.kind, doc.note),
-    words: wordCount,
-    // 传函数而不是元素：渲染期读 ref 会被 React 的规则拦下（而且首帧它们还是 null）
-    body: () => bodyRef.current,
-    scroll: () => scrollRef.current,
-    content,
-    // 不是当前页签就不计时：常驻的隐藏页既没在眼前，也没有真实的几何可量
-    active: active && !readingPaused && !pending,
-    // 导师正在把这份文档写出来（空文档 + 正在生成）：那段时间不算读
-    busy: pending,
-    // 笔记不记有效阅读：那里是动手写的地方，写多久都不算「在读」（用户定的）
-    count: doc.kind !== 'note',
-    // 导师栏占着中间主位时不算阅读（窄栏里跟读的时间直接丢，见 useReadingTracker）
-    mainPane,
-    knownToday: () => readingKnownToday?.() ?? true,
-    onDelta: (delta: ReadingDelta) => onReading?.(delta),
-  })
-
-  /*
    * 注解输入区：开合、保存/删除、样式预览与它自己的 JSX 都在 note/useAnnotationLayer。
    * 词条校验用上面那个 cannotAnnotate（「了解」那条路也用它，口径只有一份）。
    */
@@ -345,7 +297,6 @@ export default memo(function NodeNote({
     annotations: node.annotations,
     bodyRef,
     cannotAnnotate,
-    markReading,
     onSaveAnnotation,
     onDeleteAnnotation,
   })

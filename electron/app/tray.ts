@@ -97,9 +97,10 @@ let trayHintShown = false
 /**
  * 收进托盘：只隐藏窗口，进程、渲染状态、正在跑的那一轮回答都留着。
  * 第一次收起来时给一个气泡——窗口「啪」地消失，不说一句会让人以为程序被关掉了。
+ * 可显式传入被关的窗口（关窗拦截），未传则退回到 mainWindow()。
  */
-export function hideToTray(): void {
-  const win = mainWindow()
+export function hideToTray(targetWin?: BrowserWindow): void {
+  const win = targetWin && !targetWin.isDestroyed() ? targetWin : mainWindow()
   if (!win) return
   win.hide()
   if (trayHintShown || process.platform !== 'win32') return
@@ -139,7 +140,7 @@ export function attachCloseGuard(win: BrowserWindow): void {
       return
     }
     if (policy === 'tray') {
-      hideToTray()
+      hideToTray(win)
       return
     }
     if (win.isDestroyed() || win.webContents.isDestroyed()) {

@@ -19,7 +19,6 @@ export {
   flushLearnStore,
   hydrateLearnStore,
   loadLearnStore,
-  rememberJournalEntry,
   saveLearnStore,
 } from './store/persist'
 export { nodeDocRel } from './store/assets'

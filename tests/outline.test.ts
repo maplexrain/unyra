@@ -20,7 +20,6 @@ import {
   captureNodeDelete,
   captureNoteDelete,
 } from '../src/learn/undo'
-import { withGoalReading } from '../src/learn/reading'
 import { emptyDocs } from '../src/learn/groups'
 import { removeLocalFile } from '../src/learn/localfiles'
 import { tabKey, tabTitle } from '../src/learn/tabs'
@@ -44,20 +43,8 @@ function makeNode(partial: Partial<KnowledgeNode> & { id: string; title: string 
   }
 }
 
-/** 一棵三层的目标树 + 全套周边数据（笔记 / 超级文档 / 试卷 / 临时变量 / 两本账），撤回用例的地基 */
+/** 一棵三层的目标树 + 全套周边数据（笔记 / 超级文档 / 试卷 / 临时变量），撤回用例的地基 */
 function fixture(): LearnStore {
-  const readingBook = {
-    version: 1,
-    sessions: [
-      { id: 's1', nodeId: 'n2', doc: 'teaching', day: '2026-01-01', from: NOW, to: NOW + 60_000, activeMs: 60_000, minutes: [], breaks: [], sections: [] },
-      { id: 's2', nodeId: 'n3', doc: 'teaching', day: '2026-01-01', from: NOW, to: NOW + 30_000, activeMs: 30_000, minutes: [], breaks: [], sections: [] },
-    ],
-    nodes: {
-      n2: { docs: { teaching: { sections: [], activeMs: 60_000 } }, activeMs: 60_000, firstAt: NOW, lastAt: NOW, opens: 1 },
-      n3: { docs: {}, activeMs: 30_000, firstAt: NOW, lastAt: NOW, opens: 1 },
-    },
-    days: { '2026-01-01': { day: '2026-01-01', activeMs: 90_000, nodes: ['n2', 'n3'], marks: 0 } },
-  }
   return {
     version: 2,
     nodes: [
@@ -81,7 +68,6 @@ function fixture(): LearnStore {
     drafts: {},
     docScroll: {},
     localFiles: [{ path: 'C:/外部/速查.md', name: '速查.md', openedAt: NOW }],
-    reading: { byGoal: { g1: readingBook } },
   }
 }
 
@@ -223,28 +209,10 @@ describe('撤回：捕获与恢复和删除级联互逆', () => {
     expect(s.edges.some((e) => e.from === 'n2' && e.to === 'n3')).toBe(true)
     expect(s.exams.some((e) => e.id === 'e1')).toBe(true)
     expect(s.tmp.n3?.k.value).toBe('中间数据')
-    const book = s.reading!.byGoal.g1
-    expect(book.nodes.n3).toBeDefined()
-    expect(book.sessions.some((x) => x.id === 's2')).toBe(true)
-    expect(book.days['2026-01-01'].nodes).toContain('n3')
   })
 
-  it('撤回不抹掉删除之后别人的新阅读：同一目标其他节点的记录还在', () => {
+  it('删目标是根：整棵子树、目标、会话都回来', () => {
     let s = fixture()
-    const entry = captureNodeDelete(s, 'n3')
-    if (!entry) throw new Error('captureNodeDelete 应当成功')
-    s = deleteNode(s, 'n3')
-    // 删除之后 n2 又读了 5 秒（模拟同一目标里别的节点继续学习）
-    s = { ...s, reading: withGoalReading(s.reading, 'g1', { ...s.reading!.byGoal.g1, nodes: { ...s.reading!.byGoal.g1.nodes, n2: { ...s.reading!.byGoal.g1.nodes.n2, activeMs: 65_000 } } }) }
-    const r = applyUndo(s, entry)
-    const book = r.store.reading!.byGoal.g1
-    expect(book.nodes.n2.activeMs).toBe(65_000)
-    expect(book.nodes.n3).toBeDefined()
-  })
-
-  it('删目标是根：整棵子树、目标、会话、两本账都回来（账是同一份引用）', () => {
-    let s = fixture()
-    const bookBefore = s.reading!.byGoal.g1
     const entry = captureNodeDelete(s, 'n1')
     if (!entry) throw new Error('captureNodeDelete 应当成功')
     s = deleteNode(s, 'n1')
@@ -256,12 +224,10 @@ describe('撤回：捕获与恢复和删除级联互逆', () => {
     expect(s.goals.some((g) => g.id === 'g1')).toBe(true)
     expect(s.nodes.filter((n) => n.goalId === 'g1').length).toBe(3)
     expect(s.conversations.some((c) => c.id === 'c1')).toBe(true)
-    expect(s.reading!.byGoal.g1).toBe(bookBefore)
   })
 
-  it('删笔记：正文与那一片阅读记录回来', () => {
+  it('删笔记：正文回来', () => {
     let s = fixture()
-    s = { ...s, reading: withGoalReading(s.reading, 'g1', { ...s.reading!.byGoal.g1, nodes: { ...s.reading!.byGoal.g1.nodes, n2: { docs: { 'note:笔记': { sections: [], activeMs: 5_000 } }, activeMs: 60_000, firstAt: NOW, lastAt: NOW, opens: 1 } } }) }
     const entry = captureNoteDelete(s, 'n2', '笔记')
     expect(entry).not.toBeNull()
     if (!entry) return
@@ -271,7 +237,6 @@ describe('撤回：捕获与恢复和删除级联互逆', () => {
     expect(r.ok).toBe(true)
     const node = r.store.nodes.find((n) => n.id === 'n2')
     expect(node?.notes[0]?.content).toBe('我记的笔记')
-    expect(r.store.reading!.byGoal.g1.nodes.n2.docs['note:笔记']).toBeDefined()
   })
 
   it('删试卷与移除本地文件：单条数据原样回来', () => {

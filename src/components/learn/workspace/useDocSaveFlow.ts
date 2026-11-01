@@ -444,10 +444,8 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       if (text === undefined) return { ok: true }
       // 网页页签没有编辑器，永远不该有暂存正文；真有这份草稿也没处可存
       if (tab.ref.kind === 'web') return { ok: true }
-      // 守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置/新建目标）同样没有编辑器，没有暂存这回事
+      // 系统页（设置/用量/记忆/导师设置/新建目标）同样没有编辑器，没有暂存这回事
       if (
-        tab.ref.kind === 'guard' ||
-        tab.ref.kind === 'report' ||
         tab.ref.kind === 'settings' ||
         tab.ref.kind === 'usage' ||
         tab.ref.kind === 'schedule' ||

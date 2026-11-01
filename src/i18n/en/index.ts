@@ -5,7 +5,6 @@
  * 同一个译法，scripts/i18n-check.mjs 会把不一致的键报出来。
  */
 import agentUi from './agent-ui'
-import focusUi from './focus-ui'
 import learnShell from './learn-shell'
 import learnViews from './learn-views'
 import libUi from './lib-ui'
@@ -18,7 +17,6 @@ import webUi from './web-ui'
 
 export const en: Record<string, string> = {
   ...agentUi,
-  ...focusUi,
   ...learnShell,
   ...learnViews,
   ...libUi,

@@ -28,7 +28,7 @@ function node(id: string, title: string, lastStudiedAt?: number): KnowledgeNode 
     goalId: 'g1',
     createdAt: 0,
     updatedAt: 0,
-    ...(lastStudiedAt ? { learning: { lastStudiedAt, visits: 1 } } : {}),
+    ...(lastStudiedAt ? { lastStudiedAt } : {}),
   }
 }
 

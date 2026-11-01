@@ -181,10 +181,27 @@ export function useTabDnd({ getLatest, set }: { getLatest: () => LearnStore; set
       preview = resizePair(base, index, delta / total)
       setSplitDrag({ id: split.id, sizes: preview })
     }
+    /*
+     * 捕获指针：拖到窗口外面松手时，pointerup 仍然会派发给这个元素（再冒泡到 window）。
+     * 不捕获的话，那一下谁都收不到——三个监听器连同闭包里的 split 一起永久挂在 window 上，
+     * 每次「拖出去再松手」就多一份，用久了拖拽会越来越迟钝。
+     */
+    const target = e.currentTarget
+    try {
+      target.setPointerCapture(e.pointerId)
+    } catch {
+      // 老环境不支持捕获：下面还有 blur 兜底
+    }
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', up)
+      window.removeEventListener('blur', up)
+      try {
+        target.releasePointerCapture(e.pointerId)
+      } catch {
+        // 元素已经不在 / 早就释放了：无所谓
+      }
       setSplitDrag(null)
       const s = getLatest()
       const cur = findSplit(s.docArea.layout, split.id)
@@ -196,6 +213,8 @@ export function useTabDnd({ getLatest, set }: { getLatest: () => LearnStore; set
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', up)
+    // 拖动途中窗口被切走（Alt+Tab）：没有 up 可等，就地收尾
+    window.addEventListener('blur', up)
   }
 
   return {

@@ -9,9 +9,9 @@ import { nodeById, pathToRoot } from './graph'
  * 没有这个分类，找东西时也不该先想它属于哪一类。
  *
  * 数据是现成的，不另存一份：
- * - 节点：node.learning.lastStudiedAt。打开节点、它的笔记、它的超级文档都会刷新它
+ * - 节点：node.lastStudiedAt。打开节点、它的笔记、它的超级文档都会刷新它
  *   （入口只有 openTab 一个，见 graph 的 touchNode）。**粒度是天**：同一天里重复打开
- *   不刷新时间戳（见 learning 的 withVisit——不然每点一下节点都要重写 meta.json），
+ *   不刷新时间戳（见 graph 的 touchNode——不然每点一下节点都要重写 meta.json），
  *   所以同一天打开过的几个节点之间，顺序是「这天里第一次打开」的先后，不是最后一次的先后。
  * - 本地文件：file.openedAt，每次打开都刷新（见 localfiles 的 addLocalFile）。
  *
@@ -49,7 +49,7 @@ export function recentOpens(store: LearnStore, limit = RECENT_LIMIT): RecentOpen
    */
   const pending: Array<{ open: RecentOpen; node: KnowledgeNode | null }> = []
   for (const node of store.nodes) {
-    const at = node.learning?.lastStudiedAt ?? 0
+    const at = node.lastStudiedAt ?? 0
     // 没打开过的（只有 AI 建出来的那种）不进这个列表：它回答的是「我最近在学什么」
     if (!at) continue
     pending.push({

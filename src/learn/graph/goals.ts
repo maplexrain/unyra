@@ -1,9 +1,8 @@
 /**
- * 本文件负责：以「目标」为单位的那本阅读账——改笔记名 / 删笔记 / 删节点时按节点找回所属目标再清账，
- * 删目标时把阅读与打卡两本账一起摘掉；以及目标进度这一派生视图。
+ * 本文件负责：**以目标为单位**的两件事——删掉一个目标（连同它的节点、页签、会话、记忆），
+ * 以及目标进度这一派生视图。
  *
- * goalProgress 不读阅读账，放这里是因为它与 deleteGoal 同属「以目标为单位」的操作，
- * 且只依赖节点查表与前置边。
+ * 两者同属「以目标为单位」的操作，且只依赖节点查表与前置边，所以放在一处。
  */
 import type { LearnStore, TabRef } from '../types'
 import { withVideoMirror } from '../video/nodes'
@@ -11,45 +10,9 @@ import { withoutTmpNodes } from '../../lib/tmpStore'
 import { allStoredTabs, closeIds, dropTabs, restoreParkedTabs, withOwners, withParked } from '../groups'
 import { agentTabKey, removeAgentTabsOfGoals } from '../agentTabs'
 import { dropDrafts } from '../drafts'
-import { readingOfGoal, withGoalReading, type ReadingStore } from '../reading'
 import { nodeById } from './lookup'
 import { prereqIds } from './edges'
 import { latestConversation } from './conversations'
-
-/* ---------- 阅读这一本账：动它之前先找到「是哪个目标」 ---------- */
-
-/**
- * 对**某个节点所属目标**的那本阅读账做一次变换。
- *
- * 阅读按目标分开（见 learn/reading 的 ReadingBook），而改笔记名、删笔记、删节点
- * 这些动作只知道节点 id——节点属于哪个目标得在这里查一次。没有那本账（还没读过）
- * 就原样返回：没记录可动，也没必要凭空建一本空账。
- */
-export function onNodeReading(store: LearnStore, nodeId: string, fn: (rec: ReadingStore) => ReadingStore): LearnStore {
-  const goalId = nodeById(store, nodeId)?.goalId ?? ''
-  const rec = readingOfGoal(store.reading, goalId)
-  if (!goalId || !rec) return store
-  return { ...store, reading: withGoalReading(store.reading, goalId, fn(rec)) }
-}
-
-/** 同上，但给展开写法用（返回要并进 store 的那一项；没有账时返回空对象） */
-export function onNodeReadingPatch(
-  store: LearnStore,
-  node: { goalId: string } | undefined,
-  fn: (rec: ReadingStore) => ReadingStore,
-): Partial<LearnStore> {
-  const goalId = node?.goalId ?? ''
-  const rec = readingOfGoal(store.reading, goalId)
-  if (!goalId || !rec) return {}
-  return { reading: withGoalReading(store.reading, goalId, fn(rec)) }
-}
-
-/** 目标没了：阅读这本账一起摘掉（见 deleteGoal） */
-function withoutGoalReading(store: LearnStore, goalId: string): Partial<LearnStore> {
-  const reading = { ...(store.reading?.byGoal ?? {}) }
-  delete reading[goalId]
-  return { reading: { byGoal: reading } }
-}
 
 /**
  * 一个目标的根可达、且属于这个目标的全部节点 id。
@@ -143,7 +106,6 @@ export function deleteGoal(store: LearnStore, goalId: string): LearnStore {
     ...(store.videoNodes?.some((v) => v.goalId === goalId)
       ? withVideoMirror({ ...store, videoNodes: store.videoNodes.filter((v) => v.goalId !== goalId) })
       : {}),
-    ...withoutGoalReading(store, goalId),
     edges: store.edges.filter((e) => !removed.has(e.from) && !removed.has(e.to)),
     conversations: remaining,
     exams: store.exams.filter((e) => e.goalId !== goalId && !removed.has(e.nodeId)),
@@ -169,12 +131,10 @@ export function deleteGoal(store: LearnStore, goalId: string): LearnStore {
   }
 }
 
-/** 页签挂在哪个节点上；本地文件、网页、守卫、报告与系统页（设置/用量/记忆/导师设置/新建目标）返回空串（不属于任何节点，删节点不该关掉它们）；工作区内部文件挂在它的节点上——节点没了，它的工作区文件也跟着没了，页签该一起关 */
+/** 页签挂在哪个节点上；本地文件、网页与系统页（设置/用量/记忆/导师设置/新建目标）返回空串（不属于任何节点，删节点不该关掉它们）；工作区内部文件挂在它的节点上——节点没了，它的工作区文件也跟着没了，页签该一起关 */
 function tabNodeIdOf(ref: TabRef): string {
   return ref.kind === 'local' ||
     ref.kind === 'web' ||
-    ref.kind === 'guard' ||
-    ref.kind === 'report' ||
     ref.kind === 'settings' ||
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||

@@ -99,11 +99,6 @@ function writeGoalFiles(goal: LearnStore['goals'][number], store: LearnStore, fi
     files.set(`${path}/workflow.json`, jsonText({ version: 1, workflows: goalWorkflows }))
   }
 
-  const goalReading = store.reading?.byGoal?.[goal.id]
-  if (goalReading && (goalReading.sessions.length || Object.keys(goalReading.days).length)) {
-    files.set(`${path}/reading.json`, jsonText(goalReading))
-  }
-
   const goalEssays = store.essays?.[goal.id] ?? []
   const goalCommits = store.essayCommits?.[goal.id] ?? []
   if (goalEssays.length || goalCommits.length) {
@@ -212,7 +207,7 @@ function* buildDocsSteps(store: LearnStore): Generator<void, Map<string, string>
         createdAt: node.createdAt,
         updatedAt: node.updatedAt,
         annotations: node.annotations,
-        ...(node.learning !== undefined ? { learning: node.learning } : {}),
+        ...(node.lastStudiedAt !== undefined ? { lastStudiedAt: node.lastStudiedAt } : {}),
         ...(node.tint !== undefined ? { tint: node.tint } : {}),
         dependencies: (deps.get(node.id) ?? []).map((e) => ({ to: e.to, createdAt: e.createdAt, ...(e.portKey ? { portKey: e.portKey } : {}) })),
         parts: partsOfNode(node, examsOf.get(node.id) ?? []),
