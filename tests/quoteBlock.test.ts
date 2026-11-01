@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   parseQuoteBlock,
   parseMappingRule,
-  sanitizeTemplate,
   applyRulesToLine,
   renderQuotedLines,
   quoteBlock,
@@ -16,7 +15,6 @@ import type { PluginRenderContext } from '../src/lib/renderPlugins'
 const mockCtx: PluginRenderContext = {
   escape: (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
   attr: (s) => s.replace(/"/g, '&quot;'),
-  raw: (s) => s,
 }
 
 describe('quoteBlock', () => {

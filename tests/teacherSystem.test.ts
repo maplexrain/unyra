@@ -24,3 +24,13 @@ describe('产物归属规则（用户定的）', () => {
     expect(system).toContain('api.workspace — 工作区')
   })
 })
+
+describe('内置围栏语法指引（plot / mermaid / videos / quote）', () => {
+  it('系统提示词包含全部内置围栏语法指引：plot、mermaid、videos、quote', () => {
+    expect(system).toContain('```plot')
+    expect(system).toContain('```mermaid')
+    expect(system).toContain('```videos')
+    expect(system).toContain('```quote')
+    expect(system).toContain('@文件路径(起始行-结束行)')
+  })
+})

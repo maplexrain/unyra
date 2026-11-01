@@ -337,3 +337,15 @@ export function hydrateVideos(root: HTMLElement): () => void {
     }
   }
 }
+
+/**
+ * 教学 Agent 的 videos 语法指引（用于系统提示词与指引）。
+ */
+export const VIDEOS_SYNTAX_GUIDE = `视频选集链路：用三个反引号 + videos 插入绑定视频节点的选集导航组件。
+语法格式：
+\`\`\`videos
+{{videoNodeUUID}}
+{{ range }}
+\`\`\`
+- 第一行必须是视频节点的 UUID（直接写目标视频节点实际的 uuid 字符串，即 target 参数）。
+- 第二行是展示视频的选集范围，例如：1-20, 23, 29-30 或 all（单集写数字，区间用横杠连接，多个区间用逗号隔开）。`;
