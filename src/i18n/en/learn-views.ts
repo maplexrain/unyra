@@ -32,6 +32,8 @@ const dict: Record<string, string> = {
   '把前面的对话折成一份交接摘要（旧消息随即失活）': 'Folds the earlier conversation into a handoff summary (older messages are deactivated)',
   '浏览器操作': 'Browser use',
   '替用户操作内置浏览器：截图看页面、模拟鼠标键盘完成任务': 'Drives the built-in browser for you: looks via screenshots, acts via simulated mouse and keyboard',
+  '项目与文章解读': 'Project & article interpretation',
+  '下载文章/小型项目至本地建立项目节点，并在生成的教学文档中用 quote 块精准引用原文进行逐段精读': 'Downloads an article or small project locally to create a project node, and references original source text with quote blocks for in-depth explanation',
 
   // ---------- 共享的标签常量（在使用处包 t()：learn/types、learn/learning、learn/review、focus 等） ----------
   '学习中': 'Learning',

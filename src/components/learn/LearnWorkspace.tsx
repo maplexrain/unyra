@@ -46,6 +46,7 @@ import type {
   TabRef,
   WebTabMeta,
   LearningGoal,
+  ProjectNodeEntity,
 } from '../../learn/types'
 import { notesOf } from '../../learn/types'
 import {
@@ -100,7 +101,7 @@ import {
 import { makeBlankTab, makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
 import { setZenActive } from '../../learn/zen'
 import { closeGoalTabGroupStore } from '../../learn/groups/goalTabGroupOps'
-import { pickLocalFiles } from '../../lib/localFiles'
+import { pickLocalFiles, readLocalFile } from '../../lib/localFiles'
 import { addLocalFile } from '../../learn/localfiles'
 import { normalizeWebInput } from '../../learn/webUrl'
 import type { BrowserDeps } from '../../learn/web/browserOps'
@@ -220,6 +221,7 @@ import PluginDoc from '../plugins/PluginDoc'
 import { setPluginDocOpener } from '../../lib/pluginDoc'
 import { resolveVideoSource } from '../../lib/videoPlugins'
 import { setVideoBlockHost, cleanVideoNodeUuid, type VideoBlockData, type VideoEpisodeItem } from '../../lib/videosBlock'
+import { setQuoteBlockHost } from '../../lib/quoteBlock'
 import { focusWebAddress } from './web/addressFocus'
 import FindBar from './FindBar'
 import SuperDocView from './SuperDocView'
@@ -3532,6 +3534,107 @@ export default function LearnWorkspace({
     })
     return () => setVideoBlockHost(null)
   }, [getLatest, set, openTab])
+
+  // 原文引用代码块（```quote）的文件内容读取与跳转：注册宿主接口
+  useEffect(() => {
+    setQuoteBlockHost({
+      readFile: async (rawPath: string): Promise<string | null> => {
+        const s = getLatest()
+        const cleanPath = (rawPath ?? '').trim().replace(/\\/g, '/')
+        if (!cleanPath) return null
+
+        const tryRead = async (p: string): Promise<string | null> => {
+          try {
+            const res = await readLocalFile(p)
+            if (res.ok && typeof res.content === 'string') return res.content
+          } catch {}
+          try {
+            if (isElectron()) {
+              const allRoots = (s.projects ?? [])
+                .map((pr) => resolveProjectRoot(s, pr))
+                .filter((r): r is string => Boolean(r))
+              if (allRoots.length > 0) {
+                const r = await native().projectFs({ op: 'read', path: p, roots: allRoots, encoding: 'utf8' })
+                if (r.ok && r.op === 'read' && typeof r.content === 'string') return r.content
+              }
+            }
+          } catch {}
+          return null
+        }
+
+        const isAbs = /^[a-zA-Z]:[\\/]/.test(cleanPath) || cleanPath.startsWith('/') || cleanPath.startsWith('\\\\')
+        if (isAbs) {
+          return await tryRead(cleanPath)
+        }
+
+        const candidateProjects: ProjectNodeEntity[] = []
+        if (s.activeNodeId) {
+          const downEdges = s.edges.filter((e) => e.from === s.activeNodeId)
+          for (const e of downEdges) {
+            const p = (s.projects ?? []).find((pr) => pr.id === e.to)
+            if (p) candidateProjects.push(p)
+          }
+        }
+        if (s.activeGoalId) {
+          for (const pr of s.projects ?? []) {
+            if (pr.goalId === s.activeGoalId && !candidateProjects.some((cp) => cp.id === pr.id)) {
+              candidateProjects.push(pr)
+            }
+          }
+        }
+        for (const pr of s.projects ?? []) {
+          if (!candidateProjects.some((cp) => cp.id === pr.id)) {
+            candidateProjects.push(pr)
+          }
+        }
+
+        for (const proj of candidateProjects) {
+          const root = resolveProjectRoot(s, proj)
+          if (!root) continue
+          const full = root.replace(/[\\/]+$/, '') + '/' + cleanPath.replace(/^[\\/]+/, '')
+          const res = await tryRead(full)
+          if (res !== null) return res
+        }
+
+        return await tryRead(cleanPath)
+      },
+      onOpenFile: (rawPath: string, _line?: number) => {
+        const s = getLatest()
+        const cleanPath = (rawPath ?? '').trim().replace(/\\/g, '/')
+        if (!cleanPath) return
+
+        let targetPath = cleanPath
+        const isAbs = /^[a-zA-Z]:[\\/]/.test(cleanPath) || cleanPath.startsWith('/') || cleanPath.startsWith('\\\\')
+        if (!isAbs) {
+          const candidateProjects: ProjectNodeEntity[] = []
+          if (s.activeNodeId) {
+            const downEdges = s.edges.filter((e) => e.from === s.activeNodeId)
+            for (const e of downEdges) {
+              const p = (s.projects ?? []).find((pr) => pr.id === e.to)
+              if (p) candidateProjects.push(p)
+            }
+          }
+          if (s.activeGoalId) {
+            for (const pr of s.projects ?? []) {
+              if (pr.goalId === s.activeGoalId && !candidateProjects.some((cp) => cp.id === pr.id)) {
+                candidateProjects.push(pr)
+              }
+            }
+          }
+          for (const proj of candidateProjects) {
+            const root = resolveProjectRoot(s, proj)
+            if (root) {
+              targetPath = root.replace(/[\\/]+$/, '') + '/' + cleanPath.replace(/^[\\/]+/, '')
+              break
+            }
+          }
+        }
+
+        openTab({ kind: 'local', path: targetPath, title: localFileNameOf(targetPath) })
+      },
+    })
+    return () => setQuoteBlockHost(null)
+  }, [getLatest, openTab])
 
   /*
     plot 错误卡片上的「让导师修复」：以**工作流**（learn/workflows 的 plot-fix）注入——

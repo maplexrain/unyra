@@ -350,6 +350,55 @@ export const PROMPT_MODULES: PromptModule[] = [
 在对话框中向用户清晰汇报生成的视频总览文档大纲结构与选集分类分布。`,
   },
   {
+    key: 'project-interpret',
+    title: '项目与文章解读',
+    text: `「项目与文章解读」工作流规范（配合 project 节点与 quote 块语法）——当用户需要导师带着解读某些文章、文献或代码项目时使用：
+
+一、获取材料与本地落盘（文章/项目不大时）
+1. 用户提供文章 URL、项目源码仓库、或在对话中粘贴了待解读内容。
+2. 在文章或项目体积不大的情况下，优先将其下载或保存到本地磁盘（如使用 api.fetch 抓取网络文章，或通过本地文件写入）。
+3. 建立专门的目录存放这些材料（例如当前学习目标目录下的子目录，或指定的本地工程目录）。
+
+二、创建项目节点并建立挂载关系
+1. 调用 api.node.create 声明该本地目录为项目节点（kind: 'project'）：
+   \`\`\`javascript
+   const proj = await api.node.create({
+     kind: 'project',
+     title: '文章/项目名称',
+     path: '下载或解压后的本地绝对路径或相对路径',
+     under: targetDocUuid, // 若有对应文档节点，传文档节点的 UUID 挂载在它之下；若没有，省略 under 创建为游离节点
+   })
+   \`\`\`
+2. 挂载规则：
+   - 如果当前已有对应的文档节点（例如工作流的 target 节点，或正在阅读的文档），将项目节点挂在该文档节点下（under: target）；
+   - 如果当前没有相应的文档节点，则省略 under，将其当作独立的游离节点创建。
+3. 声明项目节点之后，该路径及其子树全部文件对 api.project.* 完全开放，在后续阅读、探索、引用中可随时读写。
+
+三、编写解读文档与 Quote 块引用（核心契约）
+在生成或编辑解读文档（teaching）时，不要无序大段照抄全文，必须结合 quote 块精准引用原文核心行进行剖析：
+1. Quote 块语法结构：
+   \`\`\`quote
+   这是一段引文前置说明或背景过渡普通文本
+   @文件路径(起始行-结束行){
+     [起始行:起始列, 结束行:结束列] => <strong>{{content}}</strong>
+   }
+   以上代码片段来自xxx，重点在于...
+   \`\`\`
+2. 语法解析规则：
+   - 块内普通文本：非 @ 开头的行作为普通文本展示，用于解释说明、段落过渡或背景交待。
+   - 原文引用行：以 @ 开头，格式为 \`@<文件路径>(<起始行>-<结束行>)\`，支持可选的花括号 \`{ ... }\` 包裹映射规则。
+     - 文件路径：支持绝对路径（如 \`E:/demo/index.html\`）或相对于已声明项目节点的相对路径（如 \`src/index.ts\`）。
+     - 行号范围：如 \`(10-34)\`，从 1 开始的闭区间；也兼容 \`(10~34)\`、\`(10至34)\` 或单行 \`(10)\`。
+   - 映射规则：位于 \`{ ... }\` 内，格式为 \`[l1:c1, l2:c2] => <标签>{{content}}</标签>\`。
+     - 含义：将文件中从第 l1 行第 c1 个字符，到第 l2 行第 c2 个字符的内容，映射包裹为指定的样式元素（{{content}} 会被替换为原文切片并自动转义）。
+     - 支持的样式标签包括 <strong>、<em>、<mark>、<span class="..."> 等。注意：严禁使用圆角样式，必须保持直角设计风格！
+   - 同一个 quote 块内可以包含多段普通文本与多个 @ 原文引用，形成图文对照的精读笔记。
+
+四、排版与精读原则
+- 先总述背景与核心架构，再定位关键段落/函数深入剖析。
+- 用 quote 块精准引用原文关键逻辑，并在 quote 块周围配合清晰的设计思想、执行流程与图表，帮助用户吃透每一个细节。`,
+  },
+  {
     key: 'schedule',
     title: '日程',
     text: `日程（api.schedule.*）：list / create / update / complete / remove。
@@ -707,6 +756,7 @@ const GROUP_MODULE: Record<string, string> = {
   compact: 'compact',
   subagent: 'subagent',
   ui: 'ui',
+  project: 'project-interpret',
 }
 
 export function promptModuleForApiName(name: string): string | null {
@@ -733,6 +783,7 @@ export function promptModuleForContent(content: string, superdoc: boolean, apiNa
     out.push('doc-html')
   }
   if (content.includes('```plot')) out.push('plot-forms')
+  if (content.includes('```quote')) out.push('project-interpret')
   if (content.includes('<animate') || content.includes('@keyframes')) out.push('rich-animation')
   return out
 }

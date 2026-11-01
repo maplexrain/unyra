@@ -46,7 +46,7 @@ const store = (workflows?: LearnStore['workflows']): LearnStore => ({
 })
 
 describe('内置工作流', () => {
-  it('十二个内置都在：开讲、生成大纲、视频总览、出卷、阅卷、了解、超级实验室、伪编译、修复函数图像、压缩上下文、浏览器操作、随笔整理', () => {
+  it('内置工作流都在：开讲、生成大纲、视频总览、出卷、阅卷、了解、超级实验室、伪编译、修复函数图像、压缩上下文、浏览器操作、随笔整理、项目与文章解读', () => {
     const rows = builtinWorkflowRows()
     expect(rows.map((r) => r.id)).toEqual([
       'teach-node',
@@ -61,6 +61,7 @@ describe('内置工作流', () => {
       'compact',
       'browser-use',
       'essay-commit',
+      'project-interpret',
     ])
     for (const r of rows) {
       expect(r.tier).toBe('builtin')
@@ -80,6 +81,21 @@ describe('内置工作流', () => {
     expect(mod).toBeTruthy()
     const spec = mod!.text
     expect(spec).toContain('大纲编写')
+  })
+
+  it('项目与文章解读：指令带目标节点，规程在「项目与文章解读」模块里', () => {
+    const row = builtinWorkflowRows().find((r) => r.id === 'project-interpret')
+    expect(row).toBeTruthy()
+    expect(row?.params).toEqual(['target'])
+    expect(row?.promptModule).toContain('project-interpret')
+
+    const text = renderWorkflowInstruction(row!.instruction, { target: '目标文档UUID' })
+    expect(text).toBe('## 使用「项目与文章解读」工作流。\n- 目标节点: 目标文档UUID')
+
+    const mod = promptModuleByKey('project-interpret')
+    expect(mod).toBeTruthy()
+    expect(mod?.text).toContain('quote')
+    expect(mod?.text).toContain('project')
   })
 
   it('问询类（开讲/出卷/超级实验室）触发前响铃；阅卷不能从列表直接跑', () => {
@@ -127,6 +143,7 @@ describe('内置工作流', () => {
       'superlab',
       'code-compile',
       'plot-fix',
+      'project-interpret',
     ])
     // 切主位那一条规矩随 api.ui.switchMain 一起撤了：谁都不许动用户的主栏
     expect(builtinWorkflowRows().some((r) => 'takeMain' in workflowPrep(r.prep))).toBe(false)
