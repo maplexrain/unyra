@@ -10,10 +10,22 @@
  */
 import { BrowserWindow } from 'electron'
 
-/** 主窗口。本应用只有一个窗口，一律取第一个 */
+let mainWin: BrowserWindow | null = null
+
+/**
+ * 注册主窗口引用。
+ * 主窗口创建时注入，销毁时置空；使主窗口定位精准可靠，避免辅助窗口
+ * （如静默预热的全屏截图窗口、置顶贴图窗口、考试窗口）存在时被 getAllWindows()[0] 误取。
+ */
+export function setMainWindow(win: BrowserWindow | null): void {
+  mainWin = win
+}
+
+/** 主窗口。精准返回主窗口实例 */
 export function mainWindow(): BrowserWindow | null {
-  const win = BrowserWindow.getAllWindows()[0]
-  return win && !win.isDestroyed() ? win : null
+  if (mainWin && !mainWin.isDestroyed()) return mainWin
+  const fallback = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed())
+  return fallback ?? null
 }
 
 export function showMainWindow(): void {

@@ -19,7 +19,7 @@ import { registerVoiceIpc } from '../voice'
 import { registerExamIpc } from './examWindow'
 import { applyAppIcon } from './applyIcon'
 import { rebuildAppMenu, logoSvgPath, appIcon } from './icon'
-import { showMainWindow, flashMainWindow } from './windows'
+import { showMainWindow, flashMainWindow, mainWindow } from './windows'
 import { rebuildTrayMenu, hideToTray, quitApp, showTrayBalloon } from './tray'
 import { pdfFooter, pdfPageSize, saveFilters } from './exportPdf'
 import type { ExportPdfPayload } from './exportPdf'
@@ -29,8 +29,17 @@ import { copyDataUrlToClipboard } from './clipboardHelper'
 /* ---------- IPC ---------- */
 
 function focusedWindow(): BrowserWindow | null {
-  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
-  return win && !win.isDestroyed() ? win : null
+  const win = BrowserWindow.getFocusedWindow()
+  if (win && !win.isDestroyed()) return win
+  return mainWindow()
+}
+
+function targetWindow(event?: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): BrowserWindow | null {
+  if (event) {
+    const senderWin = BrowserWindow.fromWebContents(event.sender)
+    if (senderWin && !senderWin.isDestroyed()) return senderWin
+  }
+  return focusedWindow()
 }
 
 export function registerIpc(): void {
@@ -72,15 +81,15 @@ export function registerIpc(): void {
   // 考试窗口（第二个 BrowserWindow）：开窗、状态推送、事件转发（见「考试窗口」一节）
   registerExamIpc()
 
-  ipcMain.handle('window:isMaximized', () => focusedWindow()?.isMaximized() ?? false)
-  ipcMain.on('window:minimize', () => focusedWindow()?.minimize())
-  ipcMain.on('window:toggleMaximize', () => {
-    const win = focusedWindow()
+  ipcMain.handle('window:isMaximized', (event) => targetWindow(event)?.isMaximized() ?? false)
+  ipcMain.on('window:minimize', (event) => targetWindow(event)?.minimize())
+  ipcMain.on('window:toggleMaximize', (event) => {
+    const win = targetWindow(event)
     if (!win) return
     if (win.isMaximized()) win.unmaximize()
     else win.maximize()
   })
-  ipcMain.on('window:close', () => focusedWindow()?.close())
+  ipcMain.on('window:close', (event) => targetWindow(event)?.close())
 
   /*
    * 守卫分心警告的「闪现置顶」（见 mainWindow.ts 的 flashMainWindow）：
@@ -172,8 +181,8 @@ export function registerIpc(): void {
    * capturePage 按它截（坐标是 DIP，与 getBoundingClientRect 的 CSS 像素同标度）。
    * 不传矩形就截整窗。返回 PNG 的 data URL，转存进资源库由渲染层负责。
    */
-  ipcMain.handle('window:capture', async (_e, rect: unknown) => {
-    const win = focusedWindow()
+  ipcMain.handle('window:capture', async (event, rect: unknown) => {
+    const win = targetWindow(event)
       if (!win || win.isDestroyed()) return { ok: false as const, error: t('没有可用的窗口') }
     try {
       const r = (rect ?? {}) as { x?: unknown; y?: unknown; width?: unknown; height?: unknown }
@@ -243,9 +252,9 @@ export function registerIpc(): void {
   /**
    * 工具箱：保存截图到本地文件系统
    */
-  ipcMain.handle('tools:save-image', async (_e, payload: { suggestedName?: string; dataUrl: string }) => {
+  ipcMain.handle('tools:save-image', async (event, payload: { suggestedName?: string; dataUrl: string }) => {
     try {
-      const win = focusedWindow()
+      const win = targetWindow(event)
       const defPath = path.join(
         app.getPath('pictures') || app.getPath('downloads'),
         payload.suggestedName || `Screenshot_${Date.now()}.png`,
@@ -278,8 +287,8 @@ export function registerIpc(): void {
    * 单纯 focus() 并不能可靠地把它提到最前；关掉重开则一定是新窗口、一定在最上层。
    * 关闭是异步的，因此要等 devtools-closed 再开——立刻 open 会被忽略。
    */
-  ipcMain.on('window:devtools', () => {
-    const win = focusedWindow()
+  ipcMain.on('window:devtools', (event) => {
+    const win = targetWindow(event)
     if (!win) return
     const wc = win.webContents
     const open = (): void => {
@@ -298,10 +307,10 @@ export function registerIpc(): void {
   ipcMain.handle(
     'file:saveText',
     async (
-      _e,
+      event,
       payload: { suggestedName?: string; content: string; title?: string; filters?: unknown },
     ) => {
-      const win = focusedWindow()
+      const win = targetWindow(event)
       const suggestedName = String(payload?.suggestedName ?? 'unyra.json')
       const title = typeof payload?.title === 'string' && payload.title.trim() ? payload.title.trim() : t('导出')
       const { canceled, filePath } = await dialog.showSaveDialog(win ?? undefined!, {
@@ -340,10 +349,10 @@ export function registerIpc(): void {
    * - 窗口不跑脚本（javascript: false）：导出件里本来就没有脚本，少一条通道少一份风险。
    *   注意 did-finish-load 与 printToPDF 与页面脚本无关，关掉它不影响出图。
    */
-  ipcMain.handle('file:exportPdf', async (_e, payload: ExportPdfPayload) => {
+  ipcMain.handle('file:exportPdf', async (event, payload: ExportPdfPayload) => {
     const html = typeof payload?.html === 'string' ? payload.html : ''
     if (!html) return { ok: false as const, error: t('没有可导出的内容') }
-    const win = focusedWindow()
+    const win = targetWindow(event)
     const suggestedName = String(payload?.suggestedName ?? 'unyra.pdf')
     const { canceled, filePath } = await dialog.showSaveDialog(win ?? undefined!, {
       title: t('导出 PDF'),
