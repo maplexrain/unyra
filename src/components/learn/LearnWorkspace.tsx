@@ -3153,11 +3153,7 @@ export default function LearnWorkspace({
       streamingMessageId: stream?.messageId ?? null,
       running: !!(convId && agent.runningByConversation[convId]),
       onSend: (text: string, images: PendingImage[], files: PendingFile[]) => {
-        console.log("[AgentDebug:Workspace:onSend] called:", { tab, goalId, convId, nodeId, target, activeGoalId: store.activeGoalId, activeAgentTab: store.agentActiveTab })
-        if (!target) {
-          console.warn("[AgentDebug:Workspace:onSend] ABORT: target is null!", { goalId, convId, nodeId })
-          return 'sent' as const
-        }
+        if (!target) return 'sent' as const
         /*
          * 导师正在跑（或队里还排着人）：这条排进等待队列，不挤进正在跑的那一轮——
          * 一轮 Agent 是一次完整的模型循环，半路塞一条用户消息会让这一轮实发的上下文
