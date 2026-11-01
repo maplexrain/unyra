@@ -105,25 +105,10 @@ const dict: Record<string, string> = {
   '错': 'False',
   '清除': 'Clear',
 
-  // ---------- 顶栏（顶栏 / 专注模式 / 有效阅读） ----------
+  // ---------- 顶栏 ----------
   '还没开始': 'Not started',
   '{0} 分钟': '{0} min',
   '停止': 'Stop',
-  '开始专注': 'Start focus',
-  '不到 1 分钟': 'Under 1 min',
-  '<1 分': '<1 min',
-  '今天还没有有效阅读': 'No effective reading today yet',
-  '今天读了 {0}': 'Read {0} today',
-  '今天还没开始': 'Not started today',
-  '全部目标': 'All goals',
-  '最近一周 {0} 分': 'Last week {0} min',
-  '只算「窗口在前台、页签在主位、真的在读」的时间': 'Only time with the window in front, the document in the main pane, and real reading counts',
-  '这一档还没有阅读记录。打开一份文档读一会儿，这里会出现读了多久、读到哪一节。': 'No reading logged for this scope yet. Open a document and read a while — how long and how far will show up here.',
-  '读完': 'Finished',
-  '‹ 上一页': '‹ Prev',
-  '{0} / {1} 页 · 共 {2} 个节点': '{0} / {1} pages · {2} nodes',
-  '下一页 ›': 'Next ›',
-  '{0} 日 · {1} 分钟': '{0} · {1} min',
 
   // ---------- 资源管理器侧栏 ----------
   '学习目标': 'Learning goals',
@@ -344,44 +329,12 @@ const dict: Record<string, string> = {
   '开始学习（Enter）': 'Start learning (Enter)',
   'Enter 开始 · Shift + Enter 换行': 'Enter to start · Shift + Enter for a new line',
 
-  // ---------- 学习状态面板 ----------
-  '掌握度': 'Mastery',
-  '依据：{0}': 'Basis: {0}',
-  '导师还没写这次给分的依据。': 'The tutor has not written a rationale for this score yet.',
-  '还没评估过——考过一次试之后才会有数字。': 'Not assessed yet — take an exam to get a number.',
-  '你的自评': 'Your self-assessment',
-  ' · 你确认过': ' · confirmed by you',
-  ' · 导师推断': ' · inferred by tutor',
-  '还没问过你': 'Not asked yet',
-  '你的判断：它决定导师接下来是补课、还是直接往下走': 'Your call: it decides whether the tutor re-teaches first or moves on',
-  '自评是线索，不直接改上面的掌握度。': 'Self-assessment is a hint; it does not change the mastery above directly.',
-  '错误记忆': 'Mistake memory',
-  '{0} 类': '{0} kinds',
-  '还没有记录：做题、答疑里暴露出来的错法会记在这里，同一个错法再犯只累加次数。': 'Nothing recorded yet: mistake patterns exposed in exercises or Q&A are logged here; repeating a pattern only bumps its count.',
-  '成因：{0}': 'Cause: {0}',
-  '这个错法已经改掉了，删掉这条记录': 'This pattern is fixed; delete this record',
-  '检验记录': 'Check record',
-  '最近 {0} 次': 'Last {0}',
-  '还没有检验过：考一次试，结果就会落在这里。': 'Nothing checked yet: take an exam and results land here.',
-  '问：{0}': 'Q: {0}',
-  '答：{0}': 'A: {0}',
-  '回忆一下': 'Recall',
-  '合上文档，用自己的话讲一遍；导师会指出漏掉的与说错的': 'Close the document and explain it in your own words; the tutor will point out what is missing or wrong',
-  '探个针': 'Probe',
-  '让导师出一道极短的问题，验证你是不是真的会（不是出卷）': 'Ask the tutor one very short question to verify you truly know it (not an exam)',
-  '第 {0} 层（离学习目标 {1} 步依赖）': 'Level {0} ({1} dependency steps from the learning goal)',
-  ' · 上级：{0}': ' · under: {0}',
-  ' · 前置：{0}': ' · prereqs: {0}',
-  ' · 还没有前置知识': ' · no prereqs yet',
-  '（层数说的是知识依赖，不是你的基础）': '(depth counts knowledge dependencies, not your background)',
-
   // ---------- 大纲页 ----------
   /*
    * 这一块里原来还有九条（掌握度 / 自评 / 最近{0} / 考过 {0} 场 / 待复习 / 下次复习……），
    * 属于**线性大纲**那一版的左侧信息栏。线性视图已经下线（大纲页只剩思维导图），
    * 那些文案在代码里再也找不到，留着只会让 i18n 对账一直报一堆假阳性——所以整批删掉。
    */
-  '错误记忆 {0}': 'Mistake memory {0}',
   '总目标': 'Main goal',
   '阶段目标': 'Stage goal',
   '的大纲': "'s outline",
