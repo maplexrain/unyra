@@ -138,6 +138,7 @@ import {
 } from '../../learn/agentTabs'
 import type { AgentTabRef } from '../../learn/types'
 import type { StructureMap } from '../../learn/structure'
+import { resolveProjectRoot } from '../../learn/projects'
 import type { TabCloseMode } from '../../learn/tabs'
 import { attemptBrief, examAttempted, examTotalPoints } from '../../learn/exam'
 import type { Exam } from '../../learn/exam'
@@ -4003,6 +4004,31 @@ export default function LearnWorkspace({
         const node = makeNodeService().get(nodeUuid)
         if (!node || node.kind !== 'video') return { error: '这个视频节点已经不在了' }
         return node.editContent({ videoId })
+      },
+      // 项目卡的路径声明：同样走节点对象的 editContent（与 agent 同一条路），拼法由路径
+      // 自己说（盘符 / / 开头 = 绝对）。保存成功后把**还不存在的目录**建出来——相对路径
+      // 第一次用最常见的场景就是新建一个项目目录；解析不出根（如数据根未就绪）时跳过，
+      // 第一次读写时主进程会把原因讲清楚。
+      onSetProjectPath: async (nodeUuid: string, path: string) => {
+        const node = makeNodeService().get(nodeUuid)
+        if (!node || node.kind !== 'project') return { error: '这个项目节点已经不在了' }
+        const r = node.editContent({ path })
+        if ('error' in r) return r
+        const entity = getLatest().projects?.find((p) => p.id === nodeUuid)
+        const root = entity ? resolveProjectRoot(getLatest(), entity) : null
+        if (root) {
+          try {
+            await native().projectFs({ op: 'mkdir', roots: [root], path: root })
+          } catch {
+            // 建不出来不阻断保存：卡上与第一次读写时都会有清楚的说法
+          }
+        }
+        return r
+      },
+      // 点项目卡目录树里的一个文件：本地文件页签打开（TabRef.local 认磁盘绝对路径）
+      onOpenProjectFile: (absPath: string) => {
+        const name = absPath.split(/[\\/]/).pop() || absPath
+        openTab({ kind: 'local', path: absPath, title: name })
       },
       onOpenVideo: (videoId: string) => openTab({ kind: 'video', videoId }),
       onGenerateVideoDoc: (videoNodeUuid: string) => startVideoOverview(videoNodeUuid),

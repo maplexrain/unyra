@@ -152,9 +152,16 @@ export function backtrackTargets(store: LearnStore, id: string): KnowledgeNode[]
     .filter((n): n is KnowledgeNode => !!n && n.status !== 'mastered' && isUnlocked(store, n.id))
 }
 
-/** 树成员存在性：文档 = 节点在；`o:` = 附身大纲（节点带着大纲在）或游离大纲（实体在） */
+/** 树成员存在性：文档 = 节点在；`o:` = 附身大纲（节点带着大纲在）或游离大纲（实体在）；
+ *  视频节点 / 项目节点 = 各自实体池里有那一行（挂载边两端的合法成员，见 learn/nodeKinds） */
 function memberExists(store: LearnStore, member: string): boolean {
-  if (!member.startsWith('o:')) return !!nodeById(store, member) || (store.videoNodes ?? []).some((v) => v.id === member)
+  if (!member.startsWith('o:')) {
+    return (
+      !!nodeById(store, member) ||
+      (store.videoNodes ?? []).some((v) => v.id === member) ||
+      (store.projects ?? []).some((p) => p.id === member)
+    )
+  }
   const raw = member.slice(2)
   return !!nodeById(store, raw)?.outline || (store.outlines ?? []).some((o) => o.id === raw)
 }

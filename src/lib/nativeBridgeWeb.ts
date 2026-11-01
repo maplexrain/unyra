@@ -28,6 +28,7 @@ import type {
   VoiceTranscribeResult,
   ScreenCaptureResult,
   ImageSavePayload,
+  ProjectFsResult,
 } from '../../shared/ipc'
 
 // 本地微服务的基础地址（同一主机端口，或跨端口开发调试时指定）
@@ -357,6 +358,14 @@ export function createWebNativeBridge(): NativeBridge {
     },
 
     syncPermissions: (dirs) => apiFetch('/api/base/permissions/sync', { method: 'POST', body: JSON.stringify({ dirs }) }),
+
+    // 项目路径的文件操作（Web 模式走服务端同款端点；服务端没实现时回中性错误）
+    projectFs: (req): Promise<ProjectFsResult> =>
+      apiFetch<ProjectFsResult>('/api/project/fs', { method: 'POST', body: JSON.stringify({ req }) }).catch(
+        () => ({ ok: false, error: 'Web 模式暂不支持项目路径的文件操作（project:fs）' }) as ProjectFsResult,
+      ),
+    // 目录选择器：Web 模式没有系统对话框（浏览器拿不到绝对路径），明说不可用
+    pickProjectDirectory: async () => ({ canceled: true, path: null }),
 
     base: {
       files: {

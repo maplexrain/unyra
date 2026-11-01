@@ -132,6 +132,13 @@ export function learnSandboxOps(deps: {
       },
     },
     /**
+     * 项目路径的文件通道（project.*，见 learn/ops/project）：声明即授权——
+     * ops 每次调用现取 store 里的声明根随请求传给主进程，这里只把桥接上。
+     */
+    projectIo: {
+      send: (req) => native().projectFs(req),
+    },
+    /**
      * 学习者画像的读写：落在 user/store（当前用户那份 user.yaml，见 user/fields）。
      *
      * 为什么就地取、不叫调用方传：learnSandboxOps 有两个调用方（一轮对话、超级文档的

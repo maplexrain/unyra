@@ -21,7 +21,7 @@
 import type { LearnStore } from '../types'
 
 /** 全部节点类型（键 = uuid 派生前缀之外的判别字段） */
-export type GNodeKind = 'entry' | 'outline' | 'doc' | 'note' | 'exam' | 'superdoc' | 'video'
+export type GNodeKind = 'entry' | 'outline' | 'doc' | 'note' | 'exam' | 'superdoc' | 'video' | 'project'
 
 /** 一条关系记录：type 是**对方相对我**的身份（对方是我的上游 / 下游） */
 export interface NodeRelation {

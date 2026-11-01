@@ -25,6 +25,7 @@ import type {
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
+  ProjectFsRequest, ProjectFsResult,
 } from '../../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（与 electron/preload.ts 共用一份，见该文件顶部）：
@@ -43,6 +44,7 @@ export type {
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
+  ProjectFsRequest, ProjectFsResult,
 }
 
 export type PluginList =
@@ -511,6 +513,14 @@ export interface NativeBridge {
     delete(process_id: string): Promise<BaseProcessDeleteResult>
   }
   syncPermissions(allowedDirs: string[]): Promise<{ ok: boolean }>
+  /**
+   * 项目节点路径的文件操作（声明即授权）：请求里随行本次允许的 roots
+   * （已声明 project 根的绝对路径，渲染层现取），主进程校验路径落根内才执行。
+   * 见 shared/ipc 的 ProjectFsRequest 与 electron/base/projectFiles。
+   */
+  projectFs(req: ProjectFsRequest): Promise<ProjectFsResult>
+  /** 系统目录选择器：挑一条真实路径给项目节点（取消回 { canceled: true, path: null }） */
+  pickProjectDirectory(): Promise<{ canceled: boolean; path: string | null }>
   base?: {
     files: {
       read(path: string, opts?: { encoding?: 'utf8' | 'base64' | 'binary'; maxBytes?: number; offset?: number }): Promise<BaseFileReadResult>

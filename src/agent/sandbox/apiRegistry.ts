@@ -143,7 +143,7 @@ const p = await api.see({ pdf: 'moji:static/<uuid>', page: [1, 3] })`,
     'node',
     '节点宇宙',
     'api.node.list() 查全图（带 uuid）→ get(uuid) 取节点对象 → help() 现查写法 → content 读 / editContent 写 / connect 连线。',
-    `节点是学习数据的全部骨架：**文档**（讲义）、**大纲**（计划）、**笔记**、**试卷**、**超级文档**、**入口**——每一种都是节点，uuid 是唯一身份（api.node.list() 的回执里全带）。读写内容、建删节点、连线全部经由节点对象：
+    `节点是学习数据的全部骨架：**文档**（讲义）、**大纲**（计划）、**笔记**、**试卷**、**超级文档**、**项目**（真实路径的授权声明）、**入口**——每一种都是节点，uuid 是唯一身份（api.node.list() 的回执里全带）。读写内容、建删节点、连线全部经由节点对象：
 
     const list = await api.node.list()            // 全图清单（uuid / 标题 / path / 挂件）
     const n = await api.node.get(list.nodes[0].uuid)
@@ -160,9 +160,9 @@ const p = await api.see({ pdf: 'moji:static/<uuid>', page: [1, 3] })`,
 - 连接里只有「大纲 → 文档」是手工的：connect(文档, 'down') 挂上、disconnect 摘下；
 - 编排代码可以直接写 TypeScript。`,
     [
-      a('list', 'node.list()', '目标的全图清单', '回 goal（含入口 uuid）与 nodes：每份文档带 uuid / 标题 / path / 状态 / 上游 / 大纲（目标项数）/ 笔记 / 试卷 / 超级文档（各带 uuid）。导航、找落点、核对存在性全靠它。', 'const list = await api.node.list()'),
+      a('list', 'node.list()', '目标的全图清单', '回 goal（含入口 uuid）与 nodes：每份文档带 uuid / 标题 / path / 状态 / 上游 / 大纲（目标项数）/ 笔记 / 试卷 / 超级文档（各带 uuid）；另有 projects 段（已声明的项目路径，配 api.project.* 用）。导航、找落点、核对存在性全靠它。', 'const list = await api.node.list()'),
       a('get', 'node.get(uuid)', '取一个节点对象', '回执在门面里被包成真对象（content / editContent / help / connect / disconnect）。uuid 全部来自 list()，不要手拼——大纲与入口的前缀规则 help() 里会讲。', "const n = await api.node.get(list.nodes[0].uuid)"),
-      a('create', 'node.create({ kind, title?, under? , ...? })', '建节点（画布与 agent 同一条通道）', 'kind: doc / outline / note / exam / superdoc / video。under 给了 = 创建即绑（挂件挂到那份文档、文档挂进大纲或视频节点之下，同目标同名文档复用不另建）；under 不给 = **独立游离实体**（笔记/超级文档进游离池、试卷宿主悬空、文档无父无纲），之后拖线 / connect 绑定。outline 配宿主文档一起成形：不给 under 就建「新文档+空大纲」，给了 under 就给那份文档补空卷大纲。试卷遇空壳复用原位。video 绑视频：不给 under 建，建好 editContent({ videoId }) 绑一个现有视频（清单在 list() 的 videos.all）。', `await api.node.create({ kind: 'note', title: '错题本', under: 文档uuid })`),
+      a('create', 'node.create({ kind, title?, under? , ...? })', '建节点（画布与 agent 同一条通道）', 'kind: doc / outline / note / exam / superdoc / video / project。under 给了 = 创建即绑（挂件挂到那份文档、文档挂进大纲或视频节点之下，同目标同名文档复用不另建）；under 不给 = **独立游离实体**（笔记/超级文档进游离池、试卷宿主悬空、文档无父无纲），之后拖线 / connect 绑定。outline 配宿主文档一起成形：不给 under 就建「新文档+空大纲」，给了 under 就给那份文档补空卷大纲。试卷遇空壳复用原位。video 绑视频：不给 under 建，建好 editContent({ videoId }) 绑一个现有视频（清单在 list() 的 videos.all）。project 声明真实路径：{ kind: "project", path, under?: 文档uuid }——path 必给，拼法由路径自己说（盘符或 / 开头 = 绝对，其余相对目标根目录），声明之后 api.project.* 就能读写它下面的所有文件（清单在 list() 的 projects 段）。', `await api.node.create({ kind: 'note', title: '错题本', under: 文档uuid })`),
       a('delete', 'node.delete(uuid)', '删节点（删谁只删谁）', '删文档只删它自己：相连的线摘掉、下游文档断线成游离（不删除）、名下的笔记/试卷/超级文档随它走；删大纲 = 清空那份计划（文档与树边不动）；删挂件只删它自己。删试卷走 api.exam.delete（要先确认没有待判分的考试）。', `await api.node.delete(笔记uuid)`),
       a('invoke', 'node.invoke(uuid, 成员名, 参数数组)', '调节点对象的成员', '门面自动走它（n.editContent(...) 最终就是一次 node.invoke）；connect / disconnect 的对象参数会被折成 uuid。直接调时参数是数组形状。', `await api.node.invoke(文档uuid, 'editContent', [{ title: '极限', description: '', teaching: '# 极限', status: 'learning' }])`),
       a('brief', 'node.brief(uuid)', '文档的一页纸简报（写正文之前先看它）', '一次给齐：self（标题/描述/状态/字数）、port（认领的目标项——范围与边界以它为准）、siblings（同层其他目标项）、taught（全图各文档已讲过的小节标题——出现过的概念别重讲）。省掉 list 全图 + 逐个读。', `const brief = await api.node.brief(文档uuid)`),
@@ -526,6 +526,29 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
     [
       a('list', 'video.list()', '列出所有视频资源', '返回视频资源的 id、标题与插件名。', 'const list = await api.video.list()'),
       a('get', 'video.get(videoIdOrUuid)', '获取视频详情与选集', '返回 id、title、hasEpisodes、episodeCount 与 episodes 选集清单（每项带 page、title、source）。', "const info = await api.video.get('v-123')"),
+    ],
+  ),
+  g(
+    'project',
+    '项目路径',
+    '已声明 project 节点的真实路径读写：uuid + 项目内相对路径寻址，越出声明根一律拒绝。',
+    `项目路径（先 api.node.list() 看 projects 段：uuid / title / path / pathKind / resolved）：
+- 寻址一律 (uuid, subPath)：subPath 是**相对该项目根**的路径、'/' 分隔，根本身写空串 ''；
+- 这条路径是节点宇宙里的 project 节点声明出来的（声明即授权）：声明的根及其下所有文件
+  都可以读写；越出根的操作会被拒绝，不要试图用 .. 逃出去；
+- path 的拼法由路径自己说（盘符或 / 开头 = 绝对，其余相对目标根目录），不需要你标注；
+- 大文件用 read 的 { offset, maxBytes } 分片；二进制用 { encoding: 'base64' }；
+- 不可逆操作（delete / move / write 覆盖）先看清楚再动手，拿不准先问用户。`,
+    [
+      a('list', 'project.list()', '列出当前目标已声明的项目', '回 uuid / title / path / pathKind / resolved（解析后的绝对路径）。第一步先看它。', 'const ps = await api.project.list()'),
+      a('tree', 'project.tree(uuid, subPath?)', '列一个目录的清单', 'subPath 相对该项目根（空串 = 根）；回 path 与 entries（name / isDirectory / size / mtimeMs）。看结构先 tree 根，再逐层下钻。', `const t = await api.project.tree(uuid)`),
+      a('read', 'project.read(uuid, subPath, { encoding?, offset?, maxBytes? }?)', '读一个文件', '文本默认 utf8；二进制传 { encoding: "base64" }；大文件用 offset / maxBytes 分片（回执带 totalChars）。', `const f = await api.project.read(uuid, 'src/main.py')`),
+      a('write', 'project.write(uuid, subPath, content, { encoding?, overwrite? }?)', '写一个文件（父目录自动建）', 'content 传对象会自动 JSON.stringify；overwrite: false 时已存在则拒绝。', `await api.project.write(uuid, 'notes/todo.md', '# 计划\\n- ...')`),
+      a('edit', 'project.edit(uuid, subPath, { content | replace | append })', '改一个已存在的文件', '三种之一：{ content: 全文替换 } / { replace: { target, replacement, all? } } / { append: 尾部追加 }。', `await api.project.edit(uuid, 'src/main.py', { replace: { target: 'port=8000', replacement: 'port=8080' } })`),
+      a('mkdir', 'project.mkdir(uuid, subPath)', '建目录（父级自动递归）', '只建在该项目根之内；父级目录按需自动递归创建。', `await api.project.mkdir(uuid, 'output/logs')`),
+      a('move', 'project.move(uuid, from, to)', '移动 / 重命名', 'from 与 to 都是**项目内**的相对路径；挪出项目根会被拒绝。', `await api.project.move(uuid, 'a.txt', 'archive/a.txt')`),
+      a('copy', 'project.copy(uuid, from, to, { overwrite? }?)', '复制文件或目录', '递归复制；两端都必须在项目根之内。', `await api.project.copy(uuid, 'data.json', 'backup/data.json')`),
+      a('delete', 'project.delete(uuid, subPath)', '删除文件或目录', '不可逆（目录整棵递归删）。subPath 不许是空串——撤掉整条声明走 api.node.delete(项目uuid)。', `await api.project.delete(uuid, 'tmp/build.log')`),
     ],
   ),
 

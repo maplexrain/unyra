@@ -163,37 +163,41 @@ body {
   margin-top: 0;
 }
 
+/* 标题层级靠字号与墨色一起说（与 typography.css 的 .note-preview 同一套，改一处要同步另一处） */
 .note-preview h1,
 .note-preview h2,
 .note-preview h3,
 .note-preview h4 {
   font-weight: 600;
-  color: var(--color-ink-strong);
   line-height: 1.45;
   letter-spacing: 0.03em;
 }
 
 .note-preview h1 {
-  font-size: 1.65em;
+  font-size: 1.9em;
+  color: var(--color-seal-deep);
   margin: 1.4em 0 0.7em;
   padding-bottom: 0.4em;
   border-bottom: 1px solid var(--color-line);
 }
 
 .note-preview h2 {
-  font-size: 1.32em;
+  font-size: 1.5em;
+  color: var(--color-ink-strong);
   margin: 1.5em 0 0.6em;
   padding-bottom: 0.35em;
   border-bottom: 1px solid var(--color-line);
 }
 
 .note-preview h3 {
-  font-size: 1.12em;
+  font-size: 1.26em;
+  color: color-mix(in srgb, var(--color-ink-strong) 76%, var(--color-seal-deep) 24%);
   margin: 1.3em 0 0.5em;
 }
 
 .note-preview h4 {
-  font-size: 1em;
+  font-size: 1.08em;
+  color: var(--color-quote-ink);
   margin: 1.2em 0 0.4em;
 }
 

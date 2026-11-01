@@ -654,6 +654,34 @@ export interface VideoNodeEntity {
   updatedAt: number
 }
 
+/**
+ * 项目节点（节点宇宙的游离类型）：声明一条**真实文件系统路径**的引用。
+ *
+ * 路径两种拼法（pathKind）：relative 相对**目标根目录**（磁盘上 docs/{目标段}/），
+ * absolute 是电脑上任意绝对路径。节点在拓扑图上声明之后，这条路径及其下的整棵子树
+ * 就对 agent 敞开（读写走 api.project.*，权限边界=「已声明的 project 根」，见
+ * learn/ops/project 与 electron/base/projectFiles 的双重校验）。
+ *
+ * 可挂在某份文档之下（树边 from 文档 to 本节点），也可以不挂任何东西（游离）——
+ * 授权只看实体在不在，跟挂不挂、挂在哪无关。
+ */
+export interface ProjectNodeEntity {
+  /** 节点宇宙身份（无前缀，与笔记 / 试卷同一款拼法） */
+  id: string
+  goalId: string
+  /** 显示名（卡片标题；与路径无关，纯标签） */
+  title: string
+  /** 声明的路径本体；空串 = 还没设置（刚落地的空节点） */
+  path: string
+  /** relative = 相对目标根目录；absolute = 电脑上的绝对路径 */
+  pathKind: ProjectPathKind
+  createdAt: number
+  updatedAt: number
+}
+
+/** project 节点的路径拼法 */
+export type ProjectPathKind = 'relative' | 'absolute'
+
 export interface LearnStore {
   version: 2
   nodes: KnowledgeNode[]
@@ -732,6 +760,12 @@ export interface LearnStore {
    * 视频页签按 video.id 绑定；插件与输入在创建时确定，之后不再让用户重填。
    */
   videos?: VideoResource[]
+  /**
+   * 项目节点（见 ProjectNodeEntity 与 learn/projects）：目标 × 真实路径的声明表。
+   * 目标级数据，与视频节点同一档：落各自目标目录的 projects.json，目标没了整批带走。
+   * 可选字段：旧数据没有它，全部使用处按 `?? []` 兜底。
+   */
+  projects?: ProjectNodeEntity[]
   /**
    * 目标级资源库的清单：目标 id → 资源列表（见 learn/static）。
    * 只放元数据，文件本体在 `{目标}/static/` 下——与图片引用一样的取舍：

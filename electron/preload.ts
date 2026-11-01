@@ -37,6 +37,7 @@ import type {
   WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebTranslatePayload, WebWaitReq, WebWaitResult,
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
+  ProjectFsRequest, ProjectFsResult,
 } from '../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（渲染层与主进程共用一份，见该文件顶部）：
@@ -58,6 +59,7 @@ export type {
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
+  ProjectFsRequest, ProjectFsResult,
 }
 
 /* ---------- 只在 preload 这一侧用到的形状 ---------- */
@@ -814,6 +816,18 @@ const api = {
 
   syncPermissions: (dirs: string[]): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('base:permissions:sync', dirs),
+
+  /**
+   * 项目节点路径的文件操作（声明即授权）：请求里随行本次允许的 roots
+   * （渲染层从 store 现取的已声明 project 根），主进程校验路径落根内才执行。
+   * 见 shared/ipc 的 ProjectFsRequest 与 electron/base/projectFiles。
+   */
+  projectFs: (req: ProjectFsRequest): Promise<ProjectFsResult> =>
+    ipcRenderer.invoke('project:fs', req),
+
+  /** 系统目录选择器：挑一条真实路径给项目节点（取消回 { canceled: true, path: null }） */
+  pickProjectDirectory: (): Promise<{ canceled: boolean; path: string | null }> =>
+    ipcRenderer.invoke('project:pickDirectory'),
 
   base: {
     files: {

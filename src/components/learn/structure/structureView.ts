@@ -17,18 +17,19 @@
  * 而且都容易在「顺手优化一下」时改错。
  */
 
-import type { LearnStore } from '../../../learn/types'
+import type { LearnStore, ProjectPathKind } from '../../../learn/types'
 import { examsOfNode, nodeById, prereqIds } from '../../../learn/graph'
 import { notesOf } from '../../../learn/notes'
 import { attemptScore, type ExamAttempt } from '../../../learn/exam'
+import { resolveProjectRoot } from '../../../learn/projects'
 import { superDocsOf } from '../../../learn/types'
 import { docIdOfOutlineUuid, outlineUuid, type GNodeKind } from '../../../learn/nodeKinds'
 import {
   CARD_H,
-  CARD_W,
   COL_GAP,
   defaultHeight,
   freeSpotNear,
+  cardWidthOf,
   rectOf,
   type CardPos,
   type EdgeStyle,
@@ -117,6 +118,11 @@ export interface CardView {
   free?: boolean
   /** 试卷卡的考试记录行（kind = exam 时才有；一行一次作答） */
   attempts?: ExamAttemptRow[]
+  /**
+   * 项目卡的路径声明（kind = project 时才有）。解析出的绝对路径一并给——
+   * 卡上的目录树展开、授权提示都以它为准；解析失败（null）卡上显示待解析。
+   */
+  project?: { path: string; pathKind: ProjectPathKind; resolved: string | null }
   x: number
   y: number
 }
@@ -357,6 +363,35 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
   }
 
   /*
+   * 项目卡（目标 × 真实路径的授权声明，见 learn/projects）：独立实体，游离或挂在
+   * 文档之下都画。路径本体与解析结果都在派生里给足——组件只管画（目录树的懒加载
+   * 是组件自己的运行时状态，不进派生）。
+   */
+  const projectPending = new Map<string, Pending>()
+  for (const entity of store.projects ?? []) {
+    if (entity.goalId !== goalId) continue
+    const resolved = resolveProjectRoot(store, entity)
+    const p: Pending = {
+      card: {
+        uuid: entity.id,
+        kind: 'project',
+        title: entity.title,
+        subtitle: entity.path
+          ? (entity.pathKind === 'relative' ? '相对 · ' : '绝对 · ') + clip(entity.path, 42)
+          : '声明一条真实路径，把一个目录交给 agent',
+        ...(entity.path ? {} : { blank: true }),
+        project: { path: entity.path, pathKind: entity.pathKind, resolved },
+      },
+      depth: 1,
+      anchorY: 0,
+      next: [],
+      parent: null,
+    }
+    projectPending.set(entity.id, p)
+    add(p)
+  }
+
+  /*
    * 树边（store.edges，两端是树成员 id）：画在成员卡之间——
    * - from 是文档 id：那份文档有大纲就以它的大纲卡为源（hub 翻译，交替链
    *   文档-大纲-文档…的画法），没有就直接从文档卡出发；
@@ -369,13 +404,15 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     const o = outlinePending.get(outlineUuid(node.id))
     if (doc && o) o.depth = doc.depth + 1
   }
-  const fromCardOf = (from: string): Pending | undefined => {
+  const fromCardOf = (from: string, to?: string): Pending | undefined => {
     if (from.startsWith('o:')) return outlinePending.get(from)
-    return outlinePending.get(outlineUuid(from)) ?? docPending.get(from) ?? videoPending.get(from)
+    // 项目节点是挂件款下游：上游始终是文档本身，不经大纲 hub 翻译
+    if (to && projectPending.has(to)) return docPending.get(from)
+    return outlinePending.get(outlineUuid(from)) ?? docPending.get(from) ?? videoPending.get(from) ?? projectPending.get(from)
   }
   for (const e of store.edges) {
-    const fromCard = fromCardOf(e.from)
-    const toCard = outlinePending.get(e.to) ?? docPending.get(e.to)
+    const toCard = outlinePending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to)
+    const fromCard = fromCardOf(e.from, e.to)
     if (!fromCard || !toCard) continue
     if (!pushEdge(fromCard.card.uuid, toCard.card.uuid)) continue
     // 深度按成员算：父成员的卡 + 1（附身大纲那一对的「右侧」即大纲卡本身）
@@ -583,7 +620,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
       const spot = freeSpotNear(
         [...placedByUuid.values()],
         { x: p.depth * COL_GAP, y: anchorY },
-        { width: CARD_W, height: heightOf({ uuid: p.card.uuid, kind: p.card.kind }) },
+        { width: cardWidthOf(p.card.kind), height: heightOf({ uuid: p.card.uuid, kind: p.card.kind }) },
         heightOf,
       )
       card = { ...p.card, x: spot.x, y: spot.y }
@@ -614,6 +651,7 @@ export const KIND_TONE: Record<GNodeKind, string> = {
   exam: 'border-amber-500/30 bg-amber-500/[0.06]',
   superdoc: 'border-violet-500/30 bg-violet-500/[0.06]',
   video: 'border-cyan-500/30 bg-cyan-500/[0.06]',
+  project: 'border-teal-500/30 bg-teal-500/[0.06]',
 }
 
 export const KIND_BADGE: Record<GNodeKind, string> = {
@@ -624,6 +662,7 @@ export const KIND_BADGE: Record<GNodeKind, string> = {
   exam: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
   superdoc: 'bg-violet-500/15 text-violet-700 dark:text-violet-300',
   video: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300',
+  project: 'bg-teal-500/15 text-teal-700 dark:text-teal-300',
 }
 
 /** 目标项圆点与它的连线只用这一个颜色：颜色在图上只承载一个含义「来自某条目标项」 */

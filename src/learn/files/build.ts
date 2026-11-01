@@ -152,6 +152,16 @@ function writeGoalFiles(goal: LearnStore['goals'][number], store: LearnStore, fi
       }),
     )
   }
+
+  /*
+   * 项目节点（目标 × 真实路径的授权声明）：实体单独落 projects.json。挂载边
+   * （from 文档 to 项目）不用在这里存——from 是文档，随那份文档的节点文件走
+   * （与视频节点相反：视频的边 from 视频自己，没有节点文件可挂，才要单独收）。
+   */
+  const goalProjects = (store.projects ?? []).filter((p) => p.goalId === goal.id)
+  if (goalProjects.length) {
+    files.set(`${path}/projects.json`, jsonText({ version: 1, projects: goalProjects }))
+  }
 }
 
 function* buildDocsSteps(store: LearnStore): Generator<void, Map<string, string>, void> {

@@ -23,6 +23,7 @@ import { createUserInfoOps } from './userinfo'
 import { createResourceOps } from './resource'
 import { createCompactOps } from './process'
 import { createWorkspaceOps } from './workspace'
+import { createProjectOps } from './project'
 import { createChipOps } from './chip'
 import { createScheduleOps } from '../schedule'
 import { createVideoOps } from './video'
@@ -165,6 +166,8 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
     ...(deps.resourceIo ? { resources: createResourceOps(deps, deps.resourceIo) } : {}),
     // 工作区目录：真实系统文件的读写（见 learn/ops/workspace）；磁盘那一层由界面注入
     ...(deps.workspaceIo ? { workspace: createWorkspaceOps(deps, deps.workspaceIo) } : {}),
+    // 项目路径：对已声明 project 节点的真实路径做文件操作（声明即授权，见 learn/ops/project）
+    ...(deps.projectIo ? { project: createProjectOps(deps, deps.projectIo) } : {}),
     // 上下文压缩：纯 store 逻辑，总是可用（见 learn/compact）
     compact: createCompactOps(deps),
     // 引用 chip：生成与交付前自查——build 当场对 store 验证可定位（见 learn/ops/chip）

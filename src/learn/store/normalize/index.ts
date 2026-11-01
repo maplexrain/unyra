@@ -26,6 +26,7 @@ import { normalizeStructureBook } from '../../structure'
 import { normalizeOutlineEntities } from '../../outline'
 import type { VideoChapter, VideoRecap, VideoResource } from '../../types'
 import { normalizeVideoNodes, withVideoMirror } from '../../video/nodes'
+import { normalizeProjects } from '../../projects'
 import { normalizeMemoryStore } from '../../memory'
 import { normalizeResourceList, retargetStaticRefs, type StaticResource } from '../../static'
 import { normalizeTmpStore, pruneTmpToNodes } from '../../../lib/tmpStore'
@@ -89,7 +90,11 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
     const videos = normalizeVideos(d.videos)
     const videoIds = new Set(videos.map((v) => v.id))
     const videoNodes = normalizeVideoNodes(d.videoNodes, goalIds, videoIds)
+    // 项目节点（目标 × 真实路径的声明）：目标没了的行丢掉，坏条目逐条丢
+    const projects = normalizeProjects(d.projects, goalIds)
     const videoNodeIds = new Set(videoNodes.map((v) => v.id))
+    // 项目节点也是树成员（挂在文档之下，见 learn/nodeKinds/project）：树边校验要认它的 id
+    const projectIds = new Set(projects.map((p) => p.id))
 
     const rawEdges: unknown[] = Array.isArray(d.edges) ? d.edges : []
     const edges: DependencyEdge[] = []
@@ -100,11 +105,13 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       const from = typeof r.from === 'string' ? r.from : ''
       // 旧格式的 toOutline 标记迁到拼法上：接大纲卡的边 to = o:{文档id}（分类链）
       const to = r.toOutline === true && typeof r.to === 'string' && !r.to.startsWith('o:') ? 'o:' + r.to : typeof r.to === 'string' ? r.to : ''
-      // 树成员校验：文档 id 在节点表里；o: 前缀解开后是节点 id（附身大纲）或游离实体 id；res: 前缀解开后是资源归纳实体 id
+      // 树成员校验：文档 id 在节点表里；o: 前缀解开后是节点 id（附身大纲）或游离实体 id；
+      // 视频 / 项目节点的实体 id 也在（视频是上游宿主、项目是下游挂件，见 learn/nodeKinds）
       const memberOk = (m: string): boolean =>
         !!m && (
           ids.has(m) ||
           videoNodeIds.has(m) ||
+          projectIds.has(m) ||
           (m.startsWith('o:') && (ids.has(m.slice(2)) || freeIds.has(m.slice(2))))
         )
       if (!from || !to || from === to || !memberOk(from) || !memberOk(to)) continue
@@ -351,6 +358,8 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       ...(videos.length ? { videos } : {}),
       // 视频节点（目标 × 视频的绑定）：目标没了的行丢掉、指向不存在视频的绑定摘掉
       ...(videoNodes.length ? { videoNodes } : {}),
+      // 项目节点（目标 × 真实路径的授权声明）：目标没了的行丢掉
+      ...(projects.length ? { projects } : {}),
       // 资源归纳节点（终端实体）：目标没了的行丢掉
       /*
        * 结构图（见 learn/structure）：按目标存的节点表与连线。逐张过一遍——
