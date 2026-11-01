@@ -695,9 +695,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           isDraggingProgress.current = false
           window.removeEventListener('mousemove', onMouseMove)
           window.removeEventListener('mouseup', onMouseUp)
+          window.removeEventListener('blur', onMouseUp)
         }
         window.addEventListener('mousemove', onMouseMove)
         window.addEventListener('mouseup', onMouseUp)
+        // 拖到一半窗口被切走：没有 mouseup 可等，就地收尾（否则两条监听会一直挂着）
+        window.addEventListener('blur', onMouseUp)
       },
       [seekToPosition],
     )

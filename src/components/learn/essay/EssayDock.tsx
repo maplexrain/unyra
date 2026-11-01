@@ -180,6 +180,43 @@ interface Props {
   onDeleteNote?: (nodeId: string, noteName: string) => void
 }
 
+/**
+ * 窗口级指针拖拽的装/拆（拖动浮窗、拖右下角改大小共用）。
+ *
+ * 三件事缺一不可：`setPointerCapture`（拖出窗口再松手时 up 仍会派发到元素）、
+ * `pointerup` / `pointercancel`（正常收尾）、`blur`（拖动途中 Alt+Tab 切走）。
+ * 只写前两条的话，那一次没人收到的 up 会把三个监听连同闭包永久留在 window 上，
+ * 每漏一次多一份——用久了拖拽会越来越迟钝，而且只有重载才清得掉。
+ */
+function bindWindowDrag(
+  el: HTMLElement,
+  pointerId: number,
+  onMove: (ev: PointerEvent) => void,
+  onEnd: () => void,
+): void {
+  try {
+    el.setPointerCapture(pointerId)
+  } catch {
+    // 不支持捕获的环境：靠 blur 兜底
+  }
+  const end = () => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', end)
+    window.removeEventListener('pointercancel', end)
+    window.removeEventListener('blur', end)
+    try {
+      el.releasePointerCapture(pointerId)
+    } catch {
+      // 元素已经卸载 / 早就释放了：无所谓
+    }
+    onEnd()
+  }
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', end)
+  window.addEventListener('pointercancel', end)
+  window.addEventListener('blur', end)
+}
+
 export default function EssayDock({
   goalId,
   showEntry,
@@ -640,16 +677,10 @@ export default function EssayDock({
       rectRef.current = next
       setRect(next)
     }
-    const onUp = () => {
+    bindWindowDrag(e.currentTarget, e.pointerId, onMove, () => {
       setMoving(false)
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      window.removeEventListener('pointercancel', onUp)
       onGeometry(rectRef.current)
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-    window.addEventListener('pointercancel', onUp)
+    })
   }
 
   const beginResize = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -666,16 +697,10 @@ export default function EssayDock({
       rectRef.current = next
       setRect(next)
     }
-    const onUp = () => {
+    bindWindowDrag(e.currentTarget, e.pointerId, onMove, () => {
       setMoving(false)
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      window.removeEventListener('pointercancel', onUp)
       onGeometry(rectRef.current)
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-    window.addEventListener('pointercancel', onUp)
+    })
   }
 
   // Esc：在子页面里先退回上一级；已经在列表页了才收起窗口

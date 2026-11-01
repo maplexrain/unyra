@@ -107,6 +107,19 @@ let snap: GuardSnapshot = { session: null, lastSession: null, streams: { screen:
 const listeners = new Set<() => void>()
 const webStreams: { screen: boolean; camera: boolean } = { screen: false, camera: false }
 
+/**
+ * 把最后一轮还挂着的帧字节摘掉（返回新数组；没挂帧就原样返回）。
+ *
+ * 帧只服务「这一轮」：历史轮次留着文字判定就够了——界面与报告都不读 images
+ * （见 collectGuardFacts 的映射），带图的历史还给前缀缓存下毒。
+ * 不摘的话，专注模式开一整天就是每 30 秒往内存里塞两张 JPEG 的 base64，
+ * 四小时上百 MB，正好是「开着越久越卡、重载一下才好」的形状。
+ */
+function dropRoundImages(rounds: GuardRound[]): GuardRound[] {
+  const last = rounds[rounds.length - 1]
+  return last && last.images.length ? [...rounds.slice(0, -1), { ...last, images: [] }] : rounds
+}
+
 function publish(): void {
   snap = {
     session: session ? { ...session, rounds: [...session.rounds] } : null,
@@ -346,12 +359,13 @@ export function stopGuard(_reason: string): void {
   }
   if (!session || session.state === 'ended' || session.state === 'fused') {
     if (session) {
-      session = { ...session, state: 'ended', endedAt: session.endedAt ?? Date.now() }
+      session = { ...session, state: 'ended', endedAt: session.endedAt ?? Date.now(), rounds: dropRoundImages(session.rounds) }
       publish()
     }
     return
   }
-  session = { ...session, state: 'ended', endedAt: Date.now() }
+  // 收尾也把最后一轮的帧摘掉：lastSession 会一直留到下一次专注，没理由拖着几 MB 图片
+  session = { ...session, state: 'ended', endedAt: Date.now(), rounds: dropRoundImages(session.rounds) }
   lastSession = session
   stopAllStreams()
   unbindInteraction()
@@ -385,7 +399,14 @@ export function resumeGuard(): void {
 function fuse(reason: string): void {
   if (!session) return
   const spans = session.pauseSpans.map((s) => (s.resumedAt === null ? { ...s, resumedAt: Date.now() } : s))
-  session = { ...session, state: 'fused', endedAt: Date.now(), fuse: { at: Date.now(), reason }, pauseSpans: spans }
+  session = {
+    ...session,
+    state: 'fused',
+    endedAt: Date.now(),
+    fuse: { at: Date.now(), reason },
+    pauseSpans: spans,
+    rounds: dropRoundImages(session.rounds),
+  }
   lastSession = session
   stopAllStreams()
   unbindInteraction()
@@ -486,7 +507,11 @@ async function runRound(): Promise<void> {
       action,
       ...(error ? { error } : {}),
     }
-    session = { ...session, rounds: [...session.rounds, round] }
+    /*
+     * 上一轮那两张帧到这里就没用了：换成摘掉图的新对象（数组是浅拷贝，
+     * 原地改会把 snapshot 里那份也一起改掉），规则见 dropRoundImages。
+     */
+    session = { ...session, rounds: [...dropRoundImages(session.rounds), round] }
 
     /*
      * 历史里记的是**纯文本**的一问一答（帧只活在当前这条消息里），判定有连续性

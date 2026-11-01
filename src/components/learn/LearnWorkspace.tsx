@@ -2362,9 +2362,24 @@ export default function LearnWorkspace({
     if (e.button !== 2) return
     const startX = e.clientX
     let moved = false
-    const onMove = (ev: PointerEvent) => {
-      // 右键已经松开（或换成了别的键）：这个手势结束了，不要再跟着指针挪棱形
-      if ((ev.buttons & 2) === 0) return
+    /*
+     * 收尾要能自己触发：右键在窗口外松开时 window 收不到 pointerup，指针再移回来时
+     * `buttons` 已经是 0——那一拍就该结束这个手势。不然三条监听一直挂在 window 上，
+     * 每漏一次多一份，只有重载才清得掉。blur 兜住「拖到一半 Alt+Tab 切走」。
+     */
+    function onUp(): void {
+      if (moved) resetTabMark()
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      window.removeEventListener('blur', onUp)
+    }
+    function onMove(ev: PointerEvent): void {
+      // 右键已经松开（或换成了别的键）：这个手势结束了，顺手把监听摘干净
+      if ((ev.buttons & 2) === 0) {
+        onUp()
+        return
+      }
       if (!moved) {
         // 手抖不算划：与拖页签同一个阈值口径（见 TabBar 的 DRAG_MIN）
         if (Math.abs(ev.clientX - startX) < 4) return
@@ -2373,15 +2388,10 @@ export default function LearnWorkspace({
       }
       moveTabMark(ev.clientX)
     }
-    const onUp = () => {
-      if (moved) resetTabMark()
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      window.removeEventListener('pointercancel', onUp)
-    }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onUp)
+    window.addEventListener('blur', onUp)
   }
 
 

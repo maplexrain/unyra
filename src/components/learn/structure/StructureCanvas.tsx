@@ -161,6 +161,15 @@ const FOCUS_ZOOM = 1.4
 const FOCUS_VERTICAL = 0.4
 
 /**
+ * 连线粗筛的外扩余量（世界坐标 px）。
+ *
+ * 粗筛用的是「两端卡片矩形的并集」，而实际走线是贝塞尔/折线，可能鼓到矩形外面去。
+ * 这个余量要盖住那一段弧度：太小会在大图上看到线在视口边缘凭空断掉，太大就白裁。
+ * 120 对现在的绕行半径（见 structureView 的 routeOf）是够的。
+ */
+const EDGE_CULL_PAD = 120
+
+/**
  * palette 行的图标：全部 24×24、描边 2、圆角端点——与 lucide 同一套笔画语言
  * （自绘图标纪律：比例先对齐成熟图形语言，不自造异形字）。图形口径：
  * 文档=带折角与行线的纸、大纲=圆点列表、笔记=折角便签、试卷=带勾的夹板、
@@ -288,7 +297,10 @@ const ICON_STROKE = {
 const MINI_W = 248
 const MINI_H = 160
 
-/** 缩略图上各类型的填充色（与卡片色板同族；SVG 要具体色值，大纲跟主题印章色走） */
+/**
+ * 缩略图上各类型的填充色（与卡片色板同族）。
+ * canvas 只吃具体色值：写死的 hex 直接用，`var(--…)` 会在 drawMini 里按当前主题解析。
+ */
 const MINI_FILL: Record<GNodeKind, string> = {
   entry: '#f43f5e',
   outline: 'var(--color-seal, #a8432f)',
@@ -1653,7 +1665,7 @@ export const StructureCanvas = memo(function StructureCanvas({
     const h = Math.max(h0, MINI_H / scale)
     return { bounds: { x: cx - w / 2, y: cy - h / 2, width: w, height: h } }
   }, [bounds])
-  const miniRef = useRef<SVGSVGElement | null>(null)
+  const miniRef = useRef<HTMLCanvasElement | null>(null)
   const minimapDragRef = useRef(false)
 
   /** 把缩略图上的一点变成镜头中心（屏幕坐标 → 窗口占比 → 世界坐标 → 相机平移） */
@@ -1685,21 +1697,199 @@ export const StructureCanvas = memo(function StructureCanvas({
     },
     [mini, view],
   )
-  const onMinimapPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+  const onMinimapPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.stopPropagation() // 别让画布把它当成「空地点击」清选择
     e.currentTarget.setPointerCapture(e.pointerId)
     minimapDragRef.current = true
     jumpByMinimap(e.clientX, e.clientY)
   }
-  const onMinimapPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+  const onMinimapPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!minimapDragRef.current) return
     e.stopPropagation()
     jumpByMinimap(e.clientX, e.clientY)
   }
-  const onMinimapPointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+  const onMinimapPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     minimapDragRef.current = false
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
   }
+
+  /** 缩略图连线：几何只跟卡片坐标有关，与相机无关——相机每帧动时不该重跑一遍绕行路由 */
+  const miniEdges = useMemo(
+    () =>
+      edges.flatMap((edge) => {
+        const from = byId.get(edge.from)
+        const to = byId.get(edge.to)
+        if (!from || !to) return []
+        const path = routeOf(edge)
+        if (!path) return []
+        return [{ path, accent: from.kind === 'outline' && to.kind === 'doc' }]
+      }),
+    [edges, byId, routeOf],
+  )
+
+  /** 有入边的卡（缩略图判「游离」用）：每帧对每张卡扫一遍 edges 是 O(卡×边)，先收成一次 */
+  const hasIncoming = useMemo(() => {
+    const s = new Set<string>()
+    for (const e of edges) s.add(e.to)
+    return s
+  }, [edges])
+
+  /**
+   * 画全景缩略图（世界坐标 → 画布像素两次线性映射）。
+   *
+   * **为什么从 SVG 换成 canvas**：SVG 版是**全量**的——每张卡两个 rect、每个目标项一条
+   * line、每条边一个 path，两百节点就是近千个常驻 SVG 元素；而相机动一下（视口框要
+   * 跟着走）React 就得把整棵 SVG 子树重新协调一遍。canvas 只有一个元素，重绘是一串
+   * 命令，几百个矩形也就一两毫秒。缩略图天生适合 canvas：纯几何、没有文本、没有
+   * 交互（只有点击定位），不需要为它付「自己实现排版与命中测试」的代价。
+   *
+   * `mini.bounds` 已经按 MINI_W:MINI_H 的比例扩过（见 mini 的注释），所以 sx≈sy，
+   * 图不会被拉变形；两个系数分开算只是为了让「不变形」这件事不依赖那次对齐。
+   */
+  const drawMini = useCallback(() => {
+    const canvas = miniRef.current
+    const m = mini
+    if (!canvas || !m) return
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const pixelW = Math.round(MINI_W * dpr)
+    const pixelH = Math.round(MINI_H * dpr)
+    // 位图尺寸只在 dpr / 窗口大小变时重设：赋值会清空画布并重置全部上下文状态
+    if (canvas.width !== pixelW) canvas.width = pixelW
+    if (canvas.height !== pixelH) canvas.height = pixelH
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, MINI_W, MINI_H)
+    ctx.lineCap = 'butt'
+
+    const sx = MINI_W / m.bounds.width
+    const sy = MINI_H / m.bounds.height
+    const px = (x: number): number => (x - m.bounds.x) * sx
+    const py = (y: number): number => (y - m.bounds.y) * sy
+
+    /*
+      颜色：canvas 不像 DOM 那样跟着 CSS 变量自己变，这里读一次现值。
+      MINI_FILL 里只有 outline 用的是 var(--color-seal)（其余是写死的 hex），
+      所以下面统一过一道解析——换肤后靠 themeWatch 重绘。
+    */
+    const cs = getComputedStyle(canvas)
+    const seal = cs.getPropertyValue('--color-seal').trim() || '#a8432f'
+    const inkFaint = cs.getPropertyValue('--color-ink-faint').trim() || '#98928a'
+    const fillOf = (kind: GNodeKind): string => {
+      const raw = MINI_FILL[kind]
+      if (!raw.startsWith('var(')) return raw
+      const name = /var\(\s*(--[\w-]+)/.exec(raw)?.[1]
+      return (name && cs.getPropertyValue(name).trim()) || seal
+    }
+
+    // --- 连线：照抄主画布的路径点（curved 是四点三次贝塞尔，其余是折线） ---
+    ctx.lineWidth = 0.8
+    for (const e of miniEdges) {
+      const p = e.path
+      if (!p.length) continue
+      ctx.beginPath()
+      ctx.moveTo(px(p[0].x), py(p[0].y))
+      if (edgeStyle === 'curved' && p.length === 4) {
+        ctx.bezierCurveTo(px(p[1].x), py(p[1].y), px(p[2].x), py(p[2].y), px(p[3].x), py(p[3].y))
+      } else {
+        for (let i = 1; i < p.length; i++) ctx.lineTo(px(p[i].x), py(p[i].y))
+      }
+      ctx.strokeStyle = e.accent ? SLOT_ACCENT : inkFaint
+      // 主画布是 text-ink-faint/60 + opacity .7 → 有效 0.42；强调色不叠那层淡
+      ctx.globalAlpha = e.accent ? 0.7 : 0.42
+      ctx.stroke()
+    }
+
+    // --- 卡片：底、顶部徽章条、目标项行、文档摘要行 ---
+    for (const c of displayCards) {
+      const fill = fillOf(c.kind)
+      const x = px(c.x)
+      const y = py(c.y)
+      const w = CARD_W * sx
+      const h = height(c) * sy
+      const radius = Math.min(3 * sx, w / 2)
+      const hollow = !!c.blank || (c.kind === 'doc' && !c.entry && !hasIncoming.has(c.uuid))
+
+      ctx.beginPath()
+      ctx.roundRect(x, y, w, h, radius)
+      ctx.fillStyle = fill
+      ctx.globalAlpha = 0.22
+      ctx.fill()
+      ctx.strokeStyle = fill
+      ctx.globalAlpha = 0.9
+      ctx.lineWidth = 0.9
+      ctx.setLineDash(hollow ? [3, 2] : [])
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      // 头部条：卡片顶部那行类型徽章位，深一档才有「卡」的层次
+      ctx.beginPath()
+      ctx.roundRect(x, y, w, OUTLINE_HEAD * sy, Math.min(radius, (OUTLINE_HEAD * sy) / 2))
+      ctx.fillStyle = fill
+      ctx.globalAlpha = 0.45
+      ctx.fill()
+
+      // 目标项行：每一行一小段横线
+      if (c.kind === 'outline' && c.slots?.length) {
+        ctx.beginPath()
+        c.slots.forEach((s, i) => {
+          const ly = py(c.y + (dotY[`${c.uuid}|${s.key}`] ?? slotAnchorY(i)))
+          ctx.moveTo(px(c.x + 8), ly)
+          ctx.lineTo(px(c.x + 52), ly)
+        })
+        ctx.strokeStyle = fill
+        ctx.globalAlpha = 0.85
+        ctx.lineWidth = 1
+        ctx.stroke()
+      }
+
+      // 文档摘要行：两条示意横线（缩多小都还看得出「这是一张文档卡」）
+      if (c.kind === 'doc' && c.excerpt) {
+        const l1 = c.y + OUTLINE_HEAD + DOC_LINE_H * 0.6
+        const l2 = c.y + OUTLINE_HEAD + DOC_LINE_H * 1.6
+        ctx.beginPath()
+        ctx.moveTo(px(c.x + 12), py(l1))
+        ctx.lineTo(px(c.x + CARD_W - 12), py(l1))
+        ctx.moveTo(px(c.x + 12), py(l2))
+        ctx.lineTo(px(c.x + CARD_W * 0.72), py(l2))
+        ctx.strokeStyle = inkFaint
+        ctx.globalAlpha = 0.6
+        ctx.lineWidth = 1
+        ctx.stroke()
+      }
+    }
+
+    // --- 当前视口框 ---
+    ctx.beginPath()
+    ctx.rect(
+      px(-camera.x / camera.zoom),
+      py(-camera.y / camera.zoom),
+      (view.width / camera.zoom) * sx,
+      (view.height / camera.zoom) * sy,
+    )
+    ctx.strokeStyle = seal
+    ctx.globalAlpha = 0.85
+    ctx.lineWidth = 1.4
+    ctx.stroke()
+    ctx.globalAlpha = 1
+  }, [mini, miniEdges, displayCards, edgeStyle, camera.x, camera.y, camera.zoom, view.width, view.height, dotY, height, hasIncoming])
+
+  // 布局阶段就画：首帧不会先亮一块空白。几百个矩形，一两毫秒的事。
+  useLayoutEffect(() => {
+    drawMini()
+  }, [drawMini])
+
+  const drawMiniRef = useRef(drawMini)
+  useEffect(() => {
+    drawMiniRef.current = drawMini
+  })
+
+  /** 换肤后重绘：canvas 不像 SVG 那样跟着 CSS 变量自己变 */
+  useLayoutEffect(() => {
+    const watch = new MutationObserver(() => drawMiniRef.current())
+    watch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] })
+    return () => watch.disconnect()
+  }, [])
 
   return (
     <div
@@ -1753,11 +1943,31 @@ export const StructureCanvas = memo(function StructureCanvas({
               const from = byId.get(edge.from)
               const to = byId.get(edge.to)
               if (!from || !to) return null
+              const isSelected = selectedEdge?.from === edge.from && selectedEdge?.to === edge.to
+              /*
+                视口裁剪：一屏能看见的永远只有局部，边数却随图规模线性涨。不裁的话
+                每条边都是一个常驻 SVG 元素（样式重算、层序、命中区都按元素算）。
+                粗筛用「两端卡片矩形的并集」外扩 EDGE_CULL_PAD，命中都不命中就连
+                routeOf 那趟绕行路由都不用算。选中 / 正在指的那条不裁——用户点它就是要看见它。
+              */
+              if (viewportBox && !isSelected) {
+                const left = Math.min(from.x, to.x) - EDGE_CULL_PAD
+                const top = Math.min(from.y, to.y) - EDGE_CULL_PAD
+                const right = Math.max(from.x, to.x) + CARD_W + EDGE_CULL_PAD
+                const bottom = Math.max(from.y + height(from), to.y + height(to)) + EDGE_CULL_PAD
+                if (
+                  right < viewportBox.left ||
+                  left > viewportBox.right ||
+                  bottom < viewportBox.top ||
+                  top > viewportBox.bottom
+                ) {
+                  return null
+                }
+              }
               const path = routeOf(edge)
               if (!path) return null
               // 世界坐标 → SVG 坐标（这一层是从包围盒左上角铺开的）
               const points = path.map((p) => ({ x: p.x - edgeOrigin.x, y: p.y - edgeOrigin.y }))
-              const isSelected = selectedEdge?.from === edge.from && selectedEdge?.to === edge.to
               // 从大纲卡出发的树边（子级是文档还是大纲都算）统一色；归属边一律中性灰
               const color = from.kind === 'outline' ? SLOT_ACCENT : null
               const dots = edgeDots(points, edgeStyle)
@@ -2243,116 +2453,24 @@ export const StructureCanvas = memo(function StructureCanvas({
           className="flex items-center justify-center rounded-xl border border-line bg-card/90 p-1.5 shadow-sm backdrop-blur"
           style={{ width: MINI_W + 12, height: MINI_H + 12 }}
         >
-          <svg
+          {/*
+            画的是一张 canvas（绘制见 drawMini）：缩略图天生适合它——纯几何、没有文本、
+            没有交互（只有点击定位），不必为它付「自己实现排版与命中测试」的代价。
+            原先这里是**全量 SVG**：每张卡两个 rect、每个目标项一条 line、每条边一个
+            path，两百节点就是近千个常驻元素；而相机动一下（视口框要跟着走）React 就得
+            把整棵 SVG 子树重新协调一遍。
+            注意：**不要在这里写 width/height 属性**——那会让 React 每次渲染把画布重置
+            回 1× 尺寸，把 drawMini 设好的 dpr 位图覆盖掉，画面立刻变糊。
+          */}
+          <canvas
             ref={miniRef}
-            width={MINI_W}
-            height={MINI_H}
-            viewBox={`${mini.bounds.x} ${mini.bounds.y} ${mini.bounds.width} ${mini.bounds.height}`}
+            style={{ width: MINI_W, height: MINI_H }}
             className="block cursor-pointer touch-none"
             onPointerDown={onMinimapPointerDown}
             onPointerMove={onMinimapPointerMove}
             onPointerUp={onMinimapPointerUp}
             onPointerCancel={onMinimapPointerUp}
-          >
-            {/*
-              缩略「照片」：viewBox 直接吃世界坐标，包络本身就是窗口的比例
-              （短轴靠扩世界补齐，见 mini 的说明）——画面占满容器且**绝不变形**。
-              卡片画结构而不是色块——徽章条、目标项行、摘要行都在，缩多小都看得出
-              「这是一张卡」；连线照抄主画布的路径点。所有描边挂 non-scaling-stroke：
-              粗细永远按屏幕像素算。
-            */}
-            {edges.map((edge, idx) => {
-              const from = byId.get(edge.from)
-              const to = byId.get(edge.to)
-              if (!from || !to) return null
-              const path = routeOf(edge)
-              if (!path) return null
-              const accent = from.kind === 'outline' && to.kind === 'doc'
-              return (
-                <path
-                  key={`${edge.from}>${edge.to}-${idx}`}
-                  d={edgePathD(path, edgeStyle)}
-                  fill="none"
-                  stroke={accent ? SLOT_ACCENT : 'currentColor'}
-                  className={accent ? '' : 'text-ink-faint/60'}
-                  strokeWidth={0.8}
-                  opacity={0.7}
-                  vectorEffect="non-scaling-stroke"
-                />
-              )
-            })}
-            {displayCards.map((c) => {
-              const fill = MINI_FILL[c.kind]
-              // 空文档 / 没挂进树里的游离文档：虚线描边，与主画布的虚线卡同一套语言
-              const hollow = !!c.blank || (c.kind === 'doc' && !c.entry && !edges.some((e) => e.to === c.uuid))
-              return (
-                <g key={c.uuid}>
-                  <rect
-                    x={c.x}
-                    y={c.y}
-                    width={CARD_W}
-                    height={height(c)}
-                    rx={3}
-                    fill={fill}
-                    fillOpacity={0.22}
-                    stroke={fill}
-                    strokeOpacity={0.9}
-                    strokeWidth={0.9}
-                    strokeDasharray={hollow ? '3 2' : undefined}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                  {/* 头部条：卡片顶部那行类型徽章位，深一档才有「卡」的层次 */}
-                  <rect x={c.x} y={c.y} width={CARD_W} height={OUTLINE_HEAD} rx={3} fill={fill} fillOpacity={0.45} />
-                  {c.kind === 'outline' &&
-                    (c.slots ?? []).map((s, i) => {
-                      const y = c.y + (dotY[`${c.uuid}|${s.key}`] ?? slotAnchorY(i))
-                      return (
-                        <line
-                          key={s.key}
-                          x1={c.x + 8}
-                          y1={y}
-                          x2={c.x + 52}
-                          y2={y}
-                          stroke={fill}
-                          strokeOpacity={0.85}
-                          strokeWidth={1}
-                          vectorEffect="non-scaling-stroke"
-                        />
-                      )
-                    })}
-                  {c.kind === 'doc' && c.excerpt && (
-                    <g stroke="currentColor" className="text-ink-faint/60" strokeWidth={1}>
-                      <line
-                        x1={c.x + 12}
-                        y1={c.y + OUTLINE_HEAD + DOC_LINE_H * 0.6}
-                        x2={c.x + CARD_W - 12}
-                        y2={c.y + OUTLINE_HEAD + DOC_LINE_H * 0.6}
-                        vectorEffect="non-scaling-stroke"
-                      />
-                      <line
-                        x1={c.x + 12}
-                        y1={c.y + OUTLINE_HEAD + DOC_LINE_H * 1.6}
-                        x2={c.x + CARD_W * 0.72}
-                        y2={c.y + OUTLINE_HEAD + DOC_LINE_H * 1.6}
-                        vectorEffect="non-scaling-stroke"
-                      />
-                    </g>
-                  )}
-                </g>
-              )
-            })}
-            <rect
-              x={-camera.x / camera.zoom}
-              y={-camera.y / camera.zoom}
-              width={view.width / camera.zoom}
-              height={view.height / camera.zoom}
-              fill="none"
-              stroke="var(--color-seal, #a8432f)"
-              strokeOpacity={0.85}
-              strokeWidth={1.4}
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
+          />
         </div>
       )}
 

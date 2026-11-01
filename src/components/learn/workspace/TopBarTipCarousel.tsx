@@ -74,10 +74,17 @@ export default function TopBarTipCarousel() {
   const [fading, setFading] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const timerRef = useRef<number | null>(null)
+  /**
+   * 切换那 200ms 的淡出定时器。它原先没登记：连点提示条、或悬停与轮播撞在同一拍时，
+   * 会叠出好几个待执行的回调，各自 setIndex（跳两条），组件卸载后也照样跑。
+   */
+  const fadeTimerRef = useRef<number | null>(null)
 
   const advanceNext = () => {
     setFading(true)
-    window.setTimeout(() => {
+    if (fadeTimerRef.current) window.clearTimeout(fadeTimerRef.current)
+    fadeTimerRef.current = window.setTimeout(() => {
+      fadeTimerRef.current = null
       setIndex((prev) => (prev + 1) % TIPS.length)
       setFading(false)
     }, 200)
@@ -85,7 +92,10 @@ export default function TopBarTipCarousel() {
 
   useEffect(() => {
     if (isHovered) {
-      if (timerRef.current) window.clearInterval(timerRef.current)
+      if (timerRef.current) {
+        window.clearInterval(timerRef.current)
+        timerRef.current = null
+      }
       return
     }
 
@@ -94,9 +104,20 @@ export default function TopBarTipCarousel() {
     }, INTERVAL_MS)
 
     return () => {
-      if (timerRef.current) window.clearInterval(timerRef.current)
+      if (timerRef.current) {
+        window.clearInterval(timerRef.current)
+        timerRef.current = null
+      }
     }
   }, [isHovered])
+
+  /** 卸载时把还没跑的那一次淡出也收掉：它会在组件已经不在之后 setIndex */
+  useEffect(
+    () => () => {
+      if (fadeTimerRef.current) window.clearTimeout(fadeTimerRef.current)
+    },
+    [],
+  )
 
   const currentTip = TIPS[index]
 
