@@ -125,6 +125,37 @@ export function openInGroup(
     return activateIn(docs, home, id)
   }
   const target = groupOf(docs, groupId) ? groupId : focusedGroup(docs).id
+  if (ref.kind === 'outline') {
+    const gid = (ref as { goalId?: string }).goalId ?? goalOfNode?.(ref.nodeId)
+    if (gid) {
+      const refIsAnchor = ref.nodeId === gid || (ref as { goalId?: string }).goalId === gid
+      for (const g of docs.groups) {
+        const existing = g.tabs.find((t) => {
+          if (t.ref.kind !== 'outline') return false
+          const tNodeId = (t.ref as { nodeId?: string }).nodeId
+          const tGoalId = (t.ref as { goalId?: string }).goalId
+          const tIsAnchor = tNodeId === gid || tGoalId === gid
+          if (refIsAnchor && tIsAnchor) return true
+          return tNodeId === ref.nodeId
+        })
+        if (existing) {
+          let updated = docs
+          if (existing.id !== id || (existing.ref as { nodeId?: string }).nodeId !== ref.nodeId) {
+            updated = withGroup(docs, g.id, (group) => ({
+              ...group,
+              tabs: group.tabs.map((t) => (t.id === existing.id ? { ...t, id, ref } : t)),
+              active: group.active === existing.id ? id : group.active,
+            }))
+            if (updated.tabOwners?.[gid]) {
+              const owners = updated.tabOwners[gid].map((item) => (item === existing.id ? id : item))
+              updated = withOwners(updated, { ...updated.tabOwners, [gid]: owners })
+            }
+          }
+          return activateIn(updated, g.id, id)
+        }
+      }
+    }
+  }
   /*
    * 「一个页签栏有且只有一枚新页签」：这一格已经有空白占位了就直接切过去，
    * 不再追加第二枚。判据是**这一格**而不是栏上看得见什么——页签实体一直住在格子里，
@@ -429,7 +460,10 @@ export function isAnchorOutline(
   const gid = (ref as { goalId?: string }).goalId ?? goalOfNode(ref.nodeId)
   if (!gid) return false
   const root = rootOf(gid)
-  return root ? root === ref.nodeId : ref.nodeId === gid || (ref as { goalId?: string }).goalId === gid
+  if (root) {
+    return ref.nodeId === root || ref.nodeId === gid
+  }
+  return ref.nodeId === gid || (ref as { goalId?: string }).goalId === gid
 }
 
 /**
@@ -563,8 +597,16 @@ export function ensureAnchorOutlines(
   let next = docs
   for (const goalId of needed) {
     const rootNodeId = rootOf(goalId)
-    if (!rootNodeId || groupIdOfTab(next, tabKey({ kind: 'outline', nodeId: rootNodeId }))) continue
-    next = openAnchorOutline(next, next.focus, { kind: 'outline', nodeId: rootNodeId }, goalOfNode, Date.now())
+    const hasOutline = allTabs(next).some(
+      (t) =>
+        t.ref.kind === 'outline' &&
+        ((t.ref as { goalId?: string }).goalId === goalId ||
+          t.ref.nodeId === goalId ||
+          (rootNodeId && t.ref.nodeId === rootNodeId)),
+    )
+    if (hasOutline) continue
+    const anchorNodeId = rootNodeId || goalId
+    next = openAnchorOutline(next, next.focus, { kind: 'outline', nodeId: anchorNodeId, goalId }, goalOfNode, Date.now())
   }
   // 修复只补结构，不改变用户上次正在看的正文；openAnchorOutline 内部会把新锚激活，
   // 这里把原来的 active 恢复回去，避免读盘后「只是补一个大纲，却突然打开另一份文档」。
@@ -590,7 +632,8 @@ export function openGroupedDoc(
   /** 兜底落点：明确指了某一格就听它的，否则焦点格 */
   const fallback = into && groupOf(docs, into) ? into : docs.focus
   if (rootNodeId) {
-    const outlineRef: TabRef = { kind: 'outline', nodeId: rootNodeId }
+    const gid = goalOfNode(ref.nodeId) ?? goalOfNode(rootNodeId) ?? undefined
+    const outlineRef: TabRef & { kind: 'outline' } = { kind: 'outline', nodeId: rootNodeId, ...(gid ? { goalId: gid } : {}) }
     const outlineId = tabKey(outlineRef)
     const opened = groupIdOfTab(docs, outlineId)
       ? docs
@@ -600,4 +643,164 @@ export function openGroupedDoc(
     return openInGroup(opened, target ?? opened.focus, ref, at, view, goalOfNode)
   }
   return openInGroup(docs, fallback, ref, at, view, goalOfNode)
+}
+
+/**
+ * 校验并同步所有目标的结构（outline）页签：
+ * 1. 一个目标全局至多存在 1 枚大纲页签；若因历史遗留或并发开出多枚（例如根节点更新前后的两枚），强制去重保留 1 枚。
+ * 2. 将保留的页签身份与 nodeId 对齐到当前最新的根节点（rootNodeId || goalId）。
+ * 3. 关联的激活态（group.active）、tabOwners 以及 parkedTabs 同步迁移或清理。
+ */
+export function syncGoalOutlineTabs(
+  docs: DocWorkspace,
+  goals: ReadonlyArray<{ id: string; rootNodeId?: string | null }>,
+): DocWorkspace {
+  let next = docs
+  let changed = false
+
+  for (const goal of goals) {
+    const goalId = goal.id
+    const canonicalNodeId = (goal.rootNodeId && goal.rootNodeId.trim()) || goalId
+    const canonicalId = 'o:' + canonicalNodeId
+    const canonicalRef: TabRef & { kind: 'outline' } = {
+      kind: 'outline',
+      nodeId: canonicalNodeId,
+      goalId,
+    }
+
+    const matches: Array<{ groupId: string; tab: LearnTab; index: number }> = []
+    for (const g of next.groups) {
+      g.tabs.forEach((tab, index) => {
+        if (tab.ref.kind === 'outline') {
+          const tabNodeId = tab.ref.nodeId
+          const isAnchor =
+            tabNodeId === goalId ||
+            (goal.rootNodeId ? tabNodeId === goal.rootNodeId : false)
+          if (isAnchor) {
+            matches.push({ groupId: g.id, tab, index })
+          }
+        }
+      })
+    }
+
+    if (matches.length === 0) {
+      if (next.parkedTabs?.[goalId]) {
+        const parked = next.parkedTabs[goalId]
+        const parkedOutlines = parked.filter(
+          (t) =>
+            t.ref.kind === 'outline' &&
+            (t.ref.nodeId === goalId || (goal.rootNodeId ? t.ref.nodeId === goal.rootNodeId : false)),
+        )
+        if (parkedOutlines.length > 1) {
+          let kept = false
+          const cleanedParked = parked
+            .filter((t) => {
+              const isTargetOutline =
+                t.ref.kind === 'outline' &&
+                (t.ref.nodeId === goalId || (goal.rootNodeId ? t.ref.nodeId === goal.rootNodeId : false))
+              if (!isTargetOutline) return true
+              if (!kept) {
+                kept = true
+                return true
+              }
+              return false
+            })
+            .map((t) =>
+              t.ref.kind === 'outline' &&
+              (t.ref.nodeId === goalId || (goal.rootNodeId ? t.ref.nodeId === goal.rootNodeId : false))
+                ? { ...t, id: canonicalId, ref: canonicalRef }
+                : t,
+            )
+          next = withParked(next, { ...next.parkedTabs, [goalId]: cleanedParked })
+          changed = true
+        } else if (
+          parkedOutlines.length === 1 &&
+          (parkedOutlines[0].id !== canonicalId ||
+            (parkedOutlines[0].ref as { nodeId?: string }).nodeId !== canonicalNodeId)
+        ) {
+          const cleanedParked = parked.map((t) =>
+            t.ref.kind === 'outline' &&
+            (t.ref.nodeId === goalId || (goal.rootNodeId ? t.ref.nodeId === goal.rootNodeId : false))
+              ? { ...t, id: canonicalId, ref: canonicalRef }
+              : t,
+          )
+          next = withParked(next, { ...next.parkedTabs, [goalId]: cleanedParked })
+          changed = true
+        }
+      }
+      continue
+    }
+
+    const primary =
+      matches.find((m) => m.tab.id === canonicalId) ??
+      matches.find((m) => {
+        const g = next.groups.find((x) => x.id === m.groupId)
+        return g?.active === m.tab.id
+      }) ??
+      matches[0]
+
+    const duplicateIds = new Set(matches.filter((m) => m.tab.id !== primary.tab.id).map((m) => m.tab.id))
+    const needsUpdatePrimary =
+      primary.tab.id !== canonicalId ||
+      (primary.tab.ref as { nodeId?: string }).nodeId !== canonicalNodeId ||
+      (primary.tab.ref as { goalId?: string }).goalId !== goalId
+
+    if (duplicateIds.size > 0 || needsUpdatePrimary) {
+      changed = true
+      const nextGroups = next.groups.map((g) => {
+        const hasPrimary = g.id === primary.groupId
+        let tabs = g.tabs.filter((t) => !duplicateIds.has(t.id))
+        if (hasPrimary) {
+          tabs = tabs.map((t) =>
+            t.id === primary.tab.id ? { ...t, id: canonicalId, ref: canonicalRef } : t,
+          )
+        }
+        let active = g.active
+        if (hasPrimary && (active === primary.tab.id || (active && duplicateIds.has(active)))) {
+          active = canonicalId
+        } else if (active && duplicateIds.has(active)) {
+          active = landingAfter(g.tabs, active, tabs)
+        }
+        return { ...g, tabs, active }
+      })
+
+      let nextOwners = next.tabOwners
+      if (nextOwners) {
+        const goalOwnerList = nextOwners[goalId]
+        if (goalOwnerList) {
+          const updatedList: string[] = []
+          for (const id of goalOwnerList) {
+            if (duplicateIds.has(id)) continue
+            if (id === primary.tab.id) {
+              if (!updatedList.includes(canonicalId)) updatedList.push(canonicalId)
+            } else {
+              if (!updatedList.includes(id)) updatedList.push(id)
+            }
+          }
+          if (!updatedList.includes(canonicalId)) updatedList.push(canonicalId)
+          nextOwners = { ...nextOwners, [goalId]: updatedList }
+        }
+      }
+
+      let nextParked = next.parkedTabs
+      if (nextParked?.[goalId]) {
+        let kept = false
+        const cleanedParked = nextParked[goalId]
+          .filter((t) => {
+            if (t.ref.kind !== 'outline') return true
+            if (!kept) {
+              kept = true
+              return true
+            }
+            return false
+          })
+          .map((t) => (t.ref.kind === 'outline' ? { ...t, id: canonicalId, ref: canonicalRef } : t))
+        nextParked = { ...nextParked, [goalId]: cleanedParked }
+      }
+
+      next = withOwners(withParked({ ...next, groups: nextGroups }, nextParked), nextOwners)
+    }
+  }
+
+  return changed ? next : docs
 }

@@ -91,6 +91,7 @@ import {
   reorderIn,
   setFocus,
   settle,
+  syncGoalOutlineTabs,
   visibleTabs,
   withGroup,
   withOwners,
@@ -373,6 +374,14 @@ export default function LearnWorkspace({
     () => reconcileOwners(docs.tabOwners, tabs, goalOfNode),
     [docs.tabOwners, tabs, goalOfNode],
   )
+
+  // 结构页签保底去重与对齐：目标换根、历史并发开签等情况可能导致重复的结构页签，此处保证全局至多一枚
+  useEffect(() => {
+    const synced = syncGoalOutlineTabs(store.docArea, store.goals)
+    if (synced !== store.docArea) {
+      set({ ...store, docArea: synced })
+    }
+  }, [store.goals, store.docArea, set])
   /**
    * 当前该显示的页签（公共 + 当前目标）。页签栏读它，正文区仍按「格」渲染——
    * 一格里同时混着公共与目标页签是正常的（正是需求里那条栏的样子）。
@@ -1525,11 +1534,12 @@ export default function LearnWorkspace({
       const rootRef: TabRef & { kind: 'outline' } = { kind: 'outline', nodeId: anchorNodeId, goalId: goal.id }
       const rootId = tabKey(rootRef)
       const owners = s.docArea.tabOwners ?? {}
-      const home = groupIdOfTab(s.docArea, rootId)
+      let docArea = syncGoalOutlineTabs(s.docArea, s.goals)
+      const home = groupIdOfTab(docArea, rootId)
       const goalOf = (id: string) => nodeById(s, id)?.goalId ?? (s.goals.some((g) => g.id === id) ? id : null)
-      let docArea = home
-        ? s.docArea
-        : openAnchorOutline(s.docArea, s.docArea.focus, rootRef, goalOf, Date.now())
+      docArea = home
+        ? docArea
+        : openAnchorOutline(docArea, docArea.focus, rootRef, goalOf, Date.now())
       if (toOutline) {
         const at = groupIdOfTab(docArea, rootId)
         if (at) docArea = activateIn(docArea, at, rootId)
@@ -4229,7 +4239,9 @@ export default function LearnWorkspace({
       if (s.edges.some((e) => e.to === docUuid)) {
         return { error: t('「{0}」已经有上级了——只有没有上级的文档能立为入口', node.title) }
       }
-      set({ ...s, goals: s.goals.map((g) => (g.id === goal.id ? { ...g, rootNodeId: docUuid, updatedAt: Date.now() } : g)) })
+      const nextGoals = s.goals.map((g) => (g.id === goal.id ? { ...g, rootNodeId: docUuid, updatedAt: Date.now() } : g))
+      const nextDocArea = syncGoalOutlineTabs(s.docArea, [{ id: goal.id, rootNodeId: docUuid }])
+      set({ ...s, goals: nextGoals, docArea: nextDocArea })
       return { ok: true, note: t('已把「{0}」立为入口：这门课从这里开始（原入口文档还在图上）', node.title) }
     },
     [getLatest, set],

@@ -14,7 +14,7 @@ import type {
   WorkflowBook,
 } from '../../types'
 import type { Exam } from '../../exam'
-import { allTabs, ensureAnchorOutlines, focusedTab, normalizeDocs, reconcileOwners, withOwners, withParked } from '../../groups'
+import { allTabs, ensureAnchorOutlines, focusedTab, normalizeDocs, reconcileOwners, syncGoalOutlineTabs, withOwners, withParked } from '../../groups'
 import { tabNodeId } from '../../tabs'
 import { normalizeAgentTabs } from '../../agentTabs'
 import { normalizeDrafts } from '../../drafts'
@@ -280,10 +280,13 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
     const parked = Object.fromEntries(
       Object.entries(docAreaRaw.parkedTabs ?? {}).filter(([goalId]) => goalIds.has(goalId)),
     )
-    const docArea0 = ensureAnchorOutlines(
-      withParked(docAreaRaw, Object.keys(parked).length > 0 ? parked : undefined),
-      (nodeId) => byId.get(nodeId)?.goalId ?? null,
-      (goalId) => goals.find((g) => g.id === goalId)?.rootNodeId ?? null,
+    const docArea0 = syncGoalOutlineTabs(
+      ensureAnchorOutlines(
+        withParked(docAreaRaw, Object.keys(parked).length > 0 ? parked : undefined),
+        (nodeId) => byId.get(nodeId)?.goalId ?? null,
+        (goalId) => goals.find((g) => g.id === goalId)?.rootNodeId ?? null,
+      ),
+      goals,
     )
     /*
      * 目标页签归属（见 groups/goals）：旧数据里没有这张表，现算补一份。

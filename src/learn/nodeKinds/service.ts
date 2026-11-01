@@ -28,6 +28,7 @@ import { createProjectNode, deleteProjectNode, inferPathKind, resolveProjectRoot
 import { NOTE_DEFAULT_NAME, notesOf, uniqueNoteName } from '../notes'
 import { SUPERDOC_DEFAULT_NAME, removeSuperDoc, writeSuperDoc } from '../superdocs'
 import { emptyDocs, superDocsOf, type KnowledgeNode, type LearnStore, type NoteFile, type SuperDocFile } from '../types'
+import { syncGoalOutlineTabs } from '../groups'
 import { docIdOfEntryUuid, docIdOfOutlineUuid, entryUuid, outlineUuid, GNode, type NodeCtx, type NodeResult } from './base'
 import { DocGNode } from './doc'
 import { EntryGNode } from './entry'
@@ -426,6 +427,7 @@ export class NodeService {
         nextStore = {
           ...nextStore,
           goals: nextStore.goals.map((g) => (g.id === goalId ? { ...g, rootNodeId: node.record.id } : g)),
+          docArea: syncGoalOutlineTabs(nextStore.docArea, [{ id: goalId, rootNodeId: node.record.id }]),
         }
       }
       this.deps.set(nextStore)
@@ -661,7 +663,8 @@ export class NodeService {
       return { error: '文档「' + raw + '」不属于当前目标，无法设为根' }
     }
     const nextGoals = store.goals.map((g) => (g.id === goalId ? { ...g, rootNodeId: node.id } : g))
-    this.deps.set({ ...store, goals: nextGoals })
+    const nextDocArea = syncGoalOutlineTabs(store.docArea, [{ id: goalId, rootNodeId: node.id }])
+    this.deps.set({ ...store, goals: nextGoals, docArea: nextDocArea })
     return {
       ok: true,
       root: node.id,

@@ -82,6 +82,7 @@ export {
   reorderIn,
   restoreParkedTabs,
   splitWith,
+  syncGoalOutlineTabs,
   unloadAnchoredGroups,
 } from './groups/tabs'
 
