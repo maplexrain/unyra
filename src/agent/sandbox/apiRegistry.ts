@@ -704,6 +704,46 @@ export function groupIndexForSystemPrompt(): string {
 }
 
 /** 设置页/子代理 brief 用的简洁清单：组 → 条目 */
+
+/**
+ * 渲染全量 API 完整参考手册与代码示例（首轮系统提示词使用）。
+ * 包含所有非 legacy 组及每条 API 的完整签名、功能说明、参数规格、返回规格与示例代码。
+ */
+export function renderAllApisDocumentation(): string {
+  const fence = '```';
+  const lines: string[] = [
+    '### 沙箱全部 API 完整参考手册与示例',
+    '以下是沙箱中所有可用 API 的完整签名、功能说明、参数返回值与可运行代码示例：',
+    '',
+  ]
+  for (const group of promotedGroups()) {
+    lines.push('#### 【' + (group.key === 'core' ? '顶层函数' : 'api.' + group.key) + '】' + group.label)
+    lines.push('- **功能定位**：' + group.intro)
+    if (group.usage?.trim()) {
+      lines.push('- **用法规程**：\n' + group.usage.trim())
+    }
+    if (group.example?.trim()) {
+      lines.push('- **组示例**：\n' + fence + 'javascript\n' + group.example.trim() + '\n' + fence)
+    }
+    lines.push('', '**API 详细规格与示例**：')
+    for (const api of group.apis) {
+      lines.push('- **`' + api.signature + '`** — ' + api.summary)
+      lines.push('  - 全名：`api.' + api.full + '`')
+      lines.push('  - 用法：' + api.usage)
+      if (api.params) lines.push('  - 参数：' + api.params)
+      if (api.returns) lines.push('  - 返回：' + api.returns)
+      lines.push('  - 示例代码：\n' + fence + 'javascript\n' + api.example + '\n' + fence)
+      if (api.examples && api.examples.length > 0) {
+        for (const ex of api.examples) {
+          lines.push(fence + 'javascript\n' + ex + '\n' + fence)
+        }
+      }
+    }
+    lines.push('')
+  }
+  return lines.join('\n')
+}
+
 export function catalogGroups(): Array<{
   key: string
   label: string

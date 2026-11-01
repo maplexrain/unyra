@@ -28,7 +28,7 @@ import type { ConversationMessage, InjectKind } from './types'
 export function injectKindOf(m: ConversationMessage): InjectKind | null {
   if (m.inject) return m.inject
   if (!m.hidden) return null
-  if (m.persona || m.docFormat || m.promptModule || m.skillsDigest) return 'prompt'
+  if (m.persona || m.docFormat || m.promptModule || m.skillsDigest || m.userInfo) return 'prompt'
   return m.mark ? 'instruction' : null
 }
 

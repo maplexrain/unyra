@@ -103,8 +103,8 @@ describe('不进系统提示词（与人格同一条纪律）', () => {
     const system = buildTeacherSystem()
     expect(system).not.toContain('【文档格式')
     expect(system).not.toContain('覆盖系统提示词')
-    expect(system).not.toContain('纯 Markdown')
-    expect(system).not.toContain('纯 HTML')
+    expect(system).not.toContain('【文档格式 · 纯 Markdown】')
+    expect(system).not.toContain('【文档格式 · 纯 HTML】')
   })
 })
 

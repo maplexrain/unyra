@@ -1,6 +1,16 @@
 /**
  * 这个文件负责什么：教学 Agent 的系统提示词（buildTeacherSystem）——把几段指南拼成一份
  * 「只描述目标、不含当前节点」的前缀（这是它能被前缀缓存命中的前提，见下面的说明）。
+ *
+ * 排序纪律（用户铁律）：
+ * 1. 按提示词可变性进行排序，越不可变越放在前面：
+ *    - 核心角色定位与节点宇宙哲学（不可变基石）
+ *    - Execute 沙箱工具与全量 API 签名字典、操作规程（不可变基石）
+ *    - 全量排版与围栏渲染语法指南（不可变标准）
+ *    - 全量工作流提示词与任务规程（不可变规程）
+ *    - 通用纪律与交付登记铁律（不可变底线）
+ * 2. 像人格（Persona）和文档格式（DocFormat）属于可变且会时刻切换的，放在会话消息层末尾，支持后续动态覆盖；
+ * 3. 用户画像属于信息而非提示词，在首轮注入，放在人格与文档格式之后。
  */
 import { PLOT_SYNTAX_GUIDE } from '../../lib/plot'
 import { MERMAID_SYNTAX_GUIDE } from '../../lib/mermaid'
@@ -14,27 +24,16 @@ import {
   LEARN_LINK_SYNTAX,
   RICH_CONTENT_GUIDE,
 } from './guides'
+import { PROMPT_MODULES } from './promptModules'
+import { WORKFLOWS_GUIDE } from './workflowsGuide'
 
+function moduleTextOf(key: string): string {
+  const m = PROMPT_MODULES.find((item) => item.key === key)
+  return m ? m.text.trim() : ''
+}
 
 /**
  * 教学 Agent 的系统提示词。**完全固定**：同样的代码永远产出同样的字节。
- *
- * ## 为什么一个字都不能随会话变
- *
- * 服务端的前缀缓存按**逐字节前缀**命中。这段提示词有上万 token（EXECUTE_GUIDE 那一节最长），
- * 只要开头有一个字符不同，后面全部按原价重算。所以：
- *
- * 1. **目标问题不在这里**。它曾经是这段提示词里唯一的会话标识（「正在陪学习者攻克：
- *    X」），代价是**每个目标各有一份不同的前缀**——切目标、开新目标，缓存全丢。
- *    现在整段提示词固化进对话数据（Conversation.systemPrompt，首轮抓取），
- *    **所有目标共用同一份系统提示词前缀**，第一段上万 token 只付一次。
- * 2. **当前节点、学习状态、技能清单都不在这里**（同理，它们是会话内会变的）。
- *    节点背景也不再随消息注入——模型需要时自己 api.node.list / 节点对象 content 现查。
- * 3. **技能库走 skillsAnnounce 消息**（见 agent/skill/registry），技能通用规范固定在
- *    EXECUTE_GUIDE 里。
- *
- * 想加东西之前先问一句：**它会不会因为用户的操作而变？** 会变就别放这里，
- * 放消息层（提示词模块 / 工作流指令）。
  */
 export function buildTeacherSystem(opts: {
   /** 学习者额外追加的自定义系统提示词（启用时追加在末尾） */
@@ -66,6 +65,8 @@ export function buildTeacherSystem(opts: {
     '',
     PLOT_SYNTAX_GUIDE,
     '',
+    moduleTextOf('plot-forms'),
+    '',
     MERMAID_SYNTAX_GUIDE,
     '',
     VIDEOS_SYNTAX_GUIDE,
@@ -74,7 +75,13 @@ export function buildTeacherSystem(opts: {
     '',
     RICH_CONTENT_GUIDE,
     '',
+    moduleTextOf('rich-animation'),
+    '',
     CHIP_GUIDE,
+    '',
+    moduleTextOf('doc-html'),
+    '',
+    WORKFLOWS_GUIDE,
     '',
     '约束与纪律：',
     '- **需求解耦（重要，违反是大错）**：学习者提出的内容若与当前节点或目标无关，视为独立需求直接响应，绝不强行串联或长篇铺垫；仅当明确要求结合时才联合处理。',

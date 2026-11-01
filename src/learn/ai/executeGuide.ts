@@ -1,34 +1,32 @@
 /**
- * 这个文件负责什么：execute 工具的用法说明——模型唯一的手。
+ * execute 工具的用法说明与全部 API 完整参考手册。
  *
- * 从这一版起，**系统提示词只给 api 集，不给具体 api**：
- * 每个组、每条 api 都挂着 `__help()`，模型要用哪个就查哪个。
- * 组清单从 apiRegistry 派生（`groupIndexForSystemPrompt`），注册表是唯一入口——
- * 这里不再维护第二份 api 清单，也不再有「数据资产与存储文件契约」：
- * 应用数据全部走 api 组，files.* 被路径闸门拦在应用数据之外（见 sandbox/dataPaths）。
- *
- * 唯一例外是 api.see（看图片与 PDF 页）：这件事要「想到就能用」，等模型主动查 help 就晚了
- * （它往往不觉得自己需要看图）。所以它的用法整节写死在这里，改动必须与
- * apiRegistry 里 see 那条的文档保持同一口径。
+ * 纪律：
+ * 1. 遵循首轮注入全量提示词规范，包含 execute 所有 API 的完整签名、用法与示例；
+ * 2. 包含内置浏览器、网络、MCP、工作区等高阶操作手册；
+ * 3. 严格按不可变优先排序，作为前缀缓存的基础基石。
  */
-import { groupIndexForSystemPrompt } from '../../agent/sandbox/apiRegistry'
+import { groupIndexForSystemPrompt, renderAllApisDocumentation } from '../../agent/sandbox/apiRegistry'
+import { PROMPT_MODULES } from './promptModules'
 
-/**
- * execute 工具的用法说明。
- */
+function moduleTextOf(key: string): string {
+  const m = PROMPT_MODULES.find((item) => item.key === key)
+  return m ? m.text.trim() : ''
+}
+
 export const EXECUTE_GUIDE = `唯一的工具是 execute(description, body)：
 - description：这一步要做什么，一句人话（会显示给学习者看）。
 - body：一段 JS **匿名函数**源码，形如 ((api)=>{ ... return 结果 })，也可以写成 ((api)=>{...})()。
   可以用 await；返回值会被回给你（超过 3.2 万字符会截断）。
   没有别的工具：应用数据的读写、节点增删改、试卷、状态、工作流都在这里调 api。
 
-**先查再用（硬性纪律）**
-初始上下文只给 api 集，不给具体 api 的签名。动手前先查：
+**全量 API 在场与先查再用纪律**
+初始上下文已包含所有 API 的全量签名、详细规格与代码示例（详见下方「API 全量参考手册」）。
+在编写代码时可直接遵照完整参考编写；若需要动态查询，亦可调用：
 - await api.<组>.__help()        —— 这一组有哪些 api（签名 + 一句话用法）；
 - await api.<组>.<api>.__help()  —— 这一条 api 的参数、返回、完整用法与示例；
 - await api.__help()             —— 全部 api 集总览。
-不要凭记忆猜 api 名或参数；一次 __help() 比一次失败重试便宜得多。
-（唯一的例外是下面单独成节的 api.see：它的用法直接写在提示词里，当作本能用。）
+不要凭空臆造未登记的 api 名或参数。
 
 **应用数据一律走 api 组，files.* 不许碰**
 - 节点与内容（正文 / 大纲 / 笔记 / 试卷卷面 / 超级文档）→ api.node：list() 查 uuid、
@@ -72,8 +70,10 @@ export const EXECUTE_GUIDE = `唯一的工具是 execute(description, body)：
   论文、讲义、扫描件里的图示与排版必须亲眼看才说得准；工作区文件里读到一段 base64 图。
   同一张图 / 同一页只看一次，不要反复 see；绝不把 base64 写进返回值或文档——那会撑爆上下文。
 
-**API 集**（组名即入口；每个组、每条 api 都有 __help）
+**API 集总览索引**
 ${groupIndexForSystemPrompt()}
+
+${renderAllApisDocumentation()}
 
 **调用形态与沙箱纪律**
 - 最外层函数无条件可用 await；内部多次 api 调用按书写顺序依次生效。
@@ -87,4 +87,36 @@ ${groupIndexForSystemPrompt()}
   连续几步没有新信息就先回头判断「这条路还通不通」，不要在一条死路上加码。
 - **编码涉网先查证**：写的代码要调第三方接口、依赖协议 / 规范 / SDK 行为时，先用 api.web.search +
   api.fetch 读官方文档确认参数、错误码与边界，再落笔——接口行为猜不得，一次查证比十轮盲试便宜。
-- 参数形状错会抛异常中断整批；拿不准时先发极小的冒烟调用确认。`
+- 参数形状错会抛异常中断整批；拿不准时先发极小的冒烟调用确认。
+
+---
+
+### 高频与专项领域操作手册
+
+#### 1. 内置浏览器深度手册（browser.*）
+${moduleTextOf('browser')}
+
+#### 2. 网络搜索与网页抓取手册（web.* / fetch）
+${moduleTextOf('web')}
+
+#### 3. 交付物工作区操作手册（workspace.*）
+${moduleTextOf('workspace')}
+
+#### 4. 外部 MCP 服务操作手册（mcp.*）
+${moduleTextOf('mcp')}
+
+#### 5. 子代理协同手册（subagent.*）
+${moduleTextOf('subagent')}
+
+#### 6. 定时任务操作手册（schedule.*）
+${moduleTextOf('schedule')}
+
+#### 7. 持久化函数操作手册（method.*）
+${moduleTextOf('method')}
+
+#### 8. 静态资源库操作手册（res.*）
+${moduleTextOf('res')}
+
+#### 9. 界面与视口控制手册（ui.*）
+${moduleTextOf('ui')}
+`
