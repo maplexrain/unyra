@@ -62,6 +62,8 @@ function readGoalLedgers(
     /** 视频节点（目标 × 视频的绑定），目标目录的 video-nodes.json */
     videoNodesByGoal: Record<string, unknown[]>
     videoEdgesByGoal: Record<string, Array<Record<string, unknown>>>
+    /** 项目节点（目标 × 真实路径的授权声明），目标目录的 projects.json */
+    projectsByGoal: Record<string, unknown[]>
   },
 ): void {
   const convs = parseJson<{ conversations?: unknown[] }>(files.get(`${goalDir}/chat.json`))
@@ -129,6 +131,12 @@ function readGoalLedgers(
   }
   if (Array.isArray(videoNodesFile?.edges) && videoNodesFile.edges.length) {
     out.videoEdgesByGoal[goalId] = videoNodesFile.edges
+  }
+
+  // 项目节点（目标 × 真实路径的授权声明，见 learn/projects）
+  const projectsFile = parseJson<{ projects?: unknown[] }>(files.get(`${goalDir}/projects.json`))
+  if (Array.isArray(projectsFile?.projects) && projectsFile.projects.length) {
+    out.projectsByGoal[goalId] = projectsFile.projects
   }
 }
 
@@ -225,6 +233,7 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
     outlinesByGoal: {} as Record<string, { outlines: unknown[]; edges: Array<Record<string, unknown>> }>,
     videoNodesByGoal: {} as Record<string, unknown[]>,
     videoEdgesByGoal: {} as Record<string, Array<Record<string, unknown>>>,
+    projectsByGoal: {} as Record<string, unknown[]>,
   }
 
   for (const [dir, { file }] of nodeFiles) {
@@ -300,6 +309,9 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
   const videoNodes: unknown[] = []
   for (const led of Object.values(ledgers.videoNodesByGoal)) videoNodes.push(...led)
   for (const led of Object.values(ledgers.videoEdgesByGoal)) edges.push(...led)
+  // 项目节点（目标 × 真实路径的授权声明）并进总账（挂载边随节点文件已收过）
+  const projects: unknown[] = []
+  for (const led of Object.values(ledgers.projectsByGoal)) projects.push(...led)
 
   return normalizeLearnStore({
     version: 2,
@@ -308,6 +320,7 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
     goals,
     ...(freeOutlines.length ? { outlines: freeOutlines } : {}),
     ...(videoNodes.length ? { videoNodes } : {}),
+    ...(projects.length ? { projects } : {}),
     conversations: ledgers.conversations,
     exams,
     tmp,
@@ -383,6 +396,7 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
     outlinesByGoal: {} as Record<string, { outlines: unknown[]; edges: Array<Record<string, unknown>> }>,
     videoNodesByGoal: {} as Record<string, unknown[]>,
     videoEdgesByGoal: {} as Record<string, Array<Record<string, unknown>>>,
+    projectsByGoal: {} as Record<string, unknown[]>,
   }
 
   // 目标目录必须是顶层（docs/{seg}）且自己那份 meta 在：结构不完整就整棵树跳过
@@ -539,6 +553,9 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
   const videoNodes2: unknown[] = []
   for (const led of Object.values(ledgers.videoNodesByGoal)) videoNodes2.push(...led)
   for (const led of Object.values(ledgers.videoEdgesByGoal)) edges.push(...led)
+  // 项目节点并进总账（旧布局没有 projects.json，这里恒为空，字段补齐走同一份归一）
+  const projects2: unknown[] = []
+  for (const led of Object.values(ledgers.projectsByGoal)) projects2.push(...led)
 
   return normalizeLearnStore({
     version: 2,
@@ -547,6 +564,7 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
     goals,
     ...(freeOutlines2.length ? { outlines: freeOutlines2 } : {}),
     ...(videoNodes2.length ? { videoNodes: videoNodes2 } : {}),
+    ...(projects2.length ? { projects: projects2 } : {}),
     conversations: ledgers.conversations,
     exams,
     tmp,

@@ -22,6 +22,7 @@ import {
 import { flushSync } from './flush'
 import { pickLocal, readLocal, readLocalMedia, revealLocal, setLocalWatchList, writeLocal } from './local'
 import { setWsWatchList } from './ws'
+import { clearNoticeImageCache, getCachedNoticeImage, saveCachedNoticeImage } from './noticeCache'
 import { closeBehavior, currentRoot, dataRootRiskOf, defaultRoot, loadGlobal, noticeSettings, pickRoot, setCloseBehavior, setNoticeSettings, setRoot } from './settings'
 import type { NoticeSettings } from '../../shared/ipc'
 
@@ -48,6 +49,9 @@ export function registerStorageIpc(): void {
   // 与关窗行为同属「跟机器走」的全局设置，落在同一份 global.yaml（见 settings.ts）
   ipcMain.handle('notice:get', () => noticeSettings())
   ipcMain.handle('notice:set', (_e, patch: unknown) => setNoticeSettings((patch ?? {}) as Partial<NoticeSettings>))
+  ipcMain.handle('notice:getCachedImage', (_e, url: unknown) => getCachedNoticeImage(url))
+  ipcMain.handle('notice:cacheImage', (_e, url: unknown, dataUrl: unknown) => saveCachedNoticeImage(url, dataUrl))
+  ipcMain.handle('notice:clearImageCache', () => clearNoticeImageCache())
 
   ipcMain.handle('storage:list', (_e, rel: unknown) => listDir(rel))
   ipcMain.handle('storage:read', (_e, rel: unknown) => readText(rel))

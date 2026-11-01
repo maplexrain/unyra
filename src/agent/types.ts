@@ -211,6 +211,11 @@ export interface ConversationMessage {
    */
   mcpDigest?: string
   /**
+   * 这是「学习者画像」那一条隐藏信息（见 agent/userInfo）。
+   * 首轮注入在人格与文档格式之后，提供客观学习者背景供因材施教。
+   */
+  userInfo?: boolean
+  /**
    * 附加上下文（如「询问」的选段位置），随消息一起送给模型但不展示。
    * 与 hidden 的区别：hidden 连正文都不显示，context 只补充说明、正文照常显示。
    */

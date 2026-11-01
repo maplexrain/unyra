@@ -8,7 +8,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages as codeLanguages } from '@codemirror/language-data'
 import { countSourceWords } from '../../lib/wordCount'
 import { markdownEditorTheme, markdownHighlight } from '../../lib/cmMarkdown'
-import { takeSourceReveal, type SourceReveal } from '../../lib/docReveal'
+import { takeSourceReveal, subscribeSourceReveal, type SourceReveal } from '../../lib/docReveal'
 import { useDocScroll } from '../../lib/docScroll'
 import { DocStatChip } from './DocFloat'
 import { t } from '../../i18n'
@@ -190,6 +190,20 @@ export default function SourceEditor({
     // value / onChange / placeholder 都走 ref 或按初值：这只 effect 一辈子只跑一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 监听实时定位广播（支持已挂载实例再次跳转）
+  useEffect(() => {
+    return subscribeSourceReveal((key, rev) => {
+      if (revealKey && key === revealKey && viewRef.current) {
+        const view = viewRef.current
+        const len = view.state.doc.length
+        const from = Math.max(0, Math.min(rev.start, len))
+        const to = Math.max(from, Math.min(rev.end, len))
+        view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true })
+        view.focus()
+      }
+    })
+  }, [revealKey])
 
   // 外部改动（暂存被撤、外部文件被换）：与编辑器当前内容不一致才整段替换
   useEffect(() => {

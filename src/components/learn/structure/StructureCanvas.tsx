@@ -48,16 +48,18 @@ export function getCanvasPerfStats(): Readonly<CanvasPerfStats> {
  */
 
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
-import { Check, Trash2 } from 'lucide-react'
+import type { HTMLAttributes, ReactNode } from 'react'
+import { Check, ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, Trash2 } from 'lucide-react'
 import type { LearnStore } from '../../../learn/types'
 import type { ExamActions, NodeDocActions } from '../explorer/types'
 import { locateUuid, outlineUuid, docIdOfOutlineUuid, type GNodeKind } from '../../../learn/nodeKinds'
+import { inferPathKind, resolveProjectRoot, sortProjectEntries } from '../../../learn/projects'
+import { native } from '../../../lib/native'
 import {
   CARD_H,
-  CARD_W,
   GRAPH_KIND_LABEL,
   boundsOf,
+  cardWidthOf,
   centerPan,
   clampZoom,
   fitZoom,
@@ -140,6 +142,10 @@ export interface StructureCanvasProps {
   onGenerateOutline?: (docUuid: string) => void
   /** 视频卡点「生成总览」：交给 AI 根据选集生成总览文档并挂在视频节点子级 */
   onGenerateVideoDoc?: (videoNodeUuid: string) => void
+  /** 项目卡设置 / 修改路径（统一通道：走节点对象的 editContent，与 agent 同一条路）；拼法由路径推断 */
+  onSetProjectPath?: (nodeUuid: string, path: string) => ChannelResult | Promise<ChannelResult>
+  /** 点项目卡目录树里的一个文件：本地文件页签打开（磁盘绝对路径） */
+  onOpenProjectFile?: (absPath: string) => void
   onToast?: (msg: string) => void
   /** 外部指定的聚焦目标（chip 路由）：把镜头挪到 uuid 对得上的那张卡 */
   focusTarget?: { nodeId: string; nonce: number } | null
@@ -151,7 +157,7 @@ export interface StructureCanvasProps {
  * 卡从落位那刻起就由 store 派生。入口、文档与大纲不在列表里——入口由目标绑定
  * 派生，子文档点大纲目标项，前置知识大纲走文档卡右键菜单。
  */
-const PALETTE: GNodeKind[] = ['doc', 'outline', 'note', 'exam', 'superdoc', 'video']
+const PALETTE: GNodeKind[] = ['doc', 'outline', 'note', 'exam', 'superdoc', 'video', 'project']
 
 /** 网格背景的点距（世界坐标 px）：平移/缩放时按相机换算，见画布根的 backgroundImage */
 const GRID_PX = 28
@@ -229,6 +235,16 @@ function KindIcon({ kind }: { kind: GNodeKind }) {
       </svg>
     )
   }
+  if (kind === 'project') {
+    // 文件夹 + 内部两行缩进条目：一眼是「一个目录」（比例对齐 lucide，不自造异形）
+    return (
+      <svg {...common}>
+        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+        <path d="M10 12h6" />
+        <path d="M10 16h4" />
+      </svg>
+    )
+  }
   if (kind === 'exam') {
     return (
       <svg {...common}>
@@ -297,6 +313,9 @@ const ICON_STROKE = {
 const MINI_W = 248
 const MINI_H = 160
 
+/** 项目卡路径行的高度（标题行之下、目录树之上；副行的路径 + 拼法徽标 + 展开钮） */
+const PROJ_PATH_ROW = 26
+
 /**
  * 缩略图上各类型的填充色（与卡片色板同族）。
  * canvas 只吃具体色值：写死的 hex 直接用，`var(--…)` 会在 drawMini 里按当前主题解析。
@@ -309,6 +328,7 @@ const MINI_FILL: Record<GNodeKind, string> = {
   exam: '#f59e0b',
   superdoc: '#8b5cf6',
   video: '#06b6d4',
+  project: '#14b8a6',
 }
 
 type Gesture =
@@ -341,8 +361,29 @@ interface MenuState {
   x: number
   y: number
   uuid: string
-  /** actions = 动作清单；note = 写注释；rename = 改笔记名；slot = 新加一条目标项；videoPick = 给视频卡挑一个视频绑上 */
-  mode: 'actions' | 'note' | 'rename' | 'slot' | 'videoPick'
+  /** actions = 动作清单；note = 写注释；rename = 改笔记名；slot = 新加一条目标项；videoPick = 给视频卡挑一个视频绑上；projectPath = 给项目卡设置路径 */
+  mode: 'actions' | 'note' | 'rename' | 'slot' | 'videoPick' | 'projectPath'
+}
+
+/**
+ * 滚轮隔离容器：内容自己滚动，滚轮事件**不冒泡**到画布（画布的滚轮是容器上的
+ * 原生冒泡监听，React 合成事件的 stopPropagation 拦不住它——React 17+ 把委托
+ * 挂在更外层的 root 上，事件先到画布容器）。项目卡的目录树与浮层菜单都用它。
+ */
+function WheelStop({ className, style, children, ...rest }: HTMLAttributes<HTMLDivElement>) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const stop = (e: WheelEvent) => e.stopPropagation()
+    el.addEventListener('wheel', stop)
+    return () => el.removeEventListener('wheel', stop)
+  }, [])
+  return (
+    <div ref={ref} className={className} style={style} {...rest}>
+      {children}
+    </div>
+  )
 }
 
 export const StructureCanvas = memo(function StructureCanvas({
@@ -364,6 +405,8 @@ export const StructureCanvas = memo(function StructureCanvas({
   onGenerateDoc,
   onGenerateOutline,
   onGenerateVideoDoc,
+  onSetProjectPath,
+  onOpenProjectFile,
   onToast,
   focusTarget,
   onFocusHandled,
@@ -382,7 +425,162 @@ export const StructureCanvas = memo(function StructureCanvas({
   const canvas = useMemo(() => (tourOpen ? getTourMockCanvas() : realCanvas), [tourOpen, realCanvas])
   const cards = canvas.cards
   const edges = canvas.edges
-  const height = canvas.heightOf
+
+  /* ---------- 项目卡的目录树（组件运行时状态，不进派生） ---------- */
+
+  /** 项目目录树的一行（平铺后的渲染模型：depth 决定缩进） */
+  interface ProjRow {
+    depth: number
+    name: string
+    isDirectory: boolean
+    /** 相对项目根的路径（'/' 分隔；根目录的子项 = name） */
+    path: string
+  }
+  /** 一个已加载目录的状态（按 subPath 缓存；error 挂在目录上，展开时显示） */
+  interface ProjDirState {
+    loading: boolean
+    error?: string
+    entries: Array<{ name: string; isDirectory: boolean }>
+  }
+
+  /** 展开的目录（键 = 项目 uuid，值 = 该卡展开的 subPath 集合；'' = 根） */
+  const [projExpanded, setProjExpanded] = useState<Record<string, Set<string>>>({})
+  /** 已加载的目录清单（同上按 subPath 缓存；展开那一拍才去读盘） */
+  const [projTrees, setProjTrees] = useState<Record<string, Record<string, ProjDirState>>>({})
+
+  /** 把已加载的树平铺成渲染行：展开的目录递归下钻，行数即树高 */
+  const flattenProjRows = useCallback((tree: Record<string, ProjDirState> | undefined, expanded: ReadonlySet<string>): ProjRow[] => {
+    const rows: ProjRow[] = []
+    const walk = (dirPath: string, depth: number) => {
+      const st = tree?.[dirPath]
+      if (!st) return
+      for (const e of st.entries) {
+        const childPath = dirPath ? dirPath + '/' + e.name : e.name
+        rows.push({ depth, name: e.name, isDirectory: e.isDirectory, path: childPath })
+        if (e.isDirectory && expanded.has(childPath)) walk(childPath, depth + 1)
+      }
+    }
+    walk('', 0)
+    return rows
+  }, [])
+
+  /** 项目卡展开的树有多高（行数封顶；未展开 0） */
+  const projTreeRows = useCallback(
+    (uuid: string): ProjRow[] => {
+      const expanded = projExpanded[uuid]
+      if (!expanded || !expanded.size) return []
+      return flattenProjRows(projTrees[uuid], expanded)
+    },
+    [projExpanded, projTrees, flattenProjRows],
+  )
+
+  /** 读一个目录进缓存（roots 只随本次调用走：授权边界 = 这枚节点此刻声明的根） */
+  const loadProjDir = useCallback(
+    async (uuid: string, dirPath: string) => {
+      const entity = (store.projects ?? []).find((p) => p.id === uuid)
+      if (!entity) return
+      const root = resolveProjectRoot(store, entity)
+      setProjTrees((m) => {
+        const cur = m[uuid]?.[dirPath]
+        return { ...m, [uuid]: { ...m[uuid], [dirPath]: cur?.entries ? { ...cur, loading: true } : { loading: true, entries: [] } } }
+      })
+      if (!root) {
+        setProjTrees((m) => ({
+          ...m,
+          [uuid]: { ...m[uuid], [dirPath]: { loading: false, error: t('路径解析失败：相对路径要落在用户目录内，或检查数据根是否就绪'), entries: [] } },
+        }))
+        return
+      }
+      try {
+        const abs = root.replace(/[\\/]+$/, '') + (dirPath ? '/' + dirPath : '')
+        const r = await native().projectFs({ op: 'list', roots: [root], path: abs })
+        if (r.ok && r.op === 'list') {
+          setProjTrees((m) => ({
+            ...m,
+            [uuid]: {
+              ...m[uuid],
+              [dirPath]: { loading: false, entries: sortProjectEntries(r.entries.map((e) => ({ name: e.name, isDirectory: e.isDirectory }))) },
+            },
+          }))
+        } else {
+          setProjTrees((m) => ({
+            ...m,
+            [uuid]: { ...m[uuid], [dirPath]: { loading: false, error: 'error' in r ? r.error : t('读取失败'), entries: [] } },
+          }))
+        }
+      } catch (err) {
+        setProjTrees((m) => ({
+          ...m,
+          [uuid]: { ...m[uuid], [dirPath]: { loading: false, error: err instanceof Error ? err.message : String(err), entries: [] } },
+        }))
+      }
+    },
+    [store],
+  )
+
+  /** 清掉一枚项目卡的目录树缓存与展开态：换路径之后旧清单就是陈词，必须重读 */
+  const clearProjCache = useCallback((uuid: string) => {
+    setProjTrees((m) => ({ ...m, [uuid]: {} }))
+    setProjExpanded((m) => ({ ...m, [uuid]: new Set<string>() }))
+  }, [])
+
+  /** 展开一张项目卡：根目录首次展开时才去读盘（懒加载，卡上不预先跑 IO） */
+  const toggleProjRoot = useCallback(
+    (uuid: string) => {
+      setProjExpanded((m) => {
+        const cur = m[uuid] ?? new Set<string>()
+        const next = new Set(cur)
+        if (next.has('')) {
+          next.delete('')
+        } else {
+          next.add('')
+          if (!projTrees[uuid]?.['']) void loadProjDir(uuid, '')
+        }
+        return { ...m, [uuid]: next }
+      })
+    },
+    [projTrees, loadProjDir],
+  )
+
+  /** 展开/收起树里的一个子目录：同样展开那一拍才读盘 */
+  const toggleProjDir = useCallback(
+    (uuid: string, dirPath: string) => {
+      setProjExpanded((m) => {
+        const cur = m[uuid] ?? new Set<string>()
+        const next = new Set(cur)
+        if (next.has(dirPath)) {
+          next.delete(dirPath)
+        } else {
+          next.add(dirPath)
+          if (!projTrees[uuid]?.[dirPath]) void loadProjDir(uuid, dirPath)
+        }
+        return { ...m, [uuid]: next }
+      })
+    },
+    [projTrees, loadProjDir],
+  )
+
+  /** 项目卡目录树的行高（与大纲目标项同一档：22px 一行） */
+  const PROJ_TREE_ROW = SLOT_ROW
+  /** 树的可见行数上限：再深的目录滚着看（卡是画布上的卡，不能无限长） */
+  const PROJ_TREE_MAX_ROWS = 12
+
+  /**
+   * 高度函数：派生层管全部静态卡，项目卡的展开高度在这里叠加——
+   * 展开状态是组件运行时状态（projExpanded），派生层不知道它。
+   */
+  const height = useCallback(
+    (c: { uuid: string; kind: GNodeKind }) => {
+      const projPath = (c as CardView).project?.path ?? cards.find((it) => it.uuid === c.uuid)?.project?.path
+      if (c.kind === 'project' && projPath) {
+        const rows = projTreeRows(c.uuid)
+        const treeH = rows.length ? Math.min(rows.length, PROJ_TREE_MAX_ROWS) * PROJ_TREE_ROW + CARD_PAD_B : 0
+        return CARD_H + PROJ_PATH_ROW + treeH
+      }
+      return canvas.heightOf(c)
+    },
+    [cards, canvas, projTreeRows, PROJ_TREE_ROW, PROJ_TREE_MAX_ROWS],
+  )
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const trashRef = useRef<HTMLDivElement | null>(null)
@@ -579,7 +777,7 @@ export const StructureCanvas = memo(function StructureCanvas({
           const h = height(c)
           return (
             c.x <= viewportBox.right &&
-            c.x + CARD_W >= viewportBox.left &&
+            c.x + cardWidthOf(c.kind) >= viewportBox.left &&
             c.y <= viewportBox.bottom &&
             c.y + h >= viewportBox.top
           )
@@ -613,14 +811,18 @@ export const StructureCanvas = memo(function StructureCanvas({
     }
     const g = gestureRef.current
     if (g?.mode === 'link') {
+      // fromKind 收进局部量再比较：ref 只读一次（同一访问模式的警告少一条是一条）
+      const fk = g.fromKind
       const wants: GNodeKind[] | null =
-        g.fromKind === 'outline'
+        fk === 'outline'
           ? ['doc', 'outline']
-          : g.fromKind === 'video'
+          : fk === 'video'
             ? ['doc']
-            : g.fromKind === 'doc'
-              ? ['outline', 'video']
-              : null
+            : fk === 'doc'
+              ? ['outline', 'video', 'project', 'note', 'exam', 'superdoc']
+              : fk === 'project'
+                ? ['doc'] // 项目只能挂到文档之下：从项目卡拉出去，文档卡是唯一落点
+                : null
       // 从大纲拉到大纲：自己那张不算落点（连自己没有意义）
       return wants
         ? new Set(cards.filter((c) => wants.includes(c.kind) && c.uuid !== g.from).map((c) => c.uuid))
@@ -758,7 +960,7 @@ export const StructureCanvas = memo(function StructureCanvas({
       if (!card || !view.width) return
       const zoom = Math.max(cameraRef.current.zoom, 1)
       animateCamera({
-        ...centerPan({ x: card.x, y: card.y, width: CARD_W, height: height(card) }, view, zoom),
+        ...centerPan({ x: card.x, y: card.y, width: cardWidthOf(card.kind), height: height(card) }, view, zoom),
         zoom,
       })
       setSelectedId(id)
@@ -775,7 +977,7 @@ export const StructureCanvas = memo(function StructureCanvas({
     (card: CardView) => {
       if (!view.width || !view.height) return
       animateCamera({
-        x: view.width / 2 - (card.x + CARD_W / 2) * FOCUS_ZOOM,
+        x: view.width / 2 - (card.x + cardWidthOf(card.kind) / 2) * FOCUS_ZOOM,
         y: view.height * FOCUS_VERTICAL - (card.y + height(card) / 2) * FOCUS_ZOOM,
         zoom: FOCUS_ZOOM,
       })
@@ -793,7 +995,7 @@ export const StructureCanvas = memo(function StructureCanvas({
     const target = cards.find((c) => c.uuid === outlineUuid(focusTarget.nodeId)) ?? cards.find((c) => c.uuid === focusTarget.nodeId)
     if (target && view.width) {
       const zoom = Math.max(cameraRef.current.zoom, 1)
-      animateCamera({ ...centerPan({ x: target.x, y: target.y, width: CARD_W, height: height(target) }, view, zoom), zoom })
+      animateCamera({ ...centerPan({ x: target.x, y: target.y, width: cardWidthOf(target.kind), height: height(target) }, view, zoom), zoom })
       setSelectedId(target.uuid)
       flash(target.uuid)
     }
@@ -1023,9 +1225,15 @@ export const StructureCanvas = memo(function StructureCanvas({
         else onToast?.(t('这张视频卡还没有绑视频：点卡上的「选择视频」'))
         return
       }
+      if (card.kind === 'project') {
+        // 项目卡没有可打开的页签：有路径的给展开（目录树就是它的正文），没路径的指去设置
+        if (card.project?.path) toggleProjRoot(card.uuid)
+        else onToast?.(t('这枚项目节点还没有设置路径：右键卡片 →「设置路径」'))
+        return
+      }
       onToast?.(t('大纲节点就在这张画布上，没有另一份页签'))
     },
-    [docs, exams, onToast, onOpenVideo, store],
+    [docs, exams, onToast, onOpenVideo, store, toggleProjRoot],
   )
 
   /* ---------- 自动排列（清掉坐标、交给派生铺排；便条保留） ---------- */
@@ -1374,7 +1582,7 @@ export const StructureCanvas = memo(function StructureCanvas({
              */
             if (g.slotKey && fromCard?.kind === 'outline') tryConnect(g.from, target.uuid, g.slotKey)
             else tryConnect(target.uuid, g.from)
-          } else if (isPair('doc', 'note') || isPair('doc', 'exam') || isPair('doc', 'superdoc')) {
+          } else if (isPair('doc', 'note') || isPair('doc', 'exam') || isPair('doc', 'superdoc') || isPair('doc', 'project')) {
             const doc = fromCard?.kind === 'doc' ? g.from : target.uuid
             const widget = fromCard?.kind === 'doc' ? target.uuid : g.from
             tryConnect(doc, widget)
@@ -1394,7 +1602,7 @@ export const StructureCanvas = memo(function StructureCanvas({
         // 几乎没拉：当成一次普通点击（选择已清），不进入多选
         if (!rect || (rect.width < 4 && rect.height < 4)) return
         const found = cards.filter((c) => {
-          const r = { x: c.x, y: c.y, width: CARD_W, height: height(c) }
+          const r = { x: c.x, y: c.y, width: cardWidthOf(c.kind), height: height(c) }
           return r.x < rect.x + rect.width && rect.x < r.x + r.width && r.y < rect.y + rect.height && rect.y < r.y + r.height
         })
         if (!found.length) return
@@ -1504,7 +1712,9 @@ export const StructureCanvas = memo(function StructureCanvas({
                   ? t('已放一份空超级文档「{0}」：点「生成超级文档」让 AI 来写', r.title)
                   : g.kind === 'outline'
                     ? t('已建一张独立的大纲卡：目标项写在卡上，往下挂文档或再开一层大纲')
-                    : t('已建文档「{0}」：点标题打开写正文', r.title),
+                    : g.kind === 'project'
+                      ? t('已建一枚项目节点：右键卡片 →「设置路径」声明一条真实路径，之后 agent 可以读写它下面的所有文件')
+                      : t('已建文档「{0}」：点标题打开写正文', r.title),
           )
         }
       }
@@ -1805,7 +2015,7 @@ export const StructureCanvas = memo(function StructureCanvas({
       const fill = fillOf(c.kind)
       const x = px(c.x)
       const y = py(c.y)
-      const w = CARD_W * sx
+      const w = cardWidthOf(c.kind) * sx
       const h = height(c) * sy
       const radius = Math.min(3 * sx, w / 2)
       const hollow = !!c.blank || (c.kind === 'doc' && !c.entry && !hasIncoming.has(c.uuid))
@@ -1849,9 +2059,9 @@ export const StructureCanvas = memo(function StructureCanvas({
         const l2 = c.y + OUTLINE_HEAD + DOC_LINE_H * 1.6
         ctx.beginPath()
         ctx.moveTo(px(c.x + 12), py(l1))
-        ctx.lineTo(px(c.x + CARD_W - 12), py(l1))
+        ctx.lineTo(px(c.x + cardWidthOf(c.kind) - 12), py(l1))
         ctx.moveTo(px(c.x + 12), py(l2))
-        ctx.lineTo(px(c.x + CARD_W * 0.72), py(l2))
+        ctx.lineTo(px(c.x + cardWidthOf(c.kind) * 0.72), py(l2))
         ctx.strokeStyle = inkFaint
         ctx.globalAlpha = 0.6
         ctx.lineWidth = 1
@@ -1953,7 +2163,7 @@ export const StructureCanvas = memo(function StructureCanvas({
               if (viewportBox && !isSelected) {
                 const left = Math.min(from.x, to.x) - EDGE_CULL_PAD
                 const top = Math.min(from.y, to.y) - EDGE_CULL_PAD
-                const right = Math.max(from.x, to.x) + CARD_W + EDGE_CULL_PAD
+                const right = Math.max(from.x + cardWidthOf(from.kind), to.x + cardWidthOf(to.kind)) + EDGE_CULL_PAD
                 const bottom = Math.max(from.y + height(from), to.y + height(to)) + EDGE_CULL_PAD
                 if (
                   right < viewportBox.left ||
@@ -2081,7 +2291,7 @@ export const StructureCanvas = memo(function StructureCanvas({
           // 性能优化：视口包围盒裁剪，视口外的普通卡片仅渲染轻量占位容器，削减数千个复杂子 DOM
           const inView = !viewportBox || (
             card.x <= viewportBox.right &&
-            card.x + CARD_W >= viewportBox.left &&
+            card.x + cardWidthOf(card.kind) >= viewportBox.left &&
             card.y <= viewportBox.bottom &&
             card.y + h >= viewportBox.top
           )
@@ -2113,7 +2323,7 @@ export const StructureCanvas = memo(function StructureCanvas({
               style={{
                 left: card.x,
                 top: card.y,
-                width: CARD_W,
+                width: cardWidthOf(card.kind),
                 height: h,
                 // 悬停不抢光标（箭头就好），拖起来才换成抓住的手——「可拖」由选中态与阴影说
                 cursor: lifted ? 'grabbing' : undefined,
@@ -2358,6 +2568,131 @@ export const StructureCanvas = memo(function StructureCanvas({
                     </button>
                   </div>
                 </div>
+              ) : card.kind === 'project' ? (
+                /*
+                  项目卡：路径行（拼法徽标 + 路径 + 展开钮）+ 懒加载的目录树。
+                  必须是真按钮：画布容器在 pointerdown 上捕获指针，非白名单元素的 click 会被吞掉。
+                  目录树状态（展开/已加载数据）是组件自己的，不进派生——高度在 height 包装里叠加；
+                  树容器是 WheelStop：内容自己滚，滚轮不许冒泡到画布的相机。
+                */
+                <div className="flex min-h-0 flex-1 flex-col pb-2">
+                  {card.project?.path ? (
+                    <>
+                      <div className="flex items-center gap-1.5 px-3" style={{ height: PROJ_PATH_ROW }}>
+                        <button
+                          type="button"
+                          title={t('展开 / 收起这个项目的目录')}
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-teal-700 hover:bg-teal-500/15 dark:text-teal-300"
+                          onClick={() => toggleProjRoot(card.uuid)}
+                        >
+                          {projExpanded[card.uuid]?.has('') ? (
+                            <ChevronDown size={13} className="shrink-0" />
+                          ) : (
+                            <ChevronRight size={13} className="shrink-0" />
+                          )}
+                        </button>
+                        <span
+                          className="shrink-0 rounded bg-teal-500/15 px-1 py-[1px] text-[9px] font-semibold text-teal-700 dark:text-teal-300"
+                          title={card.project.resolved ? t('解析到的真实路径') + '\n' + card.project.resolved : t('路径此刻解析不出（相对路径越出了用户目录，或数据根未就绪）')}
+                        >
+                          {card.project.pathKind === 'relative' ? t('相对') : t('绝对')}
+                        </span>
+                        <span
+                          className="min-w-0 flex-1 truncate text-[11px] text-ink-soft"
+                          title={card.project.resolved ? card.project.resolved : card.project.path}
+                        >
+                          {card.project.path}
+                        </span>
+                        <button
+                          type="button"
+                          title={t('修改这条声明（路径或拼法）')}
+                          className="shrink-0 rounded bg-line/60 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-line/90 transition cursor-pointer"
+                          onClick={(e) => {
+                            const r = e.currentTarget.getBoundingClientRect()
+                            setMenuText(card.project?.path ?? '')
+                            setMenu({
+                              x: Math.min(r.right, window.innerWidth - 300),
+                              y: Math.min(r.bottom + 6, window.innerHeight - 200),
+                              uuid: card.uuid,
+                              mode: 'projectPath',
+                            })
+                          }}
+                        >
+                          {t('改路径')}
+                        </button>
+                      </div>
+                      {projExpanded[card.uuid]?.has('') && (
+                        <WheelStop
+                          className="mx-2 overflow-y-auto rounded-md border border-line/70 bg-paper/40"
+                          style={{ maxHeight: PROJ_TREE_MAX_ROWS * PROJ_TREE_ROW }}
+                        >
+                          {(() => {
+                            const tree = projTrees[card.uuid]?.['']
+                            if (tree?.loading) return <div className="px-3 py-1.5 text-[11px] text-ink-faint">{t('读取中…')}</div>
+                            if (tree?.error) return <div className="px-3 py-1.5 text-[11px] text-seal-deep" title={tree.error}>{tree.error}</div>
+                            const rows = projTreeRows(card.uuid)
+                            if (!rows.length) return <div className="px-3 py-1.5 text-[11px] text-ink-faint">{t('（空目录）')}</div>
+                            return (
+                              <div className="flex flex-col py-0.5">
+                                {rows.map((row) => (
+                                  <button
+                                    key={row.path}
+                                    type="button"
+                                    title={row.isDirectory ? row.path : t('在新页签打开这个文件')}
+                                    className={
+                                      'flex w-full cursor-pointer items-center gap-1 text-left text-[11px] hover:bg-teal-500/10 ' +
+                                      (row.isDirectory ? 'text-ink' : 'text-ink-soft hover:text-seal')
+                                    }
+                                    style={{ height: PROJ_TREE_ROW, paddingLeft: 10 + row.depth * 12 }}
+                                    onClick={() => {
+                                      if (row.isDirectory) toggleProjDir(card.uuid, row.path)
+                                      else if (card.project?.resolved && onOpenProjectFile) {
+                                        onOpenProjectFile(card.project.resolved.replace(/[\\/]+$/, '') + '/' + row.path)
+                                      }
+                                    }}
+                                  >
+                                    {row.isDirectory ? (
+                                      projExpanded[card.uuid]?.has(row.path) ? (
+                                        <FolderOpen size={11} className="shrink-0 text-teal-600 dark:text-teal-400" />
+                                      ) : (
+                                        <Folder size={11} className="shrink-0 text-teal-600 dark:text-teal-400" />
+                                      )
+                                    ) : (
+                                      <FileIcon size={11} className="shrink-0 text-ink-faint" />
+                                    )}
+                                    <span className="min-w-0 flex-1 truncate">{row.name}</span>
+                                    {!row.isDirectory && <ExternalLink size={9} className="shrink-0 text-ink-faint/60" />}
+                                  </button>
+                                ))}
+                              </div>
+                            )
+                          })()}
+                        </WheelStop>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-between gap-2 px-3 pb-2">
+                      <span className="min-w-0 flex-1 truncate text-[11px] text-ink-faint">{card.subtitle}</span>
+                      <button
+                        type="button"
+                        title={t('声明这条路径（相对目标根目录或电脑绝对路径）')}
+                        className="shrink-0 rounded bg-teal-500/15 px-2 py-0.5 text-[11px] font-medium text-teal-700 hover:bg-teal-500/25 transition cursor-pointer dark:text-teal-300"
+                        onClick={(e) => {
+                          const r = e.currentTarget.getBoundingClientRect()
+                          setMenuText('')
+                          setMenu({
+                            x: Math.min(r.right, window.innerWidth - 300),
+                            y: Math.min(r.bottom + 6, window.innerHeight - 200),
+                            uuid: card.uuid,
+                            mode: 'projectPath',
+                          })
+                        }}
+                      >
+                        {t('设置路径')}
+                      </button>
+                    </div>
+                  )}
+                </div>
               ) : (card.kind === 'exam' || card.kind === 'superdoc') && card.blank && leafOwnerNodeId ? (
                 /*
                   还没生成内容的试卷 / 超级文档：给一颗「生成」——出卷会先问类型与难度，
@@ -2419,7 +2754,7 @@ export const StructureCanvas = memo(function StructureCanvas({
             {card.note && (
               <div
                 className="absolute max-w-[260px] text-[10.5px] leading-snug text-ink-soft"
-                style={{ left: card.x, top: card.y + h + 6, width: CARD_W }}
+                style={{ left: card.x, top: card.y + h + 6, width: cardWidthOf(card.kind) }}
                 title={card.note}
               >
                 {card.note}
@@ -2599,11 +2934,11 @@ export const StructureCanvas = memo(function StructureCanvas({
         </ControlButton>
       </div>
 
-      {/* 从列表拖出来时跟着指针的那张卡 */}
+      {/* 从列表拖出来时跟着指针的那张卡（宽度跟着落地后的种类走：项目卡本来就宽一截） */}
       {paletteKind && paletteAt && (
         <div
           className="pointer-events-none fixed z-50 flex items-center gap-1.5 rounded-xl border border-seal/40 bg-card/95 px-3 py-2 text-[12px] text-ink shadow-lg"
-          style={{ left: paletteAt.x - CARD_W / 2, top: paletteAt.y - CARD_H / 2, width: CARD_W, height: CARD_H }}
+          style={{ left: paletteAt.x - cardWidthOf(paletteKind) / 2, top: paletteAt.y - CARD_H / 2, width: cardWidthOf(paletteKind), height: CARD_H }}
         >
           <span className={`rounded px-1.5 py-[1px] text-[10px] font-semibold ${KIND_BADGE[paletteKind]}`}>
             {t(GRAPH_KIND_LABEL[paletteKind])}
@@ -2615,11 +2950,12 @@ export const StructureCanvas = memo(function StructureCanvas({
       {/* 新手教学：全屏遮罩挖洞、逐步指路，随时可退（见 StructureTour） */}
       {tourOpen && <StructureTour onClose={handleCloseTour} />}
 
-      {/* 节点右键菜单 / 视频卡的下拉 */}
+      {/* 节点右键菜单 / 视频卡的下拉（WheelStop：浮层虽是 fixed 定位，DOM 还长在画布
+          容器里——长列表滚动时不拦住滚轮，相机就跟着乱跑） */}
       {menu && menuCard && (
-        <div
+        <WheelStop
           data-menu
-          className={`fixed z-50 ${menu.mode === 'videoPick' ? 'w-[248px]' : 'w-[168px]'} rounded-lg border border-line bg-card/95 p-1 text-[12px] text-ink shadow-lg backdrop-blur`}
+          className={`fixed z-50 ${menu.mode === 'videoPick' || menu.mode === 'projectPath' ? 'w-[280px]' : 'w-[168px]'} rounded-lg border border-line bg-card/95 p-1 text-[12px] text-ink shadow-lg backdrop-blur`}
           style={{ left: menu.x, top: menu.y }}
         >
           {menu.mode === 'actions' ? (
@@ -2707,6 +3043,18 @@ export const StructureCanvas = memo(function StructureCanvas({
                   {menuCard.blank ? t('选择视频') : t('换一个视频')}
                 </button>
               )}
+              {menuCard.kind === 'project' && (
+                <button
+                  type="button"
+                  className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
+                  onClick={() => {
+                    setMenuText(menuCard.project?.path ?? '')
+                    setMenu({ ...menu, mode: 'projectPath' })
+                  }}
+                >
+                  {menuCard.project?.path ? t('修改路径') : t('设置路径')}
+                </button>
+              )}
             </>
           ) : menu.mode === 'videoPick' ? (
             /*
@@ -2756,6 +3104,77 @@ export const StructureCanvas = memo(function StructureCanvas({
                 </button>
               )}
             </div>
+          ) : menu.mode === 'projectPath' ? (
+            /*
+              项目卡的路径输入态：拼法**由输入的路径自己说**（盘符 / `/` 开头 = 绝对，
+              其余相对目标根目录），徽标实时跟随；「浏览…」弹系统目录选择器，选中的
+              是绝对路径。保存走统一通道（onSetProjectPath → 节点对象的 editContent），
+              与 agent 的 editContent({ path }) 同一条路；宿主那一侧保存成功后会把
+              还不存在的目录建出来、并清掉这枚卡的目录树缓存（换路径立即生效）。
+            */
+            <div className="flex flex-col gap-1.5 p-1">
+              <div className="text-[10px] text-ink-faint">
+                {menuCard.project?.path ? t('修改这条项目声明（声明的路径及其子树对 agent 开放）') : t('声明一条真实路径：相对目标根目录，或电脑上的绝对路径')}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="shrink-0 rounded bg-teal-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700 dark:text-teal-300"
+                  title={
+                    inferPathKind(menuText) === 'absolute'
+                      ? t('电脑上的绝对路径（如 D:\\projects\\demo 或 /home/me/demo）')
+                      : t('相对目标根目录：docs/{目标段}/ 之下，支持用 .. 移到兄弟目录')
+                  }
+                >
+                  {inferPathKind(menuText) === 'absolute' ? t('绝对') : t('相对')}
+                </span>
+                <input
+                  autoFocus
+                  value={menuText}
+                  onChange={(e) => setMenuText(e.target.value)}
+                  placeholder={inferPathKind(menuText) === 'absolute' ? t('如：D:\\projects\\demo') : t('如：代码练习 或 ../共享资料')}
+                  className="min-w-0 flex-1 rounded border border-line bg-paper/80 px-1.5 py-1 text-[12px] text-ink outline-none focus:border-teal-500/50"
+                />
+                <button
+                  type="button"
+                  title={t('从系统目录选择器里挑一条真实路径')}
+                  className="shrink-0 rounded bg-line/60 px-2 py-1 text-[11px] text-ink-soft hover:bg-line/90 transition cursor-pointer"
+                  onClick={async () => {
+                    try {
+                      const r = await native().pickProjectDirectory()
+                      if (!r.canceled && r.path) setMenuText(r.path)
+                    } catch {
+                      onToast?.(t('这个环境打不开目录选择器：直接输入路径即可'))
+                    }
+                  }}
+                >
+                  {t('浏览…')}
+                </button>
+              </div>
+              <div className="flex justify-end gap-1">
+                <button
+                  type="button"
+                  className="rounded px-2 py-1 text-[11px] text-ink-soft hover:bg-line/60"
+                  onClick={() => setMenu(null)}
+                >
+                  {t('取消')}
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-teal-500/15 px-2 py-1 text-[11px] text-teal-700 hover:bg-teal-500/25 dark:text-teal-300"
+                  onClick={async () => {
+                    const path = menuText.trim()
+                    setMenu(null)
+                    if (!path || !onSetProjectPath) return
+                    const r = await onSetProjectPath(menu.uuid, path)
+                    // 换路径 = 旧的目录树缓存整体作废：清掉之后重新展开就是新路径的内容
+                    clearProjCache(menu.uuid)
+                    report(r)
+                  }}
+                >
+                  {t('保存')}
+                </button>
+              </div>
+            </div>
           ) : (
             <div className="flex flex-col gap-1.5 p-1">
               <div className="text-[10px] text-ink-faint">
@@ -2798,7 +3217,7 @@ export const StructureCanvas = memo(function StructureCanvas({
               </div>
             </div>
           )}
-        </div>
+        </WheelStop>
       )}
 
       {/* 空画布提示 */}

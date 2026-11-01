@@ -14,6 +14,7 @@ import { hydrateCodeRun } from './codeBlockMenu'
 import { hydratePlots } from './plot'
 import { MERMAID_LANG, mermaidBlock, hydrateMermaid } from './mermaid'
 import { videosBlock, hydrateVideos } from './videosBlock'
+import { quoteBlock, hydrateQuotes } from './quoteBlock'
 import { registerRenderPlugin, type PluginRenderContext } from './renderPlugins'
 import { languageCount } from '../syntax/LanguageAliases'
 
@@ -107,6 +108,15 @@ registerRenderPlugin({
   fences: ['videos'],
   render: (source: string, ctx: PluginRenderContext) => videosBlock(source, ctx),
   hydrate: (root: HTMLElement) => hydrateVideos(root),
+})
+
+registerRenderPlugin({
+  id: 'quote',
+  name: '引用原文',
+  builtin: true,
+  fences: ['quote'],
+  render: (source: string, ctx: PluginRenderContext) => quoteBlock(source, ctx),
+  hydrate: (root: HTMLElement) => hydrateQuotes(root),
 })
 
 /**

@@ -13,12 +13,12 @@
  *   同源，「build 能生成」与「点击打得开」是同一件事。
  */
 import { chipToken, splitChips, type ChipPayload } from '../../lib/chipSyntax'
-import { docsInfoOf, resolveNode } from '../paths'
+import { docsInfoOf, nodePathOf, resolveNode, splitDocPath } from '../paths'
 import { chipResolveProblem } from '../chipRef'
 import { nodeDocPath } from '../files/build'
 import { superDocsOf, type KnowledgeNode, type LearnStore } from '../types'
 import { wsRelOf } from '../workspace'
-import { ancestors } from '../graph'
+import { ancestors, nodeById } from '../graph'
 import type { AgentOpsDeps } from './deps'
 
 const BUILD_TYPES = ['doc', 'note', 'outline', 'super', 'exam', 'attempt', 'ws', 'web', 'local'] as const
@@ -47,14 +47,19 @@ export function createChipOps(deps: AgentOpsDeps) {
   }
 
   /** 生成前的最后一道校验 + 回执（定位规则与 opener 同源，见 chipRef.chipResolveProblem） */
-  const finish = (p: ChipPayload): { ok: true; chip: string; type: string; title: string; note: string } | { ok: false; problem: string } => {
+  const finish = (p: ChipPayload): { ok: true; chip: string; type: string; title: string; path?: string; docPath?: string; deliveryPath?: string; nodeId?: string; note: string } | { ok: false; problem: string } => {
     const problem = chipResolveProblem(store0(), p)
     if (problem) return { ok: false, problem }
+    const docPath = p.nodeId ? nodePathOf(store0(), scope().goalId, p.nodeId) : undefined
     return {
       ok: true,
       chip: chipToken(p),
       type: p.type,
       title: p.title ?? '',
+      path: p.path,
+      ...(docPath ? { docPath } : {}),
+      deliveryPath: docPath || p.title || p.path,
+      ...(p.nodeId ? { nodeId: p.nodeId } : {}),
       note: '把这串 chip 原样抄进回复（不要手改里面的 JSON）。',
     }
   }
@@ -133,9 +138,19 @@ export function createChipOps(deps: AgentOpsDeps) {
           ...(title ? { title } : { title: exam.title }),
         })
       }
-      // doc / note / outline / super：先解析节点（path 与 doc.* 同构；省略 = 当前节点）
+      // doc / note / outline / super：先解析节点（优先认 nodeId / uuid，再按路径解析；支持 '文档/笔记'）
       const kind = type as ChipPayload['type']
-      const got = nodeFor(str('path'))
+      const directId = str('nodeId') ?? str('uuid')
+      const rawPath = str('path')
+      const splitted = splitDocPath(rawPath)
+      let got: { ok: true; node: KnowledgeNode } | { ok: false; problem: string }
+      if (directId) {
+        const found = nodeById(store0(), directId.replace(/^#/, ''))
+        got = found ? { ok: true, node: found } : { ok: false, problem: '没有找到 id 为「' + directId + '」的节点' }
+      } else {
+        const nodePath = splitted.segments.join('/')
+        got = nodeFor(nodePath || undefined)
+      }
       if (!got.ok) return { ok: false, problem: got.problem }
       const node = got.node
       if (type === 'super') {
@@ -151,7 +166,7 @@ export function createChipOps(deps: AgentOpsDeps) {
       }
       if (type === 'note') {
         const names = noteNamesOf(node)
-        const note = str('note') ?? (names.length === 1 ? names[0] : undefined)
+        const note = str('note') ?? (splitted.kind === 'note' && splitted.note ? splitted.note : (names.length === 1 ? names[0] : undefined))
         if (!note) {
           return {
             ok: false,

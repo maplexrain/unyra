@@ -141,6 +141,13 @@ export function normalizeStructureBook(raw: unknown, goalIds: ReadonlySet<string
 
 export const CARD_W = 208
 export const CARD_H = 76
+/** 项目卡是普通卡的 1.5 倍宽：要装下路径行与可展开的目录树（其余卡统一 208） */
+export const PROJ_CARD_W = Math.round(CARD_W * 1.5)
+
+/** 一类卡多宽（project 独宽，其余同宽）：几何、命中、铺排、渲染共用这一份，别处再写一个数就会对不上 */
+export function cardWidthOf(kind: GNodeKind): number {
+  return kind === 'project' ? PROJ_CARD_W : CARD_W
+}
 
 export interface Rect {
   x: number
@@ -155,7 +162,7 @@ export type HeightOf = (node: { uuid: string; kind: GNodeKind }) => number
 export const defaultHeight: HeightOf = () => CARD_H
 
 export function rectOf(node: { uuid: string; kind: GNodeKind; x: number; y: number }, heightOf: HeightOf = defaultHeight): Rect {
-  return { x: node.x, y: node.y, width: CARD_W, height: heightOf(node) }
+  return { x: node.x, y: node.y, width: cardWidthOf(node.kind), height: heightOf(node) }
 }
 
 /** 全部卡片的包围盒；一张都没有时返回 null（调用方据此不做「适应画布」） */
@@ -169,7 +176,8 @@ export function boundsOf(nodes: readonly { uuid: string; kind: GNodeKind; x: num
     const h = heightOf(n)
     if (n.x < minX) minX = n.x
     if (n.y < minY) minY = n.y
-    if (n.x + CARD_W > maxX) maxX = n.x + CARD_W
+    const w = cardWidthOf(n.kind)
+    if (n.x + w > maxX) maxX = n.x + w
     if (n.y + h > maxY) maxY = n.y + h
   }
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }

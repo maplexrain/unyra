@@ -8,7 +8,7 @@
 import { loadAgentSettings } from '../../agent/settings'
 import { layoutHintOf } from '../../agent/docFormat'
 import { bindExam, bindNote, bindSuperDoc, detachExam, detachNote, detachSuperDoc } from '../detached'
-import { examsOfNode, nodeById, removeEdge, titleTaken, updateDoc, updateNode } from '../graph'
+import { addEdge, examsOfNode, nodeById, removeEdge, titleTaken, updateDoc, updateNode } from '../graph'
 import { clearOutline } from '../outline'
 import { notesOf } from '../notes'
 import { superDocsOf, type KnowledgeNode } from '../types'
@@ -62,6 +62,11 @@ export class DocGNode extends GNode {
     for (const e of s.edges) {
       if (e.from !== this.uuid || !nodeById(s, e.to)) continue
       out.push({ id: e.to, type: 'down' })
+    }
+    // 挂载的项目节点（树边 from 我 to 项目实体）：与挂件同一款的下游
+    for (const e of s.edges) {
+      if (e.from !== this.uuid) continue
+      if ((s.projects ?? []).some((p) => p.id === e.to)) out.push({ id: e.to, type: 'down' })
     }
     if (node.outline) out.push({ id: outlineUuid(this.uuid), type: 'down' })
     for (const n of notesOf(node)) out.push({ id: n.id, type: 'down' })
@@ -168,7 +173,7 @@ export class DocGNode extends GNode {
         root
           ? '上游是入口（entry:，由目标绑定自动生成，不能手工连）。'
           : '上游是大纲（o: 前缀）：把这份文档挂到某份大纲下，先取那份大纲再 connect(我, "up", 目标项key?)——第三个参数给目标项 key 就认领了这个接口，之后 await 我.getPortData() 能读到「这条目标项要我写什么」。',
-        '下游（大纲 / 笔记 / 试卷 / 超级文档）都可以连线：api.node.create({ kind, under: 我的 uuid }) 创建即挂；拖线 / connect(挂件对象, "down") 绑定游离的挂件或换绑别人的，disconnect 解绑（内容原样）。与自己的大纲之间 disconnect = 删除那份大纲。',
+        '下游（大纲 / 笔记 / 试卷 / 超级文档 / 项目）都可以连线：api.node.create({ kind, under: 我的 uuid }) 创建即挂；拖线 / connect(挂件对象, "down") 绑定游离的挂件或换绑别人的，disconnect 解绑（内容原样）。与自己的大纲之间 disconnect = 删除那份大纲。',
       ].join('\n'),
     }
   }
@@ -183,9 +188,9 @@ export class DocGNode extends GNode {
   }
 
   onDownstream(node: GNode): ConnectFilter {
-    if (node.kind === 'note' || node.kind === 'superdoc' || node.kind === 'exam') return true
+    if (node.kind === 'note' || node.kind === 'superdoc' || node.kind === 'exam' || node.kind === 'project') return true
     if (node.kind === 'outline') return '大纲与文档一一对应（o: 就是这份文档的 id），由创建 / 删除大纲管理，不能手工连'
-    return '这种节点不能挂到文档之下（能挂的：笔记 / 试卷 / 超级文档 / 下级文档走大纲）'
+    return '这种节点不能挂到文档之下（能挂的：笔记 / 试卷 / 超级文档 / 项目 / 下级文档走大纲）'
   }
 
   /**
@@ -212,7 +217,13 @@ export class DocGNode extends GNode {
       this.ctx.commit(r.store)
       return { ok: true, note: '已把试卷《' + down.title + '》绑到「' + this.title + '」之下' }
     }
-    return { error: '这种节点挂不到文档之下（能绑的：笔记 / 试卷 / 超级文档）' }
+    if (down.kind === 'project') {
+      const r = addEdge(s, this.uuid, down.uuid)
+      if (!r.added) return { error: r.reason ?? '挂载失败' }
+      this.ctx.commit(r.store)
+      return { ok: true, note: '已把项目「' + down.title + '」挂到「' + this.title + '」之下' }
+    }
+    return { error: '这种节点挂不到文档之下（能绑的：笔记 / 试卷 / 超级文档 / 项目）' }
   }
 
   /**
@@ -257,6 +268,11 @@ export class DocGNode extends GNode {
       this.ctx.commit(r.store)
       return { ok: true, note: '已解开「' + target.title + '」与「' + this.title + '」的绑定：它现在是独立节点（内容原样保留），可以拖线绑到别的文档' }
     }
-    return { error: '这条连线摘不了（能解的：自己那份大纲、名下的挂件）' }
+    // 挂载的项目节点：摘线 = 拆那条树边（声明与路径原样，它变成游离项目卡）
+    if (target.kind === 'project' && this.ctx.store().edges.some((e) => e.from === this.uuid && e.to === target.uuid)) {
+      this.ctx.commit(removeEdge(this.ctx.store(), this.uuid, target.uuid))
+      return { ok: true, note: '已把项目「' + target.title + '」从「' + this.title + '」之下摘出来（声明与授权不受影响）' }
+    }
+    return { error: '这条连线摘不了（能解的：自己那份大纲、名下的挂件与项目）' }
   }
 }

@@ -206,6 +206,7 @@ export async function apiNameTests() {
     // finish 不带 content/state/memory/delivery = 各步跳过，只证明注册与守卫路径在）
     'node.brief': "'微积分'",
     'node.finish': "'微积分', { open: false }",
+    'node.setRoot': "'微积分'",
     // 持久化函数（创建/列表/删除/调用）
     'method.list': '',
     'method.create': "{ name: '探针函数', code: '((api)=>{ return 1 })' }",
@@ -304,6 +305,17 @@ export async function apiNameTests() {
     // 视频资源与选集信息
     'video.list': '',
     'video.get': "'v-probe'",
+    // 项目路径（已声明 project 节点的真实路径读写）：名单检查只问「api 在不在」；
+    // 探针里没有真实声明，tree/read 等回「没有这个项目节点」的回执同样证明注册路径在
+    'project.list': '',
+    'project.tree': "'p1'",
+    'project.read': "'p1', 'a.txt'",
+    'project.write': "'p1', 'a.txt', '内容'",
+    'project.edit': "'p1', 'a.txt', { content: '新内容' }",
+    'project.mkdir': "'p1', 'dir'",
+    'project.move': "'p1', 'a.txt', 'b.txt'",
+    'project.copy': "'p1', 'a.txt', 'c.txt'",
+    'project.delete': "'p1', 'a.txt'",
     // 路径放行（导师专用）：宿主给真实现（makePermissionOps + 专用桩 ask 总是选「放行」）——
     // Node 探针里设置只在内存（uid 为空，writeUserSettings 不落盘）
     'permission.list': '',
@@ -398,6 +410,26 @@ export async function apiNameTests() {
     resourceIo: resIo,
     // 工作区同样给一份假的：名单检查只问「这三个 api 在不在」
     workspaceIo: fakeWorkspaceIo().io,
+    // 项目路径同样给一份假的：名单检查只问「这九个 api 在不在」；真实现与授权口径在 learn/ops/project
+    projectIo: {
+      send: async (req) => {
+        const path = String((req as { path?: unknown }).path ?? '')
+        switch ((req as { op?: string }).op) {
+          case 'list':
+            return { ok: true as const, op: 'list' as const, path, entries: [] }
+          case 'stat':
+            return { ok: true as const, op: 'stat' as const, path, exists: false, stat: null }
+          case 'read':
+            return { ok: true as const, op: 'read' as const, content: '', encoding: 'utf8', size: 0 }
+          case 'write':
+            return { ok: true as const, op: 'write' as const, path, bytesWritten: 0 }
+          case 'edit':
+            return { ok: true as const, op: 'edit' as const, path, modified: false }
+          default:
+            return { ok: true as const, op: (req as { op: 'mkdir' | 'move' | 'copy' | 'delete' }).op, path }
+        }
+      },
+    },
     // 读网页与搜索同样给一份假的：名单检查只问「这两个 api 在不在」
     web: {
       fetch: async (arg: unknown) => ({ title: '示例页', content: '# 示例页\n\n正文' }),

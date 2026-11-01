@@ -8,6 +8,7 @@
 import type { SandboxOptions, WebOps } from '../../agent/tools'
 import type { LearnStore, TmpEntry } from '../types'
 import type { UserProfile } from '../../user/types'
+import type { ProjectIo } from './project'
 
 export interface AgentOpsDeps {
   getLatest: () => LearnStore
@@ -31,6 +32,12 @@ export interface AgentOpsDeps {
   resourceIo?: ResourceIo
   /** 工作区目录要碰磁盘（节点目录下的 workspace/，见 learn/workspace）；不注入就没有 workspace 这一组 */
   workspaceIo?: WorkspaceIo
+  /**
+   * 项目路径的文件通道（project.*，见 learn/ops/project）：project:fs 的桥。
+   * 不注入就没有 project 这一组——与 workspaceIo 同一条纪律：agentOps 要能在 Node 里
+   * 裸跑（探针），桥由界面层给，Node 探针里用桩补位。
+   */
+  projectIo?: ProjectIo
   /** 学习者画像的读写（落在 user/store 上）；不注入就没有 userInfo 这一组 */
   userInfo?: UserInfoIo
   /**

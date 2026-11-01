@@ -99,6 +99,12 @@ export function registerNodeApi(api: Record<string, unknown>, ops: NodeOps | und
     return service.create(input)
   }, log)
 
+  wrapApi(api, 'node.setRoot', (args) => {
+    const service = svc()
+    if (!service) return { error: NO_SERVICE }
+    return service.setRoot(asText(args[0]).trim())
+  }, log)
+
   wrapApi(api, 'node.list', () => {
     const service = svc()
     if (!service) return { error: NO_SERVICE }
@@ -195,11 +201,31 @@ export function attachNodeFacade(api: Record<string, unknown>): void {
     return obj
   }
 
+  const wrapError = (errObj: unknown): Record<string, unknown> => {
+    const err =
+      errObj && typeof errObj === 'object' && 'error' in errObj
+        ? String((errObj as { error: unknown }).error)
+        : '获取节点失败'
+    return {
+      ok: false,
+      error: err,
+      __node: true,
+      get content() {
+        return Promise.resolve({ ok: false, error: err })
+      },
+      editContent: () => Promise.resolve({ ok: false, error: err }),
+      help: () => Promise.resolve({ ok: false, error: err }),
+      connect: () => Promise.resolve({ ok: false, error: err }),
+      disconnect: () => Promise.resolve({ ok: false, error: err }),
+      getPortData: () => Promise.resolve({ ok: false, error: err }),
+    }
+  }
+
   // 先把宿主侧原始 get 摘下来再替换：闭包里晚绑定 ns.get 会递归调到自己
   const rawGet = ns.get.bind(ns)
   const get = (uuid: unknown): Promise<unknown> => {
     const m = rawGet(uuid)
-    return Promise.resolve(m).then((v) => (isManifest(v) ? wrap(v) : v))
+    return Promise.resolve(m).then((v) => (isManifest(v) ? wrap(v) : wrapError(v)))
   }
   Object.assign(api.node as object, { get })
 }

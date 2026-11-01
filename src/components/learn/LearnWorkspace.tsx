@@ -46,6 +46,7 @@ import type {
   TabRef,
   WebTabMeta,
   LearningGoal,
+  ProjectNodeEntity,
 } from '../../learn/types'
 import { notesOf } from '../../learn/types'
 import {
@@ -90,6 +91,7 @@ import {
   reorderIn,
   setFocus,
   settle,
+  syncGoalOutlineTabs,
   visibleTabs,
   withGroup,
   withOwners,
@@ -100,7 +102,7 @@ import {
 import { makeBlankTab, makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
 import { setZenActive } from '../../learn/zen'
 import { closeGoalTabGroupStore } from '../../learn/groups/goalTabGroupOps'
-import { pickLocalFiles } from '../../lib/localFiles'
+import { pickLocalFiles, readLocalFile } from '../../lib/localFiles'
 import { addLocalFile } from '../../learn/localfiles'
 import { normalizeWebInput } from '../../learn/webUrl'
 import type { BrowserDeps } from '../../learn/web/browserOps'
@@ -138,6 +140,7 @@ import {
 } from '../../learn/agentTabs'
 import type { AgentTabRef } from '../../learn/types'
 import type { StructureMap } from '../../learn/structure'
+import { resolveProjectRoot } from '../../learn/projects'
 import type { TabCloseMode } from '../../learn/tabs'
 import { attemptBrief, examAttempted, examTotalPoints } from '../../learn/exam'
 import type { Exam } from '../../learn/exam'
@@ -173,8 +176,8 @@ import { nodePathOf, resolveNode } from '../../learn/paths'
 import { setPlotFixHandler } from '../../lib/plot'
 import { nodeDocPath } from '../../learn/files'
 import { createNodeDocImageResolver, type LocalImageResolver } from '../../lib/docImages'
-import { revealLocalFile, revealPath, revealUserPath, userAbsPath, listUserDir, mkdirUserPath, moveUserPath, copyUserPath, writeUserText } from '../../lib/storage'
-import { wsAllocateName, wsNameOk, wsRefOfRel, wsRelOf, wsRelOfTab } from '../../learn/workspace'
+import { revealLocalFile, revealPath, revealUserPath, userAbsPath, listUserDir, mkdirUserPath, moveUserPath, copyUserPath, writeUserText, readUserText, userAbsPrefix } from '../../lib/storage'
+import { wsAllocateName, wsNameOk, wsRefOfRel, wsRelOf, wsRelOfTab, wsRevealOfAbs } from '../../learn/workspace'
 import { notifyWsChanged } from './explorer/wsChanges'
 import { setStaticView } from '../../lib/staticView'
 import {
@@ -219,6 +222,7 @@ import PluginDoc from '../plugins/PluginDoc'
 import { setPluginDocOpener } from '../../lib/pluginDoc'
 import { resolveVideoSource } from '../../lib/videoPlugins'
 import { setVideoBlockHost, cleanVideoNodeUuid, type VideoBlockData, type VideoEpisodeItem } from '../../lib/videosBlock'
+import { setQuoteBlockHost } from '../../lib/quoteBlock'
 import { focusWebAddress } from './web/addressFocus'
 import FindBar from './FindBar'
 import SuperDocView from './SuperDocView'
@@ -256,7 +260,7 @@ import ContextDebugger from '../agent/ContextDebugger'
 import { resetPrefixGate } from '../../agent/prefixGate'
 import { setEffortNotice } from '../../learn/effortGuard'
 import { docAreaElement, locateNeedle, scrollToDoc, visibleDocBody } from '../../lib/docDom'
-import { localRevealKey, nodeRevealKey, requestSourceReveal } from '../../lib/docReveal'
+import { lineRangeToOffsets, localRevealKey, nodeRevealKey, requestSourceReveal } from '../../lib/docReveal'
 import { readRecentTabs, residentIds } from '../../learn/resident'
 import type { UiPointRequest } from '../../agent/tools'
 import type { AskAnswers } from '../../agent/tools'
@@ -370,6 +374,14 @@ export default function LearnWorkspace({
     () => reconcileOwners(docs.tabOwners, tabs, goalOfNode),
     [docs.tabOwners, tabs, goalOfNode],
   )
+
+  // 结构页签保底去重与对齐：目标换根、历史并发开签等情况可能导致重复的结构页签，此处保证全局至多一枚
+  useEffect(() => {
+    const synced = syncGoalOutlineTabs(store.docArea, store.goals)
+    if (synced !== store.docArea) {
+      set({ ...store, docArea: synced })
+    }
+  }, [store.goals, store.docArea, set])
   /**
    * 当前该显示的页签（公共 + 当前目标）。页签栏读它，正文区仍按「格」渲染——
    * 一格里同时混着公共与目标页签是正常的（正是需求里那条栏的样子）。
@@ -1093,7 +1105,7 @@ export default function LearnWorkspace({
    * 会把下游一串 useCallback 的记忆化全部判废（lint 的 preserve-manual-memoization 六连警告
    * 就是它）。所以这里放一个 ref：声明之后随时回填，调用时刻一定已经是最新的一份。
    */
-  const openTabRef = useRef<(ref: TabRef) => void>(() => {})
+  const openTabRef = useRef<(ref: TabRef, preferredView?: DocView) => void>(() => {})
   /**
    * 设置页签的晚绑定把手。设置现在是文档区的一枚页签（set:settings，见 learn/tabs），
    * 而 openTab 声明靠后——React Compiler 对「声明前引用」一律按可变量处理
@@ -1522,11 +1534,12 @@ export default function LearnWorkspace({
       const rootRef: TabRef & { kind: 'outline' } = { kind: 'outline', nodeId: anchorNodeId, goalId: goal.id }
       const rootId = tabKey(rootRef)
       const owners = s.docArea.tabOwners ?? {}
-      const home = groupIdOfTab(s.docArea, rootId)
+      let docArea = syncGoalOutlineTabs(s.docArea, s.goals)
+      const home = groupIdOfTab(docArea, rootId)
       const goalOf = (id: string) => nodeById(s, id)?.goalId ?? (s.goals.some((g) => g.id === id) ? id : null)
-      let docArea = home
-        ? s.docArea
-        : openAnchorOutline(s.docArea, s.docArea.focus, rootRef, goalOf, Date.now())
+      docArea = home
+        ? docArea
+        : openAnchorOutline(docArea, docArea.focus, rootRef, goalOf, Date.now())
       if (toOutline) {
         const at = groupIdOfTab(docArea, rootId)
         if (at) docArea = activateIn(docArea, at, rootId)
@@ -1656,7 +1669,7 @@ export default function LearnWorkspace({
    * 「新开一份文档」理应开在他正在看的那一格；已经在别格开着的则切过去，不再开第二份。
    */
   const openTab = useCallback(
-    (targetRef: TabRef) => {
+    (targetRef: TabRef, preferredView?: DocView) => {
       if (isWeb() && targetRef.kind === 'web') {
         if (targetRef.url) {
           void openExternalLink(targetRef.url)
@@ -1752,7 +1765,7 @@ export default function LearnWorkspace({
        * 而用户敲下第一个字它就翻回预览了（见 emptyNote 与 learn/tabs 的 viewOf）。
        */
       const startView: DocView | undefined =
-        ref.kind === 'note' && emptyNote(s, makeTab(ref, 0)) ? 'source' : undefined
+        preferredView ?? (ref.kind === 'note' && emptyNote(s, makeTab(ref, 0)) ? 'source' : undefined)
       const goalOf = (id: string) => nodeById(base, id)?.goalId ?? (base.goals.some((g) => g.id === id) ? id : null)
       /** 「目标 → 根节点」：组锚判据的第二跳（见 groups/tabs 的 isAnchorOutline） */
       const rootOf = (goalId: string) => base.goals.find((g) => g.id === goalId)?.rootNodeId ?? null
@@ -3532,6 +3545,258 @@ export default function LearnWorkspace({
     return () => setVideoBlockHost(null)
   }, [getLatest, set, openTab])
 
+  // 原文引用代码块（```quote）的文件内容读取与跳转：统一解析目标文件
+  useEffect(() => {
+    interface ResolvedQuoteTarget {
+      content: string
+      tabRef: TabRef
+    }
+
+    const resolveQuoteTarget = async (
+      s: ReturnType<typeof getLatest>,
+      rawPath: string,
+    ): Promise<ResolvedQuoteTarget | null> => {
+      let cleanPath = (rawPath ?? '').trim().replace(/\\/g, '/')
+      if (!cleanPath) return null
+
+      let decodedPath = cleanPath
+      try {
+        if (cleanPath.includes('%')) {
+          decodedPath = decodeURIComponent(cleanPath).replace(/\\/g, '/')
+        }
+      } catch {}
+
+      const uPrefix = userAbsPrefix()?.replace(/\\/g, '/')
+      const isAbs = (p: string) => /^[a-zA-Z]:[\/]/.test(p) || p.startsWith('/') || p.startsWith('\\\\')
+
+      // 1. 尝试直接读取单条绝对路径
+      const tryReadAbs = async (absP: string): Promise<ResolvedQuoteTarget | null> => {
+        if (!absP) return null
+        let content: string | null = null
+
+        // 1.1 若落在用户数据根下，优先走 readUserText
+        if (uPrefix && absP.startsWith(uPrefix)) {
+          const rel = absP.slice(uPrefix.length).replace(/^[\/]+/, '')
+          try {
+            const res = await readUserText(rel)
+            if (res !== null) content = res
+          } catch {}
+        }
+
+        // 1.2 readLocalFile 外部文件读
+        if (content === null) {
+          try {
+            const res = await readLocalFile(absP)
+            if (res.ok && typeof res.content === 'string') content = res.content
+          } catch {}
+        }
+
+        // 1.3 projectFs 读取
+        if (content === null && isElectron()) {
+          try {
+            const allRoots = (s.projects ?? [])
+              .map((pr) => resolveProjectRoot(s, pr))
+              .filter((r): r is string => Boolean(r))
+            if (allRoots.length > 0) {
+              const r = await native().projectFs({ op: 'read', path: absP, roots: allRoots, encoding: 'utf8' })
+              if (r.ok && r.op === 'read' && typeof r.content === 'string') content = r.content
+            }
+          } catch {}
+        }
+
+        if (content === null) return null
+
+        // 构造有效 TabRef
+        const reveal = wsRevealOfAbs(s, absP, uPrefix ?? null)
+        if (reveal) {
+          return { content, tabRef: { kind: 'ws', nodeId: reveal.nodeId, seg: reveal.rel } }
+        }
+        if (uPrefix && absP.startsWith(uPrefix)) {
+          const rel = absP.slice(uPrefix.length).replace(/^[\/]+/, '')
+          const wsRef = wsRefOfRel(s, rel)
+          if (wsRef) {
+            return { content, tabRef: wsRef }
+          }
+        }
+        return {
+          content,
+          tabRef: { kind: 'local', path: absP, title: localFileNameOf(absP) },
+        }
+      }
+
+      // 若传入的是绝对路径
+      if (isAbs(cleanPath)) {
+        const res = await tryReadAbs(cleanPath)
+        if (res) return res
+      }
+      if (isAbs(decodedPath) && decodedPath !== cleanPath) {
+        const res = await tryReadAbs(decodedPath)
+        if (res) return res
+      }
+
+      // 收集相关节点
+      const fRef = focusedTab(s.docArea)?.ref
+      const currentViewingId = (fRef ? tabNodeId(fRef) : null) ?? s.activeNodeId
+      const activeGoal = s.goals.find((g) => g.id === s.activeGoalId)
+      const relevantNodeIds = new Set<string>()
+      if (currentViewingId) relevantNodeIds.add(currentViewingId)
+      if (s.activeNodeId) relevantNodeIds.add(s.activeNodeId)
+      if (activeGoal?.rootNodeId) relevantNodeIds.add(activeGoal.rootNodeId)
+      for (const n of s.nodes ?? []) {
+        if (n.goalId === s.activeGoalId) relevantNodeIds.add(n.id)
+      }
+
+      const pathVariants = [cleanPath]
+      if (decodedPath !== cleanPath) pathVariants.push(decodedPath)
+
+      for (const variant of pathVariants) {
+        // 2. 检查是否为笔记挂件
+        const noteTarget = variant.replace(/^(?:note|notes|笔记)[\/:]/i, '').replace(/\.md$/i, '').trim()
+        for (const nid of relevantNodeIds) {
+          const n = s.nodes.find((item) => item.id === nid)
+          if (!n) continue
+          const notes = notesOf(n)
+          const foundNote = notes.find((nt) => nt.name === noteTarget || nt.name === variant)
+          if (foundNote && typeof foundNote.content === 'string') {
+            return {
+              content: foundNote.content,
+              tabRef: { kind: 'note', nodeId: n.id, note: foundNote.name },
+            }
+          }
+        }
+
+        const relPath = variant.replace(/^\.\//, '')
+        const relWithoutWs = relPath.startsWith('workspace/') ? relPath.slice('workspace/'.length) : relPath
+
+        // 3. 检查节点工作区目录（workspace/）
+        for (const nid of relevantNodeIds) {
+          const wsRel = wsRelOf(s, nid)
+          if (!wsRel) continue
+
+          const candidateRels = [
+            `${wsRel}/${relWithoutWs}`,
+            `${wsRel.replace(/\/workspace$/, '')}/${relPath}`,
+          ]
+          for (const cr of candidateRels) {
+            try {
+              const txt = await readUserText(cr)
+              if (txt !== null) {
+                const wsRef = wsRefOfRel(s, cr) ?? { kind: 'ws', nodeId: nid, seg: relWithoutWs }
+                return { content: txt, tabRef: wsRef }
+              }
+            } catch {}
+            if (uPrefix) {
+              const absP = `${uPrefix}/${cr}`
+              const absRes = await tryReadAbs(absP)
+              if (absRes) return absRes
+            }
+          }
+        }
+
+        // 4. 检查已声明的项目节点（Project Nodes）
+        const candidateProjects: ProjectNodeEntity[] = []
+        if (s.activeNodeId) {
+          const downEdges = s.edges.filter((e) => e.from === s.activeNodeId)
+          for (const e of downEdges) {
+            const p = (s.projects ?? []).find((pr) => pr.id === e.to)
+            if (p) candidateProjects.push(p)
+          }
+        }
+        if (s.activeGoalId) {
+          for (const pr of s.projects ?? []) {
+            if (pr.goalId === s.activeGoalId && !candidateProjects.some((cp) => cp.id === pr.id)) {
+              candidateProjects.push(pr)
+            }
+          }
+        }
+        for (const pr of s.projects ?? []) {
+          if (!candidateProjects.some((cp) => cp.id === pr.id)) {
+            candidateProjects.push(pr)
+          }
+        }
+
+        for (const proj of candidateProjects) {
+          const root = resolveProjectRoot(s, proj)
+          if (!root) continue
+          const full = root.replace(/[\\/]+$/, '') + '/' + relPath.replace(/^[\\/]+/, '')
+          const absRes = await tryReadAbs(full)
+          if (absRes) return absRes
+        }
+
+        // 5. 用户数据目录直接按相对路径读
+        const directUserRels = [relPath, `docs/${relPath}`]
+        for (const dur of directUserRels) {
+          try {
+            const txt = await readUserText(dur)
+            if (txt !== null) {
+              const wsRef = wsRefOfRel(s, dur)
+              if (wsRef) return { content: txt, tabRef: wsRef }
+              const absP = uPrefix ? `${uPrefix}/${dur}` : dur
+              return { content: txt, tabRef: { kind: 'local', path: absP, title: localFileNameOf(absP) } }
+            }
+          } catch {}
+        }
+
+        // 6. 最后尝试普通本地文件路径读
+        try {
+          const r = await readLocalFile(relPath)
+          if (r.ok && typeof r.content === 'string') {
+            return {
+              content: r.content,
+              tabRef: { kind: 'local', path: relPath, title: localFileNameOf(relPath) },
+            }
+          }
+        } catch {}
+      }
+
+      return null
+    }
+
+    setQuoteBlockHost({
+      readFile: async (rawPath: string): Promise<string | null> => {
+        const s = getLatest()
+        const resolved = await resolveQuoteTarget(s, rawPath)
+        return resolved ? resolved.content : null
+      },
+      onOpenFile: async (rawPath: string, startLine?: number, endLine?: number) => {
+        const s = getLatest()
+        const resolved = await resolveQuoteTarget(s, rawPath)
+        if (!resolved || !resolved.tabRef) {
+          let disp = (rawPath ?? '').trim()
+          try {
+            if (disp.includes('%')) disp = decodeURIComponent(disp)
+          } catch {}
+          onToast(t('未找到引用的源文件（{0}）', disp || '未知路径'))
+          return
+        }
+
+        // 计算行定位区间并登记一次性定位请求
+        if (startLine && startLine >= 1) {
+          const eLine = endLine && endLine >= startLine ? endLine : startLine
+          const offsets = lineRangeToOffsets(resolved.content, startLine, eLine)
+
+          let revealTargetKey: string | null = null
+          if (resolved.tabRef.kind === 'local') {
+            revealTargetKey = localRevealKey(resolved.tabRef.path)
+          } else if (resolved.tabRef.kind === 'ws') {
+            const rel = wsRelOfTab(s, resolved.tabRef)
+            const abs = rel ? userAbsPath(rel) : null
+            if (abs) revealTargetKey = localRevealKey(abs)
+          } else if (resolved.tabRef.kind === 'note') {
+            revealTargetKey = nodeRevealKey(resolved.tabRef.nodeId, 'note', resolved.tabRef.note)
+          }
+
+          if (revealTargetKey) {
+            requestSourceReveal(revealTargetKey, offsets.start, offsets.end)
+          }
+        }
+
+        openTab(resolved.tabRef, startLine ? 'source' : undefined)
+      },
+    })
+    return () => setQuoteBlockHost(null)
+  }, [getLatest, openTab, onToast])
+
   /*
     plot 错误卡片上的「让导师修复」：以**工作流**（learn/workflows 的 plot-fix）注入——
     隐藏指令、分界条一条，不是一条普通用户消息。报错原因、字符区间与围栏原文都算好
@@ -3979,7 +4244,9 @@ export default function LearnWorkspace({
       if (s.edges.some((e) => e.to === docUuid)) {
         return { error: t('「{0}」已经有上级了——只有没有上级的文档能立为入口', node.title) }
       }
-      set({ ...s, goals: s.goals.map((g) => (g.id === goal.id ? { ...g, rootNodeId: docUuid, updatedAt: Date.now() } : g)) })
+      const nextGoals = s.goals.map((g) => (g.id === goal.id ? { ...g, rootNodeId: docUuid, updatedAt: Date.now() } : g))
+      const nextDocArea = syncGoalOutlineTabs(s.docArea, [{ id: goal.id, rootNodeId: docUuid }])
+      set({ ...s, goals: nextGoals, docArea: nextDocArea })
       return { ok: true, note: t('已把「{0}」立为入口：这门课从这里开始（原入口文档还在图上）', node.title) }
     },
     [getLatest, set],
@@ -4003,6 +4270,31 @@ export default function LearnWorkspace({
         const node = makeNodeService().get(nodeUuid)
         if (!node || node.kind !== 'video') return { error: '这个视频节点已经不在了' }
         return node.editContent({ videoId })
+      },
+      // 项目卡的路径声明：同样走节点对象的 editContent（与 agent 同一条路），拼法由路径
+      // 自己说（盘符 / / 开头 = 绝对）。保存成功后把**还不存在的目录**建出来——相对路径
+      // 第一次用最常见的场景就是新建一个项目目录；解析不出根（如数据根未就绪）时跳过，
+      // 第一次读写时主进程会把原因讲清楚。
+      onSetProjectPath: async (nodeUuid: string, path: string) => {
+        const node = makeNodeService().get(nodeUuid)
+        if (!node || node.kind !== 'project') return { error: '这个项目节点已经不在了' }
+        const r = node.editContent({ path })
+        if ('error' in r) return r
+        const entity = getLatest().projects?.find((p) => p.id === nodeUuid)
+        const root = entity ? resolveProjectRoot(getLatest(), entity) : null
+        if (root) {
+          try {
+            await native().projectFs({ op: 'mkdir', roots: [root], path: root })
+          } catch {
+            // 建不出来不阻断保存：卡上与第一次读写时都会有清楚的说法
+          }
+        }
+        return r
+      },
+      // 点项目卡目录树里的一个文件：本地文件页签打开（TabRef.local 认磁盘绝对路径）
+      onOpenProjectFile: (absPath: string) => {
+        const name = absPath.split(/[\\/]/).pop() || absPath
+        openTab({ kind: 'local', path: absPath, title: name })
       },
       onOpenVideo: (videoId: string) => openTab({ kind: 'video', videoId }),
       onGenerateVideoDoc: (videoNodeUuid: string) => startVideoOverview(videoNodeUuid),

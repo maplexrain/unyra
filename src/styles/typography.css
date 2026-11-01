@@ -53,33 +53,43 @@
 .note-preview > :first-child {
   margin-top: 0 !important;
 }
+/*
+ * 标题的层级靠字号与墨色一起说：
+ *   h1 一记朱印（印色，章首点题）→ h2 浓墨 → h3 墨里透印 → h4 次墨。
+ * 全部走主题变量，明暗与各主题自动适配；文字描边特性跟随 currentColor，同样成立。
+ * h3 的混色与加粗（strong，88/12）同一手法、浓度更高——强调色顺着层级渐隐，
+ * 而不是每一级各造一个色相。
+ */
 .note-preview h1,
 .note-preview h2,
 .note-preview h3,
 .note-preview h4 {
   font-weight: 600;
-  color: var(--color-ink-strong);
   line-height: 1.45;
   letter-spacing: 0.03em;
 }
 .note-preview h1 {
-  font-size: 1.65em;
+  font-size: 1.9em;
+  color: var(--color-seal-deep);
   margin: 1.4em 0 0.7em;
   padding-bottom: 0.4em;
   border-bottom: 1px solid var(--color-line);
 }
 .note-preview h2 {
-  font-size: 1.32em;
+  font-size: 1.5em;
+  color: var(--color-ink-strong);
   margin: 1.5em 0 0.6em;
   padding-bottom: 0.35em;
   border-bottom: 1px solid var(--color-line);
 }
 .note-preview h3 {
-  font-size: 1.12em;
+  font-size: 1.26em;
+  color: color-mix(in srgb, var(--color-ink-strong) 76%, var(--color-seal-deep) 24%);
   margin: 1.3em 0 0.5em;
 }
 .note-preview h4 {
-  font-size: 1em;
+  font-size: 1.08em;
+  color: var(--color-quote-ink);
   margin: 1.2em 0 0.4em;
 }
 

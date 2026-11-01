@@ -115,6 +115,8 @@ export function findNodeByRef(store: LearnStore, goalId: string, ref: string): K
     const id = r.slice(1).trim()
     return store.nodes.find((n) => n.id === id)
   }
+  const byId = store.nodes.find((n) => n.id === r && (!goalId || n.goalId === goalId))
+  if (byId) return byId
   const key = normalizeKey(r)
   const exact = store.nodes.find((n) => n.goalId === goalId && n.key === key)
   if (exact) return exact
@@ -261,8 +263,12 @@ export function resolveDoc(
   scope: PathScope,
   path: string | undefined,
 ): ResolveResult<ResolvedDoc> {
-  const { kind, note } = splitDocPath(path)
-  const r = resolveNode(store, scope, path)
+  const { segments, kind, note } = splitDocPath(path)
+  const nodePath = segments.join('/')
+  const r =
+    segments.length === 0 && scope.currentNodeId
+      ? resolveNode(store, scope, undefined)
+      : resolveNode(store, scope, nodePath || undefined)
   if (!r.ok) return r
   return { ok: true, value: { node: r.value, kind, ...(note ? { note } : {}) } }
 }

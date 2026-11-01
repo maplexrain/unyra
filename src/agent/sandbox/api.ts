@@ -583,8 +583,9 @@ export function buildApi(
          * 两种写法都收：ui.point(path, { line, regex }) 与 ui.point({ path, line, regex })。
          * path 省略 = 当前节点的教学文档（与 doc.* 的约定一致）。
          */
-        const obj = asRecord(args.length === 1 ? args[0] : args[1])
-        const path = args.length === 1 ? asText(obj.path) : asText(args[0])
+        const hasPathFirst = typeof args[0] === 'string'
+        const path = hasPathFirst ? asText(args[0]) : asText(asRecord(args[0]).path)
+        const obj = asRecord(hasPathFirst ? args[1] : args[0])
         const r = docRef(path)
         if ('error' in r) return { error: r.error }
         const ref = r.ref
@@ -1360,7 +1361,7 @@ export function buildApi(
       // 镜头最后切：账都落好了才把用户看到的东西指给他
       if (plan.open === true) {
         const listed = service.list() as { nodes?: Array<{ uuid?: string; path?: string }> }
-        const path = listed.nodes?.find((n) => n.uuid === uuid)?.path
+        const path = listed.nodes?.find((n) => n.uuid === uuid)?.path || uuid
         const point = path ? (api as { ui?: { point?: (t: unknown) => Promise<unknown> } }).ui?.point : undefined
         if (typeof point === 'function') {
           await point(path)
@@ -1385,6 +1386,73 @@ export function buildApi(
       const target = asText(args[0]).trim()
       if (!target) return { ok: false, error: 'video.get 需要提供 videoId 或视频节点的 uuid' }
       return await opts.video?.get(target)
+    }, log)
+  }
+
+  if (opts.project) {
+    const po = opts.project
+    wrapApi(api, 'project.list', async () => {
+      return po.list()
+    }, log)
+    wrapApi(api, 'project.tree', async (args) => {
+      const uuid = asText(args[0]).trim()
+      if (!uuid) return { ok: false, error: 'project.tree 需要项目节点的 uuid（api.node.list() 的 projects 段）' }
+      const sub = typeof args[1] === 'string' ? args[1] : ''
+      return po.tree(uuid, sub)
+    }, log)
+    wrapApi(api, 'project.read', async (args) => {
+      const uuid = asText(args[0]).trim()
+      const sub = asText(args[1])
+      if (!uuid) return { ok: false, error: 'project.read 需要项目节点的 uuid 与它内部的相对路径（subPath，根写空串）' }
+      const rawOpt = args[2]
+      const opt = typeof rawOpt === 'string' ? { encoding: rawOpt as 'utf8' | 'base64' } : asRecord(rawOpt)
+      return po.read(uuid, sub, opt as { encoding?: 'utf8' | 'base64'; maxBytes?: number; offset?: number })
+    }, log)
+    wrapApi(api, 'project.write', async (args) => {
+      const uuid = asText(args[0]).trim()
+      const sub = asText(args[1])
+      if (!uuid) return { ok: false, error: 'project.write 需要项目节点的 uuid 与它内部的相对路径（subPath，根写空串）' }
+      const content = args[2]
+      if (content === undefined || content === null) return { ok: false, error: 'project.write 缺少 content' }
+      const opt = asRecord(args[3])
+      return po.write(uuid, sub, typeof content === 'string' ? content : JSON.stringify(content, null, 2), opt as { encoding?: 'utf8' | 'base64'; overwrite?: boolean })
+    }, log)
+    wrapApi(api, 'project.edit', async (args) => {
+      const uuid = asText(args[0]).trim()
+      const sub = asText(args[1])
+      if (!uuid) return { ok: false, error: 'project.edit 需要项目节点的 uuid 与它内部的相对路径（subPath）' }
+      const edit = asRecord(args[2])
+      if (!Object.keys(edit).length) return { ok: false, error: 'project.edit 需要 { content | replace | append } 之一的编辑参数' }
+      return po.edit(uuid, sub, edit as { content?: string; replace?: { target: string; replacement: string; all?: boolean }; append?: string })
+    }, log)
+    wrapApi(api, 'project.mkdir', async (args) => {
+      const uuid = asText(args[0]).trim()
+      if (!uuid) return { ok: false, error: 'project.mkdir 需要项目节点的 uuid 与要建的目录路径（相对该项目根）' }
+      return po.mkdir(uuid, asText(args[1]))
+    }, log)
+    wrapApi(api, 'project.move', async (args) => {
+      const uuid = asText(args[0]).trim()
+      if (!uuid) return { ok: false, error: 'project.move 需要 uuid、from（项目内相对路径）与 to（同样是项目内相对路径）' }
+      const from = asText(args[1])
+      const to = asText(args[2])
+      if (!from || !to) return { ok: false, error: 'project.move 的 from / to 都要给（项目内的相对路径）' }
+      return po.move(uuid, from, to)
+    }, log)
+    wrapApi(api, 'project.copy', async (args) => {
+      const uuid = asText(args[0]).trim()
+      if (!uuid) return { ok: false, error: 'project.copy 需要 uuid、from 与 to（项目内的相对路径）' }
+      const from = asText(args[1])
+      const to = asText(args[2])
+      if (!from || !to) return { ok: false, error: 'project.copy 的 from / to 都要给（项目内的相对路径）' }
+      const opt = asRecord(args[3])
+      return po.copy(uuid, from, to, opt as { overwrite?: boolean })
+    }, log)
+    wrapApi(api, 'project.delete', async (args) => {
+      const uuid = asText(args[0]).trim()
+      if (!uuid) return { ok: false, error: 'project.delete 需要 uuid 与要删的路径（项目内的相对路径；不可逆，先确认）' }
+      const sub = asText(args[1])
+      if (!sub) return { ok: false, error: 'subPath 不能是空串：删除项目根本身请走 api.node.delete 撤掉这条声明' }
+      return po.delete(uuid, sub)
     }, log)
   }
 

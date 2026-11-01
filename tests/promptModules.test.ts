@@ -185,48 +185,52 @@ describe('模块消息', () => {
   })
 })
 
-describe('系统提示词确实瘦了（减负的验收线）', () => {
+describe('首轮全量提示词（包含所有 execute API 与全量工作流）', () => {
   const system = buildTeacherSystem()
 
-  it('系统提示词只给 api 集：组索引在场，具体签名靠 __help 现查', () => {
-    // 组索引在场（模型必须知道能力存在）；doc/outline/sdoc 是 legacy 旧写法，不进索引
+  it('全量 API 说明与代码示例均已在系统提示词中完整就绪', () => {
+    // 组索引与所有核心 API 完整在场
     expect(system).toContain('api.node — 节点宇宙')
     expect(system).toContain('api.schedule')
     expect(system).toContain('api.browser')
     expect(system).toContain('api.subagent')
-    // 「先查再用」的纪律在场
-    expect(system).toContain('__help()')
-    // 完整手册的标志性长文不在了
-    expect(system).not.toContain('moji-demo-pulse')
-    expect(system).not.toContain('repeatCount="indefinite"')
-    expect(system).not.toContain('fnType": "parametric')
-    expect(system).not.toContain('监督回路')
-    expect(system).not.toContain('dom(tabId?')
-    // 具体 api 的签名不再压在系统提示词里——那是 __help() 的活
-    expect(system).not.toContain('graph.read(path)')
-    expect(system).not.toContain('exam.create({')
-    // 低频 api 的行为细节随模块走，系统提示词里不再逐条展开
-    expect(system).not.toContain('api.res.refs(uuid)：谁在引用它')
-    expect(system).not.toContain('reach ≥ 0.6')
+    expect(system).toContain('api.workspace')
+    expect(system).toContain('api.exam')
+    // 包含所有具体 API 的完整签名与用法示例
+    expect(system).toContain('node.list()')
+    expect(system).toContain('node.get(uuid)')
+    expect(system).toContain('workspace.write')
+    expect(system).toContain('browser.snapshot')
+    expect(system).toContain('沙箱全部 API 完整参考手册与示例')
   })
 
-  it('每轮必用的语法与判断标准一条不丢', () => {
+  it('全量工作流提示词与规程均已在首轮系统提示词中完整就绪', () => {
+    expect(system).toContain('工作流提示词与任务规程（全量内置工作流）')
+    expect(system).toContain('教学文档生成规程')
+    expect(system).toContain('大纲编写与规划规程')
+    expect(system).toContain('项目与文章解读')
+    expect(system).toContain('试卷命题与判分讲解规程')
+    expect(system).toContain('超级实验室')
+    expect(system).toContain('长会话交接摘要编写规程')
+  })
+
+  it('全量排版配方与语法指南在场', () => {
+    expect(system).toContain('文档排版与视觉呈现')
+    expect(system).toContain('十二个精装教学 UI 配方')
+    expect(system).toContain('```plot')
+    expect(system).toContain('```quote')
+    expect(system).toContain('```mermaid')
+    expect(system).toContain('```videos')
+  })
+
+  it('每轮必用的核心纪律与原则完整在场', () => {
     expect(system).toContain('唯一的工具是 execute')
     expect(system).toContain('写操作的失败不抛异常')
-    expect(system).toContain('先查再用')
-    // 数据契约退役：应用数据走 api 组，files 被闸门拦住
     expect(system).toContain('应用数据一律走 api 组')
     expect(system).toContain('api.userInfo.get()')
     expect(system).toContain('wait / ask / tiktok')
     expect(system).toContain('需求解耦')
     expect(system).toContain('api.ui.point')
-  })
-
-  it('删除的 api 与历史漂移一并清掉', () => {
     expect(system).not.toContain('iwanna')
-    // 建节点的收尾步骤：阶段拆分已归「生成大纲」流程，建节点不再顺手写大纲（create + editContent 两步）
-    expect(system).not.toContain('四件事')
-    expect(system).not.toContain('三件事')
-    expect(system).toContain('node.create')
   })
 })

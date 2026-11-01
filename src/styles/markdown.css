@@ -259,3 +259,55 @@
   color: var(--color-ink-soft);
 }
 
+/*
+ * 原文引用块（```quote）内部的 mark 标记：
+ * 严格直角（rounded-none），荧光高亮色，文字清晰对比
+ */
+.moji-quote-mark {
+  background-color: rgba(250, 204, 21, 0.35);
+  color: var(--color-ink-strong);
+  box-shadow: 0 0 10px rgba(250, 204, 21, 0.22);
+  border-radius: 0;
+  padding: 0.08em 0.25em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+:root.dark .moji-quote-mark,
+:root[data-theme='dark'] .moji-quote-mark,
+:root[data-theme='graphite'] .moji-quote-mark,
+:root[data-theme='navy'] .moji-quote-mark,
+:root[data-theme='black'] .moji-quote-mark,
+:root[data-theme='contrast'] .moji-quote-mark {
+  background-color: rgba(250, 204, 21, 0.32);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(250, 204, 21, 0.25);
+}
+
+:root:not(.dark) .moji-quote-mark {
+  background-color: rgba(250, 204, 21, 0.45);
+  color: #1a1a1a;
+  box-shadow: 0 0 8px rgba(250, 204, 21, 0.18);
+}
+
+/* 引用块内部及选中文本时的荧光高亮 */
+.moji-quote-code ::selection,
+.moji-quote-block ::selection {
+  background-color: rgba(250, 204, 21, 0.45) !important;
+  color: var(--color-ink-strong) !important;
+}
+
+/* 预览中被引用的行临时闪烁高亮 */
+.moji-reveal-flash {
+  animation: moji-reveal-pulse 1.8s ease-out;
+}
+
+@keyframes moji-reveal-pulse {
+  0% {
+    background-color: rgba(250, 204, 21, 0.5);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+

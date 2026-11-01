@@ -32,6 +32,8 @@ const dict: Record<string, string> = {
   '把前面的对话折成一份交接摘要（旧消息随即失活）': 'Folds the earlier conversation into a handoff summary (older messages are deactivated)',
   '浏览器操作': 'Browser use',
   '替用户操作内置浏览器：截图看页面、模拟鼠标键盘完成任务': 'Drives the built-in browser for you: looks via screenshots, acts via simulated mouse and keyboard',
+  '项目与文章解读': 'Project & article interpretation',
+  '下载文章/小型项目至本地建立项目节点，并在生成的教学文档中用 quote 块精准引用原文进行逐段精读': 'Downloads an article or small project locally to create a project node, and references original source text with quote blocks for in-depth explanation',
 
   // ---------- 共享的标签常量（在使用处包 t()：learn/types、learn/learning、learn/review、focus 等） ----------
   '学习中': 'Learning',
@@ -729,6 +731,37 @@ const dict: Record<string, string> = {
   '挑一个视频绑到这个目标': 'Pick a video to bind to this goal',
   '还没有可绑的视频：先在侧栏「视频」里新建一个': 'No videos to bind yet: create one in the sidebar "Videos" section first',
   '解绑视频': 'Unbind video',
+  /* ---------- 结构画布：项目节点（目标 × 真实路径的授权声明，见 learn/projects） ---------- */
+  '项目': 'Project',
+  '已建一枚项目节点：右键卡片 →「设置路径」声明一条真实路径，之后 agent 可以读写它下面的所有文件':
+    'Created a project node: right-click the card → "Set path" to declare a real path; after that the agent can read and write everything under it',
+  '这枚项目节点还没有设置路径：右键卡片 →「设置路径」': 'This project node has no path yet: right-click the card → "Set path"',
+  '声明一条真实路径，把一个目录交给 agent': 'Declare a real path and hand a directory to the agent',
+  '设置路径': 'Set path',
+  '修改路径': 'Edit path',
+  '改路径': 'Edit',
+  '修改这条声明（路径或拼法）': 'Edit this declaration (path or kind)',
+  '修改这条项目声明（声明的路径及其子树对 agent 开放）':
+    'Edit this project declaration (the declared path and its subtree are open to the agent)',
+  '声明一条真实路径：相对目标根目录，或电脑上的绝对路径':
+    'Declare a real path: relative to the goal root directory, or an absolute path on this machine',
+  '相对': 'Relative',
+  '绝对': 'Absolute',
+  '相对目标根目录：docs/{目标段}/ 之下，支持用 .. 移到兄弟目录':
+    'Relative to the goal root: under docs/{goal segment}/, ".." may step into sibling directories',
+  '电脑上的绝对路径（如 D:\\projects\\demo 或 /home/me/demo）':
+    'Absolute path on this machine (e.g. D:\\projects\\demo or /home/me/demo)',
+  '如：代码练习 或 ../共享资料': 'e.g. code-practice or ../shared-materials',
+  '如：D:\\projects\\demo': 'e.g. D:\\projects\\demo',
+  '展开 / 收起这个项目的目录': 'Expand / collapse this project\'s directory tree',
+  '解析到的真实路径': 'Resolved real path',
+  '路径此刻解析不出（相对路径越出了用户目录，或数据根未就绪）':
+    'Path cannot be resolved right now (a relative path outside the user directory, or the data root is not ready)',
+  '（空目录）': '(empty directory)',
+  '在新页签打开这个文件': 'Open this file in a new tab',
+  '浏览…': 'Browse…',
+  '从系统目录选择器里挑一条真实路径': 'Pick a real path from the system directory picker',
+  '这个环境打不开目录选择器：直接输入路径即可': 'The directory picker is unavailable here: just type the path',
 }
 
 export default dict

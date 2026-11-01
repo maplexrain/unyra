@@ -728,6 +728,41 @@ export type BaseFileOpResult =
   | { ok: true }
   | { ok: false; error: string }
 
+/* ---------- 项目节点路径的文件操作（project:fs，见 learn/projects 与 electron/base/projectFiles） ----------
+ *
+ * 谁在用：主进程 electron/base/projectFiles.ts（project:fs handler），渲染层 src/lib/projectFs
+ * （画布的目录树展开 + agent 的 api.project.*）。
+ *
+ * 授权模型：**声明即授权**——渲染层每次调用随行一份 roots（此刻已声明并解析成功的
+ * project 根），主进程把请求路径 resolve 后校验「落在某个根之内」才执行。两道校验
+ * （渲染层收口 + 主进程白名单）之间不共享状态，roots 每次现取，节点删了/改路径立刻生效。
+ */
+
+export type ProjectFsOp =
+  | { op: 'list'; path: string }
+  | { op: 'stat'; path: string }
+  | { op: 'read'; path: string; encoding?: 'utf8' | 'base64'; maxBytes?: number; offset?: number }
+  | { op: 'write'; path: string; content: string; encoding?: 'utf8' | 'base64'; overwrite?: boolean }
+  | { op: 'edit'; path: string; edit: { content?: string; replace?: { target: string; replacement: string; all?: boolean }; append?: string } }
+  | { op: 'mkdir'; path: string }
+  | { op: 'move'; path: string; to: string }
+  | { op: 'copy'; path: string; to: string; overwrite?: boolean }
+  | { op: 'delete'; path: string }
+
+export type ProjectFsRequest = ProjectFsOp & {
+  /** 本次调用允许的授权根（绝对路径；渲染层从 store 现取） */
+  roots: string[]
+}
+
+export type ProjectFsResult =
+  | { ok: true; op: 'list'; path: string; entries: BaseFileEntry[] }
+  | { ok: true; op: 'stat'; path: string; exists: boolean; stat: BaseFileStat | null }
+  | { ok: true; op: 'read'; content: string; encoding: string; size: number; totalChars?: number }
+  | { ok: true; op: 'write'; path: string; bytesWritten: number }
+  | { ok: true; op: 'edit'; path: string; modified: boolean }
+  | { ok: true; op: 'mkdir' | 'move' | 'copy' | 'delete'; path: string }
+  | { ok: false; error: string }
+
 export interface BaseProcessCreateOpts {
   command: string
   args?: string[]

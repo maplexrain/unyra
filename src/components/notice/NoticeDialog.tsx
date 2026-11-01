@@ -37,6 +37,7 @@ import MarkdownView from '../MarkdownView'
 import Logo from '../Logo'
 import { t } from '../../i18n'
 import { firstUnreadIndex, markNoticesRead, noticeFailText, optOutOfNotices, refreshNotice, useNotice } from '../../lib/notice'
+import { useNoticeContent } from '../../lib/noticeImageCache'
 
 interface Props {
   /** 关闭弹窗。自动弹出与手动打开走的是同一条路（弹窗由 App 渲染） */
@@ -83,7 +84,8 @@ export default function NoticeDialog({ onClose }: Props) {
     if (currentId) void markNoticesRead([currentId])
   }, [currentId])
 
-  const html = useMemo(() => (current ? renderNote(current.content) : ''), [current])
+  const { resolvedContent } = useNoticeContent(current?.content)
+  const html = useMemo(() => (resolvedContent ? renderNote(resolvedContent) : ''), [resolvedContent])
 
   /**
    * 关闭的唯一出口：记已读 → 需要时落盘「不再自动弹出」→ 播退场动画。
@@ -242,6 +244,23 @@ function NoticeBody({
   current: { title: string; publishedAt?: string; minVersion?: string } | null
   hasAny: boolean
 }) {
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    const onImgError = (e: Event) => {
+      const target = e.target as HTMLImageElement
+      if (target && target.tagName === 'IMG') {
+        target.dataset.noticeImgFailed = '1'
+        target.classList.add('opacity-40', 'grayscale')
+        if (!target.title) target.title = t('图片加载失败，请检查网络')
+      }
+    }
+    el.addEventListener('error', onImgError, true)
+    return () => el.removeEventListener('error', onImgError, true)
+  }, [html])
+
   if (loading && !hasAny) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-ink-faint">
@@ -297,7 +316,9 @@ function NoticeBody({
         )}
       </div>
       <div className="mt-3 h-px w-full bg-line/70" />
-      <MarkdownView html={html} className="moji-agent-md mt-3 text-[13.5px] leading-relaxed text-ink" />
+      <div ref={bodyRef}>
+        <MarkdownView html={html} className="moji-agent-md mt-3 text-[13.5px] leading-relaxed text-ink" />
+      </div>
     </article>
   )
 }

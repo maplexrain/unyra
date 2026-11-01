@@ -250,6 +250,7 @@ export function normalizeConversation(
         ...(typeof mr.persona === 'string' && mr.persona ? { persona: mr.persona } : {}),
         // 文档格式策略的标记（agent/docFormat）：与 persona 同一条纪律——丢了会每轮重注
         ...(typeof mr.docFormat === 'string' && mr.docFormat ? { docFormat: mr.docFormat } : {}),
+        ...(mr.userInfo ? { userInfo: true } : {}),
         /*
          * 提示词模块的标记（learn/ai/promptModules）：丢了会让「这个模块注入过没有」
          * 重新变成「没注入过」——重启后每用到一次低频组就重复注一遍规范。

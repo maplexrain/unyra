@@ -174,6 +174,12 @@ const ESSAY_COMMIT_INSTRUCTION = ['## 使用「随笔整理」工作流。', '- 
  */
 const PLOT_FIX_INSTRUCTION = ['## 使用「修复函数图像」工作流。', '- 目标节点: {{target}}', '- 文档标题: {{nodeTitle}}', '- 报错原因: {{reason}}', '- 字符区间: {{range}}', '- 起止偏移: {{start}} 到 {{end}}', '', '失败围栏原文（原样，含首尾 ``` 标记）：', '```plot', '{{source}}', '```'].join('\n')
 
+/**
+ * 「项目与文章解读」：当用户需要导师带着解读文章或代码项目时，将材料下载/保存至本地，
+ * 创建项目节点挂在相应文档节点之下（或游离），并在生成的解读文档中用 quote 块精准引用原文。
+ */
+const PROJECT_INTERPRET_INSTRUCTION = ['## 使用「项目与文章解读」工作流。', '- 目标节点: {{target}}'].join('\n')
+
 const BUILTIN_DEFS: BuiltinDef[] = [  {
     id: 'teach-node',
     name: '开讲',
@@ -313,6 +319,16 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     params: ['target', 'message', 'feed'],
     runnable: false,
     // 归类、合并、改写都要判断，值得多想一会儿
+  },
+  {
+    id: 'project-interpret',
+    name: '项目与文章解读',
+    description: '下载文章/小型项目至本地建立项目节点，并在生成的教学文档中用 quote 块精准引用原文进行逐段精读',
+    instruction: PROJECT_INTERPRET_INSTRUCTION,
+    promptModule: 'project-interpret doc-html',
+    params: ['target'],
+    prep: 'ask',
+    runnable: true,
   },
 ]
 

@@ -26,6 +26,7 @@
 import { useSyncExternalStore } from 'react'
 import { native, type NoticeSettings, type WebFetchResult } from './native'
 import { NOTICE_TIMEOUT_MS, noticeUrlForRequest } from './noticeConfig'
+import { precacheNoticeImages } from './noticeImageCache'
 import { t } from '../i18n'
 
 /* ---------- 数据形状 ---------- */
@@ -496,6 +497,8 @@ async function runRefresh(): Promise<NoticeFetchResult> {
     notices = result.notices
     fail = null
     failDetail = undefined
+    // 预热/缓存公告中出现的所有图片，避免网络原因导致图片时常加载不出来
+    void precacheNoticeImages(notices)
   } else {
     fail = result.reason
     failDetail = result.detail

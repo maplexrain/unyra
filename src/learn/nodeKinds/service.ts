@@ -24,9 +24,11 @@ import { detachedPoolOf, findNoteEntity, findSuperDocEntity, withDetached } from
 import { nodePathOf } from '../paths'
 import { clearOutline, createOutlineEntity, deleteOutlineEntity, outlineByMember } from '../outline'
 import { createVideoNode, deleteVideoNode } from '../video/nodes'
+import { createProjectNode, deleteProjectNode, inferPathKind, resolveProjectRoot } from '../projects'
 import { NOTE_DEFAULT_NAME, notesOf, uniqueNoteName } from '../notes'
 import { SUPERDOC_DEFAULT_NAME, removeSuperDoc, writeSuperDoc } from '../superdocs'
 import { emptyDocs, superDocsOf, type KnowledgeNode, type LearnStore, type NoteFile, type SuperDocFile } from '../types'
+import { syncGoalOutlineTabs } from '../groups'
 import { docIdOfEntryUuid, docIdOfOutlineUuid, entryUuid, outlineUuid, GNode, type NodeCtx, type NodeResult } from './base'
 import { DocGNode } from './doc'
 import { EntryGNode } from './entry'
@@ -35,6 +37,7 @@ import { NoteGNode } from './note'
 import { OutlineGNode } from './outline'
 import { SuperdocGNode } from './superdoc'
 import { VideoGNode } from './video'
+import { ProjectGNode } from './project'
 
 export interface NodeServiceDeps {
   getLatest: () => LearnStore
@@ -52,6 +55,8 @@ export type UuidLocation =
   | { kind: 'exam'; docId: string; examId: string }
   /** 视频节点（游离实体）：nodeId 是它自己的实体 id，与视频资源 id 无关 */
   | { kind: 'video'; nodeId: string }
+  /** 项目节点（游离实体）：nodeId 是它自己的实体 id（授权声明，见 learn/projects） */
+  | { kind: 'project'; nodeId: string }
 
 export function locateUuid(store: LearnStore, uuid: string): UuidLocation | null {
   const entryDoc = docIdOfEntryUuid(uuid)
@@ -70,6 +75,8 @@ export function locateUuid(store: LearnStore, uuid: string): UuidLocation | null
   if (exam) return { kind: 'exam', docId: exam.nodeId, examId: exam.id }
   // 视频节点：游离实体（目标 × 视频的绑定），没有宿主文档
   if ((store.videoNodes ?? []).some((v) => v.id === uuid)) return { kind: 'video', nodeId: uuid }
+  // 项目节点：游离实体（目标 × 真实路径的声明），没有宿主文档
+  if ((store.projects ?? []).some((p) => p.id === uuid)) return { kind: 'project', nodeId: uuid }
   for (const node of store.nodes) {
     if (node.id === uuid) return { kind: 'doc', docId: node.id }
     const note = notesOf(node).find((n) => n.id === uuid)
@@ -175,6 +182,8 @@ export class NodeService {
         return new ExamGNode(this.ctx, loc.examId)
       case 'video':
         return new VideoGNode(this.ctx, loc.nodeId)
+      case 'project':
+        return new ProjectGNode(this.ctx, loc.nodeId)
     }
   }
 
@@ -207,6 +216,54 @@ export class NodeService {
         title: '视频 · 未绑定',
         created: true,
         note: '已建一枚视频节点（还没绑视频）：editContent({ videoId }) 绑一个现有视频，视频清单看 list() 的 videos 段',
+      }
+    }
+
+    if (kind === 'project') {
+      /*
+       * 项目节点：声明一条真实路径的授权。path 随建随给，拼法**由路径推断**（盘符 /
+       * `/` 开头 = 绝对，其余相对目标根目录）；under 给了 = 创建即挂到那份文档之下，
+       * 不给 = 游离实体（画布空白处落地的那一下，之后再拖线）。under 是视频节点 = 拒绝。
+       */
+      const underGiven = input.under !== undefined && input.under !== null && String(input.under).trim() !== ''
+      let hostId: string | null = null
+      if (underGiven) {
+        const rawUnder = String(input.under).trim()
+        if ((store.videoNodes ?? []).some((v) => v.id === rawUnder)) {
+          return { error: '项目节点不挂在视频节点之下：under 给文档的 uuid，或不带 under 建游离实体' }
+        }
+        const outlineUnder = rawUnder.startsWith('o:') ? outlineByMember(store, rawUnder) : null
+        if (rawUnder.startsWith('o:') && !outlineUnder) {
+          return { error: 'under 里的大纲（' + rawUnder + '）已经不在了：先 api.node.list() 查清楚再建' }
+        }
+        if (outlineUnder?.kind === 'free') {
+          return { error: '游离大纲没有宿主文档，项目挂不上去：under 给文档的 uuid，或不带 under 建游离实体' }
+        }
+        const docId = outlineUnder?.kind === 'attached' ? outlineUnder.docId : rawUnder
+        if (!nodeById(store, docId)) {
+          return { error: 'under 里给的文档已经不在了：先 api.node.list() 查清楚再建' }
+        }
+        hostId = docId
+      }
+      const path = typeof input.path === 'string' ? input.path.trim() : ''
+      const { store: withNode, entity } = createProjectNode(store, goalId, { title, path, pathKind: inferPathKind(path) }, Date.now())
+      let finalStore = withNode
+      let note: string
+      if (hostId) {
+        const r = addEdge(finalStore, hostId, entity.id)
+        if (!r.added) return { error: r.reason ?? '项目节点没能挂到那份文档之下' }
+        finalStore = r.store
+        note = '已建项目节点并挂到文档之下；授权走 api.project 组（list() 拿 uuid 与解析后的根）'
+      } else {
+        note = '已建一枚项目节点（游离）：要挂到哪份文档就拖线 / connect(它, "up")；授权走 api.project 组'
+      }
+      this.deps.set(finalStore)
+      return {
+        ok: true,
+        uuid: entity.id,
+        title: entity.title + ' · 项目',
+        created: true,
+        note: path ? note : note + '（还没设路径：editContent({ path }) 声明一条真实路径之后才有得读）',
       }
     }
 
@@ -278,6 +335,7 @@ export class NodeService {
 
     if (kind === 'doc') {
       const docTitle = title || '新文档'
+      const goal = store.goals.find((g) => g.id === goalId)
       if (videoUnder) {
         const vGoalId = videoUnder.goalId || goalId
         const added = addNode(store, { title: docTitle, goalId: vGoalId, origin: 'ai', ...(typeof input.description === 'string' ? { description: input.description } : {}) })
@@ -363,13 +421,25 @@ export class NodeService {
       }
       // 没给 under = 独立文档：无父无纲，落在画布空白处（树连接以后随时拖线建立）
       const node = freeNode(store, goalId, docTitle, typeof input.description === 'string' ? input.description : '')
-      this.deps.set(node.store)
+      const shouldBeRoot = input.root === true || (!goal?.rootNodeId)
+      let nextStore = node.store
+      if (shouldBeRoot && goal) {
+        nextStore = {
+          ...nextStore,
+          goals: nextStore.goals.map((g) => (g.id === goalId ? { ...g, rootNodeId: node.record.id } : g)),
+          docArea: syncGoalOutlineTabs(nextStore.docArea, [{ id: goalId, rootNodeId: node.record.id }]),
+        }
+      }
+      this.deps.set(nextStore)
       return {
         ok: true,
         uuid: node.record.id,
         title: node.record.title,
         created: true,
-        note: '已建独立文档「' + node.record.title + '」（还没有挂在任何层下）；教学正文用 editContent 写，要挂进哪一层就拖线到大纲上',
+        ...(shouldBeRoot ? { isRoot: true } : {}),
+        note: shouldBeRoot
+          ? '已建文档「' + node.record.title + '」并设为目标的根文档；工作区与入口指针已就位，教学正文用 editContent 写'
+          : '已建独立文档「' + node.record.title + '」（还没有挂在任何层下）；教学正文用 editContent 写，要挂进哪一层就拖线到大纲上',
       }
     }
 
@@ -484,7 +554,7 @@ export class NodeService {
       }
     }
 
-    return { error: 'kind 只能是 doc / outline / note / exam / superdoc / video（entry 由目标生成）' }
+    return { error: 'kind 只能是 doc / outline / note / exam / superdoc / video / project（entry 由目标生成）' }
   }
 
   /** 目标的全量清单（agent 的导航图；含挂件，全部带 uuid） */
@@ -498,8 +568,14 @@ export class NodeService {
       goal: {
         id: goalId,
         question: goal?.question ?? '',
-        entry: goal ? entryUuid(goal.rootNodeId) : null,
-        root: goal?.rootNodeId ?? null,
+        entry: goal?.rootNodeId ? entryUuid(goal.rootNodeId) : null,
+        root: goal?.rootNodeId ? goal.rootNodeId : null,
+        ...(!goal?.rootNodeId
+          ? {
+              rootNote:
+                '当前目标尚未指定根文档节点（root: null）；可调用 api.node.setRoot(docUuid) 或在创建 doc 时带 root: true 设为根。',
+            }
+          : {}),
       },
       nodes: docs.map((node) => ({
         uuid: node.id,
@@ -538,6 +614,22 @@ export class NodeService {
           })),
         all: (store.videos ?? []).map((v) => ({ videoId: v.id, title: v.title, plugin: v.pluginName ?? v.pluginId })),
       },
+      /*
+       * 项目节点（目标 × 真实路径的授权声明）：uuid 与解析后的根一起给——
+       * 后续 api.project.* 的 read / write 都按 uuid + subPath 寻址。
+       */
+      projects: (store.projects ?? [])
+        .filter((p) => p.goalId === goalId)
+        .map((p) => {
+          const root = resolveProjectRoot(store, p)
+          return {
+            uuid: p.id,
+            title: p.title,
+            path: p.path,
+            pathKind: p.pathKind,
+            resolved: root,
+          }
+        }),
       // 游离挂件（剪了线 / 没绑过的）：独立实体，也在导航图上——get(uuid) 照样取、editContent 照样写
       detached: {
         notes: (store.detached?.[goalId]?.notes ?? []).map((n) => ({ uuid: n.id, title: n.name, chars: n.content.length })),
@@ -555,6 +647,32 @@ export class NodeService {
    * 在写什么、全图已经讲过哪些小节。把 get + getPortData + 读大纲 + 兄弟比对
    * 一次做完——省掉一轮 node.list() 全图 + 逐个读的开销。
    */
+  /** 将某个已有文档指定为目标的根文档（打通入口指针 entry 与工作区默认挂载基准） */
+  setRoot(uuid: string): { ok: true; root: string; title: string; note: string } | { error: string } {
+    const store = this.deps.getLatest()
+    const goalId = this.deps.goalId()
+    const goal = store.goals.find((g) => g.id === goalId)
+    if (!goal) return { error: '当前目标不存在' }
+    const raw = (uuid ?? '').trim()
+    const loc = locateUuid(store, raw)
+    if (!loc || loc.kind !== 'doc') {
+      return { error: '只有文档节点（kind: "doc"）才能设为目标的根文档；「' + raw + '」不是文档节点' }
+    }
+    const node = nodeById(store, loc.docId)
+    if (!node || node.goalId !== goalId) {
+      return { error: '文档「' + raw + '」不属于当前目标，无法设为根' }
+    }
+    const nextGoals = store.goals.map((g) => (g.id === goalId ? { ...g, rootNodeId: node.id } : g))
+    const nextDocArea = syncGoalOutlineTabs(store.docArea, [{ id: goalId, rootNodeId: node.id }])
+    this.deps.set({ ...store, goals: nextGoals, docArea: nextDocArea })
+    return {
+      ok: true,
+      root: node.id,
+      title: node.title,
+      note: '已将「' + node.title + '」（' + node.id + '）设为目标的根文档；工作区与入口指针已就位',
+    }
+  }
+
   brief(uuid: string):
     | {
         ok: true
@@ -643,6 +761,13 @@ export class NodeService {
       if (!next) return { error: '这个视频节点已经不在了' }
       this.deps.set(next)
       return { ok: true, note: '已删除这枚视频节点：目标与视频的绑定解除，视频资源还在侧栏里' }
+    }
+    if (loc.kind === 'project') {
+      // 删项目节点 = 撤回这条授权声明（摘掉两端的挂载边）；磁盘上的文件与目录原样不动
+      const next = deleteProjectNode(store, loc.nodeId)
+      if (!next) return { error: '这个项目节点已经不在了' }
+      this.deps.set(next)
+      return { ok: true, note: '已删除这枚项目节点：路径声明（授权）撤回，磁盘上的文件与目录原样保留' }
     }
 
     if (loc.kind === 'doc') {

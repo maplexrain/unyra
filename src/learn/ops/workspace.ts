@@ -66,16 +66,18 @@ export function createWorkspaceOps(deps: AgentOpsDeps, io: WorkspaceIo) {
       i = 1
     } else {
       const goal = store0().goals.find((g) => g.id === deps.goalId())
-      const root = goal ? nodeById(store0(), goal.rootNodeId) : undefined
-      if (!root) return { error: '这个目标没有根节点' }
+      let root = goal && goal.rootNodeId ? nodeById(store0(), goal.rootNodeId) : undefined
+      if (!root) {
+        root = currentOf() ?? store0().nodes.find((n) => n.goalId === deps.goalId())
+      }
+      if (!root) return { error: '这个目标尚未创建任何文档节点，无法定位工作区；请先 api.node.create({ kind: "doc" })' }
       // 第一段若就是目标根自己的标题，当作从这里出发的写法吃掉（「微积分/极限/数据.csv」才走得通）
       if (normalizeKey(first) === root.key || first === root.id) {
         cursor = root
         i = 1
       } else {
         // 头一段对不上目标根的任何子节点：它不是节点链，整条路径当文件路径、
-        // 锚在**当前节点**的工作区上——光标开着「极限」时写「数据/实验.csv」，
-        // 落的应该是极限的工作区，而不是目标根的。没开着节点就没得锚，把出路说清楚。
+        // 锚在当前节点的工作区上（若未打开节点则默认锚在根节点工作区）
         const child = prereqIds(store0(), root.id)
           .map((id) => nodeById(store0(), id))
           .find(
@@ -86,16 +88,7 @@ export function createWorkspaceOps(deps: AgentOpsDeps, io: WorkspaceIo) {
           cursor = child
           i = 1
         } else {
-          const cur = currentOf()
-          if (!cur) {
-            return {
-              error:
-                '路径「' +
-                segments.join('/') +
-                '」的开头不是节点，此刻也没有打开的节点；写明节点路径（如 极限/要点.md）或先打开一个节点',
-            }
-          }
-          cursor = cur
+          cursor = currentOf() ?? root
         }
       }
     }

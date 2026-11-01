@@ -40,9 +40,11 @@ import { fetchForAgent, searchForAgent } from './webSearch'
 import type { SandboxOptions } from '../agent/sandbox/types'
 import { MIN_ACTIVE_MESSAGES, activeMessages, applyCompaction, shouldCompact } from './compact'
 import { needsPersonaAnnounce, personaMessage } from '../agent/persona'
-import { needsDocFormatAnnounce, docFormatMessage, docFormatAllowsModule } from '../agent/docFormat'
+import { needsDocFormatAnnounce, docFormatMessage } from '../agent/docFormat'
+import { needsUserInfoAnnounce, userInfoMessage } from '../agent/userInfo'
+import { activeProfile } from '../user/store'
 import { conversationById, nodeById, resolveDisplayedConversation, addConversation } from './graph'
-import { resolveNode } from './paths'
+import { nodePathOf, resolveNode } from './paths'
 import { makeExamTool } from './agentOps'
 import { findWorkflow, renderWorkflowInstruction, workflowPrep, workflowModules } from './workflows'
 import { generateConversationTitle, namingSource } from './title'
@@ -74,12 +76,7 @@ import {
 import { applyAskToProfile, learnSandboxOps, type AgentRunTarget, type AgentUiDeps } from './agent/sandboxOps'
 import { createSubAgentManager, type SubAgentManager } from '../agent/subagent/manager'
 import { EMPTY_SUB_BUCKET } from '../agent/subagent/registry'
-import {
-  missingPromptModules,
-  promptModuleByKey,
-  promptModuleMessage,
-  type PromptModule,
-} from './ai/promptModules'
+import { type PromptModule } from './ai/promptModules'
 import { t } from '../i18n'
 
 /*
@@ -380,7 +377,7 @@ export function useAgent(opts: {
        * 同一处——排在用户消息之前、只在队尾追加（前缀缓存安全）；活着的消息里已有
        * 标记的自动跳过，同一上下文绝不重复注入。
        */
-      modules?: PromptModule[],
+      _modules?: PromptModule[],
       /** 工作流启动实参（runWorkflow 的 params）：随隐藏指令落库，分界条展开时展示 */
       wfParams?: Record<string, string | number>,
     ) => {
@@ -496,6 +493,10 @@ export function useAgent(opts: {
         ? [docFormatMessage(agentSettings.docFormat, Date.now(), crypto.randomUUID(), agentSettings.customDocFormats)]
         : []
 
+      const userInfoAnnouncer = needsUserInfoAnnounce(conv.messages)
+        ? [userInfoMessage(activeProfile(), Date.now(), crypto.randomUUID())]
+        : []
+
       // 动态技能清单注入：不在系统提示词中硬编码，而在消息流中按需注入与变更更新（保持前缀缓存稳定）
       const activeSkills = getActiveSkills(agentSettings.skills)
       const currentSkillsDigest = getSkillsDigest(activeSkills)
@@ -529,37 +530,17 @@ export function useAgent(opts: {
           ]
         : []
 
-      // 提示词模块与技能 Slash 命令检测：支持用户以 /<skill-id> 显式指定，提前将技能注入上下文
-      //
-      // 工作流指定的模块同样要过格式策略过滤（「开讲」「学习大纲」会强制带上 doc-html）：
-      // 纯 Markdown 策略下那份 HTML 配方与格式指令直接冲突，拦在这里——
-      // 内容触发那一头的同一个过滤拦在 sandbox/execute 的注入点（见 agent/docFormat）。
-      const effectiveModules = (modules ?? []).filter((m) => docFormatAllowsModule(m.key, agentSettings.docFormat))
-      const slashMatch = trimmed.match(/^\/([a-zA-Z0-9_-]+)(?:\s+([\s\S]*))?$/)
-      if (slashMatch) {
-        const cmd = slashMatch[1].toLowerCase()
-        const availableSkills = getActiveSkills(agentSettings.skills)
-        const matchedSkill = availableSkills.find((s) => s.id === cmd || s.id.startsWith(cmd + '-'))
-        if (matchedSkill) {
-          const skillMod = promptModuleByKey(`skill:${matchedSkill.id}`)
-          if (skillMod && !effectiveModules.some((m) => m.key === skillMod.key)) {
-            effectiveModules.push(skillMod)
-          }
-        }
-      }
-
-      // 提示词模块：与人格补发同一位置、同一条纪律（retired 的不算数，压缩后自动重注）
-      const moduleMsgs = effectiveModules.length
-        ? missingPromptModules(conv.messages, effectiveModules.map((m) => m.key))
-            .map((key) => {
-              const mod = promptModuleByKey(key) ?? effectiveModules.find((m) => m.key === key)
-              return mod ? promptModuleMessage(mod, crypto.randomUUID(), Date.now()) : null
-            })
-            .filter((m): m is ConversationMessage => m !== null)
-        : []
       conv = {
         ...conv,
-        messages: [...conv.messages, ...announcer, ...formatAnnouncer, ...skillsAnnouncer, ...mcpAnnouncer, ...moduleMsgs, userMsg],
+        messages: [
+          ...conv.messages,
+          ...announcer,
+          ...formatAnnouncer,
+          ...userInfoAnnouncer,
+          ...skillsAnnouncer,
+          ...mcpAnnouncer,
+          userMsg,
+        ],
         updatedAt: Date.now(),
         // 在途标记：这一轮没收口（进程被杀）时，载入恢复据此找到这条回复（见 learn/agent/inflight）
         inflight: { messageId: assistantId, startedAt: Date.now() },
@@ -579,7 +560,7 @@ export function useAgent(opts: {
        * 本轮 execute 报上来的提示词模块 key（apiGroup / 内容触发，见 learn/ai/promptModules）。
        * 只收集不落库：轮末 finally 里统一去重、统一追加——绝不在这里改会话。
        */
-      const moduleQueue = new Set<string>()
+      // moduleQueue 已退役
       // ui 依赖现取最新的一份（见 uiRef 的说明）
       const uiDeps = uiRef.current
       // browser 依赖现取最新的一份（webMeta 活信息随渲染变，与 uiRef 同款说明）
@@ -748,11 +729,27 @@ export function useAgent(opts: {
                         continue
                       }
                     }
+                    // 兼容 .node.json 磁盘路径或文件名匹配
+                    const diskMatch = st.nodes.find((n) => {
+                      if (n.goalId !== target.goalId) return false
+                      const base = n.title
+                      return f.path.endsWith(`/${base}.node.json`) || f.path.endsWith(`/${base}.teaching.md`) || f.path === `${base}.node.json` || f.path === `${base}.teaching.md`
+                    })
+                    if (diskMatch) {
+                      f.nodeId = diskMatch.id
+                      continue
+                    }
                     if (target.nodeId) {
                       const targetNode = nodeById(st, target.nodeId)
                       if (targetNode && (cleanPath === targetNode.title || cleanPath === targetNode.id)) {
                         f.nodeId = targetNode.id
                       }
+                    }
+                  }
+                  if (f.nodeId) {
+                    const matchedNode = nodeById(st, f.nodeId)
+                    if (matchedNode && (f.path.endsWith('.node.json') || f.path === f.nodeId || f.path === '#' + f.nodeId)) {
+                      f.path = nodePathOf(st, target.goalId, f.nodeId) || matchedNode.title
                     }
                   }
                 }
@@ -774,7 +771,7 @@ export function useAgent(opts: {
             return deps ? makeExamTool(deps) : undefined
           })(),
           // 动态提示词注入的触发口：execute 只报 key，去重与落库都在轮末（见 moduleQueue）
-          onPromptModule: (key) => moduleQueue.add(key),
+          // onPromptModule: 不再按需动态入队
           // 用户点「停止」时，正在等用户的 ask 与正在睡的 wait 要能立刻退场
           signal,
           /** 记忆：长期跨目标、工作按目标；绝不自动拼进上下文，agent 需要时主动读写 */
@@ -951,33 +948,8 @@ export function useAgent(opts: {
            * 消息（见 agent/history）——数组顺序天然与实发一致，不需要任何切分。
            */
           injections: async (): Promise<AgentInjection | null> => {
-            /**
-             * 工作流轮与隐藏指令轮（mark 在）**跳间不注入**：模块若在多跳中途插到
-             * 请求流末尾，下一跳它就成了「最后一条 user 消息」——注意力权重最高，
-             * 排版配方这类规范会压过本轮工作流指令的职责约束（「本轮交付物是 X」）。
-             * 工作流自带的模块在轮前已注入（userMsg 之前，那才是它该在的位置）；
-             * execute 动态触发的延后到轮末 finally 统一落库，作为历史进入下一轮。
-             */
-            if (mark) return null
-            if (!moduleQueue.size) return null
-            const stored = conversationById(getLatest(), target.conversationId)
-            if (!stored) {
-              moduleQueue.clear()
-              return null
-            }
-            const keys = missingPromptModules(activeMessages(stored.messages), [...moduleQueue])
-            if (!keys.length) {
-              moduleQueue.clear()
-              return null
-            }
-            const mod = promptModuleByKey(keys[0])
-            if (!mod) return null
-            moduleQueue.delete(keys[0])
-            parts.push({ type: 'prompt-module', key: mod.key, text: mod.text })
-            // 片段立即落库（与工具卡片同一条里程碑纪律）：进程被杀也不丢这笔账
-            flushTurn()
-            // 模块是「怎么做」的声明：以 assistant 边进历史（与轮前的模块消息同一分工）
-            return { role: 'assistant', content: mod.text }
+            // 不再按需在 loop 中途动态注入提示词模块：全量提示词与规程已在首轮全量就绪
+            return null
           },
           onEvent: (e) => {
             if (e.type === 'usage') {
@@ -1082,21 +1054,7 @@ export function useAgent(opts: {
          * 去重以**活着的消息**为准（activeMessages 与请求走同一份口径）：已注过的不重注。
          * 模块消息随后若被压缩折掉（retired），下次使用会重新注入——那是设计内行为。
          */
-        if (moduleQueue.size) {
-          const stored = conversationById(getLatest(), target.conversationId)
-          if (stored) {
-            const keys = missingPromptModules(activeMessages(stored.messages), [...moduleQueue])
-            const msgs = keys
-              .map((key) => {
-                const mod = promptModuleByKey(key)
-                return mod ? promptModuleMessage(mod, crypto.randomUUID(), Date.now()) : null
-              })
-              .filter((m): m is ConversationMessage => m !== null)
-            if (msgs.length) {
-              persist({ ...stored, messages: [...stored.messages, ...msgs], updatedAt: Date.now() })
-            }
-          }
-        }
+        // 动态提示词注入已退役（首轮注入全量提示词）
         // 只清自己这一场：并发的其他导师的实时槽各归各
         setRunning((prev) => {
           if (!prev[convKey]) return prev
