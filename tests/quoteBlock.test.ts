@@ -10,11 +10,11 @@ import {
   setQuoteBlockHost,
   type QuoteBlockHost,
 } from '../src/lib/quoteBlock'
-import type { PluginRenderContext } from '../src/lib/renderPlugins'
+import { encodeAttr, escapeHtml, type PluginRenderContext } from '../src/lib/renderPlugins'
 
 const mockCtx: PluginRenderContext = {
-  escape: (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
-  attr: (s) => s.replace(/"/g, '&quot;'),
+  escape: escapeHtml,
+  attr: encodeAttr,
 }
 
 describe('quoteBlock', () => {
@@ -249,6 +249,54 @@ describe('quoteBlock', () => {
       const pathBtn = container.querySelector<HTMLButtonElement>('.moji-quote-path')
       pathBtn?.click()
       expect(mockHost.onOpenFile).toHaveBeenCalledWith('demo.ts', 3)
+
+      cleanup()
+      document.body.removeChild(container)
+    })
+
+    it('correctly decodes percent-encoded file paths and rules via decodeAttr', async () => {
+      const complexPath = 'C:/Users/maxwell/AppData/Roaming/unyra/users/test/docs/DeepSeek新手入门/workspace/demo/router.js'
+      const sampleFile = [
+        '// header',
+        'export function route(table, path) {',
+        '  if (!table[path]) throw new Error("404");',
+        '  return table[path]();',
+        '}',
+      ].join('\n')
+
+      const mockHost: QuoteBlockHost = {
+        readFile: vi.fn().mockResolvedValue(sampleFile),
+        onOpenFile: vi.fn(),
+      }
+      setQuoteBlockHost(mockHost)
+
+      const container = document.createElement('div')
+      // Render with mockCtx which uses encodeAttr (encodeURIComponent)
+      container.innerHTML = quoteBlock(
+        `@${complexPath}(2-4){\n  [3:3, 3:19] => <strong class="text-seal">{{content}}</strong>\n}`,
+        mockCtx,
+      )
+      document.body.appendChild(container)
+
+      const cleanup = hydrateQuotes(container)
+      await vi.waitFor(() => {
+        expect(container.querySelector('.moji-quote-code')).not.toBeNull()
+      })
+
+      // mockHost.readFile should receive the clean, decoded path, NOT percent-encoded
+      expect(mockHost.readFile).toHaveBeenCalledWith(complexPath)
+
+      const codeHtml = container.querySelector('.moji-quote-code')?.innerHTML
+      expect(codeHtml).toContain('export function route')
+      expect(codeHtml).toContain('<strong class="text-seal">if (!table[path])</strong>')
+
+      // Path button tooltip and text should be unencoded
+      const pathBtn = container.querySelector<HTMLButtonElement>('.moji-quote-path')
+      expect(pathBtn?.title).toBe(complexPath)
+      expect(pathBtn?.textContent).toBe(complexPath)
+
+      pathBtn?.click()
+      expect(mockHost.onOpenFile).toHaveBeenCalledWith(complexPath, 2)
 
       cleanup()
       document.body.removeChild(container)

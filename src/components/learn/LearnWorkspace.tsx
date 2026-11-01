@@ -175,7 +175,7 @@ import { nodePathOf, resolveNode } from '../../learn/paths'
 import { setPlotFixHandler } from '../../lib/plot'
 import { nodeDocPath } from '../../learn/files'
 import { createNodeDocImageResolver, type LocalImageResolver } from '../../lib/docImages'
-import { revealLocalFile, revealPath, revealUserPath, userAbsPath, listUserDir, mkdirUserPath, moveUserPath, copyUserPath, writeUserText } from '../../lib/storage'
+import { revealLocalFile, revealPath, revealUserPath, userAbsPath, listUserDir, mkdirUserPath, moveUserPath, copyUserPath, writeUserText, readUserText, userAbsPrefix } from '../../lib/storage'
 import { wsAllocateName, wsNameOk, wsRefOfRel, wsRelOf, wsRelOfTab } from '../../learn/workspace'
 import { notifyWsChanged } from './explorer/wsChanges'
 import { setStaticView } from '../../lib/staticView'
@@ -3540,14 +3540,41 @@ export default function LearnWorkspace({
     setQuoteBlockHost({
       readFile: async (rawPath: string): Promise<string | null> => {
         const s = getLatest()
-        const cleanPath = (rawPath ?? '').trim().replace(/\\/g, '/')
+        let cleanPath = (rawPath ?? '').trim().replace(/\\/g, '/')
         if (!cleanPath) return null
 
-        const tryRead = async (p: string): Promise<string | null> => {
+        let decodedPath = cleanPath
+        try {
+          if (cleanPath.includes('%')) {
+            decodedPath = decodeURIComponent(cleanPath).replace(/\\/g, '/')
+          }
+        } catch {}
+
+        const uPrefix = userAbsPrefix()?.replace(/\\/g, '/')
+
+        const tryReadOne = async (p: string): Promise<string | null> => {
+          if (!p) return null
+          // 1. 若落在当前用户数据目录下，优先走 readUserText
+          if (uPrefix && p.startsWith(uPrefix)) {
+            const rel = p.slice(uPrefix.length).replace(/^[\/]+/, '')
+            try {
+              const res = await readUserText(rel)
+              if (res !== null) return res
+            } catch {}
+          }
+          // 2. 若是相对路径，尝试直接当用户相对路径读
+          if (!/^[a-zA-Z]:[\/]/.test(p) && !p.startsWith('/') && !p.startsWith('\\\\')) {
+            try {
+              const res = await readUserText(p.replace(/^[\/]+/, ''))
+              if (res !== null) return res
+            } catch {}
+          }
+          // 3. 外部本地文件读取（readLocalFile）
           try {
             const res = await readLocalFile(p)
             if (res.ok && typeof res.content === 'string') return res.content
           } catch {}
+          // 4. 尝试通过 projectFs 读（处理已声明项目根内的文件）
           try {
             if (isElectron()) {
               const allRoots = (s.projects ?? [])
@@ -3562,50 +3589,65 @@ export default function LearnWorkspace({
           return null
         }
 
-        const isAbs = /^[a-zA-Z]:[\\/]/.test(cleanPath) || cleanPath.startsWith('/') || cleanPath.startsWith('\\\\')
-        if (isAbs) {
-          return await tryRead(cleanPath)
+        const tryRead = async (p: string): Promise<string | null> => {
+          let c = await tryReadOne(p)
+          if (c !== null) return c
+          try {
+            if (p.includes('%')) {
+              c = await tryReadOne(decodeURIComponent(p).replace(/\\/g, '/'))
+              if (c !== null) return c
+            }
+          } catch {}
+          return null
         }
 
-        const candidateProjects: ProjectNodeEntity[] = []
-        if (s.activeNodeId) {
-          const downEdges = s.edges.filter((e) => e.from === s.activeNodeId)
-          for (const e of downEdges) {
-            const p = (s.projects ?? []).find((pr) => pr.id === e.to)
-            if (p) candidateProjects.push(p)
+        const isAbs = (p: string) => /^[a-zA-Z]:[\/]/.test(p) || p.startsWith('/') || p.startsWith('\\\\')
+
+        // 绝对路径：直接测试
+        if (isAbs(cleanPath) || isAbs(decodedPath)) {
+          const direct = await tryRead(cleanPath)
+          if (direct !== null) return direct
+          if (decodedPath !== cleanPath) {
+            const decRes = await tryRead(decodedPath)
+            if (decRes !== null) return decRes
           }
         }
-        if (s.activeGoalId) {
-          for (const pr of s.projects ?? []) {
-            if (pr.goalId === s.activeGoalId && !candidateProjects.some((cp) => cp.id === pr.id)) {
-              candidateProjects.push(pr)
+
+        // 收集相对路径候选
+        const candidates: string[] = []
+        const fRef = focusedTab(s.docArea)?.ref
+        const currentViewingId = (fRef ? tabNodeId(fRef) : null) ?? s.activeNodeId
+        const activeGoal = s.goals.find((g) => g.id === s.activeGoalId)
+        const relevantNodeIds = new Set<string>()
+        if (currentViewingId) relevantNodeIds.add(currentViewingId)
+        if (s.activeNodeId) relevantNodeIds.add(s.activeNodeId)
+        if (activeGoal?.rootNodeId) relevantNodeIds.add(activeGoal.rootNodeId)
+        for (const n of s.nodes ?? []) {
+          if (n.goalId === s.activeGoalId) relevantNodeIds.add(n.id)
+        }
+
+        const pathVariants = [cleanPath]
+        if (decodedPath !== cleanPath) pathVariants.push(decodedPath)
+
+        for (const variant of pathVariants) {
+          const relPath = variant.replace(/^\.\//, '')
+          const relWithoutWs = relPath.startsWith('workspace/') ? relPath.slice('workspace/'.length) : relPath
+
+          // 1. 相关节点的工作区目录（workspace/）
+          for (const nid of relevantNodeIds) {
+            const wsRel = wsRelOf(s, nid)
+            if (!wsRel) continue
+            candidates.push(`${wsRel}/${relWithoutWs}`)
+            if (uPrefix) {
+              candidates.push(`${uPrefix}/${wsRel}/${relWithoutWs}`)
+            }
+            candidates.push(`${wsRel.replace(/\/workspace$/, '')}/${relPath}`)
+            if (uPrefix) {
+              candidates.push(`${uPrefix}/${wsRel.replace(/\/workspace$/, '')}/${relPath}`)
             }
           }
-        }
-        for (const pr of s.projects ?? []) {
-          if (!candidateProjects.some((cp) => cp.id === pr.id)) {
-            candidateProjects.push(pr)
-          }
-        }
 
-        for (const proj of candidateProjects) {
-          const root = resolveProjectRoot(s, proj)
-          if (!root) continue
-          const full = root.replace(/[\\/]+$/, '') + '/' + cleanPath.replace(/^[\\/]+/, '')
-          const res = await tryRead(full)
-          if (res !== null) return res
-        }
-
-        return await tryRead(cleanPath)
-      },
-      onOpenFile: (rawPath: string, _line?: number) => {
-        const s = getLatest()
-        const cleanPath = (rawPath ?? '').trim().replace(/\\/g, '/')
-        if (!cleanPath) return
-
-        let targetPath = cleanPath
-        const isAbs = /^[a-zA-Z]:[\\/]/.test(cleanPath) || cleanPath.startsWith('/') || cleanPath.startsWith('\\\\')
-        if (!isAbs) {
+          // 2. 已声明的项目节点（Project Nodes）
           const candidateProjects: ProjectNodeEntity[] = []
           if (s.activeNodeId) {
             const downEdges = s.edges.filter((e) => e.from === s.activeNodeId)
@@ -3621,16 +3663,108 @@ export default function LearnWorkspace({
               }
             }
           }
+          for (const pr of s.projects ?? []) {
+            if (!candidateProjects.some((cp) => cp.id === pr.id)) {
+              candidateProjects.push(pr)
+            }
+          }
+
           for (const proj of candidateProjects) {
             const root = resolveProjectRoot(s, proj)
-            if (root) {
-              targetPath = root.replace(/[\\/]+$/, '') + '/' + cleanPath.replace(/^[\\/]+/, '')
+            if (!root) continue
+            const full = root.replace(/[\\/]+$/, '') + '/' + relPath.replace(/^[\\/]+/, '')
+            candidates.push(full)
+          }
+
+          // 3. 用户数据目录直接寻找
+          candidates.push(relPath)
+          candidates.push(`docs/${relPath}`)
+          if (uPrefix) {
+            candidates.push(`${uPrefix}/${relPath}`)
+            candidates.push(`${uPrefix}/docs/${relPath}`)
+          }
+        }
+
+        for (const cand of candidates) {
+          const content = await tryRead(cand)
+          if (content !== null) return content
+        }
+
+        return null
+      },
+      onOpenFile: (rawPath: string, _line?: number) => {
+        const s = getLatest()
+        let cleanPath = (rawPath ?? '').trim().replace(/\\/g, '/')
+        if (!cleanPath) return
+
+        let decodedPath = cleanPath
+        try {
+          if (cleanPath.includes('%')) {
+            decodedPath = decodeURIComponent(cleanPath).replace(/\\/g, '/')
+          }
+        } catch {}
+
+        const isAbs = (p: string) => /^[a-zA-Z]:[\/]/.test(p) || p.startsWith('/') || p.startsWith('\\\\')
+
+        let targetAbsPath: string | null = null
+        if (isAbs(cleanPath)) targetAbsPath = cleanPath
+        else if (isAbs(decodedPath)) targetAbsPath = decodedPath
+
+        const uPrefix = userAbsPrefix()?.replace(/\\/g, '/')
+
+        if (!targetAbsPath) {
+          const fRef = focusedTab(s.docArea)?.ref
+        const currentViewingId = (fRef ? tabNodeId(fRef) : null) ?? s.activeNodeId
+          const activeGoal = s.goals.find((g) => g.id === s.activeGoalId)
+          const relevantNodeIds = new Set<string>()
+          if (currentViewingId) relevantNodeIds.add(currentViewingId)
+          if (s.activeNodeId) relevantNodeIds.add(s.activeNodeId)
+          if (activeGoal?.rootNodeId) relevantNodeIds.add(activeGoal.rootNodeId)
+          for (const n of s.nodes ?? []) {
+            if (n.goalId === s.activeGoalId) relevantNodeIds.add(n.id)
+          }
+
+          const relWithoutWs = cleanPath.startsWith('workspace/') ? cleanPath.slice('workspace/'.length) : cleanPath
+
+          // 1. 优先查工作区
+          for (const nid of relevantNodeIds) {
+            const wsRel = wsRelOf(s, nid)
+            if (!wsRel) continue
+            const fullRel = `${wsRel}/${relWithoutWs}`
+            const wsRef = wsRefOfRel(s, fullRel)
+            if (wsRef) {
+              openTab(wsRef)
+              return
+            }
+            if (uPrefix) {
+              targetAbsPath = `${uPrefix}/${fullRel}`
               break
+            }
+          }
+
+          // 2. 项目节点
+          if (!targetAbsPath) {
+            for (const pr of s.projects ?? []) {
+              const root = resolveProjectRoot(s, pr)
+              if (root) {
+                targetAbsPath = root.replace(/[\\/]+$/, '') + '/' + cleanPath.replace(/^[\\/]+/, '')
+                break
+              }
             }
           }
         }
 
-        openTab({ kind: 'local', path: targetPath, title: localFileNameOf(targetPath) })
+        if (targetAbsPath) {
+          if (uPrefix && targetAbsPath.startsWith(uPrefix)) {
+            const rel = targetAbsPath.slice(uPrefix.length).replace(/^[\/]+/, '')
+            const wsRef = wsRefOfRel(s, rel)
+            if (wsRef) {
+              openTab(wsRef)
+              return
+            }
+          }
+          openTab({ kind: 'local', path: targetAbsPath, title: localFileNameOf(targetAbsPath) })
+        }
       },
     })
     return () => setQuoteBlockHost(null)

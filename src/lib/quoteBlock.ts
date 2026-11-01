@@ -19,7 +19,7 @@
  * - 样式规范：组件及内部所有元素严格采用直角风格（rounded-none），自适应主题色。
  */
 import { t } from '../i18n'
-import type { PluginRenderContext } from './renderPlugins'
+import { decodeAttr, type PluginRenderContext } from './renderPlugins'
 
 export interface QuoteMappingRule {
   startLine: number
@@ -439,7 +439,7 @@ export function quoteBlock(source: string, ctx: PluginRenderContext): string {
         `<line x1="8" y1="17" x2="13" y2="17" stroke-width="1.8"></line>` +
         `</svg>` +
         `<button type="button" class="moji-quote-path truncate hover:text-seal font-medium text-ink transition-colors cursor-pointer rounded-none underline-offset-2 hover:underline" ` +
-        `title="${ctx.attr(ref.filePath)}" data-action="open-file">` +
+        `title="${ctx.escape(ref.filePath)}" data-action="open-file">` +
         `${ctx.escape(ref.filePath)}` +
         `</button>` +
         `<span class="text-[11px] px-1.5 py-0.5 text-ink-faint border border-line/50 bg-paper dark:bg-card rounded-none shrink-0 font-mono">` +
@@ -536,12 +536,14 @@ export function hydrateQuotes(root: HTMLElement): () => void {
     for (const item of items) {
       if (item.dataset.hydrated === 'true') continue
 
-      const filePath = item.dataset.file ?? ''
+      const rawFile = item.getAttribute('data-file') ?? item.dataset.file ?? ''
+      const filePath = decodeAttr(rawFile)
       const startLine = parseInt(item.dataset.start ?? '1', 10)
       const endLine = parseInt(item.dataset.end ?? '1', 10)
       let rules: QuoteMappingRule[] = []
       try {
-        rules = JSON.parse(item.dataset.rules ?? '[]') as QuoteMappingRule[]
+        const rawRules = item.getAttribute('data-rules') ?? item.dataset.rules ?? '[]'
+        rules = JSON.parse(decodeAttr(rawRules)) as QuoteMappingRule[]
       } catch {
         rules = []
       }
