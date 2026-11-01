@@ -69,6 +69,8 @@ const SCOPE_RULES: ReadonlyArray<readonly [string, TokenType]> = [
   ['support.type', 'type'],
   ['support.constant', 'constant'],
   ['support', 'builtin'],
+  ['meta.paragraph', 'plain'],
+  ['text.html.markdown', 'plain'],
   ['meta.preprocessor', 'meta'],
   ['meta.decorator', 'meta'],
   ['meta.annotation', 'meta'],

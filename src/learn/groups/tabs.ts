@@ -115,10 +115,18 @@ export function openInGroup(
   const id = tabKey(ref)
   const home = groupIdOfTab(docs, id)
   if (home) {
-    if (ref.kind === 'local' && ref.title) {
+    if (view || (ref.kind === 'local' && ref.title)) {
       const updated = withGroup(docs, home, (g) => ({
         ...g,
-        tabs: g.tabs.map((t) => (t.id === id && t.ref.kind === 'local' && t.ref.title !== ref.title ? { ...t, ref: { ...t.ref, title: ref.title } } : t)),
+        tabs: g.tabs.map((t) => {
+          if (t.id !== id) return t
+          let next = t
+          if (view) next = { ...next, view }
+          if (ref.kind === 'local' && ref.title && next.ref.kind === 'local' && next.ref.title !== ref.title) {
+            next = { ...next, ref: { ...next.ref, title: ref.title } }
+          }
+          return next
+        }),
       }))
       return activateIn(updated, home, id)
     }

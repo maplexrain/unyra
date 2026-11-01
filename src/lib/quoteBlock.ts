@@ -53,7 +53,7 @@ export interface QuoteBlockHost {
   /** 读取文件文本（支持绝对路径或当前目标项目相对路径） */
   readFile: (filePath: string) => Promise<string | null> | string | null
   /** 当用户点击文件路径或“打开”按钮时触发 */
-  onOpenFile?: (filePath: string, line?: number) => void
+  onOpenFile?: (filePath: string, startLine?: number, endLine?: number) => void
 }
 
 let currentQuoteHost: QuoteBlockHost | null = null
@@ -670,7 +670,7 @@ export function quoteBlock(source: string, ctx: PluginRenderContext): string {
   }
 
   return (
-    `<div class="moji-quote-block my-4 border border-line/60 border-l-0 bg-surface/30 dark:bg-surface/15 rounded-none p-3 shadow-xs">` +
+    `<div class="moji-quote-block my-3 rounded-none">` +
     innerHtml +
     `</div>`
   )
@@ -762,7 +762,7 @@ export function hydrateQuotes(root: HTMLElement): () => void {
 
       const handleOpen = () => {
         if (host.onOpenFile) {
-          host.onOpenFile(filePath, startLine)
+          host.onOpenFile(filePath, startLine, endLine)
         }
       }
 
@@ -817,7 +817,7 @@ export function hydrateQuotes(root: HTMLElement): () => void {
           linesHtml +=
             `<div class="moji-quote-line flex items-start hover:bg-surface/50 transition-colors rounded-none">` +
             `<span class="moji-quote-line-no select-none text-right font-mono text-[11px] text-ink-faint/60 w-10 pr-3 mr-3 border-r border-line/40 shrink-0 rounded-none pt-0.5">${line.lineNum}</span>` +
-            `<span class="moji-quote-line-code font-mono text-xs text-ink/90 whitespace-pre-wrap break-words break-all min-w-0 flex-1 rounded-none leading-5">${line.html}</span>` +
+            `<span class="moji-quote-line-code font-mono text-xs text-ink whitespace-pre-wrap break-words break-all min-w-0 flex-1 rounded-none leading-5">${line.html}</span>` +
             `</div>`
         }
 

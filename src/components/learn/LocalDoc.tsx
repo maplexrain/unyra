@@ -11,7 +11,7 @@ import { copySelectionAsMarkdown } from '../../lib/copySource'
 import { fadeMask, useScrollEdges } from '../../lib/scrollFade'
 import { readUserImage, readUserText, userAbsPrefix } from '../../lib/storage'
 import type { OutlineHandle } from '../../lib/outline'
-import { localRevealKey } from '../../lib/docReveal'
+import { localRevealKey, subscribeSourceReveal } from '../../lib/docReveal'
 import MarkdownView from '../MarkdownView'
 import SourceEditor, { type SaveState } from './SourceEditor'
 import { DocContextMenu } from './note/docContextMenu'
@@ -283,6 +283,30 @@ export default function LocalDoc({
       setWordCount(countVisibleWords(bodyRef.current, html))
     }
   }, [html])
+
+  // 监听定位请求（在预览视图中平滑滚动到对应段落）
+  useEffect(() => {
+    return subscribeSourceReveal((key, rev) => {
+      if (key !== localRevealKey(path)) return
+      if (view === 'preview' && bodyRef.current) {
+        const targetSnippet = text.slice(rev.start, rev.end).trim()
+        if (!targetSnippet) return
+
+        const firstLineSnippet = targetSnippet.split(/\r?\n/)[0].trim().slice(0, 30)
+        if (!firstLineSnippet) return
+
+        const elements = bodyRef.current.querySelectorAll<HTMLElement>('p, h1, h2, h3, h4, h5, h6, li, pre, blockquote')
+        for (const el of elements) {
+          if (el.textContent && el.textContent.includes(firstLineSnippet)) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            el.classList.add('moji-reveal-flash')
+            setTimeout(() => el.classList.remove('moji-reveal-flash'), 1800)
+            break
+          }
+        }
+      }
+    })
+  }, [path, view, text])
 
   useEffect(() => {
     if (outlineSlot) outlineSlot.current = outline.length ? { items: outline, activeIndex, jump: jumpTo } : null

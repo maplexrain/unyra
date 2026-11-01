@@ -260,7 +260,7 @@ import ContextDebugger from '../agent/ContextDebugger'
 import { resetPrefixGate } from '../../agent/prefixGate'
 import { setEffortNotice } from '../../learn/effortGuard'
 import { docAreaElement, locateNeedle, scrollToDoc, visibleDocBody } from '../../lib/docDom'
-import { localRevealKey, nodeRevealKey, requestSourceReveal } from '../../lib/docReveal'
+import { lineRangeToOffsets, localRevealKey, nodeRevealKey, requestSourceReveal } from '../../lib/docReveal'
 import { readRecentTabs, residentIds } from '../../learn/resident'
 import type { UiPointRequest } from '../../agent/tools'
 import type { AskAnswers } from '../../agent/tools'
@@ -1105,7 +1105,7 @@ export default function LearnWorkspace({
    * 会把下游一串 useCallback 的记忆化全部判废（lint 的 preserve-manual-memoization 六连警告
    * 就是它）。所以这里放一个 ref：声明之后随时回填，调用时刻一定已经是最新的一份。
    */
-  const openTabRef = useRef<(ref: TabRef) => void>(() => {})
+  const openTabRef = useRef<(ref: TabRef, preferredView?: DocView) => void>(() => {})
   /**
    * 设置页签的晚绑定把手。设置现在是文档区的一枚页签（set:settings，见 learn/tabs），
    * 而 openTab 声明靠后——React Compiler 对「声明前引用」一律按可变量处理
@@ -1669,7 +1669,7 @@ export default function LearnWorkspace({
    * 「新开一份文档」理应开在他正在看的那一格；已经在别格开着的则切过去，不再开第二份。
    */
   const openTab = useCallback(
-    (targetRef: TabRef) => {
+    (targetRef: TabRef, preferredView?: DocView) => {
       if (isWeb() && targetRef.kind === 'web') {
         if (targetRef.url) {
           void openExternalLink(targetRef.url)
@@ -1765,7 +1765,7 @@ export default function LearnWorkspace({
        * 而用户敲下第一个字它就翻回预览了（见 emptyNote 与 learn/tabs 的 viewOf）。
        */
       const startView: DocView | undefined =
-        ref.kind === 'note' && emptyNote(s, makeTab(ref, 0)) ? 'source' : undefined
+        preferredView ?? (ref.kind === 'note' && emptyNote(s, makeTab(ref, 0)) ? 'source' : undefined)
       const goalOf = (id: string) => nodeById(base, id)?.goalId ?? (base.goals.some((g) => g.id === id) ? id : null)
       /** 「目标 → 根节点」：组锚判据的第二跳（见 groups/tabs 的 isAnchorOutline） */
       const rootOf = (goalId: string) => base.goals.find((g) => g.id === goalId)?.rootNodeId ?? null
@@ -3758,7 +3758,7 @@ export default function LearnWorkspace({
         const resolved = await resolveQuoteTarget(s, rawPath)
         return resolved ? resolved.content : null
       },
-      onOpenFile: async (rawPath: string, _line?: number) => {
+      onOpenFile: async (rawPath: string, startLine?: number, endLine?: number) => {
         const s = getLatest()
         const resolved = await resolveQuoteTarget(s, rawPath)
         if (!resolved || !resolved.tabRef) {
@@ -3769,7 +3769,29 @@ export default function LearnWorkspace({
           onToast(t('未找到引用的源文件（{0}）', disp || '未知路径'))
           return
         }
-        openTab(resolved.tabRef)
+
+        // 计算行定位区间并登记一次性定位请求
+        if (startLine && startLine >= 1) {
+          const eLine = endLine && endLine >= startLine ? endLine : startLine
+          const offsets = lineRangeToOffsets(resolved.content, startLine, eLine)
+
+          let revealTargetKey: string | null = null
+          if (resolved.tabRef.kind === 'local') {
+            revealTargetKey = localRevealKey(resolved.tabRef.path)
+          } else if (resolved.tabRef.kind === 'ws') {
+            const rel = wsRelOfTab(s, resolved.tabRef)
+            const abs = rel ? userAbsPath(rel) : null
+            if (abs) revealTargetKey = localRevealKey(abs)
+          } else if (resolved.tabRef.kind === 'note') {
+            revealTargetKey = nodeRevealKey(resolved.tabRef.nodeId, 'note', resolved.tabRef.note)
+          }
+
+          if (revealTargetKey) {
+            requestSourceReveal(revealTargetKey, offsets.start, offsets.end)
+          }
+        }
+
+        openTab(resolved.tabRef, startLine ? 'source' : undefined)
       },
     })
     return () => setQuoteBlockHost(null)

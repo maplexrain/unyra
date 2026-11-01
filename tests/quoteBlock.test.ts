@@ -12,6 +12,7 @@ import {
   DEFAULT_MARK_TEMPLATE,
   type QuoteBlockHost,
 } from '../src/lib/quoteBlock'
+import { lineRangeToOffsets } from '../src/lib/docReveal'
 import { encodeAttr, escapeHtml, type PluginRenderContext } from '../src/lib/renderPlugins'
 import type { HighlightToken } from '../src/syntax/SyntaxHighlighter'
 
@@ -331,12 +332,14 @@ describe('quoteBlock', () => {
       }
     })
 
-    it('has no thick left border and has overflow-hidden on body', () => {
+    it('has zero border and zero padding on quote block container', () => {
       const source = '@demo.ts(1-10)'
       const html = quoteBlock(source, mockCtx)
-      expect(html).toContain('border-l-0')
       expect(html).not.toContain('border-l-4')
       expect(html).not.toContain('border-l-seal')
+      const blockClass = html.match(/class="([^"]*moji-quote-block[^"]*)"/)?.[1] ?? ''
+      expect(blockClass).not.toContain('border')
+      expect(blockClass).not.toContain('p-3')
       expect(html).toContain('overflow-hidden')
     })
   })
@@ -379,7 +382,7 @@ describe('quoteBlock', () => {
       // Test open file click
       const pathBtn = container.querySelector<HTMLButtonElement>('.moji-quote-path')
       pathBtn?.click()
-      expect(mockHost.onOpenFile).toHaveBeenCalledWith('demo.ts', 3)
+      expect(mockHost.onOpenFile).toHaveBeenCalledWith('demo.ts', 3, 4)
 
       cleanup()
       document.body.removeChild(container)
@@ -427,7 +430,7 @@ describe('quoteBlock', () => {
       expect(pathBtn?.textContent).toBe(complexPath)
 
       pathBtn?.click()
-      expect(mockHost.onOpenFile).toHaveBeenCalledWith(complexPath, 2)
+      expect(mockHost.onOpenFile).toHaveBeenCalledWith(complexPath, 2, 4)
 
       cleanup()
       document.body.removeChild(container)
@@ -450,6 +453,20 @@ describe('quoteBlock', () => {
 
       cleanup()
       document.body.removeChild(container)
+    })
+  })
+
+  describe('lineRangeToOffsets', () => {
+    it('computes exact character ranges for lines', () => {
+      const text = 'line 1\nline 2: hello\nline 3: world\nline 4'
+      // line 1: 0..6
+      expect(lineRangeToOffsets(text, 1, 1)).toEqual({ start: 0, end: 6 })
+      // line 2: 7..20 ("line 2: hello")
+      expect(lineRangeToOffsets(text, 2, 2)).toEqual({ start: 7, end: 20 })
+      // line 2 to line 3: 7..34 ("line 2: hello\nline 3: world")
+      const r23 = lineRangeToOffsets(text, 2, 3)
+      expect(r23).toEqual({ start: 7, end: 34 })
+      expect(text.slice(r23.start, r23.end)).toBe('line 2: hello\nline 3: world')
     })
   })
 })

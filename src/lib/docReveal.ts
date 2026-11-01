@@ -25,6 +25,15 @@ export interface SourceReveal {
 const REVEAL_TTL_MS = 4000
 
 let pending: { key: string; reveal: SourceReveal } | null = null
+const revealListeners = new Set<(key: string, reveal: SourceReveal) => void>()
+
+/** 订阅定位请求广播（用于已挂载的 SourceEditor 或 LocalDoc 实时跳转） */
+export function subscribeSourceReveal(cb: (key: string, reveal: SourceReveal) => void): () => void {
+  revealListeners.add(cb)
+  return () => {
+    revealListeners.delete(cb)
+  }
+}
 
 /** 节点文档的身份键（教学文档与每一份笔记各算一份） */
 export function nodeRevealKey(nodeId: string, kind: string, note?: string): string {
@@ -36,9 +45,53 @@ export function localRevealKey(path: string): string {
   return 'local:' + path
 }
 
-/** 放下一次请求（切视图之前调用） */
+/** 放下一次请求（切视图之前或实时定位调用） */
 export function requestSourceReveal(key: string, start: number, end: number): void {
-  pending = { key, reveal: { start, end, at: Date.now() } }
+  const reveal = { start, end, at: Date.now() }
+  pending = { key, reveal }
+  for (const cb of revealListeners) {
+    try {
+      cb(key, reveal)
+    } catch (err) {
+      console.warn('[docReveal] listener error', err)
+    }
+  }
+}
+
+/**
+ * 将 1-based 的行号范围转为在源文本中的字符偏移 [start, end]
+ */
+export function lineRangeToOffsets(
+  content: string,
+  startLine: number,
+  endLine: number = startLine,
+): { start: number; end: number } {
+  if (!content) return { start: 0, end: 0 }
+  const sLine = Math.max(1, startLine)
+  const eLine = Math.max(sLine, endLine)
+
+  let currentLine = 1
+  let idx = 0
+  let startOffset = 0
+  let endOffset = content.length
+
+  const len = content.length
+  while (idx <= len && currentLine <= eLine) {
+    if (currentLine === sLine && startOffset === 0 && sLine > 1) {
+      startOffset = idx
+    }
+    if (idx === len || content[idx] === '\n') {
+      if (currentLine === eLine) {
+        endOffset = idx
+        break
+      }
+      currentLine++
+    }
+    idx++
+  }
+
+  if (sLine === 1) startOffset = 0
+  return { start: startOffset, end: Math.max(startOffset, endOffset) }
 }
 
 /**

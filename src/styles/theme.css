@@ -723,13 +723,14 @@ body {
     var(--text-stroke-width, 1px) var(--text-stroke-width, 1px) 0 var(--text-stroke-color, currentColor);
 }
 
-/* 选中态：浅色下用淡印章红；深色下底色深、对比不足，改用更亮的红并提亮文字 */
+/* 选中态：使用清爽透亮的荧光黄色背景与提亮文字 */
 ::selection {
-  background-color: rgba(168, 67, 47, 0.2);
+  background-color: rgba(250, 204, 21, 0.42);
+  color: var(--color-ink-strong);
 }
 :root[data-theme='dark'] ::selection {
-  background-color: rgba(224, 138, 116, 0.4);
-  color: var(--color-ink-strong);
+  background-color: rgba(250, 204, 21, 0.38);
+  color: #ffffff;
 }
 
 /* 应用标志（components/Logo 的内联 SVG）：fill 走 currentColor，颜色在这里给
