@@ -382,12 +382,18 @@ export function useAgent(opts: {
       wfParams?: Record<string, string | number>,
     ) => {
       const trimmed = text.trim()
-      // 与 runTurn 同一道门：纯图片/纯文件（无字）放行——图片转存与消息组装都在后面
       if (!trimmed && !(pending?.length || files?.length)) return
       const settings = loadAiSettings()
       const before = getLatest()
-      if (!before.goals.some((g) => g.id === target.goalId)) return
-      if (target.nodeId && !nodeById(before, target.nodeId)) return
+      console.log("[AgentDebug:useAgent:runTurnUnchecked] start:", { target, hasGoal: before.goals.some((g) => g.id === target.goalId), targetNodeId: target.nodeId, nodeExists: target.nodeId ? !!nodeById(before, target.nodeId) : null })
+      if (!before.goals.some((g) => g.id === target.goalId)) {
+        console.warn("[AgentDebug:useAgent:runTurnUnchecked] ABORT: goal not found in before.goals!", target.goalId)
+        return
+      }
+      if (target.nodeId && !nodeById(before, target.nodeId)) {
+        console.warn("[AgentDebug:useAgent:runTurnUnchecked] ABORT: target.nodeId not found in before.nodes!", target.nodeId)
+        return
+      }
 
       /**
        * 这一轮回复的固定身份：轮次内增量落库按它整条替换（见 flushTurn 的说明），
@@ -546,7 +552,7 @@ export function useAgent(opts: {
         inflight: { messageId: assistantId, startedAt: Date.now() },
       }
       persist(conv)
-      // 这一段对话还没有标题就顺手起一个（不阻塞这一轮，见 nameConversation）
+      console.log("[AgentDebug:useAgent:runTurnUnchecked] persisted conv with userMsg:", { convId: conv.id, msgCount: conv.messages.length })
       nameConversation(conv)
 
       /**
@@ -879,6 +885,7 @@ export function useAgent(opts: {
       })
       // ctrl 在上面的工具装配处创建（ask / wait 的中止语义需要它），这里只挂到 ref 上
       abortMapRef.current.set(convKey, ctrl)
+      console.log("[AgentDebug:useAgent:runTurnUnchecked] calling runAgent:", { convKey, msgCount: history.messages.length, systemPromptLen: teacherSystem?.length })
       try {
         await runAgent({
           provider: global.provider,
@@ -1129,18 +1136,16 @@ export function useAgent(opts: {
       files?: PendingFile[],
       mark?: string,
       isCompactTurn = false,
-      /** 工作流触发时随指令注入的提示词模块（见 runTurnUnchecked 同名参数） */
       modules?: PromptModule[],
-      /** 工作流启动实参（见 runTurnUnchecked 同名参数） */
       wfParams?: Record<string, string | number>,
     ) => {
-      /*
-       * 空文本 + 带附件（纯图片 / 纯文件）也是合法消息：气泡（MessageBubble 只在
-       * 有字时才画文字泡）与历史组装（agent/history 只在 context 有值时才带）都为
-       * 「只发图」留好了位置——门只拦「什么都没有」的那条。
-       */
-      if (!text.trim() && !(pending?.length || files?.length)) return
+      console.log("[AgentDebug:useAgent:runTurn] called:", { target, text, hasKey: hasApiKey(loadAiSettings()) })
+      if (!text.trim() && !(pending?.length || files?.length)) {
+        console.warn("[AgentDebug:useAgent:runTurn] ABORT: empty text and no attachments")
+        return
+      }
       if (!hasApiKey(loadAiSettings())) {
+        console.warn("[AgentDebug:useAgent:runTurn] ABORT: no API key")
         if (!hidden) onNeedKeyRef.current()
         return
       }
@@ -1189,6 +1194,7 @@ export function useAgent(opts: {
         target?: AgentRunTarget
       },
     ) => {
+      console.log("[AgentDebug:useAgent:send] called:", { text, optsTarget: opts?.target })
       let t = opts?.target ?? null
       if (!t) {
         const s = getLatest()
@@ -1207,7 +1213,11 @@ export function useAgent(opts: {
           }
         }
       }
-      if (!t) return
+      if (!t) {
+        console.warn("[AgentDebug:useAgent:send] ABORT: target t is null!")
+        return
+      }
+      console.log("[AgentDebug:useAgent:send] calling runTurn with t:", t)
       void runTurn(
         t,
         text,

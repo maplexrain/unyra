@@ -282,9 +282,13 @@ export function useComposer({
    */
   const submit = () => {
     const text = value.trim()
-    // 只有附件没有字也允许发：贴一张图问「这是什么问题」、丢一份文件说「看看这个」都是常见用法
-    if (!text && !images.length && !files.length) return
+    console.log("[AgentDebug:Composer] submit triggered:", { text, imagesCount: images.length, filesCount: files.length })
+    if (!text && !images.length && !files.length) {
+      console.warn("[AgentDebug:Composer] submit dropped: empty text and no attachments")
+      return
+    }
     const outcome = onSend(text, images, files)
+    console.log("[AgentDebug:Composer] onSend returned outcome:", outcome)
     // 直接发出去的那条：预览地址此刻就放掉（转存读的是 File 原件，不是它）。
     // 排队的那条放不得——附件还在队列手上，等它跑起来还要用（见 onSend 的说明）。
     if (outcome !== 'queued') releasePending(images)
