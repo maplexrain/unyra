@@ -8,9 +8,12 @@ import {
   quoteBlock,
   hydrateQuotes,
   setQuoteBlockHost,
+  detectLanguageFromPath,
+  DEFAULT_MARK_TEMPLATE,
   type QuoteBlockHost,
 } from '../src/lib/quoteBlock'
 import { encodeAttr, escapeHtml, type PluginRenderContext } from '../src/lib/renderPlugins'
+import type { HighlightToken } from '../src/syntax/SyntaxHighlighter'
 
 const mockCtx: PluginRenderContext = {
   escape: escapeHtml,
@@ -65,6 +68,95 @@ describe('quoteBlock', () => {
       const rule = parseMappingRule('[1:1, 1:5] => <span class="bg-seal rounded-lg">{{content}}</span>')
       expect(rule?.template).toContain('rounded-none')
       expect(rule?.template).not.toContain('rounded-lg')
+    })
+
+    it('parses new mark(15:5, 16:7) syntax with default mark template', () => {
+      const rule = parseMappingRule('mark(15:5, 16:7)')
+      expect(rule).toEqual({
+        startLine: 15,
+        startCol: 5,
+        endLine: 16,
+        endCol: 7,
+        template: DEFAULT_MARK_TEMPLATE,
+      })
+    })
+
+    it('parses mark with hyphen delimiter mark(10:2 - 12:8)', () => {
+      const rule = parseMappingRule('mark(10:2 - 12:8)')
+      expect(rule).toEqual({
+        startLine: 10,
+        startCol: 2,
+        endLine: 12,
+        endCol: 8,
+        template: DEFAULT_MARK_TEMPLATE,
+      })
+    })
+
+    it('parses single line col range mark(15:5, 20)', () => {
+      const rule = parseMappingRule('mark(15:5, 20)')
+      expect(rule).toEqual({
+        startLine: 15,
+        startCol: 5,
+        endLine: 15,
+        endCol: 20,
+        template: DEFAULT_MARK_TEMPLATE,
+      })
+    })
+
+    it('parses single position mark(15:5)', () => {
+      const rule = parseMappingRule('mark(15:5)')
+      expect(rule).toEqual({
+        startLine: 15,
+        startCol: 5,
+        endLine: 15,
+        endCol: 5,
+        template: DEFAULT_MARK_TEMPLATE,
+      })
+    })
+
+    it('parses line range mark(15-20) and single line mark(15)', () => {
+      const rRange = parseMappingRule('mark(15-20)')
+      expect(rRange).toEqual({
+        startLine: 15,
+        startCol: 1,
+        endLine: 20,
+        endCol: 999999,
+        template: DEFAULT_MARK_TEMPLATE,
+      })
+
+      const rSingle = parseMappingRule('mark(15)')
+      expect(rSingle).toEqual({
+        startLine: 15,
+        startCol: 1,
+        endLine: 15,
+        endCol: 999999,
+        template: DEFAULT_MARK_TEMPLATE,
+      })
+    })
+
+    it('parses brackets without arrow [15:5, 16:7] as mark template', () => {
+      const rule = parseMappingRule('[15:5, 16:7]')
+      expect(rule).toEqual({
+        startLine: 15,
+        startCol: 5,
+        endLine: 16,
+        endCol: 7,
+        template: DEFAULT_MARK_TEMPLATE,
+      })
+    })
+  })
+
+  describe('detectLanguageFromPath', () => {
+    it('detects language from common file extensions', () => {
+      expect(detectLanguageFromPath('demo.ts')).toBe('typescript')
+      expect(detectLanguageFromPath('demo.js')).toBe('javascript')
+      expect(detectLanguageFromPath('demo.tsx')).toBe('tsx')
+      expect(detectLanguageFromPath('main.py')).toBe('python')
+      expect(detectLanguageFromPath('index.html')).toBe('html')
+      expect(detectLanguageFromPath('style.css')).toBe('css')
+      expect(detectLanguageFromPath('lib.rs')).toBe('rust')
+      expect(detectLanguageFromPath('Dockerfile')).toBe('docker')
+      expect(detectLanguageFromPath('unknown.xyz123')).toBeNull()
     })
   })
 
@@ -189,6 +281,34 @@ describe('quoteBlock', () => {
       const res = applyRulesToLine(line, 1, [])
       expect(res).toBe('&lt;div&gt;Hello &amp; World&lt;/div&gt;')
     })
+
+    it('integrates syntax highlight tokens with mark rules without tag conflicts', () => {
+      const line = 'const val = 123;'
+      // Mock tokens from TextMate:
+      // 'const' (0..5, keyword), ' ' (5..6, plain), 'val' (6..9, variable), ' = ' (9..12, operator), '123' (12..15, number), ';' (15..16, punctuation)
+      const mockTokens: HighlightToken[] = [
+        { text: 'const', scopes: ['keyword.control.js'], startIndex: 0 },
+        { text: ' ', scopes: [], startIndex: 5 },
+        { text: 'val', scopes: ['variable.other.readwrite.js'], startIndex: 6 },
+        { text: ' = ', scopes: ['keyword.operator.assignment.js'], startIndex: 9 },
+        { text: '123', scopes: ['constant.numeric.decimal.js'], startIndex: 12 },
+        { text: ';', scopes: ['punctuation.terminator.statement.js'], startIndex: 15 },
+      ]
+
+      // Mark from col 7 to col 15 ('val = 123')
+      const rule = parseMappingRule('mark(1:7, 15)')!
+      const res = applyRulesToLine(line, 1, [rule], mockTokens)
+
+      // Expected:
+      // 'const' is outside mark with <span class="tok tok-keyword">const</span>
+      // ' ' is outside mark
+      // 'val = 123' is wrapped in <mark class="moji-quote-mark">
+      // inside mark: <span class="tok tok-variable">val</span><span class="tok tok-operator"> = </span><span class="tok tok-number">123</span>
+      // ';' is outside mark with <span class="tok tok-punctuation">;</span>
+      expect(res).toContain('<span class="tok tok-keyword">const</span> ')
+      expect(res).toContain('<mark class="moji-quote-mark"><span class="tok tok-variable">val</span><span class="tok tok-operator"> = </span><span class="tok tok-number">123</span></mark>')
+      expect(res).toContain('<span class="tok tok-punctuation">;</span>')
+    })
   })
 
   describe('quoteBlock synchronous rendering', () => {
@@ -196,7 +316,7 @@ describe('quoteBlock', () => {
       const source = [
         '说明文字',
         '@E:/demo/index.html(10-34){',
-        '  [15:5,16:7] => <strong>{{content}}</strong>',
+        '  mark(15:5, 16:7)',
         '}',
       ].join('\n')
 
@@ -209,6 +329,15 @@ describe('quoteBlock', () => {
       for (const m of roundedMatches) {
         expect(m).toBe('rounded-none')
       }
+    })
+
+    it('has no thick left border and has overflow-hidden on body', () => {
+      const source = '@demo.ts(1-10)'
+      const html = quoteBlock(source, mockCtx)
+      expect(html).toContain('border-l-0')
+      expect(html).not.toContain('border-l-4')
+      expect(html).not.toContain('border-l-seal')
+      expect(html).toContain('overflow-hidden')
     })
   })
 
@@ -244,6 +373,8 @@ describe('quoteBlock', () => {
       const codeHtml = container.querySelector('.moji-quote-code')?.innerHTML
       expect(codeHtml).toContain('<strong>const x =</strong>')
       expect(codeHtml).toContain('line 4:')
+      expect(codeHtml).toContain('whitespace-pre-wrap')
+      expect(codeHtml).toContain('break-words')
 
       // Test open file click
       const pathBtn = container.querySelector<HTMLButtonElement>('.moji-quote-path')

@@ -2,12 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   allTabs,
   emptyDocs,
-  ensureAnchorOutlines,
   openAnchorOutline,
   openGroupedDoc,
-  openInGroup,
   syncGoalOutlineTabs,
-  withOwners,
 } from '../src/learn/groups'
 import { normalizeLearnStore } from '../src/learn/store/normalize'
 import { makeGoal } from '../src/learn/store/factories'
@@ -38,8 +35,11 @@ describe('目标结构（大纲）页签唯一性与去重', () => {
     tabs = allTabs(docs)
     expect(tabs.length).toBe(1)
     expect(tabs[0].id).toBe('o:root-doc-1')
-    expect(tabs[0].ref.nodeId).toBe('root-doc-1')
-    expect((tabs[0].ref as { goalId?: string }).goalId).toBe(goalId)
+    expect(tabs[0].ref.kind).toBe('outline')
+    if (tabs[0].ref.kind === 'outline') {
+      expect(tabs[0].ref.nodeId).toBe('root-doc-1')
+      expect(tabs[0].ref.goalId).toBe(goalId)
+    }
   })
 
   it('在根节点已设定的情况下，openGroupedDoc 不会开出第二枚大纲页签', () => {

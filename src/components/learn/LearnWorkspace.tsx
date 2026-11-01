@@ -177,7 +177,7 @@ import { setPlotFixHandler } from '../../lib/plot'
 import { nodeDocPath } from '../../learn/files'
 import { createNodeDocImageResolver, type LocalImageResolver } from '../../lib/docImages'
 import { revealLocalFile, revealPath, revealUserPath, userAbsPath, listUserDir, mkdirUserPath, moveUserPath, copyUserPath, writeUserText, readUserText, userAbsPrefix } from '../../lib/storage'
-import { wsAllocateName, wsNameOk, wsRefOfRel, wsRelOf, wsRelOfTab } from '../../learn/workspace'
+import { wsAllocateName, wsNameOk, wsRefOfRel, wsRelOf, wsRelOfTab, wsRevealOfAbs } from '../../learn/workspace'
 import { notifyWsChanged } from './explorer/wsChanges'
 import { setStaticView } from '../../lib/staticView'
 import {
@@ -3545,252 +3545,235 @@ export default function LearnWorkspace({
     return () => setVideoBlockHost(null)
   }, [getLatest, set, openTab])
 
-  // 原文引用代码块（```quote）的文件内容读取与跳转：注册宿主接口
+  // 原文引用代码块（```quote）的文件内容读取与跳转：统一解析目标文件
   useEffect(() => {
-    setQuoteBlockHost({
-      readFile: async (rawPath: string): Promise<string | null> => {
-        const s = getLatest()
-        let cleanPath = (rawPath ?? '').trim().replace(/\\/g, '/')
-        if (!cleanPath) return null
+    interface ResolvedQuoteTarget {
+      content: string
+      tabRef: TabRef
+    }
 
-        let decodedPath = cleanPath
-        try {
-          if (cleanPath.includes('%')) {
-            decodedPath = decodeURIComponent(cleanPath).replace(/\\/g, '/')
+    const resolveQuoteTarget = async (
+      s: ReturnType<typeof getLatest>,
+      rawPath: string,
+    ): Promise<ResolvedQuoteTarget | null> => {
+      let cleanPath = (rawPath ?? '').trim().replace(/\\/g, '/')
+      if (!cleanPath) return null
+
+      let decodedPath = cleanPath
+      try {
+        if (cleanPath.includes('%')) {
+          decodedPath = decodeURIComponent(cleanPath).replace(/\\/g, '/')
+        }
+      } catch {}
+
+      const uPrefix = userAbsPrefix()?.replace(/\\/g, '/')
+      const isAbs = (p: string) => /^[a-zA-Z]:[\/]/.test(p) || p.startsWith('/') || p.startsWith('\\\\')
+
+      // 1. 尝试直接读取单条绝对路径
+      const tryReadAbs = async (absP: string): Promise<ResolvedQuoteTarget | null> => {
+        if (!absP) return null
+        let content: string | null = null
+
+        // 1.1 若落在用户数据根下，优先走 readUserText
+        if (uPrefix && absP.startsWith(uPrefix)) {
+          const rel = absP.slice(uPrefix.length).replace(/^[\/]+/, '')
+          try {
+            const res = await readUserText(rel)
+            if (res !== null) content = res
+          } catch {}
+        }
+
+        // 1.2 readLocalFile 外部文件读
+        if (content === null) {
+          try {
+            const res = await readLocalFile(absP)
+            if (res.ok && typeof res.content === 'string') content = res.content
+          } catch {}
+        }
+
+        // 1.3 projectFs 读取
+        if (content === null && isElectron()) {
+          try {
+            const allRoots = (s.projects ?? [])
+              .map((pr) => resolveProjectRoot(s, pr))
+              .filter((r): r is string => Boolean(r))
+            if (allRoots.length > 0) {
+              const r = await native().projectFs({ op: 'read', path: absP, roots: allRoots, encoding: 'utf8' })
+              if (r.ok && r.op === 'read' && typeof r.content === 'string') content = r.content
+            }
+          } catch {}
+        }
+
+        if (content === null) return null
+
+        // 构造有效 TabRef
+        const reveal = wsRevealOfAbs(s, absP, uPrefix ?? null)
+        if (reveal) {
+          return { content, tabRef: { kind: 'ws', nodeId: reveal.nodeId, seg: reveal.rel } }
+        }
+        if (uPrefix && absP.startsWith(uPrefix)) {
+          const rel = absP.slice(uPrefix.length).replace(/^[\/]+/, '')
+          const wsRef = wsRefOfRel(s, rel)
+          if (wsRef) {
+            return { content, tabRef: wsRef }
           }
-        } catch {}
+        }
+        return {
+          content,
+          tabRef: { kind: 'local', path: absP, title: localFileNameOf(absP) },
+        }
+      }
 
-        const uPrefix = userAbsPrefix()?.replace(/\\/g, '/')
+      // 若传入的是绝对路径
+      if (isAbs(cleanPath)) {
+        const res = await tryReadAbs(cleanPath)
+        if (res) return res
+      }
+      if (isAbs(decodedPath) && decodedPath !== cleanPath) {
+        const res = await tryReadAbs(decodedPath)
+        if (res) return res
+      }
 
-        const tryReadOne = async (p: string): Promise<string | null> => {
-          if (!p) return null
-          // 1. 若落在当前用户数据目录下，优先走 readUserText
-          if (uPrefix && p.startsWith(uPrefix)) {
-            const rel = p.slice(uPrefix.length).replace(/^[\/]+/, '')
+      // 收集相关节点
+      const fRef = focusedTab(s.docArea)?.ref
+      const currentViewingId = (fRef ? tabNodeId(fRef) : null) ?? s.activeNodeId
+      const activeGoal = s.goals.find((g) => g.id === s.activeGoalId)
+      const relevantNodeIds = new Set<string>()
+      if (currentViewingId) relevantNodeIds.add(currentViewingId)
+      if (s.activeNodeId) relevantNodeIds.add(s.activeNodeId)
+      if (activeGoal?.rootNodeId) relevantNodeIds.add(activeGoal.rootNodeId)
+      for (const n of s.nodes ?? []) {
+        if (n.goalId === s.activeGoalId) relevantNodeIds.add(n.id)
+      }
+
+      const pathVariants = [cleanPath]
+      if (decodedPath !== cleanPath) pathVariants.push(decodedPath)
+
+      for (const variant of pathVariants) {
+        // 2. 检查是否为笔记挂件
+        const noteTarget = variant.replace(/^(?:note|notes|笔记)[\/:]/i, '').replace(/\.md$/i, '').trim()
+        for (const nid of relevantNodeIds) {
+          const n = s.nodes.find((item) => item.id === nid)
+          if (!n) continue
+          const notes = notesOf(n)
+          const foundNote = notes.find((nt) => nt.name === noteTarget || nt.name === variant)
+          if (foundNote && typeof foundNote.content === 'string') {
+            return {
+              content: foundNote.content,
+              tabRef: { kind: 'note', nodeId: n.id, note: foundNote.name },
+            }
+          }
+        }
+
+        const relPath = variant.replace(/^\.\//, '')
+        const relWithoutWs = relPath.startsWith('workspace/') ? relPath.slice('workspace/'.length) : relPath
+
+        // 3. 检查节点工作区目录（workspace/）
+        for (const nid of relevantNodeIds) {
+          const wsRel = wsRelOf(s, nid)
+          if (!wsRel) continue
+
+          const candidateRels = [
+            `${wsRel}/${relWithoutWs}`,
+            `${wsRel.replace(/\/workspace$/, '')}/${relPath}`,
+          ]
+          for (const cr of candidateRels) {
             try {
-              const res = await readUserText(rel)
-              if (res !== null) return res
-            } catch {}
-          }
-          // 2. 若是相对路径，尝试直接当用户相对路径读
-          if (!/^[a-zA-Z]:[\/]/.test(p) && !p.startsWith('/') && !p.startsWith('\\\\')) {
-            try {
-              const res = await readUserText(p.replace(/^[\/]+/, ''))
-              if (res !== null) return res
-            } catch {}
-          }
-          // 3. 外部本地文件读取（readLocalFile）
-          try {
-            const res = await readLocalFile(p)
-            if (res.ok && typeof res.content === 'string') return res.content
-          } catch {}
-          // 4. 尝试通过 projectFs 读（处理已声明项目根内的文件）
-          try {
-            if (isElectron()) {
-              const allRoots = (s.projects ?? [])
-                .map((pr) => resolveProjectRoot(s, pr))
-                .filter((r): r is string => Boolean(r))
-              if (allRoots.length > 0) {
-                const r = await native().projectFs({ op: 'read', path: p, roots: allRoots, encoding: 'utf8' })
-                if (r.ok && r.op === 'read' && typeof r.content === 'string') return r.content
+              const txt = await readUserText(cr)
+              if (txt !== null) {
+                const wsRef = wsRefOfRel(s, cr) ?? { kind: 'ws', nodeId: nid, seg: relWithoutWs }
+                return { content: txt, tabRef: wsRef }
               }
-            }
-          } catch {}
-          return null
-        }
-
-        const tryRead = async (p: string): Promise<string | null> => {
-          let c = await tryReadOne(p)
-          if (c !== null) return c
-          try {
-            if (p.includes('%')) {
-              c = await tryReadOne(decodeURIComponent(p).replace(/\\/g, '/'))
-              if (c !== null) return c
-            }
-          } catch {}
-          return null
-        }
-
-        const isAbs = (p: string) => /^[a-zA-Z]:[\/]/.test(p) || p.startsWith('/') || p.startsWith('\\\\')
-
-        // 绝对路径：直接测试
-        if (isAbs(cleanPath) || isAbs(decodedPath)) {
-          const direct = await tryRead(cleanPath)
-          if (direct !== null) return direct
-          if (decodedPath !== cleanPath) {
-            const decRes = await tryRead(decodedPath)
-            if (decRes !== null) return decRes
-          }
-        }
-
-        // 收集相对路径候选
-        const candidates: string[] = []
-        const fRef = focusedTab(s.docArea)?.ref
-        const currentViewingId = (fRef ? tabNodeId(fRef) : null) ?? s.activeNodeId
-        const activeGoal = s.goals.find((g) => g.id === s.activeGoalId)
-        const relevantNodeIds = new Set<string>()
-        if (currentViewingId) relevantNodeIds.add(currentViewingId)
-        if (s.activeNodeId) relevantNodeIds.add(s.activeNodeId)
-        if (activeGoal?.rootNodeId) relevantNodeIds.add(activeGoal.rootNodeId)
-        for (const n of s.nodes ?? []) {
-          if (n.goalId === s.activeGoalId) relevantNodeIds.add(n.id)
-        }
-
-        const pathVariants = [cleanPath]
-        if (decodedPath !== cleanPath) pathVariants.push(decodedPath)
-
-        for (const variant of pathVariants) {
-          const relPath = variant.replace(/^\.\//, '')
-          const relWithoutWs = relPath.startsWith('workspace/') ? relPath.slice('workspace/'.length) : relPath
-
-          // 1. 相关节点的工作区目录（workspace/）
-          for (const nid of relevantNodeIds) {
-            const wsRel = wsRelOf(s, nid)
-            if (!wsRel) continue
-            candidates.push(`${wsRel}/${relWithoutWs}`)
+            } catch {}
             if (uPrefix) {
-              candidates.push(`${uPrefix}/${wsRel}/${relWithoutWs}`)
-            }
-            candidates.push(`${wsRel.replace(/\/workspace$/, '')}/${relPath}`)
-            if (uPrefix) {
-              candidates.push(`${uPrefix}/${wsRel.replace(/\/workspace$/, '')}/${relPath}`)
+              const absP = `${uPrefix}/${cr}`
+              const absRes = await tryReadAbs(absP)
+              if (absRes) return absRes
             }
           }
+        }
 
-          // 2. 已声明的项目节点（Project Nodes）
-          const candidateProjects: ProjectNodeEntity[] = []
-          if (s.activeNodeId) {
-            const downEdges = s.edges.filter((e) => e.from === s.activeNodeId)
-            for (const e of downEdges) {
-              const p = (s.projects ?? []).find((pr) => pr.id === e.to)
-              if (p) candidateProjects.push(p)
-            }
+        // 4. 检查已声明的项目节点（Project Nodes）
+        const candidateProjects: ProjectNodeEntity[] = []
+        if (s.activeNodeId) {
+          const downEdges = s.edges.filter((e) => e.from === s.activeNodeId)
+          for (const e of downEdges) {
+            const p = (s.projects ?? []).find((pr) => pr.id === e.to)
+            if (p) candidateProjects.push(p)
           }
-          if (s.activeGoalId) {
-            for (const pr of s.projects ?? []) {
-              if (pr.goalId === s.activeGoalId && !candidateProjects.some((cp) => cp.id === pr.id)) {
-                candidateProjects.push(pr)
-              }
-            }
-          }
+        }
+        if (s.activeGoalId) {
           for (const pr of s.projects ?? []) {
-            if (!candidateProjects.some((cp) => cp.id === pr.id)) {
+            if (pr.goalId === s.activeGoalId && !candidateProjects.some((cp) => cp.id === pr.id)) {
               candidateProjects.push(pr)
             }
           }
-
-          for (const proj of candidateProjects) {
-            const root = resolveProjectRoot(s, proj)
-            if (!root) continue
-            const full = root.replace(/[\\/]+$/, '') + '/' + relPath.replace(/^[\\/]+/, '')
-            candidates.push(full)
-          }
-
-          // 3. 用户数据目录直接寻找
-          candidates.push(relPath)
-          candidates.push(`docs/${relPath}`)
-          if (uPrefix) {
-            candidates.push(`${uPrefix}/${relPath}`)
-            candidates.push(`${uPrefix}/docs/${relPath}`)
+        }
+        for (const pr of s.projects ?? []) {
+          if (!candidateProjects.some((cp) => cp.id === pr.id)) {
+            candidateProjects.push(pr)
           }
         }
 
-        for (const cand of candidates) {
-          const content = await tryRead(cand)
-          if (content !== null) return content
+        for (const proj of candidateProjects) {
+          const root = resolveProjectRoot(s, proj)
+          if (!root) continue
+          const full = root.replace(/[\\/]+$/, '') + '/' + relPath.replace(/^[\\/]+/, '')
+          const absRes = await tryReadAbs(full)
+          if (absRes) return absRes
         }
 
-        // 4. 检查笔记挂件内容（支持引用笔记，如 @笔记/错题本 或 @错题本）
-        for (const variant of pathVariants) {
-          const noteTarget = variant.replace(/^(?:note|notes|笔记)[\/:]/i, '').replace(/\.md$/i, '').trim()
-          for (const nid of relevantNodeIds) {
-            const n = s.nodes.find((item) => item.id === nid)
-            if (!n) continue
-            const notes = notesOf(n)
-            const foundNote = notes.find((nt) => nt.name === noteTarget || nt.name === variant)
-            if (foundNote && typeof foundNote.content === 'string') return foundNote.content
-          }
+        // 5. 用户数据目录直接按相对路径读
+        const directUserRels = [relPath, `docs/${relPath}`]
+        for (const dur of directUserRels) {
+          try {
+            const txt = await readUserText(dur)
+            if (txt !== null) {
+              const wsRef = wsRefOfRel(s, dur)
+              if (wsRef) return { content: txt, tabRef: wsRef }
+              const absP = uPrefix ? `${uPrefix}/${dur}` : dur
+              return { content: txt, tabRef: { kind: 'local', path: absP, title: localFileNameOf(absP) } }
+            }
+          } catch {}
         }
 
-        return null
-      },
-      onOpenFile: (rawPath: string, _line?: number) => {
-        const s = getLatest()
-        let cleanPath = (rawPath ?? '').trim().replace(/\\/g, '/')
-        if (!cleanPath) return
-
-        let decodedPath = cleanPath
+        // 6. 最后尝试普通本地文件路径读
         try {
-          if (cleanPath.includes('%')) {
-            decodedPath = decodeURIComponent(cleanPath).replace(/\\/g, '/')
+          const r = await readLocalFile(relPath)
+          if (r.ok && typeof r.content === 'string') {
+            return {
+              content: r.content,
+              tabRef: { kind: 'local', path: relPath, title: localFileNameOf(relPath) },
+            }
           }
         } catch {}
+      }
 
-        const isAbs = (p: string) => /^[a-zA-Z]:[\/]/.test(p) || p.startsWith('/') || p.startsWith('\\\\')
+      return null
+    }
 
-        let targetAbsPath: string | null = null
-        if (isAbs(cleanPath)) targetAbsPath = cleanPath
-        else if (isAbs(decodedPath)) targetAbsPath = decodedPath
-
-        const uPrefix = userAbsPrefix()?.replace(/\\/g, '/')
-
-        if (!targetAbsPath) {
-          const fRef = focusedTab(s.docArea)?.ref
-        const currentViewingId = (fRef ? tabNodeId(fRef) : null) ?? s.activeNodeId
-          const activeGoal = s.goals.find((g) => g.id === s.activeGoalId)
-          const relevantNodeIds = new Set<string>()
-          if (currentViewingId) relevantNodeIds.add(currentViewingId)
-          if (s.activeNodeId) relevantNodeIds.add(s.activeNodeId)
-          if (activeGoal?.rootNodeId) relevantNodeIds.add(activeGoal.rootNodeId)
-          for (const n of s.nodes ?? []) {
-            if (n.goalId === s.activeGoalId) relevantNodeIds.add(n.id)
-          }
-
-          const relWithoutWs = cleanPath.startsWith('workspace/') ? cleanPath.slice('workspace/'.length) : cleanPath
-
-          // 1. 优先查工作区
-          for (const nid of relevantNodeIds) {
-            const wsRel = wsRelOf(s, nid)
-            if (!wsRel) continue
-            const fullRel = `${wsRel}/${relWithoutWs}`
-            const wsRef = wsRefOfRel(s, fullRel)
-            if (wsRef) {
-              openTab(wsRef)
-              return
-            }
-            if (uPrefix) {
-              targetAbsPath = `${uPrefix}/${fullRel}`
-              break
-            }
-          }
-
-          // 2. 项目节点
-          if (!targetAbsPath) {
-            for (const pr of s.projects ?? []) {
-              const root = resolveProjectRoot(s, pr)
-              if (root) {
-                targetAbsPath = root.replace(/[\\/]+$/, '') + '/' + cleanPath.replace(/^[\\/]+/, '')
-                break
-              }
-            }
-          }
+    setQuoteBlockHost({
+      readFile: async (rawPath: string): Promise<string | null> => {
+        const s = getLatest()
+        const resolved = await resolveQuoteTarget(s, rawPath)
+        return resolved ? resolved.content : null
+      },
+      onOpenFile: async (rawPath: string, _line?: number) => {
+        const s = getLatest()
+        const resolved = await resolveQuoteTarget(s, rawPath)
+        if (!resolved || !resolved.tabRef) {
+          let disp = (rawPath ?? '').trim()
+          try {
+            if (disp.includes('%')) disp = decodeURIComponent(disp)
+          } catch {}
+          onToast(t('未找到引用的源文件（{0}）', disp || '未知路径'))
+          return
         }
-
-        if (targetAbsPath) {
-          if (uPrefix && targetAbsPath.startsWith(uPrefix)) {
-            const rel = targetAbsPath.slice(uPrefix.length).replace(/^[\/]+/, '')
-            const wsRef = wsRefOfRel(s, rel)
-            if (wsRef) {
-              openTab(wsRef)
-              return
-            }
-          }
-          openTab({ kind: 'local', path: targetAbsPath, title: localFileNameOf(targetAbsPath) })
-        }
+        openTab(resolved.tabRef)
       },
     })
     return () => setQuoteBlockHost(null)
-  }, [getLatest, openTab])
+  }, [getLatest, openTab, onToast])
 
   /*
     plot 错误卡片上的「让导师修复」：以**工作流**（learn/workflows 的 plot-fix）注入——

@@ -259,3 +259,16 @@
   color: var(--color-ink-soft);
 }
 
+/*
+ * 原文引用块（```quote）内部的 mark 标记：
+ * 严格直角（rounded-none），背景色跟随当前主题的 --color-mark，文字颜色继承语法高亮
+ */
+.moji-quote-mark {
+  background-color: var(--color-mark);
+  color: inherit;
+  border-radius: 0;
+  padding: 0.05em 0.2em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
