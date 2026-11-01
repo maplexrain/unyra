@@ -10,9 +10,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import type { KnowledgeNode, LearnStore, SelfReport } from '../../../learn/types'
-import { SELF_REPORT_LABEL } from '../../../learn/types'
-import { nodeById, updateLearning } from '../../../learn/graph'
+import type { KnowledgeNode, LearnStore } from '../../../learn/types'
+import { nodeById } from '../../../learn/graph'
 import { outlineByMember } from '../../../learn/outline'
 import { listWorkflowRows, removeWorkflow, type WorkflowRow } from '../../../learn/workflows'
 import { setCodeHost, type CodeCompileRequest } from '../../../lib/docHost'
@@ -116,27 +115,6 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
       return
     }
     agent.runWorkflow('exam-grade', { nodeId: target.id, params: { target: target.id } })
-  }
-
-  /* ---------- 学习状态（自评 / 掌握度 / 错误记忆 / 检验） ---------- */
-
-  /**
-   * 学习者自己改自评。
-   *
-   * 掌握度不给他改——那是系统的估计；自评本来就是他的主观判断，只能由他给。
-   * 点这一下的意义在于把「导师猜的」变成「我确认的」（selfBy 从 'ai' 翻成 'user'），
-   * 导师据此决定是先补课还是直接往下走（见 ai.ts 的学习状态一节）。
-   */
-  const setSelfReport = (nodeId: string, self: SelfReport) => {
-    set(updateLearning(getLatest(), nodeId, { self, selfBy: 'user' }))
-    onToast(t('已记为「{0}」', t(SELF_REPORT_LABEL[self])))
-  }
-
-  /** 删掉一条错误记忆：这个错法已经改掉了，留着只会误导下一次教学 */
-  const clearMistake = (nodeId: string, pattern: string) => {
-    const node = nodeById(getLatest(), nodeId)
-    const kept = (node?.learning?.mistakes ?? []).filter((m) => m.pattern !== pattern)
-    set(updateLearning(getLatest(), nodeId, { mistakes: kept }))
   }
 
   /**
@@ -393,8 +371,6 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
   return {
     newExam,
     requestGrading,
-    setSelfReport,
-    clearMistake,
     startSuperLab,
     startBrowserUse,
     startOutline,

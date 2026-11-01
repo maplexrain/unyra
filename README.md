@@ -212,15 +212,12 @@ function-plot · vscode-textmate + oniguruma（按需加载的 TextMate 语法�
 | [文档区](docs/workspace.md) | 自由页签、分割、源码 / 预览、暂存区、查找替换、导出 |
 | [文档渲染与插件](docs/rendering.md) | 插件接口与边界、正文文字规则、代码块高亮 |
 | [代码块的编译与运行](docs/code-run.md) | 伪编译工作流、运行沙箱、产物寻址 |
-| [考试](docs/exam.md) · [学习状态](docs/learning-state.md) | 试卷与考试窗口、掌握度、错误记忆 |
-| [有效阅读与注意力](docs/reading-and-attention.md) | 有效时长口径、节锚定、注意力评级、专注模式（守卫）、读网页 |
 | [快捷键与语音](docs/shortcuts-and-voice.md) | 改键与冲突拦截、whisper.cpp + WebGPU 语音输入 |
 | [桌面架构](docs/architecture.md) | 主进程与渲染层、窗口与原生能力、模块地图、扩展方式 |
 | [AI 提供商](docs/ai-providers.md) | 预设与兼容格式、配置结构、思考程度、Command Code Go |
 | [本地开发](docs/development.md) | 开发环境、脚本、测试分工与约定 |
 | [打包与发布](docs/packaging-and-release.md) | 构建产物、反篡改、自动更新与发布流程 |
 | [数据与隐私](docs/data-and-privacy.md) | 磁盘结构、迁移、外发请求的边界 |
-| [有效阅读机制](docs/reading-mechanism.md) | 阅读采集的数据形状与落盘细节 |
 
 ## 数据与隐私
 

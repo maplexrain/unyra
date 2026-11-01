@@ -225,13 +225,13 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
   {
     id: 'exam-grade',
     name: '阅卷',
-    description: '判分 + 看历史错题写讲解、记错法、修正掌握度（交卷后自动跑）',
+    description: '判分 + 针对错题写讲解（交卷后自动跑）',
     instruction: GRADE_INSTRUCTION,
     promptModule: 'exam',
     params: ['target'],
     // 必须先有人交卷：从列表里空跑只会得到「没有需要讲解的考试」
     runnable: false,
-    // 判分记错账会污染掌握度，讲解要质量；判分对照本身偏机械，max 的边际收益不值多等的
+    // 判分要准、讲解要质量；判分对照本身偏机械，max 的边际收益不值多等的
   },
   {
     id: 'explain',

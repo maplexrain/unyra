@@ -44,15 +44,14 @@ export {
 /* ---------- 笔记 ---------- */
 export { appendNote, createNote, deleteNote, notesOfNode, renameNoteFile, writeNote } from './graph/notes'
 
-/* ---------- 学习状态与结构位次 ---------- */
-export { addCheck, noteMistake, nodeStructure, setNodeStatus, updateLearning } from './graph/state'
-export type { NodeStructure } from './graph/state'
+/* ---------- 节点状态 ---------- */
+export { setNodeStatus } from './graph/state'
 
 /* ---------- 注解 ---------- */
 export { addAnnotation, removeAnnotation, updateAnnotation } from './graph/annotations'
 
 /* ---------- 阅读账与目标级操作 ---------- */
-export { deleteGoal, goalProgress, goalSubtreeIds } from './graph/reading'
+export { deleteGoal, goalProgress, goalSubtreeIds } from './graph/goals'
 
 /* ---------- 会话 ---------- */
 export {

@@ -109,20 +109,10 @@ describe('node.brief：一页纸简报（取材先问它，别默认全图）', 
 })
 
 describe('node.finish：收尾五件事一个调用', () => {
-  it('content 先落；state / memory / delivery 逐个落并如实报告；open 没有 ui.point 就跳过', async () => {
+  it('content 先落；memory / delivery 逐个落并如实报告；open 没有 ui.point 就跳过', async () => {
     const { svc, read } = serviceOf(store())
     const seen: string[] = []
     const api = apiOf(svc, {
-      state: {
-        read: () => ({ ok: true }),
-        update: (id, patch) => {
-          seen.push('state:' + id + ':' + String(patch.self))
-          return { ok: true, content: '' }
-        },
-        mistake: () => ({ ok: true, content: '' }),
-        forget: () => ({ ok: true, content: '' }),
-        check: () => ({ ok: true, content: '' }),
-      },
       memory: {
         list: () => ({ ok: true }),
         get: () => ({ error: 'nope' }),
@@ -143,7 +133,6 @@ describe('node.finish：收尾五件事一个调用', () => {
 
     const r = (await api.node.finish('a', {
       content: { title: '系统调用', description: '', teaching: '# 系统调用\n\n## 重写', status: 'learning' },
-      state: { self: 'familiar', note: '已讲 syscall' },
       memory: { type: 'work', title: '本轮进度', content: '讲完 syscall' },
       delivery: { files: [{ path: 'docs/x' }], sources: [] },
       open: true,
@@ -151,11 +140,10 @@ describe('node.finish：收尾五件事一个调用', () => {
 
     expect(r.ok).toBe(true)
     expect(r.steps.content).toBe('written')
-    expect(r.steps.state).toBe('written')
     expect(r.steps.memory).toBe('written')
     expect(r.steps.delivery).toBe('written')
     expect(String(r.steps.open)).toContain('skipped')
-    expect(seen).toEqual(['state:a:familiar', 'memory:本轮进度', 'delivery:1'])
+    expect(seen).toEqual(['memory:本轮进度', 'delivery:1'])
     // 正文真的写进去了
     expect(read().nodes.find((n) => n.id === 'a')!.docs.teaching).toContain('## 重写')
   })
@@ -164,18 +152,8 @@ describe('node.finish：收尾五件事一个调用', () => {
     const { svc } = serviceOf(store())
     const seen: string[] = []
     const api = apiOf(svc, {
-      state: {
-        read: () => ({ ok: true }),
-        update: () => {
-          seen.push('state')
-          return { ok: true, content: '' }
-        },
-        mistake: () => ({ ok: true, content: '' }),
-        forget: () => ({ ok: true, content: '' }),
-        check: () => ({ ok: true, content: '' }),
-      },
     }) as { node: { finish: (u: string, plan: unknown) => Promise<unknown> } }
-    const r = (await api.node.finish('a', { content: { title: '' , teaching: '' }, state: { self: 'familiar' } })) as { error: string }
+    const r = (await api.node.finish('a', { content: { title: '' , teaching: '' }, })) as { error: string }
     expect(r.error).toContain('content')
     expect(seen).toEqual([])
   })

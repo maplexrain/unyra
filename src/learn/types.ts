@@ -2,9 +2,7 @@ import type { Conversation } from '../agent/types'
 import type { Drafts } from './drafts'
 import type { Exam } from './exam'
 import type { DocWorkspace } from './groups'
-import type { FocusStore } from './focus'
 import type { ScheduleStore } from './schedule'
-import type { ReadingBook } from './reading'
 import type { StaticResource } from './static'
 import type { StructureMap } from './structure'
 
@@ -26,122 +24,9 @@ import type { StructureMap } from './structure'
  * 节点的掌握状态只有两种；改动权归 Agent（考试通过后置为 mastered）。
  *
  * 它回答的是「这个节点学完了没有」——一个用于放行/回溯的粗判据。
- * 「学得怎么样」是另一件事，记在 KnowledgeNode.learning 里（见 LearningState）。
+ * 「最近打开过没有」是另一件事，记在 KnowledgeNode.lastStudiedAt（见 learn/recents）。
  */
 export type MasteryStatus = 'learning' | 'mastered'
-
-/* ---------- 学习状态（Learning State） ---------- */
-
-/**
- * 学习者自评：对这个知识点，他自己觉得会多少。
- *
- * 为什么不只分「掌握 / 不掌握」：自评的意义在于把「不知道自己不知道」和
- * 「知道自己不会」分开——前者要探针去戳，后者直接补课就行。四档的措辞是
- * 学习者自己的话（「了解但不熟」「不确定」），不是系统的判定，所以它与 mastery
- * 是两件事，各存各的。
- */
-export type SelfReport = 'mastered' | 'familiar' | 'unknown' | 'unsure'
-
-export const SELF_REPORTS: readonly SelfReport[] = ['mastered', 'familiar', 'unknown', 'unsure']
-
-export const SELF_REPORT_LABEL: Record<SelfReport, string> = {
-  mastered: '掌握',
-  familiar: '了解但不熟',
-  unknown: '不会',
-  unsure: '不确定',
-}
-
-/** 自评是谁给的：AI 只是推断，学习者点过的那一下才算确认（见 LearningState.selfBy） */
-export type SelfSource = 'user' | 'ai'
-
-/**
- * 一条错误记忆。
- *
- * 记的不是「错了哪道题」，而是「错成了什么样」：同一类错误再犯时只把次数加上去，
- * 于是「漏乘内部导数 ×3」这种反复出现的模式自己浮出来，下一次教学可以照着它设计。
- * pattern 是归一化后的说法（去空白、统一小写），同一个说法只有一条。
- */
-export interface MistakeRecord {
-  /** 错误的样子，如「漏乘内部导数」 */
-  pattern: string
-  /** 犯过几次 */
-  count: number
-  /** AI 推断的成因（可空），如「对内外函数的概念不稳定」 */
-  cause?: string
-  firstAt: number
-  lastAt: number
-  /** 已修复时刻：后续复习里这个错法答对了，由导师在落账时标上（再犯即清掉） */
-  fixedAt?: number
-}
-
-/** 一次检验的种类：探针（随口一问）/ 考试（有卷）/ 回忆（合上讲给我听）/ 复习（间隔复习会话） */
-export type CheckKind = 'probe' | 'exam' | 'recall' | 'review'
-
-export const CHECK_KIND_LABEL: Record<CheckKind, string> = {
-  probe: '探针',
-  exam: '考试',
-  recall: '回忆',
-  review: '复习',
-}
-
-/**
- * 一次检验的记录。
- *
- * 三种检验问的是同一件事——「你到底会不会」，所以合成一条时间线：
- * 掌握度怎么走到今天的，翻这一串就看得出来。
- * 主动回忆没有分数，它给的是三分类（提及 / 遗漏 / 潜在误解），因此这两组字段并存。
- */
-export interface CheckRecord {
-  kind: CheckKind
-  at: number
-  /** 这一次考得怎么样（0~100）；回忆这类没算分时省略 */
-  score?: number
-  /** 主动回忆：讲到了的要点 */
-  mentioned?: string[]
-  /** 主动回忆：没讲到、但本该讲的 */
-  missed?: string[]
-  /** 主动回忆：讲错了的地方 */
-  misconceptions?: string[]
-  /** 探针或回忆的原问（考试没有这一项，试卷本身有题目） */
-  question?: string
-  /** 学习者当时的原话（截断保存） */
-  answer?: string
-  /** AI 的一句话结论 */
-  note?: string
-}
-
-/**
- * 一个知识节点的学习状态——各种新能力共用的那一层底座。
- *
- * 为什么收成一个对象而不是散在节点上的几个字段：它们是同一件事的不同侧面
- * （自评、掌握度、错题、检验、学习行为），彼此要一起读、一起算，界面上也一起展示。
- * 收在一起之后，「这个知识点学到哪了」是一次读盘、一份快照，而不是五个字段各查一遍。
- *
- * 全部字段可缺省：**没评估过就是没有**，不要用 0 分冒充「测过了，0 分」。
- */
-export interface LearningState {
-  /** 学习者自评（四档）；没问过就没有这一项 */
-  self?: SelfReport
-  /** 自评是谁给的：'ai' 是导师的推断，学习者点过那一下才算 'user' */
-  selfBy?: SelfSource
-  /** 掌握度 0~100：随自评、探针、考试、回忆与错题一起走 */
-  mastery?: number
-  /** 掌握度上一次为什么这么定（AI 写一句话，界面显示它，好让这个数字可追问） */
-  masteryNote?: string
-  /** 错误记忆：同一类错误累加次数 */
-  mistakes?: MistakeRecord[]
-  /** 检验时间线（新的在后）；只留最近若干条，见 MAX_CHECKS */
-  checks?: CheckRecord[]
-  /** 最近一次打开这个知识点的时间 */
-  lastStudiedAt?: number
-  /** 打开过几次 */
-  visits?: number
-}
-
-/** 检验记录只留最近这么多条：它是「最近怎么样」的依据，不是账本 */
-export const MAX_CHECKS = 12
-/** 错误记忆的上限；超出后淘汰最久没再犯的那条 */
-export const MAX_MISTAKES = 20
 
 /**
  * 一个节点带哪几份文档。
@@ -437,8 +322,8 @@ export interface KnowledgeNode {
    */
   tint?: string
   status: MasteryStatus
-  /** 学习状态（自评 / 掌握度 / 错误记忆 / 检验记录 / 学习行为）；没评估过就没有这一项 */
-  learning?: LearningState
+  /** 最近一次打开这个知识点的时间（「最近打开」排序用，见 learn/recents）；没打开过就没有 */
+  lastStudiedAt?: number
   origin: 'ai' | 'user'
   goalId: string
   createdAt: number
@@ -516,12 +401,6 @@ export type TabRef =
    */
   | { kind: 'web'; url: string; key: string }
   /**
-   * 守卫 agent 的上下文页签（专注模式的监控轮次：截图帧、模型思考与判定，见 GuardView）。
-   * 上下文只活在会话里，**不落盘**——normalizeTab 不认它，重启后自然消失；
-   * 下一次专注开始时会再建一份。
-   */
-  | { kind: 'guard' }
-  /**
    * 视频页签（见 components/video/VideoStudyTab）。两种形态：
    * - 带 videoId：**绑定**到一个视频资源（描述在 learn/types 的 VideoResource），
    *   页里没有输入组件，打开即自动解析；
@@ -539,8 +418,6 @@ export type TabRef =
    * 跟着页签持久化（normalize 认它），内容全是静态文档，没有要落盘的状态。
    */
   | { kind: 'pluginDoc' }
-  /** 一份专注模式报告（只读，见 learn/focusGuard 的 FocusReport 与 FocusReportView） */
-  | { kind: 'report'; reportId: string }
   /**
    * 设置面板：文档区的一枚页签（不再是弹窗）。全局只有一份（tabKey 恒定），
    * 从哪个入口打开都是切到它；面板本身见 components/settings/SettingsPanel。
@@ -834,20 +711,10 @@ export interface LearnStore {
    */
   workflows?: WorkflowBook
   /**
-   * 文档有效阅读记录（见 learn/reading），**按目标分开**：目标 id → 那个目标的账。
-   *
-   * 它是学习计划与注意力评级（learn/attention）共同的事实底座。
-   * 分目标是因为「今天读了两小时」这句话必须属于某一门课才有意义（见 ReadingBook 的说明）；
-   * 落盘在各自的目标目录（`{目标}/reading.json`），不再进 state.json。
-   */
-  reading?: ReadingBook
-  /** 专注模式（见 learn/focus）：正在跑的那一场 + 结束过的记录。可选，理由同上 */
-  focus?: FocusStore
-  /**
    * 结构图（见 learn/structure）：目标 id → 那个目标的节点表与连线。
    *
    * 它替代了旧的「大纲树布局」——树的位置是算出来的，图的位置是用户拖的，必须存下来。
-   * 落盘在各自的目标目录（`{目标}/structure.json`），与 reading.json / essay.json 同一层：
+   * 落盘在各自的目标目录（`{目标}/structure.json`），与 essay.json / method.json 同一层：
    * 它是「这门课的结构」，目标没了就该跟着没。可选字段：旧数据没有它，
    * 由数据迁移脚本（见 lib/migration 的 m_0_6_3_to_0_7_0）从旧树铺出来。
    */

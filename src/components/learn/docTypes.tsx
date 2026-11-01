@@ -1,4 +1,4 @@
-import { AppWindow, Bot, BookOpen, Brain, CalendarClock, ChartColumn, FileClock, FilePlus, Folder, FolderOpen, Globe, GraduationCap, HardDrive, ListTree, Loader2, MonitorPlay, NotebookPen, Package, Puzzle, Settings2, ShieldCheck } from 'lucide-react'
+import { AppWindow, Bot, BookOpen, Brain, CalendarClock, ChartColumn, FilePlus, Folder, FolderOpen, Globe, GraduationCap, HardDrive, ListTree, Loader2, MonitorPlay, NotebookPen, Package, Puzzle, Settings2 } from 'lucide-react'
 
 /**
  * 文档类型的**视觉身份**：一种类型一个图标、一个颜色。
@@ -20,8 +20,6 @@ export type DocKindKey =
   | 'web'
   | 'video'
   | 'pluginDoc'
-  | 'guard'
-  | 'report'
   | 'settings'
   | 'usage'
   | 'schedule'
@@ -41,8 +39,6 @@ const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   web: '#2aa1b8', // 青：网页（内置浏览器）
   video: '#5d6ac4', // 靛蓝：视频学习（实验）——介于网页的青与超级文档的紫之间，谁也不撞
   pluginDoc: '#8a6d3b', // 土金：插件开发文档——参考手册的气质，与正文的黑白区分开
-  guard: '#d4577b', // 绯粉：守卫 agent 的上下文（警戒色——它在盯梢）
-  report: '#7a6a54', // 褐灰：专注模式报告（收场的凭据）
   settings: '#7c8698', // 蓝灰：系统页（设置）——与哪一类学习内容都不同族
   usage: '#7c8698', // 蓝灰：系统页（用量统计），与设置同族同色、图标不同
   schedule: '#c47a3d', // 陶土橙：日程表（时间与约定，与朱红的试卷、琥珀的笔记都不撞）
@@ -109,10 +105,6 @@ export function DocTypeIcon({ kind, size = 11 }: { kind: DocKindKey; size?: numb
       <MonitorPlay size={size} />
     ) : kind === 'pluginDoc' ? (
       <Puzzle size={size} />
-    ) : kind === 'guard' ? (
-      <ShieldCheck size={size} />
-    ) : kind === 'report' ? (
-      <FileClock size={size} />
     ) : kind === 'settings' ? (
       <Settings2 size={size} />
     ) : kind === 'usage' ? (

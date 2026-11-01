@@ -3,9 +3,9 @@
  */
 import type { Exam, ExamAnswer, ExamAttempt } from '../exam'
 import type { LearnStore } from '../types'
-import { attemptScore, examTotalPoints, gradeObjectiveAll, isAutoGradable } from '../exam'
+import { gradeObjectiveAll, isAutoGradable } from '../exam'
 import { newAttempt, settleAttempt } from '../examRecords'
-import { addCheck, setNodeStatus } from './state'
+import { setNodeStatus } from './state'
 
 /* ---------- 考试 ---------- */
 
@@ -293,25 +293,6 @@ export function applyGradeResult(
 
   let next = upsertAttempt(store, examId, graded)
   if (payload.passed) next = setNodeStatus(next, exam.nodeId, 'mastered')
-  /*
-   * 阅卷即是一次检验：把这一次的成绩记进学习状态的时间线。
-   *
-   * 为什么由这里记、而不是交给 Agent 顺手调 api.state.check：成绩是系统算出来的确定值，
-   * 让它经一次模型往返再写回来，只会多一个「模型忘了」的缺口。掌握度不在这里动——
-   * 那要综合错题与自评，是 Agent 的判断（见提示词「学习状态」一节）。
-   *
-   * 只在第一次判分时记（重复调用不该在时间线上留下两条）。
-   */
-  if (attempt.status !== 'graded') {
-    const total = examTotalPoints(exam)
-    const got = attemptScore(graded)
-    next = addCheck(next, exam.nodeId, {
-      kind: 'exam',
-      at: Date.now(),
-      score: total > 0 ? Math.round((got / total) * 100) : 0,
-      note: '《' + exam.title + '》' + got + '/' + total + ' 分，' + (payload.passed ? '判定已完全掌握' : '尚未完全掌握'),
-    })
-  }
   return { store: next, ok: true, message: payload.passed ? '已记录：完全掌握' : '已记录：尚未完全掌握' }
 }
 

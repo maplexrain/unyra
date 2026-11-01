@@ -76,14 +76,8 @@ export function useLearnStore() {
    * 交回来的还是渲染期那个对象，就说明他没动，以 ref 上的最新一份为准。
    */
   const set = useCallback((next: LearnStore) => {
-    const latest = storeRef.current
-    const rendered = renderedRef.current
-    const merged: LearnStore = {
-      ...next,
-      reading: next.reading === rendered.reading ? latest.reading : next.reading,
-    }
-    storeRef.current = merged
-    setStore(merged)
+    storeRef.current = next
+    setStore(next)
   }, [])
 
   /** 读取最新已提交的 store，供 await 之后的异步流程取基准 */

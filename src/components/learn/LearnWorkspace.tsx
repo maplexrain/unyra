@@ -117,7 +117,6 @@ import {
   latestConversation,
   resolveDisplayedConversation,
   nodeById,
-  nodeStructure,
   normalizeKey,
   removeExam,
   touchNode,
@@ -144,15 +143,6 @@ import { attemptBrief, examAttempted, examTotalPoints } from '../../learn/exam'
 import type { Exam } from '../../learn/exam'
 import { useExamBridge } from '../../learn/useExamBridge'
 import { captureExamDelete, captureNodeDelete } from '../../learn/undo'
-import {
-  applyReadingDelta,
-  emptyReading,
-  readToday,
-  readingDay,
-  readingDocKey,
-  readingOfGoal,
-  withGoalReading,
-} from '../../learn/reading'
 import { makeConversation, nodeDocRel } from '../../learn/store'
 import { loadAgentSettings, saveAgentSettings, subscribeAgentSettings } from '../../agent/settings'
 import { subscribeDrops } from '../../agent/contextDebug'
@@ -213,7 +203,6 @@ import { useAgent } from '../../learn/useAgent'
 import ExplorerSidebar, {
   type ExamActions,
   type NodeDocActions,
-  type NodeStateActions,
 } from './ExplorerSidebar'
 import { requestReveal } from './explorer/reveal'
 import { focusAgentInput } from '../../lib/agentFocus'
@@ -240,17 +229,6 @@ import { learnSandboxOps } from '../../learn/useAgent'
 import { buildStandaloneApi } from '../../agent/tools'
 import { isElectron, isWeb, native } from '../../lib/native'
 import DocFloat from './DocFloat'
-import GuardView from './GuardView'
-import FocusReportView from './FocusReportView'
-import { collectGuardFacts, startGuard, stopGuard, type GuardHooks } from '../../agent/guardRuntime'
-import {
-  buildFocusReport,
-  REPORT_MIN_MS,
-  type FocusOutcome,
-  type GuardMonitors,
-} from '../../learn/focusGuard'
-import { writeFocusReport } from '../../learn/focusReports'
-import { sessionMsOf } from '../../learn/focus'
 import LocalDoc from './LocalDoc'
 import DraftDoc from './DraftDoc'
 import SourceEditor from './SourceEditor'
@@ -279,7 +257,6 @@ import { resetPrefixGate } from '../../agent/prefixGate'
 import { setEffortNotice } from '../../learn/effortGuard'
 import { docAreaElement, locateNeedle, scrollToDoc, visibleDocBody } from '../../lib/docDom'
 import { localRevealKey, nodeRevealKey, requestSourceReveal } from '../../lib/docReveal'
-import { publishReadingDay } from '../../lib/readingPulse'
 import { readRecentTabs, residentIds } from '../../learn/resident'
 import type { UiPointRequest } from '../../agent/tools'
 import type { AskAnswers } from '../../agent/tools'
@@ -290,7 +267,7 @@ import { ZONE_BOX } from './workspace/drag'
 import { examDeleteWarn } from './workspace/labels'
 import { conceptKeysOf, emptyNote, examCopyOf, paneInfo, paneOf } from './workspace/panes'
 import { DocPane } from './workspace/DocPane'
-import { FocusDock, ReadingDock, ScheduleDock } from './workspace/docks'
+import { ScheduleDock } from './workspace/docks'
 import ToolsButton from '../tools/ToolsButton'
 import ScreenshotModal from '../tools/ScreenshotModal'
 import { EmptyDoc, Topbar } from './workspace/chrome'
@@ -304,7 +281,6 @@ import { useLinkHandlers } from './workspace/useLinkHandlers'
 import { useLibraryActions } from './workspace/useLibraryActions'
 import { useExplorerUndo } from './workspace/useExplorerUndo'
 import { useConceptActions } from './workspace/useConceptActions'
-import { useFocusFlow } from './workspace/useFocusFlow'
 import { useScheduleFlow, useScheduleReminder } from './workspace/useScheduleFlow'
 import { useWorkflowStarters } from './workspace/useWorkflowStarters'
 import { examNeedingWork, makeExamDeps } from './workspace/examTools'
@@ -799,13 +775,11 @@ export default function LearnWorkspace({
     if (ref.kind === 'exam') {
       return { type: 'attempt', nodeId: ref.nodeId, examId: ref.examId, attemptId: ref.attemptId, title }
     }
-    // 守卫上下文、专注报告与系统页（设置/用量/记忆/导师设置/新建目标）没有可引用的 chip 形态：从文档区拖不出引用；
+    // 系统页（设置/用量/记忆/导师设置/新建目标）没有可引用的 chip 形态：从文档区拖不出引用；
     // 新建文件页签同样没有——它还没有落点，引用一个「还不存在的文件」没有意义
     if (
-      ref.kind === 'guard' ||
       ref.kind === 'video' ||
       ref.kind === 'pluginDoc' ||
-      ref.kind === 'report' ||
       ref.kind === 'settings' ||
       ref.kind === 'usage' ||
       ref.kind === 'schedule' ||
@@ -3024,13 +2998,6 @@ export default function LearnWorkspace({
 
 
   /*
-   * 专注模式动作在 useFocusFlow、导师工作流启动器在 useWorkflowStarters（都在 workspace/）。
-   * 守卫 agent（见 agent/guardRuntime）挂在这之后：开始/结束两个入口都从这里转发，
-   * 报告与守卫上下文才不会漏掉一场。
-   */
-  const { startFocusMode, stopFocusMode, pauseFocusMode, resumeFocusMode } = useFocusFlow({ getLatest, set })
-
-  /*
    * 日程：写操作（页面与顶栏共用一套）与到点提醒（顶栏那一条呼吸 + 弹层）。
    *
    * 提醒引擎有自己的 1 秒节拍，但**只在「该响的那条换了」时 setState**——顶栏因此不会
@@ -3048,146 +3015,9 @@ export default function LearnWorkspace({
     if (scheduleRinging && pure) setPure(false)
   }, [scheduleRinging, pure, setPure])
 
-  /* ---------- 专注模式：守卫 agent 与专注报告 ---------- */
-
-  /** 这一场的账目：报告只从开始时刻算时段；收场即清空 */
-  const focusMeta = useRef<{ startedAt: number } | null>(null)
-  /** 正在申请媒体流：拿到画面才算开始（守卫是专注模式的准入条件） */
-  const [focusStarting, setFocusStarting] = useState(false)
-  /** 守卫的分心警告弹窗（同一时间最多一条，新的顶掉旧的） */
-  const [guardWarn, setGuardWarn] = useState<{ reason: string } | null>(null)
-  /** 熔断弹窗：隐私底线被触发，这次专注已强制结束 */
-  const [guardFuse, setGuardFuse] = useState<{ reason: string } | null>(null)
-
-  /**
-   * 一场专注收场 → 写报告。停止与熔断各得一份；不到三分钟的停止就是误触，不记账。
-   * 守卫事实是可选的（理论上开不了无守卫的专注，这里只是防御）。
-   */
-  const finishFocus = useCallback(
-    (outcome: FocusOutcome) => {
-      const meta = focusMeta.current
-      focusMeta.current = null
-      if (!meta) return
-      const endedAt = Date.now()
-      if (outcome === 'stopped' && endedAt - meta.startedAt < REPORT_MIN_MS) return
-      const facts = collectGuardFacts(endedAt)
-      const report = buildFocusReport({
-        startedAt: meta.startedAt,
-        endedAt,
-        monitors: facts?.monitors ?? { screen: false, camera: false },
-        outcome,
-        pausedMs: facts?.pausedMs ?? 0,
-        pauseCount: facts?.pauseCount ?? 0,
-        pauseSpans: facts?.pauseSpans ?? [],
-        warnings: facts?.warnings ?? [],
-        ...(facts?.fused ? { fused: facts.fused } : {}),
-        rounds: facts?.rounds ?? [],
-      })
-      void writeFocusReport(report)
-      onToast(t('专注报告已生成——资源管理器的「专注报告」里看'))
-    },
-    [onToast],
-  )
-
-  /** 守卫的动作出口：判定翻译成专注状态的暂停/恢复、界面上的警告与熔断弹窗 */
-  const guardHooks = useMemo<GuardHooks>(
-    () => ({
-      onPause: (reason) => {
-        pauseFocusMode()
-        onToast(t('守卫：{0}——值守已暂停，回到应用就继续', reason))
-      },
-      onResume: () => {
-        resumeFocusMode()
-        onToast(t('守卫：欢迎回来，值守继续'))
-      },
-      onWarn: (reason) => {
-        setGuardWarn({ reason })
-        // 系统级推送：分心时用户多半正在别的应用里（守卫也正是因此才拍得到分心的画面），
-        // 应用内弹窗那时候看不见。系统通知点一下能把主窗口叫回来。
-        if (isElectron())
-          void native()
-            .window.notify({ title: t('守卫提醒：屏幕上的内容与学习无关'), body: reason })
-            .then((r) => {
-              // 失败回执不能白白丢掉：至少在控制台留一句话，开发者面板可以实测同一条链路
-              if (!r.ok) console.warn('[guard] 系统通知没有发出去：', r.error)
-            })
-        // 闪现置顶：窗口直接钉到最上层亮出警告，但不抢焦点（Windows 前台锁下硬抢
-        // 不可靠，见 mainWindow.ts 的 flashMainWindow）；点回来或 15s 后自动解除
-        if (isElectron()) native().window.flashTop()
-      },
-      onFuse: (reason) => {
-        // 熔断：媒体流守卫那边已经停了，这里把这一场收掉、写报告、把话说明白
-        stopFocusMode()
-        finishFocus('fused')
-        setGuardFuse({ reason })
-        if (isElectron())
-          void native()
-            .window.notify({ title: t('专注模式已熔断'), body: reason })
-            .then((r) => {
-              if (!r.ok) console.warn('[guard] 熔断通知没有发出去：', r.error)
-            })
-      },
-      onToast,
-      contextLine: () => {
-        const cur = getLatest().focus?.current
-        if (!cur) return t('专注模式没有在跑')
-        const seen = [cur.monitors.screen ? t('屏幕') : '', cur.monitors.camera ? t('摄像头') : '']
-          .filter(Boolean)
-          .join(' + ')
-        return t('专注模式已持续 {0} 分钟（守卫：{1}）', Math.max(0, Math.round(sessionMsOf(cur) / 60_000)), seen)
-      },
-    }),
-    [pauseFocusMode, resumeFocusMode, stopFocusMode, finishFocus, onToast, getLatest],
-  )
-
-  /**
-   * 点「开始专注」：**先把守卫开起来**，拿到画面才写会话。
-   * 守卫是专注模式的准入条件（见 learn/focus）：一路画面都拿不到就不开始，
-   * 而不是让用户面对一个「专注中」但没人值守的空壳。
-   */
-  const handleStartFocus = useCallback(
-    (monitors: GuardMonitors) => {
-      if (focusStarting) return
-      if (!monitors.screen && !monitors.camera) {
-        onToast(t('至少开启一项守卫功能才能开始专注模式'))
-        return
-      }
-      setFocusStarting(true)
-      void startGuard(monitors, guardHooks)
-        .then((got) => {
-          if (!got) {
-            onToast(t('守卫没有开起来：屏幕与摄像头都没拿到画面，专注模式未开始'))
-            return
-          }
-          if (!startFocusMode(got)) {
-            // 守卫已经开起来了但会话没写成：把守卫收掉，别留一段没人认领的监控
-            stopGuard('focus start failed')
-            onToast(t('专注模式没能开始，请再试一次'))
-            return
-          }
-          focusMeta.current = { startedAt: Date.now() }
-        })
-        .finally(() => setFocusStarting(false))
-    },
-    [focusStarting, guardHooks, startFocusMode, onToast],
-  )
-
-  /** 点「结束专注」：守卫一并收摊（媒体流立即断），三分钟以上的场子写报告 */
-  const handleStopFocus = useCallback(() => {
-    stopGuard('user stopped')
-    stopFocusMode()
-    finishFocus('stopped')
-  }, [stopFocusMode, finishFocus])
-
-  /** 守卫上下文页签（全局一份，见 GuardView）与专注报告页签的入口 */
-  const openGuardTab = useCallback(() => openTab({ kind: 'guard' }), [openTab])
-  const openReportTab = useCallback((reportId: string) => openTab({ kind: 'report', reportId }), [openTab])
-
   const {
     newExam,
     requestGrading,
-    setSelfReport,
-    clearMistake,
     startSuperLab,
     startOutline,
     startPrereqOutline,
@@ -4209,25 +4039,6 @@ export default function LearnWorkspace({
             requestSourceReveal(nodeRevealKey(node.id, source.kind, source.note), loc.start, loc.end)
             setTabView(tabId, 'source')
           },
-          onReading: (delta) => {
-            const alive = nodeById(getLatest(), delta.nodeId)
-            if (!alive) return
-            const goalId = alive.goalId
-            patchQuiet((s) => {
-              const mine = readingOfGoal(s.reading, goalId)
-              const next = applyReadingDelta(mine ?? emptyReading(), delta)
-              const reading = withGoalReading(s.reading, goalId, next)
-              const reading2 = { ...s, reading }
-              publishReadingDay(goalId, delta.day, readingDay(next, delta.day)?.activeMs ?? 0)
-              return reading2
-            })
-          },
-          readingKnownToday: () =>
-            readToday(
-              readingOfGoal(getLatest().reading, node.goalId),
-              node.id,
-              readingDocKey(source.kind, source.note),
-            ),
         }
         noteActionsCache.current.set(key, actions)
       }
@@ -5037,19 +4848,6 @@ export default function LearnWorkspace({
                   {t('这份试卷已经被删了，这一次考试的内容也一并没了。')}
                 </div>
               )
-            ) : gTab?.ref.kind === 'guard' ? (
-              /*
-                守卫 agent 的上下文：专注模式期间每轮监控的图像、思考与判定。
-                会话活在 agent/guardRuntime 里，与页签开不开无关——这只是旁路观察窗，
-                页签没开守卫也照常工作；会话只活在内存里，重启后这里是空的占位。
-              */
-              <GuardView />
-            ) : gTab?.ref.kind === 'report' ? (
-              /*
-                专注模式报告：只读凭据，按 id 从用户目录现读（文件没了它自己会说）。
-                key 绑报告 id：换一份报告重挂，加载态从头来。
-              */
-              <FocusReportView key={gTab.ref.reportId} reportId={gTab.ref.reportId} />
             ) : gTab?.ref.kind === 'outline' ? (
               /*
                 大纲页：思维导图采用 keepalive 常驻（见下方的 gOutlineTabs），
@@ -5146,15 +4944,8 @@ export default function LearnWorkspace({
                   agentRunning={isAgentRunning}
                   onGenerateDoc={requestGenerateDoc}
                   knownConceptKeys={conceptKeysOf(store, node)}
-                  readingPaused={!!exam.live}
                   // 大纲句柄槽：每片正文对应自己页签的那一份（见 lib/outline 的 OutlineHandle）
                   outlineSlot={getOutlineSlot(tab.id)}
-                  /*
-                   * 导师栏占着中间主位时不算阅读（窄栏里跟读的时间丢，见 useReadingTracker）。
-                   * 纯净阅读里正文独占整行——那当然算阅读，所以这一条要放行：
-                   * 对调过两栏时（agentLeft），不收这一句的话，最该记账的那段时间反而记不上。
-                   */
-                  mainPane={!agentLeft || pure}
                   // 读到哪儿了：记在页签 id 上，重启回来接着读（见 lib/docScroll）
                   scrollTop={store.docScroll[tab.id]}
                   onScrollTop={(top) => rememberScroll(tab.id, top)}
@@ -5523,15 +5314,6 @@ export default function LearnWorkspace({
     [exam.openExam, exam.reveal, exam.live, selectNode, onToast, requestGrading, grading, openExamCopy],
   )
 
-  const explorerState = useMemo<NodeStateActions>(
-    () => ({
-      structure: (nodeId) => nodeStructure(store, nodeId),
-      onSetSelf: (nodeId, self) => setSelfReport(nodeId, self),
-      onClearMistake: (nodeId, pattern) => clearMistake(nodeId, pattern),
-    }),
-    [store, setSelfReport, clearMistake],
-  )
-
   return (
     <div className="print-flat flex h-full overflow-hidden">
       <ExplorerSidebar
@@ -5588,7 +5370,6 @@ export default function LearnWorkspace({
         onOpenWs={openWsFile}
         ws={wsActions}
         onOpenLocal={openLocalFile}
-        onOpenReport={openReportTab}
         onRemoveLocal={dropLocalFile}
         onRevealLocal={(path) => void revealLocalFile(path)}
         onPickLocal={() => void pickLocal()}
@@ -5603,7 +5384,6 @@ export default function LearnWorkspace({
         favoriteTitleOf={favoriteTitleOf}
         docs={explorerDocs}
         exams={explorerExams}
-        state={explorerState}
       />
 
       <div className="print-flat flex min-w-0 flex-1 flex-col">
@@ -5655,21 +5435,9 @@ export default function LearnWorkspace({
             onOpenNotice={onOpenNotice}
             onOpenLan={onOpenLan}
             onToast={onToast}
-            /* 专注模式是「自给自足的小块」：守卫状态只在这一块里更新，
-               不会把整个学习区（正文 + 对话栏）一起带上 */
-            focus={
-              <FocusDock
-                store={store}
-                starting={focusStarting}
-                onStart={handleStartFocus}
-                onStop={handleStopFocus}
-                onOpenGuard={openGuardTab}
-              />
-            }
-            reading={<ReadingDock store={store} onOpenNode={selectNode} />}
             /* 工具箱：截图与录屏入口 */
             tools={<ToolsButton onScreenshot={handleStartScreenshot} onToast={onToast} />}
-            /* 日程是「今天还剩什么」，与专注/阅读同属右侧那一簇；到点时的呼吸层挂在顶栏本体上 */
+            /* 日程是「今天还剩什么」；到点时的呼吸层挂在顶栏本体上 */
             schedule={
               <ScheduleDock
                 store={store}
@@ -5971,29 +5739,6 @@ export default function LearnWorkspace({
           confirmLabel={pendingDelete.isRoot ? t('删除目标') : t('删除')}
           onConfirm={commitRemoveNode}
           onCancel={() => setPendingDelete(null)}
-        />
-      )}
-
-      {/*
-        守卫的两条弹窗：分心警告（计时还在走，提醒即可）与隐私熔断（这次专注已经被
-        强制结束，媒体流也停了——画面不会保存，这里只是把话说清）。
-      */}
-      {guardWarn && (
-        <ConfirmDialog
-          title={t('守卫提醒：屏幕上的内容与学习无关')}
-          message={t('{0}（误判可直接忽略，这一条也会记进专注报告。）', guardWarn.reason)}
-          confirmLabel={t('回到学习')}
-          onConfirm={() => setGuardWarn(null)}
-          onCancel={() => setGuardWarn(null)}
-        />
-      )}
-      {guardFuse && (
-        <ConfirmDialog
-          title={t('专注模式已熔断')}
-          message={t('守卫在画面里看到了涉及隐私的内容（{0}），已立即停止监控并结束这次专注；看到的画面不会保存。', guardFuse.reason)}
-          confirmLabel={t('知道了')}
-          onConfirm={() => setGuardFuse(null)}
-          onCancel={() => setGuardFuse(null)}
         />
       )}
 

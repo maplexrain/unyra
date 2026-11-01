@@ -123,10 +123,8 @@ export interface SandboxOptions {
    */
   resources?: ResourceOps
   /**
-   * 学习状态（自评 / 掌握度 / 错误记忆 / 检验记录，见 learn/learning）；
    * 未注入时沙箱里没有 state 这一组。
    */
-  state?: LearningOps
   /** 出题 / 读卷 / 判分 / 写错题讲解 / 删卷；未注入时沙箱里没有 exam 这一组 */
   exam?: {
     create: (payload: Record<string, unknown>) => AgentToolResult
@@ -170,13 +168,8 @@ export interface SandboxOptions {
    * 与 memory 同一条边界：**画像不会被拼进系统提示词**——导师需要时自己 get。
    * 头像不走这条路（它是几百 KB 的 data URL，进上下文就是灾难）。
    */
-  reading?: ReadingOps
-  /** 注意力评级（attention.get，见 learn/attention）；未注入就没有它 */
-  attention?: AttentionOps
   /** 工作区目录（workspace.*，见 learn/workspace）；未注入就没有这一组 */
   workspace?: WorkspaceOps
-  /** 专注模式（focus.*，见 learn/focus）；未注入就没有这一组 */
-  focus?: FocusOps
   /** 读网页（web.*，见 learn/webDocs）；未注入就没有这一组 */
   web?: WebOps
   /**
@@ -443,31 +436,6 @@ export type AskAnswers = AskAnswer[]
 
 /* ---------- memory：记忆（工作 / 长期） ---------- */
 
-/* ---------- reading / attention / focus：学习过程的那一组 ---------- */
-
-/**
- * reading.*：文档有效阅读的事实（见 learn/reading）。
- *
- * 三件事分开给：get 是「这个节点读到哪了」（节点级事实），
- * list 是「整个目标里哪个节点还没读」，day 是「今天/某一天读了什么」——
- * 出题、排计划、答「他学得怎么样」各取所需。**这里没有「打分」**：
- * 注意力是派生判断，单独走 attention.get（见 learn/attention 的文件头）。
- */
-export interface ReadingOps {
-  /** 某个节点（缺省=当前节点）的阅读事实：有效时长、各节覆盖、最近会话 */
-  get: (path?: string) => unknown
-  /** 当前目标里每个读过或有记录的节点一行（未读节、最后阅读时间、时长） */
-  list: () => unknown
-  /** 某个学习日（缺省=今天）读了什么：时长、节点、节 */
-  day: (day?: string) => unknown
-}
-
-/** attention.get：把阅读事实折成档位 + 事实句 + 建议（纯派生，不落盘） */
-export interface AttentionOps {
-  /** 当前节点（或给了 path 的节点）的注意力评级；缺省看整体 */
-  get: (path?: string) => unknown
-}
-
 /**
  * workspace.*：节点的工作区目录（见 learn/workspace）。
  *
@@ -482,18 +450,6 @@ export interface WorkspaceOps {
   read: (path?: string) => unknown
   /** 写一个文本文件（整份覆盖；父目录自动建），输入 { path, content } */
   write: (input: Record<string, unknown>) => unknown
-}
-
-/**
- * focus.*：专注模式（见 learn/focus）。
- *
- * **只有 status，而且是只读**：专注模式是用户自己开的一场「有守卫盯着的学习」——
- * 什么时候开始、什么时候结束，全在他按的那颗按钮上。agent 连「排计划」都没有了，
- * 能看的只有记录。
- */
-export interface FocusOps {
-  /** 现状与记录：在跑的这一场、今天几场多少分钟、最近几天、最近几条 */
-  status: () => unknown
 }
 
 /**
@@ -866,29 +822,6 @@ export interface ResourceOps {
   remove: (uuid: string, force: boolean) => Promise<unknown>
   /** 被引用扫描：给了 uuid 就查这一条被谁引用，不给就列出全部资源的引用状况 */
   refs: (uuid?: string) => unknown
-}
-
-/**
- * 学习状态那一组（沙箱里的 state.*）。
- *
- * 它写的不是「文档」，而是**系统对这个学习者的判断**：他自评会不会、掌握到几分、
- * 错过哪几类、最近测出来什么。因此参数一律经过值域校验（四档只有四个值、掌握度只有 0~100），
- * 认不出就把可选项列出来回给模型——一个写不进去的乱值比一次报错危险得多，
- * 它会让状态面板显示一个没人能解释的数字。
- *
- * 返回值一律是 AgentToolResult：失败要回 ok:false，而不是把一句说明塞进正文——
- * execute 会把出现过 ok:false 的 api 点出来（见 createExecuteTool 的 failures），
- * 模型据此才知道「这一次没改成」，而不是以为做完了。
- */
-export interface LearningOps {
-  read: (nodeId: string) => unknown
-  update: (
-    nodeId: string,
-    patch: { self?: unknown; by?: unknown; mastery?: unknown; note?: unknown },
-  ) => AgentToolResult
-  mistake: (nodeId: string, input: { pattern?: unknown; cause?: unknown; count?: unknown }) => AgentToolResult
-  forget: (nodeId: string, pattern: string) => AgentToolResult
-  check: (nodeId: string, input: Record<string, unknown>) => AgentToolResult
 }
 
 export interface VideoEpisodeInfo {

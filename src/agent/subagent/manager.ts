@@ -476,8 +476,6 @@ function subsetSandbox(base: SandboxOptions, groups: string[]): SandboxOptions {
     ...(has('web') && base.web ? { web: base.web } : {}),
     ...(has('memory') && base.memory ? { memory: base.memory } : {}),
     ...(has('workspace') && base.workspace ? { workspace: base.workspace } : {}),
-    ...(has('reading') && base.reading ? { reading: base.reading } : {}),
-    ...(has('attention') && base.attention ? { attention: base.attention } : {}),
     // 执行器与超时跟着基座走：探针 / 测试注入的假执行器因此对子代理同样生效
     ...(base.runSandbox ? { runSandbox: base.runSandbox } : {}),
     ...(base.timeoutMs !== undefined ? { timeoutMs: base.timeoutMs } : {}),

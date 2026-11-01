@@ -34,9 +34,9 @@ export const EXECUTE_GUIDE = `唯一的工具是 execute(description, body)：
 - 节点与内容（正文 / 大纲 / 笔记 / 试卷卷面 / 超级文档）→ api.node：list() 查 uuid、
   get(uuid) 取节点对象；await n.help() 看这个节点自己的内容格式与连接规则（**动态的，别凭记忆写**），
   await n.content 读现状、n.editContent(...) 整份写回、a.connect(b, "down") 连线
-- 学习状态 → api.state.*　考试（读卷 / 判分 / 讲解 / 删卷）→ api.exam.*　出题走节点对象
+- 考试（读卷 / 判分 / 讲解 / 删卷）→ api.exam.*　出题走节点对象
 - 工作流 → api.wf.*　持久化函数 → api.method.*　画像 → api.userInfo.*
-- 阅读事实 → api.reading.*　临时变量 → api.tmp.*　静态资源 → api.res.*
+- 临时变量 → api.tmp.*　静态资源 → api.res.*
 - files.* 只用于：workspace/（用户交付物，优先 api.workspace.*）、static/、skills/、
   与数据根之外已放行的外部文件。用 files.* 碰应用数据会被当场拒绝，并提示该用哪一组。
 

@@ -3,7 +3,6 @@
 import type { Annotation, KnowledgeNode, MasteryStatus, NodeDocs, NoteFile, SuperDocFile } from '../../types'
 import { STATUSES } from '../factories'
 import { normalizeAnnotationStyle } from '../../../lib/annotationStyle'
-import { normalizeLearning } from '../../learning'
 import { normalizeOutline } from '../../outline'
 import { uniqueNoteName } from '../../notes'
 import { uniqueSuperDocName } from '../../superdocs'
@@ -132,8 +131,18 @@ export function normalizeNode(raw: unknown): KnowledgeNode | null {
   const legacyBody = typeof r.body === 'string' ? r.body : ''
   const description =
     typeof r.description === 'string' ? r.description : legacyBody
-  // 没有学习状态时不留这个键：界面与提示词都按「有没有」分支，而不是按「空不空」
-  const learning = normalizeLearning(r.learning)
+  /*
+    老数据把「最近打开」存在 learning.lastStudiedAt 里（学习状态已经删掉了）：把那一个
+    时间读到顶层，其余字段（自评 / 掌握度 / 错题 / 检验）一律丢弃——它们不再有消费者。
+    读不出来就是没有：界面按「有没有」分支，而不是按「空不空」。
+  */
+  const legacyLearning = r.learning && typeof r.learning === 'object' ? (r.learning as Record<string, unknown>) : null
+  const lastStudiedAt =
+    typeof r.lastStudiedAt === 'number'
+      ? r.lastStudiedAt
+      : typeof legacyLearning?.lastStudiedAt === 'number'
+        ? (legacyLearning.lastStudiedAt as number)
+        : undefined
   // 大纲同理：形状读不出来就当「还没有」（老数据没有这一项），交互页按没有处理
   const outline = normalizeOutline(r.outline)
   // 思维导图上的自定义色：只认调色板里那几个名字，认不出来的当「没改过」
@@ -150,7 +159,7 @@ export function normalizeNode(raw: unknown): KnowledgeNode | null {
     annotations: normalizeAnnotations(r.annotations),
     ...(tint ? { tint } : {}),
     status: toStatus(r.status),
-    ...(learning ? { learning } : {}),
+    ...(lastStudiedAt ? { lastStudiedAt } : {}),
     origin: r.origin === 'ai' ? 'ai' : 'user',
     goalId: typeof r.goalId === 'string' ? r.goalId : '',
     createdAt: typeof r.createdAt === 'number' ? r.createdAt : now,

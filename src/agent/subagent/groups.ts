@@ -13,7 +13,7 @@ import { SANDBOX_API_CATALOG } from '../apiCatalog'
  * 自定义子代理可以开放的 api 组。**不在这个名单里的组，subagent.create 直接拒收**：
  * - ask：子代理没有宿主表单通道，调了会永远阻塞；
  * - ui：界面操作是导师与用户之间的事；
- * - exam / focus：学习状态的判断与落账是导师的职责；
+ * - exam：判分与讲解是导师的职责；
  * - userInfo：学习者画像；
  * - compact / wf / code / method / state：压缩、登记表、伪编译、持久化函数、
  *   学习状态——这些都是「导师」这一层的事，子代理拿了只会越权。

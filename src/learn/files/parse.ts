@@ -20,7 +20,6 @@ import type {
 import { normalizeLearnStore } from '../store/normalize'
 import type { StaticResource } from '../static/types'
 import { parseManifest } from '../static/manifest'
-import type { ReadingStore } from '../reading'
 import type { StructureMap } from '../structure'
 import { DOCS_DIR, MANIFEST_FILE, NOTES_SUFFIX, STATIC_DIR } from '../layout'
 import { LEGACY_NOTE_SUFFIX, docFileName, outlineFileName } from './names'
@@ -49,7 +48,6 @@ function readGoalLedgers(
   goalId: string,
   out: {
     conversations: Conversation[]
-    readingByGoal: Record<string, ReadingStore>
     essaysByGoal: Record<string, EssayEntry[]>
     essayCommitsByGoal: Record<string, EssayCommit[]>
     workMemory: Record<string, MemoryItem[]>
@@ -90,9 +88,6 @@ function readGoalLedgers(
   if (Array.isArray(workflowFile?.workflows) && workflowFile.workflows.length) {
     out.workflowsByGoal[goalId] = workflowFile.workflows
   }
-
-  const readingFile = parseJson<ReadingStore>(files.get(`${goalDir}/reading.json`))
-  if (readingFile) out.readingByGoal[goalId] = readingFile
 
   const essayFile = parseJson<{ essays?: EssayEntry[]; commits?: EssayCommit[] }>(files.get(`${goalDir}/essay.json`))
   if (Array.isArray(essayFile?.essays) && essayFile.essays.length) out.essaysByGoal[goalId] = essayFile.essays
@@ -218,7 +213,6 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
 
   const ledgers = {
     conversations: [] as Conversation[],
-    readingByGoal: {} as Record<string, ReadingStore>,
     essaysByGoal: {} as Record<string, EssayEntry[]>,
     essayCommitsByGoal: {} as Record<string, EssayCommit[]>,
     workMemory: {} as Record<string, MemoryItem[]>,
@@ -336,13 +330,11 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
     localFiles: s.localFiles ?? null,
     favorites: s.favorites ?? null,
     favGroups: s.favGroups ?? null,
-    reading: { byGoal: ledgers.readingByGoal },
     essays: ledgers.essaysByGoal,
     essayCommits: ledgers.essayCommitsByGoal,
     structure: ledgers.structureByGoal,
     detached: ledgers.detachedByGoal,
     essayDock: s.essayDock ?? null,
-    focus: s.focus ?? s.pomodoro ?? null,
     schedule: s.schedule ?? null,
     agentTabs: s.agentTabs ?? null,
     agentActiveTab: s.agentActiveTab ?? null,
@@ -379,7 +371,6 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
 
   const ledgers = {
     conversations: [] as Conversation[],
-    readingByGoal: {} as Record<string, ReadingStore>,
     essaysByGoal: {} as Record<string, EssayEntry[]>,
     essayCommitsByGoal: {} as Record<string, EssayCommit[]>,
     workMemory: {} as Record<string, MemoryItem[]>,
@@ -578,13 +569,11 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
     localFiles: s.localFiles ?? null,
     favorites: s.favorites ?? null,
     favGroups: s.favGroups ?? null,
-    reading: { byGoal: ledgers.readingByGoal },
     essays: ledgers.essaysByGoal,
     essayCommits: ledgers.essayCommitsByGoal,
     structure: ledgers.structureByGoal,
     detached: ledgers.detachedByGoal,
     essayDock: s.essayDock ?? null,
-    focus: s.focus ?? s.pomodoro ?? null,
     schedule: s.schedule ?? null,
     agentTabs: s.agentTabs ?? null,
     agentActiveTab: s.agentActiveTab ?? null,

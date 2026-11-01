@@ -57,16 +57,10 @@ export function Topbar({
   onOpenNotice,
   onOpenLan,
   onToast: _onToast,
-  focus,
-  reading,
   schedule,
   tools,
   scheduleRinging,
 }: {
-  /** 专注模式入口（守卫勾选 + 实时画面 + 状态，见 docks 的 FocusDock） */
-  focus: ReactNode
-  /** 有效阅读入口（今天读了多久 + 节点清单 + 近七天，见下面的 ReadingDock） */
-  reading: ReactNode
   /** 日程入口（今天还有什么 + 手动安排；到点提醒的弹层也在这里，见 ScheduleButton） */
   schedule: ReactNode
   /** 工具入口（截图、录屏等实用工具箱，见 ToolsButton） */
@@ -209,12 +203,8 @@ export function Topbar({
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         {/* 更新入口：只有新版本**下载完成**之后它才存在，见 components/update/UpdateButton */}
         <UpdateButton onOpenUpdate={onOpenUpdate} />
-        {/* 这三个入口都是「我今天的节奏」，与账号那一簇同属右侧。
-            顺序按「现在最该看什么」排：日程（几点做什么）→ 专注（守卫在不在当值）
-            → 有效阅读（今天读了多少）。日程排最前，因为它是唯一一个**到点会主动叫人**的。 */}
+        {/* 日程入口：「今天还剩什么」，与账号那一簇同属右侧 */}
         {schedule}
-        {focus}
-        {reading}
         {tools}
         <UserMenu
           user={user}

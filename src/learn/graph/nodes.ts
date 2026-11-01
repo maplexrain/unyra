@@ -5,16 +5,14 @@
 import type { DocKind, KnowledgeNode, LearnStore } from '../types'
 import { emptyDocs } from '../types'
 import { detachedPoolOf } from '../detached'
-import { withVisit } from '../learning'
 import { withoutTmpNodes } from '../../lib/tmpStore'
 import { allStoredTabs, closeIds, dropTabs, withOwners } from '../groups'
 import { tabIdsOfNode } from '../tabs'
 import { dropDrafts } from '../drafts'
-import { pruneReading } from '../reading'
 import { nodeById } from './lookup'
 import { addEdge, parentIds, pathToRoot, prereqIds } from './edges'
 import { ensureConversation } from './conversations'
-import { deleteGoal, onNodeReadingPatch } from './reading'
+import { deleteGoal } from './goals'
 import { retargetStaticRefs } from '../static/location'
 
 export { goalById, nodeById } from './lookup'
@@ -150,11 +148,11 @@ export function findNodeByTitle(store: LearnStore, goalId: string, title: string
   return store.nodes.find((n) => n.goalId === goalId && n.key === key)
 }
 
-/** 打开一个知识点：记下访问次数与最近学习时间（学习行为的两个最小事实） */
+/** 打开一个知识点：记下最近一次打开的时间（「最近打开」排序的唯一依据） */
 export function touchNode(store: LearnStore, id: string, now = Date.now()): LearnStore {
   const node = nodeById(store, id)
   if (!node) return store
-  return replaceNode(store, withVisit(node, now))
+  return replaceNode(store, { ...node, lastStudiedAt: now })
 }
 
 /**
@@ -299,9 +297,6 @@ export function deleteNode(store: LearnStore, id: string): LearnStore {
   return {
     ...store,
     nodes,
-    // 它的有效阅读记录也一起清掉：留着就是一条指向不存在节点的空索引（见 learn/reading 的 pruneReading）。
-    // 一个节点只属于一个目标，所以只动那一本账
-    ...onNodeReadingPatch(store, node, (rec) => pruneReading(rec, new Set(nodes.map((n) => n.id)))),
     edges: store.edges.filter((e) => e.from !== id && e.to !== id),
     // 试卷不删：宿主没了绑定自然解除（nodeId 悬空），用户随时可以把它绑到别的文档或单独删掉
     tmp: withoutTmpNodes(store.tmp, new Set([id])),

@@ -29,8 +29,6 @@ import type {
 } from './types'
 import type { Exam } from './exam'
 import type { Conversation } from '../agent/types'
-import type { DocReading, NodeReading, ReadingStore } from './reading'
-import { readingDocKey, readingOfGoal, withGoalReading } from './reading'
 import { scrubDetached } from './detached'
 import { findNote, notesOf } from './notes'
 import { findSuperDoc } from './superdocs'
@@ -50,23 +48,18 @@ export type ExplorerUndo =
       nodes: KnowledgeNode[]
       edges: DependencyEdge[]
       exams: Exam[]
-      /** 只在删目标是根时才有：目标本体 + 会话 + 阅读账 */
+      /** 只在删目标是根时才有：目标本体 + 会话 */
       goal?: LearningGoal
       conversations: Conversation[]
-      reading?: ReadingStore
       /** 只在删目标是根时才捕获：那个目标的视频节点（绑定行，恢复时接回 + 重建资源镜像） */
       videoNodes?: VideoNodeEntity[]
       tmp: Record<string, Record<string, TmpEntry>>
-      /** 单节点删除时才捕获：这个节点在阅读账里的那一片（整本账不能整份放回，见 restoreNodeReadingSlice） */
-      readingSlice?: { nodeId: string; rec: NodeReading; sessions: ReadingStore['sessions']; days: string[] }
     }
-  | { kind: 'note'; label: string; nodeId: string; note: NoteFile; docReading?: DocReading }
-  | { kind: 'super'; label: string; nodeId: string; doc: SuperDocFile; docReading?: DocReading }
+  | { kind: 'note'; label: string; nodeId: string; note: NoteFile }
+  | { kind: 'super'; label: string; nodeId: string; doc: SuperDocFile }
   | { kind: 'exam'; label: string; exam: Exam }
   | { kind: 'local'; label: string; file: LocalFile }
 
-/** 节点/目标删除那一条的形状（恢复逻辑里用） */
-type NodeUndo = Extract<ExplorerUndo, { kind: 'node' }>
 
 /* ---------- 捕获（删除前调用，拿到的是旧 store） ---------- */
 
@@ -94,15 +87,12 @@ export function captureNodeDelete(store: LearnStore, nodeId: string): ExplorerUn
       exams: store.exams.filter((e) => removed.has(e.nodeId)),
       goal,
       conversations: store.conversations.filter((c) => c.goalId === goal.id),
-      reading: store.reading?.byGoal?.[goal.id],
       videoNodes: (store.videoNodes ?? []).filter((v) => v.goalId === goal.id),
       tmp,
     }
   }
   const node = nodeById(store, nodeId)
   if (!node) return null
-  const book = readingOfGoal(store.reading, node.goalId)
-  const rec = book?.nodes[nodeId]
   return {
     kind: 'node',
     label: t('删除「{0}」', node.title),
@@ -112,18 +102,6 @@ export function captureNodeDelete(store: LearnStore, nodeId: string): ExplorerUn
     exams: store.exams.filter((e) => e.nodeId === nodeId),
     conversations: [],
     tmp: store.tmp?.[nodeId] ? { [nodeId]: store.tmp[nodeId] } : {},
-    ...(rec
-      ? {
-          readingSlice: {
-            nodeId,
-            rec,
-            sessions: book ? book.sessions.filter((s) => s.nodeId === nodeId) : [],
-            days: Object.entries(book?.days ?? {})
-              .filter(([, d]) => d.nodes.includes(nodeId))
-              .map(([day]) => day),
-          },
-        }
-      : {}),
   }
 }
 
@@ -132,13 +110,11 @@ export function captureNoteDelete(store: LearnStore, nodeId: string, name: strin
   const node = nodeById(store, nodeId)
   const note = node ? findNote(notesOf(node), name) : undefined
   if (!node || !note) return null
-  const book = readingOfGoal(store.reading, node.goalId)
   return {
     kind: 'note',
     label: t('删除笔记「{0}」', note.name),
     nodeId,
     note: { ...note },
-    docReading: book?.nodes[nodeId]?.docs[readingDocKey('note', note.name)],
   }
 }
 
@@ -147,13 +123,11 @@ export function captureSuperDelete(store: LearnStore, nodeId: string, name: stri
   const node = nodeById(store, nodeId)
   const doc = node ? findSuperDoc(superDocsOf(node), name) : undefined
   if (!node || !doc) return null
-  const book = readingOfGoal(store.reading, node.goalId)
   return {
     kind: 'super',
     label: t('删除超级文档「{0}」', doc.name),
     nodeId,
     doc: { ...doc },
-    docReading: book?.nodes[nodeId]?.docs[readingDocKey('sdoc', doc.name)],
   }
 }
 
@@ -171,48 +145,6 @@ export function captureLocalRemove(store: LearnStore, path: string): ExplorerUnd
 
 /* ---------- 恢复（Ctrl+Z 时调用） ---------- */
 
-/**
- * 把一个节点在阅读账里的那一片**并回**当前那本账（不是整份放回）。
- *
- * 删节点到撤回之间，同一目标的其他节点可能又读了会儿书——整份放回旧账会把这些
- * 新事实抹掉。并回的粒度与 pruneReading 的删除一一互逆：nodes 那条记录、这个节点
- * 的 sessions、days 名单里把它的 id 接回去（学习日的总时长本来就不删，见 aggregate 的说明）。
- */
-function restoreNodeReadingSlice(store: LearnStore, entry: NodeUndo): LearnStore {
-  const slice = entry.readingSlice
-  const book = readingOfGoal(store.reading, entry.goalId)
-  if (!slice || !book) return store
-  const nodes: Record<string, NodeReading> = { ...book.nodes, [slice.nodeId]: slice.rec }
-  const known = new Set(book.sessions.map((s) => s.id))
-  const sessions = [...book.sessions, ...slice.sessions.filter((s) => !known.has(s.id))]
-  let days = book.days
-  for (const day of slice.days) {
-    const d = days[day]
-    if (!d || d.nodes.includes(slice.nodeId)) continue
-    if (days === book.days) days = { ...book.days }
-    days[day] = { ...d, nodes: [...d.nodes, slice.nodeId] }
-  }
-  return { ...store, reading: withGoalReading(store.reading, entry.goalId, { ...book, nodes, sessions, days }) }
-}
-
-/** 把一份文档的阅读记录接回某个节点（deleteNote / removeSuperDoc 里 pruneDocReading 的逆） */
-function restoreDocReading(
-  store: LearnStore,
-  nodeId: string,
-  goalId: string,
-  docKey: string,
-  doc: DocReading,
-): LearnStore {
-  const book = readingOfGoal(store.reading, goalId)
-  const node = nodeById(store, nodeId)
-  if (!book || !node) return store
-  const rec = book.nodes[nodeId]
-  if (!rec) return store
-  const docs: Record<string, DocReading> = { ...rec.docs, [docKey]: doc }
-  const next: ReadingStore = { ...book, nodes: { ...book.nodes, [nodeId]: { ...rec, docs } } }
-  return { ...store, reading: withGoalReading(store.reading, goalId, next) }
-}
-
 /** 撤回一次删除；东西已经不在（节点被连根删过、store 换过用户等）时返回 ok:false 与一句话 */
 export function applyUndo(store: LearnStore, entry: ExplorerUndo): { store: LearnStore; ok: boolean; message: string } {
   let s = store
@@ -224,15 +156,10 @@ export function applyUndo(store: LearnStore, entry: ExplorerUndo): { store: Lear
     }
     const goal = entry.goal
     if (goal && !s.goals.some((g) => g.id === goal.id)) {
-      // 目标本体也回来了，它挂着的那本阅读账整份放回（目标没了就不会有新写入，见类型说明）
-      const reading = entry.reading
-        ? { byGoal: { ...(s.reading?.byGoal ?? {}), [entry.goalId]: entry.reading } }
-        : s.reading
       s = {
         ...s,
         goals: [...s.goals, goal],
         conversations: [...s.conversations, ...entry.conversations.filter((c) => !s.conversations.some((x) => x.id === c.id))],
-        ...(reading !== s.reading ? { reading } : {}),
       }
     }
     const edgeKey = new Set(s.edges.map((e) => e.from + '\u0001' + e.to))
@@ -249,7 +176,6 @@ export function applyUndo(store: LearnStore, entry: ExplorerUndo): { store: Lear
       const back = entry.videoNodes.filter((v) => !(s.videoNodes ?? []).some((x) => x.id === v.id))
       if (back.length) next = withVideoMirror({ ...next, videoNodes: [...(next.videoNodes ?? []), ...back] })
     }
-    if (entry.readingSlice) next = restoreNodeReadingSlice(next, entry)
     // 节点带回来的挂件以节点记录里的那份为准：游离池里的孤儿副本（删除时挪进去的）清掉
     const restoredIds = new Set(
       backNodes.flatMap((n) => [...(n.notes ?? []).map((x) => x.id), ...(n.superdocs ?? []).map((x) => x.id)]),
@@ -267,7 +193,6 @@ export function applyUndo(store: LearnStore, entry: ExplorerUndo): { store: Lear
         n.id === entry.nodeId ? { ...n, notes: [...notesOf(n), entry.note], updatedAt: Date.now() } : n,
       ),
     }
-    if (entry.docReading) next = restoreDocReading(next, entry.nodeId, node.goalId, readingDocKey('note', entry.note.name), entry.docReading)
     return { store: next, ok: true, message: t('已撤回：{0}', entry.label) }
   }
   if (entry.kind === 'super') {
@@ -280,7 +205,6 @@ export function applyUndo(store: LearnStore, entry: ExplorerUndo): { store: Lear
         n.id === entry.nodeId ? { ...n, superdocs: [...superDocsOf(n), entry.doc], updatedAt: Date.now() } : n,
       ),
     }
-    if (entry.docReading) next = restoreDocReading(next, entry.nodeId, node.goalId, readingDocKey('sdoc', entry.doc.name), entry.docReading)
     return { store: next, ok: true, message: t('已撤回：{0}', entry.label) }
   }
   if (entry.kind === 'exam') {

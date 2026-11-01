@@ -18,7 +18,6 @@ import { emptyDocs } from '../src/learn/groups'
 import { buildDocs, buildState, parseDocs } from '../src/learn/files'
 import { activeMessages } from '../src/learn/compact'
 import { upsertAssistantInFlight } from '../src/learn/agent/inflight'
-import { emptyFocus } from '../src/learn/focus'
 import { createSession, withAssistantFlush, withRunOutcome, withTaskMessage } from '../src/agent/subagent/registry'
 import type { Conversation, ConversationMessage, ContextSummary } from '../src/agent/types'
 import type { LearnStore } from '../src/learn/types'
@@ -78,8 +77,6 @@ function storeWith(conv: Conversation): LearnStore {
     drafts: {},
     docScroll: {},
     localFiles: [],
-    reading: { byGoal: {} },
-    focus: emptyFocus(),
   }
 }
 

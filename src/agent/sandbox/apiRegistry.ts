@@ -166,7 +166,7 @@ const p = await api.see({ pdf: 'moji:static/<uuid>', page: [1, 3] })`,
       a('delete', 'node.delete(uuid)', '删节点（删谁只删谁）', '删文档只删它自己：相连的线摘掉、下游文档断线成游离（不删除）、名下的笔记/试卷/超级文档随它走；删大纲 = 清空那份计划（文档与树边不动）；删挂件只删它自己。删试卷走 api.exam.delete（要先确认没有待判分的考试）。', `await api.node.delete(笔记uuid)`),
       a('invoke', 'node.invoke(uuid, 成员名, 参数数组)', '调节点对象的成员', '门面自动走它（n.editContent(...) 最终就是一次 node.invoke）；connect / disconnect 的对象参数会被折成 uuid。直接调时参数是数组形状。', `await api.node.invoke(文档uuid, 'editContent', [{ title: '极限', description: '', teaching: '# 极限', status: 'learning' }])`),
       a('brief', 'node.brief(uuid)', '文档的一页纸简报（写正文之前先看它）', '一次给齐：self（标题/描述/状态/字数）、port（认领的目标项——范围与边界以它为准）、siblings（同层其他目标项）、taught（全图各文档已讲过的小节标题——出现过的概念别重讲）。省掉 list 全图 + 逐个读。', `const brief = await api.node.brief(文档uuid)`),
-      a('finish', 'node.finish(uuid, { content?, state?, memory?, delivery?, open? })', '收尾仪式一次做完', '写完文档的五件事（editContent / state.update / memory.create / delivery.submit / 指给用户看）一个调用。content 先落：它失败就直接回、其余全不做；其余步骤逐个落、逐个如实报告（steps 里哪步没落上就单独补一次）。', `await api.node.finish(uuid, { content, state: { self: 'familiar', note: '已讲夹逼定理' }, delivery: { sources }, open: true })`),
+      a('finish', 'node.finish(uuid, { content?, memory?, delivery?, open? })', '收尾仪式一次做完', '写完文档的四件事（editContent / memory.create / delivery.submit / 指给用户看）一个调用。content 先落：它失败就直接回、其余全不做；其余步骤逐个落、逐个如实报告（steps 里哪步没落上就单独补一次）。', `await api.node.finish(uuid, { content, memory: { type: 'work', title: '本轮进度', content: '讲完夹逼定理' }, delivery: { sources }, open: true })`),
     ],
     `const list = await api.node.list()
 const doc = list.nodes.find((n) => n.title === '极限')
@@ -176,22 +176,6 @@ if (doc) {
   const c = await n.content
   await n.editContent({ ...c, teaching: c.teaching + '\\n\\n## 补充' })
 }`,
-  ),
-  g(
-    'state',
-    '学习状态',
-    '自评、掌握度、错误记忆、检验记录：系统对这个学习者的判断。',
-    `state.* 写的是「他会不会」而不是「他写了什么」：
-- 值域先挡：自评四档、掌握度 0~100；
-- 没评估过就是 null，不要用 0 分冒充「测过」；
-- 掌握度每次改动都要带 note 说明依据。`,
-    [
-      a('read', 'state.read(path?)', '读学习状态', '回 status / self / mastery / mistakes / checks / 最近学习时间。新增节点后先看它。', `const st = await api.state.read('极限')`),
-      a('update', 'state.update(path?, { self?, by?, mastery?, note? })', '改自评/掌握度', 'self 只认 mastered / familiar / unknown / unsure；by 为 user 表示学习者确认，ai 表示导师推断；mastery 0~100。', `await api.state.update('极限', { mastery: 70, note: '夹逼定理的探针答对了，但放缩方向还会错。' })`),
-      a('mistake', 'state.mistake(path?, { pattern, cause?, count? } | pattern)', '记一类错误记忆', 'pattern 写「错成了什么样」，不是「第 3 题错了」；同一说法再犯会累加次数。', `await api.state.mistake('极限', { pattern: '放缩时把不等号方向写反', cause: '对边界函数的大小关系不熟' })`),
-      a('forget', 'state.forget(path?, pattern?)', '清除错误记忆', '给 pattern 只清这一条；不给就清空这个节点的全部错误记忆。', `await api.state.forget('极限', '放缩时把不等号方向写反')`),
-      a('check', 'state.check(path?, { kind, score?, question?, answer?, mentioned?, missed?, misconceptions?, note? })', '记一次检验', 'kind 如 probe / recall / exam；探针记 score，回忆记 mentioned / missed / misconceptions。', `await api.state.check('极限', { kind: 'probe', score: 80, question: '夹逼定理需要几个边界函数？', answer: '两个' })`),
-    ],
   ),
   g(
     'memory',
@@ -309,36 +293,6 @@ exam.* 只管**作答侧**：交卷后 exam.read() 看作答，exam.grade(...) �
     [
       a('get', 'userInfo.get()', '读学习者画像', '回给模型看的那份（不含头像）；没有当前用户时回 error。贴合个人讲解前先取一次。', `const me = await api.userInfo.get()`),
       a('update', 'userInfo.update({ 字段: 值 })', '增量更新画像', '认不出的字段会逐条说明；不要一次传一堆没把握的值。', `await api.userInfo.update({ major: '计算机科学', level: '本科' })`),
-    ],
-  ),
-  g(
-    'reading',
-    '阅读事实',
-    '有效阅读时长、各节覆盖、最近会话、学习日汇总。',
-    `reading.* 是只读事实账（阅读时长、到达率、会话），不是学习状态。
-要看「他读到哪」用它；要判断「他会不会」用 state.*。`,
-    [
-      a('get', 'reading.get(path?)', '某节点的阅读事实', '回有效时长、各节覆盖、最近会话。', `const r = await api.reading.get('极限')`),
-      a('list', 'reading.list()', '本目标各节点阅读概览', '一行一个读过或有记录的节点。', `const rows = await api.reading.list()`),
-      a('day', 'reading.day(day?)', '某个学习日读了什么', 'day 省略=今天，格式 YYYY-MM-DD。', `const today = await api.reading.day('2026-10-19')`),
-    ],
-  ),
-  g(
-    'attention',
-    '注意力评级',
-    '把阅读事实折成档位 + 事实句 + 建议（纯派生，不落盘）。',
-    `注意力是从阅读事实算出来的，不是用户自评。只在需要判断「这一段读得专不专心」时用。`,
-    [
-      a('get', 'attention.get(path?)', '读注意力评级', '把阅读事实折成档位 + 事实句 + 建议；省略 path 看整体，给 path 只看该节点。', `const a = await api.attention.get()`),
-    ],
-  ),
-  g(
-    'focus',
-    '专注模式',
-    '当前专注状态与最近记录（只读）。',
-    `专注模式只有守卫、没有倒计时；agent 只能看，不能开始或结束。`,
-    [
-      a('status', 'focus.status()', '读专注状态', '回在跑的那一场、今天几场、最近几天与最近几条。', `const f = await api.focus.status()`),
     ],
   ),
   g(

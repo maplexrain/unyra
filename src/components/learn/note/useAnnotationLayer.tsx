@@ -9,7 +9,6 @@ import { useEffect, useMemo, useState, type ReactNode, type RefObject } from 're
 import NoteDialog from '../NoteDialog'
 import type { Annotation, AnnotationStyle } from '../../../learn/types'
 import { endAnnotationPreview, previewAnnotationStyle, type AnnotationActions } from '../../../lib/annotation'
-import type { MarkKind } from '../../../learn/reading'
 
 interface Opts {
   /** 这一份文档上已有的注解（了解 + 用户自己写的） */
@@ -18,8 +17,6 @@ interface Opts {
   bodyRef: RefObject<HTMLDivElement | null>
   /** 词条还注解得了吗（判断落在渲染结果上，见文件头） */
   cannotAnnotate: (term: string) => boolean
-  /** 保存成功那一刻记一笔「真读了」（采集器的 mark，见 learn/useReadingTracker） */
-  markReading: (kind: MarkKind) => void
   /** 保存一条自己写的注解（Markdown + 样式）；同一词条再次保存即覆盖 */
   onSaveAnnotation?: (term: string, body: string, style?: AnnotationStyle, occurrence?: number) => void
   /** 删除某词条上的注解 */
@@ -34,7 +31,6 @@ export function useAnnotationLayer({
   annotations,
   bodyRef,
   cannotAnnotate,
-  markReading,
   onSaveAnnotation,
   onDeleteAnnotation,
 }: Opts) {
@@ -73,7 +69,6 @@ export function useAnnotationLayer({
    * （正文被重写过），改内容本身仍然有意义，拦下来反而添乱。
    */
   const saveNote = (term: string, body: string, style?: AnnotationStyle): boolean => {
-    markReading('note')
     if (!annotationOf(term) && cannotAnnotate(term)) return false
     const occurrence = noteDialog?.occurrence
     setNoteDialog(null)

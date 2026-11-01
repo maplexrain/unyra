@@ -27,17 +27,6 @@ import {
   diffDocs,
   parseDocs,
 } from '../files'
-import { emptyReading, pruneReading, type ReadingStore } from '../reading'
-import {
-  JOURNAL_FILE,
-  emptyJournal,
-  foldJournal,
-  journalEmpty,
-  parseJournal,
-  upsertEntry,
-  type JournalEntry,
-  type ReadingJournal,
-} from '../readingJournal'
 import {
   flushCommits,
   listFilesRecursive,
@@ -62,28 +51,6 @@ let loaded: LearnStore | null = null
 /** 上一次写出去（或读进来）的文件内容：保存时据此只写真正变了的 */
 let snapshot: Map<string, string> | null = null
 /**
- * 旁路文件在内存里的那一份（见 learn/readingJournal）。
- *
- * 为什么不每次写盘前先读一遍文件：那要多一次 IPC 往返，而它在 1 秒心跳上。
- * 内存这份是唯一写入口（rememberJournalEntry），所以它一直是权威的。
- */
-let journalCache: ReadingJournal | null = null
-
-/**
- * 把这一场阅读「还没确认落盘的东西」记进旁路文件。
- *
- * 同步更新内存、异步写盘：调用点是 1 秒心跳，不能等 IO。写失败就算了——
- * 兜底文件写不进去不该打断阅读，也不该弹错（下次心跳还会再写一次）。
- */
-export function rememberJournalEntry(entry: JournalEntry): void {
-  const uid = currentDocsUid()
-  if (!uid) return
-  journalCache = upsertEntry(journalCache ?? emptyJournal(), entry)
-  // 写失败就算了：兜底文件不该打断阅读，也不该每秒刷一条警告（lib/storage 已对 !ok 报过一次）
-  void writeJson(userRel(uid, JOURNAL_FILE), journalCache).catch(() => {})
-}
-
-/**
  * 载入某个用户的教学文档；uid 为 null 表示未登录，回到空。
  * 由 lib/boot.ts 在启动与切换用户时调用。
  */
@@ -91,7 +58,6 @@ export async function hydrateLearnStore(uid: string | null): Promise<void> {
   rememberDocsUid(uid)
   loaded = null
   snapshot = null
-  journalCache = null
   // 资源/图片引用里的路径是「相对当前用户」的（docs/…），前缀靠这一句补上。
   // 必须早于任何读写：漏了它就是「资源写到 {root}/docs、清单写到 users/{uid}/docs」。
   setUserScope(uid)
@@ -116,31 +82,6 @@ export async function hydrateLearnStore(uid: string | null): Promise<void> {
   loaded = parseDocs(files, state)
 
   if (loaded) {
-    /*
-     * 崩溃兜底：上一次被强杀时留下的那一段阅读折回来（见 learn/readingJournal）。
-     * 折完就把文件删掉——同一份数据不该折第二次（它已经进内存了，随后的保存会写进 state.json）。
-     */
-    const journal = await readJson<unknown>(userRel(uid, JOURNAL_FILE)).then((raw) =>
-      raw ? parseJournal(raw) : null,
-    )
-    if (journal) {
-      if (!journalEmpty(journal)) {
-        /*
-         * 折回哪一本账：旁路条目里只有 nodeId，节点属于哪个目标得现查（见 learn/readingJournal）。
-         * 节点已经没了的（删节点那一刻正好在结算、或删完就被强杀）整条丢掉——
-         * 照折进去会当场长回一条空索引，并连累一本可能已经不该存在的账。
-         */
-        const goalOfNode = new Map(loaded.nodes.map((n) => [n.id, n.goalId]))
-        const byGoal: Record<string, ReadingStore> = { ...(loaded.reading?.byGoal ?? {}) }
-        const entries = journal.entries.filter((e) => goalOfNode.has(e.nodeId))
-        for (const goalId of new Set(entries.map((e) => goalOfNode.get(e.nodeId) as string))) {
-          const mine = entries.filter((e) => goalOfNode.get(e.nodeId) === goalId)
-          byGoal[goalId] = pruneReading(foldJournal(byGoal[goalId] ?? emptyReading(), { version: journal.version, entries: mine }), new Set(loaded.nodes.map((n) => n.id)))
-        }
-        loaded = { ...loaded, reading: { byGoal } }
-      }
-      await removePath(userRel(uid, JOURNAL_FILE))
-    }
     // 快照用「解析结果再摊平一次」的内容：与将要写出的字节一致，保存时不会无谓重写
     snapshot = buildDocs(loaded)
   } else if (files.size) {

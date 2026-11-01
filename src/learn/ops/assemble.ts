@@ -16,13 +16,12 @@ import { nodePathOf, docPathOf, resolveDoc, resolveNode, type PathScope } from '
 import { nodeLayout } from '../layout'
 import { NODE_FILE_SUFFIX } from '../files/nodeFile'
 import { NodeService } from '../nodeKinds'
-import { createLearningOps } from './learning'
 import { createMethodOps } from './method'
 import { createCodeOps } from './code'
 import { createWorkflowOps } from './workflow'
 import { createUserInfoOps } from './userinfo'
 import { createResourceOps } from './resource'
-import { createAttentionOps, createCompactOps, createFocusOps, createReadingOps } from './process'
+import { createCompactOps } from './process'
 import { createWorkspaceOps } from './workspace'
 import { createChipOps } from './chip'
 import { createScheduleOps } from '../schedule'
@@ -153,18 +152,11 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
     },
     docPath: nodeDiskPath,
 
-    // 学习状态不需要外部能力（不像 res 要磁盘、exam 要试卷），因此总是可用
-    state: createLearningOps(deps),
     // 目标级持久化函数与工作流：纯 store 逻辑，总是可用（见 learn/methods、learn/workflows）
     methods: createMethodOps(deps),
     workflows: createWorkflowOps(deps),
     // 代码块伪编译的交付口：纯渲染层逻辑（产物表 + 待编译登记），总是可用
     code: createCodeOps(),
-    // 学习过程：阅读事实、注意力评级、专注模式——都是纯 store 逻辑，总是可用
-    // （见 learn/reading、learn/attention、learn/focus）
-    reading: createReadingOps(deps),
-    attention: createAttentionOps(deps),
-    focus: createFocusOps(deps),
     // 日程：用户级的提醒清单（见 learn/schedule）——agent 能排、能改，响铃在宿主那边
     schedule: createScheduleOps({ getLatest: deps.getLatest, set: deps.set, goalId: deps.goalId }),
     ...(deps.userInfo ? { userInfo: createUserInfoOps(deps.userInfo) } : {}),

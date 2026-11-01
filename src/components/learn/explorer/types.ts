@@ -5,8 +5,7 @@
  * 放在任何一边都会变成「组件文件导出非组件」，触到 oxlint 的 react/only-export-components，故单独一个文件。
  */
 import type { Exam, ExamAttempt } from '../../../learn/exam'
-import type { KnowledgeNode, LocalFile, SelfReport } from '../../../learn/types'
-import type { NodeStructure } from '../../../learn/graph'
+import type { KnowledgeNode, LocalFile } from '../../../learn/types'
 import type { TabRef } from '../../../learn/types'
 
 /**
@@ -77,13 +76,6 @@ export interface ExamActions {
   liveExamId: string | null
   /** 导师正在判分 / 讲解：那颗按钮显示进度并禁用 */
   grading: boolean
-}
-
-/** 学习状态那块 tip 要的东西（见 NodeStatePanel）：按 nodeId 现取，面板本身不持有 store */
-export interface NodeStateActions {
-  structure: (nodeId: string) => NodeStructure
-  onSetSelf: (nodeId: string, self: SelfReport) => void
-  onClearMistake: (nodeId: string, pattern: string) => void
 }
 
 /**
@@ -167,5 +159,4 @@ export interface RowMenuProps {
   onStartRename: (nodeId: string, name: string) => void
   docs: NodeDocActions
   exams: ExamActions
-  state: NodeStateActions
 }
