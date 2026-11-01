@@ -190,7 +190,23 @@ function makeApi() {
       }
       return obj
     }
-    api.node.get = (uuid) => Promise.resolve(rawGet(uuid)).then((v) => (v && v.object === true ? wrapManifest(v) : v))
+    const wrapError = (errObj) => {
+      const err = errObj && errObj.error ? String(errObj.error) : '获取节点失败'
+      return {
+        ok: false,
+        error: err,
+        __node: true,
+        get content() {
+          return Promise.resolve({ ok: false, error: err })
+        },
+        editContent: async () => ({ ok: false, error: err }),
+        help: async () => ({ ok: false, error: err }),
+        connect: async () => ({ ok: false, error: err }),
+        disconnect: async () => ({ ok: false, error: err }),
+        getPortData: async () => ({ ok: false, error: err }),
+      }
+    }
+    api.node.get = (uuid) => Promise.resolve(rawGet(uuid)).then((v) => (v && v.object === true ? wrapManifest(v) : wrapError(v)))
   }
   /**
    * api.ui.dom(fn)：宿主先建一个「会话」，回调拿到的是一层**门面**（facade）——

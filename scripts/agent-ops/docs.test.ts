@@ -206,6 +206,7 @@ export async function apiNameTests() {
     // finish 不带 content/state/memory/delivery = 各步跳过，只证明注册与守卫路径在）
     'node.brief': "'微积分'",
     'node.finish': "'微积分', { open: false }",
+    'node.setRoot': "'微积分'",
     // 持久化函数（创建/列表/删除/调用）
     'method.list': '',
     'method.create': "{ name: '探针函数', code: '((api)=>{ return 1 })' }",

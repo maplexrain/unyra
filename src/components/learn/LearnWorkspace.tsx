@@ -3690,6 +3690,18 @@ export default function LearnWorkspace({
           if (content !== null) return content
         }
 
+        // 4. 检查笔记挂件内容（支持引用笔记，如 @笔记/错题本 或 @错题本）
+        for (const variant of pathVariants) {
+          const noteTarget = variant.replace(/^(?:note|notes|笔记)[\/:]/i, '').replace(/\.md$/i, '').trim()
+          for (const nid of relevantNodeIds) {
+            const n = s.nodes.find((item) => item.id === nid)
+            if (!n) continue
+            const notes = notesOf(n)
+            const foundNote = notes.find((nt) => nt.name === noteTarget || nt.name === variant)
+            if (foundNote && typeof foundNote.content === 'string') return foundNote.content
+          }
+        }
+
         return null
       },
       onOpenFile: (rawPath: string, _line?: number) => {

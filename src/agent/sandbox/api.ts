@@ -583,8 +583,9 @@ export function buildApi(
          * 两种写法都收：ui.point(path, { line, regex }) 与 ui.point({ path, line, regex })。
          * path 省略 = 当前节点的教学文档（与 doc.* 的约定一致）。
          */
-        const obj = asRecord(args.length === 1 ? args[0] : args[1])
-        const path = args.length === 1 ? asText(obj.path) : asText(args[0])
+        const hasPathFirst = typeof args[0] === 'string'
+        const path = hasPathFirst ? asText(args[0]) : asText(asRecord(args[0]).path)
+        const obj = asRecord(hasPathFirst ? args[1] : args[0])
         const r = docRef(path)
         if ('error' in r) return { error: r.error }
         const ref = r.ref
@@ -1360,7 +1361,7 @@ export function buildApi(
       // 镜头最后切：账都落好了才把用户看到的东西指给他
       if (plan.open === true) {
         const listed = service.list() as { nodes?: Array<{ uuid?: string; path?: string }> }
-        const path = listed.nodes?.find((n) => n.uuid === uuid)?.path
+        const path = listed.nodes?.find((n) => n.uuid === uuid)?.path || uuid
         const point = path ? (api as { ui?: { point?: (t: unknown) => Promise<unknown> } }).ui?.point : undefined
         if (typeof point === 'function') {
           await point(path)

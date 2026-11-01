@@ -44,7 +44,7 @@ import { needsDocFormatAnnounce, docFormatMessage } from '../agent/docFormat'
 import { needsUserInfoAnnounce, userInfoMessage } from '../agent/userInfo'
 import { activeProfile } from '../user/store'
 import { conversationById, nodeById, resolveDisplayedConversation, addConversation } from './graph'
-import { resolveNode } from './paths'
+import { nodePathOf, resolveNode } from './paths'
 import { makeExamTool } from './agentOps'
 import { findWorkflow, renderWorkflowInstruction, workflowPrep, workflowModules } from './workflows'
 import { generateConversationTitle, namingSource } from './title'
@@ -729,11 +729,27 @@ export function useAgent(opts: {
                         continue
                       }
                     }
+                    // 兼容 .node.json 磁盘路径或文件名匹配
+                    const diskMatch = st.nodes.find((n) => {
+                      if (n.goalId !== target.goalId) return false
+                      const base = n.title
+                      return f.path.endsWith(`/${base}.node.json`) || f.path.endsWith(`/${base}.teaching.md`) || f.path === `${base}.node.json` || f.path === `${base}.teaching.md`
+                    })
+                    if (diskMatch) {
+                      f.nodeId = diskMatch.id
+                      continue
+                    }
                     if (target.nodeId) {
                       const targetNode = nodeById(st, target.nodeId)
                       if (targetNode && (cleanPath === targetNode.title || cleanPath === targetNode.id)) {
                         f.nodeId = targetNode.id
                       }
+                    }
+                  }
+                  if (f.nodeId) {
+                    const matchedNode = nodeById(st, f.nodeId)
+                    if (matchedNode && (f.path.endsWith('.node.json') || f.path === f.nodeId || f.path === '#' + f.nodeId)) {
+                      f.path = nodePathOf(st, target.goalId, f.nodeId) || matchedNode.title
                     }
                   }
                 }

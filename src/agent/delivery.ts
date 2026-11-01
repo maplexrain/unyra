@@ -73,8 +73,17 @@ export function normalizeDelivery(raw: unknown): DeliveryRecord | undefined {
   if (Array.isArray(r.files)) {
     for (const item of r.files) {
       if (!item || typeof item !== 'object') continue
-      const f = item as { path?: unknown; action?: unknown; note?: unknown; goalId?: unknown; nodeId?: unknown }
-      const path = str(f.path)
+      const f = item as {
+        path?: unknown
+        deliveryPath?: unknown
+        docPath?: unknown
+        title?: unknown
+        action?: unknown
+        note?: unknown
+        goalId?: unknown
+        nodeId?: unknown
+      }
+      const path = str(f.path) || str(f.deliveryPath) || str(f.docPath) || str(f.title) || str(f.nodeId)
       if (!path || seenPath.has(path)) continue
       seenPath.add(path)
       const note = str(f.note)

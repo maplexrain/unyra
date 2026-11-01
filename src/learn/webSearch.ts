@@ -343,7 +343,7 @@ export async function callDeepSeekFetch(
       }),
       timeout,
     ])
-    // 正文也落在同一个 5 秒窗口里：头回来了、body 卡住同样等于没抓到
+    // 正文也落在同一个 8 秒窗口里：头回来了、body 卡住同样等于没抓到
     const json = (await Promise.race([res.json().catch(() => null), timeout])) as Record<
       string,
       unknown

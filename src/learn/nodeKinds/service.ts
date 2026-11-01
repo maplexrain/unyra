@@ -334,6 +334,7 @@ export class NodeService {
 
     if (kind === 'doc') {
       const docTitle = title || '新文档'
+      const goal = store.goals.find((g) => g.id === goalId)
       if (videoUnder) {
         const vGoalId = videoUnder.goalId || goalId
         const added = addNode(store, { title: docTitle, goalId: vGoalId, origin: 'ai', ...(typeof input.description === 'string' ? { description: input.description } : {}) })
@@ -419,13 +420,24 @@ export class NodeService {
       }
       // 没给 under = 独立文档：无父无纲，落在画布空白处（树连接以后随时拖线建立）
       const node = freeNode(store, goalId, docTitle, typeof input.description === 'string' ? input.description : '')
-      this.deps.set(node.store)
+      const shouldBeRoot = input.root === true || (!goal?.rootNodeId)
+      let nextStore = node.store
+      if (shouldBeRoot && goal) {
+        nextStore = {
+          ...nextStore,
+          goals: nextStore.goals.map((g) => (g.id === goalId ? { ...g, rootNodeId: node.record.id } : g)),
+        }
+      }
+      this.deps.set(nextStore)
       return {
         ok: true,
         uuid: node.record.id,
         title: node.record.title,
         created: true,
-        note: '已建独立文档「' + node.record.title + '」（还没有挂在任何层下）；教学正文用 editContent 写，要挂进哪一层就拖线到大纲上',
+        ...(shouldBeRoot ? { isRoot: true } : {}),
+        note: shouldBeRoot
+          ? '已建文档「' + node.record.title + '」并设为目标的根文档；工作区与入口指针已就位，教学正文用 editContent 写'
+          : '已建独立文档「' + node.record.title + '」（还没有挂在任何层下）；教学正文用 editContent 写，要挂进哪一层就拖线到大纲上',
       }
     }
 
@@ -554,8 +566,14 @@ export class NodeService {
       goal: {
         id: goalId,
         question: goal?.question ?? '',
-        entry: goal ? entryUuid(goal.rootNodeId) : null,
-        root: goal?.rootNodeId ?? null,
+        entry: goal?.rootNodeId ? entryUuid(goal.rootNodeId) : null,
+        root: goal?.rootNodeId ? goal.rootNodeId : null,
+        ...(!goal?.rootNodeId
+          ? {
+              rootNote:
+                '当前目标尚未指定根文档节点（root: null）；可调用 api.node.setRoot(docUuid) 或在创建 doc 时带 root: true 设为根。',
+            }
+          : {}),
       },
       nodes: docs.map((node) => ({
         uuid: node.id,
@@ -627,6 +645,31 @@ export class NodeService {
    * 在写什么、全图已经讲过哪些小节。把 get + getPortData + 读大纲 + 兄弟比对
    * 一次做完——省掉一轮 node.list() 全图 + 逐个读的开销。
    */
+  /** 将某个已有文档指定为目标的根文档（打通入口指针 entry 与工作区默认挂载基准） */
+  setRoot(uuid: string): { ok: true; root: string; title: string; note: string } | { error: string } {
+    const store = this.deps.getLatest()
+    const goalId = this.deps.goalId()
+    const goal = store.goals.find((g) => g.id === goalId)
+    if (!goal) return { error: '当前目标不存在' }
+    const raw = (uuid ?? '').trim()
+    const loc = locateUuid(store, raw)
+    if (!loc || loc.kind !== 'doc') {
+      return { error: '只有文档节点（kind: "doc"）才能设为目标的根文档；「' + raw + '」不是文档节点' }
+    }
+    const node = nodeById(store, loc.docId)
+    if (!node || node.goalId !== goalId) {
+      return { error: '文档「' + raw + '」不属于当前目标，无法设为根' }
+    }
+    const nextGoals = store.goals.map((g) => (g.id === goalId ? { ...g, rootNodeId: node.id } : g))
+    this.deps.set({ ...store, goals: nextGoals })
+    return {
+      ok: true,
+      root: node.id,
+      title: node.title,
+      note: '已将「' + node.title + '」（' + node.id + '）设为目标的根文档；工作区与入口指针已就位',
+    }
+  }
+
   brief(uuid: string):
     | {
         ok: true
