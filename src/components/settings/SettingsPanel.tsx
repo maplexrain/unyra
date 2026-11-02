@@ -48,7 +48,9 @@ import { MigrationPanel } from './MigrationPanel'
 import { DevPanel } from './DevPanel'
 import { PluginsPanel } from './PluginsPanel'
 import { PluginVoicePage } from './PluginVoicePage'
+import { PluginOcrPage } from './PluginOcrPage'
 import { VOICE_PLUGIN_ID } from '../../lib/voice/plugin'
+import { OCR_PLUGIN_ID } from '../../lib/ocr/plugin'
 import { ProviderListPage } from './ProviderListPage'
 import { ProviderConfigPage } from './ProviderConfigPage'
 
@@ -109,7 +111,24 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
    * 「插件」那一页的二级页：非空 = 正停在某个功能性插件的配置页上（值是插件 id）。
    * 与提供商的 page 分开存：两种二级页各自属于各自的页签，切页签回来不该串台。
    */
-  const [pluginPage, setPluginPage] = useState<string | null>(null)
+  const [pluginPage, setPluginPage] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('moji:settings:plugin')
+    } catch {
+      return null
+    }
+  })
+
+  useEffect(() => {
+    const onOpen = (e: CustomEvent<string>) => {
+      if (e.detail) {
+        setTab('plugins')
+        setPluginPage(e.detail)
+      }
+    }
+    window.addEventListener('moji:open-plugin-config', onOpen as EventListener)
+    return () => window.removeEventListener('moji:open-plugin-config', onOpen as EventListener)
+  }, [])
   const [status, setStatus] = useState<StatusState>({ kind: 'idle' })
   const [appearance, setAppearanceState] = useState(loadAppearance)
   /**
@@ -354,7 +373,9 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
                       ? t('数据迁移')
                       : tab === 'plugins'
                       ? pluginPage
-                        ? t('语音输入')
+                        ? pluginPage === OCR_PLUGIN_ID
+                          ? t('OCR 文字识别')
+                          : t('语音输入')
                         : t('插件')
                       : tab === 'update'
                       ? t('更新')
@@ -468,6 +489,10 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
           pluginPage === VOICE_PLUGIN_ID ? (
             <div className={pane(4, true)}>
               <PluginVoicePage onToast={onToast} />
+            </div>
+          ) : pluginPage === OCR_PLUGIN_ID ? (
+            <div className={pane(4, true)}>
+              <PluginOcrPage onToast={onToast} />
             </div>
           ) : (
             <PluginsPanel onToast={onToast} onOpenConfig={setPluginPage} />

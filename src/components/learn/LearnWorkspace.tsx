@@ -1806,6 +1806,15 @@ export default function LearnWorkspace({
   useEffect(() => {
     openTabRef.current = openTab
     openSettingsRef.current = () => openTab({ kind: 'settings' })
+
+  // 监听全局打开页签请求（例如 OCR 插件引导等）
+  useEffect(() => {
+    const onOpenGlobalTab = (e: CustomEvent<TabRef>) => {
+      if (e.detail) openTab(e.detail)
+    }
+    window.addEventListener('moji:open-tab', onOpenGlobalTab as EventListener)
+    return () => window.removeEventListener('moji:open-tab', onOpenGlobalTab as EventListener)
+  }, [openTab])
   })
 
   /**

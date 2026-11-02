@@ -18,7 +18,7 @@ import type {
   NoticeSettings, PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
   UpdatePhase, UpdateState, VideoApiFetchResult, VideoStreamOpenResult, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
-  VoiceTranscribeRequest, VoiceTranscribeResult, WebDomOpResult, WebFastTranslateResult, WebFetchResult, WebBinaryFetchResult, WebLogDetailResult,
+  VoiceTranscribeRequest, VoiceTranscribeResult, OcrBBox, OcrWordItem, OcrLineItem, OcrPageResult, OcrModelOption, OcrModelStatus, OcrModelProgress, OcrDownloadRequest, OcrDownloadResult, OcrRecognizeRequest, OcrRecognizeResult, WebDomOpResult, WebFastTranslateResult, WebFetchResult, WebBinaryFetchResult, WebLogDetailResult,
   WebLogsOpts, WebLogsResult,
   WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult,
   WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebTranslatePayload, WebWaitReq, WebWaitResult,
@@ -37,7 +37,7 @@ export type {
   NoticeSettings, PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
   UpdatePhase, UpdateState, VideoApiFetchResult, VideoStreamOpenResult, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
-  VoiceTranscribeRequest, VoiceTranscribeResult, WebDomOpResult, WebFastTranslateResult, WebFetchResult, WebBinaryFetchResult, WebLogDetailResult,
+  VoiceTranscribeRequest, VoiceTranscribeResult, OcrBBox, OcrWordItem, OcrLineItem, OcrPageResult, OcrModelOption, OcrModelStatus, OcrModelProgress, OcrDownloadRequest, OcrDownloadResult, OcrRecognizeRequest, OcrRecognizeResult, WebDomOpResult, WebFastTranslateResult, WebFetchResult, WebBinaryFetchResult, WebLogDetailResult,
   WebLogsOpts, WebLogsResult,
   WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult,
   WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebTranslatePayload, WebWaitReq, WebWaitResult,
@@ -378,6 +378,21 @@ export interface NativeBridge {
     gpuInfo(): Promise<{ hasGpu: boolean; name: string }>
     revealModel(): Promise<boolean>
     onModelProgress(cb: (p: VoiceModelProgress) => void): () => void
+  }
+  /**
+   * OCR：模型状态与下载、页面识别与缓存。
+   */
+  ocr: {
+    modelStatus(): Promise<OcrModelStatus>
+    downloadModel(req: OcrDownloadRequest): Promise<OcrDownloadResult>
+    cancelDownload(): Promise<boolean>
+    chooseModel(): Promise<{ ok: boolean; canceled?: boolean; error?: string }>
+    removeModel(modelId: string): Promise<{ ok: boolean; error?: string }>
+    revealModel(): Promise<boolean>
+    onModelProgress(cb: (p: OcrModelProgress) => void): () => void
+    recognize(req: OcrRecognizeRequest): Promise<OcrRecognizeResult>
+    getCache(key: string): Promise<OcrPageResult | null>
+    setCache(key: string, data: OcrPageResult): Promise<boolean>
   }
   /**
    * 自动更新：读状态、手动检查、安装、看发布页。

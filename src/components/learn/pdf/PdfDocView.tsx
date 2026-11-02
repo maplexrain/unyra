@@ -18,7 +18,12 @@ import {
   TriangleAlert,
   ZoomIn,
   ZoomOut,
+  Sparkles,
+  X,
 } from 'lucide-react'
+import { OcrTextOverlay, extractOrOcrPageText } from '../../../lib/ocr/pdfTextLayer'
+import { ocrPluginOn, OCR_PLUGIN_ID } from '../../../lib/ocr/plugin'
+import type { OcrLineItem } from '../../../lib/native'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { loadPdfjs } from '../../../learn/pdfRender'
 import { readLocalMediaFile } from '../../../lib/localFiles'
@@ -35,7 +40,9 @@ interface PageItemProps {
   pdfDoc: PDFDocumentProxy
   pageNum: number
   zoom: number
+  docPath: string
   onVisible?: (pageNum: number) => void
+  onRequireOcr?: () => void
 }
 
 /**
@@ -45,7 +52,9 @@ const PdfPageItem = memo(function PdfPageItem({
   pdfDoc,
   pageNum,
   zoom,
+  docPath,
   onVisible,
+  onRequireOcr,
 }: PageItemProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -54,6 +63,24 @@ const PdfPageItem = memo(function PdfPageItem({
   const loadingRef = useRef(false)
   const nextRenderRequestedRef = useRef(false)
   const renderTaskRef = useRef<{ cancel: () => void } | null>(null)
+  const [textLines, setTextLines] = useState<OcrLineItem[]>([])
+  const extractingRef = useRef(false)
+
+  const loadText = useCallback(async () => {
+    if (extractingRef.current || !pdfDoc) return
+    extractingRef.current = true
+    try {
+      const res = await extractOrOcrPageText(pdfDoc, pageNum, docPath, canvasRef.current)
+      if (res.lines.length > 0) {
+        setTextLines(res.lines)
+      }
+      if (res.isScanned && !ocrPluginOn()) {
+        onRequireOcr?.()
+      }
+    } finally {
+      extractingRef.current = false
+    }
+  }, [pdfDoc, pageNum, docPath, onRequireOcr])
 
   // 1. 获取基础页面尺寸以提前占位，避免页面高度坍塌跳动
   useEffect(() => {
@@ -141,12 +168,13 @@ const PdfPageItem = memo(function PdfPageItem({
     return () => clearTimeout(t)
   }, [zoom, renderPage])
 
-  // 首页及前 3 页进入时主动触发一次渲染，无需等待滚动探测
+  // 首页及前 3 页进入时主动触发一次渲染与文本层提取，无需等待滚动探测
   useEffect(() => {
     if (pageNum <= 3) {
       void renderPage()
+      void loadText()
     }
-  }, [pageNum, renderPage])
+  }, [pageNum, renderPage, loadText])
 
   // 3. 视口探测：超前 1000px 预加载，滚动进入前已提前渲染完毕，保证无缝平滑体验
   useEffect(() => {
@@ -161,6 +189,9 @@ const PdfPageItem = memo(function PdfPageItem({
             if (!renderedRef.current) {
               void renderPage()
             }
+            if (textLines.length === 0) {
+              void loadText()
+            }
           }
         }
       },
@@ -171,7 +202,7 @@ const PdfPageItem = memo(function PdfPageItem({
 
     observer.observe(el)
     return () => observer.disconnect()
-  }, [renderPage, pageNum, onVisible])
+  }, [renderPage, pageNum, onVisible, textLines.length, loadText])
 
   return (
     <div
@@ -186,6 +217,7 @@ const PdfPageItem = memo(function PdfPageItem({
       }}
     >
       <canvas ref={canvasRef} className="block select-none bg-white w-full h-full" />
+      <OcrTextOverlay lines={textLines} pageHeight={dimensions?.height || 800} />
     </div>
   )
 })
@@ -293,7 +325,17 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
     }
   }
 
+  const [ocrBannerDismissed, setOcrBannerDismissed] = useState(false)
   const [zoomHud, setZoomHud] = useState(false)
+
+  const handleOpenOcrConfig = () => {
+    try {
+      localStorage.setItem('moji:settings:tab', 'plugins')
+      localStorage.setItem('moji:settings:plugin', OCR_PLUGIN_ID)
+    } catch {}
+    window.dispatchEvent(new CustomEvent('moji:open-plugin-config', { detail: OCR_PLUGIN_ID }))
+    window.dispatchEvent(new CustomEvent('moji:open-tab', { detail: { kind: 'settings' } }))
+  }
   const zoomTimerRef = useRef<number | null>(null)
 
   const triggerZoomHud = useCallback(() => {
@@ -481,6 +523,35 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
         </div>
       </div>
 
+      {/* 未安装 OCR 插件提示 Banner */}
+      {!ocrPluginOn() && !ocrBannerDismissed && (
+        <div className="no-print flex items-center justify-between border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-[12px] text-ink-strong select-none">
+          <div className="flex items-center gap-2 min-w-0">
+            <Sparkles size={14} className="text-amber-500 shrink-0" />
+            <span className="truncate">
+              {t('当前未安装 OCR 文字识别插件，页面文字暂无法直接框选与复制。推荐下载 OCR 插件以获得最佳阅读体验。')}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-3">
+            <button
+              type="button"
+              onClick={handleOpenOcrConfig}
+              className="rounded-none bg-seal px-2.5 py-1 text-[11px] font-medium text-white hover:bg-seal-deep transition"
+            >
+              {t('下载 / 配置 OCR 插件')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setOcrBannerDismissed(true)}
+              title={t('关闭提示')}
+              className="p-1 text-ink-soft hover:text-ink transition"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* PDF 页面滚动展示流 */}
       <div
         ref={scrollRef}
@@ -492,7 +563,9 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
             pdfDoc={pdfDoc}
             pageNum={pageNum}
             zoom={zoom}
+            docPath={path}
             onVisible={setCurrentPage}
+            onRequireOcr={() => setOcrBannerDismissed(false)}
           />
         ))}
       </div>

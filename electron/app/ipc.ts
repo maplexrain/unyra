@@ -16,6 +16,7 @@ import { registerRunnerIpc } from '../runner'
 import { closeBehavior, markLocalOwnWrite, registerStorageIpc, setCloseBehavior, setUiLocale, uiLocale } from '../storage'
 import { registerUpdateIpc } from '../update'
 import { registerVoiceIpc } from '../voice'
+import { registerOcrIpc } from '../ocr'
 import { registerExamIpc } from './examWindow'
 import { applyAppIcon } from './applyIcon'
 import { rebuildAppMenu, logoSvgPath, appIcon } from './icon'
@@ -74,6 +75,8 @@ export function registerIpc(): void {
   registerRunnerIpc()
   // 语音模型的下载与读取（见 electron/voice.ts）：渲染层够不着外网，这条通道由主进程走
   registerVoiceIpc()
+  // OCR 文字识别模型与推理通道（见 electron/ocr.ts）
+  registerOcrIpc()
 
   // 自动更新（window.mojiNative.update）
   registerUpdateIpc()
