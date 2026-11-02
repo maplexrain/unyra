@@ -99,7 +99,7 @@ import {
   type DocLayout,
   type TabOwners,
 } from '../../learn/groups'
-import { makeBlankTab, makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
+import { makeBlankTab, makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf, isPdfFile } from '../../learn/tabs'
 import { setZenActive } from '../../learn/zen'
 import { closeGoalTabGroupStore } from '../../learn/groups/goalTabGroupOps'
 import { pickLocalFiles, readLocalFile } from '../../lib/localFiles'
@@ -5442,7 +5442,10 @@ export default function LearnWorkspace({
             // 仍可用 F11（用户定的：这一页右上角不要按钮组）
             gTab.ref.kind !== 'video' &&
             // 插件文档页同样不画：它是参考手册，不是可编辑文档
-            gTab.ref.kind !== 'pluginDoc' && (
+            gTab.ref.kind !== 'pluginDoc' &&
+            // PDF 浏览页不画：严格只读，左上角不需要浮动工具栏（纯净阅读仍可用 F11）
+            !(gTab.ref.kind === 'local' && isPdfFile(gTab.ref.path)) &&
+            !(gTab.ref.kind === 'ws' && isPdfFile(gTab.ref.seg)) && (
             <DocFloat
               /*
                * key 绑「格 + 节点」：换节点时重挂，各块 tip 的展开状态自然回到收起；

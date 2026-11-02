@@ -185,6 +185,7 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
   const [numPages, setNumPages] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
   const [zoom, setZoom] = useState(1.15 * baseScale)
+  const rootRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const name = fileNameOf(path)
 
@@ -284,6 +285,25 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
     setZoom((prev) => Math.max(0.5, Math.min(3.0, prev + delta)))
   }
 
+  // Ctrl + 鼠标滚轮缩放控制（阻止默认页面缩放，并实时更新 PDF 缩放比例）
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        const step = e.deltaY < 0 ? 0.1 : -0.1
+        setZoom((prev) => Math.max(0.4, Math.min(3.0, Number((prev + step).toFixed(2)))))
+      }
+    }
+
+    el.addEventListener('wheel', handleWheel, { passive: false })
+    return () => {
+      el.removeEventListener('wheel', handleWheel)
+    }
+  }, [])
+
   const handleFitWidth = async () => {
     if (!scrollRef.current || !pdfDoc) return
     const containerWidth = scrollRef.current.clientWidth - 48
@@ -318,7 +338,7 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col bg-card select-none">
+    <div ref={rootRef} className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col bg-card select-none">
       {/* 顶部控制工具条 */}
       <div className="no-print flex h-10 shrink-0 items-center justify-between border-b border-line bg-paper-deep/70 px-4 select-none">
         <div className="flex items-center gap-2 min-w-0">
@@ -367,7 +387,7 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
           <button
             type="button"
             onClick={() => handleZoom(-0.15)}
-            title={t('缩小')}
+            title={t('缩小 (亦可 Ctrl+滚轮)')}
             className="flex h-7 w-7 items-center justify-center rounded-none text-ink-soft hover:text-ink hover:bg-card/70 transition"
           >
             <ZoomOut size={14} />
@@ -387,7 +407,7 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
           <button
             type="button"
             onClick={() => handleZoom(0.15)}
-            title={t('放大')}
+            title={t('放大 (亦可 Ctrl+滚轮)')}
             className="flex h-7 w-7 items-center justify-center rounded-none text-ink-soft hover:text-ink hover:bg-card/70 transition"
           >
             <ZoomIn size={14} />
