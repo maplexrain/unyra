@@ -181,7 +181,7 @@ public class ScreenHelper {
     private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
         if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)) {
             int vkCode = Marshal.ReadInt32(lParam);
-            if (vkCode == VK_OEM_3) {
+            if (vkCode == 0x70) { /* VK_F1: 快速唤出截图 */ Console.WriteLine("TRIGGER"); Console.Out.Flush(); } else if (vkCode == VK_OEM_3) {
                 long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 if (now - _lastTime <= 400 && now - _lastTime >= 60) {
                     Console.WriteLine("TRIGGER");

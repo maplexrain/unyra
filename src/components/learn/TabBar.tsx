@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { BookOpen, CornerDownRight, CornerLeftUp, FileX, FoldHorizontal, Globe, OctagonX, Plus, Star, Unlink, Volume2, VolumeX, X } from 'lucide-react'
+import { BookOpen, CornerDownRight, CornerLeftUp, FileText, FileX, FoldHorizontal, Globe, OctagonX, Plus, Star, Unlink, Volume2, VolumeX, X } from 'lucide-react'
 import { DocTypeIcon, WebTabTypeIcon } from './docTypes'
 import type { DependencyEdge, LearnStore, LearnTab, TabRef, WebTabMeta } from '../../learn/types'
-import { TAB_CLOSE_LABEL, dragSlotDelta, isBlankTab, isDocumentTab, tabNodeId, type TabCloseMode } from '../../learn/tabs'
+import { TAB_CLOSE_LABEL, dragSlotDelta, isBlankTab, isDocumentTab, isPdfFile, tabNodeId, type TabCloseMode } from '../../learn/tabs'
 import { setTabMarkHandlers } from '../../lib/tabMark'
 import { docChipDrop, docChipHover, type ChipPayload } from '../../lib/docChip'
 import { CHIP_MIME, parseChipJson } from '../../lib/chipSyntax'
 import { useClampToViewport, useDismissOn } from '../../lib/useDismiss'
 import { TAB_EXIT_MS, useTabPresence } from '../../lib/tabPresence'
 import { subscribeVideoAudio, videoAudioOf } from '../../learn/video/videoRegistry'
+import { useHorizontalScrollEdges, horizontalFadeMask } from '../../lib/scrollFade'
 import { t } from '../../i18n'
 
 /**
@@ -469,6 +470,17 @@ function VideoAudioButton({ tabId }: { tabId: string }) {
 function TabTypeIcon({ tab, favicon, loading }: { tab: TabRef; favicon?: string; loading?: boolean }) {
   // 网页页签的图标带活信息（转圈/站点图标，见 docTypes 的 WebTabTypeIcon）
   if (tab.kind === 'web') return <WebTabTypeIcon favicon={favicon} loading={loading} />
+  if ((tab.kind === 'local' && isPdfFile(tab.path)) || (tab.kind === 'ws' && isPdfFile(tab.seg))) {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex h-4 w-4 shrink-0 items-center justify-center text-rose-500"
+        title="PDF"
+      >
+        <FileText size={11} />
+      </span>
+    )
+  }
   return <DocTypeIcon kind={tab.kind} />
 }
 
@@ -553,6 +565,8 @@ export default function TabBar({
   const hasBlankTab = useMemo(() => tabs.some(isBlankTab), [tabs])
   const rootRef = useRef<HTMLDivElement | null>(null)
   const stripRef = useRef<HTMLDivElement | null>(null)
+  const tabEdges = useHorizontalScrollEdges(stripRef)
+  const tabMask = horizontalFadeMask(tabEdges, 28)
   /** 上边框上那颗棱形：它停在**当前页签**正上方，右键拖它就换页签 */
   const markRef = useRef<HTMLSpanElement | null>(null)
   /**
@@ -1087,6 +1101,7 @@ export default function TabBar({
           e.preventDefault()
           setBarMenu({ x: e.clientX, y: e.clientY })
         }}
+        style={{ maskImage: tabMask, WebkitMaskImage: tabMask }}
         className="moji-tab-strip flex min-w-0 flex-1 items-end gap-[3px] overflow-x-auto px-2"
       >
         {presence.map(({ item: tab, leaving, exiting, entering }, i) => {

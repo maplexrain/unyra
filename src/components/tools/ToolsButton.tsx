@@ -62,7 +62,7 @@ export default function ToolsButton({ onScreenshot }: ToolsButtonProps) {
                   setOpen(false)
                   onScreenshot()
                 }}
-                title={t('截图（双击 ` 键快速唤出）')}
+                title={t('截图（F1 键快速唤出）')}
                 className="group/item flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-line/60"
               >
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-seal/10 text-seal transition group-hover/item:bg-seal group-hover/item:text-white">
@@ -72,7 +72,7 @@ export default function ToolsButton({ onScreenshot }: ToolsButtonProps) {
                   <div className="flex items-center justify-between">
                     <span className="text-[13px] font-medium text-ink-strong">{t('截图')}</span>
                     <kbd className="rounded border border-line-strong/60 bg-paper-deep/70 px-1.5 py-0.5 font-mono text-[10px] text-ink-soft shadow-xs">
-                      {t('双击 `')}
+                      'F1'
                     </kbd>
                   </div>
                   <div className="truncate text-[11px] text-ink-faint">

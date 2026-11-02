@@ -249,6 +249,7 @@ import {
   updateEssayCommit,
 } from '../../learn/essayCommits'
 import { useDoubleShift } from '../../lib/useDoubleShift'
+import { useDoubleCtrl } from '../../lib/useDoubleCtrl'
 import type { DocSource } from './NodeNote'
 import ConfirmDialog from '../ConfirmDialog'
 import { AgentTabPane } from './workspace/AgentTabPane'
@@ -541,7 +542,8 @@ export default function LearnWorkspace({
     }
     setStructOverlayGoal(gid)
   }, [structOverlayGoal, activeTab, store, activeGoalId, onToast])
-  useShortcut('learn.structPopout', { down: toggleStructOverlay })
+  // 双击 Ctrl：唤出 / 收起节点宇宙浮层
+  useDoubleCtrl(toggleStructOverlay)
 
   /* ---------- 实用工具箱：屏幕截图 ---------- */
   const [screenshotImage, setScreenshotImage] = useState<string | null>(null)
@@ -578,6 +580,9 @@ export default function LearnWorkspace({
       setIsCapturing(false)
     }
   }, [isCapturing, onToast])
+
+  // 截图工具快捷键改用 F1 唤出
+  useShortcut('tools.screenshot', { down: handleStartScreenshot })
 
   /**
    * 顶栏标题只在文档区确实存在目标根大纲时显示。activeNodeId 是导师上下文，关闭文档后

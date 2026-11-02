@@ -17,7 +17,7 @@ import { EXPLORER_WIDTH_MAX, EXPLORER_WIDTH_MIN } from '../../lib/appearance'
 import { userAbsPrefix } from '../../lib/storage'
 import Logo from '../Logo'
 import { NewGoalIcon, OpenLocalIcon } from '../icons'
-import { Clock, Hexagon, LayoutGrid, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen, Plus, Settings } from 'lucide-react'
 import { NodeRow } from './explorer/NodeRow'
 import { RowMenu } from './explorer/RowMenu'
 import { FavoriteSection, LocalRow, VideoRow } from './explorer/sections'
@@ -166,10 +166,10 @@ function ExplorerSidebarComponent({
   favoriteTitleOf,
   docs,
   exams,
-  onOpenEssay,
-  onOpenSchedule,
+  onOpenEssay: _onOpenEssay,
+  onOpenSchedule: _onOpenSchedule,
   onOpenSettings,
-  onOpenFind,
+  onOpenFind: _onOpenFind,
 }: Props) {
   const { isOpen, toggle } = useTreeExpand(store, activeNodeId)
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -310,7 +310,7 @@ function ExplorerSidebarComponent({
           (pure ? ' invisible' : '')}
       >
 {collapsedBar ? (
-          /* 折叠态：48px 窄侧栏（Activity Bar 风格），带平滑过渡与功能图标 */
+          /* 折叠态：48px 窄侧栏，顶部 Logo，底部设置齿轮与展开按钮 */
           <div className="flex flex-col items-center h-full w-full py-3 select-none">
             {/* 顶部 Logo：点击展开 */}
             <button
@@ -320,64 +320,6 @@ function ExplorerSidebarComponent({
               className="flex h-8 w-8 items-center justify-center rounded-none mb-3 hover:scale-105 transition-transform"
             >
               <Logo size={26} />
-            </button>
-
-            {/* 随笔手札图标 */}
-            <button
-              type="button"
-              onClick={() => onOpenEssay?.()}
-              title={t('随笔（双击 Shift 亦可打开）')}
-              className="flex h-8 w-8 items-center justify-center text-ink-soft hover:text-ink hover:bg-card/70 rounded-none transition my-0.5"
-            >
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M14 3H4v18h16V9l-6-6Z" />
-                <path d="M14 3v6h6" />
-                <path d="M7 13h10" />
-                <path d="M7 17h6" />
-              </svg>
-            </button>
-
-            {/* 搜索/查找 */}
-            <button
-              type="button"
-              onClick={() => {
-                toggleCollapsed(false)
-                onOpenFind?.()
-              }}
-              title={t('搜索 / 查找')}
-              className="flex h-8 w-8 items-center justify-center text-ink-soft hover:text-ink hover:bg-card/70 rounded-none transition my-0.5"
-            >
-              <Search size={16} />
-            </button>
-
-            {/* 资源管理 / 知识节点 */}
-            <button
-              type="button"
-              onClick={() => toggleCollapsed(false)}
-              title={t('资源管理器（点击展开）')}
-              className="flex h-8 w-8 items-center justify-center text-seal hover:text-seal-deep hover:bg-card/70 rounded-none transition my-0.5"
-            >
-              <LayoutGrid size={16} />
-            </button>
-
-            {/* 日程 / 时钟 */}
-            <button
-              type="button"
-              onClick={() => onOpenSchedule?.()}
-              title={t('日程')}
-              className="flex h-8 w-8 items-center justify-center text-ink-soft hover:text-ink hover:bg-card/70 rounded-none transition my-0.5"
-            >
-              <Clock size={16} />
-            </button>
-
-            {/* 工具 / 工作流 */}
-            <button
-              type="button"
-              onClick={() => onOpenSettings?.()}
-              title={t('工作流与工具')}
-              className="flex h-8 w-8 items-center justify-center text-ink-soft hover:text-ink hover:bg-card/70 rounded-none transition my-0.5"
-            >
-              <Hexagon size={16} />
             </button>
 
             {/* 弹性占位 */}

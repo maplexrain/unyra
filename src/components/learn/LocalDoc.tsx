@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { TriangleAlert as FileWarning, Loader2 } from 'lucide-react'
 import type { DocView } from '../../learn/types'
-import { extOf, fileNameOf, isMediaFile, isPreviewable } from '../../learn/tabs'
+import { extOf, fileNameOf, isMediaFile, isPdfFile, isPreviewable } from '../../learn/tabs'
 import { readLocalFile, readLocalMediaFile } from '../../lib/localFiles'
 import { renderNoteGfm } from '../../lib/markdown'
 import { maskChipTokens, restoreChipTokens } from '../../lib/chipSyntax'
@@ -19,6 +19,7 @@ import { useDocContextMenu, type SourceSpan } from './note/useDocContextMenu'
 import { DocStatChip } from './DocFloat'
 import ZenResizeHandles from './workspace/ZenResizeHandles'
 import { useDocOutline } from './note/useDocView'
+import PdfDocView from './pdf/PdfDocView'
 import { t } from '../../i18n'
 
 /**
@@ -146,9 +147,9 @@ export default function LocalDoc({
     }
   }, [path, media])
 
-  // 媒体文件：读一次二进制（data URL），图片 / 音频 / 视频各按 mime 渲染
+  // 媒体文件：读一次二进制（data URL），图片 / 音频 / 视频各按 mime 渲染（PDF 独立由 PdfDocView 自行管理加载与视口懒渲染）
   useEffect(() => {
-    if (!media) return
+    if (!media || isPdfFile(path)) return
     let alive = true
     void (async () => {
       let r = await readLocalMediaFile(path)
@@ -353,6 +354,9 @@ export default function LocalDoc({
 
   // 媒体文件：图片 / 音频 / 视频各按 mime 渲染，居中展示（没有「源码」这种东西可看）
   if (media) {
+    if (isPdfFile(path)) {
+      return <PdfDocView path={path} scale={scale} />
+    }
     if (loading) {
       return (
         <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-[12.5px] text-ink-faint">

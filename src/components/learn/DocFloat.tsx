@@ -157,73 +157,10 @@ export default function DocFloat({
   return (
     <div className="no-print absolute left-3 top-2.5 z-20">
       <div className="flex flex-col items-center gap-1">
-        {showBackToDoc && (
-          <>
-            <button type="button" title={t('回到这个节点的教学文档')} onClick={onBackToDoc} className={ICON_BTN}>
-              <BookOpen size={15} />
-            </button>
-            <span aria-hidden="true" className="my-0.5 h-px w-4 self-center bg-line-strong/70" />
-          </>
-        )}
-
-        {/* 随笔按钮：作为文档区左侧垂直工具条的一部分 */}
-        {showEssay && (
-          <button
-            ref={essayBtnRef}
-            type="button"
-            title={t('随笔：随手记（双击 Shift 亦可唤出）')}
-            onClick={onOpenEssay}
-            className={ICON_BTN}
-          >
-            {/* 重绘随笔 SVG：直角折角便笺手札，避免与编辑按钮代码方框混淆 */}
-            <svg
-              viewBox="0 0 24 24"
-              width="15"
-              height="15"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M14 3H4v18h16V9l-6-6Z" />
-              <path d="M14 3v6h6" />
-              <path d="M7 13h10" />
-              <path d="M7 17h6" />
-            </svg>
-          </button>
-        )}
-
         {/*
-          标题大纲：只在预览模式出现。悬停向右弹出大纲列表卡片（见 DocOutline）。
-        */}
-        {view === 'preview' && (
-          <div className="relative" onMouseEnter={openNow} onMouseLeave={closeSoon}>
-            <button
-              type="button"
-              title={t('标题大纲：鼠标停留展开，点一条跳到对应标题')}
-              aria-expanded={phase === 'open'}
-              className={ICON_BTN}
-            >
-              <ListTree size={15} />
-            </button>
-            {phase !== 'closed' && snap && (
-              <DocOutline
-                items={snap.items}
-                activeIndex={snap.activeIndex}
-                closing={phase === 'closing'}
-                onJump={(index) => outlineSlot?.current?.jump(index)}
-                onDismiss={beginClose}
-              />
-            )}
-          </div>
-        )}
-
-        {/*
-          源码 / 预览切换按钮：
-          图标反转——在编辑（源码）模式下显示预览按钮（Eye），在预览模式下显示编辑按钮（Pencil 铅笔）。
-          媒体预览（图片 / 音频 / 视频）没有源码可看，整颗不出现。
+          1. 源码 / 预览切换按钮（排在第一位）：
+          图标反转——编辑模式显示预览图标（Eye 晴蓝），预览模式显示编辑源码图标（Pencil 暖金）。
+          媒体预览（图片 / 音频 / 视频 / PDF）没有源码可看，整颗不出现。
         */}
         {view !== 'media' && (
           <button
@@ -242,12 +179,74 @@ export default function DocFloat({
               VIEW_BTN + ' border-transparent text-ink-soft hover:bg-line/50 hover:text-ink'
             }
           >
-            {/* 反转图标：编辑模式显示预览图标（Eye），预览模式显示编辑源码图标（Pencil 铅笔） */}
-            {view === 'source' ? <Eye size={15} /> : <Pencil size={15} />}
+            {view === 'source' ? (
+              <Eye size={15} className="text-sky-500 hover:text-sky-400 transition-colors" />
+            ) : (
+              <Pencil size={15} className="text-amber-500 hover:text-amber-400 transition-colors" />
+            )}
           </button>
         )}
 
-        {/* 纯净阅读 */}
+        {/* 2. 随笔按钮：翠绿色手札图标 */}
+        {showEssay && (
+          <button
+            ref={essayBtnRef}
+            type="button"
+            title={t('随笔：随手记（双击 Shift 亦可唤出）')}
+            onClick={onOpenEssay}
+            className={ICON_BTN}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="15"
+              height="15"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              className="text-emerald-500 hover:text-emerald-400 transition-colors"
+            >
+              <path d="M14 3H4v18h16V9l-6-6Z" />
+              <path d="M14 3v6h6" />
+              <path d="M7 13h10" />
+              <path d="M7 17h6" />
+            </svg>
+          </button>
+        )}
+
+        {/* 3. 标题大纲：紫罗兰色树状图标，悬停向右弹出大纲列表卡片 */}
+        {view === 'preview' && (
+          <div className="relative" onMouseEnter={openNow} onMouseLeave={closeSoon}>
+            <button
+              type="button"
+              title={t('标题大纲：鼠标停留展开，点一条跳到对应标题')}
+              aria-expanded={phase === 'open'}
+              className={ICON_BTN}
+            >
+              <ListTree size={15} className="text-violet-500 hover:text-violet-400 transition-colors" />
+            </button>
+            {phase !== 'closed' && snap && (
+              <DocOutline
+                items={snap.items}
+                activeIndex={snap.activeIndex}
+                closing={phase === 'closing'}
+                onJump={(index) => outlineSlot?.current?.jump(index)}
+                onDismiss={beginClose}
+              />
+            )}
+          </div>
+        )}
+
+        {/* 4. 回到教学文档：印章红/玫瑰红书本图标 */}
+        {showBackToDoc && (
+          <button type="button" title={t('回到这个节点的教学文档')} onClick={onBackToDoc} className={ICON_BTN}>
+            <BookOpen size={15} className="text-rose-500 hover:text-rose-400 transition-colors" />
+          </button>
+        )}
+
+        {/* 5. 分割线与纯净阅读：水青色扩展图标 */}
         <span aria-hidden="true" className="my-0.5 h-px w-4 self-center bg-line-strong/70" />
         <button
           type="button"
@@ -260,7 +259,11 @@ export default function DocFloat({
               : ICON_BTN
           }
         >
-          {pure ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+          {pure ? (
+            <Minimize2 size={15} className="text-teal-500 hover:text-teal-400 transition-colors" />
+          ) : (
+            <Maximize2 size={15} className="text-teal-500 hover:text-teal-400 transition-colors" />
+          )}
         </button>
       </div>
     </div>
