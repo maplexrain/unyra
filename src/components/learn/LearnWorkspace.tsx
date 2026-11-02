@@ -1806,6 +1806,7 @@ export default function LearnWorkspace({
   useEffect(() => {
     openTabRef.current = openTab
     openSettingsRef.current = () => openTab({ kind: 'settings' })
+  })
 
   // 监听全局打开页签请求（例如 OCR 插件引导等）
   useEffect(() => {
@@ -1815,7 +1816,6 @@ export default function LearnWorkspace({
     window.addEventListener('moji:open-tab', onOpenGlobalTab as EventListener)
     return () => window.removeEventListener('moji:open-tab', onOpenGlobalTab as EventListener)
   }, [openTab])
-  })
 
   /**
    * 目标库为空（初次使用或删光所有目标）且没有打开任何页签时，自动开启「新建目标」页签。
