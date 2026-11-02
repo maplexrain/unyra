@@ -49,10 +49,9 @@ const PdfPageItem = memo(function PdfPageItem({
 }: PageItemProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const [rendered, setRendered] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const loadingRef = useRef(false)
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null)
+  const renderedRef = useRef(false)
+  const loadingRef = useRef(false)
   const renderTaskRef = useRef<{ cancel: () => void } | null>(null)
 
   // 1. 获取基础页面尺寸以提前占位，避免页面高度坍塌跳动
@@ -63,7 +62,7 @@ const PdfPageItem = memo(function PdfPageItem({
         const page = await pdfDoc.getPage(pageNum)
         if (!alive) return
         const vp = page.getViewport({ scale: zoom })
-        setDimensions({ width: vp.width, height: vp.height })
+        setDimensions({ width: Math.floor(vp.width), height: Math.floor(vp.height) })
       } catch {}
     })()
     return () => {
@@ -71,13 +70,12 @@ const PdfPageItem = memo(function PdfPageItem({
     }
   }, [pdfDoc, pageNum, zoom])
 
-  // 2. 页面渲染函数
+  // 2. 页面渲染函数：已渲染完成则绝不重复渲染，彻底杜绝滚动闪烁
   const renderPage = useCallback(async () => {
-    if (!canvasRef.current || loadingRef.current) return
+    if (!canvasRef.current || loadingRef.current || renderedRef.current) return
     loadingRef.current = true
-    setLoading(true)
 
-    // 取消上一次未完成的渲染
+    // 取消上一次未完成的渲染任务
     if (renderTaskRef.current) {
       try {
         renderTaskRef.current.cancel()
@@ -112,7 +110,7 @@ const PdfPageItem = memo(function PdfPageItem({
       renderTaskRef.current = task
 
       await task.promise
-      setRendered(true)
+      renderedRef.current = true
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'RenderingCancelledException') {
         // 正常取消，忽略
@@ -121,26 +119,24 @@ const PdfPageItem = memo(function PdfPageItem({
       }
     } finally {
       loadingRef.current = false
-      setLoading(false)
       renderTaskRef.current = null
     }
   }, [pdfDoc, pageNum, zoom])
 
-  // 首页及前 3 页进入时主动触发一次渲染，避免等待 IntersectionObserver 探测
+  // 缩放变动时，重置渲染标记以重新生成适配新尺寸的高清画布
+  useEffect(() => {
+    renderedRef.current = false
+    void renderPage()
+  }, [zoom, renderPage])
+
+  // 首页及前 3 页进入时主动触发一次渲染，无需等待滚动探测
   useEffect(() => {
     if (pageNum <= 3) {
       void renderPage()
     }
   }, [pageNum, renderPage])
 
-  // 缩放变动时，已渲染的页面自动重新高清渲染
-  useEffect(() => {
-    if (rendered) {
-      void renderPage()
-    }
-  }, [zoom])
-
-  // 3. 视口探测：进入视口或接近视口时自动触发渲染
+  // 3. 视口探测：超前 1000px 预加载，滚动进入前已提前渲染完毕，保证无缝平滑体验
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -150,12 +146,14 @@ const PdfPageItem = memo(function PdfPageItem({
         for (const entry of entries) {
           if (entry.isIntersecting) {
             onVisible?.(pageNum)
-            void renderPage()
+            if (!renderedRef.current) {
+              void renderPage()
+            }
           }
         }
       },
       {
-        rootMargin: '400px 0px 400px 0px',
+        rootMargin: '1000px 0px 1000px 0px',
       }
     )
 
@@ -176,16 +174,9 @@ const PdfPageItem = memo(function PdfPageItem({
       }}
     >
       <canvas ref={canvasRef} className="block select-none bg-white" />
-      {(!rendered || loading) && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-paper/20 text-ink-faint select-none pointer-events-none">
-          <Loader2 size={16} className="animate-spin text-seal" />
-          <span className="text-[11px]">{t('第 {0} 页渲染中…', pageNum)}</span>
-        </div>
-      )}
     </div>
   )
 })
-
 
 export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.0 }: Props) {
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null)
@@ -426,7 +417,7 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
             pdfDoc={pdfDoc}
             pageNum={pageNum}
             zoom={zoom}
-            onVisible={(p) => setCurrentPage(p)}
+            onVisible={setCurrentPage}
           />
         ))}
       </div>
