@@ -22,7 +22,7 @@ import {
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { loadPdfjs } from '../../../learn/pdfRender'
 import { readLocalMediaFile } from '../../../lib/localFiles'
-import { readUserBinary } from '../../../lib/storage'
+import { readUserBinary, userAbsPrefix } from '../../../lib/storage'
 import { fileNameOf } from '../../../learn/tabs'
 import { t } from '../../../i18n'
 
@@ -51,6 +51,7 @@ const PdfPageItem = memo(function PdfPageItem({
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [rendered, setRendered] = useState(false)
   const [loading, setLoading] = useState(false)
+  const loadingRef = useRef(false)
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null)
   const renderTaskRef = useRef<{ cancel: () => void } | null>(null)
 
@@ -62,9 +63,7 @@ const PdfPageItem = memo(function PdfPageItem({
         const page = await pdfDoc.getPage(pageNum)
         if (!alive) return
         const vp = page.getViewport({ scale: zoom })
-
         setDimensions({ width: vp.width, height: vp.height })
-
       } catch {}
     })()
     return () => {
@@ -74,7 +73,8 @@ const PdfPageItem = memo(function PdfPageItem({
 
   // 2. 页面渲染函数
   const renderPage = useCallback(async () => {
-    if (!canvasRef.current || loading) return
+    if (!canvasRef.current || loadingRef.current) return
+    loadingRef.current = true
     setLoading(true)
 
     // 取消上一次未完成的渲染
@@ -93,14 +93,12 @@ const PdfPageItem = memo(function PdfPageItem({
       const pixelRatio = Math.max(1, Math.min(3, window.devicePixelRatio || 1))
       const viewport = page.getViewport({ scale: zoom })
 
-
       canvas.width = Math.floor(viewport.width * pixelRatio)
       canvas.height = Math.floor(viewport.height * pixelRatio)
       canvas.style.width = `${Math.floor(viewport.width)}px`
       canvas.style.height = `${Math.floor(viewport.height)}px`
 
       const ctx = canvas.getContext('2d', { alpha: false })
-
       if (!ctx) return
 
       ctx.fillStyle = '#ffffff'
@@ -126,10 +124,25 @@ const PdfPageItem = memo(function PdfPageItem({
         console.warn(`[pdf] 渲染第 ${pageNum} 页失败:`, err)
       }
     } finally {
+      loadingRef.current = false
       setLoading(false)
       renderTaskRef.current = null
     }
-  }, [pdfDoc, pageNum, zoom, loading])
+  }, [pdfDoc, pageNum, zoom])
+
+  // 首页进入时主动触发一次渲染，避免等待 IntersectionObserver 首帧延迟
+  useEffect(() => {
+    if (pageNum === 1) {
+      void renderPage()
+    }
+  }, [pageNum, renderPage])
+
+  // 缩放变动时，已渲染的页面自动重新高清渲染
+  useEffect(() => {
+    if (rendered) {
+      void renderPage()
+    }
+  }, [zoom])
 
   // 3. 视口探测：进入视口或接近视口时自动触发渲染
   useEffect(() => {
@@ -212,18 +225,28 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
           }
         }
 
-        // 2. 兜底尝试通过相对路径读用户目录
+        // 2. 兜底尝试通过用户目录相对路径读取（storage:readBinary）
         if (!bytes) {
-          const userUrl = await readUserBinary(path)
-          if (userUrl) {
-            const commaIdx = userUrl.indexOf(',')
-            const b64 = commaIdx !== -1 ? userUrl.slice(commaIdx + 1) : userUrl
-            const binStr = atob(b64)
-            const u8 = new Uint8Array(binStr.length)
-            for (let i = 0; i < binStr.length; i++) {
-              u8[i] = binStr.charCodeAt(i)
+          const prefix = userAbsPrefix()?.replace(/\\/g, '/').toLowerCase()
+          const normPath = path.replace(/\\/g, '/')
+          let rel: string | null = null
+          if (prefix && normPath.toLowerCase().startsWith(prefix)) {
+            rel = normPath.slice(prefix.length).replace(/^[\/]+/, '')
+          } else if (!/^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(path)) {
+            rel = normPath
+          }
+          if (rel) {
+            const userUrl = await readUserBinary(rel)
+            if (userUrl) {
+              const commaIdx = userUrl.indexOf(',')
+              const b64 = commaIdx !== -1 ? userUrl.slice(commaIdx + 1) : userUrl
+              const binStr = atob(b64)
+              const u8 = new Uint8Array(binStr.length)
+              for (let i = 0; i < binStr.length; i++) {
+                u8[i] = binStr.charCodeAt(i)
+              }
+              bytes = u8
             }
-            bytes = u8
           }
         }
 

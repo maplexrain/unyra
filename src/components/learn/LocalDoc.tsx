@@ -330,6 +330,11 @@ export default function LocalDoc({
   const scrollEdges = useScrollEdges(scrollRef)
   const mask = fadeMask(scrollEdges)
 
+  // PDF 文件：直接交由专用 PdfDocView 渲染（内含自己的独立加载态、分页与高清矢量渲染）
+  if (isPdfFile(path)) {
+    return <PdfDocView path={path} scale={scale} />
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-[12.5px] text-ink-faint">
@@ -354,9 +359,6 @@ export default function LocalDoc({
 
   // 媒体文件：图片 / 音频 / 视频各按 mime 渲染，居中展示（没有「源码」这种东西可看）
   if (media) {
-    if (isPdfFile(path)) {
-      return <PdfDocView path={path} scale={scale} />
-    }
     if (loading) {
       return (
         <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-[12.5px] text-ink-faint">

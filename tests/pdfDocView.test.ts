@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extOf, isMediaFile, isPdfFile, isPreviewable, viewOf } from '../src/learn/tabs'
+import { isMediaFile, isPdfFile, isPreviewable, viewOf } from '../src/learn/tabs'
 import type { LearnTab } from '../src/learn/types'
 
 describe('PDF 文档与页签行为规范', () => {
@@ -19,14 +19,14 @@ describe('PDF 文档与页签行为规范', () => {
   it('viewOf 视图判定：local 与 ws 的 pdf 文件一律映射为 media 视图（严格只读，不进入编辑模式）', () => {
     const localPdfTab: LearnTab = {
       id: 'local:C:/test.pdf',
-      at: Date.now(),
+      createdAt: Date.now(),
       ref: { kind: 'local', path: 'C:/test.pdf' },
     }
     expect(viewOf(localPdfTab)).toBe('media')
 
     const wsPdfTab: LearnTab = {
       id: 'ws:node1:manual.pdf',
-      at: Date.now(),
+      createdAt: Date.now(),
       ref: { kind: 'ws', nodeId: 'node1', seg: 'manual.pdf' },
     }
     expect(viewOf(wsPdfTab)).toBe('media')
@@ -35,14 +35,14 @@ describe('PDF 文档与页签行为规范', () => {
   it('非 PDF 文件正常落到各自预期的默认视图', () => {
     const mdTab: LearnTab = {
       id: 'local:C:/test.md',
-      at: Date.now(),
+      createdAt: Date.now(),
       ref: { kind: 'local', path: 'C:/test.md' },
     }
     expect(viewOf(mdTab)).toBe('preview')
 
     const txtTab: LearnTab = {
       id: 'local:C:/test.txt',
-      at: Date.now(),
+      createdAt: Date.now(),
       ref: { kind: 'local', path: 'C:/test.txt' },
     }
     expect(viewOf(txtTab)).toBe('source')
