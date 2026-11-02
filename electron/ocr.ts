@@ -11,6 +11,8 @@
 import { dialog, ipcMain, shell, type WebContents } from 'electron'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
+import os from 'node:os'
+import { execFile } from 'node:child_process'
 import crypto from 'node:crypto'
 import { getUserDataDir } from './storage/userData'
 import { t } from './i18n'
@@ -397,13 +399,20 @@ async function getCachedOcr(key: string): Promise<OcrPageResult | null> {
     const hash = hashOcrKey(key)
     const filePath = path.join(getOcrCacheDir(), `${hash}.json`)
     const raw = await fsp.readFile(filePath, 'utf-8')
-    return JSON.parse(raw) as OcrPageResult
+    const parsed = JSON.parse(raw) as OcrPageResult
+    if (!parsed || !Array.isArray(parsed.lines) || parsed.lines.length === 0) {
+      return null
+    }
+    return parsed
   } catch {
     return null
   }
 }
 
 async function setCachedOcr(key: string, data: OcrPageResult): Promise<boolean> {
+  if (!data || !Array.isArray(data.lines) || data.lines.length === 0) {
+    return false
+  }
   try {
     const hash = hashOcrKey(key)
     const dir = getOcrCacheDir()
@@ -418,6 +427,34 @@ async function setCachedOcr(key: string, data: OcrPageResult): Promise<boolean> 
 
 /* ---------- 页面 OCR 识别推理 ---------- */
 
+async function ensureWinOcrScript(): Promise<string> {
+  const target = path.join(getOcrRootDir(), 'win_ocr_runner.ps1')
+  try {
+    const stat = await fsp.stat(target)
+    if (stat.size > 200) return target
+  } catch {}
+
+  const candidates = [
+    path.join(__dirname, 'assets', 'win_ocr_runner.ps1'),
+    path.join(__dirname, '../electron/assets/win_ocr_runner.ps1'),
+    path.join(process.cwd(), 'electron/assets/win_ocr_runner.ps1'),
+    path.join(process.cwd(), 'scripts/win_ocr_runner.ps1'),
+  ]
+
+  for (const c of candidates) {
+    try {
+      const content = await fsp.readFile(c, 'utf-8')
+      if (content && content.length > 200) {
+        await fsp.mkdir(getOcrRootDir(), { recursive: true })
+        await fsp.writeFile(target, content, 'utf-8')
+        return target
+      }
+    } catch {}
+  }
+
+  return target
+}
+
 async function recognizePage(req: OcrRecognizeRequest): Promise<OcrRecognizeResult> {
   const startAt = Date.now()
   const page = req.page ?? 1
@@ -427,13 +464,52 @@ async function recognizePage(req: OcrRecognizeRequest): Promise<OcrRecognizeResu
     // 1. 若有缓存，直接返回
     const cacheKey = `${req.imageDataUrl.slice(0, 80)}#${req.imageDataUrl.length}#p${page}#${modelId}`
     const cached = await getCachedOcr(cacheKey)
-    if (cached) {
+    if (cached && cached.lines.length > 0) {
       return { ok: true, result: cached, fromCache: true, durationMs: Date.now() - startAt }
     }
 
-    // 2. 模拟/执行轻量 OCR 行块排版分析
-    // 若在实际环境且已下好权重，可接入 ONNX runtime 抽取文本；此处提供高容错的版面检测
-    const lines: OcrPageResult['lines'] = []
+    let lines: OcrPageResult['lines'] = []
+
+    if (process.platform === 'win32') {
+      const commaIdx = req.imageDataUrl.indexOf(',')
+      const b64 = commaIdx !== -1 ? req.imageDataUrl.slice(commaIdx + 1) : req.imageDataUrl
+      const buf = Buffer.from(b64, 'base64')
+
+      const tempFile = path.join(os.tmpdir(), `unyra_ocr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.png`)
+      await fsp.writeFile(tempFile, buf)
+
+      try {
+        const scriptPath = await ensureWinOcrScript()
+        const stdout = await new Promise<string>((resolve, reject) => {
+          execFile(
+            'powershell.exe',
+            ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, tempFile],
+            { encoding: 'utf-8', timeout: 25000, maxBuffer: 10 * 1024 * 1024 },
+            (err, out) => {
+              if (err) reject(err)
+              else resolve(out)
+            }
+          )
+        })
+
+        const parsed = JSON.parse(stdout)
+        if (parsed && Array.isArray(parsed.lines)) {
+          lines = parsed.lines.map((l: { text: string; bbox: { x: number; y: number; width: number; height: number } }) => ({
+            text: l.text,
+            bbox: {
+              x: Number(l.bbox.x) || 0,
+              y: Number(l.bbox.y) || 0,
+              width: Number(l.bbox.width) || 0.1,
+              height: Number(l.bbox.height) || 0.02,
+            },
+          }))
+        }
+      } catch (ocrErr) {
+        console.warn(`[ocr] Windows 本地 OCR 推理异常:`, ocrErr)
+      } finally {
+        await fsp.rm(tempFile, { force: true }).catch(() => {})
+      }
+    }
 
     // 构造页面文本结构
     const result: OcrPageResult = {
@@ -444,7 +520,10 @@ async function recognizePage(req: OcrRecognizeRequest): Promise<OcrRecognizeResu
       createdAt: Date.now(),
     }
 
-    await setCachedOcr(cacheKey, result)
+    if (lines.length > 0) {
+      await setCachedOcr(cacheKey, result)
+    }
+
     return { ok: true, result, fromCache: false, durationMs: Date.now() - startAt }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }

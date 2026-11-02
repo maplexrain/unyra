@@ -143,6 +143,7 @@ const PdfPageItem = memo(function PdfPageItem({
 
       await task.promise
       renderedRef.current = true
+      void loadText()
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'RenderingCancelledException') {
         // 正常取消，忽略
@@ -168,13 +169,23 @@ const PdfPageItem = memo(function PdfPageItem({
     return () => clearTimeout(t)
   }, [zoom, renderPage])
 
-  // 首页及前 3 页进入时主动触发一次渲染与文本层提取，无需等待滚动探测
+  // 首页及前 3 页进入时主动触发一次渲染（渲染完毕后自动通过 renderPage 触发 loadText）
   useEffect(() => {
     if (pageNum <= 3) {
       void renderPage()
-      void loadText()
     }
-  }, [pageNum, renderPage, loadText])
+  }, [pageNum, renderPage])
+
+  // 监听全局插件状态切换事件（例如用户在设置中开启了 OCR 插件）
+  useEffect(() => {
+    const handlePluginChange = () => {
+      if (textLines.length === 0 && renderedRef.current) {
+        void loadText()
+      }
+    }
+    window.addEventListener('moji:plugin-toggle', handlePluginChange)
+    return () => window.removeEventListener('moji:plugin-toggle', handlePluginChange)
+  }, [textLines.length, loadText])
 
   // 3. 视口探测：超前 1000px 预加载，滚动进入前已提前渲染完毕，保证无缝平滑体验
   useEffect(() => {
@@ -188,8 +199,7 @@ const PdfPageItem = memo(function PdfPageItem({
             onVisible?.(pageNum)
             if (!renderedRef.current) {
               void renderPage()
-            }
-            if (textLines.length === 0) {
+            } else if (textLines.length === 0) {
               void loadText()
             }
           }
@@ -326,7 +336,16 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
   }
 
   const [ocrBannerDismissed, setOcrBannerDismissed] = useState(false)
+  const [ocrEnabled, setOcrEnabled] = useState(() => ocrPluginOn())
   const [zoomHud, setZoomHud] = useState(false)
+
+  useEffect(() => {
+    const handlePluginChange = () => {
+      setOcrEnabled(ocrPluginOn())
+    }
+    window.addEventListener('moji:plugin-toggle', handlePluginChange)
+    return () => window.removeEventListener('moji:plugin-toggle', handlePluginChange)
+  }, [])
 
   const handleOpenOcrConfig = () => {
     try {
@@ -524,7 +543,7 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
       </div>
 
       {/* 未安装 OCR 插件提示 Banner */}
-      {!ocrPluginOn() && !ocrBannerDismissed && (
+      {!ocrEnabled && !ocrBannerDismissed && (
         <div className="no-print flex items-center justify-between border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-[12px] text-ink-strong select-none">
           <div className="flex items-center gap-2 min-w-0">
             <Sparkles size={14} className="text-amber-500 shrink-0" />
