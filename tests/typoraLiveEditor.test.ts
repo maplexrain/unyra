@@ -7,6 +7,8 @@ import {
   typoraLinePlugin,
   typoraInlinePlugin,
   typoraDelimiterPlugin,
+  BulletWidget,
+  TaskWidget,
 } from '../src/components/learn/note/TyporaLiveEditor'
 
 describe('TyporaLiveEditor live preview extensions', () => {
@@ -49,7 +51,7 @@ describe('TyporaLiveEditor live preview extensions', () => {
     expect(classes.filter((c) => c.includes('cm-typora-list-item')).length).toBe(2)
   })
 
-  it('hides markdown source and renders bullets/tasks/hr in delimiter plugin when inactive', () => {
+  it('renders bullets, task widgets, and hr in delimiter plugin when inactive', () => {
     const text = `## H2\n---\n- Bullet\n- [ ] Todo\n- [x] Done\n1. Number`
     const view = new EditorView({
       state: EditorState.create({
@@ -67,21 +69,78 @@ describe('TyporaLiveEditor live preview extensions', () => {
     const decos = view.plugin(typoraDelimiterPlugin)?.decorations
     expect(decos).toBeDefined()
     const markClasses: string[] = []
+    const widgets: any[] = []
     const iter = decos!.iter()
     while (iter.value) {
-      markClasses.push(iter.value.spec.class)
+      if (iter.value.spec.class) {
+        markClasses.push(iter.value.spec.class)
+      }
+      if (iter.value.spec.widget) {
+        widgets.push(iter.value.spec.widget)
+      }
       iter.next()
     }
 
-    // HR should hide --- when cursor is not on that line
+    // HR hides --- when cursor is not on that line
     expect(markClasses).toContain('cm-typora-hr-text-hidden')
-    // Bullet should render as cm-typora-bullet
-    expect(markClasses).toContain('cm-typora-bullet')
-    // Tasks should render as unchecked and checked
-    expect(markClasses).toContain('cm-typora-task-unchecked')
-    expect(markClasses).toContain('cm-typora-task-checked')
-    // Ordered list mark should have ordered mark styling
+    // Ordered list mark styled
     expect(markClasses).toContain('cm-typora-ordered-mark')
+
+    // Bullet should render as native BulletWidget
+    const bulletWidget = widgets.find((w) => w instanceof BulletWidget)
+    expect(bulletWidget).toBeDefined()
+    const bulletDom = bulletWidget!.toDOM(view)
+    expect(bulletDom.className).toContain('cm-typora-bullet')
+    expect(bulletDom.textContent).toBe('•')
+
+    // Task widgets should render unchecked and checked
+    const uncheckedTask = widgets.find((w) => w instanceof TaskWidget && !w.checked)
+    expect(uncheckedTask).toBeDefined()
+    const uncheckedDom = uncheckedTask!.toDOM(view)
+    expect(uncheckedDom.className).toContain('cm-typora-task-unchecked')
+
+    const checkedTask = widgets.find((w) => w instanceof TaskWidget && w.checked)
+    expect(checkedTask).toBeDefined()
+    const checkedDom = checkedTask!.toDOM(view)
+    expect(checkedDom.className).toContain('cm-typora-task-checked')
+    expect(checkedDom.textContent).toBe('✓')
+  })
+
+  it('clicking task widget toggles checked state', () => {
+    const text = `- [ ] Task item`
+    let docChanged = ''
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: text,
+        selection: { anchor: 10 },
+        extensions: [
+          markdown({ base: markdownLanguage }),
+          typoraDelimiterPlugin,
+          EditorView.updateListener.of((u) => {
+            if (u.docChanged) docChanged = u.state.doc.toString()
+          }),
+        ],
+      }),
+    })
+
+    const decos = view.plugin(typoraDelimiterPlugin)?.decorations
+    const iter = decos!.iter()
+    let taskWidget: TaskWidget | null = null
+    while (iter.value) {
+      if (iter.value.spec.widget instanceof TaskWidget) {
+        taskWidget = iter.value.spec.widget
+        break
+      }
+      iter.next()
+    }
+
+    expect(taskWidget).toBeDefined()
+    const dom = taskWidget!.toDOM(view)
+    // Dispatch mousedown event
+    const evt = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+    dom.dispatchEvent(evt)
+
+    expect(docChanged).toBe('- [x] Task item')
   })
 
   it('reveals markdown source when cursor touches delimiter or line', () => {
@@ -98,7 +157,7 @@ describe('TyporaLiveEditor live preview extensions', () => {
     const hrClasses: string[] = []
     const iterHr = hrDecos!.iter()
     while (iterHr.value) {
-      hrClasses.push(iterHr.value.spec.class)
+      if (iterHr.value.spec.class) hrClasses.push(iterHr.value.spec.class)
       iterHr.next()
     }
     expect(hrClasses).toContain('cm-typora-hr-text-active')
@@ -115,7 +174,7 @@ describe('TyporaLiveEditor live preview extensions', () => {
     const bulletClasses: string[] = []
     const iterB = bulletDecos!.iter()
     while (iterB.value) {
-      bulletClasses.push(iterB.value.spec.class)
+      if (iterB.value.spec.class) bulletClasses.push(iterB.value.spec.class)
       iterB.next()
     }
     expect(bulletClasses).toContain('cm-typora-mark-active')

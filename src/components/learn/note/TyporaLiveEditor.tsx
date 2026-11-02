@@ -16,6 +16,7 @@ import {
   Decoration,
   EditorView,
   ViewPlugin,
+  WidgetType,
   keymap,
   placeholder as cmPlaceholder,
   type ViewUpdate,
@@ -151,6 +152,71 @@ export const typoraInlinePlugin = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations }
 )
 
+/** 无序列表圆点原生 Widget：杜绝 CSS 伪元素与零字号导致的 baseline 错位与下沉问题 */
+export class BulletWidget extends WidgetType {
+  readonly depth: number
+  readonly from: number
+
+  constructor(depth: number, from: number) {
+    super()
+    this.depth = depth
+    this.from = from
+  }
+  eq(other: BulletWidget) {
+    return this.depth === other.depth && this.from === other.from
+  }
+  toDOM(view: EditorView) {
+    const span = document.createElement('span')
+    const depthCls = this.depth === 2 ? 'cm-typora-bullet-l2' : this.depth >= 3 ? 'cm-typora-bullet-l3' : ''
+    span.className = `cm-typora-bullet ${depthCls}`.trim()
+    span.textContent = this.depth === 2 ? '◦' : this.depth >= 3 ? '▪' : '•'
+    span.setAttribute('aria-hidden', 'true')
+    span.onmousedown = (e) => {
+      e.preventDefault()
+      view.dispatch({ selection: { anchor: this.from } })
+      view.focus()
+    }
+    return span
+  }
+  ignoreEvent() {
+    return true
+  }
+}
+
+/** 任务列表复选框原生 Widget：直角设计，支持直接鼠标点击切换勾选状态 */
+export class TaskWidget extends WidgetType {
+  readonly checked: boolean
+  readonly pos: number
+
+  constructor(checked: boolean, pos: number) {
+    super()
+    this.checked = checked
+    this.pos = pos
+  }
+  eq(other: TaskWidget) {
+    return this.checked === other.checked && this.pos === other.pos
+  }
+  toDOM(view: EditorView) {
+    const wrap = document.createElement('span')
+    wrap.className = `cm-typora-task ${this.checked ? 'cm-typora-task-checked' : 'cm-typora-task-unchecked'}`
+    wrap.setAttribute('role', 'checkbox')
+    wrap.setAttribute('aria-checked', String(this.checked))
+    wrap.textContent = this.checked ? '✓' : ''
+    wrap.onmousedown = (e) => {
+      if (view.state.readOnly) return
+      e.preventDefault()
+      const replacement = this.checked ? '[ ]' : '[x]'
+      view.dispatch({
+        changes: { from: this.pos, to: this.pos + 3, insert: replacement },
+      })
+    }
+    return wrap
+  }
+  ignoreEvent() {
+    return true
+  }
+}
+
 // 3. 语法标记隐显插件（Typora 核心交互）：光标未停留时隐去 Markdown 标记并排版化渲染，光标触达时光标就地显形
 export const typoraDelimiterPlugin = ViewPlugin.fromClass(
   class {
@@ -168,7 +234,7 @@ export const typoraDelimiterPlugin = ViewPlugin.fromClass(
       const builder = new RangeSetBuilder<Decoration>()
       const tree = syntaxTree(state)
       const sel = state.selection.main
-      const marks: { from: number; to: number; cls: string }[] = []
+      const items: { from: number; to: number; deco: Decoration }[] = []
 
       tree.iterate({
         enter(node) {
@@ -198,18 +264,18 @@ export const typoraDelimiterPlugin = ViewPlugin.fromClass(
               }
             }
 
-            marks.push({
+            items.push({
               from,
               to,
-              cls: isActive ? 'cm-typora-mark-active' : 'cm-typora-mark-hidden',
+              deco: Decoration.mark({ class: isActive ? 'cm-typora-mark-active' : 'cm-typora-mark-hidden' }),
             })
           } else if (node.name === 'HorizontalRule') {
             const line = state.doc.lineAt(node.from)
             const isActive = sel.from <= line.to && sel.to >= line.from
-            marks.push({
+            items.push({
               from: node.from,
               to: node.to,
-              cls: isActive ? 'cm-typora-hr-text-active' : 'cm-typora-hr-text-hidden',
+              deco: Decoration.mark({ class: isActive ? 'cm-typora-hr-text-active' : 'cm-typora-hr-text-hidden' }),
             })
           } else if (node.name === 'ListMark') {
             const parent = node.node.parent
@@ -229,29 +295,27 @@ export const typoraDelimiterPlugin = ViewPlugin.fromClass(
               : sel.from < to && sel.to > from
 
             if (isMarkActive) {
-              marks.push({ from, to, cls: 'cm-typora-mark-active' })
+              items.push({ from, to, deco: Decoration.mark({ class: 'cm-typora-mark-active' }) })
             } else {
               if (hasTask) {
-                // 任务列表行：ListMark (- ) 隐去，由 TaskMarker 负责呈现勾选框
-                marks.push({ from, to, cls: 'cm-typora-mark-hidden' })
+                // 任务列表行：前置 - 标号直接折叠占位，由 TaskMarker 负责呈现勾选框
+                items.push({ from, to, deco: Decoration.replace({}) })
               } else if (isOrdered) {
                 // 有序列表行：保留数字，高亮显示序号
-                marks.push({ from, to, cls: 'cm-typora-ordered-mark' })
+                items.push({ from, to, deco: Decoration.mark({ class: 'cm-typora-ordered-mark' }) })
               } else {
-                // 无序列表行：根据嵌套深度呈现圆点 Bullet
+                // 无序列表行：根据嵌套深度使用原生 BulletWidget 替换显示为圆点 Bullet
                 let depth = 1
                 let p = grandParent?.parent
                 while (p && p.name !== 'Document') {
                   if (p.name === 'BulletList' || p.name === 'OrderedList') depth++
                   p = p.parent
                 }
-                const bulletCls =
-                  depth === 2
-                    ? 'cm-typora-bullet cm-typora-bullet-l2'
-                    : depth >= 3
-                      ? 'cm-typora-bullet cm-typora-bullet-l3'
-                      : 'cm-typora-bullet'
-                marks.push({ from, to, cls: bulletCls })
+                items.push({
+                  from,
+                  to,
+                  deco: Decoration.replace({ widget: new BulletWidget(depth, from) }),
+                })
               }
             }
           } else if (node.name === 'TaskMarker') {
@@ -266,14 +330,14 @@ export const typoraDelimiterPlugin = ViewPlugin.fromClass(
               : sel.from < to && sel.to > from
 
             if (isMarkActive) {
-              marks.push({ from, to, cls: 'cm-typora-mark-active' })
+              items.push({ from, to, deco: Decoration.mark({ class: 'cm-typora-mark-active' }) })
             } else {
               const rawText = state.sliceDoc(node.from, node.to).toLowerCase()
               const isChecked = rawText.includes('x')
-              marks.push({
+              items.push({
                 from,
                 to,
-                cls: isChecked ? 'cm-typora-task-checked' : 'cm-typora-task-unchecked',
+                deco: Decoration.replace({ widget: new TaskWidget(isChecked, node.from) }),
               })
             }
           } else if (node.name === 'Link') {
@@ -284,19 +348,19 @@ export const typoraDelimiterPlugin = ViewPlugin.fromClass(
               const closingBracket = text.indexOf('](')
               if (closingBracket !== -1) {
                 // 隐去首个 [
-                marks.push({ from: node.from, to: node.from + 1, cls: 'cm-typora-mark-hidden' })
+                items.push({ from: node.from, to: node.from + 1, deco: Decoration.mark({ class: 'cm-typora-mark-hidden' }) })
                 // 隐去 ](...)
-                marks.push({ from: node.from + closingBracket, to: node.to, cls: 'cm-typora-mark-hidden' })
+                items.push({ from: node.from + closingBracket, to: node.to, deco: Decoration.mark({ class: 'cm-typora-mark-hidden' }) })
               }
             }
           }
         },
       })
 
-      marks.sort((a, b) => a.from - b.from || b.to - a.to)
-      for (const m of marks) {
-        if (m.from < m.to) {
-          builder.add(m.from, m.to, Decoration.mark({ class: m.cls }))
+      items.sort((a, b) => a.from - b.from || b.to - a.to)
+      for (const item of items) {
+        if (item.from < item.to) {
+          builder.add(item.from, item.to, item.deco)
         }
       }
       return builder.finish()
@@ -476,98 +540,62 @@ const typoraTheme = EditorView.theme({
     paddingLeft: '4em',
   },
 
-  /* 无序列表圆点（Bullet） */
+  /* 无序列表圆点（Bullet）原生 Widget 排版 */
   '.cm-typora-bullet': {
-    position: 'relative',
     display: 'inline-block',
-    fontSize: '0 !important',
-    lineHeight: '0 !important',
-    color: 'transparent !important',
-    width: '1.4em',
-    verticalAlign: 'baseline',
-    userSelect: 'none',
-  },
-  '.cm-typora-bullet::before': {
-    content: '"•"',
-    position: 'absolute',
-    left: '0.2em',
-    top: '0',
-    fontSize: '1.15rem',
-    lineHeight: '1.8',
     color: 'var(--color-seal)',
     fontWeight: '700',
+    width: '1.25em',
+    textAlign: 'left',
+    userSelect: 'none',
+    lineHeight: 'inherit',
+    verticalAlign: 'baseline',
   },
-  '.cm-typora-bullet-l2::before': {
-    content: '"◦"',
-    fontSize: '1.15rem',
+  '.cm-typora-bullet-l2': {
+    fontSize: '0.9em',
+    color: 'var(--color-seal)',
   },
-  '.cm-typora-bullet-l3::before': {
-    content: '"▪"',
-    fontSize: '0.95rem',
+  '.cm-typora-bullet-l3': {
+    fontSize: '0.85em',
+    color: 'var(--color-ink-soft)',
   },
 
   /* 有序列表序号 */
   '.cm-typora-ordered-mark': {
+    display: 'inline-block',
+    minWidth: '1.3em',
     color: 'var(--color-seal)',
     fontWeight: '600',
     fontVariantNumeric: 'tabular-nums',
   },
 
-  /* 任务列表复选框（严格遵循全站直角规范 rounded-none / borderRadius: 0px） */
-  '.cm-typora-task-unchecked': {
-    position: 'relative',
-    display: 'inline-block',
-    fontSize: '0 !important',
-    lineHeight: '0 !important',
-    color: 'transparent !important',
-    width: '1.4em',
-    verticalAlign: 'baseline',
+  /* 任务列表复选框 Widget（严格遵循全站直角规范 rounded-none / borderRadius: 0px） */
+  '.cm-typora-task': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '14px',
+    height: '14px',
+    marginRight: '0.55em',
+    verticalAlign: 'middle',
     userSelect: 'none',
     cursor: 'pointer',
+    boxSizing: 'border-box',
+    lineHeight: '1',
+    fontSize: '10px',
+    fontWeight: '700',
   },
-  '.cm-typora-task-unchecked::before': {
-    content: '""',
-    position: 'absolute',
-    left: '0.1em',
-    top: '50%',
-    transform: 'translateY(-50%)',
-    width: '13px',
-    height: '13px',
+  '.cm-typora-task-unchecked': {
     border: '1.5px solid var(--color-ink-soft)',
     borderRadius: '0px',
     backgroundColor: 'transparent',
-    boxSizing: 'border-box',
+    color: 'transparent',
   },
   '.cm-typora-task-checked': {
-    position: 'relative',
-    display: 'inline-block',
-    fontSize: '0 !important',
-    lineHeight: '0 !important',
-    color: 'transparent !important',
-    width: '1.4em',
-    verticalAlign: 'baseline',
-    userSelect: 'none',
-    cursor: 'pointer',
-  },
-  '.cm-typora-task-checked::before': {
-    content: '"✓"',
-    position: 'absolute',
-    left: '0.1em',
-    top: '50%',
-    transform: 'translateY(-50%)',
-    width: '13px',
-    height: '13px',
     border: '1.5px solid var(--color-seal)',
     borderRadius: '0px',
     backgroundColor: 'var(--color-seal)',
     color: 'var(--color-paper, #ffffff)',
-    fontSize: '10px',
-    fontWeight: '700',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    lineHeight: '1',
-    boxSizing: 'border-box',
   },
 
   /* 代码块行底色与等宽字体 */
@@ -672,46 +700,6 @@ export const TyporaLiveEditor = memo(function TyporaLiveEditor({
           typoraInlinePlugin,
           typoraDelimiterPlugin,
           typoraTheme,
-          EditorView.domEventHandlers({
-            mousedown(event, view) {
-              const target = event.target as HTMLElement | null
-              if (!target) return false
-              const isTaskMarker =
-                target.classList.contains('cm-typora-task-checked') ||
-                target.classList.contains('cm-typora-task-unchecked')
-              if (isTaskMarker && !view.state.readOnly) {
-                event.preventDefault()
-                const pos = view.posAtDOM(target)
-                const line = view.state.doc.lineAt(pos)
-                const tree = syntaxTree(view.state)
-                let found: { from: number; to: number; text: string } | null = null
-                tree.iterate({
-                  from: line.from,
-                  to: line.to,
-                  enter(node) {
-                    if (node.name === 'TaskMarker') {
-                      found = {
-                        from: node.from,
-                        to: node.to,
-                        text: view.state.sliceDoc(node.from, node.to),
-                      }
-                      return false
-                    }
-                  },
-                })
-                if (found) {
-                  const nodeFound = found as { from: number; to: number; text: string }
-                  const isChecked = nodeFound.text.toLowerCase().includes('x')
-                  const replacement = isChecked ? '[ ]' : '[x]'
-                  view.dispatch({
-                    changes: { from: nodeFound.from, to: nodeFound.to, insert: replacement },
-                  })
-                  return true
-                }
-              }
-              return false
-            },
-          }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               const next = update.state.doc.toString()
