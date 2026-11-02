@@ -40,6 +40,7 @@ interface Props {
   view: DocView
   /** 正文字号系数（与节点文档共用同一个设置） */
   scale: number
+  editorScale?: number
   /** 暂存区里这一份的正文（没改过就是 undefined，编辑器显示磁盘上的那一份） */
   draft?: string
   /**
@@ -74,6 +75,7 @@ export default function LocalDoc({
   path,
   view,
   scale,
+  editorScale,
   draft,
   savedText,
   onDraft,
@@ -394,7 +396,7 @@ export default function LocalDoc({
         state={state}
         error={saveError ?? error}
         label={path}
-        scale={scale}
+        scale={editorScale ?? scale}
         ext={extOf(path)}
         // 「定位源码」放下的一次性请求：挂载时按这个身份取走并选中（见 lib/docReveal）
         revealKey={localRevealKey(path)}
@@ -435,7 +437,7 @@ export default function LocalDoc({
           {/* 复制同样走源文：预览里选的这一段，进剪贴板的该是它 Markdown 的样子（见 lib/copySource） */}
           <div
             ref={bodyRef}
-            className="note-preview moji-node-note doc-measure relative px-7 py-6"
+            className="note-preview moji-node-note doc-measure relative px-7 pt-2.5 pb-6"
             style={{ '--doc-scale': scale } as CSSProperties}
             onCopy={(e) => copySelectionAsMarkdown(e, e.currentTarget, text)}
           >

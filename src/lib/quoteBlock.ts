@@ -631,7 +631,7 @@ export function quoteBlock(source: string, ctx: PluginRenderContext): string {
         `<div class="moji-quote-item my-3 border border-line/70 bg-paper/60 dark:bg-card/60 rounded-none overflow-hidden" ` +
         `data-file="${ctx.attr(ref.filePath)}" data-start="${ref.startLine}" data-end="${ref.endLine}" ` +
         `data-rules="${ctx.attr(rulesJson)}">` +
-        `<div class="moji-quote-header flex items-center justify-between px-3 py-1.5 border-b border-line/60 bg-surface/70 dark:bg-surface/40 text-xs font-mono rounded-none select-none">` +
+        `<div class="moji-quote-header flex items-center justify-between px-3 py-1.5 border-b border-line/60 bg-surface/70 dark:bg-surface/40 text-xs font-sans rounded-none select-none">` +
         `<div class="flex items-center gap-2 min-w-0">` +
         `<svg class="w-3.5 h-3.5 text-ink-faint shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">` +
         `<rect x="4" y="2" width="16" height="20" stroke-width="1.8" fill="none"></rect>` +
@@ -643,7 +643,7 @@ export function quoteBlock(source: string, ctx: PluginRenderContext): string {
         `title="${ctx.escape(displayPath)}" data-action="open-file">` +
         `${ctx.escape(displayPath)}` +
         `</button>` +
-        `<span class="text-[11px] px-1.5 py-0.5 text-ink-faint border border-line/50 bg-paper dark:bg-card rounded-none shrink-0 font-mono">` +
+        `<span class="text-[11px] px-1.5 py-0.5 text-ink-faint border border-line/50 bg-paper dark:bg-card rounded-none shrink-0 font-sans tabular-nums">` +
         `L${ref.startLine}–L${ref.endLine}` +
         `</span>` +
         `</div>` +
@@ -656,7 +656,7 @@ export function quoteBlock(source: string, ctx: PluginRenderContext): string {
         `</button>` +
         `</div>` +
         `</div>` +
-        `<div class="moji-quote-body p-3 font-mono text-xs overflow-hidden rounded-none">` +
+        `<div class="moji-quote-body p-3 font-sans text-xs overflow-hidden rounded-none">` +
         `<div class="moji-quote-loading flex items-center gap-2 text-ink-soft animate-pulse rounded-none">` +
         `<svg class="w-4 h-4 animate-spin text-seal" fill="none" viewBox="0 0 24 24">` +
         `<circle class="opacity-25" cx="12" cy="12" r="10" stroke-width="4"></circle>` +
@@ -816,8 +816,8 @@ export function hydrateQuotes(root: HTMLElement): () => void {
           rawLinesText.push(line.raw)
           linesHtml +=
             `<div class="moji-quote-line flex items-start hover:bg-surface/50 transition-colors rounded-none">` +
-            `<span class="moji-quote-line-no select-none text-right font-mono text-[11px] text-ink-faint/60 w-10 pr-3 mr-3 border-r border-line/40 shrink-0 rounded-none pt-0.5">${line.lineNum}</span>` +
-            `<span class="moji-quote-line-code font-mono text-xs text-ink whitespace-pre-wrap break-words break-all min-w-0 flex-1 rounded-none leading-5">${line.html}</span>` +
+            `<span class="moji-quote-line-no select-none text-right font-sans tabular-nums text-[11px] text-ink-faint/60 min-w-[2rem] pr-2 mr-2.5 border-r border-line/40 shrink-0 rounded-none pt-0.5">${line.lineNum}</span>` +
+            `<span class="moji-quote-line-code font-sans text-xs text-ink whitespace-pre-wrap break-words break-all min-w-0 flex-1 rounded-none leading-5">${line.html}</span>` +
             `</div>`
         }
 
@@ -853,6 +853,7 @@ export function hydrateQuotes(root: HTMLElement): () => void {
  * 教学 Agent 的 quote 原文引用块语法指引（用于系统提示词与指引）。
  */
 export const QUOTE_SYNTAX_GUIDE = `原文引用块：用三个反引号 + quote 精准引用源文件内容与高亮关键代码，支持根据文件后缀自适应语法高亮与行内文字标记。
+【使用直觉与铁律】：收敛成直觉——“我要讲的东西刚好本地有，那我就引用它，让用户知道我在讲哪里”。不要仅在带用户读文章读项目时才使用，在任何教学讲解、代码剖析、概念推演等场景中，只要本地有源码、材料或文档，都应主动多使用 quote 语法精准引用核心行进行对照解析！
 语法格式：
 \`\`\`quote
 这是一段前置说明普通文本

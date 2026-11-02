@@ -894,7 +894,7 @@ export default function LearnWorkspace({
   }, [openTabIds, shownIds, docs, store, recentTabs])
 
   /** 正文字号系数：预览与源码共用同一个（Ctrl + 滚轮在预览里改，见 NodeNote） */
-  const { docScale } = useAppearance()
+  const { docScale, editorScale } = useAppearance()
 
   // settingsEpoch：模型选择器改了全局提供商/模型后自增，把这次渲染重新跑一遍。
   // loadAiSettings 带模块级缓存，直接调用几乎零成本；之所以要这个 epoch，
@@ -2419,6 +2419,7 @@ export default function LearnWorkspace({
    * 这样「双击 Shift」（见下面的 useDoubleShift）与按钮点开走的是同一条路。
    */
   const [essayOpen, setEssayOpen] = useState(false)
+  const essayBtnRef = useRef<HTMLButtonElement | null>(null)
   /** 随笔跟着**眼前这份文档的目标**走：目标级的东西，切到别的目标就不该还开着 */
   const essayGoalId = docNode?.goalId ?? null
   const essayList = (essayGoalId ? store.essays?.[essayGoalId] : null) ?? EMPTY_ESSAYS
@@ -5051,7 +5052,7 @@ export default function LearnWorkspace({
               */
               <DraftDoc
                 draft={dg.draft}
-                scale={docScale}
+                scale={editorScale}
                 onDraft={(text) => stageNewFileDraft(gTabId, text)}
                 saving={docSaving}
                 saveError={docSaveError}
@@ -5070,6 +5071,7 @@ export default function LearnWorkspace({
                 path={gTab.ref.path}
                 view={dg.view}
                 scale={docScale}
+                editorScale={editorScale}
                 draft={dg.draft}
                 savedText={localSaved?.path === gTab.ref.path ? localSaved.text : undefined}
                 onDraft={(text) => stageLocalDraft(gTabId, text)}
@@ -5109,6 +5111,7 @@ export default function LearnWorkspace({
                     path={abs}
                     view={dg.view}
                     scale={docScale}
+                    editorScale={editorScale}
                     draft={dg.draft}
                     savedText={localSaved?.path === abs ? localSaved.text : undefined}
                     onDraft={(text) => stageLocalDraft(gTabId, text)}
@@ -5160,7 +5163,7 @@ export default function LearnWorkspace({
                   onChange={(text) => editDocSource(gTabId, text)}
                   state={docSaving ? 'saving' : dg.draft === undefined ? 'saved' : 'dirty'}
                   label={dg.title}
-                  scale={docScale}
+                  scale={editorScale}
                   scrollTop={store.docScroll[gTabId + SRC_SCROLL_SUFFIX]}
                   onScrollTop={(top) => rememberScroll(gTabId + SRC_SCROLL_SUFFIX, top)}
                   ext=".html"
@@ -5190,7 +5193,7 @@ export default function LearnWorkspace({
                   onChange={(text) => editDocSource(gTabId, text)}
                   state={docSaving ? 'saving' : dg.draft === undefined ? 'saved' : 'dirty'}
                   label={dg.title}
-                  scale={docScale}
+                  scale={editorScale}
                   ext=".md"
                   // 编辑位置与阅读位置各记各的：同一份文档在源码里改到一半、
                   // 切到预览又读到别处，共用一格会互相拽（见 learn/types 的 DocScroll）
@@ -5453,6 +5456,9 @@ export default function LearnWorkspace({
               onTogglePure={toggleZen}
               // 标题大纲：按当前页签的槽取（渲染组件装进去，见 lib/outline 的 OutlineHandle）
               outlineSlot={getOutlineSlot(gTabId)}
+              showEssay={Boolean(essayGoalId)}
+              onOpenEssay={() => setEssayOpen(true)}
+              essayBtnRef={essayBtnRef}
             />
           )}
 
@@ -5771,6 +5777,7 @@ export default function LearnWorkspace({
                     goalId={essayGoalId}
                     // 入口只在教学文档上露脸（需求：教学文档右下角）；窗口开着时另说
                     showEntry={activeTab?.ref.kind === 'teach'}
+                    triggerRef={essayBtnRef}
                     open={essayOpen}
                     onOpenChange={setEssayOpen}
                     essays={essayList}

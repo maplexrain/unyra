@@ -8,6 +8,7 @@
  *   文档里没有图表时完全不会加载它。
  */
 import { t } from '../i18n'
+import { openMermaidModal } from './mermaidModal'
 import type { PluginRenderContext } from './renderPlugins'
 
 export const MERMAID_LANG = 'mermaid'
@@ -284,6 +285,19 @@ function hydrateOne(el: HTMLElement): (() => void) | null {
         svgEl.style.display = 'inline-block'
       }
       bindFunctions?.(stage)
+
+      // 右上角全屏放大与平移查看按钮
+      el.querySelector('.moji-mermaid-zoom')?.remove()
+      const zoomBtn = document.createElement('button')
+      zoomBtn.type = 'button'
+      zoomBtn.className = 'moji-mermaid-zoom no-print'
+      zoomBtn.title = t('全屏查看并缩放图表')
+      zoomBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>'
+      zoomBtn.onclick = (e) => {
+        e.stopPropagation()
+        openMermaidModal(svg)
+      }
+      el.appendChild(zoomBtn)
       /*
        * 超高就折起（见 foldIfTall）。量不出高度（这一片此刻是 display:none 的常驻页）
        * 就等它真的显示出来再量——否则后台写好的长图，切过去时照样把正文顶走一屏。

@@ -84,13 +84,13 @@ export default function DocOutline({ items, activeIndex, onJump, onDismiss, clos
       而不是一片浮着的白纸；出场动画见 motion.css 的 .moji-tip-pop。
     */
     <div
-      className={`no-print absolute right-0 top-[calc(100%+6px)] z-30 ${closing ? 'moji-tip-out' : 'moji-tip-pop'}`}
+      className={`no-print absolute left-full top-0 ml-2 z-30 ${closing ? 'moji-tip-out' : 'moji-tip-pop'}`}
     >
       <span
         aria-hidden="true"
-        className="absolute -top-1 right-3 z-10 h-2.5 w-2.5 rotate-45 rounded-[2px] border-l border-t border-line bg-card"
+        className="absolute -left-[5px] top-2.5 z-10 h-2.5 w-2.5 rotate-45 border-l border-b border-line bg-card"
       />
-      <div className="flex max-h-[min(60vh,480px)] w-[280px] flex-col overflow-hidden rounded-lg border border-line bg-card shadow-[0_10px_30px_rgba(31,27,23,0.16)]">
+      <div className="flex max-h-[min(60vh,480px)] w-[280px] flex-col overflow-hidden rounded-none border border-line bg-card shadow-[0_10px_30px_rgba(31,27,23,0.16)]">
       <header className="flex shrink-0 items-center gap-1 border-b border-line px-2.5 py-2">
         <ListTree size={13} className="shrink-0 text-ink-faint" />
         <span className="truncate text-[11.5px] font-medium tracking-wide text-ink">{t('本页标题')}</span>
@@ -119,7 +119,7 @@ export default function DocOutline({ items, activeIndex, onJump, onDismiss, clos
                     title={expanded ? t('收起下级标题') : t('展开下级标题')}
                     aria-expanded={expanded}
                     onClick={() => toggle(row.index)}
-                    className="mt-[3px] flex h-4 w-[18px] shrink-0 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-ink"
+                    className="mt-[3px] flex h-4 w-[18px] shrink-0 items-center justify-center rounded-none text-ink-faint transition hover:bg-line/70 hover:text-ink"
                   >
                     {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                   </button>
@@ -132,7 +132,7 @@ export default function DocOutline({ items, activeIndex, onJump, onDismiss, clos
                   title={row.text}
                   aria-current={active ? 'location' : undefined}
                   onClick={() => jump(row.index)}
-                  className={`min-w-0 flex-1 truncate rounded-md py-[3px] pl-1 pr-2 text-left transition ${
+                  className={`min-w-0 flex-1 truncate rounded-none py-[3px] pl-1 pr-2 text-left transition ${
                     row.depth === 1 ? 'text-[12.5px]' : 'text-[12px]'
                   } ${
                     active

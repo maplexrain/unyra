@@ -132,7 +132,7 @@ export const DocBody = memo(function DocBody({
       <div className="flex min-h-0 flex-1 flex-col" style={{ maskImage: mask, WebkitMaskImage: mask }}>
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {/* 左侧留白给得多一点：标题定位栏就在旁边，正文（以及跳转高亮的底色）不贴过去 */}
-          <div className="doc-measure relative flex min-h-full flex-col pt-6 pl-[32px] pr-[22px]">
+          <div className="doc-measure relative flex min-h-full flex-col pt-2.5 pl-[32px] pr-[22px]">
             <ZenResizeHandles />
             {/* 教学文档尚未生成或正在生成时的美观静态占位 */}
             {kind === 'teaching' && !content.trim() && (
