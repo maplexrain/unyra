@@ -90,23 +90,20 @@ const PdfPageItem = memo(function PdfPageItem({
       const canvas = canvasRef.current
       if (!canvas) return
 
-      const pixelRatio = Math.max(1, Math.min(3, window.devicePixelRatio || 1))
-      const viewport = page.getViewport({ scale: zoom })
+      const pixelRatio = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1))
+      // 直接以包含设备像素比的 scale 获取 viewport，保证高分屏下超清栅格化
+      const viewport = page.getViewport({ scale: zoom * pixelRatio })
 
-      canvas.width = Math.floor(viewport.width * pixelRatio)
-      canvas.height = Math.floor(viewport.height * pixelRatio)
-      canvas.style.width = `${Math.floor(viewport.width)}px`
-      canvas.style.height = `${Math.floor(viewport.height)}px`
+      canvas.width = Math.floor(viewport.width)
+      canvas.height = Math.floor(viewport.height)
+      canvas.style.width = `${Math.floor(viewport.width / pixelRatio)}px`
+      canvas.style.height = `${Math.floor(viewport.height / pixelRatio)}px`
 
-      const ctx = canvas.getContext('2d', { alpha: false })
+      const ctx = canvas.getContext('2d')
       if (!ctx) return
 
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-      // 在高 DPI 下缩放上下文
-      ctx.save()
-      ctx.scale(pixelRatio, pixelRatio)
 
       const task = page.render({
         canvasContext: ctx,
@@ -115,7 +112,6 @@ const PdfPageItem = memo(function PdfPageItem({
       renderTaskRef.current = task
 
       await task.promise
-      ctx.restore()
       setRendered(true)
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'RenderingCancelledException') {
@@ -130,9 +126,9 @@ const PdfPageItem = memo(function PdfPageItem({
     }
   }, [pdfDoc, pageNum, zoom])
 
-  // 首页进入时主动触发一次渲染，避免等待 IntersectionObserver 首帧延迟
+  // 首页及前 3 页进入时主动触发一次渲染，避免等待 IntersectionObserver 探测
   useEffect(() => {
-    if (pageNum === 1) {
+    if (pageNum <= 3) {
       void renderPage()
     }
   }, [pageNum, renderPage])
@@ -171,16 +167,17 @@ const PdfPageItem = memo(function PdfPageItem({
     <div
       ref={containerRef}
       data-page-number={pageNum}
-      className="relative my-3 flex justify-center bg-card shadow-sm border border-line-strong/30 rounded-none overflow-hidden"
+      className="relative my-4 flex shrink-0 justify-center bg-white shadow-md border border-line-strong/30 rounded-none overflow-hidden"
       style={{
-        width: dimensions ? `${dimensions.width}px` : '100%',
-        height: dimensions ? `${dimensions.height}px` : '800px',
+        width: dimensions ? `${dimensions.width}px` : 'auto',
+        height: dimensions ? `${dimensions.height}px` : 'auto',
+        minHeight: dimensions ? `${dimensions.height}px` : '800px',
         maxWidth: '100%',
       }}
     >
-      <canvas ref={canvasRef} className="block select-none" />
+      <canvas ref={canvasRef} className="block select-none bg-white" />
       {(!rendered || loading) && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-paper/20 text-ink-faint select-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-paper/20 text-ink-faint select-none pointer-events-none">
           <Loader2 size={16} className="animate-spin text-seal" />
           <span className="text-[11px]">{t('第 {0} 页渲染中…', pageNum)}</span>
         </div>
@@ -296,12 +293,18 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
     setZoom((prev) => Math.max(0.5, Math.min(3.0, prev + delta)))
   }
 
-  const handleFitWidth = () => {
-    if (!scrollRef.current) return
-    const containerWidth = scrollRef.current.clientWidth - 64
-    // 假设标准 A4 页面宽约 595pt
-    const targetZoom = Math.max(0.6, Math.min(2.5, containerWidth / 595))
-    setZoom(targetZoom)
+  const handleFitWidth = async () => {
+    if (!scrollRef.current || !pdfDoc) return
+    const containerWidth = scrollRef.current.clientWidth - 48
+    try {
+      const firstPage = await pdfDoc.getPage(1)
+      const baseVp = firstPage.getViewport({ scale: 1 })
+      const targetZoom = Math.max(0.4, Math.min(3.0, containerWidth / baseVp.width))
+      setZoom(Number(targetZoom.toFixed(2)))
+    } catch {
+      const targetZoom = Math.max(0.6, Math.min(2.5, containerWidth / 595))
+      setZoom(Number(targetZoom.toFixed(2)))
+    }
   }
 
   if (loading) {
