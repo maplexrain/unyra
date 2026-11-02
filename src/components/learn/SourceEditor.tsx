@@ -47,9 +47,10 @@ const STATE_TONE: Record<SaveState, string> = {
 
 /**
  * 配色与主题在 lib/cmMarkdown（随笔窗口用的是同一份）：文档源码视图的内边距
- * 按 doc-measure 那一列调（上 20 / 下 20 / 左 10 / 右 22）。
+ * （上 14 / 下 24 / 左 54 / 右 24），左侧留出 54px 彻底避让悬浮在左上角的垂直工具栏（left-3 + w-8），
+ * 避免首行及前几行代码文字与按钮发生视觉重叠。
  */
-const editorTheme = markdownEditorTheme({ top: 10, bottom: 20, left: 10, right: 22 })
+const editorTheme = markdownEditorTheme({ top: 14, bottom: 24, left: 54, right: 24 })
 
 /** 语言按扩展名现配（markdown 内嵌代码块也各自高亮）；其余扩展名交给 language-data 的表 */
 const langComp = new Compartment()

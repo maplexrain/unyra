@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { BookOpen, Eye, ListTree, Maximize2, Minimize2, SquareCode } from 'lucide-react'
+import { BookOpen, Eye, ListTree, Maximize2, Minimize2, Pencil } from 'lucide-react'
 import type { OutlineHandle } from '../../lib/outline'
 import type { DocView } from '../../learn/types'
 import { t } from '../../i18n'
@@ -222,7 +222,7 @@ export default function DocFloat({
 
         {/*
           源码 / 预览切换按钮：
-          图标反转——在编辑（源码）模式下显示预览按钮（Eye），在预览模式下显示编辑按钮（SquareCode）。
+          图标反转——在编辑（源码）模式下显示预览按钮（Eye），在预览模式下显示编辑按钮（Pencil 铅笔）。
           媒体预览（图片 / 音频 / 视频）没有源码可看，整颗不出现。
         */}
         {view !== 'media' && (
@@ -242,8 +242,8 @@ export default function DocFloat({
               VIEW_BTN + ' border-transparent text-ink-soft hover:bg-line/50 hover:text-ink'
             }
           >
-            {/* 反转图标：编辑模式显示预览图标（Eye），预览模式显示编辑源码图标（SquareCode） */}
-            {view === 'source' ? <Eye size={15} /> : <SquareCode size={15} />}
+            {/* 反转图标：编辑模式显示预览图标（Eye），预览模式显示编辑源码图标（Pencil 铅笔） */}
+            {view === 'source' ? <Eye size={15} /> : <Pencil size={15} />}
           </button>
         )}
 
