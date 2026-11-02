@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Check, Settings2 } from 'lucide-react'
+import { ArrowLeft, Check, Settings2, Sparkles } from 'lucide-react'
 import {
   allProviderBaseUrls,
   isConfigured,
@@ -59,6 +59,7 @@ interface Props {
   /** 日程铃声（设置 → 提醒）：数据是用户级的 schedule.sound，由工作区传进来 */
   scheduleSound?: ScheduleSound
   onScheduleSoundChange?: (patch: Partial<ScheduleSound>) => void
+  onSwitchSection?: (section: 'general' | 'agent') => void
 }
 
 type Page = { view: 'list' } | { view: 'config'; providerId: string }
@@ -72,7 +73,7 @@ type Page = { view: 'list' } | { view: 'config'; providerId: string }
  *   预设不再以「已内置的提供商」形式出现——它们只是创建时的模板。
  * 二级「配置页」：选预设（或自定义兼容格式）→ 名称 → Key → 模型列表。
  */
-export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, onScheduleSoundChange }: Props) {
+export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, onScheduleSoundChange, onSwitchSection }: Props) {
   const initial = loadAiSettings()
   const [tab, setTab] = useState<TabKey>(loadSavedTab)
   const [activeSubTab, setActiveSubTab] = useState<string>('theme')
@@ -248,16 +249,31 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 bg-paper">
-      <nav className="flex w-[184px] shrink-0 flex-col gap-1 border-r border-line bg-paper-deep px-3 py-4 overflow-y-auto">
-        {/* 三击「设置」二字是开发者分页的隐藏入口：e.detail 就是连击数 */}
+      <nav className="flex w-[196px] shrink-0 flex-col gap-1 border-r border-line bg-paper-deep px-3 py-3.5 overflow-y-auto select-none">
+        {/* 常规 / Agent 设置 Switch 切换组件 */}
         <div
-          className="flex items-center gap-2 px-2 pb-3 text-[15px] font-semibold text-ink-strong cursor-default select-none"
+          className="mb-2.5 flex items-center p-0.5 bg-card/60 border border-line rounded-none"
+          title={t('连续三击可解锁开发者模式')}
           onClick={(e) => {
             if (e.detail >= 3) setDevEntry(true)
           }}
         >
-          <Settings2 size={16} className="shrink-0 text-seal" />
-          {t('设置')}
+          <button
+            type="button"
+            onClick={() => onSwitchSection?.('general')}
+            className="flex flex-1 items-center justify-center gap-1.5 py-1 px-2 text-[12px] font-semibold bg-paper text-ink-strong shadow-2xs rounded-none transition"
+          >
+            <Settings2 size={13} className="text-seal shrink-0" />
+            <span>{t('常规')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onSwitchSection?.('agent')}
+            className="flex flex-1 items-center justify-center gap-1.5 py-1 px-2 text-[12px] font-medium text-ink-soft hover:text-ink hover:bg-card/40 rounded-none transition"
+          >
+            <Sparkles size={13} className="text-ink-faint shrink-0" />
+            <span>{t('Agent')}</span>
+          </button>
         </div>
         {tabs.map((tb) => (
           <div key={tb.key} className="flex flex-col">

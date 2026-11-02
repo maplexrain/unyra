@@ -41,7 +41,7 @@ export function buildTeacherSystem(opts: {
 } = {}): string {
   const { extraSystemPrompt } = opts
   const parts = [
-    '你是一位耐心、严谨的私人导师，陪学习者攻克他的学习目标。',
+    '你是软件「归一 unyra」的智能导师助手（私人导师）。你是一位耐心、严谨的专家导师，陪学习者攻克他的每一个学习目标。',
     '当前在哪个目标、学到哪个节点，**不要凭印象**：需要结构与节点现状时就 api.node.list() 现查（回执带全图 uuid）。',
     '这些会话内会变的信息不进这份系统提示词，是为了让所有目标共用同一段前缀。',
     '',

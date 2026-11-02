@@ -11,6 +11,7 @@
 import { memo, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { BookOpen, Sparkles } from 'lucide-react'
 import MarkdownView from '../../MarkdownView'
+import { NoteBlockPreview } from './NoteBlockPreview'
 import WaveBars from '../../WaveBars'
 import type { Annotation, DocKind } from '../../../learn/types'
 import type { AnnotationActions } from '../../../lib/annotation'
@@ -51,6 +52,7 @@ interface Props {
   wordCount: number
   /** 浮在正文这一层上的东西（选词菜单）：位置与开合由上层管，这里只负责插回原位 */
   overlay?: ReactNode
+  onEditContent?: (next: string) => void
 }
 
 function sameConceptKeys(a?: Set<string>, b?: Set<string>): boolean {
@@ -110,6 +112,7 @@ export const DocBody = memo(function DocBody({
   resolveLocalImage,
   wordCount,
   overlay,
+  onEditContent,
 }: Props) {
   /* 两端渐隐：滚到头就摘掉那一端（判据与代价见 lib/scrollFade） */
   const scrollEdges = useScrollEdges(scrollRef)
@@ -157,13 +160,24 @@ export const DocBody = memo(function DocBody({
               style={{ '--doc-scale': docScale } as CSSProperties}
               onCopy={(e) => copySelectionAsMarkdown(e, bodyRef.current, content)}
             >
-              <MarkdownView
-                html={html}
-                annotations={annotations}
-                knownConceptKeys={knownConceptKeys}
-                annotationActions={annotationActions}
-                resolveLocalImage={resolveLocalImage}
-              />
+              {kind === 'note' && onEditContent ? (
+                <NoteBlockPreview
+                  content={content}
+                  onEditContent={onEditContent}
+                  annotations={annotations}
+                  knownConceptKeys={knownConceptKeys}
+                  annotationActions={annotationActions}
+                  resolveLocalImage={resolveLocalImage}
+                />
+              ) : (
+                <MarkdownView
+                  html={html}
+                  annotations={annotations}
+                  knownConceptKeys={knownConceptKeys}
+                  annotationActions={annotationActions}
+                  resolveLocalImage={resolveLocalImage}
+                />
+              )}
             </div>
           </div>
         </div>

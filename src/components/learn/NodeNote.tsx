@@ -334,6 +334,7 @@ export default memo(function NodeNote({
           annotationActions={annotationActions}
           resolveLocalImage={resolveLocalImage}
           wordCount={wordCount}
+          onEditContent={onEditContent}
           // 选词菜单浮在正文这一层上：位置与开合仍由本组件管（见 note/useSelectionMenu）
           overlay={
             menuMounted && (

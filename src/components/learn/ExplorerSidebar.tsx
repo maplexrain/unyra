@@ -17,7 +17,7 @@ import { EXPLORER_WIDTH_MAX, EXPLORER_WIDTH_MIN } from '../../lib/appearance'
 import { userAbsPrefix } from '../../lib/storage'
 import Logo from '../Logo'
 import { NewGoalIcon, OpenLocalIcon } from '../icons'
-import { Plus } from 'lucide-react'
+import { Clock, Hexagon, LayoutGrid, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings } from 'lucide-react'
 import { NodeRow } from './explorer/NodeRow'
 import { RowMenu } from './explorer/RowMenu'
 import { FavoriteSection, LocalRow, VideoRow } from './explorer/sections'
@@ -124,6 +124,10 @@ interface Props {
   docs: NodeDocActions
   /** 考试那一侧的动作（原先都在文档区悬浮组的「试卷」tip 里） */
   exams: ExamActions
+  onOpenEssay?: () => void
+  onOpenSchedule?: () => void
+  onOpenSettings?: () => void
+  onOpenFind?: () => void
   /** 学习状态那块 tip 要的东西（节点右键菜单里的二级 tip） */
 }
 
@@ -162,6 +166,10 @@ function ExplorerSidebarComponent({
   favoriteTitleOf,
   docs,
   exams,
+  onOpenEssay,
+  onOpenSchedule,
+  onOpenSettings,
+  onOpenFind,
 }: Props) {
   const { isOpen, toggle } = useTreeExpand(store, activeNodeId)
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -171,6 +179,26 @@ function ExplorerSidebarComponent({
    */
   const [renaming, setRenaming] = useState<{ nodeId: string; name: string } | null>(null)
   const { width, resizing, asideRef, onWidthDown, onWidthMove, onWidthUp } = useSidebarWidth()
+  const [collapsedBar, setCollapsedBar] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('moji:explorer:collapsed') === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  const toggleCollapsed = (next?: boolean) => {
+    setCollapsedBar((prev) => {
+      const val = next !== undefined ? next : !prev
+      try {
+        localStorage.setItem('moji:explorer:collapsed', val ? 'true' : 'false')
+      } catch {}
+      return val
+    })
+  }
+
+  const currentWidth = collapsedBar ? 48 : width
+
   // 同一枚页签重复激活时，只唤醒侧栏自身，不让 LearnWorkspace 整树重渲染。
   const browseNonce = useSyncExternalStore(subscribeRevealRequest, revealRequestVersion)
 
@@ -270,29 +298,130 @@ function ExplorerSidebarComponent({
          * 把外边距收成 -width 才是真的让位，而宽度本身一点不动——里面的树、滚动位置
          * 全都原样待着，滑出去的只是整块。等宽过渡与右侧那一栏同一档（300ms）。
          */
-        style={{ width, marginLeft: pure ? -width : 0 }}
+        style={{ width: currentWidth, marginLeft: pure ? -currentWidth : 0 }}
         // md:relative（而不是 md:static）：右边那条宽度把手是绝对定位的，得有个定位祖先；
         // relative 与 static 在流里的占位完全一样，桌面上看不出区别。
         // 过渡属性按断点分开：窄屏下这一栏是抽屉（滑 transform，200ms），
         // 桌面上它靠外边距让位（300ms，与右侧栏对齐）——两者不会同时发生。
-        className={'no-print fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-line bg-paper-deep transition-transform duration-200 md:transition-[margin-left,visibility] md:duration-300 md:ease-out md:relative md:translate-x-0 ' +
+        className={'no-print fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-line bg-paper-deep transition-all duration-300 ease-out md:relative md:translate-x-0 overflow-hidden ' +
           (pure || open ? 'translate-x-0' : '-translate-x-full') +
           // 让位之后别再留在 Tab 序列里：滑出窗口只是看不见，里面那棵树、那些按钮
           // 照样能被 Tab 找到（与两列收起时那条 lg:invisible 同一个道理）
           (pure ? ' invisible' : '')}
       >
-        <header className="flex items-center gap-2.5 px-4 pb-3 pt-4">
-          <Logo size={34} />
-          <div className="min-w-0 flex-1 leading-tight">
-            <div className="text-[15px] font-semibold text-ink-strong">{t('归一')}</div>
-            <div className="text-[9px] uppercase tracking-[0.24em] text-ink-faint">Retro Learning</div>
+{collapsedBar ? (
+          /* 折叠态：48px 窄侧栏（Activity Bar 风格），带平滑过渡与功能图标 */
+          <div className="flex flex-col items-center h-full w-full py-3 select-none">
+            {/* 顶部 Logo：点击展开 */}
+            <button
+              type="button"
+              onClick={() => toggleCollapsed(false)}
+              title={t('展开资源管理器')}
+              className="flex h-8 w-8 items-center justify-center rounded-none mb-3 hover:scale-105 transition-transform"
+            >
+              <Logo size={26} />
+            </button>
+
+            {/* 随笔手札图标 */}
+            <button
+              type="button"
+              onClick={() => onOpenEssay?.()}
+              title={t('随笔（双击 Shift 亦可打开）')}
+              className="flex h-8 w-8 items-center justify-center text-ink-soft hover:text-ink hover:bg-card/70 rounded-none transition my-0.5"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M14 3H4v18h16V9l-6-6Z" />
+                <path d="M14 3v6h6" />
+                <path d="M7 13h10" />
+                <path d="M7 17h6" />
+              </svg>
+            </button>
+
+            {/* 搜索/查找 */}
+            <button
+              type="button"
+              onClick={() => {
+                toggleCollapsed(false)
+                onOpenFind?.()
+              }}
+              title={t('搜索 / 查找')}
+              className="flex h-8 w-8 items-center justify-center text-ink-soft hover:text-ink hover:bg-card/70 rounded-none transition my-0.5"
+            >
+              <Search size={16} />
+            </button>
+
+            {/* 资源管理 / 知识节点 */}
+            <button
+              type="button"
+              onClick={() => toggleCollapsed(false)}
+              title={t('资源管理器（点击展开）')}
+              className="flex h-8 w-8 items-center justify-center text-seal hover:text-seal-deep hover:bg-card/70 rounded-none transition my-0.5"
+            >
+              <LayoutGrid size={16} />
+            </button>
+
+            {/* 日程 / 时钟 */}
+            <button
+              type="button"
+              onClick={() => onOpenSchedule?.()}
+              title={t('日程')}
+              className="flex h-8 w-8 items-center justify-center text-ink-soft hover:text-ink hover:bg-card/70 rounded-none transition my-0.5"
+            >
+              <Clock size={16} />
+            </button>
+
+            {/* 工具 / 工作流 */}
+            <button
+              type="button"
+              onClick={() => onOpenSettings?.()}
+              title={t('工作流与工具')}
+              className="flex h-8 w-8 items-center justify-center text-ink-soft hover:text-ink hover:bg-card/70 rounded-none transition my-0.5"
+            >
+              <Hexagon size={16} />
+            </button>
+
+            {/* 弹性占位 */}
+            <div className="flex-1 min-h-4" />
+
+            {/* 底部设置齿轮 */}
+            <button
+              type="button"
+              onClick={() => onOpenSettings?.()}
+              title={t('设置')}
+              className="flex h-8 w-8 items-center justify-center text-ink-soft hover:text-ink hover:bg-card/70 rounded-none transition my-0.5"
+            >
+              <Settings size={16} />
+            </button>
+
+            {/* 展开按钮 */}
+            <button
+              type="button"
+              onClick={() => toggleCollapsed(false)}
+              title={t('展开侧栏')}
+              className="flex h-8 w-8 items-center justify-center text-ink-soft hover:text-seal hover:bg-card/70 rounded-none transition mt-1"
+            >
+              <PanelLeftOpen size={16} />
+            </button>
           </div>
-          {/*
-            顶部不再放任何动作按钮：它们原先与各自分区里的入口重复
-            （打开本地文件就在「本地文件」区的右上角），新建学习目标则挪到了
-            「知识节点」区的右上角——动作长在它作用的那一类东西旁边，才找得到。
-          */}
-        </header>
+        ) : (
+          /* 展开态：完整的资源管理器结构 */
+          <>
+            <header className="flex items-center gap-2 px-3 pb-2.5 pt-3.5 border-b border-line/40">
+              <Logo size={30} />
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="text-[14px] font-semibold text-ink-strong">{t('归一')}</div>
+                <div className="text-[8.5px] uppercase tracking-[0.2em] text-ink-faint">Retro Learning</div>
+              </div>
+              {/* 收起侧栏按钮 */}
+              <button
+                type="button"
+                onClick={() => toggleCollapsed(true)}
+                title={t('收起侧栏')}
+                className="flex h-6 w-6 items-center justify-center text-ink-soft hover:text-ink hover:bg-card/60 rounded-none transition"
+              >
+                <PanelLeftClose size={14} />
+              </button>
+            </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto pb-2">
           <Section
@@ -423,6 +552,8 @@ function ExplorerSidebarComponent({
             <SystemAudioWave />
           </div>
         )}
+          </>
+        )}
 
         {/*
           右边线上的宽度把手：命中区 8px（一像素的线抓不住），骑在那条 border-r 上。
@@ -439,7 +570,7 @@ function ExplorerSidebarComponent({
           onPointerCancel={onWidthUp}
           className={
             'no-print absolute inset-y-0 right-0 z-10 hidden w-2 translate-x-1/2 cursor-col-resize touch-none md:block ' +
-            (resizing ? 'bg-seal/40' : '')
+            (resizing ? 'bg-seal/40' : '') + (collapsedBar ? ' !hidden' : '')
           }
         />
       </aside>

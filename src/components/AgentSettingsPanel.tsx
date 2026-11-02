@@ -7,6 +7,7 @@ import {
   Cpu,
   FolderCheck,
   GraduationCap,
+  Settings2,
   Sparkles,
   Terminal,
   Workflow,
@@ -77,6 +78,7 @@ interface Props {
   onMemoryDelete?: (uuid: string) => void
   onMemoryClearWork?: (goalId: string) => void
   onToast?: (msg: string) => void
+  onSwitchSection?: (section: 'general' | 'agent') => void
 }
 
 type TabKey = 'chat' | 'strategy' | 'memory' | 'skills' | 'mcp' | 'tools' | 'permissions' | 'flow' | 'dev'
@@ -146,6 +148,7 @@ export default function AgentSettingsPanel({
   onMemoryDelete = () => {},
   onMemoryClearWork = () => {},
   onToast = () => {},
+  onSwitchSection,
 }: Props) {
   /** 三击「超级导师设置」标题：开发者分页的隐藏入口 */
   const [devEntry, setDevEntry] = useState(false)
@@ -185,22 +188,31 @@ export default function AgentSettingsPanel({
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 bg-paper">
       {/* 左侧导航栏 */}
-      <nav className="flex w-[196px] shrink-0 flex-col gap-1.5 border-r border-line bg-paper-deep/80 px-3 py-4 select-none">
-        {/* 标题与品牌区：三击进入开发者模式 */}
+      <nav className="flex w-[196px] shrink-0 flex-col gap-1 border-r border-line bg-paper-deep px-3 py-3.5 overflow-y-auto select-none">
+        {/* 常规 / Agent 设置 Switch 切换组件 */}
         <div
-          className="group flex cursor-pointer items-center gap-2.5 rounded-xl px-2 pb-3 pt-1 transition hover:bg-paper/50"
-          title={t('连续三击标题可解锁开发者模式')}
+          className="mb-2.5 flex items-center p-0.5 bg-card/60 border border-line rounded-none"
+          title={t('连续三击可解锁开发者模式')}
           onClick={(e) => {
             if (e.detail >= 3) setDevEntry(true)
           }}
         >
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-seal/20 to-seal/5 text-seal border border-seal/20 shadow-2xs">
-            <Sparkles size={14} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[13.5px] font-bold tracking-tight text-ink-strong">{t('超级导师')}</h1>
-            <p className="text-[10px] text-ink-faint truncate">{t('全局 Agent 配置')}</p>
-          </div>
+          <button
+            type="button"
+            onClick={() => onSwitchSection?.('general')}
+            className="flex flex-1 items-center justify-center gap-1.5 py-1 px-2 text-[12px] font-medium text-ink-soft hover:text-ink hover:bg-card/40 rounded-none transition"
+          >
+            <Settings2 size={13} className="text-ink-faint shrink-0" />
+            <span>{t('常规')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onSwitchSection?.('agent')}
+            className="flex flex-1 items-center justify-center gap-1.5 py-1 px-2 text-[12px] font-semibold bg-paper text-ink-strong shadow-2xs rounded-none transition"
+          >
+            <Sparkles size={13} className="text-seal shrink-0" />
+            <span>{t('Agent')}</span>
+          </button>
         </div>
 
         {/* Tab 导航项 */}

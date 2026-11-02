@@ -4998,6 +4998,7 @@ export default function LearnWorkspace({
                 onToast={onToast}
                 scheduleSound={store.schedule?.sound}
                 onScheduleSoundChange={scheduleActions.setSound}
+                onSwitchSection={(sec) => openTab({ kind: sec === 'agent' ? 'agentSettings' : 'settings' })}
               />
             ) : gTab?.ref.kind === 'mind' ? (
               /*
@@ -5042,6 +5043,7 @@ export default function LearnWorkspace({
                 onMemoryDelete={memoryDelete}
                 onMemoryClearWork={memoryClearWork}
                 onToast={onToast}
+                onSwitchSection={(sec) => openTab({ kind: sec === 'agent' ? 'agentSettings' : 'settings' })}
               />
             ) : gTab?.ref.kind === 'draft' ? (
               /*
@@ -5682,6 +5684,10 @@ export default function LearnWorkspace({
         favoriteTitleOf={favoriteTitleOf}
         docs={explorerDocs}
         exams={explorerExams}
+        onOpenEssay={() => setEssayOpen(true)}
+        onOpenSchedule={() => openTab({ kind: 'schedule' })}
+        onOpenSettings={() => openTab({ kind: 'settings' })}
+        onOpenFind={() => setFindMode('find')}
       />
 
       <div className="print-flat flex min-w-0 flex-1 flex-col">
