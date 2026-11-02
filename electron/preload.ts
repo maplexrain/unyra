@@ -395,6 +395,7 @@ const api = {
    */
   ocr: {
     modelStatus: (): Promise<OcrModelStatus> => ipcRenderer.invoke('ocr:modelStatus'),
+    setActiveModel: (modelId: string): Promise<boolean> => ipcRenderer.invoke('ocr:setActiveModel', modelId),
     downloadModel: (req: OcrDownloadRequest): Promise<OcrDownloadResult> => ipcRenderer.invoke('ocr:downloadModel', req),
     cancelDownload: (): Promise<boolean> => ipcRenderer.invoke('ocr:cancelDownload'),
     chooseModel: (): Promise<{ ok: boolean; canceled?: boolean; error?: string }> =>

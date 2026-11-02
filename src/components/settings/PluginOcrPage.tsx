@@ -30,6 +30,7 @@ import {
   onOcrModelProgress,
   removeOcrModel,
   revealOcrModelDir,
+  setActiveOcrModel,
   type OcrModelOption,
   type OcrModelStatus,
 } from '../../lib/ocr/model'
@@ -102,6 +103,15 @@ export function PluginOcrPage({ onToast }: Props) {
         setError(res.error ?? t('导入失败'))
       } else {
         onToast(t('已成功导入本机模型'))
+        refresh()
+      }
+    })
+  }
+
+  const handleSetActive = (modelId: string) => {
+    void setActiveOcrModel(modelId).then((ok) => {
+      if (ok) {
+        onToast(t('已切换当前 OCR 识别模型'))
         refresh()
       }
     })
@@ -218,10 +228,17 @@ export function PluginOcrPage({ onToast }: Props) {
                   </div>
 
                   {model.exists ? (
-                    <span className="flex items-center gap-1 rounded-none border border-ok-deep/40 bg-ok-deep/10 px-2 py-0.5 text-[10.5px] font-medium text-ok-deep">
-                      <Check size={11} className="stroke-[2.5]" />
-                      {t('已就绪 · {0}', formatBytes(model.bytes))}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {status?.activeModelId === model.id && (
+                        <span className="px-1.5 py-0.5 text-[10px] rounded-none border border-seal/40 bg-seal/10 text-seal font-medium">
+                          {t('使用中')}
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1 rounded-none border border-ok-deep/40 bg-ok-deep/10 px-2 py-0.5 text-[10.5px] font-medium text-ok-deep">
+                        <Check size={11} className="stroke-[2.5]" />
+                        {t('已就绪 · {0}', formatBytes(model.bytes))}
+                      </span>
+                    </div>
                   ) : isDownloading ? (
                     <span className="rounded-none border border-warn-deep/40 bg-warn-deep/10 px-2 py-0.5 text-[10.5px] font-medium text-warn-deep animate-pulse">
                       {t('下载中 {0}%', percent ?? 0)}
@@ -269,15 +286,38 @@ export function PluginOcrPage({ onToast }: Props) {
                       <span>{t('下载模型')}</span>
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleRemove(model.id)}
-                      className="flex items-center gap-1 rounded-none border border-line px-2.5 py-1 text-[11px] text-ink-soft hover:text-rose-500 hover:border-rose-300 transition"
-                      title={t('删除此模型')}
-                    >
-                      <Trash2 size={11} />
-                      <span>{t('删除')}</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {status?.activeModelId !== model.id && (
+                        <button
+                          type="button"
+                          onClick={() => handleSetActive(model.id)}
+                          className="flex items-center gap-1 rounded-none border border-line bg-card px-2 py-1 text-[11px] text-ink-soft hover:text-ink hover:border-line-strong transition"
+                        >
+                          <Check size={11} />
+                          <span>{t('设为当前')}</span>
+                        </button>
+                      )}
+                      {model.bytes < model.totalBytes * 0.7 && (
+                        <button
+                          type="button"
+                          onClick={() => handleStartDownload(model.id)}
+                          className="flex items-center gap-1 rounded-none border border-seal/40 bg-seal/5 px-2 py-1 text-[11px] font-medium text-seal hover:bg-seal hover:text-white transition"
+                          title={t('下载完整离线权重（{0} MB）', model.sizeMb)}
+                        >
+                          <Download size={11} />
+                          <span>{t('下载完整版')}</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(model.id)}
+                        className="flex items-center gap-1 rounded-none border border-line px-2.5 py-1 text-[11px] text-ink-soft hover:text-rose-500 hover:border-rose-300 transition"
+                        title={t('删除此模型')}
+                      >
+                        <Trash2 size={11} />
+                        <span>{t('删除')}</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

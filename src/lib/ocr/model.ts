@@ -24,6 +24,14 @@ export type {
 }
 
 /** 查询所有 OCR 模型与下载源状态 */
+export async function setActiveOcrModel(modelId: string): Promise<boolean> {
+  try {
+    return await native().ocr.setActiveModel(modelId)
+  } catch {
+    return false
+  }
+}
+
 export async function ocrModelStatus(): Promise<OcrModelStatus> {
   try {
     return await native().ocr.modelStatus()

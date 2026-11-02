@@ -212,6 +212,7 @@ export function createWebNativeBridge(): NativeBridge {
     },
 
     ocr: {
+      setActiveModel: () => Promise.resolve(true),
       modelStatus: () => Promise.resolve({
         activeModelId: 'pp-ocrv4-mobile',
         models: [],

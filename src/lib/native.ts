@@ -384,6 +384,7 @@ export interface NativeBridge {
    */
   ocr: {
     modelStatus(): Promise<OcrModelStatus>
+    setActiveModel(modelId: string): Promise<boolean>
     downloadModel(req: OcrDownloadRequest): Promise<OcrDownloadResult>
     cancelDownload(): Promise<boolean>
     chooseModel(): Promise<{ ok: boolean; canceled?: boolean; error?: string }>

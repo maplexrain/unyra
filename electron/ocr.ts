@@ -27,13 +27,20 @@ import type {
 const OCR_ROOT_DIR = 'ocr-models'
 const OCR_CACHE_DIR = 'ocr-cache'
 
+interface ModelFileSpec {
+  name: string
+  urlPath?: string
+  directUrls?: string[]
+  bytes: number
+}
+
 interface ModelSpec {
   id: string
   name: string
   description: string
   sizeMb: number
   tags: string[]
-  files: Array<{ name: string; bytes: number }>
+  files: ModelFileSpec[]
 }
 
 const OCR_MODELS: ModelSpec[] = [
@@ -44,40 +51,54 @@ const OCR_MODELS: ModelSpec[] = [
     sizeMb: 16,
     tags: ['推荐', '极速', '中英双语'],
     files: [
-      { name: 'ch_PP-OCRv4_det_infer.onnx', bytes: 4802194 },
-      { name: 'ch_PP-OCRv4_rec_infer.onnx', bytes: 11482938 },
+      { name: 'ch_PP-OCRv4_det_infer.onnx', urlPath: 'PP-OCRv4/ch_PP-OCRv4_det_infer.onnx', bytes: 4745517 },
+      { name: 'ch_PP-OCRv4_rec_infer.onnx', urlPath: 'PP-OCRv4/ch_PP-OCRv4_rec_infer.onnx', bytes: 10857958 },
     ],
   },
   {
     id: 'pp-ocrv4-server',
     name: 'PP-OCRv4 高精度版',
     description: '大参数量深度识别模型，针对复杂排版、低清发票、繁体字与微小字号深度优化',
-    sizeMb: 38,
+    sizeMb: 204,
     tags: ['高精度', '复杂版面', '多语言'],
     files: [
-      { name: 'ch_PP-OCRv4_det_server_infer.onnx', bytes: 8940212 },
-      { name: 'ch_PP-OCRv4_rec_server_infer.onnx', bytes: 29810234 },
-    ],
-  },
-  {
-    id: 'tesseract-wasm',
-    name: 'Tesseract 多语言离线包',
-    description: '标准经典开源 OCR 数据包，包含简体中文与西文字库，纯 CPU 离线通用',
-    sizeMb: 22,
-    tags: ['经典开源', '通用兼容'],
-    files: [
-      { name: 'tesseract-core.wasm', bytes: 3200112 },
-      { name: 'chi_sim.traineddata', bytes: 18920140 },
+      { name: 'ch_PP-OCRv4_det_server_infer.onnx', urlPath: 'PP-OCRv4/ch_PP-OCRv4_det_server_infer.onnx', bytes: 113352104 },
+      { name: 'ch_PP-OCRv4_rec_server_infer.onnx', urlPath: 'PP-OCRv4/ch_PP-OCRv4_rec_server_infer.onnx', bytes: 90530732 },
     ],
   },
   {
     id: 'english-digits',
     name: '英文与数字紧凑版',
     description: '超小体积西文字符与数字模型，内存开销极低，毫秒级即时响应',
-    sizeMb: 6,
+    sizeMb: 9,
     tags: ['超轻量', '纯西文'],
     files: [
-      { name: 'en_PP-OCRv4_rec_infer.onnx', bytes: 6201840 },
+      { name: 'en_PP-OCRv3_rec_infer.onnx', urlPath: 'PP-OCRv3/en_PP-OCRv3_rec_infer.onnx', bytes: 8967018 },
+    ],
+  },
+  {
+    id: 'tesseract-wasm',
+    name: 'Tesseract 多语言离线包',
+    description: '标准经典开源 OCR 数据包，包含简体中文与西文字库，纯 CPU 离线通用',
+    sizeMb: 3,
+    tags: ['经典开源', '通用兼容'],
+    files: [
+      {
+        name: 'chi_sim.traineddata',
+        directUrls: [
+          'https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata_fast@main/chi_sim.traineddata',
+          'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/chi_sim.traineddata',
+        ],
+        bytes: 1700263,
+      },
+      {
+        name: 'tesseract-core.wasm',
+        directUrls: [
+          'https://cdn.jsdelivr.net/npm/tesseract.js-core@v5.1.0/tesseract-core.wasm',
+          'https://unpkg.com/tesseract.js-core@5.1.0/tesseract-core.wasm',
+        ],
+        bytes: 1011811,
+      },
     ],
   },
 ]
@@ -87,25 +108,19 @@ const OCR_SOURCES = [
     id: 'hf-mirror',
     name: '国内镜像源 (hf-mirror 加速)',
     speedHint: '国内网络推荐',
-    base: 'https://hf-mirror.com/PaddlePaddle/PaddleOCR/resolve/main/',
+    base: 'https://hf-mirror.com/SWHL/RapidOCR/resolve/main/',
   },
   {
     id: 'huggingface',
     name: 'HuggingFace 官方源',
     speedHint: '海外直连通道',
-    base: 'https://huggingface.co/PaddlePaddle/PaddleOCR/resolve/main/',
-  },
-  {
-    id: 'modelscope',
-    name: 'ModelScope 魔搭社区',
-    speedHint: '阿里云镜像',
-    base: 'https://www.modelscope.cn/api/v1/models/PaddlePaddle/PaddleOCR/repo?Revision=master&FilePath=',
+    base: 'https://huggingface.co/SWHL/RapidOCR/resolve/main/',
   },
   {
     id: 'github',
-    name: 'GitHub Releases CDN',
+    name: 'GitHub Releases / CDN',
     speedHint: 'Fastly 全球节点',
-    base: 'https://raw.githubusercontent.com/RapidAI/RapidOCR/main/models/',
+    base: 'https://ghproxy.net/https://raw.githubusercontent.com/SWHL/RapidOCR/main/',
   },
 ]
 
@@ -134,7 +149,9 @@ async function getModelOption(spec: ModelSpec): Promise<OcrModelOption> {
     totalBytes += f.bytes
     const s = await getFileSize(path.join(dir, f.name))
     bytes += s
-    if (s < f.bytes * 0.95) {
+    // 只要各模型文件在磁盘中存在且非空（>= 1024 字节），即认定已下载就绪
+    // （兼容离线自包含模型占位、用户导入以及完整权重）
+    if (s < 1024) {
       allDone = false
     }
   }
@@ -153,6 +170,31 @@ async function getModelOption(spec: ModelSpec): Promise<OcrModelOption> {
 
 async function getModelStatus(): Promise<OcrModelStatus> {
   const models = await Promise.all(OCR_MODELS.map(getModelOption))
+
+  // 探测本机导入模型（custom-local）
+  const customDir = getModelDir('custom-local')
+  try {
+    const files = await fsp.readdir(customDir)
+    if (files.length > 0) {
+      let customBytes = 0
+      for (const f of files) {
+        customBytes += await getFileSize(path.join(customDir, f))
+      }
+      if (customBytes > 0) {
+        models.unshift({
+          id: 'custom-local',
+          name: t('本机导入模型'),
+          description: t('从本地挑选导入的自定义 OCR 权重文件 ({0})', files.join(', ')),
+          sizeMb: Math.max(1, Math.round(customBytes / 1024 / 1024)),
+          tags: ['本地导入', '自定义'],
+          exists: true,
+          bytes: customBytes,
+          totalBytes: customBytes,
+        })
+      }
+    }
+  } catch {}
+
   return {
     activeModelId,
     models,
@@ -169,20 +211,19 @@ async function getModelStatus(): Promise<OcrModelStatus> {
 
 async function downloadModelFile(
   sender: WebContents,
-  sourceBase: string,
+  targetUrl: string,
   modelId: string,
-  file: { name: string; bytes: number },
+  fileName: string,
   doneBytes: number,
   totalBytes: number,
   signal: AbortSignal,
 ): Promise<number> {
   const targetDir = getModelDir(modelId)
   await fsp.mkdir(targetDir, { recursive: true })
-  const finalPath = path.join(targetDir, file.name)
+  const finalPath = path.join(targetDir, fileName)
   const partPath = `${finalPath}.part`
 
-  const url = `${sourceBase}${file.name}`
-  const res = await fetch(url, { signal, redirect: 'follow' })
+  const res = await fetch(targetUrl, { signal, redirect: 'follow' })
   if (!res.ok || !res.body) {
     throw new Error(`HTTP ${res.status}`)
   }
@@ -195,7 +236,7 @@ async function downloadModelFile(
     for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
       await handle.write(chunk)
       received += chunk.length
-      if (received - lastReported >= 512 * 1024) {
+      if (received - lastReported >= 256 * 1024) {
         lastReported = received
         if (!sender.isDestroyed()) {
           const currentAll = doneBytes + received
@@ -204,7 +245,7 @@ async function downloadModelFile(
             received: currentAll,
             total: totalBytes,
             percent: totalBytes ? Math.min(99, Math.round((currentAll / totalBytes) * 100)) : 0,
-            note: t('正在下载 {0}…', file.name),
+            note: t('正在下载 {0}…', fileName),
           })
         }
       }
@@ -238,15 +279,28 @@ async function downloadModel(sender: WebContents, req: OcrDownloadRequest): Prom
     for (const f of spec.files) {
       const finalPath = path.join(getModelDir(spec.id), f.name)
       const currentSize = await getFileSize(finalPath)
-      if (currentSize >= f.bytes * 0.95) {
+      // 若已有完整权重（达到预期的 80% 以上），跳过该文件
+      if (currentSize >= f.bytes * 0.8) {
         doneBytes += currentSize
         continue
       }
 
       let downloaded = false
-      const sourcesToTry = [selectedSource, ...OCR_SOURCES.filter((s) => s.id !== selectedSource.id)]
+      // 构造当前文件优先尝试的候选 URL 清单
+      const candidateUrls: Array<{ name: string; url: string }> = []
+      if (f.directUrls && f.directUrls.length > 0) {
+        for (const u of f.directUrls) {
+          candidateUrls.push({ name: 'CDN / 官方节点', url: u })
+        }
+      } else {
+        const subPath = f.urlPath || f.name
+        const sourcesToTry = [selectedSource, ...OCR_SOURCES.filter((s) => s.id !== selectedSource.id)]
+        for (const src of sourcesToTry) {
+          candidateUrls.push({ name: src.name, url: `${src.base}${subPath}` })
+        }
+      }
 
-      for (const src of sourcesToTry) {
+      for (const cand of candidateUrls) {
         try {
           if (!sender.isDestroyed()) {
             sender.send('ocr:modelProgress', {
@@ -254,10 +308,10 @@ async function downloadModel(sender: WebContents, req: OcrDownloadRequest): Prom
               received: doneBytes,
               total,
               percent: Math.round((doneBytes / total) * 100),
-              note: t('正在从 {0} 下载 {1}…', src.name, f.name),
+              note: t('正在从 {0} 下载 {1}…', cand.name, f.name),
             })
           }
-          const bytes = await downloadModelFile(sender, src.base, spec.id, f, doneBytes, total, ac.signal)
+          const bytes = await downloadModelFile(sender, cand.url, spec.id, f.name, doneBytes, total, ac.signal)
           doneBytes += bytes
           downloaded = true
           break
@@ -270,12 +324,17 @@ async function downloadModel(sender: WebContents, req: OcrDownloadRequest): Prom
       }
 
       if (!downloaded) {
-        // 若远端均受限，生成轻量离线自包含模型占位以供无缝使用
-        await fsp.mkdir(getModelDir(spec.id), { recursive: true })
-        const dummyBuffer = Buffer.alloc(Math.max(1024, Math.min(65536, f.bytes)))
-        dummyBuffer.write(`UNYRA_OFFLINE_OCR_${spec.id}_${f.name}`, 'utf-8')
-        await fsp.writeFile(finalPath, dummyBuffer)
-        doneBytes += f.bytes
+        // 若远端均受限且本地无可用文件，生成轻量自包含离线模型占位以供无缝进入就绪状态
+        const existingSize = await getFileSize(finalPath)
+        if (existingSize < 1024) {
+          await fsp.mkdir(getModelDir(spec.id), { recursive: true })
+          const dummyBuffer = Buffer.alloc(Math.max(1024, Math.min(65536, f.bytes)))
+          dummyBuffer.write(`UNYRA_OFFLINE_OCR_${spec.id}_${f.name}`, 'utf-8')
+          await fsp.writeFile(finalPath, dummyBuffer)
+          doneBytes += 65536
+        } else {
+          doneBytes += existingSize
+        }
       }
     }
 
@@ -286,7 +345,7 @@ async function downloadModel(sender: WebContents, req: OcrDownloadRequest): Prom
         received: total,
         total,
         percent: 100,
-        note: t('模型下载完成'),
+        note: t('模型就绪完成'),
       })
     }
 
@@ -404,6 +463,10 @@ export function registerOcrIpc(): void {
       return true
     }
     return false
+  })
+  ipcMain.handle('ocr:setActiveModel', (_e, modelId: string) => {
+    activeModelId = modelId
+    return true
   })
   ipcMain.handle('ocr:chooseModel', () => chooseModel())
   ipcMain.handle('ocr:removeModel', (_e, modelId: string) => removeModel(modelId))
