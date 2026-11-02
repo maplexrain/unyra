@@ -18,7 +18,7 @@ export async function buildServer() {
     platform: 'node',
     target: 'node20',
     format: 'cjs',
-    external: ['electron', 'sherpa-onnx-node'],
+    external: ['electron', 'sherpa-onnx-node', 'onnxruntime-node'],
     sourcemap: true,
     logLevel: 'info',
   })
