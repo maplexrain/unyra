@@ -52,6 +52,7 @@ const PdfPageItem = memo(function PdfPageItem({
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null)
   const renderedRef = useRef(false)
   const loadingRef = useRef(false)
+  const nextRenderRequestedRef = useRef(false)
   const renderTaskRef = useRef<{ cancel: () => void } | null>(null)
 
   // 1. 获取基础页面尺寸以提前占位，避免页面高度坍塌跳动
@@ -70,18 +71,22 @@ const PdfPageItem = memo(function PdfPageItem({
     }
   }, [pdfDoc, pageNum, zoom])
 
-  // 2. 页面渲染函数：已渲染完成则绝不重复渲染，彻底杜绝滚动闪烁
+  // 2. 页面渲染函数：若正在渲染前一轮缩放，取消并排队执行最新一轮；已渲染完成则绝不重复渲染
   const renderPage = useCallback(async () => {
-    if (!canvasRef.current || loadingRef.current || renderedRef.current) return
-    loadingRef.current = true
+    if (!canvasRef.current || renderedRef.current) return
 
-    // 取消上一次未完成的渲染任务
-    if (renderTaskRef.current) {
-      try {
-        renderTaskRef.current.cancel()
-      } catch {}
-      renderTaskRef.current = null
+    if (loadingRef.current) {
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel()
+        } catch {}
+        renderTaskRef.current = null
+      }
+      nextRenderRequestedRef.current = true
+      return
     }
+
+    loadingRef.current = true
 
     try {
       const page = await pdfDoc.getPage(pageNum)
@@ -120,13 +125,20 @@ const PdfPageItem = memo(function PdfPageItem({
     } finally {
       loadingRef.current = false
       renderTaskRef.current = null
+      if (nextRenderRequestedRef.current) {
+        nextRenderRequestedRef.current = false
+        void renderPage()
+      }
     }
   }, [pdfDoc, pageNum, zoom])
 
-  // 缩放变动时，重置渲染标记以重新生成适配新尺寸的高清画布
+  // 缩放变动时，重置渲染标记以重新生成适配新尺寸的高清画布（轻量防抖 50ms 聚合连滚）
   useEffect(() => {
     renderedRef.current = false
-    void renderPage()
+    const t = setTimeout(() => {
+      void renderPage()
+    }, 50)
+    return () => clearTimeout(t)
   }, [zoom, renderPage])
 
   // 首页及前 3 页进入时主动触发一次渲染，无需等待滚动探测
@@ -173,7 +185,7 @@ const PdfPageItem = memo(function PdfPageItem({
         maxWidth: '100%',
       }}
     >
-      <canvas ref={canvasRef} className="block select-none bg-white" />
+      <canvas ref={canvasRef} className="block select-none bg-white w-full h-full" />
     </div>
   )
 })
@@ -281,28 +293,69 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
     }
   }
 
-  const handleZoom = (delta: number) => {
-    setZoom((prev) => Math.max(0.5, Math.min(3.0, prev + delta)))
-  }
+  const [zoomHud, setZoomHud] = useState(false)
+  const zoomTimerRef = useRef<number | null>(null)
 
-  // Ctrl + 鼠标滚轮缩放控制（阻止默认页面缩放，并实时更新 PDF 缩放比例）
+  const triggerZoomHud = useCallback(() => {
+    setZoomHud(true)
+    if (zoomTimerRef.current !== null) {
+      window.clearTimeout(zoomTimerRef.current)
+    }
+    zoomTimerRef.current = window.setTimeout(() => {
+      setZoomHud(false)
+      zoomTimerRef.current = null
+    }, 900)
+  }, [])
+
   useEffect(() => {
-    const el = rootRef.current
-    if (!el) return
-
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault()
-        const step = e.deltaY < 0 ? 0.1 : -0.1
-        setZoom((prev) => Math.max(0.4, Math.min(3.0, Number((prev + step).toFixed(2)))))
+    return () => {
+      if (zoomTimerRef.current !== null) {
+        window.clearTimeout(zoomTimerRef.current)
       }
     }
-
-    el.addEventListener('wheel', handleWheel, { passive: false })
-    return () => {
-      el.removeEventListener('wheel', handleWheel)
-    }
   }, [])
+
+  const handleZoom = (delta: number) => {
+    setZoom((prev) => Math.max(0.4, Math.min(3.0, Number((prev + delta).toFixed(2)))))
+    triggerZoomHud()
+  }
+
+  // Ctrl + 鼠标滚轮 / 触控板手势缩放控制（前置 capture 捕获，精准定位当前 PDF 区域）
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      // 必须按下 Ctrl (Windows/Linux) 或 Cmd (macOS)
+      if (!e.ctrlKey && !e.metaKey) return
+
+      const root = rootRef.current
+      if (!root) return
+      const target = e.target as Node | null
+      const inRoot = (target && root.contains(target)) || (e.composedPath && e.composedPath().includes(root))
+      if (!inRoot) return
+
+      // 彻底阻止浏览器默认全局网页缩放及内部容器纵向滚动
+      e.preventDefault()
+      e.stopPropagation()
+
+      const delta = -e.deltaY
+      if (Math.abs(delta) < 0.5) return
+
+      // deltaMode: 0=像素, 1=行, 2=页
+      const unit = e.deltaMode === 1 ? 3 : 100
+      const notches = Math.max(-3, Math.min(3, delta / unit))
+      // 滚轮单格固定 0.1 步长，触控板微调
+      const step = Math.abs(notches) >= 0.4 ? (notches > 0 ? 0.1 : -0.1) : Number((notches * 0.1).toFixed(2))
+      if (!step) return
+
+      setZoom((prev) => Math.max(0.4, Math.min(3.0, Number((prev + step).toFixed(2)))))
+      triggerZoomHud()
+    }
+
+    // 挂在 window 捕获阶段：优先于一切内层容器滚动与被动监听，确保 100% 拦截并响应
+    window.addEventListener('wheel', handleWheel, { passive: false, capture: true })
+    return () => {
+      window.removeEventListener('wheel', handleWheel, { capture: true })
+    }
+  }, [triggerZoomHud])
 
   const handleFitWidth = async () => {
     if (!scrollRef.current || !pdfDoc) return
@@ -312,9 +365,11 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
       const baseVp = firstPage.getViewport({ scale: 1 })
       const targetZoom = Math.max(0.4, Math.min(3.0, containerWidth / baseVp.width))
       setZoom(Number(targetZoom.toFixed(2)))
+      triggerZoomHud()
     } catch {
       const targetZoom = Math.max(0.6, Math.min(2.5, containerWidth / 595))
       setZoom(Number(targetZoom.toFixed(2)))
+      triggerZoomHud()
     }
   }
 
@@ -338,7 +393,7 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
   }
 
   return (
-    <div ref={rootRef} className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col bg-card select-none">
+    <div ref={rootRef} className="relative flex h-full min-h-0 w-full min-w-0 flex-1 flex-col bg-card select-none">
       {/* 顶部控制工具条 */}
       <div className="no-print flex h-10 shrink-0 items-center justify-between border-b border-line bg-paper-deep/70 px-4 select-none">
         <div className="flex items-center gap-2 min-w-0">
@@ -441,6 +496,13 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
           />
         ))}
       </div>
+
+      {/* 缩放浮动提示徽章（滚轮或按钮缩放时短暂显示） */}
+      {zoomHud && (
+        <div className="pointer-events-none absolute bottom-6 right-6 z-30 rounded-none bg-paper-deep/90 px-3 py-1.5 text-[12px] font-mono font-medium text-ink shadow-md border border-line backdrop-blur transition-opacity">
+          {Math.round(zoom * 100)}%
+        </div>
+      )}
     </div>
   )
 })
