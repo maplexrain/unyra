@@ -8,12 +8,13 @@
  * 4. 离线支持：允许从本机直接导入已有的模型权重文件。
  */
 
-import { dialog, ipcMain, shell, type WebContents } from 'electron'
+import { dialog, ipcMain, shell, nativeImage, type WebContents } from 'electron'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import { execFile } from 'node:child_process'
 import crypto from 'node:crypto'
+import ort from 'onnxruntime-node'
 import { getUserDataDir } from './storage/userData'
 import { t } from './i18n'
 import type {
@@ -151,9 +152,7 @@ async function getModelOption(spec: ModelSpec): Promise<OcrModelOption> {
     totalBytes += f.bytes
     const s = await getFileSize(path.join(dir, f.name))
     bytes += s
-    // 只要各模型文件在磁盘中存在且非空（>= 1024 字节），即认定已下载就绪
-    // （兼容离线自包含模型占位、用户导入以及完整权重）
-    if (s < 1024) {
+    if (s < Math.min(100 * 1024, f.bytes * 0.7)) {
       allDone = false
     }
   }
@@ -326,17 +325,29 @@ async function downloadModel(sender: WebContents, req: OcrDownloadRequest): Prom
       }
 
       if (!downloaded) {
-        // 若远端均受限且本地无可用文件，生成轻量自包含离线模型占位以供无缝进入就绪状态
-        const existingSize = await getFileSize(finalPath)
-        if (existingSize < 1024) {
-          await fsp.mkdir(getModelDir(spec.id), { recursive: true })
-          const dummyBuffer = Buffer.alloc(Math.max(1024, Math.min(65536, f.bytes)))
-          dummyBuffer.write(`UNYRA_OFFLINE_OCR_${spec.id}_${f.name}`, 'utf-8')
-          await fsp.writeFile(finalPath, dummyBuffer)
-          doneBytes += 65536
-        } else {
-          doneBytes += existingSize
-        }
+        throw new Error(t('下载模型文件 {0} 失败，请切换镜像源后重试', f.name))
+      }
+    }
+
+    // 确保 PaddleOCR 字符字典就绪
+    const targetDir = getModelDir(spec.id)
+    const dictPath = path.join(targetDir, 'ppocr_keys_v1.txt')
+    try {
+      await fsp.access(dictPath)
+    } catch {
+      const candidates = [
+        path.join(__dirname, 'assets', 'ppocr_keys_v1.txt'),
+        path.join(process.cwd(), 'electron/assets/ppocr_keys_v1.txt'),
+        path.join(process.cwd(), 'scripts/ppocr_keys_v1.txt'),
+      ]
+      for (const c of candidates) {
+        try {
+          const content = await fsp.readFile(c)
+          if (content.length > 500) {
+            await fsp.writeFile(dictPath, content)
+            break
+          }
+        } catch {}
       }
     }
 
@@ -455,6 +466,147 @@ async function ensureWinOcrScript(): Promise<string> {
   return target
 }
 
+export function cleanOcrText(str: string): string {
+  if (!str) return ''
+  let prev = ''
+  let cur = str
+  while (prev !== cur) {
+    prev = cur
+    cur = cur
+      .replace(/([\u4e00-\u9fa5\u3000-\u303f\uff01-\uff5e])\s+([\u4e00-\u9fa5\u3000-\u303f\uff01-\uff5e])/g, '$1$2')
+      .replace(/([\u4e00-\u9fa5\u3000-\u303f\uff01-\uff5e])\s+([0-9a-zA-Z])/g, '$1$2')
+      .replace(/([0-9a-zA-Z])\s+([\u4e00-\u9fa5\u3000-\u303f\uff01-\uff5e])/g, '$1$2')
+  }
+  return cur.trim()
+}
+
+let loadedRecSession: ort.InferenceSession | null = null
+let loadedRecModelPath: string | null = null
+let ocrDictCache: string[] | null = null
+
+async function getOcrDict(): Promise<string[]> {
+  if (ocrDictCache && ocrDictCache.length > 0) return ocrDictCache
+  const candidates = [
+    path.join(getOcrRootDir(), 'pp-ocrv4-mobile', 'ppocr_keys_v1.txt'),
+    path.join(getOcrRootDir(), 'pp-ocrv4-server', 'ppocr_keys_v1.txt'),
+    path.join(__dirname, 'assets', 'ppocr_keys_v1.txt'),
+    path.join(process.cwd(), 'electron/assets/ppocr_keys_v1.txt'),
+    path.join(process.cwd(), 'scripts/ppocr_keys_v1.txt'),
+  ]
+  for (const c of candidates) {
+    try {
+      const raw = await fsp.readFile(c, 'utf-8')
+      if (raw && raw.length > 500) {
+        ocrDictCache = raw.split(/\r?\n/)
+        return ocrDictCache
+      }
+    } catch {}
+  }
+  return []
+}
+
+async function getRecSession(modelId: string): Promise<ort.InferenceSession | null> {
+  const isServer = modelId === 'pp-ocrv4-server'
+  const fileName = isServer ? 'ch_PP-OCRv4_rec_server_infer.onnx' : 'ch_PP-OCRv4_rec_infer.onnx'
+  const modelPath = path.join(getModelDir(modelId), fileName)
+  try {
+    const stat = await fsp.stat(modelPath)
+    if (stat.size < 1024 * 1024) return null
+  } catch {
+    return null
+  }
+
+  if (loadedRecSession && loadedRecModelPath === modelPath) {
+    return loadedRecSession
+  }
+
+  try {
+    const session = await ort.InferenceSession.create(modelPath, {
+      executionProviders: ['cpu'],
+      graphOptimizationLevel: 'all',
+    })
+    loadedRecSession = session
+    loadedRecModelPath = modelPath
+    return session
+  } catch (err) {
+    console.warn(`[ocr] 加载 PaddleOCR 识别模型异常:`, err)
+    return null
+  }
+}
+
+async function recognizeLineWithPaddle(
+  session: ort.InferenceSession,
+  dict: string[],
+  pageImg: ReturnType<typeof nativeImage.createFromBuffer>,
+  bbox: { x: number; y: number; width: number; height: number },
+  imgW: number,
+  imgH: number
+): Promise<string | null> {
+  if (!dict.length) return null
+
+  const cropX = Math.max(0, Math.floor(bbox.x * imgW))
+  const cropY = Math.max(0, Math.floor(bbox.y * imgH))
+  const cropW = Math.max(4, Math.min(imgW - cropX, Math.ceil(bbox.width * imgW)))
+  const cropH = Math.max(4, Math.min(imgH - cropY, Math.ceil(bbox.height * imgH)))
+
+  if (cropW < 6 || cropH < 6) return null
+
+  const crop = pageImg.crop({ x: cropX, y: cropY, width: cropW, height: cropH })
+  const targetH = 48
+  const targetW = Math.max(32, Math.min(1280, Math.round((cropW * targetH) / cropH / 32) * 32))
+  const resized = crop.resize({ width: targetW, height: targetH, quality: 'best' })
+  const rawBitmap = resized.toBitmap()
+
+  const chSize = targetH * targetW
+  const tensorData = new Float32Array(3 * chSize)
+
+  for (let h = 0; h < targetH; h++) {
+    for (let w = 0; w < targetW; w++) {
+      const pIdx = (h * targetW + w) * 4
+      const b = rawBitmap[pIdx]
+      const g = rawBitmap[pIdx + 1]
+      const r = rawBitmap[pIdx + 2]
+      const idx = h * targetW + w
+      tensorData[idx] = (r / 255.0 - 0.5) / 0.5
+      tensorData[chSize + idx] = (g / 255.0 - 0.5) / 0.5
+      tensorData[2 * chSize + idx] = (b / 255.0 - 0.5) / 0.5
+    }
+  }
+
+  const tensor = new ort.Tensor('float32', tensorData, [1, 3, targetH, targetW])
+  const feeds: Record<string, ort.Tensor> = {}
+  feeds[session.inputNames[0]] = tensor
+
+  const outputs = await session.run(feeds)
+  const outTensor = outputs[session.outputNames[0]]
+  const seqLen = outTensor.dims[1]
+  const numClasses = outTensor.dims[2]
+  const data = outTensor.data as Float32Array
+
+  let decoded = ''
+  let lastClass = -1
+
+  for (let t = 0; t < seqLen; t++) {
+    const offset = t * numClasses
+    let maxIdx = 0
+    let maxVal = data[offset]
+    for (let c = 1; c < numClasses; c++) {
+      const val = data[offset + c]
+      if (val > maxVal) {
+        maxVal = val
+        maxIdx = c
+      }
+    }
+
+    if (maxIdx > 0 && maxIdx !== lastClass && maxIdx <= dict.length) {
+      decoded += dict[maxIdx - 1]
+    }
+    lastClass = maxIdx
+  }
+
+  return cleanOcrText(decoded) || null
+}
+
 async function recognizePage(req: OcrRecognizeRequest): Promise<OcrRecognizeResult> {
   const startAt = Date.now()
   const page = req.page ?? 1
@@ -492,20 +644,56 @@ async function recognizePage(req: OcrRecognizeRequest): Promise<OcrRecognizeResu
           )
         })
 
-        const parsed = JSON.parse(stdout)
+        const rawJson = stdout.trim().startsWith('{')
+          ? stdout.trim()
+          : Buffer.from(stdout.trim(), 'base64').toString('utf-8')
+        const parsed = JSON.parse(rawJson)
+
         if (parsed && Array.isArray(parsed.lines)) {
-          lines = parsed.lines.map((l: { text: string; bbox: { x: number; y: number; width: number; height: number } }) => ({
-            text: l.text,
+          lines = parsed.lines.map((l: { text: string; bbox: { x: number; y: number; width: number; height: number }; words?: Array<{ text: string; bbox: { x: number; y: number; width: number; height: number } }> }) => ({
+            text: cleanOcrText(l.text),
             bbox: {
               x: Number(l.bbox.x) || 0,
               y: Number(l.bbox.y) || 0,
               width: Number(l.bbox.width) || 0.1,
               height: Number(l.bbox.height) || 0.02,
             },
+            words: Array.isArray(l.words)
+              ? l.words.map((w) => ({
+                  text: w.text,
+                  bbox: {
+                    x: Number(w.bbox.x) || 0,
+                    y: Number(w.bbox.y) || 0,
+                    width: Number(w.bbox.width) || 0.01,
+                    height: Number(w.bbox.height) || 0.01,
+                  },
+                }))
+              : undefined,
           }))
         }
+
+        // 若当前模型已配置并下载 PaddleOCR 深度识别模型，对各行文本框执行 PaddleOCR 高精度推理强化
+        const recSession = await getRecSession(modelId)
+        if (recSession && lines.length > 0) {
+          const dict = await getOcrDict()
+          if (dict.length > 0) {
+            const pageImg = nativeImage.createFromBuffer(buf)
+            const { width: imgW, height: imgH } = pageImg.getSize()
+
+            for (const line of lines) {
+              try {
+                const paddleText = await recognizeLineWithPaddle(recSession, dict, pageImg, line.bbox, imgW, imgH)
+                if (paddleText && paddleText.length > 0) {
+                  line.text = paddleText
+                }
+              } catch (recErr) {
+                console.warn(`[ocr] PaddleOCR 行识别异常:`, recErr)
+              }
+            }
+          }
+        }
       } catch (ocrErr) {
-        console.warn(`[ocr] Windows 本地 OCR 推理异常:`, ocrErr)
+        console.warn(`[ocr] OCR 推理处理异常:`, ocrErr)
       } finally {
         await fsp.rm(tempFile, { force: true }).catch(() => {})
       }

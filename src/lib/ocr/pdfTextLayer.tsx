@@ -68,7 +68,7 @@ export async function extractOrOcrPageText(
         const normH = Math.max(0.005, Math.min(1 - normY, fontH / baseVp.height))
 
         lines.push({
-          text: item.str,
+          text: cleanOcrText(item.str),
           bbox: { x: normX, y: normY, width: normW, height: normH },
         })
       }
@@ -118,16 +118,33 @@ export async function extractOrOcrPageText(
   }
 }
 
+export function cleanOcrText(str: string): string {
+  if (!str) return ''
+  let prev = ''
+  let cur = str
+  while (prev !== cur) {
+    prev = cur
+    cur = cur
+      .replace(/([\u4e00-\u9fa5\u3000-\u303f\uff01-\uff5e])\s+([\u4e00-\u9fa5\u3000-\u303f\uff01-\uff5e])/g, '$1$2')
+      .replace(/([\u4e00-\u9fa5\u3000-\u303f\uff01-\uff5e])\s+([0-9a-zA-Z])/g, '$1$2')
+      .replace(/([0-9a-zA-Z])\s+([\u4e00-\u9fa5\u3000-\u303f\uff01-\uff5e])/g, '$1$2')
+  }
+  return cur.trim()
+}
+
 interface TextOverlayProps {
   lines: OcrLineItem[]
   pageHeight: number
 }
 
 /**
- * 隐形全透明文字层：挂贴在 Canvas 画布上层，专供框选与复制
+ * 隐形全透明文字层：挂贴在 Canvas 画布上层，专供框选与复制。
+ * 针对中英文混排、逐词微坐标和排版贴合进行了高精度对齐优化。
  */
 export const OcrTextOverlay = memo(function OcrTextOverlay({ lines, pageHeight }: TextOverlayProps) {
   if (!lines || lines.length === 0) return null
+
+  const isCjk = (s: string) => /[\u4e00-\u9fa5\u3000-\u303f\uff01-\uff5e]/.test(s)
 
   return (
     <div
@@ -143,22 +160,57 @@ export const OcrTextOverlay = memo(function OcrTextOverlay({ lines, pageHeight }
           color: transparent;
         }
       `}</style>
-      {lines.map((item, idx) => (
-        <span
-          key={idx}
-          className="absolute cursor-text whitespace-pre leading-none select-text text-transparent"
-          style={{
-            left: `${(item.bbox.x * 100).toFixed(3)}%`,
-            top: `${(item.bbox.y * 100).toFixed(3)}%`,
-            width: `${(item.bbox.width * 100).toFixed(3)}%`,
-            height: `${(item.bbox.height * 100).toFixed(3)}%`,
-            fontSize: `${Math.max(10, Math.round(item.bbox.height * pageHeight))}px`,
-          }}
-          title={item.text}
-        >
-          {item.text}
-        </span>
-      ))}
+      {lines.map((line, lineIdx) => {
+        // 优先使用逐词高精度坐标（Windows OCR / PaddleOCR 词级别包围盒），实现原文字位置 1:1 精确贴合
+        if (line.words && line.words.length > 0) {
+          return (
+            <div key={lineIdx} className="contents select-text">
+              {line.words.map((w, wIdx) => {
+                const next = line.words![wIdx + 1]
+                const trailingSpace = next && !isCjk(w.text) && !isCjk(next.text) ? ' ' : ''
+                const fSize = Math.max(9, Math.round(w.bbox.height * pageHeight))
+                return (
+                  <span
+                    key={`${lineIdx}-${wIdx}`}
+                    className="absolute cursor-text whitespace-nowrap select-text text-transparent flex items-center justify-center pointer-events-auto"
+                    style={{
+                      left: `${(w.bbox.x * 100).toFixed(3)}%`,
+                      top: `${(w.bbox.y * 100).toFixed(3)}%`,
+                      width: `${(w.bbox.width * 100).toFixed(3)}%`,
+                      height: `${(w.bbox.height * 100).toFixed(3)}%`,
+                      fontSize: `${fSize}px`,
+                      lineHeight: 1,
+                    }}
+                    title={w.text}
+                  >
+                    {w.text}{trailingSpace}
+                  </span>
+                )
+              })}
+            </div>
+          )
+        }
+
+        const text = cleanOcrText(line.text)
+        const fSize = Math.max(10, Math.round(line.bbox.height * pageHeight))
+        return (
+          <span
+            key={lineIdx}
+            className="absolute cursor-text whitespace-nowrap select-text text-transparent flex items-center pointer-events-auto"
+            style={{
+              left: `${(line.bbox.x * 100).toFixed(3)}%`,
+              top: `${(line.bbox.y * 100).toFixed(3)}%`,
+              width: `${(line.bbox.width * 100).toFixed(3)}%`,
+              height: `${(line.bbox.height * 100).toFixed(3)}%`,
+              fontSize: `${fSize}px`,
+              lineHeight: 1,
+            }}
+            title={text}
+          >
+            {text}
+          </span>
+        )
+      })}
     </div>
   )
 })

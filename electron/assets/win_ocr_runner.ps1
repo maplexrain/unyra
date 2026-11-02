@@ -4,6 +4,10 @@ Add-Type -AssemblyName System.Drawing
 [Windows.Media.Ocr.OcrEngine, Windows.Foundation.Metadata, ContentType = WindowsRuntime] | Out-Null
 [Windows.Graphics.Imaging.BitmapDecoder, Windows.Foundation.Metadata, ContentType = WindowsRuntime] | Out-Null
 [Windows.Storage.StorageFile, Windows.Foundation.Metadata, ContentType = WindowsRuntime] | Out-Null
+[Windows.Globalization.Language, Windows.Foundation.Metadata, ContentType = WindowsRuntime] | Out-Null
+
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 function Await-AsyncOp($asyncOp, $type) {
   $asTaskGeneric = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
@@ -36,6 +40,10 @@ foreach ($line in $ocrResult.Lines) {
     $minY = $pixelH
     $maxX = 0.0
     $maxY = 0.0
+    $words = @()
+    $cleanText = ""
+    $prevIsCjk = $false
+
     foreach ($w in $line.Words) {
       $rx = [double]$w.BoundingRect.X
       $ry = [double]$w.BoundingRect.Y
@@ -45,6 +53,32 @@ foreach ($line in $ocrResult.Lines) {
       if ($ry -lt $minY) { $minY = $ry }
       if (($rx + $rw) -gt $maxX) { $maxX = ($rx + $rw) }
       if (($ry + $rh) -gt $maxY) { $maxY = ($ry + $rh) }
+
+      $wText = $w.Text
+      $wNormX = [Math]::Max(0.0, [Math]::Min(1.0, [Math]::Round($rx / $pixelW, 4)))
+      $wNormY = [Math]::Max(0.0, [Math]::Min(1.0, [Math]::Round($ry / $pixelH, 4)))
+      $wNormW = [Math]::Max(0.003, [Math]::Min(1.0 - $wNormX, [Math]::Round($rw / $pixelW, 4)))
+      $wNormH = [Math]::Max(0.003, [Math]::Min(1.0 - $wNormY, [Math]::Round($rh / $pixelH, 4)))
+
+      $words += @{
+        text = $wText
+        bbox = @{
+          x = $wNormX
+          y = $wNormY
+          width = $wNormW
+          height = $wNormH
+        }
+      }
+
+      $currIsCjk = ($wText -match '[\u4e00-\u9fa5\u3000-\u303f\uff01-\uff5e]')
+      if ($cleanText.Length -eq 0) {
+        $cleanText = $wText
+      } elseif ($prevIsCjk -or $currIsCjk) {
+        $cleanText += $wText
+      } else {
+        $cleanText += " " + $wText
+      }
+      $prevIsCjk = $currIsCjk
     }
 
     $normX = [Math]::Max(0.0, [Math]::Min(1.0, [Math]::Round($minX / $pixelW, 4)))
@@ -53,22 +87,25 @@ foreach ($line in $ocrResult.Lines) {
     $normH = [Math]::Max(0.005, [Math]::Min(1.0 - $normY, [Math]::Round(($maxY - $minY) / $pixelH, 4)))
 
     $lines += @{
-      text = $line.Text
+      text = $cleanText
       bbox = @{
         x = $normX
         y = $normY
         width = $normW
         height = $normH
       }
+      words = $words
     }
   }
 }
 
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $outputObj = @{
   width = $pixelW
   height = $pixelH
   lines = $lines
 }
 
-Write-Output (ConvertTo-Json -Depth 5 -Compress $outputObj)
+$jsonText = ConvertTo-Json -Depth 6 -Compress $outputObj
+$bytes = [System.Text.Encoding]::UTF8.GetBytes($jsonText)
+$b64 = [System.Convert]::ToBase64String($bytes)
+Write-Output $b64

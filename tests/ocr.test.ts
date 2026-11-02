@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { OCR_PLUGIN_ID, ocrPluginOn } from '../src/lib/ocr/plugin'
 import { formatBytes } from '../src/lib/ocr/model'
+import { cleanOcrText } from '../src/lib/ocr/pdfTextLayer'
 import {
   buildOcrCacheKey,
   clearMemoryOcrCache,
@@ -46,6 +47,17 @@ describe('OCR 文字识别插件与缓存系统规范', () => {
     const key2 = buildOcrCacheKey('C:/Docs/paper.pdf', 1, 'pp-ocrv4-mobile')
     expect(key1).toBe(key2)
     expect(key1).toContain('c:/docs/paper.pdf#page1#m:pp-ocrv4-mobile')
+  })
+
+  it('文本清洁规整 cleanOcrText：剔除汉字与全角标点冗余空格，保留自然英文词间距', () => {
+    // 纯中文空格剔除
+    expect(cleanOcrText('2024 年 下 半 年 息 安 全 工 程 师 考 试 上 午')).toBe('2024年下半年息安全工程师考试上午')
+    // 英文单词保留正常空格
+    expect(cleanOcrText('B 銆? Enable secret')).toBe('B銆? Enable secret')
+    // 中英文混排紧凑连接
+    expect(cleanOcrText('Linux 操 作 系 统 自 带 审 计 功 能')).toBe('Linux操作系统自带审计功能')
+    expect(cleanOcrText('SM2 算 法 是 国 家 密 码 标 准')).toBe('SM2算法是国家密码标准')
+    expect(cleanOcrText('   ')).toBe('')
   })
 
   it('OCR 内存缓存读写与清空机制', async () => {
