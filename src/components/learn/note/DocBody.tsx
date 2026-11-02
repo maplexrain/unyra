@@ -11,7 +11,7 @@
 import { memo, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { BookOpen, Sparkles } from 'lucide-react'
 import MarkdownView from '../../MarkdownView'
-import { NoteBlockPreview } from './NoteBlockPreview'
+import { TyporaLiveEditor } from './TyporaLiveEditor'
 import WaveBars from '../../WaveBars'
 import type { Annotation, DocKind } from '../../../learn/types'
 import type { AnnotationActions } from '../../../lib/annotation'
@@ -160,14 +160,11 @@ export const DocBody = memo(function DocBody({
               style={{ '--doc-scale': docScale } as CSSProperties}
               onCopy={(e) => copySelectionAsMarkdown(e, bodyRef.current, content)}
             >
-              {kind === 'note' && onEditContent ? (
-                <NoteBlockPreview
+              {kind === 'note' ? (
+                <TyporaLiveEditor
                   content={content}
-                  onEditContent={onEditContent}
-                  annotations={annotations}
-                  knownConceptKeys={knownConceptKeys}
-                  annotationActions={annotationActions}
-                  resolveLocalImage={resolveLocalImage}
+                  onChange={onEditContent}
+                  readOnly={!onEditContent}
                 />
               ) : (
                 <MarkdownView
@@ -197,7 +194,7 @@ export const DocBody = memo(function DocBody({
  */
 function EmptyNote() {
   return (
-    <div className="moji-in-soft mb-6 rounded-xl border border-dashed border-line-strong/70 bg-paper/40 px-4 py-3.5">
+    <div className="moji-in-soft mb-6 rounded-none border border-dashed border-line-strong/70 bg-paper/40 px-4 py-3.5">
       <div className="text-[13px] font-medium text-ink">{t('这里还没有笔记')}</div>
       <p className="mt-1 text-[11.5px] leading-relaxed text-ink-faint">
         {t('在右侧对话里说一句「把刚才讲的要点整理进我的笔记」，导师就会写到这里； 选中正文里的词条写「注解」，那条批注会跟着正文显示，不会进这份文档。')}
