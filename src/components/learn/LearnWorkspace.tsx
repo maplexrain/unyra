@@ -5509,13 +5509,9 @@ export default function LearnWorkspace({
               title={pure ? t('退出纯净阅读（F11 / Esc）') : t('纯净阅读：收起两侧栏、页签栏与顶栏，只留正文（F11）')}
               aria-pressed={pure}
               onClick={toggleZen}
-              className={
-                pure
-                  ? 'absolute right-4 top-4 z-20 flex h-8 w-8 items-center justify-center rounded-lg border border-line-strong bg-line/50 text-ink transition'
-                  : 'absolute right-4 top-4 z-20 flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-card/90 text-ink-soft shadow-sm backdrop-blur transition hover:bg-line/50 hover:text-ink'
-              }
+              className="absolute right-4 top-4 z-20 flex h-8 w-8 items-center justify-center border-0 bg-transparent text-ink-soft transition hover:text-ink hover:scale-105 active:scale-95"
             >
-              {pure ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+              {pure ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
           )}
 
