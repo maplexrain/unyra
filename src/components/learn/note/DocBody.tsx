@@ -11,6 +11,7 @@
 import { memo, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { BookOpen, Sparkles } from 'lucide-react'
 import MarkdownView from '../../MarkdownView'
+import { TyporaLiveEditor } from './TyporaLiveEditor'
 import WaveBars from '../../WaveBars'
 import type { Annotation, DocKind } from '../../../learn/types'
 import type { AnnotationActions } from '../../../lib/annotation'
@@ -51,6 +52,7 @@ interface Props {
   wordCount: number
   /** 浮在正文这一层上的东西（选词菜单）：位置与开合由上层管，这里只负责插回原位 */
   overlay?: ReactNode
+  onEditContent?: (next: string) => void
 }
 
 function sameConceptKeys(a?: Set<string>, b?: Set<string>): boolean {
@@ -110,6 +112,7 @@ export const DocBody = memo(function DocBody({
   resolveLocalImage,
   wordCount,
   overlay,
+  onEditContent,
 }: Props) {
   /* 两端渐隐：滚到头就摘掉那一端（判据与代价见 lib/scrollFade） */
   const scrollEdges = useScrollEdges(scrollRef)
@@ -132,7 +135,7 @@ export const DocBody = memo(function DocBody({
       <div className="flex min-h-0 flex-1 flex-col" style={{ maskImage: mask, WebkitMaskImage: mask }}>
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {/* 左侧留白给得多一点：标题定位栏就在旁边，正文（以及跳转高亮的底色）不贴过去 */}
-          <div className="doc-measure relative flex min-h-full flex-col pt-6 pl-[32px] pr-[22px]">
+          <div className="doc-measure relative flex min-h-full flex-col pt-2.5 pl-[32px] pr-[22px]">
             <ZenResizeHandles />
             {/* 教学文档尚未生成或正在生成时的美观静态占位 */}
             {kind === 'teaching' && !content.trim() && (
@@ -157,13 +160,21 @@ export const DocBody = memo(function DocBody({
               style={{ '--doc-scale': docScale } as CSSProperties}
               onCopy={(e) => copySelectionAsMarkdown(e, bodyRef.current, content)}
             >
-              <MarkdownView
-                html={html}
-                annotations={annotations}
-                knownConceptKeys={knownConceptKeys}
-                annotationActions={annotationActions}
-                resolveLocalImage={resolveLocalImage}
-              />
+              {kind === 'note' ? (
+                <TyporaLiveEditor
+                  content={content}
+                  onChange={onEditContent}
+                  readOnly={!onEditContent}
+                />
+              ) : (
+                <MarkdownView
+                  html={html}
+                  annotations={annotations}
+                  knownConceptKeys={knownConceptKeys}
+                  annotationActions={annotationActions}
+                  resolveLocalImage={resolveLocalImage}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -183,7 +194,7 @@ export const DocBody = memo(function DocBody({
  */
 function EmptyNote() {
   return (
-    <div className="moji-in-soft mb-6 rounded-xl border border-dashed border-line-strong/70 bg-paper/40 px-4 py-3.5">
+    <div className="moji-in-soft mb-6 rounded-none border border-dashed border-line-strong/70 bg-paper/40 px-4 py-3.5">
       <div className="text-[13px] font-medium text-ink">{t('这里还没有笔记')}</div>
       <p className="mt-1 text-[11.5px] leading-relaxed text-ink-faint">
         {t('在右侧对话里说一句「把刚才讲的要点整理进我的笔记」，导师就会写到这里； 选中正文里的词条写「注解」，那条批注会跟着正文显示，不会进这份文档。')}

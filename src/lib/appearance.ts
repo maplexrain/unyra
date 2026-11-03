@@ -53,6 +53,8 @@ export interface Appearance {
   theme: ThemeMode
   /** 正文文字大小系数，1 = 原大小；只作用于渲染出来的文档，不动界面本身 */
   docScale: number
+  /** 编辑模式源码文字大小系数，1 = 原大小；与预览模式字号分开独立调节 */
+  editorScale: number
   /**
    * **左侧资源管理器**的宽度（px），默认 280（见 EXPLORER_WIDTH_DEFAULT）。
    * 与右侧那一栏同一个做法：拉它的右边线改，松手写进设置；窄屏下不生效（那时它是抽屉）。
@@ -218,6 +220,7 @@ export function clampAgentWidth(v: number): number {
 export const DEFAULT_APPEARANCE: Appearance = {
   theme: 'system',
   docScale: 1,
+  editorScale: 1,
   agentWidth: AGENT_WIDTH_DEFAULT,
   explorerWidth: EXPLORER_WIDTH_DEFAULT,
   // 默认文档在左（主位）、对话在右（见 agentLeft 的说明）
@@ -254,6 +257,11 @@ export function clampDocScale(v: number): number {
   return clampScale(v, DEFAULT.docScale)
 }
 
+/** 编辑模式源码字号（与预览模式分开调节） */
+export function clampEditorScale(v: number): number {
+  return clampScale(v, DEFAULT.editorScale)
+}
+
 /** 对话区字号（见 AgentPanel 的 Ctrl + 滚轮）：范围与取整规则和正文共用一套 */
 export function clampChatScale(v: number): number {
   return clampScale(v, DEFAULT.chatScale)
@@ -265,6 +273,7 @@ export function normalizeAppearance(raw: unknown): Appearance {
   return {
     theme: THEME_MODES.includes(r.theme as ThemeMode) ? (r.theme as ThemeMode) : DEFAULT.theme,
     docScale: clampDocScale(typeof r.docScale === 'number' ? r.docScale : DEFAULT.docScale),
+    editorScale: clampEditorScale(typeof r.editorScale === 'number' ? r.editorScale : (typeof r.docScale === 'number' ? r.docScale : DEFAULT.editorScale)),
     agentWidth: clampAgentWidth(typeof r.agentWidth === 'number' ? r.agentWidth : DEFAULT.agentWidth),
     // 老设置文件里没有这一项：按默认宽度走（原来写死的 w-72 = 288，视觉上几乎没变）
     explorerWidth: clampExplorerWidth(

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Compartment, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
@@ -7,6 +7,7 @@ import { syntaxHighlighting, indentOnInput, indentUnit, bracketMatching, Languag
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages as codeLanguages } from '@codemirror/language-data'
 import { countSourceWords } from '../../lib/wordCount'
+import { getAppearance, setAppearance, clampEditorScale, SCALE_ZOOM_STEP, SCALE_HUD_MS } from '../../lib/appearance'
 import { markdownEditorTheme, markdownHighlight } from '../../lib/cmMarkdown'
 import { takeSourceReveal, subscribeSourceReveal, type SourceReveal } from '../../lib/docReveal'
 import { useDocScroll } from '../../lib/docScroll'
@@ -46,9 +47,10 @@ const STATE_TONE: Record<SaveState, string> = {
 
 /**
  * 配色与主题在 lib/cmMarkdown（随笔窗口用的是同一份）：文档源码视图的内边距
- * 按 doc-measure 那一列调（上 20 / 下 20 / 左 10 / 右 22）。
+ * （上 14 / 下 24 / 左 54 / 右 24），左侧留出 54px 彻底避让悬浮在左上角的垂直工具栏（left-3 + w-8），
+ * 避免首行及前几行代码文字与按钮发生视觉重叠。
  */
-const editorTheme = markdownEditorTheme({ top: 20, bottom: 20, left: 10, right: 22 })
+const editorTheme = markdownEditorTheme({ top: 14, bottom: 24, left: 54, right: 24 })
 
 /** 语言按扩展名现配（markdown 内嵌代码块也各自高亮）；其余扩展名交给 language-data 的表 */
 const langComp = new Compartment()
@@ -237,13 +239,51 @@ export default function SourceEditor({
   // 字号系数：直接写在根元素上，与预览共用同一个设置
   useEffect(() => {
     const view = viewRef.current
-    if (view) view.dom.style.fontSize = Math.round(15.6 * scale * 10) / 10 + 'px'
+    if (view) view.dom.style.fontSize = Math.round(14.04 * scale * 10) / 10 + 'px'
   }, [scale])
+
+  const [zoomPct, setZoomPct] = useState(() => Math.round((scale ?? 1) * 100))
+  const [zoomHud, setZoomHud] = useState(false)
+  const zoomTimer = useRef<number | null>(null)
+
+  useEffect(() => {
+    setZoomPct(Math.round((scale ?? 1) * 100))
+  }, [scale])
+
+  // Ctrl + 滚轮调节编辑模式源码字号
+  useEffect(() => {
+    const el = hostRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      const unit = e.deltaMode === 1 ? 3 : 100
+      const notches = Math.max(-3, Math.min(3, -e.deltaY / unit))
+      if (!notches) return
+      const prev = getAppearance().editorScale
+      const next = clampEditorScale(prev * SCALE_ZOOM_STEP ** notches)
+      if (next !== prev) {
+        setAppearance({ ...getAppearance(), editorScale: next })
+      }
+      setZoomPct(Math.round(next * 100))
+      setZoomHud(true)
+      if (zoomTimer.current !== null) window.clearTimeout(zoomTimer.current)
+      zoomTimer.current = window.setTimeout(() => {
+        zoomTimer.current = null
+        setZoomHud(false)
+      }, SCALE_HUD_MS)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      if (zoomTimer.current !== null) window.clearTimeout(zoomTimer.current)
+    }
+  }, [])
 
   const chars = countSourceWords(value)
 
   return (
-    <div className="print-flat relative flex min-h-0 flex-1 flex-col bg-card">
+    <div className="print-flat relative flex min-h-0 flex-1 flex-col bg-card moji-tab-transition">
       {/*
         字数与保存状态：排在右上角悬浮组的正下方（见 DocFloat 的 DocStatChip）。
         保存状态跟着字数一起搬——它俩本来就是同一条读数（「这份文档现在多大、存了没」），
@@ -266,6 +306,17 @@ export default function SourceEditor({
         下面那条统计也浮在正文上，但它比按钮更低一行，压不住首行。
       */}
       <div ref={hostRef} className="min-h-0 flex-1 overflow-hidden" />
+      {/* 右下角字号比例提示 */}
+      <div
+        aria-hidden={!zoomHud}
+        className={
+          'pointer-events-none absolute bottom-5 right-5 z-20 flex items-center gap-1.5 rounded-full border border-line-strong/80 bg-card/90 px-3 py-1 shadow-md backdrop-blur transition-opacity duration-200 select-none ' +
+          (zoomHud ? 'opacity-100' : 'opacity-0')
+        }
+      >
+        <span className="text-[13px] font-medium tabular-nums text-ink-strong">{zoomPct}%</span>
+      </div>
+
     </div>
   )
 }

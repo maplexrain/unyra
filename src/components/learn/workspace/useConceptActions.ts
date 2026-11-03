@@ -169,7 +169,11 @@ export function useConceptActions(deps: ConceptActionsDeps) {
     const existed = node.annotations.some((a) => a.term === term && a.kind === 'note')
     // occurrence 是用户划词那一处的序号：同一个词出现好几回时要标到同一处
     set(addAnnotation(getLatest(), nodeId, term, body, 'note', style, occurrence))
-    onToast(existed ? t('已更新「{0}」的注解', term) : t('已为「{0}」添加注解', term))
+    if (body) {
+      onToast(existed ? t('已更新「{0}」的注解', term) : t('已为「{0}」添加注解', term))
+    } else {
+      onToast(existed ? t('已更新「{0}」的标记', term) : t('已为「{0}」添加标记', term))
+    }
   }
 
   const deleteAnnotation = (nodeId: string, term: string) => {

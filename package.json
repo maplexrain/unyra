@@ -1,7 +1,7 @@
 {
   "name": "unyra",
   "private": true,
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "归一 Unyra · 探索式学习：本地优先的 AI 学习辅助桌面应用",
   "author": "maplexrain",
   "type": "module",
@@ -63,6 +63,7 @@
     "marked": "^18.0.14",
     "marked-katex-extension": "^5.1.13",
     "mermaid": "^12.2.0",
+    "onnxruntime-node": "^1.31.1",
     "pdfjs-dist": "^6.4.299",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",

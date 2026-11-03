@@ -17,7 +17,7 @@ const TARGET_EDGE = 1568
 
 let loading: Promise<typeof import('pdfjs-dist')> | null = null
 
-function loadPdfjs(): Promise<typeof import('pdfjs-dist')> {
+export function loadPdfjs(): Promise<typeof import('pdfjs-dist')> {
   loading ??= (async () => {
     const [{ default: workerSource }, mod] = await Promise.all([
       import('pdfjs-dist/build/pdf.worker.min.mjs?raw'),

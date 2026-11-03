@@ -35,6 +35,7 @@ const LOCAL_MEDIA_EXTS = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.avif',
   '.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.opus',
   '.mp4', '.webm', '.mkv', '.mov', '.m4v',
+  '.pdf',
 ])
 
 const MEDIA_MIME: Record<string, string> = {
@@ -45,6 +46,7 @@ const MEDIA_MIME: Record<string, string> = {
   '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.opus': 'audio/opus',
   '.mp4': 'video/mp4', '.webm': 'video/webm', '.mkv': 'video/x-matroska', '.mov': 'video/quicktime',
   '.m4v': 'video/mp4',
+  '.pdf': 'application/pdf',
 }
 
 /** 媒体预览的体积上限：一段 45 分钟的课大约 200MB，再大的就让用户用系统播放器 */

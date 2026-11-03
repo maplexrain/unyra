@@ -406,6 +406,90 @@ export interface VoiceTranscribeResult {
   ms?: number
 }
 
+/* ---------- OCR 文字识别 ---------- */
+
+export interface OcrBBox {
+  /** 归一化坐标 0~1，相对于页面宽度与高度 */
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface OcrWordItem {
+  text: string
+  bbox: OcrBBox
+  confidence?: number
+}
+
+export interface OcrLineItem {
+  text: string
+  bbox: OcrBBox
+  words?: OcrWordItem[]
+  confidence?: number
+}
+
+export interface OcrPageResult {
+  page: number
+  lines: OcrLineItem[]
+  fullText: string
+  modelId: string
+  createdAt: number
+}
+
+export interface OcrModelOption {
+  id: string
+  name: string
+  description: string
+  sizeMb: number
+  exists: boolean
+  bytes: number
+  totalBytes: number
+  tags: string[]
+}
+
+export interface OcrModelStatus {
+  activeModelId: string
+  models: OcrModelOption[]
+  sources: Array<{ id: string; name: string; speedHint: string }>
+  dir: string
+}
+
+export interface OcrModelProgress {
+  modelId: string
+  received: number
+  total: number
+  percent: number
+  note?: string
+}
+
+export interface OcrDownloadRequest {
+  modelId: string
+  sourceId?: string
+}
+
+export interface OcrDownloadResult {
+  ok: boolean
+  modelId?: string
+  error?: string
+  source?: string
+  bytes?: number
+}
+
+export interface OcrRecognizeRequest {
+  imageDataUrl: string
+  modelId?: string
+  page?: number
+}
+
+export interface OcrRecognizeResult {
+  ok: boolean
+  error?: string
+  result?: OcrPageResult
+  fromCache?: boolean
+  durationMs?: number
+}
+
 /* ---------- 原生导入导出 ---------- */
 
 /** 保存对话框的扩展名过滤：导出文档时给 md / html，不给就按 JSON 走。

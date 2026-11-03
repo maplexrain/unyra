@@ -18,6 +18,7 @@ const MEDIA_EXTS = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.avif',
   '.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.opus',
   '.mp4', '.webm', '.mkv', '.mov', '.m4v',
+  '.pdf',
 ])
 
 /** 路径里的文件名（两种分隔符都认：本地文件来自 Windows，链接里可能是正斜杠） */
@@ -39,6 +40,10 @@ export function isPreviewable(name: string): boolean {
 }
 
 /** 这个文件是不是走**媒体预览**的（图片 / 音频 / 视频） */
+export function isPdfFile(name: string): boolean {
+  return extOf(name) === '.pdf'
+}
+
 export function isMediaFile(name: string): boolean {
   return MEDIA_EXTS.has(extOf(name))
 }

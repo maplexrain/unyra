@@ -63,6 +63,7 @@ function actionsHost(body: Element): Element {
 function attachActions(el: HTMLElement): void {
   const body = el.querySelector('.moji-anno-body')
   if (!body) return
+
   const tpl = el.ownerDocument.createElement('template')
   tpl.innerHTML = actionsHtml()
   const acts = tpl.content.firstElementChild
@@ -135,7 +136,8 @@ function scheduleHide(): void {
  */
 function showPopup(target: HTMLElement): void {
   const body = target.dataset.anno
-  if (!body) return
+  if (!body) return // 纯标记（无文字注解）不弹 tip 浮层
+
   const doc = target.ownerDocument
   const win = doc.defaultView
   if (!win) return
@@ -145,12 +147,14 @@ function showPopup(target: HTMLElement): void {
   const { el, tip } = ensurePopup(doc)
 
   // 笔记是用户写的内容，走块级 Markdown（可含列表/公式/多段）；了解只是一两句短释义
-  const rendered = kind === 'note' ? renderNote(body) : renderInline(body)
+  const rendered = kind === 'note' ? (body ? renderNote(body) : '') : renderInline(body ?? '')
   el.dataset.kind = kind
   el.dataset.term = target.dataset.annoTerm ?? ''
   el.classList.toggle('moji-anno-pop-interactive', kind === 'note')
   if (kind === 'note') {
-    el.innerHTML = `<div class="moji-anno-body">${rendered}</div>`
+    el.innerHTML = body
+      ? `<div class="moji-anno-body">${rendered}</div>`
+      : `<div class="moji-anno-body text-[12px] text-ink-faint italic">${t('已标记')}</div>`
     // 「修改 / 删除」行内拼在正文末尾（见 attachActions），不另起一条工具条
     attachActions(el)
   } else {

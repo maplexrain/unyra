@@ -143,7 +143,7 @@ function StatusBadge({ status }: { status: EssayCommit['status'] }) {
         ? 'bg-warn/10 text-warn-deep'
         : 'bg-line/70 text-ink-faint'
   const label = status === 'done' ? t('已整理') : status === 'error' ? t('整理失败') : t('整理中')
-  return <span className={'shrink-0 rounded px-1.5 py-px text-[10px] leading-4 ' + tone}>{label}</span>
+  return <span className={'shrink-0 rounded-none px-1.5 py-px text-[10px] leading-4 ' + tone}>{label}</span>
 }
 
 interface Props {
@@ -178,6 +178,7 @@ interface Props {
   onWriteNote?: (nodeId: string, noteName: string, content: string) => void
   /** 删除节点笔记 */
   onDeleteNote?: (nodeId: string, noteName: string) => void
+  triggerRef?: React.RefObject<HTMLButtonElement | null>
 }
 
 /**
@@ -235,6 +236,7 @@ export default function EssayDock({
   allNotes = [],
   onWriteNote,
   onDeleteNote,
+  triggerRef,
 }: Props) {
   // 退场要等变形播完才卸载：130ms 那套默认时序会把缩回去的动画切掉一半
   const { setOpen: setMounted, mounted } = usePresence(false, MORPH_MS + 20)
@@ -608,7 +610,7 @@ export default function EssayDock({
     }
     if (open) {
       openInitial()
-      const btn = btnRef.current
+      const btn = triggerRef?.current ?? btnRef.current
       const next = clampRect(geometry ?? defaultRect())
       rectRef.current = next
       setRect(next)
@@ -635,7 +637,7 @@ export default function EssayDock({
       }
     } else {
       settle()
-      const btn = btnRef.current
+      const btn = triggerRef?.current ?? btnRef.current
       if (btn) {
         setMorph(boxOfButton(btn))
         setContentIn(false)
@@ -742,7 +744,7 @@ export default function EssayDock({
       const target = e.target as Node | null
       if (!target) return
       if (panelRef.current?.contains(target)) return
-      if (btnRef.current?.contains(target)) return
+      if ((triggerRef?.current ?? btnRef.current)?.contains(target)) return
       onOpenChange(false)
     }
     window.addEventListener('pointerdown', onDown, true)
@@ -815,7 +817,7 @@ export default function EssayDock({
         入口：一颗悬浮圆按钮，贴在文档区右下角。
         窗口开着时它只是**藏起来**，并不卸载——收起动画要靠它的位置当终点（见上）。
       */}
-      {showEntry && (
+      {!triggerRef && showEntry && (
         <button
           ref={btnRef}
           type="button"
@@ -825,7 +827,7 @@ export default function EssayDock({
           aria-hidden={buttonHidden}
           tabIndex={buttonHidden ? -1 : 0}
           className={
-            'no-print absolute bottom-4 right-4 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-line-strong/70 bg-card/85 text-seal-deep shadow-[0_6px_20px_rgba(31,27,23,0.16)] backdrop-blur transition hover:border-seal/45 hover:bg-card hover:text-seal active:scale-95 ' +
+            'no-print absolute bottom-4 right-4 z-30 flex h-11 w-11 items-center justify-center rounded-none border border-line-strong/70 bg-card/85 text-seal-deep shadow-[0_6px_20px_rgba(31,27,23,0.16)] backdrop-blur transition hover:border-seal/45 hover:bg-card hover:text-seal active:scale-95 ' +
             (buttonHidden ? 'pointer-events-none opacity-0' : '')
           }
         >
@@ -867,12 +869,12 @@ export default function EssayDock({
                 className="flex shrink-0 cursor-grab items-center justify-between border-b border-line bg-card/85 px-2.5 py-1.5 active:cursor-grabbing select-none"
               >
                 {/* 两个固定 Tab */}
-                <div className="flex items-center rounded-lg bg-paper/80 p-0.5 border border-line/60">
+                <div className="flex items-center rounded-none bg-paper/80 p-0.5 border border-line/60">
                   <button
                     type="button"
                     onClick={() => switchTab('essay')}
                     className={
-                      'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition ' +
+                      'flex items-center gap-1.5 rounded-none px-2.5 py-1 text-[11px] font-medium transition ' +
                       (dockTab === 'essay'
                         ? 'bg-seal/15 text-seal-deep shadow-xs'
                         : 'text-ink-soft hover:text-ink hover:bg-line/40')
@@ -885,7 +887,7 @@ export default function EssayDock({
                     type="button"
                     onClick={() => switchTab('note')}
                     className={
-                      'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition ' +
+                      'flex items-center gap-1.5 rounded-none px-2.5 py-1 text-[11px] font-medium transition ' +
                       (dockTab === 'note'
                         ? 'bg-seal/15 text-seal-deep shadow-xs'
                         : 'text-ink-soft hover:text-ink hover:bg-line/40')
@@ -905,7 +907,7 @@ export default function EssayDock({
                   onClick={() => onOpenChange(false)}
                   title={t('收起（Esc）')}
                   aria-label={t('收起')}
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/60 hover:text-ink"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-none text-ink-faint transition hover:bg-line/60 hover:text-ink"
                 >
                   <X size={13} />
                 </button>
@@ -919,7 +921,7 @@ export default function EssayDock({
                     onClick={backFromPanel}
                     title={t('返回')}
                     aria-label={t('返回')}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/60 hover:text-ink"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-none text-ink-faint transition hover:bg-line/60 hover:text-ink"
                   >
                     <ArrowLeft size={13} />
                   </button>
@@ -945,7 +947,7 @@ export default function EssayDock({
                           type="button"
                           onClick={startBlank}
                           title={t('新建一条随笔')}
-                          className="flex h-6 shrink-0 items-center gap-1 rounded-md bg-seal px-2 text-[10.5px] font-medium text-white shadow-xs transition hover:bg-seal-deep"
+                          className="flex h-6 shrink-0 items-center gap-1 rounded-none bg-seal px-2 text-[10.5px] font-medium text-white shadow-xs transition hover:bg-seal-deep"
                         >
                           <Plus size={12} />
                           {t('新建随笔')}
@@ -959,7 +961,7 @@ export default function EssayDock({
                               ? t('提交全部随笔：带上全部内容，AI 按与上次的差异统一整理')
                               : t('和上次提交相比没有变化')
                           }
-                          className="flex h-6 shrink-0 items-center gap-1 rounded-md bg-seal/10 px-1.5 text-[10.5px] font-medium text-seal-deep transition hover:bg-seal/15 disabled:cursor-default disabled:opacity-40"
+                          className="flex h-6 shrink-0 items-center gap-1 rounded-none bg-seal/10 px-1.5 text-[10.5px] font-medium text-seal-deep transition hover:bg-seal/15 disabled:cursor-default disabled:opacity-40"
                         >
                           <GitCommitHorizontal size={12} />
                           {t('提交全部…')}
@@ -969,11 +971,11 @@ export default function EssayDock({
                           onClick={() => setSubPanel('history')}
                           title={t('提交记录')}
                           aria-label={t('提交记录')}
-                          className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/60 hover:text-ink"
+                          className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-none text-ink-faint transition hover:bg-line/60 hover:text-ink"
                         >
                           <History size={13} />
                           {scopedCommits.length > 0 && (
-                            <span className="absolute -right-0.5 -top-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-seal px-0.5 text-[8px] leading-none text-white">
+                            <span className="absolute -right-0.5 -top-0.5 flex h-3 min-w-3 items-center justify-center rounded-none bg-seal px-0.5 text-[8px] leading-none text-white">
                               {scopedCommits.length > 9 ? '9+' : scopedCommits.length}
                             </span>
                           )}
@@ -992,7 +994,7 @@ export default function EssayDock({
                             <button
                               type="button"
                               onClick={startBlank}
-                              className="mt-3 inline-flex items-center gap-1 rounded-md bg-seal/10 px-2.5 py-1 text-[11px] font-medium text-seal transition hover:bg-seal/20"
+                              className="mt-3 inline-flex items-center gap-1 rounded-none bg-seal/10 px-2.5 py-1 text-[11px] font-medium text-seal transition hover:bg-seal/20"
                             >
                               <Plus size={12} />
                               {t('记一条随笔')}
@@ -1003,7 +1005,7 @@ export default function EssayDock({
                             <div
                               key={essay.id}
                               onClick={() => openEssay(essay)}
-                              className="group relative cursor-pointer rounded-lg border border-line bg-paper/60 p-2.5 transition hover:border-seal/45 hover:bg-paper hover:shadow-xs"
+                              className="group relative cursor-pointer rounded-none border border-line bg-paper/60 p-2.5 transition hover:border-seal/45 hover:bg-paper hover:shadow-xs"
                             >
                               <div className="flex items-baseline justify-between gap-2">
                                 <span className="truncate text-[12px] font-medium text-ink-strong">
@@ -1026,7 +1028,7 @@ export default function EssayDock({
                                   }}
                                   title={t('删除这条随笔')}
                                   aria-label={t('删除')}
-                                  className="opacity-0 group-hover:opacity-100 flex h-5 w-5 items-center justify-center rounded text-ink-faint transition hover:bg-line/60 hover:text-seal-deep"
+                                  className="opacity-0 group-hover:opacity-100 flex h-5 w-5 items-center justify-center rounded-none text-ink-faint transition hover:bg-line/60 hover:text-seal-deep"
                                 >
                                   <Trash2 size={11} />
                                 </button>
@@ -1046,7 +1048,7 @@ export default function EssayDock({
                           onClick={backToEssayList}
                           title={t('返回列表')}
                           aria-label={t('返回列表')}
-                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/60 hover:text-ink"
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-none text-ink-faint transition hover:bg-line/60 hover:text-ink"
                         >
                           <ArrowLeft size={13} />
                         </button>
@@ -1059,7 +1061,7 @@ export default function EssayDock({
                             onClick={() => removeEssay(editingId)}
                             title={t('删除这条随笔')}
                             aria-label={t('删除')}
-                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/60 hover:text-seal-deep"
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-none text-ink-faint transition hover:bg-line/60 hover:text-seal-deep"
                           >
                             <Trash2 size={12} />
                           </button>
@@ -1073,7 +1075,7 @@ export default function EssayDock({
                               ? t('提交全部随笔：带上全部内容，AI 按与上次的差异统一整理')
                               : t('和上次提交相比没有变化')
                           }
-                          className="flex h-6 shrink-0 items-center gap-1 rounded-md bg-seal/10 px-1.5 text-[10.5px] font-medium text-seal-deep transition hover:bg-seal/15 disabled:cursor-default disabled:opacity-40"
+                          className="flex h-6 shrink-0 items-center gap-1 rounded-none bg-seal/10 px-1.5 text-[10.5px] font-medium text-seal-deep transition hover:bg-seal/15 disabled:cursor-default disabled:opacity-40"
                         >
                           <GitCommitHorizontal size={12} />
                           {t('提交全部…')}
@@ -1083,11 +1085,11 @@ export default function EssayDock({
                           onClick={() => setSubPanel('history')}
                           title={t('提交记录：快照与每次整理动过的笔记')}
                           aria-label={t('提交记录')}
-                          className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/60 hover:text-ink"
+                          className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-none text-ink-faint transition hover:bg-line/60 hover:text-ink"
                         >
                           <History size={13} />
                           {scopedCommits.length > 0 && (
-                            <span className="absolute -right-0.5 -top-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-seal px-0.5 text-[8px] leading-none text-white">
+                            <span className="absolute -right-0.5 -top-0.5 flex h-3 min-w-3 items-center justify-center rounded-none bg-seal px-0.5 text-[8px] leading-none text-white">
                               {scopedCommits.length > 9 ? '9+' : scopedCommits.length}
                             </span>
                           )}
@@ -1135,7 +1137,7 @@ export default function EssayDock({
                             value={noteSearch}
                             onChange={(e) => setNoteSearch(e.target.value)}
                             placeholder={t('搜索笔记或节点…')}
-                            className="h-6 w-full rounded-md border border-line bg-paper/70 pl-6 pr-2 text-[11px] text-ink outline-none transition focus:border-seal/50"
+                            className="h-6 w-full rounded-none border border-line bg-paper/70 pl-6 pr-2 text-[11px] text-ink outline-none transition focus:border-seal/50"
                           />
                         </div>
                       </div>
@@ -1155,11 +1157,11 @@ export default function EssayDock({
                             <div
                               key={item.nodeId + '\u0000' + item.name}
                               onClick={() => openNote(item)}
-                              className="group relative cursor-pointer rounded-lg border border-line bg-paper/60 p-2.5 transition hover:border-seal/45 hover:bg-paper hover:shadow-xs"
+                              className="group relative cursor-pointer rounded-none border border-line bg-paper/60 p-2.5 transition hover:border-seal/45 hover:bg-paper hover:shadow-xs"
                             >
                               {/* 只列当前目标：只需标明是哪个节点的笔记 */}
                               <div className="flex items-center gap-1.5 text-[10.5px] text-ink-faint">
-                                <span className="truncate max-w-[220px] rounded bg-line/60 px-1 py-0.5 text-[10px] font-medium text-ink-soft">
+                                <span className="truncate max-w-[220px] rounded-none bg-line/60 px-1 py-0.5 text-[10px] font-medium text-ink-soft">
                                   {item.nodeTitle || t('未知节点')}
                                 </span>
                                 <span className="ml-auto shrink-0 tabular-nums text-[10px] text-ink-faint">
@@ -1196,7 +1198,7 @@ export default function EssayDock({
                           onClick={backToNoteList}
                           title={t('返回列表')}
                           aria-label={t('返回列表')}
-                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/60 hover:text-ink"
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-none text-ink-faint transition hover:bg-line/60 hover:text-ink"
                         >
                           <ArrowLeft size={13} />
                         </button>
@@ -1218,7 +1220,7 @@ export default function EssayDock({
                           type="button"
                           onClick={toggleNoteViewMode}
                           title={noteViewMode === 'preview' ? t('切换到编辑模式') : t('切换到预览模式')}
-                          className="flex h-6 shrink-0 items-center gap-1 rounded-md border border-line bg-paper/80 px-2 text-[10.5px] font-medium text-ink-soft transition hover:border-seal/40 hover:text-seal-deep"
+                          className="flex h-6 shrink-0 items-center gap-1 rounded-none border border-line bg-paper/80 px-2 text-[10.5px] font-medium text-ink-soft transition hover:border-seal/40 hover:text-seal-deep"
                         >
                           {noteViewMode === 'preview' ? (
                             <>
@@ -1239,7 +1241,7 @@ export default function EssayDock({
                           onClick={() => onOpenNote(noteTarget.nodeId, noteTarget.noteName)}
                           title={t('在主工作区打开此笔记')}
                           aria-label={t('在工作区打开')}
-                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/60 hover:text-ink"
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-none text-ink-faint transition hover:bg-line/60 hover:text-ink"
                         >
                           <ExternalLink size={12} />
                         </button>
@@ -1253,7 +1255,7 @@ export default function EssayDock({
                             }}
                             title={t('删除这份笔记')}
                             aria-label={t('删除')}
-                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/60 hover:text-seal-deep"
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-none text-ink-faint transition hover:bg-line/60 hover:text-seal-deep"
                           >
                             <Trash2 size={12} />
                           </button>
@@ -1303,7 +1305,7 @@ export default function EssayDock({
                       value={commitMessage}
                       onChange={(e) => setCommitMessage(e.target.value)}
                       placeholder={t('这次随笔在整理什么？')}
-                      className="mt-1 w-full rounded-md border border-line bg-paper/70 px-2 py-1.5 text-[12px] text-ink outline-none transition focus:border-seal/50"
+                      className="mt-1 w-full rounded-none border border-line bg-paper/70 px-2 py-1.5 text-[12px] text-ink outline-none transition focus:border-seal/50"
                     />
                     <div className="mt-3 flex items-baseline gap-2">
                       <span className="text-[11px] font-medium text-ink-soft">{t('本次快照')}</span>
@@ -1324,9 +1326,9 @@ export default function EssayDock({
                       ) : (
                         <>
                           {diff.added.map((essay) => (
-                            <div key={essay.id} className="rounded-lg border border-line bg-paper/60 px-2.5 py-2">
+                            <div key={essay.id} className="rounded-none border border-line bg-paper/60 px-2.5 py-2">
                               <div className="flex items-center gap-1.5">
-                                <span className="rounded bg-ok/10 px-1 py-px text-[9.5px] text-ok-deep">{t('新增')}</span>
+                                <span className="rounded-none bg-ok/10 px-1 py-px text-[9.5px] text-ok-deep">{t('新增')}</span>
                                 <span className="truncate text-[10.5px] text-ink-faint">{titleOf(essay)}</span>
                               </div>
                               <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-relaxed text-ink-soft">
@@ -1335,9 +1337,9 @@ export default function EssayDock({
                             </div>
                           ))}
                           {diff.edited.map((essay) => (
-                            <div key={essay.id} className="rounded-lg border border-line bg-paper/60 px-2.5 py-2">
+                            <div key={essay.id} className="rounded-none border border-line bg-paper/60 px-2.5 py-2">
                               <div className="flex items-center gap-1.5">
-                                <span className="rounded bg-seal/10 px-1 py-px text-[9.5px] text-seal-deep">{t('已修改')}</span>
+                                <span className="rounded-none bg-seal/10 px-1 py-px text-[9.5px] text-seal-deep">{t('已修改')}</span>
                                 <span className="truncate text-[10.5px] text-ink-faint">{titleOf(essay)}</span>
                               </div>
                               <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-relaxed text-ink-soft">
@@ -1346,8 +1348,8 @@ export default function EssayDock({
                             </div>
                           ))}
                           {diff.removed.map((r) => (
-                            <div key={r.id} className="flex items-center gap-1.5 rounded-lg border border-line/70 bg-paper/40 px-2.5 py-2">
-                              <span className="rounded bg-warn/10 px-1 py-px text-[9.5px] text-warn-deep">{t('已删除')}</span>
+                            <div key={r.id} className="flex items-center gap-1.5 rounded-none border border-line/70 bg-paper/40 px-2.5 py-2">
+                              <span className="rounded-none bg-warn/10 px-1 py-px text-[9.5px] text-warn-deep">{t('已删除')}</span>
                               <span className="truncate text-[11px] text-ink-soft">{r.title || dateLabelOfEssay(r.createdAt)}</span>
                             </div>
                           ))}
@@ -1364,7 +1366,7 @@ export default function EssayDock({
                     <button
                       type="button"
                       onClick={() => setSubPanel('main')}
-                      className="h-7 rounded-md px-2.5 text-[11.5px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
+                      className="h-7 rounded-none px-2.5 text-[11.5px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
                     >
                       {t('取消')}
                     </button>
@@ -1372,7 +1374,7 @@ export default function EssayDock({
                       type="button"
                       onClick={submitCommit}
                       disabled={!diff.changed}
-                      className="flex h-7 items-center gap-1.5 rounded-md bg-seal px-3 text-[11.5px] font-medium text-white shadow-sm transition hover:bg-seal-deep disabled:cursor-default disabled:opacity-40"
+                      className="flex h-7 items-center gap-1.5 rounded-none bg-seal px-3 text-[11.5px] font-medium text-white shadow-sm transition hover:bg-seal-deep disabled:cursor-default disabled:opacity-40"
                     >
                       <GitCommitHorizontal size={13} />
                       {t('提交全部并整理')}
@@ -1399,7 +1401,7 @@ export default function EssayDock({
                           <li key={commit.id} className="relative">
                             <span
                               aria-hidden="true"
-                              className="absolute -left-[18.5px] top-2.5 h-2 w-2 rounded-full border border-seal/50 bg-seal/60"
+                              className="absolute -left-[18.5px] top-2.5 h-2 w-2 rounded-none border border-seal/50 bg-seal/60"
                             />
                             <button
                               type="button"
@@ -1409,7 +1411,7 @@ export default function EssayDock({
                                 setSubPanel('detail')
                               }}
                               title={t('点击查看这次提交的详细记录')}
-                              className="mb-1 block w-full rounded-lg px-2 py-1.5 text-left transition last:mb-0 hover:bg-line/50"
+                              className="mb-1 block w-full rounded-none px-2 py-1.5 text-left transition last:mb-0 hover:bg-line/50"
                             >
                               <span className="flex w-full items-center gap-2">
                                 <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink-strong">
@@ -1443,25 +1445,25 @@ export default function EssayDock({
                           {/* Agent 对这次提交的评论（Markdown，首行是标题，见 learn/essayCommits） */}
                           <MarkdownView
                             html={renderNote(activeCommit.comment)}
-                            className="moji-agent-md mt-1.5 rounded-lg border border-line bg-paper/60 px-2.5 py-2 text-[11.5px] leading-relaxed text-ink-soft"
+                            className="moji-agent-md mt-1.5 rounded-none border border-line bg-paper/60 px-2.5 py-2 text-[11.5px] leading-relaxed text-ink-soft"
                           />
                         </section>
                       )}
 
                       {activeCommit.status === 'running' && (
-                        <div className="mt-2 flex items-center gap-2 rounded-lg border border-line bg-paper/60 px-2.5 py-2 text-[11px] text-ink-soft">
+                        <div className="mt-2 flex items-center gap-2 rounded-none border border-line bg-paper/60 px-2.5 py-2 text-[11px] text-ink-soft">
                           <Loader2 size={12} className="animate-spin text-seal" />
                           {t('正在整理…整理完成后这里会列出动过的笔记')}
                         </div>
                       )}
 
                       {activeCommit.status === 'error' && (
-                        <div className="mt-2 rounded-lg border border-warn/40 bg-warn/5 px-2.5 py-2 text-[11px] leading-relaxed text-warn-deep">
+                        <div className="mt-2 rounded-none border border-warn/40 bg-warn/5 px-2.5 py-2 text-[11px] leading-relaxed text-warn-deep">
                           <p>{activeCommit.error || t('整理失败，可以重试')}</p>
                           <button
                             type="button"
                             onClick={() => onRetryCommit(activeCommit.id)}
-                            className="mt-1.5 inline-flex h-6 items-center gap-1 rounded-md border border-warn/40 px-1.5 text-[10.5px] font-medium transition hover:bg-warn/10"
+                            className="mt-1.5 inline-flex h-6 items-center gap-1 rounded-none border border-warn/40 px-1.5 text-[10.5px] font-medium transition hover:bg-warn/10"
                           >
                             <RefreshCw size={11} />
                             {t('重试整理')}
@@ -1485,14 +1487,14 @@ export default function EssayDock({
                                   type="button"
                                   onClick={() => onOpenNote(c.nodeId, c.noteName)}
                                   title={t('打开这份笔记')}
-                                  className="flex w-full items-center gap-2 rounded-lg border border-line bg-paper/60 px-2 py-1.5 text-left transition hover:border-seal/40 hover:bg-paper"
+                                  className="flex w-full items-center gap-2 rounded-none border border-line bg-paper/60 px-2 py-1.5 text-left transition hover:border-seal/40 hover:bg-paper"
                                 >
                                   <FileText size={12} className="shrink-0 text-seal/70" />
                                   <span className="min-w-0 flex-1">
                                     <span className="block truncate text-[11.5px] text-ink">{c.nodeTitle || t('（未知节点）')}</span>
                                     <span className="block truncate text-[10px] text-ink-faint">{t('笔记「{0}」', c.noteName)}</span>
                                   </span>
-                                  <span className="shrink-0 rounded bg-line/60 px-1.5 py-px text-[9.5px] text-ink-faint">
+                                  <span className="shrink-0 rounded-none bg-line/60 px-1.5 py-px text-[9.5px] text-ink-faint">
                                     {c.kind === 'created' ? t('新建') : t('更新')}
                                   </span>
                                 </button>
@@ -1512,7 +1514,7 @@ export default function EssayDock({
                             </p>
                           ) : (
                             scopedSnapshot.map((essay) => (
-                              <div key={essay.id} className="rounded-lg border border-line bg-paper/50 px-2.5 py-2">
+                              <div key={essay.id} className="rounded-none border border-line bg-paper/50 px-2.5 py-2">
                                 {/* 旧提交的快照没有标题：按提交日期回退（见 types 的 EssayCommit.snapshot） */}
                                 <div className="truncate text-[10px] text-ink-faint">
                                   {essay.title || dateLabelOfEssay(essay.createdAt)}
@@ -1537,7 +1539,7 @@ export default function EssayDock({
                       <button
                         type="button"
                         onClick={() => setSubPanel('main')}
-                        className="flex h-6 shrink-0 items-center gap-1 rounded-md bg-seal/10 px-2 text-[10.5px] font-medium text-seal-deep transition hover:bg-seal/15"
+                        className="flex h-6 shrink-0 items-center gap-1 rounded-none bg-seal/10 px-2 text-[10.5px] font-medium text-seal-deep transition hover:bg-seal/15"
                       >
                         <PenLine size={11} />
                         {t('返回')}

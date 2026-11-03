@@ -126,3 +126,79 @@ export function fadeMask(edges: ScrollEdges, size: number = FADE_PX): string | u
   }
   return `linear-gradient(to bottom, transparent 0, #000 ${size}px, #000 calc(100% - ${size}px), transparent 100%)`
 }
+
+export interface HorizontalScrollEdges {
+  /** 已经顶到左头：左边没有内容压着，不需要左端渐隐 */
+  atLeft: boolean
+  /** 已经到右头：右边没有内容压着，不需要右端渐隐 */
+  atRight: boolean
+}
+
+/** 水平渐隐带的宽度（px） */
+export const HORIZONTAL_FADE_PX = 28
+
+/**
+ * 盯着一个横向滚动容器的两端：滚到端点时对应那一端就不再渐隐。
+ */
+export function useHorizontalScrollEdges<T extends HTMLElement>(ref: RefObject<T | null>): HorizontalScrollEdges {
+  const [edges, setEdges] = useState<HorizontalScrollEdges>({ atLeft: true, atRight: true })
+  const watched = useRef<{ el: T; stop: () => void } | null>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (watched.current?.el === el) return
+    watched.current?.stop()
+    watched.current = null
+    if (!el) return
+
+    let frame = 0
+    const read = () => {
+      frame = 0
+      const atLeft = el.scrollLeft <= EDGE_EPS
+      const atRight = el.scrollWidth - el.scrollLeft - el.clientWidth <= EDGE_EPS
+      setEdges((prev) => (prev.atLeft === atLeft && prev.atRight === atRight ? prev : { atLeft, atRight }))
+    }
+    const schedule = () => {
+      if (!frame) frame = window.requestAnimationFrame(read)
+    }
+
+    el.addEventListener('scroll', schedule, { passive: true })
+    const ro = new ResizeObserver(schedule)
+    ro.observe(el)
+    if (el.firstElementChild) ro.observe(el.firstElementChild)
+    read()
+
+    watched.current = {
+      el,
+      stop: () => {
+        el.removeEventListener('scroll', schedule)
+        ro.disconnect()
+        if (frame) window.cancelAnimationFrame(frame)
+      },
+    }
+  })
+
+  useEffect(
+    () => () => {
+      watched.current?.stop()
+      watched.current = null
+    },
+    [],
+  )
+
+  return edges
+}
+
+/**
+ * 按横向两端的开关拼出 mask-image（用于 TabBar 等横向溢出提醒）。
+ */
+export function horizontalFadeMask(edges: HorizontalScrollEdges, size: number = HORIZONTAL_FADE_PX): string | undefined {
+  if (edges.atLeft && edges.atRight) return undefined
+  if (edges.atLeft) {
+    return `linear-gradient(to right, #000 0, #000 calc(100% - ${size}px), transparent 100%)`
+  }
+  if (edges.atRight) {
+    return `linear-gradient(to right, transparent 0, #000 ${size}px, #000 100%)`
+  }
+  return `linear-gradient(to right, transparent 0, #000 ${size}px, #000 calc(100% - ${size}px), transparent 100%)`
+}

@@ -7,7 +7,7 @@
  * 两份东西各走各的。
  */
 import { Fragment, type ReactNode, type RefObject } from 'react'
-import { BookOpen, Send, StickyNote, TextSearch } from 'lucide-react'
+import { BookOpen, Highlighter, Send, StickyNote, TextSearch } from 'lucide-react'
 import { NO_AUTOFILL } from '../../../lib/autofill'
 import { t } from '../../../i18n'
 
@@ -34,11 +34,14 @@ export interface SelectionMenu {
   concept: boolean
   /** 选区映射回 Markdown 源文的字符区间；映射失败为 null */
   loc: { start: number; end: number } | null
+  /** 选区是否包含或相交了既有标记 */
+  hasMark?: boolean
 }
 
 /** 选中文字菜单的一项。数组顺序 = 显示顺序 = 数字键 1..n（见组件里的 actions） */
 export interface MenuAction {
-  key: 'learn' | 'understand' | 'note' | 'ask'
+  key: 'learn' | 'understand' | 'note' | 'ask' | 'mark'
+  hotkey?: number
   label: string
   icon: ReactNode
   /** 原生 title：每一项说清它做什么（动作在组件的 runAction 里，见那里的说明） */
@@ -124,6 +127,15 @@ export function SelectionMenuPopup({
           icon: <Send size={12} />,
           title: t('就选中的这段内容向 AI 提问'),
         },
+        {
+          key: 'mark',
+          label: menu.hasMark ? t('取消标记') : t('标记'),
+          icon: <Highlighter size={12} />,
+          title: menu.hasMark
+            ? t('取消选区内已有的标记（快捷键 5）')
+            : t('标记选中文本（高亮马克笔标记，无需输入文字，快捷键 5）'),
+          hotkey: 5,
+        },
       ]
     : []
 
@@ -179,14 +191,17 @@ export function SelectionMenuPopup({
         ) : (
           <>
             {/* 每一项右侧那个小数字就是它的快捷键（见上面的数字键监听） */}
-            {actions.map((it, i) => (
+            {actions.map((it, i) => {
+              const hk = it.hotkey ?? (i + 1)
+              return (
               <Fragment key={it.key}>
                 {i > 0 && <span className="mx-0.5 h-4 w-px bg-line" />}
                 <button
                   type="button"
                   // data-hotkey：数字键按它找按钮（见上面那个监听），屏幕上第几项就是几
-                  data-hotkey={i + 1}
-                  title={t('{0}（按 {1}）', it.title, i + 1)}
+                  data-hotkey={hk}
+                  {...(!menu.concept && it.key === 'mark' ? { 'data-hotkey-alt': 3 } : {})}
+                  title={t('{0}（按 {1}）', it.title, hk)}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => runAction(it.key)}
                   disabled={it.disabled}
@@ -195,11 +210,12 @@ export function SelectionMenuPopup({
                   {it.icon}
                   {it.label}
                   <span className="ml-0.5 text-[10px] font-normal tabular-nums text-ink-faint">
-                    {i + 1}
+                    {hk}
                   </span>
                 </button>
               </Fragment>
-            ))}
+              )
+            })}
           </>
         )}
       </div>

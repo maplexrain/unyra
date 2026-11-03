@@ -628,6 +628,11 @@ export async function setPluginEnabled(id: string, enabled: boolean): Promise<st
     return t('应用没有跑在 Electron 里')
   }
   await refreshPlugins()
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('moji:plugin-toggle', { detail: { id, enabled } }))
+    }
+  } catch {}
   if (builtin) return null
 
   /*

@@ -43,14 +43,15 @@
     这里定的是基准值，文档里其余排版尺寸都是 em，跟着一起等比缩放——
     改一处就能整篇放大缩小，不会出现标题大了正文没大的错位。
   */
-  font-size: calc(15.81px * var(--doc-scale, 1));
+  font-size: calc(14.23px * var(--doc-scale, 1));
   line-height: 1.9;
   /* 正文比界面再松一点，长段落更易读 */
   letter-spacing: 0.022em;
   color: var(--color-ink);
   overflow-wrap: break-word;
 }
-.note-preview > :first-child {
+.note-preview > :first-child,
+.note-preview > :first-child > :first-child {
   margin-top: 0 !important;
 }
 /*

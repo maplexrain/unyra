@@ -31,7 +31,7 @@ import type {
   NoticeSettings,
   StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail, UpdatePhase, UpdateState,
   VideoApiFetchResult, VideoStreamOpenResult, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceTranscribeRequest,
-  VoiceTranscribeResult, WebDomOpResult, WebFastTranslateResult,
+  VoiceTranscribeResult, OcrModelStatus, OcrModelProgress, OcrDownloadRequest, OcrDownloadResult, OcrRecognizeRequest, OcrRecognizeResult, OcrPageResult, WebDomOpResult, WebFastTranslateResult,
   WebFetchResult, WebBinaryFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult, WebPageFetchReq,
   WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult, WebScrollReq,
   WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebTranslatePayload, WebWaitReq, WebWaitResult,
@@ -389,6 +389,27 @@ const api = {
       ipcRenderer.on('voice:modelProgress', listener)
       return () => ipcRenderer.removeListener('voice:modelProgress', listener)
     },
+  },
+  /**
+   * OCR 文字识别：多模型管理与下载、页面识别与缓存
+   */
+  ocr: {
+    modelStatus: (): Promise<OcrModelStatus> => ipcRenderer.invoke('ocr:modelStatus'),
+    setActiveModel: (modelId: string): Promise<boolean> => ipcRenderer.invoke('ocr:setActiveModel', modelId),
+    downloadModel: (req: OcrDownloadRequest): Promise<OcrDownloadResult> => ipcRenderer.invoke('ocr:downloadModel', req),
+    cancelDownload: (): Promise<boolean> => ipcRenderer.invoke('ocr:cancelDownload'),
+    chooseModel: (): Promise<{ ok: boolean; canceled?: boolean; error?: string }> =>
+      ipcRenderer.invoke('ocr:chooseModel'),
+    removeModel: (modelId: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('ocr:removeModel', modelId),
+    revealModel: (): Promise<boolean> => ipcRenderer.invoke('ocr:revealModel'),
+    onModelProgress: (cb: (p: OcrModelProgress) => void): (() => void) => {
+      const listener = (_e: unknown, p: OcrModelProgress) => cb(p)
+      ipcRenderer.on('ocr:modelProgress', listener)
+      return () => ipcRenderer.removeListener('ocr:modelProgress', listener)
+    },
+    recognize: (req: OcrRecognizeRequest): Promise<OcrRecognizeResult> => ipcRenderer.invoke('ocr:recognize', req),
+    getCache: (key: string): Promise<OcrPageResult | null> => ipcRenderer.invoke('ocr:getCache', key),
+    setCache: (key: string, data: OcrPageResult): Promise<boolean> => ipcRenderer.invoke('ocr:setCache', key, data),
   },
   /**
    * 自动更新。渲染层不决定任何事：什么时候查、下没下完、能不能装，

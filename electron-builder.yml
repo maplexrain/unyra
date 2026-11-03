@@ -34,6 +34,8 @@ files:
   - '!node_modules/**/*'
   - 'node_modules/sherpa-onnx-node/**/*'
   - 'node_modules/sherpa-onnx-*/**/*'
+  - 'node_modules/onnxruntime-node/**/*'
+  - 'node_modules/onnxruntime-common/**/*'
   # 源码映射不进包：发布构建本来就不生成，这里再兜一道（免得哪天手工构建时漏进去）
   - '!**/*.map'
 

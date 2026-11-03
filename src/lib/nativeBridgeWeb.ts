@@ -211,6 +211,25 @@ export function createWebNativeBridge(): NativeBridge {
       onModelProgress: () => () => {},
     },
 
+    ocr: {
+      setActiveModel: () => Promise.resolve(true),
+      modelStatus: () => Promise.resolve({
+        activeModelId: 'pp-ocrv4-mobile',
+        models: [],
+        sources: [],
+        dir: '',
+      }),
+      downloadModel: () => Promise.resolve({ ok: false, error: 'Web 模式暂不支持本地下载模型' }),
+      cancelDownload: () => Promise.resolve(true),
+      chooseModel: () => Promise.resolve({ ok: false, canceled: true }),
+      removeModel: () => Promise.resolve({ ok: true }),
+      revealModel: () => Promise.resolve(false),
+      onModelProgress: () => () => {},
+      recognize: () => Promise.resolve({ ok: false, error: 'Web 模式暂未接入原生 OCR' }),
+      getCache: () => Promise.resolve(null),
+      setCache: () => Promise.resolve(true),
+    },
+
     update: {
       state: () => Promise.resolve({ phase: 'idle' } as UpdateState),
       check: () => Promise.resolve({ phase: 'idle' } as UpdateState),

@@ -290,6 +290,13 @@
   box-shadow: 0 0 8px rgba(250, 204, 21, 0.18);
 }
 
+/* 原文引用组件（```quote item 卡片）：左侧边框加粗并使用突出高亮颜色（印章红高亮），严格直角 */
+.moji-quote-item {
+  border-left-width: 3.5px !important;
+  border-left-color: var(--color-seal) !important;
+  border-left-style: solid !important;
+}
+
 /* 引用块内部及选中文本时的荧光高亮 */
 .moji-quote-code ::selection,
 .moji-quote-block ::selection {

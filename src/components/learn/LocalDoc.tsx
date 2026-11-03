@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { TriangleAlert as FileWarning, Loader2 } from 'lucide-react'
 import type { DocView } from '../../learn/types'
-import { extOf, fileNameOf, isMediaFile, isPreviewable } from '../../learn/tabs'
+import { extOf, fileNameOf, isMediaFile, isPdfFile, isPreviewable } from '../../learn/tabs'
 import { readLocalFile, readLocalMediaFile } from '../../lib/localFiles'
 import { renderNoteGfm } from '../../lib/markdown'
 import { maskChipTokens, restoreChipTokens } from '../../lib/chipSyntax'
@@ -19,6 +19,7 @@ import { useDocContextMenu, type SourceSpan } from './note/useDocContextMenu'
 import { DocStatChip } from './DocFloat'
 import ZenResizeHandles from './workspace/ZenResizeHandles'
 import { useDocOutline } from './note/useDocView'
+import PdfDocView from './pdf/PdfDocView'
 import { t } from '../../i18n'
 
 /**
@@ -40,6 +41,7 @@ interface Props {
   view: DocView
   /** 正文字号系数（与节点文档共用同一个设置） */
   scale: number
+  editorScale?: number
   /** 暂存区里这一份的正文（没改过就是 undefined，编辑器显示磁盘上的那一份） */
   draft?: string
   /**
@@ -74,6 +76,7 @@ export default function LocalDoc({
   path,
   view,
   scale,
+  editorScale,
   draft,
   savedText,
   onDraft,
@@ -144,9 +147,9 @@ export default function LocalDoc({
     }
   }, [path, media])
 
-  // 媒体文件：读一次二进制（data URL），图片 / 音频 / 视频各按 mime 渲染
+  // 媒体文件：读一次二进制（data URL），图片 / 音频 / 视频各按 mime 渲染（PDF 独立由 PdfDocView 自行管理加载与视口懒渲染）
   useEffect(() => {
-    if (!media) return
+    if (!media || isPdfFile(path)) return
     let alive = true
     void (async () => {
       let r = await readLocalMediaFile(path)
@@ -327,6 +330,11 @@ export default function LocalDoc({
   const scrollEdges = useScrollEdges(scrollRef)
   const mask = fadeMask(scrollEdges)
 
+  // PDF 文件：直接交由专用 PdfDocView 渲染（内含自己的独立加载态、分页与高清矢量渲染）
+  if (isPdfFile(path)) {
+    return <PdfDocView path={path} scale={scale} />
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-[12.5px] text-ink-faint">
@@ -394,7 +402,7 @@ export default function LocalDoc({
         state={state}
         error={saveError ?? error}
         label={path}
-        scale={scale}
+        scale={editorScale ?? scale}
         ext={extOf(path)}
         // 「定位源码」放下的一次性请求：挂载时按这个身份取走并选中（见 lib/docReveal）
         revealKey={localRevealKey(path)}
@@ -435,7 +443,7 @@ export default function LocalDoc({
           {/* 复制同样走源文：预览里选的这一段，进剪贴板的该是它 Markdown 的样子（见 lib/copySource） */}
           <div
             ref={bodyRef}
-            className="note-preview moji-node-note doc-measure relative px-7 py-6"
+            className="note-preview moji-node-note doc-measure relative px-7 pt-2.5 pb-6"
             style={{ '--doc-scale': scale } as CSSProperties}
             onCopy={(e) => copySelectionAsMarkdown(e, e.currentTarget, text)}
           >

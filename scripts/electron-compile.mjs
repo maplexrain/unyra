@@ -53,7 +53,7 @@ export function baseBuildOptions(entryPoints, outdir) {
     outExtension: { '.js': '.cjs' },
     // electron 由运行时提供；sherpa-onnx-node 是原生模块（.node + DLL），
     // esbuild 打不进去也不该打——它由 node_modules / asar.unpacked 在运行时提供
-    external: ['electron', 'sherpa-onnx-node'],
+    external: ['electron', 'sherpa-onnx-node', 'onnxruntime-node'],
     minify: release,
     sourcemap: !release,
     logLevel: 'info',

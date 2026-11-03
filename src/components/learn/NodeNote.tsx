@@ -272,6 +272,51 @@ export default memo(function NodeNote({
     if (key === 'learn') return doLearn()
     if (key === 'understand') return doUnderstand()
     if (key === 'ask') return setAsking(true)
+    if (key === 'mark') {
+      const term = menu?.term ?? ''
+      const at = menu?.occurrence ?? 0
+      dismiss()
+      if (!term) return
+
+      // 检查当前选区是否包含或相交了既有标记（DOM 级检测 + 词条文本重叠检测）
+      const overlappedTerms = new Set<string>()
+      const sel = window.getSelection()
+      const body = bodyRef.current
+
+      if (body && sel && !sel.isCollapsed && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0)
+        const markSpans = body.querySelectorAll<HTMLElement>('.moji-anno.moji-anno-note')
+        for (const span of markSpans) {
+          const isHit = range.intersectsNode ? range.intersectsNode(span) : sel.containsNode(span, true)
+          if (isHit) {
+            const t = span.dataset.annoTerm
+            if (t) overlappedTerms.add(t)
+          }
+        }
+      }
+
+      // 数据级交叉比对：既有笔记/标记词条是否与选区词条相同或互相包含
+      for (const a of node.annotations) {
+        if (a.kind === 'note') {
+          if (a.term === term || term.includes(a.term) || a.term.includes(term)) {
+            overlappedTerms.add(a.term)
+          }
+        }
+      }
+
+      if (overlappedTerms.size > 0) {
+        // 如果选择的文字包含了标记，再次标记则是取消原本的标记（杜绝叠层）
+        for (const t of overlappedTerms) {
+          onDeleteAnnotation?.(t)
+        }
+        onWarn?.(t('已取消标记'))
+      } else {
+        // 全新标记：添加马克笔标记
+        onSaveAnnotation?.(term, '', undefined, at)
+        onWarn?.(t('已标记'))
+      }
+      return
+    }
     // 注解：用 term（按选区 DOM 重取的词条）而不是 text——跨元素选择时 text 里混着
     // 公式的排版字符，存下来永远匹配不上正文；occurrence 一并带上，同一个词出现
     // 好几回时要标的是用户划的那一处
@@ -334,6 +379,7 @@ export default memo(function NodeNote({
           annotationActions={annotationActions}
           resolveLocalImage={resolveLocalImage}
           wordCount={wordCount}
+          onEditContent={onEditContent}
           // 选词菜单浮在正文这一层上：位置与开合仍由本组件管（见 note/useSelectionMenu）
           overlay={
             menuMounted && (
