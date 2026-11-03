@@ -118,9 +118,31 @@ export default function ExamWindow() {
 
   useEffect(() => {
     if (!guest) return
+    if (guest.getInitialState) {
+      guest.getInitialState().then((init) => {
+        const next = init as ExamWindowState
+        if (next && typeof next === 'object' && next.phase && Array.isArray(next.questions)) {
+          setState((prev) => prev ?? next)
+          if (next.phase === 'running' && next.attempt) {
+            if (Array.isArray(next.attempt.handwrittenImages)) {
+              setHandwrittenImages(next.attempt.handwrittenImages)
+            }
+            setAnswers((prev) => {
+              if (Object.keys(prev).length) return prev
+              const out: Record<string, Draft> = {}
+              for (const a of next.attempt!.answers) {
+                out[a.questionId] = { value: a.value ?? [], text: a.text ?? '', image: a.image, rawImage: a.rawImage }
+              }
+              return out
+            })
+          }
+        }
+      }).catch(() => {})
+    }
+
     const off = guest.onState((raw) => {
       const next = raw as ExamWindowState
-      if (!next || typeof next !== 'object') return
+      if (!next || typeof next !== 'object' || !next.phase || !Array.isArray(next.questions)) return
       setState(next)
       if (next.phase === 'running' && next.attempt) {
         if (Array.isArray(next.attempt.handwrittenImages)) {
@@ -149,6 +171,15 @@ export default function ExamWindow() {
       window.close()
     })
   }, [guest, running])
+
+  // 若窗口挂载后尚未获取到试卷状态，定时重新 emit ready 信号，彻底杜绝单次 IPC 丢包导致的卡死
+  useEffect(() => {
+    if (state || !guest) return
+    const timer = setInterval(() => {
+      guest.emit({ type: 'ready' })
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [state, guest])
 
   /* ---------- 时间与到点判定 ---------- */
 
@@ -322,9 +353,17 @@ export default function ExamWindow() {
   if (!state) {
     return (
       <div className="flex h-screen items-center justify-center bg-paper text-[13px] text-ink-faint">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex items-center gap-2">
           <Clock size={15} className="animate-spin text-seal" />
           <span>{t('正在打开试卷…')}</span>
+          </div>
+          <button
+            onClick={() => guest?.emit({ type: 'ready' })}
+            className="rounded border border-line bg-card px-2.5 py-1 text-[11px] text-ink-soft hover:bg-paper hover:text-ink transition-colors cursor-pointer"
+          >
+            {t('若长时间未加载，点击重试')}
+          </button>
         </div>
       </div>
     )

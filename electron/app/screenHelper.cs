@@ -156,6 +156,8 @@ public class ScreenHelper {
                     Environment.Exit(0);
                 }
             }
+            // 父进程关闭 stdin（父进程退出 / 崩溃 / 重启），助手自动退出，绝不残留孤儿进程锁定文件
+            Environment.Exit(0);
         });
         stdInThread.IsBackground = true;
         stdInThread.Start();

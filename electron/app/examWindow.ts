@@ -11,6 +11,7 @@ import { startupBackground } from '../storage'
 import { DEV_SERVER_URL, isDev } from './startup'
 import { appIcon } from './icon'
 import { attachConsoleForwarding, hardenLinks } from './windows'
+import { mainWindow } from './mainWindow'
 import {
   cropExamAnswerImage,
   previewExamCropBox,
@@ -47,7 +48,8 @@ let examInitialState: unknown
  * 「考试窗口关了」，状态一直挂在「考试中」）。
  */
 function hostWindow(): BrowserWindow | null {
-  const win = BrowserWindow.getAllWindows().find((w) => w !== examWindow && !w.isDestroyed())
+  const win = mainWindow()
+  if (!win || win.isDestroyed() || win === examWindow) return null
   return win ?? null
 }
 
@@ -70,9 +72,11 @@ function sendToExam(channel: string, payload?: unknown): void {
  * 两个窗口对着同一份试卷各记一份答题时间与切屏记录，事后谁都说不清哪份算数。
  */
 export async function openExamWindow(payload: unknown): Promise<{ ok: boolean; reused?: boolean; error?: string }> {
+  examInitialState = payload
   if (examWindow && !examWindow.isDestroyed()) {
     if (examWindow.isMinimized()) examWindow.restore()
     examWindow.focus()
+    if (payload !== undefined) sendToExam('exam:state', payload)
     return { ok: true, reused: true }
   }
 
@@ -226,6 +230,8 @@ export function registerExamIpc(): void {
 
   // 主窗口：开考试窗口（已经开着就聚焦并回 reused）
   ipcMain.handle('exam:open', (_e, payload: unknown) => openExamWindow(payload))
+  // 考试窗口主动获取初始状态（同步读取，避免冷启动时序竞态造成空白）
+  ipcMain.handle('exam:getInitialState', () => examInitialState)
 
   // 主窗口 → 考试窗口：状态推送
   ipcMain.on('exam:push', (_e, payload: unknown) => sendToExam('exam:state', payload))

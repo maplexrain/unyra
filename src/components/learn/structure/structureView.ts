@@ -398,12 +398,6 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
    * - from 是 o:（游离大纲的声部）：本就是大纲卡。
    * to 以 o: 开头即接在大纲卡上的嵌套子级（分类链 文档-大纲-大纲…）。
    */
-  // 附身大纲先按「文档右边一格」立初始深度（树边 pass 要拿它当源；嵌套接入的之后反过来调）
-  for (const node of docs) {
-    const doc = docPending.get(node.id)
-    const o = outlinePending.get(outlineUuid(node.id))
-    if (doc && o) o.depth = doc.depth + 1
-  }
   const fromCardOf = (from: string, to?: string): Pending | undefined => {
     if (from.startsWith('o:')) return outlinePending.get(from)
     // 项目节点是挂件款下游：上游始终是文档本身，不经大纲 hub 翻译
@@ -415,8 +409,6 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     const fromCard = fromCardOf(e.from, e.to)
     if (!fromCard || !toCard) continue
     if (!pushEdge(fromCard.card.uuid, toCard.card.uuid)) continue
-    // 深度按成员算：父成员的卡 + 1（附身大纲那一对的「右侧」即大纲卡本身）
-    toCard.depth = Math.max(toCard.depth, fromCard.depth + 1)
     toCard.parent ??= fromCard
     if (!fromCard.next.includes(toCard)) fromCard.next.push(toCard)
     // 认领了接口的子级记下行号：自动铺排的顺序与锚点都按目标项来（见下面的排序与 place）
@@ -427,18 +419,17 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
   }
 
   // 附身大纲与它的文档配成一对：归属边「文档 → 它的大纲」（交替链画法）；嵌套接入时反过来以大纲为入口
+  const isNestedIn = (outlineCardUuid: string) => store.edges.some((e) => e.to === outlineCardUuid)
   for (const node of docs) {
     const doc = docPending.get(node.id)
     const o = outlinePending.get(outlineUuid(node.id))
     if (!doc || !o) continue
-    const nestedIn = edges.some((e) => e.to === o.card.uuid)
+    const nestedIn = isNestedIn(o.card.uuid)
     if (nestedIn) {
       // 嵌套接入：文档卡排在大纲卡左边（与父大纲同列），由大纲卡带着进 BFS
-      doc.depth = Math.max(doc.depth, o.depth - 1, 1)
       doc.parent = o
       o.next.unshift(doc)
     } else {
-      o.depth = doc.depth + 1
       o.parent = doc
       doc.next.push(o)
     }
@@ -462,9 +453,11 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
   }
 
   // 挂件：笔记 / 试卷 / 超级文档，创建即挂，卡随实体（照旧挂在内容文档卡之下）
+  const docAttachments = new Map<string, Pending[]>()
   for (const node of docs) {
     const doc = docPending.get(node.id)
     if (!doc) continue
+    const atts: Pending[] = []
     for (const note of notesOf(node)) {
       const p: Pending = {
         card: {
@@ -473,7 +466,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
           title: note.name,
           subtitle: note.content.trim() ? `${note.content.length} 字` : '还是空的',
         },
-        depth: doc.depth + 1,
+        depth: 1,
         anchorY: 0,
         next: [],
         parent: doc,
@@ -481,6 +474,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
       add(p)
       pushEdge(node.id, note.id)
       doc.next.push(p)
+      atts.push(p)
     }
     for (const exam of examsOfNode(store, node.id)) {
       const p: Pending = {
@@ -493,7 +487,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
           // 考试记录一行一次作答：界面据此把卡片撑高、逐行列出（样式与大纲目标项同款）
           ...(exam.attempts.length ? { attempts: attemptRows(exam.attempts) } : {}),
         },
-        depth: doc.depth + 1,
+        depth: 1,
         anchorY: 0,
         next: [],
         parent: doc,
@@ -501,6 +495,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
       add(p)
       pushEdge(node.id, exam.id)
       doc.next.push(p)
+      atts.push(p)
     }
     for (const sdoc of superDocsOf(node)) {
       const p: Pending = {
@@ -511,7 +506,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
           subtitle: sdoc.html.trim() ? `${sdoc.html.length} 字符` : '还是空的',
           ...(sdoc.html.trim() ? {} : { blank: true }),
         },
-        depth: doc.depth + 1,
+        depth: 1,
         anchorY: 0,
         next: [],
         parent: doc,
@@ -519,7 +514,9 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
       add(p)
       pushEdge(node.id, sdoc.id)
       doc.next.push(p)
+      atts.push(p)
     }
+    if (atts.length > 0) docAttachments.set(node.id, atts)
   }
 
   // 游离挂件（剪了线 / 没绑过的）：独立实体，一样上画布——位置按存过的来，没存的自动找空位
@@ -569,6 +566,69 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
       next: [],
       parent: null,
     })
+  }
+
+  /*
+   * 拓扑深度（depth）计算：
+   * 树状大纲、文档、挂件纵深多层嵌套时，单遍遍历会导致深层节点的 depth 被截断、
+   * 子节点被算成浅层深度（排到父节点左边倒着连线）。
+   * 此处采用全局拓扑松弛（Bellman-Ford / DAG 最长路）：
+   * 1. 根节点（goal.rootNodeId 对应的文档卡）固定为 depth 1；游离挂件初始为 depth 2；其他卡片初始为 depth 1；
+   * 2. 任何父子依赖关系 u -> v 必须满足深度递增约束（v.depth >= u.depth + 1）；
+   * 3. 循环迭代直至收敛，确保不管嵌套多少层（depth 5、6、7...），深度严格单调递增并对齐列。
+   */
+  let depthChanged = true
+  let depthRounds = 0
+  const maxDepthRounds = byUuid.size + 2
+  while (depthChanged && depthRounds < maxDepthRounds) {
+    depthChanged = false
+    depthRounds++
+
+    // 约束 1：树边传递 (fromCard -> toCard)
+    for (const e of store.edges) {
+      const toCard = outlinePending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to)
+      const fromCard = fromCardOf(e.from, e.to)
+      if (!fromCard || !toCard) continue
+      const req = fromCard.depth + 1
+      if (toCard.depth < req) {
+        toCard.depth = req
+        depthChanged = true
+      }
+    }
+
+    // 约束 2：附身大纲与宿主文档传递
+    for (const node of docs) {
+      const doc = docPending.get(node.id)
+      const o = outlinePending.get(outlineUuid(node.id))
+      if (!doc || !o) continue
+      const nestedIn = isNestedIn(o.card.uuid)
+      if (nestedIn) {
+        const req = Math.max(o.depth - 1, 1)
+        if (doc.depth < req) {
+          doc.depth = req
+          depthChanged = true
+        }
+      } else {
+        const req = doc.depth + 1
+        if (o.depth < req) {
+          o.depth = req
+          depthChanged = true
+        }
+      }
+    }
+
+    // 约束 3：文档到挂件传递
+    for (const [docId, atts] of docAttachments) {
+      const doc = docPending.get(docId)
+      if (!doc) continue
+      const req = doc.depth + 1
+      for (const p of atts) {
+        if (p.depth < req) {
+          p.depth = req
+          depthChanged = true
+        }
+      }
+    }
   }
 
   

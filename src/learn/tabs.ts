@@ -74,6 +74,7 @@ export function tabKey(ref: TabRef): string {
   if (ref.kind === 'video') return ref.videoId ? 'v:' + ref.videoId : 'v:new'
   // 插件文档全局一份：设置里的入口点多少次都是切回同一页
   if (ref.kind === 'pluginDoc') return 'p:plugin-doc'
+  if (ref.kind === 'sponsors') return 'p:sponsors'
   // 设置页与用量页同样全局只有一份：从哪个入口打开都是切到它，不会开出第二枚
   if (ref.kind === 'settings') return 'set:settings'
   if (ref.kind === 'usage') return 'u:usage'
@@ -137,6 +138,7 @@ export function tabNodeId(ref: TabRef): string | null {
     ref.kind === 'web' ||
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
+    ref.kind === 'sponsors' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
@@ -207,6 +209,7 @@ export function tabTitle(
   // 视频学习（实验）页签：解析到的视频标题活在页签内容里，栏上统一叫这一个名字
   if (ref.kind === 'video') return ref.videoId ? (videoTitle?.(ref.videoId) ?? t('视频学习')) : t('新建视频')
   if (ref.kind === 'pluginDoc') return t('插件开发文档')
+  if (ref.kind === 'sponsors') return t('赞助者名单')
   if (ref.kind === 'settings') return t('设置')
   if (ref.kind === 'usage') return t('用量统计')
   if (ref.kind === 'schedule') return t('日程安排')
@@ -241,6 +244,7 @@ export function tabTrail(
   if (
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
+    ref.kind === 'sponsors' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||

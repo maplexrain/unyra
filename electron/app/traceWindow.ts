@@ -17,6 +17,7 @@ import { startupBackground } from '../storage'
 import { DEV_SERVER_URL } from './startup'
 import { appIcon } from './icon'
 import { attachConsoleForwarding, hardenLinks } from './windows'
+import { mainWindow } from './mainWindow'
 
 let traceWindow: BrowserWindow | null = null
 /** 开窗时主窗口递来的那份会话数据：页面加载完补发一次（不保证送达，见 openTraceWindow） */
@@ -38,7 +39,8 @@ function sendToHost(channel: string, payload: unknown): void {
 
 /** 主窗口 = 轨迹窗口之外的那一个（取法与 examWindow.hostWindow 同一条理由） */
 function hostWindow(): BrowserWindow | null {
-  const win = BrowserWindow.getAllWindows().find((w) => w !== traceWindow && !w.isDestroyed())
+  const win = mainWindow()
+  if (!win || win.isDestroyed() || win === traceWindow) return null
   return win ?? null
 }
 

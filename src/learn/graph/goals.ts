@@ -138,6 +138,7 @@ function tabNodeIdOf(ref: TabRef): string {
     ref.kind === 'settings' ||
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
+    ref.kind === 'sponsors' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||

@@ -291,6 +291,7 @@ export function createWebNativeBridge(): NativeBridge {
 
     examGuest: {
       emit: () => {},
+      getInitialState: () => Promise.resolve(null),
       onState: () => () => {},
       onConfirmClose: () => () => {},
       setFullscreen: () => {},

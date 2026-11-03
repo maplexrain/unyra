@@ -36,6 +36,7 @@ export function favoriteKeyOfTab(ref: TabRef): string | null {
   if (
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
+    ref.kind === 'sponsors' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
@@ -56,6 +57,7 @@ export function favoriteRefOfTab(ref: TabRef): FavoriteRef | null {
   if (
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
+    ref.kind === 'sponsors' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
