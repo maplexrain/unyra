@@ -2336,13 +2336,13 @@ export const StructureCanvas = memo(function StructureCanvas({
                 （slotAnchorY = OUTLINE_HEAD + 行号 × 行高）。这里一旦改成 minHeight 或加
                 padding，圆点就会和它那一行错开——真错过一次。
               */}
-              <div className="flex shrink-0 items-center gap-1.5 px-3" style={{ height: OUTLINE_HEAD }}>
+              <div className="flex shrink-0 items-center gap-1.5 px-3" style={{ height: OUTLINE_HEAD }} title={card.title}>
                 <span className={`shrink-0 px-1.5 py-[1px] text-[10px] font-semibold ${KIND_BADGE[card.kind]}`}>
                   {t(GRAPH_KIND_LABEL[card.kind])}
                 </span>
                 <span
                   {...(openable ? { 'data-open-title': card.uuid } : {})}
-                  title={openable ? t('点标题直接打开') : undefined}
+                  title={card.title}
                   className={`min-w-0 flex-1 truncate text-[13px] font-medium text-ink ${
                     openable ? 'hover:text-seal hover:underline' : ''
                   }`}
@@ -2368,7 +2368,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                       key={slot.key}
                       data-slot-key={slot.key}
                       data-slot-parent={card.uuid}
-                      title={slot.childId ? t('跳到这个子文档') : t('生成一份空文档')}
+                      title={slot.childId ? `${slot.title} · ${t('跳到这个子文档')}` : `${slot.title} · ${t('生成一份空文档')}`}
                       onPointerEnter={() => setHoverSlot({ parentId: card.uuid, key: slot.key })}
                       onPointerLeave={() => setHoverSlot(null)}
                       className="relative flex cursor-pointer items-center gap-1.5 pr-3 pl-2 hover:bg-seal/[0.08]"
@@ -2376,6 +2376,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                     >
                       <span className="h-2 w-2 shrink-0" />
                       <span
+                        title={slot.title}
                         className="truncate text-[11.5px]"
                         style={{ color: slot.childId ? SLOT_ACCENT : undefined, opacity: slot.childId ? 1 : 0.55 }}
                       >
@@ -2416,7 +2417,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                   与上级上下文，规划这一层怎么拆——不靠手填。
                 */
                 <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                  <span className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
+                  <span title={card.subtitle} className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
                   <button
                     type="button"
                     title={card.free ? t('读它认领的目标项与上级上下文，规划这一层怎么拆') : t('读宿主文档，把「先要学会什么」铺成目标项')}
@@ -2515,7 +2516,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                   有内容的试卷（还没有作答记录）：显示考试按钮
                 */
                 <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                  <span className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
+                  <span title={card.subtitle} className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
                   <button
                     type="button"
                     title={t('开始考试（打开独立考试窗口）')}
@@ -2538,7 +2539,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                   必须是真按钮：画布容器在 pointerdown 上捕获指针，非白名单元素的 click 会被吞掉。
                 */
                 <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                  <span className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
+                  <span title={card.subtitle} className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
                   <div className="flex items-center gap-1 shrink-0">
                     {!card.blank && (
                       <button
@@ -2699,7 +2700,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                   超级实验室会先问想做什么实验。**已经生成好的不再显示**（subtitle 就是内容在那里）。
                 */
                 <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                  <span className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
+                  <span title={card.subtitle} className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
                   <button
                     type="button"
                     className="shrink-0 bg-seal/15 px-2 py-0.5 text-[11px] text-seal-deep hover:bg-seal/25"
@@ -2713,7 +2714,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                   </button>
                 </div>
               ) : (
-                <div className="truncate px-3 pb-2 text-[11px] text-ink-soft">{card.subtitle}</div>
+                <div title={card.subtitle} className="truncate px-3 pb-2 text-[11px] text-ink-soft">{card.subtitle}</div>
               )}
 
               {/*
@@ -2741,7 +2742,7 @@ export const StructureCanvas = memo(function StructureCanvas({
               )}
                 </>
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-[11px] text-ink-faint/45 select-none font-medium px-2 truncate">
+                <div title={card.title} className="flex h-full w-full items-center justify-center text-[11px] text-ink-faint/45 select-none font-medium px-2 truncate">
                   {card.title}
                 </div>
               )}
@@ -2778,14 +2779,13 @@ export const StructureCanvas = memo(function StructureCanvas({
         点/拖哪里，镜头就把哪里居中——大图上找路比滚轮翻得快。
       */}
       {/*
-        左上角固定组：全景缩略图占最角落，节点列表排在它下面——两块都贴着左上，
-        用一个纵列装着，谁也不压谁。
+        全景缩略图：节点按类型着色的微缩卡片（带描边与圆角）+ 半透明的当前视口框。
+        点/拖哪里，镜头就把哪里居中——大图上找路比滚轮翻得快。
       */}
-      <div className="absolute top-4 left-4 z-20 flex flex-col items-start gap-2.5">
       {mini && (
         <div
           data-tour="minimap"
-          className="flex items-center justify-center rounded-xl border border-line bg-card/90 p-1.5 shadow-sm backdrop-blur"
+          className="absolute top-4 left-4 z-20 flex items-center justify-center rounded-xl border border-line bg-card/90 p-1.5 shadow-sm backdrop-blur"
           style={{ width: MINI_W + 12, height: MINI_H + 12 }}
         >
           {/*
@@ -2809,27 +2809,29 @@ export const StructureCanvas = memo(function StructureCanvas({
         </div>
       )}
 
-      {/* 左侧节点列表：拖到画布上生成节点（必须拖出列表再松手，见 Gesture.palette.leftList） */}
+      {/* 顶部节点列表卡：水平排列，只显示图标，悬停向下弹出 tip 显示节点类型 */}
       <div
         ref={paletteRef}
         data-tour="palette"
-        className="flex w-[148px] flex-col gap-1 rounded-xl border border-line bg-card/85 p-2 backdrop-blur"
+        className="absolute top-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border border-line bg-card/85 p-1.5 shadow-xs backdrop-blur"
       >
-        <div className="px-1 pb-1 text-[10px] font-semibold text-ink-faint">{t('拖到画布或文档卡上')}</div>
         {PALETTE.map((kind) => (
           <div
             key={kind}
             data-palette-kind={kind}
-            className="flex cursor-grab items-center gap-1.5 rounded-lg border border-line/70 bg-paper/70 px-2 py-1.5 text-[12px] text-ink hover:border-seal/40 hover:bg-seal/[0.06]"
+            className="group/palette-item relative flex h-7 w-7 cursor-grab items-center justify-center rounded-lg border border-line/70 bg-paper/70 transition-all hover:scale-105 hover:border-seal/40 hover:bg-seal/[0.06] active:cursor-grabbing"
           >
-            {/* 色签用卡片徽章的同一套配色：列表里什么颜色，画布上就是什么颜色 */}
+            {/* 色签用卡片徽章的同一套配色：只显示图标 */}
             <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded ${KIND_BADGE[kind]}`}>
               <KindIcon kind={kind} />
             </span>
-            <span className="min-w-0 flex-1 truncate">{t(GRAPH_KIND_LABEL[kind])}</span>
+
+            {/* 仅在鼠标经过节点项时向下弹出 tip 显示节点类型 */}
+            <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-line bg-card px-2 py-0.5 text-[11px] font-medium text-ink shadow-md opacity-0 transition-opacity duration-150 group-hover/palette-item:opacity-100">
+              {t(GRAPH_KIND_LABEL[kind])}
+            </span>
           </div>
         ))}
-      </div>
       </div>
 
       {/*
