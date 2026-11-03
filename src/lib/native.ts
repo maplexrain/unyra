@@ -317,6 +317,8 @@ export interface NativeBridge {
   examGuest: {
     /** 向主窗口发一个事件（开始考试、作答、交卷…） */
     emit(payload: unknown): void
+    /** 获取主进程缓存的初始状态 */
+    getInitialState?(): Promise<unknown>
     /** 订阅主窗口推来的状态；返回取消订阅函数 */
     onState(cb: (payload: unknown) => void): () => void
     /**

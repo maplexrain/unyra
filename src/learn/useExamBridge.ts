@@ -288,7 +288,7 @@ export function useExamBridge(opts: {
         liveRef.current = { examId: running.exam.id, attemptId: running.attempt.id, nodeId: running.exam.nodeId }
         setLive(liveRef.current)
         try {
-          void native().examHost.open({ examId: running.exam.id, nodeId: running.exam.nodeId })
+          void native().examHost.open(shapeState(running.exam, running.attempt))
         } catch {
           // 没有桥就算了：这种情况下也不会真的有一场在考
         }
@@ -298,7 +298,7 @@ export function useExamBridge(opts: {
       if (!exam) return
       pendingRef.current = examId
       try {
-        void native().examHost.open({ examId, nodeId: exam.nodeId })
+        void native().examHost.open(shapeState(exam, undefined))
       } catch {
         return
       }
@@ -309,7 +309,12 @@ export function useExamBridge(opts: {
   const reveal = useCallback(() => {
     const current = liveRef.current
     try {
-      native().examHost.open({ examId: current?.examId, nodeId: current?.nodeId })
+      if (!current) return
+      const store = optsRef.current.getLatest()
+      const exam = store.exams.find((e) => e.id === current.examId)
+      const running = exam?.attempts.find((a) => a.id === current.attemptId)
+      const state = exam ? shapeState(exam, running) : { examId: current.examId, nodeId: current.nodeId }
+      native().examHost.open(state)
     } catch {
       // 同上：没有桥时无事可做
     }

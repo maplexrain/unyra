@@ -527,6 +527,7 @@ const dict: Record<string, string> = {
   '已交卷，导师正在判分与讲解…': 'Submitted; the tutor is grading and writing explanations...',
   '已放弃这次考试（记 0 分）。': 'This exam was abandoned (scored 0).',
   '正在打开试卷…': 'Opening the exam...',
+  '若长时间未加载，点击重试': 'If not loading, click to retry',
   '{0} 题 · 满分 {1}': '{0} questions · {1} points total',
   '已答 {0}/{1}': 'Answered {0}/{1}',
   '到点后是否强制交卷由你在开考前选': 'Whether to force-submit at the deadline was your choice before starting',

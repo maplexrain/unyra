@@ -13,6 +13,7 @@ import { DEV_SERVER_URL } from './startup'
 import { attachConsoleForwarding } from './windows'
 import { openPinWindow, type PinnedItemPayload } from './pinWindow'
 import { copyDataUrlToClipboard } from './clipboardHelper'
+import { mainWindow } from './mainWindow'
 import { snapViaHelper } from './doubleBackquoteShortcut'
 import { detectSystemWindowRects, mapRawRectsToDisplay, getFallbackRects, type WindowRectItem } from './windowRectsHelper'
 
@@ -22,7 +23,8 @@ let capturedSystemRects: WindowRectItem[] = []
 let isCapturing = false
 
 function hostWindow(): BrowserWindow | null {
-  const win = BrowserWindow.getAllWindows().find((w) => w !== screenshotWindow && !w.isDestroyed())
+  const win = mainWindow()
+  if (!win || win.isDestroyed() || win === screenshotWindow) return null
   return win ?? null
 }
 

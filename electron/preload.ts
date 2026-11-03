@@ -575,6 +575,8 @@ const api = {
   examGuest: {
     /** 向主窗口发一个事件（开始考试、作答、交卷…形状由两侧自己约定，主进程不看） */
     emit: (payload: unknown): void => ipcRenderer.send('exam:emit', payload),
+    /** 考试窗口主动获取主进程缓存的初始状态（避免单向通知的竞态时序造成白屏） */
+    getInitialState: (): Promise<unknown> => ipcRenderer.invoke('exam:getInitialState'),
 
     /** 订阅主窗口推来的状态；返回取消订阅函数（组件卸载时必须调用） */
     onState: (cb: (payload: unknown) => void): (() => void) => {
