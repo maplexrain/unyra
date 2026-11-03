@@ -178,6 +178,40 @@ describe('TyporaLiveEditor live preview extensions', () => {
       iterB.next()
     }
     expect(bulletClasses).toContain('cm-typora-mark-active')
+
+    // Cursor in heading body (pos 4, 'H2') keeps header mark hidden so line does not shift
+    const viewHeaderBody = new EditorView({
+      state: EditorState.create({
+        doc: text,
+        selection: { anchor: 4 }, // inside 'H2'
+        extensions: [markdown({ base: markdownLanguage }), typoraDelimiterPlugin],
+      }),
+    })
+    const headBodyDecos = viewHeaderBody.plugin(typoraDelimiterPlugin)?.decorations
+    const headBodyClasses: string[] = []
+    const iterHB = headBodyDecos!.iter()
+    while (iterHB.value) {
+      if (iterHB.value.spec.class) headBodyClasses.push(iterHB.value.spec.class)
+      iterHB.next()
+    }
+    expect(headBodyClasses).not.toContain('cm-typora-mark-active')
+
+    // Cursor at start of heading (pos 0, touching '## ') reveals header mark
+    const viewHeaderMark = new EditorView({
+      state: EditorState.create({
+        doc: text,
+        selection: { anchor: 0 },
+        extensions: [markdown({ base: markdownLanguage }), typoraDelimiterPlugin],
+      }),
+    })
+    const headMarkDecos = viewHeaderMark.plugin(typoraDelimiterPlugin)?.decorations
+    const headMarkClasses: string[] = []
+    const iterHM = headMarkDecos!.iter()
+    while (iterHM.value) {
+      if (iterHM.value.spec.class) headMarkClasses.push(iterHM.value.spec.class)
+      iterHM.next()
+    }
+    expect(headMarkClasses).toContain('cm-typora-mark-active')
   })
 
   it('handles empty document and edge cases without error', () => {

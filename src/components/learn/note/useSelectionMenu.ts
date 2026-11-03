@@ -174,7 +174,7 @@ export function useSelectionMenu({ bodyRef, content, html }: Opts) {
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
       const n = Number(e.key)
       if (!Number.isInteger(n) || n < 1) return
-      const btn = menuRef.current?.querySelector<HTMLButtonElement>('[data-hotkey="' + n + '"]')
+      const btn = menuRef.current?.querySelector<HTMLButtonElement>('[data-hotkey="' + n + '"], [data-hotkey-alt="' + n + '"]')
       if (!btn || btn.disabled) return
       e.preventDefault()
       btn.click()

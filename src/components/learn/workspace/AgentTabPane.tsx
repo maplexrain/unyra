@@ -63,7 +63,7 @@ export const AgentTabPane = memo(function AgentTabPane({
   return (
     <div
       key={tabKey}
-      {...(panelProps.active ? { className: 'absolute inset-0' } : { hidden: true })}
+      {...(panelProps.active ? { className: 'absolute inset-0 moji-tab-transition' } : { hidden: true })}
     >
       <AgentPanel {...panelProps} />
     </div>

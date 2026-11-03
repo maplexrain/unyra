@@ -25,7 +25,8 @@ export function addAnnotation(
   if (!node) return store
   const t = term.trim()
   const b = body.trim()
-  if (!t || !b) return store
+  if (!t) return store
+  if (kind !== 'note' && !b) return store
   const exists = node.annotations.some((a) => a.term === t)
   const at =
     typeof occurrence === 'number' && Number.isInteger(occurrence) && occurrence > 0 ? occurrence : 0
@@ -49,7 +50,7 @@ export function updateAnnotation(
   const target = node.annotations.find((a) => a.term === t)
   if (!target) return store
   const body = patch.body !== undefined ? patch.body.trim() : target.body
-  if (!body) return store
+  if (target.kind !== 'note' && !body) return store
   const style = patch.style !== undefined ? patch.style : target.style
   const annotations = node.annotations.map((a) =>
     a.term === t

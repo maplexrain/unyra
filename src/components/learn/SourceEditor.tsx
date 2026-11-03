@@ -283,7 +283,7 @@ export default function SourceEditor({
   const chars = countSourceWords(value)
 
   return (
-    <div className="print-flat relative flex min-h-0 flex-1 flex-col bg-card">
+    <div className="print-flat relative flex min-h-0 flex-1 flex-col bg-card moji-tab-transition">
       {/*
         字数与保存状态：排在右上角悬浮组的正下方（见 DocFloat 的 DocStatChip）。
         保存状态跟着字数一起搬——它俩本来就是同一条读数（「这份文档现在多大、存了没」），

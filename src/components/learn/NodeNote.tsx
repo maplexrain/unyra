@@ -272,6 +272,15 @@ export default memo(function NodeNote({
     if (key === 'learn') return doLearn()
     if (key === 'understand') return doUnderstand()
     if (key === 'ask') return setAsking(true)
+    if (key === 'mark') {
+      const term = menu?.term ?? ''
+      const at = menu?.occurrence ?? 0
+      dismiss()
+      if (term) {
+        onSaveAnnotation?.(term, '', undefined, at)
+      }
+      return
+    }
     // 注解：用 term（按选区 DOM 重取的词条）而不是 text——跨元素选择时 text 里混着
     // 公式的排版字符，存下来永远匹配不上正文；occurrence 一并带上，同一个词出现
     // 好几回时要标的是用户划的那一处

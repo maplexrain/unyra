@@ -90,7 +90,7 @@ export const DocPane = memo(function DocPane({
     */
     <div
       data-doc-pane={active ? 'active' : 'idle'}
-      className={active ? 'print-flat relative flex min-h-0 flex-1 flex-col' : 'hidden'}
+      className={active ? 'print-flat relative flex min-h-0 flex-1 flex-col moji-tab-transition' : 'hidden'}
       {...(!active ? { hidden: true } : {})}
     >
       <NodeNote

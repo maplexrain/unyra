@@ -159,7 +159,8 @@ export default function DocFloat({
       <div className="flex flex-col items-center gap-1">
         {/*
           1. 源码 / 预览切换按钮（排在第一位）：
-          图标反转——编辑模式显示预览图标（Eye 晴蓝），预览模式显示编辑源码图标（Pencil 暖金）。
+          图标反转——编辑模式显示预览图标（Eye），预览模式显示编辑源码图标（Pencil）。
+          统一色彩基调，保持沉浸与清爽规范。
           媒体预览（图片 / 音频 / 视频 / PDF）没有源码可看，整颗不出现。
         */}
         {view !== 'media' && (
@@ -180,14 +181,14 @@ export default function DocFloat({
             }
           >
             {view === 'source' ? (
-              <Eye size={15} className="text-sky-500 hover:text-sky-400 transition-colors" />
+              <Eye size={15} className="transition-colors" />
             ) : (
-              <Pencil size={15} className="text-amber-500 hover:text-amber-400 transition-colors" />
+              <Pencil size={15} className="transition-colors" />
             )}
           </button>
         )}
 
-        {/* 2. 随笔按钮：翠绿色手札图标 */}
+        {/* 2. 随笔按钮：手札图标 */}
         {showEssay && (
           <button
             ref={essayBtnRef}
@@ -206,7 +207,7 @@ export default function DocFloat({
               strokeLinecap="round"
               strokeLinejoin="round"
               aria-hidden="true"
-              className="text-emerald-500 hover:text-emerald-400 transition-colors"
+              className="transition-colors"
             >
               <path d="M14 3H4v18h16V9l-6-6Z" />
               <path d="M14 3v6h6" />
@@ -216,7 +217,7 @@ export default function DocFloat({
           </button>
         )}
 
-        {/* 3. 标题大纲：紫罗兰色树状图标，悬停向右弹出大纲列表卡片 */}
+        {/* 3. 标题大纲：树状图标，悬停向右弹出大纲列表卡片 */}
         {view === 'preview' && (
           <div className="relative" onMouseEnter={openNow} onMouseLeave={closeSoon}>
             <button
@@ -225,7 +226,7 @@ export default function DocFloat({
               aria-expanded={phase === 'open'}
               className={ICON_BTN}
             >
-              <ListTree size={15} className="text-violet-500 hover:text-violet-400 transition-colors" />
+              <ListTree size={15} className="transition-colors" />
             </button>
             {phase !== 'closed' && snap && (
               <DocOutline
@@ -239,14 +240,14 @@ export default function DocFloat({
           </div>
         )}
 
-        {/* 4. 回到教学文档：印章红/玫瑰红书本图标 */}
+        {/* 4. 回到教学文档：书本图标 */}
         {showBackToDoc && (
           <button type="button" title={t('回到这个节点的教学文档')} onClick={onBackToDoc} className={ICON_BTN}>
-            <BookOpen size={15} className="text-rose-500 hover:text-rose-400 transition-colors" />
+            <BookOpen size={15} className="transition-colors" />
           </button>
         )}
 
-        {/* 5. 分割线与纯净阅读：水青色扩展图标 */}
+        {/* 5. 分割线与纯净阅读：扩展图标 */}
         <span aria-hidden="true" className="my-0.5 h-px w-4 self-center bg-line-strong/70" />
         <button
           type="button"
@@ -260,9 +261,9 @@ export default function DocFloat({
           }
         >
           {pure ? (
-            <Minimize2 size={15} className="text-teal-500 hover:text-teal-400 transition-colors" />
+            <Minimize2 size={15} className="transition-colors" />
           ) : (
-            <Maximize2 size={15} className="text-teal-500 hover:text-teal-400 transition-colors" />
+            <Maximize2 size={15} className="transition-colors" />
           )}
         </button>
       </div>

@@ -155,9 +155,18 @@ export const OcrTextOverlay = memo(function OcrTextOverlay({ lines, pageHeight }
       }}
     >
       <style>{`
+        .ocr-text-layer,
+        .ocr-text-layer * {
+          -webkit-text-fill-color: transparent !important;
+          color: transparent !important;
+        }
+        .ocr-text-layer ::selection,
+        .ocr-text-layer *::selection,
         .ocr-text-layer span::selection {
-          background: rgba(56, 139, 253, 0.35);
-          color: transparent;
+          background: rgba(56, 139, 253, 0.35) !important;
+          color: transparent !important;
+          -webkit-text-fill-color: transparent !important;
+          text-shadow: none !important;
         }
       `}</style>
       {lines.map((line, lineIdx) => {
@@ -180,6 +189,9 @@ export const OcrTextOverlay = memo(function OcrTextOverlay({ lines, pageHeight }
                       height: `${(w.bbox.height * 100).toFixed(3)}%`,
                       fontSize: `${fSize}px`,
                       lineHeight: 1,
+                      color: 'transparent',
+                      WebkitTextFillColor: 'transparent',
+                      textShadow: 'none',
                     }}
                     title={w.text}
                   >
@@ -204,6 +216,9 @@ export const OcrTextOverlay = memo(function OcrTextOverlay({ lines, pageHeight }
               height: `${(line.bbox.height * 100).toFixed(3)}%`,
               fontSize: `${fSize}px`,
               lineHeight: 1,
+              color: 'transparent',
+              WebkitTextFillColor: 'transparent',
+              textShadow: 'none',
             }}
             title={text}
           >

@@ -349,7 +349,14 @@ function ExplorerSidebarComponent({
           /* 展开态：完整的资源管理器结构 */
           <>
             <header className="flex items-center gap-2 px-3 pb-2.5 pt-3.5 border-b border-line/40">
-              <Logo size={30} />
+              <button
+                type="button"
+                onClick={() => toggleCollapsed(true)}
+                title={t('收起侧栏')}
+                className="flex items-center justify-center cursor-pointer hover:opacity-80 active:scale-95 transition-all outline-none rounded-none"
+              >
+                <Logo size={30} />
+              </button>
               <div className="min-w-0 flex-1 leading-tight">
                 <div className="text-[14px] font-semibold text-ink-strong">{t('归一')}</div>
                 <div className="text-[8.5px] uppercase tracking-[0.2em] text-ink-faint">Retro Learning</div>

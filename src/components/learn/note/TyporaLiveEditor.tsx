@@ -38,7 +38,7 @@ export const typoraLinePlugin = ViewPlugin.fromClass(
       this.decorations = this.build(view)
     }
     update(u: ViewUpdate) {
-      if (u.docChanged || u.viewportChanged || u.selectionSet) {
+      if (u.docChanged || u.viewportChanged) {
         this.decorations = this.build(u.view)
       }
     }
@@ -113,7 +113,7 @@ export const typoraInlinePlugin = ViewPlugin.fromClass(
       this.decorations = this.build(view)
     }
     update(u: ViewUpdate) {
-      if (u.docChanged || u.viewportChanged || u.selectionSet) {
+      if (u.docChanged || u.viewportChanged) {
         this.decorations = this.build(u.view)
       }
     }
@@ -244,30 +244,32 @@ export const typoraDelimiterPlugin = ViewPlugin.fromClass(
             node.name === 'CodeMark' ||
             node.name === 'QuoteMark'
           ) {
-            const line = state.doc.lineAt(node.from)
             const isLineScope = node.name === 'HeaderMark' || node.name === 'QuoteMark'
             const parent = node.node.parent
 
-            let isActive = false
-            if (isLineScope) {
-              isActive = sel.from <= line.to && sel.to >= line.from
-            } else if (parent) {
-              isActive = sel.from <= parent.to && sel.to >= parent.from
-            }
-
             let from = node.from
             let to = node.to
-            if (!isActive && isLineScope) {
-              // 标题或引用未激活时，将标记后的空格一并隐去，使首字对齐左边距
-              if (state.sliceDoc(to, to + 1) === ' ') {
-                to += 1
-              }
+            if (isLineScope && state.sliceDoc(to, to + 1) === ' ') {
+              to += 1
+            }
+
+            let isActive = false
+            if (isLineScope) {
+              // 关键：标题与引用只有当光标触及标记区域（行首至标记末尾）时才展开；
+              // 在正文标题内部移动光标或打字时，标记保持隐藏，整行文字不发生左右水平位移跳动
+              isActive = sel.empty
+                ? sel.from <= to && sel.from >= from
+                : sel.from <= to && sel.to >= from
+            } else if (parent) {
+              isActive = sel.from <= parent.to && sel.to >= parent.from
             }
 
             items.push({
               from,
               to,
-              deco: Decoration.mark({ class: isActive ? 'cm-typora-mark-active' : 'cm-typora-mark-hidden' }),
+              deco: isActive
+                ? Decoration.mark({ class: 'cm-typora-mark-active' })
+                : Decoration.replace({}),
             })
           } else if (node.name === 'HorizontalRule') {
             const line = state.doc.lineAt(node.from)
@@ -348,9 +350,9 @@ export const typoraDelimiterPlugin = ViewPlugin.fromClass(
               const closingBracket = text.indexOf('](')
               if (closingBracket !== -1) {
                 // 隐去首个 [
-                items.push({ from: node.from, to: node.from + 1, deco: Decoration.mark({ class: 'cm-typora-mark-hidden' }) })
+                items.push({ from: node.from, to: node.from + 1, deco: Decoration.replace({}) })
                 // 隐去 ](...)
-                items.push({ from: node.from + closingBracket, to: node.to, deco: Decoration.mark({ class: 'cm-typora-mark-hidden' }) })
+                items.push({ from: node.from + closingBracket, to: node.to, deco: Decoration.replace({}) })
               }
             }
           }
@@ -732,11 +734,18 @@ export const TyporaLiveEditor = memo(function TyporaLiveEditor({
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
+    // 若与本地最新值一致，说明是由本地内部打字 updateListener 触发的父级重渲染，避免重复 dispatch 破坏选区
+    if (content === valueRef.current) return
     const currentDoc = view.state.doc.toString()
-    if (content !== currentDoc) {
-      valueRef.current = content
+    const normContent = content.replace(/\r\n/g, '\n')
+    if (normContent !== currentDoc) {
+      valueRef.current = normContent
+      const prevSel = view.state.selection.main
+      const safeAnchor = Math.min(prevSel.anchor, normContent.length)
+      const safeHead = Math.min(prevSel.head, normContent.length)
       view.dispatch({
-        changes: { from: 0, to: currentDoc.length, insert: content },
+        changes: { from: 0, to: currentDoc.length, insert: normContent },
+        selection: { anchor: safeAnchor, head: safeHead },
       })
     }
   }, [content])
