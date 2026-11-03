@@ -28,6 +28,7 @@ import {
 } from '../../../lib/appearance'
 import type { User } from '../../../user/types'
 import UserMenu from '../../user/UserMenu'
+import SponsorButton from '../../sponsor/SponsorButton'
 import UpdateButton from '../../update/UpdateButton'
 import NoticeButton from '../../notice/NoticeButton'
 import LanButton from '../../lan/LanButton'
@@ -213,6 +214,9 @@ export function Topbar({
           onOpenUsage={onOpenUsage}
           onSignOut={onSignOut}
         />
+
+        {/* 赞助支持独立开发入口（鼠标悬停浮出 Maxwell 的赞赏码与寄语） */}
+        <SponsorButton />
 
         {/*
           主题：点一下在「跟随系统 → 浅色 → 深色」之间轮换。
