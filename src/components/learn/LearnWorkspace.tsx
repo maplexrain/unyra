@@ -220,6 +220,8 @@ import VideoTabLayer, { type VideoTab } from '../video/VideoTabLayer'
 import type { VideoCreateDraft } from '../video/VideoStudyTab'
 import PluginDoc from '../plugins/PluginDoc'
 import { setPluginDocOpener } from '../../lib/pluginDoc'
+import SponsorsDoc from '../sponsor/SponsorsDoc'
+import { setSponsorsOpener } from '../../lib/sponsorDoc'
 import { resolveVideoSource } from '../../lib/videoPlugins'
 import { setVideoBlockHost, cleanVideoNodeUuid, type VideoBlockData, type VideoEpisodeItem } from '../../lib/videosBlock'
 import { setQuoteBlockHost } from '../../lib/quoteBlock'
@@ -797,6 +799,7 @@ export default function LearnWorkspace({
     if (
       ref.kind === 'video' ||
       ref.kind === 'pluginDoc' ||
+      ref.kind === 'sponsors' ||
       ref.kind === 'settings' ||
       ref.kind === 'usage' ||
       ref.kind === 'schedule' ||
@@ -3447,6 +3450,12 @@ export default function LearnWorkspace({
     return () => setPluginDocOpener(null)
   }, [openTab])
 
+  // 顶栏「赞助」里的「赞助者名单」应用内打开器（见 lib/sponsorDoc）
+  useEffect(() => {
+    setSponsorsOpener(() => openTab({ kind: 'sponsors' }))
+    return () => setSponsorsOpener(null)
+  }, [openTab])
+
   // 视频代码块（```videos）的选集数据拉取与点播跳转：注册宿主接口
   useEffect(() => {
     setVideoBlockHost({
@@ -5002,6 +5011,12 @@ export default function LearnWorkspace({
                 静态内容，没有会话态（见 components/plugins/PluginDoc）。
               */
               <PluginDoc />
+            ) : gTab?.ref.kind === 'sponsors' ? (
+              /*
+                赞助者名单与特别鸣谢页签：docs/sponsors.md Markdown 原文渲染。
+                静态内容，提供导出与致谢名册（见 components/sponsor/SponsorsDoc）。
+              */
+              <SponsorsDoc />
             ) : gTab?.ref.kind === 'settings' ? (
               /*
                 设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），
@@ -5452,6 +5467,8 @@ export default function LearnWorkspace({
             gTab.ref.kind !== 'video' &&
             // 插件文档页同样不画：它是参考手册，不是可编辑文档
             gTab.ref.kind !== 'pluginDoc' &&
+            // 赞助者名单页同样不画：它是致谢名册
+            gTab.ref.kind !== 'sponsors' &&
             // PDF 浏览页不画：严格只读，左上角不需要浮动工具栏（纯净阅读仍可用 F11）
             !(gTab.ref.kind === 'local' && isPdfFile(gTab.ref.path)) &&
             !(gTab.ref.kind === 'ws' && isPdfFile(gTab.ref.seg)) && (

@@ -1,13 +1,14 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import SponsorButton from '../src/components/sponsor/SponsorButton'
+import * as sponsorDoc from '../src/lib/sponsorDoc'
 
 ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
 
 describe('SponsorButton 赞助按钮与悬浮赞赏浮层', () => {
-  it('正常渲染顶栏赞助按钮，点击后弹出展示赞赏码、鸣谢指引与作者真诚心声', () => {
+  it('正常渲染顶栏赞助按钮，点击后弹出展示发光赞赏码、鸣谢指引与全职作者真诚心声', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
@@ -34,12 +35,14 @@ describe('SponsorButton 赞助按钮与悬浮赞赏浮层', () => {
     expect(dialog).toBeTruthy()
 
     // 3. 验证浮层包含关键内容
-    // 标题与心声
-    expect(dialog?.textContent).toContain('支持 Moji Notes 独立开发')
+    // 项目名称必须是「归一 unyra」
+    expect(dialog?.textContent).toContain('归一 unyra')
+    // 包含失业全职开发心声
+    expect(dialog?.textContent).toContain('失业状态下全职')
     expect(dialog?.textContent).toContain('你好，我是作者 Maxwell')
-    expect(dialog?.textContent).toContain('抵御疲倦、持续优化性能与加速功能迭代')
+    expect(dialog?.textContent).toContain('抵御现实焦虑')
 
-    // 赞赏码图片
+    // 赞赏码图片存在
     const img = dialog?.querySelector('img')
     expect(img).toBeTruthy()
     expect(img?.getAttribute('alt')).toBe('Maxwell 的赞赏码')
@@ -48,6 +51,18 @@ describe('SponsorButton 赞助按钮与悬浮赞赏浮层', () => {
     expect(dialog?.textContent).toContain('赞助者备注与特别致谢')
     expect(dialog?.textContent).toContain('想留在致谢名单上的称呼')
     expect(dialog?.textContent).toContain('联系方式')
+
+    // 4. 验证应用内打开赞助者名单文件的超链接按钮
+    const openSponsorsSpy = vi.spyOn(sponsorDoc, 'openSponsorsTab').mockImplementation(() => {})
+    const openDocBtn = Array.from(dialog?.querySelectorAll('button') ?? []).find((b) =>
+      b.textContent?.includes('查看赞助者名单与致谢记录'),
+    ) as HTMLButtonElement | undefined
+    expect(openDocBtn).toBeTruthy()
+
+    act(() => {
+      openDocBtn?.click()
+    })
+    expect(openSponsorsSpy).toHaveBeenCalledTimes(1)
 
     // 清理
     act(() => {

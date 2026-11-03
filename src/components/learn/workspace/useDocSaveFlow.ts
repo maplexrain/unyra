@@ -568,8 +568,8 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
          * 但保存是异步入口（快捷键随时可能按下），落后一拍时不能装作存进去了：
          * 那会让用户以为写住了，然后把暂存区里唯一的一份正文也清掉。
          */
-        if (tab.ref.kind === 'video' || tab.ref.kind === 'pluginDoc') {
-          // 这两个页签不指向节点，也不参与文档保存：落到这里说明入口走错了，直接不存
+        if (tab.ref.kind === 'video' || tab.ref.kind === 'pluginDoc' || tab.ref.kind === 'sponsors') {
+          // 这些页签不指向节点，也不参与文档保存：落到这里说明入口走错了，直接不存
           setDocSaving(false)
           return { ok: false, error: t('这个页签没有可保存的内容') }
         }

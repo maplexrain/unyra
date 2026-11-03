@@ -418,6 +418,8 @@ export type TabRef =
    * 跟着页签持久化（normalize 认它），内容全是静态文档，没有要落盘的状态。
    */
   | { kind: 'pluginDoc' }
+  /** 赞助者名单页签：展示赞助者致谢列表与赞助方式（见 components/sponsor/SponsorsDoc） */
+  | { kind: 'sponsors' }
   /**
    * 设置面板：文档区的一枚页签（不再是弹窗）。全局只有一份（tabKey 恒定），
    * 从哪个入口打开都是切到它；面板本身见 components/settings/SettingsPanel。
