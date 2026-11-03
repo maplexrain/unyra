@@ -416,4 +416,94 @@ describe('认领接口的文档卡：没有正经标题就显示接口的 label'
     expect(cam.x).toBeDefined()
     expect(cam.y).toBeDefined()
   })
+
+  it('多层深度递增：深度为 5 的子文档与深度为 6 的挂件排在正确列，父子连线绝无从右向左反折', () => {
+    const base = emptyLearnStore()
+    const noteFunc: NoteFile = { id: 'note_func', name: '笔记', content: '函数笔记', createdAt: 1, updatedAt: 1 }
+    const sdocFunc: SuperDocFile = { id: 'sdoc_func', name: '交互文档', html: '<p>func</p>', createdAt: 1, updatedAt: 1 }
+    const examFunc: Exam = {
+      id: 'exam_func', nodeId: 'd_func', goalId: 'g_nested', title: '随堂测验', kind: 'quiz', level: 'easy',
+      minutes: 0, questions: [], attempts: [], createdAt: 1,
+    }
+
+    const mk = (id: string, title: string, key: string, outlineChildren?: { key: string; title: string }[]) => ({
+      id,
+      title,
+      key,
+      description: '',
+      docs: { teaching: `# ${title}` },
+      notes: id === 'd_func' ? [noteFunc] : [],
+      superdocs: id === 'd_func' ? [sdocFunc] : [],
+      outline: outlineChildren ? { intro: '', children: outlineChildren.map((c) => ({ ...c, summary: '' })), updatedAt: 1 } : undefined,
+      annotations: [],
+      status: 'learning' as const,
+      origin: 'user' as const,
+      goalId: 'g_nested',
+      createdAt: 1,
+      updatedAt: 1,
+    })
+
+    const store: LearnStore = {
+      ...base,
+      goals: [{ id: 'g_nested', rootNodeId: 'r', question: '高数学习', createdAt: 1, updatedAt: 1 }],
+      nodes: [
+        mk('r', '高等数学·全景路线图', 'math', [
+          { key: 'station0', title: '第0站·工具箱重启' },
+          { key: 'station1', title: '第1站·极限与连续' },
+        ]),
+        mk('d0', '第0站·工具箱重启', 'station0', [
+          { key: 'func_domain', title: '函数与定义域' },
+        ]),
+        mk('d_func', '函数与定义域', 'func_domain'),
+        mk('d1', '第1站·极限与连续', 'station1', [
+          { key: 'clamp', title: '夹逼准则' },
+        ]),
+        mk('d_clamp', '夹逼准则', 'clamp'),
+      ],
+      // 树边顺序故意乱序排列，验证全局拓扑松弛不受边定义先后影响
+      edges: [
+        { from: 'd0', to: 'd_func', portKey: 'func_domain', createdAt: 2 },
+        { from: 'd1', to: 'd_clamp', portKey: 'clamp', createdAt: 3 },
+        { from: 'r', to: 'd1', portKey: 'station1', createdAt: 4 },
+        { from: 'r', to: 'd0', portKey: 'station0', createdAt: 1 },
+      ],
+      exams: [examFunc],
+    }
+
+    const view = deriveCanvas(store, 'g_nested', undefined)
+    const byUuid = Object.fromEntries(view.cards.map((c) => [c.uuid, c]))
+
+    // 1. 各节点横坐标必须按拓扑深度对齐
+    expect(byUuid['r'].x).toBe(1 * COL_GAP)
+    expect(byUuid[outlineUuid('r')].x).toBe(2 * COL_GAP)
+    expect(byUuid['d0'].x).toBe(3 * COL_GAP)
+    expect(byUuid[outlineUuid('d0')].x).toBe(4 * COL_GAP)
+    // 关键断言：深度 5 的节点必须在第 5 列（5 * COL_GAP），不得回退到深度 3！
+    expect(byUuid['d_func'].x).toBe(5 * COL_GAP)
+    // 关键断言：深度 6 的挂件必须在第 6 列（6 * COL_GAP），不得挤压在深度 4！
+    expect(byUuid['note_func'].x).toBe(6 * COL_GAP)
+    expect(byUuid['exam_func'].x).toBe(6 * COL_GAP)
+    expect(byUuid['sdoc_func'].x).toBe(6 * COL_GAP)
+
+    // 分支 1：第 1 站分支验证
+    expect(byUuid['d1'].x).toBe(3 * COL_GAP)
+    expect(byUuid[outlineUuid('d1')].x).toBe(4 * COL_GAP)
+    expect(byUuid['d_clamp'].x).toBe(5 * COL_GAP)
+
+    // 2. 检查父子链条在几何上的单调递增性
+    expect(byUuid['r'].x).toBeLessThan(byUuid[outlineUuid('r')].x)
+    expect(byUuid[outlineUuid('r')].x).toBeLessThan(byUuid['d0'].x)
+    expect(byUuid['d0'].x).toBeLessThan(byUuid[outlineUuid('d0')].x)
+    expect(byUuid[outlineUuid('d0')].x).toBeLessThan(byUuid['d_func'].x)
+    expect(byUuid['d_func'].x).toBeLessThan(byUuid['note_func'].x)
+
+    // 3. 检查所有连线：from 的 x 必须严格小于等于 to 的 x（绝无右向左反向折线）
+    for (const e of view.edges) {
+      const fromCard = byUuid[e.from]
+      const toCard = byUuid[e.to]
+      if (fromCard && toCard) {
+        expect(fromCard.x).toBeLessThanOrEqual(toCard.x)
+      }
+    }
+  })
 })
