@@ -26,7 +26,23 @@ export function findTsFiles(dir) {
 
 /** 清掉产物目录：防止已删除模块的旧编译结果残留 */
 export function cleanDist(dir) {
-  rmSync(dir, { recursive: true, force: true })
+  if (!existsSync(dir)) return
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      // 跳过原生助手可执行文件与二进制（如运行中的 screenHelper.exe），避免 Windows EPERM 锁定
+      if (entry.name.endsWith('.exe') || entry.name.endsWith('.dll') || entry.name.endsWith('.node')) {
+        continue
+      }
+      try {
+        rmSync(full, { recursive: true, force: true })
+      } catch {
+        // 单个文件可能被临时读取占用，忽略即可，esbuild 会直接覆盖
+      }
+    }
+  } catch {
+    // 目录清理异常兜底，绝不让清理逻辑中断主构建
+  }
 }
 
 /**
@@ -88,7 +104,11 @@ export async function buildElectron(outdir = join(ROOT, 'dist-electron')) {
     const src = join(ROOT, 'electron/app', name)
     const dst = join(outdir, name)
     if (existsSync(src)) {
-      copyFileSync(src, dst)
+      try {
+        copyFileSync(src, dst)
+      } catch {
+        // 若目标正被运行中的进程占用且已存在，允许跳过覆盖
+      }
     }
   }
 
