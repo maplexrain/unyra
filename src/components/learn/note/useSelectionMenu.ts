@@ -81,6 +81,9 @@ export function useSelectionMenu({ bodyRef, content, html }: Opts) {
         // 以及「这是第几次出现」：同一个词在正文里出现好几回时，
         // 只凭词条没法知道用户划的是哪一处，存下来就会标到第一次出现的那处
         const occurrence = occurrenceAt(body, term, range)
+        const hasMark = Array.from(body.querySelectorAll<HTMLElement>('.moji-anno.moji-anno-note')).some(
+          (span) => (range.intersectsNode ? range.intersectsNode(span) : sel.containsNode(span, true))
+        )
         const rect = range.getBoundingClientRect()
         setMenu({
           x: rect.left + rect.width / 2,
@@ -91,6 +94,7 @@ export function useSelectionMenu({ bodyRef, content, html }: Opts) {
           occurrence,
           concept,
           loc,
+          hasMark,
         })
         setMenuOpen(true)
         setQuestion('')

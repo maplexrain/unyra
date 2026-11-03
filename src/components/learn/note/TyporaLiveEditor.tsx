@@ -409,6 +409,8 @@ const typoraTheme = EditorView.theme({
   },
   '.cm-line': {
     padding: '1.5px 0',
+    marginTop: '0 !important',
+    marginBottom: '0 !important',
   },
 
   /* 标题体系（大标题排版） */
@@ -417,8 +419,8 @@ const typoraTheme = EditorView.theme({
     fontWeight: '700 !important',
     lineHeight: '1.3',
     color: 'var(--color-ink-strong)',
-    marginTop: '1.1em',
-    marginBottom: '0.45em',
+    paddingTop: '0.7em',
+    paddingBottom: '0.25em',
   },
   '.cm-typora-h1 span': {
     fontSize: 'inherit !important',
@@ -429,10 +431,9 @@ const typoraTheme = EditorView.theme({
     fontWeight: '650 !important',
     lineHeight: '1.35',
     color: 'var(--color-ink-strong)',
-    marginTop: '0.9em',
-    marginBottom: '0.35em',
-    borderBottom: '1px solid color-mix(in srgb, var(--color-line) 60%, transparent)',
+    paddingTop: '0.55em',
     paddingBottom: '0.2em',
+    borderBottom: '1px solid color-mix(in srgb, var(--color-line) 60%, transparent)',
   },
   '.cm-typora-h2 span': {
     fontSize: 'inherit !important',
@@ -443,8 +444,8 @@ const typoraTheme = EditorView.theme({
     fontWeight: '600 !important',
     lineHeight: '1.4',
     color: 'var(--color-ink-strong)',
-    marginTop: '0.75em',
-    marginBottom: '0.3em',
+    paddingTop: '0.45em',
+    paddingBottom: '0.15em',
   },
   '.cm-typora-h3 span': {
     fontSize: 'inherit !important',
@@ -453,8 +454,8 @@ const typoraTheme = EditorView.theme({
   '.cm-typora-h4': {
     fontSize: '1.08em !important',
     fontWeight: '600 !important',
-    marginTop: '0.6em',
-    marginBottom: '0.25em',
+    paddingTop: '0.35em',
+    paddingBottom: '0.15em',
     color: 'var(--color-ink-strong)',
   },
   '.cm-typora-h4 span': {
@@ -486,8 +487,9 @@ const typoraTheme = EditorView.theme({
     position: 'relative',
     minHeight: '1.6em',
     lineHeight: '1.6em',
-    margin: '1.1em 0',
-    padding: '0',
+    paddingTop: '0.55em',
+    paddingBottom: '0.55em',
+    margin: '0',
     cursor: 'text',
   },
   '.cm-typora-hr::after': {

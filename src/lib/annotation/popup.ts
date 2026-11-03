@@ -136,7 +136,7 @@ function scheduleHide(): void {
  */
 function showPopup(target: HTMLElement): void {
   const body = target.dataset.anno
-  if (body === undefined) return
+  if (!body) return // 纯标记（无文字注解）不弹 tip 浮层
 
   const doc = target.ownerDocument
   const win = doc.defaultView

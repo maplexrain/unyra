@@ -34,6 +34,8 @@ export interface SelectionMenu {
   concept: boolean
   /** 选区映射回 Markdown 源文的字符区间；映射失败为 null */
   loc: { start: number; end: number } | null
+  /** 选区是否包含或相交了既有标记 */
+  hasMark?: boolean
 }
 
 /** 选中文字菜单的一项。数组顺序 = 显示顺序 = 数字键 1..n（见组件里的 actions） */
@@ -127,9 +129,11 @@ export function SelectionMenuPopup({
         },
         {
           key: 'mark',
-          label: t('标记'),
+          label: menu.hasMark ? t('取消标记') : t('标记'),
           icon: <Highlighter size={12} />,
-          title: t('标记选中文本（高亮马克笔标记，无需输入文字，可修改/删除）'),
+          title: menu.hasMark
+            ? t('取消选区内已有的标记（快捷键 5）')
+            : t('标记选中文本（高亮马克笔标记，无需输入文字，快捷键 5）'),
           hotkey: 5,
         },
       ]
