@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest'
 import {
   CARD_H,
   CARD_W,
+  OUTLINE_CARD_W,
+  PROJ_CARD_W,
   ROW_GAP,
   STRUCT_MAX_ZOOM,
   STRUCT_MIN_ZOOM_FACTOR,
   STRUCT_MIN_ZOOM_FLOOR,
   boundsOf,
+  cardWidthOf,
   clampZoom,
   emptyStructure,
   fitZoom,
@@ -22,6 +25,14 @@ function card(uuid: string, kind: GNodeKind, x = 0, y = 0): { uuid: string; kind
 }
 
 describe('结构图（v2）：包围盒与缩放（几何口径与 v1 一致）', () => {
+  it('卡片宽度：大纲卡加宽至 268px，项目卡独宽，其余普通卡 208px', () => {
+    expect(cardWidthOf('outline')).toBe(OUTLINE_CARD_W)
+    expect(cardWidthOf('outline')).toBe(268)
+    expect(cardWidthOf('project')).toBe(PROJ_CARD_W)
+    expect(cardWidthOf('doc')).toBe(CARD_W)
+    expect(cardWidthOf('exam')).toBe(CARD_W)
+  })
+
   it('包围盒按卡片尺寸算，不是按坐标点算', () => {
     const box = boundsOf([card('a', 'outline', 100, 50), card('b', 'doc', 400, 200)])
     expect(box).toEqual({ x: 100, y: 50, width: 300 + CARD_W, height: 150 + CARD_H })

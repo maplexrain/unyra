@@ -49,7 +49,7 @@ export function getCanvasPerfStats(): Readonly<CanvasPerfStats> {
 
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { HTMLAttributes, ReactNode } from 'react'
-import { Check, ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, Trash2, X } from 'lucide-react'
 import type { LearnStore } from '../../../learn/types'
 import type { ExamActions, NodeDocActions } from '../explorer/types'
 import { locateUuid, outlineUuid, docIdOfOutlineUuid, type GNodeKind } from '../../../learn/nodeKinds'
@@ -132,6 +132,8 @@ export interface StructureCanvasProps {
   onRenameNote?: (noteUuid: string, to: string) => ChannelResult
   /** 给某份大纲手动加一条目标项（宿主走大纲节点的 editContent） */
   onAddOutlineEntry?: (outlineUuid: string, title: string) => void
+  /** 删除某份大纲中的某项子目标项 */
+  onDeleteOutlineEntry?: (outlineUuid: string, slotKey: string) => void
   /** 视频卡上选一个视频绑到本目标（统一通道：与 agent 的 editContent({ videoId }) 同一条路）；null = 解绑 */
   onBindVideo?: (nodeUuid: string, videoId: string | null) => ChannelResult
   /** 打开绑定的视频（打开它 = 一并打开本目标的页签组，见 LearnWorkspace 的 openTab） */
@@ -400,6 +402,7 @@ export const StructureCanvas = memo(function StructureCanvas({
   onCreateChildDoc,
   onRenameNote,
   onAddOutlineEntry,
+  onDeleteOutlineEntry,
   onBindVideo,
   onOpenVideo,
   onGenerateDoc,
@@ -1346,6 +1349,14 @@ export const StructureCanvas = memo(function StructureCanvas({
         return
       }
 
+      const deleteSlotEl = target.closest<HTMLElement>('[data-delete-slot]')
+      if (deleteSlotEl) {
+        const parentId = deleteSlotEl.dataset.deleteSlotParent as string
+        const slotKey = deleteSlotEl.dataset.deleteSlot as string
+        onDeleteOutlineEntry?.(parentId, slotKey)
+        return
+      }
+
       const addEl = target.closest<HTMLElement>('[data-add-slot]')
       if (addEl) {
         const uuid = addEl.dataset.addSlot as string
@@ -1876,7 +1887,29 @@ export const StructureCanvas = memo(function StructureCanvas({
     return { bounds: { x: cx - w / 2, y: cy - h / 2, width: w, height: h } }
   }, [bounds])
   const miniRef = useRef<HTMLCanvasElement | null>(null)
+  const minimapContainerRef = useRef<HTMLDivElement | null>(null)
   const minimapDragRef = useRef(false)
+
+  /** 在缩略地图上滚动滚轮：以视口中心缩放相机 */
+  useEffect(() => {
+    const el = minimapContainerRef.current
+    if (!el) return
+    const onMinimapWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const cam = cameraRef.current
+      const factor = e.deltaY > 0 ? 0.92 : 1.08
+      const next = clampZoom(cam.zoom * factor, boundsOf(cards, height), view)
+      if (next === cam.zoom) return
+      const px = view.width / 2
+      const py = view.height / 2
+      const k = next / cam.zoom
+      setAnimating(false)
+      setCamera({ x: px - (px - cam.x) * k, y: py - (py - cam.y) * k, zoom: next })
+    }
+    el.addEventListener('wheel', onMinimapWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onMinimapWheel)
+  }, [mini, cards, height, view])
 
   /** 把缩略图上的一点变成镜头中心（屏幕坐标 → 窗口占比 → 世界坐标 → 相机平移） */
   const jumpByMinimap = useCallback(
@@ -2371,17 +2404,33 @@ export const StructureCanvas = memo(function StructureCanvas({
                       title={slot.childId ? `${slot.title} · ${t('跳到这个子文档')}` : `${slot.title} · ${t('生成一份空文档')}`}
                       onPointerEnter={() => setHoverSlot({ parentId: card.uuid, key: slot.key })}
                       onPointerLeave={() => setHoverSlot(null)}
-                      className="relative flex cursor-pointer items-center gap-1.5 pr-3 pl-2 hover:bg-seal/[0.08]"
+                      className="group/slot relative flex cursor-pointer items-center gap-1.5 pr-6 pl-2 hover:bg-seal/[0.08]"
                       style={{ height: SLOT_ROW }}
                     >
                       <span className="h-2 w-2 shrink-0" />
                       <span
                         title={slot.title}
-                        className="truncate text-[11.5px]"
+                        className="min-w-0 flex-1 truncate text-[11.5px]"
                         style={{ color: slot.childId ? SLOT_ACCENT : undefined, opacity: slot.childId ? 1 : 0.55 }}
                       >
                         {slot.title}
                       </span>
+                      {onDeleteOutlineEntry && (
+                        <button
+                          type="button"
+                          data-delete-slot={slot.key}
+                          data-delete-slot-parent={card.uuid}
+                          title={t('删除目标项「{0}」', slot.title)}
+                          className="z-10 shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:bg-rose-500/15 hover:text-rose-500 group-hover/slot:opacity-100"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onDeleteOutlineEntry(card.uuid, slot.key)
+                          }}
+                        >
+                          <X size={11} strokeWidth={2.2} />
+                        </button>
+                      )}
                       {/*
                         接口点：**菱形**（旋转 45° 的小方块）——圆形留给普通连线把手，
                         一眼分得清「这是在认领某个接口」。认领了=实心，空着=空心。
@@ -2784,6 +2833,7 @@ export const StructureCanvas = memo(function StructureCanvas({
       */}
       {mini && (
         <div
+          ref={minimapContainerRef}
           data-tour="minimap"
           className="absolute top-4 left-4 z-20 flex items-center justify-center rounded-xl border border-line bg-card/90 p-1.5 shadow-sm backdrop-blur"
           style={{ width: MINI_W + 12, height: MINI_H + 12 }}

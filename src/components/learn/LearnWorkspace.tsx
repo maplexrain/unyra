@@ -124,6 +124,7 @@ import {
   touchNode,
   updateMessageText,
   deleteNote,
+  removeEdge,
   writeNote,
 } from '../../learn/graph'
 import {
@@ -161,7 +162,7 @@ import { usePresence } from '../../lib/presence'
 import ExamCopyView from './ExamCopyView'
 import { OutlinePane } from './workspace/OutlinePane'
 import StructOverlay from './workspace/StructOverlay'
-import { NodeService, type GNodeKind } from '../../learn/nodeKinds'
+import { NodeService, docIdOfOutlineUuid, type GNodeKind } from '../../learn/nodeKinds'
 import { noteEntityOf } from './workspace/panes'
 import { pruneImages } from '../../learn/images'
 import { queueOf, shouldEnqueue } from '../../learn/agentQueue'
@@ -4233,6 +4234,44 @@ export default function LearnWorkspace({
     [makeNodeService, onToast],
   )
 
+  const canvasDeleteOutlineEntry = useCallback(
+    (outlineUuid: string, slotKey: string) => {
+      const svc = makeNodeService()
+      const outline = svc.get(outlineUuid)
+      if (!outline || outline.kind !== 'outline') return
+      const current = (outline.content as { intro?: string; children?: Array<{ key?: string; title: string; summary?: string }> } | null) ?? null
+      const children = current?.children ?? []
+      const targetEntry = children.find((c) => c.key === slotKey || normalizeKey(c.title) === slotKey || c.title === slotKey)
+      if (!targetEntry) return
+
+      const nextChildren = children.filter((c) => c !== targetEntry)
+      const r = outline.editContent({
+        intro: current?.intro ?? '',
+        children: nextChildren,
+        allowEmpty: true,
+      })
+      if ('error' in r) {
+        onToast(r.error)
+        return
+      }
+
+      const s = getLatest()
+      const docId = docIdOfOutlineUuid(outlineUuid)
+      const matchingEdges = s.edges.filter(
+        (e) => (e.from === outlineUuid || (docId && e.from === docId)) && (e.portKey === slotKey || (targetEntry.key && e.portKey === targetEntry.key)),
+      )
+      if (matchingEdges.length > 0) {
+        let nextStore = getLatest()
+        for (const edge of matchingEdges) {
+          nextStore = removeEdge(nextStore, edge.from, edge.to)
+        }
+        set(nextStore)
+      }
+      onToast(t('已删除目标项「{0}」', targetEntry.title))
+    },
+    [makeNodeService, onToast, getLatest, set],
+  )
+
   /**
    * 在目标项上挂一份带标题的空文档（统一通道）：create 的同目标去重让同一标题
    * 永远指向同一份实体；只建实体不写正文——正文由「生成文档」交给 AI。
@@ -4288,6 +4327,7 @@ export default function LearnWorkspace({
       onCreateChildDoc: createChildDoc,
       onRenameNote: canvasRenameNote,
       onAddOutlineEntry: canvasAddOutlineEntry,
+      onDeleteOutlineEntry: canvasDeleteOutlineEntry,
       onGenerateDoc: generateDocForNode,
       onGenerateOutline: (docUuid: string) => startPrereqOutline(docUuid),
       // 视频卡的绑定 / 打开：绑定走节点的 editContent（与 agent 动手是同一条路），打开走 openTab 的组联动
@@ -4324,7 +4364,7 @@ export default function LearnWorkspace({
       onOpenVideo: (videoId: string) => openTab({ kind: 'video', videoId }),
       onGenerateVideoDoc: (videoNodeUuid: string) => startVideoOverview(videoNodeUuid),
     }),
-    [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, canvasSetEntry, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, generateDocForNode, startPrereqOutline, startVideoOverview, makeNodeService, openTab, getLatest, set],
+    [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, canvasSetEntry, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, canvasDeleteOutlineEntry, generateDocForNode, startPrereqOutline, startVideoOverview, makeNodeService, openTab, getLatest, set],
   )
 
   const noteActionsCache = useRef(new Map<string, ComponentProps<typeof DocPane>['note']>())

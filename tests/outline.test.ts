@@ -123,8 +123,13 @@ describe('大纲：写入、对上号与落盘往返', () => {
     expect(node?.outline?.children[0].key).toBe('子目标甲')
   })
 
-  it('导语与子目标全空被拒；children 超过上限被拒', () => {
+  it('导语与子目标全空被拒；children 超过上限被拒；显式传 allowEmpty 允许清空所有目标项', () => {
     expect(writeOutline(fixture(), 'n2', { intro: '', children: [] }, NOW).ok).toBe(false)
+    const allowed = writeOutline(fixture(), 'n2', { intro: '', children: [], allowEmpty: true }, NOW)
+    expect(allowed.ok).toBe(true)
+    if (allowed.ok) {
+      expect(allowed.outline.children).toEqual([])
+    }
     const many = Array.from({ length: 25 }, (_, i) => ({ title: '子目标' + i, summary: '' }))
     expect(writeOutline(fixture(), 'n2', { intro: 'x', children: many }, NOW).ok).toBe(false)
   })
