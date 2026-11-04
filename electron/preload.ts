@@ -27,7 +27,7 @@ import type {
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   PluginEntry, PluginListResult, PluginSettingsResult,
-  PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
+  PluginSourceResult, PluginTogglesResult, SaveBinaryPayload, SaveBinaryResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
   NoticeSettings,
   StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail, UpdatePhase, UpdateState,
   VideoApiFetchResult, VideoStreamOpenResult, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceTranscribeRequest,
@@ -44,6 +44,7 @@ import type {
 // 两边原先各写一遍、逐字重复，漏改一侧不会编译报错，只会在运行时炸。
 // 这里按原样转出去，外部从 electron/preload 引这些类型的写法不用改。
 export type {
+  SaveBinaryPayload, SaveBinaryResult,
   AttachReadResult, BaseFileEditResult, BaseFileEntry, BaseFileListResult, BaseFileOpResult, BaseFileReadResult,
   BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
   BaseProcessInfo, BaseProcessListResult, BaseProcessOutputResult, BaseProcessStartResult, BaseProcessStatusResult,
@@ -129,6 +130,9 @@ const api = {
     title?: string
     filters?: SaveFilter[]
   }): Promise<SaveTextResult> => ipcRenderer.invoke('file:saveText', payload),
+
+  saveBinary: (payload: SaveBinaryPayload): Promise<SaveBinaryResult> =>
+    ipcRenderer.invoke('file:saveBinary', payload),
 
   /**
    * 导出 PDF：给一份自带样式的 HTML，主进程在隐藏窗口里排版、打印，最后落到用户选的路径。

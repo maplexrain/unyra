@@ -17,7 +17,7 @@ import { EXPLORER_WIDTH_MAX, EXPLORER_WIDTH_MIN } from '../../lib/appearance'
 import { userAbsPrefix } from '../../lib/storage'
 import Logo from '../Logo'
 import { NewGoalIcon, OpenLocalIcon } from '../icons'
-import { PanelLeftClose, PanelLeftOpen, Plus, Settings } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen, Plus, Settings, Upload } from 'lucide-react'
 import { NodeRow } from './explorer/NodeRow'
 import { RowMenu } from './explorer/RowMenu'
 import { FavoriteSection, LocalRow, VideoRow } from './explorer/sections'
@@ -91,6 +91,7 @@ interface Props {
   /** 当前活动目标 id：目标行拿它判高亮 */
   activeGoalId: string | null
   onNewGoal: () => void
+  onImportGoal?: () => void
   onDeleteNode: (nodeId: string) => void
   /** 在系统文件管理器里定位该节点的正文文件（节点右键菜单） */
   onRevealNode: (nodeId: string) => void
@@ -143,6 +144,7 @@ function ExplorerSidebarComponent({
   onSelectGoal,
   activeGoalId,
   onNewGoal,
+  onImportGoal,
   onDeleteNode,
   onRevealNode,
   onRevealWs,
@@ -379,9 +381,16 @@ function ExplorerSidebarComponent({
             open={sectionOpen('nodes')}
             onToggle={() => toggleSection('nodes')}
             action={
-              <SectionAction title={t('新建学习目标')} onClick={onNewGoal} always large>
-                <NewGoalIcon size={16} />
-              </SectionAction>
+              <div className="flex items-center gap-0.5">
+                {onImportGoal && (
+                  <SectionAction title={t('导入目标 (.unr)')} onClick={onImportGoal} always large>
+                    <Upload size={14} />
+                  </SectionAction>
+                )}
+                <SectionAction title={t('新建学习目标')} onClick={onNewGoal} always large>
+                  <NewGoalIcon size={16} />
+                </SectionAction>
+              </div>
             }
           >
             <div className="px-2">

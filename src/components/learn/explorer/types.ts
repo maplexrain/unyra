@@ -55,6 +55,8 @@ export interface NodeDocActions {
    * 开出来并激活，再打开导出弹窗。
    */
   onExport: (ref: TabRef) => void
+  /** 导出总目标为二进制分享包 (.unr) */
+  onExportGoal?: (goalId: string) => void
 }
 
 /**

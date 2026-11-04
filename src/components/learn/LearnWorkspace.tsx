@@ -1,3 +1,4 @@
+import { exportGoalToUnr, importGoalFromPackage, parseUnrPackage, pickUnrFile, saveUnrFile } from '../../learn/export/unrPackage'
 /*
  * 学习工作区（宿主）：目标 → 节点树 → 选中节点进入「文档 + 超级导师」两列。
  * 节点由用户在文档里选中陌生词汇创建；创建后原文替换为可点击的节点链接，
@@ -31,7 +32,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from 'react'
-import { ExternalLink, Globe, Maximize2, Minimize2 } from 'lucide-react'
+import { ExternalLink, Globe, Maximize2, Minimize2, Upload } from 'lucide-react'
 import type {
   DocKind,
   DocView,
@@ -2696,6 +2697,83 @@ export default function LearnWorkspace({
     setCreateGoalOpen(true)
     setSidebarOpen(false)
   }
+
+  /** 导出总目标为 .unr 分享包 */
+  const handleExportGoal = useCallback(
+    async (goalId: string) => {
+      try {
+        const s = getLatest()
+        const goal = s.goals.find((g) => g.id === goalId)
+        if (!goal) {
+          onToast(t('未找到目标'))
+          return
+        }
+        const bytes = await exportGoalToUnr(s, goalId)
+        const suggestedName = `${goal.title || t('未命名目标')}.unr`
+        const res = await saveUnrFile(bytes, suggestedName)
+        if (res.ok) {
+          onToast(t('已成功导出目标「{0}」', goal.title || ''))
+        } else if (res.error) {
+          onToast(t('导出失败: {0}', res.error || ''))
+        }
+      } catch (err) {
+        onToast(t('导出失败: {0}', err instanceof Error ? err.message : String(err)))
+      }
+    },
+    [getLatest, onToast],
+  )
+
+  /** 调起文件选择器导入 .unr 目标包 */
+  const handleImportGoal = useCallback(async () => {
+    try {
+      const file = await pickUnrFile()
+      if (!file) return
+      const buf = await file.arrayBuffer()
+      const pkg = await parseUnrPackage(new Uint8Array(buf))
+      const { store: nextStore, goal } = importGoalFromPackage(getLatest(), pkg)
+      set(nextStore)
+      await flush()
+      openTab({ kind: 'outline', nodeId: goal.rootNodeId, goalId: goal.id })
+      onToast(t('已成功导入目标「{0}」', goal.title || ''))
+    } catch (err) {
+      onToast(t('导入目标失败: {0}', err instanceof Error ? err.message : String(err)))
+    }
+  }, [flush, getLatest, onToast, openTab, set])
+
+  const [isDraggingFile, setIsDraggingFile] = useState(false)
+  const dragCounter = useRef(0)
+
+  useEffect(() => {
+    const onDragEnter = (e: DragEvent) => {
+      if (e.dataTransfer?.types ? Array.from(e.dataTransfer.types).includes('Files') : false) {
+        dragCounter.current++
+        if (dragCounter.current === 1) {
+          setIsDraggingFile(true)
+        }
+      }
+    }
+    const onDragLeave = (e: DragEvent) => {
+      if (e.dataTransfer?.types ? Array.from(e.dataTransfer.types).includes('Files') : false) {
+        dragCounter.current--
+        if (dragCounter.current <= 0) {
+          dragCounter.current = 0
+          setIsDraggingFile(false)
+        }
+      }
+    }
+    const onDrop = () => {
+      dragCounter.current = 0
+      setIsDraggingFile(false)
+    }
+    window.addEventListener('dragenter', onDragEnter)
+    window.addEventListener('dragleave', onDragLeave)
+    window.addEventListener('drop', onDrop)
+    return () => {
+      window.removeEventListener('dragenter', onDragEnter)
+      window.removeEventListener('dragleave', onDragLeave)
+      window.removeEventListener('drop', onDrop)
+    }
+  }, [])
 
   /*
    * moji:node / doc / super 三种链接的跳转注册在 useLinkHandlers（workspace/）。
@@ -5658,8 +5736,9 @@ export default function LearnWorkspace({
       },
       onReplanOutline: (nodeId) => startOutline(nodeId),
       onExport: (ref) => exportTab(ref),
+      onExportGoal: (goalId) => void handleExportGoal(goalId),
     }),
-    [selectNode, openTab, createNodeNote, newExam, startSuperLab, renameNodeNote, openExamCopy, startOutline, exportTab, newProject],
+    [selectNode, handleExportGoal, openTab, createNodeNote, newExam, startSuperLab, renameNodeNote, openExamCopy, startOutline, exportTab, newProject],
   )
 
   const explorerExams = useMemo<ExamActions>(
@@ -5735,6 +5814,7 @@ export default function LearnWorkspace({
         // 目标行的高亮：当前正在看的那个目标
         activeGoalId={tabGoalId}
         onNewGoal={startCreatingGoal}
+        onImportGoal={() => void handleImportGoal()}
         onDeleteNode={requestRemoveNode}
         onRevealNode={(nodeId) => void revealNodeFile(nodeId)}
         onRevealWs={(rel) => void revealWsFile(rel)}
@@ -6159,6 +6239,15 @@ export default function LearnWorkspace({
           }}
           onToast={onToast}
         />
+      )}
+      {isDraggingFile && (
+        <div className="pointer-events-none fixed inset-0 z-[100] flex flex-col items-center justify-center bg-paper/85 backdrop-blur-sm border-2 border-dashed border-seal/60 m-4 rounded-2xl shadow-2xl transition-all">
+          <div className="flex flex-col items-center gap-3 p-8 rounded-xl bg-card border border-line-strong shadow-xl">
+            <Upload size={38} className="text-seal animate-bounce" />
+            <div className="text-base font-semibold text-ink-strong">{t('释放鼠标导入目标 (.unr)')}</div>
+            <div className="text-xs text-ink-faint">{t('支持拖入 .unr 目标包或本地文档文件')}</div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -192,6 +192,17 @@ export function RowMenu({
             <Package size={13} className="shrink-0 text-ink-soft" />
             {t('新建项目')}
           </button>
+          {docs.onExportGoal && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={run(() => docs.onExportGoal!(target.node.goalId))}
+              className={MENU_ITEM + ' text-ink hover:bg-line/60'}
+            >
+              <Download size={13} className="shrink-0 text-ink-soft" />
+              {t('导出目标 (.unr)')}
+            </button>
+          )}
           <RevealItem onSelect={run(() => onRevealNode(target.node.id))} />
           <span aria-hidden="true" className="my-1 block h-px bg-line" />
           <button

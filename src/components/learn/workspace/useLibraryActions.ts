@@ -1,3 +1,4 @@
+import { importGoalFromPackage, parseUnrPackage } from '../../../learn/export/unrPackage'
 /*
  * 这个文件负责：「资料库」动作——节点笔记的新建 / 改名 / 删除 / 定位文件，
  * 以及本地文件的收进列表、打开、移除、对话框挑选与全窗口拖拽。
@@ -193,16 +194,36 @@ export function useLibraryActions({ getLatest, set, flush, onToast, openTab, pus
       return [...list]
     }
     const onOver = (e: DragEvent) => {
-      if (!usable(e).length) return
+      const hasFiles = (e.dataTransfer?.types ? Array.from(e.dataTransfer.types).includes('Files') : false) || usable(e).length > 0
+      if (!hasFiles) return
       e.preventDefault()
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
     }
-    const onDrop = (e: DragEvent) => {
+    const onDrop = async (e: DragEvent) => {
       const files = usable(e)
       if (!files.length) return
       e.preventDefault()
-      // 路径要问 preload（Electron 32 起 File.path 没了，见 lib/localFiles）
-      addLocalFiles(files.map((f) => droppedFilePath(f)))
+      const unrFiles = files.filter((f) => f.name.toLowerCase().endsWith('.unr'))
+      const normalFiles = files.filter((f) => !f.name.toLowerCase().endsWith('.unr'))
+      if (unrFiles.length > 0) {
+        for (const file of unrFiles) {
+          try {
+            const buf = await file.arrayBuffer()
+            const pkg = await parseUnrPackage(new Uint8Array(buf))
+            const { store: nextStore, goal } = importGoalFromPackage(getLatest(), pkg)
+            set(nextStore)
+            await flush()
+            openTab({ kind: 'outline', nodeId: goal.rootNodeId, goalId: goal.id })
+            onToast(t('已成功导入目标「{0}」', goal.title || ''))
+          } catch (err) {
+            onToast(t('导入目标失败: {0}', err instanceof Error ? err.message : String(err)))
+          }
+        }
+      }
+      if (normalFiles.length > 0) {
+        // 路径要问 preload（Electron 32 起 File.path 没了，见 lib/localFiles）
+        addLocalFiles(normalFiles.map((f) => droppedFilePath(f)))
+      }
     }
     window.addEventListener('dragover', onOver)
     window.addEventListener('drop', onDrop)
@@ -210,7 +231,7 @@ export function useLibraryActions({ getLatest, set, flush, onToast, openTab, pus
       window.removeEventListener('dragover', onOver)
       window.removeEventListener('drop', onDrop)
     }
-  }, [addLocalFiles])
+  }, [addLocalFiles, flush, getLatest, onToast, openTab, set])
 
   return {
     createNodeNote,
