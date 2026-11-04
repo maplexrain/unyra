@@ -15,7 +15,7 @@ import type {
   BaseProcessListResult, BaseProcessOutputResult, BaseProcessStartResult, BaseProcessStatusResult,
   BaseProcessStopResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
-  NoticeSettings, PluginEntry, PluginTogglesResult, SaveFilter,
+  NoticeSettings, PluginEntry, PluginTogglesResult, SaveBinaryPayload, SaveBinaryResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
   UpdatePhase, UpdateState, VideoApiFetchResult, VideoStreamOpenResult, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
   VoiceTranscribeRequest, VoiceTranscribeResult, OcrBBox, OcrWordItem, OcrLineItem, OcrPageResult, OcrModelOption, OcrModelStatus, OcrModelProgress, OcrDownloadRequest, OcrDownloadResult, OcrRecognizeRequest, OcrRecognizeResult, WebDomOpResult, WebFastTranslateResult, WebFetchResult, WebBinaryFetchResult, WebLogDetailResult,
@@ -32,6 +32,7 @@ import type {
 // 两边原先各写一遍、逐字重复，漏改一侧不会编译报错，只会在运行时炸。
 // 这里按原样转出去，外部从 src/lib/native 引这些类型的写法不用改。
 export type {
+  SaveBinaryPayload, SaveBinaryResult,
   AttachReadResult, BaseProcessDeleteResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   NoticeSettings, PluginEntry, PluginTogglesResult, SaveFilter,
@@ -93,6 +94,8 @@ export interface NativeBridge {
     path?: string
     error?: string
   }>
+  /** 原生「保存二进制文件」对话框（导出 .unr 目标包用） */
+  saveBinary(payload: SaveBinaryPayload): Promise<SaveBinaryResult>
   /** 导出 PDF：HTML 进，PDF 落在用户选的路径上（排版见 electron/main.ts 的 file:exportPdf） */
   exportPdf(payload: ExportPdfPayload): Promise<ExportPdfResult>
   /**

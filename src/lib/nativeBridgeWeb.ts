@@ -15,6 +15,8 @@ import type {
   ExportPdfResult,
   FlushItem,
   NoticeSettings,
+  SaveBinaryPayload,
+  SaveBinaryResult,
   SaveFilter,
   StorageFail,
   StorageInfo,
@@ -105,6 +107,24 @@ export function createWebNativeBridge(): NativeBridge {
         const a = document.createElement('a')
         a.href = url
         a.download = payload.suggestedName || 'download.txt'
+        a.click()
+        URL.revokeObjectURL(url)
+        return { ok: true, path: a.download }
+      } catch (err) {
+        return { ok: false, error: String(err) }
+      }
+    },
+
+    saveBinary: async (payload: SaveBinaryPayload): Promise<SaveBinaryResult> => {
+      try {
+        const bytes = typeof payload.data === 'string'
+          ? Uint8Array.from(atob(payload.data), (c) => c.charCodeAt(0))
+          : payload.data
+        const blob = new Blob([bytes as unknown as BlobPart], { type: 'application/octet-stream' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = payload.suggestedName || 'goal.unr'
         a.click()
         URL.revokeObjectURL(url)
         return { ok: true, path: a.download }

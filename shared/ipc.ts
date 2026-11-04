@@ -500,6 +500,17 @@ export interface SaveFilter {
   extensions: string[]
 }
 
+export interface SaveBinaryPayload {
+  suggestedName?: string
+  data: Uint8Array | string
+  title?: string
+  filters?: SaveFilter[]
+}
+
+export type SaveBinaryResult =
+  | { ok: true; path: string }
+  | { ok: false; canceled?: boolean; error?: string }
+
 /** 导出 PDF 的请求：渲染层给一份自带样式的整份 HTML，排版在主进程的隐藏窗口里做。
  *  谁在用：preload 的 exportPdf（通道 file:exportPdf，排版见 electron/app/exportPdf.ts），
  *  渲染层 src/lib/exportDoc.ts 与 src/components/learn/workspace/useDocExport.ts。 */

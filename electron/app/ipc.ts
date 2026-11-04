@@ -337,6 +337,36 @@ export function registerIpc(): void {
     },
   )
 
+  // 原生「保存二进制文件」（如 .unr 目标包）
+  ipcMain.handle(
+    'file:saveBinary',
+    async (
+      event,
+      payload: { suggestedName?: string; data: Uint8Array | string; title?: string; filters?: unknown },
+    ) => {
+      const win = targetWindow(event)
+      const suggestedName = String(payload?.suggestedName ?? 'goal.unr')
+      const title = typeof payload?.title === 'string' && payload.title.trim() ? payload.title.trim() : t('导出目标')
+      const { canceled, filePath } = await dialog.showSaveDialog(win ?? undefined!, {
+        title,
+        defaultPath: suggestedName,
+        filters: saveFilters(payload?.filters) ?? [
+          { name: 'Unyra Goal Package (*.unr)', extensions: ['unr'] },
+          { name: t('全部文件'), extensions: ['*'] },
+        ],
+      })
+      if (canceled || !filePath) return { ok: false as const, canceled: true as const }
+      try {
+        const buf = typeof payload?.data === 'string' ? Buffer.from(payload.data, 'base64') : Buffer.from(payload?.data)
+        await fsp.writeFile(filePath, buf)
+        markLocalOwnWrite(filePath)
+        return { ok: true as const, path: filePath }
+      } catch (err) {
+        return { ok: false as const, error: err instanceof Error ? err.message : t('写入失败') }
+      }
+    },
+  )
+
   /*
    * 导出 PDF：渲染进程给一份自带样式的 HTML，主进程在**隐藏窗口**里排一遍再打印成 PDF。
    *
