@@ -24,6 +24,7 @@ export type CanvasChannelProps = Pick<
   | 'onCreateChildDoc'
   | 'onRenameNote'
   | 'onAddOutlineEntry'
+  | 'onDeleteOutlineEntry'
   | 'onBindVideo'
   | 'onOpenVideo'
   | 'onGenerateDoc'

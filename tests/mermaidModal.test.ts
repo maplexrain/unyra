@@ -17,22 +17,24 @@ describe('mermaidModal', () => {
     expect(toolbar?.classList.contains('rounded-none')).toBe(true)
 
     const pctEl = modal?.querySelector('.moji-mermaid-pct')
-    expect(pctEl?.textContent).toBe('100%')
+    expect(pctEl?.textContent).toBe('250%')
 
-    // 检查 SVG 内容注入
+    // 检查 SVG 内容注入与自然尺寸解析
     const svg = modal?.querySelector<SVGElement>('svg#test-svg')
     expect(svg).not.toBeNull()
     expect(svg?.style.maxWidth).toBe('none')
+    expect(svg?.style.width).toBe('300px')
+    expect(svg?.style.height).toBe('200px')
 
     // 检查缩放控制按钮
     const zoomIn = modal?.querySelector<HTMLButtonElement>('.moji-mermaid-btn-zoom-in')
     zoomIn?.click()
-    expect(pctEl?.textContent).not.toBe('100%')
+    expect(pctEl?.textContent).toBe('300%')
 
-    // 检查重置按钮
+    // 检查重置按钮恢复自适应尺寸
     const reset = modal?.querySelector<HTMLButtonElement>('.moji-mermaid-btn-reset')
     reset?.click()
-    expect(pctEl?.textContent).toBe('100%')
+    expect(pctEl?.textContent).toBe('250%')
 
     // 检查按 Escape 键关闭
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))

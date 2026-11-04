@@ -145,6 +145,41 @@ describe('quoteBlock', () => {
         template: DEFAULT_MARK_TEMPLATE,
       })
     })
+
+    it('parses comment(...) syntax with various coordinate forms and annotations', () => {
+      // 1. 坐标含逗号的形式 comment(15:5, 16:7, 这里是批注)
+      const r1 = parseMappingRule('comment(15:5, 16:7, 这里是批注)')
+      expect(r1).not.toBeNull()
+      expect(r1?.startLine).toBe(15)
+      expect(r1?.startCol).toBe(5)
+      expect(r1?.endLine).toBe(16)
+      expect(r1?.endCol).toBe(7)
+      expect(r1?.comment).toBe('这里是批注')
+      expect(r1?.template).toContain('class="moji-quote-comment')
+      expect(r1?.template).toContain('data-comment="这里是批注"')
+      expect(r1?.template).toContain('title="这里是批注"')
+
+      // 2. 坐标不含逗号的形式 comment(10-15, 注解内容)
+      const r2 = parseMappingRule('comment(10-15, 注解内容)')
+      expect(r2).not.toBeNull()
+      expect(r2?.startLine).toBe(10)
+      expect(r2?.endLine).toBe(15)
+      expect(r2?.comment).toBe('注解内容')
+
+      // 3. 注解文本包含引号和逗号 comment(15:5-16:7, "带引号的注解，含内部逗号")
+      const r3 = parseMappingRule('comment(15:5-16:7, "带引号的注解，含内部逗号")')
+      expect(r3).not.toBeNull()
+      expect(r3?.comment).toBe('带引号的注解，含内部逗号')
+
+      // 4. 单行列范围 comment(15:5, 20, 单行列范围注解)
+      const r4 = parseMappingRule('comment(15:5, 20, 单行列范围注解)')
+      expect(r4).not.toBeNull()
+      expect(r4?.startLine).toBe(15)
+      expect(r4?.startCol).toBe(5)
+      expect(r4?.endLine).toBe(15)
+      expect(r4?.endCol).toBe(20)
+      expect(r4?.comment).toBe('单行列范围注解')
+    })
   })
 
   describe('detectLanguageFromPath', () => {
@@ -450,6 +485,95 @@ describe('quoteBlock', () => {
       await vi.waitFor(() => {
         expect(container.textContent).toContain('无法读取引用的源文件')
       })
+
+      cleanup()
+      document.body.removeChild(container)
+    })
+
+    it('merges adjacent same-file references into a single snippet component with clickable line numbers', async () => {
+      const sampleFile = Array.from({ length: 100 }, (_, i) => `Line ${i + 1}: Content of line ${i + 1}`).join('\n')
+      const mockHost: QuoteBlockHost = {
+        readFile: vi.fn().mockResolvedValue(sampleFile),
+        onOpenFile: vi.fn(),
+      }
+      setQuoteBlockHost(mockHost)
+
+      // 同一个 quote 块内相邻引用同一个文件的不同行号（如第 83、85、87、89 行）
+      const source = [
+        '@workspace/article.md(83)',
+        '@workspace/article.md(85)',
+        '@workspace/article.md(87)',
+        '@workspace/article.md(89)',
+      ].join('\n')
+
+      const container = document.createElement('div')
+      container.innerHTML = quoteBlock(source, mockCtx)
+      document.body.appendChild(container)
+
+      // 验证在渲染时已被合并成单个 .moji-quote-item
+      const items = container.querySelectorAll('.moji-quote-item')
+      expect(items.length).toBe(1)
+
+      const badge = container.querySelector('.moji-quote-badge')
+      expect(badge?.textContent).toBe('L83, L85, L87, L89')
+
+      const cleanup = hydrateQuotes(container)
+      await vi.waitFor(() => {
+        expect(container.querySelector('.moji-quote-code')).not.toBeNull()
+      })
+
+      // 验证各行号按钮
+      const lineBtns = container.querySelectorAll<HTMLButtonElement>('.moji-quote-line-no')
+      expect(lineBtns.length).toBe(4)
+      expect(lineBtns[0].textContent?.trim()).toBe('83')
+      expect(lineBtns[1].textContent?.trim()).toBe('85')
+      expect(lineBtns[2].textContent?.trim()).toBe('87')
+      expect(lineBtns[3].textContent?.trim()).toBe('89')
+
+      // 点击行号 85 直接跳转源文件第 85 行
+      lineBtns[1].click()
+      expect(mockHost.onOpenFile).toHaveBeenCalledWith('workspace/article.md', 85, 85)
+
+      // 点击行号 89 直接跳转源文件第 89 行
+      lineBtns[3].click()
+      expect(mockHost.onOpenFile).toHaveBeenCalledWith('workspace/article.md', 89, 89)
+
+      cleanup()
+      document.body.removeChild(container)
+    })
+
+    it('renders comment annotations and shows floating tip on mouseenter', async () => {
+      const sampleFile = 'First line\nSecond line with special target word\nThird line'
+      const mockHost: QuoteBlockHost = {
+        readFile: vi.fn().mockResolvedValue(sampleFile),
+      }
+      setQuoteBlockHost(mockHost)
+
+      const source = '@sample.txt(2){\n  comment(2:18, 2:31, 这里是关键词批注)\n}'
+      const container = document.createElement('div')
+      container.innerHTML = quoteBlock(source, mockCtx)
+      document.body.appendChild(container)
+
+      const cleanup = hydrateQuotes(container)
+      await vi.waitFor(() => {
+        expect(container.querySelector('.moji-quote-comment')).not.toBeNull()
+      })
+
+      const commentSpan = container.querySelector<HTMLElement>('.moji-quote-comment')
+      expect(commentSpan).not.toBeNull()
+      expect(commentSpan?.textContent).toBe('special target')
+      expect(commentSpan?.dataset.comment).toBe('这里是关键词批注')
+
+      // 触发鼠标移入事件，弹出 tip
+      commentSpan?.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }))
+
+      const tip = document.querySelector('.moji-quote-tip')
+      expect(tip).not.toBeNull()
+      expect(tip?.textContent).toBe('这里是关键词批注')
+
+      // 触发鼠标移出事件，清除 tip
+      commentSpan?.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
+      expect(document.querySelector('.moji-quote-tip')).toBeNull()
 
       cleanup()
       document.body.removeChild(container)

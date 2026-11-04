@@ -106,10 +106,16 @@ export const SHORTCUT_DEFS: ShortcutDef[] = [
     def: 'F11',
   },
   {
+    id: 'tools.screenshot',
+    label: '屏幕截图',
+    hint: '快速唤出截图工具进行区域截屏、取色与批注',
+    def: 'F1',
+  },
+  {
     id: 'learn.structPopout',
     label: '弹出节点宇宙',
-    hint: '把当前目标的节点宇宙弹到文档区上方（浮层，不切页签）；再按一次或 Esc 收回',
-    def: 'F1',
+    hint: '把当前目标的节点宇宙弹到文档区上方（浮层，不切页签）；按键或双击 Ctrl 唤出，Esc 收回',
+    def: 'F2',
   },
   {
     id: 'web.newTab',

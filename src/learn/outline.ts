@@ -53,7 +53,7 @@ export function normalizeOutline(raw: unknown): OutlineDoc | null {
 export function writeOutline(
   store: LearnStore,
   nodeId: string,
-  input: { intro?: unknown; children?: unknown },
+  input: { intro?: unknown; children?: unknown; allowEmpty?: unknown },
   at: number,
 ): { ok: true; store: LearnStore; outline: OutlineDoc } | { ok: false; error: string } {
   const node = store.nodes.find((n) => n.id === nodeId)
@@ -79,7 +79,7 @@ export function writeOutline(
     if (children.some((c) => c.key === key)) continue
     children.push({ key, title, summary })
   }
-  if (!intro && !children.length) {
+  if (!intro && !children.length && !input.allowEmpty) {
     return { ok: false, error: 'intro 与 children 都是空的：要么写导语，要么至少列出子目标（清空不是写入的活）' }
   }
   const outline: OutlineDoc = { intro, children, updatedAt: at }
@@ -233,7 +233,7 @@ export function createOutlineEntity(
 export function writeOutlineEntity(
   store: LearnStore,
   outlineId: string,
-  input: { intro?: unknown; children?: unknown; title?: unknown },
+  input: { intro?: unknown; children?: unknown; title?: unknown; allowEmpty?: unknown },
   at: number,
 ): { ok: true; store: LearnStore; entity: OutlineEntity } | { ok: false; error: string } {
   const cur = (store.outlines ?? []).find((o) => o.id === outlineId)
@@ -257,7 +257,7 @@ export function writeOutlineEntity(
     if (children.some((c) => c.key === key)) continue
     children.push({ key, title, summary })
   }
-  if (!intro && !children.length && typeof input.title !== 'string') {
+  if (!intro && !children.length && typeof input.title !== 'string' && !input.allowEmpty) {
     return { ok: false, error: 'intro 与 children 都是空的：要么写导语，要么至少列出子目标（清空不是写入的活）' }
   }
   const title = typeof input.title === 'string' && input.title.trim() ? input.title.trim() : cur.title

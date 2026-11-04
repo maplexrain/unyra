@@ -158,7 +158,9 @@ export default function InputPanel({ onToast }: Props) {
         row.id !== 'learn.closeTab' &&
         row.id !== 'agent.focus' &&
         row.id !== 'doc.zen' &&
-        row.id !== 'web.newTab'
+        row.id !== 'web.newTab' &&
+        row.id !== 'learn.structPopout' &&
+        row.id !== 'tools.screenshot'
       )
         return false
 
