@@ -8,7 +8,7 @@
   *从一个想弄懂的目标出发，把知识逐层拆成可探索的拓扑节点，让超级导师在讲义上为你动笔。*
 
   <p align="center">
-    <a href="https://github.com/maplexrain/unyra/releases"><img src="https://img.shields.io/badge/Release-v0.7.5-crimson?style=flat-square&logo=github" alt="Release"></a>
+    <a href="https://github.com/maplexrain/unyra/releases"><img src="https://img.shields.io/badge/Release-v0.7.6-crimson?style=flat-square&logo=github" alt="Release"></a>
     <a href="https://github.com/maplexrain/unyra/releases"><img src="https://img.shields.io/badge/Platform-Windows-blue?style=flat-square&logo=windows" alt="Platform"></a>
     <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron" alt="Electron"></a>
     <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react" alt="React"></a>
