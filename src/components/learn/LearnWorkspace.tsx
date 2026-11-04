@@ -544,8 +544,9 @@ export default function LearnWorkspace({
     }
     setStructOverlayGoal(gid)
   }, [structOverlayGoal, activeTab, store, activeGoalId, onToast])
-  // 双击 Ctrl：唤出 / 收起节点宇宙浮层
+  // 双击 Ctrl 或快捷键（默认 F2）：唤出 / 收起节点宇宙浮层
   useDoubleCtrl(toggleStructOverlay)
+  useShortcut('learn.structPopout', { down: toggleStructOverlay })
 
   /* ---------- 实用工具箱：屏幕截图 ---------- */
   const [screenshotImage, setScreenshotImage] = useState<string | null>(null)

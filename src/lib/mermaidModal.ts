@@ -24,7 +24,6 @@ export function openMermaidModal(svgHtml: string): void {
   modal.setAttribute('aria-label', t('查看图表完整视图'))
 
   // 2. 状态变量
-  let scale = 1.0
   let translateX = 0
   let translateY = 0
   let isDragging = false
@@ -42,7 +41,7 @@ export function openMermaidModal(svgHtml: string): void {
       </div>
     </div>
     <div class="moji-mermaid-toolbar no-print absolute top-4 right-4 z-10 flex items-center gap-1.5 border border-line-strong/80 bg-card/90 px-2 py-1 shadow-lg backdrop-blur select-none rounded-none text-ink">
-      <span class="moji-mermaid-pct px-2 text-xs font-mono font-medium tabular-nums text-ink-strong cursor-pointer hover:text-seal" title="${t('点击重置为 100%')}">100%</span>
+      <span class="moji-mermaid-pct px-2 text-xs font-mono font-medium tabular-nums text-ink-strong cursor-pointer hover:text-seal" title="${t('点击切换比例')}">100%</span>
       <span aria-hidden="true" class="h-3.5 w-px bg-line-strong/60"></span>
       <button type="button" class="moji-mermaid-btn-zoom-out flex h-7 w-7 items-center justify-center text-ink-soft hover:bg-line/60 hover:text-ink rounded-none transition" title="${t('缩小 (滚轮向下)')}">
         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -71,14 +70,64 @@ export function openMermaidModal(svgHtml: string): void {
   const resetBtn = modal.querySelector<HTMLElement>('.moji-mermaid-btn-reset')!
   const closeBtn = modal.querySelector<HTMLElement>('.moji-mermaid-btn-close')!
 
-  // 4. 清理内联样式以允许高清晰放大
+  // 4. 解析固有自然尺寸并赋给 SVG，彻底解决 inline-block + width:100% 塌缩为 300px 的异常尺寸问题
   const svgEl = canvas.querySelector('svg')
+  let naturalWidth = 0
+  let naturalHeight = 0
+
   if (svgEl) {
+    const vb = svgEl.getAttribute('viewBox')
+    if (vb) {
+      const parts = vb.trim().split(/[\s,]+/).map(Number)
+      if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+        naturalWidth = parts[2]
+        naturalHeight = parts[3]
+      }
+    }
+    if (!naturalWidth) {
+      const w = parseFloat(svgEl.getAttribute('width') || '')
+      if (w > 0 && Number.isFinite(w)) naturalWidth = w
+    }
+    if (!naturalHeight) {
+      const h = parseFloat(svgEl.getAttribute('height') || '')
+      if (h > 0 && Number.isFinite(h)) naturalHeight = h
+    }
+    if (!naturalWidth && svgEl.style.maxWidth && svgEl.style.maxWidth.endsWith('px')) {
+      naturalWidth = parseFloat(svgEl.style.maxWidth)
+    }
+
+    if (naturalWidth > 0 && naturalHeight > 0) {
+      svgEl.style.width = `${naturalWidth}px`
+      svgEl.style.height = `${naturalHeight}px`
+      svgEl.setAttribute('width', String(Math.round(naturalWidth)))
+      svgEl.setAttribute('height', String(Math.round(naturalHeight)))
+    } else if (naturalWidth > 0) {
+      svgEl.style.width = `${naturalWidth}px`
+      svgEl.style.height = 'auto'
+      svgEl.setAttribute('width', String(Math.round(naturalWidth)))
+    }
+
     svgEl.style.maxWidth = 'none'
     svgEl.style.maxHeight = 'none'
     svgEl.style.display = 'block'
     svgEl.style.pointerEvents = 'auto'
   }
+
+  // 5. 根据全屏视口计算最佳自适应初始缩放比例（居中自适应展示，防止图表偏小）
+  const vw = typeof window !== 'undefined' ? (window.innerWidth || 1024) : 1024
+  const vh = typeof window !== 'undefined' ? (window.innerHeight || 768) : 768
+  const availW = Math.max(300, vw - 120)
+  const availH = Math.max(200, vh - 140)
+
+  let autoFitScale = 1.0
+  if (naturalWidth > 0 && naturalHeight > 0) {
+    const fit = Math.min(availW / naturalWidth, availH / naturalHeight)
+    // 保证清晰舒适可视，小图表放大（最高 2.5x），大图表缩放至完全可视（最低 0.2x）
+    autoFitScale = Math.max(0.2, Math.min(fit, 2.5))
+    autoFitScale = Math.round(autoFitScale * 100) / 100
+  }
+
+  let scale = autoFitScale
 
   const updateTransform = () => {
     canvas.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`
@@ -91,11 +140,19 @@ export function openMermaidModal(svgHtml: string): void {
   }
 
   const resetView = () => {
-    scale = 1.0
+    // 如果当前已是自适应比例且不等于 1.0，则切到 100%；否则恢复自适应比例
+    if (Math.abs(scale - autoFitScale) < 0.05 && autoFitScale !== 1.0) {
+      scale = 1.0
+    } else {
+      scale = autoFitScale
+    }
     translateX = 0
     translateY = 0
     updateTransform()
   }
+
+  // 初始化应用初始位置与比例
+  updateTransform()
 
   // 缩放按钮
   zoomInBtn.onclick = (e) => {
@@ -108,7 +165,12 @@ export function openMermaidModal(svgHtml: string): void {
   }
   pctEl.onclick = (e) => {
     e.stopPropagation()
-    resetView()
+    if (Math.abs(scale - 1.0) < 0.05) {
+      scale = autoFitScale
+    } else {
+      scale = 1.0
+    }
+    updateTransform()
   }
   resetBtn.onclick = (e) => {
     e.stopPropagation()

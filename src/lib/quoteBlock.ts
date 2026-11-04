@@ -19,7 +19,7 @@
  * - 样式规范：组件及内部所有元素严格采用直角风格（rounded-none），自适应主题色。
  */
 import { t } from '../i18n'
-import { decodeAttr, type PluginRenderContext } from './renderPlugins'
+import { decodeAttr, encodeAttr, type PluginRenderContext } from './renderPlugins'
 import { highlight, type HighlightToken } from '../syntax/SyntaxHighlighter'
 import { resolveLanguageId } from '../syntax/LanguageAliases'
 import { tokenTypeOf, type TokenType } from '../syntax/Theme'
@@ -32,6 +32,13 @@ export interface QuoteMappingRule {
   endLine: number
   endCol: number
   template: string
+  comment?: string
+}
+
+export interface QuoteSection {
+  startLine: number
+  endLine: number
+  rules: QuoteMappingRule[]
 }
 
 export interface QuoteReference {
@@ -39,6 +46,14 @@ export interface QuoteReference {
   startLine: number
   endLine: number
   rules: QuoteMappingRule[]
+}
+
+/** 格式化多段区间的行标徽章（如 "L83"、"L83–L85"、"L83, L85, L87"） */
+export function formatSectionsBadge(sections: Array<{ startLine: number; endLine: number }>): string {
+  if (!sections.length) return ''
+  return sections
+    .map((s) => (s.startLine === s.endLine ? `L${s.startLine}` : `L${s.startLine}–L${s.endLine}`))
+    .join(', ')
 }
 
 export type QuoteItem =
@@ -209,7 +224,71 @@ function parseCoordinates(inner: string): { startLine: number; startCol: number;
   return null
 }
 
-/** 规范化单条规则字符串，支持 mark(xx:xx, xx:xx) 与兼容旧版 [xx:xx, xx:xx] => <template> */
+/**
+ * 解析 comment(坐标, 注解内容) 语法
+ * 坐标格式与 mark 完全一致：支持 15:5, 16:7、15:5-16:7、15:5, 20、10-15、15 等；
+ * 注解内容支持任意文本或成对引号。
+ */
+function parseCommentRule(trimmed: string, customTemplate: string | null): QuoteMappingRule | null {
+  const commentMatch = trimmed.match(/^comment\s*\(\s*([\s\S]+?)\s*\)$/i)
+  if (!commentMatch) return null
+
+  const inner = commentMatch[1].trim()
+  if (!inner) return null
+
+  let coords: ReturnType<typeof parseCoordinates> = null
+  let commentText = ''
+
+  const commaIndices: number[] = []
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === ',') commaIndices.push(i)
+  }
+
+  // 1. 若至少有两个逗号，优先尝试以第 2 个逗号作为切分点（处理类似 15:5, 16:7 这种坐标内部有逗号的情况）
+  if (commaIndices.length >= 2) {
+    const splitIdx = commaIndices[1]
+    const candidateCoords = inner.slice(0, splitIdx).trim()
+    const candidateComment = inner.slice(splitIdx + 1).trim()
+    const parsed = parseCoordinates(candidateCoords)
+    if (parsed && candidateComment) {
+      coords = parsed
+      commentText = candidateComment
+    }
+  }
+
+  // 2. 若尚未匹配且至少有 1 个逗号，尝试以第 1 个逗号作为切分点（处理 10-15 或 15:5-16:7 这种坐标无逗号的情况）
+  if (!coords && commaIndices.length >= 1) {
+    const splitIdx = commaIndices[0]
+    const candidateCoords = inner.slice(0, splitIdx).trim()
+    const candidateComment = inner.slice(splitIdx + 1).trim()
+    const parsed = parseCoordinates(candidateCoords)
+    if (parsed && candidateComment) {
+      coords = parsed
+      commentText = candidateComment
+    }
+  }
+
+  if (!coords || !commentText) return null
+
+  // 清除首尾可能包裹的成对引号
+  const cleanedComment = commentText.replace(/^["'“‘]\s*|\s*["'”’]$/g, '').trim()
+  const escapedComment = escapeHtml(cleanedComment)
+
+  let template: string
+  if (customTemplate) {
+    template = sanitizeTemplate(customTemplate)
+  } else {
+    template = `<span class="moji-quote-comment cursor-help border-b border-dashed border-seal/80 bg-seal/10 hover:bg-seal/20 text-ink transition-colors" data-comment="${escapedComment}" title="${escapedComment}">{{content}}</span>`
+  }
+
+  return {
+    ...coords,
+    template,
+    comment: cleanedComment,
+  }
+}
+
+/** 规范化单条规则字符串，支持 comment(...)、mark(...) 与兼容旧版 [xx:xx, xx:xx] => <template> */
 export function parseMappingRule(ruleStr: string): QuoteMappingRule | null {
   let trimmed = ruleStr.trim().replace(/^,\s*/, '')
   if (!trimmed) return null
@@ -235,9 +314,13 @@ export function parseMappingRule(ruleStr: string): QuoteMappingRule | null {
     }
   }
 
+  // 1. 匹配 comment(...) 语法
+  const commentRule = parseCommentRule(trimmed, customTemplate)
+  if (commentRule) return commentRule
+
   const template = customTemplate ? sanitizeTemplate(customTemplate) : DEFAULT_MARK_TEMPLATE
 
-  // 1. 匹配 mark(...) 语法
+  // 2. 匹配 mark(...) 语法
   const markMatch = trimmed.match(/^mark\s*\(\s*([\s\S]+?)\s*\)$/i)
   if (markMatch) {
     const coords = parseCoordinates(markMatch[1])
@@ -250,7 +333,7 @@ export function parseMappingRule(ruleStr: string): QuoteMappingRule | null {
     return null
   }
 
-  // 2. 匹配中括号形式 [15:5, 16:7]
+  // 3. 匹配中括号形式 [15:5, 16:7]
   const bracketMatch = trimmed.match(/^\[\s*([\s\S]+?)\s*\]$/)
   if (bracketMatch) {
     const coords = parseCoordinates(bracketMatch[1])
@@ -608,19 +691,57 @@ export function renderQuotedLines(
 export function quoteBlock(source: string, ctx: PluginRenderContext): string {
   const parsed = parseQuoteBlock(source)
 
-  let innerHtml = ''
-  for (let i = 0; i < parsed.items.length; i++) {
-    const item = parsed.items[i]
+  // 合并相邻且引用同一文件的条目为一个代码片段组件
+  type RenderGroup =
+    | { type: 'text'; paragraphs: string[] }
+    | { type: 'refGroup'; filePath: string; sections: QuoteSection[] }
+
+  const groups: RenderGroup[] = []
+
+  for (const item of parsed.items) {
     if (item.type === 'text') {
       const paragraphs = item.text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
-      for (const p of paragraphs) {
+      if (paragraphs.length > 0) {
+        groups.push({ type: 'text', paragraphs })
+      }
+    } else {
+      const last = groups[groups.length - 1]
+      if (last && last.type === 'refGroup' && last.filePath === item.ref.filePath) {
+        last.sections.push({
+          startLine: item.ref.startLine,
+          endLine: item.ref.endLine,
+          rules: item.ref.rules,
+        })
+      } else {
+        groups.push({
+          type: 'refGroup',
+          filePath: item.ref.filePath,
+          sections: [
+            {
+              startLine: item.ref.startLine,
+              endLine: item.ref.endLine,
+              rules: item.ref.rules,
+            },
+          ],
+        })
+      }
+    }
+  }
+
+  let innerHtml = ''
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i]
+    if (group.type === 'text') {
+      for (const p of group.paragraphs) {
         innerHtml += `<div class="moji-quote-text text-sm text-ink/90 leading-relaxed my-2.5 rounded-none font-sans">${ctx.escape(p)}</div>`
       }
     } else {
-      const ref = item.ref
-      const rulesJson = JSON.stringify(ref.rules)
+      const sectionsJson = JSON.stringify(group.sections)
+      const firstStart = group.sections[0].startLine
+      const lastEnd = group.sections[group.sections.length - 1].endLine
+      const badgeText = formatSectionsBadge(group.sections)
 
-      let displayPath = ref.filePath
+      let displayPath = group.filePath
       try {
         if (displayPath.includes('%')) {
           displayPath = decodeURIComponent(displayPath)
@@ -629,8 +750,8 @@ export function quoteBlock(source: string, ctx: PluginRenderContext): string {
 
       innerHtml +=
         `<div class="moji-quote-item my-3 border border-line/70 bg-paper/60 dark:bg-card/60 rounded-none overflow-hidden" ` +
-        `data-file="${ctx.attr(ref.filePath)}" data-start="${ref.startLine}" data-end="${ref.endLine}" ` +
-        `data-rules="${ctx.attr(rulesJson)}">` +
+        `data-file="${ctx.attr(group.filePath)}" data-start="${firstStart}" data-end="${lastEnd}" ` +
+        `data-sections="${ctx.attr(sectionsJson)}">` +
         `<div class="moji-quote-header flex items-center justify-between px-3 py-1.5 border-b border-line/60 bg-surface/70 dark:bg-surface/40 text-xs font-sans rounded-none select-none">` +
         `<div class="flex items-center gap-2 min-w-0">` +
         `<svg class="w-3.5 h-3.5 text-ink-faint shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">` +
@@ -643,8 +764,8 @@ export function quoteBlock(source: string, ctx: PluginRenderContext): string {
         `title="${ctx.escape(displayPath)}" data-action="open-file">` +
         `${ctx.escape(displayPath)}` +
         `</button>` +
-        `<span class="text-[11px] px-1.5 py-0.5 text-ink-faint border border-line/50 bg-paper dark:bg-card rounded-none shrink-0 font-sans tabular-nums">` +
-        `L${ref.startLine}–L${ref.endLine}` +
+        `<span class="moji-quote-badge text-[11px] px-1.5 py-0.5 text-ink-faint border border-line/50 bg-paper dark:bg-card rounded-none shrink-0 font-sans tabular-nums">` +
+        `${ctx.escape(badgeText)}` +
         `</span>` +
         `</div>` +
         `<div class="flex items-center gap-1.5 shrink-0">` +
@@ -709,11 +830,142 @@ async function fetchQuoteFile(host: QuoteBlockHost, filePath: string): Promise<s
   return req
 }
 
+/** 从 DOM item 中解析出当前引用的所有区间 (sections) */
+function parseSectionsAttr(item: HTMLElement): QuoteSection[] {
+  try {
+    const rawSec = item.getAttribute('data-sections') ?? item.dataset.sections
+    if (rawSec) {
+      const parsed = JSON.parse(decodeAttr(rawSec))
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed as QuoteSection[]
+      }
+    }
+  } catch {}
+
+  const startLine = parseInt(item.dataset.start ?? '1', 10)
+  const endLine = parseInt(item.dataset.end ?? '1', 10)
+  let rules: QuoteMappingRule[] = []
+  try {
+    const rawRules = item.getAttribute('data-rules') ?? item.dataset.rules ?? '[]'
+    rules = JSON.parse(decodeAttr(rawRules)) as QuoteMappingRule[]
+  } catch {
+    rules = []
+  }
+  return [{ startLine, endLine, rules }]
+}
+
+/** 合并 DOM 中相邻且引用同一文件的 quote 块 */
+function mergeAdjacentQuoteElements(root: HTMLElement): void {
+  const blocks = Array.from(root.querySelectorAll<HTMLElement>('.moji-quote-block'))
+  for (let i = 0; i < blocks.length; i++) {
+    const curBlock = blocks[i]
+    if (!curBlock.isConnected) continue
+
+    let nextNode = curBlock.nextSibling
+    while (nextNode && nextNode.nodeType === Node.TEXT_NODE && !nextNode.textContent?.trim()) {
+      nextNode = nextNode.nextSibling
+    }
+
+    if (nextNode && nextNode.nodeType === Node.ELEMENT_NODE) {
+      const nextEl = nextNode as HTMLElement
+      if (nextEl.classList.contains('moji-quote-block')) {
+        const curItems = Array.from(curBlock.querySelectorAll<HTMLElement>('.moji-quote-item'))
+        const nextItems = Array.from(nextEl.querySelectorAll<HTMLElement>('.moji-quote-item'))
+        if (curItems.length > 0 && nextItems.length > 0) {
+          const lastCurItem = curItems[curItems.length - 1]
+          const firstNextItem = nextItems[0]
+
+          const file1 = lastCurItem.getAttribute('data-file')
+          const file2 = firstNextItem.getAttribute('data-file')
+
+          if (file1 && file1 === file2) {
+            const sec1 = parseSectionsAttr(lastCurItem)
+            const sec2 = parseSectionsAttr(firstNextItem)
+            const mergedSecs = [...sec1, ...sec2]
+
+            lastCurItem.setAttribute('data-sections', encodeAttr(JSON.stringify(mergedSecs)))
+            const badgeEl = lastCurItem.querySelector('.moji-quote-badge')
+            if (badgeEl) {
+              badgeEl.textContent = formatSectionsBadge(mergedSecs)
+            }
+
+            firstNextItem.remove()
+
+            // 将 nextEl 剩余的所有子节点（若有）合并移动到 curBlock
+            const remaining = Array.from(nextEl.children)
+            for (const child of remaining) {
+              curBlock.appendChild(child)
+            }
+            nextEl.remove()
+
+            // 重新检验合并后的当前块
+            i--
+          }
+        }
+      }
+    }
+  }
+}
+
+let activeQuoteTip: HTMLElement | null = null
+
+function removeActiveQuoteTip(): void {
+  if (activeQuoteTip) {
+    activeQuoteTip.remove()
+    activeQuoteTip = null
+  }
+}
+
+/** 为所有被 comment 标注的文本绑定鼠标悬浮提示气泡 */
+function attachCommentTooltips(container: HTMLElement): void {
+  const commentEls = container.querySelectorAll<HTMLElement>('.moji-quote-comment')
+  for (const el of commentEls) {
+    const comment = el.dataset.comment || el.getAttribute('title') || ''
+    if (!comment) continue
+
+    el.addEventListener('mouseenter', () => {
+      removeActiveQuoteTip()
+      el.removeAttribute('title')
+
+      const tip = document.createElement('div')
+      tip.className =
+        'moji-quote-tip fixed z-50 max-w-xs px-2.5 py-1.5 text-xs text-ink bg-card border border-line-strong/80 shadow-lg rounded-none pointer-events-none select-none transition-opacity duration-150'
+      tip.textContent = comment
+
+      document.body.appendChild(tip)
+      activeQuoteTip = tip
+
+      const rect = el.getBoundingClientRect()
+      const tipRect = tip.getBoundingClientRect()
+
+      let left = rect.left + rect.width / 2 - tipRect.width / 2
+      const vw = typeof window !== 'undefined' ? (window.innerWidth || 1024) : 1024
+      left = Math.max(8, Math.min(left, vw - tipRect.width - 8))
+
+      let top = rect.top - tipRect.height - 6
+      if (top < 8) {
+        top = rect.bottom + 6
+      }
+
+      tip.style.left = `${Math.round(left)}px`
+      tip.style.top = `${Math.round(top)}px`
+    })
+
+    el.addEventListener('mouseleave', () => {
+      el.setAttribute('title', comment)
+      removeActiveQuoteTip()
+    })
+  }
+}
+
 /**
  * DOM 提交后异步挂载原文引用与交互事件
  */
 export function hydrateQuotes(root: HTMLElement): () => void {
   let unsub: (() => void) | null = null
+
+  // 1. 合并相邻且引用同一文件的 quote 块
+  mergeAdjacentQuoteElements(root)
 
   const run = () => {
     const items = root.querySelectorAll<HTMLElement>('.moji-quote-item:not([data-hydrated="true"])')
@@ -745,15 +997,9 @@ export function hydrateQuotes(root: HTMLElement): () => void {
         }
       } catch {}
 
-      const startLine = parseInt(item.dataset.start ?? '1', 10)
-      const endLine = parseInt(item.dataset.end ?? '1', 10)
-      let rules: QuoteMappingRule[] = []
-      try {
-        const rawRules = item.getAttribute('data-rules') ?? item.dataset.rules ?? '[]'
-        rules = JSON.parse(decodeAttr(rawRules)) as QuoteMappingRule[]
-      } catch {
-        rules = []
-      }
+      const sections = parseSectionsAttr(item)
+      const firstStart = sections[0]?.startLine ?? 1
+      const lastEnd = sections[sections.length - 1]?.endLine ?? firstStart
 
       const bodyEl = item.querySelector<HTMLElement>('.moji-quote-body')
       const pathBtn = item.querySelector<HTMLElement>('.moji-quote-path')
@@ -762,7 +1008,7 @@ export function hydrateQuotes(root: HTMLElement): () => void {
 
       const handleOpen = () => {
         if (host.onOpenFile) {
-          host.onOpenFile(filePath, startLine, endLine)
+          host.onOpenFile(filePath, firstStart, lastEnd)
         }
       }
 
@@ -800,8 +1046,25 @@ export function hydrateQuotes(root: HTMLElement): () => void {
           }
         }
 
-        const lines = renderQuotedLines(content, startLine, endLine, rules, tokenLines)
-        if (!lines.length) {
+        // 对每一个引用区间分别渲染行与规则
+        const renderedSections: Array<{
+          startLine: number
+          endLine: number
+          lines: Array<{ lineNum: number; html: string; raw: string }>
+        }> = []
+
+        for (const sec of sections) {
+          const lines = renderQuotedLines(content, sec.startLine, sec.endLine, sec.rules, tokenLines)
+          if (lines.length > 0) {
+            renderedSections.push({
+              startLine: sec.startLine,
+              endLine: sec.endLine,
+              lines,
+            })
+          }
+        }
+
+        if (!renderedSections.length) {
           bodyEl.innerHTML =
             `<div class="text-xs text-ink-faint rounded-none">` +
             `<span>${t('指定行区间无内容（文件共 {0} 行）', content.split(/\r?\n/).length)}</span>` +
@@ -812,16 +1075,49 @@ export function hydrateQuotes(root: HTMLElement): () => void {
         let linesHtml = ''
         const rawLinesText: string[] = []
 
-        for (const line of lines) {
-          rawLinesText.push(line.raw)
-          linesHtml +=
-            `<div class="moji-quote-line flex items-start hover:bg-surface/50 transition-colors rounded-none">` +
-            `<span class="moji-quote-line-no select-none text-right font-sans tabular-nums text-[11px] text-ink-faint/60 min-w-[2rem] pr-2 mr-2.5 border-r border-line/40 shrink-0 rounded-none pt-0.5">${line.lineNum}</span>` +
-            `<span class="moji-quote-line-code font-sans text-xs text-ink whitespace-pre-wrap break-words break-all min-w-0 flex-1 rounded-none leading-5">${line.html}</span>` +
-            `</div>`
+        for (let sIdx = 0; sIdx < renderedSections.length; sIdx++) {
+          const sec = renderedSections[sIdx]
+
+          // 相邻两段行号不连续时展示紧凑极简跳行指示
+          if (sIdx > 0) {
+            const prevSec = renderedSections[sIdx - 1]
+            if (sec.startLine > prevSec.endLine + 1) {
+              linesHtml +=
+                `<div class="moji-quote-gap flex items-center gap-2 my-1 text-[10px] text-ink-faint/40 select-none">` +
+                `<span class="min-w-[2.25rem] text-right pr-2 mr-2.5">···</span>` +
+                `<span class="h-px bg-line/30 flex-1"></span>` +
+                `</div>`
+            }
+          }
+
+          for (const line of sec.lines) {
+            rawLinesText.push(line.raw)
+            linesHtml +=
+              `<div class="moji-quote-line flex items-start hover:bg-surface/50 transition-colors rounded-none">` +
+              `<button type="button" class="moji-quote-line-no select-none text-right font-sans tabular-nums text-[11px] text-ink-faint/60 hover:text-seal hover:bg-seal/10 min-w-[2.25rem] pr-2 mr-2.5 border-r border-line/40 shrink-0 rounded-none pt-0.5 cursor-pointer transition-colors" title="${t('跳转到第 {0} 行', line.lineNum)}" data-line="${line.lineNum}">` +
+              `${line.lineNum}` +
+              `</button>` +
+              `<span class="moji-quote-line-code font-sans text-xs text-ink whitespace-pre-wrap break-words break-all min-w-0 flex-1 rounded-none leading-5">${line.html}</span>` +
+              `</div>`
+          }
         }
 
         bodyEl.innerHTML = `<div class="moji-quote-code select-text rounded-none leading-5">${linesHtml}</div>`
+
+        // 绑定行号点击直接跳转源文件对应行号
+        const lineButtons = bodyEl.querySelectorAll<HTMLButtonElement>('.moji-quote-line-no')
+        for (const btn of lineButtons) {
+          btn.onclick = (e) => {
+            e.stopPropagation()
+            const lineNo = parseInt(btn.dataset.line ?? '1', 10)
+            if (host.onOpenFile) {
+              host.onOpenFile(filePath, lineNo, lineNo)
+            }
+          }
+        }
+
+        // 挂载 comment 注解 hover 提示气泡
+        attachCommentTooltips(bodyEl)
 
         if (copyBtn) {
           copyBtn.onclick = () => {
@@ -842,6 +1138,7 @@ export function hydrateQuotes(root: HTMLElement): () => void {
   run()
 
   return () => {
+    removeActiveQuoteTip()
     if (unsub) {
       unsub()
       unsub = null
@@ -859,6 +1156,7 @@ export const QUOTE_SYNTAX_GUIDE = `原文引用块：用三个反引号 + quote 
 这是一段前置说明普通文本
 @文件路径(起始行-结束行){
   mark(起始行:起始列, 结束行:结束列)
+  comment(起始行:起始列, 结束行:结束列, 注解说明内容)
 }
 以上代码片段来自xxx
 \`\`\`
@@ -866,5 +1164,8 @@ export const QUOTE_SYNTAX_GUIDE = `原文引用块：用三个反引号 + quote 
 - 原文引用行：以 @ 开头，格式为 \`@<文件路径>(<起始行>-<结束行>)\`，支持可选的花括号 \`{ ... }\` 包裹标记规则。
   · 文件路径：支持绝对路径（如 \`E:/demo/index.html\`）或工作区/项目相对路径（如 \`src/index.ts\`、\`workspace/article.md\`）；系统会自动根据文件扩展名（.js, .ts, .py, .html, .rs 等）展示对应的代码语法高亮。
   · 行号范围：如 \`(10-34)\`（1 起始闭区间，支持 10-34、10~34、10至34、或单个数字 10）；
-  · 标记规则：位于 \`{ ... }\` 内，使用 \`mark(起始行:起始列, 结束行:结束列)\`（行列号均从 1 开始），对指定范围文字添加背景标记色（自适应主题）。也支持单行列区间 \`mark(行:起始列, 结束列)\` 或全行标记 \`mark(行号)\`。严禁使用圆角样式，保持直角设计风格！
-- 同一个 quote 块内可以包含多段普通文本与多个 @ 原文引用，形成图文对照的精读笔记。适合在带读工程源码、文章论文逐段精读、核心算法高亮剖析时使用。`
+  · 标记规则：位于 \`{ ... }\` 内：
+    1) \`mark(起始行:起始列, 结束行:结束列)\`：对指定文字添加背景高亮标记色（亦支持单行列区间 \`mark(行:起始列, 结束列)\` 或全行标记 \`mark(行号)\`）。
+    2) \`comment(起始行:起始列, 结束行:结束列, 注解内容)\`：对指定文字添加注解标记，用户鼠标悬停时会弹出注解提示框（亦支持 \`comment(行:起始列, 结束列, 注解内容)\` 或全行批注 \`comment(行号, 注解内容)\`）。
+  · 直角规范：严禁使用圆角样式，组件与高亮标记严格保持直角设计风格！
+- 连续同文件引用优化：如果相邻引用属于同一个文件的不同行号，系统会自动合并为一个精炼的文件片段组件，以行号区分展示，用户点击行号即可直接跳转源文件对应位置。同一个 quote 块内可以包含多段普通文本与多个 @ 原文引用，形成图文对照的精读笔记。`
