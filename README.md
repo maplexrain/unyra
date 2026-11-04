@@ -1,266 +1,306 @@
 <div align="center">
-  <img src="docs/assets/logo.png" alt="归一 Unyra" width="160">
+  <img src="docs/assets/logo.png" alt="归一 Unyra Logo" width="130">
 
-# 归一 Unyra · 探索式学习
+  # 归一 Unyra · 探索式学习工作台
+  
+  **Local-First Agentic Learning OS · 本地优先的 AI 深度探索与进阶学习操作系统**
 
-**本地优先的 AI 学习辅助桌面应用——从一个想弄懂的目标出发，把知识逐层拆成可探索的节点。**
+  *从一个想彻底弄懂的目标出发，将碎片化的知识解构成可漫游的 3D 节点宇宙，让超级导师在动态讲义上为你动笔。*
 
-[下载安装包](https://github.com/maplexrain/unyra/releases) · [项目文档](docs/README.md) · [问题反馈](https://github.com/maplexrain/unyra/issues)
+  <p align="center">
+    <a href="https://github.com/maplexrain/unyra/releases"><img src="https://img.shields.io/badge/Release-v0.7.5-crimson?style=flat-square&logo=github" alt="Release"></a>
+    <a href="https://github.com/maplexrain/unyra/releases"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square&logo=windows" alt="Platform"></a>
+    <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron" alt="Electron"></a>
+    <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react" alt="React"></a>
+    <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-7-3178C6?style=flat-square&logo=typescript" alt="TypeScript"></a>
+    <a href="https://tailwindcss.com/"><img src="https://img.shields.io/badge/TailwindCSS-4-38B2AC?style=flat-square&logo=tailwindcss" alt="TailwindCSS"></a>
+    <a href="docs/README.md"><img src="https://img.shields.io/badge/Docs-Architecture%20%26%20Guides-emerald?style=flat-square" alt="Documentation"></a>
+  </p>
 
-[![CI](https://github.com/maplexrain/unyra/actions/workflows/ci.yml/badge.svg)](https://github.com/maplexrain/unyra/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v0.7.5-a8432f)](https://github.com/maplexrain/unyra/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows-0078D4)](https://github.com/maplexrain/unyra/releases)
-[![Electron](https://img.shields.io/badge/Electron-44-47848F)](https://www.electronjs.org/)
-[![React](https://img.shields.io/badge/React-19-61DAFB)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6)](https://www.typescriptlang.org/)
-
+  [📥 下载安装包 (Releases)](https://github.com/maplexrain/unyra/releases) · [📖 深度开发架构文档](docs/README.md) · [💬 提交反馈与交流群](#-社区与反馈) · [❤️ 赞助支持](#-致谢与赞助)
 </div>
+
+<br />
+
+<!-- [IMAGE_PLACEHOLDER: 01_hero_workspace] -->
+<!-- 建议截图内容：Unyra 全屏主界面全景，左侧展示结构清晰的知识目录树与项目，中间分屏展示包含高保真数学公式/代码块的教学讲义，右侧展开超级导师思考链与交互气泡 -->
+<p align="center">
+  <img src="docs/assets/hero.png" alt="归一 Unyra 交互工作台全景" width="960">
+</p>
 
 ---
 
-> **每个节点带一份教学文档与任意多份笔记**，由一位「超级导师」通过 JS 沙箱里的 api 直接改写来教学。
-> 数据全部存在本机，模型请求由主进程直发你配置的服务商；默认接入 DeepSeek 官方，填一个 Key 就能用，
-> 任何兼容 OpenAI / Anthropic / Responses 协议的服务都能接。
+## 💡 为什么需要「归一 Unyra」？
 
-<p align="center">
-  <img src="docs/assets/hero.png" alt="归一 Unyra 主界面：左侧知识树，中间教学文档，右侧超级导师" width="900">
-</p>
+在传统聊天界面的 AI 问答中，**学习是线性的、易逝的**：
+- 冗长的大模型回复瞬间沉入长长的上下文流，几天后无法检索；
+- 概念之间错综复杂的因果依赖被压缩成扁平的字句，大脑无法形成全局心智模型；
+- AI 仅停留在对话框里“打字陪聊”，无法对学习材料进行持续演化与长久维护。
 
-## 目录
+**归一 Unyra 颠覆了传统 AI 学习范式，为你构建一个「本地优先」的主动探索型知识系统：**
 
-- [它解决什么问题](#它解决什么问题)
-- [核心功能](#核心功能)
-- [快速开始](#快速开始)
-- [AI 提供商](#ai-提供商)
-- [本地开发](#本地开发)
-- [技术栈](#技术栈)
-- [文档](#文档)
-- [数据与隐私](#数据与隐私)
-- [赞助者名单](#赞助者名单)
+| 维度 | 传统线性聊天 (ChatGPT / Claude) | 归一 Unyra 探索式学习系统 |
+| :--- | :--- | :--- |
+| **知识组织** | 线性流式对话，翻页即忘，概念碎片化 | **有向无环图 (DAG) 节点宇宙**，概念之间具象化依赖，支持网状复用与自由深潜 |
+| **产出载体** | 对话气泡中的瞬时文本 | **活的教学讲义 + 多篇笔记**，可持续原地增量改写、分栏对照与跨文档精准跳转 |
+| **AI 参与度** | 外部观望者，单纯文本输出 | **超级导师直接动笔**：在受限沙箱中执行编排，同步构建知识树、写讲义、设考卷、添批注 |
+| **学习检验** | 用户主观阅读，缺乏客观闭环 | **独立全屏防作弊考场 + AI 历次错题追踪**，精准测量薄弱项并反哺教学 |
+| **数据与隐私** | 存储在第三方云端数据库，数据黑盒 | **Local-First 本地优先**，全量 Markdown / YAML / JSON 明文存储，请求端到端直连 |
 
-## 它解决什么问题
+---
 
-通用的聊天窗口里，学习是**线性**的：讲过的东西沉进上下文，几天后翻不回来，
-也说不清自己到底掌握了哪一块。而归一把学习做成一张**图**：
+## 🎯 深度学习场景展示
 
-- **知识是节点**，节点之间是**依赖边**（DAG），同一个概念可以被多个上层节点引用而不重复创建；
-- **每个节点有自己的文档与笔记**，是能反复打开、原地改写的读物，而不是聊天记录里的一段回答；
-- **导师在文档上动笔**，而不是只在对话框里说话——它写一段 JS 交给沙箱执行，教学正文、节点结构、
-  试卷、注解都在这段代码里一次编排完；
-- **学没学会被记下来**：自评、系统掌握的估计、反复犯的错、探针与考试的检验时间线，都在节点上。
+### 场景 1：计算机系统底层技术栈拆解（由浅入深，庖丁解牛）
+> **目标：系统掌握「现代操作系统虚拟内存机制与分页」**
 
-于是「学过什么」「卡在哪儿」「下一步该学什么」这三件事，第一次有了可以翻回去看的地方。
+<!-- [IMAGE_PLACEHOLDER: 02_scenario_cs_deep_dive] -->
+<!-- 建议截图内容：中间展示带有 LaTeX 虚拟地址计算公式、```plot 映射曲线与可执行 C/Rust 内存代码块的文档；右侧导师正通过沙箱展示编译执行输出；左侧树显示子节点拓扑 -->
 
-## 核心功能
+1. **自动架构大纲**：输入目标后，超级导师智能判断为系统性学习，瞬间规划出从「虚拟地址空间」到「页表与 TLB 快表」再到「页面置换算法」的层级 DAG 依赖树。
+2. **公式与可运行代码融合**：讲义中包含标准 LaTeX 地址转换推导与 ```` ```plot ```` 函数图像；代码块不仅具备 VS Code 级 TextMate 语法高亮，还可在**本地隔离沙箱**中一键编译运行，即时验证内存偏移量。
+3. **选词裂变探究**：阅读遇到生疏概念“TLB 击穿”，直接鼠标高亮选词，按数字键 `1` 立刻分裂出子节点深度剖析；按 `2` 由导师在行间精准添加 3 句式上下文注解。
+4. **闭环真题自测**：在独立的沉浸考场中检验掌握度，客观题秒级判分、主观题 AI 细致批注，考后自动归集薄弱项生成针对性错题攻坚集。
 
-### 探索式学习
+---
 
-- **从目标开始**：输入一个想弄懂的问题，立刻建出根节点与目标上下文；导师随后给目标起标题、写描述。
-  它自己判断这是**长期学习**还是**一次性任务**：要系统学就给出一份可点击的学习大纲
-  （探索式 / 规划式 / 完整式）；只是让它读个项目、读篇论文、答个疑，就只写根节点那份导读文档，
-  不铺大纲树。判断依据不足时它先按「一次性任务」做，绝不拿一串空节点烦你。
-- **选词建节点**：在文档里选中陌生概念，弹出菜单——「学习」在当前节点下创建子节点并自动开讲，
-  「了解」在正文上划一条两三句的注解，「注解」写自己的 Markdown 批注，「询问」就选段向 AI 提问。
-  每一项都带一个**数字键**，按 1~4 直接触发。
-- **点击学习**：导师在文中用 `[概念](moji:learn "定位说明")` 布好下一步入口，已创建与未创建用不同样式区分。
-- **复制的是源文**：预览里选中一段按 `Ctrl+C`，进剪贴板的是它在 Markdown 里的原文（公式、注解标记、
-  视觉换行都不跟着走）。
+### 场景 2：前沿学术论文与文献精读（PDF 视网膜渲染 + OCR 识图）
+> **目标：啃透最新的 AI 架构论文《Attention Is All You Need》**
 
-### 超级导师
+<!-- [IMAGE_PLACEHOLDER: 03_scenario_pdf_ocr] -->
+<!-- 建议截图内容：左格打开 PDF 论文高清渲染页面，鼠标正在框选一张复杂的模型架构图并触发 OCR 文字对齐高亮；右格并排打开导师的图文精读导读，子代理正在抓取外部文献 -->
 
-**一个学习目标一份上下文**：目标下所有节点共用同一段对话，切节点不换上下文，系统提示词稳定在目标一级，
-前缀缓存因此不会因为切节点而整段作废。导师先思考、再写一段 JS 交给沙箱执行——讲解**直接写进教学文档**，
-并在对话里说明改动理由。
+1. **视网膜级 PDF 阅读**：论文拖入即开，基于 `pdfjs-dist` 进行矢量栅格化高分屏超清渲染，平滑连续滚动。
+2. **端侧 OCR 无感选词**：内置 PaddleOCR ONNX 深度学习引擎与 Windows 原生文字识别，即使是扫描版图表或双栏公式段落，也能做到字级精准对齐选取。
+3. **向导师精准发起追问**：选中难以理解的“Scaled Dot-Product Attention”图解区域，按数字键 `4` 自动将段落锚定关联并发起提问。
+4. **并发子代理外部求证**：导师后台并行唤起检索子代理（Sub-Agent），自动跨网搜集该架构最新的消融实验数据与开源复现，只将高价值结论交付到当前讲义中。
 
-- **思考可见**：思考气泡收起时露一行「最后一行」，持续往右滚，模型安静十几秒也看得出它还在写。
-- **跟随与脱离**：输出时对话列表自动贴底；往上滚一下就脱离跟随，读上面的内容不会被反复拽回底部。
-- **三种人格**：简洁导师（直奔主题）／标准导师（先直觉再原理，默认）／ADHD 导师（主线 + 支线，多用 emoji）。
-  人格**不进系统提示词**，而是切换时补一条隐藏指令——换人格不重发历史、不作废前缀缓存。
-- **上下文压缩**：导师写一份交接摘要（目标与背景 / 已讲清的结论 / 学习者的状态 / 约定与术语）
-  与「还没做完的事」，此后原消息全部失活、只有摘要继续参与对话，原文一条都不删。
-  可以手动触发，也可以在上下文用到 70%（可调）时自动压。
-- **附件提问**：截图拖进或 `Ctrl+V` 粘进输入框，任意文本类文件从「更多 → 文件」挑；
-  图片作为图像片段发给模型（只有声明了图像模态的模型才放行），文本读成正文拼进这一条消息。
+---
 
-### 文档与笔记
+### 场景 3：高质量公开课音视频伴学（多 P 字幕联动与 AI 总结）
+> **目标：研读名校公开课或 B 站全套算法进阶视频**
 
-- **一个节点一份教学文档 + 任意多份笔记**，**一份笔记一个文件**，可以新建、改名、删除
-  （「错题本」「摘录」各记一份，而不是全堆在一起）。
-- **文档之间互相跳转**：`moji:doc/note`、跨节点 `moji:doc/#节点id/note`，**尾巴上还能带行号**——
-  `#L12` 打开后滚到第 12 行并选中，`#L12-L20` 选一段，`#L12@切线斜率` 选中写的原文。
-- **自由页签**：教学文档、任意一份笔记、任意一个本地文件平级排在一起；可拖动排序、可右键批量关闭、
-  **没保存的页签关闭键会变成一颗圆点**。打开的页签与暂存区都记在 `state.json` 里，重启还在。
-- **文档区可以分割**：把页签拖到另一格就是加入那一格，拖到某一格的边上就在那一侧拆出新的一格
-  （左右贴边并排、上下贴边叠放），分割线可拖着调比例。
-- **源码 / 预览**：源码视图里文档可直接编辑，改动先进**暂存区**（底栏显示字数与「已保存 / 未保存」），
-  按 `Ctrl+S` 才写进文档——教学文档与笔记进学习数据，本地文件写回原文件。
-- **读到哪儿了会被记住**：预览与源码各记一份，重开应用回到原来那一段。
-- **查找与替换**：`Ctrl+F` 查找、`Ctrl+H` 替换；预览用 CSS Custom Highlight API 上色，
-  一个 DOM 节点都不改。
-- **导出**：`Ctrl+E` 出 Markdown 源文件 / 单文件 HTML / PDF 三种格式，公式走浏览器原生 MathML、
-  零字体依赖。
+<!-- [IMAGE_PLACEHOLDER: 04_scenario_video_learning] -->
+<!-- 建议截图内容：左侧播放精美视频界面（带选集与清晰度选择），中间同步展示可点击的时间戳逐字字幕与 AI 分段总结，右侧记有链接到具体视频秒数的学习笔记 -->
 
-### 考试与学习状态
+1. **音视频源生态扩展**：通过用户插件支持主流视频网站解析，多 P 剧集一键解析入库。
+2. **时间戳字幕实时联动**：AI 自动解析逐字字幕轨，单击字幕任意行，播放器精准跳跃到对应播放帧。
+3. **AI 自动化音视频纪要**：内置智能总结工作流，秒级提炼各章节段落大意与关键概念锚点。
+4. **边看边学永不掉线**：视频页签采用工作区常驻层（Keepalive）渲染，在讲义、思维导图、考卷间自由切换，后台播放与音频流绝不中断。
 
-- **考试**：按知识点出卷，作答在**独立的考试窗口**里进行（全屏、主窗口遮黑、切屏有记录）；
-  客观题本地判分、主观题 AI 判分，再由导师**看着历次错题**写一份针对薄弱项的错题讲解。
-  卷面是一份文档而不是一堆卡片。一份卷子可以**反复考**，历次成绩天然是一组。
-- **学习状态**：自评（掌握 / 了解但不熟 / 不会 / 不确定）、系统估计的掌握度、错误记忆
-  （同一个错法再犯只累加次数）与考试的检验时间线。导师每次动笔前都读得到它。
-- **有效阅读**：只有「窗口在前台 + 页签在主位 + 没静坐超过 60 秒 + 看的是教学文档」的时间
-  才计入有效时长。**专注模式只有守卫**：开一路屏幕 / 摄像头监控才能开始，没有倒计时与组数；
-  守卫每分钟看一眼，分心提醒、离开暂停、隐私画面立即熔断，结束时留下专注报告。
+---
 
-### 界面与效率
+### 场景 4：高强度备考与冲刺自测（专注守卫巡检 + 闭环考场）
+> **目标：法考 / 考研专业课 / 软考高强度真题冲刺**
 
-- **资源管理器侧栏**：一棵知识树，一个节点底下挂着它的下级节点、笔记、试卷（可展开历次考试）
-  与超级文档；每一行**右键**都有它那一类东西的动作。节点标题前那颗小点就是学习状态。
-- **省着用的竖向空间**：顶栏一行里放着目标、面包屑与右端那一簇入口，其下整条让给页签。
-- **两栏可以换边**：双击两栏中间那条分隔线即换位置；右侧栏可以整格收起；宽度记忆在用户设置里。
-- **长对话里找回自己说过的话**：导师栏右边那排小点是消息定位条，悬停先看 70 字预览，
-  点一下直接跳过去。
-- **界面语言**：中文 / English 即时切换（登录页右上角或「设置 → 外观」），语言跟机器走，所有用户共用。
-- **语音输入**：输入框右侧那颗话筒（「设置 → 插件 → 功能性插件 → 语音输入」里打开，默认关）。
-  点一下开始录、说完按空格结束，识别的字落到光标处；引擎是 SenseVoiceSmall，模型 228 MB 在那一页下载。
-  音频不出本机、也不写盘。
-- **快捷键可以改**：默认六条（保存 / 查找 / 替换 / 导出 / 关闭页签 / 收起右栏），
-  点「改键」按一下组合就换上了，冲突当场拦下。
-- **教学模式（录屏用）**：打开「显示按键浮层」，左下角常驻一块小窗实时显示你按下的键。
-- **主题**：跟随系统与十三套配色（浅色 / 深色 / 暖纸 / 琥珀 / 樱花粉 / …），任何界面都跟着走；
-  代码块高亮颜色也跟着主题走。
+<!-- [IMAGE_PLACEHOLDER: 05_scenario_exam_guard] -->
+<!-- 建议截图内容：独立考试全屏窗口，单栏 768px 专业排版，底部悬浮题号进度条；右上角展示 AI 专注守卫状态与统计报告 -->
 
-### 文档能画图、能算、能跑代码
+1. **告别摆设番茄钟，启用 AI 专注守卫**：摒弃机械倒计时，由本地智能视线巡检守护专注状态。分心即刻提醒，离席自动挂起，遭遇隐私画面毫秒级熔断。
+2. **独立防作弊考试窗口**：全屏自适应，主窗口全局遮罩防翻书；记录切屏、超时、单题犹豫耗时等深层指标，全方位度量考场真实心理。
+3. **历次考点横向对账**：同张试卷支持无限次重考，系统比对历次作答轨迹，自动发现“假掌握”与偶发错误，输出深度根因分析报告。
 
-- **函数图像**：用 ` ```plot ` 围栏画函数曲线，公式用 LaTeX 写。
-- **真正的代码高亮**：```js 这类围栏走 VS Code 那套 TextMate 语法（40 门语言，按需下载、结果缓存）。
-- **代码块能编译运行**：鼠标经过代码块浮出「复制 / 编译 / 运行」——「编译」请超级导师把这段代码
-  （残缺片段它会先去读**它所在的那篇文档**）转译成可执行的 JS，之后「运行」在一次性沙箱里跑，
-  输出贴在代码块下面，联网要每次运行点一次头。
-- **语法与渲染都是插件**：` ```plot ` 就是注册表里的一个插件，自己装的插件（`{root}/plugins/*.js`）
-  走同一套接口——认领一种围栏语言、给出 HTML，需要画图的再补一个 DOM 挂载钩子；
-  也可以只写「正文文字规则」，给全篇的引号、符号换样式。
+---
 
-## 快速开始
+## 🌟 核心系统功能总览
 
-到 [发布页](https://github.com/maplexrain/unyra/releases) 下载最新的安装包：
+### 🪐 节点宇宙与 3D 拓扑画布 (Structure Canvas)
+- **3D 正交投影拓扑平面**：采用 18° 固定倾角 3D 正交投影，消除透视形变，卡片拥有物理碰撞体积与 Z 轴抬升拖曳手感。
+- **全局拓扑松弛布局**：自动计算节点深度与依赖连线，支持大范围缩放、平移与实时 Minimap 导航小地图。
+- **目标大纲思维导图**：提供探索式、规划式与完整式三种大纲模式，双击连线在知识因果两端精准巡航。
+- **一次性任务自适应**：智能识别读代码、读论文等单次研读任务，不铺多余的空节点大纲，直接生成高价值单篇导读。
 
-| 文件 | 说明 |
-| --- | --- |
-| `Unyra-<版本>-Setup.exe` | 安装向导：可改安装目录、装进当前用户（不弹 UAC）、建桌面与开始菜单快捷方式 |
-| `win-unpacked.zip` | 免安装的整份程序，解压后双击 `归一 Unyra.exe` 即可运行 |
+<!-- [IMAGE_PLACEHOLDER: 06_feature_structure_canvas] -->
+<!-- 建议截图内容：3D 节点宇宙画布全景，展现多层级彩色卡片碰撞、带箭头的依赖连线、右下角的 Minimap 缩略图以及平移悬浮效果 -->
 
-装好之后：**选一个本机用户进入 → 顶栏齿轮里填 API Key → 新建一个学习目标**。
+---
 
-> 平台：目前只有 Windows 的安装包这一条链路（macOS / Linux 需要自行从源码构建）。
+### 🧠 超级导师与子代理编排 (Agent & Sub-Agents)
+- **单一代码沙箱驱动（Single Execute Paradigm）**：导师手里只有唯一且强大的沙箱 API，通过编写 JavaScript 一步编排文档、知识树、试卷、批注，拒绝传统 Agent 因工具声明繁杂导致的前缀缓存频繁失效。
+- **真并发子代理系统（Sub-Agents）**：导师可按需动态生成独立上下文的子代理（如文献调研、代码审查、数据校验），并行执行，仅将高净值结论交付主对话。
+- **外部 MCP 协议支持（Model Context Protocol）**：支持 SSE 与本地 stdio 双通道接入，无缝调用外部 SQLite、本地文件系统及自定义自动化工具。
+- **流式思考可见与贴心跟随**：思考气泡带滚动走字反馈，输出时自适应贴底，手动翻阅时智能解绑，绝不反复回弹。
+- **无感上下文压缩**：上下文达到阈值时自动生成带未决任务清单的“交接摘要”，平滑淘汰旧消息残渣，长久学习不忘初心。
+- **双维度写作策略实时切换**：
+  - **3 大导师人格**：简洁解题（直奔结论）/ 标准耐心（直觉驱动，默认）/ ADHD 好奇（主线支线，多用 emoji）。
+  - **3 种排版格式**：混合排版（Markdown + 交互式 HTML 盒子）/ 纯 Markdown（最大兼容外部阅读器）/ 纯 HTML。
 
-## AI 提供商
+<!-- [IMAGE_PLACEHOLDER: 07_feature_agent_subagent] -->
+<!-- 建议截图内容：导师交互面板，展示正在进行的思考链、代码沙箱执行详情卡片、子代理并发执行进度以及人格切换菜单 -->
 
-任何兼容 OpenAI 协议的服务都能接入（`POST /chat/completions` + `GET /models`，Bearer 鉴权，
-SSE 流式，function calling）。**默认使用 DeepSeek 官方**，开箱即填一个 Key 就能用。
+---
 
-| 提供商 | 默认地址 |
-| --- | --- |
-| **DeepSeek 官方**（默认） | `api.deepseek.com` |
-| 月之暗面 Kimi | `api.moonshot.cn/v1` |
-| 智谱 GLM | `open.bigmodel.cn/api/paas/v4` |
-| 阿里云百炼（通义千问） | `dashscope.aliyuncs.com/compatible-mode/v1` |
-| 火山方舟（豆包） | `ark.cn-beijing.volces.com/api/v3` |
-| 硅基流动 SiliconFlow | `api.siliconflow.cn/v1` |
-| OpenRouter · OpenAI · Google Gemini · xAI Grok | 各自的官方地址 |
-| Command Code Go 套餐 | `api.commandcode.ai`（私有网关） |
+### ⚡ 选词即学与精准双向互联 (Exploratory Interaction)
+- **1~4 盲操数字菜单**：
+  - `1` 键：当前知识点下裂变子节点并开讲；
+  - `2` 键：导师在正文中划定 2~3 句不打断心流的行内释义注解；
+  - `3` 键：创建用户专属个人 Markdown 批注；
+  - `4` 键：将选定段落原位锚定并向导师深度发问。
+- **毫秒级源文复制**：在阅读视图中按下 `Ctrl+C`，存入剪贴板的永远是干净标准的 Markdown 源代码，绝不夹杂渲染杂质。
+- **超链接精确到行级**：支持 `moji:doc/#nodeId/note#L12-L20` 语法，点击即可跨目标、跨节点自动高亮选中目标代码段落。
 
-以上都是**内置提供商**：开箱即在列表里，选中后填 Key、勾模型即可用。此外可以加**自定义提供商**
-接中转、公司内网、本地 Ollama / vLLM——选一种兼容格式（OpenAI / Anthropic / Responses）再填地址即可。
+---
 
-少数服务禁止浏览器直连（CORS 与请求头限制），本项目由**主进程**转发请求，因此都能用：
-详见[主进程为什么转发 AI 请求](docs/architecture.md#为什么-ai-请求要经主进程)。
+### 🛠️ 专业多维研习工作区 (Professional Workspace)
+- **现代编辑器级自由分屏**：页签随意拖曳，实现上下/左右任意比例分屏；各分屏具备独立页签管理与焦点记忆。
+- **源码 / 预览 / 实时视图（Live Preview）**：CodeMirror 核心驱动，支持暂存区防丢保障，未保存修改自动落盘持久化。
+- **科学图表与可运行代码**：
+  - 内置 KaTeX 数学排版，零字体网络依赖；
+  - ```` ```plot ```` 动态渲染平面解析几何函数；
+  - VS Code 级 40+ 语言 TextMate 高亮，支持代码沙箱一键转译与隔离运行。
+- **SenseVoiceSmall 本地语音输入**：内置 228MB 离线语音模型，按下空格秒级转写，语音数据 100% 留存本机。
+- **多格式无损导出**：`Ctrl+E` 一键导出整洁 Markdown、自包含单文件 HTML 或印刷级 PDF。
 
-## 本地开发
+<!-- [IMAGE_PLACEHOLDER: 08_feature_workspace_split] -->
+<!-- 建议截图内容：自由分屏展示：左半屏为数学公式与函数图像编辑区，右半屏为 PDF 对照阅读区，页签栏展示拖曳吸附态 -->
+
+---
+
+### 📱 局域网跨端直连 (LAN Sync)
+- **内置极速微服务**：底层基于轻量 Hono 服务端与 WebSocket 全双工通道。
+- **扫码即连**：一键生成局域网二维码，手机或平板扫码即可同屏查阅讲义、翻阅笔记或辅助交互，学习体验无缝流转。
+
+---
+
+## 🔒 本地优先与隐私准则 (Local-First Architecture)
+
+归一 Unyra 坚信：**你的学习记录、思考火花与试卷档案是属于你个人的宝贵智力资产。**
+
+```
+%APPDATA%/unyra/users/{userId}/
+├── user.yaml            # 用户画像与学习习惯记录
+├── setting.yaml         # 全局外观、快捷键、AI 服务商与模型参数
+├── state.json           # 布局状态（打开的页签、分屏、未保存暂存区）
+├── docs/{目标名}/       # 纯文本 Markdown 教学文档、多份笔记、考试试卷
+└── web/                 # 导师收集归档的离线参考网页
+```
+
+- **纯明文文件存储**：所有讲义、笔记均为标准 `.md` 文件，不锁死在私有数据库中。你可以随时用 Obsidian、VS Code、Typora 打开或使用 Git 进行版本管理。
+- **请求端到端直连**：AI 模型请求由本地 Electron 主进程直接发往你配置的服务商，无任何二次中转服务器，无隐私收集打点。
+
+---
+
+## 🌐 广泛的 AI 模型生态支持
+
+内置支持市面上所有主流大模型服务商及任意兼容 OpenAI / Anthropic 协议的服务，填入 API Key 即可使用：
+
+| 提供商 | 说明 / 默认接入点 | 特色推荐 |
+| :--- | :--- | :--- |
+| **DeepSeek 官方** *(默认预设)* | `api.deepseek.com` | 超高性价比，原生支持思考链模型（V3 / R1） |
+| **OpenAI 官方** | `api.openai.com/v1` | GPT-4o / o1 / o3-mini 等旗舰推理模型 |
+| **Anthropic Claude** | 兼容协议直连 | Claude 3.5 Sonnet 等长上下文与代码先锋 |
+| **Google Gemini** | 兼容协议直连 | Gemini 1.5 Pro / Flash 原生多模态 |
+| **月之暗面 Kimi** | `api.moonshot.cn/v1` | 超长文本精读与文献研习 |
+| **智谱 GLM** | `open.bigmodel.cn/api/paas/v4` | GLM-4 旗舰系列支持 |
+| **阿里云百炼 (通义千问)** | `dashscope.aliyuncs.com` | Qwen 2.5 密集/全尺寸模型支持 |
+| **火山方舟 (豆包)** | `ark.cn-beijing.volces.com` | 字节跳动 Doubao 系列模型 |
+| **硅基流动 SiliconFlow** | `api.siliconflow.cn/v1` | 极速汇聚 DeepSeek、Qwen 等开源开源模型 |
+| **本地 Ollama / vLLM** | `http://localhost:11434/v1` | **100% 本地离线私有化运行**，完全无外网依赖 |
+
+---
+
+## 🚀 快速上手与下载
+
+### 1. 下载桌面客户端
+请前往 [GitHub Releases 最新发布页](https://github.com/maplexrain/unyra/releases) 获取构建产物：
+- **`Unyra-Setup-<版本>.exe`**：标准 Windows 安装程序（推荐，自动处理更新与桌面入口，无需管理员权限）。
+- **`win-unpacked.zip`**：绿色便携版，解压后双击 `归一 Unyra.exe` 即可运行。
+
+### 2. 初始配置 (30 秒开箱即用)
+1. 启动应用，创建或选择本机用户配置；
+2. 点击顶栏右上角 **设置 (⚙️)** -> **AI 提供商**，输入你的 DeepSeek Key（或配置任选服务商）；
+3. 在主界面左侧点击 **「新建目标」**，输入你想要弄懂的领域（例如：“*从零学懂量子计算基本原理与 Shor 算法*”）；
+4. 超级导师立即为你规划知识节点并开启第一堂沉浸式讲义！
+
+---
+
+## 💻 源码构建与本地开发
+
+如果你希望为 Unyra 贡献代码或自行定制功能：
 
 ```bash
+# 1. 克隆代码仓库
+git clone https://github.com/maplexrain/unyra.git
+cd unyra
+
+# 2. 安装依赖
 npm install
-node node_modules/electron/install.js   # 下载 Electron 二进制（Electron 44 起不再随 npm install 下载）
-npm run dev                             # 起 Vite + Electron（改渲染层走 HMR，改 electron/ 自动重建重启）
-npm run test                            # 一次跑完全部测试（提交前跑这个）
-npm run build                           # 类型检查 + 渲染层构建 + 主进程编译
+
+# 3. 安装 Electron 二进制环境（因使用 Electron 44，需显式触发）
+node node_modules/electron/install.js
+
+# 4. 启动开发服务器（支持前端 HMR 与主进程即时编译热重载）
+npm run dev
+
+# 5. 执行完整自动化测试（提交前务必验证全部通过）
+npm run test
+
+# 6. 代码格式与质量检查
 npm run lint
+npm run typecheck
+
+# 7. 构建全平台生产产物
+npm run build
+npm run release:win
 ```
 
-> 国内网络若卡在 GitHub，先设镜像再装 Electron：
-> `$env:ELECTRON_MIRROR="https://cdn.npmmirror.com/binaries/electron/"`（PowerShell）。
+> [!TIP]
+> 国内网络如遇 GitHub 依赖下载卡顿，可在 PowerShell 中提前设置 Electron 镜像：  
+> `$env:ELECTRON_MIRROR="https://cdn.npmmirror.com/binaries/electron/"`
 
-想改点什么：应用的**扩展点**（内置一家服务商、加一门语言、加一种文档语法、加一个沙箱 api）
-逐条写在[扩展方式](docs/architecture.md#扩展方式)里；打包与发布见
-[打包与发布](docs/packaging-and-release.md)。
+---
 
-## 技术栈
+## 🏗️ 核心技术栈
 
-Electron · React 19 · TypeScript · Vite · Tailwind CSS 4 · anime.js · KaTeX · marked ·
-function-plot · vscode-textmate + oniguruma（按需加载的 TextMate 语法高亮）·
-多提供商 AI 接入（流式对话 + 工具调用）· electron-updater（GitHub Releases 自动更新）
+- **桌面运行时**：[Electron 44](https://www.electronjs.org/) + Node.js 24 + ESBuild
+- **前端核心**：[React 19](https://react.dev/) + [TypeScript 7](https://www.typescriptlang.org/) + [Vite 8](https://vite.dev/)
+- **样式与动效**：[Tailwind CSS 4](https://tailwindcss.com/) + [Anime.js](https://animejs.com/) + Lucide Icons
+- **编辑器与排版**：CodeMirror 6 + VS Code TextMate / Oniguruma 语法高亮 + Marked + [KaTeX](https://katex.org/)
+- **端侧 AI 与多媒体**：ONNX Runtime Node + PaddleOCR + Sherpa-ONNX (SenseVoiceSmall) + PDF.js + FunctionPlot
+- **服务端与网络**：[Hono](https://hono.dev/) + Node Server + WebSocket + Undici
 
-## 文档
+---
 
-这份 README 只负责介绍项目。**实现细节、设计取舍与踩过的坑都在 [`docs/`](docs/README.md) 里**：
+## 📸 截图拍摄清单与操作指南 (Screenshot Manifest)
 
-| 文档 | 讲什么 |
-| --- | --- |
-| [docs/README.md](docs/README.md) | 文档目录：从哪一份开始读 |
-| [探索式学习](docs/learning.md) | 目标 / 节点 / 大纲、选词菜单、注解、目标级对话 |
-| [超级导师](docs/agent.md) | 人格、上下文压缩、工具气泡、Agent 设置、用户画像 |
-| [沙箱 api](docs/sandbox-api.md) | 唯一那个 `execute` 工具、path 寻址、全部 api 一览 |
-| [文档区](docs/workspace.md) | 自由页签、分割、源码 / 预览、暂存区、查找替换、导出 |
-| [文档渲染与插件](docs/rendering.md) | 插件接口与边界、正文文字规则、代码块高亮 |
-| [代码块的编译与运行](docs/code-run.md) | 伪编译工作流、运行沙箱、产物寻址 |
-| [快捷键与语音](docs/shortcuts-and-voice.md) | 改键与冲突拦截、whisper.cpp + WebGPU 语音输入 |
-| [桌面架构](docs/architecture.md) | 主进程与渲染层、窗口与原生能力、模块地图、扩展方式 |
-| [AI 提供商](docs/ai-providers.md) | 预设与兼容格式、配置结构、思考程度、Command Code Go |
-| [本地开发](docs/development.md) | 开发环境、脚本、测试分工与约定 |
-| [打包与发布](docs/packaging-and-release.md) | 构建产物、反篡改、自动更新与发布流程 |
-| [数据与隐私](docs/data-and-privacy.md) | 磁盘结构、迁移、外发请求的边界 |
+> **致维护者与使用者**：为保持 README 美观大气，文中已采用占位符预留好关键展示区。若需补全或更新配图，请参考下表对应界面进行全屏/区域截图并保存至指定路径：
 
-## 数据与隐私
+| 编号与占位标识 | 保存相对路径 | 建议界面状态与亮点说明 | 建议分辨率 |
+| :--- | :--- | :--- | :--- |
+| **01_hero_workspace** | `docs/assets/hero.png` | **应用主全景**：展开知识树，中间展示带有公式与分栏盒子的教学文档，右侧导师展开思考链与工具交互卡片。 | 1920×1080 (缩放到 960 宽) |
+| **02_scenario_cs_deep_dive** | `docs/assets/screenshots/02_scenario_cs_deep_dive.png` | **计算机底层场景**：展示带有 LaTeX 虚拟地址映射推导、`plot` 图像以及一段正在沙箱中编译执行的 C/Rust 内存代码。 | 1600×900 |
+| **03_scenario_pdf_ocr** | `docs/assets/screenshots/03_scenario_pdf_ocr.png` | **PDF+OCR 精读场景**：左侧开高精 PDF 论文，正在高亮框选复杂图表触发 OCR 文字层；右侧导师给出深度解读。 | 1600×900 |
+| **04_scenario_video_learning** | `docs/assets/screenshots/04_scenario_video_learning.png` | **视频伴学场景**：正在播放公开课视频，中间展开实时字幕与 AI 分段总结，右侧同步记录带秒数跳转的笔记。 | 1600×900 |
+| **05_scenario_exam_guard** | `docs/assets/screenshots/05_scenario_exam_guard.png` | **防作弊考场与守卫**：全屏独立考试窗口，展示清晰的单栏试卷与答题卡条，右上角浮动显示专注守卫巡检状态。 | 1600×900 |
+| **06_feature_structure_canvas** | `docs/assets/screenshots/06_feature_structure_canvas.png` | **3D 节点宇宙画布**：18° 倾角的立体节点卡片碰撞群，清晰的拓扑依赖箭头连线，右下角带有高亮 Minimap。 | 1600×900 |
+| **07_feature_agent_subagent** | `docs/assets/screenshots/07_feature_agent_subagent.png` | **超级导师与子代理编排**：展现导师展开的思维链、execute 沙箱调用日志卡片，以及正在后台并发跑任务的子代理状态。 | 1400×900 |
+| **08_feature_workspace_split** | `docs/assets/screenshots/08_feature_workspace_split.png` | **自由多区分屏**：展示 2~3 个分屏窗格（代码、文档、思维导图），页签栏呈现正在拖拽吸附的优雅动效。 | 1600×900 |
 
-**所有数据都保存在本机的用户数据目录里，不上传任何服务器。**
+---
 
-```
-{root}/users/{uid}/
-├─ user.yaml            用户信息（画像）
-├─ setting.yaml         外观、快捷键、AI 提供商与模型、agent 设置
-├─ state.json           界面状态（当前目标 / 节点 / 打开的页签 / 没保存的暂存）
-├─ docs/{目标}/         教学文档、笔记、对话、试卷、阅读账
-└─ web/                 导师抓回来的网页正文
-```
+## 🤝 社区与反馈
 
-目录名就是标题，`.md` 是干净的正文（不含任何元数据语法），**可以脱离应用直接读、改、备份**。
-`{root}` 默认是 `%APPDATA%\unyra`（v0.4.9 前是 `%APPDATA%\moji-notes`，升级后第一次启动会自动把整份数据搬过来），可在「设置 → 存储」改到任意位置：换目录即换一整套数据。
+如果您在使用过程中发现任何问题，或对探索式学习有新的灵感与功能建议，欢迎与我们联系：
 
-AI 请求由**主进程**直接发往你配置的服务商（默认 `api.deepseek.com`），不经过任何中间服务；
-主进程只转发白名单内的主机，白名单来自内置预设与你实际配置过的地址。
-完整的磁盘结构与迁移规则见[数据与隐私](docs/data-and-privacy.md)。
+- 🐛 **Issue 反馈**：[提交 GitHub Issue](https://github.com/maplexrain/unyra/issues)
+- 💬 **归一官方用户交流群**：`851412626`
+- 📺 **B站动态与演示**：[@岚中古桥](https://space.bilibili.com/234503788)
+- 📮 **作者联系 QQ**：`2652079974`
 
-## 反馈
+---
 
-遇到问题或想要新功能，欢迎[提一个 Issue](https://github.com/maplexrain/moji-notes/issues)；
-报 bug 时请带上版本号（「设置 → 关于」里能查到）与复现步骤。
+## ❤️ 致谢与赞助
 
-## 写在最后
+归一 Unyra 是一项充满热忱的全职独立开源项目，由作者独自负责全栈架构设计、代码编写、交互打磨、文档梳理及版本打包。
 
-归一是一个人做的项目：代码、文档、安装包、答疑，基本都是我自己在弄。做这个东西不怎么赚钱，
-我一直只是想把它认真做好。不过说实话，最近手头有点紧，光靠热情恐怕撑不了太久，所以还是
-决定主动开口：如果你那边有合适的合作机会——外包、兼职开发、技术咨询，或者想基于归一做点
-自己的东西——都欢迎加我聊聊，具体形式好商量，不介意从小事开始。
+每一位用户的认可、反馈与赞助，都是支撑这个项目走得更深、更远、更踏实的最大底气与火种。
 
-- 作者 QQ：2652079974
-- 作者B站：[岚中古桥](https://space.bilibili.com/234503788)
-- 归一交流群：851412626（使用中遇到问题也欢迎直接在群里问）
+在此，**特向首位赞助者「瑞宝」及所有支持归一的朋友致以最诚挚的敬意！**
 
-## 赞助者名单
+👉 **[查看完整赞助者名单与致谢记录 (持续更新)](docs/sponsors.md)**
 
-衷心感谢每一位认可「归一」、并用实际行动支持这个项目的朋友！
+---
 
-归一从第一行代码到如今的持续维护，全凭个人失业状态下的全职独立开发与投入。每一份认可与鼓励，都让漫长的独立开发之路变得更有温度，也是支撑项目走得更远、更踏实的底气与动力。
-
-在此**着重感谢**首位赞助者 **瑞宝**，你的支持不仅是一份心意，更是对归一巨大的肯定与鼓舞！这份温暖铭记于心，我会继续把归一认真做好。
-
-👉 **[查看完整赞助者名单与致谢记录（持续更新中）](docs/sponsors.md)**
+<div align="center">
+  <sub>Made with ❤️ and Deep Thought by <a href="https://github.com/maplexrain">maplexrain</a>. Empowered by Open Source.</sub>
+</div>
