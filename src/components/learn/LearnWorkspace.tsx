@@ -104,7 +104,9 @@ import {
 import { isTabPinned, reorderTabs, makeBlankTab, makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf, isPdfFile } from '../../learn/tabs'
 import { setZenActive } from '../../learn/zen'
 import { closeGoalTabGroupStore } from '../../learn/groups/goalTabGroupOps'
-import { pickLocalFiles, readLocalFile } from '../../lib/localFiles'
+import { pickLocalFiles, readLocalFile, droppedFilePath } from '../../lib/localFiles'
+import { FILES_DIR } from '../../learn/layout'
+import { goalDirOf } from '../../learn/static/location'
 import { addLocalFile } from '../../learn/localfiles'
 import { normalizeWebInput } from '../../learn/webUrl'
 import type { BrowserDeps } from '../../learn/web/browserOps'
@@ -2762,16 +2764,49 @@ export default function LearnWorkspace({
   const dragCounter = useRef(0)
 
   useEffect(() => {
+    const isUnrDrag = (e: DragEvent): boolean => {
+      const dt = e.dataTransfer
+      if (!dt) return false
+      const hasFiles = dt.types ? Array.from(dt.types).includes('Files') : false
+      if (!hasFiles) return false
+      const files = dt.files
+      if (files && files.length > 0) {
+        return Array.from(files).some((f) => {
+          const name = f.name || droppedFilePath(f) || ''
+          return name.toLowerCase().endsWith('.unr')
+        })
+      }
+      if (dt.items && dt.items.length > 0) {
+        for (let i = 0; i < dt.items.length; i++) {
+          const item = dt.items[i]
+          if (item.kind === 'file') {
+            const f = item.getAsFile()
+            if (f) {
+              const name = f.name || droppedFilePath(f) || ''
+              if (name.toLowerCase().endsWith('.unr')) return true
+            }
+          }
+        }
+      }
+      return false
+    }
+
     const onDragEnter = (e: DragEvent) => {
-      if (e.dataTransfer?.types ? Array.from(e.dataTransfer.types).includes('Files') : false) {
+      if (isUnrDrag(e)) {
         dragCounter.current++
         if (dragCounter.current === 1) {
           setIsDraggingFile(true)
         }
       }
     }
+    const onDragOver = (e: DragEvent) => {
+      if (!isUnrDrag(e) && dragCounter.current > 0) {
+        dragCounter.current = 0
+        setIsDraggingFile(false)
+      }
+    }
     const onDragLeave = (e: DragEvent) => {
-      if (e.dataTransfer?.types ? Array.from(e.dataTransfer.types).includes('Files') : false) {
+      if (isUnrDrag(e)) {
         dragCounter.current--
         if (dragCounter.current <= 0) {
           dragCounter.current = 0
@@ -2779,17 +2814,22 @@ export default function LearnWorkspace({
         }
       }
     }
-    const onDrop = () => {
+    const onDropOrEnd = () => {
       dragCounter.current = 0
       setIsDraggingFile(false)
     }
+
     window.addEventListener('dragenter', onDragEnter)
+    window.addEventListener('dragover', onDragOver)
     window.addEventListener('dragleave', onDragLeave)
-    window.addEventListener('drop', onDrop)
+    window.addEventListener('drop', onDropOrEnd, true)
+    window.addEventListener('dragend', onDropOrEnd, true)
     return () => {
       window.removeEventListener('dragenter', onDragEnter)
+      window.removeEventListener('dragover', onDragOver)
       window.removeEventListener('dragleave', onDragLeave)
-      window.removeEventListener('drop', onDrop)
+      window.removeEventListener('drop', onDropOrEnd, true)
+      window.removeEventListener('dragend', onDropOrEnd, true)
     }
   }, [])
 
@@ -4512,10 +4552,34 @@ export default function LearnWorkspace({
         if (!node || node.kind !== 'file') return { error: '这个文件节点已经不在了' }
         return node.editContent(patch)
       },
+      onOpenFileNode: (nodeUuid: string) => {
+        const fileEntity = store.fileNodes?.find((f) => f.id === nodeUuid)
+        if (!fileEntity) {
+          onToast(t('这个文件节点已经不在了'))
+          return
+        }
+        if (!fileEntity.url) {
+          onToast(t('该文件节点尚未绑定文件或网址'))
+          return
+        }
+        if (fileEntity.fileKind === 'web') {
+          openTab({ kind: 'web', url: fileEntity.url, key: newWebKey() })
+          return
+        }
+        const goalDir = goalDirOf(store, fileEntity.goalId)
+        if (!goalDir) {
+          onToast(t('找不到该文件节点所属的目标目录'))
+          return
+        }
+        const fileName = fileEntity.url.replace(/^files\//, '')
+        const relPath = `${goalDir}/${FILES_DIR}/${fileName}`
+        const absPath = userAbsPath(relPath) ?? relPath
+        openTab({ kind: 'local', path: absPath, title: fileEntity.title || fileName })
+      },
       onOpenVideo: (videoId: string) => openTab({ kind: 'video', videoId }),
       onGenerateVideoDoc: (videoNodeUuid: string) => startVideoOverview(videoNodeUuid),
     }),
-    [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, canvasSetEntry, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, canvasRenameOutlineEntry, canvasDeleteOutlineEntry, generateDocForNode, startPrereqOutline, startVideoOverview, makeNodeService, openTab, getLatest, set],
+    [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, canvasSetEntry, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, canvasRenameOutlineEntry, canvasDeleteOutlineEntry, generateDocForNode, startPrereqOutline, startVideoOverview, makeNodeService, openTab, getLatest, set, store, onToast],
   )
 
   const noteActionsCache = useRef(new Map<string, ComponentProps<typeof DocPane>['note']>())
@@ -6325,7 +6389,7 @@ export default function LearnWorkspace({
           <div className="flex flex-col items-center gap-3 p-8 rounded-xl bg-card border border-line-strong shadow-xl">
             <Upload size={38} className="text-seal animate-bounce" />
             <div className="text-base font-semibold text-ink-strong">{t('释放鼠标导入目标 (.unr)')}</div>
-            <div className="text-xs text-ink-faint">{t('支持拖入 .unr 目标包或本地文档文件')}</div>
+            <div className="text-xs text-ink-faint">{t('支持拖入 .unr 目标包')}</div>
           </div>
         </div>
       )}

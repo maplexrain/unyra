@@ -415,3 +415,81 @@ describe('提示词与工作流规范同步验证', () => {
     expect(WORKFLOWS_GUIDE).toContain("大型代码工程则创建项目节点（kind: 'project'）")
   })
 })
+
+describe('文件节点拖拽判定、自由双向连线与打开Tab逻辑', () => {
+  it('拖拽检测：非 .unr 文件绝不识别为导入包，只有 .unr 才识别', () => {
+    const isUnrDragChecker = (files: Array<{ name: string }>, types = ['Files']): boolean => {
+      const dt = {
+        types,
+        files,
+        items: files.map((f) => ({ kind: 'file', getAsFile: () => f })),
+      }
+      const hasFiles = dt.types ? Array.from(dt.types).includes('Files') : false
+      if (!hasFiles) return false
+      return dt.files.some((f) => f.name.toLowerCase().endsWith('.unr'))
+    }
+
+    expect(isUnrDragChecker([{ name: 'report.pdf' }])).toBe(false)
+    expect(isUnrDragChecker([{ name: 'notes.txt' }, { name: 'image.png' }])).toBe(false)
+    expect(isUnrDragChecker([{ name: 'export.unr' }])).toBe(true)
+    expect(isUnrDragChecker([{ name: 'COURSE.UNR' }])).toBe(true)
+    expect(isUnrDragChecker([], ['text/plain'])).toBe(false)
+  })
+
+  it('文件节点支持与各合法上级与下级双向自由连线与解绑', () => {
+    const baseStore: LearnStore = {
+      ...storeOf(),
+      fileNodes: [
+        { id: 'f1', goalId: 'g1', title: '文件 1', fileKind: 'local', url: 'files/test.pdf', createdAt: 1, updatedAt: 1 },
+        { id: 'f2', goalId: 'g1', title: '文件 2', fileKind: 'web', url: 'https://example.com', createdAt: 1, updatedAt: 1 },
+      ],
+    }
+    const { svc } = serviceOf(baseStore)
+
+    const doc = svc.get('doc1')!
+    const note = svc.get('n1')!
+    const superdoc = svc.get('s1')!
+    const exam = svc.get('e1')!
+    const outline = svc.get('o:o1')!
+    const file1 = svc.get('f1')!
+    const file2 = svc.get('f2')!
+
+    // 上级 -> 文件
+    expect(doc.connect(file1, 'down')).toMatchObject({ ok: true })
+    expect(file1.relations.some((r) => r.id === 'doc1' && r.type === 'up')).toBe(true)
+    expect(doc.disconnect(file1)).toMatchObject({ ok: true })
+
+    expect(note.connect(file1, 'down')).toMatchObject({ ok: true })
+    expect(file1.relations.some((r) => r.id === 'n1' && r.type === 'up')).toBe(true)
+    expect(note.disconnect(file1)).toMatchObject({ ok: true })
+
+    expect(superdoc.connect(file1, 'down')).toMatchObject({ ok: true })
+    expect(file1.relations.some((r) => r.id === 's1' && r.type === 'up')).toBe(true)
+    expect(superdoc.disconnect(file1)).toMatchObject({ ok: true })
+
+    expect(exam.connect(file1, 'down')).toMatchObject({ ok: true })
+    expect(file1.relations.some((r) => r.id === 'e1' && r.type === 'up')).toBe(true)
+    expect(exam.disconnect(file1)).toMatchObject({ ok: true })
+
+    // 文件 -> 下级
+    expect(file2.connect(outline, 'down')).toMatchObject({ ok: true })
+    expect(file2.relations.some((r) => r.id === 'o:o1' && r.type === 'down')).toBe(true)
+    expect(file2.disconnect(outline)).toMatchObject({ ok: true })
+
+    expect(file2.connect(doc, 'down')).toMatchObject({ ok: true })
+    expect(file2.relations.some((r) => r.id === 'doc1' && r.type === 'down')).toBe(true)
+    expect(file2.disconnect(doc)).toMatchObject({ ok: true })
+
+    expect(file2.connect(note, 'down')).toMatchObject({ ok: true })
+    expect(file2.relations.some((r) => r.id === 'n1' && r.type === 'down')).toBe(true)
+    expect(file2.disconnect(note)).toMatchObject({ ok: true })
+
+    expect(file2.connect(superdoc, 'down')).toMatchObject({ ok: true })
+    expect(file2.relations.some((r) => r.id === 's1' && r.type === 'down')).toBe(true)
+    expect(file2.disconnect(superdoc)).toMatchObject({ ok: true })
+
+    expect(file2.connect(exam, 'down')).toMatchObject({ ok: true })
+    expect(file2.relations.some((r) => r.id === 'e1' && r.type === 'down')).toBe(true)
+    expect(file2.disconnect(exam)).toMatchObject({ ok: true })
+  })
+})

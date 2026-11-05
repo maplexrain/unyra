@@ -155,6 +155,8 @@ export interface StructureCanvasProps {
   onSetProjectPath?: (nodeUuid: string, path: string) => ChannelResult | Promise<ChannelResult>
   /** 点项目卡目录树里的一个文件：本地文件页签打开（磁盘绝对路径） */
   onOpenProjectFile?: (absPath: string) => void
+  /** 打开文件节点（本地文件页签或网页页签） */
+  onOpenFileNode?: (nodeUuid: string) => void
   onToast?: (msg: string) => void
   /** 外部指定的聚焦目标（chip 路由）：把镜头挪到 uuid 对得上的那张卡 */
   focusTarget?: { nodeId: string; nonce: number } | null
@@ -430,6 +432,7 @@ export const StructureCanvas = memo(function StructureCanvas({
   onGenerateVideoDoc,
   onSetProjectPath,
   onOpenProjectFile,
+  onOpenFileNode,
   onBindFile,
   onToast,
   focusTarget,
@@ -1374,9 +1377,14 @@ export const StructureCanvas = memo(function StructureCanvas({
         else onToast?.(t('这枚项目节点还没有设置路径：右键卡片 →「设置路径」'))
         return
       }
+      if (card.kind === 'file') {
+        if (onOpenFileNode) onOpenFileNode(card.uuid)
+        else onToast?.(t('无法打开文件节点'))
+        return
+      }
       onToast?.(t('大纲节点就在这张画布上，没有另一份页签'))
     },
-    [docs, exams, onToast, onOpenVideo, store, toggleProjRoot],
+    [docs, exams, onToast, onOpenVideo, onOpenFileNode, store, toggleProjRoot],
   )
 
   /* ---------- 自动排列（清掉坐标、交给派生铺排；便条保留） ---------- */
@@ -1765,6 +1773,16 @@ export const StructureCanvas = memo(function StructureCanvas({
             const sdoc = fromCard?.kind === 'superdoc' ? g.from : target.uuid
             const note = fromCard?.kind === 'superdoc' ? target.uuid : g.from
             tryConnect(sdoc, note)
+          } else if (fromCard?.kind === 'file') {
+            if (['outline', 'doc', 'note', 'superdoc', 'exam'].includes(target.kind)) {
+              tryConnect(g.from, target.uuid)
+            }
+          } else if (target.kind === 'file') {
+            if (['doc', 'note', 'superdoc', 'exam'].includes(fromCard?.kind ?? '')) {
+              tryConnect(g.from, target.uuid)
+            } else if (fromCard?.kind === 'outline') {
+              tryConnect(target.uuid, g.from)
+            }
           }
           // 其余组合不响应（没有可建立的关系）——沉默即可，不值得一条吐司
         }
@@ -3103,14 +3121,17 @@ export const StructureCanvas = memo(function StructureCanvas({
                       className="min-w-0 flex-1 truncate text-[11px] text-ink-soft cursor-pointer hover:underline hover:text-seal"
                       onClick={(e) => {
                         e.stopPropagation()
-                        if (!card.file?.url) return
-                        if (card.file.fileKind === 'web') {
-                          window.open(card.file.url, '_blank')
-                        } else {
-                          const goalDir = goalDirOf(store, goalId)
-                          if (goalDir) {
-                            const fileName = card.file.url.replace(/^files\//, '')
-                            void revealUserPath(`${goalDir}/${FILES_DIR}/${fileName}`)
+                        if (onOpenFileNode) {
+                          onOpenFileNode(card.uuid)
+                        } else if (card.file?.url) {
+                          if (card.file.fileKind === 'web') {
+                            window.open(card.file.url, '_blank')
+                          } else {
+                            const goalDir = goalDirOf(store, goalId)
+                            if (goalDir) {
+                              const fileName = card.file.url.replace(/^files\//, '')
+                              void revealUserPath(`${goalDir}/${FILES_DIR}/${fileName}`)
+                            }
                           }
                         }
                       }}
@@ -3295,10 +3316,18 @@ export const StructureCanvas = memo(function StructureCanvas({
                 出线把手（右）只长在 doc 上：大纲的出线全走目标项的菱形口（从口上拖出去
                 才会认领），挂件与入口没有出线。
               */}
-              {(card.kind === 'doc' || card.kind === 'video' || card.kind === 'exam' || card.kind === 'superdoc') && (
+              {(card.kind === 'doc' || card.kind === 'video' || card.kind === 'exam' || card.kind === 'superdoc' || card.kind === 'file' || card.kind === 'note') && (
                 <div
                   data-link-handle={card.uuid}
-                  title={card.kind === 'exam' || card.kind === 'superdoc' ? t('拖出去连到笔记节点') : t('拖出去连到另一个节点')}
+                  title={
+                    card.kind === 'note'
+                      ? t('拖出去连到文件节点')
+                      : card.kind === 'exam' || card.kind === 'superdoc'
+                        ? t('拖出去连到笔记或文件节点')
+                        : card.kind === 'file'
+                          ? t('拖出去连到下级节点')
+                          : t('拖出去连到另一个节点')
+                  }
                   className="absolute -right-[7.5px] h-3.5 w-3.5 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-card bg-seal"
                   style={{ top: EDGE_ANCHOR_Y }}
                 />
@@ -3617,19 +3646,31 @@ export const StructureCanvas = memo(function StructureCanvas({
                 </button>
               )}
               {menuCard.kind === 'file' && (
-                <button
-                  type="button"
-                  className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                  onClick={() => {
-                    const fileEntity = store.fileNodes?.find((f) => f.id === menuCard.uuid)
-                    setMenuFileKind(fileEntity?.fileKind ?? 'local')
-                    setMenuText(fileEntity?.url ?? '')
-                    setMenuTitleText(fileEntity?.title ?? '')
-                    setMenu({ ...menu, mode: 'fileEdit' })
-                  }}
-                >
-                  {t('设置文件或网址')}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
+                    onClick={() => {
+                      setMenu(null)
+                      if (onOpenFileNode) onOpenFileNode(menuCard.uuid)
+                    }}
+                  >
+                    {t('打开')}
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
+                    onClick={() => {
+                      const fileEntity = store.fileNodes?.find((f) => f.id === menuCard.uuid)
+                      setMenuFileKind(fileEntity?.fileKind ?? 'local')
+                      setMenuText(fileEntity?.url ?? '')
+                      setMenuTitleText(fileEntity?.title ?? '')
+                      setMenu({ ...menu, mode: 'fileEdit' })
+                    }}
+                  >
+                    {t('设置文件或网址')}
+                  </button>
+                </>
               )}
               {menuCard.kind === 'project' && (
                 <button
