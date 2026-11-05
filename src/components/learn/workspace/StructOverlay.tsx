@@ -15,8 +15,7 @@
 import type { LearnStore } from '../../../learn/types'
 import type { StructureMap } from '../../../learn/structure'
 import type { ExamActions, NodeDocActions } from '../explorer/types'
-import type { CanvasChannelProps } from '../OutlineView'
-import { StructureCanvas } from '../structure/StructureCanvas'
+import OutlineView, { type CanvasChannelProps } from '../OutlineView'
 import { useDismissOn } from '../../../lib/useDismiss'
 import { isDarkTheme, useAppearance } from '../../../lib/appearance'
 
@@ -51,14 +50,14 @@ export default function StructOverlay({ goalId, store, onChangeStructure, docs, 
         className="relative flex h-[76vh] w-[91vw] overflow-hidden bg-paper shadow-[0_24px_80px_rgba(31,27,23,0.35)] dark:bg-card"
       >
         <div className="relative min-h-0 flex-1">
-          <StructureCanvas
+          <OutlineView
             store={store}
             goalId={goalId}
-            onChange={(next) => onChangeStructure(goalId, next)}
+            onChangeStructure={onChangeStructure}
             docs={docs}
             exams={exams}
             onToast={onToast}
-            {...channel}
+            channel={channel}
           />
         </div>
       </div>

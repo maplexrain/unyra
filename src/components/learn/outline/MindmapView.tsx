@@ -28,6 +28,7 @@ import {
   FolderMinus,
   FolderPlus,
   HelpCircle,
+  LayoutGrid,
   Maximize2,
   Minus,
   Palette,
@@ -112,11 +113,11 @@ export interface MindmapViewProps {
   /** 打开某个子目标的教学文档 */
   onOpenNode: (nodeId: string) => void
   /** 把大纲里还没创建的子目标真的建出来（交给导师开讲） */
-  onCreateChild: (parentNode: KnowledgeNode, entry: OutlineEntry) => void
+  onCreateChild?: (parentNode: KnowledgeNode, entry: OutlineEntry) => void
   /** 请导师规划 / 重排某个节点的大纲 */
-  onGenerate: (node: KnowledgeNode) => void
+  onGenerate?: (node: KnowledgeNode) => void
   /** 改某个节点的自定义颜色；传 null = 回到「随分支」 */
-  onSetTint: (nodeId: string, tint: string | null) => void
+  onSetTint?: (nodeId: string, tint: string | null) => void
   /**
    * 节点 tip 里的文档动作。与侧栏资源管理器**同一份**（见 LearnWorkspace 的 explorerDocs）：
    * 「新建一份笔记」在侧栏和在图里必须是同一件事，各写一套迟早会分叉。
@@ -125,11 +126,15 @@ export interface MindmapViewProps {
   /** 考试那一侧的动作（tip 里的试卷要能开考、判分、删除） */
   exams: ExamActions
   /** 焦点格里正开着的那份文档：tip 里对应的那一行要亮 */
-  activeTab: TabRef | null
+  activeTab?: TabRef | null
   /** 外部指定的聚焦/选中节点目标（如 chip 路由） */
   focusTarget?: { nodeId: string; nonce: number } | null
   /** 外部聚焦已完成的回调 */
   onFocusHandled?: () => void
+  /** 只读模式：不能编辑节点，只能打开节点对应的页签 */
+  readOnly?: boolean
+  /** 切换视图模式回调 */
+  onToggleViewMode?: () => void
 }
 
 /**
@@ -344,7 +349,13 @@ export function buildMindmapTree(
           ? rawEntry
           : { ...rawEntry, key: outlineEntryKey(rawEntry) }
         const assignedBranch = depth === 0 ? i % BRANCH_PALETTES.length : branchIndex
-        const childNode = outlineChildNodeOf(store, curNode, childEntry)
+        const claimEdge = store.edges.find(
+          (e) => (e.from === curNode.id || e.from === 'o:' + curNode.id) && e.portKey === childEntry.key,
+        )
+        const claimedNode = claimEdge
+          ? store.nodes.find((n) => n.id === (claimEdge.to.startsWith('o:') ? claimEdge.to.slice(2) : claimEdge.to))
+          : null
+        const childNode = claimedNode || outlineChildNodeOf(store, curNode, childEntry)
         if (childNode && !visited.has(childNode.id)) {
           children.push(buildNode(childNode, childEntry, curNode, depth + 1, assignedBranch))
         } else {
@@ -375,6 +386,22 @@ export function buildMindmapTree(
             subtreeHeight: 0,
           })
         }
+      }
+    }
+
+    // 检查 store.edges 中从当前节点引出的其他下游节点（未通过大纲条目包含的）
+    const downstreamEdges = store.edges.filter((e) => {
+      const fromId = e.from.startsWith('o:') ? e.from.slice(2) : e.from
+      return fromId === curNode.id
+    })
+    for (const edge of downstreamEdges) {
+      const targetId = edge.to.startsWith('o:') ? edge.to.slice(2) : edge.to
+      if (visited.has(targetId)) continue
+      if (children.some((c) => c.realNode?.id === targetId || c.id === targetId)) continue
+      const targetNode = store.nodes.find((n) => n.id === targetId)
+      if (targetNode) {
+        const assignedBranch = depth === 0 ? children.length % BRANCH_PALETTES.length : branchIndex
+        children.push(buildNode(targetNode, null, curNode, depth + 1, assignedBranch))
       }
     }
 
@@ -552,8 +579,10 @@ function cardSkin(opts: {
 
 function sameMindmapView(prev: MindmapViewProps, next: MindmapViewProps): boolean {
   if (prev.node !== next.node) return false
+  if (prev.readOnly !== next.readOnly) return false
   if (prev.store.nodes !== next.store.nodes || prev.store.edges !== next.store.edges || prev.store.exams !== next.store.exams) return false
   if (prev.focusTarget !== next.focusTarget) return false
+  if (prev.onToggleViewMode !== next.onToggleViewMode) return false
   return true
 }
 
@@ -569,6 +598,8 @@ export default memo(function MindmapView({
   activeTab,
   focusTarget,
   onFocusHandled,
+  readOnly = false,
+  onToggleViewMode,
 }: MindmapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const isDraggingRef = useRef(false)
@@ -1843,13 +1874,12 @@ export default memo(function MindmapView({
                */
               onClick={() => selectNode(item)}
               onContextMenu={
-                item.realNode
+                !readOnly && item.realNode
                   ? (e) => {
-                      // 右键也先选中：改色的对象得是「当前这一张」，不然改完不知道改的是谁
                       selectNode(item)
                       openTintMenu(item.id, e)
                     }
-                  : undefined
+                  : (e) => e.preventDefault()
               }
               style={{
                 left: item.x,
@@ -1918,13 +1948,18 @@ export default memo(function MindmapView({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
-                        openPreview({
-                          parentNodeId: item.id,
-                          kind: 'doc',
-                          title: item.title,
-                        })
+                        selectNode(item)
+                        if (readOnly) {
+                          onOpenNode(item.realNode!.id)
+                        } else {
+                          openPreview({
+                            parentNodeId: item.id,
+                            kind: 'doc',
+                            title: item.title,
+                          })
+                        }
                       }}
-                      title={t('预览「{0}」的教学文档', item.title)}
+                      title={readOnly ? t('在页签栏打开教学文档') : t('预览「{0}」的教学文档', item.title)}
                       className="truncate text-left text-[14px] leading-snug font-bold text-seal underline decoration-seal/40 decoration-1 underline-offset-[3px] transition hover:text-seal-deep hover:decoration-seal flex-1"
                     >
                       {item.title}
@@ -2008,7 +2043,7 @@ export default memo(function MindmapView({
                   画布上那块「还没有大纲」的浮层已经撤掉（一次性任务本来就没有大纲，
                   那是正常状态，不该被当成待办），所以这颗按钮是这条路的**唯一入口**。
                 */}
-                {item.realNode && item.children.length === 0 && (
+                {!readOnly && item.realNode && item.children.length === 0 && onGenerate && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -2026,7 +2061,7 @@ export default memo(function MindmapView({
               </div>
 
               {/* 未创建的那条计划：直接交给导师建出来（胶囊随分支色） */}
-              {isUncreated && item.parentNode && item.parentEntry && (
+              {!readOnly && isUncreated && item.parentNode && item.parentEntry && onCreateChild && (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -2111,10 +2146,11 @@ export default memo(function MindmapView({
                   store={store}
                   docs={docs}
                   exams={exams}
-                  activeTab={activeTab}
+                  activeTab={activeTab ?? null}
                   activePreview={activePreview}
                   onClose={() => setOpenTip(null)}
                   onPreview={openPreview}
+                  readOnly={readOnly}
                 />
               )}
             </div>
@@ -2123,7 +2159,7 @@ export default memo(function MindmapView({
       </div>
 
       {/* 右键改色菜单 */}
-      {tintMenu && <TintMenu state={tintMenu} store={store} onSet={onSetTint} onClose={() => setTintMenu(null)} />}
+      {tintMenu && onSetTint && <TintMenu state={tintMenu} store={store} onSet={onSetTint} onClose={() => setTintMenu(null)} />}
 
       {/* 悬浮工具栏：右下胶囊——分支操作 / 缩放 / 视图归位三段，分隔线隔开 */}
       <div className="absolute right-4 bottom-4 flex items-center gap-0.5 rounded-full border border-line/60 bg-paper/90 p-1 shadow-lg backdrop-blur-md dark:bg-card/90">
@@ -2155,8 +2191,16 @@ export default memo(function MindmapView({
         <ToolbarButton onClick={resetZoom} title={t('归位')}>
           <RotateCcw size={13} />
         </ToolbarButton>
+        {onToggleViewMode && (
+          <>
+            <span className="mx-1 h-4 w-px bg-line/60" />
+            <ToolbarButton onClick={onToggleViewMode} title={t('切换为拓扑画布')} label={t('拓扑')}>
+              <LayoutGrid size={13} />
+            </ToolbarButton>
+          </>
+        )}
         <span className="mx-1 h-4 w-px bg-line/60" />
-        <OutlineHelpButton />
+        <OutlineHelpButton readOnly={readOnly} />
       </div>
 
       {/* 左下角图例：状态辨认 + 分支色 + 改色提示，收进一颗小胶囊 */}
@@ -2178,11 +2222,15 @@ export default memo(function MindmapView({
             </span>
           ))}
         </span>
-        <span className="h-3 w-px bg-line/60" />
-        <span className="flex items-center gap-1 text-[10.5px]">
-          <Palette size={11} />
-          {t('右键节点可改色')}
-        </span>
+{!readOnly && (
+          <>
+            <span className="h-3 w-px bg-line/60" />
+            <span className="flex items-center gap-1 text-[10.5px]">
+              <Palette size={11} />
+              {t('右键节点可改色')}
+            </span>
+          </>
+        )}
       </div>
     </div>
   )
@@ -2191,7 +2239,7 @@ export default memo(function MindmapView({
 /**
  * 大纲页面右下角帮助按钮：鼠标经过时弹出 tip 显示操作说明
  */
-function OutlineHelpButton() {
+function OutlineHelpButton({ readOnly }: { readOnly?: boolean }) {
   const [showTip, setShowTip] = useState(false)
 
   return (
@@ -2245,10 +2293,17 @@ function OutlineHelpButton() {
               <span className="shrink-0 font-medium text-ink">{t('全图居中')}</span>
               <span className="text-right text-ink-faint">{t('双击空白处 / 中键双击')}</span>
             </div>
-            <div className="flex items-start justify-between gap-2">
-              <span className="shrink-0 font-medium text-ink">{t('节点改色')}</span>
-              <span className="text-right text-ink-faint">{t('右键点击节点打开改色面板')}</span>
-            </div>
+            {readOnly ? (
+              <div className="flex items-start justify-between gap-2">
+                <span className="shrink-0 font-medium text-ink">{t('打开页签')}</span>
+                <span className="text-right text-ink-faint">{t('点击节点标题或图标打开页签')}</span>
+              </div>
+            ) : (
+              <div className="flex items-start justify-between gap-2">
+                <span className="shrink-0 font-medium text-ink">{t('节点改色')}</span>
+                <span className="text-right text-ink-faint">{t('右键点击节点打开改色面板')}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2319,6 +2374,7 @@ function NodeDocTip({
   activePreview,
   onClose,
   onPreview,
+  readOnly = false,
 }: {
   node: KnowledgeNode
   kind: DocKey
@@ -2331,6 +2387,7 @@ function NodeDocTip({
   activePreview?: ActivePreviewInfo | null
   onClose: () => void
   onPreview: (info: ActivePreviewInfo) => void
+  readOnly?: boolean
 }) {
   const notes = notesOf(node)
   const supers = superDocsOf(node)
@@ -2405,7 +2462,7 @@ function NodeDocTip({
           <span className="font-mono text-ink-faint">{rows}</span>
         </span>
         <div className="flex items-center gap-1">
-          {kind === 'note' && (
+          {!readOnly && kind === 'note' && (
             <button
               type="button"
               onClick={() => docs.onNewNote(node.id)}
@@ -2416,7 +2473,7 @@ function NodeDocTip({
               <span>{t('新建')}</span>
             </button>
           )}
-          {kind === 'exam' && (
+          {!readOnly && kind === 'exam' && (
             <button
               type="button"
               onClick={() => docs.onNewExam(node.id)}
@@ -2427,7 +2484,7 @@ function NodeDocTip({
               <span>{t('出卷')}</span>
             </button>
           )}
-          {kind === 'super' && (
+          {!readOnly && kind === 'super' && (
             <button
               type="button"
               onClick={() => docs.onNewSuperDoc(node.id)}
@@ -2468,18 +2525,23 @@ function NodeDocTip({
               key={note.name}
               node={node}
               name={note.name}
+              readOnly={readOnly}
               active={
                 activeTab?.kind === 'note' && activeTab.nodeId === node.id && activeTab.note === note.name
               }
               docs={docs}
-              onPreview={() =>
-                onPreview({
-                  parentNodeId: node.id,
-                  kind: 'note',
-                  title: note.name,
-                  noteName: note.name,
-                })
-              }
+              onPreview={() => {
+                if (readOnly) {
+                  docs.onOpenNote(node.id, note.name)
+                } else {
+                  onPreview({
+                    parentNodeId: node.id,
+                    kind: 'note',
+                    title: note.name,
+                    noteName: note.name,
+                  })
+                }
+              }}
             />
           ))}
 
@@ -2489,18 +2551,23 @@ function NodeDocTip({
               key={sd.name}
               icon={<DocTypeIcon kind="super" size={12} />}
               label={sd.name}
-              hint={t('预览《{0}》', sd.name)}
+              hint={readOnly ? t('打开《{0}》', sd.name) : t('预览《{0}》', sd.name)}
+              readOnly={readOnly}
               active={
                 activeTab?.kind === 'super' && activeTab.nodeId === node.id && activeTab.name === sd.name
               }
-              onOpen={() =>
-                onPreview({
-                  parentNodeId: node.id,
-                  kind: 'super',
-                  title: sd.name,
-                  superName: sd.name,
-                })
-              }
+              onOpen={() => {
+                if (readOnly) {
+                  docs.onOpenSuperDoc(node.id, sd.name)
+                } else {
+                  onPreview({
+                    parentNodeId: node.id,
+                    kind: 'super',
+                    title: sd.name,
+                    superName: sd.name,
+                  })
+                }
+              }}
               onOpenTab={() => docs.onOpenSuperDoc(node.id, sd.name)}
               onDelete={() => docs.onDeleteSuperDoc(node.id, sd.name)}
               icon2={<FlaskConical size={11} />}
@@ -2580,15 +2647,19 @@ function NodeDocTip({
                           role="button"
                           tabIndex={0}
                           title={t('预览第 {0} 次作答副本', idx + 1)}
-                          onClick={() =>
-                            onPreview({
-                              parentNodeId: node.id,
-                              kind: 'exam',
-                              title: `${exam.title} (${stamp})`,
-                              examId: exam.id,
-                              attemptId: att.id,
-                            })
-                          }
+                          onClick={() => {
+                            if (readOnly) {
+                              docs.onOpenAttempt(node.id, exam.id, att.id)
+                            } else {
+                              onPreview({
+                                parentNodeId: node.id,
+                                kind: 'exam',
+                                title: `${exam.title} (${stamp})`,
+                                examId: exam.id,
+                                attemptId: att.id,
+                              })
+                            }
+                          }}
                           className={`group/row flex w-full items-center gap-1 rounded py-0.5 pl-1.5 pr-1 text-[10.5px] transition cursor-pointer ${
                             isAttActive
                               ? 'bg-seal/10 font-medium text-seal'
@@ -2632,23 +2703,26 @@ function NoteTipRow({
   active,
   docs,
   onPreview,
+  readOnly,
 }: {
   node: KnowledgeNode
   name: string
   active: boolean
   docs: NodeDocActions
   onPreview: () => void
+  readOnly?: boolean
 }) {
   const [renaming, setRenaming] = useState(false)
   return (
     <TipRow
       icon={<DocTypeIcon kind="note" size={12} />}
       label={name}
-      hint={t('预览《{0}》；双击改名', name)}
+      hint={readOnly ? t('打开《{0}》', name) : t('预览《{0}》；双击改名', name)}
       active={active}
+      readOnly={readOnly}
       onOpen={onPreview}
       onOpenTab={() => docs.onOpenNote(node.id, name)}
-      onDoubleClick={() => setRenaming(true)}
+      onDoubleClick={readOnly ? undefined : () => setRenaming(true)}
       onDelete={() => docs.onDeleteNote(node.id, name)}
       renaming={
         renaming ? (
@@ -2715,6 +2789,7 @@ function TipRow({
   onDoubleClick,
   renaming,
   icon2,
+  readOnly,
 }: {
   icon: React.ReactNode
   label: string
@@ -2722,14 +2797,15 @@ function TipRow({
   active: boolean
   onOpen: () => void
   onOpenTab?: () => void
-  onDelete: () => void
+  onDelete?: () => void
   onDoubleClick?: () => void
   /** 就地改名时整行换成输入框 */
   renaming?: React.ReactNode
   /** 该类型的一个小提示图标（超级文档用烧瓶，一眼区分） */
   icon2?: React.ReactNode
+  readOnly?: boolean
 }) {
-  if (renaming) {
+  if (renaming && !readOnly) {
     return <div className="flex items-center gap-1.5 px-1.5 py-1">{renaming}</div>
   }
   return (
@@ -2737,10 +2813,10 @@ function TipRow({
       role="button"
       tabIndex={0}
       title={hint}
-      onClick={onOpen}
-      onDoubleClick={onDoubleClick}
+      onClick={readOnly ? onOpenTab || onOpen : onOpen}
+      onDoubleClick={readOnly ? undefined : onDoubleClick}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') onOpen()
+        if (e.key === 'Enter') (readOnly ? onOpenTab || onOpen : onOpen)()
       }}
       className={
         'group/row flex w-full items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1 text-left text-[11.5px] transition cursor-pointer ' +
@@ -2763,17 +2839,19 @@ function TipRow({
           <ExternalLink size={11} />
         </button>
       )}
-      <button
-        type="button"
-        title={t('删除《{0}》', label)}
-        onClick={(e) => {
-          e.stopPropagation()
-          onDelete()
-        }}
-        className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint opacity-0 transition hover:bg-seal/10 hover:text-seal group-hover/row:opacity-100"
-      >
-        <X size={11} />
-      </button>
+      {!readOnly && onDelete && (
+        <button
+          type="button"
+          title={t('删除《{0}》', label)}
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint opacity-0 transition hover:bg-seal/10 hover:text-seal group-hover/row:opacity-100"
+        >
+          <X size={11} />
+        </button>
+      )}
     </div>
   )
 }

@@ -49,7 +49,7 @@ export function getCanvasPerfStats(): Readonly<CanvasPerfStats> {
 
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { HTMLAttributes, ReactNode } from 'react'
-import { Check, ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, Pencil, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, FolderTree, Pencil, Trash2, X } from 'lucide-react'
 import type { FileNodeKind, LearnStore } from '../../../learn/types'
 import { FILES_DIR } from '../../../learn/layout'
 import { sanitizeFileName } from '../../../learn/fileNodes'
@@ -161,6 +161,8 @@ export interface StructureCanvasProps {
   /** 外部指定的聚焦目标（chip 路由）：把镜头挪到 uuid 对得上的那张卡 */
   focusTarget?: { nodeId: string; nonce: number } | null
   onFocusHandled?: () => void
+  /** 切换视图模式回调 */
+  onToggleViewMode?: () => void
 }
 
 /**
@@ -437,6 +439,7 @@ export const StructureCanvas = memo(function StructureCanvas({
   onToast,
   focusTarget,
   onFocusHandled,
+  onToggleViewMode,
 }: StructureCanvasProps) {
   /**
    * 图是**算出来的**（deriveCanvas）：卡片就是节点、连线全部派生、
@@ -3527,6 +3530,14 @@ export const StructureCanvas = memo(function StructureCanvas({
             <rect x="14" y="14" width="7" height="7" rx="1" />
           </svg>
         </ControlButton>
+        {onToggleViewMode && (
+          <>
+            <span className="mx-0.5 h-3.5 w-px bg-line" />
+            <ControlButton label={t('切换为大纲树视图')} onClick={onToggleViewMode}>
+              <FolderTree size={13} />
+            </ControlButton>
+          </>
+        )}
         <span className="mx-0.5 h-3.5 w-px bg-line" />
         <ControlButton label={t('新手教学')} onClick={handleOpenTour}>
           <svg {...ICON_STROKE}>

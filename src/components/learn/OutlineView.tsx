@@ -1,19 +1,25 @@
 /*
  * 这个文件负责：结构页（页签 kind 'outline'）——**一个目标的节点图**。
  *
- * 它曾经是「一个目标的大纲树」（思维导图，位置由布局算法算）。现在换成了无限画布上的
- * 类型化节点图：卡片就是节点（uuid 对上实体）、连线全部派生、位置由用户拖
- * （见 learn/structure 与 components/learn/structure/StructureCanvas）。
+ * 支持双模式切换：
+ * 1. 拓扑图（自由无限画布节点图）：类型化节点图、卡片就是节点、连线自由派生、位置由用户拖拽
+ *    （见 learn/structure 与 components/learn/structure/StructureCanvas）。
+ * 2. 大纲树视图（横向思维导图）：横向层级、只读、下游分支可展开收起、点击节点直接打开对应页签
+ *    （见 components/learn/outline/MindmapView）。
  *
- * 图是**目标级**的（`docs/{目标}/structure.json`，只有坐标表），不是节点级。
+ * 图是**目标级**的（`docs/{目标}/structure.json`，含坐标表与 viewMode），不是节点级。
  * 页签绑定的那个节点只决定「打开时先看谁」（见 focusTarget）。
  */
 
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useMemo } from 'react'
+import { FolderTree, LayoutGrid } from 'lucide-react'
 import type { KnowledgeNode, LearnStore } from '../../learn/types'
 import type { StructureMap } from '../../learn/structure'
+import { nodeById, normalizeKey } from '../../learn/graph'
+import { t } from '../../i18n'
 import type { ExamActions, NodeDocActions } from './explorer/types'
 import { StructureCanvas, type StructureCanvasProps } from './structure/StructureCanvas'
+import MindmapView from './outline/MindmapView'
 
 export type CanvasChannelProps = Pick<
   StructureCanvasProps,
@@ -84,21 +90,113 @@ export default memo(function OutlineView({
   channel,
 }: OutlineViewProps) {
   const goalId = propGoalId || node?.goalId || ''
-  const change = useCallback((next: StructureMap) => onChangeStructure(goalId, next), [onChangeStructure, goalId])
+  const saved = store.structure?.[goalId]
+  const viewMode = saved?.viewMode === 'tree' ? 'tree' : 'graph'
+
+  const change = useCallback(
+    (next: StructureMap) => onChangeStructure(goalId, next),
+    [onChangeStructure, goalId],
+  )
+
+  const handleSetViewMode = useCallback(
+    (nextMode: 'graph' | 'tree') => {
+      onChangeStructure(goalId, {
+        ...(saved ?? { version: 2, positions: {} }),
+        viewMode: nextMode,
+      })
+    },
+    [goalId, saved, onChangeStructure],
+  )
+
+  const handleToggleViewMode = useCallback(() => {
+    handleSetViewMode(viewMode === 'graph' ? 'tree' : 'graph')
+  }, [handleSetViewMode, viewMode])
+
+  const goal = store.goals.find((g) => g.id === goalId)
+  const rootNode = useMemo(() => {
+    if (goal?.rootNodeId) {
+      const r = nodeById(store, goal.rootNodeId)
+      if (r) return r
+    }
+    if (node) return node
+    const found = store.nodes.find((n) => n.goalId === goalId)
+    if (found) return found
+    const placeholder: KnowledgeNode = {
+      id: goal?.id ?? goalId,
+      title: goal?.title || goal?.question || t('新目标'),
+      key: normalizeKey(goal?.title || goal?.question || 'goal'),
+      description: '',
+      docs: { teaching: '' },
+      notes: [],
+      annotations: [],
+      status: 'learning',
+      origin: 'user',
+      goalId,
+      createdAt: goal?.createdAt ?? Date.now(),
+      updatedAt: goal?.updatedAt ?? Date.now(),
+    }
+    return placeholder
+  }, [goal, node, store, goalId])
+
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-paper dark:bg-card/30">
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-paper dark:bg-card/30">
+      {/* 视图模式切换胶囊：拓扑图（自由画布） vs 大纲树（思维导图） */}
+      <div className="absolute top-4 right-4 z-30 flex items-center rounded-xl border border-line bg-card/90 p-1 shadow-sm backdrop-blur select-none">
+        <button
+          type="button"
+          onClick={() => handleSetViewMode('graph')}
+          className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-medium transition cursor-pointer ${
+            viewMode === 'graph'
+              ? 'bg-seal text-white shadow-xs'
+              : 'text-ink-soft hover:bg-line/40 hover:text-ink'
+          }`}
+          title={t('自由拓扑画布：任意位置拖动、自由连线与多类型节点')}
+        >
+          <LayoutGrid size={13} />
+          <span>{t('拓扑图')}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleSetViewMode('tree')}
+          className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-medium transition cursor-pointer ${
+            viewMode === 'tree'
+              ? 'bg-seal text-white shadow-xs'
+              : 'text-ink-soft hover:bg-line/40 hover:text-ink'
+          }`}
+          title={t('大纲树视图（思维导图）：横向层级、只读、下游分支可展开收起')}
+        >
+          <FolderTree size={13} />
+          <span>{t('大纲树')}</span>
+        </button>
+      </div>
+
       <div className="relative min-h-0 flex-1">
-        <StructureCanvas
-          store={store}
-          goalId={goalId}
-          onChange={change}
-          docs={docs}
-          exams={exams}
-          onToast={onToast}
-          focusTarget={focusTarget}
-          onFocusHandled={onFocusHandled}
-          {...channel}
-        />
+        {viewMode === 'tree' ? (
+          <MindmapView
+            store={store}
+            node={rootNode}
+            readOnly
+            docs={docs}
+            exams={exams}
+            onOpenNode={(nodeId: string) => docs.onOpenTeach(nodeId)}
+            focusTarget={focusTarget}
+            onFocusHandled={onFocusHandled}
+            onToggleViewMode={handleToggleViewMode}
+          />
+        ) : (
+          <StructureCanvas
+            store={store}
+            goalId={goalId}
+            onChange={change}
+            docs={docs}
+            exams={exams}
+            onToast={onToast}
+            focusTarget={focusTarget}
+            onFocusHandled={onFocusHandled}
+            onToggleViewMode={handleToggleViewMode}
+            {...channel}
+          />
+        )}
       </div>
     </div>
   )
