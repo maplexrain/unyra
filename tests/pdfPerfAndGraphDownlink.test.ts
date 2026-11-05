@@ -310,7 +310,7 @@ describe('空大纲卡片高度与按钮防溢出', () => {
 
 describe('拓扑图连线支持与下级挂件连接', () => {
   it('deriveCanvas 能够正确为 exam -> note 以及 superdoc -> note 生成拓扑连线', () => {
-    const store: LearnStore = {
+    let store: LearnStore = {
       ...emptyLearnStore(),
       goals: [{ id: 'g1', rootNodeId: 'doc-1', question: '目标', createdAt: 1, updatedAt: 1 }],
       nodes: [
@@ -320,7 +320,7 @@ describe('拓扑图连线支持与下级挂件连接', () => {
           key: 'doc1',
           description: '',
           docs: { teaching: '# 正文' },
-          notes: [{ id: 'n1', title: '笔记 1', content: '' }],
+          notes: [{ id: 'n1', name: '笔记 1', content: '', createdAt: 1, updatedAt: 1 }],
           annotations: [],
           status: 'learning',
           origin: 'user',
@@ -344,13 +344,11 @@ describe('拓扑图连线支持与下级挂件连接', () => {
         },
       ],
       edges: [
-        { from: 'exam-1', to: 'n1' },
+        { from: 'exam-1', to: 'n1', createdAt: 1 },
       ],
     }
 
-    const canvas = deriveCanvas(store, 'g1', {
-      nodeTitle: (id) => (id === 'doc-1' ? '文档 1' : undefined),
-    })
+    const canvas = deriveCanvas(store, 'g1', undefined)
 
     // 验证 edges 包含从 exam 到 note 的连线
     expect(canvas.edges.length).toBeGreaterThan(0)
@@ -370,12 +368,15 @@ describe('文档区固定 Tab（Pinned Tab）规则', () => {
     expect(isTabPinned(noteTab)).toBe(false)
   })
 
-  it('显式设置 pinned 属性会被优先采纳', () => {
+  it('结构 Tab (outline) 永远固定不可取消，普通 Tab 支持显式设置 pinned', () => {
     const customPinned = { ...makeTab({ kind: 'teach', nodeId: 'n1' }, 0), pinned: true }
-    const customUnpinned = { ...makeTab({ kind: 'outline', nodeId: 'n1' }, 0), pinned: false }
+    const teachUnpinned = { ...makeTab({ kind: 'teach', nodeId: 'n1' }, 0), pinned: false }
+    const outlineExplicitFalse = { ...makeTab({ kind: 'outline', nodeId: 'n1' }, 0), pinned: false }
 
     expect(isTabPinned(customPinned)).toBe(true)
-    expect(isTabPinned(customUnpinned)).toBe(false)
+    expect(isTabPinned(teachUnpinned)).toBe(false)
+    // 结构 Tab 永远固定，即使 pinned: false 也返回 true
+    expect(isTabPinned(outlineExplicitFalse)).toBe(true)
   })
 
   it('reorderTabs 始终保证固定 Tab 排在最前面', () => {
@@ -444,5 +445,239 @@ describe('PDF 翻页模式前后页预热防闪屏', () => {
     expect(isMountedInFlip(1)).toBe(false)
     expect(isMountedInFlip(2)).toBe(false)
     expect(isMountedInFlip(8)).toBe(false)
+  })
+})
+
+
+import { checkWheelValve, createWheelValve } from '../src/components/learn/structure/StructureCanvas'
+import { addEdge } from '../src/learn/graph/edges'
+
+describe('节点宇宙滚轮单向防抖阀门 (200ms 逆向阻断)', () => {
+  it('同向连续滚动持续放行并刷新时间戳', () => {
+    const valve = createWheelValve()
+    expect(checkWheelValve(valve, 100, 1000)).toBe(true)
+    expect(valve.lastDir).toBe(1)
+    expect(valve.lastTime).toBe(1000)
+
+    expect(checkWheelValve(valve, 50, 1050)).toBe(true)
+    expect(valve.lastDir).toBe(1)
+    expect(valve.lastTime).toBe(1050)
+  })
+
+  it('200ms 内出现反方向滚动时予以拦截，且不污染基准方向和时间戳', () => {
+    const valve = createWheelValve()
+    checkWheelValve(valve, 100, 1000) // 正向
+
+    // 50ms 后发生反向回弹
+    expect(checkWheelValve(valve, -100, 1050)).toBe(false)
+    // 阀门仍保持正向与 1000ms 时间戳，避免回弹波形造成死锁
+    expect(valve.lastDir).toBe(1)
+    expect(valve.lastTime).toBe(1000)
+
+    // 199ms 时仍然处于 200ms 逆向阻断期内
+    expect(checkWheelValve(valve, -50, 1199)).toBe(false)
+    expect(valve.lastDir).toBe(1)
+  })
+
+  it('超过 200ms 后的反方向滚动正常放行并切换方向', () => {
+    const valve = createWheelValve()
+    checkWheelValve(valve, 100, 1000) // 正向
+
+    // 201ms 后用户明确朝反方向滚动
+    expect(checkWheelValve(valve, -100, 1201)).toBe(true)
+    expect(valve.lastDir).toBe(-1)
+    expect(valve.lastTime).toBe(1201)
+  })
+
+  it('位移为 0 时直接放行且不更改状态', () => {
+    const valve = createWheelValve()
+    expect(checkWheelValve(valve, 0, 1000)).toBe(true)
+    expect(valve.lastDir).toBe(0)
+    expect(valve.lastTime).toBe(0)
+  })
+})
+
+describe('笔记只能有一个上级节点规则', () => {
+  it('当笔记已有宿主文档时，拒绝考试节点或超级文档接入作为上级', () => {
+    let store: LearnStore = {
+      ...emptyLearnStore(),
+      goals: [{ id: 'g1', rootNodeId: 'doc-1', question: '目标', createdAt: 1, updatedAt: 1 }],
+      nodes: [
+        {
+          id: 'doc-1',
+          title: '文档 1',
+          key: 'doc1',
+          description: '',
+          docs: { teaching: '# 正文' },
+          notes: [{ id: 'n1', name: '我的笔记', content: '内容', createdAt: 1, updatedAt: 1 }],
+          annotations: [],
+          status: 'learning',
+          origin: 'user',
+          goalId: 'g1',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          id: 'doc-2',
+          title: '文档 2',
+          key: 'doc2',
+          description: '',
+          docs: { teaching: '# 正文 2' },
+          notes: [],
+          annotations: [],
+          status: 'learning',
+          origin: 'user',
+          goalId: 'g1',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      exams: [
+        {
+          id: 'exam-1',
+          nodeId: 'doc-1',
+          goalId: 'g1',
+          title: '试卷 1',
+          kind: 'quiz',
+          level: 'easy',
+          minutes: 0,
+          questions: [],
+          createdAt: 1,
+          attempts: [],
+        },
+      ],
+      detached: {
+        g1: {
+          notes: [],
+          superdocs: [{ id: 'sdoc-1', name: '超级文档 1', html: '', createdAt: 1, updatedAt: 1 }],
+        },
+      },
+    }
+
+    const svc = new NodeService({
+      getLatest: () => store,
+      set: (next) => {
+        store = next
+      },
+      goalId: () => 'g1',
+    })
+
+    const noteNode = svc.get('n1')!
+    const examNode = svc.get('exam-1')!
+    const sdocNode = svc.get('sdoc-1')!
+    const doc2Node = svc.get('doc-2')!
+
+    // 1. noteNode 检查已有上级：拒绝 exam / superdoc 成为第二个上级
+    expect(noteNode.onUpstream(examNode)).toBe('笔记只能有一个上级节点')
+    expect(noteNode.onUpstream(sdocNode)).toBe('笔记只能有一个上级节点')
+    // 文档间允许换绑（从 doc-1 挪到 doc-2），保持单一宿主
+    expect(noteNode.onUpstream(doc2Node)).toBe(true)
+
+    // 2. 考试节点尝试 connect 该笔记 -> 被拒绝
+    const rExam = examNode.connect(noteNode, 'down')
+    expect('error' in rExam && rExam.error).toBe('笔记只能有一个上级节点')
+
+    // 3. 超级文档尝试 connect 该笔记 -> 被拒绝
+    const rSdoc = sdocNode.connect(noteNode, 'down')
+    expect('error' in rSdoc && rSdoc.error).toBe('笔记只能有一个上级节点')
+
+    // 4. 文档 2 换绑该笔记 -> 成功挪动至文档 2，文档 1 笔记清空，依然保持单一上级
+    const rDoc2 = doc2Node.connect(noteNode, 'down')
+    expect('ok' in rDoc2).toBe(true)
+    expect(store.nodes[0].notes.length).toBe(0)
+    expect(store.nodes[1].notes.map((n) => n.id)).toEqual(['n1'])
+  })
+
+  it('当笔记已连接考试节点时，拒绝其他节点作为上级接入；断开后允许重新接入', () => {
+    let store: LearnStore = {
+      ...emptyLearnStore(),
+      goals: [{ id: 'g1', rootNodeId: 'doc-1', question: '目标', createdAt: 1, updatedAt: 1 }],
+      nodes: [
+        {
+          id: 'doc-1',
+          title: '文档 1',
+          key: 'doc1',
+          description: '',
+          docs: { teaching: '# 正文' },
+          notes: [],
+          annotations: [],
+          status: 'learning',
+          origin: 'user',
+          goalId: 'g1',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      exams: [
+        {
+          id: 'exam-1',
+          nodeId: 'doc-1',
+          goalId: 'g1',
+          title: '试卷 1',
+          kind: 'quiz',
+          level: 'easy',
+          minutes: 0,
+          questions: [],
+          createdAt: 1,
+          attempts: [],
+        },
+        {
+          id: 'exam-2',
+          nodeId: 'doc-1',
+          goalId: 'g1',
+          title: '试卷 2',
+          kind: 'quiz',
+          level: 'easy',
+          minutes: 0,
+          questions: [],
+          createdAt: 1,
+          attempts: [],
+        },
+      ],
+      detached: {
+        g1: {
+          notes: [{ id: 'n-free', name: '游离笔记', content: '', createdAt: 1, updatedAt: 1 }],
+          superdocs: [{ id: 'sdoc-1', name: '超级文档 1', html: '', createdAt: 1, updatedAt: 1 }],
+        },
+      },
+    }
+
+    const svc = new NodeService({
+      getLatest: () => store,
+      set: (next) => {
+        store = next
+      },
+      goalId: () => 'g1',
+    })
+
+    const noteNode = svc.get('n-free')!
+    const exam1 = svc.get('exam-1')!
+    const exam2 = svc.get('exam-2')!
+    const sdoc1 = svc.get('sdoc-1')!
+
+    // 1. 首次接入 exam1 成功
+    const r1 = exam1.connect(noteNode, 'down')
+    expect('ok' in r1).toBe(true)
+    expect(store.edges.some((e) => e.from === 'exam-1' && e.to === 'n-free')).toBe(true)
+
+    // 2. 尝试接入第二个上级 (exam2 或 sdoc1) -> 均被拒绝
+    const r2 = exam2.connect(noteNode, 'down')
+    expect('error' in r2 && r2.error).toBe('笔记只能有一个上级节点')
+    const r3 = sdoc1.connect(noteNode, 'down')
+    expect('error' in r3 && r3.error).toBe('笔记只能有一个上级节点')
+
+    // 3. 直接调用 addEdge 同样被拦截
+    const rEdge = addEdge(store, 'exam-2', 'n-free')
+    expect(rEdge.added).toBe(false)
+    expect(rEdge.reason).toBe('笔记只能有一个上级节点')
+
+    // 4. 断开 exam1 连接后，笔记变为游离，允许重新接入 sdoc1
+    const rDisc = exam1.disconnect(noteNode)
+    expect('ok' in rDisc).toBe(true)
+    expect(store.edges.some((e) => e.to === 'n-free')).toBe(false)
+
+    const rReconnect = sdoc1.connect(noteNode, 'down')
+    expect('ok' in rReconnect).toBe(true)
+    expect(store.edges.some((e) => e.from === 'sdoc-1' && e.to === 'n-free')).toBe(true)
   })
 })

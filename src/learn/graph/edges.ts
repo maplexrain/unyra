@@ -184,6 +184,13 @@ export function addEdge(
   if (portKey && store.edges.some((e) => e.from === from && e.portKey === portKey && e.to !== to)) {
     return { store, added: false, reason: '接口「' + portKey + '」已经被另一个下游认领了（一个接口只认领一个下游）' }
   }
+  // 笔记只能有一个上级节点
+  const noteEntity = findNoteEntity(store, to)
+  if (noteEntity) {
+    if (noteEntity.hostId || store.edges.some((e) => e.to === to)) {
+      return { store, added: false, reason: '笔记只能有一个上级节点' }
+    }
+  }
   const edge: DependencyEdge = { from, to, createdAt: Date.now(), ...(portKey ? { portKey } : {}) }
   return { store: { ...store, edges: [...store.edges, edge] }, added: true }
 }

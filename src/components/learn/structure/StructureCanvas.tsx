@@ -389,6 +389,39 @@ function WheelStop({ className, style, children, ...rest }: HTMLAttributes<HTMLD
   )
 }
 
+
+/**
+ * 滚轮单向防抖阀门：记录上一次滚动的方向与时间戳。
+ * 每次朝一个方向滚动后，200ms 内禁止朝反方向滚动（抑制滚针回弹与瞬时反向抖动）。
+ */
+export interface WheelValve {
+  lastDir: number // 1: 正向, -1: 负向, 0: 无方向
+  lastTime: number
+}
+
+export function createWheelValve(): WheelValve {
+  return { lastDir: 0, lastTime: 0 }
+}
+
+export function checkWheelValve(
+  valve: WheelValve,
+  delta: number,
+  now: number = typeof performance !== 'undefined' ? performance.now() : Date.now(),
+  lockoutMs: number = 200,
+): boolean {
+  if (delta === 0) return true
+  const dir = delta > 0 ? 1 : -1
+  if (valve.lastDir !== 0 && dir !== valve.lastDir) {
+    if (now - valve.lastTime < lockoutMs) {
+      // 200ms 内禁止朝反方向滚动
+      return false
+    }
+  }
+  valve.lastDir = dir
+  valve.lastTime = now
+  return true
+}
+
 export const StructureCanvas = memo(function StructureCanvas({
   store,
   goalId,
@@ -596,6 +629,9 @@ export const StructureCanvas = memo(function StructureCanvas({
   const [view, setView] = useState({ width: 0, height: 0 })
   const [camera, setCamera] = useState({ x: 72, y: 72, zoom: 1 })
   const cameraRef = useRef(camera)
+  const zoomValveRef = useRef<WheelValve>(createWheelValve())
+  const panXValveRef = useRef<WheelValve>(createWheelValve())
+  const panYValveRef = useRef<WheelValve>(createWheelValve())
   const pendingCameraRef = useRef<{ x: number; y: number; zoom: number } | null>(null)
   const wheelRafRef = useRef<number | null>(null)
   const draftRafRef = useRef<number | null>(null)
@@ -1070,8 +1106,12 @@ export const StructureCanvas = memo(function StructureCanvas({
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
       const cam = cameraRef.current
       if (e.ctrlKey || e.metaKey) {
+        if (!checkWheelValve(zoomValveRef.current, e.deltaY, now)) {
+          return
+        }
         const rect = el.getBoundingClientRect()
         const px = e.clientX - rect.left
         const py = e.clientY - rect.top
@@ -1083,8 +1123,17 @@ export const StructureCanvas = memo(function StructureCanvas({
         return
       }
       // Shift + 滚轮：横向滚动（触控板横滑本来就给 deltaX，两种都给上）
-      const dx = e.shiftKey ? e.deltaY : e.deltaX
-      const dy = e.shiftKey ? 0 : e.deltaY
+      const rawDx = e.shiftKey ? e.deltaY : e.deltaX
+      const rawDy = e.shiftKey ? 0 : e.deltaY
+      let dx = 0
+      let dy = 0
+      if (rawDx !== 0 && checkWheelValve(panXValveRef.current, rawDx, now)) {
+        dx = rawDx
+      }
+      if (rawDy !== 0 && checkWheelValve(panYValveRef.current, rawDy, now)) {
+        dy = rawDy
+      }
+      if (dx === 0 && dy === 0) return
       setAnimating(false)
       scheduleCameraUpdate({ ...cam, x: cam.x - dx, y: cam.y - dy })
     }
@@ -1986,6 +2035,10 @@ export const StructureCanvas = memo(function StructureCanvas({
     const onMinimapWheel = (e: WheelEvent) => {
       e.preventDefault()
       e.stopPropagation()
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      if (!checkWheelValve(zoomValveRef.current, e.deltaY, now)) {
+        return
+      }
       const cam = cameraRef.current
       const factor = e.deltaY > 0 ? 0.92 : 1.08
       const next = clampZoom(cam.zoom * factor, boundsOf(cards, height), view)

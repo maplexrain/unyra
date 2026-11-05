@@ -2327,6 +2327,7 @@ export default function LearnWorkspace({
   /** 固定/取消固定某一格里的页签，重排确保固定页签在最前面 */
   const toggleTabPin = useCallback(
     (group: string, tab: LearnTab) => {
+      if (tab.ref.kind === 'outline') return
       const s = getLatest()
       const docs = s.docArea
       const g = groupOf(docs, group)

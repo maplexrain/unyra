@@ -87,6 +87,9 @@ export function bindNote(store: LearnStore, noteId: string, hostDocId: string): 
   const found = findNoteEntity(store, noteId)
   if (!found) return { error: '这份笔记已经不在了' }
   if (found.hostId === hostDocId) return { error: '这份笔记已经挂在这份文档之下了' }
+  if (store.edges.some((e) => e.to === noteId)) {
+    return { error: '笔记只能有一个上级节点' }
+  }
   const boundId = found.hostId
   const pool = detachedPoolOf(store, found.goalId)
   // 名字跟「新宿主已有的笔记」对 uniqueness——挪动不改身份，撞了才顺延

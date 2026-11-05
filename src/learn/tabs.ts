@@ -89,10 +89,10 @@ export function tabKey(ref: TabRef): string {
   return 'l:' + ref.path
 }
 
-/** 判断页签是否为固定页签：结构tab（节点宇宙，kind === 'outline'）默认为固定tab */
+/** 判断页签是否为固定页签：结构tab（节点宇宙，kind === 'outline'）永远固定，不可取消固定 */
 export function isTabPinned(tab: LearnTab): boolean {
-  if (tab.pinned !== undefined) return tab.pinned
-  return tab.ref.kind === 'outline'
+  if (tab.ref.kind === 'outline') return true
+  return tab.pinned ?? false
 }
 
 export function makeTab(ref: TabRef, at: number, view?: DocView): LearnTab {

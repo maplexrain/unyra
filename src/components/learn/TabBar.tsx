@@ -1587,7 +1587,7 @@ function TabMenu({
         {favorited ? t('取消收藏') : t('收藏')}
       </button>
 
-      {onTogglePin && targetTab && (
+      {onTogglePin && targetTab && targetTab.ref.kind !== 'outline' && (
         <button
           type="button"
           role="menuitem"

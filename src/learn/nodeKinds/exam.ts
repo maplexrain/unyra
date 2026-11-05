@@ -131,6 +131,10 @@ export class ExamGNode extends GNode {
 
   onDownstream(node: GNode): ConnectFilter {
     if (node.kind !== 'note') return '考试节点的下级连接只能为笔记节点'
+    const upRelations = node.relations.filter((r) => r.type === 'up')
+    if (upRelations.length > 0 && !upRelations.some((r) => r.id === this.uuid)) {
+      return '笔记只能有一个上级节点'
+    }
     return true
   }
 
