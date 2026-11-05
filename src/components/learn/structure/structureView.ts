@@ -402,10 +402,10 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     if (from.startsWith('o:')) return outlinePending.get(from)
     // 项目节点是挂件款下游：上游始终是文档本身，不经大纲 hub 翻译
     if (to && projectPending.has(to)) return docPending.get(from)
-    return outlinePending.get(outlineUuid(from)) ?? docPending.get(from) ?? videoPending.get(from) ?? projectPending.get(from)
+    return outlinePending.get(outlineUuid(from)) ?? docPending.get(from) ?? videoPending.get(from) ?? projectPending.get(from) ?? byUuid.get(from)
   }
   for (const e of store.edges) {
-    const toCard = outlinePending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to)
+    const toCard = outlinePending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to) ?? byUuid.get(e.to)
     const fromCard = fromCardOf(e.from, e.to)
     if (!fromCard || !toCard) continue
     if (!pushEdge(fromCard.card.uuid, toCard.card.uuid)) continue

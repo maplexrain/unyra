@@ -3,6 +3,7 @@
  */
 import type { DependencyEdge, KnowledgeNode, LearnStore } from '../types'
 import { nodeById } from './lookup'
+import { findNoteEntity, findSuperDocEntity } from '../detached'
 
 /**
  * 邻接索引：`from → to`（前置）与 `to → from`（父）两个方向各一张表。
@@ -159,7 +160,10 @@ function memberExists(store: LearnStore, member: string): boolean {
     return (
       !!nodeById(store, member) ||
       (store.videoNodes ?? []).some((v) => v.id === member) ||
-      (store.projects ?? []).some((p) => p.id === member)
+      (store.projects ?? []).some((p) => p.id === member) ||
+      (store.exams ?? []).some((e) => e.id === member) ||
+      findSuperDocEntity(store, member) !== null ||
+      findNoteEntity(store, member) !== null
     )
   }
   const raw = member.slice(2)

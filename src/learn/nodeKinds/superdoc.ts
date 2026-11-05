@@ -7,6 +7,7 @@
  * write 语义：整份覆盖、空内容拒绝、超长拒绝。
  */
 import { detachSuperDoc } from '../detached'
+import { addEdge, removeEdge } from '../graph'
 import { SUPERDOC_MAX_CHARS, writeSuperDoc } from '../superdocs'
 import { superDocsOf, type KnowledgeNode, type SuperDocFile } from '../types'
 import { GNode, type ConnectFilter, type NodeCtx, type NodeHelp, type NodeRelation, type NodeResult } from './base'
@@ -48,7 +49,16 @@ export class SuperdocGNode extends GNode {
 
   get relations(): NodeRelation[] {
     const found = this.locate()
-    return found?.node ? [{ id: found.node.id, type: 'up' }] : []
+    const out: NodeRelation[] = []
+    if (found?.node) {
+      out.push({ id: found.node.id, type: 'up' })
+    }
+    for (const edge of this.ctx.store().edges) {
+      if (edge.from === this.uuid) {
+        out.push({ id: edge.to, type: 'down' })
+      }
+    }
+    return out
   }
 
   get content(): unknown {
@@ -118,7 +128,7 @@ export class SuperdocGNode extends GNode {
       ].join('\n'),
       connection: [
         '上游是文档：拖线 / connect(文档对象, "down") 绑到某份文档（或换绑到另一份），disconnect 摘掉 = 变成游离的独立超级文档（内容原样保留）。',
-        '超级文档是叶子，没有下游。',
+        '下游连接只能为笔记节点：拖线 / connect(笔记对象, "down") 将笔记作为下级接入。',
       ].join('\n'),
     }
   }
@@ -128,8 +138,26 @@ export class SuperdocGNode extends GNode {
     return true
   }
 
-  /** 摘线 = 解绑：实体挪进游离池，内容原样保留，随时可以绑到别的文档 */
-  protected unlink(): NodeResult {
+  onDownstream(node: GNode): ConnectFilter {
+    if (node.kind !== 'note') return '超级文档节点的下级连接只能为笔记节点'
+    return true
+  }
+
+  protected link(down: GNode): NodeResult {
+    if (down.kind !== 'note') return { error: '超级文档节点的下级连接只能为笔记节点' }
+    const s = this.ctx.store()
+    const r = addEdge(s, this.uuid, down.uuid)
+    if (!r.added) return { error: r.reason ?? '连接失败' }
+    this.ctx.commit(r.store)
+    return { ok: true, note: '已把笔记「' + down.title + '」作为下级连接到「' + this.title + '」' }
+  }
+
+  /** 摘线 = 解绑：若断开的是与笔记的边则拆边；否则实体挪进游离池 */
+  protected unlink(target?: GNode): NodeResult {
+    if (target && target.kind === 'note' && this.ctx.store().edges.some((e) => e.from === this.uuid && e.to === target.uuid)) {
+      this.ctx.commit(removeEdge(this.ctx.store(), this.uuid, target.uuid))
+      return { ok: true, note: '已断开与笔记「' + target.title + '」的连接' }
+    }
     const r = detachSuperDoc(this.ctx.store(), this.uuid)
     if ('error' in r) return { error: r.error }
     this.ctx.commit(r.store)

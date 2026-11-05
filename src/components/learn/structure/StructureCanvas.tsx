@@ -49,7 +49,7 @@ export function getCanvasPerfStats(): Readonly<CanvasPerfStats> {
 
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { HTMLAttributes, ReactNode } from 'react'
-import { Check, ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, Pencil, Trash2, X } from 'lucide-react'
 import type { LearnStore } from '../../../learn/types'
 import type { ExamActions, NodeDocActions } from '../explorer/types'
 import { locateUuid, outlineUuid, docIdOfOutlineUuid, type GNodeKind } from '../../../learn/nodeKinds'
@@ -134,6 +134,7 @@ export interface StructureCanvasProps {
   onAddOutlineEntry?: (outlineUuid: string, title: string) => void
   /** 删除某份大纲中的某项子目标项 */
   onDeleteOutlineEntry?: (outlineUuid: string, slotKey: string) => void
+  onRenameOutlineEntry?: (outlineUuid: string, slotKey: string, nextTitle: string) => void
   /** 视频卡上选一个视频绑到本目标（统一通道：与 agent 的 editContent({ videoId }) 同一条路）；null = 解绑 */
   onBindVideo?: (nodeUuid: string, videoId: string | null) => ChannelResult
   /** 打开绑定的视频（打开它 = 一并打开本目标的页签组，见 LearnWorkspace 的 openTab） */
@@ -363,8 +364,8 @@ interface MenuState {
   x: number
   y: number
   uuid: string
-  /** actions = 动作清单；note = 写注释；rename = 改笔记名；slot = 新加一条目标项；videoPick = 给视频卡挑一个视频绑上；projectPath = 给项目卡设置路径 */
-  mode: 'actions' | 'note' | 'rename' | 'slot' | 'videoPick' | 'projectPath'
+  slotKey?: string
+  mode: 'actions' | 'note' | 'rename' | 'slot' | 'renameSlot' | 'videoPick' | 'projectPath'
 }
 
 /**
@@ -403,6 +404,7 @@ export const StructureCanvas = memo(function StructureCanvas({
   onRenameNote,
   onAddOutlineEntry,
   onDeleteOutlineEntry,
+  onRenameOutlineEntry,
   onBindVideo,
   onOpenVideo,
   onGenerateDoc,
@@ -868,7 +870,9 @@ export const StructureCanvas = memo(function StructureCanvas({
               ? ['outline', 'video', 'project', 'note', 'exam', 'superdoc']
               : fk === 'project'
                 ? ['doc'] // 项目只能挂到文档之下：从项目卡拉出去，文档卡是唯一落点
-                : null
+                : fk === 'exam' || fk === 'superdoc'
+                  ? ['note']
+                  : null
       // 从大纲拉到大纲：自己那张不算落点（连自己没有意义）
       return wants
         ? new Set(cards.filter((c) => wants.includes(c.kind) && c.uuid !== g.from).map((c) => c.uuid))
@@ -1649,6 +1653,12 @@ export const StructureCanvas = memo(function StructureCanvas({
             const doc = fromCard?.kind === 'doc' ? g.from : target.uuid
             const widget = fromCard?.kind === 'doc' ? target.uuid : g.from
             tryConnect(doc, widget)
+          } else if (isPair('exam', 'note')) {
+            if (fromCard?.kind === 'exam') tryConnect(g.from, target.uuid)
+            else onToast?.(t('考试节点的下级连接只能为笔记节点'))
+          } else if (isPair('superdoc', 'note')) {
+            if (fromCard?.kind === 'superdoc') tryConnect(g.from, target.uuid)
+            else onToast?.(t('超级文档节点的下级连接只能为笔记节点'))
           }
           // 其余组合不响应（没有可建立的关系）——沉默即可，不值得一条吐司
         }
@@ -2497,9 +2507,33 @@ export const StructureCanvas = memo(function StructureCanvas({
                         title={slot.title}
                         className="min-w-0 flex-1 truncate text-[11.5px]"
                         style={{ color: slot.childId ? SLOT_ACCENT : undefined, opacity: slot.childId ? 1 : 0.55 }}
+                        onDoubleClick={(e) => {
+                          if (onRenameOutlineEntry) {
+                            e.stopPropagation()
+                            setMenuText(slot.title)
+                            setMenu({ x: e.clientX, y: e.clientY, uuid: card.uuid, slotKey: slot.key, mode: 'renameSlot' })
+                          }
+                        }}
                       >
                         {slot.title}
                       </span>
+                      {onRenameOutlineEntry && (
+                        <button
+                          type="button"
+                          data-rename-slot={slot.key}
+                          data-rename-slot-parent={card.uuid}
+                          title={t('重命名目标项「{0}」', slot.title)}
+                          className="z-10 shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:bg-seal/15 hover:text-seal group-hover/slot:opacity-100"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setMenuText(slot.title)
+                            setMenu({ x: e.clientX, y: e.clientY, uuid: card.uuid, slotKey: slot.key, mode: 'renameSlot' })
+                          }}
+                        >
+                          <Pencil size={11} strokeWidth={2.2} />
+                        </button>
+                      )}
                       {onDeleteOutlineEntry && (
                         <button
                           type="button"
@@ -2546,22 +2580,31 @@ export const StructureCanvas = memo(function StructureCanvas({
                 </div>
               ) : card.kind === 'outline' && slots.length === 0 ? (
                 /*
-                  空大纲卡的「生成大纲」与文档卡右键菜单是同一个动作（前置知识大纲工作流）：
-                  附身的读宿主文档铺目标项；游离的（挂在大纲下的那一层）读它认领的目标项
-                  与上级上下文，规划这一层怎么拆——不靠手填。
+                  空大纲卡的「生成大纲」与手动添加目标项：
+                  支持 Agent 自动规划，亦支持用户手动创建第一项目标
                 */
-                <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                  <span title={card.subtitle} className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
-                  <button
-                    type="button"
-                    title={card.free ? t('读它认领的目标项与上级上下文，规划这一层怎么拆') : t('读宿主文档，把「先要学会什么」铺成目标项')}
-                    className="shrink-0 bg-seal/15 px-2 py-0.5 text-[11px] text-seal-deep hover:bg-seal/25"
-                    onClick={() => {
-                      if (card.uuid) onGenerateOutline?.(card.uuid)
-                    }}
+                <div className="flex flex-col gap-1 px-3 pb-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span title={card.subtitle} className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
+                    <button
+                      type="button"
+                      title={card.free ? t('读它认领的目标项与上级上下文，规划这一层怎么拆') : t('读宿主文档，把「先要学会什么」铺成目标项')}
+                      className="shrink-0 bg-seal/15 px-2 py-0.5 text-[11px] text-seal-deep hover:bg-seal/25"
+                      onClick={() => {
+                        if (card.uuid) onGenerateOutline?.(card.uuid)
+                      }}
+                    >
+                      {t('生成总览')}
+                    </button>
+                  </div>
+                  <div
+                    data-add-slot={card.uuid}
+                    title={t('给这份大纲加一条目标项')}
+                    className="flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
+                    style={{ height: SLOT_ROW }}
                   >
-                    {t('生成总览')}
-                  </button>
+                    ＋ {t('添加目标项')}
+                  </div>
                 </div>
               ) : card.kind === 'doc' && card.excerpt ? (
                 /*
@@ -2859,10 +2902,10 @@ export const StructureCanvas = memo(function StructureCanvas({
                 出线把手（右）只长在 doc 上：大纲的出线全走目标项的菱形口（从口上拖出去
                 才会认领），挂件与入口没有出线。
               */}
-              {(card.kind === 'doc' || card.kind === 'video') && (
+              {(card.kind === 'doc' || card.kind === 'video' || card.kind === 'exam' || card.kind === 'superdoc') && (
                 <div
                   data-link-handle={card.uuid}
-                  title={t('拖出去连到另一个节点')}
+                  title={card.kind === 'exam' || card.kind === 'superdoc' ? t('拖出去连到笔记节点') : t('拖出去连到另一个节点')}
                   className="absolute -right-[7.5px] h-3.5 w-3.5 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-card bg-seal"
                   style={{ top: EDGE_ANCHOR_Y }}
                 />
@@ -3319,7 +3362,9 @@ export const StructureCanvas = memo(function StructureCanvas({
                   ? t('写一句注释，贴在卡片底部')
                   : menu.mode === 'rename'
                     ? t('改笔记名（文件名一起改）')
-                    : t('新的目标项标题')}
+                    : menu.mode === 'renameSlot'
+                      ? t('重命名大纲目标项')
+                      : t('新的目标项标题')}
               </div>
               <textarea
                 autoFocus
