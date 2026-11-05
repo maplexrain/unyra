@@ -305,74 +305,96 @@ function ExplorerSidebarComponent({
         // relative 与 static 在流里的占位完全一样，桌面上看不出区别。
         // 过渡属性按断点分开：窄屏下这一栏是抽屉（滑 transform，200ms），
         // 桌面上它靠外边距让位（300ms，与右侧栏对齐）——两者不会同时发生。
-        className={'no-print fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-line bg-paper-deep transition-all duration-300 ease-out md:relative md:translate-x-0 overflow-hidden ' +
+        className={
+          'no-print fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-line bg-paper-deep ' +
+          (resizing ? 'transition-none ' : 'transition-[width,margin-left,transform] duration-300 ease-out will-change-[width,margin-left] ') +
+          'md:relative md:translate-x-0 overflow-hidden ' +
           (pure || open ? 'translate-x-0' : '-translate-x-full') +
           // 让位之后别再留在 Tab 序列里：滑出窗口只是看不见，里面那棵树、那些按钮
           // 照样能被 Tab 找到（与两列收起时那条 lg:invisible 同一个道理）
-          (pure ? ' invisible' : '')}
+          (pure ? ' invisible' : '')
+        }
       >
-{collapsedBar ? (
-          /* 折叠态：48px 窄侧栏，顶部 Logo，底部设置齿轮与展开按钮 */
-          <div className="flex flex-col items-center h-full w-full py-3 select-none">
-            {/* 顶部 Logo：点击展开 */}
+        {/*
+         * 双层常驻架构：展开态与折叠态均不被 unmount 销毁，
+         * 杜绝每次收起/展开重新实例化挂载上百个 DOM 节点的 Long Task 掉帧；
+         * 展开态内部固定锁定宽度（style={{ width: width, minWidth: width }}），在 aside 宽度从 280px 变到 48px
+         * 动画过程中，由 overflow-hidden 进行视口裁切，子元素完全不触发逐帧 Reflow。
+         */}
+        {/* 折叠态：48px 窄侧栏 */}
+        <div
+          className={
+            'absolute inset-y-0 left-0 w-[48px] flex flex-col items-center py-3 select-none transition-opacity duration-200 ' +
+            (collapsedBar ? 'opacity-100 pointer-events-auto z-10' : 'opacity-0 pointer-events-none z-0')
+          }
+          inert={!collapsedBar}
+        >
+          {/* 顶部 Logo：点击展开 */}
+          <button
+            type="button"
+            onClick={() => toggleCollapsed(false)}
+            title={t('展开资源管理器')}
+            className="flex h-8 w-8 items-center justify-center rounded-none mb-3 hover:scale-105 transition-transform"
+          >
+            <Logo size={26} />
+          </button>
+
+          {/* 弹性占位 */}
+          <div className="flex-1 min-h-4" />
+
+          {/* 底部设置齿轮 */}
+          <button
+            type="button"
+            onClick={() => onOpenSettings?.()}
+            title={t('设置')}
+            className="flex h-8 w-8 items-center justify-center text-ink-soft hover:text-ink hover:bg-card/70 rounded-none transition my-0.5"
+          >
+            <Settings size={16} />
+          </button>
+
+          {/* 展开按钮 */}
+          <button
+            type="button"
+            onClick={() => toggleCollapsed(false)}
+            title={t('展开侧栏')}
+            className="flex h-8 w-8 items-center justify-center text-ink-soft hover:text-seal hover:bg-card/70 rounded-none transition mt-1"
+          >
+            <PanelLeftOpen size={16} />
+          </button>
+        </div>
+
+        {/* 展开态：完整的资源管理器结构 */}
+        <div
+          className={
+            'absolute inset-0 flex flex-col transition-opacity duration-200 ' +
+            (collapsedBar ? 'opacity-0 pointer-events-none z-0' : 'opacity-100 pointer-events-auto z-10')
+          }
+          style={{ width: width, minWidth: width }}
+          inert={collapsedBar}
+        >
+          <header className="flex items-center gap-2 px-3 pb-2.5 pt-3.5 border-b border-line/40 shrink-0">
             <button
               type="button"
-              onClick={() => toggleCollapsed(false)}
-              title={t('展开资源管理器')}
-              className="flex h-8 w-8 items-center justify-center rounded-none mb-3 hover:scale-105 transition-transform"
+              onClick={() => toggleCollapsed(true)}
+              title={t('收起侧栏')}
+              className="flex items-center justify-center cursor-pointer hover:opacity-80 active:scale-95 transition-all outline-none rounded-none"
             >
-              <Logo size={26} />
+              <Logo size={30} />
             </button>
-
-            {/* 弹性占位 */}
-            <div className="flex-1 min-h-4" />
-
-            {/* 底部设置齿轮 */}
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="text-[14px] font-semibold text-ink-strong">{t('归一')}</div>
+              <div className="text-[8.5px] uppercase tracking-[0.2em] text-ink-faint">Retro Learning</div>
+            </div>
+            {/* 收起侧栏按钮 */}
             <button
               type="button"
-              onClick={() => onOpenSettings?.()}
-              title={t('设置')}
-              className="flex h-8 w-8 items-center justify-center text-ink-soft hover:text-ink hover:bg-card/70 rounded-none transition my-0.5"
+              onClick={() => toggleCollapsed(true)}
+              title={t('收起侧栏')}
+              className="flex h-6 w-6 items-center justify-center text-ink-soft hover:text-ink hover:bg-card/60 rounded-none transition"
             >
-              <Settings size={16} />
+              <PanelLeftClose size={14} />
             </button>
-
-            {/* 展开按钮 */}
-            <button
-              type="button"
-              onClick={() => toggleCollapsed(false)}
-              title={t('展开侧栏')}
-              className="flex h-8 w-8 items-center justify-center text-ink-soft hover:text-seal hover:bg-card/70 rounded-none transition mt-1"
-            >
-              <PanelLeftOpen size={16} />
-            </button>
-          </div>
-        ) : (
-          /* 展开态：完整的资源管理器结构 */
-          <>
-            <header className="flex items-center gap-2 px-3 pb-2.5 pt-3.5 border-b border-line/40">
-              <button
-                type="button"
-                onClick={() => toggleCollapsed(true)}
-                title={t('收起侧栏')}
-                className="flex items-center justify-center cursor-pointer hover:opacity-80 active:scale-95 transition-all outline-none rounded-none"
-              >
-                <Logo size={30} />
-              </button>
-              <div className="min-w-0 flex-1 leading-tight">
-                <div className="text-[14px] font-semibold text-ink-strong">{t('归一')}</div>
-                <div className="text-[8.5px] uppercase tracking-[0.2em] text-ink-faint">Retro Learning</div>
-              </div>
-              {/* 收起侧栏按钮 */}
-              <button
-                type="button"
-                onClick={() => toggleCollapsed(true)}
-                title={t('收起侧栏')}
-                className="flex h-6 w-6 items-center justify-center text-ink-soft hover:text-ink hover:bg-card/60 rounded-none transition"
-              >
-                <PanelLeftClose size={14} />
-              </button>
-            </header>
+          </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto pb-2">
           <Section
@@ -506,12 +528,11 @@ function ExplorerSidebarComponent({
             满宽、不加上边框——树区滚到底已有留白，再画一条线就把这块小电台框死了；
             柱子从底边往上长，接不上系统音频时只剩一排底座，原因在悬停提示里 */}
         {!isWeb() && (
-          <div className="px-2 py-2.5">
+          <div className="px-2 py-2.5 shrink-0">
             <SystemAudioWave />
           </div>
         )}
-          </>
-        )}
+        </div>
 
         {/*
           右边线上的宽度把手：命中区 8px（一像素的线抓不住），骑在那条 border-r 上。
@@ -527,7 +548,7 @@ function ExplorerSidebarComponent({
           onPointerUp={onWidthUp}
           onPointerCancel={onWidthUp}
           className={
-            'no-print absolute inset-y-0 right-0 z-10 hidden w-2 translate-x-1/2 cursor-col-resize touch-none md:block ' +
+            'no-print absolute inset-y-0 right-0 z-20 hidden w-2 translate-x-1/2 cursor-col-resize touch-none md:block ' +
             (resizing ? 'bg-seal/40' : '') + (collapsedBar ? ' !hidden' : '')
           }
         />

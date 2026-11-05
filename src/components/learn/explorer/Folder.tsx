@@ -15,7 +15,7 @@
  * 行为（点击开合、右键菜单、拖拽）仍由调用方给——这里只管「分类夹长什么样」。
  */
 import { ChevronRight } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { DocFolderIcon } from '../docTypes'
 import { chipJson, type ChipPayload } from '../../../lib/chipSyntax'
 
@@ -31,15 +31,21 @@ import { chipJson, type ChipPayload } from '../../../lib/chipSyntax'
  * inert：裁掉的那部分不该还能被 Tab 选中。
  */
 export function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
+  const [rendered, setRendered] = useState(open)
+  if (open && !rendered) {
+    setRendered(true)
+  }
+
   return (
     <div
       className={
         'grid grid-cols-[minmax(0,1fr)] transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ' +
         (open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')
       }
+      style={{ contain: 'paint' }}
       inert={!open}
     >
-      <div className="min-h-0 overflow-hidden">{children}</div>
+      <div className="min-h-0 overflow-hidden">{rendered ? children : null}</div>
     </div>
   )
 }
