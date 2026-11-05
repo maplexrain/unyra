@@ -2438,6 +2438,7 @@ export const StructureCanvas = memo(function StructureCanvas({
     <div
       ref={containerRef}
       tabIndex={0}
+      data-structure-canvas="true"
       onPointerDown={onPointerDown}
       // 中键在 Chromium 里会触发「自动滚动」，pointerdown 上的 preventDefault 拦不住
       onMouseDown={(e) => {

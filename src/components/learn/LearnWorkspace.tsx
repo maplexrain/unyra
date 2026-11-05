@@ -104,7 +104,7 @@ import {
 import { isTabPinned, reorderTabs, makeBlankTab, makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf, isPdfFile } from '../../learn/tabs'
 import { setZenActive } from '../../learn/zen'
 import { closeGoalTabGroupStore } from '../../learn/groups/goalTabGroupOps'
-import { pickLocalFiles, readLocalFile, droppedFilePath } from '../../lib/localFiles'
+import { pickLocalFiles, readLocalFile } from '../../lib/localFiles'
 import { FILES_DIR } from '../../learn/layout'
 import { goalDirOf } from '../../learn/static/location'
 import { addLocalFile } from '../../learn/localfiles'
@@ -2764,56 +2764,45 @@ export default function LearnWorkspace({
   const dragCounter = useRef(0)
 
   useEffect(() => {
-    const isUnrDrag = (e: DragEvent): boolean => {
+    const hasFilesType = (e: DragEvent): boolean => {
       const dt = e.dataTransfer
-      if (!dt) return false
-      const hasFiles = dt.types ? Array.from(dt.types).includes('Files') : false
-      if (!hasFiles) return false
-      const files = dt.files
-      if (files && files.length > 0) {
-        return Array.from(files).some((f) => {
-          const name = f.name || droppedFilePath(f) || ''
-          return name.toLowerCase().endsWith('.unr')
-        })
-      }
-      if (dt.items && dt.items.length > 0) {
-        for (let i = 0; i < dt.items.length; i++) {
-          const item = dt.items[i]
-          if (item.kind === 'file') {
-            const f = item.getAsFile()
-            if (f) {
-              const name = f.name || droppedFilePath(f) || ''
-              if (name.toLowerCase().endsWith('.unr')) return true
-            }
-          }
-        }
-      }
-      return false
+      if (!dt?.types) return false
+      return Array.from(dt.types).includes('Files')
     }
 
     const onDragEnter = (e: DragEvent) => {
-      if (isUnrDrag(e)) {
-        dragCounter.current++
-        if (dragCounter.current === 1) {
-          setIsDraggingFile(true)
-        }
+      if (!hasFilesType(e)) return
+      // 若进入节点宇宙结构画布（StructureCanvas）区域，不阻挡画布视线，交给画布自身处理文件放置
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('[data-structure-canvas]')) {
+        setIsDraggingFile(false)
+        return
+      }
+      dragCounter.current++
+      if (dragCounter.current === 1) {
+        setIsDraggingFile(true)
       }
     }
+
     const onDragOver = (e: DragEvent) => {
-      if (!isUnrDrag(e) && dragCounter.current > 0) {
+      if (!hasFilesType(e)) return
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('[data-structure-canvas]')) {
+        setIsDraggingFile(false)
+      } else if (dragCounter.current > 0) {
+        setIsDraggingFile(true)
+      }
+    }
+
+    const onDragLeave = (e: DragEvent) => {
+      if (!hasFilesType(e)) return
+      dragCounter.current--
+      if (dragCounter.current <= 0) {
         dragCounter.current = 0
         setIsDraggingFile(false)
       }
     }
-    const onDragLeave = (e: DragEvent) => {
-      if (isUnrDrag(e)) {
-        dragCounter.current--
-        if (dragCounter.current <= 0) {
-          dragCounter.current = 0
-          setIsDraggingFile(false)
-        }
-      }
-    }
+
     const onDropOrEnd = () => {
       dragCounter.current = 0
       setIsDraggingFile(false)

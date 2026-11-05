@@ -417,23 +417,16 @@ describe('提示词与工作流规范同步验证', () => {
 })
 
 describe('文件节点拖拽判定、自由双向连线与打开Tab逻辑', () => {
-  it('拖拽检测：非 .unr 文件绝不识别为导入包，只有 .unr 才识别', () => {
-    const isUnrDragChecker = (files: Array<{ name: string }>, types = ['Files']): boolean => {
-      const dt = {
-        types,
-        files,
-        items: files.map((f) => ({ kind: 'file', getAsFile: () => f })),
-      }
-      const hasFiles = dt.types ? Array.from(dt.types).includes('Files') : false
-      if (!hasFiles) return false
-      return dt.files.some((f) => f.name.toLowerCase().endsWith('.unr'))
+  it('拖拽检测：保护模式下 Files 正确唤醒遮罩，在画布上则让位于画布落点', () => {
+    const shouldShowGlobalMask = (types: string[], onCanvas: boolean): boolean => {
+      if (!types.includes('Files')) return false
+      if (onCanvas) return false
+      return true
     }
 
-    expect(isUnrDragChecker([{ name: 'report.pdf' }])).toBe(false)
-    expect(isUnrDragChecker([{ name: 'notes.txt' }, { name: 'image.png' }])).toBe(false)
-    expect(isUnrDragChecker([{ name: 'export.unr' }])).toBe(true)
-    expect(isUnrDragChecker([{ name: 'COURSE.UNR' }])).toBe(true)
-    expect(isUnrDragChecker([], ['text/plain'])).toBe(false)
+    expect(shouldShowGlobalMask(['Files'], false)).toBe(true)
+    expect(shouldShowGlobalMask(['Files'], true)).toBe(false)
+    expect(shouldShowGlobalMask(['text/plain'], false)).toBe(false)
   })
 
   it('文件节点支持与各合法上级与下级双向自由连线与解绑', () => {
