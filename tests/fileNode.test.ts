@@ -417,16 +417,56 @@ describe('提示词与工作流规范同步验证', () => {
 })
 
 describe('文件节点拖拽判定、自由双向连线与打开Tab逻辑', () => {
-  it('拖拽检测：保护模式下 Files 正确唤醒遮罩，在画布上则让位于画布落点', () => {
-    const shouldShowGlobalMask = (types: string[], onCanvas: boolean): boolean => {
-      if (!types.includes('Files')) return false
+  it('拖拽检测：isUnrDrag 严格检查后缀与 MIME，排斥所有非 .unr 文件', () => {
+    const isUnrDrag = (dt: { types: string[]; files?: Array<{ name: string }>; items?: Array<{ kind: string; type?: string }> }, onCanvas = false): boolean => {
+      if (!dt?.types || !dt.types.includes('Files')) return false
       if (onCanvas) return false
+      if (dt.files && dt.files.length > 0) {
+        return dt.files.some((f) => (f.name || '').toLowerCase().endsWith('.unr'))
+      }
+      if (dt.items && dt.items.length > 0) {
+        for (const item of dt.items) {
+          if (item.kind === 'file' && item.type) {
+            const t = item.type.toLowerCase()
+            if (
+              t.startsWith('image/') ||
+              t.startsWith('video/') ||
+              t.startsWith('audio/') ||
+              t.startsWith('text/') ||
+              t === 'application/pdf' ||
+              t === 'application/json' ||
+              t === 'application/zip' ||
+              t === 'application/x-zip-compressed'
+            ) {
+              return false
+            }
+          }
+        }
+      }
       return true
     }
 
-    expect(shouldShowGlobalMask(['Files'], false)).toBe(true)
-    expect(shouldShowGlobalMask(['Files'], true)).toBe(false)
-    expect(shouldShowGlobalMask(['text/plain'], false)).toBe(false)
+    // 1. 若可读到文件名：必须严格校验 .unr 后缀
+    expect(isUnrDrag({ types: ['Files'], files: [{ name: 'plan.unr' }] })).toBe(true)
+    expect(isUnrDrag({ types: ['Files'], files: [{ name: 'COURSE.UNR' }] })).toBe(true)
+    expect(isUnrDrag({ types: ['Files'], files: [{ name: 'report.pdf' }] })).toBe(false)
+    expect(isUnrDrag({ types: ['Files'], files: [{ name: 'notes.txt' }] })).toBe(false)
+
+    // 2. 在保护模式（files 为空）下：
+    // PDF、图片、纯文本、压缩包等已知 MIME 文件绝对被排斥，绝不显示遮罩
+    expect(isUnrDrag({ types: ['Files'], items: [{ kind: 'file', type: 'application/pdf' }] })).toBe(false)
+    expect(isUnrDrag({ types: ['Files'], items: [{ kind: 'file', type: 'image/png' }] })).toBe(false)
+    expect(isUnrDrag({ types: ['Files'], items: [{ kind: 'file', type: 'text/plain' }] })).toBe(false)
+    expect(isUnrDrag({ types: ['Files'], items: [{ kind: 'file', type: 'application/zip' }] })).toBe(false)
+
+    // 3. 在画布上拖拽：无论如何都让位于画布自身的文件落点交互，不显示遮罩
+    expect(isUnrDrag({ types: ['Files'], items: [{ kind: 'file', type: '' }] }, true)).toBe(false)
+
+    // 4. 未知自定义格式（.unr）在画布外：允许提示
+    expect(isUnrDrag({ types: ['Files'], items: [{ kind: 'file', type: '' }] }, false)).toBe(true)
+
+    // 5. 非文件拖拽：绝不显示
+    expect(isUnrDrag({ types: ['text/plain'] })).toBe(false)
   })
 
   it('文件节点支持与各合法上级与下级双向自由连线与解绑', () => {
