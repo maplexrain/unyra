@@ -598,9 +598,15 @@ export const StructureCanvas = memo(function StructureCanvas({
   const cameraRef = useRef(camera)
   const pendingCameraRef = useRef<{ x: number; y: number; zoom: number } | null>(null)
   const wheelRafRef = useRef<number | null>(null)
+  const draftRafRef = useRef<number | null>(null)
+  const pendingDraftRef = useRef<{ id: string; x: number; y: number; moves?: Record<string, { x: number; y: number }> } | null>(null)
+  const trashRectRef = useRef<DOMRect | null>(null)
 
   useEffect(() => {
-    cameraRef.current = camera
+    // 仅在无未决 RAF 相机更新时才由 state 反写 ref，防止高频滚轮时被旧渲染帧冲掉最新坐标导致画面跳动
+    if (wheelRafRef.current == null && pendingCameraRef.current == null) {
+      cameraRef.current = camera
+    }
   }, [camera])
 
   /**
@@ -1064,7 +1070,7 @@ export const StructureCanvas = memo(function StructureCanvas({
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const cam = pendingCameraRef.current ?? cameraRef.current
+      const cam = cameraRef.current
       if (e.ctrlKey || e.metaKey) {
         const rect = el.getBoundingClientRect()
         const px = e.clientX - rect.left
@@ -1538,14 +1544,25 @@ export const StructureCanvas = memo(function StructureCanvas({
         const dy = world.y - g.grabY
         if (!g.moved && Math.abs(dx) + Math.abs(dy) < 2) return
         g.moved = true
-        if (g.group && g.group.length > 1) {
-          const moves: Record<string, { x: number; y: number }> = {}
-          for (const m of g.group) moves[m.id] = { x: m.x + dx, y: m.y + dy }
-          setDraft({ id: g.id, x: g.origX + dx, y: g.origY + dy, moves })
-        } else {
-          setDraft({ id: g.id, x: g.origX + dx, y: g.origY + dy })
+        const nextDraft = g.group && g.group.length > 1
+          ? (() => {
+              const moves: Record<string, { x: number; y: number }> = {}
+              for (const m of g.group) moves[m.id] = { x: m.x + dx, y: m.y + dy }
+              return { id: g.id, x: g.origX + dx, y: g.origY + dy, moves }
+            })()
+          : { id: g.id, x: g.origX + dx, y: g.origY + dy }
+        pendingDraftRef.current = nextDraft
+        if (draftRafRef.current == null) {
+          draftRafRef.current = requestAnimationFrame(() => {
+            draftRafRef.current = null
+            if (pendingDraftRef.current) {
+              setDraft(pendingDraftRef.current)
+            }
+          })
         }
-        setOverTrash(isOverTrash(e.clientX, e.clientY))
+        const tr = trashRectRef.current
+        const isOver = tr ? e.clientX >= tr.left && e.clientX <= tr.right && e.clientY >= tr.top && e.clientY <= tr.bottom : false
+        setOverTrash((prev) => (prev !== isOver ? isOver : prev))
         return
       }
       if (g.mode === 'link') {
@@ -1587,6 +1604,12 @@ export const StructureCanvas = memo(function StructureCanvas({
       if (!g) return
 
       if (g.mode === 'node') {
+        trashRectRef.current = null
+        if (draftRafRef.current != null) {
+          cancelAnimationFrame(draftRafRef.current)
+          draftRafRef.current = null
+        }
+        pendingDraftRef.current = null
         const inTrash = isOverTrash(e.clientX, e.clientY)
         setOverTrash(false)
         if (inTrash && g.moved) {
@@ -1654,11 +1677,13 @@ export const StructureCanvas = memo(function StructureCanvas({
             const widget = fromCard?.kind === 'doc' ? target.uuid : g.from
             tryConnect(doc, widget)
           } else if (isPair('exam', 'note')) {
-            if (fromCard?.kind === 'exam') tryConnect(g.from, target.uuid)
-            else onToast?.(t('考试节点的下级连接只能为笔记节点'))
+            const exam = fromCard?.kind === 'exam' ? g.from : target.uuid
+            const note = fromCard?.kind === 'exam' ? target.uuid : g.from
+            tryConnect(exam, note)
           } else if (isPair('superdoc', 'note')) {
-            if (fromCard?.kind === 'superdoc') tryConnect(g.from, target.uuid)
-            else onToast?.(t('超级文档节点的下级连接只能为笔记节点'))
+            const sdoc = fromCard?.kind === 'superdoc' ? g.from : target.uuid
+            const note = fromCard?.kind === 'superdoc' ? target.uuid : g.from
+            tryConnect(sdoc, note)
           }
           // 其余组合不响应（没有可建立的关系）——沉默即可，不值得一条吐司
         }
@@ -1961,7 +1986,7 @@ export const StructureCanvas = memo(function StructureCanvas({
     const onMinimapWheel = (e: WheelEvent) => {
       e.preventDefault()
       e.stopPropagation()
-      const cam = pendingCameraRef.current ?? cameraRef.current
+      const cam = cameraRef.current
       const factor = e.deltaY > 0 ? 0.92 : 1.08
       const next = clampZoom(cam.zoom * factor, boundsOf(cards, height), view)
       if (next === cam.zoom) return

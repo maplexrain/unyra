@@ -43,6 +43,7 @@ interface PageItemProps {
   pageNum: number
   zoom: number
   docPath: string
+  eagerRender?: boolean
   onVisible?: (pageNum: number) => void
   onRequireOcr?: () => void
   onDimensions?: (pageNum: number, dimensions: { width: number; height: number }) => void
@@ -116,6 +117,7 @@ const PdfPageItem = memo(function PdfPageItem({
   pageNum,
   zoom,
   docPath,
+  eagerRender,
   onVisible,
   onRequireOcr,
   onDimensions,
@@ -235,12 +237,12 @@ const PdfPageItem = memo(function PdfPageItem({
     return () => clearTimeout(t)
   }, [zoom, renderPage])
 
-  // 首页及前 3 页进入时主动触发一次渲染（渲染完毕后自动通过 renderPage 触发 loadText）
+  // 首页及前 3 页或翻页模式明确要求预热（eagerRender）时主动触发渲染，彻底避免切页闪屏
   useEffect(() => {
-    if (pageNum <= 3) {
+    if (eagerRender || pageNum <= 3) {
       void renderPage()
     }
-  }, [pageNum, renderPage])
+  }, [eagerRender, pageNum, renderPage])
 
   // 监听全局插件状态切换事件（例如用户在设置中开启了 OCR 插件）
   useEffect(() => {
@@ -798,15 +800,29 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
           onWheel={handleFlipWheel}
           className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto overflow-x-auto p-4 bg-paper/50"
         >
-          <PdfPageItem
-            key={`${path}#p${currentPage}`}
-            pdfDoc={pdfDoc}
-            pageNum={currentPage}
-            zoom={zoom}
-            docPath={path}
-            onRequireOcr={() => setOcrBannerDismissed(false)}
-            onDimensions={handleDimensions}
-          />
+          {Array.from(
+            { length: Math.min(numPages, currentPage + 2) - Math.max(1, currentPage - 2) + 1 },
+            (_, idx) => Math.max(1, currentPage - 2) + idx
+          ).map((pNum) => {
+            const isCurrent = pNum === currentPage
+            return (
+              <div
+                key={`${path}#flip#p${pNum}`}
+                style={{ display: isCurrent ? 'contents' : 'none' }}
+              >
+                <PdfPageItem
+                  key={`${path}#p${pNum}`}
+                  pdfDoc={pdfDoc}
+                  pageNum={pNum}
+                  zoom={zoom}
+                  docPath={path}
+                  eagerRender={true}
+                  onRequireOcr={() => setOcrBannerDismissed(false)}
+                  onDimensions={handleDimensions}
+                />
+              </div>
+            )
+          })}
         </div>
       ) : (
         <div

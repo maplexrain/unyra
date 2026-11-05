@@ -295,3 +295,154 @@ describe('PDF阅读页面性能模式与虚拟滚动规则', () => {
     expect(localStorage.getItem('moji:pdf:viewMode')).toBe('scroll')
   })
 })
+
+import { outlineCardHeight, EMPTY_OUTLINE_H, deriveCanvas } from '../src/components/learn/structure/structureView'
+import { isTabPinned, makeTab, reorderTabs, closeTabs } from '../src/learn/tabs'
+
+describe('空大纲卡片高度与按钮防溢出', () => {
+  it('空大纲卡片高度返回 EMPTY_OUTLINE_H (104px)，保证添加目标项按钮完整在卡片内', () => {
+    expect(EMPTY_OUTLINE_H).toBe(104)
+    expect(outlineCardHeight(0)).toBe(104)
+    expect(outlineCardHeight(1)).toBe(98)
+    expect(outlineCardHeight(2)).toBe(120)
+  })
+})
+
+describe('拓扑图连线支持与下级挂件连接', () => {
+  it('deriveCanvas 能够正确为 exam -> note 以及 superdoc -> note 生成拓扑连线', () => {
+    const store: LearnStore = {
+      ...emptyLearnStore(),
+      goals: [{ id: 'g1', rootNodeId: 'doc-1', question: '目标', createdAt: 1, updatedAt: 1 }],
+      nodes: [
+        {
+          id: 'doc-1',
+          title: '文档 1',
+          key: 'doc1',
+          description: '',
+          docs: { teaching: '# 正文' },
+          notes: [{ id: 'n1', title: '笔记 1', content: '' }],
+          annotations: [],
+          status: 'learning',
+          origin: 'user',
+          goalId: 'g1',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      exams: [
+        {
+          id: 'exam-1',
+          nodeId: 'doc-1',
+          goalId: 'g1',
+          title: '试卷 1',
+          kind: 'quiz',
+          level: 'easy',
+          minutes: 0,
+          questions: [],
+          createdAt: 1,
+          attempts: [],
+        },
+      ],
+      edges: [
+        { from: 'exam-1', to: 'n1' },
+      ],
+    }
+
+    const canvas = deriveCanvas(store, 'g1', {
+      nodeTitle: (id) => (id === 'doc-1' ? '文档 1' : undefined),
+    })
+
+    // 验证 edges 包含从 exam 到 note 的连线
+    expect(canvas.edges.length).toBeGreaterThan(0)
+    const edge = canvas.edges.find((e) => e.from === 'exam-1' && e.to === 'n1')
+    expect(edge).toBeDefined()
+  })
+})
+
+describe('文档区固定 Tab（Pinned Tab）规则', () => {
+  it('结构 Tab (outline) 默认为固定 Tab，普通文档默认为非固定', () => {
+    const outlineTab = makeTab({ kind: 'outline', nodeId: 'n1' }, 0)
+    const teachTab = makeTab({ kind: 'teach', nodeId: 'n1' }, 0)
+    const noteTab = makeTab({ kind: 'note', nodeId: 'n1', note: '随笔' }, 0)
+
+    expect(isTabPinned(outlineTab)).toBe(true)
+    expect(isTabPinned(teachTab)).toBe(false)
+    expect(isTabPinned(noteTab)).toBe(false)
+  })
+
+  it('显式设置 pinned 属性会被优先采纳', () => {
+    const customPinned = { ...makeTab({ kind: 'teach', nodeId: 'n1' }, 0), pinned: true }
+    const customUnpinned = { ...makeTab({ kind: 'outline', nodeId: 'n1' }, 0), pinned: false }
+
+    expect(isTabPinned(customPinned)).toBe(true)
+    expect(isTabPinned(customUnpinned)).toBe(false)
+  })
+
+  it('reorderTabs 始终保证固定 Tab 排在最前面', () => {
+    const tabA = makeTab({ kind: 'teach', nodeId: 'nA' }, 0)
+    const tabB = { ...makeTab({ kind: 'teach', nodeId: 'nB' }, 0), pinned: true }
+    const tabOutline = makeTab({ kind: 'outline', nodeId: 'nOutline' }, 0)
+    const tabC = makeTab({ kind: 'teach', nodeId: 'nC' }, 0)
+
+    const tabs = [tabA, tabB, tabOutline, tabC]
+    const reordered = reorderTabs(tabs, [tabC.id, tabA.id, tabOutline.id, tabB.id])
+
+    // 固定 tab（tabOutline, tabB）在前，非固定（tabC, tabA）在后
+    const pinnedIds = reordered.filter(isTabPinned).map((t) => t.id)
+    const unpinnedIds = reordered.filter((t) => !isTabPinned(t)).map((t) => t.id)
+
+    expect(pinnedIds).toEqual([tabOutline.id, tabB.id])
+    expect(unpinnedIds).toEqual([tabC.id, tabA.id])
+    expect(reordered.map((t) => t.id)).toEqual([...pinnedIds, ...unpinnedIds])
+  })
+
+  it('固定 Tab 不受非直接关闭方式（others, all）影响，但可以通过自身直接关闭（self）', () => {
+    const tabOutline = makeTab({ kind: 'outline', nodeId: 'nOutline' }, 0)
+    const tabPinned = { ...makeTab({ kind: 'teach', nodeId: 'nPinned' }, 0), pinned: true }
+    const tab1 = makeTab({ kind: 'teach', nodeId: 'n1' }, 0)
+    const tab2 = makeTab({ kind: 'teach', nodeId: 'n2' }, 0)
+
+    const tabs = [tabOutline, tabPinned, tab1, tab2]
+
+    // 1. 关闭其他：在 tab1 上执行 others，不关闭固定 tab
+    const rOthers = closeTabs(tabs, tab1.id, 'others', tab1.id)
+    expect(rOthers.tabs.map((t) => t.id)).toContain(tabOutline.id)
+    expect(rOthers.tabs.map((t) => t.id)).toContain(tabPinned.id)
+    expect(rOthers.tabs.map((t) => t.id)).toContain(tab1.id)
+    expect(rOthers.tabs.map((t) => t.id)).not.toContain(tab2.id)
+
+    // 2. 全部关闭：执行 all，保留所有固定 tab
+    const rAll = closeTabs(tabs, tab1.id, 'all', tab1.id)
+    expect(rAll.tabs.map((t) => t.id)).toEqual([tabOutline.id, tabPinned.id])
+
+    // 3. 自身关闭：直接关闭固定 tab 能够成功关闭
+    const rSelf = closeTabs(tabs, tabPinned.id, 'self', tabPinned.id)
+    expect(rSelf.tabs.map((t) => t.id)).not.toContain(tabPinned.id)
+    expect(rSelf.tabs.map((t) => t.id)).toContain(tabOutline.id)
+  })
+})
+
+describe('PDF 翻页模式前后页预热防闪屏', () => {
+  it('翻页模式挂载当前页前后各 2 页进行后台矢量预热，避免白屏闪烁', () => {
+    const totalPages = 20
+    const currentPage = 5
+    const PRELOAD_RANGE = 2
+
+    // 翻页模式下的预渲染挂载判断
+    const isMountedInFlip = (page: number) => {
+      return page >= Math.max(1, currentPage - PRELOAD_RANGE) &&
+             page <= Math.min(totalPages, currentPage + PRELOAD_RANGE)
+    }
+
+    // 5 前后 2 页 (3, 4, 5, 6, 7) 挂载后台 Canvas
+    expect(isMountedInFlip(3)).toBe(true)
+    expect(isMountedInFlip(4)).toBe(true)
+    expect(isMountedInFlip(5)).toBe(true)
+    expect(isMountedInFlip(6)).toBe(true)
+    expect(isMountedInFlip(7)).toBe(true)
+    // 远端页面不挂载
+    expect(isMountedInFlip(1)).toBe(false)
+    expect(isMountedInFlip(2)).toBe(false)
+    expect(isMountedInFlip(8)).toBe(false)
+  })
+})

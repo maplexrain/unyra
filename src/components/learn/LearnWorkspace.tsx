@@ -81,6 +81,7 @@ import {
   focusedTab,
   goalTabsOf,
   groupIdOfTab,
+  groupOf,
   isAnchorOutline,
   openAnchorOutline,
   openGroupedDoc,
@@ -100,7 +101,7 @@ import {
   type DocLayout,
   type TabOwners,
 } from '../../learn/groups'
-import { makeBlankTab, makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf, isPdfFile } from '../../learn/tabs'
+import { isTabPinned, reorderTabs, makeBlankTab, makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf, isPdfFile } from '../../learn/tabs'
 import { setZenActive } from '../../learn/zen'
 import { closeGoalTabGroupStore } from '../../learn/groups/goalTabGroupOps'
 import { pickLocalFiles, readLocalFile } from '../../lib/localFiles'
@@ -2319,6 +2320,21 @@ export default function LearnWorkspace({
     (group: string, ids: string[]) => {
       const s = getLatest()
       set({ ...s, docArea: reorderIn(s.docArea, group, ids) })
+    },
+    [getLatest, set],
+  )
+
+  /** 固定/取消固定某一格里的页签，重排确保固定页签在最前面 */
+  const toggleTabPin = useCallback(
+    (group: string, tab: LearnTab) => {
+      const s = getLatest()
+      const docs = s.docArea
+      const g = groupOf(docs, group)
+      if (!g) return
+      const nextPinned = !isTabPinned(tab)
+      const nextTabs = g.tabs.map((t) => (t.id === tab.id ? { ...t, pinned: nextPinned } : t))
+      const reordered = reorderTabs(nextTabs, nextTabs.map((t) => t.id))
+      set({ ...s, docArea: settle(withGroup(docs, group, (cur) => ({ ...cur, tabs: reordered }))) })
     },
     [getLatest, set],
   )
@@ -5028,6 +5044,7 @@ export default function LearnWorkspace({
                 // 右键菜单的收藏/取消收藏（见 learn/favorites）
                 favoriteOf={isTabFavorite}
                 onToggleFavorite={toggleTabFavorite}
+                onTogglePin={(tab) => toggleTabPin(groupId, tab)}
                 // 资源管理器/外部拖进来的引用落在这一格的页签栏上：还原成页签开在这一格里
                 onDropChip={openChipInGroup(groupId)}
                 // 棱形只在焦点格的栏上跟着右键走（见 lib/tabMark）

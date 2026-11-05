@@ -245,9 +245,7 @@ export function focusTabsInGroup(
 
 /**
  * 工作区上带着归属表的新一份（不可变更新，`DocWorkspace.tabOwners` 是可选字段）。
- *
- * 显式传 `undefined` 时把字段抹掉（回到「没有这张表」的旧形态）——
- * 归一化时不希望一个空对象被写进 state.json。
+ * 空表时不挂这个字段（不给 state.json 留一个空壳）。
  */
 export function withOwners(docs: DocWorkspace, owners: TabOwners | undefined): DocWorkspace {
   if (!owners || Object.keys(owners).length === 0) {

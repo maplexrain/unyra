@@ -79,9 +79,12 @@ export function examCardHeight(rows: number): number {
   return Math.max(CARD_FRAME_H + OUTLINE_HEAD + (rows + 1) * SLOT_ROW + CARD_PAD_B, CARD_H)
 }
 
+/** 空大纲卡的高度：边框 + 标题行 + 生成总览行(24) + gap(4) + 底部添加目标项(22) + 内边距(8) */
+export const EMPTY_OUTLINE_H = CARD_FRAME_H + OUTLINE_HEAD + 24 + 4 + SLOT_ROW + CARD_PAD_B // 104
+
 /** 大纲卡有多高：边框 + 标题行 + 每条目标项一行 + 底部「＋ 添加目标项」一行 + 内边距 */
 export function outlineCardHeight(count: number): number {
-  if (!count) return CARD_H
+  if (!count) return EMPTY_OUTLINE_H
   return Math.max(CARD_FRAME_H + OUTLINE_HEAD + (count + 1) * SLOT_ROW + CARD_PAD_B, CARD_H)
 }
 
@@ -391,67 +394,6 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     add(p)
   }
 
-  /*
-   * 树边（store.edges，两端是树成员 id）：画在成员卡之间——
-   * - from 是文档 id：那份文档有大纲就以它的大纲卡为源（hub 翻译，交替链
-   *   文档-大纲-文档…的画法），没有就直接从文档卡出发；
-   * - from 是 o:（游离大纲的声部）：本就是大纲卡。
-   * to 以 o: 开头即接在大纲卡上的嵌套子级（分类链 文档-大纲-大纲…）。
-   */
-  const fromCardOf = (from: string, to?: string): Pending | undefined => {
-    if (from.startsWith('o:')) return outlinePending.get(from)
-    // 项目节点是挂件款下游：上游始终是文档本身，不经大纲 hub 翻译
-    if (to && projectPending.has(to)) return docPending.get(from)
-    return outlinePending.get(outlineUuid(from)) ?? docPending.get(from) ?? videoPending.get(from) ?? projectPending.get(from) ?? byUuid.get(from)
-  }
-  for (const e of store.edges) {
-    const toCard = outlinePending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to) ?? byUuid.get(e.to)
-    const fromCard = fromCardOf(e.from, e.to)
-    if (!fromCard || !toCard) continue
-    if (!pushEdge(fromCard.card.uuid, toCard.card.uuid)) continue
-    toCard.parent ??= fromCard
-    if (!fromCard.next.includes(toCard)) fromCard.next.push(toCard)
-    // 认领了接口的子级记下行号：自动铺排的顺序与锚点都按目标项来（见下面的排序与 place）
-    if (fromCard.card.kind === 'outline') {
-      const idx = fromCard.card.slots?.findIndex((s) => s.childId === toCard.card.uuid) ?? -1
-      if (idx >= 0) toCard.slotAnchor = { parent: fromCard.card.uuid, index: idx }
-    }
-  }
-
-  // 附身大纲与它的文档配成一对：归属边「文档 → 它的大纲」（交替链画法）；嵌套接入时反过来以大纲为入口
-  const isNestedIn = (outlineCardUuid: string) => store.edges.some((e) => e.to === outlineCardUuid)
-  for (const node of docs) {
-    const doc = docPending.get(node.id)
-    const o = outlinePending.get(outlineUuid(node.id))
-    if (!doc || !o) continue
-    const nestedIn = isNestedIn(o.card.uuid)
-    if (nestedIn) {
-      // 嵌套接入：文档卡排在大纲卡左边（与父大纲同列），由大纲卡带着进 BFS
-      doc.parent = o
-      o.next.unshift(doc)
-    } else {
-      o.parent = doc
-      doc.next.push(o)
-    }
-    pushEdge(node.id, o.card.uuid)
-  }
-
-  /*
-   * 自动铺排的顺序 = 目标项的顺序：大纲卡 next 里的子级按认领的行号排（认领优先，
-   * 没认领的稳着排在后面）——不然铺出来的次序跟着边的先后走，图读起来和计划对不上。
-   * 嵌套接入时宿主文档卡在最前（它贴着自己的大纲），保持第一。
-   */
-  for (const o of outlinePending.values()) {
-    const slots = o.card.slots ?? []
-    const hostId = docIdOfOutlineUuid(o.card.uuid)
-    const rank = (uuid: string): number => {
-      if (hostId && uuid === hostId) return -1
-      const i = slots.findIndex((s) => s.childId === uuid)
-      return i >= 0 ? i : slots.length
-    }
-    o.next.sort((a, b) => rank(a.card.uuid) - rank(b.card.uuid))
-  }
-
   // 挂件：笔记 / 试卷 / 超级文档，创建即挂，卡随实体（照旧挂在内容文档卡之下）
   const docAttachments = new Map<string, Pending[]>()
   for (const node of docs) {
@@ -566,6 +508,72 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
       next: [],
       parent: null,
     })
+  }
+
+
+  /*
+   * 树边（store.edges，两端是树成员 id）：画在成员卡之间——
+   * - from 是文档 id：那份文档有大纲就以它的大纲卡为源（hub 翻译，交替链
+   *   文档-大纲-文档…的画法），没有就直接从文档卡出发；
+   * - from 是 o:（游离大纲的声部）：本就是大纲卡。
+   * to 以 o: 开头即接在大纲卡上的嵌套子级（分类链 文档-大纲-大纲…）。
+   */
+  const fromCardOf = (from: string, to?: string): Pending | undefined => {
+    if (from.startsWith('o:')) return outlinePending.get(from)
+    // 项目节点是挂件款下游：上游始终是文档本身，不经大纲 hub 翻译
+    if (to && projectPending.has(to)) return docPending.get(from)
+    // 笔记节点的上游：若起点在 byUuid 中存在（如考试、超级文档、文档），优先返回其实体卡片
+    if (to && byUuid.get(to)?.card.kind === 'note') {
+      return byUuid.get(from) ?? outlinePending.get(outlineUuid(from)) ?? docPending.get(from)
+    }
+    return outlinePending.get(outlineUuid(from)) ?? docPending.get(from) ?? videoPending.get(from) ?? projectPending.get(from) ?? byUuid.get(from)
+  }
+  for (const e of store.edges) {
+    const toCard = outlinePending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to) ?? byUuid.get(e.to)
+    const fromCard = fromCardOf(e.from, e.to)
+    if (!fromCard || !toCard) continue
+    if (!pushEdge(fromCard.card.uuid, toCard.card.uuid)) continue
+    toCard.parent ??= fromCard
+    if (!fromCard.next.includes(toCard)) fromCard.next.push(toCard)
+    // 认领了接口的子级记下行号：自动铺排的顺序与锚点都按目标项来（见下面的排序与 place）
+    if (fromCard.card.kind === 'outline') {
+      const idx = fromCard.card.slots?.findIndex((s) => s.childId === toCard.card.uuid) ?? -1
+      if (idx >= 0) toCard.slotAnchor = { parent: fromCard.card.uuid, index: idx }
+    }
+  }
+
+  // 附身大纲与它的文档配成一对：归属边「文档 → 它的大纲」（交替链画法）；嵌套接入时反过来以大纲为入口
+  const isNestedIn = (outlineCardUuid: string) => store.edges.some((e) => e.to === outlineCardUuid)
+  for (const node of docs) {
+    const doc = docPending.get(node.id)
+    const o = outlinePending.get(outlineUuid(node.id))
+    if (!doc || !o) continue
+    const nestedIn = isNestedIn(o.card.uuid)
+    if (nestedIn) {
+      // 嵌套接入：文档卡排在大纲卡左边（与父大纲同列），由大纲卡带着进 BFS
+      doc.parent = o
+      o.next.unshift(doc)
+    } else {
+      o.parent = doc
+      doc.next.push(o)
+    }
+    pushEdge(node.id, o.card.uuid)
+  }
+
+  /*
+   * 自动铺排的顺序 = 目标项的顺序：大纲卡 next 里的子级按认领的行号排（认领优先，
+   * 没认领的稳着排在后面）——不然铺出来的次序跟着边的先后走，图读起来和计划对不上。
+   * 嵌套接入时宿主文档卡在最前（它贴着自己的大纲），保持第一。
+   */
+  for (const o of outlinePending.values()) {
+    const slots = o.card.slots ?? []
+    const hostId = docIdOfOutlineUuid(o.card.uuid)
+    const rank = (uuid: string): number => {
+      if (hostId && uuid === hostId) return -1
+      const i = slots.findIndex((s) => s.childId === uuid)
+      return i >= 0 ? i : slots.length
+    }
+    o.next.sort((a, b) => rank(a.card.uuid) - rank(b.card.uuid))
   }
 
   /*
