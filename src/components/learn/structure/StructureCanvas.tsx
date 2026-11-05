@@ -365,7 +365,7 @@ interface MenuState {
   y: number
   uuid: string
   slotKey?: string
-  mode: 'actions' | 'note' | 'rename' | 'slot' | 'renameSlot' | 'videoPick' | 'projectPath'
+  mode: 'actions' | 'note' | 'rename' | 'videoPick' | 'projectPath'
 }
 
 /**
@@ -744,6 +744,37 @@ export const StructureCanvas = memo(function StructureCanvas({
   const flashTimer = useRef<number | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [menuText, setMenuText] = useState('')
+
+  /** 正在内联编辑的大纲目标项（卡片 uuid、条目 slotKey、输入文本） */
+  const [editingSlot, setEditingSlot] = useState<{ uuid: string; slotKey: string; text: string } | null>(null)
+  /** 正在内联新建目标项的大纲卡 uuid 与输入文本 */
+  const [addingSlotUuid, setAddingSlotUuid] = useState<string | null>(null)
+  const [addingSlotText, setAddingSlotText] = useState('')
+  const cancelledEditRef = useRef(false)
+  const cancelledAddRef = useRef(false)
+
+  const commitEditingSlot = useCallback(
+    (targetSlot: { uuid: string; slotKey: string; originalTitle: string }, newText: string) => {
+      setEditingSlot(null)
+      const trimmed = newText.trim()
+      if (trimmed && trimmed !== targetSlot.originalTitle) {
+        onRenameOutlineEntry?.(targetSlot.uuid, targetSlot.slotKey, trimmed)
+      }
+    },
+    [onRenameOutlineEntry],
+  )
+
+  const commitAddingSlot = useCallback(
+    (outlineUuid: string, text: string) => {
+      setAddingSlotUuid(null)
+      setAddingSlotText('')
+      const trimmed = text.trim()
+      if (trimmed) {
+        onAddOutlineEntry?.(outlineUuid, trimmed)
+      }
+    },
+    [onAddOutlineEntry],
+  )
 
 
   /** 空格按住时左键也能拖画布（见 onPointerDown） */
@@ -1446,8 +1477,10 @@ export const StructureCanvas = memo(function StructureCanvas({
       const addEl = target.closest<HTMLElement>('[data-add-slot]')
       if (addEl) {
         const uuid = addEl.dataset.addSlot as string
-        setMenuText('')
-        setMenu({ x: e.clientX, y: e.clientY, uuid, mode: 'slot' })
+        setAddingSlotUuid(uuid)
+        setAddingSlotText('')
+        setEditingSlot(null)
+        setMenu(null)
         return
       }
 
@@ -2559,92 +2592,185 @@ export const StructureCanvas = memo(function StructureCanvas({
                 /* 容器不带左右内边距：行自己带，圆点才能贴到卡片右边框上 */
                 /* 不能加 overflow-hidden：圆点要伸出卡片右边框半颗，裁了连点击都收不到 */
                 <div className="flex flex-col pb-2">
-                  {slots.map((slot) => (
+                  {slots.map((slot) => {
+                    const isEditingThisSlot = editingSlot?.uuid === card.uuid && editingSlot?.slotKey === slot.key
+                    return (
+                      <div
+                        key={slot.key}
+                        data-slot-key={slot.key}
+                        data-slot-parent={card.uuid}
+                        title={isEditingThisSlot ? undefined : slot.childId ? `${slot.title} · ${t('跳到这个子文档')}` : `${slot.title} · ${t('生成一份空文档')}`}
+                        onPointerEnter={() => !isEditingThisSlot && setHoverSlot({ parentId: card.uuid, key: slot.key })}
+                        onPointerLeave={() => setHoverSlot(null)}
+                        className={`group/slot relative flex items-center gap-1.5 pr-6 pl-2 ${
+                          isEditingThisSlot ? 'bg-seal/[0.06]' : 'cursor-pointer hover:bg-seal/[0.08]'
+                        }`}
+                        style={{ height: SLOT_ROW }}
+                      >
+                        <span className="h-2 w-2 shrink-0" />
+                        {isEditingThisSlot ? (
+                          <div
+                            className="flex min-w-0 flex-1 items-center"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="text"
+                              autoFocus
+                              value={editingSlot.text}
+                              onChange={(e) => setEditingSlot({ ...editingSlot, text: e.target.value.replace(/[\r\n]/g, '') })}
+                              onFocus={(e) => e.target.select()}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={(e) => e.stopPropagation()}
+                              onDoubleClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => {
+                                e.stopPropagation()
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  commitEditingSlot({ uuid: card.uuid, slotKey: slot.key, originalTitle: slot.title }, editingSlot.text)
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  cancelledEditRef.current = true
+                                  setEditingSlot(null)
+                                }
+                              }}
+                              onBlur={() => {
+                                if (cancelledEditRef.current) {
+                                  cancelledEditRef.current = false
+                                  return
+                                }
+                                commitEditingSlot({ uuid: card.uuid, slotKey: slot.key, originalTitle: slot.title }, editingSlot.text)
+                              }}
+                              className="min-w-0 flex-1 rounded border border-seal/50 bg-paper px-1.5 py-0 text-[11.5px] leading-[18px] text-ink outline-none focus:border-seal focus:ring-1 focus:ring-seal/30 dark:bg-card"
+                            />
+                          </div>
+                        ) : (
+                          <span
+                            title={slot.title}
+                            className="min-w-0 flex-1 truncate text-[11.5px]"
+                            style={{ color: slot.childId ? SLOT_ACCENT : undefined, opacity: slot.childId ? 1 : 0.55 }}
+                            onDoubleClick={(e) => {
+                              if (onRenameOutlineEntry) {
+                                e.stopPropagation()
+                                setEditingSlot({ uuid: card.uuid, slotKey: slot.key, text: slot.title })
+                                setAddingSlotUuid(null)
+                                setMenu(null)
+                              }
+                            }}
+                          >
+                            {slot.title}
+                          </span>
+                        )}
+                        {onRenameOutlineEntry && !isEditingThisSlot && (
+                          <button
+                            type="button"
+                            data-rename-slot={slot.key}
+                            data-rename-slot-parent={card.uuid}
+                            title={t('重命名目标项「{0}」', slot.title)}
+                            className="z-10 shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:bg-seal/15 hover:text-seal group-hover/slot:opacity-100"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingSlot({ uuid: card.uuid, slotKey: slot.key, text: slot.title })
+                              setAddingSlotUuid(null)
+                              setMenu(null)
+                            }}
+                          >
+                            <Pencil size={11} strokeWidth={2.2} />
+                          </button>
+                        )}
+                        {onDeleteOutlineEntry && !isEditingThisSlot && (
+                          <button
+                            type="button"
+                            data-delete-slot={slot.key}
+                            data-delete-slot-parent={card.uuid}
+                            title={t('删除目标项「{0}」', slot.title)}
+                            className="z-10 shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:bg-rose-500/15 hover:text-rose-500 group-hover/slot:opacity-100"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onDeleteOutlineEntry(card.uuid, slot.key)
+                            }}
+                          >
+                            <X size={11} strokeWidth={2.2} />
+                          </button>
+                        )}
+                        {/*
+                          接口点：**菱形**（旋转 45° 的小方块）——圆形留给普通连线把手，
+                          一眼分得清「这是在认领某个接口」。认领了=实心，空着=空心。
+                          位置规矩不变：放在这一行里面（垂直居中 flex 保证），圆心压在
+                          1px 边框的中线上（right: -0.5px 再平移半颗）。
+                        */}
+                        <span
+                          data-slot-dot={slot.key}
+                          data-slot-dot-parent={card.uuid}
+                          title={slot.childId ? t('已经挂上：拖出去可以换一份') : t('从接口拖出去挂一份文档或子大纲（会认领这条目标项）')}
+                          className="absolute top-1/2 -right-[0.5px] h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2 rotate-45 cursor-crosshair rounded-[2px] border-2"
+                          style={{
+                            borderColor: SLOT_ACCENT,
+                            background: slot.childId ? SLOT_ACCENT : 'var(--color-card, #fff)',
+                          }}
+                        />
+                      </div>
+                    )
+                  })}
+                  {/* 手动加一条目标项：这是大纲内容，走大纲节点的 editContent */}
+                  {addingSlotUuid === card.uuid ? (
                     <div
-                      key={slot.key}
-                      data-slot-key={slot.key}
-                      data-slot-parent={card.uuid}
-                      title={slot.childId ? `${slot.title} · ${t('跳到这个子文档')}` : `${slot.title} · ${t('生成一份空文档')}`}
-                      onPointerEnter={() => setHoverSlot({ parentId: card.uuid, key: slot.key })}
-                      onPointerLeave={() => setHoverSlot(null)}
-                      className="group/slot relative flex cursor-pointer items-center gap-1.5 pr-6 pl-2 hover:bg-seal/[0.08]"
+                      className="flex items-center gap-1.5 pr-3 pl-2"
                       style={{ height: SLOT_ROW }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <span className="h-2 w-2 shrink-0" />
-                      <span
-                        title={slot.title}
-                        className="min-w-0 flex-1 truncate text-[11.5px]"
-                        style={{ color: slot.childId ? SLOT_ACCENT : undefined, opacity: slot.childId ? 1 : 0.55 }}
-                        onDoubleClick={(e) => {
-                          if (onRenameOutlineEntry) {
-                            e.stopPropagation()
-                            setMenuText(slot.title)
-                            setMenu({ x: e.clientX, y: e.clientY, uuid: card.uuid, slotKey: slot.key, mode: 'renameSlot' })
+                      <span className="text-[11px] text-seal">＋</span>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder={t('新目标项标题...')}
+                        value={addingSlotText}
+                        onChange={(e) => setAddingSlotText(e.target.value.replace(/[\r\n]/g, ''))}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          e.stopPropagation()
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            commitAddingSlot(card.uuid, addingSlotText)
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault()
+                            cancelledAddRef.current = true
+                            setAddingSlotUuid(null)
+                            setAddingSlotText('')
                           }
                         }}
-                      >
-                        {slot.title}
-                      </span>
-                      {onRenameOutlineEntry && (
-                        <button
-                          type="button"
-                          data-rename-slot={slot.key}
-                          data-rename-slot-parent={card.uuid}
-                          title={t('重命名目标项「{0}」', slot.title)}
-                          className="z-10 shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:bg-seal/15 hover:text-seal group-hover/slot:opacity-100"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setMenuText(slot.title)
-                            setMenu({ x: e.clientX, y: e.clientY, uuid: card.uuid, slotKey: slot.key, mode: 'renameSlot' })
-                          }}
-                        >
-                          <Pencil size={11} strokeWidth={2.2} />
-                        </button>
-                      )}
-                      {onDeleteOutlineEntry && (
-                        <button
-                          type="button"
-                          data-delete-slot={slot.key}
-                          data-delete-slot-parent={card.uuid}
-                          title={t('删除目标项「{0}」', slot.title)}
-                          className="z-10 shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:bg-rose-500/15 hover:text-rose-500 group-hover/slot:opacity-100"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onDeleteOutlineEntry(card.uuid, slot.key)
-                          }}
-                        >
-                          <X size={11} strokeWidth={2.2} />
-                        </button>
-                      )}
-                      {/*
-                        接口点：**菱形**（旋转 45° 的小方块）——圆形留给普通连线把手，
-                        一眼分得清「这是在认领某个接口」。认领了=实心，空着=空心。
-                        位置规矩不变：放在这一行里面（垂直居中 flex 保证），圆心压在
-                        1px 边框的中线上（right: -0.5px 再平移半颗）。
-                      */}
-                      <span
-                        data-slot-dot={slot.key}
-                        data-slot-dot-parent={card.uuid}
-                        title={slot.childId ? t('已经挂上：拖出去可以换一份') : t('从接口拖出去挂一份文档或子大纲（会认领这条目标项）')}
-                        className="absolute top-1/2 -right-[0.5px] h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2 rotate-45 cursor-crosshair rounded-[2px] border-2"
-                        style={{
-                          borderColor: SLOT_ACCENT,
-                          background: slot.childId ? SLOT_ACCENT : 'var(--color-card, #fff)',
+                        onBlur={() => {
+                          if (cancelledAddRef.current) {
+                            cancelledAddRef.current = false
+                            return
+                          }
+                          commitAddingSlot(card.uuid, addingSlotText)
                         }}
+                        className="min-w-0 flex-1 rounded border border-seal/50 bg-paper px-1.5 py-0 text-[11px] leading-[18px] text-ink outline-none focus:border-seal focus:ring-1 focus:ring-seal/30 dark:bg-card"
                       />
                     </div>
-                  ))}
-                  {/* 手动加一条目标项：这是大纲内容，走大纲节点的 editContent */}
-                  <div
-                    data-add-slot={card.uuid}
-                    title={t('给这份大纲加一条目标项')}
-                    className="flex cursor-pointer items-center gap-1.5 pr-3 pl-2 text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
-                    style={{ height: SLOT_ROW }}
-                  >
-                    ＋ {t('添加目标项')}
-                  </div>
+                  ) : (
+                    <div
+                      data-add-slot={card.uuid}
+                      title={t('给这份大纲加一条目标项')}
+                      className="flex cursor-pointer items-center gap-1.5 pr-3 pl-2 text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
+                      style={{ height: SLOT_ROW }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setAddingSlotUuid(card.uuid)
+                        setAddingSlotText('')
+                        setEditingSlot(null)
+                        setMenu(null)
+                      }}
+                    >
+                      ＋ {t('添加目标项')}
+                    </div>
+                  )}
                 </div>
               ) : card.kind === 'outline' && slots.length === 0 ? (
                 /*
@@ -2665,14 +2791,61 @@ export const StructureCanvas = memo(function StructureCanvas({
                       {t('生成总览')}
                     </button>
                   </div>
-                  <div
-                    data-add-slot={card.uuid}
-                    title={t('给这份大纲加一条目标项')}
-                    className="flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
-                    style={{ height: SLOT_ROW }}
-                  >
-                    ＋ {t('添加目标项')}
-                  </div>
+                  {addingSlotUuid === card.uuid ? (
+                    <div
+                      className="flex items-center gap-1.5"
+                      style={{ height: SLOT_ROW }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span className="text-[11px] text-seal">＋</span>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder={t('新目标项标题...')}
+                        value={addingSlotText}
+                        onChange={(e) => setAddingSlotText(e.target.value.replace(/[\r\n]/g, ''))}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          e.stopPropagation()
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            commitAddingSlot(card.uuid, addingSlotText)
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault()
+                            cancelledAddRef.current = true
+                            setAddingSlotUuid(null)
+                            setAddingSlotText('')
+                          }
+                        }}
+                        onBlur={() => {
+                          if (cancelledAddRef.current) {
+                            cancelledAddRef.current = false
+                            return
+                          }
+                          commitAddingSlot(card.uuid, addingSlotText)
+                        }}
+                        className="min-w-0 flex-1 rounded border border-seal/50 bg-paper px-1.5 py-0 text-[11px] leading-[18px] text-ink outline-none focus:border-seal focus:ring-1 focus:ring-seal/30 dark:bg-card"
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      data-add-slot={card.uuid}
+                      title={t('给这份大纲加一条目标项')}
+                      className="flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
+                      style={{ height: SLOT_ROW }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setAddingSlotUuid(card.uuid)
+                        setAddingSlotText('')
+                        setEditingSlot(null)
+                        setMenu(null)
+                      }}
+                    >
+                      ＋ {t('添加目标项')}
+                    </div>
+                  )}
                 </div>
               ) : card.kind === 'doc' && card.excerpt ? (
                 /*
@@ -3428,11 +3601,7 @@ export const StructureCanvas = memo(function StructureCanvas({
               <div className="text-[10px] text-ink-faint">
                 {menu.mode === 'note'
                   ? t('写一句注释，贴在卡片底部')
-                  : menu.mode === 'rename'
-                    ? t('改笔记名（文件名一起改）')
-                    : menu.mode === 'renameSlot'
-                      ? t('重命名大纲目标项')
-                      : t('新的目标项标题')}
+                  : t('改笔记名（文件名一起改）')}
               </div>
               <textarea
                 autoFocus
@@ -3455,11 +3624,6 @@ export const StructureCanvas = memo(function StructureCanvas({
                   onClick={() => {
                     if (menu.mode === 'note') saveNote(menuCard.uuid, menuCard, menuText)
                     else if (menu.mode === 'rename') saveRename(menuCard, menuText)
-                    else {
-                      const title = menuText.trim()
-                      if (title) onAddOutlineEntry?.(menuCard.uuid, title)
-                      setMenu(null)
-                    }
                   }}
                 >
                   {t('保存')}

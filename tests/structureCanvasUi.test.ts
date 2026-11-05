@@ -136,4 +136,128 @@ describe('StructureCanvas 节点宇宙 UI 优化测试', () => {
     })
     container.remove()
   })
+
+  it('大纲目标项改名：点击重命名按钮就地替换为 input 输入组件，不允许换行，回车直接提交，无额外浮层', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    const store = createTestStore()
+    const onRename = vi.fn()
+
+    act(() => {
+      root.render(
+        React.createElement(StructureCanvas, {
+          store,
+          goalId: 'g1',
+          onChange: vi.fn(),
+          docs: {} as any,
+          exams: {} as any,
+          onRenameOutlineEntry: onRename,
+        }),
+      )
+    })
+
+    // 找到大纲槽位的重命名按钮
+    const renameBtn = container.querySelector('[data-rename-slot="slot_1"]') as HTMLButtonElement | null
+    expect(renameBtn).toBeTruthy()
+
+    // 点击重命名
+    act(() => {
+      renameBtn?.click()
+    })
+
+    // 验证没有弹出浮层 WheelStop (textarea)
+    const modalTextarea = container.querySelector('textarea')
+    expect(modalTextarea).toBeNull()
+
+    // 验证原标题 label 位置替换为了 input
+    const input = container.querySelector('[data-slot-key="slot_1"] input') as HTMLInputElement | null
+    expect(input).toBeTruthy()
+    expect(input?.value).toBe('函数与定义域：先问「哪儿不舒服」一段超长超长超长目标项')
+
+    // 模拟输入（带换行符，验证过滤换行）并回车直接提交
+    act(() => {
+      input!.value = '新标题\n第二行'
+      input!.dispatchEvent(new Event('input', { bubbles: true }))
+      input!.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+
+    // 验证换行符已被过滤
+    expect(input?.value).toBe('新标题第二行')
+
+    // 按回车键直接提交
+    act(() => {
+      input!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+
+    // 验证触发提交且退出编辑状态
+    expect(onRename).toHaveBeenCalledWith('o:node-root', 'slot_1', '新标题第二行')
+    expect(container.querySelector('[data-slot-key="slot_1"] input')).toBeNull()
+
+    act(() => {
+      root.unmount()
+    })
+    container.remove()
+  })
+
+  it('大纲目标项创建：点击添加目标项就地显示 input 输入组件，不允许换行，回车直接提交，无额外浮层', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    const store = createTestStore()
+    const onAdd = vi.fn()
+
+    act(() => {
+      root.render(
+        React.createElement(StructureCanvas, {
+          store,
+          goalId: 'g1',
+          onChange: vi.fn(),
+          docs: {} as any,
+          exams: {} as any,
+          onAddOutlineEntry: onAdd,
+        }),
+      )
+    })
+
+    // 找到添加目标项按钮
+    const addBtn = container.querySelector('[data-add-slot="o:node-root"]') as HTMLElement | null
+    expect(addBtn).toBeTruthy()
+
+    // 点击添加
+    act(() => {
+      addBtn?.click()
+    })
+
+    // 验证没有弹出浮层 WheelStop (textarea)
+    const modalTextarea = container.querySelector('textarea')
+    expect(modalTextarea).toBeNull()
+
+    // 验证就地显示了 input 组件
+    const input = container.querySelector('input[placeholder="新目标项标题..."]') as HTMLInputElement | null
+    expect(input).toBeTruthy()
+
+    // 模拟输入带换行文本
+    act(() => {
+      input!.value = '第一章核心概念\r\n'
+      input!.dispatchEvent(new Event('input', { bubbles: true }))
+      input!.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+
+    expect(input?.value).toBe('第一章核心概念')
+
+    // 按回车键直接提交
+    act(() => {
+      input!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+
+    // 验证成功调用 onAddOutlineEntry 并关闭输入组件
+    expect(onAdd).toHaveBeenCalledWith('o:node-root', '第一章核心概念')
+    expect(container.querySelector('input[placeholder="新目标项标题..."]')).toBeNull()
+
+    act(() => {
+      root.unmount()
+    })
+    container.remove()
+  })
 })
