@@ -18,10 +18,11 @@ export const DOCS_DIR = 'docs'
  */
 export const IMAGES_DIR = 'images'
 export const STATIC_DIR = 'static'
+export const FILES_DIR = 'files'
 /** 节点目录里放**真实工作文件**的子目录（见 learn/workspace）：不进文档解析、随目录搬家 */
 export const WORKSPACE_DIR = 'workspace'
 export const MANIFEST_FILE = 'manifest.json'
-export const ASSET_DIRS = [STATIC_DIR, IMAGES_DIR, WORKSPACE_DIR] as const
+export const ASSET_DIRS = [STATIC_DIR, IMAGES_DIR, WORKSPACE_DIR, FILES_DIR] as const
 
 /** 一个节点落在磁盘上的位置 */
 export interface NodeLayout {
@@ -77,6 +78,7 @@ export function nodeLayout(store: LearnStore): Map<string, NodeLayout> {
         'outlines.json',
         'video-nodes.json',
         'projects.json',
+        'file-nodes.json',
         'detached.json',
         ...ASSET_DIRS,
       ])

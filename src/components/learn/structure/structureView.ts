@@ -17,7 +17,7 @@
  * 而且都容易在「顺手优化一下」时改错。
  */
 
-import type { LearnStore, ProjectPathKind } from '../../../learn/types'
+import type { FileNodeKind, LearnStore, ProjectPathKind } from '../../../learn/types'
 import { examsOfNode, nodeById, prereqIds } from '../../../learn/graph'
 import { notesOf } from '../../../learn/notes'
 import { attemptScore, type ExamAttempt } from '../../../learn/exam'
@@ -126,6 +126,7 @@ export interface CardView {
    * 卡上的目录树展开、授权提示都以它为准；解析失败（null）卡上显示待解析。
    */
   project?: { path: string; pathKind: ProjectPathKind; resolved: string | null }
+  file?: { fileKind: FileNodeKind; url: string }
   x: number
   y: number
 }
@@ -511,6 +512,26 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
   }
 
 
+  const filePending = new Map<string, Pending>()
+  for (const entity of store.fileNodes ?? []) {
+    if (entity.goalId !== goalId) continue
+    const p: Pending = {
+      card: {
+        uuid: entity.id,
+        kind: 'file',
+        title: entity.title,
+        subtitle: entity.fileKind === 'local' ? (entity.url || '未绑定文件') : (entity.url || '未输入网址'),
+        file: { fileKind: entity.fileKind, url: entity.url },
+      },
+      depth: 1,
+      anchorY: 0,
+      next: [],
+      parent: null,
+    }
+    filePending.set(entity.id, p)
+    add(p)
+  }
+
   /*
    * 树边（store.edges，两端是树成员 id）：画在成员卡之间——
    * - from 是文档 id：那份文档有大纲就以它的大纲卡为源（hub 翻译，交替链
@@ -522,14 +543,18 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     if (from.startsWith('o:')) return outlinePending.get(from)
     // 项目节点是挂件款下游：上游始终是文档本身，不经大纲 hub 翻译
     if (to && projectPending.has(to)) return docPending.get(from)
-    // 笔记节点的上游：若起点在 byUuid 中存在（如考试、超级文档、文档），优先返回其实体卡片
+    // 笔记节点的上游：若起点在 byUuid 中存在（如考试、超级文档、文档、文件），优先返回其实体卡片
     if (to && byUuid.get(to)?.card.kind === 'note') {
       return byUuid.get(from) ?? outlinePending.get(outlineUuid(from)) ?? docPending.get(from)
     }
-    return outlinePending.get(outlineUuid(from)) ?? docPending.get(from) ?? videoPending.get(from) ?? projectPending.get(from) ?? byUuid.get(from)
+    // 文件节点的上游：优先返回其实体卡片
+    if (to && filePending.has(to)) {
+      return byUuid.get(from) ?? outlinePending.get(outlineUuid(from)) ?? docPending.get(from)
+    }
+    return filePending.get(from) ?? outlinePending.get(outlineUuid(from)) ?? docPending.get(from) ?? videoPending.get(from) ?? projectPending.get(from) ?? byUuid.get(from)
   }
   for (const e of store.edges) {
-    const toCard = outlinePending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to) ?? byUuid.get(e.to)
+    const toCard = outlinePending.get(e.to) ?? filePending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to) ?? byUuid.get(e.to)
     const fromCard = fromCardOf(e.from, e.to)
     if (!fromCard || !toCard) continue
     if (!pushEdge(fromCard.card.uuid, toCard.card.uuid)) continue
@@ -720,6 +745,7 @@ export const KIND_TONE: Record<GNodeKind, string> = {
   superdoc: 'border-violet-500/30 bg-violet-500/[0.06]',
   video: 'border-cyan-500/30 bg-cyan-500/[0.06]',
   project: 'border-teal-500/30 bg-teal-500/[0.06]',
+  file: 'border-blue-500/30 bg-blue-500/[0.06]',
 }
 
 export const KIND_BADGE: Record<GNodeKind, string> = {
@@ -731,6 +757,7 @@ export const KIND_BADGE: Record<GNodeKind, string> = {
   superdoc: 'bg-violet-500/15 text-violet-700 dark:text-violet-300',
   video: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300',
   project: 'bg-teal-500/15 text-teal-700 dark:text-teal-300',
+  file: 'bg-blue-500/15 text-blue-700 dark:text-blue-300',
 }
 
 /** 目标项圆点与它的连线只用这一个颜色：颜色在图上只承载一个含义「来自某条目标项」 */

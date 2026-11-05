@@ -32,6 +32,7 @@ export type CanvasChannelProps = Pick<
   | 'onGenerateVideoDoc'
   | 'onSetProjectPath'
   | 'onOpenProjectFile'
+  | 'onBindFile'
 >
 
 export interface OutlineViewProps {

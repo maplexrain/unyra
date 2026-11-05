@@ -165,6 +165,7 @@ import ExamCopyView from './ExamCopyView'
 import { OutlinePane } from './workspace/OutlinePane'
 import StructOverlay from './workspace/StructOverlay'
 import { NodeService, docIdOfOutlineUuid, type GNodeKind } from '../../learn/nodeKinds'
+import type { FileNodeKind } from '../../learn/types'
 import { noteEntityOf } from './workspace/panes'
 import { pruneImages } from '../../learn/images'
 import { queueOf, shouldEnqueue } from '../../learn/agentQueue'
@@ -4243,7 +4244,8 @@ export default function LearnWorkspace({
   )
 
   const canvasCreateNode = useCallback(
-    (kind: GNodeKind, under: string | null) => makeNodeService().create({ kind, ...(under ? { under } : {}) }),
+    (kind: GNodeKind, under: string | null, _pos?: { x: number; y: number }, extra?: Record<string, unknown>) =>
+      makeNodeService().create({ kind, ...(under ? { under } : {}), ...(extra ?? {}) }),
     [makeNodeService],
   )
 
@@ -4504,6 +4506,11 @@ export default function LearnWorkspace({
       onOpenProjectFile: (absPath: string) => {
         const name = absPath.split(/[\\/]/).pop() || absPath
         openTab({ kind: 'local', path: absPath, title: name })
+      },
+      onBindFile: (nodeUuid: string, patch: { fileKind?: FileNodeKind; url?: string; title?: string }) => {
+        const node = makeNodeService().get(nodeUuid)
+        if (!node || node.kind !== 'file') return { error: '这个文件节点已经不在了' }
+        return node.editContent(patch)
       },
       onOpenVideo: (videoId: string) => openTab({ kind: 'video', videoId }),
       onGenerateVideoDoc: (videoNodeUuid: string) => startVideoOverview(videoNodeUuid),

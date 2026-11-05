@@ -26,6 +26,7 @@ import type {
   SuperDocFile,
   TmpEntry,
   VideoNodeEntity,
+  FileNodeEntity,
 } from './types'
 import type { Exam } from './exam'
 import type { Conversation } from '../agent/types'
@@ -53,6 +54,7 @@ export type ExplorerUndo =
       conversations: Conversation[]
       /** 只在删目标是根时才捕获：那个目标的视频节点（绑定行，恢复时接回 + 重建资源镜像） */
       videoNodes?: VideoNodeEntity[]
+      fileNodes?: FileNodeEntity[]
       tmp: Record<string, Record<string, TmpEntry>>
     }
   | { kind: 'note'; label: string; nodeId: string; note: NoteFile }
@@ -88,6 +90,7 @@ export function captureNodeDelete(store: LearnStore, nodeId: string): ExplorerUn
       goal,
       conversations: store.conversations.filter((c) => c.goalId === goal.id),
       videoNodes: (store.videoNodes ?? []).filter((v) => v.goalId === goal.id),
+      fileNodes: (store.fileNodes ?? []).filter((f) => f.goalId === goal.id),
       tmp,
     }
   }
@@ -175,6 +178,10 @@ export function applyUndo(store: LearnStore, entry: ExplorerUndo): { store: Lear
     if (entry.videoNodes?.length) {
       const back = entry.videoNodes.filter((v) => !(s.videoNodes ?? []).some((x) => x.id === v.id))
       if (back.length) next = withVideoMirror({ ...next, videoNodes: [...(next.videoNodes ?? []), ...back] })
+    }
+    if (entry.fileNodes?.length) {
+      const back = entry.fileNodes.filter((f) => !(s.fileNodes ?? []).some((x) => x.id === f.id))
+      if (back.length) next = { ...next, fileNodes: [...(next.fileNodes ?? []), ...back] }
     }
     // 节点带回来的挂件以节点记录里的那份为准：游离池里的孤儿副本（删除时挪进去的）清掉
     const restoredIds = new Set(

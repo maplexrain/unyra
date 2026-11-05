@@ -74,7 +74,7 @@ describe('StructureCanvas 节点宇宙 UI 优化测试', () => {
 
     // 2. 验证各个项目只显示图标，不显示常驻的类型 label，而是在 hover tip 中向下弹出
     const items = palette?.querySelectorAll('[data-palette-kind]')
-    expect(items?.length).toBe(7)
+    expect(items?.length).toBe(8)
 
     items?.forEach((item) => {
       // 包含图标

@@ -5,7 +5,7 @@
  * 实体要么在宿主文档的记录里（绑定），要么在游离池里（剪了线 / 还没绑过）——
  * 两种状态内容读写完全一样，绑定的只是那条关系线。
  */
-import { renameNoteFile, writeNote, removeEdge } from '../graph'
+import { renameNoteFile, writeNote, removeEdge, addEdge } from '../graph'
 import { detachNote } from '../detached'
 import { notesOf } from '../notes'
 import type { KnowledgeNode, NoteFile } from '../types'
@@ -55,6 +55,8 @@ export class NoteGNode extends GNode {
     for (const edge of this.ctx.store().edges) {
       if (edge.to === this.uuid) {
         out.push({ id: edge.from, type: 'up' })
+      } else if (edge.from === this.uuid) {
+        out.push({ id: edge.to, type: 'down' })
       }
     }
     return out
@@ -126,8 +128,8 @@ export class NoteGNode extends GNode {
   }
 
   onUpstream(node: GNode): ConnectFilter {
-    if (node.kind !== 'doc' && node.kind !== 'exam' && node.kind !== 'superdoc') {
-      return '笔记只能挂在文档、试卷或超级文档之下'
+    if (node.kind !== 'doc' && node.kind !== 'exam' && node.kind !== 'superdoc' && node.kind !== 'file') {
+      return '笔记只能挂在文档、试卷、超级文档或文件节点之下'
     }
     const upRelations = this.relations.filter((r) => r.type === 'up')
     if (upRelations.length > 0 && !upRelations.some((r) => r.id === node.uuid)) {
@@ -139,10 +141,31 @@ export class NoteGNode extends GNode {
     return true
   }
 
+  onDownstream(node: GNode): ConnectFilter {
+    if (node.kind === 'file') return true
+    return '笔记节点只支持连接文件节点作为下游'
+  }
+
+  protected link(down: GNode): NodeResult {
+    if (down.kind !== 'file') return { error: '笔记节点的下级连接只能为文件节点' }
+    const s = this.ctx.store()
+    const r = addEdge(s, this.uuid, down.uuid)
+    if (!r.added) return { error: r.reason ?? '连接失败' }
+    this.ctx.commit(r.store)
+    return { ok: true, note: '已把文件「' + down.title + '」作为下级连接到笔记「' + this.title + '」' }
+  }
+
   /** 摘线 = 解绑：实体挪进游离池，内容原样保留，随时可以绑到别的文档 */
   protected unlink(target?: GNode): NodeResult {
     const s = this.ctx.store()
     if (target) {
+      if (target.kind === 'file') {
+        const edge = s.edges.find((e) => (e.from === this.uuid && e.to === target.uuid) || (e.to === this.uuid && e.from === target.uuid))
+        if (edge) {
+          this.ctx.commit(removeEdge(s, edge.from, edge.to))
+          return { ok: true, note: '已断开与文件「' + target.title + '」的连接' }
+        }
+      }
       if (s.edges.some((e) => e.from === target.uuid && e.to === this.uuid)) {
         this.ctx.commit(removeEdge(s, target.uuid, this.uuid))
         return { ok: true, note: '已断开与「' + target.title + '」的连接' }

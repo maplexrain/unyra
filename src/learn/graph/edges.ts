@@ -161,6 +161,7 @@ function memberExists(store: LearnStore, member: string): boolean {
       !!nodeById(store, member) ||
       (store.videoNodes ?? []).some((v) => v.id === member) ||
       (store.projects ?? []).some((p) => p.id === member) ||
+      (store.fileNodes ?? []).some((f) => f.id === member) ||
       (store.exams ?? []).some((e) => e.id === member) ||
       findSuperDocEntity(store, member) !== null ||
       findNoteEntity(store, member) !== null
