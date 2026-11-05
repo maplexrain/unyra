@@ -5,7 +5,7 @@
  * 实体要么在宿主文档的记录里（绑定），要么在游离池里（剪了线 / 还没绑过）——
  * 两种状态内容读写完全一样，绑定的只是那条关系线。
  */
-import { renameNoteFile, writeNote } from '../graph'
+import { renameNoteFile, writeNote, removeEdge } from '../graph'
 import { detachNote } from '../detached'
 import { notesOf } from '../notes'
 import type { KnowledgeNode, NoteFile } from '../types'
@@ -48,7 +48,16 @@ export class NoteGNode extends GNode {
 
   get relations(): NodeRelation[] {
     const found = this.locate()
-    return found?.node ? [{ id: found.node.id, type: 'up' }] : []
+    const out: NodeRelation[] = []
+    if (found?.node) {
+      out.push({ id: found.node.id, type: 'up' })
+    }
+    for (const edge of this.ctx.store().edges) {
+      if (edge.to === this.uuid) {
+        out.push({ id: edge.from, type: 'up' })
+      }
+    }
+    return out
   }
 
   get content(): unknown {
@@ -117,15 +126,52 @@ export class NoteGNode extends GNode {
   }
 
   onUpstream(node: GNode): ConnectFilter {
-    if (node.kind !== 'doc') return '笔记只能挂在文档之下'
+    if (node.kind !== 'doc' && node.kind !== 'exam' && node.kind !== 'superdoc') {
+      return '笔记只能挂在文档、试卷或超级文档之下'
+    }
+    const upRelations = this.relations.filter((r) => r.type === 'up')
+    if (upRelations.length > 0 && !upRelations.some((r) => r.id === node.uuid)) {
+      const hasEdgeUp = this.ctx.store().edges.some((e) => e.to === this.uuid)
+      if (node.kind !== 'doc' || hasEdgeUp) {
+        return '笔记只能有一个上级节点'
+      }
+    }
     return true
   }
 
   /** 摘线 = 解绑：实体挪进游离池，内容原样保留，随时可以绑到别的文档 */
-  protected unlink(): NodeResult {
-    const r = detachNote(this.ctx.store(), this.uuid)
-    if ('error' in r) return { error: r.error }
-    this.ctx.commit(r.store)
-    return { ok: true, note: '已解开「' + this.title + '」的绑定：它现在是独立的笔记（内容原样保留），可以拖线绑到别的文档' }
+  protected unlink(target?: GNode): NodeResult {
+    const s = this.ctx.store()
+    if (target) {
+      if (s.edges.some((e) => e.from === target.uuid && e.to === this.uuid)) {
+        this.ctx.commit(removeEdge(s, target.uuid, this.uuid))
+        return { ok: true, note: '已断开与「' + target.title + '」的连接' }
+      }
+      const found = this.locate()
+      if (found?.node && found.node.id === target.uuid) {
+        const r = detachNote(s, this.uuid)
+        if ('error' in r) return { error: r.error }
+        this.ctx.commit(r.store)
+        return { ok: true, note: '已解开「' + this.title + '」的绑定：它现在是独立的笔记（内容原样保留），可以拖线绑到别的文档' }
+      }
+    }
+    let nextStore = s
+    let changed = false
+    if (s.edges.some((e) => e.to === this.uuid)) {
+      nextStore = { ...nextStore, edges: nextStore.edges.filter((e) => e.to !== this.uuid) }
+      changed = true
+    }
+    const found = this.locate()
+    if (found?.node) {
+      const r = detachNote(nextStore, this.uuid)
+      if ('error' in r) return { error: r.error }
+      nextStore = r.store
+      changed = true
+    }
+    if (changed) {
+      this.ctx.commit(nextStore)
+      return { ok: true, note: '已解开「' + this.title + '」的绑定：它现在是独立的笔记（内容原样保留），可以拖线绑到别的文档' }
+    }
+    return { error: '这份笔记本来就是游离的，没有线可摘' }
   }
 }

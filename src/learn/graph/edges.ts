@@ -3,6 +3,7 @@
  */
 import type { DependencyEdge, KnowledgeNode, LearnStore } from '../types'
 import { nodeById } from './lookup'
+import { findNoteEntity, findSuperDocEntity } from '../detached'
 
 /**
  * 邻接索引：`from → to`（前置）与 `to → from`（父）两个方向各一张表。
@@ -159,7 +160,10 @@ function memberExists(store: LearnStore, member: string): boolean {
     return (
       !!nodeById(store, member) ||
       (store.videoNodes ?? []).some((v) => v.id === member) ||
-      (store.projects ?? []).some((p) => p.id === member)
+      (store.projects ?? []).some((p) => p.id === member) ||
+      (store.exams ?? []).some((e) => e.id === member) ||
+      findSuperDocEntity(store, member) !== null ||
+      findNoteEntity(store, member) !== null
     )
   }
   const raw = member.slice(2)
@@ -179,6 +183,13 @@ export function addEdge(
   // 一个接口只认领一个下游：同一条上游上，portKey 已被别的下游占了就拒绝（带上原因，别让调用方猜）
   if (portKey && store.edges.some((e) => e.from === from && e.portKey === portKey && e.to !== to)) {
     return { store, added: false, reason: '接口「' + portKey + '」已经被另一个下游认领了（一个接口只认领一个下游）' }
+  }
+  // 笔记只能有一个上级节点
+  const noteEntity = findNoteEntity(store, to)
+  if (noteEntity) {
+    if (noteEntity.hostId || store.edges.some((e) => e.to === to)) {
+      return { store, added: false, reason: '笔记只能有一个上级节点' }
+    }
   }
   const edge: DependencyEdge = { from, to, createdAt: Date.now(), ...(portKey ? { portKey } : {}) }
   return { store: { ...store, edges: [...store.edges, edge] }, added: true }

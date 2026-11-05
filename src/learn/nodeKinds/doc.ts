@@ -188,7 +188,14 @@ export class DocGNode extends GNode {
   }
 
   onDownstream(node: GNode): ConnectFilter {
-    if (node.kind === 'note' || node.kind === 'superdoc' || node.kind === 'exam' || node.kind === 'project') return true
+    if (node.kind === 'note') {
+      const hasEdgeUp = this.ctx.store().edges.some((e) => e.to === node.uuid)
+      if (hasEdgeUp) {
+        return '笔记只能有一个上级节点'
+      }
+      return true
+    }
+    if (node.kind === 'superdoc' || node.kind === 'exam' || node.kind === 'project') return true
     if (node.kind === 'outline') return '大纲与文档一一对应（o: 就是这份文档的 id），由创建 / 删除大纲管理，不能手工连'
     return '这种节点不能挂到文档之下（能挂的：笔记 / 试卷 / 超级文档 / 项目 / 下级文档走大纲）'
   }

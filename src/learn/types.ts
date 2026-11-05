@@ -517,6 +517,8 @@ export interface LearnTab {
    */
   view?: DocView
   createdAt: number
+  /** 是否固定标签页：固定tab永远显示在最前面，不受tab栏滚动和非直接关闭影响 */
+  pinned?: boolean
 }
 
 /**

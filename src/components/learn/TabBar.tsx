@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { BookOpen, CornerDownRight, CornerLeftUp, FileText, FileX, FoldHorizontal, Globe, OctagonX, Plus, Star, Unlink, Volume2, VolumeX, X } from 'lucide-react'
+import { BookOpen, CornerDownRight, CornerLeftUp, FileText, FileX, FoldHorizontal, Globe, OctagonX, Pin, PinOff, Plus, Star, Unlink, Volume2, VolumeX, X } from 'lucide-react'
 import { DocTypeIcon, WebTabTypeIcon } from './docTypes'
 import type { DependencyEdge, LearnStore, LearnTab, TabRef, WebTabMeta } from '../../learn/types'
-import { TAB_CLOSE_LABEL, dragSlotDelta, isBlankTab, isDocumentTab, isPdfFile, tabNodeId, type TabCloseMode } from '../../learn/tabs'
+import { TAB_CLOSE_LABEL, dragSlotDelta, isBlankTab, isDocumentTab, isPdfFile, isTabPinned, tabNodeId, type TabCloseMode } from '../../learn/tabs'
 import { setTabMarkHandlers } from '../../lib/tabMark'
 import { docChipDrop, docChipHover, type ChipPayload } from '../../lib/docChip'
 import { CHIP_MIME, parseChipJson } from '../../lib/chipSyntax'
@@ -97,6 +97,8 @@ interface Props {
    */
   favoriteOf?: (ref: TabRef) => boolean
   onToggleFavorite?: (tab: LearnTab) => void
+  /** 固定/取消固定页签 */
+  onTogglePin?: (tab: LearnTab) => void
   /**
    * 右键点在**栏上空白处**（不是任何一枚页签）时的菜单要的两件事：
    * 开一个新的浏览器页签，以及把这一格的页签全部关掉。不给就没有这张菜单。
@@ -498,7 +500,8 @@ interface TabRect {
 
 interface DragState {
   id: string
-  /** 拖动开始时它在列表里的位置 */
+  isPinned: boolean
+  /** 拖动开始时它在对应列表（固定或非固定）里的位置 */
   from: number
   /** 此刻它应该落到哪个位置（把其余页签按原位置的中点一分为二算出来的） */
   to: number
@@ -528,6 +531,7 @@ export default function TabBar({
   onDropChip,
   favoriteOf,
   onToggleFavorite,
+  onTogglePin,
   onOpenWebTab,
   onNewTab,
   focused = false,
@@ -543,6 +547,9 @@ export default function TabBar({
    * 别的逻辑（菜单、拖动落点）仍旧只认活的 `tabs`。
    */
   const presence = useTabPresence(tabs, tabIdOf, TAB_EXIT_MS)
+  const pinnedPresence = useMemo(() => presence.filter((p) => isTabPinned(p.item)), [presence])
+  const normalPresence = useMemo(() => presence.filter((p) => !isTabPinned(p.item)), [presence])
+  const pinnedStripRef = useRef<HTMLDivElement | null>(null)
   const activeBaseNodeId = activeTab ? tabNodeId(activeTab.ref) : null
   const edges = store?.edges
 
@@ -611,6 +618,7 @@ export default function TabBar({
   const raf = useRef(0)
   const dragRef = useRef<{
     id: string
+    isPinned: boolean
     from: number
     startX: number
     width: number
@@ -722,17 +730,18 @@ export default function TabBar({
    * 指针捕获挂在页签自己身上：手指/鼠标划到栏外面（甚至划过视图开关）时，
    * 事件仍然回到这一条上，拖动不会因为划出去而断掉。
    */
-  const onTabDown = (e: React.PointerEvent<HTMLDivElement>, id: string, from: number) => {
+  const onTabDown = (e: React.PointerEvent<HTMLDivElement>, id: string, from: number, isPinned: boolean) => {
     if (e.button !== 0) return
     const el = e.currentTarget
-    const strip = stripRef.current
-    const rects: TabRect[] = [...(strip?.querySelectorAll<HTMLElement>('[data-tab]') ?? [])].map((node) => {
+    const container = isPinned ? pinnedStripRef.current : stripRef.current
+    const rects: TabRect[] = [...(container?.querySelectorAll<HTMLElement>('[data-tab]') ?? [])].map((node) => {
       const r = node.getBoundingClientRect()
       return { id: node.dataset.tab ?? '', left: r.left, width: r.width }
     })
     justDragged.current = false
     dragRef.current = {
       id,
+      isPinned,
       from,
       startX: e.clientX,
       width: el.getBoundingClientRect().width,
@@ -764,17 +773,17 @@ export default function TabBar({
      * ——一枚一模一样的影子跟着指针满窗口走，栏里那枚退成淡淡的占位。
      * 出栏的判定留 LIFT_PAD 的余量防抖，回栏的判定不留（回得更紧）：在边界上抖动不会来回闪。
      */
-    const strip = stripRef.current
-    const inStrip = (() => {
-      if (!strip) return false
-      const r = strip.getBoundingClientRect()
+    const root = rootRef.current
+    const inBar = (() => {
+      if (!root) return false
+      const r = root.getBoundingClientRect()
       return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
     })()
     const lifted = d.lifted
-      ? !inStrip
+      ? !inBar
       : (() => {
-          if (inStrip || !strip) return false
-          const r = strip.getBoundingClientRect()
+          if (inBar || !root) return false
+          const r = root.getBoundingClientRect()
           return (
             e.clientX < r.left ||
             e.clientX > r.right ||
@@ -814,7 +823,7 @@ export default function TabBar({
       setDrag((cur) =>
         cur && cur.id === d.id && cur.lifted
           ? cur
-          : { id: d.id, from: d.from, to: d.from, dx: 0, width: d.width, lifted: true },
+          : { id: d.id, isPinned: d.isPinned, from: d.from, to: d.from, dx: 0, width: d.width, lifted: true },
       )
     } else {
       // 落点 = 指针越过了其余页签里多少个的中点。被拖的那个自己不参与比较
@@ -825,7 +834,7 @@ export default function TabBar({
       }
       d.to = to
       d.dx = dx
-      setDrag({ id: d.id, from: d.from, to, dx, width: d.width, lifted: false })
+      setDrag({ id: d.id, isPinned: d.isPinned, from: d.from, to, dx, width: d.width, lifted: false })
     }
     // 报给上层：它据此判断「指针现在落在哪一格的哪一条边上」（见 onDrop 与 LearnWorkspace）
     onDragMove(d.id, e.clientX, e.clientY)
@@ -846,17 +855,25 @@ export default function TabBar({
      * 正在退场的那一枚还占着位置，算进去才不会错开一格。
      * 写回之前再把退场中的摘掉——它们下一帧就没了，不该被记进 state.json。
      */
-    const shown = presence.map((p) => p.key)
+    const pinnedShown = pinnedPresence.map((p) => p.key)
+    const normalShown = normalPresence.map((p) => p.key)
     const alive = new Set(presence.filter((p) => !p.leaving).map((p) => p.key))
-    // 影子模式下不存在「栏内落点」：松手要么被输入框/别的格接走，要么取消回原位
-    let order = shown
+    let orderPinned = pinnedShown
+    let orderNormal = normalShown
     if (commit && !d.lifted && d.to !== d.from) {
-      const next = [...shown]
-      const [moved] = next.splice(d.from, 1)
-      next.splice(d.to, 0, moved)
-      order = next
+      if (d.isPinned) {
+        const next = [...pinnedShown]
+        const [moved] = next.splice(d.from, 1)
+        next.splice(d.to, 0, moved)
+        orderPinned = next
+      } else {
+        const next = [...normalShown]
+        const [moved] = next.splice(d.from, 1)
+        next.splice(d.to, 0, moved)
+        orderNormal = next
+      }
     }
-    const ids = order.filter((id) => alive.has(id))
+    const ids = [...orderPinned, ...orderNormal].filter((id) => alive.has(id))
     /*
      * 先问对话输入框：页签落在输入卡片上 = 把这份文档交给导师（变成一枚引用）。
      * 接住了就到此为止——这不是排序也不是分屏，本栏什么都不用做。
@@ -914,12 +931,24 @@ export default function TabBar({
    */
   const measureMark = useCallback(() => {
     const root = rootRef.current
-    const strip = stripRef.current
-    const el = strip?.querySelector<HTMLElement>('[data-tab="' + activeId + '"]')
-    if (!root || !strip || !el) return
-    const left = strip.offsetLeft + el.offsetLeft - strip.scrollLeft + el.offsetWidth / 2
+    if (!root) return
+    const el = root.querySelector<HTMLElement>('[data-tab="' + activeId + '"]')
+    if (!el) return
+    const rootRect = root.getBoundingClientRect()
+    const elRect = el.getBoundingClientRect()
+    const left = elRect.left - rootRect.left + elRect.width / 2
     if (markRef.current) markRef.current.style.left = left + 'px'
   }, [activeId])
+
+  useEffect(() => {
+    const el = stripRef.current
+    if (!el) return
+    const onScroll = () => {
+      measureMark()
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [measureMark])
 
   // 换页签、增删页签、拖完排序之后都要重量一次。
   // 通过 requestAnimationFrame 调度，避免在 React 提交 DOM 后同步读取几何属性引发 110ms 强制全树重排（Layout Thrashing）
@@ -973,7 +1002,7 @@ export default function TabBar({
        * 激活的页签和棱形画的位置就是两回事。
        */
       const markX = rr.left + left
-      for (const node of strip.querySelectorAll<HTMLElement>('[data-tab]')) {
+      for (const node of root.querySelectorAll<HTMLElement>('[data-tab]')) {
         const r = node.getBoundingClientRect()
         if (markX < r.left || markX > r.right) continue
         const id = node.dataset.tab
@@ -1028,22 +1057,200 @@ export default function TabBar({
     endMarkSession()
   }
 
-  const shiftOf = (i: number): number => {
-    if (!drag) return 0
+  const shiftOf = (i: number, isItemPinned: boolean): number => {
+    if (!drag || drag.isPinned !== isItemPinned) return 0
     const step = drag.width + TAB_GAP
     if (drag.to > drag.from && i > drag.from && i <= drag.to) return -step
     if (drag.to < drag.from && i >= drag.to && i < drag.from) return step
     return 0
   }
 
+  const renderTab = (
+    { item: tab, leaving, exiting, entering }: (typeof presence)[0],
+    i: number,
+    isPinned: boolean,
+  ) => {
+    const on = tab.id === activeId
+    const wmeta = webMetaOf?.(tab)
+    const struct = tab.ref.kind === 'outline'
+    const realTitle = titleOf(tab.ref)
+    const title = struct ? t('结构') : ((tab.ref.kind === 'web' ? wmeta?.title : undefined) ?? realTitle)
+    const trail = struct ? '' : (trailOf?.(tab.ref) ?? '')
+    const dragging = drag?.id === tab.id
+    const settling = settle?.id === tab.id
+    const dirty = unsaved.has(tab.id)
+    const lifted = dragging && !!drag?.lifted
+    const blank = isBlankTab(tab)
+    const idleBlank = blank && !on && !dragging && !settling && !exiting
+    const shift = shiftOf(i, isPinned)
+    const offset = dragging && !lifted ? drag.dx : settling ? settle.offset : shift
+
+    const relation = tabRelationMap.get(tab.id) ?? { kind: 'none', depth: 0 }
+    const relationCls =
+      relation.kind === 'same-node'
+        ? 'border-transparent bg-sky-500/[0.04] hover:bg-sky-500/[0.08] dark:bg-sky-400/[0.03] dark:hover:bg-sky-400/[0.06] text-ink-soft hover:text-ink '
+        : relation.kind === 'parent'
+          ? 'border-transparent bg-amber-500/[0.04] hover:bg-amber-500/[0.08] dark:bg-amber-400/[0.03] dark:hover:bg-amber-400/[0.06] text-ink-soft hover:text-ink '
+          : relation.kind === 'child'
+            ? 'border-transparent bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08] dark:bg-emerald-400/[0.03] dark:hover:bg-emerald-400/[0.06] text-ink-soft hover:text-ink '
+            : ''
+
+    const relationTooltip =
+      activeTab && relation.kind === 'parent'
+        ? relation.depth === 1
+          ? t('（父节点文档，属于「{0}」）', activeTabTitle)
+          : relation.depth === 2
+            ? t('（祖父节点文档，属于「{0}」）', activeTabTitle)
+            : relation.depth === 3
+              ? t('（曾祖节点文档，属于「{0}」）', activeTabTitle)
+              : t('（上位第 {0} 级节点文档，属于「{1}」）', relation.depth, activeTabTitle)
+        : activeTab && relation.kind === 'child'
+          ? relation.depth === 1
+            ? t('（子节点文档，属于「{0}」）', activeTabTitle)
+            : relation.depth === 2
+              ? t('（孙节点文档，属于「{0}」）', activeTabTitle)
+              : relation.depth === 3
+                ? t('（曾孙节点文档，属于「{0}」）', activeTabTitle)
+                : t('（下位第 {0} 级节点文档，属于「{1}」）', relation.depth, activeTabTitle)
+          : activeTab && relation.kind === 'same-node'
+            ? t('（同属节点「{0}」）', activeTabTitle)
+            : ''
+
+    const cls =
+      'moji-tab group relative flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] ' +
+      (struct ? 'min-w-0 ' : isPinned ? 'min-w-0 max-w-[180px] ' : 'min-w-[120px] max-w-[220px] ') +
+      (on ? 'moji-tab-flare z-10 font-medium ' : '') +
+      (dragging || settling
+        ? 'z-10 cursor-grabbing border-line-strong bg-card text-ink-strong shadow-md'
+        : struct
+          ? on
+            ? 'border-line-strong bg-card moji-tab-struct'
+            : 'border-transparent moji-tab-struct hover:bg-line/50'
+          : (relationCls ||
+              (on
+                ? 'border-line-strong bg-card text-ink-strong'
+                : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink'))) +
+      (lifted ? ' opacity-40' : '') +
+      (entering ? ' moji-tab-in' : '') +
+      (exiting ? ' moji-tab-out' : '') +
+      (idleBlank ? ' moji-tab-attn' : '')
+
+    return (
+      <div
+        key={tab.id}
+        data-tab={tab.id}
+        role="tab"
+        aria-selected={on}
+        {...(leaving ? { inert: true } : { tabIndex: 0 })}
+        title={
+          (struct ? realTitle : trail ? trail + ' · ' + title : title) +
+          (isPinned ? t('（已固定）') : '') +
+          relationTooltip +
+          (blank ? t('（空白页签：还没有打开任何文档）') : '') +
+          (dirty ? t('（有未保存的改动，Ctrl+S 保存）') : '')
+        }
+        onClick={() => {
+          if (justDragged.current) return
+          onActivate(tab.id)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onActivate(tab.id)
+        }}
+        onPointerDown={(e) => onTabDown(e, tab.id, i, isPinned)}
+        onPointerMove={(e) => onTabMove(e, tab.id)}
+        onPointerUp={(e) => endDrag(true, e.clientX, e.clientY)}
+        onPointerCancel={() => endDrag(false)}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setMenu({ x: e.clientX, y: e.clientY, id: tab.id })
+        }}
+        style={{ transform: offset ? 'translateX(' + offset + 'px)' : undefined }}
+        className={cls}
+      >
+        {isTeachDocTab(tab.ref) && relation.kind === 'parent' ? (
+          <div
+            className="flex h-4 w-4 shrink-0 items-center justify-center text-amber-500/80 dark:text-amber-400/80"
+            title={
+              relation.depth === 1
+                ? t('父级知识点文档')
+                : relation.depth === 2
+                  ? t('祖父级知识点文档')
+                  : relation.depth === 3
+                    ? t('曾祖级知识点文档')
+                    : t('上位第 {0} 级祖先文档', relation.depth)
+            }
+          >
+            <StackedChevron
+              direction="up"
+              count={relation.depth}
+              className="h-3.5 w-3.5 shrink-0"
+            />
+          </div>
+        ) : isTeachDocTab(tab.ref) && relation.kind === 'child' ? (
+          <div
+            className="flex h-4 w-4 shrink-0 items-center justify-center text-emerald-500/80 dark:text-emerald-400/80"
+            title={
+              relation.depth === 1
+                ? t('下级子知识点文档')
+                : relation.depth === 2
+                  ? t('孙级知识点文档')
+                  : relation.depth === 3
+                    ? t('曾孙级知识点文档')
+                    : t('下位第 {0} 级子孙文档', relation.depth)
+            }
+          >
+            <StackedChevron
+              direction="down"
+              count={relation.depth}
+              className="h-3.5 w-3.5 shrink-0"
+            />
+          </div>
+        ) : (
+          <TabTypeIcon
+            tab={tab.ref}
+            favicon={tab.ref.kind === 'web' ? wmeta?.favicon : undefined}
+            loading={wmeta?.loading}
+          />
+        )}
+        <span className="flex min-w-0 flex-1 justify-center">
+          {trail && <span className="min-w-0 truncate text-ink-faint">{trail} · </span>}
+          <span className="min-w-0 truncate">{title}</span>
+        </span>
+        {tab.ref.kind === 'video' && <VideoAudioButton tabId={tab.id} />}
+        <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
+          {isPinned && !dirty && (
+            <span
+              aria-hidden="true"
+              title={t('已固定')}
+              className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-seal/80 transition-opacity group-hover:opacity-0"
+            >
+              <Pin size={11} className="rotate-45" />
+            </span>
+          )}
+          <button
+            type="button"
+            title={t('关闭')}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onClose(tab.id, 'self')
+            }}
+            className={'flex h-4 w-4 items-center justify-center rounded opacity-0 transition focus-visible:opacity-100 group-hover:opacity-70 hover:bg-line-strong/60'}
+          >
+            <X size={11} />
+          </button>
+          {dirty && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute left-1/2 top-1/2 h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-seal/80 transition-opacity group-hover:opacity-0"
+            />
+          )}
+        </span>
+      </div>
+    )
+  }
+
   return (
-    /*
-     * 这一条栏与下面的正文之间画**一道下边框**（见末尾那条线，粗细颜色与页签描边一致），
-     * 页签自己带边、选中的还有底色——线上被选中那一截由页签自己的背景盖掉（z-10），
-     * 于是它看起来是从正文里长出来的，而不是浮在一条线上面。
-     * 一个页签都没有（栏「收起」）时：线与底色都不画——空栏不该看着像一条空工具带。
-     * moji-tab-snap：落下那一帧不许补间（见 snap）。
-     */
     <div
       ref={rootRef}
       onPointerDown={onMarkDown}
@@ -1051,7 +1258,6 @@ export default function TabBar({
       onPointerUp={onMarkUp}
       onPointerCancel={onMarkUp}
       onContextMenuCapture={(e) => {
-        // 刚用右键拖过棱形：这一下 contextmenu 是那趟拖动的尾巴，别弹菜单
         if (!swallowMenu.current) return
         swallowMenu.current = false
         e.preventDefault()
@@ -1059,17 +1265,10 @@ export default function TabBar({
       }}
       className={
         'no-print relative flex shrink-0 items-stretch gap-2 pt-1.5 pb-0 ' +
-        // 用 presence（含正在退场的那一枚）而不是 tabs：最后一枚关掉时，
-        // 栏的底色要跟着它一起走，不然底色先没、页签还浮在半空
         (presence.length ? 'bg-paper/40' : '') +
         (snap ? ' moji-tab-snap' : '')
       }
     >
-      {/*
-        栏顶边上那颗**棱形**（用户定的）：停在哪一个页签的正上方，就表示「现在读的是它」。
-        右键按住它左右拖 = 换页签——这件事原来靠在正文里右键横拖，那个手势既看不见、
-        又和「右键菜单」抢同一颗键。位置由 measureMark 与拖动时直接写 DOM 来管（见上）。
-      */}
       {presence.length > 0 && (
         <span
           ref={markRef}
@@ -1077,7 +1276,30 @@ export default function TabBar({
           className="pointer-events-none absolute -top-[6px] left-0 z-20 h-2.5 w-2.5 -translate-x-1/2 rotate-45 rounded-[2px] border border-seal/70 bg-seal/80 shadow-sm"
         />
       )}
-      {/* 页签条：横向滚动，滚动条藏起来（页签自己会跟着激活项滚） */}
+
+      {/* 固定页签区域：常驻在最左侧，脱离水平滚动条 */}
+      {pinnedPresence.length > 0 && (
+        <div
+          ref={pinnedStripRef}
+          onContextMenu={(e) => {
+            if ((e.target as HTMLElement).closest('[data-tab]')) return
+            e.preventDefault()
+            setBarMenu({ x: e.clientX, y: e.clientY })
+          }}
+          className="flex shrink-0 items-end gap-[3px] pl-2"
+        >
+          {pinnedPresence.map((p, i) => renderTab(p, i, true))}
+        </div>
+      )}
+
+      {/* 固定页签与普通滚动页签之间的轻质分隔线 */}
+      {pinnedPresence.length > 0 && (
+        <div className="flex shrink-0 items-center px-0.5 pb-1 self-stretch">
+          <span aria-hidden="true" className="h-4 w-px bg-line-strong/60" />
+        </div>
+      )}
+
+      {/* 普通页签条：横向滚动，滚动条藏起来 */}
       <div
         ref={(el) => {
           stripRef.current = el
@@ -1096,7 +1318,6 @@ export default function TabBar({
           if (p) onDropChip(p)
         }}
         onContextMenu={(e) => {
-          // 落在某枚页签上的右键归页签自己的菜单（那里已经 preventDefault 过了）
           if ((e.target as HTMLElement).closest('[data-tab]')) return
           e.preventDefault()
           setBarMenu({ x: e.clientX, y: e.clientY })
@@ -1104,259 +1325,13 @@ export default function TabBar({
         style={{ maskImage: tabMask, WebkitMaskImage: tabMask }}
         className="moji-tab-strip flex min-w-0 flex-1 items-end gap-[3px] overflow-x-auto px-2"
       >
-        {presence.map(({ item: tab, leaving, exiting, entering }, i) => {
-          const on = tab.id === activeId
-          const wmeta = webMetaOf?.(tab)
-          /*
-           * 节点宇宙页签（kind 'outline'）特殊打扮（用户定的）：标题只显示「结构」两个字、
-           * 不设最小宽——它是一扇看整张图的窗，不是某一份文档，不该占一排页签的宽度；
-           * 颜色用紫罗兰，与文档类页签一眼分开。悬停 tooltip 仍给全名（节点标题 · 结构），
-           * 认得出它属于哪个节点。
-           */
-          const struct = tab.ref.kind === 'outline'
-          const realTitle = titleOf(tab.ref)
-          const title = struct ? t('结构') : ((tab.ref.kind === 'web' ? wmeta?.title : undefined) ?? realTitle)
-          // 重名时才有：「路径 · 标题」，平时一条路径都不显示（见 Props.trailOf）
-          const trail = struct ? '' : (trailOf?.(tab.ref) ?? '')
-          const dragging = drag?.id === tab.id
-          const settling = settle?.id === tab.id
-          const dirty = unsaved.has(tab.id)
-          const lifted = dragging && !!drag?.lifted
-          /*
-           * 空白页签（保底的那一枚「新页签」）：它是一枚**页签**，不是新建按钮——
-           * 没被选中时给一圈缓慢呼吸的描边 + 图标微光（见 workspace.css 的 .moji-tab-attn），
-           * 提醒「这里还开着一个什么都没打开的页签」。选中它就没有提醒的必要了：
-           * 用户已经看着它了（那一页里写着怎么开始）。
-           */
-          const blank = isBlankTab(tab)
-          const idleBlank = blank && !on && !dragging && !settling && !exiting
-          const shift = shiftOf(i)
-          // 三种位移只会有一个生效：拖着的跟手（拖出栏后的影子模式里它留在槽位上）、
-          // 刚落下的在归位、其余在让位
-          const offset = dragging && !lifted ? drag.dx : settling ? settle.offset : shift
-
-          // O(1) 取出预先计算好的知识图谱关联，无需重复遍历图拓扑
-          const relation = tabRelationMap.get(tab.id) ?? { kind: 'none', depth: 0 }
-          const relationCls =
-            relation.kind === 'same-node'
-              ? 'border-transparent bg-sky-500/[0.04] hover:bg-sky-500/[0.08] dark:bg-sky-400/[0.03] dark:hover:bg-sky-400/[0.06] text-ink-soft hover:text-ink '
-              : relation.kind === 'parent'
-                ? 'border-transparent bg-amber-500/[0.04] hover:bg-amber-500/[0.08] dark:bg-amber-400/[0.03] dark:hover:bg-amber-400/[0.06] text-ink-soft hover:text-ink '
-                : relation.kind === 'child'
-                  ? 'border-transparent bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08] dark:bg-emerald-400/[0.03] dark:hover:bg-emerald-400/[0.06] text-ink-soft hover:text-ink '
-                  : ''
-
-          const relationTooltip =
-            activeTab && relation.kind === 'parent'
-              ? relation.depth === 1
-                ? t('（父节点文档，属于「{0}」）', activeTabTitle)
-                : relation.depth === 2
-                  ? t('（祖父节点文档，属于「{0}」）', activeTabTitle)
-                  : relation.depth === 3
-                    ? t('（曾祖节点文档，属于「{0}」）', activeTabTitle)
-                    : t('（上位第 {0} 级节点文档，属于「{1}」）', relation.depth, activeTabTitle)
-              : activeTab && relation.kind === 'child'
-                ? relation.depth === 1
-                  ? t('（子节点文档，属于「{0}」）', activeTabTitle)
-                  : relation.depth === 2
-                    ? t('（孙节点文档，属于「{0}」）', activeTabTitle)
-                    : relation.depth === 3
-                      ? t('（曾孙节点文档，属于「{0}」）', activeTabTitle)
-                      : t('（下位第 {0} 级节点文档，属于「{1}」）', relation.depth, activeTabTitle)
-                : activeTab && relation.kind === 'same-node'
-                  ? t('（同属节点「{0}」）', activeTabTitle)
-                  : ''
-
-          /*
-           * min-w：页签的宽度本来由标题撑开，短标题（「导数」两个字）就窄得只剩一个
-           * 可以点的小方块，一排页签看着也参差不齐。给它一个下限，短标题一样好按。
-           * 节点宇宙页签例外：它恒为「结构」两个字，要的就是窄（见上面 struct 的说明）。
-           *
-           * 字重（font-medium）只跟「是不是当前这一个」有关，**不跟拖动状态**：字重一变
-           * 宽度就跟着变几个像素，而让位的距离是按下那一刻量出来的——页签之间会对不齐。
-           * 「被拿起来了」这个观感由阴影 + 底色 + 描边给，够用了。
-           */
-          const cls =
-            'moji-tab group relative flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] ' +
-            (struct ? 'min-w-0 ' : 'min-w-[120px] max-w-[220px] ') +
-            (on ? 'moji-tab-flare z-10 font-medium ' : '') +
-            (dragging || settling
-              ? 'z-10 cursor-grabbing border-line-strong bg-card text-ink-strong shadow-md'
-              : struct
-                ? // 节点宇宙页签恒用主题现算色（moji-tab-struct：seal × ink 的哑光强调色，
-                  // 随主题变；不参与关联底色那套——它要的就是「与别的页签不一样」）
-                  on
-                  ? 'border-line-strong bg-card moji-tab-struct'
-                  : 'border-transparent moji-tab-struct hover:bg-line/50'
-                : (relationCls ||
-                    (on
-                      ? 'border-line-strong bg-card text-ink-strong'
-                      : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink'))) +
-            // 拖出栏后栏里这枚只剩个淡占位：正文跟着指针（影子）走了
-            (lifted ? ' opacity-40' : '') +
-            /*
-             * 进出场：新开的浮上来（moji-tab-in 是 animation，跟着 class 走，
-             * 所以这个 class 在整个动画期间都在——见 lib/tabPresence 的说明），
-             * 关掉的收拢淡出（moji-tab-out 是 transition，靠下一帧改宽度来补间）。
-             */
-            (entering ? ' moji-tab-in' : '') +
-            (exiting ? ' moji-tab-out' : '') +
-            (idleBlank ? ' moji-tab-attn' : '')
-          return (
-            <div
-              key={tab.id}
-              data-tab={tab.id}
-              role="tab"
-              aria-selected={on}
-              /*
-               * 正在退场的这一枚已经不算「栏上的一员」了：读屏与键盘都绕开它。
-               * 挂 inert，不挂 aria-hidden：点关闭键的那一下，焦点正停在这枚页签里头的
-               * 关闭键上——给「留住焦点的元素之祖先」挂 aria-hidden 会被浏览器拦下不生效
-               * （控制台报 Blocked aria-hidden…），读屏其实并没有绕开；而 inert 会把焦点
-               * 一并收走（落回 body；这枚节点再过百余毫秒本来就要被移除），
-               * 「绕开」这件事才落到实处。CSS 那边（.moji-tab-out）只管住了指针这一路。
-               */
-              {...(leaving ? { inert: true } : { tabIndex: 0 })}
-              // 未保存时顺带说一句：那颗圆点本身没有 tooltip（它是 aria-hidden 的装饰）
-              title={
-                (struct ? realTitle : trail ? trail + ' · ' + title : title) +
-                relationTooltip +
-                (blank ? t('（空白页签：还没有打开任何文档）') : '') +
-                (dirty ? t('（有未保存的改动，Ctrl+S 保存）') : '')
-              }
-              onClick={() => {
-                // 刚刚是在拖它：这一下不算「点开这个页签」
-                if (justDragged.current) return
-                onActivate(tab.id)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') onActivate(tab.id)
-              }}
-              onPointerDown={(e) => onTabDown(e, tab.id, i)}
-              onPointerMove={(e) => onTabMove(e, tab.id)}
-              onPointerUp={(e) => endDrag(true, e.clientX, e.clientY)}
-              onPointerCancel={() => endDrag(false)}
-              onContextMenu={(e) => {
-                // 右键先在菜单里选中这一项：对着 A 右键却关掉 B，是最难解释的一类交互
-                e.preventDefault()
-                setMenu({ x: e.clientX, y: e.clientY, id: tab.id })
-              }}
-              style={{ transform: offset ? 'translateX(' + offset + 'px)' : undefined }}
-              className={cls}
-            >
-              {/*
-                左边这格是**页签类型的标识图标**：
-                - 仅教学文档（kind === 'teach'）显示折角层级箭头（上位向上暖金，下位向下翠绿）；
-                - 平级同一节点外围页签（笔记/大纲/试卷等）：保留原本类型图标，由外层 relationCls 柔和晴蓝底色标识；
-                - 平常或无关联：展示标准类型图标。
-              */}
-              {isTeachDocTab(tab.ref) && relation.kind === 'parent' ? (
-                <div
-                  className="flex h-4 w-4 shrink-0 items-center justify-center text-amber-500/80 dark:text-amber-400/80"
-                  title={
-                    relation.depth === 1
-                      ? t('父级知识点文档')
-                      : relation.depth === 2
-                        ? t('祖父级知识点文档')
-                        : relation.depth === 3
-                          ? t('曾祖级知识点文档')
-                          : t('上位第 {0} 级祖先文档', relation.depth)
-                  }
-                >
-                  <StackedChevron
-                    direction="up"
-                    count={relation.depth}
-                    className="h-3.5 w-3.5 shrink-0"
-                  />
-                </div>
-              ) : isTeachDocTab(tab.ref) && relation.kind === 'child' ? (
-                <div
-                  className="flex h-4 w-4 shrink-0 items-center justify-center text-emerald-500/80 dark:text-emerald-400/80"
-                  title={
-                    relation.depth === 1
-                      ? t('下级子知识点文档')
-                      : relation.depth === 2
-                        ? t('孙级知识点文档')
-                        : relation.depth === 3
-                          ? t('曾孙级知识点文档')
-                          : t('下位第 {0} 级子孙文档', relation.depth)
-                  }
-                >
-                  <StackedChevron
-                    direction="down"
-                    count={relation.depth}
-                    className="h-3.5 w-3.5 shrink-0"
-                  />
-                </div>
-              ) : (
-                <TabTypeIcon
-                  tab={tab.ref}
-                  favicon={tab.ref.kind === 'web' ? wmeta?.favicon : undefined}
-                  loading={wmeta?.loading}
-                />
-              )}
-              {/*
-                标题居中：外层 flex-1 占住两边等宽的空档、内层按内容宽。
-                不直接写 text-center + truncate 是因为那样**长标题会把开头切掉**：
-                居中的行盒两侧一起溢出，浏览器只会在右端补省略号，看到的是标题中段——
-                而认一份文档靠的正是开头那几个字。内层按内容宽就没有这回事：
-                装得下就居中，装不下就从右边截，开头始终在。
-              */}
-              <span className="flex min-w-0 flex-1 justify-center">
-                {/* 路径淡一档、可截断：它是**区分**用的，主角始终是标题 */}
-                {trail && <span className="min-w-0 truncate text-ink-faint">{trail} · </span>}
-                <span className="min-w-0 truncate">{title}</span>
-              </span>
-              {/* 视频页签的快捷静音：流解析出来（登记表有控制器）才出现 */}
-              {tab.ref.kind === 'video' && <VideoAudioButton tabId={tab.id} />}
-              {/* 关闭键固定在右端（标题 flex-1 把它顶过去）；未保存时它被一颗圆点盖住。
-                  选中与否都只在鼠标扫过这一条页签时才亮出来：常驻的 × 是一排噪声，
-                  真正高频的状态（标题）不该被挤到次要位置 */}
-              <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
-                <button
-                  type="button"
-                  title={t('关闭')}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onClose(tab.id, 'self')
-                  }}
-                  className={'flex h-4 w-4 items-center justify-center rounded opacity-0 transition focus-visible:opacity-100 group-hover:opacity-70 hover:bg-line-strong/60'}
-                >
-                  <X size={11} />
-                </button>
-                {/*
-                  未保存：一颗圆点压在关闭键的位置上（鼠标扫过这一条页签时才让开）。
-                  pointer-events-none：点在圆点上也要落到下面那颗关闭键上——
-                  「看着是关闭键、点了却没反应」比没有这个提示更糟。
-                  aria-hidden：它只是状态，读屏该读的是底下那颗带 title 的按钮。
-                */}
-                {dirty && (
-                  <span
-                    aria-hidden="true"
-                    className="pointer-events-none absolute left-1/2 top-1/2 h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-seal/80 transition-opacity group-hover:opacity-0"
-                  />
-                )}
-              </span>
-            </div>
-          )
-        })}
+        {normalPresence.map((p, i) => renderTab(p, i, false))}
         {!tabs.length && (
           <div className="flex items-center gap-1.5 px-3 pb-1 text-[11.5px] text-ink-faint select-none">
             <BookOpen size={12} className="opacity-50" />
             <span>{t('暂无打开的页签')}</span>
           </div>
         )}
-        {/*
-          「新页签」：紧跟在**最后一枚页签后面**（需求原文：「改为文档区 tab 栏最后一个 tab
-          后面增加一个新页签的按钮」）。它长在页签条里、跟着页签一起横向滚动——
-          「下一个页签会出现在哪儿」与「点哪能加一个」因此是同一个位置，不必解释。
-
-          刻意**不带 data-tab**：栏里的拖动排序、让位、滚动定位全靠 `[data-tab]` 选元素，
-          给它挂上就会被当成一枚页签参与排位（拖到它旁边会算错落点）。
-
-          也刻意**不抢焦点、不选中**：它只负责开一个新页签，页签自己会变成激活项。
-        */}
         {onNewTab && !hasBlankTab && (
           <button
             type="button"
@@ -1369,14 +1344,6 @@ export default function TabBar({
         )}
       </div>
 
-      {/*
-        这条栏与正文之间的下边框：粗细与颜色都跟页签自己的描边一致（1px 的 line-strong），
-        看上去才是「同一套框」。画成**绝对定位的一条线**（而不是容器的 border-b），
-        是为了「选中页签遮住它」这件事能成立：线是定位元素、排在页签之后绘制，
-        而选中的页签有 z-10，它的背景正好压住脚下那一像素——
-        线在它两侧继续，到它这里「断开」，页签与下面的正文就融为了一体。
-        容器自己的 border 画不出这个效果：子元素的背景永远盖不到父元素的边框上。
-      */}
       {!!tabs.length && (
         <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-line-strong" />
       )}
@@ -1385,14 +1352,13 @@ export default function TabBar({
         createPortal(
           <BarMenu
             menu={barMenu}
-            canCloseAll={tabs.some((t) => t.ref.kind !== 'outline')}
-            count={tabs.filter((t) => t.ref.kind !== 'outline').length}
+            canCloseAll={tabs.some((t) => !isTabPinned(t))}
+            count={tabs.filter((t) => !isTabPinned(t)).length}
             onOpenWebTab={() => {
               onOpenWebTab()
               setBarMenu(null)
             }}
             onCloseAll={() => {
-              // 「全部关闭」不吃页签 id：给谁都一样，mode 说了算（见 learn/tabs 的 closeTabs）
               onClose(activeId ?? tabs[0]?.id ?? '', 'all')
               setBarMenu(null)
             }}
@@ -1414,6 +1380,7 @@ export default function TabBar({
               if (menuTab && onToggleFavorite) onToggleFavorite(menuTab)
               setMenu(null)
             }}
+            onTogglePin={onTogglePin}
             onClose={() => setMenu(null)}
             onPick={(mode, closingIds) => {
               onClose(menu.id, mode, { closingIds })
@@ -1426,12 +1393,6 @@ export default function TabBar({
   )
 }
 
-/**
- * 栏上空白处的右键菜单：开一个新浏览器页签，或把这一格的页签全部关掉。
- *
- * 与页签自己的菜单共用同一套骨架（图标一列 + 左对齐标签）；
- * 「全部关闭」同样取印章红——它连当前页签一起收走，是这张菜单里最狠的一个。
- */
 function BarMenu({
   menu,
   canCloseAll,
@@ -1507,6 +1468,7 @@ function TabMenu({
   paneTotal: _paneTotal,
   favorited,
   onToggleFavorite,
+  onTogglePin,
   onClose,
   onPick,
   store,
@@ -1520,13 +1482,15 @@ function TabMenu({
   /** 这一项收藏了没有（决定星标是实是虚、文案是「收藏」还是「取消收藏」） */
   favorited: boolean
   onToggleFavorite: () => void
+  onTogglePin?: (tab: LearnTab) => void
   onClose: () => void
   onPick: (mode: TabCloseMode, closingIds?: string[]) => void
   store?: LearnStore
 }) {
   const ref = useRef<HTMLDivElement | null>(null)
-  const otherCount = tabs.filter((x) => x.id !== menu.id && x.ref.kind !== 'outline').length
   const targetTab = useMemo(() => tabs.find((t) => t.id === menu.id) ?? null, [tabs, menu.id])
+  const targetIsPinned = targetTab ? isTabPinned(targetTab) : false
+  const otherCount = tabs.filter((x) => x.id !== menu.id && !isTabPinned(x)).length
   const targetBaseNodeId = targetTab ? tabNodeId(targetTab.ref) : null
 
   const { ancestorDistMap, descendantDistMap } = useMemo(() => {
@@ -1538,7 +1502,7 @@ function TabMenu({
     if (!targetTab) return []
     return tabs
       .filter((t) => {
-        if (t.id === targetTab.id || t.ref.kind === 'outline') return false
+        if (t.id === targetTab.id || isTabPinned(t)) return false
         const rel = computeTabRelationWithMaps(t, targetTab, ancestorDistMap, descendantDistMap)
         return rel.kind === 'none'
       })
@@ -1550,7 +1514,7 @@ function TabMenu({
     if (!targetTab) return []
     return tabs
       .filter((t) => {
-        if (t.ref.kind === 'outline') return false
+        if (isTabPinned(t)) return false
         const rel = computeTabRelationWithMaps(t, targetTab, ancestorDistMap, descendantDistMap)
         return rel.kind === 'child'
       })
@@ -1562,7 +1526,7 @@ function TabMenu({
     if (!targetTab) return []
     return tabs
       .filter((t) => {
-        if (t.ref.kind === 'outline') return false
+        if (isTabPinned(t)) return false
         const rel = computeTabRelationWithMaps(t, targetTab, ancestorDistMap, descendantDistMap)
         return rel.kind === 'parent'
       })
@@ -1571,7 +1535,7 @@ function TabMenu({
 
   // 4. 关闭非文档：不是 teach/note/super/local 的非纯文档类页签（web、系统设置等，不含大纲）
   const nonDocIds = useMemo(() => {
-    const nonDocs = tabs.filter((t) => !isDocumentTab(t.ref) && t.ref.kind !== 'outline')
+    const nonDocs = tabs.filter((t) => !isDocumentTab(t.ref) && !isTabPinned(t))
     if (nonDocs.length <= 1 && nonDocs.some((t) => t.id === targetTab?.id)) return []
     return nonDocs.map((t) => t.id)
   }, [tabs, targetTab])
@@ -1623,6 +1587,27 @@ function TabMenu({
         {favorited ? t('取消收藏') : t('收藏')}
       </button>
 
+      {onTogglePin && targetTab && targetTab.ref.kind !== 'outline' && (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            onTogglePin(targetTab)
+            onClose()
+          }}
+          className={ROW}
+        >
+          <span className={ICON}>
+            {targetIsPinned ? (
+              <PinOff size={13} className="text-seal" />
+            ) : (
+              <Pin size={13} className="text-ink-soft" />
+            )}
+          </span>
+          {targetIsPinned ? t('取消固定标签页') : t('固定标签页')}
+        </button>
+      )}
+
       <span aria-hidden="true" className="my-1 block h-px bg-line" />
 
       {/* 关闭这一项：一枚普通的叉，中性色 */}
@@ -1638,7 +1623,7 @@ function TabMenu({
         <button
           type="button"
           role="menuitem"
-          onClick={() => onPick('others', tabs.filter((x) => x.id !== menu.id && x.ref.kind !== 'outline').map((x) => x.id))}
+          onClick={() => onPick('others', tabs.filter((x) => x.id !== menu.id && !isTabPinned(x)).map((x) => x.id))}
           className={ROW}
         >
           <span className={ICON}>
@@ -1713,13 +1698,13 @@ function TabMenu({
       )}
 
       {/* 全部关闭：只在存在可关项时渲染（排除大纲）。 */}
-      {tabs.filter((t) => t.ref.kind !== 'outline').length > (targetTab?.ref.kind === 'outline' ? 0 : 1) && (
+      {tabs.filter((t) => !isTabPinned(t)).length > (targetIsPinned ? 0 : 1) && (
         <>
           <span aria-hidden="true" className="my-1 block h-px bg-line" />
           <button
             type="button"
             role="menuitem"
-            title={t('这一格里的页签全部关掉（不影响大纲）')}
+            title={t('这一格里的页签全部关掉（不影响固定标签页）')}
             onClick={() => onPick('all')}
             className={ROW + ' text-seal-deep hover:bg-seal/10'}
           >
@@ -1727,7 +1712,7 @@ function TabMenu({
               <OctagonX size={13} />
             </span>
             {t(TAB_CLOSE_LABEL.all)}
-            <span className={COUNT}>{tabs.filter((t) => t.ref.kind !== 'outline').length}</span>
+            <span className={COUNT}>{tabs.filter((t) => !isTabPinned(t)).length}</span>
           </button>
         </>
       )}

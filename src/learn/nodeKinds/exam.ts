@@ -6,7 +6,7 @@
  * 出题入参的容错解析全部复用 learn/exam 的 parseQuestions（能把二十来种毛病
  * 压成一句模型能改对的话），时限下限同样由 resolveExamMinutes 兜底。
  */
-import { nodeById, upsertExam } from '../graph'
+import { addEdge, nodeById, removeEdge, upsertExam } from '../graph'
 import { detachExam } from '../detached'
 import { normalizeKind, normalizeLevel, parseQuestions, questionsMix, resolveExamMinutes, examTotalPoints } from '../exam'
 import type { Exam } from '../exam'
@@ -44,8 +44,16 @@ export class ExamGNode extends GNode {
 
   get relations(): NodeRelation[] {
     const e = this.record
-    // 宿主在才算是连着；宿主已不在（游离）就是独立节点，没有关系
-    return e && nodeById(this.ctx.store(), e.nodeId) ? [{ id: e.nodeId, type: 'up' }] : []
+    const out: NodeRelation[] = []
+    if (e && nodeById(this.ctx.store(), e.nodeId)) {
+      out.push({ id: e.nodeId, type: 'up' })
+    }
+    for (const edge of this.ctx.store().edges) {
+      if (edge.from === this.uuid) {
+        out.push({ id: edge.to, type: 'down' })
+      }
+    }
+    return out
   }
 
   get content(): unknown {
@@ -111,7 +119,7 @@ export class ExamGNode extends GNode {
       ].join('\n'),
       connection: [
         '上游是归属文档：拖线 / connect(文档对象, "down") 换绑到别的文档（卷面与历次作答都不动，动的只是挂在谁那里）；disconnect 摘掉 = 变成游离的独立试卷。',
-        '试卷是叶子，没有下游。',
+        '下游连接只能为笔记节点：拖线 / connect(笔记对象, "down") 将笔记作为下级接入。',
       ].join('\n'),
     }
   }
@@ -121,8 +129,30 @@ export class ExamGNode extends GNode {
     return true
   }
 
-  /** 摘线 = 解绑：宿主 id 悬空，试卷变成游离的独立实体（卷面与作答原样保留） */
-  protected unlink(): NodeResult {
+  onDownstream(node: GNode): ConnectFilter {
+    if (node.kind !== 'note') return '考试节点的下级连接只能为笔记节点'
+    const upRelations = node.relations.filter((r) => r.type === 'up')
+    if (upRelations.length > 0 && !upRelations.some((r) => r.id === this.uuid)) {
+      return '笔记只能有一个上级节点'
+    }
+    return true
+  }
+
+  protected link(down: GNode): NodeResult {
+    if (down.kind !== 'note') return { error: '考试节点的下级连接只能为笔记节点' }
+    const s = this.ctx.store()
+    const r = addEdge(s, this.uuid, down.uuid)
+    if (!r.added) return { error: r.reason ?? '连接失败' }
+    this.ctx.commit(r.store)
+    return { ok: true, note: '已把笔记「' + down.title + '」作为下级连接到《' + this.title + '》' }
+  }
+
+  /** 摘线 = 解绑：若断开的是与笔记的边则拆边；否则宿主 id 悬空变成游离试卷 */
+  protected unlink(target?: GNode): NodeResult {
+    if (target && target.kind === 'note' && this.ctx.store().edges.some((e) => e.from === this.uuid && e.to === target.uuid)) {
+      this.ctx.commit(removeEdge(this.ctx.store(), this.uuid, target.uuid))
+      return { ok: true, note: '已断开与笔记「' + target.title + '」的连接' }
+    }
     const r = detachExam(this.ctx.store(), this.uuid)
     if ('error' in r) return { error: r.error }
     this.ctx.commit(r.store)

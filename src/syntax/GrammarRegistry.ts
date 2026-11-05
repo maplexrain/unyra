@@ -114,6 +114,21 @@ let onigLibPromise: Promise<vsctm.IOnigLib> | null = null
  */
 function loadOniguruma(): Promise<vsctm.IOnigLib> {
   if (!onigLibPromise) {
+    if (typeof process !== 'undefined' && process.env?.VITEST) {
+      // Vitest 测试环境：不经网络请求 wasm，返回空 scanner 避免 HappyDOM 产生未捕获的 fetch rejection
+      onigLibPromise = Promise.resolve({
+        createOnigScanner: () => ({
+          findNextMatchSync: () => null,
+          dispose: () => {},
+        } as unknown as vsctm.OnigScanner),
+        createOnigString: (s: string) => ({
+          content: s,
+          dispose: () => {},
+        } as unknown as vsctm.OnigString),
+      })
+      return onigLibPromise
+    }
+
     onigLibPromise = (async () => {
       const url = typeof document === 'undefined' ? onigWasmUrl : new URL(onigWasmUrl, document.baseURI).href
       const res = await fetch(url)

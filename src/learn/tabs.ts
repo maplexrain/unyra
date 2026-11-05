@@ -89,8 +89,15 @@ export function tabKey(ref: TabRef): string {
   return 'l:' + ref.path
 }
 
+/** 判断页签是否为固定页签：结构tab（节点宇宙，kind === 'outline'）永远固定，不可取消固定 */
+export function isTabPinned(tab: LearnTab): boolean {
+  if (tab.ref.kind === 'outline') return true
+  return tab.pinned ?? false
+}
+
 export function makeTab(ref: TabRef, at: number, view?: DocView): LearnTab {
-  return { id: tabKey(ref), ref, ...(view ? { view } : {}), createdAt: at }
+  const isStructure = ref.kind === 'outline'
+  return { id: tabKey(ref), ref, ...(view ? { view } : {}), ...(isStructure ? { pinned: true } : {}), createdAt: at }
 }
 
 /** 空白页签的身份后缀：开签那一刻生成 */
@@ -402,9 +409,9 @@ export function closeTabs(
   } else {
     for (const t of tabs) if (t.id !== id) closing.add(t.id)
   }
-  // 规矩：tab 组中的大纲 tab 只能由自身关闭（自身关闭按钮/自身右键菜单），其他的关闭方式不会影响到大纲 tab
+  // 规矩：固定 tab 只能由自身直接关闭（自身关闭按钮/自身右键菜单中的「关闭」），不受非直接关闭方式影响
   for (const t of tabs) {
-    if (t.ref.kind === 'outline' && ((mode !== 'self' && mode !== 'force') || t.id !== id)) {
+    if (isTabPinned(t) && ((mode !== 'self' && mode !== 'force') || t.id !== id)) {
       closing.delete(t.id)
     }
   }
@@ -473,7 +480,10 @@ export function reorderTabs(tabs: LearnTab[], ids: string[]): LearnTab[] {
     out.push(t)
   }
   for (const t of tabs) if (!out.includes(t)) out.push(t)
-  return out
+  // 固定 tab 永远显示在最前面
+  const pinned = out.filter(isTabPinned)
+  const unpinned = out.filter((t) => !isTabPinned(t))
+  return [...pinned, ...unpinned]
 }
 
 /**

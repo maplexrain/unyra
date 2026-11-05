@@ -81,6 +81,7 @@ import {
   focusedTab,
   goalTabsOf,
   groupIdOfTab,
+  groupOf,
   isAnchorOutline,
   openAnchorOutline,
   openGroupedDoc,
@@ -100,7 +101,7 @@ import {
   type DocLayout,
   type TabOwners,
 } from '../../learn/groups'
-import { makeBlankTab, makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf, isPdfFile } from '../../learn/tabs'
+import { isTabPinned, reorderTabs, makeBlankTab, makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf, isPdfFile } from '../../learn/tabs'
 import { setZenActive } from '../../learn/zen'
 import { closeGoalTabGroupStore } from '../../learn/groups/goalTabGroupOps'
 import { pickLocalFiles, readLocalFile } from '../../lib/localFiles'
@@ -2323,6 +2324,22 @@ export default function LearnWorkspace({
     [getLatest, set],
   )
 
+  /** 固定/取消固定某一格里的页签，重排确保固定页签在最前面 */
+  const toggleTabPin = useCallback(
+    (group: string, tab: LearnTab) => {
+      if (tab.ref.kind === 'outline') return
+      const s = getLatest()
+      const docs = s.docArea
+      const g = groupOf(docs, group)
+      if (!g) return
+      const nextPinned = !isTabPinned(tab)
+      const nextTabs = g.tabs.map((t) => (t.id === tab.id ? { ...t, pinned: nextPinned } : t))
+      const reordered = reorderTabs(nextTabs, nextTabs.map((t) => t.id))
+      set({ ...s, docArea: settle(withGroup(docs, group, (cur) => ({ ...cur, tabs: reordered }))) })
+    },
+    [getLatest, set],
+  )
+
   /*
    * 导出流整体在 useExportFlow（workspace/）：弹窗开关、元信息、三个入口与三条格式路。
    */
@@ -4312,6 +4329,54 @@ export default function LearnWorkspace({
     [makeNodeService, onToast],
   )
 
+    const canvasRenameOutlineEntry = useCallback(
+    (outlineUuid: string, slotKey: string, nextTitle: string) => {
+      const trimmed = nextTitle.trim()
+      if (!trimmed) return
+      const svc = makeNodeService()
+      const outline = svc.get(outlineUuid)
+      if (!outline || outline.kind !== 'outline') return
+      const current = (outline.content as { intro?: string; children?: Array<{ key?: string; title: string; summary?: string }> } | null) ?? null
+      const children = current?.children ?? []
+      const targetEntry = children.find((c) => c.key === slotKey || normalizeKey(c.title) === slotKey || c.title === slotKey)
+      if (!targetEntry) return
+      if (targetEntry.title === trimmed) return
+
+      const oldKey = targetEntry.key ?? normalizeKey(targetEntry.title)
+      const newKey = normalizeKey(trimmed)
+
+      const nextChildren = children.map((c) => (c === targetEntry ? { ...c, title: trimmed, key: newKey } : c))
+      const r = outline.editContent({
+        intro: current?.intro ?? '',
+        children: nextChildren,
+        allowEmpty: true,
+      })
+      if ('error' in r) {
+        onToast(r.error)
+        return
+      }
+
+      // 如果有依赖边认领了这个旧 slotKey，同步更新边上的 portKey 保持连线关系不丢
+      if (oldKey !== newKey) {
+        const s = getLatest()
+        const docId = docIdOfOutlineUuid(outlineUuid)
+        const matchingEdges = s.edges.filter(
+          (e) => (e.from === outlineUuid || (docId && e.from === docId)) && (e.portKey === slotKey || e.portKey === oldKey),
+        )
+        if (matchingEdges.length > 0) {
+          const nextEdges = s.edges.map((e) =>
+            (e.from === outlineUuid || (docId && e.from === docId)) && (e.portKey === slotKey || e.portKey === oldKey)
+              ? { ...e, portKey: newKey }
+              : e,
+          )
+          set({ ...s, edges: nextEdges })
+        }
+      }
+      onToast(t('已将目标项重命名为「{0}」', trimmed))
+    },
+    [makeNodeService, onToast, getLatest, set],
+  )
+
   const canvasDeleteOutlineEntry = useCallback(
     (outlineUuid: string, slotKey: string) => {
       const svc = makeNodeService()
@@ -4406,6 +4471,7 @@ export default function LearnWorkspace({
       onRenameNote: canvasRenameNote,
       onAddOutlineEntry: canvasAddOutlineEntry,
       onDeleteOutlineEntry: canvasDeleteOutlineEntry,
+      onRenameOutlineEntry: canvasRenameOutlineEntry,
       onGenerateDoc: generateDocForNode,
       onGenerateOutline: (docUuid: string) => startPrereqOutline(docUuid),
       // 视频卡的绑定 / 打开：绑定走节点的 editContent（与 agent 动手是同一条路），打开走 openTab 的组联动
@@ -4442,7 +4508,7 @@ export default function LearnWorkspace({
       onOpenVideo: (videoId: string) => openTab({ kind: 'video', videoId }),
       onGenerateVideoDoc: (videoNodeUuid: string) => startVideoOverview(videoNodeUuid),
     }),
-    [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, canvasSetEntry, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, canvasDeleteOutlineEntry, generateDocForNode, startPrereqOutline, startVideoOverview, makeNodeService, openTab, getLatest, set],
+    [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, canvasSetEntry, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, canvasRenameOutlineEntry, canvasDeleteOutlineEntry, generateDocForNode, startPrereqOutline, startVideoOverview, makeNodeService, openTab, getLatest, set],
   )
 
   const noteActionsCache = useRef(new Map<string, ComponentProps<typeof DocPane>['note']>())
@@ -4979,6 +5045,7 @@ export default function LearnWorkspace({
                 // 右键菜单的收藏/取消收藏（见 learn/favorites）
                 favoriteOf={isTabFavorite}
                 onToggleFavorite={toggleTabFavorite}
+                onTogglePin={(tab) => toggleTabPin(groupId, tab)}
                 // 资源管理器/外部拖进来的引用落在这一格的页签栏上：还原成页签开在这一格里
                 onDropChip={openChipInGroup(groupId)}
                 // 棱形只在焦点格的栏上跟着右键走（见 lib/tabMark）

@@ -20,6 +20,8 @@ import {
   ZoomOut,
   Sparkles,
   X,
+  BookOpen,
+  Rows,
 } from 'lucide-react'
 import { OcrTextOverlay, extractOrOcrPageText } from '../../../lib/ocr/pdfTextLayer'
 import { ocrPluginOn, OCR_PLUGIN_ID } from '../../../lib/ocr/plugin'
@@ -41,8 +43,70 @@ interface PageItemProps {
   pageNum: number
   zoom: number
   docPath: string
+  eagerRender?: boolean
   onVisible?: (pageNum: number) => void
   onRequireOcr?: () => void
+  onDimensions?: (pageNum: number, dimensions: { width: number; height: number }) => void
+}
+
+interface PlaceholderProps {
+  pageNum: number
+  width: number
+  height: number
+  onVisible?: (pageNum: number) => void
+}
+
+/**
+ * 虚拟占位组件：当页面距离视口较远时仅挂载极简占位节点，释放 Canvas 上下文与显存
+ */
+const PdfPagePlaceholder = memo(function PdfPagePlaceholder({
+  pageNum,
+  width,
+  height,
+  onVisible,
+}: PlaceholderProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            onVisible?.(pageNum)
+          }
+        }
+      },
+      { rootMargin: '300px 0px 300px 0px' }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [pageNum, onVisible])
+
+  return (
+    <div
+      ref={containerRef}
+      data-page-number={pageNum}
+      className="relative my-4 flex shrink-0 items-center justify-center bg-paper/60 border border-line/30 rounded-none overflow-hidden select-none"
+      style={{
+        width: `${width}px`,
+        height: `${height}px`,
+        minHeight: `${height}px`,
+        maxWidth: '100%',
+      }}
+    >
+      <span className="text-[12px] font-mono text-ink-faint/50">
+        - {pageNum} -
+      </span>
+    </div>
+  )
+})
+
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!target || !(target instanceof HTMLElement)) return false
+  const tag = target.tagName.toLowerCase()
+  return tag === 'input' || tag === 'textarea' || target.isContentEditable
 }
 
 /**
@@ -53,8 +117,10 @@ const PdfPageItem = memo(function PdfPageItem({
   pageNum,
   zoom,
   docPath,
+  eagerRender,
   onVisible,
   onRequireOcr,
+  onDimensions,
 }: PageItemProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -90,7 +156,9 @@ const PdfPageItem = memo(function PdfPageItem({
         const page = await pdfDoc.getPage(pageNum)
         if (!alive) return
         const vp = page.getViewport({ scale: zoom })
-        setDimensions({ width: Math.floor(vp.width), height: Math.floor(vp.height) })
+        const dims = { width: Math.floor(vp.width), height: Math.floor(vp.height) }
+        setDimensions(dims)
+        onDimensions?.(pageNum, dims)
       } catch {}
     })()
     return () => {
@@ -169,12 +237,12 @@ const PdfPageItem = memo(function PdfPageItem({
     return () => clearTimeout(t)
   }, [zoom, renderPage])
 
-  // 首页及前 3 页进入时主动触发一次渲染（渲染完毕后自动通过 renderPage 触发 loadText）
+  // 首页及前 3 页或翻页模式明确要求预热（eagerRender）时主动触发渲染，彻底避免切页闪屏
   useEffect(() => {
-    if (pageNum <= 3) {
+    if (eagerRender || pageNum <= 3) {
       void renderPage()
     }
-  }, [pageNum, renderPage])
+  }, [eagerRender, pageNum, renderPage])
 
   // 监听全局插件状态切换事件（例如用户在设置中开启了 OCR 插件）
   useEffect(() => {
@@ -239,6 +307,19 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
   const [numPages, setNumPages] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
   const [zoom, setZoom] = useState(1.15 * baseScale)
+  const [viewMode, setViewMode] = useState<'scroll' | 'flip'>(() => {
+    try {
+      const saved = localStorage.getItem('moji:pdf:viewMode')
+      return saved === 'flip' ? 'flip' : 'scroll'
+    } catch {
+      return 'scroll'
+    }
+  })
+  const [isEditingPage, setIsEditingPage] = useState(false)
+  const [pageInput, setPageInput] = useState('')
+  const [defaultPageSize, setDefaultPageSize] = useState<{ width: number; height: number }>({ width: 595, height: 842 })
+  const pageDimensionsRef = useRef<Map<number, { width: number; height: number }>>(new Map())
+
   const rootRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const name = fileNameOf(path)
@@ -306,13 +387,19 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
         const doc = await task.promise
         if (!alive) {
           void task.destroy().catch(() => {})
-
           return
         }
 
         setPdfDoc(doc)
         setNumPages(doc.numPages)
         setLoading(false)
+
+        // 预载第 1 页的基础尺寸作为后续虚拟滚动的默认尺寸基准
+        try {
+          const p1 = await doc.getPage(1)
+          const vp = p1.getViewport({ scale: 1 })
+          setDefaultPageSize({ width: Math.floor(vp.width), height: Math.floor(vp.height) })
+        } catch {}
       } catch (err: unknown) {
         if (!alive) return
         setError(err instanceof Error ? err.message : t('PDF 解析失败，可能已损坏或受密码保护'))
@@ -325,15 +412,102 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
     }
   }, [path])
 
-  const scrollToPage = (pageNum: number) => {
+  const handleDimensions = useCallback((pNum: number, dims: { width: number; height: number }) => {
+    pageDimensionsRef.current.set(pNum, dims)
+  }, [])
+
+  const toggleViewMode = () => {
+    const next = viewMode === 'scroll' ? 'flip' : 'scroll'
+    setViewMode(next)
+    try {
+      localStorage.setItem('moji:pdf:viewMode', next)
+    } catch {}
+  }
+
+  const scrollToPage = useCallback((pageNum: number) => {
     const p = Math.max(1, Math.min(numPages, pageNum))
     setCurrentPage(p)
+    if (viewMode === 'flip') return
     const el = scrollRef.current?.querySelector(`[data-page-number="${p}"]`)
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-
     }
-  }
+  }, [numPages, viewMode])
+
+  const goToNextPage = useCallback(() => {
+    setCurrentPage((prev) => {
+      const next = Math.min(numPages, prev + 1)
+      if (viewMode === 'scroll') scrollToPage(next)
+      return next
+    })
+  }, [numPages, viewMode, scrollToPage])
+
+  const goToPrevPage = useCallback(() => {
+    setCurrentPage((prev) => {
+      const next = Math.max(1, prev - 1)
+      if (viewMode === 'scroll') scrollToPage(next)
+      return next
+    })
+  }, [viewMode, scrollToPage])
+
+  // 翻页模式下的键盘快捷键监听（方向键与 PageUp/PageDown）
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isTextEntryTarget(e.target)) return
+      if (viewMode === 'flip') {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') {
+          e.preventDefault()
+          goToPrevPage()
+        } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown') {
+          e.preventDefault()
+          goToNextPage()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [viewMode, goToNextPage, goToPrevPage])
+
+  // 翻页模式下鼠标滚轮跳页（带 240ms 防抖节流聚合）
+  const lastFlipWheelRef = useRef(0)
+  const handleFlipWheel = useCallback((e: React.WheelEvent) => {
+    if (viewMode !== 'flip' || e.ctrlKey || e.metaKey) return
+    const now = Date.now()
+    if (now - lastFlipWheelRef.current < 240) return
+
+    if (e.deltaY > 20) {
+      lastFlipWheelRef.current = now
+      goToNextPage()
+    } else if (e.deltaY < -20) {
+      lastFlipWheelRef.current = now
+      goToPrevPage()
+    }
+  }, [viewMode, goToNextPage, goToPrevPage])
+
+  // 连续滚动模式下的轻量虚拟滚动视口计算
+  const VIRTUAL_OVERSCAN = 2
+  const isPageActive = useCallback((p: number) => {
+    if (viewMode === 'flip') return p === currentPage
+    if (numPages <= 4) return true
+    return p >= currentPage - VIRTUAL_OVERSCAN && p <= currentPage + VIRTUAL_OVERSCAN
+  }, [viewMode, currentPage, numPages])
+
+  const handleScroll = useCallback(() => {
+    if (viewMode !== 'scroll' || !scrollRef.current || numPages === 0) return
+    const container = scrollRef.current
+    const scrollTop = container.scrollTop
+    const clientHeight = container.clientHeight
+    const scrollHeight = container.scrollHeight
+
+    if (scrollTop + clientHeight >= scrollHeight - 30) {
+      setCurrentPage(numPages)
+      return
+    }
+
+    const approxPageHeight = Math.floor(defaultPageSize.height * zoom) + 32
+    const estimated = Math.max(1, Math.min(numPages, Math.floor((scrollTop + clientHeight * 0.3) / approxPageHeight) + 1))
+    setCurrentPage(estimated)
+  }, [viewMode, numPages, defaultPageSize.height, zoom])
 
   const [ocrBannerDismissed, setOcrBannerDismissed] = useState(false)
   const [ocrEnabled, setOcrEnabled] = useState(() => ocrPluginOn())
@@ -384,7 +558,6 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
   // Ctrl + 鼠标滚轮 / 触控板手势缩放控制（前置 capture 捕获，精准定位当前 PDF 区域）
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
-      // 必须按下 Ctrl (Windows/Linux) 或 Cmd (macOS)
       if (!e.ctrlKey && !e.metaKey) return
 
       const root = rootRef.current
@@ -393,17 +566,14 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
       const inRoot = (target && root.contains(target)) || (e.composedPath && e.composedPath().includes(root))
       if (!inRoot) return
 
-      // 彻底阻止浏览器默认全局网页缩放及内部容器纵向滚动
       e.preventDefault()
       e.stopPropagation()
 
       const delta = -e.deltaY
       if (Math.abs(delta) < 0.5) return
 
-      // deltaMode: 0=像素, 1=行, 2=页
       const unit = e.deltaMode === 1 ? 3 : 100
       const notches = Math.max(-3, Math.min(3, delta / unit))
-      // 滚轮单格固定 0.1 步长，触控板微调
       const step = Math.abs(notches) >= 0.4 ? (notches > 0 ? 0.1 : -0.1) : Number((notches * 0.1).toFixed(2))
       if (!step) return
 
@@ -411,7 +581,6 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
       triggerZoomHud()
     }
 
-    // 挂在 window 捕获阶段：优先于一切内层容器滚动与被动监听，确保 100% 拦截并响应
     window.addEventListener('wheel', handleWheel, { passive: false, capture: true })
     return () => {
       window.removeEventListener('wheel', handleWheel, { capture: true })
@@ -431,6 +600,15 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
       const targetZoom = Math.max(0.6, Math.min(2.5, containerWidth / 595))
       setZoom(Number(targetZoom.toFixed(2)))
       triggerZoomHud()
+    }
+  }
+
+  const handlePageInputSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsEditingPage(false)
+    const val = parseInt(pageInput.trim(), 10)
+    if (!isNaN(val)) {
+      scrollToPage(val)
     }
   }
 
@@ -464,11 +642,10 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
           </span>
           <span className="text-[11px] text-ink-faint ml-1">
             ({t('只读预览')})
-
           </span>
         </div>
 
-        {/* 翻页与缩放控制器 */}
+        {/* 翻页、模式切换与缩放控制器 */}
         <div className="flex items-center gap-1.5 text-[12px] text-ink-soft">
           {/* 上一页 */}
           <button
@@ -481,10 +658,34 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
             <ChevronLeft size={15} />
           </button>
 
-          {/* 页码指示器 */}
-          <span className="px-1 text-[11.5px] tabular-nums text-ink">
-            {t('{0} / {1}', currentPage, numPages)}
-          </span>
+          {/* 页码指示器（点击可就地输入页码快速跳转） */}
+          {isEditingPage ? (
+            <form onSubmit={handlePageInputSubmit} className="inline-flex items-center">
+              <input
+                autoFocus
+                type="number"
+                min={1}
+                max={numPages}
+                value={pageInput}
+                onChange={(e) => setPageInput(e.target.value)}
+                onBlur={() => setIsEditingPage(false)}
+                className="w-12 h-6 px-1 text-center text-xs font-mono border border-seal bg-card text-ink outline-none rounded-none tabular-nums"
+              />
+              <span className="text-[11px] text-ink-faint ml-1">/ {numPages}</span>
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setPageInput(String(currentPage))
+                setIsEditingPage(true)
+              }}
+              title={t('点击输入页码快速跳转')}
+              className="px-1.5 py-0.5 text-[11.5px] tabular-nums text-ink hover:bg-card/70 hover:text-seal transition rounded-none"
+            >
+              {t('{0} / {1}', currentPage, numPages)}
+            </button>
+          )}
 
           {/* 下一页 */}
           <button
@@ -495,6 +696,27 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
             className="flex h-7 w-7 items-center justify-center rounded-none text-ink-soft hover:text-ink hover:bg-card/70 disabled:opacity-40 transition"
           >
             <ChevronRight size={15} />
+          </button>
+
+          <span aria-hidden="true" className="mx-1 h-3.5 w-px bg-line" />
+
+          {/* 模式切换：连续滚动模式 vs 翻页浏览模式 */}
+          <button
+            type="button"
+            onClick={toggleViewMode}
+            title={
+              viewMode === 'scroll'
+                ? t('切换为翻页浏览模式（单页极速无卡顿，支持键盘方向键与滚轮跳页）')
+                : t('切换为连续滚动模式（全文档平滑滚动）')
+            }
+            className={`flex items-center gap-1.5 px-2 py-1 text-[11px] rounded-none transition border ${
+              viewMode === 'flip'
+                ? 'border-seal/40 bg-seal/10 text-seal font-medium'
+                : 'border-transparent text-ink-soft hover:text-ink hover:bg-card/70'
+            }`}
+          >
+            {viewMode === 'scroll' ? <BookOpen size={13} /> : <Rows size={13} />}
+            <span>{viewMode === 'scroll' ? t('翻页模式') : t('滚动模式')}</span>
           </button>
 
           <span aria-hidden="true" className="mx-1 h-3.5 w-px bg-line" />
@@ -571,23 +793,74 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
         </div>
       )}
 
-      {/* PDF 页面滚动展示流 */}
-      <div
-        ref={scrollRef}
-        className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto overflow-x-auto p-4 bg-paper/50"
-      >
-        {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
-          <PdfPageItem
-            key={`${path}#p${pageNum}`}
-            pdfDoc={pdfDoc}
-            pageNum={pageNum}
-            zoom={zoom}
-            docPath={path}
-            onVisible={setCurrentPage}
-            onRequireOcr={() => setOcrBannerDismissed(false)}
-          />
-        ))}
-      </div>
+      {/* 视图展现：根据当前模式进行单页极速翻页 或 高性能虚拟滚动 */}
+      {viewMode === 'flip' ? (
+        <div
+          ref={scrollRef}
+          onWheel={handleFlipWheel}
+          className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto overflow-x-auto p-4 bg-paper/50"
+        >
+          {Array.from(
+            { length: Math.min(numPages, currentPage + 2) - Math.max(1, currentPage - 2) + 1 },
+            (_, idx) => Math.max(1, currentPage - 2) + idx
+          ).map((pNum) => {
+            const isCurrent = pNum === currentPage
+            return (
+              <div
+                key={`${path}#flip#p${pNum}`}
+                style={{ display: isCurrent ? 'contents' : 'none' }}
+              >
+                <PdfPageItem
+                  key={`${path}#p${pNum}`}
+                  pdfDoc={pdfDoc}
+                  pageNum={pNum}
+                  zoom={zoom}
+                  docPath={path}
+                  eagerRender={true}
+                  onRequireOcr={() => setOcrBannerDismissed(false)}
+                  onDimensions={handleDimensions}
+                />
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto overflow-x-auto p-4 bg-paper/50"
+        >
+          {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
+            const active = isPageActive(pageNum)
+            if (active) {
+              return (
+                <PdfPageItem
+                  key={`${path}#p${pageNum}`}
+                  pdfDoc={pdfDoc}
+                  pageNum={pageNum}
+                  zoom={zoom}
+                  docPath={path}
+                  onVisible={setCurrentPage}
+                  onRequireOcr={() => setOcrBannerDismissed(false)}
+                  onDimensions={handleDimensions}
+                />
+              )
+            }
+            const cachedDims = pageDimensionsRef.current.get(pageNum)
+            const w = cachedDims?.width || Math.floor(defaultPageSize.width * zoom)
+            const h = cachedDims?.height || Math.floor(defaultPageSize.height * zoom)
+            return (
+              <PdfPagePlaceholder
+                key={`${path}#p${pageNum}#ph`}
+                pageNum={pageNum}
+                width={w}
+                height={h}
+                onVisible={setCurrentPage}
+              />
+            )
+          })}
+        </div>
+      )}
 
       {/* 缩放浮动提示徽章（滚轮或按钮缩放时短暂显示） */}
       {zoomHud && (
