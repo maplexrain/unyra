@@ -125,21 +125,23 @@ export class ExamGNode extends GNode {
   }
 
   onUpstream(node: GNode): ConnectFilter {
-    if (node.kind !== 'doc') return '试卷只能挂在文档之下'
+    if (node.kind !== 'doc' && node.kind !== 'file') return '试卷只能挂在文档或文件节点之下'
     return true
   }
 
   onDownstream(node: GNode): ConnectFilter {
-    if (node.kind !== 'note') return '考试节点的下级连接只能为笔记节点'
-    const upRelations = node.relations.filter((r) => r.type === 'up')
-    if (upRelations.length > 0 && !upRelations.some((r) => r.id === this.uuid)) {
-      return '笔记只能有一个上级节点'
+    if (node.kind !== 'note' && node.kind !== 'file') return '考试节点的下级连接只能为笔记节点或文件节点'
+    if (node.kind === 'note') {
+      const upRelations = node.relations.filter((r) => r.type === 'up')
+      if (upRelations.length > 0 && !upRelations.some((r) => r.id === this.uuid)) {
+        return '笔记只能有一个上级节点'
+      }
     }
     return true
   }
 
   protected link(down: GNode): NodeResult {
-    if (down.kind !== 'note') return { error: '考试节点的下级连接只能为笔记节点' }
+    if (down.kind !== 'note' && down.kind !== 'file') return { error: '考试节点的下级连接只能为笔记节点或文件节点' }
     const s = this.ctx.store()
     const r = addEdge(s, this.uuid, down.uuid)
     if (!r.added) return { error: r.reason ?? '连接失败' }
@@ -152,6 +154,13 @@ export class ExamGNode extends GNode {
     if (target && target.kind === 'note' && this.ctx.store().edges.some((e) => e.from === this.uuid && e.to === target.uuid)) {
       this.ctx.commit(removeEdge(this.ctx.store(), this.uuid, target.uuid))
       return { ok: true, note: '已断开与笔记「' + target.title + '」的连接' }
+    }
+    if (target && target.kind === 'file') {
+      const edge = this.ctx.store().edges.find((e) => (e.from === this.uuid && e.to === target.uuid) || (e.to === this.uuid && e.from === target.uuid))
+      if (edge) {
+        this.ctx.commit(removeEdge(this.ctx.store(), edge.from, edge.to))
+        return { ok: true, note: '已断开与文件「' + target.title + '」的连接' }
+      }
     }
     const r = detachExam(this.ctx.store(), this.uuid)
     if ('error' in r) return { error: r.error }

@@ -64,6 +64,9 @@ function readGoalLedgers(
     videoEdgesByGoal: Record<string, Array<Record<string, unknown>>>
     /** 项目节点（目标 × 真实路径的授权声明），目标目录的 projects.json */
     projectsByGoal: Record<string, unknown[]>
+    /** 文件节点（目标 × 本地文件/网页的绑定），目标目录的 file-nodes.json */
+    fileNodesByGoal: Record<string, unknown[]>
+    fileEdgesByGoal: Record<string, Array<Record<string, unknown>>>
   },
 ): void {
   const convs = parseJson<{ conversations?: unknown[] }>(files.get(`${goalDir}/chat.json`))
@@ -137,6 +140,15 @@ function readGoalLedgers(
   const projectsFile = parseJson<{ projects?: unknown[] }>(files.get(`${goalDir}/projects.json`))
   if (Array.isArray(projectsFile?.projects) && projectsFile.projects.length) {
     out.projectsByGoal[goalId] = projectsFile.projects
+  }
+
+  // 文件节点（目标 × 本地文件/网页的绑定，见 learn/fileNodes）与其树边
+  const fileNodesFile = parseJson<{ nodes?: unknown[]; edges?: Array<Record<string, unknown>> }>(files.get(`${goalDir}/file-nodes.json`))
+  if (Array.isArray(fileNodesFile?.nodes) && fileNodesFile.nodes.length) {
+    out.fileNodesByGoal[goalId] = fileNodesFile.nodes
+  }
+  if (Array.isArray(fileNodesFile?.edges) && fileNodesFile.edges.length) {
+    out.fileEdgesByGoal[goalId] = fileNodesFile.edges
   }
 }
 
@@ -234,6 +246,8 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
     videoNodesByGoal: {} as Record<string, unknown[]>,
     videoEdgesByGoal: {} as Record<string, Array<Record<string, unknown>>>,
     projectsByGoal: {} as Record<string, unknown[]>,
+    fileNodesByGoal: {} as Record<string, unknown[]>,
+    fileEdgesByGoal: {} as Record<string, Array<Record<string, unknown>>>,
   }
 
   for (const [dir, { file }] of nodeFiles) {
@@ -312,6 +326,16 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
   // 项目节点（目标 × 真实路径的授权声明）并进总账（挂载边随节点文件已收过）
   const projects: unknown[] = []
   for (const led of Object.values(ledgers.projectsByGoal)) projects.push(...led)
+  // 文件节点并进总账
+  const fileNodes: unknown[] = []
+  for (const led of Object.values(ledgers.fileNodesByGoal)) fileNodes.push(...led)
+  for (const led of Object.values(ledgers.fileEdgesByGoal)) {
+    for (const edge of led) {
+      if (!edges.some((e) => e.from === edge.from && e.to === edge.to)) {
+        edges.push(edge)
+      }
+    }
+  }
 
   return normalizeLearnStore({
     version: 2,
@@ -321,6 +345,7 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
     ...(freeOutlines.length ? { outlines: freeOutlines } : {}),
     ...(videoNodes.length ? { videoNodes } : {}),
     ...(projects.length ? { projects } : {}),
+    ...(fileNodes.length ? { fileNodes } : {}),
     conversations: ledgers.conversations,
     exams,
     tmp,
@@ -397,6 +422,8 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
     videoNodesByGoal: {} as Record<string, unknown[]>,
     videoEdgesByGoal: {} as Record<string, Array<Record<string, unknown>>>,
     projectsByGoal: {} as Record<string, unknown[]>,
+    fileNodesByGoal: {} as Record<string, unknown[]>,
+    fileEdgesByGoal: {} as Record<string, Array<Record<string, unknown>>>,
   }
 
   // 目标目录必须是顶层（docs/{seg}）且自己那份 meta 在：结构不完整就整棵树跳过
@@ -556,6 +583,16 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
   // 项目节点并进总账（旧布局没有 projects.json，这里恒为空，字段补齐走同一份归一）
   const projects2: unknown[] = []
   for (const led of Object.values(ledgers.projectsByGoal)) projects2.push(...led)
+  // 文件节点并进总账
+  const fileNodes2: unknown[] = []
+  for (const led of Object.values(ledgers.fileNodesByGoal)) fileNodes2.push(...led)
+  for (const led of Object.values(ledgers.fileEdgesByGoal)) {
+    for (const edge of led) {
+      if (!edges.some((e) => e.from === edge.from && e.to === edge.to)) {
+        edges.push(edge)
+      }
+    }
+  }
 
   return normalizeLearnStore({
     version: 2,
@@ -565,6 +602,7 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
     ...(freeOutlines2.length ? { outlines: freeOutlines2 } : {}),
     ...(videoNodes2.length ? { videoNodes: videoNodes2 } : {}),
     ...(projects2.length ? { projects: projects2 } : {}),
+    ...(fileNodes2.length ? { fileNodes: fileNodes2 } : {}),
     conversations: ledgers.conversations,
     exams,
     tmp,

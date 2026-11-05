@@ -49,8 +49,12 @@ export function getCanvasPerfStats(): Readonly<CanvasPerfStats> {
 
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { HTMLAttributes, ReactNode } from 'react'
-import { Check, ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, Pencil, Trash2, X } from 'lucide-react'
-import type { LearnStore } from '../../../learn/types'
+import { Check, ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, FolderTree, Pencil, Trash2, X } from 'lucide-react'
+import type { FileNodeKind, LearnStore } from '../../../learn/types'
+import { FILES_DIR } from '../../../learn/layout'
+import { sanitizeFileName } from '../../../learn/fileNodes'
+import { goalDirOf } from '../../../learn/static/location'
+import { writeUserBinary, revealUserPath } from '../../../lib/storage'
 import type { ExamActions, NodeDocActions } from '../explorer/types'
 import { locateUuid, outlineUuid, docIdOfOutlineUuid, type GNodeKind } from '../../../learn/nodeKinds'
 import { inferPathKind, resolveProjectRoot, sortProjectEntries } from '../../../learn/projects'
@@ -117,7 +121,9 @@ export interface StructureCanvasProps {
     kind: GNodeKind,
     under: string | null,
     at?: { x: number; y: number },
-  ) => { uuid: string; title: string } | { error: string }
+    extra?: Record<string, unknown>,
+  ) => { uuid: string; title?: string } | { error: string }
+  onBindFile?: (nodeUuid: string, patch: { fileKind?: FileNodeKind; url?: string; title?: string }) => ChannelResult
   /** 删除节点（统一通道：删谁只删谁） */
   onDeleteNode?: (uuid: string) => ChannelResult
   /** 连线（双边协商在服务层：大纲↔文档挂层、文档↔挂件绑定） */
@@ -149,10 +155,14 @@ export interface StructureCanvasProps {
   onSetProjectPath?: (nodeUuid: string, path: string) => ChannelResult | Promise<ChannelResult>
   /** 点项目卡目录树里的一个文件：本地文件页签打开（磁盘绝对路径） */
   onOpenProjectFile?: (absPath: string) => void
+  /** 打开文件节点（本地文件页签或网页页签） */
+  onOpenFileNode?: (nodeUuid: string) => void
   onToast?: (msg: string) => void
   /** 外部指定的聚焦目标（chip 路由）：把镜头挪到 uuid 对得上的那张卡 */
   focusTarget?: { nodeId: string; nonce: number } | null
   onFocusHandled?: () => void
+  /** 切换视图模式回调 */
+  onToggleViewMode?: () => void
 }
 
 /**
@@ -160,7 +170,7 @@ export interface StructureCanvasProps {
  * 卡从落位那刻起就由 store 派生。入口、文档与大纲不在列表里——入口由目标绑定
  * 派生，子文档点大纲目标项，前置知识大纲走文档卡右键菜单。
  */
-const PALETTE: GNodeKind[] = ['doc', 'outline', 'note', 'exam', 'superdoc', 'video', 'project']
+const PALETTE: GNodeKind[] = ['doc', 'outline', 'note', 'exam', 'superdoc', 'video', 'project', 'file']
 
 /** 网格背景的点距（世界坐标 px）：平移/缩放时按相机换算，见画布根的 backgroundImage */
 const GRID_PX = 28
@@ -257,6 +267,14 @@ function KindIcon({ kind }: { kind: GNodeKind }) {
       </svg>
     )
   }
+  if (kind === 'file') {
+    return (
+      <svg {...common}>
+        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+        <polyline points="14 2 14 8 20 8" />
+      </svg>
+    )
+  }
   
   return (
     <svg {...common}>
@@ -332,6 +350,7 @@ const MINI_FILL: Record<GNodeKind, string> = {
   superdoc: '#8b5cf6',
   video: '#06b6d4',
   project: '#14b8a6',
+  file: '#2563eb',
 }
 
 type Gesture =
@@ -365,7 +384,7 @@ interface MenuState {
   y: number
   uuid: string
   slotKey?: string
-  mode: 'actions' | 'note' | 'rename' | 'slot' | 'renameSlot' | 'videoPick' | 'projectPath'
+  mode: 'actions' | 'note' | 'rename' | 'videoPick' | 'projectPath' | 'fileEdit'
 }
 
 /**
@@ -390,37 +409,7 @@ function WheelStop({ className, style, children, ...rest }: HTMLAttributes<HTMLD
 }
 
 
-/**
- * 滚轮单向防抖阀门：记录上一次滚动的方向与时间戳。
- * 每次朝一个方向滚动后，200ms 内禁止朝反方向滚动（抑制滚针回弹与瞬时反向抖动）。
- */
-export interface WheelValve {
-  lastDir: number // 1: 正向, -1: 负向, 0: 无方向
-  lastTime: number
-}
 
-export function createWheelValve(): WheelValve {
-  return { lastDir: 0, lastTime: 0 }
-}
-
-export function checkWheelValve(
-  valve: WheelValve,
-  delta: number,
-  now: number = typeof performance !== 'undefined' ? performance.now() : Date.now(),
-  lockoutMs: number = 200,
-): boolean {
-  if (delta === 0) return true
-  const dir = delta > 0 ? 1 : -1
-  if (valve.lastDir !== 0 && dir !== valve.lastDir) {
-    if (now - valve.lastTime < lockoutMs) {
-      // 200ms 内禁止朝反方向滚动
-      return false
-    }
-  }
-  valve.lastDir = dir
-  valve.lastTime = now
-  return true
-}
 
 export const StructureCanvas = memo(function StructureCanvas({
   store,
@@ -445,9 +434,12 @@ export const StructureCanvas = memo(function StructureCanvas({
   onGenerateVideoDoc,
   onSetProjectPath,
   onOpenProjectFile,
+  onOpenFileNode,
+  onBindFile,
   onToast,
   focusTarget,
   onFocusHandled,
+  onToggleViewMode,
 }: StructureCanvasProps) {
   /**
    * 图是**算出来的**（deriveCanvas）：卡片就是节点、连线全部派生、
@@ -629,21 +621,18 @@ export const StructureCanvas = memo(function StructureCanvas({
   const [view, setView] = useState({ width: 0, height: 0 })
   const [camera, setCamera] = useState({ x: 72, y: 72, zoom: 1 })
   const cameraRef = useRef(camera)
-  const zoomValveRef = useRef<WheelValve>(createWheelValve())
-  const panXValveRef = useRef<WheelValve>(createWheelValve())
-  const panYValveRef = useRef<WheelValve>(createWheelValve())
+  const setCameraSync = useCallback((next: { x: number; y: number; zoom: number }) => {
+    cameraRef.current = next
+    setCamera(next)
+  }, [])
+
   const pendingCameraRef = useRef<{ x: number; y: number; zoom: number } | null>(null)
   const wheelRafRef = useRef<number | null>(null)
   const draftRafRef = useRef<number | null>(null)
   const pendingDraftRef = useRef<{ id: string; x: number; y: number; moves?: Record<string, { x: number; y: number }> } | null>(null)
   const trashRectRef = useRef<DOMRect | null>(null)
 
-  useEffect(() => {
-    // 仅在无未决 RAF 相机更新时才由 state 反写 ref，防止高频滚轮时被旧渲染帧冲掉最新坐标导致画面跳动
-    if (wheelRafRef.current == null && pendingCameraRef.current == null) {
-      cameraRef.current = camera
-    }
-  }, [camera])
+
 
   /**
    * RAF 批量合并相机更新（滚轮缩放/平移防卡顿）：
@@ -673,9 +662,9 @@ export const StructureCanvas = memo(function StructureCanvas({
     if (pendingCameraRef.current) {
       const next = pendingCameraRef.current
       pendingCameraRef.current = null
-      setCamera(next)
+      setCameraSync(next)
     }
-  }, [])
+  }, [setCameraSync])
 
   useEffect(() => {
     return () => {
@@ -708,7 +697,7 @@ export const StructureCanvas = memo(function StructureCanvas({
     }
     savedCameraRef.current = camera
     const tourCam = getTourCamera(view.width, view.height)
-    setCamera(tourCam)
+    setCameraSync(tourCam)
     setSelectedId(null)
     setMultiIds(null)
     setHoverId(null)
@@ -723,7 +712,7 @@ export const StructureCanvas = memo(function StructureCanvas({
     }
     setTourOpen(false)
     if (savedCameraRef.current) {
-      setCamera(savedCameraRef.current)
+      setCameraSync(savedCameraRef.current)
       savedCameraRef.current = null
     }
   }, [])
@@ -777,6 +766,39 @@ export const StructureCanvas = memo(function StructureCanvas({
   const flashTimer = useRef<number | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [menuText, setMenuText] = useState('')
+  const [menuTitleText, setMenuTitleText] = useState('')
+  const [menuFileKind, setMenuFileKind] = useState<FileNodeKind>('local')
+
+  /** 正在内联编辑的大纲目标项（卡片 uuid、条目 slotKey、输入文本） */
+  const [editingSlot, setEditingSlot] = useState<{ uuid: string; slotKey: string; text: string } | null>(null)
+  /** 正在内联新建目标项的大纲卡 uuid 与输入文本 */
+  const [addingSlotUuid, setAddingSlotUuid] = useState<string | null>(null)
+  const [addingSlotText, setAddingSlotText] = useState('')
+  const cancelledEditRef = useRef(false)
+  const cancelledAddRef = useRef(false)
+
+  const commitEditingSlot = useCallback(
+    (targetSlot: { uuid: string; slotKey: string; originalTitle: string }, newText: string) => {
+      setEditingSlot(null)
+      const trimmed = newText.trim()
+      if (trimmed && trimmed !== targetSlot.originalTitle) {
+        onRenameOutlineEntry?.(targetSlot.uuid, targetSlot.slotKey, trimmed)
+      }
+    },
+    [onRenameOutlineEntry],
+  )
+
+  const commitAddingSlot = useCallback(
+    (outlineUuid: string, text: string) => {
+      setAddingSlotUuid(null)
+      setAddingSlotText('')
+      const trimmed = text.trim()
+      if (trimmed) {
+        onAddOutlineEntry?.(outlineUuid, trimmed)
+      }
+    },
+    [onAddOutlineEntry],
+  )
 
 
   /** 空格按住时左键也能拖画布（见 onPointerDown） */
@@ -795,6 +817,12 @@ export const StructureCanvas = memo(function StructureCanvas({
   const fitNextRef = useRef(false)
 
   const bounds = useMemo(() => boundsOf(cards, height), [cards, height])
+  const boundsRef = useRef(bounds)
+  boundsRef.current = bounds
+  const viewRef = useRef(view)
+  viewRef.current = view
+  const heightRef = useRef(height)
+  heightRef.current = height
 
   /**
    * 连线的「大纲那一端」对准子级对应的那条目标项，而不是卡片顶部那个固定锚点。
@@ -891,12 +919,14 @@ export const StructureCanvas = memo(function StructureCanvas({
     if (paletteKind) {
       const wants: GNodeKind[] =
         paletteKind === 'doc'
-          ? ['outline', 'video']
+          ? ['outline', 'video', 'file']
           : paletteKind === 'outline'
-            ? ['doc', 'outline']
+            ? ['doc', 'outline', 'file']
             : paletteKind === 'video'
               ? [] // 视频节点不挂树：只能落在空白处，没有可作为落点的卡
-              : ['doc']
+              : paletteKind === 'file'
+                ? ['doc', 'note', 'superdoc', 'exam']
+                : ['doc']
       return new Set(cards.filter((c) => wants.includes(c.kind)).map((c) => c.uuid))
     }
     const g = gestureRef.current
@@ -909,12 +939,16 @@ export const StructureCanvas = memo(function StructureCanvas({
           : fk === 'video'
             ? ['doc']
             : fk === 'doc'
-              ? ['outline', 'video', 'project', 'note', 'exam', 'superdoc']
+              ? ['outline', 'video', 'project', 'note', 'exam', 'superdoc', 'file']
               : fk === 'project'
                 ? ['doc'] // 项目只能挂到文档之下：从项目卡拉出去，文档卡是唯一落点
                 : fk === 'exam' || fk === 'superdoc'
-                  ? ['note']
-                  : null
+                  ? ['note', 'file']
+                  : fk === 'note'
+                    ? ['file']
+                    : fk === 'file'
+                      ? ['outline', 'doc', 'note', 'superdoc', 'exam']
+                      : null
       // 从大纲拉到大纲：自己那张不算落点（连自己没有意义）
       return wants
         ? new Set(cards.filter((c) => wants.includes(c.kind) && c.uuid !== g.from).map((c) => c.uuid))
@@ -979,7 +1013,7 @@ export const StructureCanvas = memo(function StructureCanvas({
     if (!el) return
     const measure = () => {
       const rect = el.getBoundingClientRect()
-      setView({ width: rect.width, height: rect.height })
+      setView((prev) => (prev.width === rect.width && prev.height === rect.height ? prev : { width: rect.width, height: rect.height }))
     }
     measure()
     const ro = new ResizeObserver(measure)
@@ -996,6 +1030,7 @@ export const StructureCanvas = memo(function StructureCanvas({
    * 手动拖动与滚轮也会变成「带惯性的慢半拍」，那是另一种难受。
    */
   const animateCamera = useCallback((next: { x: number; y: number; zoom: number }) => {
+    cameraRef.current = next
     if (wheelRafRef.current != null) {
       cancelAnimationFrame(wheelRafRef.current)
       wheelRafRef.current = null
@@ -1016,6 +1051,10 @@ export const StructureCanvas = memo(function StructureCanvas({
     const zoom = fitZoom(box, view)
     animateCamera({ ...centerPan(box, view, zoom), zoom })
   }, [cards, height, view, animateCamera])
+
+  useEffect(() => {
+    fittedRef.current = false
+  }, [goalId])
 
   useEffect(() => {
     if (fitNextRef.current) {
@@ -1099,47 +1138,45 @@ export const StructureCanvas = memo(function StructureCanvas({
     onFocusHandled?.()
   }, [focusTarget, cards, view, height, onFocusHandled, flash, animateCamera])
 
-  /* ---------- 滚轮：平移为主，Ctrl/⌘ + 滚轮缩放（RAF 批量调度防卡顿） ---------- */
+  /* ---------- 滚轮：平移为主，Ctrl/⌘ + 滚轮缩放（RAF 批量调度防卡顿，连续平滑缩放） ---------- */
 
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
       const cam = cameraRef.current
+      if (animTimer.current !== null) {
+        window.clearTimeout(animTimer.current)
+        animTimer.current = null
+      }
+      if (planeRef.current) {
+        planeRef.current.style.transition = 'none'
+      }
+      setAnimating(false)
+
       if (e.ctrlKey || e.metaKey) {
-        if (!checkWheelValve(zoomValveRef.current, e.deltaY, now)) {
-          return
-        }
         const rect = el.getBoundingClientRect()
         const px = e.clientX - rect.left
         const py = e.clientY - rect.top
-        const next = clampZoom(cam.zoom * (e.deltaY > 0 ? 0.92 : 1.08), boundsOf(cards, height), view)
+        const normDelta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY
+        const clampedDelta = Math.max(-120, Math.min(120, normDelta))
+        const factor = Math.exp(-clampedDelta * 0.0018)
+        const next = clampZoom(cam.zoom * factor, boundsRef.current, viewRef.current)
         if (next === cam.zoom) return
         const k = next / cam.zoom
-        setAnimating(false)
         scheduleCameraUpdate({ x: px - (px - cam.x) * k, y: py - (py - cam.y) * k, zoom: next })
         return
       }
       // Shift + 滚轮：横向滚动（触控板横滑本来就给 deltaX，两种都给上）
       const rawDx = e.shiftKey ? e.deltaY : e.deltaX
       const rawDy = e.shiftKey ? 0 : e.deltaY
-      let dx = 0
-      let dy = 0
-      if (rawDx !== 0 && checkWheelValve(panXValveRef.current, rawDx, now)) {
-        dx = rawDx
-      }
-      if (rawDy !== 0 && checkWheelValve(panYValveRef.current, rawDy, now)) {
-        dy = rawDy
-      }
-      if (dx === 0 && dy === 0) return
-      setAnimating(false)
-      scheduleCameraUpdate({ ...cam, x: cam.x - dx, y: cam.y - dy })
+      if (rawDx === 0 && rawDy === 0) return
+      scheduleCameraUpdate({ ...cam, x: cam.x - rawDx, y: cam.y - rawDy })
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [cards, height, view, scheduleCameraUpdate])
+  }, [scheduleCameraUpdate])
 
   /* ---------- 坐标换算（正交投影：y 除以 cos 就把倾斜还原了） ---------- */
 
@@ -1343,9 +1380,14 @@ export const StructureCanvas = memo(function StructureCanvas({
         else onToast?.(t('这枚项目节点还没有设置路径：右键卡片 →「设置路径」'))
         return
       }
+      if (card.kind === 'file') {
+        if (onOpenFileNode) onOpenFileNode(card.uuid)
+        else onToast?.(t('无法打开文件节点'))
+        return
+      }
       onToast?.(t('大纲节点就在这张画布上，没有另一份页签'))
     },
-    [docs, exams, onToast, onOpenVideo, store, toggleProjRoot],
+    [docs, exams, onToast, onOpenVideo, onOpenFileNode, store, toggleProjRoot],
   )
 
   /* ---------- 自动排列（清掉坐标、交给派生铺排；便条保留） ---------- */
@@ -1431,7 +1473,7 @@ export const StructureCanvas = memo(function StructureCanvas({
       if (e.button !== 0) return
       lastDownCardRef.current = null
       // 菜单、按钮、输入框：容器一旦捕获指针，它们就收不到 click 了
-      if (target.closest('button, textarea, input, [data-menu]')) return
+      if (target.closest('button, textarea, input, [data-menu], [data-add-slot], [data-rename-slot]')) return
       if (menu) {
         setMenu(null)
         return
@@ -1467,13 +1509,7 @@ export const StructureCanvas = memo(function StructureCanvas({
         return
       }
 
-      const addEl = target.closest<HTMLElement>('[data-add-slot]')
-      if (addEl) {
-        const uuid = addEl.dataset.addSlot as string
-        setMenuText('')
-        setMenu({ x: e.clientX, y: e.clientY, uuid, mode: 'slot' })
-        return
-      }
+      
 
       const slotEl = target.closest<HTMLElement>('[data-slot-key]')
       if (slotEl) {
@@ -1648,6 +1684,13 @@ export const StructureCanvas = memo(function StructureCanvas({
       flushPendingCamera()
       const g = gestureRef.current
       gestureRef.current = null
+      if (g && g.mode === 'pan') {
+        const dist = Math.abs(e.clientX - g.startX) + Math.abs(e.clientY - g.startY)
+        if (dist > 3) {
+          // 移动过则说明是拖映画布手势，重置中键连击判定计时，防止连续拖拽被误判为双击自动校正适应画布
+          lastMiddleDownRef.current = 0
+        }
+      }
       const el = containerRef.current
       if (el?.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
       if (!g) return
@@ -1733,6 +1776,16 @@ export const StructureCanvas = memo(function StructureCanvas({
             const sdoc = fromCard?.kind === 'superdoc' ? g.from : target.uuid
             const note = fromCard?.kind === 'superdoc' ? target.uuid : g.from
             tryConnect(sdoc, note)
+          } else if (fromCard?.kind === 'file') {
+            if (['outline', 'doc', 'note', 'superdoc', 'exam'].includes(target.kind)) {
+              tryConnect(g.from, target.uuid)
+            }
+          } else if (target.kind === 'file') {
+            if (['doc', 'note', 'superdoc', 'exam'].includes(fromCard?.kind ?? '')) {
+              tryConnect(g.from, target.uuid)
+            } else if (fromCard?.kind === 'outline') {
+              tryConnect(target.uuid, g.from)
+            }
           }
           // 其余组合不响应（没有可建立的关系）——沉默即可，不值得一条吐司
         }
@@ -1829,6 +1882,8 @@ export const StructureCanvas = memo(function StructureCanvas({
             } else if (g.kind === 'outline') {
               // 大纲拖到文档上 = 给它补一份大纲（附身，node.outline）
               under = target.kind === 'doc' ? target.uuid : null
+            } else if (g.kind === 'file') {
+              under = ['doc', 'note', 'superdoc', 'exam'].includes(target.kind) ? target.uuid : null
             } else {
               // 挂件：拖到文档卡 = 绑到它；拖到大纲卡 = 绑到那张大纲的宿主文档（游离大纲没有宿主，接不住）
               under =
@@ -1852,16 +1907,18 @@ export const StructureCanvas = memo(function StructureCanvas({
           setSelectedId(r.uuid)
           onToast?.(
             g.kind === 'note'
-              ? t('已新建笔记「{0}」，点标题就能打开', r.title)
+              ? t('已新建笔记「{0}」，点标题就能打开', r.title || '')
               : g.kind === 'exam'
                 ? t('已放一份空试卷：点卡片上的「生成试卷」让 AI 出题')
                 : g.kind === 'superdoc'
-                  ? t('已放一份空超级文档「{0}」：点「生成超级文档」让 AI 来写', r.title)
+                  ? t('已放一份空超级文档「{0}」：点「生成超级文档」让 AI 来写', r.title || '')
                   : g.kind === 'outline'
                     ? t('已建一张独立的大纲卡：目标项写在卡上，往下挂文档或再开一层大纲')
                     : g.kind === 'project'
                       ? t('已建一枚项目节点：右键卡片 →「设置路径」声明一条真实路径，之后 agent 可以读写它下面的所有文件')
-                      : t('已建文档「{0}」：点标题打开写正文', r.title),
+                      : g.kind === 'file'
+                        ? t('已建文件节点「{0}」', r.title || '')
+                        : t('已建文档「{0}」：点标题打开写正文', r.title || ''),
           )
         }
       }
@@ -2035,23 +2092,29 @@ export const StructureCanvas = memo(function StructureCanvas({
     const onMinimapWheel = (e: WheelEvent) => {
       e.preventDefault()
       e.stopPropagation()
-      const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
-      if (!checkWheelValve(zoomValveRef.current, e.deltaY, now)) {
-        return
-      }
       const cam = cameraRef.current
-      const factor = e.deltaY > 0 ? 0.92 : 1.08
-      const next = clampZoom(cam.zoom * factor, boundsOf(cards, height), view)
+      const normDelta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY
+      const clampedDelta = Math.max(-120, Math.min(120, normDelta))
+      const factor = Math.exp(-clampedDelta * 0.0018)
+      const next = clampZoom(cam.zoom * factor, boundsRef.current, viewRef.current)
       if (next === cam.zoom) return
-      const px = view.width / 2
-      const py = view.height / 2
+      const curView = viewRef.current
+      const px = curView.width / 2
+      const py = curView.height / 2
       const k = next / cam.zoom
+      if (animTimer.current !== null) {
+        window.clearTimeout(animTimer.current)
+        animTimer.current = null
+      }
+      if (planeRef.current) {
+        planeRef.current.style.transition = 'none'
+      }
       setAnimating(false)
       scheduleCameraUpdate({ x: px - (px - cam.x) * k, y: py - (py - cam.y) * k, zoom: next })
     }
     el.addEventListener('wheel', onMinimapWheel, { passive: false })
     return () => el.removeEventListener('wheel', onMinimapWheel)
-  }, [mini, cards, height, view, scheduleCameraUpdate])
+  }, [scheduleCameraUpdate])
 
   /** 把缩略图上的一点变成镜头中心（屏幕坐标 → 窗口占比 → 世界坐标 → 相机平移） */
   const jumpByMinimap = useCallback(
@@ -2078,7 +2141,7 @@ export const StructureCanvas = memo(function StructureCanvas({
           ? m.bounds.y + m.bounds.height / 2
           : Math.min(Math.max(wy, m.bounds.y + halfH), m.bounds.y + m.bounds.height - halfH)
       setAnimating(false)
-      setCamera({ x: view.width / 2 - wx * cam.zoom, y: view.height / 2 - wy * cam.zoom, zoom: cam.zoom })
+      setCameraSync({ x: view.width / 2 - wx * cam.zoom, y: view.height / 2 - wy * cam.zoom, zoom: cam.zoom })
     },
     [mini, view],
   )
@@ -2297,6 +2360,76 @@ export const StructureCanvas = memo(function StructureCanvas({
     }
   })
 
+  const onCanvasDragOver = useCallback((e: React.DragEvent) => {
+    const hasFiles = e.dataTransfer.types ? Array.from(e.dataTransfer.types).includes('Files') : false
+    if (hasFiles) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+    }
+  }, [])
+
+  const onCanvasDrop = useCallback(
+    async (e: React.DragEvent) => {
+      const files = Array.from(e.dataTransfer.files || [])
+      const normalFiles = files.filter((f) => !f.name.toLowerCase().endsWith('.unr'))
+      if (!normalFiles.length) return
+      e.preventDefault()
+      e.stopPropagation()
+
+      const world = toWorld(e.clientX, e.clientY)
+      const goalDir = goalDirOf(store, goalId)
+      if (!goalDir) {
+        onToast?.(t('找不到当前目标目录，无法保存文件'))
+        return
+      }
+
+      let offsetX = 0
+      let offsetY = 0
+
+      for (const file of normalFiles) {
+        const fileName = sanitizeFileName(file.name)
+        const relPath = `${goalDir}/${FILES_DIR}/${fileName}`
+        try {
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(String(reader.result))
+            reader.onerror = () => reject(new Error('读取文件失败'))
+            reader.readAsDataURL(file)
+          })
+
+          const written = await writeUserBinary(relPath, dataUrl)
+          if (!written) {
+            onToast?.(t('保存文件「{0}」失败', file.name))
+            continue
+          }
+
+          if (onCreateNode) {
+            const r = onCreateNode(
+              'file',
+              null,
+              { x: Math.round(world.x + offsetX), y: Math.round(world.y + offsetY) },
+              {
+                title: file.name,
+                fileKind: 'local',
+                url: `${FILES_DIR}/${fileName}`,
+              },
+            )
+            if ('uuid' in r) {
+              writePos(r.uuid, Math.round(world.x + offsetX), Math.round(world.y + offsetY))
+              setSelectedId(r.uuid)
+              offsetX += 24
+              offsetY += 24
+            }
+          }
+          onToast?.(t('已添加文件节点「{0}」', file.name))
+        } catch (err) {
+          onToast?.(t('导入文件失败: {0}', err instanceof Error ? err.message : String(err)))
+        }
+      }
+    },
+    [store, goalId, toWorld, onCreateNode, writePos, onToast],
+  )
+
   /** 换肤后重绘底图与视口：canvas 不像 SVG 那样跟着 CSS 变量自己变 */
   useLayoutEffect(() => {
     const watch = new MutationObserver(() => refreshMiniRef.current())
@@ -2308,6 +2441,7 @@ export const StructureCanvas = memo(function StructureCanvas({
     <div
       ref={containerRef}
       tabIndex={0}
+      data-structure-canvas="true"
       onPointerDown={onPointerDown}
       // 中键在 Chromium 里会触发「自动滚动」，pointerdown 上的 preventDefault 拦不住
       onMouseDown={(e) => {
@@ -2319,6 +2453,8 @@ export const StructureCanvas = memo(function StructureCanvas({
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}
+      onDragOver={onCanvasDragOver}
+      onDrop={onCanvasDrop}
       className="relative h-full w-full select-none overflow-hidden bg-paper outline-none dark:bg-card/30"
       style={{
         cursor: hoverDot ? 'pointer' : spaceDown ? 'grab' : undefined,
@@ -2342,8 +2478,7 @@ export const StructureCanvas = memo(function StructureCanvas({
           animating ? 'transition-transform duration-300 ease-out' : ''
         }`}
         style={{
-          transform: `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.zoom})`,
-          willChange: 'transform',
+          transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})`,
         }}
       >
 
@@ -2530,7 +2665,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                 left: card.x,
                 top: card.y,
                 width: cardWidthOf(card.kind),
-                height: h,
+                minHeight: h,
                 // 悬停不抢光标（箭头就好），拖起来才换成抓住的手——「可拖」由选中态与阴影说
                 cursor: lifted ? 'grabbing' : undefined,
               }}
@@ -2569,92 +2704,187 @@ export const StructureCanvas = memo(function StructureCanvas({
                 /* 容器不带左右内边距：行自己带，圆点才能贴到卡片右边框上 */
                 /* 不能加 overflow-hidden：圆点要伸出卡片右边框半颗，裁了连点击都收不到 */
                 <div className="flex flex-col pb-2">
-                  {slots.map((slot) => (
+                  {slots.map((slot) => {
+                    const isEditingThisSlot = editingSlot?.uuid === card.uuid && editingSlot?.slotKey === slot.key
+                    return (
+                      <div
+                        key={slot.key}
+                        data-slot-key={slot.key}
+                        data-slot-parent={card.uuid}
+                        title={isEditingThisSlot ? undefined : slot.childId ? `${slot.title} · ${t('跳到这个子文档')}` : `${slot.title} · ${t('生成一份空文档')}`}
+                        onPointerEnter={() => !isEditingThisSlot && setHoverSlot({ parentId: card.uuid, key: slot.key })}
+                        onPointerLeave={() => setHoverSlot(null)}
+                        className={`group/slot relative flex items-center gap-1.5 pr-6 pl-2 ${
+                          isEditingThisSlot ? 'bg-seal/[0.06]' : 'cursor-pointer hover:bg-seal/[0.08]'
+                        }`}
+                        style={{ height: SLOT_ROW }}
+                      >
+                        <span className="h-2 w-2 shrink-0" />
+                        {isEditingThisSlot ? (
+                          <div
+                            className="flex min-w-0 flex-1 items-center"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="text"
+                              autoFocus
+                              value={editingSlot.text}
+                              onChange={(e) => setEditingSlot({ ...editingSlot, text: e.target.value.replace(/[\r\n]/g, '') })}
+                              onFocus={(e) => e.target.select()}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={(e) => e.stopPropagation()}
+                              onDoubleClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => {
+                                e.stopPropagation()
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  commitEditingSlot({ uuid: card.uuid, slotKey: slot.key, originalTitle: slot.title }, editingSlot.text)
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  cancelledEditRef.current = true
+                                  setEditingSlot(null)
+                                }
+                              }}
+                              onBlur={() => {
+                                if (cancelledEditRef.current) {
+                                  cancelledEditRef.current = false
+                                  return
+                                }
+                                commitEditingSlot({ uuid: card.uuid, slotKey: slot.key, originalTitle: slot.title }, editingSlot.text)
+                              }}
+                              className="min-w-0 flex-1 rounded border border-seal/50 bg-paper px-1.5 py-0 text-[11.5px] leading-[18px] text-ink outline-none focus:border-seal focus:ring-1 focus:ring-seal/30 dark:bg-card"
+                            />
+                          </div>
+                        ) : (
+                          <span
+                            title={slot.title}
+                            className="min-w-0 flex-1 truncate text-[11.5px]"
+                            style={{ color: slot.childId ? SLOT_ACCENT : undefined, opacity: slot.childId ? 1 : 0.55 }}
+                            onDoubleClick={(e) => {
+                              if (onRenameOutlineEntry) {
+                                e.stopPropagation()
+                                setEditingSlot({ uuid: card.uuid, slotKey: slot.key, text: slot.title })
+                                setAddingSlotUuid(null)
+                                setMenu(null)
+                              }
+                            }}
+                          >
+                            {slot.title}
+                          </span>
+                        )}
+                        {onRenameOutlineEntry && !isEditingThisSlot && (
+                          <button
+                            type="button"
+                            data-rename-slot={slot.key}
+                            data-rename-slot-parent={card.uuid}
+                            title={t('重命名目标项「{0}」', slot.title)}
+                            className="z-10 shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:bg-seal/15 hover:text-seal group-hover/slot:opacity-100"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingSlot({ uuid: card.uuid, slotKey: slot.key, text: slot.title })
+                              setAddingSlotUuid(null)
+                              setMenu(null)
+                            }}
+                          >
+                            <Pencil size={11} strokeWidth={2.2} />
+                          </button>
+                        )}
+                        {onDeleteOutlineEntry && !isEditingThisSlot && (
+                          <button
+                            type="button"
+                            data-delete-slot={slot.key}
+                            data-delete-slot-parent={card.uuid}
+                            title={t('删除目标项「{0}」', slot.title)}
+                            className="z-10 shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:bg-rose-500/15 hover:text-rose-500 group-hover/slot:opacity-100"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onDeleteOutlineEntry(card.uuid, slot.key)
+                            }}
+                          >
+                            <X size={11} strokeWidth={2.2} />
+                          </button>
+                        )}
+                        {/*
+                          接口点：**菱形**（旋转 45° 的小方块）——圆形留给普通连线把手，
+                          一眼分得清「这是在认领某个接口」。认领了=实心，空着=空心。
+                          位置规矩不变：放在这一行里面（垂直居中 flex 保证），圆心压在
+                          1px 边框的中线上（right: -0.5px 再平移半颗）。
+                        */}
+                        <span
+                          data-slot-dot={slot.key}
+                          data-slot-dot-parent={card.uuid}
+                          title={slot.childId ? t('已经挂上：拖出去可以换一份') : t('从接口拖出去挂一份文档或子大纲（会认领这条目标项）')}
+                          className="absolute top-1/2 -right-[0.5px] h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2 rotate-45 cursor-crosshair rounded-[2px] border-2"
+                          style={{
+                            borderColor: SLOT_ACCENT,
+                            background: slot.childId ? SLOT_ACCENT : 'var(--color-card, #fff)',
+                          }}
+                        />
+                      </div>
+                    )
+                  })}
+                  {/* 手动加一条目标项：这是大纲内容，走大纲节点的 editContent */}
+                  {addingSlotUuid === card.uuid ? (
                     <div
-                      key={slot.key}
-                      data-slot-key={slot.key}
-                      data-slot-parent={card.uuid}
-                      title={slot.childId ? `${slot.title} · ${t('跳到这个子文档')}` : `${slot.title} · ${t('生成一份空文档')}`}
-                      onPointerEnter={() => setHoverSlot({ parentId: card.uuid, key: slot.key })}
-                      onPointerLeave={() => setHoverSlot(null)}
-                      className="group/slot relative flex cursor-pointer items-center gap-1.5 pr-6 pl-2 hover:bg-seal/[0.08]"
+                      className="flex items-center gap-1.5 pr-3 pl-2"
                       style={{ height: SLOT_ROW }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <span className="h-2 w-2 shrink-0" />
-                      <span
-                        title={slot.title}
-                        className="min-w-0 flex-1 truncate text-[11.5px]"
-                        style={{ color: slot.childId ? SLOT_ACCENT : undefined, opacity: slot.childId ? 1 : 0.55 }}
-                        onDoubleClick={(e) => {
-                          if (onRenameOutlineEntry) {
-                            e.stopPropagation()
-                            setMenuText(slot.title)
-                            setMenu({ x: e.clientX, y: e.clientY, uuid: card.uuid, slotKey: slot.key, mode: 'renameSlot' })
+                      <span className="text-[11px] text-seal">＋</span>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder={t('新目标项标题...')}
+                        value={addingSlotText}
+                        onChange={(e) => setAddingSlotText(e.target.value.replace(/[\r\n]/g, ''))}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          e.stopPropagation()
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            commitAddingSlot(card.uuid, addingSlotText)
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault()
+                            cancelledAddRef.current = true
+                            setAddingSlotUuid(null)
+                            setAddingSlotText('')
                           }
                         }}
-                      >
-                        {slot.title}
-                      </span>
-                      {onRenameOutlineEntry && (
-                        <button
-                          type="button"
-                          data-rename-slot={slot.key}
-                          data-rename-slot-parent={card.uuid}
-                          title={t('重命名目标项「{0}」', slot.title)}
-                          className="z-10 shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:bg-seal/15 hover:text-seal group-hover/slot:opacity-100"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setMenuText(slot.title)
-                            setMenu({ x: e.clientX, y: e.clientY, uuid: card.uuid, slotKey: slot.key, mode: 'renameSlot' })
-                          }}
-                        >
-                          <Pencil size={11} strokeWidth={2.2} />
-                        </button>
-                      )}
-                      {onDeleteOutlineEntry && (
-                        <button
-                          type="button"
-                          data-delete-slot={slot.key}
-                          data-delete-slot-parent={card.uuid}
-                          title={t('删除目标项「{0}」', slot.title)}
-                          className="z-10 shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:bg-rose-500/15 hover:text-rose-500 group-hover/slot:opacity-100"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onDeleteOutlineEntry(card.uuid, slot.key)
-                          }}
-                        >
-                          <X size={11} strokeWidth={2.2} />
-                        </button>
-                      )}
-                      {/*
-                        接口点：**菱形**（旋转 45° 的小方块）——圆形留给普通连线把手，
-                        一眼分得清「这是在认领某个接口」。认领了=实心，空着=空心。
-                        位置规矩不变：放在这一行里面（垂直居中 flex 保证），圆心压在
-                        1px 边框的中线上（right: -0.5px 再平移半颗）。
-                      */}
-                      <span
-                        data-slot-dot={slot.key}
-                        data-slot-dot-parent={card.uuid}
-                        title={slot.childId ? t('已经挂上：拖出去可以换一份') : t('从接口拖出去挂一份文档或子大纲（会认领这条目标项）')}
-                        className="absolute top-1/2 -right-[0.5px] h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2 rotate-45 cursor-crosshair rounded-[2px] border-2"
-                        style={{
-                          borderColor: SLOT_ACCENT,
-                          background: slot.childId ? SLOT_ACCENT : 'var(--color-card, #fff)',
+                        onBlur={() => {
+                          if (cancelledAddRef.current) {
+                            cancelledAddRef.current = false
+                            return
+                          }
+                          commitAddingSlot(card.uuid, addingSlotText)
                         }}
+                        className="min-w-0 flex-1 rounded border border-seal/50 bg-paper px-1.5 py-0 text-[11px] leading-[18px] text-ink outline-none focus:border-seal focus:ring-1 focus:ring-seal/30 dark:bg-card"
                       />
                     </div>
-                  ))}
-                  {/* 手动加一条目标项：这是大纲内容，走大纲节点的 editContent */}
-                  <div
-                    data-add-slot={card.uuid}
-                    title={t('给这份大纲加一条目标项')}
-                    className="flex cursor-pointer items-center gap-1.5 pr-3 pl-2 text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
-                    style={{ height: SLOT_ROW }}
-                  >
-                    ＋ {t('添加目标项')}
-                  </div>
+                  ) : (
+                    <button
+                      type="button"
+                      data-add-slot={card.uuid}
+                      title={t('给这份大纲加一条目标项')}
+                      className="flex w-full cursor-pointer items-center gap-1.5 pr-3 pl-2 text-left text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
+                      style={{ height: SLOT_ROW }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setAddingSlotUuid(card.uuid)
+                        setAddingSlotText('')
+                        setEditingSlot(null)
+                        setMenu(null)
+                      }}
+                    >
+                      ＋ {t('添加目标项')}
+                    </button>
+                  )}
                 </div>
               ) : card.kind === 'outline' && slots.length === 0 ? (
                 /*
@@ -2662,7 +2892,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                   支持 Agent 自动规划，亦支持用户手动创建第一项目标
                 */
                 <div className="flex flex-col gap-1 px-3 pb-2">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex h-6 items-center justify-between gap-2">
                     <span title={card.subtitle} className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
                     <button
                       type="button"
@@ -2675,14 +2905,63 @@ export const StructureCanvas = memo(function StructureCanvas({
                       {t('生成总览')}
                     </button>
                   </div>
-                  <div
-                    data-add-slot={card.uuid}
-                    title={t('给这份大纲加一条目标项')}
-                    className="flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
-                    style={{ height: SLOT_ROW }}
-                  >
-                    ＋ {t('添加目标项')}
-                  </div>
+                  {addingSlotUuid === card.uuid ? (
+                    <div
+                      className="flex items-center gap-1.5"
+                      style={{ height: SLOT_ROW }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span className="text-[11px] text-seal">＋</span>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder={t('新目标项标题...')}
+                        value={addingSlotText}
+                        onChange={(e) => setAddingSlotText(e.target.value.replace(/[\r\n]/g, ''))}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          e.stopPropagation()
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            commitAddingSlot(card.uuid, addingSlotText)
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault()
+                            cancelledAddRef.current = true
+                            setAddingSlotUuid(null)
+                            setAddingSlotText('')
+                          }
+                        }}
+                        onBlur={() => {
+                          if (cancelledAddRef.current) {
+                            cancelledAddRef.current = false
+                            return
+                          }
+                          commitAddingSlot(card.uuid, addingSlotText)
+                        }}
+                        className="min-w-0 flex-1 rounded border border-seal/50 bg-paper px-1.5 py-0 text-[11px] leading-[18px] text-ink outline-none focus:border-seal focus:ring-1 focus:ring-seal/30 dark:bg-card"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      data-add-slot={card.uuid}
+                      title={t('给这份大纲加一条目标项')}
+                      className="flex w-full cursor-pointer items-center gap-1.5 text-left text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
+                      style={{ height: SLOT_ROW }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setAddingSlotUuid(card.uuid)
+                        setAddingSlotText('')
+                        setEditingSlot(null)
+                        setMenu(null)
+                      }}
+                    >
+                      ＋ {t('添加目标项')}
+                    </button>
+                  )}
                 </div>
               ) : card.kind === 'doc' && card.excerpt ? (
                 /*
@@ -2823,6 +3102,67 @@ export const StructureCanvas = memo(function StructureCanvas({
                       {card.blank ? t('选择视频') : t('换绑')}
                     </button>
                   </div>
+                </div>
+              ) : card.kind === 'file' ? (
+                /*
+                  文件卡：展示文件类型（本地/网页）与绑定 URL/文件路径。
+                  点击本地文件可在文件管理器中定位，点击网页可一键跳转。
+                  提供「设置」按钮允许编辑绑定信息。
+                */
+                <div className="flex items-center justify-between gap-2 px-3 pb-2">
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+                    <span
+                      className={`shrink-0 rounded px-1 py-[1px] text-[9px] font-semibold ${
+                        card.file?.fileKind === 'web'
+                          ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
+                          : 'bg-blue-500/15 text-blue-700 dark:text-blue-300'
+                      }`}
+                    >
+                      {card.file?.fileKind === 'web' ? t('网页') : t('本地')}
+                    </span>
+                    <span
+                      title={card.file?.url || t('未设置文件或网址')}
+                      className="min-w-0 flex-1 truncate text-[11px] text-ink-soft cursor-pointer hover:underline hover:text-seal"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (onOpenFileNode) {
+                          onOpenFileNode(card.uuid)
+                        } else if (card.file?.url) {
+                          if (card.file.fileKind === 'web') {
+                            window.open(card.file.url, '_blank')
+                          } else {
+                            const goalDir = goalDirOf(store, goalId)
+                            if (goalDir) {
+                              const fileName = card.file.url.replace(/^files\//, '')
+                              void revealUserPath(`${goalDir}/${FILES_DIR}/${fileName}`)
+                            }
+                          }
+                        }
+                      }}
+                    >
+                      {card.file?.url ? card.file.url.split('/').pop() || card.file.url : t('未设置')}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    title={t('修改文件节点绑定的文件或网址')}
+                    className="shrink-0 rounded bg-line/60 px-2 py-0.5 text-[11px] text-ink-soft hover:bg-line/90 transition cursor-pointer"
+                    onClick={(e) => {
+                      const r = e.currentTarget.getBoundingClientRect()
+                      const fileEntity = store.fileNodes?.find((f) => f.id === card.uuid)
+                      setMenuFileKind(fileEntity?.fileKind ?? 'local')
+                      setMenuText(fileEntity?.url ?? '')
+                      setMenuTitleText(fileEntity?.title ?? '')
+                      setMenu({
+                        x: Math.min(r.right, window.innerWidth - 280),
+                        y: Math.min(r.bottom + 6, window.innerHeight - 220),
+                        uuid: card.uuid,
+                        mode: 'fileEdit',
+                      })
+                    }}
+                  >
+                    {t('设置')}
+                  </button>
                 </div>
               ) : card.kind === 'project' ? (
                 /*
@@ -2980,10 +3320,18 @@ export const StructureCanvas = memo(function StructureCanvas({
                 出线把手（右）只长在 doc 上：大纲的出线全走目标项的菱形口（从口上拖出去
                 才会认领），挂件与入口没有出线。
               */}
-              {(card.kind === 'doc' || card.kind === 'video' || card.kind === 'exam' || card.kind === 'superdoc') && (
+              {(card.kind === 'doc' || card.kind === 'video' || card.kind === 'exam' || card.kind === 'superdoc' || card.kind === 'file' || card.kind === 'note') && (
                 <div
                   data-link-handle={card.uuid}
-                  title={card.kind === 'exam' || card.kind === 'superdoc' ? t('拖出去连到笔记节点') : t('拖出去连到另一个节点')}
+                  title={
+                    card.kind === 'note'
+                      ? t('拖出去连到文件节点')
+                      : card.kind === 'exam' || card.kind === 'superdoc'
+                        ? t('拖出去连到笔记或文件节点')
+                        : card.kind === 'file'
+                          ? t('拖出去连到下级节点')
+                          : t('拖出去连到另一个节点')
+                  }
                   className="absolute -right-[7.5px] h-3.5 w-3.5 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-card bg-seal"
                   style={{ top: EDGE_ANCHOR_Y }}
                 />
@@ -3122,7 +3470,7 @@ export const StructureCanvas = memo(function StructureCanvas({
           onClick={() => {
             const cam = cameraRef.current
             const next = clampZoom(cam.zoom - 0.15, boundsOf(cards, height), view)
-            if (next !== cam.zoom) setCamera({ ...cam, zoom: next })
+            if (next !== cam.zoom) setCameraSync({ ...cam, zoom: next })
           }}
         >
           <svg {...ICON_STROKE}>
@@ -3137,7 +3485,7 @@ export const StructureCanvas = memo(function StructureCanvas({
           onClick={() => {
             const cam = cameraRef.current
             const next = clampZoom(cam.zoom + 0.15, boundsOf(cards, height), view)
-            if (next !== cam.zoom) setCamera({ ...cam, zoom: next })
+            if (next !== cam.zoom) setCameraSync({ ...cam, zoom: next })
           }}
         >
           <svg {...ICON_STROKE}>
@@ -3182,6 +3530,14 @@ export const StructureCanvas = memo(function StructureCanvas({
             <rect x="14" y="14" width="7" height="7" rx="1" />
           </svg>
         </ControlButton>
+        {onToggleViewMode && (
+          <>
+            <span className="mx-0.5 h-3.5 w-px bg-line" />
+            <ControlButton label={t('切换为大纲树视图')} onClick={onToggleViewMode}>
+              <FolderTree size={13} />
+            </ControlButton>
+          </>
+        )}
         <span className="mx-0.5 h-3.5 w-px bg-line" />
         <ControlButton label={t('新手教学')} onClick={handleOpenTour}>
           <svg {...ICON_STROKE}>
@@ -3301,6 +3657,33 @@ export const StructureCanvas = memo(function StructureCanvas({
                   {menuCard.blank ? t('选择视频') : t('换一个视频')}
                 </button>
               )}
+              {menuCard.kind === 'file' && (
+                <>
+                  <button
+                    type="button"
+                    className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
+                    onClick={() => {
+                      setMenu(null)
+                      if (onOpenFileNode) onOpenFileNode(menuCard.uuid)
+                    }}
+                  >
+                    {t('打开')}
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
+                    onClick={() => {
+                      const fileEntity = store.fileNodes?.find((f) => f.id === menuCard.uuid)
+                      setMenuFileKind(fileEntity?.fileKind ?? 'local')
+                      setMenuText(fileEntity?.url ?? '')
+                      setMenuTitleText(fileEntity?.title ?? '')
+                      setMenu({ ...menu, mode: 'fileEdit' })
+                    }}
+                  >
+                    {t('设置文件或网址')}
+                  </button>
+                </>
+              )}
               {menuCard.kind === 'project' && (
                 <button
                   type="button"
@@ -3314,6 +3697,82 @@ export const StructureCanvas = memo(function StructureCanvas({
                 </button>
               )}
             </>
+          ) : menu.mode === 'fileEdit' ? (
+            <div className="flex flex-col gap-2 p-2">
+              <div className="text-[12px] font-medium text-ink">{t('设置文件或网址')}</div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition cursor-pointer ${
+                    menuFileKind === 'local'
+                      ? 'bg-blue-500/20 text-blue-700 dark:text-blue-300'
+                      : 'bg-line/40 text-ink-soft hover:bg-line/70'
+                  }`}
+                  onClick={() => setMenuFileKind('local')}
+                >
+                  {t('本地文件')}
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition cursor-pointer ${
+                    menuFileKind === 'web'
+                      ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300'
+                      : 'bg-line/40 text-ink-soft hover:bg-line/70'
+                  }`}
+                  onClick={() => setMenuFileKind('web')}
+                >
+                  {t('网页文件')}
+                </button>
+              </div>
+              <div>
+                <label className="text-[10px] text-ink-faint">{t('标题')}</label>
+                <input
+                  type="text"
+                  placeholder={t('节点标题...')}
+                  value={menuTitleText}
+                  onChange={(e) => setMenuTitleText(e.target.value.replace(/[\r\n]/g, ''))}
+                  className="w-full rounded border border-line bg-paper px-2 py-1 text-[11px] text-ink outline-none focus:border-seal dark:bg-card"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-ink-faint">
+                  {menuFileKind === 'local' ? t('文件路径（必须位于 files/ 目录下）') : t('网页链接（URL）')}
+                </label>
+                <input
+                  type="text"
+                  placeholder={menuFileKind === 'local' ? 'files/example.pdf' : 'https://...'}
+                  value={menuText}
+                  onChange={(e) => setMenuText(e.target.value.replace(/[\r\n]/g, ''))}
+                  className="w-full rounded border border-line bg-paper px-2 py-1 text-[11px] text-ink outline-none focus:border-seal dark:bg-card"
+                />
+              </div>
+              <div className="flex justify-end gap-1.5 pt-1">
+                <button
+                  type="button"
+                  className="rounded px-2.5 py-1 text-[11px] text-ink-soft hover:bg-line/60 cursor-pointer"
+                  onClick={() => setMenu(null)}
+                >
+                  {t('取消')}
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-seal px-2.5 py-1 text-[11px] font-medium text-white hover:bg-seal-deep cursor-pointer"
+                  onClick={() => {
+                    if (onBindFile) {
+                      const res = onBindFile(menu.uuid, {
+                        fileKind: menuFileKind,
+                        url: menuText.trim(),
+                        title: menuTitleText.trim() || undefined,
+                      })
+                      report(res)
+                    }
+                    setMenu(null)
+                  }}
+                >
+                  {t('确定')}
+                </button>
+              </div>
+            </div>
           ) : menu.mode === 'videoPick' ? (
             /*
               视频卡的下拉：现有视频一张一行（当前绑着的打勾），底部给解绑。
@@ -3438,11 +3897,7 @@ export const StructureCanvas = memo(function StructureCanvas({
               <div className="text-[10px] text-ink-faint">
                 {menu.mode === 'note'
                   ? t('写一句注释，贴在卡片底部')
-                  : menu.mode === 'rename'
-                    ? t('改笔记名（文件名一起改）')
-                    : menu.mode === 'renameSlot'
-                      ? t('重命名大纲目标项')
-                      : t('新的目标项标题')}
+                  : t('改笔记名（文件名一起改）')}
               </div>
               <textarea
                 autoFocus
@@ -3465,11 +3920,6 @@ export const StructureCanvas = memo(function StructureCanvas({
                   onClick={() => {
                     if (menu.mode === 'note') saveNote(menuCard.uuid, menuCard, menuText)
                     else if (menu.mode === 'rename') saveRename(menuCard, menuText)
-                    else {
-                      const title = menuText.trim()
-                      if (title) onAddOutlineEntry?.(menuCard.uuid, title)
-                      setMenu(null)
-                    }
                   }}
                 >
                   {t('保存')}

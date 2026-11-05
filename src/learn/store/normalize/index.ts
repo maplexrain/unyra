@@ -27,6 +27,7 @@ import { normalizeOutlineEntities } from '../../outline'
 import type { VideoChapter, VideoRecap, VideoResource } from '../../types'
 import { normalizeVideoNodes, withVideoMirror } from '../../video/nodes'
 import { normalizeProjects } from '../../projects'
+import { normalizeFileNodes } from '../../fileNodes'
 import { normalizeMemoryStore } from '../../memory'
 import { normalizeResourceList, retargetStaticRefs, type StaticResource } from '../../static'
 import { normalizeTmpStore, pruneTmpToNodes } from '../../../lib/tmpStore'
@@ -92,9 +93,11 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
     const videoNodes = normalizeVideoNodes(d.videoNodes, goalIds, videoIds)
     // 项目节点（目标 × 真实路径的声明）：目标没了的行丢掉，坏条目逐条丢
     const projects = normalizeProjects(d.projects, goalIds)
+    const fileNodes = normalizeFileNodes(d.fileNodes, goalIds)
     const videoNodeIds = new Set(videoNodes.map((v) => v.id))
     // 项目节点也是树成员（挂在文档之下，见 learn/nodeKinds/project）：树边校验要认它的 id
     const projectIds = new Set(projects.map((p) => p.id))
+    const fileNodeIds = new Set(fileNodes.map((f) => f.id))
 
     const rawEdges: unknown[] = Array.isArray(d.edges) ? d.edges : []
     const edges: DependencyEdge[] = []
@@ -112,6 +115,7 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
           ids.has(m) ||
           videoNodeIds.has(m) ||
           projectIds.has(m) ||
+          fileNodeIds.has(m) ||
           (m.startsWith('o:') && (ids.has(m.slice(2)) || freeIds.has(m.slice(2))))
         )
       if (!from || !to || from === to || !memberOk(from) || !memberOk(to)) continue
@@ -363,6 +367,7 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       ...(videoNodes.length ? { videoNodes } : {}),
       // 项目节点（目标 × 真实路径的授权声明）：目标没了的行丢掉
       ...(projects.length ? { projects } : {}),
+      ...(fileNodes.length ? { fileNodes } : {}),
       // 资源归纳节点（终端实体）：目标没了的行丢掉
       /*
        * 结构图（见 learn/structure）：按目标存的节点表与连线。逐张过一遍——

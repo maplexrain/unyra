@@ -113,6 +113,13 @@ describe('结构图（v2）：读盘校验', () => {
       c: { x: 5, y: 5, note: '贴一张便条' },
     })
     expect(map.edgeStyle).toBe('curved')
+
+    const mapWithTree = normalizeStructure({
+      version: 2,
+      positions: {},
+      viewMode: 'tree',
+    })
+    expect(mapWithTree.viewMode).toBe('tree')
   })
 
   it('v1 卡片表折成 v2 坐标表：d:/o:/e:/entry: 映射，n:/s: 放弃（交给自动铺排）', () => {

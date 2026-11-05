@@ -55,7 +55,8 @@ export class DocGNode extends GNode {
       for (const e of s.edges) {
         if (e.to !== this.uuid) continue
         const isVideo = (s.videoNodes ?? []).some((v) => v.id === e.from)
-        out.push({ id: isVideo ? e.from : outlineUuid(e.from), type: 'up', ...(e.portKey ? { portKey: e.portKey } : {}) })
+        const isFile = (s.fileNodes ?? []).some((f) => f.id === e.from)
+        out.push({ id: isVideo || isFile ? e.from : outlineUuid(e.from), type: 'up', ...(e.portKey ? { portKey: e.portKey } : {}) })
       }
     }
     // 下级文档也在下游（树边 from 我）：画布在枢纽不在时按 doc→doc 画那条线，两端都要能摘
@@ -67,6 +68,7 @@ export class DocGNode extends GNode {
     for (const e of s.edges) {
       if (e.from !== this.uuid) continue
       if ((s.projects ?? []).some((p) => p.id === e.to)) out.push({ id: e.to, type: 'down' })
+      if ((s.fileNodes ?? []).some((f) => f.id === e.to)) out.push({ id: e.to, type: 'down' })
     }
     if (node.outline) out.push({ id: outlineUuid(this.uuid), type: 'down' })
     for (const n of notesOf(node)) out.push({ id: n.id, type: 'down' })
@@ -180,9 +182,9 @@ export class DocGNode extends GNode {
 
   onUpstream(node: GNode): ConnectFilter {
     if (node.kind === 'entry') return '入口与根文档的连线由目标绑定自动生成，不能手工连'
-    if (node.kind === 'video') return true
+    if (node.kind === 'video' || node.kind === 'file') return true
     if (node.kind !== 'outline') {
-      return '文档的上游只能是大纲（o: 前缀的对象）——要挂在哪份大纲下，就取那份大纲再由它发起 connect'
+      return '文档的上游只能是大纲、文件节点或视频节点'
     }
     return true
   }
@@ -195,7 +197,7 @@ export class DocGNode extends GNode {
       }
       return true
     }
-    if (node.kind === 'superdoc' || node.kind === 'exam' || node.kind === 'project') return true
+    if (node.kind === 'superdoc' || node.kind === 'exam' || node.kind === 'project' || node.kind === 'file') return true
     if (node.kind === 'outline') return '大纲与文档一一对应（o: 就是这份文档的 id），由创建 / 删除大纲管理，不能手工连'
     return '这种节点不能挂到文档之下（能挂的：笔记 / 试卷 / 超级文档 / 项目 / 下级文档走大纲）'
   }
@@ -230,7 +232,13 @@ export class DocGNode extends GNode {
       this.ctx.commit(r.store)
       return { ok: true, note: '已把项目「' + down.title + '」挂到「' + this.title + '」之下' }
     }
-    return { error: '这种节点挂不到文档之下（能绑的：笔记 / 试卷 / 超级文档 / 项目）' }
+    if (down.kind === 'file') {
+      const r = addEdge(s, this.uuid, down.uuid)
+      if (!r.added) return { error: r.reason ?? '连接失败' }
+      this.ctx.commit(r.store)
+      return { ok: true, note: '已把文件「' + down.title + '」作为下级连接到「' + this.title + '」' }
+    }
+    return { error: '这种节点挂不到文档之下（能绑的：笔记 / 试卷 / 超级文档 / 项目 / 文件）' }
   }
 
   /**
@@ -261,6 +269,16 @@ export class DocGNode extends GNode {
       if (upEdge) {
         this.ctx.commit(removeEdge(this.ctx.store(), target.uuid, this.uuid))
         return { ok: true, note: '已把「' + this.title + '」从「' + target.title + '」之下摘出来' }
+      }
+    }
+    // 文件节点（可上游可下游）：摘线 = 拆树边
+    if (target.kind === 'file') {
+      const edge = this.ctx.store().edges.find(
+        (e) => (e.from === this.uuid && e.to === target.uuid) || (e.to === this.uuid && e.from === target.uuid)
+      )
+      if (edge) {
+        this.ctx.commit(removeEdge(this.ctx.store(), edge.from, edge.to))
+        return { ok: true, note: '已断开「' + this.title + '」与文件「' + target.title + '」的连接' }
       }
     }
     // 下级文档（下游树边，画布枢纽不在时的 doc→doc 那条线）：摘线 = 拆边，对方变游离

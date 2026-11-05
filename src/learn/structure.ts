@@ -39,12 +39,16 @@ export interface CardPos {
   note?: string
 }
 
+export type StructureViewMode = 'graph' | 'tree'
+
 /** 一个目标的结构图（落 `docs/{目标}/structure.json`）——只有坐标与便条 */
 export interface StructureMap {
   version: 2
   positions: Record<string, CardPos>
   /** 连线画法（每门课各记各的）；省略 = 直线 */
   edgeStyle?: EdgeStyle
+  /** 视图模式：'graph' (自由拓扑画布，默认) | 'tree' (大纲树视图/思维导图) */
+  viewMode?: StructureViewMode
 }
 
 export function emptyStructure(): StructureMap {
@@ -86,6 +90,7 @@ export function normalizeStructure(raw: unknown): StructureMap {
     version?: unknown
     positions?: unknown
     edgeStyle?: unknown
+    viewMode?: unknown
     nodes?: unknown
   }
 
@@ -119,6 +124,7 @@ export function normalizeStructure(raw: unknown): StructureMap {
   }
 
   if (isEdgeStyle(src.edgeStyle)) out.edgeStyle = src.edgeStyle
+  if (src.viewMode === 'graph' || src.viewMode === 'tree') out.viewMode = src.viewMode
   return out
 }
 
@@ -132,7 +138,7 @@ export function normalizeStructureBook(raw: unknown, goalIds: ReadonlySet<string
   for (const [goalId, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!goalIds.has(goalId)) continue
     const map = normalizeStructure(value)
-    if (Object.keys(map.positions).length) out[goalId] = map
+    if (Object.keys(map.positions).length || map.viewMode) out[goalId] = map
   }
   return out
 }

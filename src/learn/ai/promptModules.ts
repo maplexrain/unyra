@@ -354,23 +354,48 @@ export const PROMPT_MODULES: PromptModule[] = [
     title: '项目与文章解读',
     text: `「项目与文章解读与精准原文引用」规范（配合 project 节点与 quote 块语法）——核心直觉：“我要讲的东西刚好本地有，那我就引用它，让用户知道我在讲哪里”。不要仅在专门带用户读文章读项目时才使用，在任何教学、答疑与剖析场景中，只要本地有材料或源码，都应主动高频使用 quote 块精准引用。当用户需要导师带着解读某些文章、文献或代码项目时，严格执行以下工作流：
 
-一、前置要求：创建项目节点与材料落盘（铁律）
+一、前置要求：材料规模判定与节点创建（铁律）
 只要用户提供了明确的文章（含网页文章、文献、长文等）或工程项目源码：
-1. **必须创建项目节点（kind: 'project'）**：无论材料是单篇文章还是大型代码仓库，在带用户解读前，都必须调用 api.node.create 创建一个项目节点（kind: 'project'）进行显式引用与挂载（挂在对应解读文档节点下或目标根节点下）。
-2. **非本地材料必须通过代码真实抓取落盘（严禁自行抄录/脑补生成）**：
-   - 若目标材料不在本地磁盘，**严禁导师凭空生成或抄录一份“伪文章/伪代码”**；
-   - 必须通过代码工具（如使用 api.web.fetch、或在终端中运行 curl / fetch / 脚本等方式）将网络上的真实原文完整扒下来；
-   - 将抓取到的原文文件保存落盘到本地工作区或目标目录（如 \`article.md\` 或源码文件）；
-   - 然后再创建项目节点指向该落盘路径，确保证据链与源文件绝对真实完整。
+1. **材料规模与类型判定（文件节点 vs 项目节点）**：
+   - **如果解读材料较少（如单篇或少量文章、学术文献、论文、单网页/参考资料）**：必须创建文件节点（kind: 'file'）进行引用，而不是创建项目节点。
+     - 若为本地文件或抓取落盘的单篇材料，保存到目标所属的 \`docs/{目标}/files/\` 目录下（如 \`files/article.md\`），文件节点属性为 \`fileKind: 'local'\`, \`url: 'files/article.md'\`；
+     - 若为在线网页且直接浏览引用，可设为 \`fileKind: 'web'\`, \`url: 'https://...'\`。
+   - **如果是大型代码工程、包含多层目录结构的软件仓库或需要批量读写大量源码文件的复杂工程**：才创建项目节点（kind: 'project'）。
+2. **非本地材料真实抓取落盘（严禁自行抄录/脑补生成）**：
+   - 若目标材料不在本地磁盘且需要深入精读，**严禁导师凭空生成或抄录一份“伪文章/伪代码”**；
+   - 必须通过代码工具（如使用 api.web.fetch、或在终端中运行 curl / fetch / 脚本等方式）将网络上的真实原文完整抓取；
+   - 少量文件时保存落盘到 \`docs/{目标}/files/\` 目录下，并创建文件节点引用；复杂多文件工程才保存并创建项目节点；
 3. 若当前目标尚未设定根文档（node.list() 中 root 为 null），先创建解读文档节点作为根节点（api.node.create({ kind: 'doc', title, root: true }) 或调用 api.node.setRoot(docUuid)），确保工作区基准就位。
 
-二、声明项目节点（Project Node）示例
+二、声明文件节点或项目节点示例
+1. 文件节点（解读材料较少/单篇文章/网页）：
+\`\`\`javascript
+// 本地文件引用（存储在 docs/{目标}/files/）
+const fileNode = await api.node.create({
+  kind: 'file',
+  title: '文献标题',
+  fileKind: 'local',
+  url: 'files/paper.pdf',
+  under: targetDocUuid, // 挂在对应解读文档节点下
+})
+
+// 在线网页文件引用
+const webNode = await api.node.create({
+  kind: 'file',
+  title: '参考文档',
+  fileKind: 'web',
+  url: 'https://developer.mozilla.org/...',
+  under: targetDocUuid,
+})
+\`\`\`
+
+2. 项目节点（大型代码仓库与复杂软件工程）：
 \`\`\`javascript
 const proj = await api.node.create({
   kind: 'project',
-  title: '文章或项目名称',
-  path: '抓取落盘后的文件或项目绝对路径/相对路径',
-  under: targetDocUuid, // 挂在对应解读文档节点下
+  title: '项目名称',
+  path: '项目根目录绝对路径或相对路径',
+  under: targetDocUuid,
 })
 \`\`\`
 声明项目节点之后，该路径及其子树全部文件对 api.project.* 完全开放，在后续阅读、探索、引用中可随时读写。

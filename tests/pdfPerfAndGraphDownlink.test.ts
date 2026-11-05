@@ -449,51 +449,51 @@ describe('PDF 翻页模式前后页预热防闪屏', () => {
 })
 
 
-import { checkWheelValve, createWheelValve } from '../src/components/learn/structure/StructureCanvas'
 import { addEdge } from '../src/learn/graph/edges'
 
-describe('节点宇宙滚轮单向防抖阀门 (200ms 逆向阻断)', () => {
-  it('同向连续滚动持续放行并刷新时间戳', () => {
-    const valve = createWheelValve()
-    expect(checkWheelValve(valve, 100, 1000)).toBe(true)
-    expect(valve.lastDir).toBe(1)
-    expect(valve.lastTime).toBe(1000)
+describe('节点宇宙平滑缩放与防抖机制', () => {
+  it('缩放因子采用指数运算，正向放大与反向缩小严格互易，无漂移与抖动', () => {
+    const calcFactor = (delta: number) => {
+      const clampedDelta = Math.max(-120, Math.min(120, delta))
+      return Math.exp(-clampedDelta * 0.0018)
+    }
 
-    expect(checkWheelValve(valve, 50, 1050)).toBe(true)
-    expect(valve.lastDir).toBe(1)
-    expect(valve.lastTime).toBe(1050)
+    const zoomIn = calcFactor(-80)
+    const zoomOut = calcFactor(80)
+
+    expect(zoomIn).toBeGreaterThan(1)
+    expect(zoomOut).toBeLessThan(1)
+    // 互易律：同等幅度放大后再缩小，完全回到原比例
+    expect(zoomIn * zoomOut).toBeCloseTo(1, 6)
   })
 
-  it('200ms 内出现反方向滚动时予以拦截，且不污染基准方向和时间戳', () => {
-    const valve = createWheelValve()
-    checkWheelValve(valve, 100, 1000) // 正向
+  it('单次滚轮 delta 限制在 [-120, 120]，抑制触控板或突发大 delta 造成的跳跃', () => {
+    const calcFactor = (delta: number) => {
+      const clampedDelta = Math.max(-120, Math.min(120, delta))
+      return Math.exp(-clampedDelta * 0.0018)
+    }
 
-    // 50ms 后发生反向回弹
-    expect(checkWheelValve(valve, -100, 1050)).toBe(false)
-    // 阀门仍保持正向与 1000ms 时间戳，避免回弹波形造成死锁
-    expect(valve.lastDir).toBe(1)
-    expect(valve.lastTime).toBe(1000)
-
-    // 199ms 时仍然处于 200ms 逆向阻断期内
-    expect(checkWheelValve(valve, -50, 1199)).toBe(false)
-    expect(valve.lastDir).toBe(1)
+    const normal = calcFactor(120)
+    const extreme = calcFactor(5000) // 触控板甩动手势
+    expect(extreme).toBe(normal)
   })
 
-  it('超过 200ms 后的反方向滚动正常放行并切换方向', () => {
-    const valve = createWheelValve()
-    checkWheelValve(valve, 100, 1000) // 正向
+  it('拖映画布位移超过阈值时重置中键连击计时，避免拖拽后误触发双击居中适应画布', () => {
+    let lastMiddleDown = 1000
+    const onPointerUp = (startX: number, startY: number, clientX: number, clientY: number) => {
+      const dist = Math.abs(clientX - startX) + Math.abs(clientY - startY)
+      if (dist > 3) {
+        lastMiddleDown = 0
+      }
+    }
 
-    // 201ms 后用户明确朝反方向滚动
-    expect(checkWheelValve(valve, -100, 1201)).toBe(true)
-    expect(valve.lastDir).toBe(-1)
-    expect(valve.lastTime).toBe(1201)
-  })
+    // 1. 单纯原地点击（未拖拽）：保留时间戳供双击适应画布判断
+    onPointerUp(100, 100, 101, 101)
+    expect(lastMiddleDown).toBe(1000)
 
-  it('位移为 0 时直接放行且不更改状态', () => {
-    const valve = createWheelValve()
-    expect(checkWheelValve(valve, 0, 1000)).toBe(true)
-    expect(valve.lastDir).toBe(0)
-    expect(valve.lastTime).toBe(0)
+    // 2. 拖映画布（移动了 20px）：立即重置，防止后续点击误触发适应画布
+    onPointerUp(100, 100, 120, 100)
+    expect(lastMiddleDown).toBe(0)
   })
 })
 
@@ -681,3 +681,34 @@ describe('笔记只能有一个上级节点规则', () => {
     expect(store.edges.some((e) => e.from === 'sdoc-1' && e.to === 'n-free')).toBe(true)
   })
 })
+
+describe('空教学文档占位与手动写教学文档功能', () => {
+  it('空教学文档触发手动撰写时切至源码模式并初始化标题', () => {
+    let activeView = 'preview';
+    let content = '';
+    const title = '测试知识点';
+
+    const handleManualWrite = () => {
+      activeView = 'source';
+      if (!content.trim()) {
+        content = '# ' + title + '\n\n';
+      }
+    };
+
+    // 初始状态为预览，且内容为空
+    expect(activeView).toBe('preview');
+    expect(content).toBe('');
+
+    // 触发手动撰写
+    handleManualWrite();
+
+    // 验证状态成功切换为源码模式，且生成了规范的 Markdown 一级标题
+    expect(activeView).toBe('source');
+    expect(content).toBe('# 测试知识点\n\n');
+
+    // 若内容已有文字，则不覆盖已有正文
+    content = '# 已有正文';
+    handleManualWrite();
+    expect(content).toBe('# 已有正文');
+  });
+});

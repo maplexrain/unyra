@@ -162,6 +162,25 @@ function writeGoalFiles(goal: LearnStore['goals'][number], store: LearnStore, fi
   if (goalProjects.length) {
     files.set(`${path}/projects.json`, jsonText({ version: 1, projects: goalProjects }))
   }
+
+  const goalFileNodes = (store.fileNodes ?? []).filter((f) => f.goalId === goal.id)
+  const goalFileNodeIds = new Set(goalFileNodes.map((f) => f.id))
+  const fileEdges = store.edges.filter((e) => goalFileNodeIds.has(e.from) || goalFileNodeIds.has(e.to))
+  if (goalFileNodes.length || fileEdges.length) {
+    files.set(
+      `${path}/file-nodes.json`,
+      jsonText({
+        version: 1,
+        nodes: goalFileNodes,
+        edges: fileEdges.map((e) => ({
+          from: e.from,
+          to: e.to,
+          createdAt: e.createdAt,
+          ...(e.portKey ? { portKey: e.portKey } : {}),
+        })),
+      }),
+    )
+  }
 }
 
 function* buildDocsSteps(store: LearnStore): Generator<void, Map<string, string>, void> {

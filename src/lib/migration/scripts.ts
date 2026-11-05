@@ -28,6 +28,7 @@
 import type { MigrationScript } from './types'
 import { outlineToStructure, structureTopology } from './outlineStructure'
 import { nodeFiles } from './v3Nodes'
+import { flattenGoalNodes } from './flattenGoalNodes'
 
 /**
  * 迁移脚本清单。
@@ -38,6 +39,7 @@ export const MIGRATION_SCRIPTS: MigrationScript[] = [
   outlineToStructure,
   structureTopology,
   nodeFiles,
+  flattenGoalNodes,
 ].sort((a, b) => a.step - b.step)
 
 /**

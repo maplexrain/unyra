@@ -215,9 +215,11 @@ describe('学习数据落盘：防抖提交的两条路径', () => {
 
     const moves = items.filter((i) => i.move) as Array<{ rel: string; to: string }>
     expect(moves.map((m) => m.rel + ' → ' + m.to).sort(), '节点目录的资源与工作区都要跟着搬').toEqual([
+      abs('docs/微积分/files') + ' → ' + abs('docs/高等数学/files'),
       abs('docs/微积分/images') + ' → ' + abs('docs/高等数学/images'),
       abs('docs/微积分/static') + ' → ' + abs('docs/高等数学/static'),
       abs('docs/微积分/workspace') + ' → ' + abs('docs/高等数学/workspace'),
+      abs('docs/微积分/导数/files') + ' → ' + abs('docs/高等数学/导数/files'),
       abs('docs/微积分/导数/images') + ' → ' + abs('docs/高等数学/导数/images'),
       abs('docs/微积分/导数/static') + ' → ' + abs('docs/高等数学/导数/static'),
       abs('docs/微积分/导数/workspace') + ' → ' + abs('docs/高等数学/导数/workspace'),

@@ -157,11 +157,10 @@ export class OutlineGNode extends GNode {
   }
 
   onUpstream(node: GNode): ConnectFilter {
-    if (node.kind === 'outline') {
-      // 大纲连大纲：我这一层作为子层挂进对方——树边由对方的大纲落库
+    if (node.kind === 'outline' || node.kind === 'file') {
       return true
     }
-    return '大纲的上游是宿主文档（自动连着）或另一份大纲（由那一层的大纲发起 connect）'
+    return '大纲的上游是宿主文档（自动连着）、另一份大纲或文件节点'
   }
 
   onDownstream(node: GNode): ConnectFilter {

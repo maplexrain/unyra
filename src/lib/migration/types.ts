@@ -37,6 +37,7 @@ export interface MigrationContext {
     listDir: (rel: string) => Promise<StorageEntry[]>
     removePath: (rel: string) => Promise<boolean>
     mkdir: (rel: string) => Promise<boolean>
+    movePath?: (from: string, to: string) => Promise<boolean>
   }
   log: (msg: string) => void
 }

@@ -686,6 +686,33 @@ export interface ProjectNodeEntity {
 /** project 节点的路径拼法 */
 export type ProjectPathKind = 'relative' | 'absolute'
 
+/**
+ * 文件节点（节点宇宙的游离类型）：绑定一个本地文件或网页文件。
+ *
+ * - local: 本地文件，只能引用存储在 docs/{目标}/files/ 中的文件（如 files/{文件名}）。
+ * - web: 网页文件，没有限制，可以是一个网址。
+ * 一个文件节点只能绑定一个文件或网页。
+ */
+export type FileNodeKind = 'local' | 'web'
+
+export interface FileNodeEntity {
+  /** 节点宇宙身份（无前缀，如 file-xxx） */
+  id: string
+  goalId: string
+  /** 节点标题（卡片标题显示名） */
+  title: string
+  /** 本地文件还是网页文件 */
+  fileKind: FileNodeKind
+  /**
+   * 引用的文件或网址：
+   * - local: 必须只引用存储在 docs/{目标}/files/ 下的文件（格式形如 `files/{文件名}`）
+   * - web: 网页 URL（如 https://... 或 http://...）
+   */
+  url: string
+  createdAt: number
+  updatedAt: number
+}
+
 export interface LearnStore {
   version: 2
   nodes: KnowledgeNode[]
@@ -770,6 +797,12 @@ export interface LearnStore {
    * 可选字段：旧数据没有它，全部使用处按 `?? []` 兜底。
    */
   projects?: ProjectNodeEntity[]
+  /**
+   * 文件节点（见 FileNodeEntity 与 learn/fileNodes）：目标 × 本地文件/网页的绑定。
+   * 目标级数据，落各自目标目录的 file-nodes.json，目标没了整批带走。
+   * 可选字段：旧数据没有它，全部使用处按 ?? [] 兜底。
+   */
+  fileNodes?: FileNodeEntity[]
   /**
    * 目标级资源库的清单：目标 id → 资源列表（见 learn/static）。
    * 只放元数据，文件本体在 `{目标}/static/` 下——与图片引用一样的取舍：

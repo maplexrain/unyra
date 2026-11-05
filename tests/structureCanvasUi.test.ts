@@ -74,7 +74,7 @@ describe('StructureCanvas 节点宇宙 UI 优化测试', () => {
 
     // 2. 验证各个项目只显示图标，不显示常驻的类型 label，而是在 hover tip 中向下弹出
     const items = palette?.querySelectorAll('[data-palette-kind]')
-    expect(items?.length).toBe(7)
+    expect(items?.length).toBe(8)
 
     items?.forEach((item) => {
       // 包含图标
@@ -130,6 +130,169 @@ describe('StructureCanvas 节点宇宙 UI 优化测试', () => {
     )
     expect(slotSpan).toBeTruthy()
     expect(slotSpan?.getAttribute('title')).toBe(slotTitle)
+
+    act(() => {
+      root.unmount()
+    })
+    container.remove()
+  })
+
+  it('大纲目标项改名：点击重命名按钮就地替换为 input 输入组件，不允许换行，回车直接提交，无额外浮层', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    const store = createTestStore()
+    const onRename = vi.fn()
+
+    act(() => {
+      root.render(
+        React.createElement(StructureCanvas, {
+          store,
+          goalId: 'g1',
+          onChange: vi.fn(),
+          docs: {} as any,
+          exams: {} as any,
+          onRenameOutlineEntry: onRename,
+        }),
+      )
+    })
+
+    // 找到大纲槽位的重命名按钮
+    const renameBtn = container.querySelector('[data-rename-slot="slot_1"]') as HTMLButtonElement | null
+    expect(renameBtn).toBeTruthy()
+
+    // 点击重命名
+    act(() => {
+      renameBtn?.click()
+    })
+
+    // 验证没有弹出浮层 WheelStop (textarea)
+    const modalTextarea = container.querySelector('textarea')
+    expect(modalTextarea).toBeNull()
+
+    // 验证原标题 label 位置替换为了 input
+    const input = container.querySelector('[data-slot-key="slot_1"] input') as HTMLInputElement | null
+    expect(input).toBeTruthy()
+    expect(input?.value).toBe('函数与定义域：先问「哪儿不舒服」一段超长超长超长目标项')
+
+    // 模拟输入（带换行符，验证过滤换行）并回车直接提交
+    act(() => {
+      input!.value = '新标题\n第二行'
+      input!.dispatchEvent(new Event('input', { bubbles: true }))
+      input!.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+
+    // 验证换行符已被过滤
+    expect(input?.value).toBe('新标题第二行')
+
+    // 按回车键直接提交
+    act(() => {
+      input!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+
+    // 验证触发提交且退出编辑状态
+    expect(onRename).toHaveBeenCalledWith('o:node-root', 'slot_1', '新标题第二行')
+    expect(container.querySelector('[data-slot-key="slot_1"] input')).toBeNull()
+
+    act(() => {
+      root.unmount()
+    })
+    container.remove()
+  })
+
+  it('大纲目标项创建：点击添加目标项就地显示 input 输入组件，不允许换行，回车直接提交，无额外浮层', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    const store = createTestStore()
+    const onAdd = vi.fn()
+
+    act(() => {
+      root.render(
+        React.createElement(StructureCanvas, {
+          store,
+          goalId: 'g1',
+          onChange: vi.fn(),
+          docs: {} as any,
+          exams: {} as any,
+          onAddOutlineEntry: onAdd,
+        }),
+      )
+    })
+
+    // 找到添加目标项按钮并验证为原生 button 组件
+    const addBtn = container.querySelector('[data-add-slot="o:node-root"]') as HTMLElement | null
+    expect(addBtn).toBeTruthy()
+    expect(addBtn?.tagName).toBe('BUTTON')
+    expect(addBtn?.getAttribute('type')).toBe('button')
+
+    // 点击添加
+    act(() => {
+      addBtn?.click()
+    })
+
+    // 验证没有弹出浮层 WheelStop (textarea)
+    const modalTextarea = container.querySelector('textarea')
+    expect(modalTextarea).toBeNull()
+
+    // 验证就地显示了 input 组件
+    const input = container.querySelector('input[placeholder="新目标项标题..."]') as HTMLInputElement | null
+    expect(input).toBeTruthy()
+
+    // 模拟输入带换行文本
+    act(() => {
+      input!.value = '第一章核心概念\r\n'
+      input!.dispatchEvent(new Event('input', { bubbles: true }))
+      input!.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+
+    expect(input?.value).toBe('第一章核心概念')
+
+    // 按回车键直接提交
+    act(() => {
+      input!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+
+    // 验证成功调用 onAddOutlineEntry 并关闭输入组件
+    expect(onAdd).toHaveBeenCalledWith('o:node-root', '第一章核心概念')
+    expect(container.querySelector('input[placeholder="新目标项标题..."]')).toBeNull()
+
+    act(() => {
+      root.unmount()
+    })
+    container.remove()
+  })
+
+  it('节点宇宙放大清晰度：画布平面使用 2D 变换，且不包含 willChange: transform 与 translate3d，消除字体模糊', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    const store = createTestStore()
+
+    act(() => {
+      root.render(
+        React.createElement(StructureCanvas, {
+          store,
+          goalId: 'g1',
+          onChange: vi.fn(),
+          docs: {} as any,
+          exams: {} as any,
+        }),
+      )
+    })
+
+    // 找到包含卡片平面的容器元素
+    const plane = container.querySelector('.origin-top-left') as HTMLDivElement | null
+    expect(plane).toBeTruthy()
+
+    // 验证 style 中 transform 使用 2D translate，不包含 translate3d
+    const transformStyle = plane?.style.transform ?? ''
+    expect(transformStyle).toContain('translate(')
+    expect(transformStyle).not.toContain('translate3d')
+    expect(transformStyle).toContain('scale(')
+
+    // 验证 style 中没有 willChange: transform（willChange 会导致 Chromium 将层栅格化为固定位图纹理，放大时双线性插值产生发糊）
+    expect(plane?.style.willChange).toBeFalsy()
 
     act(() => {
       root.unmount()

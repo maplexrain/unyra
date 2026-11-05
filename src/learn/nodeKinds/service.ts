@@ -25,6 +25,8 @@ import { nodePathOf } from '../paths'
 import { clearOutline, createOutlineEntity, deleteOutlineEntity, outlineByMember } from '../outline'
 import { createVideoNode, deleteVideoNode } from '../video/nodes'
 import { createProjectNode, deleteProjectNode, inferPathKind, resolveProjectRoot } from '../projects'
+import { createFileNode, removeFileNode, goalFilesDir } from '../fileNodes'
+import { removeUserPath } from '../../lib/storage'
 import { NOTE_DEFAULT_NAME, notesOf, uniqueNoteName } from '../notes'
 import { SUPERDOC_DEFAULT_NAME, removeSuperDoc, writeSuperDoc } from '../superdocs'
 import { emptyDocs, superDocsOf, type KnowledgeNode, type LearnStore, type NoteFile, type SuperDocFile } from '../types'
@@ -38,6 +40,7 @@ import { OutlineGNode } from './outline'
 import { SuperdocGNode } from './superdoc'
 import { VideoGNode } from './video'
 import { ProjectGNode } from './project'
+import { FileGNode } from './file'
 
 export interface NodeServiceDeps {
   getLatest: () => LearnStore
@@ -57,6 +60,8 @@ export type UuidLocation =
   | { kind: 'video'; nodeId: string }
   /** 项目节点（游离实体）：nodeId 是它自己的实体 id（授权声明，见 learn/projects） */
   | { kind: 'project'; nodeId: string }
+  /** 文件节点（游离实体）：fileId 是它自己的实体 id */
+  | { kind: 'file'; fileId: string }
 
 export function locateUuid(store: LearnStore, uuid: string): UuidLocation | null {
   const entryDoc = docIdOfEntryUuid(uuid)
@@ -77,6 +82,8 @@ export function locateUuid(store: LearnStore, uuid: string): UuidLocation | null
   if ((store.videoNodes ?? []).some((v) => v.id === uuid)) return { kind: 'video', nodeId: uuid }
   // 项目节点：游离实体（目标 × 真实路径的声明），没有宿主文档
   if ((store.projects ?? []).some((p) => p.id === uuid)) return { kind: 'project', nodeId: uuid }
+  // 文件节点：游离实体（目标 × 本地文件/网页的绑定），没有宿主文档
+  if ((store.fileNodes ?? []).some((f) => f.id === uuid)) return { kind: 'file', fileId: uuid }
   for (const node of store.nodes) {
     if (node.id === uuid) return { kind: 'doc', docId: node.id }
     const note = notesOf(node).find((n) => n.id === uuid)
@@ -184,6 +191,8 @@ export class NodeService {
         return new VideoGNode(this.ctx, loc.nodeId)
       case 'project':
         return new ProjectGNode(this.ctx, loc.nodeId)
+      case 'file':
+        return new FileGNode(this.ctx, loc.fileId)
     }
   }
 
@@ -216,6 +225,56 @@ export class NodeService {
         title: '视频 · 未绑定',
         created: true,
         note: '已建一枚视频节点（还没绑视频）：editContent({ videoId }) 绑一个现有视频，视频清单看 list() 的 videos 段',
+      }
+    }
+
+    if (kind === 'file') {
+      const underGiven = input.under !== undefined && input.under !== null && String(input.under).trim() !== ''
+      let hostId: string | null = null
+      if (underGiven) {
+        const rawUnder = String(input.under).trim()
+        const targetNode = this.get(rawUnder)
+        if (!targetNode) {
+          return { error: 'under 里给的上级节点（' + rawUnder + '）不存在' }
+        }
+        if (!['doc', 'note', 'superdoc', 'exam'].includes(targetNode.kind)) {
+          return { error: '文件节点的上级只能是文档节点、笔记节点、超级文档节点或考试节点' }
+        }
+        hostId = targetNode.uuid
+      }
+
+      const fileKind = input.fileKind === 'web' ? 'web' : 'local'
+      const url = typeof input.url === 'string' ? input.url.trim() : ''
+      const defaultTitle = fileKind === 'local' ? (url ? url.split('/').pop() || '新文件' : '新文件') : (title || url || '新网页')
+
+      const { store: withNode, entity } = createFileNode(
+        store,
+        {
+          goalId,
+          title: title || defaultTitle,
+          fileKind,
+          url,
+        },
+        Date.now(),
+      )
+
+      let finalStore = withNode
+      let note: string
+      if (hostId) {
+        const r = addEdge(finalStore, hostId, entity.id)
+        if (!r.added) return { error: r.reason ?? '文件节点未能连接到上级' }
+        finalStore = r.store
+        note = '已建文件节点「' + entity.title + '」并连接到上级节点之下'
+      } else {
+        note = '已建文件节点「' + entity.title + '」（游离）：可拖线连接到文档、笔记、超级文档或考试节点'
+      }
+      this.deps.set(finalStore)
+      return {
+        ok: true,
+        uuid: entity.id,
+        title: entity.title,
+        created: true,
+        note,
       }
     }
 
@@ -618,6 +677,14 @@ export class NodeService {
        * 项目节点（目标 × 真实路径的授权声明）：uuid 与解析后的根一起给——
        * 后续 api.project.* 的 read / write 都按 uuid + subPath 寻址。
        */
+      fileNodes: (store.fileNodes ?? [])
+        .filter((f) => f.goalId === goalId)
+        .map((f) => ({
+          uuid: f.id,
+          title: f.title,
+          fileKind: f.fileKind,
+          url: f.url,
+        })),
       projects: (store.projects ?? [])
         .filter((p) => p.goalId === goalId)
         .map((p) => {
@@ -761,6 +828,20 @@ export class NodeService {
       if (!next) return { error: '这个视频节点已经不在了' }
       this.deps.set(next)
       return { ok: true, note: '已删除这枚视频节点：目标与视频的绑定解除，视频资源还在侧栏里' }
+    }
+    if (loc.kind === 'file') {
+      const file = (store.fileNodes ?? []).find((f) => f.id === loc.fileId)
+      if (!file) return { error: '这个文件节点已经不在了' }
+      const res = removeFileNode(store, loc.fileId)
+      this.deps.set(res.store)
+      if (file.fileKind === 'local' && file.url) {
+        const filesDir = goalFilesDir(store, file.goalId)
+        if (filesDir) {
+          const fileName = file.url.replace(/^files\//, '')
+          void removeUserPath(`${filesDir}/${fileName}`)
+        }
+      }
+      return { ok: true, note: '已删除文件节点「' + file.title + '」' + (file.fileKind === 'local' ? '，引用的本地文件已从磁盘删除' : '') }
     }
     if (loc.kind === 'project') {
       // 删项目节点 = 撤回这条授权声明（摘掉两端的挂载边）；磁盘上的文件与目录原样不动

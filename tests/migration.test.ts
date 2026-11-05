@@ -9,6 +9,9 @@ import {
   registerMigrationScript,
 } from '../src/lib/migration/scripts'
 import type { MigrationContext, MigrationScript } from '../src/lib/migration/types'
+import { flattenGoalNodes } from '../src/lib/migration/flattenGoalNodes'
+import type { StorageEntry } from '../src/lib/native'
+import { parseDocsV3 } from '../src/learn/files/parse'
 
 describe('Migration System', () => {
   describe('compareVersions', () => {
@@ -46,13 +49,14 @@ describe('Migration System', () => {
       expect(RELEASED_SCHEMA_STEP).toBeGreaterThanOrEqual(0)
     })
 
-    it('真脚本在册：1 大纲树→结构图、2 拓扑重建、3 节点文件合并', () => {
+    it('真脚本在册：1 大纲树→结构图、2 拓扑重建、3 节点文件合并、4 目标节点同级平铺存储', () => {
       expect(MIGRATION_SCRIPTS.map((s) => s.id)).toEqual([
         'm1-outline-to-structure',
         'm2-structure-topology',
         'm3-node-single-file',
+        'm4-flatten-goal-nodes',
       ])
-      expect(MIGRATION_SCRIPTS.map((s) => s.step)).toEqual([1, 2, 3])
+      expect(MIGRATION_SCRIPTS.map((s) => s.step)).toEqual([1, 2, 3, 4])
     })
 
     it('同一序号或同一 id 不能注册两次（否则执行顺序没有意义）', () => {
@@ -178,6 +182,159 @@ describe('Migration System', () => {
       expect(res.ok).toBe(true)
       expect(res.step).toBe(99)
       expect((store['users/test/state.json'] as { dataVersion?: string }).dataVersion).toBe('new')
+    })
+  })
+
+  describe('flattenGoalNodes: 第 4 次迁移（目标节点同级平铺解耦）', () => {
+    it('正确将多层嵌套节点平铺到目标直属的一级子目录，并安全搬迁工作区与清理旧路径', async () => {
+      const files: Record<string, string> = {
+        // 目标级与根节点
+        'users/u1/docs/微积分/goal.json': JSON.stringify({
+          version: 1,
+          id: 'g1',
+          title: '微积分',
+          question: '学懂微积分',
+          rootNodeId: 'root',
+          createdAt: 1000,
+          updatedAt: 1000,
+        }),
+        'users/u1/docs/微积分/微积分.node.json': JSON.stringify({
+          version: 1,
+          id: 'root',
+          title: '微积分',
+          key: '微积分',
+          description: '',
+          parts: [{ kind: 'teaching', text: '# 微积分根节点' }],
+          origin: 'user',
+          status: 'learned',
+          dependencies: [{ to: 'child1' }],
+          createdAt: 1000,
+          updatedAt: 1000,
+        }),
+        // 一级子节点
+        'users/u1/docs/微积分/极限/极限.node.json': JSON.stringify({
+          version: 1,
+          id: 'child1',
+          title: '极限',
+          key: '极限',
+          description: '',
+          parts: [{ kind: 'teaching', text: '# 极限内容' }],
+          origin: 'user',
+          status: 'learning',
+          dependencies: [{ to: 'grandchild1' }],
+          createdAt: 1001,
+          updatedAt: 1001,
+        }),
+        // 旧多层嵌套子节点（深度 5）
+        'users/u1/docs/微积分/极限/导数/导数.node.json': JSON.stringify({
+          version: 1,
+          id: 'grandchild1',
+          title: '导数',
+          key: '导数',
+          description: '',
+          parts: [{ kind: 'teaching', text: '# 导数内容' }],
+          origin: 'user',
+          status: 'learning',
+          dependencies: [],
+          createdAt: 1002,
+          updatedAt: 1002,
+        }),
+        // 旧嵌套节点内部的工作区文件
+        'users/u1/docs/微积分/极限/导数/workspace/calc.py': 'print("derivative")',
+      }
+
+      const logs: string[] = []
+      const ctx: MigrationContext = {
+        uid: 'u1',
+        userDir: 'users/u1',
+        storage: {
+          readJson: async <T>(rel: string) => {
+            const raw = files[rel]
+            return raw ? (JSON.parse(raw) as T) : null
+          },
+          writeJson: async (rel: string, data: unknown) => {
+            files[rel] = JSON.stringify(data)
+            return true
+          },
+          readYaml: async () => null,
+          writeYaml: async () => true,
+          readText: async (rel: string) => files[rel] ?? null,
+          writeText: async (rel: string, content: string) => {
+            files[rel] = content
+            return true
+          },
+          listDir: async (rel: string): Promise<StorageEntry[]> => {
+            const prefix = rel.endsWith('/') ? rel : rel + '/'
+            const entries = new Map<string, StorageEntry>()
+            for (const path of Object.keys(files)) {
+              if (path.startsWith(prefix)) {
+                const sub = path.slice(prefix.length)
+                const parts = sub.split('/')
+                const name = parts[0]
+                const isDir = parts.length > 1
+                if (!entries.has(name)) {
+                  entries.set(name, {
+                    name,
+                    dir: isDir,
+                  })
+                }
+              }
+            }
+            return [...entries.values()]
+          },
+          removePath: async (rel: string) => {
+            delete files[rel]
+            // 也删除所有以该目录为前缀的项
+            const prefix = rel.endsWith('/') ? rel : rel + '/'
+            for (const k of Object.keys(files)) {
+              if (k.startsWith(prefix)) delete files[k]
+            }
+            return true
+          },
+          mkdir: async () => true,
+          movePath: async (from: string, to: string) => {
+            const fromPrefix = from.endsWith('/') ? from : from + '/'
+            const toPrefix = to.endsWith('/') ? to : to + '/'
+            for (const k of Object.keys(files)) {
+              if (k.startsWith(fromPrefix)) {
+                const rel = k.slice(fromPrefix.length)
+                files[toPrefix + rel] = files[k]
+                delete files[k]
+              }
+            }
+            return true
+          },
+        },
+        log: (msg) => logs.push(msg),
+      }
+
+      // 执行迁移
+      const res = await flattenGoalNodes.migrate(ctx)
+      expect(res.ok).toBe(true)
+      expect(res.step).toBe(4)
+
+      // 验证平铺结构：导数节点应当在 docs/微积分/导数/ 下，而不是 docs/微积分/极限/导数/ 下
+      expect(files['users/u1/docs/微积分/导数/导数.node.json']).toBeDefined()
+      expect(files['users/u1/docs/微积分/导数/workspace/calc.py']).toBe('print("derivative")')
+
+      // 旧多层嵌套文件应已被删除
+      expect(files['users/u1/docs/微积分/极限/导数/导数.node.json']).toBeUndefined()
+      expect(files['users/u1/docs/微积分/极限/导数/workspace/calc.py']).toBeUndefined()
+
+      // 验证自查与 parseDocsV3 解析无误
+      const docsMap = new Map<string, string>()
+      for (const [k, v] of Object.entries(files)) {
+        if (k.startsWith('users/u1/')) docsMap.set(k.slice('users/u1/'.length), v)
+      }
+      const storeBack = parseDocsV3(docsMap, {})
+      expect(storeBack).not.toBeNull()
+      expect(storeBack!.nodes.length).toBe(3)
+      expect(storeBack!.nodes.map((n) => n.title).sort()).toEqual(['导数', '微积分', '极限'])
+
+      // 验证幂等性：再次执行直接跳过
+      const rerun = await flattenGoalNodes.migrate(ctx)
+      expect(rerun.ok).toBe(true)
+      expect(rerun.details).toContain('已在同一级存储（已迁移过）')
     })
   })
 })

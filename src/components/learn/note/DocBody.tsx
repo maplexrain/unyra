@@ -9,7 +9,7 @@
  * 两端渐隐的 mask 一起淡掉（它常常正好贴着正文上沿出现）。
  */
 import { memo, type CSSProperties, type ReactNode, type RefObject } from 'react'
-import { BookOpen, Sparkles } from 'lucide-react'
+import { BookOpen, PenLine, Sparkles } from 'lucide-react'
 import MarkdownView from '../../MarkdownView'
 import { TyporaLiveEditor } from './TyporaLiveEditor'
 import WaveBars from '../../WaveBars'
@@ -35,6 +35,8 @@ interface Props {
   agentRunning?: boolean
   /** 触发生成教学文档 */
   onGenerateDoc?: () => void
+  /** 手动写教学文档（进入源码编辑并填充初始标题） */
+  onManualWrite?: () => void
   /** 正在看的是哪一类文档：空的笔记与空的正文要说的不是一回事 */
   kind: DocKind
   content: string
@@ -86,6 +88,7 @@ function areDocBodyPropsEqual(prev: Props, next: Props): boolean {
   if (prev.pending !== next.pending) return false
   if (prev.agentRunning !== next.agentRunning) return false
   if (prev.onGenerateDoc !== next.onGenerateDoc) return false
+  if (prev.onManualWrite !== next.onManualWrite) return false
   if (prev.kind !== next.kind) return false
   if (prev.wordCount !== next.wordCount) return false
   if (prev.overlay !== next.overlay) return false
@@ -103,6 +106,7 @@ export const DocBody = memo(function DocBody({
   pending,
   agentRunning,
   onGenerateDoc,
+  onManualWrite,
   kind,
   content,
   html,
@@ -142,6 +146,7 @@ export const DocBody = memo(function DocBody({
               <EmptyTeachingDoc
                 pending={pending || agentRunning}
                 onGenerate={onGenerateDoc}
+                onManualWrite={onManualWrite}
               />
             )}
 
@@ -206,14 +211,15 @@ function EmptyNote() {
 interface EmptyTeachingDocProps {
   pending?: boolean
   onGenerate?: () => void
+  onManualWrite?: () => void
 }
 
 /**
  * 空的教学文档占位：
- * 采用美观静态元素进行结构化排版占位，避免刺眼的移动骨架屏。
- * 若 Agent 尚未运行，展示「生成教学文档」操作按钮供用户一键生成。
+ * 采用结构化排版占位与操作引导。
+ * 支持由 Agent 根据大纲自动规划生成，亦支持用户手动撰写。
  */
-function EmptyTeachingDoc({ pending, onGenerate }: EmptyTeachingDocProps) {
+function EmptyTeachingDoc({ pending, onGenerate, onManualWrite }: EmptyTeachingDocProps) {
   if (pending) {
     return (
       <div className="moji-in-soft mb-8 flex min-h-0 flex-1 flex-col items-center justify-center py-12 px-6 text-center select-none">
@@ -250,32 +256,53 @@ function EmptyTeachingDoc({ pending, onGenerate }: EmptyTeachingDocProps) {
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-seal/10 text-seal">
         <BookOpen size={28} className="stroke-[1.75]" />
       </div>
-      <div className="text-[15px] font-semibold text-ink-strong">
-        {t('教学文档尚未生成')}
+      <div className="text-[16px] font-semibold text-ink-strong">
+        {t('这份教学文档还是空的')}
       </div>
       <p className="mt-2 max-w-md text-[12.5px] leading-relaxed text-ink-faint">
-        {t('当前知识节点暂无教学内容。你可以让超级导师根据知识树脉络与权威资料自动撰写系统化的教学内容。')}
+        {t('当前知识节点暂无教学内容。你可以让超级导师根据知识树脉络与权威资料自动撰写，也可以自由手动编写。')}
       </p>
-      {onGenerate && (
-        <button
-          type="button"
-          onClick={onGenerate}
-          className="mt-6 flex items-center gap-2 rounded-xl bg-seal px-4 py-2 text-[13px] font-medium text-white shadow-sm transition hover:bg-seal-deep cursor-pointer"
-        >
-          <Sparkles size={15} />
-          <span>{t('生成教学文档')}</span>
-        </button>
-      )}
-      {/* 美观的静态结构占位元素 */}
+
+      {/* 操作按钮选项组：生成教学文档 / 手动写教学文档 */}
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+        {onGenerate && (
+          <button
+            type="button"
+            onClick={onGenerate}
+            className="flex items-center gap-2 rounded-xl bg-seal px-4 py-2 text-[13px] font-medium text-white shadow-xs transition hover:bg-seal-deep cursor-pointer active:scale-[0.98]"
+          >
+            <Sparkles size={15} />
+            <span>{t('生成教学文档')}</span>
+          </button>
+        )}
+        {onManualWrite && (
+          <button
+            type="button"
+            onClick={onManualWrite}
+            className="flex items-center gap-2 rounded-xl border border-line-strong/60 bg-paper px-4 py-2 text-[13px] font-medium text-ink shadow-xs transition hover:bg-line/40 hover:border-line-strong cursor-pointer active:scale-[0.98]"
+          >
+            <PenLine size={15} />
+            <span>{t('手动写教学文档')}</span>
+          </button>
+        )}
+      </div>
+
+      {/* 美观的静态结构排版占位元素 */}
       <div
         className="mt-8 flex w-full max-w-md flex-col gap-3 rounded-xl border border-dashed border-line-strong/30 bg-paper/40 p-5 text-left"
         aria-hidden="true"
       >
-        <div className="h-4 w-1/3 rounded bg-line-strong/20" />
-        <div className="h-3 w-5/6 rounded bg-line-strong/10" />
+        <div className="flex items-center gap-2">
+          <div className="h-4 w-1/3 rounded bg-line-strong/25" />
+          <div className="h-3.5 w-12 rounded bg-seal/15" />
+        </div>
+        <div className="h-3 w-5/6 rounded bg-line-strong/15" />
         <div className="h-3 w-4/6 rounded bg-line-strong/10" />
-        <div className="mt-2 flex flex-col gap-2 rounded-lg border border-line-strong/20 bg-card/50 p-3.5">
-          <div className="h-3.5 w-1/4 rounded bg-seal/20" />
+        <div className="mt-2 flex flex-col gap-2 rounded-lg border border-line-strong/20 bg-card/60 p-3.5">
+          <div className="flex items-center justify-between">
+            <div className="h-3.5 w-1/4 rounded bg-seal/20" />
+            <div className="h-2.5 w-10 rounded bg-line-strong/20" />
+          </div>
           <div className="h-2.5 w-full rounded bg-line-strong/10" />
           <div className="h-2.5 w-4/5 rounded bg-line-strong/10" />
         </div>
