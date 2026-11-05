@@ -220,9 +220,11 @@ describe('StructureCanvas 节点宇宙 UI 优化测试', () => {
       )
     })
 
-    // 找到添加目标项按钮
+    // 找到添加目标项按钮并验证为原生 button 组件
     const addBtn = container.querySelector('[data-add-slot="o:node-root"]') as HTMLElement | null
     expect(addBtn).toBeTruthy()
+    expect(addBtn?.tagName).toBe('BUTTON')
+    expect(addBtn?.getAttribute('type')).toBe('button')
 
     // 点击添加
     act(() => {
@@ -254,6 +256,43 @@ describe('StructureCanvas 节点宇宙 UI 优化测试', () => {
     // 验证成功调用 onAddOutlineEntry 并关闭输入组件
     expect(onAdd).toHaveBeenCalledWith('o:node-root', '第一章核心概念')
     expect(container.querySelector('input[placeholder="新目标项标题..."]')).toBeNull()
+
+    act(() => {
+      root.unmount()
+    })
+    container.remove()
+  })
+
+  it('节点宇宙放大清晰度：画布平面使用 2D 变换，且不包含 willChange: transform 与 translate3d，消除字体模糊', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    const store = createTestStore()
+
+    act(() => {
+      root.render(
+        React.createElement(StructureCanvas, {
+          store,
+          goalId: 'g1',
+          onChange: vi.fn(),
+          docs: {} as any,
+          exams: {} as any,
+        }),
+      )
+    })
+
+    // 找到包含卡片平面的容器元素
+    const plane = container.querySelector('.origin-top-left') as HTMLDivElement | null
+    expect(plane).toBeTruthy()
+
+    // 验证 style 中 transform 使用 2D translate，不包含 translate3d
+    const transformStyle = plane?.style.transform ?? ''
+    expect(transformStyle).toContain('translate(')
+    expect(transformStyle).not.toContain('translate3d')
+    expect(transformStyle).toContain('scale(')
+
+    // 验证 style 中没有 willChange: transform（willChange 会导致 Chromium 将层栅格化为固定位图纹理，放大时双线性插值产生发糊）
+    expect(plane?.style.willChange).toBeFalsy()
 
     act(() => {
       root.unmount()

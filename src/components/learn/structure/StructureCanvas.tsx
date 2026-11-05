@@ -1438,7 +1438,7 @@ export const StructureCanvas = memo(function StructureCanvas({
       if (e.button !== 0) return
       lastDownCardRef.current = null
       // 菜单、按钮、输入框：容器一旦捕获指针，它们就收不到 click 了
-      if (target.closest('button, textarea, input, [data-menu]')) return
+      if (target.closest('button, textarea, input, [data-menu], [data-add-slot], [data-rename-slot]')) return
       if (menu) {
         setMenu(null)
         return
@@ -1474,15 +1474,7 @@ export const StructureCanvas = memo(function StructureCanvas({
         return
       }
 
-      const addEl = target.closest<HTMLElement>('[data-add-slot]')
-      if (addEl) {
-        const uuid = addEl.dataset.addSlot as string
-        setAddingSlotUuid(uuid)
-        setAddingSlotText('')
-        setEditingSlot(null)
-        setMenu(null)
-        return
-      }
+      
 
       const slotEl = target.closest<HTMLElement>('[data-slot-key]')
       if (slotEl) {
@@ -2364,8 +2356,7 @@ export const StructureCanvas = memo(function StructureCanvas({
           animating ? 'transition-transform duration-300 ease-out' : ''
         }`}
         style={{
-          transform: `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.zoom})`,
-          willChange: 'transform',
+          transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})`,
         }}
       >
 
@@ -2755,11 +2746,13 @@ export const StructureCanvas = memo(function StructureCanvas({
                       />
                     </div>
                   ) : (
-                    <div
+                    <button
+                      type="button"
                       data-add-slot={card.uuid}
                       title={t('给这份大纲加一条目标项')}
-                      className="flex cursor-pointer items-center gap-1.5 pr-3 pl-2 text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
+                      className="flex w-full cursor-pointer items-center gap-1.5 pr-3 pl-2 text-left text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
                       style={{ height: SLOT_ROW }}
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation()
                         setAddingSlotUuid(card.uuid)
@@ -2769,7 +2762,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                       }}
                     >
                       ＋ {t('添加目标项')}
-                    </div>
+                    </button>
                   )}
                 </div>
               ) : card.kind === 'outline' && slots.length === 0 ? (
@@ -2830,11 +2823,13 @@ export const StructureCanvas = memo(function StructureCanvas({
                       />
                     </div>
                   ) : (
-                    <div
+                    <button
+                      type="button"
                       data-add-slot={card.uuid}
                       title={t('给这份大纲加一条目标项')}
-                      className="flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
+                      className="flex w-full cursor-pointer items-center gap-1.5 text-left text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
                       style={{ height: SLOT_ROW }}
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation()
                         setAddingSlotUuid(card.uuid)
@@ -2844,7 +2839,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                       }}
                     >
                       ＋ {t('添加目标项')}
-                    </div>
+                    </button>
                   )}
                 </div>
               ) : card.kind === 'doc' && card.excerpt ? (
