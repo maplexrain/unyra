@@ -107,7 +107,7 @@ function syncReadmeBadge() {
   }
   const readmePath = path.join(ROOT, 'README.md')
   const before = readFileSync(readmePath, 'utf-8')
-  const after = before.replace(/release-v[\w.]+-/, 'release-v' + version + '-')
+  const after = before.replace(/([Rr]elease-v)[\w.]+-/, '$1' + version + '-')
   if (after === before) {
     console.error('[release] README 里没找到 release-v… 徽章，版本号没同步（徽章格式变过？）。')
     return
