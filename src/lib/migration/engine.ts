@@ -13,6 +13,7 @@
 import {
   listDir,
   mkdir,
+  movePath,
   readJson,
   readText,
   readYaml,
@@ -68,6 +69,7 @@ export function createMigrationContext(uid: string, onLog: (msg: string) => void
       listDir: (rel: string) => listDir(rel),
       removePath: (rel: string) => removePath(rel),
       mkdir: (rel: string) => mkdir(rel),
+      movePath: (from: string, to: string) => movePath(from, to),
     },
     log: (msg: string) => {
       const time = new Date().toLocaleTimeString()

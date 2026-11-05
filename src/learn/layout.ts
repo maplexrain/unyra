@@ -60,8 +60,9 @@ export function nodeLayout(store: LearnStore): Map<string, NodeLayout> {
     const goalNodes = store.nodes.filter((n) => n.goalId === goal.id)
     if (!goalNodes.length) continue
 
-    if (!root) {
-      const used = new Set<string>([
+    // 目标命名空间下的预留文件与目录名
+    const baseUsed = () =>
+      new Set<string>([
         goalSeg.toLowerCase(),
         `${goalSeg.toLowerCase()}.node.json`,
         'chat.json',
@@ -73,8 +74,15 @@ export function nodeLayout(store: LearnStore): Map<string, NodeLayout> {
         'method.json',
         'workflow.json',
         'structure.json',
+        'outlines.json',
+        'video-nodes.json',
+        'projects.json',
+        'detached.json',
         ...ASSET_DIRS,
       ])
+
+    if (!root) {
+      const used = baseUsed()
       for (const node of goalNodes) {
         const seg = allocate(node.title, used)
         layout.set(node.id, { dir: [goalSeg, seg], base: seg, goalId: goal.id })
@@ -82,8 +90,7 @@ export function nodeLayout(store: LearnStore): Map<string, NodeLayout> {
       continue
     }
 
-    // 从根沿前置边 BFS：先到先得，多父节点取最短的那条路径
-    const parentOf = new Map<string, string>()
+    // 从根沿前置边 BFS：先到先得，保留确定且稳定的段名分配顺序
     const order: string[] = []
     const seen = new Set<string>([root.id])
     const queue: string[] = [root.id]
@@ -102,7 +109,6 @@ export function nodeLayout(store: LearnStore): Map<string, NodeLayout> {
         // 跨目标的依赖不进这棵树：目录只表达「这个目标里的层级」
         if (!pn || pn.goalId !== goal.id) continue
         seen.add(pid)
-        parentOf.set(pid, cur)
         queue.push(pid)
       }
     }
@@ -110,56 +116,21 @@ export function nodeLayout(store: LearnStore): Map<string, NodeLayout> {
     for (const orphan of store.nodes.filter((n) => n.goalId === goal.id && !seen.has(n.id))) {
       seen.add(orphan.id)
       order.push(orphan.id)
-      parentOf.set(orphan.id, root.id)
     }
 
-    const children = new Map<string, string[]>()
+    // 根节点落在目标目录下：dir: [goalSeg], base: goalSeg
+    layout.set(root.id, { dir: [goalSeg], base: goalSeg, goalId: goal.id })
+
+    // 其余所有非根节点全部平铺在目标目录下的一级子目录：
+    // dir: [goalSeg, seg], base: seg
+    // 解耦架构：拓扑图中节点间增删边或重构父子层级，节点物理目录永远在 docs/{goalSeg}/{seg}，不随图的拓扑深层嵌套改变
+    const used = baseUsed()
     for (const id of order) {
       if (id === root.id) continue
-      const parent = parentOf.get(id) ?? root.id
-      const list = children.get(parent)
-      if (list) list.push(id)
-      else children.set(parent, [id])
-    }
-
-    // 分配目录：每个目录里先占掉「自己那份节点文件」和目标级账本，免得子节点撞上
-    const dirs = new Map<string, string[]>([[root.id, [goalSeg]]])
-    const walk = (id: string): void => {
-      const dir = dirs.get(id) as string[]
-      const last = dir[dir.length - 1].toLowerCase()
-      /**
-       * 一个子节点若叫「static」会和资源目录撞名，chat.json / tmp.json 同理；
-       * `{本节点}.node.json` 是本节点自己的文件，也不能被某个子节点占去。
-       *
-       * 与 v2 的差别：不再需要预留 `{本节点}.notes`（笔记已经并进节点文件）。
-       */
-      const used = new Set<string>([
-        last,
-        `${last}.node.json`,
-        'chat.json',
-        'tmp.json',
-        'reading.json',
-        'essay.json',
-        'mind.json',
-        'method.json',
-        'workflow.json',
-        'structure.json',
-        ...ASSET_DIRS,
-      ])
-      for (const childId of children.get(id) ?? []) {
-        const child = byId.get(childId)
-        if (!child) continue
-        const seg = allocate(child.title, used)
-        dirs.set(childId, [...dir, seg])
-        walk(childId)
-      }
-    }
-    walk(root.id)
-
-    for (const id of order) {
-      const dir = dirs.get(id)
-      if (!dir) continue
-      layout.set(id, { dir, base: dir[dir.length - 1], goalId: goal.id })
+      const node = byId.get(id)
+      if (!node) continue
+      const seg = allocate(node.title, used)
+      layout.set(node.id, { dir: [goalSeg, seg], base: seg, goalId: goal.id })
     }
   }
 
