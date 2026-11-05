@@ -40,6 +40,8 @@ interface Props {
   agentRunning?: boolean
   /** 触发生成教学文档。带 node 参数：上层因此能传一份身份稳定的回调（见 LearnWorkspace） */
   onGenerateDoc?: (node: KnowledgeNode) => void
+  /** 手动写教学文档（进入源码编辑或填充初始标题） */
+  onManualWrite?: () => void
   /** 选中词条 → 展开一个下级节点（深入学习） */
   onLearnConcept: (term: string) => void
   /** 选中词条 → 只在原文挂一段短释义（了解），不改动知识树 */
@@ -119,6 +121,7 @@ export default memo(function NodeNote({
   pending = false,
   agentRunning = false,
   onGenerateDoc,
+  onManualWrite,
   onLearnConcept,
   onUnderstand,
   onAsk,
@@ -371,6 +374,7 @@ export default memo(function NodeNote({
           pending={pending}
           agentRunning={agentRunning}
           onGenerateDoc={generateDoc}
+          onManualWrite={onManualWrite}
           kind={doc.kind}
           content={content}
           html={html}

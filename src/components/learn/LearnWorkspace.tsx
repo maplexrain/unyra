@@ -5455,6 +5455,12 @@ export default function LearnWorkspace({
                   pending={paneActive && docPending}
                   agentRunning={isAgentRunning}
                   onGenerateDoc={requestGenerateDoc}
+                  onManualWrite={() => {
+                    setTabView(tab.id, 'source')
+                    if (!source.content.trim()) {
+                      editDocSource(tab.id, `# ${node.title}\n\n`)
+                    }
+                  }}
                   knownConceptKeys={conceptKeysOf(store, node)}
                   // 大纲句柄槽：每片正文对应自己页签的那一份（见 lib/outline 的 OutlineHandle）
                   outlineSlot={getOutlineSlot(tab.id)}

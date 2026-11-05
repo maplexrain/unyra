@@ -390,37 +390,7 @@ function WheelStop({ className, style, children, ...rest }: HTMLAttributes<HTMLD
 }
 
 
-/**
- * 滚轮单向防抖阀门：记录上一次滚动的方向与时间戳。
- * 每次朝一个方向滚动后，200ms 内禁止朝反方向滚动（抑制滚针回弹与瞬时反向抖动）。
- */
-export interface WheelValve {
-  lastDir: number // 1: 正向, -1: 负向, 0: 无方向
-  lastTime: number
-}
 
-export function createWheelValve(): WheelValve {
-  return { lastDir: 0, lastTime: 0 }
-}
-
-export function checkWheelValve(
-  valve: WheelValve,
-  delta: number,
-  now: number = typeof performance !== 'undefined' ? performance.now() : Date.now(),
-  lockoutMs: number = 200,
-): boolean {
-  if (delta === 0) return true
-  const dir = delta > 0 ? 1 : -1
-  if (valve.lastDir !== 0 && dir !== valve.lastDir) {
-    if (now - valve.lastTime < lockoutMs) {
-      // 200ms 内禁止朝反方向滚动
-      return false
-    }
-  }
-  valve.lastDir = dir
-  valve.lastTime = now
-  return true
-}
 
 export const StructureCanvas = memo(function StructureCanvas({
   store,
@@ -629,21 +599,18 @@ export const StructureCanvas = memo(function StructureCanvas({
   const [view, setView] = useState({ width: 0, height: 0 })
   const [camera, setCamera] = useState({ x: 72, y: 72, zoom: 1 })
   const cameraRef = useRef(camera)
-  const zoomValveRef = useRef<WheelValve>(createWheelValve())
-  const panXValveRef = useRef<WheelValve>(createWheelValve())
-  const panYValveRef = useRef<WheelValve>(createWheelValve())
+  const setCameraSync = useCallback((next: { x: number; y: number; zoom: number }) => {
+    cameraRef.current = next
+    setCamera(next)
+  }, [])
+
   const pendingCameraRef = useRef<{ x: number; y: number; zoom: number } | null>(null)
   const wheelRafRef = useRef<number | null>(null)
   const draftRafRef = useRef<number | null>(null)
   const pendingDraftRef = useRef<{ id: string; x: number; y: number; moves?: Record<string, { x: number; y: number }> } | null>(null)
   const trashRectRef = useRef<DOMRect | null>(null)
 
-  useEffect(() => {
-    // 仅在无未决 RAF 相机更新时才由 state 反写 ref，防止高频滚轮时被旧渲染帧冲掉最新坐标导致画面跳动
-    if (wheelRafRef.current == null && pendingCameraRef.current == null) {
-      cameraRef.current = camera
-    }
-  }, [camera])
+
 
   /**
    * RAF 批量合并相机更新（滚轮缩放/平移防卡顿）：
@@ -673,9 +640,9 @@ export const StructureCanvas = memo(function StructureCanvas({
     if (pendingCameraRef.current) {
       const next = pendingCameraRef.current
       pendingCameraRef.current = null
-      setCamera(next)
+      setCameraSync(next)
     }
-  }, [])
+  }, [setCameraSync])
 
   useEffect(() => {
     return () => {
@@ -708,7 +675,7 @@ export const StructureCanvas = memo(function StructureCanvas({
     }
     savedCameraRef.current = camera
     const tourCam = getTourCamera(view.width, view.height)
-    setCamera(tourCam)
+    setCameraSync(tourCam)
     setSelectedId(null)
     setMultiIds(null)
     setHoverId(null)
@@ -723,7 +690,7 @@ export const StructureCanvas = memo(function StructureCanvas({
     }
     setTourOpen(false)
     if (savedCameraRef.current) {
-      setCamera(savedCameraRef.current)
+      setCameraSync(savedCameraRef.current)
       savedCameraRef.current = null
     }
   }, [])
@@ -795,6 +762,12 @@ export const StructureCanvas = memo(function StructureCanvas({
   const fitNextRef = useRef(false)
 
   const bounds = useMemo(() => boundsOf(cards, height), [cards, height])
+  const boundsRef = useRef(bounds)
+  boundsRef.current = bounds
+  const viewRef = useRef(view)
+  viewRef.current = view
+  const heightRef = useRef(height)
+  heightRef.current = height
 
   /**
    * 连线的「大纲那一端」对准子级对应的那条目标项，而不是卡片顶部那个固定锚点。
@@ -979,7 +952,7 @@ export const StructureCanvas = memo(function StructureCanvas({
     if (!el) return
     const measure = () => {
       const rect = el.getBoundingClientRect()
-      setView({ width: rect.width, height: rect.height })
+      setView((prev) => (prev.width === rect.width && prev.height === rect.height ? prev : { width: rect.width, height: rect.height }))
     }
     measure()
     const ro = new ResizeObserver(measure)
@@ -996,6 +969,7 @@ export const StructureCanvas = memo(function StructureCanvas({
    * 手动拖动与滚轮也会变成「带惯性的慢半拍」，那是另一种难受。
    */
   const animateCamera = useCallback((next: { x: number; y: number; zoom: number }) => {
+    cameraRef.current = next
     if (wheelRafRef.current != null) {
       cancelAnimationFrame(wheelRafRef.current)
       wheelRafRef.current = null
@@ -1016,6 +990,10 @@ export const StructureCanvas = memo(function StructureCanvas({
     const zoom = fitZoom(box, view)
     animateCamera({ ...centerPan(box, view, zoom), zoom })
   }, [cards, height, view, animateCamera])
+
+  useEffect(() => {
+    fittedRef.current = false
+  }, [goalId])
 
   useEffect(() => {
     if (fitNextRef.current) {
@@ -1099,47 +1077,45 @@ export const StructureCanvas = memo(function StructureCanvas({
     onFocusHandled?.()
   }, [focusTarget, cards, view, height, onFocusHandled, flash, animateCamera])
 
-  /* ---------- 滚轮：平移为主，Ctrl/⌘ + 滚轮缩放（RAF 批量调度防卡顿） ---------- */
+  /* ---------- 滚轮：平移为主，Ctrl/⌘ + 滚轮缩放（RAF 批量调度防卡顿，连续平滑缩放） ---------- */
 
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
       const cam = cameraRef.current
+      if (animTimer.current !== null) {
+        window.clearTimeout(animTimer.current)
+        animTimer.current = null
+      }
+      if (planeRef.current) {
+        planeRef.current.style.transition = 'none'
+      }
+      setAnimating(false)
+
       if (e.ctrlKey || e.metaKey) {
-        if (!checkWheelValve(zoomValveRef.current, e.deltaY, now)) {
-          return
-        }
         const rect = el.getBoundingClientRect()
         const px = e.clientX - rect.left
         const py = e.clientY - rect.top
-        const next = clampZoom(cam.zoom * (e.deltaY > 0 ? 0.92 : 1.08), boundsOf(cards, height), view)
+        const normDelta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY
+        const clampedDelta = Math.max(-120, Math.min(120, normDelta))
+        const factor = Math.exp(-clampedDelta * 0.0018)
+        const next = clampZoom(cam.zoom * factor, boundsRef.current, viewRef.current)
         if (next === cam.zoom) return
         const k = next / cam.zoom
-        setAnimating(false)
         scheduleCameraUpdate({ x: px - (px - cam.x) * k, y: py - (py - cam.y) * k, zoom: next })
         return
       }
       // Shift + 滚轮：横向滚动（触控板横滑本来就给 deltaX，两种都给上）
       const rawDx = e.shiftKey ? e.deltaY : e.deltaX
       const rawDy = e.shiftKey ? 0 : e.deltaY
-      let dx = 0
-      let dy = 0
-      if (rawDx !== 0 && checkWheelValve(panXValveRef.current, rawDx, now)) {
-        dx = rawDx
-      }
-      if (rawDy !== 0 && checkWheelValve(panYValveRef.current, rawDy, now)) {
-        dy = rawDy
-      }
-      if (dx === 0 && dy === 0) return
-      setAnimating(false)
-      scheduleCameraUpdate({ ...cam, x: cam.x - dx, y: cam.y - dy })
+      if (rawDx === 0 && rawDy === 0) return
+      scheduleCameraUpdate({ ...cam, x: cam.x - rawDx, y: cam.y - rawDy })
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [cards, height, view, scheduleCameraUpdate])
+  }, [scheduleCameraUpdate])
 
   /* ---------- 坐标换算（正交投影：y 除以 cos 就把倾斜还原了） ---------- */
 
@@ -1648,6 +1624,13 @@ export const StructureCanvas = memo(function StructureCanvas({
       flushPendingCamera()
       const g = gestureRef.current
       gestureRef.current = null
+      if (g && g.mode === 'pan') {
+        const dist = Math.abs(e.clientX - g.startX) + Math.abs(e.clientY - g.startY)
+        if (dist > 3) {
+          // 移动过则说明是拖映画布手势，重置中键连击判定计时，防止连续拖拽被误判为双击自动校正适应画布
+          lastMiddleDownRef.current = 0
+        }
+      }
       const el = containerRef.current
       if (el?.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
       if (!g) return
@@ -2035,23 +2018,29 @@ export const StructureCanvas = memo(function StructureCanvas({
     const onMinimapWheel = (e: WheelEvent) => {
       e.preventDefault()
       e.stopPropagation()
-      const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
-      if (!checkWheelValve(zoomValveRef.current, e.deltaY, now)) {
-        return
-      }
       const cam = cameraRef.current
-      const factor = e.deltaY > 0 ? 0.92 : 1.08
-      const next = clampZoom(cam.zoom * factor, boundsOf(cards, height), view)
+      const normDelta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY
+      const clampedDelta = Math.max(-120, Math.min(120, normDelta))
+      const factor = Math.exp(-clampedDelta * 0.0018)
+      const next = clampZoom(cam.zoom * factor, boundsRef.current, viewRef.current)
       if (next === cam.zoom) return
-      const px = view.width / 2
-      const py = view.height / 2
+      const curView = viewRef.current
+      const px = curView.width / 2
+      const py = curView.height / 2
       const k = next / cam.zoom
+      if (animTimer.current !== null) {
+        window.clearTimeout(animTimer.current)
+        animTimer.current = null
+      }
+      if (planeRef.current) {
+        planeRef.current.style.transition = 'none'
+      }
       setAnimating(false)
       scheduleCameraUpdate({ x: px - (px - cam.x) * k, y: py - (py - cam.y) * k, zoom: next })
     }
     el.addEventListener('wheel', onMinimapWheel, { passive: false })
     return () => el.removeEventListener('wheel', onMinimapWheel)
-  }, [mini, cards, height, view, scheduleCameraUpdate])
+  }, [scheduleCameraUpdate])
 
   /** 把缩略图上的一点变成镜头中心（屏幕坐标 → 窗口占比 → 世界坐标 → 相机平移） */
   const jumpByMinimap = useCallback(
@@ -2078,7 +2067,7 @@ export const StructureCanvas = memo(function StructureCanvas({
           ? m.bounds.y + m.bounds.height / 2
           : Math.min(Math.max(wy, m.bounds.y + halfH), m.bounds.y + m.bounds.height - halfH)
       setAnimating(false)
-      setCamera({ x: view.width / 2 - wx * cam.zoom, y: view.height / 2 - wy * cam.zoom, zoom: cam.zoom })
+      setCameraSync({ x: view.width / 2 - wx * cam.zoom, y: view.height / 2 - wy * cam.zoom, zoom: cam.zoom })
     },
     [mini, view],
   )
@@ -2530,6 +2519,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                 left: card.x,
                 top: card.y,
                 width: cardWidthOf(card.kind),
+                minHeight: h,
                 height: h,
                 // 悬停不抢光标（箭头就好），拖起来才换成抓住的手——「可拖」由选中态与阴影说
                 cursor: lifted ? 'grabbing' : undefined,
@@ -2662,7 +2652,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                   支持 Agent 自动规划，亦支持用户手动创建第一项目标
                 */
                 <div className="flex flex-col gap-1 px-3 pb-2">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex h-6 items-center justify-between gap-2">
                     <span title={card.subtitle} className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
                     <button
                       type="button"
@@ -3122,7 +3112,7 @@ export const StructureCanvas = memo(function StructureCanvas({
           onClick={() => {
             const cam = cameraRef.current
             const next = clampZoom(cam.zoom - 0.15, boundsOf(cards, height), view)
-            if (next !== cam.zoom) setCamera({ ...cam, zoom: next })
+            if (next !== cam.zoom) setCameraSync({ ...cam, zoom: next })
           }}
         >
           <svg {...ICON_STROKE}>
@@ -3137,7 +3127,7 @@ export const StructureCanvas = memo(function StructureCanvas({
           onClick={() => {
             const cam = cameraRef.current
             const next = clampZoom(cam.zoom + 0.15, boundsOf(cards, height), view)
-            if (next !== cam.zoom) setCamera({ ...cam, zoom: next })
+            if (next !== cam.zoom) setCameraSync({ ...cam, zoom: next })
           }}
         >
           <svg {...ICON_STROKE}>

@@ -29,6 +29,8 @@ export interface DocPaneProps {
   agentRunning?: boolean
   /** 触发生成教学文档。带 node 参数是为了让上层能传一份**身份稳定**的回调（见 LearnWorkspace） */
   onGenerateDoc?: (node: KnowledgeNode) => void
+  /** 手动写教学文档（进入源码编辑或填充初始标题） */
+  onManualWrite?: () => void
   knownConceptKeys?: Set<string>
   /** 大纲句柄槽（见 lib/outline 的 OutlineHandle）：悬浮大纲按钮据此取「眼前这份」的大纲 */
   outlineSlot: { current: OutlineHandle | null }
@@ -38,7 +40,7 @@ export interface DocPaneProps {
   /** 已绑到本片页签节点上的回调（父组件按节点现造） */
   note: Omit<
     ComponentProps<typeof NodeNote>,
-    'node' | 'doc' | 'pending' | 'knownConceptKeys' | 'active'
+    'node' | 'doc' | 'pending' | 'knownConceptKeys' | 'active' | 'onManualWrite'
   >
 }
 
@@ -67,6 +69,7 @@ export const DocPane = memo(function DocPane({
   pending,
   agentRunning,
   onGenerateDoc,
+  onManualWrite,
   knownConceptKeys,
   outlineSlot,
   scrollTop,
@@ -103,6 +106,7 @@ export const DocPane = memo(function DocPane({
         pending={pending}
         agentRunning={agentRunning}
         onGenerateDoc={onGenerateDoc}
+        onManualWrite={onManualWrite}
         knownConceptKeys={knownConceptKeys}
         outlineSlot={outlineSlot}
         scrollTop={scrollTop}
