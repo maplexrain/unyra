@@ -19,6 +19,7 @@ import {
   tryNodeLinkFromEvent,
   trySuperLinkFromEvent,
 } from '../lib/nodeLink'
+import { tryVideoLinkFromEvent } from '../lib/videoLink'
 import { isExternalHref, openWebLink } from '../lib/externalLink'
 import { hydrateChipTokens } from '../lib/docChip'
 import { flashHeading } from '../lib/headingFlash'
@@ -257,7 +258,7 @@ const MarkdownView = memo(function MarkdownView({
         }
         // 四类链接都阻止默认（moji: 协议本身无意义），命中哪个执行哪个：
         // moji:learn 建/跳下级节点、moji:node 跳节点、moji:doc 跳某一份文档、moji:super 跳某份超级文档
-        if (tryDocLinkFromEvent(e) || trySuperLinkFromEvent(e) || tryLearnLinkFromEvent(e) || tryNodeLinkFromEvent(e)) {
+        if (tryVideoLinkFromEvent(e) || tryDocLinkFromEvent(e) || trySuperLinkFromEvent(e) || tryLearnLinkFromEvent(e) || tryNodeLinkFromEvent(e)) {
           e.preventDefault()
           return
         }

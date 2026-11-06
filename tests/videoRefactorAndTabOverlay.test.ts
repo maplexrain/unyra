@@ -111,12 +111,14 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
     expect(code).not.toContain('buildPagesMarkdown')
     expect(code).not.toContain('PagesExportEntry')
 
-    // 5. 验证右侧栏（Tab 键笔记栏）与插入时间戳功能
+    // 5. 验证悬浮笔记栏与插入时间戳超链接功能
     expect(code).toContain('rightOverlay')
     expect(code).toContain('createNoteForVideoNode')
     expect(code).toContain('deleteNoteForVideoNode')
     expect(code).toContain('updateNoteForVideoNode')
-    expect(code).toContain('formatClock(currentMs)')
+    expect(code).toContain('videoLinkMarkdown')
+    expect(code).toContain('setVideoLinkHandler')
+    expect(code).toContain("e.key === 'Shift'")
 
     // 6. 验证视频节点兜底匹配与新建笔记无阻塞保证
     expect(code).toContain('effectiveVideoNodeId')
@@ -217,5 +219,70 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
     expect(restored.y).toBe(150)
     expect(restored.width).toBe(700)
     expect(restored.height).toBe(480)
+  })
+
+  it('验证 moji:video 视频超链接协议的生成、解析与跳转拦截', async () => {
+    const {
+      isVideoHref,
+      parseVideoHref,
+      videoLinkHref,
+      videoLinkMarkdown,
+      setVideoLinkHandler,
+      handleVideoLink,
+    } = await import('../src/lib/videoLink')
+
+    // 1. 生成链接
+    expect(videoLinkHref({ timeMs: 83000 })).toBe('moji:video?t=01:23')
+    expect(videoLinkHref({ page: 3, timeMs: 83000 })).toBe('moji:video?p=3&t=01:23')
+    expect(videoLinkMarkdown({ timeMs: 83000 })).toBe('[01:23](moji:video?t=01:23)')
+    expect(videoLinkMarkdown({ page: 3, timeMs: 83000 })).toBe('[P3 01:23](moji:video?p=3&t=01:23)')
+
+    // 2. 协议判断
+    expect(isVideoHref('moji:video?t=01:23')).toBe(true)
+    expect(isVideoHref('moji:video?p=2&t=10:05')).toBe(true)
+    expect(isVideoHref('https://example.com')).toBe(false)
+    expect(isVideoHref(undefined)).toBe(false)
+
+    // 3. 链接解析
+    expect(parseVideoHref('moji:video?t=01:23')).toMatchObject({ timeMs: 83000 })
+    expect(parseVideoHref('moji:video?p=2&t=01:23')).toMatchObject({ page: 2, timeMs: 83000 })
+    expect(parseVideoHref('moji:video?t=90')).toMatchObject({ timeMs: 90000 })
+    expect(parseVideoHref('moji:video?t=01:02:03')).toMatchObject({ timeMs: 3723000 })
+
+    // 4. 跳转处理器分发
+    let received: any = null
+    const restore = setVideoLinkHandler((target) => {
+      received = target
+    })
+    const handled = handleVideoLink('moji:video?p=4&t=02:30')
+    expect(handled).toBe(true)
+    expect(received).toMatchObject({ page: 4, timeMs: 150000 })
+    restore()
+  })
+
+  it('验证笔记窗口去模糊滤镜、纯SVG顶栏按钮、一级列表重命名与二级无标题编辑框规范', async () => {
+    const fs = await import('fs')
+    const code = fs.readFileSync('src/components/video/VideoNotesFloatingWindow.tsx', 'utf8')
+
+    // 1. 背景不得使用 backdrop-blur 模糊滤镜以保证性能
+    expect(code).not.toContain('backdrop-blur')
+    expect(code).toContain('bg-[#141416]/95')
+
+    // 2. 顶栏按钮纯 SVG（不显示文字、无额外背景和边框）
+    expect(code).not.toContain(">{t('插入时间戳')}<")
+    expect(code).not.toContain(">{t('新建笔记')}<")
+    expect(code).toContain('title={t(\'返回笔记列表\')}')
+    expect(code).toContain('title={t(\'在光标处插入当前时间戳跳转链接\')}')
+    expect(code).toContain('title={t(\'新建笔记\')}')
+    expect(code).toContain('title={t(\'收起笔记 (双击 Shift)\')}')
+
+    // 3. 一级列表页提供原地重命名功能
+    expect(code).toContain('onRenameNote')
+    expect(code).toContain('renamingId')
+
+    // 4. 二级页面无 input 标题编辑框，全高度展示 Markdown 编辑器
+    expect(code).not.toContain('draftTitle')
+    expect(code).not.toContain('onTitleChange')
+    expect(code).toContain('h-full w-full resize-none')
   })
 })

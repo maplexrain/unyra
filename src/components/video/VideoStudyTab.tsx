@@ -51,6 +51,7 @@ import type { LearnStore, NoteFile, VideoNodeEntity, VideoRecap, VideoResource }
 import { registerVideoAudio } from '../../learn/video/videoRegistry'
 import VideoPlayer, { type VideoPlayerHandle } from './VideoPlayer'
 import VideoNotesFloatingWindow from './VideoNotesFloatingWindow'
+import { setVideoLinkHandler, type VideoJumpTarget, videoLinkMarkdown } from '../../lib/videoLink'
 
 /** 创建态的输入记忆：下次打新建视频，上次粘的链接还在 */
 const INPUT_KEY = 'moji.video.input'
@@ -183,34 +184,58 @@ export default function VideoStudyTab({
   /** 左侧抽屉（选集列表 + 字幕列表 + 视频分段）：按 Tab 展开/收起 */
   const [leftOverlayOpen, setLeftOverlayOpen] = useState(false)
 
-  /** 右侧抽屉（笔记栏）：按 Tab 展开/收起 */
+  /** 悬浮窗口（笔记栏）：双击 Shift 展开/收起 */
   const [rightOverlayOpen, setRightOverlayOpen] = useState(false)
 
   /** 当前在二级页面编辑的笔记 id；null 为列表页 */
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
 
-  /** 键盘 Tab 键监听：同时切换左侧栏与右侧笔记栏 */
+  /** 记录上一次按下 Shift 键的时间戳，用于检测双击 Shift */
+  const lastShiftTimeRef = useRef(0)
+
+  /** 挂起的跨选集跳转目标时间（毫秒） */
+  const pendingSeekMsRef = useRef<number | null>(null)
+
+  /** 键盘快捷键监听：Tab 切换左侧栏，双击 Shift 切换右侧悬浮笔记窗口 */
   useEffect(() => {
     if (!active) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Tab') {
-        const target = e.target as HTMLElement | null
-        if (target) {
-          const tag = target.tagName.toUpperCase()
-          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) {
-            return
-          }
-        }
-        e.preventDefault()
-        // 同时联动切换两栏显隐
-        const next = !leftOverlayOpen && !rightOverlayOpen
-        setLeftOverlayOpen(next)
-        setRightOverlayOpen(next)
-      }
+
+    const isEditingElement = (el: HTMLElement | null) => {
+      if (!el) return false
+      const tag = el.tagName.toUpperCase()
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
     }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (isEditingElement(target)) {
+        return
+      }
+
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        setLeftOverlayOpen((prev) => !prev)
+        return
+      }
+
+      if (e.key === 'Shift') {
+        const now = performance.now()
+        const delta = now - lastShiftTimeRef.current
+        if (delta > 60 && delta < 400) {
+          setRightOverlayOpen((prev) => !prev)
+          lastShiftTimeRef.current = 0
+        } else {
+          lastShiftTimeRef.current = now
+        }
+        return
+      }
+
+      lastShiftTimeRef.current = 0
+    }
+
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [active, leftOverlayOpen, rightOverlayOpen])
+  }, [active])
 
   /** 换集幕布 */
   const [switchStill, setSwitchStill] = useState<{ token: string; src: string } | null>(null)
@@ -272,8 +297,7 @@ export default function VideoStudyTab({
     return getNotesForVideoNode(store, effectiveVideoNodeId)
   }, [store, effectiveVideoNodeId])
 
-  /** 编辑态的草稿标题与正文 */
-  const [draftTitle, setDraftTitle] = useState('')
+  /** 编辑态的草稿正文（标题直接在列表页中原地重命名） */
   const [draftContent, setDraftContent] = useState('')
   const saveTimerRef = useRef<number | null>(null)
   const latestStoreRef = useRef(store)
@@ -286,49 +310,54 @@ export default function VideoStudyTab({
     if (!editingNoteId) return null
     const found = videoNotes.find((n) => n.id === editingNoteId)
     if (found) return found
-    if (draftTitle || draftContent) {
+    if (draftContent) {
       return {
         id: editingNoteId,
-        name: draftTitle || t('未命名笔记'),
+        name: t('未命名笔记'),
         content: draftContent,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       }
     }
     return null
-  }, [videoNotes, editingNoteId, draftTitle, draftContent])
+  }, [videoNotes, editingNoteId, draftContent])
 
   useEffect(() => {
     if (currentEditingNote) {
-      setDraftTitle(currentEditingNote.name)
       setDraftContent(currentEditingNote.content)
     }
   }, [currentEditingNote?.id])
 
-  /** 提交笔记编辑变更并写回 store */
+  /** 提交笔记正文变更并写回 store */
   const commitNoteDraft = useCallback(
-    (name: string, content: string) => {
+    (content: string) => {
       const currentStore = latestStoreRef.current || store
       if (!editingNoteId || !currentStore || !onCommitStore) return
+      const targetNote = videoNotes.find((n) => n.id === editingNoteId)
+      const name = targetNote?.name || t('未命名笔记')
       const nextStore = updateNoteForVideoNode(currentStore, editingNoteId, { name, content })
       onCommitStore(nextStore)
     },
-    [editingNoteId, store, onCommitStore],
+    [editingNoteId, store, onCommitStore, videoNotes],
   )
 
-  const handleTitleChange = (val: string) => {
-    setDraftTitle(val)
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = window.setTimeout(() => {
-      commitNoteDraft(val.trim() || t('未命名笔记'), draftContent)
-    }, 400)
-  }
+  /** 在笔记列表中原地重命名某篇笔记 */
+  const handleRenameNote = useCallback(
+    (noteId: string, newTitle: string) => {
+      const currentStore = latestStoreRef.current || store
+      if (!currentStore || !onCommitStore) return
+      const trimmed = newTitle.trim() || t('未命名笔记')
+      const nextStore = updateNoteForVideoNode(currentStore, noteId, { name: trimmed })
+      onCommitStore(nextStore)
+    },
+    [store, onCommitStore],
+  )
 
   const handleContentChange = (val: string) => {
     setDraftContent(val)
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = window.setTimeout(() => {
-      commitNoteDraft(draftTitle.trim() || t('未命名笔记'), val)
+      commitNoteDraft(val)
     }, 400)
   }
 
@@ -338,31 +367,32 @@ export default function VideoStudyTab({
       clearTimeout(saveTimerRef.current)
       saveTimerRef.current = null
     }
-    commitNoteDraft(draftTitle.trim() || t('未命名笔记'), draftContent)
+    commitNoteDraft(draftContent)
     setEditingNoteId(null)
   }
 
-  /** 在当前光标处（或末尾）插入当前视频时间戳 */
+  /** 在当前光标处（或末尾）插入当前视频时间戳超链接（moji:video 协议） */
   const handleInsertTimestamp = () => {
-    const stamp = `[${formatClock(currentMs)}] `
+    const pageNum = currentPage?.page
+    const mdLink = videoLinkMarkdown({ page: pageNum, timeMs: currentMs }) + ' '
     const textarea = noteTextareaRef.current
     if (!textarea) {
-      const next = draftContent ? `${draftContent}\n${stamp}` : stamp
+      const next = draftContent ? `${draftContent}\n${mdLink}` : mdLink
       setDraftContent(next)
-      commitNoteDraft(draftTitle.trim() || t('未命名笔记'), next)
+      commitNoteDraft(next)
       return
     }
 
     const start = textarea.selectionStart ?? draftContent.length
     const end = textarea.selectionEnd ?? draftContent.length
-    const next = draftContent.slice(0, start) + stamp + draftContent.slice(end)
+    const next = draftContent.slice(0, start) + mdLink + draftContent.slice(end)
     setDraftContent(next)
-    commitNoteDraft(draftTitle.trim() || t('未命名笔记'), next)
+    commitNoteDraft(next)
 
-    // 光标移到插入的时间戳之后
+    // 光标移到插入的时间戳超链接之后
     window.setTimeout(() => {
       textarea.focus()
-      textarea.setSelectionRange(start + stamp.length, start + stamp.length)
+      textarea.setSelectionRange(start + mdLink.length, start + mdLink.length)
     }, 0)
   }
 
@@ -398,7 +428,6 @@ export default function VideoStudyTab({
     }
 
     const { store: nextStore, note } = createNoteForVideoNode(storeToUse, targetVideoNodeId)
-    setDraftTitle(note.name)
     setDraftContent(note.content)
     setEditingNoteId(note.id)
     onCommitStore(nextStore)
@@ -442,6 +471,13 @@ export default function VideoStudyTab({
         lastProgressRef.current = 0
         onResolved?.(src.title)
         if (video && text !== (video.selection?.source ?? video.input)) onSelection?.(text, src.title)
+        if (pendingSeekMsRef.current !== null) {
+          const targetSeek = pendingSeekMsRef.current
+          pendingSeekMsRef.current = null
+          window.setTimeout(() => {
+            playerRef.current?.seekMs(targetSeek)
+          }, 350)
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
       } finally {
@@ -460,6 +496,45 @@ export default function VideoStudyTab({
     autoResolvedRef.current = key
     void runResolve(targetSource, video.fields)
   }, [video, runResolve])
+
+  /**
+   * 注册视频超链接（moji:video 协议）跳转处理
+   */
+  useEffect(() => {
+    if (!active) return
+
+    const handleJump = (target: VideoJumpTarget) => {
+      const pages = source?.pages ?? []
+      if (typeof target.page === 'number' && pages.length > 0) {
+        const targetPage = pages.find((p) => p.page === target.page)
+        if (targetPage && !targetPage.current) {
+          pendingSeekMsRef.current = typeof target.timeMs === 'number' ? target.timeMs : null
+          void runResolve(targetPage.source, video?.fields)
+          return
+        }
+      }
+      if (typeof target.timeMs === 'number') {
+        playerRef.current?.seekMs(target.timeMs)
+      }
+    }
+
+    const restore = setVideoLinkHandler((target) => {
+      handleJump(target)
+    })
+
+    const onCustomJump = (e: Event) => {
+      const detail = (e as CustomEvent<VideoJumpTarget>).detail
+      if (detail && typeof detail.timeMs === 'number') {
+        handleJump(detail)
+      }
+    }
+    window.addEventListener('moji:video:jump', onCustomJump)
+
+    return () => {
+      restore()
+      window.removeEventListener('moji:video:jump', onCustomJump)
+    }
+  }, [active, source?.pages, runResolve, video?.fields])
 
   /** 进度上报 */
   useEffect(() => {
@@ -940,11 +1015,10 @@ export default function VideoStudyTab({
       videoNotes={videoNotes}
       editingNoteId={editingNoteId}
       currentEditingNote={currentEditingNote}
-      draftTitle={draftTitle}
       draftContent={draftContent}
-      onTitleChange={handleTitleChange}
       onContentChange={handleContentChange}
       onCreateNote={handleCreateNote}
+      onRenameNote={handleRenameNote}
       onDeleteNote={handleDeleteNote}
       onSelectNote={(noteId) => setEditingNoteId(noteId)}
       onBackToList={handleBackToList}

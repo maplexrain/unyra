@@ -1166,7 +1166,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 <button
                   type="button"
                   onClick={onToggleRightOverlay}
-                  title={rightOverlayOpen ? t('收起笔记 (Tab)') : t('展开笔记 (Tab)')}
+                  title={rightOverlayOpen ? t('收起笔记 (双击 Shift)') : t('展开笔记 (双击 Shift)')}
                   aria-expanded={rightOverlayOpen}
                   className={
                     'flex h-8 items-center gap-1.5 px-2.5 rounded-lg text-[11.5px] transition hover:bg-white/20 ' +
@@ -1175,7 +1175,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 >
                   <BookOpen size={15} />
                   <span>{t('笔记')}</span>
-                  <kbd className="hidden sm:inline rounded bg-white/10 px-1 py-0.5 text-[9px] font-mono text-white/60">Tab</kbd>
+                  <kbd className="hidden sm:inline rounded bg-white/10 px-1 py-0.5 text-[9px] font-mono text-white/60">Shift ×2</kbd>
                 </button>
               )}
 

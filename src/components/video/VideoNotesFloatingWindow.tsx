@@ -1,9 +1,12 @@
 /**
  * 视频笔记悬浮窗口组件：
  * - 悬浮在视频播放器容器内，支持自由拖动（拖动顶部栏）与调节窗口大小（右下角拖拽手柄）；
+ * - 纯色半透明背景，不使用消耗性能的模糊滤镜；
  * - 状态持久化到 localStorage（位置 x, y 与尺寸 width, height）；
  * - 默认尺寸为 600x400，默认位置为右侧垂直居中；
- * - 包含一级笔记列表页面与二级 Markdown 笔记全屏编辑页面（支持一键插入视频当前时间戳）。
+ * - 顶部栏按钮采用无文字、无边框、无背景的纯 SVG 图标按钮；
+ * - 一级页面支持笔记列表与卡片内直接重命名笔记；
+ * - 二级页面去掉标题输入框，提供全高度 Markdown 笔记编辑空间，支持一键插入时间戳跳转链接。
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
@@ -18,7 +21,6 @@ import {
   X,
 } from 'lucide-react'
 import { t } from '../../i18n'
-import { formatClock } from '../../video/transcript'
 import type { NoteFile } from '../../learn/types'
 
 export const NOTES_WINDOW_STORAGE_KEY = 'moji.video.notesWindow'
@@ -68,11 +70,10 @@ interface Props {
   videoNotes: NoteFile[]
   editingNoteId: string | null
   currentEditingNote: NoteFile | null
-  draftTitle: string
   draftContent: string
-  onTitleChange: (title: string) => void
   onContentChange: (content: string) => void
   onCreateNote: () => void
+  onRenameNote: (noteId: string, newName: string) => void
   onDeleteNote: (noteId: string, e: React.MouseEvent) => void
   onSelectNote: (noteId: string) => void
   onBackToList: () => void
@@ -83,15 +84,13 @@ interface Props {
 export default function VideoNotesFloatingWindow({
   open,
   onClose,
-  currentMs,
   videoNotes,
   editingNoteId,
   currentEditingNote,
-  draftTitle,
   draftContent,
-  onTitleChange,
   onContentChange,
   onCreateNote,
+  onRenameNote,
   onDeleteNote,
   onSelectNote,
   onBackToList,
@@ -105,6 +104,10 @@ export default function VideoNotesFloatingWindow({
   // 记录拖动与缩放的起始指针状态
   const dragRef = useRef<{ startX: number; startY: number; initX: number; initY: number } | null>(null)
   const resizeRef = useRef<{ startX: number; startY: number; initW: number; initH: number } | null>(null)
+
+  // 列表页内原地重命名标题的状态
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renamingText, setRenamingText] = useState<string>('')
 
   // 监听并获取视频播放器父容器尺寸
   useEffect(() => {
@@ -280,6 +283,20 @@ export default function VideoNotesFloatingWindow({
     })
   }
 
+  const handleStartRename = (note: NoteFile, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    setRenamingId(note.id)
+    setRenamingText(note.name)
+  }
+
+  const handleCommitRename = (noteId: string) => {
+    const trimmed = renamingText.trim()
+    if (trimmed) {
+      onRenameNote(noteId, trimmed)
+    }
+    setRenamingId(null)
+  }
+
   if (!open) return null
 
   return (
@@ -291,55 +308,52 @@ export default function VideoNotesFloatingWindow({
         width: `${effectiveWidth}px`,
         height: `${effectiveHeight}px`,
       }}
-      className="absolute z-30 flex flex-col rounded-xl border border-white/20 bg-black/90 text-white backdrop-blur-md shadow-2xl overflow-hidden transition-opacity duration-150 select-none animate-in fade-in zoom-in-95 duration-100"
+      className="absolute z-30 flex flex-col rounded-xl border border-white/15 bg-[#141416]/95 text-white shadow-2xl overflow-hidden select-none animate-in fade-in zoom-in-95 duration-100"
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* 拖动顶部栏 Header */}
+      {/* 拖动顶部栏 Header（纯图标按钮，无文字无背景无边框） */}
       <div
         onPointerDown={handleHeaderPointerDown}
         onPointerMove={handleHeaderPointerMove}
         onPointerUp={handleHeaderPointerUp}
         onPointerCancel={handleHeaderPointerUp}
-        className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-white/[0.06] px-3 py-2 cursor-move hover:bg-white/[0.09] transition select-none"
+        className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-white/[0.04] px-3 py-2 cursor-move select-none"
       >
         {editingNoteId && currentEditingNote ? (
           /* 二级编辑页顶部栏 */
           <>
-            <div className="flex items-center gap-1.5 min-w-0" data-no-drag>
+            <div className="flex items-center gap-1 min-w-0" data-no-drag>
               <button
                 type="button"
                 onClick={onBackToList}
                 title={t('返回笔记列表')}
-                className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-white/80 transition hover:bg-white/15 hover:text-white cursor-pointer"
+                className="p-1 text-white/70 hover:text-white transition cursor-pointer"
               >
-                <ChevronLeft size={13} />
-                <span>{t('列表')}</span>
+                <ChevronLeft size={17} />
               </button>
+              <span className="truncate text-[12.5px] font-medium text-white/90 ml-1">
+                {currentEditingNote.name}
+              </span>
             </div>
 
-            <div className="flex items-center gap-2" data-no-drag>
+            <div className="flex items-center gap-1.5" data-no-drag>
               <button
                 type="button"
                 onClick={onInsertTimestamp}
-                title={t('在光标处插入当前时间戳 [{0}]', formatClock(currentMs))}
-                className="flex items-center gap-1.5 rounded bg-pink-500/25 px-2.5 py-1 text-[11.5px] font-medium text-pink-300 transition hover:bg-pink-500/35 cursor-pointer shadow-sm border border-pink-500/30"
+                title={t('在光标处插入当前时间戳跳转链接')}
+                className="p-1 text-pink-400 hover:text-pink-300 transition cursor-pointer"
               >
-                <Clock size={12} />
-                <span>{formatClock(currentMs)}</span>
+                <Clock size={16} />
               </button>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <GripHorizontal size={14} className="text-white/35 shrink-0" />
+              <GripHorizontal size={14} className="text-white/30 shrink-0 mx-0.5" />
               <button
                 type="button"
                 onClick={onClose}
-                title={t('收起笔记 (Tab)')}
-                className="rounded p-1 text-white/60 hover:bg-white/15 hover:text-white transition cursor-pointer"
-                data-no-drag
+                title={t('收起笔记 (双击 Shift)')}
+                className="p-1 text-white/60 hover:text-white transition cursor-pointer"
               >
-                <X size={14} />
+                <X size={16} />
               </button>
             </div>
           </>
@@ -347,37 +361,32 @@ export default function VideoNotesFloatingWindow({
           /* 一级列表页顶部栏 */
           <>
             <div className="flex items-center gap-2 min-w-0">
-              <BookOpen size={15} className="text-pink-400 shrink-0" />
+              <BookOpen size={16} className="text-pink-400 shrink-0" />
               <span className="text-[12.5px] font-semibold text-white/95 truncate">{t('视频笔记')}</span>
               {videoNotes.length > 0 && (
-                <span className="rounded bg-white/15 px-1.5 py-0.2 text-[10px] text-white/70 shrink-0">
-                  {videoNotes.length}
+                <span className="text-[11px] text-white/50 font-mono">
+                  ({videoNotes.length})
                 </span>
               )}
             </div>
 
-            <div className="flex items-center gap-2" data-no-drag>
+            <div className="flex items-center gap-1.5" data-no-drag>
               <button
                 type="button"
                 onClick={onCreateNote}
                 title={t('新建笔记')}
-                className="flex items-center gap-1 rounded bg-pink-600/90 hover:bg-pink-600 px-2.5 py-1 text-[11.5px] font-medium text-white transition cursor-pointer shadow-sm"
+                className="p-1 text-white/80 hover:text-white transition cursor-pointer"
               >
-                <Plus size={13} />
-                <span>{t('新建')}</span>
+                <Plus size={18} />
               </button>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <GripHorizontal size={14} className="text-white/35 shrink-0" />
+              <GripHorizontal size={14} className="text-white/30 shrink-0 mx-0.5" />
               <button
                 type="button"
                 onClick={onClose}
-                title={t('收起笔记 (Tab)')}
-                className="rounded p-1 text-white/60 hover:bg-white/15 hover:text-white transition cursor-pointer"
-                data-no-drag
+                title={t('收起笔记 (双击 Shift)')}
+                className="p-1 text-white/60 hover:text-white transition cursor-pointer"
               >
-                <X size={14} />
+                <X size={16} />
               </button>
             </div>
           </>
@@ -386,32 +395,20 @@ export default function VideoNotesFloatingWindow({
 
       {/* 主体内容区 */}
       {editingNoteId && currentEditingNote ? (
-        /* 二级页面：编辑某份笔记 */
+        /* 二级页面：编辑某份笔记（无标题输入框，全高度正文编辑区） */
         <div className="flex h-full min-h-0 flex-col">
-          {/* 笔记标题输入行 */}
-          <div className="border-b border-white/10 px-3.5 py-2 bg-white/[0.02]">
-            <input
-              type="text"
-              value={draftTitle}
-              onChange={(e) => onTitleChange(e.target.value)}
-              placeholder={t('笔记标题…')}
-              className="w-full bg-transparent text-[13px] font-medium text-white placeholder:text-white/30 outline-none"
-            />
-          </div>
-
-          {/* Markdown 正文编辑区 */}
           <div className="min-h-0 flex-1 p-3.5">
             <textarea
               ref={noteTextareaRef}
               value={draftContent}
               onChange={(e) => onContentChange(e.target.value)}
-              placeholder={t('记录你的思考、问题或随堂笔记（支持 Markdown）…')}
+              placeholder={t('记录你的思考、问题或随堂笔记（支持 Markdown，点上方时钟图标可插入时间戳超链接）…')}
               className="h-full w-full resize-none bg-transparent font-sans text-[12.5px] leading-relaxed text-white/90 placeholder:text-white/30 outline-none"
             />
           </div>
         </div>
       ) : (
-        /* 一级页面：笔记列表 */
+        /* 一级页面：笔记列表（支持在列表项中直接编辑标题） */
         <div className="min-h-0 flex-1 overflow-y-auto px-2.5 py-2">
           {videoNotes.length > 0 ? (
             <div className="flex flex-col gap-2">
@@ -419,29 +416,65 @@ export default function VideoNotesFloatingWindow({
                 <div
                   key={note.id}
                   onClick={() => onSelectNote(note.id)}
-                  className="group relative flex flex-col gap-1 rounded-lg bg-white/[0.04] p-3 transition hover:bg-white/[0.09] cursor-pointer border border-white/5 hover:border-white/15"
+                  className="group relative flex flex-col gap-1 rounded-lg bg-white/[0.04] p-3 transition hover:bg-white/[0.08] cursor-pointer border border-white/5 hover:border-white/15"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-[12.5px] font-medium text-white/95">{note.name}</span>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                    {renamingId === note.id ? (
+                      <input
+                        type="text"
+                        autoFocus
+                        value={renamingText}
+                        onChange={(e) => setRenamingText(e.target.value)}
+                        onBlur={() => handleCommitRename(note.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleCommitRename(note.id)
+                          } else if (e.key === 'Escape') {
+                            setRenamingId(null)
+                          }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="min-w-0 flex-1 bg-white/10 rounded px-2 py-0.5 text-[12px] font-medium text-white outline-none border border-pink-400/50"
+                      />
+                    ) : (
+                      <span
+                        className="truncate text-[12.5px] font-medium text-white/95"
+                        onDoubleClick={(e) => handleStartRename(note, e)}
+                        title={t('双击或点右侧铅笔可修改标题')}
+                      >
+                        {note.name}
+                      </span>
+                    )}
+
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition" data-no-drag>
+                      <button
+                        type="button"
+                        onClick={(e) => handleStartRename(note, e)}
+                        title={t('修改标题')}
+                        className="p-1 text-white/40 hover:text-white transition cursor-pointer"
+                      >
+                        <Pencil size={13} />
+                      </button>
                       <button
                         type="button"
                         onClick={(e) => onDeleteNote(note.id, e)}
                         title={t('删除笔记')}
-                        className="rounded p-1 text-white/40 hover:bg-red-500/25 hover:text-red-300 transition cursor-pointer"
+                        className="p-1 text-white/40 hover:text-red-400 transition cursor-pointer"
                       >
                         <Trash2 size={13} />
                       </button>
                     </div>
                   </div>
+
                   {note.content ? (
-                    <p className="line-clamp-2 text-[11.5px] leading-relaxed text-white/65">
+                    <p className="line-clamp-2 text-[11.5px] leading-relaxed text-white/60">
                       {note.content.replace(/^#+\s+/gm, '')}
                     </p>
                   ) : (
-                    <p className="text-[11px] italic text-white/35">{t('（空笔记）')}</p>
+                    <p className="text-[11px] italic text-white/30">{t('（空笔记）')}</p>
                   )}
-                  <span className="text-[10px] text-white/45 font-mono">
+
+                  <span className="text-[10px] text-white/40 font-mono">
                     {new Date(note.updatedAt || note.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
@@ -449,9 +482,9 @@ export default function VideoNotesFloatingWindow({
             </div>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-              <Pencil size={24} className="text-white/25" />
-              <p className="max-w-[340px] text-[12px] leading-relaxed text-white/50">
-                {t('还没有笔记：点击上方「新建」即可记录时间戳与学习要点，并实时挂在视频节点下。')}
+              <Pencil size={24} className="text-white/20" />
+              <p className="max-w-[340px] text-[12px] leading-relaxed text-white/45">
+                {t('还没有笔记：点击上方加号即可记录学习要点，并实时挂在视频节点下。')}
               </p>
             </div>
           )}
@@ -465,7 +498,7 @@ export default function VideoNotesFloatingWindow({
         onPointerUp={handleResizePointerUp}
         onPointerCancel={handleResizePointerUp}
         title={t('拖拽调节窗口大小')}
-        className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize select-none flex items-center justify-center text-white/30 hover:text-white/70 transition"
+        className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize select-none flex items-center justify-center text-white/25 hover:text-white/70 transition"
       >
         <svg width="10" height="10" viewBox="0 0 10 10" className="pointer-events-none">
           <path d="M8 2L2 8M9 5L5 9M9 8L8 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
