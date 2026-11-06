@@ -19,6 +19,11 @@ describe('browserRuntimeScript：页面内运行时深度穿透与动作仿真',
     delete (window as any).__agentQuery
     delete (window as any).__agentWaitFor
     delete (window as any).__agentEval
+    delete (window as any).__captureTokens
+    delete (window as any).__agentPrepareElementCapture
+    delete (window as any).__agentGetCaptureSlice
+    delete (window as any).__agentCleanupElementCapture
+    delete (window as any).__agentElementToImage
     eval(BROWSER_RUNTIME_INIT_SCRIPT)
   })
 
@@ -246,5 +251,70 @@ describe('browserRuntimeScript：页面内运行时深度穿透与动作仿真',
     const idFail = (window as any).__agentInspect(88888)
     expect(idFail.ok).toBe(false)
     expect(idFail.error).toContain('未找到节点编号 [88888]')
+  })
+
+  it('DOM 元素转图片：消除浮动遮罩、解除长文章限高折叠，并在清理后恢复 DOM', async () => {
+    // 构造页面结构：带有吸顶导航、遮罩弹窗、以及限高折叠的文章
+    const fixedHeader = document.createElement('header')
+    fixedHeader.id = 'sticky-header'
+    fixedHeader.style.position = 'fixed'
+    fixedHeader.style.top = '0'
+    document.body.appendChild(fixedHeader)
+
+    const modalDialog = document.createElement('div')
+    modalDialog.id = 'login-modal'
+    modalDialog.style.position = 'fixed'
+    modalDialog.style.top = '100px'
+    document.body.appendChild(modalDialog)
+
+    const article = document.createElement('article')
+    article.id = 'main-article'
+    article.style.maxHeight = '300px'
+    article.style.overflow = 'hidden'
+    article.innerHTML = '<p>第一段</p><p>第二段</p><div class="collapsed" style="max-height: 100px;">折叠内容</div>'
+    document.body.appendChild(article)
+
+    // 1. 准备元素截图并开启防遮挡与全长展开
+    const prep = (window as any).__agentPrepareElementCapture('#main-article', { isolate: true, full: true })
+    expect(prep.ok).toBe(true)
+    expect(prep.tag).toBe('article')
+    expect(prep.token).toBeDefined()
+
+    // 2. 验证防遮挡：不在祖先链路上的 fixed 元素已被临时隐藏
+    expect(fixedHeader.style.visibility).toBe('hidden')
+    expect(modalDialog.style.visibility).toBe('hidden')
+
+    // 3. 验证长内容展开：max-height 已被解除为 none
+    expect(article.style.maxHeight).toBe('none')
+    const innerFold = article.querySelector('.collapsed') as HTMLElement
+    expect(innerFold.style.maxHeight).toBe('none')
+
+    // 4. 获取切片
+    const slice0 = (window as any).__agentGetCaptureSlice(prep.token, 0)
+    expect(slice0.ok).toBe(true)
+    expect(slice0.rect.width).toBeGreaterThan(0)
+    expect(slice0.rect.height).toBeGreaterThan(0)
+
+    // 5. 执行清理：验证所有样式 100% 恢复
+    const cleanup = (window as any).__agentCleanupElementCapture(prep.token)
+    expect(cleanup.ok).toBe(true)
+    expect(fixedHeader.style.visibility).toBe('')
+    expect(modalDialog.style.visibility).toBe('')
+    expect(article.style.maxHeight).toBe('300px')
+    expect(innerFold.style.maxHeight).toBe('100px')
+  })
+
+  it('DOM 元素转图片：原生 canvas 元素直接提取无损图片数据', async () => {
+    const canvas = document.createElement('canvas')
+    canvas.id = 'game-canvas'
+    canvas.width = 400
+    canvas.height = 300
+    document.body.appendChild(canvas)
+
+    const prep = (window as any).__agentPrepareElementCapture('#game-canvas')
+    expect(prep.ok).toBe(true)
+    expect(prep.tag).toBe('canvas')
+    expect(prep.directDataUrl).toContain('data:image/png')
+    expect(prep.slices).toBe(1)
   })
 })

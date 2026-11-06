@@ -73,6 +73,9 @@ function makeDeps(store: LearnStore, webMeta: Record<string, WebTabMeta> = {}) {
       if (script.includes('window.__agentWaitFor(')) {
         return { ok: true, elapsedMs: 50, id: 1, tag: 'button' }
       }
+      if (script.includes('__agentPrepareElementCapture("article"')) {
+        return { ok: true, token: 'tok1', tag: 'article', totalWidth: 800, totalHeight: 1200, directDataUrl: 'data:image/png;base64,AAAA' }
+      }
       if (script.includes('window.__agentEval(')) {
         return { ok: true, result: '执行结果' }
       }
@@ -180,6 +183,12 @@ describe('makeBrowserOps：browser.* 基础生命周期与读写动作', () => {
     const evalRes = await ops.eval('w:a', 'document.title')
     expect(evalRes.result).toBe('执行结果')
     expect(execCalls[7][1]).toContain('__agentEval("document.title")')
+
+    // 8. toImage 元素截图
+    const imgRes = await ops.toImage('w:a', 'article', { isolate: true, full: true })
+    expect(imgRes.ok).toBe(true)
+    expect(imgRes.tag).toBe('article')
+    expect(execCalls[8][1]).toContain('__agentPrepareElementCapture("article"')
   })
 })
 
@@ -203,6 +212,9 @@ describe('buildApi：browser.* 参数兼容性与宽容解析', () => {
       waitFor: async (tabId, targetOrText, opts) => { captured = { tabId, targetOrText, opts }; return { ok: true, elapsedMs: 10 } },
       screenshot: async (tabId, opts) => { captured = { tabId, opts }; return { ok: true, url: 'moji:static/1' } },
       eval: async (tabId, code) => { captured = { tabId, code }; return { ok: true, result: 42 } },
+      toImage: async (tabId, target, opts) => { captured = { tabId, target, opts }; return { ok: true, url: 'moji:static/1' } },
+      elementImage: async (tabId, target, opts) => { captured = { tabId, target, opts }; return { ok: true, url: 'moji:static/1' } },
+      elementScreenshot: async (tabId, target, opts) => { captured = { tabId, target, opts }; return { ok: true, url: 'moji:static/1' } },
     }
 
     const { api } = buildApi({ browser: mockBrowser } as any, [])
@@ -245,6 +257,15 @@ describe('buildApi：browser.* 参数兼容性与宽容解析', () => {
     // 8. screenshot 截图
     await b.screenshot({ path: 'custom.png' })
     expect(captured).toEqual({ tabId: undefined, opts: { path: 'custom.png' } })
+
+    // 9. toImage 与 elementImage 元素截图
+    await b.toImage('article', { isolate: true, full: true })
+    expect(captured).toEqual({ tabId: undefined, target: 'article', opts: { isolate: true, full: true } })
+
+    await b.elementImage(25, { padding: 10 })
+    expect(captured).toEqual({ tabId: undefined, target: 25, opts: { padding: 10 } })
+    await b.elementScreenshot('#main')
+    expect(captured).toEqual({ tabId: undefined, target: '#main', opts: {} })
   })
 
   it('api.ask 针对 short 简答题空值时自动保底返回 value: ""', async () => {

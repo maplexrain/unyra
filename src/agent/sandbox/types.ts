@@ -866,7 +866,50 @@ export interface BrowserWaitForResult {
   error?: string
 }
 
+export interface BrowserToImageOpts {
+  /** 是否自动隔离/隐藏遮挡在目标元素上方的悬浮遮罩、吸顶栏与弹窗（默认 true） */
+  isolate?: boolean
+  /** 是否截取长内容的完整高度（如超长文章自动分段滚动并无缝拼接为长图，默认 true） */
+  full?: boolean
+  /** 截图周边留白边距（像素，默认 0） */
+  padding?: number
+  /** 长图拼接最大总高度限制（默认 16000px，防止无限滚动页面爆内存） */
+  maxHeight?: number
+  /** 图片保存名称（默认 'DOM元素截图' 或元素描述） */
+  name?: string
+  /** 导出格式（默认 'png'） */
+  format?: 'png' | 'jpeg'
+  /** JPEG 质量（1-100，仅 format 为 jpeg 时生效） */
+  quality?: number
+}
+
+export interface BrowserToImageResult {
+  ok: boolean
+  url?: string
+  uuid?: string
+  path?: string
+  width?: number
+  height?: number
+  tag?: string
+  selector?: string
+  slices?: number
+  error?: string
+  hint?: string
+}
+
 export interface BrowserScreenshotOpts {
+  /** 可选：指定截取目标 DOM 元素（ID 或选择器）；若提供则自动按 DOM 元素转长图处理 */
+  target?: BrowserTarget
+  /** 是否隔离遮挡物（仅指定 target 时生效，默认 true） */
+  isolate?: boolean
+  /** 是否截取元素完整高度（默认 true） */
+  full?: boolean
+  /** 截图周边留白边距（像素，默认 0） */
+  padding?: number
+  /** 长图拼接最大总高度限制（默认 16000px） */
+  maxHeight?: number
+  /** 自定义名称 */
+  name?: string
   path?: string
 }
 
@@ -921,6 +964,11 @@ export interface BrowserOps {
   waitFor(tabId: string | undefined, targetOrText: string, opts?: BrowserWaitForOpts): Promise<BrowserWaitForResult>
   /** 截取当前网页视图并存入静态资源库，返回图片 moji:static 访问地址 */
   screenshot(tabId?: string, opts?: BrowserScreenshotOpts): Promise<BrowserScreenshotResult>
+  /** 将指定 DOM 元素（ID 或选择器，穿透 Shadow DOM）转为图片存入资源库；自动消除遮挡层，支持超长文章长图无缝拼接 */
+  toImage(tabId: string | undefined, target: BrowserTarget, opts?: BrowserToImageOpts): Promise<BrowserToImageResult>
+  /** 别名：elementImage / elementScreenshot 同步支持 */
+  elementImage?: (tabId: string | undefined, target: BrowserTarget, opts?: BrowserToImageOpts) => Promise<BrowserToImageResult>
+  elementScreenshot?: (tabId: string | undefined, target: BrowserTarget, opts?: BrowserToImageOpts) => Promise<BrowserToImageResult>
   /** 在访客页面上下文中安全执行受控代码并返回 JSON（只读/枚举/透视终极保底武器） */
   eval(tabId: string | undefined, code: string): Promise<BrowserEvalResult>
 }

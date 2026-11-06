@@ -271,6 +271,9 @@ export async function apiNameTests() {
     'browser.query': "'button'",
     'browser.waitFor': "'button'",
     'browser.screenshot': '',
+    'browser.toImage': "1, { isolate: true }",
+    'browser.elementImage': "1",
+    'browser.elementScreenshot': "1",
     'browser.eval': "'document.title'",
     // 外部 MCP 服务：探针里给一份假的宿主（真实现见 agent/mcp/ops）
     'mcp.list': '',
@@ -504,6 +507,9 @@ export async function apiNameTests() {
       query: async () => ({ ok: true, selector: 'button', count: 1, matches: [] }),
       waitFor: async () => ({ ok: true, elapsedMs: 100, id: 1 }),
       screenshot: async () => ({ ok: true, url: 'moji:static/probe' }),
+      toImage: async () => ({ ok: true, url: 'moji:static/probe', tag: 'article', width: 800, height: 600 }),
+      elementImage: async () => ({ ok: true, url: 'moji:static/probe', tag: 'article', width: 800, height: 600 }),
+      elementScreenshot: async () => ({ ok: true, url: 'moji:static/probe', tag: 'article', width: 800, height: 600 }),
       eval: async () => ({ ok: true, result: '示例' }),
     },
     // 外部 MCP 服务：桩（名单检查只问「这三个 api 在不在」；真行为见 tests/agentSkillsAndMcp.test.ts）

@@ -14,7 +14,7 @@ import { renderRootHelp } from './apiRegistry'
 import { attachNodeFacade, registerNodeApi } from './nodeObject'
 import { wrapApi, imagesOf } from './wrap'
 import { filesAccessError } from './dataPaths'
-import type { SandboxCall, SandboxOptions } from './types'
+import type { SandboxCall, SandboxOptions, BrowserTarget } from './types'
 import { getLoadedSkills, getActiveSkills } from '../skill/registry'
 import {
   getSkillScriptAbsPath,
@@ -503,6 +503,29 @@ export function buildApi(
       }
       const { tabId, rest } = parseTabAndRest(args)
       return browser.screenshot(tabId, asRecord(rest[0]))
+    }, log)
+
+    wrapApi(api, 'browser.toImage', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'selector' in first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        const target = (rec.target ?? rec.selector) as BrowserTarget
+        return browser.toImage(tabId, target, rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      const target = (typeof rest[0] === 'number' ? rest[0] : asText(rest[0]).trim()) as BrowserTarget
+      return browser.toImage(tabId, target, asRecord(rest[1]))
+    }, log)
+
+    wrapApi(api, 'browser.elementImage', (args) => {
+      const b = (api as any).browser
+      return b.toImage(...args)
+    }, log)
+
+    wrapApi(api, 'browser.elementScreenshot', (args) => {
+      const b = (api as any).browser
+      return b.toImage(...args)
     }, log)
 
     wrapApi(api, 'browser.eval', (args) => {

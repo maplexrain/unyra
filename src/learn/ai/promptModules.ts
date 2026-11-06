@@ -32,7 +32,7 @@ export const PROMPT_MODULES: PromptModule[] = [
   {
     key: 'browser',
     title: '内置浏览器',
-    text: `内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.index / browser.text / browser.inspect / browser.click / browser.fill / browser.type / browser.press / browser.scroll / browser.query / browser.waitFor / browser.screenshot / browser.eval）：
+    text: `内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.index / browser.text / browser.inspect / browser.click / browser.fill / browser.type / browser.press / browser.scroll / browser.query / browser.waitFor / browser.screenshot / browser.toImage / browser.eval）：
 - 这一组操作的是**界面上开着的网页页签**（文档区里地球图标的页签）。
 - **生命周期基础**：
   - api.browser.open('https://…')：开一个网页页签；纯关键词会当搜索词处理；返回 { tabId, url }。
@@ -52,7 +52,8 @@ export const PROMPT_MODULES: PromptModule[] = [
 - **全域透视与高级控制（高级）**：
   - api.browser.query(tabId?, selector, { limit?: 20 })：穿透全页所有 Shadow DOM 检索候选列表，每项带 id、text、href、rect、visible 等，彻底告别单匹配盲猜。
   - api.browser.waitFor(tabId?, selector|text, { timeoutMs?: 5000 })：智能等待异步渲染的组件或文字出现，告别盲等。
-  - api.browser.screenshot(tabId?)：截取当前网页视图并存入资源库（返回 moji:static/uuid），直观核验页面状态与内容。
+  - api.browser.screenshot(tabId?, opts?)：截取当前网页视图并存入资源库（返回 moji:static/uuid）；若传入 { target } 会自动按 DOM 元素转长图处理。
+  - api.browser.toImage(tabId?, target, opts?)：将指定 DOM 元素（编号或选择器，穿透 Shadow DOM）转换为图片/长图存入资源库；自动隔离并隐藏遮挡在目标上方的悬浮遮罩、吸顶头与弹窗（isolate: true）；超长文章自动分段滚动并无缝拼接为长图（full: true）。亦可调 api.browser.elementImage。
   - api.browser.eval(tabId?, code)：在页面上下文中安全执行受控 JS 并返回 JSON（只读/枚举透视终极保底武器）。
 - **调用人体工学纪律**：
   - tabId 可省略，默认指「焦点格正看着的那个网页」。

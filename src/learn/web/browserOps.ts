@@ -18,6 +18,8 @@ import type {
   BrowserTypeResult,
   BrowserWaitForOpts,
   BrowserWaitForResult,
+  BrowserToImageOpts,
+  BrowserToImageResult,
 } from '../../agent/sandbox/types'
 import type { LearnStore, TabRef, WebTabMeta } from '../types'
 import { findTab, focusedGroup, groupIdOfTab } from '../groups'
@@ -51,6 +53,49 @@ function hostOf(url: string): string {
   } catch {
     return url
   }
+}
+
+async function stitchSlicesToDataUrl(
+  slices: Array<{ dataUrl: string; width: number; height: number }>,
+  totalWidth: number,
+  totalHeight: number,
+  format: 'png' | 'jpeg' = 'png',
+  quality = 0.92,
+): Promise<string> {
+  if (slices.length === 0) return ''
+  if (slices.length === 1) return slices[0].dataUrl
+
+  if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, totalWidth)
+    canvas.height = Math.max(1, totalHeight)
+    const ctx = canvas.getContext('2d')
+    if (ctx) {
+      let currentY = 0
+      for (const slice of slices) {
+        if (!slice.dataUrl) continue
+        await new Promise<void>((resolve) => {
+          const img = new Image()
+          img.onload = () => {
+            try {
+              ctx.drawImage(img, 0, currentY, slice.width, slice.height)
+            } catch (e) {}
+            currentY += slice.height
+            resolve()
+          }
+          img.onerror = () => {
+            currentY += slice.height
+            resolve()
+          }
+          img.src = slice.dataUrl
+        })
+      }
+      try {
+        return canvas.toDataURL(format === 'jpeg' ? 'image/jpeg' : 'image/png', quality)
+      } catch (e) {}
+    }
+  }
+  return slices[0].dataUrl
 }
 
 export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps {
@@ -203,10 +248,13 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
         `window.__agentWaitFor(${JSON.stringify(targetOrText)}, ${JSON.stringify(opts ?? {})})`,
       )
     },
-    async screenshot(tabId, _opts?: BrowserScreenshotOpts) {
+    async screenshot(tabId, opts?: BrowserScreenshotOpts) {
+      if (opts?.target !== undefined && opts?.target !== null && opts?.target !== '') {
+        return this.toImage(tabId, opts.target, opts)
+      }
       const { tabId: resolvedId } = resolveTab(tabId)
       const wv = webviewOf(resolvedId)
-      if (!wv) {
+      if (!wv && !deps.execJs) {
         return { ok: false, error: '未找到网页视图实例（页签可能未激活或未渲染）' }
       }
       try {
@@ -217,9 +265,9 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
         if (nativeImg && typeof nativeImg.toDataURL === 'function') {
           const dataUrl = nativeImg.toDataURL()
           const s = deps.getLatest()
-          const goalId = _goalId || s.goals[0]?.id
+          const goalId = _goalId || s.goals?.[0]?.id
           if (goalId) {
-            const saved = await saveScreenshot(deps.getLatest, deps.set, goalId, dataUrl, '网页截图')
+            const saved = await saveScreenshot(deps.getLatest, deps.set, goalId, dataUrl, opts?.name || '网页截图')
             if (saved.ok) {
               return {
                 ok: true,
@@ -238,6 +286,199 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
         const msg = err instanceof Error ? err.message : String(err)
         return { ok: false, error: msg }
       }
+    },
+    async toImage(tabId, target: BrowserTarget, opts?: BrowserToImageOpts): Promise<BrowserToImageResult> {
+      const { tabId: resolvedId } = resolveTab(tabId)
+      const wv = webviewOf(resolvedId)
+      if (!wv && !deps.execJs) {
+        return { ok: false, error: '未找到网页视图实例（页签可能未激活或未渲染）' }
+      }
+
+      // 1. 准备截图会话：穿透 Shadow DOM、消除遮挡（anti-occlusion）、计算坐标尺寸
+      const prep = await executeInPage<{
+        ok: boolean
+        token?: string
+        directDataUrl?: string
+        docLeft?: number
+        docTop?: number
+        totalWidth?: number
+        totalHeight?: number
+        padding?: number
+        full?: boolean
+        viewportW?: number
+        viewportH?: number
+        tag?: string
+        error?: string
+      }>(tabId, `window.__agentPrepareElementCapture(${JSON.stringify(target)}, ${JSON.stringify(opts ?? {})})`)
+
+      if (!prep || !prep.ok) {
+        return { ok: false, error: prep?.error || '准备元素截图失败' }
+      }
+
+      const s = deps.getLatest()
+      const goalId = _goalId || s.goals?.[0]?.id
+      const imgName = opts?.name || (prep.tag ? `DOM元素截图 [${prep.tag}]` : 'DOM元素长图')
+
+      // 2. 如果是 canvas 等原生直接产出无损图
+      if (prep.directDataUrl) {
+        if (goalId) {
+          const saved = await saveScreenshot(deps.getLatest, deps.set, goalId, prep.directDataUrl, imgName)
+          if (saved.ok) {
+            return {
+              ok: true,
+              uuid: saved.image.id,
+              path: saved.image.rel,
+              url: 'moji:static/' + saved.image.id,
+              width: prep.totalWidth,
+              height: prep.totalHeight,
+              tag: prep.tag,
+              slices: 1,
+            }
+          }
+        }
+        return {
+          ok: true,
+          url: prep.directDataUrl.slice(0, 50) + '...',
+          width: prep.totalWidth,
+          height: prep.totalHeight,
+          tag: prep.tag,
+          slices: 1,
+        }
+      }
+
+      const token = prep.token!
+      try {
+        const totalHeight = prep.totalHeight || 300
+        const viewportH = prep.viewportH || 800
+        const isSingle = totalHeight <= viewportH || opts?.full === false
+
+        // 3. 单屏高度或不展开长图：单次捕获
+        if (isSingle) {
+          const sliceInfo = await executeInPage<{
+            ok: boolean
+            rect: { x: number; y: number; width: number; height: number }
+            error?: string
+          }>(tabId, `window.__agentGetCaptureSlice(${JSON.stringify(token)}, 0)`)
+
+          let nativeImg: any = null
+          if (typeof (wv as any).capturePage === 'function') {
+            nativeImg = await (wv as any).capturePage(sliceInfo?.rect)
+          }
+
+          if (nativeImg && typeof nativeImg.toDataURL === 'function') {
+            const dataUrl = nativeImg.toDataURL()
+            if (goalId) {
+              const saved = await saveScreenshot(deps.getLatest, deps.set, goalId, dataUrl, imgName)
+              if (saved.ok) {
+                return {
+                  ok: true,
+                  uuid: saved.image.id,
+                  path: saved.image.rel,
+                  url: 'moji:static/' + saved.image.id,
+                  width: nativeImg.getSize?.()?.width ?? prep.totalWidth,
+                  height: nativeImg.getSize?.()?.height ?? totalHeight,
+                  tag: prep.tag,
+                  slices: 1,
+                }
+              }
+            }
+            return {
+              ok: true,
+              url: dataUrl.slice(0, 50) + '...',
+              width: nativeImg.getSize?.()?.width ?? prep.totalWidth,
+              height: nativeImg.getSize?.()?.height ?? totalHeight,
+              tag: prep.tag,
+              slices: 1,
+            }
+          }
+          return { ok: true, url: 'webview:captured', width: prep.totalWidth, height: totalHeight, tag: prep.tag, slices: 1 }
+        }
+
+        // 4. 多屏超长文章：分段滚动捕获并无缝拼接为长图
+        const slices: Array<{ dataUrl: string; width: number; height: number }> = []
+        let currentOffsetY = 0
+        const maxLoops = 60
+        let loop = 0
+
+        while (currentOffsetY < totalHeight && loop < maxLoops) {
+          loop++
+          const sliceInfo = await executeInPage<{
+            ok: boolean
+            rect: { x: number; y: number; width: number; height: number }
+            done?: boolean
+            error?: string
+          }>(tabId, `window.__agentGetCaptureSlice(${JSON.stringify(token)}, ${currentOffsetY})`)
+
+          if (!sliceInfo || !sliceInfo.ok) break
+
+          // 适度防抖等待页面渲染/懒加载
+          await new Promise((r) => setTimeout(r, 45))
+
+          let nativeImg: any = null
+          if (typeof (wv as any).capturePage === 'function') {
+            nativeImg = await (wv as any).capturePage(sliceInfo.rect)
+          }
+
+          if (nativeImg && typeof nativeImg.toDataURL === 'function') {
+            slices.push({
+              dataUrl: nativeImg.toDataURL(),
+              width: sliceInfo.rect.width,
+              height: sliceInfo.rect.height,
+            })
+          }
+
+          if (sliceInfo.done || sliceInfo.rect.height <= 0) break
+          currentOffsetY += sliceInfo.rect.height
+        }
+
+        if (slices.length === 0) {
+          return { ok: false, error: '截取元素切片失败（未获得有效图像数据）' }
+        }
+
+        const stitchedDataUrl = await stitchSlicesToDataUrl(
+          slices,
+          prep.totalWidth || 800,
+          currentOffsetY,
+          opts?.format,
+          opts?.quality,
+        )
+
+        if (goalId && stitchedDataUrl) {
+          const saved = await saveScreenshot(deps.getLatest, deps.set, goalId, stitchedDataUrl, imgName)
+          if (saved.ok) {
+            return {
+              ok: true,
+              uuid: saved.image.id,
+              path: saved.image.rel,
+              url: 'moji:static/' + saved.image.id,
+              width: prep.totalWidth,
+              height: currentOffsetY,
+              tag: prep.tag,
+              slices: slices.length,
+            }
+          }
+        }
+
+        return {
+          ok: true,
+          url: stitchedDataUrl.slice(0, 50) + '...',
+          width: prep.totalWidth,
+          height: currentOffsetY,
+          tag: prep.tag,
+          slices: slices.length,
+        }
+      } finally {
+        // 确保无论成功失败，页面受阻样式和滚动位置 100% 还原
+        try {
+          await executeInPage(tabId, `window.__agentCleanupElementCapture(${JSON.stringify(token)})`)
+        } catch (e) {}
+      }
+    },
+    async elementScreenshot(tabId, target, opts) {
+      return this.toImage(tabId, target, opts)
+    },
+    async elementImage(tabId, target, opts) {
+      return this.toImage(tabId, target, opts)
     },
     async eval(tabId, code: string) {
       return executeInPage<BrowserEvalResult>(
