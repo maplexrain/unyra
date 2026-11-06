@@ -52,7 +52,7 @@ import {
 } from '../../learn/video/nodes'
 import type { Transcript, VideoSource } from '../../video/types'
 import type { PluginSettingField } from '../../lib/plugins'
-import type { LearnStore, NoteFile, VideoRecap, VideoResource } from '../../learn/types'
+import type { LearnStore, NoteFile, VideoNodeEntity, VideoRecap, VideoResource } from '../../learn/types'
 import { registerVideoAudio } from '../../learn/video/videoRegistry'
 import VideoPlayer, { type VideoPlayerHandle } from './VideoPlayer'
 
@@ -255,22 +255,52 @@ export default function VideoStudyTab({
     return segments.reduce((sum, seg) => sum + (seg.text ? seg.text.length : 0), 0)
   }, [segments])
 
+  /** 挂载的有效视频节点 ID（优先使用 props.videoNodeId，兜底从 store.videoNodes 按 videoId / input 匹配） */
+  const effectiveVideoNodeId = useMemo(() => {
+    if (videoNodeId) return videoNodeId
+    if (!store) return undefined
+    if (video?.id) {
+      const match = (store.videoNodes ?? []).find((vn) => vn.videoId === video.id)
+      if (match) return match.id
+    }
+    if (initialInput) {
+      const match = (store.videoNodes ?? []).find((vn) => vn.input === initialInput)
+      if (match) return match.id
+    }
+    return undefined
+  }, [videoNodeId, store, video?.id, initialInput])
+
   /** 挂载在当前视频节点下的所有笔记节点实体 */
   const videoNotes = useMemo<NoteFile[]>(() => {
-    if (!store || !videoNodeId) return []
-    return getNotesForVideoNode(store, videoNodeId)
-  }, [store, videoNodeId])
-
-  /** 当前正在编辑的笔记对象 */
-  const currentEditingNote = useMemo<NoteFile | null>(() => {
-    if (!editingNoteId) return null
-    return videoNotes.find((n) => n.id === editingNoteId) ?? null
-  }, [videoNotes, editingNoteId])
+    if (!store || !effectiveVideoNodeId) return []
+    return getNotesForVideoNode(store, effectiveVideoNodeId)
+  }, [store, effectiveVideoNodeId])
 
   /** 编辑态的草稿标题与正文 */
   const [draftTitle, setDraftTitle] = useState('')
   const [draftContent, setDraftContent] = useState('')
   const saveTimerRef = useRef<number | null>(null)
+  const latestStoreRef = useRef(store)
+  useEffect(() => {
+    latestStoreRef.current = store
+  }, [store])
+
+  /** 当前正在编辑的笔记对象 */
+  const currentEditingNote = useMemo<NoteFile | null>(() => {
+    if (!editingNoteId) return null
+    const found = videoNotes.find((n) => n.id === editingNoteId)
+    if (found) return found
+    if (draftTitle || draftContent) {
+      return {
+        id: editingNoteId,
+        name: draftTitle || t('未命名笔记'),
+        content: draftContent,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+    }
+    return null
+  }, [videoNotes, editingNoteId, draftTitle, draftContent])
 
   useEffect(() => {
     if (currentEditingNote) {
@@ -282,8 +312,9 @@ export default function VideoStudyTab({
   /** 提交笔记编辑变更并写回 store */
   const commitNoteDraft = useCallback(
     (name: string, content: string) => {
-      if (!editingNoteId || !store || !onCommitStore) return
-      const nextStore = updateNoteForVideoNode(store, editingNoteId, { name, content })
+      const currentStore = latestStoreRef.current || store
+      if (!editingNoteId || !currentStore || !onCommitStore) return
+      const nextStore = updateNoteForVideoNode(currentStore, editingNoteId, { name, content })
       onCommitStore(nextStore)
     },
     [editingNoteId, store, onCommitStore],
@@ -303,6 +334,16 @@ export default function VideoStudyTab({
     saveTimerRef.current = window.setTimeout(() => {
       commitNoteDraft(draftTitle.trim() || t('未命名笔记'), val)
     }, 400)
+  }
+
+  /** 返回笔记列表：有未落盘定时器立即落盘并清空 editingNoteId */
+  const handleBackToList = () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    commitNoteDraft(draftTitle.trim() || t('未命名笔记'), draftContent)
+    setEditingNoteId(null)
   }
 
   /** 在当前光标处（或末尾）插入当前视频时间戳 */
@@ -331,17 +372,48 @@ export default function VideoStudyTab({
 
   /** 新建一条笔记并挂载到当前视频节点上 */
   const handleCreateNote = () => {
-    if (!videoNodeId || !store || !onCommitStore) return
-    const { store: nextStore, note } = createNoteForVideoNode(store, videoNodeId)
-    onCommitStore(nextStore)
+    const currentStore = latestStoreRef.current || store
+    if (!currentStore || !onCommitStore) return
+
+    let targetVideoNodeId = effectiveVideoNodeId
+    let storeToUse = currentStore
+
+    // 如果还没有对应的视频节点（例如直接打开老视频资源的情况），自动为该视频资源创建/登记一个视频节点
+    if (!targetVideoNodeId) {
+      const vNodeId = crypto.randomUUID()
+      const now = Date.now()
+      const targetGoalId = storeToUse.goals?.[0]?.id || 'default'
+      const newVNode: VideoNodeEntity = {
+        id: vNodeId,
+        goalId: targetGoalId,
+        videoId: video?.id ?? null,
+        input: video?.input || initialInput || '',
+        title: video?.title || initialInput || t('视频'),
+        titleCustomized: false,
+        confirmed: !!video?.id,
+        createdAt: now,
+        updatedAt: now,
+      }
+      storeToUse = {
+        ...storeToUse,
+        videoNodes: [...(storeToUse.videoNodes ?? []), newVNode],
+      }
+      targetVideoNodeId = vNodeId
+    }
+
+    const { store: nextStore, note } = createNoteForVideoNode(storeToUse, targetVideoNodeId)
+    setDraftTitle(note.name)
+    setDraftContent(note.content)
     setEditingNoteId(note.id)
+    onCommitStore(nextStore)
   }
 
   /** 删除某条笔记 */
   const handleDeleteNote = (noteId: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!store || !onCommitStore) return
-    const nextStore = deleteNoteForVideoNode(store, noteId)
+    const currentStore = latestStoreRef.current || store
+    if (!currentStore || !onCommitStore) return
+    const nextStore = deleteNoteForVideoNode(currentStore, noteId)
     onCommitStore(nextStore)
     if (editingNoteId === noteId) {
       setEditingNoteId(null)
@@ -879,7 +951,7 @@ export default function VideoStudyTab({
           <div className="flex shrink-0 items-center justify-between gap-1.5 border-b border-white/10 bg-white/[0.03] px-3 py-2">
             <button
               type="button"
-              onClick={() => setEditingNoteId(null)}
+              onClick={handleBackToList}
               title={t('返回笔记列表')}
               className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-white/70 transition hover:bg-white/10 hover:text-white cursor-pointer"
             >

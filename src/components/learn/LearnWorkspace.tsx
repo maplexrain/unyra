@@ -1770,11 +1770,21 @@ export default function LearnWorkspace({
           return
         }
       }
-      if (ref.kind === 'video' && ref.videoId) {
-        const gid = (base.videoNodes ?? []).find((v) => v.videoId === ref.videoId)?.goalId ?? null
+      if (ref.kind === 'video') {
+        const matchingVNode = ref.videoNodeId
+          ? (base.videoNodes ?? []).find((v) => v.id === ref.videoNodeId)
+          : (base.videoNodes ?? []).find((v) => ref.videoId && v.videoId === ref.videoId)
+        const vNodeId = ref.videoNodeId || matchingVNode?.id
+        const vId = ref.videoId || matchingVNode?.videoId || undefined
+        const gid = ref.goalId ?? matchingVNode?.goalId ?? null
         const boundGoal = gid ? base.goals.find((g) => g.id === gid) : undefined
         if (boundGoal) {
-          const vRef: TabRef = { kind: 'video', videoId: ref.videoId, goalId: boundGoal.id }
+          const vRef: TabRef = {
+            kind: 'video',
+            ...(vNodeId ? { videoNodeId: vNodeId } : {}),
+            ...(vId ? { videoId: vId } : {}),
+            goalId: boundGoal.id,
+          }
           /*
            * 「真正打开 tab 组」= 与打开这个目标的一份文档**同一套语义**（retargetNode）：
            * 当前节点/目标落到这个目标（顶栏的目标名读的是 activeNode 的目标——只写

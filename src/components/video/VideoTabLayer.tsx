@@ -54,8 +54,12 @@ export default function VideoTabLayer({
   return (
     <>
       {tabs.map((tab) => {
-        const videoNode = tab.ref.videoNodeId ? (videoNodes ?? []).find((vn) => vn.id === tab.ref.videoNodeId) : null
+        const videoNode =
+          (videoNodes ?? []).find(
+            (vn) => (tab.ref.videoNodeId && vn.id === tab.ref.videoNodeId) || (tab.ref.videoId && vn.videoId === tab.ref.videoId)
+          ) ?? null
         const videoId = tab.ref.videoId || videoNode?.videoId || null
+        const resolvedVideoNodeId = tab.ref.videoNodeId || videoNode?.id
         const resource = videoId ? (videos ?? []).find((v) => v.id === videoId) ?? null : null
         const active = tab.id === activeId
         return (
@@ -64,7 +68,7 @@ export default function VideoTabLayer({
             className={active ? 'absolute inset-0 z-10 flex min-h-0 flex-col' : 'absolute inset-0 -z-10 hidden'}
             aria-hidden={!active}
           >
-            {tab.ref.videoId && !resource && !tab.ref.videoNodeId ? (
+            {tab.ref.videoId && !resource && !resolvedVideoNodeId ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-paper p-6 text-center select-none">
                 <MonitorPlay size={30} className="text-seal/50" />
                 <p className="text-[13px] font-medium text-ink-strong">{t('视频已删除')}</p>
@@ -77,13 +81,13 @@ export default function VideoTabLayer({
                 video={resource}
                 tabId={tab.id}
                 active={active}
-                videoNodeId={tab.ref.videoNodeId}
+                videoNodeId={resolvedVideoNodeId}
                 store={store}
                 onCommitStore={onCommitStore}
                 initialInput={videoNode?.input ?? ''}
-                onCreate={resource ? undefined : (draft) => onCreate(tab.id, draft, tab.ref.videoNodeId)}
+                onCreate={resource ? undefined : (draft) => onCreate(tab.id, draft, resolvedVideoNodeId)}
                 onResolved={(title) => {
-                  if (videoId) onResolved(videoId, title, tab.ref.videoNodeId)
+                  if (videoId) onResolved(videoId, title, resolvedVideoNodeId)
                 }}
                 onProgress={(positionMs, source) => {
                   if (videoId) onProgress(videoId, positionMs, source)

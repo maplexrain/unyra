@@ -107,6 +107,17 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
     expect(code).toContain('deleteNoteForVideoNode')
     expect(code).toContain('updateNoteForVideoNode')
     expect(code).toContain('formatClock(currentMs)')
+
+    // 6. 验证视频节点兜底匹配与新建笔记无阻塞保证
+    expect(code).toContain('effectiveVideoNodeId')
+    expect(code).toContain('handleBackToList')
+  })
+
+  it('验证 VideoTabLayer 正确双向解析 videoNodeId 与 videoId', async () => {
+    const fs = await import('fs')
+    const code = fs.readFileSync('src/components/video/VideoTabLayer.tsx', 'utf8')
+    expect(code).toContain('resolvedVideoNodeId')
+    expect(code).toContain('tab.ref.videoNodeId || videoNode?.id')
   })
 
   it('验证 VideoPlayer 顶底栏遮罩往回缩紧规范', async () => {
