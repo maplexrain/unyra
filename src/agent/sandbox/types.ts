@@ -693,9 +693,78 @@ export interface BrowserTabInfo {
   group: string
 }
 
+export type BrowserTarget = number | string
+
+export interface BrowserIndexOpts {
+  focus?: BrowserTarget
+  maxDepth?: number
+}
+
+export interface BrowserIndexResult {
+  text: string
+  count: number
+  title: string
+  url: string
+}
+
+export interface BrowserTextOpts {
+  maxChars?: number
+  offset?: number
+}
+
+export interface BrowserTextResult {
+  ok: boolean
+  id: BrowserTarget
+  text: string
+  totalChars: number
+  offset?: number
+  hasMore?: boolean
+  nextOffset?: number
+  error?: string
+}
+
+export interface BrowserInspectResult {
+  ok: boolean
+  id: BrowserTarget
+  tag: string
+  idAttr?: string
+  className?: string
+  value?: string
+  placeholder?: string
+  href?: string
+  checked?: boolean
+  disabled?: boolean
+  isEditable?: boolean
+  rect?: { x: number; y: number; width: number; height: number }
+  error?: string
+}
+
+export interface BrowserClickOpts {
+  waitAfterMs?: number
+}
+
+export interface BrowserFillOpts {
+  clear?: boolean
+  pressEnter?: boolean
+}
+
+export interface BrowserScrollOpts {
+  to?: 'top' | 'bottom'
+  by?: number
+  target?: BrowserTarget
+}
+
+export interface BrowserScrollResult {
+  ok: boolean
+  scrollY?: number
+  scrollHeight?: number
+  atBottom?: boolean
+  error?: string
+}
+
 /**
  * 内置浏览器（browser.*）的宿主实现（见 learn/web/browserOps）。
- * 专注于网页页签生命周期（open / tabs / activate / close）。
+ * 涵盖网页页签生命周期（open / tabs / activate / close）与基础读写（index / text / inspect / click / fill / press / scroll）。
  */
 export interface BrowserOps {
   /** 开一个网页页签（纯关键词当搜索词处理）；回 tabId，返回时首屏基本加载完 */
@@ -706,6 +775,20 @@ export interface BrowserOps {
   activate(tabId: string): { ok: true }
   /** 关掉某个页签（不弹确认）；给数组就批量关（试错页签收尾用——用户自己开的别关） */
   close(tabId: string | string[]): { ok: true }
+  /** 获取当前页面的压缩语义索引大纲（含 [id] 编号与 Shadow DOM 穿透） */
+  index(tabId?: string, opts?: BrowserIndexOpts): Promise<BrowserIndexResult>
+  /** 深入读取折叠正文或指定节点的文本（支持长文分段） */
+  text(tabId: string | undefined, target: BrowserTarget, opts?: BrowserTextOpts): Promise<BrowserTextResult>
+  /** 探测指定节点的详细属性（tag, value, placeholder, href, checked, rect 等） */
+  inspect(tabId: string | undefined, target: BrowserTarget): Promise<BrowserInspectResult>
+  /** 自动滚到视口并智能点击指定节点 */
+  click(tabId: string | undefined, target: BrowserTarget, opts?: BrowserClickOpts): Promise<{ ok: boolean; tag?: string; error?: string }>
+  /** 智能输入文字（支持受控组件、原生组件与富文本框，支持可选 pressEnter） */
+  fill(tabId: string | undefined, target: BrowserTarget, text: string, opts?: BrowserFillOpts): Promise<{ ok: boolean; tag?: string; error?: string }>
+  /** 模拟键盘按键（Enter, Escape, Tab, ArrowDown 等） */
+  press(tabId: string | undefined, key: string, target?: BrowserTarget): Promise<{ ok: boolean; key?: string; error?: string }>
+  /** 滚动页面或指定局部容器 */
+  scroll(tabId?: string, opts?: BrowserScrollOpts): Promise<BrowserScrollResult>
 }
 
 /**

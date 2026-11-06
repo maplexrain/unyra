@@ -337,13 +337,73 @@ export function buildApi(
     }
   }
 
-  // 内置浏览器（browser.*，见 learn/web/browserOps）：网页页签的打开、管理
+  // 内置浏览器（browser.*，见 learn/web/browserOps）：网页页签生命周期与基础读写
   if (opts.browser) {
     const browser = opts.browser
+    const tabIdOf = (v: unknown): string | undefined =>
+      typeof v === 'string' && (v.startsWith('w:') || v.startsWith('tab-') || v.includes(':')) ? v.trim() : undefined
+    const targetOf = (v: unknown): number | string => {
+      if (typeof v === 'number' && Number.isFinite(v)) return v
+      if (typeof v === 'string') {
+        const trimmed = v.trim()
+        const asNum = Number(trimmed)
+        if (!isNaN(asNum) && trimmed !== '') return asNum
+        return trimmed
+      }
+      const rec = asRecord(v)
+      if (typeof rec.id === 'number') return rec.id
+      if (typeof rec.ref === 'number') return rec.ref
+      throw new Error('目标需要给出节点编号数字（如 12）或 CSS 选择器字符串')
+    }
+
     wrapApi(api, 'browser.open', (args) => browser.open(asText(args[0]).trim()), log)
     wrapApi(api, 'browser.tabs', () => browser.tabs(), log)
     wrapApi(api, 'browser.activate', (args) => browser.activate(asText(args[0]).trim()), log)
     wrapApi(api, 'browser.close', (args) => browser.close(Array.isArray(args[0]) ? (args[0].map((v) => asText(v).trim()) as string[]) : asText(args[0]).trim()), log)
+
+    wrapApi(api, 'browser.index', (args) => {
+      const tabId = tabIdOf(args[0])
+      const rest = tabId ? args.slice(1) : args
+      return browser.index(tabId, asRecord(rest[0]))
+    }, log)
+
+    wrapApi(api, 'browser.text', (args) => {
+      const tabId = tabIdOf(args[0])
+      const rest = tabId ? args.slice(1) : args
+      return browser.text(tabId, targetOf(rest[0]), asRecord(rest[1]))
+    }, log)
+
+    wrapApi(api, 'browser.inspect', (args) => {
+      const tabId = tabIdOf(args[0])
+      const rest = tabId ? args.slice(1) : args
+      return browser.inspect(tabId, targetOf(rest[0]))
+    }, log)
+
+    wrapApi(api, 'browser.click', (args) => {
+      const tabId = tabIdOf(args[0])
+      const rest = tabId ? args.slice(1) : args
+      return browser.click(tabId, targetOf(rest[0]), asRecord(rest[1]))
+    }, log)
+
+    wrapApi(api, 'browser.fill', (args) => {
+      const tabId = tabIdOf(args[0])
+      const rest = tabId ? args.slice(1) : args
+      return browser.fill(tabId, targetOf(rest[0]), asText(rest[1]), asRecord(rest[2]))
+    }, log)
+
+    wrapApi(api, 'browser.press', (args) => {
+      const tabId = tabIdOf(args[0])
+      const rest = tabId ? args.slice(1) : args
+      const key = asText(rest[0]).trim()
+      const target = rest[1] !== undefined ? targetOf(rest[1]) : undefined
+      return browser.press(tabId, key, target)
+    }, log)
+
+    wrapApi(api, 'browser.scroll', (args) => {
+      const tabId = tabIdOf(args[0])
+      const rest = tabId ? args.slice(1) : args
+      return browser.scroll(tabId, asRecord(rest[0]))
+    }, log)
   }
 
   // 外部 MCP 服务（mcp.*，见 agent/mcp/ops）：用户配置的真实外部工具。

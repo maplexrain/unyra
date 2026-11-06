@@ -32,14 +32,26 @@ export const PROMPT_MODULES: PromptModule[] = [
   {
     key: 'browser',
     title: '内置浏览器',
-    text: `内置浏览器页签管理（browser.open / browser.tabs / browser.activate / browser.close）：
+    text: `内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.index / browser.text / browser.inspect / browser.click / browser.fill / browser.press / browser.scroll）：
 - 这一组操作的是**界面上开着的网页页签**（文档区里地球图标的页签）。
-- api.browser.open('https://…')：开一个网页页签；纯关键词会当搜索词处理；返回 { tabId, url }。
-- api.browser.tabs()：列出存活的网页页签（返回 { tabs: [{ tabId, url, title, active, group }] }）。
-  **在 open 之前先查 tabs**：目标网址已经开着就 activate 过去，别重复开同一个网址。
-- api.browser.activate(tabId)：将目标网页页签切换到前台显示。
-- api.browser.close(tabId | tabId[])：关闭不需要的网页页签（用户自己开的网页别关，收尾时关掉中间搜索页/试错页）。
-- 外部公网内容如果需要抓取正文分析，优先使用 api.web.webFetch / api.web.search。`,
+- **生命周期基础**：
+  - api.browser.open('https://…')：开一个网页页签；纯关键词会当搜索词处理；返回 { tabId, url }。
+  - api.browser.tabs()：列出存活的网页页签（返回 { tabs: [{ tabId, url, title, active, group }] }）。**在 open 之前先查 tabs**：目标网址已经开着就 activate 过去，别重复开同一个网址。
+  - api.browser.activate(tabId)：切到某个页签。
+  - api.browser.close(tabId | tabId[])：关闭不需要的网页页签（收尾时关掉中间试错页，用户自己开的别关）。
+- **感知与阅读（读）**：
+  - api.browser.index(tabId?, opts?)：获取页面的**压缩语义索引大纲**（纯文本树）。深度穿透 Shadow DOM 与 iframe，正文区与模式化列表会自动折叠，每一行带 [id] 编号（如 [3] input[editable] "搜索"、[5] button "like:1024"）。
+  - api.browser.text(tabId?, id, opts?)：深入读某个折叠正文区或容器的**完整正文文本**（支持 { maxChars, offset }）。
+  - api.browser.inspect(tabId?, id)：探测某个节点的详细属性（tagName、value、placeholder、href、checked、disabled 以及几何坐标）。
+- **受控交互动作（写）**：
+  - api.browser.click(tabId?, id, opts?)：自动平滑滚动居中并派发完整指针/鼠标事件序列（穿透 Shadow DOM，适配各类复杂按钮）。
+  - api.browser.fill(tabId?, id, '文字', { pressEnter?: boolean })：智能填入文本（原生 input/textarea、React 受控输入与 contenteditable 富文本框均完美支持；可选 pressEnter: true 回车提交）。
+  - api.browser.press(tabId?, key, id?)：模拟键盘按键（'Enter' / 'Escape' / 'Tab' / 'ArrowDown' 等）。
+  - api.browser.scroll(tabId?, { to?: 'top'|'bottom', by?: 像素, target?: id })：滚动页面或局部容器，返回 { atBottom }。
+- **调用人体工学纪律**：
+  - tabId 可省略，默认指「焦点格正看着的那个网页」。
+  - 目标参数传 index 返回的编号数字（如 12）即可，无需编写复杂的选择器。
+  - 网页是用户的真实登录会话：提交、支付、删除等不可逆写操作必须先 api.ask 确认。`,
   },
   {
     key: 'web',

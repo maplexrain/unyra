@@ -110,6 +110,7 @@ import { goalDirOf } from '../../learn/static/location'
 import { addLocalFile } from '../../learn/localfiles'
 import { normalizeWebInput } from '../../learn/webUrl'
 import type { BrowserDeps } from '../../learn/web/browserOps'
+import { webviewOf } from '../../learn/web/webviewRegistry'
 import {
   addConversation,
   conversationTitle,
@@ -2288,6 +2289,13 @@ export default function LearnWorkspace({
       activateTab,
       closeTab,
       webMeta,
+      execJs: async (tabId, script) => {
+        const wv = webviewOf(tabId)
+        if (!wv || typeof wv.executeJavaScript !== 'function') {
+          throw new Error('网页页签尚未挂载或已销毁：' + tabId)
+        }
+        return await wv.executeJavaScript(script)
+      },
     }
   })
 

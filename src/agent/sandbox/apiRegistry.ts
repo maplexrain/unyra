@@ -378,13 +378,22 @@ exam.* 只管**作答侧**：交卷后 exam.read() 看作答，exam.grade(...) �
   g(
     'browser',
     '内置浏览器',
-    '操作界面上开着的网页页签：打开、查看、切换、关闭。',
-    '管理工作区中的网页页签生命周期。',
+    '操作界面上的网页页签：打开、查看、切换、关闭，以及页面交互骨架索引与智能读写。',
+    `操作闭环：index（获取带 [id] 的语义索引大纲，穿透 Shadow DOM）→ text/inspect（展开深入读正文与状态）→ click/fill/press/scroll（居中滚动并派发完整用户动作）。
+tabId 可省略，默认操作当前激活的网页页签；目标支持索引里的编号数字（如 12）或 CSS 选择器。
+这是用户的真实登录会话：提交/支付/删除等不可逆操作先 api.ask 确认。`,
     [
       a('open', 'browser.open(url)', '开一个网页页签', '纯关键词会当搜索词；返回 tabId，首屏已基本加载完。先 tabs 查重，别重复开同一网址。', "const tab = await api.browser.open('https://example.com')"),
       a('tabs', 'browser.tabs()', '列存活页签', '开工第一步；之后操作按 tabId 指名。', 'const tabs = await api.browser.tabs()'),
       a('activate', 'browser.activate(tabId)', '切到某个页签', '目标网址已经开着就 activate，不要 open。', 'await api.browser.activate(tabId)'),
       a('close', 'browser.close(tabId | tabId[])', '关闭网页页签', '用户自己开的别动；收尾时关掉中间搜索页/试错页，留下用户可能还要看的。', 'await api.browser.close(tabId)'),
+      a('index', 'browser.index(tabId?, opts?)', '获取页面语义索引大纲', '深度穿透 Shadow DOM 与 iframe，返回带 [id] 的压缩结构文本。正文区与模式化列表会自动折叠。', 'const page = await api.browser.index()'),
+      a('text', 'browser.text(tabId?, target, opts?)', '深入读取节点文本', '用于解折叠正文区或抓取特定容器的完整文本，支持 { maxChars, offset } 分段。', 'const article = await api.browser.text(4)'),
+      a('inspect', 'browser.inspect(tabId?, target)', '探测节点详细属性', '读取节点的 tagName、value、placeholder、href、checked、disabled 以及几何尺寸。', 'const info = await api.browser.inspect(3)'),
+      a('click', 'browser.click(tabId?, target, opts?)', '智能点击节点', '自动平滑滚动居中并派发完整指针/鼠标事件序列，支持穿透 Shadow DOM。', 'await api.browser.click(12)'),
+      a('fill', 'browser.fill(tabId?, target, text, opts?)', '智能输入文本', '支持原生输入框、React 受控 input 以及 contenteditable 富文本框；可选 { pressEnter: true } 敲击回车。', "await api.browser.fill(3, '高等数学', { pressEnter: true })"),
+      a('press', 'browser.press(tabId?, key, target?)', '模拟键盘按键', '敲击按键（如 "Enter"、"Escape"、"Tab"、"ArrowDown" 等）。', "await api.browser.press('Enter')"),
+      a('scroll', 'browser.scroll(tabId?, opts?)', '滚动页面或容器', 'opts: { to: "top" | "bottom" } 或 { by: 像素 } 或 { target: 节点 }；返回 { atBottom }。', 'await api.browser.scroll({ by: 800 })'),
     ],
   ),
   g(

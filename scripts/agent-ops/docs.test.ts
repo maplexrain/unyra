@@ -260,6 +260,13 @@ export async function apiNameTests() {
     'browser.tabs': '',
     'browser.activate': "'w:probe'",
     'browser.close': "'w:probe'",
+    'browser.index': '',
+    'browser.text': '1',
+    'browser.inspect': '1',
+    'browser.click': '1',
+    'browser.fill': "1, '搜索词'",
+    'browser.press': "'Enter'",
+    'browser.scroll': '{ by: 800 }',
     // 外部 MCP 服务：探针里给一份假的宿主（真实现见 agent/mcp/ops）
     'mcp.list': '',
     'mcp.discover': "'探针服务'",
@@ -481,6 +488,13 @@ export async function apiNameTests() {
       tabs: () => ({ tabs: [{ tabId: 'w:probe', url: 'https://example.com', title: '示例页', active: true, group: 'g1' }] }),
       activate: (tabId: string) => { sawBrowserActivate = tabId; return { ok: true } },
       close: (tabId: string) => { sawBrowserClose = tabId; return { ok: true } },
+      index: async () => ({ text: '[1] 示例', count: 1, title: '示例', url: 'https://example.com' }),
+      text: async () => ({ ok: true, id: 1, text: '正文', totalChars: 2 }),
+      inspect: async () => ({ ok: true, id: 1, tag: 'div' }),
+      click: async () => ({ ok: true, tag: 'button' }),
+      fill: async () => ({ ok: true, tag: 'input' }),
+      press: async () => ({ ok: true, key: 'Enter' }),
+      scroll: async () => ({ ok: true, scrollY: 0, scrollHeight: 1000, atBottom: false }),
     },
     // 外部 MCP 服务：桩（名单检查只问「这三个 api 在不在」；真行为见 tests/agentSkillsAndMcp.test.ts）
     mcp: {

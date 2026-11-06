@@ -1,11 +1,13 @@
-import type { BrowserOps, BrowserTabInfo } from '../../agent/sandbox/types'
+import type { BrowserOps, BrowserTabInfo, BrowserTarget } from '../../agent/sandbox/types'
 import type { LearnStore, TabRef, WebTabMeta } from '../types'
-import { groupIdOfTab } from '../groups'
+import { findTab, focusedGroup, groupIdOfTab } from '../groups'
 import { normalizeWebInput } from '../webUrl'
+import { buildRuntimeExecScript } from './browserRuntimeScript'
+import { webviewOf } from './webviewRegistry'
 
 /**
  * browser.* 的宿主实现（沙箱里 api.browser.* 的真身，见 agent/sandbox/types 的 BrowserOps）。
- * 专注于网页页签生命周期（open / tabs / activate / close）。
+ * 涵盖网页页签生命周期（open / tabs / activate / close）与基础读写（index / text / inspect / click / fill / press / scroll）。
  */
 export interface BrowserDeps {
   getLatest: () => LearnStore
@@ -16,6 +18,8 @@ export interface BrowserDeps {
   closeTab: (groupId: string, tabId: string, mode: 'self', opts?: { confirm?: boolean }) => void
   /** web 页签的活信息（真标题/加载态）；每次渲染都是最新的一份 */
   webMeta: Record<string, WebTabMeta>
+  /** 在指定网页访客环境（guest）中执行 JavaScript 并获取返回值 */
+  execJs?: (tabId: string, script: string) => Promise<unknown>
 }
 
 type WebTabRef = Extract<TabRef, { kind: 'web' }>
@@ -31,6 +35,41 @@ function hostOf(url: string): string {
 export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps {
   const titleOf = (tabId: string, ref: WebTabRef): string =>
     deps.webMeta[tabId]?.title ?? (ref.url ? hostOf(ref.url) : '（起始页）')
+
+  /** 解析目标页签：给 tabId 就查；不给就取焦点格正在看着的那个网页页签 */
+  const resolveTab = (tabId?: string): { tabId: string; ref: WebTabRef } => {
+    const s = deps.getLatest()
+    if (tabId) {
+      const tab = findTab(s.docArea, tabId)
+      if (!tab || tab.ref.kind !== 'web') {
+        throw new Error('没有这个网页页签：' + tabId + '。先 api.browser.tabs() 看一眼存活的页签。')
+      }
+      return { tabId, ref: tab.ref }
+    }
+    const group = focusedGroup(s.docArea)
+    const tab = group?.tabs.find((t) => t.id === group.active)
+    if (!tab || tab.ref.kind !== 'web') {
+      throw new Error('当前焦点格中没有正在浏览的网页页签。先 api.browser.tabs() 查看存活页签，或显式传入 tabId。')
+    }
+    return { tabId: tab.id, ref: tab.ref }
+  }
+
+  /** 在页面访客进程中执行代码并拿到返回值 */
+  const executeInPage = async <T>(tabId: string | undefined, fnCall: string): Promise<T> => {
+    const { tabId: resolvedId } = resolveTab(tabId)
+    const script = buildRuntimeExecScript(fnCall)
+
+    if (deps.execJs) {
+      return (await deps.execJs(resolvedId, script)) as T
+    }
+
+    const wv = webviewOf(resolvedId)
+    if (wv && typeof wv.executeJavaScript === 'function') {
+      return (await wv.executeJavaScript(script)) as T
+    }
+
+    throw new Error('未能连接到网页执行环境（网页页签未挂载或已销毁）：' + resolvedId)
+  }
 
   return {
     async open(url) {
@@ -76,6 +115,41 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
         deps.closeTab(group, id, 'self', { confirm: false })
       }
       return { ok: true }
+    },
+    async index(tabId, opts) {
+      const focusTarget = opts?.focus ?? null
+      return executeInPage(tabId, `window.__agentIndex(${JSON.stringify(focusTarget)})`)
+    },
+    async text(tabId, target: BrowserTarget, opts) {
+      return executeInPage(tabId, `window.__agentText(${JSON.stringify(target)}, ${JSON.stringify(opts ?? {})})`)
+    },
+    async inspect(tabId, target: BrowserTarget) {
+      return executeInPage(tabId, `window.__agentInspect(${JSON.stringify(target)})`)
+    },
+    async click(tabId, target: BrowserTarget, opts) {
+      const r = await executeInPage<{ ok: boolean; tag?: string; error?: string }>(
+        tabId,
+        `window.__agentClick(${JSON.stringify(target)}, ${JSON.stringify(opts ?? {})})`,
+      )
+      if (opts?.waitAfterMs && opts.waitAfterMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, opts.waitAfterMs))
+      }
+      return r
+    },
+    async fill(tabId, target: BrowserTarget, text: string, opts) {
+      return executeInPage(
+        tabId,
+        `window.__agentFill(${JSON.stringify(target)}, ${JSON.stringify(text)}, ${JSON.stringify(opts ?? {})})`,
+      )
+    },
+    async press(tabId, key: string, target?: BrowserTarget) {
+      return executeInPage(
+        tabId,
+        `window.__agentPress(${JSON.stringify(key)}, ${JSON.stringify(target ?? null)})`,
+      )
+    },
+    async scroll(tabId, opts) {
+      return executeInPage(tabId, `window.__agentScroll(${JSON.stringify(opts ?? {})})`)
     },
   }
 }
