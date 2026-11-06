@@ -91,7 +91,7 @@ describe('DocNotepad Placement and Dragging', () => {
     // 创建拖拽实时落点占位元素
     const indicator = document.createElement('div')
     indicator.setAttribute('data-notepad-drop-indicator', 'true')
-    indicator.className = 'notepad-drop-indicator my-1.5 h-1 w-full rounded-full bg-amber-500'
+    indicator.className = 'notepad-drop-indicator my-1 h-[2px] w-full rounded-full bg-seal/80'
 
     // 拖动至顶部
     docTw.insertBefore(indicator, docTw.firstChild)

@@ -1,6 +1,6 @@
 /** 节点与文档的反序列化：节点、教学文档、笔记、超级文档、注解，含各自的历史形态迁移。 */
 
-import type { Annotation, KnowledgeNode, MasteryStatus, NodeDocs, NoteFile, SuperDocFile } from '../../types'
+import type { Annotation, DocNotepadItem, KnowledgeNode, MasteryStatus, NodeDocs, NoteFile, SuperDocFile } from '../../types'
 import { STATUSES } from '../factories'
 import { normalizeAnnotationStyle } from '../../../lib/annotationStyle'
 import { normalizeOutline } from '../../outline'
@@ -121,6 +121,33 @@ function normalizeSuperDocs(raw: Record<string, unknown>): SuperDocFile[] {
   return out
 }
 
+/**
+ * 拾掇出节点的随文便签列表。
+ * 数据完全记录在节点上，绝不污染或篡改教学文档原文。
+ */
+function normalizeNotepads(raw: unknown): DocNotepadItem[] {
+  if (!Array.isArray(raw)) return []
+  const out: DocNotepadItem[] = []
+  const now = Date.now()
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const r = item as Record<string, unknown>
+    const id = typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID()
+    const content = typeof r.content === 'string' ? r.content : ''
+    const blockIndex = typeof r.blockIndex === 'number' && Number.isInteger(r.blockIndex) ? r.blockIndex : -1
+    const createdAt = typeof r.createdAt === 'number' && Number.isFinite(r.createdAt) ? r.createdAt : now
+    const updatedAt = typeof r.updatedAt === 'number' && Number.isFinite(r.updatedAt) ? r.updatedAt : createdAt
+    out.push({
+      id,
+      content,
+      blockIndex,
+      createdAt,
+      updatedAt,
+    })
+  }
+  return out
+}
+
 export function normalizeNode(raw: unknown): KnowledgeNode | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Record<string, unknown>
@@ -147,6 +174,7 @@ export function normalizeNode(raw: unknown): KnowledgeNode | null {
   const outline = normalizeOutline(r.outline)
   // 思维导图上的自定义色：只认调色板里那几个名字，认不出来的当「没改过」
   const tint = normalizeTint(r.tint)
+  const notepads = normalizeNotepads(r.notepads)
   return {
     id: r.id,
     title,
@@ -157,6 +185,7 @@ export function normalizeNode(raw: unknown): KnowledgeNode | null {
     superdocs: normalizeSuperDocs(r),
     ...(outline ? { outline } : {}),
     annotations: normalizeAnnotations(r.annotations),
+    ...(notepads.length > 0 ? { notepads } : {}),
     ...(tint ? { tint } : {}),
     status: toStatus(r.status),
     ...(lastStudiedAt ? { lastStudiedAt } : {}),

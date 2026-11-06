@@ -236,6 +236,7 @@ function* buildDocsSteps(store: LearnStore): Generator<void, Map<string, string>
         createdAt: node.createdAt,
         updatedAt: node.updatedAt,
         annotations: node.annotations,
+        ...(node.notepads && node.notepads.length > 0 ? { notepads: node.notepads } : {}),
         ...(node.lastStudiedAt !== undefined ? { lastStudiedAt: node.lastStudiedAt } : {}),
         ...(node.tint !== undefined ? { tint: node.tint } : {}),
         dependencies: (deps.get(node.id) ?? []).map((e) => ({ to: e.to, createdAt: e.createdAt, ...(e.portKey ? { portKey: e.portKey } : {}) })),

@@ -8,6 +8,7 @@ import {
   getInitialSponsorsMarkdown,
   isValidSponsorMarkdown,
   fetchLatestSponsorsMarkdown,
+  parseSponsorsMarkdown,
 } from '../src/lib/sponsorDoc'
 import * as nativeModule from '../src/lib/native'
 
@@ -116,5 +117,22 @@ describe('SponsorDoc 动态致谢名单与数据拉取', () => {
       root.unmount()
     })
     container.remove()
+  })
+
+  it('parseSponsorsMarkdown 能够正确提取表格中的赞助者、渠道与日期并去除加粗标记', () => {
+    const md = `
+# 赞助者名单
+
+| 赞助者 | 渠道 | 日期 |
+| :--- | :--- | :--- |
+| **张三** | 微信赞赏 | 2026-10-01 |
+| 李四 | 支付宝 | 2026-10-05 |
+| **王五** | 微信赞赏 | 2026-11-01 |
+`
+    const parsed = parseSponsorsMarkdown(md)
+    expect(parsed).toHaveLength(3)
+    expect(parsed[0]).toEqual({ name: '张三', channel: '微信赞赏', date: '2026-10-01' })
+    expect(parsed[1]).toEqual({ name: '李四', channel: '支付宝', date: '2026-10-05' })
+    expect(parsed[2]).toEqual({ name: '王五', channel: '微信赞赏', date: '2026-11-01' })
   })
 })

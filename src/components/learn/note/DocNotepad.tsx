@@ -83,7 +83,7 @@ export const DocNotepadRow = memo(function DocNotepadRow({
   return (
     <div
       data-notepad-id={item.id}
-      className="group relative my-2 rounded-none border-0 bg-amber-500/[0.04] px-3 py-2 transition-colors hover:bg-amber-500/[0.07] dark:bg-amber-400/[0.05] dark:hover:bg-amber-400/[0.08]"
+      className="group relative my-2 rounded-none border-0 bg-line/25 px-3 py-2 transition-colors hover:bg-line/35 dark:bg-card/50 dark:hover:bg-card/70"
     >
       <div className="mb-1 flex items-center gap-1.5 select-none">
         {/* 拖动手柄：支持改变便签在文章中的插入位置 */}
@@ -96,8 +96,8 @@ export const DocNotepadRow = memo(function DocNotepadRow({
           <GripVertical size={13} />
         </div>
 
-        <StickyNote size={13} className="shrink-0 text-amber-500/80" />
-        <span className="text-[11px] font-medium text-ink-soft/80">{t('随文笔记')}</span>
+        <StickyNote size={13} className="shrink-0 text-seal/80" />
+        <span className="text-[11px] font-medium text-ink-soft">{t('随文笔记')}</span>
 
         <button
           type="button"
@@ -145,7 +145,7 @@ function getOrCreateDropIndicator(container: HTMLElement): HTMLElement {
   if (!el) {
     el = document.createElement('div')
     el.setAttribute(DROP_INDICATOR_ATTR, 'true')
-    el.className = 'notepad-drop-indicator my-1.5 h-1 w-full rounded-full bg-amber-500 shadow-xs transition-all pointer-events-none'
+    el.className = 'notepad-drop-indicator my-1 h-[2px] w-full rounded-full bg-seal/80 shadow-2xs transition-all pointer-events-none'
   }
   return el
 }

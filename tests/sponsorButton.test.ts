@@ -63,6 +63,38 @@ describe('SponsorButton 赞助按钮与悬浮赞赏浮层', () => {
     })
     expect(openSponsorsSpy).toHaveBeenCalledTimes(1)
 
+    // 5. 验证第二栏：赞助名单、最近赞助日期展示与排序切换
+    expect(dialog?.textContent).toContain('赞助名单')
+    expect(dialog?.textContent).toContain('最近赞助日期')
+    expect(dialog?.textContent).toContain('2026-11-04')
+
+    // 默认降序排序：最新赞助者（陈继华，2026-11-04）排在第一位，最早赞助者（瑞宝，2026-10-27）排在后部
+    const sortBtn = Array.from(dialog?.querySelectorAll('button') ?? []).find(
+      (b) => b.textContent?.includes('最新') || b.textContent?.includes('最早'),
+    ) as HTMLButtonElement | undefined
+    expect(sortBtn).toBeTruthy()
+    expect(sortBtn?.textContent).toContain('最新在前')
+
+    // 检查默认降序下陈继华排在瑞宝前面
+    const contentText = dialog?.textContent || ''
+    const idxChen = contentText.indexOf('陈继华')
+    const idxRui = contentText.indexOf('瑞宝')
+    expect(idxChen).toBeGreaterThan(-1)
+    expect(idxRui).toBeGreaterThan(-1)
+    expect(idxChen).toBeLessThan(idxRui)
+
+    // 点击排序按钮切换为升序
+    act(() => {
+      sortBtn?.click()
+    })
+    expect(sortBtn?.textContent).toContain('最早在前')
+
+    // 检查升序后瑞宝排在陈继华前面
+    const ascContentText = dialog?.textContent || ''
+    const ascIdxChen = ascContentText.indexOf('陈继华')
+    const ascIdxRui = ascContentText.indexOf('瑞宝')
+    expect(ascIdxRui).toBeLessThan(ascIdxChen)
+
     // 清理
     act(() => {
       root.unmount()

@@ -119,3 +119,43 @@ export async function fetchLatestSponsorsMarkdown(customUrls?: string[]): Promis
     error: '远程拉取失败，已使用本地缓存',
   }
 }
+
+export interface SponsorItem {
+  name: string
+  channel: string
+  date: string
+}
+
+/**
+ * 解析 docs/sponsors.md 中的赞助者表格行，返回结构化列表。
+ */
+export function parseSponsorsMarkdown(md: string): SponsorItem[] {
+  if (typeof md !== 'string') return []
+  const lines = md.split(/\r?\n/)
+  const items: SponsorItem[] = []
+  let tableStarted = false
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      const cells = trimmed
+        .slice(1, -1)
+        .split('|')
+        .map((c) => c.trim().replace(/^\*\*|\*\*$/g, '').trim())
+      if (cells.length >= 3) {
+        if (cells[0] === '赞助者' || cells[0].includes('---')) {
+          tableStarted = true
+          continue
+        }
+        if (tableStarted && cells[0]) {
+          items.push({
+            name: cells[0],
+            channel: cells[1] || '微信赞赏',
+            date: cells[2] || '',
+          })
+        }
+      }
+    }
+  }
+  return items
+}
