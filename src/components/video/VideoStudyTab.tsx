@@ -277,8 +277,15 @@ export default function VideoStudyTab({
   }, [segments])
 
   /** 挂载的有效视频节点 ID（优先使用 props.videoNodeId，兜底从 store.videoNodes 按 videoId / input 匹配） */
+  /** 动态创建/认领的视频节点 ID 缓存（避免异步 store 回流前漂移） */
+  const [assignedVideoNodeId, setAssignedVideoNodeId] = useState<string | null>(null)
+
+  /** 当前编辑态的笔记对象暂存，保证即时切入二级页面不闪烁 */
+  const [activeEditingNote, setActiveEditingNote] = useState<NoteFile | null>(null)
+
   const effectiveVideoNodeId = useMemo(() => {
     if (videoNodeId) return videoNodeId
+    if (assignedVideoNodeId) return assignedVideoNodeId
     if (!store) return undefined
     if (video?.id) {
       const match = (store.videoNodes ?? []).find((vn) => vn.videoId === video.id)
@@ -289,7 +296,7 @@ export default function VideoStudyTab({
       if (match) return match.id
     }
     return undefined
-  }, [videoNodeId, store, video?.id, initialInput])
+  }, [videoNodeId, assignedVideoNodeId, store, video?.id, initialInput])
 
   /** 挂载在当前视频节点下的所有笔记节点实体 */
   const videoNotes = useMemo<NoteFile[]>(() => {
@@ -305,25 +312,28 @@ export default function VideoStudyTab({
     latestStoreRef.current = store
   }, [store])
 
-  /** 当前正在编辑的笔记对象 */
+  /** 当前正在编辑的笔记对象：只要 editingNoteId 有值，永不返回 null */
   const currentEditingNote = useMemo<NoteFile | null>(() => {
     if (!editingNoteId) return null
     const found = videoNotes.find((n) => n.id === editingNoteId)
     if (found) return found
-    if (draftContent) {
+    if (activeEditingNote && activeEditingNote.id === editingNoteId) {
       return {
-        id: editingNoteId,
-        name: t('未命名笔记'),
+        ...activeEditingNote,
         content: draftContent,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
       }
     }
-    return null
-  }, [videoNotes, editingNoteId, draftContent])
+    return {
+      id: editingNoteId,
+      name: t('未命名笔记'),
+      content: draftContent,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+  }, [videoNotes, editingNoteId, activeEditingNote, draftContent])
 
   useEffect(() => {
-    if (currentEditingNote) {
+    if (currentEditingNote && currentEditingNote.content !== draftContent) {
       setDraftContent(currentEditingNote.content)
     }
   }, [currentEditingNote?.id])
@@ -362,6 +372,17 @@ export default function VideoStudyTab({
   }
 
   /** 返回笔记列表：有未落盘定时器立即落盘并清空 editingNoteId */
+  /** 点击切换进入某份笔记的二级编辑页 */
+  const handleSelectNote = (noteId: string) => {
+    const found = videoNotes.find((n) => n.id === noteId)
+    if (found) {
+      setActiveEditingNote(found)
+      setDraftContent(found.content)
+    }
+    setEditingNoteId(noteId)
+  }
+
+  /** 返回笔记列表：有未落盘定时器立即落盘并清空 editingNoteId */
   const handleBackToList = () => {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current)
@@ -369,6 +390,7 @@ export default function VideoStudyTab({
     }
     commitNoteDraft(draftContent)
     setEditingNoteId(null)
+    setActiveEditingNote(null)
   }
 
   /** 在当前光标处（或末尾）插入当前视频时间戳超链接（moji:video 协议） */
@@ -425,9 +447,11 @@ export default function VideoStudyTab({
         videoNodes: [...(storeToUse.videoNodes ?? []), newVNode],
       }
       targetVideoNodeId = vNodeId
+      setAssignedVideoNodeId(vNodeId)
     }
 
     const { store: nextStore, note } = createNoteForVideoNode(storeToUse, targetVideoNodeId)
+    setActiveEditingNote(note)
     setDraftContent(note.content)
     setEditingNoteId(note.id)
     onCommitStore(nextStore)
@@ -442,6 +466,7 @@ export default function VideoStudyTab({
     onCommitStore(nextStore)
     if (editingNoteId === noteId) {
       setEditingNoteId(null)
+      setActiveEditingNote(null)
     }
   }
 
@@ -1020,7 +1045,7 @@ export default function VideoStudyTab({
       onCreateNote={handleCreateNote}
       onRenameNote={handleRenameNote}
       onDeleteNote={handleDeleteNote}
-      onSelectNote={(noteId) => setEditingNoteId(noteId)}
+      onSelectNote={handleSelectNote}
       onBackToList={handleBackToList}
       onInsertTimestamp={handleInsertTimestamp}
       noteTextareaRef={noteTextareaRef}

@@ -167,7 +167,7 @@ export default function VideoNotesFloatingWindow({
 
   // 判断是否点击到了不可拖动的交互元素
   const isInteractiveTarget = (target: EventTarget | null) => {
-    if (!(target instanceof HTMLElement)) return false
+    if (!(target instanceof Element)) return false
     return !!target.closest('button, input, textarea, a, select, [data-no-drag]')
   }
 
@@ -323,7 +323,7 @@ export default function VideoNotesFloatingWindow({
         {editingNoteId && currentEditingNote ? (
           /* 二级编辑页顶部栏 */
           <>
-            <div className="flex items-center gap-1 min-w-0" data-no-drag>
+            <div className="flex items-center gap-1 min-w-0" data-no-drag onPointerDown={(e) => e.stopPropagation()}>
               <button
                 type="button"
                 onClick={onBackToList}
@@ -337,7 +337,15 @@ export default function VideoNotesFloatingWindow({
               </span>
             </div>
 
-            <div className="flex items-center gap-1.5" data-no-drag>
+            <div className="flex items-center gap-1.5" data-no-drag onPointerDown={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                onClick={onCreateNote}
+                title={t('新建笔记')}
+                className="p-1 text-white/80 hover:text-white transition cursor-pointer"
+              >
+                <Plus size={16} />
+              </button>
               <button
                 type="button"
                 onClick={onInsertTimestamp}
@@ -360,7 +368,7 @@ export default function VideoNotesFloatingWindow({
         ) : (
           /* 一级列表页顶部栏 */
           <>
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0" data-no-drag onPointerDown={(e) => e.stopPropagation()}>
               <BookOpen size={16} className="text-pink-400 shrink-0" />
               <span className="text-[12.5px] font-semibold text-white/95 truncate">{t('视频笔记')}</span>
               {videoNotes.length > 0 && (
@@ -370,7 +378,7 @@ export default function VideoNotesFloatingWindow({
               )}
             </div>
 
-            <div className="flex items-center gap-1.5" data-no-drag>
+            <div className="flex items-center gap-1.5" data-no-drag onPointerDown={(e) => e.stopPropagation()}>
               <button
                 type="button"
                 onClick={onCreateNote}
@@ -484,8 +492,16 @@ export default function VideoNotesFloatingWindow({
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
               <Pencil size={24} className="text-white/20" />
               <p className="max-w-[340px] text-[12px] leading-relaxed text-white/45">
-                {t('还没有笔记：点击上方加号即可记录学习要点，并实时挂在视频节点下。')}
+                {t('还没有笔记：点击上方加号或下方按钮即可记录学习要点，并实时挂在视频节点下。')}
               </p>
+              <button
+                type="button"
+                onClick={onCreateNote}
+                className="mt-1 flex items-center gap-1.5 rounded-lg bg-pink-600 px-3.5 py-1.5 text-[12px] font-medium text-white transition hover:bg-pink-700 cursor-pointer shadow-md"
+              >
+                <Plus size={14} />
+                <span>{t('新建第一份笔记')}</span>
+              </button>
             </div>
           )}
         </div>

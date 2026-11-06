@@ -285,4 +285,24 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
     expect(code).not.toContain('onTitleChange')
     expect(code).toContain('h-full w-full resize-none')
   })
+
+  it('验证新建笔记事件交互不被拖拽劫持，且支持空状态一键新建与二级页继续新建', async () => {
+    const fs = await import('fs')
+    const windowCode = fs.readFileSync('src/components/video/VideoNotesFloatingWindow.tsx', 'utf8')
+    const tabCode = fs.readFileSync('src/components/video/VideoStudyTab.tsx', 'utf8')
+
+    // 1. isInteractiveTarget 必须支持 Element，避免 SVG/Path 被误判为可拖动而吞噬 onClick
+    expect(windowCode).toContain('target instanceof Element')
+    expect(windowCode).not.toContain('target instanceof HTMLElement')
+
+    // 2. 按钮容器阻止 pointerDown 冒泡，确保点击正常派发
+    expect(windowCode).toContain('data-no-drag onPointerDown={(e) => e.stopPropagation()}')
+
+    // 3. 空状态支持一键新建笔记
+    expect(windowCode).toContain('新建第一份笔记')
+
+    // 4. VideoStudyTab 支持 activeEditingNote 瞬时切换二级页面，避免因 store 异步更新延迟导致 currentEditingNote 为 null
+    expect(tabCode).toContain('activeEditingNote')
+    expect(tabCode).toContain('assignedVideoNodeId')
+  })
 })
