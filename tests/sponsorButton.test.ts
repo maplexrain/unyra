@@ -8,7 +8,13 @@ import * as sponsorDoc from '../src/lib/sponsorDoc'
 ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
 
 describe('SponsorButton 赞助按钮与悬浮赞赏浮层', () => {
-  it('正常渲染顶栏赞助按钮，点击后弹出展示发光赞赏码、鸣谢指引与克制真诚说明（不刻意卖惨或提失业）', () => {
+  it('正常渲染顶栏赞助按钮，点击后弹出展示发光赞赏码、鸣谢指引与克制真诚说明（不刻意卖惨或提失业）', async () => {
+    vi.spyOn(sponsorDoc, 'fetchLatestSponsorsMarkdown').mockResolvedValue({
+      ok: true,
+      content: sponsorDoc.getInitialSponsorsMarkdown(),
+      fromRemote: true,
+    })
+
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
@@ -27,8 +33,9 @@ describe('SponsorButton 赞助按钮与悬浮赞赏浮层', () => {
     expect(container.querySelector('[role="dialog"]')).toBeNull()
 
     // 2. 模拟点击按钮展开弹层
-    act(() => {
+    await act(async () => {
       btn?.click()
+      await new Promise((r) => setTimeout(r, 20))
     })
 
     const dialog = container.querySelector('[role="dialog"]') as HTMLDivElement | null
@@ -67,6 +74,16 @@ describe('SponsorButton 赞助按钮与悬浮赞赏浮层', () => {
     expect(dialog?.textContent).toContain('赞助名单')
     expect(dialog?.textContent).toContain('最近赞助日期')
     expect(dialog?.textContent).toContain('2026-11-04')
+    expect(dialog?.textContent).toContain('源自 GitHub 官方仓库')
+
+    // 验证刷新按钮
+    const refreshBtn = Array.from(dialog?.querySelectorAll('button') ?? []).find(
+      (b) =>
+        b.getAttribute('title')?.includes('GitHub') ||
+        b.textContent?.includes('刷新') ||
+        b.textContent?.includes('同步'),
+    ) as HTMLButtonElement | undefined
+    expect(refreshBtn).toBeTruthy()
 
     // 默认降序排序：最新赞助者（陈继华，2026-11-04）排在第一位，最早赞助者（瑞宝，2026-10-27）排在后部
     const sortBtn = Array.from(dialog?.querySelectorAll('button') ?? []).find(

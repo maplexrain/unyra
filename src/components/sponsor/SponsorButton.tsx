@@ -5,11 +5,12 @@
  * - 第二栏：展示赞助名单与排序控制（默认按日期降序，最上方显示最近赞助日期）。
  */
 
-import { useMemo, useState } from 'react'
-import { ArrowUpDown, Calendar, ExternalLink, Heart, Sparkles } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ArrowUpDown, Calendar, ExternalLink, Heart, RotateCw, Sparkles } from 'lucide-react'
 import { useHoverMenu } from '../../lib/hoverMenu'
 import { t } from '../../i18n'
 import {
+  fetchLatestSponsorsMarkdown,
   getInitialSponsorsMarkdown,
   openSponsorsTab,
   parseSponsorsMarkdown,
@@ -28,10 +29,27 @@ export default function SponsorButton() {
     buttonOpens: true,
   })
 
-  // 赞助者名单 Markdown 文本（优先本地缓存秒开，若在名单页签更新过会自动使用最新内容）
-  const [sponsorsMd] = useState<string>(() => getInitialSponsorsMarkdown())
+  // 赞助者名单 Markdown 文本（优先本地缓存秒开，并动态与 GitHub 仓库保持同步）
+  const [sponsorsMd, setSponsorsMd] = useState<string>(() => getInitialSponsorsMarkdown())
   // 排序模式：默认 'desc' 降序（最新赞助在最上面）
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
+  const [syncing, setSyncing] = useState(false)
+
+  const syncFromGitHub = useCallback(() => {
+    setSyncing(true)
+    void fetchLatestSponsorsMarkdown().then((res) => {
+      setSyncing(false)
+      if (res.ok && res.content) {
+        setSponsorsMd(res.content)
+      }
+    })
+  }, [])
+
+  // 展开浮层时自动从 GitHub 仓库拉取最新名单
+  useEffect(() => {
+    if (!mounted) return
+    syncFromGitHub()
+  }, [mounted, syncFromGitHub])
 
   // 解析名单为结构化列表
   const items = useMemo(() => parseSponsorsMarkdown(sponsorsMd), [sponsorsMd])
@@ -185,20 +203,37 @@ export default function SponsorButton() {
                       </span>
                     </div>
 
-                    {/* 排序按钮：默认降序排序（最新在前），点击切换升降序 */}
-                    <button
-                      type="button"
-                      onClick={() => setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
-                      className="flex items-center gap-1 rounded-md border border-line/60 bg-card px-2 py-0.5 text-[11px] text-ink-soft transition hover:border-line-strong hover:text-ink active:scale-95"
-                      title={
-                        sortOrder === 'desc'
-                          ? t('当前：按日期降序（最新在上），点击切换升序')
-                          : t('当前：按日期升序（最早在上），点击切换降序')
-                      }
-                    >
-                      <ArrowUpDown size={11} className="text-ink-faint" />
-                      <span>{sortOrder === 'desc' ? t('最新在前') : t('最早在前')}</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {/* GitHub 刷新同步按钮 */}
+                      <button
+                        type="button"
+                        onClick={syncFromGitHub}
+                        disabled={syncing}
+                        className="flex items-center gap-1 rounded-md border border-line/60 bg-card px-1.5 py-0.5 text-[10.5px] text-ink-soft transition hover:border-line-strong hover:text-ink active:scale-95 disabled:opacity-50"
+                        title={t('从 GitHub 仓库重新获取最新赞助者名单')}
+                      >
+                        <RotateCw
+                          size={11}
+                          className={`text-ink-faint ${syncing ? 'animate-spin text-seal' : ''}`}
+                        />
+                        <span>{syncing ? t('同步中...') : t('刷新')}</span>
+                      </button>
+
+                      {/* 排序按钮：默认降序排序（最新在前），点击切换升降序 */}
+                      <button
+                        type="button"
+                        onClick={() => setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+                        className="flex items-center gap-1 rounded-md border border-line/60 bg-card px-1.5 py-0.5 text-[10.5px] text-ink-soft transition hover:border-line-strong hover:text-ink active:scale-95"
+                        title={
+                          sortOrder === 'desc'
+                            ? t('当前：按日期降序（最新在上），点击切换升序')
+                            : t('当前：按日期升序（最早在上），点击切换降序')
+                        }
+                      >
+                        <ArrowUpDown size={11} className="text-ink-faint" />
+                        <span>{sortOrder === 'desc' ? t('最新在前') : t('最早在前')}</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* 最上面显示最近的赞助日期 */}
@@ -217,7 +252,7 @@ export default function SponsorButton() {
                     {sortedItems.length === 0 ? (
                       <div className="flex h-32 flex-col items-center justify-center text-[11px] text-ink-faint">
                         <Heart size={20} className="mb-1 text-ink-faint/40" />
-                        <span>{t('暂无赞助记录')}</span>
+                        <span>{syncing ? t('正在从 GitHub 同步最新名单...') : t('暂无赞助记录')}</span>
                       </div>
                     ) : (
                       sortedItems.map((item, idx) => (
@@ -249,8 +284,9 @@ export default function SponsorButton() {
                 </div>
 
                 {/* 第二栏底部说明 */}
-                <div className="mt-2 border-t border-line/30 pt-1.5 text-center text-[10px] text-ink-faint">
-                  {t('*(按赞助时间排序，名单持续更新中)*')}
+                <div className="mt-2 flex items-center justify-between border-t border-line/30 pt-1.5 text-[9.5px] text-ink-faint">
+                  <span>{t('源自 GitHub 官方仓库')}</span>
+                  <span>{t('持续同步更新中')}</span>
                 </div>
               </div>
             </div>
