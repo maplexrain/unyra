@@ -324,4 +324,75 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
     expect(code).toContain('opacity-0 scale-95 translate-y-2 ease-in pointer-events-none')
     expect(code).toContain('if (!isRendered) return null')
   })
+
+  it('验证视频节点中创建的笔记节点在落盘并重新加载后不会丢失边，绝不变成游离节点', async () => {
+    const { buildDocs } = await import('../src/learn/files/build')
+    const { parseDocs } = await import('../src/learn/files/parse')
+    const { buildState } = await import('../src/learn/files/state')
+    const { createNoteForVideoNode, getNotesForVideoNode } = await import('../src/learn/video/nodes')
+
+    const base = emptyLearnStore()
+    const goalId = 'g-test-persist'
+    const videoNodeId = 'vnode-1'
+    const initialStore = {
+      ...base,
+      goals: [{ id: goalId, rootNodeId: 'r1', question: '学习', createdAt: 1, updatedAt: 1 }],
+      nodes: [{
+        id: 'r1',
+        title: '根文档',
+        key: 'gen',
+        description: '',
+        docs: { teaching: '' },
+        notes: [],
+        annotations: [],
+        status: 'learning' as const,
+        origin: 'user' as const,
+        goalId,
+        createdAt: 1,
+        updatedAt: 1,
+      }],
+      videoNodes: [{
+        id: videoNodeId,
+        goalId,
+        videoId: 'v-source-1',
+        title: '测试视频',
+        input: 'BV123',
+        createdAt: 1,
+        updatedAt: 1,
+      }],
+    }
+
+    // 1. 在该视频节点下创建笔记节点
+    const { store: storeWithNote, note } = createNoteForVideoNode(initialStore, videoNodeId, '重点考点笔记')
+    expect(note.id).toBeTruthy()
+    expect(storeWithNote.edges.some((e) => e.from === videoNodeId && e.to === note.id)).toBe(true)
+
+    // 创建后结构视图检查：笔记已连接，不含「游离」
+    const viewBefore = deriveCanvas(storeWithNote, goalId, undefined)
+    const cardBefore = viewBefore.cards.find((c) => c.uuid === note.id)
+    expect(cardBefore).toBeDefined()
+    expect(cardBefore?.subtitle).not.toContain('游离')
+
+    // 2. 模拟序列化落盘与重新启动加载应用（buildDocs -> parseDocs）
+    const files = buildDocs(storeWithNote)
+    const state = buildState(storeWithNote)
+    const restoredStore = parseDocs(files, state)
+
+    expect(restoredStore).not.toBeNull()
+    if (!restoredStore) return
+
+    // 3. 验证关键断言：重新加载后边依然完好存在！
+    const edgeRestored = restoredStore.edges.find((e) => e.from === videoNodeId && e.to === note.id)
+    expect(edgeRestored).toBeDefined()
+
+    // 4. 验证结构视图派生：重开后依然显示为已连接笔记，绝非游离！
+    const viewAfter = deriveCanvas(restoredStore, goalId, undefined)
+    const cardAfter = viewAfter.cards.find((c) => c.uuid === note.id)
+    expect(cardAfter).toBeDefined()
+    expect(cardAfter?.subtitle).not.toContain('游离')
+
+    // 5. 验证视频页签查询笔记：依然能准确检索到该笔记
+    const retrievedNotes = getNotesForVideoNode(restoredStore, videoNodeId)
+    expect(retrievedNotes.some((n) => n.id === note.id)).toBe(true)
+  })
 })
