@@ -27,6 +27,7 @@ import { docIdOfOutlineUuid, outlineUuid, type GNodeKind } from '../../../learn/
 import {
   CARD_H,
   COL_GAP,
+  ROW_GAP,
   defaultHeight,
   freeSpotNear,
   cardWidthOf,
@@ -211,6 +212,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     parent: Pending | null
     /** 认领了接口的子级：铺排锚到父大纲那条目标项的行上（行号 = 目标项序号） */
     slotAnchor?: { parent: string; index: number }
+    targetAnchorY?: number
     placed?: boolean
   }
 
@@ -636,7 +638,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
 
     // 约束 1：树边传递 (fromCard -> toCard)
     for (const e of store.edges) {
-      const toCard = outlinePending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to)
+      const toCard = outlinePending.get(e.to) ?? filePending.get(e.to) ?? videoPending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to) ?? byUuid.get(e.to)
       const fromCard = fromCardOf(e.from, e.to)
       if (!fromCard || !toCard) continue
       const req = fromCard.depth + 1
@@ -710,7 +712,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     p.placed = true
     const savedPos = positions[p.card.uuid]
     const parentCard = p.parent ? placedByUuid.get(p.parent.card.uuid) : undefined
-    let anchorY = parentCard ? parentCard.y : 0
+    let anchorY = p.targetAnchorY ?? (parentCard ? parentCard.y : 0)
     /*
      * 认领了接口的子级锚到父大纲那条目标项的**行**上（卡的中心对准那一行圆点）：
      * 自动排列读起来就是「第几条目标项的落地排在第几行」，连线也顺势更平。
@@ -737,15 +739,39 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     }
     cards.push(card)
     placedByUuid.set(p.card.uuid, card)
+
+    // 为下游未认领具体 slot 的直接子节点集合计算对称居中分布的 targetAnchorY
+    const unplacedNext = p.next.filter((c) => !c.placed)
+    const unslottedChildren = unplacedNext.filter((c) => !c.slotAnchor)
+    if (unslottedChildren.length > 0) {
+      const curH = heightOf({ uuid: card.uuid, kind: card.kind })
+      const parentCenterY = card.y + curH / 2
+      let totalChildrenH = 0
+      const childHeights: number[] = []
+      for (const child of unslottedChildren) {
+        const ch = heightOf({ uuid: child.card.uuid, kind: child.card.kind })
+        childHeights.push(ch)
+        totalChildrenH += ch
+      }
+      totalChildrenH += (unslottedChildren.length - 1) * ROW_GAP
+      let currentChildY = parentCenterY - totalChildrenH / 2
+      for (let i = 0; i < unslottedChildren.length; i++) {
+        unslottedChildren[i].targetAnchorY = currentChildY
+        currentChildY += childHeights[i] + ROW_GAP
+      }
+    }
+
     for (const n of p.next) {
       if (!n.placed) place(n)
     }
   }
   // 读图起点 = 根文档（入口徽章在它身上）；没连进树的（游离文档——摘了线或删了上游）
-  // 也要出现在画布上：按各自深度补铺
+  // 也要出现在画布上：按深度升序补铺，确保父节点先于子节点就位
   const rootPending = goal.rootNodeId ? docPending.get(goal.rootNodeId) : undefined
   if (rootPending) place(rootPending)
-  for (const p of byUuid.values()) {
+  const remaining = [...byUuid.values()].filter((p) => !p.placed)
+  remaining.sort((a, b) => a.depth - b.depth)
+  for (const p of remaining) {
     if (!p.placed) place(p)
   }
   return { cards, edges, heightOf }
