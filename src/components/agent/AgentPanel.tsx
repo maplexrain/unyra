@@ -106,8 +106,8 @@ interface Props {
   onNewConversation: () => void
   onSelectConversation: (id: string) => void
   onDeleteConversation: (id: string) => void
-  onEditMessage: (messageId: string, text: string) => void
-  onDeleteMessage: (messageId: string) => void
+  onEditMessage?: (messageId: string, text: string) => void
+  onDeleteMessage?: (messageId: string) => void
   /**
    * 继续被中断的一轮（消息列表中断说明旁的「继续」按钮）。可选：宿主没接就不画按钮。
    * 面板内走 ref 转发保持回调身份恒定——memo 过的消息行不因它每次渲染换身份而整列重渲染。
@@ -207,19 +207,11 @@ export default function AgentPanel({
   onOpenFile,
   onOpenSettings,
 }: Props) {
-  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
   /** 点开看大图的附件。两种来源各一份状态：已进资源库的气泡图与还在内存里的待发送图 */
   const [preview, setPreview] = useState<PendingImage | null>(null)
   const [bubblePreview, setBubblePreview] = useState<MessageImage | null>(null)
   /** 上下文压缩后的摘要展开着（消息列表里那块分界线上的「看摘要」） */
   const [summaryOpen, setSummaryOpen] = useState(false)
-  const [confirmDel, setConfirmDel] = useState<string | null>(null)
-  /**
-   * 待确认删除那条的「当下值」：state 给渲染用（那一行的删除按钮变成「确认」），
-   * ref 给点击判据用——于是 clickDelete 的身份可以恒定，memo 过的消息行才不会
-   * 因为「有人点了一下删除」就整列重渲染。这个组件里只有 clickDelete 会改它，两处永远同步。
-   */
-  const confirmDelRef = useRef<string | null>(null)
 
   /*
    * 隐藏指令照旧不显示，**但带 mark 的那种要显示成一条分界条**（出卷 / 阅卷 / 开讲）：
@@ -392,38 +384,7 @@ export default function AgentPanel({
     stickToBottom()
   }, [active, measureAnchors, stickToBottom])
 
-  /**
-   * 保存编辑：id 与文本由消息行带上来（原来是从 editing 那份状态里读的，两者在调用点上等值——
-   * 编辑框只在 editing.id === 这一条 时才画出来）。于是它不依赖 editing，身份恒定：
-   * 在某一条里打字时，其余消息行不会被带着重渲染。
-   */
-  const saveEdit = useCallback((id: string, text: string) => {
-    const trimmed = text.trim()
-    if (trimmed) messagesApiRef.current.onEditMessage(id, trimmed)
-    setEditing(null)
-  }, [])
 
-  /**
-   * 删除：第一次点只是请人再确认一次，第二次点才真删。判据读 confirmDelRef（与 state 同步），
-   * 于是这里不必依赖 state，身份恒定——memo 过的消息行只会在 confirming 真的变了的那一条上重渲染。
-   */
-  const clickDelete = useCallback((id: string) => {
-    if (confirmDelRef.current !== id) {
-      confirmDelRef.current = id
-      setConfirmDel(id)
-      window.setTimeout(() => {
-        // 2.6 秒里没再点同一条就撤回这次待确认（原来的写法是 setConfirmDel(c => c === id ? null : c)）
-        if (confirmDelRef.current === id) {
-          confirmDelRef.current = null
-          setConfirmDel(null)
-        }
-      }, 2600)
-      return
-    }
-    confirmDelRef.current = null
-    setConfirmDel(null)
-    messagesApiRef.current.onDeleteMessage(id)
-  }, [])
 
   /**
    * 底部状态条的数据。轮数 = 导师回复（跑着的那一轮也算一条）；
@@ -498,11 +459,6 @@ export default function AgentPanel({
     loopLabel,
     flashId,
     msgRefs,
-    editing,
-    setEditing,
-    saveEdit,
-    confirmDel,
-    clickDelete,
     onResumeNotice: resumeInterrupted,
     setBubblePreview,
     onOpenFile,

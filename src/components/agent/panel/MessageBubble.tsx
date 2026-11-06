@@ -21,17 +21,14 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Pencil,
+  Copy,
   Quote,
-  Trash2,
-  X,
 } from 'lucide-react'
 import type { AgentPart, ConversationMessage, MessageImage, MessageQuote } from '../../../agent/types'
 import MarkdownView from '../../MarkdownView'
 import UsageLine from '../UsageLine'
 import { renderNote } from '../../../lib/markdown'
 import { focusQuote } from '../../../lib/quoteFocus'
-import { NO_AUTOFILL } from '../../../lib/autofill'
 import { BubbleFile, BubbleImage } from './Images'
 import { DeliveryBlock } from './DeliveryBlock'
 import { ToolCard } from './ToolCard'
@@ -59,10 +56,6 @@ interface MessageRowProps {
   faded: boolean
   /** 刚从定位条跳过来的那一条：闪一下 */
   flash: boolean
-  /** 待确认删除的就是这一条：删除按钮变成「确认」 */
-  confirming: boolean
-  /** 这一条正在编辑时的文本；没在编辑就是 null */
-  editingText: string | null
   /**
    * 这一轮开始前注入的那几条提示词（人格 / 文档格式 / 技能库 / 提示词模块，
    * 见 agent/messageKind）。它们并进回复里的「思考、工具与提示词」过程组——
@@ -74,11 +67,6 @@ interface MessageRowProps {
   msgRefs: React.RefObject<Map<string, HTMLDivElement>>
   /** 点中断说明旁的「继续」：恢复被中断的一轮（见 AgentPanel；只挂在正文的 NoticeBlock 上） */
   onResumeNotice?: () => void
-  /** 保存编辑：id 与文本由这一行自己带上去（见 AgentPanel 里 saveEdit 的说明） */
-  onSaveEdit: (id: string, text: string) => void
-  /** 删除：第一次点只是请人再确认一次，判据在 AgentPanel 的 clickDelete 里 */
-  onDelete: (id: string) => void
-  setEditing: React.Dispatch<React.SetStateAction<{ id: string; text: string } | null>>
   setBubblePreview: React.Dispatch<React.SetStateAction<MessageImage | null>>
   /** 点击文件/图片附件时在标签页中打开 */
   onOpenFile?: (pathOrRel: string, title?: string) => void
@@ -89,36 +77,21 @@ interface MessageRowProps {
 /**
  * 单条消息：用户气泡 / 导师回复 / 导师动作的分界条。原来写在 useMessageList 的 map 里，
  * 挪出来只为了能 memo——DOM 结构与类名一字未改（Fragment 换成组件，不多一层节点）。
- *
- * 为什么 memo 得住、又不会「数据变了却不重渲染」：**能变的东西全在 props 里**，
- * 而且都是按值或按身份比的——
- *   · m 是消息本体：store 改一条就换出新的那一个对象，没动过的历史消息还是原来那一个；
- *   · faded / flash / confirming / editingText 是父组件按这一条算出来的布尔与字符串；
- *   · msgRefs、setEditing、setBubblePreview 身份恒定（一个 ref 与两个 setState）；
- *   · onSaveEdit / onDelete 由 AgentPanel 用 useCallback 包成恒定身份，它们要的
- *     id 与文本由这一行带上去，因此**行为**永远是最新的那一份（见那边的注释）。
- * 于是流式写作时逐跳重渲染的只有正在长的那一条，历史消息整棵子树原地不动。
  */
 export const MessageRow = memo(function MessageRow({
   m,
   faded,
   flash,
-  confirming,
-  editingText,
   prelude,
   msgRefs,
   onResumeNotice,
-  onSaveEdit,
-  onDelete,
-  setEditing,
   setBubblePreview: _setBubblePreview,
   onOpenFile,
   goalId,
 }: MessageRowProps) {
-  // memo 挡住了 props 浅比较相等的重渲染：界面语言变化要自己订阅才跟得上
   useLocale()
-  /** 失活的消息淡一档（与拆分前的 ' opacity-55' 逐字相同） */
   const fadedCls = faded ? ' opacity-55' : ''
+  const messageText = m.parts.filter((p) => p.type === 'text').map((p) => p.text).join('\n\n')
 
   if (m.role === 'user') {
     return (
@@ -129,69 +102,51 @@ export const MessageRow = memo(function MessageRow({
         }}
         className={'group mb-3 flex items-end justify-end gap-1.5' + fadedCls}
       >
-        <MessageActions
-          confirming={confirming}
-          onEdit={() => setEditing({ id: m.id, text: m.parts.filter((p) => p.type === 'text').map((p) => p.text).join('') })}
-          onDelete={() => onDelete(m.id)}
-        />
-        {editingText !== null ? (
-          <EditBox
-            value={editingText}
-            onChange={(v) => setEditing({ id: m.id, text: v })}
-            onSave={() => onSaveEdit(m.id, editingText)}
-            onCancel={() => setEditing(null)}
-          />
-        ) : (
-          // moji-msg-flash：定位条跳过来的那一条闪一下（圆角是为了让描边跟着气泡的形状走）
-          <div
-            className={
-              'max-w-[85%] rounded-2xl ' + (flash ? 'moji-msg-flash' : '')
-            }
-          >
-            {m.quote && <QuoteChip quote={m.quote} />}
-            {/* 附件排在文字上方：与输入框里的排列一致，发出去前后看到的是同一个顺序 */}
-            {!!m.images?.length && (
-              <div className="mb-1.5 flex flex-wrap justify-end gap-1.5">
-                {m.images.map((img) => (
-                  <BubbleImage
-                    key={img.id}
-                    image={img}
-                    onOpen={() => {
-                      const target = img.rel
-                      if (target) onOpenFile?.(target, img.name)
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-            {/* 外部文件附件回显：点击在标签页打开 */}
-            {!!m.files?.length && (
-              <div className="mb-1.5 flex flex-wrap justify-end gap-1.5">
-                {m.files.map((file, idx) => (
-                  <BubbleFile
-                    key={file.uuid ?? `${file.name}-${idx}`}
-                    file={file}
-                    onOpen={() => {
-                      const target = file.path || file.rel
-                      if (target) onOpenFile?.(target, file.name)
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-            {/* 只发了图没写字时不留一个空气泡。底色与列表同色系、只深一档（纸面上的同一族颜色），
-                文字与导师正文同色——气泡只负责「这是你说的话」，不负责抢眼 */}
-            {m.parts.some((p) => p.type === 'text' && p.text.trim()) && (
-              <div className="whitespace-pre-wrap rounded-2xl rounded-br-sm bg-line/50 px-3 py-2 text-[13.5px] leading-relaxed text-ink">
-                <ChipText text={m.parts.filter((p) => p.type === 'text').map((p) => p.text).join('')} />
-              </div>
-            )}
+        <MessageActions text={messageText} />
+        <div
+          className={
+            'max-w-[85%] rounded-2xl ' + (flash ? 'moji-msg-flash' : '')
+          }
+        >
+          {m.quote && <QuoteChip quote={m.quote} />}
+          {/* 附件排在文字上方：与输入框里的排列一致，发出去前后看到的是同一个顺序 */}
+          {!!m.images?.length && (
+            <div className="mb-1.5 flex flex-wrap justify-end gap-1.5">
+              {m.images.map((img) => (
+                <BubbleImage
+                  key={img.id}
+                  image={img}
+                  onOpen={() => {
+                    const target = img.rel
+                    if (target) onOpenFile?.(target, img.name)
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          {!!m.files?.length && (
+            <div className="mb-1.5 flex flex-wrap justify-end gap-1.5">
+              {m.files.map((file, idx) => (
+                <BubbleFile
+                  key={file.uuid ?? `${file.name}-${idx}`}
+                  file={file}
+                  onOpen={() => {
+                    const target = file.rel || file.path
+                    if (target) onOpenFile?.(target, file.name)
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          <div className="rounded-2xl bg-line/60 px-3.5 py-2 text-[13px] leading-relaxed text-ink select-text">
+            <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} />
           </div>
-        )}
+        </div>
       </div>
     )
   }
 
+  // 导师回复
   return (
     <div
       ref={(el) => {
@@ -201,7 +156,6 @@ export const MessageRow = memo(function MessageRow({
       className={'group relative mb-4' + fadedCls}
     >
       <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} />
-      {/* 这一轮的交付账：有登记才出现，一行一条（见 DeliveryBlock） */}
       {m.delivery && <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={goalId} />}
       {m.usage && (
         <div className="mt-1">
@@ -209,24 +163,11 @@ export const MessageRow = memo(function MessageRow({
         </div>
       )}
       <div className="mt-1 flex justify-start opacity-0 transition group-hover:opacity-100">
-        <MessageActions
-          confirming={confirming}
-          onEdit={() => setEditing({ id: m.id, text: m.parts.filter((p) => p.type === 'text').map((p) => p.text).join('\n\n') })}
-          onDelete={() => onDelete(m.id)}
-        />
+        <MessageActions text={messageText} />
       </div>
-      {editingText !== null && (
-        <EditBox
-          value={editingText}
-          onChange={(v) => setEditing({ id: m.id, text: v })}
-          onSave={() => onSaveEdit(m.id, editingText)}
-          onCancel={() => setEditing(null)}
-        />
-      )}
     </div>
   )
 })
-
 /**
  * 「询问」引文：显示在用户气泡上方，点击回到左侧文档把对应文字闪一下。
  * 用户看到的是引用内容本身，而不是一段看不懂的坐标。
@@ -264,90 +205,43 @@ function QuoteChip({ quote }: { quote: MessageQuote }) {
   )
 }
 
-function MessageActions({
-  confirming,
-  onEdit,
-  onDelete,
-}: {
-  confirming: boolean
-  onEdit: () => void
-  onDelete: () => void
-}) {
+function MessageActions({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch (err) {
+      console.warn('[MessageActions] 复制失败：', err)
+    }
+  }
+
   return (
     <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
       <button
         type="button"
-        title={t('编辑')}
-        onClick={onEdit}
-        className="flex h-6 w-6 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-ink"
-      >
-        <Pencil size={12} />
-      </button>
-      <button
-        type="button"
-        title={confirming ? t('再点一次删除') : t('删除')}
-        onClick={onDelete}
-        className={`flex h-6 items-center justify-center rounded transition ${
-          confirming
-            ? 'bg-seal/10 px-1.5 text-[10.5px] font-medium text-seal ring-1 ring-seal/40'
-            : 'w-6 text-ink-faint hover:bg-line/70 hover:text-seal'
+        title={copied ? t('已复制') : t('复制内容')}
+        onClick={handleCopy}
+        className={`flex h-6 items-center justify-center rounded px-1.5 transition text-ink-faint hover:bg-line/70 hover:text-ink cursor-pointer ${
+          copied ? 'text-ok font-medium' : ''
         }`}
       >
-        {confirming ? t('确认') : <Trash2 size={12} />}
+        {copied ? (
+          <span className="flex items-center gap-1 text-[11px] text-ok">
+            <Check size={12} />
+            <span>{t('已复制')}</span>
+          </span>
+        ) : (
+          <Copy size={12} />
+        )}
       </button>
     </div>
   )
 }
-
-function EditBox({
-  value,
-  onChange,
-  onSave,
-  onCancel,
-}: {
-  value: string
-  onChange: (v: string) => void
-  onSave: () => void
-  onCancel: () => void
-}) {
-  return (
-    <div className="w-full">
-      <textarea
-        value={value}
-        autoFocus
-        rows={4}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault()
-            onSave()
-          }
-          if (e.key === 'Escape') onCancel()
-        }}
-        className="w-full resize-y rounded-lg border border-seal/40 bg-card px-2.5 py-2 text-[12.5px] leading-relaxed text-ink outline-none"
-        {...NO_AUTOFILL}
-      />
-      <div className="mt-1 flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={onSave}
-          className="flex items-center gap-1 rounded-md bg-ink px-2 py-1 text-[11.5px] text-paper transition hover:bg-ink-strong"
-        >
-          <Check size={12} /> {t('保存')}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-[11.5px] text-ink-soft transition hover:bg-line/60"
-        >
-          <X size={12} /> {t('取消')}
-        </button>
-        <span className="ml-auto text-[10.5px] text-ink-faint">Ctrl/⌘ + Enter</span>
-      </div>
-    </div>
-  )
-}
-
 /**
  * 把一条消息的部件序列排成一段段：**相邻的过程件**（思考 / 工具调用 / 注入的提示词模块）
  * 连成的候选组，以及其余独立成条的东西（正文、运行时提示）。归组规则本身是纯函数、
@@ -951,4 +845,4 @@ function TextBlock({ text, streaming = false }: { text: string; streaming?: bool
   )
 }
 
-export { QuoteChip, MessageActions, EditBox, Parts, TextBlock, ParagraphBlock }
+export { QuoteChip, MessageActions, Parts, TextBlock, ParagraphBlock, ChipText }

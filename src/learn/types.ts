@@ -779,6 +779,12 @@ export interface FileNodeEntity {
    */
   cachedAt?: number
 
+  /**
+   * 用户是否手动重命名/自定义了标题。
+   * 为 false 或 undefined 时，引用文件或打开网页后会自动回填文件名或网页实际 title。
+   */
+  titleCustomized?: boolean
+
   createdAt: number
   updatedAt: number
 }

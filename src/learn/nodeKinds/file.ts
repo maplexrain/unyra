@@ -92,6 +92,7 @@ export class FileGNode extends GNode {
     if (typeof input.pureMode === 'boolean') patch.pureMode = input.pureMode
     if (typeof input.cachedContent === 'string') patch.cachedContent = input.cachedContent
     if (typeof input.cachedAt === 'number') patch.cachedAt = input.cachedAt
+    if (typeof input.titleCustomized === 'boolean') patch.titleCustomized = input.titleCustomized
 
     const r = updateFileNode(this.ctx.store(), this.uuid, patch, Date.now())
     if ('error' in r) return { error: r.error }

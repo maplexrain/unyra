@@ -19,11 +19,6 @@ function TestHost(props: Partial<MessageListProps>) {
     loopLabel: '',
     flashId: null,
     msgRefs: { current: new Map() },
-    editing: null,
-    setEditing: vi.fn(),
-    saveEdit: vi.fn(),
-    confirmDel: null,
-    clickDelete: vi.fn(),
     setBubblePreview: vi.fn(),
     ...props,
   })

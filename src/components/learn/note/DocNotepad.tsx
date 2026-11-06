@@ -83,7 +83,7 @@ export const DocNotepadRow = memo(function DocNotepadRow({
   return (
     <div
       data-notepad-id={item.id}
-      className="group relative my-2 rounded-none border-0 bg-line/25 px-3 py-2 transition-colors hover:bg-line/35 dark:bg-card/50 dark:hover:bg-card/70"
+      className="group relative my-2 rounded-none border-0 bg-ink/[0.04] px-3 py-2 transition-colors hover:bg-ink/[0.07]"
     >
       <div className="mb-1 flex items-center gap-1.5 select-none">
         {/* 拖动手柄：支持改变便签在文章中的插入位置 */}
@@ -96,7 +96,7 @@ export const DocNotepadRow = memo(function DocNotepadRow({
           <GripVertical size={13} />
         </div>
 
-        <StickyNote size={13} className="shrink-0 text-seal/80" />
+        <StickyNote size={13} className="shrink-0 text-ink-soft/70" />
         <span className="text-[11px] font-medium text-ink-soft">{t('随文笔记')}</span>
 
         <button

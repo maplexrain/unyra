@@ -88,11 +88,6 @@ export function useMessageList({
   loopLabel,
   flashId,
   msgRefs,
-  editing,
-  setEditing,
-  saveEdit,
-  confirmDel,
-  clickDelete,
   onResumeNotice,
   setBubblePreview,
   onOpenFile,
@@ -190,13 +185,8 @@ export function useMessageList({
             prelude={seg.prelude}
             faded={seg.at < summaryStart}
             flash={flashId === m.id}
-            confirming={confirmDel === m.id}
-            editingText={editing?.id === m.id ? editing.text : null}
             msgRefs={msgRefs}
             onResumeNotice={onResumeNotice}
-            onSaveEdit={saveEdit}
-            onDelete={clickDelete}
-            setEditing={setEditing}
             setBubblePreview={setBubblePreview}
             onOpenFile={onOpenFile}
             goalId={goalId}

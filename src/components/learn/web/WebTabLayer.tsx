@@ -1040,7 +1040,7 @@ function WebPage({
   fileNode?: FileNodeEntity
   onAutoCache?: (
     nodeId: string,
-    patch: { domFilter?: string; whitelist?: string[]; blacklist?: string[]; pureMode?: boolean; cachedContent?: string; cachedAt?: number },
+    patch: { domFilter?: string; whitelist?: string[]; blacklist?: string[]; pureMode?: boolean; cachedContent?: string; cachedAt?: number; title?: string },
   ) => void
   pendingJumpsRef?: { current: Map<string, string> }
   onDomMutation?: (tabId: string) => void
@@ -1115,6 +1115,9 @@ function WebPage({
         onMeta(id, { title })
         const currentUrl = m?.url || tab.ref.url
         if (currentUrl) updateWebHistoryMeta(currentUrl, { title })
+        if (fileNode && !fileNode.titleCustomized) {
+          onAutoCache?.(fileNode.id, { title })
+        }
       }
     }
     const onFavicon = (e: Event): void => {

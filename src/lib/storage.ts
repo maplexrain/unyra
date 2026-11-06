@@ -439,6 +439,21 @@ export async function writeUserText(rel: string, content: string): Promise<boole
   return p ? writeText(p, content) : false
 }
 
+export async function readUserJson<T>(rel: string): Promise<T | null> {
+  const text = await readUserText(rel)
+  if (!text) return null
+  try {
+    return JSON.parse(text) as T
+  } catch (err) {
+    console.warn('[storage] User JSON 解析失败：', rel, err)
+    return null
+  }
+}
+
+export async function writeUserJson(rel: string, data: unknown): Promise<boolean> {
+  return writeUserText(rel, `${JSON.stringify(data, null, 2)}\n`)
+}
+
 export async function readUserImage(rel: string): Promise<string | null> {
   const p = userPath(rel)
   return p ? readImage(p) : null

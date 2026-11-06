@@ -23,17 +23,6 @@ export interface MessageListProps {
   flashId: string | null
   /** 每条消息的 DOM：定位条与缩放都要用 */
   msgRefs: React.RefObject<Map<string, HTMLDivElement>>
-  /** 正在编辑的那条消息（null = 没在编辑） */
-  editing: { id: string; text: string } | null
-  setEditing: React.Dispatch<React.SetStateAction<{ id: string; text: string } | null>>
-  /**
-   * 保存编辑：id 与文本由消息行自己带上来（不是从「正在编辑」那份状态里读）。
-   * 这样它的身份可以恒定，memo 过的消息行才不会因为「有人在打字」而整列重渲染——见 AgentPanel。
-   */
-  saveEdit: (id: string, text: string) => void
-  /** 待确认删除的那条消息（再点一次才真删） */
-  confirmDel: string | null
-  clickDelete: (id: string) => void
   /** 点中断说明旁的「继续」：恢复被中断的一轮（身份恒定，见 AgentPanel） */
   onResumeNotice?: () => void
   setBubblePreview: React.Dispatch<React.SetStateAction<MessageImage | null>>

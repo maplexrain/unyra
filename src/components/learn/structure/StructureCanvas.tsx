@@ -52,9 +52,9 @@ import type { HTMLAttributes, ReactNode } from 'react'
 import { Check, ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, FolderTree, Pencil, Trash2, X } from 'lucide-react'
 import type { FileNodeKind, LearnStore } from '../../../learn/types'
 import { FILES_DIR } from '../../../learn/layout'
-import { sanitizeFileName } from '../../../learn/fileNodes'
+import { sanitizeFileName, uploadGoalFileWithHash } from '../../../learn/fileNodes'
 import { goalDirOf } from '../../../learn/static/location'
-import { writeUserBinary, revealUserPath } from '../../../lib/storage'
+import { writeUserBinary } from '../../../lib/storage'
 import type { ExamActions, NodeDocActions } from '../explorer/types'
 import { locateUuid, outlineUuid, docIdOfOutlineUuid, type GNodeKind } from '../../../learn/nodeKinds'
 import { inferPathKind, resolveProjectRoot, sortProjectEntries } from '../../../learn/projects'
@@ -123,7 +123,7 @@ export interface StructureCanvasProps {
     at?: { x: number; y: number },
     extra?: Record<string, unknown>,
   ) => { uuid: string; title?: string } | { error: string }
-  onBindFile?: (nodeUuid: string, patch: { fileKind?: FileNodeKind; url?: string; title?: string }) => ChannelResult
+  onBindFile?: (nodeUuid: string, patch: { fileKind?: FileNodeKind; url?: string; title?: string; titleCustomized?: boolean }) => ChannelResult
   /** 删除节点（统一通道：删谁只删谁） */
   onDeleteNode?: (uuid: string) => ChannelResult
   /** 连线（双边协商在服务层：大纲↔文档挂层、文档↔挂件绑定） */
@@ -410,6 +410,148 @@ function WheelStop({ className, style, children, ...rest }: HTMLAttributes<HTMLD
 
 
 
+
+
+/**
+ * 节点宇宙中的文件节点内容行：两行结构中的第二行。
+ * 一个响应式地址输入框（自动判断 local/web，无需提交按钮），内部右侧带选择本地文件按钮。
+ * 上传先走 docs/{goal}/files/ 并计算 SHA-256 去重注册，若 title 未手动命名则自动填充文件名。
+ */
+function FileCardRow({
+  card,
+  store,
+  goalId,
+  onBindFile,
+  onToast,
+}: {
+  card: CardView
+  store: LearnStore
+  goalId: string
+  onBindFile?: (nodeUuid: string, patch: { fileKind?: FileNodeKind; url?: string; title?: string; titleCustomized?: boolean }) => unknown
+  onToast?: (msg: string) => void
+}) {
+  const fileEntity = store.fileNodes?.find((f) => f.id === card.uuid)
+  const [urlVal, setUrlVal] = useState(fileEntity?.url ?? '')
+  const timerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    setUrlVal(fileEntity?.url ?? '')
+  }, [fileEntity?.url])
+
+  const commitUrl = (val: string) => {
+    const trimmed = val.trim()
+    const isWeb = /^(https?:\/\/|\/\/)/i.test(trimmed) || trimmed.includes('://')
+    const inferredKind: FileNodeKind = isWeb ? 'web' : 'local'
+    let nextTitle = fileEntity?.title ?? card.title
+
+    // 若未手动命名，自动从 URL 推导并填充 title
+    if (!fileEntity?.titleCustomized) {
+      if (inferredKind === 'local') {
+        const clean = trimmed.replace(/^files\//, '').split('/').pop()
+        if (clean) nextTitle = clean
+      } else if (trimmed) {
+        try {
+          const u = new URL(trimmed.startsWith('//') ? `https:${trimmed}` : (trimmed.includes('://') ? trimmed : `https://${trimmed}`))
+          nextTitle = u.hostname || trimmed
+        } catch {
+          nextTitle = trimmed
+        }
+      }
+    }
+
+    onBindFile?.(card.uuid, {
+      fileKind: inferredKind,
+      url: trimmed,
+      ...(nextTitle !== fileEntity?.title ? { title: nextTitle } : {}),
+    })
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const next = e.target.value
+    setUrlVal(next)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = window.setTimeout(() => {
+      commitUrl(next)
+    }, 280)
+  }
+
+  const handleBlur = () => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    commitUrl(urlVal)
+  }
+
+  const handlePickLocalFile = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      try {
+        const buffer = await file.arrayBuffer()
+        const res = await uploadGoalFileWithHash(store, goalId, {
+          name: file.name,
+          data: buffer,
+          mimeType: file.type,
+        })
+        if ('error' in res) {
+          onToast?.(res.error)
+          return
+        }
+        setUrlVal(res.url)
+        const nextTitle = fileEntity?.titleCustomized ? fileEntity.title : file.name
+        onBindFile?.(card.uuid, {
+          fileKind: 'local',
+          url: res.url,
+          title: nextTitle,
+        })
+        if (res.isDuplicate) {
+          onToast?.(t('检测到相同文件已存在，已自动复用去重'))
+        }
+      } catch (err) {
+        console.error('上传文件失败', err)
+        onToast?.(t('文件上传失败'))
+      }
+    }
+    input.click()
+  }
+
+  const isWeb = fileEntity?.fileKind === 'web' || /^(https?:\/\/|\/\/)/i.test(urlVal) || urlVal.includes('://')
+
+  return (
+    <div className="px-2.5 pb-2">
+      <div className="relative flex items-center">
+        <input
+          type="text"
+          value={urlVal}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              handleBlur()
+            }
+          }}
+          placeholder={t('输入文件路径或网址...')}
+          title={urlVal || t('输入文件路径 (files/...) 或网址 (http/https)...')}
+          className={`w-full rounded-md border border-line/60 bg-line/25 py-1 pl-2 pr-7 text-[11px] text-ink placeholder:text-ink-faint/45 transition focus:border-seal/50 focus:bg-card focus:outline-hidden ${
+            isWeb ? 'focus:ring-1 focus:ring-indigo-500/30' : 'focus:ring-1 focus:ring-blue-500/30'
+          }`}
+        />
+        <button
+          type="button"
+          onClick={handlePickLocalFile}
+          onPointerDown={(e) => e.stopPropagation()}
+          title={t('选择本地文件并上传到 files/ 引用')}
+          className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-seal cursor-pointer"
+        >
+          <FolderOpen size={12} />
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export const StructureCanvas = memo(function StructureCanvas({
   store,
@@ -1424,6 +1566,13 @@ export const StructureCanvas = memo(function StructureCanvas({
 
   const saveRename = useCallback(
     (card: CardView, to: string) => {
+      if (card.kind === 'file') {
+        if (onBindFile) {
+          report(onBindFile(card.uuid, { title: to.trim(), titleCustomized: true }))
+        }
+        setMenu(null)
+        return
+      }
       if (!onRenameNote || card.kind !== 'note') {
         setMenu(null)
         return
@@ -3105,65 +3254,18 @@ export const StructureCanvas = memo(function StructureCanvas({
                 </div>
               ) : card.kind === 'file' ? (
                 /*
-                  文件卡：展示文件类型（本地/网页）与绑定 URL/文件路径。
-                  点击本地文件可在文件管理器中定位，点击网页可一键跳转。
-                  提供「设置」按钮允许编辑绑定信息。
+                  文件卡：两行结构。
+                  第一行 title，第二行响应式输入框（支持文件/网页响应式判断，无提交按钮），
+                  内部右侧带选择本地文件按钮（先上传到 files/ 并注册清单，含 SHA-256 去重，然后引用）。
+                  引用文件或网页后若 title 未手动命名则自动填充文件名或网页实际 title。
                 */
-                <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                  <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-                    <span
-                      className={`shrink-0 rounded px-1 py-[1px] text-[9px] font-semibold ${
-                        card.file?.fileKind === 'web'
-                          ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
-                          : 'bg-blue-500/15 text-blue-700 dark:text-blue-300'
-                      }`}
-                    >
-                      {card.file?.fileKind === 'web' ? t('网页') : t('本地')}
-                    </span>
-                    <span
-                      title={card.file?.url || t('未设置文件或网址')}
-                      className="min-w-0 flex-1 truncate text-[11px] text-ink-soft cursor-pointer hover:underline hover:text-seal"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        if (onOpenFileNode) {
-                          onOpenFileNode(card.uuid)
-                        } else if (card.file?.url) {
-                          if (card.file.fileKind === 'web') {
-                            window.open(card.file.url, '_blank')
-                          } else {
-                            const goalDir = goalDirOf(store, goalId)
-                            if (goalDir) {
-                              const fileName = card.file.url.replace(/^files\//, '')
-                              void revealUserPath(`${goalDir}/${FILES_DIR}/${fileName}`)
-                            }
-                          }
-                        }
-                      }}
-                    >
-                      {card.file?.url ? card.file.url.split('/').pop() || card.file.url : t('未设置')}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    title={t('修改文件节点绑定的文件或网址')}
-                    className="shrink-0 rounded bg-line/60 px-2 py-0.5 text-[11px] text-ink-soft hover:bg-line/90 transition cursor-pointer"
-                    onClick={(e) => {
-                      const r = e.currentTarget.getBoundingClientRect()
-                      const fileEntity = store.fileNodes?.find((f) => f.id === card.uuid)
-                      setMenuFileKind(fileEntity?.fileKind ?? 'local')
-                      setMenuText(fileEntity?.url ?? '')
-                      setMenuTitleText(fileEntity?.title ?? '')
-                      setMenu({
-                        x: Math.min(r.right, window.innerWidth - 280),
-                        y: Math.min(r.bottom + 6, window.innerHeight - 220),
-                        uuid: card.uuid,
-                        mode: 'fileEdit',
-                      })
-                    }}
-                  >
-                    {t('设置')}
-                  </button>
-                </div>
+                <FileCardRow
+                  card={card}
+                  store={store}
+                  goalId={goalId}
+                  onBindFile={onBindFile}
+                  onToast={onToast}
+                />
               ) : card.kind === 'project' ? (
                 /*
                   项目卡：路径行（拼法徽标 + 路径 + 展开钮）+ 懒加载的目录树。
