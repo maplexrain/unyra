@@ -337,123 +337,13 @@ export function buildApi(
     }
   }
 
-  // 内置浏览器（browser.*，见 learn/web/browserOps）：界面上开着的网页页签的打开、
-  // 管理、快照/阅读与受控 DOM 操作（看=snapshot/read，动手=dom，突出=point）。
-  // 依赖界面注入（webview 元素在渲染层），未注入就没有这一组。
+  // 内置浏览器（browser.*，见 learn/web/browserOps）：网页页签的打开、管理
   if (opts.browser) {
     const browser = opts.browser
     wrapApi(api, 'browser.open', (args) => browser.open(asText(args[0]).trim()), log)
     wrapApi(api, 'browser.tabs', () => browser.tabs(), log)
     wrapApi(api, 'browser.activate', (args) => browser.activate(asText(args[0]).trim()), log)
     wrapApi(api, 'browser.close', (args) => browser.close(Array.isArray(args[0]) ? (args[0].map((v) => asText(v).trim()) as string[]) : asText(args[0]).trim()), log)
-    wrapApi(api, 'browser.snapshot', (args) => {
-      const tabId = args.length ? asText(args[0]).trim() || undefined : undefined
-      return browser.snapshot(tabId, asRecord(args[1]))
-    }, log)
-    /*
-     * 带目标的方法（point）收两种写法：方法(目标) 与 方法(tabId, 目标)。
-     * tabId 一定是 tabs() 回的 w: 开头的 id，而 CSS 选择器不可能以 w: 开头，
-     * 凭这个区分第一参是不是页签。
-     */
-    const tabIdOf = (v: unknown): string | undefined =>
-      typeof v === 'string' && v.startsWith('w:') ? v : undefined
-    /** 日志/直发这组**必须显式给 tabId**（跟着页签走，不吃焦点默认）——少参数就指路 */
-    const requireTabId = (v: unknown, what: string): string => {
-      const id = tabIdOf(v)
-      if (!id) throw new Error(what + ' 必须显式给 tabId（browser.tabs() 里查的 w: 开头页签号）——日志与请求都跟着页签走，不吃焦点默认')
-      return id
-    }
-    const targetOf = (v: unknown): string | { ref: number } => {
-      if (typeof v === 'string' && v.trim()) return v.trim()
-      const o = asRecord(v)
-      if (typeof o.ref === 'number') return { ref: o.ref }
-      throw new Error('目标要给 browser.snapshot 清单里的 { ref } 或 CSS 选择器字符串')
-    }
-    wrapApi(api, 'browser.point', (args) => {
-      const tabId = tabIdOf(args[0])
-      const rest = tabId ? args.slice(1) : args
-      return browser.point(tabId, targetOf(rest[0]))
-    }, log)
-    // dom 两种写法：dom(ref, op, arg?) 与 dom(tabId, ref, op, arg?)；ref 认数字或 { ref }（与 text/point 一致）
-    wrapApi(api, 'browser.dom', (args) => {
-      const tabId = tabIdOf(args[0])
-      const rest = tabId ? args.slice(1) : args
-      const refRaw = rest[0]
-      const ref =
-        typeof refRaw === 'object' && refRaw !== null
-          ? Number(asRecord(refRaw).ref)
-          : Number(refRaw)
-      if (!Number.isFinite(ref)) throw new Error('ref 要给编号数字或 { ref }（browser.snapshot 清单里的，两种写法都认）')
-      const arg = rest[2] === undefined ? undefined : asText(rest[2])
-      return browser.dom(tabId, ref, asText(rest[1]).trim(), arg)
-    }, log)
-    wrapApi(api, 'browser.read', (args) => browser.read(args.length ? asText(args[0]).trim() || undefined : undefined), log)
-    wrapApi(api, 'browser.capture', (args) => browser.capture(args.length ? asText(args[0]).trim() || undefined : undefined), log)
-    /*
-     * 日志与直发这四条**必须显式给 tabId**（跟着页签走，不吃焦点默认）；
-     * fetch 的目标认两种写法：网址字符串，或 { reqId }（重放网络清单里捕获的请求）。
-     */
-    wrapApi(api, 'browser.logs', (args) => browser.logs(requireTabId(args[0], 'browser.logs'), asRecord(args[1])), log)
-    wrapApi(api, 'browser.logDetail', (args) => {
-      // 条目号照抄清单行也认：96 / 'n96' / 'c96'
-      const raw = args[1]
-      const seq = typeof raw === 'number' ? raw : Number(String(asText(raw)).replace(/^[nc]/i, ''))
-      if (!Number.isFinite(seq)) throw new Error('seq 要给清单行里的条目号（96、"n96" 都行）')
-      return browser.logDetail(requireTabId(args[0], 'browser.logDetail'), seq, asRecord(args[2]))
-    }, log)
-    wrapApi(api, 'browser.fetch', (args) => {
-      const target = typeof args[1] === 'string' ? args[1].trim() : asRecord(args[1])
-      if (typeof target !== 'string' && !('reqId' in (target as Record<string, unknown>))) {
-        throw new Error('目标要给 http(s) 网址，或 { reqId }（browser.logs 网络清单里的条目号）')
-      }
-      const o = asRecord(args[2])
-      const toTmp = typeof o.toTmp === 'string' && o.toTmp.trim() ? o.toTmp.trim() : undefined
-      if (toTmp) {
-        // 全文落 tmp：上限放宽到 256k（页面侧同步放宽采文本上限），正文不进上下文
-        o.maxBody = 262_144
-        o.maxText = 262_144
-      }
-      const p = browser.fetch(requireTabId(args[0], 'browser.fetch'), target as string | { reqId: number }, o)
-      if (!toTmp) return p
-      return Promise.resolve(p).then((r) => {
-        const rec = r as Record<string, unknown>
-        const body = typeof rec.body === 'string' ? rec.body : undefined
-        if (body === undefined) return r
-        if (!tmp) return { ...rec, note: 'toTmp 需要临时变量（当前注入里没有 tmp）——去掉 toTmp 直接拿 body' }
-        tmp.set(toTmp, rec)
-        return {
-          status: rec.status,
-          ...(rec.contentType ? { contentType: rec.contentType } : {}),
-          ...(rec.chars ? { chars: rec.chars } : {}),
-          ...(rec.replayed ? { replayed: rec.replayed } : {}),
-          tmp: toTmp,
-          preview: body.slice(0, 400),
-          note:
-            '全文已落 tmp.' + toTmp + '（含 status/contentType/body）：在代码里 api.tmp.get(\'' + toTmp + '\') 取出来 JSON.parse 解析，只把提炼结果 return——别把全文交回来',
-        }
-      })
-    }, log)
-    wrapApi(api, 'browser.waitFor', (args) => {
-      const req = asRecord(args[1])
-      return browser.waitFor(requireTabId(args[0], 'browser.waitFor'), req)
-    }, log)
-    wrapApi(api, 'browser.record', (args) => {
-      const action = asText(args[1]).trim()
-      if (action !== 'start' && action !== 'stop') throw new Error('record 的动作只有 "start" / "stop"')
-      return browser.record(requireTabId(args[0], 'browser.record'), action, asRecord(args[2]))
-    }, log)
-    // 区域文本：目标认 '选择器' 或 { ref }（同 point 的双写法，但不吃焦点默认）
-    wrapApi(api, 'browser.text', (args) => {
-      const target = typeof args[1] === 'string' ? args[1].trim() : asRecord(args[1])
-      if (typeof target !== 'string' && !('ref' in (target as Record<string, unknown>))) {
-        throw new Error('目标要给 snapshot 清单里的 { ref } 或 CSS 选择器')
-      }
-      return browser.text(requireTabId(args[0], 'browser.text'), target as string | { ref: number }, asRecord(args[2]))
-    }, log)
-    wrapApi(api, 'browser.scroll', (args) => {
-      const req = asRecord(args[1])
-      return browser.scroll(requireTabId(args[0], 'browser.scroll'), req)
-    }, log)
   }
 
   // 外部 MCP 服务（mcp.*，见 agent/mcp/ops）：用户配置的真实外部工具。

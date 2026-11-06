@@ -693,17 +693,9 @@ export interface BrowserTabInfo {
   group: string
 }
 
-/** point / dom 的目标：snapshot 清单里的 { ref } 或 CSS 选择器 */
-export type BrowserTarget = string | { ref: number }
-
 /**
- * 内置浏览器（browser.*）的宿主实现（见 learn/web/browserOps 与 learn/web/webviewRegistry）。
- *
- * **看 = snapshot（元素清单）/ read（整页 markdown）/ capture（截图，最后手段），
- * 动手 = dom（对 ref 的受控 DOM 操作），指给用户看 = point（滚动 + 高亮）**——
- * 没有任意执行页面 JS 的口子（read / eval 试过一轮，结果不可控，已撤）。
- * tabId 省略 = 「焦点格正看着的那个网页」；指名不存在时抛错，错误里引导先 browser.tabs()。
- * 返回对象会原样序列化给模型，文字要写成人话。
+ * 内置浏览器（browser.*）的宿主实现（见 learn/web/browserOps）。
+ * 专注于网页页签生命周期（open / tabs / activate / close）。
  */
 export interface BrowserOps {
   /** 开一个网页页签（纯关键词当搜索词处理）；回 tabId，返回时首屏基本加载完 */
@@ -714,69 +706,6 @@ export interface BrowserOps {
   activate(tabId: string): { ok: true }
   /** 关掉某个页签（不弹确认）；给数组就批量关（试错页签收尾用——用户自己开的别关） */
   close(tabId: string | string[]): { ok: true }
-  /**
-   * 页面快照：可交互元素列成**带 ref 的清单**（role + 名称 + 输入值，≤200 条）——
-   * 「看」的文本通道，比截图省；DOM 变了 ref 会过期，重新 snapshot 即可。
-   * 过滤参数：role（只要这个角色）、contains（名称含这段文字）、limit（最多几条）——
-   * 大页面上别整份捞，5k token 换 2 条信息是真实发生过的账。
-   */
-  snapshot(
-    tabId?: string,
-    opts?: Record<string, unknown>,
-  ): Promise<{
-    elements: Array<{ ref: number; role: string; name: string; value?: string }>
-    truncated?: boolean
-  }>
-  /** 页面像锚点跳转一样滚到目标元素，并注入短暂的脉冲高亮把它标出来（指给用户看） */
-  point(tabId: string | undefined, target: BrowserTarget): Promise<{ ok: true }>
-  /**
-   * 对 snapshot 清单里的 ref 做受控 DOM 操作：op = "click" / "fill"(文字，触发
-   * input/change，React 受控输入也认) / "focus" / "submit"(所在表单) / "press"(键盘键，
-   * 如 "Enter"——fill+submit 走不通的搜索框靠它) / "text"(元素文字，≤4000 字) / "attr"(属性名)。
-   * ref 认编号数字或 { ref } 两种写法（与 text/point 一致）。result 是操作自己的小结果。
-   */
-  dom(tabId: string | undefined, ref: number | { ref: number }, op: string, arg?: string): Promise<{ ok: true; result?: unknown }>
-  /** 整页转 markdown（与 web.webFetch 同一条管线：短的回全文，长的落盘回大纲 + uuid）；
-   *  opts { maxChars?, offset? } 把回文切段（与整篇读取同一哲学） */
-  read(tabId?: string, opts?: Record<string, unknown>): Promise<unknown>
-  /** 页面截图 → 资源库 + 挂到下一跳（与 ui.screenshot 同一条通道）——snapshot/read 拿不到时才用 */
-  capture(tabId?: string): Promise<{ ok: true; note?: string; images: MessageImage[] } | { ok: false; error: string }>
-  /**
-   * 页签日志清单（console + 网络请求，折叠去重，失败永不折叠；行自带 [c#]/[n#] 条目号）。
-   * **tabId 必给**：日志跟着页签走，没有焦点默认。level 默认 error；only:'api' 只看 XHR/Fetch、
-   * 'fail' 只看失败；afterSeq 是无状态分页游标。
-   */
-  logs(tabId: string, opts?: Record<string, unknown>): Promise<unknown>
-  /** 单条日志详情：console 给完整文本与调用栈，网络给请求头/postData/响应体（截断）。
-   *  seq 认清单行里的条目号：96、'n96'、'c96' 都行 */
-  logDetail(tabId: string, seq: number | string, opts?: Record<string, unknown>): Promise<unknown>
-  /**
-   * 页面上下文直发 HTTP（继承该页签的登录态）：target 是 http(s) 网址，或 { reqId }（网络清单
-   * 里的条目号——原样重放页面发过的请求，headers/postData 用捕获的，覆盖项落在其上）。
-   * **请求级失败不抛异常**：没拿到响应（CSP/CORS/超时）回 { status: 0, failed: true, reason }，
-   * 按值分支，不用 try/catch；只有参数/页签错误才抛。HTTP 4xx/5xx 是正常回执。
-   * 长响应分段读：{ offset, maxBody } → { body, chars, nextOffset }。
-   */
-  fetch(
-    tabId: string,
-    target: string | { reqId: number },
-    opts?: Record<string, unknown>,
-  ): Promise<unknown>
-  /** 日志录制：action = "start" 钉水位 / "stop" 回这段区间的折叠清单并清水位——「发起录制 →
-   *  ask 用户做 agent 做不了的操作 → 停止录制 → 分析」这条链的骨架 */
-  record(tabId: string, action: string, opts?: Record<string, unknown>): Promise<unknown>
-  /** 区域文本：按 选择器字符串 / { ref } 取**渲染后**的 innerText（≤ maxChars，默认 4000）——
-   *  SPA 上唯一的文本通道，提取管线失灵时靠它而不是截图 */
-  text(tabId: string, target: string | { ref: number }, opts?: Record<string, unknown>): Promise<unknown>
-  /** 滚页面（无限滚动信息流的引擎）：{ by: 像素 } 或 { to: "top"|"bottom"|选择器 } 或 { ref }；
-   *  回滚动后的几何（scrollY/scrollHeight/atBottom——判断要不要等新内容） */
-  scroll(tabId: string, req: Record<string, unknown>): Promise<unknown>
-  /**
-   * 等条件成立（250ms 轮询，默认 8s、上限 30s）——「wait 一下、再取一次、还是空」循环的替代品。
-   * 谓词全是固定原语：{ selector } 元素出现 / { text } 正文含这段字 / { urlIncludes } 地址包含 /
-   * { networkIdle: true } 请求挂起清零 / { load: true } 加载完。回 { matched, waitedMs, url }。
-   */
-  waitFor(tabId: string, req: Record<string, unknown>): Promise<unknown>
 }
 
 /**

@@ -200,7 +200,7 @@ describe('首轮全量提示词（包含所有 execute API 与全量工作流）
     expect(system).toContain('node.list()')
     expect(system).toContain('node.get(uuid)')
     expect(system).toContain('workspace.write')
-    expect(system).toContain('browser.snapshot')
+    expect(system).toContain('browser.open')
     expect(system).toContain('沙箱全部 API 完整参考手册与示例')
   })
 

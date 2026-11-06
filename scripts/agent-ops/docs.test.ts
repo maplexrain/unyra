@@ -260,18 +260,6 @@ export async function apiNameTests() {
     'browser.tabs': '',
     'browser.activate': "'w:probe'",
     'browser.close': "'w:probe'",
-    'browser.snapshot': "''",
-    'browser.point': "'w:probe', { ref: 1 }",
-    'browser.dom': "'w:probe', 1, 'click'",
-    'browser.read': "''",
-    'browser.capture': "''",
-    'browser.logs': "'w:probe'",
-    'browser.logDetail': "'w:probe', 1",
-    'browser.fetch': "'w:probe', 'https://example.com/api'",
-    'browser.record': "'w:probe', 'stop'",
-    'browser.text': "'w:probe', { ref: 1 }",
-    'browser.scroll': "'w:probe', { by: 800 }",
-    'browser.waitFor': "'w:probe', { selector: '.done' }",
     // 外部 MCP 服务：探针里给一份假的宿主（真实现见 agent/mcp/ops）
     'mcp.list': '',
     'mcp.discover': "'探针服务'",
@@ -464,7 +452,6 @@ export async function apiNameTests() {
   let sawOpenSuper: string | null = null
   // browser 桩：名单检查只问「这九个 api 在不在」，行为断言看下面的 sawBrowserXxx
   let sawBrowserOpen = ''
-  let sawBrowserDom = ''
   let sawBrowserActivate = ''
   let sawBrowserClose = ''
   // mcp 桩：同样只问「这三个 api 在不在」，行为断言看下面的 sawMcpCall
@@ -494,19 +481,6 @@ export async function apiNameTests() {
       tabs: () => ({ tabs: [{ tabId: 'w:probe', url: 'https://example.com', title: '示例页', active: true, group: 'g1' }] }),
       activate: (tabId: string) => { sawBrowserActivate = tabId; return { ok: true } },
       close: (tabId: string) => { sawBrowserClose = tabId; return { ok: true } },
-      snapshot: async () => ({ elements: [{ ref: 1, role: 'button', name: '提交' }] }),
-      point: async () => ({ ok: true }),
-      dom: async (_tabId: string | undefined, ref: number, op: string) => { sawBrowserDom = ref + ':' + op; return { ok: true } },
-      read: async () => ({ ok: true, uuid: 'deadbeef', url: 'https://example.com', title: '示例页', chars: 3, text: '正文' }),
-      capture: async () => ({ ok: true, note: '（桩）', images: [] }),
-      logs: async () => ({ lines: ['[n1] GET https://example.com/api → 200'], shown: 1, totalConsole: 0, totalNetwork: 1, latestSeq: 1, truncated: false }),
-      logDetail: async (_tabId: string, seq: number) => ({ detail: { kind: 'network', seq, method: 'GET', url: 'https://example.com/api', status: 200, type: 'XHR' } }),
-      fetch: async () => ({ status: 200, body: '{"ok":true}' }),
-      record: async (_tabId: string, action: string) =>
-        action === 'start' ? { ok: true as const, action: 'start' as const, since: 0 } : { lines: [], shown: 0, totalConsole: 0, totalNetwork: 0, latestSeq: 0, truncated: false, action: 'stop' as const },
-      text: async () => ({ text: '正文', chars: 2 }),
-      scroll: async () => ({ ok: true as const, scrollY: 800, scrollHeight: 4000, viewport: 900, atBottom: false, atTop: false }),
-      waitFor: async () => ({ ok: true as const, matched: 'selector' as const, waitedMs: 250, url: 'https://example.com' }),
     },
     // 外部 MCP 服务：桩（名单检查只问「这三个 api 在不在」；真行为见 tests/agentSkillsAndMcp.test.ts）
     mcp: {
@@ -574,11 +548,10 @@ export async function apiNameTests() {
   ok(bogusHelp.content.includes('await api.__help()'), '查不存在的组给出指路而不是空话', bogusHelp.content.slice(0, 120))
   ok(
     sawBrowserOpen === 'https://example.com' &&
-      sawBrowserDom === '1:click' &&
       sawBrowserActivate === 'w:probe' &&
       sawBrowserClose === 'w:probe',
-    'browser 这一组真的到了宿主（开站 / dom 操作 / 切页签 / 关页签）',
-    { sawBrowserOpen, sawBrowserDom },
+    'browser 这一组真的到了宿主（开站 / 切页签 / 关页签）',
+    { sawBrowserOpen, sawBrowserActivate, sawBrowserClose },
   )
   ok(
     sawMcpCall === '探针服务:probe_tool:{"q":"hello"}',

@@ -2288,28 +2288,6 @@ export default function LearnWorkspace({
       activateTab,
       closeTab,
       webMeta,
-      snapshot: (wcId) =>
-        isElectron() ? native().browser.snapshot(wcId) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      point: (wcId, target) =>
-        isElectron() ? native().browser.point(wcId, target) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      domOp: (wcId, ref, op, arg) =>
-        isElectron() ? native().browser.domOp(wcId, ref, op, arg) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      readHtml: (wcId) =>
-        isElectron() ? native().browser.readHtml(wcId) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      logs: (wcId, opts) =>
-        isElectron() ? native().browser.logs(wcId, opts) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      logDetail: (wcId, seq, opts) =>
-        isElectron() ? native().browser.logDetail(wcId, seq, opts) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      pageFetch: (wcId, req) =>
-        isElectron() ? native().browser.pageFetch(wcId, req) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      record: (wcId, action, opts) =>
-        isElectron() ? native().browser.record(wcId, action, opts) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      text: (wcId, target) =>
-        isElectron() ? native().browser.text(wcId, target) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      scroll: (wcId, req) =>
-        isElectron() ? native().browser.scroll(wcId, req) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      waitFor: (wcId, req) =>
-        isElectron() ? native().browser.waitFor(wcId, req) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
     }
   })
 

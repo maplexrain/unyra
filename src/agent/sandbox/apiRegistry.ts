@@ -378,27 +378,13 @@ exam.* 只管**作答侧**：交卷后 exam.read() 看作答，exam.grade(...) �
   g(
     'browser',
     '内置浏览器',
-    '操作界面上开着的网页页签：打开、快照、受控 DOM、读取、截图、日志、直发请求。',
-    `看页面按便宜程度排：snapshot（带 ref 的元素清单）→ read（整页 Markdown）→ capture（截图，最后手段）。
-动手只走 dom(tabId, ref, op)；没有执行任意页面 JS 的通道。
-这是用户的真实登录会话：提交/支付/删除/发消息先 api.ask 确认。`,
+    '操作界面上开着的网页页签：打开、查看、切换、关闭。',
+    '管理工作区中的网页页签生命周期。',
     [
-      a('open', 'browser.open(url)', '开一个网页页签', '纯关键词会当搜索词；返回 tabId，首屏已基本加载完。先 tabs 查重，别重复开同一网址。', `const tab = await api.browser.open('https://example.com')`),
-      a('tabs', 'browser.tabs()', '列存活页签', '开工第一步；之后操作按 tabId 指名。', `const tabs = await api.browser.tabs()`),
-      a('activate', 'browser.activate(tabId)', '切到某个页签', '目标网址已经开着就 activate，不要 open。', `await api.browser.activate(tabId)`),
-      a('close', 'browser.close(tabId | tabId[])', '关闭网页页签', '用户自己开的别动；收尾时关掉中间搜索页/试错页，留下用户可能还要看的。', `await api.browser.close(tabId)`),
-      a('snapshot', 'browser.snapshot(tabId?, { role?, contains?, limit? }?)', '可交互元素清单', '带 ref，认结构、找元素全靠它；大页面一定给过滤。DOM 变了 ref 会过期，重新 snapshot。', `const snap = await api.browser.snapshot(tabId, { contains: '登录', limit: 30 })`),
-      a('point', 'browser.point(tabId?, { ref } | 选择器)', '把元素指给用户看', '页面滚到目标并短暂高亮；程序化点击不生效时请用户手点。', `await api.browser.point(tabId, { ref: 12 })`),
-      a('dom', 'browser.dom(tabId?, ref, op, arg?)', '受控 DOM 操作', 'op: click / fill / focus / submit / text / attr。fill 触发 input/change，React 受控输入也认。', `await api.browser.dom(tabId, 12, 'fill', '张三')`),
-      a('read', 'browser.read(tabId?, { maxChars?, offset? }?)', '整页转 Markdown', '登录态页面也能读；短的回全文，长的落盘回大纲。续读带 offset。', `const page = await api.browser.read(tabId)`),
-      a('capture', 'browser.capture(tabId?)', '给网页截图', '最后手段：只有布局/视觉必须亲眼看时用；页面还在加载先 wait 800。截图存进资源库并附到下一跳。', `await api.browser.capture(tabId)`),
-      a('logs', 'browser.logs(tabId, { kind?, level?, only?, limit?, afterSeq? }?)', '控制台与网络清单', '动作没生效/页面静默失败先看它；失败永不折叠，每行带条目号。', `const logs = await api.browser.logs(tabId, { level: 'error' })`),
-      a('logDetail', 'browser.logDetail(tabId, seq)', '单条日志/请求详情', '条目号 96、"n96" 都认；网络条目给 url、请求头、postData、响应体。', `const detail = await api.browser.logDetail(tabId, 96)`),
-      a('fetch', 'browser.fetch(tabId, 网址 | { reqId }, { method?, headers?, body?, offset?, maxBody?, toTmp? }?)', '在页面上下文直发 HTTP', '继承该页签登录态；请求级失败回 { status:0, failed:true }，不抛异常。写操作先 ask。', `const r = await api.browser.fetch(tabId, 'https://example.com/api/list')`),
-      a('waitFor', 'browser.waitFor(tabId, { selector?, text?, urlIncludes?, networkIdle?, timeoutMs? }?)', '等条件成立', '比「wait 再取还是空」的循环可靠；返回命中的条件。', `await api.browser.waitFor(tabId, { selector: '.result-list' })`),
-      a('record', 'browser.record(tabId, "start" | "stop")', '录制一段操作区间', 'start 钉水位，stop 回这段区间的折叠清单；配 api.ask 让用户手做登录/验证码。', `await api.browser.record(tabId, 'start')`),
-      a('text', 'browser.text(tabId, { ref } | 选择器, { maxChars? }?)', '取区域渲染文本', 'SPA 上纯 HTML 抓不到正文时用它；≤4000 字，不是截图。', `const text = await api.browser.text(tabId, '.article')`),
-      a('scroll', 'browser.scroll(tabId, { by } | { to } | { ref })', '滚动网页页面', '无限滚动信息流的引擎；看返回的 atBottom，true 就 wait 再滚。ui.scroll 滚的是文档区，别混用。', `await api.browser.scroll(tabId, { by: 800 })`),
+      a('open', 'browser.open(url)', '开一个网页页签', '纯关键词会当搜索词；返回 tabId，首屏已基本加载完。先 tabs 查重，别重复开同一网址。', "const tab = await api.browser.open('https://example.com')"),
+      a('tabs', 'browser.tabs()', '列存活页签', '开工第一步；之后操作按 tabId 指名。', 'const tabs = await api.browser.tabs()'),
+      a('activate', 'browser.activate(tabId)', '切到某个页签', '目标网址已经开着就 activate，不要 open。', 'await api.browser.activate(tabId)'),
+      a('close', 'browser.close(tabId | tabId[])', '关闭网页页签', '用户自己开的别动；收尾时关掉中间搜索页/试错页，留下用户可能还要看的。', 'await api.browser.close(tabId)'),
     ],
   ),
   g(
