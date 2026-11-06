@@ -1,5 +1,5 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import type { AnnotationStyle, DocKind, KnowledgeNode } from '../../learn/types'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { AnnotationStyle, DocKind, DocNotepadItem, KnowledgeNode } from '../../learn/types'
 import type { LocalImageResolver } from '../../lib/docImages'
 import { canAnnotate } from '../../lib/annotation'
 import { renderNote } from '../../lib/markdown'
@@ -101,6 +101,7 @@ interface Props {
   scrollTop?: number
   /** 滚动到哪儿了的上报（上层节流写盘；不写的话下次打开又从头开始） */
   onScrollTop?: (top: number) => void
+  onUpdateNotepads?: (notepads: DocNotepadItem[]) => void
 }
 
 /**
@@ -136,6 +137,7 @@ export default memo(function NodeNote({
   scrollTop,
   onScrollTop,
   outlineSlot,
+  onUpdateNotepads,
 }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   /** 正文滚动容器：标题定位要滚的是它，而不是整个文档区 */
@@ -188,6 +190,50 @@ export default memo(function NodeNote({
     dismiss,
   } = useSelectionMenu({ bodyRef, content, html })
 
+  const notepads = useMemo(() => node.notepads ?? [], [node.notepads])
+
+  const handleInsertNotepad = useCallback(
+    (blockIndex: number) => {
+      const newItem: DocNotepadItem = {
+        id: 'np_' + Math.random().toString(36).slice(2, 10),
+        content: '',
+        blockIndex,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      onUpdateNotepads?.([...notepads, newItem])
+    },
+    [notepads, onUpdateNotepads],
+  )
+
+  const handleUpdateNotepad = useCallback(
+    (id: string, text: string) => {
+      const next = notepads.map((item) =>
+        item.id === id ? { ...item, content: text, updatedAt: Date.now() } : item,
+      )
+      onUpdateNotepads?.(next)
+    },
+    [notepads, onUpdateNotepads],
+  )
+
+  const handleDeleteNotepad = useCallback(
+    (id: string) => {
+      const next = notepads.filter((item) => item.id !== id)
+      onUpdateNotepads?.(next)
+    },
+    [notepads, onUpdateNotepads],
+  )
+
+  const handleMoveNotepad = useCallback(
+    (id: string, targetBlockIndex: number) => {
+      const next = notepads.map((item) =>
+        item.id === id ? { ...item, blockIndex: targetBlockIndex, updatedAt: Date.now() } : item,
+      )
+      onUpdateNotepads?.(next)
+    },
+    [notepads, onUpdateNotepads],
+  )
+
   /*
    * 右键菜单（复制 / 粘贴 / 定位源码）：接线与三个动作的落地见 note/useDocContextMenu。
    * 「粘贴」要拼新正文，就在这里拼完再交给上层——上层只管把它记进暂存区（onEditContent）。
@@ -209,6 +255,7 @@ export default memo(function NodeNote({
     onRevealSource,
     onError: onWarn,
     onCopied: () => onWarn?.(t('已复制为 Markdown')),
+    onInsertNotepad: doc.kind === 'teaching' && onUpdateNotepads ? handleInsertNotepad : undefined,
   })
 
   /*
@@ -384,6 +431,10 @@ export default memo(function NodeNote({
           resolveLocalImage={resolveLocalImage}
           wordCount={wordCount}
           onEditContent={onEditContent}
+          notepads={doc.kind === 'teaching' ? notepads : undefined}
+          onUpdateNotepad={handleUpdateNotepad}
+          onDeleteNotepad={handleDeleteNotepad}
+          onMoveNotepad={handleMoveNotepad}
           // 选词菜单浮在正文这一层上：位置与开合仍由本组件管（见 note/useSelectionMenu）
           overlay={
             menuMounted && (
@@ -421,6 +472,7 @@ export default memo(function NodeNote({
           onPaste={ctxPaste}
           onReveal={ctxReveal}
           onClose={ctxMenuClose}
+          onInsertNotepad={doc.kind === 'teaching' && onUpdateNotepads ? handleInsertNotepad : undefined}
         />
       )}
 

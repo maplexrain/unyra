@@ -254,6 +254,8 @@ export class NodeService {
           title: title || defaultTitle,
           fileKind,
           url,
+          domFilter: typeof input.domFilter === 'string' ? input.domFilter : undefined,
+          pureMode: typeof input.pureMode === 'boolean' ? input.pureMode : undefined,
         },
         Date.now(),
       )

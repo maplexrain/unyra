@@ -31,6 +31,10 @@ export interface DocMenuState {
   loc: SourceSpan | null
   /** 选中的渲染文字（映射失败时复制用它，也是菜单标题里的那句预览） */
   text: string
+  /** 菜单模式：selection 选区菜单，blank 空白处菜单（插入笔记） */
+  mode?: 'selection' | 'blank'
+  /** 当 mode 为 blank 时，鼠标所在位置对应的块索引 */
+  blockIndex?: number
 }
 
 interface Opts {
@@ -46,9 +50,29 @@ interface Opts {
   onError?: (message: string) => void
   /** 复制成功说一句 */
   onCopied?: () => void
+  /** 右键正文空白处插入笔记回调 */
+  onInsertNotepad?: (blockIndex: number) => void
 }
 
-export function useDocContextMenu({ bodyRef, content, onInsert, onRevealSource, onError, onCopied }: Opts) {
+function findTargetBlockIndex(body: HTMLElement, clientY: number): number {
+  const container = (body.querySelector('.markdown-body') as HTMLElement) || body
+  const children = Array.from(container.children).filter(
+    (el) => !el.hasAttribute('data-doc-notepad-slot') && !el.classList.contains('block-notepad-slot'),
+  ) as HTMLElement[]
+  if (children.length === 0) return -1
+  for (let i = 0; i < children.length; i++) {
+    const rect = children[i].getBoundingClientRect()
+    if (i === 0 && clientY < rect.top) {
+      return -1
+    }
+    if (clientY <= rect.bottom) {
+      return i
+    }
+  }
+  return children.length - 1
+}
+
+export function useDocContextMenu({ bodyRef, content, onInsert, onRevealSource, onError, onCopied, onInsertNotepad }: Opts) {
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [menu, setMenu] = useState<DocMenuState | null>(null)
   /**
@@ -73,19 +97,44 @@ export function useDocContextMenu({ bodyRef, content, onInsert, onRevealSource, 
       const body = bodyRef.current
       if (!body || !(e.target instanceof Node) || !body.contains(e.target)) return
       const sel = window.getSelection()
-      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
-      const range = sel.getRangeAt(0)
-      if (!body.contains(range.commonAncestorContainer)) return
-      const text = sel.toString().replace(/\s+/g, ' ').trim()
-      if (!text) return
-      e.preventDefault()
-      // 立刻在渲染 DOM 上映射回源文：菜单一开，选区随时可能被别处的点击弄丢
-      setMenu({ x: e.clientX, y: e.clientY, loc: mapRangeToSource(body, range, content), text })
-      setOpen(true)
+      if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0)
+        if (body.contains(range.commonAncestorContainer)) {
+          const text = sel.toString().replace(/\s+/g, ' ').trim()
+          if (text) {
+            e.preventDefault()
+            // 立刻在渲染 DOM 上映射回源文：菜单一开，选区随时可能被别处的点击弄丢
+            setMenu({
+              x: e.clientX,
+              y: e.clientY,
+              loc: mapRangeToSource(body, range, content),
+              text,
+              mode: 'selection',
+            })
+            setOpen(true)
+            return
+          }
+        }
+      }
+
+      // 没有选区时，若支持插入笔记，则在空白处弹出「插入笔记」菜单
+      if (onInsertNotepad) {
+        e.preventDefault()
+        const blockIndex = findTargetBlockIndex(body, e.clientY)
+        setMenu({
+          x: e.clientX,
+          y: e.clientY,
+          loc: null,
+          text: '',
+          mode: 'blank',
+          blockIndex,
+        })
+        setOpen(true)
+      }
     }
     document.addEventListener('contextmenu', onCtx)
     return () => document.removeEventListener('contextmenu', onCtx)
-  }, [bodyRef, content, setOpen])
+  }, [bodyRef, content, onInsertNotepad, setOpen])
 
   /**
    * 复制：进剪贴板的是**源文**那一截，不是渲染结果——公式在 DOM 里是两份、

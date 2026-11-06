@@ -929,6 +929,23 @@ export interface BrowserScreenshotResult {
   error?: string
 }
 
+export interface BrowserToMarkdownOpts {
+  /** 可选：直接将转换后的 Markdown 写入指定工作区文件（如 'workspace/article.md'），回执仅回字符数与行数，避免大量文本冲击上下文 */
+  saveTo?: string
+  maxChars?: number
+}
+
+export interface BrowserToMarkdownResult {
+  ok: boolean
+  markdown?: string
+  chars?: number
+  lines?: number
+  saved?: boolean
+  path?: string
+  note?: string
+  error?: string
+}
+
 export interface BrowserEvalOpts {
   /** 可选：将代码执行结果直接写入指定文件（如 'workspace/article.browser.md'），回执仅回字符数与行数，避免大量文本冲击上下文 */
   saveTo?: string
@@ -986,6 +1003,8 @@ export interface BrowserOps {
   elementImage?: (tabId: string | undefined, target: BrowserTarget, opts?: BrowserToImageOpts) => Promise<BrowserToImageResult>
   elementScreenshot?: (tabId: string | undefined, target: BrowserTarget, opts?: BrowserToImageOpts) => Promise<BrowserToImageResult>
   /** 在访客页面上下文中安全执行受控代码并返回 JSON（只读/枚举/透视终极保底武器） */
+  /** 将指定 DOM 元素（ID 或选择器，穿透 Shadow DOM）转换为 Markdown 格式文本，尽可能保留图片、公式、表格、排版；支持 saveTo 落盘 */
+  toMarkdown(tabId?: string, target?: BrowserTarget, opts?: BrowserToMarkdownOpts): Promise<BrowserToMarkdownResult>
   eval(tabId: string | undefined, code: string, opts?: BrowserEvalOpts): Promise<BrowserEvalResult>
 }
 

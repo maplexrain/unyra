@@ -20,6 +20,8 @@ import type {
   BrowserWaitForResult,
   BrowserToImageOpts,
   BrowserToImageResult,
+  BrowserToMarkdownOpts,
+  BrowserToMarkdownResult,
 } from '../../agent/sandbox/types'
 import type { LearnStore, TabRef, WebTabMeta } from '../types'
 import { findTab, focusedGroup, groupIdOfTab } from '../groups'
@@ -479,6 +481,12 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
     },
     async elementImage(tabId, target, opts) {
       return this.toImage(tabId, target, opts)
+    },
+    async toMarkdown(tabId, target, opts?: BrowserToMarkdownOpts) {
+      return executeInPage<BrowserToMarkdownResult>(
+        tabId,
+        `window.__agentToMarkdown(${JSON.stringify(target ?? null)}, ${JSON.stringify(opts ?? {})})`,
+      )
     },
     async eval(tabId, code: string) {
       return executeInPage<BrowserEvalResult>(

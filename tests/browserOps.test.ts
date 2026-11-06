@@ -215,6 +215,7 @@ describe('buildApi：browser.* 参数兼容性与宽容解析', () => {
       toImage: async (tabId, target, opts) => { captured = { tabId, target, opts }; return { ok: true, url: 'moji:static/1' } },
       elementImage: async (tabId, target, opts) => { captured = { tabId, target, opts }; return { ok: true, url: 'moji:static/1' } },
       elementScreenshot: async (tabId, target, opts) => { captured = { tabId, target, opts }; return { ok: true, url: 'moji:static/1' } },
+      toMarkdown: async (tabId, target, opts) => { captured = { tabId, target, opts }; return { ok: true, markdown: '# Hello', chars: 7, lines: 1 } },
     }
 
     const { api } = buildApi({ browser: mockBrowser } as any, [])

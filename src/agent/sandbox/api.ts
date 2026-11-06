@@ -14,7 +14,7 @@ import { renderRootHelp } from './apiRegistry'
 import { attachNodeFacade, registerNodeApi } from './nodeObject'
 import { wrapApi, imagesOf } from './wrap'
 import { filesAccessError } from './dataPaths'
-import type { SandboxCall, SandboxOptions, BrowserTarget, BrowserEvalOpts } from './types'
+import type { SandboxCall, SandboxOptions, BrowserTarget, BrowserEvalOpts, BrowserToMarkdownOpts } from './types'
 import { MAX_TOOL_IMAGES } from '../types'
 import { getLoadedSkills, getActiveSkills } from '../skill/registry'
 import {
@@ -536,6 +536,67 @@ export function buildApi(
     wrapApi(api, 'browser.elementScreenshot', (args) => {
       const b = (api as any).browser
       return b.toImage(...args)
+    }, log)
+
+    wrapApi(api, 'browser.toMarkdown', async (args) => {
+      let tabId: string | undefined
+      let target: BrowserTarget | undefined
+      let optsObj: BrowserToMarkdownOpts = {}
+
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'saveTo' in first)) {
+        const rec = first as Record<string, unknown>
+        tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        if (rec.target !== undefined) target = targetOf(rec.target)
+        if (typeof rec.saveTo === 'string') optsObj.saveTo = rec.saveTo.trim()
+        if (typeof rec.maxChars === 'number') optsObj.maxChars = rec.maxChars
+      } else {
+        const { tabId: parsedTabId, rest } = parseTabAndRest(args)
+        tabId = parsedTabId
+        if (rest[0] !== undefined) {
+          if (typeof rest[0] === 'object' && rest[0] !== null && ('saveTo' in rest[0] || 'maxChars' in rest[0])) {
+            const rec = rest[0] as Record<string, unknown>
+            if (typeof rec.saveTo === 'string') optsObj.saveTo = rec.saveTo.trim()
+            if (typeof rec.maxChars === 'number') optsObj.maxChars = rec.maxChars
+          } else {
+            target = targetOf(rest[0])
+            const optArg = rest[1]
+            if (optArg && typeof optArg === 'object') {
+              const rec = optArg as Record<string, unknown>
+              if (typeof rec.saveTo === 'string') optsObj.saveTo = rec.saveTo.trim()
+              if (typeof rec.maxChars === 'number') optsObj.maxChars = rec.maxChars
+            }
+          }
+        }
+      }
+
+      const res = await browser.toMarkdown(tabId, target, optsObj)
+      if (!res.ok || !optsObj.saveTo) {
+        return res
+      }
+
+      if (!opts.workspace) {
+        return { ok: false, error: 'saveTo 需要工作区支持，但当前未配置 workspace' }
+      }
+      const rawText = res.markdown || ''
+      const saveRes = (await opts.workspace.write({
+        path: optsObj.saveTo,
+        content: rawText,
+      })) as { error?: string; path?: string }
+
+      if (saveRes && saveRes.error) {
+        return { ok: false, error: '落盘保存到工作区失败：' + saveRes.error }
+      }
+
+      const lines = rawText.split(/\r?\n/).length
+      return {
+        ok: true,
+        saved: true,
+        path: saveRes?.path ?? optsObj.saveTo,
+        chars: rawText.length,
+        lines,
+        note: `DOM 元素已成功转换为 Markdown 并落盘至工作区「${saveRes?.path ?? optsObj.saveTo}」（共 ${rawText.length} 字符，${lines} 行），避免占用上下文。可使用 api.workspace.grep 检索或在文档中以 quote 原文引用。`,
+      }
     }, log)
 
     wrapApi(api, 'browser.eval', async (args) => {

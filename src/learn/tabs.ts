@@ -68,7 +68,7 @@ export function tabKey(ref: TabRef): string {
   // 工作区内部文件：节点 + 「相对工作区目录」的路径段（目录改名不影响它，见 types 的 ws 分支）
   if (ref.kind === 'ws') return 'ws:' + ref.nodeId + ':' + ref.seg
   // 网页按**开签那一刻生成的 key**（而不是网址）认身份：同一个网址可以开两枚，起始页也不冲突
-  if (ref.kind === 'web') return 'w:' + ref.key
+  if (ref.kind === 'web') return ref.fileNodeId ? 'w:fn:' + ref.fileNodeId : 'w:' + ref.key
   // 视频学习（实验）同样全局只有一份：顶栏那颗按钮点多少次都是切回同一枚，
   // 上一次解析到哪个视频还留在页签里
   if (ref.kind === 'video') return ref.videoId ? 'v:' + ref.videoId : 'v:new'

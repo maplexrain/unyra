@@ -290,6 +290,20 @@ export interface Annotation {
   occurrence?: number
 }
 
+/**
+ * 教学文档中的随文便签（Notepad）。
+ *
+ * 数据完全记录在节点上（node.notepads），绝不污染或篡改教学文档原文（node.docs.teaching）。
+ */
+export interface DocNotepadItem {
+  id: string
+  content: string
+  /** 对应插入在正文第几个渲染块之后（-1 表示最顶部，0 表示第 0 个块之后，依此类推） */
+  blockIndex: number
+  createdAt: number
+  updatedAt: number
+}
+
 export interface KnowledgeNode {
   id: string
   title: string
@@ -299,6 +313,10 @@ export interface KnowledgeNode {
   description: string
   /** 教学文档（AI 写的讲解正文），Agent 可读写 */
   docs: NodeDocs
+  /**
+   * 随文便签（Notepad）集合；每个元素插在正文指定 blockIndex 处，数据完全独立于正文原文。
+   */
+  notepads?: DocNotepadItem[]
   /**
    * 这个节点下的全部笔记，顺序即列表顺序（新建的追加在末尾）。
    * 每份都是一个独立文件，可以单独命名 / 改名 / 删除（见 NoteFile）。
@@ -399,7 +417,7 @@ export type TabRef =
    * key 是开签那一刻生成的唯一身份（learn/tabs 的 newWebKey），导航不换：
    * 同一个网址可以开两枚页签，空地址（起始页，url === ''）也可以同时开好几枚。
    */
-  | { kind: 'web'; url: string; key: string }
+  | { kind: 'web'; url: string; key: string; fileNodeId?: string; goalId?: string }
   /**
    * 视频页签（见 components/video/VideoStudyTab）。两种形态：
    * - 带 videoId：**绑定**到一个视频资源（描述在 learn/types 的 VideoResource），
@@ -492,6 +510,24 @@ export type DocView = 'source' | 'preview' | 'media'
  */
 export interface WebTabMeta {
   url: string
+  /**
+   * DOM 元素过滤选择器（如 'article, main, .post-content'）。
+   * 设置后在纯净阅读模式下只保留该元素显示，消除周围噪声。
+   */
+  domFilter?: string
+  /**
+   * 是否启用纯净阅读模式（默认 true，保留切换回原页面阅读的开关）
+   */
+  pureMode?: boolean
+  /**
+   * 自动缓存的页面 Markdown/纯文本内容
+   */
+  cachedContent?: string
+  /**
+   * 缓存生成时间戳
+   */
+  cachedAt?: number
+
   title?: string
   favicon?: string
   loading: boolean
@@ -709,6 +745,24 @@ export interface FileNodeEntity {
    * - web: 网页 URL（如 https://... 或 http://...）
    */
   url: string
+  /**
+   * DOM 元素过滤选择器（如 'article, main, .post-content'）。
+   * 设置后在纯净阅读模式下只保留该元素显示，消除周围噪声。
+   */
+  domFilter?: string
+  /**
+   * 是否启用纯净阅读模式（默认 true，保留切换回原页面阅读的开关）
+   */
+  pureMode?: boolean
+  /**
+   * 自动缓存的页面 Markdown/纯文本内容
+   */
+  cachedContent?: string
+  /**
+   * 缓存生成时间戳
+   */
+  cachedAt?: number
+
   createdAt: number
   updatedAt: number
 }

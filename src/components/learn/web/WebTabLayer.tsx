@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { WebviewTag } from 'electron'
-import { ArrowLeft, ArrowRight, ExternalLink, Globe, Languages, Loader2, RotateCw, Star, X } from 'lucide-react'
-import type { LearnTab, TabRef, WebTabMeta } from '../../../learn/types'
+import { ArrowLeft, ArrowRight, ExternalLink, Globe, Languages, Loader2, RotateCw, Sparkles, Star, X } from 'lucide-react'
+import type { FileNodeEntity, LearnTab, TabRef, WebTabMeta } from '../../../learn/types'
+import { buildApplyPureModeScript } from '../../../learn/web/guestPureMode'
+import { buildJumpToElementScript } from '../../../learn/web/guestJump'
 import { normalizeWebInput } from '../../../learn/webUrl'
 import { isElectron, native, type WebTranslatePayload } from '../../../lib/native'
 import { getLocale, t } from '../../../i18n'
@@ -60,6 +62,12 @@ interface Props {
   favoriteOf?: (url: string) => boolean
   /** 星标点击：收藏 / 取消收藏当前地址；extra 是这一页的活标题与站点图标（一并记进收藏） */
   onToggleFavoriteUrl?: (url: string, extra?: { title?: string; icon?: string }) => void
+  fileNodes?: FileNodeEntity[]
+  onUpdateFileNode?: (
+    nodeId: string,
+    patch: { domFilter?: string; pureMode?: boolean; cachedContent?: string; cachedAt?: number },
+  ) => void
+  pendingJumpsRef?: { current: Map<string, string> }
 }
 
 const BTN =
@@ -72,8 +80,42 @@ const BTN =
  */
 const ALLOW_POPUPS = 'true' as unknown as boolean
 
-export default function WebTabLayer({ tabs, activeId, meta, hidden, onMeta, onCommitUrl, favoriteOf, onToggleFavoriteUrl }: Props) {
+export default function WebTabLayer({
+  tabs,
+  activeId,
+  meta,
+  hidden,
+  onMeta,
+  onCommitUrl,
+  favoriteOf,
+  onToggleFavoriteUrl,
+  fileNodes,
+  onUpdateFileNode,
+  pendingJumpsRef,
+}: Props) {
   const active = tabs.find((x) => x.id === activeId) ?? null
+  const activeFileNode = active?.ref.fileNodeId && fileNodes ? fileNodes.find((f) => f.id === active.ref.fileNodeId) : undefined
+  const activePureMode = activeFileNode ? (activeFileNode.pureMode !== false) : (active ? (meta[active.id]?.pureMode ?? false) : false)
+  const activeDomFilter = activeFileNode?.domFilter ?? (active ? (meta[active.id]?.domFilter ?? '') : '')
+
+  const handleTogglePure = () => {
+    if (!active) return
+    const next = !activePureMode
+    if (active.ref.fileNodeId && onUpdateFileNode) {
+      onUpdateFileNode(active.ref.fileNodeId, { pureMode: next })
+    }
+    onMeta(active.id, { pureMode: next })
+    withActive((wv) => wv.executeJavaScript(buildApplyPureModeScript(activeDomFilter, next)))
+  }
+
+  const handleSetFilter = (newFilter: string) => {
+    if (!active) return
+    if (active.ref.fileNodeId && onUpdateFileNode) {
+      onUpdateFileNode(active.ref.fileNodeId, { domFilter: newFilter, pureMode: true })
+    }
+    onMeta(active.id, { domFilter: newFilter, pureMode: true })
+    withActive((wv) => wv.executeJavaScript(buildApplyPureModeScript(newFilter, true)))
+  }
   // webview 元素走模块级登记表（learn/web/webviewRegistry）：browser.* 的宿主实现
   // 也从那里拿元素，两层看的是同一份，不用各自维护
   const withActive = (fn: (wv: WebviewTag) => void): void => {
@@ -347,6 +389,10 @@ export default function WebTabLayer({ tabs, activeId, meta, hidden, onMeta, onCo
           onToggleTranslate={() => void handleToggleTranslate(active.id)}
           onClearTranslate={() => void handleClearTranslate(active.id)}
           onToggleObserver={() => void handleToggleObserver(active.id)}
+          pureMode={activePureMode}
+          domFilter={activeDomFilter}
+          onTogglePureMode={handleTogglePure}
+          onSetDomFilter={handleSetFilter}
         />
       )}
       <div className="relative min-h-0 flex-1">
@@ -358,6 +404,9 @@ export default function WebTabLayer({ tabs, activeId, meta, hidden, onMeta, onCo
             m={meta[tab.id]}
             onMeta={onMeta}
             onCommitUrl={onCommitUrl}
+            fileNode={tab.ref.fileNodeId && fileNodes ? fileNodes.find((f) => f.id === tab.ref.fileNodeId) : undefined}
+            onAutoCache={onUpdateFileNode}
+            pendingJumpsRef={pendingJumpsRef}
             onDomMutation={handleDomMutation}
             onNavigateReset={(tid) => {
               observingMapRef.current.delete(tid)
@@ -395,6 +444,10 @@ function WebToolbar({
   onToggleTranslate,
   onClearTranslate,
   onToggleObserver,
+  pureMode,
+  domFilter,
+  onTogglePureMode,
+  onSetDomFilter,
 }: {
   tab: WebTab
   m: WebTabMeta | undefined
@@ -412,11 +465,33 @@ function WebToolbar({
   onToggleTranslate?: () => void
   onClearTranslate?: () => void
   onToggleObserver?: () => void
+  pureMode?: boolean
+  domFilter?: string
+  onTogglePureMode?: () => void
+  onSetDomFilter?: (newFilter: string) => void
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const blurTimerRef = useRef<number | null>(null)
   const [openTranslateMenu, setOpenTranslateMenu] = useState(false)
   const translateMenuRef = useRef<HTMLDivElement | null>(null)
+  const [openPureMenu, setOpenPureMenu] = useState(false)
+  const pureMenuRef = useRef<HTMLDivElement | null>(null)
+  const [filterDraft, setFilterDraft] = useState(domFilter ?? '')
+
+  useEffect(() => {
+    setFilterDraft(domFilter ?? '')
+  }, [domFilter])
+
+  useEffect(() => {
+    if (!openPureMenu) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pureMenuRef.current && !pureMenuRef.current.contains(e.target as Node)) {
+        setOpenPureMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [openPureMenu])
 
   useEffect(() => {
     if (!openTranslateMenu) return
@@ -682,6 +757,66 @@ function WebToolbar({
         )}
       </div>
 
+      {/* 纯净阅读与 DOM 过滤配置 */}
+      <div ref={pureMenuRef} className="relative">
+        <button
+          type="button"
+          title={pureMode ? t('纯净阅读（已开启）') : t('原网页阅读')}
+          aria-label={t('纯净阅读')}
+          disabled={!url}
+          onClick={() => setOpenPureMenu((v) => !v)}
+          className={`${BTN} ${pureMode ? 'text-seal font-semibold' : ''}`}
+        >
+          <Sparkles size={14} className={pureMode ? 'text-seal' : ''} />
+        </button>
+        {openPureMenu && (
+          <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-xl border border-line bg-card p-2.5 shadow-lg text-[12px]">
+            <div className="flex items-center justify-between pb-2 border-b border-line/60">
+              <span className="font-semibold text-ink-strong">{t('纯净阅读模式')}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  onTogglePureMode?.()
+                }}
+                className={`rounded px-2 py-0.5 text-[11px] font-medium transition cursor-pointer ${
+                  pureMode ? 'bg-seal text-white' : 'bg-line text-ink-soft hover:bg-line-strong hover:text-ink'
+                }`}
+              >
+                {pureMode ? t('已开启') : t('已关闭')}
+              </button>
+            </div>
+            <div className="pt-2">
+              <div className="text-[11px] text-ink-faint mb-1">{t('DOM 正文过滤选择器 (可选)')}</div>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  placeholder="article, .post-content, #main"
+                  value={filterDraft}
+                  onChange={(e) => setFilterDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      onSetDomFilter?.(filterDraft.trim())
+                      setOpenPureMenu(false)
+                    }
+                  }}
+                  className="flex-1 min-w-0 rounded border border-line bg-line/20 px-2 py-1 text-[11px] text-ink focus:outline-none focus:border-seal/60"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSetDomFilter?.(filterDraft.trim())
+                    setOpenPureMenu(false)
+                  }}
+                  className="shrink-0 rounded bg-line px-2 py-1 text-[11px] font-medium text-ink-soft hover:bg-line-strong hover:text-ink transition cursor-pointer"
+                >
+                  {t('应用')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/*
         收藏星标：实心 = 这一页在收藏夹里，点一下取消；空心 = 还没收藏。
         网页收藏认网址（同一网址开几枚页签都指向同一条收藏，见 learn/favorites），
@@ -721,6 +856,9 @@ function WebPage({
   m,
   onMeta,
   onCommitUrl,
+  fileNode,
+  onAutoCache,
+  pendingJumpsRef,
   onDomMutation,
   onNavigateReset,
 }: {
@@ -729,6 +867,12 @@ function WebPage({
   m: WebTabMeta | undefined
   onMeta: (tabId: string, patch: Partial<WebTabMeta>) => void
   onCommitUrl: (tabId: string, url: string) => void
+  fileNode?: FileNodeEntity
+  onAutoCache?: (
+    nodeId: string,
+    patch: { domFilter?: string; pureMode?: boolean; cachedContent?: string; cachedAt?: number },
+  ) => void
+  pendingJumpsRef?: { current: Map<string, string> }
   onDomMutation?: (tabId: string) => void
   onNavigateReset?: (tabId: string) => void
 }) {
@@ -751,7 +895,35 @@ function WebPage({
       onNavigateReset?.(id)
       onMeta(id, { loading: true, error: null })
     }
-    const onStopLoad = (): void => onMeta(id, { loading: false, ...navState() })
+    const onStopLoad = (): void => {
+      onMeta(id, { loading: false, ...navState() })
+
+      // 1. 纯净模式与 DOM 过滤
+      const pureEnabled = fileNode ? (fileNode.pureMode !== false) : (m?.pureMode ?? false)
+      const domFilter = fileNode?.domFilter ?? m?.domFilter
+      if (pureEnabled) {
+        void wv.executeJavaScript(buildApplyPureModeScript(domFilter, true))
+      }
+
+      // 2. 网页内容自动缓存至节点
+      if (fileNode && onAutoCache) {
+        void wv.executeJavaScript(`(() => {
+          const article = document.querySelector('article') || document.querySelector('main') || document.querySelector('[role="main"]') || document.body;
+          return article ? article.innerText.slice(0, 100000) : '';
+        })()`).then((res) => {
+          if (typeof res === 'string' && res.trim()) {
+            onAutoCache(fileNode.id, { cachedContent: res.trim(), cachedAt: Date.now() })
+          }
+        }).catch(() => {})
+      }
+
+      // 3. 超链接元素选择器跳转
+      const pendingSel = pendingJumpsRef?.current?.get(id)
+      if (pendingSel && pendingJumpsRef?.current) {
+        pendingJumpsRef.current.delete(id)
+        void wv.executeJavaScript(buildJumpToElementScript(pendingSel))
+      }
+    }
     const onNavigate = (e: Event): void => {
       onNavigateReset?.(id)
       const url = (e as unknown as { url?: string }).url ?? ''

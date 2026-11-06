@@ -111,6 +111,8 @@ import { addLocalFile } from '../../learn/localfiles'
 import { normalizeWebInput } from '../../learn/webUrl'
 import type { BrowserDeps } from '../../learn/web/browserOps'
 import { webviewOf } from '../../learn/web/webviewRegistry'
+import { updateFileNode } from '../../learn/fileNodes'
+import { buildJumpToElementScript } from '../../learn/web/guestJump'
 import {
   addConversation,
   conversationTitle,
@@ -1742,6 +1744,30 @@ export default function LearnWorkspace({
        * 「打开学习视频会一并打开学习目标对应的 tab 组」。组锚关闭（整组进停靠场）时
        * 它随组一起收起。没绑定的、或绑定目标已不在的，走下面的普通开法（公共页签）。
        */
+      if (ref.kind === 'web' && ref.fileNodeId && ref.goalId) {
+        const boundGoal = base.goals.find((g) => g.id === ref.goalId)
+        if (boundGoal) {
+          const remembered = goalFocusByGoal.get(boundGoal.id)
+          const focusId = remembered && nodeById(base, remembered) ? remembered : boundGoal.rootNodeId
+          const retargeted = focusId ? retargetNode(base, focusId) : retargetGoal(base, boundGoal.id)
+          const grouped = goalTabGroup(retargeted, boundGoal.id)
+          const openedW = openInGroup(
+            grouped.docArea,
+            grouped.docArea.focus,
+            ref,
+            Date.now(),
+            undefined,
+            (id) => nodeById(base, id)?.goalId ?? null,
+          )
+          set({
+            ...grouped,
+            docArea: withOwners(openedW, claimTab(openedW.tabOwners, boundGoal.id, tabKey(ref))),
+          })
+          if (wasActive) requestReveal()
+          setSidebarOpen(false)
+          return
+        }
+      }
       if (ref.kind === 'video' && ref.videoId) {
         const gid = (base.videoNodes ?? []).find((v) => v.videoId === ref.videoId)?.goalId ?? null
         const boundGoal = gid ? base.goals.find((g) => g.id === gid) : undefined
@@ -1979,12 +2005,15 @@ export default function LearnWorkspace({
     })
   }, [])
 
+  /** 待跳转选择器（url#selector 语法支持） */
+  const pendingJumpsRef = useRef<Map<string, string>>(new Map())
+
   /**
    * 开一个网页页签：url 归一（learn/webUrl），空串 = 起始页（只有地址栏）。
    * 网页的弹窗 / target=_blank（主进程拦下来推回来的，见 electron/app/webSession）也落到这里。
    */
   const openWebTab = useCallback(
-    (url: string): string => {
+    (url: string, selector?: string): string => {
       const targetUrl = normalizeWebInput(url)
       if (isWeb()) {
         if (targetUrl) {
@@ -1993,12 +2022,53 @@ export default function LearnWorkspace({
         return ''
       }
       const s = getLatest()
+
+      // 检查是否已经存在该网页页签（单例激活）
+      if (targetUrl) {
+        let existingTabId: string | null = null
+        let existingGroupId: string | null = null
+        for (const g of s.docArea.groups) {
+          for (const t of g.tabs) {
+            if (t.ref.kind === 'web' && normalizeWebInput(t.ref.url) === targetUrl) {
+              existingTabId = t.id
+              existingGroupId = g.id
+              break
+            }
+          }
+          if (existingTabId) break
+        }
+
+        if (existingTabId && existingGroupId) {
+          set({
+            ...s,
+            docArea: activateIn(setFocus(s.docArea, existingGroupId), existingGroupId, existingTabId),
+          })
+          if (selector) {
+            const wv = webviewOf(existingTabId)
+            if (wv) {
+              try {
+                void wv.executeJavaScript(buildJumpToElementScript(selector))
+              } catch {
+                pendingJumpsRef.current.set(existingTabId, selector)
+              }
+            } else {
+              pendingJumpsRef.current.set(existingTabId, selector)
+            }
+          }
+          return existingTabId
+        }
+      }
+
       // ref 当场算好（页签身份就是 tabKey），开完直接回页签 id——browser.open 靠它指名
       const ref: TabRef = { kind: 'web', url: targetUrl, key: newWebKey() }
+      const tabId = tabKey(ref)
+      if (selector) {
+        pendingJumpsRef.current.set(tabId, selector)
+      }
       const opened = openInGroup(s.docArea, s.docArea.focus, ref, Date.now(), undefined, (id) => nodeById(s, id)?.goalId ?? null)
       // 网页页签不属于任何目标（公共）：登记成公共，切目标时它留栏上（见 groups/goals）
-      set({ ...s, docArea: withOwners(opened, claimTab(opened.tabOwners, PUBLIC_OWNER, tabKey(ref))) })
-      return tabKey(ref)
+      set({ ...s, docArea: withOwners(opened, claimTab(opened.tabOwners, PUBLIC_OWNER, tabId)) })
+      return tabId
     },
     [getLatest, set],
   )
@@ -4575,7 +4645,13 @@ export default function LearnWorkspace({
           return
         }
         if (fileEntity.fileKind === 'web') {
-          openTab({ kind: 'web', url: fileEntity.url, key: newWebKey() })
+          openTab({
+            kind: 'web',
+            url: fileEntity.url,
+            key: 'fn_' + fileEntity.id,
+            fileNodeId: fileEntity.id,
+            goalId: fileEntity.goalId,
+          })
           return
         }
         const goalDir = goalDirOf(store, fileEntity.goalId)
@@ -4622,6 +4698,11 @@ export default function LearnWorkspace({
           onRevealSource: (loc) => {
             requestSourceReveal(nodeRevealKey(node.id, source.kind, source.note), loc.start, loc.end)
             setTabView(tabId, 'source')
+          },
+          onUpdateNotepads: (notepads) => {
+            const s = getLatest()
+            const nextNodes = s.nodes.map((n) => (n.id === node.id ? { ...n, notepads } : n))
+            set({ ...s, nodes: nextNodes })
           },
         }
         noteActionsCache.current.set(key, actions)
@@ -5693,6 +5774,12 @@ export default function LearnWorkspace({
               // 地址栏的收藏星标（收藏认网址，见 learn/favorites）
               favoriteOf={isUrlFavorite}
               onToggleFavoriteUrl={toggleUrlFavorite}
+              fileNodes={store.fileNodes}
+              onUpdateFileNode={(nodeId, patch) => {
+                const r = updateFileNode(getLatest(), nodeId, patch)
+                if (!('error' in r)) set(r.store)
+              }}
+              pendingJumpsRef={pendingJumpsRef}
             />
           )}
 

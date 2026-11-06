@@ -272,6 +272,7 @@ export async function apiNameTests() {
     'browser.waitFor': "'button'",
     'browser.screenshot': '',
     'browser.toImage': "1, { isolate: true }",
+    'browser.toMarkdown': "1",
     'browser.elementImage': "1",
     'browser.elementScreenshot': "1",
     'browser.eval': "'document.title'",
@@ -511,6 +512,7 @@ export async function apiNameTests() {
       toImage: async () => ({ ok: true, url: 'moji:static/probe', tag: 'article', width: 800, height: 600 }),
       elementImage: async () => ({ ok: true, url: 'moji:static/probe', tag: 'article', width: 800, height: 600 }),
       elementScreenshot: async () => ({ ok: true, url: 'moji:static/probe', tag: 'article', width: 800, height: 600 }),
+      toMarkdown: async () => ({ ok: true, markdown: '# 示例', chars: 4, lines: 1 }),
       eval: async () => ({ ok: true, result: '示例' }),
     },
     // 外部 MCP 服务：桩（名单检查只问「这三个 api 在不在」；真行为见 tests/agentSkillsAndMcp.test.ts）

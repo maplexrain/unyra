@@ -400,6 +400,7 @@ tabId 可省略，默认操作当前激活的网页页签；目标支持索引�
       a('waitFor', 'browser.waitFor(tabId?, targetOrText, opts?)', '智能等待节点或文本出现', '轮询等待异步渲染的组件或提示文字出现（可配 timeoutMs），告别盲等。', "await api.browser.waitFor('bili-comment-box', { timeoutMs: 5000 })"),
       a('screenshot', 'browser.screenshot(tabId?, opts?)', '截取网页视图', '截取当前网页并存入静态资源库，返回 moji:static 访问地址；若带 target 则转为 DOM 元素长图。', "const pic = await api.browser.screenshot()"),
       a('toImage', 'browser.toImage(tabId?, target, opts?)', 'DOM 元素转图片/长图', '将指定元素转换为图片并存入资源库；自动隔离消除上方悬浮遮罩、吸顶头与弹窗（isolate: true）；超长文章自动拼接长图（full: true）。亦可调 elementImage。', "const pic = await api.browser.toImage('article', { isolate: true, full: true })"),
+      a('toMarkdown', 'browser.toMarkdown(tabId?, target?, { saveTo? }?)', 'DOM 元素转 Markdown', '将指定 DOM 元素或正文区域转为 Markdown 文件，尽可能保留图片、公式、表格与列表；支持 saveTo 直接落盘工作区。', "const md = await api.browser.toMarkdown('article', { saveTo: 'workspace/article.md' })"),
       a('elementImage', 'browser.elementImage(tabId?, target, opts?)', 'DOM 元素转图片（别名）', 'browser.toImage 的别名通道，方便记忆调用。', "const pic = await api.browser.elementImage(25)"),
       a('elementScreenshot', 'browser.elementScreenshot(tabId?, target, opts?)', 'DOM 元素转图片（别名）', 'browser.toImage 的别名通道。', "const pic = await api.browser.elementScreenshot('article')"),
       a('eval', 'browser.eval(tabId?, code, { saveTo? }?)', '页面上下文受控 JS 执行', '在访客页面环境中安全执行只读/枚举 JS 脚本并返回 JSON 结果，支持 saveTo 直接落盘工作区避免冲击上下文。', "const res = await api.browser.eval('return document.title', { saveTo: 'workspace/title.txt' })"),

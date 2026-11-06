@@ -71,6 +71,8 @@ export function createFileNode(
     fileKind?: FileNodeKind
     url?: string
     id?: string
+    domFilter?: string
+    pureMode?: boolean
   },
   at = Date.now(),
 ): { store: LearnStore; entity: FileNodeEntity } {
@@ -91,6 +93,8 @@ export function createFileNode(
     title: (input.title ?? '').trim() || defaultTitle,
     fileKind,
     url,
+    domFilter: input.domFilter,
+    pureMode: input.pureMode,
     createdAt: at,
     updatedAt: at,
   }
@@ -106,7 +110,7 @@ export function createFileNode(
 export function updateFileNode(
   store: LearnStore,
   id: string,
-  patch: Partial<Pick<FileNodeEntity, 'title' | 'fileKind' | 'url'>>,
+  patch: Partial<Pick<FileNodeEntity, 'title' | 'fileKind' | 'url' | 'domFilter' | 'pureMode' | 'cachedContent' | 'cachedAt'>>,
   at = Date.now(),
 ): { store: LearnStore; entity: FileNodeEntity } | { error: string } {
   const current = store.fileNodes ?? []
@@ -128,6 +132,10 @@ export function updateFileNode(
   const next: FileNodeEntity = {
     ...found,
     ...(patch.title !== undefined ? { title: patch.title.trim() || found.title } : {}),
+    ...(patch.domFilter !== undefined ? { domFilter: patch.domFilter.trim() } : {}),
+    ...(patch.pureMode !== undefined ? { pureMode: patch.pureMode } : {}),
+    ...(patch.cachedContent !== undefined ? { cachedContent: patch.cachedContent } : {}),
+    ...(patch.cachedAt !== undefined ? { cachedAt: patch.cachedAt } : {}),
     fileKind: nextKind,
     url: nextUrl,
     updatedAt: at,
@@ -211,6 +219,10 @@ export function normalizeFileNodes(raw: unknown, goalIds?: ReadonlySet<string>):
       title,
       fileKind,
       url,
+      ...(typeof r.domFilter === 'string' ? { domFilter: r.domFilter.trim() } : {}),
+      ...(typeof r.pureMode === 'boolean' ? { pureMode: r.pureMode } : {}),
+      ...(typeof r.cachedContent === 'string' ? { cachedContent: r.cachedContent } : {}),
+      ...(typeof r.cachedAt === 'number' ? { cachedAt: r.cachedAt } : {}),
       createdAt,
       updatedAt,
     })

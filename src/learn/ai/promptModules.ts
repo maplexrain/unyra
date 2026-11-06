@@ -54,6 +54,7 @@ export const PROMPT_MODULES: PromptModule[] = [
   - api.browser.waitFor(tabId?, selector|text, { timeoutMs?: 5000 })：智能等待异步渲染的组件或文字出现，告别盲等。
   - api.browser.screenshot(tabId?, opts?)：截取当前网页视图并存入资源库（返回 moji:static/uuid）；若传入 { target } 会自动按 DOM 元素转长图处理。
   - api.browser.toImage(tabId?, target, opts?)：将指定 DOM 元素（编号或选择器，穿透 Shadow DOM）转换为图片/长图存入资源库；自动隔离并隐藏遮挡在目标上方的悬浮遮罩、吸顶头与弹窗（isolate: true）；超长文章自动分段滚动并无缝拼接为长图（full: true）。亦可调 api.browser.elementImage。
+  - api.browser.toMarkdown(tabId?, target?, { saveTo? })：将指定 DOM 元素或正文区域转换为 Markdown 语法，尽可能保留排版、图片、公式、表格与列表；支持 { saveTo: 'workspace/article.md' } 直接落盘工作区避免撑爆上下文。
   - api.browser.eval(tabId?, code, { saveTo? })：在页面上下文中安全执行受控 JS 并返回 JSON（只读/枚举透视终极保底武器）；长文本建议配合 { saveTo: 'workspace/xxx.md' } 直接落盘，避免撑爆上下文。
 - **调用人体工学纪律**：
   - tabId 可省略，默认指「焦点格正看着的那个网页」。
@@ -324,13 +325,12 @@ export const PROMPT_MODULES: PromptModule[] = [
 只要用户提供了明确的文章（含网页文章、文献、长文等）或工程项目源码：
 1. **材料规模与类型判定（文件节点 vs 项目节点）**：
    - **如果解读材料较少（如单篇或少量文章、学术文献、论文、单网页/参考资料）**：必须创建文件节点（kind: 'file'）进行引用，而不是创建项目节点。
-     - 若为本地文件或抓取落盘的单篇材料，保存到目标所属的 \`docs/{目标}/files/\` 目录下（如 \`files/article.md\`），文件节点属性为 \`fileKind: 'local'\`, \`url: 'files/article.md'\`；
-     - 若为在线网页且直接浏览引用，可设为 \`fileKind: 'web'\`, \`url: 'https://...'\`。
+     - **在线网页直接阅读（优先纪律）**：若用户需要导读的文件或材料可以通过网页直接阅读，**严禁/不要爬取或下载到本地**！只需要直接创建网页文件节点进行引用（\`fileKind: 'web'\`, \`url: 'https://...'\`），内置浏览器已支持纯净阅读模式和页面内容自动缓存；若页面存在噪声干扰，可配置 \`domFilter\` 选择器指定正文容器。
+     - **本地离线文件**：若为本地已有文件或无法在线阅读必须离线保存的单篇材料，保存到目标所属的 \`docs/{目标}/files/\` 目录下（如 \`files/article.md\`），文件节点属性为 \`fileKind: 'local'\`, \`url: 'files/article.md'\`。
    - **如果是大型代码工程、包含多层目录结构的软件仓库或需要批量读写大量源码文件的复杂工程**：才创建项目节点（kind: 'project'）。
-2. **非本地材料真实抓取落盘（严禁自行抄录/脑补生成）**：
-   - 若目标材料不在本地磁盘且需要深入精读，**严禁导师凭空生成或抄录一份“伪文章/伪代码”**；
-   - 必须通过代码工具（如使用 api.web.fetch、或在终端中运行 curl / fetch / 脚本等方式）将网络上的真实原文完整抓取；
-   - 少量文件时保存落盘到 \`docs/{目标}/files/\` 目录下，并创建文件节点引用；复杂多文件工程才保存并创建项目节点；
+2. **材料阅读与落盘纪律**：
+   - **在线网页导读**：只要网页可在线访问，绝对不要抓取落盘到本地，直接建文件节点引用 URL 即可；
+   - 严禁凭空伪造文章或代码；对于必须落盘的纯本地复杂工程源码，真实保存并创建项目节点引用；
 3. 若当前目标尚未设定根文档（node.list() 中 root 为 null），先创建解读文档节点作为根节点（api.node.create({ kind: 'doc', title, root: true }) 或调用 api.node.setRoot(docUuid)），确保工作区基准就位。
 
 二、声明文件节点或项目节点示例
