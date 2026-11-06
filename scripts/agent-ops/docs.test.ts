@@ -355,6 +355,7 @@ export async function apiNameTests() {
     'workspace.list': "''",
     'workspace.read': "''",
     'workspace.write': "{ path: '探针.txt', content: '探针' }",
+    'workspace.grep': "{ path: '探针.txt', anchors: ['探针'] }",
     'userInfo.get': '',
     'userInfo.update': "{ nickname: '探针用户' }",
     'reading.get': "''",

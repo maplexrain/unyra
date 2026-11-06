@@ -180,6 +180,66 @@ export function createWorkspaceOps(deps: AgentOpsDeps, io: WorkspaceIo) {
       return { path: labelOf(r.node, r.rest), rel: loc.rel, chars: res.content.length, content: res.content }
     },
 
+async grep(input: Record<string, unknown> | string) {
+      const obj = typeof input === 'string' ? { path: input } : (input ?? {})
+      const rawPath = typeof obj.path === 'string' ? obj.path : ''
+      if (!rawPath.trim()) return { error: 'grep 需要 path（节点路径 + 文件名，如 极限/要点.md）' }
+      const r = resolveWs(rawPath)
+      if ('error' in r) return r
+      if (!r.rest.length) {
+        return { error: '要检索的是文件：路径最后要落到文件名上（如 极限/要点.md）；先用 workspace.list 看看有什么' }
+      }
+      const loc = relOf(r.node, r.rest)
+      if ('error' in loc) return loc
+      const res = await io.read(loc.rel)
+      if (!res.ok) return { error: res.error }
+      if (res.content === null) {
+        return { error: '没有这个文件「' + labelOf(r.node, r.rest) + '」。' }
+      }
+      if (res.content.includes('\0')) {
+        return { error: '「' + labelOf(r.node, r.rest) + '」读不出文本（多半是二进制文件）' }
+      }
+
+      const rawAnchors = Array.isArray(obj.anchors) ? obj.anchors : []
+      const anchors = rawAnchors.map(String).map((s) => s.trim()).filter(Boolean)
+      const query = typeof obj.query === 'string' ? obj.query.trim() : (typeof obj.pattern === 'string' ? obj.pattern.trim() : '')
+      if (query && !anchors.includes(query)) {
+        anchors.unshift(query)
+      }
+      if (!anchors.length) {
+        return { error: 'grep 需要至少一个检索词：anchors: ["关键词"] 或 query: "关键词"' }
+      }
+
+      const lines = res.content.split(/\r?\n/)
+      const matches: Array<{ anchor?: string; line: number; text: string }> = []
+      const maxMatches = typeof obj.limit === 'number' && obj.limit > 0 ? obj.limit : 50
+
+      for (let idx = 0; idx < lines.length; idx++) {
+        const lineText = lines[idx]
+        for (const anchor of anchors) {
+          if (lineText.includes(anchor)) {
+            matches.push({
+              anchor,
+              line: idx + 1,
+              text: lineText.length > 200 ? lineText.slice(0, 200) + '…' : lineText,
+            })
+            if (matches.length >= maxMatches) break
+          }
+        }
+        if (matches.length >= maxMatches) break
+      }
+
+      return {
+        ok: true,
+        path: labelOf(r.node, r.rest),
+        rel: loc.rel,
+        totalLines: lines.length,
+        matchCount: matches.length,
+        matches,
+        ...(matches.length >= maxMatches ? { note: '匹配数已达上限（' + maxMatches + '），若需更多请调大 limit' } : {}),
+      }
+    },
+
     async write(input: Record<string, unknown>) {
       const rawPath = typeof input.path === 'string' ? input.path : ''
       const content = typeof input.content === 'string' ? input.content : null

@@ -11,8 +11,81 @@ import { bindExam, bindNote, bindSuperDoc, detachExam, detachNote, detachSuperDo
 import { addEdge, examsOfNode, nodeById, removeEdge, titleTaken, updateDoc, updateNode } from '../graph'
 import { clearOutline } from '../outline'
 import { notesOf } from '../notes'
-import { superDocsOf, type KnowledgeNode } from '../types'
+import { superDocsOf, type KnowledgeNode, type LearnStore } from '../types'
+import { findResource } from '../static'
 import { entryUuid, outlineUuid, GNode, type ConnectFilter, type NodeCtx, type NodeHelp, type NodeRelation, type NodeResult } from './base'
+
+function validateDocReferences(store: LearnStore, goalId: string, teaching: string) {
+  const warnings: string[] = []
+
+  // 1. 校验 moji:static/<uuid>
+  const staticMatches = Array.from(teaching.matchAll(/moji:static\/([a-zA-Z0-9_-]+)/g))
+  const staticUuids = [...new Set(staticMatches.map((m) => m[1]))]
+  const validResources: string[] = []
+  const missingResources: string[] = []
+
+  for (const uuid of staticUuids) {
+    if (findResource(store, goalId, uuid)) {
+      validResources.push(uuid)
+    } else {
+      missingResources.push(uuid)
+    }
+  }
+
+  if (missingResources.length > 0) {
+    warnings.push(`检测到 ${missingResources.length} 处未在当前目标资源库中注册的 moji:static 引用: ${missingResources.join(', ')}。请核对 uuid 或用 api.res.list() 查验。`)
+  }
+
+  // 2. 校验 ```quote 块
+  const quoteBlockMatches = Array.from(teaching.matchAll(/```quote\s*([\s\S]*?)```/g))
+  const validQuotes: Array<{ raw: string; file: string; range: string }> = []
+  const invalidQuotes: Array<{ raw: string; error: string }> = []
+
+  for (const block of quoteBlockMatches) {
+    const lines = block[1].split(/\r?\n/)
+    for (const line of lines) {
+      const match = line.match(/^\s*@([^\r\n(]+)\(([^)]+)\)/)
+      if (match) {
+        const file = match[1].trim()
+        const range = match[2].trim()
+        if (!file) {
+          invalidQuotes.push({ raw: line.trim(), error: '文件路径为空' })
+          continue
+        }
+        const rangeMatch = range.match(/^(\d+)(?:\s*(?:-|~|至|到)\s*(\d+))?$/)
+        if (!rangeMatch) {
+          invalidQuotes.push({ raw: line.trim(), error: `行号格式不合法「${range}」，应为数字或区间（如 10-25）` })
+          continue
+        }
+        const start = parseInt(rangeMatch[1], 10)
+        const end = rangeMatch[2] ? parseInt(rangeMatch[2], 10) : start
+        if (start < 1 || end < start) {
+          invalidQuotes.push({ raw: line.trim(), error: `行号区间矛盾（start: ${start}, end: ${end}）` })
+          continue
+        }
+        validQuotes.push({ raw: line.trim(), file, range })
+      }
+    }
+  }
+
+  if (invalidQuotes.length > 0) {
+    warnings.push(`检测到 ${invalidQuotes.length} 处 quote 引用格式异常: ${invalidQuotes.map((q) => `${q.raw} (${q.error})`).join('; ')}。`)
+  }
+
+  return {
+    staticResources: {
+      total: staticUuids.length,
+      valid: validResources,
+      missing: missingResources,
+    },
+    quotes: {
+      total: validQuotes.length + invalidQuotes.length,
+      valid: validQuotes,
+      invalid: invalidQuotes,
+    },
+    warnings,
+  }
+}
 
 export class DocGNode extends GNode {
   constructor(ctx: NodeCtx, uuid: string) {
@@ -149,10 +222,13 @@ export class DocGNode extends GNode {
     if (annotations !== undefined && annotations.length !== (node.annotations?.length ?? 0)) {
       bits.push('注解 ' + annotations.length + ' 条')
     }
+    const validation = validateDocReferences(nextStore, node.goalId, o.teaching)
     return {
       ok: true,
       note: '已写入「' + title + '」：' + bits.join('，') +
-        layoutHintOf('teaching', o.teaching, loadAgentSettings().docFormat),
+        layoutHintOf('teaching', o.teaching, loadAgentSettings().docFormat) +
+        (validation.warnings.length ? `\n⚠️ 【引用校验提示】：\n${validation.warnings.map((w) => '• ' + w).join('\n')}` : ''),
+      diagnostics: validation,
     }
   }
 

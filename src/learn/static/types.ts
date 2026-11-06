@@ -26,6 +26,10 @@ export interface StaticResource {
   /** 修改日期：改内容、改名、改描述都会动它 */
   updatedAt: number
   bytes: number
+  /** 图片题注或配图说明（由 see 或 res 入库提供） */
+  caption?: string
+  /** 排序序号（由 see 或 res 入库提供，如 1, 2, 3） */
+  order?: number
   /**
    * 内容指纹（SHA-256 十六进制；环境不支持时退回 fnv1a-…）。
    *

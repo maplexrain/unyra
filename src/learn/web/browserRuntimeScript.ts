@@ -50,7 +50,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
     return s.length > maxLen ? s.slice(0, maxLen) + '…' : s;
   }
 
-  function getDeepText(el, maxDepth = 4) {
+  function getDeepText(el, maxDepth = 4, maxChars = Infinity) {
     if (!el || maxDepth < 0) return '';
     if (!el.shadowRoot && !el.tagName.includes('-') && !el.querySelector('*')) {
       return el.innerText || '';
@@ -68,7 +68,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
           text += getDeepText(node, maxDepth - 1) + ' ';
         }
       }
-      if (text.length > 200) break;
+      if (maxChars < Infinity && text.length > maxChars) break;
     }
     return text;
   }
@@ -79,7 +79,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
   }
 
   function getItemSummary(el) {
-    const rawText = getDeepText(el, 3);
+    const rawText = getDeepText(el, 3, 200);
     const text = cleanText(rawText, 25);
 
     let title = el.getAttribute('title') || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '';
@@ -954,7 +954,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
         };
       }
 
-      const deep = getDeepText(el, 8);
+      const deep = getDeepText(el, 16, Infinity);
       const fullText = (deep || el.innerText || el.textContent || '').trim();
       const maxChars = typeof opts.maxChars === 'number' ? Math.max(opts.maxChars, 100) : 8000;
       const offset = typeof opts.offset === 'number' ? Math.max(opts.offset, 0) : 0;

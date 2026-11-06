@@ -118,4 +118,15 @@ export async function workspaceTests(): Promise<void> {
       nocur.content.slice(0, 220),
     )
   }
+  /* ---------- 7. workspace.grep 定向检索行号与锚点 ---------- */
+  {
+    const h = harness(baseStore(), childId)
+    await h.run("((api)=>{ return await api.workspace.write({ path: 'test.md', content: '# 标题\\n第一行\\n第二行 核心定义\\n第三行\\n第四行 阶段总结' }) })")
+    const grepRes = await h.run("((api)=>{ return await api.workspace.grep({ path: 'test.md', anchors: ['核心定义', '阶段总结'] }) })")
+    ok(
+      grepRes.ok && grepRes.content.includes('"line":3') && grepRes.content.includes('"line":5') && grepRes.content.includes('"matchCount":2'),
+      'workspace.grep: 返回正确的 1-based 行号与匹配信息',
+      grepRes.content.slice(0, 300),
+    )
+  }
 }

@@ -283,6 +283,7 @@ exam.* 只管**作答侧**：交卷后 exam.read() 看作答，exam.grade(...) �
       a('list', 'workspace.list(path?)', '列工作区目录', '目录不存在时回空清单，不是错误。', `const files = await api.workspace.list('极限')`),
       a('read', 'workspace.read(path?)', '读工作区文本文件', '太长会截断并带 totalChars。', `const code = await api.workspace.read('极限/实验/main.py')`),
       a('write', 'workspace.write({ path, content })', '写工作区文本文件', '整份覆盖，父目录自动建。交付物一律写这里。', `await api.workspace.write({ path: '极限/实验/main.py', content: 'print(1)' })`),
+      a('grep', 'workspace.grep({ path, anchors?: string[], query?: string, limit? })', '定向检索行号与锚点', '针对长文件定向检索匹配行号与上下文片段，免去把上万字全量读入上下文，直接产出用于 quote 引用或定位的行号。', `const matches = await api.workspace.grep({ path: 'article.md', anchors: ['核心定义', '第二阶段'] })`),
     ],
   ),
   g(
@@ -401,7 +402,7 @@ tabId 可省略，默认操作当前激活的网页页签；目标支持索引�
       a('toImage', 'browser.toImage(tabId?, target, opts?)', 'DOM 元素转图片/长图', '将指定元素转换为图片并存入资源库；自动隔离消除上方悬浮遮罩、吸顶头与弹窗（isolate: true）；超长文章自动拼接长图（full: true）。亦可调 elementImage。', "const pic = await api.browser.toImage('article', { isolate: true, full: true })"),
       a('elementImage', 'browser.elementImage(tabId?, target, opts?)', 'DOM 元素转图片（别名）', 'browser.toImage 的别名通道，方便记忆调用。', "const pic = await api.browser.elementImage(25)"),
       a('elementScreenshot', 'browser.elementScreenshot(tabId?, target, opts?)', 'DOM 元素转图片（别名）', 'browser.toImage 的别名通道。', "const pic = await api.browser.elementScreenshot('article')"),
-      a('eval', 'browser.eval(tabId?, code)', '页面上下文受控 JS 执行', '在访客页面环境中安全执行只读/枚举 JS 脚本并返回 JSON 结果，作为穿透复杂组件的终极武器。', "const res = await api.browser.eval('return document.title')"),
+      a('eval', 'browser.eval(tabId?, code, { saveTo? }?)', '页面上下文受控 JS 执行', '在访客页面环境中安全执行只读/枚举 JS 脚本并返回 JSON 结果，支持 saveTo 直接落盘工作区避免冲击上下文。', "const res = await api.browser.eval('return document.title', { saveTo: 'workspace/title.txt' })"),
     ],
   ),
   g(

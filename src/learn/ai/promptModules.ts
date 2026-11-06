@@ -54,7 +54,7 @@ export const PROMPT_MODULES: PromptModule[] = [
   - api.browser.waitFor(tabId?, selector|text, { timeoutMs?: 5000 })：智能等待异步渲染的组件或文字出现，告别盲等。
   - api.browser.screenshot(tabId?, opts?)：截取当前网页视图并存入资源库（返回 moji:static/uuid）；若传入 { target } 会自动按 DOM 元素转长图处理。
   - api.browser.toImage(tabId?, target, opts?)：将指定 DOM 元素（编号或选择器，穿透 Shadow DOM）转换为图片/长图存入资源库；自动隔离并隐藏遮挡在目标上方的悬浮遮罩、吸顶头与弹窗（isolate: true）；超长文章自动分段滚动并无缝拼接为长图（full: true）。亦可调 api.browser.elementImage。
-  - api.browser.eval(tabId?, code)：在页面上下文中安全执行受控 JS 并返回 JSON（只读/枚举透视终极保底武器）。
+  - api.browser.eval(tabId?, code, { saveTo? })：在页面上下文中安全执行受控 JS 并返回 JSON（只读/枚举透视终极保底武器）；长文本建议配合 { saveTo: 'workspace/xxx.md' } 直接落盘，避免撑爆上下文。
 - **调用人体工学纪律**：
   - tabId 可省略，默认指「焦点格正看着的那个网页」。
   - 目标参数传 index 返回的编号数字（如 12）即可，无需编写复杂的选择器。
@@ -402,7 +402,8 @@ const proj = await api.node.create({
     title: '工作区',
     text: `工作区目录（api.workspace.*）——用户交付物的落点：
 - 每个节点的工作区物理目录为 docs/.../workspace/，在磁盘上真实存在；
-- 列/读/写优先走 api.workspace.*（list / read / write，先 await api.workspace.__help() 查用法）；
+- 列/读/写/检索优先走 api.workspace.*（list / read / write / grep，先 await api.workspace.__help() 查用法）；
+- 精准引用定位用 api.workspace.grep({ path, anchors: ['关键词'] })，直接获取 1-based 行号，配合 quote 原文引用使用，无需全量读取大文件塞入上下文；
 - api.files.* 也可以操作 workspace/（它是少数对 files 开放的应用目录），但结构化读写请用 api.workspace.*。`,
   },
   {

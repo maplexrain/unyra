@@ -452,6 +452,8 @@ export interface WorkspaceOps {
   read: (path?: string) => unknown
   /** 写一个文本文件（整份覆盖；父目录自动建），输入 { path, content } */
   write: (input: Record<string, unknown>) => unknown
+  /** 定向检索行号与锚点：输入 { path, anchors: ['关键词1', '关键词2'] } 直接返回行号与匹配行，免去全文塞入上下文 */
+  grep?: (input: Record<string, unknown> | string) => unknown
 }
 
 /**
@@ -484,6 +486,10 @@ export interface SeeRequest {
   name?: string
   pdf?: string
   page?: number | number[]
+  /** 图片说明或题注（如 '图 3 整体架构'），直接写入静态资源库元数据 */
+  caption?: string
+  /** 排序序号（如 1, 2, 3），直接写入静态资源库元数据，便于 res.list 原样呈现 */
+  order?: number
 }
 
 /**
@@ -923,9 +929,19 @@ export interface BrowserScreenshotResult {
   error?: string
 }
 
+export interface BrowserEvalOpts {
+  /** 可选：将代码执行结果直接写入指定文件（如 'workspace/article.browser.md'），回执仅回字符数与行数，避免大量文本冲击上下文 */
+  saveTo?: string
+}
+
 export interface BrowserEvalResult {
   ok: boolean
   result?: unknown
+  saved?: boolean
+  path?: string
+  chars?: number
+  lines?: number
+  note?: string
   error?: string
 }
 
@@ -970,7 +986,7 @@ export interface BrowserOps {
   elementImage?: (tabId: string | undefined, target: BrowserTarget, opts?: BrowserToImageOpts) => Promise<BrowserToImageResult>
   elementScreenshot?: (tabId: string | undefined, target: BrowserTarget, opts?: BrowserToImageOpts) => Promise<BrowserToImageResult>
   /** 在访客页面上下文中安全执行受控代码并返回 JSON（只读/枚举/透视终极保底武器） */
-  eval(tabId: string | undefined, code: string): Promise<BrowserEvalResult>
+  eval(tabId: string | undefined, code: string, opts?: BrowserEvalOpts): Promise<BrowserEvalResult>
 }
 
 export interface McpOps {
@@ -1003,7 +1019,7 @@ export interface ResourceOps {
   /** 改名称 / 描述 / 文本内容 */
   update: (
     uuid: string,
-    patch: { name?: string; description?: string; content?: string },
+    patch: { name?: string; description?: string; content?: string; caption?: string; order?: number },
   ) => Promise<unknown>
   /** 删。还被引用时必须 force 才动手 */
   remove: (uuid: string, force: boolean) => Promise<unknown>

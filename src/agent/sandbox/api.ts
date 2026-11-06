@@ -14,7 +14,8 @@ import { renderRootHelp } from './apiRegistry'
 import { attachNodeFacade, registerNodeApi } from './nodeObject'
 import { wrapApi, imagesOf } from './wrap'
 import { filesAccessError } from './dataPaths'
-import type { SandboxCall, SandboxOptions, BrowserTarget } from './types'
+import type { SandboxCall, SandboxOptions, BrowserTarget, BrowserEvalOpts } from './types'
+import { MAX_TOOL_IMAGES } from '../types'
 import { getLoadedSkills, getActiveSkills } from '../skill/registry'
 import {
   getSkillScriptAbsPath,
@@ -52,7 +53,7 @@ export { imagesOf }
  */
 export function buildApi(
   opts: SandboxOptions,
-  log: SandboxCall[],
+  log: SandboxCall[] = [],
   /**
    * nodeFacade：要不要把 api.node.get 包成「进程内节点对象门面」。**默认关**——
    * 门面对象带吐 Promise 的 getter 与函数成员，只能活在进程内；真 Worker 通道的
@@ -227,6 +228,15 @@ export function buildApi(
     wrapApi(api, 'workspace.list', (args) => ws.list(asOptionalPath(args[0])), log)
     wrapApi(api, 'workspace.read', (args) => ws.read(asOptionalPath(args[0])), log)
     wrapApi(api, 'workspace.write', (args) => ws.write(asRecord(args[0])), log)
+    if (ws.grep) {
+      wrapApi(api, 'workspace.grep', (args) => {
+        const first = args[0]
+        if (typeof first === 'string') {
+          return ws.grep!({ path: first, query: asText(args[1]) })
+        }
+        return ws.grep!(asRecord(first))
+      }, log)
+    }
   }
   // 上下文压缩：摘要由 agent 自己写（见 learn/compact）
   if (opts.compact) {
@@ -528,15 +538,59 @@ export function buildApi(
       return b.toImage(...args)
     }, log)
 
-    wrapApi(api, 'browser.eval', (args) => {
+    wrapApi(api, 'browser.eval', async (args) => {
+      let tabId: string | undefined
+      let evalCode = ''
+      let evalOpts: BrowserEvalOpts | undefined
+
       const first = args[0]
       if (first && typeof first === 'object' && 'code' in first) {
         const rec = first as Record<string, unknown>
-        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
-        return browser.eval(tabId, asText(rec.code))
+        tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        evalCode = asText(rec.code)
+        if (typeof rec.saveTo === 'string' && rec.saveTo.trim()) {
+          evalOpts = { saveTo: rec.saveTo.trim() }
+        }
+      } else {
+        const { tabId: parsedTabId, rest } = parseTabAndRest(args)
+        tabId = parsedTabId
+        evalCode = asText(rest[0])
+        const optArg = rest[1]
+        if (optArg && typeof optArg === 'object' && 'saveTo' in optArg) {
+          const rec = optArg as Record<string, unknown>
+          if (typeof rec.saveTo === 'string' && rec.saveTo.trim()) {
+            evalOpts = { saveTo: rec.saveTo.trim() }
+          }
+        }
       }
-      const { tabId, rest } = parseTabAndRest(args)
-      return browser.eval(tabId, asText(rest[0]))
+
+      const res = await browser.eval(tabId, evalCode, evalOpts)
+      if (!res.ok || !evalOpts?.saveTo) {
+        return res
+      }
+
+      if (!opts.workspace) {
+        return { ok: false, error: 'saveTo 需要工作区支持，但当前未配置 workspace' }
+      }
+      const rawText = typeof res.result === 'string' ? res.result : JSON.stringify(res.result, null, 2)
+      const saveRes = (await opts.workspace.write({
+        path: evalOpts.saveTo,
+        content: rawText,
+      })) as { error?: string; path?: string }
+
+      if (saveRes && saveRes.error) {
+        return { ok: false, error: '落盘保存到工作区失败：' + saveRes.error }
+      }
+
+      const lines = rawText.split(/\r?\n/).length
+      return {
+        ok: true,
+        saved: true,
+        path: saveRes?.path ?? evalOpts.saveTo,
+        chars: rawText.length,
+        lines,
+        note: `执行结果已成功写入工作区文件「${saveRes?.path ?? evalOpts.saveTo}」（共 ${rawText.length} 字符，${lines} 行），避免占用上下文。可用 api.workspace.grep 定向检索行号，或在文档中以引用使用。`,
+      }
     }, log)
   }
 
@@ -622,27 +676,23 @@ export function buildApi(
     wrapApi(api, 'tiktok', () => Promise.resolve(tiktok()).then(() => ({ ok: true, note: '已响铃' })), log)
   }
 
-  // 看图 / 看 PDF 页（顶层 api）：字符串与对象两种写法都收，图片本身由宿主挂到下一跳（见 learn/see）
+  // 看图 / 看 PDF 页（顶层 api）：字符串、对象与数组批量写法都收，图片本身由宿主挂到下一跳（见 learn/see）
   if (opts.see) {
     const see = opts.see
-    wrapApi(api, 'see', (args) => {
-      const first = args[0]
-      if (typeof first === 'string') return see({ raw: first })
-      const obj = asRecord(first)
-      if (!Object.keys(obj).length) {
-        return {
-          error:
-            'see 需要一张图或一份 PDF：api.see(\'https://…/图.png\')、api.see({ pdf: \'https://…/论文.pdf\', page: 3 })、' +
-            "api.see({ base64: '…', mime: 'image/png', name: '叫什么' })。",
-        }
+    const normalizeSeeItem = (item: unknown): any => {
+      if (typeof item === 'string') {
+        const raw = item.trim()
+        return raw ? { raw } : null
       }
+      const obj = asRecord(item)
+      if (!Object.keys(obj).length) return null
       const rawPage = obj.page
       const page = Array.isArray(rawPage)
         ? rawPage.map((v) => Number(v)).filter((v) => Number.isFinite(v))
         : typeof rawPage === 'number' || typeof rawPage === 'string'
           ? Number(rawPage)
           : undefined
-      return see({
+      return {
         ...(obj.raw !== undefined ? { raw: asText(obj.raw) } : {}),
         ...(obj.url !== undefined || obj.link !== undefined || obj.href !== undefined
           ? { url: asText(obj.url ?? obj.link ?? obj.href) }
@@ -654,7 +704,67 @@ export function buildApi(
         ...(obj.name !== undefined ? { name: asText(obj.name) } : {}),
         ...(obj.pdf !== undefined ? { pdf: asText(obj.pdf) } : {}),
         ...(page !== undefined && (!Array.isArray(page) || page.length) ? { page } : {}),
-      })
+        ...(obj.caption !== undefined ? { caption: asText(obj.caption) } : {}),
+        ...(typeof obj.order === 'number' && Number.isFinite(obj.order) ? { order: obj.order } : {}),
+      }
+    }
+
+    wrapApi(api, 'see', async (args) => {
+      const first = args[0]
+      if (Array.isArray(first)) {
+        if (!first.length) return { ok: false, error: '批量 see 参数不能为空数组' }
+        const items = []
+        const allImages: any[] = []
+        for (const item of first) {
+          const req = normalizeSeeItem(item)
+          if (!req) {
+            items.push({ ok: false, error: '参数不合法（缺少 url/pdf/base64）' })
+            continue
+          }
+          const res = (await see(req)) as any
+          items.push(res)
+          if (res?.ok && Array.isArray(res.images)) {
+            allImages.push(...res.images)
+          }
+        }
+        const successCount = items.filter((r) => r.ok).length
+        const attachedCount = Math.min(allImages.length, MAX_TOOL_IMAGES)
+        const unattachedCount = Math.max(0, allImages.length - MAX_TOOL_IMAGES)
+        return {
+          ok: successCount > 0,
+          total: first.length,
+          successCount,
+          attachedCount,
+          unattachedCount,
+          items: items.map((r) => {
+            if (!r.ok) return { ok: false, error: r.error }
+            return {
+              ok: true,
+              uuid: r.uuid,
+              name: r.name,
+              caption: r.caption,
+              order: r.order,
+              bytes: r.bytes,
+              rel: r.rel,
+            }
+          }),
+          images: allImages,
+          note: `批量存入 ${successCount}/${first.length} 张图片到资源库。` +
+            (unattachedCount > 0
+              ? `单回合视觉通道附图上限为 ${MAX_TOOL_IMAGES} 张（已挂载前 ${attachedCount} 张）。其余 ${unattachedCount} 张已安全保存入库，可在后继步骤中分批查看或直接在文档中用 moji:static/<uuid> 引用。`
+              : `全部 ${attachedCount} 张图片均已附在下一步视觉通道中。`),
+        }
+      }
+
+      const req = normalizeSeeItem(first)
+      if (!req) {
+        return {
+          error:
+            'see 需要一张图或一份 PDF：api.see(\'https://…/图.png\')、api.see({ pdf: \'https://…/论文.pdf\', page: 3 })、' +
+            "api.see({ base64: '…', mime: 'image/png', name: '叫什么', caption: '图1说明', order: 1 })，或传数组批量处理 api.see([...])。",
+        }
+      }
+      return see(req)
     }, log)
   }
 

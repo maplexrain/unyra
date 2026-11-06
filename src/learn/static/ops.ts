@@ -54,6 +54,8 @@ export function makeResource(input: {
   hash?: string
   type?: ResourceType
   description?: string
+  caption?: string
+  order?: number
   now?: number
 }): StaticResource {
   const now = input.now ?? Date.now()
@@ -63,6 +65,8 @@ export function makeResource(input: {
     ext: input.ext.toLowerCase(),
     type: input.type ?? typeOfExt(input.ext),
     description: input.description ?? '',
+    caption: input.caption?.trim() || undefined,
+    order: typeof input.order === 'number' && Number.isFinite(input.order) ? input.order : undefined,
     createdAt: now,
     updatedAt: now,
     bytes: input.bytes,
