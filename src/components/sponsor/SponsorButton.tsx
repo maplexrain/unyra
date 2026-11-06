@@ -105,89 +105,8 @@ export default function SponsorButton() {
             className={`w-[600px] max-w-[95vw] rounded-2xl border border-line-strong/70 bg-card/95 p-4 shadow-2xl backdrop-blur-xl ${panelProps.className}`}
           >
             <div className="flex divide-x divide-line/40">
-              {/* 第一栏：当前的内容 */}
+              {/* 第一栏：赞助名单 */}
               <div className="flex-1 min-w-0 pr-4 flex flex-col justify-between">
-                <div>
-                  {/* 头部标题 */}
-                  <div className="flex items-center gap-2 border-b border-line/40 pb-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-rose-500/12 text-rose-500">
-                      <Heart size={13} className="fill-rose-500" />
-                    </span>
-                    <span className="text-[13px] font-semibold text-ink-strong">
-                      {t('支持「归一 unyra」')}
-                    </span>
-                  </div>
-
-                  {/* 适度、真诚的简短说明 */}
-                  <p className="my-2 text-[11.5px] leading-relaxed text-ink-soft">
-                    {t(
-                      '如果你觉得「归一」对你的学习和思考有所帮助，欢迎赞助支持后续的功能研发与维护。',
-                    )}
-                  </p>
-
-                  {/* 赞赏码卡片区：带有金色/暖朱砂柔和发光光晕效果 */}
-                  <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl border border-line/50 bg-paper/50 p-2.5 shadow-2xs dark:bg-paper/30">
-                    {/* 背景背光呼吸发光层 */}
-                    <div
-                      aria-hidden="true"
-                      className="pointer-events-none absolute -inset-4 rounded-full bg-gradient-to-tr from-amber-500/25 via-rose-500/25 to-yellow-400/30 blur-2xl opacity-80 animate-pulse"
-                    />
-                    <div
-                      aria-hidden="true"
-                      className="pointer-events-none absolute h-32 w-32 rounded-full bg-amber-400/20 blur-xl"
-                    />
-
-                    {/* 赞赏码本体 */}
-                    <div className="relative z-10 overflow-hidden rounded-xl border border-line/50 bg-white/95 p-1 shadow-md dark:bg-white">
-                      <img
-                        src={sponsorQr}
-                        alt={t('Maxwell 的赞赏码')}
-                        className="h-32 w-32 object-contain"
-                        loading="eager"
-                      />
-                    </div>
-                    <span className="relative z-10 mt-1.5 text-[10.5px] font-medium text-ink-faint">
-                      {t('微信扫一扫 · 赞助支持 ☕')}
-                    </span>
-                  </div>
-
-                  {/* 赞助备注提示：一行温和的小提示 */}
-                  <p className="mt-1.5 text-center text-[10.5px] text-ink-faint">
-                    {t('赞赏时可备注想留在致谢名单上的称呼或联系方式')}
-                  </p>
-                </div>
-
-                <div className="mt-2 space-y-1.5">
-                  {/* 应用内打开赞助者名单超链接按钮 */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpen(false)
-                      openSponsorsTab()
-                    }}
-                    title={t('在应用内打开赞助者名单文件')}
-                    className="flex w-full items-center justify-between rounded-lg border border-line bg-card/80 px-2.5 py-1 text-[11px] font-medium text-ink-soft transition hover:border-rose-500/30 hover:bg-rose-500/[0.07] hover:text-rose-600 dark:hover:text-rose-400"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <Heart size={12} className="fill-rose-500 text-rose-500" />
-                      <span>{t('查看赞助者名单与致谢记录')}</span>
-                    </span>
-                    <span className="flex items-center gap-1 text-[10.5px] opacity-75">
-                      <span>{t('在应用内打开')}</span>
-                      <ExternalLink size={11} />
-                    </span>
-                  </button>
-
-                  {/* 底部暖心结语 */}
-                  <div className="flex items-center justify-between border-t border-line/30 pt-1.5 text-[10px] text-ink-faint">
-                    <span>{t('感谢相遇，愿好运常伴！')}</span>
-                    <span className="text-seal/80 font-serif">Made with ❤️ by Maxwell</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 第二栏：赞助名单 */}
-              <div className="flex-1 min-w-0 pl-4 flex flex-col justify-between">
                 <div>
                   {/* 头部标题与排序切换按钮 */}
                   <div className="flex items-center justify-between border-b border-line/40 pb-2">
@@ -283,10 +202,91 @@ export default function SponsorButton() {
                   </div>
                 </div>
 
-                {/* 第二栏底部说明 */}
+                {/* 第一栏底部说明 */}
                 <div className="mt-2 flex items-center justify-between border-t border-line/30 pt-1.5 text-[9.5px] text-ink-faint">
                   <span>{t('源自 GitHub 官方仓库')}</span>
                   <span>{t('持续同步更新中')}</span>
+                </div>
+              </div>
+
+              {/* 第二栏：当前的内容 */}
+              <div className="flex-1 min-w-0 pl-4 flex flex-col justify-between">
+                <div>
+                  {/* 头部标题 */}
+                  <div className="flex items-center gap-2 border-b border-line/40 pb-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-rose-500/12 text-rose-500">
+                      <Heart size={13} className="fill-rose-500" />
+                    </span>
+                    <span className="text-[13px] font-semibold text-ink-strong">
+                      {t('支持「归一 unyra」')}
+                    </span>
+                  </div>
+
+                  {/* 适度、真诚的简短说明 */}
+                  <p className="my-2 text-[11.5px] leading-relaxed text-ink-soft">
+                    {t(
+                      '如果你觉得「归一」对你的学习和思考有所帮助，欢迎赞助支持后续的功能研发与维护。',
+                    )}
+                  </p>
+
+                  {/* 赞赏码卡片区：带有金色/暖朱砂柔和发光光晕效果 */}
+                  <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl border border-line/50 bg-paper/50 p-2.5 shadow-2xs dark:bg-paper/30">
+                    {/* 背景背光呼吸发光层 */}
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute -inset-4 rounded-full bg-gradient-to-tr from-amber-500/25 via-rose-500/25 to-yellow-400/30 blur-2xl opacity-80 animate-pulse"
+                    />
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute h-32 w-32 rounded-full bg-amber-400/20 blur-xl"
+                    />
+
+                    {/* 赞赏码本体 */}
+                    <div className="relative z-10 overflow-hidden rounded-xl border border-line/50 bg-white/95 p-1 shadow-md dark:bg-white">
+                      <img
+                        src={sponsorQr}
+                        alt={t('Maxwell 的赞赏码')}
+                        className="h-32 w-32 object-contain"
+                        loading="eager"
+                      />
+                    </div>
+                    <span className="relative z-10 mt-1.5 text-[10.5px] font-medium text-ink-faint">
+                      {t('微信扫一扫 · 赞助支持 ☕')}
+                    </span>
+                  </div>
+
+                  {/* 赞助备注提示：一行温和的小提示 */}
+                  <p className="mt-1.5 text-center text-[10.5px] text-ink-faint">
+                    {t('赞赏时可备注想留在致谢名单上的称呼或联系方式')}
+                  </p>
+                </div>
+
+                <div className="mt-2 space-y-1.5">
+                  {/* 应用内打开赞助者名单超链接按钮 */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false)
+                      openSponsorsTab()
+                    }}
+                    title={t('在应用内打开赞助者名单文件')}
+                    className="flex w-full items-center justify-between rounded-lg border border-line bg-card/80 px-2.5 py-1 text-[11px] font-medium text-ink-soft transition hover:border-rose-500/30 hover:bg-rose-500/[0.07] hover:text-rose-600 dark:hover:text-rose-400"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Heart size={12} className="fill-rose-500 text-rose-500" />
+                      <span>{t('查看赞助者名单与致谢记录')}</span>
+                    </span>
+                    <span className="flex items-center gap-1 text-[10.5px] opacity-75">
+                      <span>{t('在应用内打开')}</span>
+                      <ExternalLink size={11} />
+                    </span>
+                  </button>
+
+                  {/* 底部暖心结语 */}
+                  <div className="flex items-center justify-between border-t border-line/30 pt-1.5 text-[10px] text-ink-faint">
+                    <span>{t('感谢相遇，愿好运常伴！')}</span>
+                    <span className="text-seal/80 font-serif">Made with ❤️ by Maxwell</span>
+                  </div>
                 </div>
               </div>
             </div>
