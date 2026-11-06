@@ -23,19 +23,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  BookOpen,
   Captions,
-  ChevronLeft,
   Clapperboard,
-  Clock,
   ListTree,
   ListVideo,
   Loader2,
   MonitorPlay,
-  Pencil,
   Plus,
   Puzzle,
-  Trash2,
   X,
 } from 'lucide-react'
 import { t } from '../../i18n'
@@ -55,6 +50,7 @@ import type { PluginSettingField } from '../../lib/plugins'
 import type { LearnStore, NoteFile, VideoNodeEntity, VideoRecap, VideoResource } from '../../learn/types'
 import { registerVideoAudio } from '../../learn/video/videoRegistry'
 import VideoPlayer, { type VideoPlayerHandle } from './VideoPlayer'
+import VideoNotesFloatingWindow from './VideoNotesFloatingWindow'
 
 /** 创建态的输入记忆：下次打新建视频，上次粘的链接还在 */
 const INPUT_KEY = 'moji.video.input'
@@ -931,162 +927,30 @@ export default function VideoStudyTab({
   )
 
   /**
-   * 右侧悬浮面板（视频笔记栏）：
-   * - 挂载在视频节点下作为节点宇宙中真正的笔记节点；
-   * - 一级列表展示该视频节点的笔记清单，支持新建/删除笔记；
-   * - 点击进入二级页面编辑，顶部栏提供「插入当前视频时间戳」按钮。
+   * 悬浮视频笔记窗口组件：
+   * - 悬浮在视频播放器容器内，可自由拖动与调节窗口大小，位置与尺寸持久化；
+   * - 默认尺寸 600x400，默认位置在右侧垂直居中；
+   * - 实体挂载在当前视频节点下，支持新建/删除/编辑笔记及插入时间戳。
    */
   const rightOverlay = (
-    <div
-      className={
-        'absolute right-0 top-[40px] bottom-[56px] z-20 flex w-[340px] max-w-[46vw] flex-col overflow-hidden bg-black/85 text-white backdrop-blur-[2px] shadow-2xl transition-all duration-200 ' +
-        (rightOverlayOpen ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-4 pointer-events-none')
-      }
-      onPointerDown={(e) => e.stopPropagation()}
-    >
-      {editingNoteId && currentEditingNote ? (
-        /* 二级页面：编辑某份笔记 */
-        <div className="flex h-full min-h-0 flex-col">
-          {/* 二级页面顶部栏 */}
-          <div className="flex shrink-0 items-center justify-between gap-1.5 border-b border-white/10 bg-white/[0.03] px-3 py-2">
-            <button
-              type="button"
-              onClick={handleBackToList}
-              title={t('返回笔记列表')}
-              className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-white/70 transition hover:bg-white/10 hover:text-white cursor-pointer"
-            >
-              <ChevronLeft size={13} />
-              <span>{t('列表')}</span>
-            </button>
-
-            {/* 顶部栏功能按钮：插入当前视频时间戳 */}
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={handleInsertTimestamp}
-                title={t('在光标处插入当前时间戳 [{0}]', formatClock(currentMs))}
-                className="flex items-center gap-1 rounded bg-pink-500/20 px-2 py-1 text-[11px] font-medium text-pink-300 transition hover:bg-pink-500/30 cursor-pointer shadow-sm"
-              >
-                <Clock size={12} />
-                <span>{formatClock(currentMs)}</span>
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setRightOverlayOpen(false)}
-              title={t('收起笔记 (Tab)')}
-              className="rounded p-1 text-white/50 hover:bg-white/10 hover:text-white transition cursor-pointer"
-            >
-              <X size={13} />
-            </button>
-          </div>
-
-          {/* 笔记标题输入行 */}
-          <div className="border-b border-white/10 px-3 py-2 bg-white/[0.01]">
-            <input
-              type="text"
-              value={draftTitle}
-              onChange={(e) => handleTitleChange(e.target.value)}
-              placeholder={t('笔记标题…')}
-              className="w-full bg-transparent text-[13px] font-medium text-white placeholder:text-white/30 outline-none"
-            />
-          </div>
-
-          {/* Markdown 正文编辑区 */}
-          <div className="min-h-0 flex-1 p-3">
-            <textarea
-              ref={noteTextareaRef}
-              value={draftContent}
-              onChange={(e) => handleContentChange(e.target.value)}
-              placeholder={t('记录你的思考、问题或随堂笔记（支持 Markdown）…')}
-              className="h-full w-full resize-none bg-transparent font-sans text-[12px] leading-relaxed text-white/90 placeholder:text-white/30 outline-none"
-            />
-          </div>
-        </div>
-      ) : (
-        /* 一级页面：笔记列表 */
-        <div className="flex h-full min-h-0 flex-col">
-          {/* 笔记列表顶部栏 */}
-          <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-white/[0.03] px-3 py-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <BookOpen size={14} className="text-pink-400 shrink-0" />
-              <span className="text-[12px] font-semibold text-white/95 truncate">{t('视频笔记')}</span>
-              {videoNotes.length > 0 && (
-                <span className="rounded bg-white/10 px-1.5 py-0.2 text-[10px] text-white/60 shrink-0">
-                  {videoNotes.length}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={handleCreateNote}
-                title={t('新建笔记')}
-                className="flex items-center gap-1 rounded bg-pink-600/80 hover:bg-pink-600 px-2 py-0.5 text-[11px] font-medium text-white transition cursor-pointer shadow-sm"
-              >
-                <Plus size={12} />
-                <span>{t('新建')}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setRightOverlayOpen(false)}
-                title={t('收起笔记 (Tab)')}
-                className="rounded p-1 text-white/50 hover:bg-white/10 hover:text-white transition cursor-pointer"
-              >
-                <X size={13} />
-              </button>
-            </div>
-          </div>
-
-          {/* 笔记列表内容区 */}
-          <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-            {videoNotes.length > 0 ? (
-              <div className="flex flex-col gap-1.5">
-                {videoNotes.map((note) => (
-                  <div
-                    key={note.id}
-                    onClick={() => setEditingNoteId(note.id)}
-                    className="group relative flex flex-col gap-1 rounded-lg bg-white/[0.04] p-2.5 transition hover:bg-white/[0.08] cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-[12px] font-medium text-white/95">{note.name}</span>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-                        <button
-                          type="button"
-                          onClick={(e) => handleDeleteNote(note.id, e)}
-                          title={t('删除笔记')}
-                          className="rounded p-1 text-white/40 hover:bg-red-500/20 hover:text-red-300 transition cursor-pointer"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </div>
-                    {note.content ? (
-                      <p className="line-clamp-2 text-[11px] leading-relaxed text-white/60">
-                        {note.content.replace(/^#+\s+/gm, '')}
-                      </p>
-                    ) : (
-                      <p className="text-[10.5px] italic text-white/30">{t('（空笔记）')}</p>
-                    )}
-                    <span className="text-[9.5px] text-white/40 font-mono">
-                      {new Date(note.updatedAt || note.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center gap-2.5 p-4 text-center">
-                <Pencil size={20} className="text-white/20" />
-                <p className="text-[11.5px] leading-relaxed text-white/45">
-                  {t('还没有笔记：点击上方「新建」即可记录时间戳与学习要点，并实时挂在视频节点下。')}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    <VideoNotesFloatingWindow
+      open={rightOverlayOpen}
+      onClose={() => setRightOverlayOpen(false)}
+      currentMs={currentMs}
+      videoNotes={videoNotes}
+      editingNoteId={editingNoteId}
+      currentEditingNote={currentEditingNote}
+      draftTitle={draftTitle}
+      draftContent={draftContent}
+      onTitleChange={handleTitleChange}
+      onContentChange={handleContentChange}
+      onCreateNote={handleCreateNote}
+      onDeleteNote={handleDeleteNote}
+      onSelectNote={(noteId) => setEditingNoteId(noteId)}
+      onBackToList={handleBackToList}
+      onInsertTimestamp={handleInsertTimestamp}
+      noteTextareaRef={noteTextareaRef}
+    />
   )
 
   /* ---------- 绑定态：没有输入组件，自动解析 ---------- */

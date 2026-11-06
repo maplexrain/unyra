@@ -469,14 +469,19 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
   }
 
   // 游离挂件（剪了线 / 没绑过的）：独立实体，一样上画布——位置按存过的来，没存的自动找空位
+  // 若在 store.edges 中存在入边（如挂在视频节点、文档节点或文件节点下），则属于已连接节点，不再显示「游离」
   const pool = store.detached?.[goalId]
+  const hasIncomingEdge = (uuid: string) => (store.edges ?? []).some((e) => e.to === uuid)
   for (const note of pool?.notes ?? []) {
+    const connected = hasIncomingEdge(note.id)
     add({
       card: {
         uuid: note.id,
         kind: 'note',
         title: note.name,
-        subtitle: note.content.trim() ? `${note.content.length} 字 · 游离` : '游离 · 还是空的',
+        subtitle: connected
+          ? (note.content.trim() ? `${note.content.length} 字` : '还是空的')
+          : (note.content.trim() ? `${note.content.length} 字 · 游离` : '游离 · 还是空的'),
       },
       depth: 2,
       anchorY: 0,
@@ -485,12 +490,15 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     })
   }
   for (const sdoc of pool?.superdocs ?? []) {
+    const connected = hasIncomingEdge(sdoc.id)
     add({
       card: {
         uuid: sdoc.id,
         kind: 'superdoc',
         title: sdoc.name,
-        subtitle: sdoc.html.trim() ? `${sdoc.html.length} 字符 · 游离` : '游离 · 还是空的',
+        subtitle: connected
+          ? (sdoc.html.trim() ? `${sdoc.html.length} 字符` : '还是空的')
+          : (sdoc.html.trim() ? `${sdoc.html.length} 字符 · 游离` : '游离 · 还是空的'),
         ...(sdoc.html.trim() ? {} : { blank: true }),
       },
       depth: 2,
@@ -502,12 +510,15 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
   for (const exam of store.exams) {
     if (exam.goalId !== goalId) continue
     if (nodeById(store, exam.nodeId)) continue // 绑着的已经在宿主名下画过了
+    const connected = hasIncomingEdge(exam.id)
     add({
       card: {
         uuid: exam.id,
         kind: 'exam',
         title: exam.title,
-        subtitle: exam.questions.length ? `${exam.questions.length} 题 · 游离` : '游离 · 还没有题',
+        subtitle: connected
+          ? (exam.questions.length ? `${exam.questions.length} 题` : '还没有题')
+          : (exam.questions.length ? `${exam.questions.length} 题 · 游离` : '游离 · 还没有题'),
         ...(exam.questions.length ? {} : { blank: true }),
       },
       depth: 2,
