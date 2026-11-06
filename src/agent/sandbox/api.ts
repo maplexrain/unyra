@@ -340,8 +340,24 @@ export function buildApi(
   // 内置浏览器（browser.*，见 learn/web/browserOps）：网页页签生命周期与基础读写
   if (opts.browser) {
     const browser = opts.browser
-    const tabIdOf = (v: unknown): string | undefined =>
-      typeof v === 'string' && (v.startsWith('w:') || v.startsWith('tab-') || v.includes(':')) ? v.trim() : undefined
+    const isTabIdStr = (v: unknown): v is string =>
+      typeof v === 'string' && (v.startsWith('w:') || v.startsWith('tab-') || v.includes(':'))
+
+    const parseTabAndRest = (args: unknown[]): { tabId: string | undefined; rest: unknown[] } => {
+      if (args.length === 0) return { tabId: undefined, rest: [] }
+      const first = args[0]
+      // 显式给 null 或 undefined 作为占位符，消费掉第一参
+      if (first === undefined || first === null) {
+        return { tabId: undefined, rest: args.slice(1) }
+      }
+      // 显式给 tabId 字符串（如 'w:abc', 'tab-1'）
+      if (isTabIdStr(first)) {
+        return { tabId: first.trim(), rest: args.slice(1) }
+      }
+      // 第一参就是普通目标或其它参数
+      return { tabId: undefined, rest: args }
+    }
+
     const targetOf = (v: unknown): number | string => {
       if (typeof v === 'number' && Number.isFinite(v)) return v
       if (typeof v === 'string') {
@@ -351,8 +367,9 @@ export function buildApi(
         return trimmed
       }
       const rec = asRecord(v)
-      if (typeof rec.id === 'number') return rec.id
-      if (typeof rec.ref === 'number') return rec.ref
+      if (typeof rec.target === 'number' || typeof rec.target === 'string') return targetOf(rec.target)
+      if (typeof rec.id === 'number' || typeof rec.id === 'string') return targetOf(rec.id)
+      if (typeof rec.ref === 'number' || typeof rec.ref === 'string') return targetOf(rec.ref)
       throw new Error('目标需要给出节点编号数字（如 12）或 CSS 选择器字符串')
     }
 
@@ -362,46 +379,96 @@ export function buildApi(
     wrapApi(api, 'browser.close', (args) => browser.close(Array.isArray(args[0]) ? (args[0].map((v) => asText(v).trim()) as string[]) : asText(args[0]).trim()), log)
 
     wrapApi(api, 'browser.index', (args) => {
-      const tabId = tabIdOf(args[0])
-      const rest = tabId ? args.slice(1) : args
+      const first = args[0]
+      if (first && typeof first === 'object' && !Array.isArray(first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.index(tabId, rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
       return browser.index(tabId, asRecord(rest[0]))
     }, log)
 
     wrapApi(api, 'browser.text', (args) => {
-      const tabId = tabIdOf(args[0])
-      const rest = tabId ? args.slice(1) : args
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'id' in first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.text(tabId, targetOf(rec.target ?? rec.id), rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
       return browser.text(tabId, targetOf(rest[0]), asRecord(rest[1]))
     }, log)
 
     wrapApi(api, 'browser.inspect', (args) => {
-      const tabId = tabIdOf(args[0])
-      const rest = tabId ? args.slice(1) : args
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'id' in first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.inspect(tabId, targetOf(rec.target ?? rec.id))
+      }
+      const { tabId, rest } = parseTabAndRest(args)
       return browser.inspect(tabId, targetOf(rest[0]))
     }, log)
 
     wrapApi(api, 'browser.click', (args) => {
-      const tabId = tabIdOf(args[0])
-      const rest = tabId ? args.slice(1) : args
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'id' in first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.click(tabId, targetOf(rec.target ?? rec.id), rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
       return browser.click(tabId, targetOf(rest[0]), asRecord(rest[1]))
     }, log)
 
     wrapApi(api, 'browser.fill', (args) => {
-      const tabId = tabIdOf(args[0])
-      const rest = tabId ? args.slice(1) : args
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'id' in first) && ('text' in first || 'value' in first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        const text = asText(rec.text ?? rec.value)
+        return browser.fill(tabId, targetOf(rec.target ?? rec.id), text, rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
       return browser.fill(tabId, targetOf(rest[0]), asText(rest[1]), asRecord(rest[2]))
     }, log)
 
+    wrapApi(api, 'browser.type', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'id' in first) && ('text' in first || 'value' in first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        const text = asText(rec.text ?? rec.value)
+        return browser.type(tabId, targetOf(rec.target ?? rec.id), text, rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.type(tabId, targetOf(rest[0]), asText(rest[1]), asRecord(rest[2]))
+    }, log)
+
     wrapApi(api, 'browser.press', (args) => {
-      const tabId = tabIdOf(args[0])
-      const rest = tabId ? args.slice(1) : args
+      const first = args[0]
+      if (first && typeof first === 'object' && 'key' in first) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        const key = asText(rec.key).trim()
+        const target = (rec.target !== undefined || rec.id !== undefined) ? targetOf(rec.target ?? rec.id) : undefined
+        return browser.press(tabId, key, target)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
       const key = asText(rest[0]).trim()
       const target = rest[1] !== undefined ? targetOf(rest[1]) : undefined
       return browser.press(tabId, key, target)
     }, log)
 
     wrapApi(api, 'browser.scroll', (args) => {
-      const tabId = tabIdOf(args[0])
-      const rest = tabId ? args.slice(1) : args
+      const first = args[0]
+      if (first && typeof first === 'object' && !Array.isArray(first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.scroll(tabId, rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
       return browser.scroll(tabId, asRecord(rest[0]))
     }, log)
   }

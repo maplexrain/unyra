@@ -265,6 +265,7 @@ export async function apiNameTests() {
     'browser.inspect': '1',
     'browser.click': '1',
     'browser.fill': "1, '搜索词'",
+    'browser.type': "1, '搜索词'",
     'browser.press': "'Enter'",
     'browser.scroll': '{ by: 800 }',
     // 外部 MCP 服务：探针里给一份假的宿主（真实现见 agent/mcp/ops）
@@ -493,6 +494,7 @@ export async function apiNameTests() {
       inspect: async () => ({ ok: true, id: 1, tag: 'div' }),
       click: async () => ({ ok: true, tag: 'button' }),
       fill: async () => ({ ok: true, tag: 'input' }),
+      type: async () => ({ ok: true, tag: 'textarea', typedChars: 3 }),
       press: async () => ({ ok: true, key: 'Enter' }),
       scroll: async () => ({ ok: true, scrollY: 0, scrollHeight: 1000, atBottom: false }),
     },

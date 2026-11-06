@@ -1,4 +1,4 @@
-import type { BrowserOps, BrowserTabInfo, BrowserTarget } from '../../agent/sandbox/types'
+import type { BrowserClickResult, BrowserFillResult, BrowserOps, BrowserTabInfo, BrowserTarget, BrowserTypeOpts, BrowserTypeResult } from '../../agent/sandbox/types'
 import type { LearnStore, TabRef, WebTabMeta } from '../types'
 import { findTab, focusedGroup, groupIdOfTab } from '../groups'
 import { normalizeWebInput } from '../webUrl'
@@ -59,16 +59,21 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
     const { tabId: resolvedId } = resolveTab(tabId)
     const script = buildRuntimeExecScript(fnCall)
 
-    if (deps.execJs) {
-      return (await deps.execJs(resolvedId, script)) as T
-    }
+    try {
+      if (deps.execJs) {
+        return (await deps.execJs(resolvedId, script)) as T
+      }
 
-    const wv = webviewOf(resolvedId)
-    if (wv && typeof wv.executeJavaScript === 'function') {
-      return (await wv.executeJavaScript(script)) as T
-    }
+      const wv = webviewOf(resolvedId)
+      if (wv && typeof wv.executeJavaScript === 'function') {
+        return (await wv.executeJavaScript(script)) as T
+      }
 
-    throw new Error('未能连接到网页执行环境（网页页签未挂载或已销毁）：' + resolvedId)
+      throw new Error('未能连接到网页执行环境（网页页签未挂载或已销毁）：' + resolvedId)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : (typeof err === 'object' && err !== null ? JSON.stringify(err) : String(err))
+      throw new Error(msg)
+    }
   }
 
   return {
@@ -127,7 +132,7 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
       return executeInPage(tabId, `window.__agentInspect(${JSON.stringify(target)})`)
     },
     async click(tabId, target: BrowserTarget, opts) {
-      const r = await executeInPage<{ ok: boolean; tag?: string; error?: string }>(
+      const r = await executeInPage<BrowserClickResult>(
         tabId,
         `window.__agentClick(${JSON.stringify(target)}, ${JSON.stringify(opts ?? {})})`,
       )
@@ -137,9 +142,15 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
       return r
     },
     async fill(tabId, target: BrowserTarget, text: string, opts) {
-      return executeInPage(
+      return executeInPage<BrowserFillResult>(
         tabId,
         `window.__agentFill(${JSON.stringify(target)}, ${JSON.stringify(text)}, ${JSON.stringify(opts ?? {})})`,
+      )
+    },
+    async type(tabId, target: BrowserTarget, text: string, opts?: BrowserTypeOpts) {
+      return executeInPage<BrowserTypeResult>(
+        tabId,
+        `window.__agentType(${JSON.stringify(target)}, ${JSON.stringify(text)}, ${JSON.stringify(opts ?? {})})`,
       )
     },
     async press(tabId, key: string, target?: BrowserTarget) {

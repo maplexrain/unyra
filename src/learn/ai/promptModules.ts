@@ -32,7 +32,7 @@ export const PROMPT_MODULES: PromptModule[] = [
   {
     key: 'browser',
     title: '内置浏览器',
-    text: `内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.index / browser.text / browser.inspect / browser.click / browser.fill / browser.press / browser.scroll）：
+    text: `内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.index / browser.text / browser.inspect / browser.click / browser.fill / browser.type / browser.press / browser.scroll）：
 - 这一组操作的是**界面上开着的网页页签**（文档区里地球图标的页签）。
 - **生命周期基础**：
   - api.browser.open('https://…')：开一个网页页签；纯关键词会当搜索词处理；返回 { tabId, url }。
@@ -46,6 +46,7 @@ export const PROMPT_MODULES: PromptModule[] = [
 - **受控交互动作（写）**：
   - api.browser.click(tabId?, id, opts?)：自动平滑滚动居中并派发完整指针/鼠标事件序列（穿透 Shadow DOM，适配各类复杂按钮）。
   - api.browser.fill(tabId?, id, '文字', { pressEnter?: boolean })：智能填入文本（原生 input/textarea、React 受控输入与 contenteditable 富文本框均完美支持；可选 pressEnter: true 回车提交）。
+- api.browser.type(tabId?, id, '文字', { delayMs?: number })：逐字符按键仿真与 IME 模拟输入（为 B 站、知乎、微博等 Shadow DOM 复杂富文本框量身定制的健壮输入通道）。
   - api.browser.press(tabId?, key, id?)：模拟键盘按键（'Enter' / 'Escape' / 'Tab' / 'ArrowDown' 等）。
   - api.browser.scroll(tabId?, { to?: 'top'|'bottom', by?: 像素, target?: id })：滚动页面或局部容器，返回 { atBottom }。
 - **调用人体工学纪律**：

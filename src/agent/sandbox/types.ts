@@ -727,6 +727,7 @@ export interface BrowserInspectResult {
   ok: boolean
   id: BrowserTarget
   tag: string
+  resolvedTag?: string
   idAttr?: string
   className?: string
   value?: string
@@ -743,9 +744,36 @@ export interface BrowserClickOpts {
   waitAfterMs?: number
 }
 
+export interface BrowserClickResult {
+  ok: boolean
+  tag?: string
+  resolvedTag?: string
+  error?: string
+}
+
 export interface BrowserFillOpts {
   clear?: boolean
   pressEnter?: boolean
+}
+
+export interface BrowserFillResult {
+  ok: boolean
+  tag?: string
+  resolvedTag?: string
+  resolvedType?: string
+  error?: string
+}
+
+export interface BrowserTypeOpts {
+  delayMs?: number
+}
+
+export interface BrowserTypeResult {
+  ok: boolean
+  tag?: string
+  resolvedTag?: string
+  typedChars?: number
+  error?: string
 }
 
 export interface BrowserScrollOpts {
@@ -764,7 +792,7 @@ export interface BrowserScrollResult {
 
 /**
  * 内置浏览器（browser.*）的宿主实现（见 learn/web/browserOps）。
- * 涵盖网页页签生命周期（open / tabs / activate / close）与基础读写（index / text / inspect / click / fill / press / scroll）。
+ * 涵盖网页页签生命周期（open / tabs / activate / close）与基础读写（index / text / inspect / click / fill / type / press / scroll）。
  */
 export interface BrowserOps {
   /** 开一个网页页签（纯关键词当搜索词处理）；回 tabId，返回时首屏基本加载完 */
@@ -782,9 +810,11 @@ export interface BrowserOps {
   /** 探测指定节点的详细属性（tag, value, placeholder, href, checked, rect 等） */
   inspect(tabId: string | undefined, target: BrowserTarget): Promise<BrowserInspectResult>
   /** 自动滚到视口并智能点击指定节点 */
-  click(tabId: string | undefined, target: BrowserTarget, opts?: BrowserClickOpts): Promise<{ ok: boolean; tag?: string; error?: string }>
+  click(tabId: string | undefined, target: BrowserTarget, opts?: BrowserClickOpts): Promise<BrowserClickResult>
   /** 智能输入文字（支持受控组件、原生组件与富文本框，支持可选 pressEnter） */
-  fill(tabId: string | undefined, target: BrowserTarget, text: string, opts?: BrowserFillOpts): Promise<{ ok: boolean; tag?: string; error?: string }>
+  fill(tabId: string | undefined, target: BrowserTarget, text: string, opts?: BrowserFillOpts): Promise<BrowserFillResult>
+  /** 逐字符按键仿真与 IME 模拟输入（为 B 站、知乎等 Shadow DOM 复杂富文本框量身定制的健壮输入通道） */
+  type(tabId: string | undefined, target: BrowserTarget, text: string, opts?: BrowserTypeOpts): Promise<BrowserTypeResult>
   /** 模拟键盘按键（Enter, Escape, Tab, ArrowDown 等） */
   press(tabId: string | undefined, key: string, target?: BrowserTarget): Promise<{ ok: boolean; key?: string; error?: string }>
   /** 滚动页面或指定局部容器 */

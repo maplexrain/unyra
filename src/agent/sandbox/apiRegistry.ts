@@ -392,6 +392,7 @@ tabId 可省略，默认操作当前激活的网页页签；目标支持索引�
       a('inspect', 'browser.inspect(tabId?, target)', '探测节点详细属性', '读取节点的 tagName、value、placeholder、href、checked、disabled 以及几何尺寸。', 'const info = await api.browser.inspect(3)'),
       a('click', 'browser.click(tabId?, target, opts?)', '智能点击节点', '自动平滑滚动居中并派发完整指针/鼠标事件序列，支持穿透 Shadow DOM。', 'await api.browser.click(12)'),
       a('fill', 'browser.fill(tabId?, target, text, opts?)', '智能输入文本', '支持原生输入框、React 受控 input 以及 contenteditable 富文本框；可选 { pressEnter: true } 敲击回车。', "await api.browser.fill(3, '高等数学', { pressEnter: true })"),
+      a('type', 'browser.type(tabId?, target, text, opts?)', '逐字符按键仿真输入', '针对复杂 Shadow DOM 富文本框（如 B 站评论区），派发完整 keydown/beforeinput/input/keyup/IME 键序列。', "await api.browser.type(25, '真实评论内容')"),
       a('press', 'browser.press(tabId?, key, target?)', '模拟键盘按键', '敲击按键（如 "Enter"、"Escape"、"Tab"、"ArrowDown" 等）。', "await api.browser.press('Enter')"),
       a('scroll', 'browser.scroll(tabId?, opts?)', '滚动页面或容器', 'opts: { to: "top" | "bottom" } 或 { by: 像素 } 或 { target: 节点 }；返回 { atBottom }。', 'await api.browser.scroll({ by: 800 })'),
     ],
