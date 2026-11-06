@@ -170,6 +170,8 @@ import ExamCopyView from './ExamCopyView'
 import { OutlinePane } from './workspace/OutlinePane'
 import StructOverlay from './workspace/StructOverlay'
 import { NodeService, docIdOfOutlineUuid, type GNodeKind } from '../../learn/nodeKinds'
+import { confirmVideoNode } from '../../learn/video/nodes'
+import type { VideoResource } from '../../learn/types'
 import type { FileNodeKind } from '../../learn/types'
 import { noteEntityOf } from './workspace/panes'
 import { pruneImages } from '../../learn/images'
@@ -788,7 +790,7 @@ export default function LearnWorkspace({
    */
   const tabDocPayload = useCallback((ref: TabRef): ChipPayload | null => {
     const s = getLatest()
-    const title = tabTitle(ref, (id) => nodeById(s, id)?.title, examTabTitle, (vid) => s.videos?.find((v) => v.id === vid)?.title)
+    const title = tabTitle(ref, (id) => nodeById(s, id)?.title, examTabTitle, (vid) => s.videoNodes?.find((vn) => vn.id === vid)?.title ?? s.videos?.find((v) => v.id === vid)?.title)
     if (ref.kind === 'local') return { type: 'local', path: ref.path, title }
     // 工作区内部文件：ws 型引用带磁盘路径（chipRef 的两种写法都认）与 nodeId，
     // 点击免于按路径反查——「不能当外部文件看」在引用这一层就是**不是 local 型**
@@ -840,7 +842,7 @@ export default function LearnWorkspace({
    */
   const tabTrails = useMemo(() => {
     const names = tabs.map((t) =>
-      tabTitle(t.ref, (id) => nodeById(store, id)?.title, examTabTitle, (vid) => store.videos?.find((v) => v.id === vid)?.title),
+      tabTitle(t.ref, (id) => nodeById(store, id)?.title, examTabTitle, (vid) => store.videoNodes?.find((vn) => vn.id === vid)?.title ?? store.videos?.find((v) => v.id === vid)?.title),
     )
     const count = new Map<string, number>()
     for (const n of names) count.set(n, (count.get(n) ?? 0) + 1)
@@ -4665,6 +4667,24 @@ export default function LearnWorkspace({
         openTab({ kind: 'local', path: absPath, title: fileEntity.title || fileName })
       },
       onOpenVideo: (videoId: string) => openTab({ kind: 'video', videoId }),
+      onOpenVideoNode: (videoNodeUuid: string) => {
+        const vNode = store.videoNodes?.find((vn) => vn.id === videoNodeUuid)
+        if (!vNode) {
+          onToast(t('这个视频节点已经不在了'))
+          return
+        }
+        openTab({
+          kind: 'video',
+          videoNodeId: vNode.id,
+          videoId: vNode.videoId ?? undefined,
+          goalId: vNode.goalId,
+        })
+      },
+      onUpdateVideoNode: (nodeUuid: string, patch: { input?: string; title?: string; titleCustomized?: boolean }) => {
+        const node = makeNodeService().get(nodeUuid)
+        if (!node || node.kind !== 'video') return { error: '这个视频节点已经不在了' }
+        return node.editContent(patch)
+      },
       onGenerateVideoDoc: (videoNodeUuid: string) => startVideoOverview(videoNodeUuid),
     }),
     [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, canvasSetEntry, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, canvasRenameOutlineEntry, canvasDeleteOutlineEntry, generateDocForNode, startPrereqOutline, startVideoOverview, makeNodeService, openTab, getLatest, set, store, onToast],
@@ -5188,7 +5208,7 @@ export default function LearnWorkspace({
                 paneTotal={g.group?.tabs.length}
                 activeId={g.group?.active ?? null}
                 titleOf={(ref) =>
-                  tabTitle(ref, (id) => nodeById(store, id)?.title, examTabTitle, (vid) => store.videos?.find((v) => v.id === vid)?.title)
+                  tabTitle(ref, (id) => nodeById(store, id)?.title, examTabTitle, (vid) => store.videoNodes?.find((vn) => vn.id === vid)?.title ?? store.videos?.find((v) => v.id === vid)?.title)
                 }
                 trailOf={(ref) => tabTrails[tabKey(ref)] ?? ''}
                 onActivate={activateTab}
@@ -5675,10 +5695,11 @@ export default function LearnWorkspace({
               tabs={gVideoTabs}
               activeId={gTab?.ref.kind === 'video' ? gTab.id : null}
               videos={store.videos}
-              onCreate={(tabId, draft: VideoCreateDraft) => {
+              videoNodes={store.videoNodes}
+              onCreate={(tabId, draft: VideoCreateDraft, videoNodeId?: string) => {
                 const id = crypto.randomUUID()
                 const now = Date.now()
-                const record = {
+                const record: VideoResource = {
                   id,
                   pluginId: draft.pluginId,
                   pluginName: draft.pluginName,
@@ -5687,21 +5708,54 @@ export default function LearnWorkspace({
                   title: draft.input.slice(0, 60),
                   createdAt: now,
                 }
-                set({ ...store, videos: [...(store.videos ?? []), record] })
-                // 开绑定页签、关掉创建页签（顺序反过来会让这一格短暂没页签）
-                openTab({ kind: 'video', videoId: id })
-                closeTab(groupId, tabId, 'self')
+                const latest = getLatest()
+                let nextStore: LearnStore = { ...latest, videos: [...(latest.videos ?? []), record] }
+                if (videoNodeId) {
+                  const r = confirmVideoNode(
+                    nextStore,
+                    videoNodeId,
+                    {
+                      input: draft.input,
+                      title: draft.input.slice(0, 60),
+                      pluginId: draft.pluginId,
+                      pluginName: draft.pluginName,
+                      fields: draft.fields,
+                    },
+                    now,
+                  )
+                  if (!('error' in r)) {
+                    nextStore = r.store
+                  }
+                }
+                set(nextStore)
+                if (videoNodeId) {
+                  openTab({ kind: 'video', videoNodeId, videoId: id, goalId: activeGoalId ?? undefined })
+                } else {
+                  openTab({ kind: 'video', videoId: id })
+                  closeTab(groupId, tabId, 'self')
+                }
               }}
-              onResolved={(videoId, title) => {
-                // 取最新一份再合并：进度写入是高频的，闭包里的 store 可能落后一拍
+              onResolved={(videoId, title, videoNodeId) => {
                 const latest = getLatest()
                 const list = latest.videos ?? []
                 const cur = list.find((v) => v.id === videoId)
-                if (!cur || cur.title === title) return
-                set({
-                  ...latest,
-                  videos: list.map((v) => (v.id === videoId ? { ...v, title, updatedAt: Date.now() } : v)),
-                })
+                const vNode = videoNodeId ? (latest.videoNodes ?? []).find((vn) => vn.id === videoNodeId) : null
+                let touched = false
+                let nextVideos = list
+                let nextVideoNodes = latest.videoNodes ?? []
+                if (cur && cur.title !== title) {
+                  nextVideos = list.map((v) => (v.id === videoId ? { ...v, title, updatedAt: Date.now() } : v))
+                  touched = true
+                }
+                if (vNode && !vNode.titleCustomized && vNode.title !== title) {
+                  nextVideoNodes = nextVideoNodes.map((vn) =>
+                    vn.id === videoNodeId ? { ...vn, title, updatedAt: Date.now() } : vn,
+                  )
+                  touched = true
+                }
+                if (touched) {
+                  set({ ...latest, videos: nextVideos, videoNodes: nextVideoNodes })
+                }
               }}
               onProgress={(videoId, positionMs, source) => {
                 const latest = getLatest()
@@ -6011,32 +6065,6 @@ export default function LearnWorkspace({
     <div className="print-flat flex h-full overflow-hidden">
       <ExplorerSidebar
         store={store}
-        videos={store.videos ?? []}
-        onOpenVideo={(id) => openTab({ kind: 'video', videoId: id })}
-        onDeleteVideo={(id) => {
-          // 删除守卫：被视频节点绑着的视频不许删（引用的节点会变成死绑）——
-          // 视频节点跟着目标走，列出目标名让用户知道是哪门课在用
-          const refs = (store.videoNodes ?? []).filter((v) => v.videoId === id)
-          if (refs.length) {
-            const names = refs
-              .map((r) => store.goals.find((g) => g.id === r.goalId)?.question ?? r.goalId)
-              .slice(0, 3)
-              .join('、')
-            onToast(
-              t(
-                refs.length > 3
-                  ? '这个视频正被 {0} 等 {1} 个目标绑着：先解绑（画布上的视频卡）再删'
-                  : '这个视频正被「{0}」绑着：先解绑（画布上的视频卡）再删',
-                names,
-                String(refs.length),
-              ),
-            )
-            return
-          }
-          set({ ...store, videos: (store.videos ?? []).filter((v) => v.id !== id) })
-        }}
-        // 视频的新建入口（顶栏按钮已移除）：开创建态页签
-        onNewVideo={() => openTab({ kind: 'video' })}
         // 高亮跟着**激活的页签**走：关掉某个节点的教学文档页签，它就不再是选中样式
         activeNodeId={selectedNodeId}
         // 文档行也一样：焦点格开着哪份笔记 / 试卷副本 / 超级文档 / 学习文档，那一行就亮

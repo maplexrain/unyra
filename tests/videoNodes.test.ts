@@ -72,8 +72,11 @@ describe('视频节点：创建与绑定', () => {
     const card = view.cards.find((c) => c.uuid === r.uuid)
     expect(card?.kind).toBe('video')
     expect(card?.blank).toBe(true)
-    const rejected = svc.create({ kind: 'video', under: 'r' })
-    expect(rejected).toMatchObject({ error: expect.stringContaining('不挂') })
+    const rejected = svc.create({ kind: 'video', under: 'non-exist' })
+    expect(rejected).toMatchObject({ error: expect.stringContaining('不存在') })
+    const accepted = svc.create({ kind: 'video', under: 'r' })
+    expect(accepted).toMatchObject({ ok: true, created: true })
+    expect(read().edges.some((e) => e.from === 'r' && e.to === (accepted as any).uuid)).toBe(true)
   })
 
   it('editContent({ videoId }) 绑定：节点与视频资源两边同一次提交（boundTo 镜像）', () => {
@@ -115,7 +118,7 @@ describe('视频节点：创建与绑定', () => {
     expect(svc.get(created.uuid)!.editContent({ bogus: 1 })).toMatchObject({ error: expect.any(String) })
     const n = svc.get(created.uuid)!
     expect(n.help().description).toContain('还没有绑视频')
-    expect(n.help().connection).toContain('不参与树结构')
+    expect(n.help().connection).toContain('文档')
   })
 })
 

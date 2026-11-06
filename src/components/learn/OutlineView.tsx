@@ -33,6 +33,8 @@ export type CanvasChannelProps = Pick<
   | 'onDeleteOutlineEntry'
   | 'onBindVideo'
   | 'onOpenVideo'
+  | 'onOpenVideoNode'
+  | 'onUpdateVideoNode'
   | 'onGenerateDoc'
   | 'onGenerateOutline'
   | 'onGenerateVideoDoc'

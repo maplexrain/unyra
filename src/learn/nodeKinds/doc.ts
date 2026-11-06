@@ -142,6 +142,7 @@ export class DocGNode extends GNode {
       if (e.from !== this.uuid) continue
       if ((s.projects ?? []).some((p) => p.id === e.to)) out.push({ id: e.to, type: 'down' })
       if ((s.fileNodes ?? []).some((f) => f.id === e.to)) out.push({ id: e.to, type: 'down' })
+      if ((s.videoNodes ?? []).some((v) => v.id === e.to)) out.push({ id: e.to, type: 'down' })
     }
     if (node.outline) out.push({ id: outlineUuid(this.uuid), type: 'down' })
     for (const n of notesOf(node)) out.push({ id: n.id, type: 'down' })
@@ -273,9 +274,9 @@ export class DocGNode extends GNode {
       }
       return true
     }
-    if (node.kind === 'superdoc' || node.kind === 'exam' || node.kind === 'project' || node.kind === 'file') return true
+    if (node.kind === 'superdoc' || node.kind === 'exam' || node.kind === 'project' || node.kind === 'file' || node.kind === 'video') return true
     if (node.kind === 'outline') return '大纲与文档一一对应（o: 就是这份文档的 id），由创建 / 删除大纲管理，不能手工连'
-    return '这种节点不能挂到文档之下（能挂的：笔记 / 试卷 / 超级文档 / 项目 / 下级文档走大纲）'
+    return '这种节点不能挂到文档之下（能挂的：笔记 / 试卷 / 超级文档 / 项目 / 文件 / 视频 / 下级文档走大纲）'
   }
 
   /**
@@ -314,7 +315,13 @@ export class DocGNode extends GNode {
       this.ctx.commit(r.store)
       return { ok: true, note: '已把文件「' + down.title + '」作为下级连接到「' + this.title + '」' }
     }
-    return { error: '这种节点挂不到文档之下（能绑的：笔记 / 试卷 / 超级文档 / 项目 / 文件）' }
+    if (down.kind === 'video') {
+      const r = addEdge(s, this.uuid, down.uuid)
+      if (!r.added) return { error: r.reason ?? '连接失败' }
+      this.ctx.commit(r.store)
+      return { ok: true, note: '已把视频节点「' + down.title + '」作为下级连接到「' + this.title + '」' }
+    }
+    return { error: '这种节点挂不到文档之下（能绑的：笔记 / 试卷 / 超级文档 / 项目 / 文件 / 视频）' }
   }
 
   /**
@@ -339,12 +346,14 @@ export class DocGNode extends GNode {
         return { ok: true, note: '已把「' + this.title + '」从「' + target.title + '」之下摘出来（它变成没有上游的独立文档，内容原样，认领随线解除）' }
       }
     }
-    // 上游视频节点（上游树边）：摘线 = 拆那条树边
+    // 视频节点（可上游可下游）：摘线 = 拆树边
     if (target.kind === 'video') {
-      const upEdge = this.ctx.store().edges.find((e) => e.to === this.uuid && e.from === target.uuid)
-      if (upEdge) {
-        this.ctx.commit(removeEdge(this.ctx.store(), target.uuid, this.uuid))
-        return { ok: true, note: '已把「' + this.title + '」从「' + target.title + '」之下摘出来' }
+      const edge = this.ctx.store().edges.find(
+        (e) => (e.from === this.uuid && e.to === target.uuid) || (e.to === this.uuid && e.from === target.uuid),
+      )
+      if (edge) {
+        this.ctx.commit(removeEdge(this.ctx.store(), edge.from, edge.to))
+        return { ok: true, note: '已断开与视频节点「' + target.title + '」的连接' }
       }
     }
     // 文件节点（可上游可下游）：摘线 = 拆树边

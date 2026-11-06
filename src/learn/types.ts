@@ -430,7 +430,7 @@ export type TabRef =
    * 组被收起（锚大纲关闭进停靠场）时它一起收。身份仍是 videoId（tabKey 不看 goalId），
    * 绑定关系变了重开一次页签就对齐。
    */
-  | { kind: 'video'; videoId?: string; goalId?: string }
+  | { kind: 'video'; videoId?: string; videoNodeId?: string; goalId?: string }
   /**
    * 插件开发文档页签：介绍插件契约与配置面板（见 components/plugins/PluginDoc）。
    * 跟着页签持久化（normalize 认它），内容全是静态文档，没有要落盘的状态。
@@ -698,6 +698,14 @@ export interface VideoNodeEntity {
   goalId: string
   /** 绑定的视频资源 id；null = 空节点（刚从 palette 落下，还没选视频） */
   videoId: string | null
+  /** 视频唯一标识（URL 或 B 站 BV 号） */
+  input?: string
+  /** 视频节点标题（创建时为未命名视频，解析后自动回填或用户手动重命名） */
+  title?: string
+  /** 用户是否手动重命名过标题（手动命名后不再随解析覆盖） */
+  titleCustomized?: boolean
+  /** 是否已确定为视频资源并固化标识输入框 */
+  confirmed?: boolean
   createdAt: number
   updatedAt: number
 }

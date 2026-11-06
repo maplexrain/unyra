@@ -49,7 +49,7 @@ export function getCanvasPerfStats(): Readonly<CanvasPerfStats> {
 
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { HTMLAttributes, ReactNode } from 'react'
-import { Check, ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, FolderTree, Pencil, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, FolderTree, Lock, Pencil, Trash2, X } from 'lucide-react'
 import type { FileNodeKind, LearnStore } from '../../../learn/types'
 import { FILES_DIR } from '../../../learn/layout'
 import { sanitizeFileName, uploadGoalFileWithHash } from '../../../learn/fileNodes'
@@ -145,6 +145,10 @@ export interface StructureCanvasProps {
   onBindVideo?: (nodeUuid: string, videoId: string | null) => ChannelResult
   /** 打开绑定的视频（打开它 = 一并打开本目标的页签组，见 LearnWorkspace 的 openTab） */
   onOpenVideo?: (videoId: string) => void
+  /** 打开视频节点页签 */
+  onOpenVideoNode?: (nodeUuid: string) => void
+  /** 更新视频节点内容（输入标识、标题等） */
+  onUpdateVideoNode?: (nodeUuid: string, patch: { input?: string; title?: string; titleCustomized?: boolean }) => ChannelResult
   /** 给一个空文档卡点「生成文档」：交给 AI 写正文 */
   onGenerateDoc?: (nodeUuid: string, hint?: string) => void
   /** 文档卡右键菜单的「生成前置知识大纲」 */
@@ -348,7 +352,7 @@ const MINI_FILL: Record<GNodeKind, string> = {
   note: '#10b981',
   exam: '#f59e0b',
   superdoc: '#8b5cf6',
-  video: '#06b6d4',
+  video: '#ec4899',
   project: '#14b8a6',
   file: '#2563eb',
 }
@@ -384,7 +388,7 @@ interface MenuState {
   y: number
   uuid: string
   slotKey?: string
-  mode: 'actions' | 'note' | 'rename' | 'videoPick' | 'projectPath' | 'fileEdit'
+  mode: 'actions' | 'note' | 'rename' | 'projectPath' | 'fileEdit'
 }
 
 /**
@@ -417,6 +421,93 @@ function WheelStop({ className, style, children, ...rest }: HTMLAttributes<HTMLD
  * 一个响应式地址输入框（自动判断 local/web，无需提交按钮），内部右侧带选择本地文件按钮。
  * 上传先走 docs/{goal}/files/ 并计算 SHA-256 去重注册，若 title 未手动命名则自动填充文件名。
  */
+
+function VideoCardRow({
+  card,
+  store,
+  goalId: _goalId,
+  onUpdateVideoNode,
+  onGenerateVideoDoc,
+}: {
+  card: CardView
+  store: LearnStore
+  goalId: string
+  onUpdateVideoNode?: (nodeUuid: string, patch: { input?: string; title?: string; titleCustomized?: boolean }) => ChannelResult
+  onGenerateVideoDoc?: (videoNodeUuid: string) => void
+}) {
+  const vNode = store.videoNodes?.find((v) => v.id === card.uuid)
+  const isConfirmed = !!vNode?.confirmed
+  const [val, setVal] = useState(vNode?.input ?? '')
+  const timerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    setVal(vNode?.input ?? '')
+  }, [vNode?.input])
+
+  const commitInput = (next: string) => {
+    if (isConfirmed) return
+    onUpdateVideoNode?.(card.uuid, { input: next.trim() })
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isConfirmed) return
+    const next = e.target.value
+    setVal(next)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = window.setTimeout(() => {
+      commitInput(next)
+    }, 280)
+  }
+
+  const handleBlur = () => {
+    if (isConfirmed) return
+    if (timerRef.current) clearTimeout(timerRef.current)
+    commitInput(val)
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 px-3 pb-2 select-none">
+      <div className="relative flex flex-1 items-center min-w-0">
+        <input
+          type="text"
+          readOnly={isConfirmed}
+          value={val}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          onPointerDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          placeholder={t('输入视频链接或BV号...')}
+          title={isConfirmed ? t('视频资源已固化：{0}', val) : val || t('输入视频链接或BV号...')}
+          className={`w-full rounded border px-2 py-1 text-[11px] outline-none transition ${
+            isConfirmed
+              ? 'border-pink-500/20 bg-pink-500/[0.04] text-ink-soft cursor-default select-all'
+              : 'border-line/70 bg-card text-ink placeholder:text-ink-faint focus:border-pink-500/50 focus:ring-1 focus:ring-pink-500/20'
+          }`}
+        />
+        {isConfirmed && (
+          <span
+            title={t('已确定为视频资源，标识已固化')}
+            className="pointer-events-none absolute right-2 text-pink-500/60"
+          >
+            <Lock size={11} />
+          </span>
+        )}
+      </div>
+      {isConfirmed && onGenerateVideoDoc && (
+        <button
+          type="button"
+          title={t('为这个视频生成总览文档')}
+          className="shrink-0 rounded bg-pink-500/15 px-2 py-1 text-[10.5px] font-medium text-pink-700 dark:text-pink-300 hover:bg-pink-500/25 transition cursor-pointer"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => onGenerateVideoDoc(card.uuid)}
+        >
+          {t('生成总览')}
+        </button>
+      )}
+    </div>
+  )
+}
+
 function FileCardRow({
   card,
   store,
@@ -577,8 +668,10 @@ export const StructureCanvas = memo(function StructureCanvas({
   onAddOutlineEntry,
   onDeleteOutlineEntry,
   onRenameOutlineEntry,
-  onBindVideo,
+  onBindVideo: _onBindVideo,
   onOpenVideo,
+  onOpenVideoNode,
+  onUpdateVideoNode,
   onGenerateDoc,
   onGenerateOutline,
   onGenerateVideoDoc,
@@ -1073,7 +1166,7 @@ export const StructureCanvas = memo(function StructureCanvas({
           : paletteKind === 'outline'
             ? ['doc', 'outline', 'file']
             : paletteKind === 'video'
-              ? [] // 视频节点不挂树：只能落在空白处，没有可作为落点的卡
+              ? ['doc'] // 视频节点可落在文档之下或空白处
               : paletteKind === 'file'
                 ? ['doc', 'note', 'superdoc', 'exam']
                 : ['doc']
@@ -1519,9 +1612,13 @@ export const StructureCanvas = memo(function StructureCanvas({
         return
       }
       if (card.kind === 'video') {
+        if (onOpenVideoNode) {
+          onOpenVideoNode(card.uuid)
+          return
+        }
         const bound = store.videoNodes?.find((v) => v.id === card.uuid)?.videoId ?? null
         if (bound && onOpenVideo) onOpenVideo(bound)
-        else onToast?.(t('这张视频卡还没有绑视频：点卡上的「选择视频」'))
+        else onToast?.(t('这张视频卡还没有绑定视频'))
         return
       }
       if (card.kind === 'project') {
@@ -1577,6 +1674,13 @@ export const StructureCanvas = memo(function StructureCanvas({
       if (card.kind === 'file') {
         if (onBindFile) {
           report(onBindFile(card.uuid, { title: to.trim(), titleCustomized: true }))
+        }
+        setMenu(null)
+        return
+      }
+      if (card.kind === 'video') {
+        if (onUpdateVideoNode) {
+          report(onUpdateVideoNode(card.uuid, { title: to.trim(), titleCustomized: true }))
         }
         setMenu(null)
         return
@@ -1910,9 +2014,7 @@ export const StructureCanvas = memo(function StructureCanvas({
             // 从目标项圆点拖出来的线 = 认领那个口（与点目标项建文档同一口径）；反方向拖没有口可指
             tryConnect(outline, doc, fromCard?.kind === 'outline' ? g.slotKey : undefined)
           } else if (isPair('video', 'doc')) {
-            const video = fromCard?.kind === 'video' ? g.from : target.uuid
-            const doc = fromCard?.kind === 'doc' ? g.from : target.uuid
-            tryConnect(video, doc)
+            tryConnect(g.from, target.uuid)
           } else if (isPair('outline', 'outline')) {
             /*
              * 大纲连大纲 = 落点的大纲之下再开一层（上层当分类、下层当指导）。
@@ -2000,20 +2102,20 @@ export const StructureCanvas = memo(function StructureCanvas({
           const world2 = toWorld(e.clientX, e.clientY)
           const target = hitTest(cards, world2.x, world2.y, height)
           if (!onCreateNode) return
-          // 视频节点不挂树：拖到卡上不给落，只有空白处是它的位置（绑定在卡上选）
+          // 视频节点：可落在文档之下作为下游，也可拖到空白处独立放置
           if (g.kind === 'video') {
-            if (target) {
-              onToast?.(t('视频节点拖到空白处放下：它不挂进大纲树，只把一个视频绑到这个目标'))
+            if (target && target.kind !== 'doc') {
+              onToast?.(t('视频节点只能挂在文档之下或放在空白处'))
               return
             }
-            const r = onCreateNode('video', null, world2)
+            const r = onCreateNode('video', target ? target.uuid : null, world2)
             if ('error' in r) {
               onToast?.(r.error)
               return
             }
             writePos(r.uuid, world2.x, world2.y)
             setSelectedId(r.uuid)
-            onToast?.(t('已建一张视频卡：点「选择视频」挑一个现有视频绑上'))
+            onToast?.(t('已创建视频节点：在第二行输入视频唯一标识，点击标题打开视频 Tab'))
             return
           }
           /*
@@ -3250,40 +3352,17 @@ export const StructureCanvas = memo(function StructureCanvas({
                 </div>
               ) : card.kind === 'video' ? (
                 /*
-                  视频卡：副行显示绑定状态；绑定后显示「生成大纲」按钮；「选择视频 / 换绑」打开下拉。
-                  必须是真按钮：画布容器在 pointerdown 上捕获指针，非白名单元素的 click 会被吞掉。
+                  视频卡：两行结构。
+                  第一行徽章 + 标题，第二行视频唯一标识输入框（URL/BV号）。
+                  点击标题打开视频 Tab，确定为视频资源后，第二行标识输入框固化（只读展示，不再提供修改换绑等操作）。
                 */
-                <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                  <span title={card.subtitle} className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {!card.blank && (
-                      <button
-                        type="button"
-                        title={t('为这个视频生成总览文档')}
-                        className="shrink-0 rounded bg-seal/15 px-2 py-0.5 text-[11px] font-medium text-seal-deep hover:bg-seal/25 transition cursor-pointer"
-                        onClick={() => onGenerateVideoDoc?.(card.uuid)}
-                      >
-                        {t('生成总览')}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      title={t('从现有视频里挑一个绑到这个目标（打开它会一并打开这门课的页签组）')}
-                      className="shrink-0 rounded bg-line/60 px-2 py-0.5 text-[11px] text-ink-soft hover:bg-line/90 transition cursor-pointer"
-                      onClick={(e) => {
-                        const r = e.currentTarget.getBoundingClientRect()
-                        setMenu({
-                          x: Math.min(r.right, window.innerWidth - 264),
-                          y: Math.min(r.bottom + 6, window.innerHeight - 200),
-                          uuid: card.uuid,
-                          mode: 'videoPick',
-                        })
-                      }}
-                    >
-                      {card.blank ? t('选择视频') : t('换绑')}
-                    </button>
-                  </div>
-                </div>
+                <VideoCardRow
+                  card={card}
+                  store={store}
+                  goalId={goalId}
+                  onUpdateVideoNode={onUpdateVideoNode}
+                  onGenerateVideoDoc={onGenerateVideoDoc}
+                />
               ) : card.kind === 'file' ? (
                 /*
                   文件卡：两行结构。
@@ -3471,7 +3550,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                 />
               )}
               {/* 进线接口（左）：实心、不透明。入口不画；视频卡为顶层资源无上游，不该有进线点 */}
-              {card.kind !== 'entry' && !card.entry && card.kind !== 'video' && (
+              {card.kind !== 'entry' && !card.entry && (
                 <div
                   className="pointer-events-none absolute -left-[7.5px] h-3.5 w-3.5 -translate-y-1/2 rounded-full border-2 border-card bg-seal"
                   style={{ top: EDGE_ANCHOR_Y }}
@@ -3703,7 +3782,7 @@ export const StructureCanvas = memo(function StructureCanvas({
       {menu && menuCard && (
         <WheelStop
           data-menu
-          className={`fixed z-50 ${menu.mode === 'videoPick' || menu.mode === 'projectPath' ? 'w-[280px]' : 'w-[168px]'} rounded-lg border border-line bg-card/95 p-1 text-[12px] text-ink shadow-lg backdrop-blur`}
+          className={`fixed z-50 ${menu.mode === 'projectPath' ? 'w-[280px]' : 'w-[168px]'} rounded-lg border border-line bg-card/95 p-1 text-[12px] text-ink shadow-lg backdrop-blur`}
           style={{ left: menu.x, top: menu.y }}
         >
           {menu.mode === 'actions' ? (
@@ -3783,13 +3862,41 @@ export const StructureCanvas = memo(function StructureCanvas({
                 </button>
               )}
               {menuCard.kind === 'video' && (
-                <button
-                  type="button"
-                  className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                  onClick={() => setMenu({ ...menu, mode: 'videoPick' })}
-                >
-                  {menuCard.blank ? t('选择视频') : t('换一个视频')}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
+                    onClick={() => {
+                      setMenu(null)
+                      if (onOpenVideoNode) onOpenVideoNode(menuCard.uuid)
+                      else if (onOpenVideo && menuCard.video?.videoId) onOpenVideo(menuCard.video.videoId)
+                    }}
+                  >
+                    {t('打开视频')}
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
+                    onClick={() => {
+                      setMenuText(menuCard.title)
+                      setMenu({ ...menu, mode: 'rename' })
+                    }}
+                  >
+                    {t('重命名')}
+                  </button>
+                  {menuCard.video?.confirmed && onGenerateVideoDoc && (
+                    <button
+                      type="button"
+                      className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
+                      onClick={() => {
+                        setMenu(null)
+                        onGenerateVideoDoc(menuCard.uuid)
+                      }}
+                    >
+                      {t('生成总览')}
+                    </button>
+                  )}
+                </>
               )}
               {menuCard.kind === 'file' && (
                 <button
@@ -3893,54 +4000,6 @@ export const StructureCanvas = memo(function StructureCanvas({
                   {t('确定')}
                 </button>
               </div>
-            </div>
-          ) : menu.mode === 'videoPick' ? (
-            /*
-              视频卡的下拉：现有视频一张一行（当前绑着的打勾），底部给解绑。
-              绑定走统一通道（onBindVideo → 节点的 editContent({ videoId })），
-              与 agent 动手绑是同一条路；拒绝的原因由 report 弹吐司。
-            */
-            <div className="flex max-h-[300px] flex-col overflow-y-auto">
-              <div className="px-2 pb-1 pt-1 text-[10px] text-ink-faint">{t('挑一个视频绑到这个目标')}</div>
-              {(store.videos ?? []).map((v) => {
-                const current = store.videoNodes?.find((n) => n.id === menu.uuid)?.videoId === v.id
-                return (
-                  <button
-                    key={v.id}
-                    type="button"
-                    title={v.input}
-                    className={
-                      'flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left hover:bg-line/60 ' +
-                      (current ? 'bg-seal/[0.08]' : '')
-                    }
-                    onClick={() => {
-                      if (onBindVideo) report(onBindVideo(menu.uuid, v.id))
-                      setMenu(null)
-                    }}
-                  >
-                    <span className="min-w-0 flex-1 truncate text-[12px]">{v.title}</span>
-                    {v.pluginName && <span className="shrink-0 text-[10px] text-ink-faint">{v.pluginName}</span>}
-                    {current && <Check size={12} className="shrink-0 text-seal" />}
-                  </button>
-                )
-              })}
-              {!(store.videos ?? []).length && (
-                <div className="px-2 pb-1.5 text-[11px] leading-relaxed text-ink-faint">
-                  {t('还没有可绑的视频：先在侧栏「视频」里新建一个')}
-                </div>
-              )}
-              {!!store.videoNodes?.find((n) => n.id === menu.uuid)?.videoId && (
-                <button
-                  type="button"
-                  className="mt-1 flex w-full items-center rounded border-t border-line/60 px-2 py-1.5 text-left text-ink-soft hover:bg-line/60"
-                  onClick={() => {
-                    if (onBindVideo) report(onBindVideo(menu.uuid, null))
-                    setMenu(null)
-                  }}
-                >
-                  {t('解绑视频')}
-                </button>
-              )}
             </div>
           ) : menu.mode === 'projectPath' ? (
             /*

@@ -65,6 +65,10 @@ export interface VideoCreateDraft {
 interface Props {
   /** 绑定的视频资源；空 = 创建态 */
   video?: VideoResource | null
+  /** 关联的视频节点 id（如果有） */
+  videoNodeId?: string
+  /** 初始输入（来自视频节点） */
+  initialInput?: string
   /** 创建（工作区负责落库、开绑定页签、关掉创建页签） */
   onCreate?: (draft: VideoCreateDraft) => void
   /** 解析成功回写标题（资源列表显示真实标题） */
@@ -81,10 +85,27 @@ interface Props {
   active?: boolean
 }
 
-export default function VideoStudyTab({ video = null, onCreate, onResolved, onProgress, onSelection, onSaveRecap, tabId, active = true }: Props) {
+export default function VideoStudyTab({
+  video = null,
+  onCreate,
+  onResolved,
+  onProgress,
+  onSelection,
+  onSaveRecap,
+  tabId,
+  active = true,
+  videoNodeId: _videoNodeId,
+  initialInput = '',
+}: Props) {
   const bound = !!video
   /** 创建态输入（绑定态不用它——页里没有输入组件） */
-  const [input, setInput] = useState(() => video?.input ?? readLastInput())
+  const [input, setInput] = useState(() => video?.input ?? (initialInput || readLastInput()))
+
+  useEffect(() => {
+    if (!bound && initialInput && !input) {
+      setInput(initialInput)
+    }
+  }, [bound, initialInput, input])
   /**
    * 创建态的匹配结果：纯函数，输入一变就重算。
    * 空输入或无插件认领都是 null——界面上分别给「请输入」与「没有插件认领」两种提示。
@@ -542,10 +563,10 @@ export default function VideoStudyTab({ video = null, onCreate, onResolved, onPr
               type="button"
               onClick={create}
               disabled={!ready}
-              className="flex h-[36px] shrink-0 items-center gap-1.5 rounded-lg bg-ink px-3 text-[12px] font-medium text-paper transition hover:bg-ink-strong disabled:pointer-events-none disabled:opacity-35"
+              className="flex h-[36px] shrink-0 items-center gap-1.5 rounded-lg bg-pink-600 px-3.5 text-[12px] font-medium text-white transition hover:bg-pink-700 disabled:pointer-events-none disabled:opacity-35 cursor-pointer shadow-sm"
             >
               <Plus size={13} />
-              {t('创建')}
+              {t('确定为视频资源')}
             </button>
           </div>
 

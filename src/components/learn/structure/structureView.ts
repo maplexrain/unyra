@@ -127,6 +127,7 @@ export interface CardView {
    */
   project?: { path: string; pathKind: ProjectPathKind; resolved: string | null }
   file?: { fileKind: FileNodeKind; url: string }
+  video?: { videoId: string | null; input: string; confirmed: boolean }
   x: number
   y: number
 }
@@ -353,9 +354,14 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
       card: {
         uuid: entity.id,
         kind: 'video',
-        title: video?.title ?? '未绑定视频',
-        subtitle: video ? (video.pluginName ?? '已绑定') : '选一个视频，把这门课和它绑在一起',
-        ...(video ? {} : { blank: true }),
+        title: entity.title || video?.title || '未命名视频',
+        subtitle: entity.input || video?.input || '',
+        ...(entity.confirmed || video ? {} : { blank: true }),
+        video: {
+          videoId: entity.videoId ?? null,
+          input: entity.input ?? '',
+          confirmed: !!entity.confirmed,
+        },
       },
       depth: 1,
       anchorY: 0,
@@ -548,13 +554,13 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
       return byUuid.get(from) ?? outlinePending.get(outlineUuid(from)) ?? docPending.get(from)
     }
     // 文件节点的上游：优先返回其实体卡片
-    if (to && filePending.has(to)) {
+    if (to && (filePending.has(to) || videoPending.has(to))) {
       return byUuid.get(from) ?? outlinePending.get(outlineUuid(from)) ?? docPending.get(from)
     }
     return filePending.get(from) ?? outlinePending.get(outlineUuid(from)) ?? docPending.get(from) ?? videoPending.get(from) ?? projectPending.get(from) ?? byUuid.get(from)
   }
   for (const e of store.edges) {
-    const toCard = outlinePending.get(e.to) ?? filePending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to) ?? byUuid.get(e.to)
+    const toCard = outlinePending.get(e.to) ?? filePending.get(e.to) ?? videoPending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to) ?? byUuid.get(e.to)
     const fromCard = fromCardOf(e.from, e.to)
     if (!fromCard || !toCard) continue
     if (!pushEdge(fromCard.card.uuid, toCard.card.uuid)) continue
@@ -743,7 +749,7 @@ export const KIND_TONE: Record<GNodeKind, string> = {
   note: 'border-emerald-500/30 bg-emerald-500/[0.06]',
   exam: 'border-amber-500/30 bg-amber-500/[0.06]',
   superdoc: 'border-violet-500/30 bg-violet-500/[0.06]',
-  video: 'border-cyan-500/30 bg-cyan-500/[0.06]',
+  video: 'border-pink-500/30 bg-pink-500/[0.06]',
   project: 'border-teal-500/30 bg-teal-500/[0.06]',
   file: 'border-blue-500/30 bg-blue-500/[0.06]',
 }
@@ -755,7 +761,7 @@ export const KIND_BADGE: Record<GNodeKind, string> = {
   note: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
   exam: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
   superdoc: 'bg-violet-500/15 text-violet-700 dark:text-violet-300',
-  video: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300',
+  video: 'bg-pink-500/15 text-pink-700 dark:text-pink-300',
   project: 'bg-teal-500/15 text-teal-700 dark:text-teal-300',
   file: 'bg-blue-500/15 text-blue-700 dark:text-blue-300',
 }
