@@ -2,13 +2,20 @@
  * 网页元素可视化拾取器（Inspector Element Picker）脚本。
  *
  * 在 webview 中注入交互层：
- * 1. 鼠标滑过时为当前元素绘制高亮黄色线框与半透明遮罩，并显示元素标签与选择器标签；
- * 2. 顶部显示交互提示条（点击拾取 / 按 ESC 取消）；
+ * 1. 鼠标滑过时为当前元素绘制高亮黄色/红色线框与半透明遮罩，并显示元素标签与选择器标签；
+ * 2. 顶部显示交互提示条与 SVG 图标（按 ESC 键取消退出）；
  * 3. 鼠标点击时阻止页面默认行为，自动推导该元素的最优 CSS 选择器；
- * 4. 自动清理注入的 DOM 与监听器，返回推导出的 selector 结果。
+ * 4. 自动清理注入的 DOM 与监听器，返回推导出的 selector 与模式。
  */
 
-export function buildInspectElementPickerScript(): string {
+export function buildInspectElementPickerScript(mode: 'whitelist' | 'blacklist' = 'whitelist'): string {
+  const isBlacklist = mode === 'blacklist'
+  const primaryColor = isBlacklist ? '#ef4444' : '#f59e0b'
+  const overlayBg = isBlacklist ? 'rgba(239, 68, 68, 0.16)' : 'rgba(245, 158, 11, 0.16)'
+  const promptText = isBlacklist
+    ? '点击网页元素加入黑名单（隐藏此元素）· 按 ESC 键退出'
+    : '点击网页元素加入白名单（仅显示此元素）· 按 ESC 键退出'
+
   return `(function() {
     return new Promise((resolve) => {
       const OVERLAY_ID = '__agent_inspect_overlay__';
@@ -27,8 +34,8 @@ export function buildInspectElementPickerScript(): string {
         'position: fixed',
         'pointer-events: none',
         'z-index: 2147483646',
-        'border: 2px solid #f59e0b',
-        'background-color: rgba(245, 158, 11, 0.16)',
+        'border: 2px solid ${primaryColor}',
+        'background-color: ${overlayBg}',
         'border-radius: 4px',
         'transition: all 0.05s ease-out',
         'display: none',
@@ -41,7 +48,7 @@ export function buildInspectElementPickerScript(): string {
         'position: fixed',
         'pointer-events: none',
         'z-index: 2147483647',
-        'background: #f59e0b',
+        'background: ${primaryColor}',
         'color: #ffffff',
         'font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
         'font-size: 11px',
@@ -56,7 +63,8 @@ export function buildInspectElementPickerScript(): string {
 
       const banner = document.createElement('div');
       banner.id = BANNER_ID;
-      banner.textContent = '🎯 点击网页元素确定为纯净阅读容器 · 按 ESC 键退出';
+      // 使用原生 SVG 绘制瞄准图标，杜绝 emoji
+      banner.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:6px;"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg><span>${promptText}</span>';
       banner.style.cssText = [
         'position: fixed',
         'top: 12px',
@@ -74,6 +82,8 @@ export function buildInspectElementPickerScript(): string {
         'pointer-events: none',
         'user-select: none',
         'letter-spacing: 0.2px',
+        'display: flex',
+        'items-center: center',
       ].join(';');
 
       document.body.appendChild(overlay);
@@ -206,7 +216,7 @@ export function buildInspectElementPickerScript(): string {
         const el = currentTarget || document.elementFromPoint(e.clientX, e.clientY);
         const selector = computeBestSelector(el);
         cleanup();
-        resolve({ ok: true, selector });
+        resolve({ ok: true, selector, mode: ${JSON.stringify(mode)} });
       }
 
       function onKeyDown(e) {

@@ -516,6 +516,14 @@ export interface WebTabMeta {
    */
   domFilter?: string
   /**
+   * 白名单选择器列表（纯净模式下仅保留匹配这些选择器的元素显示）
+   */
+  whitelist?: string[]
+  /**
+   * 黑名单选择器列表（在页面中隐藏匹配这些选择器的元素，如广告、侧边栏、页眉等）
+   */
+  blacklist?: string[]
+  /**
    * 是否启用纯净阅读模式（默认 true，保留切换回原页面阅读的开关）
    */
   pureMode?: boolean
@@ -750,6 +758,14 @@ export interface FileNodeEntity {
    * 设置后在纯净阅读模式下只保留该元素显示，消除周围噪声。
    */
   domFilter?: string
+  /**
+   * 白名单选择器列表（纯净模式下仅保留匹配这些选择器的元素显示）
+   */
+  whitelist?: string[]
+  /**
+   * 黑名单选择器列表（在页面中隐藏匹配这些选择器的元素，如广告、侧边栏、页眉等）
+   */
+  blacklist?: string[]
   /**
    * 是否启用纯净阅读模式（默认 true，保留切换回原页面阅读的开关）
    */

@@ -72,6 +72,8 @@ export function createFileNode(
     url?: string
     id?: string
     domFilter?: string
+    whitelist?: string[]
+    blacklist?: string[]
     pureMode?: boolean
   },
   at = Date.now(),
@@ -94,6 +96,8 @@ export function createFileNode(
     fileKind,
     url,
     domFilter: input.domFilter,
+    whitelist: input.whitelist,
+    blacklist: input.blacklist,
     pureMode: input.pureMode,
     createdAt: at,
     updatedAt: at,
@@ -110,7 +114,7 @@ export function createFileNode(
 export function updateFileNode(
   store: LearnStore,
   id: string,
-  patch: Partial<Pick<FileNodeEntity, 'title' | 'fileKind' | 'url' | 'domFilter' | 'pureMode' | 'cachedContent' | 'cachedAt'>>,
+  patch: Partial<Pick<FileNodeEntity, 'title' | 'fileKind' | 'url' | 'domFilter' | 'pureMode' | 'cachedContent' | 'cachedAt' | 'whitelist' | 'blacklist'>>,
   at = Date.now(),
 ): { store: LearnStore; entity: FileNodeEntity } | { error: string } {
   const current = store.fileNodes ?? []
@@ -133,6 +137,8 @@ export function updateFileNode(
     ...found,
     ...(patch.title !== undefined ? { title: patch.title.trim() || found.title } : {}),
     ...(patch.domFilter !== undefined ? { domFilter: patch.domFilter.trim() } : {}),
+    ...(patch.whitelist !== undefined ? { whitelist: patch.whitelist } : {}),
+    ...(patch.blacklist !== undefined ? { blacklist: patch.blacklist } : {}),
     ...(patch.pureMode !== undefined ? { pureMode: patch.pureMode } : {}),
     ...(patch.cachedContent !== undefined ? { cachedContent: patch.cachedContent } : {}),
     ...(patch.cachedAt !== undefined ? { cachedAt: patch.cachedAt } : {}),
@@ -220,6 +226,8 @@ export function normalizeFileNodes(raw: unknown, goalIds?: ReadonlySet<string>):
       fileKind,
       url,
       ...(typeof r.domFilter === 'string' ? { domFilter: r.domFilter.trim() } : {}),
+      ...(Array.isArray(r.whitelist) ? { whitelist: r.whitelist.map(String).map((s: string) => s.trim()).filter(Boolean) } : {}),
+      ...(Array.isArray(r.blacklist) ? { blacklist: r.blacklist.map(String).map((s: string) => s.trim()).filter(Boolean) } : {}),
       ...(typeof r.pureMode === 'boolean' ? { pureMode: r.pureMode } : {}),
       ...(typeof r.cachedContent === 'string' ? { cachedContent: r.cachedContent } : {}),
       ...(typeof r.cachedAt === 'number' ? { cachedAt: r.cachedAt } : {}),

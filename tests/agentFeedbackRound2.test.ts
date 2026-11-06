@@ -4,6 +4,7 @@ import { wsChipUserRel } from '../src/learn/chipRef'
 import { createChipOps } from '../src/learn/ops/chip'
 import { createWorkspaceOps } from '../src/learn/ops/workspace'
 import { buildInspectElementPickerScript } from '../src/learn/web/guestInspectPicker'
+import { buildApplyPureModeScript } from '../src/learn/web/guestPureMode'
 import { makeBrowserOps } from '../src/learn/web/browserOps'
 import type { LearnStore, KnowledgeNode } from '../src/learn/types'
 import type { SandboxOptions } from '../src/agent/sandbox/types'
@@ -148,7 +149,7 @@ describe('Agent Feedback Round 2 Optimizations', () => {
       })
       const chipRes = chipOps.build({ type: 'ws', path: 'article.md' })
       expect(chipRes.ok).toBe(true)
-      if (chipRes.ok) {
+      if ('chip' in chipRes) {
         expect(chipRes.chip).toContain('workspace/article.md')
         expect(chipRes.path).toContain('workspace/article.md')
       }
@@ -261,6 +262,48 @@ describe('Agent Feedback Round 2 Optimizations', () => {
       expect(script).toContain('click')
       expect(script).toContain('Escape')
       expect(script).toContain('computeBestSelector')
+      // 保证使用原生 SVG 图标，杜绝 emoji 字符
+      expect(script).toContain('<svg')
+      expect(/[\uD800-\uDBFF][\uDC00-\uDFFF]/.test(script)).toBe(false)
+    })
+
+    it('supports whitelist and blacklist pick modes with distinct prompts and themes', () => {
+      const scriptWhite = buildInspectElementPickerScript('whitelist')
+      expect(scriptWhite).toContain('加入白名单')
+      expect(scriptWhite).toContain('#f59e0b')
+
+      const scriptBlack = buildInspectElementPickerScript('blacklist')
+      expect(scriptBlack).toContain('加入黑名单')
+      expect(scriptBlack).toContain('#ef4444')
+    })
+  })
+
+  describe('Pure reading and DOM filter script (guestPureMode)', () => {
+    it('generates CSS that applies blacklist without destroying page when whitelist is empty', () => {
+      const script = buildApplyPureModeScript({ blacklist: ['.ad-container', 'header.site-header'] })
+      expect(script).toContain('.ad-container')
+      expect(script).toContain('header.site-header')
+      expect(script).toContain('blacklist_only')
+    })
+
+    it('generates non-destructive ancestor rules when whitelist is provided', () => {
+      const script = buildApplyPureModeScript({
+        whitelist: ['article.main-article', '.markdown-body'],
+        blacklist: ['.promo-banner'],
+      })
+      expect(script).toContain('article.main-article')
+      expect(script).toContain('.markdown-body')
+      expect(script).toContain('.promo-banner')
+      expect(script).toContain('__agent_pure_ancestor__')
+      expect(script).toContain('__agent_pure_target__')
+      expect(script).toContain('whitelist_and_blacklist')
+    })
+
+    it('cleans up styles and marker classes when pure mode is disabled', () => {
+      const script = buildApplyPureModeScript(undefined, false)
+      expect(script).toContain('__agent_pure_mode_style__')
+      expect(script).toContain('styleEl.remove()')
+      expect(script).toContain('enabled: false')
     })
   })
 })

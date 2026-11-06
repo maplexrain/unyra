@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { WebviewTag } from 'electron'
-import { ArrowLeft, ArrowRight, Crosshair, ExternalLink, Globe, Languages, Loader2, RotateCw, Sparkles, Star, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Bot, Crosshair, ExternalLink, Eye, EyeOff, Globe, Languages, ListFilter, Loader2, Plus, RotateCw, Sparkles, Star, Trash2, X, Zap } from 'lucide-react'
 import type { FileNodeEntity, LearnTab, TabRef, WebTabMeta } from '../../../learn/types'
 import { buildApplyPureModeScript } from '../../../learn/web/guestPureMode'
 import { buildInspectElementPickerScript } from '../../../learn/web/guestInspectPicker'
@@ -66,7 +66,7 @@ interface Props {
   fileNodes?: FileNodeEntity[]
   onUpdateFileNode?: (
     nodeId: string,
-    patch: { domFilter?: string; pureMode?: boolean; cachedContent?: string; cachedAt?: number },
+    patch: { domFilter?: string; whitelist?: string[]; blacklist?: string[]; pureMode?: boolean; cachedContent?: string; cachedAt?: number },
   ) => void
   pendingJumpsRef?: { current: Map<string, string> }
 }
@@ -98,6 +98,16 @@ export default function WebTabLayer({
   const activeFileNode = active?.ref.fileNodeId && fileNodes ? fileNodes.find((f) => f.id === active.ref.fileNodeId) : undefined
   const activePureMode = activeFileNode ? (activeFileNode.pureMode !== false) : (active ? (meta[active.id]?.pureMode ?? false) : false)
   const activeDomFilter = activeFileNode?.domFilter ?? (active ? (meta[active.id]?.domFilter ?? '') : '')
+  const activeWhitelist = useMemo(() => {
+    if (activeFileNode?.whitelist && activeFileNode.whitelist.length > 0) return activeFileNode.whitelist
+    if (active && meta[active.id]?.whitelist && meta[active.id]!.whitelist!.length > 0) return meta[active.id]!.whitelist!
+    return activeDomFilter ? [activeDomFilter] : []
+  }, [activeFileNode?.whitelist, active, meta, activeDomFilter])
+  const activeBlacklist = useMemo(() => {
+    if (activeFileNode?.blacklist) return activeFileNode.blacklist
+    if (active && meta[active.id]?.blacklist) return meta[active.id]!.blacklist!
+    return []
+  }, [activeFileNode?.blacklist, active, meta])
 
   const handleTogglePure = () => {
     if (!active) return
@@ -106,28 +116,42 @@ export default function WebTabLayer({
       onUpdateFileNode(active.ref.fileNodeId, { pureMode: next })
     }
     onMeta(active.id, { pureMode: next })
-    withActive((wv) => wv.executeJavaScript(buildApplyPureModeScript(activeDomFilter, next)))
+    withActive((wv) => wv.executeJavaScript(buildApplyPureModeScript({ whitelist: activeWhitelist, blacklist: activeBlacklist }, next)))
   }
 
-  const handleSetFilter = (newFilter: string) => {
+  const handleUpdateFilterConfig = (nextWhitelist: string[], nextBlacklist: string[]) => {
     if (!active) return
-    if (active.ref.fileNodeId && onUpdateFileNode) {
-      onUpdateFileNode(active.ref.fileNodeId, { domFilter: newFilter, pureMode: true })
+    const patch = {
+      whitelist: nextWhitelist,
+      blacklist: nextBlacklist,
+      domFilter: nextWhitelist.join(', '),
+      pureMode: true,
     }
-    onMeta(active.id, { domFilter: newFilter, pureMode: true })
-    withActive((wv) => wv.executeJavaScript(buildApplyPureModeScript(newFilter, true)))
+    if (active.ref.fileNodeId && onUpdateFileNode) {
+      onUpdateFileNode(active.ref.fileNodeId, patch)
+    }
+    onMeta(active.id, patch)
+    withActive((wv) => wv.executeJavaScript(buildApplyPureModeScript({ whitelist: nextWhitelist, blacklist: nextBlacklist }, true)))
   }
 
-  const handleInspectPick = () => {
+  const handleInspectPick = (pickMode: 'whitelist' | 'blacklist' = 'whitelist') => {
     withActive(async (wv) => {
       try {
-        const res = (await wv.executeJavaScript(buildInspectElementPickerScript())) as
-          | { ok: true; selector: string }
+        const res = (await wv.executeJavaScript(buildInspectElementPickerScript(pickMode))) as
+          | { ok: true; selector: string; mode: 'whitelist' | 'blacklist' }
           | { ok: false; cancelled?: boolean }
           | undefined
         if (res && res.ok && typeof res.selector === 'string' && res.selector.trim()) {
-          handleSetFilter(res.selector.trim())
-          showToast(t('已将正文过滤设为: {0}', res.selector.trim()))
+          const sel = res.selector.trim()
+          if (pickMode === 'blacklist') {
+            const next = activeBlacklist.includes(sel) ? activeBlacklist : [...activeBlacklist, sel]
+            handleUpdateFilterConfig(activeWhitelist, next)
+            showToast(t('已将元素加入黑名单隐藏: {0}', sel))
+          } else {
+            const next = activeWhitelist.includes(sel) ? activeWhitelist : [...activeWhitelist, sel]
+            handleUpdateFilterConfig(next, activeBlacklist)
+            showToast(t('已将元素加入白名单显示: {0}', sel))
+          }
         }
       } catch (e) {
         console.warn('[web] 元素拾取失败:', e)
@@ -409,8 +433,10 @@ export default function WebTabLayer({
           onToggleObserver={() => void handleToggleObserver(active.id)}
           pureMode={activePureMode}
           domFilter={activeDomFilter}
+          whitelist={activeWhitelist}
+          blacklist={activeBlacklist}
           onTogglePureMode={handleTogglePure}
-          onSetDomFilter={handleSetFilter}
+          onUpdateFilterConfig={handleUpdateFilterConfig}
           onInspectPick={handleInspectPick}
         />
       )}
@@ -465,8 +491,10 @@ function WebToolbar({
   onToggleObserver,
   pureMode,
   domFilter,
+  whitelist,
+  blacklist,
   onTogglePureMode,
-  onSetDomFilter,
+  onUpdateFilterConfig,
   onInspectPick,
 }: {
   tab: WebTab
@@ -487,9 +515,11 @@ function WebToolbar({
   onToggleObserver?: () => void
   pureMode?: boolean
   domFilter?: string
+  whitelist?: string[]
+  blacklist?: string[]
   onTogglePureMode?: () => void
-  onSetDomFilter?: (newFilter: string) => void
-  onInspectPick?: () => void
+  onUpdateFilterConfig?: (whitelist: string[], blacklist: string[]) => void
+  onInspectPick?: (mode: 'whitelist' | 'blacklist') => void
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const blurTimerRef = useRef<number | null>(null)
@@ -497,11 +527,38 @@ function WebToolbar({
   const translateMenuRef = useRef<HTMLDivElement | null>(null)
   const [openPureMenu, setOpenPureMenu] = useState(false)
   const pureMenuRef = useRef<HTMLDivElement | null>(null)
-  const [filterDraft, setFilterDraft] = useState(domFilter ?? '')
+  const [filterTab, setFilterTab] = useState<'whitelist' | 'blacklist'>('whitelist')
+  const [newFilterInput, setNewFilterInput] = useState('')
 
-  useEffect(() => {
-    setFilterDraft(domFilter ?? '')
-  }, [domFilter])
+  const curWhitelist = useMemo(() => {
+    if (whitelist && whitelist.length > 0) return whitelist
+    return domFilter ? [domFilter] : []
+  }, [whitelist, domFilter])
+
+  const curBlacklist = useMemo(() => blacklist ?? [], [blacklist])
+
+  const handleAddFilterItem = () => {
+    const trimmed = newFilterInput.trim()
+    if (!trimmed) return
+    if (filterTab === 'whitelist') {
+      if (!curWhitelist.includes(trimmed)) {
+        onUpdateFilterConfig?.([...curWhitelist, trimmed], curBlacklist)
+      }
+    } else {
+      if (!curBlacklist.includes(trimmed)) {
+        onUpdateFilterConfig?.(curWhitelist, [...curBlacklist, trimmed])
+      }
+    }
+    setNewFilterInput('')
+  }
+
+  const handleRemoveWhitelistItem = (item: string) => {
+    onUpdateFilterConfig?.(curWhitelist.filter((x) => x !== item), curBlacklist)
+  }
+
+  const handleRemoveBlacklistItem = (item: string) => {
+    onUpdateFilterConfig?.(curWhitelist, curBlacklist.filter((x) => x !== item))
+  }
 
   useEffect(() => {
     if (!openPureMenu) return
@@ -724,7 +781,7 @@ function WebToolbar({
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-ink hover:bg-line/50 transition cursor-pointer"
             >
-              <span>⚡</span>
+              <Zap size={14} className="text-amber-500 shrink-0" />
               <span>{t('极速双语翻译（免费）')}</span>
             </button>
             <button
@@ -735,7 +792,7 @@ function WebToolbar({
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-ink hover:bg-line/50 transition cursor-pointer"
             >
-              <span>🤖</span>
+              <Bot size={14} className="text-seal shrink-0" />
               <span>{t('AI 深度双语翻译')}</span>
             </button>
             <div className="my-1 border-t border-line/60" />
@@ -748,7 +805,7 @@ function WebToolbar({
                 }}
                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-seal hover:bg-seal/10 transition cursor-pointer font-medium"
               >
-                <span>🟢</span>
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                 <span>{t('动态监听中（点击停止）')}</span>
               </button>
             )}
@@ -760,7 +817,7 @@ function WebToolbar({
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-ink-soft hover:bg-line/50 hover:text-ink transition cursor-pointer"
             >
-              <span>👁️</span>
+              <Eye size={14} className="text-ink-soft shrink-0" />
               <span>{t('隐藏 / 显示双语对照')}</span>
             </button>
             <button
@@ -771,7 +828,7 @@ function WebToolbar({
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-danger hover:bg-danger/10 transition cursor-pointer"
             >
-              <span>🗑️</span>
+              <Trash2 size={14} className="text-danger shrink-0" />
               <span>{t('清除网页译文')}</span>
             </button>
           </div>
@@ -791,61 +848,141 @@ function WebToolbar({
           <Sparkles size={14} className={pureMode ? 'text-seal' : ''} />
         </button>
         {openPureMenu && (
-          <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-xl border border-line bg-card p-2.5 shadow-lg text-[12px]">
+          <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-xl border border-line bg-card p-3 shadow-xl text-[12px]">
+            {/* 顶栏：标题与开关 */}
             <div className="flex items-center justify-between pb-2 border-b border-line/60">
-              <span className="font-semibold text-ink-strong">{t('纯净阅读模式')}</span>
+              <div className="flex items-center gap-1.5">
+                <Sparkles size={14} className={pureMode ? 'text-seal' : 'text-ink-soft'} />
+                <span className="font-semibold text-ink-strong">{t('纯净阅读模式')}</span>
+              </div>
               <button
                 type="button"
-                onClick={() => {
-                  onTogglePureMode?.()
-                }}
-                className={`rounded px-2 py-0.5 text-[11px] font-medium transition cursor-pointer ${
-                  pureMode ? 'bg-seal text-white' : 'bg-line text-ink-soft hover:bg-line-strong hover:text-ink'
+                onClick={onTogglePureMode}
+                className={`rounded px-2.5 py-0.5 text-[11px] font-medium transition cursor-pointer ${
+                  pureMode ? 'bg-seal text-white shadow-xs' : 'bg-line text-ink-soft hover:bg-line-strong hover:text-ink'
                 }`}
               >
                 {pureMode ? t('已开启') : t('已关闭')}
               </button>
             </div>
-            <div className="pt-2">
-              <div className="text-[11px] text-ink-faint mb-1">{t('DOM 正文过滤选择器 (可选)')}</div>
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="text"
-                  placeholder="article, .post-content, #main"
-                  value={filterDraft}
-                  onChange={(e) => setFilterDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      onSetDomFilter?.(filterDraft.trim())
-                      setOpenPureMenu(false)
-                    }
-                  }}
-                  className="flex-1 min-w-0 rounded border border-line bg-line/20 px-2 py-1 text-[11px] text-ink focus:outline-none focus:border-seal/60"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSetDomFilter?.(filterDraft.trim())
-                    setOpenPureMenu(false)
-                  }}
-                  className="shrink-0 rounded bg-line px-2 py-1 text-[11px] font-medium text-ink-soft hover:bg-line-strong hover:text-ink transition cursor-pointer"
-                >
-                  {t('应用')}
-                </button>
-              </div>
+
+            {/* 白名单 / 黑名单 选项卡 */}
+            <div className="mt-2.5 flex items-center gap-1 rounded-lg bg-line/30 p-0.5">
               <button
                 type="button"
-                onClick={() => {
-                  setOpenPureMenu(false)
-                  onInspectPick?.()
-                }}
-                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-line/60 bg-line/20 py-1.5 text-[11px] font-medium text-ink hover:border-amber-400/60 hover:bg-amber-500/10 hover:text-amber-600 transition cursor-pointer dark:hover:text-amber-400"
-                title={t('在网页中悬浮预览黄色线框，点击选定正文容器')}
+                onClick={() => setFilterTab('whitelist')}
+                className={`flex-1 flex items-center justify-center gap-1 rounded-md py-1 text-[11px] font-medium transition cursor-pointer ${
+                  filterTab === 'whitelist'
+                    ? 'bg-card text-seal shadow-xs font-semibold'
+                    : 'text-ink-soft hover:text-ink'
+                }`}
               >
-                <Crosshair size={13} className="text-amber-500" />
-                <span>{t('🎯 检查元素拾取正文')}</span>
+                <ListFilter size={12} />
+                <span>{t('白名单 (仅显示)')}</span>
+                {curWhitelist.length > 0 && (
+                  <span className="ml-0.5 rounded-full bg-seal/15 px-1.5 text-[9.5px] font-bold text-seal">
+                    {curWhitelist.length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterTab('blacklist')}
+                className={`flex-1 flex items-center justify-center gap-1 rounded-md py-1 text-[11px] font-medium transition cursor-pointer ${
+                  filterTab === 'blacklist'
+                    ? 'bg-card text-danger shadow-xs font-semibold'
+                    : 'text-ink-soft hover:text-ink'
+                }`}
+              >
+                <EyeOff size={12} />
+                <span>{t('黑名单 (隐藏)')}</span>
+                {curBlacklist.length > 0 && (
+                  <span className="ml-0.5 rounded-full bg-danger/15 px-1.5 text-[9.5px] font-bold text-danger">
+                    {curBlacklist.length}
+                  </span>
+                )}
               </button>
             </div>
+
+            {/* 说明提示 */}
+            <div className="mt-1.5 text-[10.5px] text-ink-faint leading-normal">
+              {filterTab === 'whitelist'
+                ? t('仅保留所选元素显示；若列表为空则显示全文（仅执行黑名单过滤）')
+                : t('在页面中隐藏所选元素（消除广告、侧边栏、页眉等干扰）')}
+            </div>
+
+            {/* 选择器列表展示 */}
+            <div className="mt-2 max-h-32 overflow-y-auto rounded-lg border border-line/60 bg-line/10 p-1.5 space-y-1">
+              {(filterTab === 'whitelist' ? curWhitelist : curBlacklist).length === 0 ? (
+                <div className="py-2 text-center text-[11px] text-ink-faint">
+                  {filterTab === 'whitelist' ? t('暂无白名单（显示全文）') : t('暂无黑名单项')}
+                </div>
+              ) : (
+                (filterTab === 'whitelist' ? curWhitelist : curBlacklist).map((sel) => (
+                  <div
+                    key={sel}
+                    className="flex items-center justify-between gap-1.5 rounded bg-card px-2 py-1 text-[11px] font-mono text-ink border border-line/40 shadow-2xs"
+                  >
+                    <span className="truncate" title={sel}>{sel}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        filterTab === 'whitelist'
+                          ? handleRemoveWhitelistItem(sel)
+                          : handleRemoveBlacklistItem(sel)
+                      }
+                      title={t('删除此项')}
+                      className="text-ink-faint hover:text-red-500 transition cursor-pointer shrink-0"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* 手动添加输入框 */}
+            <div className="mt-2 flex items-center gap-1.5">
+              <input
+                type="text"
+                placeholder={filterTab === 'whitelist' ? 'article, #content' : '.sidebar, .ad, header'}
+                value={newFilterInput}
+                onChange={(e) => setNewFilterInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddFilterItem()
+                }}
+                className="flex-1 min-w-0 rounded-md border border-line bg-line/20 px-2 py-1 text-[11px] text-ink focus:outline-none focus:border-seal/60 font-mono"
+              />
+              <button
+                type="button"
+                onClick={handleAddFilterItem}
+                className="shrink-0 flex items-center gap-1 rounded-md bg-line px-2 py-1 text-[11px] font-medium text-ink-soft hover:bg-line-strong hover:text-ink transition cursor-pointer"
+              >
+                <Plus size={11} />
+                <span>{t('添加')}</span>
+              </button>
+            </div>
+
+            {/* 可视化拾取按钮 */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpenPureMenu(false)
+                onInspectPick?.(filterTab)
+              }}
+              className={`mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border py-1.5 text-[11px] font-medium transition cursor-pointer ${
+                filterTab === 'whitelist'
+                  ? 'border-seal/30 bg-seal/10 text-seal hover:bg-seal/15'
+                  : 'border-danger/30 bg-danger/10 text-danger hover:bg-danger/15'
+              }`}
+            >
+              <Crosshair size={13} />
+              <span>
+                {filterTab === 'whitelist'
+                  ? t('检查元素拾取加入白名单')
+                  : t('检查元素拾取加入黑名单')}
+              </span>
+            </button>
           </div>
         )}
       </div>
@@ -903,7 +1040,7 @@ function WebPage({
   fileNode?: FileNodeEntity
   onAutoCache?: (
     nodeId: string,
-    patch: { domFilter?: string; pureMode?: boolean; cachedContent?: string; cachedAt?: number },
+    patch: { domFilter?: string; whitelist?: string[]; blacklist?: string[]; pureMode?: boolean; cachedContent?: string; cachedAt?: number },
   ) => void
   pendingJumpsRef?: { current: Map<string, string> }
   onDomMutation?: (tabId: string) => void
@@ -931,11 +1068,12 @@ function WebPage({
     const onStopLoad = (): void => {
       onMeta(id, { loading: false, ...navState() })
 
-      // 1. 纯净模式与 DOM 过滤
+      // 1. 纯净模式与 DOM 过滤（黑白名单）
       const pureEnabled = fileNode ? (fileNode.pureMode !== false) : (m?.pureMode ?? false)
-      const domFilter = fileNode?.domFilter ?? m?.domFilter
+      const whitelist = fileNode?.whitelist ?? m?.whitelist ?? (fileNode?.domFilter ? [fileNode.domFilter] : (m?.domFilter ? [m.domFilter] : []))
+      const blacklist = fileNode?.blacklist ?? m?.blacklist ?? []
       if (pureEnabled) {
-        void wv.executeJavaScript(buildApplyPureModeScript(domFilter, true))
+        void wv.executeJavaScript(buildApplyPureModeScript({ whitelist, blacklist }, true))
       }
 
       // 2. 网页内容自动缓存至节点

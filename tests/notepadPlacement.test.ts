@@ -76,4 +76,34 @@ describe('DocNotepad Placement and Dragging', () => {
 
     expect(targetIndex).toBe(0)
   })
+
+  it('renders and positions real-time drop indicator placeholder during drag', () => {
+    const body = document.createElement('div')
+    const docTw = document.createElement('div')
+    docTw.className = DOC_TW_CLASS
+    body.appendChild(docTw)
+
+    const p0 = document.createElement('p')
+    const p1 = document.createElement('p')
+    docTw.appendChild(p0)
+    docTw.appendChild(p1)
+
+    // 创建拖拽实时落点占位元素
+    const indicator = document.createElement('div')
+    indicator.setAttribute('data-notepad-drop-indicator', 'true')
+    indicator.className = 'notepad-drop-indicator my-1.5 h-1 w-full rounded-full bg-amber-500'
+
+    // 拖动至顶部
+    docTw.insertBefore(indicator, docTw.firstChild)
+    expect(docTw.firstChild).toBe(indicator)
+
+    // 拖动至 p0 与 p1 之间
+    docTw.insertBefore(indicator, p0.nextSibling)
+    expect(p0.nextSibling).toBe(indicator)
+    expect(indicator.nextSibling).toBe(p1)
+
+    // 拖拽结束移除
+    indicator.remove()
+    expect(docTw.querySelector('[data-notepad-drop-indicator]')).toBeNull()
+  })
 })

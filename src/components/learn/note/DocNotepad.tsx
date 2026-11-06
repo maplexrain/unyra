@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { GripVertical, StickyNote, Trash2 } from 'lucide-react'
 import type { DocNotepadItem } from '../../../learn/types'
@@ -20,50 +20,90 @@ export const DocNotepadRow = memo(function DocNotepadRow({
 }: NotepadRowProps) {
   const [content, setContent] = useState(item.content)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const latestContentRef = useRef(item.content)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // 随外部数据同步（如从其他端或历史恢复）
+  // 外部 content 变化时（如从其他端或历史恢复，仅在不同步时更新）
   useEffect(() => {
-    setContent(item.content)
+    if (item.content !== latestContentRef.current) {
+      latestContentRef.current = item.content
+      setContent(item.content)
+    }
   }, [item.content])
+
+  // 立即将最新的文本持久化至上层
+  const flushChange = useCallback(
+    (text: string) => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
+      latestContentRef.current = text
+      onUpdate(item.id, text)
+    },
+    [item.id, onUpdate],
+  )
+
+  // 组件卸载时若有未提交的改动立即保存
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+        onUpdate(item.id, latestContentRef.current)
+      }
+    }
+  }, [item.id, onUpdate])
 
   // 自动根据内容伸缩高度
   useEffect(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = `${Math.max(el.scrollHeight, 40)}px`
+    el.style.height = `${Math.max(el.scrollHeight, 36)}px`
   }, [content])
 
+  // 本地响应式输入：平滑 60fps 输入，防抖 300ms 写盘
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const next = e.target.value
+    latestContentRef.current = next
     setContent(next)
-    onUpdate(item.id, next)
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+    }
+    timerRef.current = setTimeout(() => {
+      flushChange(next)
+    }, 300)
+  }
+
+  const handleBlur = () => {
+    flushChange(latestContentRef.current)
   }
 
   return (
     <div
       data-notepad-id={item.id}
-      className="group relative my-2.5 rounded-xl border border-amber-300/40 bg-amber-50/70 p-2.5 shadow-xs transition-colors hover:border-amber-400/60 dark:border-amber-500/30 dark:bg-amber-950/20 dark:hover:border-amber-400/50"
+      className="group relative my-2 rounded-none border-0 bg-amber-500/[0.04] px-3 py-2 transition-colors hover:bg-amber-500/[0.07] dark:bg-amber-400/[0.05] dark:hover:bg-amber-400/[0.08]"
     >
-      <div className="mb-1.5 flex items-center gap-1.5 select-none">
+      <div className="mb-1 flex items-center gap-1.5 select-none">
         {/* 拖动手柄：支持改变便签在文章中的插入位置 */}
         <div
           draggable
           onDragStart={(e) => onDragStart?.(e, item.id)}
-          className="flex h-5 w-5 cursor-grab items-center justify-center rounded text-ink-faint transition hover:bg-amber-200/50 hover:text-ink active:cursor-grabbing dark:hover:bg-amber-900/50"
+          className="flex h-5 w-5 cursor-grab items-center justify-center text-ink-faint transition hover:text-ink active:cursor-grabbing"
           title={t('按住拖动以改变便签插入位置')}
         >
           <GripVertical size={13} />
         </div>
 
-        <StickyNote size={13} className="shrink-0 text-amber-500" />
-        <span className="text-[11px] font-medium text-ink-soft">{t('随文笔记')}</span>
+        <StickyNote size={13} className="shrink-0 text-amber-500/80" />
+        <span className="text-[11px] font-medium text-ink-soft/80">{t('随文笔记')}</span>
 
         <button
           type="button"
           onClick={() => onDelete(item.id)}
           title={t('删除此条便签')}
-          className="ml-auto flex h-5 w-5 items-center justify-center rounded text-ink-faint opacity-60 transition hover:bg-amber-200/50 hover:text-red-500 hover:opacity-100 dark:hover:bg-amber-900/50"
+          className="ml-auto flex h-5 w-5 items-center justify-center text-ink-faint opacity-50 transition hover:text-red-500 hover:opacity-100"
         >
           <Trash2 size={12} />
         </button>
@@ -74,8 +114,9 @@ export const DocNotepadRow = memo(function DocNotepadRow({
         rows={1}
         value={content}
         onChange={handleChange}
+        onBlur={handleBlur}
         placeholder={t('在此记录随文笔记，支持实时编辑，数据完全独立记录在节点上…')}
-        className="w-full resize-none bg-transparent px-1 text-[12.5px] leading-relaxed text-ink placeholder:text-ink-faint/60 focus:outline-hidden"
+        className="w-full resize-none bg-transparent px-0 text-[12.5px] leading-relaxed text-ink placeholder:text-ink-faint/40 focus:outline-hidden"
       />
     </div>
   )
@@ -96,10 +137,32 @@ function getDocContainer(body: HTMLElement): HTMLElement {
     body
 }
 
+const DROP_INDICATOR_ATTR = 'data-notepad-drop-indicator'
+
+/** 获取或创建拖拽时的实时落点占位元素 */
+function getOrCreateDropIndicator(container: HTMLElement): HTMLElement {
+  let el = container.querySelector(`[${DROP_INDICATOR_ATTR}]`) as HTMLElement | null
+  if (!el) {
+    el = document.createElement('div')
+    el.setAttribute(DROP_INDICATOR_ATTR, 'true')
+    el.className = 'notepad-drop-indicator my-1.5 h-1 w-full rounded-full bg-amber-500 shadow-xs transition-all pointer-events-none'
+  }
+  return el
+}
+
+/** 清除拖拽落点占位元素 */
+function removeDropIndicator(container: HTMLElement) {
+  const el = container.querySelector(`[${DROP_INDICATOR_ATTR}]`)
+  if (el) el.remove()
+}
+
 /** 过滤出正文真实的块级子元素 */
 function getDocBlockChildren(container: HTMLElement): HTMLElement[] {
   return Array.from(container.children).filter(
-    (el) => !el.hasAttribute('data-doc-notepad-slot') && !el.classList.contains('block-notepad-slot'),
+    (el) =>
+      !el.hasAttribute('data-doc-notepad-slot') &&
+      !el.classList.contains('block-notepad-slot') &&
+      !el.hasAttribute(DROP_INDICATOR_ATTR),
   ) as HTMLElement[]
 }
 
@@ -115,6 +178,12 @@ export function DocNotepadLayer({
 }: DocNotepadLayerProps) {
   const [slots, setSlots] = useState<{ id: string; element: HTMLElement }[]>([])
   const draggedIdRef = useRef<string | null>(null)
+
+  // 计算结构指纹（仅当便签 ID 集合或 blockIndex 发生变化时才触发 DOM 插槽重排，输入内容时不触发重排）
+  const layoutFingerprint = useMemo(
+    () => notepads.map((n) => `${n.id}:${n.blockIndex}`).join('|'),
+    [notepads],
+  )
 
   // 扫描渲染内容并在对应位置插入 slot 占位元素
   useEffect(() => {
@@ -171,60 +240,86 @@ export function DocNotepadLayer({
       // 卸载时清理所有已插入的插槽元素
       existingSlots.forEach((el) => el.remove())
     }
-  }, [containerRef, notepads])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [containerRef, layoutFingerprint])
 
-  // 为正文各块挂载拖拽放置监听
+  // 为正文各块挂载拖拽放置监听及实时占位落点
   useEffect(() => {
     const body = containerRef.current
     if (!body) return
     const docContainer = getDocContainer(body)
 
-    const handleDragOver = (e: globalThis.DragEvent) => {
-      if (!draggedIdRef.current) return
-      e.preventDefault()
-      e.dataTransfer!.dropEffect = 'move'
-    }
-
-    const handleDrop = (e: globalThis.DragEvent) => {
-      const draggedId = draggedIdRef.current
-      if (!draggedId) return
-      e.preventDefault()
-
+    const calculateTargetIndex = (e: globalThis.DragEvent): number => {
       const children = getDocBlockChildren(docContainer)
-      if (children.length === 0) {
-        onMoveNotepad(draggedId, -1)
-        draggedIdRef.current = null
-        return
-      }
-
-      let targetIndex = children.length - 1
+      if (children.length === 0) return -1
       for (let i = 0; i < children.length; i++) {
         const rect = children[i].getBoundingClientRect()
         const midY = rect.top + rect.height / 2
         if (i === 0 && e.clientY < midY) {
-          targetIndex = -1
-          break
+          return -1
         }
         if (e.clientY <= rect.bottom) {
-          if (e.clientY < midY) {
-            targetIndex = i - 1
-          } else {
-            targetIndex = i
-          }
-          break
+          return e.clientY < midY ? i - 1 : i
         }
       }
+      return children.length - 1
+    }
 
+    const handleDragOver = (e: globalThis.DragEvent) => {
+      if (!draggedIdRef.current) return
+      e.preventDefault()
+      e.dataTransfer!.dropEffect = 'move'
+
+      const targetIndex = calculateTargetIndex(e)
+      const children = getDocBlockChildren(docContainer)
+      const indicator = getOrCreateDropIndicator(docContainer)
+
+      if (targetIndex < 0 || children.length === 0) {
+        if (docContainer.firstChild !== indicator) {
+          docContainer.insertBefore(indicator, docContainer.firstChild)
+        }
+      } else {
+        const targetChild = children[Math.min(targetIndex, children.length - 1)]
+        if (targetChild && targetChild.nextSibling !== indicator) {
+          docContainer.insertBefore(indicator, targetChild.nextSibling)
+        }
+      }
+    }
+
+    const handleDragLeave = (e: globalThis.DragEvent) => {
+      // 当离开容器边界时移除占位线
+      if (!body.contains(e.relatedTarget as Node)) {
+        removeDropIndicator(docContainer)
+      }
+    }
+
+    const handleDrop = (e: globalThis.DragEvent) => {
+      const draggedId = draggedIdRef.current
+      removeDropIndicator(docContainer)
+      if (!draggedId) return
+      e.preventDefault()
+
+      const targetIndex = calculateTargetIndex(e)
       onMoveNotepad(draggedId, targetIndex)
       draggedIdRef.current = null
     }
 
+    const handleDragEnd = () => {
+      removeDropIndicator(docContainer)
+      draggedIdRef.current = null
+    }
+
     body.addEventListener('dragover', handleDragOver)
+    body.addEventListener('dragleave', handleDragLeave)
     body.addEventListener('drop', handleDrop)
+    window.addEventListener('dragend', handleDragEnd)
 
     return () => {
       body.removeEventListener('dragover', handleDragOver)
+      body.removeEventListener('dragleave', handleDragLeave)
       body.removeEventListener('drop', handleDrop)
+      window.removeEventListener('dragend', handleDragEnd)
+      removeDropIndicator(docContainer)
     }
   }, [containerRef, onMoveNotepad])
 
