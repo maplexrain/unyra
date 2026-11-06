@@ -30,7 +30,6 @@ import {
   Maximize,
   Minimize,
   ListTree,
-  ListVideo,
   Pause,
   Play,
   RotateCcw,
@@ -169,10 +168,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       onTimeUpdate,
       onSeeked,
       onExternalSubtitleLoaded,
-      sidePanel,
+      sidePanel: _sidePanel,
       transitionStill,
-      onToggleSidePanel,
-      sidePanelOpen = false,
+      onToggleSidePanel: _onToggleSidePanel,
+      sidePanelOpen: _sidePanelOpen = false,
       leftOverlay,
       leftOverlayOpen = false,
       onToggleLeftOverlay,
@@ -1142,7 +1141,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 <button
                   type="button"
                   onClick={onToggleLeftOverlay}
-                  title={leftOverlayOpen ? t('收起字幕与分段 (Tab)') : t('展开字幕与分段 (Tab)')}
+                  title={leftOverlayOpen ? t('收起侧边栏 (Tab)') : t('展开侧边栏 (Tab)')}
                   aria-expanded={leftOverlayOpen}
                   className={
                     'flex h-8 items-center gap-1.5 px-2.5 rounded-lg text-[11.5px] transition hover:bg-white/20 ' +
@@ -1150,25 +1149,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                   }
                 >
                   <ListTree size={15} />
-                  <span>{t('字幕/分段')}</span>
+                  <span>{t('选集/字幕/分段')}</span>
                   <kbd className="hidden sm:inline rounded bg-white/10 px-1 py-0.5 text-[9px] font-mono text-white/60">Tab</kbd>
-                </button>
-              )}
-
-              {/* 选集 / 合集列表开关（用户定的：这就是「视频空间栏」里要放的那个入口） */}
-              {onToggleSidePanel && (
-                <button
-                  type="button"
-                  data-video-panel-toggle=""
-                  onClick={onToggleSidePanel}
-                  title={sidePanelOpen ? t('收起选集列表') : t('展开选集列表')}
-                  aria-expanded={sidePanelOpen}
-                  className={
-                    'flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/20 ' +
-                    (sidePanelOpen ? 'bg-white/20 text-seal' : 'text-white/80 hover:text-white')
-                  }
-                >
-                  <ListVideo size={16} />
                 </button>
               )}
 
@@ -1478,11 +1460,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           </div>
         </div>
 
-        {/* 左侧悬浮面板（字幕 + 视频分段）：按 Tab 展开/收起，挂在播放器根容器里 */}
+        {/* 左侧悬浮面板（选集 + 字幕 + 视频分段）：按 Tab 展开/收起，挂在播放器根容器里 */}
         {leftOverlay}
-
-        {/* 右侧悬浮面板（合集 / 选集）：挂在根容器里，全屏时同样可见 */}
-        {sidePanel}
 
         {/* 隐藏的字幕文件导入 input */}
         <input

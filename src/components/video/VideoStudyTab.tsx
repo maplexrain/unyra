@@ -12,9 +12,10 @@
  * 视频页签由工作区的常驻层 keepalive 渲染（切走只藏不卸，播放不打断）。
  *
  * 重构说明：
- * - 移除底部三栏（字幕、总结、视频分段），播放器铺满容器高度；
- * - 增加 Tab 键浮层：浮层位于播放器容器内部左侧，上方显示字幕列表，下方显示视频分段；
- * - 废弃视频总结，仅生成章节分段；
+ * - 移除底部三栏与独立选集右侧栏；
+ * - 增加 Tab 键左侧栏：三行垂直切分，高度权重为 2:1:1，2 为选集列表，1 为字幕列表，1 为视频分段；
+ * - 侧边栏去掉边缘遮罩渐变效果，采用无边框、无圆角、2px 轻微背景模糊；
+ * - 避开顶部标题栏与底部控制栏，高度收缩（top-[46px] bottom-[68px]）；
  * - 视频播放时立即自动生成分段；限制 50,000 字符，超过 50,000 字符需手动点击生成。
  */
 
@@ -24,6 +25,7 @@ import {
   Clapperboard,
   Download,
   ListTree,
+  ListVideo,
   Loader2,
   MonitorPlay,
   Plus,
@@ -45,23 +47,12 @@ import VideoPlayer, { type VideoPlayerHandle } from './VideoPlayer'
 
 /** 创建态的输入记忆：下次打新建视频，上次粘的链接还在 */
 const INPUT_KEY = 'moji.video.input'
-/** 合集列表收起与否：跟输入一样落在 localStorage，重启后保持上次的选择 */
-const COLLAPSED_KEY = 'moji.video.collapsed'
 
 const readLastInput = (): string => {
   try {
     return localStorage.getItem(INPUT_KEY) ?? ''
   } catch {
     return ''
-  }
-}
-
-const readCollapsed = (): boolean => {
-  try {
-    // 默认收起：没存过按收起算，展开过一次才记住
-    return (localStorage.getItem(COLLAPSED_KEY) ?? '1') === '1'
-  } catch {
-    return false
   }
 }
 
@@ -176,46 +167,10 @@ export default function VideoStudyTab({
   /** 视频分段生成中（禁点、转圈） */
   const [chaptersBusy, setChaptersBusy] = useState(false)
 
-  /** 左侧抽屉（字幕列表 + 视频分段）：按 Tab 展开/收起 */
+  /** 左侧抽屉（选集列表 + 字幕列表 + 视频分段）：按 Tab 展开/收起 */
   const [leftOverlayOpen, setLeftOverlayOpen] = useState(false)
 
-  /** 合集列表收起与否 */
-  const [collapsed, setCollapsed] = useState(readCollapsed)
-  const toggleCollapsed = useCallback(() => {
-    setCollapsed((v) => {
-      try {
-        localStorage.setItem(COLLAPSED_KEY, v ? '0' : '1')
-      } catch {
-        // 会话内生效即可
-      }
-      return !v
-    })
-  }, [])
-
-  const panelRef = useRef<HTMLDivElement | null>(null)
-  const collapsePanel = useCallback(() => {
-    setCollapsed(true)
-    try {
-      localStorage.setItem(COLLAPSED_KEY, '1')
-    } catch {
-      // 会话内生效即可
-    }
-  }, [])
-
-  useEffect(() => {
-    if (collapsed) return
-    const onDown = (e: PointerEvent) => {
-      const target = e.target
-      if (!(target instanceof Node)) return
-      if (panelRef.current?.contains(target)) return
-      if (target instanceof Element && target.closest('[data-video-panel-toggle]')) return
-      collapsePanel()
-    }
-    document.addEventListener('pointerdown', onDown, true)
-    return () => document.removeEventListener('pointerdown', onDown, true)
-  }, [collapsed, collapsePanel])
-
-  /** 键盘 Tab 键监听：切换左侧字幕与分段浮层 */
+  /** 键盘 Tab 键监听：切换左侧栏浮层 */
   useEffect(() => {
     if (!active) return
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -256,7 +211,6 @@ export default function VideoStudyTab({
   const currentSourceRef = useRef<string>('')
   const listRef = useRef<HTMLDivElement | null>(null)
   const rowRefs = useRef<Array<HTMLDivElement | null>>([])
-
   const chapterListRef = useRef<HTMLDivElement | null>(null)
 
   const segments = transcript?.segments ?? []
@@ -571,153 +525,142 @@ export default function VideoStudyTab({
     )
   }
 
-  /**
-   * 右侧悬浮面板（合集 / 选集）：挂在根容器里，全屏时也能打开
-   */
   const currentPage = source?.pages?.find((p) => p.current)
   const pageLabel = currentPage ? 'P' + currentPage.page + ' ' + currentPage.title : undefined
-  const sidePanel =
-    source && (source.collection || source.pages) ? (
-      <div
-        className={
-          'absolute right-3 top-1/2 z-10 h-[80%] -translate-y-1/2 overflow-hidden rounded-xl transition-[width] duration-300 ease-out ' +
-          (collapsed ? 'w-0' : 'w-[320px]')
-        }
-      >
-        <div
-          ref={panelRef}
-          className="flex h-full w-[320px] flex-col border border-line/60 bg-card/95 shadow-[0_10px_30px_rgba(0,0,0,0.28)]"
-        >
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {source.collection && (
-              <>
-                <div className="px-2 pb-0.5 pt-1.5 text-[10.5px] font-medium text-ink-faint">
-                  {t('合集')} · {source.collection.name}
-                </div>
-                {source.collection.items.map((item) => (
-                  <button
-                    key={item.source}
-                    type="button"
-                    title={item.title}
-                    disabled={busy}
-                    onClick={() => void runResolve(item.source, video?.fields)}
-                    className={
-                      'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition disabled:opacity-50 ' +
-                      (item.current ? 'bg-seal/10' : 'hover:bg-line/50')
-                    }
-                  >
-                    <span
-                      className={
-                        'min-w-0 flex-1 truncate text-[12px] ' +
-                        (item.current ? 'font-medium text-ink-strong' : 'text-ink')
-                      }
-                    >
-                      {item.title}
-                    </span>
-                    <span
-                      className={
-                        'shrink-0 font-mono text-[10.5px] ' +
-                        (item.current ? 'text-seal' : 'text-ink-faint')
-                      }
-                    >
-                      {item.durationMs ? formatClock(item.durationMs) : '--:--'}
-                    </span>
-                  </button>
-                ))}
-              </>
-            )}
-            {source.pages && (
-              <>
-                <div className="flex items-center gap-1 px-2 pb-0.5 pt-1.5">
-                  <span className="min-w-0 flex-1 truncate text-[10.5px] font-medium text-ink-faint">
-                    {t('选集')} · {source.pages.length}
-                  </span>
-                  <button
-                    type="button"
-                    title={
-                      exportProgress
-                        ? t('导出中 {0}/{1}', String(exportProgress.done), String(exportProgress.total))
-                        : t('导出选集字幕（全部分 P 的转录合并为一个 Markdown）')
-                    }
-                    disabled={!!exportProgress || busy}
-                    onClick={() => void exportPages()}
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint transition hover:bg-line/60 hover:text-ink disabled:opacity-50"
-                  >
-                    {exportProgress ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                  </button>
-                </div>
-                {exportProgress && (
-                  <div className="px-2 pb-0.5 text-[10.5px] text-ink-faint">
-                    {t('导出中 {0}/{1}', String(exportProgress.done), String(exportProgress.total))}
-                  </div>
-                )}
-                {source.pages.map((item) => (
-                  <button
-                    key={item.source}
-                    type="button"
-                    title={item.title}
-                    disabled={busy}
-                    onClick={() => void runResolve(item.source, video?.fields)}
-                    className={
-                      'flex w-full items-center gap-2 rounded-md py-1 pl-4 pr-2 text-left transition disabled:opacity-50 ' +
-                      (item.current ? 'bg-seal/10' : 'hover:bg-line/50')
-                    }
-                  >
-                    <span className="shrink-0 font-mono text-[10.5px] text-ink-faint">p{item.page}</span>
-                    <span
-                      className={
-                        'min-w-0 flex-1 truncate text-[12px] ' +
-                        (item.current ? 'font-medium text-ink-strong' : 'text-ink')
-                      }
-                    >
-                      {item.title}
-                    </span>
-                    <span
-                      className={
-                        'shrink-0 font-mono text-[10.5px] ' +
-                        (item.current ? 'text-seal' : 'text-ink-faint')
-                      }
-                    >
-                      {item.durationMs ? formatClock(item.durationMs) : '--:--'}
-                    </span>
-                  </button>
-                ))}
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    ) : null
-
   const hasTranscript = !!transcript?.segments?.length
 
   /**
    * 左侧浮层（按 Tab 展开/收起）：
+   * - 侧边栏去掉边缘遮罩渐变效果，无圆角、无外边框，背景模糊 2px；
    * - 高度收缩：top-[46px] bottom-[68px]，彻底避开顶部标题栏与底部控制栏，防止重叠；
-   * - 样式：无圆角、无边框、背景模糊降至 2px（backdrop-blur-[2px]）；
-   * - 边界透明渐变：通过外层与内层 mask-image 遮罩实现上、下、右边界透明平滑过渡。
+   * - 三行垂直切分，高度权重比为 2:1:1，2 为选集列表，1 为字幕列表，1 为视频分段。
    */
   const leftOverlay = (
     <div
       className={
-        'absolute left-0 top-[46px] bottom-[68px] z-20 flex w-[330px] max-w-[45vw] flex-col overflow-hidden bg-black/80 text-white backdrop-blur-[2px] transition-all duration-200 ' +
+        'absolute left-0 top-[46px] bottom-[68px] z-20 flex w-[340px] max-w-[46vw] flex-col overflow-hidden bg-black/85 text-white backdrop-blur-[2px] shadow-2xl transition-all duration-200 ' +
         (leftOverlayOpen ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 -translate-x-4 pointer-events-none')
       }
-      style={{
-        maskImage: 'linear-gradient(to right, black calc(100% - 24px), transparent 100%)',
-        WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 24px), transparent 100%)',
-      }}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <div
-        className="flex min-h-0 flex-1 flex-col pr-2"
-        style={{
-          maskImage: 'linear-gradient(to bottom, transparent 0px, black 16px, black calc(100% - 16px), transparent 100%)',
-          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0px, black 16px, black calc(100% - 16px), transparent 100%)',
-        }}
-      >
-        {/* 上半部分：字幕列表 */}
-        <div className="flex shrink-0 items-center justify-between px-3 pt-3 pb-1.5 bg-white/[0.02]">
+      {/* 第一行（权重 2）：选集列表 */}
+      <div className="flex flex-[2] min-h-0 flex-col bg-white/[0.02]">
+        <div className="flex shrink-0 items-center justify-between px-3 pt-2.5 pb-1 bg-white/[0.02]">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <ListVideo size={14} className="text-pink-400 shrink-0" />
+            <span className="text-[12px] font-semibold text-white/95 truncate">
+              {source?.collection ? t('合集 / 选集') : t('选集列表')}
+            </span>
+            {source?.pages && (
+              <span className="rounded bg-white/10 px-1.5 py-0.2 text-[10px] text-white/60 shrink-0">
+                {source.pages.length}P
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            {source?.pages && (
+              <button
+                type="button"
+                title={
+                  exportProgress
+                    ? t('导出中 {0}/{1}', String(exportProgress.done), String(exportProgress.total))
+                    : t('导出选集字幕（全部分 P 的转录合并为一个 Markdown）')
+                }
+                disabled={!!exportProgress || busy}
+                onClick={() => void exportPages()}
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-white/60 transition hover:bg-white/10 hover:text-white disabled:opacity-50 cursor-pointer"
+              >
+                {exportProgress ? <Loader2 size={12} className="animate-spin text-pink-400" /> : <Download size={12} />}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setLeftOverlayOpen(false)}
+              title={t('收起 (Tab)')}
+              className="rounded p-1 text-white/50 hover:bg-white/10 hover:text-white transition cursor-pointer"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
+          {source?.collection && (
+            <div className="pb-2">
+              <div className="px-2 pb-0.5 pt-1 text-[10.5px] font-medium text-white/50">
+                {t('合集')} · {source.collection.name}
+              </div>
+              {source.collection.items.map((item) => (
+                <button
+                  key={item.source}
+                  type="button"
+                  title={item.title}
+                  disabled={busy}
+                  onClick={() => void runResolve(item.source, video?.fields)}
+                  className={
+                    'flex w-full items-center gap-2 rounded px-2 py-1 text-left transition cursor-pointer disabled:opacity-50 ' +
+                    (item.current ? 'bg-pink-500/25 text-white font-medium' : 'text-white/80 hover:bg-white/10')
+                  }
+                >
+                  <span className="min-w-0 flex-1 truncate text-[11.5px]">{item.title}</span>
+                  <span
+                    className={
+                      'shrink-0 font-mono text-[10px] ' +
+                      (item.current ? 'text-pink-400 font-semibold' : 'text-white/50')
+                    }
+                  >
+                    {item.durationMs ? formatClock(item.durationMs) : '--:--'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {source?.pages && (
+            <div>
+              {source.collection && (
+                <div className="px-2 pb-0.5 pt-1 text-[10.5px] font-medium text-white/50">
+                  {t('选集')} · {source.pages.length}
+                </div>
+              )}
+              {source.pages.map((item) => (
+                <button
+                  key={item.source}
+                  type="button"
+                  title={item.title}
+                  disabled={busy}
+                  onClick={() => void runResolve(item.source, video?.fields)}
+                  className={
+                    'flex w-full items-center gap-2 rounded py-1 pl-3 pr-2 text-left transition cursor-pointer disabled:opacity-50 ' +
+                    (item.current ? 'bg-pink-500/25 text-white font-medium' : 'text-white/80 hover:bg-white/10')
+                  }
+                >
+                  <span className="shrink-0 font-mono text-[10px] text-white/50">P{item.page}</span>
+                  <span className="min-w-0 flex-1 truncate text-[11.5px]">{item.title}</span>
+                  <span
+                    className={
+                      'shrink-0 font-mono text-[10px] ' +
+                      (item.current ? 'text-pink-400 font-semibold' : 'text-white/50')
+                    }
+                  >
+                    {item.durationMs ? formatClock(item.durationMs) : '--:--'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {!source?.collection && !source?.pages && (
+            <div className="flex h-full flex-col items-center justify-center p-3 text-center text-[11.5px] text-white/45">
+              <span className="truncate max-w-[280px]">{source?.title ?? t('单视频')}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 第二行（权重 1）：字幕列表 */}
+      <div className="flex flex-1 min-h-0 flex-col border-t border-white/10">
+        <div className="flex shrink-0 items-center justify-between px-3 pt-2 pb-1 bg-white/[0.02]">
           <div className="flex items-center gap-1.5 min-w-0">
             <Captions size={14} className="text-pink-400 shrink-0" />
             <span className="text-[12px] font-semibold text-white/95 truncate">{t('字幕列表')}</span>
@@ -727,147 +670,135 @@ export default function VideoStudyTab({
               </span>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setLeftOverlayOpen(false)}
-            title={t('收起 (Tab)')}
-            className="rounded p-1 text-white/50 hover:bg-white/10 hover:text-white transition cursor-pointer"
-          >
-            <X size={13} />
-          </button>
         </div>
 
-        <div className="min-h-0 flex-1 flex flex-col">
-          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
-            {segments.length ? (
-              segments.map((seg, i) => (
-                <div key={seg.startMs} ref={(el) => { rowRefs.current[i] = el }}>
-                  <button
-                    type="button"
-                    onClick={() => seekMs(seg.startMs)}
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1" ref={listRef}>
+          {segments.length ? (
+            segments.map((seg, i) => (
+              <div key={seg.startMs} ref={(el) => { rowRefs.current[i] = el }}>
+                <button
+                  type="button"
+                  onClick={() => seekMs(seg.startMs)}
+                  className={
+                    'flex w-full items-start gap-2 rounded px-2 py-1.5 text-left transition cursor-pointer ' +
+                    (i === activeIdx ? 'bg-pink-500/25 text-white' : 'text-white/80 hover:bg-white/10')
+                  }
+                >
+                  <span
                     className={
-                      'flex w-full items-start gap-2 rounded px-2 py-1.5 text-left transition cursor-pointer ' +
-                      (i === activeIdx ? 'bg-pink-500/25 text-white' : 'text-white/80 hover:bg-white/10')
+                      'mt-px w-11 shrink-0 pt-px text-right font-mono text-[10.5px] ' +
+                      (i === activeIdx ? 'text-pink-400 font-semibold' : 'text-white/50')
                     }
                   >
-                    <span
-                      className={
-                        'mt-px w-11 shrink-0 pt-px text-right font-mono text-[10.5px] ' +
-                        (i === activeIdx ? 'text-pink-400 font-semibold' : 'text-white/50')
-                      }
-                    >
-                      {formatClock(seg.startMs)}
-                    </span>
-                    <span
-                      className={
-                        'min-w-0 flex-1 text-[12px] leading-relaxed ' +
-                        (i === activeIdx ? 'font-medium text-white' : 'text-white/85')
-                      }
-                    >
-                      {seg.text}
-                    </span>
-                  </button>
-                </div>
-              ))
-            ) : (
-              <div className="px-3 py-8 text-center text-[12px] leading-relaxed text-white/50">
-                {transcriptNote ?? t('这条来源没有可用的转录。')}
+                    {formatClock(seg.startMs)}
+                  </span>
+                  <span
+                    className={
+                      'min-w-0 flex-1 text-[12px] leading-relaxed ' +
+                      (i === activeIdx ? 'font-medium text-white' : 'text-white/85')
+                    }
+                  >
+                    {seg.text}
+                  </span>
+                </button>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* 下半部分：视频分段 */}
-        <div className="flex h-[44%] shrink-0 flex-col bg-white/[0.015]">
-          <div className="flex shrink-0 items-center justify-between px-3 pt-2 pb-1 bg-white/[0.02]">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <ListTree size={14} className="text-pink-400 shrink-0" />
-              <span className="text-[12px] font-semibold text-white/95 truncate">{t('视频分段')}</span>
-              {chapterRows.length > 0 && (
-                <span className="rounded bg-white/10 px-1.5 py-0.2 text-[10px] text-white/60 shrink-0">
-                  {chapterRows.length}
-                </span>
-              )}
+            ))
+          ) : (
+            <div className="flex h-full items-center justify-center p-3 text-center text-[11.5px] text-white/50">
+              {transcriptNote ?? t('这条来源没有可用的转录。')}
             </div>
-            {chaptersBusy && (
-              <span className="flex items-center gap-1 text-[10.5px] text-pink-300">
-                <Loader2 size={11} className="animate-spin" />
-                {t('生成中…')}
+          )}
+        </div>
+      </div>
+
+      {/* 第三行（权重 1）：视频分段 */}
+      <div className="flex flex-1 min-h-0 flex-col border-t border-white/10 bg-white/[0.01]">
+        <div className="flex shrink-0 items-center justify-between px-3 pt-2 pb-1 bg-white/[0.02]">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <ListTree size={14} className="text-pink-400 shrink-0" />
+            <span className="text-[12px] font-semibold text-white/95 truncate">{t('视频分段')}</span>
+            {chapterRows.length > 0 && (
+              <span className="rounded bg-white/10 px-1.5 py-0.2 text-[10px] text-white/60 shrink-0">
+                {chapterRows.length}
               </span>
             )}
           </div>
+          {chaptersBusy && (
+            <span className="flex items-center gap-1 text-[10.5px] text-pink-300">
+              <Loader2 size={11} className="animate-spin" />
+              {t('生成中…')}
+            </span>
+          )}
+        </div>
 
-          <div className="min-h-0 flex-1 flex flex-col">
-            <div ref={chapterListRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
-              {chapterRows.length ? (
-                chapterRows.map((ch, i) => (
-                  <button
-                    key={ch.startMs}
-                    type="button"
-                    onClick={() => seekMs(ch.startMs)}
-                    title={ch.summary}
-                    className={
-                      'flex w-full items-start gap-2 rounded px-2 py-1.5 text-left transition cursor-pointer ' +
-                      (i === activeChapterIdx ? 'bg-pink-500/25 text-white' : 'text-white/80 hover:bg-white/10')
-                    }
-                  >
-                    <span
-                      className={
-                        'mt-px w-11 shrink-0 pt-px text-right font-mono text-[10.5px] ' +
-                        (i === activeChapterIdx ? 'text-pink-400 font-semibold' : 'text-white/50')
-                      }
-                    >
-                      {formatClock(ch.startMs)}
-                    </span>
-                    <span
-                      className={
-                        'min-w-0 flex-1 text-[12px] leading-relaxed ' +
-                        (i === activeChapterIdx ? 'font-medium text-white' : 'text-white/85')
-                      }
-                    >
-                      {ch.summary}
-                    </span>
-                  </button>
-                ))
-              ) : chaptersBusy ? (
-                <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center text-[11.5px] text-white/60">
-                  <Loader2 size={16} className="animate-spin text-pink-400" />
-                  <span>{t('正在生成视频语义分段…')}</span>
-                </div>
-              ) : !hasTranscript ? (
-                <div className="flex h-full items-center justify-center p-3 text-center text-[11.5px] text-white/40">
-                  {t('暂无可用字幕，无法分段')}
-                </div>
-              ) : totalTranscriptChars > 50000 ? (
-                <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center">
-                  <p className="text-[11.5px] leading-relaxed text-amber-300">
-                    {t('字幕共 {0} 字符（超出 50,000 字符限制）', totalTranscriptChars.toLocaleString())}
-                  </p>
-                  <p className="text-[10.5px] text-white/50">
-                    {t('为避免超出上下文窗口，长视频需手动生成')}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => void runChapters()}
-                    className="mt-1 rounded-md bg-pink-600 px-3 py-1.5 text-[11.5px] font-medium text-white shadow transition hover:bg-pink-700 cursor-pointer"
-                  >
-                    {t('手动生成分段')}
-                  </button>
-                </div>
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center text-[11.5px] text-white/50">
-                  <span>{t('播放视频时将自动生成分段')}</span>
-                  <button
-                    type="button"
-                    onClick={() => void runChapters()}
-                    className="rounded-md bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white/80 hover:bg-white/20 transition cursor-pointer"
-                  >
-                    {t('立即生成分段')}
-                  </button>
-                </div>
-              )}
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1" ref={chapterListRef}>
+          {chapterRows.length ? (
+            chapterRows.map((ch, i) => (
+              <button
+                key={ch.startMs}
+                type="button"
+                onClick={() => seekMs(ch.startMs)}
+                title={ch.summary}
+                className={
+                  'flex w-full items-start gap-2 rounded px-2 py-1.5 text-left transition cursor-pointer ' +
+                  (i === activeChapterIdx ? 'bg-pink-500/25 text-white' : 'text-white/80 hover:bg-white/10')
+                }
+              >
+                <span
+                  className={
+                    'mt-px w-11 shrink-0 pt-px text-right font-mono text-[10.5px] ' +
+                    (i === activeChapterIdx ? 'text-pink-400 font-semibold' : 'text-white/50')
+                  }
+                >
+                  {formatClock(ch.startMs)}
+                </span>
+                <span
+                  className={
+                    'min-w-0 flex-1 text-[12px] leading-relaxed ' +
+                    (i === activeChapterIdx ? 'font-medium text-white' : 'text-white/85')
+                  }
+                >
+                  {ch.summary}
+                </span>
+              </button>
+            ))
+          ) : chaptersBusy ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center text-[11.5px] text-white/60">
+              <Loader2 size={16} className="animate-spin text-pink-400" />
+              <span>{t('正在生成视频语义分段…')}</span>
             </div>
-          </div>
+          ) : !hasTranscript ? (
+            <div className="flex h-full items-center justify-center p-3 text-center text-[11.5px] text-white/40">
+              {t('暂无可用字幕，无法分段')}
+            </div>
+          ) : totalTranscriptChars > 50000 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center">
+              <p className="text-[11.5px] leading-relaxed text-amber-300">
+                {t('字幕共 {0} 字符（超出 50,000 字符限制）', totalTranscriptChars.toLocaleString())}
+              </p>
+              <p className="text-[10.5px] text-white/50">
+                {t('为避免超出上下文窗口，长视频需手动生成')}
+              </p>
+              <button
+                type="button"
+                onClick={() => void runChapters()}
+                className="mt-1 rounded-md bg-pink-600 px-3 py-1.5 text-[11.5px] font-medium text-white shadow transition hover:bg-pink-700 cursor-pointer"
+              >
+                {t('手动生成分段')}
+              </button>
+            </div>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center text-[11.5px] text-white/50">
+              <span>{t('播放视频时将自动生成分段')}</span>
+              <button
+                type="button"
+                onClick={() => void runChapters()}
+                className="rounded-md bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white/80 hover:bg-white/20 transition cursor-pointer"
+              >
+                {t('立即生成分段')}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -895,12 +826,9 @@ export default function VideoStudyTab({
             leftOverlay={leftOverlay}
             leftOverlayOpen={leftOverlayOpen}
             onToggleLeftOverlay={() => setLeftOverlayOpen((v) => !v)}
-            sidePanel={sidePanel}
             subLabel={pageLabel}
             transitionStill={switchStill}
             chapters={chapterRows.length ? chapterRows : null}
-            onToggleSidePanel={sidePanel ? toggleCollapsed : undefined}
-            sidePanelOpen={!collapsed}
             onPlay={triggerAutoChaptersOnPlay}
             onTimeUpdate={(ms) => {
               setCurrentMs(ms)

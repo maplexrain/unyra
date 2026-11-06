@@ -78,4 +78,21 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
     const canAutoGenerateLong = longTotal <= 50000
     expect(canAutoGenerateLong).toBe(false)
   })
+
+  it('左侧栏 2:1:1 三行布局结构与无边缘遮罩规范验证', async () => {
+    const fs = await import('fs')
+    const code = fs.readFileSync('src/components/video/VideoStudyTab.tsx', 'utf8')
+
+    // 1. 验证去掉了 maskImage 遮罩
+    expect(code).not.toContain('maskImage:')
+    expect(code).not.toContain('WebkitMaskImage:')
+
+    // 2. 验证左侧栏三行的高度权重为 2:1:1 (第一行选集列表 flex-[2]，第二行字幕 flex-1，第三行分段 flex-1)
+    expect(code).toContain('flex flex-[2] min-h-0 flex-col')
+    expect(code).toContain('flex flex-1 min-h-0 flex-col border-t border-white/10')
+
+    // 3. 验证去掉了独立的右侧栏 sidePanel
+    expect(code).not.toContain('const sidePanel =')
+    expect(code).not.toContain('COLLAPSED_KEY')
+  })
 })
