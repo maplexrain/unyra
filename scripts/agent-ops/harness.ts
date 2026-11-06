@@ -271,6 +271,22 @@ export function fakeWorkspaceIo() {
       files.set(rel, content)
       return { ok: true }
     },
+    delete: async (rel) => {
+      files.delete(rel)
+      return { ok: true }
+    },
+    move: async (fromRel, toRel) => {
+      const val = files.get(fromRel)
+      if (val !== undefined) {
+        files.set(toRel, val)
+        files.delete(fromRel)
+      }
+      return { ok: true }
+    },
+    writeBinary: async (rel, _data) => {
+      files.set(rel, 'binary_data')
+      return { ok: true }
+    },
   }
   return { io, files }
 }

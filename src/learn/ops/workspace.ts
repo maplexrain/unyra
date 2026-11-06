@@ -268,5 +268,134 @@ async grep(input: Record<string, unknown> | string) {
         ...(existed ? { updated: true, note: '整份覆盖了已有文件' } : { created: true }),
       }
     },
+
+    async delete(path: unknown) {
+      const rawPath = typeof path === 'string' ? path : (typeof (path as Record<string, unknown>)?.path === 'string' ? ((path as Record<string, unknown>).path as string) : '')
+      if (!rawPath.trim()) return { error: 'delete 需要 path（节点路径 + 文件名，如 极限/草稿.md）' }
+      const r = resolveWs(rawPath)
+      if ('error' in r) return r
+      if (!r.rest.length) {
+        return { error: 'delete 只能删除工作区文件或目录，不能删除节点自身；请写明文件名（如 极限/文件.md）' }
+      }
+      const loc = relOf(r.node, r.rest)
+      if ('error' in loc) return loc
+      if (!io.delete) return { error: '当前环境不支持删除工作区文件' }
+      const res = await io.delete(loc.rel)
+      if (!res.ok) return { error: res.error ?? '删除失败' }
+      return {
+        ok: true,
+        path: labelOf(r.node, r.rest),
+        rel: loc.rel,
+        deleted: true,
+      }
+    },
+
+    async move(inputOrFrom: unknown, maybeTo?: unknown) {
+      let rawFrom = ''
+      let rawTo = ''
+      if (typeof inputOrFrom === 'string' && typeof maybeTo === 'string') {
+        rawFrom = inputOrFrom
+        rawTo = maybeTo
+      } else if (inputOrFrom && typeof inputOrFrom === 'object') {
+        const obj = inputOrFrom as Record<string, unknown>
+        rawFrom = typeof obj.from === 'string' ? obj.from : ''
+        rawTo = typeof obj.to === 'string' ? obj.to : ''
+      }
+      if (!rawFrom.trim() || !rawTo.trim()) {
+        return { error: 'move 需要 from 和 to 两个路径，如 workspace.move("极限/旧.md", "极限/新.md") 或 { from: "...", to: "..." }' }
+      }
+      const rFrom = resolveWs(rawFrom)
+      if ('error' in rFrom) return rFrom
+      const rTo = resolveWs(rawTo)
+      if ('error' in rTo) return rTo
+      if (!rFrom.rest.length || !rTo.rest.length) {
+        return { error: 'move 路径最后要落到文件名上' }
+      }
+      const locFrom = relOf(rFrom.node, rFrom.rest)
+      if ('error' in locFrom) return locFrom
+      const locTo = relOf(rTo.node, rTo.rest)
+      if ('error' in locTo) return locTo
+      if (!io.move) return { error: '当前环境不支持移动工作区文件' }
+      const res = await io.move(locFrom.rel, locTo.rel)
+      if (!res.ok) return { error: res.error ?? '移动失败' }
+      return {
+        ok: true,
+        from: labelOf(rFrom.node, rFrom.rest),
+        to: labelOf(rTo.node, rTo.rest),
+        fromRel: locFrom.rel,
+        toRel: locTo.rel,
+        moved: true,
+      }
+    },
+
+    async download(urlOrInput: unknown, maybePath?: unknown) {
+      let rawUrl = ''
+      let rawPath = ''
+      if (typeof urlOrInput === 'string') {
+        rawUrl = urlOrInput.trim()
+        rawPath = typeof maybePath === 'string' ? maybePath.trim() : ''
+      } else if (urlOrInput && typeof urlOrInput === 'object') {
+        const obj = urlOrInput as Record<string, unknown>
+        rawUrl = typeof obj.url === 'string' ? obj.url.trim() : (typeof obj.srcUrl === 'string' ? obj.srcUrl.trim() : '')
+        rawPath = typeof obj.path === 'string' ? obj.path.trim() : ''
+      }
+      if (!rawUrl) {
+        return { error: 'download 需要有效的 url（如 https://.../image.png）' }
+      }
+      if (!rawPath) {
+        try {
+          const u = new URL(rawUrl)
+          const base = u.pathname.split('/').filter(Boolean).pop()
+          rawPath = base || 'download_' + Date.now()
+        } catch {
+          rawPath = 'download_' + Date.now()
+        }
+      }
+      const r = resolveWs(rawPath)
+      if ('error' in r) return r
+      if (!r.rest.length) {
+        return { error: 'download 路径最后要落到文件名上（如 极限/图片.png）' }
+      }
+      const loc = relOf(r.node, r.rest)
+      if ('error' in loc) return loc
+      if (!io.writeBinary) {
+        return { error: '当前环境不支持下载写入二进制文件' }
+      }
+
+      try {
+        const resp = await fetch(rawUrl)
+        if (!resp.ok) {
+          return { error: `下载失败: HTTP ${resp.status} ${resp.statusText}` }
+        }
+        const buf = await resp.arrayBuffer()
+        const mime = resp.headers.get('content-type') || 'application/octet-stream'
+        let base64 = ''
+        if (typeof Buffer !== 'undefined') {
+          base64 = Buffer.from(buf).toString('base64')
+        } else {
+          const bytes = new Uint8Array(buf)
+          let binary = ''
+          const chunkSize = 8192
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as unknown as number[])
+          }
+          base64 = btoa(binary)
+        }
+        const dataUrl = `data:${mime};base64,${base64}`
+        const res = await io.writeBinary(loc.rel, dataUrl)
+        if (!res.ok) {
+          return { error: res.error ?? '写入文件失败' }
+        }
+        return {
+          ok: true,
+          path: labelOf(r.node, r.rest),
+          rel: loc.rel,
+          bytes: buf.byteLength,
+          downloaded: true,
+        }
+      } catch (err) {
+        return { error: '下载失败: ' + (err instanceof Error ? err.message : String(err)) }
+      }
+    },
   }
 }

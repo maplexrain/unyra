@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { WebviewTag } from 'electron'
-import { ArrowLeft, ArrowRight, ExternalLink, Globe, Languages, Loader2, RotateCw, Sparkles, Star, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Crosshair, ExternalLink, Globe, Languages, Loader2, RotateCw, Sparkles, Star, X } from 'lucide-react'
 import type { FileNodeEntity, LearnTab, TabRef, WebTabMeta } from '../../../learn/types'
 import { buildApplyPureModeScript } from '../../../learn/web/guestPureMode'
+import { buildInspectElementPickerScript } from '../../../learn/web/guestInspectPicker'
 import { buildJumpToElementScript } from '../../../learn/web/guestJump'
 import { normalizeWebInput } from '../../../learn/webUrl'
 import { isElectron, native, type WebTranslatePayload } from '../../../lib/native'
@@ -115,6 +116,23 @@ export default function WebTabLayer({
     }
     onMeta(active.id, { domFilter: newFilter, pureMode: true })
     withActive((wv) => wv.executeJavaScript(buildApplyPureModeScript(newFilter, true)))
+  }
+
+  const handleInspectPick = () => {
+    withActive(async (wv) => {
+      try {
+        const res = (await wv.executeJavaScript(buildInspectElementPickerScript())) as
+          | { ok: true; selector: string }
+          | { ok: false; cancelled?: boolean }
+          | undefined
+        if (res && res.ok && typeof res.selector === 'string' && res.selector.trim()) {
+          handleSetFilter(res.selector.trim())
+          showToast(t('已将正文过滤设为: {0}', res.selector.trim()))
+        }
+      } catch (e) {
+        console.warn('[web] 元素拾取失败:', e)
+      }
+    })
   }
   // webview 元素走模块级登记表（learn/web/webviewRegistry）：browser.* 的宿主实现
   // 也从那里拿元素，两层看的是同一份，不用各自维护
@@ -393,6 +411,7 @@ export default function WebTabLayer({
           domFilter={activeDomFilter}
           onTogglePureMode={handleTogglePure}
           onSetDomFilter={handleSetFilter}
+          onInspectPick={handleInspectPick}
         />
       )}
       <div className="relative min-h-0 flex-1">
@@ -448,6 +467,7 @@ function WebToolbar({
   domFilter,
   onTogglePureMode,
   onSetDomFilter,
+  onInspectPick,
 }: {
   tab: WebTab
   m: WebTabMeta | undefined
@@ -469,6 +489,7 @@ function WebToolbar({
   domFilter?: string
   onTogglePureMode?: () => void
   onSetDomFilter?: (newFilter: string) => void
+  onInspectPick?: () => void
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const blurTimerRef = useRef<number | null>(null)
@@ -812,6 +833,18 @@ function WebToolbar({
                   {t('应用')}
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenPureMenu(false)
+                  onInspectPick?.()
+                }}
+                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-line/60 bg-line/20 py-1.5 text-[11px] font-medium text-ink hover:border-amber-400/60 hover:bg-amber-500/10 hover:text-amber-600 transition cursor-pointer dark:hover:text-amber-400"
+                title={t('在网页中悬浮预览黄色线框，点击选定正文容器')}
+              >
+                <Crosshair size={13} className="text-amber-500" />
+                <span>{t('🎯 检查元素拾取正文')}</span>
+              </button>
             </div>
           </div>
         )}

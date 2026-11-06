@@ -2,6 +2,7 @@ import React, { memo, useCallback, useEffect, useRef, useState, type DragEvent }
 import { createPortal } from 'react-dom'
 import { GripVertical, StickyNote, Trash2 } from 'lucide-react'
 import type { DocNotepadItem } from '../../../learn/types'
+import { DOC_TW_CLASS } from '../../../lib/docTailwind'
 import { t } from '../../../i18n'
 
 interface NotepadRowProps {
@@ -88,6 +89,20 @@ interface DocNotepadLayerProps {
   onMoveNotepad: (id: string, targetBlockIndex: number) => void
 }
 
+/** 辅助获取真实的文档内容容器 */
+function getDocContainer(body: HTMLElement): HTMLElement {
+  return (body.querySelector(`.${DOC_TW_CLASS}`) as HTMLElement) ||
+    (body.querySelector('.markdown-body') as HTMLElement) ||
+    body
+}
+
+/** 过滤出正文真实的块级子元素 */
+function getDocBlockChildren(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.children).filter(
+    (el) => !el.hasAttribute('data-doc-notepad-slot') && !el.classList.contains('block-notepad-slot'),
+  ) as HTMLElement[]
+}
+
 /**
  * 将节点上的便签列表挂载到教学文档 DOM 中对应 blockIndex 的插槽内
  */
@@ -106,9 +121,9 @@ export function DocNotepadLayer({
     const body = containerRef.current
     if (!body) return
 
-    const markdownBody = body.querySelector('.markdown-body') as HTMLElement || body
+    const docContainer = getDocContainer(body)
     const existingSlots = new Map<string, HTMLElement>()
-    markdownBody.querySelectorAll<HTMLElement>('[data-doc-notepad-slot]').forEach((el) => {
+    docContainer.querySelectorAll<HTMLElement>('[data-doc-notepad-slot]').forEach((el) => {
       const id = el.getAttribute('data-doc-notepad-slot')
       if (id) existingSlots.set(id, el)
     })
@@ -123,10 +138,7 @@ export function DocNotepadLayer({
       }
     })
 
-    // 过滤出正文真实的块级子元素
-    const children = Array.from(markdownBody.children).filter(
-      (el) => !el.hasAttribute('data-doc-notepad-slot') && !el.classList.contains('block-notepad-slot'),
-    ) as HTMLElement[]
+    const children = getDocBlockChildren(docContainer)
 
     notepads.forEach((item) => {
       let slot = existingSlots.get(item.id)
@@ -138,13 +150,15 @@ export function DocNotepadLayer({
 
       // 根据 blockIndex 确定挂载位置
       if (item.blockIndex < 0 || children.length === 0) {
-        markdownBody.insertBefore(slot, markdownBody.firstChild)
+        if (docContainer.firstChild !== slot) {
+          docContainer.insertBefore(slot, docContainer.firstChild)
+        }
       } else {
         const targetChild = children[Math.min(item.blockIndex, children.length - 1)]
         if (targetChild && targetChild.nextSibling !== slot) {
-          markdownBody.insertBefore(slot, targetChild.nextSibling)
-        } else if (!targetChild) {
-          markdownBody.appendChild(slot)
+          docContainer.insertBefore(slot, targetChild.nextSibling)
+        } else if (!targetChild && slot.parentElement !== docContainer) {
+          docContainer.appendChild(slot)
         }
       }
 
@@ -152,13 +166,18 @@ export function DocNotepadLayer({
     })
 
     setSlots(newSlots)
+
+    return () => {
+      // 卸载时清理所有已插入的插槽元素
+      existingSlots.forEach((el) => el.remove())
+    }
   }, [containerRef, notepads])
 
   // 为正文各块挂载拖拽放置监听
   useEffect(() => {
     const body = containerRef.current
     if (!body) return
-    const markdownBody = body.querySelector('.markdown-body') as HTMLElement || body
+    const docContainer = getDocContainer(body)
 
     const handleDragOver = (e: globalThis.DragEvent) => {
       if (!draggedIdRef.current) return
@@ -171,20 +190,27 @@ export function DocNotepadLayer({
       if (!draggedId) return
       e.preventDefault()
 
-      // 计算落点 blockIndex
-      const children = Array.from(markdownBody.children).filter(
-        (el) => !el.hasAttribute('data-doc-notepad-slot') && !el.classList.contains('block-notepad-slot'),
-      ) as HTMLElement[]
+      const children = getDocBlockChildren(docContainer)
+      if (children.length === 0) {
+        onMoveNotepad(draggedId, -1)
+        draggedIdRef.current = null
+        return
+      }
 
       let targetIndex = children.length - 1
       for (let i = 0; i < children.length; i++) {
         const rect = children[i].getBoundingClientRect()
-        if (i === 0 && e.clientY < rect.top) {
+        const midY = rect.top + rect.height / 2
+        if (i === 0 && e.clientY < midY) {
           targetIndex = -1
           break
         }
         if (e.clientY <= rect.bottom) {
-          targetIndex = i
+          if (e.clientY < midY) {
+            targetIndex = i - 1
+          } else {
+            targetIndex = i
+          }
           break
         }
       }
@@ -193,17 +219,19 @@ export function DocNotepadLayer({
       draggedIdRef.current = null
     }
 
-    markdownBody.addEventListener('dragover', handleDragOver)
-    markdownBody.addEventListener('drop', handleDrop)
+    body.addEventListener('dragover', handleDragOver)
+    body.addEventListener('drop', handleDrop)
 
     return () => {
-      markdownBody.removeEventListener('dragover', handleDragOver)
-      markdownBody.removeEventListener('drop', handleDrop)
+      body.removeEventListener('dragover', handleDragOver)
+      body.removeEventListener('drop', handleDrop)
     }
   }, [containerRef, onMoveNotepad])
 
-  const handleDragStart = useCallback((_e: DragEvent<HTMLDivElement>, id: string) => {
+  const handleDragStart = useCallback((e: DragEvent<HTMLDivElement>, id: string) => {
     draggedIdRef.current = id
+    e.dataTransfer.setData('text/plain', id)
+    e.dataTransfer.effectAllowed = 'move'
   }, [])
 
   return (

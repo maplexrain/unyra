@@ -222,7 +222,7 @@ export function buildApi(
     wrapApi(api, 'code.silent', (args) => code.silent(asRecord(args[0])), log)
   }
 
-  // 工作区目录：节点的真实系统目录（见 learn/workspace），只收文本
+  // 工作区目录：节点的真实系统目录（见 learn/workspace），支持读写文本、检索、删除、移动与文件下载
   if (opts.workspace) {
     const ws = opts.workspace
     wrapApi(api, 'workspace.list', (args) => ws.list(asOptionalPath(args[0])), log)
@@ -236,6 +236,16 @@ export function buildApi(
         }
         return ws.grep!(asRecord(first))
       }, log)
+    }
+    if (ws.delete) {
+      wrapApi(api, 'workspace.delete', (args) => ws.delete!(args[0]), log)
+    }
+    if (ws.move) {
+      wrapApi(api, 'workspace.move', (args) => ws.move!(args[0], args[1]), log)
+    }
+    if (ws.download) {
+      wrapApi(api, 'workspace.download', (args) => ws.download!(args[0], args[1]), log)
+      wrapApi(api, 'files.download', (args) => ws.download!(args[0], args[1]), log)
     }
   }
   // 上下文压缩：摘要由 agent 自己写（见 learn/compact）
@@ -275,13 +285,16 @@ export function buildApi(
       }
       return web.fetch(item && typeof item === 'object' ? { ...(item as Record<string, unknown>), url } : { url })
     }
-    /** maxChars 截断：省掉模型每次 slice 的手脚；单篇与批量同一套 */
+    /** maxChars 截断：严格不超过 maxChars，截断信息记入元数据 */
     const clipContent = (maxChars: number | undefined) => (r: unknown): unknown => {
-      const rec = r as { content?: unknown } | null
+      const rec = r as Record<string, unknown> | null
       if (maxChars && rec && typeof rec.content === 'string' && rec.content.length > maxChars) {
         return {
           ...rec,
-          content: rec.content.slice(0, maxChars) + '\n…（已按 maxChars 截断，全文共 ' + rec.content.length + ' 字符）',
+          truncated: true,
+          totalChars: rec.content.length,
+          content: rec.content.slice(0, maxChars),
+          note: `已按 maxChars(${maxChars}) 严格截断（全文共 ${rec.content.length} 字符）`,
         }
       }
       return r
@@ -582,7 +595,7 @@ export function buildApi(
       const saveRes = (await opts.workspace.write({
         path: optsObj.saveTo,
         content: rawText,
-      })) as { error?: string; path?: string }
+      })) as { error?: string; path?: string; rel?: string }
 
       if (saveRes && saveRes.error) {
         return { ok: false, error: '落盘保存到工作区失败：' + saveRes.error }
@@ -593,8 +606,10 @@ export function buildApi(
         ok: true,
         saved: true,
         path: saveRes?.path ?? optsObj.saveTo,
+        rel: saveRes?.rel,
         chars: rawText.length,
         lines,
+        diagnostics: res.diagnostics,
         note: `DOM 元素已成功转换为 Markdown 并落盘至工作区「${saveRes?.path ?? optsObj.saveTo}」（共 ${rawText.length} 字符，${lines} 行），避免占用上下文。可使用 api.workspace.grep 检索或在文档中以 quote 原文引用。`,
       }
     }, log)
@@ -637,7 +652,7 @@ export function buildApi(
       const saveRes = (await opts.workspace.write({
         path: evalOpts.saveTo,
         content: rawText,
-      })) as { error?: string; path?: string }
+      })) as { error?: string; path?: string; rel?: string }
 
       if (saveRes && saveRes.error) {
         return { ok: false, error: '落盘保存到工作区失败：' + saveRes.error }
@@ -648,6 +663,7 @@ export function buildApi(
         ok: true,
         saved: true,
         path: saveRes?.path ?? evalOpts.saveTo,
+        rel: saveRes?.rel,
         chars: rawText.length,
         lines,
         note: `执行结果已成功写入工作区文件「${saveRes?.path ?? evalOpts.saveTo}」（共 ${rawText.length} 字符，${lines} 行），避免占用上下文。可用 api.workspace.grep 定向检索行号，或在文档中以引用使用。`,

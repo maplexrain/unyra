@@ -92,8 +92,24 @@ export function createChipOps(deps: AgentOpsDeps) {
         return finish({ type: 'local', path: str('path'), ...(title ? { title } : {}) })
       }
       if (type === 'ws') {
-        const rel = str('path')
-        if (!rel) return { ok: false, problem: 'ws 型要给 path（workspace api 回执里的 rel，原样抄，不要自己拼）' }
+        const rawPath = str('path')
+        if (!rawPath) return { ok: false, problem: 'ws 型要给 path（需为工作区文件路径，如 "workspace/文件.md" 或 workspace api 回执里的 rel）' }
+        let rel = rawPath
+        // 兼容裸文件名（如 "报告.md"）：在 chip.build 中自动锚定到当前节点或根节点工作区
+        if (!rel.includes('/') && !rel.includes('\\')) {
+          const s = scope()
+          const curId = s.currentNodeId
+          const gId = s.goalId
+          const rootNodeId = gId ? store.goals.find((g) => g.id === gId)?.rootNodeId : undefined
+          const targetNode = (curId ? nodeById(store, curId) : undefined) ??
+                             (rootNodeId ? nodeById(store, rootNodeId) : undefined)
+          if (targetNode) {
+            const base = wsRelOf(store, targetNode.id)
+            if (base) {
+              rel = base + '/' + rel
+            }
+          }
+        }
         // 目录 chip 点击跳到所属节点，nodeId 必带；文件 chip 也顺手带上（点击少一步反查）
         const owner = ownerNodeOfWs(store, scope().goalId, rel)
         return finish({

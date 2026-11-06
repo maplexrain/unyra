@@ -172,12 +172,13 @@ describe('web.fetch 批量 + maxChars', () => {
     }) as { fetch: (a: unknown, b?: unknown) => Promise<unknown> }
     const r = (await api.fetch(['https://a', 'https://bad', { url: 'https://b' }], { maxChars: 20 })) as {
       ok: boolean
-      results: Array<{ ok: boolean; title: string; content: string; error?: string }>
+      results: Array<{ ok: boolean; title: string; content: string; note?: string; error?: string }>
     }
     expect(r.ok).toBe(true)
     expect(r.results).toHaveLength(3)
+    expect(r.results[0].content.length).toBe(20)
     expect(r.results[0].content.startsWith('x'.repeat(20))).toBe(true)
-    expect(r.results[0].content).toContain('maxChars')
+    expect((r.results[0] as any).note || r.results[0].content).toContain('maxChars')
     expect(r.results[1].ok).toBe(false)
     expect(r.results[1].error).toContain('timeout')
     expect(r.results[2].title).toBe('https://b')
@@ -187,8 +188,9 @@ describe('web.fetch 批量 + maxChars', () => {
     const api = apiOf(null, {
       web: { fetch: async () => ({ ok: true, title: 't', content: 'y'.repeat(50) }) },
     }) as { fetch: (a: unknown, b?: unknown) => Promise<unknown> }
-    const one = (await api.fetch('https://a', { maxChars: 10 })) as { content: string }
-    expect(one.content).toContain('maxChars')
+    const one = (await api.fetch('https://a', { maxChars: 10 })) as { content: string; note?: string }
+    expect(one.content.length).toBe(10)
+    expect((one as any).note || one.content).toContain('maxChars')
     const tooMany = (await api.fetch(['1', '2', '3', '4', '5', '6'])) as { ok: boolean; error: string }
     expect(tooMany.ok).toBe(false)
     expect(tooMany.error).toContain('最多')

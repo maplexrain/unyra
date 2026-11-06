@@ -454,6 +454,12 @@ export interface WorkspaceOps {
   write: (input: Record<string, unknown>) => unknown
   /** 定向检索行号与锚点：输入 { path, anchors: ['关键词1', '关键词2'] } 直接返回行号与匹配行，免去全文塞入上下文 */
   grep?: (input: Record<string, unknown> | string) => unknown
+  /** 删除工作区文件或目录 */
+  delete?: (path: unknown) => unknown
+  /** 移动或重命名工作区文件或目录 */
+  move?: (inputOrFrom: unknown, maybeTo?: unknown) => unknown
+  /** 下载远程文件（图片、PDF、数据等）并保存到工作区文件 */
+  download?: (urlOrInput: unknown, maybePath?: unknown) => unknown
 }
 
 /**
@@ -697,6 +703,11 @@ export interface BrowserTabInfo {
   active: boolean
   /** 页签所在分组格的 id */
   group: string
+  /** 来源标识：通过文件节点打开的标记为 'fileNode'，用户主动新开的标记为 'user' */
+  source?: 'fileNode' | 'user'
+  fileNodeId?: string
+  fileNodeTitle?: string
+  goalId?: string
 }
 
 export type BrowserTarget = number | string
@@ -942,12 +953,19 @@ export interface BrowserToMarkdownResult {
   lines?: number
   saved?: boolean
   path?: string
+  rel?: string
+  diagnostics?: {
+    images: number
+    headings: number
+    paragraphs: number
+    codeBlocks: number
+  }
   note?: string
   error?: string
 }
 
 export interface BrowserEvalOpts {
-  /** 可选：将代码执行结果直接写入指定文件（如 'workspace/article.browser.md'），回执仅回字符数与行数，避免大量文本冲击上下文 */
+  /** 可选：将代码执行结果直接写入指定文件（如 'workspace/result.json'），回执仅回字符数与行数，避免大量文本冲击上下文 */
   saveTo?: string
 }
 
@@ -956,6 +974,7 @@ export interface BrowserEvalResult {
   result?: unknown
   saved?: boolean
   path?: string
+  rel?: string
   chars?: number
   lines?: number
   note?: string

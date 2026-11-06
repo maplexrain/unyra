@@ -317,4 +317,65 @@ describe('browserRuntimeScript：页面内运行时深度穿透与动作仿真',
     expect(prep.directDataUrl).toContain('data:image/png')
     expect(prep.slices).toBe(1)
   })
+
+  it('DOM 元素转 Markdown：支持图片懒加载提升、公式代码图启发式与完整 diagnostics 计数', async () => {
+    const article = document.createElement('article')
+    article.id = 'test-article'
+
+    // 1. 标题与段落
+    const h1 = document.createElement('h1')
+    h1.textContent = '文章标题'
+    const p1 = document.createElement('p')
+    p1.textContent = '这是一段正文，其中调用了方法 '
+
+    // 2. 行内代码被渲染成图片
+    const codeImg = document.createElement('img')
+    codeImg.setAttribute('alt', 'start()')
+    codeImg.setAttribute('src', 'https://example.com/mathjax/tex?formula=start()')
+    p1.appendChild(codeImg)
+
+    const spanText = document.createElement('span')
+    spanText.textContent = ' 完成初始化。'
+    p1.appendChild(spanText)
+
+    // 3. 懒加载图片（data-src）
+    const lazyImg = document.createElement('img')
+    lazyImg.setAttribute('data-src', 'https://example.com/lazy_picture.png')
+    lazyImg.setAttribute('alt', '架构图')
+
+    // 4. 代码块
+    const pre = document.createElement('pre')
+    const code = document.createElement('code')
+    code.textContent = 'console.log("hello");'
+    pre.appendChild(code)
+
+    article.appendChild(h1)
+    article.appendChild(p1)
+    article.appendChild(lazyImg)
+    article.appendChild(pre)
+    document.body.appendChild(article)
+
+    const res = (window as any).__agentToMarkdown('#test-article')
+    expect(res.ok).toBe(true)
+    // 行内代码图转换为 `start()`
+    expect(res.markdown).toContain('`start()`')
+    // 懒加载图片转换为 ![架构图](https://example.com/lazy_picture.png)
+    expect(res.markdown).toContain('![架构图](https://example.com/lazy_picture.png)')
+    expect(lazyImg.src).toContain('https://example.com/lazy_picture.png')
+    expect(lazyImg.loading).toBe('eager')
+
+    // diagnostics 准确统计各项
+    expect(res.diagnostics).toBeDefined()
+    expect(res.diagnostics.headings).toBe(1)
+    expect(res.diagnostics.paragraphs).toBe(1)
+    expect(res.diagnostics.images).toBe(1) // 1 张架构图（公式代码图不计入正文实图）
+    expect(res.diagnostics.codeBlocks).toBe(1)
+  })
+
+  it('__agentScroll：支持即时同步滚动与准确 atBottom 判定', async () => {
+    const scrollRes = (window as any).__agentScroll({ by: 500 })
+    expect(scrollRes.ok).toBe(true)
+    expect(typeof scrollRes.scrollY).toBe('number')
+    expect(typeof scrollRes.atBottom).toBe('boolean')
+  })
 })

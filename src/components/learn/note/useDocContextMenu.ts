@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { usePresence } from '../../../lib/presence'
 import { mapRangeToSource } from '../../../lib/sourceMap'
+import { DOC_TW_CLASS } from '../../../lib/docTailwind'
 import { t } from '../../../i18n'
 
 /** 源文里的一段（与 lib/sourceMap 的返回同形） */
@@ -54,19 +55,33 @@ interface Opts {
   onInsertNotepad?: (blockIndex: number) => void
 }
 
-function findTargetBlockIndex(body: HTMLElement, clientY: number): number {
-  const container = (body.querySelector('.markdown-body') as HTMLElement) || body
+function findTargetBlockIndex(body: HTMLElement, clientY: number, targetNode?: Node | null): number {
+  const container = (body.querySelector(`.${DOC_TW_CLASS}`) as HTMLElement) ||
+                    (body.querySelector('.markdown-body') as HTMLElement) ||
+                    body
   const children = Array.from(container.children).filter(
     (el) => !el.hasAttribute('data-doc-notepad-slot') && !el.classList.contains('block-notepad-slot'),
   ) as HTMLElement[]
   if (children.length === 0) return -1
+
+  // 1. 如果 targetNode 在某个子块内部，直接精准命中该子块！
+  if (targetNode && container.contains(targetNode)) {
+    for (let i = 0; i < children.length; i++) {
+      if (children[i].contains(targetNode) || children[i] === targetNode) {
+        return i
+      }
+    }
+  }
+
+  // 2. 否则按纵向坐标几何比对
   for (let i = 0; i < children.length; i++) {
     const rect = children[i].getBoundingClientRect()
-    if (i === 0 && clientY < rect.top) {
+    const midY = rect.top + rect.height / 2
+    if (i === 0 && clientY < midY) {
       return -1
     }
     if (clientY <= rect.bottom) {
-      return i
+      return clientY < midY ? i - 1 : i
     }
   }
   return children.length - 1
@@ -120,7 +135,7 @@ export function useDocContextMenu({ bodyRef, content, onInsert, onRevealSource, 
       // 没有选区时，若支持插入笔记，则在空白处弹出「插入笔记」菜单
       if (onInsertNotepad) {
         e.preventDefault()
-        const blockIndex = findTargetBlockIndex(body, e.clientY)
+        const blockIndex = findTargetBlockIndex(body, e.clientY, e.target as Node)
         setMenu({
           x: e.clientX,
           y: e.clientY,

@@ -102,7 +102,7 @@ async function stitchSlicesToDataUrl(
 
 export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps {
   const titleOf = (tabId: string, ref: WebTabRef): string =>
-    deps.webMeta[tabId]?.title ?? (ref.url ? hostOf(ref.url) : '（起始页）')
+    deps.webMeta?.[tabId]?.title ?? (ref.url ? hostOf(ref.url) : '（起始页）')
 
   /** 解析目标页签：给 tabId 就查；不给就取焦点格正在看着的那个网页页签 */
   const resolveTab = (tabId?: string): { tabId: string; ref: WebTabRef } => {
@@ -160,12 +160,18 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
       for (const g of s.docArea.groups) {
         for (const t of g.tabs) {
           if (t.ref.kind !== 'web') continue
+          const fileNodeId = t.ref.fileNodeId
+          const fileNode = fileNodeId ? (s.fileNodes ?? []).find((fn) => fn.id === fileNodeId) : undefined
           out.push({
             tabId: t.id,
             url: t.ref.url,
             title: titleOf(t.id, t.ref),
             active: g.active === t.id,
             group: g.id,
+            source: fileNodeId ? 'fileNode' : 'user',
+            ...(fileNodeId ? { fileNodeId } : {}),
+            ...(fileNode?.title ? { fileNodeTitle: fileNode.title } : {}),
+            ...(t.ref.goalId ? { goalId: t.ref.goalId } : {}),
           })
         }
       }

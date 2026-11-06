@@ -91,9 +91,9 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
     if (/^\\d+$/.test(text) && !title) {
       const innerHtmlClasses = [el.className, ...[...el.querySelectorAll('[class]')].map(e => e.className)].join(' ');
       const match = innerHtmlClasses.match(/\\b(like|thumb|coin|fav|collect|star|share|forward|comment|reply|search|follow|watch)\\b/i);
-      if (match) return \`\${match[1].toLowerCase()}:\${text}\`;
+      if (match) return match[1].toLowerCase() + ':' + text;
     }
-    if (title && text && title !== text) return \`\${title}(\${text})\`;
+    if (title && text && title !== text) return title + '(' + text + ')';
     return title || text;
   }
 
@@ -186,7 +186,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
           }
         } catch {}
         if (path && path !== '/') {
-          linkAttr = \`[href="\${cleanText(path, 35)}"]\`;
+          linkAttr = '[href="' + cleanText(path, 35) + '"]';
         }
       }
     }
@@ -194,19 +194,19 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
     let cls = '';
     if (el.classList && el.classList.length) {
       const bestClass = [...el.classList].find(c => c.length > 2 && c.length < 28 && !NOISY_CLASS.test(c));
-      if (bestClass) cls = \`.\${bestClass}\`;
+      if (bestClass) cls = '.' + bestClass;
     }
 
     if (ACTION_TAGS.has(el.tagName) || isEditable) {
       const hint = getItemSummary(el);
-      const roleTag = isEditable && !ACTION_TAGS.has(el.tagName) ? \`\${tag}\${cls}[editable]\` : \`\${tag}\${cls}\${linkAttr}\`;
-      return hint ? \`\${roleTag} "\${hint}"\` : roleTag;
+      const roleTag = isEditable && !ACTION_TAGS.has(el.tagName) ? (tag + cls + '[editable]') : (tag + cls + linkAttr);
+      return hint ? (roleTag + ' "' + hint + '"') : roleTag;
     }
 
-    const id = (el.id && !GENERIC_IDS.has(el.id.toLowerCase())) ? \`#\${el.id}\` : '';
+    const id = (el.id && !GENERIC_IDS.has(el.id.toLowerCase())) ? ('#' + el.id) : '';
     if (id) cls = '';
     const summary = tag.includes('-') ? cleanText(getItemSummary(el), 25) : '';
-    return \`\${tag}\${linkAttr}\${id}\${cls}\${summary ? \` "\${summary}"\` : ''}\`;
+    return tag + linkAttr + id + cls + (summary ? (' "' + summary + '"') : '');
   }
 
   function getEffectiveChildren(el) {
@@ -318,7 +318,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
     const cached = window.__agentNodeMap?.get(numId);
     if (cached && cached.isConnected) return cached;
 
-    const selector = \`[data-agent-id="\${numId}"]\`;
+    const selector = '[data-agent-id="' + numId + '"]';
     const found = deepQuerySelector(root, selector);
     if (found) {
       window.__agentNodeMap?.set(numId, found);
@@ -362,8 +362,8 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
           const id = mark(el);
           const totalChars = (el.innerText || '').replace(/\\s+/g, '').length;
           const headings = [...el.querySelectorAll('h1, h2, h3, h4')].map(h => cleanText(h.innerText, 15)).slice(0, 6);
-          const outline = headings.length ? \` | 提纲: \${headings.join(' / ')}\` : '';
-          lines.push(\`\${indent}[\${id}] \${getDescriptor(el, false)} (正文区: 共\${totalChars}字\${outline} -> "\${cleanText(el.innerText, 35)}")\`);
+          const outline = headings.length ? (' | 提纲: ' + headings.join(' / ')) : '';
+          lines.push(indent + '[' + id + '] ' + getDescriptor(el, false) + ' (正文区: 共' + totalChars + '字' + outline + ' -> "' + cleanText(el.innerText, 35) + '")');
           return;
         }
 
@@ -381,11 +381,11 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
               .map(c => getItemSummary(c))
               .filter(Boolean)
               .slice(0, 3)
-              .map(s => \`"\${s}"\`)
+              .map(s => '"' + s + '"')
               .join(', ');
             if (samples) {
               const id = mark(el);
-              lines.push(\`\${indent}[\${id}] \${getDescriptor(el, false)} [列表: 共\${children.length}项 \${dominantTag.toLowerCase()}, 示例: \${samples} ...]\`);
+              lines.push(indent + "[" + id + "] " + getDescriptor(el, false) + " [列表: 共" + children.length + "项 " + dominantTag.toLowerCase() + ", 示例: " + samples + " ...]");
               return;
             }
           }
@@ -401,7 +401,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
 
           const lineIndexBefore = lines.length;
           const currentId = mark(el);
-          lines.push(\`\${indent}[\${currentId}] \${getDescriptor(el, isEditable)}\`);
+          lines.push(indent + "[" + currentId + "] " + getDescriptor(el, isEditable));
 
           // 核心机制：如果带有 shadowRoot，绝不因 isAction 提前返回，必须深入给内部可交互控件分配 id
           if (isAction && !el.shadowRoot) return;
@@ -532,7 +532,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
     return {
       ok: false,
       elapsedMs: Date.now() - startTime,
-      error: \`等待超时 (\${timeoutMs}ms)：未能在页面中找到目标或文本 [\${queryTarget}]\`,
+      error: '等待超时 (' + timeoutMs + 'ms)：未能在页面中找到目标或文本 [' + queryTarget + ']',
     };
   };
 
@@ -540,7 +540,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
   window.__agentEval = async function(code) {
     try {
       const trimmed = String(code || '').trim();
-      const fnBody = trimmed.includes('return ') ? trimmed : \`return (\${trimmed});\`;
+      const fnBody = trimmed.includes('return ') ? trimmed : ('return (' + trimmed + ');');
       const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
       const fn = new AsyncFunction('document', 'window', fnBody);
       const res = await fn(document, window);
@@ -564,8 +564,8 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
         return {
           ok: false,
           error: isSelector
-            ? \`选择器未匹配到任何节点: "\${target}"\`
-            : \`未找到节点编号 [\${target}]（页面可能已刷新或 DOM 节点已移除，请重新执行 index()）\`,
+            ? ('选择器未匹配到任何节点: "' + target + '"')
+            : ('未找到节点编号 [' + target + ']（页面可能已刷新或 DOM 节点已移除，请重新执行 index()）'),
         };
       }
 
@@ -897,24 +897,42 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
       const container = opts.target ? window.__findAgentNode(opts.target) : window;
       if (opts.target && !container) return { ok: false, error: '未找到滚动目标节点' };
 
-      const docScrollHeight = document.body ? document.body.scrollHeight : 0;
-      const docScrollY = window.scrollY || 0;
-      const docAtBottom = window.innerHeight + docScrollY >= docScrollHeight - 50;
+      const scrollEl = document.scrollingElement || document.documentElement || document.body;
+      const getDocHeight = () => Math.max(
+        document.body ? document.body.scrollHeight : 0,
+        document.documentElement ? document.documentElement.scrollHeight : 0,
+        scrollEl ? scrollEl.scrollHeight : 0
+      );
+      const getDocY = () => window.scrollY || (scrollEl ? scrollEl.scrollTop : 0) || 0;
 
       if (container === window) {
-        if (opts.to === 'top') window.scrollTo({ top: 0, behavior: 'smooth' });
-        else if (opts.to === 'bottom') window.scrollTo({ top: docScrollHeight, behavior: 'smooth' });
-        else if (typeof opts.by === 'number') window.scrollBy({ top: opts.by, behavior: 'smooth' });
+        const curY = getDocY();
+        let targetY = curY;
+        const totalHeight = getDocHeight();
 
-        const newDocY = window.scrollY || 0;
+        if (opts.to === 'top') targetY = 0;
+        else if (opts.to === 'bottom') targetY = totalHeight;
+        else if (typeof opts.by === 'number') targetY = curY + opts.by;
+
+        // 同步即时滚动，避免 smooth 异步动画导致当场读出未滚动的虚假坐标
+        const behavior = opts.smooth ? 'smooth' : 'auto';
+        window.scrollTo({ top: targetY, behavior });
+        if (scrollEl && !opts.smooth) {
+          scrollEl.scrollTop = targetY;
+        }
+
+        const newDocY = getDocY();
+        const updatedHeight = getDocHeight();
+        const atBottom = window.innerHeight + newDocY >= updatedHeight - 20;
+
         return {
           ok: true,
           scrollY: newDocY,
-          scrollHeight: docScrollHeight,
-          atBottom: window.innerHeight + newDocY >= docScrollHeight - 50,
+          scrollHeight: updatedHeight,
+          atBottom,
           documentScrollY: newDocY,
-          documentScrollHeight: docScrollHeight,
-          documentAtBottom: window.innerHeight + newDocY >= docScrollHeight - 50,
+          documentScrollHeight: updatedHeight,
+          documentAtBottom: atBottom,
         };
       } else {
         const el = container;
@@ -922,7 +940,11 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
         else if (opts.to === 'bottom') el.scrollTop = el.scrollHeight;
         else if (typeof opts.by === 'number') el.scrollTop += opts.by;
 
-        const containerAtBottom = el.clientHeight + el.scrollTop >= el.scrollHeight - 50;
+        const containerAtBottom = el.clientHeight + el.scrollTop >= el.scrollHeight - 20;
+        const currentDocY = getDocY();
+        const currentDocHeight = getDocHeight();
+        const docAtBottom = window.innerHeight + currentDocY >= currentDocHeight - 20;
+
         return {
           ok: true,
           scrollY: el.scrollTop,
@@ -931,8 +953,8 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
           containerScrollY: el.scrollTop,
           containerScrollHeight: el.scrollHeight,
           containerAtBottom,
-          documentScrollY: docScrollY,
-          documentScrollHeight: docScrollHeight,
+          documentScrollY: currentDocY,
+          documentScrollHeight: currentDocHeight,
           documentAtBottom: docAtBottom,
         };
       }
@@ -991,7 +1013,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
         const isSelector = typeof target === 'string' && isNaN(Number(target));
         const errorMsg = isSelector
           ? \`选择器未匹配到任何节点: "\${target}"\`
-          : \`未找到节点编号 [\${target}]（页面可能已刷新或 DOM 节点已移除，请重新执行 index()）\`;
+          : ('未找到节点编号 [' + target + ']（页面可能已刷新或 DOM 节点已移除，请重新执行 index()）');
         return { ok: false, error: errorMsg };
       }
 
@@ -1276,6 +1298,34 @@ window.__agentToMarkdown = function(target, opts = {}) {
         return { ok: false, error: '未找到可转换的 DOM 元素' };
       }
 
+      // A1: 转换前主动触发图片懒加载提升与 loading=eager
+      try {
+        const imgs = root.querySelectorAll('img');
+        for (const img of imgs) {
+          const lazySrc = img.getAttribute('data-src') ||
+                          img.getAttribute('data-original') ||
+                          img.getAttribute('data-actualsrc') ||
+                          img.getAttribute('data-url') ||
+                          img.getAttribute('data-origin-src') ||
+                          img.getAttribute('data-lazy-src') ||
+                          img.getAttribute('data-echo') ||
+                          img.getAttribute('data-original-src');
+          if (lazySrc && (!img.src || img.src.startsWith('data:') || img.src.includes('placeholder'))) {
+            img.src = lazySrc;
+          }
+          if (img.loading !== 'eager') {
+            img.loading = 'eager';
+          }
+        }
+      } catch (e) {}
+
+      const diagnostics = {
+        images: 0,
+        headings: 0,
+        paragraphs: 0,
+        codeBlocks: 0,
+      };
+
       function resolveUrl(url) {
         if (!url || typeof url !== 'string') return '';
         if (url.startsWith('data:') || url.startsWith('blob:')) return url;
@@ -1334,19 +1384,26 @@ window.__agentToMarkdown = function(target, opts = {}) {
 
         switch (tag) {
           case 'H1':
+            diagnostics.headings++;
             return DNL + '# ' + renderChildren(el, depth).trim() + DNL;
           case 'H2':
+            diagnostics.headings++;
             return DNL + '## ' + renderChildren(el, depth).trim() + DNL;
           case 'H3':
+            diagnostics.headings++;
             return DNL + '### ' + renderChildren(el, depth).trim() + DNL;
           case 'H4':
+            diagnostics.headings++;
             return DNL + '#### ' + renderChildren(el, depth).trim() + DNL;
           case 'H5':
+            diagnostics.headings++;
             return DNL + '##### ' + renderChildren(el, depth).trim() + DNL;
           case 'H6':
+            diagnostics.headings++;
             return DNL + '###### ' + renderChildren(el, depth).trim() + DNL;
 
           case 'P':
+            diagnostics.paragraphs++;
             return DNL + renderChildren(el, depth).trim() + DNL;
 
           case 'BR':
@@ -1375,6 +1432,7 @@ window.__agentToMarkdown = function(target, opts = {}) {
           }
 
           case 'PRE': {
+            diagnostics.codeBlocks++;
             const codeEl = el.querySelector('code');
             const codeText = codeEl ? codeEl.textContent : el.textContent;
             let lang = '';
@@ -1406,10 +1464,29 @@ window.__agentToMarkdown = function(target, opts = {}) {
           }
 
           case 'IMG': {
-            const rawSrc = el.currentSrc || el.src || el.getAttribute('data-src') || el.getAttribute('data-original') || el.getAttribute('data-actualsrc') || '';
-            const src = resolveUrl(rawSrc);
-            if (!src) return '';
             const alt = (el.alt || el.getAttribute('aria-label') || el.title || '').trim();
+            const rawSrc = el.getAttribute('data-src') ||
+                           el.getAttribute('data-original') ||
+                           el.getAttribute('data-actualsrc') ||
+                           el.getAttribute('data-url') ||
+                           el.getAttribute('data-origin-src') ||
+                           el.getAttribute('data-lazy-src') ||
+                           el.currentSrc ||
+                           el.src ||
+                           '';
+            const src = resolveUrl(rawSrc);
+
+            // A2: 对「行内代码/公式被渲染成图片」的启发式处理
+            if (alt && (/mathjax|tex\b|\bformula\b|latex|equation/i.test(src) || el.classList.contains('math') || el.classList.contains('tex'))) {
+              const isCode = /^[a-zA-Z_$][a-zA-Z0-9_$]*\(.*\)$/.test(alt) || /^[a-zA-Z0-9_$.-]+$/.test(alt);
+              if (isCode) {
+                return ' ' + BT + alt + BT + ' ';
+              }
+              return ' $' + alt + '$ ';
+            }
+
+            if (!src) return '';
+            diagnostics.images++;
             return DNL + '![' + alt + '](' + src + ')' + DNL;
           }
 
@@ -1448,8 +1525,22 @@ window.__agentToMarkdown = function(target, opts = {}) {
             return mdTable + NL;
           }
 
-          default:
+          default: {
+            // 支持双图卡片或包含 background-image 的图片容器（如 .opus-para-pic）
+            if (el.classList && el.classList.contains('opus-para-pic') && !el.querySelector('img')) {
+              const bg = el.style && el.style.backgroundImage ? el.style.backgroundImage : '';
+              const bgMatch = bg.match(/url\(['"]?(.*?)['"]?\)/);
+              if (bgMatch && bgMatch[1]) {
+                const src = resolveUrl(bgMatch[1]);
+                if (src) {
+                  diagnostics.images++;
+                  const alt = (el.getAttribute('aria-label') || el.title || '').trim();
+                  return DNL + '![' + alt + '](' + src + ')' + DNL;
+                }
+              }
+            }
             return renderChildren(el, depth);
+          }
         }
       }
 
@@ -1467,6 +1558,7 @@ window.__agentToMarkdown = function(target, opts = {}) {
         markdown,
         chars: markdown.length,
         lines,
+        diagnostics,
       };
     } catch (err) {
       return { ok: false, error: safeFormatError(err) };

@@ -284,6 +284,9 @@ exam.* 只管**作答侧**：交卷后 exam.read() 看作答，exam.grade(...) �
       a('read', 'workspace.read(path?)', '读工作区文本文件', '太长会截断并带 totalChars。', `const code = await api.workspace.read('极限/实验/main.py')`),
       a('write', 'workspace.write({ path, content })', '写工作区文本文件', '整份覆盖，父目录自动建。交付物一律写这里。', `await api.workspace.write({ path: '极限/实验/main.py', content: 'print(1)' })`),
       a('grep', 'workspace.grep({ path, anchors?: string[], query?: string, limit? })', '定向检索行号与锚点', '针对长文件定向检索匹配行号与上下文片段，免去把上万字全量读入上下文，直接产出用于 quote 引用或定位的行号。', `const matches = await api.workspace.grep({ path: 'article.md', anchors: ['核心定义', '第二阶段'] })`),
+      a('delete', 'workspace.delete(path)', '删除工作区文件', '只删除指定工作区文件或目录。', `await api.workspace.delete('极限/草稿.md')`),
+      a('move', 'workspace.move(from, to)', '移动/重命名工作区文件', '移动或重命名工作区内的文件。', `await api.workspace.move('极限/旧名.md', '极限/新名.md')`),
+      a('download', 'workspace.download(url, path?)', '下载文件到工作区', '从网络下载远程图片、PDF或二进制数据直接保存至工作区，兼具 api.files.download 别名。', `await api.workspace.download('https://example.com/figure.png', '极限/figure.png')`),
     ],
   ),
   g(
@@ -487,6 +490,7 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
       a('copy', 'files.copy(from, to, { overwrite? }?)', '复制文件或目录', '两端都必须是非应用数据；目标存在时按 overwrite 决定是否覆盖。', `await api.files.copy('docs/目标/节点/workspace/a.txt', 'docs/目标/节点/workspace/b.txt')`),
       a('move', 'files.move(from, to)', '移动/重命名', '两端都必须是非应用数据；应用数据改名走节点对象的 editContent。', `await api.files.move('docs/目标/节点/workspace/a.txt', 'docs/目标/节点/workspace/b.txt')`),
       a('delete', 'files.delete(path)', '删除文件/目录', '只删非应用数据；不可逆，先确认。', `await api.files.delete('docs/目标/节点/workspace/tmp.txt')`),
+      a('download', 'files.download(url, path?)', '下载文件', '从网络下载远程图片、PDF或二进制数据直接保存至指定文件。', `await api.files.download('https://example.com/figure.png', 'docs/目标/节点/workspace/figure.png')`),
     ],
   ),
   g(

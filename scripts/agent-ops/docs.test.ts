@@ -290,6 +290,7 @@ export async function apiNameTests() {
     'files.copy': "'', ''",
     'files.move': "'', ''",
     'files.delete': "''",
+    'files.download': "'https://example.com/test.png', 'test.png'",
     // 基础系统进程任务
     'process.create': "{ command: 'node' }",
     'process.start': "'proc_test'",
@@ -357,6 +358,9 @@ export async function apiNameTests() {
     'workspace.read': "''",
     'workspace.write': "{ path: '探针.txt', content: '探针' }",
     'workspace.grep': "{ path: '探针.txt', anchors: ['探针'] }",
+    'workspace.delete': "'探针.txt'",
+    'workspace.move': "'探针.txt', '探针2.txt'",
+    'workspace.download': "'https://example.com/test.png', 'test.png'",
     'userInfo.get': '',
     'userInfo.update': "{ nickname: '探针用户' }",
     'reading.get': "''",

@@ -100,8 +100,8 @@ describe('makeBrowserOps：browser.* 基础生命周期与读写动作', () => {
 
     expect(ops.tabs()).toEqual({
       tabs: [
-        { tabId: 'w:a', url: 'https://x.com/a', title: 'X 首页', active: true, group: 'g1' },
-        { tabId: 'w:b', url: 'https://y.com', title: 'y.com', active: false, group: 'g1' },
+        { tabId: 'w:a', url: 'https://x.com/a', title: 'X 首页', active: true, group: 'g1', source: 'user' },
+        { tabId: 'w:b', url: 'https://y.com', title: 'y.com', active: false, group: 'g1', source: 'user' },
       ],
     })
 
