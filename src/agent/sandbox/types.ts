@@ -697,7 +697,11 @@ export type BrowserTarget = number | string
 
 export interface BrowserIndexOpts {
   focus?: BrowserTarget
+  target?: BrowserTarget
   maxDepth?: number
+  collapse?: boolean
+  full?: boolean
+  expand?: number[]
 }
 
 export interface BrowserIndexResult {
@@ -705,6 +709,8 @@ export interface BrowserIndexResult {
   count: number
   title: string
   url: string
+  lines?: string[]
+  error?: string
 }
 
 export interface BrowserTextOpts {
@@ -723,18 +729,26 @@ export interface BrowserTextResult {
   error?: string
 }
 
+export interface BrowserInspectOpts {
+  nth?: number
+}
+
 export interface BrowserInspectResult {
   ok: boolean
   id: BrowserTarget
+  matchCount?: number
   tag: string
   resolvedTag?: string
   idAttr?: string
   className?: string
+  text?: string
   value?: string
   placeholder?: string
   href?: string
   checked?: boolean
   disabled?: boolean
+  visible?: boolean
+  warning?: string
   isEditable?: boolean
   rect?: { x: number; y: number; width: number; height: number }
   error?: string
@@ -748,6 +762,10 @@ export interface BrowserClickResult {
   ok: boolean
   tag?: string
   resolvedTag?: string
+  visible?: boolean
+  warning?: string
+  openedTabId?: string
+  navigated?: boolean
   error?: string
 }
 
@@ -761,6 +779,9 @@ export interface BrowserFillResult {
   tag?: string
   resolvedTag?: string
   resolvedType?: string
+  wrote?: number
+  readback?: string
+  hint?: string
   error?: string
 }
 
@@ -776,6 +797,14 @@ export interface BrowserTypeResult {
   error?: string
 }
 
+export interface BrowserPressResult {
+  ok: boolean
+  key?: string
+  dispatched?: boolean
+  warning?: string
+  error?: string
+}
+
 export interface BrowserScrollOpts {
   to?: 'top' | 'bottom'
   by?: number
@@ -787,12 +816,79 @@ export interface BrowserScrollResult {
   scrollY?: number
   scrollHeight?: number
   atBottom?: boolean
+  containerScrollY?: number
+  containerScrollHeight?: number
+  containerAtBottom?: boolean
+  documentScrollY?: number
+  documentScrollHeight?: number
+  documentAtBottom?: boolean
+  error?: string
+}
+
+export interface BrowserQueryItem {
+  id: number
+  tag: string
+  cls?: string
+  idAttr?: string
+  text: string
+  href?: string
+  value?: string
+  placeholder?: string
+  visible: boolean
+  isEditable: boolean
+  rect: { x: number; y: number; width: number; height: number }
+}
+
+export interface BrowserQueryOpts {
+  limit?: number
+}
+
+export interface BrowserQueryResult {
+  ok: boolean
+  selector: string
+  count: number
+  matches: BrowserQueryItem[]
+  error?: string
+}
+
+export interface BrowserWaitForOpts {
+  timeoutMs?: number
+  timeout?: number
+  visible?: boolean
+}
+
+export interface BrowserWaitForResult {
+  ok: boolean
+  elapsedMs: number
+  id?: number
+  tag?: string
+  visible?: boolean
+  error?: string
+}
+
+export interface BrowserScreenshotOpts {
+  path?: string
+}
+
+export interface BrowserScreenshotResult {
+  ok: boolean
+  path?: string
+  url?: string
+  uuid?: string
+  width?: number
+  height?: number
+  error?: string
+}
+
+export interface BrowserEvalResult {
+  ok: boolean
+  result?: unknown
   error?: string
 }
 
 /**
  * 内置浏览器（browser.*）的宿主实现（见 learn/web/browserOps）。
- * 涵盖网页页签生命周期（open / tabs / activate / close）与基础读写（index / text / inspect / click / fill / type / press / scroll）。
+ * 涵盖网页页签生命周期（open / tabs / activate / close）与基础读写（index / text / inspect / click / fill / type / press / scroll / query / waitFor / screenshot / eval）。
  */
 export interface BrowserOps {
   /** 开一个网页页签（纯关键词当搜索词处理）；回 tabId，返回时首屏基本加载完 */
@@ -807,29 +903,28 @@ export interface BrowserOps {
   index(tabId?: string, opts?: BrowserIndexOpts): Promise<BrowserIndexResult>
   /** 深入读取折叠正文或指定节点的文本（支持长文分段） */
   text(tabId: string | undefined, target: BrowserTarget, opts?: BrowserTextOpts): Promise<BrowserTextResult>
-  /** 探测指定节点的详细属性（tag, value, placeholder, href, checked, rect 等） */
-  inspect(tabId: string | undefined, target: BrowserTarget): Promise<BrowserInspectResult>
+  /** 探测指定节点的详细属性（tag, value, placeholder, href, checked, rect 等，支持 nth 选择器） */
+  inspect(tabId: string | undefined, target: BrowserTarget, opts?: BrowserInspectOpts): Promise<BrowserInspectResult>
   /** 自动滚到视口并智能点击指定节点 */
   click(tabId: string | undefined, target: BrowserTarget, opts?: BrowserClickOpts): Promise<BrowserClickResult>
-  /** 智能输入文字（支持受控组件、原生组件与富文本框，支持可选 pressEnter） */
+  /** 智能输入文字（支持受控组件、原生组件与富文本框，自带写入自检 readback 防假阳性） */
   fill(tabId: string | undefined, target: BrowserTarget, text: string, opts?: BrowserFillOpts): Promise<BrowserFillResult>
   /** 逐字符按键仿真与 IME 模拟输入（为 B 站、知乎等 Shadow DOM 复杂富文本框量身定制的健壮输入通道） */
   type(tabId: string | undefined, target: BrowserTarget, text: string, opts?: BrowserTypeOpts): Promise<BrowserTypeResult>
   /** 模拟键盘按键（Enter, Escape, Tab, ArrowDown 等） */
-  press(tabId: string | undefined, key: string, target?: BrowserTarget): Promise<{ ok: boolean; key?: string; error?: string }>
+  press(tabId: string | undefined, key: string, target?: BrowserTarget): Promise<BrowserPressResult>
   /** 滚动页面或指定局部容器 */
   scroll(tabId?: string, opts?: BrowserScrollOpts): Promise<BrowserScrollResult>
+  /** 跨 Shadow DOM 全域检索选择器并返回匹配候选清单（每项带 [id]、text、href、rect、visible 等） */
+  query(tabId: string | undefined, selector: string, opts?: BrowserQueryOpts): Promise<BrowserQueryResult>
+  /** 智能等待选择器节点或指定文本出现（解决异步加载盲等硬等问题） */
+  waitFor(tabId: string | undefined, targetOrText: string, opts?: BrowserWaitForOpts): Promise<BrowserWaitForResult>
+  /** 截取当前网页视图并存入静态资源库，返回图片 moji:static 访问地址 */
+  screenshot(tabId?: string, opts?: BrowserScreenshotOpts): Promise<BrowserScreenshotResult>
+  /** 在访客页面上下文中安全执行受控代码并返回 JSON（只读/枚举/透视终极保底武器） */
+  eval(tabId: string | undefined, code: string): Promise<BrowserEvalResult>
 }
 
-/**
- * mcp.*：用户配置的外部 **MCP（Model Context Protocol）服务**（见 agent/mcp/ops）。
- *
- * 与别的组不同：这一组不是固定几条签名，而是三个通用入口——外部工具清单与连接
- * 都由用户在设置里配置、运行时才知道。服务按 id 或名称指名（名称撞重时用 id）。
- *
- * 由宿主在「MCP 总开关开着」时注入（见 useAgent）；子代理的白名单里没有它——
- * MCP 这一组目前只敞给导师（它调的是真实外部系统，写操作要有确认纪律）。
- */
 export interface McpOps {
   /** 已启用服务与各自**缓存的**工具清单（不发网络请求） */
   list: () => unknown

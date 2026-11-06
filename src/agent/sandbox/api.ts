@@ -405,10 +405,10 @@ export function buildApi(
       if (first && typeof first === 'object' && ('target' in first || 'id' in first)) {
         const rec = first as Record<string, unknown>
         const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
-        return browser.inspect(tabId, targetOf(rec.target ?? rec.id))
+        return browser.inspect(tabId, targetOf(rec.target ?? rec.id), rec)
       }
       const { tabId, rest } = parseTabAndRest(args)
-      return browser.inspect(tabId, targetOf(rest[0]))
+      return browser.inspect(tabId, targetOf(rest[0]), asRecord(rest[1]))
     }, log)
 
     wrapApi(api, 'browser.click', (args) => {
@@ -470,6 +470,50 @@ export function buildApi(
       }
       const { tabId, rest } = parseTabAndRest(args)
       return browser.scroll(tabId, asRecord(rest[0]))
+    }, log)
+
+    wrapApi(api, 'browser.query', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && 'selector' in first) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.query(tabId, asText(rec.selector).trim(), rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.query(tabId, asText(rest[0]).trim(), asRecord(rest[1]))
+    }, log)
+
+    wrapApi(api, 'browser.waitFor', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'text' in first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.waitFor(tabId, asText(rec.target ?? rec.text).trim(), rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.waitFor(tabId, asText(rest[0]).trim(), asRecord(rest[1]))
+    }, log)
+
+    wrapApi(api, 'browser.screenshot', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && !Array.isArray(first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.screenshot(tabId, rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.screenshot(tabId, asRecord(rest[0]))
+    }, log)
+
+    wrapApi(api, 'browser.eval', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && 'code' in first) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.eval(tabId, asText(rec.code))
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.eval(tabId, asText(rest[0]))
     }, log)
   }
 
@@ -534,10 +578,19 @@ export function buildApi(
   // 结构化表单：形状先归一化，校验失败把「第几题、哪个字段」说清楚再回给模型
   if (opts.ask) {
     const ask = opts.ask
-    wrapApi(api, 'ask', (args) => {
+    wrapApi(api, 'ask', async (args) => {
       const parsed = normalizeAskForm(args[0])
       if (!parsed.ok) return parsed
-      return ask(parsed.form)
+      const res = await ask(parsed.form)
+      if (res && typeof res === 'object' && Array.isArray((res as any).answers)) {
+        for (const ans of (res as any).answers) {
+          if (ans.type === 'short') {
+            ans.text = ans.text ?? ''
+            ans.value = ans.value ?? ans.text
+          }
+        }
+      }
+      return res
     }, log)
   }
 

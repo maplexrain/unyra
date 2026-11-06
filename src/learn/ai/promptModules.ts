@@ -32,7 +32,7 @@ export const PROMPT_MODULES: PromptModule[] = [
   {
     key: 'browser',
     title: '内置浏览器',
-    text: `内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.index / browser.text / browser.inspect / browser.click / browser.fill / browser.type / browser.press / browser.scroll）：
+    text: `内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.index / browser.text / browser.inspect / browser.click / browser.fill / browser.type / browser.press / browser.scroll / browser.query / browser.waitFor / browser.screenshot / browser.eval）：
 - 这一组操作的是**界面上开着的网页页签**（文档区里地球图标的页签）。
 - **生命周期基础**：
   - api.browser.open('https://…')：开一个网页页签；纯关键词会当搜索词处理；返回 { tabId, url }。
@@ -49,6 +49,11 @@ export const PROMPT_MODULES: PromptModule[] = [
 - api.browser.type(tabId?, id, '文字', { delayMs?: number })：逐字符按键仿真与 IME 模拟输入（为 B 站、知乎、微博等 Shadow DOM 复杂富文本框量身定制的健壮输入通道）。
   - api.browser.press(tabId?, key, id?)：模拟键盘按键（'Enter' / 'Escape' / 'Tab' / 'ArrowDown' 等）。
   - api.browser.scroll(tabId?, { to?: 'top'|'bottom', by?: 像素, target?: id })：滚动页面或局部容器，返回 { atBottom }。
+- **全域透视与高级控制（高级）**：
+  - api.browser.query(tabId?, selector, { limit?: 20 })：穿透全页所有 Shadow DOM 检索候选列表，每项带 id、text、href、rect、visible 等，彻底告别单匹配盲猜。
+  - api.browser.waitFor(tabId?, selector|text, { timeoutMs?: 5000 })：智能等待异步渲染的组件或文字出现，告别盲等。
+  - api.browser.screenshot(tabId?)：截取当前网页视图并存入资源库（返回 moji:static/uuid），直观核验页面状态与内容。
+  - api.browser.eval(tabId?, code)：在页面上下文中安全执行受控 JS 并返回 JSON（只读/枚举透视终极保底武器）。
 - **调用人体工学纪律**：
   - tabId 可省略，默认指「焦点格正看着的那个网页」。
   - 目标参数传 index 返回的编号数字（如 12）即可，无需编写复杂的选择器。

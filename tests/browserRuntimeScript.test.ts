@@ -5,7 +5,6 @@ import { BROWSER_RUNTIME_INIT_SCRIPT } from '../src/learn/web/browserRuntimeScri
 describe('browserRuntimeScript：页面内运行时深度穿透与动作仿真', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
-    // 重新注入运行时全局对象
     delete (window as any).__agentRuntimeReady
     delete (window as any).__agentNodeMap
     delete (window as any).__findAgentNode
@@ -17,6 +16,9 @@ describe('browserRuntimeScript：页面内运行时深度穿透与动作仿真',
     delete (window as any).__agentText
     delete (window as any).__agentPress
     delete (window as any).__agentScroll
+    delete (window as any).__agentQuery
+    delete (window as any).__agentWaitFor
+    delete (window as any).__agentEval
     eval(BROWSER_RUNTIME_INIT_SCRIPT)
   })
 
@@ -28,6 +30,7 @@ describe('browserRuntimeScript：页面内运行时深度穿透与动作仿真',
     //     <bili-comment-rich-textarea> (nested shadow host)
     //       #shadow-root
     //         <div class="editor" contenteditable="true" placeholder="评论千万条，等你发一条"></div>
+    //     <button class="brt-btn">发布</button>
 
     const commentBox = document.createElement('bili-comment-box')
     document.body.appendChild(commentBox)
@@ -48,16 +51,23 @@ describe('browserRuntimeScript：页面内运行时深度穿透与动作仿真',
     innerEditor.setAttribute('placeholder', '评论千万条，等你发一条')
     textareaShadow.appendChild(innerEditor)
 
-    // 1. 生成索引
+    const sendBtn = document.createElement('button')
+    sendBtn.className = 'brt-btn'
+    sendBtn.textContent = '发布'
+    boxShadow.appendChild(sendBtn)
+
+    // 1. 生成索引：验证 Shadow 内部可交互元素全部被分配编号（包括内部的发布按钮与最新按钮）
     const indexResult = (window as any).__agentIndex()
     expect(indexResult.text).toContain('bili-comment-rich-textarea[editable]')
     expect(indexResult.text).toContain('评论千万条，等你发一条')
+    expect(indexResult.text).toContain('button.brt-btn "发布"')
 
-    // 提取分配给 bili-comment-rich-textarea 的 data-agent-id
     const textareaId = Number(richTextarea.getAttribute('data-agent-id'))
+    const sendBtnId = Number(sendBtn.getAttribute('data-agent-id'))
     expect(textareaId).toBeGreaterThan(0)
+    expect(sendBtnId).toBeGreaterThan(0)
 
-    // 2. 验证 inspect 的 isEditable 与 index 完全一致，并返回 resolvedTag: 'div'
+    // 2. 验证 inspect 的 isEditable 与 index 完全一致，并返回 resolvedTag: 'div' 与 text
     const inspectResult = (window as any).__agentInspect(textareaId)
     expect(inspectResult.ok).toBe(true)
     expect(inspectResult.tag).toBe('bili-comment-rich-textarea')
@@ -71,6 +81,7 @@ describe('browserRuntimeScript：页面内运行时深度穿透与动作仿真',
     expect(fillResult.tag).toBe('bili-comment-rich-textarea')
     expect(fillResult.resolvedTag).toBe('div')
     expect(fillResult.resolvedType).toBe('contenteditable')
+    expect(fillResult.wrote).toBe('这是测试评论内容'.length)
     expect(innerEditor.innerText || innerEditor.textContent).toContain('这是测试评论内容')
 
     // 4. 验证 fill 命中外层包裹容器 bili-comment-box 时也能自动下钻输入
@@ -86,7 +97,7 @@ describe('browserRuntimeScript：页面内运行时深度穿透与动作仿真',
     expect(typeResult.typedChars).toBe(6)
     expect(typeResult.resolvedTag).toBe('div')
 
-    // 6. 验证 CSS 选择器跨 Shadow DOM 穿透查找 (Deep QuerySelector)
+    // 6. 验证 CSS 选择器跨 Shadow DOM 穿透查找 (Deep QuerySelector 及空格后代穿透)
     const foundDirect = (window as any).__findAgentNode('bili-comment-rich-textarea')
     expect(foundDirect).toBe(richTextarea)
 
@@ -96,20 +107,116 @@ describe('browserRuntimeScript：页面内运行时深度穿透与动作仿真',
     const foundCombinator = (window as any).__findAgentNode('bili-comment-box >>> button#sort-latest')
     expect(foundCombinator).toBe(sortButton)
 
+    const foundSpaceDescendant = (window as any).__findAgentNode('bili-comment-box .brt-btn')
+    expect(foundSpaceDescendant).toBe(sendBtn)
+
     // 7. 验证 click 穿透 Shadow DOM 并派发 composed: true
     let buttonClicked = false
     let clickComposed = false
-    sortButton.addEventListener('click', (ev) => {
+    sendBtn.addEventListener('click', (ev) => {
       buttonClicked = true
       clickComposed = ev.composed
     })
 
-    const buttonId = Number(sortButton.getAttribute('data-agent-id'))
-    expect(buttonId).toBeGreaterThan(0)
-    const clickResult = (window as any).__agentClick(buttonId)
+    const clickResult = (window as any).__agentClick(sendBtnId)
     expect(clickResult.ok).toBe(true)
     expect(buttonClicked).toBe(true)
     expect(clickComposed).toBe(true)
+  })
+
+  it('列表模式折叠保护：绝不折叠基础 DIV 布局容器，a 链接带 href 属性', async () => {
+    // 构造模拟 B 站页面左侧布局容器：div.left-container 内有 8 个主要布局 div
+    const leftContainer = document.createElement('div')
+    leftContainer.className = 'left-container'
+    document.body.appendChild(leftContainer)
+
+    for (let i = 1; i <= 8; i++) {
+      const section = document.createElement('div')
+      section.className = `section-${i}`
+      const link = document.createElement('a')
+      link.href = `https://bilibili.com/bangumi/play/ep${i}`
+      link.textContent = `第 ${i} 集 剧集入口`
+      section.appendChild(link)
+      leftContainer.appendChild(section)
+    }
+
+    const indexRes = (window as any).__agentIndex()
+    // 必须保留布局容器，不能整区折叠成 [列表: 共8项 div]
+    expect(indexRes.text).not.toContain('共8项 div')
+    // a 链接必须带有 [href] 标识
+    expect(indexRes.text).toContain('a[href="/bangumi/play/ep1"]')
+    expect(indexRes.text).toContain('第 1 集 剧集入口')
+  })
+
+  it('query 全域多选检索：跨 Shadow 穿透枚举所有候选并自动分配 id', () => {
+    const box = document.createElement('div')
+    box.id = 'comment-area'
+    document.body.appendChild(box)
+    const shadow = box.attachShadow({ mode: 'open' })
+
+    const btn1 = document.createElement('button')
+    btn1.className = 'reply-btn send-btn'
+    btn1.textContent = '点赞'
+    shadow.appendChild(btn1)
+
+    const btn2 = document.createElement('button')
+    btn2.className = 'send-btn'
+    btn2.textContent = '发送'
+    shadow.appendChild(btn2)
+
+    const queryRes = (window as any).__agentQuery('.send-btn')
+    expect(queryRes.ok).toBe(true)
+    expect(queryRes.count).toBe(2)
+    expect(queryRes.matches[0].text).toContain('点赞')
+    expect(queryRes.matches[1].text).toContain('发送')
+    expect(queryRes.matches[0].id).toBeGreaterThan(0)
+    expect(queryRes.matches[1].id).toBeGreaterThan(0)
+  })
+
+  it('inspect 支持 nth 索引与 text/visible 字段', () => {
+    const a1 = document.createElement('a')
+    a1.className = 'ep-link'
+    a1.href = '/ep1'
+    a1.textContent = '第一集'
+    document.body.appendChild(a1)
+
+    const a2 = document.createElement('a')
+    a2.className = 'ep-link'
+    a2.href = '/ep2'
+    a2.textContent = '第二集'
+    document.body.appendChild(a2)
+
+    const inspectFirst = (window as any).__agentInspect('a.ep-link', { nth: 0 })
+    expect(inspectFirst.ok).toBe(true)
+    expect(inspectFirst.matchCount).toBe(2)
+    expect(inspectFirst.text).toContain('第一集')
+    expect(inspectFirst.href).toBe('/ep1')
+
+    const inspectSecond = (window as any).__agentInspect('a.ep-link', { nth: 1 })
+    expect(inspectSecond.ok).toBe(true)
+    expect(inspectSecond.text).toContain('第二集')
+    expect(inspectSecond.href).toBe('/ep2')
+  })
+
+  it('waitFor 智能等待节点与文本', async () => {
+    setTimeout(() => {
+      const asyncBtn = document.createElement('button')
+      asyncBtn.id = 'async-loaded'
+      asyncBtn.textContent = '异步按钮'
+      document.body.appendChild(asyncBtn)
+    }, 100)
+
+    const waitRes = await (window as any).__agentWaitFor('#async-loaded', { timeoutMs: 1000 })
+    expect(waitRes.ok).toBe(true)
+    expect(waitRes.tag).toBe('button')
+    expect(waitRes.elapsedMs).toBeGreaterThan(50)
+  })
+
+  it('eval 在页面环境中执行代码并返回 JSON', async () => {
+    document.title = '测试标题'
+    const evalRes = await (window as any).__agentEval('return document.title + " - 已执行"')
+    expect(evalRes.ok).toBe(true)
+    expect(evalRes.result).toBe('测试标题 - 已执行')
   })
 
   it('原生 input / textarea 正常受控输入与 setter 调用', async () => {
@@ -131,10 +238,13 @@ describe('browserRuntimeScript：页面内运行时深度穿透与动作仿真',
     expect(changeEventCount).toBeGreaterThanOrEqual(1)
   })
 
-  it('错误返回健全且被序列化为字符串，杜绝 [object Object]', async () => {
-    const nonExistentResult = (window as any).__agentFill(99999, 'test')
-    expect(nonExistentResult.ok).toBe(false)
-    expect(typeof nonExistentResult.error).toBe('string')
-    expect(nonExistentResult.error).toContain('未找到节点 [99999]')
+  it('错误返回健全且区分选择器未匹配与节点脱离 DOM', async () => {
+    const selectorFail = (window as any).__agentInspect('.not-found-class')
+    expect(selectorFail.ok).toBe(false)
+    expect(selectorFail.error).toContain('选择器未匹配到任何节点')
+
+    const idFail = (window as any).__agentInspect(88888)
+    expect(idFail.ok).toBe(false)
+    expect(idFail.error).toContain('未找到节点编号 [88888]')
   })
 })

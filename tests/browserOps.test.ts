@@ -67,6 +67,15 @@ function makeDeps(store: LearnStore, webMeta: Record<string, WebTabMeta> = {}) {
       if (script.includes('window.__agentScroll(')) {
         return { ok: true, scrollY: 800, scrollHeight: 3000, atBottom: false }
       }
+      if (script.includes('window.__agentQuery(')) {
+        return { ok: true, selector: 'button', count: 1, matches: [{ id: 1, tag: 'button', text: '按钮', visible: true, isEditable: false, rect: { x: 0, y: 0, width: 10, height: 10 } }] }
+      }
+      if (script.includes('window.__agentWaitFor(')) {
+        return { ok: true, elapsedMs: 50, id: 1, tag: 'button' }
+      }
+      if (script.includes('window.__agentEval(')) {
+        return { ok: true, result: '执行结果' }
+      }
       return { ok: true }
     },
   }
@@ -111,7 +120,7 @@ describe('makeBrowserOps：browser.* 基础生命周期与读写动作', () => {
     const indexRes = await ops.index(undefined, { focus: 1 })
     expect(indexRes.text).toContain('[1] header')
     expect(execCalls[0][0]).toBe('w:a')
-    expect(execCalls[0][1]).toContain('__agentIndex(1)')
+    expect(execCalls[0][1]).toContain('__agentIndex({"focus":1})')
 
     // 2. text 读取正文
     const textRes = await ops.text('w:a', 4, { maxChars: 2000 })
@@ -124,7 +133,7 @@ describe('makeBrowserOps：browser.* 基础生命周期与读写动作', () => {
     expect(inspectRes.tag).toBe('button')
     expect(inspectRes.rect?.width).toBe(80)
     expect(execCalls[2][0]).toBe('w:a')
-    expect(execCalls[2][1]).toContain('__agentInspect(2)')
+    expect(execCalls[2][1]).toContain('__agentInspect(2')
   })
 
   it('基础写操作（click / fill / press / scroll）正常派发', async () => {
@@ -156,6 +165,21 @@ describe('makeBrowserOps：browser.* 基础生命周期与读写动作', () => {
     const scrollRes = await ops.scroll('w:a', { by: 800 })
     expect(scrollRes.atBottom).toBe(false)
     expect(execCalls[4][1]).toContain('__agentScroll')
+
+    // 5. query 检索
+    const queryRes = await ops.query('w:a', 'button')
+    expect(queryRes.count).toBe(1)
+    expect(execCalls[5][1]).toContain('__agentQuery("button"')
+
+    // 6. waitFor 等待
+    const waitRes = await ops.waitFor(undefined, '.brt-btn', { timeoutMs: 2000 })
+    expect(waitRes.ok).toBe(true)
+    expect(execCalls[6][1]).toContain('__agentWaitFor(".brt-btn"')
+
+    // 7. eval 页面代码执行
+    const evalRes = await ops.eval('w:a', 'document.title')
+    expect(evalRes.result).toBe('执行结果')
+    expect(execCalls[7][1]).toContain('__agentEval("document.title")')
   })
 })
 
@@ -175,6 +199,10 @@ describe('buildApi：browser.* 参数兼容性与宽容解析', () => {
       type: async (tabId, target, text, opts) => { captured = { tabId, target, text, opts }; return { ok: true } },
       press: async (tabId, key, target) => { captured = { tabId, key, target }; return { ok: true } },
       scroll: async (tabId, opts) => { captured = { tabId, opts }; return { ok: true } },
+      query: async (tabId, selector, opts) => { captured = { tabId, selector, opts }; return { ok: true, selector, count: 0, matches: [] } },
+      waitFor: async (tabId, targetOrText, opts) => { captured = { tabId, targetOrText, opts }; return { ok: true, elapsedMs: 10 } },
+      screenshot: async (tabId, opts) => { captured = { tabId, opts }; return { ok: true, url: 'moji:static/1' } },
+      eval: async (tabId, code) => { captured = { tabId, code }; return { ok: true, result: 42 } },
     }
 
     const { api } = buildApi({ browser: mockBrowser } as any, [])
@@ -202,5 +230,35 @@ describe('buildApi：browser.* 参数兼容性与宽容解析', () => {
 
     await b.fill({ tabId: 'w:tab2', target: 24, text: '评论' })
     expect(captured).toEqual({ tabId: 'w:tab2', target: 24, text: '评论', opts: expect.objectContaining({ tabId: 'w:tab2', target: 24, text: '评论' }) })
+
+    // 6. query 与 waitFor 宽容传参
+    await b.query('.brt-btn', { limit: 10 })
+    expect(captured).toEqual({ tabId: undefined, selector: '.brt-btn', opts: { limit: 10 } })
+
+    await b.waitFor('发布成功', { timeoutMs: 3000 })
+    expect(captured).toEqual({ tabId: undefined, targetOrText: '发布成功', opts: { timeoutMs: 3000 } })
+
+    // 7. eval 脚本执行
+    await b.eval('window.location.href')
+    expect(captured).toEqual({ tabId: undefined, code: 'window.location.href' })
+
+    // 8. screenshot 截图
+    await b.screenshot({ path: 'custom.png' })
+    expect(captured).toEqual({ tabId: undefined, opts: { path: 'custom.png' } })
+  })
+
+  it('api.ask 针对 short 简答题空值时自动保底返回 value: ""', async () => {
+    const mockAsk = async () => ({
+      answers: [
+        { id: 'q1', type: 'short', prompt: '用户感想' } // 没有 value 字段
+      ]
+    })
+    const { api } = buildApi({ ask: mockAsk } as any, [])
+    const res = await (api as any).ask({
+      title: '调查问卷',
+      questions: [{ id: 'q1', type: 'short', prompt: '用户感想' }]
+    })
+    expect(res.answers[0].value).toBe('')
+    expect(res.answers[0].text).toBe('')
   })
 })

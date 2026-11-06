@@ -3,10 +3,9 @@
  * 
  * 核心机制：
  * 1. 深度穿透 Shadow DOM 与同源 iframe；
- * 2. 紧凑语义索引生成（正文折叠、列表折叠、原子类去噪、图标语义补偿）；
- * 3. 基于 data-agent-id、内存 Map 与 Deep QuerySelector 的全域寻址；
- * 4. 健壮的真实用户级受控动作（click / fill / type / press / scroll / text / inspect），
- *    彻底消除原型链 Illegal invocation 崩溃，无缝支持 Web Components 与复杂 Shadow DOM 富文本。
+ * 2. 紧凑语义索引生成（保护布局容器不被折叠、为 shadow 内部所有交互组件编号、带 href 路径）；
+ * 3. 基于 data-agent-id、内存 Map 与 Deep QuerySelector 的全域寻址（支持 >>> 与后代选择器）；
+ * 4. 健壮的真实用户级受控动作（click / fill 带自检比对 / type / press / scroll / text / inspect / query / waitFor / eval）。
  */
 
 /** 基础运行时的初始化脚本（挂载全局函数，支持重复调用与缓存刷新） */
@@ -43,7 +42,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
       return el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
     }
     const r = el.getBoundingClientRect();
-    return r.width > 5 && r.height > 5;
+    return r.width > 0 && r.height > 0;
   }
 
   function cleanText(str, maxLen = 30) {
@@ -69,7 +68,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
           text += getDeepText(node, maxDepth - 1) + ' ';
         }
       }
-      if (text.length > 120) break;
+      if (text.length > 200) break;
     }
     return text;
   }
@@ -163,7 +162,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
       return true;
     }
 
-    // Shadow Host 且直接承载输入节点（排除布局容器如 comment-box）
+    // Shadow Host 且直接承载输入节点（排除整体容器）
     if (el.shadowRoot && !tag.includes('BOX') && !tag.includes('CONTAINER') && !tag.includes('WRAPPER') && !GENERIC_IDS.has(tag.toLowerCase())) {
       try {
         const directEditor = el.shadowRoot.querySelector('textarea, input, [contenteditable="true"], [role="textbox"]');
@@ -175,20 +174,39 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
 
   function getDescriptor(el, isEditable) {
     const tag = el.tagName.toLowerCase();
+    let linkAttr = '';
+    if (tag === 'a') {
+      const rawHref = el.getAttribute('href') || '';
+      if (rawHref) {
+        let path = rawHref;
+        try {
+          if (rawHref.startsWith('http')) {
+            const u = new URL(rawHref);
+            path = u.pathname + u.search;
+          }
+        } catch {}
+        if (path && path !== '/') {
+          linkAttr = \`[href="\${cleanText(path, 35)}"]\`;
+        }
+      }
+    }
+
+    let cls = '';
+    if (el.classList && el.classList.length) {
+      const bestClass = [...el.classList].find(c => c.length > 2 && c.length < 28 && !NOISY_CLASS.test(c));
+      if (bestClass) cls = \`.\${bestClass}\`;
+    }
+
     if (ACTION_TAGS.has(el.tagName) || isEditable) {
       const hint = getItemSummary(el);
-      const roleTag = isEditable && !ACTION_TAGS.has(el.tagName) ? \`\${tag}[editable]\` : tag;
+      const roleTag = isEditable && !ACTION_TAGS.has(el.tagName) ? \`\${tag}\${cls}[editable]\` : \`\${tag}\${cls}\${linkAttr}\`;
       return hint ? \`\${roleTag} "\${hint}"\` : roleTag;
     }
 
     const id = (el.id && !GENERIC_IDS.has(el.id.toLowerCase())) ? \`#\${el.id}\` : '';
-    let cls = '';
-    if (!id && el.classList.length) {
-      const bestClass = [...el.classList].find(c => c.length > 2 && c.length < 28 && !NOISY_CLASS.test(c));
-      if (bestClass) cls = \`.\${bestClass}\`;
-    }
+    if (id) cls = '';
     const summary = tag.includes('-') ? cleanText(getItemSummary(el), 25) : '';
-    return \`\${tag}\${id}\${cls}\${summary ? \` "\${summary}"\` : ''}\`;
+    return \`\${tag}\${linkAttr}\${id}\${cls}\${summary ? \` "\${summary}"\` : ''}\`;
   }
 
   function getEffectiveChildren(el) {
@@ -198,45 +216,94 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
     return raw.filter(c => c.nodeType === 1 && !IGNORE_TAGS.has(c.tagName) && isVisible(c));
   }
 
-  /** 递归穿透所有 ShadowRoot 与同源 iframe 的深度选择器查找 */
-  function deepQuerySelector(root, selector) {
-    if (!root || !selector) return null;
+  /** 递归穿透所有 ShadowRoot 与同源 iframe 的多项选择器查找（支持 >>>、::shadow 与空格后代） */
+  function deepQuerySelectorAll(root, selector, maxCount = 50) {
+    if (!root || !selector) return [];
+    const results = [];
 
+    // 1. 处理 Pierce 组合符 >>> 或 ::shadow
     if (selector.includes('>>>') || selector.includes('::shadow')) {
       const parts = selector.split(/\\s*>>>\\s*|\\s*::shadow\\s*/);
-      let cur = root;
-      for (const part of parts) {
-        const trimmed = part.trim();
-        if (!trimmed) continue;
-        const curRoot = cur.shadowRoot || cur;
-        const next = deepQuerySelector(curRoot, trimmed);
-        if (!next) return null;
-        cur = next;
+      let currentRoots = [root];
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i].trim();
+        if (!part) continue;
+        const isLast = i === parts.length - 1;
+        const nextRoots = [];
+        for (const cur of currentRoots) {
+          const curRoot = cur.shadowRoot || cur;
+          const found = deepQuerySelectorAll(curRoot, part, isLast ? maxCount : 50);
+          if (isLast) {
+            results.push(...found);
+            if (results.length >= maxCount) return results.slice(0, maxCount);
+          } else {
+            for (const el of found) {
+              if (el.shadowRoot) nextRoots.push(el.shadowRoot);
+              nextRoots.push(el);
+            }
+          }
+        }
+        currentRoots = nextRoots;
       }
-      return cur;
+      return results.slice(0, maxCount);
     }
 
+    // 2. 本地原生 querySelectorAll 匹配
     try {
-      const match = root.querySelector(selector);
-      if (match) return match;
+      const direct = root.querySelectorAll(selector);
+      for (const d of direct) {
+        results.push(d);
+        if (results.length >= maxCount) return results;
+      }
     } catch {}
 
+    // 3. 处理带空格的后代组合器跨 Shadow 下钻（如 "bili-comment-box .brt-btn"）
+    if (selector.includes(' ')) {
+      const segments = selector.split(/\\s+/).filter(Boolean);
+      if (segments.length >= 2) {
+        const firstSegment = segments[0];
+        const restSelector = segments.slice(1).join(' ');
+        const firstMatches = deepQuerySelectorAll(root, firstSegment, 20);
+        for (const fm of firstMatches) {
+          const subRoot = fm.shadowRoot || fm;
+          const subMatches = deepQuerySelectorAll(subRoot, restSelector, maxCount - results.length);
+          for (const sm of subMatches) {
+            if (!results.includes(sm)) results.push(sm);
+            if (results.length >= maxCount) return results;
+          }
+        }
+      }
+    }
+
+    // 4. 递归下钻所有 ShadowRoot 与同源 iframe
     const all = root.querySelectorAll('*');
     for (const el of all) {
       if (el.shadowRoot) {
-        const found = deepQuerySelector(el.shadowRoot, selector);
-        if (found) return found;
+        const sub = deepQuerySelectorAll(el.shadowRoot, selector, maxCount - results.length);
+        for (const s of sub) {
+          if (!results.includes(s)) results.push(s);
+          if (results.length >= maxCount) return results;
+        }
       }
       if (el.tagName === 'IFRAME') {
         try {
           if (el.contentDocument) {
-            const found = deepQuerySelector(el.contentDocument, selector);
-            if (found) return found;
+            const sub = deepQuerySelectorAll(el.contentDocument, selector, maxCount - results.length);
+            for (const s of sub) {
+              if (!results.includes(s)) results.push(s);
+              if (results.length >= maxCount) return results;
+            }
           }
         } catch {}
       }
     }
-    return null;
+
+    return results;
+  }
+
+  function deepQuerySelector(root, selector) {
+    const list = deepQuerySelectorAll(root, selector, 1);
+    return list.length ? list[0] : null;
   }
 
   window.__findAgentNode = function(agentId, root = document) {
@@ -260,11 +327,21 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
     return null;
   };
 
-  window.__agentIndex = function(focusTarget) {
+  window.__agentIndex = function(focusTargetOrOpts, maybeOpts) {
     try {
       window.__agentNodeMap.clear();
       const lines = [];
       let nodeId = 1;
+
+      let focusTarget = undefined;
+      let opts = {};
+      if (focusTargetOrOpts && typeof focusTargetOrOpts === 'object') {
+        opts = focusTargetOrOpts;
+        focusTarget = opts.focus ?? opts.target;
+      } else {
+        focusTarget = focusTargetOrOpts;
+        opts = maybeOpts || {};
+      }
 
       function mark(el) {
         const id = nodeId++;
@@ -281,7 +358,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
         const isCustomElement = tag.includes('-');
         const isEditable = checkIsEditable(el);
 
-        if (isProseContainer(el)) {
+        if (opts.collapse !== false && !opts.full && isProseContainer(el)) {
           const id = mark(el);
           const totalChars = (el.innerText || '').replace(/\\s+/g, '').length;
           const headings = [...el.querySelectorAll('h1, h2, h3, h4')].map(h => cleanText(h.innerText, 15)).slice(0, 6);
@@ -292,12 +369,14 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
 
         const children = getEffectiveChildren(el);
 
-        if (children.length >= 3) {
+        // 列表折叠保护：绝不折叠 DIV、SPAN、SECTION 等主要布局容器
+        if (opts.collapse !== false && !opts.full && children.length >= 3) {
           const tagCounts = {};
           children.forEach(c => tagCounts[c.tagName] = (tagCounts[c.tagName] || 0) + 1);
           const [dominantTag, count] = Object.entries(tagCounts).sort((a, b) => b[1] - a[1])[0];
+          const isListableTag = dominantTag.includes('-') || ['LI', 'TR'].includes(dominantTag);
 
-          if ((dominantTag.includes('-') && count >= 3) || (count >= 4 && count / children.length >= 0.7)) {
+          if (isListableTag && (count >= 3 && count / children.length >= 0.7)) {
             const samples = children
               .map(c => getItemSummary(c))
               .filter(Boolean)
@@ -318,19 +397,20 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
 
         let nextDepth = depth;
         if (isLandmark || isAction || hasMeaningfulId) {
-          if (isAction && !getItemSummary(el)) return;
+          if (isAction && !getItemSummary(el) && !el.shadowRoot) return;
 
           const lineIndexBefore = lines.length;
           const currentId = mark(el);
           lines.push(\`\${indent}[\${currentId}] \${getDescriptor(el, isEditable)}\`);
 
-          if (isAction) return;
+          // 核心机制：如果带有 shadowRoot，绝不因 isAction 提前返回，必须深入给内部可交互控件分配 id
+          if (isAction && !el.shadowRoot) return;
 
           for (const child of children) {
             walk(child, depth + 1);
           }
 
-          if (lines.length === lineIndexBefore + 1 && !cleanText(getDeepText(el, 2))) {
+          if (lines.length === lineIndexBefore + 1 && !cleanText(getDeepText(el, 2)) && !isAction) {
             lines.pop();
             window.__agentNodeMap.delete(currentId);
             el.removeAttribute('data-agent-id');
@@ -355,6 +435,7 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
         count: window.__agentNodeMap.size,
         title: document.title || '',
         url: window.location.href,
+        lines,
       };
     } catch (err) {
       return {
@@ -362,6 +443,114 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
         count: 0,
         title: document.title || '',
         url: window.location.href,
+        lines: [],
+        error: safeFormatError(err),
+      };
+    }
+  };
+
+  /** 全局多选匹配查询（返回匹配候选数组，自动分配 id） */
+  window.__agentQuery = function(selector, opts = {}) {
+    try {
+      const limit = typeof opts.limit === 'number' ? opts.limit : 20;
+      const elements = deepQuerySelectorAll(document, selector, limit);
+      const matches = elements.map(el => {
+        let id = Number(el.getAttribute('data-agent-id'));
+        if (!id || isNaN(id)) {
+          id = window.__agentNodeMap.size + 1;
+          while (window.__agentNodeMap.has(id)) id++;
+          el.setAttribute('data-agent-id', id);
+          window.__agentNodeMap.set(id, el);
+        }
+        const rect = el.getBoundingClientRect();
+        const isVis = isVisible(el) && rect.width > 0 && rect.height > 0;
+        return {
+          id,
+          tag: el.tagName.toLowerCase(),
+          cls: el.className ? String(el.className) : undefined,
+          idAttr: el.id || undefined,
+          text: cleanText(getDeepText(el, 3), 60),
+          href: el.getAttribute('href') || undefined,
+          value: ('value' in el && typeof el.value === 'string') ? el.value : undefined,
+          placeholder: el.getAttribute('placeholder') || undefined,
+          visible: isVis,
+          isEditable: checkIsEditable(el),
+          rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
+        };
+      });
+      return {
+        ok: true,
+        selector,
+        count: matches.length,
+        matches,
+      };
+    } catch (err) {
+      return { ok: false, selector, count: 0, matches: [], error: safeFormatError(err) };
+    }
+  };
+
+  /** 智能等待目标元素或文本出现 */
+  window.__agentWaitFor = async function(targetOrText, opts = {}) {
+    const timeoutMs = typeof opts.timeoutMs === 'number' ? opts.timeoutMs : (typeof opts.timeout === 'number' ? opts.timeout : 5000);
+    const startTime = Date.now();
+    const queryTarget = String(targetOrText);
+
+    while (Date.now() - startTime < timeoutMs) {
+      const node = window.__findAgentNode(queryTarget);
+      if (node) {
+        const rect = node.getBoundingClientRect();
+        const isVis = isVisible(node) && rect.width > 0 && rect.height > 0;
+        if (opts.visible !== true || isVis) {
+          let id = Number(node.getAttribute('data-agent-id'));
+          if (!id || isNaN(id)) {
+            id = window.__agentNodeMap.size + 1;
+            while (window.__agentNodeMap.has(id)) id++;
+            node.setAttribute('data-agent-id', id);
+            window.__agentNodeMap.set(id, node);
+          }
+          return {
+            ok: true,
+            elapsedMs: Date.now() - startTime,
+            id,
+            tag: node.tagName.toLowerCase(),
+            visible: isVis,
+          };
+        }
+      }
+
+      const bodyText = document.body ? getDeepText(document.body, 5) : '';
+      if (bodyText.includes(queryTarget)) {
+        return {
+          ok: true,
+          elapsedMs: Date.now() - startTime,
+        };
+      }
+
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    return {
+      ok: false,
+      elapsedMs: Date.now() - startTime,
+      error: \`等待超时 (\${timeoutMs}ms)：未能在页面中找到目标或文本 [\${queryTarget}]\`,
+    };
+  };
+
+  /** 在访客页面上下文中安全执行受控代码并返回 JSON */
+  window.__agentEval = async function(code) {
+    try {
+      const trimmed = String(code || '').trim();
+      const fnBody = trimmed.includes('return ') ? trimmed : \`return (\${trimmed});\`;
+      const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+      const fn = new AsyncFunction('document', 'window', fnBody);
+      const res = await fn(document, window);
+      return {
+        ok: true,
+        result: res !== undefined ? JSON.parse(JSON.stringify(res)) : undefined,
+      };
+    } catch (err) {
+      return {
+        ok: false,
         error: safeFormatError(err),
       };
     }
@@ -370,7 +559,15 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
   window.__agentClick = function(target, opts = {}) {
     try {
       const el = window.__findAgentNode(target);
-      if (!el) return { ok: false, error: '未找到节点 [' + target + ']，页面可能已变化，请先重新 index()' };
+      if (!el) {
+        const isSelector = typeof target === 'string' && isNaN(Number(target));
+        return {
+          ok: false,
+          error: isSelector
+            ? \`选择器未匹配到任何节点: "\${target}"\`
+            : \`未找到节点编号 [\${target}]（页面可能已刷新或 DOM 节点已移除，请重新执行 index()）\`,
+        };
+      }
 
       const resolvedEl = resolveClickableTarget(el);
 
@@ -401,10 +598,13 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
         resolvedEl.dispatchEvent(new MouseEvent('click', eventInit));
       }
 
+      const isVis = isVisible(resolvedEl) && rect.width > 0 && rect.height > 0;
       return {
         ok: true,
         tag: el.tagName.toLowerCase(),
         resolvedTag: resolvedEl.tagName.toLowerCase(),
+        visible: isVis,
+        warning: !isVis ? '节点尺寸为 0x0 或处于隐藏状态，点击可能未产生页面交互' : undefined,
       };
     } catch (err) {
       return { ok: false, error: safeFormatError(err) };
@@ -414,7 +614,15 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
   window.__agentFill = function(target, text, opts = {}) {
     try {
       const el = window.__findAgentNode(target);
-      if (!el) return { ok: false, error: '未找到节点 [' + target + ']，页面可能已变化，请先重新 index()' };
+      if (!el) {
+        const isSelector = typeof target === 'string' && isNaN(Number(target));
+        return {
+          ok: false,
+          error: isSelector
+            ? \`选择器未匹配到任何节点: "\${target}"\`
+            : \`未找到节点编号 [\${target}]（页面可能已刷新或 DOM 节点已移除，请重新执行 index()）\`,
+        };
+      }
 
       const resolvedEl = resolveEditableTarget(el);
       const isNativeInput = resolvedEl instanceof HTMLInputElement || resolvedEl instanceof HTMLTextAreaElement;
@@ -524,11 +732,27 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
         }
       }
 
+      // 写入后自检比对（Readback），彻底防止假阳性
+      const readbackVal = (isNativeInput ? resolvedEl.value : (resolvedEl.innerText || resolvedEl.textContent || '')).trim();
+      const expectedSnippet = val.trim().slice(0, 15);
+      if (expectedSnippet.length > 0 && !readbackVal.includes(expectedSnippet)) {
+        return {
+          ok: false,
+          tag: el.tagName.toLowerCase(),
+          resolvedTag: resolvedEl.tagName.toLowerCase(),
+          wrote: 0,
+          readback: readbackVal.slice(0, 50),
+          hint: '文本未能成功写入目标编辑器（常因框架拦截合成事件导致），请改用 api.browser.type(target, text)',
+        };
+      }
+
       return {
         ok: true,
         tag: el.tagName.toLowerCase(),
         resolvedTag: resolvedEl.tagName.toLowerCase(),
         resolvedType,
+        wrote: val.length,
+        readback: readbackVal.slice(0, 80),
       };
     } catch (err) {
       return { ok: false, error: safeFormatError(err) };
@@ -657,7 +881,12 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
       el.dispatchEvent(new KeyboardEvent('keypress', keyOpts));
       el.dispatchEvent(new KeyboardEvent('keyup', keyOpts));
 
-      return { ok: true, key: keyName };
+      return {
+        ok: true,
+        key: keyName,
+        dispatched: true,
+        warning: '若页面依赖 isTrusted 原生快捷键，合成事件可能被忽略；若未生效建议优先调用 api.browser.click() 点击按钮',
+      };
     } catch (err) {
       return { ok: false, error: safeFormatError(err) };
     }
@@ -668,17 +897,24 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
       const container = opts.target ? window.__findAgentNode(opts.target) : window;
       if (opts.target && !container) return { ok: false, error: '未找到滚动目标节点' };
 
+      const docScrollHeight = document.body ? document.body.scrollHeight : 0;
+      const docScrollY = window.scrollY || 0;
+      const docAtBottom = window.innerHeight + docScrollY >= docScrollHeight - 50;
+
       if (container === window) {
         if (opts.to === 'top') window.scrollTo({ top: 0, behavior: 'smooth' });
-        else if (opts.to === 'bottom') window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        else if (opts.to === 'bottom') window.scrollTo({ top: docScrollHeight, behavior: 'smooth' });
         else if (typeof opts.by === 'number') window.scrollBy({ top: opts.by, behavior: 'smooth' });
 
-        const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 50;
+        const newDocY = window.scrollY || 0;
         return {
           ok: true,
-          scrollY: window.scrollY,
-          scrollHeight: document.body.scrollHeight,
-          atBottom,
+          scrollY: newDocY,
+          scrollHeight: docScrollHeight,
+          atBottom: window.innerHeight + newDocY >= docScrollHeight - 50,
+          documentScrollY: newDocY,
+          documentScrollHeight: docScrollHeight,
+          documentAtBottom: window.innerHeight + newDocY >= docScrollHeight - 50,
         };
       } else {
         const el = container;
@@ -686,12 +922,18 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
         else if (opts.to === 'bottom') el.scrollTop = el.scrollHeight;
         else if (typeof opts.by === 'number') el.scrollTop += opts.by;
 
-        const atBottom = el.clientHeight + el.scrollTop >= el.scrollHeight - 50;
+        const containerAtBottom = el.clientHeight + el.scrollTop >= el.scrollHeight - 50;
         return {
           ok: true,
           scrollY: el.scrollTop,
           scrollHeight: el.scrollHeight,
-          atBottom,
+          atBottom: containerAtBottom,
+          containerScrollY: el.scrollTop,
+          containerScrollHeight: el.scrollHeight,
+          containerAtBottom,
+          documentScrollY: docScrollY,
+          documentScrollHeight: docScrollHeight,
+          documentAtBottom: docAtBottom,
         };
       }
     } catch (err) {
@@ -702,9 +944,18 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
   window.__agentText = function(target, opts = {}) {
     try {
       const el = window.__findAgentNode(target);
-      if (!el) return { ok: false, error: '未找到节点 [' + target + ']，页面可能已变化，请先重新 index()' };
+      if (!el) {
+        const isSelector = typeof target === 'string' && isNaN(Number(target));
+        return {
+          ok: false,
+          error: isSelector
+            ? \`选择器未匹配到任何节点: "\${target}"\`
+            : \`未找到节点编号 [\${target}]（页面可能已刷新或 DOM 节点已移除，请重新执行 index()）\`,
+        };
+      }
 
-      const fullText = (el.innerText || el.textContent || '').trim();
+      const deep = getDeepText(el, 8);
+      const fullText = (deep || el.innerText || el.textContent || '').trim();
       const maxChars = typeof opts.maxChars === 'number' ? Math.max(opts.maxChars, 100) : 8000;
       const offset = typeof opts.offset === 'number' ? Math.max(opts.offset, 0) : 0;
       const sliced = fullText.slice(offset, offset + maxChars);
@@ -723,27 +974,50 @@ export const BROWSER_RUNTIME_INIT_SCRIPT = `(() => {
     }
   };
 
-  window.__agentInspect = function(target) {
+  window.__agentInspect = function(target, opts = {}) {
     try {
-      const el = window.__findAgentNode(target);
-      if (!el) return { ok: false, error: '未找到节点 [' + target + ']，页面可能已变化，请先重新 index()' };
+      let el = null;
+      let matchCount = 1;
+      if (typeof target === 'string' && isNaN(Number(target))) {
+        const list = deepQuerySelectorAll(document, target, 50);
+        matchCount = list.length;
+        const idx = typeof opts.nth === 'number' ? opts.nth : 0;
+        el = list[idx] || null;
+      } else {
+        el = window.__findAgentNode(target);
+      }
+
+      if (!el) {
+        const isSelector = typeof target === 'string' && isNaN(Number(target));
+        const errorMsg = isSelector
+          ? \`选择器未匹配到任何节点: "\${target}"\`
+          : \`未找到节点编号 [\${target}]（页面可能已刷新或 DOM 节点已移除，请重新执行 index()）\`;
+        return { ok: false, error: errorMsg };
+      }
 
       const resolvedEl = resolveEditableTarget(el);
       const rect = el.getBoundingClientRect();
+      const isVis = isVisible(el) && rect.width > 0 && rect.height > 0;
+      const textVal = cleanText(getDeepText(el, 4), 500);
+
       return {
         ok: true,
         id: target,
+        matchCount,
         tag: el.tagName.toLowerCase(),
         resolvedTag: resolvedEl !== el ? resolvedEl.tagName.toLowerCase() : undefined,
         idAttr: el.id || undefined,
         className: el.className || undefined,
+        text: textVal,
         value: (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)
           ? el.value
-          : ('value' in resolvedEl ? resolvedEl.value : undefined),
+          : ('value' in resolvedEl ? resolvedEl.value : (resolvedEl.innerText || undefined)),
         placeholder: el.getAttribute('placeholder') || resolvedEl.getAttribute('placeholder') || undefined,
         href: el.getAttribute('href') || undefined,
         checked: (el instanceof HTMLInputElement) ? el.checked : undefined,
         disabled: Boolean(el.disabled || el.getAttribute('disabled')),
+        visible: isVis,
+        warning: !isVis ? '节点尺寸为 0x0 或不可见，对其执行点击可能无效' : undefined,
         isEditable: checkIsEditable(el),
         rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
       };

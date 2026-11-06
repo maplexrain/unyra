@@ -268,6 +268,10 @@ export async function apiNameTests() {
     'browser.type': "1, '搜索词'",
     'browser.press': "'Enter'",
     'browser.scroll': '{ by: 800 }',
+    'browser.query': "'button'",
+    'browser.waitFor': "'button'",
+    'browser.screenshot': '',
+    'browser.eval': "'document.title'",
     // 外部 MCP 服务：探针里给一份假的宿主（真实现见 agent/mcp/ops）
     'mcp.list': '',
     'mcp.discover': "'探针服务'",
@@ -497,6 +501,10 @@ export async function apiNameTests() {
       type: async () => ({ ok: true, tag: 'textarea', typedChars: 3 }),
       press: async () => ({ ok: true, key: 'Enter' }),
       scroll: async () => ({ ok: true, scrollY: 0, scrollHeight: 1000, atBottom: false }),
+      query: async () => ({ ok: true, selector: 'button', count: 1, matches: [] }),
+      waitFor: async () => ({ ok: true, elapsedMs: 100, id: 1 }),
+      screenshot: async () => ({ ok: true, url: 'moji:static/probe' }),
+      eval: async () => ({ ok: true, result: '示例' }),
     },
     // 外部 MCP 服务：桩（名单检查只问「这三个 api 在不在」；真行为见 tests/agentSkillsAndMcp.test.ts）
     mcp: {

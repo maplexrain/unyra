@@ -395,6 +395,10 @@ tabId 可省略，默认操作当前激活的网页页签；目标支持索引�
       a('type', 'browser.type(tabId?, target, text, opts?)', '逐字符按键仿真输入', '针对复杂 Shadow DOM 富文本框（如 B 站评论区），派发完整 keydown/beforeinput/input/keyup/IME 键序列。', "await api.browser.type(25, '真实评论内容')"),
       a('press', 'browser.press(tabId?, key, target?)', '模拟键盘按键', '敲击按键（如 "Enter"、"Escape"、"Tab"、"ArrowDown" 等）。', "await api.browser.press('Enter')"),
       a('scroll', 'browser.scroll(tabId?, opts?)', '滚动页面或容器', 'opts: { to: "top" | "bottom" } 或 { by: 像素 } 或 { target: 节点 }；返回 { atBottom }。', 'await api.browser.scroll({ by: 800 })'),
+      a('query', 'browser.query(tabId?, selector, opts?)', '跨 Shadow DOM 全域检索选择器', '遍历所有 shadowRoot 返回匹配候选数组（每项带 id、text、href、rect、visible 等），一招解决多目标冲突。', "const btns = await api.browser.query('bili-comment-box >>> button')"),
+      a('waitFor', 'browser.waitFor(tabId?, targetOrText, opts?)', '智能等待节点或文本出现', '轮询等待异步渲染的组件或提示文字出现（可配 timeoutMs），告别盲等。', "await api.browser.waitFor('bili-comment-box', { timeoutMs: 5000 })"),
+      a('screenshot', 'browser.screenshot(tabId?, opts?)', '截取网页视图', '截取当前网页并存入静态资源库，返回 moji:static 访问地址，一眼辨别渲染与输入状态。', "const pic = await api.browser.screenshot()"),
+      a('eval', 'browser.eval(tabId?, code)', '页面上下文受控 JS 执行', '在访客页面环境中安全执行只读/枚举 JS 脚本并返回 JSON 结果，作为穿透复杂组件的终极武器。', "const res = await api.browser.eval('return document.title')"),
     ],
   ),
   g(

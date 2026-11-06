@@ -1,9 +1,30 @@
-import type { BrowserClickResult, BrowserFillResult, BrowserOps, BrowserTabInfo, BrowserTarget, BrowserTypeOpts, BrowserTypeResult } from '../../agent/sandbox/types'
+import type {
+  BrowserClickResult,
+  BrowserEvalResult,
+  BrowserFillResult,
+  BrowserIndexResult,
+  BrowserInspectOpts,
+  BrowserInspectResult,
+  BrowserOps,
+  BrowserPressResult,
+  BrowserQueryOpts,
+  BrowserQueryResult,
+  BrowserScreenshotOpts,
+  BrowserScrollResult,
+  BrowserTabInfo,
+  BrowserTarget,
+  BrowserTextResult,
+  BrowserTypeOpts,
+  BrowserTypeResult,
+  BrowserWaitForOpts,
+  BrowserWaitForResult,
+} from '../../agent/sandbox/types'
 import type { LearnStore, TabRef, WebTabMeta } from '../types'
 import { findTab, focusedGroup, groupIdOfTab } from '../groups'
 import { normalizeWebInput } from '../webUrl'
 import { buildRuntimeExecScript } from './browserRuntimeScript'
 import { webviewOf } from './webviewRegistry'
+import { saveScreenshot } from '../screenshots'
 
 /**
  * browser.* 的宿主实现（沙箱里 api.browser.* 的真身，见 agent/sandbox/types 的 BrowserOps）。
@@ -122,22 +143,30 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
       return { ok: true }
     },
     async index(tabId, opts) {
-      const focusTarget = opts?.focus ?? null
-      return executeInPage(tabId, `window.__agentIndex(${JSON.stringify(focusTarget)})`)
+      return executeInPage<BrowserIndexResult>(tabId, `window.__agentIndex(${JSON.stringify(opts ?? {})})`)
     },
     async text(tabId, target: BrowserTarget, opts) {
-      return executeInPage(tabId, `window.__agentText(${JSON.stringify(target)}, ${JSON.stringify(opts ?? {})})`)
+      return executeInPage<BrowserTextResult>(tabId, `window.__agentText(${JSON.stringify(target)}, ${JSON.stringify(opts ?? {})})`)
     },
-    async inspect(tabId, target: BrowserTarget) {
-      return executeInPage(tabId, `window.__agentInspect(${JSON.stringify(target)})`)
+    async inspect(tabId, target: BrowserTarget, opts?: BrowserInspectOpts) {
+      return executeInPage<BrowserInspectResult>(tabId, `window.__agentInspect(${JSON.stringify(target)}, ${JSON.stringify(opts ?? {})})`)
     },
     async click(tabId, target: BrowserTarget, opts) {
+      const sBefore = deps.getLatest()
+      const tabsBefore = sBefore.docArea.groups.flatMap((g) => g.tabs).map((t) => t.id)
       const r = await executeInPage<BrowserClickResult>(
         tabId,
         `window.__agentClick(${JSON.stringify(target)}, ${JSON.stringify(opts ?? {})})`,
       )
       if (opts?.waitAfterMs && opts.waitAfterMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, opts.waitAfterMs))
+      }
+      const sAfter = deps.getLatest()
+      const tabsAfter = sAfter.docArea.groups.flatMap((g) => g.tabs).map((t) => t.id)
+      const newTabId = tabsAfter.find((id) => !tabsBefore.includes(id))
+      if (newTabId) {
+        r.openedTabId = newTabId
+        r.navigated = true
       }
       return r
     },
@@ -154,13 +183,67 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
       )
     },
     async press(tabId, key: string, target?: BrowserTarget) {
-      return executeInPage(
+      return executeInPage<BrowserPressResult>(
         tabId,
         `window.__agentPress(${JSON.stringify(key)}, ${JSON.stringify(target ?? null)})`,
       )
     },
     async scroll(tabId, opts) {
-      return executeInPage(tabId, `window.__agentScroll(${JSON.stringify(opts ?? {})})`)
+      return executeInPage<BrowserScrollResult>(tabId, `window.__agentScroll(${JSON.stringify(opts ?? {})})`)
+    },
+    async query(tabId, selector: string, opts?: BrowserQueryOpts) {
+      return executeInPage<BrowserQueryResult>(
+        tabId,
+        `window.__agentQuery(${JSON.stringify(selector)}, ${JSON.stringify(opts ?? {})})`,
+      )
+    },
+    async waitFor(tabId, targetOrText: string, opts?: BrowserWaitForOpts) {
+      return executeInPage<BrowserWaitForResult>(
+        tabId,
+        `window.__agentWaitFor(${JSON.stringify(targetOrText)}, ${JSON.stringify(opts ?? {})})`,
+      )
+    },
+    async screenshot(tabId, _opts?: BrowserScreenshotOpts) {
+      const { tabId: resolvedId } = resolveTab(tabId)
+      const wv = webviewOf(resolvedId)
+      if (!wv) {
+        return { ok: false, error: '未找到网页视图实例（页签可能未激活或未渲染）' }
+      }
+      try {
+        let nativeImg: any = null
+        if (typeof (wv as any).capturePage === 'function') {
+          nativeImg = await (wv as any).capturePage()
+        }
+        if (nativeImg && typeof nativeImg.toDataURL === 'function') {
+          const dataUrl = nativeImg.toDataURL()
+          const s = deps.getLatest()
+          const goalId = _goalId || s.goals[0]?.id
+          if (goalId) {
+            const saved = await saveScreenshot(deps.getLatest, deps.set, goalId, dataUrl, '网页截图')
+            if (saved.ok) {
+              return {
+                ok: true,
+                uuid: saved.image.id,
+                path: saved.image.rel,
+                url: 'moji:static/' + saved.image.id,
+                width: nativeImg.getSize?.()?.width,
+                height: nativeImg.getSize?.()?.height,
+              }
+            }
+          }
+          return { ok: true, url: dataUrl.slice(0, 50) + '...', width: nativeImg.getSize?.()?.width, height: nativeImg.getSize?.()?.height }
+        }
+        return { ok: true, url: 'webview:captured' }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return { ok: false, error: msg }
+      }
+    },
+    async eval(tabId, code: string) {
+      return executeInPage<BrowserEvalResult>(
+        tabId,
+        `window.__agentEval(${JSON.stringify(code)})`,
+      )
     },
   }
 }
