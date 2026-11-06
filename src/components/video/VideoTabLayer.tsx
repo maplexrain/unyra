@@ -8,7 +8,7 @@
  */
 import { MonitorPlay } from 'lucide-react'
 import { t } from '../../i18n'
-import type { LearnTab, TabRef, VideoNodeEntity, VideoRecap, VideoResource } from '../../learn/types'
+import type { LearnStore, LearnTab, TabRef, VideoNodeEntity, VideoRecap, VideoResource } from '../../learn/types'
 import VideoStudyTab, { type VideoCreateDraft } from './VideoStudyTab'
 
 export type VideoTab = LearnTab & { ref: Extract<TabRef, { kind: 'video' }> }
@@ -18,6 +18,10 @@ interface Props {
   tabs: VideoTab[]
   /** 此刻激活的视频页签 id；不是视频页签时传 null（整层仍然挂着，只是都藏着） */
   activeId: string | null
+  /** 整个目标的 store */
+  store?: LearnStore
+  /** 提交 store 修改 */
+  onCommitStore?: (next: LearnStore) => void
   /** 视频资源表（store.videos） */
   videos?: VideoResource[]
   /** 视频节点表（store.videoNodes） */
@@ -37,6 +41,8 @@ interface Props {
 export default function VideoTabLayer({
   tabs,
   activeId,
+  store,
+  onCommitStore,
   videos,
   videoNodes,
   onCreate,
@@ -72,6 +78,8 @@ export default function VideoTabLayer({
                 tabId={tab.id}
                 active={active}
                 videoNodeId={tab.ref.videoNodeId}
+                store={store}
+                onCommitStore={onCommitStore}
                 initialInput={videoNode?.input ?? ''}
                 onCreate={resource ? undefined : (draft) => onCreate(tab.id, draft, tab.ref.videoNodeId)}
                 onResolved={(title) => {

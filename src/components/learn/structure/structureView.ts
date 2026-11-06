@@ -551,7 +551,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     if (to && projectPending.has(to)) return docPending.get(from)
     // 笔记节点的上游：若起点在 byUuid 中存在（如考试、超级文档、文档、文件），优先返回其实体卡片
     if (to && byUuid.get(to)?.card.kind === 'note') {
-      return byUuid.get(from) ?? outlinePending.get(outlineUuid(from)) ?? docPending.get(from)
+      return byUuid.get(from) ?? outlinePending.get(outlineUuid(from)) ?? docPending.get(from) ?? videoPending.get(from)
     }
     // 文件节点的上游：优先返回其实体卡片
     if (to && (filePending.has(to) || videoPending.has(to))) {

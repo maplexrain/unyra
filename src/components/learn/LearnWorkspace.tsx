@@ -5694,6 +5694,8 @@ export default function LearnWorkspace({
             <VideoTabLayer
               tabs={gVideoTabs}
               activeId={gTab?.ref.kind === 'video' ? gTab.id : null}
+              store={store}
+              onCommitStore={set}
               videos={store.videos}
               videoNodes={store.videoNodes}
               onCreate={(tabId, draft: VideoCreateDraft, videoNodeId?: string) => {

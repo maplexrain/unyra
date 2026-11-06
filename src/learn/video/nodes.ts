@@ -1,3 +1,6 @@
+import { detachedPoolOf, withDetached } from '../detached'
+import { notesOf, uniqueNoteName } from '../notes'
+import type { NoteFile } from '../types'
 /**
  * 视频节点的数据层：目标 × 视频的绑定表（store.videoNodes）与它的**双向镜像**
  * （VideoResource.boundTo）。
@@ -214,4 +217,142 @@ export function normalizeVideoNodes(raw: unknown, goalIds: ReadonlySet<string>, 
     })
   }
   return out
+}
+
+/** 查询挂载在某个视频节点下的全部笔记节点实体 */
+export function getNotesForVideoNode(store: LearnStore, videoNodeId?: string): NoteFile[] {
+  if (!videoNodeId) return []
+  const edgeNoteIds = new Set(
+    (store.edges ?? []).filter((e) => e.from === videoNodeId).map((e) => e.to)
+  )
+  if (edgeNoteIds.size === 0) return []
+
+  const result: NoteFile[] = []
+  for (const pool of Object.values(store.detached ?? {})) {
+    for (const note of pool.notes) {
+      if (edgeNoteIds.has(note.id)) {
+        result.push(note)
+      }
+    }
+  }
+  for (const node of store.nodes ?? []) {
+    for (const note of notesOf(node)) {
+      if (edgeNoteIds.has(note.id)) {
+        result.push(note)
+      }
+    }
+  }
+  return result
+}
+
+/** 为视频节点新建并挂载一个笔记节点 */
+export function createNoteForVideoNode(
+  store: LearnStore,
+  videoNodeId: string,
+  initialTitle?: string
+): { store: LearnStore; note: NoteFile } {
+  const vNode = videoNodeById(store, videoNodeId)
+  const targetGoalId = vNode?.goalId || store.goals?.[0]?.id || 'default'
+
+  const pool = detachedPoolOf(store, targetGoalId)
+  const existingNotes = getNotesForVideoNode(store, videoNodeId)
+  const defaultName = initialTitle || `笔记 ${existingNotes.length + 1}`
+  const name = uniqueNoteName(pool.notes, defaultName)
+  const id = crypto.randomUUID()
+  const note: NoteFile = {
+    id,
+    name,
+    content: '',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  }
+
+  const nextPool = {
+    ...pool,
+    notes: [...pool.notes, note],
+  }
+  const nextStore = withDetached(store, targetGoalId, nextPool)
+  const nextEdges = [...(nextStore.edges ?? []), { from: videoNodeId, to: id, createdAt: Date.now() }]
+
+  return {
+    store: {
+      ...nextStore,
+      edges: nextEdges,
+    },
+    note,
+  }
+}
+
+/** 更新视频节点下某份笔记（修改名称或内容） */
+export function updateNoteForVideoNode(
+  store: LearnStore,
+  noteId: string,
+  patch: { name?: string; content?: string }
+): LearnStore {
+  let changed = false
+  const nextDetached = { ...(store.detached ?? {}) }
+  for (const [gId, pool] of Object.entries(nextDetached)) {
+    const idx = pool.notes.findIndex((n) => n.id === noteId)
+    if (idx >= 0) {
+      const cur = pool.notes[idx]
+      const updated: NoteFile = {
+        ...cur,
+        name: patch.name !== undefined ? patch.name : cur.name,
+        content: patch.content !== undefined ? patch.content : cur.content,
+        updatedAt: Date.now(),
+      }
+      nextDetached[gId] = {
+        ...pool,
+        notes: pool.notes.map((n, i) => (i === idx ? updated : n)),
+      }
+      changed = true
+      break
+    }
+  }
+  if (!changed) {
+    const nextNodes = (store.nodes ?? []).map((node) => {
+      const idx = (node.notes ?? []).findIndex((n) => n.id === noteId)
+      if (idx >= 0) {
+        changed = true
+        return {
+          ...node,
+          notes: (node.notes ?? []).map((n, i) =>
+            i === idx
+              ? {
+                  ...n,
+                  name: patch.name !== undefined ? patch.name : n.name,
+                  content: patch.content !== undefined ? patch.content : n.content,
+                  updatedAt: Date.now(),
+                }
+              : n
+          ),
+        }
+      }
+      return node
+    })
+    if (changed) return { ...store, nodes: nextNodes }
+  }
+  return changed ? { ...store, detached: nextDetached } : store
+}
+
+/** 删除视频节点下挂载的某份笔记 */
+export function deleteNoteForVideoNode(store: LearnStore, noteId: string): LearnStore {
+  const nextEdges = (store.edges ?? []).filter((e) => e.from !== noteId && e.to !== noteId)
+  const nextDetached = { ...(store.detached ?? {}) }
+  for (const [gId, pool] of Object.entries(nextDetached)) {
+    nextDetached[gId] = {
+      ...pool,
+      notes: pool.notes.filter((n) => n.id !== noteId),
+    }
+  }
+  const nextNodes = (store.nodes ?? []).map((node) => ({
+    ...node,
+    notes: (node.notes ?? []).filter((n) => n.id !== noteId),
+  }))
+  return {
+    ...store,
+    edges: nextEdges,
+    detached: nextDetached,
+    nodes: nextNodes,
+  }
 }

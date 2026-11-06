@@ -79,7 +79,7 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
     expect(canAutoGenerateLong).toBe(false)
   })
 
-  it('左侧栏 2:1:1 三行布局结构与无边缘遮罩规范验证', async () => {
+  it('左侧栏 1:1:1 三行均分布局与移除导出逻辑、右侧笔记栏规范验证', async () => {
     const fs = await import('fs')
     const code = fs.readFileSync('src/components/video/VideoStudyTab.tsx', 'utf8')
 
@@ -87,12 +87,37 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
     expect(code).not.toContain('maskImage:')
     expect(code).not.toContain('WebkitMaskImage:')
 
-    // 2. 验证左侧栏三行的高度权重为 2:1:1 (第一行选集列表 flex-[2]，第二行字幕 flex-1，第三行分段 flex-1)
-    expect(code).toContain('flex flex-[2] min-h-0 flex-col')
+    // 2. 验证左侧栏三行的高度权重为 1:1:1 均分 (选集列表 flex-1，字幕 flex-1，分段 flex-1)
+    expect(code).not.toContain('flex-[2]')
+    expect(code).toContain('flex flex-1 min-h-0 flex-col')
     expect(code).toContain('flex flex-1 min-h-0 flex-col border-t border-white/10')
 
     // 3. 验证去掉了独立的右侧栏 sidePanel
     expect(code).not.toContain('const sidePanel =')
     expect(code).not.toContain('COLLAPSED_KEY')
+
+    // 4. 验证移出了导出选集字幕按钮及相关逻辑
+    expect(code).not.toContain('exportPages')
+    expect(code).not.toContain('buildPagesMarkdown')
+    expect(code).not.toContain('PagesExportEntry')
+
+    // 5. 验证右侧栏（Tab 键笔记栏）与插入时间戳功能
+    expect(code).toContain('rightOverlay')
+    expect(code).toContain('createNoteForVideoNode')
+    expect(code).toContain('deleteNoteForVideoNode')
+    expect(code).toContain('updateNoteForVideoNode')
+    expect(code).toContain('formatClock(currentMs)')
+  })
+
+  it('验证 VideoPlayer 顶底栏遮罩往回缩紧规范', async () => {
+    const fs = await import('fs')
+    const code = fs.readFileSync('src/components/video/VideoPlayer.tsx', 'utf8')
+
+    // 验证顶部栏和底部栏的缩紧渐变样式
+    expect(code).toContain('from-black/90 via-black/40 to-transparent')
+    expect(code).toContain('from-black/90 via-black/45 to-transparent')
+    // 验证支持 rightOverlay 与笔记切换按钮
+    expect(code).toContain('rightOverlay')
+    expect(code).toContain('onToggleRightOverlay')
   })
 })

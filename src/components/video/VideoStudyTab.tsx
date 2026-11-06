@@ -5,43 +5,54 @@
  *   输入不一定是 URL——交给已装载的插件逐个 `match()` 认领，认领后展示该插件的
  *   `createFields` 表单，填完创建。插件与输入在这一刻确定，之后不再让用户重填。
  * - **绑定态**（`video` 有值，键 v:<id>）：页里**没有任何输入组件**，进页即按
- *   资源的「输入 + 字段」自动解析；标题栏/播放器/合集/选集/字幕条照旧。
+ *   资源的「输入 + 字段」自动解析；标题栏/播放器/选集/字幕条照旧。
  *
  * 两种形态都走 `lib/videoPlugins` 的派发（match → resolve → 宿主归一 + 时长对账）。
  * 流地址每次解析都重新登记（media-relay 不落盘）；解析结果不随页签持久化。
  * 视频页签由工作区的常驻层 keepalive 渲染（切走只藏不卸，播放不打断）。
  *
  * 重构说明：
- * - 移除底部三栏与独立选集右侧栏；
- * - 增加 Tab 键左侧栏：三行垂直切分，高度权重为 2:1:1，2 为选集列表，1 为字幕列表，1 为视频分段；
- * - 侧边栏去掉边缘遮罩渐变效果，采用无边框、无圆角、2px 轻微背景模糊；
- * - 避开顶部标题栏与底部控制栏，高度收缩（top-[46px] bottom-[68px]）；
- * - 视频播放时立即自动生成分段；限制 50,000 字符，超过 50,000 字符需手动点击生成。
+ * - 移除底部三栏；
+ * - Tab 键左侧栏：三行垂直均分，高度权重为 1:1:1（选集列表、字幕列表、视频分段）；
+ * - 移除导出选集字幕按钮及相关逻辑；
+ * - Tab 键右侧栏：视频笔记栏，支持新建、删除笔记，点击进入二级页面编辑；
+ * - 笔记实体为节点宇宙中挂载在视频节点下的笔记节点；
+ * - 二级页面顶部栏包含「插入当前视频时间戳」按钮；
+ * - 顶/底栏收缩渐变遮罩，侧边栏避开顶底栏（top-[40px] bottom-[56px]）。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  BookOpen,
   Captions,
+  ChevronLeft,
   Clapperboard,
-  Download,
+  Clock,
   ListTree,
   ListVideo,
   Loader2,
   MonitorPlay,
+  Pencil,
   Plus,
   Puzzle,
+  Trash2,
   X,
 } from 'lucide-react'
 import { t } from '../../i18n'
-import { isWeb, native } from '../../lib/native'
-import { matchVideoPlugin, resolveVideoSource, resolveVideoTranscript, videoSourcePlugins } from '../../lib/videoPlugins'
+import { isWeb } from '../../lib/native'
+import { matchVideoPlugin, resolveVideoSource, videoSourcePlugins } from '../../lib/videoPlugins'
 import { openRelayStream } from '../../video/registry'
-import { buildPagesMarkdown, type PagesExportEntry } from '../../video/export'
 import { formatClock, segmentIndexAt } from '../../video/transcript'
 import { summarizeVideoChapters } from '../../learn/video/summarize'
+import {
+  createNoteForVideoNode,
+  deleteNoteForVideoNode,
+  getNotesForVideoNode,
+  updateNoteForVideoNode,
+} from '../../learn/video/nodes'
 import type { Transcript, VideoSource } from '../../video/types'
 import type { PluginSettingField } from '../../lib/plugins'
-import type { VideoRecap, VideoResource } from '../../learn/types'
+import type { LearnStore, NoteFile, VideoRecap, VideoResource } from '../../learn/types'
 import { registerVideoAudio } from '../../learn/video/videoRegistry'
 import VideoPlayer, { type VideoPlayerHandle } from './VideoPlayer'
 
@@ -69,6 +80,10 @@ interface Props {
   video?: VideoResource | null
   /** 关联的视频节点 id（如果有） */
   videoNodeId?: string
+  /** 整个目标的 store */
+  store?: LearnStore
+  /** 提交 store 修改 */
+  onCommitStore?: (next: LearnStore) => void
   /** 初始输入（来自视频节点） */
   initialInput?: string
   /** 创建（工作区负责落库、开绑定页签、关掉创建页签） */
@@ -96,7 +111,9 @@ export default function VideoStudyTab({
   onSaveRecap,
   tabId,
   active = true,
-  videoNodeId: _videoNodeId,
+  videoNodeId,
+  store,
+  onCommitStore,
   initialInput = '',
 }: Props) {
   const bound = !!video
@@ -170,7 +187,13 @@ export default function VideoStudyTab({
   /** 左侧抽屉（选集列表 + 字幕列表 + 视频分段）：按 Tab 展开/收起 */
   const [leftOverlayOpen, setLeftOverlayOpen] = useState(false)
 
-  /** 键盘 Tab 键监听：切换左侧栏浮层 */
+  /** 右侧抽屉（笔记栏）：按 Tab 展开/收起 */
+  const [rightOverlayOpen, setRightOverlayOpen] = useState(false)
+
+  /** 当前在二级页面编辑的笔记 id；null 为列表页 */
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+
+  /** 键盘 Tab 键监听：同时切换左侧栏与右侧笔记栏 */
   useEffect(() => {
     if (!active) return
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -183,15 +206,16 @@ export default function VideoStudyTab({
           }
         }
         e.preventDefault()
-        setLeftOverlayOpen((v) => !v)
+        // 同时联动切换两栏显隐
+        const next = !leftOverlayOpen && !rightOverlayOpen
+        setLeftOverlayOpen(next)
+        setRightOverlayOpen(next)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [active])
+  }, [active, leftOverlayOpen, rightOverlayOpen])
 
-  /** 合集字幕批量导出进度 */
-  const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(null)
   /** 换集幕布 */
   const [switchStill, setSwitchStill] = useState<{ token: string; src: string } | null>(null)
 
@@ -212,6 +236,7 @@ export default function VideoStudyTab({
   const listRef = useRef<HTMLDivElement | null>(null)
   const rowRefs = useRef<Array<HTMLDivElement | null>>([])
   const chapterListRef = useRef<HTMLDivElement | null>(null)
+  const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   const segments = transcript?.segments ?? []
   const activeIdx = segments.length ? segmentIndexAt(segments, currentMs) : -1
@@ -229,6 +254,99 @@ export default function VideoStudyTab({
   const totalTranscriptChars = useMemo(() => {
     return segments.reduce((sum, seg) => sum + (seg.text ? seg.text.length : 0), 0)
   }, [segments])
+
+  /** 挂载在当前视频节点下的所有笔记节点实体 */
+  const videoNotes = useMemo<NoteFile[]>(() => {
+    if (!store || !videoNodeId) return []
+    return getNotesForVideoNode(store, videoNodeId)
+  }, [store, videoNodeId])
+
+  /** 当前正在编辑的笔记对象 */
+  const currentEditingNote = useMemo<NoteFile | null>(() => {
+    if (!editingNoteId) return null
+    return videoNotes.find((n) => n.id === editingNoteId) ?? null
+  }, [videoNotes, editingNoteId])
+
+  /** 编辑态的草稿标题与正文 */
+  const [draftTitle, setDraftTitle] = useState('')
+  const [draftContent, setDraftContent] = useState('')
+  const saveTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (currentEditingNote) {
+      setDraftTitle(currentEditingNote.name)
+      setDraftContent(currentEditingNote.content)
+    }
+  }, [currentEditingNote?.id])
+
+  /** 提交笔记编辑变更并写回 store */
+  const commitNoteDraft = useCallback(
+    (name: string, content: string) => {
+      if (!editingNoteId || !store || !onCommitStore) return
+      const nextStore = updateNoteForVideoNode(store, editingNoteId, { name, content })
+      onCommitStore(nextStore)
+    },
+    [editingNoteId, store, onCommitStore],
+  )
+
+  const handleTitleChange = (val: string) => {
+    setDraftTitle(val)
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = window.setTimeout(() => {
+      commitNoteDraft(val.trim() || t('未命名笔记'), draftContent)
+    }, 400)
+  }
+
+  const handleContentChange = (val: string) => {
+    setDraftContent(val)
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = window.setTimeout(() => {
+      commitNoteDraft(draftTitle.trim() || t('未命名笔记'), val)
+    }, 400)
+  }
+
+  /** 在当前光标处（或末尾）插入当前视频时间戳 */
+  const handleInsertTimestamp = () => {
+    const stamp = `[${formatClock(currentMs)}] `
+    const textarea = noteTextareaRef.current
+    if (!textarea) {
+      const next = draftContent ? `${draftContent}\n${stamp}` : stamp
+      setDraftContent(next)
+      commitNoteDraft(draftTitle.trim() || t('未命名笔记'), next)
+      return
+    }
+
+    const start = textarea.selectionStart ?? draftContent.length
+    const end = textarea.selectionEnd ?? draftContent.length
+    const next = draftContent.slice(0, start) + stamp + draftContent.slice(end)
+    setDraftContent(next)
+    commitNoteDraft(draftTitle.trim() || t('未命名笔记'), next)
+
+    // 光标移到插入的时间戳之后
+    window.setTimeout(() => {
+      textarea.focus()
+      textarea.setSelectionRange(start + stamp.length, start + stamp.length)
+    }, 0)
+  }
+
+  /** 新建一条笔记并挂载到当前视频节点上 */
+  const handleCreateNote = () => {
+    if (!videoNodeId || !store || !onCommitStore) return
+    const { store: nextStore, note } = createNoteForVideoNode(store, videoNodeId)
+    onCommitStore(nextStore)
+    setEditingNoteId(note.id)
+  }
+
+  /** 删除某条笔记 */
+  const handleDeleteNote = (noteId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!store || !onCommitStore) return
+    const nextStore = deleteNoteForVideoNode(store, noteId)
+    onCommitStore(nextStore)
+    if (editingNoteId === noteId) {
+      setEditingNoteId(null)
+    }
+  }
 
   /**
    * 解析视频来源
@@ -328,53 +446,6 @@ export default function VideoStudyTab({
       fields: createValues,
     })
   }, [matched, missingRequired, input, createValues, onCreate])
-
-  const videoFieldsRef = useRef(video?.fields)
-  useEffect(() => {
-    videoFieldsRef.current = video?.fields
-  }, [video?.fields])
-
-  const exportPages = async () => {
-    const pages = source?.pages
-    if (!pages || !source || exportProgress) return
-    setExportProgress({ done: 0, total: pages.length })
-    const entries: PagesExportEntry[] = []
-    try {
-      for (let i = 0; i < pages.length; i++) {
-        const item = pages[i]
-        const entry: PagesExportEntry = {
-          page: item.page,
-          title: item.title,
-          durationMs: item.durationMs,
-          source: item.source,
-        }
-        try {
-          entry.transcript = await resolveVideoTranscript(item.source, videoFieldsRef.current)
-        } catch (err) {
-          entry.error = err instanceof Error ? err.message : String(err)
-        }
-        entries.push(entry)
-        setExportProgress({ done: i + 1, total: pages.length })
-        if (i < pages.length - 1) await new Promise((r) => window.setTimeout(r, 150))
-      }
-      const bvid = /BV[0-9A-Za-z]{10}/.exec(pages[0]?.source ?? '')?.[0]
-      const md = buildPagesMarkdown(
-        {
-          title: source.title,
-          durationMs: source.durationMs,
-          source: bvid ? `https://www.bilibili.com/video/${bvid}` : (video?.input ?? source.mediaId),
-        },
-        entries,
-      )
-      const safeName = source.title.replace(/[\\/:*?"<>|]/g, '_')
-      const res = await native().saveText({ suggestedName: `${safeName}.md`, content: md, title: t('导出选集字幕') })
-      if (!res.ok && !res.canceled) setError(res.error ?? t('导出失败'))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setExportProgress(null)
-    }
-  }
 
   const seekMs = useCallback((ms: number) => {
     playerRef.current?.seekMs(ms)
@@ -531,21 +602,21 @@ export default function VideoStudyTab({
 
   /**
    * 左侧浮层（按 Tab 展开/收起）：
-   * - 侧边栏去掉边缘遮罩渐变效果，无圆角、无外边框，背景模糊 2px；
-   * - 高度收缩：top-[46px] bottom-[68px]，彻底避开顶部标题栏与底部控制栏，防止重叠；
-   * - 三行垂直切分，高度权重比为 2:1:1，2 为选集列表，1 为字幕列表，1 为视频分段。
+   * - 高度收缩：top-[40px] bottom-[56px]，彻底避开顶部标题栏与底部控制栏，防止重叠；
+   * - 样式：无圆角、无边框、无遮罩渐变，背景模糊降至 2px；
+   * - 三行垂直切分，高度权重比为 1:1:1，均分高度（1选集列表，1字幕列表，1视频分段）。
    */
   const leftOverlay = (
     <div
       className={
-        'absolute left-0 top-[46px] bottom-[68px] z-20 flex w-[340px] max-w-[46vw] flex-col overflow-hidden bg-black/85 text-white backdrop-blur-[2px] shadow-2xl transition-all duration-200 ' +
+        'absolute left-0 top-[40px] bottom-[56px] z-20 flex w-[340px] max-w-[46vw] flex-col overflow-hidden bg-black/85 text-white backdrop-blur-[2px] shadow-2xl transition-all duration-200 ' +
         (leftOverlayOpen ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 -translate-x-4 pointer-events-none')
       }
       onPointerDown={(e) => e.stopPropagation()}
     >
-      {/* 第一行（权重 2）：选集列表 */}
-      <div className="flex flex-[2] min-h-0 flex-col bg-white/[0.02]">
-        <div className="flex shrink-0 items-center justify-between px-3 pt-2.5 pb-1 bg-white/[0.02]">
+      {/* 第一行（权重 1）：选集列表 */}
+      <div className="flex flex-1 min-h-0 flex-col bg-white/[0.02]">
+        <div className="flex shrink-0 items-center justify-between px-3 pt-2 pb-1 bg-white/[0.02]">
           <div className="flex items-center gap-1.5 min-w-0">
             <ListVideo size={14} className="text-pink-400 shrink-0" />
             <span className="text-[12px] font-semibold text-white/95 truncate">
@@ -557,31 +628,14 @@ export default function VideoStudyTab({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1">
-            {source?.pages && (
-              <button
-                type="button"
-                title={
-                  exportProgress
-                    ? t('导出中 {0}/{1}', String(exportProgress.done), String(exportProgress.total))
-                    : t('导出选集字幕（全部分 P 的转录合并为一个 Markdown）')
-                }
-                disabled={!!exportProgress || busy}
-                onClick={() => void exportPages()}
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-white/60 transition hover:bg-white/10 hover:text-white disabled:opacity-50 cursor-pointer"
-              >
-                {exportProgress ? <Loader2 size={12} className="animate-spin text-pink-400" /> : <Download size={12} />}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setLeftOverlayOpen(false)}
-              title={t('收起 (Tab)')}
-              className="rounded p-1 text-white/50 hover:bg-white/10 hover:text-white transition cursor-pointer"
-            >
-              <X size={13} />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setLeftOverlayOpen(false)}
+            title={t('收起列表 (Tab)')}
+            className="rounded p-1 text-white/50 hover:bg-white/10 hover:text-white transition cursor-pointer"
+          >
+            <X size={13} />
+          </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
@@ -804,6 +858,165 @@ export default function VideoStudyTab({
     </div>
   )
 
+  /**
+   * 右侧悬浮面板（视频笔记栏）：
+   * - 挂载在视频节点下作为节点宇宙中真正的笔记节点；
+   * - 一级列表展示该视频节点的笔记清单，支持新建/删除笔记；
+   * - 点击进入二级页面编辑，顶部栏提供「插入当前视频时间戳」按钮。
+   */
+  const rightOverlay = (
+    <div
+      className={
+        'absolute right-0 top-[40px] bottom-[56px] z-20 flex w-[340px] max-w-[46vw] flex-col overflow-hidden bg-black/85 text-white backdrop-blur-[2px] shadow-2xl transition-all duration-200 ' +
+        (rightOverlayOpen ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-4 pointer-events-none')
+      }
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {editingNoteId && currentEditingNote ? (
+        /* 二级页面：编辑某份笔记 */
+        <div className="flex h-full min-h-0 flex-col">
+          {/* 二级页面顶部栏 */}
+          <div className="flex shrink-0 items-center justify-between gap-1.5 border-b border-white/10 bg-white/[0.03] px-3 py-2">
+            <button
+              type="button"
+              onClick={() => setEditingNoteId(null)}
+              title={t('返回笔记列表')}
+              className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-white/70 transition hover:bg-white/10 hover:text-white cursor-pointer"
+            >
+              <ChevronLeft size={13} />
+              <span>{t('列表')}</span>
+            </button>
+
+            {/* 顶部栏功能按钮：插入当前视频时间戳 */}
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleInsertTimestamp}
+                title={t('在光标处插入当前时间戳 [{0}]', formatClock(currentMs))}
+                className="flex items-center gap-1 rounded bg-pink-500/20 px-2 py-1 text-[11px] font-medium text-pink-300 transition hover:bg-pink-500/30 cursor-pointer shadow-sm"
+              >
+                <Clock size={12} />
+                <span>{formatClock(currentMs)}</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setRightOverlayOpen(false)}
+              title={t('收起笔记 (Tab)')}
+              className="rounded p-1 text-white/50 hover:bg-white/10 hover:text-white transition cursor-pointer"
+            >
+              <X size={13} />
+            </button>
+          </div>
+
+          {/* 笔记标题输入行 */}
+          <div className="border-b border-white/10 px-3 py-2 bg-white/[0.01]">
+            <input
+              type="text"
+              value={draftTitle}
+              onChange={(e) => handleTitleChange(e.target.value)}
+              placeholder={t('笔记标题…')}
+              className="w-full bg-transparent text-[13px] font-medium text-white placeholder:text-white/30 outline-none"
+            />
+          </div>
+
+          {/* Markdown 正文编辑区 */}
+          <div className="min-h-0 flex-1 p-3">
+            <textarea
+              ref={noteTextareaRef}
+              value={draftContent}
+              onChange={(e) => handleContentChange(e.target.value)}
+              placeholder={t('记录你的思考、问题或随堂笔记（支持 Markdown）…')}
+              className="h-full w-full resize-none bg-transparent font-sans text-[12px] leading-relaxed text-white/90 placeholder:text-white/30 outline-none"
+            />
+          </div>
+        </div>
+      ) : (
+        /* 一级页面：笔记列表 */
+        <div className="flex h-full min-h-0 flex-col">
+          {/* 笔记列表顶部栏 */}
+          <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-white/[0.03] px-3 py-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <BookOpen size={14} className="text-pink-400 shrink-0" />
+              <span className="text-[12px] font-semibold text-white/95 truncate">{t('视频笔记')}</span>
+              {videoNotes.length > 0 && (
+                <span className="rounded bg-white/10 px-1.5 py-0.2 text-[10px] text-white/60 shrink-0">
+                  {videoNotes.length}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handleCreateNote}
+                title={t('新建笔记')}
+                className="flex items-center gap-1 rounded bg-pink-600/80 hover:bg-pink-600 px-2 py-0.5 text-[11px] font-medium text-white transition cursor-pointer shadow-sm"
+              >
+                <Plus size={12} />
+                <span>{t('新建')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightOverlayOpen(false)}
+                title={t('收起笔记 (Tab)')}
+                className="rounded p-1 text-white/50 hover:bg-white/10 hover:text-white transition cursor-pointer"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          </div>
+
+          {/* 笔记列表内容区 */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+            {videoNotes.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                {videoNotes.map((note) => (
+                  <div
+                    key={note.id}
+                    onClick={() => setEditingNoteId(note.id)}
+                    className="group relative flex flex-col gap-1 rounded-lg bg-white/[0.04] p-2.5 transition hover:bg-white/[0.08] cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[12px] font-medium text-white/95">{note.name}</span>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteNote(note.id, e)}
+                          title={t('删除笔记')}
+                          className="rounded p-1 text-white/40 hover:bg-red-500/20 hover:text-red-300 transition cursor-pointer"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                    {note.content ? (
+                      <p className="line-clamp-2 text-[11px] leading-relaxed text-white/60">
+                        {note.content.replace(/^#+\s+/gm, '')}
+                      </p>
+                    ) : (
+                      <p className="text-[10.5px] italic text-white/30">{t('（空笔记）')}</p>
+                    )}
+                    <span className="text-[9.5px] text-white/40 font-mono">
+                      {new Date(note.updatedAt || note.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-2.5 p-4 text-center">
+                <Pencil size={20} className="text-white/20" />
+                <p className="text-[11.5px] leading-relaxed text-white/45">
+                  {t('还没有笔记：点击上方「新建」即可记录时间戳与学习要点，并实时挂在视频节点下。')}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
   /* ---------- 绑定态：没有输入组件，自动解析 ---------- */
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-paper select-none">
@@ -826,6 +1039,9 @@ export default function VideoStudyTab({
             leftOverlay={leftOverlay}
             leftOverlayOpen={leftOverlayOpen}
             onToggleLeftOverlay={() => setLeftOverlayOpen((v) => !v)}
+            rightOverlay={rightOverlay}
+            rightOverlayOpen={rightOverlayOpen}
+            onToggleRightOverlay={() => setRightOverlayOpen((v) => !v)}
             subLabel={pageLabel}
             transitionStill={switchStill}
             chapters={chapterRows.length ? chapterRows : null}

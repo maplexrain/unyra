@@ -29,6 +29,7 @@ import {
   Loader2,
   Maximize,
   Minimize,
+  BookOpen,
   ListTree,
   Pause,
   Play,
@@ -86,6 +87,9 @@ export interface VideoPlayerProps {
   leftOverlay?: React.ReactNode
   leftOverlayOpen?: boolean
   onToggleLeftOverlay?: () => void
+  rightOverlay?: React.ReactNode
+  rightOverlayOpen?: boolean
+  onToggleRightOverlay?: () => void
   onPlay?: () => void
 }
 
@@ -175,6 +179,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       leftOverlay,
       leftOverlayOpen = false,
       onToggleLeftOverlay,
+      rightOverlay,
+      rightOverlayOpen = false,
+      onToggleRightOverlay,
       onPlay,
       active = true,
       chapters,
@@ -1007,7 +1014,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         */}
         {(title || subLabel) && (
           <div
-            className={`pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/95 via-black/80 to-transparent px-4 pb-12 pt-3 transition-opacity duration-300 ${
+            className={`pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/90 via-black/40 to-transparent px-4 pb-6 pt-2.5 transition-opacity duration-300 ${
               isControlsVisible ? 'opacity-100' : 'opacity-0'
             }`}
           >
@@ -1023,7 +1030,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
         {/* 底部控制器渐变背景与控制栏 */}
         <div
-          className={`absolute inset-x-0 bottom-0 z-30 flex flex-col justify-end bg-gradient-to-t from-black/95 via-black/85 to-transparent pt-16 pb-2.5 px-3 transition-opacity duration-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${
+          className={`absolute inset-x-0 bottom-0 z-30 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/45 to-transparent pt-7 pb-2 px-3 transition-opacity duration-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${
             isControlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
           onClick={(e) => e.stopPropagation()}
@@ -1136,12 +1143,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
             {/* 右侧功能控制集合 */}
             <div className="flex items-center gap-1.5">
-              {/* 左侧字幕与分段抽屉开关 */}
+              {/* 左侧选集/字幕/分段抽屉开关 */}
               {onToggleLeftOverlay && (
                 <button
                   type="button"
                   onClick={onToggleLeftOverlay}
-                  title={leftOverlayOpen ? t('收起侧边栏 (Tab)') : t('展开侧边栏 (Tab)')}
+                  title={leftOverlayOpen ? t('收起列表面板 (Tab)') : t('展开列表面板 (Tab)')}
                   aria-expanded={leftOverlayOpen}
                   className={
                     'flex h-8 items-center gap-1.5 px-2.5 rounded-lg text-[11.5px] transition hover:bg-white/20 ' +
@@ -1150,6 +1157,24 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 >
                   <ListTree size={15} />
                   <span>{t('选集/字幕/分段')}</span>
+                  <kbd className="hidden sm:inline rounded bg-white/10 px-1 py-0.5 text-[9px] font-mono text-white/60">Tab</kbd>
+                </button>
+              )}
+
+              {/* 右侧笔记栏开关 */}
+              {onToggleRightOverlay && (
+                <button
+                  type="button"
+                  onClick={onToggleRightOverlay}
+                  title={rightOverlayOpen ? t('收起笔记 (Tab)') : t('展开笔记 (Tab)')}
+                  aria-expanded={rightOverlayOpen}
+                  className={
+                    'flex h-8 items-center gap-1.5 px-2.5 rounded-lg text-[11.5px] transition hover:bg-white/20 ' +
+                    (rightOverlayOpen ? 'bg-white/25 text-seal font-medium' : 'text-white/80 hover:text-white')
+                  }
+                >
+                  <BookOpen size={15} />
+                  <span>{t('笔记')}</span>
                   <kbd className="hidden sm:inline rounded bg-white/10 px-1 py-0.5 text-[9px] font-mono text-white/60">Tab</kbd>
                 </button>
               )}
@@ -1462,6 +1487,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
         {/* 左侧悬浮面板（选集 + 字幕 + 视频分段）：按 Tab 展开/收起，挂在播放器根容器里 */}
         {leftOverlay}
+
+        {/* 右侧悬浮面板（笔记栏）：按 Tab 展开/收起，挂在播放器根容器里 */}
+        {rightOverlay}
 
         {/* 隐藏的字幕文件导入 input */}
         <input

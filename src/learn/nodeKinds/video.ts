@@ -132,13 +132,13 @@ export class VideoGNode extends GNode {
       edit:
         '内容形状：{ videoId } 或 { input }。未固化前可修改 input 或 title；确定为视频资源后标识输入框彻底固化，不再支持修改或换绑。',
       connection:
-        '上游允许文档节点，下游可挂文档（如视频总览文档）。删除走 api.node.delete。',
+        '上游允许文档节点，下游可挂文档（如视频总览文档）或笔记节点。删除走 api.node.delete。',
     }
   }
 
   onDownstream(node: GNode): ConnectFilter {
-    if (node.kind === 'doc') return true
-    return '视频节点下游只能挂文档（如视频总览文档）'
+    if (node.kind === 'doc' || node.kind === 'note') return true
+    return '视频节点下游只能挂文档或笔记'
   }
 
   onUpstream(node: GNode): ConnectFilter {
@@ -149,11 +149,11 @@ export class VideoGNode extends GNode {
   protected link(down: GNode): NodeResult {
     const s = this.ctx.store()
     if (!this.entity) return { error: '这个视频节点已经不在了' }
-    if (down.kind !== 'doc') return { error: '视频节点下游只能挂文档' }
+    if (down.kind !== 'doc' && down.kind !== 'note') return { error: '视频节点下游只能挂文档或笔记' }
     const r = addEdge(s, this.uuid, down.uuid)
     if (!r.added) return { error: r.reason ?? '连接失败' }
     this.ctx.commit(r.store)
-    return { ok: true, note: '已将文档「' + down.title + '」挂在视频节点之下' }
+    return { ok: true, note: '已将' + (down.kind === 'note' ? '笔记「' : '文档「') + down.title + '」挂在视频节点之下' }
   }
 
   protected unlink(target: GNode): NodeResult {
