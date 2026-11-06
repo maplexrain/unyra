@@ -49,7 +49,7 @@ export function getCanvasPerfStats(): Readonly<CanvasPerfStats> {
 
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { HTMLAttributes, ReactNode } from 'react'
-import { ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, FolderTree, Lock, Pencil, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, FolderTree, Pencil, Trash2, X } from 'lucide-react'
 import type { FileNodeKind, LearnStore } from '../../../learn/types'
 import { FILES_DIR } from '../../../learn/layout'
 import { sanitizeFileName, uploadGoalFileWithHash } from '../../../learn/fileNodes'
@@ -465,45 +465,45 @@ function VideoCardRow({
     commitInput(val)
   }
 
+  if (isConfirmed) {
+    return (
+      <div className="flex items-center justify-between gap-1.5 px-3 pb-2 select-none">
+        <span
+          title={card.subtitle || val}
+          className="min-w-0 flex-1 truncate text-[11px] text-pink-600/80 dark:text-pink-300/80"
+        >
+          {card.subtitle || val}
+        </span>
+        {onGenerateVideoDoc && (
+          <button
+            type="button"
+            title={t('为这个视频生成总览文档')}
+            className="shrink-0 rounded bg-pink-500/15 px-2 py-1 text-[10.5px] font-medium text-pink-700 dark:text-pink-300 hover:bg-pink-500/25 transition cursor-pointer"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => onGenerateVideoDoc(card.uuid)}
+          >
+            {t('生成总览')}
+          </button>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="flex items-center gap-1.5 px-3 pb-2 select-none">
       <div className="relative flex flex-1 items-center min-w-0">
         <input
           type="text"
-          readOnly={isConfirmed}
           value={val}
           onChange={handleChange}
           onBlur={handleBlur}
           onPointerDown={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
           placeholder={t('输入视频链接或BV号...')}
-          title={isConfirmed ? t('视频资源已固化：{0}', val) : val || t('输入视频链接或BV号...')}
-          className={`w-full rounded border px-2 py-1 text-[11px] outline-none transition ${
-            isConfirmed
-              ? 'border-pink-500/20 bg-pink-500/[0.04] text-ink-soft cursor-default select-all'
-              : 'border-line/70 bg-card text-ink placeholder:text-ink-faint focus:border-pink-500/50 focus:ring-1 focus:ring-pink-500/20'
-          }`}
+          title={val || t('输入视频链接或BV号...')}
+          className="w-full rounded border px-2 py-1 text-[11px] outline-none transition border-line/70 bg-card text-ink placeholder:text-ink-faint focus:border-pink-500/50 focus:ring-1 focus:ring-pink-500/20"
         />
-        {isConfirmed && (
-          <span
-            title={t('已确定为视频资源，标识已固化')}
-            className="pointer-events-none absolute right-2 text-pink-500/60"
-          >
-            <Lock size={11} />
-          </span>
-        )}
       </div>
-      {isConfirmed && onGenerateVideoDoc && (
-        <button
-          type="button"
-          title={t('为这个视频生成总览文档')}
-          className="shrink-0 rounded bg-pink-500/15 px-2 py-1 text-[10.5px] font-medium text-pink-700 dark:text-pink-300 hover:bg-pink-500/25 transition cursor-pointer"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => onGenerateVideoDoc(card.uuid)}
-        >
-          {t('生成总览')}
-        </button>
-      )}
     </div>
   )
 }
@@ -2967,7 +2967,7 @@ export const StructureCanvas = memo(function StructureCanvas({
                 <span
                   {...(openable ? { 'data-open-title': card.uuid } : {})}
                   title={card.title}
-                  className={`min-w-0 flex-1 truncate text-[13px] font-medium text-ink ${
+                  className={`min-w-0 flex-1 truncate text-[11px] leading-tight tracking-tight font-medium text-ink ${
                     openable ? 'hover:text-seal hover:underline' : ''
                   }`}
                 >

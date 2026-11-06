@@ -29,6 +29,7 @@ import {
   Loader2,
   Maximize,
   Minimize,
+  ListTree,
   ListVideo,
   Pause,
   Play,
@@ -83,6 +84,10 @@ export interface VideoPlayerProps {
    */
   chapters?: VideoChapter[] | null
   className?: string
+  leftOverlay?: React.ReactNode
+  leftOverlayOpen?: boolean
+  onToggleLeftOverlay?: () => void
+  onPlay?: () => void
 }
 
 export interface VideoPlayerHandle {
@@ -168,6 +173,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       transitionStill,
       onToggleSidePanel,
       sidePanelOpen = false,
+      leftOverlay,
+      leftOverlayOpen = false,
+      onToggleLeftOverlay,
+      onPlay,
       active = true,
       chapters,
       className = '',
@@ -882,6 +891,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           onPlay={() => {
             setIsPlaying(true)
             scheduleHideControls()
+            onPlay?.()
           }}
           onPause={() => {
             setIsPlaying(false)
@@ -1127,6 +1137,24 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
             {/* 右侧功能控制集合 */}
             <div className="flex items-center gap-1.5">
+              {/* 左侧字幕与分段抽屉开关 */}
+              {onToggleLeftOverlay && (
+                <button
+                  type="button"
+                  onClick={onToggleLeftOverlay}
+                  title={leftOverlayOpen ? t('收起字幕与分段 (Tab)') : t('展开字幕与分段 (Tab)')}
+                  aria-expanded={leftOverlayOpen}
+                  className={
+                    'flex h-8 items-center gap-1.5 px-2.5 rounded-lg text-[11.5px] transition hover:bg-white/20 ' +
+                    (leftOverlayOpen ? 'bg-white/25 text-seal font-medium' : 'text-white/80 hover:text-white')
+                  }
+                >
+                  <ListTree size={15} />
+                  <span>{t('字幕/分段')}</span>
+                  <kbd className="hidden sm:inline rounded bg-white/10 px-1 py-0.5 text-[9px] font-mono text-white/60">Tab</kbd>
+                </button>
+              )}
+
               {/* 选集 / 合集列表开关（用户定的：这就是「视频空间栏」里要放的那个入口） */}
               {onToggleSidePanel && (
                 <button
@@ -1449,6 +1477,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             </div>
           </div>
         </div>
+
+        {/* 左侧悬浮面板（字幕 + 视频分段）：按 Tab 展开/收起，挂在播放器根容器里 */}
+        {leftOverlay}
 
         {/* 右侧悬浮面板（合集 / 选集）：挂在根容器里，全屏时同样可见 */}
         {sidePanel}

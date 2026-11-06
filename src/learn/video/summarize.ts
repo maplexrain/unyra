@@ -148,6 +148,46 @@ export function parseRecap(raw: string): VideoRecap | null {
  * 跑一次视频总结（内容总结 + 语义分段，一次生成）。转录为空直接抛（调用侧就不该
  * 放行）；失败原话上抛，由页签显示——总结失败不打断播放。
  */
+
+const CHAPTERS_SYSTEM = [
+  '你给一段带时间戳的视频转录稿做语义分段，按话题把内容分成几段。',
+  '',
+  '只输出一个 JSON 数组，不要输出其它任何文字：',
+  '[{"startMs": <这一段开始的毫秒数，取该段第一行的时间戳>, "summary": "<不超过20字的内容概述>"}]',
+  '',
+  '要求：都用与转录相同的语言；chapters 按 startMs 升序、段数在 3~12 之间、startMs 必须取转录中出现过的某个时间戳。',
+].join('\n')
+
+/**
+ * 跑一次视频语义分段：仅输出章节列表，不再生成视频总结。
+ */
+export async function summarizeVideoChapters(opts: {
+  title: string
+  transcript: Transcript
+  signal?: AbortSignal
+}): Promise<VideoChapter[]> {
+  const lines = transcriptLines(opts.transcript.segments)
+  if (!lines.length) throw new AiRequestError('这份转录是空的，没有可分段的内容')
+  const settings = loadAiSettings()
+  if (!hasApiKey(settings)) {
+    throw new AiRequestError(`尚未配置「${activeLabel(settings)}」的 API Key，请在设置中填写`)
+  }
+  const { provider, model } = resolveGlobal(settings)
+  const raw = await chatCompleteWith(provider, model, {
+    messages: [
+      { role: 'system', content: CHAPTERS_SYSTEM },
+      { role: 'user', content: `视频标题：${opts.title}\n转录（[分:秒] 文本，约每 20 秒一行）：\n${lines.join('\n')}` },
+    ],
+    reasoningEffort: 'none',
+    maxTokens: 2048,
+    signal: opts.signal,
+    purpose: 'other',
+  })
+  const chapters = parseChapters(raw)
+  if (!chapters.length) throw new AiRequestError('AI 未能生成分段')
+  return chapters
+}
+
 export async function summarizeVideoRecap(opts: {
   title: string
   transcript: Transcript
