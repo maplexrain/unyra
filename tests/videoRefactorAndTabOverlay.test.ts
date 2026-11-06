@@ -36,9 +36,9 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
 
   it('transcriptLines: 能够将转录片段聚桶并限制行数', () => {
     const segments: TranscriptSegment[] = [
-      { startMs: 0, text: 'Hello' },
-      { startMs: 5000, text: 'World' },
-      { startMs: 25000, text: 'Next bucket' },
+      { startMs: 0, endMs: 5000, text: 'Hello' },
+      { startMs: 5000, endMs: 10000, text: 'World' },
+      { startMs: 25000, endMs: 30000, text: 'Next bucket' },
     ]
     const lines = transcriptLines(segments)
     expect(lines.length).toBe(2)
@@ -54,10 +54,12 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
       for (let i = 0; i < count; i++) {
         segments.push({
           startMs: i * 5000,
+          endMs: (i + 1) * 5000,
           text: i === count - 1 ? 'a'.repeat(totalLength - (count - 1) * 1000) : segText,
         })
       }
       return {
+        version: 1,
         origin: 'subtitle',
         language: 'zh-CN',
         segments,

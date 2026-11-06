@@ -1008,15 +1008,15 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         */}
         {(title || subLabel) && (
           <div
-            className={`pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/80 via-black/30 to-transparent px-4 pb-8 pt-3 transition-opacity duration-300 ${
+            className={`pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/95 via-black/80 to-transparent px-4 pb-12 pt-3 transition-opacity duration-300 ${
               isControlsVisible ? 'opacity-100' : 'opacity-0'
             }`}
           >
-            <div className="flex min-w-0 items-baseline gap-2">
+            <div className="flex min-w-0 items-baseline gap-2 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
               {/* 标题限宽（截断）：把右侧位置让给选集名——长标题不许把选集挤没 */}
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-white/95">{title}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-white">{title}</span>
               {subLabel && (
-                <span className="max-w-[45%] shrink-0 truncate text-[11px] text-white/60">{subLabel}</span>
+                <span className="max-w-[45%] shrink-0 truncate text-[11px] text-white/75">{subLabel}</span>
               )}
             </div>
           </div>
@@ -1024,7 +1024,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
         {/* 底部控制器渐变背景与控制栏 */}
         <div
-          className={`absolute inset-x-0 bottom-0 z-30 flex flex-col justify-end bg-gradient-to-t from-black/85 via-black/40 to-transparent pt-12 pb-2 px-3 transition-opacity duration-300 ${
+          className={`absolute inset-x-0 bottom-0 z-30 flex flex-col justify-end bg-gradient-to-t from-black/95 via-black/85 to-transparent pt-16 pb-2.5 px-3 transition-opacity duration-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${
             isControlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
           onClick={(e) => e.stopPropagation()}
