@@ -469,6 +469,14 @@ function FileCardRow({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = e.target.value
     setUrlVal(next)
+    const isWeb = /^(https?:\/\/|\/\/)/i.test(next.trim()) || next.trim().includes('://')
+    const inferredKind: FileNodeKind = isWeb ? 'web' : 'local'
+    // 若类型发生切换，立即提交一次以刷新卡片头部的「文件」/「网页」标识
+    if (inferredKind !== (fileEntity?.fileKind ?? 'local')) {
+      if (timerRef.current) clearTimeout(timerRef.current)
+      commitUrl(next)
+      return
+    }
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = window.setTimeout(() => {
       commitUrl(next)
@@ -2778,6 +2786,12 @@ export const StructureCanvas = memo(function StructureCanvas({
           // 性能优化：直接从预热缓存中获取
           const leafOwnerNodeId = leafOwnerCache.get(card.uuid) ?? null
 
+          const isWebCard = card.kind === 'file' && (
+            card.file?.fileKind === 'web' ||
+            /^(https?:\/\/|\/\/)/i.test(card.file?.url ?? '') ||
+            (card.file?.url ?? '').includes('://')
+          )
+
           // 性能优化：视口包围盒裁剪，视口外的普通卡片仅渲染轻量占位容器，削减数千个复杂子 DOM
           const inView = !viewportBox || (
             card.x <= viewportBox.right &&
@@ -2803,7 +2817,13 @@ export const StructureCanvas = memo(function StructureCanvas({
                         : card.uuid === 'tour-mock-superdoc'
                           ? { 'data-tour-node': 'superdoc' }
                           : {})}
-              className={`absolute flex flex-col border ${KIND_TONE[card.kind]} ${
+              className={`absolute flex flex-col border ${
+                card.kind === 'file'
+                  ? isWebCard
+                    ? 'border-indigo-500/30 bg-indigo-500/[0.06]'
+                    : 'border-blue-500/30 bg-blue-500/[0.06]'
+                  : KIND_TONE[card.kind]
+              } ${
                 card.blank || unassigned ? 'border-dashed' : ''
               } ${unassigned ? 'opacity-70' : ''} ${
                 selected || multi ? 'ring-2 ring-seal/60' : isHovered ? 'ring-1 ring-seal/35' : ''
@@ -2827,8 +2847,20 @@ export const StructureCanvas = memo(function StructureCanvas({
                 padding，圆点就会和它那一行错开——真错过一次。
               */}
               <div className="flex shrink-0 items-center gap-1.5 px-3" style={{ height: OUTLINE_HEAD }} title={card.title}>
-                <span className={`shrink-0 px-1.5 py-[1px] text-[10px] font-semibold ${KIND_BADGE[card.kind]}`}>
-                  {t(GRAPH_KIND_LABEL[card.kind])}
+                <span
+                  className={`shrink-0 px-1.5 py-[1px] text-[10px] font-semibold ${
+                    card.kind === 'file'
+                      ? isWebCard
+                        ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
+                        : 'bg-blue-500/15 text-blue-700 dark:text-blue-300'
+                      : KIND_BADGE[card.kind]
+                  }`}
+                >
+                  {card.kind === 'file'
+                    ? isWebCard
+                      ? t('网页')
+                      : t('文件')
+                    : t(GRAPH_KIND_LABEL[card.kind])}
                 </span>
                 <span
                   {...(openable ? { 'data-open-title': card.uuid } : {})}
@@ -3760,31 +3792,18 @@ export const StructureCanvas = memo(function StructureCanvas({
                 </button>
               )}
               {menuCard.kind === 'file' && (
-                <>
-                  <button
-                    type="button"
-                    className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                    onClick={() => {
-                      setMenu(null)
-                      if (onOpenFileNode) onOpenFileNode(menuCard.uuid)
-                    }}
-                  >
-                    {t('打开')}
-                  </button>
-                  <button
-                    type="button"
-                    className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                    onClick={() => {
-                      const fileEntity = store.fileNodes?.find((f) => f.id === menuCard.uuid)
-                      setMenuFileKind(fileEntity?.fileKind ?? 'local')
-                      setMenuText(fileEntity?.url ?? '')
-                      setMenuTitleText(fileEntity?.title ?? '')
-                      setMenu({ ...menu, mode: 'fileEdit' })
-                    }}
-                  >
-                    {t('设置文件或网址')}
-                  </button>
-                </>
+                <button
+                  type="button"
+                  className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
+                  onClick={() => {
+                    setMenu(null)
+                    if (onOpenFileNode) onOpenFileNode(menuCard.uuid)
+                  }}
+                >
+                  {(menuCard.file?.fileKind === 'web' || /^(https?:\/\/|\/\/)/i.test(menuCard.file?.url ?? '') || (menuCard.file?.url ?? '').includes('://'))
+                    ? t('打开网页')
+                    : t('打开文件')}
+                </button>
               )}
               {menuCard.kind === 'project' && (
                 <button
