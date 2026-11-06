@@ -5,7 +5,15 @@ import { NodeService } from '../src/learn/nodeKinds/service'
 import { deriveCanvas } from '../src/components/learn/structure/structureView'
 import { buildDocs, buildState, parseDocs } from '../src/learn/files'
 import { deleteGoal } from '../src/learn/graph'
-import { bindVideoNode, normalizeVideoNodes, withVideoMirror } from '../src/learn/video/nodes'
+import {
+  bindVideoNode,
+  createNoteForVideoNode,
+  deleteNoteForVideoNode,
+  getNotesForVideoNode,
+  normalizeVideoNodes,
+  updateNoteForVideoNode,
+  withVideoMirror,
+} from '../src/learn/video/nodes'
 import { parseChapters, parseRecap, transcriptLines, cleanSummaryText } from '../src/learn/video/summarize'
 import { makeTab, tabKey } from '../src/learn/tabs'
 
@@ -72,8 +80,11 @@ describe('视频节点：创建与绑定', () => {
     const card = view.cards.find((c) => c.uuid === r.uuid)
     expect(card?.kind).toBe('video')
     expect(card?.blank).toBe(true)
-    const rejected = svc.create({ kind: 'video', under: 'r' })
-    expect(rejected).toMatchObject({ error: expect.stringContaining('不挂') })
+    const rejected = svc.create({ kind: 'video', under: 'non-exist' })
+    expect(rejected).toMatchObject({ error: expect.stringContaining('不存在') })
+    const accepted = svc.create({ kind: 'video', under: 'r' })
+    expect(accepted).toMatchObject({ ok: true, created: true })
+    expect(read().edges.some((e) => e.from === 'r' && e.to === (accepted as any).uuid)).toBe(true)
   })
 
   it('editContent({ videoId }) 绑定：节点与视频资源两边同一次提交（boundTo 镜像）', () => {
@@ -115,7 +126,7 @@ describe('视频节点：创建与绑定', () => {
     expect(svc.get(created.uuid)!.editContent({ bogus: 1 })).toMatchObject({ error: expect.any(String) })
     const n = svc.get(created.uuid)!
     expect(n.help().description).toContain('还没有绑视频')
-    expect(n.help().connection).toContain('不参与树结构')
+    expect(n.help().connection).toContain('文档')
   })
 })
 
@@ -302,5 +313,57 @@ describe('视频语义分段（learn/video/summarize 的纯函数）', () => {
     expect(parseRecap('{"summary":"只有总结"}')).toBeNull()
     expect(parseRecap('{"chapters":[{"startMs":0,"summary":"只有分段"}]}')).toBeNull()
     expect(parseRecap('我觉得讲了极限')).toBeNull()
+  })
+
+  it('视频节点挂载笔记生命周期：create, get, update, delete', () => {
+    let s = storeOf()
+    // 增加一个视频节点
+    s = {
+      ...s,
+      videoNodes: [
+        {
+          id: 'vn-1',
+          goalId: 'g1',
+          videoId: 'v1',
+          title: '视频1',
+          input: 'BV123',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    }
+
+    // 初始没有笔记
+    expect(getNotesForVideoNode(s, 'vn-1')).toHaveLength(0)
+
+    // 创建笔记 1
+    const { store: s1, note: note1 } = createNoteForVideoNode(s, 'vn-1', '测试笔记1')
+    expect(note1.name).toBe('测试笔记1')
+    expect(getNotesForVideoNode(s1, 'vn-1')).toHaveLength(1)
+    expect(getNotesForVideoNode(s1, 'vn-1')[0].id).toBe(note1.id)
+    // 验证 edge 连线正确挂载在 vn-1 下面
+    expect(s1.edges).toContainEqual(expect.objectContaining({ from: 'vn-1', to: note1.id }))
+
+    // 创建笔记 2
+    const { store: s2, note: note2 } = createNoteForVideoNode(s1, 'vn-1', '测试笔记2')
+    expect(getNotesForVideoNode(s2, 'vn-1')).toHaveLength(2)
+
+    // 更新笔记 1 的内容与名称
+    const s3 = updateNoteForVideoNode(s2, note1.id, {
+      name: '更新后的标题',
+      content: '# 笔记内容\n[01:23] 重点记录',
+    })
+    const notesInS3 = getNotesForVideoNode(s3, 'vn-1')
+    const updatedNote1 = notesInS3.find((n) => n.id === note1.id)
+    expect(updatedNote1?.name).toBe('更新后的标题')
+    expect(updatedNote1?.content).toBe('# 笔记内容\n[01:23] 重点记录')
+
+    // 删除笔记 1
+    const s4 = deleteNoteForVideoNode(s3, note1.id)
+    const notesInS4 = getNotesForVideoNode(s4, 'vn-1')
+    expect(notesInS4).toHaveLength(1)
+    expect(notesInS4[0].id).toBe(note2.id)
+    // edge 也已被移除
+    expect(s4.edges.some((e) => e.from === 'vn-1' && e.to === note1.id)).toBe(false)
   })
 })

@@ -180,6 +180,66 @@ export function createWorkspaceOps(deps: AgentOpsDeps, io: WorkspaceIo) {
       return { path: labelOf(r.node, r.rest), rel: loc.rel, chars: res.content.length, content: res.content }
     },
 
+async grep(input: Record<string, unknown> | string) {
+      const obj = typeof input === 'string' ? { path: input } : (input ?? {})
+      const rawPath = typeof obj.path === 'string' ? obj.path : ''
+      if (!rawPath.trim()) return { error: 'grep 需要 path（节点路径 + 文件名，如 极限/要点.md）' }
+      const r = resolveWs(rawPath)
+      if ('error' in r) return r
+      if (!r.rest.length) {
+        return { error: '要检索的是文件：路径最后要落到文件名上（如 极限/要点.md）；先用 workspace.list 看看有什么' }
+      }
+      const loc = relOf(r.node, r.rest)
+      if ('error' in loc) return loc
+      const res = await io.read(loc.rel)
+      if (!res.ok) return { error: res.error }
+      if (res.content === null) {
+        return { error: '没有这个文件「' + labelOf(r.node, r.rest) + '」。' }
+      }
+      if (res.content.includes('\0')) {
+        return { error: '「' + labelOf(r.node, r.rest) + '」读不出文本（多半是二进制文件）' }
+      }
+
+      const rawAnchors = Array.isArray(obj.anchors) ? obj.anchors : []
+      const anchors = rawAnchors.map(String).map((s) => s.trim()).filter(Boolean)
+      const query = typeof obj.query === 'string' ? obj.query.trim() : (typeof obj.pattern === 'string' ? obj.pattern.trim() : '')
+      if (query && !anchors.includes(query)) {
+        anchors.unshift(query)
+      }
+      if (!anchors.length) {
+        return { error: 'grep 需要至少一个检索词：anchors: ["关键词"] 或 query: "关键词"' }
+      }
+
+      const lines = res.content.split(/\r?\n/)
+      const matches: Array<{ anchor?: string; line: number; text: string }> = []
+      const maxMatches = typeof obj.limit === 'number' && obj.limit > 0 ? obj.limit : 50
+
+      for (let idx = 0; idx < lines.length; idx++) {
+        const lineText = lines[idx]
+        for (const anchor of anchors) {
+          if (lineText.includes(anchor)) {
+            matches.push({
+              anchor,
+              line: idx + 1,
+              text: lineText.length > 200 ? lineText.slice(0, 200) + '…' : lineText,
+            })
+            if (matches.length >= maxMatches) break
+          }
+        }
+        if (matches.length >= maxMatches) break
+      }
+
+      return {
+        ok: true,
+        path: labelOf(r.node, r.rest),
+        rel: loc.rel,
+        totalLines: lines.length,
+        matchCount: matches.length,
+        matches,
+        ...(matches.length >= maxMatches ? { note: '匹配数已达上限（' + maxMatches + '），若需更多请调大 limit' } : {}),
+      }
+    },
+
     async write(input: Record<string, unknown>) {
       const rawPath = typeof input.path === 'string' ? input.path : ''
       const content = typeof input.content === 'string' ? input.content : null
@@ -206,6 +266,135 @@ export function createWorkspaceOps(deps: AgentOpsDeps, io: WorkspaceIo) {
         rel: loc.rel,
         chars: content.length,
         ...(existed ? { updated: true, note: '整份覆盖了已有文件' } : { created: true }),
+      }
+    },
+
+    async delete(path: unknown) {
+      const rawPath = typeof path === 'string' ? path : (typeof (path as Record<string, unknown>)?.path === 'string' ? ((path as Record<string, unknown>).path as string) : '')
+      if (!rawPath.trim()) return { error: 'delete 需要 path（节点路径 + 文件名，如 极限/草稿.md）' }
+      const r = resolveWs(rawPath)
+      if ('error' in r) return r
+      if (!r.rest.length) {
+        return { error: 'delete 只能删除工作区文件或目录，不能删除节点自身；请写明文件名（如 极限/文件.md）' }
+      }
+      const loc = relOf(r.node, r.rest)
+      if ('error' in loc) return loc
+      if (!io.delete) return { error: '当前环境不支持删除工作区文件' }
+      const res = await io.delete(loc.rel)
+      if (!res.ok) return { error: res.error ?? '删除失败' }
+      return {
+        ok: true,
+        path: labelOf(r.node, r.rest),
+        rel: loc.rel,
+        deleted: true,
+      }
+    },
+
+    async move(inputOrFrom: unknown, maybeTo?: unknown) {
+      let rawFrom = ''
+      let rawTo = ''
+      if (typeof inputOrFrom === 'string' && typeof maybeTo === 'string') {
+        rawFrom = inputOrFrom
+        rawTo = maybeTo
+      } else if (inputOrFrom && typeof inputOrFrom === 'object') {
+        const obj = inputOrFrom as Record<string, unknown>
+        rawFrom = typeof obj.from === 'string' ? obj.from : ''
+        rawTo = typeof obj.to === 'string' ? obj.to : ''
+      }
+      if (!rawFrom.trim() || !rawTo.trim()) {
+        return { error: 'move 需要 from 和 to 两个路径，如 workspace.move("极限/旧.md", "极限/新.md") 或 { from: "...", to: "..." }' }
+      }
+      const rFrom = resolveWs(rawFrom)
+      if ('error' in rFrom) return rFrom
+      const rTo = resolveWs(rawTo)
+      if ('error' in rTo) return rTo
+      if (!rFrom.rest.length || !rTo.rest.length) {
+        return { error: 'move 路径最后要落到文件名上' }
+      }
+      const locFrom = relOf(rFrom.node, rFrom.rest)
+      if ('error' in locFrom) return locFrom
+      const locTo = relOf(rTo.node, rTo.rest)
+      if ('error' in locTo) return locTo
+      if (!io.move) return { error: '当前环境不支持移动工作区文件' }
+      const res = await io.move(locFrom.rel, locTo.rel)
+      if (!res.ok) return { error: res.error ?? '移动失败' }
+      return {
+        ok: true,
+        from: labelOf(rFrom.node, rFrom.rest),
+        to: labelOf(rTo.node, rTo.rest),
+        fromRel: locFrom.rel,
+        toRel: locTo.rel,
+        moved: true,
+      }
+    },
+
+    async download(urlOrInput: unknown, maybePath?: unknown) {
+      let rawUrl = ''
+      let rawPath = ''
+      if (typeof urlOrInput === 'string') {
+        rawUrl = urlOrInput.trim()
+        rawPath = typeof maybePath === 'string' ? maybePath.trim() : ''
+      } else if (urlOrInput && typeof urlOrInput === 'object') {
+        const obj = urlOrInput as Record<string, unknown>
+        rawUrl = typeof obj.url === 'string' ? obj.url.trim() : (typeof obj.srcUrl === 'string' ? obj.srcUrl.trim() : '')
+        rawPath = typeof obj.path === 'string' ? obj.path.trim() : ''
+      }
+      if (!rawUrl) {
+        return { error: 'download 需要有效的 url（如 https://.../image.png）' }
+      }
+      if (!rawPath) {
+        try {
+          const u = new URL(rawUrl)
+          const base = u.pathname.split('/').filter(Boolean).pop()
+          rawPath = base || 'download_' + Date.now()
+        } catch {
+          rawPath = 'download_' + Date.now()
+        }
+      }
+      const r = resolveWs(rawPath)
+      if ('error' in r) return r
+      if (!r.rest.length) {
+        return { error: 'download 路径最后要落到文件名上（如 极限/图片.png）' }
+      }
+      const loc = relOf(r.node, r.rest)
+      if ('error' in loc) return loc
+      if (!io.writeBinary) {
+        return { error: '当前环境不支持下载写入二进制文件' }
+      }
+
+      try {
+        const resp = await fetch(rawUrl)
+        if (!resp.ok) {
+          return { error: `下载失败: HTTP ${resp.status} ${resp.statusText}` }
+        }
+        const buf = await resp.arrayBuffer()
+        const mime = resp.headers.get('content-type') || 'application/octet-stream'
+        let base64 = ''
+        if (typeof Buffer !== 'undefined') {
+          base64 = Buffer.from(buf).toString('base64')
+        } else {
+          const bytes = new Uint8Array(buf)
+          let binary = ''
+          const chunkSize = 8192
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as unknown as number[])
+          }
+          base64 = btoa(binary)
+        }
+        const dataUrl = `data:${mime};base64,${base64}`
+        const res = await io.writeBinary(loc.rel, dataUrl)
+        if (!res.ok) {
+          return { error: res.error ?? '写入文件失败' }
+        }
+        return {
+          ok: true,
+          path: labelOf(r.node, r.rest),
+          rel: loc.rel,
+          bytes: buf.byteLength,
+          downloaded: true,
+        }
+      } catch (err) {
+        return { error: '下载失败: ' + (err instanceof Error ? err.message : String(err)) }
       }
     },
   }

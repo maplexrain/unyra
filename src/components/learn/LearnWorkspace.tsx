@@ -110,6 +110,9 @@ import { goalDirOf } from '../../learn/static/location'
 import { addLocalFile } from '../../learn/localfiles'
 import { normalizeWebInput } from '../../learn/webUrl'
 import type { BrowserDeps } from '../../learn/web/browserOps'
+import { webviewOf } from '../../learn/web/webviewRegistry'
+import { updateFileNode } from '../../learn/fileNodes'
+import { buildJumpToElementScript } from '../../learn/web/guestJump'
 import {
   addConversation,
   conversationTitle,
@@ -167,6 +170,8 @@ import ExamCopyView from './ExamCopyView'
 import { OutlinePane } from './workspace/OutlinePane'
 import StructOverlay from './workspace/StructOverlay'
 import { NodeService, docIdOfOutlineUuid, type GNodeKind } from '../../learn/nodeKinds'
+import { confirmVideoNode } from '../../learn/video/nodes'
+import type { VideoResource } from '../../learn/types'
 import type { FileNodeKind } from '../../learn/types'
 import { noteEntityOf } from './workspace/panes'
 import { pruneImages } from '../../learn/images'
@@ -785,7 +790,7 @@ export default function LearnWorkspace({
    */
   const tabDocPayload = useCallback((ref: TabRef): ChipPayload | null => {
     const s = getLatest()
-    const title = tabTitle(ref, (id) => nodeById(s, id)?.title, examTabTitle, (vid) => s.videos?.find((v) => v.id === vid)?.title)
+    const title = tabTitle(ref, (id) => nodeById(s, id)?.title, examTabTitle, (vid) => s.videoNodes?.find((vn) => vn.id === vid)?.title ?? s.videos?.find((v) => v.id === vid)?.title)
     if (ref.kind === 'local') return { type: 'local', path: ref.path, title }
     // 工作区内部文件：ws 型引用带磁盘路径（chipRef 的两种写法都认）与 nodeId，
     // 点击免于按路径反查——「不能当外部文件看」在引用这一层就是**不是 local 型**
@@ -837,7 +842,7 @@ export default function LearnWorkspace({
    */
   const tabTrails = useMemo(() => {
     const names = tabs.map((t) =>
-      tabTitle(t.ref, (id) => nodeById(store, id)?.title, examTabTitle, (vid) => store.videos?.find((v) => v.id === vid)?.title),
+      tabTitle(t.ref, (id) => nodeById(store, id)?.title, examTabTitle, (vid) => store.videoNodes?.find((vn) => vn.id === vid)?.title ?? store.videos?.find((v) => v.id === vid)?.title),
     )
     const count = new Map<string, number>()
     for (const n of names) count.set(n, (count.get(n) ?? 0) + 1)
@@ -1741,11 +1746,45 @@ export default function LearnWorkspace({
        * 「打开学习视频会一并打开学习目标对应的 tab 组」。组锚关闭（整组进停靠场）时
        * 它随组一起收起。没绑定的、或绑定目标已不在的，走下面的普通开法（公共页签）。
        */
-      if (ref.kind === 'video' && ref.videoId) {
-        const gid = (base.videoNodes ?? []).find((v) => v.videoId === ref.videoId)?.goalId ?? null
+      if (ref.kind === 'web' && ref.fileNodeId && ref.goalId) {
+        const boundGoal = base.goals.find((g) => g.id === ref.goalId)
+        if (boundGoal) {
+          const remembered = goalFocusByGoal.get(boundGoal.id)
+          const focusId = remembered && nodeById(base, remembered) ? remembered : boundGoal.rootNodeId
+          const retargeted = focusId ? retargetNode(base, focusId) : retargetGoal(base, boundGoal.id)
+          const grouped = goalTabGroup(retargeted, boundGoal.id)
+          const openedW = openInGroup(
+            grouped.docArea,
+            grouped.docArea.focus,
+            ref,
+            Date.now(),
+            undefined,
+            (id) => nodeById(base, id)?.goalId ?? null,
+          )
+          set({
+            ...grouped,
+            docArea: withOwners(openedW, claimTab(openedW.tabOwners, boundGoal.id, tabKey(ref))),
+          })
+          if (wasActive) requestReveal()
+          setSidebarOpen(false)
+          return
+        }
+      }
+      if (ref.kind === 'video') {
+        const matchingVNode = ref.videoNodeId
+          ? (base.videoNodes ?? []).find((v) => v.id === ref.videoNodeId)
+          : (base.videoNodes ?? []).find((v) => ref.videoId && v.videoId === ref.videoId)
+        const vNodeId = ref.videoNodeId || matchingVNode?.id
+        const vId = ref.videoId || matchingVNode?.videoId || undefined
+        const gid = ref.goalId ?? matchingVNode?.goalId ?? null
         const boundGoal = gid ? base.goals.find((g) => g.id === gid) : undefined
         if (boundGoal) {
-          const vRef: TabRef = { kind: 'video', videoId: ref.videoId, goalId: boundGoal.id }
+          const vRef: TabRef = {
+            kind: 'video',
+            ...(vNodeId ? { videoNodeId: vNodeId } : {}),
+            ...(vId ? { videoId: vId } : {}),
+            goalId: boundGoal.id,
+          }
           /*
            * 「真正打开 tab 组」= 与打开这个目标的一份文档**同一套语义**（retargetNode）：
            * 当前节点/目标落到这个目标（顶栏的目标名读的是 activeNode 的目标——只写
@@ -1978,12 +2017,15 @@ export default function LearnWorkspace({
     })
   }, [])
 
+  /** 待跳转选择器（url#selector 语法支持） */
+  const pendingJumpsRef = useRef<Map<string, string>>(new Map())
+
   /**
    * 开一个网页页签：url 归一（learn/webUrl），空串 = 起始页（只有地址栏）。
    * 网页的弹窗 / target=_blank（主进程拦下来推回来的，见 electron/app/webSession）也落到这里。
    */
   const openWebTab = useCallback(
-    (url: string): string => {
+    (url: string, selector?: string): string => {
       const targetUrl = normalizeWebInput(url)
       if (isWeb()) {
         if (targetUrl) {
@@ -1992,12 +2034,53 @@ export default function LearnWorkspace({
         return ''
       }
       const s = getLatest()
+
+      // 检查是否已经存在该网页页签（单例激活）
+      if (targetUrl) {
+        let existingTabId: string | null = null
+        let existingGroupId: string | null = null
+        for (const g of s.docArea.groups) {
+          for (const t of g.tabs) {
+            if (t.ref.kind === 'web' && normalizeWebInput(t.ref.url) === targetUrl) {
+              existingTabId = t.id
+              existingGroupId = g.id
+              break
+            }
+          }
+          if (existingTabId) break
+        }
+
+        if (existingTabId && existingGroupId) {
+          set({
+            ...s,
+            docArea: activateIn(setFocus(s.docArea, existingGroupId), existingGroupId, existingTabId),
+          })
+          if (selector) {
+            const wv = webviewOf(existingTabId)
+            if (wv) {
+              try {
+                void wv.executeJavaScript(buildJumpToElementScript(selector))
+              } catch {
+                pendingJumpsRef.current.set(existingTabId, selector)
+              }
+            } else {
+              pendingJumpsRef.current.set(existingTabId, selector)
+            }
+          }
+          return existingTabId
+        }
+      }
+
       // ref 当场算好（页签身份就是 tabKey），开完直接回页签 id——browser.open 靠它指名
       const ref: TabRef = { kind: 'web', url: targetUrl, key: newWebKey() }
+      const tabId = tabKey(ref)
+      if (selector) {
+        pendingJumpsRef.current.set(tabId, selector)
+      }
       const opened = openInGroup(s.docArea, s.docArea.focus, ref, Date.now(), undefined, (id) => nodeById(s, id)?.goalId ?? null)
       // 网页页签不属于任何目标（公共）：登记成公共，切目标时它留栏上（见 groups/goals）
-      set({ ...s, docArea: withOwners(opened, claimTab(opened.tabOwners, PUBLIC_OWNER, tabKey(ref))) })
-      return tabKey(ref)
+      set({ ...s, docArea: withOwners(opened, claimTab(opened.tabOwners, PUBLIC_OWNER, tabId)) })
+      return tabId
     },
     [getLatest, set],
   )
@@ -2288,28 +2371,13 @@ export default function LearnWorkspace({
       activateTab,
       closeTab,
       webMeta,
-      snapshot: (wcId) =>
-        isElectron() ? native().browser.snapshot(wcId) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      point: (wcId, target) =>
-        isElectron() ? native().browser.point(wcId, target) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      domOp: (wcId, ref, op, arg) =>
-        isElectron() ? native().browser.domOp(wcId, ref, op, arg) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      readHtml: (wcId) =>
-        isElectron() ? native().browser.readHtml(wcId) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      logs: (wcId, opts) =>
-        isElectron() ? native().browser.logs(wcId, opts) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      logDetail: (wcId, seq, opts) =>
-        isElectron() ? native().browser.logDetail(wcId, seq, opts) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      pageFetch: (wcId, req) =>
-        isElectron() ? native().browser.pageFetch(wcId, req) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      record: (wcId, action, opts) =>
-        isElectron() ? native().browser.record(wcId, action, opts) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      text: (wcId, target) =>
-        isElectron() ? native().browser.text(wcId, target) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      scroll: (wcId, req) =>
-        isElectron() ? native().browser.scroll(wcId, req) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
-      waitFor: (wcId, req) =>
-        isElectron() ? native().browser.waitFor(wcId, req) : Promise.resolve({ error: '未检测到 Electron 运行环境' }),
+      execJs: async (tabId, script) => {
+        const wv = webviewOf(tabId)
+        if (!wv || typeof wv.executeJavaScript !== 'function') {
+          throw new Error('网页页签尚未挂载或已销毁：' + tabId)
+        }
+        return await wv.executeJavaScript(script)
+      },
     }
   })
 
@@ -4589,7 +4657,13 @@ export default function LearnWorkspace({
           return
         }
         if (fileEntity.fileKind === 'web') {
-          openTab({ kind: 'web', url: fileEntity.url, key: newWebKey() })
+          openTab({
+            kind: 'web',
+            url: fileEntity.url,
+            key: 'fn_' + fileEntity.id,
+            fileNodeId: fileEntity.id,
+            goalId: fileEntity.goalId,
+          })
           return
         }
         const goalDir = goalDirOf(store, fileEntity.goalId)
@@ -4603,6 +4677,24 @@ export default function LearnWorkspace({
         openTab({ kind: 'local', path: absPath, title: fileEntity.title || fileName })
       },
       onOpenVideo: (videoId: string) => openTab({ kind: 'video', videoId }),
+      onOpenVideoNode: (videoNodeUuid: string) => {
+        const vNode = store.videoNodes?.find((vn) => vn.id === videoNodeUuid)
+        if (!vNode) {
+          onToast(t('这个视频节点已经不在了'))
+          return
+        }
+        openTab({
+          kind: 'video',
+          videoNodeId: vNode.id,
+          videoId: vNode.videoId ?? undefined,
+          goalId: vNode.goalId,
+        })
+      },
+      onUpdateVideoNode: (nodeUuid: string, patch: { input?: string; title?: string; titleCustomized?: boolean }) => {
+        const node = makeNodeService().get(nodeUuid)
+        if (!node || node.kind !== 'video') return { error: '这个视频节点已经不在了' }
+        return node.editContent(patch)
+      },
       onGenerateVideoDoc: (videoNodeUuid: string) => startVideoOverview(videoNodeUuid),
     }),
     [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, canvasSetEntry, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, canvasRenameOutlineEntry, canvasDeleteOutlineEntry, generateDocForNode, startPrereqOutline, startVideoOverview, makeNodeService, openTab, getLatest, set, store, onToast],
@@ -4636,6 +4728,11 @@ export default function LearnWorkspace({
           onRevealSource: (loc) => {
             requestSourceReveal(nodeRevealKey(node.id, source.kind, source.note), loc.start, loc.end)
             setTabView(tabId, 'source')
+          },
+          onUpdateNotepads: (notepads) => {
+            const s = getLatest()
+            const nextNodes = s.nodes.map((n) => (n.id === node.id ? { ...n, notepads } : n))
+            set({ ...s, nodes: nextNodes })
           },
         }
         noteActionsCache.current.set(key, actions)
@@ -5121,7 +5218,7 @@ export default function LearnWorkspace({
                 paneTotal={g.group?.tabs.length}
                 activeId={g.group?.active ?? null}
                 titleOf={(ref) =>
-                  tabTitle(ref, (id) => nodeById(store, id)?.title, examTabTitle, (vid) => store.videos?.find((v) => v.id === vid)?.title)
+                  tabTitle(ref, (id) => nodeById(store, id)?.title, examTabTitle, (vid) => store.videoNodes?.find((vn) => vn.id === vid)?.title ?? store.videos?.find((v) => v.id === vid)?.title)
                 }
                 trailOf={(ref) => tabTrails[tabKey(ref)] ?? ''}
                 onActivate={activateTab}
@@ -5607,11 +5704,14 @@ export default function LearnWorkspace({
             <VideoTabLayer
               tabs={gVideoTabs}
               activeId={gTab?.ref.kind === 'video' ? gTab.id : null}
+              store={store}
+              onCommitStore={set}
               videos={store.videos}
-              onCreate={(tabId, draft: VideoCreateDraft) => {
+              videoNodes={store.videoNodes}
+              onCreate={(tabId, draft: VideoCreateDraft, videoNodeId?: string) => {
                 const id = crypto.randomUUID()
                 const now = Date.now()
-                const record = {
+                const record: VideoResource = {
                   id,
                   pluginId: draft.pluginId,
                   pluginName: draft.pluginName,
@@ -5620,21 +5720,54 @@ export default function LearnWorkspace({
                   title: draft.input.slice(0, 60),
                   createdAt: now,
                 }
-                set({ ...store, videos: [...(store.videos ?? []), record] })
-                // 开绑定页签、关掉创建页签（顺序反过来会让这一格短暂没页签）
-                openTab({ kind: 'video', videoId: id })
-                closeTab(groupId, tabId, 'self')
+                const latest = getLatest()
+                let nextStore: LearnStore = { ...latest, videos: [...(latest.videos ?? []), record] }
+                if (videoNodeId) {
+                  const r = confirmVideoNode(
+                    nextStore,
+                    videoNodeId,
+                    {
+                      input: draft.input,
+                      title: draft.input.slice(0, 60),
+                      pluginId: draft.pluginId,
+                      pluginName: draft.pluginName,
+                      fields: draft.fields,
+                    },
+                    now,
+                  )
+                  if (!('error' in r)) {
+                    nextStore = r.store
+                  }
+                }
+                set(nextStore)
+                if (videoNodeId) {
+                  openTab({ kind: 'video', videoNodeId, videoId: id, goalId: activeGoalId ?? undefined })
+                } else {
+                  openTab({ kind: 'video', videoId: id })
+                  closeTab(groupId, tabId, 'self')
+                }
               }}
-              onResolved={(videoId, title) => {
-                // 取最新一份再合并：进度写入是高频的，闭包里的 store 可能落后一拍
+              onResolved={(videoId, title, videoNodeId) => {
                 const latest = getLatest()
                 const list = latest.videos ?? []
                 const cur = list.find((v) => v.id === videoId)
-                if (!cur || cur.title === title) return
-                set({
-                  ...latest,
-                  videos: list.map((v) => (v.id === videoId ? { ...v, title, updatedAt: Date.now() } : v)),
-                })
+                const vNode = videoNodeId ? (latest.videoNodes ?? []).find((vn) => vn.id === videoNodeId) : null
+                let touched = false
+                let nextVideos = list
+                let nextVideoNodes = latest.videoNodes ?? []
+                if (cur && cur.title !== title) {
+                  nextVideos = list.map((v) => (v.id === videoId ? { ...v, title, updatedAt: Date.now() } : v))
+                  touched = true
+                }
+                if (vNode && !vNode.titleCustomized && vNode.title !== title) {
+                  nextVideoNodes = nextVideoNodes.map((vn) =>
+                    vn.id === videoNodeId ? { ...vn, title, updatedAt: Date.now() } : vn,
+                  )
+                  touched = true
+                }
+                if (touched) {
+                  set({ ...latest, videos: nextVideos, videoNodes: nextVideoNodes })
+                }
               }}
               onProgress={(videoId, positionMs, source) => {
                 const latest = getLatest()
@@ -5707,6 +5840,12 @@ export default function LearnWorkspace({
               // 地址栏的收藏星标（收藏认网址，见 learn/favorites）
               favoriteOf={isUrlFavorite}
               onToggleFavoriteUrl={toggleUrlFavorite}
+              fileNodes={store.fileNodes}
+              onUpdateFileNode={(nodeId, patch) => {
+                const r = updateFileNode(getLatest(), nodeId, patch)
+                if (!('error' in r)) set(r.store)
+              }}
+              pendingJumpsRef={pendingJumpsRef}
             />
           )}
 
@@ -5938,32 +6077,6 @@ export default function LearnWorkspace({
     <div className="print-flat flex h-full overflow-hidden">
       <ExplorerSidebar
         store={store}
-        videos={store.videos ?? []}
-        onOpenVideo={(id) => openTab({ kind: 'video', videoId: id })}
-        onDeleteVideo={(id) => {
-          // 删除守卫：被视频节点绑着的视频不许删（引用的节点会变成死绑）——
-          // 视频节点跟着目标走，列出目标名让用户知道是哪门课在用
-          const refs = (store.videoNodes ?? []).filter((v) => v.videoId === id)
-          if (refs.length) {
-            const names = refs
-              .map((r) => store.goals.find((g) => g.id === r.goalId)?.question ?? r.goalId)
-              .slice(0, 3)
-              .join('、')
-            onToast(
-              t(
-                refs.length > 3
-                  ? '这个视频正被 {0} 等 {1} 个目标绑着：先解绑（画布上的视频卡）再删'
-                  : '这个视频正被「{0}」绑着：先解绑（画布上的视频卡）再删',
-                names,
-                String(refs.length),
-              ),
-            )
-            return
-          }
-          set({ ...store, videos: (store.videos ?? []).filter((v) => v.id !== id) })
-        }}
-        // 视频的新建入口（顶栏按钮已移除）：开创建态页签
-        onNewVideo={() => openTab({ kind: 'video' })}
         // 高亮跟着**激活的页签**走：关掉某个节点的教学文档页签，它就不再是选中样式
         activeNodeId={selectedNodeId}
         // 文档行也一样：焦点格开着哪份笔记 / 试卷副本 / 超级文档 / 学习文档，那一行就亮

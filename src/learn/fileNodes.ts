@@ -13,7 +13,7 @@ import { removeEdge } from './graph'
 import { FILES_DIR } from './layout'
 import { goalDirOf } from './static/location'
 import type { FileNodeEntity, FileNodeKind, LearnStore } from './types'
-import { removeUserPath } from '../lib/storage'
+import { readUserJson, removeUserPath, writeUserBinary, writeUserJson } from '../lib/storage'
 
 /** 目标的文件目录：`docs/{目标}/files`；目标不存在时 null */
 export function goalFilesDir(store: LearnStore, goalId: string): string | null {
@@ -62,6 +62,144 @@ export function isValidLocalFileUrl(url: string): boolean {
   return norm.startsWith(`${FILES_DIR}/`) || !norm.includes('/')
 }
 
+/* ---------- files/ 清单文件与 Hash 去重机制 ---------- */
+
+export interface FileManifestEntry {
+  /** 文件内容的 SHA-256 小写十六进制哈希 */
+  hash: string
+  /** 存储在 files/ 目录下的实际文件名 */
+  fileName: string
+  /** 用户上传时的原始文件名 */
+  originalName: string
+  /** 文件大小（字节） */
+  size: number
+  /** 上传注册时间戳 */
+  createdAt: number
+}
+
+export interface FilesManifest {
+  version: 1
+  files: FileManifestEntry[]
+}
+
+export const FILES_MANIFEST_NAME = 'manifest.json'
+
+/** 获取目标 files 清单的相对路径：`docs/{goalId}/files/manifest.json` */
+export function goalFilesManifestRel(store: LearnStore, goalId: string): string | null {
+  const dir = goalFilesDir(store, goalId)
+  return dir ? `${dir}/${FILES_MANIFEST_NAME}` : null
+}
+
+/** 计算二进制数据的 SHA-256 哈希十六进制字符串 */
+export async function computeSha256(data: ArrayBuffer | Uint8Array): Promise<string> {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
+  const hashBuf = await crypto.subtle.digest('SHA-256', bytes as unknown as BufferSource)
+  const hashArr = Array.from(new Uint8Array(hashBuf))
+  return hashArr.map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** ArrayBuffer 转换为 base64 data URL */
+export function arrayBufferToDataUrl(data: ArrayBuffer | Uint8Array, mimeType = 'application/octet-stream'): string {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
+  let binary = ''
+  const chunkSize = 8192
+  for (let i = 0; i < bytes.byteLength; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.byteLength))
+    binary += String.fromCharCode.apply(null, chunk as unknown as number[])
+  }
+  return `data:${mimeType};base64,${btoa(binary)}`
+}
+
+/** 读取目标的 files 清单 */
+export async function readGoalFilesManifest(store: LearnStore, goalId: string): Promise<FilesManifest> {
+  const rel = goalFilesManifestRel(store, goalId)
+  if (!rel) return { version: 1, files: [] }
+  const manifest = await readUserJson<FilesManifest>(rel)
+  if (manifest && Array.isArray(manifest.files)) {
+    return { version: 1, files: manifest.files }
+  }
+  return { version: 1, files: [] }
+}
+
+/** 写入目标的 files 清单 */
+export async function writeGoalFilesManifest(store: LearnStore, goalId: string, manifest: FilesManifest): Promise<boolean> {
+  const rel = goalFilesManifestRel(store, goalId)
+  if (!rel) return false
+  return writeUserJson(rel, manifest)
+}
+
+export interface UploadGoalFileResult {
+  fileName: string
+  url: string
+  isDuplicate: boolean
+  entry: FileManifestEntry
+}
+
+/**
+ * 上传本地文件到目标的 files/ 目录并自动通过 SHA-256 去重注册。
+ * 若已有相同 hash 的文件，则直接复用已存在的文件，不重复写入。
+ */
+export async function uploadGoalFileWithHash(
+  store: LearnStore,
+  goalId: string,
+  file: {
+    name: string
+    data: ArrayBuffer | Uint8Array
+    mimeType?: string
+  },
+): Promise<UploadGoalFileResult | { error: string }> {
+  const filesDir = goalFilesDir(store, goalId)
+  if (!filesDir) return { error: '目标目录不存在' }
+
+  const hash = await computeSha256(file.data)
+  const manifest = await readGoalFilesManifest(store, goalId)
+
+  // 1. 查重：hash 相同则直接复用已有文件
+  const existing = manifest.files.find((f) => f.hash === hash)
+  if (existing) {
+    return {
+      fileName: existing.fileName,
+      url: `${FILES_DIR}/${existing.fileName}`,
+      isDuplicate: true,
+      entry: existing,
+    }
+  }
+
+  // 2. 新文件：生成无冲突的安全文件名
+  const rawSafeName = sanitizeFileName(file.name)
+  let targetFileName = rawSafeName
+  if (manifest.files.some((f) => f.fileName.toLowerCase() === targetFileName.toLowerCase())) {
+    const extMatch = rawSafeName.match(/\.([^.]+)$/)
+    const ext = extMatch ? `.${extMatch[1]}` : ''
+    const baseWithoutExt = ext ? rawSafeName.slice(0, -ext.length) : rawSafeName
+    targetFileName = `${baseWithoutExt}_${hash.slice(0, 8)}${ext}`
+  }
+
+  const dataUrl = arrayBufferToDataUrl(file.data, file.mimeType || 'application/octet-stream')
+  const fileRel = `${filesDir}/${targetFileName}`
+  const written = await writeUserBinary(fileRel, dataUrl)
+  if (!written) {
+    return { error: '写入文件失败' }
+  }
+
+  const entry: FileManifestEntry = {
+    hash,
+    fileName: targetFileName,
+    originalName: file.name,
+    size: file.data.byteLength,
+    createdAt: Date.now(),
+  }
+  manifest.files.push(entry)
+  await writeGoalFilesManifest(store, goalId, manifest)
+
+  return {
+    fileName: targetFileName,
+    url: `${FILES_DIR}/${targetFileName}`,
+    isDuplicate: false,
+    entry,
+  }
+}
+
 /** 新建文件节点（返回新 store 与实体） */
 export function createFileNode(
   store: LearnStore,
@@ -71,6 +209,11 @@ export function createFileNode(
     fileKind?: FileNodeKind
     url?: string
     id?: string
+    domFilter?: string
+    whitelist?: string[]
+    blacklist?: string[]
+    pureMode?: boolean
+    titleCustomized?: boolean
   },
   at = Date.now(),
 ): { store: LearnStore; entity: FileNodeEntity } {
@@ -91,6 +234,11 @@ export function createFileNode(
     title: (input.title ?? '').trim() || defaultTitle,
     fileKind,
     url,
+    domFilter: input.domFilter,
+    whitelist: input.whitelist,
+    blacklist: input.blacklist,
+    pureMode: input.pureMode,
+    titleCustomized: input.titleCustomized ?? false,
     createdAt: at,
     updatedAt: at,
   }
@@ -106,7 +254,7 @@ export function createFileNode(
 export function updateFileNode(
   store: LearnStore,
   id: string,
-  patch: Partial<Pick<FileNodeEntity, 'title' | 'fileKind' | 'url'>>,
+  patch: Partial<Pick<FileNodeEntity, 'title' | 'fileKind' | 'url' | 'domFilter' | 'pureMode' | 'cachedContent' | 'cachedAt' | 'whitelist' | 'blacklist' | 'titleCustomized'>>,
   at = Date.now(),
 ): { store: LearnStore; entity: FileNodeEntity } | { error: string } {
   const current = store.fileNodes ?? []
@@ -128,6 +276,13 @@ export function updateFileNode(
   const next: FileNodeEntity = {
     ...found,
     ...(patch.title !== undefined ? { title: patch.title.trim() || found.title } : {}),
+    ...(patch.domFilter !== undefined ? { domFilter: patch.domFilter.trim() } : {}),
+    ...(patch.whitelist !== undefined ? { whitelist: patch.whitelist } : {}),
+    ...(patch.blacklist !== undefined ? { blacklist: patch.blacklist } : {}),
+    ...(patch.pureMode !== undefined ? { pureMode: patch.pureMode } : {}),
+    ...(patch.cachedContent !== undefined ? { cachedContent: patch.cachedContent } : {}),
+    ...(patch.cachedAt !== undefined ? { cachedAt: patch.cachedAt } : {}),
+    ...(patch.titleCustomized !== undefined ? { titleCustomized: patch.titleCustomized } : {}),
     fileKind: nextKind,
     url: nextUrl,
     updatedAt: at,
@@ -211,6 +366,13 @@ export function normalizeFileNodes(raw: unknown, goalIds?: ReadonlySet<string>):
       title,
       fileKind,
       url,
+      ...(typeof r.domFilter === 'string' ? { domFilter: r.domFilter.trim() } : {}),
+      ...(Array.isArray(r.whitelist) ? { whitelist: r.whitelist.map(String).map((s: string) => s.trim()).filter(Boolean) } : {}),
+      ...(Array.isArray(r.blacklist) ? { blacklist: r.blacklist.map(String).map((s: string) => s.trim()).filter(Boolean) } : {}),
+      ...(typeof r.pureMode === 'boolean' ? { pureMode: r.pureMode } : {}),
+      ...(typeof r.cachedContent === 'string' ? { cachedContent: r.cachedContent } : {}),
+      ...(typeof r.cachedAt === 'number' ? { cachedAt: r.cachedAt } : {}),
+      ...(typeof r.titleCustomized === 'boolean' ? { titleCustomized: r.titleCustomized } : {}),
       createdAt,
       updatedAt,
     })

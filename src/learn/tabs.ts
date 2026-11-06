@@ -68,10 +68,10 @@ export function tabKey(ref: TabRef): string {
   // 工作区内部文件：节点 + 「相对工作区目录」的路径段（目录改名不影响它，见 types 的 ws 分支）
   if (ref.kind === 'ws') return 'ws:' + ref.nodeId + ':' + ref.seg
   // 网页按**开签那一刻生成的 key**（而不是网址）认身份：同一个网址可以开两枚，起始页也不冲突
-  if (ref.kind === 'web') return 'w:' + ref.key
+  if (ref.kind === 'web') return ref.fileNodeId ? 'w:fn:' + ref.fileNodeId : 'w:' + ref.key
   // 视频学习（实验）同样全局只有一份：顶栏那颗按钮点多少次都是切回同一枚，
   // 上一次解析到哪个视频还留在页签里
-  if (ref.kind === 'video') return ref.videoId ? 'v:' + ref.videoId : 'v:new'
+  if (ref.kind === 'video') return ref.videoNodeId ? 'vn:' + ref.videoNodeId : ref.videoId ? 'v:' + ref.videoId : 'v:new'
   // 插件文档全局一份：设置里的入口点多少次都是切回同一页
   if (ref.kind === 'pluginDoc') return 'p:plugin-doc'
   if (ref.kind === 'sponsors') return 'p:sponsors'
@@ -214,7 +214,13 @@ export function tabTitle(
     }
   }
   // 视频学习（实验）页签：解析到的视频标题活在页签内容里，栏上统一叫这一个名字
-  if (ref.kind === 'video') return ref.videoId ? (videoTitle?.(ref.videoId) ?? t('视频学习')) : t('新建视频')
+  if (ref.kind === 'video') {
+    if (ref.videoNodeId && videoTitle) {
+      const tVal = videoTitle(ref.videoNodeId)
+      if (tVal) return tVal
+    }
+    return ref.videoId ? (videoTitle?.(ref.videoId) ?? t('视频学习')) : t('视频学习')
+  }
   if (ref.kind === 'pluginDoc') return t('插件开发文档')
   if (ref.kind === 'sponsors') return t('赞助者名单')
   if (ref.kind === 'settings') return t('设置')

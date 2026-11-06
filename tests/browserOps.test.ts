@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import type { WebviewTag } from 'electron'
 import { makeBrowserOps, type BrowserDeps } from '../src/learn/web/browserOps'
-import { registerWebview } from '../src/learn/web/webviewRegistry'
+import { buildApi } from '../src/agent/sandbox/api'
+import type { BrowserOps } from '../src/agent/sandbox/types'
 import type { LearnStore, TabRef, WebTabMeta } from '../src/learn/types'
 
 /** web 页签 fixture：id 直接用 'w:'+key，与 tabKey 的口径一致 */
@@ -25,14 +25,8 @@ function makeDeps(store: LearnStore, webMeta: Record<string, WebTabMeta> = {}) {
   const opened: string[] = []
   const activated: string[] = []
   const closed: Array<[string, string]> = []
-  const snapshotted: number[] = []
-  const pointed: Array<[number, { ref: number } | { selector: string }]> = []
-  const domOps: Array<[number, number, string, string | undefined]> = []
-  const readHtmls: number[] = []
-  const logCalls: Array<[number, unknown]> = []
-  const fetchCalls: Array<[number, unknown]> = []
-  const textCalls: Array<[number, unknown]> = []
-  const scrollCalls: Array<[number, unknown]> = []
+  const execCalls: Array<[string, string]> = []
+
   const deps: BrowserDeps = {
     getLatest: () => store,
     set: () => {},
@@ -47,234 +41,70 @@ function makeDeps(store: LearnStore, webMeta: Record<string, WebTabMeta> = {}) {
       closed.push([group, id])
     },
     webMeta,
-    snapshot: async (wcId) => {
-      snapshotted.push(wcId)
-      return { elements: [{ ref: 1, role: 'button', name: '提交' }] }
-    },
-    point: async (wcId, target) => {
-      pointed.push([wcId, target])
+    execJs: async (tabId, script) => {
+      execCalls.push([tabId, script])
+      if (script.includes('window.__agentIndex(')) {
+        return { text: '[1] header\n[2] button "点赞"', count: 2, title: '测试页', url: 'https://example.com' }
+      }
+      if (script.includes('window.__agentText(')) {
+        return { ok: true, id: 4, text: '文章正文内容', totalChars: 6, offset: 0, hasMore: false }
+      }
+      if (script.includes('window.__agentInspect(')) {
+        return { ok: true, id: 2, tag: 'button', value: undefined, disabled: false, rect: { x: 10, y: 20, width: 80, height: 32 } }
+      }
+      if (script.includes('window.__agentClick(')) {
+        return { ok: true, tag: 'button' }
+      }
+      if (script.includes('window.__agentFill(')) {
+        return { ok: true, tag: 'input', resolvedTag: 'input', resolvedType: 'input' }
+      }
+      if (script.includes('window.__agentType(')) {
+        return { ok: true, tag: 'bili-comment-rich-textarea', resolvedTag: 'div', typedChars: 5 }
+      }
+      if (script.includes('window.__agentPress(')) {
+        return { ok: true, key: 'Enter' }
+      }
+      if (script.includes('window.__agentScroll(')) {
+        return { ok: true, scrollY: 800, scrollHeight: 3000, atBottom: false }
+      }
+      if (script.includes('window.__agentQuery(')) {
+        return { ok: true, selector: 'button', count: 1, matches: [{ id: 1, tag: 'button', text: '按钮', visible: true, isEditable: false, rect: { x: 0, y: 0, width: 10, height: 10 } }] }
+      }
+      if (script.includes('window.__agentWaitFor(')) {
+        return { ok: true, elapsedMs: 50, id: 1, tag: 'button' }
+      }
+      if (script.includes('__agentPrepareElementCapture("article"')) {
+        return { ok: true, token: 'tok1', tag: 'article', totalWidth: 800, totalHeight: 1200, directDataUrl: 'data:image/png;base64,AAAA' }
+      }
+      if (script.includes('window.__agentEval(')) {
+        return { ok: true, result: '执行结果' }
+      }
       return { ok: true }
     },
-    domOp: async (wcId, ref, op, arg) => {
-      domOps.push([wcId, ref, op, arg])
-      // ref=2 是「过期 ref」的哨兵
-      if (ref === 2) return { error: 'ref 不存在或已过期（页面变了）——重新 api.browser.snapshot' }
-      return { ok: true, result: op === 'fill' ? arg : op === 'attr' ? 'https://x.com/next' : undefined }
-    },
-    readHtml: async (wcId) => {
-      readHtmls.push(wcId)
-      return {
-        html: '<html><head><title>测试页</title></head><body><h1>你好</h1><p>世界</p></body></html>',
-        url: 'https://x.com/a',
-        title: '测试页',
-      }
-    },
-    logs: async (wcId, opts) => {
-      logCalls.push([wcId, opts])
-      return { lines: ['[n1] GET https://x.com/api → 200'], shown: 1, totalConsole: 0, totalNetwork: 1, latestSeq: 1, truncated: false }
-    },
-    logDetail: async (wcId, seq) => {
-      logCalls.push([wcId, seq])
-      return { detail: { kind: 'network', seq, method: 'GET', url: 'https://x.com/api', status: 200, type: 'XHR' } }
-    },
-    pageFetch: async (wcId, req) => {
-      fetchCalls.push([wcId, req])
-      return { status: 200, body: '{"ok":true}' }
-    },
-    record: async (wcId, action) => {
-      logCalls.push([wcId, action])
-      return action === 'start'
-        ? { ok: true as const, action: 'start' as const, since: 0 }
-        : { lines: [], shown: 0, totalConsole: 0, totalNetwork: 0, latestSeq: 0, truncated: false, action: 'stop' as const }
-    },
-    text: async (wcId, target) => {
-      textCalls.push([wcId, target])
-      return { text: '正文文本', chars: 4 }
-    },
-    scroll: async (wcId, req) => {
-      scrollCalls.push([wcId, req])
-      return { ok: true as const, scrollY: 800, scrollHeight: 4000, viewport: 900, atBottom: false, atTop: false }
-    },
-    waitFor: async (wcId, req) => {
-      scrollCalls.push([wcId, req])
-      return { ok: true as const, matched: 'selector' as const, waitedMs: 250, url: 'https://x.com/' }
-    },
   }
-  return { deps, opened, activated, closed, snapshotted, pointed, domOps, readHtmls, logCalls, fetchCalls, textCalls, scrollCalls }
-}
-
-/** 假 webview：只有 browserOps 真正用到的方法（定位/读 DOM 都在主进程 CDP） */
-function fakeWv() {
-  const captured: string[] = []
-  const el = {
-    isLoading: () => false,
-    getWebContentsId: () => 424242,
-    capturePage: async () => {
-      captured.push('shot')
-      return { toDataURL: () => 'data:image/png;base64,AAAA' } as never
-    },
-  }
-  return { el: el as unknown as WebviewTag, captured }
-}
-
-/** 登记一枚假元素，测试结束随手摘掉（登记表是模块级的，别串到别的用例） */
-async function withWv(tabId: string, el: WebviewTag, run: () => Promise<void>): Promise<void> {
-  registerWebview(tabId, el)
-  try {
-    await run()
-  } finally {
-    registerWebview(tabId, null)
-  }
+  return { deps, opened, activated, closed, execCalls }
 }
 
 const META: WebTabMeta = { url: 'https://x.com/a', loading: false, canBack: false, canFwd: false, error: null }
 
-describe('makeBrowserOps：browser.* 的宿主实现（纯逻辑 + 假元素，Node 里可测）', () => {
-  it('open 归一网址后交给宿主开签；空网址拒绝；没有元素时 note 说明还在挂载', async () => {
-    const { deps, opened } = makeDeps(storeWith([], null))
-    const ops = makeBrowserOps(deps, 'goal1')
+describe('makeBrowserOps：browser.* 基础生命周期与读写动作', () => {
+  it('open / tabs / activate / close 生命周期操作正常工作', async () => {
+    const store = storeWith([webTab('a', 'https://x.com/a'), webTab('b', 'https://y.com')], 'w:a')
+    const { deps, opened, activated, closed } = makeDeps(store, { 'w:a': { ...META, title: 'X 首页' } })
+    const ops = makeBrowserOps(deps)
+
     const r = await ops.open('example.com')
-    expect(r).toEqual({ tabId: 'w:newkey', url: 'https://example.com', note: expect.any(String) })
+    expect(r).toEqual({ tabId: 'w:newkey', url: 'https://example.com' })
     expect(opened).toEqual(['https://example.com'])
     await expect(ops.open('  ')).rejects.toThrow('要给出网址')
-  })
 
-  it('tabs 列出存活的网页页签（{tabs} 信封，同组一致）：真标题优先、缺了用域名兜底，active 标激活', () => {
-    const store = storeWith([webTab('a', 'https://x.com/a'), webTab('b', 'https://y.com')], 'w:a')
-    const { deps } = makeDeps(store, { 'w:a': { ...META, title: 'X 首页' } })
-    const ops = makeBrowserOps(deps, 'goal1')
     expect(ops.tabs()).toEqual({
       tabs: [
-        { tabId: 'w:a', url: 'https://x.com/a', title: 'X 首页', active: true, group: 'g1' },
-        { tabId: 'w:b', url: 'https://y.com', title: 'y.com', active: false, group: 'g1' },
+        { tabId: 'w:a', url: 'https://x.com/a', title: 'X 首页', active: true, group: 'g1', source: 'user' },
+        { tabId: 'w:b', url: 'https://y.com', title: 'y.com', active: false, group: 'g1', source: 'user' },
       ],
     })
-  })
 
-  it('snapshot 把主进程的元素清单原样带回；主进程报错变成可读的失败', async () => {
-    const { deps, snapshotted } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
-    const ops = makeBrowserOps(deps, 'goal1')
-    const { el } = fakeWv()
-    await withWv('w:a', el, async () => {
-      const r = await ops.snapshot(undefined)
-      expect(r).toEqual({ elements: [{ ref: 1, role: 'button', name: '提交' }] })
-    })
-    expect(snapshotted).toEqual([424242])
-    const broken = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
-    broken.deps.snapshot = async () => ({ error: '调试通道被占用' })
-    await withWv('w:a', el, async () => {
-      await expect(makeBrowserOps(broken.deps, 'goal1').snapshot('w:a')).rejects.toThrow('调试通道被占用')
-    })
-  })
-
-  it('snapshot 的过滤参数在宿主侧后处理：role/contains/limit，ref 台账不受影响', async () => {
-    const { deps } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
-    const ops = makeBrowserOps(deps, 'goal1')
-    deps.snapshot = async () => ({
-      elements: [
-        { ref: 1, role: 'link', name: '@Gustavo' },
-        { ref: 2, role: 'button', name: '0 回复。回复' },
-        { ref: 3, role: 'link', name: 'AI 搜索页' },
-        { ref: 4, role: 'textbox', name: '搜索', value: 'AI' },
-      ],
-    })
-    const { el } = fakeWv()
-    await withWv('w:a', el, async () => {
-      expect(await ops.snapshot('w:a', { role: 'link' })).toEqual({
-        elements: [
-          { ref: 1, role: 'link', name: '@Gustavo' },
-          { ref: 3, role: 'link', name: 'AI 搜索页' },
-        ],
-      })
-      expect(await ops.snapshot('w:a', { contains: 'AI' })).toEqual({
-        // 名称与输入值都参与匹配（带已输入文字的搜索框也能找回来）
-        elements: [
-          { ref: 3, role: 'link', name: 'AI 搜索页' },
-          { ref: 4, role: 'textbox', name: '搜索', value: 'AI' },
-        ],
-      })
-      const cut = await ops.snapshot('w:a', { limit: 2 })
-      expect(cut.elements).toHaveLength(2)
-      expect(cut.truncated).toBe(true)
-    })
-  })
-
-  it('point 归一目标（ref / 选择器）并透传给主进程；错误原样抛', async () => {
-    const { deps, pointed } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
-    const ops = makeBrowserOps(deps, 'goal1')
-    const { el } = fakeWv()
-    await withWv('w:a', el, async () => {
-      await ops.point(undefined, { ref: 1 })
-      await ops.point('w:a', '.btn')
-      await expect(ops.point('w:a', '   ')).rejects.toThrow('目标要给 snapshot 清单里的 { ref } 或 CSS 选择器')
-    })
-    expect(pointed.map(([, t]) => t)).toEqual([{ ref: 1 }, { selector: '.btn' }])
-    const broken = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
-    broken.deps.point = async () => ({ error: 'ref 不存在或已过期（页面变了）——重新 api.browser.snapshot' })
-    await withWv('w:a', el, async () => {
-      await expect(makeBrowserOps(broken.deps, 'goal1').point(undefined, { ref: 9 })).rejects.toThrow(
-        '重新 api.browser.snapshot',
-      )
-    })
-  })
-
-  it('dom 校验 ref 与 op，参数透传，result 原样带回', async () => {
-    const { deps, domOps } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
-    const ops = makeBrowserOps(deps, 'goal1')
-    const { el } = fakeWv()
-    await withWv('w:a', el, async () => {
-      const r = await ops.dom('w:a', 1, 'fill', '你好')
-      expect(r).toEqual({ ok: true, result: '你好' })
-      const r2 = await ops.dom(undefined, 1, 'attr', 'href')
-      expect(r2).toEqual({ ok: true, result: 'https://x.com/next' })
-      await expect(ops.dom('w:a', Number.NaN, 'click')).rejects.toThrow('ref 要给 browser.snapshot 清单里的编号数字')
-      await expect(ops.dom('w:a', 1, '  ')).rejects.toThrow('要给出 dom 操作')
-      await expect(ops.dom('w:a', 2, 'click')).rejects.toThrow('重新 api.browser.snapshot')
-    })
-    expect(domOps).toEqual([
-      [424242, 1, 'fill', '你好'],
-      [424242, 1, 'attr', 'href'],
-      [424242, 2, 'click', undefined],
-    ])
-  })
-
-  it('read 把主进程取回的 DOM HTML 走 webFetch 同一条管线（短的回全文）', async () => {
-    const { deps, readHtmls } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
-    const ops = makeBrowserOps(deps, 'goal1')
-    const { el } = fakeWv()
-    await withWv('w:a', el, async () => {
-      const r = (await ops.read(undefined)) as { ok: boolean; text: string; saved: boolean; title: string }
-      expect(r.ok).toBe(true)
-      expect(r.text).toContain('你好')
-      expect(r.text).toContain('世界')
-      expect(r.title).toBe('测试页')
-      // 测试环境没有存储桥：落盘失败也要回全文，只是 note 里说明
-      expect(r.saved).toBe(false)
-    })
-    expect(readHtmls).toEqual([424242])
-    const broken = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
-    broken.deps.readHtml = async () => ({ error: '这一页签的网页已经不在了' })
-    await withWv('w:a', el, async () => {
-      await expect(makeBrowserOps(broken.deps, 'goal1').read('w:a')).rejects.toThrow('这一页签的网页已经不在了')
-    })
-  })
-
-  it('指名不存在的页签、或焦点格没有网页时，报错并引导先 tabs()', async () => {
-    const { deps } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
-    const ops = makeBrowserOps(deps, 'goal1')
-    await expect(ops.point('w:ghost', { ref: 1 })).rejects.toThrow('没有这个网页页签')
-    await expect(ops.dom('w:ghost', 1, 'click')).rejects.toThrow('没有这个网页页签')
-    await expect(ops.snapshot('w:ghost')).rejects.toThrow('没有这个网页页签')
-    await expect(ops.read('w:ghost')).rejects.toThrow('没有这个网页页签')
-    // 焦点格激活的是网页，但元素没挂上（刚重启回来）：元素级的错
-    await expect(ops.capture(undefined)).rejects.toThrow('网页元素不在了')
-    const ops2 = makeBrowserOps(makeDeps(storeWith([], null)).deps, 'goal1')
-    await expect(ops2.read(undefined)).rejects.toThrow('焦点格里没有正看着的网页页签')
-  })
-
-  it('activate / close 落到宿主动作；close 认数组批量；不存在的页签报错', () => {
-    const { deps, activated, closed } = makeDeps(storeWith([webTab('a', 'https://x.com'), webTab('b', 'https://y.com')], 'w:a'))
-    const ops = makeBrowserOps(deps, 'goal1')
     expect(ops.activate('w:a')).toEqual({ ok: true })
     expect(activated).toEqual(['w:a'])
     expect(ops.close('w:a')).toEqual({ ok: true })
@@ -284,84 +114,173 @@ describe('makeBrowserOps：browser.* 的宿主实现（纯逻辑 + 假元素，N
     expect(() => ops.close('w:ghost')).toThrow('没有这个网页页签')
   })
 
-  it('logs / logDetail / record：tabId 必给（不吃焦点默认），seq 必须是数字，透传到宿主', async () => {
-    const { deps, logCalls } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
-    const el = fakeWv().el
-    const ops = makeBrowserOps(deps, 'goal1')
-    await withWv('w:a', el, async () => {
-      await ops.logs('w:a', { level: 'all' })
-      await ops.logDetail('w:a', 7)
-      await ops.record('w:a', 'start')
-      await ops.record('w:a', 'stop', { level: 'all' })
-      expect(logCalls).toEqual([
-        [424242, { level: 'all' }],
-        [424242, 7],
-        [424242, 'start'],
-        [424242, 'stop'],
-      ])
-      // tabId 缺失：新组不吃「焦点格正看着的」这种隐式状态
-      await expect(ops.logs('')).rejects.toThrow('必须显式给 tabId')
-      await expect(ops.fetch(undefined as unknown as string, 'https://x.com/api')).rejects.toThrow('必须显式给 tabId')
-      await expect(ops.logDetail('w:a', Number.NaN)).rejects.toThrow('条目号')
-      await expect(ops.record('w:a', 'pause' as never)).rejects.toThrow('start')
-    })
+  it('基础读操作（index / text / inspect）正常派发并支持省略 tabId 取当前焦点页签', async () => {
+    const store = storeWith([webTab('a', 'https://x.com/a')], 'w:a')
+    const { deps, execCalls } = makeDeps(store)
+    const ops = makeBrowserOps(deps)
+
+    // 1. index 省略 tabId
+    const indexRes = await ops.index(undefined, { focus: 1 })
+    expect(indexRes.text).toContain('[1] header')
+    expect(execCalls[0][0]).toBe('w:a')
+    expect(execCalls[0][1]).toContain('__agentIndex({"focus":1})')
+
+    // 2. text 读取正文
+    const textRes = await ops.text('w:a', 4, { maxChars: 2000 })
+    expect(textRes.text).toBe('文章正文内容')
+    expect(execCalls[1][0]).toBe('w:a')
+    expect(execCalls[1][1]).toContain('__agentText(4')
+
+    // 3. inspect 探查属性
+    const inspectRes = await ops.inspect(undefined, 2)
+    expect(inspectRes.tag).toBe('button')
+    expect(inspectRes.rect?.width).toBe(80)
+    expect(execCalls[2][0]).toBe('w:a')
+    expect(execCalls[2][1]).toContain('__agentInspect(2')
   })
 
-  it('fetch：网址与 {reqId} 两种寻址都透传；空目标拒绝；宿主报错原样抛', async () => {
-    const { deps, fetchCalls } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
-    const el = fakeWv().el
-    const ops = makeBrowserOps(deps, 'goal1')
-    await withWv('w:a', el, async () => {
-      await ops.fetch('w:a', 'https://x.com/api', { method: 'POST', body: '{"a":1}' })
-      await ops.fetch('w:a', { reqId: 12 })
-      expect(fetchCalls).toEqual([
-        [424242, { url: 'https://x.com/api', method: 'POST', body: '{"a":1}' }],
-        [424242, { reqId: 12 }],
-      ])
-      await expect(ops.fetch('w:a', '不是网址')).rejects.toThrow('http(s) 网址')
-      await expect(ops.fetch('w:a', {} as unknown as { reqId: number })).rejects.toThrow('http(s) 网址')
-      const broken = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
-      broken.deps.pageFetch = async () => ({ error: '页面里请求失败：CSP' })
-      await withWv('w:a', el, async () => {
-        await expect(makeBrowserOps(broken.deps, 'goal1').fetch('w:a', 'https://x.com/api')).rejects.toThrow('CSP')
-      })
-    })
+  it('基础写操作（click / fill / press / scroll）正常派发', async () => {
+    const store = storeWith([webTab('a', 'https://x.com/a')], 'w:a')
+    const { deps, execCalls } = makeDeps(store)
+    const ops = makeBrowserOps(deps)
+
+    // 1. click 点击
+    const clickRes = await ops.click(undefined, 2, { waitAfterMs: 10 })
+    expect(clickRes).toEqual({ ok: true, tag: 'button' })
+    expect(execCalls[0][1]).toContain('__agentClick(2')
+
+    // 2. fill 输入
+    const fillRes = await ops.fill('w:a', 3, '微积分', { pressEnter: true })
+    expect(fillRes).toEqual({ ok: true, tag: 'input', resolvedTag: 'input', resolvedType: 'input' })
+    expect(execCalls[1][1]).toContain('__agentFill(3, "微积分"')
+
+    // 2.5 type 逐字符输入
+    const typeRes = await ops.type('w:a', 25, 'hello')
+    expect(typeRes).toEqual({ ok: true, tag: 'bili-comment-rich-textarea', resolvedTag: 'div', typedChars: 5 })
+    expect(execCalls[2][1]).toContain('__agentType(25, "hello"')
+
+    // 3. press 模拟按键
+    const pressRes = await ops.press(undefined, 'Enter', 3)
+    expect(pressRes).toEqual({ ok: true, key: 'Enter' })
+    expect(execCalls[3][1]).toContain('__agentPress("Enter", 3)')
+
+    // 4. scroll 滚动
+    const scrollRes = await ops.scroll('w:a', { by: 800 })
+    expect(scrollRes.atBottom).toBe(false)
+    expect(execCalls[4][1]).toContain('__agentScroll')
+
+    // 5. query 检索
+    const queryRes = await ops.query('w:a', 'button')
+    expect(queryRes.count).toBe(1)
+    expect(execCalls[5][1]).toContain('__agentQuery("button"')
+
+    // 6. waitFor 等待
+    const waitRes = await ops.waitFor(undefined, '.brt-btn', { timeoutMs: 2000 })
+    expect(waitRes.ok).toBe(true)
+    expect(execCalls[6][1]).toContain('__agentWaitFor(".brt-btn"')
+
+    // 7. eval 页面代码执行
+    const evalRes = await ops.eval('w:a', 'document.title')
+    expect(evalRes.result).toBe('执行结果')
+    expect(execCalls[7][1]).toContain('__agentEval("document.title")')
+
+    // 8. toImage 元素截图
+    const imgRes = await ops.toImage('w:a', 'article', { isolate: true, full: true })
+    expect(imgRes.ok).toBe(true)
+    expect(imgRes.tag).toBe('article')
+    expect(execCalls[8][1]).toContain('__agentPrepareElementCapture("article"')
+  })
+})
+
+describe('buildApi：browser.* 参数兼容性与宽容解析', () => {
+  it('正确解析 undefined/null 占位符、省略 tabId 以及单对象传参', async () => {
+    let captured: Record<string, unknown> = {}
+    const mockBrowser: BrowserOps = {
+      open: async () => ({ tabId: 'w:1', url: 'https://example.com' }),
+      tabs: () => ({ tabs: [] }),
+      activate: () => ({ ok: true as const }),
+      close: () => ({ ok: true as const }),
+      index: async (tabId, opts) => { captured = { tabId, opts }; return { text: '', count: 0, title: '', url: '' } },
+      text: async (tabId, target, opts) => { captured = { tabId, target, opts }; return { ok: true, id: target, text: '', totalChars: 0 } },
+      inspect: async (tabId, target) => { captured = { tabId, target }; return { ok: true, id: target, tag: 'div' } },
+      click: async (tabId, target, opts) => { captured = { tabId, target, opts }; return { ok: true } },
+      fill: async (tabId, target, text, opts) => { captured = { tabId, target, text, opts }; return { ok: true } },
+      type: async (tabId, target, text, opts) => { captured = { tabId, target, text, opts }; return { ok: true } },
+      press: async (tabId, key, target) => { captured = { tabId, key, target }; return { ok: true } },
+      scroll: async (tabId, opts) => { captured = { tabId, opts }; return { ok: true } },
+      query: async (tabId, selector, opts) => { captured = { tabId, selector, opts }; return { ok: true, selector, count: 0, matches: [] } },
+      waitFor: async (tabId, targetOrText, opts) => { captured = { tabId, targetOrText, opts }; return { ok: true, elapsedMs: 10 } },
+      screenshot: async (tabId, opts) => { captured = { tabId, opts }; return { ok: true, url: 'moji:static/1' } },
+      eval: async (tabId, code) => { captured = { tabId, code }; return { ok: true, result: 42 } },
+      toImage: async (tabId, target, opts) => { captured = { tabId, target, opts }; return { ok: true, url: 'moji:static/1' } },
+      elementImage: async (tabId, target, opts) => { captured = { tabId, target, opts }; return { ok: true, url: 'moji:static/1' } },
+      elementScreenshot: async (tabId, target, opts) => { captured = { tabId, target, opts }; return { ok: true, url: 'moji:static/1' } },
+      toMarkdown: async (tabId, target, opts) => { captured = { tabId, target, opts }; return { ok: true, markdown: '# Hello', chars: 7, lines: 1 } },
+    }
+
+    const { api } = buildApi({ browser: mockBrowser } as any, [])
+    const b = (api as any).browser
+
+    // 1. 位置参数传 undefined 占位（解决实测中报“目标需要给出节点编号”）
+    await b.text(undefined, 10, { maxChars: 500 })
+    expect(captured).toEqual({ tabId: undefined, target: 10, opts: { maxChars: 500 } })
+
+    // 2. 位置参数传 null 占位
+    await b.fill(null, 25, 'test')
+    expect(captured).toEqual({ tabId: undefined, target: 25, text: 'test', opts: {} })
+
+    // 3. 省略 tabId，第一参直接是 target
+    await b.click(12, { waitAfterMs: 50 })
+    expect(captured).toEqual({ tabId: undefined, target: 12, opts: { waitAfterMs: 50 } })
+
+    // 4. 第一参显式给出 tabId
+    await b.type('w:tab1', 25, 'hello')
+    expect(captured).toEqual({ tabId: 'w:tab1', target: 25, text: 'hello', opts: {} })
+
+    // 5. 单对象传参模式：{ target, ... }
+    await b.text({ target: 15, maxChars: 1000 })
+    expect(captured).toEqual({ tabId: undefined, target: 15, opts: expect.objectContaining({ target: 15, maxChars: 1000 }) })
+
+    await b.fill({ tabId: 'w:tab2', target: 24, text: '评论' })
+    expect(captured).toEqual({ tabId: 'w:tab2', target: 24, text: '评论', opts: expect.objectContaining({ tabId: 'w:tab2', target: 24, text: '评论' }) })
+
+    // 6. query 与 waitFor 宽容传参
+    await b.query('.brt-btn', { limit: 10 })
+    expect(captured).toEqual({ tabId: undefined, selector: '.brt-btn', opts: { limit: 10 } })
+
+    await b.waitFor('发布成功', { timeoutMs: 3000 })
+    expect(captured).toEqual({ tabId: undefined, targetOrText: '发布成功', opts: { timeoutMs: 3000 } })
+
+    // 7. eval 脚本执行
+    await b.eval('window.location.href')
+    expect(captured).toEqual({ tabId: undefined, code: 'window.location.href' })
+
+    // 8. screenshot 截图
+    await b.screenshot({ path: 'custom.png' })
+    expect(captured).toEqual({ tabId: undefined, opts: { path: 'custom.png' } })
+
+    // 9. toImage 与 elementImage 元素截图
+    await b.toImage('article', { isolate: true, full: true })
+    expect(captured).toEqual({ tabId: undefined, target: 'article', opts: { isolate: true, full: true } })
+
+    await b.elementImage(25, { padding: 10 })
+    expect(captured).toEqual({ tabId: undefined, target: 25, opts: { padding: 10 } })
+    await b.elementScreenshot('#main')
+    expect(captured).toEqual({ tabId: undefined, target: '#main', opts: {} })
   })
 
-  it('logDetail 的条目号照抄清单行也认：96 / "n96" / "c96"', async () => {
-    const { deps, logCalls } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
-    const el = fakeWv().el
-    const ops = makeBrowserOps(deps, 'goal1')
-    await withWv('w:a', el, async () => {
-      await ops.logDetail('w:a', 96)
-      await ops.logDetail('w:a', 'n96')
-      await ops.logDetail('w:a', 'c12')
-      expect(logCalls.map((c) => c[1])).toEqual([96, 96, 12])
-      await expect(ops.logDetail('w:a', 'nonsense')).rejects.toThrow('条目号')
+  it('api.ask 针对 short 简答题空值时自动保底返回 value: ""', async () => {
+    const mockAsk = async () => ({
+      answers: [
+        { id: 'q1', type: 'short', prompt: '用户感想' } // 没有 value 字段
+      ]
     })
-  })
-
-  it('text：ref/选择器双寻址透传；scroll：by/to/ref 校验后透传；都要 tabId', async () => {
-    const { deps, textCalls, scrollCalls } = makeDeps(storeWith([webTab('a', 'https://x.com')], 'w:a'))
-    const el = fakeWv().el
-    const ops = makeBrowserOps(deps, 'goal1')
-    await withWv('w:a', el, async () => {
-      await ops.text('w:a', { ref: 3 }, { maxChars: 2000 })
-      await ops.text('w:a', 'main article')
-      expect(textCalls).toEqual([
-        [424242, { ref: 3, maxChars: 2000 }],
-        [424242, { selector: 'main article' }],
-      ])
-      await ops.scroll('w:a', { by: 1500 })
-      await ops.scroll('w:a', { to: 'bottom' })
-      await ops.scroll('w:a', { ref: 5 })
-      expect(scrollCalls).toEqual([
-        [424242, { by: 1500 }],
-        [424242, { to: 'bottom' }],
-        [424242, { ref: 5 }],
-      ])
-      await expect(ops.scroll('w:a', {})).rejects.toThrow('{ by')
-      await expect(ops.text('w:a', { nope: 1 } as never)).rejects.toThrow('{ ref }')
+    const { api } = buildApi({ ask: mockAsk } as any, [])
+    const res = await (api as any).ask({
+      title: '调查问卷',
+      questions: [{ id: 'q1', type: 'short', prompt: '用户感想' }]
     })
+    expect(res.answers[0].value).toBe('')
+    expect(res.answers[0].text).toBe('')
   })
 })

@@ -452,6 +452,14 @@ export interface WorkspaceOps {
   read: (path?: string) => unknown
   /** 写一个文本文件（整份覆盖；父目录自动建），输入 { path, content } */
   write: (input: Record<string, unknown>) => unknown
+  /** 定向检索行号与锚点：输入 { path, anchors: ['关键词1', '关键词2'] } 直接返回行号与匹配行，免去全文塞入上下文 */
+  grep?: (input: Record<string, unknown> | string) => unknown
+  /** 删除工作区文件或目录 */
+  delete?: (path: unknown) => unknown
+  /** 移动或重命名工作区文件或目录 */
+  move?: (inputOrFrom: unknown, maybeTo?: unknown) => unknown
+  /** 下载远程文件（图片、PDF、数据等）并保存到工作区文件 */
+  download?: (urlOrInput: unknown, maybePath?: unknown) => unknown
 }
 
 /**
@@ -484,6 +492,10 @@ export interface SeeRequest {
   name?: string
   pdf?: string
   page?: number | number[]
+  /** 图片说明或题注（如 '图 3 整体架构'），直接写入静态资源库元数据 */
+  caption?: string
+  /** 排序序号（如 1, 2, 3），直接写入静态资源库元数据，便于 res.list 原样呈现 */
+  order?: number
 }
 
 /**
@@ -691,19 +703,287 @@ export interface BrowserTabInfo {
   active: boolean
   /** 页签所在分组格的 id */
   group: string
+  /** 来源标识：通过文件节点打开的标记为 'fileNode'，用户主动新开的标记为 'user' */
+  source?: 'fileNode' | 'user'
+  fileNodeId?: string
+  fileNodeTitle?: string
+  goalId?: string
 }
 
-/** point / dom 的目标：snapshot 清单里的 { ref } 或 CSS 选择器 */
-export type BrowserTarget = string | { ref: number }
+export type BrowserTarget = number | string
+
+export interface BrowserIndexOpts {
+  focus?: BrowserTarget
+  target?: BrowserTarget
+  maxDepth?: number
+  collapse?: boolean
+  full?: boolean
+  expand?: number[]
+}
+
+export interface BrowserIndexResult {
+  text: string
+  count: number
+  title: string
+  url: string
+  lines?: string[]
+  error?: string
+}
+
+export interface BrowserTextOpts {
+  maxChars?: number
+  offset?: number
+}
+
+export interface BrowserTextResult {
+  ok: boolean
+  id: BrowserTarget
+  text: string
+  totalChars: number
+  offset?: number
+  hasMore?: boolean
+  nextOffset?: number
+  error?: string
+}
+
+export interface BrowserInspectOpts {
+  nth?: number
+}
+
+export interface BrowserInspectResult {
+  ok: boolean
+  id: BrowserTarget
+  matchCount?: number
+  tag: string
+  resolvedTag?: string
+  idAttr?: string
+  className?: string
+  text?: string
+  value?: string
+  placeholder?: string
+  href?: string
+  checked?: boolean
+  disabled?: boolean
+  visible?: boolean
+  warning?: string
+  isEditable?: boolean
+  rect?: { x: number; y: number; width: number; height: number }
+  error?: string
+}
+
+export interface BrowserClickOpts {
+  waitAfterMs?: number
+}
+
+export interface BrowserClickResult {
+  ok: boolean
+  tag?: string
+  resolvedTag?: string
+  visible?: boolean
+  warning?: string
+  openedTabId?: string
+  navigated?: boolean
+  error?: string
+}
+
+export interface BrowserFillOpts {
+  clear?: boolean
+  pressEnter?: boolean
+}
+
+export interface BrowserFillResult {
+  ok: boolean
+  tag?: string
+  resolvedTag?: string
+  resolvedType?: string
+  wrote?: number
+  readback?: string
+  hint?: string
+  error?: string
+}
+
+export interface BrowserTypeOpts {
+  delayMs?: number
+}
+
+export interface BrowserTypeResult {
+  ok: boolean
+  tag?: string
+  resolvedTag?: string
+  typedChars?: number
+  error?: string
+}
+
+export interface BrowserPressResult {
+  ok: boolean
+  key?: string
+  dispatched?: boolean
+  warning?: string
+  error?: string
+}
+
+export interface BrowserScrollOpts {
+  to?: 'top' | 'bottom'
+  by?: number
+  target?: BrowserTarget
+}
+
+export interface BrowserScrollResult {
+  ok: boolean
+  scrollY?: number
+  scrollHeight?: number
+  atBottom?: boolean
+  containerScrollY?: number
+  containerScrollHeight?: number
+  containerAtBottom?: boolean
+  documentScrollY?: number
+  documentScrollHeight?: number
+  documentAtBottom?: boolean
+  error?: string
+}
+
+export interface BrowserQueryItem {
+  id: number
+  tag: string
+  cls?: string
+  idAttr?: string
+  text: string
+  href?: string
+  value?: string
+  placeholder?: string
+  visible: boolean
+  isEditable: boolean
+  rect: { x: number; y: number; width: number; height: number }
+}
+
+export interface BrowserQueryOpts {
+  limit?: number
+}
+
+export interface BrowserQueryResult {
+  ok: boolean
+  selector: string
+  count: number
+  matches: BrowserQueryItem[]
+  error?: string
+}
+
+export interface BrowserWaitForOpts {
+  timeoutMs?: number
+  timeout?: number
+  visible?: boolean
+}
+
+export interface BrowserWaitForResult {
+  ok: boolean
+  elapsedMs: number
+  id?: number
+  tag?: string
+  visible?: boolean
+  error?: string
+}
+
+export interface BrowserToImageOpts {
+  /** 是否自动隔离/隐藏遮挡在目标元素上方的悬浮遮罩、吸顶栏与弹窗（默认 true） */
+  isolate?: boolean
+  /** 是否截取长内容的完整高度（如超长文章自动分段滚动并无缝拼接为长图，默认 true） */
+  full?: boolean
+  /** 截图周边留白边距（像素，默认 0） */
+  padding?: number
+  /** 长图拼接最大总高度限制（默认 16000px，防止无限滚动页面爆内存） */
+  maxHeight?: number
+  /** 图片保存名称（默认 'DOM元素截图' 或元素描述） */
+  name?: string
+  /** 导出格式（默认 'png'） */
+  format?: 'png' | 'jpeg'
+  /** JPEG 质量（1-100，仅 format 为 jpeg 时生效） */
+  quality?: number
+}
+
+export interface BrowserToImageResult {
+  ok: boolean
+  url?: string
+  uuid?: string
+  path?: string
+  width?: number
+  height?: number
+  tag?: string
+  selector?: string
+  slices?: number
+  error?: string
+  hint?: string
+}
+
+export interface BrowserScreenshotOpts {
+  /** 可选：指定截取目标 DOM 元素（ID 或选择器）；若提供则自动按 DOM 元素转长图处理 */
+  target?: BrowserTarget
+  /** 是否隔离遮挡物（仅指定 target 时生效，默认 true） */
+  isolate?: boolean
+  /** 是否截取元素完整高度（默认 true） */
+  full?: boolean
+  /** 截图周边留白边距（像素，默认 0） */
+  padding?: number
+  /** 长图拼接最大总高度限制（默认 16000px） */
+  maxHeight?: number
+  /** 自定义名称 */
+  name?: string
+  path?: string
+}
+
+export interface BrowserScreenshotResult {
+  ok: boolean
+  path?: string
+  url?: string
+  uuid?: string
+  width?: number
+  height?: number
+  error?: string
+}
+
+export interface BrowserToMarkdownOpts {
+  /** 可选：直接将转换后的 Markdown 写入指定工作区文件（如 'workspace/article.md'），回执仅回字符数与行数，避免大量文本冲击上下文 */
+  saveTo?: string
+  maxChars?: number
+}
+
+export interface BrowserToMarkdownResult {
+  ok: boolean
+  markdown?: string
+  chars?: number
+  lines?: number
+  saved?: boolean
+  path?: string
+  rel?: string
+  diagnostics?: {
+    images: number
+    headings: number
+    paragraphs: number
+    codeBlocks: number
+  }
+  note?: string
+  error?: string
+}
+
+export interface BrowserEvalOpts {
+  /** 可选：将代码执行结果直接写入指定文件（如 'workspace/result.json'），回执仅回字符数与行数，避免大量文本冲击上下文 */
+  saveTo?: string
+}
+
+export interface BrowserEvalResult {
+  ok: boolean
+  result?: unknown
+  saved?: boolean
+  path?: string
+  rel?: string
+  chars?: number
+  lines?: number
+  note?: string
+  error?: string
+}
 
 /**
- * 内置浏览器（browser.*）的宿主实现（见 learn/web/browserOps 与 learn/web/webviewRegistry）。
- *
- * **看 = snapshot（元素清单）/ read（整页 markdown）/ capture（截图，最后手段），
- * 动手 = dom（对 ref 的受控 DOM 操作），指给用户看 = point（滚动 + 高亮）**——
- * 没有任意执行页面 JS 的口子（read / eval 试过一轮，结果不可控，已撤）。
- * tabId 省略 = 「焦点格正看着的那个网页」；指名不存在时抛错，错误里引导先 browser.tabs()。
- * 返回对象会原样序列化给模型，文字要写成人话。
+ * 内置浏览器（browser.*）的宿主实现（见 learn/web/browserOps）。
+ * 涵盖网页页签生命周期（open / tabs / activate / close）与基础读写（index / text / inspect / click / fill / type / press / scroll / query / waitFor / screenshot / eval）。
  */
 export interface BrowserOps {
   /** 开一个网页页签（纯关键词当搜索词处理）；回 tabId，返回时首屏基本加载完 */
@@ -714,80 +994,39 @@ export interface BrowserOps {
   activate(tabId: string): { ok: true }
   /** 关掉某个页签（不弹确认）；给数组就批量关（试错页签收尾用——用户自己开的别关） */
   close(tabId: string | string[]): { ok: true }
-  /**
-   * 页面快照：可交互元素列成**带 ref 的清单**（role + 名称 + 输入值，≤200 条）——
-   * 「看」的文本通道，比截图省；DOM 变了 ref 会过期，重新 snapshot 即可。
-   * 过滤参数：role（只要这个角色）、contains（名称含这段文字）、limit（最多几条）——
-   * 大页面上别整份捞，5k token 换 2 条信息是真实发生过的账。
-   */
-  snapshot(
-    tabId?: string,
-    opts?: Record<string, unknown>,
-  ): Promise<{
-    elements: Array<{ ref: number; role: string; name: string; value?: string }>
-    truncated?: boolean
-  }>
-  /** 页面像锚点跳转一样滚到目标元素，并注入短暂的脉冲高亮把它标出来（指给用户看） */
-  point(tabId: string | undefined, target: BrowserTarget): Promise<{ ok: true }>
-  /**
-   * 对 snapshot 清单里的 ref 做受控 DOM 操作：op = "click" / "fill"(文字，触发
-   * input/change，React 受控输入也认) / "focus" / "submit"(所在表单) / "press"(键盘键，
-   * 如 "Enter"——fill+submit 走不通的搜索框靠它) / "text"(元素文字，≤4000 字) / "attr"(属性名)。
-   * ref 认编号数字或 { ref } 两种写法（与 text/point 一致）。result 是操作自己的小结果。
-   */
-  dom(tabId: string | undefined, ref: number | { ref: number }, op: string, arg?: string): Promise<{ ok: true; result?: unknown }>
-  /** 整页转 markdown（与 web.webFetch 同一条管线：短的回全文，长的落盘回大纲 + uuid）；
-   *  opts { maxChars?, offset? } 把回文切段（与整篇读取同一哲学） */
-  read(tabId?: string, opts?: Record<string, unknown>): Promise<unknown>
-  /** 页面截图 → 资源库 + 挂到下一跳（与 ui.screenshot 同一条通道）——snapshot/read 拿不到时才用 */
-  capture(tabId?: string): Promise<{ ok: true; note?: string; images: MessageImage[] } | { ok: false; error: string }>
-  /**
-   * 页签日志清单（console + 网络请求，折叠去重，失败永不折叠；行自带 [c#]/[n#] 条目号）。
-   * **tabId 必给**：日志跟着页签走，没有焦点默认。level 默认 error；only:'api' 只看 XHR/Fetch、
-   * 'fail' 只看失败；afterSeq 是无状态分页游标。
-   */
-  logs(tabId: string, opts?: Record<string, unknown>): Promise<unknown>
-  /** 单条日志详情：console 给完整文本与调用栈，网络给请求头/postData/响应体（截断）。
-   *  seq 认清单行里的条目号：96、'n96'、'c96' 都行 */
-  logDetail(tabId: string, seq: number | string, opts?: Record<string, unknown>): Promise<unknown>
-  /**
-   * 页面上下文直发 HTTP（继承该页签的登录态）：target 是 http(s) 网址，或 { reqId }（网络清单
-   * 里的条目号——原样重放页面发过的请求，headers/postData 用捕获的，覆盖项落在其上）。
-   * **请求级失败不抛异常**：没拿到响应（CSP/CORS/超时）回 { status: 0, failed: true, reason }，
-   * 按值分支，不用 try/catch；只有参数/页签错误才抛。HTTP 4xx/5xx 是正常回执。
-   * 长响应分段读：{ offset, maxBody } → { body, chars, nextOffset }。
-   */
-  fetch(
-    tabId: string,
-    target: string | { reqId: number },
-    opts?: Record<string, unknown>,
-  ): Promise<unknown>
-  /** 日志录制：action = "start" 钉水位 / "stop" 回这段区间的折叠清单并清水位——「发起录制 →
-   *  ask 用户做 agent 做不了的操作 → 停止录制 → 分析」这条链的骨架 */
-  record(tabId: string, action: string, opts?: Record<string, unknown>): Promise<unknown>
-  /** 区域文本：按 选择器字符串 / { ref } 取**渲染后**的 innerText（≤ maxChars，默认 4000）——
-   *  SPA 上唯一的文本通道，提取管线失灵时靠它而不是截图 */
-  text(tabId: string, target: string | { ref: number }, opts?: Record<string, unknown>): Promise<unknown>
-  /** 滚页面（无限滚动信息流的引擎）：{ by: 像素 } 或 { to: "top"|"bottom"|选择器 } 或 { ref }；
-   *  回滚动后的几何（scrollY/scrollHeight/atBottom——判断要不要等新内容） */
-  scroll(tabId: string, req: Record<string, unknown>): Promise<unknown>
-  /**
-   * 等条件成立（250ms 轮询，默认 8s、上限 30s）——「wait 一下、再取一次、还是空」循环的替代品。
-   * 谓词全是固定原语：{ selector } 元素出现 / { text } 正文含这段字 / { urlIncludes } 地址包含 /
-   * { networkIdle: true } 请求挂起清零 / { load: true } 加载完。回 { matched, waitedMs, url }。
-   */
-  waitFor(tabId: string, req: Record<string, unknown>): Promise<unknown>
+  /** 获取当前页面的压缩语义索引大纲（含 [id] 编号与 Shadow DOM 穿透） */
+  index(tabId?: string, opts?: BrowserIndexOpts): Promise<BrowserIndexResult>
+  /** 深入读取折叠正文或指定节点的文本（支持长文分段） */
+  text(tabId: string | undefined, target: BrowserTarget, opts?: BrowserTextOpts): Promise<BrowserTextResult>
+  /** 探测指定节点的详细属性（tag, value, placeholder, href, checked, rect 等，支持 nth 选择器） */
+  inspect(tabId: string | undefined, target: BrowserTarget, opts?: BrowserInspectOpts): Promise<BrowserInspectResult>
+  /** 自动滚到视口并智能点击指定节点 */
+  click(tabId: string | undefined, target: BrowserTarget, opts?: BrowserClickOpts): Promise<BrowserClickResult>
+  /** 智能输入文字（支持受控组件、原生组件与富文本框，自带写入自检 readback 防假阳性） */
+  fill(tabId: string | undefined, target: BrowserTarget, text: string, opts?: BrowserFillOpts): Promise<BrowserFillResult>
+  /** 逐字符按键仿真与 IME 模拟输入（为 B 站、知乎等 Shadow DOM 复杂富文本框量身定制的健壮输入通道） */
+  type(tabId: string | undefined, target: BrowserTarget, text: string, opts?: BrowserTypeOpts): Promise<BrowserTypeResult>
+  /** 模拟键盘按键（Enter, Escape, Tab, ArrowDown 等） */
+  press(tabId: string | undefined, key: string, target?: BrowserTarget): Promise<BrowserPressResult>
+  /** 滚动页面或指定局部容器 */
+  scroll(tabId?: string, opts?: BrowserScrollOpts): Promise<BrowserScrollResult>
+  /** 跨 Shadow DOM 全域检索选择器并返回匹配候选清单（每项带 [id]、text、href、rect、visible 等） */
+  query(tabId: string | undefined, selector: string, opts?: BrowserQueryOpts): Promise<BrowserQueryResult>
+  /** 智能等待选择器节点或指定文本出现（解决异步加载盲等硬等问题） */
+  waitFor(tabId: string | undefined, targetOrText: string, opts?: BrowserWaitForOpts): Promise<BrowserWaitForResult>
+  /** 截取当前网页视图并存入静态资源库，返回图片 moji:static 访问地址 */
+  screenshot(tabId?: string, opts?: BrowserScreenshotOpts): Promise<BrowserScreenshotResult>
+  /** 将指定 DOM 元素（ID 或选择器，穿透 Shadow DOM）转为图片存入资源库；自动消除遮挡层，支持超长文章长图无缝拼接 */
+  toImage(tabId: string | undefined, target: BrowserTarget, opts?: BrowserToImageOpts): Promise<BrowserToImageResult>
+  /** 别名：elementImage / elementScreenshot 同步支持 */
+  elementImage?: (tabId: string | undefined, target: BrowserTarget, opts?: BrowserToImageOpts) => Promise<BrowserToImageResult>
+  elementScreenshot?: (tabId: string | undefined, target: BrowserTarget, opts?: BrowserToImageOpts) => Promise<BrowserToImageResult>
+  /** 在访客页面上下文中安全执行受控代码并返回 JSON（只读/枚举/透视终极保底武器） */
+  /** 将指定 DOM 元素（ID 或选择器，穿透 Shadow DOM）转换为 Markdown 格式文本，尽可能保留图片、公式、表格、排版；支持 saveTo 落盘 */
+  toMarkdown(tabId?: string, target?: BrowserTarget, opts?: BrowserToMarkdownOpts): Promise<BrowserToMarkdownResult>
+  eval(tabId: string | undefined, code: string, opts?: BrowserEvalOpts): Promise<BrowserEvalResult>
 }
 
-/**
- * mcp.*：用户配置的外部 **MCP（Model Context Protocol）服务**（见 agent/mcp/ops）。
- *
- * 与别的组不同：这一组不是固定几条签名，而是三个通用入口——外部工具清单与连接
- * 都由用户在设置里配置、运行时才知道。服务按 id 或名称指名（名称撞重时用 id）。
- *
- * 由宿主在「MCP 总开关开着」时注入（见 useAgent）；子代理的白名单里没有它——
- * MCP 这一组目前只敞给导师（它调的是真实外部系统，写操作要有确认纪律）。
- */
 export interface McpOps {
   /** 已启用服务与各自**缓存的**工具清单（不发网络请求） */
   list: () => unknown
@@ -818,7 +1057,7 @@ export interface ResourceOps {
   /** 改名称 / 描述 / 文本内容 */
   update: (
     uuid: string,
-    patch: { name?: string; description?: string; content?: string },
+    patch: { name?: string; description?: string; content?: string; caption?: string; order?: number },
   ) => Promise<unknown>
   /** 删。还被引用时必须 force 才动手 */
   remove: (uuid: string, force: boolean) => Promise<unknown>

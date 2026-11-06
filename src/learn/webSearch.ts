@@ -85,6 +85,8 @@ export interface DeepSeekFetchSuccess {
   ok: true
   title: string
   content: string
+  diagnostics?: FetchDiagnostics
+  note?: string
 }
 
 export interface DeepSeekFetchFailure {
@@ -280,6 +282,54 @@ export async function callDeepSeekSearch(
  * 保证始终返回统一的 { ok, title, content, error? } 结构，
  * title 与 content 恒定为字符串（失败时为空字符串），防止 agent 访问 content.slice 崩溃。
  */
+export interface FetchDiagnostics {
+  images: number
+  formulas: number
+  danglingRefs: string[]
+  warning?: string
+}
+
+export function analyzeFetchContent(content: string): FetchDiagnostics {
+  const images = (content.match(/!\[[^\]]*\]\([^)]+\)/g) || []).length
+  const formulas = (content.match(/\$\$[\s\S]+?\$\$|\$[^$\n]+\$|\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/g) || []).length
+
+  const danglingPatterns = [
+    /如[上下]图(?:所示)?/g,
+    /见[上下]图/g,
+    /参考[上下]图/g,
+    /(?:改为|使用|结合|通过)\s*(?:和|与|及)\s*[，,]/g,
+    /[，,]\s*(?:和|与|及)\s*[，,]/g,
+    /(?:改为|变成|将)\s*[，,]/g,
+    /(?:和|与|及)\s*[，,]/g,
+  ]
+
+  const danglingRefsSet = new Set<string>()
+  for (const pat of danglingPatterns) {
+    const matches = content.match(pat)
+    if (matches) {
+      for (const m of matches) {
+        danglingRefsSet.add(m.trim())
+      }
+    }
+  }
+
+  const danglingRefs = Array.from(danglingRefsSet)
+  let warning: string | undefined
+  if (images === 0 && danglingRefs.some((r) => r.includes('图'))) {
+    warning = '抓取正文中包含配图指示词（如「如下图所示」），但未抓取到任何图片标签。原文中的配图可能已被服务丢弃。'
+  } else if (danglingRefs.some((r) => /和|与|及/.test(r))) {
+    const sample = danglingRefs.find((r) => /和|与|及/.test(r))
+    warning = `正文中检测到语法断裂或残句（如「${sample}」），原文中可能存在内联公式或特殊嵌入元素丢失。`
+  }
+
+  return {
+    images,
+    formulas,
+    danglingRefs,
+    ...(warning ? { warning } : {}),
+  }
+}
+
 export async function callDeepSeekFetch(
   params: DeepSeekFetchParams,
   apiKey?: string,
@@ -367,10 +417,15 @@ export async function callDeepSeekFetch(
       }
     }
 
+    const content = String(json?.content ?? '')
+    const diagnostics = analyzeFetchContent(content)
+
     return {
       ok: true,
       title: String(json?.title ?? ''),
-      content: String(json?.content ?? ''),
+      content,
+      diagnostics,
+      ...(diagnostics.warning ? { note: `【抓取诊断提示】：${diagnostics.warning} 若需完整内容与图表，请使用 api.browser.open 配合 browser 相关 API 查看。` } : {}),
     }
   } catch (err) {
     stopTimer()

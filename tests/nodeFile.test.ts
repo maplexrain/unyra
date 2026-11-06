@@ -237,4 +237,49 @@ describe('第 3 次迁移：七份文件合并成一份', () => {
     expect(res.ok).toBe(true)
     expect(res.details).toBe('没有可迁移的数据')
   })
+
+  it('随文便签（notepads）能够完整通过 buildDocs 落盘并经由 parseDocs 还原', () => {
+    const { files } = fakeCtx(legacyTree())
+    // 先完成迁移
+    const store = parseDocs(relOf(files), {})!
+    expect(store).not.toBeNull()
+
+    // 给 n1 节点添加随文便签
+    const n1 = store.nodes.find((n) => n.id === 'n1')!
+    n1.notepads = [
+      { id: 'np1', content: '第一条随文随笔', blockIndex: 0, createdAt: 100, updatedAt: 100 },
+      { id: 'np2', content: '插入在第2块后的思考', blockIndex: 2, createdAt: 110, updatedAt: 120 },
+    ]
+
+    // 重新落盘
+    const built = buildDocs(store)
+    const nodeJsonStr = built.get('docs/高数/高数.node.json')
+    expect(nodeJsonStr).toBeDefined()
+    const nodeObj = JSON.parse(nodeJsonStr!)
+    expect(nodeObj.notepads).toHaveLength(2)
+    expect(nodeObj.notepads[0].id).toBe('np1')
+    expect(nodeObj.notepads[0].content).toBe('第一条随文随笔')
+    expect(nodeObj.notepads[0].blockIndex).toBe(0)
+
+    // 从 buildDocs 产出的文件重新解析
+    const restored = parseDocs(built, {})!
+    expect(restored).not.toBeNull()
+    const restoredN1 = restored.nodes.find((n) => n.id === 'n1')!
+    expect(restoredN1.notepads).toBeDefined()
+    expect(restoredN1.notepads).toHaveLength(2)
+    expect(restoredN1.notepads![0]).toEqual({
+      id: 'np1',
+      content: '第一条随文随笔',
+      blockIndex: 0,
+      createdAt: 100,
+      updatedAt: 100,
+    })
+    expect(restoredN1.notepads![1]).toEqual({
+      id: 'np2',
+      content: '插入在第2块后的思考',
+      blockIndex: 2,
+      createdAt: 110,
+      updatedAt: 120,
+    })
+  })
 })

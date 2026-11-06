@@ -130,6 +130,19 @@ export function learnSandboxOps(deps: {
         const p = userPath(rel)
         return p ? native().storage.write(p, content) : Promise.resolve({ ok: false as const, error: '当前没有登录用户' })
       },
+      delete: (rel) => {
+        const p = userPath(rel)
+        return p ? native().storage.remove(p) : Promise.resolve({ ok: false as const, error: '当前没有登录用户' })
+      },
+      move: (fromRel, toRel) => {
+        const from = userPath(fromRel)
+        const to = userPath(toRel)
+        return from && to ? native().storage.move(from, to) : Promise.resolve({ ok: false as const, error: '当前没有登录用户' })
+      },
+      writeBinary: (rel, dataUrl) => {
+        const p = userPath(rel)
+        return p ? native().storage.writeBinary(p, dataUrl) : Promise.resolve({ ok: false as const, error: '当前没有登录用户' })
+      },
     },
     /**
      * 项目路径的文件通道（project.*，见 learn/ops/project）：声明即授权——

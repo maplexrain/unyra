@@ -269,6 +269,7 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
       superdocs: content.superdocs,
       ...(content.outline ? { outline: content.outline } : {}),
       annotations: file.annotations,
+      ...(Array.isArray(file.notepads) ? { notepads: file.notepads } : {}),
       status: file.status,
       learning: file.learning,
       ...(file.tint !== undefined ? { tint: file.tint } : {}),

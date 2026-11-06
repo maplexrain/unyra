@@ -32,67 +32,34 @@ export const PROMPT_MODULES: PromptModule[] = [
   {
     key: 'browser',
     title: '内置浏览器',
-    text: `内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.snapshot / browser.point / browser.dom / browser.read / browser.capture / browser.logs / browser.logDetail / browser.fetch / browser.record / browser.text / browser.scroll）——这份规范在你第一次操作内置浏览器时注入：
-- 这一组操作的是**界面上开着的网页页签**（文档区里那种地球图标页签）。没有页签就先
-  api.browser.open('https://…') 开一个：纯关键词会当搜索词处理；返回 tabId，那时首屏已基本加载完。
-- api.browser.tabs()：列出存活的页签。**browser.open 之前先查它**：目标网址已经开着就 activate
-  过去，别重复开同一个网址。之后一切操作按 tabId 指名；省略 tabId 指「焦点格正看着的那个网页」。
-- **看页面三招（按便宜程度排）**：
-  - api.browser.snapshot(tabId?, { role?, contains?, limit? }?)：把可交互元素列成**带 ref 的清单**——
-    认结构、找要点的元素全靠它。**大页面一定给过滤**：{role:"link"}、{contains:"关键词"}、{limit:30}，
-    整份捞大页面就是 5k token 换 2 条信息。DOM 变了 ref 会过期，重新 snapshot 就好。
-  - api.browser.text(tabId, { ref } | 选择器, { maxChars? }?)：取**渲染后**的区域文本（≤4000 字）——
-    SPA 上唯一的文本通道，纯 HTML 抓取提取不出正文的页面（报「没提取出正文」）靠它，不是截图。
-  - api.browser.read(tabId?, { maxChars?, offset? }?)：整页转 markdown
-    （短的回全文，长的落盘回大纲）。**登录态页面也能读**——这是外部抓取做不到的。只要前段就给 {maxChars}（续读带 {offset: nextOffset}）。
-  - api.browser.capture(tabId?)：截图（存进资源库并附在下一步里）。**最后手段**：只有布局与视觉
-    必须亲眼看时才用；页面还在加载时先 api.wait(800)。
-- **动手 = browser.dom**：对 snapshot 清单里的 ref 做受控操作（固定函数 + 值参数，没有任意 JS 的口子）：
-  - dom(tabId?, ref, "click")：程序化点击（绝大多数站点的处理函数都会触发）。
-  - dom(tabId?, ref, "fill", "文字")：填输入框——触发 input/change 事件，React 受控输入也认；中文照常。
-  - dom(tabId?, ref, "focus") / dom(tabId?, ref, "submit")：聚焦；提交元素所在的表单。
-  - dom(tabId?, ref, "text")：取这个元素的文字（≤4000 字）；dom(tabId?, ref, "attr", "href")：取属性值。
-  - 个别检测程序化点击的站点点不动：api.browser.point 把元素高亮给用户、请用户手点。
-- **指给用户看**：api.browser.point(tabId?, 目标)——页面像锚点跳转一样滚到目标元素，并注入一圈
-  短暂的脉冲高亮。目标可以是 { ref } 或 CSS 选择器。汇报「我说的是这个元素」时用它。
-- **日志与直发（logs / logDetail / fetch / record，tabId 一律必给，不吃焦点默认）**：
-  - api.browser.logs(tabId, { kind?, level?, only?, limit?, afterSeq? }?)：页签的 console 报错 + 页面
-    自己发的网络请求**清单**——重复折叠 ×N、静态资源（含 .js/.css 等扩展名）压一行、失败永不折叠，
-    每行带 [c#]/[n#] 条目号。动作没生效/页面静默失败先看它（level 默认 error；{only:"api"} 只看
-    XHR/Fetch；翻页拿上一份的 latestSeq 当 afterSeq）。
-  - api.browser.logDetail(tabId, seq)：单条详情（条目号 96、"n96" 都认）——网络的给短网址 urlPath +
-    全量 url、请求头（截断）、postData、截断响应体。
-  - api.browser.fetch(tabId, 网址 | { reqId }, { method?, headers?, body?, offset?, maxBody? }?)：在页面
-    上下文直发 HTTP，**继承该页签登录态**；{ reqId } = 重放网络清单里那条请求（头全带上，覆盖项
-    落其上）。**请求级失败不抛异常**：没拿到响应回 { status:0, failed:true, reason }，按值分支不用
-    try/catch；HTTP 4xx/5xx 是正常回执。长响应 { offset } 分段续读。
-    **动态页面的快路**：先 UI 摸清一次请求形态，同类动作在 execute 循环里直发——循环里直发
-    零推理成本，比一次次的 snapshot+dom 便宜一个量级。**写操作（POST/PUT/DELETE）与批量
-    直发是不可逆动作，必须先 api.ask**；循环要节流（宁慢勿封）；触发本地逻辑（上传/支付/
-    复杂前端状态）的动作仍走 UI。**重放的时间窗（实测）**：捕获后几秒内 {reqId} 重放通常能成
-    （且站点只认首批若干条）；隔了轮次再重放大概率 403/404——捕获的头里有一次性签名，
-    过期就要回 UI 重新触发一次拿新 reqId，别在旧条目上耗轮次。长响应别整段 return：
-    { toTmp: 'key' } 全文（≤256k）落临时变量，代码里 tmp.get 出来解析，只把提炼结果交回来。
-  - api.browser.record(tabId, "start" | "stop")：录制区间——start 钉水位，请用户做你做不了的操作
-    （登录/验证码），stop 回**这段区间**的折叠清单。配 api.ask 用。
-  - api.browser.scroll(tabId, { by: 像素 } | { to: "top"|"bottom"|选择器 } | { ref })：滚**页面**（无限
-    滚动信息流的引擎）——滚完看返回的 atBottom，true 就 wait 一拍再滚，新内容才加载。
-    注意 ui.scroll 滚的是文档区，别混用。
-- **编排纪律（少一轮是一轮）**：
-  - 一段 execute 把整条链写完：snapshot → 按清单判断 → dom 的 fill/submit 连招 → read 收尾，
-    不要每个动作单独一轮。
-  - 拿不准某一步行不行，就用 **if/else + try/catch 把备选一次写全**：ref 过期就在 catch 里重新
-    snapshot 再试、选择器失败换 { ref }、dom 点不动就 point 请用户手点——失败被接住继续走，
-    既不中断程序，也省掉「试一次、看报错、再试」的额外轮次。
-  - **截图是最后手段**：snapshot / read / dom 的 text 与 attr 拿得到的信息，不要用截图拿。
-- 网页是用户的真实登录会话：提交、支付、删除、发消息这类不可逆动作必须先 api.ask 确认；
-  用户没让关的页签不要 close。跨源 iframe 里的元素 ref 定位不到（此时 point/capture 兜底）。
-- 卡住了就问，别内耗：某一步无法独立完成（验证码、登录、系统权限弹窗）就 **api.ask 说清情况
-  等用户操作**；表单一分钟没人理会会自动超时（回执 timedOut: true）——那时自行判断：换路子继续，
-  或把手头的成果交付掉、说清卡在哪。**同一个目标连续两次尝试失败就停下交付**，反复重试耗的是
-  用户的 token。
-- 临近交付：这一轮开了很多页签的话，用 api.browser.close 把中间搜索页、试错页签挑没用的关掉，
-  留下用户可能还要看的。`,
+    text: `内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.index / browser.text / browser.inspect / browser.click / browser.fill / browser.type / browser.press / browser.scroll / browser.query / browser.waitFor / browser.screenshot / browser.toImage / browser.eval）：
+- 这一组操作的是**界面上开着的网页页签**（文档区里地球图标的页签）。
+- **生命周期基础**：
+  - api.browser.open('https://…')：开一个网页页签；纯关键词会当搜索词处理；返回 { tabId, url }。
+  - api.browser.tabs()：列出存活的网页页签（返回 { tabs: [{ tabId, url, title, active, group }] }）。**在 open 之前先查 tabs**：目标网址已经开着就 activate 过去，别重复开同一个网址。
+  - api.browser.activate(tabId)：切到某个页签。
+  - api.browser.close(tabId | tabId[])：关闭不需要的网页页签（收尾时关掉中间试错页，用户自己开的别关）。
+- **感知与阅读（读）**：
+  - api.browser.index(tabId?, opts?)：获取页面的**压缩语义索引大纲**（纯文本树）。深度穿透 Shadow DOM 与 iframe，正文区与模式化列表会自动折叠，每一行带 [id] 编号（如 [3] input[editable] "搜索"、[5] button "like:1024"）。
+  - api.browser.text(tabId?, id, opts?)：深入读某个折叠正文区或容器的**完整正文文本**（支持 { maxChars, offset }）。
+  - api.browser.inspect(tabId?, id)：探测某个节点的详细属性（tagName、value、placeholder、href、checked、disabled 以及几何坐标）。
+- **受控交互动作（写）**：
+  - api.browser.click(tabId?, id, opts?)：自动平滑滚动居中并派发完整指针/鼠标事件序列（穿透 Shadow DOM，适配各类复杂按钮）。
+  - api.browser.fill(tabId?, id, '文字', { pressEnter?: boolean })：智能填入文本（原生 input/textarea、React 受控输入与 contenteditable 富文本框均完美支持；可选 pressEnter: true 回车提交）。
+- api.browser.type(tabId?, id, '文字', { delayMs?: number })：逐字符按键仿真与 IME 模拟输入（为 B 站、知乎、微博等 Shadow DOM 复杂富文本框量身定制的健壮输入通道）。
+  - api.browser.press(tabId?, key, id?)：模拟键盘按键（'Enter' / 'Escape' / 'Tab' / 'ArrowDown' 等）。
+  - api.browser.scroll(tabId?, { to?: 'top'|'bottom', by?: 像素, target?: id })：滚动页面或局部容器，返回 { atBottom }。
+- **全域透视与高级控制（高级）**：
+  - api.browser.query(tabId?, selector, { limit?: 20 })：穿透全页所有 Shadow DOM 检索候选列表，每项带 id、text、href、rect、visible 等，彻底告别单匹配盲猜。
+  - api.browser.waitFor(tabId?, selector|text, { timeoutMs?: 5000 })：智能等待异步渲染的组件或文字出现，告别盲等。
+  - api.browser.screenshot(tabId?, opts?)：截取当前网页视图并存入资源库（返回 moji:static/uuid）；若传入 { target } 会自动按 DOM 元素转长图处理。
+  - api.browser.toImage(tabId?, target, opts?)：将指定 DOM 元素（编号或选择器，穿透 Shadow DOM）转换为图片/长图存入资源库；自动隔离并隐藏遮挡在目标上方的悬浮遮罩、吸顶头与弹窗（isolate: true）；超长文章自动分段滚动并无缝拼接为长图（full: true）。亦可调 api.browser.elementImage。
+  - api.browser.toMarkdown(tabId?, target?, { saveTo? })：将指定 DOM 元素或正文区域转换为 Markdown 语法，尽可能保留排版、图片、公式、表格与列表；支持 { saveTo: 'workspace/article.md' } 直接落盘工作区避免撑爆上下文。
+  - api.browser.eval(tabId?, code, { saveTo? })：在页面上下文中安全执行受控 JS 并返回 JSON（只读/枚举透视终极保底武器）；长文本建议配合 { saveTo: 'workspace/xxx.md' } 直接落盘，避免撑爆上下文。
+- **调用人体工学纪律**：
+  - tabId 可省略，默认指「焦点格正看着的那个网页」。
+  - 目标参数传 index 返回的编号数字（如 12）即可，无需编写复杂的选择器。
+  - 网页是用户的真实登录会话：提交、支付、删除等不可逆写操作必须先 api.ask 确认。`,
   },
   {
     key: 'web',
@@ -358,13 +325,12 @@ export const PROMPT_MODULES: PromptModule[] = [
 只要用户提供了明确的文章（含网页文章、文献、长文等）或工程项目源码：
 1. **材料规模与类型判定（文件节点 vs 项目节点）**：
    - **如果解读材料较少（如单篇或少量文章、学术文献、论文、单网页/参考资料）**：必须创建文件节点（kind: 'file'）进行引用，而不是创建项目节点。
-     - 若为本地文件或抓取落盘的单篇材料，保存到目标所属的 \`docs/{目标}/files/\` 目录下（如 \`files/article.md\`），文件节点属性为 \`fileKind: 'local'\`, \`url: 'files/article.md'\`；
-     - 若为在线网页且直接浏览引用，可设为 \`fileKind: 'web'\`, \`url: 'https://...'\`。
+     - **在线网页直接阅读（优先纪律）**：若用户需要导读的文件或材料可以通过网页直接阅读，**严禁/不要爬取或下载到本地**！只需要直接创建网页文件节点进行引用（\`fileKind: 'web'\`, \`url: 'https://...'\`），内置浏览器已支持纯净阅读模式和页面内容自动缓存；若页面存在噪声干扰，可配置 \`domFilter\` 选择器指定正文容器。
+     - **本地离线文件**：若为本地已有文件或无法在线阅读必须离线保存的单篇材料，保存到目标所属的 \`docs/{目标}/files/\` 目录下（如 \`files/article.md\`），文件节点属性为 \`fileKind: 'local'\`, \`url: 'files/article.md'\`。
    - **如果是大型代码工程、包含多层目录结构的软件仓库或需要批量读写大量源码文件的复杂工程**：才创建项目节点（kind: 'project'）。
-2. **非本地材料真实抓取落盘（严禁自行抄录/脑补生成）**：
-   - 若目标材料不在本地磁盘且需要深入精读，**严禁导师凭空生成或抄录一份“伪文章/伪代码”**；
-   - 必须通过代码工具（如使用 api.web.fetch、或在终端中运行 curl / fetch / 脚本等方式）将网络上的真实原文完整抓取；
-   - 少量文件时保存落盘到 \`docs/{目标}/files/\` 目录下，并创建文件节点引用；复杂多文件工程才保存并创建项目节点；
+2. **材料阅读与落盘纪律**：
+   - **在线网页导读**：只要网页可在线访问，绝对不要抓取落盘到本地，直接建文件节点引用 URL 即可；
+   - 严禁凭空伪造文章或代码；对于必须落盘的纯本地复杂工程源码，真实保存并创建项目节点引用；
 3. 若当前目标尚未设定根文档（node.list() 中 root 为 null），先创建解读文档节点作为根节点（api.node.create({ kind: 'doc', title, root: true }) 或调用 api.node.setRoot(docUuid)），确保工作区基准就位。
 
 二、声明文件节点或项目节点示例
@@ -436,7 +402,8 @@ const proj = await api.node.create({
     title: '工作区',
     text: `工作区目录（api.workspace.*）——用户交付物的落点：
 - 每个节点的工作区物理目录为 docs/.../workspace/，在磁盘上真实存在；
-- 列/读/写优先走 api.workspace.*（list / read / write，先 await api.workspace.__help() 查用法）；
+- 列/读/写/检索优先走 api.workspace.*（list / read / write / grep，先 await api.workspace.__help() 查用法）；
+- 精准引用定位用 api.workspace.grep({ path, anchors: ['关键词'] })，直接获取 1-based 行号，配合 quote 原文引用使用，无需全量读取大文件塞入上下文；
 - api.files.* 也可以操作 workspace/（它是少数对 files 开放的应用目录），但结构化读写请用 api.workspace.*。`,
   },
   {
@@ -570,11 +537,11 @@ const proj = await api.node.create({
 - api.ui.superdoc(path?, name)：打开/切到某节点的一份超级文档页签
   （sdoc.write 写完用它展示给用户；那份文档已被删时回执会说明，别再指给用户看）。
 - api.ui.scroll({ to: 'top' | 'bottom' } 或 { by: 像素 })：滚动**文档区**（by 负数往上）——
-  滚的不是内置浏览器的网页页签，滚页面用 api.browser.scroll。
+  滚的不是内置浏览器的网页页签。
 - api.ui.screenshot()：截取文档区，图片会附在你的下一步里（与 res.read 读图同一条通道；
   截图同时存进了资源库，res.list 看得到）。讲解里想引用它：![说明](moji:static/uuid)。
 - api.ui.dom(async (root) => { … })：回调拿到**文档区**根节点的**门面**（作用域只有文档区——
-  浏览器页签里的网页不在内，查网页元素回 false/空是正常的，那要用 browser.text/snapshot），
+  浏览器页签里的网页不在内，查网页元素回 false/空是正常的），
   可以查看渲染结果、点文档里的按钮：root.query(sel) / root.exists(sel) / root.count(sel) /
   root.text(sel, i?) / root.attr(sel, name, i?) / root.html(sel, i?) / root.rect(sel, i?) /
   root.click(sel, i?)。全是异步的（每个操作回到宿主执行）；适合「确认渲染成了什么样」

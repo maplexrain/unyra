@@ -99,6 +99,46 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
     const projectIds = new Set(projects.map((p) => p.id))
     const fileNodeIds = new Set(fileNodes.map((f) => f.id))
 
+    const exams: Exam[] = []
+    if (Array.isArray(d.exams)) {
+      for (const raw of d.exams) {
+        const e = normalizeExam(raw)
+        if (e) exams.push(e)
+      }
+    }
+
+    const examIds = new Set(exams.map((e) => e.id))
+
+    // 挂件池先归一（笔记与超级文档，见 learn/detached）：树边（如视频节点引出的笔记）两端可能指向它们
+    const detached: Record<string, DetachedPool> = {}
+    const rawDetached = (d.detached && typeof d.detached === 'object' ? d.detached : {}) as Record<string, unknown>
+    for (const [poolGoalId, rawPool] of Object.entries(rawDetached)) {
+      if (!goalIds.has(poolGoalId) || !rawPool || typeof rawPool !== 'object') continue
+      const p = rawPool as Record<string, unknown>
+      const notes = (Array.isArray(p.notes) ? p.notes : []).filter(
+        (n): n is NoteFile => !!n && typeof n === 'object' && typeof (n as NoteFile).id === 'string' && typeof (n as NoteFile).name === 'string' && typeof (n as NoteFile).content === 'string',
+      )
+      const superdocs = (Array.isArray(p.superdocs) ? p.superdocs : []).filter(
+        (dd): dd is SuperDocFile => !!dd && typeof dd === 'object' && typeof (dd as SuperDocFile).id === 'string' && typeof (dd as SuperDocFile).name === 'string' && typeof (dd as SuperDocFile).html === 'string',
+      )
+      if (notes.length || superdocs.length) detached[poolGoalId] = { notes, superdocs }
+    }
+
+    const detachedNoteIds = new Set<string>()
+    const detachedSuperdocIds = new Set<string>()
+    for (const pool of Object.values(detached)) {
+      for (const n of pool.notes) detachedNoteIds.add(n.id)
+      for (const s of pool.superdocs) detachedSuperdocIds.add(s.id)
+    }
+
+    // 文档节点自带的挂载笔记
+    const docNoteIds = new Set<string>()
+    for (const n of nodes) {
+      for (const note of n.notes ?? []) {
+        if (note?.id) docNoteIds.add(note.id)
+      }
+    }
+
     const rawEdges: unknown[] = Array.isArray(d.edges) ? d.edges : []
     const edges: DependencyEdge[] = []
     const edgeSeen = new Set<string>()
@@ -116,6 +156,10 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
           videoNodeIds.has(m) ||
           projectIds.has(m) ||
           fileNodeIds.has(m) ||
+          detachedNoteIds.has(m) ||
+          detachedSuperdocIds.has(m) ||
+          docNoteIds.has(m) ||
+          examIds.has(m) ||
           (m.startsWith('o:') && (ids.has(m.slice(2)) || freeIds.has(m.slice(2))))
         )
       if (!from || !to || from === to || !memberOk(from) || !memberOk(to)) continue
@@ -185,29 +229,6 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       conversations.some((c) => c.id === d.activeConversationId && c.goalId === activeGoalId)
         ? d.activeConversationId
         : ([...conversations].reverse().find((c) => c.goalId === activeGoalId)?.id ?? null)
-
-    const exams: Exam[] = []
-    if (Array.isArray(d.exams)) {
-      for (const raw of d.exams) {
-        const e = normalizeExam(raw)
-        if (e) exams.push(e)
-      }
-    }
-
-    // 游离挂件池：目标已经没了的整桶丢掉；实体只留形状对的（见 learn/detached）
-    const detached: Record<string, DetachedPool> = {}
-    const rawDetached = (d.detached && typeof d.detached === 'object' ? d.detached : {}) as Record<string, unknown>
-    for (const [poolGoalId, rawPool] of Object.entries(rawDetached)) {
-      if (!goalIds.has(poolGoalId) || !rawPool || typeof rawPool !== 'object') continue
-      const p = rawPool as Record<string, unknown>
-      const notes = (Array.isArray(p.notes) ? p.notes : []).filter(
-        (n): n is NoteFile => !!n && typeof n === 'object' && typeof (n as NoteFile).id === 'string' && typeof (n as NoteFile).name === 'string' && typeof (n as NoteFile).content === 'string',
-      )
-      const superdocs = (Array.isArray(p.superdocs) ? p.superdocs : []).filter(
-        (dd): dd is SuperDocFile => !!dd && typeof dd === 'object' && typeof (dd as SuperDocFile).id === 'string' && typeof (dd as SuperDocFile).name === 'string' && typeof (dd as SuperDocFile).html === 'string',
-      )
-      if (notes.length || superdocs.length) detached[poolGoalId] = { notes, superdocs }
-    }
 
     // 资源清单按目标归属：目标已经没了的那些条目留不住（文件本体是另一回事）
     const resources: Record<string, StaticResource[]> = {}

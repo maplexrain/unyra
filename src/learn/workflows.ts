@@ -323,7 +323,7 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
   {
     id: 'project-interpret',
     name: '项目与文章解读',
-    description: '下载文章/小型项目至本地建立项目节点，并在生成的教学文档中用 quote 块精准引用原文进行逐段精读',
+    description: '为文章建立文件节点（在线网页直接引用阅读无需下载）或小型项目建立项目节点，并在教学文档中精准引用逐段精读',
     instruction: PROJECT_INTERPRET_INSTRUCTION,
     promptModule: 'project-interpret doc-html',
     params: ['target'],

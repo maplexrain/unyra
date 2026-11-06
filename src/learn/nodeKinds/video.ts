@@ -1,14 +1,12 @@
 /**
  * 视频节点：把**一个学习目标**与**一个视频资源**绑在一起的引用（见 learn/video/nodes）。
  *
- * 画布上从 palette 拖到空白处落地，卡上选一个现有视频绑上；之后：
- * - 打开那个视频 = 一并打开这个目标的页签组（页签归属见 groups/goals 的 video 分支）；
- * - 视频被引用期间不许删除（删除守卫读 videoNodes 这张事实源表）；
- * - 视频页里出现「视频总结」按钮（按字幕做语义分段，进度条上钉分段点）；
- * - 视频节点可以作为上级挂接文档节点（例如「视频总览文档」）。
+ * 画布上从 palette 拖到空白处落地或挂在文档之下，卡上输入视频唯一标识（URL/BV号）；
+ * 点击标题打开视频 Tab，确定为视频资源后固化标识输入框，不再提供修改换绑。
  */
 import { addEdge, removeEdge } from '../graph'
-import { bindVideoNode, videoNodeById } from '../video/nodes'
+import { bindVideoNode, updateVideoNode, videoNodeById } from '../video/nodes'
+import type { VideoNodeEntity } from '../types'
 import { GNode, type ConnectFilter, type NodeHelp, type NodeRelation, type NodeResult } from './base'
 
 export class VideoGNode extends GNode {
@@ -32,6 +30,7 @@ export class VideoGNode extends GNode {
   get title(): string {
     const e = this.entity
     if (!e) return '视频 · 已不在'
+    if (e.title) return e.title
     if (!e.videoId) return '视频 · 未绑定'
     const video = this.ctx.store().videos?.find((v) => v.id === e.videoId)
     return (video?.title ?? e.videoId) + ' · 视频'
@@ -59,15 +58,23 @@ export class VideoGNode extends GNode {
     if (!e) return null
     const video = e.videoId ? this.ctx.store().videos?.find((v) => v.id === e.videoId) : undefined
     return {
-      videoId: e.videoId,
+      id: e.id,
       goalId: e.goalId,
+      videoId: e.videoId,
+      input: e.input ?? '',
+      title: e.title ?? '',
+      confirmed: !!e.confirmed,
       ...(video
-        ? { title: video.title, plugin: video.pluginName ?? video.pluginId, selection: video.selection?.title ?? null }
+        ? { videoTitle: video.title, plugin: video.pluginName ?? video.pluginId, selection: video.selection?.title ?? null }
         : {}),
     }
   }
 
-  /** 内容形状：{ videoId }。给 id = 绑定 / 换绑；给 null / 空串 = 解绑（节点留下） */
+  /**
+   * 编辑视频节点内容：
+   * - 固化后（confirmed === true）：拒绝修改或换绑；
+   * - 未固化：允许修改 input 或 title。
+   */
   editContent(next: unknown): NodeResult {
     const e = this.entity
     if (!e) return { error: '这个视频节点已经不在了' }
@@ -76,23 +83,43 @@ export class VideoGNode extends GNode {
       try {
         p = JSON.parse(next)
       } catch {
-        return { error: '视频节点的内容是 { videoId } 对象（传字符串时必须是合法 JSON）' }
+        p = { input: next }
       }
     }
     if (!p || typeof p !== 'object' || Array.isArray(p)) {
-      return { error: '视频节点的内容是 { videoId }：给视频 id 绑定，给 null 解绑' }
+      return { error: '视频节点的内容是对象，包含 videoId、input 或 title' }
     }
-    const input = p as Record<string, unknown>
-    if (!('videoId' in input)) {
-      return { error: '视频节点只认 videoId 一个字段：给视频 id 绑定，给 null 解绑（标题等显示信息都在视频资源上）' }
+    const inputObj = p as Record<string, unknown>
+    if (!('videoId' in inputObj) && !('input' in inputObj) && !('title' in inputObj)) {
+      return { error: '视频节点只认 videoId、input 或 title 字段' }
     }
-    const videoId = input.videoId === null ? null : typeof input.videoId === 'string' ? input.videoId : ''
-    const r = bindVideoNode(this.ctx.store(), this.uuid, videoId, Date.now())
+
+    if (e.confirmed && 'input' in inputObj && inputObj.input !== e.input) {
+      return { error: '视频节点已确定为视频资源并固化，不再支持修改标识' }
+    }
+
+    if ('videoId' in inputObj) {
+      const videoId = inputObj.videoId === null ? null : typeof inputObj.videoId === 'string' ? inputObj.videoId : ''
+      const r = bindVideoNode(this.ctx.store(), this.uuid, videoId, Date.now())
+      if ('error' in r) return { error: r.error }
+      this.ctx.commit(r.store)
+      return r.entity.videoId
+        ? { ok: true, note: '已把「' + r.entity.videoId + '」绑到这个目标' }
+        : { ok: true, note: '已解绑' }
+    }
+
+    const patch: Partial<Pick<VideoNodeEntity, 'input' | 'title' | 'titleCustomized'>> = {}
+    if ('input' in inputObj && typeof inputObj.input === 'string') {
+      patch.input = inputObj.input.trim()
+    }
+    if ('title' in inputObj && typeof inputObj.title === 'string') {
+      patch.title = inputObj.title.trim()
+      patch.titleCustomized = true
+    }
+    const r = updateVideoNode(this.ctx.store(), this.uuid, patch, Date.now())
     if ('error' in r) return { error: r.error }
     this.ctx.commit(r.store)
-    return r.entity.videoId
-      ? { ok: true, note: '已把「' + r.entity.videoId + '」绑到这个目标（打开那个视频会一并打开它的页签组）' }
-      : { ok: true, note: '已解绑：视频资源还在侧栏里，这枚节点留在画布上可再选别的视频' }
+    return { ok: true, note: '已更新视频节点' }
   }
 
   help(): NodeHelp {
@@ -103,35 +130,37 @@ export class VideoGNode extends GNode {
         '视频节点——把一个学习目标和一个视频资源绑在一起的引用。' +
         (video ? '当前绑着「' + video.title + '」。' : e ? '还没有绑视频。' : ''),
       edit:
-        '内容形状：{ videoId }。给视频的 id 绑定 / 换绑，给 null 解绑；视频列表先看 api.node.list() 的 videos 段。\n绑定是双向的：视频资源上也会记下这枚节点（被引用的视频删除会被拦下）。',
+        '内容形状：{ videoId } 或 { input }。未固化前可修改 input 或 title；确定为视频资源后标识输入框彻底固化，不再支持修改或换绑。',
       connection:
-        '不参与树结构（无上游）：下游可挂文档（如视频总览文档），通过 api.node.create({ kind: "doc", under: 我的 uuid }) 创建即挂；或通过 connect(文档, "down") 连线。删除走 api.node.delete。',
+        '上游允许文档节点，下游可挂文档（如视频总览文档）或笔记节点。删除走 api.node.delete。',
     }
   }
 
   onDownstream(node: GNode): ConnectFilter {
-    if (node.kind === 'doc') return true
-    return '视频节点下游只能挂文档（如视频总览文档）'
+    if (node.kind === 'doc' || node.kind === 'note') return true
+    return '视频节点下游只能挂文档或笔记'
   }
 
-  onUpstream(_node: GNode): ConnectFilter {
-    return '视频节点不能作为其他节点的下游'
+  onUpstream(node: GNode): ConnectFilter {
+    if (node.kind === 'doc') return true
+    return '视频节点的上游只能是文档节点'
   }
 
   protected link(down: GNode): NodeResult {
     const s = this.ctx.store()
     if (!this.entity) return { error: '这个视频节点已经不在了' }
-    if (down.kind !== 'doc') return { error: '视频节点下游只能挂文档' }
+    if (down.kind !== 'doc' && down.kind !== 'note') return { error: '视频节点下游只能挂文档或笔记' }
     const r = addEdge(s, this.uuid, down.uuid)
     if (!r.added) return { error: r.reason ?? '连接失败' }
     this.ctx.commit(r.store)
-    return { ok: true, note: '已将文档「' + down.title + '」挂在视频节点之下' }
+    return { ok: true, note: '已将' + (down.kind === 'note' ? '笔记「' : '文档「') + down.title + '」挂在视频节点之下' }
   }
 
   protected unlink(target: GNode): NodeResult {
     const s = this.ctx.store()
     const r = removeEdge(s, this.uuid, target.uuid)
-    this.ctx.commit(r)
-    return { ok: true, note: '已断开与文档「' + target.title + '」的连接' }
+    const rRev = removeEdge(r, target.uuid, this.uuid)
+    this.ctx.commit(rRev)
+    return { ok: true, note: '已断开与「' + target.title + '」的连接' }
   }
 }

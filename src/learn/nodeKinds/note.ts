@@ -128,8 +128,8 @@ export class NoteGNode extends GNode {
   }
 
   onUpstream(node: GNode): ConnectFilter {
-    if (node.kind !== 'doc' && node.kind !== 'exam' && node.kind !== 'superdoc' && node.kind !== 'file') {
-      return '笔记只能挂在文档、试卷、超级文档或文件节点之下'
+    if (node.kind !== 'doc' && node.kind !== 'exam' && node.kind !== 'superdoc' && node.kind !== 'file' && node.kind !== 'video') {
+      return '笔记只能挂在文档、试卷、超级文档、文件或视频节点之下'
     }
     const upRelations = this.relations.filter((r) => r.type === 'up')
     if (upRelations.length > 0 && !upRelations.some((r) => r.id === node.uuid)) {

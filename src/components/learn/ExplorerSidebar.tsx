@@ -11,16 +11,16 @@
  * 点开就是接着看，比在侧栏里另起一区更顺路。
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, memo } from 'react'
-import type { FavoriteRef, KnowledgeNode, LearnStore, TabRef, VideoResource } from '../../learn/types'
+import type { FavoriteRef, KnowledgeNode, LearnStore, TabRef } from '../../learn/types'
 import { nodeById, normalizeKey } from '../../learn/graph'
 import { EXPLORER_WIDTH_MAX, EXPLORER_WIDTH_MIN } from '../../lib/appearance'
 import { userAbsPrefix } from '../../lib/storage'
 import Logo from '../Logo'
 import { NewGoalIcon, OpenLocalIcon } from '../icons'
-import { PanelLeftClose, PanelLeftOpen, Plus, Settings, Upload } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen, Settings, Upload } from 'lucide-react'
 import { NodeRow } from './explorer/NodeRow'
 import { RowMenu } from './explorer/RowMenu'
-import { FavoriteSection, LocalRow, VideoRow } from './explorer/sections'
+import { FavoriteSection, LocalRow } from './explorer/sections'
 import { Section, SectionAction } from './explorer/Folder'
 import {
   publishReveal,
@@ -61,14 +61,6 @@ export type { ExamActions, NodeDocActions, WsActions } from './explorer/types'
 
 interface Props {
   store: LearnStore
-  /** 视频资源（用户创建并绑定住的来源，见 learn/types 的 VideoResource） */
-  videos: VideoResource[]
-  /** 打开某个视频的绑定页签 */
-  onOpenVideo: (id: string) => void
-  /** 删除一个视频资源（调用方负责落库） */
-  onDeleteVideo: (id: string) => void
-  /** 新建视频：开创建态页签（入口从顶栏挪到这里，用户定的） */
-  onNewVideo: () => void
   /**
    * 当前**选中**的节点：由激活的页签推出，而不是「上次点过的节点」。
    * 关掉某个节点的教学文档页签，它就不该再是选中样式（见 LearnWorkspace）。
@@ -150,10 +142,6 @@ function ExplorerSidebarComponent({
   onRevealWs,
   onOpenWs,
   ws,
-  videos,
-  onOpenVideo,
-  onDeleteVideo,
-  onNewVideo,
   onOpenLocal,
   onRemoveLocal,
   onRevealLocal,
@@ -466,36 +454,7 @@ function ExplorerSidebarComponent({
             onCreateGroup={onCreateFavoriteGroup}
           />
 
-          {/* 视频（用户创建的「绑定住的来源」）：分区**常显不隐藏**（用户定的），
-              新建入口就在分区头的「＋」上；播放器控件栏里那颗是选集列表开关，两者别混。 */}
-          <Section
-            title={t('视频')}
-            count={videos.length}
-            open={sectionOpen('videos')}
-            onToggle={() => toggleSection('videos')}
-            action={
-              <SectionAction title={t('新建视频')} onClick={onNewVideo}>
-                <Plus size={13} />
-              </SectionAction>
-            }
-          >
-            <div className="px-2">
-              {videos.length ? (
-                videos.map((v) => (
-                  <VideoRow
-                    key={v.id}
-                    video={v}
-                    onOpen={() => onOpenVideo(v.id)}
-                    onDelete={() => onDeleteVideo(v.id)}
-                  />
-                ))
-              ) : (
-                <p className="px-1.5 py-1 text-[11px] leading-relaxed text-ink-faint">
-                  {t('还没有视频：点右上角的「＋」新建一个。')}
-                </p>
-              )}
-            </div>
-          </Section>
+          
 
           {locals.length > 0 && (
             <Section

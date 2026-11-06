@@ -55,6 +55,15 @@ function wsChipRel(store: LearnStore, raw: string): string | null {
   if (first.startsWith('#')) {
     cursor = store.nodes.find((n) => n.id === first.slice(1).trim())
     i = 1
+  } else if (first === WORKSPACE_DIR) {
+    // 兼容以 workspace/... 开头的手写路径：锚在当前目标的根节点
+    const root = store.goals
+      .map((g) => nodeById(store, g.rootNodeId))
+      .find((n): n is KnowledgeNode => !!n)
+    if (root) {
+      cursor = root
+      i = 1
+    }
   } else {
     // 第一段：目标根标题 / 目标根 id / 任一节点的标题或 id（导师常把根标题写在前缀里）
     const root = store.goals
@@ -224,7 +233,7 @@ export function chipResolveProblem(store: LearnStore, p: ChipPayload): string | 
     if (p.dir) return p.nodeId && nodeById(store, p.nodeId) ? null : '目录 chip 要带所属节点的 nodeId'
     return p.path && wsChipUserRel(store, p.path)
       ? null
-      : '工作区路径定位不到（path 要用 workspace api 回执里的 rel，原样抄）'
+      : '工作区文件路径定位不到（path 需为文件路径，如 "workspace/文件.md" 或 "docs/.../workspace/文件.md"）'
   }
   if (p.type === 'exam' || p.type === 'attempt') {
     const exam = findExamFromChip(store, p)

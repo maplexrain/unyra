@@ -62,6 +62,10 @@ export class FileGNode extends GNode {
       title: e.title,
       fileKind: e.fileKind,
       url: e.url,
+      domFilter: e.domFilter,
+      pureMode: e.pureMode ?? true,
+      cachedContent: e.cachedContent,
+      cachedAt: e.cachedAt,
     }
   }
 
@@ -73,17 +77,22 @@ export class FileGNode extends GNode {
       try {
         p = JSON.parse(next)
       } catch {
-        return { error: '文件节点的内容是 { title?, fileKind?, url? } 对象' }
+        return { error: '文件节点的内容是 { title?, fileKind?, url?, domFilter?, pureMode? } 对象' }
       }
     }
     if (!p || typeof p !== 'object' || Array.isArray(p)) {
-      return { error: '文件节点的内容是 { title?, fileKind?, url? } 对象' }
+      return { error: '文件节点的内容是 { title?, fileKind?, url?, domFilter?, pureMode? } 对象' }
     }
     const input = p as Record<string, unknown>
     const patch: Parameters<typeof updateFileNode>[2] = {}
     if (typeof input.title === 'string') patch.title = input.title
     if (input.fileKind === 'local' || input.fileKind === 'web') patch.fileKind = input.fileKind
     if (typeof input.url === 'string') patch.url = input.url
+    if (typeof input.domFilter === 'string') patch.domFilter = input.domFilter
+    if (typeof input.pureMode === 'boolean') patch.pureMode = input.pureMode
+    if (typeof input.cachedContent === 'string') patch.cachedContent = input.cachedContent
+    if (typeof input.cachedAt === 'number') patch.cachedAt = input.cachedAt
+    if (typeof input.titleCustomized === 'boolean') patch.titleCustomized = input.titleCustomized
 
     const r = updateFileNode(this.ctx.store(), this.uuid, patch, Date.now())
     if ('error' in r) return { error: r.error }

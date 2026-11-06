@@ -22,7 +22,7 @@
 
 import type { Exam } from '../exam'
 import { normalizeOutline } from '../outline'
-import type { KnowledgeNode, NoteFile, OutlineDoc, SuperDocFile } from '../types'
+import type { DocNotepadItem, KnowledgeNode, NoteFile, OutlineDoc, SuperDocFile } from '../types'
 import { at, jsonText } from './meta'
 
 export const NODE_FILE_VERSION = 3
@@ -62,6 +62,8 @@ export interface NodeFile {
   createdAt: number
   updatedAt: number
   annotations: unknown
+  /** 随文便签（Notepad）集合；每个元素插在正文指定 blockIndex 处，数据完全独立于正文原文 */
+  notepads?: DocNotepadItem[]
   /** 依赖边（我是 from，这些是 to）——与旧 meta.json 的口径一致，边仍写在节点自己文件里 */
   dependencies: Array<{ to: string; createdAt: number; portKey?: string; toOutline?: true }>
   parts: NodePart[]

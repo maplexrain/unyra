@@ -108,6 +108,12 @@ export interface WorkspaceIo {
   read: (rel: string) => Promise<{ ok: true; content: string | null } | { ok: false; error: string }>
   /** 写文本文件（父目录自动建） */
   write: (rel: string, content: string) => Promise<{ ok: boolean; error?: string }>
+  /** 删除文件或目录 */
+  delete?: (rel: string) => Promise<{ ok: boolean; error?: string }>
+  /** 移动/重命名文件或目录 */
+  move?: (fromRel: string, toRel: string) => Promise<{ ok: boolean; error?: string }>
+  /** 写二进制文件（如从远程下载的图片或文档，传入 base64 dataUrl） */
+  writeBinary?: (rel: string, dataUrl: string) => Promise<{ ok: boolean; error?: string }>
 }
 
 /**

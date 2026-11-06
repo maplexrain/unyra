@@ -70,7 +70,7 @@ export async function fetchForAgent(rawUrl: string): Promise<unknown> {
     // 文案要指对路（实测教训：把 agent 引去怀疑网络/渲染，白烧两轮）：
     // 是**提取管线**对纯前端 SPA 无能为力，页面本身多半渲染得好好的——出路是 browser.text
     return {
-      error: '这一页没提取出正文——提取管线对纯前端渲染的 SPA 无效，页面本身多半显示正常：改用 api.browser.text(tabId, 选择器或{ref}) 取渲染后的文本，整页结构要 api.browser.snapshot',
+      error: '这一页没提取出正文——提取管线对纯前端渲染的 SPA 无效，页面本身多半显示正常：可使用 api.browser.open 打开网页页签查阅',
       url: res.finalUrl,
     }
   }
@@ -136,7 +136,7 @@ export async function livePageForAgent(rawHtml: string, rawUrl: string): Promise
   if (!markdown.trim()) {
     // 文案要指对路（同 webFetch 那条）：提取管线对 SPA 无效，页面本身多半显示正常——出路是 browser.text
     return {
-      error: '这一页没提取出正文——提取管线对纯前端渲染的 SPA 无效，页面本身多半显示正常：改用 api.browser.text(tabId, 选择器或{ref}) 取渲染后的文本，整页结构要 api.browser.snapshot',
+      error: '这一页没提取出正文——提取管线对纯前端渲染的 SPA 无效，页面本身多半显示正常：可使用 api.browser.open 打开网页页签查阅',
       url,
     }
   }

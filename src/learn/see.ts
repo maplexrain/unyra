@@ -31,6 +31,7 @@ import {
   goalStaticDir,
   hashBytes,
   makeResource,
+  patchResource,
   resourceRel,
 } from './static'
 import { blobToDataUrl, MAX_SOURCE_BYTES, MIME_EXT, normalizeImage, rememberImage } from './images'
@@ -112,7 +113,7 @@ function nameFromUrl(url: string): string {
 /** see 的落库管线：归一化 → 指纹去重 → 写盘 → 登记 → 进缓存。图片与 PDF 页共用这一段 */
 async function saveSeenImage(
   deps: { getLatest: () => LearnStore; set: (store: LearnStore) => void; goalId: () => string },
-  input: { bytes: Uint8Array; mime: string; name: string },
+  input: { bytes: Uint8Array; mime: string; name: string; caption?: string; order?: number },
 ): Promise<{ ok: true; image: MessageImage; reused: boolean } | { ok: false; error: string }> {
   let blob: Blob
   let dataUrl: string
@@ -143,6 +144,12 @@ async function saveSeenImage(
     const rel = resourceRel(store0, goalId, dup)
     if (!rel) return { ok: false, error: t('图片与已有资源「{0}」内容相同，但它的文件读不到，请重试或换一张', dup.name) }
     // 同一份字节已在手上：顺手进缓存，下一跳取图就不用再读盘
+    if ((input.caption !== undefined || input.order !== undefined) && (!dup.caption || dup.order === undefined)) {
+      deps.set(patchResource(store0, goalId, dup.uuid, {
+        ...(input.caption !== undefined && !dup.caption ? { caption: input.caption.trim() } : {}),
+        ...(input.order !== undefined && dup.order === undefined ? { order: input.order } : {}),
+      }))
+    }
     const comma = dataUrl.indexOf(',')
     rememberImage(rel, { mime, data: dataUrl.slice(comma + 1), url: dataUrl })
     return {
@@ -158,7 +165,7 @@ async function saveSeenImage(
   if (!(await writeUserImage(rel, dataUrl))) {
     return { ok: false, error: t('图片存盘失败（清单没有改动）') }
   }
-  const resource = makeResource({ uuid, name: input.name, ext, bytes: blob.size, hash, type: 'binary' })
+  const resource = makeResource({ uuid, name: input.name, ext, bytes: blob.size, hash, type: 'binary', caption: input.caption, order: input.order })
   deps.set(addResource(store0, goalId, resource))
   // 刚存下来的这张已经在手上：进缓存，本跳请求与缩略图都不必再读盘
   const comma = dataUrl.indexOf(',')
@@ -183,7 +190,7 @@ export function createSeeOps(deps: {
   return async (input: SeeRequest): Promise<SeeResult> => {
     const name = (input.name ?? '').trim()
     const pdfRef = (input.pdf ?? '').trim()
-    if (pdfRef) return seePdf(deps, pdfRef, input.page, name)
+    if (pdfRef) return seePdf(deps, pdfRef, input.page, name, input.caption, input.order)
     return seeImage(deps, input, name)
   }
 }
@@ -249,7 +256,7 @@ async function seeImage(
   if (!label) label = 'Base64 图片'
 
   /* ---------- 2. 落库并挂到下一跳 ---------- */
-  const saved = await saveSeenImage(deps, { bytes, mime, name: label })
+  const saved = await saveSeenImage(deps, { bytes, mime, name: label, caption: input.caption, order: input.order })
   if (!saved.ok) return { ok: false, error: saved.error }
   const img = saved.image
   return {
@@ -274,6 +281,8 @@ async function seePdf(
   pdfRef: string,
   page: number | number[] | undefined,
   name: string,
+  caption?: string,
+  order?: number,
 ): Promise<SeeResult> {
   /* ---------- 1. 页码归一化 ---------- */
   const list = Array.isArray(page) ? page : page !== undefined ? [page] : [1]
@@ -338,7 +347,7 @@ async function seePdf(
   const images: MessageImage[] = []
   const uuids: string[] = []
   for (const p of rendered.pages) {
-    const saved = await saveSeenImage(deps, { bytes: p.bytes, mime: 'image/png', name: label + '-第' + p.page + '页' })
+    const saved = await saveSeenImage(deps, { bytes: p.bytes, mime: 'image/png', name: label + '-第' + p.page + '页', caption, order: order !== undefined ? order + p.page - 1 : undefined })
     if (!saved.ok) {
       return {
         ok: false,

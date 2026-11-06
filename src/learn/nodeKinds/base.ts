@@ -68,7 +68,7 @@ export interface NodeHelp {
 }
 
 /** 写操作回执：失败必须带一句模型能据此改对的原因（回执即人话） */
-export type NodeResult = { ok: true; note?: string } | { error: string }
+export type NodeResult = { ok: true; note?: string; diagnostics?: Record<string, unknown> } | { error: string }
 
 /** 连接过滤的回执：true = 收下；string = 拒绝原因 */
 export type ConnectFilter = true | string

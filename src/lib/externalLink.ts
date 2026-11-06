@@ -23,10 +23,64 @@ export function isExternalHref(href: string): boolean {
   }
 }
 
-let webLinkHandler: ((url: string) => void) | null = null
+export interface ParsedWebLink {
+  /** 基础 URL（不含选择器 hash） */
+  baseUrl: string
+  /** 完整 URL */
+  url: string
+  /** 解析出的元素选择器 */
+  selector?: string
+}
+
+/**
+ * 解析网页链接与元素选择器语法：
+ * 支持标准 URL hash（形如 https://example.com/doc#heading 或 https://example.com#selector:.post-text 或 https://example.com#.main）
+ */
+export function parseWebLinkWithSelector(rawHref: string): ParsedWebLink {
+  const trimmed = rawHref.trim()
+  if (!trimmed) return { baseUrl: '', url: '' }
+
+  try {
+    const u = new URL(trimmed)
+    if (u.hash) {
+      const hash = decodeURIComponent(u.hash.slice(1)).trim()
+      let selector = ''
+      if (hash.startsWith('selector:')) {
+        selector = hash.slice('selector:'.length).trim()
+      } else if (hash.startsWith('.') || hash.startsWith('[') || hash.startsWith('>') || hash.includes(' ')) {
+        selector = hash
+      } else {
+        selector = '#' + hash
+      }
+
+      const baseObj = new URL(trimmed)
+      baseObj.hash = ''
+      const baseUrl = baseObj.href
+
+      return {
+        baseUrl,
+        url: trimmed,
+        selector,
+      }
+    }
+    return {
+      baseUrl: trimmed,
+      url: trimmed,
+    }
+  } catch {
+    return {
+      baseUrl: trimmed,
+      url: trimmed,
+    }
+  }
+}
+
+export type WebLinkHandler = (url: string, selector?: string) => void
+
+let webLinkHandler: WebLinkHandler | null = null
 
 /** 注册应用内打开网页的处理器（通常是 LearnWorkspace 的 openWebTab） */
-export function setWebLinkHandler(fn: ((url: string) => void) | null): void {
+export function setWebLinkHandler(fn: WebLinkHandler | null): void {
   webLinkHandler = fn
 }
 
@@ -34,10 +88,12 @@ export function setWebLinkHandler(fn: ((url: string) => void) | null): void {
  * 打开网页链接：按用户规则，超链接与网页类 chip 打开的网站在 Electron 内部通过浏览器 tab 打开；
  * 在 WebUI 模式下不支持内置浏览器，统一转为使用当前浏览器环境打开。
  */
-export function openWebLink(href: string): void {
+export function openWebLink(href: string, explicitSelector?: string): void {
   if (!isExternalHref(href)) return
   if (!isWeb() && webLinkHandler && (href.startsWith('http://') || href.startsWith('https://'))) {
-    webLinkHandler(href)
+    const parsed = parseWebLinkWithSelector(href)
+    const selector = explicitSelector || parsed.selector
+    webLinkHandler(parsed.baseUrl || href, selector)
     return
   }
   void openExternalLink(href)

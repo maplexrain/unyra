@@ -55,6 +55,7 @@ export function refOwner(ref: TabRef, goalOfNode: (nodeId: string) => string | n
     // 跟着那个目标的组走——切走收起、锚大纲关闭时整组（含它）进停靠场。
     // 没绑定的视频是公共页签（不挂任何目标）
     case 'video':
+    case 'web':
       return ref.goalId ?? PUBLIC_OWNER
     default:
       return PUBLIC_OWNER

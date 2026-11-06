@@ -14,7 +14,8 @@ import { renderRootHelp } from './apiRegistry'
 import { attachNodeFacade, registerNodeApi } from './nodeObject'
 import { wrapApi, imagesOf } from './wrap'
 import { filesAccessError } from './dataPaths'
-import type { SandboxCall, SandboxOptions } from './types'
+import type { SandboxCall, SandboxOptions, BrowserTarget, BrowserEvalOpts, BrowserToMarkdownOpts } from './types'
+import { MAX_TOOL_IMAGES } from '../types'
 import { getLoadedSkills, getActiveSkills } from '../skill/registry'
 import {
   getSkillScriptAbsPath,
@@ -52,7 +53,7 @@ export { imagesOf }
  */
 export function buildApi(
   opts: SandboxOptions,
-  log: SandboxCall[],
+  log: SandboxCall[] = [],
   /**
    * nodeFacade：要不要把 api.node.get 包成「进程内节点对象门面」。**默认关**——
    * 门面对象带吐 Promise 的 getter 与函数成员，只能活在进程内；真 Worker 通道的
@@ -221,12 +222,31 @@ export function buildApi(
     wrapApi(api, 'code.silent', (args) => code.silent(asRecord(args[0])), log)
   }
 
-  // 工作区目录：节点的真实系统目录（见 learn/workspace），只收文本
+  // 工作区目录：节点的真实系统目录（见 learn/workspace），支持读写文本、检索、删除、移动与文件下载
   if (opts.workspace) {
     const ws = opts.workspace
     wrapApi(api, 'workspace.list', (args) => ws.list(asOptionalPath(args[0])), log)
     wrapApi(api, 'workspace.read', (args) => ws.read(asOptionalPath(args[0])), log)
     wrapApi(api, 'workspace.write', (args) => ws.write(asRecord(args[0])), log)
+    if (ws.grep) {
+      wrapApi(api, 'workspace.grep', (args) => {
+        const first = args[0]
+        if (typeof first === 'string') {
+          return ws.grep!({ path: first, query: asText(args[1]) })
+        }
+        return ws.grep!(asRecord(first))
+      }, log)
+    }
+    if (ws.delete) {
+      wrapApi(api, 'workspace.delete', (args) => ws.delete!(args[0]), log)
+    }
+    if (ws.move) {
+      wrapApi(api, 'workspace.move', (args) => ws.move!(args[0], args[1]), log)
+    }
+    if (ws.download) {
+      wrapApi(api, 'workspace.download', (args) => ws.download!(args[0], args[1]), log)
+      wrapApi(api, 'files.download', (args) => ws.download!(args[0], args[1]), log)
+    }
   }
   // 上下文压缩：摘要由 agent 自己写（见 learn/compact）
   if (opts.compact) {
@@ -265,13 +285,16 @@ export function buildApi(
       }
       return web.fetch(item && typeof item === 'object' ? { ...(item as Record<string, unknown>), url } : { url })
     }
-    /** maxChars 截断：省掉模型每次 slice 的手脚；单篇与批量同一套 */
+    /** maxChars 截断：严格不超过 maxChars，截断信息记入元数据 */
     const clipContent = (maxChars: number | undefined) => (r: unknown): unknown => {
-      const rec = r as { content?: unknown } | null
+      const rec = r as Record<string, unknown> | null
       if (maxChars && rec && typeof rec.content === 'string' && rec.content.length > maxChars) {
         return {
           ...rec,
-          content: rec.content.slice(0, maxChars) + '\n…（已按 maxChars 截断，全文共 ' + rec.content.length + ' 字符）',
+          truncated: true,
+          totalChars: rec.content.length,
+          content: rec.content.slice(0, maxChars),
+          note: `已按 maxChars(${maxChars}) 严格截断（全文共 ${rec.content.length} 字符）`,
         }
       }
       return r
@@ -337,122 +360,314 @@ export function buildApi(
     }
   }
 
-  // 内置浏览器（browser.*，见 learn/web/browserOps）：界面上开着的网页页签的打开、
-  // 管理、快照/阅读与受控 DOM 操作（看=snapshot/read，动手=dom，突出=point）。
-  // 依赖界面注入（webview 元素在渲染层），未注入就没有这一组。
+  // 内置浏览器（browser.*，见 learn/web/browserOps）：网页页签生命周期与基础读写
   if (opts.browser) {
     const browser = opts.browser
+    const isTabIdStr = (v: unknown): v is string =>
+      typeof v === 'string' && (v.startsWith('w:') || v.startsWith('tab-') || v.includes(':'))
+
+    const parseTabAndRest = (args: unknown[]): { tabId: string | undefined; rest: unknown[] } => {
+      if (args.length === 0) return { tabId: undefined, rest: [] }
+      const first = args[0]
+      // 显式给 null 或 undefined 作为占位符，消费掉第一参
+      if (first === undefined || first === null) {
+        return { tabId: undefined, rest: args.slice(1) }
+      }
+      // 显式给 tabId 字符串（如 'w:abc', 'tab-1'）
+      if (isTabIdStr(first)) {
+        return { tabId: first.trim(), rest: args.slice(1) }
+      }
+      // 第一参就是普通目标或其它参数
+      return { tabId: undefined, rest: args }
+    }
+
+    const targetOf = (v: unknown): number | string => {
+      if (typeof v === 'number' && Number.isFinite(v)) return v
+      if (typeof v === 'string') {
+        const trimmed = v.trim()
+        const asNum = Number(trimmed)
+        if (!isNaN(asNum) && trimmed !== '') return asNum
+        return trimmed
+      }
+      const rec = asRecord(v)
+      if (typeof rec.target === 'number' || typeof rec.target === 'string') return targetOf(rec.target)
+      if (typeof rec.id === 'number' || typeof rec.id === 'string') return targetOf(rec.id)
+      if (typeof rec.ref === 'number' || typeof rec.ref === 'string') return targetOf(rec.ref)
+      throw new Error('目标需要给出节点编号数字（如 12）或 CSS 选择器字符串')
+    }
+
     wrapApi(api, 'browser.open', (args) => browser.open(asText(args[0]).trim()), log)
     wrapApi(api, 'browser.tabs', () => browser.tabs(), log)
     wrapApi(api, 'browser.activate', (args) => browser.activate(asText(args[0]).trim()), log)
     wrapApi(api, 'browser.close', (args) => browser.close(Array.isArray(args[0]) ? (args[0].map((v) => asText(v).trim()) as string[]) : asText(args[0]).trim()), log)
-    wrapApi(api, 'browser.snapshot', (args) => {
-      const tabId = args.length ? asText(args[0]).trim() || undefined : undefined
-      return browser.snapshot(tabId, asRecord(args[1]))
-    }, log)
-    /*
-     * 带目标的方法（point）收两种写法：方法(目标) 与 方法(tabId, 目标)。
-     * tabId 一定是 tabs() 回的 w: 开头的 id，而 CSS 选择器不可能以 w: 开头，
-     * 凭这个区分第一参是不是页签。
-     */
-    const tabIdOf = (v: unknown): string | undefined =>
-      typeof v === 'string' && v.startsWith('w:') ? v : undefined
-    /** 日志/直发这组**必须显式给 tabId**（跟着页签走，不吃焦点默认）——少参数就指路 */
-    const requireTabId = (v: unknown, what: string): string => {
-      const id = tabIdOf(v)
-      if (!id) throw new Error(what + ' 必须显式给 tabId（browser.tabs() 里查的 w: 开头页签号）——日志与请求都跟着页签走，不吃焦点默认')
-      return id
-    }
-    const targetOf = (v: unknown): string | { ref: number } => {
-      if (typeof v === 'string' && v.trim()) return v.trim()
-      const o = asRecord(v)
-      if (typeof o.ref === 'number') return { ref: o.ref }
-      throw new Error('目标要给 browser.snapshot 清单里的 { ref } 或 CSS 选择器字符串')
-    }
-    wrapApi(api, 'browser.point', (args) => {
-      const tabId = tabIdOf(args[0])
-      const rest = tabId ? args.slice(1) : args
-      return browser.point(tabId, targetOf(rest[0]))
-    }, log)
-    // dom 两种写法：dom(ref, op, arg?) 与 dom(tabId, ref, op, arg?)；ref 认数字或 { ref }（与 text/point 一致）
-    wrapApi(api, 'browser.dom', (args) => {
-      const tabId = tabIdOf(args[0])
-      const rest = tabId ? args.slice(1) : args
-      const refRaw = rest[0]
-      const ref =
-        typeof refRaw === 'object' && refRaw !== null
-          ? Number(asRecord(refRaw).ref)
-          : Number(refRaw)
-      if (!Number.isFinite(ref)) throw new Error('ref 要给编号数字或 { ref }（browser.snapshot 清单里的，两种写法都认）')
-      const arg = rest[2] === undefined ? undefined : asText(rest[2])
-      return browser.dom(tabId, ref, asText(rest[1]).trim(), arg)
-    }, log)
-    wrapApi(api, 'browser.read', (args) => browser.read(args.length ? asText(args[0]).trim() || undefined : undefined), log)
-    wrapApi(api, 'browser.capture', (args) => browser.capture(args.length ? asText(args[0]).trim() || undefined : undefined), log)
-    /*
-     * 日志与直发这四条**必须显式给 tabId**（跟着页签走，不吃焦点默认）；
-     * fetch 的目标认两种写法：网址字符串，或 { reqId }（重放网络清单里捕获的请求）。
-     */
-    wrapApi(api, 'browser.logs', (args) => browser.logs(requireTabId(args[0], 'browser.logs'), asRecord(args[1])), log)
-    wrapApi(api, 'browser.logDetail', (args) => {
-      // 条目号照抄清单行也认：96 / 'n96' / 'c96'
-      const raw = args[1]
-      const seq = typeof raw === 'number' ? raw : Number(String(asText(raw)).replace(/^[nc]/i, ''))
-      if (!Number.isFinite(seq)) throw new Error('seq 要给清单行里的条目号（96、"n96" 都行）')
-      return browser.logDetail(requireTabId(args[0], 'browser.logDetail'), seq, asRecord(args[2]))
-    }, log)
-    wrapApi(api, 'browser.fetch', (args) => {
-      const target = typeof args[1] === 'string' ? args[1].trim() : asRecord(args[1])
-      if (typeof target !== 'string' && !('reqId' in (target as Record<string, unknown>))) {
-        throw new Error('目标要给 http(s) 网址，或 { reqId }（browser.logs 网络清单里的条目号）')
+
+    wrapApi(api, 'browser.index', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && !Array.isArray(first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.index(tabId, rec)
       }
-      const o = asRecord(args[2])
-      const toTmp = typeof o.toTmp === 'string' && o.toTmp.trim() ? o.toTmp.trim() : undefined
-      if (toTmp) {
-        // 全文落 tmp：上限放宽到 256k（页面侧同步放宽采文本上限），正文不进上下文
-        o.maxBody = 262_144
-        o.maxText = 262_144
-      }
-      const p = browser.fetch(requireTabId(args[0], 'browser.fetch'), target as string | { reqId: number }, o)
-      if (!toTmp) return p
-      return Promise.resolve(p).then((r) => {
-        const rec = r as Record<string, unknown>
-        const body = typeof rec.body === 'string' ? rec.body : undefined
-        if (body === undefined) return r
-        if (!tmp) return { ...rec, note: 'toTmp 需要临时变量（当前注入里没有 tmp）——去掉 toTmp 直接拿 body' }
-        tmp.set(toTmp, rec)
-        return {
-          status: rec.status,
-          ...(rec.contentType ? { contentType: rec.contentType } : {}),
-          ...(rec.chars ? { chars: rec.chars } : {}),
-          ...(rec.replayed ? { replayed: rec.replayed } : {}),
-          tmp: toTmp,
-          preview: body.slice(0, 400),
-          note:
-            '全文已落 tmp.' + toTmp + '（含 status/contentType/body）：在代码里 api.tmp.get(\'' + toTmp + '\') 取出来 JSON.parse 解析，只把提炼结果 return——别把全文交回来',
-        }
-      })
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.index(tabId, asRecord(rest[0]))
     }, log)
-    wrapApi(api, 'browser.waitFor', (args) => {
-      const req = asRecord(args[1])
-      return browser.waitFor(requireTabId(args[0], 'browser.waitFor'), req)
-    }, log)
-    wrapApi(api, 'browser.record', (args) => {
-      const action = asText(args[1]).trim()
-      if (action !== 'start' && action !== 'stop') throw new Error('record 的动作只有 "start" / "stop"')
-      return browser.record(requireTabId(args[0], 'browser.record'), action, asRecord(args[2]))
-    }, log)
-    // 区域文本：目标认 '选择器' 或 { ref }（同 point 的双写法，但不吃焦点默认）
+
     wrapApi(api, 'browser.text', (args) => {
-      const target = typeof args[1] === 'string' ? args[1].trim() : asRecord(args[1])
-      if (typeof target !== 'string' && !('ref' in (target as Record<string, unknown>))) {
-        throw new Error('目标要给 snapshot 清单里的 { ref } 或 CSS 选择器')
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'id' in first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.text(tabId, targetOf(rec.target ?? rec.id), rec)
       }
-      return browser.text(requireTabId(args[0], 'browser.text'), target as string | { ref: number }, asRecord(args[2]))
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.text(tabId, targetOf(rest[0]), asRecord(rest[1]))
     }, log)
+
+    wrapApi(api, 'browser.inspect', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'id' in first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.inspect(tabId, targetOf(rec.target ?? rec.id), rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.inspect(tabId, targetOf(rest[0]), asRecord(rest[1]))
+    }, log)
+
+    wrapApi(api, 'browser.click', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'id' in first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.click(tabId, targetOf(rec.target ?? rec.id), rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.click(tabId, targetOf(rest[0]), asRecord(rest[1]))
+    }, log)
+
+    wrapApi(api, 'browser.fill', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'id' in first) && ('text' in first || 'value' in first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        const text = asText(rec.text ?? rec.value)
+        return browser.fill(tabId, targetOf(rec.target ?? rec.id), text, rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.fill(tabId, targetOf(rest[0]), asText(rest[1]), asRecord(rest[2]))
+    }, log)
+
+    wrapApi(api, 'browser.type', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'id' in first) && ('text' in first || 'value' in first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        const text = asText(rec.text ?? rec.value)
+        return browser.type(tabId, targetOf(rec.target ?? rec.id), text, rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.type(tabId, targetOf(rest[0]), asText(rest[1]), asRecord(rest[2]))
+    }, log)
+
+    wrapApi(api, 'browser.press', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && 'key' in first) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        const key = asText(rec.key).trim()
+        const target = (rec.target !== undefined || rec.id !== undefined) ? targetOf(rec.target ?? rec.id) : undefined
+        return browser.press(tabId, key, target)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      const key = asText(rest[0]).trim()
+      const target = rest[1] !== undefined ? targetOf(rest[1]) : undefined
+      return browser.press(tabId, key, target)
+    }, log)
+
     wrapApi(api, 'browser.scroll', (args) => {
-      const req = asRecord(args[1])
-      return browser.scroll(requireTabId(args[0], 'browser.scroll'), req)
+      const first = args[0]
+      if (first && typeof first === 'object' && !Array.isArray(first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.scroll(tabId, rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.scroll(tabId, asRecord(rest[0]))
+    }, log)
+
+    wrapApi(api, 'browser.query', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && 'selector' in first) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.query(tabId, asText(rec.selector).trim(), rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.query(tabId, asText(rest[0]).trim(), asRecord(rest[1]))
+    }, log)
+
+    wrapApi(api, 'browser.waitFor', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'text' in first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.waitFor(tabId, asText(rec.target ?? rec.text).trim(), rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.waitFor(tabId, asText(rest[0]).trim(), asRecord(rest[1]))
+    }, log)
+
+    wrapApi(api, 'browser.screenshot', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && !Array.isArray(first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        return browser.screenshot(tabId, rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      return browser.screenshot(tabId, asRecord(rest[0]))
+    }, log)
+
+    wrapApi(api, 'browser.toImage', (args) => {
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'selector' in first)) {
+        const rec = first as Record<string, unknown>
+        const tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        const target = (rec.target ?? rec.selector) as BrowserTarget
+        return browser.toImage(tabId, target, rec)
+      }
+      const { tabId, rest } = parseTabAndRest(args)
+      const target = (typeof rest[0] === 'number' ? rest[0] : asText(rest[0]).trim()) as BrowserTarget
+      return browser.toImage(tabId, target, asRecord(rest[1]))
+    }, log)
+
+    wrapApi(api, 'browser.elementImage', (args) => {
+      const b = (api as any).browser
+      return b.toImage(...args)
+    }, log)
+
+    wrapApi(api, 'browser.elementScreenshot', (args) => {
+      const b = (api as any).browser
+      return b.toImage(...args)
+    }, log)
+
+    wrapApi(api, 'browser.toMarkdown', async (args) => {
+      let tabId: string | undefined
+      let target: BrowserTarget | undefined
+      let optsObj: BrowserToMarkdownOpts = {}
+
+      const first = args[0]
+      if (first && typeof first === 'object' && ('target' in first || 'saveTo' in first)) {
+        const rec = first as Record<string, unknown>
+        tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        if (rec.target !== undefined) target = targetOf(rec.target)
+        if (typeof rec.saveTo === 'string') optsObj.saveTo = rec.saveTo.trim()
+        if (typeof rec.maxChars === 'number') optsObj.maxChars = rec.maxChars
+      } else {
+        const { tabId: parsedTabId, rest } = parseTabAndRest(args)
+        tabId = parsedTabId
+        if (rest[0] !== undefined) {
+          if (typeof rest[0] === 'object' && rest[0] !== null && ('saveTo' in rest[0] || 'maxChars' in rest[0])) {
+            const rec = rest[0] as Record<string, unknown>
+            if (typeof rec.saveTo === 'string') optsObj.saveTo = rec.saveTo.trim()
+            if (typeof rec.maxChars === 'number') optsObj.maxChars = rec.maxChars
+          } else {
+            target = targetOf(rest[0])
+            const optArg = rest[1]
+            if (optArg && typeof optArg === 'object') {
+              const rec = optArg as Record<string, unknown>
+              if (typeof rec.saveTo === 'string') optsObj.saveTo = rec.saveTo.trim()
+              if (typeof rec.maxChars === 'number') optsObj.maxChars = rec.maxChars
+            }
+          }
+        }
+      }
+
+      const res = await browser.toMarkdown(tabId, target, optsObj)
+      if (!res.ok || !optsObj.saveTo) {
+        return res
+      }
+
+      if (!opts.workspace) {
+        return { ok: false, error: 'saveTo 需要工作区支持，但当前未配置 workspace' }
+      }
+      const rawText = res.markdown || ''
+      const saveRes = (await opts.workspace.write({
+        path: optsObj.saveTo,
+        content: rawText,
+      })) as { error?: string; path?: string; rel?: string }
+
+      if (saveRes && saveRes.error) {
+        return { ok: false, error: '落盘保存到工作区失败：' + saveRes.error }
+      }
+
+      const lines = rawText.split(/\r?\n/).length
+      return {
+        ok: true,
+        saved: true,
+        path: saveRes?.path ?? optsObj.saveTo,
+        rel: saveRes?.rel,
+        chars: rawText.length,
+        lines,
+        diagnostics: res.diagnostics,
+        note: `DOM 元素已成功转换为 Markdown 并落盘至工作区「${saveRes?.path ?? optsObj.saveTo}」（共 ${rawText.length} 字符，${lines} 行），避免占用上下文。可使用 api.workspace.grep 检索或在文档中以 quote 原文引用。`,
+      }
+    }, log)
+
+    wrapApi(api, 'browser.eval', async (args) => {
+      let tabId: string | undefined
+      let evalCode = ''
+      let evalOpts: BrowserEvalOpts | undefined
+
+      const first = args[0]
+      if (first && typeof first === 'object' && 'code' in first) {
+        const rec = first as Record<string, unknown>
+        tabId = typeof rec.tabId === 'string' ? rec.tabId : undefined
+        evalCode = asText(rec.code)
+        if (typeof rec.saveTo === 'string' && rec.saveTo.trim()) {
+          evalOpts = { saveTo: rec.saveTo.trim() }
+        }
+      } else {
+        const { tabId: parsedTabId, rest } = parseTabAndRest(args)
+        tabId = parsedTabId
+        evalCode = asText(rest[0])
+        const optArg = rest[1]
+        if (optArg && typeof optArg === 'object' && 'saveTo' in optArg) {
+          const rec = optArg as Record<string, unknown>
+          if (typeof rec.saveTo === 'string' && rec.saveTo.trim()) {
+            evalOpts = { saveTo: rec.saveTo.trim() }
+          }
+        }
+      }
+
+      const res = await browser.eval(tabId, evalCode, evalOpts)
+      if (!res.ok || !evalOpts?.saveTo) {
+        return res
+      }
+
+      if (!opts.workspace) {
+        return { ok: false, error: 'saveTo 需要工作区支持，但当前未配置 workspace' }
+      }
+      const rawText = typeof res.result === 'string' ? res.result : JSON.stringify(res.result, null, 2)
+      const saveRes = (await opts.workspace.write({
+        path: evalOpts.saveTo,
+        content: rawText,
+      })) as { error?: string; path?: string; rel?: string }
+
+      if (saveRes && saveRes.error) {
+        return { ok: false, error: '落盘保存到工作区失败：' + saveRes.error }
+      }
+
+      const lines = rawText.split(/\r?\n/).length
+      return {
+        ok: true,
+        saved: true,
+        path: saveRes?.path ?? evalOpts.saveTo,
+        rel: saveRes?.rel,
+        chars: rawText.length,
+        lines,
+        note: `执行结果已成功写入工作区文件「${saveRes?.path ?? evalOpts.saveTo}」（共 ${rawText.length} 字符，${lines} 行），避免占用上下文。可用 api.workspace.grep 定向检索行号，或在文档中以引用使用。`,
+      }
     }, log)
   }
 
@@ -517,10 +732,19 @@ export function buildApi(
   // 结构化表单：形状先归一化，校验失败把「第几题、哪个字段」说清楚再回给模型
   if (opts.ask) {
     const ask = opts.ask
-    wrapApi(api, 'ask', (args) => {
+    wrapApi(api, 'ask', async (args) => {
       const parsed = normalizeAskForm(args[0])
       if (!parsed.ok) return parsed
-      return ask(parsed.form)
+      const res = await ask(parsed.form)
+      if (res && typeof res === 'object' && Array.isArray((res as any).answers)) {
+        for (const ans of (res as any).answers) {
+          if (ans.type === 'short') {
+            ans.text = ans.text ?? ''
+            ans.value = ans.value ?? ans.text
+          }
+        }
+      }
+      return res
     }, log)
   }
 
@@ -529,27 +753,23 @@ export function buildApi(
     wrapApi(api, 'tiktok', () => Promise.resolve(tiktok()).then(() => ({ ok: true, note: '已响铃' })), log)
   }
 
-  // 看图 / 看 PDF 页（顶层 api）：字符串与对象两种写法都收，图片本身由宿主挂到下一跳（见 learn/see）
+  // 看图 / 看 PDF 页（顶层 api）：字符串、对象与数组批量写法都收，图片本身由宿主挂到下一跳（见 learn/see）
   if (opts.see) {
     const see = opts.see
-    wrapApi(api, 'see', (args) => {
-      const first = args[0]
-      if (typeof first === 'string') return see({ raw: first })
-      const obj = asRecord(first)
-      if (!Object.keys(obj).length) {
-        return {
-          error:
-            'see 需要一张图或一份 PDF：api.see(\'https://…/图.png\')、api.see({ pdf: \'https://…/论文.pdf\', page: 3 })、' +
-            "api.see({ base64: '…', mime: 'image/png', name: '叫什么' })。",
-        }
+    const normalizeSeeItem = (item: unknown): any => {
+      if (typeof item === 'string') {
+        const raw = item.trim()
+        return raw ? { raw } : null
       }
+      const obj = asRecord(item)
+      if (!Object.keys(obj).length) return null
       const rawPage = obj.page
       const page = Array.isArray(rawPage)
         ? rawPage.map((v) => Number(v)).filter((v) => Number.isFinite(v))
         : typeof rawPage === 'number' || typeof rawPage === 'string'
           ? Number(rawPage)
           : undefined
-      return see({
+      return {
         ...(obj.raw !== undefined ? { raw: asText(obj.raw) } : {}),
         ...(obj.url !== undefined || obj.link !== undefined || obj.href !== undefined
           ? { url: asText(obj.url ?? obj.link ?? obj.href) }
@@ -561,7 +781,67 @@ export function buildApi(
         ...(obj.name !== undefined ? { name: asText(obj.name) } : {}),
         ...(obj.pdf !== undefined ? { pdf: asText(obj.pdf) } : {}),
         ...(page !== undefined && (!Array.isArray(page) || page.length) ? { page } : {}),
-      })
+        ...(obj.caption !== undefined ? { caption: asText(obj.caption) } : {}),
+        ...(typeof obj.order === 'number' && Number.isFinite(obj.order) ? { order: obj.order } : {}),
+      }
+    }
+
+    wrapApi(api, 'see', async (args) => {
+      const first = args[0]
+      if (Array.isArray(first)) {
+        if (!first.length) return { ok: false, error: '批量 see 参数不能为空数组' }
+        const items = []
+        const allImages: any[] = []
+        for (const item of first) {
+          const req = normalizeSeeItem(item)
+          if (!req) {
+            items.push({ ok: false, error: '参数不合法（缺少 url/pdf/base64）' })
+            continue
+          }
+          const res = (await see(req)) as any
+          items.push(res)
+          if (res?.ok && Array.isArray(res.images)) {
+            allImages.push(...res.images)
+          }
+        }
+        const successCount = items.filter((r) => r.ok).length
+        const attachedCount = Math.min(allImages.length, MAX_TOOL_IMAGES)
+        const unattachedCount = Math.max(0, allImages.length - MAX_TOOL_IMAGES)
+        return {
+          ok: successCount > 0,
+          total: first.length,
+          successCount,
+          attachedCount,
+          unattachedCount,
+          items: items.map((r) => {
+            if (!r.ok) return { ok: false, error: r.error }
+            return {
+              ok: true,
+              uuid: r.uuid,
+              name: r.name,
+              caption: r.caption,
+              order: r.order,
+              bytes: r.bytes,
+              rel: r.rel,
+            }
+          }),
+          images: allImages,
+          note: `批量存入 ${successCount}/${first.length} 张图片到资源库。` +
+            (unattachedCount > 0
+              ? `单回合视觉通道附图上限为 ${MAX_TOOL_IMAGES} 张（已挂载前 ${attachedCount} 张）。其余 ${unattachedCount} 张已安全保存入库，可在后继步骤中分批查看或直接在文档中用 moji:static/<uuid> 引用。`
+              : `全部 ${attachedCount} 张图片均已附在下一步视觉通道中。`),
+        }
+      }
+
+      const req = normalizeSeeItem(first)
+      if (!req) {
+        return {
+          error:
+            'see 需要一张图或一份 PDF：api.see(\'https://…/图.png\')、api.see({ pdf: \'https://…/论文.pdf\', page: 3 })、' +
+            "api.see({ base64: '…', mime: 'image/png', name: '叫什么', caption: '图1说明', order: 1 })，或传数组批量处理 api.see([...])。",
+        }
+      }
+      return see(req)
     }, log)
   }
 

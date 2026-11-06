@@ -13,7 +13,8 @@ import { BookOpen, PenLine, Sparkles } from 'lucide-react'
 import MarkdownView from '../../MarkdownView'
 import { TyporaLiveEditor } from './TyporaLiveEditor'
 import WaveBars from '../../WaveBars'
-import type { Annotation, DocKind } from '../../../learn/types'
+import type { Annotation, DocKind, DocNotepadItem } from '../../../learn/types'
+import { DocNotepadLayer } from './DocNotepad'
 import type { AnnotationActions } from '../../../lib/annotation'
 import type { LocalImageResolver } from '../../../lib/docImages'
 import { copySelectionAsMarkdown } from '../../../lib/copySource'
@@ -55,6 +56,10 @@ interface Props {
   /** 浮在正文这一层上的东西（选词菜单）：位置与开合由上层管，这里只负责插回原位 */
   overlay?: ReactNode
   onEditContent?: (next: string) => void
+  notepads?: DocNotepadItem[]
+  onUpdateNotepad?: (id: string, content: string) => void
+  onDeleteNotepad?: (id: string) => void
+  onMoveNotepad?: (id: string, targetBlockIndex: number) => void
 }
 
 function sameConceptKeys(a?: Set<string>, b?: Set<string>): boolean {
@@ -96,6 +101,7 @@ function areDocBodyPropsEqual(prev: Props, next: Props): boolean {
   if (prev.scrollRef !== next.scrollRef || prev.bodyRef !== next.bodyRef) return false
   if (!sameAnnotations(prev.annotations, next.annotations)) return false
   if (!sameConceptKeys(prev.knownConceptKeys, next.knownConceptKeys)) return false
+  if (prev.notepads !== next.notepads) return false
   return true
 }
 
@@ -117,6 +123,10 @@ export const DocBody = memo(function DocBody({
   wordCount,
   overlay,
   onEditContent,
+  notepads,
+  onUpdateNotepad,
+  onDeleteNotepad,
+  onMoveNotepad,
 }: Props) {
   /* 两端渐隐：滚到头就摘掉那一端（判据与代价见 lib/scrollFade） */
   const scrollEdges = useScrollEdges(scrollRef)
@@ -171,7 +181,7 @@ export const DocBody = memo(function DocBody({
                   onChange={onEditContent}
                   readOnly={!onEditContent}
                 />
-              ) : (
+              ) : (<>
                 <MarkdownView
                   html={html}
                   annotations={annotations}
@@ -179,7 +189,16 @@ export const DocBody = memo(function DocBody({
                   annotationActions={annotationActions}
                   resolveLocalImage={resolveLocalImage}
                 />
-              )}
+                {notepads && notepads.length > 0 && onUpdateNotepad && onDeleteNotepad && onMoveNotepad && (
+                  <DocNotepadLayer
+                    containerRef={bodyRef}
+                    notepads={notepads}
+                    onUpdateNotepad={onUpdateNotepad}
+                    onDeleteNotepad={onDeleteNotepad}
+                    onMoveNotepad={onMoveNotepad}
+                  />
+                )}
+              </>)}
             </div>
           </div>
         </div>

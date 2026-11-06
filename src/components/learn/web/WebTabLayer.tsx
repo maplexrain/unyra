@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { WebviewTag } from 'electron'
-import { ArrowLeft, ArrowRight, ExternalLink, Globe, Languages, Loader2, RotateCw, Star, X } from 'lucide-react'
-import type { LearnTab, TabRef, WebTabMeta } from '../../../learn/types'
+import { ArrowLeft, ArrowRight, Bot, Crosshair, ExternalLink, Eye, EyeOff, Globe, Languages, ListFilter, Loader2, Plus, RotateCw, Sparkles, Star, Trash2, X, Zap } from 'lucide-react'
+import type { FileNodeEntity, LearnTab, TabRef, WebTabMeta } from '../../../learn/types'
+import { buildApplyPureModeScript } from '../../../learn/web/guestPureMode'
+import { buildInspectElementPickerScript } from '../../../learn/web/guestInspectPicker'
+import { buildJumpToElementScript } from '../../../learn/web/guestJump'
 import { normalizeWebInput } from '../../../learn/webUrl'
 import { isElectron, native, type WebTranslatePayload } from '../../../lib/native'
 import { getLocale, t } from '../../../i18n'
@@ -60,6 +63,12 @@ interface Props {
   favoriteOf?: (url: string) => boolean
   /** 星标点击：收藏 / 取消收藏当前地址；extra 是这一页的活标题与站点图标（一并记进收藏） */
   onToggleFavoriteUrl?: (url: string, extra?: { title?: string; icon?: string }) => void
+  fileNodes?: FileNodeEntity[]
+  onUpdateFileNode?: (
+    nodeId: string,
+    patch: { domFilter?: string; whitelist?: string[]; blacklist?: string[]; pureMode?: boolean; cachedContent?: string; cachedAt?: number },
+  ) => void
+  pendingJumpsRef?: { current: Map<string, string> }
 }
 
 const BTN =
@@ -72,8 +81,83 @@ const BTN =
  */
 const ALLOW_POPUPS = 'true' as unknown as boolean
 
-export default function WebTabLayer({ tabs, activeId, meta, hidden, onMeta, onCommitUrl, favoriteOf, onToggleFavoriteUrl }: Props) {
+export default function WebTabLayer({
+  tabs,
+  activeId,
+  meta,
+  hidden,
+  onMeta,
+  onCommitUrl,
+  favoriteOf,
+  onToggleFavoriteUrl,
+  fileNodes,
+  onUpdateFileNode,
+  pendingJumpsRef,
+}: Props) {
   const active = tabs.find((x) => x.id === activeId) ?? null
+  const activeFileNode = active?.ref.fileNodeId && fileNodes ? fileNodes.find((f) => f.id === active.ref.fileNodeId) : undefined
+  const activePureMode = activeFileNode ? (activeFileNode.pureMode !== false) : (active ? (meta[active.id]?.pureMode ?? false) : false)
+  const activeDomFilter = activeFileNode?.domFilter ?? (active ? (meta[active.id]?.domFilter ?? '') : '')
+  const activeWhitelist = useMemo(() => {
+    if (activeFileNode?.whitelist && activeFileNode.whitelist.length > 0) return activeFileNode.whitelist
+    if (active && meta[active.id]?.whitelist && meta[active.id]!.whitelist!.length > 0) return meta[active.id]!.whitelist!
+    return activeDomFilter ? [activeDomFilter] : []
+  }, [activeFileNode?.whitelist, active, meta, activeDomFilter])
+  const activeBlacklist = useMemo(() => {
+    if (activeFileNode?.blacklist) return activeFileNode.blacklist
+    if (active && meta[active.id]?.blacklist) return meta[active.id]!.blacklist!
+    return []
+  }, [activeFileNode?.blacklist, active, meta])
+
+  const handleTogglePure = () => {
+    if (!active) return
+    const next = !activePureMode
+    if (active.ref.fileNodeId && onUpdateFileNode) {
+      onUpdateFileNode(active.ref.fileNodeId, { pureMode: next })
+    }
+    onMeta(active.id, { pureMode: next })
+    withActive((wv) => wv.executeJavaScript(buildApplyPureModeScript({ whitelist: activeWhitelist, blacklist: activeBlacklist }, next)))
+  }
+
+  const handleUpdateFilterConfig = (nextWhitelist: string[], nextBlacklist: string[]) => {
+    if (!active) return
+    const patch = {
+      whitelist: nextWhitelist,
+      blacklist: nextBlacklist,
+      domFilter: nextWhitelist.join(', '),
+      pureMode: true,
+    }
+    if (active.ref.fileNodeId && onUpdateFileNode) {
+      onUpdateFileNode(active.ref.fileNodeId, patch)
+    }
+    onMeta(active.id, patch)
+    withActive((wv) => wv.executeJavaScript(buildApplyPureModeScript({ whitelist: nextWhitelist, blacklist: nextBlacklist }, true)))
+  }
+
+  const handleInspectPick = (pickMode: 'whitelist' | 'blacklist' = 'whitelist') => {
+    withActive(async (wv) => {
+      try {
+        const res = (await wv.executeJavaScript(buildInspectElementPickerScript(pickMode))) as
+          | { ok: true; selector: string; mode: 'whitelist' | 'blacklist' }
+          | { ok: false; cancelled?: boolean }
+          | undefined
+        if (res && res.ok && typeof res.selector === 'string' && res.selector.trim()) {
+          const sel = res.selector.trim()
+          if (pickMode === 'blacklist') {
+            const next = activeBlacklist.includes(sel) ? activeBlacklist : [...activeBlacklist, sel]
+            handleUpdateFilterConfig(activeWhitelist, next)
+            showToast(t('已将元素加入黑名单隐藏: {0}', sel))
+          } else {
+            const next = activeWhitelist.includes(sel) ? activeWhitelist : [...activeWhitelist, sel]
+            handleUpdateFilterConfig(next, activeBlacklist)
+            showToast(t('已将元素加入白名单显示: {0}', sel))
+          }
+        }
+      } catch (e) {
+        console.warn('[web] 元素拾取失败:', e)
+      }
+    })
+  }
   // webview 元素走模块级登记表（learn/web/webviewRegistry）：browser.* 的宿主实现
   // 也从那里拿元素，两层看的是同一份，不用各自维护
   const withActive = (fn: (wv: WebviewTag) => void): void => {
@@ -347,6 +431,13 @@ export default function WebTabLayer({ tabs, activeId, meta, hidden, onMeta, onCo
           onToggleTranslate={() => void handleToggleTranslate(active.id)}
           onClearTranslate={() => void handleClearTranslate(active.id)}
           onToggleObserver={() => void handleToggleObserver(active.id)}
+          pureMode={activePureMode}
+          domFilter={activeDomFilter}
+          whitelist={activeWhitelist}
+          blacklist={activeBlacklist}
+          onTogglePureMode={handleTogglePure}
+          onUpdateFilterConfig={handleUpdateFilterConfig}
+          onInspectPick={handleInspectPick}
         />
       )}
       <div className="relative min-h-0 flex-1">
@@ -358,6 +449,9 @@ export default function WebTabLayer({ tabs, activeId, meta, hidden, onMeta, onCo
             m={meta[tab.id]}
             onMeta={onMeta}
             onCommitUrl={onCommitUrl}
+            fileNode={tab.ref.fileNodeId && fileNodes ? fileNodes.find((f) => f.id === tab.ref.fileNodeId) : undefined}
+            onAutoCache={onUpdateFileNode}
+            pendingJumpsRef={pendingJumpsRef}
             onDomMutation={handleDomMutation}
             onNavigateReset={(tid) => {
               observingMapRef.current.delete(tid)
@@ -395,6 +489,13 @@ function WebToolbar({
   onToggleTranslate,
   onClearTranslate,
   onToggleObserver,
+  pureMode,
+  domFilter,
+  whitelist,
+  blacklist,
+  onTogglePureMode,
+  onUpdateFilterConfig,
+  onInspectPick,
 }: {
   tab: WebTab
   m: WebTabMeta | undefined
@@ -412,11 +513,63 @@ function WebToolbar({
   onToggleTranslate?: () => void
   onClearTranslate?: () => void
   onToggleObserver?: () => void
+  pureMode?: boolean
+  domFilter?: string
+  whitelist?: string[]
+  blacklist?: string[]
+  onTogglePureMode?: () => void
+  onUpdateFilterConfig?: (whitelist: string[], blacklist: string[]) => void
+  onInspectPick?: (mode: 'whitelist' | 'blacklist') => void
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const blurTimerRef = useRef<number | null>(null)
   const [openTranslateMenu, setOpenTranslateMenu] = useState(false)
   const translateMenuRef = useRef<HTMLDivElement | null>(null)
+  const [openPureMenu, setOpenPureMenu] = useState(false)
+  const pureMenuRef = useRef<HTMLDivElement | null>(null)
+  const [filterTab, setFilterTab] = useState<'whitelist' | 'blacklist'>('whitelist')
+  const [newFilterInput, setNewFilterInput] = useState('')
+
+  const curWhitelist = useMemo(() => {
+    if (whitelist && whitelist.length > 0) return whitelist
+    return domFilter ? [domFilter] : []
+  }, [whitelist, domFilter])
+
+  const curBlacklist = useMemo(() => blacklist ?? [], [blacklist])
+
+  const handleAddFilterItem = () => {
+    const trimmed = newFilterInput.trim()
+    if (!trimmed) return
+    if (filterTab === 'whitelist') {
+      if (!curWhitelist.includes(trimmed)) {
+        onUpdateFilterConfig?.([...curWhitelist, trimmed], curBlacklist)
+      }
+    } else {
+      if (!curBlacklist.includes(trimmed)) {
+        onUpdateFilterConfig?.(curWhitelist, [...curBlacklist, trimmed])
+      }
+    }
+    setNewFilterInput('')
+  }
+
+  const handleRemoveWhitelistItem = (item: string) => {
+    onUpdateFilterConfig?.(curWhitelist.filter((x) => x !== item), curBlacklist)
+  }
+
+  const handleRemoveBlacklistItem = (item: string) => {
+    onUpdateFilterConfig?.(curWhitelist, curBlacklist.filter((x) => x !== item))
+  }
+
+  useEffect(() => {
+    if (!openPureMenu) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pureMenuRef.current && !pureMenuRef.current.contains(e.target as Node)) {
+        setOpenPureMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [openPureMenu])
 
   useEffect(() => {
     if (!openTranslateMenu) return
@@ -628,7 +781,7 @@ function WebToolbar({
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-ink hover:bg-line/50 transition cursor-pointer"
             >
-              <span>⚡</span>
+              <Zap size={14} className="text-amber-500 shrink-0" />
               <span>{t('极速双语翻译（免费）')}</span>
             </button>
             <button
@@ -639,7 +792,7 @@ function WebToolbar({
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-ink hover:bg-line/50 transition cursor-pointer"
             >
-              <span>🤖</span>
+              <Bot size={14} className="text-seal shrink-0" />
               <span>{t('AI 深度双语翻译')}</span>
             </button>
             <div className="my-1 border-t border-line/60" />
@@ -652,7 +805,7 @@ function WebToolbar({
                 }}
                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-seal hover:bg-seal/10 transition cursor-pointer font-medium"
               >
-                <span>🟢</span>
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                 <span>{t('动态监听中（点击停止）')}</span>
               </button>
             )}
@@ -664,7 +817,7 @@ function WebToolbar({
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-ink-soft hover:bg-line/50 hover:text-ink transition cursor-pointer"
             >
-              <span>👁️</span>
+              <Eye size={14} className="text-ink-soft shrink-0" />
               <span>{t('隐藏 / 显示双语对照')}</span>
             </button>
             <button
@@ -675,8 +828,160 @@ function WebToolbar({
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-danger hover:bg-danger/10 transition cursor-pointer"
             >
-              <span>🗑️</span>
+              <Trash2 size={14} className="text-danger shrink-0" />
               <span>{t('清除网页译文')}</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 纯净阅读与 DOM 过滤配置 */}
+      <div ref={pureMenuRef} className="relative">
+        <button
+          type="button"
+          title={pureMode ? t('纯净阅读（已开启）') : t('原网页阅读')}
+          aria-label={t('纯净阅读')}
+          disabled={!url}
+          onClick={() => setOpenPureMenu((v) => !v)}
+          className={`${BTN} ${pureMode ? 'text-seal font-semibold' : ''}`}
+        >
+          <Sparkles size={14} className={pureMode ? 'text-seal' : ''} />
+        </button>
+        {openPureMenu && (
+          <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-xl border border-line bg-card p-3 shadow-xl text-[12px]">
+            {/* 顶栏：标题与开关 */}
+            <div className="flex items-center justify-between pb-2 border-b border-line/60">
+              <div className="flex items-center gap-1.5">
+                <Sparkles size={14} className={pureMode ? 'text-seal' : 'text-ink-soft'} />
+                <span className="font-semibold text-ink-strong">{t('纯净阅读模式')}</span>
+              </div>
+              <button
+                type="button"
+                onClick={onTogglePureMode}
+                className={`rounded px-2.5 py-0.5 text-[11px] font-medium transition cursor-pointer ${
+                  pureMode ? 'bg-seal text-white shadow-xs' : 'bg-line text-ink-soft hover:bg-line-strong hover:text-ink'
+                }`}
+              >
+                {pureMode ? t('已开启') : t('已关闭')}
+              </button>
+            </div>
+
+            {/* 白名单 / 黑名单 选项卡 */}
+            <div className="mt-2.5 flex items-center gap-1 rounded-lg bg-line/30 p-0.5">
+              <button
+                type="button"
+                onClick={() => setFilterTab('whitelist')}
+                className={`flex-1 flex items-center justify-center gap-1 rounded-md py-1 text-[11px] font-medium transition cursor-pointer ${
+                  filterTab === 'whitelist'
+                    ? 'bg-card text-seal shadow-xs font-semibold'
+                    : 'text-ink-soft hover:text-ink'
+                }`}
+              >
+                <ListFilter size={12} />
+                <span>{t('白名单 (仅显示)')}</span>
+                {curWhitelist.length > 0 && (
+                  <span className="ml-0.5 rounded-full bg-seal/15 px-1.5 text-[9.5px] font-bold text-seal">
+                    {curWhitelist.length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterTab('blacklist')}
+                className={`flex-1 flex items-center justify-center gap-1 rounded-md py-1 text-[11px] font-medium transition cursor-pointer ${
+                  filterTab === 'blacklist'
+                    ? 'bg-card text-danger shadow-xs font-semibold'
+                    : 'text-ink-soft hover:text-ink'
+                }`}
+              >
+                <EyeOff size={12} />
+                <span>{t('黑名单 (隐藏)')}</span>
+                {curBlacklist.length > 0 && (
+                  <span className="ml-0.5 rounded-full bg-danger/15 px-1.5 text-[9.5px] font-bold text-danger">
+                    {curBlacklist.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* 说明提示 */}
+            <div className="mt-1.5 text-[10.5px] text-ink-faint leading-normal">
+              {filterTab === 'whitelist'
+                ? t('仅保留所选元素显示；若列表为空则显示全文（仅执行黑名单过滤）')
+                : t('在页面中隐藏所选元素（消除广告、侧边栏、页眉等干扰）')}
+            </div>
+
+            {/* 选择器列表展示 */}
+            <div className="mt-2 max-h-32 overflow-y-auto rounded-lg border border-line/60 bg-line/10 p-1.5 space-y-1">
+              {(filterTab === 'whitelist' ? curWhitelist : curBlacklist).length === 0 ? (
+                <div className="py-2 text-center text-[11px] text-ink-faint">
+                  {filterTab === 'whitelist' ? t('暂无白名单（显示全文）') : t('暂无黑名单项')}
+                </div>
+              ) : (
+                (filterTab === 'whitelist' ? curWhitelist : curBlacklist).map((sel) => (
+                  <div
+                    key={sel}
+                    className="flex items-center justify-between gap-1.5 rounded bg-card px-2 py-1 text-[11px] font-mono text-ink border border-line/40 shadow-2xs"
+                  >
+                    <span className="truncate" title={sel}>{sel}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        filterTab === 'whitelist'
+                          ? handleRemoveWhitelistItem(sel)
+                          : handleRemoveBlacklistItem(sel)
+                      }
+                      title={t('删除此项')}
+                      className="text-ink-faint hover:text-red-500 transition cursor-pointer shrink-0"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* 手动添加输入框 */}
+            <div className="mt-2 flex items-center gap-1.5">
+              <input
+                type="text"
+                placeholder={filterTab === 'whitelist' ? 'article, #content' : '.sidebar, .ad, header'}
+                value={newFilterInput}
+                onChange={(e) => setNewFilterInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddFilterItem()
+                }}
+                className="flex-1 min-w-0 rounded-md border border-line bg-line/20 px-2 py-1 text-[11px] text-ink focus:outline-none focus:border-seal/60 font-mono"
+              />
+              <button
+                type="button"
+                onClick={handleAddFilterItem}
+                className="shrink-0 flex items-center gap-1 rounded-md bg-line px-2 py-1 text-[11px] font-medium text-ink-soft hover:bg-line-strong hover:text-ink transition cursor-pointer"
+              >
+                <Plus size={11} />
+                <span>{t('添加')}</span>
+              </button>
+            </div>
+
+            {/* 可视化拾取按钮 */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpenPureMenu(false)
+                onInspectPick?.(filterTab)
+              }}
+              className={`mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border py-1.5 text-[11px] font-medium transition cursor-pointer ${
+                filterTab === 'whitelist'
+                  ? 'border-seal/30 bg-seal/10 text-seal hover:bg-seal/15'
+                  : 'border-danger/30 bg-danger/10 text-danger hover:bg-danger/15'
+              }`}
+            >
+              <Crosshair size={13} />
+              <span>
+                {filterTab === 'whitelist'
+                  ? t('检查元素拾取加入白名单')
+                  : t('检查元素拾取加入黑名单')}
+              </span>
             </button>
           </div>
         )}
@@ -721,6 +1026,9 @@ function WebPage({
   m,
   onMeta,
   onCommitUrl,
+  fileNode,
+  onAutoCache,
+  pendingJumpsRef,
   onDomMutation,
   onNavigateReset,
 }: {
@@ -729,6 +1037,12 @@ function WebPage({
   m: WebTabMeta | undefined
   onMeta: (tabId: string, patch: Partial<WebTabMeta>) => void
   onCommitUrl: (tabId: string, url: string) => void
+  fileNode?: FileNodeEntity
+  onAutoCache?: (
+    nodeId: string,
+    patch: { domFilter?: string; whitelist?: string[]; blacklist?: string[]; pureMode?: boolean; cachedContent?: string; cachedAt?: number; title?: string },
+  ) => void
+  pendingJumpsRef?: { current: Map<string, string> }
   onDomMutation?: (tabId: string) => void
   onNavigateReset?: (tabId: string) => void
 }) {
@@ -751,7 +1065,36 @@ function WebPage({
       onNavigateReset?.(id)
       onMeta(id, { loading: true, error: null })
     }
-    const onStopLoad = (): void => onMeta(id, { loading: false, ...navState() })
+    const onStopLoad = (): void => {
+      onMeta(id, { loading: false, ...navState() })
+
+      // 1. 纯净模式与 DOM 过滤（黑白名单）
+      const pureEnabled = fileNode ? (fileNode.pureMode !== false) : (m?.pureMode ?? false)
+      const whitelist = fileNode?.whitelist ?? m?.whitelist ?? (fileNode?.domFilter ? [fileNode.domFilter] : (m?.domFilter ? [m.domFilter] : []))
+      const blacklist = fileNode?.blacklist ?? m?.blacklist ?? []
+      if (pureEnabled) {
+        void wv.executeJavaScript(buildApplyPureModeScript({ whitelist, blacklist }, true))
+      }
+
+      // 2. 网页内容自动缓存至节点
+      if (fileNode && onAutoCache) {
+        void wv.executeJavaScript(`(() => {
+          const article = document.querySelector('article') || document.querySelector('main') || document.querySelector('[role="main"]') || document.body;
+          return article ? article.innerText.slice(0, 100000) : '';
+        })()`).then((res) => {
+          if (typeof res === 'string' && res.trim()) {
+            onAutoCache(fileNode.id, { cachedContent: res.trim(), cachedAt: Date.now() })
+          }
+        }).catch(() => {})
+      }
+
+      // 3. 超链接元素选择器跳转
+      const pendingSel = pendingJumpsRef?.current?.get(id)
+      if (pendingSel && pendingJumpsRef?.current) {
+        pendingJumpsRef.current.delete(id)
+        void wv.executeJavaScript(buildJumpToElementScript(pendingSel))
+      }
+    }
     const onNavigate = (e: Event): void => {
       onNavigateReset?.(id)
       const url = (e as unknown as { url?: string }).url ?? ''
@@ -772,6 +1115,9 @@ function WebPage({
         onMeta(id, { title })
         const currentUrl = m?.url || tab.ref.url
         if (currentUrl) updateWebHistoryMeta(currentUrl, { title })
+        if (fileNode && !fileNode.titleCustomized) {
+          onAutoCache?.(fileNode.id, { title })
+        }
       }
     }
     const onFavicon = (e: Event): void => {

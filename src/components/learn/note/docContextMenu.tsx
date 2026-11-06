@@ -6,7 +6,7 @@
  * （它要读选区、读剪贴板、还要让上层切视图，散在这里既不好读，也会让「渲染」与「做事」
  * 两份东西各走各的）。
  */
-import { ClipboardPaste, Code2, Copy } from 'lucide-react'
+import { ClipboardPaste, Code2, Copy, StickyNote } from 'lucide-react'
 import type { RefObject } from 'react'
 import { useClampToViewport, useDismissOn } from '../../../lib/useDismiss'
 import { t } from '../../../i18n'
@@ -30,6 +30,7 @@ interface Props {
   onPaste: () => void
   onReveal: () => void
   onClose: () => void
+  onInsertNotepad?: (blockIndex: number) => void
 }
 
 export function DocContextMenu({
@@ -42,12 +43,44 @@ export function DocContextMenu({
   onPaste,
   onReveal,
   onClose,
+  onInsertNotepad,
 }: Props) {
   // 点别处 / 滚动 / 缩放 / Esc 都收起，并把菜单夹进视口（规矩收在 lib/useDismiss 一处）
   useDismissOn({ onClose })
   useClampToViewport(menuRef, menu)
 
   if (!menu) return null
+
+  if (menu.mode === 'blank') {
+    return (
+      <div
+        ref={menuRef}
+        role="menu"
+        onMouseDown={(e) => e.stopPropagation()}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+        }}
+        className={`fixed z-[70] min-w-[140px] max-w-[200px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)] ${
+          closing ? 'moji-out' : 'moji-in-soft'
+        }`}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            onInsertNotepad?.(menu.blockIndex ?? -1)
+            onClose()
+          }}
+          className={MENU_ITEM + ' text-ink hover:bg-line/60 cursor-pointer'}
+        >
+          <StickyNote size={13} className="shrink-0 text-amber-500" />
+          {t('插入笔记')}
+        </button>
+      </div>
+    )
+  }
 
   /** 选区映射回源文失败时，粘贴与定位都没有落点：留着能点却什么也不做更让人困惑 */
   const located = !!menu.loc

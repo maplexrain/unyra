@@ -56,7 +56,10 @@ export function createResourceOps(deps: AgentOpsDeps, io: ResourceIo): ResourceO
   /** 单条资源的公开面目：清单字段 + 可读的大小与日期 + 引用数 */
   const view = (r: StaticResource): Record<string, unknown> => ({
     uuid: r.uuid,
+    name: r.name,
     file: fileNameOf(r),
+    ...(r.caption ? { caption: r.caption } : {}),
+    ...(r.order !== undefined ? { order: r.order } : {}),
     kind: kindOf(r),
     bytes: r.bytes,
     size: formatBytes(r.bytes),
@@ -230,6 +233,16 @@ export function createResourceOps(deps: AgentOpsDeps, io: ResourceIo): ResourceO
         if (!name) return { error: '名称不能为空' }
         deps.set(patchResource(store0(), goal(), uuid, { name, updatedAt: now }))
         done.push('名称改为「' + name + '」')
+      }
+      if (patch.caption !== undefined) {
+        const caption = typeof patch.caption === 'string' ? patch.caption.trim() : undefined
+        deps.set(patchResource(store0(), goal(), uuid, { caption, updatedAt: now }))
+        done.push('题注' + (caption ? '已更新为「' + caption + '」' : '已清空'))
+      }
+      if (patch.order !== undefined) {
+        const order = typeof patch.order === 'number' && Number.isFinite(patch.order) ? patch.order : undefined
+        deps.set(patchResource(store0(), goal(), uuid, { order, updatedAt: now }))
+        done.push('序号' + (order !== undefined ? '已更新为 ' + order : '已清空'))
       }
       if (patch.description !== undefined) {
         const description = patch.description.trim()

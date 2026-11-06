@@ -506,4 +506,177 @@ describe('认领接口的文档卡：没有正经标题就显示接口的 label'
       }
     }
   })
-})
+
+  it('异构节点混合树自动排列：根文档连出视频、网页、文档，视频连出笔记，列级深度严格单调递增，无反向折线且垂直对称居中', () => {
+    const base = emptyLearnStore()
+    const note1: NoteFile = { id: 'note1', name: '笔记1', content: '2字', createdAt: 1, updatedAt: 1 }
+    const note2: NoteFile = { id: 'note2', name: '笔记2', content: '', createdAt: 1, updatedAt: 1 }
+
+    const store: LearnStore = {
+      ...base,
+      goals: [{ id: 'g_hetero', rootNodeId: 'doc_root', question: '学习混合树', createdAt: 1, updatedAt: 1 }],
+      nodes: [
+        {
+          id: 'doc_root',
+          title: '新文档',
+          key: 'doc_root',
+          description: '',
+          docs: { teaching: '' },
+          notes: [],
+          annotations: [],
+          status: 'learning' as const,
+          origin: 'user' as const,
+          goalId: 'g_hetero',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          id: 'doc_sub',
+          title: 'VibeCoding 零基础入门到实战',
+          key: 'doc_sub',
+          description: '',
+          docs: { teaching: '正文内容' },
+          notes: [],
+          annotations: [],
+          status: 'learning' as const,
+          origin: 'user' as const,
+          goalId: 'g_hetero',
+          createdAt: 2,
+          updatedAt: 2,
+        },
+      ],
+      videoNodes: [
+        {
+          id: 'video_node',
+          goalId: 'g_hetero',
+          videoId: 'v1',
+          input: 'BV1xx',
+          title: '黑马程序员2026全网最夯VibeCoding',
+          confirmed: true,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      fileNodes: [
+        {
+          id: 'file_web',
+          goalId: 'g_hetero',
+          fileKind: 'web',
+          url: 'https://www.bilibili.com/opus',
+          title: 'Super-agent 设计探索',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      detached: {
+        g_hetero: {
+          notes: [note1, note2],
+          superdocs: [],
+        },
+      },
+      edges: [
+        { from: 'doc_root', to: 'video_node', createdAt: 1 },
+        { from: 'doc_root', to: 'file_web', createdAt: 2 },
+        { from: 'doc_root', to: 'doc_sub', createdAt: 3 },
+        { from: 'video_node', to: 'note1', createdAt: 4 },
+        { from: 'video_node', to: 'note2', createdAt: 5 },
+      ],
+    }
+
+    const view = deriveCanvas(store, 'g_hetero', undefined)
+    const byUuid = Object.fromEntries(view.cards.map((c) => [c.uuid, c]))
+
+    // 1. 深度与横坐标断言：严格从左至右分层
+    // Depth 1: 根文档
+    expect(byUuid['doc_root'].x).toBe(1 * COL_GAP)
+    // Depth 2: 视频、网页、子文档全部排在第 2 列，绝不与根文档同列挤压！
+    expect(byUuid['video_node'].x).toBe(2 * COL_GAP)
+    expect(byUuid['file_web'].x).toBe(2 * COL_GAP)
+    expect(byUuid['doc_sub'].x).toBe(2 * COL_GAP)
+    // Depth 3: 视频节点下的两份笔记排在第 3 列，绝不挤在第 2 列！
+    expect(byUuid['note1'].x).toBe(3 * COL_GAP)
+    expect(byUuid['note2'].x).toBe(3 * COL_GAP)
+
+    // 2. 检查所有连线几何：from 必须在 to 左侧，无反向折线
+    for (const e of view.edges) {
+      const fromCard = byUuid[e.from]
+      const toCard = byUuid[e.to]
+      expect(fromCard).toBeDefined()
+      expect(toCard).toBeDefined()
+      expect(fromCard.x).toBeLessThan(toCard.x)
+    }
+
+    // 3. 对称居中检查：
+    // doc_root 的三个直接子节点围绕其垂直中心居中分布
+    const rootCenterY = byUuid['doc_root'].y + view.heightOf(byUuid['doc_root']) / 2
+    const childrenCenterY = (byUuid['video_node'].y + byUuid['doc_sub'].y + view.heightOf(byUuid['doc_sub'])) / 2
+    expect(Math.abs(rootCenterY - childrenCenterY)).toBeLessThanOrEqual(1)
+
+    // video_node 的两个笔记围绕其垂直中心居中分布
+    const videoCenterY = byUuid['video_node'].y + view.heightOf(byUuid['video_node']) / 2
+    const notesCenterY = (byUuid['note1'].y + byUuid['note2'].y + view.heightOf(byUuid['note2'])) / 2
+    expect(Math.abs(videoCenterY - notesCenterY)).toBeLessThanOrEqual(1)
+  })
+
+  it('游离子图按深度升序稳定放置：未连入根的子分支父节点先就位，相对坐标保持一致', () => {
+    const base = emptyLearnStore()
+    const store: LearnStore = {
+      ...base,
+      goals: [{ id: 'g_orphan', rootNodeId: 'r', question: '游离分支', createdAt: 1, updatedAt: 1 }],
+      nodes: [
+        {
+          id: 'r',
+          title: '主根文档',
+          key: 'r',
+          description: '',
+          docs: { teaching: '' },
+          notes: [],
+          annotations: [],
+          status: 'learning' as const,
+          origin: 'user' as const,
+          goalId: 'g_orphan',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          id: 'detached_parent',
+          title: '独立分支父文档',
+          key: 'dp',
+          description: '',
+          docs: { teaching: '' },
+          notes: [],
+          annotations: [],
+          status: 'learning' as const,
+          origin: 'user' as const,
+          goalId: 'g_orphan',
+          createdAt: 2,
+          updatedAt: 2,
+        },
+        {
+          id: 'detached_child',
+          title: '独立分支子文档',
+          key: 'dc',
+          description: '',
+          docs: { teaching: '' },
+          notes: [],
+          annotations: [],
+          status: 'learning' as const,
+          origin: 'user' as const,
+          goalId: 'g_orphan',
+          createdAt: 3,
+          updatedAt: 3,
+        },
+      ],
+      edges: [
+        { from: 'detached_parent', to: 'detached_child', createdAt: 1 },
+      ],
+    }
+
+    const view = deriveCanvas(store, 'g_orphan', undefined)
+    const byUuid = Object.fromEntries(view.cards.map((c) => [c.uuid, c]))
+
+    expect(byUuid['detached_parent'].x).toBe(1 * COL_GAP)
+    expect(byUuid['detached_child'].x).toBe(2 * COL_GAP)
+    expect(byUuid['detached_parent'].x).toBeLessThan(byUuid['detached_child'].x)
+  })
+});

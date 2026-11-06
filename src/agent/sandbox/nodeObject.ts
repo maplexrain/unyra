@@ -96,7 +96,21 @@ export function registerNodeApi(api: Record<string, unknown>, ops: NodeOps | und
     const input = args[0] && typeof args[0] === 'object' ? (args[0] as Record<string, unknown>) : { kind: asText(args[0]) }
     const reason = ops.guard?.('create', input.kind as GNodeKind, input)
     if (reason) return { error: reason }
-    return service.create(input)
+    const res = service.create(input)
+    if ('error' in res) return res
+    const rawKind = (res as Record<string, unknown>).kind ?? (typeof input.kind === 'string' ? input.kind : '')
+    const id = (res as Record<string, unknown>).id ?? res.uuid
+    return {
+      ...res,
+      id,
+      kind: rawKind,
+      node: {
+        uuid: res.uuid,
+        id,
+        title: res.title,
+        kind: rawKind,
+      },
+    }
   }, log)
 
   wrapApi(api, 'node.setRoot', (args) => {

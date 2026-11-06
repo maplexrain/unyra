@@ -29,7 +29,8 @@ import {
   Loader2,
   Maximize,
   Minimize,
-  ListVideo,
+  BookOpen,
+  ListTree,
   Pause,
   Play,
   RotateCcw,
@@ -83,6 +84,13 @@ export interface VideoPlayerProps {
    */
   chapters?: VideoChapter[] | null
   className?: string
+  leftOverlay?: React.ReactNode
+  leftOverlayOpen?: boolean
+  onToggleLeftOverlay?: () => void
+  rightOverlay?: React.ReactNode
+  rightOverlayOpen?: boolean
+  onToggleRightOverlay?: () => void
+  onPlay?: () => void
 }
 
 export interface VideoPlayerHandle {
@@ -164,10 +172,17 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       onTimeUpdate,
       onSeeked,
       onExternalSubtitleLoaded,
-      sidePanel,
+      sidePanel: _sidePanel,
       transitionStill,
-      onToggleSidePanel,
-      sidePanelOpen = false,
+      onToggleSidePanel: _onToggleSidePanel,
+      sidePanelOpen: _sidePanelOpen = false,
+      leftOverlay,
+      leftOverlayOpen = false,
+      onToggleLeftOverlay,
+      rightOverlay,
+      rightOverlayOpen = false,
+      onToggleRightOverlay,
+      onPlay,
       active = true,
       chapters,
       className = '',
@@ -882,6 +897,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           onPlay={() => {
             setIsPlaying(true)
             scheduleHideControls()
+            onPlay?.()
           }}
           onPause={() => {
             setIsPlaying(false)
@@ -998,15 +1014,15 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         */}
         {(title || subLabel) && (
           <div
-            className={`pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/80 via-black/30 to-transparent px-4 pb-8 pt-3 transition-opacity duration-300 ${
+            className={`pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/90 via-black/40 to-transparent px-4 pb-6 pt-2.5 transition-opacity duration-300 ${
               isControlsVisible ? 'opacity-100' : 'opacity-0'
             }`}
           >
-            <div className="flex min-w-0 items-baseline gap-2">
+            <div className="flex min-w-0 items-baseline gap-2 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
               {/* 标题限宽（截断）：把右侧位置让给选集名——长标题不许把选集挤没 */}
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-white/95">{title}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-white">{title}</span>
               {subLabel && (
-                <span className="max-w-[45%] shrink-0 truncate text-[11px] text-white/60">{subLabel}</span>
+                <span className="max-w-[45%] shrink-0 truncate text-[11px] text-white/75">{subLabel}</span>
               )}
             </div>
           </div>
@@ -1014,7 +1030,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
         {/* 底部控制器渐变背景与控制栏 */}
         <div
-          className={`absolute inset-x-0 bottom-0 z-30 flex flex-col justify-end bg-gradient-to-t from-black/85 via-black/40 to-transparent pt-12 pb-2 px-3 transition-opacity duration-300 ${
+          className={`absolute inset-x-0 bottom-0 z-30 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/45 to-transparent pt-7 pb-2 px-3 transition-opacity duration-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${
             isControlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
           onClick={(e) => e.stopPropagation()}
@@ -1127,20 +1143,39 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
             {/* 右侧功能控制集合 */}
             <div className="flex items-center gap-1.5">
-              {/* 选集 / 合集列表开关（用户定的：这就是「视频空间栏」里要放的那个入口） */}
-              {onToggleSidePanel && (
+              {/* 左侧选集/字幕/分段抽屉开关 */}
+              {onToggleLeftOverlay && (
                 <button
                   type="button"
-                  data-video-panel-toggle=""
-                  onClick={onToggleSidePanel}
-                  title={sidePanelOpen ? t('收起选集列表') : t('展开选集列表')}
-                  aria-expanded={sidePanelOpen}
+                  onClick={onToggleLeftOverlay}
+                  title={leftOverlayOpen ? t('收起列表面板 (Tab)') : t('展开列表面板 (Tab)')}
+                  aria-expanded={leftOverlayOpen}
                   className={
-                    'flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/20 ' +
-                    (sidePanelOpen ? 'bg-white/20 text-seal' : 'text-white/80 hover:text-white')
+                    'flex h-8 items-center gap-1.5 px-2.5 rounded-lg text-[11.5px] transition hover:bg-white/20 ' +
+                    (leftOverlayOpen ? 'bg-white/25 text-seal font-medium' : 'text-white/80 hover:text-white')
                   }
                 >
-                  <ListVideo size={16} />
+                  <ListTree size={15} />
+                  <span>{t('选集/字幕/分段')}</span>
+                  <kbd className="hidden sm:inline rounded bg-white/10 px-1 py-0.5 text-[9px] font-mono text-white/60">Tab</kbd>
+                </button>
+              )}
+
+              {/* 右侧笔记栏开关 */}
+              {onToggleRightOverlay && (
+                <button
+                  type="button"
+                  onClick={onToggleRightOverlay}
+                  title={rightOverlayOpen ? t('收起笔记 (双击 Shift)') : t('展开笔记 (双击 Shift)')}
+                  aria-expanded={rightOverlayOpen}
+                  className={
+                    'flex h-8 items-center gap-1.5 px-2.5 rounded-lg text-[11.5px] transition hover:bg-white/20 ' +
+                    (rightOverlayOpen ? 'bg-white/25 text-seal font-medium' : 'text-white/80 hover:text-white')
+                  }
+                >
+                  <BookOpen size={15} />
+                  <span>{t('笔记')}</span>
+                  <kbd className="hidden sm:inline rounded bg-white/10 px-1 py-0.5 text-[9px] font-mono text-white/60">Shift ×2</kbd>
                 </button>
               )}
 
@@ -1450,8 +1485,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           </div>
         </div>
 
-        {/* 右侧悬浮面板（合集 / 选集）：挂在根容器里，全屏时同样可见 */}
-        {sidePanel}
+        {/* 左侧悬浮面板（选集 + 字幕 + 视频分段）：按 Tab 展开/收起，挂在播放器根容器里 */}
+        {leftOverlay}
+
+        {/* 右侧悬浮面板（笔记栏）：按 Tab 展开/收起，挂在播放器根容器里 */}
+        {rightOverlay}
 
         {/* 隐藏的字幕文件导入 input */}
         <input

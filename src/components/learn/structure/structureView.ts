@@ -27,6 +27,7 @@ import { docIdOfOutlineUuid, outlineUuid, type GNodeKind } from '../../../learn/
 import {
   CARD_H,
   COL_GAP,
+  ROW_GAP,
   defaultHeight,
   freeSpotNear,
   cardWidthOf,
@@ -127,6 +128,7 @@ export interface CardView {
    */
   project?: { path: string; pathKind: ProjectPathKind; resolved: string | null }
   file?: { fileKind: FileNodeKind; url: string }
+  video?: { videoId: string | null; input: string; confirmed: boolean }
   x: number
   y: number
 }
@@ -210,6 +212,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     parent: Pending | null
     /** 认领了接口的子级：铺排锚到父大纲那条目标项的行上（行号 = 目标项序号） */
     slotAnchor?: { parent: string; index: number }
+    targetAnchorY?: number
     placed?: boolean
   }
 
@@ -353,9 +356,14 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
       card: {
         uuid: entity.id,
         kind: 'video',
-        title: video?.title ?? '未绑定视频',
-        subtitle: video ? (video.pluginName ?? '已绑定') : '选一个视频，把这门课和它绑在一起',
-        ...(video ? {} : { blank: true }),
+        title: entity.title || video?.title || '未命名视频',
+        subtitle: entity.input || video?.input || '',
+        ...(entity.confirmed || video ? {} : { blank: true }),
+        video: {
+          videoId: entity.videoId ?? null,
+          input: entity.input ?? '',
+          confirmed: !!entity.confirmed,
+        },
       },
       depth: 1,
       anchorY: 0,
@@ -463,14 +471,19 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
   }
 
   // 游离挂件（剪了线 / 没绑过的）：独立实体，一样上画布——位置按存过的来，没存的自动找空位
+  // 若在 store.edges 中存在入边（如挂在视频节点、文档节点或文件节点下），则属于已连接节点，不再显示「游离」
   const pool = store.detached?.[goalId]
+  const hasIncomingEdge = (uuid: string) => (store.edges ?? []).some((e) => e.to === uuid)
   for (const note of pool?.notes ?? []) {
+    const connected = hasIncomingEdge(note.id)
     add({
       card: {
         uuid: note.id,
         kind: 'note',
         title: note.name,
-        subtitle: note.content.trim() ? `${note.content.length} 字 · 游离` : '游离 · 还是空的',
+        subtitle: connected
+          ? (note.content.trim() ? `${note.content.length} 字` : '还是空的')
+          : (note.content.trim() ? `${note.content.length} 字 · 游离` : '游离 · 还是空的'),
       },
       depth: 2,
       anchorY: 0,
@@ -479,12 +492,15 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     })
   }
   for (const sdoc of pool?.superdocs ?? []) {
+    const connected = hasIncomingEdge(sdoc.id)
     add({
       card: {
         uuid: sdoc.id,
         kind: 'superdoc',
         title: sdoc.name,
-        subtitle: sdoc.html.trim() ? `${sdoc.html.length} 字符 · 游离` : '游离 · 还是空的',
+        subtitle: connected
+          ? (sdoc.html.trim() ? `${sdoc.html.length} 字符` : '还是空的')
+          : (sdoc.html.trim() ? `${sdoc.html.length} 字符 · 游离` : '游离 · 还是空的'),
         ...(sdoc.html.trim() ? {} : { blank: true }),
       },
       depth: 2,
@@ -496,12 +512,15 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
   for (const exam of store.exams) {
     if (exam.goalId !== goalId) continue
     if (nodeById(store, exam.nodeId)) continue // 绑着的已经在宿主名下画过了
+    const connected = hasIncomingEdge(exam.id)
     add({
       card: {
         uuid: exam.id,
         kind: 'exam',
         title: exam.title,
-        subtitle: exam.questions.length ? `${exam.questions.length} 题 · 游离` : '游离 · 还没有题',
+        subtitle: connected
+          ? (exam.questions.length ? `${exam.questions.length} 题` : '还没有题')
+          : (exam.questions.length ? `${exam.questions.length} 题 · 游离` : '游离 · 还没有题'),
         ...(exam.questions.length ? {} : { blank: true }),
       },
       depth: 2,
@@ -545,16 +564,16 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     if (to && projectPending.has(to)) return docPending.get(from)
     // 笔记节点的上游：若起点在 byUuid 中存在（如考试、超级文档、文档、文件），优先返回其实体卡片
     if (to && byUuid.get(to)?.card.kind === 'note') {
-      return byUuid.get(from) ?? outlinePending.get(outlineUuid(from)) ?? docPending.get(from)
+      return byUuid.get(from) ?? outlinePending.get(outlineUuid(from)) ?? docPending.get(from) ?? videoPending.get(from)
     }
     // 文件节点的上游：优先返回其实体卡片
-    if (to && filePending.has(to)) {
+    if (to && (filePending.has(to) || videoPending.has(to))) {
       return byUuid.get(from) ?? outlinePending.get(outlineUuid(from)) ?? docPending.get(from)
     }
     return filePending.get(from) ?? outlinePending.get(outlineUuid(from)) ?? docPending.get(from) ?? videoPending.get(from) ?? projectPending.get(from) ?? byUuid.get(from)
   }
   for (const e of store.edges) {
-    const toCard = outlinePending.get(e.to) ?? filePending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to) ?? byUuid.get(e.to)
+    const toCard = outlinePending.get(e.to) ?? filePending.get(e.to) ?? videoPending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to) ?? byUuid.get(e.to)
     const fromCard = fromCardOf(e.from, e.to)
     if (!fromCard || !toCard) continue
     if (!pushEdge(fromCard.card.uuid, toCard.card.uuid)) continue
@@ -619,7 +638,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
 
     // 约束 1：树边传递 (fromCard -> toCard)
     for (const e of store.edges) {
-      const toCard = outlinePending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to)
+      const toCard = outlinePending.get(e.to) ?? filePending.get(e.to) ?? videoPending.get(e.to) ?? docPending.get(e.to) ?? projectPending.get(e.to) ?? byUuid.get(e.to)
       const fromCard = fromCardOf(e.from, e.to)
       if (!fromCard || !toCard) continue
       const req = fromCard.depth + 1
@@ -693,7 +712,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     p.placed = true
     const savedPos = positions[p.card.uuid]
     const parentCard = p.parent ? placedByUuid.get(p.parent.card.uuid) : undefined
-    let anchorY = parentCard ? parentCard.y : 0
+    let anchorY = p.targetAnchorY ?? (parentCard ? parentCard.y : 0)
     /*
      * 认领了接口的子级锚到父大纲那条目标项的**行**上（卡的中心对准那一行圆点）：
      * 自动排列读起来就是「第几条目标项的落地排在第几行」，连线也顺势更平。
@@ -720,15 +739,39 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     }
     cards.push(card)
     placedByUuid.set(p.card.uuid, card)
+
+    // 为下游未认领具体 slot 的直接子节点集合计算对称居中分布的 targetAnchorY
+    const unplacedNext = p.next.filter((c) => !c.placed)
+    const unslottedChildren = unplacedNext.filter((c) => !c.slotAnchor)
+    if (unslottedChildren.length > 0) {
+      const curH = heightOf({ uuid: card.uuid, kind: card.kind })
+      const parentCenterY = card.y + curH / 2
+      let totalChildrenH = 0
+      const childHeights: number[] = []
+      for (const child of unslottedChildren) {
+        const ch = heightOf({ uuid: child.card.uuid, kind: child.card.kind })
+        childHeights.push(ch)
+        totalChildrenH += ch
+      }
+      totalChildrenH += (unslottedChildren.length - 1) * ROW_GAP
+      let currentChildY = parentCenterY - totalChildrenH / 2
+      for (let i = 0; i < unslottedChildren.length; i++) {
+        unslottedChildren[i].targetAnchorY = currentChildY
+        currentChildY += childHeights[i] + ROW_GAP
+      }
+    }
+
     for (const n of p.next) {
       if (!n.placed) place(n)
     }
   }
   // 读图起点 = 根文档（入口徽章在它身上）；没连进树的（游离文档——摘了线或删了上游）
-  // 也要出现在画布上：按各自深度补铺
+  // 也要出现在画布上：按深度升序补铺，确保父节点先于子节点就位
   const rootPending = goal.rootNodeId ? docPending.get(goal.rootNodeId) : undefined
   if (rootPending) place(rootPending)
-  for (const p of byUuid.values()) {
+  const remaining = [...byUuid.values()].filter((p) => !p.placed)
+  remaining.sort((a, b) => a.depth - b.depth)
+  for (const p of remaining) {
     if (!p.placed) place(p)
   }
   return { cards, edges, heightOf }
@@ -743,7 +786,7 @@ export const KIND_TONE: Record<GNodeKind, string> = {
   note: 'border-emerald-500/30 bg-emerald-500/[0.06]',
   exam: 'border-amber-500/30 bg-amber-500/[0.06]',
   superdoc: 'border-violet-500/30 bg-violet-500/[0.06]',
-  video: 'border-cyan-500/30 bg-cyan-500/[0.06]',
+  video: 'border-pink-500/30 bg-pink-500/[0.06]',
   project: 'border-teal-500/30 bg-teal-500/[0.06]',
   file: 'border-blue-500/30 bg-blue-500/[0.06]',
 }
@@ -755,7 +798,7 @@ export const KIND_BADGE: Record<GNodeKind, string> = {
   note: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
   exam: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
   superdoc: 'bg-violet-500/15 text-violet-700 dark:text-violet-300',
-  video: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300',
+  video: 'bg-pink-500/15 text-pink-700 dark:text-pink-300',
   project: 'bg-teal-500/15 text-teal-700 dark:text-teal-300',
   file: 'bg-blue-500/15 text-blue-700 dark:text-blue-300',
 }

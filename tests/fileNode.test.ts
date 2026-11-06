@@ -12,6 +12,9 @@ import {
   sanitizeFileName,
   normalizeLocalFileUrl,
   isValidLocalFileUrl,
+  computeSha256,
+  uploadGoalFileWithHash,
+  readGoalFilesManifest,
 } from '../src/learn/fileNodes'
 import { setUserScope } from '../src/lib/storage'
 import { PROMPT_MODULES } from '../src/learn/ai/promptModules'
@@ -525,4 +528,110 @@ describe('文件节点拖拽判定、自由双向连线与打开Tab逻辑', () =
     expect(file2.relations.some((r) => r.id === 'e1' && r.type === 'down')).toBe(true)
     expect(file2.disconnect(exam)).toMatchObject({ ok: true })
   })
-})
+  describe('files/ 清单与 SHA-256 去重机制', () => {
+    it('computeSha256 能够正确计算哈希并保证一致性', async () => {
+      const data1 = new TextEncoder().encode('Hello Moji Notes')
+      const data2 = new TextEncoder().encode('Hello Moji Notes')
+      const dataDiff = new TextEncoder().encode('Hello Other Notes')
+
+      const h1 = await computeSha256(data1)
+      const h2 = await computeSha256(data2)
+      const hDiff = await computeSha256(dataDiff)
+
+      expect(h1).toHaveLength(64)
+      expect(h1).toBe(h2)
+      expect(h1).not.toBe(hDiff)
+    })
+
+    it('uploadGoalFileWithHash 首次上传注册到清单，二次上传相同内容自动去重复用', async () => {
+      const store = storeOf()
+      const fileData = new TextEncoder().encode('Content of file ABC')
+
+      // Mock user storage
+      let manifestStore: any = null
+      let binaryStore: Record<string, string> = {}
+
+      const storageMod = await import('../src/lib/storage')
+      vi.spyOn(storageMod, 'readUserJson').mockImplementation(async (rel: string) => {
+        if (rel.includes('manifest.json')) return manifestStore
+        return null
+      })
+      vi.spyOn(storageMod, 'writeUserJson').mockImplementation(async (rel: string, data: any) => {
+        if (rel.includes('manifest.json')) {
+          manifestStore = data
+          return true
+        }
+        return false
+      })
+      vi.spyOn(storageMod, 'writeUserBinary').mockImplementation(async (rel: string, dataUrl: string) => {
+        binaryStore[rel] = dataUrl
+        return true
+      })
+
+      // 1. 首次上传
+      const r1 = await uploadGoalFileWithHash(store, 'g1', {
+        name: 'document.pdf',
+        data: fileData,
+      })
+
+      expect('error' in r1).toBe(false)
+      if ('error' in r1) return
+      expect(r1.isDuplicate).toBe(false)
+      expect(r1.fileName).toBe('document.pdf')
+      expect(r1.url).toBe('files/document.pdf')
+      expect(r1.entry.hash).toBe(await computeSha256(fileData))
+      expect(manifestStore.files).toHaveLength(1)
+      expect(manifestStore.files[0].hash).toBe(r1.entry.hash)
+      const m1 = await readGoalFilesManifest(store, 'g1')
+      expect(m1.files).toHaveLength(1)
+
+      // 2. 二次上传完全相同内容的文件（即使文件名不同）
+      const r2 = await uploadGoalFileWithHash(store, 'g1', {
+        name: 'renamed_copy.pdf',
+        data: fileData,
+      })
+
+      expect('error' in r2).toBe(false)
+      if ('error' in r2) return
+      expect(r2.isDuplicate).toBe(true)
+      // 复用已有文件，不重复写入
+      expect(r2.fileName).toBe('document.pdf')
+      expect(r2.url).toBe('files/document.pdf')
+      expect(manifestStore.files).toHaveLength(1)
+
+      // 3. 上传同名但内容不同的文件：添加 hash 后缀区分防覆盖
+      const diffData = new TextEncoder().encode('Different content document')
+      const r3 = await uploadGoalFileWithHash(store, 'g1', {
+        name: 'document.pdf',
+        data: diffData,
+      })
+
+      expect('error' in r3).toBe(false)
+      if ('error' in r3) return
+      expect(r3.isDuplicate).toBe(false)
+      expect(r3.fileName).toContain('document_')
+      expect(r3.fileName.endsWith('.pdf')).toBe(true)
+      expect(manifestStore.files).toHaveLength(2)
+    })
+
+    it('titleCustomized 能够区分未手动命名与已手动命名的节点', () => {
+      const store = storeOf()
+      const { store: s1, entity: e1 } = createFileNode(store, {
+        goalId: 'g1',
+        title: '未命名本地文件',
+        fileKind: 'local',
+        titleCustomized: false,
+      })
+      expect(e1.titleCustomized).toBe(false)
+
+      const updateRes = updateFileNode(s1, e1.id, {
+        title: '用户手动自定义的标题',
+        titleCustomized: true,
+      })
+      expect('error' in updateRes).toBe(false)
+      if ('error' in updateRes) return
+      expect(updateRes.entity.title).toBe('用户手动自定义的标题')
+      expect(updateRes.entity.titleCustomized).toBe(true)
+    })
+  })
+});

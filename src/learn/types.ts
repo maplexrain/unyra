@@ -290,6 +290,20 @@ export interface Annotation {
   occurrence?: number
 }
 
+/**
+ * 教学文档中的随文便签（Notepad）。
+ *
+ * 数据完全记录在节点上（node.notepads），绝不污染或篡改教学文档原文（node.docs.teaching）。
+ */
+export interface DocNotepadItem {
+  id: string
+  content: string
+  /** 对应插入在正文第几个渲染块之后（-1 表示最顶部，0 表示第 0 个块之后，依此类推） */
+  blockIndex: number
+  createdAt: number
+  updatedAt: number
+}
+
 export interface KnowledgeNode {
   id: string
   title: string
@@ -299,6 +313,10 @@ export interface KnowledgeNode {
   description: string
   /** 教学文档（AI 写的讲解正文），Agent 可读写 */
   docs: NodeDocs
+  /**
+   * 随文便签（Notepad）集合；每个元素插在正文指定 blockIndex 处，数据完全独立于正文原文。
+   */
+  notepads?: DocNotepadItem[]
   /**
    * 这个节点下的全部笔记，顺序即列表顺序（新建的追加在末尾）。
    * 每份都是一个独立文件，可以单独命名 / 改名 / 删除（见 NoteFile）。
@@ -399,7 +417,7 @@ export type TabRef =
    * key 是开签那一刻生成的唯一身份（learn/tabs 的 newWebKey），导航不换：
    * 同一个网址可以开两枚页签，空地址（起始页，url === ''）也可以同时开好几枚。
    */
-  | { kind: 'web'; url: string; key: string }
+  | { kind: 'web'; url: string; key: string; fileNodeId?: string; goalId?: string }
   /**
    * 视频页签（见 components/video/VideoStudyTab）。两种形态：
    * - 带 videoId：**绑定**到一个视频资源（描述在 learn/types 的 VideoResource），
@@ -412,7 +430,7 @@ export type TabRef =
    * 组被收起（锚大纲关闭进停靠场）时它一起收。身份仍是 videoId（tabKey 不看 goalId），
    * 绑定关系变了重开一次页签就对齐。
    */
-  | { kind: 'video'; videoId?: string; goalId?: string }
+  | { kind: 'video'; videoId?: string; videoNodeId?: string; goalId?: string }
   /**
    * 插件开发文档页签：介绍插件契约与配置面板（见 components/plugins/PluginDoc）。
    * 跟着页签持久化（normalize 认它），内容全是静态文档，没有要落盘的状态。
@@ -492,6 +510,32 @@ export type DocView = 'source' | 'preview' | 'media'
  */
 export interface WebTabMeta {
   url: string
+  /**
+   * DOM 元素过滤选择器（如 'article, main, .post-content'）。
+   * 设置后在纯净阅读模式下只保留该元素显示，消除周围噪声。
+   */
+  domFilter?: string
+  /**
+   * 白名单选择器列表（纯净模式下仅保留匹配这些选择器的元素显示）
+   */
+  whitelist?: string[]
+  /**
+   * 黑名单选择器列表（在页面中隐藏匹配这些选择器的元素，如广告、侧边栏、页眉等）
+   */
+  blacklist?: string[]
+  /**
+   * 是否启用纯净阅读模式（默认 true，保留切换回原页面阅读的开关）
+   */
+  pureMode?: boolean
+  /**
+   * 自动缓存的页面 Markdown/纯文本内容
+   */
+  cachedContent?: string
+  /**
+   * 缓存生成时间戳
+   */
+  cachedAt?: number
+
   title?: string
   favicon?: string
   loading: boolean
@@ -654,6 +698,14 @@ export interface VideoNodeEntity {
   goalId: string
   /** 绑定的视频资源 id；null = 空节点（刚从 palette 落下，还没选视频） */
   videoId: string | null
+  /** 视频唯一标识（URL 或 B 站 BV 号） */
+  input?: string
+  /** 视频节点标题（创建时为未命名视频，解析后自动回填或用户手动重命名） */
+  title?: string
+  /** 用户是否手动重命名过标题（手动命名后不再随解析覆盖） */
+  titleCustomized?: boolean
+  /** 是否已确定为视频资源并固化标识输入框 */
+  confirmed?: boolean
   createdAt: number
   updatedAt: number
 }
@@ -709,6 +761,38 @@ export interface FileNodeEntity {
    * - web: 网页 URL（如 https://... 或 http://...）
    */
   url: string
+  /**
+   * DOM 元素过滤选择器（如 'article, main, .post-content'）。
+   * 设置后在纯净阅读模式下只保留该元素显示，消除周围噪声。
+   */
+  domFilter?: string
+  /**
+   * 白名单选择器列表（纯净模式下仅保留匹配这些选择器的元素显示）
+   */
+  whitelist?: string[]
+  /**
+   * 黑名单选择器列表（在页面中隐藏匹配这些选择器的元素，如广告、侧边栏、页眉等）
+   */
+  blacklist?: string[]
+  /**
+   * 是否启用纯净阅读模式（默认 true，保留切换回原页面阅读的开关）
+   */
+  pureMode?: boolean
+  /**
+   * 自动缓存的页面 Markdown/纯文本内容
+   */
+  cachedContent?: string
+  /**
+   * 缓存生成时间戳
+   */
+  cachedAt?: number
+
+  /**
+   * 用户是否手动重命名/自定义了标题。
+   * 为 false 或 undefined 时，引用文件或打开网页后会自动回填文件名或网页实际 title。
+   */
+  titleCustomized?: boolean
+
   createdAt: number
   updatedAt: number
 }

@@ -214,17 +214,30 @@ export class NodeService {
     }
 
     if (kind === 'video') {
-      // 视频节点不挂树：它只是「这个目标配这个视频」的引用，under 给了就是误会
       const underGiven = input.under !== undefined && input.under !== null && String(input.under).trim() !== ''
-      if (underGiven) return { error: '视频节点不挂在大纲或文档之下：不带 under 建（画布上拖到空白处），建好在卡上选一个视频绑上' }
-      const { store: withNode, entity } = createVideoNode(store, goalId, Date.now())
-      this.deps.set(withNode)
+      let hostDocId: string | null = null
+      if (underGiven) {
+        const rawUnder = String(input.under).trim()
+        const targetNode = this.get(rawUnder)
+        if (!targetNode) return { error: 'under 里给的上级节点（' + rawUnder + '）不存在' }
+        if (targetNode.kind !== 'doc') return { error: '视频节点的上级只能是文档节点' }
+        hostDocId = targetNode.uuid
+      }
+      const rawInput = typeof input.input === 'string' ? input.input.trim() : (typeof input.url === 'string' ? input.url.trim() : '')
+      const rawTitle = typeof input.title === 'string' && input.title.trim() ? input.title.trim() : (title || '')
+      const { store: withNode, entity } = createVideoNode(store, goalId, Date.now(), rawInput, rawTitle || undefined)
+      let nextStore = withNode
+      if (hostDocId) {
+        const r = addEdge(nextStore, hostDocId, entity.id)
+        if (r.added) nextStore = r.store
+      }
+      this.deps.set(nextStore)
       return {
         ok: true,
         uuid: entity.id,
-        title: '视频 · 未绑定',
+        title: entity.title || '视频 · 未绑定',
         created: true,
-        note: '已建一枚视频节点（还没绑视频）：editContent({ videoId }) 绑一个现有视频，视频清单看 list() 的 videos 段',
+        note: '已创建视频节点：在第二行输入视频唯一标识（如 url/BV 号），点击标题打开视频 Tab',
       }
     }
 
@@ -254,6 +267,8 @@ export class NodeService {
           title: title || defaultTitle,
           fileKind,
           url,
+          domFilter: typeof input.domFilter === 'string' ? input.domFilter : undefined,
+          pureMode: typeof input.pureMode === 'boolean' ? input.pureMode : undefined,
         },
         Date.now(),
       )
@@ -827,7 +842,7 @@ export class NodeService {
       const next = deleteVideoNode(store, loc.nodeId)
       if (!next) return { error: '这个视频节点已经不在了' }
       this.deps.set(next)
-      return { ok: true, note: '已删除这枚视频节点：目标与视频的绑定解除，视频资源还在侧栏里' }
+      return { ok: true, note: '已删除这枚视频节点' }
     }
     if (loc.kind === 'file') {
       const file = (store.fileNodes ?? []).find((f) => f.id === loc.fileId)
