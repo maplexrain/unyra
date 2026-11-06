@@ -305,4 +305,23 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
     expect(tabCode).toContain('activeEditingNote')
     expect(tabCode).toContain('assignedVideoNodeId')
   })
+
+  it('验证笔记窗口进出场动画生命周期与样式规范', async () => {
+    const fs = await import('fs')
+    const code = fs.readFileSync('src/components/video/VideoNotesFloatingWindow.tsx', 'utf8')
+
+    // 1. 具备进出场生命周期状态：isRendered 控制挂载，isVisible 控制动画状态
+    expect(code).toContain('isRendered')
+    expect(code).toContain('isVisible')
+
+    // 2. 动画属性限制在 opacity 与 transform，不干扰拖拽与缩放尺寸（left/top/width/height 零延迟）
+    expect(code).toContain('transition-[opacity,transform] duration-200')
+
+    // 3. 进场具备 opacity-100 scale-100 translate-y-0
+    expect(code).toContain('opacity-100 scale-100 translate-y-0 ease-out pointer-events-auto')
+
+    // 4. 出场具备 opacity-0 scale-95 translate-y-2 pointer-events-none，且在动画播放完毕后卸载
+    expect(code).toContain('opacity-0 scale-95 translate-y-2 ease-in pointer-events-none')
+    expect(code).toContain('if (!isRendered) return null')
+  })
 })

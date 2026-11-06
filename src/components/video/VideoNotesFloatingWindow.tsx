@@ -109,6 +109,26 @@ export default function VideoNotesFloatingWindow({
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renamingText, setRenamingText] = useState<string>('')
 
+  // 进出场动画生命周期：isRendered 控制 DOM 挂载，isVisible 控制动画样式过渡
+  const [isRendered, setIsRendered] = useState(open)
+  const [isVisible, setIsVisible] = useState(open)
+
+  useEffect(() => {
+    if (open) {
+      setIsRendered(true)
+      const rAf = requestAnimationFrame(() => {
+        setIsVisible(true)
+      })
+      return () => cancelAnimationFrame(rAf)
+    } else {
+      setIsVisible(false)
+      const timer = window.setTimeout(() => {
+        setIsRendered(false)
+      }, 220)
+      return () => window.clearTimeout(timer)
+    }
+  }, [open])
+
   // 监听并获取视频播放器父容器尺寸
   useEffect(() => {
     const el = windowRef.current
@@ -127,7 +147,7 @@ export default function VideoNotesFloatingWindow({
     const ro = new ResizeObserver(updateSize)
     ro.observe(parent)
     return () => ro.disconnect()
-  }, [])
+  }, [isRendered])
 
   // 计算当前有效显示尺寸（不超过父容器）
   const effectiveWidth = useMemo(() => {
@@ -297,7 +317,7 @@ export default function VideoNotesFloatingWindow({
     setRenamingId(null)
   }
 
-  if (!open) return null
+  if (!isRendered) return null
 
   return (
     <div
@@ -308,7 +328,13 @@ export default function VideoNotesFloatingWindow({
         width: `${effectiveWidth}px`,
         height: `${effectiveHeight}px`,
       }}
-      className="absolute z-30 flex flex-col rounded-xl border border-white/15 bg-[#141416]/95 text-white shadow-2xl overflow-hidden select-none animate-in fade-in zoom-in-95 duration-100"
+      className={
+        'absolute z-30 flex flex-col rounded-xl border border-white/15 bg-[#141416]/95 text-white shadow-2xl overflow-hidden select-none ' +
+        'transition-[opacity,transform] duration-200 ' +
+        (isVisible
+          ? 'opacity-100 scale-100 translate-y-0 ease-out pointer-events-auto'
+          : 'opacity-0 scale-95 translate-y-2 ease-in pointer-events-none')
+      }
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -404,7 +430,7 @@ export default function VideoNotesFloatingWindow({
       {/* 主体内容区 */}
       {editingNoteId && currentEditingNote ? (
         /* 二级页面：编辑某份笔记（无标题输入框，全高度正文编辑区） */
-        <div className="flex h-full min-h-0 flex-col">
+        <div className="flex h-full min-h-0 flex-col animate-in fade-in duration-150">
           <div className="min-h-0 flex-1 p-3.5">
             <textarea
               ref={noteTextareaRef}
@@ -417,7 +443,7 @@ export default function VideoNotesFloatingWindow({
         </div>
       ) : (
         /* 一级页面：笔记列表（支持在列表项中直接编辑标题） */
-        <div className="min-h-0 flex-1 overflow-y-auto px-2.5 py-2">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2.5 py-2 animate-in fade-in duration-150">
           {videoNotes.length > 0 ? (
             <div className="flex flex-col gap-2">
               {videoNotes.map((note) => (
