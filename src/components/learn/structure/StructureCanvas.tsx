@@ -535,6 +535,8 @@ export const StructureCanvas = memo(function StructureCanvas({
     writePos,
     writePositions,
     onDeleteOutlineEntry,
+    onCreateNode,
+    onToast,
     onDisconnect,
   })
 
