@@ -1,4 +1,3 @@
-import { exportGoalToUnr, importGoalFromPackage, parseUnrPackage, pickUnrFile, saveUnrFile } from '../../learn/export/unrPackage'
 /*
  * 学习工作区（宿主）：目标 → 节点树 → 选中节点进入「文档 + 超级导师」两列。
  * 节点由用户在文档里选中陌生词汇创建；创建后原文替换为可点击的节点链接，
@@ -36,11 +35,6 @@ import { ExternalLink, Globe, Maximize2, Minimize2, Upload } from 'lucide-react'
 import type {
   DocKind,
   DocView,
-  DockNoteItem,
-  EssayCommit,
-  EssayDockRect,
-  EssayEntry,
-  FavoriteRef,
   KnowledgeNode,
   LearnStore,
   LearnTab,
@@ -50,20 +44,6 @@ import type {
   ProjectNodeEntity,
 } from '../../learn/types'
 import { notesOf } from '../../learn/types'
-import {
-  favoriteKey,
-  favoriteKeyOfTab,
-  favoriteRefOfTab,
-  favoriteTitle,
-  removeFavorite as removeFromFavorites,
-  removeFavoriteGroup,
-  renameFavoriteGroup,
-  renameWebFavorite,
-  setFavoriteGroup,
-  createFavoriteGroup,
-  tabRefOfFavorite,
-  toggleFavorite as toggleInFavorites,
-} from '../../learn/favorites'
 import { recentOpens, type RecentOpen } from '../../learn/recents'
 import { getOutlineSlot } from '../../lib/outline'
 import {
@@ -105,8 +85,6 @@ import { isTabPinned, reorderTabs, makeBlankTab, makeTab, newBlankKey, newDraftK
 import { setZenActive } from '../../learn/zen'
 import { closeGoalTabGroupStore } from '../../learn/groups/goalTabGroupOps'
 import { pickLocalFiles, readLocalFile } from '../../lib/localFiles'
-import { FILES_DIR } from '../../learn/layout'
-import { goalDirOf } from '../../learn/static/location'
 import { addLocalFile } from '../../learn/localfiles'
 import { normalizeWebInput } from '../../learn/webUrl'
 import type { BrowserDeps } from '../../learn/web/browserOps'
@@ -122,7 +100,6 @@ import {
   deleteMessage,
   deleteNode,
   ensureConversation,
-  goalSubtreeIds,
   latestConversation,
   resolveDisplayedConversation,
   nodeById,
@@ -130,9 +107,6 @@ import {
   removeExam,
   touchNode,
   updateMessageText,
-  deleteNote,
-  removeEdge,
-  writeNote,
 } from '../../learn/graph'
 import {
   agentTabCloseBlock,
@@ -147,7 +121,6 @@ import {
   type AgentTabCloseBlock,
 } from '../../learn/agentTabs'
 import type { AgentTabRef } from '../../learn/types'
-import type { StructureMap } from '../../learn/structure'
 import { resolveProjectRoot } from '../../learn/projects'
 import type { TabCloseMode } from '../../learn/tabs'
 import { attemptBrief, examAttempted, examTotalPoints } from '../../learn/exam'
@@ -162,17 +135,14 @@ import { docFormatOf } from '../../agent/docFormat'
 import AgentSettingsPanel from '../AgentSettingsPanel'
 import MindPanel from '../agent/MindPanel'
 import { addFreeConversation, deleteFreeConversation, freeConversationById, getFreeConversations, subscribeFreeChat } from '../../learn/freeChat'
-import { clearWorkMemories, createMemory, deleteMemory, updateMemory, type MemoryInput, type MemoryPatch } from '../../learn/memory'
 import ExportDialog from './ExportDialog'
 import FloatWindow from '../FloatWindow'
 import { usePresence } from '../../lib/presence'
 import ExamCopyView from './ExamCopyView'
 import { OutlinePane } from './workspace/OutlinePane'
 import StructOverlay from './workspace/StructOverlay'
-import { NodeService, docIdOfOutlineUuid, type GNodeKind } from '../../learn/nodeKinds'
 import { confirmVideoNode } from '../../learn/video/nodes'
 import type { VideoResource } from '../../learn/types'
-import type { FileNodeKind } from '../../learn/types'
 import { noteEntityOf } from './workspace/panes'
 import { pruneImages } from '../../learn/images'
 import { queueOf, shouldEnqueue } from '../../learn/agentQueue'
@@ -187,9 +157,8 @@ import { nodePathOf, resolveNode } from '../../learn/paths'
 import { setPlotFixHandler } from '../../lib/plot'
 import { nodeDocPath } from '../../learn/files'
 import { createNodeDocImageResolver, type LocalImageResolver } from '../../lib/docImages'
-import { revealLocalFile, revealPath, revealUserPath, userAbsPath, listUserDir, mkdirUserPath, moveUserPath, copyUserPath, writeUserText, readUserText, userAbsPrefix } from '../../lib/storage'
-import { wsAllocateName, wsNameOk, wsRefOfRel, wsRelOf, wsRelOfTab, wsRevealOfAbs } from '../../learn/workspace'
-import { notifyWsChanged } from './explorer/wsChanges'
+import { revealLocalFile, revealPath, userAbsPath, readUserText, userAbsPrefix } from '../../lib/storage'
+import { wsRefOfRel, wsRelOf, wsRelOfTab, wsRevealOfAbs } from '../../learn/workspace'
 import { setStaticView } from '../../lib/staticView'
 import {
   useAppearance,
@@ -250,18 +219,6 @@ import LocalDoc from './LocalDoc'
 import DraftDoc from './DraftDoc'
 import SourceEditor from './SourceEditor'
 import EssayDock from './essay/EssayDock'
-import { createEssay, deleteEssay, updateEssay } from '../../learn/essays'
-import {
-  changesSummary,
-  commitFeed,
-  commitsOf,
-  createEssayCommit,
-  diffNoteChanges,
-  noteFingerprint,
-  parseEssayComment,
-  updateEssayCommit,
-} from '../../learn/essayCommits'
-import { useDoubleShift } from '../../lib/useDoubleShift'
 import { useDoubleCtrl } from '../../lib/useDoubleCtrl'
 import type { DocSource } from './NodeNote'
 import ConfirmDialog from '../ConfirmDialog'
@@ -303,27 +260,20 @@ import { useScheduleFlow, useScheduleReminder } from './workspace/useScheduleFlo
 import { useWorkflowStarters } from './workspace/useWorkflowStarters'
 import { examNeedingWork, makeExamDeps } from './workspace/examTools'
 import { hasExamFigures, selfCheckExamFigures } from './workspace/examImageCheck'
+import { goalFocusByGoal } from './workspace/goalFocus'
+import { useTraceWindow } from './workspace/useTraceWindow'
+import { useScreenshotTool } from './workspace/useScreenshotTool'
+import { useMemoryActions } from './workspace/useMemoryActions'
+import { useFavorites } from './workspace/useFavorites'
+import { useUnrTransfer } from './workspace/useUnrTransfer'
+import { useEssayFlow } from './workspace/useEssayFlow'
+import { useWsActions } from './workspace/useWsActions'
+import { useCanvasChannel } from './workspace/useCanvasChannel'
 import { t } from '../../i18n'
 
 /**
- * 每个目标「最近被看过哪个节点」：agent 页签是目标级的，发送目标却是节点——
- * 用户在文档区看过哪个节点，导师那一轮就冲着哪个节点去（没看过的目标回落到它的总目标）。
- *
- * 走**模块级槽**而不是 ref：agentView 在渲染期读它，而渲染期读 ref 会犯 react-compiler
- * 的 refs 线（与 OutlineHandle 的槽同一套解法）。它是「最后落点」的缓存，不进页签、
- * 不持久化，重启后回落各目标的总节点；写入只发生在 retargetNode（事件路径）。
+ * 没有随笔时的空数组常量已随随笔域迁入 workspace/useEssayFlow。
  */
-const goalFocusByGoal = new Map<string, string>()
-
-/**
- * 没有随笔时的空数组：**同一个常量**。
- * 每次渲染现造一个 `[]` 会让 EssayDock 的 props 每次都变（它没有 memo，但列表要重排一遍）。
- */
-const EMPTY_ESSAYS: EssayEntry[] = []
-/** 没有提交记录时的空数组：理由同上（同一个常量，避免每次渲染都换引用） */
-const EMPTY_COMMITS: EssayCommit[] = []
-/** 没有当前目标时的笔记表：同一个空数组，避免每次渲染都造新引用 */
-const EMPTY_DOCK_NOTES: DockNoteItem[] = []
 
 /**
  * 一枚页签当前归哪个目标（按页签 **id** 反查）。
@@ -447,34 +397,11 @@ export default function LearnWorkspace({
     })
     return () => setEffortNotice(null)
   }, [onToast])
-  /**
-   * 上下文轨迹：**独立的 Electron 窗口**（与考试窗口同一套结构，见 electron/app/traceWindow）。
-   * 主窗口是数据拥有者：打开时把当前激活会话整份递过去，开着期间随数据变化持续 push；
-   * 窗口关掉（onClosed）就停。轨迹是只读的，那边没有任何回发通道。
+  /*
+   * 上下文轨迹：独立 Electron 窗口（见 workspace/useTraceWindow）。
+   * 主窗口是数据拥有者：打开时把当前激活会话整份递过去，开着期间随数据变化持续 push。
    */
-  const [traceWinOpen, setTraceWinOpen] = useState(false)
-  const storeConvRef = useRef(store)
-  storeConvRef.current = store
-  const openContextTrace = useCallback(() => {
-    const s = storeConvRef.current
-    const conv = s.conversations.find((c) => c.id === s.activeConversationId) ?? null
-    void native()
-      .traceHost.open(conv)
-      .then((r) => {
-        if (r.ok) setTraceWinOpen(true)
-      })
-      .catch(() => {})
-  }, [])
-  // 窗口开着：会话数据一变就推一份（activate 会话切换、流式里程碑落库都会走到）
-  useEffect(() => {
-    if (!traceWinOpen) return
-    const s = storeConvRef.current
-    native()
-      .traceHost.push(s.conversations.find((c) => c.id === s.activeConversationId) ?? null)
-    // 依赖里不放 store 整体（每次轮转都换引用）——只盯 conversations 与激活会话两个字段
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [traceWinOpen, store.conversations, store.activeConversationId])
-  useEffect(() => native().traceHost.onClosed(() => setTraceWinOpen(false)), [])
+  const { openContextTrace } = useTraceWindow({ store })
   /*
    * 文档区查找 / 替换条：null = 关着，'find' = 只有查找行，'replace' = 展开替换行。
    * focusTick 每次按快捷键都 +1：条子开着时再按一次 Ctrl+F，要把焦点抢回查找框。
@@ -559,44 +486,8 @@ export default function LearnWorkspace({
   useDoubleCtrl(toggleStructOverlay)
   useShortcut('learn.structPopout', { down: toggleStructOverlay })
 
-  /* ---------- 实用工具箱：屏幕截图 ---------- */
-  const [screenshotImage, setScreenshotImage] = useState<string | null>(null)
-  const [isCapturing, setIsCapturing] = useState(false)
-
-  const handleStartScreenshot = useCallback(async () => {
-    if (isCapturing) return
-    setIsCapturing(true)
-    try {
-      const bridge = native()
-      // 1. Electron 桌面端优先调起系统层级全屏截图窗口
-      if (bridge.tools?.openScreenshot) {
-        const res = await bridge.tools.openScreenshot()
-        if (!res.ok) {
-          onToast(res.error || t('未能启动截图'))
-        }
-        return
-      }
-
-      // 2. WebUI 模式通过服务端/浏览器捕获并在工作区唤起全屏编辑
-      if (bridge.tools?.captureScreen) {
-        const res = await bridge.tools.captureScreen()
-        if (res.ok) {
-          setScreenshotImage(res.dataUrl)
-        } else {
-          onToast(res.error || t('未能获取截图画面'))
-        }
-      } else {
-        onToast(t('当前环境不支持屏幕截图'))
-      }
-    } catch (err) {
-      onToast(err instanceof Error ? err.message : t('截图启动失败'))
-    } finally {
-      setIsCapturing(false)
-    }
-  }, [isCapturing, onToast])
-
-  // 截图工具快捷键改用 F1 唤出
-  useShortcut('tools.screenshot', { down: handleStartScreenshot })
+  /* ---------- 实用工具箱：屏幕截图（见 workspace/useScreenshotTool） ---------- */
+  const { screenshotImage, setScreenshotImage, handleStartScreenshot } = useScreenshotTool({ onToast })
 
   /**
    * 顶栏标题只在文档区确实存在目标根大纲时显示。activeNodeId 是导师上下文，关闭文档后
@@ -612,25 +503,10 @@ export default function LearnWorkspace({
   const topbarGoalQuestion = hasTargetTabs ? (activeGoal?.title || activeGoal?.question || '') : ''
 
   /*
-   * 记忆的写入口（见 learn/memory）：**目标由调用方给**——工作记忆落进哪个目标，
-   * 由页签携带的 goalId 或设置页里的选择决定，不随活动目标漂移；长期记忆跨目标，
-   * 根本没有归属这回事。
-   *
-   * 四个回调都是「纯函数 + set」：校验、上限、作用域搬家全在 learn/memory 里，
-   * 界面只管把用户填的东西交下去（与 workflows / essays 同一套做法）。
+   * 记忆的写入口（见 workspace/useMemoryActions）：目标由调用方给——工作记忆落进哪个
+   * 目标，由页签携带的 goalId 或设置页里的选择决定，不随活动目标漂移。
    */
-  const memoryCreate = (input: MemoryInput) => {
-    set(createMemory(getLatest(), input))
-  }
-  const memoryUpdate = (uuid: string, patch: MemoryPatch) => {
-    set(updateMemory(getLatest(), uuid, patch))
-  }
-  const memoryDelete = (uuid: string) => {
-    set(deleteMemory(getLatest(), uuid))
-  }
-  const memoryClearWork = (goalId: string) => {
-    set(clearWorkMemories(getLatest(), goalId))
-  }
+  const { memoryCreate, memoryUpdate, memoryDelete, memoryClearWork } = useMemoryActions({ getLatest, set })
 
   /*
    * agent 栏的页签（见 learn/agentTabs）：agent 面板「现在看谁」全由它决定。
@@ -2137,130 +2013,21 @@ export default function LearnWorkspace({
     return () => setWebLinkHandler(null)
   }, [openWebTab])
 
-  /* ---------- 收藏（页签右键菜单 / 地址栏星标 / 侧栏收藏区，见 learn/favorites） ---------- */
-
-  /** 已收藏的身份集合：三个入口的「收藏了没有」都查它 */
-  const favoriteKeys = useMemo(
-    () => new Set((store.favorites ?? []).map((f) => favoriteKey(f))),
-    [store.favorites],
-  )
-
-  const isTabFavorite = useCallback(
-    (ref: TabRef) => {
-      const key = favoriteKeyOfTab(ref)
-      return !!key && favoriteKeys.has(key)
-    },
-    [favoriteKeys],
-  )
-
-  /** 地址栏星标的那一问：这一页（网址）收藏了没有 */
-  const isUrlFavorite = useCallback(
-    (url: string) => !!url && favoriteKeys.has(favoriteKey({ kind: 'web', url })),
-    [favoriteKeys],
-  )
-
-  /** 收藏 / 取消收藏（页签右键菜单）：起始页没有网址，无从收藏，不动。
-   *  网页要顺手把「这一页」的活标题与站点图标记进收藏——收藏夹里显示的是它们，
-   *  不是裸网址（标题没有活数据源可查，只能收藏那一刻存下来，见 learn/favorites）；
-   *  extra 由地址栏星标直接给，页签右键则从 webMeta 里现查。 */
-  const toggleTabFavorite = useCallback(
-    (tab: Pick<LearnTab, 'id' | 'ref'>, extra?: { title?: string; icon?: string }) => {
-      const fav = favoriteRefOfTab(tab.ref)
-      if (!fav) return
-      const m = tab.ref.kind === 'web' ? webMeta[tab.id] : undefined
-      const title = extra?.title ?? m?.title
-      const icon = extra?.icon ?? m?.favicon
-      const full: FavoriteRef =
-        fav.kind === 'web'
-          ? { ...fav, ...(title ? { title: title.slice(0, 200) } : {}), ...(icon ? { icon } : {}) }
-          : fav
-      const s = getLatest()
-      set({ ...s, favorites: toggleInFavorites(s.favorites ?? [], full, Date.now()) })
-    },
-    [getLatest, set, webMeta],
-  )
-
-  /** 地址栏星标：收藏的是当前网址（与页签右键同一条路），这一页的标题与图标一并记下 */
-  const toggleUrlFavorite = useCallback(
-    (url: string, extra?: { title?: string; icon?: string }) =>
-      toggleTabFavorite({ id: '', ref: { kind: 'web', url, key: '' } }, extra),
-    [toggleTabFavorite],
-  )
-
-  /** 点收藏区的一行：现场换算成页签（网页开新签）走与别处**同一个** openTab */
-  const openFavorite = useCallback((ref: FavoriteRef) => openTab(tabRefOfFavorite(ref)), [openTab])
-
-  /** 把一行摘出收藏夹（侧栏收藏区的移除键；收藏的 × 不动文档本身） */
-  const dropFavorite = useCallback(
-    (ref: FavoriteRef) => {
-      const s = getLatest()
-      set({ ...s, favorites: removeFromFavorites(s.favorites ?? [], favoriteKey(ref)) })
-    },
-    [getLatest, set],
-  )
-
-  /*
-   * 收藏的分组与改名（见 learn/favorites 的分组段）。组名登记在 favGroups、同时长在
-   * 成员身上：移入一个没登记过的组名时顺手登记（拖进来的「新建分组」也走这条路），
-   * 删组 = 登记表摘掉 + 成员的 group 摘掉（收藏一条不丢）。
-   */
-  const setFavGroup = useCallback(
-    (ref: FavoriteRef, group: string | null) => {
-      const s = getLatest()
-      const next = setFavoriteGroup(s.favorites ?? [], favoriteKey(ref), group)
-      const groups =
-        group && !(s.favGroups ?? []).includes(group.trim())
-          ? createFavoriteGroup(s.favGroups ?? [], group)
-          : s.favGroups ?? []
-      set({ ...s, favorites: next, favGroups: groups })
-    },
-    [getLatest, set],
-  )
-  const createFavGroup = useCallback(
-    (name: string) => {
-      const s = getLatest()
-      set({ ...s, favGroups: createFavoriteGroup(s.favGroups ?? [], name) })
-    },
-    [getLatest, set],
-  )
-  const renameFavGroup = useCallback(
-    (from: string, to: string) => {
-      const next = to.trim().slice(0, 64)
-      if (!next || next === from) return
-      const s = getLatest()
-      set({
-        ...s,
-        favGroups: (s.favGroups ?? []).map((g) => (g === from ? next : g)),
-        // 组名同时也是成员身上的标记：成员一起换
-        favorites: renameFavoriteGroup(s.favorites ?? [], from, next),
-      })
-    },
-    [getLatest, set],
-  )
-  const removeFavGroup = useCallback(
-    (group: string) => {
-      const s = getLatest()
-      set({
-        ...s,
-        favGroups: (s.favGroups ?? []).filter((g) => g !== group),
-        favorites: removeFavoriteGroup(s.favorites ?? [], group),
-      })
-    },
-    [getLatest, set],
-  )
-  const renameFavTitle = useCallback(
-    (ref: FavoriteRef, title: string) => {
-      const s = getLatest()
-      set({ ...s, favorites: renameWebFavorite(s.favorites ?? [], favoriteKey(ref), title) })
-    },
-    [getLatest, set],
-  )
-
-  /** 收藏行的标题：节点名与考试名都是活查的（改名之后收藏跟着新名字走） */
-  const favoriteTitleOf = useCallback(
-    (ref: FavoriteRef) => favoriteTitle(ref, (id) => nodeById(store, id)?.title, examTabTitle),
-    [store, examTabTitle],
-  )
+  /* ---------- 收藏（页签右键菜单 / 地址栏星标 / 侧栏收藏区）：见 workspace/useFavorites ---------- */
+  const {
+    isTabFavorite,
+    isUrlFavorite,
+    toggleTabFavorite,
+    toggleUrlFavorite,
+    openFavorite,
+    dropFavorite,
+    setFavGroup,
+    createFavGroup,
+    renameFavGroup,
+    removeFavGroup,
+    renameFavTitle,
+    favoriteTitleOf,
+  } = useFavorites({ store, getLatest, set, webMeta, examTabTitle, openTab })
 
   /**
    * 文档区全部关闭时的反向联动：目标已经没有活动文档，就移除目标级导师页签。
@@ -2520,245 +2287,24 @@ export default function LearnWorkspace({
     [patchQuiet],
   )
 
-  /* ---------- 随笔（见 learn/essays 与 components/learn/essay） ---------- */
-
-  /**
-   * 随笔窗口开着没有。窗口本身在 EssayDock 里，开合只由这里的一个布尔值决定——
-   * 这样「双击 Shift」（见下面的 useDoubleShift）与按钮点开走的是同一条路。
-   */
+  /* ---------- 随笔（见 learn/essays 与 components/learn/essay）：见 workspace/useEssayFlow ---------- */
   const [essayOpen, setEssayOpen] = useState(false)
   const essayBtnRef = useRef<HTMLButtonElement | null>(null)
-  /** 随笔跟着**眼前这份文档的目标**走：目标级的东西，切到别的目标就不该还开着 */
-  const essayGoalId = docNode?.goalId ?? null
-  const essayList = (essayGoalId ? store.essays?.[essayGoalId] : null) ?? EMPTY_ESSAYS
-
-  /*
-   * 三条写入。都用 getLatest() 现取最新快照再算：输入是去抖的，
-   * 上一次写入可能刚被别的动作（删一条、切目标）改过。
-   */
-  const essayCreate = useCallback(
-    (goalId: string, title: string, text: string): string | null => {
-      const created = createEssay(getLatest(), goalId, text, Date.now(), title)
-      if (!created) return null
-      set(created.store)
-      return created.entry.id
-    },
-    [getLatest, set],
-  )
-  const essayUpdate = useCallback(
-    (goalId: string, id: string, patch: { text?: string; title?: string }) => {
-      set(updateEssay(getLatest(), goalId, id, patch, Date.now()))
-    },
-    [getLatest, set],
-  )
-  const essayDelete = useCallback(
-    (goalId: string, id: string) => {
-      set(deleteEssay(getLatest(), goalId, id))
-    },
-    [getLatest, set],
-  )
-  /** 窗口几何与状态：纯界面状态，安静写盘就够（窗口自己已经摆好了，不必为它重渲染整棵学习区） */
-  const essayGeometry = useCallback(
-    (state: EssayDockRect) => {
-      patchQuiet((s) => ({ ...s, essayDock: state }))
-    },
-    [patchQuiet],
-  )
-
-  /**
-   * 随笔窗口中的笔记列表（跨目标/节点）：收集当前所有节点的笔记，
-   * 标明来自哪个目标的哪个节点（按修改时间倒序）。
-   */
-  /*
-   * 随笔窗口的「笔记」页签只列**当前目标**的笔记（需求定的）：随笔本身是目标级的，
-   * 笔记列表却跨目标的话，写着这门课却翻到另一门课的笔记，注意力与归属都会乱。
-   * 目标没选（没有 essayGoalId）时给空表——窗口本来也不会露脸。
-   */
-  const dockNotes = useMemo(() => {
-    if (!essayGoalId) return EMPTY_DOCK_NOTES
-    const goal = store.goals.find((g) => g.id === essayGoalId)
-    const rootNode = goal ? store.nodes.find((n) => n.id === goal.rootNodeId) : undefined
-    const goalTitle = rootNode?.title || goal?.question || ''
-    const list: DockNoteItem[] = []
-    for (const node of store.nodes) {
-      if (node.goalId !== essayGoalId) continue
-      for (const note of notesOf(node)) {
-        list.push({
-          goalId: node.goalId,
-          goalTitle,
-          nodeId: node.id,
-          nodeTitle: node.title,
-          name: note.name,
-          content: note.content,
-          updatedAt: note.updatedAt,
-          createdAt: note.createdAt,
-        })
-      }
-    }
-    list.sort((a, b) => b.updatedAt - a.updatedAt)
-    return list
-  }, [store.goals, store.nodes, essayGoalId])
-
-  const dockWriteNote = useCallback(
-    (nodeId: string, name: string, content: string) => {
-      set(writeNote(getLatest(), nodeId, name, content))
-    },
-    [getLatest, set],
-  )
-
-  const dockDeleteNote = useCallback(
-    (nodeId: string, name: string) => {
-      set(deleteNote(getLatest(), nodeId, name))
-    },
-    [getLatest, set],
-  )
-
-
-  /* ---------- 随笔提交（见 learn/essayCommits） ---------- */
-
-  /** 这个目标的提交记录（新的在前）；没有就是同一个空数组 */
-  const essayCommits = (essayGoalId ? store.essayCommits?.[essayGoalId] : null) ?? EMPTY_COMMITS
-
-  /**
-   * 跑一次「随笔整理」。
-   *
-   * 为什么先拍笔记指纹再触发：整理是 Agent 在沙箱里异步写笔记，**不能等它回来说
-   * 「我改了哪几份」**——它记错 / 漏报的时候，提交记录就成了假的。宿主在触发前把所有
-   * 笔记的正文拍一份快照，跑完再拍一份，两份一对比，改了什么就是什么。
-   */
-  const organizeEssayCommit = useCallback(
-    (goalId: string, commit: EssayCommit) => {
-      const s = getLatest()
-      const goal = s.goals.find((g) => g.id === goalId)
-      if (!goal) return
-      if (!hasKey) {
-        set(
-          updateEssayCommit(getLatest(), goalId, commit.id, {
-            status: 'error',
-            error: t('还没配置 AI：快照已经保存，配好 API Key 后可以重试整理'),
-          }),
-        )
-        return
-      }
-      const before = noteFingerprint(s, goalId)
-      let convId = resolveDisplayedConversation(s, goalId)
-      if (!convId) {
-        const { store: nextStore, conversation } = addConversation(s, goalId)
-        set(nextStore)
-        convId = conversation.id
-      }
-      const run = agent.runWorkflow('essay-commit', {
-        target: { goalId, nodeId: goal.rootNodeId || null, conversationId: convId },
-        // 增量材料：之前的整理记录 + 本次新增全文 + 本次修改的差异（见 commitFeed）
-        params: { message: commit.message, feed: commitFeed(commitsOf(s, goalId), commit) },
-      })
-      if (!run) {
-        set(
-          updateEssayCommit(getLatest(), goalId, commit.id, {
-            status: 'error',
-            error: t('没能启动整理：目标或会话已经不在'),
-          }),
-        )
-        return
-      }
-      void run
-        .then(() => {
-          // 整理完成：对比前后两份指纹，把真正动过的笔记记到这次提交上
-          const after = getLatest()
-          const changes = diffNoteChanges(before, noteFingerprint(after, goalId))
-          // 提交评论：Agent 按约定格式写在回复末尾（见 essayCommits 的 parseEssayComment），
-          // 从这一轮对话最后一条回复里抠出来。解析不到就算了——评论是锦上添花，
-          // 不能因为它挡住整理结果本身（changes 由指纹对比得出，不靠模型自报，见上）。
-          const conv = conversationById(after, convId)
-          const lastReply = conv ? [...conv.messages].reverse().find((m) => m.role === 'assistant') : null
-          const replyText = lastReply
-            ? lastReply.parts
-                .filter((p) => p.type === 'text')
-                .map((p) => p.text)
-                .join('')
-            : ''
-          const comment = parseEssayComment(replyText)
-          set(
-            updateEssayCommit(getLatest(), goalId, commit.id, {
-              status: 'done',
-              changes,
-              ...(comment ? { comment } : {}),
-            }),
-          )
-          onToast(t('随笔整理完成：{0}', changesSummary(changes)))
-        })
-        .catch((err: unknown) => {
-          const message = err instanceof Error ? err.message : String(err)
-          // 中途失败也可能已经写了几份笔记：照样对比一次，别把已经发生的事藏起来
-          const partial = diffNoteChanges(before, noteFingerprint(getLatest(), goalId))
-          set(
-            updateEssayCommit(getLatest(), goalId, commit.id, {
-              status: 'error',
-              error: message,
-              changes: partial,
-            }),
-          )
-          onToast(t('随笔整理失败：{0}', message))
-        })
-    },
-    [agent, getLatest, set, hasKey, onToast],
-  )
-
-  /** 提交这一批随笔：封快照 → 立刻返回 id（界面据此打开详情）→ 后台开始整理 */
-  const essayCommit = useCallback(
-    (message: string): string | null => {
-      const goalId = essayGoalId
-      if (!goalId) return null
-      const created = createEssayCommit(getLatest(), goalId, message, Date.now())
-      if (!created) {
-        onToast(t('还没有随笔可以提交'))
-        return null
-      }
-      set(created.store)
-      organizeEssayCommit(goalId, created.commit)
-      return created.commit.id
-    },
-    [essayGoalId, getLatest, set, organizeEssayCommit, onToast],
-  )
-
-  /** 重试一次失败的整理（快照还在，重跑就行，不必重新提交） */
-  const essayCommitRetry = useCallback(
-    (id: string) => {
-      const goalId = essayGoalId
-      if (!goalId) return
-      const commit = commitsOf(getLatest(), goalId).find((c) => c.id === id)
-      if (!commit) return
-      set(updateEssayCommit(getLatest(), goalId, id, { status: 'running', changes: [], error: undefined }))
-      organizeEssayCommit(goalId, commit)
-    },
-    [essayGoalId, getLatest, set, organizeEssayCommit],
-  )
-
-  /** 从提交详情里点开一份被整理过的笔记：按普通笔记页签打开 */
-  const essayOpenNote = useCallback(
-    (nodeId: string, noteName: string) => {
-      openTab({ kind: 'note', nodeId, note: noteName })
-    },
-    [openTab],
-  )
-
-  // 双击 Shift：唤出 / 收起随笔窗口（没有目标时什么也不做——随笔是目标级的）
-  useDoubleShift(() => {
-    if (!essayGoalId) return
-    setEssayOpen((v) => !v)
-  })
-
-  /*
-   * 换目标就把窗口收起来：随笔是目标级的东西，切到另一门课还挂着上一个目标的窗口
-   * （而且刚重挂成空白的）只会让人以为刚才写的东西没了。
-   * 上一份的收尾由 EssayDock 的 key 变化触发卸载时做（见下面的 key）。
-   */
-  const lastEssayGoal = useRef<string | null>(null)
-  useEffect(() => {
-    if (lastEssayGoal.current === essayGoalId) return
-    lastEssayGoal.current = essayGoalId
-    setEssayOpen(false)
-  }, [essayGoalId])
+  const {
+    essayGoalId,
+    essayList,
+    essayCreate,
+    essayUpdate,
+    essayDelete,
+    essayGeometry,
+    dockNotes,
+    dockWriteNote,
+    dockDeleteNote,
+    essayCommits,
+    essayCommit,
+    essayCommitRetry,
+    essayOpenNote,
+  } = useEssayFlow({ store, getLatest, set, patchQuiet, docNode, agent, hasKey, onToast, openTab, setEssayOpen })
 
   /*
    * 资源管理器的撤回（Ctrl+Z）：删除类动作先捕获再动手，栈与键盘监听都在 useExplorerUndo。
@@ -2786,146 +2332,8 @@ export default function LearnWorkspace({
     setSidebarOpen(false)
   }
 
-  /** 导出总目标为 .unr 分享包 */
-  const handleExportGoal = useCallback(
-    async (goalId: string) => {
-      try {
-        const s = getLatest()
-        const goal = s.goals.find((g) => g.id === goalId)
-        if (!goal) {
-          onToast(t('未找到目标'))
-          return
-        }
-        const bytes = await exportGoalToUnr(s, goalId)
-        const suggestedName = `${goal.title || t('未命名目标')}.unr`
-        const res = await saveUnrFile(bytes, suggestedName)
-        if (res.ok) {
-          onToast(t('已成功导出目标「{0}」', goal.title || ''))
-        } else if (res.error) {
-          onToast(t('导出失败: {0}', res.error || ''))
-        }
-      } catch (err) {
-        onToast(t('导出失败: {0}', err instanceof Error ? err.message : String(err)))
-      }
-    },
-    [getLatest, onToast],
-  )
-
-  /** 调起文件选择器导入 .unr 目标包 */
-  const handleImportGoal = useCallback(async () => {
-    try {
-      const file = await pickUnrFile()
-      if (!file) return
-      const buf = await file.arrayBuffer()
-      const pkg = await parseUnrPackage(new Uint8Array(buf))
-      const { store: nextStore, goal } = importGoalFromPackage(getLatest(), pkg)
-      set(nextStore)
-      await flush()
-      openTab({ kind: 'outline', nodeId: goal.rootNodeId, goalId: goal.id })
-      onToast(t('已成功导入目标「{0}」', goal.title || ''))
-    } catch (err) {
-      onToast(t('导入目标失败: {0}', err instanceof Error ? err.message : String(err)))
-    }
-  }, [flush, getLatest, onToast, openTab, set])
-
-  const [isDraggingFile, setIsDraggingFile] = useState(false)
-  const dragCounter = useRef(0)
-
-  useEffect(() => {
-    /**
-     * 判断是否为 .unr 目标包拖拽：
-     * 1. 严格检查是否包含 Files；
-     * 2. 若当前事件阶段能够读取到具体 files，严格校验文件后缀名必须以 .unr 结尾；
-     * 3. 在进入悬停的保护模式（Protected Mode，Chromium出于安全沙盒锁定文件名）下：
-     *    - 排除处于节点宇宙结构画布（StructureCanvas）区域的拖拽，让位于画布自身的文件落点创建节点交互；
-     *    - 排除所有具有已知特定 MIME（如 PDF、图片、文本、音视频、JSON等）的非 .unr 文件；
-     * 4. 最终在 drop 释放鼠标时刻脱离保护模式，再次对真实文件名后缀进行 100% 严格校验。
-     */
-    const isUnrDrag = (e: DragEvent): boolean => {
-      const dt = e.dataTransfer
-      if (!dt?.types || !Array.from(dt.types).includes('Files')) return false
-
-      // 若处于节点宇宙结构画布（StructureCanvas）区域，不显示全屏导入遮罩，避免遮挡画布视线与落点
-      const target = e.target as HTMLElement | null
-      if (target?.closest?.('[data-structure-canvas]')) return false
-
-      // 若当前能读取到具体 files（例如特定系统环境或非保护模式阶段），严格检查文件后缀是否为 .unr
-      if (dt.files && dt.files.length > 0) {
-        return Array.from(dt.files).some((f) => (f.name || '').toLowerCase().endsWith('.unr'))
-      }
-
-      // 在进入悬停的保护模式下，items 的文件名不可直接读取，但常见文件格式均具备特定系统 MIME
-      if (dt.items && dt.items.length > 0) {
-        for (let i = 0; i < dt.items.length; i++) {
-          const item = dt.items[i]
-          if (item.kind === 'file' && item.type) {
-            const t = item.type.toLowerCase()
-            // .unr 为自定义格式，没有注册特定 MIME；凡是携带 PDF/图片/纯文本/音视频/JSON 等已知 MIME 的文件，绝不是 .unr
-            if (
-              t.startsWith('image/') ||
-              t.startsWith('video/') ||
-              t.startsWith('audio/') ||
-              t.startsWith('text/') ||
-              t === 'application/pdf' ||
-              t === 'application/json' ||
-              t === 'application/zip' ||
-              t === 'application/x-zip-compressed'
-            ) {
-              return false
-            }
-          }
-        }
-      }
-
-      return true
-    }
-
-    const onDragEnter = (e: DragEvent) => {
-      if (!isUnrDrag(e)) return
-      dragCounter.current++
-      if (dragCounter.current === 1) {
-        setIsDraggingFile(true)
-      }
-    }
-
-    const onDragOver = (e: DragEvent) => {
-      if (!isUnrDrag(e)) {
-        if (isDraggingFile) {
-          dragCounter.current = 0
-          setIsDraggingFile(false)
-        }
-      } else if (!isDraggingFile && dragCounter.current > 0) {
-        setIsDraggingFile(true)
-      }
-    }
-
-    const onDragLeave = (e: DragEvent) => {
-      if (!e.dataTransfer?.types || !Array.from(e.dataTransfer.types).includes('Files')) return
-      dragCounter.current--
-      if (dragCounter.current <= 0) {
-        dragCounter.current = 0
-        setIsDraggingFile(false)
-      }
-    }
-
-    const onDropOrEnd = () => {
-      dragCounter.current = 0
-      setIsDraggingFile(false)
-    }
-
-    window.addEventListener('dragenter', onDragEnter)
-    window.addEventListener('dragover', onDragOver)
-    window.addEventListener('dragleave', onDragLeave)
-    window.addEventListener('drop', onDropOrEnd, true)
-    window.addEventListener('dragend', onDropOrEnd, true)
-    return () => {
-      window.removeEventListener('dragenter', onDragEnter)
-      window.removeEventListener('dragover', onDragOver)
-      window.removeEventListener('dragleave', onDragLeave)
-      window.removeEventListener('drop', onDropOrEnd, true)
-      window.removeEventListener('dragend', onDropOrEnd, true)
-    }
-  }, [isDraggingFile])
+  /* ---------- .unr 目标分享包（导出 / 导入 / 全屏拖拽遮罩）：见 workspace/useUnrTransfer ---------- */
+  const { handleExportGoal, handleImportGoal, isDraggingFile } = useUnrTransfer({ getLatest, set, flush, openTab, onToast })
 
   /*
    * moji:node / doc / super 三种链接的跳转注册在 useLinkHandlers（workspace/）。
@@ -4143,134 +3551,8 @@ export default function LearnWorkspace({
     if (!(await revealPath(rel))) onToast(t('未能在资源管理器中定位该文件'))
   }
 
-  /**
-   * 定位工作区目录里的真实文件 / 子目录（节点下「工作区」目录树的点击与右键菜单）。
-   *
-   * 与 revealNodeFile 同一个道理：先 flush 再定位，文件管理器里看到的才是刚写完的那一份。
-   */
-  const revealWsFile = async (rel: string) => {
-    await flush()
-    if (!(await revealUserPath(rel))) onToast(t('未能在资源管理器中定位该文件'))
-  }
-
-  /**
-   * 工作区文件在页签里打开：rel（相对当前用户）反查成**内部文件页签**（`{kind:'ws'}`，
-   * 见 learn/workspace 的 wsRefOfRel）。它是内部文件而不是外部文件——openTab 会先把它
-   * 所属目标的那一组立起来再进门（见 groups/tabs 的 openGroupedDoc），
-   * 于是「打开项目里的任何一个文件就打开关联的 tab 组」。
-   * 解析不解析看后缀（md/html 有预览，其余看源码，见 learn/tabs 的 viewOf）。
-   */
-  const openWsFile = useCallback(
-    (rel: string) => {
-      const ref = wsRefOfRel(getLatest(), rel)
-      if (!ref) {
-        onToast(t('现在打不开这个工作区文件（它不属于任何节点的工作区）'))
-        return
-      }
-      openTab(ref)
-    },
-    [getLatest, openTab, onToast],
-  )
-
-  /** 工作区里正在就地改名的那条路径（null = 没有在改名） */
-  const [renamingWs, setRenamingWs] = useState<string | null>(null)
-
-  /**
-   * 工作区的新建与改名：**真实地**落在磁盘上（mkdir / 写文件 / move，见 learn/workspace）。
-   *
-   * 动完 notifyWsChanged()，侧栏里展开过的目录各自重列一遍。新建沿用资源管理器的习惯：
-   * 先按「新建目录 / 新建文件.md」避开撞名落一个真名，再当场进输入框让用户起名；
-   * 改名走 move（绝不覆盖已有目标），失败用 toast 把原因说清。
-   */
-  const wsActions = {
-    renaming: renamingWs,
-    endRename: () => setRenamingWs(null),
-    startRename: (rel: string) => setRenamingWs(rel),
-    create: (dirRel: string, kind: 'dir' | 'file') => {
-      void (async () => {
-        const taken = new Set((await listUserDir(dirRel)).map((e) => e.name))
-        const name = wsAllocateName(kind === 'dir' ? t('新建目录') : t('新建文件.md'), taken)
-        const rel = dirRel + '/' + name
-        const done = kind === 'dir' ? await mkdirUserPath(rel) : await writeUserText(rel, '')
-        if (!done) {
-          onToast(t('未能创建（那里已经有同名文件或目录）'))
-          return
-        }
-        notifyWsChanged()
-        setRenamingWs(rel)
-      })()
-    },
-    rename: (fromRel: string, toRel: string) => {
-      void (async () => {
-        if (!wsNameOk(localFileNameOf(toRel))) {
-          onToast(t('名字不合法：不能是空的、「.」「..」或带斜杠'))
-          return
-        }
-        if (!(await moveUserPath(fromRel, toRel))) {
-          onToast(t('未能改名（那里已经有同名文件或目录）'))
-          return
-        }
-        notifyWsChanged()
-      })()
-    },
-    /** 拖拽移动 / 复制（Ctrl）：落到某个目录行上，把文件或整个目录搬（拷）过去。
-        撞名自动避开（「新建文件 2.md」那套习惯）；目录移进它自己当场拒绝。 */
-    transfer: (fromRel: string, toDirRel: string, copy: boolean) => {
-      if (fromRel === toDirRel || toDirRel.startsWith(fromRel + '/')) {
-        onToast(t('不能把目录移进它自己里面'))
-        return
-      }
-      void (async () => {
-        const name = localFileNameOf(fromRel)
-        const taken = new Set((await listUserDir(toDirRel)).map((e) => e.name))
-        const toRel = toDirRel + '/' + wsAllocateName(name, taken)
-        const done = copy ? await copyUserPath(fromRel, toRel) : await moveUserPath(fromRel, toRel)
-        if (!done) {
-          onToast(t(copy ? '复制失败' : '移动失败'))
-          return
-        }
-        notifyWsChanged()
-        onToast(copy ? t('已复制到 {0}', toDirRel.split('/').pop() ?? '') : t('已移动到 {0}', toDirRel.split('/').pop() ?? ''))
-      })()
-    },
-  }
-
-  /**
-   * 新建项目：在目标的工作区目录下开一个**项目目录**（真实落盘），并当场进就地改名。
-   *
-   * 「项目」就是工作区里的一层目录（需求原文：「新建项目是在 workspace 目录中增加一个
-   * 项目目录……项目是挂载目标节点下的」）——资源管理器里目标节点展开后看到的那几行目录
-   * 就是它；项目里的文件是**内部文件**（页签是 ws 型，打开就带着目标的 tab 组）。
-   *
-   * 与 wsActions.create('dir') 同一套习惯：先按「新建项目」避开撞名落一个真名，
-   * 再让用户改名（名字就是磁盘上的目录名，改的当场是真实目录）。
-   */
-  const newProject = useCallback(
-    (nodeId: string) => {
-      const base = wsRelOf(getLatest(), nodeId)
-      if (!base) {
-        onToast(t('这个节点还没有工作区目录'))
-        return
-      }
-      void (async () => {
-        const taken = new Set((await listUserDir(base)).map((e) => e.name))
-        const name = wsAllocateName(t('新建项目'), taken)
-        const rel = base + '/' + name
-        if (!(await mkdirUserPath(rel))) {
-          onToast(t('未能创建项目（那里已经有同名目录）'))
-          return
-        }
-        notifyWsChanged()
-        setRenamingWs(rel)
-      })()
-    },
-    [getLatest, onToast],
-  )
-  const goalSubtreeSize = (rootOrGoalId: string): number => {
-    const s = getLatest()
-    const goal = s.goals.find((g) => g.id === rootOrGoalId || g.rootNodeId === rootOrGoalId)
-    return goal ? goalSubtreeIds(s, goal.id).size : 1
-  }
+  /* ---------- 工作区文件（定位 / 打开 / 新建改名 / 项目）：见 workspace/useWsActions ---------- */
+  const { revealWsFile, openWsFile, wsActions, newProject, goalSubtreeSize } = useWsActions({ getLatest, flush, openTab, onToast })
 
   /** 删除目标/节点：含全部下级知识点、对话与试卷，先确认再删；Ctrl+Z 可撤回 */
   const commitRemoveNode = () => {
@@ -4288,417 +3570,31 @@ export default function LearnWorkspace({
     onToast(pending.isRoot ? t('已删除该学习目标，可按 Ctrl+Z 撤回') : t('已删除该节点，可按 Ctrl+Z 撤回'))
   }
 
-  const generateTeachingDoc = useCallback(
-    (targetNode: KnowledgeNode, hint?: string) => {
-      if (!hasKey) {
-        onToast(t('生成教学文档需要 AI，请先在设置中填写「{0}」的 API Key', providerName))
-        onOpenSettings()
-        return
-      }
-      const s = getLatest()
-      let convId = resolveDisplayedConversation(s, targetNode.goalId)
-      if (!convId) {
-        const { store: nextStore, conversation } = addConversation(s, targetNode.goalId)
-        set(nextStore)
-        convId = conversation.id
-      }
-      // hint 是发起方的意图上下文（如结构画布的「落地哪条目标项」），跟着这一轮进模型
-      agent.autoTeach({ goalId: targetNode.goalId, nodeId: targetNode.id, conversationId: convId }, false, hint)
-      onToast(t('已开始为「{0}」生成教学文档', targetNode.title))
-    },
-    [hasKey, providerName, onToast, onOpenSettings, getLatest, set, agent],
-  )
-
-  /**
-   * 递给正文区的「生成教学文档」回调——**身份必须稳定**。
-   *
-   * DocPane / NodeNote / DocBody 都是 memo，且 DocBody 的比较器显式比了这个 prop。
-   * 在渲染里现造闭包（`() => generateTeachingDoc(node)`）会让比较恒为不等，
-   * 于是每次工作区渲染——包括 Agent 每一跳流式——都把当前正文整棵重渲一遍。
-   * 真正的那份实现依赖 agent 等易变对象，注定每轮都是新的；这里用 ref 转发，
-   * 只把「稳定的一层壳」交给 props，点下去时读到的仍是最新实现。
-   */
-  const generateDocRef = useRef(generateTeachingDoc)
-  generateDocRef.current = generateTeachingDoc
-  const requestGenerateDoc = useCallback(
-    (n: KnowledgeNode) => generateDocRef.current(n),
-    [],
-  )
+  /* ---------- 结构画布通道（建 / 删 / 连 / 改名，与 agent 的 api.node 同一条 NodeService 路）：见 workspace/useCanvasChannel ---------- */
+  const { requestGenerateDoc, updateStructure, canvasChannel } = useCanvasChannel({
+    store,
+    getLatest,
+    set,
+    onToast,
+    openTab,
+    exam,
+    hasKey,
+    providerName,
+    onOpenSettings,
+    agent,
+    startPrereqOutline,
+    startVideoOverview,
+    goalSubtreeSize,
+    setPendingDelete,
+    setPendingExamDelete,
+    setExamDeleteStage,
+  })
 
   const handleOutlineFocusHandled = useCallback(() => {
     setOutlineFocus(null)
   }, [])
 
-  /**
-   * 结构图变了：整张换上去（v2 只剩坐标表）。空表不留在 store 里——
-   * `structure.json` 的空壳没有意义，读盘那一侧按「空 = 还没拖过」处理。
-   */
-  const updateStructure = useCallback(
-    (goalId: string, next: StructureMap) => {
-      const s = getLatest()
-      const structure = { ...(s.structure ?? {}) }
-      if (Object.keys(next.positions).length) structure[goalId] = next
-      else delete structure[goalId]
-      set({ ...s, structure: Object.keys(structure).length ? structure : undefined })
-    },
-    [getLatest, set],
-  )
-
-  /**
-   * 结构画布拖出一张笔记节点时用：建一份**真实的空笔记**，把名字交回去。
-   *
-   * 与侧栏的「新建笔记」不同，这里**不打开页签**——用户要的是先在图上有这张卡，
-   * 想写的时候点标题再打开。笔记不需要上下文，所以这一步是纯本地的、同步的。
-   */
-  /*
-   * 节点服务（统一通道）：画布的建 / 删 / 连 / 改名与 agent 的 api.node 走的是
-   * **同一个 NodeService**——画布上不再有任何「只存在于图里」的状态。目标的坐标
-   * 由派生自动铺排，删除时顺手把坐标表里那条清掉（别留死键）。
-   */
-  const makeNodeService = useCallback(
-    () => new NodeService({ getLatest, set, goalId: () => getLatest().activeGoalId ?? '' }),
-    [getLatest, set],
-  )
-
-  const dropPositionOf = useCallback(
-    (uuid: string) => {
-      const s = getLatest()
-      if (!s.structure) return
-      const structure = { ...s.structure }
-      let touched = false
-      for (const [gid, map] of Object.entries(structure)) {
-        if (!(uuid in map.positions)) continue
-        const { [uuid]: _drop, ...rest } = map.positions
-        structure[gid] = { ...map, positions: rest }
-        touched = true
-      }
-      if (touched) set({ ...s, structure })
-    },
-    [getLatest, set],
-  )
-
-  const canvasCreateNode = useCallback(
-    (kind: GNodeKind, under: string | null, _pos?: { x: number; y: number }, extra?: Record<string, unknown>) =>
-      makeNodeService().create({ kind, ...(under ? { under } : {}), ...(extra ?? {}) }),
-    [makeNodeService],
-  )
-
-  /**
-   * 画布垃圾桶是**用户的**删除通道，与服务那条 agent 通道共用同一套「删谁只删谁」：
-   * 大纲卡删除 = 清空计划（文档与下级文档都在）；试卷卡走**用户自己的两档确认**
-   * （与试卷列表同一条路：列出连带删掉什么 → 二次确认 → 可撤回），正在考的先挡下；
-   * 其余走统一服务（文档只删自己，下游断线成游离）。
-   */
-  const canvasDeleteNode = useCallback(
-    (uuid: string) => {
-      const target = getLatest().exams.find((e) => e.id === uuid)
-      if (target) {
-        if (exam.live && exam.live.examId === uuid) {
-          onToast(t('有一场考试正在进行，先把它考完或放弃'))
-          return { ok: true as const }
-        }
-        setPendingExamDelete(target)
-        setExamDeleteStage(examAttempted(target) ? 'warn' : 'final')
-        return { ok: true as const }
-      }
-      // 删根文档 = 删整个目标（根就是目标的骨架）：从画布的删除键触发也必须走两档确认
-      const goal = getLatest().goals.find((g) => g.id === uuid || g.rootNodeId === uuid)
-      if (goal) {
-        const node = goal.rootNodeId ? nodeById(getLatest(), goal.rootNodeId) : null
-        const title = goal.title || goal.question || node?.title || uuid
-        setPendingDelete({ nodeId: goal.id, title, isRoot: true, count: goalSubtreeSize(goal.id) })
-        return { ok: true as const }
-      }
-      const r = makeNodeService().delete(uuid)
-      if ('ok' in r) dropPositionOf(uuid)
-      return r
-    },
-    [getLatest, makeNodeService, dropPositionOf, onToast, exam.live],
-  )
-
-  const canvasConnect = useCallback(
-    (fromUuid: string, toUuid: string, portKey?: string) => {
-      const svc = makeNodeService()
-      const from = svc.get(fromUuid)
-      const to = svc.get(toUuid)
-      if (!from || !to) return { error: '有一个节点刚刚不在了（可能被删除）' }
-      return from.connect(to, 'down', portKey)
-    },
-    [makeNodeService],
-  )
-
-  const canvasDisconnect = useCallback(
-    (fromUuid: string, toUuid: string) => {
-      const svc = makeNodeService()
-      const from = svc.get(fromUuid)
-      const to = svc.get(toUuid)
-      if (!from || !to) return { error: '有一个节点刚刚不在了（可能被删除）' }
-      return from.disconnect(to)
-    },
-    [makeNodeService],
-  )
-
-  const canvasRenameNote = useCallback(
-    (noteUuid: string, to: string) => {
-      const svc = makeNodeService()
-      const node = svc.get(noteUuid)
-      if (!node || node.kind !== 'note') return { error: '这份笔记已经不在了' }
-      const c = node.content as { text?: string }
-      return node.editContent({ title: to, text: typeof c.text === 'string' ? c.text : '' })
-    },
-    [makeNodeService],
-  )
-
-  const canvasAddOutlineEntry = useCallback(
-    (outlineUuid: string, title: string) => {
-      const svc = makeNodeService()
-      const outline = svc.get(outlineUuid)
-      if (!outline || outline.kind !== 'outline') return
-      const current = (outline.content as { intro?: string; children?: Array<{ title: string; summary: string }> } | null) ?? null
-      const r = outline.editContent({
-        intro: current?.intro ?? '',
-        children: [...(current?.children ?? []), { title, summary: '' }],
-      })
-      if ('error' in r) onToast(r.error)
-      else onToast(t('已添加目标项「{0}」', title))
-    },
-    [makeNodeService, onToast],
-  )
-
-    const canvasRenameOutlineEntry = useCallback(
-    (outlineUuid: string, slotKey: string, nextTitle: string) => {
-      const trimmed = nextTitle.trim()
-      if (!trimmed) return
-      const svc = makeNodeService()
-      const outline = svc.get(outlineUuid)
-      if (!outline || outline.kind !== 'outline') return
-      const current = (outline.content as { intro?: string; children?: Array<{ key?: string; title: string; summary?: string }> } | null) ?? null
-      const children = current?.children ?? []
-      const targetEntry = children.find((c) => c.key === slotKey || normalizeKey(c.title) === slotKey || c.title === slotKey)
-      if (!targetEntry) return
-      if (targetEntry.title === trimmed) return
-
-      const oldKey = targetEntry.key ?? normalizeKey(targetEntry.title)
-      const newKey = normalizeKey(trimmed)
-
-      const nextChildren = children.map((c) => (c === targetEntry ? { ...c, title: trimmed, key: newKey } : c))
-      const r = outline.editContent({
-        intro: current?.intro ?? '',
-        children: nextChildren,
-        allowEmpty: true,
-      })
-      if ('error' in r) {
-        onToast(r.error)
-        return
-      }
-
-      // 如果有依赖边认领了这个旧 slotKey，同步更新边上的 portKey 保持连线关系不丢
-      if (oldKey !== newKey) {
-        const s = getLatest()
-        const docId = docIdOfOutlineUuid(outlineUuid)
-        const matchingEdges = s.edges.filter(
-          (e) => (e.from === outlineUuid || (docId && e.from === docId)) && (e.portKey === slotKey || e.portKey === oldKey),
-        )
-        if (matchingEdges.length > 0) {
-          const nextEdges = s.edges.map((e) =>
-            (e.from === outlineUuid || (docId && e.from === docId)) && (e.portKey === slotKey || e.portKey === oldKey)
-              ? { ...e, portKey: newKey }
-              : e,
-          )
-          set({ ...s, edges: nextEdges })
-        }
-      }
-      onToast(t('已将目标项重命名为「{0}」', trimmed))
-    },
-    [makeNodeService, onToast, getLatest, set],
-  )
-
-  const canvasDeleteOutlineEntry = useCallback(
-    (outlineUuid: string, slotKey: string) => {
-      const svc = makeNodeService()
-      const outline = svc.get(outlineUuid)
-      if (!outline || outline.kind !== 'outline') return
-      const current = (outline.content as { intro?: string; children?: Array<{ key?: string; title: string; summary?: string }> } | null) ?? null
-      const children = current?.children ?? []
-      const targetEntry = children.find((c) => c.key === slotKey || normalizeKey(c.title) === slotKey || c.title === slotKey)
-      if (!targetEntry) return
-
-      const nextChildren = children.filter((c) => c !== targetEntry)
-      const r = outline.editContent({
-        intro: current?.intro ?? '',
-        children: nextChildren,
-        allowEmpty: true,
-      })
-      if ('error' in r) {
-        onToast(r.error)
-        return
-      }
-
-      const s = getLatest()
-      const docId = docIdOfOutlineUuid(outlineUuid)
-      const matchingEdges = s.edges.filter(
-        (e) => (e.from === outlineUuid || (docId && e.from === docId)) && (e.portKey === slotKey || (targetEntry.key && e.portKey === targetEntry.key)),
-      )
-      if (matchingEdges.length > 0) {
-        let nextStore = getLatest()
-        for (const edge of matchingEdges) {
-          nextStore = removeEdge(nextStore, edge.from, edge.to)
-        }
-        set(nextStore)
-      }
-      onToast(t('已删除目标项「{0}」', targetEntry.title))
-    },
-    [makeNodeService, onToast, getLatest, set],
-  )
-
-  /**
-   * 在目标项上挂一份带标题的空文档（统一通道）：create 的同目标去重让同一标题
-   * 永远指向同一份实体；只建实体不写正文——正文由「生成文档」交给 AI。
-   */
-  const createChildDoc = useCallback(
-    (ownerNodeId: string, title: string, portKey?: string): string | null => {
-      const r = makeNodeService().create({ kind: 'doc', title, under: ownerNodeId, ...(portKey ? { portKey } : {}) })
-      return 'uuid' in r ? r.uuid : null
-    },
-    [makeNodeService],
-  )
-
-  /** 空文档卡上的「生成文档」：复用正文区那颗按钮同一条路径；hint 为画布侧的意图 */
-  const generateDocForNode = useCallback(
-    (nodeId: string, hint?: string) => {
-      const n = nodeById(getLatest(), nodeId)
-      if (n) generateDocRef.current(n, hint)
-    },
-    [getLatest],
-  )
-
-  /**
-   * 右键「设为入口」：把一份**没有上级**的文档立为那张图的入口（目标的根）。
-   * 一张图有且只有一个——换入口就是旧的退位（它还挂在图上，多半从此变成游离卡）。
-   */
-  const canvasSetEntry = useCallback(
-    (docUuid: string) => {
-      const s = getLatest()
-      const node = nodeById(s, docUuid)
-      if (!node) return { error: t('这份文档已经不在了') }
-      const goal = s.goals.find((g) => g.id === node.goalId)
-      if (!goal) return { error: t('这个文档不属于任何学习目标') }
-      if (goal.rootNodeId === docUuid) return { error: t('它已经是入口了') }
-      if (s.edges.some((e) => e.to === docUuid)) {
-        return { error: t('「{0}」已经有上级了——只有没有上级的文档能立为入口', node.title) }
-      }
-      const nextGoals = s.goals.map((g) => (g.id === goal.id ? { ...g, rootNodeId: docUuid, updatedAt: Date.now() } : g))
-      const nextDocArea = syncGoalOutlineTabs(s.docArea, [{ id: goal.id, rootNodeId: docUuid }])
-      set({ ...s, goals: nextGoals, docArea: nextDocArea })
-      return { ok: true, note: t('已把「{0}」立为入口：这门课从这里开始（原入口文档还在图上）', node.title) }
-    },
-    [getLatest, set],
-  )
-
-  /** 画布统一通道（一个稳定对象：OutlinePane 按 referential equality 冻结比较） */
-  const canvasChannel = useMemo(
-    () => ({
-      onCreateNode: canvasCreateNode,
-      onDeleteNode: canvasDeleteNode,
-      onConnect: canvasConnect,
-      onDisconnect: canvasDisconnect,
-      onSetEntry: canvasSetEntry,
-      onCreateChildDoc: createChildDoc,
-      onRenameNote: canvasRenameNote,
-      onAddOutlineEntry: canvasAddOutlineEntry,
-      onDeleteOutlineEntry: canvasDeleteOutlineEntry,
-      onRenameOutlineEntry: canvasRenameOutlineEntry,
-      onGenerateDoc: generateDocForNode,
-      onGenerateOutline: (docUuid: string) => startPrereqOutline(docUuid),
-      // 视频卡的绑定 / 打开：绑定走节点的 editContent（与 agent 动手是同一条路），打开走 openTab 的组联动
-      onBindVideo: (nodeUuid: string, videoId: string | null) => {
-        const node = makeNodeService().get(nodeUuid)
-        if (!node || node.kind !== 'video') return { error: '这个视频节点已经不在了' }
-        return node.editContent({ videoId })
-      },
-      // 项目卡的路径声明：同样走节点对象的 editContent（与 agent 同一条路），拼法由路径
-      // 自己说（盘符 / / 开头 = 绝对）。保存成功后把**还不存在的目录**建出来——相对路径
-      // 第一次用最常见的场景就是新建一个项目目录；解析不出根（如数据根未就绪）时跳过，
-      // 第一次读写时主进程会把原因讲清楚。
-      onSetProjectPath: async (nodeUuid: string, path: string) => {
-        const node = makeNodeService().get(nodeUuid)
-        if (!node || node.kind !== 'project') return { error: '这个项目节点已经不在了' }
-        const r = node.editContent({ path })
-        if ('error' in r) return r
-        const entity = getLatest().projects?.find((p) => p.id === nodeUuid)
-        const root = entity ? resolveProjectRoot(getLatest(), entity) : null
-        if (root) {
-          try {
-            await native().projectFs({ op: 'mkdir', roots: [root], path: root })
-          } catch {
-            // 建不出来不阻断保存：卡上与第一次读写时都会有清楚的说法
-          }
-        }
-        return r
-      },
-      // 点项目卡目录树里的一个文件：本地文件页签打开（TabRef.local 认磁盘绝对路径）
-      onOpenProjectFile: (absPath: string) => {
-        const name = absPath.split(/[\\/]/).pop() || absPath
-        openTab({ kind: 'local', path: absPath, title: name })
-      },
-      onBindFile: (nodeUuid: string, patch: { fileKind?: FileNodeKind; url?: string; title?: string }) => {
-        const node = makeNodeService().get(nodeUuid)
-        if (!node || node.kind !== 'file') return { error: '这个文件节点已经不在了' }
-        return node.editContent(patch)
-      },
-      onOpenFileNode: (nodeUuid: string) => {
-        const fileEntity = store.fileNodes?.find((f) => f.id === nodeUuid)
-        if (!fileEntity) {
-          onToast(t('这个文件节点已经不在了'))
-          return
-        }
-        if (!fileEntity.url) {
-          onToast(t('该文件节点尚未绑定文件或网址'))
-          return
-        }
-        if (fileEntity.fileKind === 'web') {
-          openTab({
-            kind: 'web',
-            url: fileEntity.url,
-            key: 'fn_' + fileEntity.id,
-            fileNodeId: fileEntity.id,
-            goalId: fileEntity.goalId,
-          })
-          return
-        }
-        const goalDir = goalDirOf(store, fileEntity.goalId)
-        if (!goalDir) {
-          onToast(t('找不到该文件节点所属的目标目录'))
-          return
-        }
-        const fileName = fileEntity.url.replace(/^files\//, '')
-        const relPath = `${goalDir}/${FILES_DIR}/${fileName}`
-        const absPath = userAbsPath(relPath) ?? relPath
-        openTab({ kind: 'local', path: absPath, title: fileEntity.title || fileName })
-      },
-      onOpenVideo: (videoId: string) => openTab({ kind: 'video', videoId }),
-      onOpenVideoNode: (videoNodeUuid: string) => {
-        const vNode = store.videoNodes?.find((vn) => vn.id === videoNodeUuid)
-        if (!vNode) {
-          onToast(t('这个视频节点已经不在了'))
-          return
-        }
-        openTab({
-          kind: 'video',
-          videoNodeId: vNode.id,
-          videoId: vNode.videoId ?? undefined,
-          goalId: vNode.goalId,
-        })
-      },
-      onUpdateVideoNode: (nodeUuid: string, patch: { input?: string; title?: string; titleCustomized?: boolean }) => {
-        const node = makeNodeService().get(nodeUuid)
-        if (!node || node.kind !== 'video') return { error: '这个视频节点已经不在了' }
-        return node.editContent(patch)
-      },
-      onGenerateVideoDoc: (videoNodeUuid: string) => startVideoOverview(videoNodeUuid),
-    }),
-    [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, canvasSetEntry, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, canvasRenameOutlineEntry, canvasDeleteOutlineEntry, generateDocForNode, startPrereqOutline, startVideoOverview, makeNodeService, openTab, getLatest, set, store, onToast],
-  )
+  /** 删除目标/节点：含全部下级知识点、对话与试卷，先确认再删；Ctrl+Z 可撤回 */
 
   const noteActionsCache = useRef(new Map<string, ComponentProps<typeof DocPane>['note']>())
   const getNoteActions = useCallback(
