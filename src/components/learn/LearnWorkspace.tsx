@@ -6,18 +6,19 @@
  * 这个文件是**编排层**：它持有「现在看什么」（页签）、把 store 派生成界面要的形状、
  * 把 Agent 与界面接起来，最后把 JSX 拼出来。成块的机制都住在 workspace/ 下：
  *
- * - useSideColumns / SplitRow —— 两列的宽度、收起、对调与骨架；
- * - useDocSaveFlow             —— 暂存、保存、关页签确认、外部改动冲突；
- * - useExportFlow              —— 导出弹窗与 md / html / pdf 三条路；
- * - useTabDnd                  —— 页签拖拽分屏与格间分割线；
- * - examTools                  —— 注入给 Agent 的 api.exam.* 工具；
- * - useLinkHandlers            —— moji:node / doc / super 三种链接的跳转；
- * - useLibraryActions          —— 笔记与本地文件的动作；
- * - useConceptActions          —— 选区上的学习 / 了解 / 注解 / 询问；
- * - useFocusFlow               —— 专注模式动作；
- * - useWorkflowStarters        —— 一切「交给导师工作流跑」的启动器。
+ * - useSideColumns / SplitRow / useHostWiring —— 两列骨架、宿主注册接线；
+ * - useDocSaveFlow / useDeleteFlows / DeleteConfirms —— 保存与删除两类确认流；
+ * - useExportFlow / useUnrTransfer —— 导出三条路与 .unr 分享包；
+ * - useTabDnd / useLinkHandlers / useWsActions —— 拖拽分屏、链接跳转、工作区文件；
+ * - useFavorites / useEssayFlow / useWsActions / useMemoryActions —— 收藏/随笔/文件/记忆；
+ * - useScreenshotTool / useTraceWindow / goalFocus —— 截图、轨迹窗、落点缓存槽；
+ * - useAgentTabActions / AgentSlot —— agent 栏的页签动作与整块 JSX；
+ * - useCanvasChannel / quoteTarget / videoTabBridge —— 画布通道、引用块解析、视频桥；
+ * - useConceptActions / useLibraryActions / useScheduleFlow / useWorkflowStarters /
+ *   useExplorerUndo / examTools —— 选区动作、库动作、日程、工作流启动器、撤回、试卷工具。
  *
- * renderGroup / renderLayout 刻意留在这里（见它们头上的说明）。
+ * renderGroup / renderLayout 刻意留在这里（见它们头上的说明）——
+ * 它们与页签编排的派生值咬合最深，是下一轮拆分的对象。
  */
 
 import {

@@ -1,5 +1,5 @@
 {
-  "src/components/learn/LearnWorkspace.tsx": 6555,
+  "src/components/learn/LearnWorkspace.tsx": 4236,
   "src/components/learn/structure/StructureCanvas.tsx": 4124,
   "src/components/learn/outline/MindmapView.tsx": 3295,
   "src/learn/useAgent.ts": 1978,
