@@ -41,7 +41,6 @@ import type {
   TabRef,
   WebTabMeta,
   LearningGoal,
-  ProjectNodeEntity,
 } from '../../learn/types'
 import { notesOf } from '../../learn/types'
 import { recentOpens, type RecentOpen } from '../../learn/recents'
@@ -83,7 +82,7 @@ import {
 } from '../../learn/groups'
 import { isTabPinned, reorderTabs, makeBlankTab, makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf, isPdfFile } from '../../learn/tabs'
 import { setZenActive } from '../../learn/zen'
-import { pickLocalFiles, readLocalFile } from '../../lib/localFiles'
+import { pickLocalFiles } from '../../lib/localFiles'
 import { addLocalFile } from '../../learn/localfiles'
 import { normalizeWebInput } from '../../learn/webUrl'
 import type { BrowserDeps } from '../../learn/web/browserOps'
@@ -109,7 +108,6 @@ import {
   withAgentTabs,
 } from '../../learn/agentTabs'
 import type { AgentTabRef } from '../../learn/types'
-import { resolveProjectRoot } from '../../learn/projects'
 import { attemptBrief, examAttempted, examTotalPoints } from '../../learn/exam'
 import { useExamBridge } from '../../learn/useExamBridge'
 import { makeConversation, nodeDocRel } from '../../learn/store'
@@ -124,28 +122,15 @@ import { usePresence } from '../../lib/presence'
 import ExamCopyView from './ExamCopyView'
 import { OutlinePane } from './workspace/OutlinePane'
 import StructOverlay from './workspace/StructOverlay'
-import { confirmVideoNode } from '../../learn/video/nodes'
-import type { VideoResource } from '../../learn/types'
 import { noteEntityOf } from './workspace/panes'
 import { pruneImages } from '../../learn/images'
 import { queueOf, shouldEnqueue } from '../../learn/agentQueue'
-import {
-  cachedResourceUrl,
-  findResource,
-  loadResourceImage,
-  revealResource,
-  subscribeResources,
-} from '../../learn/static'
 import { nodePathOf, resolveNode } from '../../learn/paths'
-import { setPlotFixHandler } from '../../lib/plot'
 import { nodeDocPath } from '../../learn/files'
 import { createNodeDocImageResolver, type LocalImageResolver } from '../../lib/docImages'
-import { revealLocalFile, revealPath, userAbsPath, readUserText, userAbsPrefix } from '../../lib/storage'
-import { wsRefOfRel, wsRelOf, wsRelOfTab, wsRevealOfAbs } from '../../learn/workspace'
-import { setStaticView } from '../../lib/staticView'
-import {
-  useAppearance,
-} from '../../lib/appearance'
+import { revealLocalFile, revealPath, userAbsPath } from '../../lib/storage'
+import { wsRelOfTab } from '../../learn/workspace'
+import { useAppearance } from '../../lib/appearance'
 import { useLearnStore } from '../../learn/useLearnStore'
 import { useShortcut } from '../../lib/useShortcut'
 
@@ -173,21 +158,15 @@ import ExplorerSidebar, {
 import { requestReveal } from './explorer/reveal'
 import { focusAgentInput } from '../../lib/agentFocus'
 import { moveTabMark, resetTabMark } from '../../lib/tabMark'
-import { setChipOpener, type ChipPayload } from '../../lib/docChip'
-import { openExternalLink, setWebLinkHandler } from '../../lib/externalLink'
+import type { ChipPayload } from '../../lib/docChip'
+import { openExternalLink } from '../../lib/externalLink'
 import { tabRefFromChip } from '../../learn/chipRef'
 import { CHIP_MIME, parseChipJson } from '../../lib/chipSyntax'
 import TabBar from './TabBar'
 import WebTabLayer, { type WebTab } from './web/WebTabLayer'
 import VideoTabLayer, { type VideoTab } from '../video/VideoTabLayer'
-import type { VideoCreateDraft } from '../video/VideoStudyTab'
 import PluginDoc from '../plugins/PluginDoc'
-import { setPluginDocOpener } from '../../lib/pluginDoc'
 import SponsorsDoc from '../sponsor/SponsorsDoc'
-import { setSponsorsOpener } from '../../lib/sponsorDoc'
-import { resolveVideoSource } from '../../lib/videoPlugins'
-import { setVideoBlockHost, cleanVideoNodeUuid, type VideoBlockData, type VideoEpisodeItem } from '../../lib/videosBlock'
-import { setQuoteBlockHost } from '../../lib/quoteBlock'
 import { focusWebAddress } from './web/addressFocus'
 import FindBar from './FindBar'
 import SuperDocView from './SuperDocView'
@@ -210,9 +189,8 @@ import UsagePanel from '../settings/UsagePanel'
 import { SchedulePage } from '../schedule/SchedulePage'
 import ContextDebugger from '../agent/ContextDebugger'
 import { resetPrefixGate } from '../../agent/prefixGate'
-import { setEffortNotice } from '../../learn/effortGuard'
 import { docAreaElement, locateNeedle, scrollToDoc, visibleDocBody } from '../../lib/docDom'
-import { lineRangeToOffsets, localRevealKey, nodeRevealKey, requestSourceReveal } from '../../lib/docReveal'
+import { localRevealKey, nodeRevealKey, requestSourceReveal } from '../../lib/docReveal'
 import { readRecentTabs, residentIds } from '../../learn/resident'
 import type { UiPointRequest } from '../../agent/tools'
 import type { Conversation } from '../../agent/types'
@@ -252,6 +230,8 @@ import { useAgentTabActions } from './workspace/useAgentTabActions'
 import { useDeleteFlows } from './workspace/useDeleteFlows'
 import { DeleteConfirms } from './workspace/DeleteConfirms'
 import { AgentSlot } from './workspace/AgentSlot'
+import { useHostWiring } from './workspace/useHostWiring'
+import { createVideoTabBridge } from './workspace/videoTabBridge'
 import { t } from '../../i18n'
 
 /**
@@ -372,14 +352,6 @@ export default function LearnWorkspace({
       }),
     [openContextDebugger],
   )
-  // 思考档位唯一性守卫的提醒出口（探针在 useAgent 注册，见 learn/effortGuard）：
-  // 用户手动切档且已有带上下文的对话时，提醒一句「下一轮全价重算」
-  useEffect(() => {
-    setEffortNotice(() => {
-      onToast(t('思考档位已切换：已有上下文的对话下一轮将无法命中服务商缓存，将整段重算'))
-    })
-    return () => setEffortNotice(null)
-  }, [onToast])
   /*
    * 上下文轨迹：独立 Electron 窗口（见 workspace/useTraceWindow）。
    * 主窗口是数据拥有者：打开时把当前激活会话整份递过去，开着期间随数据变化持续 push。
@@ -860,59 +832,6 @@ export default function LearnWorkspace({
    * 输入框的附件按钮就是禁用的，拖进来也只会得到一句解释（见 AgentPanel）。
    */
   const vision = supportsImage(aiSettings)
-
-  /**
-   * 把目标级资源库的查询能力交给文档渲染层（见 lib/staticView）。
-   *
-   * 文档里的 `![图注](moji:static/<uuid>)` 与 `[文字](moji:static/<uuid>)` 在 DOM 提交后
-   * 需要三件事：清单里这条资源是什么、图片字节、在文件管理器里定位它。这些都是 store 与磁盘的事，
-   * 渲染层不认识它们，所以由这里注入。
-   *
-   * 依赖整个 store 快照（不只是 store.resources）：目标目录由根节点标题推出
-   * （见 files.ts 的 nodeLayout），**改一次标题就会换掉资源的相对路径**，
-   * 只盯清单会漏掉这一步。注册表一变，所有已渲染的文档都会重画一遍，
-   * 代价只是一次签名比较（见 staticView 的 repaint）。
-   */
-  useEffect(() => {
-    if (!activeGoalId) {
-      setStaticView(null)
-      return
-    }
-    const goalId = activeGoalId
-    setStaticView({
-      resource: (uuid) => findResource(getLatest(), goalId, uuid),
-      // 同步那条路只走内存缓存：有图就直接贴上去，不让文档先闪一下占位
-      cachedUrl: (uuid) => {
-        const s = getLatest()
-        const res = findResource(s, goalId, uuid)
-        return res ? cachedResourceUrl(s, goalId, res) : null
-      },
-      loadUrl: async (uuid) => {
-        const s = getLatest()
-        const res = findResource(s, goalId, uuid)
-        if (!res) return null
-        const loaded = await loadResourceImage(s, goalId, res)
-        return loaded?.url ?? null
-      },
-      reveal: (uuid) => {
-        const s = getLatest()
-        const res = findResource(s, goalId, uuid)
-        if (!res) {
-          onToast(t('这个资源已不在清单里，可能已被删除'))
-          return
-        }
-        // revealResource 负责把「相对当前用户」的路径补成数据根下的完整路径
-        // （漏了这一步会去 {root}/docs 下找，那里没有用户目录）。
-        // 定位是异步的，但文件在登记之前就已经落盘了，不必等防抖保存。
-        // 失败只提示、不抛出：磁盘上的事不该把界面打断（与节点文档的定位一致）
-        void revealResource(s, goalId, res).then((ok) => {
-          if (!ok) onToast(t('未能在资源管理器中定位该文件'))
-        })
-      },
-      subscribe: subscribeResources,
-    })
-    return () => setStaticView(null)
-  }, [activeGoalId, store, getLatest, onToast])
 
   /**
    * 节点文档的「就地图片」解析器工厂（见 lib/docImages）：文档里相对路径引用的图片
@@ -1723,12 +1642,6 @@ export default function LearnWorkspace({
       offTab()
       offKey()
     }
-  }, [openWebTab])
-
-  // 应用内超链接与网页 chip 打开统一走应用内浏览器页签（openWebTab）
-  useEffect(() => {
-    setWebLinkHandler(openWebTab)
-    return () => setWebLinkHandler(null)
   }, [openWebTab])
 
   /* ---------- 收藏（页签右键菜单 / 地址栏星标 / 侧栏收藏区）：见 workspace/useFavorites ---------- */
@@ -2592,427 +2505,20 @@ export default function LearnWorkspace({
     [getLatest, openTab, openWebTab, activateTab, selectNode, exam, onToast],
   )
 
-  // chip 的「点击打开」全走这一份登记（消息列表、输入框都不认识 store，见 lib/docChip）
-  useEffect(() => {
-    setChipOpener(openChip)
-    return () => setChipOpener(null)
-  }, [openChip])
-
-  // 设置 → 插件里的「插件开发文档」：同一条打开器纪律（见 lib/pluginDoc）
-  useEffect(() => {
-    setPluginDocOpener(() => openTab({ kind: 'pluginDoc' }))
-    return () => setPluginDocOpener(null)
-  }, [openTab])
-
-  // 顶栏「赞助」里的「赞助者名单」应用内打开器（见 lib/sponsorDoc）
-  useEffect(() => {
-    setSponsorsOpener(() => openTab({ kind: 'sponsors' }))
-    return () => setSponsorsOpener(null)
-  }, [openTab])
-
-  // 视频代码块（```videos）的选集数据拉取与点播跳转：注册宿主接口
-  useEffect(() => {
-    setVideoBlockHost({
-      getVideoData: async (videoNodeUuid: string): Promise<VideoBlockData | null> => {
-        const s = getLatest()
-        const raw = cleanVideoNodeUuid(videoNodeUuid)
-        // 1. 优先按 videoNode.id 查找
-        let vNode = (s.videoNodes ?? []).find((vn) => vn.id === raw)
-        // 2. 次优先按 videoId 查找
-        if (!vNode) vNode = (s.videoNodes ?? []).find((vn) => vn.videoId === raw)
-        // 3. 兜底：从当前激活文档节点的上游连接查找视频节点
-        if (!vNode && s.activeNodeId) {
-          const upEdges = s.edges.filter((e) => e.to === s.activeNodeId)
-          for (const e of upEdges) {
-            const upV = (s.videoNodes ?? []).find((vn) => vn.id === e.from)
-            if (upV) {
-              vNode = upV
-              break
-            }
-          }
-        }
-        // 4. 兜底：若该目标下只有一个视频节点，直接匹配它
-        if (!vNode && s.activeGoalId) {
-          const goalVNodes = (s.videoNodes ?? []).filter((vn) => vn.goalId === s.activeGoalId)
-          if (goalVNodes.length === 1) vNode = goalVNodes[0]
-        }
-        // 5. 兜底：全局若只有一个视频节点
-        if (!vNode && (s.videoNodes ?? []).length === 1) {
-          vNode = s.videoNodes![0]
-        }
-
-        const videoId = vNode?.videoId ?? raw
-        let video = (s.videos ?? []).find((v) => v.id === videoId)
-        if (!video && !vNode && (s.videos ?? []).length === 1) {
-          video = (s.videos ?? [])[0]
-        }
-        if (!video) return null
-
-        try {
-          const src = await resolveVideoSource(video.selection?.source ?? video.input, video.fields)
-          let episodes: VideoEpisodeItem[] = []
-          if (src.pages && src.pages.length > 0) {
-            episodes = src.pages.map((p, idx) => ({
-              page: typeof p.page === 'number' && p.page > 0 ? p.page : idx + 1,
-              title: p.title,
-              source: p.source,
-              durationMs: p.durationMs,
-            }))
-          } else if (src.collection?.items && src.collection.items.length > 0) {
-            episodes = src.collection.items.map((it, idx) => ({
-              page: idx + 1,
-              title: it.title,
-              source: it.source,
-              durationMs: it.durationMs,
-            }))
-          }
-          return {
-            videoTitle: src.title || video.title,
-            pluginName: video.pluginName ?? video.pluginId,
-            episodes,
-          }
-        } catch (err) {
-          console.warn('[videosBlock] 解析视频选集失败', err)
-          return null
-        }
-      },
-      onOpenEpisode: (videoNodeUuid: string, episode: VideoEpisodeItem) => {
-        const s = getLatest()
-        const raw = cleanVideoNodeUuid(videoNodeUuid)
-        let vNode = (s.videoNodes ?? []).find((vn) => vn.id === raw)
-        if (!vNode) vNode = (s.videoNodes ?? []).find((vn) => vn.videoId === raw)
-        if (!vNode && s.activeNodeId) {
-          const upEdges = s.edges.filter((e) => e.to === s.activeNodeId)
-          for (const e of upEdges) {
-            const upV = (s.videoNodes ?? []).find((vn) => vn.id === e.from)
-            if (upV) {
-              vNode = upV
-              break
-            }
-          }
-        }
-        if (!vNode && s.activeGoalId) {
-          const goalVNodes = (s.videoNodes ?? []).filter((vn) => vn.goalId === s.activeGoalId)
-          if (goalVNodes.length === 1) vNode = goalVNodes[0]
-        }
-        if (!vNode && (s.videoNodes ?? []).length === 1) {
-          vNode = s.videoNodes![0]
-        }
-
-        const videoId = vNode?.videoId ?? raw
-        const video =
-          (s.videos ?? []).find((v) => v.id === videoId) ?? ((s.videos ?? []).length === 1 ? s.videos![0] : undefined)
-        if (!video) return
-
-        const nextSource = episode.source
-        if (nextSource && nextSource !== (video.selection?.source ?? video.input)) {
-          const updatedVideos = (s.videos ?? []).map((v) =>
-            v.id === video.id
-              ? {
-                  ...v,
-                  selection: { source: nextSource, title: episode.title },
-                  progress: { source: nextSource, positionMs: 0, updatedAt: Date.now() },
-                }
-              : v,
-          )
-          set({ ...s, videos: updatedVideos })
-        }
-        openTab({ kind: 'video', videoId: video.id })
-      },
-    })
-    return () => setVideoBlockHost(null)
-  }, [getLatest, set, openTab])
-
-  // 原文引用代码块（```quote）的文件内容读取与跳转：统一解析目标文件
-  useEffect(() => {
-    interface ResolvedQuoteTarget {
-      content: string
-      tabRef: TabRef
-    }
-
-    const resolveQuoteTarget = async (
-      s: ReturnType<typeof getLatest>,
-      rawPath: string,
-    ): Promise<ResolvedQuoteTarget | null> => {
-      let cleanPath = (rawPath ?? '').trim().replace(/\\/g, '/')
-      if (!cleanPath) return null
-
-      let decodedPath = cleanPath
-      try {
-        if (cleanPath.includes('%')) {
-          decodedPath = decodeURIComponent(cleanPath).replace(/\\/g, '/')
-        }
-      } catch {}
-
-      const uPrefix = userAbsPrefix()?.replace(/\\/g, '/')
-      const isAbs = (p: string) => /^[a-zA-Z]:[\/]/.test(p) || p.startsWith('/') || p.startsWith('\\\\')
-
-      // 1. 尝试直接读取单条绝对路径
-      const tryReadAbs = async (absP: string): Promise<ResolvedQuoteTarget | null> => {
-        if (!absP) return null
-        let content: string | null = null
-
-        // 1.1 若落在用户数据根下，优先走 readUserText
-        if (uPrefix && absP.startsWith(uPrefix)) {
-          const rel = absP.slice(uPrefix.length).replace(/^[\/]+/, '')
-          try {
-            const res = await readUserText(rel)
-            if (res !== null) content = res
-          } catch {}
-        }
-
-        // 1.2 readLocalFile 外部文件读
-        if (content === null) {
-          try {
-            const res = await readLocalFile(absP)
-            if (res.ok && typeof res.content === 'string') content = res.content
-          } catch {}
-        }
-
-        // 1.3 projectFs 读取
-        if (content === null && isElectron()) {
-          try {
-            const allRoots = (s.projects ?? [])
-              .map((pr) => resolveProjectRoot(s, pr))
-              .filter((r): r is string => Boolean(r))
-            if (allRoots.length > 0) {
-              const r = await native().projectFs({ op: 'read', path: absP, roots: allRoots, encoding: 'utf8' })
-              if (r.ok && r.op === 'read' && typeof r.content === 'string') content = r.content
-            }
-          } catch {}
-        }
-
-        if (content === null) return null
-
-        // 构造有效 TabRef
-        const reveal = wsRevealOfAbs(s, absP, uPrefix ?? null)
-        if (reveal) {
-          return { content, tabRef: { kind: 'ws', nodeId: reveal.nodeId, seg: reveal.rel } }
-        }
-        if (uPrefix && absP.startsWith(uPrefix)) {
-          const rel = absP.slice(uPrefix.length).replace(/^[\/]+/, '')
-          const wsRef = wsRefOfRel(s, rel)
-          if (wsRef) {
-            return { content, tabRef: wsRef }
-          }
-        }
-        return {
-          content,
-          tabRef: { kind: 'local', path: absP, title: localFileNameOf(absP) },
-        }
-      }
-
-      // 若传入的是绝对路径
-      if (isAbs(cleanPath)) {
-        const res = await tryReadAbs(cleanPath)
-        if (res) return res
-      }
-      if (isAbs(decodedPath) && decodedPath !== cleanPath) {
-        const res = await tryReadAbs(decodedPath)
-        if (res) return res
-      }
-
-      // 收集相关节点
-      const fRef = focusedTab(s.docArea)?.ref
-      const currentViewingId = (fRef ? tabNodeId(fRef) : null) ?? s.activeNodeId
-      const activeGoal = s.goals.find((g) => g.id === s.activeGoalId)
-      const relevantNodeIds = new Set<string>()
-      if (currentViewingId) relevantNodeIds.add(currentViewingId)
-      if (s.activeNodeId) relevantNodeIds.add(s.activeNodeId)
-      if (activeGoal?.rootNodeId) relevantNodeIds.add(activeGoal.rootNodeId)
-      for (const n of s.nodes ?? []) {
-        if (n.goalId === s.activeGoalId) relevantNodeIds.add(n.id)
-      }
-
-      const pathVariants = [cleanPath]
-      if (decodedPath !== cleanPath) pathVariants.push(decodedPath)
-
-      for (const variant of pathVariants) {
-        // 2. 检查是否为笔记挂件
-        const noteTarget = variant.replace(/^(?:note|notes|笔记)[\/:]/i, '').replace(/\.md$/i, '').trim()
-        for (const nid of relevantNodeIds) {
-          const n = s.nodes.find((item) => item.id === nid)
-          if (!n) continue
-          const notes = notesOf(n)
-          const foundNote = notes.find((nt) => nt.name === noteTarget || nt.name === variant)
-          if (foundNote && typeof foundNote.content === 'string') {
-            return {
-              content: foundNote.content,
-              tabRef: { kind: 'note', nodeId: n.id, note: foundNote.name },
-            }
-          }
-        }
-
-        const relPath = variant.replace(/^\.\//, '')
-        const relWithoutWs = relPath.startsWith('workspace/') ? relPath.slice('workspace/'.length) : relPath
-
-        // 3. 检查节点工作区目录（workspace/）
-        for (const nid of relevantNodeIds) {
-          const wsRel = wsRelOf(s, nid)
-          if (!wsRel) continue
-
-          const candidateRels = [
-            `${wsRel}/${relWithoutWs}`,
-            `${wsRel.replace(/\/workspace$/, '')}/${relPath}`,
-          ]
-          for (const cr of candidateRels) {
-            try {
-              const txt = await readUserText(cr)
-              if (txt !== null) {
-                const wsRef = wsRefOfRel(s, cr) ?? { kind: 'ws', nodeId: nid, seg: relWithoutWs }
-                return { content: txt, tabRef: wsRef }
-              }
-            } catch {}
-            if (uPrefix) {
-              const absP = `${uPrefix}/${cr}`
-              const absRes = await tryReadAbs(absP)
-              if (absRes) return absRes
-            }
-          }
-        }
-
-        // 4. 检查已声明的项目节点（Project Nodes）
-        const candidateProjects: ProjectNodeEntity[] = []
-        if (s.activeNodeId) {
-          const downEdges = s.edges.filter((e) => e.from === s.activeNodeId)
-          for (const e of downEdges) {
-            const p = (s.projects ?? []).find((pr) => pr.id === e.to)
-            if (p) candidateProjects.push(p)
-          }
-        }
-        if (s.activeGoalId) {
-          for (const pr of s.projects ?? []) {
-            if (pr.goalId === s.activeGoalId && !candidateProjects.some((cp) => cp.id === pr.id)) {
-              candidateProjects.push(pr)
-            }
-          }
-        }
-        for (const pr of s.projects ?? []) {
-          if (!candidateProjects.some((cp) => cp.id === pr.id)) {
-            candidateProjects.push(pr)
-          }
-        }
-
-        for (const proj of candidateProjects) {
-          const root = resolveProjectRoot(s, proj)
-          if (!root) continue
-          const full = root.replace(/[\\/]+$/, '') + '/' + relPath.replace(/^[\\/]+/, '')
-          const absRes = await tryReadAbs(full)
-          if (absRes) return absRes
-        }
-
-        // 5. 用户数据目录直接按相对路径读
-        const directUserRels = [relPath, `docs/${relPath}`]
-        for (const dur of directUserRels) {
-          try {
-            const txt = await readUserText(dur)
-            if (txt !== null) {
-              const wsRef = wsRefOfRel(s, dur)
-              if (wsRef) return { content: txt, tabRef: wsRef }
-              const absP = uPrefix ? `${uPrefix}/${dur}` : dur
-              return { content: txt, tabRef: { kind: 'local', path: absP, title: localFileNameOf(absP) } }
-            }
-          } catch {}
-        }
-
-        // 6. 最后尝试普通本地文件路径读
-        try {
-          const r = await readLocalFile(relPath)
-          if (r.ok && typeof r.content === 'string') {
-            return {
-              content: r.content,
-              tabRef: { kind: 'local', path: relPath, title: localFileNameOf(relPath) },
-            }
-          }
-        } catch {}
-      }
-
-      return null
-    }
-
-    setQuoteBlockHost({
-      readFile: async (rawPath: string): Promise<string | null> => {
-        const s = getLatest()
-        const resolved = await resolveQuoteTarget(s, rawPath)
-        return resolved ? resolved.content : null
-      },
-      onOpenFile: async (rawPath: string, startLine?: number, endLine?: number) => {
-        const s = getLatest()
-        const resolved = await resolveQuoteTarget(s, rawPath)
-        if (!resolved || !resolved.tabRef) {
-          let disp = (rawPath ?? '').trim()
-          try {
-            if (disp.includes('%')) disp = decodeURIComponent(disp)
-          } catch {}
-          onToast(t('未找到引用的源文件（{0}）', disp || '未知路径'))
-          return
-        }
-
-        // 计算行定位区间并登记一次性定位请求
-        if (startLine && startLine >= 1) {
-          const eLine = endLine && endLine >= startLine ? endLine : startLine
-          const offsets = lineRangeToOffsets(resolved.content, startLine, eLine)
-
-          let revealTargetKey: string | null = null
-          if (resolved.tabRef.kind === 'local') {
-            revealTargetKey = localRevealKey(resolved.tabRef.path)
-          } else if (resolved.tabRef.kind === 'ws') {
-            const rel = wsRelOfTab(s, resolved.tabRef)
-            const abs = rel ? userAbsPath(rel) : null
-            if (abs) revealTargetKey = localRevealKey(abs)
-          } else if (resolved.tabRef.kind === 'note') {
-            revealTargetKey = nodeRevealKey(resolved.tabRef.nodeId, 'note', resolved.tabRef.note)
-          }
-
-          if (revealTargetKey) {
-            requestSourceReveal(revealTargetKey, offsets.start, offsets.end)
-          }
-        }
-
-        openTab(resolved.tabRef, startLine ? 'source' : undefined)
-      },
-    })
-    return () => setQuoteBlockHost(null)
-  }, [getLatest, openTab, onToast])
-
-  /*
-    plot 错误卡片上的「让导师修复」：以**工作流**（learn/workflows 的 plot-fix）注入——
-    隐藏指令、分界条一条，不是一条普通用户消息。报错原因、字符区间与围栏原文都算好
-    塞进 {{占位符}}；区间与 doc.replace 的参数同语义，agent 一轮就能改完。
-    目标是当前文档的节点——不是界面上此刻激活的那个导师页签（用户可能正看着 A 课的
-    文档，agent 栏开着 B 课）。登记模式与上面的 setChipOpener 相同。
-  */
-  useEffect(() => {
-    setPlotFixHandler(({ reason, source }) => {
-      const node = docNode
-      const convId = node ? resolveDisplayedConversation(getLatest(), node.goalId) : null
-      if (!node || !convId) {
-        onToast(t('这一页没有对应的导师会话，无法自动发送'))
-        return
-      }
-      /*
-        在当前文档源码里找这段围栏的 [start, end)：start 指向 ```plot 行首，
-        end 越过收尾的 ```。找不到（文档刚被改过、或这一页不是纯文本源）就如实给
-        [0, 0)，指令里会让 agent 先用 doc.find 定位——别给一个看似对的错区间。
-      */
-      const content = docSource?.content ?? ''
-      const range = findPlotFenceRange(content, source)
-      agent.runWorkflow('plot-fix', {
-        target: { goalId: node.goalId, nodeId: node.id, conversationId: convId },
-        params: {
-          nodeTitle: node.title,
-          reason,
-          path: nodePathOf(getLatest(), node.goalId, node.id),
-          range: range ? `[${range.start}, ${range.end})` : '[0, 0)（未能自动定位，文档可能刚被改过）',
-          start: range ? range.start : 0,
-          end: range ? range.end : 0,
-          source,
-        },
-      })
-      onToast(t('已把报错发给导师，请看对话栏'))
-    })
-    return () => setPlotFixHandler(null)
-  }, [docNode, getLatest, agent, onToast])
+  /* ---------- 宿主接线（chip/插件/赞助/视频块/引用块/plot/静态资源/网页链接/effort 提醒）：见 workspace/useHostWiring ---------- */
+  useHostWiring({
+    onToast,
+    activeGoalId,
+    store,
+    getLatest,
+    set,
+    openWebTab,
+    openChip,
+    openTab,
+    docNode,
+    docSource,
+    agent,
+  })
 
   /** 在资源管理器中定位某个目标的大纲文件（{节点}.outline.json，大纲行右键菜单用） */
   const revealOutlineFile = async (nodeId: string) => {
@@ -3534,6 +3040,8 @@ export default function LearnWorkspace({
     const gWebTabs = gVisibleTabs.filter((x): x is WebTab => x.ref.kind === 'web')
     /** 这一格挂着的视频页签（含创建态）：VideoTabLayer 常驻，切页签只藏不卸（用户定的 keepalive） */
     const gVideoTabs = (g.group?.tabs ?? []).filter((x): x is VideoTab => x.ref.kind === 'video')
+    /** 视频页签的五个写库回调（按格现造：onCreate 要关掉本格的草稿页签），见 workspace/videoTabBridge */
+    const videoBridge = createVideoTabBridge({ getLatest, set, openTab, activeGoalId, onToast, closeTab, groupId })
     /** 这一格挂着的大纲页签：keepalive 常驻，切页签只藏不卸，切回时保留导图相机视角与选中状态 */
     const gOutlineTabs = (g.group?.tabs ?? []).filter(
       (x): x is LearnTab & { ref: { kind: 'outline'; nodeId: string; goalId?: string } } => x.ref.kind === 'outline',
@@ -4101,124 +3609,7 @@ export default function LearnWorkspace({
               onCommitStore={set}
               videos={store.videos}
               videoNodes={store.videoNodes}
-              onCreate={(tabId, draft: VideoCreateDraft, videoNodeId?: string) => {
-                const id = crypto.randomUUID()
-                const now = Date.now()
-                const record: VideoResource = {
-                  id,
-                  pluginId: draft.pluginId,
-                  pluginName: draft.pluginName,
-                  input: draft.input,
-                  ...(Object.keys(draft.fields).length ? { fields: draft.fields } : {}),
-                  title: draft.input.slice(0, 60),
-                  createdAt: now,
-                }
-                const latest = getLatest()
-                let nextStore: LearnStore = { ...latest, videos: [...(latest.videos ?? []), record] }
-                if (videoNodeId) {
-                  const r = confirmVideoNode(
-                    nextStore,
-                    videoNodeId,
-                    {
-                      input: draft.input,
-                      title: draft.input.slice(0, 60),
-                      pluginId: draft.pluginId,
-                      pluginName: draft.pluginName,
-                      fields: draft.fields,
-                    },
-                    now,
-                  )
-                  if (!('error' in r)) {
-                    nextStore = r.store
-                  }
-                }
-                set(nextStore)
-                if (videoNodeId) {
-                  openTab({ kind: 'video', videoNodeId, videoId: id, goalId: activeGoalId ?? undefined })
-                } else {
-                  openTab({ kind: 'video', videoId: id })
-                  closeTab(groupId, tabId, 'self')
-                }
-              }}
-              onResolved={(videoId, title, videoNodeId) => {
-                const latest = getLatest()
-                const list = latest.videos ?? []
-                const cur = list.find((v) => v.id === videoId)
-                const vNode = videoNodeId ? (latest.videoNodes ?? []).find((vn) => vn.id === videoNodeId) : null
-                let touched = false
-                let nextVideos = list
-                let nextVideoNodes = latest.videoNodes ?? []
-                if (cur && cur.title !== title) {
-                  nextVideos = list.map((v) => (v.id === videoId ? { ...v, title, updatedAt: Date.now() } : v))
-                  touched = true
-                }
-                if (vNode && !vNode.titleCustomized && vNode.title !== title) {
-                  nextVideoNodes = nextVideoNodes.map((vn) =>
-                    vn.id === videoNodeId ? { ...vn, title, updatedAt: Date.now() } : vn,
-                  )
-                  touched = true
-                }
-                if (touched) {
-                  set({ ...latest, videos: nextVideos, videoNodes: nextVideoNodes })
-                }
-              }}
-              onProgress={(videoId, positionMs, source) => {
-                const latest = getLatest()
-                const list = latest.videos ?? []
-                const cur = list.find((v) => v.id === videoId)
-                if (!cur) return
-                set({
-                  ...latest,
-                  videos: list.map((v) =>
-                    v.id === videoId
-                      ? {
-                          ...v,
-                          progress: { ...(source ? { source } : {}), positionMs: Math.round(positionMs), updatedAt: Date.now() },
-                        }
-                      : v,
-                  ),
-                })
-              }}
-              onSelection={(videoId, source, title) => {
-                const latest = getLatest()
-                const list = latest.videos ?? []
-                const cur = list.find((v) => v.id === videoId)
-                if (!cur) return
-                set({
-                  ...latest,
-                  videos: list.map((v) =>
-                    v.id === videoId
-                      ? {
-                          ...v,
-                          selection: { source, ...(title ? { title } : {}) },
-                          // 换集就把进度归零到新那一项：旧进度不能续到别的集上
-                          progress: { source, positionMs: 0, updatedAt: Date.now() },
-                        }
-                      : v,
-                  ),
-                })
-              }}
-              onSaveRecap={(videoId, source, recap) => {
-                // 视频总结（总结+分段**一次生成**）按来源落库；生成过就不再生成（空态才给入口）
-                if (!recap.summary && !recap.chapters?.length) return
-                const latest = getLatest()
-                const list = latest.videos ?? []
-                const cur = list.find((v) => v.id === videoId)
-                if (!cur) return
-                set({
-                  ...latest,
-                  videos: list.map((v) =>
-                    v.id === videoId
-                      ? { ...v, recaps: { ...(v.recaps ?? {}), [source]: recap }, updatedAt: Date.now() }
-                      : v,
-                  ),
-                })
-                if (recap.chapters?.length) {
-                  onToast(t('已生成总结与分段：{0} 段，分段点在进度条上', String(recap.chapters.length)))
-                } else {
-                  onToast(t('已生成总结'))
-                }
-              }}
+              {...videoBridge}
             />
           )}
 
@@ -4842,20 +4233,3 @@ export default function LearnWorkspace({
   )
 }
 
-/** 在文档源码里找包含 raw 的 ```plot 围栏：回 [start, end)，含首尾两行围栏标记 */
-function findPlotFenceRange(content: string, raw: string): { start: number; end: number } | null {
-  const body = raw.trim()
-  if (!body) return null
-  const marker = '```plot'
-  let from = 0
-  for (;;) {
-    const start = content.indexOf(marker, from)
-    if (start < 0) return null
-    const lineEnd = content.indexOf('\n', start + marker.length)
-    if (lineEnd < 0) return null
-    const close = content.indexOf('```', lineEnd)
-    if (close < 0) return null
-    if (content.slice(lineEnd + 1, close).trim() === body) return { start, end: close + 3 }
-    from = close + 3
-  }
-}
