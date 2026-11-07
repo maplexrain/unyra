@@ -1,22 +1,3 @@
 {
-  "src/components/learn/structure/StructureCanvas.tsx": 4124,
-  "src/components/learn/outline/MindmapView.tsx": 3295,
-  "src/components/learn/LearnWorkspace.tsx": 2638,
-  "src/learn/useAgent.ts": 1978,
-  "src/components/tools/screenshot/ScreenshotEditor.tsx": 1798,
-  "src/agent/sandbox/api.ts": 1745,
-  "src/components/learn/TabBar.tsx": 1721,
-  "src/learn/web/browserRuntimeScript.ts": 1585,
-  "src/components/learn/essay/EssayDock.tsx": 1568,
-  "src/components/video/VideoPlayer.tsx": 1512,
-  "src/components/settings/AppearancePanel.tsx": 1339,
-  "electron/app/webSession.ts": 1299,
-  "src/components/learn/structure/structureView.ts": 1245,
-  "src/components/learn/web/WebTabLayer.tsx": 1230,
-  "src/components/video/VideoStudyTab.tsx": 1190,
-  "src/learn/types.ts": 1171,
-  "src/lib/quoteBlock.ts": 1171,
-  "src/agent/sandbox/types.ts": 1134,
-  "shared/ipc.ts": 1051,
-  "src/components/exam/ExamWindow.tsx": 1027
+  "src/components/learn/LearnWorkspace.tsx": 2638
 }
