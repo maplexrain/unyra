@@ -47,64 +47,41 @@ export function getCanvasPerfStats(): Readonly<CanvasPerfStats> {
  * 「谁的坐标变了」「连了哪两个」。
  */
 
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { HTMLAttributes, ReactNode } from 'react'
-import { ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, FolderTree, Pencil, Trash2, X } from 'lucide-react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { FileNodeKind, LearnStore } from '../../../learn/types'
-import { FILES_DIR } from '../../../learn/layout'
-import { sanitizeFileName, uploadGoalFileWithHash } from '../../../learn/fileNodes'
-import { goalDirOf } from '../../../learn/static/location'
-import { writeUserBinary } from '../../../lib/storage'
+import { CanvasControls, CanvasPalette, CanvasPaletteGhost, CanvasTrash } from './CanvasChrome'
+import { CanvasCards } from './CanvasCards'
+import { CanvasEdges } from './CanvasEdges'
+import { CanvasMenu } from './CanvasMenu'
+import { CanvasMinimap } from './CanvasMinimap'
 import type { ExamActions, NodeDocActions } from '../explorer/types'
-import { locateUuid, outlineUuid, docIdOfOutlineUuid, type GNodeKind } from '../../../learn/nodeKinds'
-import { inferPathKind, resolveProjectRoot, sortProjectEntries } from '../../../learn/projects'
-import { native } from '../../../lib/native'
+import { locateUuid, type GNodeKind } from '../../../learn/nodeKinds'
+import { useCanvasActions } from './canvasActions'
+import { useCanvasPointer } from './canvasPointer'
+import { useCanvasCamera } from './canvasCamera'
+import { PROJ_PATH_ROW, PROJ_TREE_MAX_ROWS, PROJ_TREE_ROW, useProjectTrees } from './canvasProjectTrees'
 import {
   CARD_H,
-  GRAPH_KIND_LABEL,
   boundsOf,
   cardWidthOf,
-  centerPan,
-  clampZoom,
-  fitZoom,
-  EDGE_STYLES,
-  STRUCT_MIN_ZOOM_FACTOR,
   type EdgeStyle,
   type StructureMap,
 } from '../../../learn/structure'
-import { nodeById } from '../../../learn/graph'
 import { t } from '../../../i18n'
+import { GRID_PX, type ChannelResult, type MenuState } from './canvasTypes'
 export const TOUR_SEEN_KEY = 'moji:structure:tour-seen'
 import { StructureTour } from './StructureTour'
 import { getTourMockCanvas, getTourCamera } from './tourMockData'
 import {
   CARD_PAD_B,
-  DOC_LINES,
-  DOC_LINE_H,
-  EDGE_ANCHOR_Y,
-  KIND_BADGE,
-  KIND_TONE,
-  OUTLINE_HEAD,
-  SLOT_ROW,
   deriveCanvas,
-  edgeAt,
   edgeCurve,
-  edgeDotAt,
-  edgeDots,
-  edgeElbow,
-  edgePathD,
   edgeRoute,
-  hitTest,
-  isTextEntryTarget,
   slotAnchorY,
-  SLOT_ACCENT,
   type CanvasEdge,
   type CardView,
   type Point,
 } from './structureView'
-
-/** 统一通道的回执形状（与 NodeResult 同构；拒绝必须带一句人话） */
-type ChannelResult = { ok: true; note?: string } | { error: string }
 
 export interface StructureCanvasProps {
   store: LearnStore
@@ -169,488 +146,7 @@ export interface StructureCanvasProps {
   onToggleViewMode?: () => void
 }
 
-/**
- * 左侧列表：挂件 + 视频节点。实体先行：拖到空白处就走统一通道建真实空实体，
- * 卡从落位那刻起就由 store 派生。入口、文档与大纲不在列表里——入口由目标绑定
- * 派生，子文档点大纲目标项，前置知识大纲走文档卡右键菜单。
- */
-const PALETTE: GNodeKind[] = ['doc', 'outline', 'note', 'exam', 'superdoc', 'video', 'project', 'file']
 
-/** 网格背景的点距（世界坐标 px）：平移/缩放时按相机换算，见画布根的 backgroundImage */
-const GRID_PX = 28
-
-/** 双击节点聚焦的落点与缩放：节点停在屏幕高的 40% 处、水平居中，放大到 140% */
-const FOCUS_ZOOM = 1.4
-const FOCUS_VERTICAL = 0.4
-
-/**
- * 连线粗筛的外扩余量（世界坐标 px）。
- *
- * 粗筛用的是「两端卡片矩形的并集」，而实际走线是贝塞尔/折线，可能鼓到矩形外面去。
- * 这个余量要盖住那一段弧度：太小会在大图上看到线在视口边缘凭空断掉，太大就白裁。
- * 120 对现在的绕行半径（见 structureView 的 routeOf）是够的。
- */
-const EDGE_CULL_PAD = 120
-
-/**
- * palette 行的图标：全部 24×24、描边 2、圆角端点——与 lucide 同一套笔画语言
- * （自绘图标纪律：比例先对齐成熟图形语言，不自造异形字）。图形口径：
- * 文档=带折角与行线的纸、大纲=圆点列表、笔记=折角便签、试卷=带勾的夹板、
- * 超级文档=闪光。
- */
-function KindIcon({ kind }: { kind: GNodeKind }) {
-  const common = {
-    width: 14,
-    height: 14,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 2,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    'aria-hidden': true,
-  }
-  if (kind === 'doc') {
-    return (
-      <svg {...common}>
-        <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
-        <path d="M14 2v4a2 2 0 0 0 2 2h4" />
-        <path d="M10 9H8" />
-        <path d="M16 13H8" />
-        <path d="M16 17H8" />
-      </svg>
-    )
-  }
-  if (kind === 'outline') {
-    return (
-      <svg {...common}>
-        <path d="M3 6h.01" />
-        <path d="M3 12h.01" />
-        <path d="M3 18h.01" />
-        <path d="M8 5h13" />
-        <path d="M8 12h13" />
-        <path d="M8 19h13" />
-      </svg>
-    )
-  }
-  if (kind === 'note') {
-    return (
-      <svg {...common}>
-        <path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11l5-5V5a2 2 0 0 0-2-2Z" />
-        <path d="M15 21v-4a2 2 0 0 1 2-2h4" />
-      </svg>
-    )
-  }
-  if (kind === 'video') {
-    // monitor-play 的同款笔画：屏幕 + 居中播放三角 + 底座（比例对齐 lucide，不自造异形）
-    return (
-      <svg {...common}>
-        <path d="M10 7.5v9l7-4.5Z" />
-        <rect width="20" height="14" x="2" y="3" rx="2" />
-        <path d="M8 21h8" />
-        <path d="M12 17v4" />
-      </svg>
-    )
-  }
-  if (kind === 'project') {
-    // 文件夹 + 内部两行缩进条目：一眼是「一个目录」（比例对齐 lucide，不自造异形）
-    return (
-      <svg {...common}>
-        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
-        <path d="M10 12h6" />
-        <path d="M10 16h4" />
-      </svg>
-    )
-  }
-  if (kind === 'exam') {
-    return (
-      <svg {...common}>
-        <rect width="8" height="4" x="8" y="2" rx="1" />
-        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-        <path d="m9 14 2 2 4-4" />
-      </svg>
-    )
-  }
-  if (kind === 'file') {
-    return (
-      <svg {...common}>
-        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-        <polyline points="14 2 14 8 20 8" />
-      </svg>
-    )
-  }
-  
-  return (
-    <svg {...common}>
-      <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L13.663 8.5a2 2 0 0 0 1.401 1.398l6.135 1.581a.5.5 0 0 1 0 .964L13.5 14.063a2 2 0 0 0-1.4 1.402l-1.582 6.135a.5.5 0 0 1-.963 0z" />
-      <path d="M20 3v4" />
-      <path d="M22 5h-4" />
-      <path d="M4 17v2" />
-      <path d="M5 18H3" />
-    </svg>
-  )
-}
-
-/**
- * 右下角工具组的图标按钮：文字说明只住在悬停 tip 里，平时零占位。
- * tip 从按钮**左侧**探出——工具组贴着画布右下角，右边没有地方。
- */
-function ControlButton({
-  label,
-  onClick,
-  disabled,
-  children,
-}: {
-  label: string
-  onClick: () => void
-  disabled?: boolean
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="group/btn relative flex h-6 w-6 items-center justify-center rounded transition hover:bg-line/60 disabled:pointer-events-none disabled:opacity-40"
-    >
-      {children}
-      <span className="pointer-events-none absolute right-full top-1/2 z-30 mr-1.5 -translate-y-1/2 whitespace-nowrap rounded-md border border-line bg-card px-1.5 py-0.5 text-[11px] text-ink-soft opacity-0 shadow-sm transition group-hover/btn:opacity-100">
-        {label}
-      </span>
-    </button>
-  )
-}
-
-/** 工具组图标的公共笔画：24×24、描边 2、圆角端点——与 KindIcon 同一套笔画语言 */
-const ICON_STROKE = {
-  width: 14,
-  height: 14,
-  viewBox: '0 0 24 24',
-  fill: 'none',
-  stroke: 'currentColor',
-  strokeWidth: 2,
-  strokeLinecap: 'round' as const,
-  strokeLinejoin: 'round' as const,
-  'aria-hidden': true,
-} as const
-
-/** 全景缩略图的窗口大小（屏幕像素） */
-const MINI_W = 248
-const MINI_H = 160
-
-/** 项目卡路径行的高度（标题行之下、目录树之上；副行的路径 + 拼法徽标 + 展开钮） */
-const PROJ_PATH_ROW = 26
-
-/**
- * 缩略图上各类型的填充色（与卡片色板同族）。
- * canvas 只吃具体色值：写死的 hex 直接用，`var(--…)` 会在 drawMini 里按当前主题解析。
- */
-const MINI_FILL: Record<GNodeKind, string> = {
-  entry: '#f43f5e',
-  outline: 'var(--color-seal, #a8432f)',
-  doc: '#0ea5e9',
-  note: '#10b981',
-  exam: '#f59e0b',
-  superdoc: '#8b5cf6',
-  video: '#ec4899',
-  project: '#14b8a6',
-  file: '#2563eb',
-}
-
-type Gesture =
-  | { mode: 'pan'; startX: number; startY: number; camX: number; camY: number }
-  | {
-      mode: 'node'
-      id: string
-      grabX: number
-      grabY: number
-      origX: number
-      origY: number
-      moved: boolean
-      /** 按下的是标题：没拖动的话松手就打开它 */
-      openTitle: boolean
-      /** 多选整组拖：这批卡按下时的原位置（含按下的这张）；单选拖没有它 */
-      group?: Array<{ id: string; x: number; y: number }>
-    }
-  | { mode: 'link'; from: string; fromKind: GNodeKind; slotKey?: string; moved?: boolean }
-  | {
-      mode: 'palette'
-      kind: GNodeKind
-      /** 指针是否离开过列表：没离开过就松手 = 把它放回去了，不建节点 */
-      leftList?: boolean
-    }
-  | { mode: 'marquee'; startX: number; startY: number }
-  | null
-
-/** 右键菜单：贴指针弹出，作用在某个节点上 */
-interface MenuState {
-  x: number
-  y: number
-  uuid: string
-  slotKey?: string
-  mode: 'actions' | 'note' | 'rename' | 'projectPath' | 'fileEdit'
-}
-
-/**
- * 滚轮隔离容器：内容自己滚动，滚轮事件**不冒泡**到画布（画布的滚轮是容器上的
- * 原生冒泡监听，React 合成事件的 stopPropagation 拦不住它——React 17+ 把委托
- * 挂在更外层的 root 上，事件先到画布容器）。项目卡的目录树与浮层菜单都用它。
- */
-function WheelStop({ className, style, children, ...rest }: HTMLAttributes<HTMLDivElement>) {
-  const ref = useRef<HTMLDivElement | null>(null)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const stop = (e: WheelEvent) => e.stopPropagation()
-    el.addEventListener('wheel', stop)
-    return () => el.removeEventListener('wheel', stop)
-  }, [])
-  return (
-    <div ref={ref} className={className} style={style} {...rest}>
-      {children}
-    </div>
-  )
-}
-
-
-
-
-
-/**
- * 节点宇宙中的文件节点内容行：两行结构中的第二行。
- * 一个响应式地址输入框（自动判断 local/web，无需提交按钮），内部右侧带选择本地文件按钮。
- * 上传先走 docs/{goal}/files/ 并计算 SHA-256 去重注册，若 title 未手动命名则自动填充文件名。
- */
-
-function VideoCardRow({
-  card,
-  store,
-  goalId: _goalId,
-  onUpdateVideoNode,
-  onGenerateVideoDoc,
-}: {
-  card: CardView
-  store: LearnStore
-  goalId: string
-  onUpdateVideoNode?: (nodeUuid: string, patch: { input?: string; title?: string; titleCustomized?: boolean }) => ChannelResult
-  onGenerateVideoDoc?: (videoNodeUuid: string) => void
-}) {
-  const vNode = store.videoNodes?.find((v) => v.id === card.uuid)
-  const isConfirmed = !!vNode?.confirmed
-  const [val, setVal] = useState(vNode?.input ?? '')
-  const timerRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    setVal(vNode?.input ?? '')
-  }, [vNode?.input])
-
-  const commitInput = (next: string) => {
-    if (isConfirmed) return
-    onUpdateVideoNode?.(card.uuid, { input: next.trim() })
-  }
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (isConfirmed) return
-    const next = e.target.value
-    setVal(next)
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = window.setTimeout(() => {
-      commitInput(next)
-    }, 280)
-  }
-
-  const handleBlur = () => {
-    if (isConfirmed) return
-    if (timerRef.current) clearTimeout(timerRef.current)
-    commitInput(val)
-  }
-
-  if (isConfirmed) {
-    return (
-      <div className="flex items-center justify-between gap-1.5 px-3 pb-2 select-none">
-        <span
-          title={card.subtitle || val}
-          className="min-w-0 flex-1 truncate text-[11px] text-pink-600/80 dark:text-pink-300/80"
-        >
-          {card.subtitle || val}
-        </span>
-        {onGenerateVideoDoc && (
-          <button
-            type="button"
-            title={t('为这个视频生成总览文档')}
-            className="shrink-0 rounded bg-pink-500/15 px-2 py-1 text-[10.5px] font-medium text-pink-700 dark:text-pink-300 hover:bg-pink-500/25 transition cursor-pointer"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => onGenerateVideoDoc(card.uuid)}
-          >
-            {t('生成总览')}
-          </button>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex items-center gap-1.5 px-3 pb-2 select-none">
-      <div className="relative flex flex-1 items-center min-w-0">
-        <input
-          type="text"
-          value={val}
-          onChange={handleChange}
-          onBlur={handleBlur}
-          onPointerDown={(e) => e.stopPropagation()}
-          onDoubleClick={(e) => e.stopPropagation()}
-          placeholder={t('输入视频链接或BV号...')}
-          title={val || t('输入视频链接或BV号...')}
-          className="w-full rounded border px-2 py-1 text-[11px] outline-none transition border-line/70 bg-card text-ink placeholder:text-ink-faint focus:border-pink-500/50 focus:ring-1 focus:ring-pink-500/20"
-        />
-      </div>
-    </div>
-  )
-}
-
-function FileCardRow({
-  card,
-  store,
-  goalId,
-  onBindFile,
-  onToast,
-}: {
-  card: CardView
-  store: LearnStore
-  goalId: string
-  onBindFile?: (nodeUuid: string, patch: { fileKind?: FileNodeKind; url?: string; title?: string; titleCustomized?: boolean }) => unknown
-  onToast?: (msg: string) => void
-}) {
-  const fileEntity = store.fileNodes?.find((f) => f.id === card.uuid)
-  const [urlVal, setUrlVal] = useState(fileEntity?.url ?? '')
-  const timerRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    setUrlVal(fileEntity?.url ?? '')
-  }, [fileEntity?.url])
-
-  const commitUrl = (val: string) => {
-    const trimmed = val.trim()
-    const isWeb = /^(https?:\/\/|\/\/)/i.test(trimmed) || trimmed.includes('://')
-    const inferredKind: FileNodeKind = isWeb ? 'web' : 'local'
-    let nextTitle = fileEntity?.title ?? card.title
-
-    // 若未手动命名，自动从 URL 推导并填充 title
-    if (!fileEntity?.titleCustomized) {
-      if (inferredKind === 'local') {
-        const clean = trimmed.replace(/^files\//, '').split('/').pop()
-        if (clean) nextTitle = clean
-      } else if (trimmed) {
-        try {
-          const u = new URL(trimmed.startsWith('//') ? `https:${trimmed}` : (trimmed.includes('://') ? trimmed : `https://${trimmed}`))
-          nextTitle = u.hostname || trimmed
-        } catch {
-          nextTitle = trimmed
-        }
-      }
-    }
-
-    onBindFile?.(card.uuid, {
-      fileKind: inferredKind,
-      url: trimmed,
-      ...(nextTitle !== fileEntity?.title ? { title: nextTitle } : {}),
-    })
-  }
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const next = e.target.value
-    setUrlVal(next)
-    const isWeb = /^(https?:\/\/|\/\/)/i.test(next.trim()) || next.trim().includes('://')
-    const inferredKind: FileNodeKind = isWeb ? 'web' : 'local'
-    // 若类型发生切换，立即提交一次以刷新卡片头部的「文件」/「网页」标识
-    if (inferredKind !== (fileEntity?.fileKind ?? 'local')) {
-      if (timerRef.current) clearTimeout(timerRef.current)
-      commitUrl(next)
-      return
-    }
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = window.setTimeout(() => {
-      commitUrl(next)
-    }, 280)
-  }
-
-  const handleBlur = () => {
-    if (timerRef.current) clearTimeout(timerRef.current)
-    commitUrl(urlVal)
-  }
-
-  const handlePickLocalFile = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.onchange = async () => {
-      const file = input.files?.[0]
-      if (!file) return
-      try {
-        const buffer = await file.arrayBuffer()
-        const res = await uploadGoalFileWithHash(store, goalId, {
-          name: file.name,
-          data: buffer,
-          mimeType: file.type,
-        })
-        if ('error' in res) {
-          onToast?.(res.error)
-          return
-        }
-        setUrlVal(res.url)
-        const nextTitle = fileEntity?.titleCustomized ? fileEntity.title : file.name
-        onBindFile?.(card.uuid, {
-          fileKind: 'local',
-          url: res.url,
-          title: nextTitle,
-        })
-        if (res.isDuplicate) {
-          onToast?.(t('检测到相同文件已存在，已自动复用去重'))
-        }
-      } catch (err) {
-        console.error('上传文件失败', err)
-        onToast?.(t('文件上传失败'))
-      }
-    }
-    input.click()
-  }
-
-  const isWeb = fileEntity?.fileKind === 'web' || /^(https?:\/\/|\/\/)/i.test(urlVal) || urlVal.includes('://')
-
-  return (
-    <div className="px-2.5 pb-2">
-      <div className="relative flex items-center">
-        <input
-          type="text"
-          value={urlVal}
-          onChange={handleChange}
-          onBlur={handleBlur}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              handleBlur()
-            }
-          }}
-          placeholder={t('输入文件路径或网址...')}
-          title={urlVal || t('输入文件路径 (files/...) 或网址 (http/https)...')}
-          className={`w-full rounded-md border border-line/60 bg-line/25 py-1 pl-2 pr-7 text-[11px] text-ink placeholder:text-ink-faint/45 transition focus:border-seal/50 focus:bg-card focus:outline-hidden ${
-            isWeb ? 'focus:ring-1 focus:ring-indigo-500/30' : 'focus:ring-1 focus:ring-blue-500/30'
-          }`}
-        />
-        <button
-          type="button"
-          onClick={handlePickLocalFile}
-          onPointerDown={(e) => e.stopPropagation()}
-          title={t('选择本地文件并上传到 files/ 引用')}
-          className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-ink-faint transition hover:bg-line/70 hover:text-seal cursor-pointer"
-        >
-          <FolderOpen size={12} />
-        </button>
-      </div>
-    </div>
-  )
-}
 
 export const StructureCanvas = memo(function StructureCanvas({
   store,
@@ -699,144 +195,8 @@ export const StructureCanvas = memo(function StructureCanvas({
   const cards = canvas.cards
   const edges = canvas.edges
 
-  /* ---------- 项目卡的目录树（组件运行时状态，不进派生） ---------- */
+  const { projExpanded, projTrees, projTreeRows, clearProjCache, toggleProjRoot, toggleProjDir } = useProjectTrees({ store })
 
-  /** 项目目录树的一行（平铺后的渲染模型：depth 决定缩进） */
-  interface ProjRow {
-    depth: number
-    name: string
-    isDirectory: boolean
-    /** 相对项目根的路径（'/' 分隔；根目录的子项 = name） */
-    path: string
-  }
-  /** 一个已加载目录的状态（按 subPath 缓存；error 挂在目录上，展开时显示） */
-  interface ProjDirState {
-    loading: boolean
-    error?: string
-    entries: Array<{ name: string; isDirectory: boolean }>
-  }
-
-  /** 展开的目录（键 = 项目 uuid，值 = 该卡展开的 subPath 集合；'' = 根） */
-  const [projExpanded, setProjExpanded] = useState<Record<string, Set<string>>>({})
-  /** 已加载的目录清单（同上按 subPath 缓存；展开那一拍才去读盘） */
-  const [projTrees, setProjTrees] = useState<Record<string, Record<string, ProjDirState>>>({})
-
-  /** 把已加载的树平铺成渲染行：展开的目录递归下钻，行数即树高 */
-  const flattenProjRows = useCallback((tree: Record<string, ProjDirState> | undefined, expanded: ReadonlySet<string>): ProjRow[] => {
-    const rows: ProjRow[] = []
-    const walk = (dirPath: string, depth: number) => {
-      const st = tree?.[dirPath]
-      if (!st) return
-      for (const e of st.entries) {
-        const childPath = dirPath ? dirPath + '/' + e.name : e.name
-        rows.push({ depth, name: e.name, isDirectory: e.isDirectory, path: childPath })
-        if (e.isDirectory && expanded.has(childPath)) walk(childPath, depth + 1)
-      }
-    }
-    walk('', 0)
-    return rows
-  }, [])
-
-  /** 项目卡展开的树有多高（行数封顶；未展开 0） */
-  const projTreeRows = useCallback(
-    (uuid: string): ProjRow[] => {
-      const expanded = projExpanded[uuid]
-      if (!expanded || !expanded.size) return []
-      return flattenProjRows(projTrees[uuid], expanded)
-    },
-    [projExpanded, projTrees, flattenProjRows],
-  )
-
-  /** 读一个目录进缓存（roots 只随本次调用走：授权边界 = 这枚节点此刻声明的根） */
-  const loadProjDir = useCallback(
-    async (uuid: string, dirPath: string) => {
-      const entity = (store.projects ?? []).find((p) => p.id === uuid)
-      if (!entity) return
-      const root = resolveProjectRoot(store, entity)
-      setProjTrees((m) => {
-        const cur = m[uuid]?.[dirPath]
-        return { ...m, [uuid]: { ...m[uuid], [dirPath]: cur?.entries ? { ...cur, loading: true } : { loading: true, entries: [] } } }
-      })
-      if (!root) {
-        setProjTrees((m) => ({
-          ...m,
-          [uuid]: { ...m[uuid], [dirPath]: { loading: false, error: t('路径解析失败：相对路径要落在用户目录内，或检查数据根是否就绪'), entries: [] } },
-        }))
-        return
-      }
-      try {
-        const abs = root.replace(/[\\/]+$/, '') + (dirPath ? '/' + dirPath : '')
-        const r = await native().projectFs({ op: 'list', roots: [root], path: abs })
-        if (r.ok && r.op === 'list') {
-          setProjTrees((m) => ({
-            ...m,
-            [uuid]: {
-              ...m[uuid],
-              [dirPath]: { loading: false, entries: sortProjectEntries(r.entries.map((e) => ({ name: e.name, isDirectory: e.isDirectory }))) },
-            },
-          }))
-        } else {
-          setProjTrees((m) => ({
-            ...m,
-            [uuid]: { ...m[uuid], [dirPath]: { loading: false, error: 'error' in r ? r.error : t('读取失败'), entries: [] } },
-          }))
-        }
-      } catch (err) {
-        setProjTrees((m) => ({
-          ...m,
-          [uuid]: { ...m[uuid], [dirPath]: { loading: false, error: err instanceof Error ? err.message : String(err), entries: [] } },
-        }))
-      }
-    },
-    [store],
-  )
-
-  /** 清掉一枚项目卡的目录树缓存与展开态：换路径之后旧清单就是陈词，必须重读 */
-  const clearProjCache = useCallback((uuid: string) => {
-    setProjTrees((m) => ({ ...m, [uuid]: {} }))
-    setProjExpanded((m) => ({ ...m, [uuid]: new Set<string>() }))
-  }, [])
-
-  /** 展开一张项目卡：根目录首次展开时才去读盘（懒加载，卡上不预先跑 IO） */
-  const toggleProjRoot = useCallback(
-    (uuid: string) => {
-      setProjExpanded((m) => {
-        const cur = m[uuid] ?? new Set<string>()
-        const next = new Set(cur)
-        if (next.has('')) {
-          next.delete('')
-        } else {
-          next.add('')
-          if (!projTrees[uuid]?.['']) void loadProjDir(uuid, '')
-        }
-        return { ...m, [uuid]: next }
-      })
-    },
-    [projTrees, loadProjDir],
-  )
-
-  /** 展开/收起树里的一个子目录：同样展开那一拍才读盘 */
-  const toggleProjDir = useCallback(
-    (uuid: string, dirPath: string) => {
-      setProjExpanded((m) => {
-        const cur = m[uuid] ?? new Set<string>()
-        const next = new Set(cur)
-        if (next.has(dirPath)) {
-          next.delete(dirPath)
-        } else {
-          next.add(dirPath)
-          if (!projTrees[uuid]?.[dirPath]) void loadProjDir(uuid, dirPath)
-        }
-        return { ...m, [uuid]: next }
-      })
-    },
-    [projTrees, loadProjDir],
-  )
-
-  /** 项目卡目录树的行高（与大纲目标项同一档：22px 一行） */
-  const PROJ_TREE_ROW = SLOT_ROW
-  /** 树的可见行数上限：再深的目录滚着看（卡是画布上的卡，不能无限长） */
-  const PROJ_TREE_MAX_ROWS = 12
 
   /**
    * 高度函数：派生层管全部静态卡，项目卡的展开高度在这里叠加——
@@ -852,70 +212,16 @@ export const StructureCanvas = memo(function StructureCanvas({
       }
       return canvas.heightOf(c)
     },
-    [cards, canvas, projTreeRows, PROJ_TREE_ROW, PROJ_TREE_MAX_ROWS],
+    [cards, canvas, projTreeRows],
   )
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const trashRef = useRef<HTMLDivElement | null>(null)
   /** 左侧节点列表：拖出去必须离开过它，松手才允许落地（见 Gesture.palette.leftList） */
   const paletteRef = useRef<HTMLDivElement | null>(null)
-  /** 上一次中键按下时刻：双击中键 = 适应画布（Chromium 不给中键派发 dblclick，只能自己计时） */
-  const lastMiddleDownRef = useRef(0)
-  const [view, setView] = useState({ width: 0, height: 0 })
-  const [camera, setCamera] = useState({ x: 72, y: 72, zoom: 1 })
-  const cameraRef = useRef(camera)
-  const setCameraSync = useCallback((next: { x: number; y: number; zoom: number }) => {
-    cameraRef.current = next
-    setCamera(next)
-  }, [])
-
-  const pendingCameraRef = useRef<{ x: number; y: number; zoom: number } | null>(null)
-  const wheelRafRef = useRef<number | null>(null)
-  const draftRafRef = useRef<number | null>(null)
-  const pendingDraftRef = useRef<{ id: string; x: number; y: number; moves?: Record<string, { x: number; y: number }> } | null>(null)
-  const trashRectRef = useRef<DOMRect | null>(null)
 
 
 
-  /**
-   * RAF 批量合并相机更新（滚轮缩放/平移防卡顿）：
-   * 高频滚轮/手势事件累积到 pendingCameraRef 中，每一帧 VSync 最多触发一次 React 渲染，
-   * 彻底避免一帧内几十次 React 重排导致的掉帧卡顿。
-   */
-  const scheduleCameraUpdate = useCallback((nextCam: { x: number; y: number; zoom: number }) => {
-    pendingCameraRef.current = nextCam
-    cameraRef.current = nextCam
-    if (wheelRafRef.current == null) {
-      wheelRafRef.current = requestAnimationFrame(() => {
-        wheelRafRef.current = null
-        if (pendingCameraRef.current) {
-          const next = pendingCameraRef.current
-          pendingCameraRef.current = null
-          setCamera(next)
-        }
-      })
-    }
-  }, [])
-
-  const flushPendingCamera = useCallback(() => {
-    if (wheelRafRef.current != null) {
-      cancelAnimationFrame(wheelRafRef.current)
-      wheelRafRef.current = null
-    }
-    if (pendingCameraRef.current) {
-      const next = pendingCameraRef.current
-      pendingCameraRef.current = null
-      setCameraSync(next)
-    }
-  }, [setCameraSync])
-
-  useEffect(() => {
-    return () => {
-      if (wheelRafRef.current != null) {
-        cancelAnimationFrame(wheelRafRef.current)
-      }
-    }
-  }, [])
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   /** 选中的连线（点线选中，Delete 断开）。卡片与连线同时只选一个 */
@@ -925,59 +231,7 @@ export const StructureCanvas = memo(function StructureCanvas({
    * 多选目前只服务一件事：Delete 一把删（逐个走统一通道）。
    */
   const [multiIds, setMultiIds] = useState<Set<string> | null>(null)
-  /** 拉框进行中的那个矩形（世界坐标，已归一成 x/y/width/height） */
-  const [marquee, setMarquee] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
-  /** 指针停在哪个节点上（高亮用） */
-  const [hoverId, setHoverId] = useState<string | null>(null)
 
-  const autoTourCheckedRef = useRef(false)
-
-  const handleOpenTour = useCallback(() => {
-    try {
-      localStorage.setItem(TOUR_SEEN_KEY, '1')
-    } catch {
-      // ignore
-    }
-    savedCameraRef.current = camera
-    const tourCam = getTourCamera(view.width, view.height)
-    setCameraSync(tourCam)
-    setSelectedId(null)
-    setMultiIds(null)
-    setHoverId(null)
-    setTourOpen(true)
-  }, [camera, view.width, view.height])
-
-  const handleCloseTour = useCallback(() => {
-    try {
-      localStorage.setItem(TOUR_SEEN_KEY, '1')
-    } catch {
-      // ignore
-    }
-    setTourOpen(false)
-    if (savedCameraRef.current) {
-      setCameraSync(savedCameraRef.current)
-      savedCameraRef.current = null
-    }
-  }, [])
-
-  // 首次进入节点宇宙时检测是否看过教程，若未看过则自动开启
-  useEffect(() => {
-    if (autoTourCheckedRef.current) return
-    if (view.width <= 0 || view.height <= 0) return
-    autoTourCheckedRef.current = true
-    try {
-      const seen = localStorage.getItem(TOUR_SEEN_KEY)
-      if (!seen) {
-        handleOpenTour()
-      }
-    } catch {
-      // ignore
-    }
-  }, [view.width, view.height, handleOpenTour])
-  /** 指针停在哪条连线附近（小圆点只在此时出现） */
-  const [hoverEdge, setHoverEdge] = useState<CanvasEdge | null>(null)
-  /** 指针正压在某个小圆点上（换成手型光标） */
-  const [hoverDot, setHoverDot] = useState(false)
   /** 指针停在某个目标项上：对应的那条子文档连线发光 */
   const [hoverSlot, setHoverSlot] = useState<{ parentId: string; key: string } | null>(null)
   /** 拖动中的节点位置（只在本地，松手才写回坐标表）；整组拖时 moves 带上每一张的新位置 */
@@ -987,26 +241,12 @@ export const StructureCanvas = memo(function StructureCanvas({
     y: number
     moves?: Record<string, { x: number; y: number }>
   } | null>(null)
-  /** 连线中的起点与指针位置（世界坐标）：画那条跟手的线 */
-  const [linkFrom, setLinkFrom] = useState<string | null>(null)
-  const [linkAt, setLinkAt] = useState<{ x: number; y: number } | null>(null)
-  /** 这次连线是从哪条目标项拉出来的（跟手的线要从那一行出发） */
-  const [linkSlot, setLinkSlot] = useState<string | null>(null)
 
   /** 目标项圆点的**实测**高度（离卡片顶部），key = `卡片 uuid|目标项 key` */
   const [dotY, setDotY] = useState<Record<string, number>>({})
   const planeRef = useRef<HTMLDivElement | null>(null)
-  /** 从列表拖出来的那一下：指针的屏幕坐标 */
-  const [paletteAt, setPaletteAt] = useState<{ x: number; y: number } | null>(null)
-  const [paletteKind, setPaletteKind] = useState<GNodeKind | null>(null)
-  /** 正拖着一个节点在垃圾桶上方 */
-  const [overTrash, setOverTrash] = useState(false)
-  /** 镜头正在做过渡（这段时间平面带 transition，跳转才是「滑过去」而不是瞬移） */
-  const [animating, setAnimating] = useState(false)
-  const animTimer = useRef<number | null>(null)
   /** 跳转后闪一下的那张卡（900ms 后清掉） */
   const [flashId, setFlashId] = useState<string | null>(null)
-  const flashTimer = useRef<number | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [menuText, setMenuText] = useState('')
   const [menuTitleText, setMenuTitleText] = useState('')
@@ -1044,28 +284,44 @@ export const StructureCanvas = memo(function StructureCanvas({
   )
 
 
-  /** 空格按住时左键也能拖画布（见 onPointerDown） */
-  const spaceRef = useRef(false)
-  const [spaceDown, setSpaceDown] = useState(false)
-  const gestureRef = useRef<Gesture>(null)
-  /**
-   * 最近一次左键按下的卡片（双击的落点判定用）。画布容器在每次左键按下时
-   * 捕获指针，双击派生的 click/dblclick 目标会被重定向到容器——dblclick 的
-   * e.target 到不了卡片上（「双击卡片打开」其实从来没通过 dblclick 生效过，
-   * 打开靠的是第一下点标题），落点只能认按下那一刻记下的这份。
-   */
-  const lastDownCardRef = useRef<{ id: string; openTitle: boolean } | null>(null)
-  const fittedRef = useRef(false)
   /** 下一次 cards 变了之后要不要自动对镜头（自动排列之后用） */
   const fitNextRef = useRef(false)
 
   const bounds = useMemo(() => boundsOf(cards, height), [cards, height])
-  const boundsRef = useRef(bounds)
-  boundsRef.current = bounds
-  const viewRef = useRef(view)
-  viewRef.current = view
-  const heightRef = useRef(height)
-  heightRef.current = height
+  const {
+    view,
+    camera,
+    cameraRef,
+    boundsRef,
+    viewRef,
+    animating,
+    setAnimating,
+    setCameraSync,
+    scheduleCameraUpdate,
+    flushPendingCamera,
+    animTimer,
+    fit,
+    centerOn,
+    focusCard,
+    toWorld,
+    isOverTrash,
+  } = useCanvasCamera({
+    containerRef,
+    planeRef,
+    trashRef,
+    goalId,
+    cards,
+    height,
+    bounds,
+    focusTarget,
+    onFocusHandled,
+    setFlashId,
+    setSelectedId,
+    setMultiIds,
+    fitNextRef,
+  })
+
+
 
   /**
    * 连线的「大纲那一端」对准子级对应的那条目标项，而不是卡片顶部那个固定锚点。
@@ -1153,54 +409,6 @@ export const StructureCanvas = memo(function StructureCanvas({
 
 
   /**
-   * 从列表拖出一张卡时高亮**能当它落点**的卡。落点认类型：
-   * 文档挂在大纲之下；大纲拖出去有两个落点——文档卡（给那份文档补大纲）
-   * 与大纲卡（在它之下再开一层）；挂件（笔记 / 试卷 / 超级文档）都挂到文档卡。
-   * 连线时同理：从大纲拉出的线高亮文档卡与大纲卡，从文档拉出的线高亮大纲卡。
-   */
-  const candidateIds = useMemo(() => {
-    if (paletteKind) {
-      const wants: GNodeKind[] =
-        paletteKind === 'doc'
-          ? ['outline', 'video', 'file']
-          : paletteKind === 'outline'
-            ? ['doc', 'outline', 'file']
-            : paletteKind === 'video'
-              ? ['doc'] // 视频节点可落在文档之下或空白处
-              : paletteKind === 'file'
-                ? ['doc', 'note', 'superdoc', 'exam']
-                : ['doc']
-      return new Set(cards.filter((c) => wants.includes(c.kind)).map((c) => c.uuid))
-    }
-    const g = gestureRef.current
-    if (g?.mode === 'link') {
-      // fromKind 收进局部量再比较：ref 只读一次（同一访问模式的警告少一条是一条）
-      const fk = g.fromKind
-      const wants: GNodeKind[] | null =
-        fk === 'outline'
-          ? ['doc', 'outline']
-          : fk === 'video'
-            ? ['doc']
-            : fk === 'doc'
-              ? ['outline', 'video', 'project', 'note', 'exam', 'superdoc', 'file']
-              : fk === 'project'
-                ? ['doc'] // 项目只能挂到文档之下：从项目卡拉出去，文档卡是唯一落点
-                : fk === 'exam' || fk === 'superdoc'
-                  ? ['note', 'file']
-                  : fk === 'note'
-                    ? ['file']
-                    : fk === 'file'
-                      ? ['outline', 'doc', 'note', 'superdoc', 'exam']
-                      : null
-      // 从大纲拉到大纲：自己那张不算落点（连自己没有意义）
-      return wants
-        ? new Set(cards.filter((c) => wants.includes(c.kind) && c.uuid !== g.from).map((c) => c.uuid))
-        : null
-    }
-    return null
-  }, [paletteKind, cards, linkFrom])
-
-  /**
    * 每条边画在哪：折线走 `edgeRoute`（会绕开卡片），曲线取贝塞尔控制点。
    * 算一次给三处用——画线、点选、两颗小圆点认同一份点列。
    */
@@ -1220,1060 +428,161 @@ export const StructureCanvas = memo(function StructureCanvas({
   }, [edges, byId, displayCards, height, anchorOf, edgeStyle])
   const routeOf = useCallback((edge: CanvasEdge) => routes.get(`${edge.from}>${edge.to}`), [routes])
 
-  /* ---------- 空格：按住时左键临时变成「抓手」 ---------- */
 
-  useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || isTextEntryTarget(e.target)) return
-      e.preventDefault() // 否则页面会往下滚
-      spaceRef.current = true
-      setSpaceDown(true)
+
+  const {
+    canUndo,
+    undo,
+    writePos,
+    writePositions,
+    report,
+    removeNode,
+    tryConnect,
+    onSlotClick,
+    openNode,
+    autoArrange,
+    saveNote,
+    saveRename,
+    onCanvasDragOver,
+    onCanvasDrop,
+  } = useCanvasActions({
+    store,
+    goalId,
+    saved,
+    onChange,
+    onToast,
+    onDeleteNode,
+    onConnect,
+    onCreateNode,
+    onCreateChildDoc,
+    onRenameNote,
+    onBindFile,
+    onUpdateVideoNode,
+    onOpenVideo,
+    onOpenVideoNode,
+    onOpenFileNode,
+    docs,
+    exams,
+    cards,
+    centerOn,
+    toggleProjRoot,
+    fitNextRef,
+    setDraft,
+    setSelectedId,
+    setSelectedEdge,
+    setMultiIds,
+    setMenu,
+    toWorld,
+  })
+
+
+  const {
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+    onDoubleClick,
+    onContextMenu,
+    onKeyDown,
+    spaceDown,
+    hoverId,
+    setHoverId,
+    hoverDot,
+    hoverEdge,
+    linkFrom,
+    linkAt,
+    linkSlot,
+    overTrash,
+    marquee,
+    paletteAt,
+    paletteKind,
+    candidateIds,
+  } = useCanvasPointer({
+    tourOpen,
+    containerRef,
+    paletteRef,
+    multiIds,
+    setMultiIds,
+    selectedId,
+    setSelectedId,
+    selectedEdge,
+    setSelectedEdge,
+    draft,
+    setDraft,
+    menu,
+    setMenu,
+    setMenuText,
+    cards,
+    edges,
+    height,
+    edgeStyle,
+    anchorOf,
+    routeOf,
+    cameraRef,
+    scheduleCameraUpdate,
+    flushPendingCamera,
+    setAnimating,
+    fit,
+    centerOn,
+    focusCard,
+    toWorld,
+    isOverTrash,
+    undo,
+    report,
+    removeNode,
+    onSlotClick,
+    tryConnect,
+    openNode,
+    writePos,
+    writePositions,
+    onDeleteOutlineEntry,
+    onDisconnect,
+  })
+
+
+  const autoTourCheckedRef = useRef(false)
+
+  const handleOpenTour = useCallback(() => {
+    try {
+      localStorage.setItem(TOUR_SEEN_KEY, '1')
+    } catch {
+      // ignore
     }
-    const up = (e: KeyboardEvent) => {
-      if (e.code !== 'Space') return
-      spaceRef.current = false
-      setSpaceDown(false)
-    }
-    // 切走窗口时按键的 keyup 收不到，回来还停在「按住空格」的状态，这里兜一下
-    const blur = () => {
-      spaceRef.current = false
-      setSpaceDown(false)
-    }
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
-    window.addEventListener('blur', blur)
-    return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
-      window.removeEventListener('blur', blur)
-    }
-  }, [])
-
-  /* ---------- 视口尺寸（缩放的下限要靠它算） ---------- */
-
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const measure = () => {
-      const rect = el.getBoundingClientRect()
-      setView((prev) => (prev.width === rect.width && prev.height === rect.height ? prev : { width: rect.width, height: rect.height }))
-    }
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
-  /* ---------- 镜头 ---------- */
-
-  /**
-   * 镜头跳转：**滑过去**而不是瞬移。
-   *
-   * 做法是给平面挂 300ms 的 transition-transform，跳完再摘掉——一直挂着的话，
-   * 手动拖动与滚轮也会变成「带惯性的慢半拍」，那是另一种难受。
-   */
-  const animateCamera = useCallback((next: { x: number; y: number; zoom: number }) => {
-    cameraRef.current = next
-    if (wheelRafRef.current != null) {
-      cancelAnimationFrame(wheelRafRef.current)
-      wheelRafRef.current = null
-      pendingCameraRef.current = null
-    }
-    setAnimating(true)
-    setCamera(next)
-    if (animTimer.current !== null) window.clearTimeout(animTimer.current)
-    animTimer.current = window.setTimeout(() => {
-      animTimer.current = null
-      setAnimating(false)
-    }, 320)
-  }, [])
-
-  const fit = useCallback(() => {
-    const box = boundsOf(cards, height)
-    if (!box || !view.width || !view.height) return
-    const zoom = fitZoom(box, view)
-    animateCamera({ ...centerPan(box, view, zoom), zoom })
-  }, [cards, height, view, animateCamera])
-
-  useEffect(() => {
-    fittedRef.current = false
-  }, [goalId])
-
-  useEffect(() => {
-    if (fitNextRef.current) {
-      fitNextRef.current = false
-      fit()
-      return
-    }
-    if (fittedRef.current) return
-    if (!view.width || !bounds) return
-    fittedRef.current = true
-    fit()
-  }, [view.width, bounds, fit])
-
-  /** 闪一下边框：跳转之后告诉用户「你被带到这儿了」 */
-  const flash = useCallback((id: string) => {
-    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
-    setFlashId(id)
-    flashTimer.current = window.setTimeout(() => {
-      flashTimer.current = null
-      setFlashId(null)
-    }, 900)
-  }, [])
-  useEffect(
-    () => () => {
-      if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
-    },
-    [],
-  )
-  useEffect(
-    () => () => {
-      if (animTimer.current !== null) window.clearTimeout(animTimer.current)
-    },
-    [],
-  )
-
-  const centerOn = useCallback(
-    (id: string) => {
-      const card = cards.find((c) => c.uuid === id)
-      if (!card || !view.width) return
-      const zoom = Math.max(cameraRef.current.zoom, 1)
-      animateCamera({
-        ...centerPan({ x: card.x, y: card.y, width: cardWidthOf(card.kind), height: height(card) }, view, zoom),
-        zoom,
-      })
-      setSelectedId(id)
-      flash(id)
-    },
-    [cards, view, height, flash, animateCamera],
-  )
-
-  /**
-   * 双击节点：把它带到一个**固定**的阅读位——垂直 40%、水平居中、放大 140%。
-   * 走 animateCamera 的过渡（300ms ease-out），是滑过去不是闪过去。
-   */
-  const focusCard = useCallback(
-    (card: CardView) => {
-      if (!view.width || !view.height) return
-      animateCamera({
-        x: view.width / 2 - (card.x + cardWidthOf(card.kind) / 2) * FOCUS_ZOOM,
-        y: view.height * FOCUS_VERTICAL - (card.y + height(card) / 2) * FOCUS_ZOOM,
-        zoom: FOCUS_ZOOM,
-      })
-      setSelectedId(card.uuid)
-      setMultiIds(null)
-      flash(card.uuid)
-    },
-    [view, height, animateCamera, flash],
-  )
-
-  const lastFocusNonce = useRef<number | null>(null)
-  useEffect(() => {
-    if (!focusTarget || focusTarget.nonce === lastFocusNonce.current) return
-    lastFocusNonce.current = focusTarget.nonce
-    const target = cards.find((c) => c.uuid === outlineUuid(focusTarget.nodeId)) ?? cards.find((c) => c.uuid === focusTarget.nodeId)
-    if (target && view.width) {
-      const zoom = Math.max(cameraRef.current.zoom, 1)
-      animateCamera({ ...centerPan({ x: target.x, y: target.y, width: cardWidthOf(target.kind), height: height(target) }, view, zoom), zoom })
-      setSelectedId(target.uuid)
-      flash(target.uuid)
-    }
-    onFocusHandled?.()
-  }, [focusTarget, cards, view, height, onFocusHandled, flash, animateCamera])
-
-  /* ---------- 滚轮：平移为主，Ctrl/⌘ + 滚轮缩放（RAF 批量调度防卡顿，连续平滑缩放） ---------- */
-
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      const cam = cameraRef.current
-      if (animTimer.current !== null) {
-        window.clearTimeout(animTimer.current)
-        animTimer.current = null
-      }
-      if (planeRef.current) {
-        planeRef.current.style.transition = 'none'
-      }
-      setAnimating(false)
-
-      if (e.ctrlKey || e.metaKey) {
-        const rect = el.getBoundingClientRect()
-        const px = e.clientX - rect.left
-        const py = e.clientY - rect.top
-        const normDelta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY
-        const clampedDelta = Math.max(-120, Math.min(120, normDelta))
-        const factor = Math.exp(-clampedDelta * 0.0018)
-        const next = clampZoom(cam.zoom * factor, boundsRef.current, viewRef.current)
-        if (next === cam.zoom) return
-        const k = next / cam.zoom
-        scheduleCameraUpdate({ x: px - (px - cam.x) * k, y: py - (py - cam.y) * k, zoom: next })
-        return
-      }
-      // Shift + 滚轮：横向滚动（触控板横滑本来就给 deltaX，两种都给上）
-      const rawDx = e.shiftKey ? e.deltaY : e.deltaX
-      const rawDy = e.shiftKey ? 0 : e.deltaY
-      if (rawDx === 0 && rawDy === 0) return
-      scheduleCameraUpdate({ ...cam, x: cam.x - rawDx, y: cam.y - rawDy })
-    }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [scheduleCameraUpdate])
-
-  /* ---------- 坐标换算（正交投影：y 除以 cos 就把倾斜还原了） ---------- */
-
-  const toWorld = useCallback((clientX: number, clientY: number) => {
-    const el = containerRef.current
-    const cam = cameraRef.current
-    const rect = el?.getBoundingClientRect()
-    const left = rect?.left ?? 0
-    const top = rect?.top ?? 0
-    return {
-      x: (clientX - left - cam.x) / cam.zoom,
-      y: (clientY - top - cam.y) / cam.zoom,
-    }
-  }, [])
-
-  const isOverTrash = useCallback((clientX: number, clientY: number) => {
-    const rect = trashRef.current?.getBoundingClientRect()
-    if (!rect) return false
-    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
-  }, [])
-
-  /* ---------- 写回（画布自有状态 = 坐标表；实体走统一通道） ---------- */
-
-  /**
-   * 撤回栈：坐标表自己的历史（拖动 / 便条 / 连线画法）。
-   * 实体操作（建 / 删 / 连 / 改名）走统一通道，归工作区那边的撤回管——两类动作
-   * 不混在同一个栈里，各退各的。
-   */
-  const historyRef = useRef<StructureMap[]>([])
-  const [canUndo, setCanUndo] = useState(false)
-
-  const commit = useCallback(
-    (next: StructureMap) => {
-      const prev = saved ?? { version: 2 as const, positions: {} }
-      historyRef.current.push(prev)
-      if (historyRef.current.length > 50) historyRef.current.shift()
-      setCanUndo(true)
-      onChange(next)
-    },
-    [saved, onChange],
-  )
-
-  const undo = useCallback(() => {
-    const prevMap = historyRef.current.pop()
-    if (!prevMap) return
-    setCanUndo(historyRef.current.length > 0)
-    // 撤回本身不再进栈，否则 Ctrl+Z 会在两版之间来回弹
-    onChange(prevMap)
-    setDraft(null)
+    savedCameraRef.current = camera
+    const tourCam = getTourCamera(view.width, view.height)
+    setCameraSync(tourCam)
     setSelectedId(null)
-    setSelectedEdge(null)
     setMultiIds(null)
-  }, [onChange])
+    setHoverId(null)
+    setTourOpen(true)
+  }, [camera, view.width, view.height, setCameraSync, setHoverId])
 
-  /** 换目标就清空：A 课的撤回不该退到 B 课去 */
-  useEffect(() => {
-    historyRef.current = []
-    setCanUndo(false)
-  }, [goalId])
-
-  /** 写一张卡的位置（便条跟着位置走，拖动不能把它弄丢） */
-  const writePos = useCallback(
-    (uuid: string, x: number, y: number, note?: string) => {
-      const base = saved ?? { version: 2 as const, positions: {} }
-      const prevNote = note ?? base.positions[uuid]?.note
-      commit({
-        version: 2,
-        ...(base.edgeStyle ? { edgeStyle: base.edgeStyle } : {}),
-        positions: { ...base.positions, [uuid]: { x, y, ...(prevNote ? { note: prevNote } : {}) } },
-      })
-    },
-    [saved, commit],
-  )
-
-  /** 一次提交写一批位置（多选整组拖的落点）：一笔进撤回栈，Ctrl+Z 一次退整组 */
-  const writePositions = useCallback(
-    (entries: Array<{ uuid: string; x: number; y: number }>) => {
-      const base = saved ?? { version: 2 as const, positions: {} }
-      const positions = { ...base.positions }
-      for (const en of entries) {
-        const prevNote = positions[en.uuid]?.note
-        positions[en.uuid] = { x: en.x, y: en.y, ...(prevNote ? { note: prevNote } : {}) }
-      }
-      commit({ version: 2, ...(base.edgeStyle ? { edgeStyle: base.edgeStyle } : {}), positions })
-    },
-    [saved, commit],
-  )
-
-  /** 统一通道的回执 → 吐司（拒绝一定带人话） */
-  const report = useCallback(
-    (r: ChannelResult) => {
-      if ('error' in r) onToast?.(r.error)
-      else if (r.note) onToast?.(r.note)
-      return 'ok' in r
-    },
-    [onToast],
-  )
-
-  const removeNode = useCallback(
-    (uuid: string) => {
-      if (!onDeleteNode) {
-        onToast?.(t('这个画布没有接入删除通道'))
-        return
-      }
-      // 删根文档 = 删整个目标：这是设计内语义，但绝不能从一张卡的删除键上悄悄发生——
-      // 通道里会转接两档确认（与资源管理器同一条路），这里照常走统一通道
-      report(onDeleteNode(uuid))
-      setSelectedId(null)
-      setMenu(null)
-    },
-    [onDeleteNode, report, onToast],
-  )
-
-  /* ---------- 连线（唯一可手工建立：大纲 → 文档 / 大纲） ---------- */
-
-  const tryConnect = useCallback(
-    (fromUuid: string, toUuid: string, portKey?: string) => {
-      if (!onConnect) return false
-      return report(onConnect(fromUuid, toUuid, portKey))
-    },
-    [onConnect, report],
-  )
-
-  /* ---------- 点目标项 ---------- */
-
-  const onSlotClick = useCallback(
-    (parentId: string, key: string) => {
-      const parent = cards.find((c) => c.uuid === parentId)
-      const slot = parent?.slots?.find((s) => s.key === key)
-      if (!parent || !slot) return
-      if (slot.childId) {
-        centerOn(slot.childId)
-        return
-      }
-      /*
-       * 点目标项 = 建一份带标题的空文档（统一通道）：create 的同目标去重
-       * 会让同一标题永远指向同一份实体；位置由派生自动铺排（父大纲右侧）。
-       * owner 直接给大纲 uuid（o:）——服务认得出附身（挂宿主文档）与游离（挂实体）两种。
-       */
-      const owner = parentId
-      if (!onCreateChildDoc) return
-      const uuid = onCreateChildDoc(owner, slot.title, slot.key)
-      if (!uuid) {
-        onToast?.(t('没能创建文档，请稍后再试'))
-        return
-      }
-      setSelectedId(uuid)
-      onToast?.(t('「{0}」的空文档已挂上：点卡片上的「生成文档」让 AI 来写', slot.title))
-    },
-    [cards, centerOn, onCreateChildDoc, onToast],
-  )
-
-  /* ---------- 打开内容 ---------- */
-
-  const openNode = useCallback(
-    (card: CardView) => {
-      if (card.kind === 'doc') {
-        docs.onOpenTeach(card.uuid)
-        return
-      }
-      const loc = locateUuid(store, card.uuid)
-      // 游离笔记与绑定的笔记**用起来没有任何区别**：同样开笔记页签（页签的实体解析
-      // 认得出游离的，编辑保存走池子）。其余游离实体（超级文档 / 试卷）的页签形态
-      // 依赖宿主，先给一句指路。
-      if (card.kind === 'note' && loc?.kind === 'note' && !loc.docId) {
-        docs.onOpenNote(card.uuid, card.title)
-        return
-      }
-      if (loc && (loc.kind === 'superdoc' || loc.kind === 'exam') && !loc.docId) {
-        onToast?.(t('这份{0}还没绑到文档上：拖线连到某张文档卡（或把它拖到文档卡上）之后就能打开', card.kind === 'exam' ? t('试卷') : t('超级文档')))
-        return
-      }
-      if (card.kind === 'note' && loc?.kind === 'note') {
-        const note = store.nodes.find((n) => n.id === loc.docId)?.notes.find((n) => n.id === loc.noteId)
-        if (note) docs.onOpenNote(loc.docId, note.name)
-        return
-      }
-      if (card.kind === 'superdoc' && loc?.kind === 'superdoc') {
-        const sdoc = store.nodes.find((n) => n.id === loc.docId)?.superdocs?.find((d) => d.id === loc.sdocId)
-        if (sdoc) docs.onOpenSuperDoc(loc.docId, sdoc.name)
-        return
-      }
-      if (card.kind === 'exam') {
-        const exam = store.exams.find((e) => e.id === card.uuid)
-        if (exam && !nodeById(store, exam.nodeId)) {
-          onToast?.(t('这份试卷还没绑到文档上：拖线连到某张文档卡之后就能开考'))
-          return
-        }
-        if (exam) exams.onStart(exam.nodeId, exam.id)
-        return
-      }
-      if (card.kind === 'video') {
-        if (onOpenVideoNode) {
-          onOpenVideoNode(card.uuid)
-          return
-        }
-        const bound = store.videoNodes?.find((v) => v.id === card.uuid)?.videoId ?? null
-        if (bound && onOpenVideo) onOpenVideo(bound)
-        else onToast?.(t('这张视频卡还没有绑定视频'))
-        return
-      }
-      if (card.kind === 'project') {
-        // 项目卡没有可打开的页签：有路径的给展开（目录树就是它的正文），没路径的指去设置
-        if (card.project?.path) toggleProjRoot(card.uuid)
-        else onToast?.(t('这枚项目节点还没有设置路径：右键卡片 →「设置路径」'))
-        return
-      }
-      if (card.kind === 'file') {
-        if (onOpenFileNode) onOpenFileNode(card.uuid)
-        else onToast?.(t('无法打开文件节点'))
-        return
-      }
-      onToast?.(t('大纲节点就在这张画布上，没有另一份页签'))
-    },
-    [docs, exams, onToast, onOpenVideo, onOpenFileNode, store, toggleProjRoot],
-  )
-
-  /* ---------- 自动排列（清掉坐标、交给派生铺排；便条保留） ---------- */
-
-  const autoArrange = useCallback(() => {
-    const fresh = deriveCanvas(store, goalId, undefined)
-    const notes = saved?.positions ?? {}
-    const positions: StructureMap['positions'] = {}
-    for (const card of fresh.cards) {
-      const prevNote = notes[card.uuid]?.note
-      positions[card.uuid] = { x: card.x, y: card.y, ...(prevNote ? { note: prevNote } : {}) }
+  const handleCloseTour = useCallback(() => {
+    try {
+      localStorage.setItem(TOUR_SEEN_KEY, '1')
+    } catch {
+      // ignore
     }
-    fitNextRef.current = true
-    commit({ version: 2, positions, ...(saved?.edgeStyle ? { edgeStyle: saved.edgeStyle } : {}) })
-  }, [store, goalId, saved, commit])
+    setTourOpen(false)
+    if (savedCameraRef.current) {
+      setCameraSync(savedCameraRef.current)
+      savedCameraRef.current = null
+    }
+  }, [setCameraSync])
 
-  /* ---------- 便条与改名 ---------- */
-
-  const saveNote = useCallback(
-    (uuid: string, card: CardView, text: string) => {
-      const value = text.trim()
-      const base = saved ?? { version: 2 as const, positions: {} }
-      const positions = { ...base.positions }
-      if (value) positions[uuid] = { x: positions[uuid]?.x ?? card.x, y: positions[uuid]?.y ?? card.y, note: value }
-      else if (positions[uuid]) {
-        const { note: _drop, ...rest } = positions[uuid]
-        positions[uuid] = rest
+  // 首次进入节点宇宙时检测是否看过教程，若未看过则自动开启
+  useEffect(() => {
+    if (autoTourCheckedRef.current) return
+    if (view.width <= 0 || view.height <= 0) return
+    autoTourCheckedRef.current = true
+    try {
+      const seen = localStorage.getItem(TOUR_SEEN_KEY)
+      if (!seen) {
+        handleOpenTour()
       }
-      commit({ version: 2, ...(base.edgeStyle ? { edgeStyle: base.edgeStyle } : {}), positions })
-      setMenu(null)
-    },
-    [saved, commit],
-  )
-
-  const saveRename = useCallback(
-    (card: CardView, to: string) => {
-      if (card.kind === 'file') {
-        if (onBindFile) {
-          report(onBindFile(card.uuid, { title: to.trim(), titleCustomized: true }))
-        }
-        setMenu(null)
-        return
-      }
-      if (card.kind === 'video') {
-        if (onUpdateVideoNode) {
-          report(onUpdateVideoNode(card.uuid, { title: to.trim(), titleCustomized: true }))
-        }
-        setMenu(null)
-        return
-      }
-      if (!onRenameNote || card.kind !== 'note') {
-        setMenu(null)
-        return
-      }
-      report(onRenameNote(card.uuid, to.trim()))
-      setMenu(null)
-    },
-    [onRenameNote, report],
-  )
-
-  /* ---------- 指针 ---------- */
-
-  const onPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (tourOpen) return
-      flushPendingCamera()
-      const target = e.target as HTMLElement
-      const el = containerRef.current
-      if (!el) return
-      /*
-       * 平移画布只有两条路：**中键**，或者**按住空格 + 左键**。
-       * 左键留给节点（拖、连、选），空地上按左键不再拖动画布——
-       * 那样一不小心就会把整张图推走，还分不清是拖动还是点空了。
-       */
-      if (e.button === 1 || (e.button === 0 && spaceRef.current)) {
-        e.preventDefault() // 中键在 Chromium 里会触发自动滚动
-        lastDownCardRef.current = null
-        setAnimating(false)
-        if (e.button === 1) {
-          /*
-           * 双击中键 = 适应画布。判定必须放在 pointerdown：这里的 preventDefault
-           * 会抑制兼容 mousedown（双击因此收不到 dblclick，也不能靠 onMouseDown 计时）。
-           */
-          const now = performance.now()
-          if (now - lastMiddleDownRef.current < 400) {
-            lastMiddleDownRef.current = 0
-            fit()
-            return
-          }
-          lastMiddleDownRef.current = now
-        }
-        el.setPointerCapture(e.pointerId)
-        const cam = cameraRef.current
-        gestureRef.current = { mode: 'pan', startX: e.clientX, startY: e.clientY, camX: cam.x, camY: cam.y }
-        return
-      }
-      if (e.button !== 0) return
-      lastDownCardRef.current = null
-      // 菜单、按钮、输入框：容器一旦捕获指针，它们就收不到 click 了
-      if (target.closest('button, textarea, input, [data-menu], [data-add-slot], [data-rename-slot]')) return
-      if (menu) {
-        setMenu(null)
-        return
-      }
-      setAnimating(false)
-      el.setPointerCapture(e.pointerId)
-
-      const paletteEl = target.closest<HTMLElement>('[data-palette-kind]')
-      if (paletteEl) {
-        const kind = paletteEl.dataset.paletteKind as GNodeKind
-        gestureRef.current = { mode: 'palette', kind }
-        setPaletteKind(kind)
-        setPaletteAt({ x: e.clientX, y: e.clientY })
-        return
-      }
-
-      const dotEl = target.closest<HTMLElement>('[data-slot-dot]')
-      if (dotEl) {
-        const from = dotEl.dataset.slotDotParent as string
-        gestureRef.current = { mode: 'link', from, fromKind: 'outline', slotKey: dotEl.dataset.slotDot as string, moved: false }
-        setLinkFrom(from)
-        setLinkSlot(dotEl.dataset.slotDot as string)
-        setLinkAt(toWorld(e.clientX, e.clientY))
-        setSelectedId(from)
-        return
-      }
-
-      const deleteSlotEl = target.closest<HTMLElement>('[data-delete-slot]')
-      if (deleteSlotEl) {
-        const parentId = deleteSlotEl.dataset.deleteSlotParent as string
-        const slotKey = deleteSlotEl.dataset.deleteSlot as string
-        onDeleteOutlineEntry?.(parentId, slotKey)
-        return
-      }
-
-      
-
-      const slotEl = target.closest<HTMLElement>('[data-slot-key]')
-      if (slotEl) {
-        onSlotClick(slotEl.dataset.slotParent ?? '', slotEl.dataset.slotKey ?? '')
-        return
-      }
-
-      const handleEl = target.closest<HTMLElement>('[data-link-handle]')
-      if (handleEl) {
-        const from = handleEl.dataset.linkHandle as string
-        const fromKind = cards.find((c) => c.uuid === from)?.kind
-        if (fromKind) {
-          gestureRef.current = { mode: 'link', from, fromKind }
-          setLinkFrom(from)
-          setLinkSlot(null)
-          setLinkAt(toWorld(e.clientX, e.clientY))
-          setSelectedId(from)
-        }
-        return
-      }
-
-      const cardEl = target.closest<HTMLElement>('[data-node-id]')
-      if (cardEl) {
-        const id = cardEl.dataset.nodeId as string
-        const card = cards.find((c) => c.uuid === id)
-        if (!card) return
-        const world = toWorld(e.clientX, e.clientY)
-        /*
-         * Ctrl/⌘ + 点按：把这张卡加进 / 移出多选（拉框之外的第二个入口）。
-         * 按下即定，不带拖动手势——这一下只是改选区。
-         */
-        if (e.ctrlKey || e.metaKey) {
-          setMultiIds((prev) => {
-            const next = new Set(prev ?? [])
-            if (next.has(id)) next.delete(id)
-            else next.add(id)
-            return next.size > 0 ? next : null
-          })
-          setSelectedId(null)
-          setSelectedEdge(null)
-          return
-        }
-        /*
-         * 按下的是多选里的一张：整组一起拖（每张的原位置在按下这一刻冻结，
-         * 之后整组跟着同一个位移走）。普通单选还是老样子：回到单选。
-         */
-        const group = multiIds?.has(id)
-          ? [...multiIds]
-              .map((uid) => cards.find((c) => c.uuid === uid))
-              .filter((c): c is CardView => !!c)
-              .map((c) => ({ id: c.uuid, x: c.x, y: c.y }))
-          : undefined
-        if (!group) {
-          setSelectedId(id)
-          setMultiIds(null)
-        }
-        setSelectedEdge(null)
-        const openTitle = !!target.closest('[data-open-title]')
-        lastDownCardRef.current = { id, openTitle }
-        gestureRef.current = {
-          mode: 'node',
-          id,
-          grabX: world.x,
-          grabY: world.y,
-          origX: card.x,
-          origY: card.y,
-          moved: false,
-          openTitle,
-          ...(group ? { group } : {}),
-        }
-        return
-      }
-
-      const world = toWorld(e.clientX, e.clientY)
-      const dot = edgeDotAt(cards, edges, world.x, world.y, 12 / cameraRef.current.zoom, height, edgeStyle, anchorOf, routeOf)
-      if (dot) {
-        centerOn(dot.side === 'from' ? dot.edge.to : dot.edge.from)
-        return
-      }
-      const edge = edgeAt(cards, edges, world.x, world.y, 8 / cameraRef.current.zoom, height, edgeStyle, anchorOf, routeOf)
-      if (edge) {
-        setSelectedEdge(edge)
-        setSelectedId(null)
-        setMultiIds(null)
-        return
-      }
-      // 空地按下左键：清掉选择，开始拉选框（松手时圈住谁就选谁）
-      setSelectedId(null)
-      setSelectedEdge(null)
-      setMultiIds(null)
-      gestureRef.current = { mode: 'marquee', startX: world.x, startY: world.y }
-      setMarquee({ x: world.x, y: world.y, width: 0, height: 0 })
-    },
-    [cards, centerOn, edges, height, menu, multiIds, onSlotClick, toWorld, anchorOf, edgeStyle, routeOf],
-  )
-
-  const onPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      const g = gestureRef.current
-      if (!g) {
-        // 没有手势：算「指针附近有没有连线」，小圆点只在此时露面
-        const world = toWorld(e.clientX, e.clientY)
-        const dot = edgeDotAt(cards, edges, world.x, world.y, 12 / cameraRef.current.zoom, height, edgeStyle, anchorOf, routeOf)
-        const edge =
-          dot?.edge ?? edgeAt(cards, edges, world.x, world.y, 8 / cameraRef.current.zoom, height, edgeStyle, anchorOf, routeOf)
-        setHoverDot(!!dot)
-        setHoverEdge((prev) => (prev?.from === edge?.from && prev?.to === edge?.to ? prev : edge ?? null))
-        return
-      }
-      if (g.mode === 'pan') {
-        scheduleCameraUpdate({ ...cameraRef.current, x: g.camX + (e.clientX - g.startX), y: g.camY + (e.clientY - g.startY) })
-        return
-      }
-      const world = toWorld(e.clientX, e.clientY)
-      if (g.mode === 'node') {
-        const dx = world.x - g.grabX
-        const dy = world.y - g.grabY
-        if (!g.moved && Math.abs(dx) + Math.abs(dy) < 2) return
-        g.moved = true
-        const nextDraft = g.group && g.group.length > 1
-          ? (() => {
-              const moves: Record<string, { x: number; y: number }> = {}
-              for (const m of g.group) moves[m.id] = { x: m.x + dx, y: m.y + dy }
-              return { id: g.id, x: g.origX + dx, y: g.origY + dy, moves }
-            })()
-          : { id: g.id, x: g.origX + dx, y: g.origY + dy }
-        pendingDraftRef.current = nextDraft
-        if (draftRafRef.current == null) {
-          draftRafRef.current = requestAnimationFrame(() => {
-            draftRafRef.current = null
-            if (pendingDraftRef.current) {
-              setDraft(pendingDraftRef.current)
-            }
-          })
-        }
-        const tr = trashRectRef.current
-        const isOver = tr ? e.clientX >= tr.left && e.clientX <= tr.right && e.clientY >= tr.top && e.clientY <= tr.bottom : false
-        setOverTrash((prev) => (prev !== isOver ? isOver : prev))
-        return
-      }
-      if (g.mode === 'link') {
-        g.moved = true
-        setLinkAt(world)
-        setHoverId(hitTest(cards, world.x, world.y, height)?.uuid ?? null)
-        return
-      }
-      if (g.mode === 'marquee') {
-        setMarquee({
-          x: Math.min(g.startX, world.x),
-          y: Math.min(g.startY, world.y),
-          width: Math.abs(world.x - g.startX),
-          height: Math.abs(world.y - g.startY),
-        })
-        return
-      }
-      setPaletteAt({ x: e.clientX, y: e.clientY })
-      setHoverId(hitTest(cards, world.x, world.y, height)?.uuid ?? null)
-      // 记录「离开过列表」：一直在列表上晃然后松手，是放回去，不是放置
-      const listRect = paletteRef.current?.getBoundingClientRect()
-      if (
-        listRect &&
-        !(e.clientX >= listRect.left && e.clientX <= listRect.right && e.clientY >= listRect.top && e.clientY <= listRect.bottom)
-      ) {
-        g.leftList = true
-      }
-    },
-    [anchorOf, cards, edgeStyle, edges, height, isOverTrash, toWorld, routeOf, scheduleCameraUpdate],
-  )
-
-  const onPointerUp = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      flushPendingCamera()
-      const g = gestureRef.current
-      gestureRef.current = null
-      if (g && g.mode === 'pan') {
-        const dist = Math.abs(e.clientX - g.startX) + Math.abs(e.clientY - g.startY)
-        if (dist > 3) {
-          // 移动过则说明是拖映画布手势，重置中键连击判定计时，防止连续拖拽被误判为双击自动校正适应画布
-          lastMiddleDownRef.current = 0
-        }
-      }
-      const el = containerRef.current
-      if (el?.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
-      if (!g) return
-
-      if (g.mode === 'node') {
-        trashRectRef.current = null
-        if (draftRafRef.current != null) {
-          cancelAnimationFrame(draftRafRef.current)
-          draftRafRef.current = null
-        }
-        pendingDraftRef.current = null
-        const inTrash = isOverTrash(e.clientX, e.clientY)
-        setOverTrash(false)
-        if (inTrash && g.moved) {
-          // 整组拖进垃圾桶 = 整组删（与 Delete 键删除整个多选同一口径）
-          for (const m of g.group ?? [{ id: g.id }]) removeNode(m.id)
-          setDraft(null)
-          setMultiIds(null)
-          return
-        }
-        if (draft && draft.id === g.id && g.moved) {
-          if (g.group && g.group.length > 1 && draft.moves) {
-            writePositions(g.group.map((m) => ({ uuid: m.id, x: draft.moves![m.id].x, y: draft.moves![m.id].y })))
-          } else {
-            writePos(draft.id, draft.x, draft.y)
-          }
-        } else if (!g.moved && g.openTitle) {
-          const card = cards.find((c) => c.uuid === g.id)
-          if (card) openNode(card)
-        }
-        setDraft(null)
-        return
-      }
-
-      if (g.mode === 'link') {
-        const world = toWorld(e.clientX, e.clientY)
-        // 从圆点上按下但没拖动 = 点了一下这条目标项
-        if (!g.moved && g.slotKey) {
-          onSlotClick(g.from, g.slotKey)
-          setLinkFrom(null)
-          setLinkSlot(null)
-          setLinkAt(null)
-          setHoverId(null)
-          return
-        }
-        const target = hitTest(cards, world.x, world.y, height)
-        if (target && target.uuid !== g.from) {
-          /*
-           * 连线看的是「谁是谁」而不是拖的方向：大纲 ↔ 文档 / 大纲 = 挂进那一层（唯一的长树的手法）；
-           * 文档 ↔ 挂件 = 绑定 / 换绑（实体从池子或旧宿主挪过来，内容不动）。
-           * 拒绝原因（双边协商的人话）由 report 弹出，这里不再另说。
-           */
-          const fromCard = cards.find((c) => c.uuid === g.from)
-          const toCard = target
-          const kinds = [fromCard?.kind, toCard.kind]
-          const isPair = (a: GNodeKind, b: GNodeKind) => kinds.includes(a) && kinds.includes(b)
-          if (isPair('outline', 'doc')) {
-            const outline = fromCard?.kind === 'outline' ? g.from : target.uuid
-            const doc = fromCard?.kind === 'doc' ? g.from : target.uuid
-            // 从目标项圆点拖出来的线 = 认领那个口（与点目标项建文档同一口径）；反方向拖没有口可指
-            tryConnect(outline, doc, fromCard?.kind === 'outline' ? g.slotKey : undefined)
-          } else if (isPair('video', 'doc')) {
-            tryConnect(g.from, target.uuid)
-          } else if (isPair('outline', 'outline')) {
-            /*
-             * 大纲连大纲 = 落点的大纲之下再开一层（上层当分类、下层当指导）。
-             * 从目标项圆点拖出来的线：圆点的大纲是上级并认领那个口；
-             * 从圆把手拖 = 拖着的这一层挂到落点的大纲之下。
-             */
-            if (g.slotKey && fromCard?.kind === 'outline') tryConnect(g.from, target.uuid, g.slotKey)
-            else tryConnect(target.uuid, g.from)
-          } else if (isPair('doc', 'note') || isPair('doc', 'exam') || isPair('doc', 'superdoc') || isPair('doc', 'project')) {
-            const doc = fromCard?.kind === 'doc' ? g.from : target.uuid
-            const widget = fromCard?.kind === 'doc' ? target.uuid : g.from
-            tryConnect(doc, widget)
-          } else if (isPair('exam', 'note')) {
-            const exam = fromCard?.kind === 'exam' ? g.from : target.uuid
-            const note = fromCard?.kind === 'exam' ? target.uuid : g.from
-            tryConnect(exam, note)
-          } else if (isPair('superdoc', 'note')) {
-            const sdoc = fromCard?.kind === 'superdoc' ? g.from : target.uuid
-            const note = fromCard?.kind === 'superdoc' ? target.uuid : g.from
-            tryConnect(sdoc, note)
-          } else if (fromCard?.kind === 'file') {
-            if (['outline', 'doc', 'note', 'superdoc', 'exam'].includes(target.kind)) {
-              tryConnect(g.from, target.uuid)
-            }
-          } else if (target.kind === 'file') {
-            if (['doc', 'note', 'superdoc', 'exam'].includes(fromCard?.kind ?? '')) {
-              tryConnect(g.from, target.uuid)
-            } else if (fromCard?.kind === 'outline') {
-              tryConnect(target.uuid, g.from)
-            }
-          }
-          // 其余组合不响应（没有可建立的关系）——沉默即可，不值得一条吐司
-        }
-        setLinkFrom(null)
-        setLinkSlot(null)
-        setLinkAt(null)
-        setHoverId(null)
-        return
-      }
-
-      if (g.mode === 'marquee') {
-        const rect = marquee
-        setMarquee(null)
-        // 几乎没拉：当成一次普通点击（选择已清），不进入多选
-        if (!rect || (rect.width < 4 && rect.height < 4)) return
-        const found = cards.filter((c) => {
-          const r = { x: c.x, y: c.y, width: cardWidthOf(c.kind), height: height(c) }
-          return r.x < rect.x + rect.width && rect.x < r.x + r.width && r.y < rect.y + rect.height && rect.y < r.y + r.height
-        })
-        if (!found.length) return
-        if (found.length === 1) {
-          setSelectedId(found[0].uuid)
-          setMultiIds(null)
-        } else {
-          setMultiIds(new Set(found.map((c) => c.uuid)))
-          setSelectedId(null)
-        }
-        return
-      }
-
-      if (g.mode === 'palette') {
-        setPaletteAt(null)
-        setPaletteKind(null)
-        setHoverId(null)
-        if (!g.leftList) {
-          /*
-           * 没离开过列表就松手 = 把它放回去了，不建。快速拖一下可能连一次
-           * pointermove 都没发出来，所以这里按**松手位置**补判一次。
-           */
-          const listRect = paletteRef.current?.getBoundingClientRect()
-          const inList =
-            !!listRect &&
-            e.clientX >= listRect.left &&
-            e.clientX <= listRect.right &&
-            e.clientY >= listRect.top &&
-            e.clientY <= listRect.bottom
-          if (inList) return
-        }
-
-        /*
-         * 节点落地（统一通道）：拖到卡上 = 创建即绑（挂件挂到那份文档、文档挂进那一层）；
-         * 拖到**空白处** = 创建独立实体，落点就是它的坐标——节点不必有连接，随时拖线再绑。
-         */
-        if (PALETTE.includes(g.kind)) {
-          const world2 = toWorld(e.clientX, e.clientY)
-          const target = hitTest(cards, world2.x, world2.y, height)
-          if (!onCreateNode) return
-          // 视频节点：可落在文档之下作为下游，也可拖到空白处独立放置
-          if (g.kind === 'video') {
-            if (target && target.kind !== 'doc') {
-              onToast?.(t('视频节点只能挂在文档之下或放在空白处'))
-              return
-            }
-            const r = onCreateNode('video', target ? target.uuid : null, world2)
-            if ('error' in r) {
-              onToast?.(r.error)
-              return
-            }
-            writePos(r.uuid, world2.x, world2.y)
-            setSelectedId(r.uuid)
-            onToast?.(t('已创建视频节点：在第二行输入视频唯一标识，点击标题打开视频 Tab'))
-            return
-          }
-          /*
-           * 大纲拖到大纲卡上 = 在那张大纲之下开一层**纯大纲**（游离子大纲实体 + 树边，
-           * 没有文档——分类层）。其余组合走通用的创建即挂。
-           */
-          if (g.kind === 'outline' && target?.kind === 'outline') {
-            const r = onCreateNode('outline', target.uuid)
-            if ('error' in r) {
-              onToast?.(r.error)
-              return
-            }
-            writePos(r.uuid, world2.x, world2.y)
-            setSelectedId(r.uuid)
-            onToast?.(t('已在这张大纲之下开了新的一层：目标项写在大纲卡上，往下挂文档或再开一层'))
-            return
-          }
-          let under: string | null = null
-          if (target) {
-            if (g.kind === 'doc') {
-              // 文档能挂进大纲之下，也能挂在视频节点之下（与发光的候选同一口径，见 candidateIds）
-              under = target.kind === 'outline' || target.kind === 'video' ? target.uuid : null
-            } else if (g.kind === 'outline') {
-              // 大纲拖到文档上 = 给它补一份大纲（附身，node.outline）
-              under = target.kind === 'doc' ? target.uuid : null
-            } else if (g.kind === 'file') {
-              under = ['doc', 'note', 'superdoc', 'exam'].includes(target.kind) ? target.uuid : null
-            } else {
-              // 挂件：拖到文档卡 = 绑到它；拖到大纲卡 = 绑到那张大纲的宿主文档（游离大纲没有宿主，接不住）
-              under =
-                target.kind === 'doc'
-                  ? target.uuid
-                  : target.kind === 'outline' && !target.free
-                    ? docIdOfOutlineUuid(target.uuid)
-                    : null
-            }
-            if (!under) {
-              onToast?.(t('这种组合连不成：文档拖到大纲卡上，大纲拖到文档卡或大纲卡上，挂件拖到文档卡上，再不然拖到空白处'))
-              return
-            }
-          }
-          const r = onCreateNode(g.kind, under, under ? undefined : world2)
-          if ('error' in r) {
-            onToast?.(r.error)
-            return
-          }
-          if (!under) writePos(r.uuid, world2.x, world2.y)
-          setSelectedId(r.uuid)
-          onToast?.(
-            g.kind === 'note'
-              ? t('已新建笔记「{0}」，点标题就能打开', r.title || '')
-              : g.kind === 'exam'
-                ? t('已放一份空试卷：点卡片上的「生成试卷」让 AI 出题')
-                : g.kind === 'superdoc'
-                  ? t('已放一份空超级文档「{0}」：点「生成超级文档」让 AI 来写', r.title || '')
-                  : g.kind === 'outline'
-                    ? t('已建一张独立的大纲卡：目标项写在卡上，往下挂文档或再开一层大纲')
-                    : g.kind === 'project'
-                      ? t('已建一枚项目节点：右键卡片 →「设置路径」声明一条真实路径，之后 agent 可以读写它下面的所有文件')
-                      : g.kind === 'file'
-                        ? t('已建文件节点「{0}」', r.title || '')
-                        : t('已建文档「{0}」：点标题打开写正文', r.title || ''),
-          )
-        }
-      }
-    },
-    [cards, draft, height, isOverTrash, marquee, onSlotClick, onCreateNode, onToast, openNode, removeNode, toWorld, tryConnect, writePos, writePositions],
-  )
-
-  /* ---------- 双击 ---------- */
-
-  const onDoubleClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      /*
-       * 画布上的双击归画布自己（适应画布 / 聚焦节点），不再冒泡到文档区的
-       * 「双击切纯净阅读」——两套手势长在同一个容器里，输的总是用户。
-       *
-       * 落点不认 e.target（指针捕获把 dblclick 的目标重定向到了容器，它永远
-       * 到不了卡片上），认的是 onPointerDown 记下的 lastDownCardRef。
-       */
-      e.stopPropagation()
-      const hit = e.target as HTMLElement
-      // 双击在按钮 / 输入框上是连点，不是手势（这些元素不被捕获，target 是真的）
-      if (hit.closest('button, textarea, input, [data-menu]')) return
-      const down = lastDownCardRef.current
-      if (!down) {
-        fit()
-        return
-      }
-      // 双击标题 = 打开（第一下点标题已经把文档开了），不再聚焦
-      if (down.openTitle) return
-      const card = cards.find((c) => c.uuid === down.id)
-      if (card) focusCard(card)
-    },
-    [fit, cards, focusCard],
-  )
-
-  /* ---------- 右键菜单 ---------- */
-
-  const onContextMenu = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (tourOpen) return
-      const target = (e.target as HTMLElement).closest<HTMLElement>('[data-node-id]')
-      if (!target) return
-      const uuid = target.dataset.nodeId as string
-      const card = cards.find((c) => c.uuid === uuid)
-      if (!card) return
-      e.preventDefault()
-      // 右键回到单选：菜单只作用在一张卡上，多选态就此散掉
-      setMultiIds(null)
-      setSelectedId(uuid)
-      setMenuText(card.note ?? '')
-      setMenu({ x: e.clientX, y: e.clientY, uuid, mode: 'actions' })
-    },
-    [cards],
-  )
-
-  /* ---------- 键盘 ---------- */
-
-  const onKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (tourOpen) return
-      if (e.key === 'Escape') {
-        setMenu(null)
-        setMultiIds(null)
-        return
-      }
-      /*
-       * 输入位里的键盘归输入框：注释 / 改名 / 新目标项的 textarea 就长在画布容器里，
-       * 按键会冒上来。不拦的话，写注释时按个退格就会把**当前选中的节点**删掉。
-       */
-      if (isTextEntryTarget(e.target)) return
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        e.preventDefault()
-        undo()
-        return
-      }
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return
-      if (selectedEdge) {
-        e.preventDefault()
-        // 每条线都可以摘（用户定的：关系只是连线，剪线不带走设备）——
-        // 摘树边（大纲 → 子文档 / 子大纲）= 拆那条树边（对方成游离的一层）；
-        // 摘大纲 ↔ 它的内容文档 = 删除那份大纲；摘文档 ↔ 挂件 = 解绑（实体进游离池，内容原样）。
-        // 唯一摘不了的是入口的绑定线（那是目标本身）。
-        if (onDisconnect) report(onDisconnect(selectedEdge.from, selectedEdge.to))
-        setSelectedEdge(null)
-        return
-      }
-      const ids = selectedId ? [selectedId] : multiIds ? [...multiIds] : []
-      if (!ids.length) return
-      e.preventDefault()
-      for (const id of ids) removeNode(id)
-      setSelectedId(null)
-      setMultiIds(null)
-      setMenu(null)
-    },
-    [cards, undo, onToast, removeNode, multiIds, onDisconnect, report, selectedEdge, selectedId],
-  )
+    } catch {
+      // ignore
+    }
+  }, [view.width, view.height, handleOpenTour])
 
   /* ---------- 渲染 ---------- */
 
@@ -2314,387 +623,9 @@ export const StructureCanvas = memo(function StructureCanvas({
 
   const edgeOrigin = bounds ? { x: bounds.x - 240, y: bounds.y - 240 } : { x: 0, y: 0 }
   const edgeSize = bounds ? { width: bounds.width + 480, height: bounds.height + 480 } : { width: 0, height: 0 }
-  const zoomPct = Math.round(camera.zoom * 100)
 
-  /* ---------- 全景缩略图 ---------- */
 
-  /**
-   * 缩略图的世界包络：节点总包围盒外扩一圈留白，再按缩放下限的口径以中心整体
-   * 放大 1/STRUCT_MIN_ZOOM_FACTOR——节点只占画面的这份比例，四周是真实的画布空地。
-   * 之后按**统一等比**缩放装进固定窗口，短的那一轴向外扩世界补齐窗口比例：
-   * 占满容器靠的是「拍到更多画面」，绝不是把图拉变形；扩出来的那圈正是镜头
-   * 缩到下限后本来就看得到的那片空白。
-   */
-  const mini = useMemo(() => {
-    if (!bounds) return null
-    const grow = 1 / STRUCT_MIN_ZOOM_FACTOR
-    const pad = 40
-    const cx = bounds.x + bounds.width / 2
-    const cy = bounds.y + bounds.height / 2
-    const w0 = (bounds.width + pad * 2) * grow
-    const h0 = (bounds.height + pad * 2) * grow
-    const scale = Math.min(MINI_W / w0, MINI_H / h0)
-    const w = Math.max(w0, MINI_W / scale)
-    const h = Math.max(h0, MINI_H / scale)
-    return { bounds: { x: cx - w / 2, y: cy - h / 2, width: w, height: h } }
-  }, [bounds])
-  const miniRef = useRef<HTMLCanvasElement | null>(null)
-  const miniBgRef = useRef<HTMLCanvasElement | null>(null)
-  const sealColorRef = useRef<string>('#a8432f')
-  const minimapContainerRef = useRef<HTMLDivElement | null>(null)
-  const minimapDragRef = useRef(false)
 
-  /** 在缩略地图上滚动滚轮：以视口中心缩放相机（RAF 调度防卡顿） */
-  useEffect(() => {
-    const el = minimapContainerRef.current
-    if (!el) return
-    const onMinimapWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      const cam = cameraRef.current
-      const normDelta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY
-      const clampedDelta = Math.max(-120, Math.min(120, normDelta))
-      const factor = Math.exp(-clampedDelta * 0.0018)
-      const next = clampZoom(cam.zoom * factor, boundsRef.current, viewRef.current)
-      if (next === cam.zoom) return
-      const curView = viewRef.current
-      const px = curView.width / 2
-      const py = curView.height / 2
-      const k = next / cam.zoom
-      if (animTimer.current !== null) {
-        window.clearTimeout(animTimer.current)
-        animTimer.current = null
-      }
-      if (planeRef.current) {
-        planeRef.current.style.transition = 'none'
-      }
-      setAnimating(false)
-      scheduleCameraUpdate({ x: px - (px - cam.x) * k, y: py - (py - cam.y) * k, zoom: next })
-    }
-    el.addEventListener('wheel', onMinimapWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onMinimapWheel)
-  }, [scheduleCameraUpdate])
-
-  /** 把缩略图上的一点变成镜头中心（屏幕坐标 → 窗口占比 → 世界坐标 → 相机平移） */
-  const jumpByMinimap = useCallback(
-    (clientX: number, clientY: number) => {
-      const el = miniRef.current
-      const m = mini
-      if (!el || !m) return
-      const rect = el.getBoundingClientRect()
-      const cam = cameraRef.current
-      /*
-        视口框不许拖出包络：把「镜头中心」夹在「包络缩掉半个视口」的范围内。
-        视口比包络还大（图很小）时夹不出区间，就钉在包络中心。
-      */
-      const halfW = view.width / cam.zoom / 2
-      const halfH = view.height / cam.zoom / 2
-      let wx = m.bounds.x + ((clientX - rect.left) / rect.width) * m.bounds.width
-      let wy = m.bounds.y + ((clientY - rect.top) / rect.height) * m.bounds.height
-      wx =
-        halfW * 2 >= m.bounds.width
-          ? m.bounds.x + m.bounds.width / 2
-          : Math.min(Math.max(wx, m.bounds.x + halfW), m.bounds.x + m.bounds.width - halfW)
-      wy =
-        halfH * 2 >= m.bounds.height
-          ? m.bounds.y + m.bounds.height / 2
-          : Math.min(Math.max(wy, m.bounds.y + halfH), m.bounds.y + m.bounds.height - halfH)
-      setAnimating(false)
-      setCameraSync({ x: view.width / 2 - wx * cam.zoom, y: view.height / 2 - wy * cam.zoom, zoom: cam.zoom })
-    },
-    [mini, view],
-  )
-  const onMinimapPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    e.stopPropagation() // 别让画布把它当成「空地点击」清选择
-    e.currentTarget.setPointerCapture(e.pointerId)
-    minimapDragRef.current = true
-    jumpByMinimap(e.clientX, e.clientY)
-  }
-  const onMinimapPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!minimapDragRef.current) return
-    e.stopPropagation()
-    jumpByMinimap(e.clientX, e.clientY)
-  }
-  const onMinimapPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    minimapDragRef.current = false
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
-  }
-
-  /** 缩略图连线：几何只跟卡片坐标有关，与相机无关——相机每帧动时不该重跑一遍绕行路由 */
-  const miniEdges = useMemo(
-    () =>
-      edges.flatMap((edge) => {
-        const from = byId.get(edge.from)
-        const to = byId.get(edge.to)
-        if (!from || !to) return []
-        const path = routeOf(edge)
-        if (!path) return []
-        return [{ path, accent: from.kind === 'outline' && to.kind === 'doc' }]
-      }),
-    [edges, byId, routeOf],
-  )
-
-  /** 有入边的卡（缩略图判「游离」用）：每帧对每张卡扫一遍 edges 是 O(卡×边)，先收成一次 */
-  const hasIncoming = useMemo(() => {
-    const s = new Set<string>()
-    for (const e of edges) s.add(e.to)
-    return s
-  }, [edges])
-
-  /**
-   * 绘制缩略图的静态底图（卡片和连线）到离屏 Canvas。
-   *
-   * 性能核心优化：底图只在节点增删、移动、样式或主题变化时绘制一次；
-   * 镜头缩放或平移时，只需复用该底图并绘制一条视口框，从几十毫秒降至 0.02ms，彻底解决缩放卡顿。
-   */
-  const renderMiniBg = useCallback(() => {
-    const m = mini
-    if (!m) return
-    if (!miniBgRef.current) {
-      miniBgRef.current = document.createElement('canvas')
-    }
-    const bgCanvas = miniBgRef.current
-    const dpr = Math.min(window.devicePixelRatio || 1, 2)
-    const pixelW = Math.round(MINI_W * dpr)
-    const pixelH = Math.round(MINI_H * dpr)
-    if (bgCanvas.width !== pixelW) bgCanvas.width = pixelW
-    if (bgCanvas.height !== pixelH) bgCanvas.height = pixelH
-    const ctx = bgCanvas.getContext('2d')
-    if (!ctx) return
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, MINI_W, MINI_H)
-    ctx.lineCap = 'butt'
-
-    const sx = MINI_W / m.bounds.width
-    const sy = MINI_H / m.bounds.height
-    const px = (x: number): number => (x - m.bounds.x) * sx
-    const py = (y: number): number => (y - m.bounds.y) * sy
-
-    const cs = getComputedStyle(document.documentElement)
-    const seal = cs.getPropertyValue('--color-seal').trim() || '#a8432f'
-    sealColorRef.current = seal
-    const inkFaint = cs.getPropertyValue('--color-ink-faint').trim() || '#98928a'
-    const fillOf = (kind: GNodeKind): string => {
-      const raw = MINI_FILL[kind]
-      if (!raw.startsWith('var(')) return raw
-      const name = /var\(\s*(--[\w-]+)/.exec(raw)?.[1]
-      return (name && cs.getPropertyValue(name).trim()) || seal
-    }
-
-    // --- 连线：照抄主画布的路径点（curved 是四点三次贝塞尔，其余是折线） ---
-    ctx.lineWidth = 0.8
-    for (const e of miniEdges) {
-      const p = e.path
-      if (!p.length) continue
-      ctx.beginPath()
-      ctx.moveTo(px(p[0].x), py(p[0].y))
-      if (edgeStyle === 'curved' && p.length === 4) {
-        ctx.bezierCurveTo(px(p[1].x), py(p[1].y), px(p[2].x), py(p[2].y), px(p[3].x), py(p[3].y))
-      } else {
-        for (let i = 1; i < p.length; i++) ctx.lineTo(px(p[i].x), py(p[i].y))
-      }
-      ctx.strokeStyle = e.accent ? SLOT_ACCENT : inkFaint
-      ctx.globalAlpha = e.accent ? 0.7 : 0.42
-      ctx.stroke()
-    }
-
-    // --- 卡片：底、顶部徽章条、目标项行、文档摘要行 ---
-    for (const c of displayCards) {
-      const fill = fillOf(c.kind)
-      const x = px(c.x)
-      const y = py(c.y)
-      const w = cardWidthOf(c.kind) * sx
-      const h = height(c) * sy
-      const radius = Math.min(3 * sx, w / 2)
-      const hollow = !!c.blank || (c.kind === 'doc' && !c.entry && !hasIncoming.has(c.uuid))
-
-      ctx.beginPath()
-      ctx.roundRect(x, y, w, h, radius)
-      ctx.fillStyle = fill
-      ctx.globalAlpha = 0.22
-      ctx.fill()
-      ctx.strokeStyle = fill
-      ctx.globalAlpha = 0.9
-      ctx.lineWidth = 0.9
-      ctx.setLineDash(hollow ? [3, 2] : [])
-      ctx.stroke()
-      ctx.setLineDash([])
-
-      // 头部条：卡片顶部那行类型徽章位，深一档才有「卡」的层次
-      ctx.beginPath()
-      ctx.roundRect(x, y, w, OUTLINE_HEAD * sy, Math.min(radius, (OUTLINE_HEAD * sy) / 2))
-      ctx.fillStyle = fill
-      ctx.globalAlpha = 0.45
-      ctx.fill()
-
-      // 目标项行：每一行一小段横线
-      if (c.kind === 'outline' && c.slots?.length) {
-        ctx.beginPath()
-        c.slots.forEach((s, i) => {
-          const ly = py(c.y + (dotY[`${c.uuid}|${s.key}`] ?? slotAnchorY(i)))
-          ctx.moveTo(px(c.x + 8), ly)
-          ctx.lineTo(px(c.x + 52), ly)
-        })
-        ctx.strokeStyle = fill
-        ctx.globalAlpha = 0.85
-        ctx.lineWidth = 1
-        ctx.stroke()
-      }
-
-      // 文档摘要行：两条示意横线（缩多小都还看得出「这是一张文档卡」）
-      if (c.kind === 'doc' && c.excerpt) {
-        const l1 = c.y + OUTLINE_HEAD + DOC_LINE_H * 0.6
-        const l2 = c.y + OUTLINE_HEAD + DOC_LINE_H * 1.6
-        ctx.beginPath()
-        ctx.moveTo(px(c.x + 12), py(l1))
-        ctx.lineTo(px(c.x + cardWidthOf(c.kind) - 12), py(l1))
-        ctx.moveTo(px(c.x + 12), py(l2))
-        ctx.lineTo(px(c.x + cardWidthOf(c.kind) * 0.72), py(l2))
-        ctx.strokeStyle = inkFaint
-        ctx.globalAlpha = 0.6
-        ctx.lineWidth = 1
-        ctx.stroke()
-      }
-    }
-  }, [mini, miniEdges, displayCards, edgeStyle, dotY, height, hasIncoming])
-
-  /**
-   * 画全景缩略图：将缓存底图画上画布，并更新视口框（0.02ms 极速绘制）。
-   */
-  const drawMini = useCallback(() => {
-    const canvas = miniRef.current
-    const m = mini
-    if (!canvas || !m) return
-    const dpr = Math.min(window.devicePixelRatio || 1, 2)
-    const pixelW = Math.round(MINI_W * dpr)
-    const pixelH = Math.round(MINI_H * dpr)
-    // 位图尺寸只在 dpr / 窗口大小变时重设：赋值会清空画布并重置全部上下文状态
-    if (canvas.width !== pixelW) canvas.width = pixelW
-    if (canvas.height !== pixelH) canvas.height = pixelH
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, MINI_W, MINI_H)
-    ctx.lineCap = 'butt'
-
-    if (!miniBgRef.current) renderMiniBg()
-    if (miniBgRef.current) {
-      ctx.drawImage(miniBgRef.current, 0, 0, MINI_W, MINI_H)
-    }
-
-    const sx = MINI_W / m.bounds.width
-    const sy = MINI_H / m.bounds.height
-    const px = (x: number): number => (x - m.bounds.x) * sx
-    const py = (y: number): number => (y - m.bounds.y) * sy
-
-    // --- 当前视口框 ---
-    ctx.beginPath()
-    ctx.rect(
-      px(-camera.x / camera.zoom),
-      py(-camera.y / camera.zoom),
-      (view.width / camera.zoom) * sx,
-      (view.height / camera.zoom) * sy,
-    )
-    ctx.strokeStyle = sealColorRef.current || '#a8432f'
-    ctx.globalAlpha = 0.85
-    ctx.lineWidth = 1.4
-    ctx.stroke()
-    ctx.globalAlpha = 1
-  }, [mini, camera.x, camera.y, camera.zoom, view.width, view.height, renderMiniBg])
-
-  // 布局阶段就画底图与视口：首帧不会先亮一块空白。
-  useLayoutEffect(() => {
-    renderMiniBg()
-    drawMini()
-  }, [renderMiniBg, drawMini])
-
-  const refreshMiniRef = useRef(() => {
-    renderMiniBg()
-    drawMini()
-  })
-  useEffect(() => {
-    refreshMiniRef.current = () => {
-      renderMiniBg()
-      drawMini()
-    }
-  })
-
-  const onCanvasDragOver = useCallback((e: React.DragEvent) => {
-    const hasFiles = e.dataTransfer.types ? Array.from(e.dataTransfer.types).includes('Files') : false
-    if (hasFiles) {
-      e.preventDefault()
-      e.dataTransfer.dropEffect = 'copy'
-    }
-  }, [])
-
-  const onCanvasDrop = useCallback(
-    async (e: React.DragEvent) => {
-      const files = Array.from(e.dataTransfer.files || [])
-      const normalFiles = files.filter((f) => !f.name.toLowerCase().endsWith('.unr'))
-      if (!normalFiles.length) return
-      e.preventDefault()
-      e.stopPropagation()
-
-      const world = toWorld(e.clientX, e.clientY)
-      const goalDir = goalDirOf(store, goalId)
-      if (!goalDir) {
-        onToast?.(t('找不到当前目标目录，无法保存文件'))
-        return
-      }
-
-      let offsetX = 0
-      let offsetY = 0
-
-      for (const file of normalFiles) {
-        const fileName = sanitizeFileName(file.name)
-        const relPath = `${goalDir}/${FILES_DIR}/${fileName}`
-        try {
-          const dataUrl = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader()
-            reader.onload = () => resolve(String(reader.result))
-            reader.onerror = () => reject(new Error('读取文件失败'))
-            reader.readAsDataURL(file)
-          })
-
-          const written = await writeUserBinary(relPath, dataUrl)
-          if (!written) {
-            onToast?.(t('保存文件「{0}」失败', file.name))
-            continue
-          }
-
-          if (onCreateNode) {
-            const r = onCreateNode(
-              'file',
-              null,
-              { x: Math.round(world.x + offsetX), y: Math.round(world.y + offsetY) },
-              {
-                title: file.name,
-                fileKind: 'local',
-                url: `${FILES_DIR}/${fileName}`,
-              },
-            )
-            if ('uuid' in r) {
-              writePos(r.uuid, Math.round(world.x + offsetX), Math.round(world.y + offsetY))
-              setSelectedId(r.uuid)
-              offsetX += 24
-              offsetY += 24
-            }
-          }
-          onToast?.(t('已添加文件节点「{0}」', file.name))
-        } catch (err) {
-          onToast?.(t('导入文件失败: {0}', err instanceof Error ? err.message : String(err)))
-        }
-      }
-    },
-    [store, goalId, toWorld, onCreateNode, writePos, onToast],
-  )
-
-  /** 换肤后重绘底图与视口：canvas 不像 SVG 那样跟着 CSS 变量自己变 */
-  useLayoutEffect(() => {
-    const watch = new MutationObserver(() => refreshMiniRef.current())
-    watch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] })
-    return () => watch.disconnect()
-  }, [])
 
   return (
     <div
@@ -2741,845 +672,71 @@ export const StructureCanvas = memo(function StructureCanvas({
         }}
       >
 
-        {/* 连线层：尺寸跟着包围盒走（SVG 根默认会裁掉超出的路径，所以不能用 1×1） */}
-        {bounds && (
-          <svg
-            className="pointer-events-none absolute"
-            style={{ left: edgeOrigin.x, top: edgeOrigin.y }}
-            width={edgeSize.width}
-            height={edgeSize.height}
-          >
-            {edges.map((edge, idx) => {
-              const from = byId.get(edge.from)
-              const to = byId.get(edge.to)
-              if (!from || !to) return null
-              const isSelected = selectedEdge?.from === edge.from && selectedEdge?.to === edge.to
-              /*
-                视口裁剪：一屏能看见的永远只有局部，边数却随图规模线性涨。不裁的话
-                每条边都是一个常驻 SVG 元素（样式重算、层序、命中区都按元素算）。
-                粗筛用「两端卡片矩形的并集」外扩 EDGE_CULL_PAD，命中都不命中就连
-                routeOf 那趟绕行路由都不用算。选中 / 正在指的那条不裁——用户点它就是要看见它。
-              */
-              if (viewportBox && !isSelected) {
-                const left = Math.min(from.x, to.x) - EDGE_CULL_PAD
-                const top = Math.min(from.y, to.y) - EDGE_CULL_PAD
-                const right = Math.max(from.x + cardWidthOf(from.kind), to.x + cardWidthOf(to.kind)) + EDGE_CULL_PAD
-                const bottom = Math.max(from.y + height(from), to.y + height(to)) + EDGE_CULL_PAD
-                if (
-                  right < viewportBox.left ||
-                  left > viewportBox.right ||
-                  bottom < viewportBox.top ||
-                  top > viewportBox.bottom
-                ) {
-                  return null
-                }
-              }
-              const path = routeOf(edge)
-              if (!path) return null
-              // 世界坐标 → SVG 坐标（这一层是从包围盒左上角铺开的）
-              const points = path.map((p) => ({ x: p.x - edgeOrigin.x, y: p.y - edgeOrigin.y }))
-              // 从大纲卡出发的树边（子级是文档还是大纲都算）统一色；归属边一律中性灰
-              const color = from.kind === 'outline' ? SLOT_ACCENT : null
-              const dots = edgeDots(points, edgeStyle)
-              const slotKey = from.slots?.find((s) => s.childId === to.uuid)?.key ?? null
-              // 悬停目标项 → 对应的那条子文档连线发光
-              const glow = !!hoverSlot && hoverSlot.parentId === edge.from && slotKey === hoverSlot.key
-              const isHoveredEdge =
-                (hoverEdge?.from === edge.from && hoverEdge?.to === edge.to) || isSelected || glow
-              const showDots = hoverEdge?.from === edge.from && hoverEdge?.to === edge.to
-              return (
-                <g key={`${edge.from}>${edge.to}-${idx}`}>
-                  <path
-                    d={edgePathD(points, edgeStyle)}
-                    fill="none"
-                    stroke={color ?? (isHoveredEdge ? 'var(--color-seal, #b45309)' : 'currentColor')}
-                    className={color || isHoveredEdge ? '' : 'text-ink-faint/55'}
-                    strokeWidth={isSelected || glow ? 2.6 : isHoveredEdge ? 2 : 1.5}
-                    strokeLinecap="round"
-                    style={
-                      glow
-                        ? { filter: `drop-shadow(0 0 5px ${color ?? 'var(--color-seal, #b45309)'})` }
-                        : undefined
-                    }
-                  />
-                  {/*
-                    两端的小圆点：**只在指针停在线上时出现**，而且很小。
-                    平时它只会挡视线——线本身已经说清了连接关系。
-                  */}
-                  {showDots &&
-                    (['from', 'to'] as const).map((side) => {
-                      const p = side === 'from' ? dots.from : dots.to
-                      return (
-                        <circle
-                          key={side}
-                          cx={p.x}
-                          cy={p.y}
-                          r={3}
-                          fill="currentColor"
-                          className="text-card transition-all"
-                          stroke={color ?? 'rgba(140,140,140,0.7)'}
-                          strokeWidth={1.4}
-                        />
-                      )
-                    })}
-                </g>
-              )
-            })}
-            {/* 跟手的那条线 */}
-            {linkAt && linkFrom && (() => {
-              const from = byId.get(linkFrom)
-              if (!from) return null
-              // 从目标项圆点上拉出来的线，起点要落在**那颗圆点**上（用实测值，不用算）
-              const slotKey = from.slots?.find((s) => s.key === linkSlot)?.key
-              const measured = slotKey ? dotY[`${from.uuid}|${slotKey}`] : undefined
-              // 虚线用目标项统一色：圆点是什么色，线就是什么色
-              const linkColor = slotKey && from.kind === 'outline' ? SLOT_ACCENT : undefined
-              const slotIndex =
-                measured == null && slotKey && from.kind === 'outline'
-                  ? from.slots?.findIndex((s) => s.key === linkSlot) ?? -1
-                  : -1
-              const anchorFrom = measured ?? (slotIndex >= 0 ? slotAnchorY(slotIndex) : undefined)
-              const curve = edgeCurve(
-                from,
-                { uuid: '', kind: from.kind, title: '', subtitle: '', x: linkAt.x, y: linkAt.y - CARD_H / 2 },
-                height,
-                anchorFrom == null ? undefined : { from: anchorFrom },
-              )
-              /*
-                跟手的这条是**橡皮筋**：终点跟着指针乱跑，按「绕开卡片」去算会一路抖，
-                所以它保持老画法（出线 → 竖直 → 进线），落手之后才走真正的路由。
-              */
-              const points = (edgeStyle === 'curved' ? curve : edgeElbow(curve[0], curve[3])).map((p) => ({
-                x: p.x - edgeOrigin.x,
-                y: p.y - edgeOrigin.y,
-              }))
-              return (
-                <path
-                  d={edgePathD(points, edgeStyle)}
-                  fill="none"
-                  // 虚线颜色跟着接入点走：拉的是哪一条，线就是那条的颜色
-                  stroke={linkColor ?? 'currentColor'}
-                  className={linkColor ? '' : 'text-seal/70'}
-                  strokeWidth={1.5}
-                  strokeDasharray="6 4"
-                />
-              )
-            })()}
-          </svg>
-        )}
-
-        {displayCards.map((card) => {
-          const selected = selectedId === card.uuid
-          const multi = multiIds?.has(card.uuid) ?? false
-          const isHovered = hoverId === card.uuid
-          const h = height(card)
-          const slots = card.slots ?? []
-          const openable = card.kind !== 'outline'
-          const lifted = !!draft && (draft.id === card.uuid || (draft.moves !== undefined && card.uuid in draft.moves))
-          /*
-           * 树的上游：线可能落在文档卡上，也可能落在大纲卡上（接大纲的嵌套子级）。
-           * 没接进树的置灰提示（游离）；入口是根，天生没有上级。
-           */
-          // 性能优化：直接从 O(1) 索引查找
-          const hasUpstream = upstreamEdgeSet.has(card.uuid) || upstreamEdgeSet.has(outlineUuid(card.uuid))
-          const unassigned = card.kind === 'doc' && !card.entry && !hasUpstream
-          // 入口就是根文档自己（一张图有且只有一个）：挂「入口」徽章
-          const authoritativeRoot = card.entry === true
-          // 性能优化：直接从预热缓存中获取
-          const leafOwnerNodeId = leafOwnerCache.get(card.uuid) ?? null
-
-          const isWebCard = card.kind === 'file' && (
-            card.file?.fileKind === 'web' ||
-            /^(https?:\/\/|\/\/)/i.test(card.file?.url ?? '') ||
-            (card.file?.url ?? '').includes('://')
-          )
-
-          // 性能优化：视口包围盒裁剪，视口外的普通卡片仅渲染轻量占位容器，削减数千个复杂子 DOM
-          const inView = !viewportBox || (
-            card.x <= viewportBox.right &&
-            card.x + cardWidthOf(card.kind) >= viewportBox.left &&
-            card.y <= viewportBox.bottom &&
-            card.y + h >= viewportBox.top
-          )
-          const mustRender = inView || selected || multi || isHovered || lifted || flashId === card.uuid || (candidateIds?.has(card.uuid) ?? false) || tourOpen
-          return (
-            <Fragment key={card.uuid}>
-            <div
-              data-node-id={card.uuid}
-              {...(card.uuid === 'tour-mock-entry-doc'
-                ? { 'data-tour-node': 'entry-doc' }
-                : card.uuid === 'tour-mock-outline'
-                  ? { 'data-tour-node': 'outline' }
-                  : card.uuid === 'tour-mock-video'
-                    ? { 'data-tour-node': 'video' }
-                    : card.uuid === 'tour-mock-exam'
-                      ? { 'data-tour-node': 'exam' }
-                      : card.uuid === 'tour-mock-note'
-                        ? { 'data-tour-node': 'note' }
-                        : card.uuid === 'tour-mock-superdoc'
-                          ? { 'data-tour-node': 'superdoc' }
-                          : {})}
-              className={`absolute flex flex-col border ${
-                card.kind === 'file'
-                  ? isWebCard
-                    ? 'border-indigo-500/30 bg-indigo-500/[0.06]'
-                    : 'border-blue-500/30 bg-blue-500/[0.06]'
-                  : KIND_TONE[card.kind]
-              } ${
-                card.blank || unassigned ? 'border-dashed' : ''
-              } ${unassigned ? 'opacity-70' : ''} ${
-                selected || multi ? 'ring-2 ring-seal/60' : isHovered ? 'ring-1 ring-seal/35' : ''
-              } ${lifted ? 'shadow-lg' : 'shadow-sm'} ${flashId === card.uuid ? 'moji-structure-flash' : ''} ${
-                candidateIds?.has(card.uuid) ? 'moji-structure-candidate' : ''
-              }`}
-              style={{
-                left: card.x,
-                top: card.y,
-                width: cardWidthOf(card.kind),
-                minHeight: h,
-                // 悬停不抢光标（箭头就好），拖起来才换成抓住的手——「可拖」由选中态与阴影说
-                cursor: lifted ? 'grabbing' : undefined,
-              }}
-            >
-              {mustRender ? (
-                <>
-              {/*
-                标题行高度**必须**等于 OUTLINE_HEAD：目标项圆点的 y 是按这个常量算的
-                （slotAnchorY = OUTLINE_HEAD + 行号 × 行高）。这里一旦改成 minHeight 或加
-                padding，圆点就会和它那一行错开——真错过一次。
-              */}
-              <div className="flex shrink-0 items-center gap-1.5 px-3" style={{ height: OUTLINE_HEAD }} title={card.title}>
-                <span
-                  className={`shrink-0 px-1.5 py-[1px] text-[10px] font-semibold ${
-                    card.kind === 'file'
-                      ? isWebCard
-                        ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
-                        : 'bg-blue-500/15 text-blue-700 dark:text-blue-300'
-                      : KIND_BADGE[card.kind]
-                  }`}
-                >
-                  {card.kind === 'file'
-                    ? isWebCard
-                      ? t('网页')
-                      : t('文件')
-                    : t(GRAPH_KIND_LABEL[card.kind])}
-                </span>
-                <span
-                  {...(openable ? { 'data-open-title': card.uuid } : {})}
-                  title={card.title}
-                  className={`min-w-0 flex-1 truncate text-[11px] leading-tight tracking-tight font-medium text-ink ${
-                    openable ? 'hover:text-seal hover:underline' : ''
-                  }`}
-                >
-                  {card.title}
-                </span>
-                {authoritativeRoot && (
-                  <span
-                    title={t('入口：这门课从这份文档开始（右键其他无上级的文档可以换）')}
-                    className="shrink-0 rounded bg-rose-500/15 px-1 py-[1px] text-[9px] font-semibold text-rose-600 dark:text-rose-300"
-                  >
-                    {t('入口')}
-                  </span>
-                )}
-              </div>
-
-              {card.kind === 'outline' && slots.length > 0 ? (
-                /* 容器不带左右内边距：行自己带，圆点才能贴到卡片右边框上 */
-                /* 不能加 overflow-hidden：圆点要伸出卡片右边框半颗，裁了连点击都收不到 */
-                <div className="flex flex-col pb-2">
-                  {slots.map((slot) => {
-                    const isEditingThisSlot = editingSlot?.uuid === card.uuid && editingSlot?.slotKey === slot.key
-                    return (
-                      <div
-                        key={slot.key}
-                        data-slot-key={slot.key}
-                        data-slot-parent={card.uuid}
-                        title={isEditingThisSlot ? undefined : slot.childId ? `${slot.title} · ${t('跳到这个子文档')}` : `${slot.title} · ${t('生成一份空文档')}`}
-                        onPointerEnter={() => !isEditingThisSlot && setHoverSlot({ parentId: card.uuid, key: slot.key })}
-                        onPointerLeave={() => setHoverSlot(null)}
-                        className={`group/slot relative flex items-center gap-1.5 pr-6 pl-2 ${
-                          isEditingThisSlot ? 'bg-seal/[0.06]' : 'cursor-pointer hover:bg-seal/[0.08]'
-                        }`}
-                        style={{ height: SLOT_ROW }}
-                      >
-                        <span className="h-2 w-2 shrink-0" />
-                        {isEditingThisSlot ? (
-                          <div
-                            className="flex min-w-0 flex-1 items-center"
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => e.stopPropagation()}
-                            onDoubleClick={(e) => e.stopPropagation()}
-                          >
-                            <input
-                              type="text"
-                              autoFocus
-                              value={editingSlot.text}
-                              onChange={(e) => setEditingSlot({ ...editingSlot, text: e.target.value.replace(/[\r\n]/g, '') })}
-                              onFocus={(e) => e.target.select()}
-                              onPointerDown={(e) => e.stopPropagation()}
-                              onClick={(e) => e.stopPropagation()}
-                              onDoubleClick={(e) => e.stopPropagation()}
-                              onKeyDown={(e) => {
-                                e.stopPropagation()
-                                if (e.key === 'Enter') {
-                                  e.preventDefault()
-                                  commitEditingSlot({ uuid: card.uuid, slotKey: slot.key, originalTitle: slot.title }, editingSlot.text)
-                                } else if (e.key === 'Escape') {
-                                  e.preventDefault()
-                                  cancelledEditRef.current = true
-                                  setEditingSlot(null)
-                                }
-                              }}
-                              onBlur={() => {
-                                if (cancelledEditRef.current) {
-                                  cancelledEditRef.current = false
-                                  return
-                                }
-                                commitEditingSlot({ uuid: card.uuid, slotKey: slot.key, originalTitle: slot.title }, editingSlot.text)
-                              }}
-                              className="min-w-0 flex-1 rounded border border-seal/50 bg-paper px-1.5 py-0 text-[11.5px] leading-[18px] text-ink outline-none focus:border-seal focus:ring-1 focus:ring-seal/30 dark:bg-card"
-                            />
-                          </div>
-                        ) : (
-                          <span
-                            title={slot.title}
-                            className="min-w-0 flex-1 truncate text-[11.5px]"
-                            style={{ color: slot.childId ? SLOT_ACCENT : undefined, opacity: slot.childId ? 1 : 0.55 }}
-                            onDoubleClick={(e) => {
-                              if (onRenameOutlineEntry) {
-                                e.stopPropagation()
-                                setEditingSlot({ uuid: card.uuid, slotKey: slot.key, text: slot.title })
-                                setAddingSlotUuid(null)
-                                setMenu(null)
-                              }
-                            }}
-                          >
-                            {slot.title}
-                          </span>
-                        )}
-                        {onRenameOutlineEntry && !isEditingThisSlot && (
-                          <button
-                            type="button"
-                            data-rename-slot={slot.key}
-                            data-rename-slot-parent={card.uuid}
-                            title={t('重命名目标项「{0}」', slot.title)}
-                            className="z-10 shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:bg-seal/15 hover:text-seal group-hover/slot:opacity-100"
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setEditingSlot({ uuid: card.uuid, slotKey: slot.key, text: slot.title })
-                              setAddingSlotUuid(null)
-                              setMenu(null)
-                            }}
-                          >
-                            <Pencil size={11} strokeWidth={2.2} />
-                          </button>
-                        )}
-                        {onDeleteOutlineEntry && !isEditingThisSlot && (
-                          <button
-                            type="button"
-                            data-delete-slot={slot.key}
-                            data-delete-slot-parent={card.uuid}
-                            title={t('删除目标项「{0}」', slot.title)}
-                            className="z-10 shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:bg-rose-500/15 hover:text-rose-500 group-hover/slot:opacity-100"
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onDeleteOutlineEntry(card.uuid, slot.key)
-                            }}
-                          >
-                            <X size={11} strokeWidth={2.2} />
-                          </button>
-                        )}
-                        {/*
-                          接口点：**菱形**（旋转 45° 的小方块）——圆形留给普通连线把手，
-                          一眼分得清「这是在认领某个接口」。认领了=实心，空着=空心。
-                          位置规矩不变：放在这一行里面（垂直居中 flex 保证），圆心压在
-                          1px 边框的中线上（right: -0.5px 再平移半颗）。
-                        */}
-                        <span
-                          data-slot-dot={slot.key}
-                          data-slot-dot-parent={card.uuid}
-                          title={slot.childId ? t('已经挂上：拖出去可以换一份') : t('从接口拖出去挂一份文档或子大纲（会认领这条目标项）')}
-                          className="absolute top-1/2 -right-[0.5px] h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2 rotate-45 cursor-crosshair rounded-[2px] border-2"
-                          style={{
-                            borderColor: SLOT_ACCENT,
-                            background: slot.childId ? SLOT_ACCENT : 'var(--color-card, #fff)',
-                          }}
-                        />
-                      </div>
-                    )
-                  })}
-                  {/* 手动加一条目标项：这是大纲内容，走大纲节点的 editContent */}
-                  {addingSlotUuid === card.uuid ? (
-                    <div
-                      className="flex items-center gap-1.5 pr-3 pl-2"
-                      style={{ height: SLOT_ROW }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <span className="text-[11px] text-seal">＋</span>
-                      <input
-                        type="text"
-                        autoFocus
-                        placeholder={t('新目标项标题...')}
-                        value={addingSlotText}
-                        onChange={(e) => setAddingSlotText(e.target.value.replace(/[\r\n]/g, ''))}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => {
-                          e.stopPropagation()
-                          if (e.key === 'Enter') {
-                            e.preventDefault()
-                            commitAddingSlot(card.uuid, addingSlotText)
-                          } else if (e.key === 'Escape') {
-                            e.preventDefault()
-                            cancelledAddRef.current = true
-                            setAddingSlotUuid(null)
-                            setAddingSlotText('')
-                          }
-                        }}
-                        onBlur={() => {
-                          if (cancelledAddRef.current) {
-                            cancelledAddRef.current = false
-                            return
-                          }
-                          commitAddingSlot(card.uuid, addingSlotText)
-                        }}
-                        className="min-w-0 flex-1 rounded border border-seal/50 bg-paper px-1.5 py-0 text-[11px] leading-[18px] text-ink outline-none focus:border-seal focus:ring-1 focus:ring-seal/30 dark:bg-card"
-                      />
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      data-add-slot={card.uuid}
-                      title={t('给这份大纲加一条目标项')}
-                      className="flex w-full cursor-pointer items-center gap-1.5 pr-3 pl-2 text-left text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
-                      style={{ height: SLOT_ROW }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setAddingSlotUuid(card.uuid)
-                        setAddingSlotText('')
-                        setEditingSlot(null)
-                        setMenu(null)
-                      }}
-                    >
-                      ＋ {t('添加目标项')}
-                    </button>
-                  )}
-                </div>
-              ) : card.kind === 'outline' && slots.length === 0 ? (
-                /*
-                  空大纲卡的「生成大纲」与手动添加目标项：
-                  支持 Agent 自动规划，亦支持用户手动创建第一项目标
-                */
-                <div className="flex flex-col gap-1 px-3 pb-2">
-                  <div className="flex h-6 items-center justify-between gap-2">
-                    <span title={card.subtitle} className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
-                    <button
-                      type="button"
-                      title={card.free ? t('读它认领的目标项与上级上下文，规划这一层怎么拆') : t('读宿主文档，把「先要学会什么」铺成目标项')}
-                      className="shrink-0 bg-seal/15 px-2 py-0.5 text-[11px] text-seal-deep hover:bg-seal/25"
-                      onClick={() => {
-                        if (card.uuid) onGenerateOutline?.(card.uuid)
-                      }}
-                    >
-                      {t('生成总览')}
-                    </button>
-                  </div>
-                  {addingSlotUuid === card.uuid ? (
-                    <div
-                      className="flex items-center gap-1.5"
-                      style={{ height: SLOT_ROW }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <span className="text-[11px] text-seal">＋</span>
-                      <input
-                        type="text"
-                        autoFocus
-                        placeholder={t('新目标项标题...')}
-                        value={addingSlotText}
-                        onChange={(e) => setAddingSlotText(e.target.value.replace(/[\r\n]/g, ''))}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => {
-                          e.stopPropagation()
-                          if (e.key === 'Enter') {
-                            e.preventDefault()
-                            commitAddingSlot(card.uuid, addingSlotText)
-                          } else if (e.key === 'Escape') {
-                            e.preventDefault()
-                            cancelledAddRef.current = true
-                            setAddingSlotUuid(null)
-                            setAddingSlotText('')
-                          }
-                        }}
-                        onBlur={() => {
-                          if (cancelledAddRef.current) {
-                            cancelledAddRef.current = false
-                            return
-                          }
-                          commitAddingSlot(card.uuid, addingSlotText)
-                        }}
-                        className="min-w-0 flex-1 rounded border border-seal/50 bg-paper px-1.5 py-0 text-[11px] leading-[18px] text-ink outline-none focus:border-seal focus:ring-1 focus:ring-seal/30 dark:bg-card"
-                      />
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      data-add-slot={card.uuid}
-                      title={t('给这份大纲加一条目标项')}
-                      className="flex w-full cursor-pointer items-center gap-1.5 text-left text-[11px] text-ink-faint hover:bg-seal/[0.08] hover:text-seal"
-                      style={{ height: SLOT_ROW }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setAddingSlotUuid(card.uuid)
-                        setAddingSlotText('')
-                        setEditingSlot(null)
-                        setMenu(null)
-                      }}
-                    >
-                      ＋ {t('添加目标项')}
-                    </button>
-                  )}
-                </div>
-              ) : card.kind === 'doc' && card.excerpt ? (
-                /*
-                  有正文：**正好两行**摘要。
-                  外层只负责裁：高度就是两行的行高之和、**不带内边距**（溢出是在 padding box
-                  上裁的，留了 pb 就等于在第三行上开了一条 8px 的窗口，让它探出来半截）。
-                  内层留着 line-clamp-2 只为一件事：让第二行末尾出现省略号。
-                */
-                <div
-                  className="overflow-hidden px-3"
-                  style={{ height: DOC_LINES * DOC_LINE_H, marginBottom: CARD_PAD_B }}
-                >
-                  <div className="line-clamp-2 text-[11px] text-ink-soft" style={{ lineHeight: `${DOC_LINE_H}px` }}>
-                    {card.excerpt}
-                  </div>
-                </div>
-              ) : card.kind === 'doc' && card.blank ? (
-                /*
-                  空文档：给「生成文档」。实体已就位（点目标项那一刻建的），
-                  点击把「父大纲 + 所占目标项」作为意图一并交给 agent 的工作流。
-                */
-                <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                  <span className="text-[11px] text-ink-faint">{t('还没有正文')}</span>
-                  <button
-                    type="button"
-                    className="bg-seal/15 px-2 py-0.5 text-[11px] text-seal-deep hover:bg-seal/25"
-                    onClick={() => {
-                      // 意图：它挂在哪份大纲的哪条目标项下（按 key 对上号的那条）——树边可能落在它的大纲卡上（嵌套接入）
-                      const face = byId.has(outlineUuid(card.uuid)) ? outlineUuid(card.uuid) : card.uuid
-                      const upstream = edges.find((e) => e.to === face)
-                      const upstreamCard = upstream ? byId.get(upstream.from) : undefined
-                      const slotTitle = upstreamCard?.slots?.find((s) => s.childId === face)?.title
-                      const hint =
-                        upstreamCard && slotTitle
-                          ? `【本轮是空文档填充】文档节点已就位（uuid ${card.uuid}）：教学文档直接写进它（api.node.get 后 editContent），不要创建任何新节点、不要拆下一层大纲。它的定位：大纲「${upstreamCard.title}」里「${slotTitle}」这条目标项的落地文档——正文围绕这条目标项展开，范围与同纲其他目标项错开。`
-                          : undefined
-                      onGenerateDoc?.(card.uuid, hint)
-                    }}
-                  >
-                    {t('生成文档')}
-                  </button>
-                </div>
-              ) : card.kind === 'exam' && (card.attempts?.length ?? 0) > 0 ? (
-                /*
-                  试卷的考试记录：一行一次作答，顶部配有「开始考试」按钮；
-                  必须是真按钮：画布容器在 pointerdown 上捕获指针，非白名单元素的 click 会被吞掉。
-                */
-                <div className="flex flex-col pb-2">
-                  <div className="flex items-center justify-between px-3 pb-1 pt-0.5 border-b border-line/40">
-                    <span className="text-[10px] text-ink-faint">{t('作答记录 ({0})', card.attempts!.length)}</span>
-                    <button
-                      type="button"
-                      title={t('开始考试（打开独立考试窗口）')}
-                      onClick={() => {
-                        const exam = store.exams.find((e) => e.id === card.uuid)
-                        if (exam && !nodeById(store, exam.nodeId)) {
-                          onToast?.(t('这份试卷还没绑到文档上：拖线连到某张文档卡之后就能开考'))
-                          return
-                        }
-                        if (exam) exams.onStart(exam.nodeId, exam.id)
-                      }}
-                      className="rounded bg-seal/15 px-2 py-0.5 text-[10.5px] font-semibold text-seal-deep hover:bg-seal/25 transition cursor-pointer"
-                    >
-                      {t('开始考试')}
-                    </button>
-                  </div>
-                  {card.attempts!.map((row) => (
-                    <button
-                      key={row.n}
-                      type="button"
-                      title={t('打开这一次考试的记录（卷子 + 作答 + 判分 + 错题讲解）')}
-                      onClick={() => {
-                        const exam = store.exams.find((e) => e.id === card.uuid)
-                        if (exam) exams.onOpenRecord(exam.nodeId, exam.id, row.attemptId)
-                      }}
-                      className="flex w-full cursor-pointer items-center gap-1.5 px-3 text-left text-[11px] text-ink-soft hover:bg-seal/[0.08]"
-                      style={{ height: SLOT_ROW }}
-                    >
-                      <span className="shrink-0 text-ink-faint">第 {row.n} 次</span>
-                      <span className="min-w-0 flex-1 truncate">{row.label}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : card.kind === 'exam' && !card.blank ? (
-                /*
-                  有内容的试卷（还没有作答记录）：显示考试按钮
-                */
-                <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                  <span title={card.subtitle} className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
-                  <button
-                    type="button"
-                    title={t('开始考试（打开独立考试窗口）')}
-                    className="shrink-0 rounded bg-seal/15 px-2.5 py-0.5 text-[11px] font-semibold text-seal-deep hover:bg-seal/25 transition cursor-pointer"
-                    onClick={() => {
-                      const exam = store.exams.find((e) => e.id === card.uuid)
-                      if (exam && !nodeById(store, exam.nodeId)) {
-                        onToast?.(t('这份试卷还没绑到文档上：拖线连到某张文档卡之后就能开考'))
-                        return
-                      }
-                      if (exam) exams.onStart(exam.nodeId, exam.id)
-                    }}
-                  >
-                    {t('开始考试')}
-                  </button>
-                </div>
-              ) : card.kind === 'video' ? (
-                /*
-                  视频卡：两行结构。
-                  第一行徽章 + 标题，第二行视频唯一标识输入框（URL/BV号）。
-                  点击标题打开视频 Tab，确定为视频资源后，第二行标识输入框固化（只读展示，不再提供修改换绑等操作）。
-                */
-                <VideoCardRow
-                  card={card}
-                  store={store}
-                  goalId={goalId}
-                  onUpdateVideoNode={onUpdateVideoNode}
-                  onGenerateVideoDoc={onGenerateVideoDoc}
-                />
-              ) : card.kind === 'file' ? (
-                /*
-                  文件卡：两行结构。
-                  第一行 title，第二行响应式输入框（支持文件/网页响应式判断，无提交按钮），
-                  内部右侧带选择本地文件按钮（先上传到 files/ 并注册清单，含 SHA-256 去重，然后引用）。
-                  引用文件或网页后若 title 未手动命名则自动填充文件名或网页实际 title。
-                */
-                <FileCardRow
-                  card={card}
-                  store={store}
-                  goalId={goalId}
-                  onBindFile={onBindFile}
-                  onToast={onToast}
-                />
-              ) : card.kind === 'project' ? (
-                /*
-                  项目卡：路径行（拼法徽标 + 路径 + 展开钮）+ 懒加载的目录树。
-                  必须是真按钮：画布容器在 pointerdown 上捕获指针，非白名单元素的 click 会被吞掉。
-                  目录树状态（展开/已加载数据）是组件自己的，不进派生——高度在 height 包装里叠加；
-                  树容器是 WheelStop：内容自己滚，滚轮不许冒泡到画布的相机。
-                */
-                <div className="flex min-h-0 flex-1 flex-col pb-2">
-                  {card.project?.path ? (
-                    <>
-                      <div className="flex items-center gap-1.5 px-3" style={{ height: PROJ_PATH_ROW }}>
-                        <button
-                          type="button"
-                          title={t('展开 / 收起这个项目的目录')}
-                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-teal-700 hover:bg-teal-500/15 dark:text-teal-300"
-                          onClick={() => toggleProjRoot(card.uuid)}
-                        >
-                          {projExpanded[card.uuid]?.has('') ? (
-                            <ChevronDown size={13} className="shrink-0" />
-                          ) : (
-                            <ChevronRight size={13} className="shrink-0" />
-                          )}
-                        </button>
-                        <span
-                          className="shrink-0 rounded bg-teal-500/15 px-1 py-[1px] text-[9px] font-semibold text-teal-700 dark:text-teal-300"
-                          title={card.project.resolved ? t('解析到的真实路径') + '\n' + card.project.resolved : t('路径此刻解析不出（相对路径越出了用户目录，或数据根未就绪）')}
-                        >
-                          {card.project.pathKind === 'relative' ? t('相对') : t('绝对')}
-                        </span>
-                        <span
-                          className="min-w-0 flex-1 truncate text-[11px] text-ink-soft"
-                          title={card.project.resolved ? card.project.resolved : card.project.path}
-                        >
-                          {card.project.path}
-                        </span>
-                        <button
-                          type="button"
-                          title={t('修改这条声明（路径或拼法）')}
-                          className="shrink-0 rounded bg-line/60 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-line/90 transition cursor-pointer"
-                          onClick={(e) => {
-                            const r = e.currentTarget.getBoundingClientRect()
-                            setMenuText(card.project?.path ?? '')
-                            setMenu({
-                              x: Math.min(r.right, window.innerWidth - 300),
-                              y: Math.min(r.bottom + 6, window.innerHeight - 200),
-                              uuid: card.uuid,
-                              mode: 'projectPath',
-                            })
-                          }}
-                        >
-                          {t('改路径')}
-                        </button>
-                      </div>
-                      {projExpanded[card.uuid]?.has('') && (
-                        <WheelStop
-                          className="mx-2 overflow-y-auto rounded-md border border-line/70 bg-paper/40"
-                          style={{ maxHeight: PROJ_TREE_MAX_ROWS * PROJ_TREE_ROW }}
-                        >
-                          {(() => {
-                            const tree = projTrees[card.uuid]?.['']
-                            if (tree?.loading) return <div className="px-3 py-1.5 text-[11px] text-ink-faint">{t('读取中…')}</div>
-                            if (tree?.error) return <div className="px-3 py-1.5 text-[11px] text-seal-deep" title={tree.error}>{tree.error}</div>
-                            const rows = projTreeRows(card.uuid)
-                            if (!rows.length) return <div className="px-3 py-1.5 text-[11px] text-ink-faint">{t('（空目录）')}</div>
-                            return (
-                              <div className="flex flex-col py-0.5">
-                                {rows.map((row) => (
-                                  <button
-                                    key={row.path}
-                                    type="button"
-                                    title={row.isDirectory ? row.path : t('在新页签打开这个文件')}
-                                    className={
-                                      'flex w-full cursor-pointer items-center gap-1 text-left text-[11px] hover:bg-teal-500/10 ' +
-                                      (row.isDirectory ? 'text-ink' : 'text-ink-soft hover:text-seal')
-                                    }
-                                    style={{ height: PROJ_TREE_ROW, paddingLeft: 10 + row.depth * 12 }}
-                                    onClick={() => {
-                                      if (row.isDirectory) toggleProjDir(card.uuid, row.path)
-                                      else if (card.project?.resolved && onOpenProjectFile) {
-                                        onOpenProjectFile(card.project.resolved.replace(/[\\/]+$/, '') + '/' + row.path)
-                                      }
-                                    }}
-                                  >
-                                    {row.isDirectory ? (
-                                      projExpanded[card.uuid]?.has(row.path) ? (
-                                        <FolderOpen size={11} className="shrink-0 text-teal-600 dark:text-teal-400" />
-                                      ) : (
-                                        <Folder size={11} className="shrink-0 text-teal-600 dark:text-teal-400" />
-                                      )
-                                    ) : (
-                                      <FileIcon size={11} className="shrink-0 text-ink-faint" />
-                                    )}
-                                    <span className="min-w-0 flex-1 truncate">{row.name}</span>
-                                    {!row.isDirectory && <ExternalLink size={9} className="shrink-0 text-ink-faint/60" />}
-                                  </button>
-                                ))}
-                              </div>
-                            )
-                          })()}
-                        </WheelStop>
-                      )}
-                    </>
-                  ) : (
-                    <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                      <span className="min-w-0 flex-1 truncate text-[11px] text-ink-faint">{card.subtitle}</span>
-                      <button
-                        type="button"
-                        title={t('声明这条路径（相对目标根目录或电脑绝对路径）')}
-                        className="shrink-0 rounded bg-teal-500/15 px-2 py-0.5 text-[11px] font-medium text-teal-700 hover:bg-teal-500/25 transition cursor-pointer dark:text-teal-300"
-                        onClick={(e) => {
-                          const r = e.currentTarget.getBoundingClientRect()
-                          setMenuText('')
-                          setMenu({
-                            x: Math.min(r.right, window.innerWidth - 300),
-                            y: Math.min(r.bottom + 6, window.innerHeight - 200),
-                            uuid: card.uuid,
-                            mode: 'projectPath',
-                          })
-                        }}
-                      >
-                        {t('设置路径')}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : (card.kind === 'exam' || card.kind === 'superdoc') && card.blank && leafOwnerNodeId ? (
-                /*
-                  还没生成内容的试卷 / 超级文档：给一颗「生成」——出卷会先问类型与难度，
-                  超级实验室会先问想做什么实验。**已经生成好的不再显示**（subtitle 就是内容在那里）。
-                */
-                <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                  <span title={card.subtitle} className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">{card.subtitle}</span>
-                  <button
-                    type="button"
-                    className="shrink-0 bg-seal/15 px-2 py-0.5 text-[11px] text-seal-deep hover:bg-seal/25"
-                    onClick={() =>
-                      card.kind === 'exam'
-                        ? docs.onNewExam(leafOwnerNodeId)
-                        : docs.onNewSuperDoc(leafOwnerNodeId, card.title)
-                    }
-                  >
-                    {card.kind === 'exam' ? t('生成试卷') : t('生成超级文档')}
-                  </button>
-                </div>
-              ) : (
-                <div title={card.subtitle} className="truncate px-3 pb-2 text-[11px] text-ink-soft">{card.subtitle}</div>
-              )}
-
-              {/*
-                普通连线把手：**圆形**实心印章色、卡色描边、不透明——与目标项的菱形接口点
-                区分开（圆=普通连接不带认领，菱=认领某个接口）。圆心压在 1px 边框的
-                **中线**上：绝对定位的参照是 padding box，边框中线在参照缘外 0.5px。
-                高度与连线锚点同一个值。
-                出线把手（右）只长在 doc 上：大纲的出线全走目标项的菱形口（从口上拖出去
-                才会认领），挂件与入口没有出线。
-              */}
-              {(card.kind === 'doc' || card.kind === 'video' || card.kind === 'exam' || card.kind === 'superdoc' || card.kind === 'file' || card.kind === 'note') && (
-                <div
-                  data-link-handle={card.uuid}
-                  title={
-                    card.kind === 'note'
-                      ? t('拖出去连到文件节点')
-                      : card.kind === 'exam' || card.kind === 'superdoc'
-                        ? t('拖出去连到笔记或文件节点')
-                        : card.kind === 'file'
-                          ? t('拖出去连到下级节点')
-                          : t('拖出去连到另一个节点')
-                  }
-                  className="absolute -right-[7.5px] h-3.5 w-3.5 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-card bg-seal"
-                  style={{ top: EDGE_ANCHOR_Y }}
-                />
-              )}
-              {/* 进线接口（左）：实心、不透明。入口不画；视频卡为顶层资源无上游，不该有进线点 */}
-              {card.kind !== 'entry' && !card.entry && (
-                <div
-                  className="pointer-events-none absolute -left-[7.5px] h-3.5 w-3.5 -translate-y-1/2 rounded-full border-2 border-card bg-seal"
-                  style={{ top: EDGE_ANCHOR_Y }}
-                />
-              )}
-                </>
-              ) : (
-                <div title={card.title} className="flex h-full w-full items-center justify-center text-[11px] text-ink-faint/45 select-none font-medium px-2 truncate">
-                  {card.title}
-                </div>
-              )}
-            </div>
-            {/*
-              注释：**贴在卡片外面**、跟着节点走的一条便签。
-              不塞进卡片里——它会撑高卡片、把连线的锚点和自动排列都带偏；
-              挂在外面之后，它只是一个跟着坐标走的标签，节点怎么长都不影响。
-            */}
-            {card.note && (
-              <div
-                className="absolute max-w-[260px] text-[10.5px] leading-snug text-ink-soft"
-                style={{ left: card.x, top: card.y + h + 6, width: cardWidthOf(card.kind) }}
-                title={card.note}
-              >
-                {card.note}
-              </div>
-            )}
-            </Fragment>
-          )
-        })}
+        <CanvasEdges
+          bounds={bounds}
+          edges={edges}
+          byId={byId}
+          height={height}
+          routeOf={routeOf}
+          edgeStyle={edgeStyle}
+          viewportBox={viewportBox}
+          selectedEdge={selectedEdge}
+          hoverEdge={hoverEdge}
+          hoverSlot={hoverSlot}
+          linkAt={linkAt}
+          linkFrom={linkFrom}
+          linkSlot={linkSlot}
+          dotY={dotY}
+          edgeOrigin={edgeOrigin}
+          edgeSize={edgeSize}
+        />
+        <CanvasCards
+          displayCards={displayCards}
+          selectedId={selectedId}
+          multiIds={multiIds}
+          hoverId={hoverId}
+          height={height}
+          draft={draft}
+          flashId={flashId}
+          candidateIds={candidateIds}
+          tourOpen={tourOpen}
+          viewportBox={viewportBox}
+          upstreamEdgeSet={upstreamEdgeSet}
+          leafOwnerCache={leafOwnerCache}
+          byId={byId}
+          edges={edges}
+          store={store}
+          goalId={goalId}
+          docs={docs}
+          exams={exams}
+          editingSlot={editingSlot}
+          setEditingSlot={setEditingSlot}
+          cancelledEditRef={cancelledEditRef}
+          commitEditingSlot={commitEditingSlot}
+          addingSlotUuid={addingSlotUuid}
+          setAddingSlotUuid={setAddingSlotUuid}
+          addingSlotText={addingSlotText}
+          setAddingSlotText={setAddingSlotText}
+          cancelledAddRef={cancelledAddRef}
+          commitAddingSlot={commitAddingSlot}
+          setHoverSlot={setHoverSlot}
+          setMenu={setMenu}
+          setMenuText={setMenuText}
+          onRenameOutlineEntry={onRenameOutlineEntry}
+          onDeleteOutlineEntry={onDeleteOutlineEntry}
+          onGenerateOutline={onGenerateOutline}
+          onGenerateDoc={onGenerateDoc}
+          projExpanded={projExpanded}
+          projTrees={projTrees}
+          projTreeRows={projTreeRows}
+          toggleProjRoot={toggleProjRoot}
+          toggleProjDir={toggleProjDir}
+          onOpenProjectFile={onOpenProjectFile}
+          onUpdateVideoNode={onUpdateVideoNode}
+          onGenerateVideoDoc={onGenerateVideoDoc}
+          onBindFile={onBindFile}
+          onToast={onToast}
+        />
 
         {/* 拉选框：跟手的世界坐标矩形（松手把相交的卡都选上） */}
         {marquee && (
@@ -3590,524 +747,83 @@ export const StructureCanvas = memo(function StructureCanvas({
         )}
       </div>
 
-      {/*
-        全景缩略图：节点按类型着色的微缩卡片（带描边与圆角）+ 半透明的当前视口框。
-        点/拖哪里，镜头就把哪里居中——大图上找路比滚轮翻得快。
-      */}
-      {/*
-        全景缩略图：节点按类型着色的微缩卡片（带描边与圆角）+ 半透明的当前视口框。
-        点/拖哪里，镜头就把哪里居中——大图上找路比滚轮翻得快。
-      */}
-      {mini && (
-        <div
-          ref={minimapContainerRef}
-          data-tour="minimap"
-          className="absolute top-4 left-4 z-20 flex items-center justify-center rounded-xl border border-line bg-card/90 p-1.5 shadow-sm backdrop-blur"
-          style={{ width: MINI_W + 12, height: MINI_H + 12 }}
-        >
-          {/*
-            画的是一张 canvas（绘制见 drawMini）：缩略图天生适合它——纯几何、没有文本、
-            没有交互（只有点击定位），不必为它付「自己实现排版与命中测试」的代价。
-            原先这里是**全量 SVG**：每张卡两个 rect、每个目标项一条 line、每条边一个
-            path，两百节点就是近千个常驻元素；而相机动一下（视口框要跟着走）React 就得
-            把整棵 SVG 子树重新协调一遍。
-            注意：**不要在这里写 width/height 属性**——那会让 React 每次渲染把画布重置
-            回 1× 尺寸，把 drawMini 设好的 dpr 位图覆盖掉，画面立刻变糊。
-          */}
-          <canvas
-            ref={miniRef}
-            style={{ width: MINI_W, height: MINI_H }}
-            className="block cursor-pointer touch-none"
-            onPointerDown={onMinimapPointerDown}
-            onPointerMove={onMinimapPointerMove}
-            onPointerUp={onMinimapPointerUp}
-            onPointerCancel={onMinimapPointerUp}
-          />
-        </div>
-      )}
+      <CanvasMinimap
+        bounds={bounds}
+        displayCards={displayCards}
+        edges={edges}
+        byId={byId}
+        routeOf={routeOf}
+        height={height}
+        dotY={dotY}
+        edgeStyle={edgeStyle}
+        camera={camera}
+        cameraRef={cameraRef}
+        view={view}
+        setCameraSync={setCameraSync}
+        setAnimating={setAnimating}
+        animTimer={animTimer}
+        planeRef={planeRef}
+        boundsRef={boundsRef}
+        viewRef={viewRef}
+        scheduleCameraUpdate={scheduleCameraUpdate}
+      />
+      <CanvasPalette paletteRef={paletteRef} />
 
-      {/* 顶部节点列表卡：水平排列，只显示图标，悬停向下弹出 tip 显示节点类型 */}
-      <div
-        ref={paletteRef}
-        data-tour="palette"
-        className="absolute top-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border border-line bg-card/85 p-1.5 shadow-xs backdrop-blur"
-      >
-        {PALETTE.map((kind) => (
-          <div
-            key={kind}
-            data-palette-kind={kind}
-            className="group/palette-item relative flex h-7 w-7 cursor-grab items-center justify-center rounded-lg border border-line/70 bg-paper/70 transition-all hover:scale-105 hover:border-seal/40 hover:bg-seal/[0.06] active:cursor-grabbing"
-          >
-            {/* 色签用卡片徽章的同一套配色：只显示图标 */}
-            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded ${KIND_BADGE[kind]}`}>
-              <KindIcon kind={kind} />
-            </span>
+      {dragging && <CanvasTrash trashRef={trashRef} overTrash={overTrash} />}
 
-            {/* 仅在鼠标经过节点项时向下弹出 tip 显示节点类型 */}
-            <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-line bg-card px-2 py-0.5 text-[11px] font-medium text-ink shadow-md opacity-0 transition-opacity duration-150 group-hover/palette-item:opacity-100">
-              {t(GRAPH_KIND_LABEL[kind])}
-            </span>
-          </div>
-        ))}
-      </div>
+      <CanvasControls
+        camera={camera}
+        cameraRef={cameraRef}
+        setCameraSync={setCameraSync}
+        cards={cards}
+        height={height}
+        view={view}
+        edgeStyle={edgeStyle}
+        saved={saved}
+        onChange={onChange}
+        canUndo={canUndo}
+        undo={undo}
+        fit={fit}
+        autoArrange={autoArrange}
+        onToggleViewMode={onToggleViewMode}
+        onOpenTour={handleOpenTour}
+      />
 
-      {/*
-        垃圾桶：**只在拖着节点时出现**（平时它只是一块挡视线的色块），
-        方形圆角、够大、好瞄准；层级在平面之下，所以被提起的节点永远压在它上面。
-        删除走统一通道（实体删除），工作区的撤回能退回它。
-      */}
-      {dragging && (
-        <div
-          ref={trashRef}
-          className={`absolute bottom-6 left-1/2 z-20 flex h-28 w-44 -translate-x-1/2 flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed text-[12px] transition-all ${
-            overTrash
-              ? 'scale-105 border-rose-500 bg-rose-500/15 text-rose-600 dark:text-rose-300'
-              : 'border-line bg-card/80 text-ink-faint'
-          }`}
-        >
-          <Trash2 size={26} />
-          {overTrash ? t('松手删除') : t('拖到这里删除')}
-        </div>
-      )}
-
-      {/*
-        右下角工具组：缩放读数 + 一排图标按钮（文字说明住悬停 tip，见 ControlButton），
-        最右是新手教学的入口。图标即功能，tooltip 只在犹豫的那半秒里接住。
-      */}
-      <div
-        data-tour="controls"
-        className="absolute right-4 bottom-4 z-20 flex items-center gap-0.5 rounded-lg border border-line bg-card/85 px-1.5 py-1 text-[11px] text-ink-soft backdrop-blur"
-      >
-        <ControlButton
-          label={t('缩小')}
-          onClick={() => {
-            const cam = cameraRef.current
-            const next = clampZoom(cam.zoom - 0.15, boundsOf(cards, height), view)
-            if (next !== cam.zoom) setCameraSync({ ...cam, zoom: next })
-          }}
-        >
-          <svg {...ICON_STROKE}>
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.3-4.3" />
-            <path d="M8 11h6" />
-          </svg>
-        </ControlButton>
-        <span className="w-10 text-center tabular-nums">{zoomPct}%</span>
-        <ControlButton
-          label={t('放大')}
-          onClick={() => {
-            const cam = cameraRef.current
-            const next = clampZoom(cam.zoom + 0.15, boundsOf(cards, height), view)
-            if (next !== cam.zoom) setCameraSync({ ...cam, zoom: next })
-          }}
-        >
-          <svg {...ICON_STROKE}>
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.3-4.3" />
-            <path d="M11 8v6" />
-            <path d="M8 11h6" />
-          </svg>
-        </ControlButton>
-        <span className="mx-0.5 h-3.5 w-px bg-line" />
-        <ControlButton
-          label={edgeStyle === 'straight' ? t('切换为曲线') : t('切换为直线')}
-          onClick={() => {
-            const next = EDGE_STYLES[(EDGE_STYLES.indexOf(edgeStyle) + 1) % EDGE_STYLES.length]
-            // 只是显示口径，不进撤回栈（Ctrl+Z 不该把线拉回曲线）
-            onChange({ ...(saved ?? { version: 2, positions: {} }), edgeStyle: next })
-          }}
-        >
-          <svg {...ICON_STROKE}>
-            {edgeStyle === 'straight' ? <path d="M4 18C10 18 14 6 20 6" /> : <path d="M5 19 19 5" />}
-          </svg>
-        </ControlButton>
-        <ControlButton label={t('撤回上一步')} disabled={!canUndo} onClick={undo}>
-          <svg {...ICON_STROKE}>
-            <path d="M9 14 4 9l5-5" />
-            <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11" />
-          </svg>
-        </ControlButton>
-        <ControlButton label={t('适应画布')} onClick={fit}>
-          <svg {...ICON_STROKE}>
-            <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-            <path d="M16 3h3a2 2 0 0 1 2 2v3" />
-            <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
-            <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-          </svg>
-        </ControlButton>
-        <ControlButton label={t('自动排列')} onClick={autoArrange}>
-          <svg {...ICON_STROKE}>
-            <rect x="3" y="3" width="7" height="7" rx="1" />
-            <rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" />
-            <rect x="14" y="14" width="7" height="7" rx="1" />
-          </svg>
-        </ControlButton>
-        {onToggleViewMode && (
-          <>
-            <span className="mx-0.5 h-3.5 w-px bg-line" />
-            <ControlButton label={t('切换为大纲树视图')} onClick={onToggleViewMode}>
-              <FolderTree size={13} />
-            </ControlButton>
-          </>
-        )}
-        <span className="mx-0.5 h-3.5 w-px bg-line" />
-        <ControlButton label={t('新手教学')} onClick={handleOpenTour}>
-          <svg {...ICON_STROKE}>
-            <circle cx="12" cy="12" r="10" />
-            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-            <path d="M12 17h.01" />
-          </svg>
-        </ControlButton>
-      </div>
-
-      {/* 从列表拖出来时跟着指针的那张卡（宽度跟着落地后的种类走：项目卡本来就宽一截） */}
-      {paletteKind && paletteAt && (
-        <div
-          className="pointer-events-none fixed z-50 flex items-center gap-1.5 rounded-xl border border-seal/40 bg-card/95 px-3 py-2 text-[12px] text-ink shadow-lg"
-          style={{ left: paletteAt.x - cardWidthOf(paletteKind) / 2, top: paletteAt.y - CARD_H / 2, width: cardWidthOf(paletteKind), height: CARD_H }}
-        >
-          <span className={`rounded px-1.5 py-[1px] text-[10px] font-semibold ${KIND_BADGE[paletteKind]}`}>
-            {t(GRAPH_KIND_LABEL[paletteKind])}
-          </span>
-          <span className="text-ink-soft">{t('松手放下')}</span>
-        </div>
-      )}
-
+      {paletteKind && paletteAt && <CanvasPaletteGhost paletteKind={paletteKind} paletteAt={paletteAt} />}
       {/* 新手教学：全屏遮罩挖洞、逐步指路，随时可退（见 StructureTour） */}
       {tourOpen && <StructureTour onClose={handleCloseTour} />}
 
       {/* 节点右键菜单 / 视频卡的下拉（WheelStop：浮层虽是 fixed 定位，DOM 还长在画布
           容器里——长列表滚动时不拦住滚轮，相机就跟着乱跑） */}
       {menu && menuCard && (
-        <WheelStop
-          data-menu
-          className={`fixed z-50 ${menu.mode === 'projectPath' ? 'w-[280px]' : 'w-[168px]'} rounded-lg border border-line bg-card/95 p-1 text-[12px] text-ink shadow-lg backdrop-blur`}
-          style={{ left: menu.x, top: menu.y }}
-        >
-          {menu.mode === 'actions' ? (
-            <>
-              <button
-                type="button"
-                className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                onClick={() => {
-                  // 删除的收尾（关菜单）都由 removeNode 统一处理
-                  removeNode(menuCard.uuid)
-                }}
-              >
-                {t('删除')}
-              </button>
-              {menuCard.kind === 'doc' &&
-                !menuCard.entry &&
-                store.goals.find((g) => g.id === goalId)?.rootNodeId !== menuCard.uuid &&
-                !edges.some((e) => e.to === menuCard.uuid || e.to === outlineUuid(menuCard.uuid)) &&
-                onSetEntry && (
-                <button
-                  type="button"
-                  title={t('这门课从这份文档开始（原入口文档退位，仍在图上）')}
-                  className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                  onClick={() => {
-                    report(onSetEntry(menuCard.uuid))
-                    setMenu(null)
-                  }}
-                >
-                  {t('设为入口')}
-                </button>
-              )}
-              <button
-                type="button"
-                className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                onClick={() => {
-                  setMenuText(menuCard.note ?? '')
-                  setMenu({ ...menu, mode: 'note' })
-                }}
-              >
-                {t('注释')}
-              </button>
-              {menuCard.kind === 'note' && (
-                <button
-                  type="button"
-                  className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                  onClick={() => {
-                    setMenuText(menuCard.title)
-                    setMenu({ ...menu, mode: 'rename' })
-                  }}
-                >
-                  {t('改名')}
-                </button>
-              )}
-              {menuCard.kind === 'outline' && (
-                <button
-                  type="button"
-                  className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                  onClick={() => {
-                    onGenerateOutline?.(menuCard.uuid)
-                    setMenu(null)
-                  }}
-                >
-                  {t('生成总览')}
-                </button>
-              )}
-              {menuCard.kind === 'doc' && (
-                <button
-                  type="button"
-                  className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                  onClick={() => {
-                    // 生成大纲：读这份文档，规划子层级目标项
-                    onGenerateOutline?.(menuCard.uuid)
-                    setMenu(null)
-                  }}
-                >
-                  {t('生成大纲')}
-                </button>
-              )}
-              {menuCard.kind === 'video' && (
-                <>
-                  <button
-                    type="button"
-                    className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                    onClick={() => {
-                      setMenu(null)
-                      if (onOpenVideoNode) onOpenVideoNode(menuCard.uuid)
-                      else if (onOpenVideo && menuCard.video?.videoId) onOpenVideo(menuCard.video.videoId)
-                    }}
-                  >
-                    {t('打开视频')}
-                  </button>
-                  <button
-                    type="button"
-                    className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                    onClick={() => {
-                      setMenuText(menuCard.title)
-                      setMenu({ ...menu, mode: 'rename' })
-                    }}
-                  >
-                    {t('重命名')}
-                  </button>
-                  {menuCard.video?.confirmed && onGenerateVideoDoc && (
-                    <button
-                      type="button"
-                      className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                      onClick={() => {
-                        setMenu(null)
-                        onGenerateVideoDoc(menuCard.uuid)
-                      }}
-                    >
-                      {t('生成总览')}
-                    </button>
-                  )}
-                </>
-              )}
-              {menuCard.kind === 'file' && (
-                <button
-                  type="button"
-                  className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                  onClick={() => {
-                    setMenu(null)
-                    if (onOpenFileNode) onOpenFileNode(menuCard.uuid)
-                  }}
-                >
-                  {(menuCard.file?.fileKind === 'web' || /^(https?:\/\/|\/\/)/i.test(menuCard.file?.url ?? '') || (menuCard.file?.url ?? '').includes('://'))
-                    ? t('打开网页')
-                    : t('打开文件')}
-                </button>
-              )}
-              {menuCard.kind === 'project' && (
-                <button
-                  type="button"
-                  className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                  onClick={() => {
-                    setMenuText(menuCard.project?.path ?? '')
-                    setMenu({ ...menu, mode: 'projectPath' })
-                  }}
-                >
-                  {menuCard.project?.path ? t('修改路径') : t('设置路径')}
-                </button>
-              )}
-            </>
-          ) : menu.mode === 'fileEdit' ? (
-            <div className="flex flex-col gap-2 p-2">
-              <div className="text-[12px] font-medium text-ink">{t('设置文件或网址')}</div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition cursor-pointer ${
-                    menuFileKind === 'local'
-                      ? 'bg-blue-500/20 text-blue-700 dark:text-blue-300'
-                      : 'bg-line/40 text-ink-soft hover:bg-line/70'
-                  }`}
-                  onClick={() => setMenuFileKind('local')}
-                >
-                  {t('本地文件')}
-                </button>
-                <button
-                  type="button"
-                  className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition cursor-pointer ${
-                    menuFileKind === 'web'
-                      ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300'
-                      : 'bg-line/40 text-ink-soft hover:bg-line/70'
-                  }`}
-                  onClick={() => setMenuFileKind('web')}
-                >
-                  {t('网页文件')}
-                </button>
-              </div>
-              <div>
-                <label className="text-[10px] text-ink-faint">{t('标题')}</label>
-                <input
-                  type="text"
-                  placeholder={t('节点标题...')}
-                  value={menuTitleText}
-                  onChange={(e) => setMenuTitleText(e.target.value.replace(/[\r\n]/g, ''))}
-                  className="w-full rounded border border-line bg-paper px-2 py-1 text-[11px] text-ink outline-none focus:border-seal dark:bg-card"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-ink-faint">
-                  {menuFileKind === 'local' ? t('文件路径（必须位于 files/ 目录下）') : t('网页链接（URL）')}
-                </label>
-                <input
-                  type="text"
-                  placeholder={menuFileKind === 'local' ? 'files/example.pdf' : 'https://...'}
-                  value={menuText}
-                  onChange={(e) => setMenuText(e.target.value.replace(/[\r\n]/g, ''))}
-                  className="w-full rounded border border-line bg-paper px-2 py-1 text-[11px] text-ink outline-none focus:border-seal dark:bg-card"
-                />
-              </div>
-              <div className="flex justify-end gap-1.5 pt-1">
-                <button
-                  type="button"
-                  className="rounded px-2.5 py-1 text-[11px] text-ink-soft hover:bg-line/60 cursor-pointer"
-                  onClick={() => setMenu(null)}
-                >
-                  {t('取消')}
-                </button>
-                <button
-                  type="button"
-                  className="rounded bg-seal px-2.5 py-1 text-[11px] font-medium text-white hover:bg-seal-deep cursor-pointer"
-                  onClick={() => {
-                    if (onBindFile) {
-                      const res = onBindFile(menu.uuid, {
-                        fileKind: menuFileKind,
-                        url: menuText.trim(),
-                        title: menuTitleText.trim() || undefined,
-                      })
-                      report(res)
-                    }
-                    setMenu(null)
-                  }}
-                >
-                  {t('确定')}
-                </button>
-              </div>
-            </div>
-          ) : menu.mode === 'projectPath' ? (
-            /*
-              项目卡的路径输入态：拼法**由输入的路径自己说**（盘符 / `/` 开头 = 绝对，
-              其余相对目标根目录），徽标实时跟随；「浏览…」弹系统目录选择器，选中的
-              是绝对路径。保存走统一通道（onSetProjectPath → 节点对象的 editContent），
-              与 agent 的 editContent({ path }) 同一条路；宿主那一侧保存成功后会把
-              还不存在的目录建出来、并清掉这枚卡的目录树缓存（换路径立即生效）。
-            */
-            <div className="flex flex-col gap-1.5 p-1">
-              <div className="text-[10px] text-ink-faint">
-                {menuCard.project?.path ? t('修改这条项目声明（声明的路径及其子树对 agent 开放）') : t('声明一条真实路径：相对目标根目录，或电脑上的绝对路径')}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span
-                  className="shrink-0 rounded bg-teal-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700 dark:text-teal-300"
-                  title={
-                    inferPathKind(menuText) === 'absolute'
-                      ? t('电脑上的绝对路径（如 D:\\projects\\demo 或 /home/me/demo）')
-                      : t('相对目标根目录：docs/{目标段}/ 之下，支持用 .. 移到兄弟目录')
-                  }
-                >
-                  {inferPathKind(menuText) === 'absolute' ? t('绝对') : t('相对')}
-                </span>
-                <input
-                  autoFocus
-                  value={menuText}
-                  onChange={(e) => setMenuText(e.target.value)}
-                  placeholder={inferPathKind(menuText) === 'absolute' ? t('如：D:\\projects\\demo') : t('如：代码练习 或 ../共享资料')}
-                  className="min-w-0 flex-1 rounded border border-line bg-paper/80 px-1.5 py-1 text-[12px] text-ink outline-none focus:border-teal-500/50"
-                />
-                <button
-                  type="button"
-                  title={t('从系统目录选择器里挑一条真实路径')}
-                  className="shrink-0 rounded bg-line/60 px-2 py-1 text-[11px] text-ink-soft hover:bg-line/90 transition cursor-pointer"
-                  onClick={async () => {
-                    try {
-                      const r = await native().pickProjectDirectory()
-                      if (!r.canceled && r.path) setMenuText(r.path)
-                    } catch {
-                      onToast?.(t('这个环境打不开目录选择器：直接输入路径即可'))
-                    }
-                  }}
-                >
-                  {t('浏览…')}
-                </button>
-              </div>
-              <div className="flex justify-end gap-1">
-                <button
-                  type="button"
-                  className="rounded px-2 py-1 text-[11px] text-ink-soft hover:bg-line/60"
-                  onClick={() => setMenu(null)}
-                >
-                  {t('取消')}
-                </button>
-                <button
-                  type="button"
-                  className="rounded bg-teal-500/15 px-2 py-1 text-[11px] text-teal-700 hover:bg-teal-500/25 dark:text-teal-300"
-                  onClick={async () => {
-                    const path = menuText.trim()
-                    setMenu(null)
-                    if (!path || !onSetProjectPath) return
-                    const r = await onSetProjectPath(menu.uuid, path)
-                    // 换路径 = 旧的目录树缓存整体作废：清掉之后重新展开就是新路径的内容
-                    clearProjCache(menu.uuid)
-                    report(r)
-                  }}
-                >
-                  {t('保存')}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-1.5 p-1">
-              <div className="text-[10px] text-ink-faint">
-                {menu.mode === 'note'
-                  ? t('写一句注释，贴在卡片底部')
-                  : t('改笔记名（文件名一起改）')}
-              </div>
-              <textarea
-                autoFocus
-                value={menuText}
-                onChange={(e) => setMenuText(e.target.value)}
-                rows={menu.mode === 'note' ? 3 : 1}
-                className="w-full resize-none rounded border border-line bg-paper/80 px-1.5 py-1 text-[12px] text-ink outline-none focus:border-seal/50"
-              />
-              <div className="flex justify-end gap-1">
-                <button
-                  type="button"
-                  className="rounded px-2 py-1 text-[11px] text-ink-soft hover:bg-line/60"
-                  onClick={() => setMenu(null)}
-                >
-                  {t('取消')}
-                </button>
-                <button
-                  type="button"
-                  className="rounded bg-seal/15 px-2 py-1 text-[11px] text-seal-deep hover:bg-seal/25"
-                  onClick={() => {
-                    if (menu.mode === 'note') saveNote(menuCard.uuid, menuCard, menuText)
-                    else if (menu.mode === 'rename') saveRename(menuCard, menuText)
-                  }}
-                >
-                  {t('保存')}
-                </button>
-              </div>
-            </div>
-          )}
-        </WheelStop>
+        <CanvasMenu
+          menu={menu}
+          menuCard={menuCard}
+          store={store}
+          goalId={goalId}
+          edges={edges}
+          menuText={menuText}
+          setMenuText={setMenuText}
+          menuTitleText={menuTitleText}
+          setMenuTitleText={setMenuTitleText}
+          menuFileKind={menuFileKind}
+          setMenuFileKind={setMenuFileKind}
+          setMenu={setMenu}
+          removeNode={removeNode}
+          onSetEntry={onSetEntry}
+          report={report}
+          onGenerateOutline={onGenerateOutline}
+          onOpenVideoNode={onOpenVideoNode}
+          onOpenVideo={onOpenVideo}
+          onGenerateVideoDoc={onGenerateVideoDoc}
+          onOpenFileNode={onOpenFileNode}
+          onBindFile={onBindFile}
+          onSetProjectPath={onSetProjectPath}
+          clearProjCache={clearProjCache}
+          saveNote={saveNote}
+          saveRename={saveRename}
+          onToast={onToast}
+        />
       )}
 
       {/* 空画布提示 */}
