@@ -1,7 +1,7 @@
 {
   "src/components/learn/structure/StructureCanvas.tsx": 4124,
-  "src/components/learn/LearnWorkspace.tsx": 3580,
   "src/components/learn/outline/MindmapView.tsx": 3295,
+  "src/components/learn/LearnWorkspace.tsx": 2638,
   "src/learn/useAgent.ts": 1978,
   "src/components/tools/screenshot/ScreenshotEditor.tsx": 1798,
   "src/agent/sandbox/api.ts": 1745,
