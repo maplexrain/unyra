@@ -91,7 +91,9 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
 
   it('左侧栏 1:1:1 三行均分布局与移除导出逻辑、右侧笔记栏规范验证', async () => {
     const fs = await import('fs')
-    const code = fs.readFileSync('src/components/video/VideoStudyTab.tsx', 'utf8')
+    // 拆分后实现分住在 VideoStudyTab 与其子模块里：规范验证读实现整体
+    const videoFiles = ['src/components/video/VideoStudyTab.tsx', 'src/components/video/useVideoStudy.ts', 'src/components/video/VideoStudySidebar.tsx', 'src/components/video/useVideoNotes.ts', 'src/components/video/VideoCreateForm.tsx']
+    const code = videoFiles.map((f) => fs.readFileSync(f, 'utf8')).join('\n')
 
     // 1. 验证去掉了 maskImage 遮罩
     expect(code).not.toContain('maskImage:')
@@ -289,7 +291,7 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
   it('验证新建笔记事件交互不被拖拽劫持，且支持空状态一键新建与二级页继续新建', async () => {
     const fs = await import('fs')
     const windowCode = fs.readFileSync('src/components/video/VideoNotesFloatingWindow.tsx', 'utf8')
-    const tabCode = fs.readFileSync('src/components/video/VideoStudyTab.tsx', 'utf8')
+    const tabCode = ['src/components/video/VideoStudyTab.tsx', 'src/components/video/useVideoStudy.ts', 'src/components/video/VideoStudySidebar.tsx', 'src/components/video/useVideoNotes.ts', 'src/components/video/VideoCreateForm.tsx'].map((f) => fs.readFileSync(f, 'utf8')).join('\n')
 
     // 1. isInteractiveTarget 必须支持 Element，避免 SVG/Path 被误判为可拖动而吞噬 onClick
     expect(windowCode).toContain('target instanceof Element')
