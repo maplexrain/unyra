@@ -17,7 +17,7 @@ import { EXPLORER_WIDTH_MAX, EXPLORER_WIDTH_MIN } from '../../lib/appearance'
 import { userAbsPrefix } from '../../lib/storage'
 import Logo from '../Logo'
 import { NewGoalIcon, OpenLocalIcon } from '../icons'
-import { PanelLeftClose, PanelLeftOpen, Settings, Upload } from 'lucide-react'
+import { Download, PanelLeftClose, PanelLeftOpen, Settings } from 'lucide-react'
 import { NodeRow } from './explorer/NodeRow'
 import { RowMenu } from './explorer/RowMenu'
 import { FavoriteSection, LocalRow } from './explorer/sections'
@@ -394,7 +394,7 @@ function ExplorerSidebarComponent({
               <div className="flex items-center gap-0.5">
                 {onImportGoal && (
                   <SectionAction title={t('导入目标 (.unr)')} onClick={onImportGoal} always large>
-                    <Upload size={14} />
+                    <Download size={14} />
                   </SectionAction>
                 )}
                 <SectionAction title={t('新建学习目标')} onClick={onNewGoal} always large>

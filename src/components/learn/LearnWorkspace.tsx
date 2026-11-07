@@ -32,7 +32,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from 'react'
-import { Upload } from 'lucide-react'
+import { Download } from 'lucide-react'
 import type {
   DocKind,
   DocView,
@@ -2626,7 +2626,7 @@ export default function LearnWorkspace({
       {isDraggingFile && (
         <div className="pointer-events-none fixed inset-0 z-[100] flex flex-col items-center justify-center bg-paper/85 backdrop-blur-sm border-2 border-dashed border-seal/60 m-4 rounded-2xl shadow-2xl transition-all">
           <div className="flex flex-col items-center gap-3 p-8 rounded-xl bg-card border border-line-strong shadow-xl">
-            <Upload size={38} className="text-seal animate-bounce" />
+            <Download size={38} className="text-seal animate-bounce" />
             <div className="text-base font-semibold text-ink-strong">{t('释放鼠标导入目标 (.unr)')}</div>
             <div className="text-xs text-ink-faint">{t('支持拖入 .unr 目标包')}</div>
           </div>

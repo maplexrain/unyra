@@ -3,7 +3,7 @@
  * 其中节点的菜单给的是那一类实体能做的事。
  */
 import { useRef } from 'react'
-import { Download, FilePlus, FolderPlus, FolderOpen, GraduationCap, ListTree, NotebookPen, Package, Pencil, Play, RotateCcw, Trash2 } from 'lucide-react'
+import { Download, FilePlus, FolderPlus, FolderOpen, GraduationCap, ListTree, NotebookPen, Package, Pencil, Play, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { DocTypeIcon } from '../docTypes'
 import { examNeedsWork, type RowMenuProps } from './types'
 import { useClampToViewport, useDismissOn } from '../../../lib/useDismiss'
@@ -199,7 +199,7 @@ export function RowMenu({
               onClick={run(() => docs.onExportGoal!(target.node.goalId))}
               className={MENU_ITEM + ' text-ink hover:bg-line/60'}
             >
-              <Download size={13} className="shrink-0 text-ink-soft" />
+              <Upload size={13} className="shrink-0 text-ink-soft" />
               {t('导出目标 (.unr)')}
             </button>
           )}
