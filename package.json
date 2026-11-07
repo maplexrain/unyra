@@ -73,7 +73,7 @@
     "sherpa-onnx-node": "^1.13.8",
     "sucrase": "^3.35.1",
     "tailwindcss": "^4.3.3",
-    "undici": "^7.29.1",
+    "undici": "^8.12.3",
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.3.2",
     "ws": "^8.22.0",
