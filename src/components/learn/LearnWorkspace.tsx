@@ -83,7 +83,6 @@ import {
 } from '../../learn/groups'
 import { isTabPinned, reorderTabs, makeBlankTab, makeTab, newBlankKey, newDraftKey, newWebKey, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf, isPdfFile } from '../../learn/tabs'
 import { setZenActive } from '../../learn/zen'
-import { closeGoalTabGroupStore } from '../../learn/groups/goalTabGroupOps'
 import { pickLocalFiles, readLocalFile } from '../../lib/localFiles'
 import { addLocalFile } from '../../learn/localfiles'
 import { normalizeWebInput } from '../../learn/webUrl'
@@ -93,48 +92,32 @@ import { updateFileNode } from '../../learn/fileNodes'
 import { buildJumpToElementScript } from '../../learn/web/guestJump'
 import {
   addConversation,
-  conversationTitle,
   conversationById,
   deleteConversation,
-  deleteGoal,
-  deleteMessage,
-  deleteNode,
   ensureConversation,
   latestConversation,
   resolveDisplayedConversation,
   nodeById,
   normalizeKey,
-  removeExam,
   touchNode,
-  updateMessageText,
 } from '../../learn/graph'
 import {
-  agentTabCloseBlock,
-  agentTabCloseSet,
   agentTabKey,
-  reorderAgentTabs,
-  removeAgentTab,
   removeAgentTabsOfGoals,
   upsertAgentTab,
   visibleAgentTabs,
   withAgentTabs,
-  type AgentTabCloseBlock,
 } from '../../learn/agentTabs'
 import type { AgentTabRef } from '../../learn/types'
 import { resolveProjectRoot } from '../../learn/projects'
-import type { TabCloseMode } from '../../learn/tabs'
 import { attemptBrief, examAttempted, examTotalPoints } from '../../learn/exam'
-import type { Exam } from '../../learn/exam'
 import { useExamBridge } from '../../learn/useExamBridge'
-import { captureExamDelete, captureNodeDelete } from '../../learn/undo'
 import { makeConversation, nodeDocRel } from '../../learn/store'
 import { loadAgentSettings, saveAgentSettings, subscribeAgentSettings } from '../../agent/settings'
 import { subscribeDrops } from '../../agent/contextDebug'
-import { personaOf } from '../../agent/persona'
-import { docFormatOf } from '../../agent/docFormat'
 import AgentSettingsPanel from '../AgentSettingsPanel'
 import MindPanel from '../agent/MindPanel'
-import { addFreeConversation, deleteFreeConversation, freeConversationById, getFreeConversations, subscribeFreeChat } from '../../learn/freeChat'
+import { freeConversationById, getFreeConversations, subscribeFreeChat } from '../../learn/freeChat'
 import ExportDialog from './ExportDialog'
 import FloatWindow from '../FloatWindow'
 import { usePresence } from '../../lib/presence'
@@ -222,11 +205,9 @@ import EssayDock from './essay/EssayDock'
 import { useDoubleCtrl } from '../../lib/useDoubleCtrl'
 import type { DocSource } from './NodeNote'
 import ConfirmDialog from '../ConfirmDialog'
-import { AgentTabPane } from './workspace/AgentTabPane'
 import SettingsPanel from '../settings/SettingsPanel'
 import UsagePanel from '../settings/UsagePanel'
 import { SchedulePage } from '../schedule/SchedulePage'
-import AgentTabStrip from '../agent/AgentTabStrip'
 import ContextDebugger from '../agent/ContextDebugger'
 import { resetPrefixGate } from '../../agent/prefixGate'
 import { setEffortNotice } from '../../learn/effortGuard'
@@ -234,12 +215,10 @@ import { docAreaElement, locateNeedle, scrollToDoc, visibleDocBody } from '../..
 import { lineRangeToOffsets, localRevealKey, nodeRevealKey, requestSourceReveal } from '../../lib/docReveal'
 import { readRecentTabs, residentIds } from '../../learn/resident'
 import type { UiPointRequest } from '../../agent/tools'
-import type { AskAnswers } from '../../agent/tools'
-import type { Conversation, PendingFile, PendingImage } from '../../agent/types'
+import type { Conversation } from '../../agent/types'
 import type { Props } from './workspace/constants'
 import { SRC_SCROLL_SUFFIX, SIDE_ANIM_MS } from './workspace/constants'
 import { ZONE_BOX } from './workspace/drag'
-import { examDeleteWarn } from './workspace/labels'
 import { conceptKeysOf, emptyNote, examCopyOf, paneInfo, paneOf } from './workspace/panes'
 import { DocPane } from './workspace/DocPane'
 import { ScheduleDock } from './workspace/docks'
@@ -269,6 +248,10 @@ import { useUnrTransfer } from './workspace/useUnrTransfer'
 import { useEssayFlow } from './workspace/useEssayFlow'
 import { useWsActions } from './workspace/useWsActions'
 import { useCanvasChannel } from './workspace/useCanvasChannel'
+import { useAgentTabActions } from './workspace/useAgentTabActions'
+import { useDeleteFlows } from './workspace/useDeleteFlows'
+import { DeleteConfirms } from './workspace/DeleteConfirms'
+import { AgentSlot } from './workspace/AgentSlot'
 import { t } from '../../i18n'
 
 /**
@@ -422,26 +405,7 @@ export default function LearnWorkspace({
    * 不把新的这一版交下去，撤掉暂存的那一刻编辑器会回落到打开时读到的旧内容。
    */
   const [localSaved, setLocalSaved] = useState<{ path: string; text: string } | null>(null)
-  // 删除确认：pendingDelete 非空时弹出确认框（删谁只删谁，问一句再删；根文档=整个目标）
-  const [pendingDelete, setPendingDelete] = useState<{
-    nodeId: string
-    title: string
-    isRoot: boolean
-    count: number
-  } | null>(null)
-  /**
-   * 删除试卷：**分两档**。
-   *
-   * 没考过的（含出错的废稿）一次确认就删——那只是一份没人用过的题目；
-   * 考过的是学习记录（作答、输入顺序、单题耗时、切屏、判分、错题讲解），
-   * 所以第一档只负责**把会连带删掉的东西列清楚**，第二档才是真的删。
-   */
-  const [pendingExamDelete, setPendingExamDelete] = useState<Exam | null>(null)
-  const [examDeleteStage, setExamDeleteStage] = useState<'warn' | 'final'>('final')
-  // 删除笔记确认：笔记是独立文件，删掉就是真的删了，问一句再说
-  const [pendingNoteDelete, setPendingNoteDelete] = useState<{ nodeId: string; name: string } | null>(null)
-  // 删除超级文档确认：它是导师生成的交互件（常配着 method 函数），删前问一句
-  const [pendingSuperDelete, setPendingSuperDelete] = useState<{ nodeId: string; name: string } | null>(null)
+  /* 删除确认流的五个 pending 状态与提交动作：见 workspace/useDeleteFlows（useWsActions 之后挂载） */
   /** 切换过场要用的容器：动画只加在正文那一层上，悬浮组不跟着晃 */
   const docBox = useRef<HTMLDivElement | null>(null)
 
@@ -1061,264 +1025,18 @@ export default function LearnWorkspace({
     browserDeps: () => (isWeb() ? undefined : (browserDepsRef.current ?? undefined)),
   })
 
-  /* ---------- agent 栏页签（见 learn/agentTabs 与 AgentTabStrip） ---------- */
-
-  /** 开（或更新）一枚 agent 页签；子代理页签由用户从会话菜单点开（不自动开——页签多了拥挤） */
-  const openAgentTab = useCallback(
-    (ref: AgentTabRef, activate = true) => {
-      const s = getLatest()
-      const next = upsertAgentTab(s.agentTabs ?? [], s.agentActiveTab ?? null, ref, activate)
-      set(withAgentTabs(s, next.tabs, next.active))
-    },
-    [getLatest, set],
-  )
-
-  /** 点一枚页签：置前（目标级页签展示哪段对话以页签里记的为准，见 agentView） */
-  const activateAgentTab = useCallback(
-    (key: string) => {
-      const s = getLatest()
-      if (s.agentActiveTab === key) return
-      // 固定聊天页签不在 store 的页签列表里（界面合成置左），但它是合法的激活项
-      if (key !== 'free' && !(s.agentTabs ?? []).some((t) => agentTabKey(t) === key)) return
-
-      let next: LearnStore = s
-      if (key !== 'free') {
-        const targetTab = (s.agentTabs ?? []).find((t) => agentTabKey(t) === key)
-        if (targetTab && targetTab.kind === 'goal') {
-          const focusId =
-            goalFocusByGoal.get(targetTab.goalId) ??
-            s.goals.find((g) => g.id === targetTab.goalId)?.rootNodeId ??
-            s.activeNodeId
-          const convId =
-            targetTab.conversationId ?? resolveDisplayedConversation(s, targetTab.goalId) ?? null
-          next = {
-            ...s,
-            activeGoalId: targetTab.goalId,
-            activeNodeId: focusId,
-            activeConversationId: convId,
-          }
-        } else if (targetTab && targetTab.kind === 'sub') {
-          const conv = conversationById(s, targetTab.conversationId)
-          if (conv) {
-            next = {
-              ...s,
-              activeGoalId: conv.goalId,
-              activeConversationId: targetTab.conversationId,
-            }
-          }
-        }
-      }
-      set(withAgentTabs(next, s.agentTabs ?? [], key))
-    },
-    [getLatest, set],
-  )
-
-  /**
-   * 文档区里哪些目标还开着页签：目标级导师页签的关闭守卫读它——
-   * 需求原文：「如果文档区还存在某个目标的页签，那么就无法关闭 agent 栏中其对应的 agent」。
-   */
-  const docGoalIds = useMemo(() => {
-    const out = new Set<string>()
-    for (const t of tabs) {
-      const nid = tabNodeId(t.ref)
-      const n = nid ? nodeById(store, nid) : null
-      if (n) out.add(n.goalId)
-    }
-    return out
-  }, [tabs, store])
-
-  /** 一枚页签的关闭守卫数据（目标级：文档区还有它的页签 / 会话在跑；子代理不拦） */
-  const closeBlockOf = useCallback(
-    (s: LearnStore, ref: AgentTabRef): AgentTabCloseBlock => {
-      const convId =
-        ref.kind === 'goal'
-          ? ref.conversationId && conversationById(s, ref.conversationId)?.goalId === ref.goalId
-            ? ref.conversationId
-            : (resolveDisplayedConversation(s, ref.goalId) ?? null)
-          : null
-      const hasDocTabs =
-        ref.kind === 'goal'
-          ? allTabs(s.docArea).some((t) => {
-              if (t.ref.kind === 'mind') return t.ref.goalId === ref.goalId
-              const nodeId = tabNodeId(t.ref)
-              return !!nodeId && nodeById(s, nodeId)?.goalId === ref.goalId
-            })
-          : false
-      return agentTabCloseBlock(ref, {
-        // 关闭动作必须按 getLatest() 现算，不能读创建 callback 时的旧 docGoalIds；
-        // 文档区刚关完一枚页签后，旧闭包否则会把导师继续错误地拦住。
-        hasDocTabs,
-        running: ref.kind === 'goal' ? !!(convId && agent.runningByConversation[convId]) : false,
-      })
-    },
-    [agent.runningByConversation],
-  )
-
-  /**
-   * 关一批页签（右键菜单的位置语义：self/left/right/others/all，与文档区同一套；
-   * 单枚关闭 = mode 'self'）。名单里的每一枚都要过关闭守卫：拦下的跳过，
-   * 一枚都没关成时把原因说清；关掉的全从 removeAgentTab 走——激活项逐次落到
-   * 「被关那枚的邻居」。
-   */
-  const closeAgentTabMode = useCallback(
-    (key: string, mode: TabCloseMode) => {
-      const s = getLatest()
-      const list = s.agentTabs ?? []
-      const doomed = agentTabCloseSet(list, key, mode)
-      if (!doomed.length) return
-      let cur = s
-
-      // 强制模式：连同文档区关联的tab一起关闭整个目标页签组
-      const isForce = mode === 'force' || mode === 'forceOthers'
-      if (isForce) {
-        const doomedGoalIds = new Set<string>()
-        for (const k of doomed) {
-          const ref = (cur.agentTabs ?? []).find((t) => agentTabKey(t) === k)
-          if (ref && ref.kind === 'goal') doomedGoalIds.add(ref.goalId)
-        }
-        for (const gid of doomedGoalIds) {
-          cur = closeGoalTabGroupStore(cur, gid)
-        }
-      }
-
-      let closed = 0
-      let blocked = 0
-      for (const k of doomed) {
-        const ref = (cur.agentTabs ?? []).find((t) => agentTabKey(t) === k)
-        if (!ref) continue
-        const block = closeBlockOf(cur, ref)
-        if (block !== 'none' && !isForce) {
-          blocked++
-          continue
-        }
-        if (ref.kind === 'goal') {
-          // 检查该目标下是否还有未在 doomed 里的其他对话页签
-          const remainingTabsOfGoal = (cur.agentTabs ?? []).filter(
-            (t) => t.kind === 'goal' && t.goalId === ref.goalId && !doomed.includes(agentTabKey(t)),
-          )
-          if (remainingTabsOfGoal.length === 0) {
-            // 最后一个对话页签关闭：视为关闭整个页签组！
-            cur = closeGoalTabGroupStore(cur, ref.goalId)
-            closed++
-            continue
-          }
-        }
-        const next = removeAgentTab(cur.agentTabs ?? [], cur.agentActiveTab ?? null, k)
-        cur = withAgentTabs(cur, next.tabs, next.active)
-        if (cur.agentActiveTab) {
-          const activeRef = (cur.agentTabs ?? []).find((t) => agentTabKey(t) === cur.agentActiveTab)
-          if (activeRef?.kind === 'goal') {
-            cur = {
-              ...cur,
-              activeGoalId: activeRef.goalId,
-              activeConversationId: activeRef.conversationId,
-            }
-          }
-        }
-        closed++
-      }
-      if (!closed) {
-        onToast(t('导师正在运行，先停止这一轮再关闭'))
-        return
-      }
-      // 全部关完时把激活权交给固定聊天页签——它是这一栏的底座，永远在
-      if (!cur.agentActiveTab) cur = { ...cur, agentActiveTab: 'free' }
-      set(cur)
-      if (blocked) onToast(t('{0} 枚页签被拦下（导师正在跑）', blocked))
-    },
-    [getLatest, set, closeBlockOf, onToast],
-  )
-
-  /** 关一枚页签（单枚 = closeMode 的 self） */
-  const closeAgentTab = useCallback(
-    (key: string) => closeAgentTabMode(key, 'self'),
-    [closeAgentTabMode],
-  )
-
-  /** 拖拽排序：只动顺序不动激活态（与文档区 reorderTabList 同一条规矩），顺序随 state.json 落盘。
-      固定聊天页签不参与排序：它常驻最左，把它从钥匙串里滤掉（列表里本来也没有它） */
-  const reorderAgentTabList = useCallback(
-    (keys: string[]) => {
-      const s = getLatest()
-      const next = reorderAgentTabs(s.agentTabs ?? [], keys.filter((k) => k !== 'free'))
-      if (next === (s.agentTabs ?? [])) return
-      set(withAgentTabs(s, next, s.agentActiveTab ?? null))
-    },
-    [getLatest, set],
-  )
-
-  /** 页签标题：固定聊天 = 「聊天」；目标级 = 对话标题或目标标题；子代理 = 定义名（任务模式使用图标前置 task chip 标识） */
-  const agentTabTitle = useCallback(
-    (ref: AgentTabRef): string => {
-      if (ref.kind === 'free') return t('聊天')
-      if (ref.kind === 'goal') {
-        const goal = store.goals.find((g) => g.id === ref.goalId)
-        const goalTitle = goal ? (nodeById(store, goal.rootNodeId)?.title ?? goal.question) : ''
-        const conv = ref.conversationId ? conversationById(store, ref.conversationId) : undefined
-        const convTitle = conv?.title || (conv && conv.messages.length > 0 ? conversationTitle(conv) : '')
-        return convTitle || goalTitle || t('新对话')
-      }
-      const conv = conversationById(store, ref.conversationId)
-      const session = conv?.subagents?.sessions.find((x) => x.id === ref.sessionId)
-      const def = session ? conv?.subagents?.defs.find((d) => d.key === session.defKey) : undefined
-      return def?.name ?? session?.defKey ?? t('子代理')
-    },
-    [store],
-  )
-
-  /** 页签的运行态：固定聊天看那张「谁在跑」的表；目标级看同一张表；子代理看会话状态（后台跑的也算跑着） */
-  const agentTabRunning = useCallback(
-    (ref: AgentTabRef): boolean => {
-      if (ref.kind === 'free') return !!(ref.conversationId && agent.runningByConversation[ref.conversationId])
-      if (ref.kind === 'goal') {
-        const convId =
-          ref.conversationId && conversationById(store, ref.conversationId)?.goalId === ref.goalId
-            ? ref.conversationId
-            : (resolveDisplayedConversation(store, ref.goalId) ?? null)
-        return !!(convId && agent.runningByConversation[convId])
-      }
-      const conv = conversationById(store, ref.conversationId)
-      return conv?.subagents?.sessions.find((x) => x.id === ref.sessionId)?.status === 'running'
-    },
-    [store, agent.runningByConversation],
-  )
-
-  /**
-   * 删会话 / 删目标之后收拾 agent 页签：指向被删会话的目标级页签改指该目标最近的一段，
-   * 已死会话的子代理页签与已死目标的目标级页签整枚丢掉。读盘归一有同一条规矩
-   * （normalizeAgentTabs），这里是活删的即时版。
-   */
-  const fixAgentTabsAfter = (s: LearnStore): LearnStore => {
-    const tabs0 = s.agentTabs ?? []
-    if (!tabs0.length) return s
-    const mapped = tabs0
-      .filter((t) => {
-        if (t.kind === 'goal') return s.goals.some((g) => g.id === t.goalId)
-        if (t.kind !== 'sub') return true
-        const conv = conversationById(s, t.conversationId)
-        return !!conv?.subagents?.sessions.some((x) => x.id === t.sessionId)
-      })
-      .map((t) =>
-        t.kind === 'goal' &&
-        t.conversationId &&
-        conversationById(s, t.conversationId)?.goalId !== t.goalId
-          ? { ...t, conversationId: resolveDisplayedConversation(s, t.goalId) ?? null }
-          : t,
-      )
-    const seen = new Set<string>()
-    const fixed: AgentTabRef[] = []
-    for (const t of mapped) {
-      const key = agentTabKey(t)
-      if (seen.has(key)) continue
-      seen.add(key)
-      fixed.push(t)
-    }
-    const active =
-      s.agentActiveTab && fixed.some((t) => agentTabKey(t) === s.agentActiveTab)
-        ? s.agentActiveTab
-        : (fixed[0] ? agentTabKey(fixed[0]) : null)
-    return withAgentTabs(s, fixed, active)
-  }
+  /* ---------- agent 栏页签（见 learn/agentTabs 与 AgentTabStrip）：见 workspace/useAgentTabActions ---------- */
+  const {
+    openAgentTab,
+    activateAgentTab,
+    docGoalIds,
+    closeAgentTabMode,
+    closeAgentTab,
+    reorderAgentTabList,
+    agentTabTitle,
+    agentTabRunning,
+    fixAgentTabsAfter,
+  } = useAgentTabActions({ store, getLatest, set, onToast, tabs, agent })
 
   /**
    * 超级文档的 method 桥：一份**常驻**的沙箱 api + 执行持久化函数的回调。
@@ -2721,189 +2439,6 @@ export default function LearnWorkspace({
   const shouldWaitInLine = (convId: string) =>
     shouldEnqueue(queueOf(agent.queues, convId).length, !!agent.runningByConversation[convId])
 
-  /**
-   * 一枚 agent 页签的整份面板 props（keepalive 的每枚页签各取各的，见挂载处的循环）。
-   *
-   * 数据全部按页签解析：会话与它的流式/表单/账目、子代理桶、目标会话列表；动作也
-   * 全部绑到**这一枚页签**的目标上——后台页签里的输入框、菜单、停止键发的都是它自己
-   * 那位导师，不借用「眼前激活的页签」。全局设置（人格 / 模型 / 档位）由所有页签共享。
-   */
-  const agentTabProps = (tab: AgentTabRef) => {
-    /*
-     * 固定聊天页签：会话住在 learn/freeChat（独立文件），发送走 agent.sendFree——
-     * 没有系统提示词/工具/人格，所以 ask、子代理、压缩这些导师域的槽一律置空；
-     * 界面上由 AgentPanel 的 free 模式收起对应的功能（菜单三项、无「正在辅导」）。
-     */
-    if (tab.kind === 'free') {
-      const convId = currentFreeConvId
-      const conv = freeConversationById(convId)
-      const stream = convId ? agent.streams[convId] : undefined
-      const nope = () => {}
-      return {
-        conversation: conv ?? null,
-        conversations: freeChats,
-        streaming: stream?.parts ?? null,
-        streamingMessageId: stream?.messageId ?? null,
-        running: !!(convId && agent.runningByConversation[convId]),
-        free: true,
-        onSend: (text: string, images: PendingImage[], files: PendingFile[]) => {
-          const id = convId ?? addFreeConversation().id
-          if (id !== convId) setFreeConvId(id)
-          // 正跑着（或队里排着人）：排进等待队列，等这一轮收口再发（见 learn/agentQueue）
-          if (shouldWaitInLine(id)) {
-            agent.enqueueMessage({ conversationId: id, free: true, text, images, files })
-            return 'queued' as const
-          }
-          agent.sendFree(id, text, { files, images })
-          return 'sent' as const
-        },
-        queue: queueOf(agent.queues, convId),
-        onQueueDrop: (id: string) => {
-          if (convId) agent.dropQueuedMessage(convId, id)
-        },
-        onQueueSendNow: (id: string) => {
-          if (convId) agent.sendQueuedNow(convId, id)
-        },
-        onStop: () => agent.stop(convId ?? undefined),
-        onEditMessage: () => {},
-        onDeleteMessage: () => {},
-        onResumeInterrupted: () => {},
-        ask: null,
-        onAskSubmit: () => {},
-        onAskCancel: () => {},
-        tps: (convId ? agent.tpsByConv[convId] : null) ?? null,
-        liveUsage: (convId ? agent.liveUsageByConv[convId] : null) ?? null,
-        compacting: false,
-        onCompact: nope,
-        onSuperLab: nope,
-        onExam: nope,
-        sub: { sessions: [], defs: [], running: false, live: [] },
-        viewSubId: null,
-        onOpenSub: () => {},
-        onNewConversation: () => {
-          setFreeConvId(addFreeConversation().id)
-        },
-        onSelectConversation: (id: string) => setFreeConvId(id),
-        onDeleteConversation: (id: string) => {
-          if (id && agent.runningByConversation[id]) {
-            onToast(t('这一段正在运行，先停止再删除'))
-            return
-          }
-          deleteFreeConversation(id)
-          if (id === currentFreeConvId) setFreeConvId(null)
-        },
-      }
-    }
-    const isSub = tab.kind === 'sub'
-    const goalId = isSub ? (conversationById(store, tab.conversationId)?.goalId ?? null) : tab.goalId
-    // 页签里记的会话丢了（被删过）就回落到该目标最近的一段——与 agentView 同一条口径
-    const convId = isSub
-      ? tab.conversationId
-      : tab.conversationId &&
-          conversationById(store, tab.conversationId)?.goalId === tab.goalId
-        ? tab.conversationId
-        : (resolveDisplayedConversation(store, tab.goalId) ?? null)
-    const nodeId = goalId
-      ? (goalFocusByGoal.get(goalId) ?? (store.goals.find((g) => g.id === goalId)?.rootNodeId || store.nodes.find((n) => n.goalId === goalId)?.id || null))
-      : null
-    const conv = convId ? (conversationById(store, convId) ?? null) : null
-    const target = goalId && convId ? { goalId, nodeId: nodeId || null, conversationId: convId } : null
-    const bucket = conv?.subagents
-    const sessions = bucket?.sessions ?? []
-    const session = isSub ? (sessions.find((x) => x.id === tab.sessionId) ?? null) : null
-    const stream = convId ? agent.streams[convId] : undefined
-    return {
-      // 页签属于哪个目标（子代理经会话反查）：「记忆」入口按它开对应目标的记忆页签
-      goalId,
-      conversation: conv,
-      conversations: goalId ? store.conversations.filter((c) => c.goalId === goalId) : [],
-      streaming: stream?.parts ?? null,
-      streamingMessageId: stream?.messageId ?? null,
-      running: !!(convId && agent.runningByConversation[convId]),
-      onSend: (text: string, images: PendingImage[], files: PendingFile[]) => {
-        if (!target) return 'sent' as const
-        /*
-         * 导师正在跑（或队里还排着人）：这条排进等待队列，不挤进正在跑的那一轮——
-         * 一轮 Agent 是一次完整的模型循环，半路塞一条用户消息会让这一轮实发的上下文
-         * 自相矛盾（前缀门禁会当场拦下，见 agent/prefixGate）。
-         */
-        if (shouldWaitInLine(target.conversationId)) {
-          agent.enqueueMessage({
-            conversationId: target.conversationId,
-            target,
-            text,
-            images,
-            files,
-          })
-          return 'queued' as const
-        }
-        agent.send(text, {
-          target,
-          ...(images.length || files.length
-            ? { images: images.length ? images : undefined, files: files.length ? files : undefined }
-            : {}),
-        })
-        return 'sent' as const
-      },
-      queue: queueOf(agent.queues, convId),
-      onQueueDrop: (id: string) => {
-        if (convId) agent.dropQueuedMessage(convId, id)
-      },
-      onQueueSendNow: (id: string) => {
-        if (convId) agent.sendQueuedNow(convId, id)
-      },
-      onStop: () => agent.stop(convId ?? undefined),
-      onEditMessage: (messageId: string, text: string) => {
-        // 改写消息正文 = 设计内的历史改写：这一会话的前缀账重新开始记（见 agent/prefixGate）
-        resetPrefixGate(convId ?? '')
-        set(updateMessageText(getLatest(), convId ?? '', messageId, text))
-      },
-      onDeleteMessage: (messageId: string) => {
-        // 同上：删除消息之后的历史与已实发的那份不再前缀一致
-        resetPrefixGate(convId ?? '')
-        const next = deleteMessage(getLatest(), convId ?? '', messageId)
-        set(next)
-        pruneImagesOf(next)
-      },
-      onResumeInterrupted: () => {
-        if (target) agent.resumeInterrupted(target)
-      },
-      ask: (convId ? agent.pendingAskByConv[convId] : null) ?? null,
-      onAskSubmit: (answers: AskAnswers) => {
-        if (convId) agent.submitAsk(answers, convId)
-      },
-      onAskCancel: () => {
-        if (convId) agent.cancelAsk(convId)
-      },
-      tps: (convId ? agent.tpsByConv[convId] : null) ?? null,
-      liveUsage: (convId ? agent.liveUsageByConv[convId] : null) ?? null,
-      compacting: !!convId && agent.compactingConvId === convId,
-      onCompact: () => {
-        if (convId) void agent.compactNow(convId)
-      },
-      // 菜单动作绑到这一枚页签的落点节点（节点归属的解析见 runWorkflow）
-      // onSuperLab 仍在这里：斜杠命令 /superlab 消费它（更多菜单已摘除工作流分组）
-      onSuperLab: () => {
-        if (nodeId) startSuperLab(nodeId)
-      },
-      onExam: () => newExam(nodeId ?? undefined),
-      sub: {
-        sessions,
-        defs: bucket?.defs ?? [],
-        running: agent.subRunsAll.some((r) => r.conversationId === convId),
-        live: agent.subRunsAll
-          .filter((r) => r.conversationId === convId)
-          .map(({ sessionId: sid, runId, parts }) => ({ sessionId: sid, runId, parts })),
-      },
-      viewSubId: session?.id ?? null,
-      onOpenSub: (sid: string) => {
-        if (convId) openAgentTab({ kind: 'sub', conversationId: convId, sessionId: sid }, true)
-      },
-      onNewConversation: () => newConversationIn(tab),
-      onSelectConversation: (id: string) => selectConversationIn(tab, id),
-    }
-  }
-
   /** 等着判分 / 讲解的那一次：按钮上标出来，也决定「新增」还能不能点 */
   const pendingWork = useMemo(
     () => (activeNodeId ? examNeedingWork(store, activeNodeId) : null),
@@ -2936,27 +2471,6 @@ export default function LearnWorkspace({
   }, [docSource, docNode, store, agent.runningByConversation])
 
   /* ---------- 其余操作 ---------- */
-
-  /**
-   * 删除试卷：**两档确认**（见 pendingExamDelete 的说明）。
-   *
-   * 第一档只把连带删掉的东西列清楚，第二档才真的删——考过的卷子是这个知识点的学习记录，
-   * 而「删掉之后连带没了什么」不该靠用户自己想象。
-   */
-  const commitRemoveExam = () => {
-    const exam = pendingExamDelete
-    if (!exam) return
-    if (examDeleteStage === 'warn') {
-      setExamDeleteStage('final')
-      return
-    }
-    setPendingExamDelete(null)
-    // 先备货再动手：撤回项捕获的是删除前那一刻的旧引用（见 learn/undo）
-    const entry = captureExamDelete(getLatest(), exam.id)
-    if (entry) pushUndo(entry)
-    set(removeExam(getLatest(), exam.id))
-    onToast(t('已删除《{0}》，可按 Ctrl+Z 撤回', exam.title))
-  }
 
   /** 打开某一次考试的只读副本页签（试卷 + 作答 + 判分 + 错题讲解） */
   const openExamCopy = (nodeId: string, examId: string, attemptId: string) => {
@@ -3511,24 +3025,6 @@ export default function LearnWorkspace({
     if (!(await revealPath(rel))) onToast(t('未能在资源管理器中定位该文件'))
   }
 
-  /** 删除前先弹确认框，避免误删：看一眼「删的是哪个、连带删掉多少」再点头 */
-  const requestRemoveNode = (nodeId: string) => {
-    const s = getLatest()
-    const goal = s.goals.find((g) => g.id === nodeId || g.rootNodeId === nodeId)
-    if (goal) {
-      const goalTitle =
-        goal.title ||
-        goal.question ||
-        (goal.rootNodeId ? nodeById(s, goal.rootNodeId)?.title : '') ||
-        t('未命名目标')
-      setPendingDelete({ nodeId: goal.id, title: goalTitle, isRoot: true, count: goalSubtreeSize(goal.id) })
-      return
-    }
-    const node = nodeById(s, nodeId)
-    if (!node) return
-    setPendingDelete({ nodeId, title: node.title, isRoot: false, count: 1 })
-  }
-
   /**
    * 右键菜单的「在资源管理器中打开」：定位到这个节点的正文 .md。
    *
@@ -3554,21 +3050,22 @@ export default function LearnWorkspace({
   /* ---------- 工作区文件（定位 / 打开 / 新建改名 / 项目）：见 workspace/useWsActions ---------- */
   const { revealWsFile, openWsFile, wsActions, newProject, goalSubtreeSize } = useWsActions({ getLatest, flush, openTab, onToast })
 
-  /** 删除目标/节点：含全部下级知识点、对话与试卷，先确认再删；Ctrl+Z 可撤回 */
-  const commitRemoveNode = () => {
-    const pending = pendingDelete
-    if (!pending) return
-    setPendingDelete(null)
-    // 先备货再动手：撤回项捕获的是删除前那一刻的旧引用（节点本身、相连的边、试卷、会话与两本账）
-    const entry = captureNodeDelete(getLatest(), pending.nodeId)
-    if (entry) pushUndo(entry)
-    // 目标级删除走 deleteGoal，普通节点走 deleteNode
-    const nextStore = pending.isRoot
-      ? deleteGoal(getLatest(), pending.nodeId)
-      : deleteNode(getLatest(), pending.nodeId)
-    set(fixAgentTabsAfter(nextStore))
-    onToast(pending.isRoot ? t('已删除该学习目标，可按 Ctrl+Z 撤回') : t('已删除该节点，可按 Ctrl+Z 撤回'))
-  }
+  /* ---------- 删除确认流（删目标/节点、删试卷两档、删笔记、删超级文档）：见 workspace/useDeleteFlows ---------- */
+  const {
+    pendingDelete,
+    setPendingDelete,
+    pendingExamDelete,
+    setPendingExamDelete,
+    examDeleteStage,
+    setExamDeleteStage,
+    pendingNoteDelete,
+    setPendingNoteDelete,
+    pendingSuperDelete,
+    setPendingSuperDelete,
+    commitRemoveExam,
+    requestRemoveNode,
+    commitRemoveNode,
+  } = useDeleteFlows({ getLatest, set, onToast, pushUndo, goalSubtreeSize, fixAgentTabsAfter })
 
   /* ---------- 结构画布通道（建 / 删 / 连 / 改名，与 agent 的 api.node 同一条 NodeService 路）：见 workspace/useCanvasChannel ---------- */
   const { requestGenerateDoc, updateStructure, canvasChannel } = useCanvasChannel({
@@ -5135,86 +4632,46 @@ export default function LearnWorkspace({
               </div>
             }
             agentSlot={
-              activeAgentTab ? (
-                <div className="flex h-full min-h-0 flex-col">
-                  {/*
-                    agent 栏的页签条：一页签一份独立的上下文与运行时。目标级导师的关闭守卫
-                    （文档区还有它的页签 / 还在跑）与子代理页签的随时可关，见 AgentTabStrip。
-                  */}
-                  <AgentTabStrip
-                    tabs={stripTabs}
-                    activeId={activeAgentTabId}
-                    titleOf={agentTabTitle}
-                    runningOf={agentTabRunning}
-                    docTabsOf={(ref) => (ref.kind === 'goal' ? docGoalIds.has(ref.goalId) : false)}
-                    onActivate={activateAgentTab}
-                    onClose={closeAgentTab}
-                    onCloseMode={closeAgentTabMode}
-                    onReorder={reorderAgentTabList}
-                    onNewConversation={store.activeGoalId ? handleNewGoalConversation : undefined}
-                  />
-                  {/*
-                    **keepalive**：所有页签的面板常挂（absolute 铺满、非激活的 display:none）——
-                    滚动位置、跟随状态、编辑态、输入框里打到一半的话，切走再回来都还在。
-                    每枚面板的 props 由 agentTabProps 按页签解析（数据与动作各归各的导师），
-                    激活的拿到 active 标记，切回可见时重新量定位条（隐藏期间量到的全是零矩形）。
-                  */}
-                  <div className="relative min-h-0 flex-1">
-                    {/* 常挂的是全部页签（见 agentPanes 的说明），栏上画哪几枚由 stripTabs 决定 */}
-                    {agentPanes.map((tab) => {
-                      const key = agentTabKey(tab)
-                      const on = key === activeAgentTabId
-                      const props = agentTabProps(tab)
-                      return (
-                        <AgentTabPane
-                          key={key}
-                          tabKey={key}
-                          active={on}
-                          hasKey={hasKey}
-                          providerLabel={providerName}
-                          onModelChanged={() => setSettingsEpoch((n) => n + 1)}
-                          vision={vision}
-                          onNotice={onToast}
-                          onOpenAgentSettings={() => openTab({ kind: 'agentSettings' })}
-                          onOpenSettings={() => openTab({ kind: 'agentSettings' })}
-                          effort={effort}
-                          onSetEffort={setGlobalEffort}
-                          compactThreshold={agentSettings.compact.threshold}
-                          persona={agentSettings.persona}
-                          onPickPersona={(id) => {
-                            saveAgentSettings({ ...agentSettings, persona: id })
-                            onToast(t('导师人格已切到「{0}」，从下一轮开始生效', personaOf(id).label))
-                          }}
-                          docFormat={agentSettings.docFormat}
-                          onPickDocFormat={(id) => {
-                            saveAgentSettings({ ...agentSettings, docFormat: id })
-                            onToast(t('文档格式已切到「{0}」，从下一轮开始生效', docFormatOf(id).label))
-                          }}
-                          onDeleteConversation={removeConversation}
-                          onOpenFile={(pathOrRel, title) => {
-                            const norm = pathOrRel.replace(/\\/g, '/')
-                            const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(norm)
-                            const abs = isAbs ? norm : (userAbsPath(norm) ?? norm)
-                            openTab({ kind: 'local', path: abs, ...(title ? { title } : {}) })
-                          }}
-                          {...props}
-                        />
-                      )
-                    })}
-                  </div>
-                </div>
-              ) : (
-                /*
-                  一枚页签都没有：还没有任何目标被打开过（或用户把导师都关了）。
-                  说清「导师从哪里来」——打开一份目标下的文档，它的导师会自己出现。
-                */
-                <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
-                  <span className="text-[13px] font-medium text-ink-soft">{t('超级导师')}</span>
-                  <p className="max-w-[240px] text-[11.5px] leading-relaxed text-ink-faint">
-                    {t('打开一份目标下的文档，它的导师会在这里出现。')}
-                  </p>
-                </div>
-              )
+              <AgentSlot
+                deps={{
+                  store,
+                  getLatest,
+                  set,
+                  agent,
+                  freeChats,
+                  currentFreeConvId,
+                  setFreeConvId,
+                  onToast,
+                  openTab,
+                  effort,
+                  setGlobalEffort,
+                  hasKey,
+                  providerName,
+                  vision,
+                  agentSettings,
+                  setSettingsEpoch,
+                  stripTabs,
+                  agentPanes,
+                  activeAgentTab,
+                  activeAgentTabId,
+                  docGoalIds,
+                  agentTabTitle,
+                  agentTabRunning,
+                  activateAgentTab,
+                  closeAgentTab,
+                  closeAgentTabMode,
+                  reorderAgentTabList,
+                  openAgentTab,
+                  handleNewGoalConversation,
+                  removeConversation,
+                  newConversationIn,
+                  selectConversationIn,
+                  pruneImagesOf,
+                  startSuperLab,
+                  newExam,
+                  shouldWaitInLine,
+                }}
+              />
             }
           />
       </div>
@@ -5273,56 +4730,23 @@ export default function LearnWorkspace({
         </FloatWindow>
       )}
 
-      {pendingExamDelete && (
-        <ConfirmDialog
-          title={examDeleteStage === 'warn' ? t('这份试卷考过，删除会一并带走这些') : t('最后确认：删除这份试卷？')}
-          message={
-            examDeleteStage === 'warn'
-              ? examDeleteWarn(pendingExamDelete)
-              : examAttempted(pendingExamDelete)
-                ? t('《{0}》与它的 {1} 次考试记录会被永久移除；删错了按 Ctrl+Z 可撤回。', pendingExamDelete.title, pendingExamDelete.attempts.length)
-                : t('《{0}》还没考过，删掉只是把这份题目丢掉，可以随时让导师重出一份。', pendingExamDelete.title)
-          }
-          confirmLabel={examDeleteStage === 'warn' ? t('我了解，继续') : t('删除试卷')}
-          onConfirm={commitRemoveExam}
-          onCancel={() => setPendingExamDelete(null)}
-        />
-      )}
-
-      {pendingNoteDelete && (
-        <ConfirmDialog
-          title={t('删除这份笔记？')}
-          message={t(
-            '「{0}」是一个独立文件（{节点}.notes/{1}.md），删除后文件本体也会一并移除；删错了按 Ctrl+Z 可撤回。',
-            pendingNoteDelete.name,
-            pendingNoteDelete.name,
-          )}
-          confirmLabel={t('删除笔记')}
-          onConfirm={() => {
-            const p = pendingNoteDelete
-            setPendingNoteDelete(null)
-            commitRemoveNote(p.nodeId, p.name)
-          }}
-          onCancel={() => setPendingNoteDelete(null)}
-        />
-      )}
-
-      {pendingSuperDelete && (
-        <ConfirmDialog
-          title={t('删除这份超级文档？')}
-          message={t(
-            '「{0}」是一份可交互的 HTML 文档，删除后无法恢复（Ctrl+Z 可撤回）。配着它使用的持久化函数（method）仍会保留，需要时可在对话里让超级导师重新生成。',
-            pendingSuperDelete.name,
-          )}
-          confirmLabel={t('删除超级文档')}
-          onConfirm={() => {
-            const p = pendingSuperDelete
-            setPendingSuperDelete(null)
-            commitRemoveSuperDoc(p.nodeId, p.name)
-          }}
-          onCancel={() => setPendingSuperDelete(null)}
-        />
-      )}
+      {/* 删除类确认框（删目标/节点、删试卷两档、删笔记、删超级文档）：见 workspace/DeleteConfirms */}
+      <DeleteConfirms
+        pendingDelete={pendingDelete}
+        commitRemoveNode={commitRemoveNode}
+        onCancelRemoveNode={() => setPendingDelete(null)}
+        pendingExamDelete={pendingExamDelete}
+        examDeleteStage={examDeleteStage}
+        commitRemoveExam={commitRemoveExam}
+        onCancelExam={() => setPendingExamDelete(null)}
+        pendingNoteDelete={pendingNoteDelete}
+        commitRemoveNote={commitRemoveNote}
+        onCancelNote={() => setPendingNoteDelete(null)}
+        pendingSuperDelete={pendingSuperDelete}
+        commitRemoveSuperDoc={commitRemoveSuperDoc}
+        onCancelSuper={() => setPendingSuperDelete(null)}
+        getLatest={getLatest}
+      />
 
       {/*
         关页签确认：要关的那批页签里有没保存的改动。三个出路——保存并关（冲突的本地
@@ -5360,20 +4784,6 @@ export default function LearnWorkspace({
           onConfirm={commitConflictOverwrite}
           onExtra={commitConflictSaveAs}
           onCancel={() => setPendingConflict(null)}
-        />
-      )}
-
-      {pendingDelete && (
-        <ConfirmDialog
-          title={pendingDelete.isRoot ? t('删除整个学习目标？') : t('删除这个阶段目标？')}
-          message={
-            pendingDelete.isRoot
-              ? t('「{0}」是学习目标（总目标），删除后它及其下 {1} 个阶段目标、所有对话与试卷都会一并移除，且无法恢复。', pendingDelete.title, Math.max(0, pendingDelete.count - (getLatest().goals.find((g) => g.id === pendingDelete.nodeId)?.rootNodeId ? 1 : 0)))
-              : t('只删除「{0}」本身：与它相连的线一并解开，它的下级阶段目标会留在画布上（成为没有上游的游离卡），挂在该文档上的笔记与试卷随它一起移除。删错可按 Ctrl+Z 撤回。', pendingDelete.title)
-          }
-          confirmLabel={pendingDelete.isRoot ? t('删除目标') : t('删除')}
-          onConfirm={commitRemoveNode}
-          onCancel={() => setPendingDelete(null)}
         />
       )}
 
