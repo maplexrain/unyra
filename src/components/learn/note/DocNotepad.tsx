@@ -162,20 +162,19 @@ export const DocNotepadRow = memo(function DocNotepadRow({
       )}
 
       <div className="mb-1 flex items-center gap-1.5 select-none">
-        {/* 拖动手柄：仅块级形态提供，支持改变便签在文章中的插入位置（行内要挪位置先切回块级） */}
-        {!inline && (
-          <div
-            draggable
-            onDragStart={(e) => onDragStart?.(e, item.id)}
-            className="flex h-5 w-5 cursor-grab items-center justify-center text-ink-faint transition hover:text-ink active:cursor-grabbing"
-            title={t('按住拖动以改变便签插入位置')}
-          >
-            <GripVertical size={13} />
-          </div>
-        )}
+        {/* 拖动手柄：块级换块位、行内换宿主段落 */}
+        <div
+          draggable
+          onDragStart={(e) => onDragStart?.(e, item.id)}
+          className="flex h-5 w-5 cursor-grab items-center justify-center text-ink-faint transition hover:text-ink active:cursor-grabbing"
+          title={inline ? t('按住拖动以换到其他段落') : t('按住拖动以改变便签插入位置')}
+        >
+          <GripVertical size={13} />
+        </div>
 
         <StickyNote size={13} className="shrink-0 text-ink-soft/70" />
-        <span className="text-[11px] font-medium text-ink-soft">{t('随文笔记')}</span>
+        {/* 行内卡片窄，标题省字：图标与按钮已经说明身份 */}
+        {!inline && <span className="text-[11px] font-medium text-ink-soft">{t('随文笔记')}</span>}
 
         {/* 块级 ⇄ 行内形态切换 */}
         <button
@@ -297,6 +296,9 @@ export function DocNotepadLayer({
 }: DocNotepadLayerProps) {
   const [slots, setSlots] = useState<{ id: string; element: HTMLElement }[]>([])
   const draggedIdRef = useRef<string | null>(null)
+  /** 拖的是不是行内便签：拖拽过程的落点指示与 drop 语义都跟着它分叉 */
+  const draggedInlineRef = useRef(false)
+  const hintedBlockRef = useRef<HTMLElement | null>(null)
 
   // 计算结构指纹（块位/形态/浮动侧变化才重排插槽；输入内容与拖宽都不触发重排）
   const layoutFingerprint = useMemo(
@@ -416,7 +418,7 @@ export function DocNotepadLayer({
     }
   }, [containerRef, notepads])
 
-  // 为正文各块挂载拖拽放置监听及实时占位落点（仅块级形态用：手柄只在块级卡片上）
+  // 为正文各块挂载拖拽放置监听：块级拖拽出块间落点线，行内拖拽高亮宿主块、松手换宿主
   useEffect(() => {
     const body = containerRef.current
     if (!body) return
@@ -438,8 +440,53 @@ export function DocNotepadLayer({
       return children.length - 1
     }
 
+    // 行内拖拽：算鼠标悬在哪一块上（不分上下半，块本身就是落点）
+    const calculateHoveredIndex = (e: globalThis.DragEvent): number => {
+      const children = getDocBlockChildren(docContainer)
+      for (let i = 0; i < children.length; i++) {
+        const rect = children[i].getBoundingClientRect()
+        if (e.clientY <= rect.bottom) return i
+      }
+      return children.length - 1
+    }
+
+    // 行内落点高亮：outline 直改内联样式，不碰 className（markdown 块的类不能动）
+    const clearInlineHint = () => {
+      const el = hintedBlockRef.current
+      if (el) {
+        el.style.outline = ''
+        el.style.outlineOffset = ''
+        hintedBlockRef.current = null
+      }
+    }
+    const hintInlineTarget = (el: HTMLElement | null) => {
+      if (hintedBlockRef.current === el) return
+      clearInlineHint()
+      if (!el) return
+      el.style.outline = '2px solid color-mix(in srgb, var(--color-seal) 70%, transparent)'
+      el.style.outlineOffset = '-2px'
+      hintedBlockRef.current = el
+    }
+
+    // 行内落点必须仍是文本容器；不是就不接（不给 hint、drop 不生效）
+    const inlineDropTarget = (e: globalThis.DragEvent): HTMLElement | null => {
+      const children = getDocBlockChildren(docContainer)
+      const el = children[calculateHoveredIndex(e)]
+      return el && INLINE_BLOCK_TAGS.has(el.tagName) ? el : null
+    }
+
     const handleDragOver = (e: globalThis.DragEvent) => {
       if (!draggedIdRef.current) return
+
+      if (draggedInlineRef.current) {
+        const target = inlineDropTarget(e)
+        if (!target) return
+        e.preventDefault()
+        e.dataTransfer!.dropEffect = 'move'
+        hintInlineTarget(target)
+        return
+      }
+
       e.preventDefault()
       e.dataTransfer!.dropEffect = 'move'
 
@@ -460,25 +507,39 @@ export function DocNotepadLayer({
     }
 
     const handleDragLeave = (e: globalThis.DragEvent) => {
-      // 当离开容器边界时移除占位线
+      // 当离开容器边界时移除占位线与落点高亮
       if (!body.contains(e.relatedTarget as Node)) {
         removeDropIndicator(docContainer)
+        clearInlineHint()
       }
     }
 
     const handleDrop = (e: globalThis.DragEvent) => {
       const draggedId = draggedIdRef.current
+      const wasInline = draggedInlineRef.current
       removeDropIndicator(docContainer)
+      clearInlineHint()
       if (!draggedId) return
       e.preventDefault()
 
-      const targetIndex = calculateTargetIndex(e)
-      onMoveNotepad(draggedId, targetIndex)
+      if (wasInline) {
+        // 行内落点：悬在哪块就换哪块当宿主（非法容器在 dragover 已被拦住，这里再对账一次）
+        const children = getDocBlockChildren(docContainer)
+        const idx = calculateHoveredIndex(e)
+        const el = children[idx]
+        if (el && INLINE_BLOCK_TAGS.has(el.tagName)) {
+          onMoveNotepad(draggedId, idx)
+        }
+      } else {
+        const targetIndex = calculateTargetIndex(e)
+        onMoveNotepad(draggedId, targetIndex)
+      }
       draggedIdRef.current = null
     }
 
     const handleDragEnd = () => {
       removeDropIndicator(docContainer)
+      clearInlineHint()
       draggedIdRef.current = null
     }
 
@@ -493,14 +554,19 @@ export function DocNotepadLayer({
       body.removeEventListener('drop', handleDrop)
       window.removeEventListener('dragend', handleDragEnd)
       removeDropIndicator(docContainer)
+      clearInlineHint()
     }
   }, [containerRef, onMoveNotepad])
 
-  const handleDragStart = useCallback((e: DragEvent<HTMLDivElement>, id: string) => {
-    draggedIdRef.current = id
-    e.dataTransfer.setData('text/plain', id)
-    e.dataTransfer.effectAllowed = 'move'
-  }, [])
+  const handleDragStart = useCallback(
+    (e: DragEvent<HTMLDivElement>, id: string) => {
+      draggedIdRef.current = id
+      draggedInlineRef.current = notepads.find((n) => n.id === id)?.mode === 'inline'
+      e.dataTransfer.setData('text/plain', id)
+      e.dataTransfer.effectAllowed = 'move'
+    },
+    [notepads],
+  )
 
   return (
     <>
