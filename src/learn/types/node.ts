@@ -272,6 +272,12 @@ export interface DocNotepadItem {
   blockIndex: number
   createdAt: number
   updatedAt: number
+  /** 展示形态：block=独占一个块位（缺省，老数据零迁移）；inline=浮动在锚定块内部，正文环绕 */
+  mode?: 'block' | 'inline'
+  /** inline 形态的浮动侧（缺省 left） */
+  float?: 'left' | 'right'
+  /** inline 形态的卡片宽度（px；拖拽调节，松手落盘） */
+  width?: number
 }
 
 export interface KnowledgeNode {
