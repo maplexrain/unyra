@@ -22,6 +22,8 @@ release-*/
 dist-licgen
 # 签发器的免安装单 exe（npm run licgen:exe）——卖家自用，不进版本库、不发布
 release-licgen
+# screenHelper.exe：由 screenHelper.cs 在运行时现场编译的产物（.cs 改动会自动触发重编），不进版本库
+electron/app/screenHelper.exe
 *.local
 
 # Editor directories and files
