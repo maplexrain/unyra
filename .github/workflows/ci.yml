@@ -1,7 +1,7 @@
 # CI 门禁：PR 与进 main 的每一推都要过这一关。
 #
 # CONTRIBUTING 里「提交前必须全绿」此前只靠自觉，这里是同一套命令的机器执行版——
-# 本地怎么跑，这里就怎么跑：先类型检查，再 lint，再三套测试，最后完整构建。
+# 本地怎么跑，这里就怎么跑：先类型检查，再 lint，再文件体积门禁，再三套测试，最后完整构建。
 #
 # 只用一台 ubuntu，不设矩阵：三套测试都是纯 Node（vitest + 两套 esbuild 打包的探针，
 # 不启动 Electron，连二进制都不用下）；构建链（tsc / vite / esbuild）同样跨平台。
@@ -39,6 +39,11 @@ jobs:
 
       - name: Lint（oxlint）
         run: npm run lint
+
+      # 单文件 1000 行硬上限 + ratchet 台账（scripts/fileSizeBaseline.json）：
+      # 存量超限文件只许拆不许长，规矩见 AGENTS.md「文件体积红线」
+      - name: 文件体积门禁
+        run: npm run size:check
 
       - name: 测试（vitest + agent 探针 + update 探针）
         run: npm test

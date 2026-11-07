@@ -29,6 +29,8 @@
     "perf:lab:check": "node scripts/check-perf-lab.mjs",
     "perf:trace": "node perf-lab/analyze-trace.mjs",
     "lint": "oxlint",
+    "size:check": "node scripts/checkFileSize.mjs",
+    "size:baseline": "node scripts/checkFileSize.mjs --update",
     "start": "electron .",
     "release:win": "node scripts/release.mjs",
     "release:mac": "npm run build && electron-builder --mac",
