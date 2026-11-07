@@ -578,18 +578,110 @@
   color-scheme: dark;
 }
 
-/* 深色系扩展三套（石墨 / 夜航蓝 / 高对比）与纯黑同一组伴随：选中态、标志提亮、
-   注解底纹加强、深遮罩。选中态的底色用各自的 seal-deep 现场调（color-mix），
+/* Cyber：深空蓝黑底、荧光色系——荧光青主强调，荧光绿表达成、荧光琥珀表警示 */
+:root[data-theme='cyber'] {
+  --raw-paper: #0b0e14;
+  --raw-paper-deep: #070910;
+  --raw-card: #12161f;
+  --color-paper: #0b0e14;
+  --color-paper-deep: #080a11;
+  --color-card: #131824;
+  --color-ink: #c6d9df;
+  --color-ink-strong: #eafcff;
+  --color-ink-soft: #7f95a3;
+  --color-ink-faint: #52646f;
+  --color-line: #1e2a36;
+  --color-line-strong: #2c3d4d;
+  --color-mask: #000000;
+  --color-seal: #00d6e8;
+  --color-seal-deep: #7df5ff;
+
+  --color-ok: #2fe39a;
+  --color-ok-deep: #5cf0b4;
+  --color-ok-text: #63e8a8;
+  --color-warn: #ffb03a;
+  --color-warn-deep: #ffcf5c;
+
+  --color-sunken: #090c12;
+  --color-inset: #182030;
+  --color-elevated: #161d2b;
+  --color-code: #0e1420;
+  --color-quote-ink: #9fb8c4;
+  --color-mark: #173a4d;
+  --color-scroll: #223140;
+  --color-scroll-strong: #2f4457;
+
+  --color-anno-blue: #58c7ff;
+  --color-anno-purple: #d69eff;
+
+  --color-anno-hl: rgba(0, 229, 255, 0.4);
+  --color-anno-hl-hover: rgba(0, 229, 255, 0.6);
+  --color-anno-note-hl: rgba(255, 110, 231, 0.42);
+  --color-anno-note-hl-hover: rgba(255, 110, 231, 0.62);
+
+  color-scheme: dark;
+}
+
+/* 典雅暗金：暖炭底、羊皮纸墨色——古金主强调，旧玉绿表达成、琥珀金表警示 */
+:root[data-theme='gold'] {
+  --raw-paper: #171410;
+  --raw-paper-deep: #110e0b;
+  --raw-card: #1e1a14;
+  --color-paper: #171410;
+  --color-paper-deep: #12100c;
+  --color-card: #201b14;
+  --color-ink: #d6cfc2;
+  --color-ink-strong: #f2ead9;
+  --color-ink-soft: #a49a89;
+  --color-ink-faint: #6e6656;
+  --color-line: #2c261c;
+  --color-line-strong: #3d3627;
+  --color-mask: #000000;
+  --color-seal: #c2a35c;
+  --color-seal-deep: #e0c37a;
+
+  --color-ok: #8fae8b;
+  --color-ok-deep: #a9c7a4;
+  --color-ok-text: #a3bd9e;
+  --color-warn: #cf9c3f;
+  --color-warn-deep: #e8bc66;
+
+  --color-sunken: #12100c;
+  --color-inset: #292317;
+  --color-elevated: #262015;
+  --color-code: #1a160f;
+  --color-quote-ink: #c4b8a2;
+  --color-mark: #4a3b18;
+  --color-scroll: #332c1f;
+  --color-scroll-strong: #463d2b;
+
+  --color-anno-blue: #8fb8d6;
+  --color-anno-purple: #b39ad6;
+
+  --color-anno-hl: rgba(212, 175, 55, 0.38);
+  --color-anno-hl-hover: rgba(212, 175, 55, 0.58);
+  --color-anno-note-hl: rgba(224, 169, 62, 0.4);
+  --color-anno-note-hl-hover: rgba(224, 169, 62, 0.6);
+
+  color-scheme: dark;
+}
+
+/* 深色系扩展（石墨 / 夜航蓝 / 高对比 / Cyber / 典雅暗金）与纯黑同一组伴随：选中态、
+   标志提亮、注解底纹加强、深遮罩。选中态的底色用各自的 seal-deep 现场调（color-mix），
    同一份规则跟着每套主题走。 */
 :root[data-theme='graphite'] ::selection,
 :root[data-theme='navy'] ::selection,
-:root[data-theme='contrast'] ::selection {
+:root[data-theme='contrast'] ::selection,
+:root[data-theme='cyber'] ::selection,
+:root[data-theme='gold'] ::selection {
   background-color: color-mix(in srgb, var(--color-seal-deep) 40%, transparent);
   color: var(--color-ink-strong);
 }
 :root[data-theme='graphite'],
 :root[data-theme='navy'],
-:root[data-theme='contrast'] {
+:root[data-theme='contrast'],
+:root[data-theme='cyber'],
+:root[data-theme='gold'] {
   --scrim: rgba(0, 0, 0, 0.6);
 }
 /* 浅色扩展里强调色偏离红系的两套（琥珀 / 雾紫）选中态跟着各自强调色走 */

@@ -50,7 +50,8 @@
 :root[data-theme='black'],
 :root[data-theme='graphite'],
 :root[data-theme='navy'],
-:root[data-theme='contrast'] {
+:root[data-theme='contrast'],
+:root[data-theme='gold'] {
   --color-code-comment: #6b7280;
   --color-code-string: #98c379;
   --color-code-number: #d19a66;
@@ -63,6 +64,22 @@
   --color-code-meta: #61afef;
   --color-code-punct: #9aa0a6;
   --color-code-invalid: #e06c75;
+}
+
+/* Cyber：荧光色系的代码高亮（青 / 品红 / 荧光绿），单独一份不走深色共用 */
+:root[data-theme='cyber'] {
+  --color-code-comment: #4f6a7a;
+  --color-code-string: #39ff9c;
+  --color-code-number: #ffa657;
+  --color-code-keyword: #ff6ee7;
+  --color-code-function: #00e5ff;
+  --color-code-type: #fde96b;
+  --color-code-variable: #ff7a93;
+  --color-code-tag: #ff7a93;
+  --color-code-builtin: #56f0d8;
+  --color-code-meta: #00e5ff;
+  --color-code-punct: #8fa3b5;
+  --color-code-invalid: #ff5c7a;
 }
 
 /* ---------- 代码块操作菜单与运行结果（内置插件 code-run） ---------- */

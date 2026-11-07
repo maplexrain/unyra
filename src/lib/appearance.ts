@@ -48,6 +48,8 @@ export type ThemeMode =
   | 'navy'
   | 'contrast'
   | 'black'
+  | 'cyber'
+  | 'gold'
 
 export interface Appearance {
   theme: ThemeMode
@@ -131,6 +133,8 @@ export const THEME_MODES: ThemeMode[] = [
   'navy',
   'contrast',
   'black',
+  'cyber',
+  'gold',
 ]
 
 export const THEME_LABEL: Record<ThemeMode, string> = {
@@ -148,10 +152,12 @@ export const THEME_LABEL: Record<ThemeMode, string> = {
   navy: '夜航蓝',
   contrast: '高对比',
   black: '纯黑',
+  cyber: 'Cyber',
+  gold: '典雅暗金',
 }
 
 /** 深色一族的取值：深底浅字（决定顶栏图标等展示语义；CSS 里它们共享同一组伴随规则） */
-const DARK_THEMES: ThemeMode[] = ['dark', 'graphite', 'navy', 'contrast', 'black']
+const DARK_THEMES: ThemeMode[] = ['dark', 'graphite', 'navy', 'contrast', 'black', 'cyber', 'gold']
 
 /** 这套主题是不是深底浅字；「跟随系统」的深浅由解析结果决定，不算在这里 */
 export const isDarkTheme = (mode: ThemeMode): boolean => DARK_THEMES.includes(mode)
@@ -175,6 +181,8 @@ export const THEME_SWATCH: Record<ThemeMode, { paper: string; accent: string }> 
   navy: { paper: '#10141f', accent: '#6f9ed6' },
   contrast: { paper: '#000000', accent: '#f2654a' },
   black: { paper: '#000000', accent: '#d0705a' },
+  cyber: { paper: '#0b0e14', accent: '#00d6e8' },
+  gold: { paper: '#171410', accent: '#c2a35c' },
 }
 
 /** 文字大小系数的可调范围与手感：文档区与对话区共用同一套，两边滚起来才是同一个手感 */

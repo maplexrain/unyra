@@ -90,7 +90,7 @@ function isDarkModeActive(): boolean {
   if (typeof document === 'undefined') return false
   const root = document.documentElement
   const dataTheme = root.getAttribute('data-theme')
-  if (dataTheme === 'dark' || dataTheme === 'graphite' || dataTheme === 'navy' || dataTheme === 'contrast' || dataTheme === 'black') {
+  if (dataTheme === 'dark' || dataTheme === 'graphite' || dataTheme === 'navy' || dataTheme === 'contrast' || dataTheme === 'black' || dataTheme === 'cyber' || dataTheme === 'gold') {
     return true
   }
   if (root.classList.contains('dark')) return true
