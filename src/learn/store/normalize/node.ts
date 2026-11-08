@@ -137,12 +137,21 @@ function normalizeNotepads(raw: unknown): DocNotepadItem[] {
     const blockIndex = typeof r.blockIndex === 'number' && Number.isInteger(r.blockIndex) ? r.blockIndex : -1
     const createdAt = typeof r.createdAt === 'number' && Number.isFinite(r.createdAt) ? r.createdAt : now
     const updatedAt = typeof r.updatedAt === 'number' && Number.isFinite(r.updatedAt) ? r.updatedAt : createdAt
+    // 行内形态三件套：非法值一律丢弃回落默认（块级 / 左浮 / 自适应宽）——白名单重建，
+    // 这里的字段不认，落盘往返就没了（见本文件头注释的往返纪律）
+    const mode = r.mode === 'inline' ? ('inline' as const) : undefined
+    const float = r.float === 'left' || r.float === 'right' ? (r.float as 'left' | 'right') : undefined
+    const width =
+      typeof r.width === 'number' && Number.isFinite(r.width) && r.width > 0 ? Math.round(r.width) : undefined
     out.push({
       id,
       content,
       blockIndex,
       createdAt,
       updatedAt,
+      ...(mode ? { mode } : {}),
+      ...(float ? { float } : {}),
+      ...(width ? { width } : {}),
     })
   }
   return out

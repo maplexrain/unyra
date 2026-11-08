@@ -50,6 +50,7 @@ const dict: Record<string, string> = {
   夜航蓝: 'Midnight blue',
   高对比: 'High contrast',
   纯黑: 'Black',
+  Cyber: 'Cyber',
   '跟随系统只在浅色 / 深色之间自动切换（OS 只有这两种偏好）；其余主题是独立配色，选定即固定。': 'Follow-system switches only between light and dark (the only two preferences an OS has); every other theme is its own fixed palette.',
   界面语言: 'Language',
   '语言跟机器走，对所有用户生效；正文与对话内容不翻译。': 'The language follows this machine and applies to all users. Documents and conversations are not translated.',

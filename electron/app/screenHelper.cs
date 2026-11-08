@@ -12,14 +12,12 @@ public class ScreenHelper {
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100;
     private const int WM_SYSKEYDOWN = 0x0104;
-    private const int VK_OEM_3 = 0xC0; // 反引号 / 波浪号
     private const int SRCCOPY = 0x00CC0020;
     private static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = (IntPtr)(-4);
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
     private static LowLevelKeyboardProc _proc = HookCallback;
     private static IntPtr _hookID = IntPtr.Zero;
-    private static long _lastTime = 0;
 
     [DllImport("user32.dll")]
     private static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
@@ -183,18 +181,7 @@ public class ScreenHelper {
     private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
         if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)) {
             int vkCode = Marshal.ReadInt32(lParam);
-            if (vkCode == 0x70) { /* VK_F1: 快速唤出截图 */ Console.WriteLine("TRIGGER"); Console.Out.Flush(); } else if (vkCode == VK_OEM_3) {
-                long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                if (now - _lastTime <= 400 && now - _lastTime >= 60) {
-                    Console.WriteLine("TRIGGER");
-                    Console.Out.Flush();
-                    _lastTime = 0;
-                } else {
-                    _lastTime = now;
-                }
-            } else {
-                _lastTime = 0;
-            }
+            if (vkCode == 0x70) { /* VK_F1: 快速唤出截图 */ Console.WriteLine("TRIGGER"); Console.Out.Flush(); }
         }
         return CallNextHookEx(_hookID, nCode, wParam, lParam);
     }

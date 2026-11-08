@@ -14,7 +14,7 @@ import MarkdownView from '../../MarkdownView'
 import { TyporaLiveEditor } from './TyporaLiveEditor'
 import WaveBars from '../../WaveBars'
 import type { Annotation, DocKind, DocNotepadItem } from '../../../learn/types'
-import { DocNotepadLayer } from './DocNotepad'
+import { DocNotepadLayer, type NotepadPatch } from './DocNotepad'
 import type { AnnotationActions } from '../../../lib/annotation'
 import type { LocalImageResolver } from '../../../lib/docImages'
 import { copySelectionAsMarkdown } from '../../../lib/copySource'
@@ -60,6 +60,8 @@ interface Props {
   onUpdateNotepad?: (id: string, content: string) => void
   onDeleteNotepad?: (id: string) => void
   onMoveNotepad?: (id: string, targetBlockIndex: number) => void
+  /** 形态 / 浮动侧 / 宽度三件套的补丁（见 note/DocNotepad 的 NotepadPatch） */
+  onPatchNotepad?: (id: string, patch: NotepadPatch) => void
 }
 
 function sameConceptKeys(a?: Set<string>, b?: Set<string>): boolean {
@@ -127,6 +129,7 @@ export const DocBody = memo(function DocBody({
   onUpdateNotepad,
   onDeleteNotepad,
   onMoveNotepad,
+  onPatchNotepad,
 }: Props) {
   /* 两端渐隐：滚到头就摘掉那一端（判据与代价见 lib/scrollFade） */
   const scrollEdges = useScrollEdges(scrollRef)
@@ -189,13 +192,14 @@ export const DocBody = memo(function DocBody({
                   annotationActions={annotationActions}
                   resolveLocalImage={resolveLocalImage}
                 />
-                {notepads && notepads.length > 0 && onUpdateNotepad && onDeleteNotepad && onMoveNotepad && (
+                {notepads && notepads.length > 0 && onUpdateNotepad && onDeleteNotepad && onMoveNotepad && onPatchNotepad && (
                   <DocNotepadLayer
                     containerRef={bodyRef}
                     notepads={notepads}
                     onUpdateNotepad={onUpdateNotepad}
                     onDeleteNotepad={onDeleteNotepad}
                     onMoveNotepad={onMoveNotepad}
+                    onPatchNotepad={onPatchNotepad}
                   />
                 )}
               </>)}

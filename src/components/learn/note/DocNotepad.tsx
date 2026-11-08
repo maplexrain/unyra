@@ -1,14 +1,23 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { GripVertical, StickyNote, Trash2 } from 'lucide-react'
+import { ArrowLeftToLine, ArrowRightToLine, GripVertical, Square, StickyNote, TextWrap, Trash2 } from 'lucide-react'
 import type { DocNotepadItem } from '../../../learn/types'
 import { DOC_TW_CLASS } from '../../../lib/docTailwind'
 import { t } from '../../../i18n'
+
+/** 形态 / 浮动侧 / 宽度的补丁；宽度在拖拽结束时提交（拖拽中直改 DOM，不进 React） */
+export type NotepadPatch = Partial<Pick<DocNotepadItem, 'mode' | 'float' | 'width'>>
+
+/** 行内形态只落进文本容器：在围栏、表格、列表壳里浮一张卡没有意义 */
+const INLINE_BLOCK_TAGS = new Set(['P', 'BLOCKQUOTE', 'LI', 'DD', 'DT'])
+const INLINE_MIN_WIDTH = 160
+const INLINE_DEFAULT_WIDTH = 240
 
 interface NotepadRowProps {
   item: DocNotepadItem
   onUpdate: (id: string, content: string) => void
   onDelete: (id: string) => void
+  onPatch: (id: string, patch: NotepadPatch) => void
   onDragStart?: (e: DragEvent<HTMLDivElement>, id: string) => void
 }
 
@@ -16,12 +25,21 @@ export const DocNotepadRow = memo(function DocNotepadRow({
   item,
   onUpdate,
   onDelete,
+  onPatch,
   onDragStart,
 }: NotepadRowProps) {
   const [content, setContent] = useState(item.content)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const latestContentRef = useRef(item.content)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const resizeRef = useRef<{ startX: number; startW: number; maxW: number } | null>(null)
+
+  const inline = item.mode === 'inline'
+  const floatSide = item.float === 'right' ? 'right' : 'left'
+
+  // 行内形态下卡片 portaled 在浮动壳里：壳就是这张卡的宽度载体
+  const wrapperEl = () => rootRef.current?.parentElement ?? null
 
   // 外部 content 变化时（如从其他端或历史恢复，仅在不同步时更新）
   useEffect(() => {
@@ -80,24 +98,105 @@ export const DocNotepadRow = memo(function DocNotepadRow({
     flushChange(latestContentRef.current)
   }
 
+  /*
+   * 行内宽度拉伸：拖拽中直改浮动壳的 width（绕开 React，重排零开销），
+   * 松手才把最终值经 patch 记到节点上。float 左卡手柄在右缘（右拖加宽），
+   * 右卡手柄在左缘（左拖加宽），所以 dx 按 float 侧翻一次符号。
+   */
+  const handleResizeStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    const wrap = wrapperEl()
+    if (!wrap) return
+    e.preventDefault()
+    const hostW = wrap.parentElement?.clientWidth ?? 0
+    resizeRef.current = {
+      startX: e.clientX,
+      startW: wrap.offsetWidth,
+      maxW: Math.max(INLINE_MIN_WIDTH + 40, hostW - 80),
+    }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  const handleResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const st = resizeRef.current
+    const wrap = wrapperEl()
+    if (!st || !wrap) return
+    const dx = (e.clientX - st.startX) * (floatSide === 'right' ? -1 : 1)
+    const w = Math.min(st.maxW, Math.max(INLINE_MIN_WIDTH, Math.round(st.startW + dx)))
+    wrap.style.width = `${w}px`
+  }
+
+  const handleResizeEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizeRef.current) return
+    resizeRef.current = null
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    } catch {
+      /* 指针已释放时忽略 */
+    }
+    const wrap = wrapperEl()
+    if (wrap) onPatch(item.id, { width: Math.round(wrap.offsetWidth) })
+  }
+
   return (
     <div
       data-notepad-id={item.id}
-      className="group relative my-2 rounded-none border-0 bg-ink/[0.04] px-3 py-2 transition-colors hover:bg-ink/[0.07]"
+      ref={rootRef}
+      className={
+        inline
+          ? 'group relative w-full bg-ink/[0.06] px-3 py-2 shadow-sm transition-colors hover:bg-ink/[0.09]'
+          : 'group relative my-2 rounded-none border-0 bg-ink/[0.04] px-3 py-2 transition-colors hover:bg-ink/[0.07]'
+      }
     >
+      {inline && (
+        <div
+          onPointerDown={handleResizeStart}
+          onPointerMove={handleResizeMove}
+          onPointerUp={handleResizeEnd}
+          onPointerCancel={handleResizeEnd}
+          title={t('拖动调节宽度')}
+          className={
+            'absolute bottom-2 top-2 z-10 w-1.5 cursor-ew-resize rounded-full bg-seal/70 opacity-0 transition-opacity group-hover:opacity-70 ' +
+            (floatSide === 'right' ? 'left-0' : 'right-0')
+          }
+        />
+      )}
+
       <div className="mb-1 flex items-center gap-1.5 select-none">
-        {/* 拖动手柄：支持改变便签在文章中的插入位置 */}
+        {/* 拖动手柄：块级换块位、行内换宿主段落 */}
         <div
           draggable
           onDragStart={(e) => onDragStart?.(e, item.id)}
           className="flex h-5 w-5 cursor-grab items-center justify-center text-ink-faint transition hover:text-ink active:cursor-grabbing"
-          title={t('按住拖动以改变便签插入位置')}
+          title={inline ? t('按住拖动以换到其他段落') : t('按住拖动以改变便签插入位置')}
         >
           <GripVertical size={13} />
         </div>
 
         <StickyNote size={13} className="shrink-0 text-ink-soft/70" />
-        <span className="text-[11px] font-medium text-ink-soft">{t('随文笔记')}</span>
+        {/* 行内卡片窄，标题省字：图标与按钮已经说明身份 */}
+        {!inline && <span className="text-[11px] font-medium text-ink-soft">{t('随文笔记')}</span>}
+
+        {/* 块级 ⇄ 行内形态切换 */}
+        <button
+          type="button"
+          onClick={() => onPatch(item.id, { mode: inline ? 'block' : 'inline' })}
+          title={inline ? t('切换为块级（独占一行）') : t('切换为行内（正文环绕）')}
+          className="flex h-5 w-5 items-center justify-center text-ink-faint opacity-60 transition hover:text-ink hover:opacity-100"
+        >
+          {inline ? <Square size={12} /> : <TextWrap size={12} />}
+        </button>
+
+        {/* 行内形态的浮动侧切换 */}
+        {inline && (
+          <button
+            type="button"
+            onClick={() => onPatch(item.id, { float: floatSide === 'right' ? 'left' : 'right' })}
+            title={floatSide === 'right' ? t('靠左浮动') : t('靠右浮动')}
+            className="flex h-5 w-5 items-center justify-center text-ink-faint opacity-60 transition hover:text-ink hover:opacity-100"
+          >
+            {floatSide === 'right' ? <ArrowLeftToLine size={12} /> : <ArrowRightToLine size={12} />}
+          </button>
+        )}
 
         <button
           type="button"
@@ -128,6 +227,7 @@ interface DocNotepadLayerProps {
   onUpdateNotepad: (id: string, content: string) => void
   onDeleteNotepad: (id: string) => void
   onMoveNotepad: (id: string, targetBlockIndex: number) => void
+  onPatchNotepad: (id: string, patch: NotepadPatch) => void
 }
 
 /** 辅助获取真实的文档内容容器 */
@@ -167,7 +267,24 @@ function getDocBlockChildren(container: HTMLElement): HTMLElement[] {
 }
 
 /**
- * 将节点上的便签列表挂载到教学文档 DOM 中对应 blockIndex 的插槽内
+ * 行内形态的宿主块解析：blockIndex 对准文本容器；不满足（围栏/表格壳等）时回落 null，走块级插槽。
+ * blockIndex 的口径是「插在第几个块之后」，行内就取它对准的那一块当宿主。
+ */
+function resolveInlineHost(item: DocNotepadItem, children: HTMLElement[]): HTMLElement | null {
+  if (item.mode !== 'inline' || children.length === 0) return null
+  const anchor = children[Math.max(0, Math.min(item.blockIndex, children.length - 1))]
+  return anchor && INLINE_BLOCK_TAGS.has(anchor.tagName) ? anchor : null
+}
+
+/** 清掉某个元素上「行内宿主」的标记（类名与 flow-root 都是挂上去的，都要摘干净） */
+function unmarkInlineHost(el: Element): void {
+  el.classList.remove('doc-notepad-inline-host')
+  ;(el as HTMLElement).style.display = ''
+}
+
+/**
+ * 将节点上的便签列表挂载到教学文档 DOM 中：
+ * 块级便签插在对应 blockIndex 的插槽内，行内便签以浮动壳落在宿主块内部、正文环绕。
  */
 export function DocNotepadLayer({
   containerRef,
@@ -175,17 +292,21 @@ export function DocNotepadLayer({
   onUpdateNotepad,
   onDeleteNotepad,
   onMoveNotepad,
+  onPatchNotepad,
 }: DocNotepadLayerProps) {
   const [slots, setSlots] = useState<{ id: string; element: HTMLElement }[]>([])
   const draggedIdRef = useRef<string | null>(null)
+  /** 拖的是不是行内便签：拖拽过程的落点指示与 drop 语义都跟着它分叉 */
+  const draggedInlineRef = useRef(false)
+  const hintedBlockRef = useRef<HTMLElement | null>(null)
 
-  // 计算结构指纹（仅当便签 ID 集合或 blockIndex 发生变化时才触发 DOM 插槽重排，输入内容时不触发重排）
+  // 计算结构指纹（块位/形态/浮动侧变化才重排插槽；输入内容与拖宽都不触发重排）
   const layoutFingerprint = useMemo(
-    () => notepads.map((n) => `${n.id}:${n.blockIndex}`).join('|'),
+    () => notepads.map((n) => `${n.id}:${n.blockIndex}:${n.mode ?? 'block'}:${n.float ?? 'left'}`).join('|'),
     [notepads],
   )
 
-  // 扫描渲染内容并在对应位置插入 slot 占位元素
+  // 扫描渲染内容并在对应位置挂载插槽（块级）或浮动壳（行内）
   useEffect(() => {
     const body = containerRef.current
     if (!body) return
@@ -196,20 +317,59 @@ export function DocNotepadLayer({
       const id = el.getAttribute('data-doc-notepad-slot')
       if (id) existingSlots.set(id, el)
     })
-
-    const newSlots: { id: string; element: HTMLElement }[] = []
-    const activeIds = new Set(notepads.map((n) => n.id))
-
-    // 清除已不在列表中的旧插槽
-    existingSlots.forEach((el, id) => {
-      if (!activeIds.has(id)) {
-        el.remove()
-      }
+    const existingFloats = new Map<string, HTMLElement>()
+    docContainer.querySelectorAll<HTMLElement>('[data-doc-notepad-float]').forEach((el) => {
+      const id = el.getAttribute('data-doc-notepad-float')
+      if (id) existingFloats.set(id, el)
     })
 
+    const activeIds = new Set(notepads.map((n) => n.id))
+    existingSlots.forEach((el, id) => {
+      if (!activeIds.has(id)) el.remove()
+    })
+    existingFloats.forEach((el, id) => {
+      if (!activeIds.has(id)) el.remove()
+    })
+    // 行内宿主标记全量摘除，下面按本轮归属重挂（模式/锚点切换后不留残迹）
+    docContainer.querySelectorAll('.doc-notepad-inline-host').forEach(unmarkInlineHost)
+
     const children = getDocBlockChildren(docContainer)
+    const newSlots: { id: string; element: HTMLElement }[] = []
 
     notepads.forEach((item) => {
+      const inlineHost = resolveInlineHost(item, children)
+
+      if (inlineHost) {
+        // 换成行内形态：块级残留的旧插槽收走
+        existingSlots.get(item.id)?.remove()
+        existingSlots.delete(item.id)
+
+        let wrap = existingFloats.get(item.id)
+        if (!wrap) {
+          wrap = document.createElement('div')
+          wrap.setAttribute('data-doc-notepad-float', item.id)
+          wrap.className = 'doc-notepad-float'
+          existingFloats.set(item.id, wrap)
+        }
+        wrap.style.float = item.float === 'right' ? 'right' : 'left'
+        // 文字侧留出呼吸距离，底部留缝避免下一块贴着卡片底
+        wrap.style.margin = item.float === 'right' ? '0 0 6px 10px' : '0 10px 6px 0'
+        wrap.style.width = `${Math.round(item.width ?? INLINE_DEFAULT_WIDTH)}px`
+        // flow-root 把浮动壳框进宿主块：正文在块内环绕，卡片再高也不会压到后续内容
+        inlineHost.classList.add('doc-notepad-inline-host')
+        inlineHost.style.display = 'flow-root'
+        if (wrap.parentElement !== inlineHost) {
+          wrap.remove()
+          inlineHost.insertBefore(wrap, inlineHost.firstChild)
+        }
+        newSlots.push({ id: item.id, element: wrap })
+        return
+      }
+
+      // 换成块级形态（或本来就是）：行内残留的旧浮动壳收走
+      existingFloats.get(item.id)?.remove()
+      existingFloats.delete(item.id)
+
       let slot = existingSlots.get(item.id)
       if (!slot) {
         slot = document.createElement('div')
@@ -237,13 +397,28 @@ export function DocNotepadLayer({
     setSlots(newSlots)
 
     return () => {
-      // 卸载时清理所有已插入的插槽元素
-      existingSlots.forEach((el) => el.remove())
+      // 卸载时清理所有插槽与浮动壳，宿主标记也要摘
+      docContainer.querySelectorAll('[data-doc-notepad-slot],[data-doc-notepad-float]').forEach((el) => el.remove())
+      docContainer.querySelectorAll('.doc-notepad-inline-host').forEach(unmarkInlineHost)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerRef, layoutFingerprint])
 
-  // 为正文各块挂载拖拽放置监听及实时占位落点
+  // 行内便签宽度的外部同步（如撤销/其他端改动）：指纹不含宽度，这里按值对齐浮动壳
+  useEffect(() => {
+    const body = containerRef.current
+    if (!body) return
+    const docContainer = getDocContainer(body)
+    for (const n of notepads) {
+      if (n.mode !== 'inline' || n.width === undefined) continue
+      const wrap = docContainer.querySelector<HTMLElement>(`[data-doc-notepad-float="${n.id}"]`)
+      if (!wrap) continue
+      const w = `${Math.round(n.width)}px`
+      if (wrap.style.width !== w) wrap.style.width = w
+    }
+  }, [containerRef, notepads])
+
+  // 为正文各块挂载拖拽放置监听：块级拖拽出块间落点线，行内拖拽高亮宿主块、松手换宿主
   useEffect(() => {
     const body = containerRef.current
     if (!body) return
@@ -265,8 +440,53 @@ export function DocNotepadLayer({
       return children.length - 1
     }
 
+    // 行内拖拽：算鼠标悬在哪一块上（不分上下半，块本身就是落点）
+    const calculateHoveredIndex = (e: globalThis.DragEvent): number => {
+      const children = getDocBlockChildren(docContainer)
+      for (let i = 0; i < children.length; i++) {
+        const rect = children[i].getBoundingClientRect()
+        if (e.clientY <= rect.bottom) return i
+      }
+      return children.length - 1
+    }
+
+    // 行内落点高亮：outline 直改内联样式，不碰 className（markdown 块的类不能动）
+    const clearInlineHint = () => {
+      const el = hintedBlockRef.current
+      if (el) {
+        el.style.outline = ''
+        el.style.outlineOffset = ''
+        hintedBlockRef.current = null
+      }
+    }
+    const hintInlineTarget = (el: HTMLElement | null) => {
+      if (hintedBlockRef.current === el) return
+      clearInlineHint()
+      if (!el) return
+      el.style.outline = '2px solid color-mix(in srgb, var(--color-seal) 70%, transparent)'
+      el.style.outlineOffset = '-2px'
+      hintedBlockRef.current = el
+    }
+
+    // 行内落点必须仍是文本容器；不是就不接（不给 hint、drop 不生效）
+    const inlineDropTarget = (e: globalThis.DragEvent): HTMLElement | null => {
+      const children = getDocBlockChildren(docContainer)
+      const el = children[calculateHoveredIndex(e)]
+      return el && INLINE_BLOCK_TAGS.has(el.tagName) ? el : null
+    }
+
     const handleDragOver = (e: globalThis.DragEvent) => {
       if (!draggedIdRef.current) return
+
+      if (draggedInlineRef.current) {
+        const target = inlineDropTarget(e)
+        if (!target) return
+        e.preventDefault()
+        e.dataTransfer!.dropEffect = 'move'
+        hintInlineTarget(target)
+        return
+      }
+
       e.preventDefault()
       e.dataTransfer!.dropEffect = 'move'
 
@@ -287,25 +507,39 @@ export function DocNotepadLayer({
     }
 
     const handleDragLeave = (e: globalThis.DragEvent) => {
-      // 当离开容器边界时移除占位线
+      // 当离开容器边界时移除占位线与落点高亮
       if (!body.contains(e.relatedTarget as Node)) {
         removeDropIndicator(docContainer)
+        clearInlineHint()
       }
     }
 
     const handleDrop = (e: globalThis.DragEvent) => {
       const draggedId = draggedIdRef.current
+      const wasInline = draggedInlineRef.current
       removeDropIndicator(docContainer)
+      clearInlineHint()
       if (!draggedId) return
       e.preventDefault()
 
-      const targetIndex = calculateTargetIndex(e)
-      onMoveNotepad(draggedId, targetIndex)
+      if (wasInline) {
+        // 行内落点：悬在哪块就换哪块当宿主（非法容器在 dragover 已被拦住，这里再对账一次）
+        const children = getDocBlockChildren(docContainer)
+        const idx = calculateHoveredIndex(e)
+        const el = children[idx]
+        if (el && INLINE_BLOCK_TAGS.has(el.tagName)) {
+          onMoveNotepad(draggedId, idx)
+        }
+      } else {
+        const targetIndex = calculateTargetIndex(e)
+        onMoveNotepad(draggedId, targetIndex)
+      }
       draggedIdRef.current = null
     }
 
     const handleDragEnd = () => {
       removeDropIndicator(docContainer)
+      clearInlineHint()
       draggedIdRef.current = null
     }
 
@@ -320,14 +554,19 @@ export function DocNotepadLayer({
       body.removeEventListener('drop', handleDrop)
       window.removeEventListener('dragend', handleDragEnd)
       removeDropIndicator(docContainer)
+      clearInlineHint()
     }
   }, [containerRef, onMoveNotepad])
 
-  const handleDragStart = useCallback((e: DragEvent<HTMLDivElement>, id: string) => {
-    draggedIdRef.current = id
-    e.dataTransfer.setData('text/plain', id)
-    e.dataTransfer.effectAllowed = 'move'
-  }, [])
+  const handleDragStart = useCallback(
+    (e: DragEvent<HTMLDivElement>, id: string) => {
+      draggedIdRef.current = id
+      draggedInlineRef.current = notepads.find((n) => n.id === id)?.mode === 'inline'
+      e.dataTransfer.setData('text/plain', id)
+      e.dataTransfer.effectAllowed = 'move'
+    },
+    [notepads],
+  )
 
   return (
     <>
@@ -340,6 +579,7 @@ export function DocNotepadLayer({
             item={item}
             onUpdate={onUpdateNotepad}
             onDelete={onDeleteNotepad}
+            onPatch={onPatchNotepad}
             onDragStart={handleDragStart}
           />,
           element,

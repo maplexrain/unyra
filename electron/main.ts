@@ -39,7 +39,7 @@ import { closeExamWindow } from './app/examWindow'
 import { registerTraceIpc } from './app/traceWindow'
 import { openScreenshotWindow, preloadScreenshotWindow, destroyScreenshotWindow, registerScreenshotIpc } from './app/screenshotWindow'
 import { registerPinIpc } from './app/pinWindow'
-import { startDoubleBackquoteShortcut, stopDoubleBackquoteShortcut } from './app/doubleBackquoteShortcut'
+import { startGlobalScreenshotShortcut, stopGlobalScreenshotShortcut } from './app/screenHelperHost'
 import { createTray, markQuitting } from './app/tray'
 import { appUserModelId } from './app/identity'
 import { installAppMenu } from './app/icon'
@@ -159,9 +159,9 @@ function main(): void {
     createTray()
     lap('main:tray')
     /*
-     * 注册全局系统级快捷键：双击反引号 (`) 快速唤出全屏截图
+     * 注册全局系统级截图快捷键：任意应用中按 F1 唤出截图（由 screenHelper 助手的键盘钩子承担）
      */
-    void startDoubleBackquoteShortcut(() => {
+    void startGlobalScreenshotShortcut(() => {
       void openScreenshotWindow()
     })
 
@@ -189,7 +189,7 @@ function main(): void {
   // 真的在退出（托盘菜单、系统关机、或策略就是「直接关闭」）：
   // 放开关窗拦截，否则窗口会被自己拦下来，程序退不掉
   app.on('before-quit', () => {
-    stopDoubleBackquoteShortcut()
+    stopGlobalScreenshotShortcut()
     destroyScreenshotWindow()
     void lanServer.stop()
     cleanupAllProcesses()
