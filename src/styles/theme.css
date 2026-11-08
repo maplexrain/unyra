@@ -578,18 +578,64 @@
   color-scheme: dark;
 }
 
-/* 深色系扩展三套（石墨 / 夜航蓝 / 高对比）与纯黑同一组伴随：选中态、标志提亮、
-   注解底纹加强、深遮罩。选中态的底色用各自的 seal-deep 现场调（color-mix），
+/* Cyber：深空蓝黑底、荧光色系——荧光青主强调，荧光绿表达成、荧光琥珀表警示 */
+:root[data-theme='cyber'] {
+  --raw-paper: #0b0e14;
+  --raw-paper-deep: #070910;
+  --raw-card: #12161f;
+  --color-paper: #0b0e14;
+  --color-paper-deep: #080a11;
+  --color-card: #131824;
+  --color-ink: #c6d9df;
+  --color-ink-strong: #eafcff;
+  --color-ink-soft: #7f95a3;
+  --color-ink-faint: #52646f;
+  --color-line: #1e2a36;
+  --color-line-strong: #2c3d4d;
+  --color-mask: #000000;
+  --color-seal: #00d6e8;
+  --color-seal-deep: #7df5ff;
+
+  --color-ok: #2fe39a;
+  --color-ok-deep: #5cf0b4;
+  --color-ok-text: #63e8a8;
+  --color-warn: #ffb03a;
+  --color-warn-deep: #ffcf5c;
+
+  --color-sunken: #090c12;
+  --color-inset: #182030;
+  --color-elevated: #161d2b;
+  --color-code: #0e1420;
+  --color-quote-ink: #9fb8c4;
+  --color-mark: #173a4d;
+  --color-scroll: #223140;
+  --color-scroll-strong: #2f4457;
+
+  --color-anno-blue: #58c7ff;
+  --color-anno-purple: #d69eff;
+
+  --color-anno-hl: rgba(0, 229, 255, 0.4);
+  --color-anno-hl-hover: rgba(0, 229, 255, 0.6);
+  --color-anno-note-hl: rgba(255, 110, 231, 0.42);
+  --color-anno-note-hl-hover: rgba(255, 110, 231, 0.62);
+
+  color-scheme: dark;
+}
+
+/* 深色系扩展（石墨 / 夜航蓝 / 高对比 / Cyber）与纯黑同一组伴随：选中态、
+   标志提亮、注解底纹加强、深遮罩。选中态的底色用各自的 seal-deep 现场调（color-mix），
    同一份规则跟着每套主题走。 */
 :root[data-theme='graphite'] ::selection,
 :root[data-theme='navy'] ::selection,
-:root[data-theme='contrast'] ::selection {
+:root[data-theme='contrast'] ::selection,
+:root[data-theme='cyber'] ::selection {
   background-color: color-mix(in srgb, var(--color-seal-deep) 40%, transparent);
   color: var(--color-ink-strong);
 }
 :root[data-theme='graphite'],
 :root[data-theme='navy'],
-:root[data-theme='contrast'] {
+:root[data-theme='contrast'],
+:root[data-theme='cyber'] {
   --scrim: rgba(0, 0, 0, 0.6);
 }
 /* 浅色扩展里强调色偏离红系的两套（琥珀 / 雾紫）选中态跟着各自强调色走 */

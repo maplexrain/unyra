@@ -39,8 +39,8 @@ const THEME_GROUPS: ThemeGroup[] = [
   },
   {
     name: '深邃暗色',
-    hint: '低眩光夜读配色与高对比黑度',
-    modes: ['graphite', 'navy', 'contrast', 'black'],
+    hint: '低眩光夜读、荧光赛博与高对比黑度',
+    modes: ['graphite', 'navy', 'contrast', 'black', 'cyber'],
   },
 ]
 

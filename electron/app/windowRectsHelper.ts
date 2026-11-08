@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { BrowserWindow, type Display } from 'electron'
-import { queryWindowsViaHelper } from './doubleBackquoteShortcut'
+import { queryWindowsViaHelper } from './screenHelperHost'
 
 export interface WindowRectItem {
   x: number

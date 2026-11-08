@@ -136,7 +136,7 @@ export default function ScreenshotEditor({
         <div className="pointer-events-none absolute top-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full border border-white/20 bg-black/85 px-4 py-1.5 text-xs text-white/95 shadow-2xl backdrop-blur-md">
           <span>{t('单击选取窗口 · 拖拽自由框选 · 双击复制 · 右键退出')}</span>
           <span className="text-white/40">|</span>
-          <span className="text-white/60">{t('Shift 换色 · 双击反引号唤出')}</span>
+          <span className="text-white/60">{t('Shift 换色 · F1 唤出')}</span>
         </div>
       )}
 

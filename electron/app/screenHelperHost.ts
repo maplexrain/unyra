@@ -36,37 +36,39 @@ function getHelperCsPath(): string {
 }
 
 /**
- * 确保 screenHelper.exe 原生助手存在；若不存在则自动调用系统内置 csc 瞬时编译
+ * 确保 screenHelper.exe 原生助手存在；不存在或源码比产物新时，
+ * 自动调用系统内置 csc 瞬时编译（.cs 改过而 exe 还是旧的，就必须重编，否则会一直跑过期逻辑）
  */
 function ensureHelperExe(): Promise<boolean> {
   const exePath = getHelperExePath()
-  if (fs.existsSync(exePath)) {
-    return Promise.resolve(true)
-  }
   const csPath = getHelperCsPath()
   if (!fs.existsSync(csPath) || !fs.existsSync(CSC_PATH)) {
-    return Promise.resolve(false)
+    return Promise.resolve(fs.existsSync(exePath))
+  }
+  if (fs.existsSync(exePath) && fs.statSync(exePath).mtimeMs >= fs.statSync(csPath).mtimeMs) {
+    return Promise.resolve(true)
   }
 
   return new Promise((resolve) => {
     execFile(
       CSC_PATH,
       ['/nologo', '/optimize+', '/target:winexe', '/r:System.Drawing.dll', `/out:${exePath}`, csPath],
-      (err) => {
-        resolve(!err && fs.existsSync(exePath))
+      () => {
+        // 编译失败但旧 exe 还在时退回旧版：助手熄火比版本旧半拍更伤
+        resolve(fs.existsSync(exePath))
       },
     )
   })
 }
 
 /**
- * 启动全局双击反引号 (\`) 系统级快捷键监听与高速窗口探测助手：
+ * 启动全局截图快捷键（F1）监听与高速窗口探测助手：
  * - 纯底层低级键盘钩子，无条件调用 CallNextHookEx，绝不拦截/吃掉按键；
  * - 最小化、失焦、全屏游戏或任何应用中均能瞬间感应；
  * - 原生 BitBlt 毫秒级全屏高清硬件截屏，彻底杜绝 WebRTC 黑屏；
  * - 内置高性能 DWM 真实视口枚举，天然保持原生 Z-order。
  */
-export async function startDoubleBackquoteShortcut(onTrigger: () => void): Promise<void> {
+export async function startGlobalScreenshotShortcut(onTrigger: () => void): Promise<void> {
   triggerCallback = onTrigger
   if (process.platform !== 'win32' || hookProcess || isStarting) {
     return
@@ -96,12 +98,12 @@ export async function startDoubleBackquoteShortcut(onTrigger: () => void): Promi
         const line = rawLine.trim()
         if (!line) continue
 
-        // 1. 全局双击反引号快捷键触发
+        // 1. 全局截图快捷键（F1）触发
         if (line === 'TRIGGER') {
           try {
             triggerCallback?.()
           } catch (err) {
-            console.error('[DoubleBackquoteShortcut] trigger callback error:', err)
+            console.error('[ScreenHelperHost] trigger callback error:', err)
           }
         } else if (line.startsWith('WINJSON:')) {
           // 2. 高速独立窗口查询结果返回
@@ -152,12 +154,12 @@ export async function startDoubleBackquoteShortcut(onTrigger: () => void): Promi
     })
 
     proc.on('error', (err) => {
-      console.warn('[DoubleBackquoteShortcut] helper error:', err)
+      console.warn('[ScreenHelperHost] helper error:', err)
       hookProcess = null
       isStarting = false
     })
   } catch (e) {
-    console.warn('[DoubleBackquoteShortcut] spawn helper failed:', e)
+    console.warn('[ScreenHelperHost] spawn helper failed:', e)
     isStarting = false
   }
 }
@@ -250,7 +252,7 @@ export function queryWindowsViaHelper(
 /**
  * 停止并释放全局快捷键与原生助手
  */
-export function stopDoubleBackquoteShortcut(): void {
+export function stopGlobalScreenshotShortcut(): void {
   triggerCallback = null
   if (hookProcess) {
     try {

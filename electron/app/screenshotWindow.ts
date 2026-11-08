@@ -14,7 +14,7 @@ import { attachConsoleForwarding } from './windows'
 import { openPinWindow, type PinnedItemPayload } from './pinWindow'
 import { copyDataUrlToClipboard } from './clipboardHelper'
 import { mainWindow } from './mainWindow'
-import { snapViaHelper } from './doubleBackquoteShortcut'
+import { snapViaHelper } from './screenHelperHost'
 import { detectSystemWindowRects, mapRawRectsToDisplay, getFallbackRects, type WindowRectItem } from './windowRectsHelper'
 
 let screenshotWindow: BrowserWindow | null = null
