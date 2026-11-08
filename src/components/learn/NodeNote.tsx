@@ -7,6 +7,7 @@ import { maskChipTokens, restoreChipTokens } from '../../lib/chipSyntax'
 import { countVisibleWords, countVisibleWordsFromHtml } from '../../lib/wordCount'
 import type { OutlineHandle } from '../../lib/outline'
 import { DocBody } from './note/DocBody'
+import type { NotepadPatch } from './note/DocNotepad'
 import { DocContextMenu } from './note/docContextMenu'
 import { useDocContextMenu, type SourceSpan } from './note/useDocContextMenu'
 import { useAnnotationLayer } from './note/useAnnotationLayer'
@@ -234,6 +235,17 @@ export default memo(function NodeNote({
     [notepads, onUpdateNotepads],
   )
 
+  // 形态 / 浮动侧 / 宽度（见 note/DocNotepad 的 NotepadPatch）
+  const handlePatchNotepad = useCallback(
+    (id: string, patch: NotepadPatch) => {
+      const next = notepads.map((item) =>
+        item.id === id ? { ...item, ...patch, updatedAt: Date.now() } : item,
+      )
+      onUpdateNotepads?.(next)
+    },
+    [notepads, onUpdateNotepads],
+  )
+
   /*
    * 右键菜单（复制 / 粘贴 / 定位源码）：接线与三个动作的落地见 note/useDocContextMenu。
    * 「粘贴」要拼新正文，就在这里拼完再交给上层——上层只管把它记进暂存区（onEditContent）。
@@ -435,6 +447,7 @@ export default memo(function NodeNote({
           onUpdateNotepad={handleUpdateNotepad}
           onDeleteNotepad={handleDeleteNotepad}
           onMoveNotepad={handleMoveNotepad}
+          onPatchNotepad={handlePatchNotepad}
           // 选词菜单浮在正文这一层上：位置与开合仍由本组件管（见 note/useSelectionMenu）
           overlay={
             menuMounted && (

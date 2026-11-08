@@ -55,7 +55,7 @@ export default function ToolsButton({ onScreenshot }: ToolsButtonProps) {
             </div>
 
             <div className="flex flex-col gap-1">
-              {/* 截图选项（带双击反引号快捷键提示） */}
+              {/* 截图选项（F1 全局快捷键唤出） */}
               <button
                 type="button"
                 onClick={() => {
