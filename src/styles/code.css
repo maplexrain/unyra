@@ -50,8 +50,7 @@
 :root[data-theme='black'],
 :root[data-theme='graphite'],
 :root[data-theme='navy'],
-:root[data-theme='contrast'],
-:root[data-theme='gold'] {
+:root[data-theme='contrast'] {
   --color-code-comment: #6b7280;
   --color-code-string: #98c379;
   --color-code-number: #d19a66;
