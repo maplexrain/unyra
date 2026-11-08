@@ -13,6 +13,7 @@ import { docOf } from '../../../learn/types'
 import {
   addAnnotation,
   createChildNode,
+  ensureConversation,
   nodeById,
   removeAnnotation,
   resolveDisplayedConversation,
@@ -25,6 +26,7 @@ import { plainSnippet, offsetToLineCol } from '../../../learn/text'
 import { replaceTermWithLink, setLearnLinkHandler } from '../../../lib/nodeLink'
 import type { DocSource } from '../NodeNote'
 import type { useAgent } from '../../../learn/useAgent'
+import { alignLearnToOutline } from './learnConceptAlign'
 import { t } from '../../../i18n'
 
 type AgentApi = ReturnType<typeof useAgent>
@@ -50,14 +52,12 @@ export function useConceptActions(deps: ConceptActionsDeps) {
 
   /**
    * 创建一个概念子节点并跳过去，立刻把它交给 Agent（标题 / 描述 / 正文都由它写）。
-   * 用户选中词条的「学习」与 AI 大纲里的「点击学习」链接共用这一条路径。
+   * 用户选中词条的「学习」走这一条路径。
    *
    * 这里**不再预生成描述**：节点当场建出来、界面当场有反馈，Agent 在自己的那一轮里
    * 顺手把标题与描述补上（见内置工作流「开讲」，learn/workflows）。
    *
    * rewriteLink：是否把父节点教学文档里该词条改写成指向新节点的链接。
-   * 大纲链接本身已经指向这个概念，改写反而会把大纲的 `[名](moji:learn "说明")`
-   * 替换成 `[名](moji:node/id)`、丢掉说明，因此那种情况传 false。
    */
   const openConcept = (parentId: string, term: string, opts?: { hint?: string; rewriteLink?: boolean }) => {
     const latest = getLatest()
@@ -110,12 +110,76 @@ export function useConceptActions(deps: ConceptActionsDeps) {
     agent.autoTeach({ goalId: parent.goalId, nodeId: r.node.id, conversationId: r.conversationId }, false, hint)
   }
 
-  // 注册「点击学习」链接：AI 大纲里的概念点一下就创建/跳转下级节点。
+  /**
+   * moji:learn 链接的创建（AI 在正文/回复里写的「点击学习」链接）：**先落进节点宇宙，再开讲**。
+   *
+   * 与 openConcept（选词「学习」）不同路：链接的概念必须对齐当前文档节点大纲的目标项——
+   * 缺大纲补大纲、缺目标项补目标项（标题=概念名、定位说明进 summary），然后从那条
+   * 目标项的 port 上延伸创建文档节点（portKey 认领，与画布点菱形口同一通路），
+   * 这一切落地之后才把节点交给导师开讲。port 已有主 / 同名节点已存在时只跳转不重开讲。
+   * 对齐的机械活都在 learnConceptAlign，这里只管编排、页签与话术。
+   */
+  const learnFromLink = (term: string, hint?: string) => {
+    const latest = getLatest()
+    const activeId = latest.activeNodeId
+    if (!activeId) return
+    const host = nodeById(latest, activeId)
+    const trimmed = term.trim()
+    if (!host || !trimmed) return
+    const r = alignLearnToOutline(latest, host, trimmed, hint?.trim() || undefined)
+    if ('error' in r) {
+      onToast(r.error)
+      return
+    }
+
+    // 跳过去时一定落在教学文档上：Agent 正要往那里写东西（同 openConcept 的口径）
+    const childRef: TabRef = { kind: 'teach', nodeId: r.nodeId }
+    const goalOf = (id: string) => nodeById(r.store, id)?.goalId ?? null
+    const ensured = ensureConversation(r.store, host.goalId)
+    const opened = openGroupedDoc(
+      ensured.store.docArea,
+      childRef,
+      ensured.store.goals.find((g) => g.id === host.goalId)?.rootNodeId ?? null,
+      goalOf,
+      Date.now(),
+    )
+    set({
+      ...ensured.store,
+      activeGoalId: host.goalId,
+      activeNodeId: r.nodeId,
+      activeConversationId: ensured.conversationId,
+      // 登记归属：与 openTab 同一行（漏登记的话这枚页签切目标时到处飘、关锚也收不利索）
+      docArea: withOwners(opened, claimTab(opened.tabOwners, host.goalId, tabKey(childRef))),
+    })
+    setCreating(false)
+
+    if (!r.createdDoc) {
+      // port 既有认领或同名节点复用：跳转语义，不重开讲
+      onToast(
+        r.createdEntry
+          ? t('大纲里没有「{0}」，已补一条目标项；它已有落地文档，已跳过去', trimmed)
+          : t('「{0}」已有落地文档，已跳过去', trimmed),
+      )
+      return
+    }
+    onToast(
+      r.createdOutline
+        ? t('当前文档还没有大纲，已自动创建并把「{0}」补进目标项', trimmed)
+        : r.createdEntry
+          ? t('大纲里没有「{0}」，已补一条目标项并创建节点', trimmed)
+          : t('已创建节点「{0}」并认领目标项', trimmed),
+    )
+
+    if (!hasKey) return
+    // 链接里那句定位说明作为额外上下文交给 Agent，其余（标题/描述/正文）由它自己安排
+    agent.autoTeach({ goalId: host.goalId, nodeId: r.nodeId, conversationId: ensured.conversationId }, false, hint?.trim() || undefined)
+  }
+
+  // 注册「点击学习」链接：先对齐大纲目标项，port 延伸建文档，然后开讲（见 learnFromLink）。
   // 不写依赖数组，每次渲染后重挂一次，回调因此始终闭包到最新的 store/agent 状态。
   useEffect(() => {
     setLearnLinkHandler((term, hint) => {
-      const parentId = getLatest().activeNodeId
-      if (parentId) void openConcept(parentId, term, { hint, rewriteLink: false })
+      if (getLatest().activeNodeId) void learnFromLink(term, hint)
     })
     return () => setLearnLinkHandler(null)
   })
