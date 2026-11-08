@@ -1,7 +1,8 @@
 /*
  * 这个文件负责：正文选区上的全部动作——
- * 「学习」（选中词条 → 创建子节点 → 导师开讲）、「了解」（词条旁挂一条 AI 注解）、
- * 自己写注解 / 删注解、「询问」（就选段向导师提问），以及 AI 大纲里「点击学习」链接的注册。
+ * 「学习」（选中词条或 moji:learn 链接 → 对齐大纲目标项 → port 延伸建文档 → 导师开讲）、
+ * 「了解」（词条旁挂一条 AI 注解）、
+ * 自己写注解 / 删注解、「询问」（就选段向导师提问），以及 AI 写的「点击学习」链接的注册。
  *
  * 这几件事共用同一条原则：**正文渲染层只报告发生了什么，决定权在这里**——
  * 建不建节点、发哪段上下文、没配 Key 时拦不拦，都是与 Agent、store 打交道的活。
@@ -12,12 +13,12 @@ import type { AnnotationStyle, DocKind, LearnStore, TabRef } from '../../../lear
 import { docOf } from '../../../learn/types'
 import {
   addAnnotation,
-  createChildNode,
+  ensureConversation,
   nodeById,
+  normalizeKey,
   removeAnnotation,
   resolveDisplayedConversation,
   updateDoc,
-  updateNode,
 } from '../../../learn/graph'
 import { claimTab, openGroupedDoc, withOwners } from '../../../learn/groups'
 import { tabKey } from '../../../learn/tabs'
@@ -25,6 +26,7 @@ import { plainSnippet, offsetToLineCol } from '../../../learn/text'
 import { replaceTermWithLink, setLearnLinkHandler } from '../../../lib/nodeLink'
 import type { DocSource } from '../NodeNote'
 import type { useAgent } from '../../../learn/useAgent'
+import { alignLearnToOutline } from './learnConceptAlign'
 import { t } from '../../../i18n'
 
 type AgentApi = ReturnType<typeof useAgent>
@@ -49,73 +51,106 @@ export function useConceptActions(deps: ConceptActionsDeps) {
   const { getLatest, set, onToast, onOpenSettings, agent, hasKey, providerName, docSource, setCreating } = deps
 
   /**
-   * 创建一个概念子节点并跳过去，立刻把它交给 Agent（标题 / 描述 / 正文都由它写）。
-   * 用户选中词条的「学习」与 AI 大纲里的「点击学习」链接共用这一条路径。
+   * 「学习」一条概念：**先落进节点宇宙，再开讲**。选词「学习」与 AI 写的 moji:learn
+   * 链接共用这一条路（对齐的机械活见 learnConceptAlign）：概念对齐宿主文档大纲的目标项
+   * ——缺大纲补大纲、缺目标项补目标项（标题=概念名、定位说明进 summary），
+   * 然后从那条目标项的 port 上延伸创建文档节点（portKey 认领，与画布点菱形口同一通路），
+   * 全部落地之后才交给导师开讲。port 已有主 / 同名节点已认领时只跳转不重开讲（一次归属）。
+   *
+   * opts.at：链接里写明的宿主（这条概念该挂在谁的大纲下）。跨层引用别的计划时 AI 必写；
+   * 按归一化键在同目标节点里精确找，找不到回落当前文档并在话术里说明——创建位置由此
+   * 严格由 AI 的意图决定，而不是「点击时恰好开着哪个页签」。
    *
    * 这里**不再预生成描述**：节点当场建出来、界面当场有反馈，Agent 在自己的那一轮里
    * 顺手把标题与描述补上（见内置工作流「开讲」，learn/workflows）。
    *
-   * rewriteLink：是否把父节点教学文档里该词条改写成指向新节点的链接。
-   * 大纲链接本身已经指向这个概念，改写反而会把大纲的 `[名](moji:learn "说明")`
+   * rewriteLink：是否把宿主文档里该词条改写成指向落地文档的链接（moji:node/<id>）。
+   * moji:learn 链接本身已经是入口，改写反而会把 `[名](moji:learn "说明")`
    * 替换成 `[名](moji:node/id)`、丢掉说明，因此那种情况传 false。
    */
-  const openConcept = (parentId: string, term: string, opts?: { hint?: string; rewriteLink?: boolean }) => {
+  const openConcept = (parentId: string, term: string, opts?: { hint?: string; at?: string; rewriteLink?: boolean }) => {
     const latest = getLatest()
     const parent = nodeById(latest, parentId)
     if (!parent) return
-    const r = createChildNode(latest, parentId, term)
-    const hint = opts?.hint?.trim()
-    const parentDoc = docOf(parent, 'teaching')
-    let next = r.store
-    if (!r.created && hint && !r.node.description.trim()) {
-      // 复用已有节点（同一目标内去重）时，顺手补上大纲里那句说明
-      next = updateNode(next, r.node.id, { description: hint })
+    const trimmed = term.trim()
+    if (!trimmed) return
+    const hint = opts?.hint?.trim() || undefined
+    let host = parent
+    let atMissed: string | null = null
+    const at = opts?.at?.trim()
+    if (at) {
+      const found = latest.nodes.find((n) => n.goalId === parent.goalId && n.key === normalizeKey(at))
+      if (found) host = found
+      else atMissed = at
     }
-    if (opts?.rewriteLink !== false) {
-      const linkedContent = replaceTermWithLink(parentDoc, term, r.node.id)
-      if (linkedContent !== parentDoc) next = updateDoc(next, parentId, linkedContent)
+    const r = alignLearnToOutline(latest, host, trimmed, hint)
+    if ('error' in r) {
+      onToast(r.error)
+      return
     }
+
     // 跳过去时一定落在教学文档上：Agent 正要往那里写东西。
     // 页签照旧只开一次：这个概念已经开着的话，这里只是把它激活。
     // 走 openGroupedDoc：教学文档要先过它的「组」（对应大纲在就落回那一组，
     // 不在就先开大纲把组建起来，见 groups/tabs）——「学习」是从正文里点的，
     // 正是「不是从大纲打开」的那条路。
-    const childRef: TabRef = { kind: 'teach', nodeId: r.node.id }
-    const goalOf = (id: string) => nodeById(next, id)?.goalId ?? null
+    const childRef: TabRef = { kind: 'teach', nodeId: r.nodeId }
+    const goalOf = (id: string) => nodeById(r.store, id)?.goalId ?? null
+    const ensured = ensureConversation(r.store, parent.goalId)
+    let store = ensured.store
+    // 选词「学习」的词条改写：宿主文档里这个词换成指向落地文档的链接（moji:node/<id>）
+    if (opts?.rewriteLink !== false) {
+      const parentDoc = docOf(parent, 'teaching')
+      const linkedContent = replaceTermWithLink(parentDoc, trimmed, r.nodeId)
+      if (linkedContent !== parentDoc) store = updateDoc(store, parentId, linkedContent)
+    }
     const opened = openGroupedDoc(
-      next.docArea,
+      store.docArea,
       childRef,
-      next.goals.find((g) => g.id === parent.goalId)?.rootNodeId ?? null,
+      store.goals.find((g) => g.id === parent.goalId)?.rootNodeId ?? null,
       goalOf,
       Date.now(),
     )
     set({
-      ...next,
+      ...store,
       activeGoalId: parent.goalId,
-      activeNodeId: r.node.id,
-      activeConversationId: r.conversationId,
+      activeNodeId: r.nodeId,
+      activeConversationId: ensured.conversationId,
       // 登记归属：与 openTab 同一行（漏登记的话这枚页签切目标时到处飘、关锚也收不利索）
       docArea: withOwners(opened, claimTab(opened.tabOwners, parent.goalId, tabKey(childRef))),
     })
     setCreating(false)
 
-    if (!r.created) {
-      onToast(t('「{0}」已在本目标中，已跳到该节点', term))
+    // at 写了但没找到宿主：流程照走（回落当前文档），话术里说明，AI 下次就会写对
+    const fallbackNote = atMissed ? t('；链接指定的宿主「{0}」没找到，已挂在当前文档的大纲下', atMissed) : ''
+    if (!r.createdDoc) {
+      // port 既有认领或同名节点已认领：跳转语义，不重开讲
+      onToast(
+        (r.createdEntry
+          ? t('大纲里没有「{0}」，已补一条目标项；它已有落地文档，已跳过去', trimmed)
+          : t('「{0}」已有落地文档，已跳过去', trimmed)) + fallbackNote,
+      )
       return
     }
-    onToast(t('已创建节点「{0}」', term))
+    onToast(
+      (r.createdOutline
+        ? t('当前文档还没有大纲，已自动创建并把「{0}」补进目标项', trimmed)
+        : r.createdEntry
+          ? t('大纲里没有「{0}」，已补一条目标项并创建节点', trimmed)
+          : t('已创建节点「{0}」并认领目标项', trimmed)) + fallbackNote,
+    )
 
     if (!hasKey) return
-    // 大纲里那句定位说明作为额外上下文交给 Agent，其余（标题/描述/正文）由它自己安排
-    agent.autoTeach({ goalId: parent.goalId, nodeId: r.node.id, conversationId: r.conversationId }, false, hint)
+    // 定位说明（若有）作为额外上下文交给 Agent，其余（标题/描述/正文）由它自己安排
+    agent.autoTeach({ goalId: host.goalId, nodeId: r.nodeId, conversationId: ensured.conversationId }, false, hint)
   }
 
-  // 注册「点击学习」链接：AI 大纲里的概念点一下就创建/跳转下级节点。
+  // 注册「点击学习」链接：与选词「学习」同一条对齐路径（见 openConcept），at 透传宿主。
   // 不写依赖数组，每次渲染后重挂一次，回调因此始终闭包到最新的 store/agent 状态。
   useEffect(() => {
-    setLearnLinkHandler((term, hint) => {
+    setLearnLinkHandler((term, hint, at) => {
       const parentId = getLatest().activeNodeId
-      if (parentId) void openConcept(parentId, term, { hint, rewriteLink: false })
+      if (parentId) void openConcept(parentId, term, { hint, at, rewriteLink: false })
     })
     return () => setLearnLinkHandler(null)
   })

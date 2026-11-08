@@ -12,11 +12,15 @@ import type { DocKind } from '../learn/types'
 export const NODE_LINK_SCHEME = 'moji:node/'
 
 /**
- * 交互大纲协议：`[概念名](moji:learn "一句话说明")`。
+ * 交互大纲协议：`[概念名](moji:learn "一句话说明")`，可选 `at` 宿主参数：
+ * `[概念名](moji:learn?at=宿主文档标题 "一句话说明")`。
  *
  * 用户选中词条「学习」是由用户驱动的；这个协议把主导权交给 AI——AI 在目标笔记里
- * 写一份大纲，每个概念都是一条这样的链接，用户点一下即「创建（或跳转）该概念的下级节点」，
+ * 写一份大纲，每个概念都是一条这样的链接，用户点一下即「创建（或跳转）该概念的落地节点」，
  * 于是可以顺着 AI 排好的路径一路学下去，而不必自己在正文里找名词。
+ *
+ * `at` 指明这条概念该挂在**谁的大纲**下（那份计划文档的标题）——跨层引用别的计划时
+ * 必写，缺省 = 点击时正打开的文档自己的大纲（见 useConceptActions 的 openConcept）。
  *
  * 复用 Markdown 链接的语法与渲染管线（marked 解析、DOMPurify 放行 moji: 协议），
  * 链接的 title 作为该节点的初始描述（AI 借此交代「它为什么在这里」）。
@@ -35,13 +39,13 @@ export function learnLinkMarkdown(title: string, hint?: string): string {
   return h ? `[${title}](${LEARN_LINK_SCHEME} "${h}")` : `[${title}](${LEARN_LINK_SCHEME})`
 }
 
-/** 「点击学习」的处理注册表：由学习工作区注入「创建/跳转子节点」的实现 */
-let learnHandler: ((term: string, hint: string) => void) | null = null
-export function setLearnLinkHandler(fn: ((term: string, hint: string) => void) | null): void {
+/** 「点击学习」的处理注册表：由学习工作区注入「创建/跳转落地节点」的实现（at = 宿主标题，可空） */
+let learnHandler: ((term: string, hint: string, at?: string) => void) | null = null
+export function setLearnLinkHandler(fn: ((term: string, hint: string, at?: string) => void) | null): void {
   learnHandler = fn
 }
-export function handleLearnLink(term: string, hint: string): void {
-  learnHandler?.(term, hint)
+export function handleLearnLink(term: string, hint: string, at?: string): void {
+  learnHandler?.(term, hint, at)
 }
 
 /**
@@ -79,17 +83,23 @@ export function learnTermOf(el: Element): string {
 
 /**
  * 从一次点击里解析「点击学习」链接并触发；返回是否命中。
- * 词名取链接文字，说明取 title 属性（没有则为空串）。
+ * 词名取链接文字，说明取 title 属性（没有则为空串），at 取 href 查询串（宿主标题，可空）。
  */
 export function tryLearnLinkFromEvent(event: { target: EventTarget | null }): boolean {
   const target = event.target
   if (!(target instanceof Element)) return false
   const anchor = target.closest('a[href^="moji:learn"]')
   if (!anchor) return false
-  if (!isLearnHref(anchor.getAttribute('href'))) return false
+  const href = anchor.getAttribute('href')
+  if (!isLearnHref(href)) return false
   const term = learnTermOf(anchor)
   if (!term) return false
-  handleLearnLink(term, (anchor.getAttribute('title') ?? '').trim())
+  // at：URLSearchParams 顺带解码 %XX（AI 被要求对空格等字符编码；中文裸写也能透传）
+  let at = ''
+  if (href && href.length > LEARN_LINK_SCHEME.length && href[LEARN_LINK_SCHEME.length] === '?') {
+    at = new URLSearchParams(href.slice(LEARN_LINK_SCHEME.length + 1)).get('at')?.trim() ?? ''
+  }
+  handleLearnLink(term, (anchor.getAttribute('title') ?? '').trim(), at || undefined)
   return true
 }
 
