@@ -89,6 +89,15 @@ export function alignLearnToOutline(
   }
   let after = added.store
   const nodeId = added.node.id
+  if (!added.created) {
+    // 一次归属：这份概念已经在别的目标项 port 上有家了 → 直接跳过去，不再补第二条认领边。
+    // 同一概念常同时列进两份计划（根路径 + 某站的「下一步」），先后两次点击若都认领，
+    // 文档就挂两头，画布上归属说不清——创建位置由第一次点击的宿主决定，此后只跳转。
+    const claimedElsewhere = after.edges.find((e) => e.to === nodeId && e.portKey)
+    if (claimedElsewhere) {
+      return { store: after, nodeId, createdOutline, createdEntry, createdDoc: false, entryTitle: entry.title }
+    }
+  }
   if (added.created) {
     const r = addEdge(after, voice, nodeId, entry.key)
     if (!r.added) return { error: r.reason ?? '文档没能挂到目标项「' + entry.title + '」之下' }
