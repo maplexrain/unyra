@@ -146,6 +146,7 @@ export default memo(function AiqaCard({ id, question, system, nodeId }: AiqaCard
       }
 
       setSession(intermediateSession)
+      saveToHost(intermediateSession)
       setIsStreaming(true)
       setStreamText('')
 

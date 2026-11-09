@@ -3,6 +3,9 @@ import { parseAiqaBlock } from '../src/lib/aiqaBlock/parse'
 import { aiqaBlock } from '../src/lib/aiqaBlock/render'
 import { setAiqaBlockHost, aiqaBlockHost, subscribeAiqaBlockHost } from '../src/lib/aiqaBlock/host'
 import { normalizeNode } from '../src/learn/store/normalize/node'
+import { buildDocs, parseDocs } from '../src/learn/files'
+import { emptyLearnStore } from '../src/learn/store'
+import type { LearnStore } from '../src/learn/types'
 import type { PluginRenderContext } from '../src/lib/renderPlugins'
 import { escapeHtml, encodeAttr } from '../src/lib/renderPlugins'
 
@@ -136,6 +139,58 @@ describe('KnowledgeNode 持久化规范 (normalizeNode & aiqaChats)', () => {
     const node = normalizeNode(rawNode)
     expect(node?.aiqaChats?.aiqa_bad.messages).toHaveLength(1)
     expect(node?.aiqaChats?.aiqa_bad.messages[0].content).toBe('有效回答')
+  })
+
+  it('问答历史 (aiqaChats) 能够完整通过 buildDocs 落盘至节点文件并在应用重启后经 parseDocs 还原', () => {
+    const store: LearnStore = {
+      ...emptyLearnStore(),
+      goals: [{ id: 'g1', title: '操作系统', rootNodeId: 'n1', question: '学操作系统', createdAt: 1, updatedAt: 1 }],
+      nodes: [
+        {
+          id: 'n1',
+          title: '操作系统',
+          key: '操作系统',
+          description: '',
+          status: 'learning',
+          origin: 'user',
+          goalId: 'g1',
+          createdAt: 1,
+          updatedAt: 1,
+          docs: { teaching: '教学正文' },
+          notes: [],
+          annotations: [],
+          aiqaChats: {
+            aiqa_test1: {
+              id: 'aiqa_test1',
+              messages: [
+                { role: 'assistant', content: '请问什么是虚拟内存？' },
+                { role: 'user', content: '虚拟内存是一种内存管理技术。' },
+                { role: 'assistant', content: '回答准确，那它有什么优势？' },
+              ],
+              updatedAt: 1700001000,
+            },
+          },
+        },
+      ],
+    }
+
+    // 模拟落盘
+    const built = buildDocs(store)
+    const nodeFileContent = built.get('docs/操作系统/操作系统.node.json')
+    expect(nodeFileContent).toBeDefined()
+    const nodeObj = JSON.parse(nodeFileContent!)
+    expect(nodeObj.aiqaChats).toBeDefined()
+    expect(nodeObj.aiqaChats.aiqa_test1.messages).toHaveLength(3)
+
+    // 模拟应用重启：重新解析磁盘文件
+    const restored = parseDocs(built, {})!
+    expect(restored).not.toBeNull()
+    const restoredNode = restored.nodes.find((n) => n.id === 'n1')!
+    expect(restoredNode.aiqaChats).toBeDefined()
+    expect(restoredNode.aiqaChats?.aiqa_test1.messages).toHaveLength(3)
+    expect(restoredNode.aiqaChats?.aiqa_test1.messages[0].content).toBe('请问什么是虚拟内存？')
+    expect(restoredNode.aiqaChats?.aiqa_test1.messages[1].content).toBe('虚拟内存是一种内存管理技术。')
+    expect(restoredNode.aiqaChats?.aiqa_test1.messages[2].content).toBe('回答准确，那它有什么优势？')
   })
 })
 

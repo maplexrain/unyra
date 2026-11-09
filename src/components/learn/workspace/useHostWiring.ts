@@ -318,13 +318,16 @@ export function useHostWiring({
       },
       getNodeAiqaSession: (nodeId, blockId) => {
         const s = getLatest()
-        const target = s.nodes.find((n) => n.id === nodeId)
+        const targetId = nodeId || docNode?.id
+        const target = s.nodes.find((n) => n.id === targetId)
         return target?.aiqaChats?.[blockId] ?? null
       },
       saveNodeAiqaSession: (nodeId, blockId, session) => {
         const s = getLatest()
+        const targetId = nodeId || docNode?.id
+        if (!targetId) return
         const nextNodes = s.nodes.map((n) => {
-          if (n.id !== nodeId) return n
+          if (n.id !== targetId) return n
           const chats = { ...(n.aiqaChats ?? {}) }
           if (!session || !session.messages || session.messages.length === 0) {
             delete chats[blockId]
