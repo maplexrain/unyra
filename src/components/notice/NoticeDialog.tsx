@@ -36,6 +36,7 @@ import ModalScrim from '../ModalScrim'
 import MarkdownView from '../MarkdownView'
 import Logo from '../Logo'
 import { t } from '../../i18n'
+import { spawnInkRipple } from '../../lib/motion'
 import { firstUnreadIndex, markNoticesRead, noticeFailText, optOutOfNotices, refreshNotice, useNotice } from '../../lib/notice'
 import { useNoticeContent } from '../../lib/noticeImageCache'
 
@@ -177,7 +178,7 @@ function NoticeHeader({ count, onClose }: { count: number; onClose: () => void }
         <button
           type="button"
           title={t('关闭')}
-          onClick={onClose}
+          onClick={(e) => { spawnInkRipple(e); onClose(); }}
           className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg text-ink-soft transition hover:bg-line/70 hover:text-ink"
         >
           <X size={15} />
@@ -363,8 +364,8 @@ function NoticeFooter({
         </span>
         <button
           type="button"
-          onClick={onClose}
-          className="ml-auto rounded-lg bg-seal px-4 py-1.5 text-[12px] font-medium text-white shadow-sm transition hover:bg-seal-deep"
+          onClick={(e) => { spawnInkRipple(e); onClose(); }}
+          className="ml-auto rounded-lg bg-seal px-4 py-1.5 text-[12px] font-medium text-white shadow-sm transition moji-press hover:bg-seal-deep"
         >
           {t('知道了')}
         </button>

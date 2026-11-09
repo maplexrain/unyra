@@ -7,5 +7,6 @@
 @import './styles/markdown.css';
 @import './styles/chrome.css';
 @import './styles/motion.css';
+@import './styles/interactive.css';
 @import './styles/workspace.css';
 @import './styles/chip.css';

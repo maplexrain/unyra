@@ -18,6 +18,7 @@ import { tabShift, type DragState } from './barGeometry'
 import { isTeachDocTab, type TabRelation } from './tabRelation'
 import { StackedChevron } from './StackedChevron'
 import { TabTypeIcon, VideoAudioButton } from './TabIcons'
+import { spawnInkRipple } from '../../../lib/motion'
 
 export function TabItem({
   p,
@@ -118,7 +119,7 @@ export function TabItem({
           : ''
 
   const cls =
-    'moji-tab group relative flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] ' +
+    'moji-tab group relative flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] moji-press ' +
     (struct ? 'min-w-0 ' : isPinned ? 'min-w-0 max-w-[180px] ' : 'min-w-[120px] max-w-[220px] ') +
     (on ? 'moji-tab-flare z-10 font-medium ' : '') +
     (dragging || settling
@@ -149,8 +150,9 @@ export function TabItem({
         (blank ? t('（空白页签：还没有打开任何文档）') : '') +
         (dirty ? t('（有未保存的改动，Ctrl+S 保存）') : '')
       }
-      onClick={() => {
+      onClick={(e) => {
         if (justDragged.current) return
+        spawnInkRipple(e)
         onActivate(tab.id)
       }}
       onKeyDown={(e) => {
@@ -235,7 +237,7 @@ export function TabItem({
             e.stopPropagation()
             onClose(tab.id, 'self')
           }}
-          className={'flex h-4 w-4 items-center justify-center rounded opacity-0 transition focus-visible:opacity-100 group-hover:opacity-70 hover:bg-line-strong/60'}
+          className={'flex h-4 w-4 items-center justify-center rounded opacity-0 transition moji-press focus-visible:opacity-100 group-hover:opacity-70 hover:bg-line-strong/60'}
         >
           <X size={11} />
         </button>
@@ -400,7 +402,7 @@ export function TabStrip({
             type="button"
             title={t('新页签')}
             onClick={onNewTab}
-            className="group/newtab flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/50 hover:text-seal"
+            className="group/newtab flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-faint transition moji-press hover:bg-line/50 hover:text-seal"
           >
             <Plus size={14} />
           </button>

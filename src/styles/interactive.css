@@ -1,0 +1,114 @@
+/* 本文件负责：全局交互微动效与触感反馈（触感按压、墨韵涟漪、滑动滑块、呼吸光晕） */
+
+/* ---------- 1. 物理触感按压（Tactile Micro-Press） ---------- */
+.moji-press {
+  transition: transform 0.14s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.14s ease;
+}
+.moji-press:active {
+  transform: scale(0.96) translateY(0.5px);
+}
+
+/* 稍大的卡片按压 */
+.moji-press-card {
+  transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.16s ease;
+}
+.moji-press-card:active {
+  transform: scale(0.985);
+}
+
+/* ---------- 2. 悬停微悬浮（Subtle Hover Lift） ---------- */
+.moji-hover-lift {
+  transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1), box-shadow 0.18s ease;
+}
+.moji-hover-lift:hover {
+  transform: translateY(-1.5px);
+}
+
+.moji-hover-lift-card {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.moji-hover-lift-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px -4px rgba(0, 0, 0, 0.08);
+}
+
+/* ---------- 3. 磁吸滑动页签指示底衬（Tab Glider） ---------- */
+.moji-tab-glider {
+  position: absolute;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--color-seal) 8%, transparent);
+  border-bottom: 2px solid var(--color-seal);
+  transition: opacity 0.18s ease;
+  z-index: 0;
+  will-change: transform, width;
+}
+
+/* ---------- 4. 语音录音呼吸声学光晕（Acoustic Breath Aura） ---------- */
+@keyframes moji-mic-breathe {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-seal) 35%, transparent);
+  }
+  50% {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-seal) 0%, transparent);
+  }
+}
+.moji-mic-active {
+  animation: moji-mic-breathe 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* ---------- 5. 消息气泡自然入场（Message Bubble Slide-In） ---------- */
+@keyframes moji-bubble-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.moji-bubble-enter {
+  animation: moji-bubble-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ---------- 6. 成功徽章微弹性弹出（Badge Pop） ---------- */
+@keyframes moji-pop {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  65% {
+    transform: scale(1.16);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.moji-pop {
+  animation: moji-pop 0.26s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+/* ---------- 7. 墨韵涟漪（Ink Ripple） ---------- */
+.moji-ink-ripple {
+  will-change: width, height, opacity;
+  transform: translate(-50%, -50%);
+}
+
+/* ---------- 8. 减弱动画偏好支持（Accessibility） ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .moji-press,
+  .moji-press-card,
+  .moji-hover-lift,
+  .moji-hover-lift-card,
+  .moji-mic-active,
+  .moji-bubble-enter,
+  .moji-pop {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}

@@ -35,6 +35,7 @@ import { languageOfClass } from './codeHighlight'
 import { codeHost, subscribeCodeHost } from './docHost'
 import { runCompiledJs, type RunLine } from './codeRun'
 import { askConfirm } from './modalConfirm'
+import { popScale, spawnInkRipple } from './motion'
 
 /** 输出栏里最多画多少行（产物可能打印几千行，全画出来只会把滚动条撑爆） */
 const MAX_SHOWN_LINES = 400
@@ -87,7 +88,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 function makeButton(cls: string, label: string): { btn: HTMLButtonElement; label: HTMLElement; spin: HTMLElement } {
-  const btn = el('button', cls)
+  const btn = el('button', cls + ' moji-press')
   btn.type = 'button'
   const text = el('span', 'moji-run-label', label)
   const spin = el('span', 'moji-run-spin')
@@ -183,6 +184,7 @@ async function doCopy(b: Block): Promise<void> {
   try {
     await navigator.clipboard.writeText(b.text)
     flash(b.label.copy, t('已复制'))
+    popScale(b.label.copy)
   } catch {
     flash(b.label.copy, t('复制失败'))
   }
@@ -306,9 +308,9 @@ function mount(pre: HTMLElement, code: HTMLElement): Block {
   const known = artifactFor(key, text, languageId)
   if (known) block.state.artifact = known
 
-  copy.btn.addEventListener('click', () => void doCopy(block))
-  compile.btn.addEventListener('click', () => doCompile(block))
-  run.btn.addEventListener('click', () => void doRun(block))
+  copy.btn.addEventListener('click', (e) => { spawnInkRipple(e); void doCopy(block); })
+  compile.btn.addEventListener('click', (e) => { spawnInkRipple(e); doCompile(block); })
+  run.btn.addEventListener('click', (e) => { spawnInkRipple(e); void doRun(block); })
 
   pre.dataset.mojiRun = 'done'
   const parent = pre.parentElement

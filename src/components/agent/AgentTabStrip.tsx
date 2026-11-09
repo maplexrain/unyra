@@ -7,6 +7,7 @@ import { TAB_CLOSE_LABEL, type TabCloseMode } from '../../learn/tabs'
 import { useClampToViewport, useDismissOn } from '../../lib/useDismiss'
 import { TAB_EXIT_MS, useTabPresence } from '../../lib/tabPresence'
 import { t } from '../../i18n'
+import { spawnInkRipple } from '../../lib/motion'
 
 /**
  * agent 栏的页签条：与文档区同一套页签（TabBar 的样式与交互语言）。
@@ -296,8 +297,9 @@ export default function AgentTabStrip({
                  */
                 {...(leaving ? { inert: true } : { tabIndex: 0 })}
                 title={title + (blockHint ? ' · ' + blockHint : '')}
-                onClick={() => {
+                onClick={(e) => {
                   if (justDragged.current) return
+                  spawnInkRipple(e)
                   onActivate(key)
                 }}
                 onKeyDown={(e) => {
@@ -317,7 +319,7 @@ export default function AgentTabStrip({
                 }}
                 style={{ transform: offset ? 'translateX(' + offset + 'px)' : undefined }}
                 className={
-                  'moji-tab group relative flex h-7 min-w-[60px] max-w-[170px] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] ' +
+                  'moji-tab group relative flex h-7 min-w-[60px] max-w-[170px] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-[12px] moji-press ' +
                   (on ? 'moji-tab-flare z-10 font-medium ' : '') +
                   (dragging
                     ? 'z-10 cursor-grabbing border-line-strong bg-card text-ink-strong shadow-md '

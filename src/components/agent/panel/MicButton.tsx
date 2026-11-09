@@ -22,6 +22,7 @@ import {
 } from '../../../lib/voice/session'
 import { voicePluginOn } from '../../../lib/voice/plugin'
 import { t } from '../../../i18n'
+import { spawnInkRipple } from '../../../lib/motion'
 
 /** 话筒：一个圆角矩形的话筒头 + 一道托架弧 + 一根立杆。24 的网格里画，按 size 缩 */
 function MicGlyph({ size, filled }: { size: number; filled: boolean }) {
@@ -134,7 +135,7 @@ export default function MicButton({ makeSink, active = true }: Props) {
           type="button"
           onClick={() => void stopRecording()}
           title={t('完成（空格 / 回车）')}
-          className="flex h-7 items-center gap-1.5 rounded-md bg-seal/10 px-2 text-[11px] tabular-nums text-seal-deep transition hover:bg-seal/15"
+          className="flex h-7 items-center gap-1.5 rounded-md bg-seal/10 px-2 text-[11px] tabular-nums text-seal-deep transition moji-press hover:bg-seal/15"
         >
           <span className="relative flex h-1.5 w-1.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-seal opacity-70" />
@@ -154,7 +155,8 @@ export default function MicButton({ makeSink, active = true }: Props) {
         title={title}
         aria-label={title}
         aria-pressed={recording}
-        onClick={() => {
+        onClick={(e) => {
+          spawnInkRipple(e)
           if (recording) {
             void stopRecording()
             return
@@ -164,9 +166,9 @@ export default function MicButton({ makeSink, active = true }: Props) {
           void startRecording()
         }}
         className={
-          'relative flex h-7 w-7 items-center justify-center rounded-md transition ' +
+          'relative flex h-7 w-7 items-center justify-center rounded-md transition moji-press ' +
           (recording
-            ? 'bg-seal/15 text-seal ring-2 ring-seal/40 shadow-sm'
+            ? 'bg-seal/15 text-seal ring-2 ring-seal/40 shadow-sm moji-mic-active'
             : working
               ? 'text-ink-faint'
               : 'text-ink-soft hover:bg-line/40 hover:text-seal')
