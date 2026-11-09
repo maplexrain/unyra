@@ -260,7 +260,7 @@ export default memo(function AiqaCard({ id, question, system, nodeId }: AiqaCard
 
   // 激活状态：单层直角卡片动画平滑展开，固定高度滚动聊天区
   return (
-    <div className="moji-aiqa-card h-[380px] flex flex-col rounded-none border border-line bg-surface/90 shadow-2xs font-sans transition-all duration-300 ease-in-out select-text">
+    <div className="moji-aiqa-card h-[500px] flex flex-col rounded-none border border-line bg-surface/90 shadow-2xs font-sans transition-all duration-300 ease-in-out select-text">
       {/* 顶部标题与重新回答按钮 */}
       <div className="flex items-center justify-between px-3.5 py-2 border-b border-line/60 bg-surface select-none shrink-0">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-seal">
