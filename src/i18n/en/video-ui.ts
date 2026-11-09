@@ -106,6 +106,16 @@ const dict: Record<string, string> = {
   /* ---------- 视频总结（AI 一次性补全：总结+分段一个动作，见 learn/video/summarize） ---------- */
   '总结': 'Recap',
   '视频分段': 'Chapters',
+  '重新分段': 'Re-segment',
+  '重新生成 AI 视频分段': 'Regenerate AI video chapters',
+  '生成中…': 'Generating…',
+  '正在生成视频语义分段…': 'Generating semantic video chapters…',
+  '暂无可用字幕，无法分段': 'No subtitles available for segmentation',
+  '字幕共 {0} 字符（超出 50,000 字符限制）': 'Transcript has {0} characters (exceeds 50,000 character limit)',
+  '为避免超出上下文窗口，长视频需手动生成': 'Manual generation required for long videos to prevent exceeding context window',
+  '手动生成分段': 'Manually generate chapters',
+  '播放视频时将自动生成分段': 'Chapters will be generated automatically during playback',
+  '立即生成分段': 'Generate chapters now',
   '正在总结…': 'Summarizing…',
   '还没有总结：按字幕让 AI 生成内容总结与语义分段，分段点会钉在进度条上（生成后不再重复）':
     'No recap yet: let the AI generate a content recap and chapters from the subtitles — chapter dots pin onto the progress bar (generated once, never repeated)',

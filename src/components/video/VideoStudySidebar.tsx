@@ -11,7 +11,8 @@
  */
 
 import type { RefObject } from 'react'
-import { Captions, ListTree, ListVideo, Loader2, X } from 'lucide-react'
+import { Captions, ListTree, ListVideo, Loader2, RotateCcw, X } from 'lucide-react'
+import { spawnInkRipple } from '../../lib/motion'
 import { t } from '../../i18n'
 import { formatClock } from '../../video/transcript'
 import type { TranscriptSegment, VideoSource } from '../../video/types'
@@ -52,8 +53,8 @@ interface Props {
   onResolveSource: (source: string) => void
   /** 跳转到指定毫秒 */
   onSeekMs: (ms: number) => void
-  /** 手动生成分段 */
-  onRunChapters: () => void
+  /** 手动生成分段或重新分段 */
+  onRunChapters: (force?: boolean) => void
 }
 
 export default function VideoStudySidebar({
@@ -247,12 +248,25 @@ export default function VideoStudySidebar({
               </span>
             )}
           </div>
-          {chaptersBusy && (
+          {chaptersBusy ? (
             <span className="flex items-center gap-1 text-[10.5px] text-pink-300">
               <Loader2 size={11} className="animate-spin" />
               {t('生成中…')}
             </span>
-          )}
+          ) : hasTranscript && chapterRows.length > 0 ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                spawnInkRipple(e)
+                onRunChapters(true)
+              }}
+              title={t('重新生成 AI 视频分段')}
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] text-white/70 hover:text-white hover:bg-white/10 transition moji-press cursor-pointer"
+            >
+              <RotateCcw size={11} className="transition-transform" />
+              <span>{t('重新分段')}</span>
+            </button>
+          ) : null}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1" ref={chapterListRef}>

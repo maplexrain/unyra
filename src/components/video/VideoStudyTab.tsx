@@ -230,7 +230,7 @@ export default function VideoStudyTab({
       onClose={() => setLeftOverlayOpen(false)}
       onResolveSource={(nextSource) => void runResolve(nextSource, video?.fields)}
       onSeekMs={seekMs}
-      onRunChapters={() => void runChapters()}
+      onRunChapters={(force) => void runChapters(force)}
     />
   )
 

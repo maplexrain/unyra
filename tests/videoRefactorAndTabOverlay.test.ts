@@ -397,4 +397,25 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
     const retrievedNotes = getNotesForVideoNode(restoredStore, videoNodeId)
     expect(retrievedNotes.some((n) => n.id === note.id)).toBe(true)
   })
+
+  it('验证视频 AI 分段功能支持「重新分段」按钮与 force 重新生成', async () => {
+    const fs = await import('fs')
+    const sidebarCode = fs.readFileSync('src/components/video/VideoStudySidebar.tsx', 'utf8')
+    const useStudyCode = fs.readFileSync('src/components/video/useVideoStudy.ts', 'utf8')
+    const tabCode = fs.readFileSync('src/components/video/VideoStudyTab.tsx', 'utf8')
+
+    // 1. VideoStudySidebar 渲染重新分段按钮
+    expect(sidebarCode).toContain('onRunChapters(true)')
+    expect(sidebarCode).toContain('重新分段')
+    expect(sidebarCode).toContain('重新生成 AI 视频分段')
+    expect(sidebarCode).toContain('RotateCcw')
+
+    // 2. useVideoStudy 支持 force 强制重新生成，绕过既有分段检查
+    expect(useStudyCode).toContain('runChapters = useCallback(async (force = false)')
+    expect(useStudyCode).toContain('if (!force && video?.recaps?.[src]?.chapters?.length) return')
+    expect(useStudyCode).toContain('recapOfSource?.summary')
+
+    // 3. VideoStudyTab 门面正确传递 force 参数
+    expect(tabCode).toContain('onRunChapters={(force) => void runChapters(force)}')
+  })
 })

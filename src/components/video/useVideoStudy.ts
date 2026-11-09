@@ -245,26 +245,27 @@ export function useVideoStudy({
    * 生成当前视频的内容分段（不再生成视频总结）：
    * 产出仅为语义分段列表，分段点更新到进度条与浮层分段列表中。
    */
-  const runChapters = useCallback(async () => {
+  const runChapters = useCallback(async (force = false) => {
     if (!transcript?.segments?.length || chaptersBusy) return
     const src = currentSourceRef.current || currentSource
-    if (video?.recaps?.[src]?.chapters?.length) return
+    if (!force && video?.recaps?.[src]?.chapters?.length) return
     setChaptersBusy(true)
+    setError(null)
     try {
       const chapters = await summarizeVideoChapters({
         title: source?.title ?? video?.title ?? '',
         transcript,
       })
-      onSaveRecap?.(src, { summary: '', chapters })
+      onSaveRecap?.(src, { summary: recapOfSource?.summary ?? '', chapters })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setChaptersBusy(false)
     }
-  }, [transcript, chaptersBusy, currentSource, video?.recaps, video?.title, source?.title, onSaveRecap])
+  }, [transcript, chaptersBusy, currentSource, video?.recaps, video?.title, source?.title, onSaveRecap, recapOfSource?.summary])
 
   const autoChapterTriedRef = useRef<Set<string>>(new Set())
-  const runChaptersRef = useRef<() => Promise<void>>(async () => {})
+  const runChaptersRef = useRef<(force?: boolean) => Promise<void>>(async () => {})
   useEffect(() => {
     runChaptersRef.current = runChapters
   })
