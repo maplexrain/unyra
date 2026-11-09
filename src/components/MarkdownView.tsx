@@ -32,6 +32,8 @@ import { normalizeKey } from '../learn/graph'
 interface Props {
   /** renderNote / renderInline 产出的 HTML */
   html: string
+  /** 所属知识节点 ID，用于在挂载时将组件（如 AIQA）绑定到具体节点 */
+  nodeId?: string
   /** 「了解」/「注解」：渲染后在 DOM 上把术语包成虚线样式（不改动源文） */
   annotations?: Annotation[]
   /**
@@ -94,6 +96,7 @@ function sameAnnotations(a?: Annotation[], b?: Annotation[]): boolean {
 
 function areMarkdownPropsEqual(prev: Props, next: Props): boolean {
   if (prev.html !== next.html) return false
+  if (prev.nodeId !== next.nodeId) return false
   if (prev.className !== next.className) return false
   if (prev.resolveLocalImage !== next.resolveLocalImage) return false
   if (!sameAnnotations(prev.annotations, next.annotations)) return false
@@ -107,6 +110,7 @@ function areMarkdownPropsEqual(prev: Props, next: Props): boolean {
 
 const MarkdownView = memo(function MarkdownView({
   html,
+  nodeId,
   annotations,
   knownConceptKeys,
   annotationActions,
@@ -236,6 +240,7 @@ const MarkdownView = memo(function MarkdownView({
   return (
     <div
       ref={ref}
+      data-node-id={nodeId}
       /*
        * 作用域类：文档里的 Tailwind 工具类只在这棵子树里生效（见 lib/docTailwind）。
        * 它跟着每一个渲染正文的地方走，因此对话气泡里引用的组件样式也一并对上。

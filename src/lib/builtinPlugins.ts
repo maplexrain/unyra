@@ -15,6 +15,7 @@ import { hydratePlots } from './plot'
 import { MERMAID_LANG, mermaidBlock, hydrateMermaid } from './mermaid'
 import { videosBlock, hydrateVideos } from './videosBlock'
 import { quoteBlock, hydrateQuotes } from './quoteBlock'
+import { AIQA_LANG, aiqaBlock, hydrateAiqa } from './aiqaBlock'
 import { registerRenderPlugin, type PluginRenderContext } from './renderPlugins'
 import { languageCount } from '../syntax/LanguageAliases'
 
@@ -117,6 +118,15 @@ registerRenderPlugin({
   fences: ['quote'],
   render: (source: string, ctx: PluginRenderContext) => quoteBlock(source, ctx),
   hydrate: (root: HTMLElement) => hydrateQuotes(root),
+})
+
+registerRenderPlugin({
+  id: 'aiqa',
+  name: 'AI 问答考察',
+  builtin: true,
+  fences: [AIQA_LANG],
+  render: (source: string, ctx: PluginRenderContext) => aiqaBlock(source, ctx),
+  hydrate: (root: HTMLElement) => hydrateAiqa(root),
 })
 
 /**

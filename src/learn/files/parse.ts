@@ -270,6 +270,7 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
       ...(content.outline ? { outline: content.outline } : {}),
       annotations: file.annotations,
       ...(Array.isArray(file.notepads) ? { notepads: file.notepads } : {}),
+      ...(file.aiqaChats && typeof file.aiqaChats === 'object' ? { aiqaChats: file.aiqaChats } : {}),
       status: file.status,
       learning: file.learning,
       ...(file.tint !== undefined ? { tint: file.tint } : {}),

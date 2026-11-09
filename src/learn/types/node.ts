@@ -280,6 +280,26 @@ export interface DocNotepadItem {
   width?: number
 }
 
+/**
+ * AIQA 问答块中的一条对话消息。
+ */
+export interface AiqaChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  createdAt?: number
+}
+
+/**
+ * AIQA 问答块的对话会话状态。
+ *
+ * 持久化在 KnowledgeNode.aiqaChats 上，数据完全独立于文档正文（不写入文档源码）。
+ */
+export interface AiqaChatSession {
+  id: string
+  messages: AiqaChatMessage[]
+  updatedAt: number
+}
+
 export interface KnowledgeNode {
   id: string
   title: string
@@ -293,6 +313,10 @@ export interface KnowledgeNode {
    * 随文便签（Notepad）集合；每个元素插在正文指定 blockIndex 处，数据完全独立于正文原文。
    */
   notepads?: DocNotepadItem[]
+  /**
+   * 文档内 AIQA 随文问答考察块的对话会话（按块 id 索引），不存正文，独立持久化在节点上。
+   */
+  aiqaChats?: Record<string, AiqaChatSession>
   /**
    * 这个节点下的全部笔记，顺序即列表顺序（新建的追加在末尾）。
    * 每份都是一个独立文件，可以单独命名 / 改名 / 删除（见 NoteFile）。
