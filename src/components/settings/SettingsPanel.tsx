@@ -85,6 +85,12 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
   const selectTab = (key: TabKey) => {
     setTab(key)
     saveTab(key)
+    if (key === 'plugins') {
+      setPluginPage(null)
+    }
+    if (key === 'ai' && page.view === 'config') {
+      setPage({ view: 'list' })
+    }
     const targetItem = tabs.find((t) => t.key === key)
     if (targetItem?.subTabs && targetItem.subTabs.length > 0) {
       setActiveSubTab(targetItem.subTabs[0].key)
@@ -109,17 +115,14 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
   const [page, setPage] = useState<Page>({ view: 'list' })
   /**
    * 「插件」那一页的二级页：非空 = 正停在某个功能性插件的配置页上（值是插件 id）。
-   * 与提供商的 page 分开存：两种二级页各自属于各自的页签，切页签回来不该串台。
+   * 默认显示插件列表（null），切页签或点击「插件」时均重置，避免常驻停留二级配置页。
    */
-  const [pluginPage, setPluginPage] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem('moji:settings:plugin')
-    } catch {
-      return null
-    }
-  })
+  const [pluginPage, setPluginPage] = useState<string | null>(null)
 
   useEffect(() => {
+    try {
+      localStorage.removeItem('moji:settings:plugin')
+    } catch {}
     const onOpen = (e: CustomEvent<string>) => {
       if (e.detail) {
         setTab('plugins')

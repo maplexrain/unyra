@@ -524,7 +524,6 @@ export const PdfDocView = memo(function PdfDocView({ path, scale: baseScale = 1.
   const handleOpenOcrConfig = () => {
     try {
       localStorage.setItem('moji:settings:tab', 'plugins')
-      localStorage.setItem('moji:settings:plugin', OCR_PLUGIN_ID)
     } catch {}
     window.dispatchEvent(new CustomEvent('moji:open-plugin-config', { detail: OCR_PLUGIN_ID }))
     window.dispatchEvent(new CustomEvent('moji:open-tab', { detail: { kind: 'settings' } }))

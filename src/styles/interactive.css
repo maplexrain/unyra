@@ -98,7 +98,66 @@
   transform: translate(-50%, -50%);
 }
 
-/* ---------- 8. 减弱动画偏好支持（Accessibility） ---------- */
+/* ---------- 8. 大纲悬浮窗物理舒展与墨线逐层入场（Outline Float Spring Bloom） ---------- */
+@keyframes moji-outline-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateX(-12px);
+    filter: blur(2px);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(1.008) translateX(1px);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateX(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes moji-outline-out {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateX(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.94) translateX(-8px);
+    filter: blur(1.5px);
+  }
+}
+
+.moji-outline-pop {
+  transform-origin: -6px 14px;
+  animation: moji-outline-in 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
+}
+
+.moji-outline-out {
+  transform-origin: -6px 14px;
+  animation: moji-outline-out 0.15s cubic-bezier(0.4, 0, 0.9, 0.2) both;
+  will-change: transform, opacity, filter;
+}
+
+@keyframes moji-outline-row-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.moji-outline-row {
+  animation: moji-outline-row-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+/* ---------- 9. 减弱动画偏好支持（Accessibility） ---------- */
 @media (prefers-reduced-motion: reduce) {
   .moji-press,
   .moji-press-card,
@@ -106,7 +165,10 @@
   .moji-hover-lift-card,
   .moji-mic-active,
   .moji-bubble-enter,
-  .moji-pop {
+  .moji-pop,
+  .moji-outline-pop,
+  .moji-outline-out,
+  .moji-outline-row {
     animation: none !important;
     transition: none !important;
     transform: none !important;

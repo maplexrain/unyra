@@ -112,8 +112,6 @@ export interface Appearance {
   textStrokeColor?: string
   /** 文字描边厚度（px，范围 0.0 - 1.0） */
   textStrokeWidth?: number
-  /** 是否在顶栏居中显示实用小技巧轮播 */
-  showTips?: boolean
 }
 
 /** 全部主题取值，顺序即设置页的展示顺序：跟随系统、基础两套、浅色扩展、深色扩展 */
@@ -238,7 +236,6 @@ export const DEFAULT_APPEARANCE: Appearance = {
   textStrokeEnabled: false,
   textStrokeColor: '#1f1b17',
   textStrokeWidth: 1.0,
-  showTips: true,
 }
 
 const DEFAULT = DEFAULT_APPEARANCE
@@ -298,7 +295,6 @@ export function normalizeAppearance(raw: unknown): Appearance {
       typeof r.textStrokeWidth === 'number' && Number.isFinite(r.textStrokeWidth)
         ? Math.round(Math.min(1.0, Math.max(0.0, r.textStrokeWidth)) * 100) / 100
         : DEFAULT.textStrokeWidth,
-    showTips: r.showTips !== false,
   }
 }
 

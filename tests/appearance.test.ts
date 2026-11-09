@@ -22,26 +22,23 @@ describe('appearance agentLeft default', () => {
     expect(withDocLeft.agentLeft).toBe(false)
   })
 
-  it('normalizeAppearance 支持 fontFamily, textStroke 与 showTips 设置项', () => {
+  it('normalizeAppearance 支持 fontFamily 与 textStroke 设置项', () => {
     expect(DEFAULT_APPEARANCE.fontFamily).toBe('')
     expect(DEFAULT_APPEARANCE.textStrokeEnabled).toBe(false)
     expect(DEFAULT_APPEARANCE.textStrokeColor).toBe('#1f1b17')
     expect(DEFAULT_APPEARANCE.textStrokeWidth).toBe(1.0)
-    expect(DEFAULT_APPEARANCE.showTips).toBe(true)
 
     const normalized = normalizeAppearance({
       fontFamily: "'Microsoft YaHei', sans-serif",
       textStrokeEnabled: true,
       textStrokeColor: '#ffffff',
       textStrokeWidth: 0.65,
-      showTips: false,
     })
 
     expect(normalized.fontFamily).toBe("'Microsoft YaHei', sans-serif")
     expect(normalized.textStrokeEnabled).toBe(true)
     expect(normalized.textStrokeColor).toBe('#ffffff')
     expect(normalized.textStrokeWidth).toBe(0.65)
-    expect(normalized.showTips).toBe(false)
 
     // 限制范围在 0.0 - 1.0 之间
     const clampedMax = normalizeAppearance({ textStrokeWidth: 2.5 })

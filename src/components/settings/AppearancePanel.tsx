@@ -367,11 +367,10 @@ export function AppearancePanel({
         />
       )}
 
-      {/* 辅助与提示（教学演示模式 + 顶栏小技巧提示） */}
+      {/* 辅助与提示（教学演示模式） */}
       {(!activeSubTab || activeSubTab === 'features') && (
         <AppearanceFeaturesSection
           teachingMode={appearance.teachingMode}
-          showTips={appearance.showTips}
           onChange={onChange}
           highlighted={isHighlighted('features')}
           highlightKey={getHighlightKey('features')}

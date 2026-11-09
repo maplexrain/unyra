@@ -84,26 +84,33 @@ export default function DocOutline({ items, activeIndex, onJump, onDismiss, clos
       而不是一片浮着的白纸；出场动画见 motion.css 的 .moji-tip-pop。
     */
     <div
-      className={`no-print absolute left-full top-0 ml-2 z-30 ${closing ? 'moji-tip-out' : 'moji-tip-pop'}`}
+      className={`no-print absolute left-full top-0 ml-2 z-30 ${closing ? 'moji-outline-out' : 'moji-outline-pop'}`}
     >
       <span
         aria-hidden="true"
         className="absolute -left-[5px] top-2.5 z-10 h-2.5 w-2.5 rotate-45 border-l border-b border-line bg-card"
       />
       <div className="flex max-h-[min(60vh,480px)] w-[280px] flex-col overflow-hidden rounded-none border border-line bg-card shadow-[0_10px_30px_rgba(31,27,23,0.16)]">
-      <header className="flex shrink-0 items-center gap-1 border-b border-line px-2.5 py-2">
-        <ListTree size={13} className="shrink-0 text-ink-faint" />
+      <header className="flex shrink-0 items-center gap-1.5 border-b border-line px-2.5 py-2 select-none">
+        <ListTree size={13} className="shrink-0 text-seal" />
         <span className="truncate text-[11.5px] font-medium tracking-wide text-ink">{t('本页标题')}</span>
-        <span className="ml-auto pr-1 text-[10.5px] text-ink-faint">{total}</span>
+        <span className="ml-auto rounded bg-line/40 px-1.5 py-0.2 text-[10px] font-mono text-ink-faint">{total}</span>
       </header>
 
       <nav ref={navRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-        {rows.map((row) => {
+        {rows.map((row, idx) => {
           const active = row.index === activeIndex
           const expanded = !collapsed.has(row.index)
           const indent = (row.depth - 1) * 14
           return (
-            <div key={row.index} className="relative" style={{ paddingLeft: `${indent}px` }}>
+            <div
+              key={row.index}
+              className="relative moji-outline-row"
+              style={{
+                paddingLeft: `${indent}px`,
+                animationDelay: `${Math.min(idx * 16, 160)}ms`,
+              }}
+            >
               {/* 层级引导线：缩进之外再给一条竖线，深层标题才看得出归属 */}
               {row.depth > 1 && (
                 <span
@@ -119,7 +126,7 @@ export default function DocOutline({ items, activeIndex, onJump, onDismiss, clos
                     title={expanded ? t('收起下级标题') : t('展开下级标题')}
                     aria-expanded={expanded}
                     onClick={() => toggle(row.index)}
-                    className="mt-[3px] flex h-4 w-[18px] shrink-0 items-center justify-center rounded-none text-ink-faint transition hover:bg-line/70 hover:text-ink"
+                    className="mt-[3px] flex h-4 w-[18px] shrink-0 items-center justify-center rounded-none text-ink-faint transition hover:bg-line/70 hover:text-ink moji-press cursor-pointer"
                   >
                     {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                   </button>
@@ -132,14 +139,20 @@ export default function DocOutline({ items, activeIndex, onJump, onDismiss, clos
                   title={row.text}
                   aria-current={active ? 'location' : undefined}
                   onClick={() => jump(row.index)}
-                  className={`min-w-0 flex-1 truncate rounded-none py-[3px] pl-1 pr-2 text-left transition ${
+                  className={`relative min-w-0 flex-1 truncate rounded-none py-[3px] pl-1.5 pr-2 text-left transition moji-press cursor-pointer ${
                     row.depth === 1 ? 'text-[12.5px]' : 'text-[12px]'
                   } ${
                     active
-                      ? 'bg-seal/10 font-medium text-seal-deep'
+                      ? 'bg-seal/10 font-medium text-seal-deep pl-2.5'
                       : 'text-ink-soft hover:bg-line/50 hover:text-ink'
                   }`}
                 >
+                  {active && (
+                    <span
+                      className="pointer-events-none absolute left-0 inset-y-1 w-[2.5px] bg-seal rounded-full"
+                      aria-hidden="true"
+                    />
+                  )}
                   {/* 内容来自 renderInline（已过 DOMPurify），公式与正文同款渲染；
                       内联公式在大纲里比正文小一号，跟着字号走才不会把行撑开 */}
                   <span

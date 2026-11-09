@@ -47,7 +47,7 @@ export default function StructOverlay({ goalId, store, onChangeStructure, docs, 
       <div
         onMouseDown={(e) => e.stopPropagation()}
         onContextMenu={(e) => e.stopPropagation()}
-        className="relative flex h-[76vh] w-[91vw] overflow-hidden bg-paper shadow-[0_24px_80px_rgba(31,27,23,0.35)] dark:bg-card"
+        className="relative flex h-[76vh] w-[91vw] overflow-hidden bg-paper shadow-[0_24px_80px_rgba(31,27,23,0.35)] dark:bg-card moji-dialog-in"
       >
         <div className="relative min-h-0 flex-1">
           <OutlineView
