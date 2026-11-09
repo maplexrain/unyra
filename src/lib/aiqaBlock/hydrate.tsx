@@ -38,12 +38,16 @@ export function hydrateAiqa(root: HTMLElement): () => void {
   }
 
   return () => {
-    for (const r of mountedRoots) {
-      try {
-        r.unmount()
-      } catch (err) {
-        console.warn('[aiqaBlock] unmount error', err)
+    const rootsToDispose = [...mountedRoots]
+    // 异步排队卸载，避免在 React 正在执行 layout effect 阶段同步调用 unmount 产生竞态告警
+    queueMicrotask(() => {
+      for (const r of rootsToDispose) {
+        try {
+          r.unmount()
+        } catch {
+          // 忽略已卸载的异常
+        }
       }
-    }
+    })
   }
 }
