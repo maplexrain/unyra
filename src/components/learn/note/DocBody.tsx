@@ -40,6 +40,7 @@ interface Props {
   onManualWrite?: () => void
   /** 正在看的是哪一类文档：空的笔记与空的正文要说的不是一回事 */
   kind: DocKind
+  nodeId?: string
   content: string
   /** renderNote 产出的 HTML */
   html: string
@@ -97,6 +98,7 @@ function areDocBodyPropsEqual(prev: Props, next: Props): boolean {
   if (prev.onGenerateDoc !== next.onGenerateDoc) return false
   if (prev.onManualWrite !== next.onManualWrite) return false
   if (prev.kind !== next.kind) return false
+  if (prev.nodeId !== next.nodeId) return false
   if (prev.wordCount !== next.wordCount) return false
   if (prev.overlay !== next.overlay) return false
   if (prev.resolveLocalImage !== next.resolveLocalImage) return false
@@ -116,6 +118,7 @@ export const DocBody = memo(function DocBody({
   onGenerateDoc,
   onManualWrite,
   kind,
+  nodeId,
   content,
   html,
   annotations,
@@ -187,6 +190,7 @@ export const DocBody = memo(function DocBody({
               ) : (<>
                 <MarkdownView
                   html={html}
+                  nodeId={nodeId}
                   annotations={annotations}
                   knownConceptKeys={knownConceptKeys}
                   annotationActions={annotationActions}

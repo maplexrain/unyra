@@ -1,6 +1,16 @@
 /** 节点与文档的反序列化：节点、教学文档、笔记、超级文档、注解，含各自的历史形态迁移。 */
 
-import type { Annotation, DocNotepadItem, KnowledgeNode, MasteryStatus, NodeDocs, NoteFile, SuperDocFile } from '../../types'
+import type {
+  Annotation,
+  AiqaChatMessage,
+  AiqaChatSession,
+  DocNotepadItem,
+  KnowledgeNode,
+  MasteryStatus,
+  NodeDocs,
+  NoteFile,
+  SuperDocFile,
+} from '../../types'
 import { STATUSES } from '../factories'
 import { normalizeAnnotationStyle } from '../../../lib/annotationStyle'
 import { normalizeOutline } from '../../outline'
@@ -157,6 +167,39 @@ function normalizeNotepads(raw: unknown): DocNotepadItem[] {
   return out
 }
 
+/**
+ * 拾掇出节点内部 AIQA 问答考察块的会话状态。
+ * 数据完全记录在节点上，绝不污染或篡改教学文档正文。
+ */
+function normalizeAiqaChats(raw: unknown): Record<string, AiqaChatSession> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const out: Record<string, AiqaChatSession> = {}
+  for (const [key, val] of Object.entries(raw as Record<string, unknown>)) {
+    if (!val || typeof val !== 'object') continue
+    const v = val as Record<string, unknown>
+    const id = typeof v.id === 'string' && v.id ? v.id : key
+    const updatedAt = typeof v.updatedAt === 'number' && Number.isFinite(v.updatedAt) ? v.updatedAt : Date.now()
+    const messages: AiqaChatMessage[] = []
+    if (Array.isArray(v.messages)) {
+      for (const m of v.messages) {
+        if (!m || typeof m !== 'object') continue
+        const mr = m as Record<string, unknown>
+        const role = mr.role === 'user' ? 'user' : mr.role === 'assistant' ? 'assistant' : null
+        const content = typeof mr.content === 'string' ? mr.content : ''
+        if (role && content) {
+          messages.push({
+            role,
+            content,
+            ...(typeof mr.createdAt === 'number' && Number.isFinite(mr.createdAt) ? { createdAt: mr.createdAt } : {}),
+          })
+        }
+      }
+    }
+    out[key] = { id, messages, updatedAt }
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
 export function normalizeNode(raw: unknown): KnowledgeNode | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Record<string, unknown>
@@ -184,6 +227,7 @@ export function normalizeNode(raw: unknown): KnowledgeNode | null {
   // 思维导图上的自定义色：只认调色板里那几个名字，认不出来的当「没改过」
   const tint = normalizeTint(r.tint)
   const notepads = normalizeNotepads(r.notepads)
+  const aiqaChats = normalizeAiqaChats(r.aiqaChats)
   return {
     id: r.id,
     title,
@@ -195,6 +239,7 @@ export function normalizeNode(raw: unknown): KnowledgeNode | null {
     ...(outline ? { outline } : {}),
     annotations: normalizeAnnotations(r.annotations),
     ...(notepads.length > 0 ? { notepads } : {}),
+    ...(aiqaChats ? { aiqaChats } : {}),
     ...(tint ? { tint } : {}),
     status: toStatus(r.status),
     ...(lastStudiedAt ? { lastStudiedAt } : {}),

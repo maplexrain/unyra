@@ -25,6 +25,8 @@ export type {
   AnnotationStyle,
   Annotation,
   DocNotepadItem,
+  AiqaChatMessage,
+  AiqaChatSession,
   KnowledgeNode,
   DependencyEdge,
   LearningGoal,

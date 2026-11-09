@@ -435,6 +435,7 @@ export default memo(function NodeNote({
           onGenerateDoc={generateDoc}
           onManualWrite={onManualWrite}
           kind={doc.kind}
+          nodeId={node.id}
           content={content}
           html={html}
           annotations={node.annotations}

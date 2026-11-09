@@ -8,6 +8,7 @@ import { setPluginDocOpener } from '../../../lib/pluginDoc'
 import { setSponsorsOpener } from '../../../lib/sponsorDoc'
 import { setVideoBlockHost, cleanVideoNodeUuid, type VideoBlockData, type VideoEpisodeItem } from '../../../lib/videosBlock'
 import { setQuoteBlockHost } from '../../../lib/quoteBlock'
+import { setAiqaBlockHost } from '../../../lib/aiqaBlock'
 import { setPlotFixHandler } from '../../../lib/plot'
 import { setStaticView } from '../../../lib/staticView'
 import {
@@ -308,6 +309,39 @@ export function useHostWiring({
     })
     return () => setQuoteBlockHost(null)
   }, [getLatest, openTab, onToast])
+
+  // AIQA 随文问答块宿主：对话上下文持久化在知识节点上（aiqaChats），不篡改文档源码
+  useEffect(() => {
+    setAiqaBlockHost({
+      getActiveNodeId: () => {
+        return docNode ? docNode.id : null
+      },
+      getNodeAiqaSession: (nodeId, blockId) => {
+        const s = getLatest()
+        const target = s.nodes.find((n) => n.id === nodeId)
+        return target?.aiqaChats?.[blockId] ?? null
+      },
+      saveNodeAiqaSession: (nodeId, blockId, session) => {
+        const s = getLatest()
+        const nextNodes = s.nodes.map((n) => {
+          if (n.id !== nodeId) return n
+          const chats = { ...(n.aiqaChats ?? {}) }
+          if (!session || !session.messages || session.messages.length === 0) {
+            delete chats[blockId]
+          } else {
+            chats[blockId] = session
+          }
+          return {
+            ...n,
+            aiqaChats: Object.keys(chats).length > 0 ? chats : undefined,
+            updatedAt: Date.now(),
+          }
+        })
+        set({ ...s, nodes: nextNodes })
+      },
+    })
+    return () => setAiqaBlockHost(null)
+  }, [getLatest, set, docNode])
 
   /*
     plot 错误卡片上的「让导师修复」：以**工作流**（learn/workflows 的 plot-fix）注入——
