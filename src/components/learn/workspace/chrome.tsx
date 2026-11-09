@@ -37,7 +37,6 @@ import Bullseye from '../../Bullseye'
 import Logo from '../../Logo'
 import { RecentRow } from '../explorer/sections'
 import { DocTypeIcon, WebTabTypeIcon } from '../docTypes'
-import TopBarTipCarousel from './TopBarTipCarousel'
 import { t } from '../../../i18n'
 
 export function Topbar({
@@ -191,12 +190,7 @@ export function Topbar({
       {/* 当前位置（面包屑）：从文档区顶上那条面包屑行上移过来，正文区因此省下一行 */}
       <NodeTrail node={activeNode} store={store} onSelect={onSelectNode} />
 
-      {/* 居中轮播 Tip：隐藏小技巧（置于中间自适应弹性空间中居中，永不遮挡右侧按钮） */}
-      {appearance.showTips !== false && (
-        <div className="mx-2 hidden min-w-0 flex-1 items-center justify-center overflow-hidden lg:flex">
-          <TopBarTipCarousel />
-        </div>
-      )}
+
 
       {/* 右侧只留账号与窗口控制：保存状态、「新建目标」与「新页签」都不在顶栏——
           数据本就是实时保存的；新建目标与知识节点栏右上角那颗按钮是同一件事；

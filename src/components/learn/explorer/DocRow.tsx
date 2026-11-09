@@ -106,7 +106,7 @@ export function DocRow({
           : undefined
       }
       className={
-        'group flex w-full items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1.5 text-left text-[12.5px] transition ' +
+        'group flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1.5 text-left text-[12.5px] transition moji-press ' +
         (active
           ? 'bg-line/60 text-ink-strong '
           : 'text-ink-soft hover:bg-line/40 hover:text-ink ')
@@ -122,7 +122,7 @@ export function DocRow({
           <ChevronRight
             size={12}
             className={
-              'transition-transform duration-200 ease-out motion-reduce:transition-none ' +
+              'transition-transform duration-220 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ' +
               (open ? 'rotate-90' : '')
             }
           />

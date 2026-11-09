@@ -28,6 +28,7 @@ import { emptyDraft, isBlank } from './examDraft'
 import { IntroScreen } from './ExamIntroScreen'
 import { QuestionBlock } from './ExamQuestionCard'
 import { useExamSession } from './useExamSession'
+import { spawnInkRipple } from '../../lib/motion'
 
 /**
  * 考试窗口：一个独立的 Electron 窗口。本文件是**门面**——渲染排版与翻题滚动留在
@@ -284,8 +285,8 @@ export default function ExamWindow() {
               </button>
               <button
                 type="button"
-                onClick={handleRequestSubmit}
-                className="flex items-center gap-1 rounded bg-seal px-3 py-1 text-[11.5px] font-semibold text-paper shadow-2xs hover:bg-seal-deep transition active:scale-[0.98] cursor-pointer"
+                onClick={(e) => { spawnInkRipple(e); handleRequestSubmit(); }}
+                className="flex items-center gap-1 rounded bg-seal px-3 py-1 text-[11.5px] font-semibold text-paper shadow-2xs hover:bg-seal-deep transition moji-press cursor-pointer"
               >
                 <Flag size={11} />
                 <span>{t('交卷')}</span>
@@ -511,9 +512,9 @@ export default function ExamWindow() {
               </button>
               <button
                 type="button"
-                onClick={() => submit(confirm)}
+                onClick={(e) => { spawnInkRipple(e); submit(confirm); }}
                 className={
-                  'rounded px-3.5 py-1.5 text-[11.5px] font-semibold text-paper shadow-2xs transition ' +
+                  'rounded px-3.5 py-1.5 text-[11.5px] font-semibold text-paper shadow-2xs transition moji-press ' +
                   (confirm === 'submit' ? 'bg-seal hover:bg-seal-deep' : 'bg-red-600 hover:bg-red-700')
                 }
               >

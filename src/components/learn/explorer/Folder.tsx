@@ -39,7 +39,7 @@ export function Collapse({ open, children }: { open: boolean; children: ReactNod
   return (
     <div
       className={
-        'grid grid-cols-[minmax(0,1fr)] transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ' +
+        'grid grid-cols-[minmax(0,1fr)] transition-[grid-template-rows] duration-220 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ' +
         (open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')
       }
       style={{ contain: 'paint' }}
@@ -93,13 +93,13 @@ export function Section({
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-1 text-left text-[12.5px] font-medium tracking-wide text-ink-soft uppercase transition hover:text-ink"
+          className="flex min-w-0 flex-1 items-center gap-1 text-left text-[12.5px] font-medium tracking-wide text-ink-soft uppercase transition moji-press hover:text-ink"
         >
           {/* 单箭头旋转（与 Collapse 的高度动画同拍），不再两颗图标硬切换 */}
           <ChevronRight
             size={13}
             className={
-              'shrink-0 transition-transform duration-200 ease-out motion-reduce:transition-none ' +
+              'shrink-0 transition-transform duration-220 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ' +
               (open ? 'rotate-90' : '')
             }
           />
@@ -216,7 +216,7 @@ export function FolderRow({
       }
       data-reveal={revealKey}
       className={
-        'flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1.5 transition ' +
+        'flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1.5 transition moji-press ' +
         (dropActive ? 'bg-seal/10 ring-1 ring-seal/50' : 'hover:bg-line/40')
       }
     >
@@ -227,7 +227,7 @@ export function FolderRow({
       <ChevronRight
         size={12}
         className={
-          'shrink-0 text-ink-faint transition-transform duration-200 ease-out motion-reduce:transition-none ' +
+          'shrink-0 text-ink-faint transition-transform duration-220 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ' +
           (open ? 'rotate-90' : '')
         }
       />

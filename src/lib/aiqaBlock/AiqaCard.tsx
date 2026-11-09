@@ -6,6 +6,7 @@ import MicButton from '../../components/agent/panel/MicButton'
 import type { VoiceSink } from '../voice/session'
 import { aiqaBlockHost, subscribeAiqaBlockHost } from './host'
 import { streamAiqaAnswer } from './agent'
+import { spinIcon, spawnInkRipple } from '../motion'
 import type { AiqaChatMessage, AiqaChatSession } from './types'
 
 export interface AiqaCardProps {
@@ -37,6 +38,7 @@ export default memo(function AiqaCard({ id, question, system, nodeId }: AiqaCard
   const abortControllerRef = useRef<AbortController | null>(null)
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const resetIconRef = useRef<SVGSVGElement | null>(null)
 
   // 监听宿主变化，同步最新节点会话
   useEffect(() => {
@@ -91,6 +93,7 @@ export default memo(function AiqaCard({ id, question, system, nodeId }: AiqaCard
 
   // 重新回答：清空上下文并重置到回答前状态
   const handleReset = useCallback(() => {
+    spinIcon(resetIconRef.current)
     abortStream()
     setError(null)
     setInput('')
@@ -236,9 +239,9 @@ export default memo(function AiqaCard({ id, question, system, nodeId }: AiqaCard
               <MicButton active={!isStreaming} makeSink={makeVoiceSink} />
               <button
                 type="button"
-                onClick={() => void sendAnswer(input)}
+                onClick={(e) => { spawnInkRipple(e); void sendAnswer(input); }}
                 disabled={!input.trim() || isStreaming}
-                className="rounded-none bg-seal px-3 py-1 text-xs font-medium text-white hover:bg-seal-deep transition-colors disabled:opacity-40 cursor-pointer shrink-0 flex items-center gap-1 select-none"
+                className="rounded-none bg-seal px-3 py-1 text-xs font-medium text-white hover:bg-seal-deep transition-colors moji-press disabled:opacity-40 cursor-pointer shrink-0 flex items-center gap-1 select-none"
                 title={t('发送（Enter）')}
               >
                 <SendHorizontal className="w-3 h-3" />
@@ -270,10 +273,10 @@ export default memo(function AiqaCard({ id, question, system, nodeId }: AiqaCard
         <button
           type="button"
           onClick={handleReset}
-          className="flex items-center gap-1 px-2 py-0.5 text-xs text-ink-soft hover:text-ink hover:bg-line/40 rounded-none border border-line/60 transition-colors cursor-pointer select-none"
+          className="flex items-center gap-1 px-2 py-0.5 text-xs text-ink-soft hover:text-ink hover:bg-line/40 rounded-none border border-line/60 transition-colors moji-press cursor-pointer select-none"
           title={t('清空问答记录，重新回答开场问题')}
         >
-          <RotateCcw className="w-3 h-3" />
+          <RotateCcw ref={resetIconRef} className="w-3 h-3 transition-transform" />
           <span>{t('重新回答')}</span>
         </button>
       </div>
@@ -363,9 +366,9 @@ export default memo(function AiqaCard({ id, question, system, nodeId }: AiqaCard
               <MicButton active={!isStreaming} makeSink={makeVoiceSink} />
               <button
                 type="button"
-                onClick={() => void sendAnswer(input)}
+                onClick={(e) => { spawnInkRipple(e); void sendAnswer(input); }}
                 disabled={!input.trim() || isStreaming}
-                className="rounded-none bg-seal px-3 py-1 text-xs font-medium text-white hover:bg-seal-deep transition-colors disabled:opacity-40 cursor-pointer shrink-0 flex items-center gap-1 select-none"
+                className="rounded-none bg-seal px-3 py-1 text-xs font-medium text-white hover:bg-seal-deep transition-colors moji-press disabled:opacity-40 cursor-pointer shrink-0 flex items-center gap-1 select-none"
                 title={t('发送（Enter）')}
               >
                 <SendHorizontal className="w-3 h-3" />
