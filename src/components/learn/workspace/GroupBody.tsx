@@ -25,6 +25,7 @@ import DraftDoc from '../DraftDoc'
 import SourceEditor from '../SourceEditor'
 import ExamCopyView from '../ExamCopyView'
 import DocFloat from '../DocFloat'
+import { computeRelations } from '../docRelations/computeRelations'
 import PluginDoc from '../../plugins/PluginDoc'
 import SponsorsDoc from '../../sponsor/SponsorsDoc'
 import SettingsPanel from '../../settings/SettingsPanel'
@@ -178,6 +179,9 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
   const gOutlineTabs = (g.group?.tabs ?? []).filter(
     (x): x is LearnTab & { ref: { kind: 'outline'; nodeId: string; goalId?: string } } => x.ref.kind === 'outline',
   )
+  const gNodeId = dg.node?.id ?? (gTab?.ref && 'nodeId' in gTab.ref ? (gTab.ref as { nodeId: string }).nodeId : undefined)
+  const relations = gNodeId ? computeRelations(store, gNodeId, gTab?.ref) : undefined
+
   /** 这一格的正文层：切页签的过场、查找条与数据属性都挂在它身上 */
   const boxProps = {
     'data-doc-area': groupId,
@@ -838,6 +842,14 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
             outlineSlot={getOutlineSlot(gTabId)}
             showEssay={Boolean(essayGoalId)}
             onOpenEssay={() => setEssayOpen(true)}
+            relations={relations}
+            onOpenRelation={(ref, item) => {
+              if (item?.kind === 'exam' && item.attemptsCount === 0 && item.examId) {
+                explorerExams.onStart(item.nodeId, item.examId)
+                return
+              }
+              openTab(ref)
+            }}
             essayBtnRef={essayBtnRef}
           />
         )}

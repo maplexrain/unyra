@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { BookOpen, Eye, ListTree, Maximize2, Minimize2, Pencil } from 'lucide-react'
+import { BookOpen, Eye, ListTree, Maximize2, Minimize2, Network, Pencil } from 'lucide-react'
 import type { OutlineHandle } from '../../lib/outline'
-import type { DocView } from '../../learn/types'
+import type { DocView, TabRef } from '../../learn/types'
 import { t } from '../../i18n'
 import DocOutline from './DocOutline'
+import DocRelations from './DocRelations'
+import type { NodeRelations, RelationItem } from './docRelations/computeRelations'
 
 /**
  * 文档区左侧的悬浮工具条（垂直排列）——一格一套。
@@ -52,6 +54,10 @@ interface Props {
   onOpenEssay?: () => void
   /** 随笔按钮 ref（供 EssayDock 获取变形起点） */
   essayBtnRef?: React.Ref<HTMLButtonElement>
+  /** 与当前节点关联的节点分类表（上级/下级/同级） */
+  relations?: NodeRelations
+  /** 点击打开关联节点 */
+  onOpenRelation?: (ref: TabRef, item?: RelationItem) => void
 }
 
 /** 鼠标离开按钮/浮层后，再等这么久才算真离开：两段之间的空隙不该让浮层闪没 */
@@ -90,6 +96,8 @@ export default function DocFloat({
   showEssay,
   onOpenEssay,
   essayBtnRef,
+  relations,
+  onOpenRelation,
 }: Props) {
   /**
    * 浮层三态：closed（不挂载）→ open（展开）→ closing（退场动画中）→ closed。
@@ -98,12 +106,16 @@ export default function DocFloat({
   /** 快照在打开那一刻取一次，开着的时候定时跟句柄对齐 */
   const [snap, setSnap] = useState<{ items: OutlineHandle['items']; activeIndex: number } | null>(null)
   const timers = useRef<{ leave?: number; hide?: number; follow?: number }>({})
+  const [relPhase, setRelPhase] = useState<'closed' | 'open' | 'closing'>('closed')
+  const relTimers = useRef<{ leave?: number; hide?: number }>({})
 
   useEffect(
     () => () => {
       if (timers.current.leave !== undefined) window.clearTimeout(timers.current.leave)
       if (timers.current.hide !== undefined) window.clearTimeout(timers.current.hide)
       if (timers.current.follow !== undefined) window.clearInterval(timers.current.follow)
+      if (relTimers.current.leave !== undefined) window.clearTimeout(relTimers.current.leave)
+      if (relTimers.current.hide !== undefined) window.clearTimeout(relTimers.current.hide)
     },
     [],
   )
@@ -146,6 +158,31 @@ export default function DocFloat({
     }
   }
 
+  const beginCloseRelations = () => {
+    if (relTimers.current.hide !== undefined) return
+    setRelPhase((p) => (p === 'closed' ? p : 'closing'))
+    relTimers.current.hide = window.setTimeout(() => {
+      relTimers.current.hide = undefined
+      setRelPhase('closed')
+    }, HIDE_MS)
+  }
+
+  const openRelationsNow = () => {
+    if (relTimers.current.leave !== undefined) window.clearTimeout(relTimers.current.leave)
+    if (relTimers.current.hide !== undefined) window.clearTimeout(relTimers.current.hide)
+    relTimers.current.leave = undefined
+    relTimers.current.hide = undefined
+    setRelPhase('open')
+  }
+
+  const closeRelationsSoon = () => {
+    if (relTimers.current.leave !== undefined) return
+    relTimers.current.leave = window.setTimeout(() => {
+      relTimers.current.leave = undefined
+      beginCloseRelations()
+    }, LEAVE_GRACE_MS)
+  }
+
   const closeSoon = () => {
     if (timers.current.leave !== undefined) return
     timers.current.leave = window.setTimeout(() => {
@@ -186,6 +223,35 @@ export default function DocFloat({
               <Pencil size={15} className="transition-colors" />
             )}
           </button>
+        )}
+
+        
+        {/*
+          2. 关系按钮：排在源码 / 预览视图切换按钮下方。
+          鼠标经过时弹出与当前节点相关的节点列表 tip，分类显示上级/下级/同级。
+        */}
+        {relations && (
+          <div className="relative" onMouseEnter={openRelationsNow} onMouseLeave={closeRelationsSoon}>
+            <button
+              type="button"
+              title={t('关联节点：鼠标停留展开上级、下级与同级节点')}
+              aria-expanded={relPhase === 'open'}
+              className={ICON_BTN}
+            >
+              <Network size={15} className="transition-colors" />
+            </button>
+            {relPhase !== 'closed' && (
+              <DocRelations
+                relations={relations}
+                closing={relPhase === 'closing'}
+                onSelect={(item) => {
+                  beginCloseRelations()
+                  onOpenRelation?.(item.tabRef, item)
+                }}
+                onDismiss={beginCloseRelations}
+              />
+            )}
+          </div>
         )}
 
         {/* 2. 随笔按钮：手札图标 */}
