@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import { ExternalLink, Globe, Maximize2, Minimize2 } from 'lucide-react'
 import type { LearnTab } from '../../../learn/types'
 import { tabTitle, tabKey, isPdfFile } from '../../../learn/tabs'
@@ -181,10 +180,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     (x): x is LearnTab & { ref: { kind: 'outline'; nodeId: string; goalId?: string } } => x.ref.kind === 'outline',
   )
   const gNodeId = dg.node?.id ?? (gTab?.ref && 'nodeId' in gTab.ref ? (gTab.ref as { nodeId: string }).nodeId : undefined)
-  const relations = useMemo(
-    () => (gNodeId ? computeRelations(store, gNodeId, gTab?.ref) : undefined),
-    [store, gNodeId, gTab?.ref],
-  )
+  const relations = gNodeId ? computeRelations(store, gNodeId, gTab?.ref) : undefined
 
   /** 这一格的正文层：切页签的过场、查找条与数据属性都挂在它身上 */
   const boxProps = {
