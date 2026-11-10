@@ -341,6 +341,7 @@ export function AppearancePanel({
           highlighted={isHighlighted('typography')}
           highlightKey={getHighlightKey('typography')}
           fontFamily={appearance.fontFamily}
+          uiFontScale={appearance.uiFontScale}
           textStrokeEnabled={appearance.textStrokeEnabled}
           textStrokeColor={appearance.textStrokeColor}
           systemFonts={systemFonts}

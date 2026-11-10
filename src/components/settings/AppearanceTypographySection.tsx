@@ -34,6 +34,7 @@ interface Props {
   /** 高亮动画用的 key（由门面按 highlightSubTab 计算） */
   highlightKey: string
   fontFamily?: string
+  uiFontScale?: number
   textStrokeEnabled?: boolean
   textStrokeColor?: string
   systemFonts: string[]
@@ -55,6 +56,7 @@ export function AppearanceTypographySection({
   highlighted,
   highlightKey,
   fontFamily,
+  uiFontScale,
   textStrokeEnabled,
   textStrokeColor,
   systemFonts,
@@ -159,6 +161,61 @@ export function AppearanceTypographySection({
                 {t('重置')}
               </button>
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* 全局 UI 字体大小系数调节 */}
+      <div className="flex flex-col gap-2 rounded-lg border border-line/60 bg-card/40 p-3 text-[11.5px]">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-[12.5px] font-medium text-ink-strong">{t('全局 UI 字体大小系数')}</div>
+            <div className="text-[10.5px] text-ink-faint">
+              {t('统一缩放全局界面元素与文字大小（与文档正文字号独立调节），默认 100% (1.00x)。')}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[12px] font-semibold text-seal">
+              {Math.round((uiFontScale ?? 1.0) * 100)}% ({Number(uiFontScale ?? 1.0).toFixed(2)}x)
+            </span>
+            {Math.abs((uiFontScale ?? 1.0) - 1.0) > 0.01 && (
+              <button
+                type="button"
+                onClick={() => onChange({ uiFontScale: 1.0 })}
+                className="rounded border border-line bg-card px-2 py-0.5 text-[10.5px] text-ink-faint hover:border-seal hover:text-seal transition cursor-pointer"
+                title={t('恢复默认 1.00x 大小')}
+              >
+                {t('重置')}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 pt-1">
+          <input
+            type="range"
+            min={0.8}
+            max={1.4}
+            step={0.05}
+            value={uiFontScale ?? 1.0}
+            onChange={(e) => onChange({ uiFontScale: Number(e.target.value) })}
+            className="h-1.5 flex-1 cursor-pointer accent-seal"
+          />
+          <div className="flex items-center gap-1 text-[10.5px] text-ink-faint">
+            {[0.85, 1.0, 1.15, 1.25, 1.35].map((scale) => (
+              <button
+                key={scale}
+                type="button"
+                onClick={() => onChange({ uiFontScale: scale })}
+                className={`rounded border px-1.5 py-0.5 transition cursor-pointer ${
+                  Math.abs((uiFontScale ?? 1.0) - scale) < 0.02
+                    ? 'border-seal bg-seal/10 font-medium text-seal-deep shadow-2xs'
+                    : 'border-line bg-card hover:border-seal hover:text-seal'
+                }`}
+              >
+                {Math.round(scale * 100)}%
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -284,7 +341,7 @@ export function AppearanceTypographySection({
           {t('纸墨相发，研精覃思。')} The quick brown fox jumps over the lazy dog.
         </div>
         <div className="mt-1 text-[11px] text-ink-soft">
-          {t('当前字体')}：{fontFamily || t('系统默认')}
+          {t('当前字体')}：{fontFamily || t('系统默认')}{` · ${t('UI字号')}：${Math.round((uiFontScale ?? 1.0) * 100)}% (${Number(uiFontScale ?? 1.0).toFixed(2)}x)`}
           {textStrokeEnabled &&
             ` · ${t('已启用硬描边')} (${strokeWidthDraft.toFixed(2)}px · ${strokeColorDraft})`}
         </div>
