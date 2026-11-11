@@ -178,7 +178,7 @@ export function PreviewNodeCard({
             type="button"
             onClick={handleOpenInTab}
             title={t('在页签栏打开《{0}》', activePreview.title)}
-            className="truncate text-left text-[12px] font-bold text-seal underline decoration-seal/40 decoration-1 underline-offset-[3px] transition hover:text-seal-deep hover:decoration-seal cursor-pointer"
+            className="line-clamp-2 break-words text-left text-[12px] font-bold text-seal underline decoration-seal/40 decoration-1 underline-offset-[3px] transition hover:text-seal-deep hover:decoration-seal cursor-pointer"
           >
             {activePreview.title}
           </button>

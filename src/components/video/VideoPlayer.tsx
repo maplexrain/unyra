@@ -507,9 +507,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           </div>
         )}
 
-        {/* 底部控制器渐变背景与控制栏 */}
+        {/* 底部控制器渐变背景与控制栏（倍速/字幕浮层展开时提升至 z-50） */}
         <div
-          className={`absolute inset-x-0 bottom-0 z-30 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/45 to-transparent pt-7 pb-2 px-3 transition-opacity duration-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${
+          className={`absolute inset-x-0 bottom-0 ${
+            speedMenuOpen || subtitleMenuOpen ? 'z-50' : 'z-30'
+          } flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/45 to-transparent pt-7 pb-2 px-3 transition-opacity duration-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${
             isControlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
           onClick={(e) => e.stopPropagation()}

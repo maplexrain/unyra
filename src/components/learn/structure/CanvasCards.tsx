@@ -245,7 +245,7 @@ export function CanvasCards({
                 <span
                   {...(openable ? { 'data-open-title': card.uuid } : {})}
                   title={card.title}
-                  className={`min-w-0 flex-1 truncate text-[11px] leading-tight tracking-tight font-medium text-ink ${
+                  className={`min-w-0 flex-1 line-clamp-2 break-words text-[11px] leading-tight tracking-tight font-medium text-ink ${
                     openable ? 'hover:text-seal hover:underline' : ''
                   }`}
                 >
@@ -836,7 +836,7 @@ export function CanvasCards({
               )}
                 </>
               ) : (
-                <div title={card.title} className="flex h-full w-full items-center justify-center text-[11px] text-ink-faint/45 select-none font-medium px-2 truncate">
+                <div title={card.title} className="flex h-full w-full items-center justify-center text-[11px] text-ink-faint/45 select-none font-medium px-2 line-clamp-2 break-words text-center">
                   {card.title}
                 </div>
               )}

@@ -6,13 +6,14 @@
  * 仓库惯例逐项收 props、内联回调。
  */
 
-import type { Dispatch, RefObject, SetStateAction } from 'react'
+import { useEffect, useRef, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import {
   BookOpen,
   Camera,
   Captions,
   Check,
   FlipHorizontal,
+  Gauge,
   ListTree,
   Maximize,
   Minimize,
@@ -113,6 +114,29 @@ export function VideoControlBar({
   isFullscreen,
   toggleFullscreen,
 }: VideoControlBarProps) {
+  const speedMenuRef = useRef<HTMLDivElement>(null)
+
+  // 点击空白处或按 Escape 键关闭倍速面板
+  useEffect(() => {
+    if (!speedMenuOpen) return
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      if (speedMenuRef.current && !speedMenuRef.current.contains(e.target as Node)) {
+        setSpeedMenuOpen(false)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSpeedMenuOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [speedMenuOpen, setSpeedMenuOpen])
+
   return (
     <div className="mt-1 flex items-center justify-between text-white/90">
       {/* 左侧：播放/暂停与时间显示 */}
@@ -372,60 +396,81 @@ export function VideoControlBar({
           )}
         </div>
 
-        {/* 倍速控制菜单：鼠标经过即展开 */}
-        <div
-          className="relative"
-          onMouseEnter={() => {
-            setSpeedMenuOpen(true)
-            setSubtitleMenuOpen(false)
-          }}
-          onMouseLeave={() => setSpeedMenuOpen(false)}
-        >
+        {/* 倍速控制菜单：点击固定打开，高层级，选择倍速后或点击空白处关闭 */}
+        <div ref={speedMenuRef} className="relative z-50">
           <button
             type="button"
+            onClick={() => {
+              setSpeedMenuOpen(!speedMenuOpen)
+              if (!speedMenuOpen) {
+                setSubtitleMenuOpen(false)
+              }
+            }}
             title={t('倍速调节')}
-            className="flex h-8 min-w-[42px] items-center justify-center rounded-lg px-2 text-[12px] font-medium text-white/80 transition hover:bg-white/20 hover:text-white"
+            className={`flex h-8 min-w-[42px] items-center justify-center rounded-lg px-2 text-[12px] font-medium transition cursor-pointer select-none ${
+              speedMenuOpen
+                ? 'bg-white/25 text-seal font-semibold'
+                : 'text-white/80 hover:bg-white/20 hover:text-white'
+            }`}
           >
             <span>{playbackRate === 1.0 ? t('倍速') : `${playbackRate}x`}</span>
           </button>
 
           {/* 倍速选择面板 */}
           {speedMenuOpen && (
-            <div className="absolute right-0 bottom-full mb-2 w-36 rounded-xl border border-white/15 bg-card/95 p-1.5 text-ink shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95">
-              <div className="flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-ink-faint">
-                <span>{t('播放倍速')}</span>
-                <span className="font-mono text-seal font-bold">{playbackRate}x</span>
+            <div className="absolute right-0 bottom-full mb-3 w-48 rounded-2xl border border-line/80 dark:border-white/15 bg-card/95 text-ink shadow-2xl backdrop-blur-xl ring-1 ring-black/5 dark:ring-white/10 p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150 select-none">
+              <div className="flex items-center justify-between px-1 pb-2 border-b border-line/60">
+                <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-ink-soft">
+                  <Gauge size={13} className="text-seal" />
+                  <span>{t('播放倍速')}</span>
+                </div>
+                <span className="font-mono text-[11.5px] font-bold text-seal bg-seal/10 dark:bg-seal/25 px-1.5 py-0.5 rounded">
+                  {playbackRate}x
+                </span>
               </div>
 
-              <div className="my-1 border-t border-line/60" />
-
-              <div className="max-h-48 overflow-y-auto">
-                {SPEED_PRESETS.map((rate) => (
-                  <button
-                    key={rate}
-                    type="button"
-                    onClick={() => changePlaybackRate(rate)}
-                    className="flex w-full items-center justify-between rounded-lg px-2 py-1 text-left text-[11.5px] font-mono text-ink hover:bg-line/50"
-                  >
-                    <span>{rate.toFixed(2).replace(/\.?0+$/, '')}x</span>
-                    {playbackRate === rate && <Check size={12} className="text-seal" />}
-                  </button>
-                ))}
+              <div className="grid grid-cols-2 gap-1 py-2">
+                {SPEED_PRESETS.map((rate) => {
+                  const active = playbackRate === rate
+                  return (
+                    <button
+                      key={rate}
+                      type="button"
+                      onClick={() => {
+                        changePlaybackRate(rate)
+                        setSpeedMenuOpen(false)
+                      }}
+                      className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11.5px] font-mono transition-all cursor-pointer ${
+                        active
+                          ? 'bg-seal text-white font-semibold shadow-xs'
+                          : 'text-ink hover:bg-line/50 dark:hover:bg-white/10'
+                      }`}
+                    >
+                      <span>{rate === 1.0 ? '1.0x' : `${rate}x`}</span>
+                      {active && <Check size={12} className="stroke-[2.5]" />}
+                    </button>
+                  )
+                })}
               </div>
 
-              <div className="mt-1 flex items-center justify-between border-t border-line/60 pt-1 px-1">
+              <div className="flex items-center justify-between border-t border-line/60 pt-2 px-0.5 gap-1">
                 <button
                   type="button"
                   onClick={() => changePlaybackRate(playbackRate - 0.1)}
                   disabled={playbackRate <= 0.25}
-                  className="rounded px-1.5 py-0.5 text-[10.5px] text-ink-soft hover:bg-line/60 disabled:opacity-40"
+                  className="flex-1 rounded-md py-1 text-center font-mono text-[11px] text-ink-soft hover:bg-line/60 hover:text-ink disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+                  title={t('降低 0.1x')}
                 >
                   -0.1
                 </button>
                 <button
                   type="button"
-                  onClick={() => changePlaybackRate(1.0)}
-                  className="rounded px-1.5 py-0.5 text-[10.5px] text-ink-soft hover:bg-line/60"
+                  onClick={() => {
+                    changePlaybackRate(1.0)
+                    setSpeedMenuOpen(false)
+                  }}
+                  className="flex-1 rounded-md py-1 text-center text-[11px] text-ink-soft hover:bg-line/60 hover:text-ink transition cursor-pointer"
+                  title={t('重置为 1.0x 正常速度')}
                 >
                   {t('正常')}
                 </button>
@@ -433,7 +478,8 @@ export function VideoControlBar({
                   type="button"
                   onClick={() => changePlaybackRate(playbackRate + 0.1)}
                   disabled={playbackRate >= 3.0}
-                  className="rounded px-1.5 py-0.5 text-[10.5px] text-ink-soft hover:bg-line/60 disabled:opacity-40"
+                  className="flex-1 rounded-md py-1 text-center font-mono text-[11px] text-ink-soft hover:bg-line/60 hover:text-ink disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+                  title={t('提高 0.1x')}
                 >
                   +0.1
                 </button>
