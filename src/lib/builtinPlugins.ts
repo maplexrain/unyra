@@ -16,6 +16,7 @@ import { MERMAID_LANG, mermaidBlock, hydrateMermaid } from './mermaid'
 import { videosBlock, hydrateVideos } from './videosBlock'
 import { quoteBlock, hydrateQuotes } from './quoteBlock'
 import { AIQA_LANG, aiqaBlock, hydrateAiqa } from './aiqaBlock'
+import { PISC_LANG, piscBlock, hydratePisc } from './pisc'
 import { registerRenderPlugin, type PluginRenderContext } from './renderPlugins'
 import { languageCount } from '../syntax/LanguageAliases'
 
@@ -127,6 +128,15 @@ registerRenderPlugin({
   fences: [AIQA_LANG],
   render: (source: string, ctx: PluginRenderContext) => aiqaBlock(source, ctx),
   hydrate: (root: HTMLElement) => hydrateAiqa(root),
+})
+
+registerRenderPlugin({
+  id: 'pisc',
+  name: '参数化可交互仿真卡片',
+  builtin: true,
+  fences: [PISC_LANG],
+  render: (source: string, ctx: PluginRenderContext, info?: string) => piscBlock(source, ctx, info),
+  hydrate: (root: HTMLElement) => hydratePisc(root),
 })
 
 /**

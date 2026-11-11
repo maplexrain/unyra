@@ -11,8 +11,8 @@
  * 注释与代码对不上，下次谁想「顺手统一一下」就会把按钮的排除规则删掉。收在这里，差异是**显式**的。
  */
 
-/** 公式排版件、代码块、函数图像：它们的文字与源文不同形，定位与映射一律跳过 */
-export const SKIP_SELECTOR = 'pre, code, .katex, .katex-display, .moji-plot, .moji-mermaid'
+/** 公式排版件、代码块、函数图像、仿真卡片：它们的文字与源文不同形，定位与映射一律跳过 */
+export const SKIP_SELECTOR = 'pre, code, .katex, .katex-display, .moji-plot, .moji-mermaid, .moji-pisc'
 
 /** 定位用的那一档：在上面基础上再排掉按钮（光标不该落在按钮上，见 docDom 的用法） */
 export const SKIP_SELECTOR_INTERACTIVE = SKIP_SELECTOR + ', button, [role=button]'

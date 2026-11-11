@@ -185,7 +185,7 @@ export function MindmapNodeCard({
                 }
               }}
               title={readOnly ? t('在页签栏打开教学文档') : t('预览「{0}」的教学文档', item.title)}
-              className="truncate text-left text-[14px] leading-snug font-bold text-seal underline decoration-seal/40 decoration-1 underline-offset-[3px] transition hover:text-seal-deep hover:decoration-seal flex-1"
+              className="line-clamp-2 break-words text-left text-[14px] leading-snug font-bold text-seal underline decoration-seal/40 decoration-1 underline-offset-[3px] transition hover:text-seal-deep hover:decoration-seal flex-1"
             >
               {item.title}
             </button>
@@ -204,7 +204,7 @@ export function MindmapNodeCard({
           </div>
         ) : (
           <span
-            className="block truncate text-[14px] leading-snug font-semibold text-ink-soft"
+            className="block line-clamp-2 break-words text-[14px] leading-snug font-semibold text-ink-soft"
             title={item.title}
           >
             {item.title}

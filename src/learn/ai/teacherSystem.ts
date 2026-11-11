@@ -13,6 +13,7 @@
  * 3. 用户画像属于信息而非提示词，在首轮注入，放在人格与文档格式之后。
  */
 import { PLOT_SYNTAX_GUIDE } from '../../lib/plot'
+import { PISC_SYNTAX_GUIDE } from '../../lib/pisc'
 import { MERMAID_SYNTAX_GUIDE } from '../../lib/mermaid'
 import { VIDEOS_SYNTAX_GUIDE } from '../../lib/videosBlock'
 import { QUOTE_SYNTAX_GUIDE } from '../../lib/quoteBlock'
@@ -68,6 +69,8 @@ export function buildTeacherSystem(opts: {
     PLOT_SYNTAX_GUIDE,
     '',
     moduleTextOf('plot-forms'),
+    '',
+    PISC_SYNTAX_GUIDE,
     '',
     MERMAID_SYNTAX_GUIDE,
     '',

@@ -161,8 +161,6 @@ export function CanvasCards({
           // 性能优化：直接从 O(1) 索引查找
           const hasUpstream = upstreamEdgeSet.has(card.uuid) || upstreamEdgeSet.has(outlineUuid(card.uuid))
           const unassigned = card.kind === 'doc' && !card.entry && !hasUpstream
-          // 入口就是根文档自己（一张图有且只有一个）：挂「入口」徽章
-          const authoritativeRoot = card.entry === true
           // 性能优化：直接从预热缓存中获取
           const leafOwnerNodeId = leafOwnerCache.get(card.uuid) ?? null
 
@@ -245,20 +243,12 @@ export function CanvasCards({
                 <span
                   {...(openable ? { 'data-open-title': card.uuid } : {})}
                   title={card.title}
-                  className={`min-w-0 flex-1 truncate text-[11px] leading-tight tracking-tight font-medium text-ink ${
+                  className={`min-w-0 flex-1 line-clamp-2 break-words text-[11px] leading-tight tracking-tight font-medium text-ink ${
                     openable ? 'hover:text-seal hover:underline' : ''
                   }`}
                 >
                   {card.title}
                 </span>
-                {authoritativeRoot && (
-                  <span
-                    title={t('入口：这门课从这份文档开始（右键其他无上级的文档可以换）')}
-                    className="shrink-0 rounded bg-rose-500/15 px-1 py-[1px] text-[9px] font-semibold text-rose-600 dark:text-rose-300"
-                  >
-                    {t('入口')}
-                  </span>
-                )}
               </div>
 
               {card.kind === 'outline' && slots.length > 0 ? (
@@ -836,7 +826,7 @@ export function CanvasCards({
               )}
                 </>
               ) : (
-                <div title={card.title} className="flex h-full w-full items-center justify-center text-[11px] text-ink-faint/45 select-none font-medium px-2 truncate">
+                <div title={card.title} className="flex h-full w-full items-center justify-center text-[11px] text-ink-faint/45 select-none font-medium px-2 line-clamp-2 break-words text-center">
                   {card.title}
                 </div>
               )}

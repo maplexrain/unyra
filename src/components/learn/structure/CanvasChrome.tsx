@@ -27,10 +27,10 @@ import { KIND_BADGE } from './structureView'
  * 文档=带折角与行线的纸、大纲=圆点列表、笔记=折角便签、试卷=带勾的夹板、
  * 超级文档=闪光。
  */
-export function KindIcon({ kind }: { kind: GNodeKind }) {
+export function KindIcon({ kind, size = 16 }: { kind: GNodeKind; size?: number }) {
   const common = {
-    width: 14,
-    height: 14,
+    width: size,
+    height: size,
     viewBox: '0 0 24 24',
     fill: 'none',
     stroke: 'currentColor',
@@ -282,21 +282,21 @@ export function CanvasPalette({ paletteRef }: { paletteRef: RefObject<HTMLDivEle
     <div
       ref={paletteRef}
       data-tour="palette"
-      className="absolute top-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border border-line bg-card/85 p-1.5 shadow-xs backdrop-blur"
+      className="absolute top-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-line bg-card/90 p-2 shadow-sm backdrop-blur-md"
     >
       {PALETTE.map((kind) => (
         <div
           key={kind}
           data-palette-kind={kind}
-          className="group/palette-item relative flex h-7 w-7 cursor-grab items-center justify-center rounded-lg border border-line/70 bg-paper/70 transition-all hover:scale-105 hover:border-seal/40 hover:bg-seal/[0.06] active:cursor-grabbing"
+          className="group/palette-item relative flex h-10 w-10 cursor-grab items-center justify-center rounded-xl border border-line/70 bg-paper/70 transition-all hover:scale-105 hover:border-seal/40 hover:bg-seal/[0.06] active:cursor-grabbing shadow-2xs"
         >
           {/* 色签用卡片徽章的同一套配色：只显示图标 */}
-          <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded ${KIND_BADGE[kind]}`}>
-            <KindIcon kind={kind} />
+          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${KIND_BADGE[kind]}`}>
+            <KindIcon kind={kind} size={18} />
           </span>
 
           {/* 仅在鼠标经过节点项时向下弹出 tip 显示节点类型 */}
-          <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-line bg-card px-2 py-0.5 text-[11px] font-medium text-ink shadow-md opacity-0 transition-opacity duration-150 group-hover/palette-item:opacity-100">
+          <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2.5 -translate-x-1/2 whitespace-nowrap rounded-lg border border-line bg-card px-2.5 py-1 text-[11.5px] font-medium text-ink shadow-md opacity-0 transition-opacity duration-150 group-hover/palette-item:opacity-100">
             {t(GRAPH_KIND_LABEL[kind])}
           </span>
         </div>

@@ -509,4 +509,119 @@
   text-align: left;
 }
 
+/* ---------- 参数化可交互仿真卡片（```pisc，由 Canvas 渲染） ---------- */
+
+.moji-pisc {
+  position: relative;
+  margin: 1.15em 0;
+  border-radius: 0;
+  border: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-card) 75%, transparent);
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.moji-pisc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--color-paper) 60%, transparent);
+  border-bottom: 1px solid var(--color-line);
+  border-radius: 0;
+  font-size: 11.5px;
+  user-select: none;
+}
+
+.moji-pisc-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.moji-pisc-icon {
+  display: block;
+  flex-shrink: 0;
+  color: var(--color-seal);
+}
+
+.moji-pisc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  color: var(--color-ink-faint);
+  cursor: pointer;
+  border-radius: 0;
+  line-height: 1;
+  transition: color 0.15s ease, opacity 0.15s ease;
+  opacity: 0.8;
+}
+
+.moji-pisc-btn:hover {
+  color: var(--color-seal);
+  background: transparent;
+  opacity: 1;
+}
+
+.moji-pisc-btn svg {
+  display: block;
+}
+
+.moji-pisc-stage {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--color-sunken) 50%, transparent);
+}
+
+.moji-pisc-canvas {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  max-height: 480px;
+  border-radius: 0;
+  touch-action: none;
+}
+
+.moji-pisc-hint {
+  padding: 20px 4px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--color-ink-faint);
+}
+
+.moji-pisc-error {
+  border-color: color-mix(in srgb, var(--color-seal) 35%, transparent);
+}
+
+.moji-pisc-msg {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--color-seal-deep);
+  background: color-mix(in srgb, var(--color-seal) 6%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-seal) 20%, transparent);
+}
+
+.moji-pisc-error pre {
+  margin: 8px 12px 12px;
+  padding: 8px 10px;
+  background: var(--color-sunken);
+  border: 1px solid var(--color-line);
+  border-radius: 0;
+  overflow-x: auto;
+  font-size: 11.5px;
+  color: var(--color-ink-soft);
+}
+
+
 

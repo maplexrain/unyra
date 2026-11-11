@@ -188,8 +188,8 @@ export function docFormatAllowsModule(key: string, format: DocFormatId): boolean
  * format 由调用方传入（loadAgentSettings().docFormat）——本文件不能反过来依赖 settings。
  */
 
-/** Markdown 侧的结构痕迹：行首引用块、表格行、plot 围栏（与 HTML 的 class 一起算「有排版」） */
-const MD_STRUCTURE = /(?:^>|^\s*\|.*\||^```plot)/m
+/** Markdown 侧的结构痕迹：行首引用块、表格行、plot / pisc 围栏（与 HTML 的 class 一起算「有排版」） */
+const MD_STRUCTURE = /(?:^>|^\s*\|.*\||^```(?:plot|pisc))/m
 
 export function layoutHintOf(kind: 'teaching' | 'note', content: string, format: DocFormatId): string {
   if (kind !== 'teaching') return ''
