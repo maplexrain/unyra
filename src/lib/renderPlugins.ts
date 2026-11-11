@@ -125,8 +125,8 @@ export interface TextRule {
 export interface RenderPlugin extends PluginBase {
   /** 认领的围栏语言，大小写不敏感 */
   fences?: string[]
-  /** 源码 → 占位 HTML，**同步** */
-  render?(source: string, ctx: PluginRenderContext): string
+  /** 源码 → 占位 HTML，**同步**；info 为同一行语言标识后的附加字符串（如标题） */
+  render?(source: string, ctx: PluginRenderContext, info?: string): string
   /** DOM 提交后挂载；返回清理函数（取消在途渲染、丢掉观察者） */
   hydrate?(root: HTMLElement, ctx: PluginHydrateContext): void | (() => void)
   /** 正文文字规则：全篇生效的二次加工（见 TextRule） */
@@ -300,10 +300,10 @@ const RENDER_CTX: PluginRenderContext = { escape: escapeHtml, attr: encodeAttr }
  * 用插件渲染一段围栏。**这里把插件的异常接住**：一个插件写坏了不该让整篇文档
  * 渲染不出来，退化成代码块（交给 marked 默认渲染）比一片空白强。
  */
-export function renderFenceWith(plugin: RenderPlugin, source: string): string | null {
+export function renderFenceWith(plugin: RenderPlugin, source: string, info = ''): string | null {
   if (!plugin.render) return null
   try {
-    const html = plugin.render(source, RENDER_CTX)
+    const html = plugin.render(source, RENDER_CTX, info)
     return typeof html === 'string' ? html : null
   } catch (err) {
     console.warn(`插件「${plugin.id}」渲染失败`, err)

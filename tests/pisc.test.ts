@@ -10,6 +10,7 @@ import {
 } from '../src/lib/pisc'
 import type { PluginRenderContext } from '../src/lib/renderPlugins'
 import { escapeHtml, encodeAttr } from '../src/lib/renderPlugins'
+import { renderNote } from '../src/lib/markdown'
 
 const mockCtx: PluginRenderContext = {
   escape: escapeHtml,
@@ -17,7 +18,7 @@ const mockCtx: PluginRenderContext = {
 }
 
 describe('参数化可交互仿真卡片 (pisc)', () => {
-  it('正确将 ```pisc 源代码转换为占位 HTML 结构', () => {
+  it('正确将 ```pisc 源代码转换为占位 HTML 结构，且不包含 emoji，使用 SVG 图标与直角设计', () => {
     const code = `
       const ctx = card.getContext('2d');
       ctx.fillStyle = '#ff0000';
@@ -28,6 +29,38 @@ describe('参数化可交互仿真卡片 (pisc)', () => {
     expect(html).toContain('class="moji-pisc-canvas"')
     expect(html).toContain('moji-pisc-reset-btn')
     expect(html).toContain('data-pisc=')
+
+    // 严禁使用 emoji
+    expect(html).not.toMatch(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u)
+    // 必须包含 SVG 图标
+    expect(html).toContain('<svg')
+    // 重置按钮无文字 label，纯 SVG
+    expect(html).toContain('<button type="button" class="moji-pisc-btn moji-pisc-reset-btn"')
+    expect(html).not.toContain('>重置<')
+  })
+
+  it('支持在 ```pisc 同一行传入自定义卡片标题', () => {
+    const code = 'const ctx = card.getContext("2d");'
+    const htmlWithTitle = piscBlock(code, mockCtx, '简谐振动受迫共振动态模拟')
+    expect(htmlWithTitle).toContain('简谐振动受迫共振动态模拟')
+    expect(htmlWithTitle).toContain('data-pisc-title="')
+
+    // 支持带引号的标题
+    const htmlQuoted = piscBlock(code, mockCtx, '"快速排序双指针分区演化过程"')
+    expect(htmlQuoted).toContain('快速排序双指针分区演化过程')
+  })
+
+  it('通过 renderNote 完整 Markdown 渲染管线解析 ```pisc 标题与代码块', () => {
+    const md = `
+# 物理实验
+\`\`\`pisc 麦克斯韦速率分布动态模型
+const ctx = card.getContext('2d');
+\`\`\`
+`
+    const rendered = renderNote(md)
+    expect(rendered).toContain('class="moji-pisc"')
+    expect(rendered).toContain('麦克斯韦速率分布动态模型')
+    expect(rendered).toContain('class="moji-pisc-canvas"')
   })
 
   it('空代码时给出降级错误展示', () => {
@@ -57,7 +90,6 @@ describe('参数化可交互仿真卡片 (pisc)', () => {
     canvas.height = 360
 
     let drawCalled = false
-    let listenerAdded = false
 
     // mock 2D context
     const mockCtx2d = {
@@ -88,26 +120,13 @@ describe('参数化可交互仿真卡片 (pisc)', () => {
     canvas.width = 640
     canvas.height = 360
 
-    let capturedWindow: any = 'initial'
-    let capturedDoc: any = 'initial'
-    let capturedFetch: any = 'initial'
-
-    const code = `
-      // 由于静态检查拦截上述全局词汇，测试遮蔽效果通过形参名读取
-      capturedWindow = typeof arguments[1]; // window
-      capturedDoc = typeof arguments[2];    // document
-      capturedFetch = typeof arguments[6];  // fetch
-    `
-
-    // 直接在无静态关键字的代码中验证形参遮蔽
-    const testCode = `
-      var check = [typeof window, typeof document];
-    `
-    // 由于静态检查会直接拦截包含 document 的文本，我们测试沙盒包裹下的形参
-    const cleanup = runPiscSandbox(canvas, `
+    const cleanup = runPiscSandbox(
+      canvas,
+      `
       const isCard = (card === this);
       if (!isCard) throw new Error('card mismatch');
-    `)
+    `,
+    )
     expect(typeof cleanup).toBe('function')
     cleanup()
   })
@@ -155,18 +174,21 @@ describe('参数化可交互仿真卡片 (pisc)', () => {
     cleanup()
   })
 
-  it('系统提示词指引包含完整 PISC 指南与规范', () => {
+  it('系统提示词指引包含完整 PISC 通用教学指南与规范', () => {
     expect(PISC_SYNTAX_GUIDE).toContain('```pisc')
     expect(PISC_SYNTAX_GUIDE).toContain('HTMLCanvasElement')
     expect(PISC_SYNTAX_GUIDE).toContain('card.getPointerPos')
+    expect(PISC_SYNTAX_GUIDE).toContain('物理与工程科学')
+    expect(PISC_SYNTAX_GUIDE).toContain('计算机科学与软件工程')
+    expect(PISC_SYNTAX_GUIDE).toContain('数理统计与几何')
   })
 
-  it('hydratePisc 能正确挂载并响应重置按钮', () => {
+  it('hydratePisc 能正确挂载并响应重置按钮且正确透传标题', () => {
     const container = document.createElement('div')
     container.innerHTML = `
-      <div class="moji-pisc" data-pisc="${encodeAttr("const ctx = card.getContext('2d');")}">
+      <div class="moji-pisc" data-pisc="${encodeAttr("const ctx = card.getContext('2d');")}" data-pisc-title="${encodeAttr('Lotka-Volterra 周期模型')}">
         <div class="moji-pisc-head">
-          <button type="button" class="moji-pisc-reset-btn">重置</button>
+          <button type="button" class="moji-pisc-btn moji-pisc-reset-btn"></button>
         </div>
         <div class="moji-pisc-stage">
           <canvas class="moji-pisc-canvas" width="640" height="360"></canvas>
@@ -178,6 +200,9 @@ describe('参数化可交互仿真卡片 (pisc)', () => {
 
     const unmount = hydratePisc(container)
     expect(typeof unmount).toBe('function')
+
+    const canvas = container.querySelector<PiscCanvasElement>('canvas.moji-pisc-canvas')
+    expect(canvas?.cardTitle).toBe('Lotka-Volterra 周期模型')
 
     const resetBtn = container.querySelector<HTMLButtonElement>('.moji-pisc-reset-btn')
     expect(resetBtn).not.toBeNull()

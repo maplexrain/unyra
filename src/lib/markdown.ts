@@ -90,10 +90,12 @@ marked.use({ gfm: true, breaks: true })
 marked.use({
   renderer: {
     code({ text, lang }) {
-      const name = (lang ?? '').trim().split(/\s+/)[0] ?? ''
+      const trimmedLang = (lang ?? '').trim()
+      const name = trimmedLang.split(/\s+/)[0] ?? ''
       const plugin = pluginForFence(name)
       if (!plugin) return false
-      return renderFenceWith(plugin, text) ?? false
+      const info = trimmedLang.slice(name.length).trim()
+      return renderFenceWith(plugin, text, info) ?? false
     },
     /**
      * 就地图片（相对路径 / file:///）在**解析期就不发 src**：只标 data-moji-local-src。

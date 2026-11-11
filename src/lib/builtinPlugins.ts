@@ -135,7 +135,7 @@ registerRenderPlugin({
   name: '参数化可交互仿真卡片',
   builtin: true,
   fences: [PISC_LANG],
-  render: (source: string, ctx: PluginRenderContext) => piscBlock(source, ctx),
+  render: (source: string, ctx: PluginRenderContext, info?: string) => piscBlock(source, ctx, info),
   hydrate: (root: HTMLElement) => hydratePisc(root),
 })
 
