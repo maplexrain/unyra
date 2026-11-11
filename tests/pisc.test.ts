@@ -170,7 +170,7 @@ const ctx = card.getContext('2d');
     })
 
     expect(caughtError).not.toBeNull()
-    expect(caughtError?.message).toContain('仿真自定义运行时异常')
+    expect((caughtError as Error | null)?.message).toContain('仿真自定义运行时异常')
     cleanup()
   })
 
