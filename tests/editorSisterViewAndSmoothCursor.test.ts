@@ -6,8 +6,8 @@ import { tabTitle, makeTab } from '../src/learn/tabs'
 import type { LearnStore, TabRef } from '../src/learn/types'
 import type { DocWorkspace } from '../src/learn/groups/types'
 
-describe('编辑器行号样式与 IntelliJ IDEA 风格大字号', () => {
-  it('配置了 16px 呼吸边距以及 13.5px 大号高亮当前行行号', () => {
+describe('编辑器行号样式与代码折叠配置', () => {
+  it('配置了 IntelliJ IDEA 风格等宽字体栈与编辑器主题', () => {
     const theme = markdownEditorTheme({ top: 14, bottom: 24, left: 14, right: 24, gutterLeft: 50 })
     expect(theme).toBeDefined()
     expect(IDEA_MONO_FONT).toContain('JetBrains Mono')
@@ -19,7 +19,9 @@ describe('平滑虚拟光标与流光残影扩展 (smoothCursor)', () => {
     const ext = smoothCursor()
     expect(ext).toBeDefined()
     expect(Array.isArray(ext)).toBe(true)
-    expect(ext.length).toBeGreaterThanOrEqual(2)
+    if (Array.isArray(ext)) {
+      expect(ext.length).toBeGreaterThanOrEqual(2)
+    }
   })
 })
 

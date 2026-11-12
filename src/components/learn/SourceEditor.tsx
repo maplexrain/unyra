@@ -3,7 +3,15 @@ import { Compartment, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from '@codemirror/view'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { syntaxHighlighting, indentOnInput, indentUnit, bracketMatching, LanguageDescription } from '@codemirror/language'
+import {
+  syntaxHighlighting,
+  indentOnInput,
+  indentUnit,
+  bracketMatching,
+  LanguageDescription,
+  foldGutter,
+  foldKeymap,
+} from '@codemirror/language'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages as codeLanguages } from '@codemirror/language-data'
 import { countSourceWords } from '../../lib/wordCount'
@@ -150,10 +158,28 @@ export default function SourceEditor({
         doc: valueRef.current,
         extensions: [
           history(),
-          keymap.of([indentWithTab, ...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap]),
+          keymap.of([
+            indentWithTab,
+            ...closeBracketsKeymap,
+            ...foldKeymap,
+            ...defaultKeymap,
+            ...historyKeymap,
+          ]),
           // 左侧代码行号与光标当前行背景突出高亮
           lineNumbers(),
           highlightActiveLineGutter(),
+          // 代码块折叠：支持 HTML 标签、JS/TS 函数、类、对象、Markdown 节等多语言代码块折叠
+          foldGutter({
+            markerDOM(open) {
+              const el = document.createElement('span')
+              el.className = `cm-fold-marker ${open ? 'cm-fold-marker-open' : 'cm-fold-marker-folded'}`
+              el.setAttribute('aria-hidden', 'true')
+              el.innerHTML = open
+                ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'
+                : '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>'
+              return el
+            },
+          }),
           highlightActiveLine(),
           // 平滑移动的虚拟光标动画
           smoothCursor(),
