@@ -261,10 +261,16 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
         const fingerprint = reply.error.slice(0, 80) + '|' + body.replace(/\s+/g, ' ').slice(0, 120)
         const repeated = fingerprint === lastFailure
         lastFailure = fingerprint
+        const isSyntaxError =
+          /Invalid or unexpected token|SyntaxError|Unexpected token/i.test(reply.error)
+        const syntaxAdvice =
+          isSyntaxError && /[\u4e00-\u9fa5\n]/.test(body)
+            ? '\n💡【语法提示】：长篇中文或多行文本一律使用反引号模板字符串（`...`）或 String.raw，避免使用引号数组（["行1", "行2"]）拼接，极易引发 Invalid or unexpected token 解析错误。'
+            : ''
         const advice = repeated
           ? '\n这条报错与上一次**完全同类**，同样的写法再试也不会有不同结果：请换一种策略，' +
             '或先用最小调用（例如 return 1）确认沙箱语义，再回来改这段。连续失败两次以上就先停下来告诉我卡在哪。'
-          : ''
+          : syntaxAdvice
         const head = failureHeader(log)
         const tail = [whatHappened(log), logs.length ? '日志：\n' + logs.join('\n') : ''].filter(Boolean).join('\n')
         return {

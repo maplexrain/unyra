@@ -19,6 +19,8 @@ export const EXECUTE_GUIDE = `唯一的工具是 execute(description, body)：
 - body：一段 JS **匿名函数**源码，形如 ((api)=>{ ... return 结果 })，也可以写成 ((api)=>{...})()。
   可以用 await；返回值会被回给你（超过 3.2 万字符会截断）。
   没有别的工具：应用数据的读写、节点增删改、试卷、状态、工作流都在这里调 api。
+- **长中文文本书写规范**：body 中包含长篇中文、多行文本或 README 时，**一律使用模板字符串（反引号 \`...\`）或 String.raw**，严禁使用引号数组（["第一行", "第二行"]）拼接，极易引发转义冲突报 Invalid or unexpected token。
+- **严禁把大文本正文 return 带回**：写入与收尾操作（如 node.finish、editContent、workspace.write）只需返回操作状态或 true，**绝不要**把数千字正文或完整源码变量放在返回值中二次回显，白白浪费宝贵上下文。
 
 **全量 API 在场与先查再用纪律**
 初始上下文已包含所有 API 的全量签名、详细规格与代码示例（详见下方「API 全量参考手册」）。
@@ -58,9 +60,10 @@ export const EXECUTE_GUIDE = `唯一的工具是 execute(description, body)：
   技能清单（有没有会这个的技能）、mcp（外部工具能不能做）——三查都落空才可以说做不到。
 
 **看一张图 / 一页 PDF（api.see）——唯一不用查 help 的顶层函数，直接当本能用**
-需要亲眼看一样东西时就调它，图片会存进目标资源库并**附在你的下一步里**（与 res.read 读图同一通道）：
-- api.see('https://…/图.png')、api.see('data:image/png;base64,…')、
-  api.see({ base64: '…', mime: 'image/png', name: '给它起的名' })——三种写法都收。
+需要亲眼看一样东西时就调它，图片会存进目标资源库（或复用已有资源）并**附在你的下一步里**（与 res.read 读图同一通道）：
+- **看图支持多种形态**：api.see('https://…/图.png')、api.see('moji:static/<uuid>')（截图回执或已有资源引用）、
+  api.see('工作区/preview.png')（本地或工作区相对路径）、api.see('data:image/png;base64,…')、
+  api.see({ base64: '…', mime: 'image/png', name: '给它起的名' })——全部支持，不需要绕路先转 base64。
 - **看 PDF 用 { pdf, page }**：api.see({ pdf: 'https://…/paper.pdf', page: 3 })——pdf 也可以是
   资源库引用 'moji:static/<uuid>'（先 res.list() 找）或相对用户的文件路径；page 从 1 起，
   单个或数组（一次最多 4 页），省略看第 1 页。它只把页面渲染成图，**不提供文字层**——

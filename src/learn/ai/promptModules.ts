@@ -401,8 +401,10 @@ const proj = await api.node.create({
     key: 'workspace',
     title: '工作区',
     text: `工作区目录（api.workspace.*）——用户交付物的落点：
+- 工作区挂在具体节点之下（物理目录为 docs/.../workspace/），目标刚创建时 nodes 为空且 root 为 null，必须先建立根节点（api.node.create({ kind: 'doc', title, root: true })），工作区才会就位，才能进行 workspace.write 或 process.create；
 - 每个节点的工作区物理目录为 docs/.../workspace/，在磁盘上真实存在；
 - 列/读/写/检索优先走 api.workspace.*（list / read / write / grep，先 await api.workspace.__help() 查用法）；
+- 真实磁盘路径可通过 api.workspace.list() 的 rel 字段获取，process.create 的 cwd 需要此真实路径；
 - 精准引用定位用 api.workspace.grep({ path, anchors: ['关键词'] })，直接获取 1-based 行号，配合 quote 原文引用使用，无需全量读取大文件塞入上下文；
 - api.files.* 也可以操作 workspace/（它是少数对 files 开放的应用目录），但结构化读写请用 api.workspace.*。`,
   },

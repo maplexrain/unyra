@@ -295,8 +295,18 @@ async function run(body, timeoutMs) {
      *    回执照样可读，模型要再用这个节点就按 uuid 重新 get。
      * 2. 其余不可克隆的（函数、裸 Promise）：换成一句可读的说明。
      */
-    const foldNodes = (v, seen) => {
-      if (!v || typeof v !== 'object') return v
+    const MAX_NESTED_STRING_CHARS = 1500
+    const foldNodes = (v, seen, isRoot = true) => {
+      if (!v || typeof v !== 'object') {
+        if (typeof v === 'string' && !isRoot && v.length > MAX_NESTED_STRING_CHARS && !v.startsWith('data:image/')) {
+          return (
+            v.slice(0, 300) +
+            '\n... [折叠: 字段内容共 ' + v.length + ' 字符，已持久化落盘，回执自动折叠避免撑爆上下文] ...\n' +
+            v.slice(-100)
+          )
+        }
+        return v
+      }
       // __node 判定放在 seen 之前：节点对象折成快照就返回（终结点），不进路径也不该挡后面再次出现
       if (v.__node === true) {
         return { __node: true, uuid: v.uuid, kind: v.kind, title: v.title, relations: v.relations }
@@ -305,12 +315,12 @@ async function run(body, timeoutMs) {
       seen.add(v)
       // seen 记的是「当前路径」而不是「见过的全部」：同一对象出现两次是重复，不是循环
       if (Array.isArray(v)) {
-        const out = v.map((x) => foldNodes(x, seen))
+        const out = v.map((x) => foldNodes(x, seen, false))
         seen.delete(v)
         return out
       }
       const out = {}
-      for (const k of Object.keys(v)) out[k] = foldNodes(v[k], seen)
+      for (const k of Object.keys(v)) out[k] = foldNodes(v[k], seen, false)
       seen.delete(v)
       return out
     }

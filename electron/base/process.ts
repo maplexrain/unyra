@@ -8,6 +8,7 @@
  */
 import { spawn, type ChildProcess, execSync } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
+import path from 'node:path'
 import { checkPathPermission } from './permissions'
 import { currentRoot } from '../storage'
 import type {
@@ -118,13 +119,44 @@ export async function baseProcessCreate(opts: BaseProcessCreateOpts): Promise<Ba
   if (!perm.allowed) {
     return { ok: false, error: perm.error || '工作目录权限受限' }
   }
-  if (!existsSync(perm.normalized)) {
-    return { ok: false, error: `工作目录不存在：${perm.normalized}` }
+
+  let finalCwd = perm.normalized
+  if (!existsSync(finalCwd)) {
+    // 智能容错：Agent 在拼接路径时容易漏掉 /workspace/ 这一层（例如把 docs/目标/节点/子项目 写漏了 workspace）
+    let detectedWorkspacePath: string | null = null
+    const parts = finalCwd.split(path.sep)
+    const docsIdx = parts.findIndex((p) => p.toLowerCase() === 'docs')
+    if (docsIdx >= 0 && !parts.some((p) => p.toLowerCase() === 'workspace')) {
+      if (parts.length >= docsIdx + 3) {
+        const candidateParts = [
+          ...parts.slice(0, docsIdx + 3),
+          'workspace',
+          ...parts.slice(docsIdx + 3),
+        ]
+        const candidate = candidateParts.join(path.sep)
+        if (existsSync(candidate) && checkPathPermission(candidate).allowed) {
+          detectedWorkspacePath = candidate
+        }
+      }
+    }
+
+    if (detectedWorkspacePath) {
+      finalCwd = detectedWorkspacePath
+    } else {
+      return {
+        ok: false,
+        error:
+          `工作目录不存在：${perm.normalized}。\n` +
+          '【提示】目标节点的工作区在磁盘上带有 /workspace/ 层级（如 .../docs/<目标>/<节点>/workspace/<子路径>）。' +
+          '建议直接使用 api.workspace.list() 回执中的 rel 字段获取真实目录路径。',
+      }
+    }
   }
+
   try {
-    const st = statSync(perm.normalized)
+    const st = statSync(finalCwd)
     if (!st.isDirectory()) {
-      return { ok: false, error: `工作目录不是一个有效目录：${perm.normalized}` }
+      return { ok: false, error: `工作目录不是一个有效目录：${finalCwd}` }
     }
   } catch (err) {
     return { ok: false, error: `无法访问工作目录：${err instanceof Error ? err.message : String(err)}` }
@@ -138,7 +170,7 @@ export async function baseProcessCreate(opts: BaseProcessCreateOpts): Promise<Ba
     process_id: id,
     command,
     args,
-    cwd: perm.normalized,
+    cwd: finalCwd,
     env,
     child: null,
     running: false,
@@ -151,7 +183,7 @@ export async function baseProcessCreate(opts: BaseProcessCreateOpts): Promise<Ba
   }
 
   processes.set(id, managed)
-  return { ok: true, process_id: id, command, args, cwd: perm.normalized }
+  return { ok: true, process_id: id, command, args, cwd: finalCwd }
 }
 
 /**
@@ -179,7 +211,10 @@ export async function baseProcessStart(processId: string): Promise<BaseProcessSt
     })
 
     const isWindows = process.platform === 'win32'
-    const needsShell = isWindows && /\.(cmd|bat)$/i.test(proc.command)
+    // Windows 下无扩展名的系统命令（如 npm、npx、yarn、pnpm、tsc、vite 等）多为 .cmd/.bat 脚本，
+    // 若不开启 shell: true 则底层 CreateProcessW 找不到可执行文件抛 spawn ENOENT
+    const ext = path.extname(proc.command).toLowerCase()
+    const needsShell = isWindows && (!ext || ext === '.cmd' || ext === '.bat')
 
     const child = spawn(proc.command, sanitizedArgs, {
       cwd: proc.cwd,
