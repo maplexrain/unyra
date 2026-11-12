@@ -263,14 +263,21 @@ async function synthesize(req: TtsSynthesizeRequest): Promise<TtsSynthesizeResul
     }
 
     const start = Date.now()
-    const speed = req.speed ?? 1.0
-    const sid = req.speakerId ?? 0
+    const rawSpeed = Number(req.speed)
+    const speed = !Number.isNaN(rawSpeed) && rawSpeed > 0 ? rawSpeed : 1.0
+    const sid = Math.max(0, Math.min(173, Math.floor(Number(req.speakerId) || 0)))
 
-    const result = await ttsInstance.generateAsync({
+    // 采用同步 generate 接口直接调用底层的 offlineTtsGenerate，
+    // 避开 N-API 异步 worker 跨线程在 Electron 主进程事件循环中 settlement 偶尔抛错 (TTS settlement failed) 的问题
+    const result = ttsInstance.generate({
       text: req.text,
       sid,
       speed,
     })
+
+    if (!result || !result.samples || result.samples.length === 0) {
+      throw new Error('离线模型未生成有效音频采样')
+    }
 
     const wavBuf = encodeWav(result.samples, result.sampleRate)
     const base64 = wavBuf.toString('base64')
@@ -283,6 +290,7 @@ async function synthesize(req: TtsSynthesizeRequest): Promise<TtsSynthesizeResul
     }
   } catch (err: any) {
     console.error('[TTS] 合成失败：', err)
+    ttsInstance = null
     return { ok: false, error: err?.message || String(err) }
   }
 }
