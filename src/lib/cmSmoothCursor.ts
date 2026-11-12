@@ -94,7 +94,7 @@ class SmoothCursorPlugin {
       const dy = top - this.lastTop
       const dist = Math.hypot(dx, dy)
 
-      // 当产生有效位移时：触发速度线（Speed Lines）与起点消散残影（Ghost Echo）
+      // 当产生有效位移时：触发精准对齐位移轨迹的速度线（Speed Lines）
       if (dist >= 4 && this.view.hasFocus) {
         this.spawnSpeedEffects(this.lastLeft, this.lastTop, left, top, height, dx, dy, dist)
       }
@@ -112,27 +112,27 @@ class SmoothCursorPlugin {
       this.trailEl.classList.remove('cm-cursor-no-transition')
       this.trailEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
       this.trailEl.style.height = `${Math.round(height)}px`
-      this.trailEl.style.opacity = this.view.hasFocus ? '0.75' : '0'
+      this.trailEl.style.opacity = this.view.hasFocus ? '0.7' : '0'
 
       if (this.trailTimer !== null) window.clearTimeout(this.trailTimer)
       this.trailTimer = window.setTimeout(() => {
         this.trailEl.style.opacity = '0'
-      }, 180)
+      }, 160)
 
       // 移动中保持常亮，静止后恢复优雅淡入淡出闪烁
       this.resetBlink()
     },
   }
 
-  /** 生成速度线（Speed Line）与起点残影（Ghost Echo） */
+  /** 生成精确对齐位移轨迹的高能速度线（Speed Line） */
   private spawnSpeedEffects(
     x0: number,
     y0: number,
-    _x1: number,
-    _y1: number,
+    x1: number,
+    y1: number,
     height: number,
-    dx: number,
-    dy: number,
+    _dx: number,
+    _dy: number,
     dist: number,
   ): void {
     // 限制池大小不超过 8 个元素，防爆防积压
@@ -141,38 +141,44 @@ class SmoothCursorPlugin {
       oldest?.remove()
     }
 
-    // 1. 起点残影（Ghost Echo）：在离开的旧位置瞬间显现并向外弥散消散
-    const echo = document.createElement('div')
-    echo.className = 'cm-smooth-cursor-echo'
-    echo.setAttribute('aria-hidden', 'true')
-    echo.style.transform = `translate3d(${Math.round(x0)}px, ${Math.round(y0)}px, 0)`
-    echo.style.height = `${Math.round(height)}px`
-    this.view.scrollDOM.appendChild(echo)
-    this.effectPool.push(echo)
+    // 精确以光标垂直中心作为速度线起点与终点
+    const centerY0 = y0 + height / 2 - 1
+    const centerY1 = y1 + height / 2 - 1
+    const lineDx = x1 - x0
+    const lineDy = centerY1 - centerY0
+    const lineDist = Math.hypot(lineDx, lineDy)
+    const angle = (Math.atan2(lineDy, lineDx) * 180) / Math.PI
 
-    // 2. 速度线（Speed Line）：从起点射向终点的高速贯穿微光线条
+    // 1. 速度线外层容器：专门负责精准坐标 translate3d 与 rotate 定位，不运行 keyframe transform，绝不被冲刷丢失坐标
     const speedLine = document.createElement('div')
     speedLine.className = 'cm-smooth-speed-line'
     speedLine.setAttribute('aria-hidden', 'true')
+    speedLine.style.width = `${Math.max(8, Math.round(lineDist))}px`
+    speedLine.style.transform = `translate3d(${Math.round(x0)}px, ${Math.round(centerY0)}px, 0) rotate(${angle}deg)`
 
-    const angle = (Math.atan2(dy, dx) * 180) / Math.PI
-    const centerY = y0 + height / 2 - 1
+    // 2. 内部主流光射线：在容器坐标系内沿 X 轴高速冲刺并消散
+    const streak = document.createElement('div')
+    streak.className = 'cm-smooth-speed-line-streak'
+    speedLine.appendChild(streak)
 
-    speedLine.style.width = `${Math.max(12, Math.round(dist))}px`
-    speedLine.style.transform = `translate3d(${Math.round(x0)}px, ${Math.round(centerY)}px, 0) rotate(${angle}deg)`
+    // 3. 当位移跨度较大（如跨词跳转或点击）时，追加一根平行的次级流光细线，营造动漫级速度线层次
+    if (dist >= 32) {
+      const subStreak = document.createElement('div')
+      subStreak.className = 'cm-smooth-speed-line-streak cm-smooth-speed-substreak'
+      speedLine.appendChild(subStreak)
+    }
 
     this.view.scrollDOM.appendChild(speedLine)
     this.effectPool.push(speedLine)
 
-    // 220ms 播放完毕后从 DOM 自动卸载并回收
-    window.setTimeout(() => {
-      echo.remove()
+    const cleanup = () => {
       speedLine.remove()
-      const i1 = this.effectPool.indexOf(echo)
-      if (i1 !== -1) this.effectPool.splice(i1, 1)
-      const i2 = this.effectPool.indexOf(speedLine)
-      if (i2 !== -1) this.effectPool.splice(i2, 1)
-    }, 220)
+      const idx = this.effectPool.indexOf(speedLine)
+      if (idx !== -1) this.effectPool.splice(idx, 1)
+    }
+
+    streak.addEventListener('animationend', cleanup, { once: true })
+    window.setTimeout(cleanup, 220)
   }
 
   private clearEffects(): void {
@@ -272,26 +278,46 @@ class SmoothCursorPlugin {
 }
 
 const smoothCursorBaseTheme = EditorView.baseTheme({
-  // 速度线（Speed Line）：贯穿位移轨迹的高速发光射线
+  // 速度线容器：纯负责绝对定位与角度旋转，不带 keyframe transform，绝不被动画冲刷坐标
   '.cm-smooth-speed-line': {
     position: 'absolute',
     top: 0,
     left: 0,
     height: '2px',
-    borderRadius: '1px',
     pointerEvents: 'none',
     zIndex: 96,
     transformOrigin: '0 50%',
     contain: 'layout paint style',
+    willChange: 'transform',
+  },
+  // 主速度线流光：在容器坐标系内沿 X 轴高速冲刺并消散，营造强烈的速度感与位移惯性
+  '.cm-smooth-speed-line-streak': {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    borderRadius: '1px',
+    transformOrigin: '0 50%',
     background:
-      'linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--color-seal, #38bdf8) 75%, transparent) 40%, var(--color-seal, #38bdf8) 100%)',
-    boxShadow: '0 0 6px color-mix(in srgb, var(--color-seal, #38bdf8) 85%, transparent)',
-    animation: 'cm-speed-line-streak 210ms cubic-bezier(0.12, 0.9, 0.25, 1) forwards',
+      'linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--color-seal, #38bdf8) 60%, transparent) 25%, var(--color-seal, #38bdf8) 85%, #ffffff 100%)',
+    boxShadow:
+      '0 0 6px var(--color-seal, #38bdf8), 0 0 10px color-mix(in srgb, var(--color-seal, #38bdf8) 70%, transparent)',
+    animation: 'cm-speed-line-streak 190ms cubic-bezier(0.12, 0.9, 0.25, 1) forwards',
+  },
+  // 次级速度线：轻微向上偏移 3px，更细更透，营造动漫级速度线爆发感
+  '.cm-smooth-speed-substreak': {
+    top: '-3px',
+    height: '1px',
+    opacity: '0.6',
+    background:
+      'linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--color-seal, #38bdf8) 40%, transparent) 30%, var(--color-seal, #38bdf8) 90%)',
+    animation: 'cm-speed-line-streak 170ms cubic-bezier(0.12, 0.9, 0.25, 1) forwards',
   },
   '@keyframes cm-speed-line-streak': {
     '0%': {
-      opacity: '0.9',
-      transform: 'scaleX(0.25)',
+      opacity: '0.95',
+      transform: 'scaleX(0.15)',
     },
     '30%': {
       opacity: '1',
@@ -299,47 +325,23 @@ const smoothCursorBaseTheme = EditorView.baseTheme({
     },
     '100%': {
       opacity: '0',
-      transform: 'scaleX(1.05)',
+      transform: 'scaleX(1.04)',
     },
   },
-  // 跟随残影光带（Follower Trail）：略带滞后感，拖出水银般的流光速度感
+  // 跟随残影光带（Follower Trail）：略带滞后感，在位移过程中拖出水银般的流光速度感
   '.cm-smooth-cursor-trail': {
     position: 'absolute',
     top: 0,
     left: 0,
-    width: '3.5px',
-    backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 55%, transparent)',
-    borderRadius: '1.75px',
+    width: '3px',
+    backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 50%, transparent)',
+    borderRadius: '1.5px',
     pointerEvents: 'none',
     zIndex: 98,
     contain: 'layout paint style',
     willChange: 'transform, height, opacity',
-    transition: 'transform 260ms cubic-bezier(0.12, 0.85, 0.22, 1), height 120ms ease, opacity 140ms ease',
-    boxShadow: '0 0 10px color-mix(in srgb, var(--color-seal, #38bdf8) 65%, transparent)',
-  },
-  // 起点消散残影印记（Ghost Echo）：在位移起点原地优雅向外消散
-  '.cm-smooth-cursor-echo': {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '2.5px',
-    backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 65%, transparent)',
-    borderRadius: '1.25px',
-    pointerEvents: 'none',
-    zIndex: 97,
-    contain: 'layout paint style',
-    boxShadow: '0 0 8px color-mix(in srgb, var(--color-seal, #38bdf8) 55%, transparent)',
-    animation: 'cm-ghost-echo-dissolve 200ms cubic-bezier(0.15, 0.85, 0.25, 1) forwards',
-  },
-  '@keyframes cm-ghost-echo-dissolve': {
-    '0%': {
-      opacity: '0.8',
-      transform: 'scale(1)',
-    },
-    '100%': {
-      opacity: '0',
-      transform: 'scale(1.6)',
-    },
+    transition: 'transform 240ms cubic-bezier(0.12, 0.85, 0.22, 1), height 120ms ease, opacity 140ms ease',
+    boxShadow: '0 0 8px color-mix(in srgb, var(--color-seal, #38bdf8) 60%, transparent)',
   },
   // 主虚拟平滑光标：200ms 过渡时间，肉眼清晰可见直接滑移到目标位置
   '.cm-smooth-virtual-cursor': {

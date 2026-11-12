@@ -162,11 +162,14 @@ describe('源码编辑器选区高亮与代码折叠动画', () => {
     expect(theme).toBeDefined()
   })
 
-  it('smoothCursor 扩展返回合法的 CodeMirror 扩展', async () => {
+  it('smoothCursor 扩展返回包含 ViewPlugin 与 BaseTheme 的合法 CodeMirror 扩展', async () => {
     const { smoothCursor } = await import('../src/lib/cmSmoothCursor')
     const ext = smoothCursor()
     expect(ext).toBeDefined()
     expect(Array.isArray(ext)).toBe(true)
+    if (Array.isArray(ext)) {
+      expect(ext.length).toBeGreaterThanOrEqual(2)
+    }
   })
 })
 
