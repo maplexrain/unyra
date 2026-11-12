@@ -466,6 +466,15 @@ export default function SystemAudioWave() {
       attributeFilter: ['data-theme', 'class'],
     })
 
+    // 监听硬件音频设备变动（如插上耳机/启用声卡驱动），自动尝试唤醒频谱
+    const handleDeviceChange = () => {
+      if (disposed || session) return
+      attempts = 0
+      window.clearTimeout(retryTimer)
+      start()
+    }
+    navigator.mediaDevices?.addEventListener('devicechange', handleDeviceChange)
+
     resize()
     start()
     sync()
@@ -476,6 +485,7 @@ export default function SystemAudioWave() {
       io?.disconnect()
       themeWatch?.disconnect()
       document.removeEventListener('visibilitychange', sync)
+      navigator.mediaDevices?.removeEventListener('devicechange', handleDeviceChange)
       pause()
       window.clearTimeout(retryTimer)
       session?.stop()

@@ -45,6 +45,7 @@ asar: true # 资源打进单文件包；Electron 对 fs / nativeImage 的读取�
 asarUnpack:
   - 'node_modules/sherpa-onnx-node/**/*'
   - 'node_modules/sherpa-onnx-*/**/*'
+  - 'dist-electron/*.exe'
 
 win:
   target:

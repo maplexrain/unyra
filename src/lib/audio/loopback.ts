@@ -1,17 +1,17 @@
 /**
- * 系统音频回环采集：把「电脑正在播什么」变成频谱数据，供顶栏的柱形可视化用。
+ * 系统音频回环采集：把「电脑正在播什么」变成频谱数据，供侧栏底部的柱形可视化用。
  *
  * Windows 下 Chromium 能直接给「系统回环」（WASAPI loopback，不占麦克风、系统
- * 也不弹录制提示），但拿它有两条路，优先级如下：
+ * 也不弹录制提示）：
  *
- * 1. **getDisplayMedia**（官方路子）：主进程 `session.setDisplayMediaRequestHandler`
- *    把声音定成 `audio: 'loopback'`（见 electron/app/windows.ts），渲染层要一路
- *    屏幕+声音、到手就把视频轨停掉。近几版 Electron 的官方文档只认这一条；
- * 2. **getUserMedia 的 desktop 音源**（老路子）：`chromeMediaSource: 'desktop'`
- *    的遗留约束，Windows 上多年来一直可用——第 1 条被拒或不支持时兜底。
+ * - **getDisplayMedia**：主进程 `session.setDisplayMediaRequestHandler`
+ *   把声音定成 `audio: 'loopback'`（见 electron/app/windows.ts），渲染层要一路
+ *   屏幕+声音、到手就把视频轨停掉，只保留音频。
  *
- * 两条都走不通（Linux 无回环、无声卡）就抛错，柱形画成一行底座，原因写进
- * canvas 的 title。这里只管采集与释放，画柱在 SystemAudioWave。
+ * 如果系统未接声卡、未插耳机音箱、驱动异常或在无音频重定向的虚拟机/RDP 环境中，
+ * `getDisplayMedia` 会捕获到异常并安全抛出，由外层进入待机呼吸波；**严禁**回退至
+ * 无效参数的 `getUserMedia({ audio: { mandatory: { chromeMediaSource: 'desktop' } } })`，
+ * 否则会触发 Chromium 263 坏 IPC 安全拦截直接终止渲染进程导致白屏。
  */
 import { t } from '../../i18n'
 import { describeTrack } from '../voice/mic'
@@ -40,7 +40,7 @@ export async function startLoopback(opts?: { onEnded?: () => void }): Promise<Lo
   if (isWeb()) {
     throw new Error(t('Web 浏览器模式下不支持系统级音频回环采集'))
   }
-  if (!navigator.mediaDevices?.getDisplayMedia || !navigator.mediaDevices?.getUserMedia) {
+  if (!navigator.mediaDevices?.getDisplayMedia) {
     throw new Error(t('这个运行环境拿不到音频（navigator.mediaDevices 不可用）'))
   }
 
@@ -115,7 +115,6 @@ export async function startLoopback(opts?: { onEnded?: () => void }): Promise<Lo
 }
 
 async function openLoopbackStream(): Promise<{ stream: MediaStream; via: string }> {
-  // 第 1 条：display-media（主进程给 audio:'loopback'）。视频轨到手就停，只要声音
   try {
     const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
     for (const track of stream.getVideoTracks()) track.stop()
@@ -124,15 +123,9 @@ async function openLoopbackStream(): Promise<{ stream: MediaStream; via: string 
       return { stream, via: 'display-media · loopback' }
     }
     for (const track of stream.getTracks()) track.stop()
-    console.warn('[sys-audio] display-media 只给了画面没给声音，换老路子')
+    throw new Error(t('系统音频未激活或设备无声音输出'))
   } catch (err) {
-    console.warn('[sys-audio] display-media 拿不到，换老路子：', err)
+    console.warn('[sys-audio] 系统音频回环捕获不可用（如无声卡、未接音箱耳机或权限受阻）：', err)
+    throw err instanceof Error ? err : new Error(String(err))
   }
-
-  // 第 2 条：getUserMedia 的 desktop 音源（遗留约束，Windows 一直认）
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { mandatory: { chromeMediaSource: 'desktop' } } as unknown as MediaTrackConstraints,
-  })
-  console.info('[sys-audio] 已走 getUserMedia desktop 回环：', describeTrack(stream))
-  return { stream, via: 'getusermedia · desktop' }
 }
