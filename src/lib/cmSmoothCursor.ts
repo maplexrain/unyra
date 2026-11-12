@@ -54,30 +54,41 @@ class SmoothCursorPlugin {
 
       // 初次出现（或从无焦点恢复）时：瞬间落位，不产生跨越整个屏幕的滑动
       if (!this.hasPosition) {
-        this.cursorEl.style.transition = 'none'
+        this.cursorEl.classList.add('cm-cursor-no-transition')
         this.cursorEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
         this.cursorEl.style.height = `${Math.round(height)}px`
-        void this.cursorEl.offsetHeight // 强制触发同步回流以应用 transition: none
-        this.cursorEl.style.transition = ''
         this.lastLeft = left
         this.lastTop = top
         this.hasPosition = true
         this.cursorEl.style.opacity = '1'
         this.resetBlink()
+        requestAnimationFrame(() => {
+          this.cursorEl.classList.remove('cm-cursor-no-transition')
+        })
         return
       }
 
-      // 若跨行大距离跳转（如点击很远位置或翻页），暂时禁用过渡避免晃眼漂移
+      // 若跨多行大距离跳转（如点击很远位置或翻页），暂时禁用过渡避免晃眼漂移
       const dist = Math.hypot(left - this.lastLeft, top - this.lastTop)
-      if (dist > 280) {
-        this.cursorEl.style.transition = 'none'
-        void this.cursorEl.offsetHeight
-        this.cursorEl.style.transition = ''
+      const lineDist = Math.abs(top - this.lastTop)
+      if (dist > 220 || lineDist > 45) {
+        this.cursorEl.classList.add('cm-cursor-no-transition')
+        this.cursorEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
+        this.cursorEl.style.height = `${Math.round(height)}px`
+        this.lastLeft = left
+        this.lastTop = top
+        this.cursorEl.style.opacity = '1'
+        this.resetBlink()
+        requestAnimationFrame(() => {
+          this.cursorEl.classList.remove('cm-cursor-no-transition')
+        })
+        return
       }
 
       this.lastLeft = left
       this.lastTop = top
 
+      this.cursorEl.classList.remove('cm-cursor-no-transition')
       this.cursorEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
       this.cursorEl.style.height = `${Math.round(height)}px`
       this.cursorEl.style.opacity = '1'
@@ -98,11 +109,11 @@ class SmoothCursorPlugin {
     this.view = view
 
     this.cursorEl = document.createElement('div')
-    this.cursorEl.className = 'cm-smooth-virtual-cursor'
+    this.cursorEl.className = 'cm-smooth-virtual-cursor cm-cursor-no-transition'
     this.cursorEl.setAttribute('aria-hidden', 'true')
     this.cursorEl.style.opacity = '0'
 
-    // 挂载至 CodeMirror 滚动容器内部
+    // 挂载至 CodeMirror 滚动容器内部（cm-scroller 已具备 position: relative）
     this.view.scrollDOM.appendChild(this.cursorEl)
 
     this.view.dom.addEventListener('focusin', this.onFocusIn)
@@ -135,7 +146,7 @@ class SmoothCursorPlugin {
       if (this.view.hasFocus && this.view.state.selection.main.empty) {
         this.cursorEl.classList.add('cm-cursor-blink')
       }
-    }, 500)
+    }, 450)
   }
 
   private stopBlink(): void {
@@ -163,10 +174,14 @@ const smoothCursorBaseTheme = EditorView.baseTheme({
     backgroundColor: 'var(--color-seal)',
     borderRadius: '1px',
     pointerEvents: 'none',
-    zIndex: 90,
+    zIndex: 99,
+    contain: 'layout paint style',
     willChange: 'transform, height',
-    transition: 'transform 85ms cubic-bezier(0.12, 0.9, 0.22, 1), height 65ms ease, opacity 100ms ease',
-    boxShadow: '0 0 4px color-mix(in srgb, var(--color-seal) 45%, transparent)',
+    transition: 'transform 115ms cubic-bezier(0.16, 1, 0.3, 1), height 80ms ease, opacity 90ms ease',
+    boxShadow: '0 0 5px color-mix(in srgb, var(--color-seal) 50%, transparent)',
+  },
+  '.cm-smooth-virtual-cursor.cm-cursor-no-transition': {
+    transition: 'none !important',
   },
   '@keyframes cm-virtual-cursor-pulse': {
     '0%, 100%': { opacity: 1 },
@@ -175,9 +190,13 @@ const smoothCursorBaseTheme = EditorView.baseTheme({
   '.cm-smooth-virtual-cursor.cm-cursor-blink': {
     animation: 'cm-virtual-cursor-pulse 1.06s ease-in-out infinite',
   },
-  // 隐藏 CodeMirror 原生生硬突变光标，由虚拟光标接管渲染
+  // 彻底隐藏浏览器原生 Caret 与 CodeMirror 突变光标，由平滑虚拟光标独占渲染
+  '.cm-content': {
+    caretColor: 'transparent !important',
+  },
   '.cm-cursor, .cm-dropCursor': {
     opacity: '0 !important',
+    visibility: 'hidden !important',
   },
 })
 

@@ -67,13 +67,14 @@ export function markdownEditorTheme(pad: {
       fontFamily: IDEA_MONO_FONT,
       lineHeight: '1.75',
       WebkitFontSmoothing: 'antialiased',
+      position: 'relative',
     },
     '.cm-content': {
       paddingTop: pad.top + 'px',
       paddingBottom: pad.bottom + 'px',
       paddingLeft: pad.left + 'px',
       paddingRight: pad.right + 'px',
-      caretColor: 'var(--color-seal)',
+      caretColor: 'transparent !important',
       fontFamily: IDEA_MONO_FONT,
     },
     '&.cm-focused': { outline: 'none' },
@@ -92,10 +93,11 @@ export function markdownEditorTheme(pad: {
       fontFamily: IDEA_MONO_FONT,
     },
     // 注意：CodeMirror 默认对 .cm-lineNumbers .cm-gutterElement 设置了 padding: 0 3px 0 5px
-    // 导致行号贴紧右侧边框。通过 .cm-lineNumbers .cm-gutterElement 提高特异性并赋予 16px 右内边距，确保呼吸留白
+    // 导致行号贴紧右侧边框。通过 .cm-lineNumbers .cm-gutterElement 赋予 16px 右内边距，确保呼吸留白。
+    // 行高与盒模型严格与正文同步，绝不对 font-size 做 transition，彻底根除光标移动画面抖动。
     '.cm-gutterElement, .cm-lineNumbers .cm-gutterElement': {
       padding: '0 16px 0 10px !important',
-      minWidth: '40px !important',
+      minWidth: '42px !important',
       textAlign: 'right !important',
       fontSize: '11.5px',
       letterSpacing: '-0.3px',
@@ -103,18 +105,18 @@ export function markdownEditorTheme(pad: {
       fontVariantNumeric: 'tabular-nums',
       opacity: '0.45',
       color: 'var(--color-ink-faint)',
-      transition: 'color 0.12s ease, opacity 0.12s ease, font-size 0.12s ease',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'flex-end',
+      boxSizing: 'border-box',
+      lineHeight: 'inherit',
+      transition: 'color 0.12s ease, opacity 0.12s ease',
     },
-    // IDEA 风格：当前行行号不带粗暴色块，字体显著变大（13.5px），并以高对比度前景色与加粗自然凸显
+    // IDEA 风格：当前行行号不带粗暴色块，字体显著变大（通过 transform 放大 16%，零重排零抖动），并以高对比度前景色与加粗自然凸显
     '.cm-activeLineGutter, .cm-lineNumbers .cm-activeLineGutter': {
       color: 'var(--color-ink-strong) !important',
       backgroundColor: 'transparent !important',
       opacity: '1 !important',
       fontWeight: '700 !important',
-      fontSize: '13.5px !important',
+      transform: 'scale(1.16)',
+      transformOrigin: 'right center',
     },
     // IDEA 风格：当前行整行柔和横向带状底色高亮，沉浸不晃眼
     '.cm-activeLine': {

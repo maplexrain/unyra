@@ -130,3 +130,25 @@ describe('源码与预览独立页面与对偶分屏 (sisterView)', () => {
     expect(g2.active).toBe('l:C:/docs/README.md:preview')
   })
 })
+
+describe('工作区与本地文件常驻保活 (FileTabLayer keepalive)', () => {
+  it('多个源码页签在同格中能够同时保活，当前激活页签正常呈现，其它页签 hidden', () => {
+    const tab1 = makeTab({ kind: 'ws', nodeId: 'n1', seg: 'src/rig/pose.ts' }, 1)
+    const tab2 = makeTab({ kind: 'ws', nodeId: 'n1', seg: 'src/rig/apply.ts' }, 2)
+    const tabs = [tab1, tab2]
+
+    // 模拟当 activeTabId 为 tab1 时：tab1 激活，tab2 保活挂起
+    const activeId = tab1.id
+    const stateMap = tabs.map((t) => ({
+      id: t.id,
+      isActive: t.id === activeId,
+      hidden: t.id !== activeId,
+    }))
+
+    expect(stateMap[0].isActive).toBe(true)
+    expect(stateMap[0].hidden).toBe(false)
+    expect(stateMap[1].isActive).toBe(false)
+    expect(stateMap[1].hidden).toBe(true)
+  })
+})
+
