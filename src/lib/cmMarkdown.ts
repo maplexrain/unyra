@@ -79,13 +79,13 @@ export function markdownEditorTheme(pad: {
     },
     '&.cm-focused': { outline: 'none' },
     '.cm-placeholder': { color: 'var(--color-ink-faint)' },
-    // 现代专业 IDE 风格文字选中样式：纯透明发光遮罩层，绝对不篡改文字颜色，保持语法高亮 100% 完好
+    // 现代专业 IDE 风格文字选中样式：清爽轻透的发光遮罩层，保持语法高亮 100% 完好，视觉轻盈不压抑
     '.cm-selectionBackground': {
-      backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 32%, rgba(56, 189, 248, 0.36)) !important',
+      backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 14%, rgba(56, 189, 248, 0.15)) !important',
       borderRadius: '2px',
     },
     '&.cm-focused .cm-selectionBackground': {
-      backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 42%, rgba(56, 189, 248, 0.48)) !important',
+      backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 18%, rgba(56, 189, 248, 0.20)) !important',
     },
     // 原生选中伪元素：完全透明背景（交给底层的 cm-selectionBackground 渲染），
     // 强制 color: currentColor 锁定各 Token 自带的语法高亮颜色，绝不被任何全局选中样式变成白字
@@ -104,8 +104,8 @@ export function markdownEditorTheme(pad: {
       userSelect: 'none',
       fontFamily: IDEA_MONO_FONT,
     },
-    // 行号单元格：与折叠槽并列排布，右侧保留适度呼吸间距
-    '.cm-gutterElement, .cm-lineNumbers .cm-gutterElement': {
+    // 行号单元格：仅针对 lineNumbers 栏生效，右侧保留适度呼吸间距，绝不污染折叠栏
+    '.cm-lineNumbers .cm-gutterElement': {
       padding: '0 8px 0 10px !important',
       minWidth: '38px !important',
       textAlign: 'right !important',
@@ -119,11 +119,11 @@ export function markdownEditorTheme(pad: {
       lineHeight: 'inherit',
       transition: 'color 0.12s ease, opacity 0.12s ease',
     },
-    // 代码块折叠栏 (Fold Gutter) - 紧凑内嵌在行号与右边框之间，绝不压线或外凸
+    // 代码块折叠栏 (Fold Gutter) - 紧凑内嵌在行号与右边框之间，完全居中偏左排布，绝不压线或出界
     '.cm-foldGutter': {
       width: '18px',
       minWidth: '18px',
-      padding: '0 2px 0 0',
+      padding: '0',
       userSelect: 'none',
       cursor: 'default',
     },
@@ -131,11 +131,16 @@ export function markdownEditorTheme(pad: {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
+      width: '18px !important',
+      minWidth: '18px !important',
       padding: '0 !important',
+      margin: '0 !important',
+      textAlign: 'center !important',
       cursor: 'pointer',
       color: 'var(--color-seal, #38bdf8)',
       backgroundColor: 'transparent !important',
       transform: 'none !important',
+      boxSizing: 'border-box',
     },
     // 折叠小图标与平滑旋转动效：收起向右（0deg），展开向下（90deg），200ms 丝滑过渡
     '.cm-fold-marker': {
@@ -148,6 +153,8 @@ export function markdownEditorTheme(pad: {
       cursor: 'pointer',
       color: 'var(--color-seal, #38bdf8)',
       backgroundColor: 'transparent !important',
+      // 向左微移 2px，彻底避开右侧边框线条，完整舒展展示小箭头
+      transform: 'translateX(-2px)',
       transition: 'opacity 0.15s ease, color 0.15s ease, transform 0.15s ease',
     },
     '.cm-fold-marker .cm-fold-chevron': {
@@ -167,11 +174,11 @@ export function markdownEditorTheme(pad: {
     '.cm-fold-marker:hover': {
       opacity: '1 !important',
       color: 'var(--color-seal, #38bdf8) !important',
-      transform: 'scale(1.2)',
+      transform: 'translateX(-2px) scale(1.2)',
       backgroundColor: 'transparent !important',
     },
     '.cm-fold-marker:active': {
-      transform: 'scale(0.9)',
+      transform: 'translateX(-2px) scale(0.9)',
     },
     // 折叠状态标记醒目常驻，小箭头朝右（0度）
     '.cm-fold-marker-folded': {
@@ -194,9 +201,9 @@ export function markdownEditorTheme(pad: {
     '.cm-foldPlaceholder': {
       display: 'inline-flex',
       alignItems: 'center',
-      backgroundColor: 'color-mix(in srgb, var(--color-seal) 14%, var(--color-card)) !important',
-      color: 'var(--color-seal) !important',
-      border: '1px solid color-mix(in srgb, var(--color-seal) 35%, transparent) !important',
+      backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 14%, var(--color-card)) !important',
+      color: 'var(--color-seal, #38bdf8) !important',
+      border: '1px solid color-mix(in srgb, var(--color-seal, #38bdf8) 35%, transparent) !important',
       borderRadius: '4px',
       padding: '0 6px',
       margin: '0 4px',
@@ -206,14 +213,14 @@ export function markdownEditorTheme(pad: {
       cursor: 'pointer',
       letterSpacing: '1px',
       userSelect: 'none',
-      boxShadow: '0 1px 3px color-mix(in srgb, var(--color-seal) 10%, transparent)',
+      boxShadow: '0 1px 3px color-mix(in srgb, var(--color-seal, #38bdf8) 10%, transparent)',
       transition: 'all 0.16s ease',
       animation: 'cm-fold-pill-in 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
     },
     '.cm-foldPlaceholder:hover': {
-      backgroundColor: 'color-mix(in srgb, var(--color-seal) 24%, var(--color-card)) !important',
-      borderColor: 'var(--color-seal) !important',
-      boxShadow: '0 0 8px color-mix(in srgb, var(--color-seal) 35%, transparent)',
+      backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 24%, var(--color-card)) !important',
+      borderColor: 'var(--color-seal, #38bdf8) !important',
+      boxShadow: '0 0 8px color-mix(in srgb, var(--color-seal, #38bdf8) 35%, transparent)',
       transform: 'scale(1.04)',
     },
     '.cm-foldPlaceholder:active': {

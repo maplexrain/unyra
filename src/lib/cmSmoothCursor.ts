@@ -75,26 +75,7 @@ class SmoothCursorPlugin {
         return
       }
 
-      const dist = Math.hypot(left - this.lastLeft, top - this.lastTop)
-
-      // 仅当超远距离点击跳转（如跨越半个屏幕或换页）时瞬间定位，避免长途穿梭
-      if (dist > 350) {
-        this.cursorEl.classList.add('cm-cursor-no-transition')
-        this.cursorEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
-        this.cursorEl.style.height = `${Math.round(height)}px`
-
-        this.lastLeft = left
-        this.lastTop = top
-        this.cursorEl.style.opacity = this.view.hasFocus ? '1' : '0.45'
-
-        this.resetBlink()
-        requestAnimationFrame(() => {
-          this.cursorEl.classList.remove('cm-cursor-no-transition')
-        })
-        return
-      }
-
-      // 正常打字、删除、光标键位移或近距离点击：以肉眼清晰可见的 200ms 平滑轨道直接滑移到目标位置
+      // 无论位移距离多远（打字、点击、跨行跨段跳转），一律以肉眼清晰可见的 200ms 平滑轨道直接平移至目标位置
       this.lastLeft = left
       this.lastTop = top
 
