@@ -9,19 +9,16 @@ interface CursorMeasure {
 }
 
 /**
- * 平滑移动与流光残影虚拟光标插件：
+ * 平滑直接平移的虚拟光标插件：
  * 1. 严格使用 CodeMirror 6 的 requestMeasure 机制执行排版读取与写回；
- * 2. 主光标平滑快速响应，身披跟随光带（Trail Follower）；
- * 3. 光标每次位移时在原位留下优雅消散的微光残影印记（Ghost Echo），
- *    营造媲美现代科幻编辑器的行云流水般的打字动效体验。
+ * 2. 纯粹直接平移过渡（Direct Smooth Glide）：光标位移时以肉眼清晰可见的平滑轨道直接滑移至目标位置；
+ * 3. 移动中保持高亮常亮，静止后恢复优雅淡入淡出呼吸闪烁；
+ * 4. 彻底隐藏浏览器原生 Caret 与原生突跳光标，避免任何视觉重叠干扰。
  */
 class SmoothCursorPlugin {
   readonly view: EditorView
   private cursorEl: HTMLDivElement
-  private trailEl: HTMLDivElement
-  private echoPool: HTMLDivElement[] = []
   private blinkTimer: number | null = null
-  private trailFadeTimer: number | null = null
   private lastLeft = 0
   private lastTop = 0
   private hasPosition = false
@@ -49,8 +46,6 @@ class SmoothCursorPlugin {
     write: (measure: CursorMeasure) => {
       if (!measure.visible) {
         this.cursorEl.style.opacity = '0'
-        this.trailEl.style.opacity = '0'
-        this.clearEchoes()
         this.stopBlink()
         this.hasPosition = false
         return
@@ -58,84 +53,53 @@ class SmoothCursorPlugin {
 
       const { left, top, height } = measure
 
-      // 初次出现（或从无焦点恢复）时：瞬间落位，不产生残影与跨越屏幕的滑动
+      // 初次出现（或从无焦点恢复）时：瞬间落位，不产生跨越整个屏幕的滑动
       if (!this.hasPosition) {
         this.cursorEl.classList.add('cm-cursor-no-transition')
-        this.trailEl.classList.add('cm-cursor-no-transition')
-
         this.cursorEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
         this.cursorEl.style.height = `${Math.round(height)}px`
-
-        this.trailEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
-        this.trailEl.style.height = `${Math.round(height)}px`
 
         this.lastLeft = left
         this.lastTop = top
         this.hasPosition = true
         this.cursorEl.style.opacity = '1'
-        this.trailEl.style.opacity = '0'
 
         this.resetBlink()
         requestAnimationFrame(() => {
           this.cursorEl.classList.remove('cm-cursor-no-transition')
-          this.trailEl.classList.remove('cm-cursor-no-transition')
         })
         return
       }
 
       const dist = Math.hypot(left - this.lastLeft, top - this.lastTop)
-      const lineDist = Math.abs(top - this.lastTop)
 
-      // 若跨多行大距离跳转（如点击很远位置或翻页），暂时禁用过渡与残影避免晃眼漂移
-      if (dist > 220 || lineDist > 45) {
+      // 仅当超远距离点击跳转（如鼠标点击跨越整个屏幕或换页）时瞬间定位，避免长途穿梭
+      if (dist > 300) {
         this.cursorEl.classList.add('cm-cursor-no-transition')
-        this.trailEl.classList.add('cm-cursor-no-transition')
-
         this.cursorEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
         this.cursorEl.style.height = `${Math.round(height)}px`
-
-        this.trailEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
-        this.trailEl.style.height = `${Math.round(height)}px`
 
         this.lastLeft = left
         this.lastTop = top
         this.cursorEl.style.opacity = '1'
-        this.trailEl.style.opacity = '0'
 
         this.resetBlink()
         requestAnimationFrame(() => {
           this.cursorEl.classList.remove('cm-cursor-no-transition')
-          this.trailEl.classList.remove('cm-cursor-no-transition')
         })
         return
       }
 
-      // 如果发生了有效位移，在起始旧位置产生一抹消散残影印记（Ghost Echo）
-      if (dist >= 3) {
-        this.spawnGhostEcho(this.lastLeft, this.lastTop, height)
-      }
+      // 正常打字、删除、光标键位移或近距离点击：以肉眼清晰可见的平滑轨道直接滑移到目标位置
+      this.lastLeft = left
+      this.lastTop = top
 
-      // 更新主光标位置（快速响应，率先到达）
       this.cursorEl.classList.remove('cm-cursor-no-transition')
       this.cursorEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
       this.cursorEl.style.height = `${Math.round(height)}px`
       this.cursorEl.style.opacity = '1'
 
-      // 更新跟随残影层位置（滞后插值跟随，拉出流光尾迹）
-      this.trailEl.classList.remove('cm-cursor-no-transition')
-      this.trailEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
-      this.trailEl.style.height = `${Math.round(height)}px`
-      this.trailEl.style.opacity = '0.55'
-
-      // 移动停止后淡出跟随残影层
-      if (this.trailFadeTimer !== null) window.clearTimeout(this.trailFadeTimer)
-      this.trailFadeTimer = window.setTimeout(() => {
-        this.trailEl.style.opacity = '0'
-      }, 160)
-
-      this.lastLeft = left
-      this.lastTop = top
-
+      // 移动中保持常亮，静止后恢复优雅淡入淡出闪烁
       this.resetBlink()
     },
   }
@@ -143,8 +107,6 @@ class SmoothCursorPlugin {
   private onFocusIn = () => this.scheduleMeasure()
   private onFocusOut = () => {
     this.cursorEl.style.opacity = '0'
-    this.trailEl.style.opacity = '0'
-    this.clearEchoes()
     this.stopBlink()
     this.hasPosition = false
   }
@@ -153,20 +115,13 @@ class SmoothCursorPlugin {
   constructor(view: EditorView) {
     this.view = view
 
-    // 跟随残影光标（在底层）
-    this.trailEl = document.createElement('div')
-    this.trailEl.className = 'cm-smooth-cursor-trail cm-cursor-no-transition'
-    this.trailEl.setAttribute('aria-hidden', 'true')
-    this.trailEl.style.opacity = '0'
-
-    // 主光标（在顶层）
+    // 虚拟平滑光标
     this.cursorEl = document.createElement('div')
     this.cursorEl.className = 'cm-smooth-virtual-cursor cm-cursor-no-transition'
     this.cursorEl.setAttribute('aria-hidden', 'true')
     this.cursorEl.style.opacity = '0'
 
     // 挂载至 CodeMirror 滚动容器内部
-    this.view.scrollDOM.appendChild(this.trailEl)
     this.view.scrollDOM.appendChild(this.cursorEl)
 
     this.view.dom.addEventListener('focusin', this.onFocusIn)
@@ -174,38 +129,6 @@ class SmoothCursorPlugin {
     this.view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true })
 
     this.scheduleMeasure()
-  }
-
-  /** 在旧位置生成一枚短命的消散残影印记 */
-  private spawnGhostEcho(x: number, y: number, height: number): void {
-    // 限制同时存在的残影数量不超过 4 个，保证极致性能
-    if (this.echoPool.length >= 4) {
-      const oldest = this.echoPool.shift()
-      oldest?.remove()
-    }
-
-    const echo = document.createElement('div')
-    echo.className = 'cm-smooth-cursor-echo'
-    echo.setAttribute('aria-hidden', 'true')
-    echo.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`
-    echo.style.height = `${Math.round(height)}px`
-
-    this.view.scrollDOM.appendChild(echo)
-    this.echoPool.push(echo)
-
-    // 动画播完（180ms）自动移除
-    window.setTimeout(() => {
-      echo.remove()
-      const idx = this.echoPool.indexOf(echo)
-      if (idx !== -1) this.echoPool.splice(idx, 1)
-    }, 180)
-  }
-
-  private clearEchoes(): void {
-    for (const echo of this.echoPool) {
-      echo.remove()
-    }
-    this.echoPool = []
   }
 
   update(update: ViewUpdate): void {
@@ -243,73 +166,28 @@ class SmoothCursorPlugin {
 
   destroy(): void {
     this.stopBlink()
-    if (this.trailFadeTimer !== null) {
-      window.clearTimeout(this.trailFadeTimer)
-      this.trailFadeTimer = null
-    }
-    this.clearEchoes()
     this.view.dom.removeEventListener('focusin', this.onFocusIn)
     this.view.dom.removeEventListener('focusout', this.onFocusOut)
     this.view.scrollDOM.removeEventListener('scroll', this.onScroll)
     this.cursorEl.remove()
-    this.trailEl.remove()
   }
 }
 
 const smoothCursorBaseTheme = EditorView.baseTheme({
-  // 主虚拟光标：响应迅速、鲜亮纯净
+  // 平滑虚拟光标：135ms 黄金过渡时间，肉眼清晰可见直接滑移到目标位置
   '.cm-smooth-virtual-cursor': {
     position: 'absolute',
     top: 0,
     left: 0,
-    width: '2px',
+    width: '2.5px',
     backgroundColor: 'var(--color-seal)',
-    borderRadius: '1px',
+    borderRadius: '1.25px',
     pointerEvents: 'none',
     zIndex: 99,
     contain: 'layout paint style',
     willChange: 'transform, height',
-    transition: 'transform 95ms cubic-bezier(0.16, 1, 0.3, 1), height 80ms ease, opacity 90ms ease',
-    boxShadow: '0 0 5px color-mix(in srgb, var(--color-seal) 50%, transparent)',
-  },
-  // 跟随残影光带（Follower Trail）：稍带滞后感，拖出水银流光
-  '.cm-smooth-cursor-trail': {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '3.5px',
-    backgroundColor: 'color-mix(in srgb, var(--color-seal) 55%, transparent)',
-    borderRadius: '1.5px',
-    pointerEvents: 'none',
-    zIndex: 98,
-    contain: 'layout paint style',
-    willChange: 'transform, height, opacity',
-    transition: 'transform 165ms cubic-bezier(0.12, 0.85, 0.25, 1), height 80ms ease, opacity 140ms ease',
-    boxShadow: '0 0 8px color-mix(in srgb, var(--color-seal) 60%, transparent)',
-  },
-  // 位移原位消散残影印记（Ghost Echo）：在起点原地优雅扩散渐隐
-  '.cm-smooth-cursor-echo': {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '2.5px',
-    backgroundColor: 'color-mix(in srgb, var(--color-seal) 50%, transparent)',
-    borderRadius: '1px',
-    pointerEvents: 'none',
-    zIndex: 97,
-    contain: 'layout paint style',
-    boxShadow: '0 0 6px color-mix(in srgb, var(--color-seal) 45%, transparent)',
-    animation: 'cm-ghost-echo-dissolve 180ms cubic-bezier(0.2, 0.8, 0.25, 1) forwards',
-  },
-  '@keyframes cm-ghost-echo-dissolve': {
-    '0%': {
-      opacity: 0.65,
-      transform: 'scaleX(1)',
-    },
-    '100%': {
-      opacity: 0,
-      transform: 'scaleX(1.8)',
-    },
+    transition: 'transform 135ms cubic-bezier(0.18, 0.95, 0.25, 1), height 90ms ease, opacity 100ms ease',
+    boxShadow: '0 0 6px color-mix(in srgb, var(--color-seal) 65%, transparent)',
   },
   '.cm-cursor-no-transition': {
     transition: 'none !important',
@@ -331,7 +209,7 @@ const smoothCursorBaseTheme = EditorView.baseTheme({
   },
 })
 
-/** 导出平滑虚拟光标与残影扩展 */
+/** 导出平滑虚拟光标扩展 */
 export function smoothCursor(): Extension {
   return [ViewPlugin.fromClass(SmoothCursorPlugin), smoothCursorBaseTheme]
 }

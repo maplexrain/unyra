@@ -79,16 +79,19 @@ export function markdownEditorTheme(pad: {
     },
     '&.cm-focused': { outline: 'none' },
     '.cm-placeholder': { color: 'var(--color-ink-faint)' },
-    // 现代专业 IDE 风格文字选中样式：通透微光深蓝混合，文字高亮清晰锐利，消除暗浊脏色
+    // 现代专业 IDE 风格文字选中样式：纯透明遮罩层，绝对不篡改文字颜色，保持语法高亮 100% 完好
     '.cm-selectionBackground': {
-      backgroundColor: 'color-mix(in srgb, var(--color-seal) 30%, rgba(59, 130, 246, 0.32)) !important',
+      backgroundColor: 'color-mix(in srgb, var(--color-seal, #3b82f6) 24%, rgba(59, 130, 246, 0.26)) !important',
       borderRadius: '2px',
     },
     '&.cm-focused .cm-selectionBackground': {
-      backgroundColor: 'color-mix(in srgb, var(--color-seal) 36%, rgba(59, 130, 246, 0.42)) !important',
+      backgroundColor: 'color-mix(in srgb, var(--color-seal, #3b82f6) 28%, rgba(59, 130, 246, 0.32)) !important',
     },
-    '.cm-content ::selection': {
-      backgroundColor: 'color-mix(in srgb, var(--color-seal) 36%, rgba(59, 130, 246, 0.42)) !important',
+    // 原生选中伪元素：锁定文字自身颜色为 inherit，绝对不破坏语法高亮
+    '.cm-content ::selection, .cm-editor ::selection': {
+      backgroundColor: 'color-mix(in srgb, var(--color-seal, #3b82f6) 28%, rgba(59, 130, 246, 0.32)) !important',
+      color: 'inherit !important',
+      WebkitTextFillColor: 'inherit !important',
     },
     '.cm-cursor': { borderLeftColor: 'var(--color-seal)' },
     // 左侧行号栏 (Gutters) - IntelliJ IDEA 风格
@@ -100,11 +103,9 @@ export function markdownEditorTheme(pad: {
       userSelect: 'none',
       fontFamily: IDEA_MONO_FONT,
     },
-    // 注意：CodeMirror 默认对 .cm-lineNumbers .cm-gutterElement 设置了 padding: 0 3px 0 5px
-    // 导致行号贴紧右侧边框。通过 .cm-lineNumbers .cm-gutterElement 赋予右内边距，确保呼吸留白。
-    // 行高与盒模型严格与正文同步，绝不对 font-size 做 transition，彻底根除光标移动画面抖动。
+    // 行号单元格：与折叠槽并列排布，右侧保留适度呼吸间距
     '.cm-gutterElement, .cm-lineNumbers .cm-gutterElement': {
-      padding: '0 10px 0 10px !important',
+      padding: '0 8px 0 10px !important',
       minWidth: '38px !important',
       textAlign: 'right !important',
       fontSize: '11.5px',
@@ -117,10 +118,11 @@ export function markdownEditorTheme(pad: {
       lineHeight: 'inherit',
       transition: 'color 0.12s ease, opacity 0.12s ease',
     },
-    // 代码块折叠栏 (Fold Gutter) - IntelliJ IDEA / VS Code 风格
+    // 代码块折叠栏 (Fold Gutter) - 紧凑内嵌在行号与右边框之间，绝不压线或外凸
     '.cm-foldGutter': {
-      width: '18px',
-      minWidth: '18px',
+      width: '14px',
+      minWidth: '14px',
+      paddingRight: '4px',
       userSelect: 'none',
       cursor: 'default',
     },
@@ -131,17 +133,21 @@ export function markdownEditorTheme(pad: {
       padding: '0 !important',
       cursor: 'pointer',
       color: 'var(--color-ink-faint)',
+      backgroundColor: 'transparent !important',
+      transform: 'none !important',
     },
+    // 折叠小图标：纯净线条小三角，无任何外框背景色，绝不产生突出的背景色块
     '.cm-fold-marker': {
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
-      width: '14px',
-      height: '14px',
-      borderRadius: '3px',
+      width: '12px',
+      height: '12px',
+      borderRadius: '0',
       cursor: 'pointer',
       color: 'var(--color-ink-faint)',
-      transition: 'all 0.12s ease',
+      backgroundColor: 'transparent !important',
+      transition: 'opacity 0.12s ease, color 0.12s ease',
     },
     // 展开状态标记平时幽雅半隐，鼠标悬停在左侧栏或该行时自然浮现
     '.cm-fold-marker-open': {
@@ -153,12 +159,13 @@ export function markdownEditorTheme(pad: {
     '.cm-fold-marker:hover': {
       opacity: '1 !important',
       color: 'var(--color-seal) !important',
-      backgroundColor: 'color-mix(in srgb, var(--color-seal) 16%, transparent)',
+      backgroundColor: 'transparent !important',
     },
     // 折叠状态标记醒目常驻，标明代码已收拢
     '.cm-fold-marker-folded': {
       opacity: '1 !important',
       color: 'var(--color-seal) !important',
+      backgroundColor: 'transparent !important',
     },
     // 折叠后的行尾占位胶囊（...），点击即可一键展开
     '.cm-foldPlaceholder': {
@@ -185,14 +192,19 @@ export function markdownEditorTheme(pad: {
       boxShadow: '0 0 6px color-mix(in srgb, var(--color-seal) 30%, transparent)',
       transform: 'translateY(-0.5px)',
     },
-    // IDEA 风格：当前行行号不带粗暴色块，字体显著变大（通过 transform 放大 16%，零重排零抖动），并以高对比度前景色与加粗自然凸显
-    '.cm-activeLineGutter, .cm-lineNumbers .cm-activeLineGutter': {
+    // IDEA 风格：当前行行号不带粗暴色块，字体显著变大（仅针对行号数字进行放大，绝不作用于折叠列）
+    '.cm-lineNumbers .cm-activeLineGutter': {
       color: 'var(--color-ink-strong) !important',
       backgroundColor: 'transparent !important',
       opacity: '1 !important',
       fontWeight: '700 !important',
       transform: 'scale(1.16)',
       transformOrigin: 'right center',
+    },
+    // 确保折叠列在当前行绝不受到放大或背景色影响
+    '.cm-foldGutter .cm-activeLineGutter': {
+      backgroundColor: 'transparent !important',
+      transform: 'none !important',
     },
     // IDEA 风格：当前行整行柔和横向带状底色高亮，沉浸不晃眼
     '.cm-activeLine': {
