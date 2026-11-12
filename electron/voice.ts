@@ -25,6 +25,7 @@ import { app, dialog, ipcMain, shell, type WebContents } from 'electron'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { t } from './i18n'
+import { runAsrInWorker, resetWorkerModel } from './sherpa/workerBridge'
 
 import type {
   VoiceDownloadResult,
@@ -308,8 +309,7 @@ async function chooseModel(): Promise<{ ok: boolean; canceled?: boolean; error?:
 async function removeModel(): Promise<{ ok: boolean; error?: string }> {
   try {
     await fsp.rm(modelDir(), { recursive: true, force: true })
-    recognizer = null
-    recognizerKey = ''
+    resetWorkerModel('asr')
     return { ok: true }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : t('删除失败') }
@@ -321,74 +321,6 @@ async function removeModel(): Promise<{ ok: boolean; error?: string }> {
 /** 识别语言（SenseVoice 自己的那几个；auto 让它自己判） */
 const LANGUAGES = new Set(['auto', 'zh', 'en', 'ja', 'ko', 'yue'])
 
-/** sherpa 的入口形状（原生模块没有类型，见 electron/types/sherpa-onnx-node.d.ts） */
-type Sherpa = {
-  OfflineRecognizer: new (config: Record<string, unknown>) => {
-    createStream: () => unknown
-    decode: (stream: unknown) => void
-    getResult: (stream: unknown) => { text?: string }
-  }
-  version: string
-}
-
-let sherpa: Sherpa | null = null
-let recognizer: InstanceType<Sherpa['OfflineRecognizer']> | null = null
-/** 建这个识别器时用的参数：语言或后端变了就重建（它在原生那一侧是有状态的） */
-let recognizerKey = ''
-
-/**
- * 惰性加载原生模块：它要解 23 MB 的 DLL，而绝大多数启动根本用不到语音。
- * 用户第一次真的识别时才把它拉起来（那一下约 1 秒，之后常驻）。
- */
-async function loadSherpa(): Promise<Sherpa> {
-  if (sherpa) return sherpa
-  /*
-   * 这一句有个坑：esbuild 把 dynamic import 原样留给 Node，而 Node 用 ESM 的规则去
-   * import 一个 CJS 包时，**具名导出靠静态分析猜**——sherpa-onnx-node 交出来的是
-   * `module.exports = { … }`，猜不出来，于是命名空间里只有一个 default。
-   * 直接取 .OfflineRecognizer 会拿到 undefined，报出来是一句
-   * 「s.OfflineRecognizer is not a constructor」（只有真跑一次识别才看得见）。
-   */
-  const mod = (await import('sherpa-onnx-node')) as unknown as {
-    OfflineRecognizer?: unknown
-    default?: unknown
-  }
-  const resolved = (typeof mod.OfflineRecognizer === 'function' ? mod : mod.default) as Sherpa | undefined
-  if (!resolved || typeof resolved.OfflineRecognizer !== 'function') {
-    throw new Error(t('语音运行时没能加载（sherpa-onnx-node 的导出形态不对）'))
-  }
-  sherpa = resolved
-  return sherpa
-}
-
-/**
- * 拿识别器：语言或后端变了就重建一个。
- *
- * provider 传 'directml' 时，**运行时不带 GPU 版会自己退回 CPU**（sherpa 内部那条回退，
- * 实测：传 directml 也能正常出字，只是没真的用上显卡）。所以这里不拦——把偏好交给它，
- * 能不能用上由运行时决定；界面上写明「没带上 GPU 版时会自动退回 CPU」。
- */
-async function recognizerFor(language: string, gpu: boolean): Promise<InstanceType<Sherpa['OfflineRecognizer']>> {
-  const key = language + '|' + (gpu ? 'gpu' : 'cpu')
-  if (recognizer && recognizerKey === key) return recognizer
-  const s = await loadSherpa()
-  recognizer = new s.OfflineRecognizer({
-    featConfig: { sampleRate: 16000, featureDim: 80 },
-    modelConfig: {
-      senseVoice: { model: filePath(MODEL_ONNX), language, useInverseTextNormalization: 1 },
-      tokens: filePath(MODEL_TOKENS),
-      // 2 线程：一段 5 秒的话在这台机器上约 0.2 秒，再多线程收益很小、还会跟界面抢核
-      numThreads: 2,
-      provider: gpu
-        ? (process.platform === 'darwin' ? 'coreml' : (process.platform === 'win32' ? 'directml' : 'cpu'))
-        : 'cpu',
-      debug: false,
-    },
-  })
-  recognizerKey = key
-  return recognizer
-}
-
 async function transcribe(req: VoiceTranscribeRequest): Promise<VoiceTranscribeResult> {
   const started = Date.now()
   if (!(await statusOf()).exists) return { ok: false, error: t('还没下载语音模型') }
@@ -397,35 +329,38 @@ async function transcribe(req: VoiceTranscribeRequest): Promise<VoiceTranscribeR
   const rate = req.sampleRate || 16000
   const capped = samples.length > rate * MAX_SECONDS ? samples.subarray(0, rate * MAX_SECONDS) : samples
   const language = LANGUAGES.has(req.language) ? req.language : 'auto'
+  const actualGpu = req.gpu === true
+
   try {
-    let rec: InstanceType<Sherpa['OfflineRecognizer']>
-    let actualGpu = req.gpu === true
-    try {
-      rec = await recognizerFor(language, actualGpu)
-    } catch (gpuErr) {
-      if (actualGpu) {
-        // GPU 初始化失败（如 macOS 不含 CoreML 或驱动不支持），自动降级到 CPU
-        console.warn('[voice] GPU provider failed, falling back to CPU:', gpuErr)
-        actualGpu = false
-        rec = await recognizerFor(language, false)
-      } else {
-        throw gpuErr
-      }
-    }
-    const stream = rec.createStream()
-    ;(stream as { acceptWaveform: (o: { sampleRate: number; samples: Float32Array }) => void }).acceptWaveform({
+    const res = await runAsrInWorker({
+      modelPath: filePath(MODEL_ONNX),
+      tokensPath: filePath(MODEL_TOKENS),
+      language,
+      gpu: actualGpu,
       sampleRate: rate,
       samples: capped,
     })
-    rec.decode(stream)
-    const text = (rec.getResult(stream).text ?? '').trim()
-    return { ok: true, text, backend: actualGpu ? 'gpu' : 'cpu', ms: Date.now() - started }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    // 建识别器失败最常见的原因是模型文件坏了：说清「重新下载一次」比抛一句 onnx 报错有用
-    recognizer = null
-    recognizerKey = ''
-    return { ok: false, error: t('识别失败：{0}', msg.split('\n')[0]) }
+    return { ok: true, text: res.text, backend: actualGpu ? 'gpu' : 'cpu', ms: Date.now() - started }
+  } catch (err: any) {
+    if (actualGpu) {
+      // GPU 尝试失败自动降级回 CPU 重试
+      try {
+        const fallback = await runAsrInWorker({
+          modelPath: filePath(MODEL_ONNX),
+          tokensPath: filePath(MODEL_TOKENS),
+          language,
+          gpu: false,
+          sampleRate: rate,
+          samples: capped,
+        })
+        return { ok: true, text: fallback.text, backend: 'cpu', ms: Date.now() - started }
+      } catch (e: any) {
+        resetWorkerModel('asr')
+        return { ok: false, error: t('识别失败：{0}', (e?.message || String(e)).split('\n')[0]) }
+      }
+    }
+    resetWorkerModel('asr')
+    return { ok: false, error: t('识别失败：{0}', (err?.message || String(err)).split('\n')[0]) }
   }
 }
 

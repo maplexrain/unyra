@@ -16,6 +16,7 @@ import fsp from 'node:fs/promises'
 import fs from 'node:fs'
 import path from 'node:path'
 import { getUserDataDir } from './storage/userData'
+import { runTtsInWorker, resetWorkerModel } from './sherpa/workerBridge'
 import type {
   TtsDownloadResult,
   TtsModelDefinition,
@@ -120,7 +121,6 @@ const modelDir = (cfg: OfflineModelConfig): string => path.join(getUserDataDir()
 const filePath = (cfg: OfflineModelConfig, name: string): string => path.join(modelDir(cfg), name)
 
 let activeAbort: AbortController | null = null
-const ttsInstances = new Map<string, any>()
 
 async function sizeOf(file: string): Promise<number> {
   try {
@@ -260,7 +260,7 @@ async function download(sender: WebContents, requestedModelId?: string): Promise
 
     sender.send('tts:modelProgress', { received: totalBytes, total: totalBytes, percent: 100, note: '下载完成' })
     activeAbort = null
-    ttsInstances.delete(cfg.id) // 重置对应实例以便重新加载
+    resetWorkerModel('tts', cfg.id)
     return { ok: true, bytes: totalBytes }
   } catch (err: any) {
     activeAbort = null
@@ -283,7 +283,7 @@ function cancelDownload(): boolean {
 async function removeModel(requestedModelId?: string): Promise<{ ok: boolean; error?: string }> {
   cancelDownload()
   const cfg = getModelConfig(requestedModelId)
-  ttsInstances.delete(cfg.id)
+  resetWorkerModel('tts', cfg.id)
   try {
     await fsp.rm(modelDir(cfg), { recursive: true, force: true })
     return { ok: true }
@@ -334,65 +334,72 @@ async function synthesize(req: TtsSynthesizeRequest): Promise<TtsSynthesizeResul
     return { ok: false, error: `离线语音模型 (${cfg.name}) 尚未下载` }
   }
 
+  const rawText = (req.text ?? '').trim()
+  if (!rawText) {
+    return { ok: false, error: '合成文本不能为空' }
+  }
+
+  const start = Date.now()
+  const rawSpeed = Number(req.speed)
+  const speed = !Number.isNaN(rawSpeed) && rawSpeed > 0 ? rawSpeed : 1.0
+  const maxSid = cfg.speakers.length > 0 ? cfg.speakers.length - 1 : 0
+  const sid = Math.max(0, Math.min(maxSid, Math.floor(Number(req.speakerId) || 0)))
+
+  // 兜底长文本保护：单次文本若超过 200 字，在主进程端细粒度拆句，防止大批量文本导致引擎卡死
+  const chunks: string[] = []
+  if (rawText.length > 200) {
+    let cur = rawText
+    while (cur.length > 200) {
+      let cut = cur.lastIndexOf('，', 200)
+      if (cut === -1) cut = cur.lastIndexOf('。', 200)
+      if (cut === -1) cut = cur.lastIndexOf(' ', 200)
+      if (cut === -1 || cut < 50) cut = 200
+      else cut += 1
+      chunks.push(cur.slice(0, cut).trim())
+      cur = cur.slice(cut).trim()
+    }
+    if (cur) chunks.push(cur)
+  } else {
+    chunks.push(rawText)
+  }
+
   try {
-    let instance = ttsInstances.get(cfg.id)
-    if (!instance) {
-      console.info(`[TTS] 正在加载并初始化 ${cfg.name} 引擎...`)
-      const sherpa: any = await import('sherpa-onnx-node')
-      const OfflineTts = sherpa.OfflineTts || sherpa.default?.OfflineTts
+    const ruleFsts = cfg.ruleFstFiles && cfg.ruleFstFiles.length > 0
+      ? cfg.ruleFstFiles.map((f) => filePath(cfg, f)).filter((p) => fs.existsSync(p)).join(',')
+      : undefined
 
-      const vitsConfig: any = {
-        model: filePath(cfg, cfg.modelFile),
-        lexicon: filePath(cfg, cfg.lexiconFile),
-        tokens: filePath(cfg, cfg.tokensFile),
-      }
+    let allSamples: Float32Array = new Float32Array(0)
+    let sampleRate = cfg.sampleRate || 44100
 
-      const engineConfig: any = {
-        model: {
-          vits: vitsConfig,
-          numThreads: 2,
-          debug: false,
-        },
-      }
-
-      if (cfg.ruleFstFiles && cfg.ruleFstFiles.length > 0) {
-        engineConfig.ruleFsts = cfg.ruleFstFiles
-          .map((f) => filePath(cfg, f))
-          .filter((p) => fs.existsSync(p))
-          .join(',')
-      }
-
-      instance = new OfflineTts(engineConfig)
-      ttsInstances.set(cfg.id, instance)
-      console.info(`[TTS] ${cfg.name} 初始化完成，说话人数=${instance.numSpeakers}, 采样率=${instance.sampleRate}`)
+    for (const chunk of chunks) {
+      if (!chunk) continue
+      const res = await runTtsInWorker({
+        modelPath: filePath(cfg, cfg.modelFile),
+        lexiconPath: filePath(cfg, cfg.lexiconFile),
+        tokensPath: filePath(cfg, cfg.tokensFile),
+        ruleFsts,
+        text: chunk,
+        sid,
+        speed,
+        instanceKey: cfg.id,
+      })
+      sampleRate = res.sampleRate
+      const merged = new Float32Array(allSamples.length + res.samples.length)
+      merged.set(allSamples, 0)
+      merged.set(res.samples, allSamples.length)
+      allSamples = merged
     }
 
-    const start = Date.now()
-    const rawSpeed = Number(req.speed)
-    const speed = !Number.isNaN(rawSpeed) && rawSpeed > 0 ? rawSpeed : 1.0
-    const maxSid = cfg.speakers.length > 0 ? cfg.speakers.length - 1 : 0
-    const sid = Math.max(0, Math.min(maxSid, Math.floor(Number(req.speakerId) || 0)))
-
-    console.info(`[TTS] 开始合成 [${cfg.id}]: text="${req.text.slice(0, 30)}..." (len=${req.text.length}), sid=${sid}, speed=${speed}`)
-
-    // 显式禁用外部堆缓冲区，使用 V8 托管的安全内存
-    const result = instance.generate({
-      text: req.text,
-      sid,
-      speed,
-      enableExternalBuffer: false,
-    })
-
-    if (!result || !result.samples || result.samples.length === 0) {
+    if (allSamples.length === 0) {
       throw new Error('离线模型未生成有效音频采样')
     }
 
-    const wavBuf = encodeWav(result.samples, result.sampleRate)
+    const wavBuf = encodeWav(allSamples, sampleRate)
     const base64 = wavBuf.toString('base64')
     const audioDataUrl = `data:audio/wav;base64,${base64}`
     const durationMs = Date.now() - start
 
-    console.info(`[TTS] 合成成功 [${cfg.id}]: 采样数=${result.samples.length}, 采样率=${result.sampleRate}, 音频大小=${wavBuf.length}字节, 耗时=${durationMs}ms`)
+    console.info(`[TTS] Worker 合成成功 [${cfg.id}]: 采样数=${allSamples.length}, 采样率=${sampleRate}, 音频大小=${wavBuf.length}字节, 耗时=${durationMs}ms`)
 
     return {
       ok: true,
@@ -401,7 +408,7 @@ async function synthesize(req: TtsSynthesizeRequest): Promise<TtsSynthesizeResul
     }
   } catch (err: any) {
     console.error(`[TTS] 合成失败 [${cfg.id}]：`, err)
-    ttsInstances.delete(cfg.id)
+    resetWorkerModel('tts', cfg.id)
     return { ok: false, error: err?.message || String(err) }
   }
 }

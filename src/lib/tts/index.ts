@@ -1,5 +1,6 @@
 export * from './types'
 export * from './cleanText'
+export * from './chunkText'
 export * from './manager'
 export * from './adapters/webSpeech'
 export * from './adapters/openaiCompatible'
