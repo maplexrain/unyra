@@ -51,6 +51,7 @@ export function markdownEditorTheme(pad: {
   bottom: number
   left: number
   right: number
+  gutterLeft?: number
 }): Extension {
   return EditorView.theme({
     '&': { height: '100%', backgroundColor: 'transparent', color: 'var(--color-ink)' },
@@ -68,5 +69,32 @@ export function markdownEditorTheme(pad: {
       backgroundColor: 'color-mix(in srgb, var(--color-seal) 22%, transparent) !important',
     },
     '.cm-cursor': { borderLeftColor: 'var(--color-seal)' },
+    // 左侧行号栏 (Gutters)
+    '.cm-gutters': {
+      backgroundColor: 'transparent',
+      color: 'var(--color-ink-faint)',
+      borderRight: '1px solid var(--color-line)',
+      paddingLeft: (pad.gutterLeft ?? 0) + 'px',
+      userSelect: 'none',
+    },
+    '.cm-gutterElement': {
+      padding: '0 8px 0 4px',
+      minWidth: '28px',
+      textAlign: 'right',
+      fontSize: '11.5px',
+      fontFamily: 'monospace',
+      fontVariantNumeric: 'tabular-nums',
+      opacity: '0.6',
+    },
+    '.cm-activeLineGutter': {
+      color: 'var(--color-seal) !important',
+      backgroundColor: 'color-mix(in srgb, var(--color-seal) 10%, transparent) !important',
+      opacity: '1',
+      fontWeight: '600',
+    },
+    // 光标当前行背景突出高亮 (Active Line Background Highlight)
+    '.cm-activeLine': {
+      backgroundColor: 'color-mix(in srgb, var(--color-seal) 8%, transparent) !important',
+    },
   })
 }

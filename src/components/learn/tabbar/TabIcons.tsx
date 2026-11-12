@@ -70,7 +70,7 @@ export function VideoAudioButton({ tabId }: { tabId: string }) {
 
 export function TabTypeIcon({ tab, favicon, loading }: { tab: TabRef; favicon?: string; loading?: boolean }) {
   // 网页页签的图标带活信息（转圈/站点图标，见 docTypes 的 WebTabTypeIcon）
-  if (tab.kind === 'web') return <WebTabTypeIcon favicon={favicon} loading={loading} />
+  if (tab.kind === 'web') return <WebTabTypeIcon favicon={favicon} loading={loading} size={13} />
 
   // 外部文件、工作区文件或带后缀的文档，根据真实文件扩展名自动渲染对应语言/文件类型图标
   const fileName = resolveTabFileName(tab)
@@ -81,10 +81,10 @@ export function TabTypeIcon({ tab, favicon, loading }: { tab: TabRef; favicon?: 
         className="flex h-4 w-4 shrink-0 items-center justify-center"
         title={fileName}
       >
-        <FileIcon fileName={fileName} autoAssign={true} width={13} height={13} />
+        <FileIcon fileName={fileName} autoAssign={true} width={16} height={16} className="shrink-0" />
       </span>
     )
   }
 
-  return <DocTypeIcon kind={tab.kind} />
+  return <DocTypeIcon kind={tab.kind} size={13} />
 }

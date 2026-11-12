@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Compartment, EditorState, type Extension } from '@codemirror/state'
-import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
+import { EditorView, keymap, placeholder as cmPlaceholder, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from '@codemirror/view'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { syntaxHighlighting, indentOnInput, indentUnit, bracketMatching, LanguageDescription } from '@codemirror/language'
@@ -46,11 +46,11 @@ const STATE_TONE: Record<SaveState, string> = {
 }
 
 /**
- * 配色与主题在 lib/cmMarkdown（随笔窗口用的是同一份）：文档源码视图的内边距
- * （上 14 / 下 24 / 左 54 / 右 24），左侧留出 54px 彻底避让悬浮在左上角的垂直工具栏（left-3 + w-8），
- * 避免首行及前几行代码文字与按钮发生视觉重叠。
+ * 配色与主题在 lib/cmMarkdown（随笔窗口用的是同一份）：
+ * gutterLeft 留出 44px 彻底避让悬浮在左上角的垂直工具栏（left-3 + w-8），
+ * 避免首行及前几行代码与按钮发生视觉重叠；代码正文与行号分隔线保持 14px 舒适内边距。
  */
-const editorTheme = markdownEditorTheme({ top: 14, bottom: 24, left: 54, right: 24 })
+const editorTheme = markdownEditorTheme({ top: 14, bottom: 24, left: 14, right: 24, gutterLeft: 44 })
 
 /** 语言按扩展名现配（markdown 内嵌代码块也各自高亮）；其余扩展名交给 language-data 的表 */
 const langComp = new Compartment()
@@ -150,6 +150,10 @@ export default function SourceEditor({
         extensions: [
           history(),
           keymap.of([indentWithTab, ...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap]),
+          // 左侧代码行号与光标当前行背景突出高亮
+          lineNumbers(),
+          highlightActiveLineGutter(),
+          highlightActiveLine(),
           // 符号自动补全（输入 ( [ { " ' ` 自动带出另一半、跳过与删除成对）与括号配对高亮
           closeBrackets(),
           bracketMatching(),

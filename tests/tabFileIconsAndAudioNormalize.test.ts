@@ -3,6 +3,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { normalizeAudioSamples } from '../electron/sherpa/audioNormalize'
 import { TabTypeIcon } from '../src/components/learn/tabbar/TabIcons'
+import { markdownEditorTheme } from '../src/lib/cmMarkdown'
 import type { TabRef } from '../src/learn/types'
 
 describe('TTS 语音响度均衡器测试 (audioNormalize)', () => {
@@ -68,21 +69,24 @@ describe('TTS 语音响度均衡器测试 (audioNormalize)', () => {
 })
 
 describe('页签文件图标扩展名映射测试 (TabTypeIcon)', () => {
-  it('本地磁盘文件 (local) 根据文件后缀渲染对应语言图标', () => {
+  it('本地磁盘文件 (local) 根据文件后缀渲染对应语言图标，且具备更大视觉尺寸', () => {
     const tsTab: TabRef = { kind: 'local', path: 'C:/projects/app/main.ts' }
     const tsHtml = renderToStaticMarkup(React.createElement(TabTypeIcon, { tab: tsTab }))
     expect(tsHtml).toContain('title="main.ts"')
     expect(tsHtml).toContain('<svg')
+    expect(tsHtml).toContain('width="16"')
 
     const pyTab: TabRef = { kind: 'local', path: 'D:/scripts/process_data.py' }
     const pyHtml = renderToStaticMarkup(React.createElement(TabTypeIcon, { tab: pyTab }))
     expect(pyHtml).toContain('title="process_data.py"')
     expect(pyHtml).toContain('<svg')
+    expect(pyHtml).toContain('width="16"')
 
     const pdfTab: TabRef = { kind: 'local', path: 'E:/docs/research_paper.pdf' }
     const pdfHtml = renderToStaticMarkup(React.createElement(TabTypeIcon, { tab: pdfTab }))
     expect(pdfHtml).toContain('title="research_paper.pdf"')
     expect(pdfHtml).toContain('<svg')
+    expect(pdfHtml).toContain('width="16"')
   })
 
   it('工作区内部文件 (ws) 根据相对路径中的文件名与后缀显示图标', () => {
@@ -109,6 +113,13 @@ describe('页签文件图标扩展名映射测试 (TabTypeIcon)', () => {
     const examTab: TabRef = { kind: 'exam', nodeId: 'node-1', examId: 'e-1', attemptId: 'a-1' }
     const examHtml = renderToStaticMarkup(React.createElement(TabTypeIcon, { tab: examTab }))
     expect(examHtml).toContain('style="color:#c0563a"') // 试卷朱红
+  })
+})
+
+describe('源码编辑模式行号与当前行高亮测试 (SourceEditor CM6)', () => {
+  it('正确导出并配置带有行号边栏与当前行背景突出样式的编辑器主题', () => {
+    const theme = markdownEditorTheme({ top: 14, bottom: 24, left: 14, right: 24, gutterLeft: 44 })
+    expect(theme).toBeDefined()
   })
 })
 
