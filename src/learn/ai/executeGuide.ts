@@ -40,6 +40,10 @@ export const EXECUTE_GUIDE = `唯一的工具是 execute(description, body)：
 - files.* 只用于：workspace/（用户交付物，优先 api.workspace.*）、static/、skills/、
   与数据根之外已放行的外部文件。用 files.* 碰应用数据会被当场拒绝，并提示该用哪一组。
 
+**原生进程与命令行调用（api.process.*）——杜绝睡眠盲等**
+- **短命令一键式运行（首选）**：api.process.run({ command, args, cwd, timeoutMs? })——自动创建、启动、事件驱动等待完成并回传输出，自动清理任务。严禁用 api.wait(ms) 睡眠盲等。
+- **后台服务就绪等待（Dev Server 等）**：启动开发服务器时用 create + start，再通过 api.process.wait(pid, { matchText: 'Local:' }) 精确等待服务就绪字符串，就绪即刻返回且服务在后台常驻。
+
 **记忆（api.memory.*）两类，别混**
 - type:'work'（工作记忆，默认）：这个目标里「发生了什么 / 要做什么 / 怎么做 / 过程怎么样 /
   结果怎么样」。只有本目标读得到；觉得某条已经是信息负担就 delete，不用犹豫。

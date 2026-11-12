@@ -19,10 +19,20 @@ import type {
   BaseProcessInfo,
   BaseProcessListResult,
   BaseProcessOutputResult,
+  BaseProcessRunOpts,
+  BaseProcessRunResult,
   BaseProcessStartResult,
   BaseProcessStatusResult,
   BaseProcessStopResult,
+  BaseProcessWaitOpts,
+  BaseProcessWaitResult,
 } from '../../shared/ipc'
+
+interface ProcessWaiter {
+  resolve: (res: BaseProcessWaitResult) => void
+  timer?: NodeJS.Timeout
+  matchText?: string
+}
 
 interface ManagedProcess {
   process_id: string
@@ -41,6 +51,7 @@ interface ManagedProcess {
   stdout: string
   stderr: string
   readOffset: number
+  waiters: ProcessWaiter[]
 }
 
 const processes = new Map<string, ManagedProcess>()
@@ -180,6 +191,7 @@ export async function baseProcessCreate(opts: BaseProcessCreateOpts): Promise<Ba
     stdout: '',
     stderr: '',
     readOffset: 0,
+    waiters: [],
   }
 
   processes.set(id, managed)
@@ -211,10 +223,12 @@ export async function baseProcessStart(processId: string): Promise<BaseProcessSt
     })
 
     const isWindows = process.platform === 'win32'
-    // Windows 下无扩展名的系统命令（如 npm、npx、yarn、pnpm、tsc、vite 等）多为 .cmd/.bat 脚本，
-    // 若不开启 shell: true 则底层 CreateProcessW 找不到可执行文件抛 spawn ENOENT
     const ext = path.extname(proc.command).toLowerCase()
-    const needsShell = isWindows && (!ext || ext === '.cmd' || ext === '.bat')
+    const isBatchScript = ext === '.cmd' || ext === '.bat'
+    // 在 Windows 下，npm/npx/yarn/pnpm/tsc/vite 等常见前端 CLI 工具在 PATH 中实际为 .cmd 批处理脚本，
+    // 若未显式加扩展名，底层 CreateProcessW 找不到可执行文件抛 spawn ENOENT，需经 shell 唤起
+    const isCliBatch = isWindows && !ext && /^(npm|npx|yarn|pnpm|tsc|vite)$/i.test(proc.command)
+    const needsShell = isWindows && (isBatchScript || isCliBatch)
 
     const child = spawn(proc.command, sanitizedArgs, {
       cwd: proc.cwd,
@@ -227,12 +241,46 @@ export async function baseProcessStart(processId: string): Promise<BaseProcessSt
     proc.running = true
     proc.startTime = Date.now()
 
+    const notifyWaiters = (trigger: 'exit' | 'match') => {
+      if (!proc.waiters.length) return
+      const snapshot: BaseProcessWaitResult = {
+        ok: true,
+        process_id: proc.process_id,
+        exited: proc.exited,
+        exitCode: proc.exitCode,
+        signal: proc.signal,
+        stdout: proc.stdout,
+        stderr: proc.stderr,
+        durationMs: (proc.exitTime || Date.now()) - (proc.startTime || Date.now()),
+        matched: trigger === 'match',
+      }
+      if (trigger === 'exit') {
+        const list = [...proc.waiters]
+        proc.waiters = []
+        for (const w of list) {
+          if (w.timer) clearTimeout(w.timer)
+          w.resolve(snapshot)
+        }
+      } else {
+        proc.waiters = proc.waiters.filter((w) => {
+          if (w.matchText && (proc.stdout.includes(w.matchText) || proc.stderr.includes(w.matchText))) {
+            if (w.timer) clearTimeout(w.timer)
+            w.resolve({ ...snapshot, matched: true })
+            return false
+          }
+          return true
+        })
+      }
+    }
+
     child.stdout?.on('data', (chunk) => {
       proc.stdout += chunk.toString()
+      notifyWaiters('match')
     })
 
     child.stderr?.on('data', (chunk) => {
       proc.stderr += chunk.toString()
+      notifyWaiters('match')
     })
 
     child.on('error', (err) => {
@@ -240,6 +288,7 @@ export async function baseProcessStart(processId: string): Promise<BaseProcessSt
       proc.running = false
       proc.exited = true
       proc.exitTime = Date.now()
+      notifyWaiters('exit')
     })
 
     child.on('close', (code, signal) => {
@@ -248,6 +297,7 @@ export async function baseProcessStart(processId: string): Promise<BaseProcessSt
       proc.exitCode = code
       proc.signal = signal
       proc.exitTime = Date.now()
+      notifyWaiters('exit')
     })
 
     return { ok: true, process_id: processId, pid: child.pid || 0 }
@@ -390,4 +440,148 @@ export async function baseProcessDelete(processId: string): Promise<BaseProcessD
   }
   processes.delete(processId)
   return { ok: true, process_id: processId, deleted: true }
+}
+
+/**
+ * base.process.wait: 事件驱动等待进程执行完毕或输出特定就绪字符，毫秒级即刻唤醒，杜绝睡眠盲等
+ */
+export async function baseProcessWait(
+  processId: string,
+  opts?: BaseProcessWaitOpts,
+): Promise<BaseProcessWaitResult> {
+  const proc = processes.get(processId)
+  if (!proc) {
+    return { ok: false, error: `找不到进程任务：${processId}` }
+  }
+
+  // 1. 若进程已经退出，毫秒级直接返回当前完成状态
+  if (proc.exited) {
+    return {
+      ok: true,
+      process_id: proc.process_id,
+      exited: true,
+      exitCode: proc.exitCode,
+      signal: proc.signal,
+      stdout: proc.stdout,
+      stderr: proc.stderr,
+      durationMs: (proc.exitTime || Date.now()) - (proc.startTime || Date.now()),
+    }
+  }
+
+  // 2. 若配置了 matchText 且当前输出已满足条件，立即返回
+  const match = opts?.matchText?.trim()
+  if (match && (proc.stdout.includes(match) || proc.stderr.includes(match))) {
+    return {
+      ok: true,
+      process_id: proc.process_id,
+      exited: false,
+      exitCode: null,
+      signal: null,
+      stdout: proc.stdout,
+      stderr: proc.stderr,
+      durationMs: Date.now() - (proc.startTime || Date.now()),
+      matched: true,
+    }
+  }
+
+  // 3. 挂起事件驱动等待 Promise
+  return new Promise<BaseProcessWaitResult>((resolve) => {
+    const timeoutMs = typeof opts?.timeoutMs === 'number' ? opts.timeoutMs : 60000
+    let timer: NodeJS.Timeout | undefined
+
+    const waiter: ProcessWaiter = {
+      resolve,
+      matchText: match,
+    }
+
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        proc.waiters = proc.waiters.filter((w) => w !== waiter)
+        resolve({
+          ok: true,
+          process_id: proc.process_id,
+          exited: proc.exited,
+          exitCode: proc.exitCode,
+          signal: proc.signal,
+          stdout: proc.stdout,
+          stderr: proc.stderr,
+          durationMs: Date.now() - (proc.startTime || Date.now()),
+          timedOut: true,
+        })
+      }, timeoutMs)
+      waiter.timer = timer
+    }
+
+    proc.waiters.push(waiter)
+  })
+}
+
+/**
+ * base.process.run: 一键式运行受控任务（创建 -> 启动 -> 等待完成 -> 收集输出 -> 自动清理）
+ */
+export async function baseProcessRun(opts: BaseProcessRunOpts): Promise<BaseProcessRunResult> {
+  const createRes = await baseProcessCreate({
+    command: opts.command,
+    args: opts.args,
+    cwd: opts.cwd,
+    env: opts.env,
+  })
+  if (!createRes.ok) {
+    return {
+      ok: false,
+      exitCode: null,
+      signal: null,
+      stdout: '',
+      stderr: '',
+      durationMs: 0,
+      error: createRes.error,
+    }
+  }
+
+  const pid = createRes.process_id
+  const startRes = await baseProcessStart(pid)
+  if (!startRes.ok) {
+    await baseProcessDelete(pid)
+    return {
+      ok: false,
+      process_id: pid,
+      exitCode: null,
+      signal: null,
+      stdout: '',
+      stderr: '',
+      durationMs: 0,
+      error: startRes.error,
+    }
+  }
+
+  const waitRes = await baseProcessWait(pid, { timeoutMs: opts.timeoutMs ?? 60000 })
+  const cleanup = opts.cleanup !== false
+  if (cleanup) {
+    await baseProcessDelete(pid)
+  }
+
+  if (!waitRes.ok) {
+    return {
+      ok: false,
+      process_id: pid,
+      exitCode: null,
+      signal: null,
+      stdout: '',
+      stderr: '',
+      durationMs: 0,
+      error: waitRes.error,
+    }
+  }
+
+  const isSuccess = waitRes.exited && waitRes.exitCode === 0 && !waitRes.timedOut
+  return {
+    ok: isSuccess,
+    process_id: pid,
+    exitCode: waitRes.exitCode,
+    signal: waitRes.signal,
+    stdout: waitRes.stdout,
+    stderr: waitRes.stderr,
+    durationMs: waitRes.durationMs,
+    timedOut: waitRes.timedOut,
+  }
 }

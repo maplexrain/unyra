@@ -138,6 +138,10 @@ export type {
   BaseProcessDeleteResult,
   BaseProcessListResult,
   BaseProcessGetResult,
+  BaseProcessWaitOpts,
+  BaseProcessWaitResult,
+  BaseProcessRunOpts,
+  BaseProcessRunResult,
 } from './ipc/process'
 
 /* ---------- 外部 MCP 服务的本地进程会话（stdio 传输，见 electron/mcp） ---------- */

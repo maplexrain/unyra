@@ -294,6 +294,8 @@ export async function apiNameTests() {
     // 基础系统进程任务
     'process.create': "{ command: 'node' }",
     'process.start': "'proc_test'",
+    'process.run': "{ command: 'node' }",
+    'process.wait': "'proc_test'",
     'process.status': "'proc_test'",
     'process.output': "'proc_test'",
     'process.stop': "'proc_test'",

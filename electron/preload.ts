@@ -22,8 +22,8 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
   AttachReadResult, BaseFileEditOpts, BaseFileEditResult, BaseFileEntry, BaseFileListResult, BaseFileOpResult, BaseFileReadResult,
   BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
-  BaseProcessInfo, BaseProcessListResult, BaseProcessOutputResult, BaseProcessStartResult, BaseProcessStatusResult,
-  BaseProcessStopResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
+  BaseProcessInfo, BaseProcessListResult, BaseProcessOutputResult, BaseProcessRunOpts, BaseProcessRunResult, BaseProcessStartResult, BaseProcessStatusResult,
+  BaseProcessStopResult, BaseProcessWaitOpts, BaseProcessWaitResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   PluginEntry, PluginListResult, PluginSettingsResult,
@@ -47,8 +47,8 @@ export type {
   SaveBinaryPayload, SaveBinaryResult,
   AttachReadResult, BaseFileEditResult, BaseFileEntry, BaseFileListResult, BaseFileOpResult, BaseFileReadResult,
   BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
-  BaseProcessInfo, BaseProcessListResult, BaseProcessOutputResult, BaseProcessStartResult, BaseProcessStatusResult,
-  BaseProcessStopResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
+  BaseProcessInfo, BaseProcessListResult, BaseProcessOutputResult, BaseProcessRunOpts, BaseProcessRunResult, BaseProcessStartResult, BaseProcessStatusResult,
+  BaseProcessStopResult, BaseProcessWaitOpts, BaseProcessWaitResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   PluginEntry, PluginListResult,
   PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
@@ -838,22 +838,16 @@ const api = {
   },
 
   process: {
-    create: (opts: BaseProcessCreateOpts): Promise<BaseProcessCreateResult> =>
-      ipcRenderer.invoke('base:process:create', opts),
-    start: (id: string): Promise<BaseProcessStartResult> =>
-      ipcRenderer.invoke('base:process:start', id),
-    status: (id: string): Promise<BaseProcessStatusResult> =>
-      ipcRenderer.invoke('base:process:status', id),
-    output: (id: string, opts?: { offset?: number; reset?: boolean }): Promise<BaseProcessOutputResult> =>
-      ipcRenderer.invoke('base:process:output', id, opts),
-    stop: (id: string, opts?: { timeoutMs?: number; force?: boolean }): Promise<BaseProcessStopResult> =>
-      ipcRenderer.invoke('base:process:stop', id, opts),
-    list: (): Promise<BaseProcessListResult> =>
-      ipcRenderer.invoke('base:process:list'),
-    get: (id: string): Promise<BaseProcessGetResult> =>
-      ipcRenderer.invoke('base:process:get', id),
-    delete: (id: string): Promise<BaseProcessDeleteResult> =>
-      ipcRenderer.invoke('base:process:delete', id),
+    create: (opts: BaseProcessCreateOpts): Promise<BaseProcessCreateResult> => ipcRenderer.invoke('base:process:create', opts),
+    start: (id: string): Promise<BaseProcessStartResult> => ipcRenderer.invoke('base:process:start', id),
+    status: (id: string): Promise<BaseProcessStatusResult> => ipcRenderer.invoke('base:process:status', id),
+    output: (id: string, opts?: { offset?: number; reset?: boolean }): Promise<BaseProcessOutputResult> => ipcRenderer.invoke('base:process:output', id, opts),
+    wait: (id: string, opts?: BaseProcessWaitOpts): Promise<BaseProcessWaitResult> => ipcRenderer.invoke('base:process:wait', id, opts),
+    run: (opts: BaseProcessRunOpts): Promise<BaseProcessRunResult> => ipcRenderer.invoke('base:process:run', opts),
+    stop: (id: string, opts?: { timeoutMs?: number; force?: boolean }): Promise<BaseProcessStopResult> => ipcRenderer.invoke('base:process:stop', id, opts),
+    list: (): Promise<BaseProcessListResult> => ipcRenderer.invoke('base:process:list'),
+    get: (id: string): Promise<BaseProcessGetResult> => ipcRenderer.invoke('base:process:get', id),
+    delete: (id: string): Promise<BaseProcessDeleteResult> => ipcRenderer.invoke('base:process:delete', id),
   },
 
   syncPermissions: (dirs: string[]): Promise<{ ok: boolean }> =>
@@ -898,22 +892,16 @@ const api = {
       },
     },
     process: {
-      create: (opts: BaseProcessCreateOpts): Promise<BaseProcessCreateResult> =>
-        ipcRenderer.invoke('base:process:create', opts),
-      start: (id: string): Promise<BaseProcessStartResult> =>
-        ipcRenderer.invoke('base:process:start', id),
-      status: (id: string): Promise<BaseProcessStatusResult> =>
-        ipcRenderer.invoke('base:process:status', id),
-      output: (id: string, opts?: { offset?: number; reset?: boolean }): Promise<BaseProcessOutputResult> =>
-        ipcRenderer.invoke('base:process:output', id, opts),
-      stop: (id: string, opts?: { timeoutMs?: number; force?: boolean }): Promise<BaseProcessStopResult> =>
-        ipcRenderer.invoke('base:process:stop', id, opts),
-      list: (): Promise<BaseProcessListResult> =>
-        ipcRenderer.invoke('base:process:list'),
-      get: (id: string): Promise<BaseProcessGetResult> =>
-        ipcRenderer.invoke('base:process:get', id),
-      delete: (id: string): Promise<BaseProcessDeleteResult> =>
-        ipcRenderer.invoke('base:process:delete', id),
+      create: (opts: BaseProcessCreateOpts): Promise<BaseProcessCreateResult> => ipcRenderer.invoke('base:process:create', opts),
+      start: (id: string): Promise<BaseProcessStartResult> => ipcRenderer.invoke('base:process:start', id),
+      status: (id: string): Promise<BaseProcessStatusResult> => ipcRenderer.invoke('base:process:status', id),
+      output: (id: string, opts?: { offset?: number; reset?: boolean }): Promise<BaseProcessOutputResult> => ipcRenderer.invoke('base:process:output', id, opts),
+      wait: (id: string, opts?: BaseProcessWaitOpts): Promise<BaseProcessWaitResult> => ipcRenderer.invoke('base:process:wait', id, opts),
+      run: (opts: BaseProcessRunOpts): Promise<BaseProcessRunResult> => ipcRenderer.invoke('base:process:run', opts),
+      stop: (id: string, opts?: { timeoutMs?: number; force?: boolean }): Promise<BaseProcessStopResult> => ipcRenderer.invoke('base:process:stop', id, opts),
+      list: (): Promise<BaseProcessListResult> => ipcRenderer.invoke('base:process:list'),
+      get: (id: string): Promise<BaseProcessGetResult> => ipcRenderer.invoke('base:process:get', id),
+      delete: (id: string): Promise<BaseProcessDeleteResult> => ipcRenderer.invoke('base:process:delete', id),
     },
     syncPermissions: (dirs: string[]): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke('base:permissions:sync', dirs),

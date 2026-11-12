@@ -504,6 +504,8 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
     [
       a('create', 'process.create({ command, args?, cwd?, env? })', '创建进程任务', 'cwd 必须在可访问目录内；创建后默认不跑。', `const p = await api.process.create({ command: 'python', args: ['main.py'], cwd: 'D:/work' })`),
       a('start', 'process.start(process_id)', '启动进程', '回 pid 与 running。', `await api.process.start(p.process_id)`),
+      a('run', 'process.run({ command, args?, cwd?, env?, timeoutMs?, cleanup? })', '一键式运行短命令并等待完成', '推荐首选！自动创建、启动、事件驱动等待完成并回传输出，自动清理任务记录。杜绝睡眠盲等。', `const r = await api.process.run({ command: 'npx', args: ['tsc'], cwd: 'pelican-bike-3d' })`),
+      a('wait', 'process.wait(process_id, { timeoutMs?, matchText? }?)', '事件驱动等待进程退出或就绪', '毫秒级精准唤醒，杜绝盲等；支持 matchText 匹配输出字符（针对后台常驻服务如 DevServer，就绪即返回且服务在后台保持运行）。', `const w = await api.process.wait(p.process_id, { timeoutMs: 30000 })`),
       a('status', 'process.status(process_id)', '查进程状态', '回 running / exitCode。', `const st = await api.process.status(p.process_id)`),
       a('output', 'process.output(process_id, { offset?, reset? }?)', '读取进程的标准输出与错误', '支持增量读（带 offset 续读）；长输出分段拿，不要一次全量。', `const out = await api.process.output(p.process_id)`),
       a('stop', 'process.stop(process_id, { timeoutMs?, force? }?)', '停止进程', '先温和后强杀；force 会丢未落盘内容。', `await api.process.stop(p.process_id, { force: true })`),

@@ -29,6 +29,35 @@ export function installProcess(api: Record<string, unknown>, log: SandboxCall[])
     return await np.start(pid)
   }, log)
 
+  wrapApi(api, 'process.run', async (args) => {
+    const opt = asRecord(args[0])
+    const np = getNativeProcess()
+    if (!np) {
+      return { ok: true, process_id: 'proc_mock_run', exitCode: 0, signal: null, stdout: '', stderr: '', durationMs: 0 }
+    }
+    return await np.run({
+      command: asText(opt.command),
+      args: Array.isArray(opt.args) ? opt.args.map(asText) : undefined,
+      cwd: typeof opt.cwd === 'string' ? opt.cwd : undefined,
+      env: opt.env && typeof opt.env === 'object' ? (opt.env as Record<string, string>) : undefined,
+      timeoutMs: typeof opt.timeoutMs === 'number' ? opt.timeoutMs : undefined,
+      cleanup: typeof opt.cleanup === 'boolean' ? opt.cleanup : undefined,
+    })
+  }, log)
+
+  wrapApi(api, 'process.wait', async (args) => {
+    const pid = asText(args[0])
+    const opt = asRecord(args[1])
+    const np = getNativeProcess()
+    if (!np) {
+      return { ok: true, process_id: pid, exited: true, exitCode: 0, signal: null, stdout: '', stderr: '', durationMs: 0 }
+    }
+    return await np.wait(pid, {
+      timeoutMs: typeof opt.timeoutMs === 'number' ? opt.timeoutMs : undefined,
+      matchText: typeof opt.matchText === 'string' ? opt.matchText : undefined,
+    })
+  }, log)
+
   wrapApi(api, 'process.status', async (args) => {
     const pid = asText(args[0])
     const np = getNativeProcess()

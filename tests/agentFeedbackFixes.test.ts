@@ -192,16 +192,19 @@ describe('导师 Agent 反馈修复与防护套件', () => {
       // 检验判断规则逻辑：isWindows && (!ext || ext === '.cmd' || ext === '.bat')
       const checkNeedsShell = (command: string, isWin: boolean) => {
         const ext = path.extname(command).toLowerCase()
-        return isWin && (!ext || ext === '.cmd' || ext === '.bat')
+        const isBatchScript = ext === '.cmd' || ext === '.bat'
+        const isCliBatch = isWin && !ext && /^(npm|npx|yarn|pnpm|tsc|vite)$/i.test(command)
+        return isWin && (isBatchScript || isCliBatch)
       }
 
-      // Windows 下 npm / npx / tsc 等无扩展名命令开启 shell
+      // Windows 下 npm / npx / tsc 等无扩展名前端 CLI 批处理开启 shell
       expect(checkNeedsShell('npm', true)).toBe(true)
       expect(checkNeedsShell('npx', true)).toBe(true)
       expect(checkNeedsShell('tsc', true)).toBe(true)
       expect(checkNeedsShell('run.cmd', true)).toBe(true)
       expect(checkNeedsShell('build.bat', true)).toBe(true)
-      // 带 .exe 扩展名的无需 shell
+      // 常规原生二进制文件（如 node, git 等）不开启 shell，避免参数引号被剥离
+      expect(checkNeedsShell('node', true)).toBe(false)
       expect(checkNeedsShell('node.exe', true)).toBe(false)
       expect(checkNeedsShell('git.exe', true)).toBe(false)
 

@@ -12,8 +12,8 @@ import { t } from '../i18n'
 import type {
   AttachReadResult, BaseFileEditOpts, BaseFileEditResult, BaseFileListResult, BaseFileOpResult, BaseFileReadResult,
   BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
-  BaseProcessListResult, BaseProcessOutputResult, BaseProcessStartResult, BaseProcessStatusResult,
-  BaseProcessStopResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
+  BaseProcessListResult, BaseProcessOutputResult, BaseProcessRunOpts, BaseProcessRunResult, BaseProcessStartResult, BaseProcessStatusResult,
+  BaseProcessStopResult, BaseProcessWaitOpts, BaseProcessWaitResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   NoticeSettings, PluginEntry, PluginTogglesResult, SaveBinaryPayload, SaveBinaryResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
@@ -548,6 +548,8 @@ export interface NativeBridge {
     start(process_id: string): Promise<BaseProcessStartResult>
     status(process_id: string): Promise<BaseProcessStatusResult>
     output(process_id: string, opts?: { offset?: number; reset?: boolean }): Promise<BaseProcessOutputResult>
+    wait(process_id: string, opts?: BaseProcessWaitOpts): Promise<BaseProcessWaitResult>
+    run(opts: BaseProcessRunOpts): Promise<BaseProcessRunResult>
     stop(process_id: string, opts?: { timeoutMs?: number; force?: boolean }): Promise<BaseProcessStopResult>
     list(): Promise<BaseProcessListResult>
     get(process_id: string): Promise<BaseProcessGetResult>
@@ -580,6 +582,8 @@ export interface NativeBridge {
       start(process_id: string): Promise<BaseProcessStartResult>
       status(process_id: string): Promise<BaseProcessStatusResult>
       output(process_id: string, opts?: { offset?: number; reset?: boolean }): Promise<BaseProcessOutputResult>
+      wait(process_id: string, opts?: BaseProcessWaitOpts): Promise<BaseProcessWaitResult>
+      run(opts: BaseProcessRunOpts): Promise<BaseProcessRunResult>
       stop(process_id: string, opts?: { timeoutMs?: number; force?: boolean }): Promise<BaseProcessStopResult>
       list(): Promise<BaseProcessListResult>
       get(process_id: string): Promise<BaseProcessGetResult>
