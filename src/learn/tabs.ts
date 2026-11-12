@@ -60,13 +60,14 @@ export function isMediaFile(name: string): boolean {
  * 各带各的作答、判分与错题讲解。
  */
 export function tabKey(ref: TabRef): string {
-  if (ref.kind === 'teach') return 't:' + ref.nodeId
-  if (ref.kind === 'note') return 'n:' + ref.nodeId + ':' + ref.note
-  if (ref.kind === 'super') return 's:' + ref.nodeId + ':' + ref.name
+  const v = 'view' in ref && ref.view ? ':' + ref.view : ''
+  if (ref.kind === 'teach') return 't:' + ref.nodeId + v
+  if (ref.kind === 'note') return 'n:' + ref.nodeId + ':' + ref.note + v
+  if (ref.kind === 'super') return 's:' + ref.nodeId + ':' + ref.name + v
   if (ref.kind === 'exam') return 'e:' + ref.examId + ':' + ref.attemptId
   if (ref.kind === 'outline') return 'o:' + ref.nodeId
   // 工作区内部文件：节点 + 「相对工作区目录」的路径段（目录改名不影响它，见 types 的 ws 分支）
-  if (ref.kind === 'ws') return 'ws:' + ref.nodeId + ':' + ref.seg
+  if (ref.kind === 'ws') return 'ws:' + ref.nodeId + ':' + ref.seg + v
   // 网页按**开签那一刻生成的 key**（而不是网址）认身份：同一个网址可以开两枚，起始页也不冲突
   if (ref.kind === 'web') return ref.fileNodeId ? 'w:fn:' + ref.fileNodeId : 'w:' + ref.key
   // 视频学习（实验）同样全局只有一份：顶栏那颗按钮点多少次都是切回同一枚，
@@ -86,7 +87,7 @@ export function tabKey(ref: TabRef): string {
   if (ref.kind === 'blank') return 'b:' + ref.key
   // 新建文件页签：还没有落点，身份只能是开签那一刻的随机后缀
   if (ref.kind === 'draft') return 'd:' + ref.key
-  return 'l:' + ref.path
+  return 'l:' + ref.path + v
 }
 
 /** 判断页签是否为固定页签：结构tab（节点宇宙，kind === 'outline'）永远固定，不可取消固定 */
@@ -97,7 +98,15 @@ export function isTabPinned(tab: LearnTab): boolean {
 
 export function makeTab(ref: TabRef, at: number, view?: DocView): LearnTab {
   const isStructure = ref.kind === 'outline'
-  return { id: tabKey(ref), ref, ...(view ? { view } : {}), ...(isStructure ? { pinned: true } : {}), createdAt: at }
+  const explicitView = 'view' in ref && ref.view ? ref.view : (view === 'source' || view === 'preview' ? view : undefined)
+  const finalRef = explicitView ? ({ ...ref, view: explicitView } as TabRef) : ref
+  return {
+    id: tabKey(finalRef),
+    ref: finalRef,
+    ...(explicitView ? { view: explicitView } : {}),
+    ...(isStructure ? { pinned: true } : {}),
+    createdAt: at,
+  }
 }
 
 /** 空白页签的身份后缀：开签那一刻生成 */
@@ -191,11 +200,10 @@ export function newWebKey(): string {
  * 试卷副本的名字要查一次数据（「《极限小考》8/12 · 09-20」），所以它由调用方给一个
  * 查表函数——页签这一层不认识 store。
  */
-export function tabTitle(
+function rawTabTitle(
   ref: TabRef,
   nodeTitle: (nodeId: string) => string | undefined,
   examTitle?: (examId: string, attemptId: string) => string | undefined,
-  /** 绑定视频的标题（来自视频资源；创建态没有） */
   videoTitle?: (videoId: string) => string | undefined,
   goalTitle?: (goalId: string) => string | undefined,
 ): string {
@@ -233,7 +241,30 @@ export function tabTitle(
   if (ref.kind === 'draft') return t('未命名')
   // 工作区内部文件：显示文件名（相对段可能带几层目录）
   if (ref.kind === 'ws') return fileNameOf(ref.seg)
-  return ref.title || fileNameOf(ref.path)
+  return (ref.title ? fileNameOf(ref.title) : '') || fileNameOf(ref.path)
+}
+
+/** 判断一个页签指向的内容是否支持渲染预览 */
+export function isTabRefPreviewable(ref: TabRef): boolean {
+  if (ref.kind === 'teach' || ref.kind === 'note' || ref.kind === 'super') return true
+  if (ref.kind === 'local') return isPreviewable(ref.path)
+  if (ref.kind === 'ws') return isPreviewable(ref.seg)
+  return false
+}
+
+export function tabTitle(
+  ref: TabRef,
+  nodeTitle: (nodeId: string) => string | undefined,
+  examTitle?: (examId: string, attemptId: string) => string | undefined,
+  videoTitle?: (videoId: string) => string | undefined,
+  goalTitle?: (goalId: string) => string | undefined,
+): string {
+  const base = rawTabTitle(ref, nodeTitle, examTitle, videoTitle, goalTitle)
+  if ('view' in ref && ref.view) {
+    if (ref.view === 'preview') return base + ' (' + t('预览') + ')'
+    if (ref.view === 'source' && isTabRefPreviewable(ref)) return base + ' (' + t('源码') + ')'
+  }
+  return base
 }
 
 /**
@@ -292,6 +323,7 @@ export function tabTrail(
  * 用户自己选过视图（tab.view）就听他的——他刚在空笔记里点过预览，那是他的选择。
  */
 export function viewOf(tab: LearnTab, empty = false): DocView {
+  if ('view' in tab.ref && tab.ref.view) return tab.ref.view
   if (tab.view) return tab.view
   // 新建文件页签还没有类型可言：它就是一张用来写的纸，永远进编辑视图
   if (tab.ref.kind === 'draft') return 'source'

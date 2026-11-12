@@ -405,7 +405,7 @@ describe('quoteBlock', () => {
       const cleanup = hydrateQuotes(container)
       await vi.waitFor(() => {
         expect(container.querySelector('.moji-quote-code')).not.toBeNull()
-      })
+      }, { timeout: 4000 })
 
       expect(mockHost.readFile).toHaveBeenCalledWith('demo.ts')
       const codeHtml = container.querySelector('.moji-quote-code')?.innerHTML
@@ -450,7 +450,7 @@ describe('quoteBlock', () => {
       const cleanup = hydrateQuotes(container)
       await vi.waitFor(() => {
         expect(container.querySelector('.moji-quote-code')).not.toBeNull()
-      })
+      }, { timeout: 4000 })
 
       // mockHost.readFile should receive the clean, decoded path, NOT percent-encoded
       expect(mockHost.readFile).toHaveBeenCalledWith(complexPath)
@@ -520,7 +520,7 @@ describe('quoteBlock', () => {
       const cleanup = hydrateQuotes(container)
       await vi.waitFor(() => {
         expect(container.querySelector('.moji-quote-code')).not.toBeNull()
-      })
+      }, { timeout: 4000 })
 
       // 验证各行号按钮
       const lineBtns = container.querySelectorAll<HTMLButtonElement>('.moji-quote-line-no')

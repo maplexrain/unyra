@@ -86,6 +86,19 @@ describe('页签的身份', () => {
   it('本地文件页签标题优先使用自定义 title，缺省退回文件名', () => {
     expect(tabTitle({ kind: 'local', path: 'C:/docs/static/uuid-123.png', title: '示例图片.png' }, () => undefined)).toBe('示例图片.png')
     expect(tabTitle({ kind: 'local', path: 'C:/docs/static/uuid-123.png' }, () => undefined)).toBe('uuid-123.png')
+    // 即使外部误传入了完整 Windows 或 Unix 磁盘路径作为 title，也必须严格提取文件名，绝不污染页签标题
+    expect(
+      tabTitle(
+        { kind: 'local', path: 'C:\\Users\\maxwell\\AppData\\Local\\Temp\\rider.ts', title: 'C:\\Users\\maxwell\\AppData\\Local\\Temp\\rider.ts' },
+        () => undefined,
+      ),
+    ).toBe('rider.ts')
+    expect(
+      tabTitle(
+        { kind: 'local', path: 'C:/Users/maxwell/AppData/Local/Temp/a.ts', title: 'C:/Users/maxwell/AppData/Local/Temp/a.ts' },
+        () => undefined,
+      ),
+    ).toBe('a.ts')
   })
 
   it('系统页全局各只有一份：key 恒定、不挂节点、没有路径后缀', () => {

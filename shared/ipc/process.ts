@@ -58,3 +58,50 @@ export type BaseProcessGetResult =
   | { ok: true; process: BaseProcessInfo }
   | { ok: false; error: string }
 
+export interface BaseProcessWaitOpts {
+  /** 最大等待毫秒数，默认 60000ms（小于等于 0 表示无限制） */
+  timeoutMs?: number
+  /** 就绪匹配文本（针对常驻后台服务，stdout/stderr 一旦包含此文本立即返回，且保持进程在后台运行） */
+  matchText?: string
+}
+
+export type BaseProcessWaitResult =
+  | {
+      ok: true
+      process_id: string
+      exited: boolean
+      exitCode: number | null
+      signal: string | null
+      stdout: string
+      stderr: string
+      durationMs: number
+      matched?: boolean
+      timedOut?: boolean
+    }
+  | { ok: false; error: string }
+
+export interface BaseProcessRunOpts {
+  command: string
+  args?: string[]
+  cwd?: string
+  env?: Record<string, string>
+  /** 最大执行毫秒数，默认 60000ms */
+  timeoutMs?: number
+  /** 执行完成后是否自动删除/清理任务记录，默认 true */
+  cleanup?: boolean
+}
+
+export type BaseProcessRunResult =
+  | {
+      ok: boolean
+      process_id?: string
+      exitCode: number | null
+      signal: string | null
+      stdout: string
+      stderr: string
+      durationMs: number
+      timedOut?: boolean
+      error?: string
+    }
+
+

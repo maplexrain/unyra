@@ -48,7 +48,13 @@ export function createWorkspaceOps(deps: AgentOpsDeps, io: WorkspaceIo) {
       .filter(Boolean)
     if (!segments.length) {
       const cur = currentOf()
-      if (!cur) return { error: '没有指定路径，此刻也没有打开的节点；写明路径（如 极限/要点.md）或先 api.node.list()' }
+      if (!cur) {
+        const hasNodes = store0().nodes.some((n) => n.goalId === deps.goalId())
+        if (!hasNodes) {
+          return { error: '当前目标尚未创建任何文档节点，工作区挂在节点之下。请先调用 api.node.create({ kind: "doc", title: "...", root: true }) 创建根节点。' }
+        }
+        return { error: '没有指定路径，此刻也没有打开的节点；写明路径（如 极限/要点.md）或先 api.node.list()' }
+      }
       return { node: cur, rest: [] }
     }
     let cursor: KnowledgeNode
@@ -70,7 +76,12 @@ export function createWorkspaceOps(deps: AgentOpsDeps, io: WorkspaceIo) {
       if (!root) {
         root = currentOf() ?? store0().nodes.find((n) => n.goalId === deps.goalId())
       }
-      if (!root) return { error: '这个目标尚未创建任何文档节点，无法定位工作区；请先 api.node.create({ kind: "doc" })' }
+      if (!root) {
+        return {
+          error:
+            '当前目标尚未创建任何文档节点（目标刚创建时 nodes 为空），工作区挂在节点之下。请先调用 api.node.create({ kind: "doc", title: "...", root: true }) 创建根节点，工作区即会自动就位。',
+        }
+      }
       // 第一段若就是目标根自己的标题，当作从这里出发的写法吃掉（「微积分/极限/数据.csv」才走得通）
       if (normalizeKey(first) === root.key || first === root.id) {
         cursor = root

@@ -103,7 +103,7 @@ export const API_GROUPS: ApiGroupDoc[] = [
 - api.help()：api 集总览（与 api.__help() 同义）。
 - api.compact({ summary, tasks? })：提交交接摘要；本轮结束后生效。
 - api.fetch(url | { url } | urls[] + { maxChars? })：抓网页转 Markdown（等同 api.web.fetch）；给数组 = 并发批量（一次最多 5 篇，逐条返回、失败不拖累其他篇），maxChars 直接截好。
-- api.see(图片地址 | base64 | { url?, base64?, mime?, name? } | { pdf?, page? })：看一张图或一份 PDF 的指定页，它们附在你的下一步里。`,
+- api.see(图片地址 | 'moji:static/<uuid>' | 本地路径 | base64 | { url?, base64?, mime?, name? } | { pdf?, page? })：看一张图或一份 PDF 的指定页，它们附在你的下一步里。`,
     [
       a('help', 'help()', 'api 集总览', '任何时候都能调。返回的是组名与一句说明，不含具体签名；具体用法用 api.<组>.__help()。', 'const overview = await api.help()'),
       a('wait', 'wait(ms | { seconds })', '等一段时间再继续', '等异步结果、等页面加载、等用户操作时用；上限 120 秒。纯计算不要用它拖时间。', 'await api.wait(800)'),
@@ -122,17 +122,18 @@ export const API_GROUPS: ApiGroupDoc[] = [
       a('fetch', 'fetch(url | { url } | urls[], { maxChars? })', '抓网页并转 Markdown（web.fetch 的别名）；数组 = 并发批量', '与 api.web.fetch 完全等价，提示词里教的就是这个名字。回 { ok, title, content, error? }，失败不抛异常，先判 ok；批量给数组（一次最多 5 篇，回 { ok, results: [...] }，一篇失败只标记它自己）；maxChars 直接截好，省掉自己 slice。', `const pages = await api.fetch([url1, url2], { maxChars: 6000 })`),
       a(
         'see',
-        'see(url | base64 | { url?, base64?, mime?, name? } | { pdf?, page?, name? })',
+        'see(url | "moji:static/<uuid>" | 本地路径 | base64 | { url?, base64?, mime?, name? } | { pdf?, page?, name? })',
         '看一张图或一份 PDF 的指定页（附在你的下一步里）',
-        '需要亲眼看一样东西时用：网页或接口里发现的图片链接、代码/文件里的 base64 图片、工作区文件里的 data URL、' +
+        '需要亲眼看一样东西时用：网页或接口里发现的图片链接、资源库引用 moji:static/<uuid>（或已入库图片 uuid）、工作区/本地图片相对路径、代码/文件里的 base64 图片、工作区文件里的 data URL、' +
           '论文/讲义/扫描件 PDF 里的图表与排版。图片走图像通道（与 res.read 读图同一机制），回执本身不含图片内容，' +
-          '不要把 base64 写进返回值。字符串收三种写法：http(s) 图片地址、data:image/...;base64,...、裸 base64（按 mime 参数或魔数认格式）。' +
+          '不要把 base64 写进返回值。图片收五种写法：http(s) 图片地址、资源库引用 moji:static/<uuid>、资源库 uuid 或工作区图片相对路径、data:image/...;base64,...、裸 base64（按 mime 参数或魔数认格式）。' +
           '**看 PDF 用 { pdf, page }**：pdf 收 http(s) 地址、资源库引用 moji:static/<uuid>（先 res.list() 找）' +
           '或相对用户的文件路径；page 从 1 起，单个或数组（一次最多 4 页），省略看第 1 页——只渲染页面为图，不提供文字层；' +
           '个别字体未内嵌的 CJK PDF 可能缺字。图片上限 12MB、PDF 上限 32MB，过大的图先压缩到长边 1568 再入库；' +
           '同内容的图自动复用资源库已有那条。多页内容逐页调，先看你最需要的那几页。',
         `const r = await api.see('https://example.com/chart.png')
 if (r.ok) { /* 图片已在你的下一步里，直接描述它即可 */ }
+const s = await api.see('moji:static/<uuid>')
 const p = await api.see({ pdf: 'moji:static/<uuid>', page: [1, 3] })`,
       ),
     ],
@@ -503,6 +504,8 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
     [
       a('create', 'process.create({ command, args?, cwd?, env? })', '创建进程任务', 'cwd 必须在可访问目录内；创建后默认不跑。', `const p = await api.process.create({ command: 'python', args: ['main.py'], cwd: 'D:/work' })`),
       a('start', 'process.start(process_id)', '启动进程', '回 pid 与 running。', `await api.process.start(p.process_id)`),
+      a('run', 'process.run({ command, args?, cwd?, env?, timeoutMs?, cleanup? })', '一键式运行短命令并等待完成', '推荐首选！自动创建、启动、事件驱动等待完成并回传输出，自动清理任务记录。杜绝睡眠盲等。', `const r = await api.process.run({ command: 'npx', args: ['tsc'], cwd: 'pelican-bike-3d' })`),
+      a('wait', 'process.wait(process_id, { timeoutMs?, matchText? }?)', '事件驱动等待进程退出或就绪', '毫秒级精准唤醒，杜绝盲等；支持 matchText 匹配输出字符（针对后台常驻服务如 DevServer，就绪即返回且服务在后台保持运行）。', `const w = await api.process.wait(p.process_id, { timeoutMs: 30000 })`),
       a('status', 'process.status(process_id)', '查进程状态', '回 running / exitCode。', `const st = await api.process.status(p.process_id)`),
       a('output', 'process.output(process_id, { offset?, reset? }?)', '读取进程的标准输出与错误', '支持增量读（带 offset 续读）；长输出分段拿，不要一次全量。', `const out = await api.process.output(p.process_id)`),
       a('stop', 'process.stop(process_id, { timeoutMs?, force? }?)', '停止进程', '先温和后强杀；force 会丢未落盘内容。', `await api.process.stop(p.process_id, { force: true })`),

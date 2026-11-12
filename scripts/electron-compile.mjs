@@ -7,9 +7,10 @@
  * 同时导出 findTsFiles / cleanDist，供 dev.mjs 复用。
  */
 
-import { readdirSync, rmSync, copyFileSync, existsSync } from 'node:fs'
+import { readdirSync, rmSync, copyFileSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { execFileSync } from 'node:child_process'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 
@@ -100,6 +101,19 @@ export async function buildElectron(outdir = join(ROOT, 'dist-electron')) {
   )
 
   // Windows 平台专属：同步携带原生极速窗口探测与全局快捷键助手产物
+  const csSrc = join(ROOT, 'electron/app/screenHelper.cs')
+  const exeSrc = join(ROOT, 'electron/app/screenHelper.exe')
+  const cscPath = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe'
+  if (process.platform === 'win32' && existsSync(csSrc) && existsSync(cscPath)) {
+    if (!existsSync(exeSrc) || statSync(exeSrc).mtimeMs < statSync(csSrc).mtimeMs) {
+      try {
+        execFileSync(cscPath, ['/nologo', '/optimize+', '/target:winexe', '/r:System.Drawing.dll', `/out:${exeSrc}`, csSrc])
+      } catch {
+        // 编译失败时忽略
+      }
+    }
+  }
+
   for (const name of ['screenHelper.exe', 'screenHelper.cs']) {
     const src = join(ROOT, 'electron/app', name)
     const dst = join(outdir, name)

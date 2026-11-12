@@ -29,14 +29,23 @@ import { setMainWindow } from './mainWindow'
 function attachLoopbackAudio(): void {
   const supportsLoopback = process.platform === 'win32'
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    void desktopCapturer
+    desktopCapturer
       .getSources({ types: ['screen'] })
-      .then((sources) =>
+      .then((sources) => {
+        const primary = sources[0]
+        if (!primary) {
+          callback({})
+          return
+        }
         callback({
-          video: sources[0],
+          video: primary,
           ...(request.audioRequested && supportsLoopback ? { audio: 'loopback' as const } : {}),
-        }),
-      )
+        })
+      })
+      .catch((err) => {
+        console.warn('[main] desktopCapturer.getSources 异常：', err)
+        callback({})
+      })
   })
 }
 

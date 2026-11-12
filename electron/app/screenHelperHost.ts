@@ -1,6 +1,7 @@
 import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
 import fs from 'node:fs'
+import { app } from 'electron'
 
 let hookProcess: ChildProcess | null = null
 let triggerCallback: (() => void) | null = null
@@ -12,7 +13,10 @@ let activeSnapPath: string | null = null
 const CSC_PATH = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe'
 
 function getHelperExePath(): string {
+  const unpackedDir = __dirname.replace('app.asar', 'app.asar.unpacked')
   const candidates = [
+    path.join(unpackedDir, 'screenHelper.exe'),
+    path.join(unpackedDir, 'app', 'screenHelper.exe'),
     path.join(__dirname, 'screenHelper.exe'),
     path.join(__dirname, 'app', 'screenHelper.exe'),
     path.join(__dirname, '..', 'electron', 'app', 'screenHelper.exe'),
@@ -41,6 +45,10 @@ function getHelperCsPath(): string {
  */
 function ensureHelperExe(): Promise<boolean> {
   const exePath = getHelperExePath()
+  // 打包模式下安装目录通常只读且不可直接写入，若预置已解压的 exe 存在则直接使用，不走运行时 csc
+  if (app.isPackaged && fs.existsSync(exePath)) {
+    return Promise.resolve(true)
+  }
   const csPath = getHelperCsPath()
   if (!fs.existsSync(csPath) || !fs.existsSync(CSC_PATH)) {
     return Promise.resolve(fs.existsSync(exePath))

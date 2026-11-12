@@ -211,35 +211,115 @@ async function seeImage(
   const b64 = (input.base64 ?? '').replace(/\s+/g, '')
 
   try {
-    if (url || /^https?:\/\//i.test(raw)) {
+    if (/^https?:\/\//i.test(url) || /^https?:\/\//i.test(raw)) {
       // 网络图片：主进程去取字节（渲染层的 fetch 被 CORS 与 CSP 拦着，见 electron/web）
-      const target = url || raw
+      const target = /^https?:\/\//i.test(url) ? url : raw
       const res = await native().web.fetchBinary(target)
       if (!res.ok) return { ok: false, error: res.error }
       bytes = base64ToBytes(res.dataUrl.slice(res.dataUrl.indexOf(',') + 1))
       if (!bytes) return { ok: false, error: t('图片字节解码失败') }
       if (!label) label = nameFromUrl(res.finalUrl)
-    } else if (/^data:image\//i.test(raw)) {
+    } else if (/^data:image\//i.test(raw) || /^data:image\//i.test(url)) {
       // data URL：前缀里自带 mime
-      const comma = raw.indexOf(',')
+      const target = /^data:image\//i.test(raw) ? raw : url
+      const comma = target.indexOf(',')
       if (comma < 0) return { ok: false, error: t('这不是一张合法的 data URL') }
-      if (!mime) mime = raw.slice(5, raw.indexOf(';') < 0 ? comma : raw.indexOf(';')).trim()
-      bytes = base64ToBytes(raw.slice(comma + 1))
+      if (!mime) mime = target.slice(5, target.indexOf(';') < 0 ? comma : target.indexOf(';')).trim()
+      bytes = base64ToBytes(target.slice(comma + 1))
       if (!bytes) return { ok: false, error: t('图片数据不是合法的 base64') }
-    } else if (raw || b64) {
-      // 裸 base64：体积先挡一道（省得解码几千万字符才发现超限）
-      const payload = b64 || raw.slice(raw.indexOf(',') + 1)
-      if (payload.length > MAX_BASE64_CHARS) {
-        return { ok: false, error: t('图片超过 12MB，先换一张小一点的或压缩后再试') }
+    } else if (
+      raw.startsWith('moji:static/') ||
+      url.startsWith('moji:static/') ||
+      (raw && findResource(deps.getLatest(), deps.goalId(), raw.trim())) ||
+      (url && findResource(deps.getLatest(), deps.goalId(), url.trim()))
+    ) {
+      // moji:static/<uuid> 协议引用，或目标资源库中已有的图片资源
+      const ref = raw.startsWith('moji:static/')
+        ? raw.slice('moji:static/'.length).trim()
+        : url.startsWith('moji:static/')
+          ? url.slice('moji:static/'.length).trim()
+          : (raw || url).trim()
+      const store = deps.getLatest()
+      const gid = deps.goalId()
+      const res = findResource(store, gid, ref)
+      if (!res) {
+        return {
+          ok: false,
+          error: `资源库中找不到引用「${raw || url}」对应的图片。可先用 api.res.list() 查看现有静态资源。`,
+        }
       }
-      bytes = base64ToBytes(payload)
-      if (!bytes) return { ok: false, error: t('图片数据不是合法的 base64') }
+      const rel = resourceRel(store, gid, res)
+      if (!rel) return { ok: false, error: `资源「${res.name}」的文件读不到（清单里有、磁盘上没有）。` }
+      const dataUrl = await readUserBinary(rel)
+      if (!dataUrl) return { ok: false, error: `资源「${res.name}」的文件读不到（磁盘上无数据）。` }
+      const comma = dataUrl.indexOf(',')
+      bytes = comma >= 0 ? base64ToBytes(dataUrl.slice(comma + 1)) : null
+      if (!bytes) return { ok: false, error: t('图片字节解码失败') }
+      const sniffedMime = sniffImageMime(bytes) || (res.ext ? `image/${res.ext}` : 'image/png')
+      if (!mime) mime = sniffedMime
+      if (!label) label = res.name
+
+      // 更新已有资源的元数据（caption / order）
+      if ((input.caption !== undefined || input.order !== undefined) && (!res.caption || res.order === undefined)) {
+        deps.set(
+          patchResource(store, gid, res.uuid, {
+            ...(input.caption !== undefined && !res.caption ? { caption: input.caption.trim() } : {}),
+            ...(input.order !== undefined && res.order === undefined ? { order: input.order } : {}),
+          }),
+        )
+      }
+      rememberImage(rel, { mime, data: dataUrl.slice(comma + 1), url: dataUrl })
+
+      const img: MessageImage = {
+        id: res.uuid,
+        rel,
+        name: label,
+        mime,
+        bytes: res.bytes || bytes.byteLength,
+      }
+      return {
+        ok: true,
+        uuid: res.uuid,
+        rel,
+        name: img.name,
+        mime: img.mime,
+        bytes: img.bytes,
+        note:
+          `图片已从资源库挂载到你的下一步里（${img.name}），你会直接看到它。要在文档里引用它写 ![说明](moji:static/${res.uuid})。`,
+        images: [img],
+      }
+    } else if (raw || b64) {
+      // 检查是否为相对文件路径（例如用户/工作区中的本地图片路径）
+      const candidatePath = (raw || url).trim()
+      let diskDataUrl: string | null = null
+      if (candidatePath && !b64 && !candidatePath.includes('\n') && candidatePath.length < 500) {
+        try {
+          diskDataUrl = await readUserBinary(candidatePath)
+        } catch {
+          // 不是本地文件，继续走 base64 逻辑
+        }
+      }
+
+      if (diskDataUrl) {
+        const comma = diskDataUrl.indexOf(',')
+        bytes = comma >= 0 ? base64ToBytes(diskDataUrl.slice(comma + 1)) : null
+        if (!bytes) return { ok: false, error: t('图片字节解码失败') }
+        if (!label) label = candidatePath.split('/').pop() || '本地图片'
+      } else {
+        // 裸 base64：体积先挡一道（省得解码几千万字符才发现超限）
+        const payload = b64 || raw.slice(raw.indexOf(',') + 1)
+        if (payload.length > MAX_BASE64_CHARS) {
+          return { ok: false, error: t('图片超过 12MB，先换一张小一点的或压缩后再试') }
+        }
+        bytes = base64ToBytes(payload)
+        if (!bytes) return { ok: false, error: t('图片数据不是合法的 base64') }
+      }
       if (!mime || !mime.startsWith('image/')) mime = sniffImageMime(bytes) ?? ''
     } else {
       return {
         ok: false,
         error:
-          'see 需要一张图或一份 PDF：api.see(\'https://…/图.png\')、api.see({ pdf: \'https://…/论文.pdf\', page: 3 })、' +
+          'see 需要一张图或一份 PDF：api.see(\'https://…/图.png\')、api.see(\'moji:static/<uuid>\')、api.see({ pdf: \'https://…/论文.pdf\', page: 3 })、' +
           "api.see({ base64: '…', mime: 'image/png', name: '叫什么' })。",
       }
     }

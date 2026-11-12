@@ -250,6 +250,28 @@ export function createWebNativeBridge(): NativeBridge {
       setCache: () => Promise.resolve(true),
     },
 
+    tts: {
+      modelStatus: (modelId?: string) =>
+        Promise.resolve({
+          modelId: modelId || 'vits-melo-tts-zh_en',
+          dir: '',
+          path: '',
+          exists: false,
+          bytes: 0,
+          totalBytes: 0,
+          files: [],
+          url: '',
+          sources: [],
+          availableModels: [],
+        }),
+      downloadModel: () => Promise.resolve({ ok: false, error: 'Web 模式暂不支持本地下载模型' }),
+      cancelDownload: () => Promise.resolve(true),
+      removeModel: () => Promise.resolve({ ok: true }),
+      revealModel: () => Promise.resolve(false),
+      synthesize: () => Promise.resolve({ ok: false, error: 'Web 模式暂不支持本地模型推理' }),
+      onModelProgress: () => () => {},
+    },
+
     update: {
       state: () => Promise.resolve({ phase: 'idle' } as UpdateState),
       check: () => Promise.resolve({ phase: 'idle' } as UpdateState),
@@ -402,6 +424,8 @@ export function createWebNativeBridge(): NativeBridge {
       start: (id) => apiFetch('/api/base/process/start', { method: 'POST', body: JSON.stringify({ id }) }),
       status: (id) => apiFetch('/api/base/process/status', { method: 'POST', body: JSON.stringify({ id }) }),
       output: (id, opts) => apiFetch('/api/base/process/output', { method: 'POST', body: JSON.stringify({ id, opts }) }),
+      wait: (id, opts) => apiFetch('/api/base/process/wait', { method: 'POST', body: JSON.stringify({ id, opts }) }),
+      run: (opts) => apiFetch('/api/base/process/run', { method: 'POST', body: JSON.stringify({ opts }) }),
       stop: (id, opts) => apiFetch('/api/base/process/stop', { method: 'POST', body: JSON.stringify({ id, opts }) }),
       list: () => apiFetch('/api/base/process/list'),
       get: (id) => apiFetch('/api/base/process/get', { method: 'POST', body: JSON.stringify({ id }) }),
@@ -436,6 +460,8 @@ export function createWebNativeBridge(): NativeBridge {
         start: (id) => apiFetch('/api/base/process/start', { method: 'POST', body: JSON.stringify({ id }) }),
         status: (id) => apiFetch('/api/base/process/status', { method: 'POST', body: JSON.stringify({ id }) }),
         output: (id, opts) => apiFetch('/api/base/process/output', { method: 'POST', body: JSON.stringify({ id, opts }) }),
+        wait: (id, opts) => apiFetch('/api/base/process/wait', { method: 'POST', body: JSON.stringify({ id, opts }) }),
+        run: (opts) => apiFetch('/api/base/process/run', { method: 'POST', body: JSON.stringify({ opts }) }),
         stop: (id, opts) => apiFetch('/api/base/process/stop', { method: 'POST', body: JSON.stringify({ id, opts }) }),
         list: () => apiFetch('/api/base/process/list'),
         get: (id) => apiFetch('/api/base/process/get', { method: 'POST', body: JSON.stringify({ id }) }),

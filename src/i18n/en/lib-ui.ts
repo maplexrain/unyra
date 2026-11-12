@@ -202,6 +202,7 @@ const dict: Record<string, string> = {
 
   /* ---------- lib/audio/loopback.ts：系统音频回环与顶栏波浪 ---------- */
   '这个运行环境拿不到音频（navigator.mediaDevices 不可用）': 'Audio is unavailable in this environment (navigator.mediaDevices is missing)',
+  '系统音频未激活或设备无声音输出': 'System audio is inactive or device has no sound output',
   '音频子系统没有启动（AudioContext 处于 {0}）': 'The audio subsystem did not start (AudioContext is {0})',
   '正在监听系统音频': 'Listening to system audio',
   '输出设备变了，重新接系统音频': 'Output device changed, reconnecting to system audio',

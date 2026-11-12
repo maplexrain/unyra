@@ -28,6 +28,7 @@ export function installSee(api: Record<string, unknown>, opts: SandboxOptions, l
           : undefined
       return {
         ...(obj.raw !== undefined ? { raw: asText(obj.raw) } : {}),
+        ...(obj.uuid !== undefined && obj.raw === undefined ? { raw: asText(obj.uuid) } : {}),
         ...(obj.url !== undefined || obj.link !== undefined || obj.href !== undefined
           ? { url: asText(obj.url ?? obj.link ?? obj.href) }
           : {}),

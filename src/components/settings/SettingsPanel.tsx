@@ -49,8 +49,10 @@ import { DevPanel } from './DevPanel'
 import { PluginsPanel } from './PluginsPanel'
 import { PluginVoicePage } from './PluginVoicePage'
 import { PluginOcrPage } from './PluginOcrPage'
+import { PluginTtsPage } from './PluginTtsPage'
 import { VOICE_PLUGIN_ID } from '../../lib/voice/plugin'
 import { OCR_PLUGIN_ID } from '../../lib/ocr/plugin'
+import { TTS_PLUGIN_ID } from '../../lib/tts/plugin'
 import { ProviderListPage } from './ProviderListPage'
 import { ProviderConfigPage } from './ProviderConfigPage'
 
@@ -378,7 +380,9 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
                       ? pluginPage
                         ? pluginPage === OCR_PLUGIN_ID
                           ? t('OCR 文字识别')
-                          : t('语音输入')
+                          : pluginPage === TTS_PLUGIN_ID
+                            ? t('语音合成 (TTS)')
+                            : t('语音输入')
                         : t('插件')
                       : tab === 'update'
                       ? t('更新')
@@ -496,6 +500,10 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
           ) : pluginPage === OCR_PLUGIN_ID ? (
             <div className={pane(4, true)}>
               <PluginOcrPage onToast={onToast} />
+            </div>
+          ) : pluginPage === TTS_PLUGIN_ID ? (
+            <div className={pane(4, true)}>
+              <PluginTtsPage onToast={onToast} />
             </div>
           ) : (
             <PluginsPanel onToast={onToast} onOpenConfig={setPluginPage} />

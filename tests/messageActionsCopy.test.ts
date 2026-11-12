@@ -32,9 +32,14 @@ describe('MessageActions 消息复制功能', () => {
     expect(copyBtn).toBeTruthy()
     expect(copyBtn?.getAttribute('title')).toBe('复制内容')
 
-    // 确认没有历史遗留的编辑与删除按钮
+    // 确认没有历史遗留的编辑与删除按钮（操作栏包含复制与语音朗读）
     const allButtons = div.querySelectorAll('button')
-    expect(allButtons).toHaveLength(1)
+    expect(allButtons).toHaveLength(2)
+    const titles = Array.from(allButtons).map((b) => b.getAttribute('title'))
+    expect(titles).toContain('复制内容')
+    expect(titles).toContain('语音朗读')
+    expect(titles).not.toContain('编辑')
+    expect(titles).not.toContain('删除')
 
     // 点击复制
     await act(async () => {

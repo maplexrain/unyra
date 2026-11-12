@@ -38,6 +38,7 @@ import { useFold } from './useFold'
 import { isInterruptedNotice } from '../../../learn/agent/inflight'
 import { groupParts, isProcessPart, type InjectItem, type ProcessPart } from './partGroups'
 import { openChipRef, type ChipPayload } from '../../../lib/docChip'
+import { MessageSpeakButton } from '../../tts/MessageSpeakButton'
 import { chipLabel, chipSvg, chipToken, maskChipTokens, restoreChipTokens, splitChips } from '../../../lib/chipSyntax'
 import { promptModuleByKey } from '../../../learn/ai/promptModules'
 import { splitParagraphs } from './paragraphBuffer'
@@ -239,6 +240,7 @@ function MessageActions({ text }: { text: string }) {
           <Copy size={12} />
         )}
       </button>
+      <MessageSpeakButton text={text} />
     </div>
   )
 }

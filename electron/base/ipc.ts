@@ -19,14 +19,20 @@ import {
   baseProcessGet,
   baseProcessList,
   baseProcessOutput,
+  baseProcessRun,
   baseProcessStart,
   baseProcessStatus,
   baseProcessStop,
+  baseProcessWait,
   cleanupAllProcesses,
 } from './process'
 import { syncAllowedDirs } from './permissions'
 import { projectFsRun } from './projectFiles'
-import type { BaseProcessCreateOpts } from '../../shared/ipc'
+import type {
+  BaseProcessCreateOpts,
+  BaseProcessRunOpts,
+  BaseProcessWaitOpts,
+} from '../../shared/ipc'
 
 function broadcastFileChanged(filePath: string, action: 'write' | 'edit' | 'delete', content?: string) {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -90,6 +96,12 @@ export function registerBaseIpc(): void {
   )
   ipcMain.handle('base:process:list', () => baseProcessList())
   ipcMain.handle('base:process:get', (_e, id: unknown) => baseProcessGet(String(id ?? '')))
+  ipcMain.handle('base:process:wait', (_e, id: unknown, opts: unknown) =>
+    baseProcessWait(String(id ?? ''), opts as BaseProcessWaitOpts),
+  )
+  ipcMain.handle('base:process:run', (_e, opts: unknown) =>
+    baseProcessRun(opts as BaseProcessRunOpts),
+  )
   ipcMain.handle('base:process:delete', (_e, id: unknown) => baseProcessDelete(String(id ?? '')))
 
   // 项目节点路径的文件操作（声明即授权，见 electron/base/projectFiles 与 learn/projects）

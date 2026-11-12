@@ -10,12 +10,11 @@ import { tabIdOf } from './tabbar/barGeometry'
 import { TabStrip } from './tabbar/TabStrip'
 import { BarMenu, TabMenu } from './tabbar/TabBarMenu'
 import { useTabBarDnd } from './tabbar/useTabBarDnd'
-import { useTabMark } from './tabbar/useTabMark'
 
 /*
  * 门面（facade）：本文件只留 Props 与 TabBar 本体的组装，成块机制拆在 ./tabbar/ 下——
  * tabRelation（知识图谱关系）/ StackedChevron（折角图标）/ TabIcons（页签小图标）/
- * barGeometry（常量与拖拽几何）/ useTabBarDnd（栏内拖拽排序）/ useTabMark（棱形）/
+ * barGeometry（常量与拖拽几何）/ useTabBarDnd（栏内拖拽排序）/
  * TabStrip（页签条渲染）/ TabBarMenu（两张右键菜单）。
  * 对外导出一律从这里原路径转发——tests 与上层（GroupBody 等）怎么引用都不用改。
  */
@@ -148,7 +147,7 @@ export default function TabBar({
   onTogglePin,
   onOpenWebTab,
   onNewTab,
-  focused = false,
+  focused: _focused = false,
   store,
 }: Props) {
   const activeTab = useMemo(
@@ -219,19 +218,6 @@ export default function TabBar({
     docPayloadOf,
   })
 
-  /* ---------- 棱形：右键拖动它换页签 ---------- */
-
-  const { markRef, onMarkDown, onMarkMove, onMarkUp, onSwallowMenuCapture } = useTabMark({
-    rootRef,
-    stripRef,
-    activeId,
-    focused,
-    onActivate,
-    presence,
-    drag,
-    settle,
-  })
-
   /**
    * 激活的页签要**尽量落在正中间**：页签多了必然横向溢出，从大纲链接跳过来、
    * 或按住右键横向拖着换页签时，新激活的那个可能只露出半个，甚至还在可视区之外。
@@ -296,25 +282,12 @@ export default function TabBar({
   return (
     <div
       ref={rootRef}
-      onPointerDown={onMarkDown}
-      onPointerMove={onMarkMove}
-      onPointerUp={onMarkUp}
-      onPointerCancel={onMarkUp}
-      onContextMenuCapture={onSwallowMenuCapture}
       className={
         'no-print relative flex shrink-0 items-stretch gap-2 pt-1.5 pb-0 ' +
         (presence.length ? 'bg-paper/40' : '') +
         (snap ? ' moji-tab-snap' : '')
       }
     >
-      {presence.length > 0 && (
-        <span
-          ref={markRef}
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-[6px] left-0 z-20 h-2.5 w-2.5 -translate-x-1/2 rotate-45 rounded-[2px] border border-seal/70 bg-seal/80 shadow-sm"
-        />
-      )}
-
       {/* 固定页签区 + 轻质分隔线 + 横向滚动的页签条（见 tabbar/TabStrip） */}
       <TabStrip
         pinnedPresence={pinnedPresence}

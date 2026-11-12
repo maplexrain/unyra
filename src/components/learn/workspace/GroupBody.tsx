@@ -5,13 +5,11 @@ import { setFocus, focusTabsInGroup } from '../../../learn/groups'
 import { nodeById, resolveDisplayedConversation } from '../../../learn/graph'
 import { updateFileNode } from '../../../learn/fileNodes'
 import { getOutlineSlot } from '../../../lib/outline'
-import { requestSourceReveal, localRevealKey, nodeRevealKey } from '../../../lib/docReveal'
+import { nodeRevealKey } from '../../../lib/docReveal'
 import { isWeb } from '../../../lib/native'
 import { openExternalLink } from '../../../lib/externalLink'
 import { CHIP_MIME, parseChipJson } from '../../../lib/chipSyntax'
 import { parseSuperHref, handleSuperLink } from '../../../lib/nodeLink'
-import { wsRelOfTab } from '../../../learn/workspace'
-import { userAbsPath } from '../../../lib/storage'
 import { globalSummary } from '../../../ai/settings'
 import { saveAgentSettings } from '../../../agent/settings'
 import { t } from '../../../i18n'
@@ -20,7 +18,6 @@ import WebTabLayer, { type WebTab } from '../web/WebTabLayer'
 import VideoTabLayer, { type VideoTab } from '../../video/VideoTabLayer'
 import FindBar from '../FindBar'
 import SuperDocView from '../SuperDocView'
-import LocalDoc from '../LocalDoc'
 import DraftDoc from '../DraftDoc'
 import SourceEditor from '../SourceEditor'
 import ExamCopyView from '../ExamCopyView'
@@ -36,8 +33,10 @@ import AgentSettingsPanel from '../../AgentSettingsPanel'
 import { EmptyDoc } from './chrome'
 import { DocPane } from './DocPane'
 import { OutlinePane } from './OutlinePane'
+import { FileTabLayer } from './FileTabLayer'
 import { paneInfo, examCopyOf, conceptKeysOf } from './panes'
 import { createVideoTabBridge } from './videoTabBridge'
+import { openSisterDocView } from './sisterView'
 import { ZONE_BOX } from './drag'
 import { SRC_SCROLL_SUFFIX } from './constants'
 
@@ -141,8 +140,6 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     explorerExams,
     canvasChannel,
     runSuperMethod,
-    onDocPointerDown,
-    docMarkMoved,
     docBox,
     groupHosts,
     stripHosts,
@@ -179,6 +176,8 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
   const gOutlineTabs = (g.group?.tabs ?? []).filter(
     (x): x is LearnTab & { ref: { kind: 'outline'; nodeId: string; goalId?: string } } => x.ref.kind === 'outline',
   )
+  /** 这一格挂着的文件页签（本地文件与工作区文件）：keepalive 常驻，切页签只藏不卸，保持编辑器状态与光标 */
+  const gFileTabs = (g.group?.tabs ?? []).filter((x) => x.ref.kind === 'local' || x.ref.kind === 'ws')
   const gNodeId = dg.node?.id ?? (gTab?.ref && 'nodeId' in gTab.ref ? (gTab.ref as { nodeId: string }).nodeId : undefined)
   const relations = gNodeId ? computeRelations(store, gNodeId, gTab?.ref) : undefined
 
@@ -279,7 +278,6 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               onTogglePin={(tab) => toggleTabPin(groupId, tab)}
               // 资源管理器/外部拖进来的引用落在这一格的页签栏上：还原成页签开在这一格里
               onDropChip={openChipInGroup(groupId)}
-              // 棱形只在焦点格的栏上跟着右键走（见 lib/tabMark）
               focused={isFocused}
               // 栏上空白处的右键菜单要开新网页页签（见 TabBar 的 BarMenu）；WebUI 模式下不提供
               onOpenWebTab={isWeb() ? undefined : () => openWebTab('')}
@@ -295,17 +293,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
         文档内容 + 右上角悬浮组。悬浮组是绝对定位的，所以这一层必须 relative，
         并且它是**唯一**能被悬浮组盖住的地方——它不会跑到页签栏或对话栏上去。
       */}
-      <div
-        className="relative flex min-h-0 flex-1 flex-col"
-        onPointerDown={onDocPointerDown}
-        onContextMenu={(e) => {
-          // 刚用右键划过：这一下 contextmenu 是那趟划动的尾巴，不是「要上下文」
-          if (!docMarkMoved.current) return
-          docMarkMoved.current = false
-          e.preventDefault()
-          e.stopPropagation()
-        }}
-      >
+      <div className="relative flex min-h-0 flex-1 flex-col">
           <div
             ref={isFocused ? docBox : undefined}
             {...boxProps}
@@ -506,78 +494,13 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               saveError={docSaveError}
               onSave={() => void saveDocNow()}
             />
-          ) : gTab?.ref.kind === 'local' ? (
+          ) : gTab?.ref.kind === 'local' || gTab?.ref.kind === 'ws' ? (
             /*
-              本地文件：内容不在数据目录里，读取与落盘都由它自己管（见 LocalDoc）。
-              key 绑「路径 + 外部版本号」：换一个文件、或文件在外部被改过（应用里
-              没有暂存改动，见 useDocSaveFlow 的 handleLocalChange）就重挂重读，上一份的
-              「未保存」状态不会串到这一份上。文件丢失的兜底关页签不弹确认（confirm:false）——
-              文件都不在了，没有「保存」可言。
+              本地文件与工作区文件：统一由下方的 FileTabLayer（常驻保活层）接管，
+              切页签时仅添加 hidden 挂起，不卸载 CodeMirror 实例与 DOM，切回零延迟，完整保活。
+              这里让出位置给常驻层。
             */
-            <LocalDoc
-              key={gTab.ref.path + '#' + (localTicks[gTab.ref.path] ?? 0)}
-              path={gTab.ref.path}
-              view={dg.view}
-              scale={docScale}
-              editorScale={editorScale}
-              draft={dg.draft}
-              savedText={localSaved?.path === gTab.ref.path ? localSaved.text : undefined}
-              onDraft={(text) => stageLocalDraft(gTabId, text)}
-              saving={docSaving}
-              saveError={docSaveError}
-              onMissing={() => closeTab(groupId, gTab.id, 'self', { confirm: false })}
-              outlineSlot={getOutlineSlot(gTab.id)}
-              // 空 md 默认进编辑（空预览是一片白）：读完内容发现是空的，从预览切过来
-              onNeedEdit={() => setTabView(gTab.id, 'source')}
-              // 右键菜单的「定位源码」：先放下选中哪一段，再切到源码视图（见 lib/docReveal）
-              onRevealSource={(loc) => {
-                if (gTab?.ref.kind !== 'local') return
-                requestSourceReveal(localRevealKey(gTab.ref.path), loc.start, loc.end)
-                setTabView(gTab.id, 'source')
-              }}
-              onToast={onToast}
-            />
-          ) : gTab?.ref.kind === 'ws' ? (
-            /*
-              工作区（项目）内部文件：渲染与本地文件共用 LocalDoc（读 / 改 / 保存体验同一套），
-              差别只在路径的来源——rel 从节点工作区现推（节点改名跟着走），再换算绝对路径。
-              推不出来（节点刚被删）给一句话，而不是留一片白。
-            */
-            (() => {
-              const rel = wsRelOfTab(store, gTab.ref)
-              const abs = rel ? userAbsPath(rel) : null
-              if (!abs) {
-                return (
-                  <div className="flex min-h-0 flex-1 items-center justify-center text-[12.5px] text-ink-faint">
-                    {t('这份工作区文件已经不在了（节点或项目被删掉了）')}
-                  </div>
-                )
-              }
-              return (
-                <LocalDoc
-                  key={abs + '#' + (localTicks[abs] ?? 0)}
-                  path={abs}
-                  view={dg.view}
-                  scale={docScale}
-                  editorScale={editorScale}
-                  draft={dg.draft}
-                  savedText={localSaved?.path === abs ? localSaved.text : undefined}
-                  onDraft={(text) => stageLocalDraft(gTabId, text)}
-                  saving={docSaving}
-                  saveError={docSaveError}
-                  onMissing={() => closeTab(groupId, gTab.id, 'self', { confirm: false })}
-                  outlineSlot={getOutlineSlot(gTab.id)}
-                  onNeedEdit={() => setTabView(gTab.id, 'source')}
-                  // 右键菜单的「定位源码」：先放下选中哪一段，再把这个页签切到源码视图
-                  // （切完预览就卸载了，选区也随之消失，顺序不能反，见 lib/docReveal）
-                  onRevealSource={(loc) => {
-                    requestSourceReveal(localRevealKey(abs), loc.start, loc.end)
-                    setTabView(gTab.id, 'source')
-                  }}
-                  onToast={onToast}
-                />
-              )
-            })()
+            null
           ) : gTab?.ref.kind === 'exam' ? (
             /*
               试卷副本：只读的一次考试（卷子原件 + 那次作答 + 判分 + 错题讲解）。
@@ -730,6 +653,30 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               />
             )
           })}
+
+          {/*
+            本地与工作区文件常驻层（keepalive）：所有已打开的文件页签常驻在 DOM 中，
+            当前页签激活显示，非激活页签带着 hidden 保持保活，避免切页签时反复销毁重建 CodeMirror。
+          */}
+          {gFileTabs.length > 0 && (
+            <FileTabLayer
+              groupId={groupId}
+              tabs={gFileTabs}
+              activeTabId={gTab?.id ?? null}
+              store={store}
+              docScale={docScale}
+              editorScale={editorScale}
+              docSaving={docSaving}
+              docSaveError={docSaveError}
+              localSaved={localSaved}
+              localTicks={localTicks}
+              stageLocalDraft={stageLocalDraft}
+              closeTab={closeTab}
+              setTabView={setTabView}
+              getOutlineSlot={getOutlineSlot}
+              onToast={onToast}
+            />
+          )}
         </div>
 
         {/*
@@ -831,7 +778,11 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
             previewHint={
               dg.emptyNote ? t('这份笔记还是空的：先在源码视图里写点东西，才有得预览') : undefined
             }
-            onSwitchView={(v) => setTabView(gTabId, v)}
+            onSwitchView={(v) => {
+              if (v === 'source' || v === 'preview') {
+                openSisterDocView(store, gTab, v, groupId, set)
+              }
+            }}
             showBackToDoc={gTab.ref.kind === 'note' || gTab.ref.kind === 'super'}
             onBackToDoc={() => dg.node && openTab({ kind: 'teach', nodeId: dg.node.id })}
             // 纯净阅读那颗：它与 F11 / Esc 是同一个动作（见 toggleZen）。

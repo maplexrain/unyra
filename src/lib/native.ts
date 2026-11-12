@@ -12,8 +12,8 @@ import { t } from '../i18n'
 import type {
   AttachReadResult, BaseFileEditOpts, BaseFileEditResult, BaseFileListResult, BaseFileOpResult, BaseFileReadResult,
   BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
-  BaseProcessListResult, BaseProcessOutputResult, BaseProcessStartResult, BaseProcessStatusResult,
-  BaseProcessStopResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
+  BaseProcessListResult, BaseProcessOutputResult, BaseProcessRunOpts, BaseProcessRunResult, BaseProcessStartResult, BaseProcessStatusResult,
+  BaseProcessStopResult, BaseProcessWaitOpts, BaseProcessWaitResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   NoticeSettings, PluginEntry, PluginTogglesResult, SaveBinaryPayload, SaveBinaryResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
@@ -26,6 +26,7 @@ import type {
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
   ProjectFsRequest, ProjectFsResult,
+  TtsModelStatus, TtsModelProgress, TtsDownloadResult, TtsSynthesizeRequest, TtsSynthesizeResult, TtsModelDefinition,
 } from '../../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（与 electron/preload.ts 共用一份，见该文件顶部）：
@@ -46,6 +47,7 @@ export type {
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
   ProjectFsRequest, ProjectFsResult,
+  TtsModelStatus, TtsModelProgress, TtsDownloadResult, TtsSynthesizeRequest, TtsSynthesizeResult, TtsModelDefinition,
 }
 
 export type PluginList =
@@ -401,6 +403,18 @@ export interface NativeBridge {
     setCache(key: string, data: OcrPageResult): Promise<boolean>
   }
   /**
+   * TTS 语音合成：轻量离线模型管理与推理通道。
+   */
+  tts: {
+    modelStatus(modelId?: string): Promise<TtsModelStatus>
+    downloadModel(modelId?: string): Promise<TtsDownloadResult>
+    cancelDownload(): Promise<boolean>
+    removeModel(modelId?: string): Promise<{ ok: boolean; error?: string }>
+    revealModel(modelId?: string): Promise<boolean>
+    synthesize(req: TtsSynthesizeRequest): Promise<TtsSynthesizeResult>
+    onModelProgress(cb: (p: TtsModelProgress) => void): () => void
+  }
+  /**
    * 自动更新：读状态、手动检查、安装、看发布页。
    * 下载什么时候开始、能不能装，都由主进程决定，这里没有开关。
    */
@@ -534,6 +548,8 @@ export interface NativeBridge {
     start(process_id: string): Promise<BaseProcessStartResult>
     status(process_id: string): Promise<BaseProcessStatusResult>
     output(process_id: string, opts?: { offset?: number; reset?: boolean }): Promise<BaseProcessOutputResult>
+    wait(process_id: string, opts?: BaseProcessWaitOpts): Promise<BaseProcessWaitResult>
+    run(opts: BaseProcessRunOpts): Promise<BaseProcessRunResult>
     stop(process_id: string, opts?: { timeoutMs?: number; force?: boolean }): Promise<BaseProcessStopResult>
     list(): Promise<BaseProcessListResult>
     get(process_id: string): Promise<BaseProcessGetResult>
@@ -566,6 +582,8 @@ export interface NativeBridge {
       start(process_id: string): Promise<BaseProcessStartResult>
       status(process_id: string): Promise<BaseProcessStatusResult>
       output(process_id: string, opts?: { offset?: number; reset?: boolean }): Promise<BaseProcessOutputResult>
+      wait(process_id: string, opts?: BaseProcessWaitOpts): Promise<BaseProcessWaitResult>
+      run(opts: BaseProcessRunOpts): Promise<BaseProcessRunResult>
       stop(process_id: string, opts?: { timeoutMs?: number; force?: boolean }): Promise<BaseProcessStopResult>
       list(): Promise<BaseProcessListResult>
       get(process_id: string): Promise<BaseProcessGetResult>

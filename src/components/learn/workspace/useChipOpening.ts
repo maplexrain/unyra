@@ -16,18 +16,18 @@ import {
   withGroup,
   withOwners,
 } from '../../../learn/groups'
-import { tabKey, tabNodeId, tabTitle, newWebKey, newDraftKey, makeTab } from '../../../learn/tabs'
+import { tabKey, tabNodeId, tabTitle, newWebKey, newDraftKey, makeTab, fileNameOf } from '../../../learn/tabs'
 import { nodeById, normalizeKey } from '../../../learn/graph'
 import { nodePathOf, resolveNode } from '../../../learn/paths'
 import { normalizeWebInput } from '../../../learn/webUrl'
-import { tabRefFromChip } from '../../../learn/chipRef'
+import { tabRefFromChip, wsChipUserRel } from '../../../learn/chipRef'
 import type { ChipPayload } from '../../../lib/docChip'
 import { userAbsPath } from '../../../lib/storage'
 import { isWeb } from '../../../lib/native'
 import { pickLocalFiles } from '../../../lib/localFiles'
 import { addLocalFile } from '../../../learn/localfiles'
 import { nodeDocPath } from '../../../learn/files'
-import { wsRelOfTab } from '../../../learn/workspace'
+import { wsRefOfRel, wsRelOfTab } from '../../../learn/workspace'
 import type { ExamBridgeApi } from '../../../learn/useExamBridge'
 import { t } from '../../../i18n'
 
@@ -206,12 +206,26 @@ export function useChipOpening({
             return
           }
         }
-        // 3. 若节点树里依然未找到，但路径带物理文件后缀（如 .md），尝试作为本地文件打开
+        // 3. 若节点树里依然未找到，但路径带物理文件后缀（如 .md），优先尝试反查工作区，再兜底本地文件
         if (/\.[a-z0-9]{1,8}$/i.test(p.path)) {
+          const wsRel = wsChipUserRel(s, p.path, targetGoalId ?? undefined)
+          const wsRef = wsRel ? wsRefOfRel(s, wsRel) : null
+          if (wsRef) {
+            openTab(wsRef)
+            return
+          }
           const fileNorm = p.path.replace(/\\/g, '/')
           const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(fileNorm)
           const abs = isAbs ? fileNorm : (userAbsPath(fileNorm) ?? fileNorm)
-          openTab({ kind: 'local', path: abs, title: p.path.split('/').pop() })
+          openTab({ kind: 'local', path: abs, title: fileNameOf(p.path) })
+          return
+        }
+      }
+      if (p.type === 'ws' && p.path) {
+        // ws 类型的兜底：若是绝对路径，尝试作为本地文件打开
+        const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(p.path)
+        if (isAbs) {
+          openTab({ kind: 'local', path: p.path, title: p.title ? fileNameOf(p.title) : fileNameOf(p.path) })
           return
         }
       }

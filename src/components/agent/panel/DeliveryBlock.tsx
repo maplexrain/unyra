@@ -40,13 +40,14 @@ function hostOf(url: string): string {
 /**
  * 点开一条交付记录。
  *
- * 两种落点，判据是**有没有扩展名**：数据树里的文档 / 讲义 / 大纲写的是节点路径
- * （如「高等数学：从极限到积分/教学」），走 chip 的 opener 打开对应节点的文档；
- * 带扩展名的是真实文件，交给页签打开（相对路径在那里统一换算成绝对路径）。
- *
- * 末尾那半层 `DOC_KIND` 是**兼容老数据**：早期提示词没说清，模型爱在节点路径后面
- * 自己拼「/教学」「/讲义」。这类后缀不是路径的一部分，剥掉再找节点；规则已经写进
- * 提示词，新数据不该再出现。
+ * 交付物的落点分类：
+ * 1. 磁盘绝对路径：交给本地文件打开器（onOpenFile）。
+ * 2. 试卷/考试记录：打开 attempt 副本。
+ * 3. 工作区文件（代码工程、源码、资源、配置等）：
+ *    - 含有 workspace/，或带代码/数据等物理扩展名（非纯节点标题）
+ *    - 走 openChipRef({ type: 'ws' }) 打开内部文件页签，支持代码高亮与工程定位。
+ * 4. 普通节点文档（如「微积分/极限」或「鹈鹕骑自行车 · 3D 动画工程」）：
+ *    - 走 openChipRef({ type: 'doc' }) 打开节点的教学文档。
  */
 const DOC_KIND_SUFFIX = /\/(教学|讲义|笔记|大纲|试卷|考试|试卷记录|作答记录)$/
 
@@ -59,28 +60,44 @@ function openDelivered(
   if (!p) return
   const goalId = file.goalId || fallbackGoalId
 
-  // 1. 如果已有明确的 nodeId，直接通过 nodeId 打开节点文档
-  if (file.nodeId) {
-    openChipRef({ type: 'doc', nodeId: file.nodeId, path: p, goalId })
+  // 1. 磁盘绝对路径：交给本地文件打开器
+  const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(p)
+  if (isAbs) {
+    onOpenFile?.(p, file.note || p.split('/').pop())
     return
   }
 
-  // 2. 检查是否有后缀名。如果后缀名不是 .md，则认为是真实物理/代码文件，交给页签打开
-  const last = p.split('/').pop() ?? ''
-  const extMatch = last.match(/\.([a-z0-9]{1,8})$/i)
-  if (extMatch && extMatch[1].toLowerCase() !== 'md') {
-    onOpenFile?.(p, p)
-    return
-  }
-
-  // 3. 试卷/考试记录
+  // 2. 试卷/考试记录
   const isExam = /\/(试卷|考试|试卷记录|作答记录)$/.test(p)
   if (isExam) {
     openChipRef({ type: 'attempt', path: p.replace(DOC_KIND_SUFFIX, ''), goalId })
     return
   }
 
+  // 3. 工作区文件（代码工程、资源、配置文件等）：
+  // 包含 workspace/ 段，或者带有代码/数据等非 md 物理扩展名，或路径中带有多级目录的代码文件
+  const last = p.split('/').pop() ?? ''
+  const extMatch = last.match(/\.([a-z0-9]{1,8})$/i)
+  const ext = extMatch ? extMatch[1].toLowerCase() : ''
+  const isWorkspace = /(^|\/)workspace(\/|$)/i.test(p) || (ext !== '' && ext !== 'md')
+
+  if (isWorkspace) {
+    openChipRef({
+      type: 'ws',
+      path: p,
+      goalId,
+      nodeId: file.nodeId,
+      title: file.note || last,
+    })
+    return
+  }
+
   // 4. 普通节点文档：剥除可能由模型附加的 .md 后缀或 /教学 等类型词
+  if (file.nodeId) {
+    openChipRef({ type: 'doc', nodeId: file.nodeId, path: p, goalId })
+    return
+  }
+
   const cleanDocPath = p.replace(/\.md$/i, '').replace(DOC_KIND_SUFFIX, '').trim()
   openChipRef({ type: 'doc', path: cleanDocPath, goalId })
 }

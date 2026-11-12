@@ -17,6 +17,8 @@ import type { Conversation, PendingFile, PendingImage } from '../../../agent/typ
 import type { AskAnswers } from '../../../agent/tools'
 import type { ReasoningEffort } from '../../../ai/types'
 import { userAbsPath } from '../../../lib/storage'
+import { wsChipUserRel } from '../../../learn/chipRef'
+import { wsRefOfRel } from '../../../learn/workspace'
 import AgentTabStrip from '../../agent/AgentTabStrip'
 import { AgentTabPane } from './AgentTabPane'
 import { goalFocusByGoal } from './goalFocus'
@@ -364,6 +366,15 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
               onOpenFile={(pathOrRel, title) => {
                 const norm = pathOrRel.replace(/\\/g, '/')
                 const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(norm)
+                if (!isAbs) {
+                  const targetGoalId = tab.kind === 'goal' ? tab.goalId : (store.activeGoalId ?? undefined)
+                  const wsRel = wsChipUserRel(getLatest(), norm, targetGoalId)
+                  const wsRef = wsRel ? wsRefOfRel(getLatest(), wsRel) : null
+                  if (wsRef) {
+                    openTab(wsRef)
+                    return
+                  }
+                }
                 const abs = isAbs ? norm : (userAbsPath(norm) ?? norm)
                 openTab({ kind: 'local', path: abs, ...(title ? { title } : {}) })
               }}

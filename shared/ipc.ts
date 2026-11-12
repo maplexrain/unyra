@@ -138,6 +138,10 @@ export type {
   BaseProcessDeleteResult,
   BaseProcessListResult,
   BaseProcessGetResult,
+  BaseProcessWaitOpts,
+  BaseProcessWaitResult,
+  BaseProcessRunOpts,
+  BaseProcessRunResult,
 } from './ipc/process'
 
 /* ---------- 外部 MCP 服务的本地进程会话（stdio 传输，见 electron/mcp） ---------- */
@@ -184,3 +188,14 @@ export type {
   ImageSaveResult,
   ImageCopyResult,
 } from './ipc/screen'
+
+/* ---------- TTS 语音合成与本地模型 ---------- */
+export type {
+  TtsModelDefinition,
+  TtsModelFile,
+  TtsModelStatus,
+  TtsModelProgress,
+  TtsDownloadResult,
+  TtsSynthesizeRequest,
+  TtsSynthesizeResult,
+} from './ipc/tts'

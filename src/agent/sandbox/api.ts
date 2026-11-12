@@ -172,7 +172,7 @@ export function buildApi(
 
       const allGood = Object.values(steps).every((v) => v === 'written' || v === 'done' || (typeof v === 'string' && v.startsWith('skipped')))
       return allGood
-        ? { ok: true, steps, note: '收尾五件事一次落完' }
+        ? { ok: true, steps, note: '收尾五件事一次落完。注意：正文已安全持久化在节点中，无需也不要在 execute 的返回值中二次 return 正文。' }
         : { ok: true, steps, note: 'content 已写入；有一步没落上（看 steps 里的说明），单独补一次即可' }
     }, log)
   }

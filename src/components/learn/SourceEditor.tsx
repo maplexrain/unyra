@@ -1,14 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Compartment, EditorState, type Extension } from '@codemirror/state'
-import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
+import { EditorView, keymap, placeholder as cmPlaceholder, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from '@codemirror/view'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { syntaxHighlighting, indentOnInput, indentUnit, bracketMatching, LanguageDescription } from '@codemirror/language'
+import {
+  syntaxHighlighting,
+  indentOnInput,
+  indentUnit,
+  bracketMatching,
+  LanguageDescription,
+  foldGutter,
+  foldKeymap,
+  unfoldEffect,
+} from '@codemirror/language'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages as codeLanguages } from '@codemirror/language-data'
 import { countSourceWords } from '../../lib/wordCount'
 import { getAppearance, setAppearance, clampEditorScale, SCALE_ZOOM_STEP, SCALE_HUD_MS } from '../../lib/appearance'
 import { markdownEditorTheme, markdownHighlight } from '../../lib/cmMarkdown'
+import { smoothCursor } from '../../lib/cmSmoothCursor'
 import { takeSourceReveal, subscribeSourceReveal, type SourceReveal } from '../../lib/docReveal'
 import { useDocScroll } from '../../lib/docScroll'
 import { DocStatChip } from './DocFloat'
@@ -46,15 +56,22 @@ const STATE_TONE: Record<SaveState, string> = {
 }
 
 /**
- * 配色与主题在 lib/cmMarkdown（随笔窗口用的是同一份）：文档源码视图的内边距
- * （上 14 / 下 24 / 左 54 / 右 24），左侧留出 54px 彻底避让悬浮在左上角的垂直工具栏（left-3 + w-8），
- * 避免首行及前几行代码文字与按钮发生视觉重叠。
+ * 配色与主题在 lib/cmMarkdown（随笔窗口用的是同一份）：
+ * gutterLeft 留出 50px 避让悬浮在左上角的垂直工具栏（left-3 + w-8），
+ * 避免首行代码与按钮发生视觉重叠；代码正文与行号分隔线保持 14px 舒适内边距。
  */
-const editorTheme = markdownEditorTheme({ top: 14, bottom: 24, left: 54, right: 24 })
+const editorTheme = markdownEditorTheme({ top: 14, bottom: 24, left: 14, right: 24, gutterLeft: 50 })
 
 /** 语言按扩展名现配（markdown 内嵌代码块也各自高亮）；其余扩展名交给 language-data 的表 */
 const langComp = new Compartment()
 const readOnlyComp = new Compartment()
+
+function getInitialLanguageExtensions(ext?: string): Extension[] {
+  if (!ext || /\.(md|markdown)$/i.test(ext)) return [markdown({ base: markdownLanguage, codeLanguages })]
+  const desc = LanguageDescription.matchFilename(codeLanguages, 'x' + ext)
+  if (desc?.support) return [desc.support]
+  return []
+}
 
 async function languageExtensions(ext?: string): Promise<Extension[]> {
   if (!ext || /\.(md|markdown)$/i.test(ext)) return [markdown({ base: markdownLanguage, codeLanguages })]
@@ -149,7 +166,33 @@ export default function SourceEditor({
         doc: valueRef.current,
         extensions: [
           history(),
-          keymap.of([indentWithTab, ...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap]),
+          keymap.of([
+            indentWithTab,
+            ...closeBracketsKeymap,
+            ...foldKeymap,
+            ...defaultKeymap,
+            ...historyKeymap,
+          ]),
+          // 左侧代码行号与光标当前行背景突出高亮
+          lineNumbers(),
+          highlightActiveLineGutter(),
+          // 代码块折叠：支持 HTML 标签、JS/TS 函数、类、对象、Markdown 节等多语言代码块折叠，并注入平滑过渡动效
+          foldGutter({
+            markerDOM(open) {
+              const el = document.createElement('span')
+              el.className = `cm-fold-marker ${open ? 'cm-fold-marker-open' : 'cm-fold-marker-folded'}`
+              el.setAttribute('aria-hidden', 'true')
+              el.setAttribute('title', open ? '折叠代码块' : '展开代码块')
+              el.innerHTML =
+                '<svg class="cm-fold-chevron" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4" /></svg>'
+              return el
+            },
+          }),
+          // 专业选区绘制图层：在文本下层渲染平滑发光选区，完好保留各 Token 语法高亮
+          drawSelection(),
+          highlightActiveLine(),
+          // 平滑移动的虚拟光标动画
+          smoothCursor(),
           // 符号自动补全（输入 ( [ { " ' ` 自动带出另一半、跳过与删除成对）与括号配对高亮
           closeBrackets(),
           bracketMatching(),
@@ -158,7 +201,7 @@ export default function SourceEditor({
           indentUnit.of('  '),
           EditorView.lineWrapping,
           readOnlyComp.of([]),
-          langComp.of([]),
+          langComp.of(getInitialLanguageExtensions(ext)),
           cmPlaceholder(placeholder ?? ''),
           syntaxHighlighting(markdownHighlight),
           editorTheme,
@@ -167,6 +210,43 @@ export default function SourceEditor({
               const next = update.state.doc.toString()
               valueRef.current = next
               changeRef.current(next)
+            }
+            // 监听代码块展开动作，为新展示的代码行注入瀑布级平滑渐显与位移下移动画
+            for (const tr of update.transactions) {
+              for (const effect of tr.effects) {
+                if (effect.is(unfoldEffect)) {
+                  const { from, to } = effect.value
+                  requestAnimationFrame(() => {
+                    const view = viewRef.current
+                    if (!view) return
+                    const startLine = view.state.doc.lineAt(from).number
+                    const endLine = view.state.doc.lineAt(to).number
+                    for (let l = startLine + 1; l <= Math.min(endLine, startLine + 35); l++) {
+                      try {
+                        const line = view.state.doc.line(l)
+                        const dom = view.domAtPos(line.from)
+                        const el = ((dom.node.nodeType === 1 ? dom.node : dom.node.parentElement) as HTMLElement | null)?.closest?.('.cm-line') as HTMLElement | null
+                        if (el) {
+                          el.animate(
+                            [
+                              { opacity: 0, transform: 'translateY(-6px)' },
+                              { opacity: 1, transform: 'translateY(0)' },
+                            ],
+                            {
+                              duration: 220,
+                              delay: Math.min((l - startLine - 1) * 12, 100),
+                              easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+                              fill: 'both',
+                            },
+                          )
+                        }
+                      } catch {
+                        // 视口外行节点静默跳过
+                      }
+                    }
+                  })
+                }
+              }
             }
           }),
         ],
