@@ -65,6 +65,13 @@ const editorTheme = markdownEditorTheme({ top: 14, bottom: 24, left: 14, right: 
 const langComp = new Compartment()
 const readOnlyComp = new Compartment()
 
+function getInitialLanguageExtensions(ext?: string): Extension[] {
+  if (!ext || /\.(md|markdown)$/i.test(ext)) return [markdown({ base: markdownLanguage, codeLanguages })]
+  const desc = LanguageDescription.matchFilename(codeLanguages, 'x' + ext)
+  if (desc?.support) return [desc.support]
+  return []
+}
+
 async function languageExtensions(ext?: string): Promise<Extension[]> {
   if (!ext || /\.(md|markdown)$/i.test(ext)) return [markdown({ base: markdownLanguage, codeLanguages })]
   const desc = LanguageDescription.matchFilename(codeLanguages, 'x' + ext)
@@ -175,8 +182,8 @@ export default function SourceEditor({
               el.className = `cm-fold-marker ${open ? 'cm-fold-marker-open' : 'cm-fold-marker-folded'}`
               el.setAttribute('aria-hidden', 'true')
               el.innerHTML = open
-                ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'
-                : '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>'
+                ? '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4" /></svg>'
+                : '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4" /></svg>'
               return el
             },
           }),
@@ -191,7 +198,7 @@ export default function SourceEditor({
           indentUnit.of('  '),
           EditorView.lineWrapping,
           readOnlyComp.of([]),
-          langComp.of([]),
+          langComp.of(getInitialLanguageExtensions(ext)),
           cmPlaceholder(placeholder ?? ''),
           syntaxHighlighting(markdownHighlight),
           editorTheme,

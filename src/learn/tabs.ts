@@ -241,7 +241,7 @@ function rawTabTitle(
   if (ref.kind === 'draft') return t('未命名')
   // 工作区内部文件：显示文件名（相对段可能带几层目录）
   if (ref.kind === 'ws') return fileNameOf(ref.seg)
-  return ref.title || fileNameOf(ref.path)
+  return (ref.title ? fileNameOf(ref.title) : '') || fileNameOf(ref.path)
 }
 
 /** 判断一个页签指向的内容是否支持渲染预览 */

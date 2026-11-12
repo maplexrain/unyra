@@ -120,9 +120,9 @@ export function markdownEditorTheme(pad: {
     },
     // 代码块折叠栏 (Fold Gutter) - 紧凑内嵌在行号与右边框之间，绝不压线或外凸
     '.cm-foldGutter': {
-      width: '14px',
-      minWidth: '14px',
-      paddingRight: '4px',
+      width: '16px',
+      minWidth: '16px',
+      padding: '0 2px 0 0',
       userSelect: 'none',
       cursor: 'default',
     },
@@ -136,29 +136,30 @@ export function markdownEditorTheme(pad: {
       backgroundColor: 'transparent !important',
       transform: 'none !important',
     },
-    // 折叠小图标：纯净线条小三角，无任何外框背景色，绝不产生突出的背景色块
+    // 折叠小图标：纯净小三角，无任何外框背景色，绝不产生突出的背景色块
     '.cm-fold-marker': {
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
-      width: '12px',
-      height: '12px',
+      width: '13px',
+      height: '13px',
       borderRadius: '0',
       cursor: 'pointer',
       color: 'var(--color-ink-faint)',
       backgroundColor: 'transparent !important',
-      transition: 'opacity 0.12s ease, color 0.12s ease',
+      transition: 'opacity 0.12s ease, color 0.12s ease, transform 0.12s ease',
     },
-    // 展开状态标记平时幽雅半隐，鼠标悬停在左侧栏或该行时自然浮现
+    // 展开状态标记平时清晰可见（0.6），鼠标悬停在左侧栏或该行时自然高亮
     '.cm-fold-marker-open': {
-      opacity: '0.2',
+      opacity: '0.6',
     },
     '.cm-gutters:hover .cm-fold-marker-open': {
-      opacity: '0.7',
+      opacity: '0.9',
     },
     '.cm-fold-marker:hover': {
       opacity: '1 !important',
       color: 'var(--color-seal) !important',
+      transform: 'scale(1.15)',
       backgroundColor: 'transparent !important',
     },
     // 折叠状态标记醒目常驻，标明代码已收拢

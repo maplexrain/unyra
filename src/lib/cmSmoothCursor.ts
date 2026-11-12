@@ -174,7 +174,7 @@ class SmoothCursorPlugin {
 }
 
 const smoothCursorBaseTheme = EditorView.baseTheme({
-  // 平滑虚拟光标：135ms 黄金过渡时间，肉眼清晰可见直接滑移到目标位置
+  // 平滑虚拟光标：200ms 过渡时间，肉眼清晰可见直接滑移到目标位置
   '.cm-smooth-virtual-cursor': {
     position: 'absolute',
     top: 0,
@@ -186,7 +186,7 @@ const smoothCursorBaseTheme = EditorView.baseTheme({
     zIndex: 99,
     contain: 'layout paint style',
     willChange: 'transform, height',
-    transition: 'transform 135ms cubic-bezier(0.18, 0.95, 0.25, 1), height 90ms ease, opacity 100ms ease',
+    transition: 'transform 200ms cubic-bezier(0.18, 0.95, 0.25, 1), height 120ms ease, opacity 100ms ease',
     boxShadow: '0 0 6px color-mix(in srgb, var(--color-seal) 65%, transparent)',
   },
   '.cm-cursor-no-transition': {

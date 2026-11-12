@@ -16,7 +16,7 @@ import {
   withGroup,
   withOwners,
 } from '../../../learn/groups'
-import { tabKey, tabNodeId, tabTitle, newWebKey, newDraftKey, makeTab } from '../../../learn/tabs'
+import { tabKey, tabNodeId, tabTitle, newWebKey, newDraftKey, makeTab, fileNameOf } from '../../../learn/tabs'
 import { nodeById, normalizeKey } from '../../../learn/graph'
 import { nodePathOf, resolveNode } from '../../../learn/paths'
 import { normalizeWebInput } from '../../../learn/webUrl'
@@ -217,7 +217,7 @@ export function useChipOpening({
           const fileNorm = p.path.replace(/\\/g, '/')
           const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(fileNorm)
           const abs = isAbs ? fileNorm : (userAbsPath(fileNorm) ?? fileNorm)
-          openTab({ kind: 'local', path: abs, title: p.path.split('/').pop() })
+          openTab({ kind: 'local', path: abs, title: fileNameOf(p.path) })
           return
         }
       }
@@ -225,7 +225,7 @@ export function useChipOpening({
         // ws 类型的兜底：若是绝对路径，尝试作为本地文件打开
         const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(p.path)
         if (isAbs) {
-          openTab({ kind: 'local', path: p.path, title: p.title || p.path.split('/').pop() })
+          openTab({ kind: 'local', path: p.path, title: p.title ? fileNameOf(p.title) : fileNameOf(p.path) })
           return
         }
       }
