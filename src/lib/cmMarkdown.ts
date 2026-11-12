@@ -41,6 +41,13 @@ export const markdownHighlight = HighlightStyle.define([
 ])
 
 /**
+ * IntelliJ IDEA 风格等宽代码字体栈：
+ * 优先采用 JetBrains Mono，回落到 Cascadia Code / Fira Code / Consolas
+ */
+export const IDEA_MONO_FONT =
+  "'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Cascadia Mono', Consolas, 'Sarasa Mono SC', Menlo, Monaco, monospace"
+
+/**
  * 编辑器主题：底色透明（贴着面板走）、字体跟应用，内边距由调用方给。
  *
  * 内边距必须能配：文档源码视图的正文左右留白是按 `doc-measure` 那一列调的
@@ -55,13 +62,19 @@ export function markdownEditorTheme(pad: {
 }): Extension {
   return EditorView.theme({
     '&': { height: '100%', backgroundColor: 'transparent', color: 'var(--color-ink)' },
-    '.cm-scroller': { overflow: 'auto', fontFamily: 'inherit', lineHeight: '1.75' },
+    '.cm-scroller': {
+      overflow: 'auto',
+      fontFamily: IDEA_MONO_FONT,
+      lineHeight: '1.75',
+      WebkitFontSmoothing: 'antialiased',
+    },
     '.cm-content': {
       paddingTop: pad.top + 'px',
       paddingBottom: pad.bottom + 'px',
       paddingLeft: pad.left + 'px',
       paddingRight: pad.right + 'px',
       caretColor: 'var(--color-seal)',
+      fontFamily: IDEA_MONO_FONT,
     },
     '&.cm-focused': { outline: 'none' },
     '.cm-placeholder': { color: 'var(--color-ink-faint)' },
@@ -69,32 +82,37 @@ export function markdownEditorTheme(pad: {
       backgroundColor: 'color-mix(in srgb, var(--color-seal) 22%, transparent) !important',
     },
     '.cm-cursor': { borderLeftColor: 'var(--color-seal)' },
-    // 左侧行号栏 (Gutters)
+    // 左侧行号栏 (Gutters) - IntelliJ IDEA 风格
     '.cm-gutters': {
       backgroundColor: 'transparent',
       color: 'var(--color-ink-faint)',
-      borderRight: '1px solid var(--color-line)',
+      borderRight: '1px solid color-mix(in srgb, var(--color-line) 40%, transparent)',
       paddingLeft: (pad.gutterLeft ?? 0) + 'px',
       userSelect: 'none',
+      fontFamily: IDEA_MONO_FONT,
     },
     '.cm-gutterElement': {
-      padding: '0 8px 0 4px',
-      minWidth: '28px',
+      padding: '0 12px 0 6px',
+      minWidth: '34px',
       textAlign: 'right',
       fontSize: '11.5px',
-      fontFamily: 'monospace',
+      letterSpacing: '-0.3px',
+      fontFamily: IDEA_MONO_FONT,
       fontVariantNumeric: 'tabular-nums',
-      opacity: '0.6',
+      opacity: '0.45',
+      color: 'var(--color-ink-faint)',
+      transition: 'color 0.1s ease, opacity 0.1s ease',
     },
+    // IDEA 风格：当前行行号不带粗暴色块，而是通过高对比度文字前景色与字重自然凸显
     '.cm-activeLineGutter': {
-      color: 'var(--color-seal) !important',
-      backgroundColor: 'color-mix(in srgb, var(--color-seal) 10%, transparent) !important',
-      opacity: '1',
+      color: 'var(--color-ink-strong) !important',
+      backgroundColor: 'transparent !important',
+      opacity: '1 !important',
       fontWeight: '600',
     },
-    // 光标当前行背景突出高亮 (Active Line Background Highlight)
+    // IDEA 风格：当前行整行柔和横向带状底色高亮，沉浸不晃眼
     '.cm-activeLine': {
-      backgroundColor: 'color-mix(in srgb, var(--color-seal) 8%, transparent) !important',
+      backgroundColor: 'color-mix(in srgb, var(--color-ink) 4.5%, transparent) !important',
     },
   })
 }

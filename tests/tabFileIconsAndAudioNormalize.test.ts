@@ -3,7 +3,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { normalizeAudioSamples } from '../electron/sherpa/audioNormalize'
 import { TabTypeIcon } from '../src/components/learn/tabbar/TabIcons'
-import { markdownEditorTheme } from '../src/lib/cmMarkdown'
+import { markdownEditorTheme, IDEA_MONO_FONT } from '../src/lib/cmMarkdown'
 import type { TabRef } from '../src/learn/types'
 
 describe('TTS 语音响度均衡器测试 (audioNormalize)', () => {
@@ -118,8 +118,12 @@ describe('页签文件图标扩展名映射测试 (TabTypeIcon)', () => {
 
 describe('源码编辑模式行号与当前行高亮测试 (SourceEditor CM6)', () => {
   it('正确导出并配置带有行号边栏与当前行背景突出样式的编辑器主题', () => {
-    const theme = markdownEditorTheme({ top: 14, bottom: 24, left: 14, right: 24, gutterLeft: 44 })
+    const theme = markdownEditorTheme({ top: 14, bottom: 24, left: 14, right: 24, gutterLeft: 50 })
     expect(theme).toBeDefined()
+  })
+
+  it('使用 IntelliJ IDEA 风格的 JetBrains Mono 等宽字体栈', () => {
+    expect(IDEA_MONO_FONT).toContain('JetBrains Mono')
   })
 })
 

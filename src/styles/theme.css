@@ -74,7 +74,7 @@
     'PingFang SC', 'HarmonyOS Sans SC', 'Source Han Sans SC', 'Noto Sans SC',
     'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Helvetica Neue', Arial,
     sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Mono', Consolas, 'Sarasa Mono SC', Menlo, monospace;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', 'Fira Code', 'Cascadia Mono', Consolas, 'Sarasa Mono SC', Menlo, monospace;
 }
 
 /* ---------- 深色模式 ---------- */
