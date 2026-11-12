@@ -26,9 +26,9 @@ const TOKENS_FILE = 'tokens.txt'
 const LEXICON_FILE = 'lexicon.txt'
 
 const FILES = [
-  { name: MODEL_FILE, bytes: 39870124 },
-  { name: TOKENS_FILE, bytes: 4136 },
-  { name: LEXICON_FILE, bytes: 2504500 },
+  { name: MODEL_FILE, bytes: 39870124, minBytes: 38000000 },
+  { name: TOKENS_FILE, bytes: 1671, minBytes: 1500 },
+  { name: LEXICON_FILE, bytes: 2042943, minBytes: 1900000 },
 ]
 
 const SOURCES = [
@@ -65,7 +65,7 @@ async function statusOf(): Promise<TtsModelStatus> {
         name: f.name,
         bytes: s,
         expect: f.bytes,
-        done: s >= f.bytes * 0.95,
+        done: s >= f.minBytes,
       }
     }),
   )
@@ -130,7 +130,7 @@ async function download(sender: WebContents): Promise<TtsDownloadResult> {
       if (signal.aborted) throw new Error('下载已取消')
       const targetPath = filePath(f.name)
       const currentSize = await sizeOf(targetPath)
-      if (currentSize >= f.bytes * 0.95) {
+      if (currentSize >= f.minBytes) {
         totalDownloaded += currentSize
         continue
       }
