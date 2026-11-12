@@ -14,6 +14,7 @@ import { notesOf } from '../notes'
 import { superDocsOf, type KnowledgeNode, type LearnStore } from '../types'
 import { findResource } from '../static'
 import { entryUuid, outlineUuid, GNode, type ConnectFilter, type NodeCtx, type NodeHelp, type NodeRelation, type NodeResult } from './base'
+import { latexDamageError } from './latexGuard'
 
 function validateDocReferences(store: LearnStore, goalId: string, teaching: string) {
   const warnings: string[] = []
@@ -178,6 +179,10 @@ export class DocGNode extends GNode {
     if (typeof o.teaching !== 'string') {
       return { error: 'teaching 必给（教学正文；没有就给空串 ""）——整份替换，缺了这一项等于把正文清掉' }
     }
+    // 公式损坏（issue #198）：Agent 在 execute 里用普通模板字符串装正文时，LaTeX 的 \t、\f、\r
+    // 会先被 JS 吃掉；KaTeX 又对裸命令静默渲染，坏公式会毫无提示地落盘。这里在提交前拦下。
+    const latexError = latexDamageError(o.teaching)
+    if (latexError) return { error: latexError }
     let status: 'learning' | 'mastered' | undefined
     if (o.status !== undefined) {
       if (o.status !== 'learning' && o.status !== 'mastered') {
