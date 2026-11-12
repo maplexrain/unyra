@@ -187,6 +187,7 @@ export type {
 
 /* ---------- TTS 语音合成与本地模型 ---------- */
 export type {
+  TtsModelDefinition,
   TtsModelFile,
   TtsModelStatus,
   TtsModelProgress,

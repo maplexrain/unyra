@@ -2,6 +2,15 @@
  * TTS (语音合成) 主进程与渲染层跨进程 IPC 契约定义。
  */
 
+export interface TtsModelDefinition {
+  id: string
+  name: string
+  desc: string
+  sampleRate: number
+  totalBytes: number
+  speakers: { id: string; name: string; lang?: string; gender?: string }[]
+}
+
 export interface TtsModelFile {
   name: string
   bytes: number
@@ -10,6 +19,7 @@ export interface TtsModelFile {
 }
 
 export interface TtsModelStatus {
+  modelId: string
   dir: string
   path: string
   exists: boolean
@@ -18,6 +28,7 @@ export interface TtsModelStatus {
   files: TtsModelFile[]
   url: string
   sources: string[]
+  availableModels: TtsModelDefinition[]
 }
 
 export interface TtsModelProgress {
@@ -37,6 +48,7 @@ export interface TtsSynthesizeRequest {
   text: string
   speed?: number
   speakerId?: number
+  modelId?: string
 }
 
 export interface TtsSynthesizeResult {

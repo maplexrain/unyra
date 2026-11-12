@@ -1,11 +1,14 @@
 /**
- * TTS (语音合成)：离线轻量模型的下载、状态管理与 Sherpa-ONNX 原生推理。
+ * TTS (语音合成)：离线模型的下载、状态管理与 Sherpa-ONNX 原生推理。
  *
- * 采用端侧纯离线 VITS aishell3 轻量模型（int8 量化版约 42MB）：
- * - 模型保存在 appdata 的 voice-models/tts-vits-aishell3 下；
- * - 推理直接通过已内置的 sherpa-onnx-node，完全不增加额外原生依赖；
- * - 支持 174 位说话人，支持语速动态调节；
- * - 下载支持官方 HuggingFace 与国内高速镜像并发测速。
+ * 支持多款高品质端侧离线模型并允许随时切换：
+ * 1. MeloTTS (vits-melo-tts-zh_en): 44.1kHz 超清 CD 级音质，支持中英文自然混读，约 60MB；
+ * 2. AISHELL-3 (vits-zh-aishell3): 8kHz 极速轻量，内置 174 位发音人，约 42MB。
+ *
+ * 特性：
+ * - 纯端侧零云端依赖，无需 GPU；
+ * - 显式禁用外部堆缓冲区 (enableExternalBuffer: false)，兼容 Electron V8 内存沙箱；
+ * - 多模型独立缓存与管理，支持并发测速下载、定位目录与删除。
  */
 
 import { ipcMain, shell, type WebContents } from 'electron'
@@ -15,38 +18,109 @@ import path from 'node:path'
 import { getUserDataDir } from './storage/userData'
 import type {
   TtsDownloadResult,
+  TtsModelDefinition,
   TtsModelStatus,
   TtsSynthesizeRequest,
   TtsSynthesizeResult,
 } from '../shared/ipc'
 
-const MODEL_SUBDIR = path.join('voice-models', 'tts-vits-aishell3')
-const MODEL_FILE = 'vits-aishell3.int8.onnx'
-const TOKENS_FILE = 'tokens.txt'
-const LEXICON_FILE = 'lexicon.txt'
+interface OfflineModelConfig {
+  id: string
+  name: string
+  desc: string
+  sampleRate: number
+  subdir: string
+  modelFile: string
+  tokensFile: string
+  lexiconFile: string
+  ruleFstFiles?: string[]
+  files: Array<{ name: string; bytes: number; minBytes: number }>
+  sources: Array<{ name: string; base: string }>
+  speakers: Array<{ id: string; name: string; lang?: string; gender?: string }>
+}
 
-const FILES = [
-  { name: MODEL_FILE, bytes: 39870124, minBytes: 38000000 },
-  { name: TOKENS_FILE, bytes: 1671, minBytes: 1500 },
-  { name: LEXICON_FILE, bytes: 2042943, minBytes: 1900000 },
-]
+const AISHELL_SPEAKERS = Array.from({ length: 174 }, (_, i) => ({
+  id: String(i),
+  name: `发音人 ${i}${i === 0 ? ' (推荐女声)' : i === 1 ? ' (推荐男声)' : ''}`,
+  lang: 'zh-CN',
+  gender: i % 2 === 0 ? 'female' : 'male',
+}))
 
-const SOURCES = [
-  {
-    name: 'hf-mirror 镜像 (推荐)',
-    base: 'https://hf-mirror.com/csukuangfj/vits-zh-aishell3/resolve/main/',
+export const OFFLINE_MODELS: Record<string, OfflineModelConfig> = {
+  'vits-melo-tts-zh_en': {
+    id: 'vits-melo-tts-zh_en',
+    name: 'MeloTTS · 44.1kHz 超清中英双语 (推荐首选)',
+    desc: 'CD 级 44.1kHz 超高保真，发音自然带情绪，支持中英文混读，约 60MB。',
+    sampleRate: 44100,
+    subdir: path.join('voice-models', 'tts-vits-melo-tts-zh_en'),
+    modelFile: 'model.int8.onnx',
+    tokensFile: 'tokens.txt',
+    lexiconFile: 'lexicon.txt',
+    ruleFstFiles: ['phone.fst', 'date.fst', 'number.fst'],
+    files: [
+      { name: 'model.int8.onnx', bytes: 53517430, minBytes: 50000000 },
+      { name: 'lexicon.txt', bytes: 6837671, minBytes: 6000000 },
+      { name: 'tokens.txt', bytes: 655, minBytes: 500 },
+      { name: 'date.fst', bytes: 59154, minBytes: 50000 },
+      { name: 'number.fst', bytes: 64482, minBytes: 50000 },
+      { name: 'phone.fst', bytes: 88630, minBytes: 70000 },
+    ],
+    sources: [
+      {
+        name: 'hf-mirror 镜像 (推荐)',
+        base: 'https://hf-mirror.com/csukuangfj/vits-melo-tts-zh_en/resolve/main/',
+      },
+      {
+        name: 'HuggingFace 官方',
+        base: 'https://huggingface.co/csukuangfj/vits-melo-tts-zh_en/resolve/main/',
+      },
+    ],
+    speakers: [
+      { id: '0', name: 'MeloTTS 自然女声 (44.1kHz 高保真)', lang: 'zh/en', gender: 'female' },
+    ],
   },
-  {
-    name: 'HuggingFace 官方',
-    base: 'https://huggingface.co/csukuangfj/vits-zh-aishell3/resolve/main/',
+  'vits-zh-aishell3': {
+    id: 'vits-zh-aishell3',
+    name: 'AISHELL-3 · 174 说话人多音色版',
+    desc: '极速轻量约 42MB，8kHz 采样率，内置多达 174 位预设说话人。',
+    sampleRate: 8000,
+    subdir: path.join('voice-models', 'tts-vits-aishell3'),
+    modelFile: 'vits-aishell3.int8.onnx',
+    tokensFile: 'tokens.txt',
+    lexiconFile: 'lexicon.txt',
+    files: [
+      { name: 'vits-aishell3.int8.onnx', bytes: 39870124, minBytes: 38000000 },
+      { name: 'tokens.txt', bytes: 1671, minBytes: 1500 },
+      { name: 'lexicon.txt', bytes: 2042943, minBytes: 1900000 },
+    ],
+    sources: [
+      {
+        name: 'hf-mirror 镜像 (推荐)',
+        base: 'https://hf-mirror.com/csukuangfj/vits-zh-aishell3/resolve/main/',
+      },
+      {
+        name: 'HuggingFace 官方',
+        base: 'https://huggingface.co/csukuangfj/vits-zh-aishell3/resolve/main/',
+      },
+    ],
+    speakers: AISHELL_SPEAKERS,
   },
-]
+}
 
-const modelDir = (): string => path.join(getUserDataDir(), MODEL_SUBDIR)
-const filePath = (name: string): string => path.join(modelDir(), name)
+export const DEFAULT_OFFLINE_MODEL_ID = 'vits-melo-tts-zh_en'
+
+function getModelConfig(modelId?: string): OfflineModelConfig {
+  if (modelId && OFFLINE_MODELS[modelId]) {
+    return OFFLINE_MODELS[modelId]
+  }
+  return OFFLINE_MODELS[DEFAULT_OFFLINE_MODEL_ID]
+}
+
+const modelDir = (cfg: OfflineModelConfig): string => path.join(getUserDataDir(), cfg.subdir)
+const filePath = (cfg: OfflineModelConfig, name: string): string => path.join(modelDir(cfg), name)
 
 let activeAbort: AbortController | null = null
-let ttsInstance: any = null
+const ttsInstances = new Map<string, any>()
 
 async function sizeOf(file: string): Promise<number> {
   try {
@@ -56,11 +130,12 @@ async function sizeOf(file: string): Promise<number> {
   }
 }
 
-async function statusOf(): Promise<TtsModelStatus> {
-  const dir = modelDir()
+export async function statusOf(requestedModelId?: string): Promise<TtsModelStatus> {
+  const cfg = getModelConfig(requestedModelId)
+  const dir = modelDir(cfg)
   const files = await Promise.all(
-    FILES.map(async (f) => {
-      const s = await sizeOf(filePath(f.name))
+    cfg.files.map(async (f) => {
+      const s = await sizeOf(filePath(cfg, f.name))
       return {
         name: f.name,
         bytes: s,
@@ -72,27 +147,38 @@ async function statusOf(): Promise<TtsModelStatus> {
 
   const exists = files.every((f) => f.done)
   const bytes = files.reduce((acc, f) => acc + f.bytes, 0)
-  const totalBytes = FILES.reduce((acc, f) => acc + f.bytes, 0)
+  const totalBytes = cfg.files.reduce((acc, f) => acc + f.bytes, 0)
+
+  const availableModels: TtsModelDefinition[] = Object.values(OFFLINE_MODELS).map((m) => ({
+    id: m.id,
+    name: m.name,
+    desc: m.desc,
+    sampleRate: m.sampleRate,
+    totalBytes: m.files.reduce((sum, item) => sum + item.bytes, 0),
+    speakers: m.speakers,
+  }))
 
   return {
+    modelId: cfg.id,
     dir,
-    path: filePath(MODEL_FILE),
+    path: filePath(cfg, cfg.modelFile),
     exists,
     bytes,
     totalBytes,
     files,
-    url: SOURCES[0].base,
-    sources: SOURCES.map((s) => s.name),
+    url: cfg.sources[0].base,
+    sources: cfg.sources.map((s) => s.name),
+    availableModels,
   }
 }
 
-async function fastestSource(): Promise<{ name: string; base: string }> {
+async function fastestSource(cfg: OfflineModelConfig): Promise<{ name: string; base: string }> {
   try {
-    const pings = SOURCES.map(async (src) => {
+    const pings = cfg.sources.map(async (src) => {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 2500)
       try {
-        const res = await fetch(`${src.base}${TOKENS_FILE}`, {
+        const res = await fetch(`${src.base}${cfg.tokensFile}`, {
           method: 'HEAD',
           signal: controller.signal,
         })
@@ -104,31 +190,32 @@ async function fastestSource(): Promise<{ name: string; base: string }> {
     })
     return await Promise.any(pings)
   } catch {
-    return SOURCES[0]
+    return cfg.sources[0]
   }
 }
 
-async function download(sender: WebContents): Promise<TtsDownloadResult> {
+async function download(sender: WebContents, requestedModelId?: string): Promise<TtsDownloadResult> {
   if (activeAbort) {
     return { ok: false, error: '下载已在进行中' }
   }
 
-  const dir = modelDir()
+  const cfg = getModelConfig(requestedModelId)
+  const dir = modelDir(cfg)
   await fsp.mkdir(dir, { recursive: true })
 
   activeAbort = new AbortController()
   const { signal } = activeAbort
 
   try {
-    sender.send('tts:modelProgress', { received: 0, total: 1, percent: 0, note: '正在测试最优下载源...' })
-    const src = await fastestSource()
+    sender.send('tts:modelProgress', { received: 0, total: 1, percent: 0, note: `正在为 ${cfg.name} 测试最优下载源...` })
+    const src = await fastestSource(cfg)
 
     let totalDownloaded = 0
-    const totalBytes = FILES.reduce((acc, f) => acc + f.bytes, 0)
+    const totalBytes = cfg.files.reduce((acc, f) => acc + f.bytes, 0)
 
-    for (const f of FILES) {
+    for (const f of cfg.files) {
       if (signal.aborted) throw new Error('下载已取消')
-      const targetPath = filePath(f.name)
+      const targetPath = filePath(cfg, f.name)
       const currentSize = await sizeOf(targetPath)
       if (currentSize >= f.minBytes) {
         totalDownloaded += currentSize
@@ -173,7 +260,7 @@ async function download(sender: WebContents): Promise<TtsDownloadResult> {
 
     sender.send('tts:modelProgress', { received: totalBytes, total: totalBytes, percent: 100, note: '下载完成' })
     activeAbort = null
-    ttsInstance = null // 重置实例以便重新加载
+    ttsInstances.delete(cfg.id) // 重置对应实例以便重新加载
     return { ok: true, bytes: totalBytes }
   } catch (err: any) {
     activeAbort = null
@@ -193,11 +280,12 @@ function cancelDownload(): boolean {
   return false
 }
 
-async function removeModel(): Promise<{ ok: boolean; error?: string }> {
+async function removeModel(requestedModelId?: string): Promise<{ ok: boolean; error?: string }> {
   cancelDownload()
-  ttsInstance = null
+  const cfg = getModelConfig(requestedModelId)
+  ttsInstances.delete(cfg.id)
   try {
-    await fsp.rm(modelDir(), { recursive: true, force: true })
+    await fsp.rm(modelDir(cfg), { recursive: true, force: true })
     return { ok: true }
   } catch (err: any) {
     return { ok: false, error: err?.message || String(err) }
@@ -239,39 +327,56 @@ function encodeWav(samples: Float32Array, sampleRate: number): Buffer {
 }
 
 async function synthesize(req: TtsSynthesizeRequest): Promise<TtsSynthesizeResult> {
-  const status = await statusOf()
+  const cfg = getModelConfig(req.modelId)
+  const status = await statusOf(cfg.id)
   if (!status.exists) {
-    return { ok: false, error: '离线语音模型未下载' }
+    console.warn(`[TTS] 离线模型 ${cfg.name} 未就绪，拒绝合成`)
+    return { ok: false, error: `离线语音模型 (${cfg.name}) 尚未下载` }
   }
 
   try {
-    if (!ttsInstance) {
+    let instance = ttsInstances.get(cfg.id)
+    if (!instance) {
+      console.info(`[TTS] 正在加载并初始化 ${cfg.name} 引擎...`)
       const sherpa: any = await import('sherpa-onnx-node')
       const OfflineTts = sherpa.OfflineTts || sherpa.default?.OfflineTts
-      const config = {
+
+      const vitsConfig: any = {
+        model: filePath(cfg, cfg.modelFile),
+        lexicon: filePath(cfg, cfg.lexiconFile),
+        tokens: filePath(cfg, cfg.tokensFile),
+      }
+
+      const engineConfig: any = {
         model: {
-          vits: {
-            model: filePath(MODEL_FILE),
-            lexicon: filePath(LEXICON_FILE),
-            tokens: filePath(TOKENS_FILE),
-          },
+          vits: vitsConfig,
           numThreads: 2,
           debug: false,
         },
       }
-      ttsInstance = new OfflineTts(config)
+
+      if (cfg.ruleFstFiles && cfg.ruleFstFiles.length > 0) {
+        engineConfig.ruleFsts = cfg.ruleFstFiles
+          .map((f) => filePath(cfg, f))
+          .filter((p) => fs.existsSync(p))
+          .join(',')
+      }
+
+      instance = new OfflineTts(engineConfig)
+      ttsInstances.set(cfg.id, instance)
+      console.info(`[TTS] ${cfg.name} 初始化完成，说话人数=${instance.numSpeakers}, 采样率=${instance.sampleRate}`)
     }
 
     const start = Date.now()
     const rawSpeed = Number(req.speed)
     const speed = !Number.isNaN(rawSpeed) && rawSpeed > 0 ? rawSpeed : 1.0
-    const sid = Math.max(0, Math.min(173, Math.floor(Number(req.speakerId) || 0)))
+    const maxSid = cfg.speakers.length > 0 ? cfg.speakers.length - 1 : 0
+    const sid = Math.max(0, Math.min(maxSid, Math.floor(Number(req.speakerId) || 0)))
 
-    console.info(`[TTS] 开始合成: text="${req.text.slice(0, 30)}..." (len=${req.text.length}), sid=${sid}, speed=${speed}`)
+    console.info(`[TTS] 开始合成 [${cfg.id}]: text="${req.text.slice(0, 30)}..." (len=${req.text.length}), sid=${sid}, speed=${speed}`)
 
-    // 关键修复：Electron 的 Node/V8 环境严禁使用外部堆缓冲区 (External buffers are not allowed)。
-    // 必须显式传入 enableExternalBuffer: false，让 sherpa-onnx 将采样数组复制进 V8 安全托管的内存中。
-    const result = ttsInstance.generate({
+    // 显式禁用外部堆缓冲区，使用 V8 托管的安全内存
+    const result = instance.generate({
       text: req.text,
       sid,
       speed,
@@ -287,27 +392,28 @@ async function synthesize(req: TtsSynthesizeRequest): Promise<TtsSynthesizeResul
     const audioDataUrl = `data:audio/wav;base64,${base64}`
     const durationMs = Date.now() - start
 
-    console.info(`[TTS] 合成成功: 采样数=${result.samples.length}, 采样率=${result.sampleRate}, 音频大小=${wavBuf.length}字节, 耗时=${durationMs}ms`)
+    console.info(`[TTS] 合成成功 [${cfg.id}]: 采样数=${result.samples.length}, 采样率=${result.sampleRate}, 音频大小=${wavBuf.length}字节, 耗时=${durationMs}ms`)
 
     return {
       ok: true,
       audioDataUrl,
-      durationMs: Date.now() - start,
+      durationMs,
     }
   } catch (err: any) {
-    console.error('[TTS] 合成失败：', err)
-    ttsInstance = null
+    console.error(`[TTS] 合成失败 [${cfg.id}]：`, err)
+    ttsInstances.delete(cfg.id)
     return { ok: false, error: err?.message || String(err) }
   }
 }
 
 export function registerTtsIpc(): void {
-  ipcMain.handle('tts:modelStatus', () => statusOf())
-  ipcMain.handle('tts:downloadModel', (e) => download(e.sender))
+  ipcMain.handle('tts:modelStatus', (_e, modelId?: string) => statusOf(modelId))
+  ipcMain.handle('tts:downloadModel', (e, modelId?: string) => download(e.sender, modelId))
   ipcMain.handle('tts:cancelDownload', () => cancelDownload())
-  ipcMain.handle('tts:removeModel', () => removeModel())
-  ipcMain.handle('tts:revealModel', async () => {
-    const dir = modelDir()
+  ipcMain.handle('tts:removeModel', (_e, modelId?: string) => removeModel(modelId))
+  ipcMain.handle('tts:revealModel', async (_e, modelId?: string) => {
+    const cfg = getModelConfig(modelId)
+    const dir = modelDir(cfg)
     await fsp.mkdir(dir, { recursive: true })
     await shell.openPath(dir)
     return true

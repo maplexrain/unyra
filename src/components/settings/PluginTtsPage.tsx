@@ -28,6 +28,7 @@ import { useTTS, ttsManager, type TTSVoice } from '../../lib/tts'
 import { isWeb, native } from '../../lib/native'
 import type { TtsModelProgress, TtsModelStatus } from '../../../shared/ipc'
 import { OpenAICompatibleTTSAdapter } from '../../lib/tts/adapters/openaiCompatible'
+import { SherpaOfflineTTSAdapter } from '../../lib/tts/adapters/sherpaOffline'
 import { t } from '../../i18n'
 
 interface Props {
@@ -72,27 +73,40 @@ export function PluginTtsPage({ onToast }: Props) {
   // 试听测试文本
   const [testText, setTestText] = useState('你好！我是归一专属助教，探索知识的旅途上，很高兴陪伴在你身边。')
 
+  // 选中的离线模型 ID
+  const [selectedOfflineModel, setSelectedOfflineModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem('moji-tts-active-offline-model') || 'vits-melo-tts-zh_en'
+    } catch {
+      return 'vits-melo-tts-zh_en'
+    }
+  })
+
   // 刷新离线模型状态
-  const refreshModel = useCallback(async () => {
+  const refreshModel = useCallback(async (modelId?: string) => {
     if (isWeb() || !window.mojiNative?.tts) return
     try {
-      const s = await native().tts.modelStatus()
+      const targetId = modelId || selectedOfflineModel
+      const s = await native().tts.modelStatus(targetId)
       setModelStatus(s)
     } catch (err) {
       console.warn('[TTS] 检查离线模型状态失败：', err)
     }
-  }, [])
+  }, [selectedOfflineModel])
 
   // 刷新音色列表
   const refreshVoices = useCallback(async () => {
     try {
       const v = await ttsManager.getVoices()
       setVoices(v)
-      if (v.length > 0 && !selectedVoice) {
-        setSelectedVoice(v[0].id)
+      if (v.length > 0) {
+        setSelectedVoice((curr) => {
+          if (curr && v.some((voice) => voice.id === curr)) return curr
+          return v[0].id
+        })
       }
     } catch {}
-  }, [selectedVoice])
+  }, [])
 
   useEffect(() => {
     void refreshModel()
@@ -100,7 +114,7 @@ export function PluginTtsPage({ onToast }: Props) {
 
   useEffect(() => {
     void refreshVoices()
-  }, [activeAdapterId, refreshVoices])
+  }, [activeAdapterId, selectedOfflineModel, refreshVoices])
 
   // 监听下载进度
   useEffect(() => {
@@ -114,6 +128,20 @@ export function PluginTtsPage({ onToast }: Props) {
     })
   }, [refreshModel])
 
+  // 切换离线模型
+  const handleSelectOfflineModel = (modelId: string) => {
+    setSelectedOfflineModel(modelId)
+    try {
+      localStorage.setItem('moji-tts-active-offline-model', modelId)
+    } catch {}
+    const adapter = ttsManager.getAdapter('sherpa-offline') as SherpaOfflineTTSAdapter
+    if (adapter && typeof adapter.setActiveModelId === 'function') {
+      adapter.setActiveModelId(modelId)
+    }
+    void refreshModel(modelId)
+    void refreshVoices()
+  }
+
   // 开始下载离线模型
   const handleStartDownload = async () => {
     if (isWeb() || !window.mojiNative?.tts) {
@@ -121,9 +149,9 @@ export function PluginTtsPage({ onToast }: Props) {
       return
     }
     setDownloading(true)
-    setProgress({ received: 0, total: 42 * 1024 * 1024, percent: 0, note: t('开始连接下载源...') })
+    setProgress({ received: 0, total: modelStatus?.totalBytes || 60 * 1024 * 1024, percent: 0, note: t('开始连接下载源...') })
     try {
-      const res = await native().tts.downloadModel()
+      const res = await native().tts.downloadModel(selectedOfflineModel)
       if (res.ok) {
         onToast(t('离线模型已下载就绪！'))
         void refreshModel()
@@ -150,8 +178,8 @@ export function PluginTtsPage({ onToast }: Props) {
   // 删除离线模型
   const handleRemoveModel = async () => {
     if (isWeb() || !window.mojiNative?.tts) return
-    if (!window.confirm(t('确定删除本地离线语音模型吗？删除后可随时重新下载。'))) return
-    const res = await native().tts.removeModel()
+    if (!window.confirm(t('确定删除当前本地离线语音模型吗？删除后可随时重新下载。'))) return
+    const res = await native().tts.removeModel(selectedOfflineModel)
     if (res.ok) {
       onToast(t('离线模型已清理'))
       void refreshModel()
@@ -164,7 +192,7 @@ export function PluginTtsPage({ onToast }: Props) {
   // 打开所在文件夹
   const handleRevealModel = async () => {
     if (isWeb() || !window.mojiNative?.tts) return
-    await native().tts.revealModel()
+    await native().tts.revealModel(selectedOfflineModel)
   }
 
   // 保存云端配置
@@ -257,11 +285,11 @@ export function PluginTtsPage({ onToast }: Props) {
                 <span>{t('本地离线模型')}</span>
               </span>
               <span className={`text-[10px] px-1.5 py-0.5 rounded ${modelStatus?.exists ? 'bg-ok/15 text-ok font-medium' : 'bg-line/60 text-ink-faint'}`}>
-                {modelStatus?.exists ? t('已就绪') : t('需下载 · 42MB')}
+                {modelStatus?.exists ? t('已就绪') : t('需下载')}
               </span>
             </div>
             <p className="text-[11px] text-ink-subtle leading-normal">
-              {t('Sherpa-ONNX 端侧轻量 VITS 神经网络，纯离线无网络依赖。')}
+              {t('Sherpa-ONNX 极速离线神经网络，支持 MeloTTS 与 AISHELL-3。')}
             </p>
           </div>
 
@@ -293,10 +321,54 @@ export function PluginTtsPage({ onToast }: Props) {
         {/* 本地离线模型配置详情 */}
         {activeAdapterId === 'sherpa-offline' && (
           <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
+            {/* 离线模型选择器 */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg bg-paper border border-line shadow-xs">
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs font-semibold text-ink flex items-center gap-1.5">
+                  <Cpu size={14} className="text-seal" />
+                  <span>{t('选择离线模型')}</span>
+                </label>
+                <p className="text-[11px] text-ink-subtle">
+                  {modelStatus?.availableModels?.find((m) => m.id === selectedOfflineModel)?.desc ||
+                    t('支持多种高保真离线模型自由切换，不同模型独立下载与管理。')}
+                </p>
+              </div>
+
+              <select
+                value={selectedOfflineModel}
+                onChange={(e) => handleSelectOfflineModel(e.target.value)}
+                className="rounded-lg border border-line bg-paper-deep/30 px-2.5 py-1.5 text-xs text-ink font-medium outline-none focus:border-seal cursor-pointer min-w-[240px]"
+              >
+                {modelStatus?.availableModels && modelStatus.availableModels.length > 0 ? (
+                  modelStatus.availableModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({Math.round(m.totalBytes / 1024 / 1024)}MB)
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="vits-melo-tts-zh_en">MeloTTS · 44.1kHz 超清中英双语 (推荐)</option>
+                    <option value="vits-zh-aishell3">AISHELL-3 · 174 说话人多音色版</option>
+                  </>
+                )}
+              </select>
+            </div>
+
+            {/* 模型管理卡片 */}
+            <div className="flex items-center justify-between pt-1">
               <div>
-                <h4 className="text-xs font-semibold text-ink">{t('VITS aishell3 轻量离线模型')}</h4>
-                <p className="text-[11px] text-ink-subtle">{t('轻巧体积 (~42MB)，毫秒级端侧合成，支持 174 位说话人')}</p>
+                <h4 className="text-xs font-semibold text-ink flex items-center gap-2">
+                  <span>{modelStatus?.availableModels?.find((m) => m.id === selectedOfflineModel)?.name || selectedOfflineModel}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-normal ${modelStatus?.exists ? 'bg-ok/15 text-ok' : 'bg-line/60 text-ink-faint'}`}>
+                    {modelStatus?.exists ? t('已下载就绪') : t('尚未下载')}
+                  </span>
+                </h4>
+                <p className="text-[11px] text-ink-subtle mt-0.5">
+                  {t('采样率：{0}Hz · 占用空间：~{1}MB',
+                    String(modelStatus?.availableModels?.find((m) => m.id === selectedOfflineModel)?.sampleRate || 44100),
+                    String(Math.round((modelStatus?.totalBytes || 60 * 1024 * 1024) / 1024 / 1024))
+                  )}
+                </p>
               </div>
 
               {modelStatus?.exists ? (
@@ -336,7 +408,7 @@ export function PluginTtsPage({ onToast }: Props) {
                   className="flex items-center gap-1 text-xs text-paper bg-seal hover:bg-seal-deep px-3 py-1.5 rounded-lg font-medium transition cursor-pointer shadow-sm"
                 >
                   <Download size={13} />
-                  <span>{t('一键极速下载 (~42MB)')}</span>
+                  <span>{t('一键下载当前模型 (~{0}MB)', String(Math.round((modelStatus?.totalBytes || 60 * 1024 * 1024) / 1024 / 1024)))}</span>
                 </button>
               )}
             </div>

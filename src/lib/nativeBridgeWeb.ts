@@ -251,8 +251,9 @@ export function createWebNativeBridge(): NativeBridge {
     },
 
     tts: {
-      modelStatus: () =>
+      modelStatus: (modelId?: string) =>
         Promise.resolve({
+          modelId: modelId || 'vits-melo-tts-zh_en',
           dir: '',
           path: '',
           exists: false,
@@ -261,6 +262,7 @@ export function createWebNativeBridge(): NativeBridge {
           files: [],
           url: '',
           sources: [],
+          availableModels: [],
         }),
       downloadModel: () => Promise.resolve({ ok: false, error: 'Web 模式暂不支持本地下载模型' }),
       cancelDownload: () => Promise.resolve(true),

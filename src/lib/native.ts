@@ -26,7 +26,7 @@ import type {
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
   ProjectFsRequest, ProjectFsResult,
-  TtsModelStatus, TtsModelProgress, TtsDownloadResult, TtsSynthesizeRequest, TtsSynthesizeResult,
+  TtsModelStatus, TtsModelProgress, TtsDownloadResult, TtsSynthesizeRequest, TtsSynthesizeResult, TtsModelDefinition,
 } from '../../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（与 electron/preload.ts 共用一份，见该文件顶部）：
@@ -47,7 +47,7 @@ export type {
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
   ProjectFsRequest, ProjectFsResult,
-  TtsModelStatus, TtsModelProgress, TtsDownloadResult, TtsSynthesizeRequest, TtsSynthesizeResult,
+  TtsModelStatus, TtsModelProgress, TtsDownloadResult, TtsSynthesizeRequest, TtsSynthesizeResult, TtsModelDefinition,
 }
 
 export type PluginList =
@@ -406,11 +406,11 @@ export interface NativeBridge {
    * TTS 语音合成：轻量离线模型管理与推理通道。
    */
   tts: {
-    modelStatus(): Promise<TtsModelStatus>
-    downloadModel(): Promise<TtsDownloadResult>
+    modelStatus(modelId?: string): Promise<TtsModelStatus>
+    downloadModel(modelId?: string): Promise<TtsDownloadResult>
     cancelDownload(): Promise<boolean>
-    removeModel(): Promise<{ ok: boolean; error?: string }>
-    revealModel(): Promise<boolean>
+    removeModel(modelId?: string): Promise<{ ok: boolean; error?: string }>
+    revealModel(modelId?: string): Promise<boolean>
     synthesize(req: TtsSynthesizeRequest): Promise<TtsSynthesizeResult>
     onModelProgress(cb: (p: TtsModelProgress) => void): () => void
   }
