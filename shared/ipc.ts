@@ -184,3 +184,13 @@ export type {
   ImageSaveResult,
   ImageCopyResult,
 } from './ipc/screen'
+
+/* ---------- TTS 语音合成与本地模型 ---------- */
+export type {
+  TtsModelFile,
+  TtsModelStatus,
+  TtsModelProgress,
+  TtsDownloadResult,
+  TtsSynthesizeRequest,
+  TtsSynthesizeResult,
+} from './ipc/tts'

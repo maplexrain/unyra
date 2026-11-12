@@ -12,6 +12,7 @@ import { useSyncExternalStore } from 'react'
 import type { TTSAdapter, TTSSpeakOptions, TTSPlaybackState, TTSVoice } from './types'
 import { WebSpeechAdapter } from './adapters/webSpeech'
 import { OpenAICompatibleTTSAdapter } from './adapters/openaiCompatible'
+import { SherpaOfflineTTSAdapter } from './adapters/sherpaOffline'
 
 const STORAGE_ACTIVE_ADAPTER = 'moji:tts:activeAdapter'
 const STORAGE_RATE = 'moji:tts:rate'
@@ -40,6 +41,7 @@ export class TTSAdapterManager {
   constructor() {
     // 1. 注册核心基础适配器
     this.registerAdapter(new WebSpeechAdapter())
+    this.registerAdapter(new SherpaOfflineTTSAdapter())
     this.registerAdapter(new OpenAICompatibleTTSAdapter())
 
     // 2. 恢复偏好设置

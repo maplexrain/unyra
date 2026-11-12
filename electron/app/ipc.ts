@@ -17,6 +17,7 @@ import { closeBehavior, markLocalOwnWrite, registerStorageIpc, setCloseBehavior,
 import { registerUpdateIpc } from '../update'
 import { registerVoiceIpc } from '../voice'
 import { registerOcrIpc } from '../ocr'
+import { registerTtsIpc } from '../tts'
 import { registerExamIpc } from './examWindow'
 import { applyAppIcon } from './applyIcon'
 import { rebuildAppMenu, logoSvgPath, appIcon } from './icon'
@@ -77,6 +78,8 @@ export function registerIpc(): void {
   registerVoiceIpc()
   // OCR 文字识别模型与推理通道（见 electron/ocr.ts）
   registerOcrIpc()
+  // TTS 语音合成模型与推理通道（见 electron/tts.ts）
+  registerTtsIpc()
 
   // 自动更新（window.mojiNative.update）
   registerUpdateIpc()

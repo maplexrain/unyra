@@ -250,6 +250,26 @@ export function createWebNativeBridge(): NativeBridge {
       setCache: () => Promise.resolve(true),
     },
 
+    tts: {
+      modelStatus: () =>
+        Promise.resolve({
+          dir: '',
+          path: '',
+          exists: false,
+          bytes: 0,
+          totalBytes: 0,
+          files: [],
+          url: '',
+          sources: [],
+        }),
+      downloadModel: () => Promise.resolve({ ok: false, error: 'Web 模式暂不支持本地下载模型' }),
+      cancelDownload: () => Promise.resolve(true),
+      removeModel: () => Promise.resolve({ ok: true }),
+      revealModel: () => Promise.resolve(false),
+      synthesize: () => Promise.resolve({ ok: false, error: 'Web 模式暂不支持本地模型推理' }),
+      onModelProgress: () => () => {},
+    },
+
     update: {
       state: () => Promise.resolve({ phase: 'idle' } as UpdateState),
       check: () => Promise.resolve({ phase: 'idle' } as UpdateState),

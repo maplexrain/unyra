@@ -28,6 +28,7 @@ import { autoMigrateIfNeeded } from './migration/autoMigrate'
 import { loadPlugins } from './plugins'
 // 内置功能性插件要在 loadPlugins 之前完成登记（开关按 id 认它，见 lib/plugins）
 import './voice/plugin'
+import './tts/plugin'
 import { refreshVoiceGpuDefault } from './voice/settings'
 import { loadSkillsFromDisk } from '../agent/skill/fs'
 import { startupMark } from './startupTrace'

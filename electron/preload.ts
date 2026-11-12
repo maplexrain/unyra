@@ -96,6 +96,8 @@ export type StorageYamlResult = { ok: true; data: unknown } | StorageFail
 /** 读二进制（图片通道与资源库通道共用）：dataUrl 为 null 表示文件不存在（不算错误） */
 export type StorageImageResult = { ok: true; dataUrl: string | null } | StorageFail
 
+import { ttsPreload } from './preload/tts'
+
 const api = {
   /** 是否运行在 Electron 壳里。渲染层的 http 层据此选择直连还是走主进程 */
   isElectron: true as const,
@@ -415,6 +417,10 @@ const api = {
     getCache: (key: string): Promise<OcrPageResult | null> => ipcRenderer.invoke('ocr:getCache', key),
     setCache: (key: string, data: OcrPageResult): Promise<boolean> => ipcRenderer.invoke('ocr:setCache', key, data),
   },
+  /**
+   * 语音合成 (TTS)：离线轻量模型管理与下载、文本音频合成
+   */
+  tts: ttsPreload,
   /**
    * 自动更新。渲染层不决定任何事：什么时候查、下没下完、能不能装，
    * 全由主进程的状态说了算，这里只转发。

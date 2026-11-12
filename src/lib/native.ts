@@ -26,6 +26,7 @@ import type {
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
   ProjectFsRequest, ProjectFsResult,
+  TtsModelStatus, TtsModelProgress, TtsDownloadResult, TtsSynthesizeRequest, TtsSynthesizeResult,
 } from '../../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（与 electron/preload.ts 共用一份，见该文件顶部）：
@@ -46,6 +47,7 @@ export type {
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
   ProjectFsRequest, ProjectFsResult,
+  TtsModelStatus, TtsModelProgress, TtsDownloadResult, TtsSynthesizeRequest, TtsSynthesizeResult,
 }
 
 export type PluginList =
@@ -399,6 +401,18 @@ export interface NativeBridge {
     recognize(req: OcrRecognizeRequest): Promise<OcrRecognizeResult>
     getCache(key: string): Promise<OcrPageResult | null>
     setCache(key: string, data: OcrPageResult): Promise<boolean>
+  }
+  /**
+   * TTS 语音合成：轻量离线模型管理与推理通道。
+   */
+  tts: {
+    modelStatus(): Promise<TtsModelStatus>
+    downloadModel(): Promise<TtsDownloadResult>
+    cancelDownload(): Promise<boolean>
+    removeModel(): Promise<{ ok: boolean; error?: string }>
+    revealModel(): Promise<boolean>
+    synthesize(req: TtsSynthesizeRequest): Promise<TtsSynthesizeResult>
+    onModelProgress(cb: (p: TtsModelProgress) => void): () => void
   }
   /**
    * 自动更新：读状态、手动检查、安装、看发布页。
