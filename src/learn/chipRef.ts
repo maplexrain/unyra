@@ -30,11 +30,11 @@ function normPath(p: string): string {
  * - 导师写的：workspace api 的「节点路径 + 文件段」口径（见 wsChipRel），对着数据树现查。
  * 解析不出返回 null（点开的人给一句「引用的东西不在了」）。
  */
-export function wsChipUserRel(store: LearnStore, raw: string): string | null {
+export function wsChipUserRel(store: LearnStore, raw: string, goalId?: string): string | null {
   const p = normPath(raw)
   if (!p) return null
   if (p.startsWith(DOCS_DIR + '/')) return p
-  return wsChipRel(store, p)
+  return wsChipRel(store, p, goalId)
 }
 
 /**
@@ -46,40 +46,42 @@ export function wsChipUserRel(store: LearnStore, raw: string): string | null {
  * key/id 往下走，走到头剩下的全部当文件段（与 ops/workspace 的 resolveWs 同一条规矩；
  * 没有「当前节点」可锚——chip 是点击时才解释的，必须自包含）。解析不出返回 null。
  */
-function wsChipRel(store: LearnStore, raw: string): string | null {
+function wsChipRel(store: LearnStore, raw: string, goalId?: string): string | null {
   const segments = raw.split('/').map((s) => s.trim()).filter(Boolean)
   if (!segments.length) return null
   let cursor: KnowledgeNode | undefined
   let i = 0
   const first = segments[0]
+
+  const targetGoal = (goalId ? store.goals.find((g) => g.id === goalId) : null)
+    ?? (store.activeGoalId ? store.goals.find((g) => g.id === store.activeGoalId) : null)
+  const defaultRoot = targetGoal?.rootNodeId
+    ? nodeById(store, targetGoal.rootNodeId)
+    : store.goals.map((g) => nodeById(store, g.rootNodeId)).find((n): n is KnowledgeNode => !!n)
+
   if (first.startsWith('#')) {
     cursor = store.nodes.find((n) => n.id === first.slice(1).trim())
     i = 1
   } else if (first === WORKSPACE_DIR) {
-    // 兼容以 workspace/... 开头的手写路径：锚在当前目标的根节点
-    const root = store.goals
-      .map((g) => nodeById(store, g.rootNodeId))
-      .find((n): n is KnowledgeNode => !!n)
-    if (root) {
-      cursor = root
-      i = 1
-    }
+    // 兼容以 workspace/... 开头的手写路径：锚在目标的根节点
+    cursor = defaultRoot
+    if (cursor) i = 1
   } else {
     // 第一段：目标根标题 / 目标根 id / 任一节点的标题或 id（导师常把根标题写在前缀里）
-    const root = store.goals
-      .map((g) => nodeById(store, g.rootNodeId))
-      .find((n): n is KnowledgeNode => !!n && (n.key === normalizeKey(first) || n.id === first))
-    cursor = root ?? store.nodes.find((n) => n.key === normalizeKey(first) || n.id === first)
+    const matchedRoot = (defaultRoot && (defaultRoot.key === normalizeKey(first) || defaultRoot.id === first))
+      ? defaultRoot
+      : store.goals.map((g) => nodeById(store, g.rootNodeId)).find((n): n is KnowledgeNode => !!n && (n.key === normalizeKey(first) || n.id === first))
+    cursor = matchedRoot ?? store.nodes.find((n) => n.key === normalizeKey(first) || n.id === first)
     if (cursor) i = 1
   }
   if (!cursor) return null
-  const goalId = cursor.goalId
+  const nodeGoalId = cursor.goalId
   for (; i < segments.length; i++) {
     const seg = segments[i]
     const cur: KnowledgeNode = cursor
     const child = prereqIds(store, cur.id)
       .map((id) => nodeById(store, id))
-      .find((n): n is KnowledgeNode => !!n && n.goalId === goalId && (n.key === normalizeKey(seg) || n.id === seg))
+      .find((n): n is KnowledgeNode => !!n && n.goalId === nodeGoalId && (n.key === normalizeKey(seg) || n.id === seg))
     if (!child) break
     cursor = child
   }
@@ -137,7 +139,7 @@ export function tabRefFromChip(store: LearnStore, p: ChipPayload): TabRef | null
   // 解析不解析看后缀（见 learn/tabs 的 viewOf）；目录没有页签形态——跳到所属节点
   if (p.type === 'ws') {
     if (p.dir) return p.nodeId ? { kind: 'teach', nodeId: p.nodeId } : null
-    const rel = p.path ? wsChipUserRel(store, p.path) : null
+    const rel = p.path ? wsChipUserRel(store, p.path, p.goalId) : null
     return rel ? wsRefOfRel(store, rel) : null
   }
   // 考试：只有「某一次的副本」能开成页签。attempt 型（拖考试副本进输入框、exam.read
