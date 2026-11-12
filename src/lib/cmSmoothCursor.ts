@@ -26,13 +26,17 @@ class SmoothCursorPlugin {
   private measureReq = {
     read: (view: EditorView): CursorMeasure => {
       const sel = view.state.selection.main
-      // 选区非空（拖选文本）或非焦点时隐藏虚拟光标
-      if (!view.hasFocus || !sel.empty) {
+      // 选区非空（用户正在选择多字）时隐藏虚拟光标，交由 drawSelection 绘制选区；选区为单点时光标立刻显现
+      if (!sel.empty) {
         return { visible: false, left: 0, top: 0, height: 0 }
       }
 
       const coords = view.coordsAtPos(sel.head)
       if (!coords) {
+        if (this.hasPosition) {
+          return { visible: true, left: this.lastLeft, top: this.lastTop, height: 18 }
+        }
+        requestAnimationFrame(() => this.scheduleMeasure())
         return { visible: false, left: 0, top: 0, height: 0 }
       }
 
@@ -62,7 +66,7 @@ class SmoothCursorPlugin {
         this.lastLeft = left
         this.lastTop = top
         this.hasPosition = true
-        this.cursorEl.style.opacity = '1'
+        this.cursorEl.style.opacity = this.view.hasFocus ? '1' : '0.45'
 
         this.resetBlink()
         requestAnimationFrame(() => {
@@ -73,15 +77,15 @@ class SmoothCursorPlugin {
 
       const dist = Math.hypot(left - this.lastLeft, top - this.lastTop)
 
-      // 仅当超远距离点击跳转（如鼠标点击跨越整个屏幕或换页）时瞬间定位，避免长途穿梭
-      if (dist > 300) {
+      // 仅当超远距离点击跳转（如跨越半个屏幕或换页）时瞬间定位，避免长途穿梭
+      if (dist > 350) {
         this.cursorEl.classList.add('cm-cursor-no-transition')
         this.cursorEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
         this.cursorEl.style.height = `${Math.round(height)}px`
 
         this.lastLeft = left
         this.lastTop = top
-        this.cursorEl.style.opacity = '1'
+        this.cursorEl.style.opacity = this.view.hasFocus ? '1' : '0.45'
 
         this.resetBlink()
         requestAnimationFrame(() => {
@@ -90,25 +94,30 @@ class SmoothCursorPlugin {
         return
       }
 
-      // 正常打字、删除、光标键位移或近距离点击：以肉眼清晰可见的平滑轨道直接滑移到目标位置
+      // 正常打字、删除、光标键位移或近距离点击：以肉眼清晰可见的 200ms 平滑轨道直接滑移到目标位置
       this.lastLeft = left
       this.lastTop = top
 
       this.cursorEl.classList.remove('cm-cursor-no-transition')
       this.cursorEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
       this.cursorEl.style.height = `${Math.round(height)}px`
-      this.cursorEl.style.opacity = '1'
+      this.cursorEl.style.opacity = this.view.hasFocus ? '1' : '0.45'
 
       // 移动中保持常亮，静止后恢复优雅淡入淡出闪烁
       this.resetBlink()
     },
   }
 
-  private onFocusIn = () => this.scheduleMeasure()
-  private onFocusOut = () => {
-    this.cursorEl.style.opacity = '0'
+  private onFocusIn = () => {
+    this.cursorEl.style.opacity = '1'
+    this.scheduleMeasure()
+  }
+  private onFocusOut = (e: FocusEvent) => {
+    const related = e.relatedTarget as Node | null
+    if (related && this.view.dom.contains(related)) return
+    // 失焦时保持幽雅半透 (0.45) 常驻，绝不隐藏，用户时刻清楚光标在哪
+    this.cursorEl.style.opacity = '0.45'
     this.stopBlink()
-    this.hasPosition = false
   }
   private onScroll = () => this.scheduleMeasure()
 
@@ -129,6 +138,8 @@ class SmoothCursorPlugin {
     this.view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true })
 
     this.scheduleMeasure()
+    // 布局异步完成时再次校准
+    requestAnimationFrame(() => this.scheduleMeasure())
   }
 
   update(update: ViewUpdate): void {
@@ -180,14 +191,14 @@ const smoothCursorBaseTheme = EditorView.baseTheme({
     top: 0,
     left: 0,
     width: '2.5px',
-    backgroundColor: 'var(--color-seal)',
+    backgroundColor: 'var(--color-seal, #38bdf8)',
     borderRadius: '1.25px',
     pointerEvents: 'none',
     zIndex: 99,
     contain: 'layout paint style',
     willChange: 'transform, height',
     transition: 'transform 200ms cubic-bezier(0.18, 0.95, 0.25, 1), height 120ms ease, opacity 100ms ease',
-    boxShadow: '0 0 6px color-mix(in srgb, var(--color-seal) 65%, transparent)',
+    boxShadow: '0 0 8px color-mix(in srgb, var(--color-seal, #38bdf8) 70%, transparent)',
   },
   '.cm-cursor-no-transition': {
     transition: 'none !important',

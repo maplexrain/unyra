@@ -79,13 +79,13 @@ export function markdownEditorTheme(pad: {
     },
     '&.cm-focused': { outline: 'none' },
     '.cm-placeholder': { color: 'var(--color-ink-faint)' },
-    // 现代专业 IDE 风格文字选中样式：纯透明遮罩层，绝对不篡改文字颜色，保持语法高亮 100% 完好
+    // 现代专业 IDE 风格文字选中样式：纯透明发光遮罩层，绝对不篡改文字颜色，保持语法高亮 100% 完好
     '.cm-selectionBackground': {
-      backgroundColor: 'color-mix(in srgb, var(--color-seal, #3b82f6) 24%, rgba(59, 130, 246, 0.26)) !important',
+      backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 32%, rgba(56, 189, 248, 0.36)) !important',
       borderRadius: '2px',
     },
     '&.cm-focused .cm-selectionBackground': {
-      backgroundColor: 'color-mix(in srgb, var(--color-seal, #3b82f6) 28%, rgba(59, 130, 246, 0.32)) !important',
+      backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 42%, rgba(56, 189, 248, 0.48)) !important',
     },
     // 原生选中伪元素：完全透明背景（交给底层的 cm-selectionBackground 渲染），
     // 强制 color: currentColor 锁定各 Token 自带的语法高亮颜色，绝不被任何全局选中样式变成白字
@@ -121,8 +121,8 @@ export function markdownEditorTheme(pad: {
     },
     // 代码块折叠栏 (Fold Gutter) - 紧凑内嵌在行号与右边框之间，绝不压线或外凸
     '.cm-foldGutter': {
-      width: '16px',
-      minWidth: '16px',
+      width: '18px',
+      minWidth: '18px',
       padding: '0 2px 0 0',
       userSelect: 'none',
       cursor: 'default',
@@ -133,7 +133,7 @@ export function markdownEditorTheme(pad: {
       justifyContent: 'center',
       padding: '0 !important',
       cursor: 'pointer',
-      color: 'var(--color-ink-faint)',
+      color: 'var(--color-seal, #38bdf8)',
       backgroundColor: 'transparent !important',
       transform: 'none !important',
     },
@@ -142,46 +142,53 @@ export function markdownEditorTheme(pad: {
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
-      width: '13px',
-      height: '13px',
-      borderRadius: '0',
+      width: '14px',
+      height: '14px',
+      borderRadius: '2px',
       cursor: 'pointer',
-      color: 'var(--color-ink-faint)',
+      color: 'var(--color-seal, #38bdf8)',
       backgroundColor: 'transparent !important',
       transition: 'opacity 0.15s ease, color 0.15s ease, transform 0.15s ease',
     },
     '.cm-fold-marker .cm-fold-chevron': {
       display: 'block',
       transformOrigin: 'center center',
-      transition: 'transform 200ms cubic-bezier(0.2, 0.8, 0.25, 1)',
     },
-    // 展开状态标记平时清晰可见（0.6），小箭头朝下（旋转 90 度）
+    // 展开状态标记平时清晰可见（0.85），小箭头朝下，触发时带有平滑转动动画
     '.cm-fold-marker-open': {
-      opacity: '0.6',
+      opacity: '0.85',
     },
     '.cm-fold-marker-open .cm-fold-chevron': {
-      transform: 'rotate(90deg)',
+      animation: 'cm-fold-chevron-to-down 200ms cubic-bezier(0.2, 0.8, 0.25, 1) forwards',
     },
     '.cm-gutters:hover .cm-fold-marker-open': {
-      opacity: '0.9',
+      opacity: '1',
     },
     '.cm-fold-marker:hover': {
       opacity: '1 !important',
-      color: 'var(--color-seal) !important',
-      transform: 'scale(1.15)',
+      color: 'var(--color-seal, #38bdf8) !important',
+      transform: 'scale(1.2)',
       backgroundColor: 'transparent !important',
     },
     '.cm-fold-marker:active': {
-      transform: 'scale(0.92)',
+      transform: 'scale(0.9)',
     },
     // 折叠状态标记醒目常驻，小箭头朝右（0度）
     '.cm-fold-marker-folded': {
       opacity: '1 !important',
-      color: 'var(--color-seal) !important',
+      color: 'var(--color-seal, #38bdf8) !important',
       backgroundColor: 'transparent !important',
     },
     '.cm-fold-marker-folded .cm-fold-chevron': {
-      transform: 'rotate(0deg)',
+      animation: 'cm-fold-chevron-to-right 200ms cubic-bezier(0.2, 0.8, 0.25, 1) forwards',
+    },
+    '@keyframes cm-fold-chevron-to-down': {
+      '0%': { transform: 'rotate(0deg)' },
+      '100%': { transform: 'rotate(90deg)' },
+    },
+    '@keyframes cm-fold-chevron-to-right': {
+      '0%': { transform: 'rotate(90deg)' },
+      '100%': { transform: 'rotate(0deg)' },
     },
     // 折叠后的行尾占位胶囊（...）：带有美观的弹出过渡动画，点击即可一键展开
     '.cm-foldPlaceholder': {

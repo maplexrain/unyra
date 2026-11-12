@@ -780,10 +780,10 @@ body {
 }
 
 /* 代码编辑器（CodeMirror）核心保护：完全交由编辑器自身的选区图层与主题控制，绝对不覆盖语法高亮 */
-.cm-editor ::selection,
-.cm-editor *::selection,
-.cm-content ::selection,
-.cm-content *::selection {
+:root .cm-editor ::selection, :root .cm-editor *::selection,
+:root .cm-content ::selection, :root .cm-content *::selection,
+:root[data-theme] .cm-editor ::selection, :root[data-theme] .cm-editor *::selection,
+:root[data-theme] .cm-content ::selection, :root[data-theme] .cm-content *::selection {
   background-color: transparent !important;
   color: currentColor !important;
   -webkit-text-fill-color: currentColor !important;
