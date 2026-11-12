@@ -213,6 +213,13 @@ const dict: Record<string, string> = {
   '结果': 'Result',
 
   /* ---------- MessageBubble ---------- */
+  '语音朗读': 'Read aloud',
+  '停止朗读': 'Stop reading',
+  '准备语音中...': 'Preparing audio...',
+  '切换 TTS 适配器': 'Switch TTS adapter',
+  '切换朗读语速': 'Switch speech rate',
+  '继续播放': 'Resume',
+  '暂停播放': 'Pause',
   '点击回到文档，高亮这段文字': 'Click to jump back to the document and highlight this passage',
   '暂时无法定位这段文字（视图已切换或内容有改动）': 'Cannot locate this passage right now (the view has changed or the content was edited)',
   '选自文档 · 点击定位': 'From the document · click to locate',
