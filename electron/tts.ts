@@ -267,12 +267,15 @@ async function synthesize(req: TtsSynthesizeRequest): Promise<TtsSynthesizeResul
     const speed = !Number.isNaN(rawSpeed) && rawSpeed > 0 ? rawSpeed : 1.0
     const sid = Math.max(0, Math.min(173, Math.floor(Number(req.speakerId) || 0)))
 
-    // 采用同步 generate 接口直接调用底层的 offlineTtsGenerate，
-    // 避开 N-API 异步 worker 跨线程在 Electron 主进程事件循环中 settlement 偶尔抛错 (TTS settlement failed) 的问题
+    console.info(`[TTS] 开始合成: text="${req.text.slice(0, 30)}..." (len=${req.text.length}), sid=${sid}, speed=${speed}`)
+
+    // 关键修复：Electron 的 Node/V8 环境严禁使用外部堆缓冲区 (External buffers are not allowed)。
+    // 必须显式传入 enableExternalBuffer: false，让 sherpa-onnx 将采样数组复制进 V8 安全托管的内存中。
     const result = ttsInstance.generate({
       text: req.text,
       sid,
       speed,
+      enableExternalBuffer: false,
     })
 
     if (!result || !result.samples || result.samples.length === 0) {
@@ -282,6 +285,9 @@ async function synthesize(req: TtsSynthesizeRequest): Promise<TtsSynthesizeResul
     const wavBuf = encodeWav(result.samples, result.sampleRate)
     const base64 = wavBuf.toString('base64')
     const audioDataUrl = `data:audio/wav;base64,${base64}`
+    const durationMs = Date.now() - start
+
+    console.info(`[TTS] 合成成功: 采样数=${result.samples.length}, 采样率=${result.sampleRate}, 音频大小=${wavBuf.length}字节, 耗时=${durationMs}ms`)
 
     return {
       ok: true,
