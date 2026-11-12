@@ -411,6 +411,11 @@ export default function LocalDoc({
   }
 
   if (isHtml) {
+    // 预览 html 用 iframe + 空 sandbox：剔除脚本与 modulepreload 外链，避免在沙箱 iframe 中触发脚本执行拦截或 CORS 跨域报错
+    const safeHtml = text
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<link\b[^>]*\brel=["']?(?:modulepreload|preload)["']?[^>]*>/gi, '')
+
     return (
       <div className="print-flat flex min-h-0 flex-1 flex-col bg-white">
         {/*
@@ -422,7 +427,7 @@ export default function LocalDoc({
         <iframe
           title={name}
           sandbox=""
-          srcDoc={text}
+          srcDoc={safeHtml}
           className="h-full w-full border-0 bg-white"
         />
       </div>

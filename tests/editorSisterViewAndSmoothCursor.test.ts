@@ -22,6 +22,18 @@ describe('平滑虚拟光标扩展 (smoothCursor)', () => {
   })
 })
 
+describe('HTML 预览沙箱脚本剔除逻辑', () => {
+  it('剥离 script 标签与 modulepreload 外链，防止沙箱 iframe 报错', () => {
+    const raw = `<!DOCTYPE html><html><head><script type="module" src="/src/main.ts"></script><link rel="modulepreload" href="/src/vendor.js"></head><body><h1>Hello</h1><script>console.log(1)</script></body></html>`
+    const clean = raw
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<link\b[^>]*\brel=["']?(?:modulepreload|preload)["']?[^>]*>/gi, '')
+    expect(clean).not.toContain('<script')
+    expect(clean).not.toContain('modulepreload')
+    expect(clean).toContain('<h1>Hello</h1>')
+  })
+})
+
 describe('源码与预览独立页面与对偶分屏 (sisterView)', () => {
   const localRef: TabRef = { kind: 'local', path: 'C:/docs/README.md' }
 
