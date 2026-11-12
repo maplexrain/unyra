@@ -779,6 +779,16 @@ body {
   color: #ffffff;
 }
 
+/* 代码编辑器（CodeMirror）核心保护：完全交由编辑器自身的选区图层与主题控制，绝对不覆盖语法高亮 */
+.cm-editor ::selection,
+.cm-editor *::selection,
+.cm-content ::selection,
+.cm-content *::selection {
+  background-color: transparent !important;
+  color: currentColor !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
 /* 应用标志（components/Logo 的内联 SVG）：fill 走 currentColor，颜色在这里给
    当前主题的印章红——深色系拿到的是各块里提亮过的 --color-seal，对比度由调色板
    保证了（旧版烤死在 PNG 里、靠 brightness 滤镜硬扛的做法已随内联 SVG 退役） */

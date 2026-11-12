@@ -87,11 +87,12 @@ export function markdownEditorTheme(pad: {
     '&.cm-focused .cm-selectionBackground': {
       backgroundColor: 'color-mix(in srgb, var(--color-seal, #3b82f6) 28%, rgba(59, 130, 246, 0.32)) !important',
     },
-    // 原生选中伪元素：锁定文字自身颜色为 inherit，绝对不破坏语法高亮
-    '.cm-content ::selection, .cm-editor ::selection': {
-      backgroundColor: 'color-mix(in srgb, var(--color-seal, #3b82f6) 28%, rgba(59, 130, 246, 0.32)) !important',
-      color: 'inherit !important',
-      WebkitTextFillColor: 'inherit !important',
+    // 原生选中伪元素：完全透明背景（交给底层的 cm-selectionBackground 渲染），
+    // 强制 color: currentColor 锁定各 Token 自带的语法高亮颜色，绝不被任何全局选中样式变成白字
+    '.cm-content ::selection, .cm-content *::selection, .cm-editor ::selection, .cm-editor *::selection': {
+      backgroundColor: 'transparent !important',
+      color: 'currentColor !important',
+      WebkitTextFillColor: 'currentColor !important',
     },
     '.cm-cursor': { borderLeftColor: 'var(--color-seal)' },
     // 左侧行号栏 (Gutters) - IntelliJ IDEA 风格
@@ -136,7 +137,7 @@ export function markdownEditorTheme(pad: {
       backgroundColor: 'transparent !important',
       transform: 'none !important',
     },
-    // 折叠小图标：纯净小三角，无任何外框背景色，绝不产生突出的背景色块
+    // 折叠小图标与平滑旋转动效：收起向右（0deg），展开向下（90deg），200ms 丝滑过渡
     '.cm-fold-marker': {
       display: 'inline-flex',
       alignItems: 'center',
@@ -147,11 +148,19 @@ export function markdownEditorTheme(pad: {
       cursor: 'pointer',
       color: 'var(--color-ink-faint)',
       backgroundColor: 'transparent !important',
-      transition: 'opacity 0.12s ease, color 0.12s ease, transform 0.12s ease',
+      transition: 'opacity 0.15s ease, color 0.15s ease, transform 0.15s ease',
     },
-    // 展开状态标记平时清晰可见（0.6），鼠标悬停在左侧栏或该行时自然高亮
+    '.cm-fold-marker .cm-fold-chevron': {
+      display: 'block',
+      transformOrigin: 'center center',
+      transition: 'transform 200ms cubic-bezier(0.2, 0.8, 0.25, 1)',
+    },
+    // 展开状态标记平时清晰可见（0.6），小箭头朝下（旋转 90 度）
     '.cm-fold-marker-open': {
       opacity: '0.6',
+    },
+    '.cm-fold-marker-open .cm-fold-chevron': {
+      transform: 'rotate(90deg)',
     },
     '.cm-gutters:hover .cm-fold-marker-open': {
       opacity: '0.9',
@@ -162,13 +171,19 @@ export function markdownEditorTheme(pad: {
       transform: 'scale(1.15)',
       backgroundColor: 'transparent !important',
     },
-    // 折叠状态标记醒目常驻，标明代码已收拢
+    '.cm-fold-marker:active': {
+      transform: 'scale(0.92)',
+    },
+    // 折叠状态标记醒目常驻，小箭头朝右（0度）
     '.cm-fold-marker-folded': {
       opacity: '1 !important',
       color: 'var(--color-seal) !important',
       backgroundColor: 'transparent !important',
     },
-    // 折叠后的行尾占位胶囊（...），点击即可一键展开
+    '.cm-fold-marker-folded .cm-fold-chevron': {
+      transform: 'rotate(0deg)',
+    },
+    // 折叠后的行尾占位胶囊（...）：带有美观的弹出过渡动画，点击即可一键展开
     '.cm-foldPlaceholder': {
       display: 'inline-flex',
       alignItems: 'center',
@@ -185,13 +200,27 @@ export function markdownEditorTheme(pad: {
       letterSpacing: '1px',
       userSelect: 'none',
       boxShadow: '0 1px 3px color-mix(in srgb, var(--color-seal) 10%, transparent)',
-      transition: 'all 0.15s ease',
+      transition: 'all 0.16s ease',
+      animation: 'cm-fold-pill-in 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
     },
     '.cm-foldPlaceholder:hover': {
       backgroundColor: 'color-mix(in srgb, var(--color-seal) 24%, var(--color-card)) !important',
       borderColor: 'var(--color-seal) !important',
-      boxShadow: '0 0 6px color-mix(in srgb, var(--color-seal) 30%, transparent)',
-      transform: 'translateY(-0.5px)',
+      boxShadow: '0 0 8px color-mix(in srgb, var(--color-seal) 35%, transparent)',
+      transform: 'scale(1.04)',
+    },
+    '.cm-foldPlaceholder:active': {
+      transform: 'scale(0.96)',
+    },
+    '@keyframes cm-fold-pill-in': {
+      '0%': {
+        opacity: '0',
+        transform: 'scale(0.82)',
+      },
+      '100%': {
+        opacity: '1',
+        transform: 'scale(1)',
+      },
     },
     // IDEA 风格：当前行行号不带粗暴色块，字体显著变大（仅针对行号数字进行放大，绝不作用于折叠列）
     '.cm-lineNumbers .cm-activeLineGutter': {

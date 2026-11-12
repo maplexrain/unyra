@@ -181,9 +181,8 @@ export default function SourceEditor({
               const el = document.createElement('span')
               el.className = `cm-fold-marker ${open ? 'cm-fold-marker-open' : 'cm-fold-marker-folded'}`
               el.setAttribute('aria-hidden', 'true')
-              el.innerHTML = open
-                ? '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4" /></svg>'
-                : '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4" /></svg>'
+              el.innerHTML =
+                '<svg class="cm-fold-chevron" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4" /></svg>'
               return el
             },
           }),

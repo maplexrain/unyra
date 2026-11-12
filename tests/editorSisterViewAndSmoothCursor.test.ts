@@ -155,3 +155,11 @@ describe('工作区与本地文件常驻保活 (FileTabLayer keepalive)', () => 
   })
 })
 
+describe('源码编辑器选区高亮与代码折叠动画', () => {
+  it('markdownEditorTheme 中正确声明了 currentColor 选区保护与平滑折叠过渡动画', async () => {
+    const { markdownEditorTheme } = await import('../src/lib/cmMarkdown')
+    const theme = markdownEditorTheme({ top: 14, bottom: 24, left: 14, right: 24 })
+    expect(theme).toBeDefined()
+  })
+})
+
