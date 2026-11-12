@@ -17,6 +17,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { getUserDataDir } from './storage/userData'
 import { runTtsInWorker, resetWorkerModel } from './sherpa/workerBridge'
+import { normalizeAudioSamples } from './sherpa/audioNormalize'
 import type {
   TtsDownloadResult,
   TtsModelDefinition,
@@ -394,7 +395,8 @@ async function synthesize(req: TtsSynthesizeRequest): Promise<TtsSynthesizeResul
       throw new Error('离线模型未生成有效音频采样')
     }
 
-    const wavBuf = encodeWav(allSamples, sampleRate)
+    const normalizedSamples = normalizeAudioSamples(allSamples)
+    const wavBuf = encodeWav(normalizedSamples, sampleRate)
     const base64 = wavBuf.toString('base64')
     const audioDataUrl = `data:audio/wav;base64,${base64}`
     const durationMs = Date.now() - start

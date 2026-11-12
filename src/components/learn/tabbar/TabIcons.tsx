@@ -4,12 +4,27 @@
  */
 
 import { useEffect, useState } from 'react'
-import { FileText, Volume2, VolumeX } from 'lucide-react'
+import { Volume2, VolumeX } from 'lucide-react'
+import { FileIcon } from '@react-symbols/icons/utils'
 import { DocTypeIcon, WebTabTypeIcon } from '../docTypes'
 import type { TabRef } from '../../../learn/types'
-import { isPdfFile } from '../../../learn/tabs'
+import { extOf, fileNameOf } from '../../../learn/tabs'
 import { subscribeVideoAudio, videoAudioOf } from '../../../learn/video/videoRegistry'
 import { t } from '../../../i18n'
+
+function resolveTabFileName(tab: TabRef): string | null {
+  if (tab.kind === 'local') {
+    if (tab.title && extOf(tab.title)) return tab.title
+    return fileNameOf(tab.path)
+  }
+  if (tab.kind === 'ws') {
+    return fileNameOf(tab.seg)
+  }
+  if (tab.kind === 'note' && tab.note && extOf(tab.note)) {
+    return tab.note
+  }
+  return null
+}
 
 /*
  * 页签类型的标识图标：一眼分清这一排里哪种文档是哪种。
@@ -56,16 +71,20 @@ export function VideoAudioButton({ tabId }: { tabId: string }) {
 export function TabTypeIcon({ tab, favicon, loading }: { tab: TabRef; favicon?: string; loading?: boolean }) {
   // 网页页签的图标带活信息（转圈/站点图标，见 docTypes 的 WebTabTypeIcon）
   if (tab.kind === 'web') return <WebTabTypeIcon favicon={favicon} loading={loading} />
-  if ((tab.kind === 'local' && isPdfFile(tab.path)) || (tab.kind === 'ws' && isPdfFile(tab.seg))) {
+
+  // 外部文件、工作区文件或带后缀的文档，根据真实文件扩展名自动渲染对应语言/文件类型图标
+  const fileName = resolveTabFileName(tab)
+  if (fileName) {
     return (
       <span
         aria-hidden="true"
-        className="flex h-4 w-4 shrink-0 items-center justify-center text-rose-500"
-        title="PDF"
+        className="flex h-4 w-4 shrink-0 items-center justify-center"
+        title={fileName}
       >
-        <FileText size={11} />
+        <FileIcon fileName={fileName} autoAssign={true} width={13} height={13} />
       </span>
     )
   }
+
   return <DocTypeIcon kind={tab.kind} />
 }
