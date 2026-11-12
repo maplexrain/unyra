@@ -9,6 +9,7 @@ import { languages as codeLanguages } from '@codemirror/language-data'
 import { countSourceWords } from '../../lib/wordCount'
 import { getAppearance, setAppearance, clampEditorScale, SCALE_ZOOM_STEP, SCALE_HUD_MS } from '../../lib/appearance'
 import { markdownEditorTheme, markdownHighlight } from '../../lib/cmMarkdown'
+import { smoothCursor } from '../../lib/cmSmoothCursor'
 import { takeSourceReveal, subscribeSourceReveal, type SourceReveal } from '../../lib/docReveal'
 import { useDocScroll } from '../../lib/docScroll'
 import { DocStatChip } from './DocFloat'
@@ -154,6 +155,8 @@ export default function SourceEditor({
           lineNumbers(),
           highlightActiveLineGutter(),
           highlightActiveLine(),
+          // 平滑移动的虚拟光标动画
+          smoothCursor(),
           // 符号自动补全（输入 ( [ { " ' ` 自动带出另一半、跳过与删除成对）与括号配对高亮
           closeBrackets(),
           bracketMatching(),

@@ -206,9 +206,9 @@ export default function DocFloat({
             title={
               view === 'source'
                 ? previewable
-                  ? t('预览：看渲染后的样子')
+                  ? t('分屏浏览预览：在独立页面或侧边查看渲染效果')
                   : (previewHint ?? t('这份文件不能预览（只支持 Markdown 与 HTML），只能看源码'))
-                : t('编辑源码：切换到编辑器')
+                : t('分屏编辑源码：在独立页面或侧边编辑源码')
             }
             aria-pressed={view === 'source'}
             disabled={view === 'source' && !previewable}

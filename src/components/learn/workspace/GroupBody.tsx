@@ -38,6 +38,7 @@ import { DocPane } from './DocPane'
 import { OutlinePane } from './OutlinePane'
 import { paneInfo, examCopyOf, conceptKeysOf } from './panes'
 import { createVideoTabBridge } from './videoTabBridge'
+import { openSisterDocView } from './sisterView'
 import { ZONE_BOX } from './drag'
 import { SRC_SCROLL_SUFFIX } from './constants'
 
@@ -141,8 +142,6 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     explorerExams,
     canvasChannel,
     runSuperMethod,
-    onDocPointerDown,
-    docMarkMoved,
     docBox,
     groupHosts,
     stripHosts,
@@ -279,7 +278,6 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               onTogglePin={(tab) => toggleTabPin(groupId, tab)}
               // 资源管理器/外部拖进来的引用落在这一格的页签栏上：还原成页签开在这一格里
               onDropChip={openChipInGroup(groupId)}
-              // 棱形只在焦点格的栏上跟着右键走（见 lib/tabMark）
               focused={isFocused}
               // 栏上空白处的右键菜单要开新网页页签（见 TabBar 的 BarMenu）；WebUI 模式下不提供
               onOpenWebTab={isWeb() ? undefined : () => openWebTab('')}
@@ -295,17 +293,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
         文档内容 + 右上角悬浮组。悬浮组是绝对定位的，所以这一层必须 relative，
         并且它是**唯一**能被悬浮组盖住的地方——它不会跑到页签栏或对话栏上去。
       */}
-      <div
-        className="relative flex min-h-0 flex-1 flex-col"
-        onPointerDown={onDocPointerDown}
-        onContextMenu={(e) => {
-          // 刚用右键划过：这一下 contextmenu 是那趟划动的尾巴，不是「要上下文」
-          if (!docMarkMoved.current) return
-          docMarkMoved.current = false
-          e.preventDefault()
-          e.stopPropagation()
-        }}
-      >
+      <div className="relative flex min-h-0 flex-1 flex-col">
           <div
             ref={isFocused ? docBox : undefined}
             {...boxProps}
@@ -831,7 +819,11 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
             previewHint={
               dg.emptyNote ? t('这份笔记还是空的：先在源码视图里写点东西，才有得预览') : undefined
             }
-            onSwitchView={(v) => setTabView(gTabId, v)}
+            onSwitchView={(v) => {
+              if (v === 'source' || v === 'preview') {
+                openSisterDocView(store, gTab, v, groupId, set)
+              }
+            }}
             showBackToDoc={gTab.ref.kind === 'note' || gTab.ref.kind === 'super'}
             onBackToDoc={() => dg.node && openTab({ kind: 'teach', nodeId: dg.node.id })}
             // 纯净阅读那颗：它与 F11 / Esc 是同一个动作（见 toggleZen）。

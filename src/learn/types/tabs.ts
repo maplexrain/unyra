@@ -16,11 +16,11 @@
  */
 export type TabRef =
   /** 某个节点的教学文档 */
-  | { kind: 'teach'; nodeId: string }
+  | { kind: 'teach'; nodeId: string; view?: 'source' | 'preview' }
   /** 某个节点的某一份笔记（note 是笔记名，见 NoteFile） */
-  | { kind: 'note'; nodeId: string; note: string }
+  | { kind: 'note'; nodeId: string; note: string; view?: 'source' | 'preview' }
   /** 某个节点的某一份超级文档（name 是它的名字，见 SuperDocFile） */
-  | { kind: 'super'; nodeId: string; name: string }
+  | { kind: 'super'; nodeId: string; name: string; view?: 'source' | 'preview' }
   /**
    * 某一次考试的只读副本：卷子原件 + 那次作答 + 判分 + 错题讲解。
    * 认的是**考试**（attemptId），不是试卷——同一份卷子考两次，副本各是各的。
@@ -32,7 +32,7 @@ export type TabRef =
    */
   | { kind: 'outline'; nodeId: string; goalId?: string }
   /** 磁盘上的外部文件（绝对路径） */
-  | { kind: 'local'; path: string; title?: string }
+  | { kind: 'local'; path: string; title?: string; view?: 'source' | 'preview' }
   /**
    * 工作区（项目）里的**内部文件**：nodeId 是它的工作区所属的节点（目标根节点就是
    * `docs/{目标}/workspace/`），seg 是**相对那个工作区目录**的路径（如 `项目A/README.md`）。
@@ -42,7 +42,7 @@ export type TabRef =
    * 的目标（见 groups/goals 的 refOwner），打开时先过它的组（openGroupedDoc），
    * 跟着切目标收起 / 归队；外部文件不属于任何目标，也不进「本地文件」那套账。
    */
-  | { kind: 'ws'; nodeId: string; seg: string }
+  | { kind: 'ws'; nodeId: string; seg: string; view?: 'source' | 'preview' }
   /**
    * 内置浏览器的网页页签（<webview>，见 electron/app/webSession 与 components/learn/web）。
    * url 是**当前**地址——页面每次主框架导航都回写进来，重启回到离开时的那一页；

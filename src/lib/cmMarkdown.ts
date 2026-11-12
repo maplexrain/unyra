@@ -91,24 +91,30 @@ export function markdownEditorTheme(pad: {
       userSelect: 'none',
       fontFamily: IDEA_MONO_FONT,
     },
-    '.cm-gutterElement': {
-      padding: '0 12px 0 6px',
-      minWidth: '34px',
-      textAlign: 'right',
+    // 注意：CodeMirror 默认对 .cm-lineNumbers .cm-gutterElement 设置了 padding: 0 3px 0 5px
+    // 导致行号贴紧右侧边框。通过 .cm-lineNumbers .cm-gutterElement 提高特异性并赋予 16px 右内边距，确保呼吸留白
+    '.cm-gutterElement, .cm-lineNumbers .cm-gutterElement': {
+      padding: '0 16px 0 10px !important',
+      minWidth: '40px !important',
+      textAlign: 'right !important',
       fontSize: '11.5px',
       letterSpacing: '-0.3px',
       fontFamily: IDEA_MONO_FONT,
       fontVariantNumeric: 'tabular-nums',
       opacity: '0.45',
       color: 'var(--color-ink-faint)',
-      transition: 'color 0.1s ease, opacity 0.1s ease',
+      transition: 'color 0.12s ease, opacity 0.12s ease, font-size 0.12s ease',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
     },
-    // IDEA 风格：当前行行号不带粗暴色块，而是通过高对比度文字前景色与字重自然凸显
-    '.cm-activeLineGutter': {
+    // IDEA 风格：当前行行号不带粗暴色块，字体显著变大（13.5px），并以高对比度前景色与加粗自然凸显
+    '.cm-activeLineGutter, .cm-lineNumbers .cm-activeLineGutter': {
       color: 'var(--color-ink-strong) !important',
       backgroundColor: 'transparent !important',
       opacity: '1 !important',
-      fontWeight: '600',
+      fontWeight: '700 !important',
+      fontSize: '13.5px !important',
     },
     // IDEA 风格：当前行整行柔和横向带状底色高亮，沉浸不晃眼
     '.cm-activeLine': {

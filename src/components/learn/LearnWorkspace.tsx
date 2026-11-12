@@ -125,7 +125,6 @@ import ExplorerSidebar, {
   type NodeDocActions,
 } from './ExplorerSidebar'
 import { focusAgentInput } from '../../lib/agentFocus'
-import { moveTabMark, resetTabMark } from '../../lib/tabMark'
 import { focusWebAddress } from './web/addressFocus'
 import { readSuperDoc } from '../../learn/superdocs'
 import { superDocsOf } from '../../learn/types'
@@ -1114,62 +1113,6 @@ export default function LearnWorkspace({
     openTab,
   })
 
-  /* ---------- 文档区：按住右键横向划，页签栏上那颗棱形跟着走 ---------- */
-
-  /** 刚刚那一下右键是不是真的划过：决定要不要吞掉随后的 contextmenu */
-  const docMarkMoved = useRef(false)
-
-  /**
-   * 按住**右键**在正文里横向划：页签栏上那颗**棱形**跟着指针走，它压到哪个页签就打开哪个。
-   *
-   * 为什么是右键：左键在这个区域已经有活干（选字、点链接、划注解），再叠一个拖动必然打架；
-   * 右键本来是「上下文菜单」，在正文空白处它没什么可给的，正好拿来当手势的起手式。
-   * 菜单只在**没有划过**时才弹（划过了就吞掉，否则划到一半跳出一个菜单）。
-   *
-   * 棱形那边在页签栏上（TabBar），隔着好几层，走 lib/tabMark 那套模块级回调登记/调用；
-   * 只有焦点格的栏会登记（分割成好几格时，棱形只该出现在焦点格那条栏上）。
-   * 监听挂在 window 上、而且只在这个手势期间挂着，而不是用 setPointerCapture：
-   * 捕获会把随后的 mouseup / contextmenu 也一并重定向到这一格上，正文里那些自己的
-   * 右键处理（注解、链接）就再也收不到事件了。挂在 window 上同样能接住划出文档区之后的移动。
-   */
-  const onDocPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 2) return
-    const startX = e.clientX
-    let moved = false
-    /*
-     * 收尾要能自己触发：右键在窗口外松开时 window 收不到 pointerup，指针再移回来时
-     * `buttons` 已经是 0——那一拍就该结束这个手势。不然三条监听一直挂在 window 上，
-     * 每漏一次多一份，只有重载才清得掉。blur 兜住「拖到一半 Alt+Tab 切走」。
-     */
-    function onUp(): void {
-      if (moved) resetTabMark()
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      window.removeEventListener('pointercancel', onUp)
-      window.removeEventListener('blur', onUp)
-    }
-    function onMove(ev: PointerEvent): void {
-      // 右键已经松开（或换成了别的键）：这个手势结束了，顺手把监听摘干净
-      if ((ev.buttons & 2) === 0) {
-        onUp()
-        return
-      }
-      if (!moved) {
-        // 手抖不算划：与拖页签同一个阈值口径（见 TabBar 的 DRAG_MIN）
-        if (Math.abs(ev.clientX - startX) < 4) return
-        moved = true
-        docMarkMoved.current = true
-      }
-      moveTabMark(ev.clientX)
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-    window.addEventListener('pointercancel', onUp)
-    window.addEventListener('blur', onUp)
-  }
-
-
-
   /**
    * 切某一份文档的视图（源码 / 预览）：只改**那一个页签**自己的选择。
    *
@@ -2141,8 +2084,6 @@ export default function LearnWorkspace({
       explorerExams,
       canvasChannel,
       runSuperMethod,
-      onDocPointerDown,
-      docMarkMoved,
       docBox,
       groupHosts,
       stripHosts,

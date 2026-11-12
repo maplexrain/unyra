@@ -18,10 +18,17 @@ import { tabIdNodeId } from './tabs'
  */
 export type Drafts = Record<string, string>
 
-/** 某个页签暂存的正文；没有就是「没改过」 */
+/** 某个页签暂存的正文；没有就是「没改过」（支持 :source / :preview 对偶视图共享暂存内容） */
 export function draftOf(drafts: Drafts | undefined, id: string | null): string | undefined {
   if (!drafts || !id) return undefined
-  return Object.prototype.hasOwnProperty.call(drafts, id) ? drafts[id] : undefined
+  if (Object.prototype.hasOwnProperty.call(drafts, id)) return drafts[id]
+  const base = id.replace(/:(source|preview)$/, '')
+  if (base !== id) {
+    if (Object.prototype.hasOwnProperty.call(drafts, base)) return drafts[base]
+    if (Object.prototype.hasOwnProperty.call(drafts, base + ':source')) return drafts[base + ':source']
+    if (Object.prototype.hasOwnProperty.call(drafts, base + ':preview')) return drafts[base + ':preview']
+  }
+  return undefined
 }
 
 /** 记一份暂存（调用方自己判「还是不是改动过」时用它） */
@@ -30,11 +37,22 @@ export function putDraft(drafts: Drafts, id: string, text: string): Drafts {
   return { ...drafts, [id]: text }
 }
 
-/** 撤掉一份暂存：保存成功、或用户把它改回了原样 */
+/** 撤掉一份暂存：保存成功、或用户把它改回了原样（同步撤销对偶视图的暂存） */
 export function dropDraft(drafts: Drafts, id: string): Drafts {
-  if (!Object.prototype.hasOwnProperty.call(drafts, id)) return drafts
+  const base = id.replace(/:(source|preview)$/, '')
+  if (
+    !Object.prototype.hasOwnProperty.call(drafts, id) &&
+    !Object.prototype.hasOwnProperty.call(drafts, base) &&
+    !Object.prototype.hasOwnProperty.call(drafts, base + ':source') &&
+    !Object.prototype.hasOwnProperty.call(drafts, base + ':preview')
+  ) {
+    return drafts
+  }
   const next = { ...drafts }
   delete next[id]
+  delete next[base]
+  delete next[base + ':source']
+  delete next[base + ':preview']
   return next
 }
 
@@ -53,10 +71,15 @@ export function dropDrafts(drafts: Drafts, ids: string[]): Drafts {
   if (!ids.length) return drafts
   let hit = false
   const next = { ...drafts }
-  for (const id of ids) {
-    if (!Object.prototype.hasOwnProperty.call(next, id)) continue
-    delete next[id]
-    hit = true
+  for (const rawId of ids) {
+    const base = rawId.replace(/:(source|preview)$/, '')
+    const toCheck = [rawId, base, base + ':source', base + ':preview']
+    for (const id of toCheck) {
+      if (Object.prototype.hasOwnProperty.call(next, id)) {
+        delete next[id]
+        hit = true
+      }
+    }
   }
   return hit ? next : drafts
 }

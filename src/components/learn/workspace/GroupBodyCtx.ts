@@ -1,4 +1,4 @@
-import type { ComponentProps, Dispatch, PointerEvent as ReactPointerEvent, RefObject, SetStateAction } from 'react'
+import type { ComponentProps, Dispatch, RefObject, SetStateAction } from 'react'
 import type { DocView, FavoriteRef, KnowledgeNode, LearnStore, LearnTab, TabRef, WebTabMeta } from '../../../learn/types'
 import type { TabOwners } from '../../../learn/groups'
 import type { StructureMap } from '../../../learn/structure'
@@ -154,9 +154,7 @@ export interface GroupBodyCtx {
   canvasChannel: CanvasChannelProps
   /* 超级文档 method 桥 */
   runSuperMethod: ComponentSuperOnMethodCall
-  /* 手势与挂点 */
-  onDocPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => void
-  docMarkMoved: RefObject<boolean>
+  /* 挂点 */
   docBox: RefObject<HTMLDivElement | null>
   groupHosts: RefObject<Map<string, HTMLElement>>
   stripHosts: RefObject<Map<string, HTMLElement | null>>

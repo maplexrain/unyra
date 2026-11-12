@@ -15,6 +15,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { indentOnInput, indentUnit, syntaxHighlighting } from '@codemirror/language'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { markdownEditorTheme, markdownHighlight } from '../../../lib/cmMarkdown'
+import { smoothCursor } from '../../../lib/cmSmoothCursor'
 
 interface Props {
   value: string
@@ -49,6 +50,7 @@ export default function EssayEditor({ value, onChange, placeholder }: Props) {
           markdown({ base: markdownLanguage }),
           cmPlaceholder(placeholder ?? ''),
           syntaxHighlighting(markdownHighlight),
+          smoothCursor(),
           theme,
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return
