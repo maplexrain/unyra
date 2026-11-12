@@ -14,11 +14,12 @@ describe('编辑器行号样式与 IntelliJ IDEA 风格大字号', () => {
   })
 })
 
-describe('平滑虚拟光标扩展 (smoothCursor)', () => {
-  it('正确导出平滑光标 CodeMirror 扩展', () => {
+describe('平滑虚拟光标与流光残影扩展 (smoothCursor)', () => {
+  it('正确导出平滑光标与跟随残影 CodeMirror 扩展', () => {
     const ext = smoothCursor()
     expect(ext).toBeDefined()
     expect(Array.isArray(ext)).toBe(true)
+    expect(ext.length).toBeGreaterThanOrEqual(2)
   })
 })
 
