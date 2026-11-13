@@ -363,5 +363,19 @@ export function markdownEditorTheme(pad: {
       caretColor: 'var(--color-seal, #38bdf8) !important',
       letterSpacing: '0.02em',
     },
+    // Vim 正则搜索所有匹配项通用高亮样式：低饱和微光底色与柔和边框
+    '.cm-searchMatch': {
+      backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 22%, transparent) !important',
+      borderRadius: '2px !important',
+      outline: '1px solid color-mix(in srgb, var(--color-seal, #38bdf8) 45%, transparent) !important',
+      transition: 'background-color 100ms ease, outline 100ms ease',
+    },
+    // 当前激活匹配项（按 n 切换下一个匹配项、按 N 切换上一个匹配项时聚焦的目标）：高亮发光外框与透亮背景
+    '.cm-searchMatch.cm-searchMatch-selected, .cm-searchMatch-selected': {
+      backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 55%, transparent) !important',
+      outline: '1.5px solid var(--color-seal, #38bdf8) !important',
+      boxShadow: '0 0 10px color-mix(in srgb, var(--color-seal, #38bdf8) 60%, transparent) !important',
+      zIndex: 2,
+    },
   })
 }

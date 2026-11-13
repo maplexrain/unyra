@@ -193,4 +193,36 @@ export const VIM_TUTOR_LEVELS: TutorLevel[] = [
       commandMatch: ':w',
     },
   },
+  {
+    id: 7,
+    title: '第七关：寻踪觅影',
+    subtitle: '正则寻踪 · 跃迁八方',
+    goalText: '按 / 输入正则搜索目标，按回车后用 n 键在所有匹配项间穿梭收集灵石',
+    instruction:
+      '在 Vim 中按 / 即可开启正则表达式搜索！输入匹配关键词回车后，按 n 即可跳至下一个匹配项（按 N 跳回上一个匹配项），精准定位如探囊取物！',
+    hint: '按 / 开启搜索，输入 target 并回车，然后连续按 n 键收集沿途所有灵石并抵达传送门',
+    keyGuide: [
+      { key: '/', desc: '开启正则模式搜索' },
+      { key: 'n', desc: '跳向下一个匹配项' },
+      { key: 'N', desc: '跳向上一个匹配项' },
+      { key: 'Esc', desc: '退出搜索高亮' },
+    ],
+    type: 'motion',
+    initialLines: [
+      '// 信号信标网络',
+      'const beacon1 = connectTo("⭐target_alpha");',
+      'const beacon2 = connectTo("⭐target_beta");',
+      'const beacon3 = connectTo("⭐target_gamma");',
+      'galaxy.network.finish(allBeacons); 🌀',
+    ],
+    startPos: { row: 0, col: 0 },
+    meta: {
+      diamonds: [
+        { row: 1, col: 26, id: 's1' },
+        { row: 2, col: 26, id: 's2' },
+        { row: 3, col: 26, id: 's3' },
+      ],
+      goalPortal: { row: 4, col: 35 },
+    },
+  },
 ]

@@ -481,9 +481,11 @@ set tabstop=4
 
   it('Vim 教学关卡配置完整且闯关状态机正常工作', async () => {
     const { VIM_TUTOR_LEVELS } = await import('../src/components/learn/vim/vimTutorLevels')
-    expect(VIM_TUTOR_LEVELS.length).toBeGreaterThanOrEqual(6)
+    expect(VIM_TUTOR_LEVELS.length).toBeGreaterThanOrEqual(7)
     expect(VIM_TUTOR_LEVELS[0].title).toContain('方向之魂')
     expect(VIM_TUTOR_LEVELS[1].title).toContain('疾步如飞')
+    expect(VIM_TUTOR_LEVELS[6].title).toContain('寻踪觅影')
+    expect(VIM_TUTOR_LEVELS[6].goalText).toContain('n 键')
 
     const { openVimTutor, closeVimTutor, isVimTutorOpen, subscribeVimTutor } = await import(
       '../src/lib/vimTutorState'
@@ -529,6 +531,81 @@ set tabstop=4
     expect(triggered).toBe(true)
 
     unsub()
+  })
+
+  it('vimActiveSearchMatchHighlight 在正则匹配与 n 键切换时精准高亮当前目标全词', async () => {
+    const { Window } = await import('happy-dom')
+    const win = new Window()
+    const origDoc = (globalThis as any).document
+    const origWin = (globalThis as any).window
+    const origMO = (globalThis as any).MutationObserver
+    const origNode = (globalThis as any).Node
+    ;(globalThis as any).document = win.document
+    ;(globalThis as any).window = win
+    ;(globalThis as any).MutationObserver = win.MutationObserver
+    ;(globalThis as any).Node = win.Node
+
+    try {
+      const { vimActiveSearchMatchHighlight } = await import('../src/lib/cmSearchHighlight')
+      const { EditorState } = await import('@codemirror/state')
+      const { EditorView } = await import('@codemirror/view')
+      const { vim, Vim } = await import('@replit/codemirror-vim')
+
+      const doc = `const apple1 = 1;\nconst apple2 = 2;\nconst apple3 = 3;`
+      const dom = win.document.createElement('div')
+      win.document.body.appendChild(dom)
+
+      const view = new EditorView({
+        state: EditorState.create({
+          doc,
+          extensions: [vim(), vimActiveSearchMatchHighlight()],
+        }),
+        parent: dom as any,
+      })
+
+      const cm = (view as any).cm
+
+      // 模拟搜索 /apple\\d 并回车
+      Vim.handleKey(cm, '/', 'user')
+      const input = cm.state.dialog?.querySelector('input')
+      if (input) {
+        input.value = 'apple\\d'
+        input.dispatchEvent(new win.KeyboardEvent('keydown', { keyCode: 13, key: 'Enter', bubbles: true } as any))
+      }
+
+      // 回车后应命中第一项 apple1
+      let selected = dom.querySelector('.cm-searchMatch-selected')
+      expect(selected).not.toBeNull()
+      expect(selected?.textContent).toBe('apple1')
+
+      // 按 n 键跳向下一个匹配项 apple2
+      Vim.handleKey(cm, 'n', 'user')
+      selected = dom.querySelector('.cm-searchMatch-selected')
+      expect(selected).not.toBeNull()
+      expect(selected?.textContent).toBe('apple2')
+
+      // 再次按 n 键跳向下一个匹配项 apple3
+      Vim.handleKey(cm, 'n', 'user')
+      selected = dom.querySelector('.cm-searchMatch-selected')
+      expect(selected).not.toBeNull()
+      expect(selected?.textContent).toBe('apple3')
+
+      // 按 Shift+N 键逆向回退到上一个匹配项 apple2
+      Vim.handleKey(cm, 'N', 'user')
+      selected = dom.querySelector('.cm-searchMatch-selected')
+      expect(selected).not.toBeNull()
+      expect(selected?.textContent).toBe('apple2')
+
+      view.destroy()
+      dom.remove()
+      // 等待 prompt 内部的 blur 定时器执行完毕，防止测试结束后 document 变为 undefined
+      await new Promise((r) => setTimeout(r, 50))
+    } finally {
+      ;(globalThis as any).document = origDoc
+      ;(globalThis as any).window = origWin
+      ;(globalThis as any).MutationObserver = origMO
+      ;(globalThis as any).Node = origNode
+    }
   })
 })
 

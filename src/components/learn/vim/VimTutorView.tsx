@@ -16,6 +16,7 @@ import {
 import { useVimGameEngine } from './useVimGameEngine'
 import { VIM_TUTOR_LEVELS } from './vimTutorLevels'
 import { smoothCursor } from '../../../lib/cmSmoothCursor'
+import { vimActiveSearchMatchHighlight } from '../../../lib/cmSearchHighlight'
 import { markdownEditorTheme } from '../../../lib/cmMarkdown'
 import VimIcon from '../VimIcon'
 import { t } from '../../../i18n'
@@ -70,6 +71,7 @@ export default function VimTutorView({ onClose }: Props) {
         lineNumbers(),
         theme,
         vim(),
+        vimActiveSearchMatchHighlight(),
         smoothCursor(),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {

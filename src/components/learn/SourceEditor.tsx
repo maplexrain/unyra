@@ -21,6 +21,7 @@ import { getAppearance, setAppearance, clampEditorScale, SCALE_ZOOM_STEP, SCALE_
 import { markdownEditorTheme, markdownHighlight } from '../../lib/cmMarkdown'
 import { smoothCursor } from '../../lib/cmSmoothCursor'
 import { scopeHighlight } from '../../lib/cmScopeHighlight'
+import { vimActiveSearchMatchHighlight } from '../../lib/cmSearchHighlight'
 import { vim } from '@replit/codemirror-vim'
 import { isVimEnabled, subscribeVimEnabled } from '../../lib/vimSettings'
 import { loadAndApplyVimrc } from '../../lib/vimConfig'
@@ -79,7 +80,7 @@ const vimComp = new Compartment()
 
 function getVimExtensions(enabled: boolean): Extension[] {
   if (!enabled) return []
-  return [vim()]
+  return [vim(), vimActiveSearchMatchHighlight()]
 }
 
 function getInitialLanguageExtensions(ext?: string): Extension[] {
