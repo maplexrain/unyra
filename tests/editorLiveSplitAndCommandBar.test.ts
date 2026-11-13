@@ -13,6 +13,7 @@ import {
   setGlobalTabOperations,
 } from '../src/lib/vimCommands'
 import { setAgentMessenger, setAgentToggleHandler } from '../src/lib/agentFocus'
+import { setVimPageOpener } from '../src/lib/vimTutorState'
 import { viewOf, makeTab } from '../src/learn/tabs'
 
 describe('双栏实时对照预览 (LiveSplitPreview) 与 Vim :preview 命令', () => {
@@ -224,10 +225,16 @@ describe('双栏实时对照预览 (LiveSplitPreview) 与 Vim :preview 命令', 
       )
     })
 
+    // 挂载时选项按钮自动获取焦点（默认保存确认按钮处于 document.activeElement）
+    expect(document.activeElement?.textContent).toContain('保存')
+
     // 默认聚焦 confirm：按 ArrowLeft 切换到 extra (次级按钮)
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }))
     })
+
+    // 切换后 extra 按钮自动获得焦点
+    expect(document.activeElement?.textContent).toContain('放弃')
 
     // 按 Enter，触发当前选中的 extra
     await act(async () => {
@@ -241,6 +248,8 @@ describe('双栏实时对照预览 (LiveSplitPreview) 与 Vim :preview 命令', 
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
     })
+    expect(document.activeElement?.textContent).toContain('保存')
+
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
     })
@@ -252,5 +261,31 @@ describe('双栏实时对照预览 (LiveSplitPreview) 与 Vim :preview 命令', 
       root.unmount()
     })
     container.remove()
+  })
+
+  it('executeVimCommand :vim, :cheat, :tutor 支持打开 Vim 学习页面与命令大全', () => {
+    let openedSection: string | undefined = undefined
+    setVimPageOpener((sec) => {
+      openedSection = sec
+    })
+
+    // 1. :vim 打开命令大全
+    const resVim = executeVimCommand(':vim')
+    expect(resVim.success).toBe(true)
+    expect(openedSection).toBe('commands')
+
+    // 2. :cheat 打开命令大全
+    openedSection = undefined
+    const resCheat = executeVimCommand(':cheat')
+    expect(resCheat.success).toBe(true)
+    expect(openedSection).toBe('commands')
+
+    // 3. :tutor 打开闯关道场
+    openedSection = undefined
+    const resTutor = executeVimCommand(':tutor')
+    expect(resTutor.success).toBe(true)
+    expect(openedSection).toBe('tutor')
+
+    setVimPageOpener(null)
   })
 })

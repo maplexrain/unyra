@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { Eye, Volume2, VolumeX } from 'lucide-react'
 import { FileIcon } from '@react-symbols/icons/utils'
 import { DocTypeIcon, WebTabTypeIcon } from '../docTypes'
+import VimIcon from '../VimIcon'
 import type { TabRef } from '../../../learn/types'
 import { extOf, fileNameOf } from '../../../learn/tabs'
 import { subscribeVideoAudio, videoAudioOf } from '../../../learn/video/videoRegistry'
@@ -91,6 +92,17 @@ export function TabTypeIcon({ tab, favicon, loading }: { tab: TabRef; favicon?: 
         title={fileName}
       >
         <FileIcon fileName={fileName} autoAssign={true} width={16} height={16} className="shrink-0" />
+      </span>
+    )
+  }
+
+  if (tab.kind === 'vim') {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex h-4 w-4 shrink-0 items-center justify-center text-[#019833]"
+      >
+        <VimIcon size={14} />
       </span>
     )
   }

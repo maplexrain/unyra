@@ -22,10 +22,11 @@ import VimIcon from '../VimIcon'
 import { t } from '../../../i18n'
 
 interface Props {
-  onClose: () => void
+  onClose?: () => void
+  embedded?: boolean
 }
 
-export default function VimTutorView({ onClose }: Props) {
+export default function VimTutorView({ onClose, embedded = false }: Props) {
   const {
     levelIndex,
     currentLevel,
@@ -164,89 +165,94 @@ export default function VimTutorView({ onClose }: Props) {
   const gotDiamonds = collectedDiamonds.length
   const isFinalLevel = levelIndex === totalLevels - 1
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
-      {/* 弹窗主视窗 */}
-      <div className="relative flex h-[88vh] max-h-[820px] w-[92vw] max-w-[1100px] flex-col overflow-hidden rounded-xl border border-line-strong/80 bg-card shadow-2xl">
-        {/* 顶部导航工具条 */}
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-line/70 px-5 bg-card/80 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#019833]/15 text-[#019833] border border-[#019833]/30 shadow-xs">
-              <VimIcon size={18} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-[14px] font-bold text-ink-strong tracking-wide">
-                  {t('Vim 闯关道场')}
-                </h1>
-                <span className="rounded-full bg-[#019833]/15 px-2 py-0.5 font-mono text-[10.5px] font-semibold text-[#019833]">
-                  Level {levelIndex + 1}/{totalLevels}
-                </span>
-              </div>
-              <p className="text-[11px] text-ink-faint">{currentLevel.subtitle}</p>
-            </div>
+  const body = (
+    <div
+      className={`relative flex flex-col overflow-hidden ${
+        embedded
+          ? 'h-full w-full'
+          : 'h-[88vh] max-h-[820px] w-[92vw] max-w-[1100px] rounded-xl border border-line-strong/80 bg-card shadow-2xl'
+      }`}
+    >
+      {/* 顶部导航工具条 */}
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-line/70 px-5 bg-card/80 backdrop-blur">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#019833]/15 text-[#019833] border border-[#019833]/30 shadow-xs">
+            <VimIcon size={18} />
           </div>
-
-          {/* 关卡步进选择条 */}
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              disabled={levelIndex === 0}
-              onClick={prevLevel}
-              className="flex h-7 w-7 items-center justify-center rounded border border-line text-ink-soft hover:bg-line/40 hover:text-ink disabled:opacity-30 cursor-pointer"
-              title={t('上一关')}
-            >
-              <ChevronLeft size={15} />
-            </button>
-            <div className="flex items-center gap-1 px-1">
-              {VIM_TUTOR_LEVELS.map((lvl, idx) => (
-                <button
-                  key={lvl.id}
-                  type="button"
-                  onClick={() => selectLevel(idx)}
-                  className={`flex h-7 w-7 items-center justify-center rounded font-mono text-[11px] font-medium transition cursor-pointer ${
-                    idx === levelIndex
-                      ? 'border border-[#019833] bg-[#019833]/20 font-bold text-[#019833]'
-                      : idx < levelIndex
-                        ? 'border border-line/60 bg-line/20 text-[#019833]'
-                        : 'border border-line/40 text-ink-faint hover:border-line hover:text-ink'
-                  }`}
-                  title={lvl.title}
-                >
-                  {idx < levelIndex ? '✓' : idx + 1}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              disabled={levelIndex === totalLevels - 1}
-              onClick={nextLevel}
-              className="flex h-7 w-7 items-center justify-center rounded border border-line text-ink-soft hover:bg-line/40 hover:text-ink disabled:opacity-30 cursor-pointer"
-              title={t('下一关')}
-            >
-              <ChevronRight size={15} />
-            </button>
-          </div>
-
-          {/* 右侧模式与关闭 */}
-          <div className="flex items-center gap-3">
+          <div>
             <div className="flex items-center gap-2">
-              <span
-                className={`rounded px-2.5 py-1 font-mono text-[11px] font-bold tracking-wider uppercase transition-colors ${
-                  vimMode === 'INSERT'
-                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                    : vimMode === 'VISUAL'
-                      ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40'
-                      : 'bg-teal-500/20 text-teal-400 border border-teal-500/40'
-                }`}
-              >
-                -- {vimMode} --
-              </span>
-              <span className="font-mono text-[11px] text-ink-faint">
-                {stepCount} {t('步')}
+              <h1 className="text-[14px] font-bold text-ink-strong tracking-wide">
+                {t('Vim 闯关道场')}
+              </h1>
+              <span className="rounded-full bg-[#019833]/15 px-2 py-0.5 font-mono text-[10.5px] font-semibold text-[#019833]">
+                Level {levelIndex + 1}/{totalLevels}
               </span>
             </div>
+            <p className="text-[11px] text-ink-faint">{currentLevel.subtitle}</p>
+          </div>
+        </div>
 
+        {/* 关卡步进选择条 */}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            disabled={levelIndex === 0}
+            onClick={prevLevel}
+            className="flex h-7 w-7 items-center justify-center rounded border border-line text-ink-soft hover:bg-line/40 hover:text-ink disabled:opacity-30 cursor-pointer"
+            title={t('上一关')}
+          >
+            <ChevronLeft size={15} />
+          </button>
+          <div className="flex items-center gap-1 px-1">
+            {VIM_TUTOR_LEVELS.map((lvl, idx) => (
+              <button
+                key={lvl.id}
+                type="button"
+                onClick={() => selectLevel(idx)}
+                className={`flex h-7 w-7 items-center justify-center rounded font-mono text-[11px] font-medium transition cursor-pointer ${
+                  idx === levelIndex
+                    ? 'border border-[#019833] bg-[#019833]/20 font-bold text-[#019833]'
+                    : idx < levelIndex
+                      ? 'border border-line/60 bg-line/20 text-[#019833]'
+                      : 'border border-line/40 text-ink-faint hover:border-line hover:text-ink'
+                }`}
+                title={lvl.title}
+              >
+                {idx < levelIndex ? '✓' : idx + 1}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={levelIndex === totalLevels - 1}
+            onClick={nextLevel}
+            className="flex h-7 w-7 items-center justify-center rounded border border-line text-ink-soft hover:bg-line/40 hover:text-ink disabled:opacity-30 cursor-pointer"
+            title={t('下一关')}
+          >
+            <ChevronRight size={15} />
+          </button>
+        </div>
+
+        {/* 右侧模式与关闭 */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span
+              className={`rounded px-2.5 py-1 font-mono text-[11px] font-bold tracking-wider uppercase transition-colors ${
+                vimMode === 'INSERT'
+                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                  : vimMode === 'VISUAL'
+                    ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40'
+                    : 'bg-teal-500/20 text-teal-400 border border-teal-500/40'
+              }`}
+            >
+              -- {vimMode} --
+            </span>
+            <span className="font-mono text-[11px] text-ink-faint">
+              {stepCount} {t('步')}
+            </span>
+          </div>
+
+          {onClose && (
             <button
               type="button"
               onClick={onClose}
@@ -255,8 +261,9 @@ export default function VimTutorView({ onClose }: Props) {
             >
               <X size={16} />
             </button>
-          </div>
-        </header>
+          )}
+        </div>
+      </header>
 
         {/* 主体双栏区域 */}
         <div className="flex flex-1 overflow-hidden">
@@ -390,11 +397,11 @@ export default function VimTutorView({ onClose }: Props) {
                     ) : (
                       <button
                         type="button"
-                        onClick={onClose}
+                        onClick={onClose ?? (() => selectLevel(0))}
                         className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#019833] py-2 text-[12px] font-bold text-white shadow-md hover:bg-[#019833]/90 transition cursor-pointer"
                       >
                         <CheckCircle2 size={14} />
-                        <span>{t('完成试炼')}</span>
+                        <span>{onClose ? t('完成试炼') : t('重新挑战')}</span>
                       </button>
                     )}
                   </div>
@@ -404,6 +411,13 @@ export default function VimTutorView({ onClose }: Props) {
           </main>
         </div>
       </div>
+  )
+
+  if (embedded) return body
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+      {body}
     </div>
   )
 }

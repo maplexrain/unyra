@@ -120,6 +120,7 @@ export function revealOfTab(
     case 'video':
     case 'pluginDoc':
     case 'sponsors':
+    case 'vim':
       return null
     case 'teach':
       return {

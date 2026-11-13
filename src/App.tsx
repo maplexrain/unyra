@@ -27,8 +27,6 @@ import {
 import { getLocale, setLocaleBridge, t, useLocale } from './i18n'
 import GlobalBackground from './components/background/GlobalBackground'
 import { isDarkTheme, useAppearance } from './lib/appearance'
-import { useVimTutor } from './lib/vimTutorState'
-import VimTutorView from './components/learn/vim/VimTutorView'
 import GlobalVimCommandBar from './components/learn/workspace/GlobalVimCommandBar'
 
 /**
@@ -61,7 +59,6 @@ export default function App({ boot }: Props) {
   const [noticeOpen, setNoticeOpen] = useState(false)
   /** 局域网互联弹窗（手机扫码直连与文件互传） */
   const [lanOpen, setLanOpen] = useState(false)
-  const { isOpen: tutorOpen, close: closeTutor } = useVimTutor()
   const [toast, setToast] = useState<ToastData | null>(null)
   const [users, setUsers] = useState<User[]>(boot.users)
   const [activeUserId, setActiveUserId] = useState<string | null>(boot.session?.userId ?? null)
@@ -304,8 +301,6 @@ export default function App({ boot }: Props) {
       )}
       {closeAsk && <CloseDialog onDecide={handleCloseDecision} />}
       <Toast toast={toast} onHide={() => setToast(null)} />
-      {/* Vim 交互式游戏化闯关教学页面 */}
-      {tutorOpen && <VimTutorView onClose={closeTutor} />}
       {/* 全局 Vim 冒号命令行 (Shift+:) */}
       <GlobalVimCommandBar />
       {/* 教学模式下的按键浮层：跟着外观开关走，四个路由分支都挂着（见 KeyCast） */}

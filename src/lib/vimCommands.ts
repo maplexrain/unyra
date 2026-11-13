@@ -1,7 +1,7 @@
 import { Vim } from '@replit/codemirror-vim'
 import { triggerShortcutAction } from './shortcuts'
 import { foldCurrentScope, unfoldCurrentScope, foldAll, unfoldAll } from './cmFoldScope'
-import { openVimTutor } from './vimTutorState'
+import { openVimTutor, openVimCommands } from './vimTutorState'
 import { toggleEditorPreview } from '../components/learn/editor/LiveSplitPreview'
 import { toggleAgentPanel, sendAgentMessage } from './agentFocus'
 import { EditorView } from '@codemirror/view'
@@ -302,10 +302,18 @@ export function registerVimExCommands(): void {
     triggerShortcutAction('learn.closeTab')
   })
 
-  // 14. :tutor 打开交互式游戏化教学
-  Vim.defineEx('tutor', 'tutor', (cm) => {
+  // 14. :tutor / :vim 打开 Vim 闯关道场与命令大全
+  Vim.defineEx('tutor', 'tu', (cm) => {
     openVimTutor()
     showVimNotice(cm, '[打开 Vim 闯关道场]')
+  })
+  Vim.defineEx('vim', 'vim', (cm) => {
+    openVimCommands()
+    showVimNotice(cm, '[打开 Vim 学习与命令大全]')
+  })
+  Vim.defineEx('cheat', 'ch', (cm) => {
+    openVimCommands()
+    showVimNotice(cm, '[打开 Vim 命令大全]')
   })
 
   // 15. :find 查找
@@ -569,6 +577,11 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'tutor': {
       openVimTutor()
       return { success: true, message: '[打开 Vim 闯关道场]' }
+    }
+    case 'vim':
+    case 'cheat': {
+      openVimCommands()
+      return { success: true, message: '[打开 Vim 学习与命令大全]' }
     }
     case 'find': {
       triggerShortcutAction('doc.find')

@@ -59,6 +59,7 @@ export function savedTextOf(store: LearnStore, ref: TabRef): string {
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
     ref.kind === 'sponsors' ||
+    ref.kind === 'vim' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||

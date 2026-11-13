@@ -70,6 +70,8 @@ export type TabRef =
   | { kind: 'pluginDoc' }
   /** 赞助者名单页签：展示赞助者致谢列表与赞助方式（见 components/sponsor/SponsorsDoc） */
   | { kind: 'sponsors' }
+  /** Vim 学习与命令大全页签：集成游戏化闯关道场与速查命令大全文档（见 components/learn/vim/VimStudyPage） */
+  | { kind: 'vim'; section?: 'tutor' | 'commands' }
   /**
    * 设置面板：文档区的一枚页签（不再是弹窗）。全局只有一份（tabKey 恒定），
    * 从哪个入口打开都是切到它；面板本身见 components/settings/SettingsPanel。

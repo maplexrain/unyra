@@ -76,6 +76,8 @@ export function tabKey(ref: TabRef): string {
   // 插件文档全局一份：设置里的入口点多少次都是切回同一页
   if (ref.kind === 'pluginDoc') return 'p:plugin-doc'
   if (ref.kind === 'sponsors') return 'p:sponsors'
+  // Vim 学习与命令大全全局一份
+  if (ref.kind === 'vim') return 'v:vim'
   // 设置页与用量页同样全局只有一份：从哪个入口打开都是切到它，不会开出第二枚
   if (ref.kind === 'settings') return 'set:settings'
   if (ref.kind === 'usage') return 'u:usage'
@@ -155,6 +157,7 @@ export function tabNodeId(ref: TabRef): string | null {
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
     ref.kind === 'sponsors' ||
+    ref.kind === 'vim' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
@@ -231,6 +234,7 @@ function rawTabTitle(
   }
   if (ref.kind === 'pluginDoc') return t('插件开发文档')
   if (ref.kind === 'sponsors') return t('赞助者名单')
+  if (ref.kind === 'vim') return t('Vim 学习与命令大全')
   if (ref.kind === 'settings') return t('设置')
   if (ref.kind === 'usage') return t('用量统计')
   if (ref.kind === 'schedule') return t('日程安排')
@@ -289,6 +293,7 @@ export function tabTrail(
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
     ref.kind === 'sponsors' ||
+    ref.kind === 'vim' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||

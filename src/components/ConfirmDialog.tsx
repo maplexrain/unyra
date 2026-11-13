@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { AlertTriangle, X } from 'lucide-react'
 import { useEscapeKey } from '../lib/useEscape'
 import { useLeaving } from '../lib/presence'
@@ -48,6 +48,31 @@ export default function ConfirmDialog({
   }, [extraLabel, onExtra])
 
   const [selected, setSelected] = useState<'cancel' | 'extra' | 'confirm'>('confirm')
+
+  const cancelRef = useRef<HTMLButtonElement | null>(null)
+  const extraRef = useRef<HTMLButtonElement | null>(null)
+  const confirmRef = useRef<HTMLButtonElement | null>(null)
+
+  // 挂载时及当前选中选项变化时，自动将 DOM 焦点锁定到对应选项按钮
+  useEffect(() => {
+    const el =
+      selected === 'confirm'
+        ? confirmRef.current
+        : selected === 'extra'
+          ? extraRef.current
+          : cancelRef.current
+    if (el) {
+      el.focus()
+    }
+  }, [selected])
+
+  // 挂载首帧额外聚焦兜底，确保蒙层渲染完成后焦点立即可用
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      confirmRef.current?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [])
 
   // 键盘快捷流：Tab / 方向键自由切换，Enter 确认当前选中的选项，D 键快速放弃
   useEffect(() => {
@@ -136,8 +161,10 @@ export default function ConfirmDialog({
         <div className="flex items-center justify-end gap-3 border-t border-line px-6 py-4">
           {/* 1. 取消按钮 */}
           <button
+            ref={cancelRef}
             type="button"
             onClick={close}
+            onFocus={() => setSelected('cancel')}
             onMouseEnter={() => setSelected('cancel')}
             className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-4 py-2 text-[13px] transition outline-none cursor-pointer ${
               selected === 'cancel'
@@ -160,8 +187,10 @@ export default function ConfirmDialog({
           {/* 2. 次级动作按钮（如放弃改动并关闭） */}
           {extraLabel && onExtra && (
             <button
+              ref={extraRef}
               type="button"
               onClick={onExtra}
+              onFocus={() => setSelected('extra')}
               onMouseEnter={() => setSelected('extra')}
               className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-4 py-2 text-[13px] font-medium transition outline-none cursor-pointer ${
                 selected === 'extra'
@@ -184,8 +213,10 @@ export default function ConfirmDialog({
 
           {/* 3. 确认主按钮（如保存并关闭） */}
           <button
+            ref={confirmRef}
             type="button"
             onClick={onConfirm}
+            onFocus={() => setSelected('confirm')}
             onMouseEnter={() => setSelected('confirm')}
             className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-4 py-2 text-[13px] font-medium transition outline-none cursor-pointer ${
               selected === 'confirm'

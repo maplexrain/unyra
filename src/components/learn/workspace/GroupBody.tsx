@@ -26,6 +26,7 @@ import DocFloat from '../DocFloat'
 import { computeRelations } from '../docRelations/computeRelations'
 import PluginDoc from '../../plugins/PluginDoc'
 import SponsorsDoc from '../../sponsor/SponsorsDoc'
+import VimStudyPage from '../vim/VimStudyPage'
 import SettingsPanel from '../../settings/SettingsPanel'
 import UsagePanel from '../../settings/UsagePanel'
 import { SchedulePage } from '../../schedule/SchedulePage'
@@ -395,6 +396,11 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               静态内容，提供导出与致谢名册（见 components/sponsor/SponsorsDoc）。
             */
             <SponsorsDoc />
+          ) : gTab?.ref.kind === 'vim' ? (
+            /*
+              Vim 学习与命令大全页签：集成交互式闯关道场与常用/高阶命令速查文档。
+            */
+            <VimStudyPage initialSection={gTab.ref.section} />
           ) : gTab?.ref.kind === 'settings' ? (
             /*
               设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），
@@ -753,6 +759,8 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
           gTab.ref.kind !== 'pluginDoc' &&
           // 赞助者名单页同样不画：它是致谢名册
           gTab.ref.kind !== 'sponsors' &&
+          // Vim 学习页不画：它是学习与参考手册，不属于可编辑节点文档
+          gTab.ref.kind !== 'vim' &&
           // PDF 浏览页不画：严格只读，左上角不需要浮动工具栏（纯净阅读仍可用 F11）
           !(gTab.ref.kind === 'local' && isPdfFile(gTab.ref.path)) &&
           !(gTab.ref.kind === 'ws' && isPdfFile(gTab.ref.seg)) && (

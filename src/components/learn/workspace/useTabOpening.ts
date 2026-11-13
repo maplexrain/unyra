@@ -37,6 +37,7 @@ import { openExternalLink } from '../../../lib/externalLink'
 import { requestReveal } from '../explorer/reveal'
 import { emptyNote, noteEntityOf } from './panes'
 import { goalFocusByGoal } from './goalFocus'
+import { setVimPageOpener } from '../../../lib/vimTutorState'
 
 /** 打开与跳转需要的宿主能力（晚绑定把手由宿主先声明、这里回填，见各自说明） */
 export interface TabOpeningDeps {
@@ -407,7 +408,9 @@ export function useTabOpening({
   useEffect(() => {
     openTabRef.current = openTab
     openSettingsRef.current = () => openTab({ kind: 'settings' })
-  })
+    setVimPageOpener((section) => openTab({ kind: 'vim', section }))
+    return () => setVimPageOpener(null)
+  }, [openTab])
 
   // 监听全局打开页签请求（例如 OCR 插件引导等）
   useEffect(() => {
