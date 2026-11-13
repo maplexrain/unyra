@@ -11,6 +11,28 @@ interface CursorMeasure {
 }
 
 /**
+ * 权威侦测当前是否处于 Vim 宽方块光标模式：
+ * 优先以 Vim 状态机的权威状态为准，彻底杜绝 DOM 异步节点残留导致的模式识别滞后
+ */
+export function checkIsBlockCursor(view: EditorView): boolean {
+  const cm = (view as any).cm
+  if (cm?.state?.vim) {
+    // Vim 处于 Insert 模式且未开启 Overwrite 替换模式时，权威判定为细竖线光标
+    if (cm.state.vim.insertMode && !cm.state.overwrite) {
+      return false
+    }
+    // Vim 处于 Normal / Visual / Replace 模式时为方块宽光标
+    return true
+  }
+  // 未启用 Vim 时的后备探测
+  const fatCursor = view.dom.querySelector('.cm-fat-cursor') as HTMLElement | null
+  return Boolean(
+    fatCursor ||
+    (view.scrollDOM.classList.contains('cm-vimMode') && !view.dom.querySelector('.cm-cursor'))
+  )
+}
+
+/**
  * 平滑直接平移与速度线残影虚拟光标插件：
  * 1. 严格使用 CodeMirror 6 的 requestMeasure 机制执行排版读取与写回；
  * 2. 主光标平滑快速响应，身披紧随其后的流光拖尾（Trail Follower）；
@@ -25,12 +47,66 @@ class SmoothCursorPlugin {
   private effectPool: HTMLDivElement[] = []
   private blinkTimer: number | null = null
   private trailTimer: number | null = null
+  private boundCm: any = null
   private lastLeft = 0
   private lastTop = 0
   private lastHeight = 18
   private lastWidth = 2.5
   private lastIsBlock = false
   private hasPosition = false
+
+  private onVimModeChange = () => {
+    this.scheduleMeasure()
+    queueMicrotask(() => this.scheduleMeasure())
+  }
+
+  private ensureVimListener(): void {
+    const cm = (this.view as any).cm
+    if (cm && cm !== this.boundCm && typeof cm.on === 'function') {
+      this.cleanupVimListener()
+      this.boundCm = cm
+      try {
+        cm.on('vim-mode-change', this.onVimModeChange)
+        cm.on('vim-command-done', this.onVimModeChange)
+      } catch {
+        // 安全容错
+      }
+    }
+  }
+
+  private cleanupVimListener(): void {
+    if (this.boundCm && typeof this.boundCm.off === 'function') {
+      try {
+        this.boundCm.off('vim-mode-change', this.onVimModeChange)
+        this.boundCm.off('vim-command-done', this.onVimModeChange)
+      } catch {
+        // 安全容错
+      }
+      this.boundCm = null
+    }
+  }
+
+  private onKeyDown = (e: KeyboardEvent) => {
+    this.ensureVimListener()
+    const k = e.key
+    // 当按下 Vim 常见的模式切换按键时，立即排定调度以在第 0 毫秒完成光标形态切换
+    if (
+      k === 'i' ||
+      k === 'I' ||
+      k === 'a' ||
+      k === 'A' ||
+      k === 'o' ||
+      k === 'O' ||
+      k === 's' ||
+      k === 'S' ||
+      k === 'c' ||
+      k === 'C' ||
+      k === 'Escape'
+    ) {
+      queueMicrotask(() => this.scheduleMeasure())
+      requestAnimationFrame(() => this.scheduleMeasure())
+    }
+  }
 
   private measureReq = {
     read: (view: EditorView): CursorMeasure => {
@@ -40,13 +116,8 @@ class SmoothCursorPlugin {
         return { visible: false, left: 0, top: 0, height: 0, width: 2.5, isBlock: false }
       }
 
-      const cm = (view as any).cm
-      const fatCursor = view.dom.querySelector('.cm-fat-cursor') as HTMLElement | null
-      const isBlock = Boolean(
-        (cm?.state?.vim && !cm.state.vim.insertMode) ||
-        fatCursor ||
-        (view.dom.classList.contains('cm-vimMode') && !view.dom.querySelector('.cm-cursor'))
-      )
+      this.ensureVimListener()
+      const isBlock = checkIsBlockCursor(view)
 
       const coords = view.coordsAtPos(sel.head)
       if (!coords) {
@@ -71,6 +142,7 @@ class SmoothCursorPlugin {
 
       let width = 2.5
       if (isBlock) {
+        const fatCursor = view.dom.querySelector('.cm-fat-cursor') as HTMLElement | null
         if (fatCursor && fatCursor.offsetWidth > 4) {
           width = fatCursor.offsetWidth
         } else if (sel.head < view.state.doc.length) {
@@ -158,7 +230,9 @@ class SmoothCursorPlugin {
       this.trailEl.style.height = `${Math.round(height)}px`
       this.trailEl.style.width = `${Math.round(width)}px`
       this.trailEl.classList.toggle('cm-cursor-block', isBlock)
-      this.trailEl.style.opacity = this.view.hasFocus ? (isBlock ? '0.55' : '0.7') : '0'
+      // 在 Insert 模式或无明显位移的模式切换时，拖尾立即归零，保持细光标清爽纯净
+      this.trailEl.style.opacity =
+        this.view.hasFocus && dist >= 4 ? (isBlock ? '0.55' : '0.7') : '0'
 
       if (this.trailTimer !== null) window.clearTimeout(this.trailTimer)
       this.trailTimer = window.setTimeout(() => {
@@ -268,19 +342,18 @@ class SmoothCursorPlugin {
 
     this.view.dom.addEventListener('focusin', this.onFocusIn)
     this.view.dom.addEventListener('focusout', this.onFocusOut)
+    this.view.dom.addEventListener('keydown', this.onKeyDown, { capture: true })
     this.view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true })
 
+    this.ensureVimListener()
     this.scheduleMeasure()
     // 布局异步完成时再次校准
     requestAnimationFrame(() => this.scheduleMeasure())
   }
 
   update(update: ViewUpdate): void {
-    const cm = (this.view as any).cm
-    const curIsBlock = Boolean(
-      (cm?.state?.vim && !cm.state.vim.insertMode) ||
-      this.view.dom.querySelector('.cm-fat-cursor')
-    )
+    this.ensureVimListener()
+    const curIsBlock = checkIsBlockCursor(this.view)
     if (
       update.docChanged ||
       update.selectionSet ||
@@ -321,8 +394,10 @@ class SmoothCursorPlugin {
       this.trailTimer = null
     }
     this.clearEffects()
+    this.cleanupVimListener()
     this.view.dom.removeEventListener('focusin', this.onFocusIn)
     this.view.dom.removeEventListener('focusout', this.onFocusOut)
+    this.view.dom.removeEventListener('keydown', this.onKeyDown, { capture: true })
     this.view.scrollDOM.removeEventListener('scroll', this.onScroll)
     this.cursorEl.remove()
     this.trailEl.remove()
@@ -380,7 +455,7 @@ const smoothCursorBaseTheme = EditorView.baseTheme({
       transform: 'scaleX(1.04)',
     },
   },
-  // 跟随残影光带（Follower Trail）：略带滞后感，在位移过程中拖出水银般的流光速度感
+  // 跟随残影光带（Follower Trail）：略带滞后感，在位移过程中拖出水银般的流光速度感，形态切换极速响应（70ms）
   '.cm-smooth-cursor-trail': {
     position: 'absolute',
     top: 0,
@@ -392,7 +467,8 @@ const smoothCursorBaseTheme = EditorView.baseTheme({
     zIndex: 98,
     contain: 'layout paint style',
     willChange: 'transform, height, width, opacity',
-    transition: 'transform 240ms cubic-bezier(0.12, 0.85, 0.22, 1), height 120ms ease, width 150ms ease, border-radius 150ms ease, opacity 140ms ease',
+    transition:
+      'transform 240ms cubic-bezier(0.12, 0.85, 0.22, 1), width 70ms ease, border-radius 70ms ease, height 120ms ease, opacity 140ms ease',
     boxShadow: '0 0 8px color-mix(in srgb, var(--color-seal, #38bdf8) 60%, transparent)',
   },
   // 宽方块模式拖尾：与主宽光标等宽，呈现高质量的宽方块流光位移残影
@@ -401,7 +477,7 @@ const smoothCursorBaseTheme = EditorView.baseTheme({
     borderRadius: '2px',
     boxShadow: '0 0 10px color-mix(in srgb, var(--color-seal, #38bdf8) 50%, transparent)',
   },
-  // 主虚拟平滑光标：200ms 过渡时间，肉眼清晰可见直接滑移到目标位置
+  // 主虚拟平滑光标：位移平滑直接平移，形态（宽/细）切换极速利落响应（70ms）
   '.cm-smooth-virtual-cursor': {
     position: 'absolute',
     top: 0,
@@ -413,7 +489,8 @@ const smoothCursorBaseTheme = EditorView.baseTheme({
     zIndex: 99,
     contain: 'layout paint style',
     willChange: 'transform, height, width',
-    transition: 'transform 200ms cubic-bezier(0.18, 0.95, 0.25, 1), height 120ms ease, width 150ms ease, border-radius 150ms ease, opacity 100ms ease',
+    transition:
+      'transform 200ms cubic-bezier(0.18, 0.95, 0.25, 1), width 70ms ease, border-radius 70ms ease, height 120ms ease, opacity 100ms ease',
     boxShadow: '0 0 8px color-mix(in srgb, var(--color-seal, #38bdf8) 70%, transparent)',
   },
   // Vim 宽方块主光标：覆盖目标字符，圆角 2px，带高能微光阴影

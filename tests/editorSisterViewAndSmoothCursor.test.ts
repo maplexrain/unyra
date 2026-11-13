@@ -173,8 +173,43 @@ describe('源码编辑器选区高亮与代码折叠动画', () => {
   })
 
   it('smoothCursor 插件能够自适应 Vim 方块光标与细竖线光标形态', async () => {
-    const { smoothCursor } = await import('../src/lib/cmSmoothCursor')
+    const { smoothCursor, checkIsBlockCursor } = await import('../src/lib/cmSmoothCursor')
     expect(smoothCursor).toBeDefined()
+    expect(typeof checkIsBlockCursor).toBe('function')
+
+    // 1. Vim Insert 模式下，即便存在 DOM 残留也权威判定为细竖线光标 (false)
+    const mockViewInsert = {
+      cm: {
+        state: {
+          vim: { insertMode: true },
+          overwrite: false,
+        },
+      },
+      dom: {
+        querySelector: () => document.createElement('div'), // 模拟 DOM 残留 fatCursor
+      },
+      scrollDOM: {
+        classList: { contains: () => false },
+      },
+    }
+    expect(checkIsBlockCursor(mockViewInsert as any)).toBe(false)
+
+    // 2. Vim Normal 模式下，判定为方块光标 (true)
+    const mockViewNormal = {
+      cm: {
+        state: {
+          vim: { insertMode: false },
+          overwrite: false,
+        },
+      },
+      dom: {
+        querySelector: () => null,
+      },
+      scrollDOM: {
+        classList: { contains: () => true },
+      },
+    }
+    expect(checkIsBlockCursor(mockViewNormal as any)).toBe(true)
   })
 
   it('DocFloat 悬浮工具条不再展示纯净阅读按钮，且组件正常导出', async () => {
