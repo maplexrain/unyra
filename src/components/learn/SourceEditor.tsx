@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Compartment, EditorState, type Extension } from '@codemirror/state'
+import { Annotation, Compartment, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from '@codemirror/view'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
@@ -11,6 +11,7 @@ import {
   LanguageDescription,
   foldGutter,
   foldKeymap,
+  foldEffect,
   unfoldEffect,
 } from '@codemirror/language'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
@@ -40,6 +41,9 @@ import { t } from '../../i18n'
  */
 
 export type SaveState = 'saved' | 'dirty' | 'saving' | 'error'
+
+/** 用于标记真实提交折叠、跳过收起动画拦截的事务标记 */
+const skipFoldAnim = Annotation.define<boolean>()
 
 const STATE_TEXT: Record<SaveState, string> = {
   saved: '已保存',
@@ -160,6 +164,8 @@ export default function SourceEditor({
 
   // 挂载：创建 view；卸载：销毁
   useEffect(() => {
+    const foldingKeys = new Set<string>()
+
     const view = new EditorView({
       parent: hostRef.current ?? undefined,
       state: EditorState.create({
@@ -187,6 +193,72 @@ export default function SourceEditor({
                 '<svg class="cm-fold-chevron" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4" /></svg>'
               return el
             },
+          }),
+          // 拦截代码块折叠动作，在移除代码行前先执行平滑向上收起消散动效，消除瞬间收起突变感
+          EditorState.transactionFilter.of((tr) => {
+            if (tr.annotation(skipFoldAnim) || tr.docChanged) return tr
+            const foldEff = tr.effects.find((e) => e.is(foldEffect))
+            if (!foldEff) return tr
+
+            const { from, to } = foldEff.value
+            const key = `${from}:${to}`
+            if (foldingKeys.has(key)) return []
+
+            const view = viewRef.current
+            if (!view) return tr
+
+            const doc = tr.startState.doc
+            if (from >= doc.length) return tr
+
+            foldingKeys.add(key)
+            const startLine = doc.lineAt(from).number
+            const endLine = doc.lineAt(to).number
+
+            // 对可视视口内即将折叠的行执行平滑向上收缩渐隐动画
+            let maxDuration = 160
+            try {
+              const totalLines = Math.min(endLine, startLine + 35)
+              for (let l = startLine + 1; l <= totalLines; l++) {
+                try {
+                  const line = doc.line(l)
+                  const dom = view.domAtPos(line.from)
+                  const el = ((dom.node.nodeType === 1 ? dom.node : dom.node.parentElement) as HTMLElement | null)?.closest?.('.cm-line') as HTMLElement | null
+                  if (el) {
+                    el.animate(
+                      [
+                        { opacity: 1, transform: 'translateY(0) scaleY(1)', transformOrigin: 'top center' },
+                        { opacity: 0, transform: 'translateY(-8px) scaleY(0.9)', transformOrigin: 'top center' },
+                      ],
+                      {
+                        duration: 160,
+                        delay: Math.min((l - startLine - 1) * 6, 60),
+                        easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+                        fill: 'forwards',
+                      },
+                    )
+                  }
+                } catch {
+                  // 视口外节点跳过
+                }
+              }
+            } catch {
+              maxDuration = 0
+            }
+
+            // 收起动画播完后，正式提交带有跳过动效标记的折叠事务
+            window.setTimeout(() => {
+              foldingKeys.delete(key)
+              const v = viewRef.current
+              if (!v) return
+              if (from <= v.state.doc.length && to <= v.state.doc.length) {
+                v.dispatch({
+                  effects: foldEffect.of({ from, to }),
+                  annotations: skipFoldAnim.of(true),
+                })
+              }
+            }, maxDuration)
+
+            return []
           }),
           // 专业选区绘制图层：在文本下层渲染平滑发光选区，完好保留各 Token 语法高亮
           drawSelection(),

@@ -313,34 +313,6 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
             const p = parseChipJson(raw)
             if (p) openChipInGroup(groupId)(p)
           }}
-          onDoubleClick={(e) => {
-            /*
-              快速双击 = 切换纯净阅读（与右上角那颗按钮、F11 同一件事）。
-              双击在文字上本来就是「选一个词」：**命中的是词本身**（指针落在选区矩形里）
-              就不当开关，不然读正文时随手双击一个词就进出了。要靠选区矩形而不是
-              「选区空不空」来判：点在段落空白 / 行边距上时，Chromium 会顺手选中最邻近
-              的词——选区非空，但那个词不在指针底下，这次双击该归开关。
-              点在按钮 / 输入框 / 链接这类可交互的东西上也不算。
-              超级文档是 iframe，guest 里的事件到不了这里，天然不受影响。
-            */
-            const sel = window.getSelection()
-            if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
-              const r = sel.getRangeAt(0).getBoundingClientRect()
-              if (
-                e.clientX >= r.left - 2 &&
-                e.clientX <= r.right + 2 &&
-                e.clientY >= r.top - 2 &&
-                e.clientY <= r.bottom + 2
-              ) {
-                return
-              }
-              // 顺手选中的那个词不是用户要的：清掉，别让切换后还挂着一截蓝
-              sel.removeAllRanges()
-            }
-            const el = e.target as HTMLElement
-            if (el.closest('button, input, textarea, a, iframe, [contenteditable="true"], [role="button"]')) return
-            toggleZen()
-          }}
         >
           {gTab?.ref.kind === 'web' ? (
             /*
@@ -785,10 +757,6 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
             }}
             showBackToDoc={gTab.ref.kind === 'note' || gTab.ref.kind === 'super'}
             onBackToDoc={() => dg.node && openTab({ kind: 'teach', nodeId: dg.node.id })}
-            // 纯净阅读那颗：它与 F11 / Esc 是同一个动作（见 toggleZen）。
-            // 每一格的悬浮组都画一颗，而状态是**全局一个**——点哪一格都是同一件事
-            pure={pure}
-            onTogglePure={toggleZen}
             // 标题大纲：按当前页签的槽取（渲染组件装进去，见 lib/outline 的 OutlineHandle）
             outlineSlot={getOutlineSlot(gTabId)}
             showEssay={Boolean(essayGoalId)}

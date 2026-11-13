@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { BookOpen, Eye, ListTree, Maximize2, Minimize2, Network, Pencil } from 'lucide-react'
+import { BookOpen, Eye, ListTree, Network, Pencil } from 'lucide-react'
 import type { OutlineHandle } from '../../lib/outline'
 import type { DocView, TabRef } from '../../learn/types'
 import { t } from '../../i18n'
@@ -37,13 +37,6 @@ interface Props {
   showBackToDoc: boolean
   /** 回到这个节点的教学文档 */
   onBackToDoc: () => void
-  /**
-   * 现在是不是纯净阅读模式（两侧栏、页签栏、顶栏都收着，只剩正文）。
-   * 它决定最后那颗按钮画成「进入」还是「退出」。
-   */
-  pure: boolean
-  /** 切换纯净阅读（与 F11 是同一个动作，见 lib/shortcuts 的 doc.zen） */
-  onTogglePure: () => void
   /**
    * 眼前这份文档的大纲句柄槽（见 lib/outline 的 OutlineHandle）。
    */
@@ -90,8 +83,6 @@ export default function DocFloat({
   onSwitchView,
   showBackToDoc,
   onBackToDoc,
-  pure,
-  onTogglePure,
   outlineSlot,
   showEssay,
   onOpenEssay,
@@ -312,26 +303,6 @@ export default function DocFloat({
             <BookOpen size={15} className="transition-colors" />
           </button>
         )}
-
-        {/* 5. 分割线与纯净阅读：扩展图标 */}
-        <span aria-hidden="true" className="my-0.5 h-px w-4 self-center bg-line-strong/70" />
-        <button
-          type="button"
-          title={pure ? t('退出纯净阅读（F11 / Esc）') : t('纯净阅读：收起两侧栏、页签栏与顶栏，只留正文（F11）')}
-          aria-pressed={pure}
-          onClick={onTogglePure}
-          className={
-            pure
-              ? 'relative flex h-8 w-8 items-center justify-center rounded-none border border-line-strong bg-line/50 text-ink transition'
-              : ICON_BTN
-          }
-        >
-          {pure ? (
-            <Minimize2 size={15} className="transition-colors" />
-          ) : (
-            <Maximize2 size={15} className="transition-colors" />
-          )}
-        </button>
       </div>
     </div>
   )
