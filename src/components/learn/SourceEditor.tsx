@@ -234,7 +234,9 @@ export default function SourceEditor({
             ...closeBracketsKeymap,
             ...foldKeymap,
             ...defaultKeymap,
-            ...historyKeymap,
+            // 剔除 CodeMirror 历史扩展自带的非标 Mod-u (undoSelection) 键位映射，
+            // 彻底防止 Ctrl+U 与 Vim 标准翻半页产生重叠冲突并将翻页误作为撤销执行
+            ...historyKeymap.filter((k) => k.key !== 'Mod-u' && k.key !== 'Alt-u'),
           ]),
           // 左侧代码行号与光标当前行背景突出高亮
           lineNumbers(),

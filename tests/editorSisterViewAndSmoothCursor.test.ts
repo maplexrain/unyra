@@ -508,6 +508,13 @@ set tabstop=4
     expect(theme).toBeDefined()
   })
 
+  it('historyKeymap 中的 Mod-u 映射被成功剔除，避免与 Vim Ctrl+U 翻半页产生撤销重叠', async () => {
+    const { historyKeymap } = await import('@codemirror/commands')
+    const filtered = historyKeymap.filter((k) => k.key !== 'Mod-u' && k.key !== 'Alt-u')
+    expect(filtered.some((k) => k.key === 'Mod-u')).toBe(false)
+    expect(filtered.some((k) => k.key === 'Mod-z')).toBe(true)
+  })
+
   it('triggerShortcutAction 能够正确触发已注册的快捷键动作', async () => {
     const { triggerShortcutAction, subscribeShortcut } = await import('../src/lib/shortcuts')
     let triggered = false
