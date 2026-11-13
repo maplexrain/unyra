@@ -2,6 +2,7 @@ import { Vim } from '@replit/codemirror-vim'
 import { triggerShortcutAction } from './shortcuts'
 import { foldCurrentScope, unfoldCurrentScope, foldAll, unfoldAll } from './cmFoldScope'
 import { openVimTutor } from './vimTutorState'
+import { toggleEditorPreview } from '../components/learn/editor/LiveSplitPreview'
 import type { EditorView } from '@codemirror/view'
 
 export interface VimEditorBridge {
@@ -310,7 +311,165 @@ export function registerVimExCommands(): void {
   Vim.defineEx('help', 'h', (cm) => {
     showVimNotice(
       cm,
-      ':w 保存 | :q 关闭 (:q! 强退) | :tabo 关其他 | :sp/:vs 分屏 | :tutor 学习 | Ctrl-/= 折叠/展开',
+      ':w 保存 | :q 关闭 (:q! 强退) | :preview 预览 | :tabo 关其他 | :sp/:vs 分屏 | :tutor 学习 | Ctrl-/= 折叠/展开',
     )
   })
+
+  // 22. :preview / :prev 切换编辑页面内置的双栏实时对照预览
+  Vim.defineEx('preview', 'prev', (cm) => {
+    toggleEditorPreview()
+    showVimNotice(cm, '[切换分栏预览]')
+  })
+}
+
+/**
+ * 统一执行 Vim 冒号命令（供全局命令栏或快捷键调用）
+ */
+export function executeVimCommand(rawCmd: string): { success: boolean; message?: string } {
+  const line = rawCmd.trim()
+  if (!line) return { success: false }
+
+  // 剔除开头的冒号 ':'
+  const clean = line.startsWith(':') ? line.slice(1).trim() : line
+  if (!clean) return { success: false }
+
+  const parts = clean.split(/\s+/)
+  const cmd = parts[0]
+  const isForce = cmd.endsWith('!')
+  const baseCmd = isForce ? cmd.slice(0, -1) : cmd
+
+  switch (baseCmd) {
+    case 'w':
+    case 'write': {
+      if (activeBridge?.onSave) {
+        void activeBridge.onSave(isForce)
+        return { success: true, message: '[已保存]' }
+      }
+      const ok = triggerShortcutAction('learn.save')
+      return { success: ok, message: ok ? '[已保存]' : '[未能保存]' }
+    }
+    case 'q':
+    case 'quit': {
+      if (activeBridge?.onClose) {
+        activeBridge.onClose(isForce)
+        return { success: true }
+      }
+      const ok = triggerShortcutAction('learn.closeTab')
+      return { success: ok }
+    }
+    case 'wq':
+    case 'x':
+    case 'xit': {
+      if (activeBridge?.onSave) {
+        void activeBridge.onSave(isForce)
+      } else {
+        triggerShortcutAction('learn.save')
+      }
+      if (activeBridge?.onClose) {
+        activeBridge.onClose(isForce)
+      } else {
+        triggerShortcutAction('learn.closeTab')
+      }
+      return { success: true }
+    }
+    case 'tabnew':
+    case 'tabedit':
+    case 'tabe':
+    case 'new': {
+      if (activeBridge?.onNewTab) {
+        activeBridge.onNewTab()
+        return { success: true, message: '[新建空白文件]' }
+      }
+      return { success: false, message: '[当前环境不支持新建页签]' }
+    }
+    case 'tabc':
+    case 'tabclose':
+    case 'bd':
+    case 'bdelete': {
+      if (activeBridge?.onClose) {
+        activeBridge.onClose(isForce)
+        return { success: true }
+      }
+      const ok = triggerShortcutAction('learn.closeTab')
+      return { success: ok }
+    }
+    case 'tabo':
+    case 'tabonly': {
+      if (activeBridge?.onCloseOthers) {
+        activeBridge.onCloseOthers(isForce)
+        return { success: true, message: '[已关闭其他页签]' }
+      }
+      return { success: false }
+    }
+    case 'tabn':
+    case 'tabnext':
+    case 'bn':
+    case 'bnext': {
+      if (activeBridge?.onNextTab) {
+        activeBridge.onNextTab()
+        return { success: true }
+      }
+      return { success: false }
+    }
+    case 'tabp':
+    case 'tabprevious':
+    case 'bp':
+    case 'bprev': {
+      if (activeBridge?.onPrevTab) {
+        activeBridge.onPrevTab()
+        return { success: true }
+      }
+      return { success: false }
+    }
+    case 'sp':
+    case 'split': {
+      if (activeBridge?.onSplit) {
+        activeBridge.onSplit('horizontal')
+        return { success: true, message: '[水平分屏]' }
+      }
+      return { success: false }
+    }
+    case 'vs':
+    case 'vsplit': {
+      if (activeBridge?.onSplit) {
+        activeBridge.onSplit('vertical')
+        return { success: true, message: '[垂直分屏]' }
+      }
+      return { success: false }
+    }
+    case 'only':
+    case 'on': {
+      if (activeBridge?.onOnly) {
+        activeBridge.onOnly()
+        return { success: true, message: '[仅保留当前分屏]' }
+      }
+      return { success: false }
+    }
+    case 'preview':
+    case 'prev': {
+      toggleEditorPreview()
+      return { success: true, message: '[切换分栏预览]' }
+    }
+    case 'tutor': {
+      openVimTutor()
+      return { success: true, message: '[打开 Vim 闯关道场]' }
+    }
+    case 'find': {
+      triggerShortcutAction('doc.find')
+      return { success: true }
+    }
+    case 'replace': {
+      triggerShortcutAction('doc.replace')
+      return { success: true }
+    }
+    case 'help':
+    case 'h': {
+      return {
+        success: true,
+        message: ':w 保存 | :q 关闭 (:q! 强退) | :preview 预览 | :tabo 关其他 | :sp/:vs 分屏 | :tutor 学习',
+      }
+    }
+    default:
+      return { success: false, message: `未知命令: :${baseCmd}` }
+  }
 }

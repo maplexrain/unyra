@@ -20,6 +20,7 @@ import FindBar from '../FindBar'
 import SuperDocView from '../SuperDocView'
 import DraftDoc from '../DraftDoc'
 import SourceEditor from '../SourceEditor'
+import LiveSplitPreview from '../editor/LiveSplitPreview'
 import ExamCopyView from '../ExamCopyView'
 import DocFloat from '../DocFloat'
 import { computeRelations } from '../docRelations/computeRelations'
@@ -460,6 +461,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
             */
             <DraftDoc
               draft={dg.draft}
+              tabId={gTabId}
               scale={editorScale}
               onDraft={(text) => stageNewFileDraft(gTabId, text)}
               saving={docSaving}
@@ -500,21 +502,24 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               key 绑「节点 + 名字」：换一份就重挂，脚本从头执行、状态归零。
             */
             dg.view === 'source' ? (
-              <SourceEditor
-                key={dg.node.id + ':super:' + gTab.ref.name}
-                value={dg.draft ?? dg.superDoc.html}
-                onChange={(text) => editDocSource(gTabId, text)}
-                state={docSaving ? 'saving' : dg.draft === undefined ? 'saved' : 'dirty'}
-                label={dg.title}
-                scale={editorScale}
-                scrollTop={store.docScroll[gTabId + SRC_SCROLL_SUFFIX]}
-                onScrollTop={(top) => rememberScroll(gTabId + SRC_SCROLL_SUFFIX, top)}
-                ext=".html"
-                onCloseTab={(force) => closeTab(groupId, gTabId, 'self', { confirm: !force })}
-                onCloseOtherTabs={(force) => closeTab(groupId, gTabId, 'others', { confirm: !force })}
-                onNewTab={() => openTab({ kind: 'draft', key: newDraftKey() })}
-                onSplitView={() => { if (gTab) openSisterDocView(store, gTab, 'preview', groupId, set) }}
-              />
+              <LiveSplitPreview value={dg.draft ?? dg.superDoc.html} ext=".html">
+                <SourceEditor
+                  key={dg.node.id + ':super:' + gTab.ref.name}
+                  value={dg.draft ?? dg.superDoc.html}
+                  onChange={(text) => editDocSource(gTabId, text)}
+                  state={docSaving ? 'saving' : dg.draft === undefined ? 'saved' : 'dirty'}
+                  label={dg.title}
+                  historyKey={gTabId}
+                  scale={editorScale}
+                  scrollTop={store.docScroll[gTabId + SRC_SCROLL_SUFFIX]}
+                  onScrollTop={(top) => rememberScroll(gTabId + SRC_SCROLL_SUFFIX, top)}
+                  ext=".html"
+                  onCloseTab={(force) => closeTab(groupId, gTabId, 'self', { confirm: !force })}
+                  onCloseOtherTabs={(force) => closeTab(groupId, gTabId, 'others', { confirm: !force })}
+                  onNewTab={() => openTab({ kind: 'draft', key: newDraftKey() })}
+                  onSplitView={() => { if (gTab) openSisterDocView(store, gTab, 'preview', groupId, set) }}
+                />
+              </LiveSplitPreview>
             ) : (
               <SuperDocView
                 key={dg.node.id + ':super:' + gTab.ref.name}
@@ -534,25 +539,28 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
                 按 Ctrl+S 才写进文档——底栏上的「已保存 / 未保存」读的就是暂存区里
                 有没有这一份，而不是「store 落盘了没有」。
               */
-              <SourceEditor
-                key={dg.title + ':' + dg.source.kind + ':' + (dg.source.note ?? '')}
-                value={dg.source.content}
-                onChange={(text) => editDocSource(gTabId, text)}
-                state={docSaving ? 'saving' : dg.draft === undefined ? 'saved' : 'dirty'}
-                label={dg.title}
-                scale={editorScale}
-                ext=".md"
-                // 编辑位置与阅读位置各记各的：同一份文档在源码里改到一半、
-                // 切到预览又读到别处，共用一格会互相拽（见 learn/types 的 DocScroll）
-                scrollTop={store.docScroll[gTabId + SRC_SCROLL_SUFFIX]}
-                onScrollTop={(top) => rememberScroll(gTabId + SRC_SCROLL_SUFFIX, top)}
-                // 「定位源码」放下的一次性请求：挂载时按这个身份取走并选中（见 lib/docReveal）
-                revealKey={nodeRevealKey(dg.node.id, dg.source.kind, dg.source.note)}
-                onCloseTab={(force) => closeTab(groupId, gTabId, 'self', { confirm: !force })}
-                onCloseOtherTabs={(force) => closeTab(groupId, gTabId, 'others', { confirm: !force })}
-                onNewTab={() => openTab({ kind: 'draft', key: newDraftKey() })}
-                onSplitView={() => { if (gTab) openSisterDocView(store, gTab, 'preview', groupId, set) }}
-              />
+              <LiveSplitPreview value={dg.source.content} ext=".md">
+                <SourceEditor
+                  key={dg.title + ':' + dg.source.kind + ':' + (dg.source.note ?? '')}
+                  value={dg.source.content}
+                  onChange={(text) => editDocSource(gTabId, text)}
+                  state={docSaving ? 'saving' : dg.draft === undefined ? 'saved' : 'dirty'}
+                  label={dg.title}
+                  historyKey={gTabId}
+                  scale={editorScale}
+                  ext=".md"
+                  // 编辑位置与阅读位置各记各的：同一份文档在源码里改到一半、
+                  // 切到预览又读到别处，共用一格会互相拽（见 learn/types 的 DocScroll）
+                  scrollTop={store.docScroll[gTabId + SRC_SCROLL_SUFFIX]}
+                  onScrollTop={(top) => rememberScroll(gTabId + SRC_SCROLL_SUFFIX, top)}
+                  // 「定位源码」放下的一次性请求：挂载时按这个身份取走并选中（见 lib/docReveal）
+                  revealKey={nodeRevealKey(dg.node.id, dg.source.kind, dg.source.note)}
+                  onCloseTab={(force) => closeTab(groupId, gTabId, 'self', { confirm: !force })}
+                  onCloseOtherTabs={(force) => closeTab(groupId, gTabId, 'others', { confirm: !force })}
+                  onNewTab={() => openTab({ kind: 'draft', key: newDraftKey() })}
+                  onSplitView={() => { if (gTab) openSisterDocView(store, gTab, 'preview', groupId, set) }}
+                />
+              </LiveSplitPreview>
             ) : null /* 预览那一份由下面的常驻列表渲染（见 DocPane） */
           ) : (
             <EmptyDoc

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { AlertTriangle, X } from 'lucide-react'
 import { useEscapeKey } from '../lib/useEscape'
 import { useLeaving } from '../lib/presence'
@@ -21,12 +22,11 @@ interface Props {
 }
 
 /**
- * 危险操作确认框。用于删除等不可逆动作，避免误触。
+ * 危险操作确认框（已优化大字号与键盘极速流交互）：
  *
- * 只有「点一下按钮」这一道闸：整棵子树/整个目标被删掉之前，用户看到的是弹窗里
- * 写清后果的那句话（删掉哪些、能不能恢复），确认键上写的也是「删除目标」这样的
- * 具体动作——**问一句就够，不再要求照着敲一遍名字**：那个动作拦得住手滑，
- * 也拦得住真心要删的人，代价却是每次都要对着长标题一个字一个字地抄。
+ * 1. 字体尺寸整体加大，排版呼吸感更强，告别局促；
+ * 2. 按钮自带快捷选择提示（[Enter ↵] 确认保存、[D] 放弃改动、[Esc] 取消）；
+ * 3. 键盘事件原生接管，按下 Enter / D / Esc 瞬间触发对应动作，彻底免去鼠标操作。
  */
 export default function ConfirmDialog({
   title,
@@ -42,59 +42,95 @@ export default function ConfirmDialog({
 
   useEscapeKey(close)
 
+  // 键盘快捷流：Enter 确认主按钮，D / d 触发次级按钮，免除移动鼠标
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 忽略有输入框聚焦的情况
+      const target = e.target as HTMLElement | null
+      const isInput =
+        target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      if (isInput) return
+
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        e.stopPropagation()
+        onConfirm()
+      } else if ((e.key === 'd' || e.key === 'D') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (extraLabel && onExtra) {
+          e.preventDefault()
+          e.stopPropagation()
+          onExtra()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [onConfirm, extraLabel, onExtra])
+
   return (
     <ModalScrim z="z-[60]" leaving={leaving} onClose={close}>
       <div
         role="alertdialog"
         aria-label={title}
-        className={`w-full max-w-sm rounded-2xl border border-line-strong bg-paper shadow-[0_24px_64px_rgba(31,27,23,0.3)] ${
+        className={`w-full max-w-[460px] rounded-2xl border border-line-strong bg-paper shadow-[0_24px_64px_rgba(31,27,23,0.3)] ${
           leaving ? 'moji-dialog-out' : 'moji-dialog-in'
         }`}
       >
-        <div className="flex items-start gap-2.5 border-b border-line px-5 py-3">
-          <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-seal/12 text-seal">
-            <AlertTriangle size={14} />
+        <div className="flex items-start gap-3 border-b border-line px-6 py-4">
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-seal/12 text-seal">
+            <AlertTriangle size={16} />
           </span>
-          <h2 className="min-w-0 flex-1 text-[15px] font-semibold text-ink-strong">
+          <h2 className="min-w-0 flex-1 text-[16px] font-semibold text-ink-strong">
             {title}
           </h2>
           <button
             type="button"
             title={t('关闭')}
             onClick={close}
-            className="flex h-6 w-6 items-center justify-center rounded-md text-ink-soft transition hover:bg-line/70 hover:text-ink"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-ink-soft transition hover:bg-line/70 hover:text-ink"
           >
-            <X size={15} />
+            <X size={16} />
           </button>
         </div>
 
-        <div className="px-5 py-4 text-[13px] leading-relaxed text-ink">
+        <div className="px-6 py-5 text-[14px] leading-relaxed text-ink">
           <p className="whitespace-pre-line text-ink-soft">{message}</p>
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-line px-5 py-3">
+        <div className="flex items-center justify-end gap-2.5 border-t border-line px-6 py-3.5">
           <button
             type="button"
             onClick={close}
-            className="rounded-lg px-3.5 py-1.5 text-[12px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
+            className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
           >
-            {t('取消')}
+            <span>{t('取消')}</span>
+            <kbd className="rounded border border-line bg-card/60 px-1.5 py-0.5 text-[10px] font-medium text-ink-faint shadow-2xs">
+              Esc
+            </kbd>
           </button>
           {extraLabel && onExtra && (
             <button
               type="button"
               onClick={onExtra}
-              className="rounded-lg px-3.5 py-1.5 text-[12px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line/70 bg-card/40 px-4 py-2 text-[13px] font-medium text-ink transition hover:bg-line/60 hover:text-ink-strong"
             >
-              {extraLabel}
+              <span>{extraLabel}</span>
+              <kbd className="rounded border border-line bg-card px-1.5 py-0.5 text-[10px] font-medium text-ink-faint shadow-2xs">
+                D
+              </kbd>
             </button>
           )}
           <button
             type="button"
             onClick={onConfirm}
-            className="rounded-lg bg-seal px-3.5 py-1.5 text-[12px] font-medium text-white shadow-sm transition hover:bg-seal-deep"
+            autoFocus
+            className="inline-flex items-center gap-1.5 rounded-lg bg-seal px-4 py-2 text-[13px] font-medium text-white shadow-sm transition hover:bg-seal-deep"
           >
-            {t(confirmLabel)}
+            <span>{t(confirmLabel)}</span>
+            <kbd className="rounded border border-white/35 bg-white/15 px-1.5 py-0.5 text-[10px] font-medium text-white shadow-2xs">
+              ↵ Enter
+            </kbd>
           </button>
         </div>
       </div>

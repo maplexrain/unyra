@@ -29,6 +29,7 @@ import GlobalBackground from './components/background/GlobalBackground'
 import { isDarkTheme, useAppearance } from './lib/appearance'
 import { useVimTutor } from './lib/vimTutorState'
 import VimTutorView from './components/learn/vim/VimTutorView'
+import GlobalVimCommandBar from './components/learn/workspace/GlobalVimCommandBar'
 
 /**
  * 启动结果（用户列表 + 会话）由 main.tsx 读盘后传进来：
@@ -305,6 +306,8 @@ export default function App({ boot }: Props) {
       <Toast toast={toast} onHide={() => setToast(null)} />
       {/* Vim 交互式游戏化闯关教学页面 */}
       {tutorOpen && <VimTutorView onClose={closeTutor} />}
+      {/* 全局 Vim 冒号命令行 (Shift+:) */}
+      <GlobalVimCommandBar />
       {/* 教学模式下的按键浮层：跟着外观开关走，四个路由分支都挂着（见 KeyCast） */}
       <KeyCast />
     </>

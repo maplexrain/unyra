@@ -155,11 +155,11 @@ export function EssayNoteTabs({
           </div>
         </div>
 
-        {/* 自由切换预览或者编辑模式 */}
+        {/* 自由切换浏览页面或者编辑页面 */}
         <button
           type="button"
           onClick={onToggleViewMode}
-          title={noteViewMode === 'preview' ? t('切换到编辑模式') : t('切换到预览模式')}
+          title={noteViewMode === 'preview' ? t('切换到编辑页面') : t('切换到浏览页面')}
           className="flex h-6 shrink-0 items-center gap-1 rounded-none border border-line bg-paper/80 px-2 text-[10.5px] font-medium text-ink-soft transition hover:border-seal/40 hover:text-seal-deep"
         >
           {noteViewMode === 'preview' ? (
@@ -223,7 +223,7 @@ export function EssayNoteTabs({
       )}
 
       <div className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-1 text-[10.5px] text-ink-faint">
-        <span>{noteViewMode === 'edit' ? t('已自动保存') : t('只读预览模式')}</span>
+        <span>{noteViewMode === 'edit' ? t('已自动保存') : t('只读浏览页面')}</span>
         <span className="ml-auto tabular-nums">{noteText.length ? t('{0} 字', noteText.length) : ''}</span>
       </div>
     </div>

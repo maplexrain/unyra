@@ -14,6 +14,7 @@ import type { OutlineHandle } from '../../lib/outline'
 import { localRevealKey, subscribeSourceReveal } from '../../lib/docReveal'
 import MarkdownView from '../MarkdownView'
 import SourceEditor, { type SaveState } from './SourceEditor'
+import LiveSplitPreview from './editor/LiveSplitPreview'
 import { DocContextMenu } from './note/docContextMenu'
 import { useDocContextMenu, type SourceSpan } from './note/useDocContextMenu'
 import { DocStatChip } from './DocFloat'
@@ -404,13 +405,14 @@ export default function LocalDoc({
   }
 
   if (view === 'source' || !previewable) {
-    return (
+    const editor = (
       <SourceEditor
         value={text}
         onChange={edit}
         state={state}
         error={saveError ?? error}
         label={path}
+        historyKey={'local:' + path}
         scale={editorScale ?? scale}
         ext={extOf(path)}
         // 「定位源码」放下的一次性请求：挂载时按这个身份取走并选中（见 lib/docReveal）
@@ -420,6 +422,16 @@ export default function LocalDoc({
         onNewTab={onNewTab}
       />
     )
+
+    if (previewable) {
+      return (
+        <LiveSplitPreview value={text} ext={extOf(path)}>
+          {editor}
+        </LiveSplitPreview>
+      )
+    }
+
+    return editor
   }
 
   if (isHtml) {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { BookOpen, Eye, ListTree, Network, Pencil } from 'lucide-react'
+import { BookOpen, Columns2, Eye, ListTree, Network, Pencil } from 'lucide-react'
 import type { OutlineHandle } from '../../lib/outline'
 import type { DocView, TabRef } from '../../learn/types'
 import { t } from '../../i18n'
@@ -9,6 +9,7 @@ import DocOutline from './DocOutline'
 import DocRelations from './DocRelations'
 import VimIcon from './VimIcon'
 import VimFloatTip from './VimFloatTip'
+import { toggleEditorPreview, subscribeEditorPreview } from './editor/LiveSplitPreview'
 import type { NodeRelations, RelationItem } from './docRelations/computeRelations'
 
 /**
@@ -109,6 +110,13 @@ export default function DocFloat({
   const timers = useRef<{ leave?: number; hide?: number; follow?: number }>({})
   const [relPhase, setRelPhase] = useState<'closed' | 'open' | 'closing'>('closed')
   const relTimers = useRef<{ leave?: number; hide?: number }>({})
+  const [splitPreviewOpen, setSplitPreviewOpen] = useState(false)
+
+  useEffect(() => {
+    return subscribeEditorPreview((force) => {
+      setSplitPreviewOpen((prev) => (force !== undefined ? force : !prev))
+    })
+  }, [])
 
   useEffect(
     () => () => {
@@ -213,9 +221,9 @@ export default function DocFloat({
     <div className="no-print absolute left-3 top-2.5 z-20">
       <div className="flex flex-col items-center gap-1">
         {/*
-          1. 源码 / 预览切换按钮（排在第一位）：
-          图标反转——编辑模式显示预览图标（Eye），预览模式显示编辑源码图标（Pencil）。
-          统一色彩基调，保持沉浸与清爽规范。
+          1. 源码 / 浏览页面独立跳转按钮（排在第一位）：
+          正名为「编辑页面」与「浏览页面」，点击后在当前 tab 组切换对偶页签并跳转。
+          编辑页面显示预览图标（Eye），浏览页面显示编辑源码图标（Pencil）。
           媒体预览（图片 / 音频 / 视频 / PDF）没有源码可看，整颗不出现。
         */}
         {view !== 'media' && (
@@ -224,9 +232,9 @@ export default function DocFloat({
             title={
               view === 'source'
                 ? previewable
-                  ? t('分屏浏览预览：在独立页面或侧边查看渲染效果')
+                  ? t('打开浏览页面')
                   : (previewHint ?? t('这份文件不能预览（只支持 Markdown 与 HTML），只能看源码'))
-                : t('分屏编辑源码：在独立页面或侧边编辑源码')
+                : t('打开编辑页面')
             }
             aria-pressed={view === 'source'}
             disabled={view === 'source' && !previewable}
@@ -240,6 +248,32 @@ export default function DocFloat({
             ) : (
               <Pencil size={15} className="transition-colors" />
             )}
+          </button>
+        )}
+
+        {/*
+          2. 真正的实时分栏对照预览按钮（编辑页面内置）：
+          默认不打开，点击展开为一列源码一列预览；中间分割线可拖拽调宽，双击可对调。
+        */}
+        {view === 'source' && previewable && (
+          <button
+            type="button"
+            title={
+              splitPreviewOpen
+                ? t('关闭分栏预览 (:preview)')
+                : t('打开分栏实时预览 (:preview)')
+            }
+            aria-pressed={splitPreviewOpen}
+            onClick={() => toggleEditorPreview()}
+            className={
+              VIEW_BTN +
+              ' transition-all ' +
+              (splitPreviewOpen
+                ? 'border-seal/50 bg-seal/15 text-seal shadow-xs'
+                : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink')
+            }
+          >
+            <Columns2 size={15} className="transition-colors" />
           </button>
         )}
 

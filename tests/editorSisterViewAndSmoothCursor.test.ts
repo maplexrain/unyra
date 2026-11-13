@@ -69,7 +69,7 @@ describe('源码与预览独立页面与对偶分屏 (sisterView)', () => {
     expect(sister).toBeNull()
   })
 
-  it('单格状态下点击分屏浏览，自动创建右侧分割格并打开对偶页签', () => {
+  it('点击切换编辑页面/浏览页面时，不开分屏，直接在当前 tab 组打开并跳转', () => {
     const initialTab = makeTab({ kind: 'local', path: 'C:/docs/README.md', view: 'source' }, 100)
     const docArea: DocWorkspace = {
       layout: { kind: 'group', group: 'g1' },
@@ -91,23 +91,20 @@ describe('源码与预览独立页面与对偶分屏 (sisterView)', () => {
 
     expect(updatedStore).not.toBeNull()
     const resultDocs = (updatedStore as unknown as LearnStore).docArea
-    // 自动水平分屏：新增一组
-    expect(resultDocs.groups.length).toBe(2)
-    const newGroup = resultDocs.groups.find((g) => g.id !== 'g1')
-    expect(newGroup).toBeDefined()
-    expect(newGroup!.tabs[0].ref).toEqual({ kind: 'local', path: 'C:/docs/README.md', view: 'preview' })
-    expect(newGroup!.tabs[0].id).toBe('l:C:/docs/README.md:preview')
-    expect(resultDocs.focus).toBe(newGroup!.id)
+    // 严格不开分屏：group 数量始终保持为 1，直接在当前组 g1 中打开并激活
+    expect(resultDocs.groups.length).toBe(1)
+    const g1 = resultDocs.groups[0]
+    expect(g1.tabs.some((t) => t.id === 'l:C:/docs/README.md:preview')).toBe(true)
+    expect(g1.active).toBe('l:C:/docs/README.md:preview')
   })
 
-  it('多格状态下点击分屏浏览，优先在已有相邻格中打开对偶页签', () => {
+  it('当前组内已存在对偶页签时，直接激活当前组该页签并跳转', () => {
     const initialTab = makeTab({ kind: 'local', path: 'C:/docs/README.md', view: 'source' }, 100)
-    const dummyTab = makeTab({ kind: 'local', path: 'C:/docs/other.md' }, 101)
+    const sisterTab = makeTab({ kind: 'local', path: 'C:/docs/README.md', view: 'preview' }, 101)
     const docArea: DocWorkspace = {
-      layout: { kind: 'split', id: 's1', dir: 'row', sizes: [0.5, 0.5], children: [{ kind: 'group', group: 'g1' }, { kind: 'group', group: 'g2' }] },
+      layout: { kind: 'group', group: 'g1' },
       groups: [
-        { id: 'g1', tabs: [initialTab], active: initialTab.id },
-        { id: 'g2', tabs: [dummyTab], active: dummyTab.id },
+        { id: 'g1', tabs: [initialTab, sisterTab], active: initialTab.id },
       ],
       focus: 'g1',
     }
@@ -126,11 +123,8 @@ describe('源码与预览独立页面与对偶分屏 (sisterView)', () => {
 
     expect(updatedStore).not.toBeNull()
     const resultDocs = (updatedStore as unknown as LearnStore).docArea
-    // 依然是 2 组，对偶页签直接进 g2
-    expect(resultDocs.groups.length).toBe(2)
-    const g2 = resultDocs.groups.find((g) => g.id === 'g2')!
-    expect(g2.tabs.some((t) => t.id === 'l:C:/docs/README.md:preview')).toBe(true)
-    expect(g2.active).toBe('l:C:/docs/README.md:preview')
+    expect(resultDocs.groups.length).toBe(1)
+    expect(resultDocs.groups[0].active).toBe(sisterTab.id)
   })
 })
 

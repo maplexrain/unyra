@@ -4,6 +4,12 @@ import { EditorView, keymap, placeholder as cmPlaceholder, lineNumbers, highligh
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import {
+  createRestoredEditorState,
+  debouncedSaveEditorHistory,
+  flushEditorHistory,
+  loadEditorHistory,
+} from '../../lib/cmHistoryPersistence'
+import {
   syntaxHighlighting,
   indentOnInput,
   indentUnit,
@@ -131,6 +137,8 @@ interface Props {
   onNewTab?: () => void
   onSplitView?: (direction: 'horizontal' | 'vertical') => void
   onCustomSave?: (force?: boolean) => Promise<boolean | void> | boolean | void
+  /** 持久化撤销历史的专属 key（例如文件绝对路径或 tabKey） */
+  historyKey?: string
 }
 
 export default function SourceEditor({
@@ -151,6 +159,7 @@ export default function SourceEditor({
   onNewTab,
   onSplitView,
   onCustomSave,
+  historyKey,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -195,13 +204,11 @@ export default function SourceEditor({
   // 挂载：创建 view；卸载：销毁
   useEffect(() => {
     const foldingKeys = new Set<string>()
+    const effectiveHistKey = historyKey || label || ''
+    const savedHistory = effectiveHistKey ? loadEditorHistory(effectiveHistKey) : null
 
-    const view = new EditorView({
-      parent: hostRef.current ?? undefined,
-      state: EditorState.create({
-        doc: valueRef.current,
-        extensions: [
-          history(),
+    const editorExtensions = [
+      history(),
           keymap.of([
             // Ctrl- 与 Ctrl=：快速折叠/展开当前光标所在代码块（同时拦截默认网页缩放）
             {
@@ -348,6 +355,9 @@ export default function SourceEditor({
               const next = update.state.doc.toString()
               valueRef.current = next
               changeRef.current(next)
+              if (effectiveHistKey) {
+                debouncedSaveEditorHistory(effectiveHistKey, update.state)
+              }
               // 若当前编辑的文件即为 .vimrc，实时热应用最新配置
               if (label.endsWith('.vimrc') || label.endsWith('_vimrc') || ext === '.vimrc') {
                 loadAndApplyVimrc(next).catch(() => {})
@@ -391,8 +401,13 @@ export default function SourceEditor({
               }
             }
           }),
-        ],
-      }),
+        ]
+
+    const initState = createRestoredEditorState(valueRef.current, editorExtensions, savedHistory)
+
+    const view = new EditorView({
+      parent: hostRef.current ?? undefined,
+      state: initState,
     })
     viewRef.current = view
     view.focus()
@@ -500,6 +515,9 @@ export default function SourceEditor({
     })
 
     return () => {
+      if (effectiveHistKey) {
+        flushEditorHistory(effectiveHistKey)
+      }
       setVimEditorBridge(null)
       unsubVim()
       view.destroy()
