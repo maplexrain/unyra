@@ -291,6 +291,12 @@ export function markdownEditorTheme(pad: {
       backgroundColor: 'transparent !important',
       outline: 'none !important',
     },
+    '.cm-panels-bottom:has(.cm-vim-panel input)': {
+      overflow: 'visible !important',
+      backgroundColor: 'transparent !important',
+      border: 'none !important',
+    },
+    // 普通 Vim 底部状态展示（无输入框时的通知条）
     '.cm-vim-panel': {
       backgroundColor: 'var(--color-card, #1e1e2e) !important',
       color: 'var(--color-ink, #cdd6f4) !important',
@@ -299,12 +305,52 @@ export function markdownEditorTheme(pad: {
       borderTop: '1px solid var(--color-line, rgba(255,255,255,0.1)) !important',
       padding: '4px 8px !important',
     },
-    '.cm-vim-panel input': {
+    // 现代 Command Palette 悬浮命令输入卡片：水平居中、垂直顶部悬浮，沉浸微光毛玻璃质感
+    '.cm-vim-panel:has(input)': {
+      position: 'absolute !important',
+      top: '18px !important',
+      bottom: 'auto !important',
+      left: '50% !important',
+      transform: 'translateX(-50%) !important',
+      width: 'min(540px, calc(100% - 48px)) !important',
+      zIndex: '1000 !important',
+      display: 'flex !important',
+      alignItems: 'center !important',
+      gap: '8px !important',
+      padding: '8px 16px !important',
+      borderRadius: '8px !important',
+      backgroundColor: 'color-mix(in srgb, var(--color-card, #181825) 88%, transparent) !important',
+      backdropFilter: 'blur(16px) saturate(180%) !important',
+      WebkitBackdropFilter: 'blur(16px) saturate(180%) !important',
+      border: '1px solid color-mix(in srgb, var(--color-seal, #38bdf8) 45%, var(--color-line, rgba(255,255,255,0.15))) !important',
+      boxShadow:
+        '0 16px 36px -4px rgba(0,0,0,0.5), 0 0 18px color-mix(in srgb, var(--color-seal, #38bdf8) 25%, transparent) !important',
+      color: 'var(--color-ink, #cdd6f4) !important',
       fontFamily: IDEA_MONO_FONT,
+      fontSize: '13.5px !important',
+      animation: 'cm-vim-panel-pop 160ms cubic-bezier(0.16, 1, 0.3, 1)',
+    },
+    '@keyframes cm-vim-panel-pop': {
+      from: {
+        opacity: 0,
+        transform: 'translate(-50%, -10px) scale(0.97)',
+      },
+      to: {
+        opacity: 1,
+        transform: 'translate(-50%, 0) scale(1)',
+      },
+    },
+    '.cm-vim-panel input': {
+      flex: '1 1 auto',
+      width: '100%',
+      fontFamily: IDEA_MONO_FONT,
+      fontSize: '13.5px',
       color: 'var(--color-ink, #cdd6f4) !important',
       backgroundColor: 'transparent !important',
-      outline: 'none',
-      border: 'none',
+      outline: 'none !important',
+      border: 'none !important',
+      caretColor: 'var(--color-seal, #38bdf8) !important',
+      letterSpacing: '0.02em',
     },
   })
 }

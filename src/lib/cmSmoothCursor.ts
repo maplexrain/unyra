@@ -111,11 +111,8 @@ class SmoothCursorPlugin {
   private measureReq = {
     read: (view: EditorView): CursorMeasure => {
       const sel = view.state.selection.main
-      // 选区非空（用户正在选择多字）时隐藏虚拟光标，交由 drawSelection 绘制选区；选区为单点时光标立刻显现
-      if (!sel.empty) {
-        return { visible: false, left: 0, top: 0, height: 0, width: 2.5, isBlock: false }
-      }
-
+      // 无论是单点光标还是多字选区（鼠标拖拽、Shift 扩选、Vim Visual 模式），
+      // 虚拟光标始终紧跟活动端点（sel.head）进行精准定位、形态适配与平滑位移
       this.ensureVimListener()
       const isBlock = checkIsBlockCursor(view)
 

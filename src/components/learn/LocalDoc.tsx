@@ -68,6 +68,8 @@ interface Props {
    * （切视图是页签上的选择，本组件只负责把请求递出去，见 lib/docReveal）。
    */
   onRevealSource?: (loc: SourceSpan) => void
+  onCloseTab?: (force?: boolean) => void
+  onCloseOtherTabs?: (force?: boolean) => void
   /** 说一句话（读不到剪贴板、复制成功这类）：接到全局 toast 上 */
   onToast?: (message: string) => void
 }
@@ -86,6 +88,8 @@ export default function LocalDoc({
   outlineSlot,
   onNeedEdit,
   onRevealSource,
+  onCloseTab,
+  onCloseOtherTabs,
   onToast,
 }: Props) {
   const name = fileNameOf(path)
@@ -406,6 +410,8 @@ export default function LocalDoc({
         ext={extOf(path)}
         // 「定位源码」放下的一次性请求：挂载时按这个身份取走并选中（见 lib/docReveal）
         revealKey={localRevealKey(path)}
+        onCloseTab={onCloseTab}
+        onCloseOtherTabs={onCloseOtherTabs}
       />
     )
   }

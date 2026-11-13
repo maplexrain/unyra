@@ -279,6 +279,7 @@ export default function DocFloat({
                     setVimTipOpen(false)
                   }
                 }}
+                onOpenTutor={() => setVimTipOpen(false)}
               />
             )}
           </div>

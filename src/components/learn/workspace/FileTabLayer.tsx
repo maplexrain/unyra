@@ -109,6 +109,8 @@ export const FileTabLayer = memo(function FileTabLayer({
                 requestSourceReveal(localRevealKey(validPath), loc.start, loc.end)
                 setTabView(tab.id, 'source')
               }}
+              onCloseTab={(force) => closeTab(groupId, tab.id, 'self', { confirm: !force })}
+              onCloseOtherTabs={(force) => closeTab(groupId, tab.id, 'others', { confirm: !force })}
               onToast={onToast}
             />
           </div>

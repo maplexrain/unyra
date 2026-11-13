@@ -1,18 +1,25 @@
 import { Vim } from '@replit/codemirror-vim'
 import { triggerShortcutAction } from './shortcuts'
 import { foldCurrentScope, unfoldCurrentScope, foldAll, unfoldAll } from './cmFoldScope'
+import { openVimTutor } from './vimTutorState'
 import type { EditorView } from '@codemirror/view'
 
 export interface VimEditorBridge {
-  onSave?: () => Promise<boolean | void> | boolean | void
-  onClose?: () => void
+  onSave?: (force?: boolean) => Promise<boolean | void> | boolean | void
+  onClose?: (force?: boolean) => void
+  onCloseOthers?: (force?: boolean) => void
+  onNextTab?: () => void
+  onPrevTab?: () => void
+  onSplit?: (direction: 'horizontal' | 'vertical') => void
+  onOnly?: () => void
+  onReload?: () => void
   getView?: () => EditorView | null
 }
 
 let activeBridge: VimEditorBridge | null = null
 
 /**
- * 登记当前活跃的编辑器桥接对象（提供直接保存与关闭支持）
+ * 登记当前活跃的编辑器桥接对象（提供直接保存、关闭、分屏等功能支持）
  */
 export function setVimEditorBridge(bridge: VimEditorBridge | null): void {
   activeBridge = bridge
@@ -33,15 +40,31 @@ function showVimNotice(cm: any, message: string): void {
   }
 }
 
+/** 辅助检测命令是否带有强制感叹号修饰 (如 :q!, :w!) */
+function isForceCommand(params: any): boolean {
+  if (!params) return false
+  const arg = params.argString?.trim() || ''
+  const inp = params.input || ''
+  return arg.startsWith('!') || inp.includes('!')
+}
+
 let registered = false
 
 /**
- * 注册与当前应用程序对应的 Vim 命令模式（Ex 冒号命令）：
- * - :w / :write -> 保存当前文档/源码
- * - :q / :quit -> 关闭当前页签
+ * 注册与当前应用程序深度对应的 Vim 命令模式（Ex 冒号命令）：
+ * - :w / :write -> 保存当前文档/源码 (:w! 强制保存)
+ * - :q / :quit -> 关闭当前页签 (:q! 强制关闭不弹确认)
  * - :wq / :x / :xit -> 保存并关闭当前页签
  * - :tabnew / :tabe / :tabedit -> 新建页签
- * - :tabclose / :tabc -> 关闭当前页签
+ * - :tabclose / :tabc -> 关闭当前页签 (:tabc! 强制关闭)
+ * - :tabonly / :tabo -> 关闭其他标签页 (:tabo! 强制关闭其他)
+ * - :tabnext / :tabn / :bnext / :bn -> 切换至下一个标签页
+ * - :tabprev / :tabp / :bprev / :bp -> 切换至上一个标签页
+ * - :split / :sp -> 水平分屏 (对偶预览或分屏浏览)
+ * - :vsplit / :vs -> 垂直分屏 (对偶预览或分屏浏览)
+ * - :only -> 仅保留当前分屏
+ * - :bdelete / :bd -> 关闭当前缓冲页签 (:bd! 强制关闭)
+ * - :tutor -> 打开交互式游戏化 Vim 闯关教学道场
  * - :find -> 呼起查找面板
  * - :replace -> 呼起替换面板
  * - :fold -> 快速折叠当前代码块 (对应 Ctrl-)
@@ -55,9 +78,10 @@ export function registerVimExCommands(): void {
   registered = true
 
   // 1. :w / :write 保存文件
-  Vim.defineEx('write', 'w', (cm) => {
+  Vim.defineEx('write', 'w', (cm, params) => {
+    const force = isForceCommand(params)
     if (activeBridge?.onSave) {
-      void activeBridge.onSave()
+      void activeBridge.onSave(force)
       showVimNotice(cm, '[已保存]')
       return
     }
@@ -65,38 +89,41 @@ export function registerVimExCommands(): void {
     showVimNotice(cm, ok ? '[已保存]' : '[未能保存]')
   })
 
-  // 2. :q / :quit 关闭当前页签
-  Vim.defineEx('quit', 'q', (_cm) => {
+  // 2. :q / :quit 关闭当前页签 (支持 :q! 强制退出)
+  Vim.defineEx('quit', 'q', (_cm, params) => {
+    const force = isForceCommand(params)
     if (activeBridge?.onClose) {
-      activeBridge.onClose()
+      activeBridge.onClose(force)
       return
     }
     triggerShortcutAction('learn.closeTab')
   })
 
   // 3. :wq 保存并关闭
-  Vim.defineEx('wq', 'wq', (_cm) => {
+  Vim.defineEx('wq', 'wq', (_cm, params) => {
+    const force = isForceCommand(params)
     if (activeBridge?.onSave) {
-      void activeBridge.onSave()
+      void activeBridge.onSave(force)
     } else {
       triggerShortcutAction('learn.save')
     }
     if (activeBridge?.onClose) {
-      activeBridge.onClose()
+      activeBridge.onClose(force)
     } else {
       triggerShortcutAction('learn.closeTab')
     }
   })
 
   // 4. :x / :xit 保存并关闭
-  Vim.defineEx('xit', 'x', (_cm) => {
+  Vim.defineEx('xit', 'x', (_cm, params) => {
+    const force = isForceCommand(params)
     if (activeBridge?.onSave) {
-      void activeBridge.onSave()
+      void activeBridge.onSave(force)
     } else {
       triggerShortcutAction('learn.save')
     }
     if (activeBridge?.onClose) {
-      activeBridge.onClose()
+      activeBridge.onClose(force)
     } else {
       triggerShortcutAction('learn.closeTab')
     }
@@ -112,26 +139,106 @@ export function registerVimExCommands(): void {
     showVimNotice(cm, '[新建页签]')
   })
 
-  // 6. :tabclose / :tabc 关闭页签
-  Vim.defineEx('tabclose', 'tabc', (_cm) => {
+  // 6. :tabclose / :tabc 关闭页签 (:tabc! 强制关闭)
+  Vim.defineEx('tabclose', 'tabc', (_cm, params) => {
+    const force = isForceCommand(params)
     if (activeBridge?.onClose) {
-      activeBridge.onClose()
+      activeBridge.onClose(force)
       return
     }
     triggerShortcutAction('learn.closeTab')
   })
 
-  // 7. :find 查找
+  // 7. :tabonly / :tabo 关闭其他页签
+  Vim.defineEx('tabonly', 'tabo', (cm, params) => {
+    const force = isForceCommand(params)
+    if (activeBridge?.onCloseOthers) {
+      activeBridge.onCloseOthers(force)
+      showVimNotice(cm, '[已关闭其他页签]')
+      return
+    }
+    showVimNotice(cm, '[关闭其他页签]')
+  })
+
+  // 8. :tabnext / :tabn / :bnext / :bn 下一个页签
+  Vim.defineEx('tabnext', 'tabn', (cm) => {
+    if (activeBridge?.onNextTab) {
+      activeBridge.onNextTab()
+      showVimNotice(cm, '[下一个页签]')
+    }
+  })
+  Vim.defineEx('bnext', 'bn', (cm) => {
+    if (activeBridge?.onNextTab) {
+      activeBridge.onNextTab()
+      showVimNotice(cm, '[下一个页签]')
+    }
+  })
+
+  // 9. :tabprevious / :tabp / :bprev / :bp 上一个页签
+  Vim.defineEx('tabprevious', 'tabp', (cm) => {
+    if (activeBridge?.onPrevTab) {
+      activeBridge.onPrevTab()
+      showVimNotice(cm, '[上一个页签]')
+    }
+  })
+  Vim.defineEx('bprev', 'bp', (cm) => {
+    if (activeBridge?.onPrevTab) {
+      activeBridge.onPrevTab()
+      showVimNotice(cm, '[上一个页签]')
+    }
+  })
+
+  // 10. :split / :sp 水平分屏
+  Vim.defineEx('split', 'sp', (cm) => {
+    if (activeBridge?.onSplit) {
+      activeBridge.onSplit('horizontal')
+      showVimNotice(cm, '[水平分屏]')
+    }
+  })
+
+  // 11. :vsplit / :vs 垂直分屏
+  Vim.defineEx('vsplit', 'vs', (cm) => {
+    if (activeBridge?.onSplit) {
+      activeBridge.onSplit('vertical')
+      showVimNotice(cm, '[垂直分屏]')
+    }
+  })
+
+  // 12. :only 仅保留当前分屏
+  Vim.defineEx('only', 'on', (cm) => {
+    if (activeBridge?.onOnly) {
+      activeBridge.onOnly()
+      showVimNotice(cm, '[仅保留当前分屏]')
+    }
+  })
+
+  // 13. :bdelete / :bd 关闭当前缓冲区/页签
+  Vim.defineEx('bdelete', 'bd', (_cm, params) => {
+    const force = isForceCommand(params)
+    if (activeBridge?.onClose) {
+      activeBridge.onClose(force)
+      return
+    }
+    triggerShortcutAction('learn.closeTab')
+  })
+
+  // 14. :tutor 打开交互式游戏化教学
+  Vim.defineEx('tutor', 'tutor', (cm) => {
+    openVimTutor()
+    showVimNotice(cm, '[打开 Vim 闯关道场]')
+  })
+
+  // 15. :find 查找
   Vim.defineEx('find', 'find', () => {
     triggerShortcutAction('doc.find')
   })
 
-  // 8. :replace 替换
+  // 16. :replace 替换
   Vim.defineEx('replace', 'replace', () => {
     triggerShortcutAction('doc.replace')
   })
 
-  // 9. :fold 折叠当前代码块 (Ctrl-)
+  // 17. :fold 折叠当前代码块 (Ctrl-)
   Vim.defineEx('fold', 'fold', (cm) => {
     const view = activeBridge?.getView?.() || cm?.cm6
     if (view) {
@@ -140,7 +247,7 @@ export function registerVimExCommands(): void {
     }
   })
 
-  // 10. :unfold 展开当前代码块 (Ctrl=)
+  // 18. :unfold 展开当前代码块 (Ctrl=)
   Vim.defineEx('unfold', 'unfold', (cm) => {
     const view = activeBridge?.getView?.() || cm?.cm6
     if (view) {
@@ -149,7 +256,7 @@ export function registerVimExCommands(): void {
     }
   })
 
-  // 11. :foldall 全部折叠
+  // 19. :foldall 全部折叠
   Vim.defineEx('foldall', 'foldall', (cm) => {
     const view = activeBridge?.getView?.() || cm?.cm6
     if (view) {
@@ -158,7 +265,7 @@ export function registerVimExCommands(): void {
     }
   })
 
-  // 12. :unfoldall 全部展开
+  // 20. :unfoldall 全部展开
   Vim.defineEx('unfoldall', 'unfoldall', (cm) => {
     const view = activeBridge?.getView?.() || cm?.cm6
     if (view) {
@@ -167,11 +274,11 @@ export function registerVimExCommands(): void {
     }
   })
 
-  // 13. :help 帮助
+  // 21. :help 帮助
   Vim.defineEx('help', 'h', (cm) => {
     showVimNotice(
       cm,
-      ':w 保存 | :q 关闭 | :wq 保存关闭 | :tabnew 新建 | :fold 折叠 | :unfold 展开 | Ctrl- / Ctrl= 快速折叠/展开',
+      ':w 保存 | :q 关闭 (:q! 强退) | :tabo 关其他 | :sp/:vs 分屏 | :tutor 学习 | Ctrl-/= 折叠/展开',
     )
   })
 }

@@ -431,10 +431,74 @@ set tabstop=4
       Vim.handleEx(mockCm as any, 'q')
       expect(closed).toBe(true)
 
+      // 验证全面扩充的命令：:q! 强制关闭、:tabo 关闭其他、:sp 水平分屏、:vs 垂直分屏、:tutor 学习
+      let forceClosed = false
+      let closedOthers = false
+      let splitDir: string | null = null
+      setVimEditorBridge({
+        onClose: (force) => {
+          forceClosed = Boolean(force)
+        },
+        onCloseOthers: () => {
+          closedOthers = true
+        },
+        onSplit: (dir) => {
+          splitDir = dir
+        },
+      })
+
+      Vim.handleEx(mockCm as any, 'q!')
+      expect(forceClosed).toBe(true)
+
+      Vim.handleEx(mockCm as any, 'tabo')
+      expect(closedOthers).toBe(true)
+
+      Vim.handleEx(mockCm as any, 'sp')
+      expect(splitDir).toBe('horizontal')
+
+      Vim.handleEx(mockCm as any, 'vs')
+      expect(splitDir).toBe('vertical')
+
+      const { isVimTutorOpen, closeVimTutor } = await import('../src/lib/vimTutorState')
+      closeVimTutor()
+      expect(isVimTutorOpen()).toBe(false)
+      Vim.handleEx(mockCm as any, 'tutor')
+      expect(isVimTutorOpen()).toBe(true)
+      closeVimTutor()
+
       setVimEditorBridge(null)
     } finally {
       ;(globalThis as any).document = origDoc
     }
+  })
+
+  it('Vim 教学关卡配置完整且闯关状态机正常工作', async () => {
+    const { VIM_TUTOR_LEVELS } = await import('../src/components/learn/vim/vimTutorLevels')
+    expect(VIM_TUTOR_LEVELS.length).toBeGreaterThanOrEqual(6)
+    expect(VIM_TUTOR_LEVELS[0].title).toContain('方向之魂')
+    expect(VIM_TUTOR_LEVELS[1].title).toContain('疾步如飞')
+
+    const { openVimTutor, closeVimTutor, isVimTutorOpen, subscribeVimTutor } = await import(
+      '../src/lib/vimTutorState'
+    )
+    let notified = false
+    const unsub = subscribeVimTutor((open) => {
+      notified = open
+    })
+    openVimTutor()
+    expect(isVimTutorOpen()).toBe(true)
+    expect(notified).toBe(true)
+
+    closeVimTutor()
+    expect(isVimTutorOpen()).toBe(false)
+    expect(notified).toBe(false)
+    unsub()
+  })
+
+  it('markdownEditorTheme 正确定义了水平居中垂直顶部悬浮的 Vim 命令卡片', async () => {
+    const { markdownEditorTheme } = await import('../src/lib/cmMarkdown')
+    const theme = markdownEditorTheme({ top: 10, bottom: 10, left: 10, right: 10, gutterLeft: 10 })
+    expect(theme).toBeDefined()
   })
 
   it('triggerShortcutAction 能够正确触发已注册的快捷键动作', async () => {

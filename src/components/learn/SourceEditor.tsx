@@ -123,6 +123,11 @@ interface Props {
    * 手动点「源码」按钮进来时槽里没有请求，取到 null，行为与从前一模一样。
    */
   revealKey?: string
+  /** 允许由 Vim 冒号命令触发的页签关闭、分屏等宿主操作 */
+  onCloseTab?: (force?: boolean) => void
+  onCloseOtherTabs?: (force?: boolean) => void
+  onSplitView?: (direction: 'horizontal' | 'vertical') => void
+  onCustomSave?: (force?: boolean) => Promise<boolean | void> | boolean | void
 }
 
 export default function SourceEditor({
@@ -138,10 +143,18 @@ export default function SourceEditor({
   scrollTop,
   onScrollTop,
   revealKey,
+  onCloseTab,
+  onCloseOtherTabs,
+  onSplitView,
+  onCustomSave,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
   const [vimActive, setVimActive] = useState<boolean>(() => isVimEnabled())
+  const bridgeActionsRef = useRef({ onCloseTab, onCloseOtherTabs, onSplitView, onCustomSave })
+  useEffect(() => {
+    bridgeActionsRef.current = { onCloseTab, onCloseOtherTabs, onSplitView, onCustomSave }
+  }, [onCloseTab, onCloseOtherTabs, onSplitView, onCustomSave])
   /** 上层给进来的最新 value：updateListener 里只把「用户真的改了」交出去 */
   const valueRef = useRef(value)
   const changeRef = useRef(onChange)
@@ -386,14 +399,42 @@ export default function SourceEditor({
       view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true })
       view.focus()
     }
+    // 增强 Vim 翻页滚动为丝滑过渡动画 (Ctrl+U / Ctrl+D)
+    const patchSmoothVimScroll = (v: EditorView) => {
+      const cm = (v as any).cm
+      if (cm && !cm.__smoothScrollPatched) {
+        cm.__smoothScrollPatched = true
+        const origScrollTo = cm.scrollTo?.bind(cm)
+        cm.scrollTo = (x: number | null, y: number | null) => {
+          const scroller = v.scrollDOM
+          if (!scroller || typeof scroller.scrollTo !== 'function') {
+            origScrollTo?.(x, y)
+            return
+          }
+          scroller.scrollTo({
+            left: x != null ? x : scroller.scrollLeft,
+            top: y != null ? y : scroller.scrollTop,
+            behavior: 'smooth',
+          })
+        }
+      }
+    }
+
+    patchSmoothVimScroll(view)
+
     // 注册应用级 Vim 冒号命令并挂载当前编辑器的动作桥接
     registerVimExCommands()
     setVimEditorBridge({
       getView: () => viewRef.current,
+      onSave: (force) => bridgeActionsRef.current.onCustomSave?.(force),
+      onClose: (force) => bridgeActionsRef.current.onCloseTab?.(force),
+      onCloseOthers: (force) => bridgeActionsRef.current.onCloseOtherTabs?.(force),
+      onSplit: (direction) => bridgeActionsRef.current.onSplitView?.(direction),
     })
 
     // 初始化挂载时若已开启 Vim，立即加载并执行 ~/.vimrc
     if (isVimEnabled()) {
+      patchSmoothVimScroll(view)
       loadAndApplyVimrc().catch(() => {})
     }
 
@@ -405,6 +446,7 @@ export default function SourceEditor({
         effects: vimComp.reconfigure(getVimExtensions(enabled)),
       })
       if (enabled) {
+        patchSmoothVimScroll(v)
         loadAndApplyVimrc().catch(() => {})
       }
     })

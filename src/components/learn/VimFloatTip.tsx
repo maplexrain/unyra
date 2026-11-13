@@ -1,15 +1,17 @@
 import { useState } from 'react'
-import { FileCode } from 'lucide-react'
+import { FileCode, Gamepad2 } from 'lucide-react'
 import VimIcon from './VimIcon'
+import { openVimTutor } from '../../lib/vimTutorState'
 import { t } from '../../i18n'
 
 interface Props {
   enabled: boolean
   onToggle: () => void
   onOpenConfig: () => void
+  onOpenTutor?: () => void
 }
 
-export default function VimFloatTip({ enabled, onToggle, onOpenConfig }: Props) {
+export default function VimFloatTip({ enabled, onToggle, onOpenConfig, onOpenTutor }: Props) {
   const [openingConfig, setOpeningConfig] = useState(false)
 
   const handleOpen = async () => {
@@ -19,6 +21,13 @@ export default function VimFloatTip({ enabled, onToggle, onOpenConfig }: Props) 
     } finally {
       setOpeningConfig(false)
     }
+  }
+
+  const handleTutor = () => {
+    if (onOpenTutor) {
+      onOpenTutor()
+    }
+    openVimTutor()
   }
 
   return (
@@ -61,6 +70,19 @@ export default function VimFloatTip({ enabled, onToggle, onOpenConfig }: Props) 
           ? t('已激活：支持 Normal、Insert、Visual 等全套按键')
           : t('未激活：标准现代编辑器光标与按键')}
       </div>
+
+      {/* 游戏化教学入口 */}
+      <button
+        type="button"
+        onClick={handleTutor}
+        className="mt-1 flex w-full items-center justify-between border border-line px-2.5 py-1.5 text-[11.5px] font-medium text-ink-soft transition hover:border-[#019833]/60 hover:bg-[#019833]/10 hover:text-ink-strong cursor-pointer"
+      >
+        <span className="flex items-center gap-1.5">
+          <Gamepad2 size={13} className="text-[#019833]" />
+          <span>{t('学习 Vim')}</span>
+        </span>
+        <span className="font-mono text-[10px] text-ink-faint">🎮 闯关试炼</span>
+      </button>
 
       {/* 底部配置按钮 */}
       <button
