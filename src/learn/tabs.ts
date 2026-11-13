@@ -328,6 +328,8 @@ export function viewOf(tab: LearnTab, empty = false): DocView {
   // 新建文件页签还没有类型可言：它就是一张用来写的纸，永远进编辑视图
   if (tab.ref.kind === 'draft') return 'source'
   if (empty) return 'source'
+  // 笔记默认打开编辑页面（用户指令：笔记默认打开编辑页面，且默认打开分栏实时预览）
+  if (tab.ref.kind === 'note') return 'source'
   // 工作区内部文件与本地文件同一套默认：媒体进媒体预览、markdown 进预览、其余落到源码
   if (tab.ref.kind === 'local' || tab.ref.kind === 'ws') {
     const name = tab.ref.kind === 'local' ? tab.ref.path : tab.ref.seg

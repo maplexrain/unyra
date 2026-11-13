@@ -73,7 +73,7 @@ export default function ConfirmDialog({
       <div
         role="alertdialog"
         aria-label={title}
-        className={`w-full max-w-[460px] rounded-2xl border border-line-strong bg-paper shadow-[0_24px_64px_rgba(31,27,23,0.3)] ${
+        className={`w-full max-w-[540px] rounded-2xl border border-line-strong bg-paper shadow-[0_24px_64px_rgba(31,27,23,0.3)] ${
           leaving ? 'moji-dialog-out' : 'moji-dialog-in'
         }`}
       >
@@ -98,14 +98,14 @@ export default function ConfirmDialog({
           <p className="whitespace-pre-line text-ink-soft">{message}</p>
         </div>
 
-        <div className="flex items-center justify-end gap-2.5 border-t border-line px-6 py-3.5">
+        <div className="flex items-center justify-end gap-3 border-t border-line px-6 py-4">
           <button
             type="button"
             onClick={close}
-            className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
+            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-4 py-2 text-[13px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
           >
-            <span>{t('取消')}</span>
-            <kbd className="rounded border border-line bg-card/60 px-1.5 py-0.5 text-[10px] font-medium text-ink-faint shadow-2xs">
+            <span className="whitespace-nowrap">{t('取消')}</span>
+            <kbd className="shrink-0 rounded border border-line bg-card/60 px-1.5 py-0.5 text-[10px] font-medium text-ink-faint shadow-2xs">
               Esc
             </kbd>
           </button>
@@ -113,10 +113,10 @@ export default function ConfirmDialog({
             <button
               type="button"
               onClick={onExtra}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line/70 bg-card/40 px-4 py-2 text-[13px] font-medium text-ink transition hover:bg-line/60 hover:text-ink-strong"
+              className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-line/70 bg-card/40 px-4 py-2 text-[13px] font-medium text-ink transition hover:bg-line/60 hover:text-ink-strong"
             >
-              <span>{extraLabel}</span>
-              <kbd className="rounded border border-line bg-card px-1.5 py-0.5 text-[10px] font-medium text-ink-faint shadow-2xs">
+              <span className="whitespace-nowrap">{extraLabel}</span>
+              <kbd className="shrink-0 rounded border border-line bg-card px-1.5 py-0.5 text-[10px] font-medium text-ink-faint shadow-2xs">
                 D
               </kbd>
             </button>
@@ -125,10 +125,10 @@ export default function ConfirmDialog({
             type="button"
             onClick={onConfirm}
             autoFocus
-            className="inline-flex items-center gap-1.5 rounded-lg bg-seal px-4 py-2 text-[13px] font-medium text-white shadow-sm transition hover:bg-seal-deep"
+            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-seal px-4 py-2 text-[13px] font-medium text-white shadow-sm transition hover:bg-seal-deep"
           >
-            <span>{t(confirmLabel)}</span>
-            <kbd className="rounded border border-white/35 bg-white/15 px-1.5 py-0.5 text-[10px] font-medium text-white shadow-2xs">
+            <span className="whitespace-nowrap">{t(confirmLabel)}</span>
+            <kbd className="shrink-0 rounded border border-white/35 bg-white/15 px-1.5 py-0.5 text-[10px] font-medium text-white shadow-2xs">
               ↵ Enter
             </kbd>
           </button>

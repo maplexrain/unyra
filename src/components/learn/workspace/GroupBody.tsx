@@ -502,7 +502,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               key 绑「节点 + 名字」：换一份就重挂，脚本从头执行、状态归零。
             */
             dg.view === 'source' ? (
-              <LiveSplitPreview value={dg.draft ?? dg.superDoc.html} ext=".html">
+              <LiveSplitPreview value={dg.draft ?? dg.superDoc.html} ext=".html" storageKey={'super:' + gTabId}>
                 <SourceEditor
                   key={dg.node.id + ':super:' + gTab.ref.name}
                   value={dg.draft ?? dg.superDoc.html}
@@ -539,7 +539,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
                 按 Ctrl+S 才写进文档——底栏上的「已保存 / 未保存」读的就是暂存区里
                 有没有这一份，而不是「store 落盘了没有」。
               */
-              <LiveSplitPreview value={dg.source.content} ext=".md">
+              <LiveSplitPreview value={dg.source.content} ext=".md" storageKey={'note:' + gTabId}>
                 <SourceEditor
                   key={dg.title + ':' + dg.source.kind + ':' + (dg.source.note ?? '')}
                   value={dg.source.content}
@@ -772,8 +772,6 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
                 openSisterDocView(store, gTab, v, groupId, set)
               }
             }}
-            showBackToDoc={gTab.ref.kind === 'note' || gTab.ref.kind === 'super'}
-            onBackToDoc={() => dg.node && openTab({ kind: 'teach', nodeId: dg.node.id })}
             // 标题大纲：按当前页签的槽取（渲染组件装进去，见 lib/outline 的 OutlineHandle）
             outlineSlot={getOutlineSlot(gTabId)}
             showEssay={Boolean(essayGoalId)}

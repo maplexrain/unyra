@@ -98,6 +98,7 @@ import ExportDialog from './ExportDialog'
 import FloatWindow from '../FloatWindow'
 import { usePresence } from '../../lib/presence'
 import StructOverlay from './workspace/StructOverlay'
+import { useVimGlobalTabOps } from './workspace/useVimGlobalTabOps'
 import { pruneImages } from '../../learn/images'
 import { queueOf, shouldEnqueue } from '../../learn/agentQueue'
 import { nodePathOf } from '../../learn/paths'
@@ -1792,12 +1793,10 @@ export default function LearnWorkspace({
   // 快捷键导的是**焦点格**那一篇（悬浮组里那颗按钮导的是它所在的那一格，见 openExport）
   useShortcut('doc.export', { down: () => openExport(getLatest().docArea.focus) })
 
-  /*
-   * Ctrl+W：关掉**焦点格**里正看着的那个页签。
-   *
-   * 走的是页签上那颗 × 的同一条路（closeTab）：有没保存的改动时照旧先问一声，
-   * 关完之后停在哪一个也算得一样——快捷键只是那颗按钮的另一种按法，不该有第二套规矩。
-   */
+  // 全局 Vim 冒号命令页签调度（支持结构页面等非编辑页面执行 :tabo, :q, :tabnew）
+  useVimGlobalTabOps({ getLatest, closeTab, openBlankTab })
+
+  // Ctrl+W：关掉焦点格里正看着的那个页签
   useShortcut('learn.closeTab', {
     down: () => {
       const s = getLatest()

@@ -5,6 +5,7 @@ import {
   useCallback,
   useMemo,
   type ReactNode,
+  type CSSProperties,
 } from 'react'
 import MarkdownView from '../../MarkdownView'
 import { renderNoteGfm } from '../../../lib/markdown'
@@ -29,6 +30,46 @@ export function subscribeEditorPreview(listener: PreviewToggleListener): () => v
   }
 }
 
+interface PreviewState {
+  isOpen: boolean
+  splitRatio: number
+  isSwapped: boolean
+}
+
+const memoryState = new Map<string, PreviewState>()
+
+function loadPreviewState(key?: string): PreviewState {
+  if (key && memoryState.has(key)) {
+    return memoryState.get(key)!
+  }
+  if (typeof sessionStorage !== 'undefined' && key) {
+    try {
+      const raw = sessionStorage.getItem(`moji:split-preview:${key}`)
+      if (raw) {
+        const parsed = JSON.parse(raw) as PreviewState
+        memoryState.set(key, parsed)
+        return parsed
+      }
+    } catch {
+      // 忽略容错
+    }
+  }
+  // 默认打开分栏实时预览
+  return { isOpen: true, splitRatio: 50, isSwapped: false }
+}
+
+function savePreviewState(key: string | undefined, state: PreviewState): void {
+  if (!key) return
+  memoryState.set(key, state)
+  if (typeof sessionStorage !== 'undefined') {
+    try {
+      sessionStorage.setItem(`moji:split-preview:${key}`, JSON.stringify(state))
+    } catch {
+      // 忽略
+    }
+  }
+}
+
 interface Props {
   /** 源码编辑器的当前代码文本 */
   value: string
@@ -36,6 +77,8 @@ interface Props {
   ext?: string
   /** 源码编辑器组件实例 */
   children: ReactNode
+  /** 持久化记忆与保活专属 key（如 tabId 或文件路径） */
+  storageKey?: string
   /** 是否由外部强制控制（可选） */
   open?: boolean
   /** 状态变化回调 */
@@ -43,22 +86,28 @@ interface Props {
 }
 
 /**
- * 编辑页面内置的真正意义上的双栏实时预览组件：
+ * 编辑页面内置的双栏实时预览组件：
  *
  * 核心特性：
- * 1. 默认不打开，点击悬浮按钮或输入 Vim :preview 命令展开；
- * 2. 展开后一列源码、一列预览，中间分割线可自由拖拽改变宽度分配；
- * 3. 双击分割线可快速对调两列布局（左源码右预览 <-> 左预览右源码）；
- * 4. 响应式布局：当容器宽度小于 800px 时，自动由左右分割转为上下分割。
+ * 1. 默认打开分栏实时预览，支持点击悬浮按钮或输入 Vim :preview 命令切换；
+ * 2. 状态保持与 keepalive：每个文件的展开状态、分割比例与对调状态在切页签后完整保活；
+ * 3. 完整布局拉伸：消除底部黑色空白，全高无缝自适应；
+ * 4. 完整正文渲染：搭载 note-preview 与 moji-node-note 规范样式，Markdown 层级排版无缺漏；
+ * 5. 响应式布局：当容器宽度小于 800px 时，自动由左右分割转为上下分割。
  */
 export default function LiveSplitPreview({
   value,
   ext = '',
   children,
+  storageKey,
   open: controlledOpen,
   onOpenChange,
 }: Props) {
-  const [internalOpen, setInternalOpen] = useState(false)
+  const initial = useMemo(() => loadPreviewState(storageKey), [storageKey])
+  const [internalOpen, setInternalOpen] = useState(initial.isOpen)
+  const [splitRatio, setSplitRatio] = useState(initial.splitRatio) // 源码占比（%）
+  const [isSwapped, setIsSwapped] = useState(initial.isSwapped) // 是否对调两列位置
+
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
 
   const setIsOpen = useCallback(
@@ -66,9 +115,15 @@ export default function LiveSplitPreview({
       const target = typeof next === 'function' ? next(isOpen) : next
       setInternalOpen(target)
       onOpenChange?.(target)
+      savePreviewState(storageKey, { isOpen: target, splitRatio, isSwapped })
     },
-    [isOpen, onOpenChange],
+    [isOpen, onOpenChange, storageKey, splitRatio, isSwapped],
   )
+
+  // 状态变更即时同步到持久化记忆中
+  useEffect(() => {
+    savePreviewState(storageKey, { isOpen, splitRatio, isSwapped })
+  }, [storageKey, isOpen, splitRatio, isSwapped])
 
   // 订阅 Vim :preview 命令与全局切换广播
   useEffect(() => {
@@ -79,8 +134,6 @@ export default function LiveSplitPreview({
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [isVertical, setIsVertical] = useState(false)
-  const [splitRatio, setSplitRatio] = useState(50) // 源码占比（%）
-  const [isSwapped, setIsSwapped] = useState(false) // 是否对调两列位置
   const isDraggingRef = useRef(false)
 
   // 响应式监听：容器宽度小于 800px 时自动转为上下分割
@@ -169,17 +222,22 @@ export default function LiveSplitPreview({
       )
     }
 
-    // Markdown 实时渲染
+    // Markdown 实时渲染：套入 note-preview moji-node-note doc-measure 完整样式体系
     const html = renderNoteGfm(value)
     return (
-      <div className="h-full w-full overflow-y-auto px-6 py-5">
-        <MarkdownView html={html} />
+      <div className="h-full w-full min-h-0 overflow-y-auto overflow-x-hidden">
+        <div
+          className="note-preview moji-node-note doc-measure relative px-7 pt-4 pb-10"
+          style={{ '--doc-scale': 1 } as CSSProperties}
+        >
+          <MarkdownView html={html} />
+        </div>
       </div>
     )
   }, [isOpen, value, ext])
 
   if (!isOpen) {
-    return <div className="relative h-full w-full overflow-hidden">{children}</div>
+    return <div className="relative flex flex-col h-full w-full min-h-0 flex-1 overflow-hidden">{children}</div>
   }
 
   // 分配尺寸：对调时翻转比例
@@ -197,9 +255,11 @@ export default function LiveSplitPreview({
     <div
       key="source-pane"
       style={sourcePaneStyle}
-      className="relative shrink-0 overflow-hidden"
+      className="relative shrink-0 overflow-hidden flex flex-col h-full min-h-0 min-w-0"
     >
-      {children}
+      <div className="relative flex flex-col h-full w-full min-h-0 flex-1">
+        {children}
+      </div>
     </div>
   )
 
@@ -207,7 +267,7 @@ export default function LiveSplitPreview({
     <div
       key="preview-pane"
       style={previewPaneStyle}
-      className="relative shrink-0 overflow-hidden bg-paper"
+      className="relative shrink-0 overflow-hidden flex flex-col h-full min-h-0 min-w-0 bg-paper"
     >
       <div className="pointer-events-none absolute right-3 top-2.5 z-10 select-none rounded border border-line/60 bg-card/85 px-2 py-0.5 text-[10px] font-medium text-seal shadow-2xs backdrop-blur-xs">
         {t('实时对照预览')}
@@ -219,7 +279,7 @@ export default function LiveSplitPreview({
   return (
     <div
       ref={containerRef}
-      className={`relative flex h-full w-full overflow-hidden select-none ${
+      className={`relative flex h-full w-full min-h-0 flex-1 overflow-hidden select-none ${
         isVertical ? 'flex-col' : 'flex-row'
       }`}
     >

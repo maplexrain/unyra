@@ -6,7 +6,9 @@ import {
 import {
   executeVimCommand,
   setVimEditorBridge,
+  setGlobalTabOperations,
 } from '../src/lib/vimCommands'
+import { viewOf, makeTab } from '../src/learn/tabs'
 
 describe('双栏实时对照预览 (LiveSplitPreview) 与 Vim :preview 命令', () => {
   it('subscribeEditorPreview 能够正确接收 toggleEditorPreview 广播', () => {
@@ -94,5 +96,40 @@ describe('双栏实时对照预览 (LiveSplitPreview) 与 Vim :preview 命令', 
 
     // 清理 bridge
     setVimEditorBridge(null)
+  })
+
+  it('在结构页面等非编辑器页面 (无 activeBridge) 下，输入 :tabo 命令通过 globalTabOps 成功关闭其他页签', () => {
+    // 确保 activeBridge 为 null（模拟结构/大纲页面）
+    setVimEditorBridge(null)
+
+    let closedOthers = false
+    let forceUsed = false
+
+    setGlobalTabOperations({
+      closeOtherTabs: (force) => {
+        closedOthers = true
+        forceUsed = !!force
+      },
+    })
+
+    const resTabo = executeVimCommand(':tabo')
+    expect(resTabo.success).toBe(true)
+    expect(resTabo.message).toBe('[已关闭其他页签]')
+    expect(closedOthers).toBe(true)
+    expect(forceUsed).toBe(false)
+
+    // 强退模式 :tabo!
+    closedOthers = false
+    const resTaboForce = executeVimCommand(':tabo!')
+    expect(resTaboForce.success).toBe(true)
+    expect(closedOthers).toBe(true)
+    expect(forceUsed).toBe(true)
+
+    setGlobalTabOperations(null)
+  })
+
+  it('笔记 (kind: note) 默认打开编辑页面 (view: source)', () => {
+    const noteTab = makeTab({ kind: 'note', nodeId: 'node-1', note: '我的笔记' }, 100)
+    expect(viewOf(noteTab)).toBe('source')
   })
 })

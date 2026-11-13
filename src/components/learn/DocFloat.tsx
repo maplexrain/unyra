@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { BookOpen, Columns2, Eye, ListTree, Network, Pencil } from 'lucide-react'
+import { Columns2, Eye, ListTree, Network, Pencil } from 'lucide-react'
 import type { OutlineHandle } from '../../lib/outline'
 import type { DocView, TabRef } from '../../learn/types'
 import { t } from '../../i18n'
@@ -35,13 +35,6 @@ interface Props {
   /** 预览不可用时的那句说明。「不能预览」有两种情形（文件类型不支持、笔记还是空的），得分开说 */
   previewHint?: string
   onSwitchView: (view: DocView) => void
-  /**
-   * 当前页签是不是「从教学文档岔出去的」（笔记 / 超级文档）：是才显示「返回节点文档」——
-   * 本来就在教学文档上时，再给一颗「回去」只会占地方。
-   */
-  showBackToDoc: boolean
-  /** 回到这个节点的教学文档 */
-  onBackToDoc: () => void
   /**
    * 眼前这份文档的大纲句柄槽（见 lib/outline 的 OutlineHandle）。
    */
@@ -88,8 +81,6 @@ export default function DocFloat({
   previewable,
   previewHint,
   onSwitchView,
-  showBackToDoc,
-  onBackToDoc,
   outlineSlot,
   showEssay,
   onOpenEssay,
@@ -252,10 +243,10 @@ export default function DocFloat({
         )}
 
         {/*
-          2. 真正的实时分栏对照预览按钮（编辑页面内置）：
-          默认不打开，点击展开为一列源码一列预览；中间分割线可拖拽调宽，双击可对调。
+          2. 常驻分栏对照预览按钮（用户指定常驻）：
+          在可预览文档中常驻展示，点击若在浏览页面则切换到编辑页面并展开分栏；若在编辑页面则切换展开/关闭。
         */}
-        {view === 'source' && previewable && (
+        {view !== 'media' && previewable && (
           <button
             type="button"
             title={
@@ -264,11 +255,18 @@ export default function DocFloat({
                 : t('打开分栏实时预览 (:preview)')
             }
             aria-pressed={splitPreviewOpen}
-            onClick={() => toggleEditorPreview()}
+            onClick={() => {
+              if (view !== 'source') {
+                onSwitchView('source')
+                toggleEditorPreview(true)
+              } else {
+                toggleEditorPreview()
+              }
+            }}
             className={
               VIEW_BTN +
               ' transition-all ' +
-              (splitPreviewOpen
+              (splitPreviewOpen && view === 'source'
                 ? 'border-seal/50 bg-seal/15 text-seal shadow-xs'
                 : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink')
             }
@@ -398,13 +396,6 @@ export default function DocFloat({
               />
             )}
           </div>
-        )}
-
-        {/* 4. 回到教学文档：书本图标 */}
-        {showBackToDoc && (
-          <button type="button" title={t('回到这个节点的教学文档')} onClick={onBackToDoc} className={ICON_BTN}>
-            <BookOpen size={15} className="transition-colors" />
-          </button>
         )}
       </div>
     </div>

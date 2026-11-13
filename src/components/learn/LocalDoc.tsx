@@ -425,7 +425,7 @@ export default function LocalDoc({
 
     if (previewable) {
       return (
-        <LiveSplitPreview value={text} ext={extOf(path)}>
+        <LiveSplitPreview value={text} ext={extOf(path)} storageKey={'local:' + path}>
           {editor}
         </LiveSplitPreview>
       )

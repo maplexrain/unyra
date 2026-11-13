@@ -18,7 +18,18 @@ export interface VimEditorBridge {
   getView?: () => EditorView | null
 }
 
+export interface GlobalTabOperations {
+  closeTab?: (force?: boolean) => void
+  closeOtherTabs?: (force?: boolean) => void
+  newTab?: () => void
+  nextTab?: () => void
+  prevTab?: () => void
+  split?: (direction: 'horizontal' | 'vertical') => void
+  only?: () => void
+}
+
 let activeBridge: VimEditorBridge | null = null
+let globalTabOps: GlobalTabOperations | null = null
 
 /**
  * 登记当前活跃的编辑器桥接对象（提供直接保存、关闭、分屏等功能支持）
@@ -29,6 +40,17 @@ export function setVimEditorBridge(bridge: VimEditorBridge | null): void {
 
 export function getVimEditorBridge(): VimEditorBridge | null {
   return activeBridge
+}
+
+/**
+ * 登记工作区全局 Tab 操作接口（供结构页面、思维导图等非编辑页面调度）
+ */
+export function setGlobalTabOperations(ops: GlobalTabOperations | null): void {
+  globalTabOps = ops
+}
+
+export function getGlobalTabOperations(): GlobalTabOperations | null {
+  return globalTabOps
 }
 
 /** 显示 Vim 风格的确认/提示通知 */
@@ -187,6 +209,11 @@ export function registerVimExCommands(): void {
     const force = isForceCommand(params)
     if (activeBridge?.onCloseOthers) {
       activeBridge.onCloseOthers(force)
+      showVimNotice(cm, '[已关闭其他页签]')
+      return
+    }
+    if (globalTabOps?.closeOtherTabs) {
+      globalTabOps.closeOtherTabs(force)
       showVimNotice(cm, '[已关闭其他页签]')
       return
     }
@@ -354,6 +381,10 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
         activeBridge.onClose(isForce)
         return { success: true }
       }
+      if (globalTabOps?.closeTab) {
+        globalTabOps.closeTab(isForce)
+        return { success: true }
+      }
       const ok = triggerShortcutAction('learn.closeTab')
       return { success: ok }
     }
@@ -367,6 +398,8 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
       }
       if (activeBridge?.onClose) {
         activeBridge.onClose(isForce)
+      } else if (globalTabOps?.closeTab) {
+        globalTabOps.closeTab(isForce)
       } else {
         triggerShortcutAction('learn.closeTab')
       }
@@ -380,6 +413,10 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
         activeBridge.onNewTab()
         return { success: true, message: '[新建空白文件]' }
       }
+      if (globalTabOps?.newTab) {
+        globalTabOps.newTab()
+        return { success: true, message: '[新建空白文件]' }
+      }
       return { success: false, message: '[当前环境不支持新建页签]' }
     }
     case 'tabc':
@@ -390,6 +427,10 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
         activeBridge.onClose(isForce)
         return { success: true }
       }
+      if (globalTabOps?.closeTab) {
+        globalTabOps.closeTab(isForce)
+        return { success: true }
+      }
       const ok = triggerShortcutAction('learn.closeTab')
       return { success: ok }
     }
@@ -397,6 +438,10 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'tabonly': {
       if (activeBridge?.onCloseOthers) {
         activeBridge.onCloseOthers(isForce)
+        return { success: true, message: '[已关闭其他页签]' }
+      }
+      if (globalTabOps?.closeOtherTabs) {
+        globalTabOps.closeOtherTabs(isForce)
         return { success: true, message: '[已关闭其他页签]' }
       }
       return { success: false }
