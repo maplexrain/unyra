@@ -1,58 +1,68 @@
-import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
-import { matchBrackets } from '@codemirror/language'
-import type { Extension } from '@codemirror/state'
+import { getIndentUnit, matchBrackets } from '@codemirror/language'
+import {
+  Decoration,
+  type DecorationSet,
+  EditorView,
+  type PluginValue,
+  ViewPlugin,
+  type ViewUpdate,
+} from '@codemirror/view'
+import { combineConfig, type Extension, Facet, RangeSetBuilder, type Line, type EditorState } from '@codemirror/state'
 
 /**
- * 跨行配对符号辅助线（Bracket Pair Connector Guides）：
- * 为代码中不同行的配对符号（如跨行大括号 {}、中括号 []、圆括号 ()）
- * 提供结构辅助线连接，方便一眼识别深层嵌套与块级对应关系。
+ * IntelliJ IDEA 风格的垂直缩进导引线与跨行配对块高亮（Vertical Indent & Scope Guides）：
  *
- * 核心准则：
- * 1. 严格对齐左侧基准缩进列（Base Indent Column）：垂直导轨线走在代码块左侧的缩进槽内，
- *    绝不能因行末开括号或闭括号超出视口而偏离到屏幕右侧悬空；
- * 2. 绝对不能贯穿文字：若开括号所在行包含前置代码文字（如 var MOUSE = {、function foo() {），
- *    严禁横穿代码文字，垂直线自该行下沿起步，开括号字符下方以纯净下标底托示意，文字行 100% 保持干净；
- * 3. 视觉沉浸克制，绝不喧宾夺主：线宽严格 1px，彻底去除发光模糊光晕（drop-shadow），色彩轻透自然；
- * 4. 纯直角折线，不要圆角：拐角全部采用标准的 90 度直角折转（M/H/V），线条利落干脆；
- * 5. 同行配对符号（如 import { foo } from 'bar'、单行数组等）严格剔除不画线。
+ * 核心设计准则（严格对齐 IntelliJ IDEA 经典表现）：
+ * 1. 纯垂直线（Vertical Guides）：只在行首的前导空白缩进列绘制垂直线，纯直角、零圆角；
+ * 2. 绝对不贯穿文字：每行的导向线宽度严格限制在行首缩进空白宽度内，文字区域无任何多余线条遮挡；
+ * 3. 绝不悬空右侧：垂直线永远位于左侧基准缩进槽内，绝不跟随行末开括号向右漂移；
+ * 4. 极细克制不喧宾夺主：线宽严格 1px，未激活状态为极淡墨色点线，激活状态为天青色实线，无刺眼发光光晕；
+ * 5. 同行配对不画线：单行符号（如 import { foo } from 'bar'）起止行相同，不产生跨行高亮；
+ * 6. 活动作用域高亮（Active Scope Guide）：当光标在跨行代码块内部或在配对括号上时，该块左侧缩进线高亮贯穿全块。
  */
 
-interface MeasuredGuide {
-  id: string
-  pathData: string
-  isActive: boolean
+export interface IndentGuideConfig {
+  highlightActiveBlock?: boolean
+  hideFirstIndent?: boolean
+  thickness?: number
 }
 
-/** 向上回溯查找覆盖光标的外层跨行配对的最大行数 */
-const MAX_ENCLOSING_LOOKBACK = 120
+const indentGuideFacet = Facet.define<IndentGuideConfig, Required<IndentGuideConfig>>({
+  combine(configs) {
+    return combineConfig(configs, {
+      highlightActiveBlock: true,
+      hideFirstIndent: true, // 默认隐藏第 0 列（贴着行号的那一条），保持行号边界干净清爽
+      thickness: 1,
+    })
+  },
+})
 
-export function findCrossLineBracketPairs(view: EditorView): Array<{
+export interface CrossLinePair {
   openPos: number
   closePos: number
   startLine: number
   endLine: number
   isActive: boolean
-}> {
+}
+
+const MAX_ENCLOSING_LOOKBACK = 120
+
+/**
+ * 辅助检测当前视口及周边的跨行配对符号（保持向后兼容及测试支持）
+ */
+export function findCrossLineBracketPairs(view: EditorView): CrossLinePair[] {
   const { state } = view
   const doc = state.doc
   if (doc.length === 0) return []
 
-  const pairs: Array<{
-    openPos: number
-    closePos: number
-    startLine: number
-    endLine: number
-    isActive: boolean
-  }> = []
+  const pairs: CrossLinePair[] = []
   const seenOpenPos = new Set<number>()
   const head = state.selection.main.head
 
-  // 1. 扫描当前视口可见区域内的所有开括号
   const vp = view.viewport
   const vpStartLine = doc.lineAt(vp.from).number
   const vpEndLine = doc.lineAt(vp.to).number
 
-  // 2. 向上扩展扫描范围，确保视口内包含的闭括号能对应到上方可视外的开括号
   const curLine = doc.lineAt(head).number
   const minScanLine = Math.max(1, Math.min(vpStartLine - 10, curLine - MAX_ENCLOSING_LOOKBACK))
   const maxScanLine = Math.min(doc.lines, vpEndLine + 10)
@@ -73,7 +83,6 @@ export function findCrossLineBracketPairs(view: EditorView): Array<{
           const startLine = doc.lineAt(openPos).number
           const endLine = doc.lineAt(closePos).number
 
-          // 核心规矩：同一行的配对绝对不用辅助线连接，仅对不同行配对符号画线
           if (startLine !== endLine) {
             const isActive = head >= openPos && head <= match.end.to
             pairs.push({
@@ -92,214 +101,350 @@ export function findCrossLineBracketPairs(view: EditorView): Array<{
   return pairs
 }
 
-class BracketGuidesPlugin {
-  readonly view: EditorView
-  private svgEl: SVGSVGElement
-  private groupEl: SVGGElement
+/** 计算字符串前导空白的有效缩进列数（兼容 Tab 与空格） */
+function numColumns(str: string, tabSize: number): number {
+  let col = 0
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i]
+    if (ch === ' ' || ch === '\u00A0') {
+      col += 1
+    } else if (ch === '\t') {
+      col += tabSize - (col % tabSize)
+    } else if (ch === '\r') {
+      continue
+    } else {
+      break
+    }
+  }
+  return col
+}
 
-  private measureReq = {
-    read: (view: EditorView): MeasuredGuide[] => {
-      const pairs = findCrossLineBracketPairs(view)
-      if (pairs.length === 0) return []
+interface IndentLineEntry {
+  line: Line
+  level: number
+  empty: boolean
+  activeLevel?: number
+}
 
-      const scrollerRect = view.scrollDOM.getBoundingClientRect()
-      const scrollLeft = view.scrollDOM.scrollLeft
-      const scrollTop = view.scrollDOM.scrollTop
-      const doc = view.state.doc
-
-      const measured: MeasuredGuide[] = []
-
-      for (const pair of pairs) {
-        // 读取开括号与闭括号的具体字符屏幕坐标
-        const openCoords = view.coordsAtPos(pair.openPos)
-        const closeCoords = view.coordsAtPos(pair.closePos)
-
-        // 倘若开闭两端都完全在视口外且无法获取坐标，则跳过
-        if (!openCoords && !closeCoords) continue
-
-        const startLine = doc.line(pair.startLine)
-        const endLine = doc.line(pair.endLine)
-
-        const openCharIdx = pair.openPos - startLine.from
-        const closeCharIdx = pair.closePos - endLine.from
-
-        // 核心安全原则：检查开闭括号左侧是否含有非空白文字
-        const openHasPrefix = /\S/.test(startLine.text.slice(0, openCharIdx))
-        const closeHasPrefix = /\S/.test(endLine.text.slice(0, closeCharIdx))
-
-        // 1. 获取开括号行首个非空白字符的屏幕坐标（该代码块的左侧起始基准列）
-        const openIndentLen = startLine.text.match(/^\s*/)?.[0].length ?? 0
-        const openIndentPos = startLine.from + openIndentLen
-        const openIndentCoords = view.coordsAtPos(openIndentPos)
-
-        // 2. 获取闭括号行首个非空白字符的屏幕坐标
-        const closeIndentLen = endLine.text.match(/^\s*/)?.[0].length ?? 0
-        const closeIndentPos = endLine.from + closeIndentLen
-        const closeIndentCoords = view.coordsAtPos(closeIndentPos)
-
-        // 3. 计算左侧缩进基准 X 坐标（绝不使用行末开括号的 X 坐标，彻底杜绝悬在右侧空中）
-        let baseIndentX = 0
-        if (closeIndentCoords) {
-          baseIndentX = closeIndentCoords.left - scrollerRect.left + scrollLeft
-        } else if (openIndentCoords) {
-          baseIndentX = openIndentCoords.left - scrollerRect.left + scrollLeft
-        } else if (openCoords) {
-          baseIndentX = openCoords.left - scrollerRect.left + scrollLeft
-        } else {
-          baseIndentX = 24
-        }
-
-        // 垂直导轨线 X 坐标：严格走在该代码块左侧缩进空白槽中（偏左 4px），绝不在屏幕右侧悬空
-        const guideX = Math.max(6, Math.round(baseIndentX) - 4)
-
-        let openX = 0
-        let openY = 0
-        let openBottom = 0
-        let openCharWidth = 8
-
-        if (openCoords) {
-          openX = Math.round(openCoords.left - scrollerRect.left + scrollLeft)
-          openY = Math.round(openCoords.top - scrollerRect.top + scrollTop + (openCoords.bottom - openCoords.top) / 2)
-          openBottom = Math.round(openCoords.bottom - scrollerRect.top + scrollTop)
-          openCharWidth = Math.max(6, Math.round(openCoords.right - openCoords.left))
-        } else {
-          // 开括号在视口上方溢出：从视口顶部向下延伸
-          openX = Math.round(baseIndentX)
-          openY = Math.max(0, scrollTop - 10)
-          openBottom = openY
-        }
-
-        let closeX = 0
-        let closeY = 0
-
-        if (closeCoords) {
-          closeX = Math.round(closeCoords.left - scrollerRect.left + scrollLeft)
-          closeY = Math.round(closeCoords.top - scrollerRect.top + scrollTop + (closeCoords.bottom - closeCoords.top) / 2)
-        } else {
-          // 闭括号在视口下方溢出：垂直导轨向视口下方自然延伸，底端 X 锁定在左侧基准缩进列
-          closeX = Math.round(baseIndentX)
-          closeY = scrollTop + scrollerRect.height + 20
-        }
-
-        // 构建纯直角折线（绝对不要圆角，全部使用直角 M / H / V）
-        let pathData = ''
-
-        if (openHasPrefix) {
-          // 开括号前面有文字（如 var MOUSE = {、function test() {）：严禁水平横线横穿代码！
-          // 垂直导轨线从开括号所在行底边 (openBottom) 开始，沿左侧 guideX 垂直向下延伸
-          // 并在开括号字符正下方画微小下标托线呼应，文字行 100% 保持干净
-          const topSub = openCoords ? ` M ${openX} ${openBottom} H ${openX + openCharWidth}` : ''
-          if (!closeCoords) {
-            // 闭括号超出视口下方：垂直线向下贯穿出视口，不画底部横线
-            pathData = `M ${guideX} ${openBottom} V ${closeY}${topSub}`
-          } else if (!closeHasPrefix) {
-            // 闭括号在视口内且前无代码：在闭括号行直角向右连到字符
-            pathData = `M ${guideX} ${openBottom} V ${closeY} H ${closeX}${topSub}`
-          } else {
-            pathData = `M ${guideX} ${openBottom} V ${closeY}${topSub}`
-          }
-        } else {
-          // 开括号前面是纯缩进空白（如换行单独成行的 {）：水平线在空白区域向左折入 guideX
-          if (!closeCoords) {
-            pathData = `M ${openX} ${openY} H ${guideX} V ${closeY}`
-          } else if (!closeHasPrefix) {
-            pathData = `M ${openX} ${openY} H ${guideX} V ${closeY} H ${closeX}`
-          } else {
-            pathData = `M ${openX} ${openY} H ${guideX} V ${closeY}`
-          }
-        }
-
-        measured.push({
-          id: `${pair.openPos}-${pair.closePos}`,
-          pathData,
-          isActive: pair.isActive,
-        })
+function getVisibleLines(view: EditorView, state: EditorState): Set<Line> {
+  const lines = new Set<Line>()
+  for (const { from, to } of view.visibleRanges) {
+    let pos = from
+    while (pos <= to) {
+      const line = state.doc.lineAt(pos)
+      if (!lines.has(line)) {
+        lines.add(line)
       }
+      pos = line.to + 1
+    }
+  }
+  return lines
+}
 
-      return measured
-    },
+/**
+ * 视口行缩进层级与当前活动块映射分析器
+ */
+class IndentationMap {
+  private map = new Map<number, IndentLineEntry>()
+  private lines: Set<Line>
+  private state: EditorState
+  private unitWidth: number
 
-    write: (measured: MeasuredGuide[]) => {
-      // 清空旧路径，高效同步新几何线条
-      while (this.groupEl.firstChild) {
-        this.groupEl.removeChild(this.groupEl.firstChild)
-      }
-
-      for (const item of measured) {
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-        path.setAttribute('d', item.pathData)
-        path.setAttribute('class', `cm-bracket-guide-line ${item.isActive ? 'cm-bracket-guide-active' : ''}`)
-        path.setAttribute('fill', 'none')
-        this.groupEl.appendChild(path)
-      }
-    },
+  constructor(
+    lines: Set<Line>,
+    state: EditorState,
+    unitWidth: number,
+  ) {
+    this.lines = lines
+    this.state = state
+    this.unitWidth = unitWidth
+    for (const line of this.lines) {
+      this.add(line)
+    }
+    this.findAndSetActiveLines()
   }
 
-  constructor(view: EditorView) {
-    this.view = view
-
-    // 创建 SVG 辅助线承载容器并追加到 scrollDOM 下层
-    this.svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-    this.svgEl.setAttribute('class', 'cm-bracket-guides-svg')
-    this.svgEl.setAttribute('aria-hidden', 'true')
-
-    this.groupEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    this.svgEl.appendChild(this.groupEl)
-
-    // 插入在 scrollDOM 内部文本图层之后，避免阻挡任何点击选择
-    this.view.scrollDOM.appendChild(this.svgEl)
-    this.scheduleMeasure()
+  get(lineNo: number): IndentLineEntry | undefined {
+    return this.map.get(lineNo)
   }
 
-  update(update: ViewUpdate) {
-    if (update.docChanged || update.selectionSet || update.viewportChanged || update.geometryChanged) {
-      this.scheduleMeasure()
+  private set(line: Line, level: number): IndentLineEntry {
+    const empty = !line.text.trim().length
+    const entry: IndentLineEntry = { line, level, empty }
+    this.map.set(line.number, entry)
+    return entry
+  }
+
+  private add(line: Line): IndentLineEntry {
+    if (this.map.has(line.number)) {
+      return this.map.get(line.number)!
+    }
+
+    if (!line.length || !line.text.trim().length) {
+      if (line.number === 1) {
+        return this.set(line, 0)
+      }
+      const prev = this.closestNonEmpty(line.number, -1)
+      const next = this.closestNonEmpty(line.number, 1)
+      if (prev.level >= next.level) {
+        return this.set(line, prev.level)
+      }
+      if (next.level > prev.level) {
+        return this.set(line, prev.level + 1)
+      }
+      return this.set(line, next.level)
+    }
+
+    const col = numColumns(line.text, this.state.tabSize)
+    const level = Math.floor(col / this.unitWidth)
+    return this.set(line, level)
+  }
+
+  private closestNonEmpty(startLineNo: number, dir: -1 | 1): { level: number } {
+    let l = startLineNo + dir
+    while (dir === -1 ? l >= 1 : l <= this.state.doc.lines) {
+      if (this.map.has(l)) {
+        const entry = this.map.get(l)!
+        if (!entry.empty) return entry
+      }
+      const line = this.state.doc.line(l)
+      if (line.text.trim().length) {
+        const col = numColumns(line.text, this.state.tabSize)
+        return { level: Math.floor(col / this.unitWidth) }
+      }
+      l += dir
+    }
+    return { level: 0 }
+  }
+
+  /**
+   * 精确计算当前光标所处的跨行代码块，并高亮该代码块对应的垂直缩进导线
+   */
+  private findAndSetActiveLines() {
+    const head = this.state.selection.main.head
+    const curLine = this.state.doc.lineAt(head)
+
+    // 1. 优先尝试精准配对括号检测：若光标正位于或紧邻某个括号字符
+    const bracketPositions = [head, head - 1]
+    for (const bPos of bracketPositions) {
+      if (bPos >= 0 && bPos <= this.state.doc.length) {
+        const match = matchBrackets(this.state, bPos, 1)
+        if (match && match.matched && match.end) {
+          const startLine = this.state.doc.lineAt(Math.min(bPos, match.end.from))
+          const endLine = this.state.doc.lineAt(Math.max(bPos, match.end.from))
+          if (startLine.number !== endLine.number) {
+            // 获取块内部的缩进级别
+            const startCol = numColumns(startLine.text, this.state.tabSize)
+            const targetActiveLevel = Math.floor(startCol / this.unitWidth) + 1
+            this.markActiveSpan(startLine.number, endLine.number, targetActiveLevel)
+            return
+          }
+        }
+      }
+    }
+
+    // 2. 启发式作用域分析（IntelliJ IDEA 经典机制）：基于当前行缩进深度向上和向下查找作用域
+    let curEntry = this.get(curLine.number)
+    if (!curEntry) {
+      curEntry = this.add(curLine)
+    }
+
+    let activeLevel = curEntry.level
+    if (activeLevel === 0) {
+      // 当前行在根层级（如 export function ... {），检查下一行是否开启了新块
+      if (curLine.number < this.state.doc.lines) {
+        const nextCol = numColumns(this.state.doc.line(curLine.number + 1).text, this.state.tabSize)
+        const nextLevel = Math.floor(nextCol / this.unitWidth)
+        if (nextLevel > 0) {
+          activeLevel = nextLevel
+        } else {
+          return
+        }
+      } else {
+        return
+      }
+    }
+
+    // 向上扫描查找代码块起始行
+    let blockStart = curLine.number
+    for (let l = curLine.number; l >= 1; l--) {
+      const line = this.state.doc.line(l)
+      if (line.text.trim().length === 0) continue
+      const lvl = Math.floor(numColumns(line.text, this.state.tabSize) / this.unitWidth)
+      if (lvl < activeLevel) {
+        blockStart = l
+        break
+      }
+      blockStart = l
+    }
+
+    // 向下扫描查找代码块闭合行
+    let blockEnd = curLine.number
+    for (let l = curLine.number; l <= this.state.doc.lines; l++) {
+      const line = this.state.doc.line(l)
+      if (line.text.trim().length === 0) continue
+      const lvl = Math.floor(numColumns(line.text, this.state.tabSize) / this.unitWidth)
+      if (lvl < activeLevel) {
+        blockEnd = l
+        break
+      }
+      blockEnd = l
+    }
+
+    if (blockStart !== blockEnd) {
+      this.markActiveSpan(blockStart, blockEnd, activeLevel)
     }
   }
 
-  private scheduleMeasure() {
-    this.view.requestMeasure(this.measureReq)
-  }
-
-  destroy() {
-    this.svgEl.remove()
+  private markActiveSpan(startLineNo: number, endLineNo: number, activeLevel: number) {
+    for (let l = startLineNo; l <= endLineNo; l++) {
+      const entry = this.get(l)
+      if (entry) {
+        entry.activeLevel = activeLevel
+      }
+    }
   }
 }
 
-/** 跨行括号辅助线主题样式：克制沉浸、极细直角、不喧宾夺主 */
-const bracketGuidesTheme = EditorView.baseTheme({
-  '.cm-bracket-guides-svg': {
+/**
+ * 构造纯垂直直角缩进线 CSS 背景渐变（纯标准 CSS repeating-linear-gradient，绝不贯穿文字）
+ */
+function createGradient(markerVar: string, thickness: number, indentWidth: number, startCol: number, colCount: number) {
+  const gradient = `repeating-linear-gradient(to right, var(${markerVar}) 0 ${thickness}px, transparent ${thickness}px ${indentWidth}ch)`
+  return `${gradient} ${startCol * indentWidth}ch/calc(${indentWidth * colCount}ch) no-repeat`
+}
+
+function makeBackgroundCSS(
+  entry: IndentLineEntry,
+  indentWidth: number,
+  hideFirstIndent: boolean,
+  thickness: number,
+): string {
+  const { level, activeLevel } = entry
+  if (level <= 0) return ''
+
+  const startCol = hideFirstIndent ? 1 : 0
+  if (level < startCol) return ''
+
+  const totalCols = level - startCol
+  if (totalCols <= 0 && activeLevel !== level) return ''
+
+  const bgs: string[] = []
+
+  if (activeLevel !== undefined && activeLevel >= startCol && activeLevel <= level) {
+    const beforeActive = activeLevel - startCol
+    if (beforeActive > 0) {
+      bgs.push(createGradient('--indent-guide-base-color', thickness, indentWidth, startCol, beforeActive))
+    }
+    // 当前高亮块所归属的垂直缩进导向线（1px 天青墨色，纯垂直直角）
+    bgs.push(createGradient('--indent-guide-active-color', thickness, indentWidth, activeLevel, 1))
+
+    const afterActive = level - activeLevel
+    if (afterActive > 0) {
+      bgs.push(createGradient('--indent-guide-base-color', thickness, indentWidth, activeLevel + 1, afterActive))
+    }
+  } else {
+    // 全普通缩进槽
+    bgs.push(createGradient('--indent-guide-base-color', thickness, indentWidth, startCol, totalCols))
+  }
+
+  return bgs.join(', ')
+}
+
+class IndentGuidesPlugin implements PluginValue {
+  decorations: DecorationSet = Decoration.none
+  private view: EditorView
+  private unitWidth: number
+
+  constructor(view: EditorView) {
+    this.view = view
+    this.unitWidth = getIndentUnit(view.state) || 2
+    this.generate(view.state)
+  }
+
+  update(update: ViewUpdate) {
+    const unitWidth = getIndentUnit(update.state) || 2
+    const unitWidthChanged = unitWidth !== this.unitWidth
+    if (unitWidthChanged) {
+      this.unitWidth = unitWidth
+    }
+
+    if (
+      update.docChanged ||
+      update.viewportChanged ||
+      update.selectionSet ||
+      unitWidthChanged ||
+      update.geometryChanged
+    ) {
+      this.generate(update.state)
+    }
+  }
+
+  private generate(state: EditorState) {
+    const builder = new RangeSetBuilder<Decoration>()
+    const lines = getVisibleLines(this.view, state)
+    const { hideFirstIndent, thickness } = state.facet(indentGuideFacet)
+    const map = new IndentationMap(lines, state, this.unitWidth)
+
+    for (const line of lines) {
+      const entry = map.get(line.number)
+      if (!entry || entry.level <= 0) continue
+
+      const bgStyle = makeBackgroundCSS(entry, this.unitWidth, hideFirstIndent, thickness)
+      if (!bgStyle) continue
+
+      builder.add(
+        line.from,
+        line.from,
+        Decoration.line({
+          class: 'cm-indent-guide-line',
+          attributes: {
+            style: `--indent-guides: ${bgStyle};`,
+          },
+        }),
+      )
+    }
+
+    this.decorations = builder.finish()
+  }
+}
+
+/** IntelliJ IDEA 风格优雅主题：克制沉浸、极细 1px、纯正直角垂直、无发光虚影 */
+const indentGuidesTheme = EditorView.baseTheme({
+  '&light': {
+    '--indent-guide-base-color': 'color-mix(in srgb, var(--color-ink, #0f172a) 10%, transparent)',
+    '--indent-guide-active-color': 'color-mix(in srgb, var(--color-seal, #0284c7) 65%, transparent)',
+  },
+  '&dark': {
+    '--indent-guide-base-color': 'color-mix(in srgb, var(--color-ink, #cdd6f4) 10%, transparent)',
+    '--indent-guide-active-color': 'color-mix(in srgb, var(--color-seal, #38bdf8) 60%, transparent)',
+  },
+  '.cm-line': {
+    position: 'relative',
+  },
+  // 缩进导轨伪元素层：绝对定位在代码行左侧前导区域，纯 CSS 渐变渲染，绝无横穿文字，零圆角
+  '.cm-indent-guide-line::before': {
+    content: '""',
     position: 'absolute',
     top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
+    left: '2px', // 对齐 CodeMirror .cm-line 默认内边距
+    right: 0,
+    bottom: 0,
+    background: 'var(--indent-guides)',
     pointerEvents: 'none',
-    overflow: 'visible',
-    zIndex: 1,
-  },
-  // 未激活状态下的背景跨行括号导线：极细低调的半透明点虚线，安静不抢戏
-  '.cm-bracket-guide-line': {
-    stroke: 'color-mix(in srgb, var(--color-ink, #cdd6f4) 11%, transparent)',
-    strokeWidth: '1px',
-    strokeDasharray: '2.5 3',
-    strokeLinecap: 'square',
-    strokeLinejoin: 'miter',
-    shapeRendering: 'crispEdges',
-    transition: 'stroke 120ms ease, opacity 120ms ease',
-  },
-  // 当前光标所处代码块激活的跨行配对连线：纯净优雅的天青墨色 1px 直角细实线，不带任何刺眼的发光光晕模糊
-  '.cm-bracket-guide-line.cm-bracket-guide-active': {
-    stroke: 'color-mix(in srgb, var(--color-seal, #38bdf8) 42%, transparent)',
-    strokeWidth: '1px',
-    strokeDasharray: 'none',
-    filter: 'none',
+    zIndex: '-1',
   },
 })
 
 /**
- * 导出 CodeMirror 6 跨行配对符号辅助线连接扩展
+ * 导出 IntelliJ IDEA 风格的垂直缩进导引线与当前配对块高亮扩展
  */
-export function bracketPairGuides(): Extension {
-  return [ViewPlugin.fromClass(BracketGuidesPlugin), bracketGuidesTheme]
+export function bracketPairGuides(config?: IndentGuideConfig): Extension {
+  return [
+    config ? indentGuideFacet.of(config) : [],
+    indentGuidesTheme,
+    ViewPlugin.fromClass(IndentGuidesPlugin, {
+      decorations: (v) => v.decorations,
+    }),
+  ]
 }

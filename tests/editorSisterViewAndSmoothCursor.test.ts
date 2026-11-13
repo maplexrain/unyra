@@ -693,12 +693,17 @@ set tabstop=4
       expect(bracketPair).toBeDefined()
       expect(bracketPair?.isActive).toBe(false) // 光标不在 options 数组内部
 
-      // 验证渲染的 SVG 路径：纯直角（绝不包含 Q/C 圆角指令），且开括号前有文字时不贯穿文字
-      const paths = Array.from(dom.querySelectorAll('.cm-bracket-guide-line')) as unknown as SVGPathElement[]
-      for (const p of paths) {
-        const d = p.getAttribute('d') ?? ''
-        expect(d).not.toMatch(/[QC]/) // 彻底杜绝圆角曲线
+      // 验证 IntelliJ IDEA 风格行缩进导向线（纯直角垂直，绝不贯穿文字，代码文字前精准截断）
+      const guideLines = Array.from(dom.querySelectorAll('.cm-indent-guide-line')) as unknown as HTMLElement[]
+      expect(guideLines.length).toBeGreaterThan(0)
+      for (const gl of guideLines) {
+        const style = gl.getAttribute('style') ?? ''
+        expect(style).toContain('--indent-guides')
+        expect(style).toContain('repeating-linear-gradient')
       }
+      // 验证光标所在 samples 处于 active 作用域内，包含高亮色彩变量
+      const activeLine = guideLines.find((gl) => gl.textContent?.includes('samples'))
+      expect(activeLine?.getAttribute('style')).toContain('--indent-guide-active-color')
 
       // 验证长函数即使闭括号不在视口内，findCrossLineBracketPairs 也能精准检测到跨行配对
       const longFnCode = [
