@@ -634,5 +634,74 @@ set tabstop=4
 
     noremapSpy.mockRestore()
   })
+
+  it('bracketPairGuides 正确识别跨行配对符号并剔除同一行的配对符号', async () => {
+    const { Window } = await import('happy-dom')
+    const win = new Window()
+    const origDoc = (globalThis as any).document
+    const origWin = (globalThis as any).window
+    const origMO = (globalThis as any).MutationObserver
+    const origNode = (globalThis as any).Node
+    ;(globalThis as any).document = win.document
+    ;(globalThis as any).window = win
+    ;(globalThis as any).MutationObserver = win.MutationObserver
+    ;(globalThis as any).Node = win.Node
+
+    try {
+      const { findCrossLineBracketPairs, bracketPairGuides } = await import('../src/lib/cmBracketGuides')
+      const { EditorView } = await import('@codemirror/view')
+      const { EditorState } = await import('@codemirror/state')
+
+      // 导出的扩展必须是有效的 CodeMirror Extension
+      const ext = bracketPairGuides()
+      expect(ext).toBeDefined()
+
+      const code = [
+        "import { Vector3 } from 'three'", // 同行大括号
+        "import { BIKE, PELICAN } from './spec'", // 同行大括号
+        'export interface RigValidationReport {', // 跨行大括号起始 (第 3 行)
+        '  samples: number',
+        '  failures: string[]', // 同行中括号
+        '  options: [', // 跨行中括号起始 (第 6 行)
+        '    string,',
+        '    number',
+        '  ]', // 跨行中括号闭合 (第 9 行)
+        '}', // 跨行大括号闭合 (第 10 行)
+      ].join('\n')
+
+      const dom = win.document.createElement('div')
+      win.document.body.appendChild(dom)
+
+      const view = new EditorView({
+        parent: dom as any,
+        state: EditorState.create({
+          doc: code,
+          selection: { anchor: code.indexOf('samples') }, // 光标在 interface 内部
+          extensions: [bracketPairGuides()],
+        }),
+      })
+
+      const pairs = findCrossLineBracketPairs(view)
+      // 应该只找到 2 对跨行配对（interface 的 {} 和 options 的 []），同行大括号和 string[] 必须完全排除
+      expect(pairs.length).toBe(2)
+
+      const bracePair = pairs.find((p) => p.startLine === 3 && p.endLine === 10)
+      expect(bracePair).toBeDefined()
+      expect(bracePair?.isActive).toBe(true) // 光标在 samples 处，大括号对处于 active 状态
+
+      const bracketPair = pairs.find((p) => p.startLine === 6 && p.endLine === 9)
+      expect(bracketPair).toBeDefined()
+      expect(bracketPair?.isActive).toBe(false) // 光标不在 options 数组内部
+
+      view.destroy()
+      dom.remove()
+      await new Promise((r) => setTimeout(r, 50))
+    } finally {
+      ;(globalThis as any).document = origDoc
+      ;(globalThis as any).window = origWin
+      ;(globalThis as any).MutationObserver = origMO
+      ;(globalThis as any).Node = origNode
+    }
+  })
 })
 

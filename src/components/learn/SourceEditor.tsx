@@ -21,6 +21,7 @@ import { getAppearance, setAppearance, clampEditorScale, SCALE_ZOOM_STEP, SCALE_
 import { markdownEditorTheme, markdownHighlight } from '../../lib/cmMarkdown'
 import { smoothCursor } from '../../lib/cmSmoothCursor'
 import { scopeHighlight } from '../../lib/cmScopeHighlight'
+import { bracketPairGuides } from '../../lib/cmBracketGuides'
 import { vimActiveSearchMatchHighlight } from '../../lib/cmSearchHighlight'
 import { vim } from '@replit/codemirror-vim'
 import { isVimEnabled, subscribeVimEnabled } from '../../lib/vimSettings'
@@ -330,6 +331,8 @@ export default function SourceEditor({
           // 符号自动补全（输入 ( [ { " ' ` 自动带出另一半、跳过与删除成对）与括号配对高亮
           closeBrackets(),
           bracketMatching(),
+          // 为不同行的配对符号（{}、[]、()）绘制连贯美观的辅助连接线，同行配对自动剔除
+          bracketPairGuides(),
           // 自动缩进：换行继承上一行的缩进，语言有语法的话按语法缩进；缩进单位是两个空格
           indentOnInput(),
           indentUnit.of('  '),

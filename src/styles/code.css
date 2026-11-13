@@ -640,7 +640,7 @@
 
 .cm-editor .cm-vim-panel:has(input) {
   position: fixed !important;
-  top: 52px !important;
+  top: 80px !important;
   bottom: auto !important;
   left: 50% !important;
   transform: translateX(-50%) !important;
