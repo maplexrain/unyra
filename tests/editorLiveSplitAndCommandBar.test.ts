@@ -1,4 +1,8 @@
+// @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest'
+import React, { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import ConfirmDialog from '../src/components/ConfirmDialog'
 import {
   toggleEditorPreview,
   subscribeEditorPreview,
@@ -8,6 +12,7 @@ import {
   setVimEditorBridge,
   setGlobalTabOperations,
 } from '../src/lib/vimCommands'
+import { setAgentMessenger, setAgentToggleHandler } from '../src/lib/agentFocus'
 import { viewOf, makeTab } from '../src/learn/tabs'
 
 describe('双栏实时对照预览 (LiveSplitPreview) 与 Vim :preview 命令', () => {
@@ -131,5 +136,121 @@ describe('双栏实时对照预览 (LiveSplitPreview) 与 Vim :preview 命令', 
   it('笔记 (kind: note) 默认打开编辑页面 (view: source)', () => {
     const noteTab = makeTab({ kind: 'note', nodeId: 'node-1', note: '我的笔记' }, 100)
     expect(viewOf(noteTab)).toBe('source')
+  })
+
+  it('executeVimCommand :agent 支持快捷打开/收起导师栏，并支持带参数直接发送消息', () => {
+    let toggled = false
+    let sentMessage: string | null = null
+
+    setAgentToggleHandler({
+      toggle: () => {
+        toggled = true
+      },
+    })
+    setAgentMessenger((msg) => {
+      sentMessage = msg
+    })
+
+    // 1. 无参数切换导师栏
+    const resToggle = executeVimCommand(':agent')
+    expect(resToggle.success).toBe(true)
+    expect(toggled).toBe(true)
+
+    // 2. 带参数直接发消息
+    const resSend = executeVimCommand(':agent 帮我生成新内容')
+    expect(resSend.success).toBe(true)
+    expect(resSend.message).toContain('已向导师发送')
+    expect(sentMessage).toBe('帮我生成新内容')
+
+    // 清理
+    setAgentToggleHandler(null)
+    setAgentMessenger(null)
+  })
+
+  it('executeVimCommand :center / :zz 支持光标行居中', () => {
+    let centered = false
+    setVimEditorBridge({
+      getView: () =>
+        ({
+          state: {
+            selection: { main: { head: 10 } },
+          },
+          dispatch: (tr: any) => {
+            if (tr.effects) centered = true
+          },
+        }) as any,
+    })
+
+    const resCenter = executeVimCommand(':center')
+    expect(resCenter.success).toBe(true)
+    expect(resCenter.message).toBe('[光标行已居中]')
+    expect(centered).toBe(true)
+
+    centered = false
+    const resZz = executeVimCommand(':zz')
+    expect(resZz.success).toBe(true)
+    expect(resZz.message).toBe('[光标行已居中]')
+    expect(centered).toBe(true)
+
+    setVimEditorBridge(null)
+  })
+
+  it('ConfirmDialog 支持 Tab 与方向键切换选项，Enter 确认当前选定项', async () => {
+    let confirmed = false
+    let extraClicked = false
+    let cancelled = false
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(
+        React.createElement(ConfirmDialog, {
+          title: '测试确认',
+          message: '未保存改动说明',
+          confirmLabel: '保存',
+          extraLabel: '放弃',
+          onConfirm: () => {
+            confirmed = true
+          },
+          onExtra: () => {
+            extraClicked = true
+          },
+          onCancel: () => {
+            cancelled = true
+          },
+        }),
+      )
+    })
+
+    // 默认聚焦 confirm：按 ArrowLeft 切换到 extra (次级按钮)
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }))
+    })
+
+    // 按 Enter，触发当前选中的 extra
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+    })
+    expect(extraClicked).toBe(true)
+    expect(confirmed).toBe(false)
+
+    // 再按 ArrowRight 切换回 confirm
+    extraClicked = false
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
+    })
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+    })
+    expect(confirmed).toBe(true)
+    expect(extraClicked).toBe(false)
+    expect(cancelled).toBe(false)
+
+    await act(async () => {
+      root.unmount()
+    })
+    container.remove()
   })
 })

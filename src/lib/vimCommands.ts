@@ -3,7 +3,8 @@ import { triggerShortcutAction } from './shortcuts'
 import { foldCurrentScope, unfoldCurrentScope, foldAll, unfoldAll } from './cmFoldScope'
 import { openVimTutor } from './vimTutorState'
 import { toggleEditorPreview } from '../components/learn/editor/LiveSplitPreview'
-import type { EditorView } from '@codemirror/view'
+import { toggleAgentPanel, sendAgentMessage } from './agentFocus'
+import { EditorView } from '@codemirror/view'
 
 export interface VimEditorBridge {
   onSave?: (force?: boolean) => Promise<boolean | void> | boolean | void
@@ -51,6 +52,25 @@ export function setGlobalTabOperations(ops: GlobalTabOperations | null): void {
 
 export function getGlobalTabOperations(): GlobalTabOperations | null {
   return globalTabOps
+}
+
+/**
+ * 自动校正滚动，让光标所在行尽量在画面垂直中间 (CodeMirror scrollIntoView center)
+ */
+export function scrollCursorToCenter(view?: EditorView | null): boolean {
+  if (!view) return false
+  try {
+    const pos = view.state?.selection?.main?.head ?? 0
+    if (typeof EditorView.scrollIntoView === 'function') {
+      view.dispatch({
+        effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+      })
+      return true
+    }
+    return false
+  } catch {
+    return false
+  }
 }
 
 /** 显示 Vim 风格的确认/提示通知 */
@@ -347,6 +367,39 @@ export function registerVimExCommands(): void {
     toggleEditorPreview()
     showVimNotice(cm, '[切换分栏预览]')
   })
+
+  // 23. :agent / :ag 快捷打开/收起导师栏，可选参数直接发消息
+  Vim.defineEx('agent', 'ag', (cm, params) => {
+    const rawArg = params?.argString?.trim() || ''
+    if (rawArg) {
+      sendAgentMessage(rawArg)
+      showVimNotice(cm, `[已向导师发送: ${rawArg.slice(0, 16)}]`)
+    } else {
+      toggleAgentPanel()
+    }
+  })
+
+  // 24. :center / :zz 光标所在行垂直居中
+  Vim.defineEx('center', 'ce', (cm) => {
+    const view: EditorView | null = cm?.cm6 ?? activeBridge?.getView?.()
+    if (view && scrollCursorToCenter(view)) {
+      showVimNotice(cm, '[光标行已居中]')
+    }
+  })
+  Vim.defineEx('zz', 'zz', (cm) => {
+    const view: EditorView | null = cm?.cm6 ?? activeBridge?.getView?.()
+    if (view && scrollCursorToCenter(view)) {
+      showVimNotice(cm, '[光标行已居中]')
+    }
+  })
+
+  // 25. Vim 普通模式快捷键：zz、z. 自动校正滚动，让光标所在行尽量在画面垂直中间
+  try {
+    Vim.noremap('zz', ':center<CR>', 'normal')
+    Vim.noremap('z.', ':center<CR>', 'normal')
+  } catch {
+    // 容错
+  }
 }
 
 /**
@@ -495,6 +548,24 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
       toggleEditorPreview()
       return { success: true, message: '[切换分栏预览]' }
     }
+    case 'agent':
+    case 'ag': {
+      const msg = clean.slice(cmd.length).trim()
+      if (msg) {
+        sendAgentMessage(msg)
+        return { success: true, message: `[已向导师发送: ${msg.slice(0, 16)}]` }
+      }
+      toggleAgentPanel()
+      return { success: true }
+    }
+    case 'center':
+    case 'zz': {
+      const view = activeBridge?.getView?.()
+      if (view && scrollCursorToCenter(view)) {
+        return { success: true, message: '[光标行已居中]' }
+      }
+      return { success: false, message: '[当前无活动编辑器]' }
+    }
     case 'tutor': {
       openVimTutor()
       return { success: true, message: '[打开 Vim 闯关道场]' }
@@ -511,7 +582,7 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'h': {
       return {
         success: true,
-        message: ':w 保存 | :q 关闭 (:q! 强退) | :preview 预览 | :tabo 关其他 | :sp/:vs 分屏 | :tutor 学习',
+        message: ':w 保存 | :q 关闭 | :preview 预览 | :agent 导师 | zz 居中 | :tabo 关其他 | :sp/:vs 分屏',
       }
     }
     default:

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { AlertTriangle, X } from 'lucide-react'
 import { useEscapeKey } from '../lib/useEscape'
 import { useLeaving } from '../lib/presence'
@@ -42,7 +42,14 @@ export default function ConfirmDialog({
 
   useEscapeKey(close)
 
-  // 键盘快捷流：Enter 确认主按钮，D / d 触发次级按钮，免除移动鼠标
+  // 选项序列：默认聚焦 confirm 主按钮；支持 Tab / 方向键自由轮换焦点
+  const options = useMemo<Array<'cancel' | 'extra' | 'confirm'>>(() => {
+    return extraLabel && onExtra ? ['cancel', 'extra', 'confirm'] : ['cancel', 'confirm']
+  }, [extraLabel, onExtra])
+
+  const [selected, setSelected] = useState<'cancel' | 'extra' | 'confirm'>('confirm')
+
+  // 键盘快捷流：Tab / 方向键自由切换，Enter 确认当前选中的选项，D 键快速放弃
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // 忽略有输入框聚焦的情况
@@ -51,10 +58,38 @@ export default function ConfirmDialog({
         target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
       if (isInput) return
 
-      if (e.key === 'Enter') {
+      if (e.key === 'Tab') {
         e.preventDefault()
         e.stopPropagation()
-        onConfirm()
+        const step = e.shiftKey ? -1 : 1
+        setSelected((cur) => {
+          const idx = options.indexOf(cur)
+          return options[(idx + step + options.length) % options.length]
+        })
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        e.stopPropagation()
+        setSelected((cur) => {
+          const idx = options.indexOf(cur)
+          return options[(idx + 1) % options.length]
+        })
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        e.stopPropagation()
+        setSelected((cur) => {
+          const idx = options.indexOf(cur)
+          return options[(idx - 1 + options.length) % options.length]
+        })
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        e.stopPropagation()
+        if (selected === 'confirm') {
+          onConfirm()
+        } else if (selected === 'extra' && onExtra) {
+          onExtra()
+        } else if (selected === 'cancel') {
+          close()
+        }
       } else if ((e.key === 'd' || e.key === 'D') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (extraLabel && onExtra) {
           e.preventDefault()
@@ -66,7 +101,7 @@ export default function ConfirmDialog({
 
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [onConfirm, extraLabel, onExtra])
+  }, [options, selected, onConfirm, extraLabel, onExtra, close])
 
   return (
     <ModalScrim z="z-[60]" leaving={leaving} onClose={close}>
@@ -99,37 +134,74 @@ export default function ConfirmDialog({
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-line px-6 py-4">
+          {/* 1. 取消按钮 */}
           <button
             type="button"
             onClick={close}
-            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-4 py-2 text-[13px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
+            onMouseEnter={() => setSelected('cancel')}
+            className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-4 py-2 text-[13px] transition outline-none cursor-pointer ${
+              selected === 'cancel'
+                ? 'bg-line/70 text-ink ring-2 ring-seal ring-offset-2 ring-offset-paper'
+                : 'text-ink-soft hover:bg-line/60 hover:text-ink'
+            }`}
           >
             <span className="whitespace-nowrap">{t('取消')}</span>
-            <kbd className="shrink-0 rounded border border-line bg-card/60 px-1.5 py-0.5 text-[10px] font-medium text-ink-faint shadow-2xs">
-              Esc
+            <kbd
+              className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-medium shadow-2xs ${
+                selected === 'cancel'
+                  ? 'border-seal/60 bg-seal/20 text-seal'
+                  : 'border-line bg-card/60 text-ink-faint'
+              }`}
+            >
+              {selected === 'cancel' ? '↵ Enter' : 'Esc'}
             </kbd>
           </button>
+
+          {/* 2. 次级动作按钮（如放弃改动并关闭） */}
           {extraLabel && onExtra && (
             <button
               type="button"
               onClick={onExtra}
-              className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-line/70 bg-card/40 px-4 py-2 text-[13px] font-medium text-ink transition hover:bg-line/60 hover:text-ink-strong"
+              onMouseEnter={() => setSelected('extra')}
+              className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-4 py-2 text-[13px] font-medium transition outline-none cursor-pointer ${
+                selected === 'extra'
+                  ? 'border-seal/80 bg-seal/15 text-seal ring-2 ring-seal ring-offset-2 ring-offset-paper'
+                  : 'border-line/70 bg-card/40 text-ink hover:bg-line/60 hover:text-ink-strong'
+              }`}
             >
               <span className="whitespace-nowrap">{extraLabel}</span>
-              <kbd className="shrink-0 rounded border border-line bg-card px-1.5 py-0.5 text-[10px] font-medium text-ink-faint shadow-2xs">
-                D
+              <kbd
+                className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-medium shadow-2xs ${
+                  selected === 'extra'
+                    ? 'border-seal/60 bg-seal text-white'
+                    : 'border-line bg-card text-ink-faint'
+                }`}
+              >
+                {selected === 'extra' ? '↵ Enter' : 'D'}
               </kbd>
             </button>
           )}
+
+          {/* 3. 确认主按钮（如保存并关闭） */}
           <button
             type="button"
             onClick={onConfirm}
-            autoFocus
-            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-seal px-4 py-2 text-[13px] font-medium text-white shadow-sm transition hover:bg-seal-deep"
+            onMouseEnter={() => setSelected('confirm')}
+            className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-4 py-2 text-[13px] font-medium transition outline-none cursor-pointer ${
+              selected === 'confirm'
+                ? 'bg-seal text-white shadow-sm hover:bg-seal-deep ring-2 ring-seal ring-offset-2 ring-offset-paper'
+                : 'bg-seal/80 text-white hover:bg-seal'
+            }`}
           >
             <span className="whitespace-nowrap">{t(confirmLabel)}</span>
-            <kbd className="shrink-0 rounded border border-white/35 bg-white/15 px-1.5 py-0.5 text-[10px] font-medium text-white shadow-2xs">
-              ↵ Enter
+            <kbd
+              className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-medium shadow-2xs ${
+                selected === 'confirm'
+                  ? 'border-white/50 bg-white/25 text-white'
+                  : 'border-white/35 bg-white/15 text-white'
+              }`}
+            >
+              {selected === 'confirm' ? '↵ Enter' : '↵'}
             </kbd>
           </button>
         </div>

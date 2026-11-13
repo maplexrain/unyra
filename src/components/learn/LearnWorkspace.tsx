@@ -1793,8 +1793,8 @@ export default function LearnWorkspace({
   // 快捷键导的是**焦点格**那一篇（悬浮组里那颗按钮导的是它所在的那一格，见 openExport）
   useShortcut('doc.export', { down: () => openExport(getLatest().docArea.focus) })
 
-  // 全局 Vim 冒号命令页签调度（支持结构页面等非编辑页面执行 :tabo, :q, :tabnew）
-  useVimGlobalTabOps({ getLatest, closeTab, openBlankTab })
+  // 全局 Vim 冒号命令调度（支持非编辑页面执行 :tabo, :q, :tabnew, :agent 等）
+  useVimGlobalTabOps({ getLatest, closeTab, openBlankTab, toggleSide, expandSide })
 
   // Ctrl+W：关掉焦点格里正看着的那个页签
   useShortcut('learn.closeTab', {

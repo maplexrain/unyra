@@ -4,6 +4,7 @@ import {
   useEffect,
   useCallback,
   useMemo,
+  createContext,
   type ReactNode,
   type CSSProperties,
 } from 'react'
@@ -29,6 +30,12 @@ export function subscribeEditorPreview(listener: PreviewToggleListener): () => v
     previewListeners.delete(listener)
   }
 }
+
+/**
+ * 编辑栏光标同步上下文：编辑栏光标移动时驱动预览画面精准跟随对齐
+ */
+export type CursorBindingCallback = (ratio: number) => void
+export const EditorCursorBindingContext = createContext<CursorBindingCallback | null>(null)
 
 interface PreviewState {
   isOpen: boolean
@@ -133,8 +140,19 @@ export default function LiveSplitPreview({
   }, [setIsOpen])
 
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const previewScrollRef = useRef<HTMLDivElement | null>(null)
   const [isVertical, setIsVertical] = useState(false)
   const isDraggingRef = useRef(false)
+
+  // 光标同步：接收编辑栏光标行百分比，驱动预览容器同步平滑滚动
+  const onCursorRatio = useCallback((ratio: number) => {
+    const el = previewScrollRef.current
+    if (!el) return
+    const maxScroll = el.scrollHeight - el.clientHeight
+    if (maxScroll <= 0) return
+    const targetTop = Math.max(0, Math.min(maxScroll, ratio * maxScroll))
+    el.scrollTo({ top: targetTop, behavior: 'auto' })
+  }, [])
 
   // 响应式监听：容器宽度小于 800px 时自动转为上下分割
   useEffect(() => {
@@ -225,7 +243,7 @@ export default function LiveSplitPreview({
     // Markdown 实时渲染：套入 note-preview moji-node-note doc-measure 完整样式体系
     const html = renderNoteGfm(value)
     return (
-      <div className="h-full w-full min-h-0 overflow-y-auto overflow-x-hidden">
+      <div ref={previewScrollRef} className="h-full w-full min-h-0 overflow-y-auto overflow-x-hidden">
         <div
           className="note-preview moji-node-note doc-measure relative px-7 pt-4 pb-10"
           style={{ '--doc-scale': 1 } as CSSProperties}
@@ -237,7 +255,11 @@ export default function LiveSplitPreview({
   }, [isOpen, value, ext])
 
   if (!isOpen) {
-    return <div className="relative flex flex-col h-full w-full min-h-0 flex-1 overflow-hidden">{children}</div>
+    return (
+      <EditorCursorBindingContext.Provider value={onCursorRatio}>
+        <div className="relative flex flex-col h-full w-full min-h-0 flex-1 overflow-hidden">{children}</div>
+      </EditorCursorBindingContext.Provider>
+    )
   }
 
   // 分配尺寸：对调时翻转比例
@@ -258,7 +280,9 @@ export default function LiveSplitPreview({
       className="relative shrink-0 overflow-hidden flex flex-col h-full min-h-0 min-w-0"
     >
       <div className="relative flex flex-col h-full w-full min-h-0 flex-1">
-        {children}
+        <EditorCursorBindingContext.Provider value={onCursorRatio}>
+          {children}
+        </EditorCursorBindingContext.Provider>
       </div>
     </div>
   )

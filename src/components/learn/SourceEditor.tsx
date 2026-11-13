@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { Annotation, Compartment, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from '@codemirror/view'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
@@ -37,6 +37,7 @@ import { foldCurrentScope, unfoldCurrentScope } from '../../lib/cmFoldScope'
 import { takeSourceReveal, subscribeSourceReveal, type SourceReveal } from '../../lib/docReveal'
 import { useDocScroll } from '../../lib/docScroll'
 import { DocStatChip } from './DocFloat'
+import { EditorCursorBindingContext } from './editor/LiveSplitPreview'
 import { t } from '../../i18n'
 
 /**
@@ -174,6 +175,13 @@ export default function SourceEditor({
   useEffect(() => {
     changeRef.current = onChange
   }, [onChange])
+
+  // 双栏实时预览光标位置绑定
+  const onCursorRatio = useContext(EditorCursorBindingContext)
+  const cursorRatioRef = useRef(onCursorRatio)
+  useEffect(() => {
+    cursorRatioRef.current = onCursorRatio
+  }, [onCursorRatio])
 
   /**
    * 「定位源码」的那一次请求（见 lib/docReveal）：**挂载时取一次，之后一直用这一份**。
@@ -361,6 +369,16 @@ export default function SourceEditor({
               // 若当前编辑的文件即为 .vimrc，实时热应用最新配置
               if (label.endsWith('.vimrc') || label.endsWith('_vimrc') || ext === '.vimrc') {
                 loadAndApplyVimrc(next).catch(() => {})
+              }
+            }
+            // 实时光标位置与预览画面绑定联动
+            if (update.selectionSet || update.docChanged) {
+              if (cursorRatioRef.current) {
+                const pos = update.state.selection.main.head
+                const line = update.state.doc.lineAt(pos)
+                const totalLines = update.state.doc.lines
+                const ratio = (line.number - 1) / Math.max(1, totalLines - 1)
+                cursorRatioRef.current(ratio)
               }
             }
             // 监听代码块展开动作，为新展示的代码行注入瀑布级平滑渐显与位移下移动画
