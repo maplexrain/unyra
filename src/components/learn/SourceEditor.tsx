@@ -24,6 +24,8 @@ import { scopeHighlight } from '../../lib/cmScopeHighlight'
 import { vim } from '@replit/codemirror-vim'
 import { isVimEnabled, subscribeVimEnabled } from '../../lib/vimSettings'
 import { loadAndApplyVimrc } from '../../lib/vimConfig'
+import { registerVimExCommands, setVimEditorBridge } from '../../lib/vimCommands'
+import { foldCurrentScope, unfoldCurrentScope } from '../../lib/cmFoldScope'
 import { takeSourceReveal, subscribeSourceReveal, type SourceReveal } from '../../lib/docReveal'
 import { useDocScroll } from '../../lib/docScroll'
 import { DocStatChip } from './DocFloat'
@@ -184,6 +186,35 @@ export default function SourceEditor({
         extensions: [
           history(),
           keymap.of([
+            // Ctrl- 与 Ctrl=：快速折叠/展开当前光标所在代码块（同时拦截默认网页缩放）
+            {
+              key: 'Mod--',
+              run: (view) => {
+                foldCurrentScope(view)
+                return true
+              },
+            },
+            {
+              key: 'Mod-=',
+              run: (view) => {
+                unfoldCurrentScope(view)
+                return true
+              },
+            },
+            {
+              key: 'Mod-_',
+              run: (view) => {
+                foldCurrentScope(view)
+                return true
+              },
+            },
+            {
+              key: 'Mod-+',
+              run: (view) => {
+                unfoldCurrentScope(view)
+                return true
+              },
+            },
             indentWithTab,
             ...closeBracketsKeymap,
             ...foldKeymap,
@@ -355,6 +386,12 @@ export default function SourceEditor({
       view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true })
       view.focus()
     }
+    // 注册应用级 Vim 冒号命令并挂载当前编辑器的动作桥接
+    registerVimExCommands()
+    setVimEditorBridge({
+      getView: () => viewRef.current,
+    })
+
     // 初始化挂载时若已开启 Vim，立即加载并执行 ~/.vimrc
     if (isVimEnabled()) {
       loadAndApplyVimrc().catch(() => {})
@@ -373,6 +410,7 @@ export default function SourceEditor({
     })
 
     return () => {
+      setVimEditorBridge(null)
       unsubVim()
       view.destroy()
       viewRef.current = null

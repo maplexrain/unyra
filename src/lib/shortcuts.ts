@@ -123,6 +123,18 @@ export const SHORTCUT_DEFS: ShortcutDef[] = [
     hint: '在焦点格里开一个网页页签（内置浏览器）；焦点已经在网页页签上时，把光标挪到它的地址栏',
     def: 'Ctrl+L',
   },
+  {
+    id: 'source.foldCurrent',
+    label: '折叠当前代码块',
+    hint: '折叠当前光标所在或包裹的最内层代码块',
+    def: 'Ctrl+-',
+  },
+  {
+    id: 'source.unfoldCurrent',
+    label: '展开当前代码块',
+    hint: '展开当前光标所在或覆盖的代码块',
+    def: 'Ctrl+=',
+  },
 ]
 
 /**
@@ -270,6 +282,23 @@ const handlers = new Map<string, ShortcutHandlers>()
 /** 正按着的：id → 当时的组合。keyup 时靠它决定该结束谁 */
 const active = new Map<string, KeyCombo>()
 let listening = false
+
+/**
+ * 编程式主动触发已登记的快捷键动作（供 Vim 冒号命令模式或外部调用）
+ */
+export function triggerShortcutAction(id: string): boolean {
+  const h = handlers.get(id)
+  if (h?.down) {
+    try {
+      const evt = typeof KeyboardEvent !== 'undefined' ? new KeyboardEvent('keydown') : ({} as any)
+      h.down(evt)
+      return true
+    } catch {
+      return false
+    }
+  }
+  return false
+}
 
 /** 焦点在能打字的地方吗（输入框、文本域、可编辑区域） */
 function typingTarget(): boolean {

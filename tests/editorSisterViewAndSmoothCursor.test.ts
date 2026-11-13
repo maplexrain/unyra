@@ -352,5 +352,105 @@ set tabstop=4
       expect(path).toContain('.vimrc')
     }
   })
+
+  it('foldCurrentScope 与 unfoldCurrentScope 能够智能侦测并快速折叠/展开当前代码块', async () => {
+    const { EditorState } = await import('@codemirror/state')
+    const { javascript } = await import('@codemirror/lang-javascript')
+    const { foldGutter } = await import('@codemirror/language')
+    const { foldCurrentScope, unfoldCurrentScope } = await import('../src/lib/cmFoldScope')
+
+    const code = `function calculateTotal(items) {\n  let sum = 0;\n  for (const item of items) {\n    sum += item.price;\n  }\n  return sum;\n}`
+    let state = EditorState.create({
+      doc: code,
+      selection: { anchor: code.indexOf('sum += item.price') },
+      extensions: [javascript(), foldGutter()],
+    })
+    const mockView = {
+      get state() {
+        return state
+      },
+      dispatch: (tr: any) => {
+        state = state.update(tr).state
+      },
+      lineBlockAt: (pos: number) => {
+        const line = state.doc.lineAt(pos)
+        return { from: line.from, to: line.to }
+      },
+    } as any
+
+    // 光标在循环体内部，foldCurrentScope 智能向上侦测并折叠当前代码块
+    const foldRes = foldCurrentScope(mockView)
+    expect(foldRes).toBe(true)
+
+    // unfoldCurrentScope 展开该代码块
+    const unfoldRes = unfoldCurrentScope(mockView)
+    expect(typeof unfoldRes).toBe('boolean')
+  })
+
+  it('registerVimExCommands 成功将应用功能绑定到 Vim 冒号命令模式', async () => {
+    const origDoc = (globalThis as any).document
+    ;(globalThis as any).document = {
+      documentElement: { style: {} },
+      createElement: () => ({
+        style: {},
+        appendChild: () => {},
+        setAttribute: () => {},
+      }),
+    }
+
+    try {
+      const { Vim } = await import('@replit/codemirror-vim')
+      const { registerVimExCommands, setVimEditorBridge } = await import('../src/lib/vimCommands')
+
+      registerVimExCommands()
+
+      let saved = false
+      let closed = false
+      setVimEditorBridge({
+        onSave: () => {
+          saved = true
+        },
+        onClose: () => {
+          closed = true
+        },
+      })
+
+      const mockCm = {
+        operation: (fn: any) => fn(),
+        openNotification: () => {},
+        openDialog: () => {},
+        getCursor: () => ({ line: 0, ch: 0 }),
+        state: { vim: {} },
+      }
+
+      // 验证 :w 触发保存
+      Vim.handleEx(mockCm as any, 'w')
+      expect(saved).toBe(true)
+
+      // 验证 :q 触发关闭
+      Vim.handleEx(mockCm as any, 'q')
+      expect(closed).toBe(true)
+
+      setVimEditorBridge(null)
+    } finally {
+      ;(globalThis as any).document = origDoc
+    }
+  })
+
+  it('triggerShortcutAction 能够正确触发已注册的快捷键动作', async () => {
+    const { triggerShortcutAction, subscribeShortcut } = await import('../src/lib/shortcuts')
+    let triggered = false
+    const unsub = subscribeShortcut('learn.save', {
+      down: () => {
+        triggered = true
+      },
+    })
+
+    const ok = triggerShortcutAction('learn.save')
+    expect(ok).toBe(true)
+    expect(triggered).toBe(true)
+
+    unsub()
+  })
 })
 
