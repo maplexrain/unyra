@@ -126,6 +126,7 @@ interface Props {
   /** 允许由 Vim 冒号命令触发的页签关闭、分屏等宿主操作 */
   onCloseTab?: (force?: boolean) => void
   onCloseOtherTabs?: (force?: boolean) => void
+  onNewTab?: () => void
   onSplitView?: (direction: 'horizontal' | 'vertical') => void
   onCustomSave?: (force?: boolean) => Promise<boolean | void> | boolean | void
 }
@@ -145,16 +146,17 @@ export default function SourceEditor({
   revealKey,
   onCloseTab,
   onCloseOtherTabs,
+  onNewTab,
   onSplitView,
   onCustomSave,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
   const [vimActive, setVimActive] = useState<boolean>(() => isVimEnabled())
-  const bridgeActionsRef = useRef({ onCloseTab, onCloseOtherTabs, onSplitView, onCustomSave })
+  const bridgeActionsRef = useRef({ onCloseTab, onCloseOtherTabs, onNewTab, onSplitView, onCustomSave })
   useEffect(() => {
-    bridgeActionsRef.current = { onCloseTab, onCloseOtherTabs, onSplitView, onCustomSave }
-  }, [onCloseTab, onCloseOtherTabs, onSplitView, onCustomSave])
+    bridgeActionsRef.current = { onCloseTab, onCloseOtherTabs, onNewTab, onSplitView, onCustomSave }
+  }, [onCloseTab, onCloseOtherTabs, onNewTab, onSplitView, onCustomSave])
   /** 上层给进来的最新 value：updateListener 里只把「用户真的改了」交出去 */
   const valueRef = useRef(value)
   const changeRef = useRef(onChange)
@@ -399,23 +401,62 @@ export default function SourceEditor({
       view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true })
       view.focus()
     }
-    // 增强 Vim 翻页滚动为丝滑过渡动画 (Ctrl+U / Ctrl+D)
+    // 增强 Vim 翻页滚动为丝滑过渡动画 (Ctrl+U / Ctrl+D / Ctrl+F / Ctrl+B)
     const patchSmoothVimScroll = (v: EditorView) => {
       const cm = (v as any).cm
       if (cm && !cm.__smoothScrollPatched) {
         cm.__smoothScrollPatched = true
+        let smoothTimer: number | null = null
+
+        // 抑制平滑翻页过程中的瞬间同步 scrollIntoView 突跳
+        const origScrollIntoView = cm.scrollIntoView?.bind(cm)
+        cm.scrollIntoView = (pos?: any, margin?: any) => {
+          if (cm.__isSmoothScrolling) {
+            return
+          }
+          origScrollIntoView?.(pos, margin)
+        }
+
         const origScrollTo = cm.scrollTo?.bind(cm)
         cm.scrollTo = (x: number | null, y: number | null) => {
           const scroller = v.scrollDOM
-          if (!scroller || typeof scroller.scrollTo !== 'function') {
+          if (!scroller) {
             origScrollTo?.(x, y)
             return
           }
-          scroller.scrollTo({
-            left: x != null ? x : scroller.scrollLeft,
-            top: y != null ? y : scroller.scrollTop,
-            behavior: 'smooth',
-          })
+
+          if (y != null) {
+            cm.__isSmoothScrolling = true
+            if (smoothTimer !== null) window.clearTimeout(smoothTimer)
+            smoothTimer = window.setTimeout(() => {
+              cm.__isSmoothScrolling = false
+              smoothTimer = null
+            }, 300)
+
+            const startY = scroller.scrollTop
+            const diff = y - startY
+            if (Math.abs(diff) > 2) {
+              const startTime = performance.now()
+              const duration = 240
+              const animStep = (now: number) => {
+                const elapsed = now - startTime
+                const progress = Math.min(elapsed / duration, 1)
+                // cubic-bezier easeOut: 1 - (1 - progress)^3
+                const ease = 1 - Math.pow(1 - progress, 3)
+                scroller.scrollTop = startY + diff * ease
+                if (progress < 1) {
+                  requestAnimationFrame(animStep)
+                }
+              }
+              requestAnimationFrame(animStep)
+            } else {
+              scroller.scrollTop = y
+            }
+          }
+
+          if (x != null) {
+            scroller.scrollLeft = x
+          }
         }
       }
     }
@@ -429,6 +470,7 @@ export default function SourceEditor({
       onSave: (force) => bridgeActionsRef.current.onCustomSave?.(force),
       onClose: (force) => bridgeActionsRef.current.onCloseTab?.(force),
       onCloseOthers: (force) => bridgeActionsRef.current.onCloseOtherTabs?.(force),
+      onNewTab: () => bridgeActionsRef.current.onNewTab?.(),
       onSplit: (direction) => bridgeActionsRef.current.onSplitView?.(direction),
     })
 

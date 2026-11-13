@@ -70,6 +70,7 @@ interface Props {
   onRevealSource?: (loc: SourceSpan) => void
   onCloseTab?: (force?: boolean) => void
   onCloseOtherTabs?: (force?: boolean) => void
+  onNewTab?: () => void
   /** 说一句话（读不到剪贴板、复制成功这类）：接到全局 toast 上 */
   onToast?: (message: string) => void
 }
@@ -90,6 +91,7 @@ export default function LocalDoc({
   onRevealSource,
   onCloseTab,
   onCloseOtherTabs,
+  onNewTab,
   onToast,
 }: Props) {
   const name = fileNameOf(path)
@@ -412,6 +414,7 @@ export default function LocalDoc({
         revealKey={localRevealKey(path)}
         onCloseTab={onCloseTab}
         onCloseOtherTabs={onCloseOtherTabs}
+        onNewTab={onNewTab}
       />
     )
   }

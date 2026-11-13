@@ -434,6 +434,7 @@ set tabstop=4
       // 验证全面扩充的命令：:q! 强制关闭、:tabo 关闭其他、:sp 水平分屏、:vs 垂直分屏、:tutor 学习
       let forceClosed = false
       let closedOthers = false
+      let newTabTriggered = false
       let splitDir: string | null = null
       setVimEditorBridge({
         onClose: (force) => {
@@ -442,10 +443,16 @@ set tabstop=4
         onCloseOthers: () => {
           closedOthers = true
         },
+        onNewTab: () => {
+          newTabTriggered = true
+        },
         onSplit: (dir) => {
           splitDir = dir
         },
       })
+
+      Vim.handleEx(mockCm as any, 'tabnew')
+      expect(newTabTriggered).toBe(true)
 
       Vim.handleEx(mockCm as any, 'q!')
       expect(forceClosed).toBe(true)

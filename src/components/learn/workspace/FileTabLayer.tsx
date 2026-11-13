@@ -1,5 +1,6 @@
 import { memo } from 'react'
-import type { LearnStore, LearnTab } from '../../../learn/types'
+import type { LearnStore, LearnTab, TabRef } from '../../../learn/types'
+import { newDraftKey } from '../../../learn/tabs'
 import { viewOf } from '../../../learn/tabs'
 import { wsRelOfTab } from '../../../learn/workspace'
 import { userAbsPath } from '../../../lib/storage'
@@ -27,6 +28,7 @@ export interface FileTabLayerProps {
     target: 'self' | 'others' | 'right' | 'all',
     opts?: { confirm?: boolean },
   ) => void
+  openTab?: (ref: TabRef) => void
   setTabView: (tabId: string, view: 'source' | 'preview') => void
   getOutlineSlot: (tabId: string) => { current: OutlineHandle | null }
   onToast: (msg: string) => void
@@ -51,6 +53,7 @@ export const FileTabLayer = memo(function FileTabLayer({
   localTicks,
   stageLocalDraft,
   closeTab,
+  openTab,
   setTabView,
   getOutlineSlot,
   onToast,
@@ -111,6 +114,7 @@ export const FileTabLayer = memo(function FileTabLayer({
               }}
               onCloseTab={(force) => closeTab(groupId, tab.id, 'self', { confirm: !force })}
               onCloseOtherTabs={(force) => closeTab(groupId, tab.id, 'others', { confirm: !force })}
+              onNewTab={() => openTab?.({ kind: 'draft', key: newDraftKey() })}
               onToast={onToast}
             />
           </div>

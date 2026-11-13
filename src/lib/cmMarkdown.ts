@@ -291,10 +291,14 @@ export function markdownEditorTheme(pad: {
       backgroundColor: 'transparent !important',
       outline: 'none !important',
     },
-    '.cm-panels-bottom:has(.cm-vim-panel input)': {
-      overflow: 'visible !important',
-      backgroundColor: 'transparent !important',
+    '.cm-panels:has(.cm-vim-panel input), .cm-panels-bottom:has(.cm-vim-panel input)': {
+      position: 'static !important',
+      height: '0 !important',
+      minHeight: '0 !important',
       border: 'none !important',
+      backgroundColor: 'transparent !important',
+      overflow: 'visible !important',
+      pointerEvents: 'none !important',
     },
     // 普通 Vim 底部状态展示（无输入框时的通知条）
     '.cm-vim-panel': {
@@ -305,35 +309,42 @@ export function markdownEditorTheme(pad: {
       borderTop: '1px solid var(--color-line, rgba(255,255,255,0.1)) !important',
       padding: '4px 8px !important',
     },
-    // 现代 Command Palette 悬浮命令输入卡片：水平居中、垂直顶部悬浮，沉浸微光毛玻璃质感
+    // 现代 Command Palette 悬浮命令输入卡片：页面水平居中、垂直顶部悬浮，沉浸微光毛玻璃质感
     '.cm-vim-panel:has(input)': {
-      position: 'absolute !important',
-      top: '18px !important',
+      position: 'fixed !important',
+      top: '52px !important',
       bottom: 'auto !important',
       left: '50% !important',
       transform: 'translateX(-50%) !important',
-      width: 'min(540px, calc(100% - 48px)) !important',
-      zIndex: '1000 !important',
+      width: 'min(560px, calc(100vw - 64px)) !important',
+      zIndex: '9999 !important',
+      pointerEvents: 'auto !important',
       display: 'flex !important',
       alignItems: 'center !important',
       gap: '8px !important',
       padding: '8px 16px !important',
       borderRadius: '8px !important',
-      backgroundColor: 'color-mix(in srgb, var(--color-card, #181825) 88%, transparent) !important',
+      backgroundColor: 'color-mix(in srgb, var(--color-card, #181825) 90%, transparent) !important',
       backdropFilter: 'blur(16px) saturate(180%) !important',
       WebkitBackdropFilter: 'blur(16px) saturate(180%) !important',
-      border: '1px solid color-mix(in srgb, var(--color-seal, #38bdf8) 45%, var(--color-line, rgba(255,255,255,0.15))) !important',
+      border: '1px solid color-mix(in srgb, var(--color-seal, #38bdf8) 50%, var(--color-line, rgba(255,255,255,0.15))) !important',
       boxShadow:
-        '0 16px 36px -4px rgba(0,0,0,0.5), 0 0 18px color-mix(in srgb, var(--color-seal, #38bdf8) 25%, transparent) !important',
+        '0 20px 48px -4px rgba(0,0,0,0.65), 0 0 20px color-mix(in srgb, var(--color-seal, #38bdf8) 30%, transparent) !important',
       color: 'var(--color-ink, #cdd6f4) !important',
       fontFamily: IDEA_MONO_FONT,
       fontSize: '13.5px !important',
       animation: 'cm-vim-panel-pop 160ms cubic-bezier(0.16, 1, 0.3, 1)',
     },
+    '.cm-vim-panel:has(input) > *': {
+      display: 'flex !important',
+      alignItems: 'center !important',
+      width: '100% !important',
+      gap: '6px !important',
+    },
     '@keyframes cm-vim-panel-pop': {
       from: {
         opacity: 0,
-        transform: 'translate(-50%, -10px) scale(0.97)',
+        transform: 'translate(-50%, -12px) scale(0.97)',
       },
       to: {
         opacity: 1,

@@ -8,6 +8,7 @@ export interface VimEditorBridge {
   onSave?: (force?: boolean) => Promise<boolean | void> | boolean | void
   onClose?: (force?: boolean) => void
   onCloseOthers?: (force?: boolean) => void
+  onNewTab?: () => void
   onNextTab?: () => void
   onPrevTab?: () => void
   onSplit?: (direction: 'horizontal' | 'vertical') => void
@@ -31,9 +32,24 @@ export function getVimEditorBridge(): VimEditorBridge | null {
 
 /** 显示 Vim 风格的确认/提示通知 */
 function showVimNotice(cm: any, message: string): void {
+  // 安全防护：兜底保护 currentNotificationClose，彻底防止 dialog 为空时触发 .remove() 报错
+  if (cm?.state && typeof cm.state.currentNotificationClose === 'function') {
+    const origClose = cm.state.currentNotificationClose
+    cm.state.currentNotificationClose = () => {
+      try {
+        origClose()
+      } catch {
+        // 安全抑制
+      }
+    }
+  }
+
   if (typeof cm?.openNotification === 'function') {
     try {
-      cm.openNotification(message, { bottom: true, duration: 2500 })
+      // CodeMirror Vim 的 openNotification 要求 template 必须是 Node / HTMLElement（内部执行 appendChild）
+      const el = document.createElement('span')
+      el.textContent = message
+      cm.openNotification(el, { bottom: true, duration: 2500 })
     } catch {
       // 容错
     }
@@ -129,14 +145,30 @@ export function registerVimExCommands(): void {
     }
   })
 
-  // 5. :tabnew / :tabedit / :tabe 新建页签
+  // 5. :tabnew / :tabedit / :tabe / :new 新建空白文件页签
   Vim.defineEx('tabedit', 'tabe', (cm) => {
-    triggerShortcutAction('web.newTab')
-    showVimNotice(cm, '[新建页签]')
+    if (activeBridge?.onNewTab) {
+      activeBridge.onNewTab()
+      showVimNotice(cm, '[新建空白文件]')
+      return
+    }
+    showVimNotice(cm, '[新建空白文件]')
   })
   Vim.defineEx('tabnew', 'tabnew', (cm) => {
-    triggerShortcutAction('web.newTab')
-    showVimNotice(cm, '[新建页签]')
+    if (activeBridge?.onNewTab) {
+      activeBridge.onNewTab()
+      showVimNotice(cm, '[新建空白文件]')
+      return
+    }
+    showVimNotice(cm, '[新建空白文件]')
+  })
+  Vim.defineEx('new', 'new', (cm) => {
+    if (activeBridge?.onNewTab) {
+      activeBridge.onNewTab()
+      showVimNotice(cm, '[新建空白文件]')
+      return
+    }
+    showVimNotice(cm, '[新建空白文件]')
   })
 
   // 6. :tabclose / :tabc 关闭页签 (:tabc! 强制关闭)

@@ -1,6 +1,6 @@
 import { ExternalLink, Globe, Maximize2, Minimize2 } from 'lucide-react'
 import type { LearnTab } from '../../../learn/types'
-import { tabTitle, tabKey, isPdfFile } from '../../../learn/tabs'
+import { tabTitle, tabKey, isPdfFile, newDraftKey } from '../../../learn/tabs'
 import { setFocus, focusTabsInGroup } from '../../../learn/groups'
 import { nodeById, resolveDisplayedConversation } from '../../../learn/graph'
 import { updateFileNode } from '../../../learn/fileNodes'
@@ -512,6 +512,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
                 ext=".html"
                 onCloseTab={(force) => closeTab(groupId, gTabId, 'self', { confirm: !force })}
                 onCloseOtherTabs={(force) => closeTab(groupId, gTabId, 'others', { confirm: !force })}
+                onNewTab={() => openTab({ kind: 'draft', key: newDraftKey() })}
                 onSplitView={() => { if (gTab) openSisterDocView(store, gTab, 'preview', groupId, set) }}
               />
             ) : (
@@ -549,6 +550,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
                 revealKey={nodeRevealKey(dg.node.id, dg.source.kind, dg.source.note)}
                 onCloseTab={(force) => closeTab(groupId, gTabId, 'self', { confirm: !force })}
                 onCloseOtherTabs={(force) => closeTab(groupId, gTabId, 'others', { confirm: !force })}
+                onNewTab={() => openTab({ kind: 'draft', key: newDraftKey() })}
                 onSplitView={() => { if (gTab) openSisterDocView(store, gTab, 'preview', groupId, set) }}
               />
             ) : null /* 预览那一份由下面的常驻列表渲染（见 DocPane） */
@@ -650,6 +652,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               localTicks={localTicks}
               stageLocalDraft={stageLocalDraft}
               closeTab={closeTab}
+              openTab={openTab}
               setTabView={setTabView}
               getOutlineSlot={getOutlineSlot}
               onToast={onToast}
