@@ -15,7 +15,7 @@ import { combineConfig, type Extension, Facet, RangeSetBuilder, type Line, type 
  * 核心设计准则（严格对齐 IntelliJ IDEA 经典表现）：
  * 1. 纯垂直线（Vertical Guides）：只在行首的前导空白缩进列绘制垂直线，纯直角、零圆角；
  * 2. 绝对不贯穿文字：每行的导向线宽度严格限制在行首缩进空白宽度内，文字区域无任何多余线条遮挡；
- * 3. 绝不悬空右侧：垂直线永远位于左侧基准缩进槽内，绝不跟随行末开括号向右漂移；
+ * 3. 严格左对齐父级基准列：代码块引导线严格往左对齐开括号关键字所在列（如外层函数对齐 0 列，for 循环对齐 2 列）；
  * 4. 极细克制不喧宾夺主：线宽严格 1px，未激活状态为极淡墨色点线，激活状态为天青色实线，无刺眼发光光晕；
  * 5. 同行配对不画线：单行符号（如 import { foo } from 'bar'）起止行相同，不产生跨行高亮；
  * 6. 活动作用域高亮（Active Scope Guide）：当光标在跨行代码块内部或在配对括号上时，该块左侧缩进线高亮贯穿全块。
@@ -31,7 +31,7 @@ const indentGuideFacet = Facet.define<IndentGuideConfig, Required<IndentGuideCon
   combine(configs) {
     return combineConfig(configs, {
       highlightActiveBlock: true,
-      hideFirstIndent: true, // 默认隐藏第 0 列（贴着行号的那一条），保持行号边界干净清爽
+      hideFirstIndent: false, // 允许代码缩进槽完整呈现层级导线
       thickness: 1,
     })
   },
@@ -218,7 +218,7 @@ class IndentationMap {
   }
 
   /**
-   * 精确计算当前光标所处的跨行代码块，并高亮该代码块对应的垂直缩进导线
+   * 精确计算当前光标所处的跨行代码块，并高亮该代码块左侧基准缩进线（向左对齐父级）
    */
   private findAndSetActiveLines() {
     const head = this.state.selection.main.head
@@ -233,45 +233,47 @@ class IndentationMap {
           const startLine = this.state.doc.lineAt(Math.min(bPos, match.end.from))
           const endLine = this.state.doc.lineAt(Math.max(bPos, match.end.from))
           if (startLine.number !== endLine.number) {
-            // 获取块内部的缩进级别
+            // 代码块对齐基准列：取开括号行的前导缩进列（向左对齐开括号与关键字，而非向右贴在内部代码）
             const startCol = numColumns(startLine.text, this.state.tabSize)
-            const targetActiveLevel = Math.floor(startCol / this.unitWidth) + 1
-            this.markActiveSpan(startLine.number, endLine.number, targetActiveLevel)
+            const targetActiveCol = Math.floor(startCol / this.unitWidth)
+            this.markActiveSpan(startLine.number, endLine.number, targetActiveCol)
             return
           }
         }
       }
     }
 
-    // 2. 启发式作用域分析（IntelliJ IDEA 经典机制）：基于当前行缩进深度向上和向下查找作用域
+    // 2. 启发式作用域分析（IntelliJ IDEA 经典机制）：基于当前行缩进深度
     let curEntry = this.get(curLine.number)
     if (!curEntry) {
       curEntry = this.add(curLine)
     }
 
-    let activeLevel = curEntry.level
-    if (activeLevel === 0) {
-      // 当前行在根层级（如 export function ... {），检查下一行是否开启了新块
+    if (curEntry.level <= 0) {
+      // 当前行在根层级或空行，检查下一行是否开启了代码块
       if (curLine.number < this.state.doc.lines) {
         const nextCol = numColumns(this.state.doc.line(curLine.number + 1).text, this.state.tabSize)
         const nextLevel = Math.floor(nextCol / this.unitWidth)
         if (nextLevel > 0) {
-          activeLevel = nextLevel
-        } else {
-          return
+          this.scanAndSetActive(curLine.number, 0)
         }
-      } else {
-        return
       }
+      return
     }
 
-    // 向上扫描查找代码块起始行
-    let blockStart = curLine.number
-    for (let l = curLine.number; l >= 1; l--) {
+    // 当前行处于缩进块内部，其归属的代码块引导线向左对齐在其父级起始列 (level - 1)
+    const targetActiveCol = curEntry.level - 1
+    this.scanAndSetActive(curLine.number, targetActiveCol)
+  }
+
+  private scanAndSetActive(lineNo: number, targetCol: number) {
+    // 向上扫描查找代码块起始行（缩进小于等于 targetCol 即到达外层边界）
+    let blockStart = lineNo
+    for (let l = lineNo; l >= 1; l--) {
       const line = this.state.doc.line(l)
       if (line.text.trim().length === 0) continue
       const lvl = Math.floor(numColumns(line.text, this.state.tabSize) / this.unitWidth)
-      if (lvl < activeLevel) {
+      if (lvl <= targetCol) {
         blockStart = l
         break
       }
@@ -279,12 +281,12 @@ class IndentationMap {
     }
 
     // 向下扫描查找代码块闭合行
-    let blockEnd = curLine.number
-    for (let l = curLine.number; l <= this.state.doc.lines; l++) {
+    let blockEnd = lineNo
+    for (let l = lineNo; l <= this.state.doc.lines; l++) {
       const line = this.state.doc.line(l)
       if (line.text.trim().length === 0) continue
       const lvl = Math.floor(numColumns(line.text, this.state.tabSize) / this.unitWidth)
-      if (lvl < activeLevel) {
+      if (lvl <= targetCol) {
         blockEnd = l
         break
       }
@@ -292,7 +294,7 @@ class IndentationMap {
     }
 
     if (blockStart !== blockEnd) {
-      this.markActiveSpan(blockStart, blockEnd, activeLevel)
+      this.markActiveSpan(blockStart, blockEnd, targetCol)
     }
   }
 
@@ -309,9 +311,9 @@ class IndentationMap {
 /**
  * 构造纯垂直直角缩进线 CSS 背景渐变（纯标准 CSS repeating-linear-gradient，绝不贯穿文字）
  */
-function createGradient(markerVar: string, thickness: number, indentWidth: number, startCol: number, colCount: number) {
+function createGradient(markerVar: string, thickness: number, indentWidth: number, colIndex: number) {
   const gradient = `repeating-linear-gradient(to right, var(${markerVar}) 0 ${thickness}px, transparent ${thickness}px ${indentWidth}ch)`
-  return `${gradient} ${startCol * indentWidth}ch/calc(${indentWidth * colCount}ch) no-repeat`
+  return `${gradient} ${colIndex * indentWidth}ch/${indentWidth}ch no-repeat`
 }
 
 function makeBackgroundCSS(
@@ -323,29 +325,18 @@ function makeBackgroundCSS(
   const { level, activeLevel } = entry
   if (level <= 0) return ''
 
-  const startCol = hideFirstIndent ? 1 : 0
-  if (level < startCol) return ''
-
-  const totalCols = level - startCol
-  if (totalCols <= 0 && activeLevel !== level) return ''
-
   const bgs: string[] = []
 
-  if (activeLevel !== undefined && activeLevel >= startCol && activeLevel <= level) {
-    const beforeActive = activeLevel - startCol
-    if (beforeActive > 0) {
-      bgs.push(createGradient('--indent-guide-base-color', thickness, indentWidth, startCol, beforeActive))
+  // 遍历本行包含的所有前导缩进槽（0 到 level - 1）
+  for (let col = 0; col < level; col++) {
+    const isActive = activeLevel !== undefined && activeLevel === col
+    // 若配置了 hideFirstIndent，普通未激活的第 0 列隐藏；但若第 0 列处于 active，则始终高亮呈现
+    if (col === 0 && hideFirstIndent && !isActive) {
+      continue
     }
-    // 当前高亮块所归属的垂直缩进导向线（1px 天青墨色，纯垂直直角）
-    bgs.push(createGradient('--indent-guide-active-color', thickness, indentWidth, activeLevel, 1))
 
-    const afterActive = level - activeLevel
-    if (afterActive > 0) {
-      bgs.push(createGradient('--indent-guide-base-color', thickness, indentWidth, activeLevel + 1, afterActive))
-    }
-  } else {
-    // 全普通缩进槽
-    bgs.push(createGradient('--indent-guide-base-color', thickness, indentWidth, startCol, totalCols))
+    const colorVar = isActive ? '--indent-guide-active-color' : '--indent-guide-base-color'
+    bgs.push(createGradient(colorVar, thickness, indentWidth, col))
   }
 
   return bgs.join(', ')
@@ -427,7 +418,7 @@ const indentGuidesTheme = EditorView.baseTheme({
     content: '""',
     position: 'absolute',
     top: 0,
-    left: '2px', // 对齐 CodeMirror .cm-line 默认内边距
+    left: '0px', // 对齐代码行左边界基准
     right: 0,
     bottom: 0,
     background: 'var(--indent-guides)',
