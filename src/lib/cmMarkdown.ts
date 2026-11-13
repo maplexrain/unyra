@@ -94,7 +94,17 @@ export function markdownEditorTheme(pad: {
       color: 'currentColor !important',
       WebkitTextFillColor: 'currentColor !important',
     },
-    '.cm-cursor': { borderLeftColor: 'var(--color-seal)' },
+    // 彻底隐藏原生光标、拖放光标与静态 fat-cursor，统一由平滑虚拟光标独占渲染，绝对避免双光标重叠
+    '.cm-cursor, .cm-dropCursor, .cm-fat-cursor': {
+      display: 'none !important',
+      opacity: '0 !important',
+      visibility: 'hidden !important',
+      width: '0 !important',
+      border: 'none !important',
+      outline: 'none !important',
+      boxShadow: 'none !important',
+      pointerEvents: 'none !important',
+    },
     // 左侧行号栏 (Gutters) - IntelliJ IDEA 风格
     '.cm-gutters': {
       backgroundColor: 'transparent',

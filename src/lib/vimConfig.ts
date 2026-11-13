@@ -40,17 +40,27 @@ export function applyVimrcLine(line: string): void {
   const cmd = tokens[0].toLowerCase()
 
   try {
-    // 1. 按键映射 (map / noremap)
+    // 1. 按键映射 (map / noremap)：严格区分非递归映射与递归映射，防止同键递归循环
+    const isNoremap = cmd.includes('noremap')
+    const mapFn = isNoremap ? Vim.noremap : Vim.map
+
+    // 清洗 rhs：过滤 CodeMirror-Vim 不支持的末尾折叠命令（如 nzzzv / Nzzzv 中的 zv），
+    // 兼容保留核心动作与平滑居中 (nzz / Nzz)，杜绝未识别键位序列导致按键阻断
+    const sanitizeRhs = (rhs: string): string => {
+      if (rhs.endsWith('zv')) return rhs.slice(0, -2)
+      return rhs
+    }
+
     if (cmd === 'inoremap' || cmd === 'imap') {
-      if (tokens.length >= 3) Vim.map(tokens[1], tokens[2], 'insert')
+      if (tokens.length >= 3) mapFn(tokens[1], sanitizeRhs(tokens[2]), 'insert')
     } else if (cmd === 'nnoremap' || cmd === 'nmap') {
-      if (tokens.length >= 3) Vim.map(tokens[1], tokens[2], 'normal')
+      if (tokens.length >= 3) mapFn(tokens[1], sanitizeRhs(tokens[2]), 'normal')
     } else if (cmd === 'vnoremap' || cmd === 'vmap') {
-      if (tokens.length >= 3) Vim.map(tokens[1], tokens[2], 'visual')
+      if (tokens.length >= 3) mapFn(tokens[1], sanitizeRhs(tokens[2]), 'visual')
     } else if (cmd === 'cnoremap' || cmd === 'cmap') {
-      if (tokens.length >= 3) Vim.map(tokens[1], tokens[2], 'command')
+      if (tokens.length >= 3) mapFn(tokens[1], sanitizeRhs(tokens[2]), 'command')
     } else if (cmd === 'noremap' || cmd === 'map') {
-      if (tokens.length >= 3) Vim.map(tokens[1], tokens[2], 'normal')
+      if (tokens.length >= 3) mapFn(tokens[1], sanitizeRhs(tokens[2]), 'normal')
     }
     // 2. 取消映射 (unmap)
     else if (cmd === 'iunmap') {

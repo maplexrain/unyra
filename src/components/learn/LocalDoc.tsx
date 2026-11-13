@@ -71,6 +71,8 @@ interface Props {
   onCloseTab?: (force?: boolean) => void
   onCloseOtherTabs?: (force?: boolean) => void
   onNewTab?: () => void
+  /** 外部修改通知版本号（仅真实外部变动时递增触发平滑回读，不销毁组件树） */
+  tick?: number
   /** 说一句话（读不到剪贴板、复制成功这类）：接到全局 toast 上 */
   onToast?: (message: string) => void
 }
@@ -92,6 +94,7 @@ export default function LocalDoc({
   onCloseTab,
   onCloseOtherTabs,
   onNewTab,
+  tick,
   onToast,
 }: Props) {
   const name = fileNameOf(path)
@@ -151,7 +154,7 @@ export default function LocalDoc({
     return () => {
       alive = false
     }
-  }, [path, media])
+  }, [path, media, tick])
 
   // 媒体文件：读一次二进制（data URL），图片 / 音频 / 视频各按 mime 渲染（PDF 独立由 PdfDocView 自行管理加载与视口懒渲染）
   useEffect(() => {
@@ -196,7 +199,7 @@ export default function LocalDoc({
     return () => {
       alive = false
     }
-  }, [path, media])
+  }, [path, media, tick])
 
   /*
    * md 打开时是空的：把默认视图从预览切到编辑（效果体在下面 base 定义之后，

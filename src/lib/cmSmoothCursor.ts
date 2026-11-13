@@ -55,7 +55,17 @@ class SmoothCursorPlugin {
   private lastIsBlock = false
   private hasPosition = false
 
-  private onVimModeChange = () => {
+  private onVimModeChange = (ev?: { mode?: string; subMode?: string }) => {
+    // 收到 Vim 模式切换事件时，立即在第 0 毫秒同步更新光标 DOM 形态，彻底杜绝切换滞后感
+    if (ev?.mode === 'insert') {
+      this.cursorEl.classList.remove('cm-cursor-block')
+      this.cursorEl.style.width = '2.5px'
+      this.trailEl.style.opacity = '0'
+      this.lastIsBlock = false
+    } else if (ev?.mode === 'normal' || ev?.mode === 'visual' || ev?.mode === 'replace') {
+      this.cursorEl.classList.add('cm-cursor-block')
+      this.lastIsBlock = true
+    }
     this.scheduleMeasure()
     queueMicrotask(() => this.scheduleMeasure())
   }
@@ -89,7 +99,7 @@ class SmoothCursorPlugin {
   private onKeyDown = (e: KeyboardEvent) => {
     this.ensureVimListener()
     const k = e.key
-    // 当按下 Vim 常见的模式切换按键时，立即排定调度以在第 0 毫秒完成光标形态切换
+    // 当按下 Vim 常见的模式切换按键时，立即在按键发生的最前端完成形态切换与快速排定
     if (
       k === 'i' ||
       k === 'I' ||
@@ -100,9 +110,23 @@ class SmoothCursorPlugin {
       k === 's' ||
       k === 'S' ||
       k === 'c' ||
-      k === 'C' ||
-      k === 'Escape'
+      k === 'C'
     ) {
+      const cm = (this.view as any).cm
+      if (cm?.state?.vim && !cm.state.vim.insertMode) {
+        this.cursorEl.classList.remove('cm-cursor-block')
+        this.cursorEl.style.width = '2.5px'
+        this.trailEl.style.opacity = '0'
+        this.lastIsBlock = false
+      }
+      queueMicrotask(() => this.scheduleMeasure())
+      requestAnimationFrame(() => this.scheduleMeasure())
+    } else if (k === 'Escape') {
+      const cm = (this.view as any).cm
+      if (cm?.state?.vim && cm.state.vim.insertMode) {
+        this.cursorEl.classList.add('cm-cursor-block')
+        this.lastIsBlock = true
+      }
       queueMicrotask(() => this.scheduleMeasure())
       requestAnimationFrame(() => this.scheduleMeasure())
     }
@@ -227,14 +251,14 @@ class SmoothCursorPlugin {
       this.trailEl.style.height = `${Math.round(height)}px`
       this.trailEl.style.width = `${Math.round(width)}px`
       this.trailEl.classList.toggle('cm-cursor-block', isBlock)
-      // 在 Insert 模式或无明显位移的模式切换时，拖尾立即归零，保持细光标清爽纯净
+      // 在 Insert 模式或无明显位移的模式切换时，拖尾立即归零，保持细光标清爽纯净；方块模式位移时赋予清晰饱满的尾翼流光
       this.trailEl.style.opacity =
-        this.view.hasFocus && dist >= 4 ? (isBlock ? '0.55' : '0.7') : '0'
+        this.view.hasFocus && dist >= 4 ? (isBlock ? '0.78' : '0.7') : '0'
 
       if (this.trailTimer !== null) window.clearTimeout(this.trailTimer)
       this.trailTimer = window.setTimeout(() => {
         this.trailEl.style.opacity = '0'
-      }, 160)
+      }, 260)
 
       // 移动中保持常亮，静止后恢复优雅淡入淡出闪烁
       this.resetBlink()
@@ -470,9 +494,9 @@ const smoothCursorBaseTheme = EditorView.baseTheme({
   },
   // 宽方块模式拖尾：与主宽光标等宽，呈现高质量的宽方块流光位移残影
   '.cm-smooth-cursor-trail.cm-cursor-block': {
-    backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 45%, transparent)',
+    backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 65%, transparent)',
     borderRadius: '2px',
-    boxShadow: '0 0 10px color-mix(in srgb, var(--color-seal, #38bdf8) 50%, transparent)',
+    boxShadow: '0 0 14px color-mix(in srgb, var(--color-seal, #38bdf8) 70%, transparent)',
   },
   // 主虚拟平滑光标：位移平滑直接平移，形态（宽/细）切换极速利落响应（70ms）
   '.cm-smooth-virtual-cursor': {

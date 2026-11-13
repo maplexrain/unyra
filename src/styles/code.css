@@ -623,5 +623,43 @@
   color: var(--color-ink-soft);
 }
 
+/*
+ * Vim 现代 Command Palette 悬浮命令输入卡片：
+ * 页面水平居中、垂直顶部悬浮，沉浸微光毛玻璃质感，避免任何局部布局或包含块挤压到页面底部
+ */
+.cm-editor .cm-panels-bottom:has(.cm-vim-panel input),
+.cm-editor .cm-panels:has(.cm-vim-panel input) {
+  position: static !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  border: none !important;
+  background-color: transparent !important;
+  overflow: visible !important;
+  pointer-events: none !important;
+}
+
+.cm-editor .cm-vim-panel:has(input) {
+  position: fixed !important;
+  top: 52px !important;
+  bottom: auto !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: min(560px, calc(100vw - 64px)) !important;
+  z-index: 99999 !important;
+  pointer-events: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 16px !important;
+  border-radius: 8px !important;
+  background-color: color-mix(in srgb, var(--color-card, #181825) 92%, transparent) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border: 1px solid color-mix(in srgb, var(--color-seal, #38bdf8) 50%, var(--color-line, rgba(255,255,255,0.15))) !important;
+  box-shadow: 0 20px 48px -4px rgba(0, 0, 0, 0.65), 0 0 20px color-mix(in srgb, var(--color-seal, #38bdf8) 30%, transparent) !important;
+  color: var(--color-ink, #cdd6f4) !important;
+}
+
+
 
 

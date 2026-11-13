@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { markdownEditorTheme, IDEA_MONO_FONT } from '../src/lib/cmMarkdown'
 import { smoothCursor } from '../src/lib/cmSmoothCursor'
 import { sisterTabRef, openSisterDocView } from '../src/components/learn/workspace/sisterView'
@@ -606,6 +606,33 @@ set tabstop=4
       ;(globalThis as any).MutationObserver = origMO
       ;(globalThis as any).Node = origNode
     }
+  })
+
+  it('selfSaveGuard 能正确识别并消费自身主动写盘路径，抑制自发 watcher 事件', async () => {
+    const { markSelfWritingPath, consumeSelfWritingPath } = await import(
+      '../src/components/learn/workspace/selfSaveGuard'
+    )
+    const testFile = 'C:\\notes\\test-save.md'
+    expect(consumeSelfWritingPath(testFile)).toBe(false)
+
+    markSelfWritingPath(testFile, 1000)
+    expect(consumeSelfWritingPath(testFile)).toBe(true)
+    // 消费后第二次应为 false
+    expect(consumeSelfWritingPath(testFile)).toBe(false)
+  })
+
+  it('applyVimrcLine 正确解析 nnoremap 非递归映射并清洗不受支持的末尾 zv 指令', async () => {
+    const { applyVimrcLine } = await import('../src/lib/vimConfig')
+    const { Vim } = await import('@replit/codemirror-vim')
+    const noremapSpy = vi.spyOn(Vim, 'noremap')
+
+    applyVimrcLine('nnoremap n nzzzv')
+    expect(noremapSpy).toHaveBeenCalledWith('n', 'nzz', 'normal')
+
+    applyVimrcLine('nnoremap N Nzzzv')
+    expect(noremapSpy).toHaveBeenCalledWith('N', 'Nzz', 'normal')
+
+    noremapSpy.mockRestore()
   })
 })
 

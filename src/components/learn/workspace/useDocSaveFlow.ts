@@ -58,6 +58,7 @@ import { readSuperDoc, writeSuperDoc } from '../../../learn/superdocs'
 import { addLocalFile } from '../../../learn/localfiles'
 import { writeLocalFile } from '../../../lib/localFiles'
 import { diskPathKey, userAbsPath, writeUserText } from '../../../lib/storage'
+import { markSelfWritingPath, consumeSelfWritingPath } from './selfSaveGuard'
 import { wsRelOfTab } from '../../../learn/workspace'
 import { native } from '../../../lib/native'
 import { savedTextOf } from './labels'
@@ -511,6 +512,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         } catch {
           /* 桥不可用：上面 saveText 已经成功了，说明桥在，这里不拦 */
         }
+        markSelfWritingPath(path)
         const ref: TabRef = { kind: 'local', path }
         set({
           ...s,
@@ -541,6 +543,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
           setDocSaving(false)
           return { ok: false, error: t('「{0}」已经不在了，没能保存', title) }
         }
+        if (diskPath) markSelfWritingPath(diskPath)
         const err =
           ref.kind === 'local'
             ? await writeLocalFile(diskPath, text)
@@ -778,6 +781,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         })
         // 用户取消了另存对话框：什么都不发生，页签与冲突标记都保持原样
         if (!r.ok) return
+        if (r.path) markSelfWritingPath(r.path)
         if (p.phase === 'close') {
           set({ ...getLatest(), drafts: dropDraft(getLatest().drafts, tab.id) })
           if (p.rest && p.closingIds && p.group && p.id && p.mode) {
@@ -809,6 +813,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
    */
   const handleLocalChange = useCallback(
     (p: string) => {
+      if (consumeSelfWritingPath(p)) return
       const s = getLatest()
       const wanted = diskPathKey(p)
       const tab = allTabs(s.docArea).find((t) => {

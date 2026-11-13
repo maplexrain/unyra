@@ -90,7 +90,7 @@ export const FileTabLayer = memo(function FileTabLayer({
 
         return (
           <div
-            key={tab.id + '#' + tick}
+            key={tab.id}
             data-file-pane={tab.id}
             className={isActive ? 'print-flat relative flex min-h-0 flex-1 flex-col' : 'hidden'}
             {...(!isActive ? { hidden: true } : {})}
@@ -102,6 +102,7 @@ export const FileTabLayer = memo(function FileTabLayer({
               editorScale={editorScale}
               draft={draft}
               savedText={localSaved?.path === validPath ? localSaved.text : undefined}
+              tick={tick}
               onDraft={(text) => stageLocalDraft(tab.id, text)}
               saving={docSaving}
               saveError={docSaveError}
