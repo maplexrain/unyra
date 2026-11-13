@@ -252,9 +252,14 @@ export function markdownEditorTheme(pad: {
       backgroundColor: 'transparent !important',
       transform: 'none !important',
     },
-    // IDEA 风格：当前行整行柔和横向带状底色高亮，沉浸不晃眼
+    // 当前行整行带状底色高亮（加深对比，与作用域突出形成分明层次）
     '.cm-activeLine': {
-      backgroundColor: 'color-mix(in srgb, var(--color-ink) 4.5%, transparent) !important',
+      backgroundColor: 'color-mix(in srgb, var(--color-ink) 7.5%, transparent) !important',
+    },
+    // 当前光标所在代码块（当前作用域）轻微背景高亮突出（比当前行更浅，视觉柔和沉浸）
+    '.cm-scope-active-line': {
+      backgroundColor: 'color-mix(in srgb, var(--color-ink) 2.8%, transparent)',
+      transition: 'background-color 140ms ease',
     },
   })
 }

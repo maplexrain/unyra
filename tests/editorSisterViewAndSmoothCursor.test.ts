@@ -179,3 +179,38 @@ describe('源码编辑器选区高亮与代码折叠动画', () => {
   })
 })
 
+describe('代码块（当前作用域）突出显示 (scopeHighlight)', () => {
+  it('导出合法的 CodeMirror 作用域高亮扩展', async () => {
+    const { scopeHighlight } = await import('../src/lib/cmScopeHighlight')
+    const ext = scopeHighlight()
+    expect(ext).toBeDefined()
+    expect(Array.isArray(ext)).toBe(true)
+  })
+
+  it('准确侦测当前光标所在代码块最内层作用域边界', async () => {
+    const { EditorState } = await import('@codemirror/state')
+    const { javascript } = await import('@codemirror/lang-javascript')
+    const { findEnclosingScope } = await import('../src/lib/cmScopeHighlight')
+
+    const code = `function outer() {\n  const config = {\n    port: 5173,\n    host: 'localhost'\n  };\n  return config;\n}`
+    const state = EditorState.create({
+      doc: code,
+      extensions: [javascript()],
+    })
+
+    // 光标在第 3 行 port: 5173，应该命中最内层对象作用域 (第 2 行到第 5 行)
+    const line3 = state.doc.line(3)
+    const scopeInner = findEnclosingScope(state, line3.from)
+    expect(scopeInner).toEqual({ start: 2, end: 5 })
+
+    // 光标在第 6 行 return config;，应该命中最外层函数作用域 (第 1 行到第 7 行)
+    const line6 = state.doc.line(6)
+    const scopeOuter = findEnclosingScope(state, line6.from)
+    expect(scopeOuter).toEqual({ start: 1, end: 7 })
+
+    // 空文档或者单行语句，返回 null
+    const emptyState = EditorState.create({ doc: 'const x = 1;' })
+    expect(findEnclosingScope(emptyState, 0)).toBeNull()
+  })
+})
+

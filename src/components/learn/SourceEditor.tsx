@@ -20,6 +20,7 @@ import { countSourceWords } from '../../lib/wordCount'
 import { getAppearance, setAppearance, clampEditorScale, SCALE_ZOOM_STEP, SCALE_HUD_MS } from '../../lib/appearance'
 import { markdownEditorTheme, markdownHighlight } from '../../lib/cmMarkdown'
 import { smoothCursor } from '../../lib/cmSmoothCursor'
+import { scopeHighlight } from '../../lib/cmScopeHighlight'
 import { takeSourceReveal, subscribeSourceReveal, type SourceReveal } from '../../lib/docReveal'
 import { useDocScroll } from '../../lib/docScroll'
 import { DocStatChip } from './DocFloat'
@@ -262,6 +263,8 @@ export default function SourceEditor({
           }),
           // 专业选区绘制图层：在文本下层渲染平滑发光选区，完好保留各 Token 语法高亮
           drawSelection(),
+          // 代码块（当前作用域）与当前光标行背景层次突出高亮
+          scopeHighlight(),
           highlightActiveLine(),
           // 平滑移动的虚拟光标动画
           smoothCursor(),
