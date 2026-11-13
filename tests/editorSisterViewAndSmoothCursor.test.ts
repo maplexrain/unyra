@@ -264,15 +264,17 @@ describe('Vim 模式设置与状态管理 (vimSettings)', () => {
         notified = val
       })
 
-      // 切换开启
+      // 切换开启（异步等待微任务事件派发）
       const next = toggleVimEnabled()
       expect(next).toBe(true)
       expect(isVimEnabled()).toBe(true)
+      await new Promise((r) => setTimeout(r, 10))
       expect(notified).toBe(true)
 
       // 再次切换关闭
       setVimEnabled(false)
       expect(isVimEnabled()).toBe(false)
+      await new Promise((r) => setTimeout(r, 10))
       expect(notified).toBe(false)
 
       unsub()
@@ -280,6 +282,17 @@ describe('Vim 模式设置与状态管理 (vimSettings)', () => {
       ;(globalThis as any).localStorage = origLocalStorage
       ;(globalThis as any).window = origWindow
     }
+  })
+
+  it('applyVimrc 成功解析并应用自定义按键映射与选项', async () => {
+    const { applyVimrc } = await import('../src/lib/vimConfig')
+    const configText = `
+" 基础注释
+set ignorecase " 忽略大小写
+inoremap jk <Esc>
+set tabstop=4
+`
+    expect(() => applyVimrc(configText)).not.toThrow()
   })
 
   it('VimIcon 与 VimFloatTip 组件正确导出', async () => {

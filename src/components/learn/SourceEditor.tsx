@@ -23,6 +23,7 @@ import { smoothCursor } from '../../lib/cmSmoothCursor'
 import { scopeHighlight } from '../../lib/cmScopeHighlight'
 import { vim } from '@replit/codemirror-vim'
 import { isVimEnabled, subscribeVimEnabled } from '../../lib/vimSettings'
+import { loadAndApplyVimrc } from '../../lib/vimConfig'
 import { takeSourceReveal, subscribeSourceReveal, type SourceReveal } from '../../lib/docReveal'
 import { useDocScroll } from '../../lib/docScroll'
 import { DocStatChip } from './DocFloat'
@@ -295,6 +296,10 @@ export default function SourceEditor({
               const next = update.state.doc.toString()
               valueRef.current = next
               changeRef.current(next)
+              // 若当前编辑的文件即为 .vimrc，实时热应用最新配置
+              if (label.endsWith('.vimrc') || label.endsWith('_vimrc') || ext === '.vimrc') {
+                loadAndApplyVimrc(next).catch(() => {})
+              }
             }
             // 监听代码块展开动作，为新展示的代码行注入瀑布级平滑渐显与位移下移动画
             for (const tr of update.transactions) {
@@ -350,6 +355,11 @@ export default function SourceEditor({
       view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true })
       view.focus()
     }
+    // 初始化挂载时若已开启 Vim，立即加载并执行 ~/.vimrc
+    if (isVimEnabled()) {
+      loadAndApplyVimrc().catch(() => {})
+    }
+
     const unsubVim = subscribeVimEnabled((enabled) => {
       setVimActive(enabled)
       const v = viewRef.current
@@ -357,6 +367,9 @@ export default function SourceEditor({
       v.dispatch({
         effects: vimComp.reconfigure(getVimExtensions(enabled)),
       })
+      if (enabled) {
+        loadAndApplyVimrc().catch(() => {})
+      }
     })
 
     return () => {

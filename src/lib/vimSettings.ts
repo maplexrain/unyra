@@ -27,7 +27,17 @@ export function setVimEnabled(enabled: boolean): void {
     // 忽略 localStorage 写入异常
   }
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent(VIM_CHANGE_EVENT, { detail: { enabled } }))
+    const win = window
+    // 使用 queueMicrotask 异步派发，彻底脱离 React 当前组件的渲染栈，防止跨组件更新报警
+    queueMicrotask(() => {
+      try {
+        if (typeof win !== 'undefined' && win.dispatchEvent) {
+          win.dispatchEvent(new CustomEvent(VIM_CHANGE_EVENT, { detail: { enabled } }))
+        }
+      } catch {
+        // 忽略宿主环境窗口已被卸载的情况
+      }
+    })
   }
 }
 
@@ -72,7 +82,10 @@ export function useVimEnabled(): [boolean, (next: boolean | ((prev: boolean) => 
   const update = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
     setEnabled((prev) => {
       const val = typeof next === 'function' ? next(prev) : next
-      setVimEnabled(val)
+      // 避免在 setState 更新器内执行同步事件副作用
+      queueMicrotask(() => {
+        setVimEnabled(val)
+      })
       return val
     })
   }, [])
