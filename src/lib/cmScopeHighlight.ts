@@ -1,10 +1,22 @@
-import { RangeSetBuilder, type Extension } from '@codemirror/state'
-import { EditorView, ViewPlugin, Decoration, type DecorationSet, type ViewUpdate } from '@codemirror/view'
+import { RangeSet, RangeSetBuilder, type Extension } from '@codemirror/state'
+import {
+  EditorView,
+  ViewPlugin,
+  Decoration,
+  GutterMarker,
+  gutterLineClass,
+  type DecorationSet,
+  type ViewUpdate,
+} from '@codemirror/view'
 import { foldable } from '@codemirror/language'
 
 const scopeLineDeco = Decoration.line({
   class: 'cm-scope-active-line',
 })
+
+const scopeGutterMarker = new (class extends GutterMarker {
+  override elementClass = 'cm-scope-gutter'
+})()
 
 /** 最大向上回溯查找可折叠代码块的行数，保障超大文档下的毫秒级性能 */
 const MAX_LOOKBACK_LINES = 160
@@ -88,6 +100,21 @@ export const scopeHighlightPlugin = ViewPlugin.fromClass(
   }
 )
 
+/**
+ * 作用域行号突出插件：
+ * 基于 gutterLineClass 为处于当前作用域代码块范围内的行号添加 .cm-scope-gutter 标记
+ */
+export const scopeGutterHighlighter = gutterLineClass.compute(['selection', 'doc'], (state) => {
+  const scope = findEnclosingScope(state, state.selection.main.head)
+  if (!scope) return RangeSet.empty
+  const marks = []
+  for (let l = scope.start; l <= scope.end; l++) {
+    const line = state.doc.line(l)
+    marks.push(scopeGutterMarker.range(line.from))
+  }
+  return RangeSet.of(marks)
+})
+
 export function scopeHighlight(): Extension {
-  return [scopeHighlightPlugin]
+  return [scopeHighlightPlugin, scopeGutterHighlighter]
 }

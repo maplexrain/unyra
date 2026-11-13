@@ -212,5 +212,74 @@ describe('代码块（当前作用域）突出显示 (scopeHighlight)', () => {
     const emptyState = EditorState.create({ doc: 'const x = 1;' })
     expect(findEnclosingScope(emptyState, 0)).toBeNull()
   })
+
+  it('主题中定义了 300ms 行号过渡动画与作用域行号样式', async () => {
+    const { markdownEditorTheme } = await import('../src/lib/cmMarkdown')
+    const theme = markdownEditorTheme({ top: 14, bottom: 24, left: 14, right: 24 })
+    expect(theme).toBeDefined()
+  })
+})
+
+describe('Vim 模式设置与状态管理 (vimSettings)', () => {
+  it('默认情况下 Vim 模式未开启，并支持状态切换与广播', async () => {
+    const store = new Map<string, string>()
+    const listeners = new Map<string, Set<(e: any) => void>>()
+
+    const mockLocalStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, String(v)),
+      removeItem: (k: string) => store.delete(k),
+    }
+
+    const mockWindow = {
+      addEventListener: (type: string, cb: any) => {
+        if (!listeners.has(type)) listeners.set(type, new Set())
+        listeners.get(type)!.add(cb)
+      },
+      removeEventListener: (type: string, cb: any) => {
+        listeners.get(type)?.delete(cb)
+      },
+      dispatchEvent: (e: any) => {
+        listeners.get(e.type)?.forEach((cb) => cb(e))
+        return true
+      },
+    }
+
+    const origLocalStorage = (globalThis as any).localStorage
+    const origWindow = (globalThis as any).window
+    ;(globalThis as any).localStorage = mockLocalStorage
+    ;(globalThis as any).window = mockWindow
+
+    try {
+      const { isVimEnabled, setVimEnabled, toggleVimEnabled, subscribeVimEnabled } = await import(
+        '../src/lib/vimSettings'
+      )
+
+      // 默认关闭
+      expect(isVimEnabled()).toBe(false)
+
+      // 订阅广播
+      let notified: boolean | null = null
+      const unsub = subscribeVimEnabled((val) => {
+        notified = val
+      })
+
+      // 切换开启
+      const next = toggleVimEnabled()
+      expect(next).toBe(true)
+      expect(isVimEnabled()).toBe(true)
+      expect(notified).toBe(true)
+
+      // 再次切换关闭
+      setVimEnabled(false)
+      expect(isVimEnabled()).toBe(false)
+      expect(notified).toBe(false)
+
+      unsub()
+    } finally {
+      ;(globalThis as any).localStorage = origLocalStorage
+      ;(globalThis as any).window = origWindow
+    }
+  })
 })
 

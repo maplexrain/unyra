@@ -3,6 +3,7 @@ import { BookOpen, Eye, ListTree, Network, Pencil } from 'lucide-react'
 import type { OutlineHandle } from '../../lib/outline'
 import type { DocView, TabRef } from '../../learn/types'
 import { t } from '../../i18n'
+import { useVimEnabled } from '../../lib/vimSettings'
 import DocOutline from './DocOutline'
 import DocRelations from './DocRelations'
 import type { NodeRelations, RelationItem } from './docRelations/computeRelations'
@@ -96,6 +97,7 @@ export default function DocFloat({
   const [phase, setPhase] = useState<'closed' | 'open' | 'closing'>('closed')
   /** 快照在打开那一刻取一次，开着的时候定时跟句柄对齐 */
   const [snap, setSnap] = useState<{ items: OutlineHandle['items']; activeIndex: number } | null>(null)
+  const [vimEnabled, setVimEnabled] = useVimEnabled()
   const timers = useRef<{ leave?: number; hide?: number; follow?: number }>({})
   const [relPhase, setRelPhase] = useState<'closed' | 'open' | 'closing'>('closed')
   const relTimers = useRef<{ leave?: number; hide?: number }>({})
@@ -213,6 +215,28 @@ export default function DocFloat({
             ) : (
               <Pencil size={15} className="transition-colors" />
             )}
+          </button>
+        )}
+
+        {/*
+          Vim 模式切换按钮：在左侧按钮组提供一键开关（默认不开启），
+          开启后支持 Normal/Insert/Visual 等全套 Vim 快捷键与模式流转。
+        */}
+        {view === 'source' && (
+          <button
+            type="button"
+            title={vimEnabled ? t('Vim 模式：已开启（点击关闭）') : t('Vim 模式：已关闭（点击开启）')}
+            aria-pressed={vimEnabled}
+            onClick={() => setVimEnabled(!vimEnabled)}
+            className={
+              VIEW_BTN +
+              ' transition-all ' +
+              (vimEnabled
+                ? 'border-seal/40 bg-seal/15 text-seal shadow-xs hover:bg-seal/25'
+                : 'border-transparent text-ink-soft opacity-60 hover:opacity-100 hover:bg-line/50 hover:text-ink')
+            }
+          >
+            <span className="font-mono text-[11.5px] font-black tracking-tight select-none leading-none">V</span>
           </button>
         )}
 

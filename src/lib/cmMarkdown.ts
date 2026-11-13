@@ -117,7 +117,9 @@ export function markdownEditorTheme(pad: {
       color: 'var(--color-ink-faint)',
       boxSizing: 'border-box',
       lineHeight: 'inherit',
-      transition: 'color 0.12s ease, opacity 0.12s ease',
+      // 行号样式变化平滑过渡动效，时长 300ms（响应光标移动与作用域进出）
+      transition:
+        'color 300ms cubic-bezier(0.2, 0, 0.2, 1), opacity 300ms cubic-bezier(0.2, 0, 0.2, 1), transform 300ms cubic-bezier(0.2, 0, 0.2, 1), font-weight 300ms ease',
     },
     // 代码块折叠栏 (Fold Gutter) - 紧凑内嵌在行号与右边框之间，完全居中偏左排布，绝不压线或出界
     '.cm-foldGutter': {
@@ -238,6 +240,20 @@ export function markdownEditorTheme(pad: {
         transform: 'scale(1)',
       },
     },
+    // 当前所处代码块作用域的行号样式：突出提亮、字重提升（中等加粗 600、微放 1.05、不透明度 0.82）
+    // 与当前光标所在行的最强聚焦（全粗体 700、放大 1.16、不透明度 1.0）保持明确梯度区分
+    '.cm-lineNumbers .cm-scope-gutter': {
+      color: 'color-mix(in srgb, var(--color-seal, #38bdf8) 75%, var(--color-ink-strong)) !important',
+      opacity: '0.82 !important',
+      fontWeight: '600 !important',
+      transform: 'scale(1.05)',
+      transformOrigin: 'right center',
+    },
+    // 确保折叠列在作用域高亮下不受放大或背景色影响
+    '.cm-foldGutter .cm-scope-gutter': {
+      backgroundColor: 'transparent !important',
+      transform: 'none !important',
+    },
     // IDEA 风格：当前行行号不带粗暴色块，字体显著变大（仅针对行号数字进行放大，绝不作用于折叠列）
     '.cm-lineNumbers .cm-activeLineGutter': {
       color: 'var(--color-ink-strong) !important',
@@ -260,6 +276,32 @@ export function markdownEditorTheme(pad: {
     '.cm-scope-active-line': {
       backgroundColor: 'color-mix(in srgb, var(--color-ink) 2.8%, transparent)',
       transition: 'background-color 140ms ease',
+    },
+    // Vim 模式支持：Normal 模式下天青方块光标与命令输入框美化
+    '.cm-fat-cursor': {
+      backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 80%, transparent) !important',
+      color: 'var(--color-ink-inverse, #ffffff) !important',
+      borderRadius: '2px',
+      transition: 'left 60ms ease, top 60ms ease',
+    },
+    '&:not(.cm-focused) .cm-fat-cursor': {
+      backgroundColor: 'transparent !important',
+      outline: '1.5px solid var(--color-seal, #38bdf8) !important',
+    },
+    '.cm-vim-panel': {
+      backgroundColor: 'var(--color-card, #1e1e2e) !important',
+      color: 'var(--color-ink, #cdd6f4) !important',
+      fontFamily: IDEA_MONO_FONT,
+      fontSize: '12px',
+      borderTop: '1px solid var(--color-line, rgba(255,255,255,0.1)) !important',
+      padding: '4px 8px !important',
+    },
+    '.cm-vim-panel input': {
+      fontFamily: IDEA_MONO_FONT,
+      color: 'var(--color-ink, #cdd6f4) !important',
+      backgroundColor: 'transparent !important',
+      outline: 'none',
+      border: 'none',
     },
   })
 }

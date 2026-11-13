@@ -36,6 +36,11 @@ class SmoothCursorPlugin {
         return { visible: false, left: 0, top: 0, height: 0 }
       }
 
+      // Vim 处于 Normal / Visual 模式且渲染了方块光标（fat-cursor）时隐藏虚拟细线，由 Vim 方块光标接管；Insert 模式自动由虚拟平滑光标接管
+      if (view.dom.querySelector('.cm-fat-cursor')) {
+        return { visible: false, left: 0, top: 0, height: 0 }
+      }
+
       const coords = view.coordsAtPos(sel.head)
       if (!coords) {
         if (this.hasPosition) {

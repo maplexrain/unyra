@@ -21,6 +21,8 @@ import { getAppearance, setAppearance, clampEditorScale, SCALE_ZOOM_STEP, SCALE_
 import { markdownEditorTheme, markdownHighlight } from '../../lib/cmMarkdown'
 import { smoothCursor } from '../../lib/cmSmoothCursor'
 import { scopeHighlight } from '../../lib/cmScopeHighlight'
+import { vim } from '@replit/codemirror-vim'
+import { isVimEnabled, subscribeVimEnabled } from '../../lib/vimSettings'
 import { takeSourceReveal, subscribeSourceReveal, type SourceReveal } from '../../lib/docReveal'
 import { useDocScroll } from '../../lib/docScroll'
 import { DocStatChip } from './DocFloat'
@@ -70,6 +72,12 @@ const editorTheme = markdownEditorTheme({ top: 14, bottom: 24, left: 14, right: 
 /** 语言按扩展名现配（markdown 内嵌代码块也各自高亮）；其余扩展名交给 language-data 的表 */
 const langComp = new Compartment()
 const readOnlyComp = new Compartment()
+const vimComp = new Compartment()
+
+function getVimExtensions(enabled: boolean): Extension[] {
+  if (!enabled) return []
+  return [vim()]
+}
 
 function getInitialLanguageExtensions(ext?: string): Extension[] {
   if (!ext || /\.(md|markdown)$/i.test(ext)) return [markdown({ base: markdownLanguage, codeLanguages })]
@@ -130,6 +138,7 @@ export default function SourceEditor({
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
+  const [vimActive, setVimActive] = useState<boolean>(() => isVimEnabled())
   /** 上层给进来的最新 value：updateListener 里只把「用户真的改了」交出去 */
   const valueRef = useRef(value)
   const changeRef = useRef(onChange)
@@ -275,6 +284,7 @@ export default function SourceEditor({
           indentOnInput(),
           indentUnit.of('  '),
           EditorView.lineWrapping,
+          vimComp.of(getVimExtensions(isVimEnabled())),
           readOnlyComp.of([]),
           langComp.of(getInitialLanguageExtensions(ext)),
           cmPlaceholder(placeholder ?? ''),
@@ -340,7 +350,17 @@ export default function SourceEditor({
       view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true })
       view.focus()
     }
+    const unsubVim = subscribeVimEnabled((enabled) => {
+      setVimActive(enabled)
+      const v = viewRef.current
+      if (!v) return
+      v.dispatch({
+        effects: vimComp.reconfigure(getVimExtensions(enabled)),
+      })
+    })
+
     return () => {
+      unsubVim()
       view.destroy()
       viewRef.current = null
     }
@@ -445,6 +465,12 @@ export default function SourceEditor({
         拆成两块钉在屏幕两侧会更难找。编辑模式统计的是源码字符，不是渲染后的可视字数。
       */}
       <DocStatChip title={label}>
+        {vimActive && (
+          <>
+            <span className="font-mono text-[11px] font-bold text-seal select-none">VIM</span>
+            <span className="h-3 w-px bg-line-strong/60" />
+          </>
+        )}
         <span className="tabular-nums">{t('{0} 字', chars)}</span>
         <span className="h-3 w-px bg-line-strong/60" />
         <span
