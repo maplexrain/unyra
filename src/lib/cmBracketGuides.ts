@@ -8,11 +8,13 @@ import type { Extension } from '@codemirror/state'
  * 提供结构辅助线连接，方便一眼识别深层嵌套与块级对应关系。
  *
  * 核心准则：
- * 1. 绝对不能贯穿文字：若开括号或闭括号所在行包含前置代码文字（如 var MOUSE = {），
+ * 1. 严格对齐左侧基准缩进列（Base Indent Column）：垂直导轨线走在代码块左侧的缩进槽内，
+ *    绝不能因行末开括号或闭括号超出视口而偏离到屏幕右侧悬空；
+ * 2. 绝对不能贯穿文字：若开括号所在行包含前置代码文字（如 var MOUSE = {、function foo() {），
  *    严禁横穿代码文字，垂直线自该行下沿起步，开括号字符下方以纯净下标底托示意，文字行 100% 保持干净；
- * 2. 视觉沉浸克制，绝不喧宾夺主：线宽严格 1px，彻底去除发光模糊光晕（drop-shadow），色彩轻透自然；
- * 3. 纯直角折线，不要圆角：拐角全部采用标准的 90 度直角折转（M/H/V），线条利落干脆；
- * 4. 同行配对符号（如 import { foo } from 'bar'、单行数组等）严格剔除不画线。
+ * 3. 视觉沉浸克制，绝不喧宾夺主：线宽严格 1px，彻底去除发光模糊光晕（drop-shadow），色彩轻透自然；
+ * 4. 纯直角折线，不要圆角：拐角全部采用标准的 90 度直角折转（M/H/V），线条利落干脆；
+ * 5. 同行配对符号（如 import { foo } from 'bar'、单行数组等）严格剔除不画线。
  */
 
 interface MeasuredGuide {
@@ -125,6 +127,31 @@ class BracketGuidesPlugin {
         const openHasPrefix = /\S/.test(startLine.text.slice(0, openCharIdx))
         const closeHasPrefix = /\S/.test(endLine.text.slice(0, closeCharIdx))
 
+        // 1. 获取开括号行首个非空白字符的屏幕坐标（该代码块的左侧起始基准列）
+        const openIndentLen = startLine.text.match(/^\s*/)?.[0].length ?? 0
+        const openIndentPos = startLine.from + openIndentLen
+        const openIndentCoords = view.coordsAtPos(openIndentPos)
+
+        // 2. 获取闭括号行首个非空白字符的屏幕坐标
+        const closeIndentLen = endLine.text.match(/^\s*/)?.[0].length ?? 0
+        const closeIndentPos = endLine.from + closeIndentLen
+        const closeIndentCoords = view.coordsAtPos(closeIndentPos)
+
+        // 3. 计算左侧缩进基准 X 坐标（绝不使用行末开括号的 X 坐标，彻底杜绝悬在右侧空中）
+        let baseIndentX = 0
+        if (closeIndentCoords) {
+          baseIndentX = closeIndentCoords.left - scrollerRect.left + scrollLeft
+        } else if (openIndentCoords) {
+          baseIndentX = openIndentCoords.left - scrollerRect.left + scrollLeft
+        } else if (openCoords) {
+          baseIndentX = openCoords.left - scrollerRect.left + scrollLeft
+        } else {
+          baseIndentX = 24
+        }
+
+        // 垂直导轨线 X 坐标：严格走在该代码块左侧缩进空白槽中（偏左 4px），绝不在屏幕右侧悬空
+        const guideX = Math.max(6, Math.round(baseIndentX) - 4)
+
         let openX = 0
         let openY = 0
         let openBottom = 0
@@ -136,10 +163,10 @@ class BracketGuidesPlugin {
           openBottom = Math.round(openCoords.bottom - scrollerRect.top + scrollTop)
           openCharWidth = Math.max(6, Math.round(openCoords.right - openCoords.left))
         } else {
-          // 开括号在视口上方溢出：取视口顶部截断
-          openX = scrollerRect.left + 20
+          // 开括号在视口上方溢出：从视口顶部向下延伸
+          openX = Math.round(baseIndentX)
           openY = Math.max(0, scrollTop - 10)
-          openBottom = openY + 16
+          openBottom = openY
         }
 
         let closeX = 0
@@ -149,30 +176,33 @@ class BracketGuidesPlugin {
           closeX = Math.round(closeCoords.left - scrollerRect.left + scrollLeft)
           closeY = Math.round(closeCoords.top - scrollerRect.top + scrollTop + (closeCoords.bottom - closeCoords.top) / 2)
         } else {
-          // 闭括号在视口下方溢出：向下平滑延伸
-          closeX = openX
+          // 闭括号在视口下方溢出：垂直导轨向视口下方自然延伸，底端 X 锁定在左侧基准缩进列
+          closeX = Math.round(baseIndentX)
           closeY = scrollTop + scrollerRect.height + 20
         }
-
-        // 垂直导轨 X 坐标：对齐在闭括号左侧空白处（通常离闭括号字符 4px）
-        // 确保垂直线走在左侧空白缩进槽内，绝不贴字
-        const guideX = Math.max(6, Math.min(openX, closeX) - 4)
 
         // 构建纯直角折线（绝对不要圆角，全部使用直角 M / H / V）
         let pathData = ''
 
         if (openHasPrefix) {
-          // 第一原则：开括号前面有文字（如 var MOUSE = {），严禁水平横线横穿文字！
-          // 垂直导轨线从开括号所在行底边 (openBottom) 垂直向下延伸到闭括号高度
-          // 并在开括号字符正下方画一个微小精致的直角下标托线，清晰呼应括号本体，文字中间 100% 保持干净
-          if (!closeHasPrefix) {
-            pathData = `M ${guideX} ${openBottom} V ${closeY} H ${closeX} M ${openX} ${openBottom} H ${openX + openCharWidth}`
+          // 开括号前面有文字（如 var MOUSE = {、function test() {）：严禁水平横线横穿代码！
+          // 垂直导轨线从开括号所在行底边 (openBottom) 开始，沿左侧 guideX 垂直向下延伸
+          // 并在开括号字符正下方画微小下标托线呼应，文字行 100% 保持干净
+          const topSub = openCoords ? ` M ${openX} ${openBottom} H ${openX + openCharWidth}` : ''
+          if (!closeCoords) {
+            // 闭括号超出视口下方：垂直线向下贯穿出视口，不画底部横线
+            pathData = `M ${guideX} ${openBottom} V ${closeY}${topSub}`
+          } else if (!closeHasPrefix) {
+            // 闭括号在视口内且前无代码：在闭括号行直角向右连到字符
+            pathData = `M ${guideX} ${openBottom} V ${closeY} H ${closeX}${topSub}`
           } else {
-            pathData = `M ${guideX} ${openBottom} V ${closeY} M ${openX} ${openBottom} H ${openX + openCharWidth}`
+            pathData = `M ${guideX} ${openBottom} V ${closeY}${topSub}`
           }
         } else {
-          // 开括号前面是纯缩进空白（如换行单独成行的 {）：水平线在空白区域延伸，绝不贯穿文字
-          if (!closeHasPrefix) {
+          // 开括号前面是纯缩进空白（如换行单独成行的 {）：水平线在空白区域向左折入 guideX
+          if (!closeCoords) {
+            pathData = `M ${openX} ${openY} H ${guideX} V ${closeY}`
+          } else if (!closeHasPrefix) {
             pathData = `M ${openX} ${openY} H ${guideX} V ${closeY} H ${closeX}`
           } else {
             pathData = `M ${openX} ${openY} H ${guideX} V ${closeY}`

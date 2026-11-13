@@ -700,6 +700,32 @@ set tabstop=4
         expect(d).not.toMatch(/[QC]/) // 彻底杜绝圆角曲线
       }
 
+      // 验证长函数即使闭括号不在视口内，findCrossLineBracketPairs 也能精准检测到跨行配对
+      const longFnCode = [
+        'export function validateRig(sampleCount = 240): RigValidationReport {',
+        '  let maxLegBoneError = 0',
+        ...Array.from({ length: 100 }, (_, i) => `  const step_${i} = ${i}`),
+        '}',
+      ].join('\n')
+
+      const dom2 = win.document.createElement('div')
+      win.document.body.appendChild(dom2)
+      const view2 = new EditorView({
+        parent: dom2 as any,
+        state: EditorState.create({
+          doc: longFnCode,
+          extensions: [bracketPairGuides()],
+        }),
+      })
+
+      const longPairs = findCrossLineBracketPairs(view2)
+      expect(longPairs.length).toBe(1)
+      expect(longPairs[0].startLine).toBe(1)
+      expect(longPairs[0].endLine).toBe(103)
+
+      view2.destroy()
+      dom2.remove()
+
       view.destroy()
       dom.remove()
       await new Promise((r) => setTimeout(r, 50))
