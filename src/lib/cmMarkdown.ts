@@ -319,10 +319,10 @@ export function markdownEditorTheme(pad: {
       borderTop: '1px solid var(--color-line, rgba(255,255,255,0.1)) !important',
       padding: '4px 8px !important',
     },
-    // 现代 Command Palette 悬浮命令输入卡片：页面水平居中、垂直下移至代码区顶部（top: 80px），沉浸微光毛玻璃质感
+    // 现代 Command Palette 悬浮命令输入卡片：页面水平居中、垂直下移至代码区红框指定位置（top: 120px），沉浸微光毛玻璃质感
     '.cm-vim-panel:has(input)': {
       position: 'fixed !important',
-      top: '80px !important',
+      top: '120px !important',
       bottom: 'auto !important',
       left: '50% !important',
       transform: 'translateX(-50%) !important',

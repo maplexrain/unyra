@@ -418,7 +418,7 @@ const indentGuidesTheme = EditorView.baseTheme({
     content: '""',
     position: 'absolute',
     top: 0,
-    left: '0px', // 对齐代码行左边界基准
+    left: '6px', // 精确设定为 left: 6px
     right: 0,
     bottom: 0,
     background: 'var(--indent-guides)',
