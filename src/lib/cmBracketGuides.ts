@@ -5,13 +5,14 @@ import type { Extension } from '@codemirror/state'
 /**
  * 跨行配对符号辅助线（Bracket Pair Connector Guides）：
  * 为代码中不同行的配对符号（如跨行大括号 {}、中括号 []、圆括号 ()）
- * 提供连贯直观的结构辅助线连接，方便一眼识别深层嵌套与块级对应关系。
+ * 提供结构辅助线连接，方便一眼识别深层嵌套与块级对应关系。
  *
- * 规范与约束：
- * 1. 同一行的配对符号（如 import { foo } from 'bar'、单行数组/对象）绝对不连线，保持行内代码清爽；
- * 2. 跨行配对符号从开括号向左拐弯并垂直向下延伸贯穿，最后平滑连接至闭括号，形成优美的包络辅助线；
- * 3. 光标当前所在的最内层配对符号高亮为天青色实线微光（Active Guide），其余层级以沉浸半透虚线呈现；
- * 4. 严格在 CodeMirror 6 的 requestMeasure 周期内读取几何尺寸与写回 SVG，零重排开销。
+ * 核心准则：
+ * 1. 绝对不能贯穿文字：若开括号或闭括号所在行包含前置代码文字（如 var MOUSE = {），
+ *    严禁横穿代码文字，垂直线自该行下沿起步，开括号字符下方以纯净下标底托示意，文字行 100% 保持干净；
+ * 2. 视觉沉浸克制，绝不喧宾夺主：线宽严格 1px，彻底去除发光模糊光晕（drop-shadow），色彩轻透自然；
+ * 3. 纯直角折线，不要圆角：拐角全部采用标准的 90 度直角折转（M/H/V），线条利落干脆；
+ * 4. 同行配对符号（如 import { foo } from 'bar'、单行数组等）严格剔除不画线。
  */
 
 interface MeasuredGuide {
@@ -49,8 +50,7 @@ export function findCrossLineBracketPairs(view: EditorView): Array<{
   const vpStartLine = doc.lineAt(vp.from).number
   const vpEndLine = doc.lineAt(vp.to).number
 
-  // 2. 为了保证视口内看到闭括号时、其开括号在视口上方也能被连接，
-  // 向上扩展扫描范围或针对当前光标所在行回溯
+  // 2. 向上扩展扫描范围，确保视口内包含的闭括号能对应到上方可视外的开括号
   const curLine = doc.lineAt(head).number
   const minScanLine = Math.max(1, Math.min(vpStartLine - 10, curLine - MAX_ENCLOSING_LOOKBACK))
   const maxScanLine = Math.min(doc.lines, vpEndLine + 10)
@@ -103,6 +103,7 @@ class BracketGuidesPlugin {
       const scrollerRect = view.scrollDOM.getBoundingClientRect()
       const scrollLeft = view.scrollDOM.scrollLeft
       const scrollTop = view.scrollDOM.scrollTop
+      const doc = view.state.doc
 
       const measured: MeasuredGuide[] = []
 
@@ -114,39 +115,69 @@ class BracketGuidesPlugin {
         // 倘若开闭两端都完全在视口外且无法获取坐标，则跳过
         if (!openCoords && !closeCoords) continue
 
-        let openX: number
-        let openY: number
-        let closeX: number
-        let closeY: number
+        const startLine = doc.line(pair.startLine)
+        const endLine = doc.line(pair.endLine)
+
+        const openCharIdx = pair.openPos - startLine.from
+        const closeCharIdx = pair.closePos - endLine.from
+
+        // 核心安全原则：检查开闭括号左侧是否含有非空白文字
+        const openHasPrefix = /\S/.test(startLine.text.slice(0, openCharIdx))
+        const closeHasPrefix = /\S/.test(endLine.text.slice(0, closeCharIdx))
+
+        let openX = 0
+        let openY = 0
+        let openBottom = 0
+        let openCharWidth = 8
 
         if (openCoords) {
-          openX = openCoords.left - scrollerRect.left + scrollLeft
-          openY = openCoords.top - scrollerRect.top + scrollTop + (openCoords.bottom - openCoords.top) / 2
+          openX = Math.round(openCoords.left - scrollerRect.left + scrollLeft)
+          openY = Math.round(openCoords.top - scrollerRect.top + scrollTop + (openCoords.bottom - openCoords.top) / 2)
+          openBottom = Math.round(openCoords.bottom - scrollerRect.top + scrollTop)
+          openCharWidth = Math.max(6, Math.round(openCoords.right - openCoords.left))
         } else {
           // 开括号在视口上方溢出：取视口顶部截断
           openX = scrollerRect.left + 20
           openY = Math.max(0, scrollTop - 10)
+          openBottom = openY + 16
         }
 
+        let closeX = 0
+        let closeY = 0
+
         if (closeCoords) {
-          closeX = closeCoords.left - scrollerRect.left + scrollLeft
-          closeY = closeCoords.top - scrollerRect.top + scrollTop + (closeCoords.bottom - closeCoords.top) / 2
+          closeX = Math.round(closeCoords.left - scrollerRect.left + scrollLeft)
+          closeY = Math.round(closeCoords.top - scrollerRect.top + scrollTop + (closeCoords.bottom - closeCoords.top) / 2)
         } else {
           // 闭括号在视口下方溢出：向下平滑延伸
           closeX = openX
           closeY = scrollTop + scrollerRect.height + 20
         }
 
-        // 垂直导线对齐基准：以闭括号左侧偏左或缩进位置为导向
-        const r = 4 // 圆角半径
-        const guideX = Math.max(8, Math.min(openX, closeX) - 3)
+        // 垂直导轨 X 坐标：对齐在闭括号左侧空白处（通常离闭括号字符 4px）
+        // 确保垂直线走在左侧空白缩进槽内，绝不贴字
+        const guideX = Math.max(6, Math.min(openX, closeX) - 4)
 
-        // 生成带平滑圆角的标准折线 SVG 路径数据：
-        // 开括号(openX, openY) -> 水平折向(guideX + r, openY) -> 圆角转垂直 -> 延伸至(guideX, closeY - r) -> 圆角转水平 -> 闭括号(closeX, closeY)
-        const pathData =
-          openY < closeY
-            ? `M ${openX} ${openY} H ${guideX + r} Q ${guideX} ${openY} ${guideX} ${openY + r} V ${closeY - r} Q ${guideX} ${closeY} ${guideX + r} ${closeY} H ${closeX}`
-            : `M ${openX} ${openY} V ${closeY} H ${closeX}`
+        // 构建纯直角折线（绝对不要圆角，全部使用直角 M / H / V）
+        let pathData = ''
+
+        if (openHasPrefix) {
+          // 第一原则：开括号前面有文字（如 var MOUSE = {），严禁水平横线横穿文字！
+          // 垂直导轨线从开括号所在行底边 (openBottom) 垂直向下延伸到闭括号高度
+          // 并在开括号字符正下方画一个微小精致的直角下标托线，清晰呼应括号本体，文字中间 100% 保持干净
+          if (!closeHasPrefix) {
+            pathData = `M ${guideX} ${openBottom} V ${closeY} H ${closeX} M ${openX} ${openBottom} H ${openX + openCharWidth}`
+          } else {
+            pathData = `M ${guideX} ${openBottom} V ${closeY} M ${openX} ${openBottom} H ${openX + openCharWidth}`
+          }
+        } else {
+          // 开括号前面是纯缩进空白（如换行单独成行的 {）：水平线在空白区域延伸，绝不贯穿文字
+          if (!closeHasPrefix) {
+            pathData = `M ${openX} ${openY} H ${guideX} V ${closeY} H ${closeX}`
+          } else {
+            pathData = `M ${openX} ${openY} H ${guideX} V ${closeY}`
+          }
+        }
 
         measured.push({
           id: `${pair.openPos}-${pair.closePos}`,
@@ -205,7 +236,7 @@ class BracketGuidesPlugin {
   }
 }
 
-/** 跨行括号辅助线主题样式 */
+/** 跨行括号辅助线主题样式：克制沉浸、极细直角、不喧宾夺主 */
 const bracketGuidesTheme = EditorView.baseTheme({
   '.cm-bracket-guides-svg': {
     position: 'absolute',
@@ -217,21 +248,22 @@ const bracketGuidesTheme = EditorView.baseTheme({
     overflow: 'visible',
     zIndex: 1,
   },
-  // 未激活状态下的背景跨行括号导线：优雅低调的微光虚线，清晰分明且绝不抢戏
+  // 未激活状态下的背景跨行括号导线：极细低调的半透明点虚线，安静不抢戏
   '.cm-bracket-guide-line': {
-    stroke: 'color-mix(in srgb, var(--color-ink, #cdd6f4) 18%, transparent)',
-    strokeWidth: '1.2px',
-    strokeDasharray: '3.5 2.5',
-    strokeLinecap: 'round',
-    strokeLinejoin: 'round',
-    transition: 'stroke 140ms ease, stroke-width 140ms ease',
+    stroke: 'color-mix(in srgb, var(--color-ink, #cdd6f4) 11%, transparent)',
+    strokeWidth: '1px',
+    strokeDasharray: '2.5 3',
+    strokeLinecap: 'square',
+    strokeLinejoin: 'miter',
+    shapeRendering: 'crispEdges',
+    transition: 'stroke 120ms ease, opacity 120ms ease',
   },
-  // 当前光标所处代码块激活的跨行配对连线：醒目的天青色微光实线，配合柔和外发光
+  // 当前光标所处代码块激活的跨行配对连线：纯净优雅的天青墨色 1px 直角细实线，不带任何刺眼的发光光晕模糊
   '.cm-bracket-guide-line.cm-bracket-guide-active': {
-    stroke: 'var(--color-seal, #38bdf8)',
-    strokeWidth: '1.5px',
+    stroke: 'color-mix(in srgb, var(--color-seal, #38bdf8) 42%, transparent)',
+    strokeWidth: '1px',
     strokeDasharray: 'none',
-    filter: 'drop-shadow(0 0 3px color-mix(in srgb, var(--color-seal, #38bdf8) 60%, transparent))',
+    filter: 'none',
   },
 })
 

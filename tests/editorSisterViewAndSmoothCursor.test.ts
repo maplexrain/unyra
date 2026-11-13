@@ -693,6 +693,13 @@ set tabstop=4
       expect(bracketPair).toBeDefined()
       expect(bracketPair?.isActive).toBe(false) // 光标不在 options 数组内部
 
+      // 验证渲染的 SVG 路径：纯直角（绝不包含 Q/C 圆角指令），且开括号前有文字时不贯穿文字
+      const paths = Array.from(dom.querySelectorAll('.cm-bracket-guide-line')) as unknown as SVGPathElement[]
+      for (const p of paths) {
+        const d = p.getAttribute('d') ?? ''
+        expect(d).not.toMatch(/[QC]/) // 彻底杜绝圆角曲线
+      }
+
       view.destroy()
       dom.remove()
       await new Promise((r) => setTimeout(r, 50))
