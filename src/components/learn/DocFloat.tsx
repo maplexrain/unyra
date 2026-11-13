@@ -4,8 +4,11 @@ import type { OutlineHandle } from '../../lib/outline'
 import type { DocView, TabRef } from '../../learn/types'
 import { t } from '../../i18n'
 import { useVimEnabled } from '../../lib/vimSettings'
+import { ensureVimConfigFile } from '../../lib/vimConfig'
 import DocOutline from './DocOutline'
 import DocRelations from './DocRelations'
+import VimIcon from './VimIcon'
+import VimFloatTip from './VimFloatTip'
 import type { NodeRelations, RelationItem } from './docRelations/computeRelations'
 
 /**
@@ -48,6 +51,8 @@ interface Props {
   onOpenEssay?: () => void
   /** 随笔按钮 ref（供 EssayDock 获取变形起点） */
   essayBtnRef?: React.Ref<HTMLButtonElement>
+  /** 打开 Vim 配置文件页签 */
+  onOpenVimConfig?: (path: string) => void
   /** 与当前节点关联的节点分类表（上级/下级/同级） */
   relations?: NodeRelations
   /** 点击打开关联节点 */
@@ -90,6 +95,7 @@ export default function DocFloat({
   essayBtnRef,
   relations,
   onOpenRelation,
+  onOpenVimConfig,
 }: Props) {
   /**
    * 浮层三态：closed（不挂载）→ open（展开）→ closing（退场动画中）→ closed。
@@ -98,6 +104,8 @@ export default function DocFloat({
   /** 快照在打开那一刻取一次，开着的时候定时跟句柄对齐 */
   const [snap, setSnap] = useState<{ items: OutlineHandle['items']; activeIndex: number } | null>(null)
   const [vimEnabled, setVimEnabled] = useVimEnabled()
+  const [vimTipOpen, setVimTipOpen] = useState(false)
+  const vimLeaveTimer = useRef<number | undefined>(undefined)
   const timers = useRef<{ leave?: number; hide?: number; follow?: number }>({})
   const [relPhase, setRelPhase] = useState<'closed' | 'open' | 'closing'>('closed')
   const relTimers = useRef<{ leave?: number; hide?: number }>({})
@@ -109,9 +117,26 @@ export default function DocFloat({
       if (timers.current.follow !== undefined) window.clearInterval(timers.current.follow)
       if (relTimers.current.leave !== undefined) window.clearTimeout(relTimers.current.leave)
       if (relTimers.current.hide !== undefined) window.clearTimeout(relTimers.current.hide)
+      if (vimLeaveTimer.current !== undefined) window.clearTimeout(vimLeaveTimer.current)
     },
     [],
   )
+
+  const openVimTipNow = () => {
+    if (vimLeaveTimer.current !== undefined) {
+      window.clearTimeout(vimLeaveTimer.current)
+      vimLeaveTimer.current = undefined
+    }
+    setVimTipOpen(true)
+  }
+
+  const closeVimTipSoon = () => {
+    if (vimLeaveTimer.current !== undefined) return
+    vimLeaveTimer.current = window.setTimeout(() => {
+      vimLeaveTimer.current = undefined
+      setVimTipOpen(false)
+    }, LEAVE_GRACE_MS)
+  }
 
   /** 走退场：先播收回动画，播完才把浮层从 DOM 里摘掉 */
   const beginClose = () => {
@@ -219,25 +244,44 @@ export default function DocFloat({
         )}
 
         {/*
-          Vim 模式切换按钮：在左侧按钮组提供一键开关（默认不开启），
-          开启后支持 Normal/Insert/Visual 等全套 Vim 快捷键与模式流转。
+          Vim 模式卡片：鼠标经过弹出 tip，显示一键开关组件与配置文件 (.vimrc) 打开按钮。
+          经典绿色斜方盾牌 Vim 徽标，辨识度高。
         */}
         {view === 'source' && (
-          <button
-            type="button"
-            title={vimEnabled ? t('Vim 模式：已开启（点击关闭）') : t('Vim 模式：已关闭（点击开启）')}
-            aria-pressed={vimEnabled}
-            onClick={() => setVimEnabled(!vimEnabled)}
-            className={
-              VIEW_BTN +
-              ' transition-all ' +
-              (vimEnabled
-                ? 'border-seal/40 bg-seal/15 text-seal shadow-xs hover:bg-seal/25'
-                : 'border-transparent text-ink-soft opacity-60 hover:opacity-100 hover:bg-line/50 hover:text-ink')
-            }
+          <div
+            className="relative"
+            onMouseEnter={openVimTipNow}
+            onMouseLeave={closeVimTipSoon}
           >
-            <span className="font-mono text-[11.5px] font-black tracking-tight select-none leading-none">V</span>
-          </button>
+            <button
+              type="button"
+              title={t('Vim 模式设置与配置')}
+              aria-expanded={vimTipOpen}
+              className={
+                VIEW_BTN +
+                ' transition-all ' +
+                (vimEnabled
+                  ? 'border-[#019833]/50 bg-[#019833]/15 text-[#019833] shadow-xs'
+                  : 'border-transparent text-ink-soft opacity-60 hover:opacity-100 hover:bg-line/50 hover:text-ink')
+              }
+            >
+              <VimIcon size={14} className="transition-transform group-hover:scale-105" />
+            </button>
+
+            {vimTipOpen && (
+              <VimFloatTip
+                enabled={vimEnabled}
+                onToggle={() => setVimEnabled(!vimEnabled)}
+                onOpenConfig={async () => {
+                  const path = await ensureVimConfigFile()
+                  if (path) {
+                    onOpenVimConfig?.(path)
+                    setVimTipOpen(false)
+                  }
+                }}
+              />
+            )}
+          </div>
         )}
 
         

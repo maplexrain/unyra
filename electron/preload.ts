@@ -168,6 +168,7 @@ const api = {
     write: (path: string, content: string): Promise<LocalWriteResult> =>
       ipcRenderer.invoke('local:write', path, content),
     reveal: (path: string): Promise<StorageOk | StorageFail> => ipcRenderer.invoke('local:reveal', path),
+    ensureVimConfig: () => ipcRenderer.invoke('local:ensureVimConfig'),
     pick: (): Promise<{ ok: boolean; canceled?: boolean; paths?: string[] }> =>
       ipcRenderer.invoke('local:pick'),
     /**

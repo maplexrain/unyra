@@ -770,6 +770,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               openTab(ref)
             }}
             essayBtnRef={essayBtnRef}
+            onOpenVimConfig={(p) => openTab({ kind: 'local', path: p, title: '.vimrc', view: 'source' })}
           />
         )}
 

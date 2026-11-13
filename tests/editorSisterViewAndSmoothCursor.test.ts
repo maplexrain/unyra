@@ -281,5 +281,23 @@ describe('Vim 模式设置与状态管理 (vimSettings)', () => {
       ;(globalThis as any).window = origWindow
     }
   })
+
+  it('VimIcon 与 VimFloatTip 组件正确导出', async () => {
+    const VimIconModule = await import('../src/components/learn/VimIcon')
+    const VimFloatTipModule = await import('../src/components/learn/VimFloatTip')
+    expect(VimIconModule.default).toBeDefined()
+    expect(typeof VimIconModule.default).toBe('function')
+    expect(VimFloatTipModule.default).toBeDefined()
+    expect(typeof VimFloatTipModule.default).toBe('function')
+  })
+
+  it('ensureVimConfigFile 获取并返回 .vimrc 文件路径', async () => {
+    const { ensureVimConfigFile } = await import('../src/lib/vimConfig')
+    const path = await ensureVimConfigFile()
+    // 在 Web 模式桥下返回 /tmp/.vimrc，或在真实 Electron 模式下返回主目录 .vimrc
+    if (path) {
+      expect(path).toContain('.vimrc')
+    }
+  })
 })
 

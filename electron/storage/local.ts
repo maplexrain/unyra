@@ -7,6 +7,7 @@
 import { BrowserWindow, dialog, shell } from 'electron'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { t } from '../i18n'
 
@@ -56,6 +57,8 @@ const MEDIA_MAX_BYTES = 200 * 1024 * 1024
 function localFile(raw: unknown): string | null {
   const p = typeof raw === 'string' ? raw.trim() : ''
   if (!p || !path.isAbsolute(p)) return null
+  const base = path.basename(p).toLowerCase()
+  if (base === '.vimrc' || base === '_vimrc' || base === 'vimrc') return p
   return LOCAL_TEXT_EXTS.has(path.extname(p).toLowerCase()) ? p : null
 }
 
@@ -235,4 +238,42 @@ export async function pickLocal(): Promise<{ ok: boolean; canceled?: boolean; pa
   })
   if (canceled || !filePaths?.length) return { ok: false, canceled: true }
   return { ok: true, paths: filePaths }
+}
+
+
+/** 检查或创建用户主目录下的 .vimrc 配置文件 */
+export async function ensureVimConfig(): Promise<{ ok: boolean; path: string; created: boolean; error?: string }> {
+  try {
+    const home = os.homedir()
+    const vimrcPath = path.join(home, '.vimrc')
+    let created = false
+    try {
+      await fsp.access(vimrcPath)
+    } catch {
+      const template = `" ============================================================================
+" Vim 配置文件模板 (.vimrc)
+" ============================================================================
+
+" 基础设置
+set number              " 显示行号
+set relativenumber      " 相对行号（按需开启）
+set tabstop=2           " Tab 宽度为 2 个空格
+set shiftwidth=2        " 缩进宽度为 2 个空格
+set expandtab           " 将 Tab 自动扩展为空格
+set smartindent         " 智能缩进
+set ignorecase          " 搜索忽略大小写
+set smartcase           " 若包含大写则区分大小写
+set incsearch           " 边输入边高亮搜索匹配
+
+" 键位映射示例
+" 将 jk 映射为退出 Insert 模式
+" inoremap jk <Esc>
+`
+      await fsp.writeFile(vimrcPath, template, 'utf-8')
+      created = true
+    }
+    return { ok: true, path: vimrcPath, created }
+  } catch (err) {
+    return { ok: false, path: '', created: false, error: (err as Error).message }
+  }
 }

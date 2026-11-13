@@ -117,6 +117,7 @@ export interface NativeBridge {
     readMedia(path: string): Promise<{ ok: true; mime: string; dataUrl: string } | { ok: false; error: string }>
     write(path: string, content: string): Promise<{ ok: boolean; error?: string }>
     reveal(path: string): Promise<StorageOk | StorageFail>
+    ensureVimConfig?(): Promise<{ ok: boolean; path: string; created: boolean; error?: string }>
     /** 弹原生多选框挑几个本地文件（拖拽之外的第二个入口） */
     pick(): Promise<{ ok: boolean; canceled?: boolean; paths?: string[] }>
     /**
