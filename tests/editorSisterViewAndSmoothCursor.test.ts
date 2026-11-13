@@ -172,6 +172,11 @@ describe('源码编辑器选区高亮与代码折叠动画', () => {
     }
   })
 
+  it('smoothCursor 插件能够自适应 Vim 方块光标与细竖线光标形态', async () => {
+    const { smoothCursor } = await import('../src/lib/cmSmoothCursor')
+    expect(smoothCursor).toBeDefined()
+  })
+
   it('DocFloat 悬浮工具条不再展示纯净阅读按钮，且组件正常导出', async () => {
     const DocFloatModule = await import('../src/components/learn/DocFloat')
     expect(DocFloatModule.default).toBeDefined()

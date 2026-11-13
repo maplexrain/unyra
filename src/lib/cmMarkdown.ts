@@ -276,16 +276,20 @@ export function markdownEditorTheme(pad: {
       backgroundColor: 'color-mix(in srgb, var(--color-ink) 2.8%, transparent)',
       transition: 'background-color 140ms ease',
     },
-    // Vim 模式支持：Normal 模式下天青方块光标与命令输入框美化
+    // Vim 模式支持：静态 fat-cursor 彻底透明隐形，统一由 cmSmoothCursor 接管平滑方块光标与位移拖尾
     '.cm-fat-cursor': {
-      backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 80%, transparent) !important',
-      color: 'var(--color-ink-inverse, #ffffff) !important',
-      borderRadius: '2px',
-      transition: 'left 60ms ease, top 60ms ease',
+      opacity: '0 !important',
+      backgroundColor: 'transparent !important',
+      color: 'transparent !important',
+      border: 'none !important',
+      outline: 'none !important',
+      boxShadow: 'none !important',
+      pointerEvents: 'none !important',
     },
     '&:not(.cm-focused) .cm-fat-cursor': {
+      opacity: '0 !important',
       backgroundColor: 'transparent !important',
-      outline: '1.5px solid var(--color-seal, #38bdf8) !important',
+      outline: 'none !important',
     },
     '.cm-vim-panel': {
       backgroundColor: 'var(--color-card, #1e1e2e) !important',

@@ -6,6 +6,8 @@ interface CursorMeasure {
   left: number
   top: number
   height: number
+  width: number
+  isBlock: boolean
 }
 
 /**
@@ -26,6 +28,8 @@ class SmoothCursorPlugin {
   private lastLeft = 0
   private lastTop = 0
   private lastHeight = 18
+  private lastWidth = 2.5
+  private lastIsBlock = false
   private hasPosition = false
 
   private measureReq = {
@@ -33,21 +37,31 @@ class SmoothCursorPlugin {
       const sel = view.state.selection.main
       // 选区非空（用户正在选择多字）时隐藏虚拟光标，交由 drawSelection 绘制选区；选区为单点时光标立刻显现
       if (!sel.empty) {
-        return { visible: false, left: 0, top: 0, height: 0 }
+        return { visible: false, left: 0, top: 0, height: 0, width: 2.5, isBlock: false }
       }
 
-      // Vim 处于 Normal / Visual 模式且渲染了方块光标（fat-cursor）时隐藏虚拟细线，由 Vim 方块光标接管；Insert 模式自动由虚拟平滑光标接管
-      if (view.dom.querySelector('.cm-fat-cursor')) {
-        return { visible: false, left: 0, top: 0, height: 0 }
-      }
+      const cm = (view as any).cm
+      const fatCursor = view.dom.querySelector('.cm-fat-cursor') as HTMLElement | null
+      const isBlock = Boolean(
+        (cm?.state?.vim && !cm.state.vim.insertMode) ||
+        fatCursor ||
+        (view.dom.classList.contains('cm-vimMode') && !view.dom.querySelector('.cm-cursor'))
+      )
 
       const coords = view.coordsAtPos(sel.head)
       if (!coords) {
         if (this.hasPosition) {
-          return { visible: true, left: this.lastLeft, top: this.lastTop, height: this.lastHeight }
+          return {
+            visible: true,
+            left: this.lastLeft,
+            top: this.lastTop,
+            height: this.lastHeight,
+            width: this.lastWidth,
+            isBlock: this.lastIsBlock,
+          }
         }
         requestAnimationFrame(() => this.scheduleMeasure())
-        return { visible: false, left: 0, top: 0, height: 0 }
+        return { visible: false, left: 0, top: 0, height: 0, width: 2.5, isBlock: false }
       }
 
       const scrollerRect = view.scrollDOM.getBoundingClientRect()
@@ -55,7 +69,24 @@ class SmoothCursorPlugin {
       const top = coords.top - scrollerRect.top + view.scrollDOM.scrollTop
       const height = Math.max(14, coords.bottom - coords.top)
 
-      return { visible: true, left, top, height }
+      let width = 2.5
+      if (isBlock) {
+        if (fatCursor && fatCursor.offsetWidth > 4) {
+          width = fatCursor.offsetWidth
+        } else if (sel.head < view.state.doc.length) {
+          const nextCoords = view.coordsAtPos(sel.head + 1)
+          if (nextCoords && nextCoords.left > coords.left) {
+            width = Math.max(8, nextCoords.left - coords.left)
+          } else {
+            const char = view.state.doc.sliceString(sel.head, sel.head + 1)
+            width = /[\u4e00-\u9fa5\u3000-\u303f\uff01-\uff5e]/.test(char) ? 16 : 9.5
+          }
+        } else {
+          width = 9.5
+        }
+      }
+
+      return { visible: true, left, top, height, width, isBlock }
     },
     write: (measure: CursorMeasure) => {
       if (!measure.visible) {
@@ -67,8 +98,10 @@ class SmoothCursorPlugin {
         return
       }
 
-      const { left, top, height } = measure
+      const { left, top, height, width, isBlock } = measure
       this.lastHeight = height
+      this.lastWidth = width
+      this.lastIsBlock = isBlock
 
       // 初次出现（或从无焦点恢复）时：瞬间落位，不产生跨越整个屏幕的滑动与速度线
       if (!this.hasPosition) {
@@ -77,9 +110,13 @@ class SmoothCursorPlugin {
 
         this.cursorEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
         this.cursorEl.style.height = `${Math.round(height)}px`
+        this.cursorEl.style.width = `${Math.round(width)}px`
+        this.cursorEl.classList.toggle('cm-cursor-block', isBlock)
 
         this.trailEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
         this.trailEl.style.height = `${Math.round(height)}px`
+        this.trailEl.style.width = `${Math.round(width)}px`
+        this.trailEl.classList.toggle('cm-cursor-block', isBlock)
 
         this.lastLeft = left
         this.lastTop = top
@@ -104,20 +141,24 @@ class SmoothCursorPlugin {
         this.spawnSpeedEffects(this.lastLeft, this.lastTop, left, top, height, dx, dy, dist)
       }
 
-      // 无论位移距离多远（打字、点击、跨行跨段跳转），主光标与跟随光带一律平滑滑移
+      // 无论位移距离多远（打字、点击、跨行跨段跳转、Vim 快捷键），主光标与跟随光带一律平滑滑移
       this.lastLeft = left
       this.lastTop = top
 
       this.cursorEl.classList.remove('cm-cursor-no-transition')
       this.cursorEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
       this.cursorEl.style.height = `${Math.round(height)}px`
+      this.cursorEl.style.width = `${Math.round(width)}px`
+      this.cursorEl.classList.toggle('cm-cursor-block', isBlock)
       this.cursorEl.style.opacity = this.view.hasFocus ? '1' : '0.45'
 
-      // 拖尾光带（稍微滞后与加宽，形成流动光弧拖尾）
+      // 拖尾光带（稍微滞后且宽度匹配，形成流动光弧拖尾）
       this.trailEl.classList.remove('cm-cursor-no-transition')
       this.trailEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`
       this.trailEl.style.height = `${Math.round(height)}px`
-      this.trailEl.style.opacity = this.view.hasFocus ? '0.7' : '0'
+      this.trailEl.style.width = `${Math.round(width)}px`
+      this.trailEl.classList.toggle('cm-cursor-block', isBlock)
+      this.trailEl.style.opacity = this.view.hasFocus ? (isBlock ? '0.55' : '0.7') : '0'
 
       if (this.trailTimer !== null) window.clearTimeout(this.trailTimer)
       this.trailTimer = window.setTimeout(() => {
@@ -235,12 +276,18 @@ class SmoothCursorPlugin {
   }
 
   update(update: ViewUpdate): void {
+    const cm = (this.view as any).cm
+    const curIsBlock = Boolean(
+      (cm?.state?.vim && !cm.state.vim.insertMode) ||
+      this.view.dom.querySelector('.cm-fat-cursor')
+    )
     if (
       update.docChanged ||
       update.selectionSet ||
       update.geometryChanged ||
       update.viewportChanged ||
-      update.focusChanged
+      update.focusChanged ||
+      curIsBlock !== this.lastIsBlock
     ) {
       this.scheduleMeasure()
     }
@@ -344,9 +391,15 @@ const smoothCursorBaseTheme = EditorView.baseTheme({
     pointerEvents: 'none',
     zIndex: 98,
     contain: 'layout paint style',
-    willChange: 'transform, height, opacity',
-    transition: 'transform 240ms cubic-bezier(0.12, 0.85, 0.22, 1), height 120ms ease, opacity 140ms ease',
+    willChange: 'transform, height, width, opacity',
+    transition: 'transform 240ms cubic-bezier(0.12, 0.85, 0.22, 1), height 120ms ease, width 150ms ease, border-radius 150ms ease, opacity 140ms ease',
     boxShadow: '0 0 8px color-mix(in srgb, var(--color-seal, #38bdf8) 60%, transparent)',
+  },
+  // 宽方块模式拖尾：与主宽光标等宽，呈现高质量的宽方块流光位移残影
+  '.cm-smooth-cursor-trail.cm-cursor-block': {
+    backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 45%, transparent)',
+    borderRadius: '2px',
+    boxShadow: '0 0 10px color-mix(in srgb, var(--color-seal, #38bdf8) 50%, transparent)',
   },
   // 主虚拟平滑光标：200ms 过渡时间，肉眼清晰可见直接滑移到目标位置
   '.cm-smooth-virtual-cursor': {
@@ -359,9 +412,15 @@ const smoothCursorBaseTheme = EditorView.baseTheme({
     pointerEvents: 'none',
     zIndex: 99,
     contain: 'layout paint style',
-    willChange: 'transform, height',
-    transition: 'transform 200ms cubic-bezier(0.18, 0.95, 0.25, 1), height 120ms ease, opacity 100ms ease',
+    willChange: 'transform, height, width',
+    transition: 'transform 200ms cubic-bezier(0.18, 0.95, 0.25, 1), height 120ms ease, width 150ms ease, border-radius 150ms ease, opacity 100ms ease',
     boxShadow: '0 0 8px color-mix(in srgb, var(--color-seal, #38bdf8) 70%, transparent)',
+  },
+  // Vim 宽方块主光标：覆盖目标字符，圆角 2px，带高能微光阴影
+  '.cm-smooth-virtual-cursor.cm-cursor-block': {
+    backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 75%, transparent)',
+    borderRadius: '2px',
+    boxShadow: '0 0 10px color-mix(in srgb, var(--color-seal, #38bdf8) 60%, transparent)',
   },
   '.cm-cursor-no-transition': {
     transition: 'none !important',
@@ -373,13 +432,22 @@ const smoothCursorBaseTheme = EditorView.baseTheme({
   '.cm-smooth-virtual-cursor.cm-cursor-blink': {
     animation: 'cm-virtual-cursor-pulse 1.06s ease-in-out infinite',
   },
-  // 彻底隐藏浏览器原生 Caret 与 CodeMirror 突变光标，由平滑虚拟光标独占渲染
+  // 彻底隐藏浏览器原生 Caret、CodeMirror 突变光标与 Vim 静态 fat-cursor，由平滑虚拟光标独占渲染，彻底消除双光标冲突
   '.cm-content': {
     caretColor: 'transparent !important',
   },
   '.cm-cursor, .cm-dropCursor': {
     opacity: '0 !important',
     visibility: 'hidden !important',
+  },
+  '.cm-fat-cursor': {
+    opacity: '0 !important',
+    background: 'transparent !important',
+    border: 'none !important',
+    outline: 'none !important',
+    boxShadow: 'none !important',
+    color: 'transparent !important',
+    pointerEvents: 'none !important',
   },
 })
 
