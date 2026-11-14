@@ -1,11 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { TriangleAlert as FileWarning, Loader2 } from 'lucide-react'
 import type { DocView } from '../../learn/types'
 import { extOf, fileNameOf, isMediaFile, isPdfFile, isPreviewable } from '../../learn/tabs'
 import { readLocalFile, readLocalMediaFile } from '../../lib/localFiles'
 import { renderNoteGfm } from '../../lib/markdown'
 import { maskChipTokens, restoreChipTokens } from '../../lib/chipSyntax'
-import { countVisibleWords, countVisibleWordsFromHtml } from '../../lib/wordCount'
 import { createLocalDocImageResolver } from '../../lib/docImages'
 import { copySelectionAsMarkdown } from '../../lib/copySource'
 import { fadeMask, useScrollEdges } from '../../lib/scrollFade'
@@ -18,7 +17,6 @@ import LiveSplitPreview from './editor/LiveSplitPreview'
 import { toggleEditorPreview } from './editor/previewBus'
 import { DocContextMenu } from './note/docContextMenu'
 import { useDocContextMenu, type SourceSpan } from './note/useDocContextMenu'
-import { DocStatChip } from './DocFloat'
 import ZenResizeHandles from './workspace/ZenResizeHandles'
 import { useDocOutline } from './note/useDocView'
 import PdfDocView from './pdf/PdfDocView'
@@ -290,14 +288,6 @@ export default function LocalDoc({
     onCopied: () => onToast?.(t('已复制为 Markdown')),
   })
 
-  // 预览模式只统计可视文字
-  const [wordCount, setWordCount] = useState(() => countVisibleWordsFromHtml(html))
-  useLayoutEffect(() => {
-    if (bodyRef.current) {
-      setWordCount(countVisibleWords(bodyRef.current, html))
-    }
-  }, [html])
-
   // 监听定位请求（在预览视图中平滑滚动到对应段落）
   useEffect(() => {
     return subscribeSourceReveal((key, rev) => {
@@ -488,11 +478,6 @@ export default function LocalDoc({
           className={view !== 'source' ? 'print-flat relative min-h-0 flex-1 flex flex-col bg-card' : 'hidden'}
           {...(view === 'source' ? { hidden: true } : {})}
         >
-          {/* 字数统计：排在右上角悬浮组的正下方（见 DocFloat 的 DocStatChip） */}
-          <DocStatChip>
-            <span className="tabular-nums">{t('{0} 字', wordCount)}</span>
-          </DocStatChip>
-
           {/* 两端渐隐的 mask 挂在滚动容器外面一层：两者落在同一层时，滚动合成层与遮罩层
               套在一起，边缘有抖出一像素缝的先例（理由与笔记正文那边一致，见 note/DocBody） */}
           <div className="flex min-h-0 flex-1 flex-col" style={{ maskImage: mask, WebkitMaskImage: mask }}>

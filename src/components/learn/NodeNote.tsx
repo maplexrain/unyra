@@ -1,10 +1,9 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import type { AnnotationStyle, DocKind, DocNotepadItem, KnowledgeNode } from '../../learn/types'
 import type { LocalImageResolver } from '../../lib/docImages'
 import { canAnnotate } from '../../lib/annotation'
 import { renderNote } from '../../lib/markdown'
 import { maskChipTokens, restoreChipTokens } from '../../lib/chipSyntax'
-import { countVisibleWords, countVisibleWordsFromHtml } from '../../lib/wordCount'
 import type { OutlineHandle } from '../../lib/outline'
 import { DocBody } from './note/DocBody'
 import type { NotepadPatch } from './note/DocNotepad'
@@ -402,14 +401,6 @@ export default memo(function NodeNote({
     openNote(term, at)
   }
 
-  // 预览模式只统计实际渲染呈现给用户的可视文字（过滤 Markdown/HTML/LaTeX 语法符号）
-  const [wordCount, setWordCount] = useState(() => countVisibleWordsFromHtml(html))
-  useEffect(() => {
-    if (bodyRef.current) {
-      setWordCount(countVisibleWords(bodyRef.current, html))
-    }
-  }, [html])
-
   /*
    * 注解输入区：开合、保存/删除、样式预览与它自己的 JSX 都在 note/useAnnotationLayer。
    * 词条校验用上面那个 cannotAnnotate（「了解」那条路也用它，口径只有一份）。
@@ -456,7 +447,6 @@ export default memo(function NodeNote({
           knownConceptKeys={knownConceptKeys}
           annotationActions={annotationActions}
           resolveLocalImage={resolveLocalImage}
-          wordCount={wordCount}
           onEditContent={onEditContent}
           notepads={doc.kind === 'teaching' ? notepads : undefined}
           onUpdateNotepad={handleUpdateNotepad}

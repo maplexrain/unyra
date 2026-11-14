@@ -1,0 +1,30 @@
+/*
+ * PDF 文字层（OcrTextOverlay，lib/ocr/pdfTextLayer）的全局规则——**全局只此一份**。
+ * 挂贴 span 的定位/字号由组件内联样式给出，这里管透明化与选区高亮；
+ * debug 态（右键「显示挂贴文字」）显示挂贴与画布原文对照。
+ */
+
+/* 文字层与所有子元素：视觉全透明（只服务框选与复制，不参与显示）。
+   debug 模式例外：挂贴文字要显示出来与画布原文对照（颜色由组件内联给） */
+.ocr-text-layer:not(.ocr-text-layer-debug),
+.ocr-text-layer:not(.ocr-text-layer-debug) * {
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+}
+
+/* 调试态：勾出挂贴盒子 */
+.ocr-text-layer-debug span {
+  background: rgba(56, 139, 253, 0.14) !important;
+  outline: 1px solid rgba(56, 139, 253, 0.35);
+  outline-offset: -1px;
+}
+
+/* 框选高亮：蓝色半透明底、文字仍然透明（显示的还是下面的画布） */
+.ocr-text-layer ::selection,
+.ocr-text-layer *::selection,
+.ocr-text-layer span::selection {
+  background: rgba(56, 139, 253, 0.35) !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: none !important;
+}

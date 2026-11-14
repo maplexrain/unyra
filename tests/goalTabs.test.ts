@@ -549,3 +549,44 @@ describe('normalizeDocs 认回停靠场', () => {
     expect(docs.parkedTabs).toBeUndefined()
   })
 })
+
+describe('大纲导读页签的归属（guide）', () => {
+  const goalOfNode = (nodeId: string) => (nodeId === 'hostNode' ? 'goalA' : null)
+  /** 附身大纲的导读：outlineId 是宿主文档（节点）id */
+  const attachedGuide = tab({ kind: 'guide', outlineId: 'hostNode' }, 'g:hostNode')
+  /** 游离大纲的导读：打开时自带 goalId */
+  const freeGuide = tab({ kind: 'guide', outlineId: 'o-uuid', goalId: 'goalB' }, 'g:o-uuid')
+  /** 游离大纲没挂目标（游离池里的孤儿）：兜公共 */
+  const detachedGuide = tab({ kind: 'guide', outlineId: 'o-lost' }, 'g:o-lost')
+
+  it('refOwner：附身导读按宿主节点的目标归组，游离导读照抄 goalId，没挂目标归公共', () => {
+    expect(refOwner(attachedGuide.ref, goalOfNode)).toBe('goalA')
+    expect(refOwner(freeGuide.ref, goalOfNode)).toBe('goalB')
+    expect(refOwner(detachedGuide.ref, goalOfNode)).toBe(PUBLIC_OWNER)
+    expect(servesGoal(attachedGuide.ref, goalOfNode, 'goalA')).toBe(true)
+    expect(servesGoal(attachedGuide.ref, goalOfNode, 'goalB')).toBe(false)
+  })
+
+  it('reconcileOwners 存量迁移：旧版本错记成公共的附身导读，重登记回它的目标名下', () => {
+    const docs = [attachedGuide, freeGuide]
+    // 旧口径的登记：附身导读被 claimTab 到了 PUBLIC 名下
+    const owners: TabOwners = { [PUBLIC_OWNER]: ['g:hostNode'] }
+    const next = reconcileOwners(owners, docs, goalOfNode)
+    expect(next[PUBLIC_OWNER] ?? []).not.toContain('g:hostNode')
+    expect(next['goalA']).toContain('g:hostNode')
+    // 游离导读本来就登记对了：原样保留
+    expect(next['goalB']).toContain('g:o-uuid')
+  })
+
+  it('reconcileOwners 登记一致时不折腾（返回原表）', () => {
+    const owners: TabOwners = { goalA: ['g:hostNode'] }
+    expect(reconcileOwners(owners, [attachedGuide], goalOfNode)).toBe(owners)
+  })
+
+  it('关闭目标页签组时导读随组关闭：goalTabsOf 把它选进 victims', () => {
+    // 存量错误登记先经 reconcile 校正，再按 goalTabsOf 选受害者
+    const owners = reconcileOwners({ [PUBLIC_OWNER]: ['g:hostNode'] }, [attachedGuide, freeGuide], goalOfNode)
+    const victims = goalTabsOf(owners, [attachedGuide, freeGuide], goalOfNode, 'goalA')
+    expect(victims.map((v) => v.id)).toEqual(['g:hostNode'])
+  })
+})

@@ -157,7 +157,14 @@ export function toChatHistory(
        * 从这里整段作废。
        */
       for (const p of seg) {
-        if (p.type === 'prompt-module') out.push({ role: 'assistant', content: p.text })
+        if (p.type === 'prompt-module') {
+          // 实发侧（agent/runtime 的 pushInjection）有降级规则：assistant 注入的前一条
+          // 不是 user 时降为 user（DeepSeek 严格要求 assistant 前一条是 user）。
+          // 还原时按同一规则对 out 的尾部判定，保证逐字节镜像。
+          const prev = out[out.length - 1]
+          const role = prev && prev.role === 'user' ? 'assistant' : 'user'
+          out.push({ role, content: p.text })
+        }
       }
     }
   }

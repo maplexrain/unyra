@@ -69,6 +69,7 @@ const ALL_TABS: SettingsTabItem[] = [
     subTabs: [
       { key: 'providers', label: '提供商与模型' },
       { key: 'search', label: '网络搜索' },
+      { key: 'caps', label: '能力接入' },
     ],
   },
   {

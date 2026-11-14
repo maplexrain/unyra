@@ -48,6 +48,11 @@ export function refOwner(ref: TabRef, goalOfNode: (nodeId: string) => string | n
       return goalOfNode(ref.nodeId) ?? PUBLIC_OWNER
     case 'outline':
       return (ref as { goalId?: string }).goalId ?? goalOfNode(ref.nodeId) ?? ref.nodeId ?? PUBLIC_OWNER
+    // 大纲导读跟着大纲走（2026-11-14 修：旧口径落 default 成公共页签——「关闭目标
+    // 页签组」时导读孤零零挂着不跟组关）。游离大纲自带 goalId（没挂目标的兜回公共）；
+    // 附身大纲的 outlineId 是宿主文档（节点）id，按节点的目标归组
+    case 'guide':
+      return ref.goalId || goalOfNode(ref.outlineId) || PUBLIC_OWNER
     // 记忆页签本身就是「一枚目标一份」的（见 tabs 的 `m:` + goalId），归属直接照抄
     case 'mind':
       return ref.goalId
@@ -192,20 +197,33 @@ export function reconcileOwners(
   goalOfNode: (nodeId: string) => string | null,
 ): TabOwners {
   const live = new Set(tabs.map((t) => t.id))
+  const tabById = new Map(tabs.map((t) => [t.id, t] as const))
   const out: TabOwners = {}
   const seen = new Set<string>()
+  /** 归属被修正过的（返回 desired owner）：登记与推导不一致时以推导为准 */
+  let changed = false
   for (const [owner, ids] of Object.entries(owners ?? {})) {
     const kept: string[] = []
     for (const id of ids) {
       // 已经不存在的摘掉；同一枚被重复登记在多个目标下的，只认第一条
       if (!live.has(id) || seen.has(id)) continue
       seen.add(id)
+      // 大纲导读的归属是 ref 的**纯函数**（旧版本曾把附身导读错记成公共页签，组关
+      // 了它还孤零零挂着）——登记与推导不一致时以推导为准重登记，存量页签升级即正确
+      const ref = tabById.get(id)?.ref
+      if (ref?.kind === 'guide') {
+        const desired = refOwner(ref, goalOfNode)
+        if (desired !== owner) {
+          out[desired] = [...(out[desired] ?? []), id]
+          changed = true
+          continue
+        }
+      }
       kept.push(id)
     }
     if (kept.length > 0) out[owner] = kept
   }
   // 没登记过的补上：按页签**出现顺序**追加，于是补出来的组里顺序与原页签栏一致
-  let changed = false
   for (const tab of tabs) {
     if (seen.has(tab.id)) continue
     const owner = refOwner(tab.ref, goalOfNode)

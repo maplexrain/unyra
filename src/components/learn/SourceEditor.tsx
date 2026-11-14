@@ -38,7 +38,6 @@ import { registerVimExCommands, setVimEditorBridge } from '../../lib/vimCommands
 import { foldCurrentScope, unfoldCurrentScope } from '../../lib/cmFoldScope'
 import { takeSourceReveal, subscribeSourceReveal, type SourceReveal } from '../../lib/docReveal'
 import { useDocScroll } from '../../lib/docScroll'
-import { DocStatChip } from './DocFloat'
 import { EditorCursorBindingContext } from './editor/LiveSplitPreview'
 import { t } from '../../i18n'
 
@@ -77,11 +76,12 @@ const STATE_TONE: Record<SaveState, string> = {
 }
 
 /**
- * 配色与主题在 lib/cmMarkdown：
- * gutterLeft 留出 50px 避让悬浮在左上角的垂直工具栏（left-3 + w-8），
- * 避免首行代码与按钮发生视觉重叠；代码正文与行号分隔线保持 14px 舒适内边距。
+ * 配色与主题在 lib/cmMarkdown：代码正文与行号分隔线保持 14px 舒适内边距。
+ * 左侧悬浮工具条（DocFloat）的避让**不在编辑器里做**——旧做法用 gutterLeft:50
+ * 给 gutter 加宽，分栏对调（编辑在右）后就成了一条无主的空列；现在让位统一长在
+ * GroupBody 的正文盒上（pl-[50px]，画不画工具条同一个条件），编辑器只管正文。
  */
-const editorTheme = markdownEditorTheme({ top: 14, bottom: 24, left: 14, right: 24, gutterLeft: 50 })
+const editorTheme = markdownEditorTheme({ top: 14, bottom: 24, left: 14, right: 24 })
 
 /** 语言按扩展名现配（markdown 内嵌代码块也各自高亮）；其余扩展名交给 language-data 的表 */
 const langComp = new Compartment()
@@ -691,11 +691,16 @@ export default function SourceEditor({
   return (
     <div className="print-flat relative flex min-h-0 flex-1 flex-col bg-card moji-tab-transition">
       {/*
-        字数与保存状态：排在右上角悬浮组的正下方（见 DocFloat 的 DocStatChip）。
-        保存状态跟着字数一起搬——它俩本来就是同一条读数（「这份文档现在多大、存了没」），
-        拆成两块钉在屏幕两侧会更难找。编辑模式统计的是源码字符，不是渲染后的可视字数。
+        字数、VIM 指示与保存状态：绝对定位钉在**编辑器底部独占一行**（原右上角，
+        用户口径 2026-11-14 挪到下面）。编辑器的 cm-content 底部内边距 24px 恰好让出
+        这一行——正文滚到底，最后一行也在它上面，永远压不住字。保存状态跟着字数一起
+        搬——它俩本来就是同一条读数（「这份文档现在多大、存了没」），拆两处更难找。
+        编辑模式统计的是源码字符，不是渲染后的可视字数。
       */}
-      <DocStatChip title={label}>
+      <div
+        title={label}
+        className="no-print pointer-events-none absolute inset-x-0 bottom-0 z-20 flex h-6 items-center justify-end gap-1.5 border-t border-line/40 bg-card/85 px-3 text-[11px] text-ink-faint backdrop-blur-xs select-none"
+      >
         {vimActive && (
           <>
             <span className="font-mono text-[11px] font-bold text-seal select-none">VIM</span>
@@ -710,19 +715,18 @@ export default function SourceEditor({
         >
           {t(STATE_TEXT[state])}
         </span>
-      </DocStatChip>
+      </div>
 
       {/*
-        正文内边距走 .cm-content（见 editorTheme）：上下 20px、与左右同一尺度。
+        正文内边距走 .cm-content（见 editorTheme）：上下与左右同一尺度。
         右上那排悬浮按钮压着首行就压着——它平时是透明的，不占版面。
-        下面那条统计也浮在正文上，但它比按钮更低一行，压不住首行。
       */}
       <div ref={hostRef} className="min-h-0 flex-1 overflow-hidden" />
-      {/* 右下角字号比例提示 */}
+      {/* 右下角字号比例提示（底部状态行上面一层，别跟它叠在一起） */}
       <div
         aria-hidden={!zoomHud}
         className={
-          'pointer-events-none absolute bottom-5 right-5 z-20 flex items-center gap-1.5 rounded-full border border-line-strong/80 bg-card/90 px-3 py-1 shadow-md backdrop-blur transition-opacity duration-200 select-none ' +
+          'pointer-events-none absolute bottom-7 right-5 z-20 flex items-center gap-1.5 rounded-full border border-line-strong/80 bg-card/90 px-3 py-1 shadow-md backdrop-blur transition-opacity duration-200 select-none ' +
           (zoomHud ? 'opacity-100' : 'opacity-0')
         }
       >

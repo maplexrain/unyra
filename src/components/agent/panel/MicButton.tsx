@@ -20,7 +20,7 @@ import {
   voiceState,
   type VoiceSink,
 } from '../../../lib/voice/session'
-import { voicePluginOn } from '../../../lib/voice/plugin'
+import { capsSttOn, subscribeCapabilities } from '../../../lib/capabilities'
 import { t } from '../../../i18n'
 import { spawnInkRipple } from '../../../lib/motion'
 
@@ -68,6 +68,8 @@ interface Props {
 
 export default function MicButton({ makeSink, active = true }: Props) {
   const state = useSyncExternalStore(subscribe, voiceState)
+  // 语音识别接没接入（能力配置响应式读：设置页里改完，麦克风按钮立刻出现/消失）
+  const sttOn = useSyncExternalStore(subscribeCapabilities, capsSttOn)
   const recording = state.phase === 'recording'
   const working = state.phase === 'working'
   const hasError = state.phase === 'error' && !!state.message
@@ -101,7 +103,7 @@ export default function MicButton({ makeSink, active = true }: Props) {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [recording])
 
-  if (!voicePluginOn()) return null
+  if (!sttOn) return null
 
   const title = recording
     ? t('正在录音（{0}）——按空格/回车或再点一下完成，Esc 丢弃剩余录音', clock(state.seconds))

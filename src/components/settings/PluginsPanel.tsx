@@ -38,10 +38,9 @@ import { openPluginDocTab } from '../../lib/pluginDoc'
 
 interface Props {
   onToast: (msg: string) => void
-  onOpenConfig: (id: string) => void
 }
 
-export function PluginsPanel({ onToast, onOpenConfig }: Props) {
+export function PluginsPanel({ onToast }: Props) {
   const [list, setList] = useState<PluginStatus[]>(() => pluginStatuses())
   const [listError, setListError] = useState(() => pluginListError())
   const [busy, setBusy] = useState('')
@@ -123,7 +122,7 @@ export function PluginsPanel({ onToast, onOpenConfig }: Props) {
             <h2 className="text-[14px] font-semibold text-ink-strong">{t('插件与扩展')}</h2>
           </div>
           <p className="mt-1 text-[11.5px] text-ink-soft">
-            {t('管理 Markdown 语法增强、代码运行沙箱及本地功能性插件。')}
+            {t('管理 Markdown 语法增强与视频来源插件。')}
           </p>
         </div>
 
@@ -242,17 +241,6 @@ export function PluginsPanel({ onToast, onOpenConfig }: Props) {
                               <RefreshCw size={14} />
                             </button>
                           )}
-                          {p.configurable && (
-                            <button
-                              type="button"
-                              title={t('配置')}
-                              aria-label={t('配置')}
-                              onClick={() => onOpenConfig(p.id)}
-                              className="flex h-7 w-7 items-center justify-center border-0 rounded-none bg-transparent text-ink-soft transition hover:text-ink cursor-pointer"
-                            >
-                              <Settings size={15} />
-                            </button>
-                          )}
                           <Switch
                             bare
                             on={p.enabled}
@@ -325,12 +313,13 @@ export function PluginsPanel({ onToast, onOpenConfig }: Props) {
           <span>{t('插件运行安全机制')}</span>
         </div>
         <p className="mt-1">
-          {t('用户放置在数据目录下的本地插件具备与应用同等的运行权限（可读取笔记内容与访问本地磁盘）。请仅安装来源可靠、内容清晰的脚本插件。内置功能性插件（如语音输入）为官方打包集成，安全隔离运行。')}
+          {t('用户放置在数据目录下的本地插件具备与应用同等的运行权限（可读取笔记内容与访问本地磁盘）。请仅安装来源可靠、内容清晰的脚本插件。（语音与识别类能力已迁至「设置 → 模型 → 能力接入」，不再作为插件提供。）')}
         </p>
       </div>
     </div>
   )
-}
+}
+
 
 
 /**

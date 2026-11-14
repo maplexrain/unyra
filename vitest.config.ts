@@ -13,7 +13,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
     globals: false,
     /*
      * 处理 CSS：默认（css: false）下所有 CSS 导入都被换成空串，**连 ?raw 也是空的**。

@@ -36,7 +36,6 @@ import { useScrollFollow } from './panel/useScrollFollow'
 import { fadeMask, useScrollEdges } from '../../lib/scrollFade'
 import { t, useLocale } from '../../i18n'
 import { focusAgentInput } from '../../lib/agentFocus'
-import { TTSPlayerBar } from '../tts/TTSPlayerBar'
 
 /**
  * AI Agent 面板：按顺序呈现「思考过程 → 工具调用 → 回复正文」。
@@ -660,12 +659,6 @@ export default function AgentPanel({
 
 
 
-      {/* 全局悬浮 TTS 播放控制条 */}
-      <div className="pointer-events-none absolute bottom-14 left-0 right-0 z-30 flex justify-center px-4">
-        <div className="pointer-events-auto">
-          <TTSPlayerBar />
-        </div>
-      </div>
 
       {/* 输入框里的附件还没落盘：用 PendingLightbox（内存里的 object URL） */}
       {preview && <PendingLightbox image={preview} onClose={() => setPreview(null)} />}

@@ -1,7 +1,6 @@
 /**
  * 这个文件负责什么：正文那一块——滚动容器、正文本身（MarkdownView 渲染出来的 HTML）、
- * 正文还没来 / 笔记还空着时的两种占位，以及右上角悬浮组下方那条字数统计
- * （见 DocFloat 的 DocStatChip）。
+ * 正文还没来 / 笔记还空着时的两种占位。
  *
  * 它不碰任何状态：字号系数、正文 HTML、注解都从上层传进来（见 NodeNote）。
  * 选词菜单是浮在正文上的，但定位与开合都不在这里——它以 overlay 挂在正文区的
@@ -19,7 +18,6 @@ import type { AnnotationActions } from '../../../lib/annotation'
 import type { LocalImageResolver } from '../../../lib/docImages'
 import { copySelectionAsMarkdown } from '../../../lib/copySource'
 import { fadeMask, useScrollEdges } from '../../../lib/scrollFade'
-import { DocStatChip } from '../DocFloat'
 import ZenResizeHandles from '../workspace/ZenResizeHandles'
 import { t } from '../../../i18n'
 
@@ -52,8 +50,6 @@ interface Props {
   annotationActions: AnnotationActions
   /** 就地图片解析器（见 lib/docImages）：文档目录旁的相对路径图片据此显示；上层按文档注入 */
   resolveLocalImage?: LocalImageResolver
-  /** 正文字数（去掉空白）：右上角那条统计用（见 DocStatChip） */
-  wordCount: number
   /** 浮在正文这一层上的东西（选词菜单）：位置与开合由上层管，这里只负责插回原位 */
   overlay?: ReactNode
   onEditContent?: (next: string) => void
@@ -99,7 +95,6 @@ function areDocBodyPropsEqual(prev: Props, next: Props): boolean {
   if (prev.onManualWrite !== next.onManualWrite) return false
   if (prev.kind !== next.kind) return false
   if (prev.nodeId !== next.nodeId) return false
-  if (prev.wordCount !== next.wordCount) return false
   if (prev.overlay !== next.overlay) return false
   if (prev.resolveLocalImage !== next.resolveLocalImage) return false
   if (prev.scrollRef !== next.scrollRef || prev.bodyRef !== next.bodyRef) return false
@@ -125,7 +120,6 @@ export const DocBody = memo(function DocBody({
   knownConceptKeys,
   annotationActions,
   resolveLocalImage,
-  wordCount,
   overlay,
   onEditContent,
   notepads,
@@ -140,11 +134,6 @@ export const DocBody = memo(function DocBody({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      {/* 字数统计：排在右上角悬浮组的正下方（见 DocFloat 的 DocStatChip） */}
-      <DocStatChip>
-        <span className="tabular-nums">{t('{0} 字', wordCount)}</span>
-      </DocStatChip>
-
       {/*
         两端渐隐的 mask 挂在这一层，不是滚动容器本身：两者落在同一层时，滚动合成层
         与遮罩层套在一起，边缘有抖出一像素缝的先例；分开挂就没有这层顾虑。

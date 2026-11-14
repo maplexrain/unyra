@@ -170,7 +170,7 @@ describe('toChatHistory 与 runtime 实发的逐跳镜像', () => {
     })
   })
 
-  it('mid-loop 注入的提示词模块：还原时在片段位置补发 assistant 消息，与实发逐字节前缀', async () => {
+  it('mid-loop 注入的提示词模块：紧跟 tool 消息时降级 user（DeepSeek 序列约束），还原与实发逐字节前缀', async () => {
     const MODULE = '【提示词模块 · 超级文档】规范全文……'
     const userText = '做个交互小工具'
     let injected = false
@@ -199,10 +199,11 @@ describe('toChatHistory 与 runtime 实发的逐跳镜像', () => {
       },
     })
     expect(requests.length).toBe(2)
-    // 实发：第二跳里模块 assistant 消息紧跟在工具结果之后
+    // 实发：第二跳里模块消息紧跟在工具结果之后——pushInjection 的降级规则
+    // （assistant 注入的前一条不是 user 时降 user，DeepSeek 序列约束）使它以 user 发出
     const lastHop = requests[1]
-    expect(lastHop[lastHop.length - 1]).toEqual({ role: 'assistant', content: MODULE })
-    // 还原：模块片段在原位置变成同一条 assistant 消息，整份历史以最后一跳为逐字节前缀
+    expect(lastHop[lastHop.length - 1]).toEqual({ role: 'user', content: MODULE })
+    // 还原：模块片段在原位置变成同一条 user 消息，整份历史以最后一跳为逐字节前缀
     const next = nextTurnRequests(userText, parts)
     expect(next.slice(0, lastHop.length)).toEqual(lastHop)
     expect(next[lastHop.length]).toMatchObject({ role: 'assistant', content: '做完了。' })

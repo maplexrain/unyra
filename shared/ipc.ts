@@ -3,7 +3,7 @@
  *
  * 这些形状原先在 `electron/preload.ts`（主进程暴露出去的形状）与 `src/lib/native.ts`
  * （渲染层看到的 preload 形状）里各写一份、逐字重复，另外在 electron/runner.ts、
- * electron/plugins.ts、electron/voice.ts、electron/storage/**、src/lib/codeArtifacts.ts
+ * electron/plugins.ts、electron/storage/**、src/lib/codeArtifacts.ts
  * 里还有同名同体的副本。漏改一侧不会编译报错，只会在运行时炸——所以只在这里留一份，
  * 其余各文件从这里 `import type` 之后按原样再转出去（调用方的 import 路径不变）。
  *
@@ -73,30 +73,38 @@ export type {
 /* ---------- 代码块的伪编译产物 ---------- */
 export type { CodeArtifact, SilentMark } from './ipc/codeArtifact'
 
-/* ---------- 语音模型与识别 ---------- */
-export type {
-  VoiceModelFile,
-  VoiceModelStatus,
-  VoiceModelProgress,
-  VoiceDownloadResult,
-  VoiceTranscribeRequest,
-  VoiceTranscribeResult,
-} from './ipc/voice'
-
-/* ---------- OCR 文字识别 ---------- */
+/* ---------- 模型能力（TTS / STT / OCR / Files API，见 electron/capabilities） ----------
+ * 旧插件时代的 voice / ocr / tts 三组模型下载契约随本地推理栈一起退役；
+ * OCR 文字层的挂贴数据形状（OcrLineItem 等）并入 capabilities 一份。
+ */
 export type {
   OcrBBox,
   OcrWordItem,
   OcrLineItem,
   OcrPageResult,
-  OcrModelOption,
-  OcrModelStatus,
-  OcrModelProgress,
-  OcrDownloadRequest,
-  OcrDownloadResult,
-  OcrRecognizeRequest,
-  OcrRecognizeResult,
-} from './ipc/ocr'
+  CapsDeepseekEngine,
+  CapsLocalEngine,
+  CapsEngine,
+  CapsOcrPurpose,
+  CapsOcrRequest,
+  CapsOcrResult,
+  CapsTtsRequest,
+  CapsTtsResult,
+  CapsSttRequest,
+  CapsSttResult,
+  CapsCacheGetResult,
+  CapsCacheSetResult,
+  CapsFilePurpose,
+  CapsFileEntry,
+  CapsFilesCreateRequest,
+  CapsFilesCreateResult,
+  CapsFilesListRequest,
+  CapsFilesListResult,
+  CapsFilesDeleteRequest,
+  CapsFilesDeleteResult,
+  CapsFilesRetrieveRequest,
+  CapsFilesRetrieveResult,
+} from './ipc/capabilities'
 
 /* ---------- 原生导入导出 ---------- */
 export type {
@@ -188,14 +196,3 @@ export type {
   ImageSaveResult,
   ImageCopyResult,
 } from './ipc/screen'
-
-/* ---------- TTS 语音合成与本地模型 ---------- */
-export type {
-  TtsModelDefinition,
-  TtsModelFile,
-  TtsModelStatus,
-  TtsModelProgress,
-  TtsDownloadResult,
-  TtsSynthesizeRequest,
-  TtsSynthesizeResult,
-} from './ipc/tts'

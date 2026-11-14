@@ -22,8 +22,8 @@
 import { t } from '../../i18n'
 import { native } from '../native'
 import { SAMPLE_RATE, startMic, type MicChunk, type MicSession } from './mic'
-import { modelStatus } from './model'
-import { loadVoiceSettings, voiceGpu } from './settings'
+import { loadVoiceSettings } from './settings'
+import { sttEngineOf } from '../capabilities'
 
 export type VoicePhase = 'idle' | 'recording' | 'working' | 'error'
 
@@ -371,11 +371,18 @@ function attempt(id: number, cut = false): Promise<void> {
   lastAttemptAt = Date.now()
   const run = (async () => {
     try {
-      const res = await native().voice.transcribe({
+      // 识别走「设置 → 模型 → 能力接入」配置的引擎（DeepSeek ASR 或本地适配器）。
+      // 段落不落缓存：录音段是一次性的（每段音频只出现一次），缓存命中不了还多一遍哈希。
+      const sttCfg = sttEngineOf()
+      if (!sttCfg) {
+        streamError = t('语音识别未接入：到「设置 → 模型 → 能力接入」里启用')
+        return
+      }
+      const res = await native().caps.stt({
         samples,
         sampleRate: SAMPLE_RATE,
-        language: loadVoiceSettings().language,
-        gpu: voiceGpu(),
+        language: sttCfg.language,
+        engine: sttCfg.engine,
       })
       if (id !== token) return
       if (!res.ok) {
@@ -424,10 +431,10 @@ function attempt(id: number, cut = false): Promise<void> {
 export async function startRecording(): Promise<void> {
   if (voiceBusy()) return
   const id = ++token
-  const status = await modelStatus().catch(() => null)
+  const sttCfg = sttEngineOf()
   if (id !== token) return
-  if (!status?.exists) {
-    emit({ phase: 'error', message: t('还没下载语音模型：到「设置 → 插件 → 语音输入」里下载') })
+  if (!sttCfg) {
+    emit({ phase: 'error', message: t('语音识别未接入：到「设置 → 模型 → 能力接入」里启用（DeepSeek 或本地服务）') })
     return
   }
   // 上一趟可能还有一段在解：等它收尾再开新的一路，别让两路推理叠在一起

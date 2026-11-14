@@ -151,6 +151,39 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
   const gTabId = gTab?.id ?? ''
   /** 网页页签携带的 URL：闭包里用（TS 的收窄穿不进闭包） */
   const gWebUrl = gTab?.ref.kind === 'web' ? gTab.ref.url : ''
+  /**
+   * 这一格要不要画左侧悬浮工具条（DocFloat，渲染处在下方，用的是同一个条件）。
+   * 同一个条件还决定**正文盒要不要给它让出一条左列**（见正文盒的 pl-[50px]）：
+   * 工具条 absolute 锚在格容器上，对调分栏后无论哪一栏排在最左都得从它后面起排——
+   * 旧做法让位长在编辑栏 gutter 上，对调后按钮叠在预览正文上、编辑栏前还剩一条
+   * 无主的空列（2026-11-14 修复）。
+   */
+  const hasDocFloat = !!(
+    gTab &&
+    // 媒体视图（图片 / 音频）上工具条本来就一颗按钮都没有（空壳），不画也不让位
+    dg.view !== 'media' &&
+    gTab.ref.kind !== 'web' &&
+    gTab.ref.kind !== 'settings' &&
+    gTab.ref.kind !== 'usage' &&
+    gTab.ref.kind !== 'schedule' &&
+    gTab.ref.kind !== 'guide' &&
+    gTab.ref.kind !== 'mind' &&
+    gTab.ref.kind !== 'agentSettings' &&
+    gTab.ref.kind !== 'outline' &&
+    // 新建文件页不画（用户报的：那一条会压住页头右侧的「保存…」按钮）
+    gTab.ref.kind !== 'draft' &&
+    // 视频学习页（实验）不画：大纲/视图切换对播放器没有意义（用户定的）
+    gTab.ref.kind !== 'video' &&
+    // 插件文档页不画：它是参考手册，不是可编辑节点文档
+    gTab.ref.kind !== 'pluginDoc' &&
+    // 赞助者名单页不画：它是致谢名册
+    gTab.ref.kind !== 'sponsors' &&
+    // Vim 学习页不画：它是学习与参考手册
+    gTab.ref.kind !== 'vim' &&
+    // PDF 浏览页不画：严格只读（纯净阅读仍可用 F11）
+    !(gTab.ref.kind === 'local' && isPdfFile(gTab.ref.path)) &&
+    !(gTab.ref.kind === 'ws' && isPdfFile(gTab.ref.seg))
+  )
   const isFocused = groupId === docs.focus
   const gExam = examCopyOf(store, gTab)
   const panes = residentPanes.filter((p) => p.group === groupId)
@@ -309,14 +342,23 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
       </div>
 
       {/*
-        文档内容 + 右上角悬浮组。悬浮组是绝对定位的，所以这一层必须 relative，
-        并且它是**唯一**能被悬浮组盖住的地方——它不会跑到页签栏或对话栏上去。
+        文档内容 + 左侧工具条 + 右上角悬浮组。悬浮组是绝对定位的，所以这一层必须
+        relative，并且它是**唯一**能被悬浮组盖住的地方——它不会跑到页签栏或对话栏上去。
       */}
       <div className="relative flex min-h-0 flex-1 flex-col">
           <div
             ref={isFocused ? docBox : undefined}
             {...boxProps}
-            className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+            className={
+              'flex h-full min-h-0 flex-1 flex-col overflow-hidden' +
+              /*
+               * 左侧工具条（DocFloat）的让位就挂在这里：正文盒整体从工具条后面起排。
+               * 让位是「列」不是某个栏的内边距——分栏对调后最左那栏（编辑或预览）
+               * 都在它后面，按钮永远不会叠上正文，也不会剩一条无主的空列
+               * （画不画工具条与让不让位共用 hasDocFloat 一个条件，不会分家）。
+               */
+              (hasDocFloat ? ' pl-[50px]' : '')
+            }
             onDragOver={(e) => {
             // 整个正文区都是 chip 的落点：资源管理器 / 收藏里拖来的引用，拖到这里
             // 直接开成本格的页签（不必再瞄准上面那条窄页签栏）。系统文件拖入
@@ -741,33 +783,9 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
           悬浮组（这一格右上角，横向一条，见 components/learn/DocFloat）：左半边是这个
           节点的工具（笔记 / 超级文档 / 学习状态 / 试卷），右半边是这份文档的动作
           （源码 / 预览 / 导出）。一个页签都没有的空格子不画。
-
-          **新建文件页不画**（用户报的：那一条会压住页头右侧的「保存…」按钮）：
-          这一页右上角是它自己的页头，保存按钮就长在那儿；而悬浮组里的东西对它也
-          基本没意义——还没有类型，切不了预览，大纲也不存在。纯净阅读仍可用 F11。
+          画不画的口径收在 hasDocFloat 一个常量里（正文盒的让位也用它，见上）。
         */}
-        {gTab &&
-          gTab.ref.kind !== 'web' &&
-          gTab.ref.kind !== 'settings' &&
-          gTab.ref.kind !== 'usage' &&
-          gTab.ref.kind !== 'schedule' &&
-          gTab.ref.kind !== 'guide' &&
-          gTab.ref.kind !== 'mind' &&
-          gTab.ref.kind !== 'agentSettings' &&
-          gTab.ref.kind !== 'outline' &&
-          gTab.ref.kind !== 'draft' &&
-          // 视频学习页（实验）也不画：大纲/视图切换对播放器没有意义，纯净阅读
-          // 仍可用 F11（用户定的：这一页右上角不要按钮组）
-          gTab.ref.kind !== 'video' &&
-          // 插件文档页同样不画：它是参考手册，不是可编辑文档
-          gTab.ref.kind !== 'pluginDoc' &&
-          // 赞助者名单页同样不画：它是致谢名册
-          gTab.ref.kind !== 'sponsors' &&
-          // Vim 学习页不画：它是学习与参考手册，不属于可编辑节点文档
-          gTab.ref.kind !== 'vim' &&
-          // PDF 浏览页不画：严格只读，左上角不需要浮动工具栏（纯净阅读仍可用 F11）
-          !(gTab.ref.kind === 'local' && isPdfFile(gTab.ref.path)) &&
-          !(gTab.ref.kind === 'ws' && isPdfFile(gTab.ref.seg)) && (
+        {hasDocFloat && (
           <DocFloat
             /*
              * 这条竖条锚定在页签容器上（不属于编辑列）：编辑列与预览列对调时保持原位不动。
