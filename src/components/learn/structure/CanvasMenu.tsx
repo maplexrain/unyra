@@ -33,6 +33,12 @@ export interface CanvasMenuProps {
   /** 统一通道的回执 → 吐司（拒绝一定带人话） */
   report: (r: ChannelResult) => boolean
   onGenerateOutline?: (docUuid: string) => void
+  /** 大纲卡右键菜单的「生成大纲导读」：为**这份大纲本体**写导读（只写 guide），页签当场打开 */
+  onGenerateOutlineGuide?: (outlineUuid: string) => void
+  /** 大纲卡右键菜单的「大纲导读」：打开已有的导读页签（没有导读时说明一句） */
+  onOpenOutlineGuide?: (outlineUuid: string) => void
+  /** 笔记卡右键菜单的「生成总结」：一次性补全 ≤200 字，落在笔记卡上 */
+  onGenerateNoteSummary?: (noteId: string) => void
   onOpenVideoNode?: (nodeUuid: string) => void
   onOpenVideo?: (videoId: string) => void
   onGenerateVideoDoc?: (videoNodeUuid: string) => void
@@ -63,6 +69,9 @@ export function CanvasMenu({
   onSetEntry,
   report,
   onGenerateOutline,
+  onGenerateOutlineGuide,
+  onOpenOutlineGuide,
+  onGenerateNoteSummary,
   onOpenVideoNode,
   onOpenVideo,
   onGenerateVideoDoc,
@@ -120,28 +129,57 @@ export function CanvasMenu({
             {t('注释')}
           </button>
           {menuCard.kind === 'note' && (
-            <button
-              type="button"
-              className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-              onClick={() => {
-                setMenuText(menuCard.title)
-                setMenu({ ...menu, mode: 'rename' })
-              }}
-            >
-              {t('改名')}
-            </button>
+            <>
+              <button
+                type="button"
+                className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
+                onClick={() => {
+                  setMenuText(menuCard.title)
+                  setMenu({ ...menu, mode: 'rename' })
+                }}
+              >
+                {t('改名')}
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
+                onClick={() => {
+                  // 生成总结：一次请求答得完的活（≤200 字），不走导师对话
+                  onGenerateNoteSummary?.(menuCard.uuid)
+                  setMenu(null)
+                }}
+              >
+                {t('生成总结')}
+              </button>
+            </>
           )}
           {menuCard.kind === 'outline' && (
-            <button
-              type="button"
-              className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-              onClick={() => {
-                onGenerateOutline?.(menuCard.uuid)
-                setMenu(null)
-              }}
-            >
-              {t('生成总览')}
-            </button>
+            <>
+              {menuCard.hasGuide && onOpenOutlineGuide && (
+                <button
+                  type="button"
+                  className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
+                  onClick={() => {
+                    // 大纲导读：打开已有的只读导读页签（没有导读时这项不出现）
+                    onOpenOutlineGuide(menuCard.uuid)
+                    setMenu(null)
+                  }}
+                >
+                  {t('大纲导读')}
+                </button>
+              )}
+              <button
+                type="button"
+                className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
+                onClick={() => {
+                  // 生成大纲导读：导读生在**大纲本体**上（只写 guide、不动 intro/children），页签当场打开
+                  onGenerateOutlineGuide?.(menuCard.uuid)
+                  setMenu(null)
+                }}
+              >
+                {t('生成大纲导读')}
+              </button>
+            </>
           )}
           {menuCard.kind === 'doc' && (
             <button

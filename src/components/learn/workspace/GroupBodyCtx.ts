@@ -76,13 +76,10 @@ export interface GroupBodyCtx {
   patchWebMeta: ComponentProps<typeof WebTabLayer>['onMeta']
   outlineFocus: { nodeId: string; nonce: number } | null
   handleOutlineFocusHandled: () => void
-  /* 纯净阅读与随笔入口 */
+  /* 纯净阅读 */
   pure: boolean
   pureMoving: boolean
   toggleZen: () => void
-  essayGoalId: string | null
-  setEssayOpen: Dispatch<SetStateAction<boolean>>
-  essayBtnRef: RefObject<HTMLButtonElement | null>
   /* 查找条 */
   findMode: 'find' | 'replace' | null
   findTick: number

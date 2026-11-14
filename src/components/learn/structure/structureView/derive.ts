@@ -35,7 +35,7 @@ import {
   type HeightOf,
   type StructureMap,
 } from '../../../../learn/structure'
-import { DOC_BODY_H, examCardHeight, outlineCardHeight } from './cardMetrics'
+import { DOC_BODY_H, examCardHeight, noteCardHeight, outlineCardHeight } from './cardMetrics'
 import { slotAnchorY } from './palette'
 import type { CanvasEdge, CanvasView, CardView, ExamAttemptRow, OutlineSlotView } from './viewModel'
 
@@ -217,6 +217,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
         kind: 'outline',
         title: node.title,
         subtitle: slots.length ? `${slots.length} 个目标项` : intro ? clip(intro) : '还没有大纲',
+        ...(node.outline.guide ? { hasGuide: true } : {}),
         slots,
       },
       depth: 1,
@@ -238,6 +239,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
         kind: 'outline',
         title: entity.title,
         subtitle: slots.length ? `${slots.length} 个目标项` : intro ? clip(intro) : '还没有目标项',
+        ...(entity.guide ? { hasGuide: true } : {}),
         slots,
         free: true,
       },
@@ -318,6 +320,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
           kind: 'note',
           title: note.name,
           subtitle: note.content.trim() ? `${note.content.length} 字` : '还是空的',
+          ...(note.summary ? { summary: note.summary } : {}),
         },
         depth: 1,
         anchorY: 0,
@@ -386,6 +389,7 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
         subtitle: connected
           ? (note.content.trim() ? `${note.content.length} 字` : '还是空的')
           : (note.content.trim() ? `${note.content.length} 字 · 游离` : '游离 · 还是空的'),
+        ...(note.summary ? { summary: note.summary } : {}),
       },
       depth: 2,
       anchorY: 0,
@@ -600,6 +604,11 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
     if (c.kind === 'exam') {
       const p = byUuid.get(c.uuid)
       return examCardHeight(p?.card.attempts?.length ?? 0)
+    }
+    // 笔记卡高度随总结内容长（250 封顶）：估算喂自动排布，真实高度由 CSS 决定
+    if (c.kind === 'note') {
+      const p = byUuid.get(c.uuid)
+      return noteCardHeight(!!p?.card.summary, p?.card.summary?.length ?? 0)
     }
     return CARD_H
   }

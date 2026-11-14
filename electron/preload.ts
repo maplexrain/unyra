@@ -168,6 +168,7 @@ const api = {
     write: (path: string, content: string): Promise<LocalWriteResult> =>
       ipcRenderer.invoke('local:write', path, content),
     reveal: (path: string): Promise<StorageOk | StorageFail> => ipcRenderer.invoke('local:reveal', path),
+    ensureVimConfig: () => ipcRenderer.invoke('local:ensureVimConfig'),
     pick: (): Promise<{ ok: boolean; canceled?: boolean; paths?: string[] }> =>
       ipcRenderer.invoke('local:pick'),
     /**
@@ -947,6 +948,9 @@ const api = {
     openScreenshot: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('screenshot:open'),
     getScreenshotImage: (): Promise<string | null> => ipcRenderer.invoke('screenshot:getImage'),
     getScreenshotSystemRects: (): Promise<Array<{ x: number; y: number; width: number; height: number }>> => ipcRenderer.invoke('screenshot:getSystemRects'),
+    // 输入法自动切换（vim 普通模式切英文直通，见 src/lib/imeSwitch）
+    imeGetActive: (): Promise<number | null> => ipcRenderer.invoke('ime:get'),
+    imeSetActive: (hkl: number): Promise<boolean> => ipcRenderer.invoke('ime:set', hkl),
     onScreenshotUpdate: (cb: (payload: { imageSrc: string; systemRects?: Array<{ x: number; y: number; width: number; height: number }> }) => void): (() => void) => {
       const handler = (_: unknown, data: { imageSrc: string; systemRects?: Array<{ x: number; y: number; width: number; height: number }> }) => cb(data)
       ipcRenderer.on('screenshot:update', handler)

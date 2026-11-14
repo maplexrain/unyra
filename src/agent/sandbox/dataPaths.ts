@@ -101,9 +101,6 @@ export function classifyDataPath(raw: string): DataPathVerdict {
     if (/(^|\/)method\.json$/i.test(rest)) {
       return { kind: 'app-data', api: 'method', note: '目标持久化函数' }
     }
-    if (/(^|\/)essay\.json$/i.test(rest)) {
-      return { kind: 'app-data', note: '随笔（由随笔窗口管理）' }
-    }
     if (/(^|\/)mind\.json$/i.test(rest)) {
       return { kind: 'app-data', note: '长期事实' }
     }

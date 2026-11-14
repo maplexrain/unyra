@@ -37,6 +37,10 @@ export interface CardView {
   entry?: boolean
   /** 游离大纲卡（独立实体，没有宿主文档）：空卡给「添加目标项」而不是「生成大纲」 */
   free?: boolean
+  /** 大纲卡：已生成过大纲导读（OutlineDoc/OutlineEntity 的 guide）——右键菜单的「大纲导读」据此出现 */
+  hasGuide?: boolean
+  /** 笔记卡：已生成的笔记总结（≤200 字，NoteFile.summary），卡面上直接展示 */
+  summary?: string
   /** 试卷卡的考试记录行（kind = exam 时才有；一行一次作答） */
   attempts?: ExamAttemptRow[]
   /**

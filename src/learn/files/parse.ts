@@ -7,8 +7,6 @@ import { migrateConversation } from '../compact'
 import type { Exam } from '../exam'
 import type {
   DetachedPool,
-  EssayCommit,
-  EssayEntry,
   LearnStore,
   MemoryItem,
   MethodEntry,
@@ -41,15 +39,13 @@ export function parseDocs(files: Map<string, string>, state: unknown): LearnStor
   return parseDocsV3(files, state) ?? parseDocsV2(files, state)
 }
 
-/** 目标级账本（chat / reading / essay / mind / method / workflow / structure）从目标目录读 */
+/** 目标级账本（chat / reading / mind / method / workflow / structure）从目标目录读 */
 function readGoalLedgers(
   files: Map<string, string>,
   goalDir: string,
   goalId: string,
   out: {
     conversations: Conversation[]
-    essaysByGoal: Record<string, EssayEntry[]>
-    essayCommitsByGoal: Record<string, EssayCommit[]>
     workMemory: Record<string, MemoryItem[]>
     legacyMinds: Record<string, unknown[]>
     methods: Record<string, MethodEntry[]>
@@ -92,12 +88,6 @@ function readGoalLedgers(
   const workflowFile = parseJson<{ workflows?: WorkflowEntry[] }>(files.get(`${goalDir}/workflow.json`))
   if (Array.isArray(workflowFile?.workflows) && workflowFile.workflows.length) {
     out.workflowsByGoal[goalId] = workflowFile.workflows
-  }
-
-  const essayFile = parseJson<{ essays?: EssayEntry[]; commits?: EssayCommit[] }>(files.get(`${goalDir}/essay.json`))
-  if (Array.isArray(essayFile?.essays) && essayFile.essays.length) out.essaysByGoal[goalId] = essayFile.essays
-  if (Array.isArray(essayFile?.commits) && essayFile.commits.length) {
-    out.essayCommitsByGoal[goalId] = essayFile.commits
   }
 
   const structureFile = parseJson<StructureMap>(files.get(`${goalDir}/structure.json`))
@@ -233,8 +223,6 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
 
   const ledgers = {
     conversations: [] as Conversation[],
-    essaysByGoal: {} as Record<string, EssayEntry[]>,
-    essayCommitsByGoal: {} as Record<string, EssayCommit[]>,
     workMemory: {} as Record<string, MemoryItem[]>,
     legacyMinds: {} as Record<string, unknown[]>,
     methods: {} as Record<string, MethodEntry[]>,
@@ -370,12 +358,8 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
     localFiles: s.localFiles ?? null,
     favorites: s.favorites ?? null,
     favGroups: s.favGroups ?? null,
-    essays: ledgers.essaysByGoal,
-    essayCommits: ledgers.essayCommitsByGoal,
     structure: ledgers.structureByGoal,
-    detached: ledgers.detachedByGoal,
-    essayDock: s.essayDock ?? null,
-    schedule: s.schedule ?? null,
+    detached: ledgers.detachedByGoal,    schedule: s.schedule ?? null,
     agentTabs: s.agentTabs ?? null,
     agentActiveTab: s.agentActiveTab ?? null,
   })
@@ -411,8 +395,6 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
 
   const ledgers = {
     conversations: [] as Conversation[],
-    essaysByGoal: {} as Record<string, EssayEntry[]>,
-    essayCommitsByGoal: {} as Record<string, EssayCommit[]>,
     workMemory: {} as Record<string, MemoryItem[]>,
     legacyMinds: {} as Record<string, unknown[]>,
     methods: {} as Record<string, MethodEntry[]>,
@@ -627,11 +609,8 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
     localFiles: s.localFiles ?? null,
     favorites: s.favorites ?? null,
     favGroups: s.favGroups ?? null,
-    essays: ledgers.essaysByGoal,
-    essayCommits: ledgers.essayCommitsByGoal,
     structure: ledgers.structureByGoal,
     detached: ledgers.detachedByGoal,
-    essayDock: s.essayDock ?? null,
     schedule: s.schedule ?? null,
     agentTabs: s.agentTabs ?? null,
     agentActiveTab: s.agentActiveTab ?? null,

@@ -24,11 +24,12 @@
  * 拖到文档区页签栏直接开在这格里。
  */
 import { useEffect, useRef, useState } from 'react'
-import { FileText, Folder } from 'lucide-react'
+import { Folder } from 'lucide-react'
 import type { KnowledgeNode, LearnStore } from '../../../learn/types'
 import { listUserDir } from '../../../lib/storage'
 import { WS_MOVE_MIME, wsJoin, wsRelOf } from '../../../learn/workspace'
 import { Collapse, FolderRow, Indent } from './Folder'
+import { FileTypeIcon } from './FileTypeIcon'
 import { peekReveal, subscribeReveal } from './reveal'
 import { DocRow } from './DocRow'
 import { registerWsWatch, subscribeWsChanged } from './wsChanges'
@@ -69,7 +70,7 @@ function WsRenameRow({
   return (
     <div className="flex items-center gap-1.5 py-1 pl-1.5 pr-1.5">
       <span aria-hidden="true" className="flex h-4 w-4 shrink-0 items-center justify-center" style={{ color: GRAY }}>
-        {dir ? <Folder size={12} /> : <FileText size={12} />}
+        {dir ? <Folder size={12} /> : <FileTypeIcon name={initial} />}
       </span>
       <input
         ref={ref}
@@ -293,15 +294,7 @@ function WsDir({
             ) : (
               <DocRow
                 key={e.name}
-                icon={
-                  <span
-                    aria-hidden="true"
-                    className="flex h-4 w-4 shrink-0 items-center justify-center"
-                    style={{ color: GRAY }}
-                  >
-                    <FileText size={12} />
-                  </span>
-                }
+                icon={<FileTypeIcon name={e.name} />}
                 label={e.name}
                 hint={t('工作区文件「{0}」（点击在页签打开；可拖拽：到目录行移动 / Ctrl 复制，到文档区或对话打开）', e.name)}
                 revealKey={'row:ws:' + childRel}
@@ -448,15 +441,7 @@ export function WorkspaceFlat({
         ) : (
           <DocRow
             key={e.name}
-            icon={
-              <span
-                aria-hidden="true"
-                className="flex h-4 w-4 shrink-0 items-center justify-center"
-                style={{ color: GRAY }}
-              >
-                <FileText size={12} />
-              </span>
-            }
+            icon={<FileTypeIcon name={e.name} />}
             label={e.name}
             hint={t('工作区文件「{0}」（点击在页签打开；可拖拽：到目录行移动 / Ctrl 复制，到文档区或对话打开）', e.name)}
             revealKey={'row:ws:' + childRel}

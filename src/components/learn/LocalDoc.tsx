@@ -14,6 +14,8 @@ import type { OutlineHandle } from '../../lib/outline'
 import { localRevealKey, subscribeSourceReveal } from '../../lib/docReveal'
 import MarkdownView from '../MarkdownView'
 import SourceEditor, { type SaveState } from './SourceEditor'
+import LiveSplitPreview from './editor/LiveSplitPreview'
+import { toggleEditorPreview } from './editor/previewBus'
 import { DocContextMenu } from './note/docContextMenu'
 import { useDocContextMenu, type SourceSpan } from './note/useDocContextMenu'
 import { DocStatChip } from './DocFloat'
@@ -68,6 +70,11 @@ interface Props {
    * （切视图是页签上的选择，本组件只负责把请求递出去，见 lib/docReveal）。
    */
   onRevealSource?: (loc: SourceSpan) => void
+  onCloseTab?: (force?: boolean) => void
+  onCloseOtherTabs?: (force?: boolean, opts?: { skipDirty?: boolean }) => void
+  onNewTab?: () => void
+  /** 外部修改通知版本号（仅真实外部变动时递增触发平滑回读，不销毁组件树） */
+  tick?: number
   /** 说一句话（读不到剪贴板、复制成功这类）：接到全局 toast 上 */
   onToast?: (message: string) => void
 }
@@ -86,6 +93,10 @@ export default function LocalDoc({
   outlineSlot,
   onNeedEdit,
   onRevealSource,
+  onCloseTab,
+  onCloseOtherTabs,
+  onNewTab,
+  tick,
   onToast,
 }: Props) {
   const name = fileNameOf(path)
@@ -145,7 +156,7 @@ export default function LocalDoc({
     return () => {
       alive = false
     }
-  }, [path, media])
+  }, [path, media, tick])
 
   // 媒体文件：读一次二进制（data URL），图片 / 音频 / 视频各按 mime 渲染（PDF 独立由 PdfDocView 自行管理加载与视口懒渲染）
   useEffect(() => {
@@ -190,7 +201,7 @@ export default function LocalDoc({
     return () => {
       alive = false
     }
-  }, [path, media])
+  }, [path, media, tick])
 
   /*
    * md 打开时是空的：把默认视图从预览切到编辑（效果体在下面 base 定义之后，
@@ -394,7 +405,12 @@ export default function LocalDoc({
     )
   }
 
-  if (view === 'source' || !previewable) {
+  /*
+   * 编辑体与阅读体**都常驻**（合并页面后的模式切换只翻 hidden，不重建）：
+   * CodeMirror 与分栏预览的开合比例、阅读态的滚动位置与大纲都原样保留。
+   * 不能预览的文件（txt 之类）没有「阅读」可言，只有编辑体。
+   */
+  if (!previewable) {
     return (
       <SourceEditor
         value={text}
@@ -402,77 +418,115 @@ export default function LocalDoc({
         state={state}
         error={saveError ?? error}
         label={path}
+        historyKey={'local:' + path}
         scale={editorScale ?? scale}
         ext={extOf(path)}
         // 「定位源码」放下的一次性请求：挂载时按这个身份取走并选中（见 lib/docReveal）
         revealKey={localRevealKey(path)}
+        onCloseTab={onCloseTab}
+        onCloseOtherTabs={onCloseOtherTabs}
+        onNewTab={onNewTab}
       />
     )
   }
 
-  if (isHtml) {
-    // 预览 html 用 iframe + 空 sandbox：剔除脚本与 modulepreload 外链，避免在沙箱 iframe 中触发脚本执行拦截或 CORS 跨域报错
-    const safeHtml = text
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-      .replace(/<link\b[^>]*\brel=["']?(?:modulepreload|preload)["']?[^>]*>/gi, '')
-
-    return (
-      <div className="print-flat flex min-h-0 flex-1 flex-col bg-white">
-        {/*
-          预览 html 用 iframe + 空 sandbox，而不是把内容塞进 DOM：
-          本地 html 里可能有自己的样式与脚本，塞进宿主 DOM 会**污染整个应用的样式**，
-          脚本更不该跑（那是「预览」，不是「运行这个页面」）。
-          空 sandbox 意味着：不给脚本、不给同源、不给表单，只把它当一张会排版的图片看。
-        */}
-        <iframe
-          title={name}
-          sandbox=""
-          srcDoc={safeHtml}
-          className="h-full w-full border-0 bg-white"
-        />
-      </div>
-    )
-  }
+  const safeHtml = isHtml
+    ? // 预览 html 用 iframe + 空 sandbox：剔除脚本与 modulepreload 外链，避免在沙箱 iframe 中触发脚本执行拦截或 CORS 跨域报错
+      text
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/<link\b[^>]*\brel=["']?(?:modulepreload|preload)["']?[^>]*>/gi, '')
+    : ''
 
   return (
-    <div className="print-flat relative min-h-0 flex-1 flex flex-col bg-card">
-      {/* 字数统计：排在右上角悬浮组的正下方（见 DocFloat 的 DocStatChip） */}
-      <DocStatChip>
-        <span className="tabular-nums">{t('{0} 字', wordCount)}</span>
-      </DocStatChip>
-
-      {/* 两端渐隐的 mask 挂在滚动容器外面一层：两者落在同一层时，滚动合成层与遮罩层
-          套在一起，边缘有抖出一像素缝的先例（理由与笔记正文那边一致，见 note/DocBody） */}
-      <div className="flex min-h-0 flex-1 flex-col" style={{ maskImage: mask, WebkitMaskImage: mask }}>
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-          {/* 复制同样走源文：预览里选的这一段，进剪贴板的该是它 Markdown 的样子（见 lib/copySource） */}
-          <div
-            ref={bodyRef}
-            className="note-preview moji-node-note doc-measure relative px-7 pt-2.5 pb-6"
-            style={{ '--doc-scale': scale } as CSSProperties}
-            onCopy={(e) => copySelectionAsMarkdown(e, e.currentTarget, text)}
-          >
-            <ZenResizeHandles />
-            <MarkdownView html={html} resolveLocalImage={resolveLocalImage} />
-          </div>
-        </div>
+    <>
+      {/*
+        编辑态：双栏实时预览（分栏的开合、比例与对调都在 LiveSplitPreview 里保活）。
+        藏着时也保持挂载——光标、撤销栈与分栏几何不因切去阅读态而丢。
+      */}
+      <div
+        className={view === 'source' ? 'relative flex min-h-0 flex-1 flex-col' : 'hidden'}
+        {...(view !== 'source' ? { hidden: true } : {})}
+      >
+        <LiveSplitPreview value={text} ext={extOf(path)} storageKey={'local:' + path}>
+          <SourceEditor
+            value={text}
+            onChange={edit}
+            state={state}
+            error={saveError ?? error}
+            label={path}
+            historyKey={'local:' + path}
+            scale={editorScale ?? scale}
+            ext={extOf(path)}
+            revealKey={localRevealKey(path)}
+            onCloseTab={onCloseTab}
+            onCloseOtherTabs={onCloseOtherTabs}
+            onNewTab={onNewTab}
+            onSplitView={() => toggleEditorPreview(true, 'local:' + path)}
+          />
+        </LiveSplitPreview>
       </div>
 
-      {/* 正文右键菜单（复制 / 粘贴 / 定位源码）：fixed 定位，挂在预览这一层的外面，
-          免得被滚动容器裁掉（见 note/useDocContextMenu） */}
-      {ctxMenuMounted && (
-        <DocContextMenu
-          menu={ctxMenu}
-          menuRef={ctxMenuRef}
-          closing={ctxMenuClosing}
-          canPaste
-          canReveal={!!onRevealSource}
-          onCopy={ctxCopy}
-          onPaste={ctxPaste}
-          onReveal={ctxReveal}
-          onClose={ctxMenuClose}
-        />
+      {isHtml ? (
+        /*
+          阅读态（html）：iframe + 空 sandbox，而不是把内容塞进 DOM——本地 html 里可能有
+          自己的样式与脚本，塞进宿主 DOM 会污染整个应用的样式，脚本更不该跑。
+          藏着时摘掉 srcDoc（undefined）：逐字编辑不再触发 iframe 反复导航，切回来才装载。
+        */
+        <div
+          className={view !== 'source' ? 'print-flat flex min-h-0 flex-1 flex-col bg-white' : 'hidden'}
+          {...(view === 'source' ? { hidden: true } : {})}
+        >
+          <iframe
+            title={name}
+            sandbox=""
+            srcDoc={view !== 'source' ? safeHtml : undefined}
+            className="h-full w-full border-0 bg-white"
+          />
+        </div>
+      ) : (
+        <div
+          className={view !== 'source' ? 'print-flat relative min-h-0 flex-1 flex flex-col bg-card' : 'hidden'}
+          {...(view === 'source' ? { hidden: true } : {})}
+        >
+          {/* 字数统计：排在右上角悬浮组的正下方（见 DocFloat 的 DocStatChip） */}
+          <DocStatChip>
+            <span className="tabular-nums">{t('{0} 字', wordCount)}</span>
+          </DocStatChip>
+
+          {/* 两端渐隐的 mask 挂在滚动容器外面一层：两者落在同一层时，滚动合成层与遮罩层
+              套在一起，边缘有抖出一像素缝的先例（理由与笔记正文那边一致，见 note/DocBody） */}
+          <div className="flex min-h-0 flex-1 flex-col" style={{ maskImage: mask, WebkitMaskImage: mask }}>
+            <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+              {/* 复制同样走源文：预览里选的这一段，进剪贴板的该是它 Markdown 的样子（见 lib/copySource） */}
+              <div
+                ref={bodyRef}
+                className="note-preview moji-node-note doc-measure relative px-7 pt-2.5 pb-6"
+                style={{ '--doc-scale': scale } as CSSProperties}
+                onCopy={(e) => copySelectionAsMarkdown(e, e.currentTarget, text)}
+              >
+                <ZenResizeHandles />
+                <MarkdownView html={html} resolveLocalImage={resolveLocalImage} />
+              </div>
+            </div>
+          </div>
+
+          {/* 正文右键菜单（复制 / 粘贴 / 定位源码）：fixed 定位，挂在预览这一层的外面，
+              免得被滚动容器裁掉（见 note/useDocContextMenu） */}
+          {ctxMenuMounted && (
+            <DocContextMenu
+              menu={ctxMenu}
+              menuRef={ctxMenuRef}
+              closing={ctxMenuClosing}
+              canPaste
+              canReveal={!!onRevealSource}
+              onCopy={ctxCopy}
+              onPaste={ctxPaste}
+              onReveal={ctxReveal}
+              onClose={ctxMenuClose}
+            />
+          )}
+        </div>
       )}
-    </div>
+    </>
   )
 }

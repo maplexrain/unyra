@@ -145,6 +145,7 @@ export function createWebNativeBridge(): NativeBridge {
       readMedia: (p: string) => apiFetch('/api/storage/readImage', { method: 'POST', body: JSON.stringify({ rel: p }) }),
       write: (p: string, content: string) => apiFetch('/api/base/files/write', { method: 'POST', body: JSON.stringify({ path: p, content }) }),
       reveal: () => Promise.resolve({ ok: true }),
+      ensureVimConfig: () => Promise.resolve({ ok: true, path: '/tmp/.vimrc', created: true }),
       pick: () => Promise.resolve({ ok: false, canceled: true }),
       pickAttach: () => Promise.resolve({ ok: false, canceled: true }),
       readAttach: (p: string) => apiFetch('/api/base/files/read', { method: 'POST', body: JSON.stringify({ path: p }) }),

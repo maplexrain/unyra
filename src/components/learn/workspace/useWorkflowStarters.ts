@@ -100,9 +100,11 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
 
   /**
    * 手动重跑「判分 + 讲解」：导师中途断了、或当时没配 Key，都靠它补。
-   * 收 nodeId：入口在资源管理器的试卷行右键菜单里，那里说的可能是**任意一个**节点。
+   * 收 nodeId 与 examId：入口在资源管理器的试卷行右键菜单里，那里说的是**某一份**卷子——
+   * examId 随工作流实参带出去，钉住这一轮的阅卷对象（同一节点多份卷子等着收尾时，
+   * 不带它就会全落到「最新」那份上，右键 A 判了 B）。
    */
-  const requestGrading = (nodeId?: string) => {
+  const requestGrading = (nodeId?: string, examId?: string) => {
     const target = nodeId ? nodeById(getLatest(), nodeId) : activeNode
     if (!target) return
     if (!hasKey) {
@@ -114,7 +116,10 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
       onToast(t('这个节点没有等着判分或讲解的考试'))
       return
     }
-    agent.runWorkflow('exam-grade', { nodeId: target.id, params: { target: target.id } })
+    agent.runWorkflow('exam-grade', {
+      nodeId: target.id,
+      params: { target: target.id, ...(examId ? { examId } : {}) },
+    })
   }
 
   /**

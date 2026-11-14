@@ -37,11 +37,13 @@ export function favoriteKeyOfTab(ref: TabRef): string | null {
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
     ref.kind === 'sponsors' ||
+    ref.kind === 'vim' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
+    ref.kind === 'guide' ||
     ref.kind === 'blank' ||
     ref.kind === 'draft' ||
     ref.kind === 'ws'
@@ -58,11 +60,13 @@ export function favoriteRefOfTab(ref: TabRef): FavoriteRef | null {
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
     ref.kind === 'sponsors' ||
+    ref.kind === 'vim' ||
     ref.kind === 'settings' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
+    ref.kind === 'guide' ||
     ref.kind === 'blank' ||
     ref.kind === 'draft' ||
     ref.kind === 'ws'

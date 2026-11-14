@@ -99,12 +99,6 @@ function writeGoalFiles(goal: LearnStore['goals'][number], store: LearnStore, fi
     files.set(`${path}/workflow.json`, jsonText({ version: 1, workflows: goalWorkflows }))
   }
 
-  const goalEssays = store.essays?.[goal.id] ?? []
-  const goalCommits = store.essayCommits?.[goal.id] ?? []
-  if (goalEssays.length || goalCommits.length) {
-    files.set(`${path}/essay.json`, jsonText({ version: 2, essays: goalEssays, commits: goalCommits }))
-  }
-
   const structure = store.structure?.[goal.id]
   if (structure && Object.keys(structure.positions).length) {
     files.set(`${path}/structure.json`, jsonText(structure))

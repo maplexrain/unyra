@@ -18,15 +18,13 @@ import { tabIdNodeId } from './tabs'
  */
 export type Drafts = Record<string, string>
 
-/** 某个页签暂存的正文；没有就是「没改过」（支持 :source / :preview 对偶视图共享暂存内容） */
+/** 某个页签暂存的正文；没有就是「没改过」（对偶页签时代的旧键带视图后缀，读回时仍认得） */
 export function draftOf(drafts: Drafts | undefined, id: string | null): string | undefined {
   if (!drafts || !id) return undefined
   if (Object.prototype.hasOwnProperty.call(drafts, id)) return drafts[id]
-  const base = id.replace(/:(source|preview)$/, '')
-  if (base !== id) {
-    if (Object.prototype.hasOwnProperty.call(drafts, base)) return drafts[base]
-    if (Object.prototype.hasOwnProperty.call(drafts, base + ':source')) return drafts[base + ':source']
-    if (Object.prototype.hasOwnProperty.call(drafts, base + ':preview')) return drafts[base + ':preview']
+  // 对偶页签时代暂存记在带视图后缀的页签 id 上；页签合并后用无后缀的 id 也找得回旧暂存
+  for (const legacy of [id + ':source', id + ':preview']) {
+    if (Object.prototype.hasOwnProperty.call(drafts, legacy)) return drafts[legacy]
   }
   return undefined
 }
@@ -37,22 +35,18 @@ export function putDraft(drafts: Drafts, id: string, text: string): Drafts {
   return { ...drafts, [id]: text }
 }
 
-/** 撤掉一份暂存：保存成功、或用户把它改回了原样（同步撤销对偶视图的暂存） */
+/** 撤掉一份暂存：保存成功、或用户把它改回了原样（对偶页签时代的旧键一并清掉） */
 export function dropDraft(drafts: Drafts, id: string): Drafts {
-  const base = id.replace(/:(source|preview)$/, '')
+  const legacy = [id + ':source', id + ':preview']
   if (
     !Object.prototype.hasOwnProperty.call(drafts, id) &&
-    !Object.prototype.hasOwnProperty.call(drafts, base) &&
-    !Object.prototype.hasOwnProperty.call(drafts, base + ':source') &&
-    !Object.prototype.hasOwnProperty.call(drafts, base + ':preview')
+    !legacy.some((k) => Object.prototype.hasOwnProperty.call(drafts, k))
   ) {
     return drafts
   }
   const next = { ...drafts }
   delete next[id]
-  delete next[base]
-  delete next[base + ':source']
-  delete next[base + ':preview']
+  for (const k of legacy) delete next[k]
   return next
 }
 
@@ -72,8 +66,7 @@ export function dropDrafts(drafts: Drafts, ids: string[]): Drafts {
   let hit = false
   const next = { ...drafts }
   for (const rawId of ids) {
-    const base = rawId.replace(/:(source|preview)$/, '')
-    const toCheck = [rawId, base, base + ':source', base + ':preview']
+    const toCheck = [rawId, rawId + ':source', rawId + ':preview']
     for (const id of toCheck) {
       if (Object.prototype.hasOwnProperty.call(next, id)) {
         delete next[id]

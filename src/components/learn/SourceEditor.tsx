@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Compartment, EditorState, type Extension } from '@codemirror/state'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { Annotation, Compartment, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from '@codemirror/view'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import {
+  createRestoredEditorState,
+  debouncedSaveEditorHistory,
+  flushEditorHistory,
+  loadEditorHistory,
+} from '../../lib/cmHistoryPersistence'
 import {
   syntaxHighlighting,
   indentOnInput,
@@ -11,17 +17,29 @@ import {
   LanguageDescription,
   foldGutter,
   foldKeymap,
+  foldEffect,
   unfoldEffect,
 } from '@codemirror/language'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages as codeLanguages } from '@codemirror/language-data'
 import { countSourceWords } from '../../lib/wordCount'
+import { installVimPromptBridge } from '../../lib/commandBarFocus'
 import { getAppearance, setAppearance, clampEditorScale, SCALE_ZOOM_STEP, SCALE_HUD_MS } from '../../lib/appearance'
 import { markdownEditorTheme, markdownHighlight } from '../../lib/cmMarkdown'
 import { smoothCursor } from '../../lib/cmSmoothCursor'
+import { scopeHighlight } from '../../lib/cmScopeHighlight'
+import { bracketPairGuides } from '../../lib/cmBracketGuides'
+import { vimActiveSearchMatchHighlight } from '../../lib/cmSearchHighlight'
+import { vim } from '@replit/codemirror-vim'
+import { isVimEnabled, subscribeVimEnabled } from '../../lib/vimSettings'
+import { onVimModeChanged } from '../../lib/imeSwitch'
+import { loadAndApplyVimrc } from '../../lib/vimConfig'
+import { registerVimExCommands, setVimEditorBridge } from '../../lib/vimCommands'
+import { foldCurrentScope, unfoldCurrentScope } from '../../lib/cmFoldScope'
 import { takeSourceReveal, subscribeSourceReveal, type SourceReveal } from '../../lib/docReveal'
 import { useDocScroll } from '../../lib/docScroll'
 import { DocStatChip } from './DocFloat'
+import { EditorCursorBindingContext } from './editor/LiveSplitPreview'
 import { t } from '../../i18n'
 
 /**
@@ -41,6 +59,9 @@ import { t } from '../../i18n'
 
 export type SaveState = 'saved' | 'dirty' | 'saving' | 'error'
 
+/** 用于标记真实提交折叠、跳过收起动画拦截的事务标记 */
+const skipFoldAnim = Annotation.define<boolean>()
+
 const STATE_TEXT: Record<SaveState, string> = {
   saved: '已保存',
   dirty: '未保存',
@@ -56,7 +77,7 @@ const STATE_TONE: Record<SaveState, string> = {
 }
 
 /**
- * 配色与主题在 lib/cmMarkdown（随笔窗口用的是同一份）：
+ * 配色与主题在 lib/cmMarkdown：
  * gutterLeft 留出 50px 避让悬浮在左上角的垂直工具栏（left-3 + w-8），
  * 避免首行代码与按钮发生视觉重叠；代码正文与行号分隔线保持 14px 舒适内边距。
  */
@@ -65,6 +86,12 @@ const editorTheme = markdownEditorTheme({ top: 14, bottom: 24, left: 14, right: 
 /** 语言按扩展名现配（markdown 内嵌代码块也各自高亮）；其余扩展名交给 language-data 的表 */
 const langComp = new Compartment()
 const readOnlyComp = new Compartment()
+const vimComp = new Compartment()
+
+function getVimExtensions(enabled: boolean): Extension[] {
+  if (!enabled) return []
+  return [vim(), vimActiveSearchMatchHighlight()]
+}
 
 function getInitialLanguageExtensions(ext?: string): Extension[] {
   if (!ext || /\.(md|markdown)$/i.test(ext)) return [markdown({ base: markdownLanguage, codeLanguages })]
@@ -107,6 +134,14 @@ interface Props {
    * 手动点「源码」按钮进来时槽里没有请求，取到 null，行为与从前一模一样。
    */
   revealKey?: string
+  /** 允许由 Vim 冒号命令触发的页签关闭、分屏等宿主操作 */
+  onCloseTab?: (force?: boolean) => void
+  onCloseOtherTabs?: (force?: boolean, opts?: { skipDirty?: boolean }) => void
+  onNewTab?: () => void
+  onSplitView?: (direction: 'horizontal' | 'vertical') => void
+  onCustomSave?: (force?: boolean) => Promise<boolean | void> | boolean | void
+  /** 持久化撤销历史的专属 key（例如文件绝对路径或 tabKey） */
+  historyKey?: string
 }
 
 export default function SourceEditor({
@@ -122,15 +157,33 @@ export default function SourceEditor({
   scrollTop,
   onScrollTop,
   revealKey,
+  onCloseTab,
+  onCloseOtherTabs,
+  onNewTab,
+  onSplitView,
+  onCustomSave,
+  historyKey,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
+  const [vimActive, setVimActive] = useState<boolean>(() => isVimEnabled())
+  const bridgeActionsRef = useRef({ onCloseTab, onCloseOtherTabs, onNewTab, onSplitView, onCustomSave })
+  useEffect(() => {
+    bridgeActionsRef.current = { onCloseTab, onCloseOtherTabs, onNewTab, onSplitView, onCustomSave }
+  }, [onCloseTab, onCloseOtherTabs, onNewTab, onSplitView, onCustomSave])
   /** 上层给进来的最新 value：updateListener 里只把「用户真的改了」交出去 */
   const valueRef = useRef(value)
   const changeRef = useRef(onChange)
   useEffect(() => {
     changeRef.current = onChange
   }, [onChange])
+
+  // 双栏实时预览光标位置绑定
+  const onCursorRatio = useContext(EditorCursorBindingContext)
+  const cursorRatioRef = useRef(onCursorRatio)
+  useEffect(() => {
+    cursorRatioRef.current = onCursorRatio
+  }, [onCursorRatio])
 
   /**
    * 「定位源码」的那一次请求（见 lib/docReveal）：**挂载时取一次，之后一直用这一份**。
@@ -160,18 +213,49 @@ export default function SourceEditor({
 
   // 挂载：创建 view；卸载：销毁
   useEffect(() => {
-    const view = new EditorView({
-      parent: hostRef.current ?? undefined,
-      state: EditorState.create({
-        doc: valueRef.current,
-        extensions: [
-          history(),
+    const foldingKeys = new Set<string>()
+    const effectiveHistKey = historyKey || label || ''
+    const savedHistory = effectiveHistKey ? loadEditorHistory(effectiveHistKey) : null
+
+    const editorExtensions = [
+      history(),
           keymap.of([
+            // Ctrl- 与 Ctrl=：快速折叠/展开当前光标所在代码块（同时拦截默认网页缩放）
+            {
+              key: 'Mod--',
+              run: (view) => {
+                foldCurrentScope(view)
+                return true
+              },
+            },
+            {
+              key: 'Mod-=',
+              run: (view) => {
+                unfoldCurrentScope(view)
+                return true
+              },
+            },
+            {
+              key: 'Mod-_',
+              run: (view) => {
+                foldCurrentScope(view)
+                return true
+              },
+            },
+            {
+              key: 'Mod-+',
+              run: (view) => {
+                unfoldCurrentScope(view)
+                return true
+              },
+            },
             indentWithTab,
             ...closeBracketsKeymap,
             ...foldKeymap,
             ...defaultKeymap,
-            ...historyKeymap,
+            // 剔除 CodeMirror 历史扩展自带的非标 Mod-u (undoSelection) 键位映射，
+            // 彻底防止 Ctrl+U 与 Vim 标准翻半页产生重叠冲突并将翻页误作为撤销执行
+            ...historyKeymap.filter((k) => k.key !== 'Mod-u' && k.key !== 'Alt-u'),
           ]),
           // 左侧代码行号与光标当前行背景突出高亮
           lineNumbers(),
@@ -188,18 +272,89 @@ export default function SourceEditor({
               return el
             },
           }),
+          // 拦截代码块折叠动作，在移除代码行前先执行平滑向上收起消散动效，消除瞬间收起突变感
+          EditorState.transactionFilter.of((tr) => {
+            if (tr.annotation(skipFoldAnim) || tr.docChanged) return tr
+            const foldEff = tr.effects.find((e) => e.is(foldEffect))
+            if (!foldEff) return tr
+
+            const { from, to } = foldEff.value
+            const key = `${from}:${to}`
+            if (foldingKeys.has(key)) return []
+
+            const view = viewRef.current
+            if (!view) return tr
+
+            const doc = tr.startState.doc
+            if (from >= doc.length) return tr
+
+            foldingKeys.add(key)
+            const startLine = doc.lineAt(from).number
+            const endLine = doc.lineAt(to).number
+
+            // 对可视视口内即将折叠的行执行平滑向上收缩渐隐动画
+            let maxDuration = 160
+            try {
+              const totalLines = Math.min(endLine, startLine + 35)
+              for (let l = startLine + 1; l <= totalLines; l++) {
+                try {
+                  const line = doc.line(l)
+                  const dom = view.domAtPos(line.from)
+                  const el = ((dom.node.nodeType === 1 ? dom.node : dom.node.parentElement) as HTMLElement | null)?.closest?.('.cm-line') as HTMLElement | null
+                  if (el) {
+                    el.animate(
+                      [
+                        { opacity: 1, transform: 'translateY(0) scaleY(1)', transformOrigin: 'top center' },
+                        { opacity: 0, transform: 'translateY(-8px) scaleY(0.9)', transformOrigin: 'top center' },
+                      ],
+                      {
+                        duration: 160,
+                        delay: Math.min((l - startLine - 1) * 6, 60),
+                        easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+                        fill: 'forwards',
+                      },
+                    )
+                  }
+                } catch {
+                  // 视口外节点跳过
+                }
+              }
+            } catch {
+              maxDuration = 0
+            }
+
+            // 收起动画播完后，正式提交带有跳过动效标记的折叠事务
+            window.setTimeout(() => {
+              foldingKeys.delete(key)
+              const v = viewRef.current
+              if (!v) return
+              if (from <= v.state.doc.length && to <= v.state.doc.length) {
+                v.dispatch({
+                  effects: foldEffect.of({ from, to }),
+                  annotations: skipFoldAnim.of(true),
+                })
+              }
+            }, maxDuration)
+
+            return []
+          }),
           // 专业选区绘制图层：在文本下层渲染平滑发光选区，完好保留各 Token 语法高亮
           drawSelection(),
+          // 代码块（当前作用域）与当前光标行背景层次突出高亮
+          scopeHighlight(),
           highlightActiveLine(),
           // 平滑移动的虚拟光标动画
           smoothCursor(),
           // 符号自动补全（输入 ( [ { " ' ` 自动带出另一半、跳过与删除成对）与括号配对高亮
           closeBrackets(),
           bracketMatching(),
+          // 为不同行的配对符号（{}、[]、()）绘制连贯美观的辅助连接线，同行配对自动剔除
+          bracketPairGuides(),
           // 自动缩进：换行继承上一行的缩进，语言有语法的话按语法缩进；缩进单位是两个空格
           indentOnInput(),
           indentUnit.of('  '),
           EditorView.lineWrapping,
+          vimComp.of(getVimExtensions(isVimEnabled())),
           readOnlyComp.of([]),
           langComp.of(getInitialLanguageExtensions(ext)),
           cmPlaceholder(placeholder ?? ''),
@@ -210,6 +365,23 @@ export default function SourceEditor({
               const next = update.state.doc.toString()
               valueRef.current = next
               changeRef.current(next)
+              if (effectiveHistKey) {
+                debouncedSaveEditorHistory(effectiveHistKey, update.state)
+              }
+              // 若当前编辑的文件即为 .vimrc，实时热应用最新配置
+              if (label.endsWith('.vimrc') || label.endsWith('_vimrc') || ext === '.vimrc') {
+                loadAndApplyVimrc(next).catch(() => {})
+              }
+            }
+            // 实时光标位置与预览画面绑定联动
+            if (update.selectionSet || update.docChanged) {
+              if (cursorRatioRef.current) {
+                const pos = update.state.selection.main.head
+                const line = update.state.doc.lineAt(pos)
+                const totalLines = update.state.doc.lines
+                const ratio = (line.number - 1) / Math.max(1, totalLines - 1)
+                cursorRatioRef.current(ratio)
+              }
             }
             // 监听代码块展开动作，为新展示的代码行注入瀑布级平滑渐显与位移下移动画
             for (const tr of update.transactions) {
@@ -249,11 +421,59 @@ export default function SourceEditor({
               }
             }
           }),
-        ],
-      }),
+        ]
+
+    const initState = createRestoredEditorState(valueRef.current, editorExtensions, savedHistory)
+
+    const view = new EditorView({
+      parent: hostRef.current ?? undefined,
+      state: initState,
     })
     viewRef.current = view
     view.focus()
+    // 编辑器里的 : 走全局命令栏（唯一命令输入框）；'/' 搜索提示照旧是原生面板
+    installVimPromptBridge(view)
+
+    /*
+     * 输入法自动切换（见 lib/imeSwitch）：vim 模式一动就跟着切——进普通/可视模式
+     * 切回英文直通，回插入模式恢复原输入法。监听挂在这份编辑器的 cm 适配器上；
+     * vim 半路才开（compartment 重配）时 cm 可能是后建的那份，所以每次开关都重新认一遍。
+     */
+    type VimCm = {
+      on?: (event: string, fn: (ev?: unknown) => void) => void
+      off?: (event: string, fn: (ev?: unknown) => void) => void
+      state?: { vim?: { insertMode?: boolean } }
+    }
+    let imeCm: VimCm | null = null
+    const imeModeHandler = (rawEv?: unknown) => {
+      const ev = rawEv as { mode?: string } | undefined
+      const mode = ev?.mode
+      // 输入法自动切换：进普通/可视模式切英文直通、回插入模式恢复原输入法（lib/imeSwitch）。
+      // 注意这里**绝不 dispatch**——模式事件在 CM update 中途发出，嵌套 dispatch 会炸掉插件
+      // （血案教训，见 lib/imeSwitch 的说明）
+      const typing = mode
+        ? mode === 'insert' || mode === 'replace'
+        : !!imeCm?.state?.vim?.insertMode
+      onVimModeChanged(typing)
+    }
+    const attachImeModeListener = () => {
+      const cm = (viewRef.current as unknown as { cm?: VimCm } | null)?.cm ?? null
+      if (!cm || typeof cm.on !== 'function' || cm === imeCm) return
+      if (imeCm && typeof imeCm.off === 'function') {
+        try {
+          imeCm.off('vim-mode-change', imeModeHandler)
+        } catch {
+          // 安全容错
+        }
+      }
+      imeCm = cm
+      try {
+        cm.on('vim-mode-change', imeModeHandler)
+      } catch {
+        // 安全容错
+      }
+    }
+    attachImeModeListener()
     /*
      * 「定位源码」：选中那段源文并滚到眼前。之后用户可能立刻开始打字，
      * 光标该落在他要改的那一段上（取件规矩见上面 revealRef 的说明）。
@@ -265,7 +485,113 @@ export default function SourceEditor({
       view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true })
       view.focus()
     }
+    // 增强 Vim 翻页滚动为丝滑过渡动画 (Ctrl+U / Ctrl+D / Ctrl+F / Ctrl+B)
+    const patchSmoothVimScroll = (v: EditorView) => {
+      const cm = (v as any).cm
+      if (cm && !cm.__smoothScrollPatched) {
+        cm.__smoothScrollPatched = true
+        let smoothTimer: number | null = null
+
+        // 抑制平滑翻页过程中的瞬间同步 scrollIntoView 突跳
+        const origScrollIntoView = cm.scrollIntoView?.bind(cm)
+        cm.scrollIntoView = (pos?: any, margin?: any) => {
+          if (cm.__isSmoothScrolling) {
+            return
+          }
+          origScrollIntoView?.(pos, margin)
+        }
+
+        const origScrollTo = cm.scrollTo?.bind(cm)
+        cm.scrollTo = (x: number | null, y: number | null) => {
+          const scroller = v.scrollDOM
+          if (!scroller) {
+            origScrollTo?.(x, y)
+            return
+          }
+
+          if (y != null) {
+            cm.__isSmoothScrolling = true
+            if (smoothTimer !== null) window.clearTimeout(smoothTimer)
+            smoothTimer = window.setTimeout(() => {
+              cm.__isSmoothScrolling = false
+              smoothTimer = null
+            }, 300)
+
+            const startY = scroller.scrollTop
+            const diff = y - startY
+            if (Math.abs(diff) > 2) {
+              const startTime = performance.now()
+              const duration = 240
+              const animStep = (now: number) => {
+                const elapsed = now - startTime
+                const progress = Math.min(elapsed / duration, 1)
+                // cubic-bezier easeOut: 1 - (1 - progress)^3
+                const ease = 1 - Math.pow(1 - progress, 3)
+                scroller.scrollTop = startY + diff * ease
+                if (progress < 1) {
+                  requestAnimationFrame(animStep)
+                }
+              }
+              requestAnimationFrame(animStep)
+            } else {
+              scroller.scrollTop = y
+            }
+          }
+
+          if (x != null) {
+            scroller.scrollLeft = x
+          }
+        }
+      }
+    }
+
+    patchSmoothVimScroll(view)
+
+    // 注册应用级 Vim 冒号命令并挂载当前编辑器的动作桥接
+    registerVimExCommands()
+    setVimEditorBridge({
+      getView: () => viewRef.current,
+      onSave: (force) => bridgeActionsRef.current.onCustomSave?.(force),
+      onClose: (force) => bridgeActionsRef.current.onCloseTab?.(force),
+      onCloseOthers: (force, opts) => bridgeActionsRef.current.onCloseOtherTabs?.(force, opts),
+      onNewTab: () => bridgeActionsRef.current.onNewTab?.(),
+      onSplit: (direction) => bridgeActionsRef.current.onSplitView?.(direction),
+    })
+
+    // 初始化挂载时若已开启 Vim，立即加载并执行 ~/.vimrc
+    if (isVimEnabled()) {
+      patchSmoothVimScroll(view)
+      loadAndApplyVimrc().catch(() => {})
+    }
+
+    const unsubVim = subscribeVimEnabled((enabled) => {
+      setVimActive(enabled)
+      const v = viewRef.current
+      if (!v) return
+      v.dispatch({
+        effects: vimComp.reconfigure(getVimExtensions(enabled)),
+      })
+      if (enabled) {
+        patchSmoothVimScroll(v)
+        loadAndApplyVimrc().catch(() => {})
+      }
+      // vim 半路才开时 cm 是后建的那份：重新认一遍输入法监听
+      attachImeModeListener()
+    })
+
     return () => {
+      if (effectiveHistKey) {
+        flushEditorHistory(effectiveHistKey)
+      }
+      if (imeCm && typeof imeCm.off === 'function') {
+        try {
+          imeCm.off('vim-mode-change', imeModeHandler)
+        } catch {
+          // 安全容错
+        }
+      }
+      setVimEditorBridge(null)
+      unsubVim()
       view.destroy()
       viewRef.current = null
     }
@@ -370,6 +696,12 @@ export default function SourceEditor({
         拆成两块钉在屏幕两侧会更难找。编辑模式统计的是源码字符，不是渲染后的可视字数。
       */}
       <DocStatChip title={label}>
+        {vimActive && (
+          <>
+            <span className="font-mono text-[11px] font-bold text-seal select-none">VIM</span>
+            <span className="h-3 w-px bg-line-strong/60" />
+          </>
+        )}
         <span className="tabular-nums">{t('{0} 字', chars)}</span>
         <span className="h-3 w-px bg-line-strong/60" />
         <span

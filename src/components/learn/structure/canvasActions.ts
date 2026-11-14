@@ -50,6 +50,8 @@ export interface CanvasActionsDeps {
   onUpdateVideoNode?: (nodeUuid: string, patch: { input?: string; title?: string; titleCustomized?: boolean }) => ChannelResult
   onOpenVideo?: (videoId: string) => void
   onOpenVideoNode?: (nodeUuid: string) => void
+  /** 点大纲卡的标题 = 打开这份大纲的导读页签（没有导读时说明一句） */
+  onOpenOutlineGuide?: (outlineUuid: string) => void
   onOpenFileNode?: (nodeUuid: string) => void
   docs: NodeDocActions
   exams: ExamActions
@@ -83,6 +85,7 @@ export function useCanvasActions({
   onUpdateVideoNode,
   onOpenVideo,
   onOpenVideoNode,
+  onOpenOutlineGuide,
   onOpenFileNode,
   docs,
   exams,
@@ -235,6 +238,11 @@ export function useCanvasActions({
     (card: CardView) => {
       if (card.kind === 'doc') {
         docs.onOpenTeach(card.uuid)
+        return
+      }
+      // 点大纲卡的标题 = 跳到这份大纲的**导读**页签（导读生在大纲本体上；没有时给出指路）
+      if (card.kind === 'outline') {
+        if (onOpenOutlineGuide) onOpenOutlineGuide(card.uuid)
         return
       }
       const loc = locateUuid(store, card.uuid)

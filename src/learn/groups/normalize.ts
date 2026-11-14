@@ -1,6 +1,6 @@
 /** 这个文件负责：读盘——把 state.json 里的那一份（新版或旧版）认回 DocWorkspace */
 
-import type { LearnTab } from '../types'
+import type { DocView, LearnTab } from '../types'
 import { settle } from './core'
 import type { TabOwners } from './goals'
 import { FIRST_GROUP, attachMissing, emptyDocs, newId, normalizeSizes } from './layout'
@@ -17,6 +17,10 @@ import type { DocGroup, DocLayout, DocWorkspace } from './types'
  * tabOf 由 store 传进来负责校验单个页签（节点还在不在、笔记还在不在），这里只管结构：
  * 认不出的组、重复的页签、坏掉的树一律丢掉，坏数据不该让整个文档区打不开。
  *
+ * remapId（可选）：**旧页签 id → 新页签 id** 的迁移桥。页签 id 的口径变过（对偶页签时代
+ * 视图后缀拼在 id 里，合并成单页签后没有了），存盘的激活指针还是老 id——映射认得出就
+ * 落到同一份文档的新页签上，认不出才退「最后一个」，别让升级把用户读到一半的那页换掉。
+ *
  * 目标页签归属（tabOwners）只认形状（键是字符串、值是字符串数组），
  * 「页签还在不在」「该补到哪个目标名下」由 store 那边过手（见 groups/goals 的 reconcileOwners）——
  * 那一层才知道每个节点属于哪个目标。
@@ -25,9 +29,10 @@ export function normalizeDocs(
   raw: unknown,
   legacy: { tabs?: unknown; activeTab?: unknown },
   tabOf: (raw: unknown) => LearnTab | null,
+  remapId?: (legacyId: string) => string | undefined,
 ): DocWorkspace {
   const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null
-  if (!r || !Array.isArray(r.groups)) return legacyDocs(legacy, tabOf)
+  if (!r || !Array.isArray(r.groups)) return legacyDocs(legacy, tabOf, remapId)
   const groups: DocGroup[] = []
   const seen = new Set<string>()
   for (const item of r.groups) {
@@ -36,20 +41,29 @@ export function normalizeDocs(
     const id = typeof g.id === 'string' && g.id ? g.id : ''
     if (!id || groups.some((x) => x.id === id)) continue
     const tabs: LearnTab[] = []
+    /** 被合并掉的那几枚页签的视图（按新 id 记）：激活指针落到哪枚，就用它当时停的视图 */
+    const droppedViews = new Map<string, DocView>()
     for (const rawTab of Array.isArray(g.tabs) ? g.tabs : []) {
       const t = tabOf(rawTab)
-      // 同一个页签只认第一次出现：手改出来的重复会让「点它」落到两处
-      if (!t || seen.has(t.id)) continue
+      // 同一个页签只认第一次出现：手改出来的重复（以及合并后撞成一枚的对偶页签）只会有一份
+      if (!t) continue
+      if (seen.has(t.id)) {
+        if (t.view) droppedViews.set(t.id, t.view)
+        continue
+      }
       seen.add(t.id)
       tabs.push(t)
     }
+    const active = settleActive(g.active, tabs, remapId)
+    const droppedView = active ? droppedViews.get(active) : undefined
     groups.push({
       id,
-      tabs,
-      active:
-        typeof g.active === 'string' && tabs.some((t) => t.id === g.active)
-          ? g.active
-          : (tabs[tabs.length - 1]?.id ?? null),
+      // 用户停下的那枚对偶页签被合并掉了，就让它停过的模式活下来（升级后还在读那页）
+      tabs:
+        droppedView !== undefined
+          ? tabs.map((t) => (t.id === active ? { ...t, view: droppedView } : t))
+          : tabs,
+      active,
     })
   }
   if (!groups.length) return emptyDocs()
@@ -124,6 +138,7 @@ function normalizeParked(
 function legacyDocs(
   legacy: { tabs?: unknown; activeTab?: unknown },
   tabOf: (raw: unknown) => LearnTab | null,
+  remapId?: (legacyId: string) => string | undefined,
 ): DocWorkspace {
   const tabs: LearnTab[] = []
   const seen = new Set<string>()
@@ -133,15 +148,24 @@ function legacyDocs(
     seen.add(t.id)
     tabs.push(t)
   }
-  const active =
-    typeof legacy.activeTab === 'string' && tabs.some((t) => t.id === legacy.activeTab)
-      ? legacy.activeTab
-      : (tabs[tabs.length - 1]?.id ?? null)
   return {
     layout: { kind: 'group', group: FIRST_GROUP },
-    groups: [{ id: FIRST_GROUP, tabs, active }],
+    groups: [{ id: FIRST_GROUP, tabs, active: settleActive(legacy.activeTab, tabs, remapId) }],
     focus: FIRST_GROUP,
   }
+}
+
+/** 激活指针落点：认得现页签就原样；只认得旧 id 就走迁移桥；都不行退最后一个 */
+function settleActive(
+  rawActive: unknown,
+  tabs: LearnTab[],
+  remapId?: (legacyId: string) => string | undefined,
+): string | null {
+  if (typeof rawActive !== 'string' || !rawActive) return tabs[tabs.length - 1]?.id ?? null
+  if (tabs.some((t) => t.id === rawActive)) return rawActive
+  const mapped = remapId?.(rawActive)
+  if (mapped && tabs.some((t) => t.id === mapped)) return mapped
+  return tabs[tabs.length - 1]?.id ?? null
 }
 
 /**

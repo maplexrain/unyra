@@ -55,6 +55,31 @@ export interface ExamToolHost {
 }
 
 /**
+ * 这一轮钉住的阅卷对象（工作流启动实参带来的 examId / attemptId，经 toolRig 的 wfParams 递进来）。
+ *
+ * 为什么要有它：判分是一轮几十秒的对话，中间学习者完全可能开另一份卷子、作答、交卷——
+ * 「最新待判分」当场换了人。不钉住的话，`api.exam.read()` 回的是**新卷**、
+ * `api.exam.grade()` 落到**新卷**的 attempt 上，判分与错题讲解全错位（判题错乱的事故现场）。
+ * 钉住之后，这一轮的读、判、讲、裁全部只认这一份卷子；别的卷子由它自己的阅卷轮去管。
+ */
+export interface PinnedExam {
+  examId?: string
+  attemptId?: string
+}
+
+/**
+ * 工作流启动实参 → 钉住的阅卷对象。实参是 Record<string, string | number>，字段类型不可信，
+ * 在这里统一收窄；examId / attemptId 一个都没有（普通聊天轮）就不钉，保持原行为。
+ */
+export function pinnedExamOf(wfParams?: Record<string, string | number>): PinnedExam | undefined {
+  if (!wfParams) return undefined
+  const examId = typeof wfParams.examId === 'string' && wfParams.examId ? wfParams.examId : undefined
+  const attemptId = typeof wfParams.attemptId === 'string' && wfParams.attemptId ? wfParams.attemptId : undefined
+  if (!examId && !attemptId) return undefined
+  return { ...(examId ? { examId } : {}), ...(attemptId ? { attemptId } : {}) }
+}
+
+/**
  * 找这一次「等着收尾」的考试：**待判分**优先，其次是**判完还缺错题讲解**的那一次。
  *
  * 判分与讲解是一套工作流的两步（见内置工作流「阅卷」），中间那个状态必须能表达：
@@ -77,16 +102,44 @@ export function examNeedingWork(s: LearnStore, nodeId: string): { exam: Exam; at
 /**
  * 构造注入给 Agent 的考试工具。
  * 工具在对话过程中被调用，因此每次都用 getLatest() 取最新 store。
+ * pinned 是这一轮工作流钉住的阅卷对象（交卷触发的阅卷轮带着 examId / attemptId）。
  */
-export function makeExamDeps(host: ExamToolHost, nodeId: string): ExamToolDeps {
+export function makeExamDeps(host: ExamToolHost, nodeId: string, pinned?: PinnedExam): ExamToolDeps {
   const { getLatest, set, onToast, openTabRef, setCreating } = host
 
-  /** 要判分 / 讲解的那一次：给了 attemptId 按它，没给就取等着收尾的那一次，再退回最新一次 */
+  /** 一份试卷里「该收尾的那一次作答」：待判分优先，其次判完缺讲解，最后退回最新一次 */
+  const attemptOfExam = (exam: Exam): ExamAttempt | undefined => {
+    for (let j = exam.attempts.length - 1; j >= 0; j--) {
+      if (exam.attempts[j].status === 'submitted') return exam.attempts[j]
+    }
+    for (let j = exam.attempts.length - 1; j >= 0; j--) {
+      const a = exam.attempts[j]
+      if (a.status === 'graded' && !a.explanation) return a
+    }
+    return exam.attempts[exam.attempts.length - 1]
+  }
+
+  /**
+   * 要判分 / 讲解的那一次：给了 attemptId 按它；**钉住了只认钉的那份卷子**
+   * （找不到就空手而回，绝不漂到「最新」——那正是判题错乱的根源）；
+   * 都没给才取等着收尾的那一次，再退回最新一次。
+   */
   const pick = (s: LearnStore, attemptId?: string): { exam: Exam; attempt: ExamAttempt } | null => {
     if (attemptId) {
       const exam = examsOfNode(s, nodeId).find((e) => e.attempts.some((a) => a.id === attemptId))
       const attempt = exam ? findAttempt(s, exam.id, attemptId) : undefined
       return exam && attempt ? { exam, attempt } : null
+    }
+    if (pinned?.examId || pinned?.attemptId) {
+      const list = examsOfNode(s, nodeId)
+      const exam =
+        (pinned.examId ? list.find((e) => e.id === pinned.examId) : undefined) ??
+        (pinned.attemptId ? list.find((e) => e.attempts.some((a) => a.id === pinned.attemptId)) : undefined)
+      if (!exam) return null
+      const attempt = pinned.attemptId
+        ? (exam.attempts.find((a) => a.id === pinned.attemptId) ?? attemptOfExam(exam))
+        : attemptOfExam(exam)
+      return attempt ? { exam, attempt } : null
     }
     const pending = examNeedingWork(s, nodeId)
     if (pending) return pending
@@ -96,8 +149,13 @@ export function makeExamDeps(host: ExamToolHost, nodeId: string): ExamToolDeps {
   }
 
   return {
-    // 有待判分、或判完还缺讲解的 → grading：出卷被挡（先把这一场收尾），判分与讲解放行
-    stage: () => (examNeedingWork(getLatest(), nodeId) ? 'grading' : 'idle'),
+    // 有待判分、或判完还缺讲解的 → grading：出卷被挡（先把这一场收尾），判分与讲解放行。
+    // 钉住的轮次只看钉的那一次：它还等着收尾就是 grading；它做完了，别的卷子再忙也不归这一轮管。
+    stage: () => {
+      const s = getLatest()
+      if (pinned?.examId || pinned?.attemptId) return pick(s) ? 'grading' : 'idle'
+      return examNeedingWork(s, nodeId) ? 'grading' : 'idle'
+    },
 
     createExam: (payload: CreateExamPayload) => {
       // 失败原因要原样带给模型：它只能靠这句话改对（旧实现一律回「题目格式不合法」，
@@ -183,8 +241,14 @@ export function makeExamDeps(host: ExamToolHost, nodeId: string): ExamToolDeps {
         .map((id) => nodeById(s, id))
         .filter((n): n is NonNullable<typeof n> => !!n)
         .map((n) => ({ title: n.title, description: n.description }))
+      /*
+       * 钉住的轮次缺省读钉住的那一次：判分进行中学习者又交了别的卷子时，
+       * 模型不带 attemptId 的 exam.read() 看到的必须是它正在阅的那份（否则读到新卷，
+       * 拿新卷的题与答案去判旧卷——判题错乱的另一半现场）。
+       */
+      const effective = attemptId ?? ((pinned?.examId || pinned?.attemptId) ? pick(s)?.attempt.id : undefined)
       // 负载怎么拼、每种状态说什么话，都在 learn/exam 的 examReadPayload 里（纯函数，有测试）
-      return examReadPayload({ exams: list, childNodes, ...(attemptId ? { attemptId } : {}) })
+      return examReadPayload({ exams: list, childNodes, ...(effective ? { attemptId: effective } : {}) })
     },
 
     /**

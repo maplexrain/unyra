@@ -6,7 +6,7 @@
  *   {目标}/{目标}.node.json       根节点：正文 / 大纲 / 笔记 / 试卷 / 超级文档 + 目标本身（goal 字段）
  *   {目标}/chat.json              **目标的**对话（上下文是目标级的，不按节点分）
  *   {目标}/tmp.json               根节点的临时变量（Agent 的中间数据，可缺省）
- *   {目标}/reading.json / essay.json / mind.json / method.json / workflow.json / structure.json
+ *   {目标}/reading.json / mind.json / method.json / workflow.json / structure.json
  *   {目标}/static/                目标级资源库（含 manifest.json）
  *   {目标}/{子节点}/{子节点}.node.json
  *   {目标}/{子节点}/workspace/    这个节点的真实文件（代码、数据），随节点目录走

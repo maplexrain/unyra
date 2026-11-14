@@ -14,8 +14,6 @@
 import type {
   DependencyEdge,
   DetachedPool,
-  EssayCommitStore,
-  EssayStore,
   KnowledgeNode,
   LearningGoal,
   LearnStore,
@@ -46,8 +44,6 @@ export interface UnrGoalPackage {
   structure?: StructureMap
   detached?: DetachedPool
   methods?: MethodEntry[]
-  essays?: EssayStore[string]
-  essayCommits?: EssayCommitStore[string]
 }
 
 /** Gzip 压缩：优先使用 Web 标准 CompressionStream，回退到 Node.js zlib */
@@ -202,9 +198,6 @@ export function sanitizeGoalForExport(store: LearnStore, goalId: string): UnrGoa
   const detached = store.detached?.[goalId]
   // 7. 目标级持久化方法
   const methods = store.methods?.[goalId]
-  // 8. 随笔与随笔提交
-  const essays = store.essays?.[goalId]
-  const essayCommits = store.essayCommits?.[goalId]
 
   return {
     format: 'unyra-goal',
@@ -226,8 +219,6 @@ export function sanitizeGoalForExport(store: LearnStore, goalId: string): UnrGoa
     structure,
     detached: detached ? JSON.parse(JSON.stringify(detached)) : undefined,
     methods: methods ? JSON.parse(JSON.stringify(methods)) : undefined,
-    essays: essays ? JSON.parse(JSON.stringify(essays)) : undefined,
-    essayCommits: essayCommits ? JSON.parse(JSON.stringify(essayCommits)) : undefined,
   }
 }
 
@@ -455,10 +446,6 @@ export function importGoalFromPackage(
     structure: newStructure ? { ...(store.structure ?? {}), [newGoalId]: newStructure } : store.structure,
     detached: newDetached ? { ...(store.detached ?? {}), [newGoalId]: newDetached } : store.detached,
     methods: pkg.methods ? { ...(store.methods ?? {}), [newGoalId]: pkg.methods } : store.methods,
-    essays: pkg.essays ? { ...(store.essays ?? {}), [newGoalId]: pkg.essays } : store.essays,
-    essayCommits: pkg.essayCommits
-      ? { ...(store.essayCommits ?? {}), [newGoalId]: pkg.essayCommits }
-      : store.essayCommits,
     activeGoalId: newGoalId,
     activeNodeId: newGoal.rootNodeId,
   }

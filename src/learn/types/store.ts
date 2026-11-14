@@ -23,7 +23,6 @@ import type {
 } from './node'
 import type { FavoriteItem, AgentTabRef, LocalFile } from './tabs'
 import type { FileNodeEntity, ProjectNodeEntity, VideoNodeEntity, VideoResource } from './media'
-import type { EssayCommitStore, EssayDockRect, EssayStore } from './essay'
 import type { MemoryStore } from './memory'
 import type { WorkflowBook } from './workflow'
 
@@ -66,18 +65,6 @@ export interface LearnStore {
    * 旧数据没有它，读回来按 `?? []` 兜底。
    */
   methods?: MethodStore
-  /**
-   * 目标级随笔（见 learn/essays）。可选字段，理由同 methods。
-   * 落盘在各自目标目录的 essay.json（这个目标一条都没有就不写文件）。
-   */
-  essays?: EssayStore
-  /**
-   * 随笔提交记录（见 learn/essayCommits）。可选字段，理由同 essays。
-   * 与随笔同一份 essay.json：提交是「这一批随笔被封存的那一刻」，分开存反而会失去对应关系。
-   */
-  essayCommits?: EssayCommitStore
-  /** 随笔窗口拖到哪儿、多大（界面状态，跟 state.json 走；见 EssayDockRect） */
-  essayDock?: EssayDockRect
   /**
    * 工作流登记表（wf.*，见 learn/workflows）。可选字段，理由同 methods。
    * global 存进 state.json（跨目标跟着用户走）；byGoal 存进各自目标目录的 workflow.json。

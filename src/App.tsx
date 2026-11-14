@@ -27,6 +27,7 @@ import {
 import { getLocale, setLocaleBridge, t, useLocale } from './i18n'
 import GlobalBackground from './components/background/GlobalBackground'
 import { isDarkTheme, useAppearance } from './lib/appearance'
+import GlobalVimCommandBar from './components/learn/workspace/GlobalVimCommandBar'
 
 /**
  * 启动结果（用户列表 + 会话）由 main.tsx 读盘后传进来：
@@ -300,6 +301,8 @@ export default function App({ boot }: Props) {
       )}
       {closeAsk && <CloseDialog onDecide={handleCloseDecision} />}
       <Toast toast={toast} onHide={() => setToast(null)} />
+      {/* 全局 Vim 冒号命令行 (Shift+:) */}
+      <GlobalVimCommandBar />
       {/* 教学模式下的按键浮层：跟着外观开关走，四个路由分支都挂着（见 KeyCast） */}
       <KeyCast />
     </>

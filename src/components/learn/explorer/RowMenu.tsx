@@ -444,7 +444,7 @@ export function RowMenu({
               type="button"
               role="menuitem"
               disabled={exams.grading}
-              onClick={run(() => exams.onGrade(target.node.id))}
+              onClick={run(() => exams.onGrade(target.node.id, target.exam.id))}
               className={MENU_ITEM + ' text-seal-deep hover:bg-seal/10 disabled:pointer-events-none disabled:opacity-50'}
             >
               <GraduationCap size={13} className="shrink-0" />

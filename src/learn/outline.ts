@@ -39,6 +39,7 @@ export function normalizeOutline(raw: unknown): OutlineDoc | null {
   return {
     intro,
     children,
+    ...(typeof r.guide === 'string' && r.guide.trim() ? { guide: r.guide.trim() } : {}),
     updatedAt: typeof r.updatedAt === 'number' && Number.isFinite(r.updatedAt) ? r.updatedAt : 0,
   }
 }
@@ -53,11 +54,35 @@ export function normalizeOutline(raw: unknown): OutlineDoc | null {
 export function writeOutline(
   store: LearnStore,
   nodeId: string,
-  input: { intro?: unknown; children?: unknown; allowEmpty?: unknown },
+  input: { intro?: unknown; children?: unknown; guide?: unknown; allowEmpty?: unknown },
   at: number,
 ): { ok: true; store: LearnStore; outline: OutlineDoc } | { ok: false; error: string } {
   const node = store.nodes.find((n) => n.id === nodeId)
   if (!node) return { ok: false, error: '这个节点已经不存在了' }
+  const prev = node.outline
+  /**
+   * 大纲导读（guide）的口径：给了字符串就按它落（trim 后为空 = 清掉），没给就保留旧值——
+   * 重排条目、追加目标项那些路（learnConceptAlign、agent 重写）不带 guide，
+   * 不该把已生成的导读抹掉。只带 guide（intro/children 都没给）= **只写导读**：
+   * intro/children 原样保留，「生成大纲导读」的单独触发走的就是这一条。
+   */
+  const guide = typeof input.guide === 'string' ? (input.guide.trim() || undefined) : prev?.guide
+  const guideOnly = typeof input.guide === 'string' && input.intro === undefined && input.children === undefined
+  if (guideOnly) {
+    // 空大纲（建节点时同步生成的那份空壳也算）没有可讲的东西：导读跟着计划走
+    if (!prev || (!prev.intro.trim() && !prev.children.length)) {
+      return { ok: false, error: '这份大纲还没有内容：先写 intro 或 children，导读才有可讲的东西' }
+    }
+    const outline: OutlineDoc = { ...prev, guide, updatedAt: at }
+    return {
+      ok: true,
+      store: {
+        ...store,
+        nodes: store.nodes.map((n) => (n.id === nodeId ? { ...n, outline, updatedAt: at } : n)),
+      },
+      outline,
+    }
+  }
   const intro = typeof input.intro === 'string' ? input.intro.trim() : ''
   const rawChildren = Array.isArray(input.children) ? input.children : []
   if (rawChildren.length > OUTLINE_CHILDREN_MAX) {
@@ -82,7 +107,7 @@ export function writeOutline(
   if (!intro && !children.length && !input.allowEmpty) {
     return { ok: false, error: 'intro 与 children 都是空的：要么写导语，要么至少列出子目标（清空不是写入的活）' }
   }
-  const outline: OutlineDoc = { intro, children, updatedAt: at }
+  const outline: OutlineDoc = { intro, children, ...(guide ? { guide } : {}), updatedAt: at }
   return {
     ok: true,
     store: {
@@ -167,6 +192,7 @@ export function normalizeOutlineEntities(raw: unknown): OutlineEntity[] {
       title,
       intro: typeof e.intro === 'string' ? e.intro : '',
       children,
+      ...(typeof e.guide === 'string' && e.guide.trim() ? { guide: e.guide.trim() } : {}),
       createdAt: typeof e.createdAt === 'number' && Number.isFinite(e.createdAt) ? e.createdAt : 0,
       updatedAt: typeof e.updatedAt === 'number' && Number.isFinite(e.updatedAt) ? e.updatedAt : 0,
     })
@@ -233,11 +259,25 @@ export function createOutlineEntity(
 export function writeOutlineEntity(
   store: LearnStore,
   outlineId: string,
-  input: { intro?: unknown; children?: unknown; title?: unknown; allowEmpty?: unknown },
+  input: { intro?: unknown; children?: unknown; guide?: unknown; title?: unknown; allowEmpty?: unknown },
   at: number,
 ): { ok: true; store: LearnStore; entity: OutlineEntity } | { ok: false; error: string } {
   const cur = (store.outlines ?? []).find((o) => o.id === outlineId)
   if (!cur) return { ok: false, error: '这份大纲已经不在了' }
+  // 导读口径与 writeOutline 一致：给了字符串就落（空 = 清）、没给就保留；只带 guide = 只写导读
+  const guide = typeof input.guide === 'string' ? (input.guide.trim() || undefined) : cur.guide
+  const guideOnly = typeof input.guide === 'string' && input.intro === undefined && input.children === undefined
+  if (guideOnly) {
+    if (!cur.intro && !cur.children.length) {
+      return { ok: false, error: '这份大纲还没有内容：先写 intro 或 children，导读才有可讲的东西' }
+    }
+    const entity: OutlineEntity = { ...cur, guide, updatedAt: at }
+    return {
+      ok: true,
+      store: { ...store, outlines: (store.outlines ?? []).map((o) => (o.id === outlineId ? entity : o)) },
+      entity,
+    }
+  }
   const intro = typeof input.intro === 'string' ? input.intro.trim() : ''
   const rawChildren = Array.isArray(input.children) ? input.children : []
   if (rawChildren.length > OUTLINE_CHILDREN_MAX) {
@@ -261,7 +301,7 @@ export function writeOutlineEntity(
     return { ok: false, error: 'intro 与 children 都是空的：要么写导语，要么至少列出子目标（清空不是写入的活）' }
   }
   const title = typeof input.title === 'string' && input.title.trim() ? input.title.trim() : cur.title
-  const entity: OutlineEntity = { ...cur, title, intro, children, updatedAt: at }
+  const entity: OutlineEntity = { ...cur, title, intro, children, ...(guide ? { guide } : {}), updatedAt: at }
   return {
     ok: true,
     store: { ...store, outlines: (store.outlines ?? []).map((o) => (o.id === outlineId ? entity : o)) },

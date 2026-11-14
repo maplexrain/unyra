@@ -20,6 +20,8 @@ import { t } from '../../i18n'
 interface Props {
   /** 暂存区里这一份的正文（一个字都没写过就是 undefined） */
   draft?: string
+  /** 页签 ID（用于编辑器撤销栈历史持久化） */
+  tabId?: string
   /** 正文字号系数（与其它文档共用同一个设置） */
   scale: number
   /** 改动写进暂存区；传空串表示「又改回没写过」，那一条暂存自己消失 */
@@ -30,7 +32,7 @@ interface Props {
   onSave: () => void
 }
 
-export default function DraftDoc({ draft, scale, onDraft, saving, saveError, onSave }: Props) {
+export default function DraftDoc({ draft, tabId, scale, onDraft, saving, saveError, onSave }: Props) {
   const text = draft ?? ''
   /*
    * 状态只有三种：保存中 / 保存失败 / 未保存。
@@ -62,6 +64,7 @@ export default function DraftDoc({ draft, scale, onDraft, saving, saveError, onS
         state={state}
         error={saveError}
         label={t('未命名')}
+        historyKey={tabId ? 'draft:' + tabId : undefined}
         scale={scale}
         // 还没有后缀可认，就是纯文本（保存之后才由文件名决定高亮哪门语言）
         ext=""

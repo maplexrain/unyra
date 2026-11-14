@@ -133,12 +133,15 @@ export function deleteGoal(store: LearnStore, goalId: string): LearnStore {
 
 /** 页签挂在哪个节点上；本地文件、网页与系统页（设置/用量/记忆/导师设置/新建目标）返回空串（不属于任何节点，删节点不该关掉它们）；工作区内部文件挂在它的节点上——节点没了，它的工作区文件也跟着没了，页签该一起关 */
 function tabNodeIdOf(ref: TabRef): string {
+  // 大纲导读：附身（没带 goalId）认宿主文档（删文档时导读页签跟着关）；游离大纲的导读不挂节点
+  if (ref.kind === 'guide') return ref.goalId ? '' : ref.outlineId
   return ref.kind === 'local' ||
     ref.kind === 'web' ||
     ref.kind === 'settings' ||
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
     ref.kind === 'sponsors' ||
+    ref.kind === 'vim' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||

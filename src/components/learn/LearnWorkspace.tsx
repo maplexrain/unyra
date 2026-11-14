@@ -10,7 +10,7 @@
  * - useDocSaveFlow / useDeleteFlows / DeleteConfirms —— 保存与删除两类确认流；
  * - useExportFlow / useUnrTransfer —— 导出三条路与 .unr 分享包；
  * - useTabDnd / useLinkHandlers / useWsActions —— 拖拽分屏、链接跳转、工作区文件；
- * - useFavorites / useEssayFlow / useWsActions / useMemoryActions —— 收藏/随笔/文件/记忆；
+ * - useFavorites / useWsActions / useMemoryActions —— 收藏/文件/记忆；
  * - useScreenshotTool / useTraceWindow / goalFocus —— 截图、轨迹窗、落点缓存槽；
  * - useAgentTabActions / AgentSlot —— agent 栏的页签动作与整块 JSX；
  * - useCanvasChannel / quoteTarget / videoTabBridge —— 画布通道、引用块解析、视频桥；
@@ -98,6 +98,7 @@ import ExportDialog from './ExportDialog'
 import FloatWindow from '../FloatWindow'
 import { usePresence } from '../../lib/presence'
 import StructOverlay from './workspace/StructOverlay'
+import { useVimGlobalTabOps } from './workspace/useVimGlobalTabOps'
 import { pruneImages } from '../../learn/images'
 import { queueOf, shouldEnqueue } from '../../learn/agentQueue'
 import { nodePathOf } from '../../learn/paths'
@@ -132,7 +133,6 @@ import { findMethod, runMethodEntry } from '../../learn/methods'
 import { learnSandboxOps } from '../../learn/useAgent'
 import { buildStandaloneApi } from '../../agent/tools'
 import { isWeb, native } from '../../lib/native'
-import EssayDock from './essay/EssayDock'
 import { useDoubleCtrl } from '../../lib/useDoubleCtrl'
 import type { DocSource } from './NodeNote'
 import ConfirmDialog from '../ConfirmDialog'
@@ -163,7 +163,7 @@ import { useExplorerUndo } from './workspace/useExplorerUndo'
 import { useConceptActions } from './workspace/useConceptActions'
 import { useScheduleFlow, useScheduleReminder } from './workspace/useScheduleFlow'
 import { useWorkflowStarters } from './workspace/useWorkflowStarters'
-import { examNeedingWork, makeExamDeps } from './workspace/examTools'
+import { examNeedingWork, makeExamDeps, pinnedExamOf } from './workspace/examTools'
 import { hasExamFigures, selfCheckExamFigures } from './workspace/examImageCheck'
 import { goalFocusByGoal } from './workspace/goalFocus'
 import { useTraceWindow } from './workspace/useTraceWindow'
@@ -171,7 +171,6 @@ import { useScreenshotTool } from './workspace/useScreenshotTool'
 import { useMemoryActions } from './workspace/useMemoryActions'
 import { useFavorites } from './workspace/useFavorites'
 import { useUnrTransfer } from './workspace/useUnrTransfer'
-import { useEssayFlow } from './workspace/useEssayFlow'
 import { useWsActions } from './workspace/useWsActions'
 import { useCanvasChannel } from './workspace/useCanvasChannel'
 import { useAgentTabActions } from './workspace/useAgentTabActions'
@@ -185,7 +184,6 @@ import { useChipOpening } from './workspace/useChipOpening'
 import { t } from '../../i18n'
 
 /**
- * 没有随笔时的空数组常量已随随笔域迁入 workspace/useEssayFlow。
  */
 
 
@@ -812,8 +810,8 @@ export default function LearnWorkspace({
       onOpenSettings()
     },
     onNotice: onToast,
-    examDeps: (nodeId) =>
-      makeExamDeps({ getLatest, set, onToast, openTabRef, setCreating }, nodeId),
+    examDeps: (nodeId, wfParams) =>
+      makeExamDeps({ getLatest, set, onToast, openTabRef, setCreating }, nodeId, pinnedExamOf(wfParams)),
     // ui.* 的宿主能力：都是「界面在场才有的动作」，见 AgentUiDeps
     ui: {
       point: (req) => pointToDoc(req),
@@ -1141,25 +1139,6 @@ export default function LearnWorkspace({
     },
     [patchQuiet],
   )
-
-  /* ---------- 随笔（见 learn/essays 与 components/learn/essay）：见 workspace/useEssayFlow ---------- */
-  const [essayOpen, setEssayOpen] = useState(false)
-  const essayBtnRef = useRef<HTMLButtonElement | null>(null)
-  const {
-    essayGoalId,
-    essayList,
-    essayCreate,
-    essayUpdate,
-    essayDelete,
-    essayGeometry,
-    dockNotes,
-    dockWriteNote,
-    dockDeleteNote,
-    essayCommits,
-    essayCommit,
-    essayCommitRetry,
-    essayOpenNote,
-  } = useEssayFlow({ store, getLatest, set, patchQuiet, docNode, agent, hasKey, onToast, openTab, setEssayOpen })
 
   /*
    * 资源管理器的撤回（Ctrl+Z）：删除类动作先捕获再动手，栈与键盘监听都在 useExplorerUndo。
@@ -1792,12 +1771,10 @@ export default function LearnWorkspace({
   // 快捷键导的是**焦点格**那一篇（悬浮组里那颗按钮导的是它所在的那一格，见 openExport）
   useShortcut('doc.export', { down: () => openExport(getLatest().docArea.focus) })
 
-  /*
-   * Ctrl+W：关掉**焦点格**里正看着的那个页签。
-   *
-   * 走的是页签上那颗 × 的同一条路（closeTab）：有没保存的改动时照旧先问一声，
-   * 关完之后停在哪一个也算得一样——快捷键只是那颗按钮的另一种按法，不该有第二套规矩。
-   */
+  // 全局 Vim 冒号命令调度（支持非编辑页面执行 :tabo, :q, :tabnew, :agent 等）
+  useVimGlobalTabOps({ getLatest, closeTab, openBlankTab, toggleSide, expandSide })
+
+  // Ctrl+W：关掉焦点格里正看着的那个页签
   useShortcut('learn.closeTab', {
     down: () => {
       const s = getLatest()
@@ -2020,9 +1997,6 @@ export default function LearnWorkspace({
       pure,
       pureMoving,
       toggleZen,
-      essayGoalId,
-      setEssayOpen,
-      essayBtnRef,
       findMode,
       findTick,
       setFindMode,
@@ -2189,7 +2163,7 @@ export default function LearnWorkspace({
         selectNode(nodeId)
         exam.openExam(examId)
       },
-      onGrade: (nodeId) => requestGrading(nodeId),
+      onGrade: (nodeId, examId) => requestGrading(nodeId, examId),
       onOpenRecord: (nodeId, examId, attemptId) => openExamCopy(nodeId, examId, attemptId),
       onDelete: (target) => {
         setPendingExamDelete(target)
@@ -2246,7 +2220,6 @@ export default function LearnWorkspace({
         favoriteTitleOf={favoriteTitleOf}
         docs={explorerDocs}
         exams={explorerExams}
-        onOpenEssay={() => setEssayOpen(true)}
         onOpenSchedule={() => openTab({ kind: 'schedule' })}
         onOpenSettings={() => openTab({ kind: 'settings' })}
         onOpenFind={() => setFindMode('find')}
@@ -2325,45 +2298,9 @@ export default function LearnWorkspace({
         */}
         <SplitRow
           side={side}
-            /*
-              随笔的入口与窗口挂在这一层：它是**文档区**的浮层（右下角那颗按钮），
-              不属于某一份文档——切页签、切节点都不该把它连根拔掉（目标变了才换一本账）。
-              外面这层 relative 是它的定位基准，且**没有** overflow-hidden：
-              按钮贴着文档区的角，窗口则 portal 到 body（见 EssayDock）。
-            */
             docsSlot={
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 {renderLayout(docs.layout)}
-                {essayGoalId && (
-                  <EssayDock
-                    /*
-                     * key 绑目标：换目标是**换一本账**。重挂会让上一份的收尾（把没落库的
-                     * 那一下写掉）用**旧目标**的闭包跑完，而新的一份从空白开始——
-                     * 不这么做的话，切目标时那一笔会写进新目标的账里。
-                     */
-                    key={essayGoalId}
-                    goalId={essayGoalId}
-                    // 入口只在教学文档上露脸（需求：教学文档右下角）；窗口开着时另说
-                    showEntry={activeTab?.ref.kind === 'teach'}
-                    triggerRef={essayBtnRef}
-                    open={essayOpen}
-                    onOpenChange={setEssayOpen}
-                    essays={essayList}
-                    // 提交记录与提交动作（见 learn/essayCommits）：历史、快照与整理结果都在窗口里看
-                    commits={essayCommits}
-                    onCommit={essayCommit}
-                    onRetryCommit={essayCommitRetry}
-                    onOpenNote={essayOpenNote}
-                    geometry={store.essayDock ?? null}
-                    onGeometry={essayGeometry}
-                    onCreate={essayCreate}
-                    onUpdate={essayUpdate}
-                    onDelete={essayDelete}
-                    allNotes={dockNotes}
-                    onWriteNote={dockWriteNote}
-                    onDeleteNote={dockDeleteNote}
-                  />
-                )}
               </div>
             }
             agentSlot={

@@ -4,8 +4,9 @@ import { tabTitle, tabKey, isPdfFile } from '../../../learn/tabs'
 import { setFocus, focusTabsInGroup } from '../../../learn/groups'
 import { nodeById, resolveDisplayedConversation } from '../../../learn/graph'
 import { updateFileNode } from '../../../learn/fileNodes'
+import { wsRelOfTab } from '../../../learn/workspace'
+import { userAbsPath } from '../../../lib/storage'
 import { getOutlineSlot } from '../../../lib/outline'
-import { nodeRevealKey } from '../../../lib/docReveal'
 import { isWeb } from '../../../lib/native'
 import { openExternalLink } from '../../../lib/externalLink'
 import { CHIP_MIME, parseChipJson } from '../../../lib/chipSyntax'
@@ -19,12 +20,13 @@ import VideoTabLayer, { type VideoTab } from '../../video/VideoTabLayer'
 import FindBar from '../FindBar'
 import SuperDocView from '../SuperDocView'
 import DraftDoc from '../DraftDoc'
-import SourceEditor from '../SourceEditor'
 import ExamCopyView from '../ExamCopyView'
+import OutlineGuideView from '../OutlineGuideView'
 import DocFloat from '../DocFloat'
 import { computeRelations } from '../docRelations/computeRelations'
 import PluginDoc from '../../plugins/PluginDoc'
 import SponsorsDoc from '../../sponsor/SponsorsDoc'
+import VimCheatSheetView from '../vim/VimCheatSheetView'
 import SettingsPanel from '../../settings/SettingsPanel'
 import UsagePanel from '../../settings/UsagePanel'
 import { SchedulePage } from '../../schedule/SchedulePage'
@@ -34,11 +36,11 @@ import { EmptyDoc } from './chrome'
 import { DocPane } from './DocPane'
 import { OutlinePane } from './OutlinePane'
 import { FileTabLayer } from './FileTabLayer'
+import { EditorTabLayer } from './EditorTabLayer'
 import { paneInfo, examCopyOf, conceptKeysOf } from './panes'
 import { createVideoTabBridge } from './videoTabBridge'
-import { openSisterDocView } from './sisterView'
+import { memoryDocKey } from '../../../lib/memoryMode'
 import { ZONE_BOX } from './drag'
-import { SRC_SCROLL_SUFFIX } from './constants'
 
 import type { GroupBodyCtx } from './GroupBodyCtx'
 
@@ -76,9 +78,6 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     pure,
     pureMoving,
     toggleZen,
-    essayGoalId,
-    setEssayOpen,
-    essayBtnRef,
     findMode,
     findTick,
     setFindMode,
@@ -178,6 +177,26 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
   )
   /** 这一格挂着的文件页签（本地文件与工作区文件）：keepalive 常驻，切页签只藏不卸，保持编辑器状态与光标 */
   const gFileTabs = (g.group?.tabs ?? []).filter((x) => x.ref.kind === 'local' || x.ref.kind === 'ws')
+  /** 这一格挂着的教学文档 / 笔记 / 超级文档页签：编辑态常驻层（EditorTabLayer）照此挂起 */
+  const gEditorTabs = (g.group?.tabs ?? []).filter(
+    (x) => x.ref.kind === 'teach' || x.ref.kind === 'note' || x.ref.kind === 'super',
+  )
+  /** 当前格处于**编辑态**的那枚页签（view 是 source 才有）；阅读态走 DocPane 的 paneActive */
+  const gSourceTabId = gTab && dg.view === 'source' ? gTab.id : null
+  /**
+   * 当前页签的分栏预览状态键（与 LiveSplitPreview 的 storageKey 同一份口径）：
+   * DocFloat 的分栏按钮与教学文档的「进编辑自动展开」都点名广播，只作用于眼前这一份。
+   */
+  const gPreviewKey = (() => {
+    if (!gTab) return ''
+    if (gTab.ref.kind === 'super') return 'super:' + gTabId
+    if (gTab.ref.kind === 'local') return 'local:' + gTab.ref.path
+    if (gTab.ref.kind === 'ws') {
+      const rel = wsRelOfTab(store, gTab.ref)
+      return rel ? 'local:' + userAbsPath(rel) : ''
+    }
+    return 'note:' + gTabId
+  })()
   const gNodeId = dg.node?.id ?? (gTab?.ref && 'nodeId' in gTab.ref ? (gTab.ref as { nodeId: string }).nodeId : undefined)
   const relations = gNodeId ? computeRelations(store, gNodeId, gTab?.ref) : undefined
 
@@ -313,34 +332,6 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
             const p = parseChipJson(raw)
             if (p) openChipInGroup(groupId)(p)
           }}
-          onDoubleClick={(e) => {
-            /*
-              快速双击 = 切换纯净阅读（与右上角那颗按钮、F11 同一件事）。
-              双击在文字上本来就是「选一个词」：**命中的是词本身**（指针落在选区矩形里）
-              就不当开关，不然读正文时随手双击一个词就进出了。要靠选区矩形而不是
-              「选区空不空」来判：点在段落空白 / 行边距上时，Chromium 会顺手选中最邻近
-              的词——选区非空，但那个词不在指针底下，这次双击该归开关。
-              点在按钮 / 输入框 / 链接这类可交互的东西上也不算。
-              超级文档是 iframe，guest 里的事件到不了这里，天然不受影响。
-            */
-            const sel = window.getSelection()
-            if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
-              const r = sel.getRangeAt(0).getBoundingClientRect()
-              if (
-                e.clientX >= r.left - 2 &&
-                e.clientX <= r.right + 2 &&
-                e.clientY >= r.top - 2 &&
-                e.clientY <= r.bottom + 2
-              ) {
-                return
-              }
-              // 顺手选中的那个词不是用户要的：清掉，别让切换后还挂着一截蓝
-              sel.removeAllRanges()
-            }
-            const el = e.target as HTMLElement
-            if (el.closest('button, input, textarea, a, iframe, [contenteditable="true"], [role="button"]')) return
-            toggleZen()
-          }}
         >
           {gTab?.ref.kind === 'web' ? (
             /*
@@ -422,6 +413,11 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               静态内容，提供导出与致谢名册（见 components/sponsor/SponsorsDoc）。
             */
             <SponsorsDoc />
+          ) : gTab?.ref.kind === 'vim' ? (
+            /*
+              Vim 命令大全页签：全量按键与命令速查（高密度表格，见 vim/VimCheatSheetView）。
+            */
+            <VimCheatSheetView />
           ) : gTab?.ref.kind === 'settings' ? (
             /*
               设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），
@@ -488,6 +484,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
             */
             <DraftDoc
               draft={dg.draft}
+              tabId={gTabId}
               scale={editorScale}
               onDraft={(text) => stageNewFileDraft(gTabId, text)}
               saving={docSaving}
@@ -520,26 +517,21 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               切去其它页签时仅隐藏保活，切回时零延迟复原相机与状态。这里让出位置。
             */
             null
+          ) : gTab?.ref.kind === 'guide' ? (
+            /*
+              大纲导读页签：一份大纲的「导读」讲解（OutlineDoc/OutlineEntity 的 guide），**只读**。
+              内容从大纲数据现派生（页签没有状态）——「生成大纲导读」工作流写完 guide 的那一刻
+              这里就是成稿；大纲没了或还没写导读时给一句指路。
+            */
+            <OutlineGuideView store={store} outlineId={gTab.ref.outlineId} scale={docScale} />
           ) : gTab?.ref.kind === 'super' && dg.node && dg.superDoc ? (
             /*
-              超级文档：一份完整的可交互 HTML。预览跑在沙箱化的 iframe 里
-              （见 SuperDocView），源码视图直接改 HTML——暂存与 Ctrl+S 与
-              其它文档同一套（保存写回 node.superdocs，见 saveDocNow）。
+              超级文档：一份完整的可交互 HTML，阅读态跑在沙箱化的 iframe 里（见 SuperDocView）。
               key 绑「节点 + 名字」：换一份就重挂，脚本从头执行、状态归零。
+              编辑态不在这里挂——由下方 EditorTabLayer 常驻层渲染（与阅读层只翻 hidden，
+              CodeMirror 不重建）；**阅读态每次进都重挂是它的语义**：脚本从头执行。
             */
-            dg.view === 'source' ? (
-              <SourceEditor
-                key={dg.node.id + ':super:' + gTab.ref.name}
-                value={dg.draft ?? dg.superDoc.html}
-                onChange={(text) => editDocSource(gTabId, text)}
-                state={docSaving ? 'saving' : dg.draft === undefined ? 'saved' : 'dirty'}
-                label={dg.title}
-                scale={editorScale}
-                scrollTop={store.docScroll[gTabId + SRC_SCROLL_SUFFIX]}
-                onScrollTop={(top) => rememberScroll(gTabId + SRC_SCROLL_SUFFIX, top)}
-                ext=".html"
-              />
-            ) : (
+            dg.view === 'source' ? null : (
               <SuperDocView
                 key={dg.node.id + ':super:' + gTab.ref.name}
                 html={dg.superDoc.html}
@@ -552,28 +544,13 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               />
             )
           ) : dg.node && dg.source ? (
-            dg.view === 'source' ? (
-              /*
-                源码视图：直接改 Markdown。改动先进**暂存区**（见 learn/drafts），
-                按 Ctrl+S 才写进文档——底栏上的「已保存 / 未保存」读的就是暂存区里
-                有没有这一份，而不是「store 落盘了没有」。
-              */
-              <SourceEditor
-                key={dg.title + ':' + dg.source.kind + ':' + (dg.source.note ?? '')}
-                value={dg.source.content}
-                onChange={(text) => editDocSource(gTabId, text)}
-                state={docSaving ? 'saving' : dg.draft === undefined ? 'saved' : 'dirty'}
-                label={dg.title}
-                scale={editorScale}
-                ext=".md"
-                // 编辑位置与阅读位置各记各的：同一份文档在源码里改到一半、
-                // 切到预览又读到别处，共用一格会互相拽（见 learn/types 的 DocScroll）
-                scrollTop={store.docScroll[gTabId + SRC_SCROLL_SUFFIX]}
-                onScrollTop={(top) => rememberScroll(gTabId + SRC_SCROLL_SUFFIX, top)}
-                // 「定位源码」放下的一次性请求：挂载时按这个身份取走并选中（见 lib/docReveal）
-                revealKey={nodeRevealKey(dg.node.id, dg.source.kind, dg.source.note)}
-              />
-            ) : null /* 预览那一份由下面的常驻列表渲染（见 DocPane） */
+            /*
+              教学文档与笔记：**阅读与编辑都由常驻层渲染**，这里不再按视图分支挂载——
+              阅读态在 DocPane（切页签只藏不卸），编辑态在 EditorTabLayer（切模式、切页签
+              同样只藏不卸，光标与撤销栈原样保留）。同一份文档只有一枚页签，两种模式就是
+              这两层之间翻 hidden（左侧按钮组切换，见 DocFloat）。
+            */
+            null
           ) : (
             <EmptyDoc
               onNewFile={() => openNewFileInPlace(groupId, gTabId)}
@@ -672,9 +649,30 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               localTicks={localTicks}
               stageLocalDraft={stageLocalDraft}
               closeTab={closeTab}
+              openTab={openTab}
               setTabView={setTabView}
               getOutlineSlot={getOutlineSlot}
               onToast={onToast}
+            />
+          )}
+
+          {/*
+            教学文档 / 笔记 / 超级文档的编辑态常驻层（keepalive）：页签开着就挂在 DOM 里，
+            处于编辑态的那一份显示，其余（以及处于阅读态的所有份）带着 hidden 保活——
+            切模式、切页签都不重建 CodeMirror。阅读态的常驻在上面 DocPane 那一层。
+          */}
+          {gEditorTabs.length > 0 && (
+            <EditorTabLayer
+              groupId={groupId}
+              tabs={gEditorTabs}
+              activeSourceTabId={gSourceTabId}
+              store={store}
+              editorScale={editorScale}
+              docSaving={docSaving}
+              editDocSource={editDocSource}
+              closeTab={closeTab}
+              openTab={openTab}
+              rememberScroll={rememberScroll}
             />
           )}
         </div>
@@ -753,6 +751,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
           gTab.ref.kind !== 'settings' &&
           gTab.ref.kind !== 'usage' &&
           gTab.ref.kind !== 'schedule' &&
+          gTab.ref.kind !== 'guide' &&
           gTab.ref.kind !== 'mind' &&
           gTab.ref.kind !== 'agentSettings' &&
           gTab.ref.kind !== 'outline' &&
@@ -764,35 +763,34 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
           gTab.ref.kind !== 'pluginDoc' &&
           // 赞助者名单页同样不画：它是致谢名册
           gTab.ref.kind !== 'sponsors' &&
+          // Vim 学习页不画：它是学习与参考手册，不属于可编辑节点文档
+          gTab.ref.kind !== 'vim' &&
           // PDF 浏览页不画：严格只读，左上角不需要浮动工具栏（纯净阅读仍可用 F11）
           !(gTab.ref.kind === 'local' && isPdfFile(gTab.ref.path)) &&
           !(gTab.ref.kind === 'ws' && isPdfFile(gTab.ref.seg)) && (
           <DocFloat
             /*
+             * 这条竖条锚定在页签容器上（不属于编辑列）：编辑列与预览列对调时保持原位不动。
+             *
              * key 绑「格 + 节点」：换节点时重挂，各块 tip 的展开状态自然回到收起；
              * 拖页签分割之后新格里的悬浮组也是新的一份，不会继承旧格展开着的那块。
              */
             key={groupId + ':' + (dg.node?.id ?? gTab.id)}
             view={dg.view}
             previewable={dg.previewable}
+            previewKey={gPreviewKey}
             previewHint={
-              dg.emptyNote ? t('这份笔记还是空的：先在源码视图里写点东西，才有得预览') : undefined
+              dg.emptyNote ? t('这份笔记还是空的：先切到编辑模式写点东西，才有得预览') : undefined
             }
             onSwitchView={(v) => {
+              // 同一枚页签就地切模式（阅读 ↔ 编辑）：不再开对偶页签（合并后的单页签，
+              // 左侧按钮组切换，见 types/tabs 的 view 注释）
               if (v === 'source' || v === 'preview') {
-                openSisterDocView(store, gTab, v, groupId, set)
+                setTabView(gTabId, v)
               }
             }}
-            showBackToDoc={gTab.ref.kind === 'note' || gTab.ref.kind === 'super'}
-            onBackToDoc={() => dg.node && openTab({ kind: 'teach', nodeId: dg.node.id })}
-            // 纯净阅读那颗：它与 F11 / Esc 是同一个动作（见 toggleZen）。
-            // 每一格的悬浮组都画一颗，而状态是**全局一个**——点哪一格都是同一件事
-            pure={pure}
-            onTogglePure={toggleZen}
             // 标题大纲：按当前页签的槽取（渲染组件装进去，见 lib/outline 的 OutlineHandle）
             outlineSlot={getOutlineSlot(gTabId)}
-            showEssay={Boolean(essayGoalId)}
-            onOpenEssay={() => setEssayOpen(true)}
             relations={relations}
             onOpenRelation={(ref, item) => {
               if (item?.kind === 'exam' && item.attemptsCount === 0 && item.examId) {
@@ -801,7 +799,13 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               }
               openTab(ref)
             }}
-            essayBtnRef={essayBtnRef}
+            onOpenVimConfig={(p) => openTab({ kind: 'local', path: p, title: '.vimrc' }, 'source')}
+            // 记忆模式的文档键（教学文档才有；与 NodeNote 里那一次 memoryDocKey 同一公式）
+            memoryKey={
+              dg.node && dg.source && dg.source.kind === 'teaching'
+                ? memoryDocKey(dg.node.id, dg.source.kind, dg.source.note)
+                : undefined
+            }
           />
         )}
 

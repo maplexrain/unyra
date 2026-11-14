@@ -94,7 +94,17 @@ export function markdownEditorTheme(pad: {
       color: 'currentColor !important',
       WebkitTextFillColor: 'currentColor !important',
     },
-    '.cm-cursor': { borderLeftColor: 'var(--color-seal)' },
+    // 彻底隐藏原生光标、拖放光标与静态 fat-cursor，统一由平滑虚拟光标独占渲染，绝对避免双光标重叠
+    '.cm-cursor, .cm-dropCursor, .cm-fat-cursor': {
+      display: 'none !important',
+      opacity: '0 !important',
+      visibility: 'hidden !important',
+      width: '0 !important',
+      border: 'none !important',
+      outline: 'none !important',
+      boxShadow: 'none !important',
+      pointerEvents: 'none !important',
+    },
     // 左侧行号栏 (Gutters) - IntelliJ IDEA 风格
     '.cm-gutters': {
       backgroundColor: 'transparent',
@@ -117,7 +127,9 @@ export function markdownEditorTheme(pad: {
       color: 'var(--color-ink-faint)',
       boxSizing: 'border-box',
       lineHeight: 'inherit',
-      transition: 'color 0.12s ease, opacity 0.12s ease',
+      // 行号样式变化平滑过渡动效，时长 300ms（响应光标移动与作用域进出）
+      transition:
+        'color 300ms cubic-bezier(0.2, 0, 0.2, 1), opacity 300ms cubic-bezier(0.2, 0, 0.2, 1), transform 300ms cubic-bezier(0.2, 0, 0.2, 1), font-weight 300ms ease',
     },
     // 代码块折叠栏 (Fold Gutter) - 紧凑内嵌在行号与右边框之间，完全居中偏左排布，绝不压线或出界
     '.cm-foldGutter': {
@@ -238,9 +250,22 @@ export function markdownEditorTheme(pad: {
         transform: 'scale(1)',
       },
     },
-    // IDEA 风格：当前行行号不带粗暴色块，字体显著变大（仅针对行号数字进行放大，绝不作用于折叠列）
-    '.cm-lineNumbers .cm-activeLineGutter': {
+    // 当前所处代码块作用域的行号样式：颜色与当前行对调为淡墨色，比普通行略清晰、比当前行更淡、沉浸不抢戏
+    '.cm-lineNumbers .cm-scope-gutter': {
       color: 'var(--color-ink-strong) !important',
+      opacity: '0.65 !important',
+      fontWeight: '500 !important',
+      transform: 'scale(1.02)',
+      transformOrigin: 'right center',
+    },
+    // 确保折叠列在作用域高亮下不受放大或背景色影响
+    '.cm-foldGutter .cm-scope-gutter': {
+      backgroundColor: 'transparent !important',
+      transform: 'none !important',
+    },
+    // IDEA 风格：当前行行号核心聚焦，颜色对调为醒目的天青高亮色，显著放大且全粗体
+    '.cm-lineNumbers .cm-activeLineGutter': {
+      color: 'var(--color-seal, #38bdf8) !important',
       backgroundColor: 'transparent !important',
       opacity: '1 !important',
       fontWeight: '700 !important',
@@ -252,9 +277,115 @@ export function markdownEditorTheme(pad: {
       backgroundColor: 'transparent !important',
       transform: 'none !important',
     },
-    // IDEA 风格：当前行整行柔和横向带状底色高亮，沉浸不晃眼
+    // 当前行整行带状底色高亮（加深对比，与作用域突出形成分明层次）
     '.cm-activeLine': {
-      backgroundColor: 'color-mix(in srgb, var(--color-ink) 4.5%, transparent) !important',
+      backgroundColor: 'color-mix(in srgb, var(--color-ink) 7.5%, transparent) !important',
+    },
+    // 当前光标所在代码块（当前作用域）轻微背景高亮突出（比当前行更浅，视觉柔和沉浸）
+    '.cm-scope-active-line': {
+      backgroundColor: 'color-mix(in srgb, var(--color-ink) 2.8%, transparent)',
+      transition: 'background-color 140ms ease',
+    },
+    // Vim 模式支持：静态 fat-cursor 彻底透明隐形，统一由 cmSmoothCursor 接管平滑方块光标与位移拖尾
+    '.cm-fat-cursor': {
+      opacity: '0 !important',
+      backgroundColor: 'transparent !important',
+      color: 'transparent !important',
+      border: 'none !important',
+      outline: 'none !important',
+      boxShadow: 'none !important',
+      pointerEvents: 'none !important',
+    },
+    '&:not(.cm-focused) .cm-fat-cursor': {
+      opacity: '0 !important',
+      backgroundColor: 'transparent !important',
+      outline: 'none !important',
+    },
+    '.cm-panels:has(.cm-vim-panel input), .cm-panels-bottom:has(.cm-vim-panel input)': {
+      position: 'static !important',
+      height: '0 !important',
+      minHeight: '0 !important',
+      border: 'none !important',
+      backgroundColor: 'transparent !important',
+      overflow: 'visible !important',
+      pointerEvents: 'none !important',
+    },
+    // 普通 Vim 底部状态展示（无输入框时的通知条）
+    '.cm-vim-panel': {
+      backgroundColor: 'var(--color-card, #1e1e2e) !important',
+      color: 'var(--color-ink, #cdd6f4) !important',
+      fontFamily: IDEA_MONO_FONT,
+      fontSize: '12px',
+      borderTop: '1px solid var(--color-line, rgba(255,255,255,0.1)) !important',
+      padding: '4px 8px !important',
+    },
+    // 现代 Command Palette 悬浮命令输入卡片：页面水平居中、垂直下移至代码区红框指定位置（top: 120px），沉浸微光毛玻璃质感
+    '.cm-vim-panel:has(input)': {
+      position: 'fixed !important',
+      top: '120px !important',
+      bottom: 'auto !important',
+      left: '50% !important',
+      transform: 'translateX(-50%) !important',
+      width: 'min(560px, calc(100vw - 64px)) !important',
+      zIndex: '9999 !important',
+      pointerEvents: 'auto !important',
+      display: 'flex !important',
+      alignItems: 'center !important',
+      gap: '8px !important',
+      padding: '8px 16px !important',
+      borderRadius: '8px !important',
+      backgroundColor: 'color-mix(in srgb, var(--color-card, #181825) 90%, transparent) !important',
+      backdropFilter: 'blur(16px) saturate(180%) !important',
+      WebkitBackdropFilter: 'blur(16px) saturate(180%) !important',
+      border: '1px solid color-mix(in srgb, var(--color-seal, #38bdf8) 50%, var(--color-line, rgba(255,255,255,0.15))) !important',
+      boxShadow:
+        '0 20px 48px -4px rgba(0,0,0,0.65), 0 0 20px color-mix(in srgb, var(--color-seal, #38bdf8) 30%, transparent) !important',
+      color: 'var(--color-ink, #cdd6f4) !important',
+      fontFamily: IDEA_MONO_FONT,
+      fontSize: '13.5px !important',
+      animation: 'cm-vim-panel-pop 160ms cubic-bezier(0.16, 1, 0.3, 1)',
+    },
+    '.cm-vim-panel:has(input) > *': {
+      display: 'flex !important',
+      alignItems: 'center !important',
+      width: '100% !important',
+      gap: '6px !important',
+    },
+    '@keyframes cm-vim-panel-pop': {
+      from: {
+        opacity: 0,
+        transform: 'translate(-50%, -12px) scale(0.97)',
+      },
+      to: {
+        opacity: 1,
+        transform: 'translate(-50%, 0) scale(1)',
+      },
+    },
+    '.cm-vim-panel input': {
+      flex: '1 1 auto',
+      width: '100%',
+      fontFamily: IDEA_MONO_FONT,
+      fontSize: '13.5px',
+      color: 'var(--color-ink, #cdd6f4) !important',
+      backgroundColor: 'transparent !important',
+      outline: 'none !important',
+      border: 'none !important',
+      caretColor: 'var(--color-seal, #38bdf8) !important',
+      letterSpacing: '0.02em',
+    },
+    // Vim 正则搜索所有匹配项通用高亮样式：低饱和微光底色与柔和边框
+    '.cm-searchMatch': {
+      backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 22%, transparent) !important',
+      borderRadius: '2px !important',
+      outline: '1px solid color-mix(in srgb, var(--color-seal, #38bdf8) 45%, transparent) !important',
+      transition: 'background-color 100ms ease, outline 100ms ease',
+    },
+    // 当前激活匹配项（按 n 切换下一个匹配项、按 N 切换上一个匹配项时聚焦的目标）：高亮发光外框与透亮背景
+    '.cm-searchMatch.cm-searchMatch-selected, .cm-searchMatch-selected': {
+      backgroundColor: 'color-mix(in srgb, var(--color-seal, #38bdf8) 55%, transparent) !important',
+      outline: '1.5px solid var(--color-seal, #38bdf8) !important',
+      boxShadow: '0 0 10px color-mix(in srgb, var(--color-seal, #38bdf8) 60%, transparent) !important',
+      zIndex: 2,
     },
   })
 }

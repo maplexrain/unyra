@@ -15,7 +15,7 @@ import type { PendingFile, PendingImage } from '../../../agent/types'
 import { MAX_FILES, pendingFromFile, pendingFromRead } from '../../../learn/attachments'
 import type { SendOutcome } from '../../../learn/agentQueue'
 import { MAX_IMAGES, MAX_SOURCE_BYTES, makePendingImage, releasePending } from '../../../learn/images'
-import { setAgentFocusHandler } from '../../../lib/agentFocus'
+import { setAgentFocusHandler, setAgentMessenger } from '../../../lib/agentFocus'
 import { placeCaretEnd } from '../../../lib/composerDoc'
 import { native } from '../../../lib/native'
 import { usePresence } from '../../../lib/presence'
@@ -132,6 +132,8 @@ export function useComposer({
    * 这段原先住在 AgentPanel 里（拆分成 panel/ 时漏掉了）：登记的是**输入框**，
    * 输入框现在归这里管，所以登记也跟着过来。
    */
+  const submitRef = useRef<() => void>(() => {})
+
   useEffect(() => {
     setAgentFocusHandler(() => {
       const el = inputRef.current
@@ -139,7 +141,21 @@ export function useComposer({
       // 光标放到末尾：那是「接着写」的位置，而选中的一段旧文字会让人一敲就删掉它。
       placeCaretEnd(el)
     })
-    return () => setAgentFocusHandler(null)
+    setAgentMessenger((msg) => {
+      setValue(msg)
+      const el = inputRef.current
+      if (el) {
+        el.textContent = msg
+        placeCaretEnd(el)
+      }
+      window.setTimeout(() => {
+        submitRef.current()
+      }, 60)
+    })
+    return () => {
+      setAgentFocusHandler(null)
+      setAgentMessenger(null)
+    }
   }, [])
 
   /**
@@ -294,6 +310,7 @@ export function useComposer({
     // 主动发问就是想看回复：无论刚才读到哪儿，都回到跟随状态
     onSent()
   }
+  submitRef.current = submit
 
   return {
     value,

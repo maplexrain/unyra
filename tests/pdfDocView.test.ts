@@ -38,7 +38,8 @@ describe('PDF 文档与页签行为规范', () => {
       createdAt: Date.now(),
       ref: { kind: 'local', path: 'C:/test.md' },
     }
-    expect(viewOf(mdTab)).toBe('preview')
+    // 合并页面后的口径：markdown 默认编辑模式（分栏预览由 LiveSplitPreview 默认展开）
+    expect(viewOf(mdTab)).toBe('source')
 
     const txtTab: LearnTab = {
       id: 'local:C:/test.txt',

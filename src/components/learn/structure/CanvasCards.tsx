@@ -8,7 +8,8 @@
 
 import { Fragment } from 'react'
 import type { Dispatch, RefObject, SetStateAction } from 'react'
-import { ChevronDown, ChevronRight, ExternalLink, File as FileIcon, Folder, FolderOpen, Pencil, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, ExternalLink, Folder, FolderOpen, Pencil, X } from 'lucide-react'
+import { FileIcon as FileSymbolIcon } from '@react-symbols/icons/utils'
 import type { FileNodeKind, LearnStore } from '../../../learn/types'
 import type { HeightOf } from '../../../learn/structure'
 import { GRAPH_KIND_LABEL, cardWidthOf } from '../../../learn/structure'
@@ -17,6 +18,7 @@ import { outlineUuid } from '../../../learn/nodeKinds'
 import { nodeById } from '../../../learn/graph'
 import { t } from '../../../i18n'
 import type { ChannelResult, MenuState } from './canvasTypes'
+import { NOTE_SUMMARY_CARD_H } from './structureView/cardMetrics'
 import { PROJ_PATH_ROW, PROJ_TREE_MAX_ROWS, PROJ_TREE_ROW, type ProjDirState, type ProjRow } from './canvasProjectTrees'
 import {
   CARD_PAD_B,
@@ -152,7 +154,8 @@ export function CanvasCards({
           const isHovered = hoverId === card.uuid
           const h = height(card)
           const slots = card.slots ?? []
-          const openable = card.kind !== 'outline'
+          // 大纲卡的标题也可点：点它跳到这份大纲的导读页签（见 openNode 的 outline 分支）
+          const openable = true
           const lifted = !!draft && (draft.id === card.uuid || (draft.moves !== undefined && card.uuid in draft.moves))
           /*
            * 树的上游：线可能落在文档卡上，也可能落在大纲卡上（接大纲的嵌套子级）。
@@ -212,7 +215,11 @@ export function CanvasCards({
                 left: card.x,
                 top: card.y,
                 width: cardWidthOf(card.kind),
-                minHeight: h,
+                // 笔记卡带总结时：高度**随内容长**、250 封顶（maxHeight）——内容少就矮，
+                // 装不下在卡里滚；其余卡片按内容公式给 minHeight
+                ...(card.kind === 'note' && card.summary
+                  ? { maxHeight: NOTE_SUMMARY_CARD_H }
+                  : { minHeight: h }),
                 // 悬停不抢光标（箭头就好），拖起来才换成抓住的手——「可拖」由选中态与阴影说
                 cursor: lifted ? 'grabbing' : undefined,
               }}
@@ -249,6 +256,15 @@ export function CanvasCards({
                 >
                   {card.title}
                 </span>
+                {/*
+                  笔记卡的字数与标题**同一行**（行尾对齐，右键菜单里改名/生成总结的是它）：
+                  原先独占一行的「{N} 字」纯粹浪费一行卡面。
+                */}
+                {card.kind === 'note' && (
+                  <span className="ml-auto shrink-0 pl-1 text-[10.5px] text-ink-faint" title={card.subtitle}>
+                    {card.subtitle}
+                  </span>
+                )}
               </div>
 
               {card.kind === 'outline' && slots.length > 0 ? (
@@ -735,7 +751,8 @@ export function CanvasCards({
                                         <Folder size={11} className="shrink-0 text-teal-600 dark:text-teal-400" />
                                       )
                                     ) : (
-                                      <FileIcon size={11} className="shrink-0 text-ink-faint" />
+                                      /* 文件行也按扩展名认图标（资源管理器/页签栏同一套），不再一律画纸页 */
+                                      <FileSymbolIcon fileName={row.name} autoAssign={true} width={12} height={12} className="shrink-0" />
                                     )}
                                     <span className="min-w-0 flex-1 truncate">{row.name}</span>
                                     {!row.isDirectory && <ExternalLink size={9} className="shrink-0 text-ink-faint/60" />}
@@ -790,7 +807,22 @@ export function CanvasCards({
                   </button>
                 </div>
               ) : (
-                <div title={card.subtitle} className="truncate px-3 pb-2 text-[11px] text-ink-soft">{card.subtitle}</div>
+                card.kind !== 'note' && (
+                  <div title={card.subtitle} className="truncate px-3 pb-2 text-[11px] text-ink-soft">{card.subtitle}</div>
+                )
+              )}
+              {/*
+                笔记总结（右键「生成总结」生成，≤200 字）：**完整展示、卡内滚动**——
+                带总结的笔记卡固定 250 高（noteCardHeight），总结区 flex-1 撑满余下空间，
+                装不下就在卡里滚，绝不截断内容。
+              */}
+              {card.kind === 'note' && card.summary && (
+                <div
+                  title={card.summary}
+                  className="min-h-0 flex-1 select-none overflow-y-auto border-t border-line/40 px-3 pb-2 pt-1.5 text-[10.5px] leading-snug text-ink-soft"
+                >
+                  {card.summary}
+                </div>
               )}
 
               {/*

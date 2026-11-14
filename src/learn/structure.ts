@@ -151,11 +151,14 @@ export const CARD_H = 76
 export const PROJ_CARD_W = Math.round(CARD_W * 1.5)
 /** 大纲卡加宽至 268px（比普通卡宽约 30%）：容纳目标项标题与删除操作，避免标题截断 */
 export const OUTLINE_CARD_W = 268
+/** 笔记卡：与大纲卡同宽——它现在要装得下完整可滚动的总结 */
+export const NOTE_CARD_W = 268
 
 /** 一类卡多宽（project、outline 独宽，其余同宽）：几何、命中、铺排、渲染共用这一份，别处再写一个数就会对不上 */
 export function cardWidthOf(kind: GNodeKind): number {
   if (kind === 'project') return PROJ_CARD_W
   if (kind === 'outline') return OUTLINE_CARD_W
+  if (kind === 'note') return NOTE_CARD_W
   return CARD_W
 }
 

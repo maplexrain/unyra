@@ -117,6 +117,7 @@ export interface NativeBridge {
     readMedia(path: string): Promise<{ ok: true; mime: string; dataUrl: string } | { ok: false; error: string }>
     write(path: string, content: string): Promise<{ ok: boolean; error?: string }>
     reveal(path: string): Promise<StorageOk | StorageFail>
+    ensureVimConfig?(): Promise<{ ok: boolean; path: string; created: boolean; error?: string }>
     /** 弹原生多选框挑几个本地文件（拖拽之外的第二个入口） */
     pick(): Promise<{ ok: boolean; canceled?: boolean; paths?: string[] }>
     /**
@@ -619,6 +620,9 @@ export interface NativeBridge {
     getPinData?(id: string): Promise<any>
     closePin?(id: string): void
     copyPin?(id: string): Promise<ImageCopyResult>
+    /** 输入法（键盘布局 HKL）读回与切换：vim 普通模式切英文直通用，WebUI/非 win32 缺省 */
+    imeGetActive?(): Promise<number | null>
+    imeSetActive?(hkl: number): Promise<boolean>
     savePin?(id: string): Promise<ImageSaveResult>
     notifyPinReady?(id: string): void
     movePin?(id: string, dx: number, dy: number): void

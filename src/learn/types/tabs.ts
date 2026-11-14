@@ -16,11 +16,11 @@
  */
 export type TabRef =
   /** 某个节点的教学文档 */
-  | { kind: 'teach'; nodeId: string; view?: 'source' | 'preview' }
+  | { kind: 'teach'; nodeId: string }
   /** 某个节点的某一份笔记（note 是笔记名，见 NoteFile） */
-  | { kind: 'note'; nodeId: string; note: string; view?: 'source' | 'preview' }
+  | { kind: 'note'; nodeId: string; note: string }
   /** 某个节点的某一份超级文档（name 是它的名字，见 SuperDocFile） */
-  | { kind: 'super'; nodeId: string; name: string; view?: 'source' | 'preview' }
+  | { kind: 'super'; nodeId: string; name: string }
   /**
    * 某一次考试的只读副本：卷子原件 + 那次作答 + 判分 + 错题讲解。
    * 认的是**考试**（attemptId），不是试卷——同一份卷子考两次，副本各是各的。
@@ -31,8 +31,15 @@ export type TabRef =
    * 渲染层见到它就走大纲自己的组件，不进 DocPane。
    */
   | { kind: 'outline'; nodeId: string; goalId?: string }
+  /**
+   * 大纲导读页签（**只读**）：一份大纲的「导读」讲解（OutlineDoc.guide / OutlineEntity.guide，
+   * 见 learn/types/node）。outlineId 是大纲成员 id——附身大纲 = 宿主文档 id（页签跟着
+   * 那份文档的目标组走，tabNodeId 认它）；游离大纲 = 实体 id（goalId 带着目标归属）。
+   * 内容全部从大纲数据派生，页签自己没有状态。
+   */
+  | { kind: 'guide'; outlineId: string; goalId?: string }
   /** 磁盘上的外部文件（绝对路径） */
-  | { kind: 'local'; path: string; title?: string; view?: 'source' | 'preview' }
+  | { kind: 'local'; path: string; title?: string }
   /**
    * 工作区（项目）里的**内部文件**：nodeId 是它的工作区所属的节点（目标根节点就是
    * `docs/{目标}/workspace/`），seg 是**相对那个工作区目录**的路径（如 `项目A/README.md`）。
@@ -42,7 +49,7 @@ export type TabRef =
    * 的目标（见 groups/goals 的 refOwner），打开时先过它的组（openGroupedDoc），
    * 跟着切目标收起 / 归队；外部文件不属于任何目标，也不进「本地文件」那套账。
    */
-  | { kind: 'ws'; nodeId: string; seg: string; view?: 'source' | 'preview' }
+  | { kind: 'ws'; nodeId: string; seg: string }
   /**
    * 内置浏览器的网页页签（<webview>，见 electron/app/webSession 与 components/learn/web）。
    * url 是**当前**地址——页面每次主框架导航都回写进来，重启回到离开时的那一页；
@@ -70,6 +77,8 @@ export type TabRef =
   | { kind: 'pluginDoc' }
   /** 赞助者名单页签：展示赞助者致谢列表与赞助方式（见 components/sponsor/SponsorsDoc） */
   | { kind: 'sponsors' }
+  /** Vim 命令大全页签：全量按键与命令速查文档（见 components/learn/vim/VimCheatSheetView） */
+  | { kind: 'vim' }
   /**
    * 设置面板：文档区的一枚页签（不再是弹窗）。全局只有一份（tabKey 恒定），
    * 从哪个入口打开都是切到它；面板本身见 components/settings/SettingsPanel。
@@ -187,9 +196,10 @@ export interface LearnTab {
   id: string
   ref: TabRef
   /**
-   * 用户在这个页签上手动选过的视图。省略 = 按文件类型给默认值
-   * （md / html 默认预览，其余默认源码，见 learn/tabs 的 viewOf）。
-   * 记在页签上而不是全局一个开关：在 a.md 上切成源码，不该让 b.md 也跟着变。
+   * 这份文档页面当前停在哪种视图（阅读 = preview、编辑 = source）。省略 = 按文件类型给
+   * 默认值（教学文档/超级文档默认阅读；笔记、markdown 与 html 默认编辑，见 viewOf）。
+   * 记在页签上而不是全局一个开关：同一份文档只有一枚页签（阅读与编辑是**同一页面里的
+   * 两种模式**，左侧按钮组切换），在 a.md 上切到阅读，不该让 b.md 也跟着变。
    */
   view?: DocView
   createdAt: number

@@ -116,10 +116,12 @@ export function revealOfTab(
   const favs = store.favorites ?? []
 
   switch (tab.kind) {
-    // 视频页签（实验）、插件文档与赞助名单不进侧栏：没有对应行，不定位
+    // 视频页签（实验）、插件文档、赞助名单与大纲导读不进侧栏：没有对应行，不定位
     case 'video':
     case 'pluginDoc':
     case 'sponsors':
+    case 'vim':
+    case 'guide':
       return null
     case 'teach':
       return {

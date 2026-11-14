@@ -81,7 +81,14 @@ function docsRecord(raw: Record<string, unknown>): Record<string, unknown> {
 function normalizeNotes(raw: Record<string, unknown>): NoteFile[] {
   const now = Date.now()
   const out: NoteFile[] = []
-  const push = (name: unknown, content: unknown, createdAt: unknown, updatedAt: unknown, id: unknown): void => {
+  const push = (
+    name: unknown,
+    content: unknown,
+    createdAt: unknown,
+    updatedAt: unknown,
+    id: unknown,
+    summary?: unknown,
+  ): void => {
     const text = typeof content === 'string' ? content : ''
     const at = typeof createdAt === 'number' && Number.isFinite(createdAt) ? createdAt : now
     const seenAt = typeof updatedAt === 'number' && Number.isFinite(updatedAt) ? updatedAt : at
@@ -89,6 +96,8 @@ function normalizeNotes(raw: Record<string, unknown>): NoteFile[] {
       id: typeof id === 'string' && id ? id : crypto.randomUUID(),
       name: uniqueNoteName(out, typeof name === 'string' ? name : ''),
       content: text,
+      // 笔记总结（≤200 字，画布笔记卡展示）随读盘保留——逐字段重建时漏了它，每次启动都会被剥掉
+      ...(typeof summary === 'string' && summary ? { summary } : {}),
       createdAt: at,
       updatedAt: seenAt,
     })
@@ -97,7 +106,7 @@ function normalizeNotes(raw: Record<string, unknown>): NoteFile[] {
     for (const item of raw.notes) {
       if (!item || typeof item !== 'object') continue
       const r = item as Record<string, unknown>
-      push(r.name, r.content, r.createdAt, r.updatedAt, r.id)
+      push(r.name, r.content, r.createdAt, r.updatedAt, r.id, r.summary)
     }
   }
   const legacy = docsRecord(raw).note

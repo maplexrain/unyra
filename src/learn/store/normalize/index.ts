@@ -19,8 +19,6 @@ import { tabNodeId } from '../../tabs'
 import { normalizeAgentTabs } from '../../agentTabs'
 import { normalizeDrafts } from '../../drafts'
 import { normalizeWorkflowEntries } from '../../workflows'
-import { normalizeEssayDock, normalizeEssays } from '../../essays'
-import { normalizeEssayCommits } from '../../essayCommits'
 import { normalizeSchedule } from '../../schedule'
 import { normalizeStructureBook } from '../../structure'
 import { normalizeOutlineEntities } from '../../outline'
@@ -299,7 +297,52 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
      * 文档区：新版读 docs，旧版读顶层的 tabs / activeTab（自动折成单组，见 groups 的
      * normalizeDocs）。两种数据都要认——用户升级之后第一次打开，看到的该还是那排页签。
      */
-    const docAreaRaw = normalizeDocs(d.docArea, legacy, (raw) => normalizeTab(raw, byId))
+    /*
+     * 页签 id 的迁移桥：对偶页签时代视图后缀拼在 id 里（t:x:source / l:p:preview），
+     * 合并成单页签后同一份文档只有一枚页签、id 里没有视图。normalizeTab 重算 id 时把
+     * 老 id → 新 id 记下来，激活指针（normalizeDocs）与归属表（下面那段）按它重定向，
+     * 升级后读到的还是离开时的那页，不会因为 id 换了口径就跳到别的页签上。
+     */
+    const legacyTabIds = new Map<string, string>()
+    const docAreaRaw = normalizeDocs(d.docArea, legacy, (raw) => {
+      const t = normalizeTab(raw, byId)
+      if (t && raw && typeof raw === 'object') {
+        const legacyId = (raw as { id?: unknown }).id
+        if (typeof legacyId === 'string' && legacyId && legacyId !== t.id) {
+          legacyTabIds.set(legacyId, t.id)
+        }
+      }
+      return t
+    }, (legacyId) => legacyTabIds.get(legacyId))
+    // 归属表里存的也是老 id：逐条重定向并去重（对偶页签合并后两枚老 id 指向同一枚新页签）
+    if (docAreaRaw.tabOwners && legacyTabIds.size > 0) {
+      docAreaRaw.tabOwners = Object.fromEntries(
+        Object.entries(docAreaRaw.tabOwners).map(([owner, ownerIds]) => {
+          const seen = new Set<string>()
+          const next: string[] = []
+          for (const id of ownerIds) {
+            const mapped = legacyTabIds.get(id) ?? id
+            if (seen.has(mapped)) continue
+            seen.add(mapped)
+            next.push(mapped)
+          }
+          return [owner, next]
+        }),
+      )
+    }
+    // 暂存区的键同样是页签 id：对偶页签时代记在带视图后缀的键上（改到一半的正文挂在
+    // 「源码页签」名下），一并重定向到合并后的页签——不搬的话那半篇就留在一个谁也读不到的键上
+    let draftsRaw: Record<string, unknown> = {}
+    if (d.drafts && typeof d.drafts === 'object' && !Array.isArray(d.drafts)) {
+      draftsRaw = { ...(d.drafts as Record<string, unknown>) }
+    }
+    if (legacyTabIds.size > 0) {
+      for (const [oldId, newId] of legacyTabIds) {
+        if (!(oldId in draftsRaw) || newId in draftsRaw) continue
+        draftsRaw[newId] = draftsRaw[oldId]
+        delete draftsRaw[oldId]
+      }
+    }
     // 停靠场的键也是目标 id。旧版本只校验了形状，目标删除后留下的停靠组会在下次
     // 打开大纲时复活文档，因此读盘时先按当前目标表剪掉无主停靠组。
     const parked = Object.fromEntries(
@@ -349,9 +392,6 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       }
     }
 
-    /** 随笔窗口的几何（认不出就是没有：下次打开按默认位置摆） */
-    const essayDock = normalizeEssayDock(d.essayDock)
-
     const store: LearnStore = {
       version: 2,
       nodes: fixedNodes,
@@ -366,12 +406,6 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       resources,
       memory,
       methods,
-      // 随笔同样是目标级的：目标没了的整本丢掉，空文本条目丢掉（见 learn/essays）
-      essays: normalizeEssays(d.essays, goalIds),
-      // 提交记录与随笔同一份 essay.json：目标没了的、认不出的丢掉；running 降成「未完成可重试」
-      essayCommits: normalizeEssayCommits(d.essayCommits, goalIds),
-      // 窗口几何只校验是不是数；夹进视口是打开那一刻的事（见 EssayDock）
-      ...(essayDock ? { essayDock } : {}),
       workflows,
       /*
        * 阅读 / 打卡 / 专注：认不出的部分各自丢掉，坏数据不该拖垮整库。
@@ -403,8 +437,8 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       activeNodeId: nextActiveNodeId,
       activeConversationId,
       docArea,
-      // 暂存区按节点 id 校验：节点已经没了的那些不认（同页签的口径）
-      drafts: normalizeDrafts(d.drafts, ids),
+      // 暂存区按节点 id 校验：节点已经没了的那些不认（同页签的口径）；键先过一遍迁移桥
+      drafts: normalizeDrafts(draftsRaw, ids),
       // 读到哪儿了：只认有限的非负数，坏值丢掉（位置读错只该退回从头，不该让整份状态读不出来）
       docScroll: normalizeDocScroll(d.docScroll),
       localFiles: normalizeLocalFiles(d.localFiles),

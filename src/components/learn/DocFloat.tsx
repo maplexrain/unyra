@@ -1,17 +1,28 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { BookOpen, Eye, ListTree, Maximize2, Minimize2, Network, Pencil } from 'lucide-react'
+import { Brain, Columns2, Eye, ListTree, Network, Pencil } from 'lucide-react'
 import type { OutlineHandle } from '../../lib/outline'
 import type { DocView, TabRef } from '../../learn/types'
 import { t } from '../../i18n'
+import { useVimEnabled } from '../../lib/vimSettings'
+import { ensureVimConfigFile } from '../../lib/vimConfig'
 import DocOutline from './DocOutline'
 import DocRelations from './DocRelations'
+import VimIcon from './VimIcon'
+import VimFloatTip from './VimFloatTip'
+import { toggleEditorPreview, subscribeEditorPreview } from './editor/previewBus'
+import { loadMemoryMode, subscribeMemoryMode, toggleMemoryMode } from '../../lib/memoryMode'
+import MemoryModeTip from './MemoryModeTip'
 import type { NodeRelations, RelationItem } from './docRelations/computeRelations'
 
 /**
  * 文档区左侧的悬浮工具条（垂直排列）——一格一套。
  *
- * 包含：返回节点文档、随笔便笺入口、标题大纲（悬停向右弹出）、
- * 视图切换（源码 / 预览，图标反转显示目标动作）、纯净阅读。
+ * 它锚定在**页签容器**上（GroupBody 的 relative 那一层），不属于编辑列：
+ * 编辑列与预览列对调（:preview switch / 双击分割线）时它保持原位不动——
+ * 它是**这一页的模式开关**（阅读 ↔ 编辑），不是编辑栏的一部分。
+ *
+ * 包含：阅读/编辑模式切换（同一枚页签就地切，图标反转显示目标动作）、
+ * 分栏实时预览开关、Vim 模式卡片、关联节点、标题大纲（悬停向右弹出）。
  * 遵循严格直角规范（rounded-none）。
  */
 
@@ -29,31 +40,17 @@ interface Props {
   previewable: boolean
   /** 预览不可用时的那句说明。「不能预览」有两种情形（文件类型不支持、笔记还是空的），得分开说 */
   previewHint?: string
+  /** 当前页签的分栏预览状态键（与 LiveSplitPreview 的 storageKey 同一口径，见 GroupBody） */
+  previewKey?: string
   onSwitchView: (view: DocView) => void
-  /**
-   * 当前页签是不是「从教学文档岔出去的」（笔记 / 超级文档）：是才显示「返回节点文档」——
-   * 本来就在教学文档上时，再给一颗「回去」只会占地方。
-   */
-  showBackToDoc: boolean
-  /** 回到这个节点的教学文档 */
-  onBackToDoc: () => void
-  /**
-   * 现在是不是纯净阅读模式（两侧栏、页签栏、顶栏都收着，只剩正文）。
-   * 它决定最后那颗按钮画成「进入」还是「退出」。
-   */
-  pure: boolean
-  /** 切换纯净阅读（与 F11 是同一个动作，见 lib/shortcuts 的 doc.zen） */
-  onTogglePure: () => void
   /**
    * 眼前这份文档的大纲句柄槽（见 lib/outline 的 OutlineHandle）。
    */
   outlineSlot?: { current: OutlineHandle | null }
-  /** 是否展示随笔入口 */
-  showEssay?: boolean
-  /** 唤起随笔窗口 */
-  onOpenEssay?: () => void
-  /** 随笔按钮 ref（供 EssayDock 获取变形起点） */
-  essayBtnRef?: React.Ref<HTMLButtonElement>
+  /** 打开 Vim 配置文件页签 */
+  onOpenVimConfig?: (path: string) => void
+  /** 记忆模式的文档键（教学文档才有）：按钮与 tip 都按它读写这份文档的状态 */
+  memoryKey?: string
   /** 与当前节点关联的节点分类表（上级/下级/同级） */
   relations?: NodeRelations
   /** 点击打开关联节点 */
@@ -87,17 +84,13 @@ export default function DocFloat({
   view,
   previewable,
   previewHint,
+  previewKey,
   onSwitchView,
-  showBackToDoc,
-  onBackToDoc,
-  pure,
-  onTogglePure,
   outlineSlot,
-  showEssay,
-  onOpenEssay,
-  essayBtnRef,
   relations,
   onOpenRelation,
+  onOpenVimConfig,
+  memoryKey,
 }: Props) {
   /**
    * 浮层三态：closed（不挂载）→ open（展开）→ closing（退场动画中）→ closed。
@@ -105,9 +98,32 @@ export default function DocFloat({
   const [phase, setPhase] = useState<'closed' | 'open' | 'closing'>('closed')
   /** 快照在打开那一刻取一次，开着的时候定时跟句柄对齐 */
   const [snap, setSnap] = useState<{ items: OutlineHandle['items']; activeIndex: number } | null>(null)
+  const [vimEnabled, setVimEnabled] = useVimEnabled()
+  const [vimTipOpen, setVimTipOpen] = useState(false)
+  const vimLeaveTimer = useRef<number | undefined>(undefined)
   const timers = useRef<{ leave?: number; hide?: number; follow?: number }>({})
   const [relPhase, setRelPhase] = useState<'closed' | 'open' | 'closing'>('closed')
   const relTimers = useRef<{ leave?: number; hide?: number }>({})
+  /** 记忆模式开没开（按钮的按下态）：按文档键订阅，tip 里改范围/换种子时按钮一起跟 */
+  const [memOn, setMemOn] = useState(() => (memoryKey ? loadMemoryMode(memoryKey).on : false))
+  const [memTipOpen, setMemTipOpen] = useState(false)
+  const memLeaveTimer = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    if (!memoryKey) return
+    setMemOn(loadMemoryMode(memoryKey).on)
+    return subscribeMemoryMode((key, s) => {
+      if (key === memoryKey) setMemOn(s.on)
+    })
+  }, [memoryKey])
+  const [splitPreviewOpen, setSplitPreviewOpen] = useState(false)
+
+  // 点名广播只认眼前这份文档的键：键随页签换，订阅跟着换（换键那一帧旧订阅已退，不会串）
+  useEffect(() => {
+    return subscribeEditorPreview((force, key) => {
+      if (key !== undefined && key !== previewKey) return
+      setSplitPreviewOpen((prev) => (force !== undefined ? force : !prev))
+    })
+  }, [previewKey])
 
   useEffect(
     () => () => {
@@ -116,9 +132,27 @@ export default function DocFloat({
       if (timers.current.follow !== undefined) window.clearInterval(timers.current.follow)
       if (relTimers.current.leave !== undefined) window.clearTimeout(relTimers.current.leave)
       if (relTimers.current.hide !== undefined) window.clearTimeout(relTimers.current.hide)
+      if (memLeaveTimer.current !== undefined) window.clearTimeout(memLeaveTimer.current)
+      if (vimLeaveTimer.current !== undefined) window.clearTimeout(vimLeaveTimer.current)
     },
     [],
   )
+
+  const openVimTipNow = () => {
+    if (vimLeaveTimer.current !== undefined) {
+      window.clearTimeout(vimLeaveTimer.current)
+      vimLeaveTimer.current = undefined
+    }
+    setVimTipOpen(true)
+  }
+
+  const closeVimTipSoon = () => {
+    if (vimLeaveTimer.current !== undefined) return
+    vimLeaveTimer.current = window.setTimeout(() => {
+      vimLeaveTimer.current = undefined
+      setVimTipOpen(false)
+    }, LEAVE_GRACE_MS)
+  }
 
   /** 走退场：先播收回动画，播完才把浮层从 DOM 里摘掉 */
   const beginClose = () => {
@@ -195,10 +229,10 @@ export default function DocFloat({
     <div className="no-print absolute left-3 top-2.5 z-20">
       <div className="flex flex-col items-center gap-1">
         {/*
-          1. 源码 / 预览切换按钮（排在第一位）：
-          图标反转——编辑模式显示预览图标（Eye），预览模式显示编辑源码图标（Pencil）。
-          统一色彩基调，保持沉浸与清爽规范。
-          媒体预览（图片 / 音频 / 视频 / PDF）没有源码可看，整颗不出现。
+          1. 阅读模式 / 编辑模式切换按钮（排在第一位）：
+          同一枚页签就地切模式（不再开对偶页签）——编辑态显示 Eye（切去阅读），
+          阅读态显示 Pencil（切去编辑）。媒体预览（图片 / 音频 / 视频 / PDF）
+          没有模式可言，整颗不出现。
         */}
         {view !== 'media' && (
           <button
@@ -206,9 +240,9 @@ export default function DocFloat({
             title={
               view === 'source'
                 ? previewable
-                  ? t('分屏浏览预览：在独立页面或侧边查看渲染效果')
+                  ? t('切换到阅读模式')
                   : (previewHint ?? t('这份文件不能预览（只支持 Markdown 与 HTML），只能看源码'))
-                : t('分屏编辑源码：在独立页面或侧边编辑源码')
+                : t('切换到编辑模式')
             }
             aria-pressed={view === 'source'}
             disabled={view === 'source' && !previewable}
@@ -225,11 +259,126 @@ export default function DocFloat({
           </button>
         )}
 
+        {/*
+          2. 常驻分栏对照预览按钮（用户指定常驻）：
+          在可预览文档中常驻展示；阅读态下点击 = 切进编辑模式并展开分栏，编辑态下开/关分栏。
+        */}
+        {view !== 'media' && previewable && (
+          <button
+            type="button"
+            title={
+              splitPreviewOpen
+                ? t('关闭分栏预览 (:preview)')
+                : t('打开分栏实时预览 (:preview)')
+            }
+            aria-pressed={splitPreviewOpen}
+            onClick={() => {
+              if (view !== 'source') {
+                onSwitchView('source')
+                toggleEditorPreview(true, previewKey)
+              } else {
+                toggleEditorPreview(undefined, previewKey)
+              }
+            }}
+            className={
+              VIEW_BTN +
+              ' transition-all ' +
+              (splitPreviewOpen && view === 'source'
+                ? 'border-seal/50 bg-seal/15 text-seal shadow-xs'
+                : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink')
+            }
+          >
+            <Columns2 size={15} className="transition-colors" />
+          </button>
+        )}
+
+        {/*
+          Vim 模式卡片：鼠标经过弹出 tip，显示一键开关组件与配置文件 (.vimrc) 打开按钮。
+          经典绿色斜方盾牌 Vim 徽标，辨识度高。
+        */}
+        {view === 'source' && (
+          <div
+            className="relative"
+            onMouseEnter={openVimTipNow}
+            onMouseLeave={closeVimTipSoon}
+          >
+            <button
+              type="button"
+              title={t('Vim 模式设置与配置')}
+              aria-expanded={vimTipOpen}
+              className={
+                VIEW_BTN +
+                ' transition-all ' +
+                (vimEnabled
+                  ? 'border-[#019833]/50 bg-[#019833]/15 text-[#019833] shadow-xs'
+                  : 'border-transparent text-ink-soft opacity-60 hover:opacity-100 hover:bg-line/50 hover:text-ink')
+              }
+            >
+              <VimIcon size={14} className="transition-transform group-hover:scale-105" />
+            </button>
+
+            {vimTipOpen && (
+              <VimFloatTip
+                enabled={vimEnabled}
+                onToggle={() => setVimEnabled(!vimEnabled)}
+                onOpenConfig={async () => {
+                  const path = await ensureVimConfigFile()
+                  if (path) {
+                    onOpenVimConfig?.(path)
+                    setVimTipOpen(false)
+                  }
+                }}
+              />
+            )}
+          </div>
+        )}
+
         
         {/*
           2. 关系按钮：排在源码 / 预览视图切换按钮下方。
           鼠标经过时弹出与当前节点相关的节点列表 tip，分类显示上级/下级/同级。
         */}
+        {/*
+          记忆模式（教学文档专属）：把正文里一部分块元素按持久化的随机种子盖上遮罩，
+          悬停揭示——主动回忆的自测。按钮点击开/关，悬停弹 slider 调范围、换随机分布。
+        */}
+        {view === 'preview' && memoryKey && (
+          <div
+            className="relative"
+            onMouseEnter={() => {
+              if (memLeaveTimer.current !== undefined) {
+                window.clearTimeout(memLeaveTimer.current)
+                memLeaveTimer.current = undefined
+              }
+              setMemTipOpen(true)
+            }}
+            onMouseLeave={() => {
+              if (memLeaveTimer.current !== undefined) return
+              memLeaveTimer.current = window.setTimeout(() => {
+                memLeaveTimer.current = undefined
+                setMemTipOpen(false)
+              }, LEAVE_GRACE_MS)
+            }}
+          >
+            <button
+              type="button"
+              title={t('记忆模式：遮住部分内容自测回忆（悬停调范围、换随机分布）')}
+              aria-pressed={memOn}
+              onClick={() => toggleMemoryMode(memoryKey)}
+              className={
+                VIEW_BTN +
+                ' transition-all ' +
+                (memOn
+                  ? 'border-seal/50 bg-seal/15 text-seal shadow-xs'
+                  : 'border-transparent text-ink-soft opacity-60 hover:opacity-100 hover:bg-line/50 hover:text-ink')
+              }
+            >
+              <Brain size={15} />
+            </button>
+            {memTipOpen && <MemoryModeTip docKey={memoryKey} state={loadMemoryMode(memoryKey)} />}
+          </div>
+        )}
+
         {relations && (
           <div className="relative" onMouseEnter={openRelationsNow} onMouseLeave={closeRelationsSoon}>
             <button
@@ -254,35 +403,6 @@ export default function DocFloat({
           </div>
         )}
 
-        {/* 2. 随笔按钮：手札图标 */}
-        {showEssay && (
-          <button
-            ref={essayBtnRef}
-            type="button"
-            title={t('随笔：随手记（双击 Shift 亦可唤出）')}
-            onClick={onOpenEssay}
-            className={ICON_BTN}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="15"
-              height="15"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-              className="transition-colors"
-            >
-              <path d="M14 3H4v18h16V9l-6-6Z" />
-              <path d="M14 3v6h6" />
-              <path d="M7 13h10" />
-              <path d="M7 17h6" />
-            </svg>
-          </button>
-        )}
-
         {/* 3. 标题大纲：树状图标，悬停向右弹出大纲列表卡片 */}
         {view === 'preview' && (
           <div className="relative" onMouseEnter={openNow} onMouseLeave={closeSoon}>
@@ -305,33 +425,6 @@ export default function DocFloat({
             )}
           </div>
         )}
-
-        {/* 4. 回到教学文档：书本图标 */}
-        {showBackToDoc && (
-          <button type="button" title={t('回到这个节点的教学文档')} onClick={onBackToDoc} className={ICON_BTN}>
-            <BookOpen size={15} className="transition-colors" />
-          </button>
-        )}
-
-        {/* 5. 分割线与纯净阅读：扩展图标 */}
-        <span aria-hidden="true" className="my-0.5 h-px w-4 self-center bg-line-strong/70" />
-        <button
-          type="button"
-          title={pure ? t('退出纯净阅读（F11 / Esc）') : t('纯净阅读：收起两侧栏、页签栏与顶栏，只留正文（F11）')}
-          aria-pressed={pure}
-          onClick={onTogglePure}
-          className={
-            pure
-              ? 'relative flex h-8 w-8 items-center justify-center rounded-none border border-line-strong bg-line/50 text-ink transition'
-              : ICON_BTN
-          }
-        >
-          {pure ? (
-            <Minimize2 size={15} className="transition-colors" />
-          ) : (
-            <Maximize2 size={15} className="transition-colors" />
-          )}
-        </button>
       </div>
     </div>
   )

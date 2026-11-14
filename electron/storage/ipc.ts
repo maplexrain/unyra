@@ -20,7 +20,7 @@ import {
   writeYaml,
 } from './files'
 import { flushSync } from './flush'
-import { pickLocal, readLocal, readLocalMedia, revealLocal, setLocalWatchList, writeLocal } from './local'
+import { pickLocal, readLocal, readLocalMedia, revealLocal, setLocalWatchList, writeLocal, ensureVimConfig } from './local'
 import { setWsWatchList } from './ws'
 import { clearNoticeImageCache, getCachedNoticeImage, saveCachedNoticeImage } from './noticeCache'
 import { closeBehavior, currentRoot, dataRootRiskOf, defaultRoot, loadGlobal, noticeSettings, pickRoot, setCloseBehavior, setNoticeSettings, setRoot } from './settings'
@@ -77,6 +77,7 @@ export function registerStorageIpc(): void {
   ipcMain.handle('local:readMedia', (_e, p: unknown) => readLocalMedia(p))
   ipcMain.handle('local:write', (_e, p: unknown, content: unknown) => writeLocal(p, content))
   ipcMain.handle('local:reveal', (_e, p: unknown) => revealLocal(p))
+  ipcMain.handle('local:ensureVimConfig', () => ensureVimConfig())
   ipcMain.handle('local:pick', () => pickLocal())
   // 外部文件的改动监听：渲染层把「开着页签的路径清单」推过来，变化经 local:changed 推回
   ipcMain.handle('local:watch', (_e, list: unknown) => setLocalWatchList(list))

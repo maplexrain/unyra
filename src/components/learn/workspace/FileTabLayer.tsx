@@ -1,5 +1,6 @@
 import { memo } from 'react'
-import type { LearnStore, LearnTab } from '../../../learn/types'
+import type { LearnStore, LearnTab, TabRef } from '../../../learn/types'
+import { newDraftKey } from '../../../learn/tabs'
 import { viewOf } from '../../../learn/tabs'
 import { wsRelOfTab } from '../../../learn/workspace'
 import { userAbsPath } from '../../../lib/storage'
@@ -25,8 +26,9 @@ export interface FileTabLayerProps {
     groupId: string,
     tabId: string,
     target: 'self' | 'others' | 'right' | 'all',
-    opts?: { confirm?: boolean },
+    opts?: { confirm?: boolean; skipDirty?: boolean },
   ) => void
+  openTab?: (ref: TabRef) => void
   setTabView: (tabId: string, view: 'source' | 'preview') => void
   getOutlineSlot: (tabId: string) => { current: OutlineHandle | null }
   onToast: (msg: string) => void
@@ -51,6 +53,7 @@ export const FileTabLayer = memo(function FileTabLayer({
   localTicks,
   stageLocalDraft,
   closeTab,
+  openTab,
   setTabView,
   getOutlineSlot,
   onToast,
@@ -87,7 +90,7 @@ export const FileTabLayer = memo(function FileTabLayer({
 
         return (
           <div
-            key={tab.id + '#' + tick}
+            key={tab.id}
             data-file-pane={tab.id}
             className={isActive ? 'print-flat relative flex min-h-0 flex-1 flex-col' : 'hidden'}
             {...(!isActive ? { hidden: true } : {})}
@@ -99,6 +102,7 @@ export const FileTabLayer = memo(function FileTabLayer({
               editorScale={editorScale}
               draft={draft}
               savedText={localSaved?.path === validPath ? localSaved.text : undefined}
+              tick={tick}
               onDraft={(text) => stageLocalDraft(tab.id, text)}
               saving={docSaving}
               saveError={docSaveError}
@@ -109,6 +113,9 @@ export const FileTabLayer = memo(function FileTabLayer({
                 requestSourceReveal(localRevealKey(validPath), loc.start, loc.end)
                 setTabView(tab.id, 'source')
               }}
+              onCloseTab={(force) => closeTab(groupId, tab.id, 'self', { confirm: !force })}
+              onCloseOtherTabs={(force, opts) => closeTab(groupId, tab.id, 'others', { confirm: !force, skipDirty: opts?.skipDirty })}
+              onNewTab={() => openTab?.({ kind: 'draft', key: newDraftKey() })}
               onToast={onToast}
             />
           </div>

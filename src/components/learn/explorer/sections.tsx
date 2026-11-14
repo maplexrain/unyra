@@ -18,6 +18,7 @@ import { relativeTime } from '../../../lib/time'
 import { STATUS_META } from '../mastery'
 import StatusBranch from '../StatusBranch'
 import { DocTypeIcon, WebTabTypeIcon } from '../docTypes'
+import { FileTypeIcon } from './FileTypeIcon'
 import { chipJson } from '../../../lib/chipSyntax'
 import { t } from '../../../i18n'
 import { Collapse, FolderRow, Indent, Section, SectionAction } from './Folder'
@@ -45,7 +46,8 @@ export function RecentRow({ item, now, onOpen }: { item: RecentOpen; now: number
           <StatusBranch size={11} className={STATUS_META[item.status ?? 'learning'].mark} />
         </span>
       ) : (
-        <DocTypeIcon kind="local" size={13} />
+        /* 本地文件的最近打开：图标与页签栏、工作区文件行同一套（按扩展名认类型） */
+        <FileTypeIcon name={item.title} />
       )}
       {/*
         标题与「在什么里面」挤在同一行里一起截断：标题在前，空间不够时先舍说明。
@@ -691,7 +693,7 @@ export function LocalRow({
       }}
       className="flex cursor-pointer items-center gap-1.5 rounded-md py-1 pl-1.5 pr-1.5 transition hover:bg-line/40"
     >
-      <DocTypeIcon kind="local" size={13} />
+      <FileTypeIcon name={file.name} />
       <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{file.name}</span>
     </div>
   )
