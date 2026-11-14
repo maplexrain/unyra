@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { initWebSocketServer } from './ws'
 import { storageRouter } from './routes/storage'
-import { voiceRouter } from './routes/voice'
+import { capsRouter } from './routes/capabilities'
 import { proxyRouter } from './routes/proxy'
 import { baseRouter } from './routes/base'
 import { mcpRouter } from './routes/mcp'
@@ -30,7 +30,7 @@ app.use('*', cors({
 
 // 挂载 API 子路由
 app.route('/api/storage', storageRouter)
-app.route('/api/voice', voiceRouter)
+app.route('/api/caps', capsRouter)
 app.route('/api/proxy', proxyRouter)
 app.route('/api/base', baseRouter)
 app.route('/api/mcp', mcpRouter)

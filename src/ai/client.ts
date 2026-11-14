@@ -32,6 +32,7 @@ import {
   type UsagePurpose,
 } from './types'
 import type { ProviderQuirks } from './providers'
+import type { FilesApiConfig, ServerToolConfig } from './capabilitySettings'
 import { recordUsage } from './usageLog'
 import { num } from '../lib/num'
 import { t } from '../i18n'
@@ -72,6 +73,14 @@ export interface ResolvedProvider {
   goPlanOnly?: boolean
   /** 用户填的 API 版本（预设声明了该字段时才有值） */
   apiVersion?: string
+  /**
+   * 服务端工具开关（联网搜索 / 阅读链接，DeepSeek 服务端执行）。
+   * 已按「用户显式设置 → 预设默认」合成（见 ai/settings 的 resolveProvider）；
+   * 注入发生在 bodyFor——只有 OpenAI 兼容协议会声明这两个工具。
+   */
+  serverTools?: ServerToolConfig
+  /** Files API 开关（云端文件能力；能力接入页的文件管理按它显隐） */
+  files?: FilesApiConfig
 }
 
 /** 把 HTTP 状态码与响应体翻译成用户能看懂的提示，其余原样抛出 */
@@ -342,11 +351,33 @@ export function bodyFor(
     body.stream_options = { include_usage: true }
   }
   if (opts.json) body.response_format = { type: 'json_object' }
+  /**
+   * 工具注入：本地执行的（execute 沙箱）与**服务端执行**的（DeepSeek 联网搜索 /
+   * 阅读链接）**互斥**——两者同时声明时，模型走服务端搜索后响应里带
+   * server_tool_calls / signature 块（要求多轮原样回传），而回传通道还没实现，
+   * 工具循环的下一跳必 400（实测文案 an assistant message must follow a user
+   * message）。本地工具在场时服务端搜索本来就被沙箱 api（web.search）覆盖，
+   * 功能无损失；纯聊天（无工具轮）才享受服务端搜索。tool_choice 保持 auto：
+   * 官方约定服务端工具不可强制指定（400）。
+   */
+  const serverToolDecls = serverToolDeclarations(p)
   if (opts.tools?.length) {
     body.tools = opts.tools
     body.tool_choice = 'auto'
+  } else if (serverToolDecls.length > 0) {
+    body.tools = serverToolDecls
+    body.tool_choice = 'auto'
   }
   return body
+}
+
+/** 按 provider 的服务端工具开关生成 tools 数组的声明条目（非 OpenAI 协议一律不声明） */
+function serverToolDeclarations(p: ResolvedProvider): Array<Record<string, string>> {
+  if ((p.protocol ?? 'openai') !== 'openai' || !p.serverTools) return []
+  const out: Array<Record<string, string>> = []
+  if (p.serverTools.webSearch) out.push({ type: 'deepseek_web_search' })
+  if (p.serverTools.readUrl) out.push({ type: 'deepseek_read_url' })
+  return out
 }
 
 /**

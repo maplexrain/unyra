@@ -1,72 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { normalizeAudioSamples } from '../electron/sherpa/audioNormalize'
 import { TabTypeIcon } from '../src/components/learn/tabbar/TabIcons'
 import { markdownEditorTheme, IDEA_MONO_FONT } from '../src/lib/cmMarkdown'
 import type { TabRef } from '../src/learn/types'
-
-describe('TTS 语音响度均衡器测试 (audioNormalize)', () => {
-  it('对空输入或近乎纯静音的信号保持安全原样返回', () => {
-    const empty = new Float32Array(0)
-    expect(normalizeAudioSamples(empty)).toBe(empty)
-
-    const nearZero = new Float32Array([0.00001, -0.00001, 0.00002])
-    const res = normalizeAudioSamples(nearZero)
-    expect(res).toBe(nearZero)
-  })
-
-  it('对原生振幅偏小（微弱音量）的片段进行平滑增益放大，使其对齐目标响度', () => {
-    // 生成原生小音量信号（峰值 0.15，RMS ~0.04）
-    const len = 4410
-    const quiet = new Float32Array(len)
-    for (let i = 0; i < len; i++) {
-      quiet[i] = 0.15 * Math.sin((2 * Math.PI * 440 * i) / 44100)
-    }
-
-    const normalized = normalizeAudioSamples(quiet)
-    // 验证有效放大幅度
-    let maxAbs = 0
-    let sumSq = 0
-    for (let i = 256; i < len - 256; i++) {
-      const a = Math.abs(normalized[i])
-      if (a > maxAbs) maxAbs = a
-      sumSq += a * a
-    }
-    const rms = Math.sqrt(sumSq / (len - 512))
-
-    // 原生 RMS 约为 0.106，经过目标 0.14 规范后显著提升，且绝不超过安全破音门限 0.96
-    expect(maxAbs).toBeGreaterThan(0.15)
-    expect(maxAbs).toBeLessThanOrEqual(0.96)
-    expect(rms).toBeGreaterThan(0.09)
-  })
-
-  it('对大动态极端峰值应用双曲正切软限制，绝不出现硬削波失真与爆音', () => {
-    // 包含极端大音量片段
-    const len = 4410
-    const loud = new Float32Array(len)
-    for (let i = 0; i < len; i++) {
-      loud[i] = 0.98 * Math.sin((2 * Math.PI * 220 * i) / 44100)
-    }
-
-    const normalized = normalizeAudioSamples(loud)
-    for (let i = 0; i < len; i++) {
-      expect(Math.abs(normalized[i])).toBeLessThanOrEqual(0.96)
-    }
-  })
-
-  it('音频首尾施加微淡入淡出，消除分段播放接缝处的直流偏置突变声', () => {
-    const len = 1000
-    const raw = new Float32Array(len).fill(0.5)
-    const normalized = normalizeAudioSamples(raw)
-
-    // 首部淡入从 0 开始平滑增长
-    expect(normalized[0]).toBe(0)
-    expect(Math.abs(normalized[100])).toBeGreaterThan(0)
-    // 尾部淡出归零
-    expect(normalized[len - 1]).toBe(0)
-  })
-})
 
 describe('页签文件图标扩展名映射测试 (TabTypeIcon)', () => {
   it('本地磁盘文件 (local) 根据文件后缀渲染对应语言图标，且具备更大视觉尺寸', () => {

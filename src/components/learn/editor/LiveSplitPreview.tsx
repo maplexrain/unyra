@@ -44,9 +44,23 @@ function loadPreviewState(key?: string): PreviewState {
     try {
       const raw = localStorage.getItem(`moji:split-preview:${key}`)
       if (raw) {
-        const parsed = JSON.parse(raw) as PreviewState
-        memoryState.set(key, parsed)
-        return parsed
+        const parsed = JSON.parse(raw) as PreviewState & { v?: number }
+        /*
+         * v2 起「对调」以**编辑在左、预览在右**为基准（2026-11-14 默认位置改：原先
+         * 预览在左）。旧记录没有版本标记——对调标记一次性回默认：旧默认下没对调过的
+         * 文件直接拿新默认；手动对调到「编辑在左」的文件本来就在编辑在左，视觉不变。
+         * 开合与比例原样保留。
+         */
+        const state: PreviewState = {
+          isOpen: parsed.isOpen !== false,
+          splitRatio:
+            typeof parsed.splitRatio === 'number' && Number.isFinite(parsed.splitRatio)
+              ? parsed.splitRatio
+              : 50,
+          isSwapped: parsed.v === 2 ? parsed.isSwapped === true : false,
+        }
+        memoryState.set(key, state)
+        return state
       }
     } catch {
       // 忽略容错
@@ -61,7 +75,8 @@ function savePreviewState(key: string | undefined, state: PreviewState): void {
   memoryState.set(key, state)
   if (typeof localStorage !== 'undefined') {
     try {
-      localStorage.setItem(`moji:split-preview:${key}`, JSON.stringify(state))
+      // v2：「对调」的基准从预览在左换成编辑在左（见 loadPreviewState 的迁移说明）
+      localStorage.setItem(`moji:split-preview:${key}`, JSON.stringify({ ...state, v: 2 }))
     } catch {
       // 忽略
     }
@@ -133,7 +148,7 @@ interface Props {
  * 编辑页面内置的双栏实时预览组件：
  *
  * 核心特性：
- * 1. 默认打开分栏实时预览，支持点击悬浮按钮或输入 Vim :preview 命令切换；
+ * 1. 默认打开分栏实时预览，**编辑在左、预览在右**（对调互换，持久化记录见 loadPreviewState 的 v2 迁移），支持点击悬浮按钮或输入 Vim :preview 命令切换；
  * 2. 状态保持与 keepalive：每个文件的展开状态、分割比例与对调状态在切页签后完整保活；
  * 3. 完整布局拉伸：消除底部黑色空白，全高无缝自适应；
  * 4. 完整正文渲染：搭载 note-preview 与 moji-node-note 规范样式，Markdown 层级排版无缺漏；
@@ -150,7 +165,7 @@ export default function LiveSplitPreview({
   const initial = useMemo(() => loadPreviewState(storageKey), [storageKey])
   const [internalOpen, setInternalOpen] = useState(initial.isOpen)
   const [splitRatio, setSplitRatio] = useState(initial.splitRatio) // 源码占比（%）
-  const [isSwapped, setIsSwapped] = useState(initial.isSwapped) // 是否对调两列位置
+  const [isSwapped, setIsSwapped] = useState(initial.isSwapped) // 是否对调两列（基准 = 编辑在左，见 loadPreviewState 的 v2 迁移说明）
 
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
 
@@ -369,9 +384,7 @@ export default function LiveSplitPreview({
       style={previewPaneStyle}
       className="relative shrink-0 overflow-hidden flex flex-col h-full min-h-0 min-w-0 bg-paper"
     >
-      <div className="pointer-events-none absolute right-3 top-2.5 z-10 select-none rounded border border-line/60 bg-card/85 px-2 py-0.5 text-[10px] font-medium text-seal shadow-2xs backdrop-blur-xs">
-        {t('实时对照预览')}
-      </div>
+      {/* 「实时对照预览」角标已按用户口径摘除（2026-11-14）：左右两栏是什么一眼可辨，不必贴标签 */}
       {isMdPreview && zoomHud !== null && (
         <div className="pointer-events-none absolute bottom-2.5 right-3 z-10 select-none rounded border border-line/60 bg-card/85 px-2 py-0.5 text-[11px] font-semibold text-seal shadow-2xs backdrop-blur-xs">
           {zoomHud}%
@@ -388,8 +401,9 @@ export default function LiveSplitPreview({
         isVertical ? 'flex-col' : 'flex-row'
       }`}
     >
-      {/* 默认**预览在左、编辑在右**（用户口径）；双击分割线 / :preview switch 对调两列 */}
-      {isSwapped ? sourcePane : previewPane}
+      {/* 默认**编辑在左、预览在右**（用户口径，2026-11-14 改：原先预览在左）；
+          双击分割线 / :preview switch 对调成预览在左 */}
+      {isSwapped ? previewPane : sourcePane}
 
       {/* 分割拖拽条（双击对调、鼠标拖拽调宽，全直角设计） */}
       <div
@@ -411,7 +425,7 @@ export default function LiveSplitPreview({
         />
       </div>
 
-      {isSwapped ? previewPane : sourcePane}
+      {isSwapped ? sourcePane : previewPane}
     </div>
   )
 }

@@ -45,6 +45,7 @@ import { KeyField } from './KeyField'
 import { formatContext, headersToText, inputBase, parseHeaders } from './fields'
 import { resolveDraft, type StatusState } from './providerDraft'
 import { ProviderLogo } from './ProviderLogo'
+import { FilesApiFields, ServerToolsFields } from './providerToolFields'
 
 export function ConfigBody({
   cfg,
@@ -419,6 +420,9 @@ export function ConfigBody({
             </div>
           </div>
 
+          {/* ①′ 服务端工具（联网搜索 / 阅读链接）：只有声明支持的预设（DeepSeek）才展示开关 */}
+          <ServerToolsFields cfg={cfg} preset={preset} patchProvider={patchProvider} />
+
           {/* ② 模型列表配置（自动获取 + 简易选择） */}
           <div className="rounded-xl border border-line bg-card/50 p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -716,6 +720,9 @@ export function ConfigBody({
               {t('实际请求端点：')}<span className="font-mono text-ink-soft">{actualUrl}</span>
             </div>
           </div>
+
+          {/* ③′ Files API（可选能力，所有提供商都可开关；DeepSeek 预设兜底为开） */}
+          <FilesApiFields cfg={cfg} preset={preset} patchProvider={patchProvider} />
 
           {/* ④ 思考与推理参数控制 */}
           <div className="rounded-xl border border-line bg-card/50 p-4">

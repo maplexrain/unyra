@@ -26,10 +26,6 @@ import { restoreSession, type Session } from '../user/session'
 import { hydrateLearnStore } from '../learn/store'
 import { autoMigrateIfNeeded } from './migration/autoMigrate'
 import { loadPlugins } from './plugins'
-// 内置功能性插件要在 loadPlugins 之前完成登记（开关按 id 认它，见 lib/plugins）
-import './voice/plugin'
-import './tts/plugin'
-import { refreshVoiceGpuDefault } from './voice/settings'
 import { loadSkillsFromDisk } from '../agent/skill/fs'
 import { startupMark } from './startupTrace'
 import { vfsBus } from '../vfs'
@@ -81,8 +77,6 @@ export async function bootApp(): Promise<BootResult> {
   await loadPlugins()
   // 技能独立目录初始化与预扫描
   void loadSkillsFromDisk()
-  // 设备上有没有显卡：语音输入的「GPU 加速」默认值跟着它（见 lib/voice/settings）
-  await refreshVoiceGpuDefault()
   startupMark('r:plugins-done')
   const users = await bootstrapUsers()
   startupMark('r:users-done')

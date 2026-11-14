@@ -65,15 +65,15 @@ describe('TTS 模块测试', () => {
       expect(manager.getAdapters().some((a) => a.id === 'mock-tts')).toBe(true)
     })
 
-    it('支持切换激活适配器与持久化', () => {
+    it('激活适配器由能力配置派生：TTS 关闭/系统原生时落在 web-speech 槽位', () => {
+      // setActiveAdapter 已退役——适配器选择收敛到「设置 → 模型 → 能力接入」
       manager.registerAdapter(mockAdapter)
-      manager.setActiveAdapter('mock-tts')
-      expect(manager.getActiveAdapter().id).toBe('mock-tts')
+      expect(manager.getActiveAdapter().id).toBe('web-speech')
     })
 
     it('调用 speak 调度适配器并正确派发生命周期', async () => {
-      manager.registerAdapter(mockAdapter)
-      manager.setActiveAdapter('mock-tts')
+      // 测试环境的默认能力是 TTS=系统原生：mock 以 web-speech 槽位注册才能被调度
+      manager.registerAdapter({ ...mockAdapter, id: 'web-speech' })
 
       let started = false
       let ended = false

@@ -38,11 +38,34 @@ import {
   type ProviderProtocol,
   type ReasoningEffort,
 } from './types'
+import {
+  cleanFilesApi,
+  cleanServerTools,
+  defaultCapabilities,
+  isWinPlatform,
+  normalizeCapabilities,
+  type AiCapabilities,
+  type FilesApiConfig,
+  type ServerToolConfig,
+} from './capabilitySettings'
 import { AiRequestError, type ResolvedProvider } from './client'
 import { readUserSettings, settingsRevision, settingsUid, writeUserSettings } from '../lib/userSettings'
 
 export { ALL_MODALITIES, MODALITY_LABEL }
 export type { InputModality }
+export type {
+  AiCapabilities,
+  TtsCapabilityConfig,
+  SttCapabilityConfig,
+  OcrCapabilityConfig,
+  LocalServiceConfig,
+  TtsMode,
+  OcrMode,
+  CapabilityMode,
+  CapsOcrPurposeSetting,
+  ServerToolConfig,
+  FilesApiConfig,
+} from './capabilitySettings'
 
 /** 一个模型条目：不只是模型名，还带请求与展示需要的元信息 */
 export interface ModelEntry {
@@ -116,6 +139,17 @@ export interface ProviderConfig {
    * 又被模型级（ModelEntry.effortMap）覆盖——级联合成在 resolveProvider / resolveGlobal。
    */
   effortMap?: EffortMap
+  /**
+   * 服务端工具基础开关（联网搜索 / 阅读链接，DeepSeek 的 server-side tools）。
+   * 只有声明了它的预设（当前仅 DeepSeek）才在设置页展示开关；未设置时回落预设默认值
+   * （DeepSeek 预设兜底全开），别的提供商没有这个字段、开关组件也不渲染。
+   */
+  serverTools?: ServerToolConfig
+  /**
+   * Files API 开关（可选能力：有的提供商提供云端文件上传与引用，有的没有）。
+   * 高级配置里始终可以开关；DeepSeek 预设兜底为开（开箱即用），其余默认关。
+   */
+  files?: FilesApiConfig
 }
 
 /** 全局默认：所有 AI 功能的共同起点 */
@@ -147,6 +181,8 @@ export interface AiSettings {
   providers: ProviderConfig[]
   global: GlobalSelection
   search?: WebSearchSettings
+  /** 能力接入（TTS / STT / OCR，见 ai/capabilitySettings）；缺省回落默认值 */
+  capabilities?: AiCapabilities
 }
 
 /** 当前存储格式版本 */
@@ -525,6 +561,9 @@ function normalizeConfig(raw: unknown, fallbackId: string, dropLegacyDefaults = 
   const extraHeaders = cleanHeaders(parsed.extraHeaders)
   const quirks = cleanQuirks(parsed.quirks)
   const effortMap = cleanEffortMap(parsed.effortMap)
+  // 服务端工具与 Files API 的开关：形状不对（半份、类型错）就整个丢掉，回落预设默认
+  const serverTools = cleanServerTools(parsed.serverTools)
+  const files = cleanFilesApi(parsed.files)
   // 兼容格式只对自定义提供商有意义；值不合法就退回 openai（最常见）
   const rawCompat = str(parsed.compat).trim() as ProviderProtocol
   const compat = COMPAT_PROTOCOLS.includes(rawCompat) ? rawCompat : undefined
@@ -554,6 +593,8 @@ function normalizeConfig(raw: unknown, fallbackId: string, dropLegacyDefaults = 
     ...(extraHeaders ? { extraHeaders } : {}),
     ...(quirks ? { quirks } : {}),
     ...(effortMap ? { effortMap } : {}),
+    ...(serverTools ? { serverTools } : {}),
+    ...(files ? { files } : {}),
   }
 }
 
@@ -613,11 +654,31 @@ export function normalizeAiSettings(parsed: unknown): AiSettings {
     ...(searchApiKey ? { apiKey: searchApiKey } : {}),
   }
 
+  // 能力接入（TTS/STT/OCR）：老数据没有这一段时按**当前环境**生成默认——
+  // OCR 在 Windows 桌面端默认「系统自带」（其余平台关闭）；TTS/STT 在已配置 DeepSeek
+  // 提供商时默认 DeepSeek 官方（没配就 TTS 回系统原生、STT 关）。normalize 跑在每次
+  // 读写上，所以默认值一经落盘就固化，之后改环境不再漂移，用户显式配置永远优先。
+  const capabilities = normalizeCapabilities(
+    raw.capabilities ??
+      defaultCapabilities({
+        isWin: isWinPlatform(),
+        hasDeepseek: providers.some((p) => {
+          const isDs =
+            p.id === 'deepseek' ||
+            p.id === DEFAULT_PROVIDER_ID ||
+            baseUrlOf(p).toLowerCase().includes('api.deepseek.com') ||
+            labelOf(p).toLowerCase().includes('deepseek')
+          return isDs && !!p.apiKey?.trim()
+        }),
+      }),
+  )
+
   return {
     version: VERSION,
     providers,
     global: { providerId, model, effort: asReasoningEffort(g.effort) },
     search,
+    capabilities,
   }
 }
 
@@ -796,6 +857,11 @@ export function resolveProvider(settings: AiSettings = loadAiSettings()): Resolv
   const preset = isCustomConfig(cfg) ? undefined : presetOf(cfg.id)
   const quirks = preset?.quirks || cfg.quirks ? { ...preset?.quirks, ...cfg.quirks } : undefined
   const effortMap = preset?.effortMap || cfg.effortMap ? { ...preset?.effortMap, ...cfg.effortMap } : undefined
+  // 服务端工具与 Files API：用户显式设置优先；没设过则回落预设的内置默认
+  // （DeepSeek 预设声明了这两组默认值——服务端工具全开、Files 开箱即用；
+  // 其余预设不声明，字段就不存在，设置页也不渲染对应的开关组件）
+  const serverTools = cfg.serverTools ?? (preset?.serverTools ? { ...preset.serverTools } : undefined)
+  const files = cfg.files ?? (preset?.files ? { ...preset.files } : undefined)
   return {
     id: cfg.id,
     label: labelOf(cfg),
@@ -817,6 +883,8 @@ export function resolveProvider(settings: AiSettings = loadAiSettings()): Resolv
     maxTokens: cfg.maxTokens ?? preset?.maxTokens,
     goPlanOnly: protocolOf(cfg) === 'commandcode',
     apiVersion: cfg.apiVersion ?? preset?.apiVersion,
+    serverTools,
+    files,
   }
 }
 

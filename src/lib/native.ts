@@ -17,8 +17,7 @@ import type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   NoticeSettings, PluginEntry, PluginTogglesResult, SaveBinaryPayload, SaveBinaryResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
-  UpdatePhase, UpdateState, VideoApiFetchResult, VideoStreamOpenResult, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
-  VoiceTranscribeRequest, VoiceTranscribeResult, OcrBBox, OcrWordItem, OcrLineItem, OcrPageResult, OcrModelOption, OcrModelStatus, OcrModelProgress, OcrDownloadRequest, OcrDownloadResult, OcrRecognizeRequest, OcrRecognizeResult, WebDomOpResult, WebFastTranslateResult, WebFetchResult, WebBinaryFetchResult, WebLogDetailResult,
+  UpdatePhase, UpdateState, VideoApiFetchResult, VideoStreamOpenResult, WebDomOpResult, WebFastTranslateResult, WebFetchResult, WebBinaryFetchResult, WebLogDetailResult,
   WebLogsOpts, WebLogsResult,
   WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult,
   WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebTranslatePayload, WebWaitReq, WebWaitResult,
@@ -26,7 +25,11 @@ import type {
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
   ProjectFsRequest, ProjectFsResult,
-  TtsModelStatus, TtsModelProgress, TtsDownloadResult, TtsSynthesizeRequest, TtsSynthesizeResult, TtsModelDefinition,
+  OcrBBox, OcrWordItem, OcrLineItem, OcrPageResult,
+  CapsCacheGetResult, CapsCacheSetResult, CapsFilesCreateRequest, CapsFilesCreateResult,
+  CapsFilesDeleteRequest, CapsFilesDeleteResult, CapsFilesListRequest, CapsFilesListResult,
+  CapsFilesRetrieveRequest, CapsFilesRetrieveResult, CapsOcrRequest, CapsOcrResult,
+  CapsSttRequest, CapsSttResult, CapsTtsRequest, CapsTtsResult,
 } from '../../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（与 electron/preload.ts 共用一份，见该文件顶部）：
@@ -38,8 +41,7 @@ export type {
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   NoticeSettings, PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
-  UpdatePhase, UpdateState, VideoApiFetchResult, VideoStreamOpenResult, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus,
-  VoiceTranscribeRequest, VoiceTranscribeResult, OcrBBox, OcrWordItem, OcrLineItem, OcrPageResult, OcrModelOption, OcrModelStatus, OcrModelProgress, OcrDownloadRequest, OcrDownloadResult, OcrRecognizeRequest, OcrRecognizeResult, WebDomOpResult, WebFastTranslateResult, WebFetchResult, WebBinaryFetchResult, WebLogDetailResult,
+  UpdatePhase, UpdateState, VideoApiFetchResult, VideoStreamOpenResult, WebDomOpResult, WebFastTranslateResult, WebFetchResult, WebBinaryFetchResult, WebLogDetailResult,
   WebLogsOpts, WebLogsResult,
   WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult,
   WebScrollReq, WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebTranslatePayload, WebWaitReq, WebWaitResult,
@@ -47,7 +49,11 @@ export type {
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
   ProjectFsRequest, ProjectFsResult,
-  TtsModelStatus, TtsModelProgress, TtsDownloadResult, TtsSynthesizeRequest, TtsSynthesizeResult, TtsModelDefinition,
+  OcrBBox, OcrWordItem, OcrLineItem, OcrPageResult,
+  CapsCacheGetResult, CapsCacheSetResult, CapsFilesCreateRequest, CapsFilesCreateResult,
+  CapsFilesDeleteRequest, CapsFilesDeleteResult, CapsFilesListRequest, CapsFilesListResult,
+  CapsFilesRetrieveRequest, CapsFilesRetrieveResult, CapsOcrRequest, CapsOcrResult,
+  CapsSttRequest, CapsSttResult, CapsTtsRequest, CapsTtsResult,
 }
 
 export type PluginList =
@@ -371,49 +377,22 @@ export interface NativeBridge {
     onState(cb: (payload: unknown) => void): () => void
   }
   /**
-   * 语音：模型的状态与下载、一次识别、这台机器上有没有显卡。
-   * 与 electron/preload.ts 那份是同一套（渲染层不能 import 主进程的文件，只能各声明一份）。
+   * 模型能力（TTS / STT / OCR / Files API，设置 → 模型 → 能力接入）。
+   * 与 electron/preload.ts 那份是同一套契约（渲染层不能 import 主进程的文件，只能各声明一份）；
+   * 网络调用在主进程，engine 字段由渲染层读好配置传进去。
    */
-  voice: {
-    modelStatus(): Promise<VoiceModelStatus>
-    downloadModel(): Promise<VoiceDownloadResult>
-    cancelDownload(): Promise<boolean>
-    chooseModel(): Promise<{ ok: boolean; canceled?: boolean; error?: string; bytes?: number }>
-    removeModel(): Promise<{ ok: boolean; error?: string }>
-    /** 识别一段 16 kHz 单声道 PCM（推理在主进程，见 electron/voice.ts） */
-    transcribe(req: VoiceTranscribeRequest): Promise<VoiceTranscribeResult>
-    /** 有没有显卡：设置页拿它决定 GPU 开关的默认值 */
-    gpuInfo(): Promise<{ hasGpu: boolean; name: string }>
-    revealModel(): Promise<boolean>
-    onModelProgress(cb: (p: VoiceModelProgress) => void): () => void
-  }
-  /**
-   * OCR：模型状态与下载、页面识别与缓存。
-   */
-  ocr: {
-    modelStatus(): Promise<OcrModelStatus>
-    setActiveModel(modelId: string): Promise<boolean>
-    downloadModel(req: OcrDownloadRequest): Promise<OcrDownloadResult>
-    cancelDownload(): Promise<boolean>
-    chooseModel(): Promise<{ ok: boolean; canceled?: boolean; error?: string }>
-    removeModel(modelId: string): Promise<{ ok: boolean; error?: string }>
-    revealModel(): Promise<boolean>
-    onModelProgress(cb: (p: OcrModelProgress) => void): () => void
-    recognize(req: OcrRecognizeRequest): Promise<OcrRecognizeResult>
-    getCache(key: string): Promise<OcrPageResult | null>
-    setCache(key: string, data: OcrPageResult): Promise<boolean>
-  }
-  /**
-   * TTS 语音合成：轻量离线模型管理与推理通道。
-   */
-  tts: {
-    modelStatus(modelId?: string): Promise<TtsModelStatus>
-    downloadModel(modelId?: string): Promise<TtsDownloadResult>
-    cancelDownload(): Promise<boolean>
-    removeModel(modelId?: string): Promise<{ ok: boolean; error?: string }>
-    revealModel(modelId?: string): Promise<boolean>
-    synthesize(req: TtsSynthesizeRequest): Promise<TtsSynthesizeResult>
-    onModelProgress(cb: (p: TtsModelProgress) => void): () => void
+  caps: {
+    ocr(req: CapsOcrRequest): Promise<CapsOcrResult>
+    tts(req: CapsTtsRequest): Promise<CapsTtsResult>
+    /** 一段 16 kHz 单声道 PCM 的语音识别（DeepSeek ASR / 本地 /audio/transcriptions） */
+    stt(req: CapsSttRequest): Promise<CapsSttResult>
+    /** 结果缓存（收费能力的「别重复花钱」层；键由 src/lib/capsCache 的 hashKey 生成） */
+    cacheGet(key: string): Promise<CapsCacheGetResult>
+    cacheSet(key: string, value: unknown): Promise<CapsCacheSetResult>
+    filesList(req: CapsFilesListRequest): Promise<CapsFilesListResult>
+    filesCreate(req: CapsFilesCreateRequest): Promise<CapsFilesCreateResult>
+    filesRetrieve(req: CapsFilesRetrieveRequest): Promise<CapsFilesRetrieveResult>
+    filesDelete(req: CapsFilesDeleteRequest): Promise<CapsFilesDeleteResult>
   }
   /**
    * 自动更新：读状态、手动检查、安装、看发布页。

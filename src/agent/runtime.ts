@@ -123,6 +123,25 @@ function describeReason(reason: string | null): string | null {
 }
 
 /**
+ * 介入内容入列。DeepSeek 严格要求「assistant 前一条必须是 user」——介入声明若紧
+ * 跟在 tool 消息或另一条 assistant 之后（工具循环的常态），以 assistant 角色入列
+ * 会被 400（an assistant message must follow a user message）。此时降级为 user：
+ * 「做什么」的指令语义完整保留，损失的只是声明的人设语气。
+ */
+function pushInjection(
+  messages: Array<{ role: string; content: unknown; reasoning_content?: string }>,
+  injected: { role: 'user' | 'assistant'; content: unknown; reasoning_content?: string },
+): void {
+  const prev = messages[messages.length - 1]
+  const role = injected.role === 'assistant' && (!prev || prev.role !== 'user') ? 'user' : injected.role
+  messages.push({
+    role,
+    content: injected.content,
+    ...(injected.reasoning_content !== undefined ? { reasoning_content: injected.reasoning_content } : {}),
+  })
+}
+
+/**
  * 一次工具调用：参数解析与工具异常都在这里兜住，绝不抛出到运行时循环。
  * 未声明的工具名（模型凭印象编的）同样只回报错误，不中断本轮。
  */
@@ -419,13 +438,7 @@ export async function runAgent(opts: AgentRunOptions): Promise<void> {
         if (opts.injections) {
           const injected = await opts.injections()
           if (injected !== null) {
-            messages.push({
-              role: injected.role,
-              content: injected.content,
-              ...(injected.reasoning_content !== undefined
-                ? { reasoning_content: injected.reasoning_content }
-                : {}),
-            })
+            pushInjection(messages, injected)
           }
         }
         /*

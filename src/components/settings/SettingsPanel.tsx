@@ -47,12 +47,7 @@ import { StoragePanel } from './StoragePanel'
 import { MigrationPanel } from './MigrationPanel'
 import { DevPanel } from './DevPanel'
 import { PluginsPanel } from './PluginsPanel'
-import { PluginVoicePage } from './PluginVoicePage'
-import { PluginOcrPage } from './PluginOcrPage'
-import { PluginTtsPage } from './PluginTtsPage'
-import { VOICE_PLUGIN_ID } from '../../lib/voice/plugin'
-import { OCR_PLUGIN_ID } from '../../lib/ocr/plugin'
-import { TTS_PLUGIN_ID } from '../../lib/tts/plugin'
+import { CapabilitiesPage } from './CapabilitiesPage'
 import { ProviderListPage } from './ProviderListPage'
 import { ProviderConfigPage } from './ProviderConfigPage'
 
@@ -87,9 +82,6 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
   const selectTab = (key: TabKey) => {
     setTab(key)
     saveTab(key)
-    if (key === 'plugins') {
-      setPluginPage(null)
-    }
     if (key === 'ai' && page.view === 'config') {
       setPage({ view: 'list' })
     }
@@ -115,24 +107,19 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
   }
   const [draft, setDraft] = useState<AiSettings>(initial)
   const [page, setPage] = useState<Page>({ view: 'list' })
-  /**
-   * 「插件」那一页的二级页：非空 = 正停在某个功能性插件的配置页上（值是插件 id）。
-   * 默认显示插件列表（null），切页签或点击「插件」时均重置，避免常驻停留二级配置页。
-   */
-  const [pluginPage, setPluginPage] = useState<string | null>(null)
 
   useEffect(() => {
     try {
       localStorage.removeItem('moji:settings:plugin')
     } catch {}
-    const onOpen = (e: CustomEvent<string>) => {
-      if (e.detail) {
-        setTab('plugins')
-        setPluginPage(e.detail)
-      }
+    // 能力接入的跳转（PDF 的 OCR 引导等发 moji:open-caps）：直开「模型 → 能力接入」
+    const onOpenCaps = () => {
+      setTab('ai')
+      saveTab('ai')
+      setActiveSubTab('caps')
     }
-    window.addEventListener('moji:open-plugin-config', onOpen as EventListener)
-    return () => window.removeEventListener('moji:open-plugin-config', onOpen as EventListener)
+    window.addEventListener('moji:open-caps', onOpenCaps as EventListener)
+    return () => window.removeEventListener('moji:open-caps', onOpenCaps as EventListener)
   }, [])
   const [status, setStatus] = useState<StatusState>({ kind: 'idle' })
   const [appearance, setAppearanceState] = useState(loadAppearance)
@@ -353,16 +340,6 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
                 <ArrowLeft size={16} />
               </button>
             )}
-            {tab === 'plugins' && pluginPage && (
-              <button
-                type="button"
-                title={t('返回插件列表')}
-                onClick={() => setPluginPage(null)}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-ink-soft transition hover:bg-line/70 hover:text-ink"
-              >
-                <ArrowLeft size={16} />
-              </button>
-            )}
             <h2 className="text-[15px] font-semibold text-ink-strong">
               {tab === 'appearance'
                 ? t('外观')
@@ -377,13 +354,7 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
                     : tab === 'migration'
                       ? t('数据迁移')
                       : tab === 'plugins'
-                      ? pluginPage
-                        ? pluginPage === OCR_PLUGIN_ID
-                          ? t('OCR 文字识别')
-                          : pluginPage === TTS_PLUGIN_ID
-                            ? t('语音合成 (TTS)')
-                            : t('语音输入')
-                        : t('插件')
+                        ? t('插件')
                       : tab === 'update'
                       ? t('更新')
                     : tab === 'about'
@@ -427,7 +398,9 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
         {tab === 'ai' ? (
           <div className="flex min-h-0 flex-1 flex-col">
             <div className={pane(4, true)}>
-              {page.view === 'list' ? (
+              {activeSubTab === 'caps' ? (
+                <CapabilitiesPage onToast={onToast} />
+              ) : page.view === 'list' ? (
                 <ProviderListPage
                   draft={draft}
                   configured={configured}
@@ -493,21 +466,7 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
         ) : tab === 'migration' ? (
           <MigrationPanel onToast={onToast} />
         ) : tab === 'plugins' ? (
-          pluginPage === VOICE_PLUGIN_ID ? (
-            <div className={pane(4, true)}>
-              <PluginVoicePage onToast={onToast} />
-            </div>
-          ) : pluginPage === OCR_PLUGIN_ID ? (
-            <div className={pane(4, true)}>
-              <PluginOcrPage onToast={onToast} />
-            </div>
-          ) : pluginPage === TTS_PLUGIN_ID ? (
-            <div className={pane(4, true)}>
-              <PluginTtsPage onToast={onToast} />
-            </div>
-          ) : (
-            <PluginsPanel onToast={onToast} onOpenConfig={setPluginPage} />
-          )
+          <PluginsPanel onToast={onToast} />
         ) : tab === 'update' ? (
           <UpdatePanel />
         ) : tab === 'about' ? (

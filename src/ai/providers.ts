@@ -15,6 +15,7 @@
  */
 
 import type { EffortMap, ProviderProtocol } from './types'
+import type { FilesApiConfig, ServerToolConfig } from './capabilitySettings'
 
 /** 输入模态。定义在这里而不是 settings，是为了让依赖保持单向（settings → providers） */
 export type InputModality = 'text' | 'image' | 'audio'
@@ -163,6 +164,17 @@ export interface ProviderPreset {
   setupHint?: string
   /** 鉴权方式的一句话说明，显示在 API Key 字段下方 */
   authHint?: string
+  /**
+   * 服务端工具的**内置默认**（DeepSeek：联网搜索 + 阅读链接全开）。
+   * 字段存在 = 这家预设支持服务端工具，设置页才渲染两个开关组件；
+   * 用户在基础配置里的显式设置（ProviderConfig.serverTools）覆盖这里。
+   */
+  serverTools?: ServerToolConfig
+  /**
+   * Files API 的**内置默认**（DeepSeek：开箱即用）。
+   * 其余预设不声明——高级配置里仍可手动开关，默认值为关。
+   */
+  files?: FilesApiConfig
   /** 端点路径（用于展示「实际请求」） */
   chatPath: string
   /**
@@ -278,6 +290,10 @@ export const PROVIDERS: ProviderPreset[] = [
     toolCalls: true,
     quirks: { thinkingStyle: 'thinking_type', thinkingTypeParam: true },
     effortMap: { none: 'omit', medium: 'high' },
+    // DeepSeek 开放的服务端工具与云端文件：预设内置默认值，配置页开箱即用（用户可关）。
+    // 服务端工具声明存在 = 设置页才渲染那两个开关；其它预设没有这个字段、不展示。
+    serverTools: { webSearch: true, readUrl: true },
+    files: { enabled: true },
     consoleUrl: 'https://platform.deepseek.com/api_keys',
     chatPath: '/chat/completions',
     authHint: 'Authorization: Bearer <Key>',

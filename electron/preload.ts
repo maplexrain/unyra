@@ -30,8 +30,11 @@ import type {
   PluginSourceResult, PluginTogglesResult, SaveBinaryPayload, SaveBinaryResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
   NoticeSettings,
   StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail, UpdatePhase, UpdateState,
-  VideoApiFetchResult, VideoStreamOpenResult, VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceTranscribeRequest,
-  VoiceTranscribeResult, OcrModelStatus, OcrModelProgress, OcrDownloadRequest, OcrDownloadResult, OcrRecognizeRequest, OcrRecognizeResult, OcrPageResult, WebDomOpResult, WebFastTranslateResult,
+  VideoApiFetchResult, VideoStreamOpenResult, WebDomOpResult, WebFastTranslateResult,
+  CapsCacheGetResult, CapsCacheSetResult, CapsFilesCreateRequest, CapsFilesCreateResult,
+  CapsFilesDeleteRequest, CapsFilesDeleteResult, CapsFilesListRequest, CapsFilesListResult,
+  CapsFilesRetrieveRequest, CapsFilesRetrieveResult, CapsOcrRequest, CapsOcrResult,
+  CapsSttRequest, CapsSttResult, CapsTtsRequest, CapsTtsResult,
   WebFetchResult, WebBinaryFetchResult, WebLogDetailResult, WebLogsOpts, WebLogsResult, WebPageFetchReq,
   WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult, WebScrollReq,
   WebScrollResult, WebSnapshotResult, WebTextResult, WebTextTarget, WebTranslatePayload, WebWaitReq, WebWaitResult,
@@ -54,8 +57,7 @@ export type {
   PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
   NoticeSettings,
   StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail, UpdatePhase, UpdateState,
-  VoiceDownloadResult, VoiceModelProgress, VoiceModelStatus, VoiceTranscribeRequest,
-  VoiceTranscribeResult, WebDomOpResult,
+  WebDomOpResult,
   WebFetchResult, WebBinaryFetchResult, WebPointResult, WebReadHtmlResult, WebSnapshotResult,
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
@@ -95,8 +97,6 @@ export type StorageListResult = { ok: true; entries: StorageEntry[] } | StorageF
 export type StorageYamlResult = { ok: true; data: unknown } | StorageFail
 /** 读二进制（图片通道与资源库通道共用）：dataUrl 为 null 表示文件不存在（不算错误） */
 export type StorageImageResult = { ok: true; dataUrl: string | null } | StorageFail
-
-import { ttsPreload } from './preload/tts'
 
 const api = {
   /** 是否运行在 Electron 壳里。渲染层的 http 层据此选择直连还是走主进程 */
@@ -361,67 +361,23 @@ const api = {
   },
 
   /**
-   * 语音：模型的下载与状态，以及一次识别。
-   * **整条链都在主进程**（见 electron/voice.ts）：渲染层的 CSP 连不上外网，
-   * 而推理走的是 sherpa-onnx 的原生构建——228 MB 的模型该直接落盘，
-   * 音频也只在这一趟 IPC 里过一下，不写盘、不留存。
+   * 模型能力（设置 → 模型 → 能力接入）：TTS / STT / OCR 三个能力的合成与识别、
+   * 结果缓存与 Files API。**网络调用全部在主进程**（见 electron/capabilities/）：
+   * 渲染层 CSP 够不着外网，multipart 表单与二进制音频也由主进程发起更省心。
+   * 接入方式由渲染层读好配置传进来（engine 字段），主进程只分流、不读设置。
    */
-  voice: {
-    modelStatus: (): Promise<VoiceModelStatus> => ipcRenderer.invoke('voice:modelStatus'),
-
-    /** 下一份 SenseVoiceSmall（约 228 MB）；进度走 onModelProgress */
-    downloadModel: (): Promise<VoiceDownloadResult> => ipcRenderer.invoke('voice:downloadModel'),
-
-    cancelDownload: (): Promise<boolean> => ipcRenderer.invoke('voice:cancelDownload'),
-
-    /** 从本机挑一份 model.int8.onnx（词表从同一个目录里找） */
-    chooseModel: (): Promise<{ ok: boolean; canceled?: boolean; error?: string; bytes?: number }> =>
-      ipcRenderer.invoke('voice:chooseModel'),
-
-    removeModel: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('voice:removeModel'),
-
-    /** 识别一段 16 kHz 单声道 PCM：结果里带「这一趟用了多久」与后端 */
-    transcribe: (req: VoiceTranscribeRequest): Promise<VoiceTranscribeResult> =>
-      ipcRenderer.invoke('voice:transcribe', req),
-
-    /** 这台机器上有没有显卡：设置页拿它决定「GPU 加速」的默认值 */
-    gpuInfo: (): Promise<{ hasGpu: boolean; name: string }> => ipcRenderer.invoke('voice:gpuInfo'),
-
-    /** 在文件管理器里定位模型目录 */
-    revealModel: (): Promise<boolean> => ipcRenderer.invoke('voice:revealModel'),
-
-    /** 订阅下载进度；返回取消订阅函数 */
-    onModelProgress: (cb: (p: VoiceModelProgress) => void): (() => void) => {
-      const listener = (_e: unknown, p: VoiceModelProgress) => cb(p)
-      ipcRenderer.on('voice:modelProgress', listener)
-      return () => ipcRenderer.removeListener('voice:modelProgress', listener)
-    },
+  caps: {
+    ocr: (req: CapsOcrRequest): Promise<CapsOcrResult> => ipcRenderer.invoke('caps:ocr', req),
+    tts: (req: CapsTtsRequest): Promise<CapsTtsResult> => ipcRenderer.invoke('caps:tts', req),
+    stt: (req: CapsSttRequest): Promise<CapsSttResult> => ipcRenderer.invoke('caps:stt', req),
+    cacheGet: (key: string): Promise<CapsCacheGetResult> => ipcRenderer.invoke('caps:cacheGet', key),
+    cacheSet: (key: string, value: unknown): Promise<CapsCacheSetResult> => ipcRenderer.invoke('caps:cacheSet', key, value),
+    filesList: (req: CapsFilesListRequest): Promise<CapsFilesListResult> => ipcRenderer.invoke('caps:files:list', req),
+    filesCreate: (req: CapsFilesCreateRequest): Promise<CapsFilesCreateResult> => ipcRenderer.invoke('caps:files:create', req),
+    filesRetrieve: (req: CapsFilesRetrieveRequest): Promise<CapsFilesRetrieveResult> =>
+      ipcRenderer.invoke('caps:files:retrieve', req),
+    filesDelete: (req: CapsFilesDeleteRequest): Promise<CapsFilesDeleteResult> => ipcRenderer.invoke('caps:files:delete', req),
   },
-  /**
-   * OCR 文字识别：多模型管理与下载、页面识别与缓存
-   */
-  ocr: {
-    modelStatus: (): Promise<OcrModelStatus> => ipcRenderer.invoke('ocr:modelStatus'),
-    setActiveModel: (modelId: string): Promise<boolean> => ipcRenderer.invoke('ocr:setActiveModel', modelId),
-    downloadModel: (req: OcrDownloadRequest): Promise<OcrDownloadResult> => ipcRenderer.invoke('ocr:downloadModel', req),
-    cancelDownload: (): Promise<boolean> => ipcRenderer.invoke('ocr:cancelDownload'),
-    chooseModel: (): Promise<{ ok: boolean; canceled?: boolean; error?: string }> =>
-      ipcRenderer.invoke('ocr:chooseModel'),
-    removeModel: (modelId: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('ocr:removeModel', modelId),
-    revealModel: (): Promise<boolean> => ipcRenderer.invoke('ocr:revealModel'),
-    onModelProgress: (cb: (p: OcrModelProgress) => void): (() => void) => {
-      const listener = (_e: unknown, p: OcrModelProgress) => cb(p)
-      ipcRenderer.on('ocr:modelProgress', listener)
-      return () => ipcRenderer.removeListener('ocr:modelProgress', listener)
-    },
-    recognize: (req: OcrRecognizeRequest): Promise<OcrRecognizeResult> => ipcRenderer.invoke('ocr:recognize', req),
-    getCache: (key: string): Promise<OcrPageResult | null> => ipcRenderer.invoke('ocr:getCache', key),
-    setCache: (key: string, data: OcrPageResult): Promise<boolean> => ipcRenderer.invoke('ocr:setCache', key, data),
-  },
-  /**
-   * 语音合成 (TTS)：离线轻量模型管理与下载、文本音频合成
-   */
-  tts: ttsPreload,
   /**
    * 自动更新。渲染层不决定任何事：什么时候查、下没下完、能不能装，
    * 全由主进程的状态说了算，这里只转发。

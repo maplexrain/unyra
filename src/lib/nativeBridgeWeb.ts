@@ -24,13 +24,25 @@ import type {
   StorageRootResult,
   UpdateChannel,
   UpdateState,
-  VoiceDownloadResult,
-  VoiceModelStatus,
-  VoiceTranscribeRequest,
-  VoiceTranscribeResult,
   ScreenCaptureResult,
   ImageSavePayload,
   ProjectFsResult,
+  CapsCacheGetResult,
+  CapsCacheSetResult,
+  CapsFilesCreateRequest,
+  CapsFilesCreateResult,
+  CapsFilesDeleteRequest,
+  CapsFilesDeleteResult,
+  CapsFilesListRequest,
+  CapsFilesListResult,
+  CapsFilesRetrieveRequest,
+  CapsFilesRetrieveResult,
+  CapsOcrRequest,
+  CapsOcrResult,
+  CapsSttRequest,
+  CapsSttResult,
+  CapsTtsRequest,
+  CapsTtsResult,
 } from '../../shared/ipc'
 
 // 本地微服务的基础地址（同一主机端口，或跨端口开发调试时指定）
@@ -213,64 +225,25 @@ export function createWebNativeBridge(): NativeBridge {
       fetch: (url, init) => apiFetch('/api/web/fetch', { method: 'POST', body: JSON.stringify({ url, ...init }) }),
     },
 
-    voice: {
-      modelStatus: () => apiFetch<VoiceModelStatus>('/api/voice/status'),
-      downloadModel: () => apiFetch<VoiceDownloadResult>('/api/voice/download', { method: 'POST' }),
-      cancelDownload: () => Promise.resolve(true),
-      chooseModel: () => Promise.resolve({ ok: false, canceled: true }),
-      removeModel: () => apiFetch('/api/voice/remove', { method: 'POST' }),
-      transcribe: (req: VoiceTranscribeRequest) =>
-        apiFetch<VoiceTranscribeResult>('/api/voice/transcribe', {
+    /**
+     * 模型能力（WebUI 模式）：网络调用转发给自托管服务端的 /api/caps/*（服务端与桌面端
+     * 共用同一套分流逻辑，见 server/routes/capabilities.ts）。samples 数组化过线。
+     */
+    caps: {
+      ocr: (req: CapsOcrRequest) => apiFetch<CapsOcrResult>('/api/caps/ocr', { method: 'POST', body: JSON.stringify(req) }),
+      tts: (req: CapsTtsRequest) => apiFetch<CapsTtsResult>('/api/caps/tts', { method: 'POST', body: JSON.stringify(req) }),
+      stt: (req: CapsSttRequest) =>
+        apiFetch<CapsSttResult>('/api/caps/stt', {
           method: 'POST',
-          body: JSON.stringify({
-            ...req,
-            samples: req.samples ? Array.from(req.samples) : [],
-          }),
+          body: JSON.stringify({ ...req, samples: req.samples ? Array.from(req.samples) : [] }),
         }),
-      gpuInfo: () => apiFetch('/api/voice/gpuInfo'),
-      revealModel: () => Promise.resolve(true),
-      onModelProgress: () => () => {},
-    },
-
-    ocr: {
-      setActiveModel: () => Promise.resolve(true),
-      modelStatus: () => Promise.resolve({
-        activeModelId: 'pp-ocrv4-mobile',
-        models: [],
-        sources: [],
-        dir: '',
-      }),
-      downloadModel: () => Promise.resolve({ ok: false, error: 'Web 模式暂不支持本地下载模型' }),
-      cancelDownload: () => Promise.resolve(true),
-      chooseModel: () => Promise.resolve({ ok: false, canceled: true }),
-      removeModel: () => Promise.resolve({ ok: true }),
-      revealModel: () => Promise.resolve(false),
-      onModelProgress: () => () => {},
-      recognize: () => Promise.resolve({ ok: false, error: 'Web 模式暂未接入原生 OCR' }),
-      getCache: () => Promise.resolve(null),
-      setCache: () => Promise.resolve(true),
-    },
-
-    tts: {
-      modelStatus: (modelId?: string) =>
-        Promise.resolve({
-          modelId: modelId || 'vits-melo-tts-zh_en',
-          dir: '',
-          path: '',
-          exists: false,
-          bytes: 0,
-          totalBytes: 0,
-          files: [],
-          url: '',
-          sources: [],
-          availableModels: [],
-        }),
-      downloadModel: () => Promise.resolve({ ok: false, error: 'Web 模式暂不支持本地下载模型' }),
-      cancelDownload: () => Promise.resolve(true),
-      removeModel: () => Promise.resolve({ ok: true }),
-      revealModel: () => Promise.resolve(false),
-      synthesize: () => Promise.resolve({ ok: false, error: 'Web 模式暂不支持本地模型推理' }),
-      onModelProgress: () => () => {},
+      cacheGet: (key: string) => apiFetch<CapsCacheGetResult>(`/api/caps/cache/${key}`),
+      cacheSet: (key: string, value: unknown) =>
+        apiFetch<CapsCacheSetResult>('/api/caps/cache', { method: 'POST', body: JSON.stringify({ key, value }) }),
+      filesList: (req: CapsFilesListRequest) => apiFetch<CapsFilesListResult>('/api/caps/files/list', { method: 'POST', body: JSON.stringify(req) }),
+      filesCreate: (req: CapsFilesCreateRequest) => apiFetch<CapsFilesCreateResult>('/api/caps/files/create', { method: 'POST', body: JSON.stringify(req) }),
+      filesRetrieve: (req: CapsFilesRetrieveRequest) => apiFetch<CapsFilesRetrieveResult>('/api/caps/files/retrieve', { method: 'POST', body: JSON.stringify(req) }),
+      filesDelete: (req: CapsFilesDeleteRequest) => apiFetch<CapsFilesDeleteResult>('/api/caps/files/delete', { method: 'POST', body: JSON.stringify(req) }),
     },
 
     update: {

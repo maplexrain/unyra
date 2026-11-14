@@ -8,6 +8,7 @@
 import { memo } from 'react'
 import { Volume2, Square, Loader2 } from 'lucide-react'
 import { useTTS } from '../../lib/tts'
+import { ttsModeOf } from '../../lib/capabilities'
 import { t } from '../../i18n'
 
 interface Props {
@@ -16,6 +17,7 @@ interface Props {
 
 export const MessageSpeakButton = memo(function MessageSpeakButton({ text }: Props) {
   const { currentText, state, speak, stop } = useTTS()
+  const off = ttsModeOf() === 'off'
 
   const isCurrent = currentText === text
   const isPlaying = isCurrent && state === 'playing'
@@ -33,6 +35,8 @@ export const MessageSpeakButton = memo(function MessageSpeakButton({ text }: Pro
       console.warn('[TTS] 朗读失败：', err)
     }
   }
+
+  if (off) return null
 
   return (
     <button

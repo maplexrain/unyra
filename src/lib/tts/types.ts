@@ -2,8 +2,8 @@
  * TTS (文本转语音) 系统的核心类型定义与适配器接口。
  *
  * 采用适配器模式（Adapter Pattern）：
- * 将浏览器原生 Web Speech、OpenAI 兼容在线 API、本地离线模型（如 Sherpa-ONNX）、
- * 本地独立服务（如 GPT-SoVITS）等不同实现统一收敛为标准 TTSAdapter。
+ * 将浏览器原生 Web Speech、模型能力（DeepSeek 官方或用户自架的 OpenAI 兼容本地服务）
+ * 等不同实现统一收敛为标准 TTSAdapter。
  */
 
 export interface TTSVoice {
@@ -36,7 +36,7 @@ export type TTSPlaybackState = 'idle' | 'loading' | 'playing' | 'paused'
  * 所有具体的发音源（系统原生、云端 API、本地离线模型等）必须实现此接口。
  */
 export interface TTSAdapter {
-  /** 适配器唯一标识，如 'web-speech' | 'openai-compatible' | 'sherpa-local' */
+  /** 适配器唯一标识，如 'web-speech' | 'model-caps' */
   readonly id: string
   /** 人类可读名称 */
   readonly name: string

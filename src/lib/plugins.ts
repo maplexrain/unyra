@@ -28,7 +28,8 @@ import { native } from './native'
  * 插件类别。加新的一类时在这里加一个取值，并实现一份 spec（definePluginCategory）——
  * 宿主本身对类别一无所知。目前两类：
  * - markdown：文档里的一种语法 / 一段正文加工（lib/renderPlugins）；
- * - functional：给**应用**加一项能力（lib/functionalPlugins，目前是语音输入）；
+ * - functional：给**应用**加一项能力（内置的语音/识别类插件已迁去「设置 → 模型 → 能力接入」，
+ *   这个类别如今只可能来自用户插件，保留以兼容旧清单）；
  * - video：视频 / 音频来源插件（lib/videoPlugins，喂给「视频学习」页签）。
  */
 export type PluginCategory = 'markdown' | 'functional' | 'video'
@@ -281,7 +282,7 @@ export function builtinPluginOn(id: string): boolean {
 
 /**
  * 「能不能开」的守卫：有些插件开了也没用（语音输入没有模型时就是），那就在**保存开关之前**
- * 问一句。守卫由插件自己登记（见 lib/voice/plugin），宿主不知道它为什么拦——只知道拦下来时
+ * 问一句。守卫由插件自己登记（registerPluginEnableGuard），宿主不知道它为什么拦——只知道拦下来时
  * 要交给用户一句能照着做的话。
  */
 const enableGuards = new Map<string, () => Promise<string | null>>()

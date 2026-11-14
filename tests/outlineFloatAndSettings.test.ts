@@ -27,18 +27,27 @@ describe('大纲悬浮窗动画、设置插件页默认状态与顶栏技巧组�
     expect(cssCode).toContain('.moji-outline-pop,')
   })
 
-  it('设置面板的插件 tab 打开时默认展示一级插件列表，不常驻 OCR 等二级页面', () => {
+  it('OCR 引导直达「模型 → 能力接入」，插件 tab 不再有二级页面机制', () => {
     const settingsCode = fs.readFileSync('src/components/settings/SettingsPanel.tsx', 'utf8').replace(/\r\n/g, '\n')
     const pdfCode = fs.readFileSync('src/components/learn/pdf/PdfDocView.tsx', 'utf8')
 
-    // 1. 插件页状态默认初始化为 null，不从 localStorage 盲目恢复
-    expect(settingsCode).toContain('const [pluginPage, setPluginPage] = useState<string | null>(null)')
+    // 1. 语音/识别能力已迁去「能力接入」：插件页的二级配置页机制整体退役
+    expect(settingsCode).not.toContain('pluginPage')
+    expect(settingsCode).not.toContain('moji:open-plugin-config')
+    expect(fs.existsSync('src/components/settings/PluginOcrPage.tsx')).toBe(false)
+    expect(fs.existsSync('src/components/settings/PluginTtsPage.tsx')).toBe(false)
+    expect(fs.existsSync('src/components/settings/PluginVoicePage.tsx')).toBe(false)
 
-    // 2. selectTab 切换到 plugins 时重置 pluginPage 为 null
-    expect(settingsCode).toContain("if (key === 'plugins') {\n      setPluginPage(null)\n    }")
+    // 2. 能力页签存在，且 moji:open-caps 事件把它直开
+    expect(settingsCode).toContain("activeSubTab === 'caps'")
+    expect(settingsCode).toContain("'moji:open-caps'")
 
-    // 3. PdfDocView 唤起设置时不污染持久化的 moji:settings:plugin 键
-    expect(pdfCode).not.toContain("localStorage.setItem('moji:settings:plugin'")
+    // 3. OCR 引导收在独立的横幅组件里（横幅拆出自 PdfDocView 时一并搬走）：同样指向新页签
+    const bannerCode = fs.readFileSync('src/components/learn/pdf/PdfOcrBanner.tsx', 'utf8')
+    expect(bannerCode).toContain("localStorage.setItem('moji:settings:tab', 'ai')")
+    expect(bannerCode).toContain("'moji:open-caps'")
+    expect(bannerCode).not.toContain('moji:open-plugin-config')
+    expect(pdfCode).toContain('PdfOcrBanner')
   })
 
   it('顶栏小技巧组件及其外观配置已彻底清理', () => {

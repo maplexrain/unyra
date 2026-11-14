@@ -15,9 +15,7 @@ import { allowedHostList, setAllowedHosts } from '../proxy'
 import { registerRunnerIpc } from '../runner'
 import { closeBehavior, markLocalOwnWrite, registerStorageIpc, setCloseBehavior, setUiLocale, uiLocale } from '../storage'
 import { registerUpdateIpc } from '../update'
-import { registerVoiceIpc } from '../voice'
-import { registerOcrIpc } from '../ocr'
-import { registerTtsIpc } from '../tts'
+import { registerCapabilitiesIpc } from '../capabilities'
 import { registerExamIpc } from './examWindow'
 import { applyAppIcon } from './applyIcon'
 import { rebuildAppMenu, logoSvgPath, appIcon } from './icon'
@@ -85,12 +83,9 @@ export function registerIpc(): void {
   registerPluginIpc()
   // 代码块伪编译：产物的持久化与运行时唯一的联网出口（见 electron/runner.ts）
   registerRunnerIpc()
-  // 语音模型的下载与读取（见 electron/voice.ts）：渲染层够不着外网，这条通道由主进程走
-  registerVoiceIpc()
-  // OCR 文字识别模型与推理通道（见 electron/ocr.ts）
-  registerOcrIpc()
-  // TTS 语音合成模型与推理通道（见 electron/tts.ts）
-  registerTtsIpc()
+  // 模型能力（TTS / STT / OCR / Files API，见 electron/capabilities/）：三个能力接入
+  // DeepSeek 或用户自架的本地适配器后，网络调用都由主进程发起（渲染层 CSP 够不着外网）
+  registerCapabilitiesIpc()
 
   // 自动更新（window.mojiNative.update）
   registerUpdateIpc()

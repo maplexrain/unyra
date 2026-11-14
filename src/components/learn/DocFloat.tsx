@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Brain, Columns2, Eye, ListTree, Network, Pencil } from 'lucide-react'
 import type { OutlineHandle } from '../../lib/outline'
 import type { DocView, TabRef } from '../../learn/types'
@@ -20,6 +20,10 @@ import type { NodeRelations, RelationItem } from './docRelations/computeRelation
  * 它锚定在**页签容器**上（GroupBody 的 relative 那一层），不属于编辑列：
  * 编辑列与预览列对调（:preview switch / 双击分割线）时它保持原位不动——
  * 它是**这一页的模式开关**（阅读 ↔ 编辑），不是编辑栏的一部分。
+ *
+ * 它的让位（左列空间）也长在容器层：GroupBody 的正文盒按「画不画工具条」
+ * 同一个条件（hasDocFloat）加 pl-[50px]，正文整体从它后面起排——分栏对调后
+ * 最左那栏（编辑或预览）都不会被它压住，也不会剩一条无主的空列。
  *
  * 包含：阅读/编辑模式切换（同一枚页签就地切，图标反转显示目标动作）、
  * 分栏实时预览开关、Vim 模式卡片、关联节点、标题大纲（悬停向右弹出）。
@@ -63,22 +67,6 @@ const LEAVE_GRACE_MS = 180
 const HIDE_MS = 150
 /** 浮层开着时跟随「当前读到哪一节」的刷新节奏（activeIndex 变了才动） */
 const FOLLOW_MS = 300
-
-/**
- * 悬浮组右上角的文档统计（字数，源码模式还带保存状态）。
- * 工具条移到左侧垂直排列后，字数统计信息依旧保持在右上角（top-2.5 right-3）。
- * pointer-events-none：它是读数不是控件，不该抢正文上的选字与点击。
- */
-export function DocStatChip({ title, children }: { title?: string; children: ReactNode }) {
-  return (
-    <div
-      title={title}
-      className="no-print pointer-events-none absolute right-3 top-2.5 z-10 flex items-center gap-1.5 rounded-none border border-line/60 bg-card/75 px-2 py-0.5 text-[11px] text-ink-faint shadow-xs backdrop-blur-xs select-none"
-    >
-      {children}
-    </div>
-  )
-}
 
 export default function DocFloat({
   view,

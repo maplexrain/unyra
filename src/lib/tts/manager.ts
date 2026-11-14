@@ -11,10 +11,9 @@
 import { useSyncExternalStore } from 'react'
 import type { TTSAdapter, TTSSpeakOptions, TTSPlaybackState, TTSVoice } from './types'
 import { WebSpeechAdapter } from './adapters/webSpeech'
-import { OpenAICompatibleTTSAdapter } from './adapters/openaiCompatible'
-import { SherpaOfflineTTSAdapter } from './adapters/sherpaOffline'
+import { ModelCapsTTSAdapter } from './adapters/modelCaps'
+import { ttsModeOf } from '../capabilities'
 
-const STORAGE_ACTIVE_ADAPTER = 'moji:tts:activeAdapter'
 const STORAGE_RATE = 'moji:tts:rate'
 
 export interface TTSStateSnapshot {
@@ -39,17 +38,13 @@ export class TTSAdapterManager {
   }
 
   constructor() {
-    // 1. 注册核心基础适配器
+    // 1. 注册核心基础适配器：系统原生（Web Speech）+ 模型能力（DeepSeek / 本地适配器）
     this.registerAdapter(new WebSpeechAdapter())
-    this.registerAdapter(new SherpaOfflineTTSAdapter())
-    this.registerAdapter(new OpenAICompatibleTTSAdapter())
+    this.registerAdapter(new ModelCapsTTSAdapter())
 
-    // 2. 恢复偏好设置
+    // 2. 恢复语速偏好（激活适配器不存 localStorage——它由「设置 → 模型 → 能力接入」
+    //    的 TTS 配置派生，见 getActiveAdapter；两处来源会互相打架）
     try {
-      const savedAdapter = localStorage.getItem(STORAGE_ACTIVE_ADAPTER)
-      if (savedAdapter && this.adapters.has(savedAdapter)) {
-        this.activeId = savedAdapter
-      }
       const savedRate = localStorage.getItem(STORAGE_RATE)
       if (savedRate) {
         const parsedRate = Number.parseFloat(savedRate)
@@ -79,21 +74,17 @@ export class TTSAdapterManager {
     return this.adapters.get(id)
   }
 
-  /** 获取当前激活的适配器 */
+  /**
+   * 当前激活的适配器：**由能力配置派生**（设置 → 模型 → 能力接入的 TTS 项）——
+   * system/关闭走系统原生，DeepSeek/本地走模型能力适配器。适配器选择不再有
+   * localStorage 第二份状态，能力页改完立刻生效。
+   */
   getActiveAdapter(): TTSAdapter {
-    return this.adapters.get(this.activeId) || this.adapters.get('web-speech')!
-  }
-
-  /** 切换激活的适配器 */
-  setActiveAdapter(id: string): void {
-    if (this.adapters.has(id) && this.activeId !== id) {
-      this.stop()
-      this.activeId = id
-      try {
-        localStorage.setItem(STORAGE_ACTIVE_ADAPTER, id)
-      } catch {}
-      this.notify()
+    const mode = ttsModeOf()
+    if (mode === 'deepseek' || mode === 'local') {
+      return this.adapters.get('model-caps') ?? this.adapters.get('web-speech')!
     }
+    return this.adapters.get('web-speech')!
   }
 
   /** 获取当前全局播放语速 */
@@ -246,7 +237,6 @@ export function useTTS(): TTSStateSnapshot & {
   resume: () => void
   stop: () => void
   setRate: (rate: number) => void
-  setActiveAdapter: (id: string) => void
   adapters: TTSAdapter[]
 } {
   const snapshot = useSyncExternalStore(ttsManager.subscribe, ttsManager.getSnapshot)
@@ -259,7 +249,6 @@ export function useTTS(): TTSStateSnapshot & {
     resume: () => ttsManager.resume(),
     stop: () => ttsManager.stop(),
     setRate: (rate) => ttsManager.setRate(rate),
-    setActiveAdapter: (id) => ttsManager.setActiveAdapter(id),
-    adapters: ttsManager.getAdapters(),
+      adapters: ttsManager.getAdapters(),
   }
 }
