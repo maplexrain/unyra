@@ -109,10 +109,6 @@ export function mergeLearnStore(base: LearnStore, incoming: LearnStore): LearnSt
      */
     memory: base.memory,
     methods: base.methods,
-    // 随笔与窗口几何同理：是「我写过什么、我把它摆在哪」，不跟着别人的备份走
-    essays: base.essays,
-    essayCommits: base.essayCommits,
-    ...(base.essayDock ? { essayDock: base.essayDock } : {}),
     workflows: base.workflows,
     // 日程同样是「我排给自己的」：导入别人的备份不该把这张表换掉
     schedule: base.schedule,

@@ -24,6 +24,17 @@ export const DOC_LINES = 2
 /** 有正文的文档卡：边框 + 标题行 + 两行摘要 + 底部内边距 */
 export const DOC_BODY_H = CARD_FRAME_H + OUTLINE_HEAD + DOC_LINES * DOC_LINE_H + CARD_PAD_B
 
+/** 带总结的笔记卡：250 是**最大高度**不是固定高度——真实渲染高度由 CSS 决定
+ *  （内容自然长高、maxHeight 封顶、超出卡内滚动）；这个估算只喂自动排布的碰撞检测 */
+export const NOTE_SUMMARY_CARD_H = 250
+
+export function noteCardHeight(hasSummary: boolean, summaryChars = 0): number {
+  if (!hasSummary) return CARD_H
+  // 标题行 + 内边距 + 按 ~22 字/行估的总结行数（宁高勿低：排布多留空隙好过卡片重叠）
+  const lines = Math.max(1, Math.ceil(summaryChars / 22))
+  return Math.min(NOTE_SUMMARY_CARD_H, OUTLINE_HEAD + 14 + lines * 14 + CARD_FRAME_H)
+}
+
 /** 试卷卡有多高：边框 + 标题行 + 头部考试按钮行 + 每条考试记录一行 + 内边距（没有记录就是标准高度） */
 export function examCardHeight(rows: number): number {
   if (!rows) return CARD_H

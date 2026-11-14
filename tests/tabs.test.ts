@@ -130,15 +130,16 @@ describe('页签的身份', () => {
 })
 
 describe('默认视图', () => {
-  it('教学文档与笔记都是 Markdown，默认看渲染结果', () => {
+  it('教学文档默认看渲染结果；笔记默认进编辑（口径改动：笔记默认编辑与分栏预览）', () => {
     expect(viewOf(tab(teach('n1')))).toBe('preview')
-    expect(viewOf(tab(note('n1', '笔记')))).toBe('preview')
+    expect(viewOf(tab(note('n1', '笔记')))).toBe('source')
   })
 
-  it('本地文件按扩展名：md 默认预览，媒体进媒体预览，其余文本一律编辑', () => {
-    expect(viewOf(tab(local('C:/a/x.md')))).toBe('preview')
-    expect(viewOf(tab(local('C:/a/x.markdown')))).toBe('preview')
-    // 口径改了：除 markdown 外的文本（含 html）默认都是编辑模式
+  it('本地文件按扩展名：md/html 默认编辑（分栏预览由 LiveSplitPreview 默认展开），媒体进媒体预览，其余文本一律编辑', () => {
+    // 合并页面后的口径：笔记 / markdown / html 打开默认进编辑模式并自动展开分栏预览
+    expect(viewOf(tab(local('C:/a/x.md')))).toBe('source')
+    expect(viewOf(tab(local('C:/a/x.markdown')))).toBe('source')
+    expect(viewOf(tab(local('C:/a/x.html')))).toBe('source')
     expect(viewOf(tab(local('C:/a/x.HTML')))).toBe('source')
     // txt 没有渲染器：硬给一个「预览」只会是一片空白
     expect(viewOf(tab(local('C:/a/x.txt')))).toBe('source')
@@ -147,9 +148,10 @@ describe('默认视图', () => {
     expect(viewOf(tab(local('C:/a/x.mp4')))).toBe('media')
   })
 
-  it('用户手动选过的视图优先，且只作用于那一个页签', () => {
+  it('教学文档默认阅读；用户手动选过的模式优先，且只作用于那一个页签', () => {
+    expect(viewOf(tab(teach('n1')))).toBe('preview')
     const a = tab(local('C:/a/x.md'), { view: 'source' })
-    const b = tab(local('C:/a/y.md'))
+    const b = tab(local('C:/a/y.md'), { view: 'preview' })
     expect(viewOf(a)).toBe('source')
     expect(viewOf(b)).toBe('preview')
   })

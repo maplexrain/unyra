@@ -13,6 +13,8 @@ import { useDocContextMenu, type SourceSpan } from './note/useDocContextMenu'
 import { useAnnotationLayer } from './note/useAnnotationLayer'
 import { useDocOutline, useDocScrollMemory, useDocZoom } from './note/useDocView'
 import { useQuoteHighlight } from './note/useQuoteHighlight'
+import { useMemoryMode } from './note/useMemoryMode'
+import { memoryDocKey } from '../../lib/memoryMode'
 import { useSelectionMenu } from './note/useSelectionMenu'
 import { SelectionMenuPopup, type MenuAction } from './note/selectionMenu'
 import { t } from '../../i18n'
@@ -295,6 +297,18 @@ export default memo(function NodeNote({
 
   // 引文高亮：点对话气泡里的选段 → 回到正文里把对应文字闪一下（见 note/useQuoteHighlight）
   useQuoteHighlight({ bodyRef, content, html })
+
+  /*
+   * 记忆模式（教学文档专属，按钮在 DocFloat 上）：正文里的块元素按持久化的随机种子
+   * 盖上遮罩，悬停揭示——主动回忆的自测。笔记走的是 TyporaLiveEditor（编辑态），
+   * 不做遮罩；key 在按钮（GroupBody→DocFloat）与这里各算一次，公式必须一致。
+   */
+  useMemoryMode({
+    bodyRef,
+    docKey: doc.kind === 'teaching' ? memoryDocKey(node.id, doc.kind, doc.note) : undefined,
+    // Agent 写作中遮罩挂起：正文每几十毫秒被替换一次，反复全量重切会卡死主线程
+    suspended: agentRunning === true,
+  })
 
   const doLearn = () => {
     if (!menu) return

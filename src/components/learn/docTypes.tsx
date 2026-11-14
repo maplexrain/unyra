@@ -1,4 +1,4 @@
-import { AppWindow, Bot, BookOpen, Brain, CalendarClock, ChartColumn, FilePlus, Folder, FolderOpen, Globe, GraduationCap, HardDrive, Heart, ListTree, Loader2, MonitorPlay, NotebookPen, Package, Puzzle, Settings2 } from 'lucide-react'
+import { AppWindow, Bot, BookOpen, Brain, CalendarClock, ChartColumn, FilePlus, Folder, FolderOpen, Globe, GraduationCap, HardDrive, Heart, ListTree, Loader2, MonitorPlay, NotebookPen, Package, Puzzle, ScrollText, Settings2 } from 'lucide-react'
 
 /**
  * 文档类型的**视觉身份**：一种类型一个图标、一个颜色。
@@ -15,6 +15,7 @@ export type DocKindKey =
   | 'super'
   | 'exam'
   | 'outline'
+  | 'guide'
   | 'local'
   | 'ws'
   | 'web'
@@ -35,6 +36,7 @@ const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   super: '#a066d6', // 紫：超级文档
   exam: '#c0563a', // 朱：试卷（含它的历次考试）
   outline: '#2e8b6e', // 松绿：大纲页（结构化的路线图）
+  guide: '#3f7f68', // 松绿同族的深色：大纲导读（大纲的伴读讲解，与大纲页一族不同调）
   local: '#98928a', // 中性灰：外部文件
   ws: '#7c8f4f', // 橄榄：工作区（项目）内部文件——与外部文件的灰明确分开
   web: '#2aa1b8', // 青：网页（内置浏览器）
@@ -101,6 +103,8 @@ export function DocTypeIcon({ kind, size = 11 }: { kind: DocKindKey; size?: numb
       <GraduationCap size={size} />
     ) : kind === 'outline' ? (
       <ListTree size={size} />
+    ) : kind === 'guide' ? (
+      <ScrollText size={size} />
     ) : kind === 'web' ? (
       <Globe size={size} />
     ) : kind === 'video' ? (

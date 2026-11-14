@@ -56,8 +56,8 @@ describe('ws 页签的身份与展示（learn/tabs）', () => {
     expect(tabTrail(ws('childA', '根文件.md'), () => '极限/childA')).toBe('')
   })
 
-  it('默认视图与本地文件同一套：md 预览、媒体媒体、其余源码', () => {
-    expect(viewOf(makeTab(ws('childA', '项目A/x.md'), 0))).toBe('preview')
+  it('默认视图与本地文件同一套：md 进编辑、媒体媒体、其余源码', () => {
+    expect(viewOf(makeTab(ws('childA', '项目A/x.md'), 0))).toBe('source')
     expect(viewOf(makeTab(ws('childA', '项目A/x.png'), 0))).toBe('media')
     expect(viewOf(makeTab(ws('childA', '项目A/x.py'), 0))).toBe('source')
   })

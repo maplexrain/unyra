@@ -64,18 +64,6 @@ export type {
   FileNodeEntity,
 } from './types/media'
 
-/* ---------- 随笔（types/essay） ---------- */
-export type {
-  EssayEntry,
-  EssayStore,
-  EssayCommitChange,
-  EssayCommit,
-  EssayCommitStore,
-  EssayDockState,
-  EssayDockRect,
-  DockNoteItem,
-} from './types/essay'
-
 /* ---------- 记忆（types/memory） ---------- */
 export type { MemoryType, MemoryItem, MemoryStore } from './types/memory'
 

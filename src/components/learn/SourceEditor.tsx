@@ -23,6 +23,7 @@ import {
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages as codeLanguages } from '@codemirror/language-data'
 import { countSourceWords } from '../../lib/wordCount'
+import { installVimPromptBridge } from '../../lib/commandBarFocus'
 import { getAppearance, setAppearance, clampEditorScale, SCALE_ZOOM_STEP, SCALE_HUD_MS } from '../../lib/appearance'
 import { markdownEditorTheme, markdownHighlight } from '../../lib/cmMarkdown'
 import { smoothCursor } from '../../lib/cmSmoothCursor'
@@ -31,6 +32,7 @@ import { bracketPairGuides } from '../../lib/cmBracketGuides'
 import { vimActiveSearchMatchHighlight } from '../../lib/cmSearchHighlight'
 import { vim } from '@replit/codemirror-vim'
 import { isVimEnabled, subscribeVimEnabled } from '../../lib/vimSettings'
+import { onVimModeChanged } from '../../lib/imeSwitch'
 import { loadAndApplyVimrc } from '../../lib/vimConfig'
 import { registerVimExCommands, setVimEditorBridge } from '../../lib/vimCommands'
 import { foldCurrentScope, unfoldCurrentScope } from '../../lib/cmFoldScope'
@@ -75,7 +77,7 @@ const STATE_TONE: Record<SaveState, string> = {
 }
 
 /**
- * 配色与主题在 lib/cmMarkdown（随笔窗口用的是同一份）：
+ * 配色与主题在 lib/cmMarkdown：
  * gutterLeft 留出 50px 避让悬浮在左上角的垂直工具栏（left-3 + w-8），
  * 避免首行代码与按钮发生视觉重叠；代码正文与行号分隔线保持 14px 舒适内边距。
  */
@@ -134,7 +136,7 @@ interface Props {
   revealKey?: string
   /** 允许由 Vim 冒号命令触发的页签关闭、分屏等宿主操作 */
   onCloseTab?: (force?: boolean) => void
-  onCloseOtherTabs?: (force?: boolean) => void
+  onCloseOtherTabs?: (force?: boolean, opts?: { skipDirty?: boolean }) => void
   onNewTab?: () => void
   onSplitView?: (direction: 'horizontal' | 'vertical') => void
   onCustomSave?: (force?: boolean) => Promise<boolean | void> | boolean | void
@@ -429,6 +431,49 @@ export default function SourceEditor({
     })
     viewRef.current = view
     view.focus()
+    // 编辑器里的 : 走全局命令栏（唯一命令输入框）；'/' 搜索提示照旧是原生面板
+    installVimPromptBridge(view)
+
+    /*
+     * 输入法自动切换（见 lib/imeSwitch）：vim 模式一动就跟着切——进普通/可视模式
+     * 切回英文直通，回插入模式恢复原输入法。监听挂在这份编辑器的 cm 适配器上；
+     * vim 半路才开（compartment 重配）时 cm 可能是后建的那份，所以每次开关都重新认一遍。
+     */
+    type VimCm = {
+      on?: (event: string, fn: (ev?: unknown) => void) => void
+      off?: (event: string, fn: (ev?: unknown) => void) => void
+      state?: { vim?: { insertMode?: boolean } }
+    }
+    let imeCm: VimCm | null = null
+    const imeModeHandler = (rawEv?: unknown) => {
+      const ev = rawEv as { mode?: string } | undefined
+      const mode = ev?.mode
+      // 输入法自动切换：进普通/可视模式切英文直通、回插入模式恢复原输入法（lib/imeSwitch）。
+      // 注意这里**绝不 dispatch**——模式事件在 CM update 中途发出，嵌套 dispatch 会炸掉插件
+      // （血案教训，见 lib/imeSwitch 的说明）
+      const typing = mode
+        ? mode === 'insert' || mode === 'replace'
+        : !!imeCm?.state?.vim?.insertMode
+      onVimModeChanged(typing)
+    }
+    const attachImeModeListener = () => {
+      const cm = (viewRef.current as unknown as { cm?: VimCm } | null)?.cm ?? null
+      if (!cm || typeof cm.on !== 'function' || cm === imeCm) return
+      if (imeCm && typeof imeCm.off === 'function') {
+        try {
+          imeCm.off('vim-mode-change', imeModeHandler)
+        } catch {
+          // 安全容错
+        }
+      }
+      imeCm = cm
+      try {
+        cm.on('vim-mode-change', imeModeHandler)
+      } catch {
+        // 安全容错
+      }
+    }
+    attachImeModeListener()
     /*
      * 「定位源码」：选中那段源文并滚到眼前。之后用户可能立刻开始打字，
      * 光标该落在他要改的那一段上（取件规矩见上面 revealRef 的说明）。
@@ -508,7 +553,7 @@ export default function SourceEditor({
       getView: () => viewRef.current,
       onSave: (force) => bridgeActionsRef.current.onCustomSave?.(force),
       onClose: (force) => bridgeActionsRef.current.onCloseTab?.(force),
-      onCloseOthers: (force) => bridgeActionsRef.current.onCloseOtherTabs?.(force),
+      onCloseOthers: (force, opts) => bridgeActionsRef.current.onCloseOtherTabs?.(force, opts),
       onNewTab: () => bridgeActionsRef.current.onNewTab?.(),
       onSplit: (direction) => bridgeActionsRef.current.onSplitView?.(direction),
     })
@@ -530,11 +575,20 @@ export default function SourceEditor({
         patchSmoothVimScroll(v)
         loadAndApplyVimrc().catch(() => {})
       }
+      // vim 半路才开时 cm 是后建的那份：重新认一遍输入法监听
+      attachImeModeListener()
     })
 
     return () => {
       if (effectiveHistKey) {
         flushEditorHistory(effectiveHistKey)
+      }
+      if (imeCm && typeof imeCm.off === 'function') {
+        try {
+          imeCm.off('vim-mode-change', imeModeHandler)
+        } catch {
+          // 安全容错
+        }
       }
       setVimEditorBridge(null)
       unsubVim()

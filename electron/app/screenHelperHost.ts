@@ -8,6 +8,10 @@ let triggerCallback: (() => void) | null = null
 let isStarting = false
 let windowQueryResolvers: Array<(rects: Array<{ x: number; y: number; width: number; height: number; title?: string }>) => void> = []
 let snapResolvers: Array<(res: { imagePath: string; windows: Array<{ x: number; y: number; width: number; height: number; title?: string }> } | null) => void> = []
+/** IME_GET 的应答队列（前台窗口当前键盘布局 HKL；读不到 = null） */
+let imeGetResolvers: Array<(hkl: number | null) => void> = []
+/** IME_SET 的应答队列（投递成功与否；超时/出错 = false） */
+let imeSetResolvers: Array<(ok: boolean) => void> = []
 let activeSnapPath: string | null = null
 
 const CSC_PATH = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe'
@@ -146,6 +150,23 @@ export async function startGlobalScreenshotShortcut(onTrigger: () => void): Prom
           const resolvers = [...snapResolvers]
           snapResolvers = []
           for (const r of resolvers) r(null)
+        } else if (line.startsWith('IME:')) {
+          // 输入法查询应答（前台窗口当前键盘布局 HKL，十进制）
+          const v = Number(line.slice(4))
+          const resolvers = [...imeGetResolvers]
+          imeGetResolvers = []
+          for (const r of resolvers) r(Number.isFinite(v) && v > 0 ? v : null)
+        } else if (line.startsWith('IME_ERR:')) {
+          const getResolvers = [...imeGetResolvers]
+          imeGetResolvers = []
+          for (const r of getResolvers) r(null)
+          const setResolvers = [...imeSetResolvers]
+          imeSetResolvers = []
+          for (const r of setResolvers) r(false)
+        } else if (line === 'IME_OK') {
+          const setResolvers = [...imeSetResolvers]
+          imeSetResolvers = []
+          for (const r of setResolvers) r(true)
         }
       }
     })
@@ -159,6 +180,12 @@ export async function startGlobalScreenshotShortcut(onTrigger: () => void): Prom
       const sResolvers = [...snapResolvers]
       snapResolvers = []
       for (const r of sResolvers) r(null)
+      const gResolvers = [...imeGetResolvers]
+      imeGetResolvers = []
+      for (const r of gResolvers) r(null)
+      const stResolvers = [...imeSetResolvers]
+      imeSetResolvers = []
+      for (const r of stResolvers) r(false)
     })
 
     proc.on('error', (err) => {
@@ -258,6 +285,83 @@ export function queryWindowsViaHelper(
 }
 
 /**
+ * 读回前台窗口当前键盘布局（HKL，十进制；读不到/助手不在 = null）。
+ * vim 输入法自动切换用它记「进普通模式前用户用的哪套输入法」。
+ */
+export function queryImeViaHelper(timeoutMs = 300): Promise<number | null> {
+  if (!hookProcess || hookProcess.killed || !hookProcess.stdin) {
+    return Promise.resolve(null)
+  }
+
+  return new Promise((resolve) => {
+    let done = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const resolver = (hkl: number | null) => {
+      if (done) return
+      done = true
+      if (timer !== undefined) clearTimeout(timer)
+      resolve(hkl)
+    }
+    timer = setTimeout(() => {
+      if (!done) {
+        done = true
+        imeGetResolvers = imeGetResolvers.filter((r) => r !== resolver)
+        resolve(null)
+      }
+    }, timeoutMs)
+
+    imeGetResolvers.push(resolver)
+    try {
+      hookProcess?.stdin?.write('IME_GET\n')
+    } catch {
+      if (!done) {
+        done = true
+        if (timer !== undefined) clearTimeout(timer)
+        resolve(null)
+      }
+    }
+  })
+}
+
+/**
+ * 给前台窗口换键盘布局（异步投递；true = 助手应答了投递，布局装没装成功另说）。
+ */
+export function setImeViaHelper(hkl: number, timeoutMs = 300): Promise<boolean> {
+  if (!hookProcess || hookProcess.killed || !hookProcess.stdin || !Number.isFinite(hkl) || hkl <= 0) {
+    return Promise.resolve(false)
+  }
+
+  return new Promise((resolve) => {
+    let done = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const resolver = (ok: boolean) => {
+      if (done) return
+      done = true
+      if (timer !== undefined) clearTimeout(timer)
+      resolve(ok)
+    }
+    timer = setTimeout(() => {
+      if (!done) {
+        done = true
+        imeSetResolvers = imeSetResolvers.filter((r) => r !== resolver)
+        resolve(false)
+      }
+    }, timeoutMs)
+
+    imeSetResolvers.push(resolver)
+    try {
+      hookProcess?.stdin?.write(`IME_SET ${Math.round(hkl)}\n`)
+    } catch {
+      if (!done) {
+        done = true
+        if (timer !== undefined) clearTimeout(timer)
+        resolve(false)
+      }
+    }
+  })
+}
+
+/**
  * 停止并释放全局快捷键与原生助手
  */
 export function stopGlobalScreenshotShortcut(): void {
@@ -274,4 +378,6 @@ export function stopGlobalScreenshotShortcut(): void {
   isStarting = false
   windowQueryResolvers = []
   snapResolvers = []
+  imeGetResolvers = []
+  imeSetResolvers = []
 }

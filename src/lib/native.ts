@@ -620,6 +620,9 @@ export interface NativeBridge {
     getPinData?(id: string): Promise<any>
     closePin?(id: string): void
     copyPin?(id: string): Promise<ImageCopyResult>
+    /** 输入法（键盘布局 HKL）读回与切换：vim 普通模式切英文直通用，WebUI/非 win32 缺省 */
+    imeGetActive?(): Promise<number | null>
+    imeSetActive?(hkl: number): Promise<boolean>
     savePin?(id: string): Promise<ImageSaveResult>
     notifyPinReady?(id: string): void
     movePin?(id: string, dx: number, dy: number): void

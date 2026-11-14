@@ -23,10 +23,16 @@ export function normalizeTab(raw: unknown, byId: Map<string, KnowledgeNode>): Le
   const r = raw as Record<string, unknown>
   const ref = normalizeTabRef(r.ref, byId)
   if (!ref) return null
-  const view: DocView | undefined = r.view === 'source' || r.view === 'preview' ? r.view : undefined
-  if (view && 'kind' in ref && !('view' in ref)) {
-    (ref as any).view = view
-  }
+  // 视图只住在页签上（LearnTab.view）：老 state.json 里的视图（页签层或 ref 层都有，
+  // 对偶页签时代的遗留）在这里收拢到页签层、ref 上的剥掉；页签 id 由 tabKey 重算——
+  // 同一份文档的两枚对偶页签从此撞成同一枚，由 normalizeDocs 的「同 id 只认第一次」去重合并。
+  const rawRef = (r.ref ?? {}) as Record<string, unknown>
+  const view: DocView | undefined =
+    r.view === 'source' || r.view === 'preview'
+      ? r.view
+      : rawRef.view === 'source' || rawRef.view === 'preview'
+        ? rawRef.view
+        : undefined
   return {
     id: tabKey(ref),
     ref,
@@ -39,11 +45,9 @@ export function normalizeTab(raw: unknown, byId: Map<string, KnowledgeNode>): Le
 function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Record<string, unknown>
-  const v: { view?: 'source' | 'preview' } =
-    r.view === 'source' || r.view === 'preview' ? { view: r.view } : {}
   if (r.kind === 'local') {
     return typeof r.path === 'string' && r.path
-      ? { kind: 'local', path: r.path, ...(typeof r.title === 'string' && r.title ? { title: r.title } : {}), ...v }
+      ? { kind: 'local', path: r.path, ...(typeof r.title === 'string' && r.title ? { title: r.title } : {}) }
       : null
   }
   // 网页页签不挂节点：只认 http(s) 与空（起始页）；身份 key 缺了现场补一枚（页签各自独立）
@@ -74,6 +78,13 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
   if (r.kind === 'blank') {
     return { kind: 'blank', key: typeof r.key === 'string' && r.key ? r.key : newBlankKey() }
   }
+  // 大纲导读（只读页签）：认大纲成员 id。不查宿主节点在不在——宿主没了页签还开着时
+  // 由渲染层说一句「这份大纲已经不在了」（与试卷副本同一待遇）
+  if (r.kind === 'guide') {
+    const outlineId = typeof r.outlineId === 'string' ? r.outlineId : ''
+    const goalId = typeof r.goalId === 'string' && r.goalId ? r.goalId : undefined
+    return outlineId ? { kind: 'guide', outlineId, ...(goalId ? { goalId } : {}) } : null
+  }
   const nodeId = typeof r.nodeId === 'string' ? r.nodeId : ''
   if (r.kind === 'outline') {
     const goalId = typeof r.goalId === 'string' && r.goalId ? r.goalId : undefined
@@ -81,20 +92,20 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
   }
   const node = byId.get(nodeId)
   if (!node) return null
-  if (r.kind === 'teach') return { kind: 'teach', nodeId, ...v }
+  if (r.kind === 'teach') return { kind: 'teach', nodeId }
   if (r.kind === 'note') {
     const note = typeof r.note === 'string' ? r.note : ''
     if (!note) return null
     // 笔记也被删掉/改过名时这个页签就没有内容可指了（名字就是它的身份）
     const exists = (node.notes ?? []).some((n) => n.name.toLowerCase() === note.toLowerCase())
-    return exists ? { kind: 'note', nodeId, note, ...v } : null
+    return exists ? { kind: 'note', nodeId, note } : null
   }
   if (r.kind === 'super') {
     const name = typeof r.name === 'string' ? r.name : ''
     if (!name) return null
     // 超级文档同理：名字就是身份，Agent 删了它，页签也不该再留
     const exists = (node.superdocs ?? []).some((n) => n.name.toLowerCase() === name.toLowerCase())
-    return exists ? { kind: 'super', nodeId, name, ...v } : null
+    return exists ? { kind: 'super', nodeId, name } : null
   }
   // 工作区内部文件：节点在（上面查过）就收下；文件本身在不在磁盘**不查**——
   // 与本地文件同一条纪律（查存在性要逐个访问磁盘，而这一步在启动的关键路径上），
@@ -102,7 +113,7 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
   if (r.kind === 'ws') {
     const seg = typeof r.seg === 'string' ? r.seg.trim().replace(/\\/g, '/') : ''
     if (!seg || seg.startsWith('/') || seg.split('/').some((s) => !s || s === '.' || s === '..')) return null
-    return { kind: 'ws', nodeId, seg, ...v }
+    return { kind: 'ws', nodeId, seg }
   }
   return null
 }

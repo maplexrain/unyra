@@ -60,14 +60,15 @@ export function isMediaFile(name: string): boolean {
  * 各带各的作答、判分与错题讲解。
  */
 export function tabKey(ref: TabRef): string {
-  const v = 'view' in ref && ref.view ? ':' + ref.view : ''
-  if (ref.kind === 'teach') return 't:' + ref.nodeId + v
-  if (ref.kind === 'note') return 'n:' + ref.nodeId + ':' + ref.note + v
-  if (ref.kind === 'super') return 's:' + ref.nodeId + ':' + ref.name + v
+  if (ref.kind === 'teach') return 't:' + ref.nodeId
+  if (ref.kind === 'note') return 'n:' + ref.nodeId + ':' + ref.note
+  if (ref.kind === 'super') return 's:' + ref.nodeId + ':' + ref.name
   if (ref.kind === 'exam') return 'e:' + ref.examId + ':' + ref.attemptId
   if (ref.kind === 'outline') return 'o:' + ref.nodeId
+  // 大纲导读：认大纲成员（附身 = 宿主文档 id，游离 = 实体 id）——同一份大纲只有一枚导读页签
+  if (ref.kind === 'guide') return 'g:' + ref.outlineId
   // 工作区内部文件：节点 + 「相对工作区目录」的路径段（目录改名不影响它，见 types 的 ws 分支）
-  if (ref.kind === 'ws') return 'ws:' + ref.nodeId + ':' + ref.seg + v
+  if (ref.kind === 'ws') return 'ws:' + ref.nodeId + ':' + ref.seg
   // 网页按**开签那一刻生成的 key**（而不是网址）认身份：同一个网址可以开两枚，起始页也不冲突
   if (ref.kind === 'web') return ref.fileNodeId ? 'w:fn:' + ref.fileNodeId : 'w:' + ref.key
   // 视频学习（实验）同样全局只有一份：顶栏那颗按钮点多少次都是切回同一枚，
@@ -89,7 +90,7 @@ export function tabKey(ref: TabRef): string {
   if (ref.kind === 'blank') return 'b:' + ref.key
   // 新建文件页签：还没有落点，身份只能是开签那一刻的随机后缀
   if (ref.kind === 'draft') return 'd:' + ref.key
-  return 'l:' + ref.path + v
+  return 'l:' + ref.path
 }
 
 /** 判断页签是否为固定页签：结构tab（节点宇宙，kind === 'outline'）永远固定，不可取消固定 */
@@ -100,12 +101,13 @@ export function isTabPinned(tab: LearnTab): boolean {
 
 export function makeTab(ref: TabRef, at: number, view?: DocView): LearnTab {
   const isStructure = ref.kind === 'outline'
-  const explicitView = 'view' in ref && ref.view ? ref.view : (view === 'source' || view === 'preview' ? view : undefined)
-  const finalRef = explicitView ? ({ ...ref, view: explicitView } as TabRef) : ref
+  // 视图只住在页签上（LearnTab.view），不进 ref、不进身份：同一份文档永远只有一枚页签，
+  // 阅读/编辑是页面内的两种模式（见 types/tabs 的 view 注释）
+  const v = view === 'source' || view === 'preview' ? view : undefined
   return {
-    id: tabKey(finalRef),
-    ref: finalRef,
-    ...(explicitView ? { view: explicitView } : {}),
+    id: tabKey(ref),
+    ref,
+    ...(v ? { view: v } : {}),
     ...(isStructure ? { pinned: true } : {}),
     createdAt: at,
   }
@@ -152,6 +154,8 @@ export function isBlankTab(tab: LearnTab): boolean {
 
 /** 页签挂在哪个节点上；本地文件、网页、守卫、报告、设置与用量页都不属于任何节点（工作区内部文件挂在它的节点上） */
 export function tabNodeId(ref: TabRef): string | null {
+  // 大纲导读：附身（没带 goalId）认宿主文档，跟着文档的目标组走；游离大纲的导读是公共页签
+  if (ref.kind === 'guide') return ref.goalId ? null : ref.outlineId
   return ref.kind === 'local' ||
     ref.kind === 'web' ||
     ref.kind === 'video' ||
@@ -215,6 +219,8 @@ function rawTabTitle(
   if (ref.kind === 'super') return ref.name
   if (ref.kind === 'exam') return examTitle?.(ref.examId, ref.attemptId) ?? t('试卷副本')
   if (ref.kind === 'outline') return (nodeTitle(ref.nodeId) ?? goalTitle?.(ref.nodeId) ?? t('已删除的节点')) + t(' · 结构')
+  // 大纲导读：附身大纲用宿主文档的标题；游离大纲（或文档已不在）就只叫「大纲导读」
+  if (ref.kind === 'guide') return (nodeTitle(ref.outlineId) ?? t('大纲导读')) + t(' · 导读')
   if (ref.kind === 'web') {
     // 页面的真标题是活信息（见 types 的 WebTabMeta），这里只能兜底出域名；起始页没有域名
     if (!ref.url) return t('新网页页签')
@@ -234,7 +240,7 @@ function rawTabTitle(
   }
   if (ref.kind === 'pluginDoc') return t('插件开发文档')
   if (ref.kind === 'sponsors') return t('赞助者名单')
-  if (ref.kind === 'vim') return t('Vim 学习与命令大全')
+  if (ref.kind === 'vim') return t('Vim 命令大全')
   if (ref.kind === 'settings') return t('设置')
   if (ref.kind === 'usage') return t('用量统计')
   if (ref.kind === 'schedule') return t('日程安排')
@@ -248,14 +254,6 @@ function rawTabTitle(
   return (ref.title ? fileNameOf(ref.title) : '') || fileNameOf(ref.path)
 }
 
-/** 判断一个页签指向的内容是否支持渲染预览 */
-export function isTabRefPreviewable(ref: TabRef): boolean {
-  if (ref.kind === 'teach' || ref.kind === 'note' || ref.kind === 'super') return true
-  if (ref.kind === 'local') return isPreviewable(ref.path)
-  if (ref.kind === 'ws') return isPreviewable(ref.seg)
-  return false
-}
-
 export function tabTitle(
   ref: TabRef,
   nodeTitle: (nodeId: string) => string | undefined,
@@ -263,12 +261,8 @@ export function tabTitle(
   videoTitle?: (videoId: string) => string | undefined,
   goalTitle?: (goalId: string) => string | undefined,
 ): string {
-  const base = rawTabTitle(ref, nodeTitle, examTitle, videoTitle, goalTitle)
-  if ('view' in ref && ref.view) {
-    if (ref.view === 'preview') return base + ' (' + t('预览') + ')'
-    if (ref.view === 'source' && isTabRefPreviewable(ref)) return base + ' (' + t('源码') + ')'
-  }
-  return base
+  // 视图后缀没有了：阅读/编辑是同一枚页签里的两种模式（不再是两枚对偶页签），名字无需区分
+  return rawTabTitle(ref, nodeTitle, examTitle, videoTitle, goalTitle)
 }
 
 /**
@@ -287,6 +281,7 @@ export function tabTrail(
 ): string {
   if (ref.kind === 'exam') return ''
   if (ref.kind === 'web') return ''
+  if (ref.kind === 'guide') return ''
   // 系统页（设置/用量/导师设置/新建目标/空白页签）不挂在节点上，也没有「住在哪儿」可言；
   // 新建文件页签同样还没有落点——保存之后它换成 local，后缀才会出现
   if (
@@ -317,30 +312,31 @@ export function tabTrail(
 }
 
 /**
- * 这个页签此刻该用哪种视图。
+ * 这份文档页面此刻该用哪种模式（阅读 preview / 编辑 source）。
  *
- * 默认值按文件类型给：教学文档与笔记都是 Markdown，默认看渲染结果；
- * 本地文件里只有 md / html 能预览，其余（txt 之类）默认落到源码——
- * 给一个纯文本文件渲染出一个「预览」是骗人的。
+ * 默认值按文档类型给（用户口径：**同一页面、左侧按钮切模式**）：
+ * - 教学文档与超级文档默认**阅读**（教学文档多半是导师写好给人看的；超级文档是交互页），
+ *   切到编辑模式时自动展开分栏预览（见 workspace/EditorPane）；
+ * - 笔记、markdown 与 html 默认**编辑**，并自动打开分栏实时预览（LiveSplitPreview 的默认态）；
+ * - 其余文本（txt 之类）默认编辑——给一个纯文本文件渲染出一个「预览」是骗人的。
  *
  * empty = 这份正文此刻是空的（见 LearnWorkspace 的 emptyNote）：空笔记的预览是一片空白，
- * 而用户打开它就是要往里写，所以默认落到源码（编辑）视图，预览按钮也一并置灰。
- * 用户自己选过视图（tab.view）就听他的——他刚在空笔记里点过预览，那是他的选择。
+ * 而用户打开它就是要往里写，所以默认落到编辑视图，预览按钮也一并置灰。
+ * 用户自己选过模式（tab.view）就听他的——他刚在空笔记里点过阅读，那是他的选择。
  */
 export function viewOf(tab: LearnTab, empty = false): DocView {
-  if ('view' in tab.ref && tab.ref.view) return tab.ref.view
   if (tab.view) return tab.view
   // 新建文件页签还没有类型可言：它就是一张用来写的纸，永远进编辑视图
   if (tab.ref.kind === 'draft') return 'source'
   if (empty) return 'source'
-  // 笔记默认打开编辑页面（用户指令：笔记默认打开编辑页面，且默认打开分栏实时预览）
+  // 笔记默认进编辑模式（用户指令：笔记默认编辑，且默认打开分栏实时预览）
   if (tab.ref.kind === 'note') return 'source'
-  // 工作区内部文件与本地文件同一套默认：媒体进媒体预览、markdown 进预览、其余落到源码
+  // 本地文件与工作区文件同一套默认：媒体进媒体预览，其余文本一律编辑（md/html 也不例外，
+  // 它们的分栏预览由 LiveSplitPreview 默认展开）
   if (tab.ref.kind === 'local' || tab.ref.kind === 'ws') {
     const name = tab.ref.kind === 'local' ? tab.ref.path : tab.ref.seg
     if (isMediaFile(name)) return 'media'
-    // 需求口径：markdown 默认预览，**其余文本一律默认编辑**（html 也不例外）
-    return /\.(md|markdown)$/i.test(name) ? 'preview' : 'source'
+    return 'source'
   }
   return 'preview'
 }

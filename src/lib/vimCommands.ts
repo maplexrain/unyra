@@ -1,32 +1,30 @@
 import { Vim } from '@replit/codemirror-vim'
 import { triggerShortcutAction } from './shortcuts'
 import { foldCurrentScope, unfoldCurrentScope, foldAll, unfoldAll } from './cmFoldScope'
-import { openVimTutor, openVimCommands } from './vimTutorState'
-import { toggleEditorPreview } from '../components/learn/editor/LiveSplitPreview'
+import { openVimPage } from './vimPage'
+import { toggleEditorPreview, swapEditorPreview } from '../components/learn/editor/previewBus'
 import { toggleAgentPanel, sendAgentMessage } from './agentFocus'
+import { toggleExplorer } from './explorerFocus'
 import { EditorView } from '@codemirror/view'
 
 export interface VimEditorBridge {
   onSave?: (force?: boolean) => Promise<boolean | void> | boolean | void
   onClose?: (force?: boolean) => void
-  onCloseOthers?: (force?: boolean) => void
+  /** opts.skipDirty：有未保存改动的页签不关（跳过），而不是弹确认打断 */
+  onCloseOthers?: (force?: boolean, opts?: { skipDirty?: boolean }) => void
   onNewTab?: () => void
   onNextTab?: () => void
   onPrevTab?: () => void
   onSplit?: (direction: 'horizontal' | 'vertical') => void
-  onOnly?: () => void
   onReload?: () => void
   getView?: () => EditorView | null
 }
 
 export interface GlobalTabOperations {
   closeTab?: (force?: boolean) => void
-  closeOtherTabs?: (force?: boolean) => void
+  /** opts.skipDirty：有未保存改动的页签不关（跳过），而不是弹确认打断 */
+  closeOtherTabs?: (force?: boolean, opts?: { skipDirty?: boolean }) => void
   newTab?: () => void
-  nextTab?: () => void
-  prevTab?: () => void
-  split?: (direction: 'horizontal' | 'vertical') => void
-  only?: () => void
 }
 
 let activeBridge: VimEditorBridge | null = null
@@ -119,11 +117,9 @@ let registered = false
  * - :tabonly / :tabo -> 关闭其他标签页 (:tabo! 强制关闭其他)
  * - :tabnext / :tabn / :bnext / :bn -> 切换至下一个标签页
  * - :tabprev / :tabp / :bprev / :bp -> 切换至上一个标签页
- * - :split / :sp -> 水平分屏 (对偶预览或分屏浏览)
- * - :vsplit / :vs -> 垂直分屏 (对偶预览或分屏浏览)
+ * - :split / :sp / :vsplit / :vs -> 展开分栏实时预览（与 :preview 相同）
  * - :only -> 仅保留当前分屏
  * - :bdelete / :bd -> 关闭当前缓冲页签 (:bd! 强制关闭)
- * - :tutor -> 打开交互式游戏化 Vim 闯关教学道场
  * - :find -> 呼起查找面板
  * - :replace -> 呼起替换面板
  * - :fold -> 快速折叠当前代码块 (对应 Ctrl-)
@@ -224,16 +220,17 @@ export function registerVimExCommands(): void {
     triggerShortcutAction('learn.closeTab')
   })
 
-  // 7. :tabonly / :tabo 关闭其他页签
+  // 7. :tabonly / :tabo 关闭其他页签（不带 ! 时跳过有未保存改动的页签，不弹确认）
   Vim.defineEx('tabonly', 'tabo', (cm, params) => {
     const force = isForceCommand(params)
+    const opts = force ? undefined : { skipDirty: true }
     if (activeBridge?.onCloseOthers) {
-      activeBridge.onCloseOthers(force)
+      activeBridge.onCloseOthers(force, opts)
       showVimNotice(cm, '[已关闭其他页签]')
       return
     }
     if (globalTabOps?.closeOtherTabs) {
-      globalTabOps.closeOtherTabs(force)
+      globalTabOps.closeOtherTabs(force, opts)
       showVimNotice(cm, '[已关闭其他页签]')
       return
     }
@@ -284,12 +281,10 @@ export function registerVimExCommands(): void {
     }
   })
 
-  // 12. :only 仅保留当前分屏
+  // 12. :only 只留编辑栏（收起分栏预览）
   Vim.defineEx('only', 'on', (cm) => {
-    if (activeBridge?.onOnly) {
-      activeBridge.onOnly()
-      showVimNotice(cm, '[仅保留当前分屏]')
-    }
+    toggleEditorPreview(false)
+    showVimNotice(cm, '[仅保留编辑栏]')
   })
 
   // 13. :bdelete / :bd 关闭当前缓冲区/页签
@@ -302,17 +297,13 @@ export function registerVimExCommands(): void {
     triggerShortcutAction('learn.closeTab')
   })
 
-  // 14. :tutor / :vim 打开 Vim 闯关道场与命令大全
-  Vim.defineEx('tutor', 'tu', (cm) => {
-    openVimTutor()
-    showVimNotice(cm, '[打开 Vim 闯关道场]')
-  })
+  // 14. :vim / :cheat 打开 Vim 命令大全
   Vim.defineEx('vim', 'vim', (cm) => {
-    openVimCommands()
-    showVimNotice(cm, '[打开 Vim 学习与命令大全]')
+    openVimPage()
+    showVimNotice(cm, '[打开 Vim 命令大全]')
   })
   Vim.defineEx('cheat', 'ch', (cm) => {
-    openVimCommands()
+    openVimPage()
     showVimNotice(cm, '[打开 Vim 命令大全]')
   })
 
@@ -366,14 +357,29 @@ export function registerVimExCommands(): void {
   Vim.defineEx('help', 'h', (cm) => {
     showVimNotice(
       cm,
-      ':w 保存 | :q 关闭 (:q! 强退) | :preview 预览 | :tabo 关其他 | :sp/:vs 分屏 | :tutor 学习 | Ctrl-/= 折叠/展开',
+      ':w 保存 | :q 关闭 (:q! 强退) | :preview 预览 | :resources 资源管理器 | :tabo 关其他 | :cheat 命令大全 | Ctrl-/= 折叠/展开',
     )
   })
 
-  // 22. :preview / :prev 切换编辑页面内置的双栏实时对照预览
-  Vim.defineEx('preview', 'prev', (cm) => {
+  // 22. :preview / :prev 切换编辑页面内置的双栏实时对照预览；带 switch 参数对调编辑与预览的位置
+  Vim.defineEx('preview', 'prev', (cm, params) => {
+    const arg = params?.argString?.trim().toLowerCase() || ''
+    if (arg === 'switch') {
+      swapEditorPreview()
+      showVimNotice(cm, '[已对调编辑与预览位置]')
+      return
+    }
     toggleEditorPreview()
     showVimNotice(cm, '[切换分栏预览]')
+  })
+
+  // 23. :resources / :res 切换左侧资源管理器的窄条 ↔ 完整栏
+  Vim.defineEx('resources', 'res', (cm) => {
+    const expanded = toggleExplorer()
+    showVimNotice(
+      cm,
+      expanded === null ? '[当前没有资源管理器]' : expanded ? '[资源管理器已展开]' : '[资源管理器已收起]',
+    )
   })
 
   // 23. :agent / :ag 快捷打开/收起导师栏，可选参数直接发消息
@@ -399,6 +405,17 @@ export function registerVimExCommands(): void {
     if (view && scrollCursorToCenter(view)) {
       showVimNotice(cm, '[光标行已居中]')
     }
+  })
+
+  // 24. :focus / :fo 把焦点还给编辑器（编辑页才有编辑器；其它页面无可聚焦）
+  Vim.defineEx('focus', 'fo', (cm) => {
+    const view = activeBridge?.getView?.()
+    if (view) {
+      view.focus()
+      showVimNotice(cm, '[焦点已交给编辑器]')
+      return
+    }
+    showVimNotice(cm, '[当前没有编辑器]')
   })
 
   // 25. Vim 普通模式快捷键：zz、z. 自动校正滚动，让光标所在行尽量在画面垂直中间
@@ -497,12 +514,13 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     }
     case 'tabo':
     case 'tabonly': {
+      const opts = isForce ? undefined : { skipDirty: true }
       if (activeBridge?.onCloseOthers) {
-        activeBridge.onCloseOthers(isForce)
+        activeBridge.onCloseOthers(isForce, opts)
         return { success: true, message: '[已关闭其他页签]' }
       }
       if (globalTabOps?.closeOtherTabs) {
-        globalTabOps.closeOtherTabs(isForce)
+        globalTabOps.closeOtherTabs(isForce, opts)
         return { success: true, message: '[已关闭其他页签]' }
       }
       return { success: false }
@@ -545,16 +563,31 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     }
     case 'only':
     case 'on': {
-      if (activeBridge?.onOnly) {
-        activeBridge.onOnly()
-        return { success: true, message: '[仅保留当前分屏]' }
-      }
-      return { success: false }
+      toggleEditorPreview(false)
+      return { success: true, message: '[仅保留编辑栏]' }
     }
     case 'preview':
     case 'prev': {
+      const arg = clean.slice(baseCmd.length).trim().toLowerCase()
+      if (arg === 'switch') {
+        swapEditorPreview()
+        return { success: true, message: '[已对调编辑与预览位置]' }
+      }
       toggleEditorPreview()
       return { success: true, message: '[切换分栏预览]' }
+    }
+    case 'resources':
+    case 'res': {
+      const expanded = toggleExplorer()
+      if (expanded === null) return { success: false, message: '[当前没有资源管理器]' }
+      return { success: true, message: expanded ? '[资源管理器已展开]' : '[资源管理器已收起]' }
+    }
+    case 'focus':
+    case 'fo': {
+      const view = activeBridge?.getView?.()
+      if (!view) return { success: false, message: '[当前没有编辑器]' }
+      view.focus()
+      return { success: true, message: '[焦点已交给编辑器]' }
     }
     case 'agent':
     case 'ag': {
@@ -574,14 +607,10 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
       }
       return { success: false, message: '[当前无活动编辑器]' }
     }
-    case 'tutor': {
-      openVimTutor()
-      return { success: true, message: '[打开 Vim 闯关道场]' }
-    }
     case 'vim':
     case 'cheat': {
-      openVimCommands()
-      return { success: true, message: '[打开 Vim 学习与命令大全]' }
+      openVimPage()
+      return { success: true, message: '[打开 Vim 命令大全]' }
     }
     case 'find': {
       triggerShortcutAction('doc.find')
@@ -595,7 +624,7 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'h': {
       return {
         success: true,
-        message: ':w 保存 | :q 关闭 | :preview 预览 | :agent 导师 | zz 居中 | :tabo 关其他 | :sp/:vs 分屏',
+        message: ':w 保存 | :q 关闭 | :preview 预览 | :resources 资源管理器 | :agent 导师 | zz 居中 | :tabo 关其他 | :sp/:vs 分屏',
       }
     }
     default:

@@ -26,7 +26,6 @@ export const WORKFLOWS_GUIDE = `## 工作流提示词与任务规程（全量内
 - **了解 (\`explain\`)**：就选中的文字写一条两三句的注解，划在正文上（参数: \`target\`, \`term\`, \`occurrence\`, \`snippet\`）。
 - **伪编译 (\`code-compile\`)**：把文档里这段代码转译成可运行的 JS，交付运行（参数: \`target\`, \`language\`, \`key\`, \`code\`）。
 - **修复函数图像 (\`plot-fix\`)**：文档里函数图像渲染失败时，按报错与区间一次改完（参数: \`target\`, \`nodeTitle\`, \`reason\`, \`range\`, \`start\`, \`end\`, \`source\`）。
-- **随笔整理 (\`essay-commit\`)**：带上全部随笔按与上次的差异统一整理进笔记（参数: \`target\`, \`message\`, \`feed\`）。
 - **浏览器操作 (\`browser-use\`)**：替用户操作内置浏览器（参数: \`target\`）。
 - **压缩上下文 (\`compact\`)**：把前面的对话折成一份高保真交接摘要。
 
@@ -77,16 +76,11 @@ ${moduleTextOf('plot-fix')}
 
 ---
 
-### 10. 【随笔整理】增量知识归并笔记规程
-${moduleTextOf('essay-commit')}
-
----
-
-### 11. 【浏览器操作】驱动内置浏览器执行任务规程
+### 10. 【浏览器操作】驱动内置浏览器执行任务规程
 ${moduleTextOf('browser')}
 
 ---
 
-### 12. 【压缩上下文】长会话交接摘要编写规程
+### 11. 【压缩上下文】长会话交接摘要编写规程
 ${moduleTextOf('compact')}
 `

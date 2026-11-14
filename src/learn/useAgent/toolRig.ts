@@ -52,8 +52,14 @@ export function rigTurnTools(io: {
   settings: AiSettings
   /** 本轮现取的 agent 设置快照（assembleTurnEntry 读的那份；MCP 配置从这儿来） */
   agentSettings: AgentSettings
+  /**
+   * 本轮工作流的启动实参（runWorkflow 的 params）。考试工具拿它钉住阅卷对象：
+   * 交卷触发的阅卷轮带着 examId / attemptId——判分进行中学习者又交了另一份卷子时，
+   * 「最新待判」已经换了人，不钉住就会把 B 卷的分数判到 A 卷的对话里（见 makeExamDeps）。
+   */
+  wfParams?: Record<string, string | number>
   /** 考试工具依赖；由工作区注入，按节点与阶段动态提供 */
-  examDeps?: (nodeId: string) => ExamToolDeps | undefined
+  examDeps?: (nodeId: string, wfParams?: Record<string, string | number>) => ExamToolDeps | undefined
   /**
    * 节点编辑成功后的宿主动作（出卷后的视觉自检等）：由界面层注入，
    * learnSandboxOps 会把它接到节点通道的 afterEdit 上。
@@ -72,7 +78,7 @@ export function rigTurnTools(io: {
   /** 子代理管理器：一段对话一个、跨轮存活（见 hook 的 getOrCreateSubManager） */
   getOrCreateSubManager: (conversationId: string) => SubAgentManager
 }) {
-  const { getLatest, set, target, settings, agentSettings, examDeps, afterNodeEdit, uiRef, browserFnRef, wfChainRef, pendingWfRef, askWaitersRef, setPendingAsk, onNoticeRef, getOrCreateSubManager } = io
+  const { getLatest, set, target, settings, agentSettings, wfParams, examDeps, afterNodeEdit, uiRef, browserFnRef, wfChainRef, pendingWfRef, askWaitersRef, setPendingAsk, onNoticeRef, getOrCreateSubManager } = io
   /**
    * 唯一的工具：模型写一段 JS，经由沙箱里的 api 完成读写。
    * 文档、节点、描述、试卷、临时变量、长期记忆、人机协作（ask / tiktok）
@@ -291,7 +297,7 @@ export function rigTurnTools(io: {
        * （纯装配，Node 探针钉得住）。
        */
       exam: (() => {
-        const deps = target.nodeId ? examDeps?.(target.nodeId) : undefined
+        const deps = target.nodeId ? examDeps?.(target.nodeId, wfParams) : undefined
         return deps ? makeExamTool(deps) : undefined
       })(),
       // 动态提示词注入的触发口：execute 只报 key，去重与落库都在轮末（见 moduleQueue）

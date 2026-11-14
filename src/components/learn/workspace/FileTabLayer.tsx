@@ -26,7 +26,7 @@ export interface FileTabLayerProps {
     groupId: string,
     tabId: string,
     target: 'self' | 'others' | 'right' | 'all',
-    opts?: { confirm?: boolean },
+    opts?: { confirm?: boolean; skipDirty?: boolean },
   ) => void
   openTab?: (ref: TabRef) => void
   setTabView: (tabId: string, view: 'source' | 'preview') => void
@@ -114,7 +114,7 @@ export const FileTabLayer = memo(function FileTabLayer({
                 setTabView(tab.id, 'source')
               }}
               onCloseTab={(force) => closeTab(groupId, tab.id, 'self', { confirm: !force })}
-              onCloseOtherTabs={(force) => closeTab(groupId, tab.id, 'others', { confirm: !force })}
+              onCloseOtherTabs={(force, opts) => closeTab(groupId, tab.id, 'others', { confirm: !force, skipDirty: opts?.skipDirty })}
               onNewTab={() => openTab?.({ kind: 'draft', key: newDraftKey() })}
               onToast={onToast}
             />

@@ -1,4 +1,4 @@
-import type { KnowledgeNode, NoteFile } from './types'
+import type { KnowledgeNode, LearnStore, NoteFile } from './types'
 import { allocate } from './segments'
 
 /**
@@ -124,4 +124,55 @@ export function appendNoteIn(
   }
   const body = target.content ? target.content.replace(/\s+$/, '') + '\n\n' + chunk : chunk
   return { node: writeNoteIn(node, target.name, body, at) ?? node, name: target.name }
+}
+
+/**
+ * 给一份笔记落总结（画布笔记卡右键「生成总结」的写入口）。
+ *
+ * 按 **uuid** 找笔记——笔记实体两处住：绑定的在宿主节点的 notes 里、剪了线的在游离池
+ * （store.detached，见 types 的 DetachedPool），两处都要认。找得到就原位落 `summary`
+ * 字段（≤200 字，生成侧已截），**不动 updatedAt**——总结是给卡片看的注脚，
+ * 不是一次正文编辑，不该搅动「最近改过」的排序。
+ * 找不到（笔记被删）返回 null，调用方据此回一句「已经不在了」。
+ */
+export function writeNoteSummary(store: LearnStore, noteId: string, summary: string): LearnStore | null {
+  const clean = summary.trim()
+  if (!clean) return null
+  const hit = store.nodes.find((n) => (n.notes ?? []).some((x) => x.id === noteId))
+  if (hit) {
+    return {
+      ...store,
+      nodes: store.nodes.map((n) =>
+        n.id === hit.id
+          ? { ...n, notes: (n.notes ?? []).map((x) => (x.id === noteId ? { ...x, summary: clean } : x)) }
+          : n,
+      ),
+    }
+  }
+  if (store.detached) {
+    for (const [goalId, pool] of Object.entries(store.detached)) {
+      if (!pool.notes.some((x) => x.id === noteId)) continue
+      return {
+        ...store,
+        detached: {
+          ...store.detached,
+          [goalId]: { ...pool, notes: pool.notes.map((x) => (x.id === noteId ? { ...x, summary: clean } : x)) },
+        },
+      }
+    }
+  }
+  return null
+}
+
+/** 按 uuid 找一份笔记（宿主节点上或游离池两处都认）；找不到返回 null */
+export function noteById(store: LearnStore, noteId: string): NoteFile | null {
+  for (const n of store.nodes) {
+    const hit = (n.notes ?? []).find((x) => x.id === noteId)
+    if (hit) return hit
+  }
+  for (const pool of Object.values(store.detached ?? {})) {
+    const hit = pool.notes.find((x) => x.id === noteId)
+    if (hit) return hit
+  }
+  return null
 }

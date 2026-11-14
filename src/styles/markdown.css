@@ -318,3 +318,40 @@
   }
 }
 
+/* ---------- 记忆模式（DocFloat 的记忆模式按钮，见 note/useMemoryMode） ----------
+   正文由 Intl.Segmenter 切成 2~4 词的词组片，按范围平均随机盖住其中若干片：
+   .moji-mem-word 文字透明 + 纸色底把原文藏起来，:hover 揭示——遮住部分自测回忆。
+   代码块不切词，整块盖（data-memory-cover 伪元素）。 */
+.note-preview.moji-memory-on .moji-mem-word {
+  background: var(--color-paper, #17150f);
+  color: transparent;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-seal, #38bdf8) 20%, transparent);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.note-preview.moji-memory-on .moji-mem-word:hover {
+  background: transparent;
+  color: inherit;
+}
+
+.note-preview.moji-memory-on [data-memory-cover] {
+  position: relative;
+}
+
+.note-preview.moji-memory-on [data-memory-cover]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: 3px;
+  background: var(--color-paper, #17150f);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-seal, #38bdf8) 22%, transparent);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.note-preview.moji-memory-on [data-memory-cover]:hover::after {
+  opacity: 0;
+}

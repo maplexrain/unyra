@@ -44,6 +44,8 @@ export interface NodePart {
   id?: string
   format: 'markdown' | 'json' | 'html'
   body: unknown
+  /** 笔记总结（≤200 字，节点宇宙的笔记卡展示用）；没生成过就没有 */
+  summary?: string
   createdAt?: number
   updatedAt?: number
 }
@@ -95,6 +97,7 @@ export function partsOfNode(node: KnowledgeNode, exams: readonly Exam[]): NodePa
       name: note.name,
       format: 'markdown',
       body: note.content,
+      ...(note.summary ? { summary: note.summary } : {}),
       createdAt: note.createdAt,
       updatedAt: note.updatedAt,
     })
@@ -161,6 +164,7 @@ export function contentOfParts(parts: readonly NodePart[], base: { createdAt: nu
           id: typeof part.id === 'string' && part.id ? part.id : crypto.randomUUID(),
           name,
           content: typeof part.body === 'string' ? part.body : '',
+          ...(typeof part.summary === 'string' && part.summary ? { summary: part.summary } : {}),
           createdAt: at(part.createdAt) || base.createdAt,
           updatedAt: at(part.updatedAt) || at(part.createdAt) || base.updatedAt,
         })

@@ -13,6 +13,7 @@ public class ScreenHelper {
     private const int WM_KEYDOWN = 0x0100;
     private const int WM_SYSKEYDOWN = 0x0104;
     private const int SRCCOPY = 0x00CC0020;
+    private const uint WM_INPUTLANGCHANGEREQUEST = 0x0050;
     private static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = (IntPtr)(-4);
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -96,6 +97,18 @@ public class ScreenHelper {
     [DllImport("gdi32.dll")]
     public static extern bool DeleteObject(IntPtr hObject);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetKeyboardLayout(uint idThread);
+
+    [DllImport("user32.dll")]
+    private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
     [DllImport("gdi32.dll")]
     public static extern bool BitBlt(IntPtr hdcDest, int nXDest, int nYDest, int nWidth, int nHeight, IntPtr hdcSrc, int nXSrc, int nYSrc, int dwRop);
 
@@ -150,6 +163,10 @@ public class ScreenHelper {
                     string json = GetWindowsJson();
                     Console.WriteLine("WINJSON:" + json);
                     Console.Out.Flush();
+                } else if (line == "IME_GET") {
+                    HandleImeGet();
+                } else if (line.StartsWith("IME_SET ")) {
+                    HandleImeSet(line.Substring(8).Trim());
                 } else if (line == "EXIT") {
                     Environment.Exit(0);
                 }
@@ -184,6 +201,58 @@ public class ScreenHelper {
             if (vkCode == 0x70) { /* VK_F1: 快速唤出截图 */ Console.WriteLine("TRIGGER"); Console.Out.Flush(); }
         }
         return CallNextHookEx(_hookID, nCode, wParam, lParam);
+    }
+
+    /// <summary>
+    /// 读回**前台窗口所在线程**当前的键盘布局（HKL）。认前台而不是自己：
+    /// 助手是被隐藏的子进程，此刻持有焦点的是宿主（归一）窗口——vim 输入法自动切换
+    /// 就靠它记住「进普通模式前用户用的哪套输入法」。
+    /// </summary>
+    private static void HandleImeGet() {
+        try {
+            IntPtr hwnd = GetForegroundWindow();
+            if (hwnd == IntPtr.Zero) {
+                Console.WriteLine("IME_ERR:NoForegroundWindow");
+                Console.Out.Flush();
+                return;
+            }
+            uint pid;
+            uint tid = GetWindowThreadProcessId(hwnd, out pid);
+            IntPtr hkl = tid != 0 ? GetKeyboardLayout(tid) : IntPtr.Zero;
+            if (hkl == IntPtr.Zero) {
+                Console.WriteLine("IME_ERR:NoLayout");
+                Console.Out.Flush();
+                return;
+            }
+            Console.WriteLine("IME:" + (hkl.ToInt64() & 0xFFFFFFFFL).ToString());
+            Console.Out.Flush();
+        } catch (Exception ex) {
+            Console.WriteLine("IME_ERR:" + ex.Message);
+            Console.Out.Flush();
+        }
+    }
+
+    /// <summary>
+    /// 给前台窗口换键盘布局（WM_INPUTLANGCHANGEREQUEST）：切到英文直通（0x04090409）
+    /// 或恢复之前记下的那枚 HKL。异步投递即刻应答——布局装没装成功由上层 IME_GET 复核，
+    /// 没装这份布局时系统会忽略请求（无害）。
+    /// </summary>
+    private static void HandleImeSet(string value) {
+        try {
+            long hkl = long.Parse(value.Trim());
+            IntPtr hwnd = GetForegroundWindow();
+            if (hwnd == IntPtr.Zero) {
+                Console.WriteLine("IME_ERR:NoForegroundWindow");
+                Console.Out.Flush();
+                return;
+            }
+            PostMessage(hwnd, WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, (IntPtr)hkl);
+            Console.WriteLine("IME_OK");
+            Console.Out.Flush();
+        } catch (Exception ex) {
+            Console.WriteLine("IME_ERR:" + ex.Message);
+            Console.Out.Flush();
+        }
     }
 
     private static void HandleSnap(string param) {

@@ -1,10 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { markdownEditorTheme, IDEA_MONO_FONT } from '../src/lib/cmMarkdown'
 import { smoothCursor } from '../src/lib/cmSmoothCursor'
-import { sisterTabRef, openSisterDocView } from '../src/components/learn/workspace/sisterView'
 import { tabTitle, makeTab } from '../src/learn/tabs'
-import type { LearnStore, TabRef } from '../src/learn/types'
-import type { DocWorkspace } from '../src/learn/groups/types'
 
 describe('编辑器行号样式与代码折叠配置', () => {
   it('配置了 IntelliJ IDEA 风格等宽字体栈与编辑器主题', () => {
@@ -37,94 +34,61 @@ describe('HTML 预览沙箱脚本剔除逻辑', () => {
   })
 })
 
-describe('源码与预览独立页面与对偶分屏 (sisterView)', () => {
-  const localRef: TabRef = { kind: 'local', path: 'C:/docs/README.md' }
-
-  it('为 Markdown 文件生成独立的对偶视图 TabRef', () => {
-    const previewSister = sisterTabRef(localRef, 'preview')
-    expect(previewSister).toEqual({ kind: 'local', path: 'C:/docs/README.md', view: 'preview' })
-
-    const sourceSister = sisterTabRef(previewSister!, 'source')
-    expect(sourceSister).toEqual({ kind: 'local', path: 'C:/docs/README.md', view: 'source' })
+describe('页签合并：同一份文档只有一枚页签（阅读/编辑是页面内的两种模式）', () => {
+  it('页签身份不再带视图后缀，视图只住在页签上（LearnTab.view）', () => {
+    const editing = makeTab({ kind: 'local', path: 'C:/docs/README.md' }, 100, 'source')
+    const reading = makeTab({ kind: 'local', path: 'C:/docs/README.md' }, 101, 'preview')
+    // 同一个 ref 无论带哪种视图，身份都是同一枚页签——不再有「对偶页签」
+    expect(editing.id).toBe('l:C:/docs/README.md')
+    expect(reading.id).toBe(editing.id)
+    expect(editing.view).toBe('source')
+    expect(reading.view).toBe('preview')
+    // 标题也不再拼 (源码)/(预览) 后缀：模式由左侧按钮组与页面本身表达
+    expect(tabTitle(editing.ref, () => 'README.md')).toBe('README.md')
+    expect(tabTitle(reading.ref, () => 'README.md')).toBe('README.md')
   })
 
-  it('源码与预览具有独立的 tabKey 与标题后缀，支持分屏独立共存', () => {
-    const sourceTab = makeTab({ kind: 'local', path: 'C:/docs/README.md', view: 'source' }, 100)
-    const previewTab = makeTab({ kind: 'local', path: 'C:/docs/README.md', view: 'preview' }, 101)
-
-    expect(sourceTab.id).toBe('l:C:/docs/README.md:source')
-    expect(previewTab.id).toBe('l:C:/docs/README.md:preview')
-    expect(sourceTab.id).not.toBe(previewTab.id)
-
-    const sTitle = tabTitle(sourceTab.ref, () => 'README.md')
-    const pTitle = tabTitle(previewTab.ref, () => 'README.md')
-    expect(sTitle).toContain('README.md')
-    expect(pTitle).toContain('README.md')
-    expect(pTitle).toContain('预览')
-  })
-
-  it('不可预览的代码文件（如 .ts）不生成预览对偶视图', () => {
-    const tsRef: TabRef = { kind: 'local', path: 'C:/src/main.ts' }
-    const sister = sisterTabRef(tsRef, 'preview')
-    expect(sister).toBeNull()
-  })
-
-  it('点击切换编辑页面/浏览页面时，不开分屏，直接在当前 tab 组打开并跳转', () => {
-    const initialTab = makeTab({ kind: 'local', path: 'C:/docs/README.md', view: 'source' }, 100)
-    const docArea: DocWorkspace = {
-      layout: { kind: 'group', group: 'g1' },
-      groups: [{ id: 'g1', tabs: [initialTab], active: initialTab.id }],
-      focus: 'g1',
+  it('旧 state.json 的对偶页签读盘合并成一枚，激活指针按旧 id 迁移、视图保留', async () => {
+    const { normalizeDocs } = await import('../src/learn/groups/normalize')
+    const { normalizeTab } = await import('../src/learn/store/normalize/tabs')
+    const byId = new Map()
+    /** 与 normalize/index.ts 同一套迁移桥：normalizeTab 重算 id 时记下 旧 id → 新 id */
+    const legacyTabIds = new Map<string, string>()
+    const tabOf = (raw: unknown) => {
+      const t = normalizeTab(raw, byId)
+      if (t && raw && typeof raw === 'object') {
+        const old = (raw as { id?: unknown }).id
+        if (typeof old === 'string' && old && old !== t.id) legacyTabIds.set(old, t.id)
+      }
+      return t
     }
-    const store: LearnStore = {
-      goals: [],
-      docArea,
-      drafts: {},
-    } as unknown as LearnStore
-
-    let updatedStore: LearnStore | null = null
-    const setStore = (s: LearnStore) => {
-      updatedStore = s
-    }
-
-    openSisterDocView(store, initialTab, 'preview', 'g1', setStore)
-
-    expect(updatedStore).not.toBeNull()
-    const resultDocs = (updatedStore as unknown as LearnStore).docArea
-    // 严格不开分屏：group 数量始终保持为 1，直接在当前组 g1 中打开并激活
-    expect(resultDocs.groups.length).toBe(1)
-    const g1 = resultDocs.groups[0]
-    expect(g1.tabs.some((t) => t.id === 'l:C:/docs/README.md:preview')).toBe(true)
-    expect(g1.active).toBe('l:C:/docs/README.md:preview')
-  })
-
-  it('当前组内已存在对偶页签时，直接激活当前组该页签并跳转', () => {
-    const initialTab = makeTab({ kind: 'local', path: 'C:/docs/README.md', view: 'source' }, 100)
-    const sisterTab = makeTab({ kind: 'local', path: 'C:/docs/README.md', view: 'preview' }, 101)
-    const docArea: DocWorkspace = {
-      layout: { kind: 'group', group: 'g1' },
-      groups: [
-        { id: 'g1', tabs: [initialTab, sisterTab], active: initialTab.id },
-      ],
-      focus: 'g1',
-    }
-    const store: LearnStore = {
-      goals: [],
-      docArea,
-      drafts: {},
-    } as unknown as LearnStore
-
-    let updatedStore: LearnStore | null = null
-    const setStore = (s: LearnStore) => {
-      updatedStore = s
-    }
-
-    openSisterDocView(store, initialTab, 'preview', 'g1', setStore)
-
-    expect(updatedStore).not.toBeNull()
-    const resultDocs = (updatedStore as unknown as LearnStore).docArea
-    expect(resultDocs.groups.length).toBe(1)
-    expect(resultDocs.groups[0].active).toBe(sisterTab.id)
+    const docs = normalizeDocs(
+      {
+        groups: [
+          {
+            id: 'g1',
+            // 对偶页签时代：同一份 md 开了两枚页签（源码 + 预览），用户停在阅读那枚
+            tabs: [
+              { id: 'l:C:/docs/README.md:source', ref: { kind: 'local', path: 'C:/docs/README.md', view: 'source' }, createdAt: 1 },
+              { id: 'l:C:/docs/README.md:preview', ref: { kind: 'local', path: 'C:/docs/README.md', view: 'preview' }, createdAt: 2 },
+            ],
+            active: 'l:C:/docs/README.md:preview',
+          },
+        ],
+        focus: 'g1',
+      },
+      {},
+      tabOf,
+      (id) => legacyTabIds.get(id),
+    )
+    const g1 = docs.groups[0]
+    // 两枚对偶页签撞成同一枚（同 id 只认第一次）
+    expect(g1.tabs).toHaveLength(1)
+    expect(g1.tabs[0].id).toBe('l:C:/docs/README.md')
+    // 用户停在阅读态那枚（active 指向它），它的视图活下来——升级后还在读那页
+    expect(g1.tabs[0].view).toBe('preview')
+    // 激活指针按旧 id 迁移到合并后的页签——升级后停在哪枚页签由迁移决定，不落到「最后一个」
+    expect(g1.active).toBe('l:C:/docs/README.md')
   })
 })
 
@@ -425,7 +389,7 @@ set tabstop=4
       Vim.handleEx(mockCm as any, 'q')
       expect(closed).toBe(true)
 
-      // 验证全面扩充的命令：:q! 强制关闭、:tabo 关闭其他、:sp 水平分屏、:vs 垂直分屏、:tutor 学习
+      // 验证全面扩充的命令：:q! 强制关闭、:tabo 关闭其他、:sp/:vs 展开分栏预览
       let forceClosed = false
       let closedOthers = false
       let newTabTriggered = false
@@ -460,42 +424,10 @@ set tabstop=4
       Vim.handleEx(mockCm as any, 'vs')
       expect(splitDir).toBe('vertical')
 
-      const { isVimTutorOpen, closeVimTutor } = await import('../src/lib/vimTutorState')
-      closeVimTutor()
-      expect(isVimTutorOpen()).toBe(false)
-      Vim.handleEx(mockCm as any, 'tutor')
-      expect(isVimTutorOpen()).toBe(true)
-      closeVimTutor()
-
       setVimEditorBridge(null)
     } finally {
       ;(globalThis as any).document = origDoc
     }
-  })
-
-  it('Vim 教学关卡配置完整且闯关状态机正常工作', async () => {
-    const { VIM_TUTOR_LEVELS } = await import('../src/components/learn/vim/vimTutorLevels')
-    expect(VIM_TUTOR_LEVELS.length).toBeGreaterThanOrEqual(7)
-    expect(VIM_TUTOR_LEVELS[0].title).toContain('方向之魂')
-    expect(VIM_TUTOR_LEVELS[1].title).toContain('疾步如飞')
-    expect(VIM_TUTOR_LEVELS[6].title).toContain('寻踪觅影')
-    expect(VIM_TUTOR_LEVELS[6].goalText).toContain('n 键')
-
-    const { openVimTutor, closeVimTutor, isVimTutorOpen, subscribeVimTutor } = await import(
-      '../src/lib/vimTutorState'
-    )
-    let notified = false
-    const unsub = subscribeVimTutor((open) => {
-      notified = open
-    })
-    openVimTutor()
-    expect(isVimTutorOpen()).toBe(true)
-    expect(notified).toBe(true)
-
-    closeVimTutor()
-    expect(isVimTutorOpen()).toBe(false)
-    expect(notified).toBe(false)
-    unsub()
   })
 
   it('markdownEditorTheme 正确定义了水平居中垂直顶部悬浮的 Vim 命令卡片', async () => {

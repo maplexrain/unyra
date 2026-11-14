@@ -32,6 +32,7 @@ import {
   subscribeRevealRequest,
 } from './explorer/reveal'
 import { notifyWsChanged } from './explorer/wsChanges'
+import { setExplorerToggleHandler } from '../../lib/explorerFocus'
 import { native, isWeb } from '../../lib/native'
 import SystemAudioWave from './SystemAudioWave'
 import { useSidebarWidth } from './explorer/useSidebarWidth'
@@ -117,7 +118,6 @@ interface Props {
   docs: NodeDocActions
   /** 考试那一侧的动作（原先都在文档区悬浮组的「试卷」tip 里） */
   exams: ExamActions
-  onOpenEssay?: () => void
   onOpenSchedule?: () => void
   onOpenSettings?: () => void
   onOpenFind?: () => void
@@ -156,7 +156,6 @@ function ExplorerSidebarComponent({
   favoriteTitleOf,
   docs,
   exams,
-  onOpenEssay: _onOpenEssay,
   onOpenSchedule: _onOpenSchedule,
   onOpenSettings,
   onOpenFind: _onOpenFind,
@@ -186,6 +185,25 @@ function ExplorerSidebarComponent({
       return val
     })
   }
+
+  /*
+   * :resources 冒号命令的切换把手（见 lib/explorerFocus）：命令在 lib 层喊一声，
+   * 这里把「窄条 ↔ 完整栏」的切换动作递过去，并把切换后的状态报回去（提示要能说清是展开还是收起）。
+   * collapsedBar 用 ref 镜像：登记只做一次，回调读到的是镜像而不是旧渲染的 state
+   * （与 useExamBridge 的 liveRef 同一路数）。
+   */
+  const collapsedRef = useRef(collapsedBar)
+  useEffect(() => {
+    collapsedRef.current = collapsedBar
+  })
+  useEffect(() => {
+    setExplorerToggleHandler(() => {
+      const next = !collapsedRef.current
+      toggleCollapsed(next)
+      return next
+    })
+    return () => setExplorerToggleHandler(null)
+  }, [])
 
   const currentWidth = collapsedBar ? 48 : width
 

@@ -11,25 +11,15 @@ import {
 import MarkdownView from '../../MarkdownView'
 import { renderNoteGfm } from '../../../lib/markdown'
 import { t } from '../../../i18n'
-
-/**
- * 实时分栏预览开关事件广播（支持 Vim :preview 冒号命令与快捷键一键唤起）
- */
-type PreviewToggleListener = (forceState?: boolean) => void
-const previewListeners = new Set<PreviewToggleListener>()
-
-export function toggleEditorPreview(forceState?: boolean): void {
-  for (const listener of previewListeners) {
-    listener(forceState)
-  }
-}
-
-export function subscribeEditorPreview(listener: PreviewToggleListener): () => void {
-  previewListeners.add(listener)
-  return () => {
-    previewListeners.delete(listener)
-  }
-}
+import { subscribeEditorPreview, subscribeEditorPreviewSwap } from './previewBus'
+import {
+  useAppearance,
+  getAppearance,
+  setAppearance,
+  clampDocScale,
+  SCALE_ZOOM_STEP,
+  SCALE_HUD_MS,
+} from '../../../lib/appearance'
 
 /**
  * 编辑栏光标同步上下文：编辑栏光标移动时驱动预览画面精准跟随对齐
@@ -49,9 +39,10 @@ function loadPreviewState(key?: string): PreviewState {
   if (key && memoryState.has(key)) {
     return memoryState.get(key)!
   }
-  if (typeof sessionStorage !== 'undefined' && key) {
+  // localStorage：跨重启持久化（用户口径：分栏的开合/比例/对调关掉应用再开还原样）
+  if (typeof localStorage !== 'undefined' && key) {
     try {
-      const raw = sessionStorage.getItem(`moji:split-preview:${key}`)
+      const raw = localStorage.getItem(`moji:split-preview:${key}`)
       if (raw) {
         const parsed = JSON.parse(raw) as PreviewState
         memoryState.set(key, parsed)
@@ -61,20 +52,66 @@ function loadPreviewState(key?: string): PreviewState {
       // 忽略容错
     }
   }
-  // 默认打开分栏实时预览
+  // 默认打开分栏实时预览（笔记 / markdown / html 默认编辑 + 分栏展开，见 tabs 的 viewOf）
   return { isOpen: true, splitRatio: 50, isSwapped: false }
 }
 
 function savePreviewState(key: string | undefined, state: PreviewState): void {
   if (!key) return
   memoryState.set(key, state)
-  if (typeof sessionStorage !== 'undefined') {
+  if (typeof localStorage !== 'undefined') {
     try {
-      sessionStorage.setItem(`moji:split-preview:${key}`, JSON.stringify(state))
+      localStorage.setItem(`moji:split-preview:${key}`, JSON.stringify(state))
     } catch {
       // 忽略
     }
   }
+}
+
+/**
+ * HTML 预览的常驻 iframe。首挂用 srcDoc 装载一次；之后的修改**不走 srcDoc**
+ * （它一动就是一次导航重载，逐字输入时预览整页闪白）——而是停手 400ms 后把
+ * 最新文档 doc.write 进既有的 iframe 文档：同步的 DOM 整体替换，没有导航、
+ * 没有白屏等待，闪烁就没了。
+ */
+function HtmlPreviewFrame({ html }: { html: string }) {
+  const frameRef = useRef<HTMLIFrameElement | null>(null)
+  /** 首挂装的那一份（srcDoc 只在挂载时生效一次） */
+  const [bootHtml, setBootHtml] = useState(html)
+  const latestRef = useRef(html)
+  const firstRunRef = useRef(true)
+  useEffect(() => {
+    latestRef.current = html
+  })
+  useEffect(() => {
+    // 挂载那次跳过（bootHtml 已经是同一份），只盯后续的修改
+    if (firstRunRef.current) {
+      firstRunRef.current = false
+      return
+    }
+    const t = window.setTimeout(() => {
+      const doc = frameRef.current?.contentDocument
+      if (!doc) return
+      try {
+        doc.open()
+        doc.write(latestRef.current)
+        doc.close()
+      } catch {
+        // 同源拿不到文档（兜底）：退回 srcDoc 重载
+        setBootHtml(latestRef.current)
+      }
+    }, 400)
+    return () => window.clearTimeout(t)
+  }, [html])
+  return (
+    <iframe
+      ref={frameRef}
+      srcDoc={bootHtml}
+      title={t('HTML 实时预览')}
+      sandbox="allow-same-origin"
+      className="h-full w-full border-none bg-white dark:bg-card"
+    />
+  )
 }
 
 interface Props {
@@ -132,12 +169,20 @@ export default function LiveSplitPreview({
     savePreviewState(storageKey, { isOpen, splitRatio, isSwapped })
   }, [storageKey, isOpen, splitRatio, isSwapped])
 
-  // 订阅 Vim :preview 命令与全局切换广播
+  // 订阅 Vim :preview 命令与全局切换广播；点名广播（key）只命中 storageKey 对得上的这一份
   useEffect(() => {
-    return subscribeEditorPreview((force) => {
+    return subscribeEditorPreview((force, key) => {
+      if (key !== undefined && key !== storageKey) return
       setIsOpen((prev) => (force !== undefined ? force : !prev))
     })
-  }, [setIsOpen])
+  }, [setIsOpen, storageKey])
+
+  // 订阅 :preview switch 的对调广播：翻转两列，落盘由下面那个同步 effect 顺带完成
+  useEffect(() => {
+    return subscribeEditorPreviewSwap(() => {
+      setIsSwapped((s) => !s)
+    })
+  }, [])
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const previewScrollRef = useRef<HTMLDivElement | null>(null)
@@ -220,24 +265,56 @@ export default function LiveSplitPreview({
     setIsSwapped((s) => !s)
   }
 
+  /*
+   * 预览列的字号缩放：**与阅读页面共用同一份 docScale**（外观设置里的那个），
+   * Ctrl + 滚轮调，步进与钳制同 lib/appearance 的一套——两处看到的倍速永远一致。
+   * Markdown 分支才有（HTML 分支是 iframe，没有可缩放的正文排版）。
+   */
+  const appearance = useAppearance()
+  const isMdPreview = ext !== '.html' && ext !== '.htm'
+  const [zoomHud, setZoomHud] = useState<number | null>(null)
+  const zoomTimerRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!isOpen || !isMdPreview) return
+    const el = previewScrollRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      // 与浏览页同一套折算：像素模式一格约 100，行模式一格约 3 行，触控板小步按比例
+      const unit = e.deltaMode === 1 ? 3 : 100
+      const notches = Math.max(-3, Math.min(3, -e.deltaY / unit))
+      if (!notches) return
+      const next = clampDocScale(getAppearance().docScale * SCALE_ZOOM_STEP ** notches)
+      setAppearance({ ...getAppearance(), docScale: next })
+      setZoomHud(Math.round(next * 100))
+      if (zoomTimerRef.current !== null) window.clearTimeout(zoomTimerRef.current)
+      zoomTimerRef.current = window.setTimeout(() => {
+        zoomTimerRef.current = null
+        setZoomHud(null)
+      }, SCALE_HUD_MS)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      if (zoomTimerRef.current !== null) {
+        window.clearTimeout(zoomTimerRef.current)
+        zoomTimerRef.current = null
+      }
+    }
+  }, [isOpen, isMdPreview])
+
   // 实时编译 Markdown 或 HTML 预览内容
   const previewContent = useMemo(() => {
     if (!isOpen) return null
 
     const isHtml = ext === '.html' || ext === '.htm'
     if (isHtml) {
-      // 剥离外链与脚本，安全渲染
+      // 剥离外链与脚本，安全渲染（增量替换见 HtmlPreviewFrame）
       const safeHtml = value
         .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
         .replace(/<link\b[^>]*\brel=["']?(?:modulepreload|preload)["']?[^>]*>/gi, '')
-      return (
-        <iframe
-          srcDoc={safeHtml}
-          title={t('HTML 实时预览')}
-          sandbox="allow-same-origin"
-          className="h-full w-full border-none bg-white dark:bg-card"
-        />
-      )
+      return <HtmlPreviewFrame html={safeHtml} />
     }
 
     // Markdown 实时渲染：套入 note-preview moji-node-note doc-measure 完整样式体系
@@ -246,13 +323,13 @@ export default function LiveSplitPreview({
       <div ref={previewScrollRef} className="h-full w-full min-h-0 overflow-y-auto overflow-x-hidden">
         <div
           className="note-preview moji-node-note doc-measure relative px-7 pt-4 pb-10"
-          style={{ '--doc-scale': 1 } as CSSProperties}
+          style={{ '--doc-scale': appearance.docScale } as CSSProperties}
         >
           <MarkdownView html={html} />
         </div>
       </div>
     )
-  }, [isOpen, value, ext])
+  }, [isOpen, value, ext, appearance.docScale])
 
   if (!isOpen) {
     return (
@@ -262,16 +339,15 @@ export default function LiveSplitPreview({
     )
   }
 
-  // 分配尺寸：对调时翻转比例
-  const effectiveRatio = isSwapped ? 100 - splitRatio : splitRatio
-
+  // 分配尺寸：比例跟着**栏**走——源码栏永远占 splitRatio%，预览栏占余下（对调只换位置不换宽窄，
+  // 「源码占比」这句注释在任何布局下都字面成立）
   const sourcePaneStyle = isVertical
-    ? { height: `${effectiveRatio}%`, width: '100%' }
-    : { width: `${effectiveRatio}%`, height: '100%' }
+    ? { height: `${splitRatio}%`, width: '100%' }
+    : { width: `${splitRatio}%`, height: '100%' }
 
   const previewPaneStyle = isVertical
-    ? { height: `${100 - effectiveRatio}%`, width: '100%' }
-    : { width: `${100 - effectiveRatio}%`, height: '100%' }
+    ? { height: `${100 - splitRatio}%`, width: '100%' }
+    : { width: `${100 - splitRatio}%`, height: '100%' }
 
   const sourcePane = (
     <div
@@ -296,6 +372,11 @@ export default function LiveSplitPreview({
       <div className="pointer-events-none absolute right-3 top-2.5 z-10 select-none rounded border border-line/60 bg-card/85 px-2 py-0.5 text-[10px] font-medium text-seal shadow-2xs backdrop-blur-xs">
         {t('实时对照预览')}
       </div>
+      {isMdPreview && zoomHud !== null && (
+        <div className="pointer-events-none absolute bottom-2.5 right-3 z-10 select-none rounded border border-line/60 bg-card/85 px-2 py-0.5 text-[11px] font-semibold text-seal shadow-2xs backdrop-blur-xs">
+          {zoomHud}%
+        </div>
+      )}
       {previewContent}
     </div>
   )
@@ -307,7 +388,8 @@ export default function LiveSplitPreview({
         isVertical ? 'flex-col' : 'flex-row'
       }`}
     >
-      {isSwapped ? previewPane : sourcePane}
+      {/* 默认**预览在左、编辑在右**（用户口径）；双击分割线 / :preview switch 对调两列 */}
+      {isSwapped ? sourcePane : previewPane}
 
       {/* 分割拖拽条（双击对调、鼠标拖拽调宽，全直角设计） */}
       <div
@@ -329,7 +411,7 @@ export default function LiveSplitPreview({
         />
       </div>
 
-      {isSwapped ? sourcePane : previewPane}
+      {isSwapped ? previewPane : sourcePane}
     </div>
   )
 }

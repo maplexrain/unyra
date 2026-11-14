@@ -128,10 +128,10 @@ describe('新建文件页签：保存那一刻换身（draft → local）', () =
     expect(docs.groups[0].tabs).toHaveLength(1)
   })
 
-  it('后缀决定它是什么类型：md 进预览、txt 进编辑', () => {
+  it('后缀决定它是什么类型：md/html 进编辑（分栏预览默认展开）、txt 进编辑', () => {
     const md: LearnTab = { id: 'l:/a/笔记.md', ref: { kind: 'local', path: '/a/笔记.md' }, createdAt: 1 }
     const txt: LearnTab = { id: 'l:/a/随手记.txt', ref: { kind: 'local', path: '/a/随手记.txt' }, createdAt: 1 }
-    expect(viewOf(md)).toBe('preview')
+    expect(viewOf(md)).toBe('source')
     expect(viewOf(txt)).toBe('source')
   })
 

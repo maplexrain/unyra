@@ -11,7 +11,7 @@ interface Params {
     groupId: string,
     tabId: string,
     mode: TabCloseMode,
-    opts?: { confirm?: boolean; closingIds?: string[] },
+    opts?: { confirm?: boolean; closingIds?: string[]; skipDirty?: boolean },
   ) => void
   openBlankTab: () => void
   toggleSide?: () => void
@@ -31,11 +31,15 @@ export function useVimGlobalTabOps({ getLatest, closeTab, openBlankTab, toggleSi
         if (!group?.active) return
         closeTab(group.id, group.active, 'self', { confirm: !force })
       },
-      closeOtherTabs: (force) => {
+      closeOtherTabs: (force, opts) => {
         const s = getLatest()
         const group = focusedGroup(s.docArea)
         if (!group?.active) return
-        closeTab(group.id, group.active, 'others', { confirm: !force })
+        closeTab(group.id, group.active, 'others', {
+          confirm: !force,
+          // 不带 ! 的 :tabo 跳过有未保存改动的页签（体验要平滑，不弹确认打断）
+          skipDirty: opts?.skipDirty,
+        })
       },
       newTab: () => {
         openBlankTab()

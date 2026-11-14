@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Eye, Volume2, VolumeX } from 'lucide-react'
+import { Volume2, VolumeX } from 'lucide-react'
 import { FileIcon } from '@react-symbols/icons/utils'
 import { DocTypeIcon, WebTabTypeIcon } from '../docTypes'
 import VimIcon from '../VimIcon'
@@ -73,14 +73,7 @@ export function TabTypeIcon({ tab, favicon, loading }: { tab: TabRef; favicon?: 
   // 网页页签的图标带活信息（转圈/站点图标，见 docTypes 的 WebTabTypeIcon）
   if (tab.kind === 'web') return <WebTabTypeIcon favicon={favicon} loading={loading} size={13} />
 
-  // 预览视图页签：统一展示 Eye 图标，与源码文件图标明确区分
-  if ('view' in tab && tab.view === 'preview') {
-    return (
-      <span aria-hidden="true" className="flex h-4 w-4 shrink-0 items-center justify-center text-seal/85" title={t('预览')}>
-        <Eye size={13} className="shrink-0" />
-      </span>
-    )
-  }
+  // 阅读态不再上图标：同一枚页签里阅读/编辑只是模式（左侧按钮组切换），页签图标只认文件类型
 
   // 外部文件、工作区文件或带后缀的文档，根据真实文件扩展名自动渲染对应语言/文件类型图标
   const fileName = resolveTabFileName(tab)

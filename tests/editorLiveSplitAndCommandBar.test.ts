@@ -6,14 +6,16 @@ import ConfirmDialog from '../src/components/ConfirmDialog'
 import {
   toggleEditorPreview,
   subscribeEditorPreview,
-} from '../src/components/learn/editor/LiveSplitPreview'
+  subscribeEditorPreviewSwap,
+} from '../src/components/learn/editor/previewBus'
 import {
   executeVimCommand,
   setVimEditorBridge,
   setGlobalTabOperations,
 } from '../src/lib/vimCommands'
 import { setAgentMessenger, setAgentToggleHandler } from '../src/lib/agentFocus'
-import { setVimPageOpener } from '../src/lib/vimTutorState'
+import { setExplorerToggleHandler } from '../src/lib/explorerFocus'
+import { setVimPageOpener } from '../src/lib/vimPage'
 import { viewOf, makeTab } from '../src/learn/tabs'
 
 describe('双栏实时对照预览 (LiveSplitPreview) 与 Vim :preview 命令', () => {
@@ -52,6 +54,26 @@ describe('双栏实时对照预览 (LiveSplitPreview) 与 Vim :preview 命令', 
     expect(triggered).toBe(true)
 
     unsub()
+  })
+
+  it(':preview switch 走对调广播，不触发开关广播', () => {
+    let swapped = 0
+    let toggles = 0
+    const unsubSwap = subscribeEditorPreviewSwap(() => {
+      swapped++
+    })
+    const unsubToggle = subscribeEditorPreview(() => {
+      toggles++
+    })
+
+    const res = executeVimCommand(':preview switch')
+    expect(res.success).toBe(true)
+    expect(res.message).toBe('[已对调编辑与预览位置]')
+    expect(swapped).toBe(1)
+    expect(toggles).toBe(0)
+
+    unsubSwap()
+    unsubToggle()
   })
 
   it('executeVimCommand 支持 :w, :q, :tabnew, :tabo, :sp, :vs 等常用指令', () => {
@@ -110,11 +132,13 @@ describe('双栏实时对照预览 (LiveSplitPreview) 与 Vim :preview 命令', 
 
     let closedOthers = false
     let forceUsed = false
+    let lastOpts: { skipDirty?: boolean } | undefined
 
     setGlobalTabOperations({
-      closeOtherTabs: (force) => {
+      closeOtherTabs: (force, opts) => {
         closedOthers = true
         forceUsed = !!force
+        lastOpts = opts
       },
     })
 
@@ -123,15 +147,45 @@ describe('双栏实时对照预览 (LiveSplitPreview) 与 Vim :preview 命令', 
     expect(resTabo.message).toBe('[已关闭其他页签]')
     expect(closedOthers).toBe(true)
     expect(forceUsed).toBe(false)
+    // 不带 ! 的 :tabo 跳过未保存的页签（不弹确认），由 closeTab 那头执行
+    expect(lastOpts).toEqual({ skipDirty: true })
 
-    // 强退模式 :tabo!
+    // 强退模式 :tabo!：不跳过，直接全关
     closedOthers = false
     const resTaboForce = executeVimCommand(':tabo!')
     expect(resTaboForce.success).toBe(true)
     expect(closedOthers).toBe(true)
     expect(forceUsed).toBe(true)
+    expect(lastOpts).toBeUndefined()
 
     setGlobalTabOperations(null)
+  })
+
+  it(':resources 切换资源管理器的展开 / 收起；没人接时回一句指路', () => {
+    // 模拟侧栏登记的切换把手：每喊一次翻转一次，返回切换后的展开状态
+    let expanded = true
+    setExplorerToggleHandler(() => {
+      expanded = !expanded
+      return expanded
+    })
+
+    // 展开 → 收起
+    const res1 = executeVimCommand(':resources')
+    expect(res1.success).toBe(true)
+    expect(res1.message).toBe('[资源管理器已收起]')
+    expect(expanded).toBe(false)
+
+    // :res 短写再切回来：收起 → 展开
+    const res2 = executeVimCommand(':res')
+    expect(res2.success).toBe(true)
+    expect(res2.message).toBe('[资源管理器已展开]')
+    expect(expanded).toBe(true)
+
+    // 侧栏不在场（纯阅读等场景）：有人喊没人接，回一句指路而不是装成功
+    setExplorerToggleHandler(null)
+    const resNone = executeVimCommand(':resources')
+    expect(resNone.success).toBe(false)
+    expect(resNone.message).toBe('[当前没有资源管理器]')
   })
 
   it('笔记 (kind: note) 默认打开编辑页面 (view: source)', () => {
@@ -263,28 +317,27 @@ describe('双栏实时对照预览 (LiveSplitPreview) 与 Vim :preview 命令', 
     container.remove()
   })
 
-  it('executeVimCommand :vim, :cheat, :tutor 支持打开 Vim 学习页面与命令大全', () => {
-    let openedSection: string | undefined = undefined
-    setVimPageOpener((sec) => {
-      openedSection = sec
+  it('executeVimCommand :vim, :cheat 打开 Vim 命令大全页签（闯关道场已删除，:tutor 成为未知命令）', () => {
+    let opened = 0
+    setVimPageOpener(() => {
+      opened++
     })
 
     // 1. :vim 打开命令大全
     const resVim = executeVimCommand(':vim')
     expect(resVim.success).toBe(true)
-    expect(openedSection).toBe('commands')
+    expect(opened).toBe(1)
 
     // 2. :cheat 打开命令大全
-    openedSection = undefined
     const resCheat = executeVimCommand(':cheat')
     expect(resCheat.success).toBe(true)
-    expect(openedSection).toBe('commands')
+    expect(opened).toBe(2)
 
-    // 3. :tutor 打开闯关道场
-    openedSection = undefined
+    // 3. :tutor 随闯关道场一并删除：落到未知命令
     const resTutor = executeVimCommand(':tutor')
-    expect(resTutor.success).toBe(true)
-    expect(openedSection).toBe('tutor')
+    expect(resTutor.success).toBe(false)
+    expect(resTutor.message).toContain('未知命令')
+    expect(opened).toBe(2)
 
     setVimPageOpener(null)
   })

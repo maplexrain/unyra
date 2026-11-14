@@ -353,7 +353,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       group: string,
       id: string,
       mode: TabCloseMode,
-      opts?: { confirm?: boolean; closingIds?: string[] },
+      opts?: { confirm?: boolean; closingIds?: string[]; skipDirty?: boolean },
     ) => {
       const s = getLatest()
       const g = groupOf(s.docArea, group)
@@ -361,6 +361,16 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       const r = closeTabs(g.tabs, id, mode, g.active, opts?.closingIds)
       const closingIds = g.tabs.filter((t) => !r.tabs.some((k) => k.id === t.id)).map((t) => t.id)
       const dirtyIds = closingIds.filter((tid) => s.drafts[tid] !== undefined)
+      /*
+       * skipDirty（:tabo 的平滑版）：有未保存改动的页签**跳过不关**，剩下的照常收掉。
+       * 打断式确认在批量关闭时很磨人——关 5 个页签弹一次窗，只为其中 1 个没保存的；
+       * 跳过它留下来的那一枚自己还看得见，要保存要放弃用户自己说了算。
+       */
+      if (dirtyIds.length && opts?.skipDirty) {
+        const keepIds = closingIds.filter((tid) => s.drafts[tid] === undefined)
+        if (keepIds.length) applyClose(group, id, mode, keepIds)
+        return
+      }
       if (dirtyIds.length && opts?.confirm !== false) {
         const names = dirtyIds.map((tid) => {
           const tab = g.tabs.find((t) => t.id === tid)
@@ -571,7 +581,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
          * 但保存是异步入口（快捷键随时可能按下），落后一拍时不能装作存进去了：
          * 那会让用户以为写住了，然后把暂存区里唯一的一份正文也清掉。
          */
-        if (tab.ref.kind === 'video' || tab.ref.kind === 'pluginDoc' || tab.ref.kind === 'sponsors' || tab.ref.kind === 'vim') {
+        if (tab.ref.kind === 'video' || tab.ref.kind === 'pluginDoc' || tab.ref.kind === 'sponsors' || tab.ref.kind === 'vim' || tab.ref.kind === 'guide') {
           // 这些页签不指向节点，也不参与文档保存：落到这里说明入口走错了，直接不存
           setDocSaving(false)
           return { ok: false, error: t('这个页签没有可保存的内容') }

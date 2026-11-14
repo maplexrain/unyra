@@ -65,7 +65,7 @@ export function useAgent(opts: {
   /** 说一句话（目前只有「附件没能转存」这类） */
   onNotice?: (message: string) => void
   /** 考试工具依赖；由工作区注入，按节点与阶段动态提供 */
-  examDeps?: (nodeId: string) => ExamToolDeps | undefined
+  examDeps?: (nodeId: string, wfParams?: Record<string, string | number>) => ExamToolDeps | undefined
   /** ui.* 与截图需要的能力（见 AgentUiDeps） */
   ui?: AgentUiDeps
   /**
@@ -286,6 +286,7 @@ export function useAgent(opts: {
         target,
         settings,
         agentSettings: entry.agentSettings,
+        wfParams,
         examDeps,
         afterNodeEdit: afterNodeEditRef.current,
         uiRef,

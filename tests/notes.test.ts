@@ -137,3 +137,47 @@ describe('写入正文', () => {
     expect(noteChars(note('笔记', '一 二\n三'))).toBe(3)
   })
 })
+
+describe('笔记总结的持久化（读盘逐字段重建不得剥掉 summary）', () => {
+  it('normalizeNode 读盘保留 NoteFile.summary；没生成过的没有这个字段', async () => {
+    const { normalizeNode } = await import('../src/learn/store/normalize/node')
+    const raw = {
+      id: 'n-mem',
+      title: '极限',
+      key: '极限',
+      goalId: 'g1',
+      status: 'learning',
+      origin: 'user',
+      createdAt: AT,
+      updatedAt: AT,
+      notes: [
+        { id: 'note-1', name: '错题本', content: '正文', summary: '极限的错题整理。', createdAt: AT, updatedAt: AT },
+        { id: 'note-2', name: '随笔', content: '没有总结的一份', createdAt: AT, updatedAt: AT },
+      ],
+    }
+    const node = normalizeNode(raw)
+    expect(node).not.toBeNull()
+    const kept = node!.notes.find((n) => n.id === 'note-1')
+    expect(kept?.summary).toBe('极限的错题整理。')
+    // 没生成过总结的笔记不该凭空长出空串字段
+    expect(node!.notes.find((n) => n.id === 'note-2')?.summary).toBeUndefined()
+  })
+
+  it('writeNoteSummary 落的总结再经 normalizeNode 读盘仍在（复现启动丢总结的回归）', async () => {
+    const { writeNoteSummary } = await import('../src/learn/notes')
+    const { normalizeNode } = await import('../src/learn/store/normalize/node')
+    const store = {
+      nodes: [node([{ id: 'note-1', name: '错题本', content: '正文', createdAt: AT, updatedAt: AT }])],
+      detached: undefined,
+    } as unknown as Parameters<typeof writeNoteSummary>[0]
+    const next = writeNoteSummary(store, 'note-1', '总结文本。')
+    expect(next).not.toBeNull()
+    const saved = next!.nodes[0].notes[0]
+    expect(saved.summary).toBe('总结文本。')
+    const reread = normalizeNode({
+      id: 'n1', title: '极限', key: '极限', goalId: 'g1', status: 'learning', origin: 'user',
+      createdAt: AT, updatedAt: AT, notes: [saved],
+    })
+    expect(reread?.notes[0].summary).toBe('总结文本。')
+  })
+})

@@ -130,6 +130,12 @@ export interface StructureCanvasProps {
   onGenerateDoc?: (nodeUuid: string, hint?: string) => void
   /** 文档卡右键菜单的「生成前置知识大纲」 */
   onGenerateOutline?: (docUuid: string) => void
+  /** 大纲卡右键菜单的「生成大纲导读」：为**大纲本体**写讲解（guide），导读页签当场打开 */
+  onGenerateOutlineGuide?: (outlineUuid: string) => void
+  /** 大纲卡右键菜单的「大纲导读」：打开已有的导读页签 */
+  onOpenOutlineGuide?: (outlineUuid: string) => void
+  /** 笔记卡右键菜单的「生成总结」：内部一次性补全（≤200 字），落在笔记卡上 */
+  onGenerateNoteSummary?: (noteId: string) => void
   /** 视频卡点「生成总览」：交给 AI 根据选集生成总览文档并挂在视频节点子级 */
   onGenerateVideoDoc?: (videoNodeUuid: string) => void
   /** 项目卡设置 / 修改路径（统一通道：走节点对象的 editContent，与 agent 同一条路）；拼法由路径推断 */
@@ -170,6 +176,9 @@ export const StructureCanvas = memo(function StructureCanvas({
   onUpdateVideoNode,
   onGenerateDoc,
   onGenerateOutline,
+  onGenerateOutlineGuide,
+  onOpenOutlineGuide,
+  onGenerateNoteSummary,
   onGenerateVideoDoc,
   onSetProjectPath,
   onOpenProjectFile,
@@ -460,6 +469,7 @@ export const StructureCanvas = memo(function StructureCanvas({
     onUpdateVideoNode,
     onOpenVideo,
     onOpenVideoNode,
+    onOpenOutlineGuide,
     onOpenFileNode,
     docs,
     exams,
@@ -815,6 +825,9 @@ export const StructureCanvas = memo(function StructureCanvas({
           onSetEntry={onSetEntry}
           report={report}
           onGenerateOutline={onGenerateOutline}
+          onGenerateOutlineGuide={onGenerateOutlineGuide}
+          onOpenOutlineGuide={onOpenOutlineGuide}
+          onGenerateNoteSummary={onGenerateNoteSummary}
           onOpenVideoNode={onOpenVideoNode}
           onOpenVideo={onOpenVideo}
           onGenerateVideoDoc={onGenerateVideoDoc}

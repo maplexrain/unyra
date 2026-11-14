@@ -77,6 +77,11 @@ export interface NoteFile {
   name: string
   /** Markdown 正文 */
   content: string
+  /**
+   * 笔记总结（可选，≤200 字）：给节点宇宙的笔记卡看的「这篇讲什么」。
+   * 只在画布笔记卡右键菜单点「生成总结」时由内部一次性补全生成（不走导师对话）。
+   */
+  summary?: string
   createdAt: number
   updatedAt: number
 }
@@ -152,6 +157,12 @@ export interface OutlineDoc {
   intro: string
   /** 直接子层级目标，顺序即学习顺序；只此一层（见上面的深度规矩） */
   children: OutlineEntry[]
+  /**
+   * 大纲导读（可选）：导师对**这份大纲本身**的讲解——这条线教什么、为什么这样分层排序、
+   * 每层衔接什么。大纲可以没有导读（agent 生成大纲时顺便写；节点菜单的「生成大纲导读」单独补）；
+   * 展示在只读的「大纲导读」页签里。
+   */
+  guide?: string
   updatedAt: number
 }
 
@@ -179,6 +190,8 @@ export interface OutlineEntity {
   /** 导语与目标项：形状与 OutlineDoc 相同（一层为止的规矩也相同） */
   intro: string
   children: OutlineEntry[]
+  /** 大纲导读（可选）：与附身大纲的 OutlineDoc.guide 同一口径 */
+  guide?: string
   createdAt: number
   updatedAt: number
 }

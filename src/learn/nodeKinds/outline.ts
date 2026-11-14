@@ -142,6 +142,7 @@ export class OutlineGNode extends GNode {
         '只写**直接子层级**，一层为止——「爷爷知道儿子的存在，但不知道孙子的存在」；孙辈由子目标自己的大纲负责。',
         '大纲是计划，不是落地：目标项长成文档 / 子大纲由学习者在画布上驱动（点目标项挂文档）。写大纲的这一轮不建节点。',
         'await n.content 读现状（null = 还没写过）；await n.editContent({ intro, children }) 整份覆盖，有旧的就整份重写，不要追加。',
+        '大纲导读（guide，可选）：对**这份大纲本身**的讲解（教什么、为何这样分层排序、每层衔接什么，200~400 字）。生成大纲时顺带在 editContent 里给上 guide；单独补写只传 { guide }，intro/children 原样不动。',
         ...(f?.kind === 'free' ? ['独立大纲的标题在 editContent 里给 title 字段即可改。'] : []),
       ].join('\n'),
       connection: [

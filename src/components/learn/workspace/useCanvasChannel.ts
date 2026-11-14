@@ -3,6 +3,9 @@ import type { DocView, FileNodeKind, KnowledgeNode, LearnStore, TabRef } from '.
 import { addConversation, nodeById, normalizeKey, removeEdge, resolveDisplayedConversation } from '../../../learn/graph'
 import { syncGoalOutlineTabs } from '../../../learn/groups'
 import { NodeService, docIdOfOutlineUuid, type GNodeKind } from '../../../learn/nodeKinds'
+import { outlineByMember } from '../../../learn/outline'
+import { noteById, writeNoteSummary } from '../../../learn/notes'
+import { generateNoteSummary } from '../../../learn/noteSummary'
 import type { StructureMap } from '../../../learn/structure'
 import { resolveProjectRoot } from '../../../learn/projects'
 import { examAttempted, type Exam } from '../../../learn/exam'
@@ -368,6 +371,112 @@ export function useCanvasChannel({
     [getLatest, set],
   )
 
+  /**
+   * 「生成大纲导读」（**大纲卡**右键菜单——导读生在大纲本体上，不是教学文档上）：
+   * 给已经写成的大纲补一段对它本身的讲解（guide，只写导读、不动 intro 与 children）。
+   * 规矩在「大纲导读」提示词模块里；只读的导读页签**当场打开**——生成过程中它跟着
+   * 写入更新，跑完就能看到。指名 = 右键的那一张卡（文档 uuid 或 o: 大纲 uuid 都认）。
+   */
+  const startOutlineGuide = useCallback(
+    (nodeId?: string) => {
+      if (!hasKey) {
+        onToast(t('生成大纲导读需要 AI，请先在设置中填写「{0}」的 API Key', providerName))
+        onOpenSettings()
+        return
+      }
+      if (!nodeId) return
+      const s = getLatest()
+      const outlineTarget = nodeId.startsWith('o:') ? nodeId : nodeById(s, nodeId) ? 'o:' + nodeId : null
+      if (!outlineTarget) {
+        onToast(t('没有找到这份大纲'))
+        return
+      }
+      const found = outlineByMember(s, outlineTarget)
+      if (!found) {
+        onToast(t('没有找到这份大纲'))
+        return
+      }
+      const outline = found.kind === 'attached' ? found.outline : found.entity
+      if (!outline || (!outline.intro.trim() && !outline.children.length)) {
+        onToast(t('这份大纲还没有内容，先生成大纲再写导读'))
+        return
+      }
+      const title = found.kind === 'attached' ? found.doc.title : found.entity.title
+      agent.runWorkflow('outline-guide', {
+        ...(found.kind === 'attached' ? { nodeId: found.docId } : {}),
+        params: { target: found.uuid },
+      })
+      openTab(
+        found.kind === 'attached'
+          ? { kind: 'guide', outlineId: found.docId }
+          : { kind: 'guide', outlineId: found.entity.id, goalId: found.entity.goalId },
+      )
+      onToast(t('已请导师撰写「{0}」的大纲导读', title))
+    },
+    [hasKey, providerName, onToast, onOpenSettings, getLatest, agent, openTab],
+  )
+
+  /** 打开一份大纲已有的导读页签（大纲卡右键菜单的「大纲导读」）；没有导读时说明一句 */
+  const openOutlineGuide = useCallback(
+    (outlineUuid: string) => {
+      const found = outlineByMember(getLatest(), outlineUuid)
+      if (!found) {
+        onToast(t('没有找到这份大纲'))
+        return
+      }
+      const guide = found.kind === 'attached' ? found.outline?.guide : found.entity.guide
+      if (!guide) {
+        onToast(t('这份大纲还没有导读——在它的大纲卡右键「生成大纲导读」补一份'))
+        return
+      }
+      openTab(
+        found.kind === 'attached'
+          ? { kind: 'guide', outlineId: found.docId }
+          : { kind: 'guide', outlineId: found.entity.id, goalId: found.entity.goalId },
+      )
+    },
+    [getLatest, onToast, openTab],
+  )
+
+  /**
+   * 「生成总结」（笔记卡右键菜单）：一份笔记的 ≤200 字内容总结，落在笔记卡的卡面上。
+   * 刻意不走导师对话——这是一次请求就答得完的活（内部一次性补全，见 learn/noteSummary）；
+   * 生成完原位落 NoteFile.summary，卡片随 store 更新。
+   */
+  const startNoteSummary = useCallback(
+    (noteId: string) => {
+      const note = noteById(getLatest(), noteId)
+      if (!note) {
+        onToast(t('这份笔记已经不在了'))
+        return
+      }
+      if (!note.content.trim()) {
+        onToast(t('这份笔记还是空的，没有可总结的内容'))
+        return
+      }
+      if (!hasKey) {
+        onToast(t('生成总结需要 AI，请先在设置中填写「{0}」的 API Key', providerName))
+        onOpenSettings()
+        return
+      }
+      onToast(t('正在总结「{0}」…', note.name))
+      void generateNoteSummary({ title: note.name, content: note.content })
+        .then((summary) => {
+          const next = writeNoteSummary(getLatest(), noteId, summary)
+          if (!next) {
+            onToast(t('这份笔记已经不在了'))
+            return
+          }
+          set(next)
+          onToast(t('「{0}」的总结已生成', note.name))
+        })
+        .catch((err: unknown) => {
+          onToast(err instanceof Error ? err.message : t('总结生成失败，稍后再试'))
+        })
+    },
+    [getLatest, set, onToast, hasKey, providerName, onOpenSettings],
+  )
+
   /** 画布统一通道（一个稳定对象：OutlinePane 按 referential equality 冻结比较） */
   const canvasChannel = useMemo(
     () => ({
@@ -383,6 +492,9 @@ export function useCanvasChannel({
       onRenameOutlineEntry: canvasRenameOutlineEntry,
       onGenerateDoc: generateDocForNode,
       onGenerateOutline: (docUuid: string) => startPrereqOutline(docUuid),
+      onGenerateOutlineGuide: startOutlineGuide,
+      onOpenOutlineGuide: openOutlineGuide,
+      onGenerateNoteSummary: startNoteSummary,
       // 视频卡的绑定 / 打开：绑定走节点的 editContent（与 agent 动手是同一条路），打开走 openTab 的组联动
       onBindVideo: (nodeUuid: string, videoId: string | null) => {
         const node = makeNodeService().get(nodeUuid)
@@ -470,7 +582,7 @@ export function useCanvasChannel({
       },
       onGenerateVideoDoc: (videoNodeUuid: string) => startVideoOverview(videoNodeUuid),
     }),
-    [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, canvasSetEntry, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, canvasRenameOutlineEntry, canvasDeleteOutlineEntry, generateDocForNode, startPrereqOutline, startVideoOverview, makeNodeService, openTab, getLatest, set, store, onToast],
+    [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, canvasSetEntry, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, canvasRenameOutlineEntry, canvasDeleteOutlineEntry, generateDocForNode, startPrereqOutline, startVideoOverview, startOutlineGuide, openOutlineGuide, startNoteSummary, makeNodeService, openTab, getLatest, set, store, onToast],
   )
 
   return { requestGenerateDoc, updateStructure, canvasChannel }

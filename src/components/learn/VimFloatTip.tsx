@@ -1,18 +1,20 @@
 import { useState } from 'react'
-import { FileCode, Gamepad2 } from 'lucide-react'
+import { BookOpen, FileCode, Languages } from 'lucide-react'
 import VimIcon from './VimIcon'
-import { openVimTutor } from '../../lib/vimTutorState'
+import { useVimImeSwitch } from '../../lib/imeSwitch'
+import { openVimPage } from '../../lib/vimPage'
 import { t } from '../../i18n'
 
 interface Props {
   enabled: boolean
   onToggle: () => void
   onOpenConfig: () => void
-  onOpenTutor?: () => void
 }
 
-export default function VimFloatTip({ enabled, onToggle, onOpenConfig, onOpenTutor }: Props) {
+export default function VimFloatTip({ enabled, onToggle, onOpenConfig }: Props) {
   const [openingConfig, setOpeningConfig] = useState(false)
+  // 输入法自动切换：进普通模式切回英文直通、回插入模式恢复原输入法（见 lib/imeSwitch）
+  const [imeAuto, setImeAuto] = useVimImeSwitch()
 
   const handleOpen = async () => {
     setOpeningConfig(true)
@@ -21,13 +23,6 @@ export default function VimFloatTip({ enabled, onToggle, onOpenConfig, onOpenTut
     } finally {
       setOpeningConfig(false)
     }
-  }
-
-  const handleTutor = () => {
-    if (onOpenTutor) {
-      onOpenTutor()
-    }
-    openVimTutor()
   }
 
   return (
@@ -71,20 +66,33 @@ export default function VimFloatTip({ enabled, onToggle, onOpenConfig, onOpenTut
           : t('未激活：标准现代编辑器光标与按键')}
       </div>
 
-      {/* 游戏化教学入口 */}
+      {/* 输入法自动切换：普通模式英文直通（不然忘了切输入法，j/k/dd 全被组词吃掉） */}
       <button
         type="button"
-        onClick={handleTutor}
-        className="mt-1 flex w-full items-center justify-between border border-line px-2.5 py-1.5 text-[11.5px] font-medium text-ink-soft transition hover:border-[#019833]/60 hover:bg-[#019833]/10 hover:text-ink-strong cursor-pointer"
+        onClick={() => setImeAuto(!imeAuto)}
+        className="mt-1 flex w-full items-center justify-between border border-line px-2.5 py-1.5 text-[11.5px] font-medium text-ink-soft transition hover:border-seal/60 hover:bg-seal/10 hover:text-ink-strong cursor-pointer"
       >
         <span className="flex items-center gap-1.5">
-          <Gamepad2 size={13} className="text-[#019833]" />
-          <span>{t('学习 Vim')}</span>
+          <Languages size={13} className={imeAuto ? 'text-seal' : 'text-ink-faint'} />
+          <span>{t('自动切换输入法')}</span>
         </span>
-        <span className="font-mono text-[10px] text-ink-faint">🎮 闯关试炼</span>
+        <span className="font-mono text-[10px] text-ink-faint">{imeAuto ? 'ON' : 'OFF'}</span>
       </button>
 
-      {/* 底部配置按钮 */}
+      {/* 命令大全入口：全量按键与 : 冒号命令的速查表（此前只有 :cheat 一条暗道，界面上找不到） */}
+      <button
+        type="button"
+        onClick={openVimPage}
+        className="mt-1 flex w-full items-center justify-between border border-line px-2.5 py-1.5 text-[11.5px] font-medium text-ink-soft transition hover:border-seal/60 hover:bg-seal/10 hover:text-ink-strong cursor-pointer"
+      >
+        <span className="flex items-center gap-1.5">
+          <BookOpen size={13} className="text-seal" />
+          <span>{t('命令大全')}</span>
+        </span>
+        <span className="font-mono text-[10px] text-ink-faint">:cheat</span>
+      </button>
+
+      {/* 配置文件按钮 */}
       <button
         type="button"
         disabled={openingConfig}

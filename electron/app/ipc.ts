@@ -27,6 +27,7 @@ import { pdfFooter, pdfPageSize, saveFilters } from './exportPdf'
 import type { ExportPdfPayload } from './exportPdf'
 import { getFocusedAppName } from './focusedApp'
 import { copyDataUrlToClipboard } from './clipboardHelper'
+import { queryImeViaHelper, setImeViaHelper } from './screenHelperHost'
 
 /* ---------- IPC ---------- */
 
@@ -67,6 +68,16 @@ export function registerIpc(): void {
   })
   // 启动时渲染层读一次存档（见 src/lib/uiLocale 的 loadUiLocale）
   ipcMain.handle('ui-locale:get', () => uiLocale())
+
+  /**
+   * 输入法自动切换（vim 的普通模式要英文直通，见 src/lib/imeSwitch）：
+   * 走常驻的 screenHelper（认**前台窗口**的键盘布局 HKL——就是宿主窗口自己），
+   * 读回/切换都只是投递；助手不在场（非 win32、WebUI）时回 null/false。
+   */
+  ipcMain.handle('ime:get', () => queryImeViaHelper())
+  ipcMain.handle('ime:set', (_e, hkl: unknown) =>
+    setImeViaHelper(typeof hkl === 'number' && Number.isFinite(hkl) ? hkl : 0),
+  )
 
   // 全局设置与本机文件读写（window.mojiNative.storage）
   registerStorageIpc()

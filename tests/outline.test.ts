@@ -123,6 +123,32 @@ describe('大纲：写入、对上号与落盘往返', () => {
     expect(node?.outline?.children[0].key).toBe('子目标甲')
   })
 
+  it('大纲导读（guide）：只带 guide 的写入不动 intro/children；重写大纲保留没给的导读', () => {
+    // 先写一份大纲，再单独补导读
+    const first = writeOutline(fixture(), 'n2', { intro: '路线', children: [{ title: '子目标甲', summary: '先学' }] }, NOW)
+    expect(first.ok).toBe(true)
+    // guide-only 写入：intro 与 children 原样保留
+    const guided = writeOutline(first.ok ? first.store : fixture(), 'n2', { guide: '这条线从极限讲到连续，先定直观再上定义。' }, NOW)
+    expect(guided.ok).toBe(true)
+    if (guided.ok) {
+      expect(guided.outline.guide).toBe('这条线从极限讲到连续，先定直观再上定义。')
+      expect(guided.outline.intro).toBe('路线')
+      expect(guided.outline.children.map((c) => c.title)).toEqual(['子目标甲'])
+    }
+    // 重写大纲（不带 guide）不抹掉已生成的导读；显式给空串才是清掉
+    const rewritten = writeOutline(guided.ok ? guided.store : fixture(), 'n2', { intro: '新路线', children: [{ title: '子目标乙', summary: '后学' }] }, NOW)
+    expect(rewritten.ok).toBe(true)
+    if (rewritten.ok) {
+      expect(rewritten.outline.guide).toBe('这条线从极限讲到连续，先定直观再上定义。')
+      expect(rewritten.outline.children.map((c) => c.title)).toEqual(['子目标乙'])
+    }
+    const cleared = writeOutline(rewritten.ok ? rewritten.store : fixture(), 'n2', { intro: '新路线', children: [{ title: '子目标乙', summary: '' }], guide: '' }, NOW)
+    expect(cleared.ok).toBe(true)
+    if (cleared.ok) expect(cleared.outline.guide).toBeUndefined()
+    // 还没有大纲就想只写导读：拒绝（导读讲的是计划，计划都没有讲什么）
+    expect(writeOutline(fixture(), 'n2', { guide: '空讲' }, NOW).ok).toBe(false)
+  })
+
   it('导语与子目标全空被拒；children 超过上限被拒；显式传 allowEmpty 允许清空所有目标项', () => {
     expect(writeOutline(fixture(), 'n2', { intro: '', children: [] }, NOW).ok).toBe(false)
     const allowed = writeOutline(fixture(), 'n2', { intro: '', children: [], allowEmpty: true }, NOW)

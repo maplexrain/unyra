@@ -20,7 +20,7 @@ export interface MemoryActionsDeps {
  * 根本没有归属这回事。
  *
  * 四个回调都是「纯函数 + set」：校验、上限、作用域搬家全在 learn/memory 里，
- * 界面只管把用户填的东西交下去（与 workflows / essays 同一套做法）。
+ * 界面只管把用户填的东西交下去（与 workflows 同一套做法）。
  */
 export function useMemoryActions({ getLatest, set }: MemoryActionsDeps) {
   const memoryCreate = (input: MemoryInput) => {

@@ -91,6 +91,13 @@ const TEACH_NODE_INSTRUCTION = ['## 使用「开讲」工作流。', '- 目标�
 const OUTLINE_INSTRUCTION = ['## 使用「生成大纲」工作流。', '- 目标节点: {{target}}'].join('\n')
 
 /**
+ * 「生成大纲导读」：大纲卡右键菜单的「生成大纲导读」触发——导读生在**大纲本体**上，
+ * 给已经写成的大纲补一段对它本身的讲解（guide）。规矩在「大纲导读」提示词模块里
+ * （随本工作流注入）：只写 guide、不动 intro 与 children。
+ */
+const OUTLINE_GUIDE_INSTRUCTION = ['## 使用「生成大纲导读」工作流。', '- 目标节点: {{target}}'].join('\n')
+
+/**
  * 「前置知识大纲」：文档卡右键菜单的「生成前置知识大纲」触发
  * （旧入口「画布拖一张空大纲卡接上游」已随占位卡一起退役）。
  *
@@ -115,7 +122,11 @@ const EXAM_INSTRUCTION = ['## 使用「出卷」工作流。', '- 目标节点: 
 /**
  * 「阅卷」：交卷后自动触发，判分并写错题讲解。
  */
-const GRADE_INSTRUCTION = ['## 使用「阅卷」工作流。', '- 目标节点: {{target}}', '- 作答记录: {{attemptId}}'].join('\n')
+const GRADE_INSTRUCTION = [
+  '## 使用「阅卷」工作流。',
+  '- 目标节点: {{target}}',
+  '- 作答记录: {{attemptId}}（判分与错题讲解时都带上这个 attemptId——判分进行中学习者可能又交了别的卷子，不带它就可能判错对象）',
+].join('\n')
 
 /**
  * 「超级实验室」：问清用户要什么实验/功能，然后生成一份可交互的超级文档。
@@ -157,13 +168,6 @@ type BuiltinDef = Omit<WorkflowRow, 'tier' | 'runnable' | 'createdAt' | 'updated
   runnable?: boolean
 }
 
-/** 内置工作流的定义：id 稳定（触发与校验都靠它），名字就是对话里的分界条文案。 */
-/**
- * 「随笔整理」：一次随笔提交之后，把**全部随笔**（按与上次的差异）统一整理进知识树的笔记。
- * 提交方（EssayDock 的提交按钮）已经把「提交历史 + 全部随笔相对上次的新增 / 修改 / 删除 /
- * 未变化清单」渲染进 {{feed}}——它不面向工作流列表。
- */
-const ESSAY_COMMIT_INSTRUCTION = ['## 使用「随笔整理」工作流。', '- 提交说明: {{message}}', '- 目标节点: {{target}}', '', '提交内容与历史（完整快照；与上次相比的增量标注在里面）：', '{{feed}}'].join('\n')
 
 /**
  * 「修复函数图像」：文档里一个 ```plot 渲染失败，点错误卡片上的扳手触发。
@@ -206,6 +210,18 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     // 交付物长在大纲页里（用户多半正盯着它）：只响一声铃、不抢主位
     prep: 'show',
     // 大纲规划要全局权衡层级
+  },
+  {
+    id: 'outline-guide',
+    name: '生成大纲导读',
+    description: '为一份已经写成的大纲补一段对它本身的讲解（guide，只写导读不动计划）',
+    instruction: OUTLINE_GUIDE_INSTRUCTION,
+    promptModule: 'outline-guide-method',
+    params: ['target'],
+    // 与生成大纲同一待遇：交付物长在导读页签里，只响铃不抢主位
+    prep: 'show',
+    // 只有画布菜单的触发口，不出现在导师的工作流清单里
+    runnable: false,
   },
   {
     id: 'video-overview',
@@ -308,17 +324,6 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     promptModule: 'browser',
     params: ['target'],
     // 全程看图干活：识别与决策都轻——快才是浏览效率
-  },
-  {
-    id: 'essay-commit',
-    name: '随笔整理',
-    description: '每次带上全部随笔，按与上次的差异（新增 / 修改 / 删除）统一整理进知识树对应节点的笔记',
-    instruction: ESSAY_COMMIT_INSTRUCTION,
-    // 历史与本次材料由「随笔」窗口的提交按钮补齐；从工作流列表空跑没有意义
-    promptModule: 'essay-commit',
-    params: ['target', 'message', 'feed'],
-    runnable: false,
-    // 归类、合并、改写都要判断，值得多想一会儿
   },
   {
     id: 'project-interpret',

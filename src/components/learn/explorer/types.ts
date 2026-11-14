@@ -68,8 +68,8 @@ export interface NodeDocActions {
 export interface ExamActions {
   /** 开考：开一个独立的考试窗口（正在考另一份时由上层提示） */
   onStart: (nodeId: string, examId: string) => void
-  /** 手动重跑「判分 + 讲解」：导师中途断了、或当时没配 Key，都靠它补 */
-  onGrade: (nodeId: string) => void
+  /** 手动重跑「判分 + 讲解」：导师中途断了、或当时没配 Key，都靠它补；examId 钉住阅卷对象（右键的是哪份判哪份） */
+  onGrade: (nodeId: string, examId?: string) => void
   /** 删除一份试卷（两档确认由上层弹） */
   onDelete: (exam: Exam) => void
   /** 打开一次作答的只读副本页签（卷子 + 作答 + 判分 + 错题讲解） */
