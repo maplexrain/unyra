@@ -41,6 +41,11 @@ export const VIM_COMMANDS: readonly VimCommandInfo[] = [
   { cmd: 'find', desc: '呼起查找面板' },
   { cmd: 'replace', desc: '呼起替换面板' },
   { cmd: 'cheat', aliases: ['ch', 'vim'], desc: '打开 Vim 命令大全' },
+  { cmd: 'edit', aliases: ['e'], desc: '将当前页面从浏览转为编辑模式（如果内容可编辑）' },
+  { cmd: 'browser', aliases: ['web'], desc: '打开一个新的浏览器页签，可携带 URL 参数' },
+  { cmd: 'fullscreen', aliases: ['fs', 'zen'], desc: '进入纯净阅读模式（全屏保留页签栏与正文）' },
+  { cmd: 'exitfullscreen', aliases: ['unfs', 'nozen'], desc: '退出纯净阅读模式' },
+  { cmd: 'open', aliases: ['o'], desc: '打开当前目标下的文件/页签/窗口（支持拼音匹配）' },
   { cmd: 'help', aliases: ['h'], desc: '显示常用命令帮助提示' },
 ]
 

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { executeVimCommand } from '../../../lib/vimCommands'
 import { setGlobalCommandBarOpener } from '../../../lib/commandBarFocus'
 import { matchVimCommands, type VimCommandInfo } from '../../../lib/vimCommandCatalog'
+import { getOpenTargets, type VimOpenTarget } from '../../../lib/vimOpenTargets'
+import VimOpenDropdown from './VimOpenDropdown'
 import { t } from '../../../i18n'
 
 /**
@@ -34,8 +36,17 @@ export default function GlobalVimCommandBar() {
     openRef.current = open
   }, [open])
 
+  /* ---------- :open / :o 目标搜索模式判断 ---------- */
+  const openMatch = value.match(/^(?:open|o)\s+(.*)$/i)
+  const isOpenMode = Boolean(openMatch)
+  const openQuery = openMatch ? openMatch[1] : ''
+  const openTargets = useMemo(() => {
+    if (!isOpenMode) return []
+    return getOpenTargets(openQuery)
+  }, [isOpenMode, openQuery])
+
   /* ---------- 前缀联想：候选与幽灵补全 ---------- */
-  const matches = useMemo(() => matchVimCommands(value), [value])
+  const matches = useMemo(() => (isOpenMode ? [] : matchVimCommands(value)), [isOpenMode, value])
   const [selected, setSelected] = useState(-1)
   /** 幽灵预览的目标项：方向键选中的那一个；没选过就看第一个候选 */
   const ghostIdx = selected >= 0 && selected < matches.length ? selected : matches.length ? 0 : -1
@@ -45,6 +56,7 @@ export default function GlobalVimCommandBar() {
    * 输入框里以「透明的已输前缀 + 淡色剩余」画在真实文字之上——对齐靠同一份字体。
    */
   const ghostText = (() => {
+    if (isOpenMode) return null
     if (!ghostItem || value.includes(' ') || value.length === 0) return null
     if (!ghostItem.cmd.toLowerCase().startsWith(value.toLowerCase())) return null
     if (ghostItem.cmd.length <= value.length) return null
@@ -168,13 +180,23 @@ export default function GlobalVimCommandBar() {
     }
 
     // 方向键在候选里走（幽灵预览跟着换）；有候选时拦住，别让光标跳到输入的头尾
-    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && matches.length > 0) {
-      e.preventDefault()
-      e.stopPropagation()
-      const down = e.key === 'ArrowDown'
-      const n = matches.length
-      setSelected((s) => (s < 0 ? (down ? 0 : n - 1) : (down ? s + 1 : s - 1 + n) % n))
-      return
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (isOpenMode && openTargets.length > 0) {
+        e.preventDefault()
+        e.stopPropagation()
+        const down = e.key === 'ArrowDown'
+        const n = Math.min(openTargets.length, 15)
+        setSelected((s) => (s < 0 ? (down ? 0 : n - 1) : (down ? s + 1 : s - 1 + n) % n))
+        return
+      }
+      if (!isOpenMode && matches.length > 0) {
+        e.preventDefault()
+        e.stopPropagation()
+        const down = e.key === 'ArrowDown'
+        const n = matches.length
+        setSelected((s) => (s < 0 ? (down ? 0 : n - 1) : (down ? s + 1 : s - 1 + n) % n))
+        return
+      }
     }
 
     // Tab：把幽灵预览的那份补全落进输入框（补完命令名，留一个空格好接参数）
@@ -189,6 +211,18 @@ export default function GlobalVimCommandBar() {
     if (e.key === 'Enter') {
       e.preventDefault()
       e.stopPropagation()
+
+      // :open / :o 模式直接执行选中的目标
+      if (isOpenMode) {
+        if (openTargets.length > 0) {
+          const idx = selected >= 0 && selected < openTargets.length ? selected : 0
+          executeTarget(openTargets[idx])
+        } else {
+          setFeedback(t('未找到匹配目标'))
+        }
+        return
+      }
+
       // 方向键选中的候选 ≠ 已输文本时，Enter 提交的就是幽灵预览的那份（看到的即所得）
       const picked =
         selected >= 0 && ghostItem && ghostItem.cmd.toLowerCase() !== value.trim().toLowerCase()
@@ -224,6 +258,23 @@ export default function GlobalVimCommandBar() {
     }
   }
 
+  const executeTarget = (target: VimOpenTarget) => {
+    const finish = finishRef.current
+    finishRef.current = null
+    try {
+      finish?.(undefined)
+    } catch {}
+    try {
+      target.action()
+      setFeedback(`[已打开: ${target.title.slice(0, 16)}]`)
+      timerRef.current = window.setTimeout(() => {
+        close()
+      }, 700)
+    } catch {
+      close()
+    }
+  }
+
   if (!open) return null
 
   return (
@@ -251,7 +302,11 @@ export default function GlobalVimCommandBar() {
               }}
               onKeyDown={handleKeyDown}
               onBlur={handleInputBlur}
-              placeholder={t('输入命令 (例如 w, q, wq, preview, tabnew, sp, vs, help)...')}
+              placeholder={
+                isOpenMode
+                  ? t('搜索打开目标：支持拼音首字母、全拼或中文名称...')
+                  : t('输入命令 (例如 w, q, edit, browser, fullscreen, open, help)...')
+              }
               className="w-full bg-transparent text-ink placeholder:text-ink-faint outline-none font-mono text-[14.5px] border-none p-0 focus:ring-0"
             />
             {/*
@@ -276,44 +331,52 @@ export default function GlobalVimCommandBar() {
         </div>
 
         {/*
-          前缀联想候选：命令 + 别名 + 一句话描述。在卡片之下同一列里排布（不另算坐标）。
+          下拉内容：:open / :o 下拉候选列表 vs 普通 Vim 命令补全列表
         */}
-        {value.trim().length > 0 && matches.length > 0 && (
-          <div className="max-h-[320px] overflow-y-auto rounded-lg bg-[color-mix(in_srgb,var(--color-card,#181825)_92%,transparent)] backdrop-blur-md border border-[color-mix(in_srgb,var(--color-line,rgba(255,255,255,0.15)))] shadow-[0_20px_48px_-4px_rgba(0,0,0,0.65)]">
-            {matches.slice(0, 8).map((m, i) => {
-              const active = i === ghostIdx
-              return (
-                <button
-                  key={m.cmd}
-                  type="button"
-                  className={
-                    'flex w-full items-center gap-3 px-5 py-2 text-left text-[13px] transition ' +
-                    (active ? 'bg-seal/10' : 'hover:bg-line/40')
-                  }
-                  onClick={() => {
-                    setValue(m.cmd + ' ')
-                    setSelected(-1)
-                    inputRef.current?.focus()
-                  }}
-                >
-                  <span
+        {isOpenMode ? (
+          <VimOpenDropdown
+            targets={openTargets}
+            selectedIndex={selected >= 0 ? selected : 0}
+            onSelect={executeTarget}
+          />
+        ) : (
+          value.trim().length > 0 && matches.length > 0 && (
+            <div className="max-h-[320px] overflow-y-auto rounded-lg bg-[color-mix(in_srgb,var(--color-card,#181825)_92%,transparent)] backdrop-blur-md border border-[color-mix(in_srgb,var(--color-line,rgba(255,255,255,0.15)))] shadow-[0_20px_48px_-4px_rgba(0,0,0,0.65)]">
+              {matches.slice(0, 8).map((m, i) => {
+                const active = i === ghostIdx
+                return (
+                  <button
+                    key={m.cmd}
+                    type="button"
                     className={
-                      'shrink-0 font-mono text-[13px] ' +
-                      (active ? 'font-semibold text-seal' : 'text-ink')
+                      'flex w-full items-center gap-3 px-5 py-2 text-left text-[13px] transition ' +
+                      (active ? 'bg-seal/10' : 'hover:bg-line/40')
                     }
+                    onClick={() => {
+                      setValue(m.cmd + ' ')
+                      setSelected(-1)
+                      inputRef.current?.focus()
+                    }}
                   >
-                    :{m.cmd}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-ink-soft">{m.desc}</span>
-                  {m.aliases && m.aliases.length > 0 && (
-                    <span className="shrink-0 font-mono text-[10.5px] text-ink-faint">
-                      {m.aliases.map((a) => ':' + a).join(' ')}
+                    <span
+                      className={
+                        'shrink-0 font-mono text-[13px] ' +
+                        (active ? 'font-semibold text-seal' : 'text-ink')
+                      }
+                    >
+                      :{m.cmd}
                     </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
+                    <span className="min-w-0 flex-1 truncate text-ink-soft">{m.desc}</span>
+                    {m.aliases && m.aliases.length > 0 && (
+                      <span className="shrink-0 font-mono text-[10.5px] text-ink-faint">
+                        {m.aliases.map((a) => ':' + a).join(' ')}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )
         )}
       </div>
     </div>

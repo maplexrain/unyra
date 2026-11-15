@@ -26,6 +26,11 @@
   width: 100%;
   max-width: 800px;
   margin-inline: auto;
+  transition: width 300ms cubic-bezier(0.16, 1, 0.3, 1), max-width 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root[data-zen-resizing='true'] .doc-measure {
+  transition: none !important;
 }
 
 /* 纯净阅读模式下内容宽度可拖拽调节，并在满宽溢出滚动容器内居中 */
