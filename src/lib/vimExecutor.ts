@@ -215,6 +215,47 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
       }
       return { success: false, message: '[当前环境不支持切换编辑]' }
     }
+    case 'view':
+    case 'read':
+    case 'browse':
+    case 'noedit': {
+      if (globalTabOps?.switchToView) {
+        return globalTabOps.switchToView()
+      }
+      return { success: false, message: '[当前环境不支持切换浏览模式]' }
+    }
+    case 'wrap': {
+      if (activeBridge?.onSetWrap) {
+        activeBridge.onSetWrap(true)
+        return { success: true, message: '[已开启自动换行]' }
+      }
+      return { success: false, message: '[当前环境不支持设置换行]' }
+    }
+    case 'nowrap': {
+      if (activeBridge?.onSetWrap) {
+        activeBridge.onSetWrap(false)
+        return { success: true, message: '[已关闭自动换行]' }
+      }
+      return { success: false, message: '[当前环境不支持设置换行]' }
+    }
+    case 'set': {
+      const opt = clean.slice(baseCmd.length).trim().toLowerCase()
+      if (opt === 'wrap') {
+        if (activeBridge?.onSetWrap) {
+          activeBridge.onSetWrap(true)
+          return { success: true, message: '[已开启自动换行]' }
+        }
+        return { success: false, message: '[当前环境不支持设置换行]' }
+      }
+      if (opt === 'nowrap') {
+        if (activeBridge?.onSetWrap) {
+          activeBridge.onSetWrap(false)
+          return { success: true, message: '[已关闭自动换行]' }
+        }
+        return { success: false, message: '[当前环境不支持设置换行]' }
+      }
+      return { success: true, message: `[设置选项: ${opt}]` }
+    }
     case 'browser':
     case 'web': {
       const rawUrl = clean.slice(baseCmd.length).trim()

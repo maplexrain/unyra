@@ -21,7 +21,6 @@ import { t } from '../../../i18n'
 export default function GlobalVimCommandBar() {
   const [open, setOpen] = useState(false)
   const [value, setValue] = useState('')
-  const [feedback, setFeedback] = useState<string | null>(null)
   /**
    * 编辑器 Vim 命令行的**交回通道**：有它 = 这一次输入是编辑器里的 `:` 唤起的（提示符模式）。
    * Enter 时把最终文本交回 vim 执行（processCommand → 注册的 Ex 命令），命令栏不重复执行；
@@ -29,7 +28,6 @@ export default function GlobalVimCommandBar() {
    */
   const finishRef = useRef<((input?: string) => void) | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
-  const timerRef = useRef<number | undefined>(undefined)
   /** open 的镜像（窗口键盘监听里要用）：开着就不再响应 Shift+:，别把挂着的 vim 提示符冲掉 */
   const openRef = useRef(false)
   useEffect(() => {
@@ -90,7 +88,6 @@ export default function GlobalVimCommandBar() {
         // 却再也等不到交回（焦点与 vim 状态从此打架）。开着时 : 不做事。
         if (openRef.current) return
         setValue('')
-        setFeedback(null)
         finishRef.current = null
         setSelected(-1)
         setOpen(true)
@@ -105,7 +102,6 @@ export default function GlobalVimCommandBar() {
   useEffect(() => {
     setGlobalCommandBarOpener((opts) => {
       setValue(opts?.prefill ?? '')
-      setFeedback(null)
       finishRef.current = opts?.onFinish ?? null
       setSelected(-1)
       setOpen(true)
@@ -124,16 +120,12 @@ export default function GlobalVimCommandBar() {
   }, [open])
 
   /**
-   * 收口：无论从哪条路退出（Esc、空回格、点遮罩、焦点溜走、提示条计时），都走这一份。
+   * 收口：无论从哪条路退出（Esc、空回格、点遮罩、焦点溜走），都走这一份。
    * **提示符模式下收口 = 取消**：把 undefined 交回桥，桥借 vim 自己的 Esc 分支清掉
    * 命令行状态、把焦点还给编辑器——少了这一步，用户点一下别处，vim 就卡在
    * 「命令行开着」的状态里，后续按键全部落空（这正是「忘了切输入框」的冲突来源）。
    */
   const close = () => {
-    if (timerRef.current !== undefined) {
-      window.clearTimeout(timerRef.current)
-      timerRef.current = undefined
-    }
     const finish = finishRef.current
     finishRef.current = null
     try {
@@ -143,7 +135,6 @@ export default function GlobalVimCommandBar() {
     }
     setOpen(false)
     setValue('')
-    setFeedback(null)
     setSelected(-1)
   }
 
@@ -157,6 +148,12 @@ export default function GlobalVimCommandBar() {
     if (dialog && e.relatedTarget instanceof Node && dialog.contains(e.relatedTarget)) return
     close()
   }
+
+  const activeMatchRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    activeMatchRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [ghostIdx])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const isPrompt = !!finishRef.current
@@ -179,22 +176,23 @@ export default function GlobalVimCommandBar() {
       return
     }
 
-    // 方向键在候选里走（幽灵预览跟着换）；有候选时拦住，别让光标跳到输入的头尾
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    // 方向键与 Ctrl+Vim 导航键（Ctrl+J 向下、Ctrl+K 向上）在候选里切换，选中的选项自动滚入可视区
+    const isDown = e.key === 'ArrowDown' || (e.ctrlKey && (e.key === 'j' || e.key === 'J'))
+    const isUp = e.key === 'ArrowUp' || (e.ctrlKey && (e.key === 'k' || e.key === 'K'))
+
+    if (isDown || isUp) {
       if (isOpenMode && openTargets.length > 0) {
         e.preventDefault()
         e.stopPropagation()
-        const down = e.key === 'ArrowDown'
-        const n = Math.min(openTargets.length, 15)
-        setSelected((s) => (s < 0 ? (down ? 0 : n - 1) : (down ? s + 1 : s - 1 + n) % n))
+        const n = Math.min(openTargets.length, 40)
+        setSelected((s) => (s < 0 ? (isDown ? 0 : n - 1) : (isDown ? s + 1 : s - 1 + n) % n))
         return
       }
       if (!isOpenMode && matches.length > 0) {
         e.preventDefault()
         e.stopPropagation()
-        const down = e.key === 'ArrowDown'
         const n = matches.length
-        setSelected((s) => (s < 0 ? (down ? 0 : n - 1) : (down ? s + 1 : s - 1 + n) % n))
+        setSelected((s) => (s < 0 ? (isDown ? 0 : n - 1) : (isDown ? s + 1 : s - 1 + n) % n))
         return
       }
     }
@@ -212,13 +210,13 @@ export default function GlobalVimCommandBar() {
       e.preventDefault()
       e.stopPropagation()
 
-      // :open / :o 模式直接执行选中的目标
+      // :open / :o 模式直接执行选中的目标（执行后立刻关闭）
       if (isOpenMode) {
         if (openTargets.length > 0) {
           const idx = selected >= 0 && selected < openTargets.length ? selected : 0
           executeTarget(openTargets[idx])
         } else {
-          setFeedback(t('未找到匹配目标'))
+          close()
         }
         return
       }
@@ -234,8 +232,7 @@ export default function GlobalVimCommandBar() {
         return
       }
       if (isPrompt) {
-        // 编辑器的 : ：交回 vim 执行（执行与通知都在编辑器那一侧）。先摘掉通道再交回，
-        // 随后的 close() 才不会把它当成「待取消的提示符」再交一次 undefined。
+        // 编辑器的 : ：交回 vim 执行。立刻关闭
         const finish = finishRef.current
         finishRef.current = null
         try {
@@ -246,15 +243,10 @@ export default function GlobalVimCommandBar() {
         close()
         return
       }
-      const result = executeVimCommand(cmd)
-      if (result.message) {
-        setFeedback(result.message)
-        timerRef.current = window.setTimeout(() => {
-          close()
-        }, 1200)
-      } else {
-        close()
-      }
+
+      // 非编辑器模式：立即关闭弹层并执行命令
+      close()
+      executeVimCommand(cmd)
     }
   }
 
@@ -264,14 +256,11 @@ export default function GlobalVimCommandBar() {
     try {
       finish?.(undefined)
     } catch {}
+    close()
     try {
       target.action()
-      setFeedback(`[已打开: ${target.title.slice(0, 16)}]`)
-      timerRef.current = window.setTimeout(() => {
-        close()
-      }, 700)
     } catch {
-      close()
+      // 容错
     }
   }
 
@@ -282,15 +271,17 @@ export default function GlobalVimCommandBar() {
       role="dialog"
       aria-modal="true"
       aria-label={t('全局 Vim 命令行')}
-      className="fixed inset-0 z-[99999] pointer-events-auto"
+      className="fixed inset-0 z-[99999] pointer-events-auto bg-black/40 backdrop-blur-xs flex flex-col items-center pt-[14vh]"
       onClick={close}
     >
       <div
-        className="fixed top-[120px] left-1/2 -translate-x-1/2 flex w-[min(720px,calc(100vw-64px))] flex-col gap-1.5"
+        className="flex w-[min(680px,calc(100vw-48px))] flex-col rounded-2xl bg-[color-mix(in_srgb,var(--color-card,#161722)_92%,transparent)] backdrop-blur-2xl border border-white/12 dark:border-white/12 shadow-[0_24px_64px_-8px_rgba(0,0,0,0.65),0_0_0_1px_rgba(255,255,255,0.06)] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2.5 px-5 py-2.5 rounded-lg bg-[color-mix(in_srgb,var(--color-card,#181825)_92%,transparent)] backdrop-blur-md border border-[color-mix(in_srgb,var(--color-seal,#38bdf8)_50%,var(--color-line,rgba(255,255,255,0.15)))] shadow-[0_20px_48px_-4px_rgba(0,0,0,0.65),0_0_20px_color-mix(in_srgb,var(--color-seal,#38bdf8)_30%,transparent)] text-ink font-mono text-[14.5px]">
-          <span className="shrink-0 text-seal font-semibold select-none">:</span>
+        <div className="flex items-center gap-3 px-4.5 py-3 border-b border-line/35">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-seal/15 text-seal font-mono text-[13px] font-bold select-none border border-seal/25 shadow-xs">
+            :
+          </div>
           <div className="relative min-w-0 flex-1">
             <input
               ref={inputRef}
@@ -304,53 +295,48 @@ export default function GlobalVimCommandBar() {
               onBlur={handleInputBlur}
               placeholder={
                 isOpenMode
-                  ? t('搜索打开目标：支持拼音首字母、全拼或中文名称...')
-                  : t('输入命令 (例如 w, q, edit, browser, fullscreen, open, help)...')
+                  ? t('搜索打开目标：支持拼音缩写、全拼或中文名称...')
+                  : t('输入命令 (例如 w, q, edit, view, browser, fullscreen, wrap, open)...')
               }
-              className="w-full bg-transparent text-ink placeholder:text-ink-faint outline-none font-mono text-[14.5px] border-none p-0 focus:ring-0"
+              className="w-full bg-transparent text-ink placeholder:text-ink-faint/70 outline-none font-mono text-[14px] border-none p-0 focus:ring-0 leading-normal"
             />
-            {/*
-              幽灵补全：透明的已输前缀占住位子，淡色剩余画在真实文字之后——
-              与输入框同一份字体字号才对得齐（见上面的 ghostText）。
-            */}
+            {/* 幽灵补全预览 */}
             {ghostText !== null && (
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 left-0 flex items-center overflow-hidden whitespace-pre font-mono text-[14.5px] text-ink-faint/75"
+                className="pointer-events-none absolute inset-y-0 left-0 flex items-center overflow-hidden whitespace-pre font-mono text-[14px] text-ink-faint/60"
               >
                 <span className="invisible">{value}</span>
                 {ghostText}
               </span>
             )}
           </div>
-          {feedback && (
-            <span className="shrink-0 text-[12px] font-sans text-seal bg-seal/10 px-2 py-0.5 rounded border border-seal/30 animate-pulse">
-              {feedback}
-            </span>
-          )}
         </div>
 
         {/*
           下拉内容：:open / :o 下拉候选列表 vs 普通 Vim 命令补全列表
         */}
         {isOpenMode ? (
-          <VimOpenDropdown
-            targets={openTargets}
-            selectedIndex={selected >= 0 ? selected : 0}
-            onSelect={executeTarget}
-          />
+          <div className="p-1">
+            <VimOpenDropdown
+              targets={openTargets}
+              selectedIndex={selected >= 0 ? selected : 0}
+              onSelect={executeTarget}
+            />
+          </div>
         ) : (
           value.trim().length > 0 && matches.length > 0 && (
-            <div className="max-h-[320px] overflow-y-auto rounded-lg bg-[color-mix(in_srgb,var(--color-card,#181825)_92%,transparent)] backdrop-blur-md border border-[color-mix(in_srgb,var(--color-line,rgba(255,255,255,0.15)))] shadow-[0_20px_48px_-4px_rgba(0,0,0,0.65)]">
-              {matches.slice(0, 8).map((m, i) => {
+            <div className="max-h-[320px] overflow-y-auto p-1.5 flex flex-col gap-0.5">
+              {matches.slice(0, 15).map((m, i) => {
                 const active = i === ghostIdx
                 return (
                   <button
                     key={m.cmd}
+                    ref={active ? activeMatchRef : undefined}
                     type="button"
                     className={
-                      'flex w-full items-center gap-3 px-5 py-2 text-left text-[13px] transition ' +
-                      (active ? 'bg-seal/10' : 'hover:bg-line/40')
+                      'flex w-full items-center gap-3 px-3.5 py-2 text-left rounded-lg text-[13px] transition cursor-pointer ' +
+                      (active ? 'bg-seal/15 text-seal-light' : 'hover:bg-line/40 text-ink')
                     }
                     onClick={() => {
                       setValue(m.cmd + ' ')
@@ -361,7 +347,7 @@ export default function GlobalVimCommandBar() {
                     <span
                       className={
                         'shrink-0 font-mono text-[13px] ' +
-                        (active ? 'font-semibold text-seal' : 'text-ink')
+                        (active ? 'font-semibold text-seal' : 'text-ink font-medium')
                       }
                     >
                       :{m.cmd}
@@ -378,6 +364,22 @@ export default function GlobalVimCommandBar() {
             </div>
           )
         )}
+
+        {/* 底部快捷键操作指引 */}
+        <div className="flex items-center justify-between px-4 py-2 border-t border-line/30 bg-card/35 text-[11px] text-ink-faint select-none">
+          <div className="flex items-center gap-3">
+            <span>
+              <kbd className="font-mono bg-paper/60 px-1 py-0.5 rounded border border-line/50">↑</kbd>{' '}
+              <kbd className="font-mono bg-paper/60 px-1 py-0.5 rounded border border-line/50">↓</kbd>{' '}
+              <span className="opacity-60">或</span>{' '}
+              <kbd className="font-mono bg-paper/60 px-1 py-0.5 rounded border border-line/50">Ctrl+J</kbd>{' '}
+              <kbd className="font-mono bg-paper/60 px-1 py-0.5 rounded border border-line/50">K</kbd> 切换
+            </span>
+            <span><kbd className="font-mono bg-paper/60 px-1 py-0.5 rounded border border-line/50">Tab</kbd> 补全</span>
+            <span><kbd className="font-mono bg-paper/60 px-1 py-0.5 rounded border border-line/50">↵</kbd> 执行</span>
+          </div>
+          <span><kbd className="font-mono bg-paper/60 px-1 py-0.5 rounded border border-line/50">Esc</kbd> 关闭</span>
+        </div>
       </div>
     </div>
   )

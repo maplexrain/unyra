@@ -816,6 +816,8 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
                 ? memoryDocKey(dg.node.id, dg.source.kind, dg.source.note)
                 : undefined
             }
+            pure={pure}
+            onToggleZen={toggleZen}
           />
         )}
 

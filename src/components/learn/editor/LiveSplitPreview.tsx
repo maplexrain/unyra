@@ -22,10 +22,12 @@ import {
   SCALE_HUD_MS,
 } from '../../../lib/appearance'
 
+import { highlightPreviewElement, type SourceLineInfo } from './previewHighlight'
+
 /**
- * 编辑栏光标同步上下文：编辑栏光标移动时驱动预览画面精准跟随对齐
+ * 编辑栏光标同步上下文：编辑栏光标移动时驱动预览画面精准跟随对齐并高亮当前元素
  */
-export type CursorBindingCallback = (ratio: number) => void
+export type CursorBindingCallback = (ratio: number, lineInfo?: SourceLineInfo) => void
 export const EditorCursorBindingContext = createContext<CursorBindingCallback | null>(null)
 
 interface PreviewState {
@@ -205,14 +207,17 @@ export default function LiveSplitPreview({
   const [isVertical, setIsVertical] = useState(false)
   const isDraggingRef = useRef(false)
 
-  // 光标同步：接收编辑栏光标行百分比，驱动预览容器同步平滑滚动
-  const onCursorRatio = useCallback((ratio: number) => {
+  // 光标同步：接收编辑栏光标行百分比与行信息，高亮对应的预览 DOM 元素并平滑跟随
+  const onCursorRatio = useCallback((ratio: number, lineInfo?: SourceLineInfo) => {
     const el = previewScrollRef.current
     if (!el) return
-    const maxScroll = el.scrollHeight - el.clientHeight
-    if (maxScroll <= 0) return
-    const targetTop = Math.max(0, Math.min(maxScroll, ratio * maxScroll))
-    el.scrollTo({ top: targetTop, behavior: 'auto' })
+    const highlighted = highlightPreviewElement(el, ratio, lineInfo)
+    if (!highlighted) {
+      const maxScroll = el.scrollHeight - el.clientHeight
+      if (maxScroll <= 0) return
+      const targetTop = Math.max(0, Math.min(maxScroll, ratio * maxScroll))
+      el.scrollTo({ top: targetTop, behavior: 'auto' })
+    }
   }, [])
 
   // 响应式监听：容器宽度小于 800px 时自动转为上下分割

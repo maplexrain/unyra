@@ -20,6 +20,8 @@ export interface VimEditorBridge {
   onSplit?: (direction: 'horizontal' | 'vertical') => void
   onReload?: () => void
   getView?: () => EditorView | null
+  onSetWrap?: (enable: boolean) => void
+  isWrapEnabled?: () => boolean
 }
 
 export interface GlobalTabOperations {
@@ -32,6 +34,7 @@ export interface GlobalTabOperations {
   togglePure?: () => void
   openWebTab?: (url: string) => void
   switchToEdit?: () => { success: boolean; message?: string }
+  switchToView?: () => { success: boolean; message?: string }
 }
 
 let activeBridge: VimEditorBridge | null = null
@@ -432,6 +435,38 @@ export function registerVimExCommands(): void {
       if (res.message) showVimNotice(cm, res.message)
     }
   })
+
+  // 25b. :view / :read / :browse / :noedit 切换为浏览模式
+  const onView = (cm: any) => {
+    if (globalTabOps?.switchToView) {
+      const res = globalTabOps.switchToView()
+      if (res.message) showVimNotice(cm, res.message)
+    }
+  }
+  Vim.defineEx('view', 'vi', onView)
+  Vim.defineEx('read', 'rea', onView)
+  Vim.defineEx('browse', 'brow', onView)
+  Vim.defineEx('noedit', 'noe', onView)
+
+  // 25c. :wrap / :nowrap 开启与关闭自动换行
+  const onWrap = (cm: any) => {
+    if (activeBridge?.onSetWrap) {
+      activeBridge.onSetWrap(true)
+      showVimNotice(cm, '[已开启自动换行]')
+    } else {
+      showVimNotice(cm, '[当前环境不支持设置换行]')
+    }
+  }
+  const onNoWrap = (cm: any) => {
+    if (activeBridge?.onSetWrap) {
+      activeBridge.onSetWrap(false)
+      showVimNotice(cm, '[已关闭自动换行]')
+    } else {
+      showVimNotice(cm, '[当前环境不支持设置换行]')
+    }
+  }
+  Vim.defineEx('wrap', 'wra', onWrap)
+  Vim.defineEx('nowrap', 'now', onNoWrap)
 
   // 26. :browser / :web 打开浏览器页签
   const onBrowser = (cm: any, params: any) => {

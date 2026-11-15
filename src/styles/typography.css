@@ -404,3 +404,12 @@
   border-radius: 0 !important;
 }
 
+/* ---------- 双栏实时对照预览光标所在行元素突出高亮 ---------- */
+.split-preview-active-element {
+  background-color: color-mix(in srgb, var(--color-seal, #38bdf8) 12%, transparent) !important;
+  outline: 1.5px solid color-mix(in srgb, var(--color-seal, #38bdf8) 35%, transparent) !important;
+  outline-offset: 3px !important;
+  border-radius: 4px !important;
+  transition: background-color 160ms ease, outline-color 160ms ease;
+}
+

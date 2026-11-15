@@ -4,6 +4,7 @@
  * 呈现专属图标、标题、副标题与类型徽章，支持拼音匹配高亮与键盘/鼠标选取。
  */
 
+import { useEffect, useRef } from 'react'
 import {
   BookOpen,
   Compass,
@@ -58,9 +59,15 @@ function renderKindIcon(kind: VimOpenKind) {
 }
 
 export default function VimOpenDropdown({ targets, selectedIndex, onSelect }: Props) {
+  const activeRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [selectedIndex])
+
   if (targets.length === 0) {
     return (
-      <div className="rounded-lg bg-[color-mix(in_srgb,var(--color-card,#181825)_92%,transparent)] backdrop-blur-md border border-[color-mix(in_srgb,var(--color-line,rgba(255,255,255,0.15)))] shadow-[0_20px_48px_-4px_rgba(0,0,0,0.65)] p-4 text-center text-[13px] text-ink-faint">
+      <div className="rounded-xl bg-[color-mix(in_srgb,var(--color-card,#181825)_92%,transparent)] backdrop-blur-xl border border-white/10 dark:border-white/10 shadow-[0_24px_48px_-8px_rgba(0,0,0,0.65)] p-4 text-center text-[12.5px] text-ink-faint">
         {t('未找到匹配的可打开目标（支持输入拼音首字母或关键词）')}
       </div>
     )
@@ -68,27 +75,28 @@ export default function VimOpenDropdown({ targets, selectedIndex, onSelect }: Pr
 
   return (
     <div
-      className="max-h-[380px] overflow-y-auto rounded-lg bg-[color-mix(in_srgb,var(--color-card,#181825)_92%,transparent)] backdrop-blur-md border border-[color-mix(in_srgb,var(--color-line,rgba(255,255,255,0.15)))] shadow-[0_20px_48px_-4px_rgba(0,0,0,0.65)] py-1"
+      className="max-h-[360px] overflow-y-auto rounded-xl bg-[color-mix(in_srgb,var(--color-card,#181825)_92%,transparent)] backdrop-blur-xl border border-white/10 dark:border-white/10 shadow-[0_24px_48px_-8px_rgba(0,0,0,0.65)] py-1.5"
       role="listbox"
       aria-label={t('可打开选项列表')}
     >
-      {targets.slice(0, 15).map((item, idx) => {
+      {targets.slice(0, 40).map((item, idx) => {
         const active = idx === selectedIndex
         return (
           <button
             key={item.id}
+            ref={active ? activeRef : undefined}
             type="button"
             role="option"
             aria-selected={active}
             className={
-              'flex w-full items-center gap-3 px-4 py-2.5 text-left text-[13px] transition cursor-pointer ' +
+              'flex w-[calc(100%-12px)] items-center gap-3 mx-1.5 px-3 py-2 text-left rounded-lg text-[13px] transition cursor-pointer ' +
               (active ? 'bg-seal/15 text-seal-light' : 'hover:bg-line/40 text-ink')
             }
             onClick={() => onSelect(item)}
           >
             {renderKindIcon(item.kind)}
             <div className="min-w-0 flex-1 flex flex-col gap-0.5">
-              <span className={'truncate font-medium text-[13px] ' + (active ? 'text-seal font-semibold' : 'text-ink')}>
+              <span className={'truncate text-[13px] ' + (active ? 'text-seal font-semibold' : 'text-ink font-medium')}>
                 {item.title}
               </span>
               {item.subtitle && (

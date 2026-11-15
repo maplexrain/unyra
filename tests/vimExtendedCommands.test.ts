@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   executeVimCommand,
   setGlobalTabOperations,
+  setVimEditorBridge,
   type GlobalTabOperations,
 } from '../src/lib/vimCommands'
 import {
@@ -11,10 +12,14 @@ import {
   setOpenTargetsProvider,
   type VimOpenTarget,
 } from '../src/lib/vimOpenTargets'
+import { VIM_COMMANDS_DATA } from '../src/components/learn/vim/vimCheatSheetData'
+import { VIM_COMMANDS } from '../src/lib/vimCommandCatalog'
 
 describe('扩展 Vim 命令与纯净阅读模式测试 (vimExtendedCommands)', () => {
   let pureState = false
   let switchedToEdit = false
+  let switchedToView = false
+  let wrapEnabled = false
   let openedUrl: string | null = null
   let activeTab: { id: string; title: string; kind: string; view?: string } | null = null
 
@@ -34,6 +39,19 @@ describe('扩展 Vim 命令与纯净阅读模式测试 (vimExtendedCommands)', (
       switchedToEdit = true
       return { success: true, message: '[已切换至编辑模式]' }
     },
+    switchToView: () => {
+      if (!activeTab) {
+        return { success: false, message: '[当前无活动页签]' }
+      }
+      if (activeTab.kind === 'settings' || activeTab.kind === 'web') {
+        return { success: false, message: '[当前页面不支持浏览模式]' }
+      }
+      if (activeTab.view === 'preview') {
+        return { success: true, message: '[当前已是浏览模式]' }
+      }
+      switchedToView = true
+      return { success: true, message: '[已切换至浏览模式]' }
+    },
     setPure: (p: boolean) => {
       pureState = p
     },
@@ -50,9 +68,17 @@ describe('扩展 Vim 命令与纯净阅读模式测试 (vimExtendedCommands)', (
   beforeEach(() => {
     pureState = false
     switchedToEdit = false
+    switchedToView = false
+    wrapEnabled = false
     openedUrl = null
     activeTab = null
     setGlobalTabOperations(mockOps)
+    setVimEditorBridge({
+      onSetWrap: (enable) => {
+        wrapEnabled = enable
+      },
+      isWrapEnabled: () => wrapEnabled,
+    })
   })
 
   describe(':edit / :e 切换为编辑模式', () => {
@@ -97,6 +123,80 @@ describe('扩展 Vim 命令与纯净阅读模式测试 (vimExtendedCommands)', (
       const res = executeVimCommand(':e')
       expect(res.success).toBe(true)
       expect(res.message).toContain('已是编辑模式')
+    })
+  })
+
+  describe(':view / :read 切换为浏览模式', () => {
+    it('当前页签为源码态的笔记，成功切换为浏览模式', () => {
+      activeTab = {
+        id: 'note-1',
+        title: '我的笔记',
+        kind: 'note',
+        view: 'source',
+      }
+      const res = executeVimCommand(':view')
+      expect(res.success).toBe(true)
+      expect(res.message).toContain('浏览模式')
+      expect(switchedToView).toBe(true)
+    })
+
+    it(':read 别名同样能切换为浏览模式', () => {
+      activeTab = {
+        id: 'note-1',
+        title: '我的笔记',
+        kind: 'note',
+        view: 'source',
+      }
+      const res = executeVimCommand(':read')
+      expect(res.success).toBe(true)
+      expect(switchedToView).toBe(true)
+    })
+
+    it('当前已是浏览模式给出提示', () => {
+      activeTab = {
+        id: 'note-1',
+        title: '我的笔记',
+        kind: 'note',
+        view: 'preview',
+      }
+      const res = executeVimCommand(':view')
+      expect(res.success).toBe(true)
+      expect(res.message).toContain('已是浏览模式')
+    })
+  })
+
+  describe(':wrap / :nowrap 控制自动换行', () => {
+    it(':wrap 开启自动换行', () => {
+      wrapEnabled = false
+      const res = executeVimCommand(':wrap')
+      expect(res.success).toBe(true)
+      expect(res.message).toContain('开启自动换行')
+      expect(wrapEnabled).toBe(true)
+    })
+
+    it(':nowrap 关闭自动换行', () => {
+      wrapEnabled = true
+      const res = executeVimCommand(':nowrap')
+      expect(res.success).toBe(true)
+      expect(res.message).toContain('关闭自动换行')
+      expect(wrapEnabled).toBe(false)
+    })
+
+    it(':set wrap 与 :set nowrap 兼容标准 Vim 选项语法', () => {
+      executeVimCommand(':set wrap')
+      expect(wrapEnabled).toBe(true)
+      executeVimCommand(':set nowrap')
+      expect(wrapEnabled).toBe(false)
+    })
+  })
+
+  describe('Vim 命令大全与唯一真实来源验证', () => {
+    it('VIM_COMMANDS_DATA 自动包含所有 catalog 中的命令（单一来源一体化）', () => {
+      for (const cmd of VIM_COMMANDS) {
+        const item = VIM_COMMANDS_DATA.find((d) => d.id === `moji-${cmd.cmd}`)
+        expect(item).toBeDefined()
+        expect(item?.keys).toContain(`:${cmd.cmd}`)
+      }
     })
   })
 

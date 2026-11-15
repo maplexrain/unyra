@@ -122,6 +122,44 @@ export function useVimGlobalTabOps(params: Params): void {
         }
         return { success: false, message: '[无法切换视图]' }
       },
+      switchToView: () => {
+        const s = getLatest()
+        const group = focusedGroup(s.docArea)
+        if (!group || !group.active) {
+          return { success: false, message: '[当前无活动页签]' }
+        }
+        const tab = group.tabs.find((t) => t.id === group.active)
+        if (!tab) {
+          return { success: false, message: '[当前无活动页签]' }
+        }
+
+        const kind = tab.ref.kind
+        let isPreviewable = false
+        if (kind === 'note' || kind === 'teach' || kind === 'super' || kind === 'draft' || kind === 'guide') {
+          isPreviewable = true
+        } else if (kind === 'local') {
+          const p = tab.ref.path.toLowerCase()
+          isPreviewable = p.endsWith('.md') || p.endsWith('.html') || p.endsWith('.htm') || p.endsWith('.typ') || p.endsWith('.typst') || p.endsWith('.txt')
+        } else if (kind === 'ws') {
+          const seg = tab.ref.seg.toLowerCase()
+          isPreviewable = seg.endsWith('.md') || seg.endsWith('.html') || seg.endsWith('.htm') || seg.endsWith('.typ') || seg.endsWith('.typst') || seg.endsWith('.txt')
+        }
+
+        if (!isPreviewable) {
+          return { success: false, message: '[当前页面不支持浏览模式]' }
+        }
+
+        const curView = viewOf(tab, emptyNote(s, tab))
+        if (curView === 'preview') {
+          return { success: true, message: '[当前已是浏览模式]' }
+        }
+
+        if (setTabView) {
+          setTabView(tab.id, 'preview')
+          return { success: true, message: '[已切换至浏览模式]' }
+        }
+        return { success: false, message: '[无法切换视图]' }
+      },
     })
 
     if (openTab && openExam && openExamCopy && newExam) {

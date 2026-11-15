@@ -1,3 +1,5 @@
+import { VIM_COMMANDS } from '../../../lib/vimCommandCatalog'
+
 export interface VimCommandItem {
   id: string
   keys: string[]
@@ -25,115 +27,28 @@ export const VIM_CATEGORIES: VimCategory[] = [
   { id: 'advanced', label: '高阶技巧' },
 ]
 
+/** 从 vimCommandCatalog 唯一真实来源自动派生 MOJI 专属冒号指令列表，统一登记源，避免多处维护脱节 */
+const CATALOG_MOJI_COMMANDS: VimCommandItem[] = VIM_COMMANDS.map((cmd) => ({
+  id: `moji-${cmd.cmd}`,
+  keys: [`:${cmd.cmd}`, ...(cmd.aliases ? cmd.aliases.map((a) => `:${a}`) : [])],
+  name: cmd.name ?? cmd.cmd,
+  desc: cmd.desc,
+  category: 'moji',
+  example: cmd.example ?? `:${cmd.cmd}`,
+  tag: cmd.tag ?? '专属',
+}))
+
 export const VIM_COMMANDS_DATA: VimCommandItem[] = [
-  // --- 1. MOJI 专属指令 ---
+  // --- 1. MOJI 专属指令 (由 vimCommandCatalog 唯一真实来源自动派生) ---
+  ...CATALOG_MOJI_COMMANDS,
   {
-    id: 'moji-w',
-    keys: [':w', ':w!'],
-    name: '保存文档',
-    desc: '保存当前正在编辑的笔记或文件；加 ! 强制覆写写入。',
-    category: 'moji',
-    tag: '常用',
-    example: ':w',
-  },
-  {
-    id: 'moji-q',
-    keys: [':q', ':q!'],
-    name: '关闭页签',
-    desc: '关闭当前处于焦点格的页签；若有未保存改动输入 :q! 可强制放弃改动关闭。',
-    category: 'moji',
-    tag: '常用',
-    example: ':q',
-  },
-  {
-    id: 'moji-preview',
-    keys: [':preview', ':preview switch'],
-    name: '切换双栏实时预览',
-    desc: '一键开启或关闭源码与实时 Markdown 渲染对照双栏预览（预览画面始终跟随光标平滑对齐）；带 switch 参数时对调编辑区与预览区的位置。',
-    category: 'moji',
-    tag: '专属',
-    example: ':preview switch',
-  },
-  {
-    id: 'moji-agent',
-    keys: [':agent', ':ag'],
-    name: '呼叫导师 / 快捷提问',
-    desc: '无参数时快捷展开或收起导师对话栏；有参数时自动展开侧栏并将参数消息直接发送给导师。',
-    category: 'moji',
-    tag: '专属',
-    example: ':agent 请帮我整理这篇笔记的核心大纲',
-  },
-  {
-    id: 'moji-zz',
-    keys: ['zz', 'z.', ':center', ':zz'],
-    name: '光标行垂直居中',
-    desc: '正统 Vim 快捷键与冒号命令，自动平滑校正滚动条，让光标所在行处于画面正中央。',
-    category: 'moji',
-    tag: '专属',
-    example: '普通模式下按两下 z（zz）',
-  },
-  {
-    id: 'moji-tabo',
-    keys: [':tabo', ':tabonly'],
-    name: '关闭其他页签',
-    desc: '仅保留当前激活的页签，批量关闭其余所有非固定页签；有未保存改动的页签自动跳过不关，:tabo! 才强制全部关闭（在结构大纲页面同样可用）。',
-    category: 'moji',
-    tag: '专属',
-    example: ':tabo',
-  },
-  {
-    id: 'moji-resources',
-    keys: [':resources', ':res'],
-    name: '切换资源管理器',
-    desc: '在窄条与完整栏之间切换左侧资源管理器：收起 ↔ 展开一键往返；纯阅读等侧栏不在场时会提示指路。',
-    category: 'moji',
-    tag: '专属',
-    example: ':resources',
-  },
-  {
-    id: 'moji-tabnew',
-    keys: [':tabnew'],
-    name: '新建空白页签',
-    desc: '在当前焦点格新建一枚未命名空白编辑页签。',
-    category: 'moji',
-    tag: '专属',
-    example: ':tabnew',
-  },
-  {
-    id: 'moji-split',
-    keys: [':sp', ':split'],
-    name: '展开分栏实时预览',
-    desc: '在编辑模式下展开上下分栏的实时对照预览（与 :preview 相同）。',
-    category: 'moji',
-    tag: '专属',
-    example: ':sp',
-  },
-  {
-    id: 'moji-vsplit',
-    keys: [':vs', ':vsplit'],
-    name: '展开左右分栏预览',
-    desc: '在编辑模式下展开左右分栏的实时对照预览（与 :preview 相同）。',
-    category: 'moji',
-    tag: '专属',
-    example: ':vs',
-  },
-  {
-    id: 'moji-fold',
+    id: 'moji-fold-keys',
     keys: ['za', 'zo', 'zc', 'zM', 'zR'],
     name: '代码与作用域折叠',
     desc: 'za 切换当前块折叠，zc 折叠当前作用域，zo 展开当前作用域，zM 折叠全部，zR 展开全部。',
     category: 'moji',
     tag: '专属',
     example: '光标处于函数或列表时按 za',
-  },
-  {
-    id: 'moji-cheat',
-    keys: [':cheat', ':vim'],
-    name: '打开命令大全',
-    desc: '打开这份全量按键与命令速查手册页面（当前页）。',
-    category: 'moji',
-    tag: '专属',
-    example: ':cheat',
   },
 
   // --- 2. 光标身法与移动 (Motions) ---
