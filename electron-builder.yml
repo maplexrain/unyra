@@ -21,6 +21,18 @@ directories:
 # 换 Electron 版本时记得同步跑一次 node node_modules/electron/install.js。
 electronDist: node_modules/electron/dist
 
+# 安装包体积三件套（2026-11-15）：
+# - Chromium 语言包只留 zh-CN/en-US（应用 i18n 自带语言，Chromium 的 locales 只是它
+#   内部 UI/拼写检查用的——55 份 49MB 里我们用得到的不到 2MB）；
+# - KaTeX 字体的 woff/ttf 兜底格式不进包（Chromium 全支持 woff2，CSS @font-face 的
+#   多格式 src 列表按序尝试，woff2 命中后兜底请求根本不会发生）；
+# - compression 用 maximum（NSIS 的 lzma 最高档，安装包更小、安装时多解压几秒）。
+electronLanguages:
+  - zh-CN
+  - en-US
+compression: maximum
+afterPack: scripts/afterPack.cjs
+
 files:
   # 只装运行时要用的那几样。
   # 不排掉 node_modules 的话，electron-builder 会把 production dependencies 整份拷进 asar
@@ -32,6 +44,8 @@ files:
   - '!node_modules/**/*'
   # 源码映射不进包：发布构建本来就不生成，这里再兜一道（免得哪天手工构建时漏进去）
   - '!**/*.map'
+  - '!dist/assets/*.ttf'
+  - '!dist/assets/*.woff'
 
 asar: true # 资源打进单文件包；Electron 对 fs / nativeImage 的读取是 asar 透明的
 # 原生模块（.node/.dll/.dylib）必须解到 asar 外面：操作系统加载动态链接库走的是文件系统，
@@ -49,6 +63,7 @@ win:
   artifactName: Unyra-${version}-Setup.${ext}
 
 nsis:
+  # solidCompression 选项在 electron-builder 26.x 已移除（compression: maximum 已覆盖）
   oneClick: false # 有向导：可以改安装目录、能看到装到哪
   perMachine: false # 装进当前用户目录，不弹 UAC
   allowToChangeInstallationDirectory: true
