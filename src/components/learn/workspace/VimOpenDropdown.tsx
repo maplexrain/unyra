@@ -67,7 +67,7 @@ export default function VimOpenDropdown({ targets, selectedIndex, onSelect }: Pr
 
   if (targets.length === 0) {
     return (
-      <div className="rounded-xl bg-[color-mix(in_srgb,var(--color-card,#181825)_92%,transparent)] backdrop-blur-xl border border-white/10 dark:border-white/10 shadow-[0_24px_48px_-8px_rgba(0,0,0,0.65)] p-4 text-center text-[12.5px] text-ink-faint">
+      <div className="p-4 text-center text-[12.5px] text-ink-faint">
         {t('未找到匹配的可打开目标（支持输入拼音首字母或关键词）')}
       </div>
     )
@@ -75,7 +75,7 @@ export default function VimOpenDropdown({ targets, selectedIndex, onSelect }: Pr
 
   return (
     <div
-      className="max-h-[360px] overflow-y-auto rounded-xl bg-[color-mix(in_srgb,var(--color-card,#181825)_92%,transparent)] backdrop-blur-xl border border-white/10 dark:border-white/10 shadow-[0_24px_48px_-8px_rgba(0,0,0,0.65)] py-1.5"
+      className="max-h-[360px] overflow-y-auto p-1.5 flex flex-col gap-0.5"
       role="listbox"
       aria-label={t('可打开选项列表')}
     >
@@ -89,7 +89,7 @@ export default function VimOpenDropdown({ targets, selectedIndex, onSelect }: Pr
             role="option"
             aria-selected={active}
             className={
-              'flex w-[calc(100%-12px)] items-center gap-3 mx-1.5 px-3 py-2 text-left rounded-lg text-[13px] transition cursor-pointer ' +
+              'flex w-full items-center gap-3 px-3 py-2 text-left rounded-lg text-[13px] transition cursor-pointer ' +
               (active ? 'bg-seal/15 text-seal-light' : 'hover:bg-line/40 text-ink')
             }
             onClick={() => onSelect(item)}

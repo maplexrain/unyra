@@ -144,12 +144,29 @@ export default function GlobalVimCommandBar() {
    * 取消挂着的提示符并收口（点候选按钮不算：relatedTarget 还在弹层里）。
    */
   const handleInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    const dialog = e.currentTarget.closest('[role="dialog"]')
+    const dialog = barRef.current
     if (dialog && e.relatedTarget instanceof Node && dialog.contains(e.relatedTarget)) return
     close()
   }
 
   const activeMatchRef = useRef<HTMLButtonElement | null>(null)
+  const barRef = useRef<HTMLDivElement | null>(null)
+
+  // 点击外部收起命令框（无全屏背景遮罩时，保证点击任意外部区域均自然收起并允许交互）
+  useEffect(() => {
+    if (!open) return
+    const handleOutsidePointer = (e: MouseEvent | TouchEvent) => {
+      if (barRef.current && !barRef.current.contains(e.target as Node)) {
+        close()
+      }
+    }
+    window.addEventListener('mousedown', handleOutsidePointer)
+    window.addEventListener('touchstart', handleOutsidePointer)
+    return () => {
+      window.removeEventListener('mousedown', handleOutsidePointer)
+      window.removeEventListener('touchstart', handleOutsidePointer)
+    }
+  }, [open])
 
   useEffect(() => {
     activeMatchRef.current?.scrollIntoView({ block: 'nearest' })
@@ -269,14 +286,22 @@ export default function GlobalVimCommandBar() {
   return (
     <div
       role="dialog"
-      aria-modal="true"
       aria-label={t('全局 Vim 命令行')}
-      className="fixed inset-0 z-[99999] pointer-events-auto bg-black/40 backdrop-blur-xs flex flex-col items-center pt-[14vh]"
-      onClick={close}
+      className="fixed inset-0 z-[99999] pointer-events-none flex flex-col items-center pt-[14vh]"
     >
       <div
-        className="flex w-[min(680px,calc(100vw-48px))] flex-col rounded-2xl bg-[color-mix(in_srgb,var(--color-card,#161722)_92%,transparent)] backdrop-blur-2xl border border-white/12 dark:border-white/12 shadow-[0_24px_64px_-8px_rgba(0,0,0,0.65),0_0_0_1px_rgba(255,255,255,0.06)] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
-        onClick={(e) => e.stopPropagation()}
+        ref={barRef}
+        className="pointer-events-auto flex w-[min(680px,calc(100vw-48px))] flex-col rounded-2xl bg-[color-mix(in_srgb,var(--color-card,#161722)_96%,transparent)] backdrop-blur-2xl border border-line-strong/60 dark:border-white/15 shadow-[0_24px_64px_-8px_rgba(0,0,0,0.65),0_0_0_1px_rgba(255,255,255,0.06)] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        onMouseDown={(e) => {
+          // 点击候选按钮或内联空白时，阻止输入框产生非预期失焦
+          if (
+            e.target !== inputRef.current &&
+            (e.target as HTMLElement).tagName !== 'BUTTON' &&
+            !(e.target as HTMLElement).closest('button')
+          ) {
+            e.preventDefault()
+          }
+        }}
       >
         <div className="flex items-center gap-3 px-4.5 py-3 border-b border-line/35">
           <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-seal/15 text-seal font-mono text-[13px] font-bold select-none border border-seal/25 shadow-xs">
@@ -317,13 +342,11 @@ export default function GlobalVimCommandBar() {
           下拉内容：:open / :o 下拉候选列表 vs 普通 Vim 命令补全列表
         */}
         {isOpenMode ? (
-          <div className="p-1">
-            <VimOpenDropdown
-              targets={openTargets}
-              selectedIndex={selected >= 0 ? selected : 0}
-              onSelect={executeTarget}
-            />
-          </div>
+          <VimOpenDropdown
+            targets={openTargets}
+            selectedIndex={selected >= 0 ? selected : 0}
+            onSelect={executeTarget}
+          />
         ) : (
           value.trim().length > 0 && matches.length > 0 && (
             <div className="max-h-[320px] overflow-y-auto p-1.5 flex flex-col gap-0.5">
