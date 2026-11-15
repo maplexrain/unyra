@@ -26,6 +26,11 @@
   width: 100%;
   max-width: 800px;
   margin-inline: auto;
+  transition: width 300ms cubic-bezier(0.16, 1, 0.3, 1), max-width 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root[data-zen-resizing='true'] .doc-measure {
+  transition: none !important;
 }
 
 /* 纯净阅读模式下内容宽度可拖拽调节，并在满宽溢出滚动容器内居中 */
@@ -397,5 +402,14 @@
 }
 .note-preview .katex * {
   border-radius: 0 !important;
+}
+
+/* ---------- 双栏实时对照预览光标所在行元素突出高亮 ---------- */
+.split-preview-active-element {
+  background-color: color-mix(in srgb, var(--color-seal, #38bdf8) 12%, transparent) !important;
+  outline: 1.5px solid color-mix(in srgb, var(--color-seal, #38bdf8) 35%, transparent) !important;
+  outline-offset: 3px !important;
+  border-radius: 4px !important;
+  transition: background-color 160ms ease, outline-color 160ms ease;
 }
 

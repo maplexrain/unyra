@@ -120,6 +120,9 @@ export function PluginsPanel({ onToast }: Props) {
           <div className="flex items-center gap-2">
             <PlugZap size={16} className="text-seal" />
             <h2 className="text-[14px] font-semibold text-ink-strong">{t('插件与扩展')}</h2>
+            <span className="rounded border border-amber-500/35 bg-amber-500/15 px-1.5 py-0.5 text-[9.5px] font-semibold text-amber-700 dark:text-amber-400">
+              Beta
+            </span>
           </div>
           <p className="mt-1 text-[11.5px] text-ink-soft">
             {t('管理 Markdown 语法增强与视频来源插件。')}
@@ -148,6 +151,15 @@ export function PluginsPanel({ onToast }: Props) {
             <FolderOpen size={13} className="text-seal" />
             <span>{t('打开插件目录')}</span>
           </button>
+        </div>
+      </div>
+
+      {/* Beta 提示横幅 */}
+      <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/[0.07] px-3.5 py-2.5 text-[11.5px] text-amber-900 dark:text-amber-200">
+        <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+        <div className="leading-relaxed">
+          <span className="font-semibold text-amber-800 dark:text-amber-300 mr-1.5">{t('[实验性特性 · Beta]')}</span>
+          <span>{t('当前对插件系统的支持尚处于早期试验阶段，功能机制与沙箱隔离未完全完善，使用过程中可能存在未知 BUG 或兼容性问题。如遇卡顿、渲染异常或白屏，请停用相关插件或重启应用。')}</span>
         </div>
       </div>
 

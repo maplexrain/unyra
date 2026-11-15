@@ -2,7 +2,8 @@ import { ExternalLink, Globe, Maximize2, Minimize2 } from 'lucide-react'
 import type { LearnTab } from '../../../learn/types'
 import { tabTitle, tabKey, isPdfFile } from '../../../learn/tabs'
 import { setFocus, focusTabsInGroup } from '../../../learn/groups'
-import { nodeById, resolveDisplayedConversation } from '../../../learn/graph'
+import { nodeById, resolveDisplayedConversation, setNoteFormat } from '../../../learn/graph'
+import type { NoteFormat } from '../../../learn/noteFormat'
 import { updateFileNode } from '../../../learn/fileNodes'
 import { wsRelOfTab } from '../../../learn/workspace'
 import { userAbsPath } from '../../../lib/storage'
@@ -76,7 +77,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     outlineFocus,
     handleOutlineFocusHandled,
     pure,
-    pureMoving,
+    pureMoving: _pureMoving,
     toggleZen,
     findMode,
     findTick,
@@ -273,34 +274,13 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
         页签顶上那颗棱形（见 TabBar 的 measureMark）是探出栏外的，裁了就没了。
         棱形在补间里确实会被裁掉——它本来就在最上沿，是第一个滑出去的，看不见也不突兀。
       */}
-      <div
-        className={
-          'grid shrink-0 grid-cols-[minmax(0,1fr)] transition-[grid-template-rows] duration-300 ease-out ' +
-          (pure ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]')
-        }
-      >
-        {/*
-          列轨必须锁成 minmax(0,1fr)：不写列模板时隐式轨道按内容的 max-content 取宽，
-          而页签是 shrink-0 的——页签一多轨道就把整条 grid 撑得比文档列更宽，
-          页签条的 overflow-x-auto 永远等不到触发的机会，页签直接画进隔壁导师栏。
-          锁住之后轨道宽 = 文档列宽，页签超了才真正「溢出」，滚动接管。
-
-          裁溢出用 overflow-clip 而不是 hidden：hidden 会生成一个滚动容器，
-          里面那些页签按钮一旦被 Tab 聚焦，这一格就会被滚走（同 NoteDialog 的取舍）。
-        */}
-        <div className={'min-h-0 ' + (pure || pureMoving ? 'overflow-clip' : '')}>
-          {/*
-            invisible 与位移一起走：滑出去之后整条栏还在 DOM 里（页签、关闭键都在），
-            不加它，Tab 键还会一个个跳进那些看不见的按钮里。
-            visibility 参与补间是「到末尾才真的切过去」，所以它是等滑完了才失效的
-            （与右侧栏收起时的做法一致，见 SplitRow）。
-          */}
-          <div
-            className={
-              'transition-[transform,visibility] duration-300 ease-out ' +
-              (pure ? '-translate-y-full invisible' : '')
-            }
-          >
+      {/*
+        页签栏：纯净阅读（全屏）模式下保留页签栏和页面正文，两侧栏与顶栏收起让位。
+        列轨必须锁成 minmax(0,1fr)，避免页签撑出列宽。
+      */}
+      <div className="grid shrink-0 grid-cols-[minmax(0,1fr)] grid-rows-[1fr]">
+        <div className="min-h-0">
+          <div>
             <TabBar
               tabs={gVisibleTabs}
               paneTotal={g.group?.tabs.length}
@@ -818,12 +798,26 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               openTab(ref)
             }}
             onOpenVimConfig={(p) => openTab({ kind: 'local', path: p, title: '.vimrc' }, 'source')}
+            noteFormat={gTab?.ref.kind === 'note' ? (dg.source?.format ?? 'markdown') : undefined}
+            onChangeNoteFormat={
+              gTab?.ref.kind === 'note'
+                ? (fmt: NoteFormat) => {
+                    const ref = gTab.ref
+                    if (ref.kind !== 'note') return
+                    const s = getLatest()
+                    const nextStore = setNoteFormat(s, ref.nodeId, ref.note, fmt)
+                    set(nextStore)
+                  }
+                : undefined
+            }
             // 记忆模式的文档键（教学文档才有；与 NodeNote 里那一次 memoryDocKey 同一公式）
             memoryKey={
               dg.node && dg.source && dg.source.kind === 'teaching'
                 ? memoryDocKey(dg.node.id, dg.source.kind, dg.source.note)
                 : undefined
             }
+            pure={pure}
+            onToggleZen={toggleZen}
           />
         )}
 

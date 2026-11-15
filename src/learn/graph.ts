@@ -42,7 +42,7 @@ export {
 } from './graph/edges'
 
 /* ---------- 笔记 ---------- */
-export { appendNote, createNote, deleteNote, notesOfNode, renameNoteFile, writeNote } from './graph/notes'
+export { appendNote, createNote, deleteNote, notesOfNode, renameNoteFile, setNoteFormat, writeNote } from './graph/notes'
 
 /* ---------- 节点状态 ---------- */
 export { setNodeStatus } from './graph/state'

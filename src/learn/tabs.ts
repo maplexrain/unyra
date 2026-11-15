@@ -10,8 +10,8 @@ import { t } from '../i18n'
  * 2. 后续还有别的入口要开页签（大纲链接、agent、搜索结果），逻辑只该有一份。
  */
 
-/** 能渲染出预览的扩展名：markdown 与 html。别的文本类型只能看源码（见 viewOf） */
-const PREVIEW_EXTS = ['.md', '.markdown', '.html', '.htm']
+/** 能渲染出预览的扩展名：markdown、html 与 typst。别的文本类型只能看源码（见 viewOf） */
+const PREVIEW_EXTS = ['.md', '.markdown', '.html', '.htm', '.typ', '.typst']
 
 /** 本地文件的**媒体预览**扩展名：图片 / 音频 / 视频（看的是内容本身，不是文本） */
 const MEDIA_EXTS = new Set([

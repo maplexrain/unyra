@@ -87,6 +87,7 @@ const editorTheme = markdownEditorTheme({ top: 14, bottom: 24, left: 14, right: 
 const langComp = new Compartment()
 const readOnlyComp = new Compartment()
 const vimComp = new Compartment()
+const wrapComp = new Compartment()
 
 function getVimExtensions(enabled: boolean): Extension[] {
   if (!enabled) return []
@@ -353,7 +354,8 @@ export default function SourceEditor({
           // 自动缩进：换行继承上一行的缩进，语言有语法的话按语法缩进；缩进单位是两个空格
           indentOnInput(),
           indentUnit.of('  '),
-          EditorView.lineWrapping,
+          // 编辑区域默认不自动换行，长行水平滚动；可通过 :wrap / :nowrap 实时切换
+          wrapComp.of([]),
           vimComp.of(getVimExtensions(isVimEnabled())),
           readOnlyComp.of([]),
           langComp.of(getInitialLanguageExtensions(ext)),
@@ -380,7 +382,11 @@ export default function SourceEditor({
                 const line = update.state.doc.lineAt(pos)
                 const totalLines = update.state.doc.lines
                 const ratio = (line.number - 1) / Math.max(1, totalLines - 1)
-                cursorRatioRef.current(ratio)
+                cursorRatioRef.current(ratio, {
+                  lineNumber: line.number,
+                  lineText: line.text,
+                  totalLines,
+                })
               }
             }
             // 监听代码块展开动作，为新展示的代码行注入瀑布级平滑渐显与位移下移动画
@@ -548,6 +554,7 @@ export default function SourceEditor({
     patchSmoothVimScroll(view)
 
     // 注册应用级 Vim 冒号命令并挂载当前编辑器的动作桥接
+    let isWrapped = false
     registerVimExCommands()
     setVimEditorBridge({
       getView: () => viewRef.current,
@@ -556,6 +563,16 @@ export default function SourceEditor({
       onCloseOthers: (force, opts) => bridgeActionsRef.current.onCloseOtherTabs?.(force, opts),
       onNewTab: () => bridgeActionsRef.current.onNewTab?.(),
       onSplit: (direction) => bridgeActionsRef.current.onSplitView?.(direction),
+      onSetWrap: (enable) => {
+        isWrapped = enable
+        const v = viewRef.current
+        if (v) {
+          v.dispatch({
+            effects: wrapComp.reconfigure(enable ? EditorView.lineWrapping : []),
+          })
+        }
+      },
+      isWrapEnabled: () => isWrapped,
     })
 
     // 初始化挂载时若已开启 Vim，立即加载并执行 ~/.vimrc

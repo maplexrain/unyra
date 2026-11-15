@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Brain, Columns2, Eye, ListTree, Network, Pencil } from 'lucide-react'
+import { Brain, Columns2, Eye, ListTree, Maximize2, Minimize2, Network, Pencil } from 'lucide-react'
 import type { OutlineHandle } from '../../lib/outline'
 import type { DocView, TabRef } from '../../learn/types'
 import { t } from '../../i18n'
@@ -13,6 +13,8 @@ import { toggleEditorPreview, subscribeEditorPreview } from './editor/previewBus
 import { loadMemoryMode, subscribeMemoryMode, toggleMemoryMode } from '../../lib/memoryMode'
 import MemoryModeTip from './MemoryModeTip'
 import type { NodeRelations, RelationItem } from './docRelations/computeRelations'
+import { NOTE_FORMAT_META, type NoteFormat } from '../../learn/noteFormat'
+import NoteFormatTip from './NoteFormatTip'
 
 /**
  * 文档区左侧的悬浮工具条（垂直排列）——一格一套。
@@ -59,6 +61,14 @@ interface Props {
   relations?: NodeRelations
   /** 点击打开关联节点 */
   onOpenRelation?: (ref: TabRef, item?: RelationItem) => void
+  /** 笔记源码格式（仅在笔记页签下存在） */
+  noteFormat?: NoteFormat
+  /** 切换笔记源码格式 */
+  onChangeNoteFormat?: (fmt: NoteFormat) => void
+  /** 是否处于纯净阅读模式 */
+  pure?: boolean
+  /** 切换纯净阅读模式 */
+  onToggleZen?: () => void
 }
 
 /** 鼠标离开按钮/浮层后，再等这么久才算真离开：两段之间的空隙不该让浮层闪没 */
@@ -79,6 +89,10 @@ export default function DocFloat({
   onOpenRelation,
   onOpenVimConfig,
   memoryKey,
+  noteFormat,
+  onChangeNoteFormat,
+  pure,
+  onToggleZen,
 }: Props) {
   /**
    * 浮层三态：closed（不挂载）→ open（展开）→ closing（退场动画中）→ closed。
@@ -89,6 +103,8 @@ export default function DocFloat({
   const [vimEnabled, setVimEnabled] = useVimEnabled()
   const [vimTipOpen, setVimTipOpen] = useState(false)
   const vimLeaveTimer = useRef<number | undefined>(undefined)
+  const [formatTipOpen, setFormatTipOpen] = useState(false)
+  const formatLeaveTimer = useRef<number | undefined>(undefined)
   const timers = useRef<{ leave?: number; hide?: number; follow?: number }>({})
   const [relPhase, setRelPhase] = useState<'closed' | 'open' | 'closing'>('closed')
   const relTimers = useRef<{ leave?: number; hide?: number }>({})
@@ -122,9 +138,26 @@ export default function DocFloat({
       if (relTimers.current.hide !== undefined) window.clearTimeout(relTimers.current.hide)
       if (memLeaveTimer.current !== undefined) window.clearTimeout(memLeaveTimer.current)
       if (vimLeaveTimer.current !== undefined) window.clearTimeout(vimLeaveTimer.current)
+      if (formatLeaveTimer.current !== undefined) window.clearTimeout(formatLeaveTimer.current)
     },
     [],
   )
+
+  const openFormatTipNow = () => {
+    if (formatLeaveTimer.current !== undefined) {
+      window.clearTimeout(formatLeaveTimer.current)
+      formatLeaveTimer.current = undefined
+    }
+    setFormatTipOpen(true)
+  }
+
+  const closeFormatTipSoon = () => {
+    if (formatLeaveTimer.current !== undefined) return
+    formatLeaveTimer.current = window.setTimeout(() => {
+      formatLeaveTimer.current = undefined
+      setFormatTipOpen(false)
+    }, LEAVE_GRACE_MS)
+  }
 
   const openVimTipNow = () => {
     if (vimLeaveTimer.current !== undefined) {
@@ -217,7 +250,37 @@ export default function DocFloat({
     <div className="no-print absolute left-3 top-2.5 z-20">
       <div className="flex flex-col items-center gap-1">
         {/*
-          1. 阅读模式 / 编辑模式切换按钮（排在第一位）：
+          0. 纯净阅读模式切换按钮（排在顶部第一位）：
+          进入/退出纯净全屏阅读模式（对应快捷键 F11 或 Vim :fullscreen / :exitfullscreen）。
+        */}
+        {onToggleZen && (
+          <button
+            type="button"
+            title={
+              pure
+                ? t('退出纯净阅读模式 (F11 / :exitfullscreen)')
+                : t('进入纯净阅读模式 (F11 / :fullscreen)')
+            }
+            aria-pressed={pure}
+            onClick={onToggleZen}
+            className={
+              VIEW_BTN +
+              ' transition-all ' +
+              (pure
+                ? 'border-seal/50 bg-seal/15 text-seal shadow-xs'
+                : 'border-transparent text-ink-soft hover:bg-line/50 hover:text-ink')
+            }
+          >
+            {pure ? (
+              <Minimize2 size={15} className="transition-colors" />
+            ) : (
+              <Maximize2 size={15} className="transition-colors" />
+            )}
+          </button>
+        )}
+
+        {/*
+          1. 阅读模式 / 编辑模式切换按钮：
           同一枚页签就地切模式（不再开对偶页签）——编辑态显示 Eye（切去阅读），
           阅读态显示 Pencil（切去编辑）。媒体预览（图片 / 音频 / 视频 / PDF）
           没有模式可言，整颗不出现。
@@ -278,6 +341,40 @@ export default function DocFloat({
           >
             <Columns2 size={15} className="transition-colors" />
           </button>
+        )}
+
+        {/*
+          笔记源码类型按钮（仅在笔记页签下展示）：
+          显示当前格式（MD / TXT / HTML / TYP）。鼠标经过弹出 Tip，
+          可选普通文本/markdown/html/typst，并可将任意一项设为之后新建笔记的默认格式。
+        */}
+        {noteFormat && onChangeNoteFormat && (
+          <div
+            className="relative"
+            onMouseEnter={openFormatTipNow}
+            onMouseLeave={closeFormatTipSoon}
+          >
+            <button
+              type="button"
+              title={t('笔记源码格式：当前为 {0}（鼠标停留展开切换或设置默认）', NOTE_FORMAT_META[noteFormat]?.label ?? noteFormat)}
+              aria-expanded={formatTipOpen}
+              className={
+                VIEW_BTN +
+                ' transition-all border-transparent text-ink-soft hover:bg-line/50 hover:text-ink font-mono text-[10px] font-bold tracking-tight'
+              }
+            >
+              {NOTE_FORMAT_META[noteFormat]?.badge ?? noteFormat.toUpperCase()}
+            </button>
+
+            {formatTipOpen && (
+              <NoteFormatTip
+                currentFormat={noteFormat}
+                onSelectFormat={(fmt) => {
+                  onChangeNoteFormat(fmt)
+                }}
+              />
+            )}
+          </div>
         )}
 
         {/*

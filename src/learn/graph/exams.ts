@@ -183,26 +183,29 @@ export function applyGradeResult(
     attempt.answers.some((a) => a.image)
 
   const answers = attempt.answers.slice()
-  // 若 Agent 在审阅手写答卷时提取出了学习者的实际作答，更新进 answers
-  for (const item of payload.results ?? []) {
-    if (!item.questionId || item.userAnswer === undefined) continue
-    const idx = answers.findIndex((a) => a.questionId === item.questionId)
-    const val = Array.isArray(item.userAnswer)
-      ? item.userAnswer.map(String)
-      : typeof item.userAnswer === 'string'
-        ? [item.userAnswer]
-        : []
-    const textVal = typeof item.userAnswer === 'string' ? item.userAnswer : undefined
-    const existing = answers[idx]
-    const updatedAns: ExamAnswer = {
-      questionId: item.questionId,
-      value: val,
-      ...(textVal ? { text: textVal } : {}),
-      ...(existing?.image ? { image: existing.image } : {}),
-      ...(existing?.rawImage ? { rawImage: existing.rawImage } : {}),
+  // 若有手写答卷，Agent 在审阅手写纸时提取出的实际作答才更新进 answers；
+  // 普通机考严禁改写学习者在界面上实际勾选的事实层 answers（见 apiRegistry 规约）
+  if (hasImages) {
+    for (const item of payload.results ?? []) {
+      if (!item.questionId || item.userAnswer === undefined) continue
+      const idx = answers.findIndex((a) => a.questionId === item.questionId)
+      const val = Array.isArray(item.userAnswer)
+        ? item.userAnswer.map(String)
+        : typeof item.userAnswer === 'string'
+          ? [item.userAnswer]
+          : []
+      const textVal = typeof item.userAnswer === 'string' ? item.userAnswer : undefined
+      const existing = answers[idx]
+      const updatedAns: ExamAnswer = {
+        questionId: item.questionId,
+        value: val,
+        ...(textVal ? { text: textVal } : {}),
+        ...(existing?.image ? { image: existing.image } : {}),
+        ...(existing?.rawImage ? { rawImage: existing.rawImage } : {}),
+      }
+      if (idx >= 0) answers[idx] = updatedAns
+      else answers.push(updatedAns)
     }
-    if (idx >= 0) answers[idx] = updatedAns
-    else answers.push(updatedAns)
   }
 
   // 如果有手写答卷图片，所有题目（包括客观题与主观题）必须由 Agent 亲自审阅判分，绝不进行机械判断

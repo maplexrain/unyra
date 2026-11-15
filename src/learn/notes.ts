@@ -1,5 +1,6 @@
 import type { KnowledgeNode, LearnStore, NoteFile } from './types'
 import { allocate } from './segments'
+import { getDefaultNoteFormat, type NoteFormat } from './noteFormat'
 
 /**
  * 笔记的纯逻辑：新建 / 改名 / 删除 / 写入，以及「名字怎么取才不撞车」。
@@ -49,11 +50,34 @@ export function addNoteTo(
   node: KnowledgeNode,
   raw: string | undefined,
   at: number,
+  format?: NoteFormat,
 ): { node: KnowledgeNode; name: string } {
   const list = notesOf(node)
   const name = uniqueNoteName(list, raw ?? '')
-  const note: NoteFile = { id: crypto.randomUUID(), name, content: '', createdAt: at, updatedAt: at }
+  const noteFormat = format ?? getDefaultNoteFormat()
+  const note: NoteFile = {
+    id: crypto.randomUUID(),
+    name,
+    content: '',
+    format: noteFormat,
+    createdAt: at,
+    updatedAt: at,
+  }
   return { node: { ...node, notes: [...list, note], updatedAt: at }, name }
+}
+
+/** 修改某一份笔记的格式（markdown / text / html / typst） */
+export function setNoteFormatIn(
+  node: KnowledgeNode,
+  name: string,
+  format: NoteFormat,
+  at: number,
+): KnowledgeNode | null {
+  const list = notesOf(node)
+  const target = findNote(list, name)
+  if (!target) return null
+  const next = { ...target, format, updatedAt: at }
+  return { ...node, notes: list.map((n) => (n === target ? next : n)), updatedAt: at }
 }
 
 /**

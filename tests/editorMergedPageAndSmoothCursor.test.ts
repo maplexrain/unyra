@@ -170,7 +170,7 @@ describe('源码编辑器选区高亮与代码折叠动画', () => {
     expect(checkIsBlockCursor(mockViewNormal as any)).toBe(true)
   })
 
-  it('DocFloat 悬浮工具条不再展示纯净阅读按钮，且组件正常导出', async () => {
+  it('DocFloat 悬浮工具条正常导出并支持纯净阅读模式切换', async () => {
     const DocFloatModule = await import('../src/components/learn/DocFloat')
     expect(DocFloatModule.default).toBeDefined()
     expect(typeof DocFloatModule.default).toBe('function')

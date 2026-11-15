@@ -6,6 +6,8 @@ import { toggleEditorPreview, swapEditorPreview } from '../components/learn/edit
 import { toggleAgentPanel, sendAgentMessage } from './agentFocus'
 import { toggleExplorer } from './explorerFocus'
 import { EditorView } from '@codemirror/view'
+import { executeOpenTarget } from './vimOpenTargets'
+import { normalizeWebInput } from '../learn/webUrl'
 
 export interface VimEditorBridge {
   onSave?: (force?: boolean) => Promise<boolean | void> | boolean | void
@@ -18,6 +20,8 @@ export interface VimEditorBridge {
   onSplit?: (direction: 'horizontal' | 'vertical') => void
   onReload?: () => void
   getView?: () => EditorView | null
+  onSetWrap?: (enable: boolean) => void
+  isWrapEnabled?: () => boolean
 }
 
 export interface GlobalTabOperations {
@@ -25,6 +29,12 @@ export interface GlobalTabOperations {
   /** opts.skipDirty：有未保存改动的页签不关（跳过），而不是弹确认打断 */
   closeOtherTabs?: (force?: boolean, opts?: { skipDirty?: boolean }) => void
   newTab?: () => void
+  setPure?: (pure: boolean) => void
+  isPure?: () => boolean
+  togglePure?: () => void
+  openWebTab?: (url: string) => void
+  switchToEdit?: () => { success: boolean; message?: string }
+  switchToView?: () => { success: boolean; message?: string }
 }
 
 let activeBridge: VimEditorBridge | null = null
@@ -418,7 +428,88 @@ export function registerVimExCommands(): void {
     showVimNotice(cm, '[当前没有编辑器]')
   })
 
-  // 25. Vim 普通模式快捷键：zz、z. 自动校正滚动，让光标所在行尽量在画面垂直中间
+  // 25. :edit / :e 切换为编辑模式
+  Vim.defineEx('edit', 'e', (cm) => {
+    if (globalTabOps?.switchToEdit) {
+      const res = globalTabOps.switchToEdit()
+      if (res.message) showVimNotice(cm, res.message)
+    }
+  })
+
+  // 25b. :view / :read / :browse / :noedit 切换为浏览模式
+  const onView = (cm: any) => {
+    if (globalTabOps?.switchToView) {
+      const res = globalTabOps.switchToView()
+      if (res.message) showVimNotice(cm, res.message)
+    }
+  }
+  Vim.defineEx('view', 'vi', onView)
+  Vim.defineEx('read', 'rea', onView)
+  Vim.defineEx('browse', 'brow', onView)
+  Vim.defineEx('noedit', 'noe', onView)
+
+  // 25c. :wrap / :nowrap 开启与关闭自动换行
+  const onWrap = (cm: any) => {
+    if (activeBridge?.onSetWrap) {
+      activeBridge.onSetWrap(true)
+      showVimNotice(cm, '[已开启自动换行]')
+    } else {
+      showVimNotice(cm, '[当前环境不支持设置换行]')
+    }
+  }
+  const onNoWrap = (cm: any) => {
+    if (activeBridge?.onSetWrap) {
+      activeBridge.onSetWrap(false)
+      showVimNotice(cm, '[已关闭自动换行]')
+    } else {
+      showVimNotice(cm, '[当前环境不支持设置换行]')
+    }
+  }
+  Vim.defineEx('wrap', 'wra', onWrap)
+  Vim.defineEx('nowrap', 'now', onNoWrap)
+
+  // 26. :browser / :web 打开浏览器页签
+  const onBrowser = (cm: any, params: any) => {
+    const rawUrl = params?.argString?.trim() || ''
+    const url = rawUrl ? normalizeWebInput(rawUrl) : ''
+    if (globalTabOps?.openWebTab) {
+      globalTabOps.openWebTab(url)
+      showVimNotice(cm, url ? `[打开网页: ${url.slice(0, 20)}]` : '[打开浏览器页签]')
+    }
+  }
+  Vim.defineEx('browser', 'brow', onBrowser)
+  Vim.defineEx('web', 'web', onBrowser)
+
+  // 27. :fullscreen / :fs / :zen 进入纯净阅读
+  const onFullscreen = (cm: any) => {
+    if (globalTabOps?.setPure) {
+      globalTabOps.setPure(true)
+      showVimNotice(cm, '[已进入纯净阅读模式]')
+    }
+  }
+  Vim.defineEx('fullscreen', 'full', onFullscreen)
+  Vim.defineEx('fs', 'fs', onFullscreen)
+  Vim.defineEx('zen', 'zen', onFullscreen)
+
+  // 28. :exitfullscreen / :unfs / :nozen 退出纯净阅读
+  const onExitFullscreen = (cm: any) => {
+    if (globalTabOps?.setPure) {
+      globalTabOps.setPure(false)
+      showVimNotice(cm, '[已退出纯净阅读模式]')
+    }
+  }
+  Vim.defineEx('exitfullscreen', 'exitf', onExitFullscreen)
+  Vim.defineEx('unfs', 'unfs', onExitFullscreen)
+  Vim.defineEx('nozen', 'nozen', onExitFullscreen)
+
+  // 29. :open / :o 打开目标
+  Vim.defineEx('open', 'o', (cm, params) => {
+    const arg = params?.argString?.trim() || ''
+    const res = executeOpenTarget(arg)
+    if (res.message) showVimNotice(cm, res.message)
+  })
+
+  // 30. Vim 普通模式快捷键：zz、z. 自动校正滚动，让光标所在行尽量在画面垂直中间
   try {
     Vim.noremap('zz', ':center<CR>', 'normal')
     Vim.noremap('z.', ':center<CR>', 'normal')
@@ -427,207 +518,4 @@ export function registerVimExCommands(): void {
   }
 }
 
-/**
- * 统一执行 Vim 冒号命令（供全局命令栏或快捷键调用）
- */
-export function executeVimCommand(rawCmd: string): { success: boolean; message?: string } {
-  const line = rawCmd.trim()
-  if (!line) return { success: false }
-
-  // 剔除开头的冒号 ':'
-  const clean = line.startsWith(':') ? line.slice(1).trim() : line
-  if (!clean) return { success: false }
-
-  const parts = clean.split(/\s+/)
-  const cmd = parts[0]
-  const isForce = cmd.endsWith('!')
-  const baseCmd = isForce ? cmd.slice(0, -1) : cmd
-
-  switch (baseCmd) {
-    case 'w':
-    case 'write': {
-      if (activeBridge?.onSave) {
-        void activeBridge.onSave(isForce)
-        return { success: true, message: '[已保存]' }
-      }
-      const ok = triggerShortcutAction('learn.save')
-      return { success: ok, message: ok ? '[已保存]' : '[未能保存]' }
-    }
-    case 'q':
-    case 'quit': {
-      if (activeBridge?.onClose) {
-        activeBridge.onClose(isForce)
-        return { success: true }
-      }
-      if (globalTabOps?.closeTab) {
-        globalTabOps.closeTab(isForce)
-        return { success: true }
-      }
-      const ok = triggerShortcutAction('learn.closeTab')
-      return { success: ok }
-    }
-    case 'wq':
-    case 'x':
-    case 'xit': {
-      if (activeBridge?.onSave) {
-        void activeBridge.onSave(isForce)
-      } else {
-        triggerShortcutAction('learn.save')
-      }
-      if (activeBridge?.onClose) {
-        activeBridge.onClose(isForce)
-      } else if (globalTabOps?.closeTab) {
-        globalTabOps.closeTab(isForce)
-      } else {
-        triggerShortcutAction('learn.closeTab')
-      }
-      return { success: true }
-    }
-    case 'tabnew':
-    case 'tabedit':
-    case 'tabe':
-    case 'new': {
-      if (activeBridge?.onNewTab) {
-        activeBridge.onNewTab()
-        return { success: true, message: '[新建空白文件]' }
-      }
-      if (globalTabOps?.newTab) {
-        globalTabOps.newTab()
-        return { success: true, message: '[新建空白文件]' }
-      }
-      return { success: false, message: '[当前环境不支持新建页签]' }
-    }
-    case 'tabc':
-    case 'tabclose':
-    case 'bd':
-    case 'bdelete': {
-      if (activeBridge?.onClose) {
-        activeBridge.onClose(isForce)
-        return { success: true }
-      }
-      if (globalTabOps?.closeTab) {
-        globalTabOps.closeTab(isForce)
-        return { success: true }
-      }
-      const ok = triggerShortcutAction('learn.closeTab')
-      return { success: ok }
-    }
-    case 'tabo':
-    case 'tabonly': {
-      const opts = isForce ? undefined : { skipDirty: true }
-      if (activeBridge?.onCloseOthers) {
-        activeBridge.onCloseOthers(isForce, opts)
-        return { success: true, message: '[已关闭其他页签]' }
-      }
-      if (globalTabOps?.closeOtherTabs) {
-        globalTabOps.closeOtherTabs(isForce, opts)
-        return { success: true, message: '[已关闭其他页签]' }
-      }
-      return { success: false }
-    }
-    case 'tabn':
-    case 'tabnext':
-    case 'bn':
-    case 'bnext': {
-      if (activeBridge?.onNextTab) {
-        activeBridge.onNextTab()
-        return { success: true }
-      }
-      return { success: false }
-    }
-    case 'tabp':
-    case 'tabprevious':
-    case 'bp':
-    case 'bprev': {
-      if (activeBridge?.onPrevTab) {
-        activeBridge.onPrevTab()
-        return { success: true }
-      }
-      return { success: false }
-    }
-    case 'sp':
-    case 'split': {
-      if (activeBridge?.onSplit) {
-        activeBridge.onSplit('horizontal')
-        return { success: true, message: '[水平分屏]' }
-      }
-      return { success: false }
-    }
-    case 'vs':
-    case 'vsplit': {
-      if (activeBridge?.onSplit) {
-        activeBridge.onSplit('vertical')
-        return { success: true, message: '[垂直分屏]' }
-      }
-      return { success: false }
-    }
-    case 'only':
-    case 'on': {
-      toggleEditorPreview(false)
-      return { success: true, message: '[仅保留编辑栏]' }
-    }
-    case 'preview':
-    case 'prev': {
-      const arg = clean.slice(baseCmd.length).trim().toLowerCase()
-      if (arg === 'switch') {
-        swapEditorPreview()
-        return { success: true, message: '[已对调编辑与预览位置]' }
-      }
-      toggleEditorPreview()
-      return { success: true, message: '[切换分栏预览]' }
-    }
-    case 'resources':
-    case 'res': {
-      const expanded = toggleExplorer()
-      if (expanded === null) return { success: false, message: '[当前没有资源管理器]' }
-      return { success: true, message: expanded ? '[资源管理器已展开]' : '[资源管理器已收起]' }
-    }
-    case 'focus':
-    case 'fo': {
-      const view = activeBridge?.getView?.()
-      if (!view) return { success: false, message: '[当前没有编辑器]' }
-      view.focus()
-      return { success: true, message: '[焦点已交给编辑器]' }
-    }
-    case 'agent':
-    case 'ag': {
-      const msg = clean.slice(cmd.length).trim()
-      if (msg) {
-        sendAgentMessage(msg)
-        return { success: true, message: `[已向导师发送: ${msg.slice(0, 16)}]` }
-      }
-      toggleAgentPanel()
-      return { success: true }
-    }
-    case 'center':
-    case 'zz': {
-      const view = activeBridge?.getView?.()
-      if (view && scrollCursorToCenter(view)) {
-        return { success: true, message: '[光标行已居中]' }
-      }
-      return { success: false, message: '[当前无活动编辑器]' }
-    }
-    case 'vim':
-    case 'cheat': {
-      openVimPage()
-      return { success: true, message: '[打开 Vim 命令大全]' }
-    }
-    case 'find': {
-      triggerShortcutAction('doc.find')
-      return { success: true }
-    }
-    case 'replace': {
-      triggerShortcutAction('doc.replace')
-      return { success: true }
-    }
-    case 'help':
-    case 'h': {
-      return {
-        success: true,
-        message: ':w 保存 | :q 关闭 | :preview 预览 | :resources 资源管理器 | :agent 导师 | zz 居中 | :tabo 关其他 | :sp/:vs 分屏',
-      }
-    }
-    default:
-      return { success: false, message: `未知命令: :${baseCmd}` }
-  }
-}
+export { executeVimCommand } from './vimExecutor'

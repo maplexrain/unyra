@@ -291,6 +291,13 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
             <TabButton
               icon={tb.icon}
               label={t(tb.label)}
+              badge={
+                tb.badge ? (
+                  <span className="rounded border border-amber-500/35 bg-amber-500/15 px-1.5 py-0.5 text-[9.5px] font-semibold text-amber-700 dark:text-amber-400">
+                    {tb.badge}
+                  </span>
+                ) : undefined
+              }
               active={tab === tb.key}
               onClick={() => selectTab(tb.key)}
             />

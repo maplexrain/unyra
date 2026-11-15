@@ -10,6 +10,7 @@ import {
 } from 'react'
 import MarkdownView from '../../MarkdownView'
 import { renderNoteGfm } from '../../../lib/markdown'
+import { renderTypst } from '../../../lib/typst/render'
 import { t } from '../../../i18n'
 import { subscribeEditorPreview, subscribeEditorPreviewSwap } from './previewBus'
 import {
@@ -21,10 +22,12 @@ import {
   SCALE_HUD_MS,
 } from '../../../lib/appearance'
 
+import { highlightPreviewElement, type SourceLineInfo } from './previewHighlight'
+
 /**
- * 编辑栏光标同步上下文：编辑栏光标移动时驱动预览画面精准跟随对齐
+ * 编辑栏光标同步上下文：编辑栏光标移动时驱动预览画面精准跟随对齐并高亮当前元素
  */
-export type CursorBindingCallback = (ratio: number) => void
+export type CursorBindingCallback = (ratio: number, lineInfo?: SourceLineInfo) => void
 export const EditorCursorBindingContext = createContext<CursorBindingCallback | null>(null)
 
 interface PreviewState {
@@ -204,14 +207,17 @@ export default function LiveSplitPreview({
   const [isVertical, setIsVertical] = useState(false)
   const isDraggingRef = useRef(false)
 
-  // 光标同步：接收编辑栏光标行百分比，驱动预览容器同步平滑滚动
-  const onCursorRatio = useCallback((ratio: number) => {
+  // 光标同步：接收编辑栏光标行百分比与行信息，高亮对应的预览 DOM 元素并平滑跟随
+  const onCursorRatio = useCallback((ratio: number, lineInfo?: SourceLineInfo) => {
     const el = previewScrollRef.current
     if (!el) return
-    const maxScroll = el.scrollHeight - el.clientHeight
-    if (maxScroll <= 0) return
-    const targetTop = Math.max(0, Math.min(maxScroll, ratio * maxScroll))
-    el.scrollTo({ top: targetTop, behavior: 'auto' })
+    const highlighted = highlightPreviewElement(el, ratio, lineInfo)
+    if (!highlighted) {
+      const maxScroll = el.scrollHeight - el.clientHeight
+      if (maxScroll <= 0) return
+      const targetTop = Math.max(0, Math.min(maxScroll, ratio * maxScroll))
+      el.scrollTo({ top: targetTop, behavior: 'auto' })
+    }
   }, [])
 
   // 响应式监听：容器宽度小于 800px 时自动转为上下分割
@@ -319,7 +325,7 @@ export default function LiveSplitPreview({
     }
   }, [isOpen, isMdPreview])
 
-  // 实时编译 Markdown 或 HTML 预览内容
+  // 实时编译 Markdown 或 HTML 或 Typst 预览内容
   const previewContent = useMemo(() => {
     if (!isOpen) return null
 
@@ -330,6 +336,29 @@ export default function LiveSplitPreview({
         .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
         .replace(/<link\b[^>]*\brel=["']?(?:modulepreload|preload)["']?[^>]*>/gi, '')
       return <HtmlPreviewFrame html={safeHtml} />
+    }
+
+    const isTypst = ext === '.typ' || ext === '.typst'
+    if (isTypst) {
+      const html = renderTypst(value)
+      return (
+        <div ref={previewScrollRef} className="h-full w-full min-h-0 overflow-y-auto overflow-x-hidden">
+          <div
+            className="note-preview moji-node-note doc-measure relative px-7 pt-4 pb-10"
+            style={{ '--doc-scale': appearance.docScale } as CSSProperties}
+          >
+            <MarkdownView html={html} />
+          </div>
+        </div>
+      )
+    }
+
+    if (ext === '.txt') {
+      return (
+        <div ref={previewScrollRef} className="h-full w-full min-h-0 overflow-y-auto overflow-x-hidden p-6 font-mono text-sm leading-relaxed text-ink select-text whitespace-pre-wrap">
+          {value}
+        </div>
+      )
     }
 
     // Markdown 实时渲染：套入 note-preview moji-node-note doc-measure 完整样式体系

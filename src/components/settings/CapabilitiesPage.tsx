@@ -2,18 +2,26 @@
  * 设置 → 模型 → 能力接入：TTS（文字转语音）/ STT（语音转文字）/ OCR（文字识别）
  * 三项能力的接入方式配置，以及 DeepSeek Files API 的文件管理。
  *
- * 2026-11-14 之前这三个能力是内置插件（本地模型下载 + 端侧推理）；迁到模型体系后
- * 每项只有两种接法：
- * - **DeepSeek 官方**：复用 DeepSeek 提供商的 API Key（与网络搜索同源，这里不存第二把）；
- * - **本地适配器**：用户自己架 OpenAI 兼容服务，填 baseUrl（以 /v1 结尾）；
- *   应用不再内置任何模型与下载器。
- *
- * 计费提醒：DeepSeek 的 TTS / ASR / OCR 都按量计费，所以合成与识别的结果一律
- * 落盘缓存（见 lib/capsCache）——同一页 PDF、同一段话不会花两次钱。
+ * 紧凑高效设计：
+ * - 采用头部右侧分段器（Segmented Switch），消除大面积笨重卡片，空间利用率大幅提升；
+ * - 动态显示子配置，保持视觉清爽克制；
+ * - 结果本地缓存（见 lib/capsCache）。
  */
 
 import { useRef, useState, useSyncExternalStore } from 'react'
-import { Check, Eye, KeyRound, Mic, ScrollText, RefreshCw, Trash2, Upload, Volume2, AlertCircle, Loader2 } from 'lucide-react'
+import {
+  AlertCircle,
+  Check,
+  Eye,
+  KeyRound,
+  Loader2,
+  Mic,
+  RefreshCw,
+  ScrollText,
+  Trash2,
+  Upload,
+  Volume2,
+} from 'lucide-react'
 import { t } from '../../i18n'
 import {
   findReferencedDeepSeekKey,
@@ -42,31 +50,39 @@ import type { CapsFileEntry } from '../../../shared/ipc'
 
 const subscribeCaps = (cb: () => void) => subscribeCapabilities(cb)
 
-/* ---------- 通用行式控件（与 ProviderListPage 同一观感：直角、行式、低噪声） ---------- */
+/* ---------- 紧凑现代控件 ---------- */
 
-function ModeRow({ active, label, hint, onClick }: { active: boolean; label: string; hint?: string; onClick: () => void }) {
+function SegmentedSwitch<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: Array<{ value: T; label: string; hint?: string }>
+  value: T
+  onChange: (v: T) => void
+}) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition ${
-        active
-          ? 'border-seal/50 bg-seal/[0.06] shadow-2xs'
-          : 'border-line/70 bg-card/60 hover:border-line hover:bg-card'
-      }`}
-    >
-      <span
-        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-          active ? 'border-seal bg-seal text-white' : 'border-line-strong/60'
-        }`}
-      >
-        {active && <Check size={10} className="stroke-[3]" />}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className={`block text-[12.5px] ${active ? 'font-medium text-ink-strong' : 'text-ink-soft'}`}>{label}</span>
-        {hint && <span className="mt-0.5 block truncate text-[10.5px] text-ink-faint">{hint}</span>}
-      </span>
-    </button>
+    <div className="inline-flex items-center rounded-lg border border-line/70 bg-card/60 p-0.5 text-[11px] shadow-2xs">
+      {options.map((opt) => {
+        const active = opt.value === value
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            title={opt.hint}
+            className={`flex items-center gap-1 rounded-md px-2.5 py-1 font-medium transition-all ${
+              active
+                ? 'bg-seal text-white shadow-xs'
+                : 'text-ink-soft hover:bg-line/40 hover:text-ink'
+            }`}
+          >
+            {active && <Check size={11} className="stroke-[3]" />}
+            <span>{opt.label}</span>
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -85,13 +101,13 @@ function TextField({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[11.5px] font-medium text-ink-soft">{label}</span>
+      <span className="text-[11px] font-medium text-ink-soft">{label}</span>
       <input
         type={password ? 'password' : 'text'}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-line bg-card px-2.5 py-1.5 font-mono text-[12px] text-ink-strong outline-none transition focus:border-seal/60 placeholder:font-sans placeholder:text-ink-faint/70"
+        className="w-full rounded-lg border border-line bg-card px-2.5 py-1 font-mono text-[11.5px] text-ink-strong outline-none transition focus:border-seal/60 placeholder:font-sans placeholder:text-ink-faint/70"
       />
     </label>
   )
@@ -110,11 +126,11 @@ function SelectField({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[11.5px] font-medium text-ink-soft">{label}</span>
+      <span className="text-[11px] font-medium text-ink-soft">{label}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-line bg-card px-2.5 py-1.5 text-[12px] text-ink-strong outline-none transition focus:border-seal/60"
+        className="w-full rounded-lg border border-line bg-card px-2.5 py-1 text-[11.5px] text-ink-strong outline-none transition focus:border-seal/60"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -126,7 +142,7 @@ function SelectField({
   )
 }
 
-/* ---------- 能力卡 ---------- */
+/* ---------- 主体面板 ---------- */
 
 interface CapsPageProps {
   onToast: (msg: string) => void
@@ -146,7 +162,7 @@ export function CapabilitiesPage({ onToast }: CapsPageProps) {
   const setTtsMode = (mode: TtsMode) => update((c) => ({ ...c, tts: { ...c.tts, mode } }))
   const setSttMode = (mode: CapabilityMode) => update((c) => ({ ...c, stt: { ...c.stt, mode } }))
   const setOcrMode = (mode: OcrMode) => update((c) => ({ ...c, ocr: { ...c.ocr, mode } }))
-  // 「系统自带」只在 Windows 桌面端出现（Windows.Media.Ocr 是系统组件）
+
   const patchLocal = (
     key: 'tts' | 'stt' | 'ocr',
     patch: Partial<LocalServiceConfig>,
@@ -156,189 +172,298 @@ export function CapabilitiesPage({ onToast }: CapsPageProps) {
   const isWin = !isWeb() && /Windows/i.test(navigator.userAgent)
 
   return (
-    <div className="flex flex-col gap-4 overflow-y-auto p-4">
-      {/* DeepSeek Key 状态：三个能力共用一把（复用提供商，与网络搜索同源） */}
+    <div className="flex flex-col gap-3.5 overflow-y-auto p-4 max-w-4xl">
+      {/* 状态横幅：DeepSeek Key 复用状态 */}
       <div
-        className={`flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[11.5px] ${
+        className={`flex items-center justify-between rounded-xl border px-3 py-2 text-[11.5px] transition ${
           dsKeyMissing
             ? 'border-warn/30 bg-warn/[0.05] text-warn-deep'
             : 'border-seal/30 bg-seal/[0.04] text-seal-deep'
         }`}
       >
-        {dsKeyMissing ? <AlertCircle size={14} className="shrink-0" /> : <KeyRound size={14} className="shrink-0" />}
-        {dsKeyMissing ? (
-          <span>
-            {t('尚未配置 DeepSeek 提供商。选择「DeepSeek 官方」接入的能力会复用它的 API Key——请先到「提供商与模型」创建。')}
+        <div className="flex items-center gap-2 min-w-0">
+          {dsKeyMissing ? <AlertCircle size={14} className="shrink-0 text-warn" /> : <KeyRound size={14} className="shrink-0 text-seal" />}
+          <span className="truncate">
+            {dsKeyMissing
+              ? t('尚未配置 DeepSeek 提供商。「DeepSeek 官方」模式需复用其 API Key，请先到「提供商与模型」配置。')
+              : t('「DeepSeek 官方」接入自动复用提供商（{0}）的 API Key，无需重复填写。', labelOf(dsRef.provider))}
           </span>
-        ) : (
-          <span>
-            {t('「DeepSeek 官方」接入自动复用提供商（{0}）的 API Key，与网络搜索同源，无需重复填写。', labelOf(dsRef.provider))}
-          </span>
-        )}
+        </div>
+        <span className="shrink-0 text-[10.5px] font-medium opacity-80">
+          {dsKeyMissing ? t('未绑定') : t('已就绪')}
+        </span>
       </div>
 
-      {/* TTS */}
-      <section className="rounded-xl border border-line bg-card/60 p-4">
-        <header className="mb-3 flex items-center gap-1.5">
-          <Volume2 size={14} className="text-seal" />
-          <span className="text-[12.5px] font-medium text-ink-strong">{t('文字转语音 (TTS)')}</span>
-          <span className="text-[11px] text-ink-faint">{t('朗读 AI 消息；结果本地缓存，重听不再计费')}</span>
-        </header>
-        <div className="grid grid-cols-2 gap-2">
-          <ModeRow active={caps.tts.mode === 'system'} label={t('系统原生')} hint={t('浏览器 Web Speech，免费离线')} onClick={() => setTtsMode('system')} />
-          <ModeRow
-            active={caps.tts.mode === 'deepseek'}
-            label={t('DeepSeek 官方')}
-            hint={dsKeyMissing ? t('需要先配置 DeepSeek 提供商') : t('复用提供商 API Key（按量计费）')}
-            onClick={() => setTtsMode('deepseek')}
+      {/* 1. 文字转语音 (TTS) */}
+      <section className="rounded-xl border border-line bg-card/70 p-3.5 shadow-2xs">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-seal/10 text-seal">
+              <Volume2 size={15} />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[13px] font-bold text-ink-strong">{t('文字转语音 (TTS)')}</span>
+                <span className="rounded bg-line/60 px-1.5 py-px text-[10px] text-ink-soft">
+                  {caps.tts.mode === 'system'
+                    ? t('系统原生')
+                    : caps.tts.mode === 'deepseek'
+                      ? t('DeepSeek 官方')
+                      : caps.tts.mode === 'local'
+                        ? t('本地服务')
+                        : t('已关闭')}
+                </span>
+              </div>
+              <p className="text-[10.5px] text-ink-faint">
+                {t('朗读 AI 回复与正文内容；结果本地缓存，重听不消耗资源')}
+              </p>
+            </div>
+          </div>
+          <SegmentedSwitch
+            value={caps.tts.mode}
+            onChange={setTtsMode}
+            options={[
+              { value: 'system', label: t('系统原生'), hint: t('Web Speech 免费离线') },
+              {
+                value: 'deepseek',
+                label: t('DeepSeek 官方'),
+                hint: dsKeyMissing ? t('需先配置 DeepSeek') : t('按量计费，高清人声'),
+              },
+              { value: 'local', label: t('本地适配器'), hint: t('兼容 OpenAI /audio/speech') },
+              { value: 'off', label: t('关闭'), hint: t('隐藏朗读') },
+            ]}
           />
-          <ModeRow active={caps.tts.mode === 'local'} label={t('本地适配器')} hint={t('自架 OpenAI 兼容 /audio/speech')} onClick={() => setTtsMode('local')} />
-          <ModeRow active={caps.tts.mode === 'off'} label={t('关闭')} hint={t('隐藏朗读按钮')} onClick={() => setTtsMode('off')} />
         </div>
+
+        {/* 动态配置项 */}
         {caps.tts.mode === 'deepseek' && (
-          <div className="mt-3 border-t border-line/60 pt-3">
-            <SelectField
-              label={t('音色')}
-              value={caps.tts.voiceId ?? 'stella'}
-              options={DEEPSEEK_TTS_VOICES.map((v) => ({ value: v.id, label: v.label }))}
-              onChange={(v) => update((c) => ({ ...c, tts: { ...c.tts, voiceId: v } }))}
-            />
+          <div className="mt-3 border-t border-line/50 pt-2.5">
+            <div className="max-w-xs">
+              <SelectField
+                label={t('音色')}
+                value={caps.tts.voiceId ?? 'stella'}
+                options={DEEPSEEK_TTS_VOICES.map((v) => ({ value: v.id, label: v.label }))}
+                onChange={(v) => update((c) => ({ ...c, tts: { ...c.tts, voiceId: v } }))}
+              />
+            </div>
           </div>
         )}
+
         {caps.tts.mode === 'local' && (
-          <div className="mt-3 flex flex-col gap-2.5 border-t border-line/60 pt-3">
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 border-t border-line/50 pt-2.5">
             <TextField
-              label={t('服务地址（以 /v1 结尾）')}
+              label={t('服务地址')}
               value={caps.tts.local?.baseUrl ?? ''}
               placeholder="http://127.0.0.1:8000/v1"
               onChange={(v) => patchLocal('tts', { baseUrl: v })}
             />
-            <div className="grid grid-cols-2 gap-2.5">
-              <TextField label={t('模型（选填）')} value={caps.tts.local?.model ?? ''} onChange={(v) => patchLocal('tts', { model: v })} />
-              <TextField label={t('音色（选填）')} value={caps.tts.local?.voice ?? ''} onChange={(v) => patchLocal('tts', { voice: v })} />
+            <TextField
+              label={t('模型 (选填)')}
+              value={caps.tts.local?.model ?? ''}
+              placeholder="tts-1"
+              onChange={(v) => patchLocal('tts', { model: v })}
+            />
+            <TextField
+              label={t('音色 (选填)')}
+              value={caps.tts.local?.voice ?? ''}
+              placeholder="alloy"
+              onChange={(v) => patchLocal('tts', { voice: v })}
+            />
+            <TextField
+              label={t('API Key (选填)')}
+              password
+              value={caps.tts.local?.apiKey ?? ''}
+              onChange={(v) => patchLocal('tts', { apiKey: v })}
+            />
+          </div>
+        )}
+      </section>
+
+      {/* 2. 语音转文字 (STT) */}
+      <section className="rounded-xl border border-line bg-card/70 p-3.5 shadow-2xs">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-seal/10 text-seal">
+              <Mic size={15} />
             </div>
-            <TextField label={t('API Key（选填）')} password value={caps.tts.local?.apiKey ?? ''} onChange={(v) => patchLocal('tts', { apiKey: v })} />
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[13px] font-bold text-ink-strong">{t('语音转文字 (STT)')}</span>
+                <span className="rounded bg-line/60 px-1.5 py-px text-[10px] text-ink-soft">
+                  {caps.stt.mode === 'deepseek'
+                    ? t('DeepSeek 官方')
+                    : caps.stt.mode === 'local'
+                      ? t('本地服务')
+                      : t('已关闭')}
+                </span>
+              </div>
+              <p className="text-[10.5px] text-ink-faint">
+                {t('导师输入框麦克风录音语音识别；音频仅在内存中处理')}
+              </p>
+            </div>
           </div>
-        )}
-      </section>
-
-      {/* STT */}
-      <section className="rounded-xl border border-line bg-card/60 p-4">
-        <header className="mb-3 flex items-center gap-1.5">
-          <Mic size={14} className="text-seal" />
-          <span className="text-[12.5px] font-medium text-ink-strong">{t('语音转文字 (STT)')}</span>
-          <span className="text-[11px] text-ink-faint">{t('导师输入框的麦克风按钮；录音只存在内存里')}</span>
-        </header>
-        <div className="grid grid-cols-3 gap-2">
-          <ModeRow active={caps.stt.mode === 'off'} label={t('关闭')} onClick={() => setSttMode('off')} />
-          <ModeRow
-            active={caps.stt.mode === 'deepseek'}
-            label={t('DeepSeek 官方')}
-            hint={dsKeyMissing ? t('需要先配置 DeepSeek 提供商') : t('复用提供商 API Key（按量计费）')}
-            onClick={() => setSttMode('deepseek')}
+          <SegmentedSwitch
+            value={caps.stt.mode}
+            onChange={setSttMode}
+            options={[
+              {
+                value: 'deepseek',
+                label: t('DeepSeek 官方'),
+                hint: dsKeyMissing ? t('需先配置 DeepSeek') : t('按量计费，高识别率'),
+              },
+              { value: 'local', label: t('本地适配器'), hint: t('兼容 OpenAI /audio/transcriptions') },
+              { value: 'off', label: t('关闭'), hint: t('隐藏麦克风') },
+            ]}
           />
-          <ModeRow active={caps.stt.mode === 'local'} label={t('本地适配器')} hint={t('自架 OpenAI 兼容 /audio/transcriptions')} onClick={() => setSttMode('local')} />
         </div>
+
+        {/* 动态配置项 */}
         {caps.stt.mode !== 'off' && (
-          <div className="mt-3 grid grid-cols-2 gap-2.5 border-t border-line/60 pt-3">
-            <SelectField
-              label={t('识别语言')}
-              value={caps.stt.language ?? 'auto'}
-              options={[
-                { value: 'auto', label: t('自动') },
-                ...CAPS_STT_LANGUAGES.filter((l) => l !== 'auto').map((l) => ({
-                  value: l,
-                  label: { zh: t('中文'), en: 'English', ja: '日本語', ko: '한국어', yue: t('粤语') }[l] ?? l,
-                })),
-              ]}
-              onChange={(v) => update((c) => ({ ...c, stt: { ...c.stt, language: v } }))}
-            />
-            <label className="flex flex-col gap-1">
-              <span className="text-[11.5px] font-medium text-ink-soft">
-                {t('录音降噪（{0}）', String(voice.noiseGate))}
-              </span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={voice.noiseGate}
-                onChange={(e) => setVoiceSetting({ noiseGate: Number(e.target.value) })}
-                className="mt-2 accent-seal"
+          <div className="mt-3 border-t border-line/50 pt-2.5 flex flex-col gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
+              <SelectField
+                label={t('识别语言')}
+                value={caps.stt.language ?? 'auto'}
+                options={[
+                  { value: 'auto', label: t('自动识别') },
+                  ...CAPS_STT_LANGUAGES.filter((l) => l !== 'auto').map((l) => ({
+                    value: l,
+                    label: { zh: t('中文 (Mandarin)'), en: 'English', ja: '日本語', ko: '한국어', yue: t('粤语 (Cantonese)') }[l] ?? l,
+                  })),
+                ]}
+                onChange={(v) => update((c) => ({ ...c, stt: { ...c.stt, language: v } }))}
               />
-              <span className="text-[10.5px] text-ink-faint">{t('越高越不怕环境噪声，也越容易漏掉轻声')}</span>
-            </label>
+              <label className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-[11px] font-medium text-ink-soft">
+                  <span>{t('录音门限降噪')}</span>
+                  <span className="tabular-nums font-mono text-[10px] text-ink-faint">{voice.noiseGate}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={voice.noiseGate}
+                  onChange={(e) => setVoiceSetting({ noiseGate: Number(e.target.value) })}
+                  className="mt-1 h-1.5 w-full cursor-pointer accent-seal"
+                />
+                <span className="text-[10px] text-ink-faint">{t('值越高越防杂音，太高容易漏轻声')}</span>
+              </label>
+            </div>
+
             {caps.stt.mode === 'local' && (
-              <TextField
-                label={t('服务地址（以 /v1 结尾）')}
-                value={caps.stt.local?.baseUrl ?? ''}
-                placeholder="http://127.0.0.1:8000/v1"
-                onChange={(v) => patchLocal('stt', { baseUrl: v })}
-              />
-            )}
-            {caps.stt.mode === 'local' && (
-              <TextField label={t('模型（选填）')} value={caps.stt.local?.model ?? ''} onChange={(v) => patchLocal('stt', { model: v })} />
-            )}
-            {caps.stt.mode === 'local' && (
-              <TextField label={t('API Key（选填）')} password value={caps.stt.local?.apiKey ?? ''} onChange={(v) => patchLocal('stt', { apiKey: v })} />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                <TextField
+                  label={t('服务地址')}
+                  value={caps.stt.local?.baseUrl ?? ''}
+                  placeholder="http://127.0.0.1:8000/v1"
+                  onChange={(v) => patchLocal('stt', { baseUrl: v })}
+                />
+                <TextField
+                  label={t('模型 (选填)')}
+                  value={caps.stt.local?.model ?? ''}
+                  placeholder="whisper-1"
+                  onChange={(v) => patchLocal('stt', { model: v })}
+                />
+                <TextField
+                  label={t('API Key (选填)')}
+                  password
+                  value={caps.stt.local?.apiKey ?? ''}
+                  onChange={(v) => patchLocal('stt', { apiKey: v })}
+                />
+              </div>
             )}
           </div>
         )}
       </section>
 
-      {/* OCR */}
-      <section className="rounded-xl border border-line bg-card/60 p-4">
-        <header className="mb-3 flex items-center gap-1.5">
-          <ScrollText size={14} className="text-seal" />
-          <span className="text-[12.5px] font-medium text-ink-strong">{t('文字识别 (OCR)')}</span>
-          <span className="text-[11px] text-ink-faint">{t('PDF 扫描件的文字层；每页结果落盘缓存')}</span>
-        </header>
-        <div className="grid grid-cols-2 gap-2">
-          <ModeRow active={caps.ocr.mode === 'off'} label={t('关闭')} onClick={() => setOcrMode('off')} />
-          <ModeRow
-            active={caps.ocr.mode === 'deepseek'}
-            label={t('DeepSeek 官方')}
-            hint={dsKeyMissing ? t('需要先配置 DeepSeek 提供商') : t('复用提供商 API Key（约 1.5 元/千页）')}
-            onClick={() => setOcrMode('deepseek')}
+      {/* 3. 文字识别 (OCR) */}
+      <section className="rounded-xl border border-line bg-card/70 p-3.5 shadow-2xs">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-seal/10 text-seal">
+              <ScrollText size={15} />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[13px] font-bold text-ink-strong">{t('文字识别 (OCR)')}</span>
+                <span className="rounded bg-line/60 px-1.5 py-px text-[10px] text-ink-soft">
+                  {caps.ocr.mode === 'system'
+                    ? t('系统自带')
+                    : caps.ocr.mode === 'deepseek'
+                      ? t('DeepSeek 官方')
+                      : caps.ocr.mode === 'local'
+                        ? t('本地服务')
+                        : t('已关闭')}
+                </span>
+              </div>
+              <p className="text-[10.5px] text-ink-faint">
+                {t('PDF 扫描件生成精准文字层以支持框选复制；每页结果本地缓存')}
+              </p>
+            </div>
+          </div>
+          <SegmentedSwitch
+            value={caps.ocr.mode}
+            onChange={setOcrMode}
+            options={[
+              ...(isWin
+                ? [
+                    {
+                      value: 'system' as const,
+                      label: t('系统自带'),
+                      hint: t('Windows 原生 OCR，完全离线免费'),
+                    },
+                  ]
+                : []),
+              {
+                value: 'deepseek',
+                label: t('DeepSeek 官方'),
+                hint: dsKeyMissing ? t('需先配置 DeepSeek') : t('约 1.5 元/千页'),
+              },
+              { value: 'local', label: t('本地适配器'), hint: t('自架 OpenAI 视觉模型') },
+              { value: 'off', label: t('关闭'), hint: t('关闭 OCR 识别') },
+            ]}
           />
-          <ModeRow active={caps.ocr.mode === 'local'} label={t('本地适配器')} hint={t('自架 OpenAI 兼容视觉模型')} onClick={() => setOcrMode('local')} />
-          {isWin && (
-            <ModeRow
-              active={caps.ocr.mode === 'system'}
-              label={t('系统自带')}
-              hint={t('Windows 内置 OCR，完全离线免费，词级定位')}
-              onClick={() => setOcrMode('system')}
-            />
-          )}
         </div>
-        {caps.ocr.mode !== 'off' && (
-          <div className="mt-3 grid grid-cols-2 gap-2.5 border-t border-line/60 pt-3">
-            {caps.ocr.mode === 'deepseek' && (
+
+        {/* 动态配置项 */}
+        {caps.ocr.mode === 'deepseek' && (
+          <div className="mt-3 border-t border-line/50 pt-2.5">
+            <div className="max-w-xs">
               <SelectField
                 label={t('识别档位')}
                 value={caps.ocr.purpose}
                 options={CAPS_OCR_PURPOSES.map((p) => ({ value: p, label: CAPS_OCR_PURPOSE_LABEL[p] }))}
                 onChange={(v) => update((c) => ({ ...c, ocr: { ...c.ocr, purpose: v as CapsOcrPurposeSetting } }))}
               />
-            )}
-            {caps.ocr.mode === 'local' && (
-              <TextField
-                label={t('服务地址（以 /v1 结尾）')}
-                value={caps.ocr.local?.baseUrl ?? ''}
-                placeholder="http://127.0.0.1:8000/v1"
-                onChange={(v) => patchLocal('ocr', { baseUrl: v })}
-              />
-            )}
-            {caps.ocr.mode === 'local' && (
-              <TextField label={t('视觉模型（选填）')} value={caps.ocr.local?.model ?? ''} onChange={(v) => patchLocal('ocr', { model: v })} />
-            )}
-            {caps.ocr.mode === 'local' && (
-              <TextField label={t('API Key（选填）')} password value={caps.ocr.local?.apiKey ?? ''} onChange={(v) => patchLocal('ocr', { apiKey: v })} />
-            )}
+            </div>
+          </div>
+        )}
+
+        {caps.ocr.mode === 'local' && (
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2.5 border-t border-line/50 pt-2.5">
+            <TextField
+              label={t('服务地址')}
+              value={caps.ocr.local?.baseUrl ?? ''}
+              placeholder="http://127.0.0.1:8000/v1"
+              onChange={(v) => patchLocal('ocr', { baseUrl: v })}
+            />
+            <TextField
+              label={t('视觉模型 (选填)')}
+              value={caps.ocr.local?.model ?? ''}
+              placeholder="glm-4v / qwen-vl"
+              onChange={(v) => patchLocal('ocr', { model: v })}
+            />
+            <TextField
+              label={t('API Key (选填)')}
+              password
+              value={caps.ocr.local?.apiKey ?? ''}
+              onChange={(v) => patchLocal('ocr', { apiKey: v })}
+            />
           </div>
         )}
       </section>
 
-      {/* DeepSeek Files API（可选能力；开关在提供商的高级配置） */}
+      {/* 4. DeepSeek Files API（可选能力） */}
       <FilesPanel onToast={onToast} />
     </div>
   )
@@ -353,8 +478,6 @@ function FilesPanel({ onToast }: CapsPageProps) {
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  // Files 开关看的是 **DeepSeek 那条配置**（不是全局提供商）：
-  // 用户显式设置优先，没设过回落 DeepSeek 预设的内置默认（开箱即用）
   const engine = findReferencedDeepSeekKey()
   const filesOn = (() => {
     if (!engine) return false
@@ -365,17 +488,25 @@ function FilesPanel({ onToast }: CapsPageProps) {
 
   if (!filesOn || !engine) {
     return (
-      <section className="rounded-xl border border-line bg-card/60 p-4">
-        <header className="flex items-center gap-1.5">
-          <Eye size={14} className="text-seal" />
-          <span className="text-[12.5px] font-medium text-ink-strong">{t('云端文件 (Files API)')}</span>
-          <span className="text-[11px] text-ink-faint">{t('可选能力')}</span>
+      <section className="rounded-xl border border-line bg-card/70 p-3.5 shadow-2xs">
+        <header className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-line/60 text-ink-soft">
+              <Eye size={15} />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[13px] font-bold text-ink-strong">{t('云端文件 (Files API)')}</span>
+                <span className="rounded bg-line/60 px-1.5 py-px text-[10px] text-ink-soft">{t('未启用')}</span>
+              </div>
+              <p className="text-[10.5px] text-ink-faint">
+                {engine
+                  ? t('当前提供商未开启 Files API——可在该提供商的高级设置中启用。')
+                  : t('配置 DeepSeek 提供商并在高级设置中启用 Files API 后，可在此管理云端上传文档。')}
+              </p>
+            </div>
+          </div>
         </header>
-        <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
-          {engine
-            ? t('当前提供商未启用 Files API——可在提供商高级配置里打开。')
-            : t('配置 DeepSeek 提供商并启用 Files API 后，可以在这里管理云端文件（上传 / 列出 / 删除）。')}
-        </p>
       </section>
     )
   }
@@ -441,12 +572,19 @@ function FilesPanel({ onToast }: CapsPageProps) {
   }
 
   return (
-    <section className="rounded-xl border border-line bg-card/60 p-4">
-      <header className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <Eye size={14} className="text-seal" />
-          <span className="text-[12.5px] font-medium text-ink-strong">{t('云端文件 (Files API)')}</span>
-          <span className="text-[11px] text-ink-faint">{t('上传到 DeepSeek 云端的文件（user_data）')}</span>
+    <section className="rounded-xl border border-line bg-card/70 p-3.5 shadow-2xs">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-seal/10 text-seal">
+            <Eye size={15} />
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[13px] font-bold text-ink-strong">{t('云端文件 (Files API)')}</span>
+              <span className="rounded bg-seal/10 px-1.5 py-px text-[10px] font-medium text-seal-deep">{t('已启用')}</span>
+            </div>
+            <p className="text-[10.5px] text-ink-faint">{t('上传到 DeepSeek 云端供模型调用的文档（user_data）')}</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <input
@@ -466,7 +604,7 @@ function FilesPanel({ onToast }: CapsPageProps) {
             className="flex items-center gap-1 rounded-lg bg-seal px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-seal-deep disabled:opacity-50"
           >
             {busy === 'upload' ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
-            {t('上传')}
+            {t('上传文件')}
           </button>
           <button
             type="button"
@@ -475,29 +613,29 @@ function FilesPanel({ onToast }: CapsPageProps) {
             className="flex items-center gap-1 rounded-lg border border-line px-2.5 py-1 text-[11px] text-ink-soft transition hover:bg-card disabled:opacity-50"
           >
             {busy === 'list' ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-            {t('刷新')}
+            {t('刷新列表')}
           </button>
         </div>
       </header>
 
       {error && (
-        <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-warn/30 bg-warn/[0.05] px-3 py-2 text-[11px] text-warn-deep">
+        <div className="mt-2.5 flex items-center gap-1.5 rounded-lg border border-warn/30 bg-warn/[0.05] px-3 py-1.5 text-[11px] text-warn-deep">
           <AlertCircle size={12} className="shrink-0" />
           <span className="min-w-0 flex-1 truncate">{error}</span>
         </div>
       )}
 
       {files === null ? (
-        <p className="text-[11px] text-ink-faint">{t('点「刷新」拉取云端文件列表。')}</p>
+        <p className="mt-2 text-[11px] text-ink-faint">{t('点击「刷新列表」拉取云端文件。')}</p>
       ) : files.length === 0 ? (
-        <p className="text-[11px] text-ink-faint">{t('云端还没有文件。')}</p>
+        <p className="mt-2 text-[11px] text-ink-faint">{t('当前云端还没有已上传的文件。')}</p>
       ) : (
-        <div className="flex flex-col divide-y divide-line/50 rounded-lg border border-line/70">
+        <div className="mt-2.5 flex flex-col divide-y divide-line/50 rounded-lg border border-line/70 max-h-48 overflow-y-auto">
           {files.map((f) => (
-            <div key={f.id} className="flex items-center gap-2 px-3 py-1.5 text-[11.5px]">
-              <span className="min-w-0 flex-1 truncate text-ink-strong">{f.filename}</span>
-              <span className="shrink-0 text-ink-faint">{formatSize(f.bytes)}</span>
-              <span className="shrink-0 rounded bg-line/60 px-1.5 py-0.5 text-[10px] text-ink-soft">{f.purpose}</span>
+            <div key={f.id} className="flex items-center gap-2 px-3 py-1.5 text-[11.5px] hover:bg-paper/40 transition">
+              <span className="min-w-0 flex-1 truncate font-mono text-ink-strong">{f.filename}</span>
+              <span className="shrink-0 text-ink-faint text-[10.5px]">{formatSize(f.bytes)}</span>
+              <span className="shrink-0 rounded bg-line/60 px-1.5 py-0.5 text-[9.5px] text-ink-soft">{f.purpose}</span>
               <button
                 type="button"
                 disabled={busy === f.id}

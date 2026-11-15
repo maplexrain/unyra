@@ -53,6 +53,7 @@ export default function ZenResizeHandles() {
     const prevSelect = document.body.style.userSelect
     document.body.style.cursor = 'ew-resize'
     document.body.style.userSelect = 'none'
+    document.documentElement.dataset.zenResizing = 'true'
 
     let rafId = 0
     let pendingWidth = dragRef.current?.currentWidth ?? 860
@@ -97,6 +98,7 @@ export default function ZenResizeHandles() {
         } catch {}
       }
       dragRef.current = null
+      delete document.documentElement.dataset.zenResizing
       setDragging(false)
       document.body.style.cursor = prevCursor
       document.body.style.userSelect = prevSelect
@@ -110,6 +112,7 @@ export default function ZenResizeHandles() {
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerUp)
+      delete document.documentElement.dataset.zenResizing
       document.body.style.cursor = prevCursor
       document.body.style.userSelect = prevSelect
     }
