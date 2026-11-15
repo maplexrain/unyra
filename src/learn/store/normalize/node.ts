@@ -17,6 +17,7 @@ import { normalizeOutline } from '../../outline'
 import { uniqueNoteName } from '../../notes'
 import { uniqueSuperDocName } from '../../superdocs'
 import { normalizeTint } from '../../../components/learn/outline/mindmapTint'
+import { normalizeNoteFormat } from '../../noteFormat'
 
 /** 旧的 'unknown' 迁移为 'learning'；无法识别的一律当作学习中 */
 const toStatus = (v: unknown): MasteryStatus =>
@@ -88,14 +89,17 @@ function normalizeNotes(raw: Record<string, unknown>): NoteFile[] {
     updatedAt: unknown,
     id: unknown,
     summary?: unknown,
+    format?: unknown,
   ): void => {
     const text = typeof content === 'string' ? content : ''
     const at = typeof createdAt === 'number' && Number.isFinite(createdAt) ? createdAt : now
     const seenAt = typeof updatedAt === 'number' && Number.isFinite(updatedAt) ? updatedAt : at
+    const noteFmt = format !== undefined ? normalizeNoteFormat(format) : undefined
     out.push({
       id: typeof id === 'string' && id ? id : crypto.randomUUID(),
       name: uniqueNoteName(out, typeof name === 'string' ? name : ''),
       content: text,
+      ...(noteFmt ? { format: noteFmt } : {}),
       // 笔记总结（≤200 字，画布笔记卡展示）随读盘保留——逐字段重建时漏了它，每次启动都会被剥掉
       ...(typeof summary === 'string' && summary ? { summary } : {}),
       createdAt: at,
@@ -106,7 +110,7 @@ function normalizeNotes(raw: Record<string, unknown>): NoteFile[] {
     for (const item of raw.notes) {
       if (!item || typeof item !== 'object') continue
       const r = item as Record<string, unknown>
-      push(r.name, r.content, r.createdAt, r.updatedAt, r.id, r.summary)
+      push(r.name, r.content, r.createdAt, r.updatedAt, r.id, r.summary, r.format)
     }
   }
   const legacy = docsRecord(raw).note

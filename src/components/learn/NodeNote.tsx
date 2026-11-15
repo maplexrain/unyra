@@ -1,5 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import type { AnnotationStyle, DocKind, DocNotepadItem, KnowledgeNode } from '../../learn/types'
+import type { NoteFormat } from '../../learn/noteFormat'
+import { renderTypst } from '../../lib/typst/render'
+import { sanitizeHtml } from '../../lib/sanitize'
 import type { LocalImageResolver } from '../../lib/docImages'
 import { canAnnotate } from '../../lib/annotation'
 import { renderNote } from '../../lib/markdown'
@@ -29,6 +32,8 @@ export interface DocSource {
   kind: DocKind
   /** 笔记名；教学文档没有这一项 */
   note?: string
+  /** 笔记格式（未指定默认 markdown） */
+  format?: NoteFormat
   content: string
 }
 
@@ -148,9 +153,22 @@ export default memo(function NodeNote({
   /** 当前文档的正文（由上层给：见 DocSource 的说明） */
   const content = doc.content
   const html = useMemo(() => {
+    if (doc.format === 'typst') {
+      return renderTypst(content)
+    }
+    if (doc.format === 'text') {
+      const escaped = content
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+      return `<pre class="whitespace-pre-wrap font-sans text-ink leading-relaxed text-[13px]">${escaped}</pre>`
+    }
+    if (doc.format === 'html') {
+      return sanitizeHtml(content)
+    }
     const { masked, tokens } = maskChipTokens(content)
     return restoreChipTokens(renderNote(masked), tokens)
-  }, [content])
+  }, [content, doc.format])
 
   /**
    * 词条还注解得了吗。两种不放行的情况：

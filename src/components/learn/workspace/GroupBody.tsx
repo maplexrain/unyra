@@ -2,7 +2,8 @@ import { ExternalLink, Globe, Maximize2, Minimize2 } from 'lucide-react'
 import type { LearnTab } from '../../../learn/types'
 import { tabTitle, tabKey, isPdfFile } from '../../../learn/tabs'
 import { setFocus, focusTabsInGroup } from '../../../learn/groups'
-import { nodeById, resolveDisplayedConversation } from '../../../learn/graph'
+import { nodeById, resolveDisplayedConversation, setNoteFormat } from '../../../learn/graph'
+import type { NoteFormat } from '../../../learn/noteFormat'
 import { updateFileNode } from '../../../learn/fileNodes'
 import { wsRelOfTab } from '../../../learn/workspace'
 import { userAbsPath } from '../../../lib/storage'
@@ -818,6 +819,18 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               openTab(ref)
             }}
             onOpenVimConfig={(p) => openTab({ kind: 'local', path: p, title: '.vimrc' }, 'source')}
+            noteFormat={gTab?.ref.kind === 'note' ? (dg.source?.format ?? 'markdown') : undefined}
+            onChangeNoteFormat={
+              gTab?.ref.kind === 'note'
+                ? (fmt: NoteFormat) => {
+                    const ref = gTab.ref
+                    if (ref.kind !== 'note') return
+                    const s = getLatest()
+                    const nextStore = setNoteFormat(s, ref.nodeId, ref.note, fmt)
+                    set(nextStore)
+                  }
+                : undefined
+            }
             // 记忆模式的文档键（教学文档才有；与 NodeNote 里那一次 memoryDocKey 同一公式）
             memoryKey={
               dg.node && dg.source && dg.source.kind === 'teaching'

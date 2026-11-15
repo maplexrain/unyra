@@ -38,7 +38,7 @@ export function sourceOf(store: LearnStore, tab: LearnTab, node: KnowledgeNode):
     // 笔记实体两处住：绑定的在宿主记录里，游离的在池子里（nodeId 对不上节点 = 游离）
     const found = noteEntityOf(store, tab.ref)
     if (!found) return null
-    return { kind: 'note', note: found.note.name, content: staged ?? found.note.content }
+    return { kind: 'note', note: found.note.name, format: found.note.format, content: staged ?? found.note.content }
   }
   return { kind: 'teaching', content: staged ?? docOf(node, 'teaching') }
 }

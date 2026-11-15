@@ -10,6 +10,7 @@ import {
 } from 'react'
 import MarkdownView from '../../MarkdownView'
 import { renderNoteGfm } from '../../../lib/markdown'
+import { renderTypst } from '../../../lib/typst/render'
 import { t } from '../../../i18n'
 import { subscribeEditorPreview, subscribeEditorPreviewSwap } from './previewBus'
 import {
@@ -319,7 +320,7 @@ export default function LiveSplitPreview({
     }
   }, [isOpen, isMdPreview])
 
-  // 实时编译 Markdown 或 HTML 预览内容
+  // 实时编译 Markdown 或 HTML 或 Typst 预览内容
   const previewContent = useMemo(() => {
     if (!isOpen) return null
 
@@ -330,6 +331,29 @@ export default function LiveSplitPreview({
         .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
         .replace(/<link\b[^>]*\brel=["']?(?:modulepreload|preload)["']?[^>]*>/gi, '')
       return <HtmlPreviewFrame html={safeHtml} />
+    }
+
+    const isTypst = ext === '.typ' || ext === '.typst'
+    if (isTypst) {
+      const html = renderTypst(value)
+      return (
+        <div ref={previewScrollRef} className="h-full w-full min-h-0 overflow-y-auto overflow-x-hidden">
+          <div
+            className="note-preview moji-node-note doc-measure relative px-7 pt-4 pb-10"
+            style={{ '--doc-scale': appearance.docScale } as CSSProperties}
+          >
+            <MarkdownView html={html} />
+          </div>
+        </div>
+      )
+    }
+
+    if (ext === '.txt') {
+      return (
+        <div ref={previewScrollRef} className="h-full w-full min-h-0 overflow-y-auto overflow-x-hidden p-6 font-mono text-sm leading-relaxed text-ink select-text whitespace-pre-wrap">
+          {value}
+        </div>
+      )
     }
 
     // Markdown 实时渲染：套入 note-preview moji-node-note doc-measure 完整样式体系

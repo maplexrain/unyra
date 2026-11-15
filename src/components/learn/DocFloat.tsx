@@ -13,6 +13,8 @@ import { toggleEditorPreview, subscribeEditorPreview } from './editor/previewBus
 import { loadMemoryMode, subscribeMemoryMode, toggleMemoryMode } from '../../lib/memoryMode'
 import MemoryModeTip from './MemoryModeTip'
 import type { NodeRelations, RelationItem } from './docRelations/computeRelations'
+import { NOTE_FORMAT_META, type NoteFormat } from '../../learn/noteFormat'
+import NoteFormatTip from './NoteFormatTip'
 
 /**
  * 文档区左侧的悬浮工具条（垂直排列）——一格一套。
@@ -59,6 +61,10 @@ interface Props {
   relations?: NodeRelations
   /** 点击打开关联节点 */
   onOpenRelation?: (ref: TabRef, item?: RelationItem) => void
+  /** 笔记源码格式（仅在笔记页签下存在） */
+  noteFormat?: NoteFormat
+  /** 切换笔记源码格式 */
+  onChangeNoteFormat?: (fmt: NoteFormat) => void
 }
 
 /** 鼠标离开按钮/浮层后，再等这么久才算真离开：两段之间的空隙不该让浮层闪没 */
@@ -79,6 +85,8 @@ export default function DocFloat({
   onOpenRelation,
   onOpenVimConfig,
   memoryKey,
+  noteFormat,
+  onChangeNoteFormat,
 }: Props) {
   /**
    * 浮层三态：closed（不挂载）→ open（展开）→ closing（退场动画中）→ closed。
@@ -89,6 +97,8 @@ export default function DocFloat({
   const [vimEnabled, setVimEnabled] = useVimEnabled()
   const [vimTipOpen, setVimTipOpen] = useState(false)
   const vimLeaveTimer = useRef<number | undefined>(undefined)
+  const [formatTipOpen, setFormatTipOpen] = useState(false)
+  const formatLeaveTimer = useRef<number | undefined>(undefined)
   const timers = useRef<{ leave?: number; hide?: number; follow?: number }>({})
   const [relPhase, setRelPhase] = useState<'closed' | 'open' | 'closing'>('closed')
   const relTimers = useRef<{ leave?: number; hide?: number }>({})
@@ -122,9 +132,26 @@ export default function DocFloat({
       if (relTimers.current.hide !== undefined) window.clearTimeout(relTimers.current.hide)
       if (memLeaveTimer.current !== undefined) window.clearTimeout(memLeaveTimer.current)
       if (vimLeaveTimer.current !== undefined) window.clearTimeout(vimLeaveTimer.current)
+      if (formatLeaveTimer.current !== undefined) window.clearTimeout(formatLeaveTimer.current)
     },
     [],
   )
+
+  const openFormatTipNow = () => {
+    if (formatLeaveTimer.current !== undefined) {
+      window.clearTimeout(formatLeaveTimer.current)
+      formatLeaveTimer.current = undefined
+    }
+    setFormatTipOpen(true)
+  }
+
+  const closeFormatTipSoon = () => {
+    if (formatLeaveTimer.current !== undefined) return
+    formatLeaveTimer.current = window.setTimeout(() => {
+      formatLeaveTimer.current = undefined
+      setFormatTipOpen(false)
+    }, LEAVE_GRACE_MS)
+  }
 
   const openVimTipNow = () => {
     if (vimLeaveTimer.current !== undefined) {
@@ -278,6 +305,40 @@ export default function DocFloat({
           >
             <Columns2 size={15} className="transition-colors" />
           </button>
+        )}
+
+        {/*
+          笔记源码类型按钮（仅在笔记页签下展示）：
+          显示当前格式（MD / TXT / HTML / TYP）。鼠标经过弹出 Tip，
+          可选普通文本/markdown/html/typst，并可将任意一项设为之后新建笔记的默认格式。
+        */}
+        {noteFormat && onChangeNoteFormat && (
+          <div
+            className="relative"
+            onMouseEnter={openFormatTipNow}
+            onMouseLeave={closeFormatTipSoon}
+          >
+            <button
+              type="button"
+              title={t('笔记源码格式：当前为 {0}（鼠标停留展开切换或设置默认）', NOTE_FORMAT_META[noteFormat]?.label ?? noteFormat)}
+              aria-expanded={formatTipOpen}
+              className={
+                VIEW_BTN +
+                ' transition-all border-transparent text-ink-soft hover:bg-line/50 hover:text-ink font-mono text-[10px] font-bold tracking-tight'
+              }
+            >
+              {NOTE_FORMAT_META[noteFormat]?.badge ?? noteFormat.toUpperCase()}
+            </button>
+
+            {formatTipOpen && (
+              <NoteFormatTip
+                currentFormat={noteFormat}
+                onSelectFormat={(fmt) => {
+                  onChangeNoteFormat(fmt)
+                }}
+              />
+            )}
+          </div>
         )}
 
         {/*

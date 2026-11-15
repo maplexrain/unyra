@@ -1,3 +1,7 @@
+import type { NoteFormat } from '../noteFormat'
+
+export type { NoteFormat }
+
 /**
  * 学习域核心节点类型（纯搬运自 learn/types.ts，对外仍由 learn/types 门面原名转发）：
  * 掌握状态、文档种类、教学文档 / 笔记 / 超级文档、游离挂件池、大纲、目标级持久化函数、
@@ -75,8 +79,10 @@ export interface NoteFile {
   id: string
   /** 笔记名 = 文件名（不含扩展名） */
   name: string
-  /** Markdown 正文 */
+  /** 正文内容 */
   content: string
+  /** 笔记源码类型：'markdown' | 'text' | 'html' | 'typst'，缺省为 'markdown' */
+  format?: NoteFormat
   /**
    * 笔记总结（可选，≤200 字）：给节点宇宙的笔记卡看的「这篇讲什么」。
    * 只在画布笔记卡右键菜单点「生成总结」时由内部一次性补全生成（不走导师对话）。

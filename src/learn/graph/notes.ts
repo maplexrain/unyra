@@ -3,7 +3,16 @@
  * 以及改名 / 删除时要跟着一起搬的页签、暂存与阅读记录。笔记本身的命名与正文规则在 learn/notes。
  */
 import type { LearnStore, NoteFile } from '../types'
-import { addNoteTo, appendNoteIn, notesOf, removeNoteFrom, renameNoteIn, writeNoteIn } from '../notes'
+import {
+  addNoteTo,
+  appendNoteIn,
+  notesOf,
+  removeNoteFrom,
+  renameNoteIn,
+  setNoteFormatIn,
+  writeNoteIn,
+} from '../notes'
+import type { NoteFormat } from '../noteFormat'
 import { closeIds, renameTabRef } from '../groups'
 import { dropDrafts, moveDraft } from '../drafts'
 import { nodeById, replaceNode } from './nodes'
@@ -27,11 +36,12 @@ export function createNote(
   store: LearnStore,
   nodeId: string,
   name?: string,
+  format?: NoteFormat,
 ): { store: LearnStore; name: string | null } {
   const node = nodeById(store, nodeId)
   if (!node) return { store, name: null }
   const at = Date.now()
-  const r = addNoteTo(node, name, at)
+  const r = addNoteTo(node, name, at, format)
   return { store: replaceNode(store, r.node), name: r.name }
 }
 
@@ -109,4 +119,34 @@ export function appendNote(
   if (!node) return { store, name: null }
   const r = appendNoteIn(node, name, chunk, Date.now())
   return { store: replaceNode(store, r.node), name: r.name }
+}
+
+/** 修改笔记源码格式（markdown / text / html / typst） */
+export function setNoteFormat(
+  store: LearnStore,
+  nodeId: string,
+  name: string,
+  format: NoteFormat,
+): LearnStore {
+  const node = nodeById(store, nodeId)
+  if (node) {
+    const next = setNoteFormatIn(node, name, format, Date.now())
+    return next ? replaceNode(store, next) : store
+  }
+  if (store.detached) {
+    for (const [goalId, pool] of Object.entries(store.detached)) {
+      const target = pool.notes.find((n) => (n.id === nodeId || n.name === name) && n.name === name)
+      if (target) {
+        const next = { ...target, format, updatedAt: Date.now() }
+        return {
+          ...store,
+          detached: {
+            ...store.detached,
+            [goalId]: { ...pool, notes: pool.notes.map((n) => (n === target ? next : n)) },
+          },
+        }
+      }
+    }
+  }
+  return store
 }

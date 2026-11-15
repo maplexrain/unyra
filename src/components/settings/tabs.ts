@@ -30,6 +30,7 @@ export interface SettingsTabItem {
   key: TabKey
   label: string
   icon: typeof Bot
+  badge?: string
   subTabs?: SubTab[]
 }
 
@@ -99,7 +100,7 @@ const ALL_TABS: SettingsTabItem[] = [
   { key: 'migration', label: '数据迁移', icon: Database },
   // 插件自成一类：用户插件跟着数据目录走（{root}/plugins/），内置插件的开关跟机器走。
   // 这一页按**类别**分组（见 lib/plugins 的 PluginCategory）——目前只有 Markdown 文档插件
-  { key: 'plugins', label: '插件', icon: PlugZap },
+  { key: 'plugins', label: '插件', icon: PlugZap, badge: 'Beta' },
   // 更新：开关、手动检查、安装包与下载进度都在这儿。
   // 顶栏那颗入口只在**下载完成之后**才出现，平时要问「有没有新版本」只能来这里
   { key: 'update', label: '更新', icon: RefreshCw },

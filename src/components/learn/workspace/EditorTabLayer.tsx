@@ -71,7 +71,15 @@ export function EditorTabLayer({
         const isSuper = !!superDoc
         const draft = draftOf(store.drafts, tab.id)
         const value = superDoc ? (draft ?? superDoc.html) : (pane!.source.content ?? '')
-        const ext = isSuper ? '.html' : '.md'
+        const noteExt =
+          pane?.source.format === 'typst'
+            ? '.typ'
+            : pane?.source.format === 'html'
+              ? '.html'
+              : pane?.source.format === 'text'
+                ? '.txt'
+                : '.md'
+        const ext = isSuper ? '.html' : noteExt
         const label =
           tab.ref.kind === 'super'
             ? tab.ref.name

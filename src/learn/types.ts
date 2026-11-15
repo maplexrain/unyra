@@ -14,6 +14,7 @@ export type {
   DocKind,
   NodeDocs,
   NoteFile,
+  NoteFormat,
   SuperDocFile,
   DetachedPool,
   OutlineEntry,

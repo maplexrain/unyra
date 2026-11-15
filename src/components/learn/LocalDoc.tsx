@@ -4,6 +4,7 @@ import type { DocView } from '../../learn/types'
 import { extOf, fileNameOf, isMediaFile, isPdfFile, isPreviewable } from '../../learn/tabs'
 import { readLocalFile, readLocalMediaFile } from '../../lib/localFiles'
 import { renderNoteGfm } from '../../lib/markdown'
+import { renderTypst } from '../../lib/typst/render'
 import { maskChipTokens, restoreChipTokens } from '../../lib/chipSyntax'
 import { createLocalDocImageResolver } from '../../lib/docImages'
 import { copySelectionAsMarkdown } from '../../lib/copySource'
@@ -244,7 +245,11 @@ export default function LocalDoc({
   // 外部 md 走 GFM 严格语义（软换行不折行）：徽章这类「一行一个」的写法在预览里
   // 要像 GitHub 那样并排流开，而不是被 <br> 摞成一列（见 lib/markdown 的 renderNoteGfm）
   const html = useMemo(() => {
-    if (!previewable || !path.toLowerCase().endsWith('.md')) return ''
+    if (!previewable) return ''
+    if (/\.(typ|typst)$/i.test(path)) {
+      return renderTypst(text)
+    }
+    if (!path.toLowerCase().endsWith('.md')) return ''
     const { masked, tokens } = maskChipTokens(text)
     return restoreChipTokens(renderNoteGfm(masked), tokens)
   }, [text, previewable, path])
