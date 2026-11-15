@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { emptyDocs } from '../src/learn/groups'
-import { promptModuleByKey } from '../src/learn/ai/promptModules'
+import { WORKFLOWS_GUIDE } from '../src/learn/ai/workflowsGuide'
 import { buildState } from '../src/learn/files'
 import type { LearnStore } from '../src/learn/types'
 import {
@@ -69,7 +69,7 @@ describe('内置工作流', () => {
     }
   })
 
-  it('生成大纲：指令是标准函数调用，规程在「生成大纲」模块里', () => {
+  it('生成大纲：指令是标准函数调用，规程在系统提示词的 WORKFLOWS_GUIDE 里', () => {
     const row = builtinWorkflowRows().find((r) => r.id === 'outline')
     expect(row).toBeTruthy()
     expect(row?.params).toEqual(['target'])
@@ -77,25 +77,25 @@ describe('内置工作流', () => {
     const text = renderWorkflowInstruction(row!.instruction, { target: '极限的定义' })
     expect(text).toBe('## 使用「生成大纲」工作流。\n- 目标节点: 极限的定义')
 
-    const mod = promptModuleByKey('outline-method')
-    expect(mod).toBeTruthy()
-    const spec = mod!.text
-    expect(spec).toContain('大纲编写')
+    // 内置规程随全量静态提示词在场（不再走模块注入）：大纲的落盘形状与层级规矩必须可见
+    expect(WORKFLOWS_GUIDE).toContain('大纲编写与规划')
+    expect(WORKFLOWS_GUIDE).toContain('editContent({ intro, children, guide })')
+    expect(WORKFLOWS_GUIDE).toContain('直接子层级')
   })
 
-  it('项目与文章解读：指令带目标节点，规程在「项目与文章解读」模块里', () => {
+  it('项目与文章解读：指令带目标节点，规程在系统提示词的 WORKFLOWS_GUIDE 里', () => {
     const row = builtinWorkflowRows().find((r) => r.id === 'project-interpret')
     expect(row).toBeTruthy()
     expect(row?.params).toEqual(['target'])
-    expect(row?.promptModule).toContain('project-interpret')
 
     const text = renderWorkflowInstruction(row!.instruction, { target: '目标文档UUID' })
     expect(text).toBe('## 使用「项目与文章解读」工作流。\n- 目标节点: 目标文档UUID')
 
-    const mod = promptModuleByKey('project-interpret')
-    expect(mod).toBeTruthy()
-    expect(mod?.text).toContain('quote')
-    expect(mod?.text).toContain('project')
+    // 材料判定（file vs project 节点）与 quote 精读规程都在场
+    expect(WORKFLOWS_GUIDE).toContain('项目与文章解读')
+    expect(WORKFLOWS_GUIDE).toContain("kind: 'file'")
+    expect(WORKFLOWS_GUIDE).toContain("kind: 'project'")
+    expect(WORKFLOWS_GUIDE).toContain('quote')
   })
 
   it('问询类（开讲/出卷/超级实验室）触发前响铃；阅卷不能从列表直接跑', () => {
@@ -169,17 +169,17 @@ describe('内置工作流', () => {
     expect(text).not.toContain('{{')
     // 代码块围栏要真的在（它是模型分辨「哪一段是待编译的代码」的凭据）
     expect(text).toContain('```')
-    // 交货与「先判无输出」的规程在模块里，而且停下的那条 api 在交货那条之前
-    const mod = promptModuleByKey('code')
-    expect(mod).toBeTruthy()
-    expect(mod!.text).toContain('api.code.save')
-    expect(mod!.text).toContain('api.code.silent')
-    // 主栏归用户：指令与模块里都不该再出现任何「切主位」的说法（那条 api 已经撤了）
+    // 交货与「先判无输出」的规程在 WORKFLOWS_GUIDE 里，而且停下的那条 api 在交货那条之前
+    const spec = WORKFLOWS_GUIDE.indexOf('code.silent')
+    const save = WORKFLOWS_GUIDE.indexOf('code.save')
+    expect(spec).toBeGreaterThan(-1)
+    expect(save).toBeGreaterThan(-1)
+    expect(spec).toBeLessThan(save)
+    // 主栏归用户：指令与规程里都不该再出现任何「切主位」的说法（那条 api 已经撤了）
     expect(text).not.toContain('switchMain')
-    expect(mod!.text).not.toContain('switchMain')
   })
 
-  it('了解指令：标准函数调用（四个参数整行列出），规程在「了解」模块里', () => {
+  it('了解指令：标准函数调用（四个参数整行列出），规程在 WORKFLOWS_GUIDE 里', () => {
     const row = builtinWorkflowRows().find((r) => r.id === 'explain')
     expect(row).toBeTruthy()
     // 目标节点、词条、序号与选段都由触发方补齐：缺一样它就会去猜，而猜错的后果是注解标错地方
@@ -199,13 +199,10 @@ describe('内置工作流', () => {
     expect(text).toContain('- 选中原文: 用夹逼定理可以求这个极限')
     // 占位符一个都不许剩下：剩下的会被模型当成正文抄进注解里
     expect(text).not.toContain('{{')
-    // 交货动作在模块里：注解走文档节点 content 的 annotations 字段（editContent 写回）
-    const mod = promptModuleByKey('explain')
-    expect(mod).toBeTruthy()
-    expect(mod!.text).toContain('c.annotations')
+    // 交货动作在规程里：注解走文档节点 content 的 annotations 字段（editContent 写回）
+    expect(WORKFLOWS_GUIDE).toContain('c.annotations')
     // 解释要挂在用户盯着的那段文字旁边，别把视线拽到对话栏（同伪编译）
     expect(text).not.toContain('switchMain')
-    expect(mod!.text).not.toContain('switchMain')
   })
 })
 
@@ -337,16 +334,16 @@ describe('思考档位唯一性（三态配置已删）', () => {
     for (const r of builtinWorkflowRows()) expect('effort' in r).toBe(false)
     expect(buildState(store()).workflows).toBeUndefined()
   })
-  it('写教学文档的内置工作流，配方在动笔之前就注入（doc-html）', () => {
+  it('写教学文档的配方随系统提示词静态在场；内置工作流不再注入规程模块', () => {
     const rows = builtinWorkflowRows()
+    // 内置条目一律不带 promptModule（规程全在 WORKFLOWS_GUIDE，2026-11 全量静态重构）
+    for (const r of rows) expect('promptModule' in r).toBe(false)
+    // 排版配方（doc-html）随系统提示词在场——首份文档就不是纯文本草稿（v0.5.8 踩过）
+    expect(WORKFLOWS_GUIDE).toContain('文档排版与视觉呈现')
+    // workflowModules 只服务登记工作流的 prompt 字段；内置条目现在是空
     const teach = rows.find((r) => r.id === 'teach-node')!
-    expect(teach.promptModule).toBe('teach-method doc-html')
-    expect(workflowModules(teach).map((m) => m.key)).toEqual(['teach-method', 'doc-html'])
-    // 每条工作流的规程都在自己那份模块里（「了解」的注解写法、修复图像的验收标准）
-    const explain = rows.find((r) => r.id === 'explain')!
-    expect(workflowModules(explain).map((m) => m.key)).toEqual(['explain'])
-    // 「生成大纲」带大纲编写规程（outline-method）
-    const outline = rows.find((r) => r.id === 'outline')!
-    expect(workflowModules(outline).map((m) => m.key)).toEqual(['outline-method'])
+    expect(workflowModules(teach)).toEqual([])
+    const withPrompt = workflowModules({ id: 'wf1', name: '课前摸底', prompt: '第一步：摸底' })
+    expect(withPrompt.map((m) => m.key)).toEqual(['wf:wf1'])
   })
 })

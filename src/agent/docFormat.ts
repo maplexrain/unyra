@@ -161,18 +161,6 @@ export function docFormatMessage(
 }
 
 /**
- * 内容触发的提示词模块在当前格式下要不要注入（见 learn/ai/promptModules 的
- * promptModuleForContent 与 agent/sandbox/execute 的注入点）。
- *
- * 目前只有一条规矩：**纯 Markdown 策略下不注入 doc-html**——那份模块整篇是
- * HTML + Tailwind 的排版配方，与策略直接冲突；把它注进去，模型会在两条相反
- * 的要求之间折中。别的模块（plot-forms、rich-animation 等）与格式无关，照旧。
- */
-export function docFormatAllowsModule(key: string, format: DocFormatId): boolean {
-  return !(format === 'markdown' && key === 'doc-html')
-}
-
-/**
  * 整篇写入教学文档的排版提醒：正文里一处排版痕迹都没有时，在回执里点一句。
  *
  * 为什么值得写在回执里：文档的质量**看不见**。模型交出一篇没有版式的纯文本，

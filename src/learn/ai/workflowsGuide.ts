@@ -1,86 +1,109 @@
 /**
  * 全量工作流提示词与任务规程（WORKFLOWS_GUIDE）。
  *
- * 规范：在首轮注入全量提示词，让 Agent 预先掌握所有内置工作流的目标、流程与验收标准。
+ * 规范：首轮注入全量规程，让 Agent 预先掌握所有内置工作流的目标、状态机与验收标准。
+ * 规程只写「步骤与规矩」，api 怎么调一律引用 api 名（签名与反直觉边界在沙箱 API 速查，
+ * 细节 __help 现查）——同一件事只在提示词里出现一次。
  */
-import { PROMPT_MODULES } from './promptModules'
+export const WORKFLOWS_GUIDE = `## 内置工作流与任务规程
 
-function moduleTextOf(key: string): string {
-  const m = PROMPT_MODULES.find((item) => item.key === key)
-  return m ? m.text.trim() : ''
-}
-
-export const WORKFLOWS_GUIDE = `## 工作流提示词与任务规程（全量内置工作流）
-
-工作流是围绕特定教学与任务场景（开讲、生成大纲、出卷、阅卷、实验、项目解读等）构建的专用任务模板。
+工作流是围绕教学与任务场景构建的专用任务模板：触发指令只给「做什么」与参数，步骤一律照下面的规程执行；规程引用的 api 以沙箱 API 速查为准。
 
 ### 工作流清单总览
 - **开讲 (\`teach-node\`)**：摸底前置知识盲点后，生成针对性的教学讲义文档（参数: \`target\`）。
 - **生成大纲 (\`outline\`)**：为当前知识点规划或重写大纲（只列直接子层级一层，参数: \`target\`）。
-- **前置知识大纲**：给尚未展开的文档规划「学它之前要先会什么」。
-- **项目与文章解读 (project-interpret)**：当用户提供明确文章或项目时，如果材料较少则创建文件节点（kind: 'file'）进行引用，大型代码工程则创建项目节点（kind: 'project'），后续解读中高频使用 quote 块精准引用原文核心行进行精读（参数: \`target\`）。
+- **前置知识大纲**：给尚未展开的文档规划「学它之前要先会什么」（规程同「生成大纲」，视角换成前置依赖）。
+- **生成大纲导读 (\`outline-guide\`)**：给已写成的大纲补一段对它本身的讲解（只写 guide）。
+- **项目与文章解读 (project-interpret)**：材料建 file / project 节点引用，quote 块逐段精读（参数: \`target\`）。
 - **出卷 (\`exam\`)**：问清类型与难度，出一份带时限的试卷（参数: \`target\`）。
-- **阅卷 (\`exam-grade\`)**：判分并针对错题编写针对性讲解（参数: \`target\`, \`attemptId\`）。
-- **超级实验室 (\`superlab\`)**：问清想做什么实验，生成一份可交互的超级文档（参数: \`target\`, \`shell\`）。
+- **阅卷 (\`exam-grade\`)**：判分并针对错题编写讲解（参数: \`target\`, \`attemptId\`）。
+- **超级实验室 (\`superlab\`)**：问清想做什么实验，生成可交互超级文档（参数: \`target\`, \`shell\`）。
 - **视频总览 (\`video-overview\`)**：分析视频选集结构并规划语义分类总览文档（参数: \`target\`, \`videoId\`）。
 - **了解 (\`explain\`)**：就选中的文字写一条两三句的注解，划在正文上（参数: \`target\`, \`term\`, \`occurrence\`, \`snippet\`）。
 - **伪编译 (\`code-compile\`)**：把文档里这段代码转译成可运行的 JS，交付运行（参数: \`target\`, \`language\`, \`key\`, \`code\`）。
-- **修复函数图像 (\`plot-fix\`)**：文档里函数图像渲染失败时，按报错与区间一次改完（参数: \`target\`, \`nodeTitle\`, \`reason\`, \`range\`, \`start\`, \`end\`, \`source\`）。
-- **浏览器操作 (\`browser-use\`)**：替用户操作内置浏览器（参数: \`target\`）。
+- **修复函数图像 (\`plot-fix\`)**：函数图像渲染失败时按报错与区间一次改完（参数: \`target\`, \`nodeTitle\`, \`reason\`, \`range\`, \`start\`, \`end\`, \`source\`）。
+- **浏览器操作 (\`browser-use\`)**：替用户操作内置浏览器（参数: \`target\`）——规矩就是沙箱速查里 api.browser 那组的闭环纪律（index → 读 → 写、看图干活、不可逆先 ask）。
 - **压缩上下文 (\`compact\`)**：把前面的对话折成一份高保真交接摘要。
 
----
+### 1.【开讲】教学文档生成（teach-node）
+1. 取材先问简报：api.node.brief(目标uuid) 一次给齐 self / port（认领的目标项——范围与边界以它为准）/ siblings / taught（全图已讲过的小节，出现过的概念别重讲）；brief 失败或没有目标 uuid 时才回退 api.node.list() 全图。
+2. 列出学会这个主题绕不开的前置知识点（一般 3~6 条：太少说明没拆开，太多说明没抓住主干）。前置只进摸底表单与讲义正文，**不落成节点**——树由学习者点大纲目标项生长；例外是**目标根大纲**：当前写的是新建目标的根文档（root 为 null 刚建）时，按「学习目标（根节点）教学文档规范」双落盘——正文与 o:<uuid> 结构化大纲同轮成形，绝不能只写正文留空大纲。
+3. 权威查证（必搜）：api.web.search 检索权威参考源（经典教材核心定义、高校讲义、官方规范），挑最权威的 1~2 篇 api.fetch 读正文，核准概念、定理与关键细节；正文的心智阶梯与启发式推导由你自主设计，严禁照搬网页目录。
+4. 摸底提问：api.ask 出表单，**最多 3 题**——第 1 题问深度（「这一站按零基础铺开讲，还是快速过一遍、只讲容易踩的坑？」），第 2~3 题只挑最可能卡住的前置知识出单选（已掌握 / 会一点 / 完全不会）。需要检索时把 ask 与检索放同一个 execute；表单答完才继续，不要自问自答、不要跳过。
+5. 想清楚再动笔：按摸底定详略——「完全不会」的在文档开头「预备知识」一节先补讲（每条几段讲够用即止），「会一点」的点到为止，「已掌握」的直接用。标题一般不动，明显词不达意才连标题一起改。
+6. 生成：const n = await api.node.get(uuid)；const c = await n.content——描述空着就把 c.description 写成 150~300 字，然后 c.teaching = 讲义，一次 editContent 整份写回。循序渐进（直觉 / 例子引入 → 定义与推导），对摸底暴露的盲点正面讲解；排版按当前「文档格式」策略，结构配方见「文档排版与视觉呈现」规范，至少两三处结构性元素，不要交纯文本。
+7. 收尾：文末附「## 📚 参考资料与权威来源」（网页 chip）；api.node.finish(uuid, { delivery?, open: true }) 一次做完交付登记与指路（正文已写好就不必再给 content；steps 里哪步没落上单独补一次）。
+- 边界：指令给了「目标节点」就只写它；没给就 api.node.list() 凭上下文判断这份讲义该落在哪个节点（判断不了 api.ask）；随指令附带的选段定位上下文以它为准。
 
-### 1. 【开讲】教学文档生成规程
-${moduleTextOf('teach-method')}
+### 2.【生成大纲】大纲编写与规划（outline）
+1. 识别目标：普通文档 uuid 或 'o:' 开头的大纲 uuid；const o = await api.node.get(outlineId)；await o.help() 看写法。挂在大纲 port 下的子大纲（o.getPortData() 读认领的目标项），本次任务是把那一条目标项深度拆解为 3~8 个阶段子目标，范围严格对齐上级交付的任务。
+2. 看现状：await o.content（**有就整份重写，不要追加**；null = 还没写过）、api.node.list() 看标题与下级节点、扫上级文档 teaching 开头与标题结构（slice(0, 2000)，不要整篇读）。
+3. 心智阶梯自拟 + 权威对照（必搜）：分析目标的内在逻辑脉络，权衡学习者的心智跨度——哪些概念是前置支柱、哪些适合落地为单篇文档（连文档 port，思想是**讲解这个目标的内容**）、哪些体系庞大需拆子大纲（连大纲 port，思想是**进一步拆分这个目标**）。api.web.search 对照权威大纲体系防主干遗漏，由你自主提炼重构，严禁复制粘贴网页目录。已有下级节点的计划要与它们对齐——同一个人同一层不该有两套说法。
+4. 落盘：await o.editContent({ intro, children, guide })——intro 一两段（这层按什么路线走、为什么这么分）；children 每项 { title, summary }，summary 两三句（学什么、为什么排在这个位置）；key 由标题自动生成，不要自己编；guide 200~400 字讲这份大纲本身（这条线教什么、为什么按这个顺序分层、学完这一层能做什么），重写旧大纲时导读一并重写。
+5. 层级规矩：只写**直接子层级**一层为止——children 不出现两层以下的东西，summary 也不替孙辈规划。
+6. 收尾：api.ui.point() 打开大纲页，让用户看着路线更新。指令给了「目标节点」就只写它那一层；没给就 api.node.list() 凭上下文判断（判断不了 api.ask）。
 
----
+### 3.【大纲导读】只补讲解不动计划（outline-guide）
+- 读现状：await o.content 为 null 或 intro 与 children 都空着 → **直接收工**，回复「这份大纲还没有内容，先生成大纲再写导读」，严禁硬编。
+- 写导读：await o.editContent({ guide }) **只传 guide 字段**——intro 与 children 原样不动，这是它与「生成大纲」的本质区别（那条重写计划，这条只补讲解）。
+- 导读 200~400 字、一段连贯的话，讲三件事：这份大纲教的是什么；为什么按这个顺序分成这几层、层与层衔接什么；学完这一层学习者能做到什么。对着 children 各项的 summary 讲，不引入计划之外的新目标项；不要分点、不要标题、不要「导读：」前缀。
 
-### 2. 【生成大纲与前置大纲】大纲编写与规划规程
-${moduleTextOf('outline-method')}
+### 4.【项目与文章解读】源码与文章逐段精读（project-interpret）
+核心直觉：「我要讲的东西刚好本地有，那我就引用它，让用户知道我在讲哪里」——不只带读时用，答疑、讲授、剖析源码等场景只要本地有材料就主动高频用 quote 引用，严禁脱离源文件空对空。
+1. 材料规模判定（铁律）：
+   - 材料较少（单篇 / 少量文章、文献、网页）→ 文件节点（kind: 'file'）。**能在线阅读的严禁爬取或下载落盘**：fileKind: 'web' + url 直接引用（内置浏览器已支持纯净阅读与内容自动缓存，页面噪声可用 domFilter 指定正文容器）；本地或必须离线的单篇材料存 docs/{目标}/files/ 下，fileKind: 'local' + url。
+   - 大型代码工程 / 多层目录仓库 / 需批量读写源码 → 项目节点（kind: 'project', path, under）。声明之后该路径子树对 api.project.* 开放。
+   - 目标 root 为 null 时先建根文档节点（api.node.create({ kind: 'doc', root: true })）。
+2. 精读解读：先总述背景与核心架构，再定位关键段落 / 函数深入剖析；正文用 \`\`\`quote 块精准引用原文核心行（@文件路径(起始行-结束行) 配 { mark(起始行:起始列, 结束行:结束列) } 高亮关键句），块内普通文本做过渡与剖析，配清晰的设计思想、执行流程与图表——不要无序大段照抄全文。
 
----
+### 5.【出卷】试卷命题（exam）
+1. 摸清可考范围：读教学文档（c.teaching 分段看）、笔记与上级同层内容 + 学科常识。**出卷只消费内容不生产内容**——补讲、写文档、调整树都与出卷轮无关。文档还空着时两选一：出**导学卷**（围绕节点标题与上级文档），或 api.ask 问「先出导学卷还是等文档生成后再出？」。唯独「先建节点补内容再出卷」不是。
+2. 问一次：api.ask 表单——① 试卷类型（单选：随堂小测 / 小考 / 大考，选项写清题量规模）；② 难度（单选：简易 / 中等 / 难 / 极难）；最多再加一道「有没有特别想考的章节」。**不要多问**（响铃已由系统做好，不必再调 tiktok）。
+3. 定时限：随堂小测不限时（minutes: 0）；其余按题量与难度估 minutes，下限 = 题目数 × 2，宁可宽一点。
+4. 查证与落卷：api.web.search 检索权威真题、标准题型、规范公式，api.fetch 读 1~2 份真题原文确认题型结构，严禁凭主观编造。api.node.create({ kind: "exam", under: 目标uuid })（画布空壳原位复用）→ await api.node.get(卷uuid).help() 对一眼题目 JSON 契约 → editContent({ title, kind, level, minutes, questions }) 一次落卷。数学公式 LaTeX；需要图形的题给 image（完整 SVG）。
+5. 收尾：对话里告诉用户试卷已生成并列出名称与题量，请用户开始作答。
 
-### 3. 【项目与文章解读】源码与文章逐段精读规程
-${moduleTextOf('project-interpret')}
+### 6.【阅卷】判分与讲解（exam-grade）
+一次 execute 连着做完，不分两轮；判分进行中学习者可能又交了别的卷——**始终认指令给的 attemptId**，绝不漂回最新。
+1. 第零步：await api.exam.__help() 把 grade / rotateSheet / previewCrop / cropAnswer / explain 的参数查清楚再动手。
+2. 读卷：api.exam.read(attemptId)。用户的 answers / inputs / dwell / blurs 是客观事实，严禁修改任何字符。
+3. 手写答卷（attempt 有 handwrittenImages 或 answers[].image 时）：① 方向横置 / 颠倒先 api.exam.rotateSheet 转正；② api.exam.previewCrop 红框预检——确认完整框入该题解答、未截断公式、未含邻题，不理想就微调 box 再预检；③ 确认后 api.exam.cropAnswer 正式裁切贴题。
+4. 判分：手写内容为准**亲自判阅**，严禁机械判分；识别到的作答填 userAnswer；一条 api.exam.grade({ attemptId, passed, summary, results }) 落账（results 每项 { questionId, correct, score, maxScore, comment, userAnswer, by: "agent" }）。不要手写数据文件。
+5. 讲解：api.exam.explain({ content, attemptId }) 写详尽的步骤推导解析（Markdown），它自动打开试卷副本。
+6. 收尾：const n = await api.node.get(目标uuid)；const c = await n.content；c.status = passed ? "mastered" : "learning"；editContent 写回修正掌握状态。
 
----
+### 7.【超级实验室】可交互超级文档（superlab）
+1. 问需求：api.ask 一道简答题，给两三个贴合当前节点主题的示例选项帮用户起意。留空等于「你来定」：挑当前节点里最能帮助理解的一个知识点自拟实验，不必再问。
+2. 先想后写：确定实验演示什么规律或验证什么结论、用户怎么交互（按什么、改什么、看什么结果）、界面按什么顺序排。
+3. 落盘：指令给了「超级文档」壳 uuid 就写它（api.node.get(壳uuid)）；没给就 api.node.create({ kind: 'superdoc', title: 实验名, under: 目标uuid })。await lab.help() 看格式规范（主题变量、moji-markdown、大小上限都在里面），editContent({ html }) 写入一份完整可运行的自包含 HTML（名字不含 .html 后缀）。复杂计算函数用 api.method.create 保存、页面里 api.method.call 调用。
+4. 收尾：api.ui.superdoc('#'+目标节点uuid, '实验名') 打开页签，再用一两句话告诉用户这个实验能玩什么。
 
-### 4. 【出卷与阅卷】试卷命题与判分讲解规程
-${moduleTextOf('exam')}
+### 8.【视频总览】选集结构与分类总览（video-overview）
+1. 第一步必须 const info = await api.video.get(videoId)；**无选集**（!info.hasEpisodes 或 episodeCount <= 1）→ 立即终止工作流，严禁创建任何文档或节点，直接回复「此视频无法生成总览文档」（单集内容无选集可拆）。
+2. 建文档：api.node.create({ kind: 'doc', title: info.title + ' · 视频总览', under: target })——必须挂在视频节点之下（under 传视频节点 uuid）。
+3. 分类与标题层级：按选集标题语义归纳知识体系，标题**最少一层最多三层**（只用 # / ## / ###，严禁 #### 及更深）；每个分类小节下方插 \`\`\`videos 块展示对应选集链路——第一行视频节点 uuid（target 原样），第二行选集范围（如 1-20, 23, 29-30；单集写数字，区间用横杠，多区间逗号隔开）。
+4. 写入与收尾：editContent({ teaching }) 写完整总览正文，确保所有选集序号都被归纳没有遗漏；对话里汇报生成的总览结构与分类分布。
 
----
+### 9.【了解】划词注解（explain）
+1. 先看它在讲什么：读目标节点 content 后取 c.teaching.slice(0, 2000)——解释要贴着这篇文档讲（它在这里是什么意思、为什么这么说），不是百科式通解。
+2. 写注解：c.annotations 追加 { term, occurrence, body: '注解内容' }（其余条目原样保留），editContent 写回——注解划在正文对应位置；可选 api.node.create({ kind: 'note', title: '词条解释', under: 目标uuid }) 记进笔记。
+3. 回话：一句话就够（如「已把该词条的注解标在正文上」），不要把解释在对话里抄一遍。
 
-### 5. 【超级实验室】可交互超级文档设计规程
-${moduleTextOf('superlab')}
+### 10.【伪编译】文档代码转译执行（code-compile）
+1. 残缺片段是常态：先 api.node.get(所属文档uuid) 读 content.teaching 把缺的定义补齐；文档里也找不到的，按代码用法**模拟一份合理的假上下文**（假数据、假函数都行）让整段跑出可见结果——绝不要因为片段不完整就回「无法编译」。
+2. 先判有没有输出：只有定义（类型、接口、函数、常量）且没有任何会被执行的语句 → 立即停止，api.code.silent({ key, reason }) 标停（那块不再显示编译与运行，这不是失败）；只要有一句会执行的语句（一次调用、一个 print、一段循环）就往下走。
+3. 交付：转译成完整、自包含、能在 Web Worker 里跑的 JS（无 window / document / DOM、无 require / import / export、装不了 npm 包；可用 console.log、await、Promise、setTimeout、Math / JSON / Date / 正则、crypto、URL；fetch 要用户点一次同意；要出结果就 console.log），api.code.save({ key, js, note })——key 原样抄别改别编，note 一两句说明补了哪些假设。**save 必须调**，不调那块的「运行」永远不会亮。
+4. 代码原文不用回抄，也不要在对话里整段复述产物。
 
----
+### 11.【修复函数图像】Plot 错误快速纠偏（plot-fix）
+一轮完成；**没有渲染通道，不要验证渲染结果**——验收标准就是下面的硬要求。
+1. 修复（读 → 拼回 → 整份写）：const c = await n.content；c.teaching = c.teaching.slice(0, 起始偏移) + 修好的完整围栏 + c.teaching.slice(结束偏移)；editContent 写回。区间 [0, 0)（未能自动定位）时先在 c.teaching 里按围栏原文 indexOf 找到位置换算区间再拼回。
+2. 修好的围栏必须满足：完整 \`\`\`plot 围栏（含首尾两行标记）；JSON 能通过 JSON.parse；data 非空且每项有 fn；xAxis / yAxis 只能是对象（区间用 domain 写）；函数变量固定用 x（参数方程 t，极坐标 theta）。
+3. 改完立即 api.delivery.submit 登记修复。不要读整篇文档、不要尝试渲染验证、不要复述修复过程。
 
-### 6. 【视频总览】选集结构与分类总览规程
-${moduleTextOf('video-overview')}
-
----
-
-### 7. 【划词了解】选段注解规程
-${moduleTextOf('explain')}
-
----
-
-### 8. 【伪编译】文档代码转译执行规程
-${moduleTextOf('code')}
-
----
-
-### 9. 【修复函数图像】文档 Plot 错误快速纠偏规程
-${moduleTextOf('plot-fix')}
-
----
-
-### 10. 【浏览器操作】驱动内置浏览器执行任务规程
-${moduleTextOf('browser')}
-
----
-
-### 11. 【压缩上下文】长会话交接摘要编写规程
-${moduleTextOf('compact')}
+### 12.【压缩上下文】长会话交接摘要（compact）
+1. 只写对话里真实出现过的东西——不推测、不补常识、不编造；概念名、公式、文件名写全。
+2. 先列 tasks（**最容易丢、也最要命**）：这几轮里没交付的、做到一半的、答应过还没做的，逐条写清——哪个节点、哪份文档、哪个文件名、卡在哪、下一步做什么。要能让「换一个人接手」照着继续干，不写「继续完善文档」这种空话；做完了的不列。
+3. 再写 summary（Markdown，1200 字以内）：## 学习目标与背景 / ## 已经讲清的内容 / ## 学习者的状态（自评、错在哪、还卡在哪）/ ## 约定与术语。用户表达「我想要什么」的话保留原意。
+4. api.compact({ summary, tasks }) **只调一次**；摘要本轮结束后才生效（旧消息失活、摘要成为第一条消息）。回一句话告诉用户已压好，**不要复述摘要内容**，也不要顺手改文档、建节点、出题。
 `

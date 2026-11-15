@@ -1,556 +1,35 @@
 /**
- * 这个文件负责什么：**动态提示词注入**的模块注册表——低频能力的完整规范住在这里，
- * 系统提示词里只留一行索引；模型第一次真正用到某组 api（或写出某种内容）时，
- * 宿主把对应模块作为一条隐藏 user 消息注入上下文，**同一上下文只注一次**。
+ * 这个文件负责什么：内容形态的排版 / 写法规范文本（doc-html、plot-forms、rich-animation）。
  *
- * 为什么这样拆：EXECUTE_GUIDE 曾把十几个低频域的完整手册整段压在系统提示词里
- * （sdoc 3k、browser 1.8k、exam 1.5k……），每一轮请求都全价付一遍，而多数对话
- * 根本用不到。搬进模块后：不用不花钱；用到时全文在场（不是压缩版）；压缩上下文后
- * 模块随旧消息失活，下次使用自动重新注入——判据见 missingPromptModules。
+ * 架构现状（2026-11 瘦身重构后）：这三份规范**随系统提示词首轮静态注入**
+ * （teacherSystem 经 moduleTextOf 引用）——它们是「写教学文档 / 函数图像 / 动画」
+ * 的高频配套，静态在场让首份文档就不缺配方（v0.5.8 教训：配方晚一轮，第一份文档
+ * 永远是草稿）。曾有的按需动态注入（api 组触发 / 内容嗅探 / 内置工作流 promptModule）
+ * 已随全量静态提示词退役；动态通道现在只服务**用户登记工作流的 prompt 字段**
+ * （见 learn/workflows 的 workflowModules 与 useAgent 的轮首注入）。
  *
  * 纪律：
- * - **模块文本与实现对账**：这里的每一段都源自 EXECUTE_GUIDE 的对应小节（无损搬移），
- *   api 行为改了这里也要改——apiCatalog 的目录页与 agent-ops 探针只对账「有没有」，
- *   对不了「写得对不对」。
- * - **key 一经使用不可改**：去重靠消息上的 promptModule 字段（落盘在 chat.json），
- *   改 key 等于让所有老对话的「已注入」记录作废。
- * - 模块文本必须**自包含**：模型读到它时上下文里没有别处的铺垫，开头一句要说清这是什么。
+ * - **文本与实现对账**：渲染器改了写法，这里的说明也要改；示例里的类名是 load-bearing 的，
+ *   压缩文案不许动 class 串。
+ * - 图表一律走 ```plot / ```pisc / ```mermaid 围栏（各有专节），HTML 配方不承载图表。
  */
 import type { ConversationMessage } from '../../agent/types'
 import { t } from '../../i18n'
 
 export interface PromptModule {
-  /** 稳定标识：去重、消息标记、触发映射全靠它（见文件头纪律） */
+  /** 稳定标识 */
   key: string
   /** 界面分界条上显示的名字（mark = 提示词模块 · {title}） */
   title: string
-  /** 注入上下文的完整文本（自包含） */
+  /** 注入上下文的完整文本 */
   text: string
 }
 
 export const PROMPT_MODULES: PromptModule[] = [
   {
-    key: 'browser',
-    title: '内置浏览器',
-    text: `内置浏览器（browser.open / browser.tabs / browser.activate / browser.close / browser.index / browser.text / browser.inspect / browser.click / browser.fill / browser.type / browser.press / browser.scroll / browser.query / browser.waitFor / browser.screenshot / browser.toImage / browser.eval）：
-- 这一组操作的是**界面上开着的网页页签**（文档区里地球图标的页签）。
-- **生命周期基础**：
-  - api.browser.open('https://…')：开一个网页页签；纯关键词会当搜索词处理；返回 { tabId, url }。
-  - api.browser.tabs()：列出存活的网页页签（返回 { tabs: [{ tabId, url, title, active, group }] }）。**在 open 之前先查 tabs**：目标网址已经开着就 activate 过去，别重复开同一个网址。
-  - api.browser.activate(tabId)：切到某个页签。
-  - api.browser.close(tabId | tabId[])：关闭不需要的网页页签（收尾时关掉中间试错页，用户自己开的别关）。
-- **感知与阅读（读）**：
-  - api.browser.index(tabId?, opts?)：获取页面的**压缩语义索引大纲**（纯文本树）。深度穿透 Shadow DOM 与 iframe，正文区与模式化列表会自动折叠，每一行带 [id] 编号（如 [3] input[editable] "搜索"、[5] button "like:1024"）。
-  - api.browser.text(tabId?, id, opts?)：深入读某个折叠正文区或容器的**完整正文文本**（支持 { maxChars, offset }）。
-  - api.browser.inspect(tabId?, id)：探测某个节点的详细属性（tagName、value、placeholder、href、checked、disabled 以及几何坐标）。
-- **受控交互动作（写）**：
-  - api.browser.click(tabId?, id, opts?)：自动平滑滚动居中并派发完整指针/鼠标事件序列（穿透 Shadow DOM，适配各类复杂按钮）。
-  - api.browser.fill(tabId?, id, '文字', { pressEnter?: boolean })：智能填入文本（原生 input/textarea、React 受控输入与 contenteditable 富文本框均完美支持；可选 pressEnter: true 回车提交）。
-- api.browser.type(tabId?, id, '文字', { delayMs?: number })：逐字符按键仿真与 IME 模拟输入（为 B 站、知乎、微博等 Shadow DOM 复杂富文本框量身定制的健壮输入通道）。
-  - api.browser.press(tabId?, key, id?)：模拟键盘按键（'Enter' / 'Escape' / 'Tab' / 'ArrowDown' 等）。
-  - api.browser.scroll(tabId?, { to?: 'top'|'bottom', by?: 像素, target?: id })：滚动页面或局部容器，返回 { atBottom }。
-- **全域透视与高级控制（高级）**：
-  - api.browser.query(tabId?, selector, { limit?: 20 })：穿透全页所有 Shadow DOM 检索候选列表，每项带 id、text、href、rect、visible 等，彻底告别单匹配盲猜。
-  - api.browser.waitFor(tabId?, selector|text, { timeoutMs?: 5000 })：智能等待异步渲染的组件或文字出现，告别盲等。
-  - api.browser.screenshot(tabId?, opts?)：截取当前网页视图并存入资源库（返回 moji:static/uuid）；若传入 { target } 会自动按 DOM 元素转长图处理。
-  - api.browser.toImage(tabId?, target, opts?)：将指定 DOM 元素（编号或选择器，穿透 Shadow DOM）转换为图片/长图存入资源库；自动隔离并隐藏遮挡在目标上方的悬浮遮罩、吸顶头与弹窗（isolate: true）；超长文章自动分段滚动并无缝拼接为长图（full: true）。亦可调 api.browser.elementImage。
-  - api.browser.toMarkdown(tabId?, target?, { saveTo? })：将指定 DOM 元素或正文区域转换为 Markdown 语法，尽可能保留排版、图片、公式、表格与列表；支持 { saveTo: 'workspace/article.md' } 直接落盘工作区避免撑爆上下文。
-  - api.browser.eval(tabId?, code, { saveTo? })：在页面上下文中安全执行受控 JS 并返回 JSON（只读/枚举透视终极保底武器）；长文本建议配合 { saveTo: 'workspace/xxx.md' } 直接落盘，避免撑爆上下文。
-- **调用人体工学纪律**：
-  - tabId 可省略，默认指「焦点格正看着的那个网页」。
-  - 目标参数传 index 返回的编号数字（如 12）即可，无需编写复杂的选择器。
-  - 网页是用户的真实登录会话：提交、支付、删除等不可逆写操作必须先 api.ask 确认。`,
-  },
-  {
-    key: 'web',
-    title: '网络搜索与网页抓取',
-    text: `网络搜索与网页抓取（基于 DeepSeek 官方 Search API 与 Fetch API）——这份规范在你第一次调用搜索或抓取时注入：
-- **api.fetch({ url }) 或 api.fetch(url)**（亦可调 api.web.fetch，支持 url / link / href 别名）：
-  * DeepSeek 官方抓取服务。输入目标网页 URL，返回统一结构 { ok: boolean, title: string, content: string, error?: string }。
-  * 容错契约：失败时不抛异常，返回 { ok: false, title: '', content: '', error: '...' }。读取 content 绝不会报 undefined，但**必须先检查 if (!r.ok) 分支处理**。
-  * 抓取受第三方站点反爬与超时限制（例如维基百科、部分高校课程网）：若抓取失败或超时，**严禁死循环重复抓取同一 URL**，请直接降级使用搜索结果中已有的 snippet / summary 摘要，或换用其他检索结果链接。
-- **api.web.search({ query, count?: 5, need_content?: boolean, ... }) 或 api.web.search(query, { count: 5 })**：
-  * DeepSeek 官方搜索服务。返回统一结构 { ok: boolean, results: Array<{ title, url, snippet, summary, rerank_score, authority?, content? }>, error?: string }。
-  * 参数容错与别名：count 支持别名 maxResults / limit，默认值为 5（单条结果约 1.5k~2k 字符，5 条约 10k 字符，有效防止撑爆上下文）；query 支持 q / keyword；need_content 支持 needContent。
-  * 搜索质量调优：宽泛词容易搜出专利书或商业碎片；建议补充领域限定词（如「教材」「规范」「原理解析」「教程」「官方文档」）。检索结果自带 rerank_score（相关度）与 authority（权威度），可自行筛选排序。
-- **上下文体积防爆铁律（严防触碰 3.2 万字符上限）**：
-  * 沙箱 execute 结果有 32,000 字符硬上限。严禁在一次 execute 里并发/连续塞入多个 query 并直接返回全量 raw 结果（否则极易触发截断丢失后续结果）！
-  * 多关键词搜索时，请在 JS 脚本中按需筛选提炼字段：const items = r.results.map(x => ({ title: x.title, url: x.url, summary: x.summary || x.snippet }))；或分轮次按需检索。
-  * need_content: true 会返回单条几千到上万字符的长正文，仅在极其关键且确需全文时对 1~2 个条目开启，绝不可全量开启。
-- **该不该搜：按任务类型定**（本节最要紧的一条）：
-  * **创作交付必搜（防幻觉 + 权威背书）**：新建学习目标、规划路线大纲、撰写教学讲义、命制考试题目时，**必须主动使用 api.web.search 检索权威参考源**（高校教学大纲、官方技术规范、经典教材目录、权威学术文献等），并挑最权威的 1~2 篇 api.fetch 读正文（或精读权威摘要）。
-    - **防止幻觉（Fact Grounding）**：模型自身容易对专业术语、公理定义、定理条件、最新规范产生记忆漂移或微妙幻觉，必须对照权威资料核准；
-    - **权威背书（Authority & Trust）**：文末附带权威资料并声明来源，让学习者感知到内容的严密性与可靠性，有据可查；
-    - **主观心智架构（严禁照搬目录）**：检索是为事实核验与权威背书服务，知识的心智阶梯、循序渐进的启发式推导、阶段目标的拆解必须由导师自主深度设计，严禁把搜索到的网页目录机械复制为目标项。
-  * **检索不是调研**：search 只负责找到入口，snippet / summary 是索引、不是依据。挑 1~3 篇最权威的（官方文档、标准原文、教材或大纲原文）用 api.fetch 读正文，看清它到底怎么讲，再做比对、提炼与取舍。交付物里引用的每条结论，都必须来自你**读过的正文**——只看着标题和摘要就下笔，等于走个形式。
-  * **抓取有 8 秒硬超时**：超时就换一个来源（或改用搜索结果里的另一条），**绝不重试同一 URL**；只拿到摘要时如实说明「这是摘要层面的信息」，不要装作读过全文。
-  * **确定性工作默认不搜**：纯算法、本地逻辑、调试自己的代码、重构、格式转换、计算与数据整理、解释已有内容、闲聊——直接用你自己的知识做，不要联网。
-  * **编码涉网是例外，必须搜**：写的代码要调第三方接口、依赖协议 / 规范原文、SDK 用法、鉴权流程、数据格式契约（请求头、错误码、限流、分页这类边界）时，**先 api.web.search 找官方文档与规范原文，再用 api.fetch 读正文**，确认参数与边界后落笔——接口行为靠猜，只会把轮次烧在盲试上；自己代码里的 bug 与纯本地逻辑仍属上一条，不要拿「涉网」当借口什么都搜。
-  * 另外两种情况也要搜：用户明确要求查资料 / 给了网址 / 要最新信息；事实在你知识截止之后，或你拿不准且答错的代价很高。
-  * **一次够用就停**：一个 query 的 5 条结果通常已够多源比对，不要为了「更全」反复换词补搜，也不要为了凑来源列表而搜。
-  * 检索不到权威来源时如实说明这是通识讲解，不要用「据说」「有资料显示」含糊带过——那比不搜更糟。
-  * 引用或参考网络资料时，区分客观行业事实与材料观点，确保严谨性。
-- **网络引用与参考资料声明规范（强制性交付纪律）**：
-  * **必须声明来源（防幻觉权威交付）**：凡在生成教学文档、大纲规划或试卷设计中使用了网络搜索（api.web.search）或网页抓取（api.fetch）获得外部事实依据的，必须在最终交付物中明确声明参考的权威站点与网址；教学文档文末**必须包含「## 📚 参考资料与权威来源」区块**。
-  * **文档末尾必须使用网页类 Chip（严禁使用普通超链接）**：文档末尾的参考与引证来源**必须使用网页类 chip（#[{"type":"web","url":"...","title":"..."}] 或通过 await api.chip.build({ type: 'web', url, title }) 生成），严禁写成普通 Markdown 超链接 [文字](url)**。用户点击网页 chip 将在应用内置浏览器页签中直接查阅。
-  * **Chip 标题字数限制提醒**：界面对 Chip 设置了最大宽度限制（视觉上超出自动以省略号截断），因此 chip 的 title 字段必须简明扼要（建议控制在 15~25 个汉字或 30~50 个英文字符以内，例如《MDN: Flex 布局指南》），严禁把整句话、长段摘要或整串网址塞进 title！详细的参考说明、依据与观点写在 chip 后面的 Markdown 文本中。
-  * **文档内声明格式示例（教学文档末尾必须包含）**：
-    \`\`\`markdown
-    ## 📚 参考资料与权威来源
-    - #[{"type":"web","url":"https://example.com/spec","title":"官方规范核心定义"}] - 简要说明参考依据（如：核心定义与官方最佳实践）
-    - #[{"type":"web","url":"https://example.com/course","title":"权威高校公开课讲义"}] - 简要说明参考依据（如：数学理论推导与典型案例参考）
-    \`\`\`
-  * **对话里不再复述来源清单**：本轮改了哪些文件、真正引用了哪些来源，用一次 \`api.delivery.submit({ files, sources })\` 登记——界面会在消息底部按「一行一条」展示（文件变动 + 参考引证）。\`sources\` 只收真正读过并引用的 http/https 链接，\`files\` 写数据树路径或工作区相对路径。**没有交付物就不要调**；同一轮分几次登记会合并去重。
-    示例：\`await api.delivery.submit({ files: [{ path: '微积分/极限', action: 'updated', note: '补了夹逼定理' }], sources: [{ title: '同济高等数学第七版', url: 'https://example.com/book' }] })\`
-    文档内部（文末「## 📚 参考资料与权威来源」）仍按上面那条芯片规范写，那是文档的一部分，不属于交付账。`,
-  },
-  {
-    key: 'mcp',
-    title: 'MCP 外部服务',
-    text: `外部 MCP 服务（Model Context Protocol——用户配置的真实外部工具）——这份规范在你第一次调用 mcp.* 时注入：
-- api.mcp.list()：已启用的服务与各自缓存的工具清单（id、名称、传输、状态）。要调外部工具**先看它**；
-  服务按 id 或名称指名都认（名称撞重时用 id）。
-- api.mcp.discover(server?)：现场探测最新工具清单（SSE 服务实时请求，可能要等几秒；省略 = 探全部已启用服务）。
-  清单为空、或某个工具报「不存在」时用它刷新；单独探一个失败即失败，全量探查在 servers 里逐服务回报。
-- api.mcp.call(server, tool, args?)：调用一个工具。**参数按该工具公布在 list / discover 里的说明给**——
-  拿不准就先看工具的 description，不要猜。返回服务端的文本结果；失败不抛异常（回 { ok:false }），
-  按值判断，不要用 try/catch。
-- 这些是真实外部系统（数据库、文件、网页服务……）：**写操作与不可逆动作先 api.ask 确认**；
-  一次编排里把 list → call 的链路写完，中间结果不要写进对话。`,
-  },
-  {
-    key: 'res',
-    title: '资源库',
-    text: `目标资源库（api.res.*）——这份规范在你第一次读写静态资源时注入：
-- 清单/详情/读/建/改/删/引用扫描全部走 api.res.*（先 await api.res.__help() 查用法）；
-- 图片与静态资源物理存放于 docs/目标/static/，但**不要用 api.files.* 直接读写**——那是应用数据；
-- 在文档和讲义中引用静态资源使用标准 Markdown 格式：![说明](moji:static/{uuid})。`,
-  },
-  {
-    key: 'exam',
-    title: '试卷与考试',
-    text: `试卷与考试——两层结构与严密读写边界：
-
-一、试卷是节点，出题走节点宇宙
-- 出题：api.node.create({ kind: "exam", under: 文档uuid }) 建卷（画布上的空壳会被原位复用）→ await api.node.get(卷uuid).help() 看**题目 JSON 契约**（题型、options、answer、rubric、image 的完整格式都在它身上）→ editContent({ title, kind, level, minutes, questions }) 落卷。历次作答（attempts）不在 content 里，也绝不会被动到。
-- 两阶段流程：出题（如上）→ 交卷后 api.exam.read() 看作答、api.exam.grade(...) 判分、api.exam.explain(...) 写讲解。读任何时候都能调；判分与讲解受阶段约束。
-
-二、读写权限与严格边界（哪些能写、哪些绝对禁止篡改）
-- 🔒 用户事实层（只读！Agent 绝对禁止篡改）：
-  - attempt.id（attemptId）、startedAt、endedAt、forceSubmit、overtimeMs：真实的开考与交卷时戳；
-  - attempt.dwell（各题驻留毫秒数）、attempt.blurs（切屏记录）：衡量作答犹豫度与防作弊的事实数据；
-  - attempt.answers（用户填写的最终答案）、attempt.inputs（用户作答敲击流记录）：用户的原始作答铁证。
-- ✏️ Agent 评价层（Agent 唯一允许填写的字段）：
-  - attempt.status：设为 "graded"；
-  - attempt.results：逐题判分数组 [{ questionId, correct: boolean, score, maxScore, comment: "错题点拨", by: "agent" }]；
-  - attempt.passed：是否通过（boolean）；
-  - attempt.summary：综合成绩与掌握分析（字符串）；
-  - attempt.explanation：针对错题的详尽步骤推导与 Markdown 解析。
-- ❌ 严禁行为：绝不用 api.files.* 直接读写节点文件；绝不改写用户作答事实（answers / inputs / dwell / blurs）；绝不改动或覆盖之前的历史 attempts 作答轮次。
-
-三、「出卷」流程（「出卷」工作流的执行规程）
-- 摸清可考范围：const n = await api.node.get(目标节点uuid) 读教学文档（c.teaching.slice 分段看），笔记与上级、同层内容看 api.node.list()。**可考范围 = 这些已有内容 + 学科常识**——出卷只消费内容，不生产内容：补讲、写文档、调整树都与出卷轮无关。文档还空着时两选一：出**导学卷**（围绕节点标题与上级文档），或 api.ask 问「先出导学卷还是等文档生成后再出？」。唯独「先建节点补内容再出卷」不是。
-- 问一次：api.ask 出一张表单——① 试卷类型（单选：随堂小测 / 小考 / 大考，选项写清题量规模）；② 难度（单选：简易 / 中等 / 难 / 极难）；最多再加一道「有没有特别想考的章节」。**不要多问**（响铃已由系统做好，不必再调 tiktok）。
-- 定时限：随堂小测不限时（minutes: 0）；其余按题量与难度估 minutes，下限 = 题目数 × 2，宁可宽一点。
-- 检索查证与落卷：**积极 api.web.search** 检索权威真题、标准题型、规范公式，并 **api.web.fetch 读 1~2 份真题原文**确认题型结构再命题，严禁凭主观意志编造。然后 api.node.create({ kind: "exam", under: 目标节点uuid })（空壳原位复用）→ await api.node.get(卷uuid).help() 对一眼格式 → editContent({ title, kind, level, minutes, questions }) 一次落卷。数学公式 LaTeX；需要图形的题给 image（完整 SVG）。
-- 收尾：对话里告诉用户试卷已生成并列出名称与题量，请用户开始作答。
-
-四、「阅卷」流程（「阅卷」工作流的执行规程；一次 execute 连着做完，不分两轮）
-- 第零步：await api.exam.__help() 把 grade / rotateSheet / previewCrop / cropAnswer / explain 的参数查清楚再动手。
-- 读卷：api.exam.read() 读当前节点的试卷与 attempts（给了「作答记录」attemptId 就读那一次，否则取最新）。**用户的 answers / inputs / dwell / blurs 是客观事实，严禁修改篡改任何字符**。
-- 手写答卷方向转正与裁切贴题（若 attempt 中包含手写照片 handwrittenImages 或 answers[].image）：
-  ① **方向转正**：若用户拍摄角度横置或颠倒，**必须先调用 api.exam.rotateSheet({ sheetIndex: 0, degrees: 90 })** 将其顺时针旋转转正！转正后你将直接在下一跳收到正向图片；
-  ② **红框防截断预检**：为防止裁切偏差或文字被边缘截断，正式裁切前**必须先调用 api.exam.previewCrop({ questionId, box: [ymin, xmin, ymax, xmax], sourceImage: 0 })** 在图像上标出醒目红框。仔细审查返回的红框预检图：确保完整框入该题解答，且未截断公式、未包含邻题。若不理想，微调坐标再次 previewCrop 审查；
-  ③ **正式裁切贴题**：确认预检红框无误后，调用 **api.exam.cropAnswer({ questionId, box: [ymin, xmin, ymax, xmax], sourceImage: 0 })** 将各题手写区域正式裁切并贴在试卷对应题目上。
-- 判分：若有手写答卷，客观题与主观题均以手写内容为准由你亲自判阅，严禁机械判分；并将识别到的选项/手写文字填入 userAnswer，**一条 api.exam.grade({ attemptId, passed, summary, results }) 落账**（results = [{ questionId, correct, score, maxScore, comment, userAnswer, by: "agent" }]）。不要手写数据文件。
-- 讲解：api.exam.explain({ content, attemptId }) 写详尽的步骤推导解析（Markdown），它自动打开试卷副本。
-- 收尾：const n = await api.node.get(目标节点uuid)；const c = await n.content; c.status = passed ? "mastered" : "learning"; await n.editContent(c) 修正掌握状态。
-- 指令给了「目标节点」就只动它；**没给**就 api.node.list() 凭上下文判断（判断不了 api.ask）。`,
-  },
-  {
-    key: 'superlab',
-    title: '超级实验室',
-    text: `「超级实验室」工作流——在目标节点做一份**超级文档**：可交互的实验或小工具，用户在页签里点、文档干活并显示结果。本轮的交付物就这一份实验；知识树、教学文档都不动。
-- 问需求：api.ask 问用户想做什么实验 / 需要什么功能（一道简答题，给两三个贴合当前节点主题的示例选项帮他起意）。留空等于「你来定」：挑当前节点里最能帮助理解的一个知识点自拟实验，不必再问。
-- 先想后写：确定实验演示什么规律或验证什么结论、用户怎么交互（按什么、改什么、看什么结果）、界面按什么顺序排。
-- 落盘：指令给了「超级文档」（一份空壳的 uuid）就**写它**——const lab = await api.node.get(壳uuid)；没给就 const r = await api.node.create({ kind: "superdoc", title: 实验名, under: 目标节点uuid })。然后 await lab.help() 看格式规范（主题变量、moji-markdown、大小上限都在里面），await lab.editContent({ html }) 写入一份完整可运行的自包含 HTML（名字不含 .html 后缀）。复杂计算函数用 api.method.create 保存、页面里 window.api.method.call 调用。
-- 收尾：api.ui.superdoc('#'+目标节点uuid, '实验名') 打开该页签，再用一两句话告诉用户这个实验能玩什么。目标节点没给就 api.node.list() 凭上下文判断，判断不了 api.ask。`,
-  },
-  {
-    key: 'explain',
-    title: '了解（词条注解）',
-    text: `「了解」工作流——用户在文档里选中了一个词、点了「了解」，想要一句能挂在这段文字旁边的解释。严格按顺序做：
-- 先看它在讲什么：const n = await api.node.get(目标节点uuid)；const c = await n.content；取 c.teaching.slice(0, 2000) 读**这一段所在的上下文**。解释要贴着这篇文档讲——它在这里是什么意思、为什么这么说，而不是给一段百科式的通解。
-- 写注解：给 c.annotations 追加一条 { term: 词条, occurrence: 出现序号, body: '注解内容' }（其余条目原样保留），await n.editContent(c) 写回——注解就划在正文对应位置；同时可用 api.node.create({ kind: 'note', title: '词条解释', under: 目标节点uuid }) 把解释记进一份笔记。
-- 回话：一句话就够（例如「已把该词条的注解标在正文上」）。不要把那段解释再在对话中抄一遍。`,
-  },
-  {
-    key: 'teach-method',
-    title: '教学文档生成',
-    text: `「教学文档生成」方法——为知识节点产出一份针对性教学文档的完整流程。触发它的指令只给任务与参数，步骤一律照这里执行：
-
-一、先查再用
-- 本轮会用到 api.node.* 与 api.ask。动手前先 await api.<组>.__help() 把签名与示例查清楚，不要凭记忆猜参数。
-- **取材先问简报**：api.node.brief(目标uuid) 一次给齐 self / port（认领的目标项——范围与边界以它为准）/ siblings（同层其他目标项）/ taught（全图已讲过的小节，出现过的概念别重讲）。简报失败或没有目标 uuid 时才回退 api.node.list() 全图，不要默认从全图开始。
-
-二、前置知识与权威防幻觉检索（必搜）
-- 结合简报与上游文档判断，列出学会这个主题**绕不开的前置知识点**（一般 3~6 条：太少说明没拆开，太多说明没抓住主干）。
-- **权威防幻觉检索与事实查证（必须执行）**：撰写讲义前，**必须主动使用 api.web.search 检索权威参考资料**（经典教材核心定义、高校教学讲义、官方技术规范、学术文献），挑最权威的 1~2 篇核准核心概念、定理推导与关键细节。
-  * **防止幻觉（Fact Grounding）**：模型自身容易对专业术语、公理定义、定理推导、版本规范产生记忆漂移或微妙幻觉，必须对照权威资料核验校准；
-  * **权威背书（Authority & Trust）**：文末附带权威资料并声明来源，让学习者感知到内容的严密性与可靠性，有据可查；
-  * **自主启发式讲授（严禁照搬）**：权威资料用于核实事实与确立背书，正文的心智阶梯、循序渐进的启发式推导（直觉引入 → 严格推导 → 典型误区剖析 → 实战对比）由导师自主深度设计，严禁碎片化拼凑网页。
-- 前置知识只进摸底表单与讲义正文，**不落成节点**——树由学习者在画布上生长（点大纲目标项挂文档、再逐个生成）。
-
-三、摸底提问
-- **先问深度，再问盲区**：用 api.ask 出表单，**最多 3 题**。第 1 题是元问题——「这一站你想让我按零基础铺开讲，还是快速过一遍、只讲容易踩的坑？」；第 2~3 题只挑最可能卡住的前置知识出单选题「这个我已经掌握 / 会一点 / 完全不会」。问一道元问题比问五道知识题准得多——全选「完全不会」多半是懒得细看，不是真的全不会。
-- **表单与检索兼顾**：若本轮确实需要检索外部接口或规范细节，可将 ask 与检索放同一个 execute 里发，避免额外轮次开销；无需检索时直接出摸底表单。
-- 表单会压在输入框上方，用户答完才继续——不要自问自答，也不要跳过。（触发响铃已由系统做好，不必再调 tiktok。）
-
-四、想清楚再动笔
-- 按摸底结果定详略：「完全不会」的前置在文档开头的**「预备知识」一节先补讲**（每条几段讲够用即止），「会一点」的点到为止，「已掌握」的直接用。
-- 想好文档结构：先讲什么、后讲什么、在哪衔接补讲的内容。前置之外的延伸方向留给文末「下一步」，不进正文。
-
-五、生成
-- 标题已就位，一般不动；明显词不达意才连标题一起改。const n = await api.node.get(uuid)；const c = await n.content——描述空着就把 c.description 写成 150~300 字，然后 c.teaching = 讲义，一次 await n.editContent(c) 写回（整份替换，先读后写）。循序渐进、先直觉与例子再定义与推导，对摸底暴露的盲点**正面讲解**。文档连接大纲 port 的核心思想是「讲解这个目标的内容」，围绕该目标项深度讲透。排版以当前「文档格式」策略为准，结构配方见「文档排版与视觉呈现」模块：至少两三处结构性元素，不要交一篇纯文本。
-- **权威引证声明与网页 Chip（必须包含）**：教学文档末尾**必须包含「## 📚 参考资料与权威来源」区块**，严格使用规范的网页 Chip（#[{"type":"web","url":"...","title":"..."}] 或 await api.chip.build({ type: 'web', url, title })）列明参考的权威站点，为讲义提供坚实的权威背书。
-
-六、收尾与交付
-- **根据学习状态主动提议完善文档（需 ask 授权）**：若在学习过程中发现学习者的状态反馈（做题错题、复述困难、提问疑惑）表明已有文档需要补充或订正，允许导师发挥主观能动性主动提议修改完善已有文档；但**必须先通过 api.ask 询问学习者是否允许修改**，列明改动理由与要点，在用户确认同意后方可调用 editContent 修改。
-- **收尾一次做完**：api.node.finish(uuid, { delivery?, open: true })——交付登记、把文档指给用户看，一个调用落完；正文已在第五步写好就不必再给 content。哪一步没落上看回执里的 steps，单独补一次即可。
-- 若用了网络检索，对话回复里必须声明参考资料链接。
-
-七、任务边界与连接思想
-- 文档连接大纲 port 是为了讲解目标内容，讲义围绕该目标项落地。
-- 指令给了「目标节点」就只写它；**没给**就先 api.node.list() 看现状，凭上下文判断这份讲义该落在哪个节点（判断不了就 api.ask 问一次）。
-- 若随指令附带了选段定位等上下文（这份文档落地哪条大纲目标项），以它为准。`,
-  },
-  {
-    key: 'outline-method',
-    title: '大纲编写',
-    text: `「大纲编写」方法——为知识节点规划一份「这一层往下怎么学」的计划文件。触发它的指令只给任务与参数，规矩一律照这里执行：
-
-一、深刻理解两种连接思想与主观能动性
-- **文档连接大纲 port**：是为了**讲解这个目标的内容**（将该目标项落地成具体的讲义教学文档）。
-- **大纲连接大纲 port**：是为了**进一步拆分这个目标**（当某个目标项内涵丰富、知识面广或包含多个阶段时，挂接子大纲作为子计划进一步细化拆解成下一层的阶段目标）。
-- **发挥主观能动性**：根据目标复杂度和知识广度，主动判断该落地为文档还是继续细化拆分子大纲。
-
-二、先查再用与看现状
-- 识别目标节点：目标可能是普通文档 uuid 或以 o: 开头的大纲 uuid。
-  \`const targetUuid = (typeof target === 'string' ? target : '').trim();\`
-  \`const outlineId = targetUuid.startsWith('o:') ? targetUuid : 'o:' + targetUuid;\`
-  \`const o = await api.node.get(outlineId); await o.help();\`
-- **挂在大纲 port 下的子大纲拆分**：
-  先 \`const ports = await o.getPortData();\` 读它认领的上级目标项，并通过 \`o.relations\` 中的 up 找到上级大纲上下文。
-  认领了上级大纲 port 的大纲，本次规划的核心任务是：**将认领的这一条目标项深度拆解为 3~8 个更细致的阶段子目标**，范围严格对齐上级交付的任务，不遗漏也不越界。
-- await o.content 看已有大纲（**有就整份重写，不要追加**；null = 还没写过），api.node.list() 看标题、描述与现有下级节点，await 节点.content 后取 teaching.slice(0, 2000) 扫教学文档的开头与标题结构（不要整篇读）。
-
-三、认知规划与心智拆解（自主制定 + 权威对照防幻觉）
-- **心智阶梯驱动的自主制定（核心）**：大纲的核心是为学习者量身定制由浅入深、循序渐进的认知阶梯。必须发挥导师自身的教育学与架构能力：分析当前目标的内在逻辑脉络，权衡学习者的心智跨度，判断哪几个概念是前置支柱、哪些适合落地为单篇文档（文档连 port，思想是讲解内容）、哪些体系庞大需拆为子大纲（大纲连 port，思想是进一步拆分目标）。严禁把大纲编写当成“网上搜目录搬运”，大纲的结构与目标项必须由导师自主深度制定。
-- **WebSearch 权威对照与防幻觉（必搜）**：大纲规划前**必须主动使用 api.web.search 检索权威参考源**（高校教学大纲、官方技术规范、经典教材目录、权威学术体系等）。其核心作用有二：
-  ① **防幻觉与体系核验**：核对专业术语的标准表达与核心分支，防止模型自身记忆漂移或重大主干遗漏；
-  ② **权威背书**：汲取权威体系框架的严密性，确保大纲具有权威参考源支撑。
-  检索完成后，由导师自主提炼并重构为 3~8 个阶段目标，严禁直接复制粘贴单一网页目录。
-- **自主拆解阶段目标**：这一层往下拆成哪几个**阶段目标**（一般 3~8 个，每个都能独立成篇、有明确的「学完会什么」）。已经有下级节点的，计划要与它们对齐——同一个人同一层不该有两套说法。
-
-四、落盘
-- await o.editContent({ intro, children, guide })：intro 一两段（这一层按什么路线走、为什么这么分）；children 每项 { title, summary }，summary 两三句——学什么、为什么排在这个位置。key 由标题自动生成，不要自己编。
-- **guide（大纲导读，必给）**：一段 200~400 字对**这份大纲本身**的讲解——这条线教的是什么、为什么按这个顺序分层、每个阶段衔接什么、学完这一层能做什么。讲的是眼前的计划，不引入计划之外的新目标项；重写旧大纲时导读一并重写。
-- 收尾：写完用 api.ui.point() 打开大纲页，让用户看着路线更新。
-
-五、层级规矩
-- 只写**直接子层级**，一层为止——「爷爷知道儿子的存在，但不知道孙子的存在」。孙辈的大纲由那些子目标自己的大纲负责；children 里不要出现「1.1.1」这类两层以下的东西，summary 里也不要替孙辈规划。
-- 指令给了「目标节点」就只写它那一层；**没给**就先 api.node.list() 看现状，凭上下文判断该规划哪一层（判断不了就 api.ask 问一次）。
-
-六、收尾
-- 写完用 api.ui.point() 把这份文档在文档区打开，让用户在大纲页里看这一层的路线。`,
-  },
-  {
-    key: 'outline-guide-method',
-    title: '大纲导读',
-    text: `「大纲导读」方法——给一份**已经写成**的大纲补一段对它本身的讲解（guide）。触发它的指令只给参数，规矩照这里执行：
-
-一、读现状
-- 识别目标：可能是文档 uuid 或以 o: 开头的大纲 uuid（与「大纲编写」同一套识别法）。
-- \`const o = await api.node.get(outlineId); await o.content\` 看这份大纲（intro + children）。content 为 null（还没写过）或 intro 与 children 都空着：**直接收工**，回复一句「这份大纲还没有内容，先生成大纲再写导读」，严禁硬编。
-
-二、写导读（只写 guide，铁律）
-- \`await o.editContent({ guide })\`：只传 guide 字段——intro 与 children **原样不动**，这是这条工作流与「生成大纲」的本质区别（那条重写计划，这条只补讲解）。
-- 导读 200~400 字，一段连贯的话，讲三件事：这份大纲教的是什么；为什么按这个顺序分成这几层、层与层之间衔接什么；学完这一层学习者能做到什么。
-- 对着 children 各项的 summary 讲，**不引入计划之外的新目标项**、不替孙辈规划、不排新的学习顺序——导读是讲解，不是第二份计划。
-- 语言与大纲相同；不要分点、不要标题、不要「导读：」这类前缀。`,
-  },
-  {
-    key: 'video-overview',
-    title: '视频总览生成',
-    text: `「视频总览」工作流——为绑定的视频资源规划语义分类结构并生成总览文档：
-
-一、判断选集与终止条件（核心铁律）
-1. 第一步必须调用 const info = await api.video.get(videoId) 获取视频详情与选集（episodes）信息。
-2. 判断视频是否有选集：
-   - 若 !info.hasEpisodes 或 info.episodeCount <= 1（视频没有分 P 或合集选集）：
-     **必须立即停止工作流**，严禁创建任何文档或节点，直接在对话中回复告知用户：“此视频无法生成总览文档”（说明该视频为单集内容，无分 P 或合集选集，无法按选集拆解生成总览分类）。
-3. 若视频有选集（info.hasEpisodes 为 true 且选集数量 > 1）：
-   - 获取所有选集的标题与序号（如 P1, P2... 或 01, 02... 序号 + 标题），根据标题语义分析知识体系脉络。
-
-二、总览文档创建与层级挂载（必须挂在视频节点子级）
-- 总览文档类型与普通文档节点完全相同（kind: 'doc'）。
-- **必须挂在视频节点之下作为子节点**（under 传入视频节点的 UUID，即工作流参数里的 target）：
-  \`\`\`javascript
-  const doc = await api.node.create({
-    kind: 'doc',
-    title: info.title + ' · 视频总览',
-    under: target, // 视频节点的 UUID，让总览文档直接作为视频节点的子级
-  })
-  \`\`\`
-  注意：under: target 会自动为文档节点与视频节点建立父子连线。若总览文档此前已存在，create 也会自动补全这根连线。
-
-三、内容分类与标题层级规范（标题最少一层，最多三层）
-根据对视频标题语义的归纳分类来编排正文结构：
-- **标题层级最少一层，最多三层（即只使用 #、##、###；严禁使用 #### 及以上四级或更深标题）**，由你对视频标题语义的分类范围来决定具体需要几层：
-  例如单层分类：
-  # Java 基础入门
-  
-  两层分类：
-  # Java 基础入门
-  ## 第一阶段 基础语法
-  
-  三层分类：
-  # Java 基础入门
-  ## 第一阶段 核心入门
-  ### 导学与环境搭建
-- 每个小节主题分类下方插入 \`\`\`videos\`\`\` 代码块组件，将对应的视频选集链路展示出来：
-  \`\`\`videos
-  {{videoNodeUUID}}
-  {{ range }}
-  \`\`\`
-  - 第一行必须是视频节点的 UUID（直接写目标视频节点实际的 uuid 字符串，即 target 参数）；
-  - 第二行是展示视频的选集范围，例如：1-20, 23, 29-30（单集写数字，区间用横杠连接，多个区间用逗号隔开）。
-
-四、写入总览文档正文
-通过 api.node.get(doc.uuid) 获取创建的文档节点，使用 editContent({ teaching }) 写入完整的总览文档内容。确保所有选集序号范围都被合理归纳，没有遗漏。
-
-五、收尾
-在对话框中向用户清晰汇报生成的视频总览文档大纲结构与选集分类分布。`,
-  },
-  {
-    key: 'project-interpret',
-    title: '项目与文章解读',
-    text: `「项目与文章解读与精准原文引用」规范（配合 project 节点与 quote 块语法）——核心直觉：“我要讲的东西刚好本地有，那我就引用它，让用户知道我在讲哪里”。不要仅在专门带用户读文章读项目时才使用，在任何教学、答疑与剖析场景中，只要本地有材料或源码，都应主动高频使用 quote 块精准引用。当用户需要导师带着解读某些文章、文献或代码项目时，严格执行以下工作流：
-
-一、前置要求：材料规模判定与节点创建（铁律）
-只要用户提供了明确的文章（含网页文章、文献、长文等）或工程项目源码：
-1. **材料规模与类型判定（文件节点 vs 项目节点）**：
-   - **如果解读材料较少（如单篇或少量文章、学术文献、论文、单网页/参考资料）**：必须创建文件节点（kind: 'file'）进行引用，而不是创建项目节点。
-     - **在线网页直接阅读（优先纪律）**：若用户需要导读的文件或材料可以通过网页直接阅读，**严禁/不要爬取或下载到本地**！只需要直接创建网页文件节点进行引用（\`fileKind: 'web'\`, \`url: 'https://...'\`），内置浏览器已支持纯净阅读模式和页面内容自动缓存；若页面存在噪声干扰，可配置 \`domFilter\` 选择器指定正文容器。
-     - **本地离线文件**：若为本地已有文件或无法在线阅读必须离线保存的单篇材料，保存到目标所属的 \`docs/{目标}/files/\` 目录下（如 \`files/article.md\`），文件节点属性为 \`fileKind: 'local'\`, \`url: 'files/article.md'\`。
-   - **如果是大型代码工程、包含多层目录结构的软件仓库或需要批量读写大量源码文件的复杂工程**：才创建项目节点（kind: 'project'）。
-2. **材料阅读与落盘纪律**：
-   - **在线网页导读**：只要网页可在线访问，绝对不要抓取落盘到本地，直接建文件节点引用 URL 即可；
-   - 严禁凭空伪造文章或代码；对于必须落盘的纯本地复杂工程源码，真实保存并创建项目节点引用；
-3. 若当前目标尚未设定根文档（node.list() 中 root 为 null），先创建解读文档节点作为根节点（api.node.create({ kind: 'doc', title, root: true }) 或调用 api.node.setRoot(docUuid)），确保工作区基准就位。
-
-二、声明文件节点或项目节点示例
-1. 文件节点（解读材料较少/单篇文章/网页）：
-\`\`\`javascript
-// 本地文件引用（存储在 docs/{目标}/files/）
-const fileNode = await api.node.create({
-  kind: 'file',
-  title: '文献标题',
-  fileKind: 'local',
-  url: 'files/paper.pdf',
-  under: targetDocUuid, // 挂在对应解读文档节点下
-})
-
-// 在线网页文件引用
-const webNode = await api.node.create({
-  kind: 'file',
-  title: '参考文档',
-  fileKind: 'web',
-  url: 'https://developer.mozilla.org/...',
-  under: targetDocUuid,
-})
-\`\`\`
-
-2. 项目节点（大型代码仓库与复杂软件工程）：
-\`\`\`javascript
-const proj = await api.node.create({
-  kind: 'project',
-  title: '项目名称',
-  path: '项目根目录绝对路径或相对路径',
-  under: targetDocUuid,
-})
-\`\`\`
-声明项目节点之后，该路径及其子树全部文件对 api.project.* 完全开放，在后续阅读、探索、引用中可随时读写。
-
-三、编写解读文档与 Quote 块引用（核心契约）
-在生成或编辑解读文档（teaching）时，不要无序大段照抄全文，**在后续讲解中必须高频使用 quote 块精准引用源文件核心行进行剖析**：
-1. Quote 块语法结构：
-   \`\`\`quote
-   这是一段引文前置说明或背景过渡普通文本
-   @文件路径(起始行-结束行){
-     mark(起始行:起始列, 结束行:结束列)
-   }
-   以上代码片段来自xxx，重点在于...
-   \`\`\`
-2. 语法解析规则：
-   - 块内普通文本：非 @ 开头的行作为普通文本展示，用于解释说明、段落过渡或背景交待。
-   - 原文引用行：以 @ 开头，格式为 \`@<文件路径>(<起始行>-<结束行>)\`，支持可选的花括号 \`{ ... }\` 包裹 mark 标记规则。
-     - 文件路径：支持绝对路径（如 \`E:/demo/index.html\`）或相对于工作区/项目节点的相对路径（如 \`workspace/article.md\`、\`src/index.ts\`）。系统会自动根据文件后缀识别语言并展示对应的代码语法高亮。
-     - 行号范围：如 \`(10-34)\`，从 1 开始的闭区间；也兼容 \`(10~34)\`、\`(10至34)\` 或单行 \`(10)\`。
-   - mark 标记规则：位于 \`{ ... }\` 内，格式为 \`mark(起始行:起始列, 结束行:结束列)\`（行列号均从 1 开始）。
-     - 含义：将文件中指定行列范围的内容添加高亮标记背景（自适应主题高亮色），并保留代码语法高亮。
-     - 支持形式：\`mark(l1:c1, l2:c2)\`、\`mark(l1:c1, c2)\`（单行区间）、\`mark(line)\`（全行标记）。
-     - 注意：严禁使用圆角样式，必须保持直角设计风格！
-   - 同一个 quote 块内可以包含多段普通文本与多个 @ 原文引用，形成图文对照的精读笔记。
-
-四、排版与精读原则
-- 先总述背景与核心架构，再定位关键段落/函数深入剖析。
-- 用 quote 块精准引用原文关键逻辑，并在 quote 块周围配合清晰的设计思想、执行流程与图表，帮助用户吃透每一个细节。`,
-  },
-  {
-    key: 'schedule',
-    title: '日程',
-    text: `日程（api.schedule.*）：list / create / update / complete / remove。
-给用户排提醒，到点由宿主响铃、用户自己确认或稍后提醒——不要替用户确认，也不要 sleep 等它到点。`,
-  },
-  {
-    key: 'workspace',
-    title: '工作区',
-    text: `工作区目录（api.workspace.*）——用户交付物的落点：
-- 工作区挂在具体节点之下（物理目录为 docs/.../workspace/），目标刚创建时 nodes 为空且 root 为 null，必须先建立根节点（api.node.create({ kind: 'doc', title, root: true })），工作区才会就位，才能进行 workspace.write 或 process.create；
-- 每个节点的工作区物理目录为 docs/.../workspace/，在磁盘上真实存在；
-- 列/读/写/检索优先走 api.workspace.*（list / read / write / grep，先 await api.workspace.__help() 查用法）；
-- 真实磁盘路径可通过 api.workspace.list() 的 rel 字段获取，process.create 的 cwd 需要此真实路径；
-- 精准引用定位用 api.workspace.grep({ path, anchors: ['关键词'] })，直接获取 1-based 行号，配合 quote 原文引用使用，无需全量读取大文件塞入上下文；
-- api.files.* 也可以操作 workspace/（它是少数对 files 开放的应用目录），但结构化读写请用 api.workspace.*。`,
-  },
-  {
-    key: 'method',
-    title: '持久化函数',
-    text: `持久化函数（method，按目标归档、跨对话有效）——这份规范在你第一次读写持久化函数时注入：
-- api.method.create({ name, code })：把一段**可执行的函数源码**存进这个目标的函数库。
-  code 写成匿名 async 函数，**第一个参数是 api**（整套沙箱 api 都在），其余参数是调用方传的实参：
-
-      api.method.create({ name: '统计句号', code: "((api, uuid) => { const n = await api.node.get(uuid); const c = await n.content; return { count: (c.teaching.match(/。/g) ?? []).length, size: c.teaching.length } })" })
-
-- 同名 create 就是**覆盖**（那是更新一个函数，不是重复建）。创建时会编译校验，
-  编不过的当场被拒并给出原因。list() 只回名字与体量；delete(name) 删一个。
-- api.method.call(name, ...args)：执行一个函数（注入当前编排的 api），返回它的返回值。
-  在你的编排里它是「把一段逻辑打包重用」的办法；更重要的是——**超级文档里的脚本只能靠它干活**：
-  超级文档的按钮写 api.method.call('统计句号', '极限')，宿主执行的就是你存的这份源码。
-  所以「要在超级文档里复用的逻辑」都该落成 method，而不是只写在某次编排里。`,
-  },
-  {
-    key: 'code',
-    title: '代码块伪编译',
-    text: `代码块伪编译（code）——这份规范在你第一次交付伪编译产物时注入：
-- api.code.save({ key, js, note })：交付一份伪编译产物。用户点了文档里代码块上的「编译」时，
-  会有一条「伪编译」工作流消息进来（带着 key、语言标记与那段代码）。你转译完调它交货，
-  那一块代码下面的「运行」就会亮起来——产物存在数据目录里，重启还在。
-- js 必须是**完整、自包含**、能在 Web Worker 里跑的代码（没有 DOM、没有 require/import，
-  顶层可以用 await，要出结果就 console.log）；key 原样抄，代码原文不用回抄（宿主按 key 认得）。
-- note 是你补的那些假设，一两句话，它会显示给用户。
-- **先判有没有输出**：如果这段代码只有定义（类型、接口、函数、类、常量），没有任何会被执行的
-  语句、也不会打印任何东西，那就**立刻停止、不要写 js**，改调 api.code.silent({ key, reason })
-  把那一块标成无输出（之后它不再显示编译与运行）。这不是失败，是这类代码块的正常归宿。
-  分寸：只要有哪怕一句会被执行的语句（一次调用、一个 print、一段循环、一次赋值后使用），就往下走，
-  别把能跑的代码判成无输出。
-- **残缺片段是常态**：那段代码多半从文档里摘出来时缺了上下文（少函数定义、少变量、少 import）。
-  api.node.get(所属文档uuid) 后读 content.teaching，从文档里把缺的东西补齐；文档里也找不到的，
-  按代码里的用法**模拟一份合理的假上下文**（假数据、假函数都行），让整段代码跑出可见结果——
-  **绝不要**因为片段不完整就回一句「无法编译」。
-- 运行环境就是一个 Web Worker：没有 window / document / DOM，没有 require / import / export，
-  装不了 npm 包；可以用 console.log、await、Promise、setTimeout、Math / JSON / Date / 正则、
-  TextEncoder / TextDecoder、crypto、URL；顶层可以直接 await；fetch 能用但要用户点一次同意。
-  要让用户看见结果就必须 console.log（对象会被结构化显示）。
-- 交货纪律：key 原样抄（别改也别自己编）；js 是完整自包含的可执行语句（不要包一层函数）；
-  note 一两句中文说明补了哪些假设。**save 必须调**——不调那块代码的「运行」永远不会亮。
-  代码原文不用回抄，也不要在对话里整段复述产物。`,
-  },
-  {
-    key: 'plot-fix',
-    title: '修复函数图像',
-    text: `「修复函数图像」工作流——文档里一个 \`\`\`plot 渲染失败，按报错与区间一次改完。**一轮完成，不要验证渲染结果**（没有渲染通道），验收标准就是下面的硬要求。
-- 修复（读 → 拼回 → 整份写）：const n = await api.node.get(目标节点uuid)；const c = await n.content；c.teaching = c.teaching.slice(0, 起始偏移) + 修好的完整围栏 + c.teaching.slice(结束偏移)；await n.editContent(c)。
-- 修好的围栏必须满足（这就是验收标准）：是完整的 \`\`\`plot 围栏（含首尾两行标记）；JSON 能通过 JSON.parse；data 非空且每项有 fn；xAxis / yAxis 只能是对象（区间用 domain 写），不能写成字符串；函数变量固定用 x（参数方程用 t，极坐标用 theta）。
-- 字符区间是 [0, 0)（未能自动定位，文档可能刚被改过）时：先在 c.teaching 里按围栏原文 indexOf 找到这段围栏，换算出区间再拼回。
-- 改完立即 api.delivery.submit 登记修复。不要读整篇文档，不要尝试渲染验证，不要复述修复过程。`,
-  },
-  {
-    key: 'compact',
-    title: '上下文压缩',
-    text: `上下文压缩（compact）——这份规范在你第一次提交交接摘要时注入：
-- api.compact({ summary, tasks })：把这段对话折成一份交接摘要。**你不是自己想压就压**——
-  用户点了「压缩上下文」，或者上下文快到阈值时，会有一个工作流把整套要求给你（见工作流那一份指令）。
-- 两个参数：tasks 是**还没做完的事**（逐条，写到能照着继续干：哪个节点、哪份文档、卡在哪一步），
-  summary 是正文摘要（目标与背景 / 已讲清的内容 / 学习者的状态 / 约定与术语）。
-- 它**不立刻生效**：摘要先记下，等本轮 loop 结束后旧消息才失活、摘要成为第一条消息。
-  所以别重复调用，也别把摘要复述给用户。摘要太短会被拒（原始消息没了，摘要就是唯一的上下文）。
-- 摘要的写法（按顺序）：
-  1. 先列 tasks（**最容易丢、也最要命**）：这几轮里用户要的但还没交付的、正做到一半的、答应过
-     还没做的，逐条写清——哪个节点、哪份文档、哪个文件名、卡在哪、下一步做什么。要能让
-     「换一个人接手」照着继续干，不要写「继续完善文档」这种空话。做完了的不列。
-  2. 再写 summary（Markdown）：## 学习目标与背景 / ## 已经讲清的内容 / ## 学习者的状态
-     （自评、错在哪、还卡在哪）/ ## 约定与术语。用户表达「我想要什么」的话保留原意。
-  3. api.compact({ summary, tasks }) **只调这一次**；不要顺手改文档、建节点、出题。
-  4. 回一句话告诉用户已经压好，**不要复述摘要内容**。
-- 硬性要求：只写对话里真实出现过的东西——不推测、不补常识、不编造；概念名、公式、文件名写全；
-  summary 控制在 1200 字以内。`,
-  },
-  {
-    key: 'subagent',
-    title: '子代理',
-    text: `子代理（subagent.*；把独立的活**并发地**派出去）——这份规范在你第一次派子代理时注入：
-- 范式：**脚本创建 → 脚本执行 → 脚本等待**（都在一次 execute 里写完）：
-  api.subagent.create({ key, name?, system, tools? }) 登记定义（system 写清角色、工作方式与
-  **交付纪律**；tools 是它 execute 开放的 api 组，不给就是 web + tmp）→
-  api.subagent.run({ agent, task }) 启动（**立即返回**，任务在后台跑；一次 run 多个 agent 就并发）→
-  api.subagent.wait({ seconds }) 收交付。
-- **task 要自包含**：子代理看不到你们的对话，要做什么、什么口径、交付什么格式全写在 task 里。
-- agent 认 key（name 是显示名，碰巧同名也能对上）；**一个 key 同一时刻只跑一个任务**——要并发
-  就建多个 key 再一起 run。别和 web.search 的 engines 并行混谈：那是同一次调用里并行搜多家，
-  两种「并发」不是一回事。
-- **wait 必带最大时长 seconds**（按任务难度主观定）：有挂起交付立即全部返回；否则监听所有在跑的，
-  **任何一个先完成就立即返回它**（回执含 deliveries 与仍在跑的 running 清单）；到点没人交付返回
-  timedOut。没有在跑也没有挂起时立即返回空。
-- **监督回路（防钻牛角尖）**：wait 超时 → api.subagent.view(agent) 看 recent 里它最近在干什么 →
-  确实在打转就 api.subagent.intervene(agent, 指令) 纠偏（指令在它当前这条消息输出完整后插入，
-  绝不打断半截输出）；走得正常就再发起一轮 wait。
-- 交付时没人在等就**挂起**，不会丢：下一次 wait 把积压的一起返回。execute 结束时仍有 agent 在
-  后台跑是正常的——之后任何一次 execute 里都可以继续 wait 收。
-- 中断与收拾：interrupt（中断，上下文保留）/ resume（从断点接着跑）/ delete（删定义与会话）。
-  用户点「停止」会中断当前所有在跑的子代理。
-- 什么时候派：费上下文的体力活（大量检索、通读长文档、批量核实）派出去，把你的上下文留给教学本身。
-- 检索类任务的模板：create 一个 tools:["web","tmp"] 的检索代理，system 里写死止损纪律——摘要先筛、
-  有明确网址直接读；同一页面/引擎/措辞绝不重试第二次；连续两步没有新信息就收手交付；结论先行、
-  关键事实带来源 URL、体量跟任务匹配。web.search 引擎全挂会**自动用 baidu/bing 降级补搜**
-  （不用在 task 里重申降级规矩）；回执带 searchedAt，结果里的「2 天前」这类相对时间按它折算。`,
-  },
-  {
-    key: 'ui',
-    title: '界面操作',
-    text: `界面操作（ui；文档区没有打开的文档时，point / scroll / screenshot / dom 会明确失败）——这份规范在你第一次操作界面时注入：
-- api.ui.toast('一句话')：弹一条吐司提示（轻量的告知；需要用户做动作的用 ask）。
-- api.ui.point(path?, { line?, regex?, flags? })：在页签里打开/切到某个节点的文档
-  （path 规则与 doc.* 一致，省略 = 当前节点的教学文档）。line 定位到某一行，
-  regex 选中第一处匹配的文字——「我说的就是这一段」时用它指给用户看。
-- api.ui.superdoc(path?, name)：打开/切到某节点的一份超级文档页签
-  （sdoc.write 写完用它展示给用户；那份文档已被删时回执会说明，别再指给用户看）。
-- api.ui.scroll({ to: 'top' | 'bottom' } 或 { by: 像素 })：滚动**文档区**（by 负数往上）——
-  滚的不是内置浏览器的网页页签。
-- api.ui.screenshot()：截取文档区，图片会附在你的下一步里（与 res.read 读图同一条通道；
-  截图同时存进了资源库，res.list 看得到）。讲解里想引用它：![说明](moji:static/uuid)。
-- api.ui.dom(async (root) => { … })：回调拿到**文档区**根节点的**门面**（作用域只有文档区——
-  浏览器页签里的网页不在内，查网页元素回 false/空是正常的），
-  可以查看渲染结果、点文档里的按钮：root.query(sel) / root.exists(sel) / root.count(sel) /
-  root.text(sel, i?) / root.attr(sel, name, i?) / root.html(sel, i?) / root.rect(sel, i?) /
-  root.click(sel, i?)。全是异步的（每个操作回到宿主执行）；适合「确认渲染成了什么样」
-  「帮用户展开某个面板」，不要拿来批量轮询。`,
-  },
-  {
     key: 'plot-forms',
     title: '函数图像的数据形态',
-    text: `函数图像的 data 各形态（\`\`\`plot 的完整数据写法）——这份规范在你第一次写函数图像时注入。data 数组每项取下列形态之一（points / parametric / polar / implicit 必须写 graphType，否则会当成区间采样而报错）：
+    text: `函数图像的 data 各形态（\`\`\`plot 的完整数据写法）——data 数组每项取下列形态之一（points / parametric / polar / implicit 必须写 graphType，否则会当成区间采样而报错）：
 1) 显式函数：{ "fn": "x^2" }
    可加切线：{ "fn": "x^2", "derivative": { "fn": "2*x", "x0": 1 } }
    可加割线：{ "fn": "x^2", "secants": [{ "x0": 0, "x1": 1 }] }
@@ -569,260 +48,111 @@ const proj = await api.node.create({
   {
     key: 'rich-animation',
     title: '富媒体动画写法',
-    text: `富媒体动画（现成的文档动画、SVG SMIL 与内嵌 CSS 动画）——这份规范在你第一次写动画内容时注入。
-动画要克制：同一屏最多一两个，服务于讲解本身，不做装饰性干扰。
-- **先用现成的四个**（正文里当工具类写，见「文档排版与视觉呈现」那份规范）：animate-doc-fade、
-  animate-doc-rise、animate-doc-grow（配 origin-bottom 做柱子）、animate-doc-draw
-  （配 pathLength="1" 与 stroke-dasharray="1" 描线）。九成的「动起来才看得懂」用这四个就够。
-- SVG 内嵌动画（用 SMIL，适合「动起来才看得懂」的过程：波的传播、向量旋转、
-  极限逼近、函数变换）。可用 <animate>、<animateTransform>、<animateMotion>、<set>，
-  并为动画加上 repeatCount="indefinite" 让它循环：
+    text: `富媒体动画（现成的文档动画、SVG SMIL 与内嵌 CSS 动画）。动画要克制：同一屏最多一两个，服务于讲解本身，不做装饰性干扰。
+- **先用现成的四个**（正文里当工具类写）：animate-doc-fade、animate-doc-rise、animate-doc-grow（配 origin-bottom 由小变大浮现）、animate-doc-draw（配 pathLength="1" 与 stroke-dasharray="1" 做线条生长）。九成的「动起来才看得懂」用这四个就够。
+- SVG 内嵌动画（用 SMIL，适合「动起来才看得懂」的过程：波的传播、向量旋转、极限逼近）：可用 <animate>、<animateTransform>、<animateMotion>、<set>，并加 repeatCount="indefinite" 循环：
   <svg viewBox="0 0 200 60"><circle r="6" fill="#a8432f">
     <animateMotion dur="3s" repeatCount="indefinite" path="M10,30 L190,30"/></circle></svg>
 - 内嵌 CSS 动画（用 <style> 定义 @keyframes 做持续运动；适合脉冲、高亮、旋转）：
   <style>.moji-demo-pulse{animation:pulse 1.6s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}</style>
   <span class="moji-demo-pulse">正在闪烁的要点</span>
-- 内嵌 <style> 里的每条选择器都必须带一个本项目独有的前缀（如 .moji-demo-xxx），
-  避免样式泄漏到页面其它位置；建议每个动画用不同的前缀。
-- SVG 里给 fill / stroke 用具体颜色或 currentColor，深色与浅色模式下都要能看清
-  （不要只用纯黑或纯白）。
+- 内嵌 <style> 里的每条选择器都必须带本项目独有的前缀（如 .moji-demo-xxx），避免样式泄漏；建议每个动画用不同前缀。
+- SVG 里 fill / stroke 用具体颜色或 currentColor，深浅色模式下都要能看清（不要只用纯黑或纯白）。
 - 内嵌 HTML 必须闭合良好；不确定能否渲染的写法就退回纯 Markdown。`,
   },
-    {
+  {
     key: 'doc-html',
     title: '文档排版与视觉呈现',
     text: `## 文档排版与视觉呈现（教学讲义 HTML + Tailwind 精装规范）
 
-> **注入说明**：「开讲」「学习大纲」工作流会在动笔前将本规范交给你；其余场合在你首次编写教学文档后注入。
+> 通篇只有标题和段落的文档不算讲义（渲染器给裸标签的只是兜底样式）。每份教学文档至少落下 **3~4 处结构化视觉组件**（从下方 9 个配方中选型，辅以原生表格与公式）。**数据 / 趋势类图表一律走 \`\`\`plot / \`\`\`pisc / \`\`\`mermaid 围栏**（各有专节），本规范不手写 SVG 或 HTML 图表。
 
-### 0. 核心审美准则：从「草稿」到「出版级讲义」
-通篇只有标题和段落的文档不算讲义（渲染器给裸标签的只是兜底样式）。每一份教学文档必须具备**出版级的阅读韵律**，整篇至少落下 **3~4 处结构化视觉组件**（优先从下方 12 个精装 HTML 配方中选型，辅以原生表格与公式）。
+### 1. 画布前提与设计令牌
+1. **画布尺寸**：正文列宽上限 \`800px\`，可用内容净宽约 \`745px\`。
+2. **纸墨风主题令牌（跟随深浅色，严禁硬编码刺眼纯色）**：
+   - 背景层：\`bg-paper\`（底纸）/ \`bg-card\`（浮起）/ \`bg-sunken\`（微凹）/ \`bg-inset\`（深凹槽）/ \`bg-mark\`（荧光笔底）
+   - 墨色层：\`text-ink-strong\`（主标题）/ \`text-ink\`（正文）/ \`text-ink-soft\`（次要）/ \`text-ink-faint\`（注脚）
+   - 线条层：\`border-line\` / \`border-line-strong\`
+   - 语义色：\`seal\`（朱砂，主强调）/ \`ok\`（青竹，正确结论）/ \`warn\`（琥珀，易错警告），均有 text- / bg- / border- 前缀
+3. **排版铁律**：字号一律 \`em\` 禁 px（正文支持等比缩放；常用档位 0.72 / 0.8 / 0.88 / 0.96em，大号数据 1.45~1.75em）；表格图表编号加 \`tabular-nums\`；**容器与卡片严禁任何圆角**（rounded-lg / md / sm 一律不用，保持纯正直角骨骼感）——仅步骤序号圆圈与微缩状态圆点可用 \`rounded-full\`；边框优先于阴影；**HTML 配方内部标签之间严禁留空行**（空行会让 Markdown 解析器把 HTML 拦腰截断）。
 
-看看同一段内容在「草稿」与「精装讲义」下的审美差距：
-- **❌ 草稿（禁止）**：
-  \`<h3>三种变化率</h3><p>平均变化率是一段区间上的快慢，瞬时变化率是把区间压到零。</p>\`
-- **✅ 精装讲义**：
-  \`<div class="my-5 border border-line bg-sunken/70 px-5 py-4"><div class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-seal"></span><span class="text-[0.72em] font-semibold tracking-wider text-seal">核心概念</span></div><h3 class="mt-1 mb-1.5 text-[0.98em] font-semibold text-ink-strong">平均变化率 vs 瞬时变化率</h3><p class="m-0 text-[0.88em] leading-relaxed text-ink">平均变化率衡量<strong>一段区间</strong>上的整体快慢；瞬时变化率则是把区间无限压缩到<strong>零</strong>时的极限状态。</p></div>\`
-
----
-
-### 1. 画布前提与 Tailwind 工具箱
-1. **画布尺寸**：正文列宽上限 \`800px\`，**可用内容净宽约 \`745px\`**。
-2. **纸墨风主题令牌（跟随深浅色模式自动切换，严禁硬编码刺眼纯色）**：
-   - **背景层**：\`bg-paper\`（底纸）/ \`bg-card\`（浮起卡片）/ \`bg-sunken\`（微凹底块）/ \`bg-inset\`（深凹槽/进度底）/ \`bg-mark\`（荧光笔高亮底）
-   - **墨色层**：\`text-ink-strong\`（浓墨，主标题/核心词）/ \`text-ink\`（正墨，正文）/ \`text-ink-soft\`（淡墨，次要说明）/ \`text-ink-faint\`（残墨，角标/坐标轴/注脚）
-   - **线条层**：\`border-line\`（常规细线）/ \`border-line-strong\`（强调线）
-   - **语义印章色**：\`text-seal\` & \`bg-seal\` & \`border-seal\`（朱砂印章色，主强调）/ \`text-ok\` & \`bg-ok\` & \`border-ok\`（青竹色，正确/结论/达标）/ \`text-warn\` & \`bg-warn\` & \`border-warn\`（琥珀色，易错/警告/边界条件）
-3. **字号与排版铁律**：
-   - **字号一律用 \`em\`**：正文带有全局缩放系数，只缩放 \`em\`。严禁写 \`px\` 字号！常用档位：角标 \`text-[0.72em]\`、辅助说明 \`text-[0.8em]\`、紧凑正文 \`text-[0.88em]\`、小标题 \`text-[0.96em]\`、大号数据 \`text-[1.45em]\` ~ \`text-[1.75em]\`。
-   - **数字对齐**：凡涉及表格、图表、编号、公式参数对比，必加 \`tabular-nums\`。
-   - **直角骨骼感（严禁圆角边框）**：纸墨风讲究直角利落的装帧骨骼感，**容器与卡片边框严禁使用任何圆角**（绝对不要用 \`rounded-lg\`、\`rounded-md\`、\`rounded-sm\` 等圆角边框类名，一律保持纯正直角），边框优先于阴影（\`shadow-sm\` 极少用）。
-   - **⚠️ 严禁空行断块**：每个 HTML 配方内部标签之间**绝对不能留空行**！空行会导致 Markdown 解析器把 HTML 拦腰截断成两半。
-
----
-
-### 2. 十二个精装教学 UI 配方（照抄结构、替换文字与数据）
+### 2. 九个精装配方（照抄结构、替换文字与数据）
 
 #### 配方一：带眉标的提示框（核心结论 / 易错警示 / 思考锚点）
-*审美要点：用「小圆点 + 字距拉开的眉标（Eyebrow）」代替生硬的大标题，左边框配合细全框，精致度翻倍。*
-- **核心结论**用 \`border-l-seal\` + \`text-seal\`；**定理总结**用 \`border-l-ok\` + \`text-ok\`；**易错陷阱**用 \`border-l-warn\` + \`text-warn\`。
+核心结论用 \`border-l-seal\` + \`text-seal\`；定理总结用 \`border-l-ok\`；易错陷阱用 \`border-l-warn\`。
 \`\`\`html
 <div class="my-5 border border-line border-l-4 border-l-warn bg-sunken/60 px-5 py-3.5"><div class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-warn"></span><span class="text-[0.72em] font-semibold tracking-widest text-warn">易错陷阱 · 边界条件</span></div><p class="mt-1.5 mb-0 text-[0.88em] leading-relaxed text-ink">当分母趋近于 0 时，<strong>不能直接代入求值</strong>，必须先通过因式分解或洛必达法则消去零因子。</p></div>
 \`\`\`
 
-#### 配方二：双栏概念交锋 / 正误辨析（每栏约 360px）
-*审美要点：顶部加 2px 色条或语义徽章区分立场，避免两个灰盒子傻傻分不清。*
+#### 配方二：双栏概念交锋 / 正误辨析（每栏约 360px；顶部色条或语义徽章区分立场）
 \`\`\`html
 <div class="my-5 grid grid-cols-2 gap-4"><div class="border border-line bg-sunken/50 p-4"><div class="flex items-center justify-between border-b border-line pb-2"><span class="text-[0.92em] font-semibold text-ink-strong">直觉误区</span><span class="bg-warn/15 px-1.5 py-0.5 text-[0.72em] font-semibold text-warn">✗ 常见错误</span></div><p class="mt-2.5 mb-0 text-[0.86em] leading-relaxed text-ink-soft">认为导数等于 0 的点一定是极值点，忽略了导数在驻点两侧是否变号。</p></div><div class="border border-line bg-card p-4"><div class="flex items-center justify-between border-b border-line pb-2"><span class="text-[0.92em] font-semibold text-ink-strong">严格定义</span><span class="bg-ok/15 px-1.5 py-0.5 text-[0.72em] font-semibold text-ok">✓ 正确认知</span></div><p class="mt-2.5 mb-0 text-[0.86em] leading-relaxed text-ink">驻点只是极值点的<strong>候选人</strong>。如 y = x³ 在 x = 0 处导数为 0，但两侧皆正，属于拐点而非极值点。</p></div></div>
 \`\`\`
 
-#### 配方三：定理 / 核心公式解剖卡（公式 + 逐项拆解）
-*审美要点：教学中最怕丢出一个冷冰冰的公式。上半部居中展示核心表达式，下半部用三栏微网格拆解每一项的物理/数学意义。*
+#### 配方三：定理 / 核心公式解剖卡（上半部居中核心表达式，下半部多栏拆解每项意义）
 \`\`\`html
 <div class="my-6 border border-line bg-card overflow-hidden"><div class="border-b border-line bg-sunken/50 px-5 py-4 text-center"><div class="text-[0.72em] font-semibold tracking-widest text-ink-faint">核心表达式 · 贝叶斯定理</div><div class="mt-1.5 text-[1.35em] font-semibold tracking-wide text-ink-strong tabular-nums">P(A|B) = [ P(B|A) · P(A) ] / P(B)</div></div><div class="grid grid-cols-3 divide-x divide-line bg-paper/40 text-[0.82em]"><div class="p-3.5"><span class="font-semibold text-seal">P(A|B) 后验概率</span><p class="mt-1 mb-0 leading-snug text-ink-soft">看到新证据 B 后，对事件 A 发生概率的修正认知。</p></div><div class="p-3.5"><span class="font-semibold text-ink-strong">P(B|A) 似然度</span><p class="mt-1 mb-0 leading-snug text-ink-soft">假定 A 成立的前提下，观察到现象 B 的可能性。</p></div><div class="p-3.5"><span class="font-semibold text-ink-soft">P(A) 先验概率</span><p class="mt-1 mb-0 leading-snug text-ink-soft">在没有新证据之前，基于历史经验对 A 的初始判断。</p></div></div></div>
 \`\`\`
 
-#### 配方四：带贯穿引导线的步骤轴（推导过程 / 解题SOP / 历史演进）
-*审美要点：用左侧 \`border-l\` 做出贯穿竖线，序号圆圈压在线上，每一步自带小标题与微说明，告别松散罗列。*
+#### 配方四：带贯穿引导线的步骤轴（推导过程 / 解题 SOP / 历史演进）
+左侧 \`border-l\` 贯穿竖线，序号圆圈压在线上，每步自带小标题与微说明。
 \`\`\`html
 <div class="my-5 pl-3"><div class="relative border-l border-line-strong pl-6 space-y-5"><div class="relative"><span class="absolute -left-[35px] top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-seal text-[0.72em] font-semibold text-white tabular-nums">1</span><h4 class="m-0 text-[0.92em] font-semibold text-ink-strong">定位系统边界与研究对象</h4><p class="mt-1 mb-0 text-[0.86em] leading-relaxed text-ink-soft">明确把哪个物体或物体系隔离出来，圈出所有接触面与场力来源。</p></div><div class="relative"><span class="absolute -left-[35px] top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-seal text-[0.72em] font-semibold text-white tabular-nums">2</span><h4 class="m-0 text-[0.92em] font-semibold text-ink-strong">建立正交坐标系并正交分解</h4><p class="mt-1 mb-0 text-[0.86em] leading-relaxed text-ink-soft">沿加速度方向建立 x 轴，垂直方向建 y 轴，将斜向力投影到坐标轴上。</p></div><div class="relative"><span class="absolute -left-[35px] top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-ink-strong text-[0.72em] font-semibold text-white tabular-nums">3</span><h4 class="m-0 text-[0.92em] font-semibold text-ink-strong">联立平衡方程或牛顿第二定律求解</h4><p class="mt-1 mb-0 text-[0.86em] leading-relaxed text-ink-soft">分别列出 ΣFx = ma 与 ΣFy = 0，消去未知中间量。</p></div></div></div>
 \`\`\`
 
-#### 配方五：横向机制推导链（因果流 / 编译管线 / 状态转化）
-*审美要点：用于展现「A 导致 B 导致 C」的机制，比纯文字描述直观十倍。*
+#### 配方五：横向机制推导链（因果流 / 编译管线 / 状态转化——「A 导致 B 导致 C」比纯文字直观十倍）
 \`\`\`html
 <div class="my-5 flex items-stretch justify-between gap-2 border border-line bg-sunken/40 p-3.5 text-[0.84em]"><div class="flex-1 bg-card p-3 border border-line"><div class="text-[0.72em] text-ink-faint tabular-nums">STAGE 01</div><div class="mt-0.5 font-semibold text-ink-strong">源码输入</div><p class="mt-1 mb-0 text-[0.88em] leading-snug text-ink-soft">字符流读入内存</p></div><div class="flex items-center text-ink-faint px-1">→</div><div class="flex-1 bg-card p-3 border border-line"><div class="text-[0.72em] text-seal tabular-nums">STAGE 02</div><div class="mt-0.5 font-semibold text-ink-strong">词法与语法分析</div><p class="mt-1 mb-0 text-[0.88em] leading-snug text-ink-soft">生成抽象语法树 AST</p></div><div class="flex items-center text-ink-faint px-1">→</div><div class="flex-1 bg-card p-3 border border-seal/50"><div class="text-[0.72em] text-ok tabular-nums">STAGE 03</div><div class="mt-0.5 font-semibold text-ink-strong">目标代码生成</div><p class="mt-1 mb-0 text-[0.88em] leading-snug text-ink-soft">输出机器指令序列</p></div></div>
 \`\`\`
 
-#### 配方六：关键指标 / 参数看板（3栏大数字并排）
-*审美要点：顶栏给分类标签，中间给大号 \`tabular-nums\` 核心数据，底栏给一句精炼解读。*
+#### 配方六：关键指标 / 参数看板（顶栏分类标签，中间大号 tabular-nums 数据，底栏一句解读）
 \`\`\`html
 <div class="my-5 grid grid-cols-3 gap-4"><div class="border border-line bg-card px-4 py-3.5"><div class="text-[0.74em] text-ink-faint">时间复杂度（平均）</div><div class="mt-1 text-[1.5em] font-semibold text-seal tabular-nums">O(n log n)</div><div class="mt-1 text-[0.78em] text-ink-soft">分治递归的最优平衡点</div></div><div class="border border-line bg-card px-4 py-3.5"><div class="text-[0.74em] text-ink-faint">最坏退化情况</div><div class="mt-1 text-[1.5em] font-semibold text-warn tabular-nums">O(n²)</div><div class="mt-1 text-[0.78em] text-ink-soft">基准值每次恰好选到极值</div></div><div class="border border-line bg-card px-4 py-3.5"><div class="text-[0.74em] text-ink-faint">原地空间开销</div><div class="mt-1 text-[1.5em] font-semibold text-ok tabular-nums">O(log n)</div><div class="mt-1 text-[0.78em] text-ink-soft">仅消耗递归调用栈深度</div></div></div>
 \`\`\`
 
-#### 配方七：词典式术语名片（引入新概念 / 专有名词时使用）
-*审美要点：模仿权威辞书排版，包含词条名、英文/符号对照、词性/领域标签，以及一句话本质定义。*
+#### 配方七：词典式术语名片（引入新概念 / 专有名词时：词条名 + 英文对照 + 领域标签 + 一句话本质定义）
 \`\`\`html
 <div class="my-4 border border-line bg-card px-5 py-3.5"><div class="flex items-baseline justify-between border-b border-line pb-2"><div class="flex items-baseline gap-2.5"><span class="text-[1.05em] font-semibold text-ink-strong">熵增定律</span><span class="text-[0.82em] italic text-ink-faint">Law of Increasing Entropy · ΔS ≥ 0</span></div><span class="bg-sunken px-2 py-0.5 text-[0.72em] text-ink-soft">热力学第二定律</span></div><p class="mt-2.5 mb-0 text-[0.88em] leading-relaxed text-ink">在孤立系统中，热量总是自发地从高温物体流向低温物体，系统的<strong>微观无序度（熵）</strong>永远不会自发减少。</p></div>
 \`\`\`
 
-#### 配方八：精装横向条形对比图（量级对比 / 占比排行）
-*审美要点：增加图表 Header 说明单位，最优项用 \`bg-seal\` 高亮，其余陪跑项用 \`bg-ink-soft/40\` 降噪，形成强烈视觉焦点。*
-\`\`\`html
-<div class="my-5 border border-line bg-card p-4"><div class="mb-3 flex items-baseline justify-between border-b border-line pb-2"><span class="text-[0.88em] font-semibold text-ink-strong">不同存储介质访问延迟量级对比</span><span class="text-[0.74em] text-ink-faint">单位：纳秒 (ns)，越短越快</span></div><div class="space-y-2.5 text-[0.84em]"><div class="flex items-center gap-3"><span class="w-[105px] shrink-0 font-semibold text-ink-strong">L1 缓存</span><div class="h-2.5 flex-1 bg-inset"><div class="h-2.5 bg-ok" style="width:8%"></div></div><span class="w-[52px] shrink-0 text-right font-semibold tabular-nums text-ok">1 ns</span></div><div class="flex items-center gap-3"><span class="w-[105px] shrink-0 text-ink-soft">L2 缓存</span><div class="h-2.5 flex-1 bg-inset"><div class="h-2.5 bg-seal/80" style="width:28%"></div></div><span class="w-[52px] shrink-0 text-right tabular-nums text-ink-soft">4 ns</span></div><div class="flex items-center gap-3"><span class="w-[105px] shrink-0 text-ink-soft">主存 (RAM)</span><div class="h-2.5 flex-1 bg-inset"><div class="h-2.5 bg-ink-soft/45" style="width:100%"></div></div><span class="w-[52px] shrink-0 text-right tabular-nums text-ink-faint">100 ns</span></div></div></div>
-\`\`\`
-
-#### 配方九：带数值顶标的生长柱状图（离散数据对比）
-*审美要点：列容器必须写 \`h-full\`（否则百分比高度塌陷为 0）！在柱子顶端加上 \`tabular-nums\` 具体数值，关键柱用 \`bg-seal\`，常规柱用 \`bg-seal/45\` 拉开主次。*
-\`\`\`html
-<div class="my-5 border border-line bg-card p-4"><div class="mb-3 flex items-baseline justify-between"><span class="text-[0.88em] font-semibold text-ink-strong">样本在不同迭代轮次下的准确率跃升</span><span class="text-[0.74em] text-ink-faint">单位：%</span></div><div class="flex h-40 items-end gap-4 border-b border-line px-3 pt-5"><div class="flex h-full flex-1 flex-col items-center justify-end"><span class="mb-1 text-[0.72em] tabular-nums text-ink-faint">42%</span><div class="w-[52%] origin-bottom animate-doc-grow bg-seal/40" style="height:42%"></div></div><div class="flex h-full flex-1 flex-col items-center justify-end"><span class="mb-1 text-[0.72em] tabular-nums text-ink-faint">68%</span><div class="w-[52%] origin-bottom animate-doc-grow bg-seal/65 [animation-delay:120ms]" style="height:68%"></div></div><div class="flex h-full flex-1 flex-col items-center justify-end"><span class="mb-1 text-[0.72em] font-semibold tabular-nums text-seal">94%</span><div class="w-[52%] origin-bottom animate-doc-grow bg-seal [animation-delay:240ms]" style="height:94%"></div></div></div><div class="mt-2 flex gap-4 px-3 text-[0.76em] text-ink-faint"><span class="flex-1 text-center">Epoch 1</span><span class="flex-1 text-center">Epoch 5</span><span class="flex-1 text-center font-semibold text-ink-strong">Epoch 10 (收敛)</span></div></div>
-\`\`\`
-
-#### 配方十：带基准网格与关键点标注的 SVG 曲线图（趋势 / 函数图像）
-*审美要点：不要只画一条孤零零的线！加上虚线参考线（\`stroke-dasharray="4 4"\`）、曲线下方的淡色渐变投影区、以及关键转折点的圆圈与文字标注，立刻拥有教科书插图质感。*
-\`\`\`html
-<figure class="md-fig my-5 border border-line bg-card p-4"><svg viewBox="0 0 720 220" class="w-full"><line x1="45" y1="40" x2="690" y2="40" stroke="currentColor" stroke-dasharray="4 4" class="text-line" /><line x1="45" y1="115" x2="690" y2="115" stroke="currentColor" stroke-dasharray="4 4" class="text-line" /><line x1="45" y1="190" x2="690" y2="190" stroke="currentColor" class="text-line-strong" /><text x="36" y="44" text-anchor="end" class="fill-current text-ink-faint text-[11px] tabular-nums">100</text><text x="36" y="119" text-anchor="end" class="fill-current text-ink-faint text-[11px] tabular-nums">50</text><text x="36" y="194" text-anchor="end" class="fill-current text-ink-faint text-[11px] tabular-nums">0</text><path d="M45 175 L200 135 L360 142 L520 68 L680 48" fill="none" stroke="currentColor" stroke-width="2.5" class="text-seal animate-doc-draw" pathLength="1" stroke-dasharray="1" /><circle cx="520" cy="68" r="4.5" class="fill-current text-seal" /><text x="520" y="53" text-anchor="middle" class="fill-current text-ink-strong text-[12px] font-semibold">拐点突破 (78%)</text></svg><figcaption class="mt-2 text-center text-[0.78em] text-ink-faint">图 1：第 4 阶段跨过临界阈值后，斜率显著陡峭化（视线请聚焦圆点标注处）。</figcaption></figure>
-\`\`\`
-
-#### 配方十一：分段式构成条（比例拆解 / 时间分配 / 内存布局）
-*审美要点：单个进度条太单调，用多色块拼接展示整体内部的构成比例，底部配圆点图例。*
+#### 配方八：分段式构成条（比例拆解 / 时间分配 / 内存布局——多色块拼接 + 底部圆点图例）
 \`\`\`html
 <div class="my-5 border border-line bg-card p-4"><div class="flex items-baseline justify-between text-[0.84em]"><span class="font-semibold text-ink-strong">典型深度学习训练显存占用构成</span><span class="tabular-nums text-ink-faint">总计 100%</span></div><div class="mt-2.5 flex h-3 w-full overflow-hidden bg-inset gap-0.5"><div class="h-full bg-seal" style="width:55%"></div><div class="h-full bg-ok" style="width:25%"></div><div class="h-full bg-warn" style="width:20%"></div></div><div class="mt-2.5 flex items-center gap-5 text-[0.76em] text-ink-soft"><span class="flex items-center gap-1.5"><i class="inline-block h-2 w-2 rounded-full bg-seal"></i>优化器状态 <strong class="tabular-nums text-ink-strong">55%</strong></span><span class="flex items-center gap-1.5"><i class="inline-block h-2 w-2 rounded-full bg-ok"></i>激活值缓存 <strong class="tabular-nums text-ink-strong">25%</strong></span><span class="flex items-center gap-1.5"><i class="inline-block h-2 w-2 rounded-full bg-warn"></i>模型权重与梯度 <strong class="tabular-nums text-ink-strong">20%</strong></span></div></div>
 \`\`\`
 
-#### 配方十二：随堂微测 / 自检折叠卡（思考题 + 答案揭晓）
-*审美要点：把练习题和解析放在同一个视觉容器内，上方设问，下方用虚线分割出带底色的「思路揭晓」，极适合放在小节末尾检验理解。*
+#### 配方九：随堂微测 / 自检折叠卡（上方设问，下方虚线分割出带底色的「思路揭晓」，放小节末尾检验理解）
 \`\`\`html
 <div class="my-5 border border-line bg-card overflow-hidden"><div class="px-5 py-3.5"><span class="bg-seal/10 px-1.5 py-0.5 text-[0.72em] font-semibold text-seal">快问快答 · 概念自检</span><p class="mt-2 mb-0 text-[0.9em] font-semibold text-ink-strong">如果将单摆的摆球质量增加一倍，在小角度摆动下，它的固有周期 T 会如何变化？</p></div><div class="border-t border-dashed border-line bg-sunken/60 px-5 py-3 text-[0.84em] leading-relaxed text-ink-soft"><strong class="text-ok">✓ 答案：保持不变。</strong> 由单摆周期公式 T = 2π√(L/g) 可知，周期仅取决于摆长 L 与当地重力加速度 g，与摆球质量 m 无关。</div></div>
 \`\`\`
 
----
-
 ### 3. 四条排版审美纪律（必读）
-
-1. **视觉呼吸感（禁止盒子堆砌）**：**绝对不要把整篇文档切成十几个连续的卡片**！任意两个 HTML 配方之间，必须有至少 1~2 段平实的 Markdown 正文作为过渡与铺垫。留白、字号层级和一条细分隔线（\`border-line\`）比满屏边框耐读得多。
-2. **色彩降噪原则**：一个图表或组件里，高饱和度的语义色（\`seal\` / \`ok\` / \`warn\`）**只给最核心的那 1~2 个焦点数据**（例如最大值、拐点、正确项），其余陪衬项一律用 \`bg-seal/40\`、\`bg-ink-soft/40\` 或 \`bg-sunken\` 压暗，有暗才有亮。
-3. **动画克制**：生长（\`animate-doc-grow\`）、描线（\`animate-doc-draw\`）、浮现（\`animate-doc-fade\` / \`animate-doc-rise\`）只用在需要体现「过程感」的图表上，同一屏最多一处动画，静态能讲清的绝不乱动。
-4. **图文互文**：每张图或数据看板下方必须配说明，且在紧邻的正文里明确点出「请看图中的 X 处」——图表是推理链条的一环，绝不是凑数的装饰品。`,
+1. **视觉呼吸感（禁止盒子堆砌）**：不要把整篇文档切成十几个连续卡片——任意两个配方之间必须有 1~2 段平实的 Markdown 正文过渡；留白、字号层级和一条细分隔线比满屏边框耐读。
+2. **色彩降噪**：高饱和语义色（seal / ok / warn）只给最核心的 1~2 个焦点数据，其余陪衬用 \`bg-seal/40\`、\`bg-ink-soft/40\` 或 \`bg-sunken\` 压暗——有暗才有亮。
+3. **动画克制**：生长 / 描线 / 浮现只用在需要体现「过程感」的图表上，同一屏最多一处动画，静态能讲清的绝不乱动。
+4. **图文互文**：每个组件下方配说明，且在紧邻正文里明确点出「请看图中的 X 处」——图表是推理链条的一环，不是凑数的装饰品。`,
   },
 ]
 
-import { getLoadedSkills } from '../../agent/skill/registry'
-
-const MODULE_BY_KEY = new Map(PROMPT_MODULES.map((m) => [m.key, m]))
-
-export function promptModuleByKey(key: string): PromptModule | null {
-  const mod = MODULE_BY_KEY.get(key)
-  if (mod) return mod
-
-  if (key.startsWith('skill:')) {
-    const skillId = key.slice('skill:'.length)
-    const skills = getLoadedSkills()
-    const target = skills.find((s) => s.id === skillId)
-    if (target) {
-      return {
-        key,
-        title: `技能 · ${target.name}`,
-        text: `### 专业技能规范与执行纪律：${target.name} (${target.id})\n\n${target.instructions.trim()}`,
-      }
-    }
-  }
-
-  return null
-}
-
 /**
- * api 名 → 模块 key 的触发映射：按组前缀（content.write → content），顶层名（wait / ask）用名字本身。
- * 只有「规范搬进了模块」的组才在这里；content / graph / state / ask 这些每轮必用的组不触发注入。
- */
-const GROUP_MODULE: Record<string, string> = {
-  browser: 'browser',
-  web: 'web',
-  fetch: 'web',
-  mcp: 'mcp',
-  res: 'res',
-  exam: 'exam',
-  schedule: 'schedule',
-  workspace: 'workspace',
-  method: 'method',
-  code: 'code',
-  compact: 'compact',
-  subagent: 'subagent',
-  ui: 'ui',
-  project: 'project-interpret',
-}
-
-export function promptModuleForApiName(name: string): string | null {
-  const dot = name.indexOf('.')
-  const group = dot < 0 ? name : name.slice(0, dot)
-  return GROUP_MODULE[group] ?? null
-}
-
-/**
- * 写入内容里的标记 → 模块 key（内容触发）：模型写出 ```plot 图像或 SMIL / @keyframes
- * 动画时，对应的数据形态 / 动画写法模块就该在场。宿主在 execute 的写入调用参数上
- * 嗅探（见 sandbox/execute 的 callApi 与下面的 writableContentOf）。
+ * 一条模块消息：隐藏 **assistant** 消息，promptModule 供去重。
  *
- * target 是这次写入的第一个参数（content.* 的定位对象）：part 写 superdoc:* 的写入
- * 本来就是完整 HTML，不注入 doc-html 排版配方（那与超级文档的写法相冲），但 plot /
- * 动画标记照常嗅探。
+ * 模块是「怎么做」的**声明**（排版配方、规程）——固定内容、声明一次、同上下文不重复，
+ * 归 assistant 边；「做什么」的指令（工作流、用户消息）才是 user。与 personaMessage
+ * 同一个形状家族，也是一条**提示词注入**（inject: 'prompt'）：它不分割轮次，界面上
+ * 并进那一轮的「思考、工具与提示词」过程组（见 agent/messageKind 与 panel/partGroups）。
  */
-export function promptModuleForContent(content: string, superdoc: boolean, apiName?: string): string[] {
-  const out: string[] = []
-  // 写教学文档（files.write / files.edit / 节点对象的 editContent 写 teaching）就注入排版配方；
-  // 超级文档（payload 是完整 HTML）不注入 doc-html——排版配方与它的写法相冲
-  const writeish = apiName === 'files.write' || apiName === 'files.edit' || apiName === 'node.invoke'
-  if (!superdoc && writeish) {
-    out.push('doc-html')
+export function promptModuleMessage(mod: PromptModule, uuid: string, at: number): ConversationMessage {
+  return {
+    id: uuid,
+    role: 'assistant',
+    parts: [{ type: 'text', text: mod.text }],
+    ts: at,
+    hidden: true,
+    mark: t('提示词模块 · {0}', mod.title),
+    promptModule: mod.key,
+    inject: 'prompt',
   }
-  if (content.includes('```plot')) out.push('plot-forms')
-  if (content.includes('```quote')) out.push('project-interpret')
-  if (content.includes('<animate') || content.includes('@keyframes')) out.push('rich-animation')
-  return out
-}
-
-/**
- * 从一次写入调用里取出可嗅探的正文与「是不是完整 HTML（超级文档）」。
- * 大纲等对象 payload 没有可嗅探的正文，回 null；其余调用不携带正文，也回 null。
- */
-export interface WritableContent {
-  text: string
-  /** 超级文档：payload 本来就是完整 HTML，不注入排版配方 */
-  superdoc: boolean
-}
-
-export function writableContentOf(name: string, args: unknown[]): WritableContent | null {
-  if (name === 'files.write') {
-    return typeof args[1] === 'string' ? { text: args[1], superdoc: false } : null
-  }
-  if (name === 'files.edit') {
-    const payload = args[1]
-    if (payload && typeof payload === 'object') {
-      const p = payload as Record<string, unknown>
-      if (typeof p.content === 'string') return { text: p.content, superdoc: false }
-      if (p.replace && typeof p.replace === 'object') {
-        const rep = p.replace as Record<string, unknown>
-        if (typeof rep.replacement === 'string') return { text: rep.replacement, superdoc: false }
-        if (typeof rep.new === 'string') return { text: rep.new, superdoc: false }
-      }
-    }
-    return null
-  }
-  if (name === 'node.invoke') {
-    // 新协议：invoke(uuid, 成员名, 参数数组)——只有 editContent 带可嗅探的正文
-    const member = typeof args[1] === 'string' ? args[1] : ''
-    if (member !== 'editContent') return null
-    const rest = Array.isArray(args[2]) ? args[2] : []
-    const payload = rest[0]
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null
-    const p = payload as Record<string, unknown>
-    if (typeof p.teaching === 'string') return { text: p.teaching, superdoc: false }
-    if (typeof p.text === 'string') return { text: p.text, superdoc: false }
-    if (typeof p.html === 'string') return { text: p.html, superdoc: true }
-    return null
-  }
-  return null
 }
 
 /**
@@ -848,23 +178,11 @@ export function missingPromptModules(messages: ConversationMessage[], keys: stri
 }
 
 /**
- * 一条模块消息：隐藏 **assistant** 消息，promptModule 供去重。
- *
- * 模块是「怎么做」的**声明**（排版配方、api 规程、方法流程）——固定内容、声明一次、
- * 同上下文不重复，归 assistant 边；「做什么」的指令（工作流、用户消息）才是 user。
- * 与 personaMessage 同一个形状家族，也是一条**提示词注入**（inject: 'prompt'）：
- * 它不分割轮次，界面上并进那一轮的「思考、工具与提示词」过程组——与思考、工具调用
- * 同一层（见 agent/messageKind 与 panel/partGroups）。正文只在上下文里，展开看全文。
+ * 界面显示用：一个模块 key 的标题。未知 key（老对话的历史残留——已退役模块、
+ * 被删掉的规程）返回 null，调用方回退 key 本身；'wf:<id>' 是登记工作流的
+ * prompt 模块（见 learn/workflows 的 workflowModules）。
  */
-export function promptModuleMessage(mod: PromptModule, uuid: string, at: number): ConversationMessage {
-  return {
-    id: uuid,
-    role: 'assistant',
-    parts: [{ type: 'text', text: mod.text }],
-    ts: at,
-    hidden: true,
-    mark: t('提示词模块 · {0}', mod.title),
-    promptModule: mod.key,
-    inject: 'prompt',
-  }
+export function promptModuleTitleOf(key: string): string | null {
+  if (key.startsWith('wf:')) return '工作流规程'
+  return PROMPT_MODULES.find((m) => m.key === key)?.title ?? null
 }

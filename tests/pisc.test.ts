@@ -178,9 +178,9 @@ const ctx = card.getContext('2d');
     expect(PISC_SYNTAX_GUIDE).toContain('```pisc')
     expect(PISC_SYNTAX_GUIDE).toContain('HTMLCanvasElement')
     expect(PISC_SYNTAX_GUIDE).toContain('card.getPointerPos')
-    expect(PISC_SYNTAX_GUIDE).toContain('物理与工程科学')
-    expect(PISC_SYNTAX_GUIDE).toContain('计算机科学与软件工程')
-    expect(PISC_SYNTAX_GUIDE).toContain('数理统计与几何')
+    expect(PISC_SYNTAX_GUIDE).toContain('物理动力学')
+    expect(PISC_SYNTAX_GUIDE).toContain('算法执行演化')
+    expect(PISC_SYNTAX_GUIDE).toContain('极限与切线逼近')
   })
 
   it('hydratePisc 能正确挂载并响应重置按钮且正确透传标题', () => {

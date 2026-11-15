@@ -37,7 +37,7 @@ import { TURN_FLUSH_MS, upsertAssistantInFlight } from '../agent/inflight'
 import { transferPendingFiles, transferPendingImages } from '../agent/transfer'
 import type { AgentRunTarget, AgentUiDeps } from '../agent/sandboxOps'
 import { activeMessages } from '../compact'
-import { type PromptModule } from '../ai/promptModules'
+import { missingPromptModules, promptModuleMessage, type PromptModule } from '../ai/promptModules'
 import { useAgentSlots } from './slots'
 import { useAgentSession } from './session'
 import { assembleTurnEntry } from './agentPrompt'
@@ -221,12 +221,12 @@ export function useAgent(opts: {
        */
       isCompactTurn = false,
       /**
-       * 这一轮触发前要注入的提示词模块（动态提示词注入，见 learn/ai/promptModules）。
-       * 由 runWorkflow 算好带来（内置 promptModule / 登记的 prompt）。注入点与人格补发
-       * 同一处——排在用户消息之前、只在队尾追加（前缀缓存安全）；活着的消息里已有
-       * 标记的自动跳过，同一上下文绝不重复注入。
+       * 这一轮触发前要注入的提示词模块（见 learn/ai/promptModules）。由 runWorkflow
+       * 算好带来（登记工作流的 prompt 字段；内置规程已随全量静态提示词进
+       * WORKFLOWS_GUIDE）。注入点与人格补发同一处——排在当轮指令之前、只在队尾追加
+       * （前缀缓存安全）；活着的消息里已有标记的自动跳过，同一上下文绝不重复注入。
        */
-      _modules?: PromptModule[],
+      modules?: PromptModule[],
       /** 工作流启动实参（runWorkflow 的 params）：随隐藏指令落库，分界条展开时展示 */
       wfParams?: Record<string, string | number>,
     ) => {
@@ -274,6 +274,20 @@ export function useAgent(opts: {
       // 的固化与 inflight 标记）整段在 assembleTurnEntry；这里只接回组装好的会话并落库。
       const entry = assembleTurnEntry({ trimmed, hidden, mark, wfParams, context, quote, attached, attachedFiles, assistantId, conv })
       conv = entry.conv
+      // 工作流触发时随指令注入的规程模块（登记工作流的 prompt 字段）：作为隐藏
+      // assistant 声明插在当轮指令之前——声明归 assistant 边、指令归 user（见
+      // promptModuleMessage 的分工说明）。同一上下文同 key 只注一次，压缩折掉后自动补回。
+      if (modules?.length) {
+        const missing = missingPromptModules(conv.messages, modules.map((m) => m.key))
+        const injects = modules
+          .filter((m) => missing.includes(m.key))
+          .map((m) => promptModuleMessage(m, crypto.randomUUID(), Date.now()))
+        if (injects.length) {
+          const messages = [...conv.messages]
+          messages.splice(messages.length - 1, 0, ...injects)
+          conv = { ...conv, messages }
+        }
+      }
       persist(conv)
       // 这一段对话还没有标题就顺手起一个（不阻塞这一轮，见 nameConversation）
       nameConversation(conv)

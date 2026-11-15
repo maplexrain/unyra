@@ -1,4 +1,4 @@
-import { promptModuleByKey, type PromptModule } from './ai/promptModules'
+import type { PromptModule } from './ai/promptModules'
 import type { LearnStore, WorkflowEntry } from './types'
 
 /**
@@ -42,12 +42,6 @@ export interface WorkflowRow extends WorkflowEntry {
   prep?: 'ask' | 'show'
   /** instruction 里的 {{占位符}} 清单：触发方必须把这些参数补齐 */
   params?: string[]
-  /**
-   * 触发时随指令注入的**内置提示词模块**（learn/ai/promptModules；只有内置条目用——
-   * 登记的走 WorkflowEntry.prompt）。规程类知识（如超级文档规范）按模块 key 注入，
-   * 同一上下文只注一次；之后再次触发只发 instruction。
-   */
-  promptModule?: string
   /** 能不能从工作流列表直接跑：出卷/阅卷要专用入口（选类型等级 / 先交卷），列表里不给他们按钮 */
   runnable: boolean
 }
@@ -58,9 +52,8 @@ export interface WorkflowRow extends WorkflowEntry {
  * 「开讲」：空节点的内容填充（画布上空文档卡点「生成」、或新建节点后的自动开讲）。
  *
  * **指令只写「做什么」与参数**（函数调用）：完整流程（列前置、检索、摸底、写法、
- * 记账）在「教学文档生成」提示词模块里（assistant 声明一次，随本工作流注入、
- * 同上下文不重复——提示词与指令的分工见 personaMessage 与 promptModuleMessage 的说明）。
- * 指令里不再重复步骤，只给这轮特有的参数与边界。
+ * 记账）在系统提示词的「内置工作流与任务规程」一节里。
+ * 指令里不重复步骤，只给这轮特有的参数与边界。
  */
 const TEACH_NODE_INSTRUCTION = ['## 使用「开讲」工作流。', '- 目标节点: {{target}}'].join('\n')
 
@@ -85,15 +78,14 @@ const TEACH_NODE_INSTRUCTION = ['## 使用「开讲」工作流。', '- 目标�
  * 「请导师生成大纲」，或工作流列表）。与「学习大纲」的分工：那条只管刚新建的总目标，
  * 这一条管所有节点（阶段目标要拆下一层、或者计划变了要重排）。
  *
- * 指令只写「做什么」：写法与规矩在「大纲编写」提示词模块里（随本工作流注入、
- * 同上下文只注一次）。
+ * 指令只写「做什么」：写法与规矩在系统提示词的「内置工作流与任务规程」一节里。
  */
 const OUTLINE_INSTRUCTION = ['## 使用「生成大纲」工作流。', '- 目标节点: {{target}}'].join('\n')
 
 /**
  * 「生成大纲导读」：大纲卡右键菜单的「生成大纲导读」触发——导读生在**大纲本体**上，
- * 给已经写成的大纲补一段对它本身的讲解（guide）。规矩在「大纲导读」提示词模块里
- * （随本工作流注入）：只写 guide、不动 intro 与 children。
+ * 给已经写成的大纲补一段对它本身的讲解（guide）。规矩在系统提示词的
+ * 「内置工作流与任务规程」一节里：只写 guide、不动 intro 与 children。
  */
 const OUTLINE_GUIDE_INSTRUCTION = ['## 使用「生成大纲导读」工作流。', '- 目标节点: {{target}}'].join('\n')
 
@@ -102,8 +94,8 @@ const OUTLINE_GUIDE_INSTRUCTION = ['## 使用「生成大纲导读」工作流�
  * （旧入口「画布拖一张空大纲卡接上游」已随占位卡一起退役）。
  *
  * 与「生成大纲」的分工：那条给**方向已定**的节点规划「往下怎么学」；
- * 这条给**还没拆过的文档**定「学它之前要先会什么」。写法的通用规矩在「大纲编写」
- * 提示词模块里（随本工作流注入），指令只写本轮特有的任务与边界。
+ * 这条给**还没拆过的文档**定「学它之前要先会什么」。写法的通用规矩在系统提示词的
+ * 「内置工作流与任务规程」一节里，指令只写本轮特有的任务与边界。
  */
 
 /**
@@ -114,8 +106,8 @@ const VIDEO_OVERVIEW_INSTRUCTION = ['## 使用「视频总览」工作流。', '
 /**
  * 「出卷」：类型与难度由 Agent 问用户，出题后直接保存试卷文件。
  *
- * 题目 JSON 契约、两阶段读写与篡改禁令都在「试卷与考试」提示词模块里（随本工作流
- * 注入、同上下文只注一次）；指令只写本轮的决策内容：考什么、问什么、怎么定时限。
+ * 出卷流程与题目 JSON 契约在系统提示词的「内置工作流与任务规程」一节里（读写边界
+ * 在 api.exam 组速查）；指令只写本轮的决策内容：考什么、问什么、怎么定时限。
  */
 const EXAM_INSTRUCTION = ['## 使用「出卷」工作流。', '- 目标节点: {{target}}'].join('\n')
 
@@ -189,12 +181,8 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     name: '开讲',
     description: '摸底前置知识盲点后，生成针对性的教学文档',
     instruction: TEACH_NODE_INSTRUCTION,
-    // 方法流程在「教学文档生成」模块里（assistant 声明一次，同上下文不重复）——
-    // 指令只写本轮任务与参数（提示词与指令的分工，见 TEACH_NODE_INSTRUCTION 的说明）。
-    // 这一次的交付物就是一份讲义：排版配方（doc-html）也必须**动笔之前**在场——
-    // 靠 doc.* 写入触发只会晚一轮，第一份文档就永远是纯 HTML 草稿（v0.5.8 踩过）。
-    // 纯 Markdown 策略下这些会被格式过滤拦掉（见 runTurnUnchecked 的 effectiveModules）
-    promptModule: 'teach-method doc-html',
+    // 方法流程在系统提示词的「内置工作流与任务规程」一节里；排版配方（doc-html）
+    // 随系统提示词静态在场——首份文档就不是纯文本草稿（v0.5.8 踩过）。
     params: ['target'],
     prep: 'ask',
     // 核心交付物是教学文档：要深，但 max 的等待不值
@@ -204,8 +192,7 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     name: '生成大纲',
     description: '为当前知识点规划或重写大纲（只列直接子层级一层）',
     instruction: OUTLINE_INSTRUCTION,
-    // 写法与规矩在「大纲编写」模块里（assistant 声明一次，同上下文不重复）
-    promptModule: 'outline-method',
+    // 写法与规矩在系统提示词的「内置工作流与任务规程」一节里
     params: ['target'],
     // 交付物长在大纲页里（用户多半正盯着它）：只响一声铃、不抢主位
     prep: 'show',
@@ -216,7 +203,6 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     name: '生成大纲导读',
     description: '为一份已经写成的大纲补一段对它本身的讲解（guide，只写导读不动计划）',
     instruction: OUTLINE_GUIDE_INSTRUCTION,
-    promptModule: 'outline-guide-method',
     params: ['target'],
     // 与生成大纲同一待遇：交付物长在导读页签里，只响铃不抢主位
     prep: 'show',
@@ -228,7 +214,6 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     name: '视频总览',
     description: '分析视频选集结构并规划语义分类总览文档（挂在视频节点子级）',
     instruction: VIDEO_OVERVIEW_INSTRUCTION,
-    promptModule: 'video-overview',
     params: ['target', 'videoId'],
     prep: 'show',
     runnable: false,
@@ -238,7 +223,6 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     name: '出卷',
     description: '先问清类型与难度，再出一份带时限的试卷',
     instruction: EXAM_INSTRUCTION,
-    promptModule: 'exam',
     params: ['target'],
     // 它自己会先 ask 一次（类型 / 难度），所以没有占位符、也从列表里可跑
     prep: 'ask',
@@ -249,7 +233,6 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     name: '阅卷',
     description: '判分 + 针对错题写讲解（交卷后自动跑）',
     instruction: GRADE_INSTRUCTION,
-    promptModule: 'exam',
     params: ['target'],
     // 必须先有人交卷：从列表里空跑只会得到「没有需要讲解的考试」
     runnable: false,
@@ -262,7 +245,6 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     instruction: EXPLAIN_INSTRUCTION,
     // 词条、序号与选段都由触发方补齐；从工作流列表里空跑没有词条可讲
     params: ['target', 'term', 'occurrence', 'snippet'],
-    promptModule: 'explain',
     runnable: false,
     // 只响一声铃、不切主位：交付物就画在用户盯着的那段文字旁边（同「伪编译」）
     prep: 'show',
@@ -273,8 +255,7 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     name: '超级实验室',
     description: '问清想做什么实验，生成一份可交互的超级文档',
     instruction: SUPERLAB_INSTRUCTION,
-    // 问需求与落盘的规程在自己那份模块里；壳 uuid 由触发方带（画布空壳卡）
-    promptModule: 'superlab',
+    // 问需求与落盘的规程在系统提示词的「内置工作流与任务规程」一节里；壳 uuid 由触发方带（画布空壳卡）
     params: ['target'],
     prep: 'ask',
     // 生成可交互 HTML/JS：复杂代码合成是 max 收益最大的场景，失败代价最高、也等得起
@@ -284,8 +265,7 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     name: '伪编译',
     description: '把文档里这段代码转译成可运行的 JS，产物交给它运行',
     instruction: CODE_COMPILE_INSTRUCTION,
-    // 产物交付的 api 口径（save / silent）与转译环境随这条工作流注入一次
-    promptModule: 'code',
+    // 产物交付的 api 口径（save / silent）与转译环境在系统提示词的「伪编译」规程里
     // 代码、语言与 key 由代码块菜单补齐；从工作流列表里空跑没有意义
     params: ['target', 'language', 'key', 'code'],
     runnable: false,
@@ -299,7 +279,6 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     description: '文档里一个函数图像渲染失败时，按报错与区间一次改完（点错误卡片触发）',
     instruction: PLOT_FIX_INSTRUCTION,
     // 报错、区间与原文都由触发方算好带来；从列表里空跑没有可修的图
-    promptModule: 'plot-fix',
     params: ['target', 'nodeTitle', 'reason', 'range', 'start', 'end', 'source'],
     runnable: false,
     // 响一声铃就够：用户点的是错误卡片，修复结果直接落在文档里
@@ -311,8 +290,7 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     name: '压缩上下文',
     description: '把前面的对话折成一份交接摘要（旧消息随即失活）',
     instruction: COMPACT_INSTRUCTION,
-    // api.compact 的生效时机与参数口径随这条工作流注入一次
-    promptModule: 'compact',
+    // api.compact 的生效时机与参数口径在系统提示词的「压缩上下文」规程里
     // 压缩是摘录式改写：材料全在上下文里，不需要额外推理
   },
   {
@@ -320,8 +298,7 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     name: '浏览器操作',
     description: '替用户操作内置浏览器：截图看页面、模拟鼠标键盘完成任务',
     instruction: BROWSER_USE_INSTRUCTION,
-    // 操作规程与安全纪律都在「内置浏览器」模块里
-    promptModule: 'browser',
+    // 操作规程与安全纪律在系统提示词的 api.browser 组速查里
     params: ['target'],
     // 全程看图干活：识别与决策都轻——快才是浏览效率
   },
@@ -330,7 +307,6 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     name: '项目与文章解读',
     description: '为文章建立文件节点（在线网页直接引用阅读无需下载）或小型项目建立项目节点，并在教学文档中精准引用逐段精读',
     instruction: PROJECT_INTERPRET_INSTRUCTION,
-    promptModule: 'project-interpret doc-html',
     params: ['target'],
     prep: 'ask',
     runnable: true,
@@ -360,22 +336,16 @@ export function workflowPrep(prep: WorkflowRow['prep']): { beep: boolean } {
 }
 
 /**
- * 一条工作流触发时要注入哪些提示词模块（动态提示词注入，见 learn/ai/promptModules）：
- * - 内置条目的 promptModule 指到注册表里的内置模块；**空格分隔可给多个**（如开讲同时
- *   要「教学文档生成」方法与「文档排版与视觉呈现」配方——方法与配方都是声明，声明一次）；
- * - 登记条目的 prompt 是自己的规程文本，按 wf:<id> 作键动态成模块。
- * 两者都有就都注入（去重在宿主那边做：同一 key 只注一次）。都没有就是空。
+ * 一条工作流触发时要注入哪些提示词模块：
+ * 登记条目的 prompt 是自己的规程文本，按 wf:<id> 作键动态成模块（同上下文只注一次，
+ * 去重在宿主那边做）。内置条目的规程全在系统提示词的 WORKFLOWS_GUIDE 里，不再注入
+ * （2026-11 全量静态提示词重构：内置 promptModule 字段已随按需注入机制退役）。
+ * 没有登记 prompt 就是空。
  */
 export function workflowModules(
-  row: Pick<WorkflowRow, 'id' | 'name' | 'prompt' | 'promptModule'>,
+  row: Pick<WorkflowRow, 'id' | 'name' | 'prompt'>,
 ): PromptModule[] {
   const out: PromptModule[] = []
-  if (row.promptModule) {
-    for (const key of row.promptModule.trim().split(/\s+/)) {
-      const m = promptModuleByKey(key)
-      if (m) out.push(m)
-    }
-  }
   if (typeof row.prompt === 'string' && row.prompt.trim()) {
     out.push({ key: 'wf:' + row.id, title: row.name, text: row.prompt })
   }

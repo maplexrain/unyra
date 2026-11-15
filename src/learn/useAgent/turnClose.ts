@@ -84,13 +84,10 @@ export function settleTurn(io: {
     }
   }
   /*
-   * 动态提示词注入（apiGroup / 内容触发，见 learn/ai/promptModules）：本轮 execute
-   * 报上来的模块在此刻统一落库——排在刚收口的回复之后、只在队尾追加（前缀缓存安全）。
-   * 去重以**活着的消息**为准（activeMessages 与请求走同一份口径）：已注过的不重注。
-   * 模块消息随后若被压缩折掉（retired），下次使用会重新注入——那是设计内行为。
+   * 动态提示词注入（apiGroup / 内容触发的轮末落库）已退役：2026-11 全量静态提示词后，
+   * 规程随系统提示词首轮在场，工作流触发的模块在轮首注入（见 hook 的 runTurnUnchecked）。
+   * 只清自己这一场：并发的其他导师的实时槽各归各
    */
-  // 动态提示词注入已退役（首轮注入全量提示词）
-  // 只清自己这一场：并发的其他导师的实时槽各归各
   setRunning((prev) => {
     if (!prev[convKey]) return prev
     const next = { ...prev }
