@@ -1,8 +1,19 @@
 import katex from 'katex'
+import { KATEX_CHAR_MACROS } from '../markdown'
 
 /** 将 Typst 风格的数学表达式转为 LaTeX/KaTeX 语法 */
 export function convertTypstMathToLatex(math: string): string {
   let s = math.trim()
+
+  // 0. 处理 Typst 数学字符串（"文本" -> \text{文本}）与裸露 CJK 汉字
+  // 显式引号字符串转为 \text{...}
+  s = s.replace(/"([^"]+)"/g, '\\text{$1}')
+  // 保护已在 \text{...} 内部的 CJK 字符，避免重复包裹
+  s = s.replace(/\\text\{[^{}]*\}/g, (m) => m.replace(/[\u4e00-\u9fa5]/g, (c) => `@@CJK_${c.charCodeAt(0)}@@`))
+  // 将公式中裸露的中文词汇包裹为 \text{...}，使学术名词以文本字体正确渲染
+  s = s.replace(/([\u4e00-\u9fa5]+)/g, '\\text{$1}')
+  // 还原占位符
+  s = s.replace(/@@CJK_(\d+)@@/g, (_, code) => String.fromCharCode(Number(code)))
 
   // 转换 Typst 分组括号为 LaTeX 花括号：_ (expr) -> _{expr}, ^ (expr) -> ^{expr}
   s = s.replace(/_\s*\(([^()]+)\)/g, '_{$1}')
@@ -57,10 +68,14 @@ export function convertTypstMathToLatex(math: string): string {
     s = s.replace(pattern, repl)
   }
 
-  // 括号除法换算：形如 (a) / (b) -> \frac{a}{b}
-  s = s.replace(/\(([^()]+)\)\s*\/\s*\(([^()]+)\)/g, '\\frac{$1}{$2}')
-  // 简易除法：形如 a / b -> \frac{a}{b}
-  s = s.replace(/([a-zA-Z0-9_\\]+)\s*\/\s*([a-zA-Z0-9_\\]+)/g, '\\frac{$1}{$2}')
+  // 括号与复合除法换算：支持 (a) / (b), a / b, \text{a} / \text{b}
+  const operand = '(?:\\\\[a-zA-Z]+(?:\\{[^{}]*\\})*|\\([^()]+\\)|[a-zA-Z0-9_]+)'
+  const divRegex = new RegExp(`(${operand})\\s*\\/\\s*(${operand})`, 'g')
+  s = s.replace(divRegex, (_, num, den) => {
+    const cleanNum = num.startsWith('(') && num.endsWith(')') ? num.slice(1, -1) : num
+    const cleanDen = den.startsWith('(') && den.endsWith(')') ? den.slice(1, -1) : den
+    return `\\frac{${cleanNum}}{${cleanDen}}`
+  })
 
   return s
 }
@@ -72,6 +87,8 @@ export function renderTypstMath(formula: string, displayMode: boolean): string {
     return katex.renderToString(latex, {
       displayMode,
       throwOnError: false,
+      strict: 'ignore',
+      macros: KATEX_CHAR_MACROS,
     })
   } catch {
     return `<span class="typst-math-fallback font-mono text-[12px] text-seal">${escapeHtml(formula)}</span>`

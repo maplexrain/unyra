@@ -116,11 +116,11 @@ export function renderTypst(source: string): string {
     return prefix + slotKey
   })
 
-  // 行内数学公式 $math$（两端紧贴内容）
-  text = text.replace(/\$([^\s$\n](?:[^$\n]*?[^\s$\n])?)\$/g, (_, math) => {
+  // 行内数学公式 $math$ 或 $ math $
+  text = text.replace(/(?<!\\)\$([^\n$]+?)(?<!\\)\$/g, (_, math) => {
     const slotIdx = mathSlots.length
     const slotKey = `@@@TYPST_MATH_SLOT_${slotIdx}@@@`
-    mathSlots.push(`<span class="typst-math-inline inline-block px-0.5">${renderTypstMath(math, false)}</span>`)
+    mathSlots.push(`<span class="typst-math-inline inline-block px-0.5">${renderTypstMath(math.trim(), false)}</span>`)
     return slotKey
   })
 

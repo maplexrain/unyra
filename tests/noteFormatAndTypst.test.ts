@@ -134,6 +134,32 @@ describe('Typst 语法渲染器 (renderTypst)', () => {
     expect(html).toContain('typst-math-block')
   })
 
+  it('渲染包含中文字符与引号文本的 Typst 数学公式且控制台静默无警告', () => {
+    const warns: string[] = []
+    const originalWarn = console.warn
+    console.warn = (...args: any[]) => {
+      warns.push(args.join(' '))
+      originalWarn(...args)
+    }
+
+    try {
+      const latex1 = convertTypstMathToLatex('"实词"')
+      expect(latex1).toBe('\\text{实词}')
+      const latex2 = convertTypstMathToLatex('实词 / 虚词')
+      expect(latex2).toBe('\\frac{\\text{实词}}{\\text{虚词}}')
+
+      const input = `公式：$ "实词" $ 以及 $ 实词 / 虚词 $ 和 $ ① + ② $`
+      const html = renderTypst(input)
+      expect(html).toContain('katex')
+      expect(html).toContain('实词')
+      expect(html).toContain('虚词')
+      const katexWarns = warns.filter((w) => w.includes('LaTeX-incompatible') || w.includes('unicodeTextInMathMode'))
+      expect(katexWarns).toEqual([])
+    } finally {
+      console.warn = originalWarn
+    }
+  })
+
   it('渲染 Typst 列表与引用块', () => {
     const input = `- 列表项 1\n- 列表项 2\n\n+ 有序 1\n+ 有序 2\n\n> 重点提示`
     const html = renderTypst(input)
