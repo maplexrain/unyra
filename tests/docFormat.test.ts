@@ -1,10 +1,9 @@
 /**
  * 文档格式策略的单元用例（见 src/agent/docFormat.ts）。
  *
- * 钉的是三件事：
+ * 钉的是两件事：
  * 1. **格式不进系统提示词**——与人格同一套机制（隐藏 user 消息），换格式不作废前缀缓存；
- * 2. 「什么时候该补这一句」的判据：一段对话里同一种格式只补一次，被压缩掉之后要能补回来；
- * 3. 纯 Markdown 策略下 doc-html 模块要被拦掉（HTML 排版配方与策略冲突）。
+ * 2. 「什么时候该补这一句」的判据：一段对话里同一种格式只补一次，被压缩掉之后要能补回来。
  */
 import { describe, expect, it } from 'vitest'
 
@@ -12,7 +11,6 @@ import type { ConversationMessage } from '../src/agent/types'
 import {
   DEFAULT_DOC_FORMAT,
   DOC_FORMATS,
-  docFormatAllowsModule,
   docFormatMessage,
   docFormatOf,
   needsDocFormatAnnounce,
@@ -118,21 +116,6 @@ describe('LaTeX 兼容性注意事项（用户要求：写在系统提示词里�
     // 反斜杠转义要如实落到文本里（模板字符串里的 \\( 必须输出成 \(）
     expect(system).toContain('不用 \\(…\\)')
     expect(system).toContain('\\usepackage')
-  })
-})
-
-describe('纯 Markdown 拦掉 doc-html（格式与模块的一致性）', () => {
-  it('markdown 不放行 doc-html，hybrid / html 放行', () => {
-    expect(docFormatAllowsModule('doc-html', 'markdown')).toBe(false)
-    expect(docFormatAllowsModule('doc-html', 'hybrid')).toBe(true)
-    expect(docFormatAllowsModule('doc-html', 'html')).toBe(true)
-  })
-
-  it('别的模块（plot-forms / rich-animation）任何格式都放行', () => {
-    for (const f of DOC_FORMATS) {
-      expect(docFormatAllowsModule('plot-forms', f.id)).toBe(true)
-      expect(docFormatAllowsModule('rich-animation', f.id)).toBe(true)
-    }
   })
 })
 

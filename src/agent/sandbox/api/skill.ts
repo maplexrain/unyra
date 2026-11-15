@@ -19,7 +19,7 @@ import { getNativeProcess } from './native'
 import type { SandboxCall, SandboxOptions } from '../types'
 
 /** 技能域：skill.paths/list/read/write/delete/run */
-export function installSkill(api: Record<string, unknown>, opts: SandboxOptions, log: SandboxCall[]): void {
+export function installSkill(api: Record<string, unknown>, _opts: SandboxOptions, log: SandboxCall[]): void {
   wrapApi(api, 'skill.paths', async (args) => {
     const id = args.length ? asText(args[0]) : undefined
     return await getSkillPathsInfo(id)
@@ -56,8 +56,7 @@ export function installSkill(api: Record<string, unknown>, opts: SandboxOptions,
         error: `未找到技能 "${id}"。当前已启用的技能: ${skills.filter((s) => s.enabled).map((s) => s.id).join(', ')}`,
       }
     }
-    // 动态触发宿主注入该技能作为后续上下文消息
-    opts.onPromptModule?.(`skill:${target.id}`)
+    // 技能规范直接随回执返回（instructions 在结果里）；不再有消息级注入通道
     const paths = await getSkillPathsInfo(target.id)
     return {
       ok: true,

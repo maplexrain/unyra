@@ -40,7 +40,7 @@ import { groupParts, isProcessPart, type InjectItem, type ProcessPart } from './
 import { openChipRef, type ChipPayload } from '../../../lib/docChip'
 import { MessageSpeakButton } from '../../tts/MessageSpeakButton'
 import { chipLabel, chipSvg, chipToken, maskChipTokens, restoreChipTokens, splitChips } from '../../../lib/chipSyntax'
-import { promptModuleByKey } from '../../../learn/ai/promptModules'
+import { promptModuleTitleOf } from '../../../learn/ai/promptModules'
 import { splitParagraphs } from './paragraphBuffer'
 import { t, useLocale } from '../../../i18n'
 
@@ -339,7 +339,7 @@ function ProcessGroup({ items }: { items: ProcessPart[] }) {
     last.type === 'thinking'
       ? lastLineOf(last.text) || '…'
       : last.type === 'prompt-module'
-        ? t('提示词模块 · {0}', promptModuleByKey(last.key)?.title ?? last.key)
+        ? t('提示词模块 · {0}', promptModuleTitleOf(last.key) ?? last.key)
         : last.type === 'inject'
           ? last.label
           : toolLabel(last.name, last.args)
@@ -673,7 +673,7 @@ function highlightParams(text: string, params: Array<[string, string | number]>)
  */
 function PromptModuleBlock({ part }: { part: Extract<AgentPart, { type: 'prompt-module' }> }) {
   const [open, setOpen] = useState(false)
-  const title = promptModuleByKey(part.key)?.title ?? part.key
+  const title = promptModuleTitleOf(part.key) ?? part.key
   return (
     <div>
       <button

@@ -86,11 +86,8 @@ export function rigTurnTools(io: {
    */
   const ctrl = new AbortController()
   const signal = ctrl.signal
-  /**
-   * 本轮 execute 报上来的提示词模块 key（apiGroup / 内容触发，见 learn/ai/promptModules）。
-   * 只收集不落库：轮末 finally 里统一去重、统一追加——绝不在这里改会话。
-   */
-  // moduleQueue 已退役
+  // 动态提示词注入的 moduleQueue 已退役（2026-11 全量静态提示词：规程随系统提示词
+  // 首轮在场，工作流触发的模块在轮首注入——见 hook 的 runTurnUnchecked）。
   // ui 依赖现取最新的一份（见 uiRef 的说明）
   const uiDeps = uiRef.current
   // browser 依赖现取最新的一份（webMeta 活信息随渲染变，与 uiRef 同款说明）
@@ -300,8 +297,7 @@ export function rigTurnTools(io: {
         const deps = target.nodeId ? examDeps?.(target.nodeId, wfParams) : undefined
         return deps ? makeExamTool(deps) : undefined
       })(),
-      // 动态提示词注入的触发口：execute 只报 key，去重与落库都在轮末（见 moduleQueue）
-      // onPromptModule: 不再按需动态入队
+      // 动态提示词注入的触发口已退役（onPromptModule 不再传入，execute 的嗅探也随之拆除）
       // 用户点「停止」时，正在等用户的 ask 与正在睡的 wait 要能立刻退场
       signal,
       /** 记忆：长期跨目标、工作按目标；绝不自动拼进上下文，agent 需要时主动读写 */

@@ -3,9 +3,6 @@
  * （编译 body → 建 api → 跑沙箱 → 收失败与图片 → 拼回执）与结果顶部的失败清单，以及几个体量上限。
  */
 import { domOp } from '../../lib/docDom'
-import { docFormatAllowsModule } from '../docFormat'
-import { loadAgentSettings } from '../settings'
-import { promptModuleForApiName, promptModuleForContent, writableContentOf } from '../../learn/ai/promptModules'
 import { MAX_TOOL_IMAGES, type MessageImage } from '../types'
 import { buildApi, clip, imagesOf } from './api'
 import { renderApiHelp, renderGroupHelp, renderRootHelp } from './apiRegistry'
@@ -108,12 +105,6 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
       const compiled = compileBody(body)
       if (!compiled.ok) return { ok: false, content: compiled.content }
       const log: SandboxCall[] = []
-      /**
-       * 动态提示词注入的触发收集（见 learn/ai/promptModules）：写入内容里的标记在 callApi
-       * 里当场记，低频 api 组在编排结束后按 log 统一记；都只在编排收尾报给宿主——
-       * 宿主负责去重与落库，这里绝不改会话。
-       */
-      const moduleKeys = new Set<string>()
       // 进程内 runner（测试探针 / 超级文档桥的直调）才有节点对象门面；真 Worker
       // 通道的回执要过结构化克隆，api.node.get 必须回纯 manifest（见 buildApi 的
       // nodeFacade 说明）。
@@ -207,17 +198,6 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
             const hint = RENAMED_API_HINT[name]
             throw new Error('沙箱里没有这个 api：' + name + (hint ? '。它已改名，现在写作 ' + hint : ''))
           }
-          // 内容触发：这次写入的东西里带 plot 围栏或动画标记，对应模块就该在场。
-          // 格式策略过滤：纯 Markdown 不注入 doc-html（HTML 排版配方与策略冲突，见 agent/docFormat）
-          if (opts.onPromptModule) {
-            const writable = writableContentOf(name, callArgs)
-            if (writable) {
-              const docFormat = loadAgentSettings().docFormat
-              for (const key of promptModuleForContent(writable.text, writable.superdoc, name)) {
-                if (docFormatAllowsModule(key, docFormat)) moduleKeys.add(key)
-              }
-            }
-          }
           let value: unknown
           try {
             value = await fn(...callArgs)
@@ -239,18 +219,6 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
       })
       domSessions.clear()
       lastCalls = log
-
-      /**
-       * 组触发：本次编排里真实调用过的低频 api 组（log 是执行成功的通道——被 apiAllow
-       * 拒掉的调用进不了它，也不会触发注入）。逐一报给宿主，去重是宿主的事。
-       */
-      if (opts.onPromptModule) {
-        for (const c of log) {
-          const key = promptModuleForApiName(c.name)
-          if (key) moduleKeys.add(key)
-        }
-        for (const key of moduleKeys) opts.onPromptModule(key)
-      }
 
       if (!reply.ok) {
         const detail = description ? '（这段代码的说明：' + description + '）' : ''

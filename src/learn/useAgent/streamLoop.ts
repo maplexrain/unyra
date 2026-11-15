@@ -101,17 +101,12 @@ export async function runTurnLoop(io: {
       noteRequest(target.conversationId, snapshot)
     },
     /**
-     * 动态提示词注入的边界通道（触发在 execute 里发生，onPromptModule 只入队）。
-     * runtime 在「当前这条请求已经完整」的边界拉一次——正是「等当前 loop 请求结束」
-     * 的那一点：绝不打断半截输出。有积压就注入**一个**模块（去重按 key 记），runtime
-     * 把它追加到请求流末尾并继续 loop——不等整轮结束。
-     *
-     * 镜像方式：模块记成回复里的一个 prompt-module **片段**（与思考/工具同层，
-     * 界面渲染成轮内折叠块，不分割轮次），toChatHistory 在片段位置补发 assistant
-     * 消息（见 agent/history）——数组顺序天然与实发一致，不需要任何切分。
+     * 动态提示词注入的边界通道——**已退役**（2026-11 全量静态提示词：规程随系统提示词
+     * 首轮在场，不再在 loop 中途注入）。通道本体留在 runtime 接口上（恒回 null）；
+     * 回复里的 prompt-module 片段形态与 toChatHistory 的补发逻辑保留——老对话的历史
+     * 里还有这种片段，还原口径不变（见 agent/history）。
      */
     injections: async (): Promise<AgentInjection | null> => {
-      // 不再按需在 loop 中途动态注入提示词模块：全量提示词与规程已在首轮全量就绪
       return null
     },
     onEvent: (e) => {

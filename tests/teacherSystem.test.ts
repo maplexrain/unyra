@@ -15,9 +15,9 @@ const system = buildTeacherSystem()
 describe('产物归属规则（用户定的）', () => {
   it('非文档类产物统一进工作区：规则在系统提示词里，且给了准确路径出处', () => {
     expect(system).toContain('非文档类产物统一进工作区')
-    // 准确的「怎么写」出处：api.workspace 省略路径就是当前节点（不再引用已删除的 api.graph.paths）
+    // 准确的「怎么写」出处：api.workspace 组速查里的寻址规则（省略 path = 当前节点）
     expect(system).toContain('api.workspace.*')
-    expect(system).toContain('省略路径就是当前节点')
+    expect(system).toContain('省略 path 是当前节点')
   })
 
   it('路径索引里也有节点工作区一行（executeGuide 的组索引给出 api.workspace）', () => {

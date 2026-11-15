@@ -17,7 +17,6 @@ import {
   readGoalFilesManifest,
 } from '../src/learn/fileNodes'
 import { setUserScope } from '../src/lib/storage'
-import { PROMPT_MODULES } from '../src/learn/ai/promptModules'
 import { WORKFLOWS_GUIDE } from '../src/learn/ai/workflowsGuide'
 
 function node(id: string, title: string, key: string): KnowledgeNode {
@@ -404,18 +403,13 @@ describe('存储序列化与派生画布', () => {
 })
 
 describe('提示词与工作流规范同步验证', () => {
-  it('promptModules 中 project-interpret 明确小文件材料用 file 节点，大工程用 project 节点', () => {
-    const mod = PROMPT_MODULES.find((m) => m.key === 'project-interpret')
-    expect(mod).toBeDefined()
-    expect(mod?.text).toContain("创建文件节点（kind: 'file'）进行引用，而不是创建项目节点")
-    expect(mod?.text).toContain("docs/{目标}/files/")
-    expect(mod?.text).toContain("fileKind: 'local'")
-    expect(mod?.text).toContain("fileKind: 'web'")
-  })
-
-  it('workflowsGuide 中明确解读材料较少时创建文件节点引用', () => {
-    expect(WORKFLOWS_GUIDE).toContain("如果材料较少则创建文件节点（kind: 'file'）进行引用")
-    expect(WORKFLOWS_GUIDE).toContain("大型代码工程则创建项目节点（kind: 'project'）")
+  it('WORKFLOWS_GUIDE 明确小文件材料用 file 节点（fileKind 区分 web/local），大工程用 project 节点', () => {
+    // project-interpret 规程已随全量静态提示词集中在 WORKFLOWS_GUIDE（不再有独立模块）
+    expect(WORKFLOWS_GUIDE).toContain("文件节点（kind: 'file'）")
+    expect(WORKFLOWS_GUIDE).toContain("docs/{目标}/files/")
+    expect(WORKFLOWS_GUIDE).toContain("fileKind: 'local'")
+    expect(WORKFLOWS_GUIDE).toContain("fileKind: 'web'")
+    expect(WORKFLOWS_GUIDE).toContain("项目节点（kind: 'project'")
   })
 })
 
