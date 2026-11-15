@@ -618,27 +618,21 @@ export async function apiNameTests() {
 
   // 子代理的 api 白名单（apiAllow）是通道口的硬校验，不是提示词君子协定：
   // 名单外的组当场被拒（报错里写明开放了哪些组），名单内的组照常放行。
-  // 触发口挂上之后还能钉一条：被拒的调用进不了 log，也就不会报模块 key。
-  const deniedModules: string[] = []
-  const sub = createExecuteTool({ ...ops, runSandbox: fakeRunner, apiAllow: ['web', 'tmp'], onPromptModule: (k) => deniedModules.push(k) })
+  const sub = createExecuteTool({ ...ops, runSandbox: fakeRunner, apiAllow: ['web', 'tmp'] })
   const denied = await sub.run({ description: '越权取节点', body: '((api)=>{ return await api.node.list() })' }, { nodeId: childId, goalId })
   ok(!denied.ok && denied.content.includes('只开放了'), 'apiAllow 名单外的组当场被拒', denied.content.slice(0, 160))
-  ok(!deniedModules.includes('node'), '被 apiAllow 拒掉的调用不触发注入', deniedModules)
   const allowed = await sub.run({ description: '搜索', body: "((api)=>{ return await api.web.search('勾股定理') })" }, { nodeId: childId, goalId })
-  ok(allowed.ok && (allowed.content.includes('baidu') || allowed.content.includes('百度百科') || allowed.content.includes('勾股定理')) && deniedModules.includes('web'), 'apiAllow 名单内的组照常放行并触发注入', { content: allowed.content.slice(0, 120), keys: deniedModules })
+  ok(allowed.ok && (allowed.content.includes('baidu') || allowed.content.includes('百度百科') || allowed.content.includes('勾股定理')), 'apiAllow 名单内的组照常放行', { content: allowed.content.slice(0, 120) })
 
-  // 动态提示词注入的触发口（learn/ai/promptModules）：execute 只负责「报 key」——
-  // 组触发按本次编排里真实调过的组报（被 apiAllow 拒的组进不了 log，也就不报），
-  // 内容触发在写入参数上嗅探 plot 围栏与动画标记。去重与落库在宿主（useAgent）。
-  const sawModules: string[] = []
-  const modTool = createExecuteTool({ ...ops, runSandbox: fakeRunner, onPromptModule: (k) => sawModules.push(k) })
-  await modTool.run({ description: '组触发', body: "((api)=>{ return await api.web.search('探针') })" }, { nodeId: childId, goalId })
-  ok(sawModules.includes('web'), '调用 web 组把模块 key 报给了宿主', sawModules)
-  await modTool.run(
-    { description: '内容触发', body: "((api)=>{ return await api.node.invoke('n2', 'editContent', [{ teaching: '看图：\\n\\n```plot\\n{ \"data\": [] }\\n```' }]) })" },
+  // 动态提示词注入的触发口已退役（2026-11 全量静态提示词）：execute 不再有 onPromptModule
+  // 通道，规程随系统提示词首轮在场、登记工作流的 prompt 在轮首注入（见 useAgent/hook）。
+  // 这里钉的是新契约：plot 围栏写入本身照常生效（内容嗅探没了，写入语义不变）。
+  const modTool = createExecuteTool({ ...ops, runSandbox: fakeRunner })
+  const plotWrite = await modTool.run(
+    { description: '内容写入', body: "((api)=>{ return await api.node.invoke('n2', 'editContent', [{ title: '极限', description: '', teaching: '看图：\\n\\n```plot\\n{ \"data\": [] }\\n```' }]) })" },
     { nodeId: childId, goalId },
   )
-  ok(sawModules.includes('plot-forms'), '写入 plot 围栏把数据形态模块报给了宿主', sawModules)
+  ok(plotWrite.ok === true, '写入 plot 围栏照常落盘（触发注入已退役）', plotWrite.content.slice(0, 120))
 
   // 引用 chip 的行为（learn/ops/chip）：build 生成必带 nodeId（点得开的保证）、
   // 编造的 path 拒绝生成、check 把坏 chip 逐颗点出来。
