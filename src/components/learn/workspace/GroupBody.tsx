@@ -223,6 +223,8 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     (x): x is LearnTab & { ref: { kind: 'outline'; nodeId: string; goalId?: string } } => x.ref.kind === 'outline',
   )
   /** 这一格挂着的文件页签（本地文件与工作区文件）：keepalive 常驻，切页签只藏不卸，保持编辑器状态与光标 */
+  /** 这一格挂着的终端页签：keepalive 常驻，切页签只藏不卸，进程与会话状态持续保活 */
+  const hasTerminalTab = (g.group?.tabs ?? []).some((t) => t.ref.kind === 'terminal')
   const gFileTabs = (g.group?.tabs ?? []).filter((x) => x.ref.kind === 'local' || x.ref.kind === 'ws')
   /** 这一格挂着的教学文档 / 笔记 / 超级文档页签：编辑态常驻层（EditorTabLayer）照此挂起 */
   const gEditorTabs = (g.group?.tabs ?? []).filter(
@@ -469,9 +471,10 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
             />
           ) : gTab?.ref.kind === 'terminal' ? (
             /*
-              终端控制台：受控命令行与系统进程执行工作台，独立于目标组。
+              终端控制台：由下方的常驻保活层（keepalive）接管，切页签时仅翻 hidden，
+              不销毁组件与后台子进程。这里让出位置。
             */
-            <TerminalTabPane onToast={onToast} />
+            null
           ) : gTab?.ref.kind === 'settings' ? (
             /*
               设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），
@@ -747,6 +750,15 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
             videoNodes={store.videoNodes}
             {...videoBridge}
           />
+        )}
+
+        {/* 终端控制台常驻层（keepalive）：开着就挂在 DOM 中，切走只藏不卸（进程持续流式运行，直到页签或应用关闭） */}
+        {hasTerminalTab && (
+          <div
+            className={`absolute inset-0 z-10 flex flex-col ${gTab?.ref.kind === 'terminal' ? '' : 'hidden pointer-events-none'}`}
+          >
+            <TerminalTabPane active={gTab?.ref.kind === 'terminal'} onToast={onToast} />
+          </div>
         )}
 
         {!isWeb() && gWebTabs.length > 0 && (

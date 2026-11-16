@@ -30,6 +30,7 @@ import { useTerminalKeyNav } from './useTerminalKeyNav'
 import { renderHighlightedInput } from './terminalHighlight'
 
 export interface TerminalTabPaneProps {
+  active?: boolean
   onToast?: (msg: string) => void
 }
 
@@ -46,7 +47,7 @@ export interface TerminalSession {
   runningPid: string | null
 }
 
-export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPaneProps) {
+export default function TerminalTabPane({ active = true, onToast: _onToast }: TerminalTabPaneProps) {
   const isWindows = isWindowsPlatform()
   const homeDirRef = useRef<string>('')
   const handlesRef = useRef<Map<string, StreamingExecutionHandle>>(new Map())
@@ -137,8 +138,17 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
   }
 
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [activeSessionId])
+    if (active) {
+      inputRef.current?.focus()
+      scrollToBottom()
+      // 清除可能在切页签过程中由外部带来的浏览虚拟光标
+      document
+        .querySelectorAll('.moji-browse-virtual-cursor, .moji-browse-cursor-trail')
+        .forEach((el) => el.remove())
+    } else {
+      inputRef.current?.blur()
+    }
+  }, [active, activeSessionId, scrollToBottom])
 
   // 新建终端实例
   const createNewSession = (shellKind?: ShellKind) => {
