@@ -62,6 +62,7 @@ export function savedTextOf(store: LearnStore, ref: TabRef): string {
     ref.kind === 'vim' ||
     ref.kind === 'settings' ||
     ref.kind === 'user' ||
+    ref.kind === 'terminal' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||

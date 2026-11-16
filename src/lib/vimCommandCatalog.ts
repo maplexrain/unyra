@@ -68,6 +68,15 @@ export const VIM_COMMANDS: readonly VimCommandInfo[] = [
     example: ':tabnew',
   },
   {
+    cmd: 'terminal',
+    aliases: ['term'],
+    name: '终端控制台',
+    desc: '打开控制台终端页签',
+    category: 'moji',
+    tag: '专属',
+    example: ':term',
+  },
+  {
     cmd: 'tabclose',
     aliases: ['tabc'],
     name: '关闭页签',

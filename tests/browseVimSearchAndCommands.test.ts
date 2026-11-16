@@ -141,20 +141,42 @@ describe('浏览模式 Vim 光标与搜索功能增强', () => {
       host.innerHTML = '<p>第一段文本 生产力 示范</p><p>第二段 工具 测试</p>'
       document.body.appendChild(host)
 
-      // 实时搜索
+      // 实时搜索多处匹配
+      host.innerHTML = '<p>第一段文本 生产力 示范</p><p>第二段 生产力 工具 测试</p>'
       const res = browseVimSearch.search(host, 'scl')
-      expect(res.total).toBe(1)
+      expect(res.total).toBe(2)
       expect(res.index).toBe(0)
       expect(browseVimSearch.hasActiveSearch()).toBe(true)
 
-      // 跳转
+      // 跳转至下一处 (n)
       const nextRes = browseVimSearch.next()
-      expect(nextRes.index).toBe(0)
+      expect(nextRes.index).toBe(1)
+      expect(nextRes.wrapped).toBe(false)
+
+      // 再次跳转触发回绕 (n)
+      const wrapRes = browseVimSearch.next()
+      expect(wrapRes.index).toBe(0)
+      expect(wrapRes.wrapped).toBe(true)
+
+      // 反向跳转至上一处 (N)
+      const prevRes = browseVimSearch.prev()
+      expect(prevRes.index).toBe(1)
+      expect(prevRes.wrapped).toBe(true)
+
+      // 断开 DOM 后通过 fallbackRoot 自动恢复
+      const newHost = document.createElement('div')
+      newHost.innerHTML = '<p>新 DOM 树上的 生产力 匹配</p>'
+      document.body.appendChild(newHost)
+      document.body.removeChild(host)
+
+      const recoveredRes = browseVimSearch.next(newHost)
+      expect(recoveredRes.total).toBe(1)
+      expect(recoveredRes.index).toBe(0)
 
       // 清除
       browseVimSearch.clear()
       expect(browseVimSearch.hasActiveSearch()).toBe(false)
-      document.body.removeChild(host)
+      document.body.removeChild(newHost)
     })
   })
 })

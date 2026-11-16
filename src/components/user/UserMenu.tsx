@@ -1,4 +1,4 @@
-import { ChartColumn, LogOut, Settings, UserCog } from 'lucide-react'
+import { ChartColumn, LogOut, Settings, Terminal, UserCog } from 'lucide-react'
 import type { User } from '../../user/types'
 import { displayName } from '../../user/profile'
 import { useHoverMenu } from '../../lib/hoverMenu'
@@ -135,6 +135,20 @@ export default function UserMenu({
                   <ChartColumn size={13} />
                 </span>
                 <span>{t('用量统计')}</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false)
+                  window.dispatchEvent(new CustomEvent('moji:open-tab', { detail: { kind: 'terminal' } }))
+                }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-ink transition-all hover:bg-line/60 cursor-pointer"
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-line/40 text-ink-soft">
+                  <Terminal size={13} />
+                </span>
+                <span>{t('终端控制台')}</span>
               </button>
 
               <div className="my-1 border-t border-line/40" />

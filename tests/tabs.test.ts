@@ -56,6 +56,14 @@ describe('页签的身份', () => {
     expect(list[0].createdAt).toBe(1)
   })
 
+  it('终端控制台页签：拥有独立身份，不挂在任何节点，标题为终端且不可切换为源码编辑', () => {
+    const termRef: TabRef = { kind: 'terminal' }
+    expect(tabKey(termRef)).toBe('term:terminal')
+    expect(tabTitle(termRef, () => undefined)).toBe('终端')
+    expect(tabNodeId(termRef)).toBeNull()
+    expect(tabTrail(termRef, () => '')).toBe('')
+  })
+
   it('页签挂在哪个节点上：本地文件不属于任何节点', () => {
     expect(tabNodeId(teach('n1'))).toBe('n1')
     expect(tabNodeId(note('n1', '笔记'))).toBe('n1')

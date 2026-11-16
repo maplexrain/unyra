@@ -32,10 +32,15 @@ export default function GlobalVimCommandBar() {
   /** 实时输入同步通道：搜索模式下输入时实时通知 Vim/浏览模式高亮与定位 */
   const queryChangeRef = useRef<((input: string) => void) | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  /** 正在关闭标记：提交或关闭过程中防止 handleInputBlur 触发无实参的 close(false) 清空搜索状态 */
+  const closingRef = useRef(false)
   /** open 的镜像（窗口键盘监听里要用）：开着就不再响应 Shift+:，别把挂着的 vim 提示符冲掉 */
   const openRef = useRef(false)
   useEffect(() => {
     openRef.current = open
+    if (open) {
+      closingRef.current = false
+    }
   }, [open])
 
   /* ---------- 搜索模式（/ 与 ?）与 :open / :o 目标搜索模式判断 ---------- */
@@ -164,6 +169,7 @@ export default function GlobalVimCommandBar() {
    * 「命令行开着」的状态里，后续按键全部落空（这正是「忘了切输入框」的冲突来源）。
    */
   const close = (committed = false) => {
+    closingRef.current = true
     const finish = finishRef.current
     finishRef.current = null
     queryChangeRef.current = null
@@ -189,9 +195,10 @@ export default function GlobalVimCommandBar() {
    * 取消挂着的提示符并收口（点候选按钮不算：relatedTarget 还在弹层里）。
    */
   const handleInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (closingRef.current) return
     const dialog = barRef.current
     if (dialog && e.relatedTarget instanceof Node && dialog.contains(e.relatedTarget)) return
-    close()
+    close(false)
   }
 
   const activeMatchRef = useRef<HTMLButtonElement | null>(null)
@@ -285,10 +292,10 @@ export default function GlobalVimCommandBar() {
           close(true)
           return
         }
-        close(true)
         if (query) {
           dispatchBrowseSearch(query, mode === '?', false /* not silent */)
         }
+        close(true)
         return
       }
 

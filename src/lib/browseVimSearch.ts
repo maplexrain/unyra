@@ -237,16 +237,19 @@ class BrowseVimSearchState {
   }
 
   /** 跳转至下一处匹配 (n) */
-  next(): SearchResult {
-    return this.step(this.backward ? -1 : 1)
+  next(fallbackRoot?: HTMLElement): SearchResult {
+    return this.step(this.backward ? -1 : 1, fallbackRoot)
   }
 
   /** 跳转至上一处匹配 (N) */
-  prev(): SearchResult {
-    return this.step(this.backward ? 1 : -1)
+  prev(fallbackRoot?: HTMLElement): SearchResult {
+    return this.step(this.backward ? 1 : -1, fallbackRoot)
   }
 
-  private step(direction: number): SearchResult {
+  private step(direction: number, fallbackRoot?: HTMLElement): SearchResult {
+    if ((this.spans.length === 0 || !this.root || !this.root.isConnected) && fallbackRoot && this.pattern) {
+      this.search(fallbackRoot, this.pattern, this.backward)
+    }
     if (this.spans.length === 0 || !this.root) {
       return { total: 0, index: -1, range: null, pattern: this.pattern }
     }
@@ -318,7 +321,7 @@ class BrowseVimSearchState {
   }
 
   hasActiveSearch(): boolean {
-    return this.spans.length > 0 && !!this.pattern
+    return Boolean(this.pattern.trim())
   }
 
   getPattern(): string {

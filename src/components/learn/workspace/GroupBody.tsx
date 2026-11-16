@@ -30,6 +30,7 @@ import SponsorsDoc from '../../sponsor/SponsorsDoc'
 import VimCheatSheetView from '../vim/VimCheatSheetView'
 import SettingsPanel from '../../settings/SettingsPanel'
 import UserTabPane from '../../user/UserTabPane'
+import TerminalTabPane from '../../terminal/TerminalTabPane'
 import UsagePanel from '../../settings/UsagePanel'
 import { SchedulePage } from '../../schedule/SchedulePage'
 import MindPanel from '../../agent/MindPanel'
@@ -189,6 +190,8 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     gTab.ref.kind !== 'sponsors' &&
     // 用户中心页不画：它是个人与账户配置页
     gTab.ref.kind !== 'user' &&
+    // 终端控制台页不画：全屏沉浸式终端界面
+    gTab.ref.kind !== 'terminal' &&
     // Vim 学习页不画：它是学习与参考手册
     gTab.ref.kind !== 'vim' &&
     // PDF 浏览页不画：严格只读（纯净阅读仍可用 F11）
@@ -464,6 +467,11 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               onSignOut={onSignOut ?? (() => {})}
               onToast={onToast}
             />
+          ) : gTab?.ref.kind === 'terminal' ? (
+            /*
+              终端控制台：受控命令行与系统进程执行工作台，独立于目标组。
+            */
+            <TerminalTabPane onToast={onToast} />
           ) : gTab?.ref.kind === 'settings' ? (
             /*
               设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），

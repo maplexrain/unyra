@@ -85,6 +85,14 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
       }
       return { success: false, message: '[当前环境不支持新建页签]' }
     }
+    case 'term':
+    case 'terminal': {
+      if (globalTabOps?.openTab) {
+        globalTabOps.openTab({ kind: 'terminal' })
+        return { success: true, message: '[打开终端]' }
+      }
+      return { success: false, message: '[当前环境不支持打开终端]' }
+    }
     case 'tabc':
     case 'tabclose':
     case 'bd':

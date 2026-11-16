@@ -736,7 +736,7 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         if (browseVimSearch.hasActiveSearch()) {
           e.preventDefault()
           e.stopPropagation()
-          const res = browseVimSearch.next()
+          const res = browseVimSearch.next(visibleDocBody() || undefined)
           applySearchResult(res, smoothCursor, lastValidRangeRef, onToast)
           return
         }
@@ -746,7 +746,7 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         if (browseVimSearch.hasActiveSearch()) {
           e.preventDefault()
           e.stopPropagation()
-          const res = browseVimSearch.prev()
+          const res = browseVimSearch.prev(visibleDocBody() || undefined)
           applySearchResult(res, smoothCursor, lastValidRangeRef, onToast)
           return
         }

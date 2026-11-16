@@ -28,6 +28,7 @@ export interface GlobalTabOperations {
   closeTab?: (force?: boolean) => void
   /** opts.skipDirty：有未保存改动的页签不关（跳过），而不是弹确认打断 */
   closeOtherTabs?: (force?: boolean, opts?: { skipDirty?: boolean }) => void
+  openTab?: (ref: import('../learn/types').TabRef) => void
   newTab?: () => void
   nextTab?: () => void
   prevTab?: () => void

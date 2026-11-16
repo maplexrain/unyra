@@ -91,6 +91,7 @@ describe('refOwner', () => {
 
   it('设置 / 本地文件等不属于任何目标：一律归公共', () => {
     expect(refOwner({ kind: 'settings' }, goalOfNode)).toBe(PUBLIC_OWNER)
+    expect(refOwner({ kind: 'terminal' }, goalOfNode)).toBe(PUBLIC_OWNER)
     expect(refOwner({ kind: 'local', path: 'a.txt' }, goalOfNode)).toBe(PUBLIC_OWNER)
     expect(refOwner({ kind: 'usage' }, goalOfNode)).toBe(PUBLIC_OWNER)
   })

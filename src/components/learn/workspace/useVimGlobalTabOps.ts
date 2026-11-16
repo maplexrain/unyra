@@ -109,6 +109,9 @@ export function useVimGlobalTabOps(params: Params): void {
       newTab: () => {
         openBlankTab()
       },
+      openTab: (ref) => {
+        openTab?.(ref)
+      },
       nextTab: () => {
         stepTab('next')
       },

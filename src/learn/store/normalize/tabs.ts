@@ -56,8 +56,8 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
     if (url && !/^https?:\/\//i.test(url)) return null
     return { kind: 'web', url, key: typeof r.key === 'string' && r.key ? r.key : newWebKey() }
   }
-  // 设置页、用户页、用量页与日程表：全局各只有一份，没有需要校验的「指向」，形状对就收下
-  if (r.kind === 'settings' || r.kind === 'user' || r.kind === 'usage' || r.kind === 'schedule') return { kind: r.kind }
+  // 设置页、用户页、终端页、用量页与日程表：全局各只有一份，没有需要校验的「指向」，形状对就收下
+  if (r.kind === 'settings' || r.kind === 'user' || r.kind === 'terminal' || r.kind === 'usage' || r.kind === 'schedule') return { kind: r.kind }
   // 视频学习（实验）：同样全局一份。绑定到目标的视频页签带 goalId（页签组的归属判据，
   // 见 groups/goals 的 video 分支）；它不是身份（tabKey 只看 videoId），形状不对就丢掉
   if (r.kind === 'video') {
