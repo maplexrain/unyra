@@ -77,6 +77,15 @@ export const VIM_COMMANDS: readonly VimCommandInfo[] = [
     example: ':term',
   },
   {
+    cmd: 'focus',
+    aliases: ['termfocus', 'tf'],
+    name: '聚焦终端',
+    desc: '在终端页签中让终端输入获得焦点',
+    category: 'moji',
+    tag: '专属',
+    example: ':focus',
+  },
+  {
     cmd: 'tabclose',
     aliases: ['tabc'],
     name: '关闭页签',

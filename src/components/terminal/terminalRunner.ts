@@ -2,10 +2,11 @@
  * terminalRunner: 负责原生集成终端底层系统进程生命周期管理与实时流式输出调度。
  *
  * 核心机制：
- * 1. 跨平台参数构造：针对 powershell、cmd、bash 正确打包参数与环境变量（FORCE_COLOR=1, PYTHONUNBUFFERED=1）；
+ * 1. 跨平台参数构造：针对 powershell、cmd、bash 正确打包参数与环境变量（FORCE_COLOR=1, PYTHONUNBUFFERED=1, UTF-8代码页）；
  * 2. 毫秒级双工流式输出：监听主进程 onData 事件，逐块清洗 ANSI 并实时推送至终端流缓冲；
  * 3. 强力 PID 绑定与树级中断：真实捕获底层 PID，支持 Ctrl+C 发送任务树级 kill 信号立即中断；
- * 4. 退出状态监听与保底清理：监听 onExit 与心跳轮询，进程退出后自动释放任务资源并归还 Prompt 控制权。
+ * 4. 退出状态监听与保底清理：监听 onExit 与心跳轮询，进程退出后自动释放任务资源并归还 Prompt 控制权；
+ * 5. 跨平台编码护航：注入 CP65001 与 UTF-8 输入输出编码，彻底杜绝中文乱码。
  */
 
 import { cleanTerminalText } from './ansi'
@@ -43,7 +44,7 @@ export function buildProcessArgs(shell: ShellKind, cmd: string): { command: stri
   if (shell === 'cmd') {
     return {
       command: 'cmd.exe',
-      args: ['/d', '/s', '/c', trimmed],
+      args: ['/d', '/s', '/c', `chcp 65001 >nul && ${trimmed}`],
     }
   }
   if (shell === 'bash') {
@@ -52,10 +53,12 @@ export function buildProcessArgs(shell: ShellKind, cmd: string): { command: stri
       args: ['-c', trimmed],
     }
   }
-  // 默认 PowerShell
+  // 默认 PowerShell: 强制设定当前控制台输入输出流与代码页为 UTF-8
+  const utf8Setup =
+    '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); [Console]::InputEncoding = [System.Text.UTF8Encoding]::new(); $OutputEncoding = [System.Text.UTF8Encoding]::new(); chcp 65001 >$null; '
   return {
     command: 'powershell.exe',
-    args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', trimmed],
+    args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `${utf8Setup}${trimmed}`],
   }
 }
 
@@ -124,7 +127,12 @@ export async function startStreamingCommand(
       trusted: true,
       env: {
         FORCE_COLOR: '1',
+        COLORTERM: 'truecolor',
+        TERM: 'xterm-256color',
         PYTHONUNBUFFERED: '1',
+        PYTHONIOENCODING: 'utf-8',
+        LANG: 'zh_CN.UTF-8',
+        LC_ALL: 'zh_CN.UTF-8',
       },
     })
 

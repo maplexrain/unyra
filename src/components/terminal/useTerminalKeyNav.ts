@@ -13,6 +13,7 @@ interface UseTerminalKeyNavParams {
   onExecute: (cmd: string) => void
   onInterrupt: () => void
   onClearScreen: () => void
+  onBlur?: () => void
 }
 
 export function useTerminalKeyNav({
@@ -22,6 +23,7 @@ export function useTerminalKeyNav({
   onExecute,
   onInterrupt,
   onClearScreen,
+  onBlur,
 }: UseTerminalKeyNavParams) {
   // Tab 补全循环状态跟踪
   const tabCycleRef = useRef<{
@@ -43,6 +45,14 @@ export function useTerminalKeyNav({
         e.preventDefault()
         onInterrupt()
       }
+      return
+    }
+
+    // Escape: 将焦点从终端虚拟输入框转移出来，方便触发全局 Vim 命令输入框
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      tabCycleRef.current = null
+      onBlur?.()
       return
     }
 

@@ -6,7 +6,8 @@
  * 2. 真实 Tab 目录与文件补全：按下 Tab 动态扫描当前物理工作目录并就地完成文件名补全与循环轮转；
  * 3. 彻底清洗控制字符：剔除 OSC 标题、光标定位等魔法字符，完美渲染 ANSI 256/TrueColor 终端流；
  * 4. 真实原生交互契约：Ctrl+C 中断/选区复制、Ctrl+L 清屏、Up/Down 历史翻滚、行内光标精准联动；
- * 5. 毫秒级双工流式输出：弃绝阻塞死等，实现逐块实时流式打印（Streaming Output），实时追踪 PID 与 Ctrl+C 任务树级中断。
+ * 5. 毫秒级双工流式输出：弃绝阻塞死等，实现逐块实时流式打印（Streaming Output），实时追踪 PID 与 Ctrl+C 任务树级中断；
+ * 6. 丰富的高亮视觉与中文编码保护：命令行实时词法高亮、ANSI 与语义模式高亮、彻底杜绝中文乱码。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -26,6 +27,7 @@ import {
   type StreamingExecutionHandle,
 } from './terminalRunner'
 import { useTerminalKeyNav } from './useTerminalKeyNav'
+import { renderHighlightedInput } from './terminalHighlight'
 
 export interface TerminalTabPaneProps {
   onToast?: (msg: string) => void
@@ -77,9 +79,14 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0]
 
-  // 初始化获取宿主真实系统工作目录与用户信息
+  // 初始化获取宿主真实系统工作目录与用户信息，并清理所有外部浏览光标
   useEffect(() => {
     let unmounted = false
+    // 销毁并清除可能残留的浏览模式虚拟光标
+    document
+      .querySelectorAll('.moji-browse-virtual-cursor, .moji-browse-cursor-trail')
+      .forEach((el) => el.remove())
+
     async function initSystemContext() {
       try {
         const win = window as unknown as { unyraNative?: { storage?: { info: () => Promise<any> } } }
@@ -445,10 +452,16 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
       setSessions((prev) =>
         prev.map((s) => (s.id === activeSession.id ? { ...s, lines: [] } : s)),
       ),
+    onBlur: () => {
+      inputRef.current?.blur()
+      window.focus()
+    },
   })
 
   return (
     <div
+      data-terminal-pane="true"
+      data-no-browse-vim="true"
       onClick={focusTerminal}
       className="flex h-full w-full flex-col bg-[#181818] text-[#cccccc] font-mono text-[13px] leading-[1.35] select-text overflow-hidden"
     >
@@ -483,7 +496,7 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
           </div>
         ))}
 
-        {/* 屏幕活动状态：运行中显示原生终端光标；空闲时显示 Prompt 与虚拟输入 */}
+        {/* 屏幕活动状态：运行中显示原生终端光标；空闲时显示 Prompt 与彩色高亮输入 */}
         {activeSession.runningPid ? (
           <div className="flex items-center text-zinc-400 font-mono mt-1 select-none">
             <span className="inline-block w-2 h-4.5 bg-[#aeafad] text-[#181818] animate-pulse mr-2" />
@@ -496,11 +509,8 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
             <span className="text-[#38bdf8] font-medium shrink-0">
               {getPromptString(activeSession)}
             </span>
-            <span className="text-white relative flex-1 min-w-[20px]">
-              {activeSession.inputVal.slice(0, activeSession.cursorPos)}
-              {/* 原生终端闪烁光标 */}
-              <span className="inline-block w-2 h-4.5 bg-[#aeafad] text-[#181818] animate-pulse align-middle" />
-              {activeSession.inputVal.slice(activeSession.cursorPos)}
+            <span className="relative flex-1 min-w-[20px]">
+              {renderHighlightedInput(activeSession.inputVal, activeSession.cursorPos)}
             </span>
           </div>
         )}
@@ -509,6 +519,7 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
       {/* 隐藏的透明按键捕获区 */}
       <textarea
         ref={inputRef}
+        data-terminal-input="true"
         value={activeSession.inputVal}
         onChange={keyNav.handleInputChange}
         onKeyDown={keyNav.handleKeyDown}

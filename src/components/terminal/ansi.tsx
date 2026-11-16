@@ -4,6 +4,7 @@
  */
 
 import React, { type CSSProperties, type ReactNode } from 'react'
+import { renderSemanticPlainText } from './terminalHighlight'
 
 const ANSI_COLOR_MAP: Record<number, string> = {
   30: 'text-zinc-900 dark:text-zinc-400',
@@ -148,7 +149,7 @@ export function renderAnsiText(rawText: string): ReactNode {
             {token}
           </span>
         ) : (
-          <React.Fragment key={index}>{token}</React.Fragment>
+          <React.Fragment key={index}>{renderSemanticPlainText(token)}</React.Fragment>
         )
       )
     }

@@ -93,6 +93,19 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
       }
       return { success: false, message: '[当前环境不支持打开终端]' }
     }
+    case 'focus':
+    case 'termfocus':
+    case 'tf': {
+      if (typeof document === 'undefined') {
+        return { success: false, message: '[当前环境未发现活动终端]' }
+      }
+      const termInput = document.querySelector<HTMLTextAreaElement>('[data-terminal-input]')
+      if (termInput) {
+        termInput.focus()
+        return { success: true, message: '[终端已获得焦点]' }
+      }
+      return { success: false, message: '[当前页签未发现活动终端]' }
+    }
     case 'tabc':
     case 'tabclose':
     case 'bd':

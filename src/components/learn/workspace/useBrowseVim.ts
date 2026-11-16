@@ -240,6 +240,11 @@ export function useBrowseVim({ getLatest: rawGetLatest, onToast: rawOnToast, nex
     })
 
     const onSelectionChange = () => {
+      // 处于终端控制台时，彻底销毁虚拟光标并直接退出
+      if (document.activeElement?.closest?.('[data-terminal-pane]')) {
+        smoothCursor.destroy()
+        return
+      }
       const s = getLatest()
       const group = focusedGroup(s.docArea)
       const activeTab = group?.tabs.find((t) => t.id === group.active)
@@ -275,6 +280,12 @@ export function useBrowseVim({ getLatest: rawGetLatest, onToast: rawOnToast, nex
     document.addEventListener('selectionchange', onSelectionChange)
 
     const onKeyDown = (e: KeyboardEvent) => {
+      // 处于终端控制台时不干涉终端键盘事件
+      if (document.activeElement?.closest?.('[data-terminal-pane]')) {
+        smoothCursor.destroy()
+        return
+      }
+
       // 1. 系统输入法组词保护：在输入法组词或未确认有效字符输入期间，绝不拦截键盘输入
       if (
         isComposingRef.current ||

@@ -9,6 +9,7 @@
 import { spawn, type ChildProcess, execSync } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 import { checkPathPermission } from './permissions'
 import { currentRoot } from '../storage'
 import type {
@@ -222,6 +223,27 @@ export async function baseProcessCreate(opts: BaseProcessCreateOpts): Promise<Ba
 /**
  * base.process.start: 启动已创建的任务，返回 process_id 与 pid
  */
+function createStreamDecoder() {
+  const utf8Decoder = new StringDecoder('utf8')
+  let gbkDecoder: TextDecoder | null = null
+
+  return (chunk: Buffer): string => {
+    const utf8Text = utf8Decoder.write(chunk)
+    if (utf8Text.includes('\uFFFD')) {
+      try {
+        if (!gbkDecoder) {
+          gbkDecoder = new TextDecoder('gbk')
+        }
+        const gbkText = gbkDecoder.decode(chunk, { stream: true })
+        if (!gbkText.includes('\uFFFD') || gbkText.length > utf8Text.length) {
+          return gbkText
+        }
+      } catch {}
+    }
+    return utf8Text
+  }
+}
+
 export async function baseProcessStart(processId: string): Promise<BaseProcessStartResult> {
   const proc = processes.get(processId)
   if (!proc) {
@@ -294,15 +316,18 @@ export async function baseProcessStart(processId: string): Promise<BaseProcessSt
       }
     }
 
-    child.stdout?.on('data', (chunk) => {
-      const text = chunk.toString()
+    const decodeStdout = createStreamDecoder()
+    const decodeStderr = createStreamDecoder()
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      const text = decodeStdout(chunk)
       proc.stdout += text
       notifyWaiters('match')
       outputListeners.forEach((l) => l(proc.process_id, text, 'stdout'))
     })
 
-    child.stderr?.on('data', (chunk) => {
-      const text = chunk.toString()
+    child.stderr?.on('data', (chunk: Buffer) => {
+      const text = decodeStderr(chunk)
       proc.stderr += text
       notifyWaiters('match')
       outputListeners.forEach((l) => l(proc.process_id, text, 'stderr'))

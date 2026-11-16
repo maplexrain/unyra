@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { executeVimCommand } from '../src/lib/vimExecutor'
 import {
   cleanTerminalText,
 } from '../src/components/terminal/ansi'
@@ -74,11 +75,14 @@ describe('terminalPath and ansi utils', () => {
   it('buildProcessArgs packs arguments correctly for different shells', () => {
     const pwsh = buildProcessArgs('powershell', 'npm run dev')
     expect(pwsh.command).toBe('powershell.exe')
-    expect(pwsh.args).toEqual(['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', 'npm run dev'])
+    expect(pwsh.args[0]).toBe('-NoProfile')
+    expect(pwsh.args[4]).toContain('chcp 65001')
+    expect(pwsh.args[4]).toContain('npm run dev')
 
     const cmd = buildProcessArgs('cmd', 'dir /b')
     expect(cmd.command).toBe('cmd.exe')
-    expect(cmd.args).toEqual(['/d', '/s', '/c', 'dir /b'])
+    expect(cmd.args[3]).toContain('chcp 65001')
+    expect(cmd.args[3]).toContain('dir /b')
 
     const bash = buildProcessArgs('bash', 'ls -la')
     expect(bash.command).toBe('bash')
@@ -168,6 +172,29 @@ describe('terminalPath and ansi utils', () => {
       expect(exitCode).toBe(0)
     } finally {
       win.unyraNative = originalUnyra
+    }
+  })
+
+  it('vimExecutor handles focus command', () => {
+    const res = executeVimCommand('focus')
+    expect(res.success).toBe(false)
+
+    const mockElement = { focus: vi.fn() }
+    const originalDoc = (globalThis as any).document
+    ;(globalThis as any).document = {
+      querySelector: vi.fn().mockImplementation((sel: string) => {
+        if (sel === '[data-terminal-input]') return mockElement
+        return null
+      }),
+    }
+
+    try {
+      const resSuccess = executeVimCommand('focus')
+      expect(resSuccess.success).toBe(true)
+      expect(resSuccess.message).toContain('终端已获得焦点')
+      expect(mockElement.focus).toHaveBeenCalled()
+    } finally {
+      ;(globalThis as any).document = originalDoc
     }
   })
 })
