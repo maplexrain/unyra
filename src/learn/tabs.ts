@@ -380,6 +380,29 @@ export function isDocumentTab(ref: TabRef): boolean {
   )
 }
 
+/**
+ * 判断一个页签是否允许切换为源码编辑模式：
+ * 教学文档、笔记、超级文档、新建草稿，以及非媒体、非 PDF 的外部文件和工作区文件允许编辑；
+ * 其余系统页（设置、用户中心、用量、日程、导读、思维导图、考试副本、网页、视频、插件文档、赞助者名单等）不可编辑。
+ */
+export function canTabSwitchToEdit(tab?: LearnTab | null): boolean {
+  if (!tab) return false
+  const kind = tab.ref?.kind ?? (tab as any).kind
+  if (!kind) return false
+  if (kind === 'teach' || kind === 'note' || kind === 'super' || kind === 'draft') {
+    return true
+  }
+  if (kind === 'local') {
+    const p = String(tab.ref?.path ?? (tab as any).path ?? '').toLowerCase()
+    return !isMediaFile(p) && !p.endsWith('.pdf')
+  }
+  if (kind === 'ws') {
+    const seg = String(tab.ref?.seg ?? (tab as any).seg ?? '').toLowerCase()
+    return !isMediaFile(seg) && !seg.endsWith('.pdf')
+  }
+  return false
+}
+
 /** 右键菜单里的关闭方式 */
 export type TabCloseMode =
   | 'self'

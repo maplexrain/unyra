@@ -1,3 +1,5 @@
+import PinyinModule from 'pinyin-match'
+
 /**
  * Vim 冒号命令的**总目录**：联想补全（GlobalVimCommandBar 的候选列表）与
  * 未来任何「有哪些命令」的展示都从这里取。executeVimCommand 仍然是执行的唯一入口——
@@ -349,23 +351,42 @@ export const VIM_COMMANDS: readonly VimCommandInfo[] = [
 ]
 
 /**
- * 按输入的**第一个 token**（命令名，可带 `!`）做前缀匹配。
- * 别名命中的条目去重后仍以主名呈现；结果按命令名排序，列表稳定。
+ * 按输入的**第一个 token**（命令名，可带 `!`，支持前导冒号 `:`）做前缀与拼音匹配。
+ * 别名命中的条目去重后仍以主名呈现；空输入或仅输入 `:` 时展示全量命令候选。
  */
 export function matchVimCommands(input: string): VimCommandInfo[] {
-  const first = input.trim().split(/\s+/)[0] ?? ''
-  if (!first) return []
+  const raw = input.trim()
+  const clean = raw.startsWith(':') ? raw.slice(1).trim() : raw
+  const first = clean.split(/\s+/)[0] ?? ''
+  if (!first) return [...VIM_COMMANDS]
+
   const lower = first.toLowerCase()
   const bare = lower.endsWith('!') ? lower.slice(0, -1) : lower
-  if (!bare) return []
+  if (!bare) return [...VIM_COMMANDS]
+
   const seen = new Set<string>()
-  const hits: VimCommandInfo[] = []
+  const exactHits: VimCommandInfo[] = []
+  const fuzzyHits: VimCommandInfo[] = []
+
   for (const c of VIM_COMMANDS) {
     if (seen.has(c.cmd)) continue
-    if (c.cmd.startsWith(bare) || (c.aliases ?? []).some((a) => a.startsWith(bare))) {
+    const isCmdPrefix = c.cmd.toLowerCase().startsWith(bare)
+    const isAliasPrefix = (c.aliases ?? []).some((a) => a.toLowerCase().startsWith(bare))
+    if (isCmdPrefix || isAliasPrefix) {
       seen.add(c.cmd)
-      hits.push(c)
+      exactHits.push(c)
+      continue
+    }
+
+    const nameMatch = c.name ? PinyinModule.match(c.name, bare) : false
+    const descMatch = c.desc ? PinyinModule.match(c.desc, bare) : false
+    if (nameMatch || descMatch) {
+      seen.add(c.cmd)
+      fuzzyHits.push(c)
     }
   }
-  return hits.sort((a, b) => a.cmd.localeCompare(b.cmd))
+
+  exactHits.sort((a, b) => a.cmd.localeCompare(b.cmd))
+  fuzzyHits.sort((a, b) => a.cmd.localeCompare(b.cmd))
+  return [...exactHits, ...fuzzyHits]
 }

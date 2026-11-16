@@ -2,13 +2,17 @@ import { useEffect, useRef } from 'react'
 import { isVimEnabled } from '../../../lib/vimSettings'
 import { openGlobalCommandBar } from '../../../lib/commandBarFocus'
 import { docScrollElement, scrollToDoc, visibleDocBody } from '../../../lib/docDom'
-import { triggerShortcutAction } from '../../../lib/shortcuts'
 import { focusedGroup } from '../../../learn/groups'
-import { viewOf } from '../../../learn/tabs'
+import { canTabSwitchToEdit, viewOf } from '../../../learn/tabs'
 import type { LearnStore } from '../../../learn/types'
 import { BrowseSmoothCursor } from './browseSmoothCursor'
 import { captureOrGetDocSelection } from './docSelectionSnapshot'
 import { showAnnotationPopup, hideAnnotationPopup } from '../../../lib/annotation'
+import {
+  browseVimSearch,
+  setBrowseSearchHandler,
+  type SearchResult,
+} from '../../../lib/browseVimSearch'
 
 export interface UseBrowseVimParams {
   getLatest: () => LearnStore
@@ -151,6 +155,33 @@ function moveCaret(
   checkAnnotationAtCursor(sel)
 }
 
+/** 应用浏览模式下 Vim 搜索跳转结果 */
+function applySearchResult(
+  res: SearchResult,
+  smoothCursor: BrowseSmoothCursor,
+  lastValidRangeRef: { current: Range | null },
+  onToast?: (msg: string) => void,
+): void {
+  if (res.total > 0 && res.range) {
+    const sel = window.getSelection()
+    if (sel) {
+      sel.removeAllRanges()
+      sel.addRange(res.range)
+      lastValidRangeRef.current = res.range.cloneRange()
+      smoothCursor.update(sel, true)
+      const el =
+        res.range.startContainer instanceof HTMLElement
+          ? res.range.startContainer
+          : res.range.startContainer.parentElement
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }
+    const wrapNote = res.wrapped ? (res.index === 0 ? ' [回绕至首项]' : ' [回绕至末项]') : ''
+    onToast?.(`[匹配 ${res.index + 1}/${res.total}${wrapNote}]`)
+  } else if (res.pattern) {
+    onToast?.(`[未找到匹配项: ${res.pattern}]`)
+  }
+}
+
 /**
  * 允许页面处于浏览模式（只读阅读态）下使用 Vim 进行光标漫游、选区扩选与复制等只读操作。
  */
@@ -184,11 +215,23 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
       }
     }
 
+    setBrowseSearchHandler((pattern, backward) => {
+      const s = getLatest()
+      const group = focusedGroup(s.docArea)
+      const activeTab = group?.tabs.find((t) => t.id === group.active)
+      if (!activeTab || !canTabSwitchToEdit(activeTab)) return
+      const body = visibleDocBody()
+      if (!body) return
+      const res = browseVimSearch.search(body, pattern, backward)
+      applySearchResult(res, smoothCursor, lastValidRangeRef, onToast)
+    })
+
     const onSelectionChange = () => {
       const s = getLatest()
       const group = focusedGroup(s.docArea)
       const activeTab = group?.tabs.find((t) => t.id === group.active)
-      if (activeTab && viewOf(activeTab, false) === 'source') {
+      // 浏览模式 Vim 光标功能只对允许切换为编辑模式的页签开放，其余页签或处于编辑模式时销毁并忽略
+      if (!activeTab || !canTabSwitchToEdit(activeTab) || viewOf(activeTab, false) === 'source') {
         smoothCursor.destroy()
         return
       }
@@ -234,11 +277,11 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
       // 未开启 Vim 或处于文本输入区域时忽略
       if (!isVimEnabled() || isEditableTarget(e.target)) return
 
-      // 若当前活动页签正处于源码编辑模式，交由 CodeMirror Vim 自身接管
+      // 浏览模式 Vim 仅对允许切换为编辑模式的页签开放，其余页签不接管按键；处于编辑态时由 CodeMirror Vim 自身接管
       const s = getLatest()
       const group = focusedGroup(s.docArea)
       const activeTab = group?.tabs.find((t) => t.id === group.active)
-      if (activeTab && viewOf(activeTab, false) === 'source') {
+      if (!activeTab || !canTabSwitchToEdit(activeTab) || viewOf(activeTab, false) === 'source') {
         smoothCursor.destroy()
         return
       }
@@ -669,12 +712,34 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         return
       }
 
-      // 10. 搜索 (/)
-      if (!isCtrl && key === '/') {
+      // 10. 搜索 (/ 与 ?)
+      if (!isCtrl && (key === '/' || key === '?')) {
         e.preventDefault()
         e.stopPropagation()
-        triggerShortcutAction('doc.find')
+        pendingPrefix.current = null
+        openGlobalCommandBar({ prefill: key })
         return
+      }
+
+      // 10.5 查找下一个 (n) 与上一个 (N)
+      if (!isCtrl && key === 'n') {
+        if (browseVimSearch.hasActiveSearch()) {
+          e.preventDefault()
+          e.stopPropagation()
+          const res = browseVimSearch.next()
+          applySearchResult(res, smoothCursor, lastValidRangeRef, onToast)
+          return
+        }
+      }
+
+      if (!isCtrl && key === 'N') {
+        if (browseVimSearch.hasActiveSearch()) {
+          e.preventDefault()
+          e.stopPropagation()
+          const res = browseVimSearch.prev()
+          applySearchResult(res, smoothCursor, lastValidRangeRef, onToast)
+          return
+        }
       }
 
       // 11. 只读模式防呆与编辑提示（i, a, o, c, s, r, x, p）
@@ -696,6 +761,8 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
       window.removeEventListener('compositionend', onCompEnd, true)
       window.removeEventListener('scroll', onScroll, { capture: true })
       document.removeEventListener('selectionchange', onSelectionChange)
+      setBrowseSearchHandler(null)
+      browseVimSearch.clear()
       hideAnnotationPopup()
       smoothCursor.destroy()
     }

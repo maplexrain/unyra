@@ -4,7 +4,7 @@ import { setAgentToggleHandler, focusAgentInput } from '../../../lib/agentFocus'
 import { setOpenTargetsProvider, buildOpenTargets } from '../../../lib/vimOpenTargets'
 import { focusedGroup } from '../../../learn/groups'
 import type { AnnotationStyle, DocView, LearnStore, TabRef } from '../../../learn/types'
-import { isMediaFile, type TabCloseMode, viewOf } from '../../../learn/tabs'
+import { canTabSwitchToEdit, type TabCloseMode, viewOf } from '../../../learn/tabs'
 import { emptyNote } from './panes'
 import { useBrowseVim } from './useBrowseVim'
 import { openGlobalNoteDialog } from '../note/useAnnotationLayer'
@@ -136,19 +136,7 @@ export function useVimGlobalTabOps(params: Params): void {
           return { success: false, message: '[当前无活动页签]' }
         }
 
-        const kind = tab.ref.kind
-        let isEditable = false
-        if (kind === 'note' || kind === 'teach' || kind === 'super' || kind === 'draft') {
-          isEditable = true
-        } else if (kind === 'local') {
-          const p = tab.ref.path.toLowerCase()
-          isEditable = !isMediaFile(p) && !p.endsWith('.pdf')
-        } else if (kind === 'ws') {
-          const seg = tab.ref.seg.toLowerCase()
-          isEditable = !isMediaFile(seg) && !seg.endsWith('.pdf')
-        }
-
-        if (!isEditable) {
+        if (!canTabSwitchToEdit(tab)) {
           return { success: false, message: '[当前页面内容不可编辑]' }
         }
 

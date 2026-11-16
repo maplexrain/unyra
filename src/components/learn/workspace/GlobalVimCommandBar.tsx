@@ -3,6 +3,7 @@ import { executeVimCommand } from '../../../lib/vimCommands'
 import { setGlobalCommandBarOpener } from '../../../lib/commandBarFocus'
 import { matchVimCommands, type VimCommandInfo } from '../../../lib/vimCommandCatalog'
 import { getOpenTargets, type VimOpenTarget } from '../../../lib/vimOpenTargets'
+import { dispatchBrowseSearch } from '../../../lib/browseVimSearch'
 import VimOpenDropdown from './VimOpenDropdown'
 import { t } from '../../../i18n'
 
@@ -34,9 +35,10 @@ export default function GlobalVimCommandBar() {
     openRef.current = open
   }, [open])
 
-  /* ---------- :open / :o 目标搜索模式判断 ---------- */
+  /* ---------- 搜索模式（/ 与 ?）与 :open / :o 目标搜索模式判断 ---------- */
+  const isSearchMode = value.startsWith('/') || value.startsWith('?')
   const openMatch = value.match(/^:?\s*(?:open\b\s*(.*)|o\s+(.*))$/i)
-  const isOpenMode = Boolean(openMatch)
+  const isOpenMode = !isSearchMode && Boolean(openMatch)
   const openQuery = openMatch ? (openMatch[1] ?? openMatch[2] ?? '') : ''
   const openTargets = useMemo(() => {
     if (!isOpenMode) return []
@@ -44,21 +46,24 @@ export default function GlobalVimCommandBar() {
   }, [isOpenMode, openQuery])
 
   /* ---------- 前缀联想：候选与幽灵补全 ---------- */
-  const matches = useMemo(() => (isOpenMode ? [] : matchVimCommands(value)), [isOpenMode, value])
+  const matches = useMemo(() => (isOpenMode || isSearchMode ? [] : matchVimCommands(value)), [isOpenMode, isSearchMode, value])
   const [selected, setSelected] = useState(-1)
   /** 幽灵预览的目标项：方向键选中的那一个；没选过就看第一个候选 */
   const ghostIdx = selected >= 0 && selected < matches.length ? selected : matches.length ? 0 : -1
   const ghostItem: VimCommandInfo | null = ghostIdx >= 0 ? (matches[ghostIdx] ?? null) : null
   /**
    * 幽灵文字：只补第一个 token（命令名），参数是自由文本不猜。
-   * 输入框里以「透明的已输前缀 + 淡色剩余」画在真实文字之上——对齐靠同一份字体。
+   * 支持前缀带冒号 `:` 的情形对齐补全。
    */
   const ghostText = (() => {
-    if (isOpenMode) return null
+    if (isOpenMode || isSearchMode) return null
     if (!ghostItem || value.includes(' ') || value.length === 0) return null
-    if (!ghostItem.cmd.toLowerCase().startsWith(value.toLowerCase())) return null
-    if (ghostItem.cmd.length <= value.length) return null
-    return ghostItem.cmd.slice(value.length)
+    const hasColon = value.startsWith(':')
+    const typed = hasColon ? value.slice(1) : value
+    if (!typed) return null
+    if (!ghostItem.cmd.toLowerCase().startsWith(typed.toLowerCase())) return null
+    if (ghostItem.cmd.length <= typed.length) return null
+    return ghostItem.cmd.slice(typed.length)
   })()
 
   // 全局键盘监听 Shift+: 唤起（编辑器内的 : 走 commandBarFocus 的桥，不经这里）
@@ -218,7 +223,8 @@ export default function GlobalVimCommandBar() {
     if (e.key === 'Tab' && ghostItem && ghostText !== null) {
       e.preventDefault()
       e.stopPropagation()
-      setValue(ghostItem.cmd + ' ')
+      const hasColon = value.startsWith(':')
+      setValue((hasColon ? ':' : '') + ghostItem.cmd + ' ')
       setSelected(-1)
       return
     }
@@ -226,6 +232,26 @@ export default function GlobalVimCommandBar() {
     if (e.key === 'Enter') {
       e.preventDefault()
       e.stopPropagation()
+
+      // 搜索模式（/ 与 ?）：直接调用浏览模式搜索或交回编辑器
+      if (isSearchMode) {
+        const isBackward = value.startsWith('?')
+        const query = value.slice(1).trim()
+        if (isPrompt) {
+          const finish = finishRef.current
+          finishRef.current = null
+          try {
+            finish?.(value)
+          } catch {}
+          close()
+          return
+        }
+        close()
+        if (query) {
+          dispatchBrowseSearch(query, isBackward)
+        }
+        return
+      }
 
       // :open / :o 模式直接执行选中的目标（执行后立刻关闭）
       if (isOpenMode) {
@@ -239,9 +265,11 @@ export default function GlobalVimCommandBar() {
       }
 
       // 方向键选中的候选 ≠ 已输文本时，Enter 提交的就是幽灵预览的那份（看到的即所得）
+      const hasColon = value.startsWith(':')
+      const typedCmd = hasColon ? value.slice(1).trim() : value.trim()
       const picked =
-        selected >= 0 && ghostItem && ghostItem.cmd.toLowerCase() !== value.trim().toLowerCase()
-          ? ghostItem.cmd + ' '
+        selected >= 0 && ghostItem && ghostItem.cmd.toLowerCase() !== typedCmd.toLowerCase()
+          ? (hasColon ? ':' : '') + ghostItem.cmd + ' '
           : value
       const cmd = picked.trim()
       if (!cmd) {
@@ -304,8 +332,15 @@ export default function GlobalVimCommandBar() {
         }}
       >
         <div className="flex items-center gap-3 px-4.5 py-3 border-b border-line/35">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-seal/15 text-seal font-mono text-[13px] font-bold select-none border border-seal/25 shadow-xs">
-            :
+          <div
+            className={
+              'flex h-6 w-6 shrink-0 items-center justify-center rounded-md font-mono text-[13px] font-bold select-none border shadow-xs ' +
+              (isSearchMode
+                ? 'bg-amber-500/15 text-amber-500 border-amber-500/25'
+                : 'bg-seal/15 text-seal border-seal/25')
+            }
+          >
+            {isSearchMode ? (value.startsWith('?') ? '?' : '/') : ':'}
           </div>
           <div className="relative min-w-0 flex-1">
             <input
@@ -319,7 +354,9 @@ export default function GlobalVimCommandBar() {
               onKeyDown={handleKeyDown}
               onBlur={handleInputBlur}
               placeholder={
-                isOpenMode
+                isSearchMode
+                  ? t('输入搜索内容或正则表达式 (支持拼音匹配，按 Enter 查找)...')
+                  : isOpenMode
                   ? t('搜索打开目标：支持拼音缩写、全拼或中文名称...')
                   : t('输入命令 (例如 w, q, edit, view, browser, fullscreen, wrap, open)...')
               }
@@ -348,7 +385,7 @@ export default function GlobalVimCommandBar() {
             onSelect={executeTarget}
           />
         ) : (
-          value.trim().length > 0 && matches.length > 0 && (
+          !isSearchMode && matches.length > 0 && (
             <div className="max-h-[320px] overflow-y-auto p-1.5 flex flex-col gap-0.5">
               {matches.slice(0, 15).map((m, i) => {
                 const active = i === ghostIdx
@@ -362,7 +399,8 @@ export default function GlobalVimCommandBar() {
                       (active ? 'bg-seal/15 text-seal-light' : 'hover:bg-line/40 text-ink')
                     }
                     onClick={() => {
-                      setValue(m.cmd + ' ')
+                      const hasColon = value.startsWith(':')
+                      setValue((hasColon ? ':' : '') + m.cmd + ' ')
                       setSelected(-1)
                       inputRef.current?.focus()
                     }}
