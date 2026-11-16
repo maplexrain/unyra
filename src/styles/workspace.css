@@ -42,6 +42,25 @@
 }
 
 /*
+ * 浏览模式下的 Vim 虚拟光标指示器
+ */
+.moji-browse-vim-caret {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  background-color: var(--color-primary, #0284c7);
+  opacity: 0.75;
+  border-radius: 1px;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.35);
+  transition: top 0.04s ease-out, left 0.04s ease-out;
+  animation: moji-caret-blink 1.06s steps(1) infinite;
+}
+@keyframes moji-caret-blink {
+  0%, 50% { opacity: 0.75; }
+  50.1%, 100% { opacity: 0; }
+}
+
+/*
  * 页签的进出场（见 lib/tabPresence，文档区与导师栏共用这一套）。
  *
  * 入场是**动画**（animation）：只在新开那一枚挂上 moji-tab-in，150ms 从下方 4px 浮上来。

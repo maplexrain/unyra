@@ -1,8 +1,21 @@
+// @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { executeVimCommand, setGlobalTabOperations, setVimEditorBridge } from '../src/lib/vimCommands'
+import React, { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import {
+  executeVimCommand,
+  setGlobalTabOperations,
+  setVimEditorBridge,
+  setupVimSystemClipboard,
+  setupVimImeProtection,
+} from '../src/lib/vimCommands'
+import { Vim } from '@replit/codemirror-vim'
 import { makeTab, isTabPinned } from '../src/learn/tabs'
 import { openInGroup } from '../src/learn/groups'
 import type { DocWorkspace } from '../src/learn/groups/types'
+import { useBrowseVim } from '../src/components/learn/workspace/useBrowseVim'
+import { setVimEnabled } from '../src/lib/vimSettings'
+import type { LearnStore } from '../src/learn/types'
 
 describe('tab 打开与排序规则', () => {
   it('新打开的 Tab 永远放在末尾，不因类型 (outline/teach/note 等) 自动排序或自动固定', () => {
@@ -81,3 +94,158 @@ describe(':tabo 命令在外部文件与全局环境下的调度', () => {
     expect(bridgeClose).not.toHaveBeenCalled()
   })
 })
+
+describe('Vim 剪贴板同步与输入法 IME 防护', () => {
+  it('setupVimSystemClipboard 确保所有 yank 操作自动写入系统剪贴板', () => {
+    setupVimSystemClipboard()
+    const rc = (Vim as any).getRegisterController?.()
+    expect(rc).toBeDefined()
+
+    const mockClipboardWrite = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', {
+      clipboard: {
+        writeText: mockClipboardWrite,
+      },
+    })
+
+    // 模拟 Vim 普通模式下 yank 操作
+    rc.pushText(null, 'yank', '要复制的高价值文档段落')
+
+    expect(mockClipboardWrite).toHaveBeenCalledWith('要复制的高价值文档段落')
+  })
+
+  it('setupVimImeProtection 在输入法组词及 process/229 时阻断物理键被当作 Vim 命令', () => {
+    setupVimImeProtection()
+    const vimAny = Vim as any
+    expect(typeof vimAny.vimKeyFromEvent).toBe('function')
+
+    // 1. isComposing 为 true 时（中文输入法拼音组词中）
+    const composingEvent = {
+      isComposing: true,
+      key: 'j',
+      keyCode: 229,
+    } as any
+    expect(vimAny.vimKeyFromEvent(composingEvent, {})).toBe('')
+
+    // 2. keyCode === 229 时
+    const code229Event = {
+      isComposing: false,
+      key: 'k',
+      keyCode: 229,
+    } as any
+    expect(vimAny.vimKeyFromEvent(code229Event, {})).toBe('')
+
+    // 3. key === 'Process' 时
+    const processEvent = {
+      isComposing: false,
+      key: 'Process',
+      keyCode: 0,
+    } as any
+    expect(vimAny.vimKeyFromEvent(processEvent, {})).toBe('')
+
+    // 4. 正常英文字符输入（非组词态）应正确返回有效字符
+    const normalEvent = {
+      isComposing: false,
+      key: 'j',
+      keyCode: 74,
+    } as any
+    expect(vimAny.vimKeyFromEvent(normalEvent, {})).toBe('j')
+  })
+
+  it('useBrowseVim 在输入法合成态下绝不拦截按键，在有效字符下支持可视模式与复制', async () => {
+    ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
+    setVimEnabled(true)
+    const toastFn = vi.fn()
+    const mockClipboardWrite = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', {
+      clipboard: {
+        writeText: mockClipboardWrite,
+      },
+    })
+
+    const dummyStore: LearnStore = {
+      docArea: {
+        layout: { kind: 'group', group: 'g1' },
+        groups: [
+          {
+            id: 'g1',
+            tabs: [{ id: 't1', kind: 'teach', nodeId: 'n1', view: 'preview' as const }],
+            active: 't1',
+          },
+        ],
+        focus: 'g1',
+      },
+    } as any
+
+    function TestComp() {
+      useBrowseVim({
+        getLatest: () => dummyStore,
+        onToast: toastFn,
+      })
+      return React.createElement(
+        'div',
+        { 'data-doc-area': 'g1', 'data-doc-area-focus': 'true' },
+        React.createElement(
+          'div',
+          { 'data-doc-pane': 'active' },
+          React.createElement('p', { id: 'test-p' }, '第一行测试段落'),
+        ),
+      )
+    }
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(React.createElement(TestComp))
+    })
+
+    // 1. 输入法合成态按键测试：isComposing: true 或 keyCode: 229 时，不阻止默认行为
+    const imeEvent = new KeyboardEvent('keydown', {
+      key: 'j',
+      keyCode: 229,
+      bubbles: true,
+      cancelable: true,
+    })
+    Object.defineProperty(imeEvent, 'isComposing', { value: true })
+    window.dispatchEvent(imeEvent)
+    expect(imeEvent.defaultPrevented).toBe(false)
+
+    // 2. 正常按下 'v' 键进入可视模式
+    const vEvent = new KeyboardEvent('keydown', {
+      key: 'v',
+      keyCode: 86,
+      bubbles: true,
+      cancelable: true,
+    })
+    window.dispatchEvent(vEvent)
+    expect(vEvent.defaultPrevented).toBe(true)
+    expect(toastFn).toHaveBeenCalledWith('-- 可视模式 (VISUAL) --')
+
+    // 3. 选中一段文字后按 'y' 复制到系统剪贴板
+    const pEl = document.getElementById('test-p')
+    const range = document.createRange()
+    if (pEl?.firstChild) {
+      range.selectNodeContents(pEl.firstChild)
+      const sel = window.getSelection()
+      sel?.removeAllRanges()
+      sel?.addRange(range)
+    }
+
+    const yEvent = new KeyboardEvent('keydown', {
+      key: 'y',
+      keyCode: 89,
+      bubbles: true,
+      cancelable: true,
+    })
+    window.dispatchEvent(yEvent)
+    expect(yEvent.defaultPrevented).toBe(true)
+    expect(mockClipboardWrite).toHaveBeenCalledWith('第一行测试段落')
+
+    await act(async () => {
+      root.unmount()
+    })
+    container.remove()
+  })
+})
+

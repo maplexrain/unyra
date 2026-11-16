@@ -1,4 +1,4 @@
-import { Vim } from '@replit/codemirror-vim'
+import { Vim, vim } from '@replit/codemirror-vim'
 import { triggerShortcutAction } from './shortcuts'
 import { foldCurrentScope, unfoldCurrentScope, foldAll, unfoldAll } from './cmFoldScope'
 import { openVimPage } from './vimPage'
@@ -140,7 +140,87 @@ let registered = false
  * - :unfoldall -> 展开所有代码块
  * - :help / :h -> 显示常用命令帮助提示
  */
+/**
+ * 优化 Vim 复制功能：确保所有 Vim 复制 (yank / y / yy) 直接复制到系统剪贴板
+ */
+export function setupVimSystemClipboard(): void {
+  try {
+    const rc = (Vim as any).getRegisterController?.()
+    if (!rc || rc.__systemClipboardPatched) return
+    rc.__systemClipboardPatched = true
+    const origPushText = rc.pushText.bind(rc)
+    rc.pushText = function (
+      registerName: string | null | undefined,
+      operator: string,
+      text: string,
+      linewise?: boolean,
+      blockwise?: boolean,
+    ) {
+      origPushText(registerName, operator, text, linewise, blockwise)
+      if (operator === 'yank' || !registerName || registerName === '"' || registerName === '+' || registerName === '*') {
+        if (text && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(text).catch(() => {})
+        }
+      }
+    }
+  } catch {
+    // 忽略异常
+  }
+}
+
+/**
+ * 优化系统输入法和 Vim 命令的冲突：
+ * 检测有效字符输入来匹配 Vim 行为；当处于输入法组词中时，阻止物理键盘按键误触发 Vim 命令
+ */
+export function setupVimImeProtection(): void {
+  try {
+    const vimAny = Vim as any
+    if (vimAny.vimKeyFromEvent && !vimAny.__imeProtectionPatched) {
+      vimAny.__imeProtectionPatched = true
+      const origVimKey = vimAny.vimKeyFromEvent.bind(vimAny)
+      vimAny.vimKeyFromEvent = function (e: KeyboardEvent, vimState: unknown) {
+        if (
+          e.isComposing ||
+          e.keyCode === 229 ||
+          e.key === 'Process' ||
+          e.key === 'Unidentified' ||
+          e.key === 'Dead'
+        ) {
+          return ''
+        }
+        return origVimKey(e, vimState)
+      }
+    }
+
+    // 同时防御 codemirror-vim ViewPlugin keydown handler
+    const ext = typeof vim === 'function' ? (vim() as any[]) : []
+    const vp = ext.find((x) => x && x.domEventHandlers)
+    if (vp?.domEventHandlers && !vp.domEventHandlers.__imePatched) {
+      vp.domEventHandlers.__imePatched = true
+      const origKeydown = vp.domEventHandlers.keydown
+      vp.domEventHandlers.keydown = function (e: KeyboardEvent, view: any) {
+        if (
+          e.isComposing ||
+          e.keyCode === 229 ||
+          e.key === 'Process' ||
+          e.key === 'Unidentified' ||
+          e.key === 'Dead'
+        ) {
+          this.lastKeydown = 'Process'
+          this.useNextTextInput = true
+          return
+        }
+        return origKeydown.call(this, e, view)
+      }
+    }
+  } catch {
+    // 忽略异常
+  }
+}
+
 export function registerVimExCommands(): void {
+  setupVimSystemClipboard()
+  setupVimImeProtection()
   if (registered) return
   registered = true
 
