@@ -463,6 +463,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       // 系统页（设置/用量/记忆/导师设置/新建目标）同样没有编辑器，没有暂存这回事
       if (
         tab.ref.kind === 'settings' ||
+        tab.ref.kind === 'user' ||
         tab.ref.kind === 'usage' ||
         tab.ref.kind === 'schedule' ||
         tab.ref.kind === 'mind' ||

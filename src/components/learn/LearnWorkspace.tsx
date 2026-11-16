@@ -182,19 +182,10 @@ import { useMouseNavTabs } from './workspace/useMouseNavTabs'
 import { useWorkspaceShortcuts } from './workspace/useWorkspaceShortcuts'
 import { t } from '../../i18n'
 
-/**
- */
-
-
 export default function LearnWorkspace({
-  user,
-  onRootChanged,
-  onOpenUser,
-  onSignOut,
-  onToast,
-  onOpenUpdate,
-  onOpenNotice,
-  onOpenLan,
+  user, users, onSelectUser, onCreateUser, onUpdateUser, onDeleteUser,
+  onRootChanged, onOpenUser: onOpenUserProp, onSignOut, onToast,
+  onOpenUpdate, onOpenNotice, onOpenLan,
 }: Props) {
   const { store, set, getLatest, patchQuiet, flush } = useLearnStore()
   /*
@@ -1811,6 +1802,9 @@ export default function LearnWorkspace({
       onToast,
       openTab,
       onRootChanged,
+      users: users ?? (user ? [user] : []),
+      activeUserId: user?.id ?? null,
+      onSelectUser, onCreateUser, onUpdateUser, onDeleteUser, onSignOut,
       tabOwners,
       shownTabIds,
       residentPanes,
@@ -2097,7 +2091,7 @@ export default function LearnWorkspace({
             store={store}
             user={user}
             onOpenSidebar={() => setSidebarOpen(true)}
-            onOpenUser={onOpenUser}
+            onOpenUser={() => (onOpenUserProp ? onOpenUserProp() : openTab({ kind: 'user' }))}
             onSignOut={onSignOut}
             onOpenSettings={onOpenSettings}
             onOpenUsage={onOpenUsage}

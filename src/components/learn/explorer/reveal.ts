@@ -232,6 +232,7 @@ export function revealOfTab(
       }
     }
     case 'settings':
+    case 'user':
     case 'usage':
     case 'schedule':
     case 'mind':

@@ -81,6 +81,7 @@ export function tabKey(ref: TabRef): string {
   if (ref.kind === 'vim') return 'v:vim'
   // 设置页与用量页同样全局只有一份：从哪个入口打开都是切到它，不会开出第二枚
   if (ref.kind === 'settings') return 'set:settings'
+  if (ref.kind === 'user') return 'usr:user'
   if (ref.kind === 'usage') return 'u:usage'
   // 日程表全局只有一份：从顶栏 tip、提醒弹层还是设置里打开，都是切到同一枚页签
   if (ref.kind === 'schedule') return 'sc:schedule'
@@ -160,6 +161,7 @@ export function tabNodeId(ref: TabRef): string | null {
     ref.kind === 'sponsors' ||
     ref.kind === 'vim' ||
     ref.kind === 'settings' ||
+    ref.kind === 'user' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||
@@ -239,6 +241,7 @@ function rawTabTitle(
   if (ref.kind === 'sponsors') return t('赞助者名单')
   if (ref.kind === 'vim') return t('Vim 命令大全')
   if (ref.kind === 'settings') return t('设置')
+  if (ref.kind === 'user') return t('用户中心')
   if (ref.kind === 'usage') return t('用量统计')
   if (ref.kind === 'schedule') return t('日程安排')
   if (ref.kind === 'mind') return t('记忆管理')
@@ -287,6 +290,7 @@ export function tabTrail(
     ref.kind === 'sponsors' ||
     ref.kind === 'vim' ||
     ref.kind === 'settings' ||
+    ref.kind === 'user' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
     ref.kind === 'agentSettings' ||

@@ -4,7 +4,6 @@ import LearnWorkspace from './components/learn/LearnWorkspace'
 import Toast, { type ToastData } from './components/Toast'
 import KeyCast from './components/KeyCast'
 import CloseDialog from './components/CloseDialog'
-import UserDialog from './components/user/UserDialog'
 import LoginPage from './components/user/LoginPage'
 import UpdateDialog from './components/update/UpdateDialog'
 import NoticeDialog from './components/notice/NoticeDialog'
@@ -45,7 +44,6 @@ export default function App({ boot }: Props) {
   // 这样即便某处忘了走 navigate，未登录也绝不可能落到受保护的页面。
   const [wanted, setWanted] = useState<Route>('learn')
   const route = guardRoute(signedIn, wanted)
-  const [userOpen, setUserOpen] = useState(false)
   /**
    * 更新确认弹窗。状态很薄：开不开这一件事，其余（有没有新版本、下没下完）
    * 都由主进程推过来的更新状态说了算（见 lib/update）——这里再存一份迟早会不一致。
@@ -214,7 +212,6 @@ export default function App({ boot }: Props) {
     setSession(s)
     setActiveUserId(s.userId)
     setUserEpoch((n) => n + 1)
-    setUserOpen(false)
     setWanted('learn')
   }, [])
 
@@ -224,7 +221,6 @@ export default function App({ boot }: Props) {
     await enterUserScope(null)
     setSession(null)
     setActiveUserId(null)
-    setUserOpen(false)
     // 主动登出应回到干净的登录页，而不是被守卫拦下的样子
     setWanted('login')
   }, [])
@@ -240,7 +236,6 @@ export default function App({ boot }: Props) {
     setSession(res.boot.session)
     setActiveUserId(res.boot.session?.userId ?? null)
     setUserEpoch((n) => n + 1)
-    setUserOpen(false)
     setWanted(res.boot.session ? 'learn' : 'login')
     return res
   }, [])
@@ -275,8 +270,12 @@ export default function App({ boot }: Props) {
         // 换用户时重挂载：学习数据按作用域从本地重新载入
         key={`user-${userEpoch}`}
         user={activeUserRecord}
+        users={users}
+        onSelectUser={handleSignIn}
+        onCreateUser={handleCreateUser}
+        onUpdateUser={handleUpdateUser}
+        onDeleteUser={handleDeleteUser}
         onRootChanged={handleRootChanged}
-        onOpenUser={() => setUserOpen(true)}
         onSignOut={handleSignOut}
         onToast={showToast}
         onOpenUpdate={() => setUpdateOpen(true)}
@@ -286,19 +285,6 @@ export default function App({ boot }: Props) {
       {updateOpen && <UpdateDialog onClose={() => setUpdateOpen(false)} />}
       {noticeOpen && <NoticeDialog onClose={() => setNoticeOpen(false)} />}
       {lanOpen && <LanConnectDialog open={lanOpen} onClose={() => setLanOpen(false)} onToast={showToast} />}
-      {userOpen && activeUserRecord && (
-        <UserDialog
-          users={users}
-          activeUserId={activeUserId}
-          onClose={() => setUserOpen(false)}
-          onSelect={handleSignIn}
-          onCreate={handleCreateUser}
-          onUpdate={handleUpdateUser}
-          onDelete={handleDeleteUser}
-          onSignOut={handleSignOut}
-          onToast={showToast}
-        />
-      )}
       {closeAsk && <CloseDialog onDecide={handleCloseDecision} />}
       <Toast toast={toast} onHide={() => setToast(null)} />
       {/* 全局 Vim 冒号命令行 (Shift+:) */}

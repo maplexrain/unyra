@@ -8,6 +8,7 @@ import { viewOf } from '../../../learn/tabs'
 import type { LearnStore } from '../../../learn/types'
 import { BrowseSmoothCursor } from './browseSmoothCursor'
 import { captureOrGetDocSelection } from './docSelectionSnapshot'
+import { showAnnotationPopup, hideAnnotationPopup } from '../../../lib/annotation'
 
 export interface UseBrowseVimParams {
   getLatest: () => LearnStore
@@ -105,6 +106,26 @@ function scrollSelectionIntoView(sel: Selection): void {
   }
 }
 
+/** 检查光标所在位置是否有注解文字，有则弹出 Tip 浮层，无则收起 */
+function checkAnnotationAtCursor(sel: Selection | null): void {
+  if (!sel || sel.rangeCount === 0) {
+    hideAnnotationPopup()
+    return
+  }
+  const node = sel.focusNode || sel.anchorNode
+  if (!node) {
+    hideAnnotationPopup()
+    return
+  }
+  const el = node instanceof Element ? node : node.parentElement
+  const anno = el?.closest?.('.moji-anno')
+  if (anno instanceof HTMLElement && anno.dataset.anno) {
+    showAnnotationPopup(anno)
+  } else {
+    hideAnnotationPopup()
+  }
+}
+
 /** 执行光标移动（普通模式 move，可视模式 extend）并驱动平滑光标与拖尾 */
 function moveCaret(
   sel: Selection,
@@ -127,6 +148,7 @@ function moveCaret(
   }
   scrollSelectionIntoView(sel)
   smoothCursor.update(sel, isVisual)
+  checkAnnotationAtCursor(sel)
 }
 
 /**
@@ -155,6 +177,7 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
     }
 
     const onScroll = () => {
+      hideAnnotationPopup()
       const sel = window.getSelection()
       if (sel && sel.rangeCount > 0) {
         smoothCursor.update(sel, isVisualModeRef.current)
@@ -179,11 +202,13 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
           }
         }
         smoothCursor.update(sel, isVisualModeRef.current)
+        checkAnnotationAtCursor(sel)
       } else {
         // 如果焦点处于命令栏或弹窗输入区，不清除平滑光标与记录的选区位置，避免重置到文档顶部
         if (document.querySelector('[data-command-bar]') || isEditableTarget(document.activeElement)) {
           return
         }
+        hideAnnotationPopup()
         smoothCursor.update(null, false)
       }
     }
@@ -671,6 +696,7 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
       window.removeEventListener('compositionend', onCompEnd, true)
       window.removeEventListener('scroll', onScroll, { capture: true })
       document.removeEventListener('selectionchange', onSelectionChange)
+      hideAnnotationPopup()
       smoothCursor.destroy()
     }
   }, [getLatest, onToast, nextTab, prevTab])

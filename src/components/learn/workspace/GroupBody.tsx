@@ -29,6 +29,7 @@ import PluginDoc from '../../plugins/PluginDoc'
 import SponsorsDoc from '../../sponsor/SponsorsDoc'
 import VimCheatSheetView from '../vim/VimCheatSheetView'
 import SettingsPanel from '../../settings/SettingsPanel'
+import UserTabPane from '../../user/UserTabPane'
 import UsagePanel from '../../settings/UsagePanel'
 import { SchedulePage } from '../../schedule/SchedulePage'
 import MindPanel from '../../agent/MindPanel'
@@ -62,6 +63,13 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     onToast,
     openTab,
     onRootChanged,
+    users,
+    activeUserId,
+    onSelectUser,
+    onCreateUser,
+    onUpdateUser,
+    onDeleteUser,
+    onSignOut,
     tabOwners,
     shownTabIds,
     residentPanes,
@@ -440,6 +448,20 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               Vim 命令大全页签：全量按键与命令速查（高密度表格，见 vim/VimCheatSheetView）。
             */
             <VimCheatSheetView />
+          ) : gTab?.ref.kind === 'user' ? (
+            /*
+              用户中心：多用户切换、创建用户、删除用户、编辑用户画像与退出登录。
+            */
+            <UserTabPane
+              users={users ?? []}
+              activeUserId={activeUserId ?? null}
+              onSelect={onSelectUser ?? (() => {})}
+              onCreate={onCreateUser ?? (() => {})}
+              onUpdate={onUpdateUser ?? (() => {})}
+              onDelete={onDeleteUser ?? (() => {})}
+              onSignOut={onSignOut ?? (() => {})}
+              onToast={onToast}
+            />
           ) : gTab?.ref.kind === 'settings' ? (
             /*
               设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），

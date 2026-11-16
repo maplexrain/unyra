@@ -25,5 +25,5 @@
 
 export { applyAnnotation, canAnnotate, occurrenceAt, selectionTerm, unwrapAnnotation } from './annotation/dom'
 export { endAnnotationPreview, previewAnnotationStyle, syncAnnotations } from './annotation/patch'
-export { hydrateAnnotations, setAnnotationActions } from './annotation/popup'
+export { hydrateAnnotations, setAnnotationActions, showAnnotationPopup, hideAnnotationPopup } from './annotation/popup'
 export type { AnnotationActions } from './annotation/popup'

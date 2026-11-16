@@ -21,6 +21,7 @@ export type VimOpenKind =
   | 'file'
   | 'ws'
   | 'settings'
+  | 'user'
   | 'usage'
   | 'examWindow'
 
@@ -228,6 +229,16 @@ export function buildOpenTargets(params: BuildOpenTargetsParams): VimOpenTarget[
     badge: '设置页签',
     kind: 'settings',
     action: () => openTab({ kind: 'settings' }),
+  })
+
+  // 9.5 用户中心页签
+  targets.push({
+    id: 'user',
+    title: '用户中心',
+    subtitle: '多用户切换、资料修改与个人画像设置',
+    badge: '用户页签',
+    kind: 'user',
+    action: () => openTab({ kind: 'user' }),
   })
 
   // 10. 用量页签

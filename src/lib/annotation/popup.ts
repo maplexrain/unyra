@@ -209,6 +209,16 @@ function hidePopup(): void {
   }, 120)
 }
 
+/** 外部调用：显式显示某个注解文字的浮层 Tip */
+export function showAnnotationPopup(target: HTMLElement): void {
+  showPopup(target)
+}
+
+/** 外部调用：收起当前注解浮层 Tip */
+export function hideAnnotationPopup(): void {
+  hidePopup()
+}
+
 /** 指针是否正落在浮层（或其中的按钮）上 */
 function insidePopup(node: EventTarget | null): boolean {
   return !!popup && node instanceof Node && popup.contains(node)

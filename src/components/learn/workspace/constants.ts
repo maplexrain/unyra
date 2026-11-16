@@ -8,14 +8,19 @@
  */
 
 import type { SwitchRootResult } from '../../../lib/boot'
-import type { User } from '../../../user/types'
+import type { User, UserProfile } from '../../../user/types'
 
 export interface Props {
   /** 当前用户（含画像）：顶栏展示头像与昵称 */
   user: User | null
+  users?: User[]
+  onSelectUser?: (userId: string) => void
+  onCreateUser?: (profile?: Partial<UserProfile>, apiKey?: string) => Promise<User> | void
+  onUpdateUser?: (userId: string, patch: Partial<UserProfile>) => void
+  onDeleteUser?: (userId: string) => void
   /** 换用户数据目录（设置里的存储页用）：整份数据换一套，交给 App 重新载入 */
   onRootChanged: (dir?: string) => Promise<SwitchRootResult>
-  onOpenUser: () => void
+  onOpenUser?: () => void
   onSignOut: () => void
   onToast: (msg: string) => void
   /** 打开更新确认弹窗（弹窗由 App 渲染，理由见 components/update/UpdateButton） */

@@ -1,4 +1,4 @@
-import { AppWindow, Bot, BookOpen, Brain, CalendarClock, ChartColumn, FilePlus, Folder, FolderOpen, Globe, GraduationCap, HardDrive, Heart, ListTree, Loader2, MonitorPlay, NotebookPen, Package, Puzzle, ScrollText, Settings2 } from 'lucide-react'
+import { AppWindow, Bot, BookOpen, Brain, CalendarClock, ChartColumn, FilePlus, Folder, FolderOpen, Globe, GraduationCap, HardDrive, Heart, ListTree, Loader2, MonitorPlay, NotebookPen, Package, Puzzle, ScrollText, Settings2, UserRound } from 'lucide-react'
 
 /**
  * 文档类型的**视觉身份**：一种类型一个图标、一个颜色。
@@ -23,6 +23,7 @@ export type DocKindKey =
   | 'pluginDoc'
   | 'sponsors'
   | 'settings'
+  | 'user'
   | 'usage'
   | 'schedule'
   | 'mind'
@@ -44,6 +45,7 @@ const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   pluginDoc: '#8a6d3b', // 土金：插件开发文档——参考手册的气质，与正文的黑白区分开
   sponsors: '#e11d48', // 玫瑰红：赞助者名单与致谢
   settings: '#7c8698', // 蓝灰：系统页（设置）——与哪一类学习内容都不同族
+  user: '#d97706', // 琥珀橙：用户中心页
   usage: '#7c8698', // 蓝灰：系统页（用量统计），与设置同族同色、图标不同
   schedule: '#c47a3d', // 陶土橙：日程表（时间与约定，与朱红的试卷、琥珀的笔记都不撞）
   mind: '#7c8698', // 蓝灰：系统页（记忆管理），系统页同族
@@ -115,6 +117,8 @@ export function DocTypeIcon({ kind, size = 11 }: { kind: DocKindKey; size?: numb
       <Heart size={size} />
     ) : kind === 'settings' ? (
       <Settings2 size={size} />
+    ) : kind === 'user' ? (
+      <UserRound size={size} />
     ) : kind === 'usage' ? (
       <ChartColumn size={size} />
     ) : kind === 'schedule' ? (

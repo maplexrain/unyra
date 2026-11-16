@@ -98,6 +98,7 @@ export function useChipOpening({
       ref.kind === 'sponsors' ||
       ref.kind === 'vim' ||
       ref.kind === 'settings' ||
+      ref.kind === 'user' ||
       ref.kind === 'usage' ||
       ref.kind === 'schedule' ||
       ref.kind === 'mind' ||
