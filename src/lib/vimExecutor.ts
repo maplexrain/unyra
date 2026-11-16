@@ -43,12 +43,12 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     }
     case 'q':
     case 'quit': {
-      if (activeBridge?.onClose) {
-        activeBridge.onClose(isForce)
-        return { success: true }
-      }
       if (globalTabOps?.closeTab) {
         globalTabOps.closeTab(isForce)
+        return { success: true }
+      }
+      if (activeBridge?.onClose) {
+        activeBridge.onClose(isForce)
         return { success: true }
       }
       const ok = triggerShortcutAction('learn.closeTab')
@@ -89,12 +89,12 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'tabclose':
     case 'bd':
     case 'bdelete': {
-      if (activeBridge?.onClose) {
-        activeBridge.onClose(isForce)
-        return { success: true }
-      }
       if (globalTabOps?.closeTab) {
         globalTabOps.closeTab(isForce)
+        return { success: true }
+      }
+      if (activeBridge?.onClose) {
+        activeBridge.onClose(isForce)
         return { success: true }
       }
       const ok = triggerShortcutAction('learn.closeTab')
@@ -103,12 +103,12 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'tabo':
     case 'tabonly': {
       const opts = isForce ? undefined : { skipDirty: true }
-      if (activeBridge?.onCloseOthers) {
-        activeBridge.onCloseOthers(isForce, opts)
-        return { success: true, message: '[已关闭其他页签]' }
-      }
       if (globalTabOps?.closeOtherTabs) {
         globalTabOps.closeOtherTabs(isForce, opts)
+        return { success: true, message: '[已关闭其他页签]' }
+      }
+      if (activeBridge?.onCloseOthers) {
+        activeBridge.onCloseOthers(isForce, opts)
         return { success: true, message: '[已关闭其他页签]' }
       }
       return { success: false }
@@ -117,6 +117,10 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'tabnext':
     case 'bn':
     case 'bnext': {
+      if (globalTabOps?.nextTab) {
+        globalTabOps.nextTab()
+        return { success: true }
+      }
       if (activeBridge?.onNextTab) {
         activeBridge.onNextTab()
         return { success: true }
@@ -127,6 +131,10 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'tabprevious':
     case 'bp':
     case 'bprev': {
+      if (globalTabOps?.prevTab) {
+        globalTabOps.prevTab()
+        return { success: true }
+      }
       if (activeBridge?.onPrevTab) {
         activeBridge.onPrevTab()
         return { success: true }

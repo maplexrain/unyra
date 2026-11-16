@@ -150,14 +150,13 @@ export function tabsOf(owners: TabOwners | undefined, goalId: string): string[] 
 /**
  * 把一枚页签登记到某个目标名下（已登记在别处则先摘掉——一个页签只属于一个目标）。
  *
- * 顺序语义：新登记的**排在前面**。页签栏的排布另有其人（见 focusTabsInGroup），
- * 这里只管归属，顺序只影响「同一目标里谁先开」这个次要事实。
+ * 顺序语义：新登记的**排在末尾**。新打开的页签永远在末尾，保持与打开时间一致。
  */
 export function claimTab(owners: TabOwners | undefined, owner: string, tabId: string): TabOwners {
   const base = dropTab(owners, tabId)
   const list = base[owner] ?? []
   if (list.includes(tabId)) return base
-  return { ...base, [owner]: [tabId, ...list] }
+  return { ...base, [owner]: [...list, tabId] }
 }
 
 /** 把一个页签从归属表里摘掉（关闭页签、或它转投别处时） */

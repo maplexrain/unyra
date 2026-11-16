@@ -29,6 +29,8 @@ export interface GlobalTabOperations {
   /** opts.skipDirty：有未保存改动的页签不关（跳过），而不是弹确认打断 */
   closeOtherTabs?: (force?: boolean, opts?: { skipDirty?: boolean }) => void
   newTab?: () => void
+  nextTab?: () => void
+  prevTab?: () => void
   setPure?: (pure: boolean) => void
   isPure?: () => boolean
   togglePure?: () => void
@@ -157,6 +159,10 @@ export function registerVimExCommands(): void {
   // 2. :q / :quit 关闭当前页签 (支持 :q! 强制退出)
   Vim.defineEx('quit', 'q', (_cm, params) => {
     const force = isForceCommand(params)
+    if (globalTabOps?.closeTab) {
+      globalTabOps.closeTab(force)
+      return
+    }
     if (activeBridge?.onClose) {
       activeBridge.onClose(force)
       return
@@ -234,13 +240,13 @@ export function registerVimExCommands(): void {
   Vim.defineEx('tabonly', 'tabo', (cm, params) => {
     const force = isForceCommand(params)
     const opts = force ? undefined : { skipDirty: true }
-    if (activeBridge?.onCloseOthers) {
-      activeBridge.onCloseOthers(force, opts)
+    if (globalTabOps?.closeOtherTabs) {
+      globalTabOps.closeOtherTabs(force, opts)
       showVimNotice(cm, '[已关闭其他页签]')
       return
     }
-    if (globalTabOps?.closeOtherTabs) {
-      globalTabOps.closeOtherTabs(force, opts)
+    if (activeBridge?.onCloseOthers) {
+      activeBridge.onCloseOthers(force, opts)
       showVimNotice(cm, '[已关闭其他页签]')
       return
     }
@@ -249,12 +255,22 @@ export function registerVimExCommands(): void {
 
   // 8. :tabnext / :tabn / :bnext / :bn 下一个页签
   Vim.defineEx('tabnext', 'tabn', (cm) => {
+    if (globalTabOps?.nextTab) {
+      globalTabOps.nextTab()
+      showVimNotice(cm, '[下一个页签]')
+      return
+    }
     if (activeBridge?.onNextTab) {
       activeBridge.onNextTab()
       showVimNotice(cm, '[下一个页签]')
     }
   })
   Vim.defineEx('bnext', 'bn', (cm) => {
+    if (globalTabOps?.nextTab) {
+      globalTabOps.nextTab()
+      showVimNotice(cm, '[下一个页签]')
+      return
+    }
     if (activeBridge?.onNextTab) {
       activeBridge.onNextTab()
       showVimNotice(cm, '[下一个页签]')
@@ -263,12 +279,22 @@ export function registerVimExCommands(): void {
 
   // 9. :tabprevious / :tabp / :bprev / :bp 上一个页签
   Vim.defineEx('tabprevious', 'tabp', (cm) => {
+    if (globalTabOps?.prevTab) {
+      globalTabOps.prevTab()
+      showVimNotice(cm, '[上一个页签]')
+      return
+    }
     if (activeBridge?.onPrevTab) {
       activeBridge.onPrevTab()
       showVimNotice(cm, '[上一个页签]')
     }
   })
   Vim.defineEx('bprev', 'bp', (cm) => {
+    if (globalTabOps?.prevTab) {
+      globalTabOps.prevTab()
+      showVimNotice(cm, '[上一个页签]')
+      return
+    }
     if (activeBridge?.onPrevTab) {
       activeBridge.onPrevTab()
       showVimNotice(cm, '[上一个页签]')

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import { setGlobalTabOperations } from '../../../lib/vimCommands'
 import { setAgentToggleHandler } from '../../../lib/agentFocus'
 import { setOpenTargetsProvider, buildOpenTargets } from '../../../lib/vimOpenTargets'
@@ -6,6 +6,7 @@ import { focusedGroup } from '../../../learn/groups'
 import type { DocView, LearnStore, TabRef } from '../../../learn/types'
 import { isMediaFile, type TabCloseMode, viewOf } from '../../../learn/tabs'
 import { emptyNote } from './panes'
+import { useBrowseVim } from './useBrowseVim'
 
 interface Params {
   getLatest: () => LearnStore
@@ -29,6 +30,8 @@ interface Params {
   newExam?: (nodeId: string) => void
   openWsFile?: (nodeId: string, seg: string) => void
   openLocalFile?: (path: string) => void
+  activateTab?: (tabId: string) => void
+  onToast?: (msg: string) => void
 }
 
 /**
@@ -52,7 +55,32 @@ export function useVimGlobalTabOps(params: Params): void {
     newExam,
     openWsFile,
     openLocalFile,
+    activateTab,
+    onToast,
   } = params
+
+  const stepTab = useCallback(
+    (direction: 'next' | 'prev') => {
+      const s = getLatest()
+      const group = focusedGroup(s.docArea)
+      if (!group || group.tabs.length <= 1) return
+      const curIdx = group.tabs.findIndex((t) => t.id === group.active)
+      const idx = curIdx >= 0 ? curIdx : 0
+      const nextIdx =
+        direction === 'next'
+          ? (idx + 1) % group.tabs.length
+          : (idx - 1 + group.tabs.length) % group.tabs.length
+      activateTab?.(group.tabs[nextIdx].id)
+    },
+    [activateTab, getLatest],
+  )
+
+  useBrowseVim({
+    getLatest,
+    onToast,
+    nextTab: () => stepTab('next'),
+    prevTab: () => stepTab('prev'),
+  })
 
   useEffect(() => {
     setGlobalTabOperations({
@@ -73,6 +101,12 @@ export function useVimGlobalTabOps(params: Params): void {
       },
       newTab: () => {
         openBlankTab()
+      },
+      nextTab: () => {
+        stepTab('next')
+      },
+      prevTab: () => {
+        stepTab('prev')
       },
       setPure: (pure) => {
         setPure?.(pure)

@@ -45,6 +45,7 @@ export function docBodyOf(groupId?: string): HTMLElement | null {
   return (
     area.querySelector<HTMLElement>('[data-doc-pane="active"]') ??
     area.querySelector<HTMLElement>('[data-doc-pane]:not([hidden])') ??
+    area.querySelector<HTMLElement>('[data-file-pane]:not([hidden])') ??
     area
   )
 }

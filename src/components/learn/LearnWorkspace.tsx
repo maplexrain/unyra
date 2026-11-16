@@ -1774,22 +1774,10 @@ export default function LearnWorkspace({
 
   // 全局 Vim 冒号命令调度（支持非编辑页面执行 :tabo, :q, :tabnew, :agent, :edit, :browser, :fullscreen, :open 等）
   useVimGlobalTabOps({
-    getLatest,
-    closeTab,
-    openBlankTab,
-    toggleSide,
-    expandSide,
-    setPure,
-    isPure: () => pure,
-    togglePure: toggleZen,
-    openWebTab,
-    setTabView,
-    openTab,
-    openExam: exam.openExam,
-    openExamCopy,
-    newExam,
-    openWsFile,
-    openLocalFile,
+    getLatest, closeTab, openBlankTab, toggleSide, expandSide, setPure,
+    isPure: () => pure, togglePure: toggleZen, openWebTab, setTabView, openTab,
+    openExam: exam.openExam, openExamCopy, newExam, openWsFile, openLocalFile,
+    activateTab, onToast,
   })
 
   // Ctrl+W：关掉焦点格里正看着的那个页签

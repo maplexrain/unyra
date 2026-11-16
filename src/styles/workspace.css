@@ -32,16 +32,13 @@
 }
 
 /*
- * 拖完松手的那一帧：页签之间的位移不许补间。
- *
- * 拖动期间靠 transform 让位，而重排之后每个页签的**落位**正好等于它让位后看到的位置。
- * 也就是说清掉位移它们本来就在原地——可过渡是拿「过渡前算出来的 transform」补间的，
- * 不清掉的话浏览器会让它们从「再退一格」的地方滑回来，整条栏在松手时抽一下。
- * 只有一帧（见 TabBar 的 snap），被拖的那一项走的是另一条路（settle）。
- * 这一条不加 !important：它在 index.css 里是无层样式，优先级本来就压得住 @layer utilities。
+ * 页签换位与拖拽：页签之间交换位置时不进行 transform 补间过渡，消除重排抽动 Bug。
  */
+.moji-tab {
+  transition: opacity 0.14s ease, background-color 0.14s ease, border-color 0.14s ease !important;
+}
 .moji-tab-snap .moji-tab {
-  transition: none;
+  transition: none !important;
 }
 
 /*

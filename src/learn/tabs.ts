@@ -93,14 +93,12 @@ export function tabKey(ref: TabRef): string {
   return 'l:' + ref.path
 }
 
-/** 判断页签是否为固定页签：结构tab（节点宇宙，kind === 'outline'）永远固定，不可取消固定 */
+/** 判断页签是否为固定页签：仅显式设置 pinned 的页签固定，不再因类型自动固定 */
 export function isTabPinned(tab: LearnTab): boolean {
-  if (tab.ref.kind === 'outline') return true
   return tab.pinned ?? false
 }
 
 export function makeTab(ref: TabRef, at: number, view?: DocView): LearnTab {
-  const isStructure = ref.kind === 'outline'
   // 视图只住在页签上（LearnTab.view），不进 ref、不进身份：同一份文档永远只有一枚页签，
   // 阅读/编辑是页面内的两种模式（见 types/tabs 的 view 注释）
   const v = view === 'source' || view === 'preview' ? view : undefined
@@ -108,7 +106,6 @@ export function makeTab(ref: TabRef, at: number, view?: DocView): LearnTab {
     id: tabKey(ref),
     ref,
     ...(v ? { view: v } : {}),
-    ...(isStructure ? { pinned: true } : {}),
     createdAt: at,
   }
 }
