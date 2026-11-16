@@ -192,7 +192,13 @@ function applySearchResult(
 /**
  * 允许页面处于浏览模式（只读阅读态）下使用 Vim 进行光标漫游、选区扩选与复制等只读操作。
  */
-export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowseVimParams): void {
+export function useBrowseVim({ getLatest: rawGetLatest, onToast: rawOnToast, nextTab: rawNextTab, prevTab: rawPrevTab }: UseBrowseVimParams): void {
+  const paramsRef = useRef({ getLatest: rawGetLatest, onToast: rawOnToast, nextTab: rawNextTab, prevTab: rawPrevTab })
+  paramsRef.current = { getLatest: rawGetLatest, onToast: rawOnToast, nextTab: rawNextTab, prevTab: rawPrevTab }
+  const getLatest = () => paramsRef.current.getLatest()
+  const onToast = (msg: string) => paramsRef.current.onToast?.(msg)
+  const nextTab = () => paramsRef.current.nextTab?.()
+  const prevTab = () => paramsRef.current.prevTab?.()
   const pendingPrefix = useRef<{ key: string; time: number } | null>(null)
   const isVisualModeRef = useRef<boolean>(false)
   const isComposingRef = useRef<boolean>(false)
@@ -776,9 +782,8 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
       window.removeEventListener('scroll', onScroll, { capture: true })
       document.removeEventListener('selectionchange', onSelectionChange)
       setBrowseSearchHandler(null)
-      browseVimSearch.clear()
       hideAnnotationPopup()
       smoothCursor.destroy()
     }
-  }, [getLatest, onToast, nextTab, prevTab])
+  }, [])
 }

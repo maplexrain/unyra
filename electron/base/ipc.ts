@@ -67,8 +67,8 @@ export function registerBaseIpc(): void {
     }
     return res
   })
-  ipcMain.handle('base:files:list', (_e, p: unknown) => baseFileList(p))
-  ipcMain.handle('base:files:stat', (_e, p: unknown) => baseFileStat(p))
+  ipcMain.handle('base:files:list', (_e, p: unknown, opts?: unknown) => baseFileList(p, opts as { trusted?: boolean }))
+  ipcMain.handle('base:files:stat', (_e, p: unknown, opts?: unknown) => baseFileStat(p, opts as { trusted?: boolean }))
   ipcMain.handle('base:files:mkdir', (_e, p: unknown) => baseFileMkdir(p))
   ipcMain.handle('base:files:copy', (_e, from: unknown, to: unknown, opts: unknown) =>
     baseFileCopy(from, to, opts as { overwrite?: boolean }),

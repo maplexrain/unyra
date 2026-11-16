@@ -3,6 +3,7 @@
  * 注册顺序与原来一致；通道名与 preload 暴露的形状是一对（见 electron/preload.ts）。
  */
 import { ipcMain } from 'electron'
+import os from 'node:os'
 import { pickAttach, readAttach } from './attach'
 import { readBinary, readImage, writeBinary, writeImage } from './binary'
 import {
@@ -34,6 +35,8 @@ export function registerStorageIpc(): void {
     defaultRoot: defaultRoot(),
     isDefault: !loadGlobal().root,
     rootRisk: dataRootRiskOf(currentRoot()),
+    cwd: process.cwd(),
+    homedir: os.homedir(),
   }))
 
   ipcMain.handle('storage:setRoot', (_e, dir: unknown) => setRoot(dir))

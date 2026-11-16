@@ -10,6 +10,7 @@ export interface BaseProcessCreateOpts {
   args?: string[]
   cwd?: string
   env?: Record<string, string>
+  trusted?: boolean
 }
 
 export interface BaseProcessInfo {
@@ -89,6 +90,7 @@ export interface BaseProcessRunOpts {
   timeoutMs?: number
   /** 执行完成后是否自动删除/清理任务记录，默认 true */
   cleanup?: boolean
+  trusted?: boolean
 }
 
 export type BaseProcessRunResult =

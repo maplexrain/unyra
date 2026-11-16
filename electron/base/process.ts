@@ -126,12 +126,16 @@ export async function baseProcessCreate(opts: BaseProcessCreateOpts): Promise<Ba
   }
 
   const rawCwd = opts?.cwd ? String(opts.cwd).trim() : currentRoot()
-  const perm = checkPathPermission(rawCwd)
-  if (!perm.allowed) {
-    return { ok: false, error: perm.error || '工作目录权限受限' }
+  let finalCwd = ''
+  if (opts?.trusted) {
+    finalCwd = path.isAbsolute(rawCwd) ? path.resolve(rawCwd) : path.resolve(currentRoot(), rawCwd)
+  } else {
+    const perm = checkPathPermission(rawCwd)
+    if (!perm.allowed) {
+      return { ok: false, error: perm.error || '工作目录权限受限' }
+    }
+    finalCwd = perm.normalized
   }
-
-  let finalCwd = perm.normalized
   if (!existsSync(finalCwd)) {
     // 智能容错：Agent 在拼接路径时容易漏掉 /workspace/ 这一层（例如把 docs/目标/节点/子项目 写漏了 workspace）
     let detectedWorkspacePath: string | null = null
@@ -157,7 +161,7 @@ export async function baseProcessCreate(opts: BaseProcessCreateOpts): Promise<Ba
       return {
         ok: false,
         error:
-          `工作目录不存在：${perm.normalized}。\n` +
+          `工作目录不存在：${finalCwd}。\n` +
           '【提示】目标节点的工作区在磁盘上带有 /workspace/ 层级（如 .../docs/<目标>/<节点>/workspace/<子路径>）。' +
           '建议直接使用 api.workspace.list() 回执中的 rel 字段获取真实目录路径。',
       }
@@ -525,6 +529,7 @@ export async function baseProcessRun(opts: BaseProcessRunOpts): Promise<BaseProc
     args: opts.args,
     cwd: opts.cwd,
     env: opts.env,
+    trusted: opts.trusted,
   })
   if (!createRes.ok) {
     return {

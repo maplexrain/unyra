@@ -775,10 +775,10 @@ const api = {
       ipcRenderer.invoke('base:files:write', p, content, opts),
     edit: (p: string, opts?: BaseFileEditOpts): Promise<BaseFileEditResult> =>
       ipcRenderer.invoke('base:files:edit', p, opts),
-    list: (p?: string): Promise<BaseFileListResult> =>
-      ipcRenderer.invoke('base:files:list', p),
-    stat: (p: string): Promise<BaseFileStatResult> =>
-      ipcRenderer.invoke('base:files:stat', p),
+    list: (p?: string, opts?: { trusted?: boolean }): Promise<BaseFileListResult> =>
+      ipcRenderer.invoke('base:files:list', p, opts),
+    stat: (p: string, opts?: { trusted?: boolean }): Promise<BaseFileStatResult> =>
+      ipcRenderer.invoke('base:files:stat', p, opts),
     mkdir: (p: string): Promise<BaseFileOpResult> =>
       ipcRenderer.invoke('base:files:mkdir', p),
     copy: (from: string, to: string, opts?: { overwrite?: boolean }): Promise<BaseFileOpResult> =>

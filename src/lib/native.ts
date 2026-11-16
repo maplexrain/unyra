@@ -515,8 +515,8 @@ export interface NativeBridge {
     read(path: string, opts?: { encoding?: 'utf8' | 'base64' | 'binary'; maxBytes?: number; offset?: number }): Promise<BaseFileReadResult>
     write(path: string, content: string, opts?: { encoding?: 'utf8' | 'base64'; overwrite?: boolean }): Promise<BaseFileWriteResult>
     edit(path: string, opts?: BaseFileEditOpts): Promise<BaseFileEditResult>
-    list(path?: string): Promise<BaseFileListResult>
-    stat(path: string): Promise<BaseFileStatResult>
+    list(path?: string, opts?: { trusted?: boolean }): Promise<BaseFileListResult>
+    stat(path: string, opts?: { trusted?: boolean }): Promise<BaseFileStatResult>
     mkdir(path: string): Promise<BaseFileOpResult>
     copy(from: string, to: string, opts?: { overwrite?: boolean }): Promise<BaseFileOpResult>
     move(from: string, to: string): Promise<BaseFileOpResult>
@@ -549,8 +549,8 @@ export interface NativeBridge {
       read(path: string, opts?: { encoding?: 'utf8' | 'base64' | 'binary'; maxBytes?: number; offset?: number }): Promise<BaseFileReadResult>
       write(path: string, content: string, opts?: { encoding?: 'utf8' | 'base64'; overwrite?: boolean }): Promise<BaseFileWriteResult>
       edit(path: string, opts?: BaseFileEditOpts): Promise<BaseFileEditResult>
-      list(path?: string): Promise<BaseFileListResult>
-      stat(path: string): Promise<BaseFileStatResult>
+      list(path?: string, opts?: { trusted?: boolean }): Promise<BaseFileListResult>
+      stat(path: string, opts?: { trusted?: boolean }): Promise<BaseFileStatResult>
       mkdir(path: string): Promise<BaseFileOpResult>
       copy(from: string, to: string, opts?: { overwrite?: boolean }): Promise<BaseFileOpResult>
       move(from: string, to: string): Promise<BaseFileOpResult>

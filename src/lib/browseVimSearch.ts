@@ -173,8 +173,13 @@ export function createRangeFromSpan(chunks: TextChunk[], span: MatchSpan): Range
     }
   }
 
-  // 边界保护：若尾部恰好位于末尾
-  if (startNode && !endNode && span.end >= chunks[chunks.length - 1].end) {
+  // 边界保护：若首部未命中但有 chunks，兜底到首个 chunk
+  if (!startNode && chunks.length > 0) {
+    startNode = chunks[0].node
+    startOffset = 0
+  }
+  // 边界保护：若尾部未命中或跨越至末尾，兜底至末尾 chunk
+  if (startNode && !endNode && chunks.length > 0) {
     const last = chunks[chunks.length - 1]
     endNode = last.node
     endOffset = last.node.textContent?.length || 0
@@ -184,8 +189,10 @@ export function createRangeFromSpan(chunks: TextChunk[], span: MatchSpan): Range
 
   try {
     const range = document.createRange()
-    range.setStart(startNode, Math.min(startOffset, startNode.textContent?.length || 0))
-    range.setEnd(endNode, Math.min(endOffset, endNode.textContent?.length || 0))
+    const maxStart = startNode.textContent?.length || 0
+    const maxEnd = endNode.textContent?.length || 0
+    range.setStart(startNode, Math.min(Math.max(0, startOffset), maxStart))
+    range.setEnd(endNode, Math.min(Math.max(0, endOffset), maxEnd))
     return range
   } catch {
     return null
@@ -247,8 +254,17 @@ class BrowseVimSearchState {
   }
 
   private step(direction: number, fallbackRoot?: HTMLElement): SearchResult {
-    if ((this.spans.length === 0 || !this.root || !this.root.isConnected) && fallbackRoot && this.pattern) {
-      this.search(fallbackRoot, this.pattern, this.backward)
+    const isChunksStale = this.chunks.length === 0 || !this.chunks[0]?.node?.isConnected
+    const isRootStale = !this.root || !this.root.isConnected
+    if ((isChunksStale || isRootStale) && (fallbackRoot || this.root)) {
+      const targetRoot = (this.root && this.root.isConnected) ? this.root : fallbackRoot
+      if (targetRoot && this.pattern) {
+        const curPattern = this.pattern
+        const curBackward = this.backward
+        const curIdx = this.currentIndex
+        this.search(targetRoot, curPattern, curBackward)
+        this.currentIndex = curIdx
+      }
     }
     if (this.spans.length === 0 || !this.root) {
       return { total: 0, index: -1, range: null, pattern: this.pattern }
