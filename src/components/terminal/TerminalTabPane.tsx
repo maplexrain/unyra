@@ -5,25 +5,33 @@
  * 1. 真实系统工作路径：接入真实物理 CWD，支持 cd 智能跳转、相对路径与 Windows 盘符切换（D:、E:）；
  * 2. 真实 Tab 目录与文件补全：按下 Tab 动态扫描当前物理工作目录并就地完成文件名补全与循环轮转；
  * 3. 彻底清洗控制字符：剔除 OSC 标题、光标定位等魔法字符，完美渲染 ANSI 256/TrueColor 终端流；
- * 4. 真实原生交互契约：Ctrl+C 中断/选区复制、Ctrl+L 清屏、Up/Down 历史翻滚、行内光标精准联动。
+ * 4. 真实原生交互契约：Ctrl+C 中断/选区复制、Ctrl+L 清屏、Up/Down 历史翻滚、行内光标精准联动；
+ * 5. 毫秒级双工流式输出：弃绝阻塞死等，实现逐块实时流式打印（Streaming Output），实时追踪 PID 与 Ctrl+C 任务树级中断。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { cleanTerminalText, renderAnsiText } from './ansi'
+import { renderAnsiText } from './ansi'
 import {
-  computeTabCompletions,
   formatCdError,
   isWindowsPlatform,
   normalizeTerminalPath,
   resolveCdTarget,
 } from './terminalPath'
 import { TerminalHeader, type ShellKind } from './TerminalHeader'
+import {
+  appendTerminalOutput,
+  getNativeFiles,
+  getNativeProcess,
+  startStreamingCommand,
+  type StreamingExecutionHandle,
+} from './terminalRunner'
+import { useTerminalKeyNav } from './useTerminalKeyNav'
 
 export interface TerminalTabPaneProps {
   onToast?: (msg: string) => void
 }
 
-interface TerminalSession {
+export interface TerminalSession {
   id: string
   title: string
   shell: ShellKind
@@ -39,6 +47,7 @@ interface TerminalSession {
 export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPaneProps) {
   const isWindows = isWindowsPlatform()
   const homeDirRef = useRef<string>('')
+  const handlesRef = useRef<Map<string, StreamingExecutionHandle>>(new Map())
 
   // 初始终端会话
   const [sessions, setSessions] = useState<TerminalSession[]>(() => {
@@ -63,16 +72,6 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
   })
 
   const [activeSessionId, setActiveSessionId] = useState<string>('term_1')
-
-  // Tab 补全循环状态跟踪
-  const tabCycleRef = useRef<{
-    tokenStart: number
-    tokenEnd: number
-    candidates: string[]
-    candidateIdx: number
-    originalInput: string
-  } | null>(null)
-
   const outputScrollRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
@@ -101,24 +100,14 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
     }
   }, [isWindows])
 
-  // 获取原生进程能力桥
-  const getNativeProcess = useCallback(() => {
-    if (typeof window === 'undefined') return null
-    const win = window as unknown as {
-      unyraNative?: { process?: any }
-      mojiNative?: { process?: any }
+  // 组件卸载时释放所有未完成的执行句柄
+  useEffect(() => {
+    return () => {
+      for (const h of handlesRef.current.values()) {
+        void h.abort()
+      }
+      handlesRef.current.clear()
     }
-    return win.unyraNative?.process ?? win.mojiNative?.process ?? null
-  }, [])
-
-  // 获取原生文件系统能力桥
-  const getNativeFiles = useCallback(() => {
-    if (typeof window === 'undefined') return null
-    const win = window as unknown as {
-      unyraNative?: { files?: any; base?: { files?: any } }
-      mojiNative?: { files?: any }
-    }
-    return win.unyraNative?.files ?? win.unyraNative?.base?.files ?? win.mojiNative?.files ?? null
   }, [])
 
   // 自动滚至最新输出
@@ -130,7 +119,7 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
 
   useEffect(() => {
     scrollToBottom()
-  }, [activeSession?.lines, activeSession?.inputVal, scrollToBottom])
+  }, [activeSession?.lines, activeSession?.inputVal, activeSession?.runningPid, scrollToBottom])
 
   // 终端全屏任意点击即聚焦虚拟输入框
   const focusTerminal = () => {
@@ -172,10 +161,17 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
   // 关闭指定终端实例
   const closeSession = (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation()
+    const handle = handlesRef.current.get(id)
+    if (handle) {
+      void handle.abort()
+      handlesRef.current.delete(id)
+    }
     if (sessions.length <= 1) {
       // 最后一个终端：清屏重置
       setSessions((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, lines: [], inputVal: '', cursorPos: 0 } : s)),
+        prev.map((s) =>
+          s.id === id ? { ...s, lines: [], inputVal: '', cursorPos: 0, runningPid: null } : s,
+        ),
       )
       return
     }
@@ -202,22 +198,38 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
   // 终止正在运行的命令或清空当前输入 (Ctrl+C)
   const handleInterrupt = async () => {
     if (!activeSession) return
-    tabCycleRef.current = null
-    const pid = activeSession.runningPid
-    if (pid) {
-      const np = getNativeProcess()
-      if (np?.stop) {
-        try {
-          await np.stop(pid, { force: true })
-        } catch {}
-      }
+    keyNav.resetTabCycle()
+    const targetSessionId = activeSession.id
+    const handle = handlesRef.current.get(targetSessionId)
+
+    if (handle) {
+      handlesRef.current.delete(targetSessionId)
+      await handle.abort()
       setSessions((prev) =>
         prev.map((s) =>
-          s.id === activeSession.id
+          s.id === targetSessionId
             ? {
                 ...s,
                 runningPid: null,
-                lines: [...s.lines, '^C'],
+                lines: appendTerminalOutput(s.lines, '^C\n'),
+                inputVal: '',
+                cursorPos: 0,
+              }
+            : s,
+        ),
+      )
+    } else if (activeSession.runningPid) {
+      const np = getNativeProcess()
+      try {
+        await np?.stop(activeSession.runningPid, { force: true })
+      } catch {}
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === targetSessionId
+            ? {
+                ...s,
+                runningPid: null,
+                lines: appendTerminalOutput(s.lines, '^C\n'),
                 inputVal: '',
                 cursorPos: 0,
               }
@@ -228,10 +240,10 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
       // 原生终端直觉：无活动任务时按 Ctrl+C，打印 ^C 并换新行给出新 Prompt
       setSessions((prev) =>
         prev.map((s) =>
-          s.id === activeSession.id
+          s.id === targetSessionId
             ? {
                 ...s,
-                lines: [...s.lines, `${getPromptString(s)}${s.inputVal}^C`],
+                lines: [...s.lines, `${getPromptString(s)}${s.inputVal}^C\n`],
                 inputVal: '',
                 cursorPos: 0,
               }
@@ -239,24 +251,23 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
         ),
       )
     }
+    setTimeout(() => inputRef.current?.focus(), 10)
   }
 
   // 执行命令
   const executeCommand = async (rawCmd: string) => {
     if (!activeSession) return
-    tabCycleRef.current = null
+    keyNav.resetTabCycle()
     const cmd = rawCmd
     const trimmed = cmd.trim()
     const prompt = getPromptString(activeSession)
+    const targetSessionId = activeSession.id
 
-    // 追加命令至当前屏幕流
-    const commandLine = `${prompt}${cmd}`
-
-    // 内置命令支持：clear / cls / Ctrl+L
+    // 内置命令支持：clear / cls
     if (trimmed === 'clear' || trimmed === 'cls') {
       setSessions((prev) =>
         prev.map((s) =>
-          s.id === activeSession.id
+          s.id === targetSessionId
             ? {
                 ...s,
                 lines: [],
@@ -274,10 +285,10 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
     if (!trimmed) {
       setSessions((prev) =>
         prev.map((s) =>
-          s.id === activeSession.id
+          s.id === targetSessionId
             ? {
                 ...s,
-                lines: [...s.lines, commandLine],
+                lines: [...s.lines, `${prompt}\n`],
                 inputVal: '',
                 cursorPos: 0,
               }
@@ -287,10 +298,11 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
       return
     }
 
-    // 更新命令历史与清空输入
+    // 记录 Prompt 行与更新命令历史
+    const commandLine = `${prompt}${cmd}\n`
     setSessions((prev) =>
       prev.map((s) =>
-        s.id === activeSession.id
+        s.id === targetSessionId
           ? {
               ...s,
               lines: [...s.lines, commandLine],
@@ -298,7 +310,6 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
               cursorPos: 0,
               history: [...s.history, trimmed],
               historyIdx: -1,
-              runningPid: 'pending',
             }
           : s,
       ),
@@ -334,7 +345,7 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
       if (isValidDir) {
         setSessions((prev) =>
           prev.map((s) =>
-            s.id === activeSession.id
+            s.id === targetSessionId
               ? {
                   ...s,
                   cwd: targetPath,
@@ -347,10 +358,10 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
         const errText = formatCdError(targetParam, activeSession.shell)
         setSessions((prev) =>
           prev.map((s) =>
-            s.id === activeSession.id
+            s.id === targetSessionId
               ? {
                   ...s,
-                  lines: [...s.lines, errText],
+                  lines: [...s.lines, `${errText}\n`],
                   runningPid: null,
                 }
               : s,
@@ -360,74 +371,62 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
       return
     }
 
-    // 调用底层原生进程执行
-    const np = getNativeProcess()
-    if (!np || !np.run) {
+    // 启动原生流式执行
+    const handle = await startStreamingCommand({
+      shell: activeSession.shell,
+      cmd: trimmed,
+      cwd: activeSession.cwd,
+      onData: (chunk) => {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === targetSessionId
+              ? {
+                  ...s,
+                  lines: appendTerminalOutput(s.lines, chunk),
+                }
+              : s,
+          ),
+        )
+      },
+      onExit: (_code, _signal) => {
+        handlesRef.current.delete(targetSessionId)
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === targetSessionId
+              ? {
+                  ...s,
+                  runningPid: null,
+                }
+              : s,
+          ),
+        )
+        setTimeout(() => inputRef.current?.focus(), 10)
+      },
+      onError: (errMsg) => {
+        handlesRef.current.delete(targetSessionId)
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === targetSessionId
+              ? {
+                  ...s,
+                  runningPid: null,
+                  lines: appendTerminalOutput(s.lines, `\n[Error] ${errMsg}\n`),
+                }
+              : s,
+          ),
+        )
+        setTimeout(() => inputRef.current?.focus(), 10)
+      },
+    })
+
+    if (handle) {
+      handlesRef.current.set(targetSessionId, handle)
       setSessions((prev) =>
         prev.map((s) =>
-          s.id === activeSession.id
+          s.id === targetSessionId
             ? {
                 ...s,
-                runningPid: null,
-                lines: [
-                  ...s.lines,
-                  '[Web 演示模式] 终端原生系统进程执行需要运行在 Electron 桌面环境。',
-                ],
-              }
-            : s,
-        ),
-      )
-      return
-    }
-
-    try {
-      let command = 'powershell.exe'
-      let args: string[] = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', trimmed]
-
-      if (activeSession.shell === 'cmd') {
-        command = 'cmd.exe'
-        args = ['/d', '/s', '/c', trimmed]
-      } else if (activeSession.shell === 'bash') {
-        command = 'bash'
-        args = ['-c', trimmed]
-      }
-
-      const res = await np.run({
-        command,
-        args,
-        cwd: activeSession.cwd || undefined,
-        timeoutMs: 180000,
-        trusted: true,
-      })
-
-      const rawStdout = cleanTerminalText(res.stdout || '')
-      const rawStderr = cleanTerminalText(res.stderr || '')
-      const outText = [rawStdout, rawStderr, res.error ? `[Error] ${res.error}` : '']
-        .filter(Boolean)
-        .join('\n')
-
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeSession.id
-            ? {
-                ...s,
-                runningPid: null,
-                lines: outText ? [...s.lines, outText] : s.lines,
-              }
-            : s,
-        ),
-      )
-    } catch (err) {
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeSession.id
-            ? {
-                ...s,
-                runningPid: null,
-                lines: [
-                  ...s.lines,
-                  `[Process error]: ${err instanceof Error ? err.message : String(err)}`,
-                ],
+                runningPid: handle.processId,
               }
             : s,
         ),
@@ -435,188 +434,18 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
     }
   }
 
-  // 键盘与输入管理（含原生 Tab 补全与箭头光标跟随）
-  const handleKeyDown = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Tab: 原生文件名与目录自动补全
-    if (e.key === 'Tab') {
-      e.preventDefault()
-      e.stopPropagation()
-
-      // 若处于轮换补全状态中，继续向后/向前轮换候选
-      if (tabCycleRef.current && tabCycleRef.current.candidates.length > 1) {
-        const state = tabCycleRef.current
-        const delta = e.shiftKey ? -1 : 1
-        const nextIdx = (state.candidateIdx + delta + state.candidates.length) % state.candidates.length
-        const cand = state.candidates[nextIdx]
-        const newInput = state.originalInput.slice(0, state.tokenStart) + cand + state.originalInput.slice(state.tokenEnd)
-        const nextCursor = state.tokenStart + cand.length
-        state.candidateIdx = nextIdx
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === activeSession.id ? { ...s, inputVal: newInput, cursorPos: nextCursor } : s,
-          ),
-        )
-        return
-      }
-
-      // 首次触发 Tab 补全
-      const comp = await computeTabCompletions(
-        activeSession.inputVal,
-        activeSession.cursorPos,
-        activeSession.cwd,
-        isWindows,
-      )
-
-      if (comp && comp.candidates.length > 0) {
-        const firstCand = comp.candidates[0]
-        const newInput =
-          activeSession.inputVal.slice(0, comp.tokenStart) +
-          firstCand +
-          activeSession.inputVal.slice(comp.tokenEnd)
-        const nextCursor = comp.tokenStart + firstCand.length
-        tabCycleRef.current = {
-          tokenStart: comp.tokenStart,
-          tokenEnd: comp.tokenEnd,
-          candidates: comp.candidates,
-          candidateIdx: 0,
-          originalInput: activeSession.inputVal,
-        }
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === activeSession.id ? { ...s, inputVal: newInput, cursorPos: nextCursor } : s,
-          ),
-        )
-      }
-      return
-    }
-
-    // 非 Tab 键清空当前补全轮换状态
-    tabCycleRef.current = null
-
-    // Ctrl+C: 如果页面有文字选区则放行复制；否则触发终端中断
-    if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
-      const sel = window.getSelection()
-      if (sel && !sel.isCollapsed) {
-        return
-      }
-      e.preventDefault()
-      void handleInterrupt()
-      return
-    }
-
-    // Ctrl+L: 清屏
-    if (e.ctrlKey && (e.key === 'l' || e.key === 'L')) {
-      e.preventDefault()
+  // 键盘与输入联动 Hook
+  const keyNav = useTerminalKeyNav({
+    activeSession,
+    setSessions,
+    isWindows,
+    onExecute: (cmd) => void executeCommand(cmd),
+    onInterrupt: () => void handleInterrupt(),
+    onClearScreen: () =>
       setSessions((prev) =>
         prev.map((s) => (s.id === activeSession.id ? { ...s, lines: [] } : s)),
-      )
-      return
-    }
-
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      void executeCommand(activeSession.inputVal)
-      return
-    }
-
-    // Up: 历史向前
-    if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      if (activeSession.history.length === 0) return
-      const nextIdx =
-        activeSession.historyIdx < 0
-          ? activeSession.history.length - 1
-          : Math.max(0, activeSession.historyIdx - 1)
-      const val = activeSession.history[nextIdx] || ''
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeSession.id
-            ? { ...s, historyIdx: nextIdx, inputVal: val, cursorPos: val.length }
-            : s,
-        ),
-      )
-      return
-    }
-
-    // Down: 历史向后
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      if (activeSession.history.length === 0 || activeSession.historyIdx < 0) return
-      const nextIdx = activeSession.historyIdx + 1
-      if (nextIdx >= activeSession.history.length) {
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === activeSession.id
-              ? { ...s, historyIdx: -1, inputVal: '', cursorPos: 0 }
-              : s,
-          ),
-        )
-      } else {
-        const val = activeSession.history[nextIdx] || ''
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === activeSession.id
-              ? { ...s, historyIdx: nextIdx, inputVal: val, cursorPos: val.length }
-              : s,
-          ),
-        )
-      }
-      return
-    }
-
-    // 左右键与 Home/End 实时同步行内光标
-    if (e.key === 'ArrowLeft') {
-      const nextPos = Math.max(0, activeSession.cursorPos - 1)
-      setSessions((prev) =>
-        prev.map((s) => (s.id === activeSession.id ? { ...s, cursorPos: nextPos } : s)),
-      )
-      return
-    }
-
-    if (e.key === 'ArrowRight') {
-      const nextPos = Math.min(activeSession.inputVal.length, activeSession.cursorPos + 1)
-      setSessions((prev) =>
-        prev.map((s) => (s.id === activeSession.id ? { ...s, cursorPos: nextPos } : s)),
-      )
-      return
-    }
-
-    if (e.key === 'Home') {
-      setSessions((prev) =>
-        prev.map((s) => (s.id === activeSession.id ? { ...s, cursorPos: 0 } : s)),
-      )
-      return
-    }
-
-    if (e.key === 'End') {
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeSession.id ? { ...s, cursorPos: s.inputVal.length } : s,
-        ),
-      )
-      return
-    }
-  }
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    tabCycleRef.current = null
-    const val = e.target.value
-    const pos = e.target.selectionStart
-    setSessions((prev) =>
-      prev.map((s) =>
-        s.id === activeSession.id ? { ...s, inputVal: val, cursorPos: pos } : s,
       ),
-    )
-  }
-
-  const handleSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
-    const target = e.currentTarget
-    setSessions((prev) =>
-      prev.map((s) =>
-        s.id === activeSession.id ? { ...s, cursorPos: target.selectionStart } : s,
-      ),
-    )
-  }
+  })
 
   return (
     <div
@@ -654,27 +483,36 @@ export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPanePr
           </div>
         ))}
 
-        {/* 当前活动输入行（与流输出完全无缝连缀） */}
-        <div className="flex items-start whitespace-pre-wrap break-all font-mono">
-          <span className="text-[#38bdf8] font-medium shrink-0">
-            {getPromptString(activeSession)}
-          </span>
-          <span className="text-white relative flex-1 min-w-[20px]">
-            {activeSession.inputVal.slice(0, activeSession.cursorPos)}
-            {/* 原生终端闪烁光标 */}
-            <span className="inline-block w-2 h-4.5 bg-[#aeafad] text-[#181818] animate-pulse align-middle" />
-            {activeSession.inputVal.slice(activeSession.cursorPos)}
-          </span>
-        </div>
+        {/* 屏幕活动状态：运行中显示原生终端光标；空闲时显示 Prompt 与虚拟输入 */}
+        {activeSession.runningPid ? (
+          <div className="flex items-center text-zinc-400 font-mono mt-1 select-none">
+            <span className="inline-block w-2 h-4.5 bg-[#aeafad] text-[#181818] animate-pulse mr-2" />
+            <span className="text-xs text-zinc-500">
+              {activeSession.title} 正在运行 · 按 Ctrl+C 中断
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-start whitespace-pre-wrap break-all font-mono">
+            <span className="text-[#38bdf8] font-medium shrink-0">
+              {getPromptString(activeSession)}
+            </span>
+            <span className="text-white relative flex-1 min-w-[20px]">
+              {activeSession.inputVal.slice(0, activeSession.cursorPos)}
+              {/* 原生终端闪烁光标 */}
+              <span className="inline-block w-2 h-4.5 bg-[#aeafad] text-[#181818] animate-pulse align-middle" />
+              {activeSession.inputVal.slice(activeSession.cursorPos)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* 隐藏的透明按键捕获区 */}
       <textarea
         ref={inputRef}
         value={activeSession.inputVal}
-        onChange={handleInputChange}
-        onKeyDown={handleKeyDown}
-        onSelect={handleSelect}
+        onChange={keyNav.handleInputChange}
+        onKeyDown={keyNav.handleKeyDown}
+        onSelect={keyNav.handleSelect}
         className="absolute -top-[9999px] -left-[9999px] opacity-0 h-0 w-0 pointer-events-none"
         autoFocus
         spellCheck={false}

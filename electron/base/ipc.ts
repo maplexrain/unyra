@@ -25,6 +25,8 @@ import {
   baseProcessStop,
   baseProcessWait,
   cleanupAllProcesses,
+  onProcessOutput,
+  onProcessExit,
 } from './process'
 import { syncAllowedDirs } from './permissions'
 import { projectFsRun } from './projectFiles'
@@ -83,6 +85,22 @@ export function registerBaseIpc(): void {
   })
 
   // base.process.* 通道
+  onProcessOutput((processId, text, stream) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('base:process:data', { process_id: processId, text, stream })
+      }
+    }
+  })
+
+  onProcessExit((processId, exitCode, signal) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('base:process:exit', { process_id: processId, exitCode, signal })
+      }
+    }
+  })
+
   ipcMain.handle('base:process:create', (_e, opts: unknown) =>
     baseProcessCreate(opts as BaseProcessCreateOpts),
   )

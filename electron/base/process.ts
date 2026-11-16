@@ -56,6 +56,23 @@ interface ManagedProcess {
 
 const processes = new Map<string, ManagedProcess>()
 
+type ProcessOutputListener = (processId: string, text: string, stream: 'stdout' | 'stderr') => void
+type ProcessExitListener = (processId: string, exitCode: number | null, signal: string | null) => void
+
+const outputListeners = new Set<ProcessOutputListener>()
+const exitListeners = new Set<ProcessExitListener>()
+
+export function onProcessOutput(listener: ProcessOutputListener): () => void {
+  outputListeners.add(listener)
+  return () => outputListeners.delete(listener)
+}
+
+export function onProcessExit(listener: ProcessExitListener): () => void {
+  exitListeners.add(listener)
+  return () => exitListeners.delete(listener)
+}
+
+
 /**
  * 杀死进程及其子进程树（跨平台防孤儿进程）
  */
@@ -278,21 +295,28 @@ export async function baseProcessStart(processId: string): Promise<BaseProcessSt
     }
 
     child.stdout?.on('data', (chunk) => {
-      proc.stdout += chunk.toString()
+      const text = chunk.toString()
+      proc.stdout += text
       notifyWaiters('match')
+      outputListeners.forEach((l) => l(proc.process_id, text, 'stdout'))
     })
 
     child.stderr?.on('data', (chunk) => {
-      proc.stderr += chunk.toString()
+      const text = chunk.toString()
+      proc.stderr += text
       notifyWaiters('match')
+      outputListeners.forEach((l) => l(proc.process_id, text, 'stderr'))
     })
 
     child.on('error', (err) => {
-      proc.stderr += `\n[spawn error] ${err.message}`
+      const text = `\n[spawn error] ${err.message}`
+      proc.stderr += text
       proc.running = false
       proc.exited = true
       proc.exitTime = Date.now()
       notifyWaiters('exit')
+      outputListeners.forEach((l) => l(proc.process_id, text, 'stderr'))
+      exitListeners.forEach((l) => l(proc.process_id, 1, 'error'))
     })
 
     child.on('close', (code, signal) => {
@@ -302,6 +326,7 @@ export async function baseProcessStart(processId: string): Promise<BaseProcessSt
       proc.signal = signal
       proc.exitTime = Date.now()
       notifyWaiters('exit')
+      exitListeners.forEach((l) => l(proc.process_id, code, signal))
     })
 
     return { ok: true, process_id: processId, pid: child.pid || 0 }

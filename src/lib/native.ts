@@ -534,6 +534,8 @@ export interface NativeBridge {
     list(): Promise<BaseProcessListResult>
     get(process_id: string): Promise<BaseProcessGetResult>
     delete(process_id: string): Promise<BaseProcessDeleteResult>
+    onData?(cb: (payload: { process_id: string; text: string; stream: 'stdout' | 'stderr' }) => void): () => void
+    onExit?(cb: (payload: { process_id: string; exitCode: number | null; signal: string | null }) => void): () => void
   }
   syncPermissions(allowedDirs: string[]): Promise<{ ok: boolean }>
   /**
@@ -568,6 +570,8 @@ export interface NativeBridge {
       list(): Promise<BaseProcessListResult>
       get(process_id: string): Promise<BaseProcessGetResult>
       delete(process_id: string): Promise<BaseProcessDeleteResult>
+      onData?(cb: (payload: { process_id: string; text: string; stream: 'stdout' | 'stderr' }) => void): () => void
+      onExit?(cb: (payload: { process_id: string; exitCode: number | null; signal: string | null }) => void): () => void
     }
     syncPermissions(allowedDirs: string[]): Promise<{ ok: boolean }>
   }

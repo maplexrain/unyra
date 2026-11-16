@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   cleanTerminalText,
 } from '../src/components/terminal/ansi'
@@ -7,6 +7,11 @@ import {
   normalizeTerminalPath,
   resolveCdTarget,
 } from '../src/components/terminal/terminalPath'
+import {
+  appendTerminalOutput,
+  buildProcessArgs,
+  startStreamingCommand,
+} from '../src/components/terminal/terminalRunner'
 
 describe('terminalPath and ansi utils', () => {
   it('cleanTerminalText cleans OSC title, cursor codes and carriage returns', () => {
@@ -64,5 +69,105 @@ describe('terminalPath and ansi utils', () => {
     expect(formatCdError('non_exist', 'powershell')).toContain('Set-Location')
     expect(formatCdError('non_exist', 'cmd')).toContain('系统找不到指定的路径')
     expect(formatCdError('non_exist', 'bash')).toContain('bash: cd')
+  })
+
+  it('buildProcessArgs packs arguments correctly for different shells', () => {
+    const pwsh = buildProcessArgs('powershell', 'npm run dev')
+    expect(pwsh.command).toBe('powershell.exe')
+    expect(pwsh.args).toEqual(['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', 'npm run dev'])
+
+    const cmd = buildProcessArgs('cmd', 'dir /b')
+    expect(cmd.command).toBe('cmd.exe')
+    expect(cmd.args).toEqual(['/d', '/s', '/c', 'dir /b'])
+
+    const bash = buildProcessArgs('bash', 'ls -la')
+    expect(bash.command).toBe('bash')
+    expect(bash.args).toEqual(['-c', 'ls -la'])
+  })
+
+  it('appendTerminalOutput merges non-newline chunks and respects max lines', () => {
+    // 初始空行追加
+    let lines = appendTerminalOutput([], 'hello ')
+    expect(lines).toEqual(['hello '])
+
+    // 无换行连续追加合并到同一行（流式打字与进度条刷新）
+    lines = appendTerminalOutput(lines, 'world\n')
+    expect(lines).toEqual(['hello world\n'])
+
+    // 有换行后追加开启新一行
+    lines = appendTerminalOutput(lines, 'line 2\n')
+    expect(lines).toEqual(['hello world\n', 'line 2\n'])
+  })
+
+  it('startStreamingCommand triggers onData and onExit hooks in real-time', async () => {
+    let capturedDataCallback: ((payload: any) => void) | null = null
+    let capturedExitCallback: ((payload: any) => void) | null = null
+
+    const mockProcess = {
+      create: vi.fn().mockResolvedValue({ ok: true, process_id: 'proc_123' }),
+      start: vi.fn().mockResolvedValue({ ok: true }),
+      status: vi.fn().mockResolvedValue({ ok: true, status: { exited: false } }),
+      delete: vi.fn().mockResolvedValue({ ok: true }),
+      stop: vi.fn().mockResolvedValue({ ok: true }),
+      onData: vi.fn().mockImplementation((cb) => {
+        capturedDataCallback = cb
+        return () => {}
+      }),
+      onExit: vi.fn().mockImplementation((cb) => {
+        capturedExitCallback = cb
+        return () => {}
+      }),
+    }
+
+    const win = (typeof window !== 'undefined' ? window : globalThis) as any
+    const originalUnyra = win.unyraNative
+    win.unyraNative = { process: mockProcess }
+
+    try {
+      const receivedChunks: string[] = []
+      let exitCode: number | null = null
+
+      const handle = await startStreamingCommand({
+        shell: 'powershell',
+        cmd: 'npm run test',
+        cwd: 'E:\\learn-ai\\moji-notes',
+        onData: (chunk) => receivedChunks.push(chunk),
+        onExit: (code) => {
+          exitCode = code
+        },
+        onError: () => {},
+      })
+
+      expect(handle).not.toBeNull()
+      expect(handle?.processId).toBe('proc_123')
+      expect(mockProcess.create).toHaveBeenCalled()
+      expect(mockProcess.start).toHaveBeenCalledWith('proc_123')
+
+      // 模拟主进程推送流式输出
+      const dataCb = capturedDataCallback as any
+      dataCb?.({
+        process_id: 'proc_123',
+        text: 'Running tests...\n',
+        stream: 'stdout',
+      })
+      dataCb?.({
+        process_id: 'proc_123',
+        text: '10 passed\n',
+        stream: 'stdout',
+      })
+
+      expect(receivedChunks).toEqual(['Running tests...\n', '10 passed\n'])
+
+      // 模拟进程退出
+      const exitCb = capturedExitCallback as any
+      exitCb?.({
+        process_id: 'proc_123',
+        exitCode: 0,
+        signal: null,
+      })
+      expect(exitCode).toBe(0)
+    } finally {
+      win.unyraNative = originalUnyra
+    }
   })
 })
