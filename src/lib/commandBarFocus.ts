@@ -28,6 +28,8 @@ export interface CommandBarOpenOpts {
    * Enter 时命令栏**不自己执行**，把最终文本交回给它（input: string = 执行，undefined = 取消）。
    */
   onFinish?: (input?: string) => void
+  /** 实时输入同步回调：用于增量搜索 (incsearch) 在按键时实时高亮与滚动定位 */
+  onQueryChange?: (input: string) => void
 }
 
 let opener: ((opts?: CommandBarOpenOpts) => void) | null = null
@@ -60,6 +62,29 @@ function fakeEscapeEvent(): KeyboardEvent {
   return e as unknown as KeyboardEvent
 }
 
+/** 搜索模式兼容拼音匹配：提取文档中拼音匹配到的汉字，组合成扩展正则 */
+function expandPinyinForSearch(docText: string, input: string): string {
+  const query = input.trim()
+  if (!query) return input
+  try {
+    const spans = findSearchMatches(docText, query)
+    const chineseTerms = Array.from(
+      new Set(
+        spans
+          .map((s) => docText.slice(s.start, s.end))
+          .filter((t) => /[\u4e00-\u9fa5]/.test(t))
+      )
+    )
+    if (chineseTerms.length > 0) {
+      const escaped = chineseTerms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      return '(?:' + [query, ...escaped].join('|') + ')'
+    }
+  } catch {
+    // 降级回退原始输入
+  }
+  return input
+}
+
 /**
  * 给编辑器的 view 装上命令行接管桥。装过就跳过（幂等）；
  * view 上没有 vim 适配实例（没挂 vim() 扩展）也安静退出。
@@ -87,25 +112,9 @@ export function installVimPromptBridge(view: EditorView): void {
       done = true
       if (typeof input === 'string' && callback) {
         let finalInput = input
-        // 搜索模式兼容拼音匹配：提取文档中拼音匹配到的汉字，组合成扩展正则传递给 Vim
-        if ((promptMode === '/' || promptMode === '?') && input.trim()) {
-          try {
-            const docText = view.state.doc.toString()
-            const spans = findSearchMatches(docText, input)
-            const chineseTerms = Array.from(
-              new Set(
-                spans
-                  .map((s) => docText.slice(s.start, s.end))
-                  .filter((t) => /[\u4e00-\u9fa5]/.test(t))
-              )
-            )
-            if (chineseTerms.length > 0) {
-              const escaped = chineseTerms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-              finalInput = '(?:' + [input, ...escaped].join('|') + ')'
-            }
-          } catch {
-            // 降级回退原始输入
-          }
+        if (promptMode === '/' || promptMode === '?') {
+          const docText = view.state.doc.toString()
+          finalInput = expandPinyinForSearch(docText, input)
         }
 
         // 交回 vim：processCommand 执行我们注册的 Ex 命令或搜索
@@ -133,10 +142,26 @@ export function installVimPromptBridge(view: EditorView): void {
         // 同上
       }
     }
+
+    // 实时增量搜索回调：在用户输入改变时即时通知 Vim 高亮与滚动
+    const onQueryChange = (input: string): void => {
+      if (promptMode === '/' || promptMode === '?') {
+        const docText = view.state.doc.toString()
+        const expanded = expandPinyinForSearch(docText, input)
+        try {
+          const fakeEvt = { key: 'a', preventDefault() {}, stopPropagation() {} } as unknown as KeyboardEvent
+          options?.onKeyUp?.(fakeEvt, expanded, () => {})
+        } catch {
+          // 增量同步容错
+        }
+      }
+    }
+
     openGlobalCommandBar({
       mode: promptMode,
       prefill: typeof options?.value === 'string' ? options.value : '',
       onFinish: finish,
+      onQueryChange,
     })
     // 原生面板的 close 返回值在 vim 里无人使用
     return () => {}

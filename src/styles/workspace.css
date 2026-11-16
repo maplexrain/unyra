@@ -8,9 +8,13 @@
  * <mark> 会打乱渲染期的注解（了解 / 注解）与 React 的 reconciliation，下一次重渲染
  * 还会把它抹掉。Highlight 只画颜色，正文的 DOM 原样不动（见 components/learn/FindBar）。
  */
+::highlight(browse-vim-search),
+::highlight(unyra-find),
 ::highlight(moji-find) {
   background-color: color-mix(in srgb, var(--color-warn) 42%, transparent);
 }
+::highlight(browse-vim-search-active),
+::highlight(unyra-find-active),
 ::highlight(moji-find-active) {
   background-color: var(--color-seal);
   color: #fff;

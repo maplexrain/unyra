@@ -3,7 +3,7 @@ import { executeVimCommand } from '../../../lib/vimCommands'
 import { setGlobalCommandBarOpener } from '../../../lib/commandBarFocus'
 import { matchVimCommands, type VimCommandInfo } from '../../../lib/vimCommandCatalog'
 import { getOpenTargets, type VimOpenTarget } from '../../../lib/vimOpenTargets'
-import { dispatchBrowseSearch } from '../../../lib/browseVimSearch'
+import { browseVimSearch, dispatchBrowseSearch } from '../../../lib/browseVimSearch'
 import VimOpenDropdown from './VimOpenDropdown'
 import { t } from '../../../i18n'
 
@@ -29,6 +29,8 @@ export default function GlobalVimCommandBar() {
    * 取消时交回 undefined（桥那头借 vim 自己的 Esc 分支清状态）。
    */
   const finishRef = useRef<((input?: string) => void) | null>(null)
+  /** 实时输入同步通道：搜索模式下输入时实时通知 Vim/浏览模式高亮与定位 */
+  const queryChangeRef = useRef<((input: string) => void) | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   /** open 的镜像（窗口键盘监听里要用）：开着就不再响应 Shift+:，别把挂着的 vim 提示符冲掉 */
   const openRef = useRef(false)
@@ -122,6 +124,7 @@ export default function GlobalVimCommandBar() {
       setMode(m)
       setValue(raw)
       finishRef.current = opts?.onFinish ?? null
+      queryChangeRef.current = opts?.onQueryChange ?? null
       setSelected(-1)
       setOpen(true)
     })
@@ -138,19 +141,42 @@ export default function GlobalVimCommandBar() {
     }
   }, [open])
 
+  // 实时匹配 (Incremental Search)：输入改变时实时高亮与滚动定位
+  useEffect(() => {
+    if (!open) return
+    if (mode === '/' || mode === '?') {
+      const q = value.trim()
+      if (queryChangeRef.current) {
+        queryChangeRef.current(q)
+      }
+      if (q) {
+        dispatchBrowseSearch(q, mode === '?', true /* silent */)
+      } else {
+        browseVimSearch.clear()
+      }
+    }
+  }, [open, mode, value])
+
   /**
    * 收口：无论从哪条路退出（Esc、空回格、点遮罩、焦点溜走），都走这一份。
    * **提示符模式下收口 = 取消**：把 undefined 交回桥，桥借 vim 自己的 Esc 分支清掉
    * 命令行状态、把焦点还给编辑器——少了这一步，用户点一下别处，vim 就卡在
    * 「命令行开着」的状态里，后续按键全部落空（这正是「忘了切输入框」的冲突来源）。
    */
-  const close = () => {
+  const close = (committed = false) => {
     const finish = finishRef.current
     finishRef.current = null
+    queryChangeRef.current = null
     try {
-      finish?.(undefined)
+      if (!committed) {
+        finish?.(undefined)
+      }
     } catch {
       // 取消路径不抛：vim 那头自己兜底
+    }
+    // 未确认提交的取消关闭时，清除浏览模式实时搜索高亮
+    if (!committed) {
+      browseVimSearch.clear()
     }
     setOpen(false)
     setValue('')
@@ -252,15 +278,16 @@ export default function GlobalVimCommandBar() {
         if (isPrompt) {
           const finish = finishRef.current
           finishRef.current = null
+          queryChangeRef.current = null
           try {
             finish?.(query)
           } catch {}
-          close()
+          close(true)
           return
         }
-        close()
+        close(true)
         if (query) {
-          dispatchBrowseSearch(query, mode === '?')
+          dispatchBrowseSearch(query, mode === '?', false /* not silent */)
         }
         return
       }
@@ -271,7 +298,7 @@ export default function GlobalVimCommandBar() {
           const idx = selected >= 0 && selected < openTargets.length ? selected : 0
           executeTarget(openTargets[idx])
         } else {
-          close()
+          close(false)
         }
         return
       }
@@ -284,24 +311,25 @@ export default function GlobalVimCommandBar() {
           : value.replace(/^:+/, '')
       const cmd = picked.trim()
       if (!cmd) {
-        close()
+        close(false)
         return
       }
       if (isPrompt) {
         // 编辑器的 : ：交回 vim 执行。立刻关闭
         const finish = finishRef.current
         finishRef.current = null
+        queryChangeRef.current = null
         try {
           finish?.(cmd)
         } catch {
           // vim 对坏输入自己兜底
         }
-        close()
+        close(true)
         return
       }
 
       // 非编辑器模式：立即关闭弹层并执行命令
-      close()
+      close(true)
       executeVimCommand(cmd)
     }
   }
@@ -309,10 +337,11 @@ export default function GlobalVimCommandBar() {
   const executeTarget = (target: VimOpenTarget) => {
     const finish = finishRef.current
     finishRef.current = null
+    queryChangeRef.current = null
     try {
       finish?.(undefined)
     } catch {}
-    close()
+    close(true)
     try {
       target.action()
     } catch {

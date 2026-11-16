@@ -218,6 +218,7 @@ class BrowseVimSearchState {
     this.spans = findSearchMatches(fullText, this.pattern)
 
     if (this.spans.length === 0) {
+      this.updateCssHighlights(null)
       return { total: 0, index: -1, range: null, pattern: this.pattern }
     }
 
@@ -225,6 +226,7 @@ class BrowseVimSearchState {
     this.currentIndex = backward ? this.spans.length - 1 : 0
     const span = this.spans[this.currentIndex]
     const range = createRangeFromSpan(this.chunks, span)
+    this.updateCssHighlights(range)
 
     return {
       total: this.spans.length,
@@ -259,6 +261,7 @@ class BrowseVimSearchState {
     }
     const span = this.spans[this.currentIndex]
     const range = createRangeFromSpan(this.chunks, span)
+    this.updateCssHighlights(range)
     return {
       total: this.spans.length,
       index: this.currentIndex,
@@ -268,12 +271,50 @@ class BrowseVimSearchState {
     }
   }
 
+  /** 通过 CSS Custom Highlight API 实时为文档中的全部命中 Range 绘制高亮 */
+  private updateCssHighlights(activeRange: Range | null): void {
+    if (typeof CSS === 'undefined' || !('highlights' in CSS)) return
+    const H = (globalThis as unknown as { Highlight?: new (...ranges: Range[]) => unknown }).Highlight
+    if (!H) return
+
+    const css = (CSS as unknown as { highlights: { set: (k: string, v: unknown) => void; delete: (k: string) => void } }).highlights
+    if (!this.pattern || this.spans.length === 0 || this.chunks.length === 0) {
+      try {
+        css.delete('browse-vim-search')
+        css.delete('browse-vim-search-active')
+      } catch {}
+      return
+    }
+
+    try {
+      const allRanges: Range[] = []
+      for (const span of this.spans) {
+        const r = createRangeFromSpan(this.chunks, span)
+        if (r) allRanges.push(r)
+      }
+      if (allRanges.length > 0) {
+        css.set('browse-vim-search', new H(...allRanges))
+      } else {
+        css.delete('browse-vim-search')
+      }
+
+      if (activeRange) {
+        css.set('browse-vim-search-active', new H(activeRange))
+      } else {
+        css.delete('browse-vim-search-active')
+      }
+    } catch {
+      // 容错降级
+    }
+  }
+
   clear(): void {
     this.pattern = ''
     this.root = null
     this.chunks = []
     this.spans = []
     this.currentIndex = -1
+    this.updateCssHighlights(null)
   }
 
   hasActiveSearch(): boolean {
@@ -287,7 +328,7 @@ class BrowseVimSearchState {
 
 export const browseVimSearch = new BrowseVimSearchState()
 
-type SearchHandler = (pattern: string, backward?: boolean) => void
+type SearchHandler = (pattern: string, backward?: boolean, silent?: boolean) => void
 
 let searchHandler: SearchHandler | null = null
 
@@ -295,9 +336,9 @@ export function setBrowseSearchHandler(handler: SearchHandler | null): void {
   searchHandler = handler
 }
 
-export function dispatchBrowseSearch(pattern: string, backward?: boolean): boolean {
+export function dispatchBrowseSearch(pattern: string, backward?: boolean, silent = false): boolean {
   if (searchHandler) {
-    searchHandler(pattern, backward)
+    searchHandler(pattern, backward, silent)
     return true
   }
   return false

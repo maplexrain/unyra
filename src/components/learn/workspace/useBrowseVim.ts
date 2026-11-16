@@ -161,6 +161,7 @@ function applySearchResult(
   smoothCursor: BrowseSmoothCursor,
   lastValidRangeRef: { current: Range | null },
   onToast?: (msg: string) => void,
+  silent = false,
 ): void {
   if (res.total > 0 && res.range) {
     const sel = window.getSelection()
@@ -175,9 +176,11 @@ function applySearchResult(
           : res.range.startContainer.parentElement
       el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
     }
-    const wrapNote = res.wrapped ? (res.index === 0 ? ' [回绕至首项]' : ' [回绕至末项]') : ''
-    onToast?.(`[匹配 ${res.index + 1}/${res.total}${wrapNote}]`)
-  } else if (res.pattern) {
+    if (!silent) {
+      const wrapNote = res.wrapped ? (res.index === 0 ? ' [回绕至首项]' : ' [回绕至末项]') : ''
+      onToast?.(`[匹配 ${res.index + 1}/${res.total}${wrapNote}]`)
+    }
+  } else if (res.pattern && !silent) {
     onToast?.(`[未找到匹配项: ${res.pattern}]`)
   }
 }
@@ -215,7 +218,7 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
       }
     }
 
-    setBrowseSearchHandler((pattern, backward) => {
+    setBrowseSearchHandler((pattern, backward, silent) => {
       const s = getLatest()
       const group = focusedGroup(s.docArea)
       const activeTab = group?.tabs.find((t) => t.id === group.active)
@@ -223,7 +226,7 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
       const body = visibleDocBody()
       if (!body) return
       const res = browseVimSearch.search(body, pattern, backward)
-      applySearchResult(res, smoothCursor, lastValidRangeRef, onToast)
+      applySearchResult(res, smoothCursor, lastValidRangeRef, onToast, silent)
     })
 
     const onSelectionChange = () => {
@@ -313,6 +316,13 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
           e.preventDefault()
           e.stopPropagation()
           pendingPrefix.current = null
+          return
+        }
+        if (browseVimSearch.hasActiveSearch()) {
+          e.preventDefault()
+          e.stopPropagation()
+          browseVimSearch.clear()
+          onToast?.('-- 已清除搜索高亮 --')
           return
         }
       }

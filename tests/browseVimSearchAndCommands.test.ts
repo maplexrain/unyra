@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
 import { canTabSwitchToEdit, makeTab } from '../src/learn/tabs'
 import { matchVimCommands } from '../src/lib/vimCommandCatalog'
@@ -132,6 +133,28 @@ describe('浏览模式 Vim 光标与搜索功能增强', () => {
       // 降级为字面量子串匹配
       expect(brokenMatches.length).toBe(1)
       expect(textWithSpecial.slice(brokenMatches[0].start, brokenMatches[0].end)).toBe('[v0.')
+    })
+
+    it('4. browseVimSearch 实时搜索与状态管理', async () => {
+      const { browseVimSearch } = await import('../src/lib/browseVimSearch')
+      const host = document.createElement('div')
+      host.innerHTML = '<p>第一段文本 生产力 示范</p><p>第二段 工具 测试</p>'
+      document.body.appendChild(host)
+
+      // 实时搜索
+      const res = browseVimSearch.search(host, 'scl')
+      expect(res.total).toBe(1)
+      expect(res.index).toBe(0)
+      expect(browseVimSearch.hasActiveSearch()).toBe(true)
+
+      // 跳转
+      const nextRes = browseVimSearch.next()
+      expect(nextRes.index).toBe(0)
+
+      // 清除
+      browseVimSearch.clear()
+      expect(browseVimSearch.hasActiveSearch()).toBe(false)
+      document.body.removeChild(host)
     })
   })
 })

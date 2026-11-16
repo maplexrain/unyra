@@ -153,6 +153,30 @@ describe('编辑器命令行接管桥', () => {
     expect(document.querySelector('.cm-vim-panel')).toBeNull()
   })
 
+  it('实时增量搜索：输入变化时通过 onQueryChange 实时通知 Vim 高亮与拼音扩展', () => {
+    const view = makeView()
+    installVimPromptBridge(view)
+    let capturedOpts: any = null
+    setGlobalCommandBarOpener((o) => {
+      capturedOpts = o ?? null
+    })
+
+    let keyUpCalls: string[] = []
+    cmOf(view).openDialog(
+      templateOf('/'),
+      () => {},
+      {
+        onKeyUp: (_e: KeyboardEvent, query: string) => {
+          keyUpCalls.push(query)
+        },
+      } as any,
+    )
+
+    expect(typeof capturedOpts?.onQueryChange).toBe('function')
+    capturedOpts!.onQueryChange!('const')
+    expect(keyUpCalls).toContain('const')
+  })
+
   it('非命令与搜索提示：回落原生面板', () => {
     const view = makeView()
     installVimPromptBridge(view)
