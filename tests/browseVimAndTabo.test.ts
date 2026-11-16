@@ -14,6 +14,7 @@ import { makeTab, isTabPinned } from '../src/learn/tabs'
 import { openInGroup } from '../src/learn/groups'
 import type { DocWorkspace } from '../src/learn/groups/types'
 import { useBrowseVim } from '../src/components/learn/workspace/useBrowseVim'
+import { BrowseSmoothCursor } from '../src/components/learn/workspace/browseSmoothCursor'
 import { setVimEnabled } from '../src/lib/vimSettings'
 import type { LearnStore } from '../src/learn/types'
 
@@ -246,6 +247,83 @@ describe('Vim 剪贴板同步与输入法 IME 防护', () => {
       root.unmount()
     })
     container.remove()
+  })
+
+  it('BrowseSmoothCursor 支持平滑位移、跟随拖尾并在位移中保持常亮不闪烁', async () => {
+    vi.useFakeTimers()
+    const cursor = new BrowseSmoothCursor()
+    const area = document.createElement('div')
+    area.setAttribute('data-doc-area', 'g1')
+    area.setAttribute('data-doc-area-focus', 'true')
+    const container = document.createElement('div')
+    container.setAttribute('data-doc-pane', 'active')
+    const p1 = document.createElement('p')
+    p1.textContent = '文字第一行'
+    const p2 = document.createElement('p')
+    p2.textContent = '文字第二行'
+    container.appendChild(p1)
+    container.appendChild(p2)
+    area.appendChild(container)
+    document.body.appendChild(area)
+
+    container.getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    })
+
+    const range1 = document.createRange()
+    range1.setStart(p1.firstChild!, 0)
+    range1.collapse(true)
+    const sel = window.getSelection()!
+    sel.removeAllRanges()
+    sel.addRange(range1)
+
+    // 初次落位
+    cursor.update(sel, false)
+
+    const virtualCursor = container.querySelector('.moji-browse-virtual-cursor') as HTMLElement
+    const trail = container.querySelector('.moji-browse-cursor-trail') as HTMLElement
+    expect(virtualCursor).not.toBeNull()
+    expect(trail).not.toBeNull()
+
+    // 移动光标至下一行
+    const range2 = document.createRange()
+    range2.setStart(p2.firstChild!, 0)
+    range2.collapse(true)
+    range2.getBoundingClientRect = () => ({
+      left: 50,
+      top: 80,
+      width: 0,
+      height: 20,
+      right: 50,
+      bottom: 100,
+      x: 50,
+      y: 80,
+      toJSON: () => {},
+    })
+    sel.removeAllRanges()
+    sel.addRange(range2)
+
+    cursor.update(sel, false)
+
+    // 移动时必须移除脉冲闪烁类，保持常亮（不闪烁，清晰可见）
+    expect(virtualCursor.classList.contains('moji-browse-cursor-blink')).toBe(false)
+    expect(virtualCursor.style.opacity).toBe('1')
+
+    // 静止 450ms 后恢复闪烁
+    vi.advanceTimersByTime(500)
+    expect(virtualCursor.classList.contains('moji-browse-cursor-blink')).toBe(true)
+
+    cursor.destroy()
+    area.remove()
+    vi.useRealTimers()
   })
 })
 

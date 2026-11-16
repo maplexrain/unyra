@@ -42,22 +42,130 @@
 }
 
 /*
- * 浏览模式下的 Vim 虚拟光标指示器
+ * 浏览模式下的 Vim 平滑虚拟光标、位移拖尾与高能速度线
  */
-.moji-browse-vim-caret {
-  position: fixed;
+.moji-browse-virtual-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 9.5px;
+  background-color: color-mix(in srgb, var(--color-seal, #38bdf8) 75%, transparent);
+  border-radius: 2px;
   pointer-events: none;
-  z-index: 9999;
-  background-color: var(--color-primary, #0284c7);
-  opacity: 0.75;
-  border-radius: 1px;
-  box-shadow: 0 0 2px rgba(0, 0, 0, 0.35);
-  transition: top 0.04s ease-out, left 0.04s ease-out;
-  animation: moji-caret-blink 1.06s steps(1) infinite;
+  z-index: 99;
+  contain: layout paint style;
+  will-change: transform, height, width, opacity;
+  transition:
+    transform 200ms cubic-bezier(0.18, 0.95, 0.25, 1),
+    width 70ms ease,
+    border-radius 70ms ease,
+    height 120ms ease,
+    opacity 100ms ease;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-seal, #38bdf8) 60%, transparent);
 }
-@keyframes moji-caret-blink {
-  0%, 50% { opacity: 0.75; }
-  50.1%, 100% { opacity: 0; }
+
+/* 跟随残影光带（Follower Trail）：略带滞后感（240ms），在位移过程中拖出流光速度感 */
+.moji-browse-cursor-trail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 9.5px;
+  background-color: color-mix(in srgb, var(--color-seal, #38bdf8) 65%, transparent);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 98;
+  contain: layout paint style;
+  will-change: transform, height, width, opacity;
+  transition:
+    transform 240ms cubic-bezier(0.12, 0.85, 0.22, 1),
+    width 70ms ease,
+    border-radius 70ms ease,
+    height 120ms ease,
+    opacity 140ms ease;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--color-seal, #38bdf8) 70%, transparent);
+}
+
+/* 速度线容器：纯负责绝对定位与角度旋转 */
+.moji-browse-speed-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  pointer-events: none;
+  z-index: 96;
+  transform-origin: 0 50%;
+  contain: layout paint style;
+  will-change: transform;
+}
+
+/* 主速度线流光：沿轨迹高速冲刺并消散 */
+.moji-browse-speed-streak {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 1px;
+  transform-origin: 0 50%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-seal, #38bdf8) 60%, transparent) 25%,
+    var(--color-seal, #38bdf8) 85%,
+    #ffffff 100%
+  );
+  box-shadow:
+    0 0 6px var(--color-seal, #38bdf8),
+    0 0 10px color-mix(in srgb, var(--color-seal, #38bdf8) 70%, transparent);
+  animation: moji-browse-speed-streak 190ms cubic-bezier(0.12, 0.9, 0.25, 1) forwards;
+}
+
+/* 次级速度线 */
+.moji-browse-speed-substreak {
+  top: -3px;
+  height: 1px;
+  opacity: 0.6;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-seal, #38bdf8) 40%, transparent) 30%,
+    var(--color-seal, #38bdf8) 90%
+  );
+  animation: moji-browse-speed-streak 170ms cubic-bezier(0.12, 0.9, 0.25, 1) forwards;
+}
+
+@keyframes moji-browse-speed-streak {
+  0% {
+    opacity: 0.95;
+    transform: scaleX(0.15);
+  }
+  30% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleX(1.04);
+  }
+}
+
+/* 初次落位或跳跃时禁用过渡 */
+.moji-browse-cursor-no-transition {
+  transition: none !important;
+}
+
+/* 静止状态下的呼吸脉冲闪烁（移动中移除该类保持常亮） */
+@keyframes moji-browse-cursor-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.moji-browse-virtual-cursor.moji-browse-cursor-blink {
+  animation: moji-browse-cursor-pulse 1.06s ease-in-out infinite;
 }
 
 /*
