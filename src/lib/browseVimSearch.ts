@@ -99,6 +99,28 @@ export function findSearchMatches(fullText: string, pattern: string): MatchSpan[
 
   // 2. 拼音匹配（全拼、简拼匹配汉字内容）
   try {
+    const cjkRegex = /[\u4e00-\u9fa5]+/g
+    let cjkMatch: RegExpExecArray | null
+    let cjkGuard = 0
+    while ((cjkMatch = cjkRegex.exec(fullText)) !== null && cjkGuard < 5000) {
+      cjkGuard++
+      const cjk = cjkMatch[0]
+      const base = cjkMatch.index
+      let off = 0
+      let segGuard = 0
+      while (off < cjk.length && segGuard < 1000) {
+        segGuard++
+        const m = PinyinModule.match(cjk.slice(off), trimmed)
+        if (!m || typeof m !== 'object' || !Array.isArray(m)) break
+        const [mStart, mEnd] = m
+        if (typeof mStart !== 'number' || typeof mEnd !== 'number' || mEnd < mStart) break
+        const absStart = base + off + mStart
+        const absEnd = base + off + mEnd + 1
+        addSpan(absStart, absEnd)
+        off += mStart + 1
+      }
+    }
+    // 全文兜底扫描一次
     let offset = 0
     let rem = fullText
     let guard = 0
@@ -108,11 +130,8 @@ export function findSearchMatches(fullText: string, pattern: string): MatchSpan[
       if (!m || typeof m !== 'object' || !Array.isArray(m)) break
       const [mStart, mEnd] = m
       if (typeof mStart !== 'number' || typeof mEnd !== 'number' || mEnd < mStart) break
-      const absStart = offset + mStart
-      const absEnd = offset + mEnd + 1
-      addSpan(absStart, absEnd)
-      const step = mEnd + 1
-      offset += step
+      addSpan(offset + mStart, offset + mEnd + 1)
+      offset += mStart + 1
       rem = fullText.slice(offset)
     }
   } catch {
@@ -180,12 +199,14 @@ class BrowseVimSearchState {
   private chunks: TextChunk[] = []
   private spans: MatchSpan[] = []
   private currentIndex = -1
+  private backward = false
 
   /** 在指定容器执行新搜索 */
   search(root: HTMLElement, pattern: string, backward = false): SearchResult {
     this.root = root
     this.pattern = pattern.trim()
     this.currentIndex = -1
+    this.backward = backward
 
     if (!this.pattern) {
       this.clear()
@@ -215,34 +236,24 @@ class BrowseVimSearchState {
 
   /** 跳转至下一处匹配 (n) */
   next(): SearchResult {
-    if (this.spans.length === 0 || !this.root) {
-      return { total: 0, index: -1, range: null, pattern: this.pattern }
-    }
-    let wrapped = false
-    this.currentIndex++
-    if (this.currentIndex >= this.spans.length) {
-      this.currentIndex = 0
-      wrapped = true
-    }
-    const span = this.spans[this.currentIndex]
-    const range = createRangeFromSpan(this.chunks, span)
-    return {
-      total: this.spans.length,
-      index: this.currentIndex,
-      range,
-      pattern: this.pattern,
-      wrapped,
-    }
+    return this.step(this.backward ? -1 : 1)
   }
 
   /** 跳转至上一处匹配 (N) */
   prev(): SearchResult {
+    return this.step(this.backward ? 1 : -1)
+  }
+
+  private step(direction: number): SearchResult {
     if (this.spans.length === 0 || !this.root) {
       return { total: 0, index: -1, range: null, pattern: this.pattern }
     }
     let wrapped = false
-    this.currentIndex--
-    if (this.currentIndex < 0) {
+    this.currentIndex += direction
+    if (this.currentIndex >= this.spans.length) {
+      this.currentIndex = 0
+      wrapped = true
+    } else if (this.currentIndex < 0) {
       this.currentIndex = this.spans.length - 1
       wrapped = true
     }

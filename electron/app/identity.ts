@@ -7,7 +7,7 @@
  * 只是运行中的窗口与快捷方式对不上号，Windows 退回「exe 自带的图标」，
  * 源码运行时就表现为那颗 Electron 原子。tests/appIdentity.test.ts 钉着这条一致性。
  */
-export const APP_ID = 'com.moji.guiyi'
+export const APP_ID = 'com.unyra.guiyi'
 
 /**
  * 运行时真正用的 AUMID：**源码运行另起一个**（后缀 .dev），不冒充安装版的身份。

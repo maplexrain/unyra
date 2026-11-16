@@ -187,6 +187,8 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     gTab.ref.kind !== 'pluginDoc' &&
     // 赞助者名单页不画：它是致谢名册
     gTab.ref.kind !== 'sponsors' &&
+    // 用户中心页不画：它是个人与账户配置页
+    gTab.ref.kind !== 'user' &&
     // Vim 学习页不画：它是学习与参考手册
     gTab.ref.kind !== 'vim' &&
     // PDF 浏览页不画：严格只读（纯净阅读仍可用 F11）

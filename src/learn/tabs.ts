@@ -387,17 +387,18 @@ export function isDocumentTab(ref: TabRef): boolean {
  */
 export function canTabSwitchToEdit(tab?: LearnTab | null): boolean {
   if (!tab) return false
-  const kind = tab.ref?.kind ?? (tab as any).kind
+  const ref = tab.ref as any
+  const kind = ref?.kind ?? (tab as any).kind
   if (!kind) return false
   if (kind === 'teach' || kind === 'note' || kind === 'super' || kind === 'draft') {
     return true
   }
   if (kind === 'local') {
-    const p = String(tab.ref?.path ?? (tab as any).path ?? '').toLowerCase()
+    const p = String(ref?.path ?? (tab as any).path ?? '').toLowerCase()
     return !isMediaFile(p) && !p.endsWith('.pdf')
   }
   if (kind === 'ws') {
-    const seg = String(tab.ref?.seg ?? (tab as any).seg ?? '').toLowerCase()
+    const seg = String(ref?.seg ?? (tab as any).seg ?? '').toLowerCase()
     return !isMediaFile(seg) && !seg.endsWith('.pdf')
   }
   return false

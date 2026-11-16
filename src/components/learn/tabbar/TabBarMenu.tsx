@@ -9,6 +9,7 @@
  */
 
 import { useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { CornerDownRight, CornerLeftUp, FileX, FoldHorizontal, Globe, OctagonX, Pin, PinOff, Star, Unlink, X } from 'lucide-react'
 import type { LearnStore, LearnTab } from '../../../learn/types'
 import { TAB_CLOSE_LABEL, isDocumentTab, isTabPinned, tabNodeId, type TabCloseMode } from '../../../learn/tabs'
@@ -34,7 +35,7 @@ export function BarMenu({
   const ref = useRef<HTMLDivElement | null>(null)
   useDismissOn({ onClose })
   useClampToViewport(ref, menu)
-  return (
+  return createPortal(
     <div
       ref={ref}
       role="menu"
@@ -43,7 +44,7 @@ export function BarMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[90] min-w-[196px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[9999] min-w-[196px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
       <button type="button" role="menuitem" onClick={onOpenWebTab} className={ROW}>
         <span className={ICON}>
@@ -65,7 +66,8 @@ export function BarMenu({
         {t(TAB_CLOSE_LABEL.all)}
         <span className={COUNT}>{count}</span>
       </button>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -176,7 +178,7 @@ export function TabMenu({
   useDismissOn({ onClose })
   useClampToViewport(ref, menu)
 
-  return (
+  return createPortal(
     <div
       ref={ref}
       role="menu"
@@ -185,7 +187,7 @@ export function TabMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[90] min-w-[196px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[9999] min-w-[196px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
       {/*
         抬头：这一下是对着哪一份文档。与节点、笔记那两张菜单同一条规矩——
@@ -339,6 +341,7 @@ export function TabMenu({
           </button>
         </>
       )}
-    </div>
+    </div>,
+    document.body
   )
 }

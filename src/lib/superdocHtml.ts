@@ -19,7 +19,8 @@ import { renderNote } from './markdown'
  *   裸的 `<` 会被当成标签吃掉。
  */
 
-export const MOJI_MARKDOWN_TAG = 'moji-markdown'
+export const UNYRA_MARKDOWN_TAG = 'unyra-markdown'
+export const MOJI_MARKDOWN_TAG = 'unyra-markdown'
 
 /** 去掉首尾空行与各行公共缩进；空块回空串 */
 export function dedentBlock(raw: string): string {
@@ -74,9 +75,9 @@ const IFRAME_KATEX_MATHML = [
  * 没有这类元素时原样返回（绝大多数文档零开销）；DOM 解析在渲染进程里做。
  */
 export function renderEmbeddedMarkdown(html: string): string {
-  if (!html || !new RegExp('<' + MOJI_MARKDOWN_TAG + '[\\s>/]', 'i').test(html)) return html
+  if (!html || !new RegExp('<(?:unyra|moji)-markdown[\\s>/]', 'i').test(html)) return html
   const parsed = new DOMParser().parseFromString(html, 'text/html')
-  const nodes = parsed.querySelectorAll(MOJI_MARKDOWN_TAG)
+  const nodes = parsed.querySelectorAll('unyra-markdown, moji-markdown')
   if (!nodes.length) return html
   for (const el of Array.from(nodes)) {
     const raw = dedentBlock(el.textContent ?? '')

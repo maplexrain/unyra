@@ -8,6 +8,7 @@
  */
 import { ClipboardPaste, Code2, Copy, StickyNote } from 'lucide-react'
 import type { RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import { useClampToViewport, useDismissOn } from '../../../lib/useDismiss'
 import { t } from '../../../i18n'
 import type { DocMenuState } from './useDocContextMenu'
@@ -52,7 +53,7 @@ export function DocContextMenu({
   if (!menu) return null
 
   if (menu.mode === 'blank') {
-    return (
+    return createPortal(
       <div
         ref={menuRef}
         role="menu"
@@ -61,7 +62,7 @@ export function DocContextMenu({
           e.preventDefault()
           e.stopPropagation()
         }}
-        className={`fixed z-[70] min-w-[140px] max-w-[200px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)] ${
+        className={`fixed z-[9999] min-w-[140px] max-w-[200px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)] ${
           closing ? 'moji-out' : 'moji-in-soft'
         }`}
       >
@@ -78,14 +79,15 @@ export function DocContextMenu({
           <StickyNote size={13} className="shrink-0 text-amber-500" />
           {t('插入笔记')}
         </button>
-      </div>
+      </div>,
+      document.body
     )
   }
 
   /** 选区映射回源文失败时，粘贴与定位都没有落点：留着能点却什么也不做更让人困惑 */
   const located = !!menu.loc
 
-  return (
+  return createPortal(
     <div
       ref={menuRef}
       role="menu"
@@ -99,7 +101,7 @@ export function DocContextMenu({
       /* 位置不写在 style 里：贴着指针摆、再夹进视口，都由 useClampToViewport 在绘制前定下来
          （与 explorer/RowMenu 同一条；写成内联样式的话，React 每次重渲染都会把夹取后的
          位置覆盖回未夹取的那个坐标） */
-      className={`fixed z-[70] min-w-[176px] max-w-[260px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)] ${
+      className={`fixed z-[9999] min-w-[176px] max-w-[260px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)] ${
         closing ? 'moji-out' : 'moji-in-soft'
       }`}
     >
@@ -149,6 +151,7 @@ export function DocContextMenu({
         <Code2 size={13} className="shrink-0 text-ink-soft" />
         {t('定位源码')}
       </button>
-    </div>
+    </div>,
+    document.body
   )
 }

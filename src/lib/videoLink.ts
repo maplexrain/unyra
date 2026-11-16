@@ -12,7 +12,7 @@
 
 import { formatClock } from '../video/transcript'
 
-export const VIDEO_LINK_SCHEME = 'moji:video'
+export const VIDEO_LINK_SCHEME = 'unyra:video'
 
 export interface VideoJumpTarget {
   /** 视频资源 id 或 视频节点 id（可选，缺省表示当前视频） */
@@ -80,16 +80,27 @@ export function parseTimeStringToMs(raw: string): number | null {
 export function isVideoHref(href: string | null | undefined): boolean {
   if (!href) return false
   const h = href.trim().toLowerCase()
-  return h === VIDEO_LINK_SCHEME || h.startsWith(`${VIDEO_LINK_SCHEME}?`) || h.startsWith(`${VIDEO_LINK_SCHEME}/`) || h.startsWith(`${VIDEO_LINK_SCHEME}#`)
+  return (
+    h === 'unyra:video' ||
+    h.startsWith('unyra:video?') ||
+    h.startsWith('unyra:video/') ||
+    h.startsWith('unyra:video#') ||
+    h === 'moji:video' ||
+    h.startsWith('moji:video?') ||
+    h.startsWith('moji:video/') ||
+    h.startsWith('moji:video#')
+  )
 }
 
 /**
- * 解析 moji:video 协议的 href
+ * 解析 unyra:video / moji:video 协议的 href
  */
 export function parseVideoHref(href: string | null | undefined): VideoJumpTarget | null {
   if (!isVideoHref(href)) return null
   const raw = href!.trim()
-  const pathAndQuery = raw.slice(VIDEO_LINK_SCHEME.length)
+  const lower = raw.toLowerCase()
+  const schemeLen = lower.startsWith('unyra:video') ? 'unyra:video'.length : 'moji:video'.length
+  const pathAndQuery = raw.slice(schemeLen)
 
   let pathPart = ''
   let queryPart = ''
@@ -238,16 +249,17 @@ export function handleVideoLink(input: VideoJumpTarget | string): boolean {
     videoHandler(target)
   }
   if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('unyra:video:jump', { detail: target }))
     window.dispatchEvent(new CustomEvent('moji:video:jump', { detail: target }))
   }
   return true
 }
 
-/** 从一次点击事件里解析 moji:video 链接并触发跳转；返回是否命中 */
+/** 从一次点击事件里解析 unyra:video / moji:video 链接并触发跳转；返回是否命中 */
 export function tryVideoLinkFromEvent(event: { target: EventTarget | null }): boolean {
   const target = event.target
   if (!(target instanceof Element)) return false
-  const anchor = target.closest('a[href^="moji:video"], a[href^="MOJI:VIDEO"]')
+  const anchor = target.closest('a[href^="unyra:video"], a[href^="moji:video"], a[href^="UNYRA:VIDEO"], a[href^="MOJI:VIDEO"]')
   if (!anchor) return false
   const href = anchor.getAttribute('href')
   const parsed = parseVideoHref(href)

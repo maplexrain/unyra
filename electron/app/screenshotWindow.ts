@@ -141,7 +141,7 @@ export async function openScreenshotWindow(): Promise<{ ok: boolean; error?: str
 
     const tempPath = path.join(
       app.getPath('temp'),
-      `moji_snap_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.png`,
+      `unyra_snap_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.png`,
     )
 
     let imgData: string | null = null

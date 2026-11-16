@@ -74,7 +74,7 @@ export function proxyTests() {
   const proxied = toProxyUrl('http://127.0.0.1:8799/v1/chat/completions') ?? ''
   ok(new URL(proxied).host === 'target', '代理地址的 authority 只放占位 host，不放真实目标', proxied)
   ok(proxied.includes('127.0.0.1%3A8799'), '目标地址连端口一起进查询串，谁也丢不掉它', proxied)
-  ok(proxied.endsWith('/v1/chat/completions?__moji_origin=http%3A%2F%2F127.0.0.1%3A8799'), '路径与参数形状稳定', proxied)
+  ok(proxied.endsWith('/v1/chat/completions?__unyra_origin=http%3A%2F%2F127.0.0.1%3A8799'), '路径与参数形状稳定', proxied)
 
   const round = (target: string): string | null => {
     const p = toProxyUrl(target)

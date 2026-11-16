@@ -935,6 +935,8 @@ const api = {
   },
 }
 
-export type MojiNative = typeof api
+export type UnyraNative = typeof api
+export type MojiNative = UnyraNative
 
+contextBridge.exposeInMainWorld('unyraNative', api)
 contextBridge.exposeInMainWorld('mojiNative', api)

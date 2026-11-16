@@ -322,7 +322,7 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         e.preventDefault()
         e.stopPropagation()
         pendingPrefix.current = null
-        openGlobalCommandBar({ prefill: ':' })
+        openGlobalCommandBar({ mode: ':', prefill: '' })
         return
       }
 
@@ -717,7 +717,7 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         e.preventDefault()
         e.stopPropagation()
         pendingPrefix.current = null
-        openGlobalCommandBar({ prefill: key })
+        openGlobalCommandBar({ mode: key as '/' | '?', prefill: '' })
         return
       }
 

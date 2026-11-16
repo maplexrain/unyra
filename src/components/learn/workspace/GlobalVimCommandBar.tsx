@@ -21,10 +21,11 @@ import { t } from '../../../i18n'
  */
 export default function GlobalVimCommandBar() {
   const [open, setOpen] = useState(false)
+  const [mode, setMode] = useState<':' | '/' | '?'>(':')
   const [value, setValue] = useState('')
   /**
-   * 编辑器 Vim 命令行的**交回通道**：有它 = 这一次输入是编辑器里的 `:` 唤起的（提示符模式）。
-   * Enter 时把最终文本交回 vim 执行（processCommand → 注册的 Ex 命令），命令栏不重复执行；
+   * 编辑器 Vim 命令行的**交回通道**：有它 = 这一次输入是编辑器里的 `:` 或 `/`、`?` 唤起的（提示符模式）。
+   * Enter 时把最终文本交回 vim 执行（processCommand → 注册的 Ex 命令或搜索），命令栏不重复执行；
    * 取消时交回 undefined（桥那头借 vim 自己的 Esc 分支清状态）。
    */
   const finishRef = useRef<((input?: string) => void) | null>(null)
@@ -36,8 +37,8 @@ export default function GlobalVimCommandBar() {
   }, [open])
 
   /* ---------- 搜索模式（/ 与 ?）与 :open / :o 目标搜索模式判断 ---------- */
-  const isSearchMode = value.startsWith('/') || value.startsWith('?')
-  const openMatch = value.match(/^:?\s*(?:open\b\s*(.*)|o\s+(.*))$/i)
+  const isSearchMode = mode === '/' || mode === '?'
+  const openMatch = !isSearchMode && value.match(/^:?\s*(?:open\b\s*(.*)|o\s+(.*))$/i)
   const isOpenMode = !isSearchMode && Boolean(openMatch)
   const openQuery = openMatch ? (openMatch[1] ?? openMatch[2] ?? '') : ''
   const openTargets = useMemo(() => {
@@ -58,8 +59,7 @@ export default function GlobalVimCommandBar() {
   const ghostText = (() => {
     if (isOpenMode || isSearchMode) return null
     if (!ghostItem || value.includes(' ') || value.length === 0) return null
-    const hasColon = value.startsWith(':')
-    const typed = hasColon ? value.slice(1) : value
+    const typed = value.replace(/^:+/, '')
     if (!typed) return null
     if (!ghostItem.cmd.toLowerCase().startsWith(typed.toLowerCase())) return null
     if (ghostItem.cmd.length <= typed.length) return null
@@ -92,6 +92,7 @@ export default function GlobalVimCommandBar() {
         // 已经开着就不重开：重开会把 finishRef 清掉，编辑器 vim 还挂着等待的命令行
         // 却再也等不到交回（焦点与 vim 状态从此打架）。开着时 : 不做事。
         if (openRef.current) return
+        setMode(':')
         setValue('')
         finishRef.current = null
         setSelected(-1)
@@ -106,7 +107,20 @@ export default function GlobalVimCommandBar() {
   // 登记唤起通道（编辑器 : 桥、以及将来任何想唤起命令栏的调用方都走它）
   useEffect(() => {
     setGlobalCommandBarOpener((opts) => {
-      setValue(opts?.prefill ?? '')
+      let m: ':' | '/' | '?' = opts?.mode ?? ':'
+      let raw = opts?.prefill ?? ''
+      if (raw.startsWith(':')) {
+        m = ':'
+        raw = raw.replace(/^:+/, '')
+      } else if (raw.startsWith('/')) {
+        m = '/'
+        raw = raw.replace(/^\/+/, '')
+      } else if (raw.startsWith('?')) {
+        m = '?'
+        raw = raw.replace(/^\?+/, '')
+      }
+      setMode(m)
+      setValue(raw)
       finishRef.current = opts?.onFinish ?? null
       setSelected(-1)
       setOpen(true)
@@ -223,8 +237,7 @@ export default function GlobalVimCommandBar() {
     if (e.key === 'Tab' && ghostItem && ghostText !== null) {
       e.preventDefault()
       e.stopPropagation()
-      const hasColon = value.startsWith(':')
-      setValue((hasColon ? ':' : '') + ghostItem.cmd + ' ')
+      setValue(ghostItem.cmd + ' ')
       setSelected(-1)
       return
     }
@@ -235,20 +248,19 @@ export default function GlobalVimCommandBar() {
 
       // 搜索模式（/ 与 ?）：直接调用浏览模式搜索或交回编辑器
       if (isSearchMode) {
-        const isBackward = value.startsWith('?')
-        const query = value.slice(1).trim()
+        const query = value.trim()
         if (isPrompt) {
           const finish = finishRef.current
           finishRef.current = null
           try {
-            finish?.(value)
+            finish?.(query)
           } catch {}
           close()
           return
         }
         close()
         if (query) {
-          dispatchBrowseSearch(query, isBackward)
+          dispatchBrowseSearch(query, mode === '?')
         }
         return
       }
@@ -265,12 +277,11 @@ export default function GlobalVimCommandBar() {
       }
 
       // 方向键选中的候选 ≠ 已输文本时，Enter 提交的就是幽灵预览的那份（看到的即所得）
-      const hasColon = value.startsWith(':')
-      const typedCmd = hasColon ? value.slice(1).trim() : value.trim()
+      const typedCmd = value.replace(/^:+/, '').trim()
       const picked =
         selected >= 0 && ghostItem && ghostItem.cmd.toLowerCase() !== typedCmd.toLowerCase()
-          ? (hasColon ? ':' : '') + ghostItem.cmd + ' '
-          : value
+          ? ghostItem.cmd + ' '
+          : value.replace(/^:+/, '')
       const cmd = picked.trim()
       if (!cmd) {
         close()
@@ -340,7 +351,7 @@ export default function GlobalVimCommandBar() {
                 : 'bg-seal/15 text-seal border-seal/25')
             }
           >
-            {isSearchMode ? (value.startsWith('?') ? '?' : '/') : ':'}
+            {mode}
           </div>
           <div className="relative min-w-0 flex-1">
             <input
@@ -348,7 +359,26 @@ export default function GlobalVimCommandBar() {
               type="text"
               value={value}
               onChange={(e) => {
-                setValue(e.target.value)
+                let val = e.target.value
+                if (mode === ':') {
+                  if (val.startsWith(':')) {
+                    val = val.replace(/^:+/, '')
+                  } else if (val.startsWith('/') && !value) {
+                    setMode('/')
+                    val = val.replace(/^\/+/, '')
+                  } else if (val.startsWith('?') && !value) {
+                    setMode('?')
+                    val = val.replace(/^\?+/, '')
+                  }
+                } else {
+                  if (val.startsWith(mode)) {
+                    val = val.slice(1)
+                  } else if (val.startsWith(':') && !value) {
+                    setMode(':')
+                    val = val.replace(/^:+/, '')
+                  }
+                }
+                setValue(val)
                 setSelected(-1)
               }}
               onKeyDown={handleKeyDown}
@@ -399,8 +429,7 @@ export default function GlobalVimCommandBar() {
                       (active ? 'bg-seal/15 text-seal-light' : 'hover:bg-line/40 text-ink')
                     }
                     onClick={() => {
-                      const hasColon = value.startsWith(':')
-                      setValue((hasColon ? ':' : '') + m.cmd + ' ')
+                      setValue(m.cmd + ' ')
                       setSelected(-1)
                       inputRef.current?.focus()
                     }}

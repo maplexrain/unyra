@@ -8,6 +8,7 @@
  */
 
 import { useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Eraser, ScanSearch, Tags } from 'lucide-react'
 import { useClampToViewport, useDismissOn } from '../../../lib/useDismiss'
 import { t } from '../../../i18n'
@@ -38,7 +39,7 @@ export function PdfContextMenu({ menu, onClose, onClearOcrCache, onInspectOcr, s
 
   if (!menu) return null
 
-  return (
+  return createPortal(
     <div
       ref={ref}
       role="menu"
@@ -48,7 +49,7 @@ export function PdfContextMenu({ menu, onClose, onClearOcrCache, onInspectOcr, s
         e.stopPropagation()
       }}
       style={{ left: menu.x, top: menu.y }}
-      className="moji-in-soft fixed z-[70] min-w-[190px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[9999] min-w-[190px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
       <button
         type="button"
@@ -87,6 +88,7 @@ export function PdfContextMenu({ menu, onClose, onClearOcrCache, onInspectOcr, s
         <Eraser size={13} className="shrink-0 text-ink-soft" />
         {t('清除本文档 OCR 缓存')}
       </button>
-    </div>
+    </div>,
+    document.body
   )
 }

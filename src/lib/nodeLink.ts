@@ -9,11 +9,11 @@ import type { DocKind } from '../learn/types'
  * 阅读态（节点笔记 / 超级导师回复）由 marked 渲染成 <a>，点击拦截后处理。
  */
 
-export const NODE_LINK_SCHEME = 'moji:node/'
+export const NODE_LINK_SCHEME = 'unyra:node/'
 
 /**
- * 交互大纲协议：`[概念名](moji:learn "一句话说明")`，可选 `at` 宿主参数：
- * `[概念名](moji:learn?at=宿主文档标题 "一句话说明")`。
+ * 交互大纲协议：`[概念名](unyra:learn "一句话说明")`，可选 `at` 宿主参数：
+ * `[概念名](unyra:learn?at=宿主文档标题 "一句话说明")`。
  *
  * 用户选中词条「学习」是由用户驱动的；这个协议把主导权交给 AI——AI 在目标笔记里
  * 写一份大纲，每个概念都是一条这样的链接，用户点一下即「创建（或跳转）该概念的落地节点」，
@@ -22,15 +22,20 @@ export const NODE_LINK_SCHEME = 'moji:node/'
  * `at` 指明这条概念该挂在**谁的大纲**下（那份计划文档的标题）——跨层引用别的计划时
  * 必写，缺省 = 点击时正打开的文档自己的大纲（见 useConceptActions 的 openConcept）。
  *
- * 复用 Markdown 链接的语法与渲染管线（marked 解析、DOMPurify 放行 moji: 协议），
+ * 复用 Markdown 链接的语法与渲染管线（marked 解析、DOMPurify 放行 unyra: / moji: 协议），
  * 链接的 title 作为该节点的初始描述（AI 借此交代「它为什么在这里」）。
  */
-export const LEARN_LINK_SCHEME = 'moji:learn'
+export const LEARN_LINK_SCHEME = 'unyra:learn'
 
 export function isLearnHref(href: string | null | undefined): boolean {
   if (!href) return false
   const h = href.trim().toLowerCase()
-  return h === LEARN_LINK_SCHEME || h.startsWith(`${LEARN_LINK_SCHEME}?`)
+  return (
+    h === 'unyra:learn' ||
+    h.startsWith('unyra:learn?') ||
+    h === 'moji:learn' ||
+    h.startsWith('moji:learn?')
+  )
 }
 
 /** 生成一条「点击学习」链接；hint 会写进 title 作为新节点的初始描述 */
@@ -88,7 +93,7 @@ export function learnTermOf(el: Element): string {
 export function tryLearnLinkFromEvent(event: { target: EventTarget | null }): boolean {
   const target = event.target
   if (!(target instanceof Element)) return false
-  const anchor = target.closest('a[href^="moji:learn"]')
+  const anchor = target.closest('a[href^="unyra:learn"], a[href^="moji:learn"]')
   if (!anchor) return false
   const href = anchor.getAttribute('href')
   if (!isLearnHref(href)) return false
@@ -96,8 +101,9 @@ export function tryLearnLinkFromEvent(event: { target: EventTarget | null }): bo
   if (!term) return false
   // at：URLSearchParams 顺带解码 %XX（AI 被要求对空格等字符编码；中文裸写也能透传）
   let at = ''
-  if (href && href.length > LEARN_LINK_SCHEME.length && href[LEARN_LINK_SCHEME.length] === '?') {
-    at = new URLSearchParams(href.slice(LEARN_LINK_SCHEME.length + 1)).get('at')?.trim() ?? ''
+  const scheme = href?.startsWith('unyra:learn') ? 'unyra:learn' : 'moji:learn'
+  if (href && href.length > scheme.length && href[scheme.length] === '?') {
+    at = new URLSearchParams(href.slice(scheme.length + 1)).get('at')?.trim() ?? ''
   }
   handleLearnLink(term, (anchor.getAttribute('title') ?? '').trim(), at || undefined)
   return true
@@ -108,9 +114,15 @@ export function nodeLinkHref(nodeId: string): string {
 }
 
 export function nodeIdFromHref(href: string | null | undefined): string | null {
-  if (!href || !href.startsWith(NODE_LINK_SCHEME)) return null
-  const id = href.slice(NODE_LINK_SCHEME.length).trim()
-  return id || null
+  if (!href) return null
+  const h = href.trim()
+  if (h.toLowerCase().startsWith('unyra:node/')) {
+    return h.slice('unyra:node/'.length).trim() || null
+  }
+  if (h.toLowerCase().startsWith('moji:node/')) {
+    return h.slice('moji:node/'.length).trim() || null
+  }
+  return null
 }
 
 /** 生成本文中的节点链接 Markdown */
@@ -134,7 +146,7 @@ export function handleNodeLink(nodeId: string): void {
 export function tryNodeLinkFromEvent(event: { target: EventTarget | null }): boolean {
   const target = event.target
   if (!(target instanceof Element)) return false
-  const anchor = target.closest('a[href^="moji:node/"]')
+  const anchor = target.closest('a[href^="unyra:node/"], a[href^="moji:node/"]')
   if (!anchor) return false
   const id = nodeIdFromHref(anchor.getAttribute('href'))
   if (!id) return false
@@ -145,16 +157,16 @@ export function tryNodeLinkFromEvent(event: { target: EventTarget | null }): boo
 /* ---------- 文档间跳转 ---------- */
 
 /**
- * 文档链接：`[文字](moji:doc/<文档名>)` 或 `[文字](moji:doc/<nodeId>/<文档名>)`。
+ * 文档链接：`[文字](unyra:doc/<文档名>)` 或 `[文字](unyra:doc/<nodeId>/<文档名>)`。
  *
- * 一个节点带两份平级文档（教学文档与笔记文档），只靠 `moji:node/<id>` 说不清要跳到
+ * 一个节点带两份平级文档（教学文档与笔记文档），只靠 `unyra:node/<id>` 说不清要跳到
  * 哪一份。省略 nodeId 就是「当前所在节点的这份文档」——这是最常用的一档：
- * 教学文档里写 `[整理到我的笔记](moji:doc/note)`，点一下就翻到同一节点的笔记文档；
- * 跨节点时用 nodeId：`[看它的笔记](moji:doc/3f2a…/note)`（模型从 api.node.list 拿到 id）。
+ * 教学文档里写 `[整理到我的笔记](unyra:doc/note)`，点一下就翻到同一节点的笔记文档；
+ * 跨节点时用 nodeId：`[看它的笔记](unyra:doc/3f2a…/note)`（模型从 api.node.list 拿到 id）。
  *
- * `moji:node/<id>` 保留不动，等价于「该节点的教学文档」，老文档里的链接照旧有效。
+ * `unyra:node/<id>` 与 `moji:node/<id>` 保留不动，老文档里的链接照旧有效。
  */
-export const DOC_LINK_SCHEME = 'moji:doc/'
+export const DOC_LINK_SCHEME = 'unyra:doc/'
 
 /** href 里用的短名；中文与英文都认，容忍模型写「教学文档」这类全称 */
 const DOC_SLUGS: Record<string, DocKind> = {
@@ -225,8 +237,13 @@ export function parseDocJump(raw: string | null | undefined): DocJump | null {
 export function parseDocHref(href: string | null | undefined): ({ nodeId: string | null; kind: DocKind } & DocJump) | null {
   if (!href) return null
   const h = href.trim()
-  if (!h.toLowerCase().startsWith(DOC_LINK_SCHEME)) return null
-  const raw = h.slice(DOC_LINK_SCHEME.length)
+  const lower = h.toLowerCase()
+  let prefixLen = 0
+  if (lower.startsWith('unyra:doc/')) prefixLen = 'unyra:doc/'.length
+  else if (lower.startsWith('moji:doc/')) prefixLen = 'moji:doc/'.length
+  else return null
+
+  const raw = h.slice(prefixLen)
   // 片段在 `#` 之后：先摘下来，剩下的才是路径（路径里本来就不该出现 #）
   const hashAt = raw.indexOf('#')
   const jump = hashAt >= 0 ? parseDocJump(raw.slice(hashAt)) : null
@@ -256,7 +273,7 @@ export function handleDocLink(target: { nodeId: string | null; kind: DocKind } &
 export function tryDocLinkFromEvent(event: { target: EventTarget | null }): boolean {
   const target = event.target
   if (!(target instanceof Element)) return false
-  const anchor = target.closest('a[href^="moji:doc/"]')
+  const anchor = target.closest('a[href^="unyra:doc/"], a[href^="moji:doc/"]')
   if (!anchor) return false
   const parsed = parseDocHref(anchor.getAttribute('href'))
   if (!parsed) return false
@@ -324,7 +341,7 @@ export function tryMarkdownPathFromEvent(event: { target: EventTarget | null }):
  * 文档名会 encodeURIComponent（名字里的空格、斜杠都会破坏 markdown 链接）。
  * 渲染在超级文档的沙箱 iframe 里时，点击由 BRIDGE 拦截后转回宿主处理（同一套解析）。
  */
-export const SUPER_LINK_SCHEME = 'moji:super/'
+export const SUPER_LINK_SCHEME = 'unyra:super/'
 
 export function superLinkHref(name: string, nodeId?: string | null): string {
   return SUPER_LINK_SCHEME + (nodeId ? encodeURIComponent(nodeId) + '/' : '') + encodeURIComponent(name)
@@ -347,8 +364,13 @@ function decodePart(raw: string): string {
 export function parseSuperHref(href: string | null | undefined): { nodeId: string | null; name: string } | null {
   if (!href) return null
   const h = href.trim()
-  if (!h.toLowerCase().startsWith(SUPER_LINK_SCHEME)) return null
-  const rest = h.slice(SUPER_LINK_SCHEME.length)
+  const lower = h.toLowerCase()
+  let prefixLen = 0
+  if (lower.startsWith('unyra:super/')) prefixLen = 'unyra:super/'.length
+  else if (lower.startsWith('moji:super/')) prefixLen = 'moji:super/'.length
+  else return null
+
+  const rest = h.slice(prefixLen)
   const slash = rest.indexOf('/')
   if (slash < 0) return { nodeId: null, name: decodePart(rest).trim() }
   return {
@@ -370,7 +392,7 @@ export function handleSuperLink(target: { nodeId: string | null; name: string })
 export function trySuperLinkFromEvent(event: { target: EventTarget | null }): boolean {
   const target = event.target
   if (!(target instanceof Element)) return false
-  const anchor = target.closest('a[href^="moji:super"]')
+  const anchor = target.closest('a[href^="unyra:super"], a[href^="moji:super"]')
   if (!anchor) return false
   const parsed = parseSuperHref(anchor.getAttribute('href'))
   if (!parsed) return false

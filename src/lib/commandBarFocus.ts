@@ -15,9 +15,12 @@
  *   （pushInput + clearInputState + 关面板 + 焦点回编辑器），不留卡死的命令行状态。
  */
 import type { EditorView } from '@codemirror/view'
+import { findSearchMatches } from './browseVimSearch'
 
 /** 唤起命令栏时带的参数 */
 export interface CommandBarOpenOpts {
+  /** 模式标识：':' 为命令模式，'/' 为正向搜索，'?' 为反向搜索 */
+  mode?: ':' | '/' | '?'
   /** 预填的命令文本（vim 提示符带值时用：可视模式的 '<,'>、重复前缀） */
   prefill?: string
   /**
@@ -39,13 +42,16 @@ export function openGlobalCommandBar(opts?: CommandBarOpenOpts): void {
   opener?.(opts)
 }
 
-/** 模板 textContent 以 ':' 开头 = vim 的冒号命令行提示符（'/' 搜索提示不以它开头） */
-function isCmdlineTemplate(template: unknown): boolean {
+/** 检测模板是冒号命令行还是搜索提示符 */
+function getPromptMode(template: unknown): ':' | '/' | '?' | null {
   const text =
     typeof (template as { textContent?: string } | null | undefined)?.textContent === 'string'
       ? (template as { textContent: string }).textContent.trim()
       : ''
-  return text.startsWith(':')
+  if (text.startsWith(':')) return ':'
+  if (text.startsWith('/')) return '/'
+  if (text.startsWith('?')) return '?'
+  return null
 }
 
 /** 足以被 vimKeyFromEvent 认成 Esc 的最小事件（e_stop 只摸 preventDefault / stopPropagation） */
@@ -70,8 +76,9 @@ export function installVimPromptBridge(view: EditorView): void {
   ) => unknown).bind(cm)
   slot.__mojiPromptBridge = true
   slot.openDialog = (template: unknown, callback?: (input?: string) => void, options?: VimDialogOptions): unknown => {
-    // '/' 搜索提示与其它对话框照旧走原生面板，只接管冒号命令行
-    if (!isCmdlineTemplate(template)) {
+    const promptMode = getPromptMode(template)
+    // 非 Vim 命令或搜索提示（如某些特定确认框）走原生面板
+    if (!promptMode) {
       return nativeOpenDialog(template, callback, options)
     }
     let done = false
@@ -79,9 +86,31 @@ export function installVimPromptBridge(view: EditorView): void {
       if (done) return
       done = true
       if (typeof input === 'string' && callback) {
-        // 交回 vim：processCommand 执行我们注册的 Ex 命令，收尾（clearInputState）在那条路里自带
+        let finalInput = input
+        // 搜索模式兼容拼音匹配：提取文档中拼音匹配到的汉字，组合成扩展正则传递给 Vim
+        if ((promptMode === '/' || promptMode === '?') && input.trim()) {
+          try {
+            const docText = view.state.doc.toString()
+            const spans = findSearchMatches(docText, input)
+            const chineseTerms = Array.from(
+              new Set(
+                spans
+                  .map((s) => docText.slice(s.start, s.end))
+                  .filter((t) => /[\u4e00-\u9fa5]/.test(t))
+              )
+            )
+            if (chineseTerms.length > 0) {
+              const escaped = chineseTerms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+              finalInput = '(?:' + [input, ...escaped].join('|') + ')'
+            }
+          } catch {
+            // 降级回退原始输入
+          }
+        }
+
+        // 交回 vim：processCommand 执行我们注册的 Ex 命令或搜索
         try {
-          callback(input)
+          callback(finalInput)
         } catch {
           // vim 内部对坏输入自己兜底，这里不吞上下文
         }
@@ -105,6 +134,7 @@ export function installVimPromptBridge(view: EditorView): void {
       }
     }
     openGlobalCommandBar({
+      mode: promptMode,
       prefill: typeof options?.value === 'string' ? options.value : '',
       onFinish: finish,
     })

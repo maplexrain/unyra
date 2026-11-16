@@ -6,8 +6,8 @@ import { nodePathOf } from '../paths'
 import { resourcesOf } from './ops'
 import type { ResourceRef } from './types'
 
-/** 文档里引用资源的协议前缀：\`![说明](moji:static/<uuid>)\` */
-export const STATIC_SCHEME = 'moji:static/'
+/** 文档里引用资源的协议前缀：`![说明](unyra:static/<uuid>)` */
+export const STATIC_SCHEME = 'unyra:static/'
 
 /* ---------- 引用扫描 ---------- */
 
@@ -17,15 +17,18 @@ export const staticToken = (uuid: string): string => STATIC_SCHEME + uuid
 /** 从 markdown 链接地址里取 uuid；不是资源引用返回 null */
 export function uuidFromHref(href: string): string | null {
   const h = href.trim()
-  if (!h.startsWith(STATIC_SCHEME)) return null
-  const uuid = h.slice(STATIC_SCHEME.length).split(/[?#]/)[0].trim()
+  let prefixLen = 0
+  if (h.startsWith('unyra:static/')) prefixLen = 'unyra:static/'.length
+  else if (h.startsWith('moji:static/')) prefixLen = 'moji:static/'.length
+  else return null
+  const uuid = h.slice(prefixLen).split(/[?#]/)[0].trim()
   return /^[A-Za-z0-9_-]+$/.test(uuid) ? uuid : null
 }
 
 /** 一段正文里引用了哪些 uuid（按出现次数） */
 export function uuidsIn(text: string): Map<string, number> {
   const out = new Map<string, number>()
-  const re = /moji:static\/([A-Za-z0-9_-]+)/g
+  const re = /(?:unyra|moji):static\/([A-Za-z0-9_-]+)/g
   for (const m of text.matchAll(re)) out.set(m[1], (out.get(m[1]) ?? 0) + 1)
   return out
 }
