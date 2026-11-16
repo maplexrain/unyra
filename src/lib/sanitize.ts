@@ -8,9 +8,9 @@
 import DOMPurify from 'dompurify'
 
 /**
- * 放行自定义的 moji:node/ 协议（知识节点链接），其余 URL 仍走默认白名单
+ * 放行自定义的 unyra: 与 moji: 协议（知识节点链接、静态资源等），其余 URL 仍走默认白名单
  */
-const ALLOWED_URI = /^(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|moji|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$)/i
+const ALLOWED_URI = /^(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|unyra|moji|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$)/i
 
 /**
  * Agent 写的教学文档允许内嵌少量 SVG 与 CSS 动画做辅助教学，

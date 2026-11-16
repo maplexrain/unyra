@@ -62,6 +62,10 @@ function idOf(ref: TabRef): string {
       return 'set:settings'
     case 'local':
       return 'l:' + ref.path
+    case 'web':
+      return 'w:' + ref.key
+    case 'blank':
+      return 'b:' + ref.key
     default:
       return 'x'
   }
@@ -87,6 +91,7 @@ describe('refOwner', () => {
 
   it('设置 / 本地文件等不属于任何目标：一律归公共', () => {
     expect(refOwner({ kind: 'settings' }, goalOfNode)).toBe(PUBLIC_OWNER)
+    expect(refOwner({ kind: 'terminal' }, goalOfNode)).toBe(PUBLIC_OWNER)
     expect(refOwner({ kind: 'local', path: 'a.txt' }, goalOfNode)).toBe(PUBLIC_OWNER)
     expect(refOwner({ kind: 'usage' }, goalOfNode)).toBe(PUBLIC_OWNER)
   })
@@ -116,19 +121,15 @@ describe('visibleTabs', () => {
     [PUBLIC_OWNER]: ['set:settings', 'l:external.txt'],
   }
 
-  it('当前目标 = 它的页签 + 公共页签，顺序照原样', () => {
+  it('当前目标 = 仅展示属于该目标的页签（不再过滤保留非目标相关的公共页签）', () => {
     expect(visibleTabs(tabs, owners, 'goalA').map((t) => t.id)).toEqual([
       'o:rootA',
-      'set:settings',
-      'l:external.txt',
       't:childA',
     ])
   })
 
-  it('切到另一个目标：它的页签出来，前一个目标的页签收起来', () => {
+  it('切到另一个目标：仅展示目标自己的页签，前一个目标的页签收起来', () => {
     expect(visibleTabs(tabs, owners, 'goalB').map((t) => t.id)).toEqual([
-      'set:settings',
-      'l:external.txt',
       'o:rootB',
     ])
   })
@@ -141,10 +142,15 @@ describe('visibleTabs', () => {
     expect(visibleTabs(tabs, undefined, 'goalA').map((t) => t.id)).toEqual(tabs.map((t) => t.id))
   })
 
-  it('没登记过的页签算当前目标的：忘了登记也不会凭空消失', () => {
-    // 只登记了公共那一枚：其余四枚都没登记，切到 goalA 时应当全都在（公共的也还在）
+  it('没登记过的页签算当前目标的：忘了登记也不会凭空消失，已登记公共的不进入目标', () => {
+    // 只登记了公共那一枚：其余四枚都没登记，切到 goalA 时四枚未登记的都在（公共的不进目标组）
     const half: TabOwners = { [PUBLIC_OWNER]: ['set:settings'] }
-    expect(visibleTabs(tabs, half, 'goalA').map((t) => t.id)).toEqual(tabs.map((t) => t.id))
+    expect(visibleTabs(tabs, half, 'goalA').map((t) => t.id)).toEqual([
+      'o:rootA',
+      'l:external.txt',
+      't:childA',
+      'o:rootB',
+    ])
   })
 
   /*
@@ -155,8 +161,6 @@ describe('visibleTabs', () => {
   it('别的目标的页签：某一格正在看它时才留在栏上', () => {
     expect(visibleTabs(tabs, owners, 'goalA', new Set(['o:rootB'])).map((t) => t.id)).toEqual([
       'o:rootA',
-      'set:settings',
-      'l:external.txt',
       't:childA',
       'o:rootB',
     ])
@@ -166,7 +170,6 @@ describe('visibleTabs', () => {
     expect(visibleTabs(tabs, owners, 'goalA', new Set(['t:childA', 'set:settings'])).map((t) => t.id)).toEqual([
       'o:rootA',
       'set:settings',
-      'l:external.txt',
       't:childA',
     ])
   })
@@ -174,7 +177,12 @@ describe('visibleTabs', () => {
   it('保底救不了的（没登记的、目标已经没了的）照旧按归属算', () => {
     const half: TabOwners = { [PUBLIC_OWNER]: ['set:settings'] }
     // goalB 这一枚在表里没登记 → 归当前目标 → 保底对它没有影响（本来就在）
-    expect(visibleTabs(tabs, half, 'goalA', new Set(['o:rootB'])).map((t) => t.id)).toEqual(tabs.map((t) => t.id))
+    expect(visibleTabs(tabs, half, 'goalA', new Set(['o:rootB'])).map((t) => t.id)).toEqual([
+      'o:rootA',
+      'l:external.txt',
+      't:childA',
+      'o:rootB',
+    ])
   })
 })
 
@@ -189,11 +197,33 @@ describe('分屏时页签栏的顺序（focusTabsInGroup）', () => {
   it('保底带进来的那一枚排在当前目标这一批之后', () => {
     const pinned = new Set(['o:rootB'])
     const visible = visibleTabs(tabs, owners, 'goalA', pinned)
-    expect(visible.map((t) => t.id)).toEqual(['o:rootB', 'o:rootA', 'set:settings'])
+    expect(visible.map((t) => t.id)).toEqual(['o:rootB', 'o:rootA'])
     expect(focusTabsInGroup(visible, owners, 'goalA').map((t) => t.id)).toEqual([
       'o:rootA',
       'o:rootB',
+    ])
+  })
+})
+
+describe('当前tab组激活时打开任意页签视为当前组一部分', () => {
+  it('在目标组激活时登记任意页签，切换到目标组时可见，切换走时不可见', () => {
+    const tabs = [
+      tab({ kind: 'outline', nodeId: 'rootA' }),
+      tab({ kind: 'settings' }),
+      tab({ kind: 'web', url: 'https://example.com', key: 'w1' }),
+      tab({ kind: 'outline', nodeId: 'rootB' }),
+    ]
+    const owners: TabOwners = {
+      goalA: ['o:rootA', 'set:settings', 'w:w1'],
+      goalB: ['o:rootB'],
+    }
+    expect(visibleTabs(tabs, owners, 'goalA').map((t) => t.id)).toEqual([
+      'o:rootA',
       'set:settings',
+      'w:w1',
+    ])
+    expect(visibleTabs(tabs, owners, 'goalB').map((t) => t.id)).toEqual([
+      'o:rootB',
     ])
   })
 })

@@ -7,6 +7,7 @@ import { migrateConversation } from '../compact'
 import type { Exam } from '../exam'
 import type {
   DetachedPool,
+  GoalKnowledgeItem,
   LearnStore,
   MemoryItem,
   MethodEntry,
@@ -63,6 +64,8 @@ function readGoalLedgers(
     /** 文件节点（目标 × 本地文件/网页的绑定），目标目录的 file-nodes.json */
     fileNodesByGoal: Record<string, unknown[]>
     fileEdgesByGoal: Record<string, Array<Record<string, unknown>>>
+    /** 目标级知识库（整门课所有文档共享），目标目录的 knowledge.json */
+    knowledgeByGoal: Record<string, GoalKnowledgeItem[]>
   },
 ): void {
   const convs = parseJson<{ conversations?: unknown[] }>(files.get(`${goalDir}/chat.json`))
@@ -104,6 +107,14 @@ function readGoalLedgers(
         (d): d is SuperDocFile => !!d && typeof d === 'object' && typeof (d as SuperDocFile).id === 'string' && typeof (d as SuperDocFile).name === 'string',
       ),
     }
+  }
+
+  // 目标级知识库（整门目标所有文档共享，全文出现处均引用）
+  const knowledgeFile = parseJson<{ items?: GoalKnowledgeItem[] }>(files.get(`${goalDir}/knowledge.json`))
+  if (Array.isArray(knowledgeFile?.items) && knowledgeFile.items.length) {
+    out.knowledgeByGoal[goalId] = knowledgeFile.items.filter(
+      (k): k is GoalKnowledgeItem => !!k && typeof k === 'object' && typeof (k as GoalKnowledgeItem).term === 'string' && typeof (k as GoalKnowledgeItem).summary === 'string',
+    )
   }
 
   // 游离大纲池（不依附文档的计划实体）+ 以游离大纲为起点的树边
@@ -236,6 +247,7 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
     projectsByGoal: {} as Record<string, unknown[]>,
     fileNodesByGoal: {} as Record<string, unknown[]>,
     fileEdgesByGoal: {} as Record<string, Array<Record<string, unknown>>>,
+    knowledgeByGoal: {} as Record<string, GoalKnowledgeItem[]>,
   }
 
   for (const [dir, { file }] of nodeFiles) {
@@ -359,7 +371,9 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
     favorites: s.favorites ?? null,
     favGroups: s.favGroups ?? null,
     structure: ledgers.structureByGoal,
-    detached: ledgers.detachedByGoal,    schedule: s.schedule ?? null,
+    detached: ledgers.detachedByGoal,
+    knowledge: ledgers.knowledgeByGoal,
+    schedule: s.schedule ?? null,
     agentTabs: s.agentTabs ?? null,
     agentActiveTab: s.agentActiveTab ?? null,
   })
@@ -408,6 +422,7 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
     projectsByGoal: {} as Record<string, unknown[]>,
     fileNodesByGoal: {} as Record<string, unknown[]>,
     fileEdgesByGoal: {} as Record<string, Array<Record<string, unknown>>>,
+    knowledgeByGoal: {} as Record<string, GoalKnowledgeItem[]>,
   }
 
   // 目标目录必须是顶层（docs/{seg}）且自己那份 meta 在：结构不完整就整棵树跳过
@@ -611,6 +626,7 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
     favGroups: s.favGroups ?? null,
     structure: ledgers.structureByGoal,
     detached: ledgers.detachedByGoal,
+    knowledge: ledgers.knowledgeByGoal,
     schedule: s.schedule ?? null,
     agentTabs: s.agentTabs ?? null,
     agentActiveTab: s.agentActiveTab ?? null,

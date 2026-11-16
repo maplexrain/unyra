@@ -23,6 +23,17 @@ interface Opts {
   onDeleteAnnotation?: (term: string) => void
 }
 
+type NoteOpener = (term: string, occurrence: number) => void
+let noteOpener: NoteOpener | null = null
+
+export function setNoteOpener(opener: NoteOpener | null): void {
+  noteOpener = opener
+}
+
+export function openGlobalNoteDialog(term: string, occurrence: number): void {
+  noteOpener?.(term, occurrence)
+}
+
 /**
  * 注解输入区的状态与接线。返回的 dialog 直接摆进文档列底部（它是占位的输入区，
  * 由那一列的 flex 决定位置）；openNote 给选词菜单的「注解」那一项用。
@@ -60,6 +71,11 @@ export function useAnnotationLayer({
     const existing = annotationOf(term)
     setNoteDialog({ term, occurrence: existing?.occurrence ?? occurrence, editing: !!existing })
   }
+
+  useEffect(() => {
+    setNoteOpener(openNote)
+    return () => setNoteOpener(null)
+  })
 
   /**
    * 保存注解。返回 false 表示没存成——NoteDialog 会据此把退场动画撤回，

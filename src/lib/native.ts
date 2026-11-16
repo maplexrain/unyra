@@ -515,8 +515,8 @@ export interface NativeBridge {
     read(path: string, opts?: { encoding?: 'utf8' | 'base64' | 'binary'; maxBytes?: number; offset?: number }): Promise<BaseFileReadResult>
     write(path: string, content: string, opts?: { encoding?: 'utf8' | 'base64'; overwrite?: boolean }): Promise<BaseFileWriteResult>
     edit(path: string, opts?: BaseFileEditOpts): Promise<BaseFileEditResult>
-    list(path?: string): Promise<BaseFileListResult>
-    stat(path: string): Promise<BaseFileStatResult>
+    list(path?: string, opts?: { trusted?: boolean }): Promise<BaseFileListResult>
+    stat(path: string, opts?: { trusted?: boolean }): Promise<BaseFileStatResult>
     mkdir(path: string): Promise<BaseFileOpResult>
     copy(from: string, to: string, opts?: { overwrite?: boolean }): Promise<BaseFileOpResult>
     move(from: string, to: string): Promise<BaseFileOpResult>
@@ -534,6 +534,8 @@ export interface NativeBridge {
     list(): Promise<BaseProcessListResult>
     get(process_id: string): Promise<BaseProcessGetResult>
     delete(process_id: string): Promise<BaseProcessDeleteResult>
+    onData?(cb: (payload: { process_id: string; text: string; stream: 'stdout' | 'stderr' }) => void): () => void
+    onExit?(cb: (payload: { process_id: string; exitCode: number | null; signal: string | null }) => void): () => void
   }
   syncPermissions(allowedDirs: string[]): Promise<{ ok: boolean }>
   /**
@@ -549,8 +551,8 @@ export interface NativeBridge {
       read(path: string, opts?: { encoding?: 'utf8' | 'base64' | 'binary'; maxBytes?: number; offset?: number }): Promise<BaseFileReadResult>
       write(path: string, content: string, opts?: { encoding?: 'utf8' | 'base64'; overwrite?: boolean }): Promise<BaseFileWriteResult>
       edit(path: string, opts?: BaseFileEditOpts): Promise<BaseFileEditResult>
-      list(path?: string): Promise<BaseFileListResult>
-      stat(path: string): Promise<BaseFileStatResult>
+      list(path?: string, opts?: { trusted?: boolean }): Promise<BaseFileListResult>
+      stat(path: string, opts?: { trusted?: boolean }): Promise<BaseFileStatResult>
       mkdir(path: string): Promise<BaseFileOpResult>
       copy(from: string, to: string, opts?: { overwrite?: boolean }): Promise<BaseFileOpResult>
       move(from: string, to: string): Promise<BaseFileOpResult>
@@ -568,6 +570,8 @@ export interface NativeBridge {
       list(): Promise<BaseProcessListResult>
       get(process_id: string): Promise<BaseProcessGetResult>
       delete(process_id: string): Promise<BaseProcessDeleteResult>
+      onData?(cb: (payload: { process_id: string; text: string; stream: 'stdout' | 'stderr' }) => void): () => void
+      onExit?(cb: (payload: { process_id: string; exitCode: number | null; signal: string | null }) => void): () => void
     }
     syncPermissions(allowedDirs: string[]): Promise<{ ok: boolean }>
   }
@@ -615,12 +619,14 @@ export interface NativeBridge {
 
 declare global {
   interface Window {
+    unyraNative?: NativeBridge
     mojiNative?: NativeBridge
   }
 }
 
 /**
- * 拿桥。**这里是本文件唯一碰 window.mojiNative 的地方**（其余全是类型声明）：
+ * 拿桥。**这里是本文件唯一碰原生桥的地方**（其余全是类型声明）：
+ * 优先取 window.unyraNative（旧版兼容 window.mojiNative）。
  * 于是「浏览器里跑测试」这类少了桥的环境，只有在真的去调原生能力时才会拿到这句可操作的
  * 提示，import 一下这个模块不会抛。
  */
@@ -630,7 +636,8 @@ let webBridgeInstance: NativeBridge | null = null
 
 export const native = (): NativeBridge => {
   if (typeof window !== 'undefined') {
-    if (window.mojiNative) return window.mojiNative
+    const bridge = window.unyraNative ?? window.mojiNative
+    if (bridge) return bridge
     // 处于普通 Web 浏览器环境，自动初始化 Web 桥适配器
     webBridgeInstance ??= createWebNativeBridge()
     return webBridgeInstance
@@ -642,7 +649,7 @@ export const native = (): NativeBridge => {
 
 /** 是否运行在 Electron 原生客户端容器内 */
 export const isElectron = (): boolean =>
-  typeof window !== 'undefined' && !!window.mojiNative
+  typeof window !== 'undefined' && !!(window.unyraNative || window.mojiNative)
 
 /** 是否运行在普通浏览器 (WebUI) 模式中 */
 export const isWeb = (): boolean =>

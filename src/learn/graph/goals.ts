@@ -138,6 +138,8 @@ function tabNodeIdOf(ref: TabRef): string {
   return ref.kind === 'local' ||
     ref.kind === 'web' ||
     ref.kind === 'settings' ||
+    ref.kind === 'user' ||
+    ref.kind === 'terminal' ||
     ref.kind === 'video' ||
     ref.kind === 'pluginDoc' ||
     ref.kind === 'sponsors' ||

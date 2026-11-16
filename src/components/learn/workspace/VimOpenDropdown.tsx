@@ -17,6 +17,8 @@ import {
   Sliders,
   BarChart2,
   GraduationCap,
+  Terminal,
+  User,
 } from 'lucide-react'
 import type { VimOpenKind, VimOpenTarget } from '../../../lib/vimOpenTargets'
 import { t } from '../../../i18n'
@@ -49,6 +51,10 @@ function renderKindIcon(kind: VimOpenKind) {
       return <FolderGit2 size={15} className="shrink-0 text-indigo-400" />
     case 'settings':
       return <Sliders size={15} className="shrink-0 text-ink-soft" />
+    case 'user':
+      return <User size={15} className="shrink-0 text-amber-500" />
+    case 'terminal':
+      return <Terminal size={15} className="shrink-0 text-emerald-400" />
     case 'usage':
       return <BarChart2 size={15} className="shrink-0 text-teal-400" />
     case 'examWindow':

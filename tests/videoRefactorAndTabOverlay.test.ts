@@ -233,32 +233,39 @@ describe('视频重构与 Tab 键浮层、分段生成规范', () => {
       handleVideoLink,
     } = await import('../src/lib/videoLink')
 
-    // 1. 生成链接
-    expect(videoLinkHref({ timeMs: 83000 })).toBe('moji:video?t=01:23')
-    expect(videoLinkHref({ page: 3, timeMs: 83000 })).toBe('moji:video?p=3&t=01:23')
-    expect(videoLinkMarkdown({ timeMs: 83000 })).toBe('[01:23](moji:video?t=01:23)')
-    expect(videoLinkMarkdown({ page: 3, timeMs: 83000 })).toBe('[P3 01:23](moji:video?p=3&t=01:23)')
+    // 1. 生成链接（默认生成 unyra:video 协议）
+    expect(videoLinkHref({ timeMs: 83000 })).toBe('unyra:video?t=01:23')
+    expect(videoLinkHref({ page: 3, timeMs: 83000 })).toBe('unyra:video?p=3&t=01:23')
+    expect(videoLinkMarkdown({ timeMs: 83000 })).toBe('[01:23](unyra:video?t=01:23)')
+    expect(videoLinkMarkdown({ page: 3, timeMs: 83000 })).toBe('[P3 01:23](unyra:video?p=3&t=01:23)')
 
-    // 2. 协议判断
+    // 2. 协议判断（同时放行 unyra:video 与向后兼容 moji:video）
+    expect(isVideoHref('unyra:video?t=01:23')).toBe(true)
     expect(isVideoHref('moji:video?t=01:23')).toBe(true)
+    expect(isVideoHref('unyra:video?p=2&t=10:05')).toBe(true)
     expect(isVideoHref('moji:video?p=2&t=10:05')).toBe(true)
     expect(isVideoHref('https://example.com')).toBe(false)
     expect(isVideoHref(undefined)).toBe(false)
 
     // 3. 链接解析
+    expect(parseVideoHref('unyra:video?t=01:23')).toMatchObject({ timeMs: 83000 })
     expect(parseVideoHref('moji:video?t=01:23')).toMatchObject({ timeMs: 83000 })
+    expect(parseVideoHref('unyra:video?p=2&t=01:23')).toMatchObject({ page: 2, timeMs: 83000 })
     expect(parseVideoHref('moji:video?p=2&t=01:23')).toMatchObject({ page: 2, timeMs: 83000 })
-    expect(parseVideoHref('moji:video?t=90')).toMatchObject({ timeMs: 90000 })
-    expect(parseVideoHref('moji:video?t=01:02:03')).toMatchObject({ timeMs: 3723000 })
+    expect(parseVideoHref('unyra:video?t=90')).toMatchObject({ timeMs: 90000 })
+    expect(parseVideoHref('unyra:video?t=01:02:03')).toMatchObject({ timeMs: 3723000 })
 
     // 4. 跳转处理器分发
     let received: any = null
     const restore = setVideoLinkHandler((target) => {
       received = target
     })
-    const handled = handleVideoLink('moji:video?p=4&t=02:30')
+    const handled = handleVideoLink('unyra:video?p=4&t=02:30')
     expect(handled).toBe(true)
     expect(received).toMatchObject({ page: 4, timeMs: 150000 })
+    const handledLegacy = handleVideoLink('moji:video?p=5&t=03:30')
+    expect(handledLegacy).toBe(true)
+    expect(received).toMatchObject({ page: 5, timeMs: 210000 })
     restore()
   })
 

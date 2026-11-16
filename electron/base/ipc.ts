@@ -25,6 +25,8 @@ import {
   baseProcessStop,
   baseProcessWait,
   cleanupAllProcesses,
+  onProcessOutput,
+  onProcessExit,
 } from './process'
 import { syncAllowedDirs } from './permissions'
 import { projectFsRun } from './projectFiles'
@@ -67,8 +69,8 @@ export function registerBaseIpc(): void {
     }
     return res
   })
-  ipcMain.handle('base:files:list', (_e, p: unknown) => baseFileList(p))
-  ipcMain.handle('base:files:stat', (_e, p: unknown) => baseFileStat(p))
+  ipcMain.handle('base:files:list', (_e, p: unknown, opts?: unknown) => baseFileList(p, opts as { trusted?: boolean }))
+  ipcMain.handle('base:files:stat', (_e, p: unknown, opts?: unknown) => baseFileStat(p, opts as { trusted?: boolean }))
   ipcMain.handle('base:files:mkdir', (_e, p: unknown) => baseFileMkdir(p))
   ipcMain.handle('base:files:copy', (_e, from: unknown, to: unknown, opts: unknown) =>
     baseFileCopy(from, to, opts as { overwrite?: boolean }),
@@ -83,6 +85,22 @@ export function registerBaseIpc(): void {
   })
 
   // base.process.* 通道
+  onProcessOutput((processId, text, stream) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('base:process:data', { process_id: processId, text, stream })
+      }
+    }
+  })
+
+  onProcessExit((processId, exitCode, signal) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('base:process:exit', { process_id: processId, exitCode, signal })
+      }
+    }
+  })
+
   ipcMain.handle('base:process:create', (_e, opts: unknown) =>
     baseProcessCreate(opts as BaseProcessCreateOpts),
   )

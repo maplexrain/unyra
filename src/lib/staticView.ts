@@ -19,7 +19,6 @@
 
 import { t } from '../i18n'
 import {
-  STATIC_SCHEME,
   fileNameOf,
   formatBytes,
   isImageExt,
@@ -145,16 +144,17 @@ export function hydrateStaticFiles(root: HTMLElement): () => void {
   /* ---------- 收集：正文刚被整体写过一次，此刻的引用就是全部 ---------- */
 
   const selector =
-    'img[src^="' + STATIC_SCHEME + '"], a[href^="' + STATIC_SCHEME + '"]'
+    'img[src^="unyra:static/"], img[src^="moji:static/"], a[href^="unyra:static/"], a[href^="moji:static/"]'
   for (const el of Array.from(root.querySelectorAll<HTMLElement>(selector))) {
     const kind: 'img' | 'a' = el.tagName === 'IMG' ? 'img' : 'a'
     const raw = (kind === 'img' ? el.getAttribute('src') : el.getAttribute('href')) ?? ''
     const uuid = uuidFromHref(raw)
+    const schemeLen = raw.toLowerCase().startsWith('unyra:static/') ? 'unyra:static/'.length : 'moji:static/'.length
     const rec: Rec = {
       origin: el,
       node: el,
       kind,
-      uuid: uuid ?? raw.slice(STATIC_SCHEME.length).split(/[?#]/)[0].trim().slice(0, 8),
+      uuid: uuid ?? raw.slice(schemeLen).split(/[?#]/)[0].trim().slice(0, 8),
       broken: uuid === null,
       applied: '',
       appliedUrl: '',

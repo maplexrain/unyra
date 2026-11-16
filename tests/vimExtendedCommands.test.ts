@@ -251,6 +251,24 @@ describe('扩展 Vim 命令与纯净阅读模式测试 (vimExtendedCommands)', (
       expect(res.success).toBe(true)
       expect(pureState).toBe(false)
     })
+
+    it(':term 与 :terminal 打开终端控制台页签', () => {
+      let openedRef: any = null
+      setGlobalTabOperations({
+        ...mockOps,
+        openTab: (ref) => {
+          openedRef = ref
+        },
+      })
+      const r1 = executeVimCommand('term')
+      expect(r1.success).toBe(true)
+      expect(openedRef).toEqual({ kind: 'terminal' })
+
+      openedRef = null
+      const r2 = executeVimCommand(':terminal')
+      expect(r2.success).toBe(true)
+      expect(openedRef).toEqual({ kind: 'terminal' })
+    })
   })
 
   describe(':open / :o 与拼音匹配检索 (vimOpenTargets)', () => {
@@ -408,6 +426,7 @@ describe('扩展 Vim 命令与纯净阅读模式测试 (vimExtendedCommands)', (
       expect(targets.some((t) => t.kind === 'file')).toBe(true)
       expect(targets.some((t) => t.kind === 'ws')).toBe(true)
       expect(targets.some((t) => t.kind === 'settings')).toBe(true)
+      expect(targets.some((t) => t.kind === 'terminal')).toBe(true)
       expect(targets.some((t) => t.kind === 'usage')).toBe(true)
       expect(targets.some((t) => t.kind === 'examWindow')).toBe(true)
 

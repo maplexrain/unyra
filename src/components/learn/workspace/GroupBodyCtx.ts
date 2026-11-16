@@ -1,5 +1,6 @@
 import type { ComponentProps, Dispatch, RefObject, SetStateAction } from 'react'
 import type { DocView, FavoriteRef, KnowledgeNode, LearnStore, LearnTab, TabRef, WebTabMeta } from '../../../learn/types'
+import type { User, UserProfile } from '../../../user/types'
 import type { TabOwners } from '../../../learn/groups'
 import type { StructureMap } from '../../../learn/structure'
 import type { ChipPayload } from '../../../lib/docChip'
@@ -157,4 +158,12 @@ export interface GroupBodyCtx {
   stripHosts: RefObject<Map<string, HTMLElement | null>>
   /** 页签栏与 paneInfo 的试卷标题活查（改名后跟着新名字走） */
   examTabTitle: (examId: string, attemptId: string) => string | undefined
+  /* 用户中心页签 */
+  users?: User[]
+  activeUserId?: string | null
+  onSelectUser?: (userId: string) => void
+  onCreateUser?: (profile?: Partial<UserProfile>, apiKey?: string) => Promise<User> | void
+  onUpdateUser?: (userId: string, patch: Partial<UserProfile>) => void
+  onDeleteUser?: (userId: string) => void
+  onSignOut?: () => void
 }

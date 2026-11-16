@@ -117,10 +117,12 @@ export function useTabOpening({
         const at = groupIdOfTab(docArea, rootId)
         if (at) docArea = activateIn(docArea, at, rootId)
       } else {
-        const focusGroup = focusedGroup(docArea)
-        const activeOwner = focusGroup?.active ? ownerOfTabId(s, focusGroup.active, owners) : goalId
-        if (focusGroup && focusGroup.active !== rootId && activeOwner !== goalId) {
-          docArea = activateIn(docArea, focusGroup.id, rootId)
+        for (const g of docArea.groups) {
+          const activeOwner = g.active ? ownerOfTabId(s, g.active, owners) : goalId
+          if (g.active !== rootId && activeOwner !== goalId) {
+            const ownTab = g.tabs.find((t) => ownerOfTabId(s, t.id, owners) === goalId)
+            docArea = activateIn(docArea, g.id, ownTab ? ownTab.id : rootId)
+          }
         }
       }
       return { ...s, docArea: withOwners(docArea, claimTab(docArea.tabOwners, goalId, rootId)) }
@@ -393,11 +395,16 @@ export function useTabOpening({
             ? openGroupedDoc(base.docArea, ref as TabRef & { nodeId: string }, rootOf(node.goalId), goalOf, Date.now(), startView)
             : openInGroup(base.docArea, base.docArea.focus, ref, Date.now(), startView, goalOf)
       /*
-       * 登记归属（见 groups/goals）：这枚页签从此记在它所属的目标名下，
-       * 于是切到那个目标时它就出现在栏上、切走时跟着收起来——「所有这个目标下任何层级
-       * 的文档打开都会被 tab 组记录」正是这一行。
+       * 登记归属（见 groups/goals）：只要在当前tab组激活时打开任意tab都视为当前tab组的一部分；
+       * 若该页签自身硬绑定到其他目标（如点击侧栏其他目标的节点），则归属于目标自身。
        */
-      const owner = (ref as { goalId?: string }).goalId ?? refOwner(ref, goalOf) ?? freeNote?.goalId ?? null
+      const specificGoal = (ref as { goalId?: string }).goalId || (node ? node.goalId : null) || freeNote?.goalId || null
+      const derivedOwner = refOwner(ref, goalOf)
+      const owner =
+        specificGoal ||
+        (derivedOwner && derivedOwner !== PUBLIC_OWNER ? derivedOwner : null) ||
+        base.activeGoalId ||
+        PUBLIC_OWNER
       set({ ...base, docArea: withOwners(opened, claimTab(opened.tabOwners, owner, tabKey(ref))) })
       if (wasActive) requestReveal()
       setSidebarOpen(false)
@@ -589,8 +596,9 @@ export function useTabOpening({
         pendingJumpsRef.current.set(tabId, selector)
       }
       const opened = openInGroup(s.docArea, s.docArea.focus, ref, Date.now(), undefined, (id) => nodeById(s, id)?.goalId ?? null)
-      // 网页页签不属于任何目标（公共）：登记成公共，切目标时它留栏上（见 groups/goals）
-      set({ ...s, docArea: withOwners(opened, claimTab(opened.tabOwners, PUBLIC_OWNER, tabId)) })
+      // 只要在当前tab组激活时打开任意的tab都视为当前tab组的一部分
+      const owner = s.activeGoalId || PUBLIC_OWNER
+      set({ ...s, docArea: withOwners(opened, claimTab(opened.tabOwners, owner, tabId)) })
       return tabId
     },
     [getLatest, set],
@@ -601,8 +609,9 @@ export function useTabOpening({
     const s = getLatest()
     const ref: TabRef = { kind: 'blank', key: newBlankKey() }
     const opened = openInGroup(s.docArea, s.docArea.focus, ref, Date.now())
-    // 空白页签同样是公共的（它不属于任何目标）
-    set({ ...s, docArea: withOwners(opened, claimTab(opened.tabOwners, PUBLIC_OWNER, tabKey(ref))) })
+    // 只要在当前tab组激活时打开任意的tab都视为当前tab组的一部分
+    const owner = s.activeGoalId || PUBLIC_OWNER
+    set({ ...s, docArea: withOwners(opened, claimTab(opened.tabOwners, owner, tabKey(ref))) })
     return tabKey(ref)
   }, [getLatest, set])
 

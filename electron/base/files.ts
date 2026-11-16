@@ -5,6 +5,7 @@
 import fsp from 'node:fs/promises'
 import fs from 'node:fs'
 import path from 'node:path'
+import { currentRoot } from '../storage'
 import { checkPathPermission } from './permissions'
 import type {
   BaseFileEditResult,
@@ -265,18 +266,25 @@ export async function baseFileEdit(
 /**
  * base.files.list: 列出某个路径下的所有文件/目录及其基本元数据
  */
-export async function baseFileList(rawPath: unknown): Promise<BaseFileListResult & { items?: unknown[] }> {
-  const perm = checkPathPermission(String(rawPath ?? ''))
-  if (!perm.allowed) return { ok: false, error: perm.error || '权限拒绝' }
+export async function baseFileList(rawPath: unknown, opts?: { trusted?: boolean }): Promise<BaseFileListResult & { items?: unknown[] }> {
+  let normalized = ''
+  if (opts?.trusted) {
+    const raw = String(rawPath ?? '').trim()
+    normalized = path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(currentRoot(), raw)
+  } else {
+    const perm = checkPathPermission(String(rawPath ?? ''))
+    if (!perm.allowed) return { ok: false, error: perm.error || '权限拒绝' }
+    normalized = perm.normalized
+  }
 
   try {
-    const dirents = await fsp.readdir(perm.normalized, { withFileTypes: true })
+    const dirents = await fsp.readdir(normalized, { withFileTypes: true })
     const entries = await Promise.all(
       dirents.map(async (d) => {
         let size = 0
         let mtimeMs = 0
         try {
-          const s = await fsp.stat(path.join(perm.normalized, d.name))
+          const s = await fsp.stat(path.join(normalized, d.name))
           size = s.size
           mtimeMs = s.mtimeMs
         } catch {
@@ -292,7 +300,7 @@ export async function baseFileList(rawPath: unknown): Promise<BaseFileListResult
       }),
     )
 
-    return { ok: true, path: perm.normalized, entries, items: entries }
+    return { ok: true, path: normalized, entries, items: entries }
   } catch (err) {
     return { ok: false, error: errText(err) }
   }
@@ -301,12 +309,19 @@ export async function baseFileList(rawPath: unknown): Promise<BaseFileListResult
 /**
  * base.files.stat: 查看某个文件的详细信息（是否存在、大小、修改时间等）
  */
-export async function baseFileStat(rawPath: unknown): Promise<BaseFileStatResult> {
-  const perm = checkPathPermission(String(rawPath ?? ''))
-  if (!perm.allowed) return { ok: false, error: perm.error || '权限拒绝' }
+export async function baseFileStat(rawPath: unknown, opts?: { trusted?: boolean }): Promise<BaseFileStatResult> {
+  let normalized = ''
+  if (opts?.trusted) {
+    const raw = String(rawPath ?? '').trim()
+    normalized = path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(currentRoot(), raw)
+  } else {
+    const perm = checkPathPermission(String(rawPath ?? ''))
+    if (!perm.allowed) return { ok: false, error: perm.error || '权限拒绝' }
+    normalized = perm.normalized
+  }
 
   try {
-    const s = await fsp.stat(perm.normalized)
+    const s = await fsp.stat(normalized)
     return {
       ok: true,
       exists: true,

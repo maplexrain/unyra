@@ -176,6 +176,7 @@ const EditorPane = memo(function EditorPane({
    * 别把其它页签上用户收好的分栏状态也一起翻掉。
    */
   const wasActiveRef = useRef(active)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     if (autoOpenPreview && active && !wasActiveRef.current) {
       toggleEditorPreview(true, storageKey)
@@ -183,12 +184,35 @@ const EditorPane = memo(function EditorPane({
     wasActiveRef.current = active
   }, [active, autoOpenPreview, storageKey])
 
+  useEffect(() => {
+    if (active) {
+      // 切换到编辑模式时自动使编辑器获得焦点
+      const tryFocus = () => {
+        const cm = containerRef.current?.querySelector<HTMLElement>('.cm-content')
+        if (cm && document.activeElement !== cm) {
+          cm.focus()
+          return true
+        }
+        return false
+      }
+      if (!tryFocus()) {
+        const id1 = requestAnimationFrame(() => {
+          if (!tryFocus()) {
+            setTimeout(tryFocus, 60)
+          }
+        })
+        return () => cancelAnimationFrame(id1)
+      }
+    }
+  }, [active])
+
   return (
     /*
       隐藏用 hidden 属性（display:none）：编辑器整体移出排版树，不参与样式重算与绘制，
       与 DocPane / FileTabLayer 的保活手法一致。
     */
     <div
+      ref={containerRef}
       data-editor-pane={active ? 'active' : 'idle'}
       className={active ? 'relative flex min-h-0 flex-1 flex-col' : 'hidden'}
       {...(!active ? { hidden: true } : {})}

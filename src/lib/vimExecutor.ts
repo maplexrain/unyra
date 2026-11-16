@@ -43,12 +43,12 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     }
     case 'q':
     case 'quit': {
-      if (activeBridge?.onClose) {
-        activeBridge.onClose(isForce)
-        return { success: true }
-      }
       if (globalTabOps?.closeTab) {
         globalTabOps.closeTab(isForce)
+        return { success: true }
+      }
+      if (activeBridge?.onClose) {
+        activeBridge.onClose(isForce)
         return { success: true }
       }
       const ok = triggerShortcutAction('learn.closeTab')
@@ -85,16 +85,37 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
       }
       return { success: false, message: '[当前环境不支持新建页签]' }
     }
+    case 'term':
+    case 'terminal': {
+      if (globalTabOps?.openTab) {
+        globalTabOps.openTab({ kind: 'terminal' })
+        return { success: true, message: '[打开终端]' }
+      }
+      return { success: false, message: '[当前环境不支持打开终端]' }
+    }
+    case 'focus':
+    case 'termfocus':
+    case 'tf': {
+      if (typeof document === 'undefined') {
+        return { success: false, message: '[当前环境未发现活动终端]' }
+      }
+      const termInput = document.querySelector<HTMLTextAreaElement>('[data-terminal-input]')
+      if (termInput) {
+        termInput.focus()
+        return { success: true, message: '[终端已获得焦点]' }
+      }
+      return { success: false, message: '[当前页签未发现活动终端]' }
+    }
     case 'tabc':
     case 'tabclose':
     case 'bd':
     case 'bdelete': {
-      if (activeBridge?.onClose) {
-        activeBridge.onClose(isForce)
-        return { success: true }
-      }
       if (globalTabOps?.closeTab) {
         globalTabOps.closeTab(isForce)
+        return { success: true }
+      }
+      if (activeBridge?.onClose) {
+        activeBridge.onClose(isForce)
         return { success: true }
       }
       const ok = triggerShortcutAction('learn.closeTab')
@@ -103,12 +124,12 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'tabo':
     case 'tabonly': {
       const opts = isForce ? undefined : { skipDirty: true }
-      if (activeBridge?.onCloseOthers) {
-        activeBridge.onCloseOthers(isForce, opts)
-        return { success: true, message: '[已关闭其他页签]' }
-      }
       if (globalTabOps?.closeOtherTabs) {
         globalTabOps.closeOtherTabs(isForce, opts)
+        return { success: true, message: '[已关闭其他页签]' }
+      }
+      if (activeBridge?.onCloseOthers) {
+        activeBridge.onCloseOthers(isForce, opts)
         return { success: true, message: '[已关闭其他页签]' }
       }
       return { success: false }
@@ -117,6 +138,10 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'tabnext':
     case 'bn':
     case 'bnext': {
+      if (globalTabOps?.nextTab) {
+        globalTabOps.nextTab()
+        return { success: true }
+      }
       if (activeBridge?.onNextTab) {
         activeBridge.onNextTab()
         return { success: true }
@@ -127,6 +152,10 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'tabprevious':
     case 'bp':
     case 'bprev': {
+      if (globalTabOps?.prevTab) {
+        globalTabOps.prevTab()
+        return { success: true }
+      }
       if (activeBridge?.onPrevTab) {
         activeBridge.onPrevTab()
         return { success: true }
@@ -289,6 +318,40 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'o': {
       const arg = clean.slice(baseCmd.length).trim()
       return executeOpenTarget(arg)
+    }
+    case 'mark': {
+      if (globalTabOps?.markSelection) {
+        return globalTabOps.markSelection()
+      }
+      return { success: false, message: '[当前环境不支持标记操作]' }
+    }
+    case 'comment':
+    case 'note': {
+      if (globalTabOps?.commentSelection) {
+        return globalTabOps.commentSelection()
+      }
+      return { success: false, message: '[当前环境不支持注解操作]' }
+    }
+    case 'know':
+    case 'understand': {
+      if (globalTabOps?.knowSelection) {
+        return globalTabOps.knowSelection()
+      }
+      return { success: false, message: '[当前环境不支持了解操作]' }
+    }
+    case 'study':
+    case 'learn': {
+      if (globalTabOps?.studySelection) {
+        return globalTabOps.studySelection()
+      }
+      return { success: false, message: '[当前环境不支持深入学习操作]' }
+    }
+    case 'ask': {
+      const q = clean.slice(baseCmd.length).trim()
+      if (globalTabOps?.askSelection) {
+        return globalTabOps.askSelection(q)
+      }
+      return { success: false, message: '[当前环境不支持提问操作]' }
     }
     case 'help':
     case 'h': {

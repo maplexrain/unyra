@@ -94,6 +94,8 @@ export function useExportFlow(deps: ExportFlowDeps) {
       // 系统页没有可以导出的正文：说一句比弹一个空壳导出框强
       if (
         tab.ref.kind === 'settings' ||
+        tab.ref.kind === 'user' ||
+        tab.ref.kind === 'terminal' ||
         tab.ref.kind === 'usage' ||
         tab.ref.kind === 'schedule' ||
         tab.ref.kind === 'mind' ||

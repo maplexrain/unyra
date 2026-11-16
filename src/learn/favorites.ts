@@ -39,6 +39,8 @@ export function favoriteKeyOfTab(ref: TabRef): string | null {
     ref.kind === 'sponsors' ||
     ref.kind === 'vim' ||
     ref.kind === 'settings' ||
+    ref.kind === 'user' ||
+    ref.kind === 'terminal' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||
@@ -62,6 +64,8 @@ export function favoriteRefOfTab(ref: TabRef): FavoriteRef | null {
     ref.kind === 'sponsors' ||
     ref.kind === 'vim' ||
     ref.kind === 'settings' ||
+    ref.kind === 'user' ||
+    ref.kind === 'terminal' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||

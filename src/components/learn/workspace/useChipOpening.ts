@@ -11,6 +11,7 @@ import {
   openInGroup,
   openOutlineTab,
   claimTab,
+  PUBLIC_OWNER,
   refOwner,
   settle,
   withGroup,
@@ -97,6 +98,8 @@ export function useChipOpening({
       ref.kind === 'sponsors' ||
       ref.kind === 'vim' ||
       ref.kind === 'settings' ||
+      ref.kind === 'user' ||
+      ref.kind === 'terminal' ||
       ref.kind === 'usage' ||
       ref.kind === 'schedule' ||
       ref.kind === 'mind' ||
@@ -282,10 +285,15 @@ export function useChipOpening({
             : openOutlineTab(base.docArea, groupId, ref, goalOf, Date.now())
           : openInGroup(base.docArea, groupId, ref, Date.now(), undefined, goalOf)
     /*
-     * 登记归属（与 openTab 同一行；漏登记的话这枚页签在归属表里查无此人，
-     * 切目标时到处飘、关锚时也收不利索）。
+     * 登记归属（与 openTab 同一行）：当前tab组激活时打开的页签归属当前tab组。
      */
-    set({ ...base, docArea: withOwners(docArea, claimTab(docArea.tabOwners, refOwner(ref, goalOf), tabKey(ref))) })
+    const derivedOwner = refOwner(ref, goalOf)
+    const owner =
+      (ref as { goalId?: string }).goalId ||
+      (derivedOwner && derivedOwner !== PUBLIC_OWNER ? derivedOwner : null) ||
+      base.activeGoalId ||
+      PUBLIC_OWNER
+    set({ ...base, docArea: withOwners(docArea, claimTab(docArea.tabOwners, owner, tabKey(ref))) })
   }
 
   /**

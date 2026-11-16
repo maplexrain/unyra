@@ -6,7 +6,7 @@
 # 用法：npm run release:win（= 先 npm run build，再交给 electron-builder）
 # 产物在 release/ 下：GUI 安装包 .exe，以及免安装的 win-unpacked/ 目录。
 
-appId: com.moji.guiyi # 与 electron/main.ts 的 setAppUserModelId 一致：任务栏与通知按它归组
+appId: com.unyra.guiyi # 与 electron/main.ts 的 setAppUserModelId 一致：任务栏与通知按它归组
 productName: 归一 Unyra # 安装向导、快捷方式、控制面板里显示的名字
 
 directories:

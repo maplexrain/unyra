@@ -1,3 +1,5 @@
+import PinyinModule from 'pinyin-match'
+
 /**
  * Vim 冒号命令的**总目录**：联想补全（GlobalVimCommandBar 的候选列表）与
  * 未来任何「有哪些命令」的展示都从这里取。executeVimCommand 仍然是执行的唯一入口——
@@ -64,6 +66,24 @@ export const VIM_COMMANDS: readonly VimCommandInfo[] = [
     category: 'moji',
     tag: '专属',
     example: ':tabnew',
+  },
+  {
+    cmd: 'terminal',
+    aliases: ['term'],
+    name: '终端控制台',
+    desc: '打开控制台终端页签',
+    category: 'moji',
+    tag: '专属',
+    example: ':term',
+  },
+  {
+    cmd: 'focus',
+    aliases: ['termfocus', 'tf'],
+    name: '聚焦终端',
+    desc: '在终端页签中让终端输入获得焦点',
+    category: 'moji',
+    tag: '专属',
+    example: ':focus',
   },
   {
     cmd: 'tabclose',
@@ -296,6 +316,49 @@ export const VIM_COMMANDS: readonly VimCommandInfo[] = [
     example: ':open cx',
   },
   {
+    cmd: 'mark',
+    name: '标记选中文本',
+    desc: '标记当前选中的文字（高亮马克笔标记，可切换消除）',
+    category: 'visual',
+    tag: '选区',
+    example: ':mark',
+  },
+  {
+    cmd: 'comment',
+    aliases: ['note'],
+    name: '注解选中文本',
+    desc: '对当前选中的文字打开注解输入卡片，支持 Markdown 与样式设置',
+    category: 'visual',
+    tag: '选区',
+    example: ':comment',
+  },
+  {
+    cmd: 'know',
+    aliases: ['understand'],
+    name: '了解选中文本',
+    desc: '让 Agent 对选中的文字进行释义并存入目标级知识库，整门目标共用引用',
+    category: 'visual',
+    tag: '选区',
+    example: ':know',
+  },
+  {
+    cmd: 'study',
+    aliases: ['learn'],
+    name: '深入学习选中文本',
+    desc: '根据选中的文字在大纲下发起新的子目标创建并开启导师讲解',
+    category: 'visual',
+    tag: '选区',
+    example: ':study',
+  },
+  {
+    cmd: 'ask',
+    name: '询问选中文本',
+    desc: '将选中的文字作为上下文向 Agent 提问（支持直接跟随提问内容）',
+    category: 'visual',
+    tag: '选区',
+    example: ':ask 这句话怎么理解？',
+  },
+  {
     cmd: 'help',
     aliases: ['h'],
     name: '帮助提示',
@@ -306,23 +369,42 @@ export const VIM_COMMANDS: readonly VimCommandInfo[] = [
 ]
 
 /**
- * 按输入的**第一个 token**（命令名，可带 `!`）做前缀匹配。
- * 别名命中的条目去重后仍以主名呈现；结果按命令名排序，列表稳定。
+ * 按输入的**第一个 token**（命令名，可带 `!`，支持前导冒号 `:`）做前缀与拼音匹配。
+ * 别名命中的条目去重后仍以主名呈现；空输入或仅输入 `:` 时展示全量命令候选。
  */
 export function matchVimCommands(input: string): VimCommandInfo[] {
-  const first = input.trim().split(/\s+/)[0] ?? ''
-  if (!first) return []
+  const raw = input.trim()
+  const clean = raw.startsWith(':') ? raw.slice(1).trim() : raw
+  const first = clean.split(/\s+/)[0] ?? ''
+  if (!first) return [...VIM_COMMANDS]
+
   const lower = first.toLowerCase()
   const bare = lower.endsWith('!') ? lower.slice(0, -1) : lower
-  if (!bare) return []
+  if (!bare) return [...VIM_COMMANDS]
+
   const seen = new Set<string>()
-  const hits: VimCommandInfo[] = []
+  const exactHits: VimCommandInfo[] = []
+  const fuzzyHits: VimCommandInfo[] = []
+
   for (const c of VIM_COMMANDS) {
     if (seen.has(c.cmd)) continue
-    if (c.cmd.startsWith(bare) || (c.aliases ?? []).some((a) => a.startsWith(bare))) {
+    const isCmdPrefix = c.cmd.toLowerCase().startsWith(bare)
+    const isAliasPrefix = (c.aliases ?? []).some((a) => a.toLowerCase().startsWith(bare))
+    if (isCmdPrefix || isAliasPrefix) {
       seen.add(c.cmd)
-      hits.push(c)
+      exactHits.push(c)
+      continue
+    }
+
+    const nameMatch = c.name ? PinyinModule.match(c.name, bare) : false
+    const descMatch = c.desc ? PinyinModule.match(c.desc, bare) : false
+    if (nameMatch || descMatch) {
+      seen.add(c.cmd)
+      fuzzyHits.push(c)
     }
   }
-  return hits.sort((a, b) => a.cmd.localeCompare(b.cmd))
+
+  exactHits.sort((a, b) => a.cmd.localeCompare(b.cmd))
+  fuzzyHits.sort((a, b) => a.cmd.localeCompare(b.cmd))
+  return [...exactHits, ...fuzzyHits]
 }

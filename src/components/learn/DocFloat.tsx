@@ -381,42 +381,40 @@ export default function DocFloat({
           Vim 模式卡片：鼠标经过弹出 tip，显示一键开关组件与配置文件 (.vimrc) 打开按钮。
           经典绿色斜方盾牌 Vim 徽标，辨识度高。
         */}
-        {view === 'source' && (
-          <div
-            className="relative"
-            onMouseEnter={openVimTipNow}
-            onMouseLeave={closeVimTipSoon}
+        <div
+          className="relative"
+          onMouseEnter={openVimTipNow}
+          onMouseLeave={closeVimTipSoon}
+        >
+          <button
+            type="button"
+            title={t('Vim 模式设置与配置')}
+            aria-expanded={vimTipOpen}
+            className={
+              VIEW_BTN +
+              ' transition-all ' +
+              (vimEnabled
+                ? 'border-[#019833]/50 bg-[#019833]/15 text-[#019833] shadow-xs'
+                : 'border-transparent text-ink-soft opacity-60 hover:opacity-100 hover:bg-line/50 hover:text-ink')
+            }
           >
-            <button
-              type="button"
-              title={t('Vim 模式设置与配置')}
-              aria-expanded={vimTipOpen}
-              className={
-                VIEW_BTN +
-                ' transition-all ' +
-                (vimEnabled
-                  ? 'border-[#019833]/50 bg-[#019833]/15 text-[#019833] shadow-xs'
-                  : 'border-transparent text-ink-soft opacity-60 hover:opacity-100 hover:bg-line/50 hover:text-ink')
-              }
-            >
-              <VimIcon size={14} className="transition-transform group-hover:scale-105" />
-            </button>
+            <VimIcon size={14} className="transition-transform group-hover:scale-105" />
+          </button>
 
-            {vimTipOpen && (
-              <VimFloatTip
-                enabled={vimEnabled}
-                onToggle={() => setVimEnabled(!vimEnabled)}
-                onOpenConfig={async () => {
-                  const path = await ensureVimConfigFile()
-                  if (path) {
-                    onOpenVimConfig?.(path)
-                    setVimTipOpen(false)
-                  }
-                }}
-              />
-            )}
-          </div>
-        )}
+          {vimTipOpen && (
+            <VimFloatTip
+              enabled={vimEnabled}
+              onToggle={() => setVimEnabled(!vimEnabled)}
+              onOpenConfig={async () => {
+                const path = await ensureVimConfigFile()
+                if (path) {
+                  onOpenVimConfig?.(path)
+                  setVimTipOpen(false)
+                }
+              }}
+            />
+          )}
+        </div>
 
         
         {/*

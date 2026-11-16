@@ -336,6 +336,26 @@ export default function LocalDoc({
   const scrollEdges = useScrollEdges(scrollRef)
   const mask = fadeMask(scrollEdges)
 
+  const editorContainerRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (view === 'source') {
+      const tryFocus = () => {
+        const cm = editorContainerRef.current?.querySelector<HTMLElement>('.cm-content')
+        if (cm && document.activeElement !== cm) {
+          cm.focus()
+          return true
+        }
+        return false
+      }
+      if (!tryFocus()) {
+        const id1 = requestAnimationFrame(() => {
+          if (!tryFocus()) setTimeout(tryFocus, 60)
+        })
+        return () => cancelAnimationFrame(id1)
+      }
+    }
+  }, [view])
+
   // PDF 文件：直接交由专用 PdfDocView 渲染（内含自己的独立加载态、分页与高清矢量渲染）
   if (isPdfFile(path)) {
     return <PdfDocView path={path} scale={scale} />
@@ -439,6 +459,7 @@ export default function LocalDoc({
         藏着时也保持挂载——光标、撤销栈与分栏几何不因切去阅读态而丢。
       */}
       <div
+        ref={editorContainerRef}
         className={view === 'source' ? 'relative flex min-h-0 flex-1 flex-col' : 'hidden'}
         {...(view !== 'source' ? { hidden: true } : {})}
       >

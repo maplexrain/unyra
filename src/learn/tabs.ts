@@ -81,6 +81,8 @@ export function tabKey(ref: TabRef): string {
   if (ref.kind === 'vim') return 'v:vim'
   // 设置页与用量页同样全局只有一份：从哪个入口打开都是切到它，不会开出第二枚
   if (ref.kind === 'settings') return 'set:settings'
+  if (ref.kind === 'user') return 'usr:user'
+  if (ref.kind === 'terminal') return 'term:terminal'
   if (ref.kind === 'usage') return 'u:usage'
   // 日程表全局只有一份：从顶栏 tip、提醒弹层还是设置里打开，都是切到同一枚页签
   if (ref.kind === 'schedule') return 'sc:schedule'
@@ -93,14 +95,12 @@ export function tabKey(ref: TabRef): string {
   return 'l:' + ref.path
 }
 
-/** 判断页签是否为固定页签：结构tab（节点宇宙，kind === 'outline'）永远固定，不可取消固定 */
+/** 判断页签是否为固定页签：仅显式设置 pinned 的页签固定，不再因类型自动固定 */
 export function isTabPinned(tab: LearnTab): boolean {
-  if (tab.ref.kind === 'outline') return true
   return tab.pinned ?? false
 }
 
 export function makeTab(ref: TabRef, at: number, view?: DocView): LearnTab {
-  const isStructure = ref.kind === 'outline'
   // 视图只住在页签上（LearnTab.view），不进 ref、不进身份：同一份文档永远只有一枚页签，
   // 阅读/编辑是页面内的两种模式（见 types/tabs 的 view 注释）
   const v = view === 'source' || view === 'preview' ? view : undefined
@@ -108,7 +108,6 @@ export function makeTab(ref: TabRef, at: number, view?: DocView): LearnTab {
     id: tabKey(ref),
     ref,
     ...(v ? { view: v } : {}),
-    ...(isStructure ? { pinned: true } : {}),
     createdAt: at,
   }
 }
@@ -163,6 +162,8 @@ export function tabNodeId(ref: TabRef): string | null {
     ref.kind === 'sponsors' ||
     ref.kind === 'vim' ||
     ref.kind === 'settings' ||
+    ref.kind === 'user' ||
+    ref.kind === 'terminal' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||
@@ -242,6 +243,8 @@ function rawTabTitle(
   if (ref.kind === 'sponsors') return t('赞助者名单')
   if (ref.kind === 'vim') return t('Vim 命令大全')
   if (ref.kind === 'settings') return t('设置')
+  if (ref.kind === 'user') return t('用户中心')
+  if (ref.kind === 'terminal') return t('终端')
   if (ref.kind === 'usage') return t('用量统计')
   if (ref.kind === 'schedule') return t('日程安排')
   if (ref.kind === 'mind') return t('记忆管理')
@@ -290,6 +293,8 @@ export function tabTrail(
     ref.kind === 'sponsors' ||
     ref.kind === 'vim' ||
     ref.kind === 'settings' ||
+    ref.kind === 'user' ||
+    ref.kind === 'terminal' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
     ref.kind === 'agentSettings' ||
@@ -379,6 +384,30 @@ export function isDocumentTab(ref: TabRef): boolean {
   )
 }
 
+/**
+ * 判断一个页签是否允许切换为源码编辑模式：
+ * 教学文档、笔记、超级文档、新建草稿，以及非媒体、非 PDF 的外部文件和工作区文件允许编辑；
+ * 其余系统页（设置、用户中心、用量、日程、导读、思维导图、考试副本、网页、视频、插件文档、赞助者名单等）不可编辑。
+ */
+export function canTabSwitchToEdit(tab?: LearnTab | null): boolean {
+  if (!tab) return false
+  const ref = tab.ref as any
+  const kind = ref?.kind ?? (tab as any).kind
+  if (!kind) return false
+  if (kind === 'teach' || kind === 'note' || kind === 'super' || kind === 'draft') {
+    return true
+  }
+  if (kind === 'local') {
+    const p = String(ref?.path ?? (tab as any).path ?? '').toLowerCase()
+    return !isMediaFile(p) && !p.endsWith('.pdf')
+  }
+  if (kind === 'ws') {
+    const seg = String(ref?.seg ?? (tab as any).seg ?? '').toLowerCase()
+    return !isMediaFile(seg) && !seg.endsWith('.pdf')
+  }
+  return false
+}
+
 /** 右键菜单里的关闭方式 */
 export type TabCloseMode =
   | 'self'
@@ -450,9 +479,13 @@ export function closeTabs(
   } else {
     for (const t of tabs) if (t.id !== id) closing.add(t.id)
   }
-  // 规矩：固定 tab 只能由自身直接关闭（自身关闭按钮/自身右键菜单中的「关闭」），不受非直接关闭方式影响
+  // 规矩 1：固定 tab 只能由自身直接关闭（自身关闭按钮/自身右键菜单中的「关闭」），不受非直接关闭方式影响
+  // 规矩 2：关闭其他（:tabo / mode === 'others'）不关闭拓扑图大纲页签（大纲为常驻组锚结构，tabo 对其不生效/不关闭它）
   for (const t of tabs) {
     if (isTabPinned(t) && ((mode !== 'self' && mode !== 'force') || t.id !== id)) {
+      closing.delete(t.id)
+    }
+    if (mode === 'others' && t.ref.kind === 'outline' && t.id !== id) {
       closing.delete(t.id)
     }
   }

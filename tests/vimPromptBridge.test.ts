@@ -136,7 +136,48 @@ describe('编辑器命令行接管桥', () => {
     expect(document.querySelector('.cm-vim-panel')).toBeNull()
   })
 
-  it('搜索提示（/）不受接管影响：回落原生面板', () => {
+  it('搜索提示（/）被接管：统一唤起全局命令栏，不开原生面板', () => {
+    const view = makeView()
+    installVimPromptBridge(view)
+    let woken = 0
+    let capturedOpts: any = null
+    setGlobalCommandBarOpener((o) => {
+      woken++
+      capturedOpts = o
+    })
+
+    cmOf(view).openDialog(templateOf('/'), () => {}, {})
+
+    expect(woken).toBe(1)
+    expect(capturedOpts?.mode).toBe('/')
+    expect(document.querySelector('.cm-vim-panel')).toBeNull()
+  })
+
+  it('实时增量搜索：输入变化时通过 onQueryChange 实时通知 Vim 高亮与拼音扩展', () => {
+    const view = makeView()
+    installVimPromptBridge(view)
+    let capturedOpts: any = null
+    setGlobalCommandBarOpener((o) => {
+      capturedOpts = o ?? null
+    })
+
+    let keyUpCalls: string[] = []
+    cmOf(view).openDialog(
+      templateOf('/'),
+      () => {},
+      {
+        onKeyUp: (_e: KeyboardEvent, query: string) => {
+          keyUpCalls.push(query)
+        },
+      } as any,
+    )
+
+    expect(typeof capturedOpts?.onQueryChange).toBe('function')
+    capturedOpts!.onQueryChange!('const')
+    expect(keyUpCalls).toContain('const')
+  })
+
+  it('非命令与搜索提示：回落原生面板', () => {
     const view = makeView()
     installVimPromptBridge(view)
     let woken = 0
@@ -144,7 +185,10 @@ describe('编辑器命令行接管桥', () => {
       woken++
     })
 
-    cmOf(view).openDialog(templateOf('/'), () => {}, {})
+    // 传入非 : 或 / 或 ? 的通用模板（如确认提示）
+    const customTemplate = document.createElement('div')
+    customTemplate.innerHTML = '<span>Are you sure?</span><input type="text"/>'
+    cmOf(view).openDialog(customTemplate, () => {}, {})
 
     expect(woken).toBe(0)
     expect(document.querySelector('.cm-vim-panel')).not.toBeNull()

@@ -358,28 +358,27 @@ describe('拓扑图连线支持与下级挂件连接', () => {
 })
 
 describe('文档区固定 Tab（Pinned Tab）规则', () => {
-  it('结构 Tab (outline) 默认为固定 Tab，普通文档默认为非固定', () => {
+  it('所有类型 Tab 默认为非固定，不因类型自动固定', () => {
     const outlineTab = makeTab({ kind: 'outline', nodeId: 'n1' }, 0)
     const teachTab = makeTab({ kind: 'teach', nodeId: 'n1' }, 0)
     const noteTab = makeTab({ kind: 'note', nodeId: 'n1', note: '随笔' }, 0)
 
-    expect(isTabPinned(outlineTab)).toBe(true)
+    expect(isTabPinned(outlineTab)).toBe(false)
     expect(isTabPinned(teachTab)).toBe(false)
     expect(isTabPinned(noteTab)).toBe(false)
   })
 
-  it('结构 Tab (outline) 永远固定不可取消，普通 Tab 支持显式设置 pinned', () => {
+  it('普通 Tab 与结构 Tab 支持显式设置 pinned', () => {
     const customPinned = { ...makeTab({ kind: 'teach', nodeId: 'n1' }, 0), pinned: true }
     const teachUnpinned = { ...makeTab({ kind: 'teach', nodeId: 'n1' }, 0), pinned: false }
-    const outlineExplicitFalse = { ...makeTab({ kind: 'outline', nodeId: 'n1' }, 0), pinned: false }
+    const outlineExplicit = { ...makeTab({ kind: 'outline', nodeId: 'n1' }, 0), pinned: true }
 
     expect(isTabPinned(customPinned)).toBe(true)
     expect(isTabPinned(teachUnpinned)).toBe(false)
-    // 结构 Tab 永远固定，即使 pinned: false 也返回 true
-    expect(isTabPinned(outlineExplicitFalse)).toBe(true)
+    expect(isTabPinned(outlineExplicit)).toBe(true)
   })
 
-  it('reorderTabs 始终保证固定 Tab 排在最前面', () => {
+  it('reorderTabs 始终保证显式固定的 Tab 排在最前面', () => {
     const tabA = makeTab({ kind: 'teach', nodeId: 'nA' }, 0)
     const tabB = { ...makeTab({ kind: 'teach', nodeId: 'nB' }, 0), pinned: true }
     const tabOutline = makeTab({ kind: 'outline', nodeId: 'nOutline' }, 0)
@@ -388,38 +387,35 @@ describe('文档区固定 Tab（Pinned Tab）规则', () => {
     const tabs = [tabA, tabB, tabOutline, tabC]
     const reordered = reorderTabs(tabs, [tabC.id, tabA.id, tabOutline.id, tabB.id])
 
-    // 固定 tab（tabOutline, tabB）在前，非固定（tabC, tabA）在后
+    // 仅显式固定 tab（tabB）在前，其余非固定（tabC, tabA, tabOutline）在后按新顺序排
     const pinnedIds = reordered.filter(isTabPinned).map((t) => t.id)
     const unpinnedIds = reordered.filter((t) => !isTabPinned(t)).map((t) => t.id)
 
-    expect(pinnedIds).toEqual([tabOutline.id, tabB.id])
-    expect(unpinnedIds).toEqual([tabC.id, tabA.id])
+    expect(pinnedIds).toEqual([tabB.id])
+    expect(unpinnedIds).toEqual([tabC.id, tabA.id, tabOutline.id])
     expect(reordered.map((t) => t.id)).toEqual([...pinnedIds, ...unpinnedIds])
   })
 
   it('固定 Tab 不受非直接关闭方式（others, all）影响，但可以通过自身直接关闭（self）', () => {
-    const tabOutline = makeTab({ kind: 'outline', nodeId: 'nOutline' }, 0)
     const tabPinned = { ...makeTab({ kind: 'teach', nodeId: 'nPinned' }, 0), pinned: true }
     const tab1 = makeTab({ kind: 'teach', nodeId: 'n1' }, 0)
     const tab2 = makeTab({ kind: 'teach', nodeId: 'n2' }, 0)
 
-    const tabs = [tabOutline, tabPinned, tab1, tab2]
+    const tabs = [tabPinned, tab1, tab2]
 
     // 1. 关闭其他：在 tab1 上执行 others，不关闭固定 tab
     const rOthers = closeTabs(tabs, tab1.id, 'others', tab1.id)
-    expect(rOthers.tabs.map((t) => t.id)).toContain(tabOutline.id)
     expect(rOthers.tabs.map((t) => t.id)).toContain(tabPinned.id)
     expect(rOthers.tabs.map((t) => t.id)).toContain(tab1.id)
     expect(rOthers.tabs.map((t) => t.id)).not.toContain(tab2.id)
 
     // 2. 全部关闭：执行 all，保留所有固定 tab
     const rAll = closeTabs(tabs, tab1.id, 'all', tab1.id)
-    expect(rAll.tabs.map((t) => t.id)).toEqual([tabOutline.id, tabPinned.id])
+    expect(rAll.tabs.map((t) => t.id)).toEqual([tabPinned.id])
 
     // 3. 自身关闭：直接关闭固定 tab 能够成功关闭
     const rSelf = closeTabs(tabs, tabPinned.id, 'self', tabPinned.id)
     expect(rSelf.tabs.map((t) => t.id)).not.toContain(tabPinned.id)
-    expect(rSelf.tabs.map((t) => t.id)).toContain(tabOutline.id)
   })
 })
 

@@ -29,16 +29,19 @@ describe('dedentBlock（markdown 块的公共缩进剥除）', () => {
   })
 })
 
-describe('moji:super 链接', () => {
+describe('unyra:super 链接（兼顾兼容 moji:super）', () => {
   it('生成与解析 roundtrip：本节点形式（只有名字）', () => {
     const href = superLinkHref('对照组实验')
-    expect(href).toBe('moji:super/' + encodeURIComponent('对照组实验'))
+    expect(href).toBe('unyra:super/' + encodeURIComponent('对照组实验'))
     expect(parseSuperHref(href)).toEqual({ nodeId: null, name: '对照组实验' })
+    // 向后兼容 moji:super
+    expect(parseSuperHref('moji:super/' + encodeURIComponent('对照组实验'))).toEqual({ nodeId: null, name: '对照组实验' })
   })
 
   it('生成与解析 roundtrip：跨节点形式（nodeId/名字）', () => {
     const md = superLinkMarkdown('那边的演示', '演示', '3f2a')
-    expect(md).toBe('[那边的演示](moji:super/3f2a/' + encodeURIComponent('演示') + ')')
+    expect(md).toBe('[那边的演示](unyra:super/3f2a/' + encodeURIComponent('演示') + ')')
+    expect(parseSuperHref('unyra:super/3f2a/演示')).toEqual({ nodeId: '3f2a', name: '演示' })
     expect(parseSuperHref('moji:super/3f2a/演示')).toEqual({ nodeId: '3f2a', name: '演示' })
   })
 

@@ -9,6 +9,7 @@
  * 一行「最近打开」的图示、说明与相对时间四处共用，不另起一份。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ExternalLink, Folder, FolderInput, FolderMinus, FolderPlus, MonitorPlay, Pencil, X } from 'lucide-react'
 import type { FavoriteItem, FavoriteRef, LocalFile, VideoResource } from '../../../learn/types'
 import { chipPayloadOfFavorite, favoriteKey } from '../../../learn/favorites'
@@ -514,7 +515,7 @@ function FavMenu({
   const [creating, setCreating] = useState(false)
   useDismissOn({ onClose })
   useClampToViewport(ref, menu)
-  return (
+  return createPortal(
     <div
       ref={ref}
       role="menu"
@@ -523,7 +524,7 @@ function FavMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[70] min-w-[190px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[9999] min-w-[190px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
       {picking || creating ? (
         creating ? (
@@ -604,7 +605,8 @@ function FavMenu({
           </button>
         </>
       )}
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -623,7 +625,7 @@ function GroupMenu({
   const ref = useRef<HTMLDivElement | null>(null)
   useDismissOn({ onClose })
   useClampToViewport(ref, menu)
-  return (
+  return createPortal(
     <div
       ref={ref}
       role="menu"
@@ -632,7 +634,7 @@ function GroupMenu({
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="moji-in-soft fixed z-[70] min-w-[190px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
+      className="moji-in-soft fixed z-[9999] min-w-[190px] max-w-[240px] rounded-lg border border-line-strong bg-card p-1 shadow-[0_12px_36px_rgba(31,27,23,0.24)]"
     >
       <button type="button" role="menuitem" onClick={onRename} className={MENU_ROW}>
         <span className="flex w-[14px] shrink-0 items-center justify-center">
@@ -652,7 +654,8 @@ function GroupMenu({
         </span>
         {t('删除分组')}
       </button>
-    </div>
+    </div>,
+    document.body
   )
 }
 

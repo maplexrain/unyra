@@ -3,6 +3,7 @@ import { executeVimCommand } from '../../../lib/vimCommands'
 import { setGlobalCommandBarOpener } from '../../../lib/commandBarFocus'
 import { matchVimCommands, type VimCommandInfo } from '../../../lib/vimCommandCatalog'
 import { getOpenTargets, type VimOpenTarget } from '../../../lib/vimOpenTargets'
+import { browseVimSearch, dispatchBrowseSearch } from '../../../lib/browseVimSearch'
 import VimOpenDropdown from './VimOpenDropdown'
 import { t } from '../../../i18n'
 
@@ -20,45 +21,56 @@ import { t } from '../../../i18n'
  */
 export default function GlobalVimCommandBar() {
   const [open, setOpen] = useState(false)
+  const [mode, setMode] = useState<':' | '/' | '?'>(':')
   const [value, setValue] = useState('')
   /**
-   * 编辑器 Vim 命令行的**交回通道**：有它 = 这一次输入是编辑器里的 `:` 唤起的（提示符模式）。
-   * Enter 时把最终文本交回 vim 执行（processCommand → 注册的 Ex 命令），命令栏不重复执行；
+   * 编辑器 Vim 命令行的**交回通道**：有它 = 这一次输入是编辑器里的 `:` 或 `/`、`?` 唤起的（提示符模式）。
+   * Enter 时把最终文本交回 vim 执行（processCommand → 注册的 Ex 命令或搜索），命令栏不重复执行；
    * 取消时交回 undefined（桥那头借 vim 自己的 Esc 分支清状态）。
    */
   const finishRef = useRef<((input?: string) => void) | null>(null)
+  /** 实时输入同步通道：搜索模式下输入时实时通知 Vim/浏览模式高亮与定位 */
+  const queryChangeRef = useRef<((input: string) => void) | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  /** 正在关闭标记：提交或关闭过程中防止 handleInputBlur 触发无实参的 close(false) 清空搜索状态 */
+  const closingRef = useRef(false)
   /** open 的镜像（窗口键盘监听里要用）：开着就不再响应 Shift+:，别把挂着的 vim 提示符冲掉 */
   const openRef = useRef(false)
   useEffect(() => {
     openRef.current = open
+    if (open) {
+      closingRef.current = false
+    }
   }, [open])
 
-  /* ---------- :open / :o 目标搜索模式判断 ---------- */
-  const openMatch = value.match(/^(?:open|o)\s+(.*)$/i)
-  const isOpenMode = Boolean(openMatch)
-  const openQuery = openMatch ? openMatch[1] : ''
+  /* ---------- 搜索模式（/ 与 ?）与 :open / :o 目标搜索模式判断 ---------- */
+  const isSearchMode = mode === '/' || mode === '?'
+  const openMatch = !isSearchMode && value.match(/^:?\s*(?:open\b\s*(.*)|o\s+(.*))$/i)
+  const isOpenMode = !isSearchMode && Boolean(openMatch)
+  const openQuery = openMatch ? (openMatch[1] ?? openMatch[2] ?? '') : ''
   const openTargets = useMemo(() => {
     if (!isOpenMode) return []
     return getOpenTargets(openQuery)
   }, [isOpenMode, openQuery])
 
   /* ---------- 前缀联想：候选与幽灵补全 ---------- */
-  const matches = useMemo(() => (isOpenMode ? [] : matchVimCommands(value)), [isOpenMode, value])
+  const matches = useMemo(() => (isOpenMode || isSearchMode ? [] : matchVimCommands(value)), [isOpenMode, isSearchMode, value])
   const [selected, setSelected] = useState(-1)
   /** 幽灵预览的目标项：方向键选中的那一个；没选过就看第一个候选 */
   const ghostIdx = selected >= 0 && selected < matches.length ? selected : matches.length ? 0 : -1
   const ghostItem: VimCommandInfo | null = ghostIdx >= 0 ? (matches[ghostIdx] ?? null) : null
   /**
    * 幽灵文字：只补第一个 token（命令名），参数是自由文本不猜。
-   * 输入框里以「透明的已输前缀 + 淡色剩余」画在真实文字之上——对齐靠同一份字体。
+   * 支持前缀带冒号 `:` 的情形对齐补全。
    */
   const ghostText = (() => {
-    if (isOpenMode) return null
+    if (isOpenMode || isSearchMode) return null
     if (!ghostItem || value.includes(' ') || value.length === 0) return null
-    if (!ghostItem.cmd.toLowerCase().startsWith(value.toLowerCase())) return null
-    if (ghostItem.cmd.length <= value.length) return null
-    return ghostItem.cmd.slice(value.length)
+    const typed = value.replace(/^:+/, '')
+    if (!typed) return null
+    if (!ghostItem.cmd.toLowerCase().startsWith(typed.toLowerCase())) return null
+    if (ghostItem.cmd.length <= typed.length) return null
+    return ghostItem.cmd.slice(typed.length)
   })()
 
   // 全局键盘监听 Shift+: 唤起（编辑器内的 : 走 commandBarFocus 的桥，不经这里）
@@ -87,6 +99,7 @@ export default function GlobalVimCommandBar() {
         // 已经开着就不重开：重开会把 finishRef 清掉，编辑器 vim 还挂着等待的命令行
         // 却再也等不到交回（焦点与 vim 状态从此打架）。开着时 : 不做事。
         if (openRef.current) return
+        setMode(':')
         setValue('')
         finishRef.current = null
         setSelected(-1)
@@ -101,8 +114,22 @@ export default function GlobalVimCommandBar() {
   // 登记唤起通道（编辑器 : 桥、以及将来任何想唤起命令栏的调用方都走它）
   useEffect(() => {
     setGlobalCommandBarOpener((opts) => {
-      setValue(opts?.prefill ?? '')
+      let m: ':' | '/' | '?' = opts?.mode ?? ':'
+      let raw = opts?.prefill ?? ''
+      if (raw.startsWith(':')) {
+        m = ':'
+        raw = raw.replace(/^:+/, '')
+      } else if (raw.startsWith('/')) {
+        m = '/'
+        raw = raw.replace(/^\/+/, '')
+      } else if (raw.startsWith('?')) {
+        m = '?'
+        raw = raw.replace(/^\?+/, '')
+      }
+      setMode(m)
+      setValue(raw)
       finishRef.current = opts?.onFinish ?? null
+      queryChangeRef.current = opts?.onQueryChange ?? null
       setSelected(-1)
       setOpen(true)
     })
@@ -119,19 +146,46 @@ export default function GlobalVimCommandBar() {
     }
   }, [open])
 
+  // 实时匹配 (Incremental Search)：输入改变时实时高亮与滚动定位
+  useEffect(() => {
+    if (!open) return
+    if (mode === '/' || mode === '?') {
+      const q = value.trim()
+      if (queryChangeRef.current) {
+        queryChangeRef.current(q)
+      } else if (q) {
+        dispatchBrowseSearch(q, mode === '?', true /* silent */)
+      } else {
+        browseVimSearch.clear()
+      }
+      // 保持输入框聚焦，防止在增量搜索期间因 DOM 变更丢失输入焦点
+      if (inputRef.current && document.activeElement !== inputRef.current) {
+        inputRef.current.focus({ preventScroll: true })
+      }
+    }
+  }, [open, mode, value])
+
   /**
    * 收口：无论从哪条路退出（Esc、空回格、点遮罩、焦点溜走），都走这一份。
    * **提示符模式下收口 = 取消**：把 undefined 交回桥，桥借 vim 自己的 Esc 分支清掉
    * 命令行状态、把焦点还给编辑器——少了这一步，用户点一下别处，vim 就卡在
    * 「命令行开着」的状态里，后续按键全部落空（这正是「忘了切输入框」的冲突来源）。
    */
-  const close = () => {
+  const close = (committed = false) => {
+    closingRef.current = true
     const finish = finishRef.current
     finishRef.current = null
+    queryChangeRef.current = null
     try {
-      finish?.(undefined)
+      if (!committed) {
+        finish?.(undefined)
+      }
     } catch {
       // 取消路径不抛：vim 那头自己兜底
+    }
+    // 未确认提交的取消关闭时，清除浏览模式实时搜索高亮
+    if (!committed) {
+      browseVimSearch.clear()
     }
     setOpen(false)
     setValue('')
@@ -139,14 +193,12 @@ export default function GlobalVimCommandBar() {
   }
 
   /**
-   * 焦点逃逸护栏：输入框的焦点溜出了这层弹窗（Shift+Tab、程序性失焦……）而弹层还开着，
-   * 后续按键就会落到别处、和 vim 打架。按「忘了切换输入框」兜底处理——当作放弃输入，
-   * 取消挂着的提示符并收口（点候选按钮不算：relatedTarget 还在弹层里）。
+   * 焦点逃逸护栏：
+   * 外部点击由 handleOutsidePointer 负责安全收口，Esc 键由 handleKeyDown 负责退出；
+   * 这里不主动强制 close()，避免在输入增量匹配或 DOM 联动时因微小焦点抖动误关面板。
    */
-  const handleInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    const dialog = barRef.current
-    if (dialog && e.relatedTarget instanceof Node && dialog.contains(e.relatedTarget)) return
-    close()
+  const handleInputBlur = (_e: React.FocusEvent<HTMLInputElement>) => {
+    if (closingRef.current) return
   }
 
   const activeMatchRef = useRef<HTMLButtonElement | null>(null)
@@ -227,42 +279,64 @@ export default function GlobalVimCommandBar() {
       e.preventDefault()
       e.stopPropagation()
 
+      // 搜索模式（/ 与 ?）：直接调用浏览模式搜索或交回编辑器
+      if (isSearchMode) {
+        const query = value.trim()
+        if (isPrompt) {
+          const finish = finishRef.current
+          finishRef.current = null
+          queryChangeRef.current = null
+          try {
+            finish?.(query)
+          } catch {}
+          close(true)
+          return
+        }
+        if (query) {
+          dispatchBrowseSearch(query, mode === '?', false /* not silent */)
+        }
+        close(true)
+        return
+      }
+
       // :open / :o 模式直接执行选中的目标（执行后立刻关闭）
       if (isOpenMode) {
         if (openTargets.length > 0) {
           const idx = selected >= 0 && selected < openTargets.length ? selected : 0
           executeTarget(openTargets[idx])
         } else {
-          close()
+          close(false)
         }
         return
       }
 
       // 方向键选中的候选 ≠ 已输文本时，Enter 提交的就是幽灵预览的那份（看到的即所得）
+      const typedCmd = value.replace(/^:+/, '').trim()
       const picked =
-        selected >= 0 && ghostItem && ghostItem.cmd.toLowerCase() !== value.trim().toLowerCase()
+        selected >= 0 && ghostItem && ghostItem.cmd.toLowerCase() !== typedCmd.toLowerCase()
           ? ghostItem.cmd + ' '
-          : value
+          : value.replace(/^:+/, '')
       const cmd = picked.trim()
       if (!cmd) {
-        close()
+        close(false)
         return
       }
       if (isPrompt) {
         // 编辑器的 : ：交回 vim 执行。立刻关闭
         const finish = finishRef.current
         finishRef.current = null
+        queryChangeRef.current = null
         try {
           finish?.(cmd)
         } catch {
           // vim 对坏输入自己兜底
         }
-        close()
+        close(true)
         return
       }
 
       // 非编辑器模式：立即关闭弹层并执行命令
-      close()
+      close(true)
       executeVimCommand(cmd)
     }
   }
@@ -270,10 +344,11 @@ export default function GlobalVimCommandBar() {
   const executeTarget = (target: VimOpenTarget) => {
     const finish = finishRef.current
     finishRef.current = null
+    queryChangeRef.current = null
     try {
       finish?.(undefined)
     } catch {}
-    close()
+    close(true)
     try {
       target.action()
     } catch {
@@ -304,8 +379,15 @@ export default function GlobalVimCommandBar() {
         }}
       >
         <div className="flex items-center gap-3 px-4.5 py-3 border-b border-line/35">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-seal/15 text-seal font-mono text-[13px] font-bold select-none border border-seal/25 shadow-xs">
-            :
+          <div
+            className={
+              'flex h-6 w-6 shrink-0 items-center justify-center rounded-md font-mono text-[13px] font-bold select-none border shadow-xs ' +
+              (isSearchMode
+                ? 'bg-amber-500/15 text-amber-500 border-amber-500/25'
+                : 'bg-seal/15 text-seal border-seal/25')
+            }
+          >
+            {mode}
           </div>
           <div className="relative min-w-0 flex-1">
             <input
@@ -313,13 +395,34 @@ export default function GlobalVimCommandBar() {
               type="text"
               value={value}
               onChange={(e) => {
-                setValue(e.target.value)
+                let val = e.target.value
+                if (mode === ':') {
+                  if (val.startsWith(':')) {
+                    val = val.replace(/^:+/, '')
+                  } else if (val.startsWith('/') && !value) {
+                    setMode('/')
+                    val = val.replace(/^\/+/, '')
+                  } else if (val.startsWith('?') && !value) {
+                    setMode('?')
+                    val = val.replace(/^\?+/, '')
+                  }
+                } else {
+                  if (val.startsWith(mode)) {
+                    val = val.slice(1)
+                  } else if (val.startsWith(':') && !value) {
+                    setMode(':')
+                    val = val.replace(/^:+/, '')
+                  }
+                }
+                setValue(val)
                 setSelected(-1)
               }}
               onKeyDown={handleKeyDown}
               onBlur={handleInputBlur}
               placeholder={
-                isOpenMode
+                isSearchMode
+                  ? t('输入搜索内容或正则表达式 (支持拼音匹配，按 Enter 查找)...')
+                  : isOpenMode
                   ? t('搜索打开目标：支持拼音缩写、全拼或中文名称...')
                   : t('输入命令 (例如 w, q, edit, view, browser, fullscreen, wrap, open)...')
               }
@@ -348,7 +451,7 @@ export default function GlobalVimCommandBar() {
             onSelect={executeTarget}
           />
         ) : (
-          value.trim().length > 0 && matches.length > 0 && (
+          !isSearchMode && matches.length > 0 && (
             <div className="max-h-[320px] overflow-y-auto p-1.5 flex flex-col gap-0.5">
               {matches.slice(0, 15).map((m, i) => {
                 const active = i === ghostIdx

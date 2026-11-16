@@ -4,6 +4,7 @@ import type {
   Conversation,
   DependencyEdge,
   DetachedPool,
+  GoalKnowledgeItem,
   KnowledgeNode,
   LearningGoal,
   LearnStore,
@@ -392,6 +393,16 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       }
     }
 
+    const rawKnowledge = (d.knowledge && typeof d.knowledge === 'object' ? d.knowledge : {}) as Record<string, unknown>
+    const knowledge: Record<string, GoalKnowledgeItem[]> = {}
+    for (const [gid, items] of Object.entries(rawKnowledge)) {
+      if (!goalIds.has(gid) || !Array.isArray(items)) continue
+      const valid = items.filter((it): it is GoalKnowledgeItem => {
+        return !!it && typeof it === 'object' && typeof (it as GoalKnowledgeItem).id === 'string' && typeof (it as GoalKnowledgeItem).term === 'string' && typeof (it as GoalKnowledgeItem).summary === 'string'
+      })
+      if (valid.length) knowledge[gid] = valid
+    }
+
     const store: LearnStore = {
       version: 2,
       nodes: fixedNodes,
@@ -400,6 +411,7 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       conversations,
       exams,
       ...(Object.keys(detached).length ? { detached } : {}),
+      ...(Object.keys(knowledge).length ? { knowledge } : {}),
       ...(freeOutlines.length ? { outlines: freeOutlines } : {}),
       // 临时变量只保留还挂在现有节点上的那些——节点没了，它的暂存数据也没有意义
       tmp: pruneTmpToNodes(normalizeTmpStore(d.tmp), ids),

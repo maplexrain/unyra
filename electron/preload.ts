@@ -98,6 +98,29 @@ export type StorageYamlResult = { ok: true; data: unknown } | StorageFail
 /** 读二进制（图片通道与资源库通道共用）：dataUrl 为 null 表示文件不存在（不算错误） */
 export type StorageImageResult = { ok: true; dataUrl: string | null } | StorageFail
 
+const processApi = {
+  create: (opts: BaseProcessCreateOpts): Promise<BaseProcessCreateResult> => ipcRenderer.invoke('base:process:create', opts),
+  start: (id: string): Promise<BaseProcessStartResult> => ipcRenderer.invoke('base:process:start', id),
+  status: (id: string): Promise<BaseProcessStatusResult> => ipcRenderer.invoke('base:process:status', id),
+  output: (id: string, opts?: { offset?: number; reset?: boolean }): Promise<BaseProcessOutputResult> => ipcRenderer.invoke('base:process:output', id, opts),
+  wait: (id: string, opts?: BaseProcessWaitOpts): Promise<BaseProcessWaitResult> => ipcRenderer.invoke('base:process:wait', id, opts),
+  run: (opts: BaseProcessRunOpts): Promise<BaseProcessRunResult> => ipcRenderer.invoke('base:process:run', opts),
+  stop: (id: string, opts?: { timeoutMs?: number; force?: boolean }): Promise<BaseProcessStopResult> => ipcRenderer.invoke('base:process:stop', id, opts),
+  list: (): Promise<BaseProcessListResult> => ipcRenderer.invoke('base:process:list'),
+  get: (id: string): Promise<BaseProcessGetResult> => ipcRenderer.invoke('base:process:get', id),
+  delete: (id: string): Promise<BaseProcessDeleteResult> => ipcRenderer.invoke('base:process:delete', id),
+  onData: (cb: (payload: { process_id: string; text: string; stream: 'stdout' | 'stderr' }) => void): (() => void) => {
+    const handler = (_e: unknown, data: { process_id: string; text: string; stream: 'stdout' | 'stderr' }) => cb(data)
+    ipcRenderer.on('base:process:data', handler)
+    return () => ipcRenderer.removeListener('base:process:data', handler)
+  },
+  onExit: (cb: (payload: { process_id: string; exitCode: number | null; signal: string | null }) => void): (() => void) => {
+    const handler = (_e: unknown, data: { process_id: string; exitCode: number | null; signal: string | null }) => cb(data)
+    ipcRenderer.on('base:process:exit', handler)
+    return () => ipcRenderer.removeListener('base:process:exit', handler)
+  },
+}
+
 const api = {
   /** 是否运行在 Electron 壳里。渲染层的 http 层据此选择直连还是走主进程 */
   isElectron: true as const,
@@ -775,10 +798,10 @@ const api = {
       ipcRenderer.invoke('base:files:write', p, content, opts),
     edit: (p: string, opts?: BaseFileEditOpts): Promise<BaseFileEditResult> =>
       ipcRenderer.invoke('base:files:edit', p, opts),
-    list: (p?: string): Promise<BaseFileListResult> =>
-      ipcRenderer.invoke('base:files:list', p),
-    stat: (p: string): Promise<BaseFileStatResult> =>
-      ipcRenderer.invoke('base:files:stat', p),
+    list: (p?: string, opts?: { trusted?: boolean }): Promise<BaseFileListResult> =>
+      ipcRenderer.invoke('base:files:list', p, opts),
+    stat: (p: string, opts?: { trusted?: boolean }): Promise<BaseFileStatResult> =>
+      ipcRenderer.invoke('base:files:stat', p, opts),
     mkdir: (p: string): Promise<BaseFileOpResult> =>
       ipcRenderer.invoke('base:files:mkdir', p),
     copy: (from: string, to: string, opts?: { overwrite?: boolean }): Promise<BaseFileOpResult> =>
@@ -794,18 +817,7 @@ const api = {
     },
   },
 
-  process: {
-    create: (opts: BaseProcessCreateOpts): Promise<BaseProcessCreateResult> => ipcRenderer.invoke('base:process:create', opts),
-    start: (id: string): Promise<BaseProcessStartResult> => ipcRenderer.invoke('base:process:start', id),
-    status: (id: string): Promise<BaseProcessStatusResult> => ipcRenderer.invoke('base:process:status', id),
-    output: (id: string, opts?: { offset?: number; reset?: boolean }): Promise<BaseProcessOutputResult> => ipcRenderer.invoke('base:process:output', id, opts),
-    wait: (id: string, opts?: BaseProcessWaitOpts): Promise<BaseProcessWaitResult> => ipcRenderer.invoke('base:process:wait', id, opts),
-    run: (opts: BaseProcessRunOpts): Promise<BaseProcessRunResult> => ipcRenderer.invoke('base:process:run', opts),
-    stop: (id: string, opts?: { timeoutMs?: number; force?: boolean }): Promise<BaseProcessStopResult> => ipcRenderer.invoke('base:process:stop', id, opts),
-    list: (): Promise<BaseProcessListResult> => ipcRenderer.invoke('base:process:list'),
-    get: (id: string): Promise<BaseProcessGetResult> => ipcRenderer.invoke('base:process:get', id),
-    delete: (id: string): Promise<BaseProcessDeleteResult> => ipcRenderer.invoke('base:process:delete', id),
-  },
+  process: processApi,
 
   syncPermissions: (dirs: string[]): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('base:permissions:sync', dirs),
@@ -848,18 +860,7 @@ const api = {
         return () => ipcRenderer.removeListener('base:files:changed', listener)
       },
     },
-    process: {
-      create: (opts: BaseProcessCreateOpts): Promise<BaseProcessCreateResult> => ipcRenderer.invoke('base:process:create', opts),
-      start: (id: string): Promise<BaseProcessStartResult> => ipcRenderer.invoke('base:process:start', id),
-      status: (id: string): Promise<BaseProcessStatusResult> => ipcRenderer.invoke('base:process:status', id),
-      output: (id: string, opts?: { offset?: number; reset?: boolean }): Promise<BaseProcessOutputResult> => ipcRenderer.invoke('base:process:output', id, opts),
-      wait: (id: string, opts?: BaseProcessWaitOpts): Promise<BaseProcessWaitResult> => ipcRenderer.invoke('base:process:wait', id, opts),
-      run: (opts: BaseProcessRunOpts): Promise<BaseProcessRunResult> => ipcRenderer.invoke('base:process:run', opts),
-      stop: (id: string, opts?: { timeoutMs?: number; force?: boolean }): Promise<BaseProcessStopResult> => ipcRenderer.invoke('base:process:stop', id, opts),
-      list: (): Promise<BaseProcessListResult> => ipcRenderer.invoke('base:process:list'),
-      get: (id: string): Promise<BaseProcessGetResult> => ipcRenderer.invoke('base:process:get', id),
-      delete: (id: string): Promise<BaseProcessDeleteResult> => ipcRenderer.invoke('base:process:delete', id),
-    },
+    process: processApi,
     syncPermissions: (dirs: string[]): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke('base:permissions:sync', dirs),
   },
@@ -935,6 +936,8 @@ const api = {
   },
 }
 
-export type MojiNative = typeof api
+export type UnyraNative = typeof api
+export type MojiNative = UnyraNative
 
+contextBridge.exposeInMainWorld('unyraNative', api)
 contextBridge.exposeInMainWorld('mojiNative', api)

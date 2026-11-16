@@ -1,11 +1,14 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import { setGlobalTabOperations } from '../../../lib/vimCommands'
-import { setAgentToggleHandler } from '../../../lib/agentFocus'
+import { setAgentToggleHandler, focusAgentInput } from '../../../lib/agentFocus'
 import { setOpenTargetsProvider, buildOpenTargets } from '../../../lib/vimOpenTargets'
 import { focusedGroup } from '../../../learn/groups'
-import type { DocView, LearnStore, TabRef } from '../../../learn/types'
-import { isMediaFile, type TabCloseMode, viewOf } from '../../../learn/tabs'
+import type { AnnotationStyle, DocView, LearnStore, TabRef } from '../../../learn/types'
+import { canTabSwitchToEdit, type TabCloseMode, viewOf } from '../../../learn/tabs'
 import { emptyNote } from './panes'
+import { useBrowseVim } from './useBrowseVim'
+import { openGlobalNoteDialog } from '../note/useAnnotationLayer'
+import { captureOrGetDocSelection, setDocSelectionSnapshot } from './docSelectionSnapshot'
 
 interface Params {
   getLatest: () => LearnStore
@@ -29,6 +32,13 @@ interface Params {
   newExam?: (nodeId: string) => void
   openWsFile?: (nodeId: string, seg: string) => void
   openLocalFile?: (path: string) => void
+  activateTab?: (tabId: string) => void
+  onToast?: (msg: string) => void
+  onUnderstand?: (nodeId: string, term: string, occurrence: number, snippet: string) => void
+  onLearnConcept?: (term: string, nodeId: string) => void
+  onSaveAnnotation?: (nodeId: string, term: string, body: string, style?: AnnotationStyle, occurrence?: number) => void
+  onDeleteAnnotation?: (nodeId: string, term: string) => void
+  onAsk?: (nodeId: string, payload: { question: string; text: string }) => void
 }
 
 /**
@@ -52,7 +62,32 @@ export function useVimGlobalTabOps(params: Params): void {
     newExam,
     openWsFile,
     openLocalFile,
+    activateTab,
+    onToast,
   } = params
+
+  const stepTab = useCallback(
+    (direction: 'next' | 'prev') => {
+      const s = getLatest()
+      const group = focusedGroup(s.docArea)
+      if (!group || group.tabs.length <= 1) return
+      const curIdx = group.tabs.findIndex((t) => t.id === group.active)
+      const idx = curIdx >= 0 ? curIdx : 0
+      const nextIdx =
+        direction === 'next'
+          ? (idx + 1) % group.tabs.length
+          : (idx - 1 + group.tabs.length) % group.tabs.length
+      activateTab?.(group.tabs[nextIdx].id)
+    },
+    [activateTab, getLatest],
+  )
+
+  useBrowseVim({
+    getLatest,
+    onToast,
+    nextTab: () => stepTab('next'),
+    prevTab: () => stepTab('prev'),
+  })
 
   useEffect(() => {
     setGlobalTabOperations({
@@ -73,6 +108,15 @@ export function useVimGlobalTabOps(params: Params): void {
       },
       newTab: () => {
         openBlankTab()
+      },
+      openTab: (ref) => {
+        openTab?.(ref)
+      },
+      nextTab: () => {
+        stepTab('next')
+      },
+      prevTab: () => {
+        stepTab('prev')
       },
       setPure: (pure) => {
         setPure?.(pure)
@@ -95,19 +139,7 @@ export function useVimGlobalTabOps(params: Params): void {
           return { success: false, message: '[当前无活动页签]' }
         }
 
-        const kind = tab.ref.kind
-        let isEditable = false
-        if (kind === 'note' || kind === 'teach' || kind === 'super' || kind === 'draft') {
-          isEditable = true
-        } else if (kind === 'local') {
-          const p = tab.ref.path.toLowerCase()
-          isEditable = !isMediaFile(p) && !p.endsWith('.pdf')
-        } else if (kind === 'ws') {
-          const seg = tab.ref.seg.toLowerCase()
-          isEditable = !isMediaFile(seg) && !seg.endsWith('.pdf')
-        }
-
-        if (!isEditable) {
+        if (!canTabSwitchToEdit(tab)) {
           return { success: false, message: '[当前页面内容不可编辑]' }
         }
 
@@ -118,6 +150,19 @@ export function useVimGlobalTabOps(params: Params): void {
 
         if (setTabView) {
           setTabView(tab.id, 'source')
+          const scheduleFocus = () => {
+            const cmContent = document.querySelector<HTMLElement>('.cm-content')
+            if (cmContent) {
+              cmContent.focus()
+            } else {
+              requestAnimationFrame(() => {
+                document.querySelector<HTMLElement>('.cm-content')?.focus()
+              })
+            }
+          }
+          requestAnimationFrame(scheduleFocus)
+          setTimeout(scheduleFocus, 60)
+          setTimeout(scheduleFocus, 180)
           return { success: true, message: '[已切换至编辑模式]' }
         }
         return { success: false, message: '[无法切换视图]' }
@@ -159,6 +204,56 @@ export function useVimGlobalTabOps(params: Params): void {
           return { success: true, message: '[已切换至浏览模式]' }
         }
         return { success: false, message: '[无法切换视图]' }
+      },
+      markSelection: () => {
+        const s = getLatest()
+        const info = captureOrGetDocSelection(s)
+        if (!info) return { success: false, message: '[请先划选文字后再使用 :mark]' }
+        const { nodeId, term, occurrence, hasMark } = info
+        if (hasMark) {
+          params.onDeleteAnnotation?.(nodeId, term)
+          setDocSelectionSnapshot({ ...info, hasMark: false, timestamp: Date.now() })
+          return { success: true, message: `[已取消「${term}」的标记]` }
+        } else {
+          params.onSaveAnnotation?.(nodeId, term, '', undefined, occurrence)
+          setDocSelectionSnapshot({ ...info, hasMark: true, timestamp: Date.now() })
+          return { success: true, message: `[已标记「${term}」]` }
+        }
+      },
+      commentSelection: () => {
+        const s = getLatest()
+        const info = captureOrGetDocSelection(s)
+        if (!info) return { success: false, message: '[请先划选文字后再使用 :comment]' }
+        openGlobalNoteDialog(info.term, info.occurrence)
+        return { success: true, message: `[打开「${info.term}」注解窗口]` }
+      },
+      knowSelection: () => {
+        const s = getLatest()
+        const info = captureOrGetDocSelection(s)
+        if (!info) return { success: false, message: '[请先划选文字后再使用 :know]' }
+        params.onUnderstand?.(info.nodeId, info.term, info.occurrence, info.text)
+        return { success: true, message: `[已请导师解释「${info.term}」并存入目标知识库]` }
+      },
+      studySelection: () => {
+        const s = getLatest()
+        const info = captureOrGetDocSelection(s)
+        if (!info) return { success: false, message: '[请先划选文字后再使用 :study]' }
+        params.onLearnConcept?.(info.term, info.nodeId)
+        return { success: true, message: `[已发起「${info.term}」深入学习]` }
+      },
+      askSelection: (query?: string) => {
+        const s = getLatest()
+        const info = captureOrGetDocSelection(s)
+        if (!info) return { success: false, message: '[请先划选文字后再使用 :ask]' }
+        const q = query?.trim()
+        if (q) {
+          params.onAsk?.(info.nodeId, { question: q, text: info.text })
+          return { success: true, message: `[已向导师提问: ${q.slice(0, 16)}]` }
+        } else {
+          params.expandSide?.()
+          focusAgentInput()
+          return { success: true, message: '[已打开导师提问窗口]' }
+        }
       },
     })
 

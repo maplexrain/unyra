@@ -42,6 +42,10 @@ export interface StorageInfo {
   defaultRoot: string
   /** 当前是否用的就是默认根目录 */
   isDefault: boolean
+  /** 当前进程的工作目录 (process.cwd) */
+  cwd?: string
+  /** 操作系统用户主目录 (os.homedir) */
+  homedir?: string
   /**
    * 数据根与**软件安装目录**的包含关系风险。更新走 NSIS 静默安装，会先静默卸载
    * 旧版本——卸载器清整个安装目录，数据根只要与它有包含关系，数据就会在更新时

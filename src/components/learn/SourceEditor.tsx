@@ -30,7 +30,7 @@ import { smoothCursor } from '../../lib/cmSmoothCursor'
 import { scopeHighlight } from '../../lib/cmScopeHighlight'
 import { bracketPairGuides } from '../../lib/cmBracketGuides'
 import { vimActiveSearchMatchHighlight } from '../../lib/cmSearchHighlight'
-import { vim } from '@replit/codemirror-vim'
+import { vim, Vim } from '@replit/codemirror-vim'
 import { isVimEnabled, subscribeVimEnabled } from '../../lib/vimSettings'
 import { onVimModeChanged } from '../../lib/imeSwitch'
 import { loadAndApplyVimrc } from '../../lib/vimConfig'
@@ -382,9 +382,19 @@ export default function SourceEditor({
                 const line = update.state.doc.lineAt(pos)
                 const totalLines = update.state.doc.lines
                 const ratio = (line.number - 1) / Math.max(1, totalLines - 1)
+                let text = line.text
+                if (!text.trim() && line.number > 1) {
+                  for (let prev = line.number - 1; prev >= Math.max(1, line.number - 5); prev--) {
+                    const pl = update.state.doc.line(prev)
+                    if (pl.text.trim()) {
+                      text = pl.text
+                      break
+                    }
+                  }
+                }
                 cursorRatioRef.current(ratio, {
                   lineNumber: line.number,
-                  lineText: line.text,
+                  lineText: text,
                   totalLines,
                 })
               }
@@ -570,6 +580,21 @@ export default function SourceEditor({
           v.dispatch({
             effects: wrapComp.reconfigure(enable ? EditorView.lineWrapping : []),
           })
+          if (isVimEnabled()) {
+            if (enable) {
+              Vim.noremap('j', 'gj', 'normal')
+              Vim.noremap('k', 'gk', 'normal')
+              Vim.noremap('j', 'gj', 'visual')
+              Vim.noremap('k', 'gk', 'visual')
+            } else {
+              try {
+                Vim.unmap('j', 'normal')
+                Vim.unmap('k', 'normal')
+                Vim.unmap('j', 'visual')
+                Vim.unmap('k', 'visual')
+              } catch {}
+            }
+          }
         }
       },
       isWrapEnabled: () => isWrapped,
@@ -605,6 +630,16 @@ export default function SourceEditor({
           imeCm.off('vim-mode-change', imeModeHandler)
         } catch {
           // 安全容错
+        }
+      }
+      if (isWrapped && isVimEnabled()) {
+        try {
+          Vim.unmap('j', 'normal')
+          Vim.unmap('k', 'normal')
+          Vim.unmap('j', 'visual')
+          Vim.unmap('k', 'visual')
+        } catch {
+          // 容错
         }
       }
       setVimEditorBridge(null)

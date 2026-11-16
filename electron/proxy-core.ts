@@ -18,7 +18,8 @@
  * 于是它们一律撞上「代理目标不在白名单内」。协议同理：http 与 https 分不出来。
  * 结论：目标地址（协议 + host + 端口）整体走查询串，authority 只留一个占位 host。
  */
-export const ORIGIN_PARAM = '__moji_origin'
+export const ORIGIN_PARAM = '__unyra_origin'
+export const LEGACY_ORIGIN_PARAM = '__moji_origin'
 
 /** 占位 host：它不参与任何判断，只为凑出一个合法的 URL */
 export const PLACEHOLDER_HOST = 'target'
@@ -59,10 +60,13 @@ export function originSet(entries: unknown[]): Set<string> {
  * `__moji_origin` 会被摘掉再转发，上游看到的是它自己的查询串。
  */
 export function forwardTarget(allowed: Set<string>, requestUrl: URL): string | null {
-  const origin = parseOrigin(requestUrl.searchParams.get(ORIGIN_PARAM))
+  const origin = parseOrigin(
+    requestUrl.searchParams.get(ORIGIN_PARAM) ?? requestUrl.searchParams.get(LEGACY_ORIGIN_PARAM),
+  )
   if (!origin || !allowed.has(origin)) return null
   const rest = new URLSearchParams(requestUrl.searchParams)
   rest.delete(ORIGIN_PARAM)
+  rest.delete(LEGACY_ORIGIN_PARAM)
   const query = rest.toString()
   return origin + requestUrl.pathname + (query ? '?' + query : '')
 }

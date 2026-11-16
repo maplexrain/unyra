@@ -1,4 +1,4 @@
-import { Vim } from '@replit/codemirror-vim'
+import { Vim, vim } from '@replit/codemirror-vim'
 import { triggerShortcutAction } from './shortcuts'
 import { foldCurrentScope, unfoldCurrentScope, foldAll, unfoldAll } from './cmFoldScope'
 import { openVimPage } from './vimPage'
@@ -28,13 +28,21 @@ export interface GlobalTabOperations {
   closeTab?: (force?: boolean) => void
   /** opts.skipDirty：有未保存改动的页签不关（跳过），而不是弹确认打断 */
   closeOtherTabs?: (force?: boolean, opts?: { skipDirty?: boolean }) => void
+  openTab?: (ref: import('../learn/types').TabRef) => void
   newTab?: () => void
+  nextTab?: () => void
+  prevTab?: () => void
   setPure?: (pure: boolean) => void
   isPure?: () => boolean
   togglePure?: () => void
   openWebTab?: (url: string) => void
   switchToEdit?: () => { success: boolean; message?: string }
   switchToView?: () => { success: boolean; message?: string }
+  markSelection?: () => { success: boolean; message?: string }
+  commentSelection?: () => { success: boolean; message?: string }
+  knowSelection?: () => { success: boolean; message?: string }
+  studySelection?: () => { success: boolean; message?: string }
+  askSelection?: (query?: string) => { success: boolean; message?: string }
 }
 
 let activeBridge: VimEditorBridge | null = null
@@ -138,7 +146,87 @@ let registered = false
  * - :unfoldall -> 展开所有代码块
  * - :help / :h -> 显示常用命令帮助提示
  */
+/**
+ * 优化 Vim 复制功能：确保所有 Vim 复制 (yank / y / yy) 直接复制到系统剪贴板
+ */
+export function setupVimSystemClipboard(): void {
+  try {
+    const rc = (Vim as any).getRegisterController?.()
+    if (!rc || rc.__systemClipboardPatched) return
+    rc.__systemClipboardPatched = true
+    const origPushText = rc.pushText.bind(rc)
+    rc.pushText = function (
+      registerName: string | null | undefined,
+      operator: string,
+      text: string,
+      linewise?: boolean,
+      blockwise?: boolean,
+    ) {
+      origPushText(registerName, operator, text, linewise, blockwise)
+      if (operator === 'yank' || !registerName || registerName === '"' || registerName === '+' || registerName === '*') {
+        if (text && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(text).catch(() => {})
+        }
+      }
+    }
+  } catch {
+    // 忽略异常
+  }
+}
+
+/**
+ * 优化系统输入法和 Vim 命令的冲突：
+ * 检测有效字符输入来匹配 Vim 行为；当处于输入法组词中时，阻止物理键盘按键误触发 Vim 命令
+ */
+export function setupVimImeProtection(): void {
+  try {
+    const vimAny = Vim as any
+    if (vimAny.vimKeyFromEvent && !vimAny.__imeProtectionPatched) {
+      vimAny.__imeProtectionPatched = true
+      const origVimKey = vimAny.vimKeyFromEvent.bind(vimAny)
+      vimAny.vimKeyFromEvent = function (e: KeyboardEvent, vimState: unknown) {
+        if (
+          e.isComposing ||
+          e.keyCode === 229 ||
+          e.key === 'Process' ||
+          e.key === 'Unidentified' ||
+          e.key === 'Dead'
+        ) {
+          return ''
+        }
+        return origVimKey(e, vimState)
+      }
+    }
+
+    // 同时防御 codemirror-vim ViewPlugin keydown handler
+    const ext = typeof vim === 'function' ? (vim() as any[]) : []
+    const vp = ext.find((x) => x && x.domEventHandlers)
+    if (vp?.domEventHandlers && !vp.domEventHandlers.__imePatched) {
+      vp.domEventHandlers.__imePatched = true
+      const origKeydown = vp.domEventHandlers.keydown
+      vp.domEventHandlers.keydown = function (e: KeyboardEvent, view: any) {
+        if (
+          e.isComposing ||
+          e.keyCode === 229 ||
+          e.key === 'Process' ||
+          e.key === 'Unidentified' ||
+          e.key === 'Dead'
+        ) {
+          this.lastKeydown = 'Process'
+          this.useNextTextInput = true
+          return
+        }
+        return origKeydown.call(this, e, view)
+      }
+    }
+  } catch {
+    // 忽略异常
+  }
+}
+
 export function registerVimExCommands(): void {
+  setupVimSystemClipboard()
+  setupVimImeProtection()
   if (registered) return
   registered = true
 
@@ -157,6 +245,10 @@ export function registerVimExCommands(): void {
   // 2. :q / :quit 关闭当前页签 (支持 :q! 强制退出)
   Vim.defineEx('quit', 'q', (_cm, params) => {
     const force = isForceCommand(params)
+    if (globalTabOps?.closeTab) {
+      globalTabOps.closeTab(force)
+      return
+    }
     if (activeBridge?.onClose) {
       activeBridge.onClose(force)
       return
@@ -234,13 +326,13 @@ export function registerVimExCommands(): void {
   Vim.defineEx('tabonly', 'tabo', (cm, params) => {
     const force = isForceCommand(params)
     const opts = force ? undefined : { skipDirty: true }
-    if (activeBridge?.onCloseOthers) {
-      activeBridge.onCloseOthers(force, opts)
+    if (globalTabOps?.closeOtherTabs) {
+      globalTabOps.closeOtherTabs(force, opts)
       showVimNotice(cm, '[已关闭其他页签]')
       return
     }
-    if (globalTabOps?.closeOtherTabs) {
-      globalTabOps.closeOtherTabs(force, opts)
+    if (activeBridge?.onCloseOthers) {
+      activeBridge.onCloseOthers(force, opts)
       showVimNotice(cm, '[已关闭其他页签]')
       return
     }
@@ -249,12 +341,22 @@ export function registerVimExCommands(): void {
 
   // 8. :tabnext / :tabn / :bnext / :bn 下一个页签
   Vim.defineEx('tabnext', 'tabn', (cm) => {
+    if (globalTabOps?.nextTab) {
+      globalTabOps.nextTab()
+      showVimNotice(cm, '[下一个页签]')
+      return
+    }
     if (activeBridge?.onNextTab) {
       activeBridge.onNextTab()
       showVimNotice(cm, '[下一个页签]')
     }
   })
   Vim.defineEx('bnext', 'bn', (cm) => {
+    if (globalTabOps?.nextTab) {
+      globalTabOps.nextTab()
+      showVimNotice(cm, '[下一个页签]')
+      return
+    }
     if (activeBridge?.onNextTab) {
       activeBridge.onNextTab()
       showVimNotice(cm, '[下一个页签]')
@@ -263,12 +365,22 @@ export function registerVimExCommands(): void {
 
   // 9. :tabprevious / :tabp / :bprev / :bp 上一个页签
   Vim.defineEx('tabprevious', 'tabp', (cm) => {
+    if (globalTabOps?.prevTab) {
+      globalTabOps.prevTab()
+      showVimNotice(cm, '[上一个页签]')
+      return
+    }
     if (activeBridge?.onPrevTab) {
       activeBridge.onPrevTab()
       showVimNotice(cm, '[上一个页签]')
     }
   })
   Vim.defineEx('bprev', 'bp', (cm) => {
+    if (globalTabOps?.prevTab) {
+      globalTabOps.prevTab()
+      showVimNotice(cm, '[上一个页签]')
+      return
+    }
     if (activeBridge?.onPrevTab) {
       activeBridge.onPrevTab()
       showVimNotice(cm, '[上一个页签]')
@@ -509,7 +621,40 @@ export function registerVimExCommands(): void {
     if (res.message) showVimNotice(cm, res.message)
   })
 
-  // 30. Vim 普通模式快捷键：zz、z. 自动校正滚动，让光标所在行尽量在画面垂直中间
+  // 30. 浏览模式划词专属命令 (:mark, :comment, :know, :study, :ask)
+  Vim.defineEx('mark', 'mark', (cm) => {
+    if (globalTabOps?.markSelection) {
+      const res = globalTabOps.markSelection()
+      if (res.message) showVimNotice(cm, res.message)
+    }
+  })
+  Vim.defineEx('comment', 'comment', (cm) => {
+    if (globalTabOps?.commentSelection) {
+      const res = globalTabOps.commentSelection()
+      if (res.message) showVimNotice(cm, res.message)
+    }
+  })
+  Vim.defineEx('know', 'know', (cm) => {
+    if (globalTabOps?.knowSelection) {
+      const res = globalTabOps.knowSelection()
+      if (res.message) showVimNotice(cm, res.message)
+    }
+  })
+  Vim.defineEx('study', 'study', (cm) => {
+    if (globalTabOps?.studySelection) {
+      const res = globalTabOps.studySelection()
+      if (res.message) showVimNotice(cm, res.message)
+    }
+  })
+  Vim.defineEx('ask', 'ask', (cm, params) => {
+    const q = params?.argString?.trim() || ''
+    if (globalTabOps?.askSelection) {
+      const res = globalTabOps.askSelection(q)
+      if (res.message) showVimNotice(cm, res.message)
+    }
+  })
+
+  // 31. Vim 普通模式快捷键：zz、z. 自动校正滚动，让光标所在行尽量在画面垂直中间
   try {
     Vim.noremap('zz', ':center<CR>', 'normal')
     Vim.noremap('z.', ':center<CR>', 'normal')

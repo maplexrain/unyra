@@ -13,9 +13,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import type { TabPresence } from '../../../lib/tabPresence'
 import type { LearnTab, TabRef } from '../../../learn/types'
-import { dragSlotDelta } from '../../../learn/tabs'
 import { docChipDrop, docChipHover, type ChipPayload } from '../../../lib/docChip'
-import { DRAG_MIN, LIFT_PAD, TAB_GAP, type DragState, type TabRect } from './barGeometry'
+import { DRAG_MIN, LIFT_PAD, type DragState, type TabRect } from './barGeometry'
 
 interface UseTabBarDndDeps {
   tabs: LearnTab[]
@@ -283,28 +282,14 @@ export function useTabBarDnd({
     if (onDrop(d.id, ids, x, y, commit)) return
     if (!commit || d.to === d.from) return
     /*
-     * 落下这一帧是整段拖动里最容易出错的一帧。两件事必须**同时**发生：
-     * 1. 页签按新顺序重排——DOM 顺序变了，每个页签的落位也跟着挪；
-     * 2. 拖动期间的位移清掉——清掉之后它们恰好落在该在的地方。
-     *
-     * 麻烦在于过渡是拿「过渡前的 transform」补间的：重排让页签的**落位**挪了一格，
-     * 而 transform 又在同一帧里从 ±一格变成 0，浏览器于是认定「它得从两格前滑回来」。
-     * 于是：
-     * - 让过位的那些页签：这一帧的过渡先掐掉（见 snap）。它们本来就在原地，补了反而跳；
-     * - 被拖的那一项：把「手指底下的位置」原样保留一帧（见 settle），下一帧才放开过渡，
-     *   让它从那儿滑进自己的位置——这一段的距离才是它真正剩下的那点路。
+     * 落下直接按新顺序重排，去除交换位置时的补间动画，避免松手与拖动重排时闪烁/抽动
      */
-    setSettle({ id: d.id, offset: d.dx - dragSlotDelta(d.rects.map((r) => r.width), d.from, d.to, TAB_GAP) })
-    setSnap(true)
-    if (raf.current) cancelAnimationFrame(raf.current)
-    // 两帧：第一帧把这次重排画上去，第二帧（已经画完）才放开过渡
-    raf.current = requestAnimationFrame(() => {
-      raf.current = requestAnimationFrame(() => {
-        raf.current = 0
-        setSnap(false)
-        setSettle(null)
-      })
-    })
+    if (raf.current) {
+      cancelAnimationFrame(raf.current)
+      raf.current = 0
+    }
+    setSnap(false)
+    setSettle(null)
     onReorder(ids)
   }
 

@@ -8,7 +8,7 @@
 import { loadAgentSettings } from '../../agent/settings'
 import { layoutHintOf } from '../../agent/docFormat'
 import { bindExam, bindNote, bindSuperDoc, detachExam, detachNote, detachSuperDoc } from '../detached'
-import { addEdge, examsOfNode, nodeById, removeEdge, titleTaken, updateDoc, updateNode } from '../graph'
+import { addEdge, addGoalKnowledge, examsOfNode, nodeById, removeEdge, titleTaken, updateDoc, updateNode } from '../graph'
 import { clearOutline } from '../outline'
 import { notesOf } from '../notes'
 import { superDocsOf, type KnowledgeNode, type LearnStore } from '../types'
@@ -221,6 +221,13 @@ export class DocGNode extends GNode {
       ...(annotations !== undefined ? { annotations: annotations as never } : {}),
     })
     nextStore = updateDoc(nextStore, node.id, o.teaching)
+    if (annotations !== undefined) {
+      for (const a of annotations) {
+        if (a.kind === 'understand' || !a.kind) {
+          nextStore = addGoalKnowledge(nextStore, node.goalId, a.term as string, a.body as string, node.id)
+        }
+      }
+    }
     this.ctx.commit(nextStore)
     const bits: string[] = ['正文 ' + o.teaching.length + ' 字']
     if (title !== node.title) bits.push('已从「' + node.title + '」改名')

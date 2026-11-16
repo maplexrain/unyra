@@ -29,6 +29,8 @@ import PluginDoc from '../../plugins/PluginDoc'
 import SponsorsDoc from '../../sponsor/SponsorsDoc'
 import VimCheatSheetView from '../vim/VimCheatSheetView'
 import SettingsPanel from '../../settings/SettingsPanel'
+import UserTabPane from '../../user/UserTabPane'
+import TerminalTabPane from '../../terminal/TerminalTabPane'
 import UsagePanel from '../../settings/UsagePanel'
 import { SchedulePage } from '../../schedule/SchedulePage'
 import MindPanel from '../../agent/MindPanel'
@@ -62,6 +64,13 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     onToast,
     openTab,
     onRootChanged,
+    users,
+    activeUserId,
+    onSelectUser,
+    onCreateUser,
+    onUpdateUser,
+    onDeleteUser,
+    onSignOut,
     tabOwners,
     shownTabIds,
     residentPanes,
@@ -179,6 +188,10 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     gTab.ref.kind !== 'pluginDoc' &&
     // 赞助者名单页不画：它是致谢名册
     gTab.ref.kind !== 'sponsors' &&
+    // 用户中心页不画：它是个人与账户配置页
+    gTab.ref.kind !== 'user' &&
+    // 终端控制台页不画：全屏沉浸式终端界面
+    gTab.ref.kind !== 'terminal' &&
     // Vim 学习页不画：它是学习与参考手册
     gTab.ref.kind !== 'vim' &&
     // PDF 浏览页不画：严格只读（纯净阅读仍可用 F11）
@@ -210,6 +223,8 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     (x): x is LearnTab & { ref: { kind: 'outline'; nodeId: string; goalId?: string } } => x.ref.kind === 'outline',
   )
   /** 这一格挂着的文件页签（本地文件与工作区文件）：keepalive 常驻，切页签只藏不卸，保持编辑器状态与光标 */
+  /** 这一格挂着的终端页签：keepalive 常驻，切页签只藏不卸，进程与会话状态持续保活 */
+  const hasTerminalTab = (g.group?.tabs ?? []).some((t) => t.ref.kind === 'terminal')
   const gFileTabs = (g.group?.tabs ?? []).filter((x) => x.ref.kind === 'local' || x.ref.kind === 'ws')
   /** 这一格挂着的教学文档 / 笔记 / 超级文档页签：编辑态常驻层（EditorTabLayer）照此挂起 */
   const gEditorTabs = (g.group?.tabs ?? []).filter(
@@ -440,6 +455,26 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               Vim 命令大全页签：全量按键与命令速查（高密度表格，见 vim/VimCheatSheetView）。
             */
             <VimCheatSheetView />
+          ) : gTab?.ref.kind === 'user' ? (
+            /*
+              用户中心：多用户切换、创建用户、删除用户、编辑用户画像与退出登录。
+            */
+            <UserTabPane
+              users={users ?? []}
+              activeUserId={activeUserId ?? null}
+              onSelect={onSelectUser ?? (() => {})}
+              onCreate={onCreateUser ?? (() => {})}
+              onUpdate={onUpdateUser ?? (() => {})}
+              onDelete={onDeleteUser ?? (() => {})}
+              onSignOut={onSignOut ?? (() => {})}
+              onToast={onToast}
+            />
+          ) : gTab?.ref.kind === 'terminal' ? (
+            /*
+              终端控制台：由下方的常驻保活层（keepalive）接管，切页签时仅翻 hidden，
+              不销毁组件与后台子进程。这里让出位置。
+            */
+            null
           ) : gTab?.ref.kind === 'settings' ? (
             /*
               设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），
@@ -615,6 +650,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
                   }
                 }}
                 knownConceptKeys={conceptKeysOf(store, node)}
+                goalKnowledge={store.knowledge?.[node.goalId] ?? []}
                 // 大纲句柄槽：每片正文对应自己页签的那一份（见 lib/outline 的 OutlineHandle）
                 outlineSlot={getOutlineSlot(tab.id)}
                 // 读到哪儿了：记在页签 id 上，重启回来接着读（见 lib/docScroll）
@@ -714,6 +750,15 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
             videoNodes={store.videoNodes}
             {...videoBridge}
           />
+        )}
+
+        {/* 终端控制台常驻层（keepalive）：开着就挂在 DOM 中，切走只藏不卸（进程持续流式运行，直到页签或应用关闭） */}
+        {hasTerminalTab && (
+          <div
+            className={`absolute inset-0 z-10 flex flex-col ${gTab?.ref.kind === 'terminal' ? '' : 'hidden pointer-events-none'}`}
+          >
+            <TerminalTabPane active={gTab?.ref.kind === 'terminal'} onToast={onToast} />
+          </div>
         )}
 
         {!isWeb() && gWebTabs.length > 0 && (

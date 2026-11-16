@@ -9,6 +9,7 @@
 import { spawn, type ChildProcess, execSync } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 import { checkPathPermission } from './permissions'
 import { currentRoot } from '../storage'
 import type {
@@ -55,6 +56,23 @@ interface ManagedProcess {
 }
 
 const processes = new Map<string, ManagedProcess>()
+
+type ProcessOutputListener = (processId: string, text: string, stream: 'stdout' | 'stderr') => void
+type ProcessExitListener = (processId: string, exitCode: number | null, signal: string | null) => void
+
+const outputListeners = new Set<ProcessOutputListener>()
+const exitListeners = new Set<ProcessExitListener>()
+
+export function onProcessOutput(listener: ProcessOutputListener): () => void {
+  outputListeners.add(listener)
+  return () => outputListeners.delete(listener)
+}
+
+export function onProcessExit(listener: ProcessExitListener): () => void {
+  exitListeners.add(listener)
+  return () => exitListeners.delete(listener)
+}
+
 
 /**
  * 杀死进程及其子进程树（跨平台防孤儿进程）
@@ -126,12 +144,16 @@ export async function baseProcessCreate(opts: BaseProcessCreateOpts): Promise<Ba
   }
 
   const rawCwd = opts?.cwd ? String(opts.cwd).trim() : currentRoot()
-  const perm = checkPathPermission(rawCwd)
-  if (!perm.allowed) {
-    return { ok: false, error: perm.error || '工作目录权限受限' }
+  let finalCwd = ''
+  if (opts?.trusted) {
+    finalCwd = path.isAbsolute(rawCwd) ? path.resolve(rawCwd) : path.resolve(currentRoot(), rawCwd)
+  } else {
+    const perm = checkPathPermission(rawCwd)
+    if (!perm.allowed) {
+      return { ok: false, error: perm.error || '工作目录权限受限' }
+    }
+    finalCwd = perm.normalized
   }
-
-  let finalCwd = perm.normalized
   if (!existsSync(finalCwd)) {
     // 智能容错：Agent 在拼接路径时容易漏掉 /workspace/ 这一层（例如把 docs/目标/节点/子项目 写漏了 workspace）
     let detectedWorkspacePath: string | null = null
@@ -157,7 +179,7 @@ export async function baseProcessCreate(opts: BaseProcessCreateOpts): Promise<Ba
       return {
         ok: false,
         error:
-          `工作目录不存在：${perm.normalized}。\n` +
+          `工作目录不存在：${finalCwd}。\n` +
           '【提示】目标节点的工作区在磁盘上带有 /workspace/ 层级（如 .../docs/<目标>/<节点>/workspace/<子路径>）。' +
           '建议直接使用 api.workspace.list() 回执中的 rel 字段获取真实目录路径。',
       }
@@ -201,6 +223,27 @@ export async function baseProcessCreate(opts: BaseProcessCreateOpts): Promise<Ba
 /**
  * base.process.start: 启动已创建的任务，返回 process_id 与 pid
  */
+function createStreamDecoder() {
+  const utf8Decoder = new StringDecoder('utf8')
+  let gbkDecoder: TextDecoder | null = null
+
+  return (chunk: Buffer): string => {
+    const utf8Text = utf8Decoder.write(chunk)
+    if (utf8Text.includes('\uFFFD')) {
+      try {
+        if (!gbkDecoder) {
+          gbkDecoder = new TextDecoder('gbk')
+        }
+        const gbkText = gbkDecoder.decode(chunk, { stream: true })
+        if (!gbkText.includes('\uFFFD') || gbkText.length > utf8Text.length) {
+          return gbkText
+        }
+      } catch {}
+    }
+    return utf8Text
+  }
+}
+
 export async function baseProcessStart(processId: string): Promise<BaseProcessStartResult> {
   const proc = processes.get(processId)
   if (!proc) {
@@ -273,22 +316,32 @@ export async function baseProcessStart(processId: string): Promise<BaseProcessSt
       }
     }
 
-    child.stdout?.on('data', (chunk) => {
-      proc.stdout += chunk.toString()
+    const decodeStdout = createStreamDecoder()
+    const decodeStderr = createStreamDecoder()
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      const text = decodeStdout(chunk)
+      proc.stdout += text
       notifyWaiters('match')
+      outputListeners.forEach((l) => l(proc.process_id, text, 'stdout'))
     })
 
-    child.stderr?.on('data', (chunk) => {
-      proc.stderr += chunk.toString()
+    child.stderr?.on('data', (chunk: Buffer) => {
+      const text = decodeStderr(chunk)
+      proc.stderr += text
       notifyWaiters('match')
+      outputListeners.forEach((l) => l(proc.process_id, text, 'stderr'))
     })
 
     child.on('error', (err) => {
-      proc.stderr += `\n[spawn error] ${err.message}`
+      const text = `\n[spawn error] ${err.message}`
+      proc.stderr += text
       proc.running = false
       proc.exited = true
       proc.exitTime = Date.now()
       notifyWaiters('exit')
+      outputListeners.forEach((l) => l(proc.process_id, text, 'stderr'))
+      exitListeners.forEach((l) => l(proc.process_id, 1, 'error'))
     })
 
     child.on('close', (code, signal) => {
@@ -298,6 +351,7 @@ export async function baseProcessStart(processId: string): Promise<BaseProcessSt
       proc.signal = signal
       proc.exitTime = Date.now()
       notifyWaiters('exit')
+      exitListeners.forEach((l) => l(proc.process_id, code, signal))
     })
 
     return { ok: true, process_id: processId, pid: child.pid || 0 }
@@ -525,6 +579,7 @@ export async function baseProcessRun(opts: BaseProcessRunOpts): Promise<BaseProc
     args: opts.args,
     cwd: opts.cwd,
     env: opts.env,
+    trusted: opts.trusted,
   })
   if (!createRes.ok) {
     return {

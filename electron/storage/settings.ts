@@ -350,7 +350,7 @@ export async function setRoot(dir: unknown): Promise<{ ok: boolean; root: string
   }
   try {
     await fsp.mkdir(next, { recursive: true })
-    const probe = path.join(next, '.moji-write-test')
+    const probe = path.join(next, '.unyra-write-test')
     await fsp.writeFile(probe, 'ok', 'utf-8')
     await fsp.rm(probe, { force: true })
   } catch (err) {
