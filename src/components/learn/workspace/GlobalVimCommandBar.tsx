@@ -153,11 +153,14 @@ export default function GlobalVimCommandBar() {
       const q = value.trim()
       if (queryChangeRef.current) {
         queryChangeRef.current(q)
-      }
-      if (q) {
+      } else if (q) {
         dispatchBrowseSearch(q, mode === '?', true /* silent */)
       } else {
         browseVimSearch.clear()
+      }
+      // 保持输入框聚焦，防止在增量搜索期间因 DOM 变更丢失输入焦点
+      if (inputRef.current && document.activeElement !== inputRef.current) {
+        inputRef.current.focus({ preventScroll: true })
       }
     }
   }, [open, mode, value])
@@ -190,15 +193,12 @@ export default function GlobalVimCommandBar() {
   }
 
   /**
-   * 焦点逃逸护栏：输入框的焦点溜出了这层弹窗（Shift+Tab、程序性失焦……）而弹层还开着，
-   * 后续按键就会落到别处、和 vim 打架。按「忘了切换输入框」兜底处理——当作放弃输入，
-   * 取消挂着的提示符并收口（点候选按钮不算：relatedTarget 还在弹层里）。
+   * 焦点逃逸护栏：
+   * 外部点击由 handleOutsidePointer 负责安全收口，Esc 键由 handleKeyDown 负责退出；
+   * 这里不主动强制 close()，避免在输入增量匹配或 DOM 联动时因微小焦点抖动误关面板。
    */
-  const handleInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+  const handleInputBlur = (_e: React.FocusEvent<HTMLInputElement>) => {
     if (closingRef.current) return
-    const dialog = barRef.current
-    if (dialog && e.relatedTarget instanceof Node && dialog.contains(e.relatedTarget)) return
-    close(false)
   }
 
   const activeMatchRef = useRef<HTMLButtonElement | null>(null)

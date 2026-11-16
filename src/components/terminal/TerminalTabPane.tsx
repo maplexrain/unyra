@@ -1,92 +1,82 @@
 /**
- * TerminalTabPane: 受控控制台终端 Tab 页签组件。
+ * TerminalTabPane: VS Code / IntelliJ IDEA 风格的原生集成终端工作台。
  *
  * 核心特性：
- * 1. 独立于任何目标页签组（属于 PUBLIC_OWNER 公共页签，与设置、用户中心同级）；
- * 2. 具备交互式命令历史、快捷操作、Up/Down 历史回滚与 Tab 自动补全；
- * 3. 接入 Electron 宿主受控进程引擎（window.unyraNative.process / window.mojiNative.process），支持任务中断与工作目录切换；
- * 4. 纯净现代暗色终端主题，无厚重卡牌，全屏沉浸式工作台。
+ * 1. 纯正原生终端控制台体验：无多余新手教学 UI，无多余按键芯片；
+ * 2. 连续终端流缓冲：流式标准输出与标准错误、ANSI 彩色高亮；
+ * 3. 多终端实例管理（Tab 式多终端并存、新建与销毁）；
+ * 4. 原生 Shell 选择（PowerShell / CMD / Git Bash / Bash）；
+ * 5. 键盘与交互契约：Ctrl+C 中断/选区复制、Ctrl+L 清屏、Up/Down 历史翻滚、行内光标。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  Check,
-  Copy,
-  Folder,
+  ChevronDown,
   Loader2,
-  Play,
-  Square,
+  Plus,
   Terminal,
   Trash2,
 } from 'lucide-react'
 import { t } from '../../i18n'
+import { renderAnsiText } from './ansi'
 
 export interface TerminalTabPaneProps {
   onToast?: (msg: string) => void
 }
 
-interface CommandEntry {
+type ShellKind = 'powershell' | 'cmd' | 'bash'
+
+interface TerminalSession {
   id: string
-  time: string
-  command: string
+  title: string
+  shell: ShellKind
   cwd: string
-  status: 'running' | 'success' | 'error'
-  exitCode?: number | null
-  durationMs?: number
-  output: string
-  processId?: string
+  lines: string[]
+  inputVal: string
+  cursorPos: number
+  history: string[]
+  historyIdx: number
+  runningPid: string | null
 }
 
-const WELCOME_BANNER = `╔════════════════════════════════════════════════════════════════╗
-║  Unyra Terminal v1.0.0 — 受控命令行与进程控制台                ║
-║  · 支持执行本地 CLI 工具、项目构建脚本与系统命令               ║
-║  · 输入 help 查看内置指令，使用 ↑ / ↓ 键自由切换命令历史       ║
-╚════════════════════════════════════════════════════════════════╝`
-
-const QUICK_COMMANDS = [
-  'git status',
-  'git log --oneline -5',
-  'node -v',
-  'npm -v',
-  'dir',
-  'help',
-  'clear',
+const DEFAULT_SHELLS: { key: ShellKind; label: string }[] = [
+  { key: 'powershell', label: 'PowerShell' },
+  { key: 'cmd', label: 'Command Prompt (CMD)' },
+  { key: 'bash', label: 'Git Bash / Bash' },
 ]
 
-/** 解析单行命令为可执行程序与参数列表（支持单双引号包裹） */
-function parseCommandLine(input: string): { command: string; args: string[] } {
-  const trimmed = input.trim()
-  if (!trimmed) return { command: '', args: [] }
+export default function TerminalTabPane({ onToast: _onToast }: TerminalTabPaneProps) {
+  const isWindows = typeof navigator !== 'undefined' && /win/i.test(navigator.userAgent || '')
 
-  const regex = /[^\s"']+|"([^"]*)"|'([^']*)'/g
-  const parts: string[] = []
-  let match: RegExpExecArray | null
+  // 初始终端会话
+  const [sessions, setSessions] = useState<TerminalSession[]>(() => {
+    const defaultShell: ShellKind = isWindows ? 'powershell' : 'bash'
+    const startupBanner = isWindows
+      ? 'Windows PowerShell\n版权所有 (C) Microsoft Corporation。保留所有权利。\n'
+      : 'Unyra Integrated Terminal (x86_64-pc-none)\n'
+    return [
+      {
+        id: 'term_1',
+        title: isWindows ? '1: pwsh' : '1: bash',
+        shell: defaultShell,
+        cwd: '',
+        lines: [startupBanner],
+        inputVal: '',
+        cursorPos: 0,
+        history: [],
+        historyIdx: -1,
+        runningPid: null,
+      },
+    ]
+  })
 
-  while ((match = regex.exec(trimmed)) !== null) {
-    if (match[1] !== undefined) {
-      parts.push(match[1])
-    } else if (match[2] !== undefined) {
-      parts.push(match[2])
-    } else {
-      parts.push(match[0])
-    }
-  }
-
-  const [command, ...args] = parts
-  return { command: command || '', args }
-}
-
-export default function TerminalTabPane({ onToast }: TerminalTabPaneProps) {
-  const [entries, setEntries] = useState<CommandEntry[]>([])
-  const [inputVal, setInputVal] = useState('')
-  const [cwd, setCwd] = useState<string>('')
-  const [historyIndex, setHistoryIndex] = useState<number>(-1)
-  const [cmdHistory, setCmdHistory] = useState<string[]>([])
-  const [activeProcessId, setActiveProcessId] = useState<string | null>(null)
-  const [isCopied, setIsCopied] = useState(false)
+  const [activeSessionId, setActiveSessionId] = useState<string>('term_1')
+  const [shellMenuOpen, setShellMenuOpen] = useState(false)
 
   const outputScrollRef = useRef<HTMLDivElement | null>(null)
-  const inputRef = useRef<HTMLInputElement | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+
+  const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0]
 
   // 获取原生进程能力桥
   const getNativeProcess = useCallback(() => {
@@ -107,476 +97,502 @@ export default function TerminalTabPane({ onToast }: TerminalTabPaneProps) {
 
   useEffect(() => {
     scrollToBottom()
-  }, [entries, scrollToBottom])
+  }, [activeSession?.lines, activeSession?.inputVal, scrollToBottom])
 
-  // 挂载时初始化焦点
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
-
-  // 点击控制台任意区域时保持输入框聚焦
-  const handleConsoleClick = () => {
+  // 终端全屏任意点击即聚焦虚拟输入框
+  const focusTerminal = () => {
     const sel = window.getSelection()
     if (!sel || sel.isCollapsed) {
       inputRef.current?.focus()
     }
   }
 
-  // 终止正在运行的命令 (Ctrl+C 或 终止按钮)
-  const handleStopActive = useCallback(async () => {
-    if (!activeProcessId) return
-    const np = getNativeProcess()
-    if (np?.stop) {
-      try {
-        await np.stop(activeProcessId, { force: true })
-        setEntries((prev) =>
-          prev.map((e) =>
-            e.processId === activeProcessId
-              ? {
-                  ...e,
-                  status: 'error',
-                  output: (e.output ? e.output + '\n' : '') + '[进程已由用户手动终止]',
-                }
-              : e
-          )
-        )
-      } catch (err) {
-        onToast?.(t('终止进程失败: {0}', String(err)))
-      }
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [activeSessionId])
+
+  // 新建终端实例
+  const createNewSession = (shellKind?: ShellKind) => {
+    const count = sessions.length + 1
+    const targetShell: ShellKind = shellKind || (isWindows ? 'powershell' : 'bash')
+    const shortName = targetShell === 'powershell' ? 'pwsh' : targetShell
+    const newSession: TerminalSession = {
+      id: `term_${Date.now()}`,
+      title: `${count}: ${shortName}`,
+      shell: targetShell,
+      cwd: activeSession?.cwd || '',
+      lines: [
+        isWindows && targetShell === 'powershell'
+          ? 'Windows PowerShell\n版权所有 (C) Microsoft Corporation。保留所有权利。\n'
+          : '',
+      ].filter(Boolean),
+      inputVal: '',
+      cursorPos: 0,
+      history: [],
+      historyIdx: -1,
+      runningPid: null,
     }
-    setActiveProcessId(null)
-  }, [activeProcessId, getNativeProcess, onToast])
+    setSessions((prev) => [...prev, newSession])
+    setActiveSessionId(newSession.id)
+    setShellMenuOpen(false)
+  }
+
+  // 关闭指定终端实例
+  const closeSession = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    if (sessions.length <= 1) {
+      // 最后一个终端：清屏重置
+      setSessions((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, lines: [], inputVal: '', cursorPos: 0 } : s))
+      )
+      return
+    }
+    setSessions((prev) => prev.filter((s) => s.id !== id))
+    if (activeSessionId === id) {
+      const remaining = sessions.filter((s) => s.id !== id)
+      setActiveSessionId(remaining[remaining.length - 1].id)
+    }
+  }
+
+  // 计算 Prompt 提示符
+  const getPromptString = (s: TerminalSession) => {
+    const pathStr = s.cwd || (isWindows ? 'C:\\workspace' : '~/workspace')
+    if (s.shell === 'powershell') {
+      return `PS ${pathStr}> `
+    }
+    if (s.shell === 'cmd') {
+      return `${pathStr}> `
+    }
+    const base = pathStr.split(/[\\/]/).pop() || pathStr
+    return `${base} $ `
+  }
+
+  // 终止正在运行的命令或清空当前输入 (Ctrl+C)
+  const handleInterrupt = async () => {
+    if (!activeSession) return
+    const pid = activeSession.runningPid
+    if (pid) {
+      const np = getNativeProcess()
+      if (np?.stop) {
+        try {
+          await np.stop(pid, { force: true })
+        } catch {}
+      }
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSession.id
+            ? {
+                ...s,
+                runningPid: null,
+                lines: [...s.lines, '^C'],
+                inputVal: '',
+                cursorPos: 0,
+              }
+            : s
+        )
+      )
+    } else {
+      // 原生终端直觉：无活动任务时按 Ctrl+C，打印 ^C 并换新行给出新 Prompt
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSession.id
+            ? {
+                ...s,
+                lines: [...s.lines, `${getPromptString(s)}${s.inputVal}^C`],
+                inputVal: '',
+                cursorPos: 0,
+              }
+            : s
+        )
+      )
+    }
+  }
 
   // 执行命令
-  const executeCommand = async (rawInput: string) => {
-    const trimmed = rawInput.trim()
-    if (!trimmed) return
+  const executeCommand = async (rawCmd: string) => {
+    if (!activeSession) return
+    const cmd = rawCmd
+    const trimmed = cmd.trim()
+    const prompt = getPromptString(activeSession)
 
-    // 记录历史
-    setCmdHistory((prev) => [...prev, trimmed])
-    setHistoryIndex(-1)
-    setInputVal('')
+    // 追加命令至当前屏幕流
+    const commandLine = `${prompt}${cmd}`
 
-    const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false })
-    const entryId = `cmd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-
-    // 内置命令拦截：clear / cls
+    // 内置命令支持：clear / cls / Ctrl+L
     if (trimmed === 'clear' || trimmed === 'cls') {
-      setEntries([])
-      return
-    }
-
-    // 内置命令拦截：help
-    if (trimmed === 'help') {
-      setEntries((prev) => [
-        ...prev,
-        {
-          id: entryId,
-          time: timeStr,
-          command: trimmed,
-          cwd,
-          status: 'success',
-          exitCode: 0,
-          output: `可用命令指引:
-  clear / cls     清空终端屏幕历史
-  help            显示当前帮助信息
-  pwd             打印当前工作目录
-  cd <path>       切换当前工作目录
-  echo <message>  回显测试文本
-  git ...         执行 Git 版本管理命令
-  node / npm ...  执行 Node.js / NPM 开发工具链`,
-        },
-      ])
-      return
-    }
-
-    // 内置命令拦截：pwd
-    if (trimmed === 'pwd') {
-      setEntries((prev) => [
-        ...prev,
-        {
-          id: entryId,
-          time: timeStr,
-          command: trimmed,
-          cwd,
-          status: 'success',
-          exitCode: 0,
-          output: cwd || '[默认工作区根目录]',
-        },
-      ])
-      return
-    }
-
-    // 内置命令拦截：cd
-    if (trimmed.startsWith('cd ') || trimmed === 'cd') {
-      const targetPath = trimmed.slice(3).trim()
-      let nextCwd = cwd
-      if (!targetPath || targetPath === '~') {
-        nextCwd = ''
-      } else if (targetPath === '..') {
-        const parts = cwd.replace(/[\\/]+$/, '').split(/[\\/]/)
-        parts.pop()
-        nextCwd = parts.join('/')
-      } else {
-        nextCwd = cwd ? `${cwd.replace(/[\\/]+$/, '')}/${targetPath}` : targetPath
-      }
-      setCwd(nextCwd)
-      setEntries((prev) => [
-        ...prev,
-        {
-          id: entryId,
-          time: timeStr,
-          command: trimmed,
-          cwd,
-          status: 'success',
-          exitCode: 0,
-          output: nextCwd ? `工作目录已切换至: ${nextCwd}` : '已返回默认根工作区',
-        },
-      ])
-      return
-    }
-
-    // 内置命令拦截：echo
-    if (trimmed.startsWith('echo ') || trimmed === 'echo') {
-      setEntries((prev) => [
-        ...prev,
-        {
-          id: entryId,
-          time: timeStr,
-          command: trimmed,
-          cwd,
-          status: 'success',
-          exitCode: 0,
-          output: trimmed.slice(4).trim(),
-        },
-      ])
-      return
-    }
-
-    // 系统进程执行
-    const { command, args } = parseCommandLine(trimmed)
-    const newEntry: CommandEntry = {
-      id: entryId,
-      time: timeStr,
-      command: trimmed,
-      cwd,
-      status: 'running',
-      output: '',
-    }
-    setEntries((prev) => [...prev, newEntry])
-
-    const np = getNativeProcess()
-    if (!np || !np.run) {
-      setEntries((prev) =>
-        prev.map((e) =>
-          e.id === entryId
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSession.id
             ? {
-                ...e,
-                status: 'error',
-                exitCode: 1,
-                output:
-                  '[Web 演示模式提示] 本地系统进程执行需要 Electron 原生客户端环境。\n当前 WebUI 模式下可体验内置命令: cd, pwd, clear, help, echo 等。',
+                ...s,
+                lines: [],
+                inputVal: '',
+                cursorPos: 0,
+                history: trimmed ? [...s.history, trimmed] : s.history,
+                historyIdx: -1,
               }
-            : e
+            : s
         )
       )
       return
     }
 
-    const startTime = Date.now()
+    if (!trimmed) {
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSession.id
+            ? {
+                ...s,
+                lines: [...s.lines, commandLine],
+                inputVal: '',
+                cursorPos: 0,
+              }
+            : s
+        )
+      )
+      return
+    }
+
+    // 更新命令历史与清空输入
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSession.id
+          ? {
+              ...s,
+              lines: [...s.lines, commandLine],
+              inputVal: '',
+              cursorPos: 0,
+              history: [...s.history, trimmed],
+              historyIdx: -1,
+              runningPid: 'pending',
+            }
+          : s
+      )
+    )
+
+    // 目录变更 cd 跟踪
+    if (/^\s*cd(\s+.*)?$/i.test(trimmed)) {
+      const target = trimmed.replace(/^\s*cd\s*/i, '').trim()
+      let nextCwd = activeSession.cwd
+      if (!target || target === '~') {
+        nextCwd = ''
+      } else if (target === '..') {
+        const parts = (activeSession.cwd || '').replace(/[\\/]+$/, '').split(/[\\/]/)
+        parts.pop()
+        nextCwd = parts.join(isWindows ? '\\' : '/')
+      } else {
+        const sep = isWindows ? '\\' : '/'
+        nextCwd = activeSession.cwd
+          ? `${activeSession.cwd.replace(/[\\/]+$/, '')}${sep}${target}`
+          : target
+      }
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSession.id
+            ? {
+                ...s,
+                cwd: nextCwd,
+                runningPid: null,
+              }
+            : s
+        )
+      )
+      return
+    }
+
+    // 调用底层原生进程执行
+    const np = getNativeProcess()
+    if (!np || !np.run) {
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSession.id
+            ? {
+                ...s,
+                runningPid: null,
+                lines: [
+                  ...s.lines,
+                  '[Web 演示模式] 终端原生系统进程执行需要运行在 Electron 桌面环境。',
+                ],
+              }
+            : s
+        )
+      )
+      return
+    }
+
     try {
-      // 在 Windows 下，常见命令如 dir / echo 等需经 cmd /c 唤起；其他原生命令直接运行
-      const isWindows = typeof navigator !== 'undefined' && /win/i.test(navigator.userAgent || '')
-      const isCmdBuiltin = isWindows && /^(dir|copy|del|type|move|mkdir|rmdir)$/i.test(command)
-      const runOpts = isCmdBuiltin
-        ? {
-            command: 'cmd.exe',
-            args: ['/d', '/s', '/c', trimmed],
-            cwd: cwd || undefined,
-            timeoutMs: 120000,
-          }
-        : {
-            command,
-            args,
-            cwd: cwd || undefined,
-            timeoutMs: 120000,
-          }
+      let command = 'powershell.exe'
+      let args: string[] = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', trimmed]
 
-      const res = await np.run(runOpts)
-      const durationMs = Date.now() - startTime
+      if (activeSession.shell === 'cmd') {
+        command = 'cmd.exe'
+        args = ['/d', '/s', '/c', trimmed]
+      } else if (activeSession.shell === 'bash') {
+        command = 'bash'
+        args = ['-c', trimmed]
+      }
 
-      const fullOutput = [res.stdout, res.stderr, res.error ? `[执行错误] ${res.error}` : '']
+      const res = await np.run({
+        command,
+        args,
+        cwd: activeSession.cwd || undefined,
+        timeoutMs: 180000,
+      })
+
+      const stdout = res.stdout ? res.stdout.replace(/\r\n/g, '\n').replace(/\r/g, '\n') : ''
+      const stderr = res.stderr ? res.stderr.replace(/\r\n/g, '\n').replace(/\r/g, '\n') : ''
+      const outText = [stdout, stderr, res.error ? `[Error] ${res.error}` : '']
         .filter(Boolean)
         .join('\n')
-        .trim()
 
-      setEntries((prev) =>
-        prev.map((e) =>
-          e.id === entryId
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSession.id
             ? {
-                ...e,
-                status: res.ok && (res.exitCode === 0 || res.exitCode === null) ? 'success' : 'error',
-                exitCode: res.exitCode,
-                durationMs,
-                output: fullOutput || (res.ok ? '[命令执行完成，无标准输出]' : '[命令未返回有效输出]'),
+                ...s,
+                runningPid: null,
+                lines: outText ? [...s.lines, outText] : s.lines,
               }
-            : e
+            : s
         )
       )
     } catch (err) {
-      const durationMs = Date.now() - startTime
-      setEntries((prev) =>
-        prev.map((e) =>
-          e.id === entryId
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSession.id
             ? {
-                ...e,
-                status: 'error',
-                exitCode: 1,
-                durationMs,
-                output: `[系统错误] ${err instanceof Error ? err.message : String(err)}`,
+                ...s,
+                runningPid: null,
+                lines: [...s.lines, `[Process error]: ${err instanceof Error ? err.message : String(err)}`],
               }
-            : e
+            : s
         )
       )
-    } finally {
-      setActiveProcessId(null)
     }
   }
 
-  // 键盘快捷响应（Enter 提交，Up/Down 历史翻滚，Ctrl+C 中断，Tab 补全）
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  // 键盘与输入管理
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Ctrl+C: 如果页面有文字选区则放行复制；否则触发终端中断
     if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
-      e.preventDefault()
-      if (activeProcessId) {
-        void handleStopActive()
-      } else {
-        setInputVal('')
+      const sel = window.getSelection()
+      if (sel && !sel.isCollapsed) {
+        return
       }
-      return
-    }
-
-    if (e.key === 'Enter') {
       e.preventDefault()
-      void executeCommand(inputVal)
+      void handleInterrupt()
       return
     }
 
+    // Ctrl+L: 清屏
+    if (e.ctrlKey && (e.key === 'l' || e.key === 'L')) {
+      e.preventDefault()
+      setSessions((prev) =>
+        prev.map((s) => (s.id === activeSession.id ? { ...s, lines: [] } : s))
+      )
+      return
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      void executeCommand(activeSession.inputVal)
+      return
+    }
+
+    // Up: 历史向前
     if (e.key === 'ArrowUp') {
       e.preventDefault()
-      if (cmdHistory.length === 0) return
-      const nextIdx = historyIndex < 0 ? cmdHistory.length - 1 : Math.max(0, historyIndex - 1)
-      setHistoryIndex(nextIdx)
-      setInputVal(cmdHistory[nextIdx] || '')
+      if (activeSession.history.length === 0) return
+      const nextIdx =
+        activeSession.historyIdx < 0
+          ? activeSession.history.length - 1
+          : Math.max(0, activeSession.historyIdx - 1)
+      const val = activeSession.history[nextIdx] || ''
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSession.id
+            ? { ...s, historyIdx: nextIdx, inputVal: val, cursorPos: val.length }
+            : s
+        )
+      )
       return
     }
 
+    // Down: 历史向后
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      if (cmdHistory.length === 0 || historyIndex < 0) return
-      const nextIdx = historyIndex + 1
-      if (nextIdx >= cmdHistory.length) {
-        setHistoryIndex(-1)
-        setInputVal('')
+      if (activeSession.history.length === 0 || activeSession.historyIdx < 0) return
+      const nextIdx = activeSession.historyIdx + 1
+      if (nextIdx >= activeSession.history.length) {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === activeSession.id
+              ? { ...s, historyIdx: -1, inputVal: '', cursorPos: 0 }
+              : s
+          )
+        )
       } else {
-        setHistoryIndex(nextIdx)
-        setInputVal(cmdHistory[nextIdx] || '')
+        const val = activeSession.history[nextIdx] || ''
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === activeSession.id
+              ? { ...s, historyIdx: nextIdx, inputVal: val, cursorPos: val.length }
+              : s
+        )
+      )
       }
       return
     }
-
-    if (e.key === 'Tab') {
-      e.preventDefault()
-      const val = inputVal.trim()
-      if (!val) return
-      const matched = QUICK_COMMANDS.find((cmd) => cmd.startsWith(val))
-      if (matched) {
-        setInputVal(matched)
-      }
-    }
   }
 
-  // 复制全部输出
-  const handleCopyAll = () => {
-    const text = entries
-      .map((e) => `[${e.time}] ${e.cwd ? e.cwd + ' ' : ''}$ ${e.command}\n${e.output}`)
-      .join('\n\n')
-    void navigator.clipboard.writeText(text || WELCOME_BANNER)
-    setIsCopied(true)
-    setTimeout(() => setIsCopied(false), 2000)
-    onToast?.(t('控制台输出已复制到剪贴板'))
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value
+    const pos = e.target.selectionStart
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSession.id ? { ...s, inputVal: val, cursorPos: pos } : s
+      )
+    )
   }
-
-  const promptDirectory = cwd ? cwd.split(/[\\/]/).pop() || cwd : 'workspace'
 
   return (
     <div
-      onClick={handleConsoleClick}
-      className="flex h-full w-full flex-col bg-[#0d1117] text-[#c9d1d9] font-mono text-[12.5px] select-text"
+      onClick={focusTerminal}
+      className="flex h-full w-full flex-col bg-[#181818] text-[#cccccc] font-mono text-[13px] leading-[1.35] select-text overflow-hidden"
     >
-      {/* 顶部工具栏 */}
-      <header className="flex shrink-0 items-center justify-between border-b border-[#30363d] bg-[#161b22] px-4 py-2 select-none">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-400">
-            <Terminal size={14} />
-          </div>
-          <span className="font-semibold text-white tracking-wide text-[13px]">
-            {t('终端控制台')}
-          </span>
-          <div className="flex items-center gap-1.5 rounded-full bg-[#21262d] px-2.5 py-0.5 text-[11px] text-[#8b949e]">
-            {activeProcessId ? (
-              <>
-                <Loader2 size={11} className="animate-spin text-amber-400" />
-                <span className="text-amber-300 font-medium">{t('执行中')}</span>
-              </>
-            ) : (
-              <>
-                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                <span>{t('就绪')}</span>
-              </>
-            )}
-          </div>
-          {cwd && (
-            <div
-              title={cwd}
-              className="hidden sm:flex items-center gap-1.5 rounded bg-[#21262d] px-2 py-0.5 text-[11px] text-[#8b949e] max-w-[260px] truncate"
-            >
-              <Folder size={11} className="shrink-0 text-emerald-400/80" />
-              <span className="truncate">{cwd}</span>
-            </div>
-          )}
-        </div>
+      {/* VS Code 风格集成终端顶部控制栏 */}
+      <header className="flex shrink-0 items-center justify-between border-b border-[#2b2b2b] bg-[#1e1e1e] px-2 py-0 h-9 select-none">
+        {/* 左侧：多终端选项卡 */}
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+          {sessions.map((s) => {
+            const isCur = s.id === activeSession.id
+            return (
+              <div
+                key={s.id}
+                onClick={() => setActiveSessionId(s.id)}
+                className={`group flex items-center gap-1.5 px-3 py-1.5 text-[12px] cursor-pointer border-b-2 transition ${
+                  isCur
+                    ? 'border-[#007acc] text-white bg-[#181818]'
+                    : 'border-transparent text-[#858585] hover:text-[#cccccc] hover:bg-[#252526]'
+                }`}
+              >
+                <Terminal size={13} className={isCur ? 'text-[#007acc]' : 'text-[#858585]'} />
+                <span className="font-mono">{s.title}</span>
+                {s.runningPid && <Loader2 size={11} className="animate-spin text-amber-400" />}
+                <button
+                  type="button"
+                  onClick={(e) => closeSession(s.id, e)}
+                  title={t('关闭终端实例')}
+                  className="rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-[#333333] hover:text-white transition"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            )
+          })}
 
-        {/* 快捷操作区 */}
-        <div className="flex items-center gap-1.5">
-          {activeProcessId && (
+          {/* 新增终端实例 (+) */}
+          <div className="relative">
             <button
               type="button"
-              onClick={handleStopActive}
-              className="flex items-center gap-1 rounded bg-rose-500/20 px-2 py-1 text-[11px] font-medium text-rose-300 hover:bg-rose-500/30 transition cursor-pointer"
+              onClick={() => createNewSession()}
+              title={t('新建集成终端')}
+              className="flex items-center gap-0.5 rounded px-2 py-1 text-[12px] text-[#858585] hover:bg-[#2d2d2d] hover:text-white transition cursor-pointer"
             >
-              <Square size={11} />
-              <span>{t('终止任务 (Ctrl+C)')}</span>
+              <Plus size={14} />
             </button>
-          )}
+          </div>
+        </div>
+
+        {/* 右侧：Shell 切换与快捷操作 */}
+        <div className="flex items-center gap-2">
+          {/* Shell 下拉切换 */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShellMenuOpen((v) => !v)}
+              className="flex items-center gap-1 rounded bg-[#252526] px-2 py-1 text-[11px] text-[#cccccc] hover:bg-[#2d2d2d] border border-[#333333] transition cursor-pointer font-mono"
+            >
+              <span>{activeSession.shell}</span>
+              <ChevronDown size={11} className="text-[#858585]" />
+            </button>
+
+            {shellMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 z-30 w-44 rounded border border-[#454545] bg-[#252526] py-1 shadow-2xl">
+                {DEFAULT_SHELLS.map((sh) => (
+                  <button
+                    key={sh.key}
+                    type="button"
+                    onClick={() => {
+                      setSessions((prev) =>
+                        prev.map((s) =>
+                          s.id === activeSession.id ? { ...s, shell: sh.key } : s
+                        )
+                      )
+                      setShellMenuOpen(false)
+                    }}
+                    className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-[11.5px] transition hover:bg-[#094771] hover:text-white ${
+                      activeSession.shell === sh.key ? 'text-[#007acc] font-semibold' : 'text-[#cccccc]'
+                    }`}
+                  >
+                    <span>{sh.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 清屏图标 */}
           <button
             type="button"
-            onClick={handleCopyAll}
-            title={t('复制终端输出')}
-            className="flex items-center gap-1 rounded bg-[#21262d] px-2 py-1 text-[11px] text-[#8b949e] hover:bg-[#30363d] hover:text-white transition cursor-pointer"
+            onClick={() =>
+              setSessions((prev) =>
+                prev.map((s) => (s.id === activeSession.id ? { ...s, lines: [] } : s))
+              )
+            }
+            title={t('清空终端缓冲区 (Ctrl+L)')}
+            className="rounded p-1 text-[#858585] hover:bg-[#2d2d2d] hover:text-white transition cursor-pointer"
           >
-            {isCopied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-            <span className="hidden sm:inline">{isCopied ? t('已复制') : t('复制')}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setEntries([])}
-            title={t('清空终端屏幕')}
-            className="flex items-center gap-1 rounded bg-[#21262d] px-2 py-1 text-[11px] text-[#8b949e] hover:bg-[#30363d] hover:text-white transition cursor-pointer"
-          >
-            <Trash2 size={12} />
-            <span className="hidden sm:inline">{t('清屏')}</span>
+            <Trash2 size={13} />
           </button>
         </div>
       </header>
 
-      {/* 快捷命令推荐胶囊 */}
-      <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-[#21262d] bg-[#0d1117] px-4 py-1.5 select-none no-scrollbar">
-        <span className="shrink-0 text-[10.5px] font-semibold text-[#8b949e] uppercase tracking-wider">
-          {t('快捷命令')}:
-        </span>
-        {QUICK_COMMANDS.map((cmd) => (
-          <button
-            key={cmd}
-            type="button"
-            onClick={() => void executeCommand(cmd)}
-            className="shrink-0 rounded bg-[#161b22] px-2 py-0.5 text-[11px] text-[#8b949e] hover:bg-[#21262d] hover:text-emerald-400 border border-[#30363d]/60 transition cursor-pointer font-mono"
-          >
-            {cmd}
-          </button>
-        ))}
-      </div>
-
-      {/* 控制台输出流正文 */}
+      {/* 终端屏幕输出流 */}
       <div
         ref={outputScrollRef}
-        className="flex-1 overflow-y-auto px-4 py-3 leading-relaxed selection:bg-emerald-500/25 selection:text-white space-y-3"
+        className="flex-1 overflow-y-auto px-4 py-3 leading-[1.4] selection:bg-[#264f78] selection:text-white"
       >
-        {/* 欢迎标语 */}
-        <pre className="text-[#8b949e] text-[11.5px] leading-snug whitespace-pre font-mono opacity-80 select-none">
-          {WELCOME_BANNER}
-        </pre>
-
-        {entries.map((item) => (
-          <div key={item.id} className="space-y-1">
-            {/* 命令行抬头 */}
-            <div className="flex items-center gap-2 text-[12px] opacity-90 select-none">
-              <span className="text-[#8b949e]">[{item.time}]</span>
-              <span className="text-emerald-400 font-semibold">{item.cwd || promptDirectory}</span>
-              <span className="text-[#8b949e]">$</span>
-              <span className="text-white font-semibold">{item.command}</span>
-              {item.status === 'running' && (
-                <span className="flex items-center gap-1 text-[10.5px] text-amber-400">
-                  <Loader2 size={10} className="animate-spin" />
-                  <span>{t('运行中')}</span>
-                </span>
-              )}
-              {item.durationMs !== undefined && (
-                <span
-                  className={`text-[10px] rounded px-1 py-0.1 font-mono ${
-                    item.status === 'success'
-                      ? 'bg-emerald-500/10 text-emerald-400'
-                      : 'bg-rose-500/10 text-rose-400'
-                  }`}
-                >
-                  {item.durationMs}ms {item.exitCode !== null ? `(code ${item.exitCode})` : ''}
-                </span>
-              )}
-            </div>
-
-            {/* 输出正文 */}
-            {item.output && (
-              <pre
-                className={`whitespace-pre-wrap break-all rounded-md px-2.5 py-1.5 text-[12px] leading-relaxed font-mono ${
-                  item.status === 'error'
-                    ? 'border-l-2 border-rose-500/70 bg-rose-950/20 text-rose-200'
-                    : 'bg-[#161b22]/70 text-[#c9d1d9]'
-                }`}
-              >
-                {item.output}
-              </pre>
-            )}
+        {activeSession.lines.map((chunk, idx) => (
+          <div key={idx} className="whitespace-pre-wrap break-all font-mono">
+            {renderAnsiText(chunk)}
           </div>
         ))}
+
+        {/* 当前活动输入行（与流输出完全无缝连缀） */}
+        <div className="flex items-start whitespace-pre-wrap break-all font-mono">
+          <span className="text-[#38bdf8] font-medium shrink-0">
+            {getPromptString(activeSession)}
+          </span>
+          <span className="text-white relative flex-1 min-w-[20px]">
+            {activeSession.inputVal.slice(0, activeSession.cursorPos)}
+            {/* 原生终端闪烁光标 */}
+            <span className="inline-block w-2 h-4.5 bg-[#aeafad] text-[#181818] animate-pulse align-middle" />
+            {activeSession.inputVal.slice(activeSession.cursorPos)}
+          </span>
+        </div>
       </div>
 
-      {/* 底部交互输入行 */}
-      <div className="shrink-0 border-t border-[#30363d] bg-[#161b22] px-4 py-2.5 flex items-center gap-2 select-none shadow-lg">
-        <div className="flex items-center gap-1 text-[12.5px] font-semibold text-emerald-400 shrink-0">
-          <span>{promptDirectory}</span>
-          <span className="text-[#8b949e]">$</span>
-        </div>
-        <input
-          ref={inputRef}
-          type="text"
-          value={inputVal}
-          onChange={(e) => setInputVal(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={t('输入命令执行 (例如: git status, node -v, help)...')}
-          className="flex-1 bg-transparent text-white text-[12.5px] font-mono outline-none border-none placeholder:text-[#484f58]"
-          spellCheck={false}
-          autoComplete="off"
-        />
-        {inputVal.trim() && (
-          <button
-            type="button"
-            onClick={() => void executeCommand(inputVal)}
-            className="flex items-center gap-1 rounded bg-emerald-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-emerald-500 transition cursor-pointer"
-          >
-            <Play size={11} />
-            <span>{t('执行')}</span>
-          </button>
-        )}
-      </div>
+      {/* 隐藏的透明按键捕获区 */}
+      <textarea
+        ref={inputRef}
+        value={activeSession.inputVal}
+        onChange={handleInputChange}
+        onKeyDown={handleKeyDown}
+        className="absolute -top-[9999px] -left-[9999px] opacity-0 h-0 w-0 pointer-events-none"
+        autoFocus
+        spellCheck={false}
+      />
     </div>
   )
 }

@@ -164,18 +164,22 @@ function applySearchResult(
   silent = false,
 ): void {
   if (res.total > 0 && res.range) {
-    const sel = window.getSelection()
-    if (sel) {
-      sel.removeAllRanges()
-      sel.addRange(res.range)
-      lastValidRangeRef.current = res.range.cloneRange()
-      smoothCursor.update(sel, true)
-      const el =
-        res.range.startContainer instanceof HTMLElement
-          ? res.range.startContainer
-          : res.range.startContainer.parentElement
-      el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    // 仅在非静默态（按 Enter 确认搜索或 n/N 切换）时才更新全局窗口选区与平滑光标，
+    // 增量打字期间（silent=true）绝不挪动 window.getSelection()，避免剥夺输入框焦点
+    if (!silent) {
+      const sel = window.getSelection()
+      if (sel) {
+        sel.removeAllRanges()
+        sel.addRange(res.range)
+        lastValidRangeRef.current = res.range.cloneRange()
+        smoothCursor.update(sel, true)
+      }
     }
+    const el =
+      res.range.startContainer instanceof HTMLElement
+        ? res.range.startContainer
+        : res.range.startContainer.parentElement
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
     if (!silent) {
       const wrapNote = res.wrapped ? (res.index === 0 ? ' [回绕至首项]' : ' [回绕至末项]') : ''
       onToast?.(`[匹配 ${res.index + 1}/${res.total}${wrapNote}]`)
