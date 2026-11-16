@@ -4,7 +4,7 @@ import type { DocView, LearnTab, TabRef } from '../types'
 import { closeTabs, isBlankTab, makeBlankTab, makeTab, reorderTabs, tabKey, type TabCloseMode } from '../tabs'
 import { groupOf, settle, withDocs, withGroup } from './core'
 import { findTab, focusedGroup, groupIdOfTab } from './focus'
-import { PUBLIC_OWNER, claimTab, dropTabs, goalTabsOf, ownerOfTab, refOwner, withOwners, withParked } from './goals'
+import { claimTab, dropTabs, goalTabsOf, ownerOfTab, refOwner, withOwners, withParked } from './goals'
 import { groupIdsOf, insertBeside, newId, replaceLeaf } from './layout'
 import type { DocGroup, DocLayout, DocWorkspace, SplitDir } from './types'
 
@@ -217,7 +217,7 @@ function blankYieldsTo(
     .every((t) => {
       if (t.id === g.active) return false
       const own = ownerOfTab(docs.tabOwners, t.id)
-      return own !== null && own !== PUBLIC_OWNER && own !== mine
+      return own !== null && own !== mine
     })
 }
 

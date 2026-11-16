@@ -235,8 +235,8 @@ export default function LearnWorkspace({
    * 这里再过一次 reconcileOwners，保证「看不到的页签」这件事不会发生。
    */
   const tabOwners = useMemo(
-    () => reconcileOwners(docs.tabOwners, tabs, goalOfNode),
-    [docs.tabOwners, tabs, goalOfNode],
+    () => reconcileOwners(docs.tabOwners, tabs, goalOfNode, tabGoalId),
+    [docs.tabOwners, tabs, goalOfNode, tabGoalId],
   )
 
   // 结构页签保底去重与对齐：目标换根、历史并发开签等情况可能导致重复的结构页签，此处保证全局至多一枚

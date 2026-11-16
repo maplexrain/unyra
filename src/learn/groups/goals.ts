@@ -90,8 +90,8 @@ export function visibleTabs(
 ): LearnTab[] {
   if (!owners) return [...tabs]
   const gid = goalId ?? PUBLIC_OWNER
-  // 当前目标的页签 ∪ 公共页签：公共的那些（设置、外部文件）不属于任何目标，切目标时一直看得见
-  const wanted = new Set([...(owners[gid] ?? []), ...(gid === PUBLIC_OWNER ? [] : (owners[PUBLIC_OWNER] ?? []))])
+  // 切换tab组不再过滤保留非目标相关的tab：只展示属于当前目标页签组的页签；无激活目标时展示公共页签
+  const wanted = new Set(owners[gid] ?? [])
   const out: LearnTab[] = []
   for (const tab of tabs) {
     // 某一格正在看它：不看归属（理由见上面的 pinned 说明）
@@ -195,6 +195,7 @@ export function reconcileOwners(
   owners: TabOwners | undefined,
   tabs: readonly LearnTab[],
   goalOfNode: (nodeId: string) => string | null,
+  activeGoalId?: string | null,
 ): TabOwners {
   const live = new Set(tabs.map((t) => t.id))
   const tabById = new Map(tabs.map((t) => [t.id, t] as const))
@@ -223,10 +224,11 @@ export function reconcileOwners(
     }
     if (kept.length > 0) out[owner] = kept
   }
-  // 没登记过的补上：按页签**出现顺序**追加，于是补出来的组里顺序与原页签栏一致
+  // 没登记过的补上：按页签**出现顺序**追加，优先归入特定目标或当前激活目标
   for (const tab of tabs) {
     if (seen.has(tab.id)) continue
-    const owner = refOwner(tab.ref, goalOfNode)
+    const derived = refOwner(tab.ref, goalOfNode)
+    const owner = derived !== PUBLIC_OWNER ? derived : (activeGoalId || PUBLIC_OWNER)
     out[owner] = [...(out[owner] ?? []), tab.id]
     seen.add(tab.id)
     changed = true
