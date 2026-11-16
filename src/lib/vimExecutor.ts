@@ -298,6 +298,40 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
       const arg = clean.slice(baseCmd.length).trim()
       return executeOpenTarget(arg)
     }
+    case 'mark': {
+      if (globalTabOps?.markSelection) {
+        return globalTabOps.markSelection()
+      }
+      return { success: false, message: '[当前环境不支持标记操作]' }
+    }
+    case 'comment':
+    case 'note': {
+      if (globalTabOps?.commentSelection) {
+        return globalTabOps.commentSelection()
+      }
+      return { success: false, message: '[当前环境不支持注解操作]' }
+    }
+    case 'know':
+    case 'understand': {
+      if (globalTabOps?.knowSelection) {
+        return globalTabOps.knowSelection()
+      }
+      return { success: false, message: '[当前环境不支持了解操作]' }
+    }
+    case 'study':
+    case 'learn': {
+      if (globalTabOps?.studySelection) {
+        return globalTabOps.studySelection()
+      }
+      return { success: false, message: '[当前环境不支持深入学习操作]' }
+    }
+    case 'ask': {
+      const q = clean.slice(baseCmd.length).trim()
+      if (globalTabOps?.askSelection) {
+        return globalTabOps.askSelection(q)
+      }
+      return { success: false, message: '[当前环境不支持提问操作]' }
+    }
     case 'help':
     case 'h': {
       return {

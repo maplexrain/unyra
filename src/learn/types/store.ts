@@ -25,12 +25,19 @@ import type { FavoriteItem, AgentTabRef, LocalFile } from './tabs'
 import type { FileNodeEntity, ProjectNodeEntity, VideoNodeEntity, VideoResource } from './media'
 import type { MemoryStore } from './memory'
 import type { WorkflowBook } from './workflow'
+import type { GoalKnowledgeItem } from './knowledge'
 
 export interface LearnStore {
   version: 2
   nodes: KnowledgeNode[]
   edges: DependencyEdge[]
   goals: LearningGoal[]
+  /**
+   * 目标级知识库：目标 id → 词条列表。
+   * 整个目标共用：在正文渲染时自动匹配字符，出现的地方都进行引用。
+   * 落盘在各目标目录的 knowledge.json。
+   */
+  knowledge?: Record<string, GoalKnowledgeItem[]>
   /** 一个目标可挂多个对话；每个对话只属于一个目标（目标下所有节点共用上下文） */
   conversations: Conversation[]
   /** 考试记录（每份只属于一个节点，可回溯查看只读） */

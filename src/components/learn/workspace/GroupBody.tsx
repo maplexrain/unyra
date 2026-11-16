@@ -615,6 +615,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
                   }
                 }}
                 knownConceptKeys={conceptKeysOf(store, node)}
+                goalKnowledge={store.knowledge?.[node.goalId] ?? []}
                 // 大纲句柄槽：每片正文对应自己页签的那一份（见 lib/outline 的 OutlineHandle）
                 outlineSlot={getOutlineSlot(tab.id)}
                 // 读到哪儿了：记在页签 id 上，重启回来接着读（见 lib/docScroll）

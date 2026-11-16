@@ -37,6 +37,11 @@ export interface GlobalTabOperations {
   openWebTab?: (url: string) => void
   switchToEdit?: () => { success: boolean; message?: string }
   switchToView?: () => { success: boolean; message?: string }
+  markSelection?: () => { success: boolean; message?: string }
+  commentSelection?: () => { success: boolean; message?: string }
+  knowSelection?: () => { success: boolean; message?: string }
+  studySelection?: () => { success: boolean; message?: string }
+  askSelection?: (query?: string) => { success: boolean; message?: string }
 }
 
 let activeBridge: VimEditorBridge | null = null
@@ -615,7 +620,40 @@ export function registerVimExCommands(): void {
     if (res.message) showVimNotice(cm, res.message)
   })
 
-  // 30. Vim 普通模式快捷键：zz、z. 自动校正滚动，让光标所在行尽量在画面垂直中间
+  // 30. 浏览模式划词专属命令 (:mark, :comment, :know, :study, :ask)
+  Vim.defineEx('mark', 'mark', (cm) => {
+    if (globalTabOps?.markSelection) {
+      const res = globalTabOps.markSelection()
+      if (res.message) showVimNotice(cm, res.message)
+    }
+  })
+  Vim.defineEx('comment', 'comment', (cm) => {
+    if (globalTabOps?.commentSelection) {
+      const res = globalTabOps.commentSelection()
+      if (res.message) showVimNotice(cm, res.message)
+    }
+  })
+  Vim.defineEx('know', 'know', (cm) => {
+    if (globalTabOps?.knowSelection) {
+      const res = globalTabOps.knowSelection()
+      if (res.message) showVimNotice(cm, res.message)
+    }
+  })
+  Vim.defineEx('study', 'study', (cm) => {
+    if (globalTabOps?.studySelection) {
+      const res = globalTabOps.studySelection()
+      if (res.message) showVimNotice(cm, res.message)
+    }
+  })
+  Vim.defineEx('ask', 'ask', (cm, params) => {
+    const q = params?.argString?.trim() || ''
+    if (globalTabOps?.askSelection) {
+      const res = globalTabOps.askSelection(q)
+      if (res.message) showVimNotice(cm, res.message)
+    }
+  })
+
+  // 31. Vim 普通模式快捷键：zz、z. 自动校正滚动，让光标所在行尽量在画面垂直中间
   try {
     Vim.noremap('zz', ':center<CR>', 'normal')
     Vim.noremap('z.', ':center<CR>', 'normal')

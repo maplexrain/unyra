@@ -167,32 +167,31 @@ export function useConceptActions(deps: ConceptActionsDeps) {
    * prep 是 'show'：只响一声铃——交付物就画在用户盯着的那段文字旁边，别的不必做。
    */
   const understandConcept = (nodeId: string, term: string, occurrence?: number, snippet?: string) => {
-    const node = nodeById(getLatest(), nodeId)
+    const s = getLatest()
+    const node = nodeById(s, nodeId)
     if (!node) return
+    const goalId = node.goalId
+    const knowledgeList = s.knowledge?.[goalId] ?? []
+    if (knowledgeList.some((k) => k.term === term)) {
+      onToast(t('「{0}」已在目标知识库中', term))
+      return
+    }
     if (!hasKey) {
       onToast(t('生成释义需要 AI，请先在设置中填写「{0}」的 API Key', providerName))
       onOpenSettings()
-      return
-    }
-    // 「词条还在不在正文里」不在这里判：词条是跨元素选出来的，源文里根本没有这一段
-    // 连续文字（中间隔着 **、[](…)、公式），拿 includes 判会把正常选择一并拦掉。
-    // 真正的判断落在渲染结果上，由 NodeNote 在选词/保存时做（见 lib/annotation 的 canAnnotate）。
-    if (node.annotations.some((a) => a.term === term)) {
-      // 「了解」不覆盖已有注解：用户自己写的那条更值得保留
-      onToast(t('「{0}」已有注解', term))
       return
     }
     agent.runWorkflow('explain', {
       nodeId,
       params: {
         target: nodeId,
+        goalId,
         term,
         occurrence: occurrence ?? 0,
-        // 选段给导师一份：省掉它为了看一眼这个词先读整篇的那一步（序号与位置照旧以 term 为准）
         snippet: plainSnippet(snippet ?? '', 400),
       },
     })
-    onToast(t('已请导师解释「{0}」，注解会划在正文上', term))
+    onToast(t('已请导师解释「{0}」，将存入目标知识库并在全文标注', term))
   }
 
   /* ---------- 选中文字 → 写自己的注解（支持 Markdown，可改可删） ---------- */

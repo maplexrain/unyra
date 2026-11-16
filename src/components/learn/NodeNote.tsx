@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
-import type { AnnotationStyle, DocKind, DocNotepadItem, KnowledgeNode } from '../../learn/types'
+import type { Annotation, AnnotationStyle, DocKind, DocNotepadItem, GoalKnowledgeItem, KnowledgeNode } from '../../learn/types'
 import type { NoteFormat } from '../../learn/noteFormat'
 import { renderTypst } from '../../lib/typst/render'
 import { sanitizeHtml } from '../../lib/sanitize'
@@ -109,6 +109,7 @@ interface Props {
   /** 滚动到哪儿了的上报（上层节流写盘；不写的话下次打开又从头开始） */
   onScrollTop?: (top: number) => void
   onUpdateNotepads?: (notepads: DocNotepadItem[]) => void
+  goalKnowledge?: GoalKnowledgeItem[]
 }
 
 /**
@@ -138,6 +139,7 @@ export default memo(function NodeNote({
   onEditContent,
   onRevealSource,
   onWarn,
+  goalKnowledge = [],
   knownConceptKeys,
   resolveLocalImage,
   active = true,
@@ -419,12 +421,24 @@ export default memo(function NodeNote({
     openNote(term, at)
   }
 
+  // 聚合目标级知识库（整门目标全局共享并在全文引用）与节点私有笔记/标记
+  const mergedAnnotations = useMemo(() => {
+    const knowledgeAnnos: Annotation[] = (goalKnowledge ?? []).map((k) => ({
+      term: k.term,
+      body: k.summary,
+      kind: 'understand',
+    }))
+    const userNoteTerms = new Set(node.annotations.filter((a) => a.kind === 'note').map((a) => a.term))
+    const filteredKnowledge = knowledgeAnnos.filter((k) => !userNoteTerms.has(k.term))
+    return [...node.annotations, ...filteredKnowledge]
+  }, [node.annotations, goalKnowledge])
+
   /*
    * 注解输入区：开合、保存/删除、样式预览与它自己的 JSX 都在 note/useAnnotationLayer。
    * 词条校验用上面那个 cannotAnnotate（「了解」那条路也用它，口径只有一份）。
    */
   const { dialog: noteDialogEl, openNote, annotationActions } = useAnnotationLayer({
-    annotations: node.annotations,
+    annotations: mergedAnnotations,
     bodyRef,
     cannotAnnotate,
     onSaveAnnotation,
@@ -461,7 +475,7 @@ export default memo(function NodeNote({
           nodeId={node.id}
           content={content}
           html={html}
-          annotations={node.annotations}
+          annotations={mergedAnnotations}
           knownConceptKeys={knownConceptKeys}
           annotationActions={annotationActions}
           resolveLocalImage={resolveLocalImage}

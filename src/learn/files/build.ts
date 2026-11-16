@@ -109,6 +109,11 @@ function writeGoalFiles(goal: LearnStore['goals'][number], store: LearnStore, fi
     files.set(`${path}/detached.json`, jsonText({ version: 1, notes: goalDetached.notes, superdocs: goalDetached.superdocs }))
   }
 
+  const knowledge = store.knowledge?.[goal.id] ?? []
+  if (knowledge.length) {
+    files.set(`${path}/knowledge.json`, jsonText({ version: 1, items: knowledge }))
+  }
+
   const freeOutlines = (store.outlines ?? []).filter((o) => o.goalId === goal.id)
   const freeOutlineIds = new Set(freeOutlines.map((o) => o.id))
   const goalDocIds = new Set(store.nodes.filter((n) => n.goalId === goal.id).map((n) => n.id))

@@ -10,6 +10,24 @@ export interface SourceLineInfo {
 
 const ACTIVE_CLASS = 'split-preview-active-element'
 
+/** 清洗源文行中的 Markdown 与 Typst 标记字符，提取纯文本用于精确匹配 */
+export function cleanSourceLine(text: string): string {
+  return text
+    // 剔除 Typst 宏调用如 #text(...)[...]、#align(...)、#table(...) 等
+    .replace(/#\w+(?:\([^)]*\))?\[?/g, '')
+    // 剔除 Markdown 链接与图片 [alt](url) -> alt
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    // 剔除 Markdown 粗体/斜体/删除线/行内代码符号
+    .replace(/[*_~`]{1,3}/g, '')
+    // 剔除行首的列表符号、标题、引用、任务框、序号
+    .replace(/^[\s>#*+-]+(?:\d+\.)?\s*(?:\[[ xX]\]\s*)?/, '')
+    // 剔除 HTML 标签
+    .replace(/<[^>]+>/g, '')
+    // 剔除尾部可能多余的闭合符号与标点
+    .replace(/[\]})#\s]+$/, '')
+    .trim()
+}
+
 /**
  * 在预览容器内匹配并突出高亮与光标当前行对应的预览 DOM 元素
  */
@@ -21,51 +39,65 @@ export function highlightPreviewElement(
   if (!container) return null
 
   // 1. 查找所有可能的块级内容元素
-  const candidates = Array.from(
+  const rawCandidates = Array.from(
     container.querySelectorAll<HTMLElement>(
-      '.note-preview > *, .note-preview p, .note-preview h1, .note-preview h2, .note-preview h3, .note-preview h4, .note-preview h5, .note-preview h6, .note-preview li, .note-preview blockquote, .note-preview pre, .note-preview table',
+      '.note-preview p, .note-preview h1, .note-preview h2, .note-preview h3, .note-preview h4, .note-preview h5, .note-preview h6, .note-preview li, .note-preview pre, .note-preview table, .note-preview tr, .note-preview > *',
     ),
   ).filter((el) => {
     // 过滤掉不可见或过小的包装节点
-    return el.offsetHeight > 0 && el.textContent?.trim().length
+    return el.offsetHeight > 0 && (el.textContent?.trim().length ?? 0) > 0
+  })
+
+  if (rawCandidates.length === 0) return null
+
+  // 关键：剔除非叶子父容器（如包含 li 的 ul/ol、包含 p 的 blockquote/div），优先定位到具体段落/项目
+  const candidates = rawCandidates.filter((el) => {
+    const isBigContainer = ['UL', 'OL', 'BLOCKQUOTE', 'DIV', 'SECTION'].includes(el.tagName)
+    if (isBigContainer) {
+      const hasChildCandidate = rawCandidates.some((other) => other !== el && el.contains(other))
+      if (hasChildCandidate) return false
+    }
+    return true
   })
 
   if (candidates.length === 0) return null
 
   let matched: HTMLElement | null = null
   const lineText = lineInfo?.lineText?.trim() ?? ''
-  const cleanText = lineText.replace(/^[\s>#*+-]+(?:\d+\.)?\s*/, '').trim()
+  const cleanText = cleanSourceLine(lineText)
 
   // 2. 若当前行有实质文本内容，优先通过文本匹配
   if (cleanText.length >= 2) {
-    const isHeading = /^#{1,6}\s/.test(lineText)
+    const isHeading = /^#{1,6}\s|^\s*={1,6}\s/.test(lineText)
     const isList = /^[*+-]|\d+\.\s/.test(lineText)
     const isQuote = /^>\s/.test(lineText)
+    // 截取前 28 个字符作为搜索核心特征（避免因行尾标点或排版差异导致不匹配）
+    const searchSnippet = cleanText.length > 28 ? cleanText.slice(0, 28) : cleanText
 
     if (isHeading) {
       matched =
         candidates.find(
           (el) =>
             /^H[1-6]$/i.test(el.tagName) &&
-            (el.textContent?.trim().includes(cleanText) || cleanText.includes(el.textContent?.trim() ?? '')),
+            (el.textContent?.includes(searchSnippet) || searchSnippet.includes(el.textContent?.trim() ?? '')),
         ) ?? null
     } else if (isList) {
       matched =
         candidates.find(
-          (el) => el.tagName === 'LI' && el.textContent?.trim().includes(cleanText),
+          (el) => el.tagName === 'LI' && (el.textContent?.includes(searchSnippet) || searchSnippet.includes(el.textContent?.trim() ?? '')),
         ) ?? null
     } else if (isQuote) {
       matched =
         candidates.find(
           (el) =>
             (el.tagName === 'BLOCKQUOTE' || el.closest('blockquote')) &&
-            el.textContent?.trim().includes(cleanText),
+            el.textContent?.includes(searchSnippet),
         ) ?? null
     }
 
     if (!matched) {
       // 在所有候选元素中搜寻包含该段文本的元素
-      const textMatches = candidates.filter((el) => el.textContent?.includes(cleanText))
+      const textMatches = candidates.filter((el) => el.textContent?.includes(searchSnippet))
       if (textMatches.length === 1) {
         matched = textMatches[0]
       } else if (textMatches.length > 1) {
@@ -80,15 +112,10 @@ export function highlightPreviewElement(
     }
   }
 
-  // 3. 若文本未直接命中（如空行、公式、复合代码），按纵向高度比例定位最接近的块元素
+  // 3. 若文本未直接命中（如空行、公式、复合代码），按段落索引与高度比例定位最接近的段落元素
   if (!matched) {
-    const scrollH = container.scrollHeight || 1
-    const targetY = ratio * scrollH
-    matched = candidates.reduce((closest, cur) => {
-      const curDiff = Math.abs(cur.offsetTop - targetY)
-      const closestDiff = Math.abs(closest.offsetTop - targetY)
-      return curDiff < closestDiff ? cur : closest
-    })
+    const expectedIdx = Math.max(0, Math.min(candidates.length - 1, Math.round(ratio * (candidates.length - 1))))
+    matched = candidates[expectedIdx] ?? candidates[0]
   }
 
   // 4. 更新高亮 class

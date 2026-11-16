@@ -205,7 +205,6 @@ export class BrowseSmoothCursor {
       if (this.trailEl) this.trailEl.style.opacity = '0'
       this.clearEffects()
       this.stopBlink()
-      this.hasPosition = false
       return
     }
 

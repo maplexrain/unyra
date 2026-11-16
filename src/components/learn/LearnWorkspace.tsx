@@ -52,7 +52,6 @@ import {
   claimTab,
   closeIds,
   findTab,
-  focusedGroup,
   focusedTab,
   goalTabsOf,
   groupIdOfTab,
@@ -125,7 +124,6 @@ import ExplorerSidebar, {
   type ExamActions,
   type NodeDocActions,
 } from './ExplorerSidebar'
-import { focusAgentInput } from '../../lib/agentFocus'
 import { focusWebAddress } from './web/addressFocus'
 import { readSuperDoc } from '../../learn/superdocs'
 import { superDocsOf } from '../../learn/types'
@@ -144,7 +142,6 @@ import { readRecentTabs, residentIds } from '../../learn/resident'
 import type { UiPointRequest } from '../../agent/tools'
 import type { Conversation } from '../../agent/types'
 import type { Props } from './workspace/constants'
-import { SIDE_ANIM_MS } from './workspace/constants'
 import { emptyNote, paneInfo, paneOf } from './workspace/panes'
 import { DocPane } from './workspace/DocPane'
 import { ScheduleDock } from './workspace/docks'
@@ -182,6 +179,7 @@ import { renderGroupBody } from './workspace/GroupBody'
 import { useTabOpening } from './workspace/useTabOpening'
 import { useChipOpening } from './workspace/useChipOpening'
 import { useMouseNavTabs } from './workspace/useMouseNavTabs'
+import { useWorkspaceShortcuts } from './workspace/useWorkspaceShortcuts'
 import { t } from '../../i18n'
 
 /**
@@ -1739,109 +1737,36 @@ export default function LearnWorkspace({
     [openConcept, nodeImageResolver, understandConcept, saveAnnotation, deleteAnnotation, onToast, askAboutSelection, getLatest, patchQuiet, editDocSource, setTabView],
   )
 
-  // 保存：Ctrl+S 交给快捷键模块（见 lib/shortcuts）——改键与冲突检测都归它管，
-  // 写死在这里的话，用户在设置里改的那一条就成了一句空话。
-  // 保存的是**当前这份文档**：暂存区里的改动写进文档并落盘（见 saveDocNow）
-  useShortcut('learn.save', {
-    down: () => {
-      void saveDocNow()
-    },
+  // 学习工作区全局快捷键（Ctrl+S, Ctrl+F, Ctrl+H, Ctrl+E, Ctrl+W, Ctrl+Q, F11, Ctrl+L 等）
+  useWorkspaceShortcuts({
+    saveDocNow,
+    setFindMode,
+    setFindTick,
+    openExport,
+    getLatest,
+    closeTab,
+    pure,
+    agentLeft,
+    sideCollapsed,
+    expandSide,
+    toggleSide,
+    toggleZen,
+    isWeb,
+    focusWebAddress,
+    openWebTab,
   })
 
-  /*
-   * 文档区查找（Ctrl+F）与替换（Ctrl+H）。
-   *
-   * 走快捷键注册表而不是各自 addEventListener：这样它们出现在设置里、可改键、
-   * 也参与冲突检测（见 lib/shortcuts）。焦点在输入框里时也照样触发——
-   * Ctrl 组合键不会和打字冲突（见 shouldFire）。
-   */
-  useShortcut('doc.find', {
-    down: () => {
-      setFindMode('find')
-      setFindTick((n) => n + 1)
-    },
-  })
-  useShortcut('doc.replace', {
-    down: () => {
-      setFindMode('replace')
-      setFindTick((n) => n + 1)
-    },
-  })
-
-  // 导出文档（Ctrl+E）：与查找/替换同一条路——登记在快捷键注册表里，可改键、参与冲突检测。
-  // 快捷键导的是**焦点格**那一篇（悬浮组里那颗按钮导的是它所在的那一格，见 openExport）
-  useShortcut('doc.export', { down: () => openExport(getLatest().docArea.focus) })
-
-  // 全局 Vim 冒号命令调度（支持非编辑页面执行 :tabo, :q, :tabnew, :agent, :edit, :browser, :fullscreen, :open 等）
+  // 全局 Vim 冒号命令调度（支持非编辑页面执行 :tabo, :q, :tabnew, :agent, :edit, :browser, :fullscreen, :open 以及划词专属 :mark, :comment, :know, :study, :ask 等）
   useVimGlobalTabOps({
     getLatest, closeTab, openBlankTab, toggleSide, expandSide, setPure,
     isPure: () => pure, togglePure: toggleZen, openWebTab, setTabView, openTab,
     openExam: exam.openExam, openExamCopy, newExam, openWsFile, openLocalFile,
     activateTab, onToast,
-  })
-
-  // Ctrl+W：关掉焦点格里正看着的那个页签
-  useShortcut('learn.closeTab', {
-    down: () => {
-      const s = getLatest()
-      const group = focusedGroup(s.docArea)
-      if (!group?.active) return
-      closeTab(group.id, group.active, 'self')
-    },
-  })
-
-  /*
-   * Ctrl+Q：它的名字是「聚焦导师」，动作是**切换**右侧栏。
-   *
-   * 导师栏在**右侧栏**时：收着就展开，并把光标放进输入框——弹出来的东西就是要跟你
-   * 说话的那个，再让你去点一下输入框是白费一步。展开是 300ms 补间，而收着的那一栏
-   * 是 invisible（见 SplitRow）：光标此刻落进去也看不见，所以等补间走完、面板真的
-   * 现形了再把焦点放进去。已经展开的再一次就是收起。
-   * 导师栏占着**主位**时：收起 / 展开右侧那一栏（与骑线按钮同一件事）。
-   * 纯净阅读里**不响应**：那一格此刻已经从布局里让出去了，没有「右侧栏」可收可展——
-   * 照旧执行会有两个坏结果：退出纯净阅读后栏位状态被悄悄改了（用户没看见这一下），
-   * 而导师栏正占着右边那一格时，它会当场顶回屏幕、盖在正文上。
-   */
-  useShortcut('agent.focus', {
-    down: () => {
-      if (pure) return
-      if (!agentLeft) {
-        if (sideCollapsed) {
-          expandSide()
-          window.setTimeout(focusAgentInput, SIDE_ANIM_MS)
-        } else {
-          toggleSide()
-        }
-        return
-      }
-      toggleSide()
-    },
-  })
-
-  /*
-   * F11：纯净阅读（见上面 toggleZen 的说明）。
-   *
-   * 登记在快捷键表里而不是自己 addEventListener：它因此出现在设置里、可改键、
-   * 也参与冲突检测（见 lib/shortcuts）。**单独一个 F 键在输入框里也照样触发**
-   * ——光标在源码编辑器或对话栏里时按 F11 也得有反应，那条放行写在 shouldFire 里。
-   * 顺带一提，主进程那份菜单里的「全屏」已经不挂 F11 了（见 electron/app/icon.ts）：
-   * 菜单加速键会先把按键吃掉，不摘掉它，这里永远收不到。
-   */
-  useShortcut('doc.zen', { down: () => toggleZen() })
-
-  /*
-   * Ctrl+L：新建网页页签（浏览器的肌肉记忆）。
-   * 焦点格已经看着一个网页时不开第二枚，把光标挪进它的地址栏——输入、回车、直达。
-   */
-  useShortcut('web.newTab', {
-    down: () => {
-      if (isWeb()) return
-      const s = getLatest()
-      const group = focusedGroup(s.docArea)
-      const active = group?.tabs.find((x) => x.id === group.active)
-      if (active?.ref.kind === 'web') focusWebAddress()
-      else openWebTab('')
-    },
+    onUnderstand: understandConcept,
+    onLearnConcept: (term, nodeId) => void openConcept(nodeId, term),
+    onSaveAnnotation: saveAnnotation,
+    onDeleteAnnotation: deleteAnnotation,
+    onAsk: (nodeId, payload) => askAboutSelection(nodeId, payload),
   })
 
   // 鼠标侧键前进 / 后退（Back / Forward 按钮）切换当前显示的页签

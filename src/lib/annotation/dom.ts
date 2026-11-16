@@ -262,6 +262,33 @@ export function canAnnotate(root: HTMLElement, term: string): boolean {
  * 词条在正文里已经找不到时返回 false（正文被改过就会这样），调用方据此跳过。
  */
 export function applyAnnotation(root: HTMLElement, a: Annotation): boolean {
+  // 目标级知识库（了解条目）：全文所有出现处均进行引用包裹
+  if (a.kind === 'understand' && (a.occurrence === undefined || a.occurrence === null)) {
+    let matchedAny = false
+    let maxRounds = 40
+    while (maxRounds-- > 0) {
+      const stream = buildStream(root)
+      let hit: Hit | null = null
+      let from = 0
+      while (from <= stream.text.length) {
+        const h = findHit(stream, a.term, from)
+        if (!h) break
+        const isAlreadyWrapped = h.pieces.some((p) => p.node.parentElement?.closest('.moji-anno'))
+        if (!isAlreadyWrapped) {
+          hit = h
+          break
+        }
+        from = h.start + 1
+      }
+      if (!hit) break
+      for (let i = hit.pieces.length - 1; i >= 0; i--) {
+        wrapPiece(root.ownerDocument, hit.pieces[i], a)
+      }
+      matchedAny = true
+    }
+    return matchedAny
+  }
+
   // 每包一条都按**当前** DOM 重新走一遍文字流，而不是一次算完所有词条：
   // 词条互相包含时（先注解「勾股定理」再注解「股」），后一条会套在前一条外面，
   // 两条都看得见；若一次性算完再包，先包的那条会把文字切走，后一条再也对不上。

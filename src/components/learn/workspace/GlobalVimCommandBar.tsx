@@ -35,9 +35,9 @@ export default function GlobalVimCommandBar() {
   }, [open])
 
   /* ---------- :open / :o 目标搜索模式判断 ---------- */
-  const openMatch = value.match(/^(?:open|o)\s+(.*)$/i)
+  const openMatch = value.match(/^:?\s*(?:open\b\s*(.*)|o\s+(.*))$/i)
   const isOpenMode = Boolean(openMatch)
-  const openQuery = openMatch ? openMatch[1] : ''
+  const openQuery = openMatch ? (openMatch[1] ?? openMatch[2] ?? '') : ''
   const openTargets = useMemo(() => {
     if (!isOpenMode) return []
     return getOpenTargets(openQuery)

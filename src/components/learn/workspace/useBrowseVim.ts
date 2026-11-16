@@ -65,11 +65,25 @@ function findVisibleTextNode(root: HTMLElement, scrollBox?: HTMLElement | null):
 }
 
 /** 确保当前 Selection 位于当前活动正文节点内 */
-function ensureSelectionInDoc(body: HTMLElement, scrollBox?: HTMLElement | null): Selection | null {
+function ensureSelectionInDoc(
+  body: HTMLElement,
+  scrollBox?: HTMLElement | null,
+  savedRange?: Range | null,
+): Selection | null {
   const sel = window.getSelection()
   if (!sel) return null
   if (sel.rangeCount > 0 && sel.anchorNode && body.contains(sel.anchorNode)) {
     return sel
+  }
+  // 优先恢复之前在正文里保存的光标选区（避免输入命令或失焦后光标被重置到文档顶部）
+  if (savedRange && body.contains(savedRange.startContainer)) {
+    try {
+      sel.removeAllRanges()
+      sel.addRange(savedRange)
+      return sel
+    } catch {
+      // 节点可能被重新渲染，回退到按视口查找
+    }
   }
   const textNode = findVisibleTextNode(body, scrollBox)
   if (textNode) {
@@ -97,6 +111,7 @@ function moveCaret(
   granularity: 'character' | 'word' | 'line' | 'lineboundary' | 'documentboundary',
   isVisual: boolean,
   smoothCursor: BrowseSmoothCursor,
+  lastValidRangeRef?: { current: Range | null },
 ): void {
   const alter = isVisual ? 'extend' : 'move'
   try {
@@ -105,6 +120,9 @@ function moveCaret(
     }
   } catch {
     // 忽略浏览器不支持或不可移动异常
+  }
+  if (sel.rangeCount > 0 && lastValidRangeRef) {
+    lastValidRangeRef.current = sel.getRangeAt(0).cloneRange()
   }
   scrollSelectionIntoView(sel)
   smoothCursor.update(sel, isVisual)
@@ -119,6 +137,7 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
   const isComposingRef = useRef<boolean>(false)
   const lastToastTime = useRef<number>(0)
   const smoothCursorRef = useRef<BrowseSmoothCursor | null>(null)
+  const lastValidRangeRef = useRef<Range | null>(null)
 
   useEffect(() => {
     if (!smoothCursorRef.current) {
@@ -152,8 +171,15 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
       const sel = window.getSelection()
       const body = visibleDocBody()
       if (sel && body && sel.anchorNode && body.contains(sel.anchorNode)) {
+        if (sel.rangeCount > 0) {
+          lastValidRangeRef.current = sel.getRangeAt(0).cloneRange()
+        }
         smoothCursor.update(sel, isVisualModeRef.current)
       } else {
+        // 如果焦点处于命令栏或弹窗输入区，不清除平滑光标与记录的选区位置，避免重置到文档顶部
+        if (document.querySelector('[data-command-bar]') || isEditableTarget(document.activeElement)) {
+          return
+        }
         smoothCursor.update(null, false)
       }
     }
@@ -393,7 +419,7 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         }
       }
 
-      // 8. Caret 光标移动 (h/j/k/l, w/b, 0/$, 方向键)
+      // 8. Caret 光标移动 (h/j/k/l, w/b/e, 0/$, 方向键)
       const body = visibleDocBody()
       const box = docScrollElement()
       const isVisual = isVisualModeRef.current
@@ -402,8 +428,8 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         e.preventDefault()
         e.stopPropagation()
         if (body) {
-          const sel = ensureSelectionInDoc(body, box)
-          if (sel) moveCaret(sel, 'backward', 'character', isVisual, smoothCursor)
+          const sel = ensureSelectionInDoc(body, box, lastValidRangeRef.current)
+          if (sel) moveCaret(sel, 'backward', 'character', isVisual, smoothCursor, lastValidRangeRef)
         }
         return
       }
@@ -412,8 +438,8 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         e.preventDefault()
         e.stopPropagation()
         if (body) {
-          const sel = ensureSelectionInDoc(body, box)
-          if (sel) moveCaret(sel, 'forward', 'character', isVisual, smoothCursor)
+          const sel = ensureSelectionInDoc(body, box, lastValidRangeRef.current)
+          if (sel) moveCaret(sel, 'forward', 'character', isVisual, smoothCursor, lastValidRangeRef)
         }
         return
       }
@@ -422,8 +448,8 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         e.preventDefault()
         e.stopPropagation()
         if (body) {
-          const sel = ensureSelectionInDoc(body, box)
-          if (sel) moveCaret(sel, 'forward', 'line', isVisual, smoothCursor)
+          const sel = ensureSelectionInDoc(body, box, lastValidRangeRef.current)
+          if (sel) moveCaret(sel, 'forward', 'line', isVisual, smoothCursor, lastValidRangeRef)
         } else {
           scrollToDoc({ by: 80 })
         }
@@ -434,8 +460,8 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         e.preventDefault()
         e.stopPropagation()
         if (body) {
-          const sel = ensureSelectionInDoc(body, box)
-          if (sel) moveCaret(sel, 'backward', 'line', isVisual, smoothCursor)
+          const sel = ensureSelectionInDoc(body, box, lastValidRangeRef.current)
+          if (sel) moveCaret(sel, 'backward', 'line', isVisual, smoothCursor, lastValidRangeRef)
         } else {
           scrollToDoc({ by: -80 })
         }
@@ -446,8 +472,18 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         e.preventDefault()
         e.stopPropagation()
         if (body) {
-          const sel = ensureSelectionInDoc(body, box)
-          if (sel) moveCaret(sel, 'forward', 'word', isVisual, smoothCursor)
+          const sel = ensureSelectionInDoc(body, box, lastValidRangeRef.current)
+          if (sel) moveCaret(sel, 'forward', 'word', isVisual, smoothCursor, lastValidRangeRef)
+        }
+        return
+      }
+
+      if (!isCtrl && (key === 'e' || key === 'E')) {
+        e.preventDefault()
+        e.stopPropagation()
+        if (body) {
+          const sel = ensureSelectionInDoc(body, box, lastValidRangeRef.current)
+          if (sel) moveCaret(sel, 'forward', 'word', isVisual, smoothCursor, lastValidRangeRef)
         }
         return
       }
@@ -456,8 +492,8 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         e.preventDefault()
         e.stopPropagation()
         if (body) {
-          const sel = ensureSelectionInDoc(body, box)
-          if (sel) moveCaret(sel, 'backward', 'word', isVisual, smoothCursor)
+          const sel = ensureSelectionInDoc(body, box, lastValidRangeRef.current)
+          if (sel) moveCaret(sel, 'backward', 'word', isVisual, smoothCursor, lastValidRangeRef)
         }
         return
       }
@@ -466,8 +502,8 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         e.preventDefault()
         e.stopPropagation()
         if (body) {
-          const sel = ensureSelectionInDoc(body, box)
-          if (sel) moveCaret(sel, 'backward', 'lineboundary', isVisual, smoothCursor)
+          const sel = ensureSelectionInDoc(body, box, lastValidRangeRef.current)
+          if (sel) moveCaret(sel, 'backward', 'lineboundary', isVisual, smoothCursor, lastValidRangeRef)
         }
         return
       }
@@ -476,8 +512,8 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         e.preventDefault()
         e.stopPropagation()
         if (body) {
-          const sel = ensureSelectionInDoc(body, box)
-          if (sel) moveCaret(sel, 'forward', 'lineboundary', isVisual, smoothCursor)
+          const sel = ensureSelectionInDoc(body, box, lastValidRangeRef.current)
+          if (sel) moveCaret(sel, 'forward', 'lineboundary', isVisual, smoothCursor, lastValidRangeRef)
         }
         return
       }
@@ -486,17 +522,33 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
         e.preventDefault()
         e.stopPropagation()
         if (body) {
-          const sel = ensureSelectionInDoc(body, box)
-          if (sel) moveCaret(sel, 'forward', 'documentboundary', isVisual, smoothCursor)
+          const sel = ensureSelectionInDoc(body, box, lastValidRangeRef.current)
+          if (sel) moveCaret(sel, 'forward', 'documentboundary', isVisual, smoothCursor, lastValidRangeRef)
         }
         scrollToDoc({ to: 'bottom' })
         return
       }
 
-      // 9. 翻页与大跨度跳动 (Ctrl+d, Ctrl+u, d, u, Ctrl+f, Ctrl+b)
+      // 9. 翻页与大跨度跳动 (Ctrl+d, Ctrl+u, d, u, Ctrl+f, Ctrl+b) — 光标跟随翻页移动
       if ((isCtrl && key === 'd') || (!isCtrl && key === 'd')) {
         e.preventDefault()
         e.stopPropagation()
+        const lines = Math.max(8, Math.round((box?.clientHeight || 600) / 48))
+        if (body) {
+          const sel = ensureSelectionInDoc(body, box, lastValidRangeRef.current)
+          if (sel) {
+            for (let i = 0; i < lines; i++) {
+              try {
+                (sel as any).modify(isVisual ? 'extend' : 'move', 'forward', 'line')
+              } catch {}
+            }
+            if (sel.rangeCount > 0) {
+              lastValidRangeRef.current = sel.getRangeAt(0).cloneRange()
+            }
+            scrollSelectionIntoView(sel)
+            smoothCursor.update(sel, isVisual)
+          }
+        }
         if (box) box.scrollBy({ top: box.clientHeight * 0.5, behavior: 'smooth' })
         else scrollToDoc({ by: 300 })
         return
@@ -505,6 +557,22 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
       if ((isCtrl && key === 'u') || (!isCtrl && key === 'u')) {
         e.preventDefault()
         e.stopPropagation()
+        const lines = Math.max(8, Math.round((box?.clientHeight || 600) / 48))
+        if (body) {
+          const sel = ensureSelectionInDoc(body, box, lastValidRangeRef.current)
+          if (sel) {
+            for (let i = 0; i < lines; i++) {
+              try {
+                (sel as any).modify(isVisual ? 'extend' : 'move', 'backward', 'line')
+              } catch {}
+            }
+            if (sel.rangeCount > 0) {
+              lastValidRangeRef.current = sel.getRangeAt(0).cloneRange()
+            }
+            scrollSelectionIntoView(sel)
+            smoothCursor.update(sel, isVisual)
+          }
+        }
         if (box) box.scrollBy({ top: -box.clientHeight * 0.5, behavior: 'smooth' })
         else scrollToDoc({ by: -300 })
         return
@@ -513,6 +581,22 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
       if (isCtrl && key === 'f') {
         e.preventDefault()
         e.stopPropagation()
+        const lines = Math.max(16, Math.round((box?.clientHeight || 600) / 26))
+        if (body) {
+          const sel = ensureSelectionInDoc(body, box, lastValidRangeRef.current)
+          if (sel) {
+            for (let i = 0; i < lines; i++) {
+              try {
+                (sel as any).modify(isVisual ? 'extend' : 'move', 'forward', 'line')
+              } catch {}
+            }
+            if (sel.rangeCount > 0) {
+              lastValidRangeRef.current = sel.getRangeAt(0).cloneRange()
+            }
+            scrollSelectionIntoView(sel)
+            smoothCursor.update(sel, isVisual)
+          }
+        }
         if (box) box.scrollBy({ top: box.clientHeight * 0.85, behavior: 'smooth' })
         else scrollToDoc({ by: 500 })
         return
@@ -521,6 +605,22 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
       if (isCtrl && key === 'b') {
         e.preventDefault()
         e.stopPropagation()
+        const lines = Math.max(16, Math.round((box?.clientHeight || 600) / 26))
+        if (body) {
+          const sel = ensureSelectionInDoc(body, box, lastValidRangeRef.current)
+          if (sel) {
+            for (let i = 0; i < lines; i++) {
+              try {
+                (sel as any).modify(isVisual ? 'extend' : 'move', 'backward', 'line')
+              } catch {}
+            }
+            if (sel.rangeCount > 0) {
+              lastValidRangeRef.current = sel.getRangeAt(0).cloneRange()
+            }
+            scrollSelectionIntoView(sel)
+            smoothCursor.update(sel, isVisual)
+          }
+        }
         if (box) box.scrollBy({ top: -box.clientHeight * 0.85, behavior: 'smooth' })
         else scrollToDoc({ by: -500 })
         return

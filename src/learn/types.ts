@@ -73,6 +73,7 @@ export type { WorkflowEntry, WorkflowBook } from './types/workflow'
 
 /* ---------- 顶层 store / 滚动 / 临时变量（types/store） ---------- */
 export type { LearnStore, DocScroll, TmpEntry, TmpStore } from './types/store'
+export type { GoalKnowledgeItem } from './types/knowledge'
 
 /* ---------- 取值 / 兜底小工具（types/utils） ---------- */
 export { notesOf, docOf, superDocsOf, outlineOf } from './types/utils'

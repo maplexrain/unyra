@@ -53,6 +53,9 @@ export { addAnnotation, removeAnnotation, updateAnnotation } from './graph/annot
 /* ---------- 阅读账与目标级操作 ---------- */
 export { deleteGoal, goalProgress, goalSubtreeIds } from './graph/goals'
 
+/* ---------- 目标级知识库 ---------- */
+export { addGoalKnowledge, removeGoalKnowledge, getGoalKnowledge } from './graph/knowledge'
+
 /* ---------- 会话 ---------- */
 export {
   addConversation,

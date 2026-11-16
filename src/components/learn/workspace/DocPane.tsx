@@ -11,7 +11,7 @@
  */
 
 import { memo, useEffect, type ComponentProps } from 'react'
-import type { KnowledgeNode } from '../../../learn/types'
+import type { GoalKnowledgeItem, KnowledgeNode } from '../../../learn/types'
 import type { OutlineHandle } from '../../../lib/outline'
 import { touchRecent } from '../../../learn/resident'
 import NodeNote from '../NodeNote'
@@ -32,6 +32,8 @@ export interface DocPaneProps {
   /** 手动写教学文档（进入源码编辑或填充初始标题） */
   onManualWrite?: () => void
   knownConceptKeys?: Set<string>
+  /** 目标级知识库（整门目标全局共享并在全文引用） */
+  goalKnowledge?: GoalKnowledgeItem[]
   /** 大纲句柄槽（见 lib/outline 的 OutlineHandle）：悬浮大纲按钮据此取「眼前这份」的大纲 */
   outlineSlot: { current: OutlineHandle | null }
   /** 上一次读到哪儿 / 报到哪儿（见 lib/docScroll）；比较时**不参与**：它只影响恢复 */
@@ -58,7 +60,11 @@ export interface DocPaneProps {
 function samePane(prev: DocPaneProps, next: DocPaneProps): boolean {
   if (prev.active !== next.active || prev.tabId !== next.tabId) return false
   if (next.active) return false
-  return prev.source.content === next.source.content && prev.node === next.node
+  return (
+    prev.source.content === next.source.content &&
+    prev.node === next.node &&
+    prev.goalKnowledge === next.goalKnowledge
+  )
 }
 
 export const DocPane = memo(function DocPane({
@@ -71,6 +77,7 @@ export const DocPane = memo(function DocPane({
   onGenerateDoc,
   onManualWrite,
   knownConceptKeys,
+  goalKnowledge,
   outlineSlot,
   scrollTop,
   onScrollTop,
@@ -108,6 +115,7 @@ export const DocPane = memo(function DocPane({
         onGenerateDoc={onGenerateDoc}
         onManualWrite={onManualWrite}
         knownConceptKeys={knownConceptKeys}
+        goalKnowledge={goalKnowledge}
         outlineSlot={outlineSlot}
         scrollTop={scrollTop}
         onScrollTop={onScrollTop}
