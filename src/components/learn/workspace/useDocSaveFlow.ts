@@ -213,7 +213,12 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       const rootOf = (goalId: string) => s.goals.find((g) => g.id === goalId)?.rootNodeId ?? null
       const goalOfTab = (tab: LearnTab): string | null => {
         if (tab.ref.kind === 'mind') return tab.ref.goalId
-        if (tab.ref.kind === 'outline' && (tab.ref as { goalId?: string }).goalId) return (tab.ref as { goalId?: string }).goalId!
+        if (tab.ref.kind === 'outline') {
+          const oRef = tab.ref as { kind: 'outline'; nodeId: string; goalId?: string }
+          if (oRef.goalId) return oRef.goalId
+          const g = s.goals.find((item) => item.id === oRef.nodeId || item.rootNodeId === oRef.nodeId)
+          if (g) return g.id
+        }
         if (tab.ref.kind === 'video' && tab.ref.goalId) return tab.ref.goalId
         const nodeId = tabNodeId(tab.ref)
         return nodeId ? goalOfNode(nodeId) : null

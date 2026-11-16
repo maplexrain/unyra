@@ -447,9 +447,13 @@ export function closeTabs(
   } else {
     for (const t of tabs) if (t.id !== id) closing.add(t.id)
   }
-  // 规矩：固定 tab 只能由自身直接关闭（自身关闭按钮/自身右键菜单中的「关闭」），不受非直接关闭方式影响
+  // 规矩 1：固定 tab 只能由自身直接关闭（自身关闭按钮/自身右键菜单中的「关闭」），不受非直接关闭方式影响
+  // 规矩 2：关闭其他（:tabo / mode === 'others'）不关闭拓扑图大纲页签（大纲为常驻组锚结构，tabo 对其不生效/不关闭它）
   for (const t of tabs) {
     if (isTabPinned(t) && ((mode !== 'self' && mode !== 'force') || t.id !== id)) {
+      closing.delete(t.id)
+    }
+    if (mode === 'others' && t.ref.kind === 'outline' && t.id !== id) {
       closing.delete(t.id)
     }
   }

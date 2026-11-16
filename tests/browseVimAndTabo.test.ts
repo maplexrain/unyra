@@ -10,7 +10,7 @@ import {
   setupVimImeProtection,
 } from '../src/lib/vimCommands'
 import { Vim } from '@replit/codemirror-vim'
-import { makeTab, isTabPinned } from '../src/learn/tabs'
+import { makeTab, isTabPinned, closeTabs } from '../src/learn/tabs'
 import { openInGroup } from '../src/learn/groups'
 import type { DocWorkspace } from '../src/learn/groups/types'
 import { useBrowseVim } from '../src/components/learn/workspace/useBrowseVim'
@@ -93,6 +93,40 @@ describe(':tabo 命令在外部文件与全局环境下的调度', () => {
     expect(res.success).toBe(true)
     expect(globalClose).toHaveBeenCalledTimes(1)
     expect(bridgeClose).not.toHaveBeenCalled()
+  })
+
+  it('在普通文档中执行 :tabo 时，拓扑图页签 (kind === outline) 豁免关闭，不被移除', () => {
+    const tabOutline = makeTab({ kind: 'outline', nodeId: 'n1' }, 0)
+    const tabTeach1 = makeTab({ kind: 'teach', nodeId: 'n2' }, 1)
+    const tabTeach2 = makeTab({ kind: 'teach', nodeId: 'n3' }, 2)
+    const tabNote = makeTab({ kind: 'note', nodeId: 'n4', note: '随笔' }, 3)
+
+    const tabs = [tabOutline, tabTeach1, tabTeach2, tabNote]
+
+    // 当前激活 tabTeach1，执行关闭其他 (others / :tabo)
+    const res = closeTabs(tabs, tabTeach1.id, 'others', tabTeach1.id)
+    const keptIds = res.tabs.map((t) => t.id)
+
+    // tabTeach1 自身保留，tabOutline（拓扑图/大纲）也必须保留！其他普通文档 tabTeach2 和 tabNote 被关闭
+    expect(keptIds).toContain(tabTeach1.id)
+    expect(keptIds).toContain(tabOutline.id)
+    expect(keptIds).not.toContain(tabTeach2.id)
+    expect(keptIds).not.toContain(tabNote.id)
+  })
+
+  it('在拓扑图页签自身执行 :tabo 时，拓扑图保留，其他普通文档页签全部关闭', () => {
+    const tabOutline = makeTab({ kind: 'outline', nodeId: 'n1' }, 0)
+    const tabTeach1 = makeTab({ kind: 'teach', nodeId: 'n2' }, 1)
+    const tabNote = makeTab({ kind: 'note', nodeId: 'n3', note: '随笔' }, 2)
+
+    const tabs = [tabOutline, tabTeach1, tabNote]
+
+    // 当前在拓扑图页签，执行 :tabo
+    const res = closeTabs(tabs, tabOutline.id, 'others', tabOutline.id)
+    const keptIds = res.tabs.map((t) => t.id)
+
+    expect(keptIds).toEqual([tabOutline.id])
+    expect(res.active).toBe(tabOutline.id)
   })
 })
 

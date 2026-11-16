@@ -7,6 +7,7 @@ import { focusedGroup } from '../../../learn/groups'
 import { viewOf } from '../../../learn/tabs'
 import type { LearnStore } from '../../../learn/types'
 import { BrowseSmoothCursor } from './browseSmoothCursor'
+import { captureOrGetDocSelection } from './docSelectionSnapshot'
 
 export interface UseBrowseVimParams {
   getLatest: () => LearnStore
@@ -173,6 +174,9 @@ export function useBrowseVim({ getLatest, onToast, nextTab, prevTab }: UseBrowse
       if (sel && body && sel.anchorNode && body.contains(sel.anchorNode)) {
         if (sel.rangeCount > 0) {
           lastValidRangeRef.current = sel.getRangeAt(0).cloneRange()
+          if (!sel.isCollapsed) {
+            captureOrGetDocSelection(s)
+          }
         }
         smoothCursor.update(sel, isVisualModeRef.current)
       } else {

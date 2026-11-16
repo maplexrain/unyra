@@ -7,9 +7,8 @@ import type { AnnotationStyle, DocView, LearnStore, TabRef } from '../../../lear
 import { isMediaFile, type TabCloseMode, viewOf } from '../../../learn/tabs'
 import { emptyNote } from './panes'
 import { useBrowseVim } from './useBrowseVim'
-import { visibleDocBody } from '../../../lib/docDom'
-import { selectionTerm, occurrenceAt } from '../../../lib/annotation'
 import { openGlobalNoteDialog } from '../note/useAnnotationLayer'
+import { captureOrGetDocSelection, setDocSelectionSnapshot } from './docSelectionSnapshot'
 
 interface Params {
   getLatest: () => LearnStore
@@ -40,38 +39,6 @@ interface Params {
   onSaveAnnotation?: (nodeId: string, term: string, body: string, style?: AnnotationStyle, occurrence?: number) => void
   onDeleteAnnotation?: (nodeId: string, term: string) => void
   onAsk?: (nodeId: string, payload: { question: string; text: string }) => void
-}
-
-/** 提取当前正文选区的词条与节点上下文 */
-function getDocSelection(store: LearnStore) {
-  const body = visibleDocBody()
-  if (!body) return null
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null
-  const range = sel.getRangeAt(0)
-  if (!body.contains(range.commonAncestorContainer)) return null
-  const text = range.toString().trim()
-  if (!text) return null
-  const term = selectionTerm(range) || text
-  const group = focusedGroup(store.docArea)
-  const activeTab = group?.tabs.find((t) => t.id === group.active)
-  let nodeId: string | null = null
-  if (activeTab?.ref.kind === 'teach' || activeTab?.ref.kind === 'note') {
-    nodeId = activeTab.ref.nodeId
-  } else {
-    nodeId = store.activeNodeId
-  }
-  if (!nodeId) return null
-  const occurrence = occurrenceAt(body, term, range)
-  let hasMark = false
-  const markSpans = body.querySelectorAll<HTMLElement>('.moji-anno.moji-anno-note')
-  for (const span of markSpans) {
-    if (range.intersectsNode ? range.intersectsNode(span) : sel.containsNode(span, true)) {
-      hasMark = true
-      break
-    }
-  }
-  return { body, sel, range, text, term, occurrence, nodeId, hasMark }
 }
 
 /**
@@ -249,41 +216,43 @@ export function useVimGlobalTabOps(params: Params): void {
       },
       markSelection: () => {
         const s = getLatest()
-        const info = getDocSelection(s)
+        const info = captureOrGetDocSelection(s)
         if (!info) return { success: false, message: '[请先划选文字后再使用 :mark]' }
         const { nodeId, term, occurrence, hasMark } = info
         if (hasMark) {
           params.onDeleteAnnotation?.(nodeId, term)
+          setDocSelectionSnapshot({ ...info, hasMark: false, timestamp: Date.now() })
           return { success: true, message: `[已取消「${term}」的标记]` }
         } else {
           params.onSaveAnnotation?.(nodeId, term, '', undefined, occurrence)
+          setDocSelectionSnapshot({ ...info, hasMark: true, timestamp: Date.now() })
           return { success: true, message: `[已标记「${term}」]` }
         }
       },
       commentSelection: () => {
         const s = getLatest()
-        const info = getDocSelection(s)
+        const info = captureOrGetDocSelection(s)
         if (!info) return { success: false, message: '[请先划选文字后再使用 :comment]' }
         openGlobalNoteDialog(info.term, info.occurrence)
         return { success: true, message: `[打开「${info.term}」注解窗口]` }
       },
       knowSelection: () => {
         const s = getLatest()
-        const info = getDocSelection(s)
+        const info = captureOrGetDocSelection(s)
         if (!info) return { success: false, message: '[请先划选文字后再使用 :know]' }
         params.onUnderstand?.(info.nodeId, info.term, info.occurrence, info.text)
         return { success: true, message: `[已请导师解释「${info.term}」并存入目标知识库]` }
       },
       studySelection: () => {
         const s = getLatest()
-        const info = getDocSelection(s)
+        const info = captureOrGetDocSelection(s)
         if (!info) return { success: false, message: '[请先划选文字后再使用 :study]' }
         params.onLearnConcept?.(info.term, info.nodeId)
         return { success: true, message: `[已发起「${info.term}」深入学习]` }
       },
       askSelection: (query?: string) => {
         const s = getLatest()
-        const info = getDocSelection(s)
+        const info = captureOrGetDocSelection(s)
         if (!info) return { success: false, message: '[请先划选文字后再使用 :ask]' }
         const q = query?.trim()
         if (q) {

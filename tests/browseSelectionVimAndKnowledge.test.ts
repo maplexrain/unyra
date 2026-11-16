@@ -11,6 +11,10 @@ import {
 import type { LearnStore } from '../src/learn/types'
 import { cleanSourceLine } from '../src/components/learn/editor/previewHighlight'
 import { applyAnnotation } from '../src/lib/annotation/dom'
+import {
+  setDocSelectionSnapshot,
+  captureOrGetDocSelection,
+} from '../src/components/learn/workspace/docSelectionSnapshot'
 
 describe('浏览模式文字选区专属 Vim 命令', () => {
   it('支持划词命令 :mark, :comment, :know, :study, :ask 的调度与参数传递', () => {
@@ -57,6 +61,27 @@ describe('浏览模式文字选区专属 Vim 命令', () => {
     const rAsk2 = executeVimCommand(':ask 这个概念的核心特征是什么？')
     expect(rAsk2.success).toBe(true)
     expect(askFn).toHaveBeenCalledWith('这个概念的核心特征是什么？')
+  })
+
+  it('焦点进入命令输入框时通过 docSelectionSnapshot 维持选区，确保命令生效', () => {
+    setDocSelectionSnapshot({
+      nodeId: 'node-test',
+      term: '动词短语',
+      text: 'look after',
+      occurrence: 1,
+      hasMark: false,
+      timestamp: Date.now(),
+    })
+
+    const dummyStore = {
+      activeNodeId: 'node-test',
+      docArea: { groups: [{ id: 'g1', tabs: [], active: null }], focus: 'g1', layout: { kind: 'empty' } },
+    } as any
+
+    const snapshot = captureOrGetDocSelection(dummyStore)
+    expect(snapshot).not.toBeNull()
+    expect(snapshot?.term).toBe('动词短语')
+    expect(snapshot?.text).toBe('look after')
   })
 })
 
