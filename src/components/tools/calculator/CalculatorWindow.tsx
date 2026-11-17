@@ -45,21 +45,22 @@ export default function CalculatorWindow() {
     return unsubscribe
   }, [])
 
-  // 初始居中定位
+  // 初始居中定位（尺寸加大后按新宽度居中）
   useEffect(() => {
     if (isOpen && pos === null) {
-      const w = mode === 'scientific' ? 360 : 320
-      const h = mode === 'scientific' ? 440 : 420
+      const w = mode === 'scientific' ? 500 : mode === 'programmer' ? 460 : 380
+      const h = mode === 'scientific' ? 520 : 480
       const initX = Math.max(20, Math.floor((window.innerWidth - w) / 2))
-      const initY = Math.max(60, Math.floor((window.innerHeight - h) / 3))
+      const initY = Math.max(50, Math.floor((window.innerHeight - h) / 3))
       setPos({ x: initX, y: initY })
     }
   }, [isOpen, mode, pos])
 
-  // 窗口拖动事件监听
+  // 窗口拖动事件监听（阻止默认应用原生标题栏拖拽）
   const handleMouseDownHeader = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return
     e.preventDefault()
+    e.stopPropagation()
     const curX = pos?.x ?? 100
     const curY = pos?.y ?? 100
     draggingRef.current = {
@@ -71,35 +72,41 @@ export default function CalculatorWindow() {
 
     const onMouseMove = (ev: MouseEvent) => {
       if (!draggingRef.current) return
+      ev.preventDefault()
+      ev.stopPropagation()
       const dx = ev.clientX - draggingRef.current.startX
       const dy = ev.clientY - draggingRef.current.startY
-      const newX = Math.max(10, Math.min(window.innerWidth - 300, draggingRef.current.initX + dx))
-      const newY = Math.max(10, Math.min(window.innerHeight - 300, draggingRef.current.initY + dy))
+      const currentWidth = mode === 'scientific' ? 500 : mode === 'programmer' ? 460 : 380
+      const newX = Math.max(10, Math.min(window.innerWidth - currentWidth - 10, draggingRef.current.initX + dx))
+      const newY = Math.max(10, Math.min(window.innerHeight - 200, draggingRef.current.initY + dy))
       setPos({ x: newX, y: newY })
     }
 
-    const onMouseUp = () => {
+    const onMouseUp = (ev: MouseEvent) => {
+      ev.preventDefault()
+      ev.stopPropagation()
       draggingRef.current = null
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
+      window.removeEventListener('mousemove', onMouseMove, true)
+      window.removeEventListener('mouseup', onMouseUp, true)
     }
 
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
+    window.addEventListener('mousemove', onMouseMove, true)
+    window.addEventListener('mouseup', onMouseUp, true)
   }
 
   // 字符输入
   const handleInput = useCallback((char: string) => {
     if (mode === 'programmer') {
       const currentDigits = shouldResetDisplay ? '' : display
-      const nextDigits = (currentDigits === '0' ? '' : currentDigits) + char
+      const nextDigits = (currentDigits === '0' || shouldResetDisplay ? '' : currentDigits) + char
+      const safeDigits = nextDigits || '0'
       try {
         const rad = progBase === 'HEX' ? 16 : progBase === 'DEC' ? 10 : progBase === 'OCT' ? 8 : 2
         const parsed = BigInt(
-          rad === 16 ? `0x${nextDigits}` : rad === 8 ? `0o${nextDigits}` : rad === 2 ? `0b${nextDigits}` : nextDigits || '0'
+          rad === 16 ? `0x${safeDigits}` : rad === 8 ? `0o${safeDigits}` : rad === 2 ? `0b${safeDigits}` : safeDigits
         )
         setProgValue(parsed)
-        setDisplay(nextDigits || '0')
+        setDisplay(safeDigits)
         setShouldResetDisplay(false)
       } catch {}
       return
@@ -306,98 +313,130 @@ export default function CalculatorWindow() {
     setShouldResetDisplay(true)
   }, [display, progBase, progValue])
 
-  // 物理键盘支持
+  // 物理键盘支持（优先 capture 捕获，彻底杜绝 Vim 模式拦截 0 键）
   useEffect(() => {
     if (!isOpen) return
     const onKeyDown = (e: KeyboardEvent) => {
-      // 忽略其他输入框打字
+      // 忽略真实表单输入框打字（如设置页、登录页、命令框）
       const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable
+      const inCalc = (e.target as HTMLElement)?.closest?.('[data-calculator-window="true"]')
+      if (isInput && !inCalc) return
 
-      if (e.key === 'Escape') {
+      const key = e.key
+      const code = e.code || ''
+
+      if (key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
         closeCalculator()
         return
       }
-      if (e.key === 'Enter' || e.key === '=') {
+
+      if (key === 'Enter' || key === '=' || code === 'NumpadEnter') {
         e.preventDefault()
+        e.stopPropagation()
         handleCalculate()
         return
       }
-      if (e.key === 'Backspace') {
+
+      if (key === 'Backspace') {
         e.preventDefault()
+        e.stopPropagation()
         handleBackspace()
         return
       }
-      if (/^[0-9]$/.test(e.key)) {
+
+      // 数字键 0-9 以及小键盘 Numpad0-Numpad9（精准放行 0，阻止 Vim 拦截）
+      if (/^[0-9]$/.test(key) || /^Numpad[0-9]$/.test(code)) {
         e.preventDefault()
-        handleInput(e.key)
+        e.stopPropagation()
+        const digit = /^[0-9]$/.test(key) ? key : code.replace('Numpad', '')
+        handleInput(digit)
         return
       }
-      if (e.key === '.') {
+
+      if (key === '.' || code === 'NumpadDecimal') {
         e.preventDefault()
+        e.stopPropagation()
         handleInput('.')
         return
       }
-      if (e.key === '+') {
+
+      if (key === '+' || code === 'NumpadAdd') {
         e.preventDefault()
+        e.stopPropagation()
         handleInput('+')
         return
       }
-      if (e.key === '-') {
+
+      if (key === '-' || code === 'NumpadSubtract') {
         e.preventDefault()
+        e.stopPropagation()
         handleInput('-')
         return
       }
-      if (e.key === '*' || e.key === 'x') {
+
+      if (key === '*' || key === 'x' || code === 'NumpadMultiply') {
         e.preventDefault()
+        e.stopPropagation()
         handleInput('×')
         return
       }
-      if (e.key === '/') {
+
+      if (key === '/' || code === 'NumpadDivide') {
         e.preventDefault()
+        e.stopPropagation()
         handleInput('÷')
         return
       }
-      if (mode === 'programmer' && /^[a-fA-F]$/.test(e.key) && progBase === 'HEX') {
+
+      if (mode === 'programmer' && /^[a-fA-F]$/.test(key) && progBase === 'HEX') {
         e.preventDefault()
-        handleInput(e.key.toUpperCase())
+        e.stopPropagation()
+        handleInput(key.toUpperCase())
       }
     }
 
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    // 在 capture 捕获阶段优先截获，防止下层 Vim 冒号命令或浏览模式阻止传播
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [isOpen, handleCalculate, handleBackspace, handleInput, mode, progBase])
 
   if (!isOpen) return null
 
   const progBases = getBaseValues(progValue)
+  const windowWidthClass = mode === 'scientific' ? 'w-[500px]' : mode === 'programmer' ? 'w-[460px]' : 'w-[380px]'
 
   return (
     <div
       ref={windowRef}
+      data-calculator-window="true"
       style={{
         left: pos?.x ?? 120,
-        top: pos?.y ?? 100,
-      }}
-      className="fixed z-[9999] flex flex-col rounded-lg border border-line-strong bg-card/98 shadow-[0_24px_50px_rgba(0,0,0,0.35)] backdrop-blur-md select-none text-ink animate-in fade-in zoom-in-95 duration-150 overflow-hidden"
+        top: pos?.y ?? 80,
+        WebkitAppRegion: 'no-drag',
+      } as React.CSSProperties}
+      className={`no-drag fixed z-[99999] flex flex-col rounded-xl border border-line-strong bg-card/98 shadow-[0_24px_64px_rgba(0,0,0,0.45)] backdrop-blur-md select-none text-ink animate-in fade-in zoom-in-95 duration-150 overflow-hidden ${windowWidthClass}`}
     >
-      {/* 标题栏与拖拽把柄 */}
+      {/* 标题栏与拖拽把柄（标定 no-drag 彻底阻止拖拽整个系统窗口） */}
       <div
         onMouseDown={handleMouseDownHeader}
-        className="flex items-center justify-between border-b border-line bg-paper/60 px-3 py-2 cursor-move"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        className="no-drag flex items-center justify-between border-b border-line bg-paper/70 px-4 py-2.5 cursor-move"
       >
         <div className="flex items-center gap-2">
-          <Calculator size={14} className="text-seal shrink-0" />
-          <span className="text-[12px] font-semibold text-ink-strong">{t('计算器')}</span>
-          <Move size={11} className="text-ink-faint opacity-50" />
+          <Calculator size={15} className="text-seal shrink-0" />
+          <span className="text-[13px] font-semibold text-ink-strong">{t('计算器')}</span>
+          <Move size={12} className="text-ink-faint opacity-50" />
         </div>
 
         {/* 模式选择 */}
-        <div className="flex items-center gap-1 rounded bg-line/40 p-0.5 text-[11px]">
+        <div className="flex items-center gap-1 rounded-md bg-line/40 p-0.5 text-[11.5px]">
           <button
             type="button"
             onClick={() => setCalculatorMode('standard')}
-            className={`rounded px-1.5 py-0.5 transition ${
+            className={`rounded px-2 py-0.5 transition ${
               mode === 'standard' ? 'bg-card font-semibold text-seal shadow-2xs' : 'text-ink-soft hover:text-ink'
             }`}
           >
@@ -406,7 +445,7 @@ export default function CalculatorWindow() {
           <button
             type="button"
             onClick={() => setCalculatorMode('scientific')}
-            className={`rounded px-1.5 py-0.5 transition ${
+            className={`rounded px-2 py-0.5 transition ${
               mode === 'scientific' ? 'bg-card font-semibold text-seal shadow-2xs' : 'text-ink-soft hover:text-ink'
             }`}
           >
@@ -415,7 +454,7 @@ export default function CalculatorWindow() {
           <button
             type="button"
             onClick={() => setCalculatorMode('programmer')}
-            className={`rounded px-1.5 py-0.5 transition ${
+            className={`rounded px-2 py-0.5 transition ${
               mode === 'programmer' ? 'bg-card font-semibold text-seal shadow-2xs' : 'text-ink-soft hover:text-ink'
             }`}
           >
@@ -428,25 +467,25 @@ export default function CalculatorWindow() {
           type="button"
           onClick={closeCalculator}
           title={t('关闭计算器 (:calc)')}
-          className="rounded p-1 text-ink-soft transition hover:bg-line/60 hover:text-ink"
+          className="rounded-md p-1 text-ink-soft transition hover:bg-line/60 hover:text-ink"
         >
-          <X size={13} />
+          <X size={14} />
         </button>
       </div>
 
-      {/* 运算显示屏 */}
-      <div className="flex flex-col items-end justify-end px-3.5 pt-3 pb-1 border-b border-line/40 bg-card/60 min-h-[70px]">
-        <div className="text-[11px] font-mono text-ink-faint h-4 truncate max-w-full">
+      {/* 运算显示屏（加大幅面与大号字体） */}
+      <div className="flex flex-col items-end justify-end px-4.5 pt-4 pb-2 border-b border-line/40 bg-card/60 min-h-[96px]">
+        <div className="text-[13px] font-mono text-ink-faint h-5 truncate max-w-full">
           {expression}
         </div>
-        <div className="text-[26px] font-bold font-mono tracking-tight text-ink-strong truncate max-w-full">
+        <div className="text-[36px] font-bold font-mono tracking-tight text-ink-strong truncate max-w-full leading-tight">
           {display}
         </div>
       </div>
 
       {/* 程序员模式：多进制面板 */}
       {mode === 'programmer' && (
-        <div className="flex flex-col border-b border-line/40 bg-paper/30 px-3 py-1.5 text-[10.5px] font-mono space-y-0.5">
+        <div className="flex flex-col border-b border-line/40 bg-paper/30 px-4 py-2 text-[12px] font-mono space-y-1">
           {(['HEX', 'DEC', 'OCT', 'BIN'] as ProgrammerBase[]).map((b) => (
             <div
               key={b}
@@ -455,11 +494,11 @@ export default function CalculatorWindow() {
                 const rad = b === 'HEX' ? 16 : b === 'DEC' ? 10 : b === 'OCT' ? 8 : 2
                 setDisplay(progValue.toString(rad).toUpperCase())
               }}
-              className={`flex items-center gap-2 px-1.5 py-0.5 rounded transition cursor-pointer ${
+              className={`flex items-center gap-3 px-2 py-1 rounded transition cursor-pointer ${
                 progBase === b ? 'bg-seal/15 text-seal font-bold' : 'text-ink-soft hover:bg-line/30'
               }`}
             >
-              <span className="w-7 shrink-0 font-semibold">{b}</span>
+              <span className="w-8 shrink-0 font-semibold">{b}</span>
               <span className="truncate flex-1">
                 {b === 'HEX' ? progBases.hex : b === 'DEC' ? progBases.dec : b === 'OCT' ? progBases.oct : progBases.bin}
               </span>

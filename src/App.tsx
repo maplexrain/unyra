@@ -27,6 +27,7 @@ import { getLocale, setLocaleBridge, t, useLocale } from './i18n'
 import GlobalBackground from './components/background/GlobalBackground'
 import { isDarkTheme, useAppearance } from './lib/appearance'
 import GlobalVimCommandBar from './components/learn/workspace/GlobalVimCommandBar'
+import CalculatorWindow from './components/tools/calculator/CalculatorWindow'
 
 /**
  * 启动结果（用户列表 + 会话）由 main.tsx 读盘后传进来：
@@ -292,6 +293,8 @@ export default function App({ boot }: Props) {
       <GlobalVimCommandBar />
       {/* 教学模式下的按键浮层：跟着外观开关走，四个路由分支都挂着（见 KeyCast） */}
       <KeyCast />
+      {/* 独立可拖拽多功能计算器悬浮窗 */}
+      <CalculatorWindow />
     </>
   )
 }

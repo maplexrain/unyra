@@ -105,5 +105,11 @@ describe('Calculator Engine', () => {
     expect(res.dec).toBe('255')
     expect(res.oct).toBe('377')
     expect(res.bin.endsWith('1111 1111')).toBe(true)
+
+    const zeroRes = getBaseValues(0n, 64)
+    expect(zeroRes.hex).toBe('0')
+    expect(zeroRes.dec).toBe('0')
+    expect(zeroRes.oct).toBe('0')
+    expect(zeroRes.bin).toBe('0000')
   })
 })

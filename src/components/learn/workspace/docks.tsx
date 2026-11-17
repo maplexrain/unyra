@@ -9,7 +9,6 @@ import { useMemo } from 'react'
 import type { LearnStore } from '../../../learn/types'
 import ScheduleButton from '../ScheduleButton'
 import ToolsButton from '../../tools/ToolsButton'
-import CalculatorWindow from '../../tools/calculator/CalculatorWindow'
 import { todayItems, type ScheduleItem } from '../../../learn/schedule'
 import { useClock } from '../../../lib/clock'
 
@@ -36,21 +35,18 @@ export function ToolsDock({
   const now = useClock(30_000)
   const today = useMemo(() => todayItems(store, now), [store, now])
   return (
-    <>
-      <ToolsButton
-        onScreenshot={onScreenshot}
-        onToast={onToast}
-        schedule={{
-          today,
-          now,
-          ringing,
-          onOpen: onOpenSchedule,
-          onComplete: onCompleteSchedule,
-          onSnooze: onSnoozeSchedule,
-        }}
-      />
-      <CalculatorWindow />
-    </>
+    <ToolsButton
+      onScreenshot={onScreenshot}
+      onToast={onToast}
+      schedule={{
+        today,
+        now,
+        ringing,
+        onOpen: onOpenSchedule,
+        onComplete: onCompleteSchedule,
+        onSnooze: onSnoozeSchedule,
+      }}
+    />
   )
 }
 
