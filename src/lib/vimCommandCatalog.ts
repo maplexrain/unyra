@@ -316,6 +316,15 @@ export const VIM_COMMANDS: readonly VimCommandInfo[] = [
     example: ':open cx',
   },
   {
+    cmd: 'calc',
+    aliases: ['calculator'],
+    name: '计算器',
+    desc: '打开或关闭悬浮计算器（支持标准/科学/程序员模式）',
+    category: 'moji',
+    tag: '专属',
+    example: ':calc scientific',
+  },
+  {
     cmd: 'mark',
     name: '标记选中文本',
     desc: '标记当前选中的文字（高亮马克笔标记，可切换消除）',

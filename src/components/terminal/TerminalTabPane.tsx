@@ -20,7 +20,7 @@ import {
   normalizeTerminalPath,
   resolveCdTarget,
 } from './terminalPath'
-import { TerminalHeader, type ShellKind } from './TerminalHeader'
+import type { ShellKind } from '../../learn/types/tabs'
 import {
   appendTerminalOutput,
   getNativeFiles,
@@ -407,22 +407,8 @@ export default function TerminalTabPane({
       data-terminal-pane="true"
       data-no-browse-vim="true"
       onClick={focusTerminal}
-      className="flex h-full w-full flex-col bg-paper-deep text-ink font-mono text-[13px] leading-[1.35] select-text overflow-hidden"
+      className="flex h-full w-full flex-col bg-card text-ink font-mono text-[13px] leading-[1.35] select-text overflow-hidden"
     >
-      {/* 集成终端顶部工具条（无嵌套子 Tab，直接与工作区融合） */}
-      <TerminalHeader
-        title={session.title}
-        cwd={session.cwd}
-        activeShell={session.shell}
-        runningPid={session.runningPid}
-        onSelectShell={(shell) => {
-          setSession((s) => ({ ...s, shell }))
-          const shName = shell === 'powershell' ? 'pwsh' : shell
-          setTerminalMeta(effectiveTermId, { shell, title: `${effectiveTermId}: ${shName}` })
-        }}
-        onClearScreen={() => setSession((s) => ({ ...s, lines: [] }))}
-      />
-
       {/* 终端屏幕输出流 */}
       <div
         ref={outputScrollRef}

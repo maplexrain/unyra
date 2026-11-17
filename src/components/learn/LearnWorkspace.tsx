@@ -144,8 +144,7 @@ import type { Conversation } from '../../agent/types'
 import type { Props } from './workspace/constants'
 import { emptyNote, paneInfo, paneOf } from './workspace/panes'
 import { DocPane } from './workspace/DocPane'
-import { ScheduleDock } from './workspace/docks'
-import ToolsButton from '../tools/ToolsButton'
+import { ToolsDock } from './workspace/docks'
 import ScreenshotModal from '../tools/ScreenshotModal'
 import { Topbar } from './workspace/chrome'
 import { CreateGoalDialog } from './workspace/CreateGoalDialog'
@@ -2099,16 +2098,16 @@ export default function LearnWorkspace({
             onOpenNotice={onOpenNotice}
             onOpenLan={onOpenLan}
             onToast={onToast}
-            /* 工具箱：截图与录屏入口 */
-            tools={<ToolsButton onScreenshot={handleStartScreenshot} onToast={onToast} />}
-            /* 日程是「今天还剩什么」；到点时的呼吸层挂在顶栏本体上 */
-            schedule={
-              <ScheduleDock
+            /* 工具箱：整合截图、日程与计算器入口 */
+            tools={
+              <ToolsDock
                 store={store}
                 ringing={scheduleRinging}
-                onOpen={onOpenSchedule}
-                onComplete={completeScheduleItem}
-                onSnooze={snoozeScheduleItem}
+                onOpenSchedule={onOpenSchedule}
+                onCompleteSchedule={completeScheduleItem}
+                onSnoozeSchedule={snoozeScheduleItem}
+                onScreenshot={handleStartScreenshot}
+                onToast={onToast}
               />
             }
             scheduleRinging={!!scheduleRinging}

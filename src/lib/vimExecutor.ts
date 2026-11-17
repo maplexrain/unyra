@@ -11,6 +11,7 @@ import { toggleExplorer } from './explorerFocus'
 import { getVimEditorBridge, getGlobalTabOperations, scrollCursorToCenter } from './vimCommands'
 import { executeOpenTarget } from './vimOpenTargets'
 import { normalizeWebInput } from '../learn/webUrl'
+import { toggleCalculator, openCalculator, type CalculatorMode } from './calculatorState'
 
 /**
  * 统一执行 Vim 冒号命令（供全局命令栏或快捷键调用）
@@ -115,6 +116,21 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
         return { success: true, message: '[终端已获得焦点]' }
       }
       return { success: false, message: '[当前页签未发现活动终端]' }
+    }
+    case 'calc':
+    case 'calculator': {
+      const arg = parts.slice(1).join(' ').toLowerCase().trim()
+      let mode: CalculatorMode | undefined = undefined
+      if (arg.startsWith('sci') || arg.includes('科学')) mode = 'scientific'
+      else if (arg.startsWith('prog') || arg.includes('程序员') || arg.startsWith('bin') || arg.startsWith('hex')) mode = 'programmer'
+      else if (arg.startsWith('stan') || arg.includes('标准') || arg.startsWith('std')) mode = 'standard'
+
+      if (mode) {
+        openCalculator(mode)
+        return { success: true, message: `[计算器已打开 (${mode})]` }
+      }
+      const isNowOpen = toggleCalculator()
+      return { success: true, message: isNowOpen ? '[计算器已打开]' : '[计算器已关闭]' }
     }
     case 'tabc':
     case 'tabclose':

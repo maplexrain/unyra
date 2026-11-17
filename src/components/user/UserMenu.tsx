@@ -71,10 +71,10 @@ export default function UserMenu({
         <div className="absolute right-0 top-full z-30 pt-1.5">
           <div
             role="menu"
-            className={`w-56 rounded-2xl border border-line-strong/70 bg-card/95 p-1.5 shadow-2xl backdrop-blur-md ${panelProps.className}`}
+            className={`w-56 rounded-lg border border-line-strong/70 bg-card/95 p-1.5 shadow-2xl backdrop-blur-md ${panelProps.className}`}
           >
             {user && (
-              <div className="mb-1 flex items-center gap-2.5 rounded-xl border border-line/40 bg-paper/50 p-2.5 dark:bg-paper/30">
+              <div className="mb-1 flex items-center gap-2.5 rounded-md border border-line/40 bg-paper/50 p-2.5 dark:bg-paper/30">
                 <div className="shrink-0 overflow-hidden rounded-full ring-2 ring-seal/20 shadow-2xs">
                   <UserAvatar profile={user.profile} seed={user.id} size={32} />
                 </div>

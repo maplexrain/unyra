@@ -96,14 +96,14 @@ export default function UpdateButton({ onOpenUpdate }: Props) {
       {mounted && (
         <div className="absolute right-0 top-full z-30 pt-1.5">
           <div
-            className={`w-[360px] max-w-[85vw] rounded-2xl border border-line-strong/70 bg-card/95 p-3.5 shadow-2xl backdrop-blur-md ${
+            className={`w-[360px] max-w-[85vw] rounded-lg border border-line-strong/70 bg-card/95 p-3.5 shadow-2xl backdrop-blur-md ${
               closing ? 'moji-wipe-corner-out pointer-events-none' : 'moji-wipe-corner-in'
             }`}
           >
             {/* 顶部标题栏 */}
             <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-line/40">
               <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-seal/15 text-seal shadow-2xs">
+                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-seal/15 text-seal shadow-2xs">
                   <PackageCheck size={15} />
                 </span>
                 <div>

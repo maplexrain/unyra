@@ -111,7 +111,7 @@ export default function ScheduleButton({
       {mounted && !ringing && (
         <div className="absolute right-0 top-full z-30 pt-1.5">
           <div
-            className={`w-[336px] rounded-2xl border border-line-strong/70 bg-card/95 p-3.5 shadow-2xl backdrop-blur-md ${panelProps.className}`}
+            className={`w-[336px] rounded-lg border border-line-strong/70 bg-card/95 p-3.5 shadow-2xl backdrop-blur-md ${panelProps.className}`}
           >
             <div className="flex items-center justify-between gap-2 px-0.5">
               <div className="flex items-center gap-1.5">
@@ -195,7 +195,7 @@ export default function ScheduleButton({
       {/* ---------- 提醒弹层：到点自动出现 ---------- */}
       {ringing && (
         <div className="absolute right-0 top-full z-40 pt-1.5">
-          <div className="moji-in-down w-[344px] rounded-2xl border border-seal/45 bg-card/97 p-3.5 shadow-[0_16px_44px_rgba(31,27,23,0.28)] backdrop-blur-md">
+          <div className="moji-in-down w-[344px] rounded-lg border border-seal/45 bg-card/97 p-3.5 shadow-[0_16px_44px_rgba(31,27,23,0.28)] backdrop-blur-md">
             <div className="flex items-center gap-1.5">
               <span className="flex h-5 w-5 animate-pulse items-center justify-center rounded-md bg-seal/15 text-seal">
                 <BellRing size={12} />

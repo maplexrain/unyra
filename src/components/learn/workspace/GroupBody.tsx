@@ -340,7 +340,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
         文档内容 + 左侧工具条 + 右上角悬浮组。悬浮组是绝对定位的，所以这一层必须
         relative，并且它是**唯一**能被悬浮组盖住的地方——它不会跑到页签栏或对话栏上去。
       */}
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col bg-card">
           <div
             ref={isFocused ? docBox : undefined}
             {...boxProps}

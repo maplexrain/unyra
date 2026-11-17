@@ -69,7 +69,49 @@ import {
 } from '../../../learn/structure'
 import { t } from '../../../i18n'
 import { GRID_PX, type ChannelResult, type MenuState } from './canvasTypes'
-export const TOUR_SEEN_KEY = 'moji:structure:tour-seen'
+export const TOUR_SEEN_KEY = 'unyra:structure:tour-seen'
+export const TOUR_SEEN_KEYS = ['unyra:structure:tour-seen', 'moji:structure:tour-seen']
+
+let hasSeenStructureTourSession = false
+
+export function isStructureTourSeen(): boolean {
+  if (hasSeenStructureTourSession) return true
+  if (typeof window !== 'undefined' && (window as unknown as { __UNYRA_TOUR_SEEN__?: boolean }).__UNYRA_TOUR_SEEN__) {
+    hasSeenStructureTourSession = true
+    return true
+  }
+  try {
+    for (const k of TOUR_SEEN_KEYS) {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem(k)) {
+        hasSeenStructureTourSession = true
+        return true
+      }
+      if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(k)) {
+        hasSeenStructureTourSession = true
+        return true
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return false
+}
+
+export function markStructureTourSeen(): void {
+  hasSeenStructureTourSession = true
+  if (typeof window !== 'undefined') {
+    ;(window as unknown as { __UNYRA_TOUR_SEEN__?: boolean }).__UNYRA_TOUR_SEEN__ = true
+  }
+  try {
+    for (const k of TOUR_SEEN_KEYS) {
+      if (typeof localStorage !== 'undefined') localStorage.setItem(k, '1')
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(k, '1')
+    }
+  } catch {
+    // ignore
+  }
+}
+
 import { StructureTour } from './StructureTour'
 import { getTourMockCanvas, getTourCamera } from './tourMockData'
 import {
@@ -554,11 +596,7 @@ export const StructureCanvas = memo(function StructureCanvas({
   const autoTourCheckedRef = useRef(false)
 
   const handleOpenTour = useCallback(() => {
-    try {
-      localStorage.setItem(TOUR_SEEN_KEY, '1')
-    } catch {
-      // ignore
-    }
+    markStructureTourSeen()
     savedCameraRef.current = camera
     const tourCam = getTourCamera(view.width, view.height)
     setCameraSync(tourCam)
@@ -569,11 +607,7 @@ export const StructureCanvas = memo(function StructureCanvas({
   }, [camera, view.width, view.height, setCameraSync, setHoverId])
 
   const handleCloseTour = useCallback(() => {
-    try {
-      localStorage.setItem(TOUR_SEEN_KEY, '1')
-    } catch {
-      // ignore
-    }
+    markStructureTourSeen()
     setTourOpen(false)
     if (savedCameraRef.current) {
       setCameraSync(savedCameraRef.current)
@@ -586,15 +620,15 @@ export const StructureCanvas = memo(function StructureCanvas({
     if (autoTourCheckedRef.current) return
     if (view.width <= 0 || view.height <= 0) return
     autoTourCheckedRef.current = true
-    try {
-      const seen = localStorage.getItem(TOUR_SEEN_KEY)
-      if (!seen) {
-        handleOpenTour()
-      }
-    } catch {
-      // ignore
+
+    // 门禁检查：已标记看过、或已有卡片/已有节点（非全新白板用户），直接视为已看过并阻断自动弹出
+    if (isStructureTourSeen() || realCanvas.cards.length > 0 || (store.nodes && Object.keys(store.nodes).length > 0)) {
+      markStructureTourSeen()
+      return
     }
-  }, [view.width, view.height, handleOpenTour])
+
+    handleOpenTour()
+  }, [view.width, view.height, handleOpenTour, realCanvas.cards.length, store.nodes])
 
   /* ---------- 渲染 ---------- */
 
