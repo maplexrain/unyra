@@ -32,6 +32,7 @@ import SettingsPanel from '../../settings/SettingsPanel'
 import UserTabPane from '../../user/UserTabPane'
 import TerminalTabPane from '../../terminal/TerminalTabPane'
 import UsagePanel from '../../settings/UsagePanel'
+import ClassroomView from '../classroom/ClassroomView'
 import { SchedulePage } from '../../schedule/SchedulePage'
 import MindPanel from '../../agent/MindPanel'
 import AgentSettingsPanel from '../../AgentSettingsPanel'
@@ -475,6 +476,33 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               不销毁组件与后台子进程。这里让出位置。
             */
             null
+          ) : gTab?.ref.kind === 'classroom' ? (
+            /*
+              互动课堂：16:9 画布互动教学课堂（画面 + 动作 + 节拍时间轴）。
+            */
+            <ClassroomView
+              key={gTab.ref.classroomId}
+              classroomId={gTab.ref.classroomId}
+              store={store}
+              onOpenTab={(kind, targetId) => {
+                if (kind === 'doc') {
+                  openTab({ kind: 'teach', nodeId: targetId })
+                } else if (kind === 'exam') {
+                  const exam = store.exams.find((e) => e.id === targetId)
+                  if (exam) {
+                    openTab({ kind: 'exam', nodeId: exam.nodeId || targetId, examId: exam.id, attemptId: exam.attempts[0]?.id ?? '' })
+                  }
+                } else if (kind === 'file') {
+                  const fn = (store.fileNodes ?? []).find((f) => f.id === targetId)
+                  if (fn) {
+                    if (fn.fileKind === 'web') openTab({ kind: 'web', url: fn.url, key: 'fn_' + fn.id, fileNodeId: fn.id })
+                    else openTab({ kind: 'local', path: fn.url, title: fn.title })
+                  } else {
+                    openTab({ kind: 'local', path: targetId })
+                  }
+                }
+              }}
+            />
           ) : gTab?.ref.kind === 'settings' ? (
             /*
               设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），

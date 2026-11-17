@@ -286,7 +286,7 @@ export class DocGNode extends GNode {
       }
       return true
     }
-    if (node.kind === 'superdoc' || node.kind === 'exam' || node.kind === 'project' || node.kind === 'file' || node.kind === 'video') return true
+    if (node.kind === 'superdoc' || node.kind === 'exam' || node.kind === 'project' || node.kind === 'file' || node.kind === 'video' || node.kind === 'classroom') return true
     if (node.kind === 'outline') return '大纲与文档一一对应（o: 就是这份文档的 id），由创建 / 删除大纲管理，不能手工连'
     return '这种节点不能挂到文档之下（能挂的：笔记 / 试卷 / 超级文档 / 项目 / 文件 / 视频 / 下级文档走大纲）'
   }

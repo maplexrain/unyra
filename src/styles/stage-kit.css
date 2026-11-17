@@ -1,0 +1,120 @@
+/* 本文件负责：16:9 互动课堂沙箱画布与预置舞台语义样式库 (stage-kit) */
+
+.lesson-stage-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background-color: #07090e;
+}
+
+.lesson-stage-canvas {
+  --bg-stage: #0f172a;
+  --bg-card: rgba(30, 41, 59, 0.88);
+  --border-subtle: rgba(148, 163, 184, 0.25);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --accent-primary: #38bdf8;
+  --accent-warn: #f43f5e;
+  --accent-success: #10b981;
+  --fx-color: #38bdf8;
+
+  background-color: var(--bg-stage);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 32px;
+  line-height: 1.5;
+  box-sizing: border-box;
+  padding: 64px 80px;
+  user-select: none;
+}
+
+/* 初始隐藏状态约定 */
+.lesson-stage-canvas [data-hidden] {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* 预置布局组件 */
+.stage-center {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  box-sizing: border-box;
+}
+
+.stage-top-title {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 40px;
+  box-sizing: border-box;
+}
+
+.stage-split {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.stage-grid-2x2 {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 36px;
+  box-sizing: border-box;
+}
+
+/* 预置教学视觉卡片 */
+.card-glass {
+  background: var(--bg-card);
+  border: 2px solid var(--border-subtle);
+  border-radius: 24px;
+  padding: 36px 44px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
+}
+
+.formula-box {
+  background: rgba(56, 189, 248, 0.12);
+  border: 2px solid var(--accent-primary);
+  border-radius: 16px;
+  padding: 24px 48px;
+  font-size: 44px;
+  font-weight: 700;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.badge-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-primary);
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 24px;
+  padding: 6px 20px;
+  border-radius: 999px;
+}
+
+/* highlight 动词激活样式 */
+.fx-highlight {
+  border-color: var(--fx-color) !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--fx-color) 35%, transparent),
+              0 0 36px color-mix(in srgb, var(--fx-color) 45%, transparent) !important;
+}

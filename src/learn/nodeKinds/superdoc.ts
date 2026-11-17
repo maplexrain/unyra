@@ -134,7 +134,7 @@ export class SuperdocGNode extends GNode {
   }
 
   onUpstream(node: GNode): ConnectFilter {
-    if (node.kind !== 'doc' && node.kind !== 'file') return '超级文档只能挂在文档或文件节点之下'
+    if (node.kind !== 'doc' && node.kind !== 'file' && node.kind !== 'classroom') return '超级文档只能挂在文档、文件或课堂节点之下'
     return true
   }
 

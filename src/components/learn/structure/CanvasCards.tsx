@@ -833,11 +833,13 @@ export function CanvasCards({
                 出线把手（右）只长在 doc 上：大纲的出线全走目标项的菱形口（从口上拖出去
                 才会认领），挂件与入口没有出线。
               */}
-              {(card.kind === 'doc' || card.kind === 'video' || card.kind === 'exam' || card.kind === 'superdoc' || card.kind === 'file' || card.kind === 'note') && (
+              {(card.kind === 'doc' || card.kind === 'video' || card.kind === 'exam' || card.kind === 'superdoc' || card.kind === 'file' || card.kind === 'note' || card.kind === 'classroom') && (
                 <div
                   data-link-handle={card.uuid}
                   title={
-                    card.kind === 'note'
+                    card.kind === 'classroom'
+                      ? t('拖出去连到笔记、考试、超级文档或文件节点')
+                      : card.kind === 'note'
                       ? t('拖出去连到文件节点')
                       : card.kind === 'exam' || card.kind === 'superdoc'
                         ? t('拖出去连到笔记或文件节点')

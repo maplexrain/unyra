@@ -83,6 +83,7 @@ export function tabKey(ref: TabRef): string {
   if (ref.kind === 'settings') return 'set:settings'
   if (ref.kind === 'user') return 'usr:user'
   if (ref.kind === 'terminal') return ref.termId ? 'term:' + ref.termId : 'term:terminal'
+  if (ref.kind === 'classroom') return 'c:' + ref.classroomId
   if (ref.kind === 'usage') return 'u:usage'
   // 日程表全局只有一份：从顶栏 tip、提醒弹层还是设置里打开，都是切到同一枚页签
   if (ref.kind === 'schedule') return 'sc:schedule'
@@ -163,6 +164,7 @@ export function tabNodeId(ref: TabRef): string | null {
     ref.kind === 'vim' ||
     ref.kind === 'settings' ||
     ref.kind === 'user' ||
+    ref.kind === 'classroom' ||
     ref.kind === 'terminal' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
@@ -253,6 +255,7 @@ function rawTabTitle(
   }
   if (ref.kind === 'usage') return t('用量统计')
   if (ref.kind === 'schedule') return t('日程安排')
+  if (ref.kind === 'classroom') return t('互动课堂')
   if (ref.kind === 'mind') return t('记忆管理')
   if (ref.kind === 'agentSettings') return t('超级导师设置')
   if (ref.kind === 'blank') return t('新页签')
@@ -300,6 +303,7 @@ export function tabTrail(
     ref.kind === 'vim' ||
     ref.kind === 'settings' ||
     ref.kind === 'user' ||
+    ref.kind === 'classroom' ||
     ref.kind === 'terminal' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||

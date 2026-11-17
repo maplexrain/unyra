@@ -177,9 +177,11 @@ export function useCanvasPointer({
             ? ['doc', 'outline', 'file']
             : paletteKind === 'video'
               ? ['doc'] // 视频节点可落在文档之下或空白处
-              : paletteKind === 'file'
-                ? ['doc', 'note', 'superdoc', 'exam']
-                : ['doc']
+              : paletteKind === 'classroom'
+                ? ['doc', 'superdoc']
+                : paletteKind === 'file'
+                  ? ['doc', 'note', 'superdoc', 'exam', 'classroom']
+                  : ['doc', 'classroom']
       return new Set(cards.filter((c) => wants.includes(c.kind)).map((c) => c.uuid))
     }
     const g = gestureRef.current
@@ -192,16 +194,18 @@ export function useCanvasPointer({
           : fk === 'video'
             ? ['doc']
             : fk === 'doc'
-              ? ['outline', 'video', 'project', 'note', 'exam', 'superdoc', 'file']
-              : fk === 'project'
-                ? ['doc'] // 项目只能挂到文档之下：从项目卡拉出去，文档卡是唯一落点
-                : fk === 'exam' || fk === 'superdoc'
-                  ? ['note', 'file']
-                  : fk === 'note'
-                    ? ['file']
-                    : fk === 'file'
-                      ? ['outline', 'doc', 'note', 'superdoc', 'exam']
-                      : null
+              ? ['outline', 'video', 'project', 'note', 'exam', 'superdoc', 'file', 'classroom']
+              : fk === 'classroom'
+                ? ['note', 'exam', 'superdoc', 'file']
+                : fk === 'project'
+                  ? ['doc'] // 项目只能挂到文档之下：从项目卡拉出去，文档卡是唯一落点
+                  : fk === 'exam' || fk === 'superdoc'
+                    ? ['note', 'file', 'classroom']
+                    : fk === 'note'
+                      ? ['file', 'classroom']
+                      : fk === 'file'
+                        ? ['outline', 'doc', 'note', 'superdoc', 'exam', 'classroom']
+                        : null
       // 从大纲拉到大纲：自己那张不算落点（连自己没有意义）
       return wants
         ? new Set(cards.filter((c) => wants.includes(c.kind) && c.uuid !== g.from).map((c) => c.uuid))
@@ -565,10 +569,26 @@ export function useCanvasPointer({
              */
             if (g.slotKey && fromCard?.kind === 'outline') tryConnect(g.from, target.uuid, g.slotKey)
             else tryConnect(target.uuid, g.from)
-          } else if (isPair('doc', 'note') || isPair('doc', 'exam') || isPair('doc', 'superdoc') || isPair('doc', 'project')) {
-            const doc = fromCard?.kind === 'doc' ? g.from : target.uuid
-            const widget = fromCard?.kind === 'doc' ? target.uuid : g.from
-            tryConnect(doc, widget)
+          } else if (
+            isPair('doc', 'note') ||
+            isPair('doc', 'exam') ||
+            isPair('doc', 'superdoc') ||
+            isPair('doc', 'project') ||
+            isPair('doc', 'classroom') ||
+            isPair('superdoc', 'classroom')
+          ) {
+            const parent = (fromCard?.kind === 'doc' || fromCard?.kind === 'superdoc') ? g.from : target.uuid
+            const child = (fromCard?.kind === 'doc' || fromCard?.kind === 'superdoc') ? target.uuid : g.from
+            tryConnect(parent, child)
+          } else if (
+            isPair('classroom', 'note') ||
+            isPair('classroom', 'exam') ||
+            isPair('classroom', 'superdoc') ||
+            isPair('classroom', 'file')
+          ) {
+            const classroom = fromCard?.kind === 'classroom' ? g.from : target.uuid
+            const child = fromCard?.kind === 'classroom' ? target.uuid : g.from
+            tryConnect(classroom, child)
           } else if (isPair('exam', 'note')) {
             const exam = fromCard?.kind === 'exam' ? g.from : target.uuid
             const note = fromCard?.kind === 'exam' ? target.uuid : g.from
@@ -680,22 +700,24 @@ export function useCanvasPointer({
             if (g.kind === 'doc') {
               // 文档能挂进大纲之下，也能挂在视频节点之下（与发光的候选同一口径，见 candidateIds）
               under = target.kind === 'outline' || target.kind === 'video' ? target.uuid : null
+            } else if (g.kind === 'classroom') {
+              under = target.kind === 'doc' || target.kind === 'superdoc' ? target.uuid : null
             } else if (g.kind === 'outline') {
               // 大纲拖到文档上 = 给它补一份大纲（附身，node.outline）
               under = target.kind === 'doc' ? target.uuid : null
             } else if (g.kind === 'file') {
-              under = ['doc', 'note', 'superdoc', 'exam'].includes(target.kind) ? target.uuid : null
+              under = ['doc', 'note', 'superdoc', 'exam', 'classroom'].includes(target.kind) ? target.uuid : null
             } else {
-              // 挂件：拖到文档卡 = 绑到它；拖到大纲卡 = 绑到那张大纲的宿主文档（游离大纲没有宿主，接不住）
+              // 挂件：拖到文档卡或课堂卡 = 绑到它
               under =
-                target.kind === 'doc'
+                target.kind === 'doc' || target.kind === 'classroom'
                   ? target.uuid
                   : target.kind === 'outline' && !target.free
                     ? docIdOfOutlineUuid(target.uuid)
                     : null
             }
             if (!under) {
-              onToast?.(t('这种组合连不成：文档拖到大纲卡上，大纲拖到文档卡或大纲卡上，挂件拖到文档卡上，再不然拖到空白处'))
+              onToast?.(t('这种组合连不成：文档拖到大纲卡上，大纲拖到文档卡或大纲卡上，课堂拖到文档卡上，挂件拖到文档或课堂卡上，再不然拖到空白处'))
               return
             }
           }
@@ -717,9 +739,11 @@ export function useCanvasPointer({
                     ? t('已建一张独立的大纲卡：目标项写在卡上，往下挂文档或再开一层大纲')
                     : g.kind === 'project'
                       ? t('已建一枚项目节点：右键卡片 →「设置路径」声明一条真实路径，之后 agent 可以读写它下面的所有文件')
-                      : g.kind === 'file'
-                        ? t('已建文件节点「{0}」', r.title || '')
-                        : t('已建文档「{0}」：点标题打开写正文', r.title || ''),
+                      : g.kind === 'classroom'
+                        ? t('已建互动课堂「{0}」：点标题打开 16:9 画布课件', r.title || '')
+                        : g.kind === 'file'
+                          ? t('已建文件节点「{0}」', r.title || '')
+                          : t('已建文档「{0}」：点标题打开写正文', r.title || ''),
           )
         }
       }

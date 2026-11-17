@@ -96,6 +96,10 @@ export type TabRef =
    */
   | { kind: 'terminal'; termId?: string; shell?: ShellKind; title?: string }
   /**
+   * 互动课堂页签：16:9 画布互动教学课堂（画面 + 动作 + 节拍时间轴）
+   */
+  | { kind: 'classroom'; classroomId: string; nodeId?: string; goalId?: string }
+  /**
    * 用量统计页：同样全局一枚页签（入口在顶栏用户菜单）。它读的是「台账」
    * （ai/usageLog）而不是配置，所以不从设置里走；页面自己订阅台账重渲染。
    */

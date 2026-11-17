@@ -159,6 +159,9 @@ function memberExists(store: LearnStore, member: string): boolean {
   if (!member.startsWith('o:')) {
     return (
       !!nodeById(store, member) ||
+      (store.classrooms ?? []).some((c) => c.id === member) ||
+      member.startsWith('classroom_') ||
+      member.startsWith('classroom-') ||
       (store.videoNodes ?? []).some((v) => v.id === member) ||
       (store.projects ?? []).some((p) => p.id === member) ||
       (store.fileNodes ?? []).some((f) => f.id === member) ||

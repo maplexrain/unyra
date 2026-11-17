@@ -152,6 +152,8 @@ function tabNodeIdOf(ref: TabRef): string {
     // 新建文件页签还没有落点：它不属于任何节点，删节点不该把它一起关掉
     ref.kind === 'draft'
     ? ''
+    : ref.kind === 'classroom'
+    ? ref.nodeId ?? ''
     : ref.nodeId
 }
 

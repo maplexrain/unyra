@@ -100,6 +100,7 @@ export function useChipOpening({
       ref.kind === 'settings' ||
       ref.kind === 'user' ||
       ref.kind === 'terminal' ||
+      ref.kind === 'classroom' ||
       ref.kind === 'usage' ||
       ref.kind === 'schedule' ||
       ref.kind === 'mind' ||

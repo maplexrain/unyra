@@ -119,7 +119,7 @@ describe('P0：图索引', () => {
  */
 describe('P0：类型登记表', () => {
   it('GRAPH_KINDS 就是全部节点类型（全图化重构后的宇宙；视频与项目节点入列）', () => {
-    expect(GRAPH_KINDS).toEqual(['entry', 'outline', 'doc', 'note', 'exam', 'superdoc', 'video', 'project', 'file'])
+    expect(GRAPH_KINDS).toEqual(['entry', 'outline', 'doc', 'note', 'exam', 'superdoc', 'video', 'project', 'file', 'classroom'])
   })
 
   it('同列次序：入口最左、大纲在上、文档居中、叶子在下', () => {
@@ -131,6 +131,7 @@ describe('P0：类型登记表', () => {
     expect(KIND_RANK.superdoc).toBe(KIND_RANK.video)
     expect(KIND_RANK.video).toBe(KIND_RANK.project)
     expect(KIND_RANK.project).toBe(KIND_RANK.file)
+    expect(KIND_RANK.file).toBe(KIND_RANK.classroom)
   })
 
   it('显示名表齐九种（卡片徽标与设置目录共用这一份）', () => {

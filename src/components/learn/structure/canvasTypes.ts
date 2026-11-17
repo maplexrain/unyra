@@ -14,7 +14,7 @@ export type ChannelResult = { ok: true; note?: string } | { error: string }
  * 卡从落位那刻起就由 store 派生。入口、文档与大纲不在列表里——入口由目标绑定
  * 派生，子文档点大纲目标项，前置知识大纲走文档卡右键菜单。
  */
-export const PALETTE: GNodeKind[] = ['doc', 'outline', 'note', 'exam', 'superdoc', 'video', 'project', 'file']
+export const PALETTE: GNodeKind[] = ['doc', 'outline', 'note', 'exam', 'superdoc', 'classroom', 'video', 'project', 'file']
 
 /** 网格背景的点距（世界坐标 px）：平移/缩放时按相机换算，见画布根的 backgroundImage */
 export const GRID_PX = 28

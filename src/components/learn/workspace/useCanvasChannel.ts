@@ -562,6 +562,13 @@ export function useCanvasChannel({
         openTab({ kind: 'local', path: absPath, title: fileEntity.title || fileName })
       },
       onOpenVideo: (videoId: string) => openTab({ kind: 'video', videoId }),
+      onOpenClassroom: (classroomId: string) => {
+        openTab({
+          kind: 'classroom',
+          classroomId,
+          goalId: store.activeGoalId ?? undefined,
+        })
+      },
       onOpenVideoNode: (videoNodeUuid: string) => {
         const vNode = store.videoNodes?.find((vn) => vn.id === videoNodeUuid)
         if (!vNode) {

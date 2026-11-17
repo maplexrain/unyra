@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Volume2, VolumeX } from 'lucide-react'
+import { Volume2, VolumeX, Presentation } from 'lucide-react'
 import { FileIcon } from '@react-symbols/icons/utils'
 import { DocTypeIcon, WebTabTypeIcon } from '../docTypes'
 import VimIcon from '../VimIcon'
@@ -96,6 +96,17 @@ export function TabTypeIcon({ tab, favicon, loading }: { tab: TabRef; favicon?: 
         className="flex h-4 w-4 shrink-0 items-center justify-center text-[#019833]"
       >
         <VimIcon size={14} />
+      </span>
+    )
+  }
+
+  if (tab.kind === 'classroom') {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex h-4 w-4 shrink-0 items-center justify-center text-sky-400"
+      >
+        <Presentation size={13} />
       </span>
     )
   }
