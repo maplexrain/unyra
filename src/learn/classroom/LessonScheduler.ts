@@ -41,6 +41,8 @@ export class LessonScheduler {
     this.compiler = compiler
     this.onStateChange = onStateChange
     this.beats = buildTimelineBeats(this.course)
+    // 实例化时立即启动向后看 3 句话的 TTS 预热
+    this.maintainPreloadBuffer()
   }
 
   /** 获取时间轴节拍清单 */
@@ -76,6 +78,7 @@ export class LessonScheduler {
 
     this.status = 'playing'
     const currentToken = ++this.runToken
+    this.maintainPreloadBuffer()
     this.emitState()
 
     while (this.sceneIndex < this.course.scenes.length) {
@@ -102,12 +105,48 @@ export class LessonScheduler {
           if (currentToken !== this.runToken) return
           this.status = 'playing'
           this.actionIndex++
+          this.maintainPreloadBuffer()
+          continue
+        }
+
+        // 口语讲解动作：确保声音与字幕同步，并滚动预加载三句话缓冲区
+        if (action.type === 'speak') {
+          this.maintainPreloadBuffer()
+          let voiceEmitted = false
+          const onVoiceReady = () => {
+            if (!voiceEmitted && currentToken === this.runToken) {
+              voiceEmitted = true
+              this.emitState(action)
+            }
+          }
+
+          const task = this.compiler.compile(action, this.playbackRate, onVoiceReady)
+          // 兜底微定时器：若音频层异常，避免阻断字幕露出
+          const fallbackTimer = window.setTimeout(onVoiceReady, 60)
+
+          const isBlocking = action.blocking ?? true
+          if (isBlocking) {
+            this.activeBlockingTask = task
+            await task.finished
+            clearTimeout(fallbackTimer)
+            this.activeBlockingTask = null
+            if (currentToken !== this.runToken) return
+          } else {
+            this.backgroundTasks.add(task)
+            task.finished.finally(() => {
+              clearTimeout(fallbackTimer)
+              this.backgroundTasks.delete(task)
+            })
+          }
+
+          this.actionIndex++
+          this.maintainPreloadBuffer()
           continue
         }
 
         this.emitState(action)
         const task = this.compiler.compile(action, this.playbackRate)
-        const isBlocking = action.blocking ?? (action.type === 'speak')
+        const isBlocking = action.blocking ?? false
 
         if (isBlocking) {
           this.activeBlockingTask = task
@@ -129,6 +168,7 @@ export class LessonScheduler {
       this.flushBackgroundTasks()
       this.sceneIndex++
       this.actionIndex = 0
+      this.maintainPreloadBuffer()
     }
 
     if (currentToken === this.runToken) {
@@ -194,6 +234,7 @@ export class LessonScheduler {
     this.sceneIndex = targetSceneIndex
     this.actionIndex = targetActionIndex
     this.status = 'idle'
+    this.maintainPreloadBuffer()
     this.play()
   }
 
@@ -216,6 +257,33 @@ export class LessonScheduler {
       // 已经在第一个节拍，重置本节拍
       const cur = this.beats[0]
       if (cur) this.seekTo(cur.sceneIndex, cur.startActionIndex)
+    }
+  }
+
+  /**
+   * 维护向后看三句话的 TTS 预加载滑动窗口
+   * 确保无论演播推进到哪一步，缓冲区内始终保持后续 3 句 speak 音频已合成与预热
+   */
+  public maintainPreloadBuffer(): void {
+    const queue: string[] = []
+    let s = this.sceneIndex
+    let a = this.actionIndex
+
+    while (s < this.course.scenes.length && queue.length < 3) {
+      const scene = this.course.scenes[s]
+      while (a < scene.actions.length && queue.length < 3) {
+        const act = scene.actions[a]
+        if (act.type === 'speak' && act.text.trim()) {
+          queue.push(act.text.trim())
+        }
+        a++
+      }
+      s++
+      a = 0
+    }
+
+    for (const text of queue) {
+      this.compiler.preloadSpeak(text, this.playbackRate)
     }
   }
 

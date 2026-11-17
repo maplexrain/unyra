@@ -104,6 +104,18 @@ const OUTLINE_GUIDE_INSTRUCTION = ['## 使用「生成大纲导读」工作流�
 const VIDEO_OVERVIEW_INSTRUCTION = ['## 使用「视频总览」工作流。', '- 目标节点: {{target}}', '- 视频资源: {{videoId}}'].join('\n')
 
 /**
+ * 「生成互动课堂」：为课堂节点生成 16:9 画布课件（画面 + DOM 动作流 + 讲解语音）。
+ */
+const CLASSROOM_INSTRUCTION = [
+  '## 使用「生成互动课堂」工作流。',
+  '- 目标课堂节点: {{target}}',
+  '- 任务要求: 分析上游关联教学文档或根据课堂主题，生成一套基于 16:9 确定性逻辑画布（1920x1080）的互动课件。',
+  '- 结构契约: scenes 数组，每个 scene 包含 id, title, html, actions 动作列表。所有受控 DOM 元素必须具备唯一 id，初始隐藏元素添加 data-hidden。',
+  '- 动作调度: 动作分为 speak（口语讲解，默认阻塞）、visual（视觉动词 appear/disappear/highlight/pulse 等，默认非阻塞）、wait（气口留白）、checkpoint（思考检查点）。',
+  '- 交付方式: 调用 api.node.get("{{target}}").editContent({ title, course }) 保存完整课件。',
+].join('\n')
+
+/**
  * 「出卷」：类型与难度由 Agent 问用户，出题后直接保存试卷文件。
  *
  * 出卷流程与题目 JSON 契约在系统提示词的「内置工作流与任务规程」一节里（读写边界
@@ -217,6 +229,15 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     params: ['target', 'videoId'],
     prep: 'show',
     runnable: false,
+  },
+  {
+    id: 'classroom',
+    name: '生成互动课堂',
+    description: '为课堂节点生成 16:9 画布动态课件（画面、DOM 视觉动作与语音讲解流）',
+    instruction: CLASSROOM_INSTRUCTION,
+    params: ['target'],
+    prep: 'show',
+    runnable: true,
   },
   {
     id: 'exam',

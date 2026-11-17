@@ -22,9 +22,13 @@ export class ActionCompiler {
     this.tts = tts
   }
 
-  public compile(action: LessonAction, playbackRate: number = 1.0): RunningTask {
+  public compile(
+    action: LessonAction,
+    playbackRate: number = 1.0,
+    onVoiceReady?: () => void
+  ): RunningTask {
     if (action.type === 'speak') {
-      return this.compileSpeak(action, playbackRate)
+      return this.compileSpeak(action, playbackRate, onVoiceReady)
     }
     if (action.type === 'wait') {
       return this.compileWait(action, playbackRate)
@@ -35,9 +39,27 @@ export class ActionCompiler {
     return this.compileVisual(action, playbackRate)
   }
 
+  /** 后台预加载口语讲解音频 */
+  public preloadSpeak(text: string, rate: number = 1.0): void {
+    if (this.tts.preload) {
+      void this.tts.preload(text, rate)
+    }
+  }
+
   /** 编译口语讲解动作 */
-  private compileSpeak(action: SpeakAction, rate: number): RunningTask {
+  private compileSpeak(
+    action: SpeakAction,
+    rate: number,
+    onVoiceReady?: () => void
+  ): RunningTask {
     const handle = this.tts.speak(action.text, rate)
+    if (onVoiceReady) {
+      if (handle.ready) {
+        handle.ready.then(onVoiceReady).catch(onVoiceReady)
+      } else {
+        onVoiceReady()
+      }
+    }
     // 异常安全兜底：若 TTS 引擎报错或无响应，按汉字语速估算等待时长，防止课堂死锁
     const fallbackMs = Math.max(1200, (action.text.length * 200) / rate)
     const safeFinished = handle.finished.catch(() => {

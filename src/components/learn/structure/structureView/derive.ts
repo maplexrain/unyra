@@ -460,12 +460,14 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
   const classroomPending = new Map<string, Pending>()
   for (const entity of store.classrooms ?? []) {
     if (entity.goalId && entity.goalId !== goalId) continue
+    const isBlank = !entity.course?.scenes || entity.course.scenes.length === 0
     const p: Pending = {
       card: {
         uuid: entity.id,
         kind: 'classroom',
         title: entity.title || '互动课堂',
-        subtitle: `${entity.course?.scenes?.length ?? 0} 个画面 · 互动课件`,
+        subtitle: isBlank ? '课件为空 · 待生成' : `${entity.course?.scenes?.length ?? 0} 个画面 · 互动课件`,
+        blank: isBlank,
       },
       depth: 1,
       anchorY: 0,

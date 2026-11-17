@@ -333,4 +333,112 @@ describe('互动课堂 (Interactive Classroom) 核心逻辑与编译器测试', 
       expect(store.edges.some((e) => e.from === cId)).toBe(false)
     })
   })
+
+  describe('4. 字幕配置、空课件与三句 TTS 预加载滑动窗口', () => {
+    it('互动课堂初始为空课件，不占用默认演示模板', async () => {
+      const { createDefaultLessonCourse } = await import('../src/learn/classroom/store')
+      const course = createDefaultLessonCourse('微积分基础')
+      expect(course.title).toBe('微积分基础')
+      expect(course.scenes).toEqual([])
+    })
+
+    it('默认字幕配置：开启字幕，白字黑色描边', async () => {
+      const { DEFAULT_SUBTITLE_SETTINGS } = await import('../src/learn/classroom/types')
+      expect(DEFAULT_SUBTITLE_SETTINGS.showSubtitle).toBe(true)
+      expect(DEFAULT_SUBTITLE_SETTINGS.style.color).toBe('#ffffff')
+      expect(DEFAULT_SUBTITLE_SETTINGS.style.strokeColor).toBe('#000000')
+      expect(DEFAULT_SUBTITLE_SETTINGS.style.strokeWidth).toBeGreaterThan(0)
+    })
+
+    it('节拍时间轴计算自动提取片段概要 Tooltip 预览与视觉动词详情', () => {
+      const course: LessonCourse = {
+        courseId: 'c1',
+        title: '测试时间轴',
+        scenes: [
+          {
+            id: 's1',
+            title: '第 1 幕：引言',
+            html: '<div id="box">内容</div>',
+            actions: [
+              { type: 'visual', verb: 'appear', target: 'box' },
+              { type: 'visual', verb: 'highlight', target: 'box' },
+              { type: 'speak', text: '大家好，欢迎来到互动课堂！', subtitle: '大家好，欢迎来到互动课堂！' },
+            ],
+          },
+        ],
+      }
+
+      const beats = buildTimelineBeats(course)
+      expect(beats).toHaveLength(1)
+      expect(beats[0].sceneTitle).toBe('第 1 幕：引言')
+      expect(beats[0].snippet).toBe('大家好，欢迎来到互动课堂！')
+      expect(beats[0].visualActionCount).toBe(2)
+      expect(beats[0].visualDetails).toEqual(['淡入 #box', '高亮 #box'])
+    })
+
+    it('调度器维护 3 句话 TTS 预加载缓冲区', () => {
+      const preloadedTexts: string[] = []
+      const mockTts: ITTSAdapter = {
+        speak: vi.fn().mockReturnValue({
+          pause: vi.fn(),
+          resume: vi.fn(),
+          stop: vi.fn(),
+          finished: Promise.resolve(),
+          ready: Promise.resolve(),
+        }),
+        preload: vi.fn().mockImplementation((text: string) => {
+          preloadedTexts.push(text)
+          return Promise.resolve()
+        }),
+      }
+
+      const course: LessonCourse = {
+        courseId: 'c2',
+        title: '长课件预加载测试',
+        scenes: [
+          {
+            id: 's1',
+            title: '第一幕',
+            html: '<div></div>',
+            actions: [
+              { type: 'speak', text: '第一句' },
+              { type: 'speak', text: '第二句' },
+            ],
+          },
+          {
+            id: 's2',
+            title: '第二幕',
+            html: '<div></div>',
+            actions: [
+              { type: 'speak', text: '第三句' },
+              { type: 'speak', text: '第四句' },
+            ],
+          },
+        ],
+      }
+
+      const mockViewport = {
+        mountScene: vi.fn(),
+        destroy: vi.fn(),
+      } as unknown as StageViewport
+
+      const compiler = new ActionCompiler(mockViewport, mockTts)
+      const scheduler = new LessonScheduler(course, mockViewport, compiler, () => {})
+
+      // 实例化时即向前探测并填充后续 3 句话
+      expect(mockTts.preload).toHaveBeenCalled()
+      expect(preloadedTexts).toEqual(['第一句', '第二句', '第三句'])
+      scheduler.destroy()
+    })
+
+    it('内置工作流中注册了「生成互动课堂」工作流', async () => {
+      const { builtinWorkflowRows } = await import('../src/learn/workflows')
+      const rows = builtinWorkflowRows()
+      const classroomWf = rows.find((w) => w.id === 'classroom')
+      expect(classroomWf).toBeDefined()
+      expect(classroomWf?.name).toBe('生成互动课堂')
+      expect(classroomWf?.params).toContain('target')
+      expect(classroomWf?.runnable).toBe(true)
+    })
+  })
 })

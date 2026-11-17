@@ -306,6 +306,30 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
   }
 
   /**
+   * 生成互动课堂：为课堂节点生成 16:9 画布课件（画面 + DOM 动作流 + 讲解语音）。
+   */
+  const startGenerateClassroom = (classroomNodeUuid: string) => {
+    if (!hasKey) {
+      onToast(t('生成互动课堂需要 AI，请先在设置中填写「{0}」的 API Key', providerName))
+      onOpenSettings()
+      return
+    }
+    const store = getLatest()
+    const classroom = (store.classrooms ?? []).find((c) => c.id === classroomNodeUuid)
+    const goal = classroom ? store.goals.find((g) => g.id === classroom.goalId) : null
+    const rootId = goal?.rootNodeId ?? classroomNodeUuid ?? activeNode?.id
+    if (!rootId) {
+      onToast(t('未找到关联节点，无法生成互动课堂'))
+      return
+    }
+    agent.runWorkflow('classroom', {
+      nodeId: rootId,
+      params: { target: classroomNodeUuid },
+    })
+    onToast(t('已为课堂启动课件生成工作流，导师正在规划画面与动作流…'))
+  }
+
+  /**
    * 把「谁来跑伪编译工作流」交给代码块菜单（见 lib/docHost）。
    *
    * 为什么由学习区注册：跑工作流要用 useAgent 的 runWorkflow，还要知道有没有配 Key、
@@ -382,6 +406,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     startGenerateOutline,
     startPrereqOutline,
     startVideoOverview,
+    startGenerateClassroom,
     workflowRows,
     runWorkflowRow,
     removeWorkflowRow,

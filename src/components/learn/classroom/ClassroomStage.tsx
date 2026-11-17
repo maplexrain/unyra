@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { StageViewport } from '../../../learn/classroom/StageViewport'
-import type { PlaybackStatus } from '../../../learn/classroom/types'
+import type { PlaybackStatus, SubtitleStyleConfig } from '../../../learn/classroom/types'
+import { DEFAULT_SUBTITLE_SETTINGS } from '../../../learn/classroom/types'
 import { Sparkles, ArrowRight } from 'lucide-react'
 import { t } from '../../../i18n'
 import katex from 'katex'
@@ -11,6 +12,8 @@ export interface ClassroomStageProps {
   checkpointTitle?: string
   status: PlaybackStatus
   onContinueCheckpoint: () => void
+  showSubtitle?: boolean
+  subtitleStyle?: SubtitleStyleConfig
 }
 
 /** 渲染带 LaTeX 公式支持的字幕文本 */
@@ -32,6 +35,8 @@ export default function ClassroomStage({
   checkpointTitle,
   status,
   onContinueCheckpoint,
+  showSubtitle = true,
+  subtitleStyle = DEFAULT_SUBTITLE_SETTINGS.style,
 }: ClassroomStageProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const viewportRef = useRef<StageViewport | null>(null)
@@ -48,16 +53,36 @@ export default function ClassroomStage({
     }
   }, [onViewportReady])
 
+  const strokeColor = subtitleStyle.strokeColor || '#000000'
+  const strokeWidth = subtitleStyle.strokeWidth ?? 1.5
+
   return (
     <div className="relative flex-1 w-full h-full min-h-0 bg-[#07090e] overflow-hidden select-none flex items-center justify-center">
       {/* 16:9 画布宿主容器 */}
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* 底部动态字幕胶囊（带公式渲染） */}
-      {subtitle && status !== 'ended' && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 max-w-[85%] px-6 py-2.5 rounded-2xl bg-black/80 border border-white/15 text-white shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150">
+      {/* 底部动态字幕（可配置开关与白字黑色描边样式） */}
+      {showSubtitle && subtitle && status !== 'ended' && (
+        <div
+          className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-20 max-w-[85%] px-6 py-2 rounded-2xl select-none pointer-events-none transition-all duration-150 animate-in fade-in slide-in-from-bottom-2 ${
+            subtitleStyle.bgMode === 'solid'
+              ? 'bg-black/90 border border-white/15 shadow-2xl backdrop-blur-md'
+              : subtitleStyle.bgMode === 'translucent'
+              ? 'bg-black/40 border border-white/10 shadow-lg backdrop-blur-xs'
+              : 'bg-transparent shadow-none'
+          }`}
+        >
           <div
-            className="text-[16px] md:text-[18px] font-medium text-center tracking-wide leading-relaxed text-slate-100"
+            className="font-bold text-center tracking-wide leading-relaxed"
+            style={{
+              fontSize: `${subtitleStyle.fontSize || 22}px`,
+              color: subtitleStyle.color || '#ffffff',
+              WebkitTextStroke: strokeWidth > 0 ? `${strokeWidth}px ${strokeColor}` : 'none',
+              textShadow:
+                strokeWidth > 0
+                  ? `-1.5px -1.5px 0 ${strokeColor}, 1.5px -1.5px 0 ${strokeColor}, -1.5px 1.5px 0 ${strokeColor}, 1.5px 1.5px 0 ${strokeColor}, 0 2px 5px rgba(0,0,0,0.85)`
+                  : '0 2px 4px rgba(0,0,0,0.8)',
+            }}
             dangerouslySetInnerHTML={{ __html: renderSubtitleHtml(subtitle) }}
           />
         </div>

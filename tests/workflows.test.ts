@@ -46,13 +46,14 @@ const store = (workflows?: LearnStore['workflows']): LearnStore => ({
 })
 
 describe('内置工作流', () => {
-  it('内置工作流都在：开讲、生成大纲、视频总览、出卷、阅卷、了解、超级实验室、伪编译、修复函数图像、压缩上下文、浏览器操作、项目与文章解读', () => {
+  it('内置工作流都在：开讲、生成大纲、视频总览、出卷、阅卷、了解、超级实验室、伪编译、修复函数图像、压缩上下文、浏览器操作、项目与文章解读、生成互动课堂', () => {
     const rows = builtinWorkflowRows()
     expect(rows.map((r) => r.id)).toEqual([
       'teach-node',
       'outline',
       'outline-guide',
       'video-overview',
+      'classroom',
       'exam',
       'exam-grade',
       'explain',
@@ -139,6 +140,7 @@ describe('内置工作流', () => {
       'outline',
       'outline-guide',
       'video-overview',
+      'classroom',
       'exam',
       'explain',
       'superlab',

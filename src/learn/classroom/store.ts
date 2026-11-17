@@ -6,8 +6,18 @@ import type { LearnStore } from '../types'
 
 const CLASSROOM_STORE_KEY_PREFIX = 'moji:classroom:'
 
-/** 生成初始演示互动课堂数据 */
-export function createDefaultLessonCourse(title: string = '互动课堂教学演示'): LessonCourse {
+/** 生成初始互动课堂数据（默认空白，等待 AI 导师生成或用户编写） */
+export function createDefaultLessonCourse(title: string = '新互动课堂'): LessonCourse {
+  return {
+    courseId: `course_${Date.now()}`,
+    title,
+    description: '',
+    scenes: [],
+  }
+}
+
+/** 生成初始演示互动课堂数据（供测试或样例参考） */
+export function createDemoLessonCourse(title: string = '互动课堂教学演示'): LessonCourse {
   return {
     courseId: `course_${Date.now()}`,
     title,

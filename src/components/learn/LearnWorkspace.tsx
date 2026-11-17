@@ -1510,15 +1510,9 @@ export default function LearnWorkspace({
   }, [scheduleRinging, pure, setPure])
 
   const {
-    newExam,
-    requestGrading,
-    startSuperLab,
-    startOutline,
-    startPrereqOutline,
-    startVideoOverview,
-    workflowRows,
-    runWorkflowRow,
-    removeWorkflowRow,
+    newExam, requestGrading, startSuperLab, startOutline,
+    startPrereqOutline, startVideoOverview, startGenerateClassroom,
+    workflowRows, runWorkflowRow, removeWorkflowRow,
   } = useWorkflowStarters({
     getLatest,
     set,
@@ -1673,6 +1667,7 @@ export default function LearnWorkspace({
     agent,
     startPrereqOutline,
     startVideoOverview,
+    startGenerateClassroom,
     goalSubtreeSize,
     setPendingDelete,
     setPendingExamDelete,

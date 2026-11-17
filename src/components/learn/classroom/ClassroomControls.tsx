@@ -1,4 +1,5 @@
-import type { PlaybackStatus } from '../../../learn/classroom/types'
+import type { PlaybackStatus, SubtitleStyleConfig } from '../../../learn/classroom/types'
+import ClassroomSubtitleMenu from './ClassroomSubtitleMenu'
 import {
   Play,
   Pause,
@@ -26,6 +27,10 @@ export interface ClassroomControlsProps {
   hasResources: boolean
   isResourcesOpen: boolean
   onOpenEditor: () => void
+  showSubtitle: boolean
+  onToggleSubtitle: () => void
+  subtitleStyle: SubtitleStyleConfig
+  onChangeSubtitleStyle: (patch: Partial<SubtitleStyleConfig>) => void
 }
 
 const SPEED_OPTIONS = [0.75, 1.0, 1.25, 1.5, 2.0]
@@ -44,6 +49,10 @@ export default function ClassroomControls({
   hasResources,
   isResourcesOpen,
   onOpenEditor,
+  showSubtitle,
+  onToggleSubtitle,
+  subtitleStyle,
+  onChangeSubtitleStyle,
 }: ClassroomControlsProps) {
   const isPlaying = status === 'playing'
   const isEnded = status === 'ended'
@@ -123,6 +132,14 @@ export default function ClassroomControls({
             </button>
           ))}
         </div>
+
+        {/* 字幕开关与白字黑描边样式菜单 */}
+        <ClassroomSubtitleMenu
+          showSubtitle={showSubtitle}
+          onToggleSubtitle={onToggleSubtitle}
+          subtitleStyle={subtitleStyle}
+          onChangeSubtitleStyle={onChangeSubtitleStyle}
+        />
 
         {/* 关联子资源坞开关 */}
         <button

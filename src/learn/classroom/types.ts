@@ -108,6 +108,7 @@ export interface RunningTask {
 /** 外部统一 TTS 适配器契约 */
 export interface ITTSAdapter {
   speak: (text: string, rate?: number) => TTSPlaybackHandle
+  preload?: (text: string, rate?: number) => Promise<void>
 }
 
 export interface TTSPlaybackHandle {
@@ -115,6 +116,38 @@ export interface TTSPlaybackHandle {
   resume: () => void
   stop: () => void
   finished: Promise<void>
+  /** 当底层音频真正就绪并开始发声时 resolve（用于音画精准对齐） */
+  ready?: Promise<void>
+}
+
+/** 字幕外观样式配置 */
+export interface SubtitleStyleConfig {
+  /** 字号（px），默认 22 */
+  fontSize: number
+  /** 文字颜色（Hex 或 CSS 颜色值），默认 #ffffff */
+  color: string
+  /** 描边颜色，默认 #000000 */
+  strokeColor: string
+  /** 描边粗细（px），默认 1.5 */
+  strokeWidth: number
+  /** 背景模式：无背景纯描边 / 半透明轻晕 / 实色黑底 */
+  bgMode: 'none' | 'translucent' | 'solid'
+}
+
+export interface SubtitleSettings {
+  showSubtitle: boolean
+  style: SubtitleStyleConfig
+}
+
+export const DEFAULT_SUBTITLE_SETTINGS: SubtitleSettings = {
+  showSubtitle: true,
+  style: {
+    fontSize: 22,
+    color: '#ffffff',
+    strokeColor: '#000000',
+    strokeWidth: 1.5,
+    bgMode: 'none',
+  },
 }
 
 /** 节拍时间轴标记节点 */
@@ -128,8 +161,12 @@ export interface TimelineBeat {
   endActionIndex: number
   /** 节拍摘要标签 */
   label: string
+  /** 节拍详情概要预览（供 Hover Tooltip 展示） */
+  snippet?: string
   /** 该节拍所含视觉动作数 */
   visualActionCount: number
+  /** 该节拍所含视觉动作概要文字列表（如“高亮 #card”、“淡入 #feat”） */
+  visualDetails?: string[]
 }
 
 export type PlaybackStatus = 'idle' | 'playing' | 'paused' | 'waiting_checkpoint' | 'ended'

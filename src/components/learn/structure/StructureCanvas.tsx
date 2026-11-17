@@ -188,6 +188,8 @@ export interface StructureCanvasProps {
   onOpenFileNode?: (nodeUuid: string) => void
   /** 打开互动课堂页签 */
   onOpenClassroom?: (classroomId: string) => void
+  /** 生成互动课堂 */
+  onGenerateClassroom?: (classroomId: string) => void
   onToast?: (msg: string) => void
   /** 外部指定的聚焦目标（chip 路由）：把镜头挪到 uuid 对得上的那张卡 */
   focusTarget?: { nodeId: string; nonce: number } | null
@@ -228,6 +230,7 @@ export const StructureCanvas = memo(function StructureCanvas({
   onOpenProjectFile,
   onOpenFileNode,
   onOpenClassroom,
+  onGenerateClassroom,
   onBindFile,
   onToast,
   focusTarget,
@@ -784,6 +787,7 @@ export const StructureCanvas = memo(function StructureCanvas({
           onOpenProjectFile={onOpenProjectFile}
           onUpdateVideoNode={onUpdateVideoNode}
           onGenerateVideoDoc={onGenerateVideoDoc}
+          onGenerateClassroom={onGenerateClassroom}
           onBindFile={onBindFile}
           onToast={onToast}
         />

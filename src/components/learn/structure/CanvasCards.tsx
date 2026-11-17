@@ -95,6 +95,7 @@ export interface CanvasCardsProps {
   onOpenProjectFile?: (absPath: string) => void
   onUpdateVideoNode?: (nodeUuid: string, patch: { input?: string; title?: string; titleCustomized?: boolean }) => ChannelResult
   onGenerateVideoDoc?: (videoNodeUuid: string) => void
+  onGenerateClassroom?: (classroomId: string) => void
   onBindFile?: (nodeUuid: string, patch: { fileKind?: FileNodeKind; url?: string; title?: string; titleCustomized?: boolean }) => ChannelResult
   onToast?: (msg: string) => void
 }
@@ -143,6 +144,7 @@ export function CanvasCards({
   onOpenProjectFile,
   onUpdateVideoNode,
   onGenerateVideoDoc,
+  onGenerateClassroom,
   onBindFile,
   onToast,
 }: CanvasCardsProps) {
@@ -570,6 +572,21 @@ export function CanvasCards({
                   >
                     {t('生成文档')}
                   </button>
+                </div>
+              ) : card.kind === 'classroom' && card.blank ? (
+                <div className="flex items-center justify-between gap-2 px-3 pb-2">
+                  <span className="text-[11px] text-ink-faint">{t('课件尚为空白')}</span>
+                  <button
+                    type="button"
+                    className="bg-seal/15 px-2 py-0.5 text-[11px] text-seal-deep hover:bg-seal/25"
+                    onClick={() => onGenerateClassroom?.(card.uuid)}
+                  >
+                    {t('生成课堂')}
+                  </button>
+                </div>
+              ) : card.kind === 'classroom' ? (
+                <div className="px-3 pb-2 text-[11px] text-ink-soft">
+                  <span>{card.subtitle}</span>
                 </div>
               ) : card.kind === 'exam' && (card.attempts?.length ?? 0) > 0 ? (
                 /*

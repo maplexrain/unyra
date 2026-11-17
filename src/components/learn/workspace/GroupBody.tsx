@@ -502,6 +502,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
                   }
                 }
               }}
+              onGenerateClassroom={canvasChannel?.onGenerateClassroom}
             />
           ) : gTab?.ref.kind === 'settings' ? (
             /*
