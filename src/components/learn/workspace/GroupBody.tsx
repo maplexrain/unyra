@@ -223,8 +223,8 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     (x): x is LearnTab & { ref: { kind: 'outline'; nodeId: string; goalId?: string } } => x.ref.kind === 'outline',
   )
   /** 这一格挂着的文件页签（本地文件与工作区文件）：keepalive 常驻，切页签只藏不卸，保持编辑器状态与光标 */
-  /** 这一格挂着的终端页签：keepalive 常驻，切页签只藏不卸，进程与会话状态持续保活 */
-  const hasTerminalTab = (g.group?.tabs ?? []).some((t) => t.ref.kind === 'terminal')
+  /** 这一格挂着的终端页签：每个终端独立成为一枚顶层页签，keepalive 常驻保活 */
+  const gTerminalTabs = (g.group?.tabs ?? []).filter((t) => t.ref.kind === 'terminal')
   const gFileTabs = (g.group?.tabs ?? []).filter((x) => x.ref.kind === 'local' || x.ref.kind === 'ws')
   /** 这一格挂着的教学文档 / 笔记 / 超级文档页签：编辑态常驻层（EditorTabLayer）照此挂起 */
   const gEditorTabs = (g.group?.tabs ?? []).filter(
@@ -753,13 +753,25 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
         )}
 
         {/* 终端控制台常驻层（keepalive）：开着就挂在 DOM 中，切走只藏不卸（进程持续流式运行，直到页签或应用关闭） */}
-        {hasTerminalTab && (
-          <div
-            className={`absolute inset-0 z-10 flex flex-col ${gTab?.ref.kind === 'terminal' ? '' : 'hidden pointer-events-none'}`}
-          >
-            <TerminalTabPane active={gTab?.ref.kind === 'terminal'} onToast={onToast} />
-          </div>
-        )}
+        {gTerminalTabs.map((t) => {
+          const isCur = gTab?.id === t.id
+          const termRef = t.ref as { kind: 'terminal'; termId?: string; shell?: any; title?: string }
+          const termId = termRef.termId || t.id
+          return (
+            <div
+              key={t.id}
+              className={`absolute inset-0 z-10 flex flex-col ${isCur ? '' : 'hidden pointer-events-none'}`}
+            >
+              <TerminalTabPane
+                tabId={t.id}
+                termId={termId}
+                shell={termRef.shell}
+                active={isCur}
+                onToast={onToast}
+              />
+            </div>
+          )
+        })}
 
         {!isWeb() && gWebTabs.length > 0 && (
           <WebTabLayer

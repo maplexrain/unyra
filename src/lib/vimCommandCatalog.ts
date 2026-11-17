@@ -71,10 +71,10 @@ export const VIM_COMMANDS: readonly VimCommandInfo[] = [
     cmd: 'terminal',
     aliases: ['term'],
     name: '终端控制台',
-    desc: '打开控制台终端页签',
+    desc: '打开终端控制台页签 (:terminal powershell/cmd/bash)',
     category: 'moji',
     tag: '专属',
-    example: ':term',
+    example: ':terminal powershell',
   },
   {
     cmd: 'focus',

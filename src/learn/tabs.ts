@@ -82,7 +82,7 @@ export function tabKey(ref: TabRef): string {
   // 设置页与用量页同样全局只有一份：从哪个入口打开都是切到它，不会开出第二枚
   if (ref.kind === 'settings') return 'set:settings'
   if (ref.kind === 'user') return 'usr:user'
-  if (ref.kind === 'terminal') return 'term:terminal'
+  if (ref.kind === 'terminal') return ref.termId ? 'term:' + ref.termId : 'term:terminal'
   if (ref.kind === 'usage') return 'u:usage'
   // 日程表全局只有一份：从顶栏 tip、提醒弹层还是设置里打开，都是切到同一枚页签
   if (ref.kind === 'schedule') return 'sc:schedule'
@@ -244,7 +244,13 @@ function rawTabTitle(
   if (ref.kind === 'vim') return t('Vim 命令大全')
   if (ref.kind === 'settings') return t('设置')
   if (ref.kind === 'user') return t('用户中心')
-  if (ref.kind === 'terminal') return t('终端')
+  if (ref.kind === 'terminal') {
+    if (ref.title) return ref.title
+    if (!ref.termId && !ref.shell) return t('终端')
+    const shell = ref.shell ? (ref.shell === 'powershell' ? 'pwsh' : ref.shell) : 'pwsh'
+    const idStr = ref.termId ? `${ref.termId}` : '1'
+    return `${idStr}: ${shell}`
+  }
   if (ref.kind === 'usage') return t('用量统计')
   if (ref.kind === 'schedule') return t('日程安排')
   if (ref.kind === 'mind') return t('记忆管理')

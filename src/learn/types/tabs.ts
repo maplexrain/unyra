@@ -14,6 +14,8 @@
  * 任意一个外部文件（拖进来或从本地文件列表点开的）。「页签」是**视图**的概念，
  * 与知识树没有从属关系——关掉一个教学文档的页签，节点本身照旧在树里。
  */
+export type ShellKind = 'powershell' | 'cmd' | 'bash'
+
 export type TabRef =
   /** 某个节点的教学文档 */
   | { kind: 'teach'; nodeId: string }
@@ -92,7 +94,7 @@ export type TabRef =
   /**
    * 终端控制台页签：命令行终端与进程执行器，独立于任何目标页签组
    */
-  | { kind: 'terminal' }
+  | { kind: 'terminal'; termId?: string; shell?: ShellKind; title?: string }
   /**
    * 用量统计页：同样全局一枚页签（入口在顶栏用户菜单）。它读的是「台账」
    * （ai/usageLog）而不是配置，所以不从设置里走；页面自己订阅台账重渲染。

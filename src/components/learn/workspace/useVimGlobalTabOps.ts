@@ -9,6 +9,8 @@ import { emptyNote } from './panes'
 import { useBrowseVim } from './useBrowseVim'
 import { openGlobalNoteDialog } from '../note/useAnnotationLayer'
 import { captureOrGetDocSelection, setDocSelectionSnapshot } from './docSelectionSnapshot'
+import { getNextTerminalSeq } from '../../terminal/terminalRegistry'
+import { isWindowsPlatform } from '../../terminal/terminalPath'
 
 interface Params {
   getLatest: () => LearnStore
@@ -111,6 +113,20 @@ export function useVimGlobalTabOps(params: Params): void {
       },
       openTab: (ref) => {
         openTab?.(ref)
+      },
+      openTerminalTab: (shell) => {
+        const s = getLatest()
+        const allTabs = s.docArea?.groups?.flatMap((g) => g.tabs) ?? []
+        const nextSeq = getNextTerminalSeq(allTabs)
+        const isWin = isWindowsPlatform()
+        const targetShell = shell || (isWin ? 'powershell' : 'bash')
+        const shortShell = targetShell === 'powershell' ? 'pwsh' : targetShell
+        openTab?.({
+          kind: 'terminal',
+          termId: nextSeq,
+          shell: targetShell,
+          title: `${nextSeq}: ${shortShell}`,
+        })
       },
       nextTab: () => {
         stepTab('next')

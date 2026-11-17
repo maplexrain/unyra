@@ -1,14 +1,9 @@
-import React, { useState } from 'react'
-import { ChevronDown, Loader2, Plus, Terminal, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronDown, Loader2, Terminal, Trash2 } from 'lucide-react'
+import type { ShellKind } from '../../learn/types/tabs'
 import { t } from '../../i18n'
 
-export type ShellKind = 'powershell' | 'cmd' | 'bash'
-
-export interface TerminalHeaderSession {
-  id: string
-  title: string
-  runningPid: string | null
-}
+export type { ShellKind }
 
 export const DEFAULT_SHELLS: { key: ShellKind; label: string }[] = [
   { key: 'powershell', label: 'PowerShell' },
@@ -17,87 +12,56 @@ export const DEFAULT_SHELLS: { key: ShellKind; label: string }[] = [
 ]
 
 export interface TerminalHeaderProps {
-  sessions: TerminalHeaderSession[]
-  activeSessionId: string
+  title: string
+  cwd: string
   activeShell: ShellKind
-  onSelectSession: (id: string) => void
-  onCloseSession: (id: string, e: React.MouseEvent) => void
-  onNewSession: () => void
+  runningPid: string | null
   onSelectShell: (shell: ShellKind) => void
   onClearScreen: () => void
 }
 
 export function TerminalHeader({
-  sessions,
-  activeSessionId,
+  title,
+  cwd,
   activeShell,
-  onSelectSession,
-  onCloseSession,
-  onNewSession,
+  runningPid,
   onSelectShell,
   onClearScreen,
 }: TerminalHeaderProps) {
   const [shellMenuOpen, setShellMenuOpen] = useState(false)
 
   return (
-    <header className="flex shrink-0 items-center justify-between border-b border-[#2b2b2b] bg-[#1e1e1e] px-2 py-0 h-9 select-none">
-      {/* 左侧：多终端选项卡 */}
-      <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
-        {sessions.map((s) => {
-          const isCur = s.id === activeSessionId
-          return (
-            <div
-              key={s.id}
-              onClick={() => onSelectSession(s.id)}
-              className={`group flex items-center gap-1.5 px-3 py-1.5 text-[12px] cursor-pointer border-b-2 transition ${
-                isCur
-                  ? 'border-[#007acc] text-white bg-[#181818]'
-                  : 'border-transparent text-[#858585] hover:text-[#cccccc] hover:bg-[#252526]'
-              }`}
-            >
-              <Terminal size={13} className={isCur ? 'text-[#007acc]' : 'text-[#858585]'} />
-              <span className="font-mono">{s.title}</span>
-              {s.runningPid && <Loader2 size={11} className="animate-spin text-amber-400" />}
-              <button
-                type="button"
-                onClick={(e) => onCloseSession(s.id, e)}
-                title={t('关闭终端实例')}
-                className="rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-[#333333] hover:text-white transition"
-              >
-                <Trash2 size={11} />
-              </button>
-            </div>
-          )
-        })}
-
-        {/* 新增终端实例 (+) */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={onNewSession}
-            title={t('新建集成终端')}
-            className="flex items-center gap-0.5 rounded px-2 py-1 text-[12px] text-[#858585] hover:bg-[#2d2d2d] hover:text-white transition cursor-pointer"
+    <header className="flex shrink-0 items-center justify-between border-b border-line bg-paper px-3 py-0 h-8 select-none text-[12px] text-ink-soft">
+      {/* 左侧：当前终端会话信息 */}
+      <div className="flex items-center gap-2 min-w-0">
+        <Terminal size={13} className="text-seal shrink-0" />
+        <span className="font-mono font-medium text-ink truncate text-[12px]">{title}</span>
+        {runningPid && <Loader2 size={11} className="animate-spin text-amber-500 shrink-0" />}
+        {cwd && (
+          <span
+            className="text-[11px] text-ink-faint truncate max-w-[320px] font-mono hidden sm:inline"
+            title={cwd}
           >
-            <Plus size={13} />
-          </button>
-        </div>
+            {cwd}
+          </span>
+        )}
       </div>
 
       {/* 右侧：Shell 切换与清屏 */}
-      <div className="flex items-center gap-2 pr-2">
+      <div className="flex items-center gap-1.5 shrink-0">
         {/* Shell 切换下拉 */}
         <div className="relative">
           <button
             type="button"
             onClick={() => setShellMenuOpen(!shellMenuOpen)}
-            className="flex items-center gap-1.5 rounded px-2 py-1 text-[11px] text-[#858585] hover:bg-[#2d2d2d] hover:text-[#cccccc] transition"
+            className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-ink-soft hover:bg-line/40 hover:text-ink transition cursor-pointer"
           >
-            <span>{DEFAULT_SHELLS.find((x) => x.key === activeShell)?.label}</span>
+            <span className="font-mono">{DEFAULT_SHELLS.find((x) => x.key === activeShell)?.label}</span>
             <ChevronDown size={11} />
           </button>
 
           {shellMenuOpen && (
-            <div className="absolute right-0 top-full mt-1 z-30 w-44 rounded border border-[#454545] bg-[#252526] py-1 shadow-2xl">
+            <div className="absolute right-0 top-full mt-1 z-30 w-44 rounded-lg border border-line-strong bg-card py-1 shadow-xl">
               {DEFAULT_SHELLS.map((sh) => (
                 <button
                   key={sh.key}
@@ -106,11 +70,11 @@ export function TerminalHeader({
                     onSelectShell(sh.key)
                     setShellMenuOpen(false)
                   }}
-                  className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-[11.5px] transition hover:bg-[#094771] hover:text-white ${
-                    activeShell === sh.key ? 'text-[#007acc] font-semibold' : 'text-[#cccccc]'
+                  className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-[11.5px] transition hover:bg-seal/10 hover:text-seal ${
+                    activeShell === sh.key ? 'text-seal font-semibold' : 'text-ink'
                   }`}
                 >
-                  <span>{sh.label}</span>
+                  <span className="font-mono">{sh.label}</span>
                 </button>
               ))}
             </div>
@@ -122,9 +86,9 @@ export function TerminalHeader({
           type="button"
           onClick={onClearScreen}
           title={t('清空终端缓冲区 (Ctrl+L)')}
-          className="rounded p-1 text-[#858585] hover:bg-[#2d2d2d] hover:text-white transition cursor-pointer"
+          className="rounded p-1 text-ink-soft hover:bg-line/40 hover:text-ink transition cursor-pointer"
         >
-          <Trash2 size={13} />
+          <Trash2 size={12} />
         </button>
       </div>
     </header>

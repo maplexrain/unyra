@@ -87,6 +87,16 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     }
     case 'term':
     case 'terminal': {
+      const arg = parts.slice(1).join(' ').toLowerCase().trim()
+      let shell: 'powershell' | 'cmd' | 'bash' | undefined = undefined
+      if (arg.startsWith('cmd')) shell = 'cmd'
+      else if (arg.startsWith('bash') || arg.startsWith('git') || arg.startsWith('sh')) shell = 'bash'
+      else if (arg.startsWith('pwsh') || arg.startsWith('power')) shell = 'powershell'
+
+      if (globalTabOps?.openTerminalTab) {
+        globalTabOps.openTerminalTab(shell)
+        return { success: true, message: `[打开终端${shell ? ` (${shell})` : ''}]` }
+      }
       if (globalTabOps?.openTab) {
         globalTabOps.openTab({ kind: 'terminal' })
         return { success: true, message: '[打开终端]' }

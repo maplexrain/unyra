@@ -25,7 +25,7 @@ const COMMON_SUBCOMMANDS = new Set([
 export function renderHighlightedInput(val: string, cursorPos: number): ReactNode {
   if (!val) {
     return (
-      <span className="inline-block w-2 h-4.5 bg-[#aeafad] text-[#181818] animate-pulse align-middle" />
+      <span className="inline-block w-2 h-4.5 bg-ink text-paper animate-pulse align-middle" />
     )
   }
 
@@ -64,12 +64,12 @@ export function renderHighlightedInput(val: string, cursorPos: number): ReactNod
   }
 
   const kindClasses: Record<string, string> = {
-    cmd: 'text-amber-300 font-semibold',
-    subcmd: 'text-emerald-300 font-medium',
-    opt: 'text-cyan-400 font-medium',
-    str: 'text-amber-200/90',
-    path: 'text-sky-300 underline decoration-sky-500/40',
-    plain: 'text-zinc-100',
+    cmd: 'text-amber-600 dark:text-amber-300 font-semibold',
+    subcmd: 'text-emerald-600 dark:text-emerald-300 font-medium',
+    opt: 'text-sky-600 dark:text-cyan-400 font-medium',
+    str: 'text-amber-700 dark:text-amber-200/90',
+    path: 'text-blue-600 dark:text-sky-300 underline decoration-sky-500/40',
+    plain: 'text-ink',
     space: '',
   }
 
@@ -81,7 +81,7 @@ export function renderHighlightedInput(val: string, cursorPos: number): ReactNod
   const cursorNode = (
     <span
       key="__cursor__"
-      className="inline-block w-2 h-4.5 bg-[#aeafad] text-[#181818] animate-pulse align-middle"
+      className="inline-block w-2 h-4.5 bg-ink text-paper animate-pulse align-middle"
     />
   )
 
