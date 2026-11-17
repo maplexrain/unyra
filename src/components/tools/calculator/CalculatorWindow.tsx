@@ -20,9 +20,9 @@ export default function CalculatorWindow() {
   const [isOpen, setIsOpen] = useState(() => getCalculatorState().isOpen)
   const [mode, setMode] = useState<CalculatorMode>(() => getCalculatorState().mode)
 
-  // 视口浮窗拖拽位置
+  // 视口浮窗拖拽位置与瞬时引用（直接更新 DOM 实现 0ms 延迟硬件加速拖拽）
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
-  const draggingRef = useRef<{ startX: number; startY: number; initX: number; initY: number } | null>(null)
+  const posRef = useRef<{ x: number; y: number }>({ x: 120, y: 80 })
   const windowRef = useRef<HTMLDivElement | null>(null)
 
   // 计算器内部运算状态
@@ -45,6 +45,13 @@ export default function CalculatorWindow() {
     return unsubscribe
   }, [])
 
+  // 保持 posRef 与 pos 同步
+  useEffect(() => {
+    if (pos) {
+      posRef.current = pos
+    }
+  }, [pos])
+
   // 初始居中定位（尺寸加大后按新宽度居中）
   useEffect(() => {
     if (isOpen && pos === null) {
@@ -53,45 +60,72 @@ export default function CalculatorWindow() {
       const initX = Math.max(20, Math.floor((window.innerWidth - w) / 2))
       const initY = Math.max(50, Math.floor((window.innerHeight - h) / 3))
       setPos({ x: initX, y: initY })
+      posRef.current = { x: initX, y: initY }
     }
   }, [isOpen, mode, pos])
 
-  // 窗口拖动事件监听（阻止默认应用原生标题栏拖拽）
-  const handleMouseDownHeader = (e: React.MouseEvent) => {
+  // 模式切换时边界收拢，防止切换到宽模式时超出视口右侧
+  useEffect(() => {
+    if (pos) {
+      const currentWidth = mode === 'scientific' ? 500 : mode === 'programmer' ? 460 : 380
+      const maxX = Math.max(10, window.innerWidth - currentWidth - 10)
+      if (pos.x > maxX) {
+        const nextPos = { x: maxX, y: pos.y }
+        setPos(nextPos)
+        posRef.current = nextPos
+        if (windowRef.current) {
+          windowRef.current.style.transform = `translate3d(${maxX}px, ${pos.y}px, 0)`
+        }
+      }
+    }
+  }, [mode, pos])
+
+  // 窗口高性能 GPU 拖拽（使用 PointerCapture 与 translate3d 直接操作 DOM，彻底剔除 CSS 过渡与 React 重绘卡顿）
+  const handlePointerDownHeader = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('button')) return
     e.preventDefault()
     e.stopPropagation()
-    const curX = pos?.x ?? 100
-    const curY = pos?.y ?? 100
-    draggingRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      initX: curX,
-      initY: curY,
-    }
 
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!draggingRef.current) return
+    const startX = e.clientX
+    const startY = e.clientY
+    const initX = posRef.current.x
+    const initY = posRef.current.y
+    const target = e.currentTarget
+
+    try {
+      target.setPointerCapture(e.pointerId)
+    } catch {}
+
+    const onPointerMove = (ev: PointerEvent) => {
       ev.preventDefault()
       ev.stopPropagation()
-      const dx = ev.clientX - draggingRef.current.startX
-      const dy = ev.clientY - draggingRef.current.startY
+      const dx = ev.clientX - startX
+      const dy = ev.clientY - startY
       const currentWidth = mode === 'scientific' ? 500 : mode === 'programmer' ? 460 : 380
-      const newX = Math.max(10, Math.min(window.innerWidth - currentWidth - 10, draggingRef.current.initX + dx))
-      const newY = Math.max(10, Math.min(window.innerHeight - 200, draggingRef.current.initY + dy))
-      setPos({ x: newX, y: newY })
+      const newX = Math.max(10, Math.min(window.innerWidth - currentWidth - 10, initX + dx))
+      const newY = Math.max(10, Math.min(window.innerHeight - 200, initY + dy))
+      posRef.current = { x: newX, y: newY }
+
+      if (windowRef.current) {
+        windowRef.current.style.transform = `translate3d(${newX}px, ${newY}px, 0)`
+      }
     }
 
-    const onMouseUp = (ev: MouseEvent) => {
+    const onPointerUp = (ev: PointerEvent) => {
       ev.preventDefault()
       ev.stopPropagation()
-      draggingRef.current = null
-      window.removeEventListener('mousemove', onMouseMove, true)
-      window.removeEventListener('mouseup', onMouseUp, true)
+      try {
+        target.releasePointerCapture(ev.pointerId)
+      } catch {}
+      window.removeEventListener('pointermove', onPointerMove, true)
+      window.removeEventListener('pointerup', onPointerUp, true)
+      window.removeEventListener('pointercancel', onPointerUp, true)
+      setPos({ ...posRef.current })
     }
 
-    window.addEventListener('mousemove', onMouseMove, true)
-    window.addEventListener('mouseup', onMouseUp, true)
+    window.addEventListener('pointermove', onPointerMove, true)
+    window.addEventListener('pointerup', onPointerUp, true)
+    window.addEventListener('pointercancel', onPointerUp, true)
   }
 
   // 字符输入
@@ -407,23 +441,25 @@ export default function CalculatorWindow() {
 
   const progBases = getBaseValues(progValue)
   const windowWidthClass = mode === 'scientific' ? 'w-[500px]' : mode === 'programmer' ? 'w-[460px]' : 'w-[380px]'
+  const curPos = pos ?? posRef.current
 
   return (
     <div
       ref={windowRef}
       data-calculator-window="true"
       style={{
-        left: pos?.x ?? 120,
-        top: pos?.y ?? 80,
+        transform: `translate3d(${curPos.x}px, ${curPos.y}px, 0)`,
+        transition: 'none',
+        willChange: 'transform',
         WebkitAppRegion: 'no-drag',
       } as React.CSSProperties}
-      className={`no-drag fixed z-[99999] flex flex-col rounded-xl border border-line-strong bg-card/98 shadow-[0_24px_64px_rgba(0,0,0,0.45)] backdrop-blur-md select-none text-ink animate-in fade-in zoom-in-95 duration-150 overflow-hidden ${windowWidthClass}`}
+      className={`no-drag fixed left-0 top-0 z-[99999] flex flex-col rounded-xl border border-line-strong bg-card shadow-[0_20px_50px_rgba(0,0,0,0.4)] select-none text-ink overflow-hidden ${windowWidthClass}`}
     >
-      {/* 标题栏与拖拽把柄（标定 no-drag 彻底阻止拖拽整个系统窗口） */}
+      {/* 标题栏与拖拽把柄（标定 no-drag 与捕获拖拽，彻底杜绝主应用窗口拖拽） */}
       <div
-        onMouseDown={handleMouseDownHeader}
+        onPointerDown={handlePointerDownHeader}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        className="no-drag flex items-center justify-between border-b border-line bg-paper/70 px-4 py-2.5 cursor-move"
+        className="no-drag flex items-center justify-between border-b border-line bg-paper/70 px-4 py-2.5 cursor-move select-none"
       >
         <div className="flex items-center gap-2">
           <Calculator size={15} className="text-seal shrink-0" />
