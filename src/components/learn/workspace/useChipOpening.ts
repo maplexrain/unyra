@@ -100,6 +100,7 @@ export function useChipOpening({
       ref.kind === 'settings' ||
       ref.kind === 'user' ||
       ref.kind === 'terminal' ||
+      ref.kind === 'classroom' ||
       ref.kind === 'usage' ||
       ref.kind === 'schedule' ||
       ref.kind === 'mind' ||
@@ -126,6 +127,15 @@ export function useChipOpening({
   const openChip = useCallback(
     (p: ChipPayload) => {
       const s = getLatest()
+      // 课堂节点没有 chip 形态（tabDocPayload 有意不给），但交付登记与导师句柄会带课堂
+      // uuid：nodeId 认得出课堂就直接开课堂页签——落到下面的文档反查只会误报「已经不在了」
+      if (p.nodeId && p.nodeId.startsWith('classroom')) {
+        const cl = (s.classrooms ?? []).find((c) => c.id === p.nodeId)
+        if (cl) {
+          openTab({ kind: 'classroom', classroomId: cl.id, nodeId: cl.id, goalId: p.goalId || s.activeGoalId || undefined })
+          return
+        }
+      }
       if (p.type === 'exam' && !p.attemptId) {
         const row = p.examId ? s.exams.find((e) => e.id === p.examId) : undefined
         if (!row) {

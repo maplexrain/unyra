@@ -39,6 +39,7 @@ const MINI_FILL: Record<GNodeKind, string> = {
   video: '#ec4899',
   project: '#14b8a6',
   file: '#2563eb',
+  classroom: '#38bdf8',
 }
 
 export interface CanvasMinimapProps {

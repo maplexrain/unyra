@@ -19,6 +19,7 @@ export const KIND_TONE: Record<GNodeKind, string> = {
   video: 'border-pink-500/30 bg-pink-500/[0.06]',
   project: 'border-teal-500/30 bg-teal-500/[0.06]',
   file: 'border-blue-500/30 bg-blue-500/[0.06]',
+  classroom: 'border-sky-500/35 bg-sky-500/[0.06]',
 }
 
 export const KIND_BADGE: Record<GNodeKind, string> = {
@@ -31,6 +32,7 @@ export const KIND_BADGE: Record<GNodeKind, string> = {
   video: 'bg-pink-500/15 text-pink-700 dark:text-pink-300',
   project: 'bg-teal-500/15 text-teal-700 dark:text-teal-300',
   file: 'bg-blue-500/15 text-blue-700 dark:text-blue-300',
+  classroom: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
 }
 
 /** 目标项圆点与它的连线只用这一个颜色：颜色在图上只承载一个含义「来自某条目标项」 */

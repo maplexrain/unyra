@@ -20,7 +20,7 @@ import { registerExamIpc } from './examWindow'
 import { applyAppIcon } from './applyIcon'
 import { rebuildAppMenu, logoSvgPath, appIcon } from './icon'
 import { showMainWindow, flashMainWindow, mainWindow } from './windows'
-import { rebuildTrayMenu, hideToTray, quitApp, showTrayBalloon } from './tray'
+import { rebuildTrayMenu, hideToTray, quitApp, showTrayBalloon, clearCloseFallback } from './tray'
 import { pdfFooter, pdfPageSize, saveFilters } from './exportPdf'
 import type { ExportPdfPayload } from './exportPdf'
 import { getFocusedAppName } from './focusedApp'
@@ -174,6 +174,7 @@ export function registerIpc(): void {
    * remember（对话框里勾了「不再询问」）为真时，把这次的选择直接存成策略，下次不再问。
    */
   ipcMain.handle('window:closeDecision', (_e, action: unknown, remember: unknown) => {
+    clearCloseFallback()
     if (remember === true && (action === 'close' || action === 'tray')) setCloseBehavior(action)
     if (action === 'tray') hideToTray()
     else if (action === 'close') quitApp()

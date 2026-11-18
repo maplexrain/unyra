@@ -108,6 +108,15 @@ export function KindIcon({ kind, size = 16 }: { kind: GNodeKind; size?: number }
       </svg>
     )
   }
+  if (kind === 'classroom') {
+    return (
+      <svg {...common}>
+        <path d="M2 3h20" />
+        <path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3" />
+        <path d="m7 21 5-5 5 5" />
+      </svg>
+    )
+  }
 
   return (
     <svg {...common}>

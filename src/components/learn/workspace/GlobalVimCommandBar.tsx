@@ -5,6 +5,10 @@ import { matchVimCommands, type VimCommandInfo } from '../../../lib/vimCommandCa
 import { getOpenTargets, type VimOpenTarget } from '../../../lib/vimOpenTargets'
 import { browseVimSearch, dispatchBrowseSearch } from '../../../lib/browseVimSearch'
 import VimOpenDropdown from './VimOpenDropdown'
+import VimTerminalDropdown, { filterTerminalOptions } from './VimTerminalDropdown'
+import VimCalcDropdown, { filterCalcOptions } from './VimCalcDropdown'
+import { preserveCurrentSelection, restoreOrClearPreservedSelection } from './vimSelectionPreserve'
+import { initDoubleShiftListener } from '../../../lib/doubleShiftListener'
 import { t } from '../../../i18n'
 
 /**
@@ -43,7 +47,12 @@ export default function GlobalVimCommandBar() {
     }
   }, [open])
 
-  /* ---------- 搜索模式（/ 与 ?）与 :open / :o 目标搜索模式判断 ---------- */
+  // 全局双击 Shift 键检测唤起 :open 模式
+  useEffect(() => {
+    return initDoubleShiftListener()
+  }, [])
+
+  /* ---------- 搜索模式（/ 与 ?）、:open 目标、:terminal 类型与 :calc 类型判断 ---------- */
   const isSearchMode = mode === '/' || mode === '?'
   const openMatch = !isSearchMode && value.match(/^:?\s*(?:open\b\s*(.*)|o\s+(.*))$/i)
   const isOpenMode = !isSearchMode && Boolean(openMatch)
@@ -53,8 +62,27 @@ export default function GlobalVimCommandBar() {
     return getOpenTargets(openQuery)
   }, [isOpenMode, openQuery])
 
+  const termMatch = !isSearchMode && value.match(/^:?\s*(?:terminal\b\s*(.*)|term\b\s+(.*))$/i)
+  const isTerminalMode = !isSearchMode && Boolean(termMatch)
+  const termArg = termMatch ? (termMatch[1] ?? termMatch[2] ?? '') : ''
+  const termOptions = useMemo(() => {
+    if (!isTerminalMode) return []
+    return filterTerminalOptions(termArg)
+  }, [isTerminalMode, termArg])
+
+  const calcMatch = !isSearchMode && value.match(/^:?\s*(?:calc\b\s+(.*)|calculator\b\s+(.*))$/i)
+  const isCalcMode = !isSearchMode && Boolean(calcMatch)
+  const calcArg = calcMatch ? (calcMatch[1] ?? calcMatch[2] ?? '') : ''
+  const calcOptions = useMemo(() => {
+    if (!isCalcMode) return []
+    return filterCalcOptions(calcArg)
+  }, [isCalcMode, calcArg])
+
   /* ---------- 前缀联想：候选与幽灵补全 ---------- */
-  const matches = useMemo(() => (isOpenMode || isSearchMode ? [] : matchVimCommands(value)), [isOpenMode, isSearchMode, value])
+  const matches = useMemo(
+    () => (isOpenMode || isTerminalMode || isCalcMode || isSearchMode ? [] : matchVimCommands(value)),
+    [isOpenMode, isTerminalMode, isCalcMode, isSearchMode, value]
+  )
   const [selected, setSelected] = useState(-1)
   /** 幽灵预览的目标项：方向键选中的那一个；没选过就看第一个候选 */
   const ghostIdx = selected >= 0 && selected < matches.length ? selected : matches.length ? 0 : -1
@@ -64,7 +92,7 @@ export default function GlobalVimCommandBar() {
    * 支持前缀带冒号 `:` 的情形对齐补全。
    */
   const ghostText = (() => {
-    if (isOpenMode || isSearchMode) return null
+    if (isOpenMode || isTerminalMode || isCalcMode || isSearchMode) return null
     if (!ghostItem || value.includes(' ') || value.length === 0) return null
     const typed = value.replace(/^:+/, '')
     if (!typed) return null
@@ -136,13 +164,16 @@ export default function GlobalVimCommandBar() {
     return () => setGlobalCommandBarOpener(null)
   }, [])
 
-  // 弹窗打开后自动聚焦
+  // 弹窗打开后自动聚焦并保持背景正文选区样式
   useEffect(() => {
     if (open) {
+      preserveCurrentSelection()
       const id = requestAnimationFrame(() => {
         inputRef.current?.focus()
       })
       return () => cancelAnimationFrame(id)
+    } else {
+      restoreOrClearPreservedSelection()
     }
   }, [open])
 
@@ -187,6 +218,7 @@ export default function GlobalVimCommandBar() {
     if (!committed) {
       browseVimSearch.clear()
     }
+    restoreOrClearPreservedSelection()
     setOpen(false)
     setValue('')
     setSelected(-1)
@@ -257,7 +289,21 @@ export default function GlobalVimCommandBar() {
         setSelected((s) => (s < 0 ? (isDown ? 0 : n - 1) : (isDown ? s + 1 : s - 1 + n) % n))
         return
       }
-      if (!isOpenMode && matches.length > 0) {
+      if (isTerminalMode && termOptions.length > 0) {
+        e.preventDefault()
+        e.stopPropagation()
+        const n = termOptions.length
+        setSelected((s) => (s < 0 ? (isDown ? 0 : n - 1) : (isDown ? s + 1 : s - 1 + n) % n))
+        return
+      }
+      if (isCalcMode && calcOptions.length > 0) {
+        e.preventDefault()
+        e.stopPropagation()
+        const n = calcOptions.length
+        setSelected((s) => (s < 0 ? (isDown ? 0 : n - 1) : (isDown ? s + 1 : s - 1 + n) % n))
+        return
+      }
+      if (!isOpenMode && !isTerminalMode && !isCalcMode && matches.length > 0) {
         e.preventDefault()
         e.stopPropagation()
         const n = matches.length
@@ -307,6 +353,24 @@ export default function GlobalVimCommandBar() {
         } else {
           close(false)
         }
+        return
+      }
+
+      // :terminal 模式直接执行选中的终端类型
+      if (isTerminalMode) {
+        const option = termOptions[selected >= 0 && selected < termOptions.length ? selected : 0]
+        const shellArg = option ? option.kind : termArg.trim()
+        close(true)
+        executeVimCommand('terminal ' + shellArg)
+        return
+      }
+
+      // :calc 模式直接执行选中的计算器类型
+      if (isCalcMode) {
+        const option = calcOptions[selected >= 0 && selected < calcOptions.length ? selected : 0]
+        const modeArg = option ? option.kind : calcArg.trim()
+        close(true)
+        executeVimCommand('calc ' + modeArg)
         return
       }
 
@@ -362,6 +426,7 @@ export default function GlobalVimCommandBar() {
     <div
       role="dialog"
       aria-label={t('全局 Vim 命令行')}
+      data-command-bar="true"
       className="fixed inset-0 z-[99999] pointer-events-none flex flex-col items-center pt-[14vh]"
     >
       <div
@@ -424,7 +489,11 @@ export default function GlobalVimCommandBar() {
                   ? t('输入搜索内容或正则表达式 (支持拼音匹配，按 Enter 查找)...')
                   : isOpenMode
                   ? t('搜索打开目标：支持拼音缩写、全拼或中文名称...')
-                  : t('输入命令 (例如 w, q, edit, view, browser, fullscreen, wrap, open)...')
+                  : isTerminalMode
+                  ? t('选择终端类型 (powershell, cmd, bash)...')
+                  : isCalcMode
+                  ? t('选择计算器类型 (standard, scientific, programmer)...')
+                  : t('输入命令 (例如 w, q, edit, view, browser, fullscreen, wrap, open, calc)...')
               }
               className="w-full bg-transparent text-ink placeholder:text-ink-faint/70 outline-none font-mono text-[14px] border-none p-0 focus:ring-0 leading-normal"
             />
@@ -442,13 +511,31 @@ export default function GlobalVimCommandBar() {
         </div>
 
         {/*
-          下拉内容：:open / :o 下拉候选列表 vs 普通 Vim 命令补全列表
+          下拉内容：:open / :o 下拉候选列表 vs :terminal 下拉候选 vs 普通 Vim 命令补全列表
         */}
         {isOpenMode ? (
           <VimOpenDropdown
             targets={openTargets}
             selectedIndex={selected >= 0 ? selected : 0}
             onSelect={executeTarget}
+          />
+        ) : isTerminalMode ? (
+          <VimTerminalDropdown
+            filter={termArg}
+            selectedIndex={selected >= 0 ? selected : 0}
+            onSelect={(opt) => {
+              close(true)
+              executeVimCommand('terminal ' + opt.kind)
+            }}
+          />
+        ) : isCalcMode ? (
+          <VimCalcDropdown
+            filter={calcArg}
+            selectedIndex={selected >= 0 ? selected : 0}
+            onSelect={(opt) => {
+              close(true)
+              executeVimCommand('calc ' + opt.kind)
+            }}
           />
         ) : (
           !isSearchMode && matches.length > 0 && (

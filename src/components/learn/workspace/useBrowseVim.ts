@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { isVimEnabled } from '../../../lib/vimSettings'
+import { getCalculatorState } from '../../../lib/calculatorState'
 import { openGlobalCommandBar } from '../../../lib/commandBarFocus'
 import { docScrollElement, scrollToDoc, visibleDocBody } from '../../../lib/docDom'
 import { focusedGroup } from '../../../learn/groups'
@@ -29,7 +30,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
   if (target.closest('.cm-editor, .cm-content, [role="textbox"]')) return true
   if (target.closest('.modal-scrim, [role="dialog"], [role="menu"]')) return true
-  if (target.closest('[data-command-bar]')) return true
+  if (target.closest('[data-command-bar], [data-calculator-window]')) return true
   return false
 }
 
@@ -298,8 +299,8 @@ export function useBrowseVim({ getLatest: rawGetLatest, onToast: rawOnToast, nex
         return
       }
 
-      // 未开启 Vim 或处于文本输入区域时忽略
-      if (!isVimEnabled() || isEditableTarget(e.target)) return
+      // 未开启 Vim、处于文本输入区域或计算器打开时忽略
+      if (!isVimEnabled() || isEditableTarget(e.target) || getCalculatorState().isOpen) return
 
       // 浏览模式 Vim 仅对允许切换为编辑模式的页签开放，其余页签不接管按键；处于编辑态时由 CodeMirror Vim 自身接管
       const s = getLatest()

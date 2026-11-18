@@ -26,6 +26,7 @@ import { clearOutline, createOutlineEntity, deleteOutlineEntity, outlineByMember
 import { createVideoNode, deleteVideoNode } from '../video/nodes'
 import { createProjectNode, deleteProjectNode, inferPathKind, resolveProjectRoot } from '../projects'
 import { createFileNode, removeFileNode, goalFilesDir } from '../fileNodes'
+import { classroomListRows } from '../classroom/listing'
 import { removeUserPath } from '../../lib/storage'
 import { NOTE_DEFAULT_NAME, notesOf, uniqueNoteName } from '../notes'
 import { SUPERDOC_DEFAULT_NAME, removeSuperDoc, writeSuperDoc } from '../superdocs'
@@ -41,6 +42,9 @@ import { SuperdocGNode } from './superdoc'
 import { VideoGNode } from './video'
 import { ProjectGNode } from './project'
 import { FileGNode } from './file'
+import { ClassroomGNode } from './classroom'
+import { loadClassroomEntity, saveClassroomEntity } from '../classroom/store'
+import type { LessonCourse } from '../classroom/types'
 
 export interface NodeServiceDeps {
   getLatest: () => LearnStore
@@ -62,6 +66,8 @@ export type UuidLocation =
   | { kind: 'project'; nodeId: string }
   /** 文件节点（游离实体）：fileId 是它自己的实体 id */
   | { kind: 'file'; fileId: string }
+  /** 课堂节点（互动课件实体）：classroomId 是它自己的实体 id */
+  | { kind: 'classroom'; classroomId: string }
 
 export function locateUuid(store: LearnStore, uuid: string): UuidLocation | null {
   const entryDoc = docIdOfEntryUuid(uuid)
@@ -84,6 +90,8 @@ export function locateUuid(store: LearnStore, uuid: string): UuidLocation | null
   if ((store.projects ?? []).some((p) => p.id === uuid)) return { kind: 'project', nodeId: uuid }
   // 文件节点：游离实体（目标 × 本地文件/网页的绑定），没有宿主文档
   if ((store.fileNodes ?? []).some((f) => f.id === uuid)) return { kind: 'file', fileId: uuid }
+  // 课堂节点：互动课件实体
+  if ((store.classrooms ?? []).some((c) => c.id === uuid) || uuid.startsWith('classroom:') || uuid.startsWith('classroom_') || uuid.startsWith('classroom-')) return { kind: 'classroom', classroomId: uuid }
   for (const node of store.nodes) {
     if (node.id === uuid) return { kind: 'doc', docId: node.id }
     const note = notesOf(node).find((n) => n.id === uuid)
@@ -193,6 +201,8 @@ export class NodeService {
         return new ProjectGNode(this.ctx, loc.nodeId)
       case 'file':
         return new FileGNode(this.ctx, loc.fileId)
+      case 'classroom':
+        return new ClassroomGNode(this.ctx, loc.classroomId)
     }
   }
 
@@ -341,6 +351,40 @@ export class NodeService {
       }
     }
 
+    if (kind === 'classroom') {
+      const classId = `classroom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+      const classTitle = title || '互动课堂'
+      const entity = loadClassroomEntity(classId, classTitle)
+      entity.goalId = goalId
+      if (typeof input.course === 'object' && input.course) {
+        entity.course = input.course as LessonCourse
+      }
+      saveClassroomEntity(entity)
+
+      const underGiven = input.under !== undefined && input.under !== null && String(input.under).trim() !== ''
+      let finalStore: LearnStore = { ...store, classrooms: [...(store.classrooms ?? []), entity] }
+      let note = '已建一枚互动课堂节点（游离）：可通过拖线挂到教学文档之下'
+      if (underGiven) {
+        const rawUnder = String(input.under).trim()
+        const hostDoc = nodeById(store, rawUnder)
+        if (hostDoc) {
+          const r = addEdge(finalStore, hostDoc.id, classId)
+          if (r.added) {
+            finalStore = r.store
+            note = `已建互动课堂并挂在文档「${hostDoc.title}」之下`
+          }
+        }
+      }
+      this.deps.set(finalStore)
+      return {
+        ok: true,
+        uuid: classId,
+        title: classTitle,
+        created: true,
+        note,
+      }
+    }
+
     /*
      * under 的两副面孔：`o:` 前缀 = 挂到某份大纲之下（附身或游离，两类大纲都是
      * 树成员）；其余 = 挂到某份文档之下（挂件的宿主 / 补大纲的宿主）。按前缀分流
@@ -350,16 +394,46 @@ export class NodeService {
     const underRaw = typeof input.under === 'string' ? input.under.trim() : ''
     const outlineUnder = underRaw.startsWith('o:') ? outlineByMember(store, underRaw) : null
     const videoUnder = (store.videoNodes ?? []).find((v) => v.id === underRaw)
+    const classroomUnder = (store.classrooms ?? []).find((c) => c.id === underRaw) || ((underRaw.startsWith('classroom_') || underRaw.startsWith('classroom-')) ? { id: underRaw } : null)
     if (underRaw.startsWith('o:') && !outlineUnder) {
       return { error: 'under 里的大纲（' + underRaw + '）已经不在了：先 api.node.list() 查清楚再建' }
     }
     if (videoUnder && kind !== 'doc') {
       return { error: '视频节点下只能挂文档（如视频总览文档）' }
     }
+    if (classroomUnder) {
+      if (kind !== 'note' && kind !== 'exam' && kind !== 'superdoc' && kind !== 'file') {
+        return { error: '课堂节点的下级只能连接笔记、考试、超级文档或文件节点' }
+      }
+      if (kind === 'note') {
+        const id = crypto.randomUUID()
+        const pool = detachedPoolOf(store, goalId)
+        const name = uniqueNoteName(pool.notes, title || NOTE_DEFAULT_NAME)
+        const note: NoteFile = { id, name, content: '', createdAt: Date.now(), updatedAt: Date.now() }
+        const nextStore = addEdge(withDetached(store, goalId, { ...pool, notes: [...pool.notes, note] }), classroomUnder.id, id).store
+        this.deps.set(nextStore)
+        return { ok: true, uuid: id, title: name, created: true, note: '已在课堂下建笔记「' + name + '」' }
+      }
+      if (kind === 'superdoc') {
+        const id = crypto.randomUUID()
+        const pool = detachedPoolOf(store, goalId)
+        const name = title || SUPERDOC_DEFAULT_NAME
+        const doc: SuperDocFile = { id, name, html: '', createdAt: Date.now(), updatedAt: Date.now() }
+        const nextStore = addEdge(withDetached(store, goalId, { ...pool, superdocs: [...pool.superdocs, doc] }), classroomUnder.id, id).store
+        this.deps.set(nextStore)
+        return { ok: true, uuid: id, title: name, created: true, note: '已在课堂下建超级文档「' + name + '」' }
+      }
+      if (kind === 'exam') {
+        const exam: Exam = { id: crypto.randomUUID(), nodeId: '', goalId, title: title || '随堂测验', kind: 'quiz', level: 'easy', minutes: 0, questions: [], attempts: [], createdAt: Date.now() }
+        const nextStore = addEdge(upsertExam(store, exam), classroomUnder.id, exam.id).store
+        this.deps.set(nextStore)
+        return { ok: true, uuid: exam.id, title: exam.title, created: true, note: '已在课堂下建随堂测验' }
+      }
+    }
     if (outlineUnder?.kind === 'free' && (kind === 'note' || kind === 'superdoc' || kind === 'exam')) {
       return { error: '游离大纲没有宿主文档，挂件挂不上去：挂件挂在文档之下，under 给文档的 uuid' }
     }
-    const under = !underRaw || outlineUnder || videoUnder ? null : hostDocOfUnder(store, underRaw)
+    const under = !underRaw || outlineUnder || videoUnder || classroomUnder ? null : hostDocOfUnder(store, underRaw)
     if (under && 'error' in under) return { error: under.error }
     const host = outlineUnder?.kind === 'attached'
       ? nodeById(store, outlineUnder.docId)
@@ -628,7 +702,7 @@ export class NodeService {
       }
     }
 
-    return { error: 'kind 只能是 doc / outline / note / exam / superdoc / video / project（entry 由目标生成）' }
+    return { error: 'kind 只能是 doc / outline / note / exam / superdoc / video / project / classroom（entry 由目标生成）' }
   }
 
   /** 目标的全量清单（agent 的导航图；含挂件，全部带 uuid） */
@@ -688,6 +762,8 @@ export class NodeService {
           })),
         all: (store.videos ?? []).map((v) => ({ videoId: v.id, title: v.title, plugin: v.pluginName ?? v.pluginId })),
       },
+      // 课堂节点段（uuid / 标题 / upstream）：不在 nodes 里，课堂清单逻辑在 classroom/listing
+      classrooms: classroomListRows(store, goalId),
       /*
        * 项目节点（目标 × 真实路径的授权声明）：uuid 与解析后的根一起给——
        * 后续 api.project.* 的 read / write 都按 uuid + subPath 寻址。
@@ -890,6 +966,17 @@ export class NodeService {
         this.deps.set(withDetached(store, found.goalId, { ...pool, notes: pool.notes.filter((n) => n.id !== loc.noteId) }))
       }
       return { ok: true, note: '已删除笔记「' + found.note.name + '」（开着它的页签会一并关掉）' }
+    }
+
+    if (loc.kind === 'classroom') {
+      const s = this.deps.getLatest()
+      const cleanStore = {
+        ...s,
+        classrooms: (s.classrooms ?? []).filter((c) => c.id !== loc.classroomId),
+        edges: s.edges.filter((e) => e.from !== loc.classroomId && e.to !== loc.classroomId),
+      }
+      this.deps.set(cleanStore)
+      return { ok: true, note: '已删除课堂节点' }
     }
 
     const sdocFound = findSuperDocEntity(store, loc.sdocId)

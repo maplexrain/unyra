@@ -23,6 +23,7 @@ import type {
 } from './node'
 import type { FavoriteItem, AgentTabRef, LocalFile } from './tabs'
 import type { FileNodeEntity, ProjectNodeEntity, VideoNodeEntity, VideoResource } from './media'
+import type { ClassroomEntity } from '../classroom/types'
 import type { MemoryStore } from './memory'
 import type { WorkflowBook } from './workflow'
 import type { GoalKnowledgeItem } from './knowledge'
@@ -111,6 +112,8 @@ export interface LearnStore {
    * 可选字段：旧数据没有它，全部使用处按 ?? [] 兜底。
    */
   fileNodes?: FileNodeEntity[]
+  /** 互动课堂实体池（16:9 画布互动教学） */
+  classrooms?: ClassroomEntity[]
   /**
    * 目标级资源库的清单：目标 id → 资源列表（见 learn/static）。
    * 只放元数据，文件本体在 `{目标}/static/` 下——与图片引用一样的取舍：

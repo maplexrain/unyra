@@ -95,6 +95,7 @@ export interface CanvasCardsProps {
   onOpenProjectFile?: (absPath: string) => void
   onUpdateVideoNode?: (nodeUuid: string, patch: { input?: string; title?: string; titleCustomized?: boolean }) => ChannelResult
   onGenerateVideoDoc?: (videoNodeUuid: string) => void
+  onGenerateClassroom?: (classroomId: string) => void
   onBindFile?: (nodeUuid: string, patch: { fileKind?: FileNodeKind; url?: string; title?: string; titleCustomized?: boolean }) => ChannelResult
   onToast?: (msg: string) => void
 }
@@ -143,6 +144,7 @@ export function CanvasCards({
   onOpenProjectFile,
   onUpdateVideoNode,
   onGenerateVideoDoc,
+  onGenerateClassroom,
   onBindFile,
   onToast,
 }: CanvasCardsProps) {
@@ -571,6 +573,21 @@ export function CanvasCards({
                     {t('生成文档')}
                   </button>
                 </div>
+              ) : card.kind === 'classroom' && card.blank ? (
+                <div className="flex items-center justify-between gap-2 px-3 pb-2">
+                  <span className="text-[11px] text-ink-faint">{t('课件尚为空白')}</span>
+                  <button
+                    type="button"
+                    className="bg-seal/15 px-2 py-0.5 text-[11px] text-seal-deep hover:bg-seal/25"
+                    onClick={() => onGenerateClassroom?.(card.uuid)}
+                  >
+                    {t('生成课堂')}
+                  </button>
+                </div>
+              ) : card.kind === 'classroom' ? (
+                <div className="px-3 pb-2 text-[11px] text-ink-soft">
+                  <span>{card.subtitle}</span>
+                </div>
               ) : card.kind === 'exam' && (card.attempts?.length ?? 0) > 0 ? (
                 /*
                   试卷的考试记录：一行一次作答，顶部配有「开始考试」按钮；
@@ -833,11 +850,13 @@ export function CanvasCards({
                 出线把手（右）只长在 doc 上：大纲的出线全走目标项的菱形口（从口上拖出去
                 才会认领），挂件与入口没有出线。
               */}
-              {(card.kind === 'doc' || card.kind === 'video' || card.kind === 'exam' || card.kind === 'superdoc' || card.kind === 'file' || card.kind === 'note') && (
+              {(card.kind === 'doc' || card.kind === 'video' || card.kind === 'exam' || card.kind === 'superdoc' || card.kind === 'file' || card.kind === 'note' || card.kind === 'classroom') && (
                 <div
                   data-link-handle={card.uuid}
                   title={
-                    card.kind === 'note'
+                    card.kind === 'classroom'
+                      ? t('拖出去连到笔记、考试、超级文档或文件节点')
+                      : card.kind === 'note'
                       ? t('拖出去连到文件节点')
                       : card.kind === 'exam' || card.kind === 'superdoc'
                         ? t('拖出去连到笔记或文件节点')

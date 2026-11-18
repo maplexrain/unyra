@@ -104,6 +104,21 @@ const OUTLINE_GUIDE_INSTRUCTION = ['## 使用「生成大纲导读」工作流�
 const VIDEO_OVERVIEW_INSTRUCTION = ['## 使用「视频总览」工作流。', '- 目标节点: {{target}}', '- 视频资源: {{videoId}}'].join('\n')
 
 /**
+ * 「生成互动课堂」：为课堂节点生成 16:9 画布课件（画面 + DOM 动作流 + 讲解语音）。
+ *
+ * 与其他内置工作流同一纪律：指令只写「做什么」与本轮参数——course 结构契约、两套
+ * 动效表的分界、教学风格要求全在系统提示词「内置工作流与任务规程」的【生成互动课堂】
+ * 一节，结构细节运行时向 api.classroom.schema() 现查。曾经把教学散文、API 写法和
+ * 交付契约全挤在这段指令里（提示词与指令粘连），agent 自造 beats 字段、把 data-anim
+ * 名当 action.verb，静默失败无从排查（2026-11-18 拆开修复）。
+ */
+const CLASSROOM_INSTRUCTION = [
+  '## 使用「生成互动课堂」工作流。',
+  '- 目标课堂节点: {{target}}',
+  '- 动笔前先 `await api.classroom.schema()` 对齐 course 结构契约（动作列表字段名是 actions，不是 beats）；步骤与教学规矩见系统提示词「内置工作流与任务规程」的【生成互动课堂】一节',
+].join('\n')
+
+/**
  * 「出卷」：类型与难度由 Agent 问用户，出题后直接保存试卷文件。
  *
  * 出卷流程与题目 JSON 契约在系统提示词的「内置工作流与任务规程」一节里（读写边界
@@ -217,6 +232,15 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     params: ['target', 'videoId'],
     prep: 'show',
     runnable: false,
+  },
+  {
+    id: 'classroom',
+    name: '生成互动课堂',
+    description: '为课堂节点生成 16:9 画布动态课件（画面、DOM 视觉动作与语音讲解流）',
+    instruction: CLASSROOM_INSTRUCTION,
+    params: ['target'],
+    prep: 'show',
+    runnable: true,
   },
   {
     id: 'exam',

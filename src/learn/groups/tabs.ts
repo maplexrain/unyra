@@ -175,14 +175,17 @@ export function openInGroup(
     if (existing) return activateIn(docs, target, existing.id)
   }
   const newTab = makeTab(ref, at, view)
-  const next = withGroup(docs, target, (g) => ({
-    ...g,
-    tabs: blankYieldsTo(docs, g, ref, goalOfNode)
+  const next = withGroup(docs, target, (g) => {
+    const baseTabs = blankYieldsTo(docs, g, ref, goalOfNode)
       ? // 空白占位让位：清掉这一格的全部占位，新页签顶上（其余页签原地不动）
         [...g.tabs.filter((t) => t.ref.kind !== 'blank'), newTab]
-      : [...g.tabs, newTab],
-    active: id,
-  }))
+      : [...g.tabs, newTab]
+    return {
+      ...g,
+      tabs: reorderTabs(baseTabs, baseTabs.map((t) => t.id)),
+      active: id,
+    }
+  })
   return settle(withDocs(next, { focus: target }))
 }
 

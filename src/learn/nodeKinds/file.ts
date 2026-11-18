@@ -117,10 +117,10 @@ export class FileGNode extends GNode {
   }
 
   onUpstream(node: GNode): ConnectFilter {
-    if (node.kind === 'doc' || node.kind === 'note' || node.kind === 'superdoc' || node.kind === 'exam') {
+    if (node.kind === 'doc' || node.kind === 'note' || node.kind === 'superdoc' || node.kind === 'exam' || node.kind === 'classroom') {
       return true
     }
-    return '文件节点的上级只能是文档节点、笔记节点、超级文档节点或考试节点'
+    return '文件节点的上级只能是文档节点、笔记节点、超级文档节点、考试节点或课堂节点'
   }
 
   onDownstream(node: GNode): ConnectFilter {

@@ -779,6 +779,27 @@ body {
   color: #ffffff;
 }
 
+/* Vim 选区持久化高亮：当全局 Vim 命令行唤起时，保持选区荧光样式高亮可见 */
+::highlight(vim-selection) {
+  background-color: rgba(250, 204, 21, 0.45);
+  color: var(--color-ink-strong);
+}
+:root[data-theme='dark'] ::highlight(vim-selection) {
+  background-color: rgba(250, 204, 21, 0.4);
+  color: #ffffff;
+}
+
+:root[data-vim-command-open='true'] .cm-editor:not(.cm-focused) .cm-selectionBackground,
+body[data-vim-command-open='true'] .cm-editor:not(.cm-focused) .cm-selectionBackground {
+  display: block !important;
+  background-color: rgba(250, 204, 21, 0.4) !important;
+}
+:root[data-theme='dark'][data-vim-command-open='true'] .cm-editor:not(.cm-focused) .cm-selectionBackground,
+body[data-theme='dark'][data-vim-command-open='true'] .cm-editor:not(.cm-focused) .cm-selectionBackground {
+  display: block !important;
+  background-color: rgba(250, 204, 21, 0.35) !important;
+}
+
 /* 代码编辑器（CodeMirror）核心保护：完全交由编辑器自身的选区图层与主题控制，绝对不覆盖语法高亮 */
 :root .cm-editor ::selection, :root .cm-editor *::selection,
 :root .cm-content ::selection, :root .cm-content *::selection,

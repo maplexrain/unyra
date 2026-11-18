@@ -240,6 +240,7 @@ export function revealOfTab(
     case 'agentSettings':
     case 'blank':
     case 'draft':
+    case 'classroom':
       // 设置页、用量页与新建目标是文档区的页签，但侧栏里没有它们的行（入口在顶栏或菜单），不定位；
       // 新建文件页签同样没有——它还没有落点，侧栏里不可能有一行指向它（保存之后它才变成 local）
       return null

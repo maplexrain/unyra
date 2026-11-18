@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from 'react'
+import { memo, useState, useEffect, useRef } from 'react'
 import type { DocView, LearnStore, LearnTab, TabRef } from '../../../learn/types'
 import { newDraftKey } from '../../../learn/tabs'
 import { draftOf } from '../../../learn/drafts'
@@ -54,9 +54,27 @@ export function EditorTabLayer({
   openTab,
   rememberScroll,
 }: EditorTabLayerProps) {
+  // 冷页签虚拟化：只挂载当前处于编辑态或最近编辑过的至多 4 个编辑器实例，其余后台页签不常驻 CodeMirror
+  const [mountedIds, setMountedIds] = useState<string[]>(() =>
+    activeSourceTabId ? [activeSourceTabId] : [],
+  )
+
+  useEffect(() => {
+    if (!activeSourceTabId) return
+    setMountedIds((prev) => {
+      const filtered = prev.filter(
+        (id) => id !== activeSourceTabId && tabs.some((t) => t.id === id),
+      )
+      return [activeSourceTabId, ...filtered].slice(0, 4)
+    })
+  }, [activeSourceTabId, tabs])
+
   return (
     <>
       {tabs.map((tab) => {
+        const isMounted = tab.id === activeSourceTabId || mountedIds.includes(tab.id)
+        if (!isMounted) return null
+
         /** 教学文档与笔记的正文（暂存区里那份优先）；超级文档单独取 */
         const pane = tab.ref.kind === 'teach' || tab.ref.kind === 'note' ? paneOf(store, tab) : null
         const superDoc = tab.ref.kind === 'super' ? readSuperDoc(store, tab.ref.nodeId, tab.ref.name) : null

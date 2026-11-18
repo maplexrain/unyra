@@ -38,6 +38,7 @@ export type CanvasChannelProps = Pick<
   | 'onGenerateDoc'
   | 'onGenerateOutline'
   | 'onGenerateVideoDoc'
+  | 'onGenerateClassroom'
   | 'onSetProjectPath'
   | 'onOpenProjectFile'
   | 'onBindFile'

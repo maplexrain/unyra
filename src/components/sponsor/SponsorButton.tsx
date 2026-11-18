@@ -102,7 +102,7 @@ export default function SponsorButton() {
           <div
             role="dialog"
             aria-label={t('赞助支持')}
-            className={`w-[600px] max-w-[95vw] rounded-2xl border border-line-strong/70 bg-card/95 p-4 shadow-2xl backdrop-blur-xl ${panelProps.className}`}
+            className={`w-[600px] max-w-[95vw] rounded-lg border border-line-strong/70 bg-card/95 p-4 shadow-2xl backdrop-blur-xl ${panelProps.className}`}
           >
             <div className="flex divide-x divide-line/40">
               {/* 第一栏：赞助名单 */}

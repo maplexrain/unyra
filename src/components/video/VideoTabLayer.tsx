@@ -6,6 +6,7 @@
  * - 绑定态（ref.videoId 有值或 videoNode 已关联 videoId）：资源在 store 里，页面自动解析；
  * - 创建/待确认态（无 videoId 或 videoNode 尚未确认）：输入/认领 → 确定为视频资源（回调交工作区）。
  */
+import { useState, useEffect } from 'react'
 import { MonitorPlay } from 'lucide-react'
 import { t } from '../../i18n'
 import type { LearnStore, LearnTab, TabRef, VideoNodeEntity, VideoRecap, VideoResource } from '../../learn/types'
@@ -51,9 +52,24 @@ export default function VideoTabLayer({
   onSelection,
   onSaveRecap,
 }: Props) {
+  // 冷页签虚拟化：只挂载当前激活或最近播放的至多 2 个视频页签，后台页签不常驻视频解码与播放器
+  const [mountedIds, setMountedIds] = useState<string[]>(() => (activeId ? [activeId] : []))
+
+  useEffect(() => {
+    if (!activeId) return
+    setMountedIds((prev) => {
+      const filtered = prev.filter((id) => id !== activeId && tabs.some((t) => t.id === id))
+      return [activeId, ...filtered].slice(0, 2)
+    })
+  }, [activeId, tabs])
+
   return (
     <>
       {tabs.map((tab) => {
+        const active = tab.id === activeId
+        const isMounted = active || mountedIds.includes(tab.id)
+        if (!isMounted) return null
+
         const videoNode =
           (videoNodes ?? []).find(
             (vn) => (tab.ref.videoNodeId && vn.id === tab.ref.videoNodeId) || (tab.ref.videoId && vn.videoId === tab.ref.videoId)
@@ -61,7 +77,6 @@ export default function VideoTabLayer({
         const videoId = tab.ref.videoId || videoNode?.videoId || null
         const resolvedVideoNodeId = tab.ref.videoNodeId || videoNode?.id
         const resource = videoId ? (videos ?? []).find((v) => v.id === videoId) ?? null : null
-        const active = tab.id === activeId
         return (
           <div
             key={tab.id}

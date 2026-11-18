@@ -57,12 +57,12 @@ export function Topbar({
   onOpenNotice,
   onOpenLan,
   onToast: _onToast,
-  schedule,
+  schedule: _schedule,
   tools,
   scheduleRinging,
 }: {
-  /** 日程入口（今天还有什么 + 手动安排；到点提醒的弹层也在这里，见 ScheduleButton） */
-  schedule: ReactNode
+  /** 日程入口（若单独传入） */
+  schedule?: ReactNode
   /** 工具入口（截图、录屏等实用工具箱，见 ToolsButton） */
   tools?: ReactNode
   /** 有日程正在响：顶栏整体渐变呼吸（样式见 styles/workspace.css 的 .moji-schedule-glow） */
@@ -198,8 +198,7 @@ export function Topbar({
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         {/* 更新入口：只有新版本**下载完成**之后它才存在，见 components/update/UpdateButton */}
         <UpdateButton onOpenUpdate={onOpenUpdate} />
-        {/* 日程入口：「今天还剩什么」，与账号那一簇同属右侧 */}
-        {schedule}
+        {/* 工具入口：已整合截图、日程与计算器 */}
         {tools}
         <UserMenu
           user={user}

@@ -10,7 +10,7 @@
  */
 
 import { cleanTerminalText } from './ansi'
-import type { ShellKind } from './TerminalHeader'
+import type { ShellKind } from '../../learn/types/tabs'
 
 export interface ProcessRunnerBridge {
   create: (opts: any) => Promise<any>

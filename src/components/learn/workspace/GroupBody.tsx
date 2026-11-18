@@ -32,6 +32,7 @@ import SettingsPanel from '../../settings/SettingsPanel'
 import UserTabPane from '../../user/UserTabPane'
 import TerminalTabPane from '../../terminal/TerminalTabPane'
 import UsagePanel from '../../settings/UsagePanel'
+import ClassroomView from '../classroom/ClassroomView'
 import { SchedulePage } from '../../schedule/SchedulePage'
 import MindPanel from '../../agent/MindPanel'
 import AgentSettingsPanel from '../../AgentSettingsPanel'
@@ -223,8 +224,8 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     (x): x is LearnTab & { ref: { kind: 'outline'; nodeId: string; goalId?: string } } => x.ref.kind === 'outline',
   )
   /** 这一格挂着的文件页签（本地文件与工作区文件）：keepalive 常驻，切页签只藏不卸，保持编辑器状态与光标 */
-  /** 这一格挂着的终端页签：keepalive 常驻，切页签只藏不卸，进程与会话状态持续保活 */
-  const hasTerminalTab = (g.group?.tabs ?? []).some((t) => t.ref.kind === 'terminal')
+  /** 这一格挂着的终端页签：每个终端独立成为一枚顶层页签，keepalive 常驻保活 */
+  const gTerminalTabs = (g.group?.tabs ?? []).filter((t) => t.ref.kind === 'terminal')
   const gFileTabs = (g.group?.tabs ?? []).filter((x) => x.ref.kind === 'local' || x.ref.kind === 'ws')
   /** 这一格挂着的教学文档 / 笔记 / 超级文档页签：编辑态常驻层（EditorTabLayer）照此挂起 */
   const gEditorTabs = (g.group?.tabs ?? []).filter(
@@ -340,7 +341,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
         文档内容 + 左侧工具条 + 右上角悬浮组。悬浮组是绝对定位的，所以这一层必须
         relative，并且它是**唯一**能被悬浮组盖住的地方——它不会跑到页签栏或对话栏上去。
       */}
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col bg-card">
           <div
             ref={isFocused ? docBox : undefined}
             {...boxProps}
@@ -475,6 +476,41 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               不销毁组件与后台子进程。这里让出位置。
             */
             null
+          ) : gTab?.ref.kind === 'classroom' ? (
+            /*
+              互动课堂：16:9 画布互动教学课堂（画面 + 动作 + 节拍时间轴）。
+            */
+            <ClassroomView
+              key={gTab.ref.classroomId}
+              classroomId={gTab.ref.classroomId}
+              store={store}
+              onUpdateClassroom={(nextEntity) => {
+                const latest = getLatest()
+                const list = latest.classrooms ?? []
+                const idx = list.findIndex((c) => c.id === nextEntity.id)
+                const nextList = idx >= 0 ? list.map((c, i) => (i === idx ? nextEntity : c)) : [...list, nextEntity]
+                set({ ...latest, classrooms: nextList })
+              }}
+              onOpenTab={(kind, targetId) => {
+                if (kind === 'doc') {
+                  openTab({ kind: 'teach', nodeId: targetId })
+                } else if (kind === 'exam') {
+                  const exam = store.exams.find((e) => e.id === targetId)
+                  if (exam) {
+                    openTab({ kind: 'exam', nodeId: exam.nodeId || targetId, examId: exam.id, attemptId: exam.attempts[0]?.id ?? '' })
+                  }
+                } else if (kind === 'file') {
+                  const fn = (store.fileNodes ?? []).find((f) => f.id === targetId)
+                  if (fn) {
+                    if (fn.fileKind === 'web') openTab({ kind: 'web', url: fn.url, key: 'fn_' + fn.id, fileNodeId: fn.id })
+                    else openTab({ kind: 'local', path: fn.url, title: fn.title })
+                  } else {
+                    openTab({ kind: 'local', path: targetId })
+                  }
+                }
+              }}
+              onGenerateClassroom={canvasChannel?.onGenerateClassroom}
+            />
           ) : gTab?.ref.kind === 'settings' ? (
             /*
               设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），
@@ -753,13 +789,25 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
         )}
 
         {/* 终端控制台常驻层（keepalive）：开着就挂在 DOM 中，切走只藏不卸（进程持续流式运行，直到页签或应用关闭） */}
-        {hasTerminalTab && (
-          <div
-            className={`absolute inset-0 z-10 flex flex-col ${gTab?.ref.kind === 'terminal' ? '' : 'hidden pointer-events-none'}`}
-          >
-            <TerminalTabPane active={gTab?.ref.kind === 'terminal'} onToast={onToast} />
-          </div>
-        )}
+        {gTerminalTabs.map((t) => {
+          const isCur = gTab?.id === t.id
+          const termRef = t.ref as { kind: 'terminal'; termId?: string; shell?: any; title?: string }
+          const termId = termRef.termId || t.id
+          return (
+            <div
+              key={t.id}
+              className={`absolute inset-0 z-10 flex flex-col ${isCur ? '' : 'hidden pointer-events-none'}`}
+            >
+              <TerminalTabPane
+                tabId={t.id}
+                termId={termId}
+                shell={termRef.shell}
+                active={isCur}
+                onToast={onToast}
+              />
+            </div>
+          )
+        })}
 
         {!isWeb() && gWebTabs.length > 0 && (
           <WebTabLayer

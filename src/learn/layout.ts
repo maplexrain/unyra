@@ -79,6 +79,7 @@ export function nodeLayout(store: LearnStore): Map<string, NodeLayout> {
         'video-nodes.json',
         'projects.json',
         'file-nodes.json',
+        'classrooms.json',
         'detached.json',
         ...ASSET_DIRS,
       ])

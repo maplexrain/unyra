@@ -53,6 +53,7 @@ export interface CanvasActionsDeps {
   /** 点大纲卡的标题 = 打开这份大纲的导读页签（没有导读时说明一句） */
   onOpenOutlineGuide?: (outlineUuid: string) => void
   onOpenFileNode?: (nodeUuid: string) => void
+  onOpenClassroom?: (classroomId: string) => void
   docs: NodeDocActions
   exams: ExamActions
   cards: CardView[]
@@ -87,6 +88,7 @@ export function useCanvasActions({
   onOpenVideoNode,
   onOpenOutlineGuide,
   onOpenFileNode,
+  onOpenClassroom,
   docs,
   exams,
   cards,
@@ -245,6 +247,10 @@ export function useCanvasActions({
         if (onOpenOutlineGuide) onOpenOutlineGuide(card.uuid)
         return
       }
+      if (card.kind === 'classroom') {
+        if (onOpenClassroom) onOpenClassroom(card.uuid)
+        return
+      }
       const loc = locateUuid(store, card.uuid)
       // 游离笔记与绑定的笔记**用起来没有任何区别**：同样开笔记页签（页签的实体解析
       // 认得出游离的，编辑保存走池子）。其余游离实体（超级文档 / 试卷）的页签形态
@@ -299,7 +305,7 @@ export function useCanvasActions({
       }
       onToast?.(t('大纲节点就在这张画布上，没有另一份页签'))
     },
-    [docs, exams, onToast, onOpenVideo, onOpenVideoNode, onOpenFileNode, store, toggleProjRoot],
+    [docs, exams, onToast, onOpenVideo, onOpenVideoNode, onOpenFileNode, onOpenClassroom, store, toggleProjRoot],
   )
 
   /* ---------- 自动排列（清掉坐标、交给派生铺排；便条保留） ---------- */

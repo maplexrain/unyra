@@ -18,6 +18,8 @@ import { tabShift, type DragState } from './barGeometry'
 import { isTeachDocTab, type TabRelation } from './tabRelation'
 import { StackedChevron } from './StackedChevron'
 import { TabTypeIcon, VideoAudioButton } from './TabIcons'
+import { TerminalRunningBadge } from '../../terminal/TerminalRunningBadge'
+import { getTerminalMeta } from '../../terminal/terminalRegistry'
 import { spawnInkRipple } from '../../../lib/motion'
 
 export function TabItem({
@@ -76,7 +78,16 @@ export function TabItem({
   const wmeta = webMetaOf?.(tab)
   const struct = tab.ref.kind === 'outline'
   const realTitle = titleOf(tab.ref)
-  const title = struct ? t('结构') : ((tab.ref.kind === 'web' ? wmeta?.title : undefined) ?? realTitle)
+  const termMeta = tab.ref.kind === 'terminal' ? getTerminalMeta((tab.ref as any).termId || tab.id) : null
+  const termTitle =
+    termMeta?.runningPid && termMeta.currentCommand
+      ? `${(tab.ref as any).termId || "1"}: ${termMeta.currentCommand}`
+      : (termMeta?.title ?? realTitle)
+  const title = struct
+    ? t('结构')
+    : tab.ref.kind === 'terminal'
+      ? termTitle
+      : ((tab.ref.kind === 'web' ? wmeta?.title : undefined) ?? realTitle)
   const trail = struct ? '' : (trailOf?.(tab.ref) ?? '')
   const dragging = drag?.id === tab.id
   const settling = settle?.id === tab.id
@@ -219,6 +230,7 @@ export function TabItem({
         <span className="min-w-0 truncate">{title}</span>
       </span>
       {tab.ref.kind === 'video' && <VideoAudioButton tabId={tab.id} />}
+      {tab.ref.kind === 'terminal' && <TerminalRunningBadge termId={(tab.ref as any).termId || tab.id} />}
       <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
         {isPinned && !dirty && (
           <span
