@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import type { WebviewTag } from 'electron'
 import { Loader2 } from 'lucide-react'
 import type { FileNodeEntity, LearnTab, TabRef, WebTabMeta } from '../../../learn/types'
@@ -68,6 +68,17 @@ export default function WebTabLayer({
   onUpdateFileNode,
   pendingJumpsRef,
 }: Props) {
+  // 冷页签虚拟化：至多保活 4 个最近激活的网页 <webview>，后台冷页签不挂载 DOM，彻底释放 Chromium 渲染进程
+  const [mountedIds, setMountedIds] = useState<string[]>(() => (activeId ? [activeId] : []))
+
+  useEffect(() => {
+    if (!activeId) return
+    setMountedIds((prev) => {
+      const filtered = prev.filter((id) => id !== activeId && tabs.some((t) => t.id === id))
+      return [activeId, ...filtered].slice(0, 4)
+    })
+  }, [activeId, tabs])
+
   const active = tabs.find((x) => x.id === activeId) ?? null
   const activeFileNode = active?.ref.fileNodeId && fileNodes ? fileNodes.find((f) => f.id === active.ref.fileNodeId) : undefined
   const activePureMode = activeFileNode ? (activeFileNode.pureMode !== false) : (active ? (meta[active.id]?.pureMode ?? false) : false)
@@ -201,21 +212,25 @@ export default function WebTabLayer({
         />
       )}
       <div className="relative min-h-0 flex-1">
-        {tabs.map((tab) => (
-          <WebPage
-            key={tab.id + (tab.ref.url ? '' : ':new')}
-            tab={tab}
-            active={!hidden && tab.id === activeId}
-            m={meta[tab.id]}
-            onMeta={onMeta}
-            onCommitUrl={onCommitUrl}
-            fileNode={tab.ref.fileNodeId && fileNodes ? fileNodes.find((f) => f.id === tab.ref.fileNodeId) : undefined}
-            onAutoCache={onUpdateFileNode}
-            pendingJumpsRef={pendingJumpsRef}
-            onDomMutation={handleDomMutation}
-            onNavigateReset={resetObserving}
-          />
-        ))}
+        {tabs.map((tab) => {
+          const isMounted = tab.id === activeId || mountedIds.includes(tab.id)
+          if (!isMounted) return null
+          return (
+            <WebPage
+              key={tab.id + (tab.ref.url ? '' : ':new')}
+              tab={tab}
+              active={!hidden && tab.id === activeId}
+              m={meta[tab.id]}
+              onMeta={onMeta}
+              onCommitUrl={onCommitUrl}
+              fileNode={tab.ref.fileNodeId && fileNodes ? fileNodes.find((f) => f.id === tab.ref.fileNodeId) : undefined}
+              onAutoCache={onUpdateFileNode}
+              pendingJumpsRef={pendingJumpsRef}
+              onDomMutation={handleDomMutation}
+              onNavigateReset={resetObserving}
+            />
+          )
+        })}
       </div>
 
       {transToast && (

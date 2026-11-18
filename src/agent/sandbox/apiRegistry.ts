@@ -550,6 +550,22 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
     ],
   ),
   g(
+    'classroom',
+    '互动课堂',
+    '互动课堂组件与动效库：查询可用教学组件与动画、创作注册自定义组件与动效。',
+    `互动课堂组件与动效库：
+- classroom.components({ source?, query? })：查询全部可用教学组件（包括内置 <ui-card> / <ui-concept> / <ui-compare> 等与外部注册组件）。
+- classroom.animations({ source?, query? })：查询全部可用动效（包括内置 popIn / bounce / float / glow 等与外部注册动效）。
+- classroom.registerComponent({ tag, name, description, template, defaultProps? })：创作并注册自定义教学组件。
+- classroom.registerAnimation({ verb, name, description, keyframes, duration?, easing? })：创作并注册自定义动效。`,
+    [
+      a('components', 'classroom.components({ source?, query? }?)', '查询可用教学组件', '返回全部可用教学组件（内置与外部注册）及其标签、说明与语法示例。', 'const r = await api.classroom.components()'),
+      a('animations', 'classroom.animations({ source?, query? }?)', '查询可用动效', '返回全部可用动效（内置与外部注册）及其动词、说明与挂载示例。', 'const r = await api.classroom.animations()'),
+      a('registerComponent', 'classroom.registerComponent({ tag, name, description, template, defaultProps?, example? })', '注册自定义教学组件', 'tag 必须以 ui- 或 x- 开头；template 支持 {{prop}} 与 {{content}} 插槽。', `await api.classroom.registerComponent({ tag: 'ui-experiment', name: '实验展示卡', description: '展示实验器材与反应', template: '<div class="exp-card"><h4>{{title}}</h4><p>{{content}}</p></div>' })`),
+      a('registerAnimation', 'classroom.registerAnimation({ verb, name, description, keyframes, duration?, easing?, example? })', '注册自定义动效', 'verb 为动效动词；keyframes 为 anime.js 关键帧对象或数组。', `await api.classroom.registerAnimation({ verb: 'spiralZoom', name: '螺旋聚焦', description: '带轻微旋转的快速放大聚焦', keyframes: { scale: [0.3, 1], rotate: [-45, 0], opacity: [0, 1] }, duration: 600 })`),
+    ],
+  ),
+  g(
     'project',
     '项目路径',
     '已声明 project 节点的真实路径读写：uuid + 项目内相对路径寻址，越出声明根一律拒绝。',

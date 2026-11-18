@@ -10,6 +10,7 @@ import { tabIdOf } from './tabbar/barGeometry'
 import { TabStrip } from './tabbar/TabStrip'
 import { BarMenu, TabMenu } from './tabbar/TabBarMenu'
 import { useTabBarDnd } from './tabbar/useTabBarDnd'
+import { t } from '../../i18n'
 
 /*
  * 门面（facade）：本文件只留 Props 与 TabBar 本体的组装，成块机制拆在 ./tabbar/ 下——
@@ -318,6 +319,17 @@ export default function TabBar({
         onTabMove={onTabMove}
         onEndDrag={endDrag}
       />
+
+      {/* 标签过多时的健康提示胶囊 */}
+      {tabs.length >= 25 && (
+        <div
+          className="flex items-center gap-1.5 px-2 py-0.5 mr-2 rounded-full text-[10.5px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 select-none shrink-0"
+          title={t('当前打开了 {0} 个标签页。为了流畅体验，后台冷标签已自动休眠，点击即可唤醒', tabs.length)}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+          <span>{tabs.length} {t('标签 (休眠保活)')}</span>
+        </div>
+      )}
 
       {!!tabs.length && (
         <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-line-strong" />

@@ -4,6 +4,7 @@
  */
 import { animate } from 'animejs'
 import type { RunningTask } from './types'
+import { getClassroomAnimation, listClassroomAnimations } from './registry'
 
 export type ClassroomAnimationName =
   | 'bounce'
@@ -277,6 +278,19 @@ export function runAnimeAnimation(
       }
 
       default: {
+        const customDef = getClassroomAnimation(name)
+        if (customDef) {
+          const customDuration =
+            typeof params?.duration === 'number'
+              ? params.duration
+              : customDef.duration || duration
+          const customEase = (params?.ease as string) || customDef.easing || 'outQuad'
+          const animOptions: any = Array.isArray(customDef.keyframes)
+            ? { keyframes: customDef.keyframes, duration: customDuration, ease: customEase }
+            : { ...(customDef.keyframes || { opacity: [0, 1], scale: [0.95, 1] }), duration: customDuration, ease: customEase }
+          animInstance = animate(el, animOptions) as unknown as AnimeAnimationInstance
+          break
+        }
         // 未知动画名称回落到 popIn
         animInstance = animate(el, {
           scale: [0.95, 1],
@@ -406,4 +420,9 @@ export function mountComponentAnimations(rootEl: HTMLElement): () => void {
     })
     runningAnimations.length = 0
   }
+}
+
+/** 获取当前所有可用动效的动词清单（包含内置与外部注册） */
+export function getAvailableAnimationVerbs(): string[] {
+  return listClassroomAnimations().map((a) => a.verb)
 }

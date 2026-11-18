@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useState, useEffect } from 'react'
 import type { LearnStore, LearnTab, TabRef } from '../../../learn/types'
 import { newDraftKey } from '../../../learn/tabs'
 import { viewOf } from '../../../learn/tabs'
@@ -58,10 +58,23 @@ export const FileTabLayer = memo(function FileTabLayer({
   getOutlineSlot,
   onToast,
 }: FileTabLayerProps) {
+  // 冷页签虚拟化：只挂载当前激活与最近激活的至多 5 个文件文档，其余冷休眠避免海量磁盘读取与 DOM 膨胀
+  const [mountedIds, setMountedIds] = useState<string[]>(() => (activeTabId ? [activeTabId] : []))
+
+  useEffect(() => {
+    if (!activeTabId) return
+    setMountedIds((prev) => {
+      const filtered = prev.filter((id) => id !== activeTabId && tabs.some((t) => t.id === id))
+      return [activeTabId, ...filtered].slice(0, 5)
+    })
+  }, [activeTabId, tabs])
+
   return (
     <>
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId
+        const isMounted = isActive || mountedIds.includes(tab.id)
+        if (!isMounted) return null
 
         let absPath: string | null = null
         if (tab.ref.kind === 'local') {

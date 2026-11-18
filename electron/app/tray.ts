@@ -4,7 +4,7 @@
  * 三个模块级状态（quitting / tray / trayHintShown）与读写它们的函数都在这一份里；
  * 需要跨模块读写的（main.ts 标记退出、icon.ts 换托盘图标）走下面的小读写口。
  */
-import { app, BrowserWindow, Menu, Tray } from 'electron'
+import { app, BrowserWindow, Menu, Tray, dialog } from 'electron'
 import { t } from '../i18n'
 import { closeBehavior } from '../storage'
 import { appIcon } from './icon'
@@ -43,6 +43,10 @@ export function createTray(): void {
   tray.on('double-click', () => showMainWindow())
   // 点气泡通知同样把窗口叫回来——通知的意义就是「回来」（见 showTrayBalloon）
   tray.on('balloon-click', () => showMainWindow())
+  // 显式监听右键点击事件弹出上下文菜单，保证 Windows 消息循环拥挤时托盘菜单依然灵敏
+  tray.on('right-click', () => {
+    tray?.popUpContextMenu()
+  })
 }
 
 /**
@@ -116,8 +120,19 @@ export function hideToTray(targetWin?: BrowserWindow): void {
   }
 }
 
+let lastCloseClickTime = 0
+let closeFallbackTimer: NodeJS.Timeout | null = null
+
+export function clearCloseFallback(): void {
+  if (closeFallbackTimer) {
+    clearTimeout(closeFallbackTimer)
+    closeFallbackTimer = null
+  }
+}
+
 /** 退出：先放开关窗拦截，再交给 Electron 走正常退出流程（会触发 before-quit） */
 export function quitApp(): void {
+  clearCloseFallback()
   quitting = true
   app.quit()
 }
@@ -133,6 +148,16 @@ export function quitApp(): void {
 export function attachCloseGuard(win: BrowserWindow): void {
   win.on('close', (event) => {
     if (quitting) return
+
+    const now = Date.now()
+    // 安全阀 1：若用户在 1.5 秒内连续点击关窗按钮（双击 X），判定为紧急强制退出
+    if (now - lastCloseClickTime < 1500) {
+      console.warn('[tray] 用户快速连击关闭按钮：触发安全阀强制退出')
+      quitApp()
+      return
+    }
+    lastCloseClickTime = now
+
     event.preventDefault()
     const policy = closeBehavior()
     if (policy === 'close') {
@@ -143,10 +168,37 @@ export function attachCloseGuard(win: BrowserWindow): void {
       hideToTray(win)
       return
     }
-    if (win.isDestroyed() || win.webContents.isDestroyed()) {
+    if (win.isDestroyed() || win.webContents.isDestroyed() || win.webContents.isCrashed()) {
       quitApp()
       return
     }
+
+    clearCloseFallback()
     win.webContents.send('window:closeRequested')
+
+    // 安全阀 2：若渲染进程因主线程卡死/高负荷在 2.5 秒内未能完成关窗决策，回退到主进程原生对话框兜底
+    closeFallbackTimer = setTimeout(() => {
+      closeFallbackTimer = null
+      if (win.isDestroyed() || quitting) return
+
+      try {
+        const choice = dialog.showMessageBoxSync(win, {
+          type: 'question',
+          buttons: [t('退出应用'), t('收进托盘'), t('取消')],
+          defaultId: 0,
+          cancelId: 2,
+          title: t('关闭应用'),
+          message: t('是否关闭 归一 Unyra？'),
+          detail: t('界面未能及时响应关闭请求，您可以直接退出或收进托盘后台运行。'),
+        })
+        if (choice === 0) {
+          quitApp()
+        } else if (choice === 1) {
+          hideToTray(win)
+        }
+      } catch {
+        quitApp()
+      }
+    }, 2500)
   })
 }

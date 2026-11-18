@@ -4,6 +4,8 @@
  * 避免让 Agent 手写冗长晦涩的底层 HTML/CSS 结构，并自动挂载动画标识与主题类名。
  */
 
+import { getClassroomComponent, listClassroomComponents } from './registry'
+
 /** 内置轻量 SVG 图标集（纯内联矢量，无外部运行时依赖） */
 const ICONS: Record<string, string> = {
   sparkles:
@@ -333,19 +335,36 @@ function transformCustomElement(el: Element): Element {
       return htmlToElement(`<span ${attrs}>${innerHtml}</span>`)
     }
 
-    default:
+    default: {
+      const customDef = getClassroomComponent(tagName)
+      if (customDef && customDef.template) {
+        let tpl = customDef.template
+        for (let i = 0; i < el.attributes.length; i++) {
+          const attr = el.attributes[i]
+          tpl = tpl.replace(new RegExp(`\\{\\{${attr.name}\\}\\}`, 'g'), attr.value)
+        }
+        if (customDef.defaultProps) {
+          for (const [k, v] of Object.entries(customDef.defaultProps)) {
+            tpl = tpl.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v)
+          }
+        }
+        tpl = tpl.replace(/\{\{(content|children)\}\}/g, el.innerHTML)
+        const attrs = getCommonAttributes(el)
+        return htmlToElement(`<div ${attrs}>${tpl}</div>`)
+      }
       return el
+    }
   }
 }
 
-/** 展开 HTML 片段中的所有 <ui-*> 自定义组件 */
+/** 展开 HTML 片段中的所有 <ui-*> 与自定义组件 */
 export function expandClassroomComponents(html: string): string {
   if (typeof DOMParser === 'undefined') {
     return html
   }
 
   // 若不含自定义标签快速返回
-  if (!html.includes('<ui-')) {
+  if (!html.includes('<ui-') && !html.includes('<x-')) {
     return html
   }
 
@@ -355,25 +374,29 @@ export function expandClassroomComponents(html: string): string {
     const root = doc.body.firstElementChild
     if (!root) return html
 
-    // 支持嵌套组件自底向上（从叶子到根）展开
-    const customSelectors = [
-      'ui-step',
-      'ui-option',
-      'ui-badge',
-      'ui-card',
-      'ui-split',
-      'ui-split-3',
-      'ui-grid-2x2',
-      'ui-concept',
-      'ui-formula',
-      'ui-code',
-      'ui-compare',
-      'ui-steps',
-      'ui-stat',
-      'ui-callout',
-      'ui-quote',
-      'ui-quiz',
-    ].join(', ')
+    // 支持嵌套组件自底向上（从叶子到根）展开，动态匹配内置与外部注册组件
+    const allDefs = listClassroomComponents()
+    const customSelectors = Array.from(
+      new Set([
+        'ui-step',
+        'ui-option',
+        'ui-badge',
+        'ui-card',
+        'ui-split',
+        'ui-split-3',
+        'ui-grid-2x2',
+        'ui-concept',
+        'ui-formula',
+        'ui-code',
+        'ui-compare',
+        'ui-steps',
+        'ui-stat',
+        'ui-callout',
+        'ui-quote',
+        'ui-quiz',
+        ...allDefs.map((d) => d.tag.toLowerCase()),
+      ]),
+    ).join(', ')
 
     let loopLimit = 10
     while (loopLimit-- > 0) {

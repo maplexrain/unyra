@@ -18,7 +18,8 @@ import ClassroomTimeline from './ClassroomTimeline'
 import ClassroomControls from './ClassroomControls'
 import ClassroomResourceDock from './ClassroomResourceDock'
 import ClassroomEditorModal from './ClassroomEditorModal'
-import { Presentation, Sparkles, FileCode } from 'lucide-react'
+import ClassroomShowcaseModal from './ClassroomShowcaseModal'
+import { Presentation, Sparkles, FileCode, Layers } from 'lucide-react'
 import { t } from '../../../i18n'
 
 export interface ClassroomViewProps {
@@ -99,6 +100,7 @@ export default function ClassroomView({
   // 界面状态
   const [isResourcesOpen, setIsResourcesOpen] = useState(false)
   const [isEditorOpen, setIsEditorOpen] = useState(false)
+  const [isShowcaseOpen, setIsShowcaseOpen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
   // 获得挂载的子节点列表（从 store.edges 查找 downstream）
@@ -233,7 +235,7 @@ export default function ClassroomView({
           </div>
         </div>
 
-        {/* 右侧：画面进度胶囊与全屏入口 */}
+        {/* 右侧：画面进度胶囊、组件库与全屏入口 */}
         <div className="flex items-center gap-2 shrink-0">
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-line/40 text-[11px] font-mono text-ink-soft">
             <span>{t('画面')}</span>
@@ -241,6 +243,15 @@ export default function ClassroomView({
               {isCourseEmpty ? '0' : snapshot.sceneIndex + 1} / {course.scenes.length}
             </span>
           </div>
+          <button
+            type="button"
+            onClick={() => setIsShowcaseOpen(true)}
+            title={t('查看组件与动效库')}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-ink-soft hover:bg-line/60 hover:text-ink transition cursor-pointer text-[12px] font-medium"
+          >
+            <Layers size={14} className="text-seal" />
+            <span>{t('组件与动效')}</span>
+          </button>
           <button
             type="button"
             onClick={() => setIsEditorOpen(true)}
@@ -348,6 +359,12 @@ export default function ClassroomView({
           onSave={handleSaveCourse}
         />
       )}
+
+      {/* 组件与动效库展示模态框 */}
+      <ClassroomShowcaseModal
+        isOpen={isShowcaseOpen}
+        onClose={() => setIsShowcaseOpen(false)}
+      />
     </div>
   )
 }
