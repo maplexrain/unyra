@@ -4,6 +4,7 @@
  */
 import type { StageViewport } from './StageViewport'
 import { runAnimeAnimation } from './animations'
+import { ANIME_ACTION_VERBS } from './verbs'
 import type {
   CheckpointAction,
   ITTSAdapter,
@@ -152,22 +153,9 @@ export class ActionCompiler {
 
     const duration = Math.max(50, (action.params?.duration ?? 450) / rate)
 
-    // 若动词属于 anime.js 动画体系，交由 runAnimeAnimation 处理
-    const animeVerbs = new Set([
-      'animate',
-      'bounce',
-      'shake',
-      'wobble',
-      'float',
-      'flip',
-      'popIn',
-      'zoomIn',
-      'rotate',
-      'glow',
-      'countUp',
-      'typewriter',
-    ])
-    if (animeVerbs.has(action.verb)) {
+    // 动画动词交由 runAnimeAnimation 处理（白名单唯一事实源在 verbs.ts：'animate' +
+    // registry 的一次性入场动效，含 slideIn 系列；pulse 走下面的状态动词通道）
+    if (ANIME_ACTION_VERBS.has(action.verb)) {
       const animName = action.verb === 'animate' ? action.params?.animation || 'popIn' : action.verb
       return runAnimeAnimation(el, animName, duration, action.params as Record<string, unknown> | undefined)
     }

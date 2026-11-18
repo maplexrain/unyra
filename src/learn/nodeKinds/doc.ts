@@ -264,7 +264,7 @@ export class DocGNode extends GNode {
         root
           ? '上游是入口（entry:，由目标绑定自动生成，不能手工连）。'
           : '上游是大纲（o: 前缀）：把这份文档挂到某份大纲下，先取那份大纲再 connect(我, "up", 目标项key?)——第三个参数给目标项 key 就认领了这个接口，之后 await 我.getPortData() 能读到「这条目标项要我写什么」。',
-        '下游（大纲 / 笔记 / 试卷 / 超级文档 / 项目）都可以连线：api.node.create({ kind, under: 我的 uuid }) 创建即挂；拖线 / connect(挂件对象, "down") 绑定游离的挂件或换绑别人的，disconnect 解绑（内容原样）。与自己的大纲之间 disconnect = 删除那份大纲。',
+        '下游（大纲 / 笔记 / 试卷 / 超级文档 / 项目 / 课堂）都可以连线：api.node.create({ kind, under: 我的 uuid }) 创建即挂；拖线 / connect(挂件对象, "down") 绑定游离的挂件或换绑别人的，disconnect 解绑（内容原样）。与自己的大纲之间 disconnect = 删除那份大纲。',
       ].join('\n'),
     }
   }
@@ -333,7 +333,16 @@ export class DocGNode extends GNode {
       this.ctx.commit(r.store)
       return { ok: true, note: '已把视频节点「' + down.title + '」作为下级连接到「' + this.title + '」' }
     }
-    return { error: '这种节点挂不到文档之下（能绑的：笔记 / 试卷 / 超级文档 / 项目 / 文件 / 视频）' }
+    if (down.kind === 'classroom') {
+      // 课堂挂载与创建时 under 同一条路（树边）；已挂在别的文档下就先摘再挂（addEdge 不认双边）
+      const existing = s.edges.find((e) => e.from === this.uuid && e.to === down.uuid)
+      if (existing) return { error: '「' + down.title + '」已经挂在「' + this.title + '」之下了' }
+      const r = addEdge(s, this.uuid, down.uuid)
+      if (!r.added) return { error: r.reason ?? '挂载失败' }
+      this.ctx.commit(r.store)
+      return { ok: true, note: '已把互动课堂「' + down.title + '」挂到「' + this.title + '」之下（课件原样）' }
+    }
+    return { error: '这种节点挂不到文档之下（能绑的：笔记 / 试卷 / 超级文档 / 项目 / 文件 / 视频 / 课堂）' }
   }
 
   /**
@@ -376,6 +385,16 @@ export class DocGNode extends GNode {
       if (edge) {
         this.ctx.commit(removeEdge(this.ctx.store(), edge.from, edge.to))
         return { ok: true, note: '已断开「' + this.title + '」与文件「' + target.title + '」的连接' }
+      }
+    }
+    // 课堂节点（挂件）：摘线 = 拆树边，课堂变游离（课件原样保留，可再挂到别的文档）
+    if (target.kind === 'classroom') {
+      const edge = this.ctx.store().edges.find(
+        (e) => (e.from === this.uuid && e.to === target.uuid) || (e.to === this.uuid && e.from === target.uuid),
+      )
+      if (edge) {
+        this.ctx.commit(removeEdge(this.ctx.store(), edge.from, edge.to))
+        return { ok: true, note: '已把互动课堂「' + target.title + '」从「' + this.title + '」之下摘出来（课件原样保留）' }
       }
     }
     // 下级文档（下游树边，画布枢纽不在时的 doc→doc 那条线）：摘线 = 拆边，对方变游离

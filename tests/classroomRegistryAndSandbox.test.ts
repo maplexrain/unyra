@@ -30,6 +30,11 @@ describe('Classroom Component & Animation Registry', () => {
     expect(anims.some((a) => a.verb === 'popIn')).toBe(true)
     expect(anims.some((a) => a.verb === 'bounce')).toBe(true)
     expect(anims.some((a) => a.verb === 'glow')).toBe(true)
+    // 卡牌库宣传名与 runAnimeAnimation 实现名逐字一致（slideInUp/Down 已按实现改名）
+    expect(anims.some((a) => a.verb === 'slideInTop')).toBe(true)
+    expect(anims.some((a) => a.verb === 'slideInBottom')).toBe(true)
+    expect(anims.some((a) => a.verb === 'slideInUp')).toBe(false)
+    expect(anims.some((a) => a.verb === 'slideInDown')).toBe(false)
   })
 
   it('allows registering and unregistering external components', () => {
@@ -80,6 +85,15 @@ describe('Classroom Component & Animation Registry', () => {
     expect(getClassroomAnimation('quantumVibrate')).toBeUndefined()
   })
 
+  it('builtin 组件示例里的属性真的被展开器读（registry 示例 ↔ components.ts 对齐）', () => {
+    // 曾经的示例教了不存在的属性（summary / note / ratio / variant）——冒烟钉住
+    expect(expandClassroomComponents('<ui-badge color="sky">重点</ui-badge>')).toContain('badge-sky')
+    expect(expandClassroomComponents('<ui-concept term="极限" keypoint="要记">逼近</ui-concept>')).toContain('concept-keypoint')
+    expect(expandClassroomComponents('<ui-quiz question="2+2?"><ui-option label="B">4</ui-option></ui-quiz>')).toContain('quiz-option')
+    expect(expandClassroomComponents('<ui-steps><ui-step num="1" title="化简">先通分</ui-step></ui-steps>')).toContain('step-item')
+    expect(expandClassroomComponents('<ui-formula latex="a^2+b^2=c^2" desc="勾股"></ui-formula>')).toContain('formula-box')
+  })
+
   it('prohibits overwriting builtin components or invalid tags', () => {
     const badTag = registerClassroomComponent({
       tag: 'invalid_tag',
@@ -108,6 +122,26 @@ describe('Classroom Component & Animation Registry', () => {
     expect(typeof classroomApi.animations).toBe('function')
     expect(typeof classroomApi.registerComponent).toBe('function')
     expect(typeof classroomApi.registerAnimation).toBe('function')
+    expect(typeof classroomApi.schema).toBe('function')
+    expect(typeof classroomApi.verbs).toBe('function')
+    expect(typeof classroomApi.check).toBe('function')
+
+    // schema 契约：结构 + 最小完整示例（示例本身要能过 audit）
+    const schemaRes = await classroomApi.schema()
+    expect(schemaRes.ok).toBe(true)
+    const example = schemaRes.schema.example.scenes[0]
+    expect(Array.isArray(example.actions)).toBe(true)
+    expect(example.actions[0].type).toBe('speak')
+
+    // verbs 白名单与 data-anim 表显式分开
+    const verbsRes = await classroomApi.verbs()
+    expect(verbsRes.ok).toBe(true)
+    expect(verbsRes.state.some((v: { verb: string }) => v.verb === 'appear')).toBe(true)
+    expect(verbsRes.anime.some((v: { verb: string }) => v.verb === 'slideInTop')).toBe(true)
+
+    // check 在没有 NodeService 注入时给「没有」回执而不是抛错
+    const checkRes = await classroomApi.check({})
+    expect(checkRes.error).toContain('节点能力')
 
     // Agent 查询组件与动效
     const compsRes = await classroomApi.components()

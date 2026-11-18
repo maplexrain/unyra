@@ -116,6 +116,12 @@ export type VisualVerb =
   | 'glow' // [动画] 呼吸光晕动效
   | 'countUp' // [动画] 数字滚动递增动效
   | 'typewriter' // [动画] 打字机字符逐字显现动效
+  // slideIn 系列：与 registry（BUILTIN_ANIMATIONS）同名同源。2026-11-18 前类型漏了它们，
+  // 而 sanitizer 早已按唤醒动词对待——写成 action.verb 编译不过、运行又落 noop，两头不讨好
+  | 'slideInLeft' // [动画] 自左滑入
+  | 'slideInRight' // [动画] 自右滑入
+  | 'slideInTop' // [动画] 自上降落
+  | 'slideInBottom' // [动画] 自下浮现
 
 /** 运行时任务控制句柄 */
 export interface RunningTask {

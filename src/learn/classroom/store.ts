@@ -1,7 +1,7 @@
 /**
  * 互动课堂实体存储与默认课件模板
  */
-import type { ClassroomEntity, LessonCourse } from './types'
+import type { ClassroomEntity, LessonAction, LessonCourse, LessonScene } from './types'
 import type { LearnStore } from '../types'
 
 const CLASSROOM_STORE_KEY_PREFIX = 'moji:classroom:'
@@ -166,6 +166,29 @@ export function createDemoLessonCourse(title: string = '互动课堂教学演示
 /** 内存缓存字典 */
 const entityCache = new Map<string, ClassroomEntity>()
 
+/**
+ * course 形状自愈（读盘兜底）。旧版 agent 写入路径没有结构校验：scene 可能缺 actions
+ * （自造了 beats 字段）、id/title/html 可能缺——渲染层逐字段假设它们在，坏一幕就把
+ * 整个课堂页签掀了（timeline.ts 的 forEach 直接 TypeError，画面全白）。读进来时修好：
+ * actions 缺失就采纳 beats（旧 agent 的意图还在里面），其余缺省补空，不丢幕。
+ */
+function repairScenes(raw: unknown): LessonScene[] {
+  if (!Array.isArray(raw)) return []
+  const out: LessonScene[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const s = item as Record<string, unknown>
+    const actions = Array.isArray(s.actions) ? (s.actions as LessonAction[]) : Array.isArray(s.beats) ? (s.beats as LessonAction[]) : []
+    out.push({
+      id: typeof s.id === 'string' && s.id ? s.id : `scene-${out.length + 1}`,
+      title: typeof s.title === 'string' ? s.title : `画面 ${out.length + 1}`,
+      html: typeof s.html === 'string' ? s.html : '',
+      actions,
+    })
+  }
+  return out
+}
+
 /** 加载或创建课堂实体 */
 export function loadClassroomEntity(id: string, defaultTitle: string = '新课堂', store?: LearnStore): ClassroomEntity {
   if (store?.classrooms) {
@@ -184,6 +207,10 @@ export function loadClassroomEntity(id: string, defaultTitle: string = '新课�
     const raw = localStorage.getItem(`${CLASSROOM_STORE_KEY_PREFIX}${id}`)
     if (raw) {
       const parsed = JSON.parse(raw) as ClassroomEntity
+      // localStorage 直读不过 normalizeClassrooms：course 形状在这里自愈
+      if (parsed.course && typeof parsed.course === 'object') {
+        parsed.course = { ...parsed.course, scenes: repairScenes(parsed.course.scenes) }
+      }
       entityCache.set(id, parsed)
       return parsed
     }
@@ -244,7 +271,9 @@ export function normalizeClassrooms(raw: unknown, goalIds?: ReadonlySet<string>)
     const course: LessonCourse = {
       courseId: typeof rawCourse.courseId === 'string' && rawCourse.courseId ? rawCourse.courseId : id,
       title: typeof rawCourse.title === 'string' && rawCourse.title.trim() ? rawCourse.title : title,
-      scenes: Array.isArray(rawCourse.scenes) ? rawCourse.scenes : [],
+      // description 是契约字段（api.classroom.schema()）：归一化白名单漏了它会被静默丢弃
+      ...(typeof rawCourse.description === 'string' && rawCourse.description ? { description: rawCourse.description } : {}),
+      scenes: repairScenes(rawCourse.scenes),
     }
     const childNodeIds = Array.isArray(r.childNodeIds)
       ? r.childNodeIds.filter((x): x is string => typeof x === 'string' && !!x.trim())

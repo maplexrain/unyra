@@ -72,7 +72,7 @@ export class LessonScheduler {
   public mountInitial(): void {
     if (this.course.scenes.length > 0) {
       const scene = this.course.scenes[0]
-      this.stage.mountScene(scene.html)
+      this.stage.mountScene(scene.html ?? '')
       this.sceneIndex = 0
       this.actionIndex = 0
       this.status = 'idle'
@@ -103,15 +103,16 @@ export class LessonScheduler {
     while (this.sceneIndex < this.course.scenes.length) {
       if (currentToken !== this.runToken) return
       const scene = this.course.scenes[this.sceneIndex]
+      const actions = scene.actions ?? []
 
       // 若处于本画面起点，重置并挂载画面初始 DOM
       if (this.actionIndex === 0) {
-        this.stage.mountScene(scene.html)
+        this.stage.mountScene(scene.html ?? '')
       }
 
-      while (this.actionIndex < scene.actions.length) {
+      while (this.actionIndex < actions.length) {
         if (currentToken !== this.runToken) return
-        const action = scene.actions[this.actionIndex]
+        const action = actions[this.actionIndex]
 
         // 检查点拦截：等待学生点击继续或按键
         if (action.type === 'checkpoint') {
@@ -238,12 +239,13 @@ export class LessonScheduler {
     if (!targetScene) return
 
     // 重置目标画面初始 HTML
-    this.stage.mountScene(targetScene.html)
+    this.stage.mountScene(targetScene.html ?? '')
 
     // 单帧内重现前置所有视觉动作终态
-    const end = Math.min(targetActionIndex, targetScene.actions.length)
+    const targetActions = targetScene.actions ?? []
+    const end = Math.min(targetActionIndex, targetActions.length)
     for (let i = 0; i < end; i++) {
-      const prevAction = targetScene.actions[i]
+      const prevAction = targetActions[i]
       if (prevAction.type === 'visual') {
         const fastTask = this.compiler.compile(prevAction, 1.0)
         fastTask.instantFinish()
@@ -290,8 +292,9 @@ export class LessonScheduler {
 
     while (s < this.course.scenes.length && queue.length < 3) {
       const scene = this.course.scenes[s]
-      while (a < scene.actions.length && queue.length < 3) {
-        const act = scene.actions[a]
+      const actions = scene.actions ?? []
+      while (a < actions.length && queue.length < 3) {
+        const act = actions[a]
         if (act.type === 'speak' && act.text.trim()) {
           queue.push(act.text.trim())
         }

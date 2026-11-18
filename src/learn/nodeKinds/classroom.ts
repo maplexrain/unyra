@@ -3,6 +3,7 @@
  * 上游可挂载在教学文档 (doc) 下；子级可以是笔记 (note) / 考试 (exam) / 超级文档 (superdoc) / 文件 (file)。
  */
 import { addEdge, removeEdge } from '../graph'
+import { auditCourse } from '../classroom/audit'
 import { loadClassroomEntity, upsertClassroom } from '../classroom/store'
 import type { ClassroomEntity, LessonCourse } from '../classroom/types'
 import { GNode, type ConnectFilter, type NodeCtx, type NodeHelp, type NodeRelation, type NodeResult } from './base'
@@ -65,8 +66,36 @@ export class ClassroomGNode extends GNode {
     if (typeof o.title === 'string' && o.title.trim()) {
       e.title = o.title.trim()
     }
-    if (o.course && typeof o.course === 'object') {
-      e.course = o.course as LessonCourse
+    if (o.course !== undefined) {
+      if (!o.course || typeof o.course !== 'object' || Array.isArray(o.course)) {
+        return { error: 'course 需要是对象（{ courseId?, title?, scenes: [...] }）；结构契约先调 api.classroom.schema()' }
+      }
+      /*
+       * 写入前结构校验（2026-11-18 定稿）：未知 verb、悬空 target、自造的 beats 字段
+       * 曾经全部静默存盘、画面全静——errors 拒存并给可据此改对的原因，warnings 随
+       * ok 回执带出。契约本身运行时向 api.classroom.schema() 现查。
+       */
+      const audit = auditCourse(o.course)
+      if (audit.errors.length) {
+        return {
+          error: 'course 结构校验未通过，未保存（契约见 api.classroom.schema()）：\n- ' + audit.errors.join('\n- '),
+        }
+      }
+      const course = o.course as Record<string, unknown>
+      if (typeof course.courseId !== 'string' || !course.courseId.trim()) course.courseId = this.uuid
+      if (typeof course.title !== 'string' || !course.title.trim()) course.title = e.title
+      e.course = course as unknown as LessonCourse
+      const nextStore = upsertClassroom(this.ctx.store(), e)
+      this.ctx.commit(nextStore)
+      return {
+        ok: true,
+        note: audit.warnings.length
+          ? '已保存。' + audit.warnings.length + ' 条提醒（不影响保存，建议修掉）：\n- ' + audit.warnings.join('\n- ')
+          : '已保存',
+      }
+    }
+    if (typeof o.title !== 'string' || !o.title.trim()) {
+      return { error: 'title 或 course 至少给一个' }
     }
     const nextStore = upsertClassroom(this.ctx.store(), e)
     this.ctx.commit(nextStore)
@@ -103,8 +132,8 @@ export class ClassroomGNode extends GNode {
 
   help(): NodeHelp {
     return {
-      description: '16:9 画布互动教学课堂，由【画面 + 动作 + 节拍时间轴】构成，驱动 H5 动画与语音讲解。',
-      edit: '调用 editContent({ title, course }) 更新课件配置或课堂标题。',
+      description: '16:9 画布互动教学课堂（1920×1080 逻辑画布），由画面 html + 动作流 actions + 时间轴构成，驱动 H5 动画与语音讲解。',
+      edit: 'editContent({ title?, course? }) 写入课件；course 完整契约（scenes[].html / actions[].speak·visual·wait·checkpoint、动词白名单、布局常量与最小示例）调 api.classroom.schema() 现查——动作列表字段名是 actions，不是 beats；写入时做结构校验，错误会拒存并回原因。',
       connection: '上游挂载教学文档；下游可挂接随堂笔记、随堂考试、拓展超级文档或配套文件。',
     }
   }

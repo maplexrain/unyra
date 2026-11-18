@@ -23,6 +23,7 @@ export const WORKFLOWS_GUIDE = `## 内置工作流与任务规程
 - **伪编译 (\`code-compile\`)**：把文档里这段代码转译成可运行的 JS，交付运行（参数: \`target\`, \`language\`, \`key\`, \`code\`）。
 - **修复函数图像 (\`plot-fix\`)**：函数图像渲染失败时按报错与区间一次改完（参数: \`target\`, \`nodeTitle\`, \`reason\`, \`range\`, \`start\`, \`end\`, \`source\`）。
 - **浏览器操作 (\`browser-use\`)**：替用户操作内置浏览器（参数: \`target\`）——规矩就是沙箱速查里 api.browser 那组的闭环纪律（index → 读 → 写、看图干活、不可逆先 ask）。
+- **生成互动课堂 (\`classroom\`)**：为课堂节点生成 16:9 画布动态课件——画面、DOM 视觉动作与语音讲解流（参数: \`target\`）。
 - **压缩上下文 (\`compact\`)**：把前面的对话折成一份高保真交接摘要。
 
 ### 1.【开讲】教学文档生成（teach-node）
@@ -106,4 +107,12 @@ export const WORKFLOWS_GUIDE = `## 内置工作流与任务规程
 2. 先列 tasks（**最容易丢、也最要命**）：这几轮里没交付的、做到一半的、答应过还没做的，逐条写清——哪个节点、哪份文档、哪个文件名、卡在哪、下一步做什么。要能让「换一个人接手」照着继续干，不写「继续完善文档」这种空话；做完了的不列。
 3. 再写 summary（Markdown，1200 字以内）：## 学习目标与背景 / ## 已经讲清的内容 / ## 学习者的状态（自评、错在哪、还卡在哪）/ ## 约定与术语。用户表达「我想要什么」的话保留原意。
 4. api.compact({ summary, tasks }) **只调一次**；摘要本轮结束后才生效（旧消息失活、摘要成为第一条消息）。回一句话告诉用户已压好，**不要复述摘要内容**，也不要顺手改文档、建节点、出题。
+
+### 13.【生成互动课堂】课堂课件生成（classroom）
+1. 契约先行：\`await api.classroom.schema()\` 拿齐 course 结构（画面序列 scenes，动作列表字段名是 **actions**——不是 beats）、四类动作与阻塞默认值、1920×1080 布局常量与预置舞台类（stage-header / stage-title / stage-center / stage-top-title / stage-split 等；基础字号 28px，padding 56px 80px 120px 底部是字幕避让区）；组件与入场动效清单现查 api.classroom.components() / api.classroom.animations()（**每条的 description 与 example 就是属性与子节点约定的唯一出处**，表达不了再 registerComponent / registerAnimation 自创）。课堂画布视觉自有一套 stage 体系（卡片圆角与主题强调色是课堂自有样式），文档区的排版律别往里搬。
+2. 两套动效表严格分开（铁律）：讲解节奏里的显隐 / 强调 / 位移只能用 visual action（verb 白名单 api.classroom.verbs()）；\`data-anim="名"\` 只是换幕时的入场一次、不受时间轴控制——把动效名想当然填进 verb 会静默不生效，照 schema() 里的最小完整示例写。
+3. 受控元素每个都要有唯一 id；初始隐藏的声明 data-hidden、用 appear / drawSvg 等唤醒动词现身；字幕 = 朗读 = speak.text 唯一源，不要写 subtitle 字段。checkpoint **只是暂停画面让学生自己想**（浮层 + 继续，不判分）；ui-quiz 也只是展示——别设计成「答对才继续」，课堂没有判定回路。
+4. 教学风格（铁律）：这是名师授课，不是念 PPT——画面放结构提纲，嘴里讲直觉、类比与顿悟（❌ 复读卡片文字；✓「想象操场跑步，两人速度不同，只要跑道是环形的，就一定会套圈相遇！」）；speak.text **严禁句号（。和 .）**，每句 8-16 字（上限 20），多用设问与感叹：「注意看这里」「你发现了吗？」「关键就在这一处！」；几乎每句 speak 配 1-2 个 visual，讲解绝不能静止画面。
+5. 五幕式规划：整堂课 4-5 个 Scene 循序渐进——① 痛点引入（灵魂拷问 + 核心卡登场）② 原理拆解（双栏分立 + 步骤揭晓）③ 实战对比（点亮优势、晃动警示误区）④ 效能升华（数据滚动 + 金句）⑤ 互动思考（checkpoint 暂停让学生自己想——不判分）。
+6. 交付与验收：api.node.get("{{target}}").editContent({ title, course }) 一次落盘；回执带 error（动词不在白名单 / target 悬空 / 缺 html / type 不认识 / 藏了 script）必须修复后重交，warnings 也读一眼（句号 / 超长句 / 无动效画面 / data-hidden 死锁）；交付前可用 api.classroom.check({ target: 课堂uuid }) 复查；最后 delivery.submit({ files: [{ path: 课堂uuid, action: "updated", note: '一句话说明' }] }) 登记交付（path 直接给课堂 uuid）。
 `

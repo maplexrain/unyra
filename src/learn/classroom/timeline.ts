@@ -8,11 +8,13 @@ export function buildTimelineBeats(course: LessonCourse): TimelineBeat[] {
   const beats: TimelineBeat[] = []
 
   course.scenes.forEach((scene, sceneIdx) => {
+    // actions 缺失按空处理（读盘层 repairScenes 会自愈，这里只兜内存里拼出来的坏形状）
+    const actions = scene.actions ?? []
     let batchStart = 0
     let visualCount = 0
     const currentVisuals: string[] = []
 
-    scene.actions.forEach((action, actIdx) => {
+    actions.forEach((action, actIdx) => {
       const isBlocking = action.blocking ?? (action.type === 'speak')
 
       if (action.type === 'visual') {
@@ -34,7 +36,7 @@ export function buildTimelineBeats(course: LessonCourse): TimelineBeat[] {
         currentVisuals.push(`${vName} #${action.target}`)
       }
 
-      const isLastAction = actIdx === scene.actions.length - 1
+      const isLastAction = actIdx === actions.length - 1
 
       // 遇到阻塞动作，或者处于本画面的最后一个动作，闭合成一个节拍
       if (isBlocking || isLastAction) {

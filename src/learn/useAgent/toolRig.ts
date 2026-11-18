@@ -238,6 +238,16 @@ export function rigTurnTools(io: {
             for (const f of rec.files) {
               if (!f.goalId) f.goalId = target.goalId
               if (!f.nodeId) {
+                // 课堂节点（不在 nodes 里）：uuid / #uuid / 「课堂/标题」都认——不然生成
+                // 课堂的工作流没有任何合法 path 可填，交付账上永远缺席
+                const classroom = (st.classrooms ?? []).find(
+                  (cl) => cl.id === f.path || (f.path.startsWith('#') && cl.id === f.path.slice(1)) || f.path === '课堂/' + cl.title,
+                )
+                if (classroom) {
+                  f.nodeId = classroom.id
+                  f.path = '课堂/' + classroom.title
+                  continue
+                }
                 const byId = st.nodes.find((n) => n.id === f.path || (f.path.startsWith('#') && n.id === f.path.slice(1)))
                 if (byId) {
                   f.nodeId = byId.id

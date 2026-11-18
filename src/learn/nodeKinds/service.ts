@@ -26,6 +26,7 @@ import { clearOutline, createOutlineEntity, deleteOutlineEntity, outlineByMember
 import { createVideoNode, deleteVideoNode } from '../video/nodes'
 import { createProjectNode, deleteProjectNode, inferPathKind, resolveProjectRoot } from '../projects'
 import { createFileNode, removeFileNode, goalFilesDir } from '../fileNodes'
+import { classroomListRows } from '../classroom/listing'
 import { removeUserPath } from '../../lib/storage'
 import { NOTE_DEFAULT_NAME, notesOf, uniqueNoteName } from '../notes'
 import { SUPERDOC_DEFAULT_NAME, removeSuperDoc, writeSuperDoc } from '../superdocs'
@@ -761,6 +762,8 @@ export class NodeService {
           })),
         all: (store.videos ?? []).map((v) => ({ videoId: v.id, title: v.title, plugin: v.pluginName ?? v.pluginId })),
       },
+      // 课堂节点段（uuid / 标题 / upstream）：不在 nodes 里，课堂清单逻辑在 classroom/listing
+      classrooms: classroomListRows(store, goalId),
       /*
        * 项目节点（目标 × 真实路径的授权声明）：uuid 与解析后的根一起给——
        * 后续 api.project.* 的 read / write 都按 uuid + subPath 寻址。

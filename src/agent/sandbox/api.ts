@@ -116,8 +116,8 @@ export function buildApi(
   installProcess(api, log)
   // 技能域：skill.*
   installSkill(api, opts, log)
-  // 互动课堂组件与动效域：classroom.*
-  installClassroom(api, log)
+  // 互动课堂域：schema / verbs / components / animations / register* / check
+  installClassroom(api, opts, log)
 
   /*
    * 节点宇宙（api.node）：create / get / list / delete 四条传输 + 对象门面。
