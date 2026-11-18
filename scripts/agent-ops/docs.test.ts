@@ -255,6 +255,16 @@ export async function apiNameTests() {
     'chip.check': "'看：#[{type:\"doc\", path:\"微积分\"}]'",
     // 交付账：只查「名字真的注册了吗」，登记与落库由宿主管（见 useAgent 的 turnDelivery）
     'delivery.submit': "{ files: [{ path: '探针/文档', action: 'updated' }], sources: [{ title: '示例规范', url: 'https://example.com/spec' }] }",
+    // 互动课堂：schema/verbs 是课堂契约自省，components/animations 查组件与入场动效库；
+    // check 走节点服务（探针环境没有注入 NodeService，回「没有节点能力」同样证明注册在）；
+    // register* 在 Node 探针里写内存 fallback（window 未定义），无副作用
+    'classroom.schema': '',
+    'classroom.verbs': '',
+    'classroom.components': '',
+    'classroom.animations': '',
+    'classroom.check': "{ target: 'classroom_probe' }",
+    'classroom.registerComponent': "{ tag: 'ui-probe-card', name: '探针卡', description: '探针用组件', template: '<div>{{content}}</div>' }",
+    'classroom.registerAnimation': "{ verb: 'probeSpin', name: '探针动效', keyframes: { opacity: [0, 1] } }",
     // 内置浏览器：webview 元素在真实渲染层，探针给一份假的宿主（见下面 browser 桩）
     'browser.open': "'https://example.com'",
     'browser.tabs': '',

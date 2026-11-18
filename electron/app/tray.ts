@@ -120,14 +120,18 @@ export function hideToTray(targetWin?: BrowserWindow): void {
   }
 }
 
-let lastCloseClickTime = 0
-let closeFallbackTimer: NodeJS.Timeout | null = null
+/*
+ * 连击安全阀与兜底对话框的状态都按窗口隔离：安全阀防的是「同一扇窗的连续关窗」——
+ * 关 A 窗后 1.5 秒内去关 B 窗不该被误判成强退（辅助窗口并存是常态），测试串行挂多个
+ * 假窗口也靠这个隔离互不污染；兜底 timer 收进统一 Set，渲染层回答关窗询问
+ * （window:closeDecision）时一次清掉全部 pending。
+ */
+const lastCloseAt = new WeakMap<BrowserWindow, number>()
+const closeFallbackTimers = new Set<NodeJS.Timeout>()
 
 export function clearCloseFallback(): void {
-  if (closeFallbackTimer) {
-    clearTimeout(closeFallbackTimer)
-    closeFallbackTimer = null
-  }
+  for (const timer of closeFallbackTimers) clearTimeout(timer)
+  closeFallbackTimers.clear()
 }
 
 /** 退出：先放开关窗拦截，再交给 Electron 走正常退出流程（会触发 before-quit） */
@@ -150,13 +154,13 @@ export function attachCloseGuard(win: BrowserWindow): void {
     if (quitting) return
 
     const now = Date.now()
-    // 安全阀 1：若用户在 1.5 秒内连续点击关窗按钮（双击 X），判定为紧急强制退出
-    if (now - lastCloseClickTime < 1500) {
+    // 安全阀 1：若同一扇窗在 1.5 秒内连续收到关窗请求（双击 X），判定为紧急强制退出
+    if (now - (lastCloseAt.get(win) ?? 0) < 1500) {
       console.warn('[tray] 用户快速连击关闭按钮：触发安全阀强制退出')
       quitApp()
       return
     }
-    lastCloseClickTime = now
+    lastCloseAt.set(win, now)
 
     event.preventDefault()
     const policy = closeBehavior()
@@ -177,8 +181,8 @@ export function attachCloseGuard(win: BrowserWindow): void {
     win.webContents.send('window:closeRequested')
 
     // 安全阀 2：若渲染进程因主线程卡死/高负荷在 2.5 秒内未能完成关窗决策，回退到主进程原生对话框兜底
-    closeFallbackTimer = setTimeout(() => {
-      closeFallbackTimer = null
+    const fallbackTimer = setTimeout(() => {
+      closeFallbackTimers.delete(fallbackTimer)
       if (win.isDestroyed() || quitting) return
 
       try {
