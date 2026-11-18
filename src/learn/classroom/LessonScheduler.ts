@@ -68,12 +68,31 @@ export class LessonScheduler {
     return this.buildSnapshot()
   }
 
+  /** 初始化挂载首个画面 DOM，保持 idle 状态等待手动触发播放 */
+  public mountInitial(): void {
+    if (this.course.scenes.length > 0) {
+      const scene = this.course.scenes[0]
+      this.stage.mountScene(scene.html)
+      this.sceneIndex = 0
+      this.actionIndex = 0
+      this.status = 'idle'
+      this.maintainPreloadBuffer()
+      this.emitState()
+    }
+  }
+
   /** 开始或恢复播放 */
   public async play(): Promise<void> {
     if (this.status === 'playing') return
     if (this.status === 'paused') {
       this.resume()
       return
+    }
+    
+    // 如果播放已结束，重置状态以支持重播
+    if (this.status === 'ended') {
+      this.sceneIndex = 0
+      this.actionIndex = 0
     }
 
     this.status = 'playing'
@@ -307,7 +326,8 @@ export class LessonScheduler {
       sceneIndex: this.sceneIndex,
       actionIndex: this.actionIndex,
       activeBeatIndex,
-      subtitle: act?.type === 'speak' ? act.subtitle ?? act.text : undefined,
+      // 字幕与 TTS 唯一源：TTS 朗读与屏幕字幕严格使用 act.text，绝对一致
+      subtitle: act?.type === 'speak' ? act.text : undefined,
       checkpointTitle: act?.type === 'checkpoint' ? act.title : undefined,
       playbackRate: this.playbackRate,
     }

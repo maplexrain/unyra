@@ -106,6 +106,9 @@ export function deleteGoal(store: LearnStore, goalId: string): LearnStore {
     ...(store.videoNodes?.some((v) => v.goalId === goalId)
       ? withVideoMirror({ ...store, videoNodes: store.videoNodes.filter((v) => v.goalId !== goalId) })
       : {}),
+    ...(store.classrooms?.some((c) => c.goalId === goalId)
+      ? { classrooms: store.classrooms.filter((c) => c.goalId !== goalId) }
+      : {}),
     edges: store.edges.filter((e) => !removed.has(e.from) && !removed.has(e.to)),
     conversations: remaining,
     exams: store.exams.filter((e) => e.goalId !== goalId && !removed.has(e.nodeId)),

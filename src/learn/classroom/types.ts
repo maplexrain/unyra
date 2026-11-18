@@ -64,6 +64,14 @@ export interface VisualParams {
   color?: string
   /** 替换文本内容（用于 updateText） */
   text?: string
+  /** anime.js 动画预设名（用于 animate 动词） */
+  animation?: string
+  /** countUp 动画目标数值 */
+  end?: number
+  /** countUp 动画起始数值（默认 0） */
+  start?: number
+  /** countUp 动画后缀（如 "%", "ms"） */
+  suffix?: string
 }
 
 /** 3. 显式等待动作（用于讲解气口留白） */
@@ -95,6 +103,19 @@ export type VisualVerb =
   | 'drawSvg' // [状态型] SVG 描边绘制动画
   | 'updateText' // [状态型] 平滑更新目标元素文本
   | 'pulse' // [瞬态型] 原地轻微缩放脉冲一次，结束后恢复原状
+  // anime.js 内置动画动词
+  | 'animate' // [动画] 通用动画动词，由 params.animation 指定预设名
+  | 'bounce' // [动画] 弹性弹跳动效
+  | 'shake' // [动画] 左右震颤警示动效
+  | 'wobble' // [动画] 摆动趣味动效
+  | 'float' // [动画] 轻柔上浮动效
+  | 'flip' // [动画] 3D 翻转动效
+  | 'popIn' // [动画] 弹性缩放进入动效
+  | 'zoomIn' // [动画] 聚焦放大动效
+  | 'rotate' // [动画] 顺时针旋转动效
+  | 'glow' // [动画] 呼吸光晕动效
+  | 'countUp' // [动画] 数字滚动递增动效
+  | 'typewriter' // [动画] 打字机字符逐字显现动效
 
 /** 运行时任务控制句柄 */
 export interface RunningTask {
@@ -145,8 +166,8 @@ export const DEFAULT_SUBTITLE_SETTINGS: SubtitleSettings = {
     fontSize: 22,
     color: '#ffffff',
     strokeColor: '#000000',
-    strokeWidth: 1.5,
-    bgMode: 'none',
+    strokeWidth: 1.0,
+    bgMode: 'translucent',
   },
 }
 

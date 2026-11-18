@@ -19,7 +19,7 @@ export interface ClassroomStageProps {
 /** 渲染带 LaTeX 公式支持的字幕文本 */
 function renderSubtitleHtml(text: string): string {
   // 转换 $...$
-  return text.replace(/(^|[^\\])\$([^\$\n]+?)\$/g, (_, prefix, tex) => {
+  const html = text.replace(/(^|[^\\])\$([^\$\n]+?)\$/g, (_, prefix, tex) => {
     try {
       const rendered = katex.renderToString(tex.trim(), { displayMode: false, throwOnError: false })
       return `${prefix}${rendered}`
@@ -27,6 +27,8 @@ function renderSubtitleHtml(text: string): string {
       return `${prefix}$${tex}$`
     }
   })
+  // 强制处理为单行，并去除多余空白
+  return html.replace(/\s+/g, ' ').trim()
 }
 
 export default function ClassroomStage({
@@ -57,61 +59,66 @@ export default function ClassroomStage({
   const strokeWidth = subtitleStyle.strokeWidth ?? 1.5
 
   return (
-    <div className="relative flex-1 w-full h-full min-h-0 bg-[#07090e] overflow-hidden select-none flex items-center justify-center">
+    <div className="relative flex-1 w-full h-full min-h-0 bg-paper-deep overflow-hidden select-none flex items-center justify-center">
       {/* 16:9 画布宿主容器 */}
       <div ref={containerRef} className="w-full h-full" />
 
       {/* 底部动态字幕（可配置开关与白字黑色描边样式） */}
       {showSubtitle && subtitle && status !== 'ended' && (
         <div
-          className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-20 max-w-[85%] px-6 py-2 rounded-2xl select-none pointer-events-none transition-all duration-150 animate-in fade-in slide-in-from-bottom-2 ${
-            subtitleStyle.bgMode === 'solid'
-              ? 'bg-black/90 border border-white/15 shadow-2xl backdrop-blur-md'
-              : subtitleStyle.bgMode === 'translucent'
-              ? 'bg-black/40 border border-white/10 shadow-lg backdrop-blur-xs'
-              : 'bg-transparent shadow-none'
-          }`}
+          className="absolute bottom-10 left-0 right-0 z-20 flex justify-center pointer-events-none px-6"
         >
           <div
-            className="font-bold text-center tracking-wide leading-relaxed"
-            style={{
-              fontSize: `${subtitleStyle.fontSize || 22}px`,
-              color: subtitleStyle.color || '#ffffff',
-              WebkitTextStroke: strokeWidth > 0 ? `${strokeWidth}px ${strokeColor}` : 'none',
-              textShadow:
-                strokeWidth > 0
-                  ? `-1.5px -1.5px 0 ${strokeColor}, 1.5px -1.5px 0 ${strokeColor}, -1.5px 1.5px 0 ${strokeColor}, 1.5px 1.5px 0 ${strokeColor}, 0 2px 5px rgba(0,0,0,0.85)`
-                  : '0 2px 4px rgba(0,0,0,0.8)',
-            }}
-            dangerouslySetInnerHTML={{ __html: renderSubtitleHtml(subtitle) }}
-          />
+            className={`max-w-[85%] px-7 py-3 rounded-2xl select-none transition-all duration-300 flex items-center justify-center ${
+              subtitleStyle.bgMode === 'solid'
+                ? 'bg-mask/90 border border-line-strong/40 shadow-2xl backdrop-blur-md'
+                : subtitleStyle.bgMode === 'none'
+                ? 'bg-transparent shadow-none'
+                : 'bg-mask/50 backdrop-blur-md border border-white/10 shadow-xl'
+            }`}
+          >
+            <div
+              className="font-bold text-center tracking-wide leading-relaxed text-white"
+              style={{
+                fontSize: `${subtitleStyle.fontSize || 22}px`,
+                color: subtitleStyle.color || '#ffffff',
+                paintOrder: 'stroke fill',
+                WebkitTextStroke: strokeWidth > 0 ? `${strokeWidth}px ${strokeColor}` : 'none',
+                textShadow:
+                  strokeWidth > 0
+                    ? `-1.5px -1.5px 0 ${strokeColor}, 1.5px -1.5px 0 ${strokeColor}, -1.5px 1.5px 0 ${strokeColor}, 1.5px 1.5px 0 ${strokeColor}, 0 2px 5px rgba(0,0,0,0.85)`
+                    : '0 2px 4px rgba(0,0,0,0.8)',
+              }}
+              dangerouslySetInnerHTML={{ __html: renderSubtitleHtml(subtitle) }}
+            />
+          </div>
         </div>
       )}
 
       {/* 交互思考/确认检查点浮层 */}
       {status === 'waiting_checkpoint' && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="flex flex-col items-center gap-5 p-8 max-w-lg rounded-3xl border border-sky-400/40 bg-slate-900/95 text-white shadow-[0_20px_60px_rgba(56,189,248,0.25)] text-center animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-sky-500/20 text-sky-400 border border-sky-400/30">
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-mask/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="flex flex-col items-center gap-5 p-8 max-w-lg rounded-3xl border border-seal/30 bg-card/95 text-ink shadow-2xl text-center animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-seal/15 text-seal border border-seal/25">
               <Sparkles size={28} className="animate-pulse" />
             </div>
             <div className="space-y-2">
-              <div className="text-[13px] font-bold tracking-wider text-sky-400 uppercase">
+              <div className="text-[13px] font-bold tracking-wider text-seal uppercase">
                 {t('思考检查点')}
               </div>
-              <div className="text-[20px] font-bold text-slate-100">
+              <div className="text-[20px] font-bold text-ink-strong">
                 {checkpointTitle || t('请思考并点击继续下一步')}
               </div>
             </div>
             <button
               type="button"
               onClick={onContinueCheckpoint}
-              className="mt-2 flex items-center gap-2.5 px-6 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-[15px] shadow-lg shadow-sky-500/30 transition active:scale-95 cursor-pointer"
+              className="mt-2 flex items-center gap-2.5 px-6 py-3 rounded-xl bg-seal hover:bg-seal-deep text-white font-bold text-[15px] shadow-lg shadow-seal/25 transition active:scale-95 cursor-pointer"
             >
               <span>{t('继续课堂')}</span>
               <ArrowRight size={18} />
             </button>
-            <div className="text-[12px] text-slate-400">
+            <div className="text-[12px] text-ink-faint">
               {t('提示：按空格键也可直接推进')}
             </div>
           </div>

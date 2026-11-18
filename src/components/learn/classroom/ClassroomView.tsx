@@ -5,6 +5,7 @@ import { LessonScheduler } from '../../../learn/classroom/LessonScheduler'
 import { defaultClassroomTTS } from '../../../learn/classroom/ttsAdapter'
 import { loadClassroomEntity, saveClassroomEntity } from '../../../learn/classroom/store'
 import type {
+  ClassroomEntity,
   LessonCourse,
   SchedulerSnapshot,
   TimelineBeat,
@@ -25,6 +26,7 @@ export interface ClassroomViewProps {
   store: LearnStore
   onOpenTab: (kind: string, targetId: string, extra?: Record<string, unknown>) => void
   onGenerateClassroom?: (classroomId: string) => void
+  onUpdateClassroom?: (entity: ClassroomEntity) => void
 }
 
 export default function ClassroomView({
@@ -32,10 +34,15 @@ export default function ClassroomView({
   store,
   onOpenTab,
   onGenerateClassroom,
+  onUpdateClassroom,
 }: ClassroomViewProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
-  const entity = useMemo(() => loadClassroomEntity(classroomId), [classroomId])
+  const entity = useMemo(() => loadClassroomEntity(classroomId, '新课堂', store), [classroomId, store])
   const [course, setCourse] = useState<LessonCourse>(() => entity.course)
+
+  useEffect(() => {
+    setCourse(entity.course)
+  }, [entity])
 
   // 调度器与视口引用
   const viewportRef = useRef<StageViewport | null>(null)
@@ -109,10 +116,8 @@ export default function ClassroomView({
     schedulerRef.current = scheduler
     setBeats(scheduler.getBeats())
 
-    // 若课件有内容，默认自动开始播放首个画面
-    if (course.scenes.length > 0) {
-      scheduler.play()
-    }
+    // 禁止自动播放，初始挂载首个画面，保持 idle 就绪状态，等待用户手动点击播放
+    scheduler.mountInitial()
   }, [course])
 
   // 全屏状态同步
@@ -185,8 +190,13 @@ export default function ClassroomView({
   // 保存并热重载课件 DSL
   const handleSaveCourse = (nextCourse: LessonCourse) => {
     setCourse(nextCourse)
-    entity.course = nextCourse
-    saveClassroomEntity(entity)
+    const nextEntity: ClassroomEntity = {
+      ...entity,
+      title: nextCourse.title || entity.title,
+      course: nextCourse,
+    }
+    saveClassroomEntity(nextEntity)
+    onUpdateClassroom?.(nextEntity)
 
     if (schedulerRef.current) {
       schedulerRef.current.updateCourse(nextCourse)
@@ -203,47 +213,57 @@ export default function ClassroomView({
   return (
     <div
       ref={rootRef}
-      className="flex flex-col w-full h-full min-h-0 bg-paper overflow-hidden select-none"
+      className="flex flex-col w-full h-full min-h-0 bg-paper text-ink overflow-hidden select-none"
     >
-      {/* 顶部标题条 */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-line/50 bg-card/60 backdrop-blur-sm shrink-0">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-seal/15 text-seal shrink-0">
-            <Presentation size={15} />
+      {/* 顶部标题条：跟随主题配色 */}
+      <header className="flex items-center justify-between px-5 py-2.5 border-b border-line/60 bg-card/70 backdrop-blur-md shrink-0 z-20">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-seal/15 text-seal shrink-0 shadow-2xs">
+            <Presentation size={17} />
           </div>
           <div className="flex items-baseline gap-2 min-w-0">
-            <span className="text-[13.5px] font-bold text-ink-strong truncate">
+            <h1 className="text-[14px] font-bold text-ink-strong truncate">
               {course.title || t('互动课堂')}
-            </span>
+            </h1>
             {currentScene && (
-              <span className="text-[11.5px] text-ink-soft truncate opacity-80">
+              <span className="text-[12px] text-ink-soft truncate opacity-85">
                 · {currentScene.title}
               </span>
             )}
           </div>
         </div>
 
-        {/* 画面进度胶囊 */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-line/40 text-[11px] font-mono text-ink-soft shrink-0">
-          <span>{t('画面')}</span>
-          <span className="font-bold text-ink">
-            {isCourseEmpty ? '0' : snapshot.sceneIndex + 1} / {course.scenes.length}
-          </span>
+        {/* 右侧：画面进度胶囊与全屏入口 */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-line/40 text-[11px] font-mono text-ink-soft">
+            <span>{t('画面')}</span>
+            <span className="font-bold text-ink">
+              {isCourseEmpty ? '0' : snapshot.sceneIndex + 1} / {course.scenes.length}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsEditorOpen(true)}
+            title={t('编写 DSL')}
+            className="p-1.5 rounded-lg text-ink-soft hover:bg-line/60 hover:text-ink transition cursor-pointer"
+          >
+            <FileCode size={16} />
+          </button>
         </div>
-      </div>
+      </header>
 
       {/* 主舞台与侧边资源坞 */}
-      <div className="flex flex-1 min-h-0 relative overflow-hidden">
+      <div className="flex flex-1 min-h-0 relative overflow-hidden bg-paper-deep">
         {/* 空白课件引导态 */}
         {isCourseEmpty ? (
-          <div className="flex-1 w-full h-full bg-[#07090e] flex items-center justify-center p-6 select-none">
-            <div className="flex flex-col items-center gap-5 max-w-md text-center p-8 rounded-3xl bg-slate-900/90 border border-white/10 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
-              <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-sky-500/15 text-sky-400 border border-sky-500/20 shadow-lg">
+          <div className="flex-1 w-full h-full flex items-center justify-center p-6 select-none bg-paper-deep">
+            <div className="flex flex-col items-center gap-5 max-w-md text-center p-8 rounded-3xl bg-card border border-line shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-seal/15 text-seal border border-seal/20 shadow-md">
                 <Presentation size={32} />
               </div>
               <div className="space-y-2">
-                <div className="text-[20px] font-bold text-slate-100">{t('互动课件尚未生成')}</div>
-                <div className="text-[13px] text-slate-400 leading-relaxed">
+                <div className="text-[20px] font-bold text-ink-strong">{t('互动课件尚未生成')}</div>
+                <div className="text-[13px] text-ink-soft leading-relaxed">
                   {t('当前课堂暂无画面与动作剧场。您可以让 AI 导师结合上游教学内容自动规划生成 16:9 动态课件，或手动编写课件 DSL。')}
                 </div>
               </div>
@@ -259,7 +279,7 @@ export default function ClassroomView({
                 <button
                   type="button"
                   onClick={() => setIsEditorOpen(true)}
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 font-medium text-[13px] transition active:scale-98 cursor-pointer border border-white/10"
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-card hover:bg-line/40 text-ink-soft hover:text-ink font-medium text-[13px] transition active:scale-98 cursor-pointer border border-line"
                 >
                   <FileCode size={15} />
                   <span>{t('编写 DSL')}</span>
@@ -299,7 +319,7 @@ export default function ClassroomView({
         onSeek={handleSeek}
       />
 
-      {/* 底部控制台 */}
+      {/* 底部控制台：跟随主题配色 */}
       <ClassroomControls
         status={snapshot.status}
         playbackRate={snapshot.playbackRate}

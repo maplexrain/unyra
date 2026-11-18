@@ -180,6 +180,25 @@ function writeGoalFiles(goal: LearnStore['goals'][number], store: LearnStore, fi
       }),
     )
   }
+
+  const goalClassrooms = (store.classrooms ?? []).filter((c) => c.goalId === goal.id)
+  const goalClassroomIds = new Set(goalClassrooms.map((c) => c.id))
+  const classroomEdges = store.edges.filter((e) => goalClassroomIds.has(e.from) || goalClassroomIds.has(e.to))
+  if (goalClassrooms.length || classroomEdges.length) {
+    files.set(
+      `${path}/classrooms.json`,
+      jsonText({
+        version: 1,
+        classrooms: goalClassrooms,
+        edges: classroomEdges.map((e) => ({
+          from: e.from,
+          to: e.to,
+          createdAt: e.createdAt,
+          ...(e.portKey ? { portKey: e.portKey } : {}),
+        })),
+      }),
+    )
+  }
 }
 
 function* buildDocsSteps(store: LearnStore): Generator<void, Map<string, string>, void> {

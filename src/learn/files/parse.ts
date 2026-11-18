@@ -64,6 +64,9 @@ function readGoalLedgers(
     /** 文件节点（目标 × 本地文件/网页的绑定），目标目录的 file-nodes.json */
     fileNodesByGoal: Record<string, unknown[]>
     fileEdgesByGoal: Record<string, Array<Record<string, unknown>>>
+    /** 互动课堂节点（16:9 画布互动教学课堂），目标目录的 classrooms.json */
+    classroomsByGoal: Record<string, unknown[]>
+    classroomEdgesByGoal: Record<string, Array<Record<string, unknown>>>
     /** 目标级知识库（整门课所有文档共享），目标目录的 knowledge.json */
     knowledgeByGoal: Record<string, GoalKnowledgeItem[]>
   },
@@ -150,6 +153,15 @@ function readGoalLedgers(
   }
   if (Array.isArray(fileNodesFile?.edges) && fileNodesFile.edges.length) {
     out.fileEdgesByGoal[goalId] = fileNodesFile.edges
+  }
+
+  // 互动课堂节点（16:9 画布互动教学课堂，见 learn/classroom）与其树边
+  const classroomsFile = parseJson<{ classrooms?: unknown[]; edges?: Array<Record<string, unknown>> }>(files.get(`${goalDir}/classrooms.json`))
+  if (Array.isArray(classroomsFile?.classrooms) && classroomsFile.classrooms.length) {
+    out.classroomsByGoal[goalId] = classroomsFile.classrooms
+  }
+  if (Array.isArray(classroomsFile?.edges) && classroomsFile.edges.length) {
+    out.classroomEdgesByGoal[goalId] = classroomsFile.edges
   }
 }
 
@@ -247,6 +259,8 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
     projectsByGoal: {} as Record<string, unknown[]>,
     fileNodesByGoal: {} as Record<string, unknown[]>,
     fileEdgesByGoal: {} as Record<string, Array<Record<string, unknown>>>,
+    classroomsByGoal: {} as Record<string, unknown[]>,
+    classroomEdgesByGoal: {} as Record<string, Array<Record<string, unknown>>>,
     knowledgeByGoal: {} as Record<string, GoalKnowledgeItem[]>,
   }
 
@@ -338,6 +352,16 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
       }
     }
   }
+  // 互动课堂节点并进总账
+  const classrooms: unknown[] = []
+  for (const led of Object.values(ledgers.classroomsByGoal)) classrooms.push(...led)
+  for (const led of Object.values(ledgers.classroomEdgesByGoal)) {
+    for (const edge of led) {
+      if (!edges.some((e) => e.from === edge.from && e.to === edge.to)) {
+        edges.push(edge)
+      }
+    }
+  }
 
   return normalizeLearnStore({
     version: 2,
@@ -348,6 +372,7 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
     ...(videoNodes.length ? { videoNodes } : {}),
     ...(projects.length ? { projects } : {}),
     ...(fileNodes.length ? { fileNodes } : {}),
+    ...(classrooms.length ? { classrooms } : {}),
     conversations: ledgers.conversations,
     exams,
     tmp,
@@ -422,6 +447,8 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
     projectsByGoal: {} as Record<string, unknown[]>,
     fileNodesByGoal: {} as Record<string, unknown[]>,
     fileEdgesByGoal: {} as Record<string, Array<Record<string, unknown>>>,
+    classroomsByGoal: {} as Record<string, unknown[]>,
+    classroomEdgesByGoal: {} as Record<string, Array<Record<string, unknown>>>,
     knowledgeByGoal: {} as Record<string, GoalKnowledgeItem[]>,
   }
 
@@ -592,6 +619,16 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
       }
     }
   }
+  // 互动课堂节点并进总账
+  const classrooms2: unknown[] = []
+  for (const led of Object.values(ledgers.classroomsByGoal)) classrooms2.push(...led)
+  for (const led of Object.values(ledgers.classroomEdgesByGoal)) {
+    for (const edge of led) {
+      if (!edges.some((e) => e.from === edge.from && e.to === edge.to)) {
+        edges.push(edge)
+      }
+    }
+  }
 
   return normalizeLearnStore({
     version: 2,
@@ -602,6 +639,7 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
     ...(videoNodes2.length ? { videoNodes: videoNodes2 } : {}),
     ...(projects2.length ? { projects: projects2 } : {}),
     ...(fileNodes2.length ? { fileNodes: fileNodes2 } : {}),
+    ...(classrooms2.length ? { classrooms: classrooms2 } : {}),
     conversations: ledgers.conversations,
     exams,
     tmp,

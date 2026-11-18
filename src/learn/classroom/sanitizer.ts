@@ -2,6 +2,7 @@
  * 互动课堂编译器级校验、容错与自愈层
  */
 import type { LessonAction, LessonCourse, LessonScene, VisualAction } from './types'
+import { expandClassroomComponents } from './components'
 
 /** 纯净口语文本清洗（剔除 Markdown 格式符、LaTeX $ 标记、动作提示等） */
 export function sanitizeTtsText(text: string): string {
@@ -21,8 +22,9 @@ export function sanitizeScene(scene: LessonScene): LessonScene {
     return scene
   }
 
+  const expandedHtml = expandClassroomComponents(scene.html)
   const parser = new DOMParser()
-  const doc = parser.parseFromString(`<div>${scene.html}</div>`, 'text/html')
+  const doc = parser.parseFromString(`<div>${expandedHtml}</div>`, 'text/html')
   const root = doc.body.firstElementChild as HTMLElement | null
   if (!root) {
     return scene
@@ -55,7 +57,20 @@ export function sanitizeScene(scene: LessonScene): LessonScene {
       if (!validIds.has(cleanTarget)) {
         continue
       }
-      if (action.verb === 'appear' || action.verb === 'drawSvg') {
+      const wakingVerbs = new Set([
+        'appear',
+        'drawSvg',
+        'popIn',
+        'zoomIn',
+        'slideInLeft',
+        'slideInRight',
+        'slideInTop',
+        'slideInBottom',
+        'flip',
+        'bounce',
+        'animate',
+      ])
+      if (wakingVerbs.has(action.verb)) {
         appearedIds.add(cleanTarget)
       }
       cleanActions.push({
@@ -68,7 +83,7 @@ export function sanitizeScene(scene: LessonScene): LessonScene {
       if (cleanTtsText.length > 0) {
         cleanActions.push({
           ...action,
-          subtitle: action.subtitle ?? action.text,
+          subtitle: cleanTtsText,
           text: cleanTtsText,
         })
       }

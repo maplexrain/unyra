@@ -27,6 +27,13 @@ export class ClassroomTTSAdapter implements ITTSAdapter {
     const cleaned = cleanTextForSpeech(text)
     if (!cleaned) return
 
+    // 优先从持久化缓存尝试获取音频数据
+    const engineCfg = ttsEngineOf()
+    const mode = loadCapabilities().tts.mode
+    const voiceId = engineCfg?.voiceId ?? ''
+    const key = await capsHashKey('tts', mode, voiceId, cleaned)
+    
+    // 检查是否已经在 preloadCache 中
     if (this.preloadCache.has(cleaned)) {
       return this.preloadCache.get(cleaned)!.readyPromise
     }
@@ -49,36 +56,28 @@ export class ClassroomTTSAdapter implements ITTSAdapter {
     this.preloadCache.set(cleaned, entry)
 
     try {
-      const engineCfg = ttsEngineOf()
-      if (engineCfg) {
-        const mode = loadCapabilities().tts.mode
-        const voiceId = engineCfg.voiceId ?? ''
-        const key = await capsHashKey('tts', mode, voiceId, cleaned)
-        const cached = await capsCacheGet<{ audioBase64: string; mime: string }>(key)
-        let audioUrl: string | null = null
+      const cached = await capsCacheGet<{ audioBase64: string; mime: string }>(key)
+      let audioUrl: string | null = null
 
-        if (cached?.audioBase64) {
-          audioUrl = `data:${cached.mime || 'audio/wav'};base64,${cached.audioBase64}`
-        } else if (typeof native === 'function') {
-          const res = await native().caps.tts({
-            text: cleaned,
-            ...(voiceId ? { voiceId } : {}),
-            engine: engineCfg.engine,
-          })
-          if (res?.ok && res.audioBase64) {
-            await capsCacheSet(key, { audioBase64: res.audioBase64, mime: res.mime || 'audio/wav' })
-            audioUrl = `data:${res.mime || 'audio/wav'};base64,${res.audioBase64}`
-          }
+      if (cached?.audioBase64) {
+        audioUrl = `data:${cached.mime || 'audio/wav'};base64,${cached.audioBase64}`
+      } else if (engineCfg && typeof native === 'function') {
+        const res = await native().caps.tts({
+          text: cleaned,
+          ...(voiceId ? { voiceId } : {}),
+          engine: engineCfg.engine,
+        })
+        if (res?.ok && res.audioBase64) {
+          await capsCacheSet(key, { audioBase64: res.audioBase64, mime: res.mime || 'audio/wav' })
+          audioUrl = `data:${res.mime || 'audio/wav'};base64,${res.audioBase64}`
         }
+      }
 
-        if (audioUrl && typeof Audio !== 'undefined') {
-          const audio = new Audio(audioUrl)
-          audio.preload = 'auto'
-          entry.audio = audio
-          entry.audioUrl = audioUrl
-        }
-      } else if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.getVoices()
+      if (audioUrl && typeof Audio !== 'undefined') {
+        const audio = new Audio(audioUrl)
+        audio.preload = 'auto'
+        entry.audio = audio
+        entry.audioUrl = audioUrl
       }
     } catch {
       // 容错降级

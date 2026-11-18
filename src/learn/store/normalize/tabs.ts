@@ -33,10 +33,12 @@ export function normalizeTab(raw: unknown, byId: Map<string, KnowledgeNode>): Le
       : rawRef.view === 'source' || rawRef.view === 'preview'
         ? rawRef.view
         : undefined
+  const pinned = r.pinned === true ? true : r.pinned === false ? false : undefined
   return {
     id: tabKey(ref),
     ref,
     ...(view ? { view } : {}),
+    ...(pinned !== undefined ? { pinned } : {}),
     createdAt:
       typeof r.createdAt === 'number' && Number.isFinite(r.createdAt) ? r.createdAt : Date.now(),
   }
@@ -75,6 +77,18 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
     return goalId ? { kind: 'mind', goalId } : null
   }
   if (r.kind === 'agentSettings') return { kind: r.kind }
+  if (r.kind === 'classroom') {
+    const classroomId = typeof r.classroomId === 'string' ? r.classroomId.trim() : ''
+    if (!classroomId) return null
+    const nodeId = typeof r.nodeId === 'string' && r.nodeId ? r.nodeId : undefined
+    const goalId = typeof r.goalId === 'string' && r.goalId ? r.goalId : undefined
+    return {
+      kind: 'classroom',
+      classroomId,
+      ...(nodeId ? { nodeId } : {}),
+      ...(goalId ? { goalId } : {}),
+    }
+  }
   if (r.kind === 'blank') {
     return { kind: 'blank', key: typeof r.key === 'string' && r.key ? r.key : newBlankKey() }
   }

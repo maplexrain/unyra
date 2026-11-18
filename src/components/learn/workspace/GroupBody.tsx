@@ -484,6 +484,13 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               key={gTab.ref.classroomId}
               classroomId={gTab.ref.classroomId}
               store={store}
+              onUpdateClassroom={(nextEntity) => {
+                const latest = getLatest()
+                const list = latest.classrooms ?? []
+                const idx = list.findIndex((c) => c.id === nextEntity.id)
+                const nextList = idx >= 0 ? list.map((c, i) => (i === idx ? nextEntity : c)) : [...list, nextEntity]
+                set({ ...latest, classrooms: nextList })
+              }}
               onOpenTab={(kind, targetId) => {
                 if (kind === 'doc') {
                   openTab({ kind: 'teach', nodeId: targetId })

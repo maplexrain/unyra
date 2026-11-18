@@ -221,3 +221,48 @@ export function upsertClassroom(store: LearnStore, entity: ClassroomEntity): Lea
   saveClassroomEntity(entity)
   return { ...store, classrooms: nextList }
 }
+
+/** 读盘反序列化归一化：过滤坏条目与已不存在的目标，补齐默认字段 */
+export function normalizeClassrooms(raw: unknown, goalIds?: ReadonlySet<string>): ClassroomEntity[] {
+  if (!Array.isArray(raw)) return []
+  const out: ClassroomEntity[] = []
+  const seenIds = new Set<string>()
+
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const r = item as Record<string, unknown>
+    const id = typeof r.id === 'string' ? r.id.trim() : ''
+    if (!id || seenIds.has(id)) continue
+    const goalId = typeof r.goalId === 'string' && r.goalId.trim() ? r.goalId.trim() : undefined
+    if (goalId && goalIds && !goalIds.has(goalId)) continue
+    seenIds.add(id)
+
+    const title = typeof r.title === 'string' && r.title.trim() ? r.title.trim() : '互动课堂'
+    const createdAt = typeof r.createdAt === 'number' && Number.isFinite(r.createdAt) ? r.createdAt : Date.now()
+    const updatedAt = typeof r.updatedAt === 'number' && Number.isFinite(r.updatedAt) ? r.updatedAt : createdAt
+    const rawCourse = r.course && typeof r.course === 'object' ? (r.course as LessonCourse) : createDefaultLessonCourse(title)
+    const course: LessonCourse = {
+      courseId: typeof rawCourse.courseId === 'string' && rawCourse.courseId ? rawCourse.courseId : id,
+      title: typeof rawCourse.title === 'string' && rawCourse.title.trim() ? rawCourse.title : title,
+      scenes: Array.isArray(rawCourse.scenes) ? rawCourse.scenes : [],
+    }
+    const childNodeIds = Array.isArray(r.childNodeIds)
+      ? r.childNodeIds.filter((x): x is string => typeof x === 'string' && !!x.trim())
+      : []
+
+    const entity: ClassroomEntity = {
+      id,
+      title,
+      ...(typeof r.description === 'string' && r.description ? { description: r.description } : {}),
+      ...(goalId ? { goalId } : {}),
+      createdAt,
+      updatedAt,
+      course,
+      childNodeIds,
+    }
+    entityCache.set(id, entity)
+    out.push(entity)
+  }
+
+  return out
+}

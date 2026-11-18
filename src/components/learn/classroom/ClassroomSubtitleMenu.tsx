@@ -19,14 +19,14 @@ const FONT_SIZE_OPTIONS = [
 
 const STROKE_OPTIONS = [
   { label: '无', width: 0 },
-  { label: '标准', width: 1.5 },
-  { label: '加粗', width: 2.5 },
+  { label: '细描边', width: 0.8 },
+  { label: '标准', width: 1.2 },
 ]
 
 const BG_OPTIONS: Array<{ label: string; mode: 'none' | 'translucent' | 'solid' }> = [
-  { label: '透明 (纯描边)', mode: 'none' },
-  { label: '半透明', mode: 'translucent' },
-  { label: '深色底', mode: 'solid' },
+  { label: '胶囊半透明 (推荐)', mode: 'translucent' },
+  { label: '纯描边无底', mode: 'none' },
+  { label: '深黑实底', mode: 'solid' },
 ]
 
 const COLOR_OPTIONS = [
@@ -105,19 +105,20 @@ export default function ClassroomSubtitleMenu({
             <span
               style={{
                 fontSize: `${subtitleStyle.fontSize}px`,
-                color: subtitleStyle.color,
+                color: subtitleStyle.color || '#ffffff',
+                paintOrder: 'stroke fill',
                 WebkitTextStroke:
                   subtitleStyle.strokeWidth > 0
-                    ? `${subtitleStyle.strokeWidth}px ${subtitleStyle.strokeColor}`
+                    ? `${Math.min(subtitleStyle.strokeWidth, 1.2)}px ${subtitleStyle.strokeColor || '#000'}`
                     : 'none',
                 textShadow:
-                  subtitleStyle.strokeWidth > 0
-                    ? `-1.5px -1.5px 0 ${subtitleStyle.strokeColor}, 1.5px -1.5px 0 ${subtitleStyle.strokeColor}, -1.5px 1.5px 0 ${subtitleStyle.strokeColor}, 1.5px 1.5px 0 ${subtitleStyle.strokeColor}, 0 2px 4px rgba(0,0,0,0.8)`
-                    : 'none',
+                  subtitleStyle.bgMode === 'none'
+                    ? '0 0 2px #000, 0 1px 3px #000, 0 2px 6px rgba(0,0,0,0.95)'
+                    : '0 1px 3px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.8)',
               }}
               className="font-bold tracking-wide"
             >
-              Aa 白字黑描边预览
+              Aa 白字清晰字幕预览
             </span>
           </div>
 

@@ -3,6 +3,7 @@
  * 将声明式 VisualVerb / Speak / Wait / Checkpoint 编译为具备可控句柄的 RunningTask
  */
 import type { StageViewport } from './StageViewport'
+import { runAnimeAnimation } from './animations'
 import type {
   CheckpointAction,
   ITTSAdapter,
@@ -150,6 +151,27 @@ export class ActionCompiler {
     if (!el) return noop
 
     const duration = Math.max(50, (action.params?.duration ?? 450) / rate)
+
+    // 若动词属于 anime.js 动画体系，交由 runAnimeAnimation 处理
+    const animeVerbs = new Set([
+      'animate',
+      'bounce',
+      'shake',
+      'wobble',
+      'float',
+      'flip',
+      'popIn',
+      'zoomIn',
+      'rotate',
+      'glow',
+      'countUp',
+      'typewriter',
+    ])
+    if (animeVerbs.has(action.verb)) {
+      const animName = action.verb === 'animate' ? action.params?.animation || 'popIn' : action.verb
+      return runAnimeAnimation(el, animName, duration, action.params as Record<string, unknown> | undefined)
+    }
+
     let anim: Animation | null = null
     let fallbackTimer: number | null = null
 
