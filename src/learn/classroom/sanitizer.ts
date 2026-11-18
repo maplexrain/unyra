@@ -4,7 +4,7 @@
 import type { LessonAction, LessonCourse, LessonScene, VisualAction } from './types'
 import { expandClassroomComponents } from './components'
 
-/** 纯净口语文本清洗（剔除 Markdown 格式符、LaTeX $ 标记、动作提示等） */
+/** 纯净口语文本清洗（剔除 Markdown 格式符、LaTeX $ 标记、动作提示及禁止的句号等） */
 export function sanitizeTtsText(text: string): string {
   return text
     .replace(/\$([^$]+)\$/g, '$1') // 提取公式内容作为纯文本发音
@@ -12,6 +12,7 @@ export function sanitizeTtsText(text: string): string {
     .replace(/\[([^\]]+)\]/g, '') // 纯中括号指令剔除
     .replace(/[*#_`~]/g, '') // 剔除 Markdown 格式符
     .replace(/（[^）]*）|\([^)]*\)/g, '') // 剔除中文/英文括号动作提示
+    .replace(/[。.]/g, '') // 严禁句号
     .replace(/\s+/g, ' ')
     .trim()
 }

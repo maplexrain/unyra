@@ -16,10 +16,12 @@ export interface ClassroomStageProps {
   subtitleStyle?: SubtitleStyleConfig
 }
 
-/** 渲染带 LaTeX 公式支持的字幕文本 */
+/** 渲染带 LaTeX 公式支持的字幕文本（严禁包含句号） */
 function renderSubtitleHtml(text: string): string {
+  // 严禁包含句号，一律清洗
+  const clean = text.replace(/[。.]/g, '')
   // 转换 $...$
-  const html = text.replace(/(^|[^\\])\$([^\$\n]+?)\$/g, (_, prefix, tex) => {
+  const html = clean.replace(/(^|[^\\])\$([^\$\n]+?)\$/g, (_, prefix, tex) => {
     try {
       const rendered = katex.renderToString(tex.trim(), { displayMode: false, throwOnError: false })
       return `${prefix}${rendered}`
@@ -63,10 +65,10 @@ export default function ClassroomStage({
       {/* 16:9 画布宿主容器 */}
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* 底部动态字幕（可配置开关与白字黑色描边样式） */}
+      {/* 底部动态字幕（可配置开关与白字黑色描边样式，z-10 避免遮挡控制台弹窗与交互浮层） */}
       {showSubtitle && subtitle && status !== 'ended' && (
         <div
-          className="absolute bottom-10 left-0 right-0 z-20 flex justify-center pointer-events-none px-6"
+          className="absolute bottom-10 left-0 right-0 z-10 flex justify-center pointer-events-none px-6"
         >
           <div
             className={`max-w-[85%] px-7 py-3 rounded-2xl select-none transition-all duration-300 flex items-center justify-center ${

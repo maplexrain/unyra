@@ -37,7 +37,7 @@ export default function ClassroomTimeline({
   }
 
   return (
-    <div className="w-full border-t border-line/60 bg-card/90 backdrop-blur-md px-6 py-2 select-none flex flex-col justify-center shrink-0">
+    <div className="relative z-20 w-full border-t border-line/60 bg-card/90 backdrop-blur-md px-6 py-2 select-none flex flex-col justify-center shrink-0">
       {/* 轴线容器 */}
       <div ref={trackRef} className="relative w-full h-8 flex items-center">
         {/* 轨道内槽（两侧预留 16px 留白） */}

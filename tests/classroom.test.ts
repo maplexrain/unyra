@@ -17,10 +17,10 @@ import type { LearnStore } from '../src/learn/types'
 
 describe('互动课堂 (Interactive Classroom) 核心逻辑与编译器测试', () => {
   describe('1. 编译器级校验与自愈层 (Sanitizer)', () => {
-    it('清理口语文本：过滤 Markdown 符号、括号停顿提示等非朗读内容', () => {
+    it('清理口语文本：过滤 Markdown 符号、括号停顿提示等非朗读内容并剔除句号', () => {
       const raw = '大家好！**欢迎**来到本节课（停顿2秒）。请看公式 $E=mc^2$ [点击查看] 详解。'
       const cleaned = sanitizeTtsText(raw)
-      expect(cleaned).toBe('大家好！欢迎来到本节课。请看公式 E=mc^2 详解。')
+      expect(cleaned).toBe('大家好！欢迎来到本节课请看公式 E=mc^2 详解')
     })
 
     it('安全过滤：剥离 <script> 标签与 on* 事件监听器', () => {

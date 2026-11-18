@@ -143,6 +143,13 @@ describe('自愈与动作清洗 (sanitizer.ts)', () => {
     }
 
     const cleaned = sanitizeScene(rawScene)
+    // 讲解内容中严禁包含句号，清洗器自动剥离
+    const firstAct = cleaned.actions[0]
+    expect(firstAct.type).toBe('speak')
+    if (firstAct.type === 'speak') {
+      expect(firstAct.text).toBe('现在学习新概念')
+      expect(firstAct.text).not.toContain('。')
+    }
     // card1 被 bounce 动词唤醒，所以保留 data-hidden 给动作控制
     expect(cleaned.html).toContain('id="card1"')
     // deadCard 从未被动作唤醒，data-hidden 自动被自愈剥离，防止页面永久隐藏

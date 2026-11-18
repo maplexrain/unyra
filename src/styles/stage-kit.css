@@ -28,7 +28,7 @@
   font-size: 28px;
   line-height: 1.5;
   box-sizing: border-box;
-  padding: 64px 80px;
+  padding: 56px 80px 120px 80px; /* 底部预留 120px 字幕安全避让区，杜绝字幕遮挡卡片与文字 */
   user-select: none;
   border-radius: 20px;
   box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.28);

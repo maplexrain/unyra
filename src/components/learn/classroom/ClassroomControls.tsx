@@ -58,7 +58,7 @@ export default function ClassroomControls({
   const isEnded = status === 'ended'
 
   return (
-    <div className="flex items-center justify-between px-4 py-2 border-t border-line/40 bg-card/90 backdrop-blur-md select-none shrink-0">
+    <div className="relative z-40 flex items-center justify-between px-4 py-2 border-t border-line/40 bg-card/90 backdrop-blur-md select-none shrink-0">
       {/* 左侧：播放核心控制组 */}
       <div className="flex items-center gap-1.5">
         <button
