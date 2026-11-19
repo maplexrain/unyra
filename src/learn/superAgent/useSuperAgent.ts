@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { hasApiKey, loadAiSettings, resolveGlobal, type AiSettings } from '../../ai/settings'
 import { SuperAgentEngine } from '../../agent/super/engine'
+import { resetPrefixGate } from '../../agent/prefixGate'
 import type { AgentPart } from '../../agent/types'
 import type {
   SuperAgentEvent,
@@ -67,6 +68,11 @@ export function useSuperAgent(options: UseSuperAgentOptions) {
     const sid = scopeId
 
     async function init() {
+      // 切换前立即清空在途流状态，防止跨目标串台展示
+      setHostRunning(false)
+      setHostStreaming(null)
+      setWorkerStreams({})
+
       // 切换前若有旧 engine，先立即保存
       if (engineRef.current) {
         await flushSuperAgentState(engineRef.current.getState().id)
@@ -217,6 +223,14 @@ export function useSuperAgent(options: UseSuperAgentOptions) {
       }
       const engine = engineRef.current
       if (!engine) return
+      // 动态同步最新模型与提供商配置
+      const curAi = resolveGlobal(s)
+      engine.updateAiConfig({
+        provider: curAi.provider,
+        model: curAi.model,
+        effort: curAi.effort,
+      })
+
       setHostRunning(true)
       try {
         await engine.sendUserMessage(text)
@@ -224,6 +238,7 @@ export function useSuperAgent(options: UseSuperAgentOptions) {
         onToast?.(e instanceof Error ? e.message : '发送失败')
       } finally {
         setHostRunning(false)
+        setHostStreaming(null)
       }
     },
     [propAiSettings, onToast],
@@ -239,6 +254,14 @@ export function useSuperAgent(options: UseSuperAgentOptions) {
       }
       const engine = engineRef.current
       if (!engine) return
+      // 动态同步最新模型与提供商配置
+      const curAi = resolveGlobal(s)
+      engine.updateAiConfig({
+        provider: curAi.provider,
+        model: curAi.model,
+        effort: curAi.effort,
+      })
+
       try {
         await engine.sendUserMessage(text, { targetWorkerId: workerId })
       } catch (e) {
@@ -254,6 +277,7 @@ export function useSuperAgent(options: UseSuperAgentOptions) {
     if (engineRef.current) {
       engineRef.current.stopAll()
     }
+    resetPrefixGate('super:host:' + sid)
     const freshState: SuperAgentState = {
       id: sid,
       hostSystemPrompt: buildSuperHostSystemPrompt({ goalTitle }),

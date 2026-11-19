@@ -187,6 +187,24 @@ export const SuperWorkerPane = memo(function SuperWorkerPane({
 
       {/* 主展示区 */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+        {/* waiting_input 挂起提示横幅 */}
+        {worker.status === 'waiting_input' && (
+          <div className="p-4 rounded-2xl bg-sky-500/10 border border-sky-500/30 flex items-start gap-3 shadow-xs">
+            <Clock size={18} className="text-sky-600 dark:text-sky-400 shrink-0 mt-0.5 animate-pulse" />
+            <div className="min-w-0 flex-1">
+              <div className="text-[12.5px] font-bold text-sky-700 dark:text-sky-300">
+                {t('工单已挂起，等待您的指示/回答')}
+              </div>
+              <div className="text-[13px] text-ink-strong mt-1 font-medium leading-relaxed">
+                {worker.waitingPrompt || t('Worker 请求补充关键信息')}
+              </div>
+              <div className="text-[11.5px] text-ink-faint mt-1">
+                {t('请直接在下方输入框回复，工单将自动恢复执行（不唤醒前台主控）')}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Mind 过程折叠区 */}
         {mindParts.length > 0 && (
           <div className="rounded-2xl border border-line/60 bg-card/40 overflow-hidden shadow-2xs">
@@ -321,7 +339,13 @@ export const SuperWorkerPane = memo(function SuperWorkerPane({
 
       {/* 底部：直连快通道 */}
       <div className="p-3 border-t border-line/60 bg-paper/80 backdrop-blur-xs shrink-0">
-        <div className="relative flex flex-col rounded-2xl bg-card border border-line focus-within:border-seal/60 focus-within:ring-1 focus-within:ring-seal/30 transition shadow-xs">
+        <div
+          className={`relative flex flex-col rounded-2xl bg-card border transition shadow-xs ${
+            worker.status === 'waiting_input'
+              ? 'border-sky-500/60 ring-1 ring-sky-500/30'
+              : 'border-line focus-within:border-seal/60 focus-within:ring-1 focus-within:ring-seal/30'
+          }`}
+        >
           <div className="px-3 pt-2 flex items-center gap-1.5 text-[11px] font-semibold text-sky-600 dark:text-sky-400">
             <Zap size={11} />
             <span>{t('直连快通道（直接插队投递，不唤醒前台主控）')}</span>
@@ -331,7 +355,11 @@ export const SuperWorkerPane = memo(function SuperWorkerPane({
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={t('向该 Worker 补充要求、纠正方向或直接追问...')}
+            placeholder={
+              worker.status === 'waiting_input'
+                ? t('输入您的回答，按 Enter 唤醒 Worker 继续执行...')
+                : t('向该 Worker 补充要求、纠正方向或直接追问...')
+            }
             rows={2}
             className="w-full resize-none p-3 pb-8 text-[13px] bg-transparent outline-none text-ink placeholder:text-ink-faint leading-relaxed"
           />

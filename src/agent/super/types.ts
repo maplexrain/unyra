@@ -51,6 +51,8 @@ export interface WorkerSession {
   title: string
   goal: string
   status: WorkerStatus
+  /** 工单挂起等待用户回答的提问提示（仅在 status === 'waiting_input' 时存在） */
+  waitingPrompt?: string
   /** 完整的思考过程、工具调用与多跳历史（供 Worker 自行推理与 UI 折叠查看） */
   messages: ConversationMessage[]
   /** 面向人类的最新交付文本（剥离 mind 后的干净正文） */

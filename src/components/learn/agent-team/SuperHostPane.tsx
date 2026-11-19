@@ -95,11 +95,13 @@ export const SuperHostPane = memo(function SuperHostPane({
   // 提取工具调用中的目标 WorkerId 以供一键跳转
   const extractWorkerId = (_toolName: string, argsStr: string, resultStr: string): string | null => {
     try {
+      const parsedRes = JSON.parse(resultStr)
+      if (parsedRes.workerId) return String(parsedRes.workerId)
+    } catch {}
+    try {
       const parsedArgs = JSON.parse(argsStr)
       if (parsedArgs.workerId) return String(parsedArgs.workerId)
-    } catch {
-      // ignore
-    }
+    } catch {}
     const match = /w-[a-z0-9]+/i.exec(resultStr)
     return match ? match[0] : null
   }

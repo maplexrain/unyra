@@ -10,13 +10,18 @@
 import type { ReasoningEffort, StreamFn } from '../../ai/types'
 import { type ResolvedProvider } from '../../ai/client'
 import { runAgent } from '../runtime'
-import { assertPrefixStable, resetPrefixGate } from '../prefixGate'
+import { assertPrefixStable } from '../prefixGate'
 import type { AgentPart, AgentTool, ConversationMessage } from '../types'
 import { toChatHistory } from '../../learn/agent/history'
 import { applyEvent } from '../../learn/agent/events'
 import { createHostTools } from './hostTools'
 import { buildHostUserPayload, extractChatText } from './projection'
 import { findArtifact, upsertBlackboardEntry } from './blackboard'
+import {
+  DEFAULT_HOST_SYSTEM,
+  DEFAULT_WORKER_SYSTEM,
+  hydrateSuperAgentState,
+} from './hydration'
 import type {
   ArtifactRecord,
   SuperAgentEvent,
@@ -44,18 +49,8 @@ export interface SuperAgentEngineOptions {
 interface WorkerHandle {
   ctrl: AbortController
   inbox: string[]
+  waitInputResolve?: (answer: string) => void
 }
-
-const DEFAULT_HOST_SYSTEM = `你是 Frontline Host（前台总调度助手）。
-你的职责是作为用户的唯一接待前台，倾听学习者的需求：
-1. 简单问答、概念解释、闲聊或确认性提问：直接作答，言简意赅，不要创建 Worker；
-2. 复杂任务、需要资料检索、讲义编写、试卷编排或数据实验的长任务：调用 spawn_worker 委派给后台隔离工坊去执行；
-3. 需要修正或补充后台任务：调用 steer_worker；取消任务调用 cancel_worker；查看历史或索引调用 query_blackboard / inspect_worker；
-4. 你自身没有长耗时沙箱，严格禁止假装已经完成了复杂产出；委派任务后即刻向用户汇报已派出专员即可。`
-
-const DEFAULT_WORKER_SYSTEM = `你是专职执行工单的后台 Worker。
-请聚焦完成被指派的目标，产出清晰、严谨、面向学习者的内容。
-在收口时直接输出完整的高质量成果正文。`
 
 export class SuperAgentEngine {
   private state: SuperAgentState
@@ -85,6 +80,18 @@ export class SuperAgentEngine {
 
   public isHostRunning(): boolean {
     return this.hostRunning
+  }
+
+  public updateAiConfig(cfg: {
+    provider: ResolvedProvider
+    model: string
+    effort?: ReasoningEffort
+  }): void {
+    this.options.provider = cfg.provider
+    this.options.model = cfg.model
+    if (cfg.effort !== undefined) {
+      this.options.effort = cfg.effort
+    }
   }
 
   private emit(event: SuperAgentEvent): void {
@@ -322,19 +329,34 @@ export class SuperAgentEngine {
     }
 
     const handle = this.workerHandles.get(workerId)
-    if (worker.status === 'running' && handle) {
-      // 正在运行中：压入跳边界 inbox 队列
-      handle.inbox.push(instruction)
-      return { ok: true, message: `指令已挂起，将在 Worker 当前步骤结束后注入` }
+    if (handle) {
+      if (handle.waitInputResolve) {
+        // 当前挂起在 waiting_input：直接唤醒挂起的等待通道
+        const resolve = handle.waitInputResolve
+        handle.waitInputResolve = undefined
+        delete worker.waitingPrompt
+        worker.status = 'running'
+        worker.updatedAt = Date.now()
+        this.emit({ type: 'worker-status', workerId, status: 'running' })
+        this.notifyStateChange()
+        resolve(instruction)
+        return { ok: true, message: `已向 Worker ${workerId} 提供答复，恢复执行` }
+      }
+      if (worker.status === 'running') {
+        // 正在运行中：压入跳边界 inbox 队列
+        handle.inbox.push(instruction)
+        return { ok: true, message: `指令已挂起，将在 Worker 当前步骤结束后注入` }
+      }
     }
 
-    // 非运行状态（waiting_input / idle / done 等）：追加用户消息并重新拉起
+    // 脱机或已停止状态（如重启恢复后）：追加用户消息并重新拉起
     worker.messages.push({
       id: crypto.randomUUID(),
       role: 'user',
       parts: [{ type: 'text', text: instruction }],
       ts: Date.now(),
     })
+    delete worker.waitingPrompt
     worker.status = 'running'
     worker.updatedAt = Date.now()
     this.emit({ type: 'worker-status', workerId, status: 'running' })
@@ -393,15 +415,85 @@ export class SuperAgentEngine {
    * Worker 异步执行引擎核心
    */
   private async driveWorker(worker: WorkerSession, handle: WorkerHandle): Promise<void> {
-    const workerTools = this.options.createWorkerTools
+    const requestInputTool: AgentTool = {
+      name: 'request_input',
+      description:
+        '向用户提问或请求补充关键信息，并将当前工单挂起为 waiting_input 状态等待回复。' +
+        '当缺少必要信息、需要用户做方向抉择或高危操作确认时调用。调用后工单挂起，等待用户通过直连通道输入回复。',
+      parameters: {
+        type: 'object',
+        properties: {
+          question: {
+            type: 'string',
+            description: '向用户提出的明确问题或待确认事项',
+          },
+        },
+        required: ['question'],
+      },
+      run: async (args) => {
+        const question = String(args.question || '').trim() || '请补充指示'
+        worker.waitingPrompt = question
+        worker.status = 'waiting_input'
+        this.emit({ type: 'worker-need-input', workerId: worker.id, prompt: question })
+        this.emit({ type: 'worker-status', workerId: worker.id, status: 'waiting_input' })
+        this.notifyStateChange()
+        return {
+          ok: true,
+          content: `已发起提问并挂起工单：「${question}」。工单已进入 waiting_input 状态，请等待用户回复。`,
+        }
+      },
+    }
+
+    const customTools = this.options.createWorkerTools
       ? this.options.createWorkerTools(worker.id)
       : []
+    const workerTools = [requestInputTool, ...customTools]
 
     let currentTurnParts: AgentPart[] = []
     let currentHop = 0
 
     // 跳边界介入读取通道
     const atBoundary = async (): Promise<{ role: 'user'; content: string } | null> => {
+      // 1. 若当前处于 waiting_input，异步等待用户通过直连通道提供答复
+      if (worker.status === 'waiting_input') {
+        let answer = handle.inbox.shift()
+        if (!answer) {
+          answer = await new Promise<string>((resolve) => {
+            handle.waitInputResolve = resolve
+            if (handle.ctrl.signal.aborted) {
+              resolve('')
+            } else {
+              handle.ctrl.signal.addEventListener('abort', () => resolve(''), { once: true })
+            }
+          })
+        }
+        if (!answer || handle.ctrl.signal.aborted) return null
+
+        delete worker.waitingPrompt
+        worker.status = 'running'
+        this.emit({ type: 'worker-status', workerId: worker.id, status: 'running' })
+
+        if (currentTurnParts.length) {
+          worker.messages.push({
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            parts: currentTurnParts,
+            ts: Date.now(),
+          })
+          currentTurnParts = []
+        }
+
+        worker.messages.push({
+          id: crypto.randomUUID(),
+          role: 'user',
+          parts: [{ type: 'text', text: answer }],
+          ts: Date.now(),
+        })
+        this.notifyStateChange()
+        return { role: 'user', content: answer }
+      }
+
+      // 2. 正常运行中的在途跳边界插队
       if (!handle.inbox.length) return null
       const inst = handle.inbox.shift()!
 
@@ -492,6 +584,8 @@ export class SuperAgentEngine {
 
     if (handle.ctrl.signal.aborted) {
       finalStatus = 'cancelled'
+    } else if (worker.status === 'waiting_input') {
+      finalStatus = 'waiting_input'
     } else if (errorMessage && finalStatus !== 'cancelled') {
       finalStatus = 'failed'
     }
@@ -542,11 +636,33 @@ export class SuperAgentEngine {
     status: WorkerStatus,
     issue?: string,
   ): void {
-    const summary =
-      issue ??
-      (worker.chatText.length > 80
-        ? worker.chatText.slice(0, 80) + '…'
-        : worker.chatText || '任务已完成')
+    if (status === 'waiting_input') {
+      this.state.blackboard = upsertBlackboardEntry(
+        this.state.blackboard,
+        worker,
+        worker.waitingPrompt ? `工单挂起：${worker.waitingPrompt}` : '等待用户输入',
+      )
+      this.notifyStateChange()
+      return
+    }
+
+    let summary = issue
+    if (!summary) {
+      if (worker.chatText.trim()) {
+        summary = worker.chatText.length > 80 ? worker.chatText.slice(0, 80) + '…' : worker.chatText
+      } else if (worker.artifacts.length > 0) {
+        summary = `已完成并产出 ${worker.artifacts.length} 项成果：${worker.artifacts.map((a) => a.title).join('、')}`
+      } else {
+        const toolCalls = worker.messages
+          .flatMap((m) => m.parts || [])
+          .filter((p): p is Extract<AgentPart, { type: 'tool' }> => p.type === 'tool')
+        if (toolCalls.length > 0) {
+          summary = `执行了 ${toolCalls.length} 步操作（${toolCalls.map((t) => t.name).slice(0, 3).join(', ')}），已达成目标`
+        } else {
+          summary = `已完成目标：${worker.goal}`
+        }
+      }
+    }
 
     const receipt: WorkerReceipt = {
       id: crypto.randomUUID(),
@@ -570,63 +686,4 @@ export class SuperAgentEngine {
   }
 }
 
-/**
- * 状态持久化反序列化与冷启动崩溃恢复：
- * 1. 扫描 workers：将残留处于 'running' 状态的 Worker 归一化为 'failed'，附带 '应用重启，任务被中断'；
- * 2. 清洗可能残缺的字段（确保数组和对象均不为 null/undefined）；
- * 3. 重置残留的 prefixGate 缓存键。
- */
-export function hydrateSuperAgentState(raw: unknown): SuperAgentState {
-  if (!raw || typeof raw !== 'object') {
-    return {
-      id: crypto.randomUUID(),
-      hostSystemPrompt: DEFAULT_HOST_SYSTEM,
-      hostMessages: [],
-      workers: {},
-      mailbox: [],
-      blackboard: [],
-    }
-  }
-
-  const s = raw as Partial<SuperAgentState>
-  const id = typeof s.id === 'string' && s.id ? s.id : crypto.randomUUID()
-  const hostSystemPrompt =
-    typeof s.hostSystemPrompt === 'string' && s.hostSystemPrompt.trim()
-      ? s.hostSystemPrompt
-      : DEFAULT_HOST_SYSTEM
-  const hostMessages = Array.isArray(s.hostMessages) ? s.hostMessages : []
-  const mailbox = Array.isArray(s.mailbox) ? s.mailbox : []
-  const blackboard = Array.isArray(s.blackboard) ? s.blackboard : []
-
-  const rawWorkers = s.workers && typeof s.workers === 'object' ? s.workers : {}
-  const workers: Record<string, WorkerSession> = {}
-
-  for (const [wid, w] of Object.entries(rawWorkers)) {
-    if (!w || typeof w !== 'object') continue
-    const session = { ...w } as WorkerSession
-    // 恢复时将未完成的 running 状态归一化为 failed
-    if (session.status === 'running') {
-      session.status = 'failed'
-      session.error = '应用重启，任务被中断'
-      session.updatedAt = Date.now()
-    }
-    // 确保数组属性完整
-    if (!Array.isArray(session.messages)) session.messages = []
-    if (!Array.isArray(session.artifacts)) session.artifacts = []
-    if (typeof session.chatText !== 'string') session.chatText = ''
-
-    workers[wid] = session
-    resetPrefixGate('super:worker:' + wid)
-  }
-
-  resetPrefixGate('super:host:' + id)
-
-  return {
-    id,
-    hostSystemPrompt,
-    hostMessages,
-    workers,
-    mailbox,
-    blackboard,
-  }
-}
+export { hydrateSuperAgentState } from './hydration'

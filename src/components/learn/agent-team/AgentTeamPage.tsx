@@ -19,6 +19,7 @@ import type { LearnStore, TabRef, DocView } from '../../../learn/types'
 import type { useAgent } from '../../../learn/useAgent'
 import type { loadAgentSettings } from '../../../agent/settings'
 import { resolveDisplayedConversation } from '../../../learn/graph'
+import { goalFocusByGoal } from '../workspace/goalFocus'
 import { t } from '../../../i18n'
 import { Sparkles, Bot, Layers } from 'lucide-react'
 
@@ -66,6 +67,16 @@ export default function AgentTeamPage({
 
   const goalTitle = activeGoal?.title
 
+  const effectiveNodeId = useMemo(() => {
+    if (!effectiveGoalId || !store) return null
+    return (
+      goalFocusByGoal.get(effectiveGoalId) ??
+      (store.goals.find((g) => g.id === effectiveGoalId)?.rootNodeId ||
+        store.nodes.find((n) => n.goalId === effectiveGoalId)?.id ||
+        null)
+    )
+  }, [effectiveGoalId, store])
+
   // 工作台模式：'super'（三平面架构工作台，默认）与 'classic'（经典导师备用对比）
   const [workbenchMode, setWorkbenchMode] = useState<'super' | 'classic'>('super')
 
@@ -79,7 +90,7 @@ export default function AgentTeamPage({
     store,
     getLatest,
     set,
-    nodeId: null,
+    nodeId: effectiveNodeId,
     onToast,
   })
 

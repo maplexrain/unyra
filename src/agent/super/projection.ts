@@ -69,8 +69,9 @@ export function formatMailboxHeader(receipts: WorkerReceipt[]): string {
 
   const lines = receipts.map((r) => {
     const status = STATUS_LABEL[r.status] || r.status
+    const cleanSummary = r.summary.replace(/[\r\n]+/g, ' ').trim()
     const arts = r.artifactIds.length ? ` [产物ID: ${r.artifactIds.join(', ')}]` : ''
-    return `- [${status}] ${r.title} (ID: ${r.workerId}): ${r.summary}${arts}`
+    return `- [${status}] ${r.title} (ID: ${r.workerId}): ${cleanSummary}${arts}`
   })
 
   return `【后台工作回执（共 ${receipts.length} 项）】\n${lines.join('\n')}`
