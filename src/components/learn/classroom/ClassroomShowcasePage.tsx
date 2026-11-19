@@ -468,7 +468,7 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
       )}
 
       {/* 主网格展示区 */}
-      <div className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto space-y-8">
+      <div className="flex-1 p-5 md:p-7 max-w-[1720px] w-full mx-auto space-y-8">
         {/* 组件卡牌网格 */}
         {filteredComponents.length > 0 && (
           <section className="space-y-4">
@@ -480,7 +480,7 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
               <span className="text-[11.5px] text-ink-soft">{t('点击任意组件卡片进入详情与实时演练')}</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-4.5">
               {filteredComponents.map((comp) => {
                 const isExt = comp.source === 'external'
                 const copyKey = `comp:${comp.tag}`
@@ -489,7 +489,7 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
                   <div
                     key={comp.tag}
                     onClick={() => setSelectedTag(comp.tag)}
-                    className="flex flex-col rounded-3xl bg-card border border-line/80 hover:border-seal/60 p-5 shadow-xs hover:shadow-xl transition-all duration-200 cursor-pointer group relative overflow-hidden"
+                    className="flex flex-col rounded-2xl bg-card border border-line/80 hover:border-seal/60 p-4.5 shadow-xs hover:shadow-xl transition-all duration-200 cursor-pointer group relative overflow-hidden"
                   >
                     {/* 卡牌顶栏 */}
                     <div className="flex items-center justify-between mb-2.5">
@@ -572,7 +572,7 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
               <span className="text-[11.5px] text-ink-soft">{t('原位点击试播实时动画')}</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-4.5">
               {filteredAnimations.map((anim) => {
                 const isExt = anim.source === 'external'
                 const copyKey = `anim:${anim.verb}`
@@ -580,7 +580,7 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
                 return (
                   <div
                     key={anim.verb}
-                    className="flex flex-col rounded-3xl bg-card border border-line/80 hover:border-sky-500/50 p-5 shadow-xs hover:shadow-md transition group"
+                    className="flex flex-col rounded-2xl bg-card border border-line/80 hover:border-sky-500/50 p-4.5 shadow-xs hover:shadow-md transition group"
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-mono text-[14px] font-bold text-sky-600 dark:text-sky-400 tracking-tight">

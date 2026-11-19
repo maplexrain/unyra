@@ -186,6 +186,8 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     gTab.ref.kind !== 'draft' &&
     // 视频学习页（实验）不画：大纲/视图切换对播放器没有意义（用户定的）
     gTab.ref.kind !== 'video' &&
+    // 互动课堂与组件动效库不画：沉浸式独立画布与舞台页面，自成体系不画文档侧栏
+    gTab.ref.kind !== 'classroom' &&
     gTab.ref.kind !== 'classroomShowcase' &&
     // 插件文档页不画：它是参考手册，不是可编辑节点文档
     gTab.ref.kind !== 'pluginDoc' &&

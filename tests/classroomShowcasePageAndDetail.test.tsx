@@ -9,6 +9,7 @@ import {
 import ClassroomShowcasePage from '../src/components/learn/classroom/ClassroomShowcasePage'
 import ClassroomComponentDetailPage from '../src/components/learn/classroom/ClassroomComponentDetailPage'
 import {
+  BUILTIN_COMPONENTS,
   registerClassroomComponent,
   unregisterClassroomComponent,
 } from '../src/learn/classroom/registry'
@@ -38,30 +39,12 @@ describe('Classroom Component Showcase & Detail Page', () => {
     document.body.innerHTML = ''
   })
 
-  it('provides complete specification contracts for all 16 builtin components', () => {
-    const builtinTags = [
-      'ui-card',
-      'ui-concept',
-      'ui-formula',
-      'ui-code',
-      'ui-compare',
-      'ui-steps',
-      'ui-step',
-      'ui-stat',
-      'ui-callout',
-      'ui-quote',
-      'ui-quiz',
-      'ui-option',
-      'ui-badge',
-      'ui-split',
-      'ui-split-3',
-      'ui-grid-2x2',
-    ]
-
-    for (const tag of builtinTags) {
-      const spec = BUILTIN_COMPONENT_SPECS[tag]
-      expect(spec, `Missing spec for ${tag}`).toBeDefined()
-      expect(spec.tag).toBe(tag)
+  it('provides complete specification contracts for all 26 builtin components', () => {
+    expect(BUILTIN_COMPONENTS.length).toBeGreaterThanOrEqual(26)
+    for (const comp of BUILTIN_COMPONENTS) {
+      const spec = BUILTIN_COMPONENT_SPECS[comp.tag]
+      expect(spec, `Missing spec for ${comp.tag}`).toBeDefined()
+      expect(spec.tag).toBe(comp.tag)
       expect(spec.name).toBeTruthy()
       expect(spec.props.length).toBeGreaterThan(0)
       expect(spec.recommendedAnimations.length).toBeGreaterThan(0)

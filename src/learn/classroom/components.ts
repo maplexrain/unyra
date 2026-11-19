@@ -335,6 +335,180 @@ function transformCustomElement(el: Element): Element {
       return htmlToElement(`<span ${attrs}>${innerHtml}</span>`)
     }
 
+    case 'ui-timeline': {
+      const title = el.getAttribute('title') || ''
+      const innerHtml = el.innerHTML
+      const attrs = getCommonAttributes(el, 'timeline-flow')
+      return htmlToElement(`
+        <div ${attrs}>
+          ${title ? `<div class="timeline-title">${title}</div>` : ''}
+          <div class="timeline-container">${innerHtml}</div>
+        </div>
+      `)
+    }
+
+    case 'ui-timeline-item': {
+      const time = el.getAttribute('time') || ''
+      const title = el.getAttribute('title') || ''
+      const badge = el.getAttribute('badge') || ''
+      const color = el.getAttribute('color') || 'seal'
+      const innerHtml = el.innerHTML
+      const attrs = getCommonAttributes(el, 'timeline-item')
+      return htmlToElement(`
+        <div ${attrs}>
+          <div class="timeline-node">
+            <div class="timeline-dot"></div>
+            <div class="timeline-line"></div>
+          </div>
+          <div class="timeline-content-box">
+            <div class="timeline-header">
+              ${time ? `<span class="timeline-time">${time}</span>` : ''}
+              ${title ? `<span class="timeline-heading">${title}</span>` : ''}
+              ${badge ? `<span class="badge-pill badge-${color} !py-0.5 !px-2.5 !text-[13px]">${badge}</span>` : ''}
+            </div>
+            <div class="timeline-desc">${innerHtml}</div>
+          </div>
+        </div>
+      `)
+    }
+
+    case 'ui-progress': {
+      const value = parseFloat(el.getAttribute('value') || '0')
+      const max = parseFloat(el.getAttribute('max') || '100')
+      const pct = Math.min(100, Math.max(0, Math.round((value / max) * 100)))
+      const label = el.getAttribute('label') || ''
+      const desc = el.getAttribute('desc') || ''
+      const attrs = getCommonAttributes(el, 'progress-card')
+      return htmlToElement(`
+        <div ${attrs}>
+          <div class="progress-header">
+            <span class="progress-label">${label}</span>
+            <span class="progress-val">${pct}%</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill" style="width: ${pct}%"></div>
+          </div>
+          ${desc ? `<div class="progress-desc">${desc}</div>` : ''}
+        </div>
+      `)
+    }
+
+    case 'ui-dialogue': {
+      const title = el.getAttribute('title') || ''
+      const innerHtml = el.innerHTML
+      const attrs = getCommonAttributes(el, 'dialogue-flow')
+      return htmlToElement(`
+        <div ${attrs}>
+          ${title ? `<div class="dialogue-title">${title}</div>` : ''}
+          <div class="dialogue-container flex flex-col gap-3">${innerHtml}</div>
+        </div>
+      `)
+    }
+
+    case 'ui-speech': {
+      const role = el.getAttribute('role') || 'teacher'
+      const name = el.getAttribute('name') || (role === 'teacher' ? '导师' : '探索者')
+      const avatarChar = role === 'teacher' ? '师' : '问'
+      const isStudent = role === 'student'
+      const innerHtml = el.innerHTML
+      const attrs = getCommonAttributes(el, `speech-item ${isStudent ? 'speech-item-student' : ''}`)
+      return htmlToElement(`
+        <div ${attrs}>
+          <div class="speech-avatar ${isStudent ? 'avatar-student' : 'avatar-teacher'}">${avatarChar}</div>
+          <div class="speech-bubble ${isStudent ? 'bubble-student' : 'bubble-teacher'}">
+            <div class="speech-meta">${name}</div>
+            <div class="speech-text">${innerHtml}</div>
+          </div>
+        </div>
+      `)
+    }
+
+    case 'ui-table': {
+      const title = el.getAttribute('title') || ''
+      const headersStr = el.getAttribute('headers') || ''
+      const headers = headersStr ? headersStr.split(',').map((h) => h.trim()) : []
+      const innerHtml = el.innerHTML
+      const attrs = getCommonAttributes(el, 'card-glass table-card')
+      const theadHtml = headers.length > 0 ? `<thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead>` : ''
+      return htmlToElement(`
+        <div ${attrs}>
+          ${title ? `<div class="card-ui-title mb-4">${title}</div>` : ''}
+          <table class="table-classroom">
+            ${theadHtml}
+            <tbody>${innerHtml}</tbody>
+          </table>
+        </div>
+      `)
+    }
+
+    case 'ui-keyboard': {
+      const keysStr = el.getAttribute('keys') || 'Ctrl + P'
+      const keys = keysStr.split('+').map((k) => k.trim())
+      const action = el.getAttribute('action') || ''
+      const desc = el.getAttribute('desc') || ''
+      const attrs = getCommonAttributes(el, 'kbd-card')
+      const keysHtml = keys.map((k, idx) => `<kbd class="kbd-key">${k}</kbd>${idx < keys.length - 1 ? '<span class="font-bold opacity-40 mx-1">+</span>' : ''}`).join('')
+      return htmlToElement(`
+        <div ${attrs}>
+          <div class="kbd-info">
+            <span class="kbd-action">${action}</span>
+            ${desc ? `<span class="kbd-desc">${desc}</span>` : ''}
+          </div>
+          <div class="kbd-group">${keysHtml}</div>
+        </div>
+      `)
+    }
+
+    case 'ui-highlight': {
+      const color = el.getAttribute('color') || 'yellow'
+      const innerHtml = el.innerHTML
+      const attrs = getCommonAttributes(el, `highlight-text highlight-${color}`)
+      return htmlToElement(`<mark ${attrs}>${innerHtml}</mark>`)
+    }
+
+    case 'ui-accordion': {
+      const title = el.getAttribute('title') || ''
+      const innerHtml = el.innerHTML
+      const attrs = getCommonAttributes(el, 'accordion-flow')
+      return htmlToElement(`
+        <div ${attrs}>
+          ${title ? `<div class="card-ui-title mb-3">${title}</div>` : ''}
+          <div class="accordion-container flex flex-col gap-2.5">${innerHtml}</div>
+        </div>
+      `)
+    }
+
+    case 'ui-accordion-item': {
+      const title = el.getAttribute('title') || ''
+      const tag = el.getAttribute('tag') || ''
+      const innerHtml = el.innerHTML
+      const attrs = getCommonAttributes(el, 'accordion-item')
+      return htmlToElement(`
+        <div ${attrs}>
+          <div class="accordion-header">
+            <span>${title}</span>
+            ${tag ? `<span class="badge-pill badge-seal !py-0.5 !px-2.5 !text-[13px]">${tag}</span>` : ''}
+          </div>
+          <div class="accordion-body">${innerHtml}</div>
+        </div>
+      `)
+    }
+
+    case 'ui-banner': {
+      const title = el.getAttribute('title') || ''
+      const subtitle = el.getAttribute('subtitle') || ''
+      const badge = el.getAttribute('badge') || ''
+      const badgeColor = el.getAttribute('badge-color') || 'seal'
+      const attrs = getCommonAttributes(el, 'stage-banner')
+      return htmlToElement(`
+        <div ${attrs}>
+          ${badge ? `<span class="banner-badge badge-${badgeColor}">${badge}</span>` : ''}
+          <h2 class="banner-title">${title}</h2>
+          ${subtitle ? `<p class="banner-subtitle">${subtitle}</p>` : ''}
+        </div>
+      `)
+    }
+
     default: {
       const customDef = getClassroomComponent(tagName)
       if (customDef && customDef.template) {

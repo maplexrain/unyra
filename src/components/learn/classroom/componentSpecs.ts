@@ -1,3 +1,4 @@
+import { EXTENDED_COMPONENT_SPECS } from './componentSpecsExtended'
 /**
  * 课堂组件规范契约详表 (componentSpecs.ts)
  * 记录 16 种内置组件及外部自定义组件的属性参数类型、插槽、默认值与推荐动效搭配
@@ -37,7 +38,7 @@ export interface ClassroomComponentSpec {
   examples: ComponentExampleSpec[]
 }
 
-export const BUILTIN_COMPONENT_SPECS: Record<string, ClassroomComponentSpec> = {
+const BASE_BUILTIN_SPECS: Record<string, ClassroomComponentSpec> = {
   'ui-card': {
     tag: 'ui-card',
     name: '通用容器卡片',
@@ -431,6 +432,11 @@ export const BUILTIN_COMPONENT_SPECS: Record<string, ClassroomComponentSpec> = {
 }
 
 /** 取得指定组件的规范详表，若为外部组件则动态生成适配规范 */
+export const BUILTIN_COMPONENT_SPECS: Record<string, ClassroomComponentSpec> = {
+  ...BASE_BUILTIN_SPECS,
+  ...EXTENDED_COMPONENT_SPECS,
+}
+
 export function getComponentSpec(tag: string, externalDef?: { name: string; description: string; template?: string; example?: string }): ClassroomComponentSpec {
   if (BUILTIN_COMPONENT_SPECS[tag]) {
     return BUILTIN_COMPONENT_SPECS[tag]

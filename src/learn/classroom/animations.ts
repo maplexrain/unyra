@@ -23,6 +23,14 @@ export type ClassroomAnimationName =
   | 'glow'
   | 'countUp'
   | 'typewriter'
+  | 'heartbeat'
+  | 'jello'
+  | 'swing'
+  | 'rubberBand'
+  | 'flash'
+  | 'tada'
+  | 'blurIn'
+  | 'shimmer'
 
 interface AnimeAnimationInstance {
   pause: () => void
@@ -72,7 +80,9 @@ export function runAnimeAnimation(
       case 'slideInRight':
       case 'slideInTop':
       case 'slideInBottom':
+      case 'blurIn':
         el.style.opacity = '1'
+        el.style.filter = 'none'
         el.style.transform = el.dataset.baseTransform || ''
         break
       case 'countUp': {
@@ -273,6 +283,88 @@ export function runAnimeAnimation(
             const idx = Math.floor(state.charCount)
             el.textContent = targetText.slice(0, idx)
           },
+        }) as unknown as AnimeAnimationInstance
+        break
+      }
+
+      case 'heartbeat': {
+        animInstance = animate(el, {
+          scale: [1, 1.15, 1, 1.12, 1],
+          duration,
+          ease: 'inOutQuad',
+        }) as unknown as AnimeAnimationInstance
+        break
+      }
+
+      case 'jello': {
+        animInstance = animate(el, {
+          skewX: [0, -12, 10, -5, 3, 0],
+          skewY: [0, -12, 10, -5, 3, 0],
+          duration,
+          ease: 'outQuad',
+        }) as unknown as AnimeAnimationInstance
+        break
+      }
+
+      case 'swing': {
+        animInstance = animate(el, {
+          rotate: [0, 15, -10, 5, -5, 0],
+          duration,
+          ease: 'inOutQuad',
+        }) as unknown as AnimeAnimationInstance
+        break
+      }
+
+      case 'rubberBand': {
+        animInstance = animate(el, {
+          scaleX: [1, 1.25, 0.75, 1.15, 0.95, 1],
+          scaleY: [1, 0.75, 1.25, 0.85, 1.05, 1],
+          duration,
+          ease: 'outQuad',
+        }) as unknown as AnimeAnimationInstance
+        break
+      }
+
+      case 'flash': {
+        animInstance = animate(el, {
+          opacity: [1, 0.1, 1, 0.1, 1],
+          duration,
+          ease: 'linear',
+        }) as unknown as AnimeAnimationInstance
+        break
+      }
+
+      case 'tada': {
+        animInstance = animate(el, {
+          scale: [1, 0.9, 1.1, 1.1, 1.1, 1.1, 1],
+          rotate: [0, -4, 4, -4, 4, -4, 0],
+          duration,
+          ease: 'inOutQuad',
+        }) as unknown as AnimeAnimationInstance
+        break
+      }
+
+      case 'blurIn': {
+        el.style.opacity = '0'
+        animInstance = animate(el, {
+          filter: ['blur(16px)', 'blur(0px)'],
+          opacity: [0, 1],
+          duration,
+          ease: 'outCubic',
+        }) as unknown as AnimeAnimationInstance
+        break
+      }
+
+      case 'shimmer': {
+        const shineColor = (params?.color as string) || 'var(--color-seal, rgba(56, 189, 248, 0.6))'
+        animInstance = animate(el, {
+          boxShadow: [
+            '0 0 0px transparent',
+            `0 0 36px ${shineColor}`,
+            '0 0 0px transparent',
+          ],
+          duration,
+          ease: 'inOutQuad',
         }) as unknown as AnimeAnimationInstance
         break
       }
