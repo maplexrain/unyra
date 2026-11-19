@@ -169,7 +169,19 @@ export default function AgentTeamPage({ goalId, goals, activeGoalId }: AgentTeam
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-paper select-text">
-      {/* 左侧：聊天框 (群聊 / 私聊) */}
+      {/* 左侧：各个agent的列表（含置顶群聊） */}
+      <div className="w-80 md:w-88 xl:w-96 shrink-0 h-full border-r border-line/70">
+        <AgentTeamRoster
+          agents={agents}
+          selected={selected}
+          onSelect={setSelected}
+          onAddAgent={handleAddAgent}
+          onDeleteAgent={handleDeleteAgent}
+          goalTitle={goalTitle}
+        />
+      </div>
+
+      {/* 右侧：聊天框 (群聊 / 私聊) */}
       <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
         <AgentTeamChat
           selected={selected}
@@ -180,18 +192,6 @@ export default function AgentTeamPage({ goalId, goals, activeGoalId }: AgentTeam
           isSimulating={isSimulating}
           onClearMessages={handleClearMessages}
           onBackToGroup={() => setSelected('group')}
-          goalTitle={goalTitle}
-        />
-      </div>
-
-      {/* 右侧：各个agent的列表（含置顶群聊） */}
-      <div className="w-80 md:w-88 xl:w-96 shrink-0 h-full border-l border-line/70">
-        <AgentTeamRoster
-          agents={agents}
-          selected={selected}
-          onSelect={setSelected}
-          onAddAgent={handleAddAgent}
-          onDeleteAgent={handleDeleteAgent}
           goalTitle={goalTitle}
         />
       </div>
