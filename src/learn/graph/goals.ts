@@ -151,6 +151,7 @@ function tabNodeIdOf(ref: TabRef): string {
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
+    ref.kind === 'classroomShowcase' ||
     ref.kind === 'blank' ||
     // 新建文件页签还没有落点：它不属于任何节点，删节点不该把它一起关掉
     ref.kind === 'draft'

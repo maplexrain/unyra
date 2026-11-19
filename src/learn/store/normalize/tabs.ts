@@ -89,6 +89,10 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
       ...(goalId ? { goalId } : {}),
     }
   }
+  if (r.kind === 'classroomShowcase') {
+    const tag = typeof r.tag === 'string' && r.tag.trim() ? r.tag.trim() : undefined
+    return { kind: 'classroomShowcase', ...(tag ? { tag } : {}) }
+  }
   if (r.kind === 'blank') {
     return { kind: 'blank', key: typeof r.key === 'string' && r.key ? r.key : newBlankKey() }
   }

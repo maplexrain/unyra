@@ -100,6 +100,10 @@ export type TabRef =
    */
   | { kind: 'classroom'; classroomId: string; nodeId?: string; goalId?: string }
   /**
+   * 课堂组件与动效库页签：教学语义组件与动画视效库全景速查、实时渲染与动态创作
+   */
+  | { kind: 'classroomShowcase'; tag?: string }
+  /**
    * 用量统计页：同样全局一枚页签（入口在顶栏用户菜单）。它读的是「台账」
    * （ai/usageLog）而不是配置，所以不从设置里走；页面自己订阅台账重渲染。
    */

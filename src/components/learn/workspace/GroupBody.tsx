@@ -33,6 +33,7 @@ import UserTabPane from '../../user/UserTabPane'
 import TerminalTabPane from '../../terminal/TerminalTabPane'
 import UsagePanel from '../../settings/UsagePanel'
 import ClassroomView from '../classroom/ClassroomView'
+import ClassroomShowcasePage from '../classroom/ClassroomShowcasePage'
 import { SchedulePage } from '../../schedule/SchedulePage'
 import MindPanel from '../../agent/MindPanel'
 import AgentSettingsPanel from '../../AgentSettingsPanel'
@@ -185,6 +186,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     gTab.ref.kind !== 'draft' &&
     // 视频学习页（实验）不画：大纲/视图切换对播放器没有意义（用户定的）
     gTab.ref.kind !== 'video' &&
+    gTab.ref.kind !== 'classroomShowcase' &&
     // 插件文档页不画：它是参考手册，不是可编辑节点文档
     gTab.ref.kind !== 'pluginDoc' &&
     // 赞助者名单页不画：它是致谢名册
@@ -492,7 +494,9 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
                 set({ ...latest, classrooms: nextList })
               }}
               onOpenTab={(kind, targetId) => {
-                if (kind === 'doc') {
+                if (kind === 'classroomShowcase') {
+                  openTab({ kind: 'classroomShowcase', tag: targetId || undefined })
+                } else if (kind === 'doc') {
                   openTab({ kind: 'teach', nodeId: targetId })
                 } else if (kind === 'exam') {
                   const exam = store.exams.find((e) => e.id === targetId)
@@ -511,6 +515,11 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               }}
               onGenerateClassroom={canvasChannel?.onGenerateClassroom}
             />
+          ) : gTab?.ref.kind === 'classroomShowcase' ? (
+            /*
+              课堂组件与动效库全屏页面：组件渲染参考、交互演练与动态创作中心。
+            */
+            <ClassroomShowcasePage initialTag={gTab.ref.tag} />
           ) : gTab?.ref.kind === 'settings' ? (
             /*
               设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），

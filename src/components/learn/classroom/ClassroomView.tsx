@@ -18,7 +18,7 @@ import ClassroomTimeline from './ClassroomTimeline'
 import ClassroomControls from './ClassroomControls'
 import ClassroomResourceDock from './ClassroomResourceDock'
 import ClassroomEditorModal from './ClassroomEditorModal'
-import ClassroomShowcaseModal from './ClassroomShowcaseModal'
+import ClassroomShowcasePage from './ClassroomShowcasePage'
 import { Presentation, Sparkles, FileCode, Layers } from 'lucide-react'
 import { t } from '../../../i18n'
 
@@ -100,7 +100,7 @@ export default function ClassroomView({
   // 界面状态
   const [isResourcesOpen, setIsResourcesOpen] = useState(false)
   const [isEditorOpen, setIsEditorOpen] = useState(false)
-  const [isShowcaseOpen, setIsShowcaseOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<'stage' | 'showcase'>('stage')
   const [isFullscreen, setIsFullscreen] = useState(false)
 
   // 获得挂载的子节点列表（从 store.edges 查找 downstream）
@@ -212,6 +212,14 @@ export default function ClassroomView({
   const currentScene = course.scenes[snapshot.sceneIndex]
   const isCourseEmpty = course.scenes.length === 0
 
+  if (viewMode === 'showcase') {
+    return (
+      <div className="flex flex-col w-full h-full min-h-0 bg-paper text-ink overflow-hidden select-none">
+        <ClassroomShowcasePage onBack={() => setViewMode('stage')} />
+      </div>
+    )
+  }
+
   return (
     <div
       ref={rootRef}
@@ -245,7 +253,7 @@ export default function ClassroomView({
           </div>
           <button
             type="button"
-            onClick={() => setIsShowcaseOpen(true)}
+            onClick={() => setViewMode('showcase')}
             title={t('查看组件与动效库')}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-ink-soft hover:bg-line/60 hover:text-ink transition cursor-pointer text-[12px] font-medium"
           >
@@ -359,12 +367,6 @@ export default function ClassroomView({
           onSave={handleSaveCourse}
         />
       )}
-
-      {/* 组件与动效库展示模态框 */}
-      <ClassroomShowcaseModal
-        isOpen={isShowcaseOpen}
-        onClose={() => setIsShowcaseOpen(false)}
-      />
     </div>
   )
 }
