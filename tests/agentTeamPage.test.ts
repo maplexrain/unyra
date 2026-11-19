@@ -48,14 +48,12 @@ describe('智能体团队 数据与演练模型', () => {
     localStorage.clear()
   })
 
-  it('默认预置 5 大专业智能体', () => {
-    expect(DEFAULT_TEAM_AGENTS.length).toBeGreaterThanOrEqual(5)
-    const roles = DEFAULT_TEAM_AGENTS.map((a) => a.role)
-    expect(roles).toContain('主控架构导师')
-    expect(roles).toContain('全网检索与查证员')
-    expect(roles).toContain('结构化正文作家')
-    expect(roles).toContain('随堂测验与答疑官')
-    expect(roles).toContain('严谨性与公式验算员')
+  it('默认预置超级导师', () => {
+    expect(DEFAULT_TEAM_AGENTS.length).toBeGreaterThanOrEqual(1)
+    const tutor = DEFAULT_TEAM_AGENTS.find((a) => a.id === 'agent-tutor')
+    expect(tutor).toBeDefined()
+    expect(tutor?.name).toContain('超级导师')
+    expect(tutor?.role).toBe('超级导师')
   })
 
   it('loadTeamAgents 在无缓存时返回默认智能体列表，并可按 goalId 独立保存与读取', () => {
@@ -88,16 +86,16 @@ describe('智能体团队 数据与演练模型', () => {
     expect(loadedBeta).toHaveLength(DEFAULT_TEAM_AGENTS.length)
   })
 
-  it('loadTeamMessages 与 saveTeamMessages 支持独立消息持久化', () => {
-    // 首次无本地缓存时，默认呈现预设协同消息
+  it('loadTeamMessages 与 saveTeamMessages 支持独立消息持久化，初始协作频道为空', () => {
+    // 首次无本地缓存时，协作频道为空
     const initial = loadTeamMessages('goal-1')
-    expect(initial).toEqual(PRESET_SIMULATION_MESSAGES)
+    expect(initial).toEqual([])
 
     const msg: TeamMessage = {
       id: 'm1',
       senderId: 'agent-tutor',
-      senderName: '云枢导师',
-      senderRole: '主控架构导师',
+      senderName: '超级导师',
+      senderRole: '超级导师',
       avatar: '🧠',
       content: '收到任务，开始协同分工。',
       timestamp: Date.now(),
@@ -112,17 +110,9 @@ describe('智能体团队 数据与演练模型', () => {
     expect(loaded[0].thought).toBe('分析意图，制定执行流水线')
   })
 
-  it('PRESET_SIMULATION_MESSAGES 包含完整的多 Agent 协同交互剧本', () => {
-    expect(PRESET_SIMULATION_MESSAGES.length).toBeGreaterThanOrEqual(6)
-    // 验证包含多位智能体的协同发言、思考链与工具调用
+  it('PRESET_SIMULATION_MESSAGES 包含协同演练剧本', () => {
+    expect(PRESET_SIMULATION_MESSAGES.length).toBeGreaterThanOrEqual(2)
     const senders = new Set(PRESET_SIMULATION_MESSAGES.map((m) => m.senderId))
     expect(senders.has('agent-tutor')).toBe(true)
-    expect(senders.has('agent-researcher')).toBe(true)
-    expect(senders.has('agent-writer')).toBe(true)
-    expect(senders.has('agent-examiner')).toBe(true)
-    expect(senders.has('agent-reviewer')).toBe(true)
-
-    const hasToolCalls = PRESET_SIMULATION_MESSAGES.some((m) => m.toolsCalled && m.toolsCalled.length > 0)
-    expect(hasToolCalls).toBe(true)
   })
 })

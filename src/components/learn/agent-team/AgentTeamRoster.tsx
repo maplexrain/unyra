@@ -19,6 +19,7 @@ export interface AgentTeamRosterProps {
   onAddAgent: (agent: TeamAgent) => void
   onDeleteAgent: (agentId: string) => void
   goalTitle?: string
+  isTutorRunning?: boolean
 }
 
 export function AgentTeamRoster({
@@ -28,6 +29,7 @@ export function AgentTeamRoster({
   onAddAgent,
   onDeleteAgent,
   goalTitle,
+  isTutorRunning,
 }: AgentTeamRosterProps) {
   const [search, setSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -159,13 +161,13 @@ export function AgentTeamRoster({
                 <div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-[13.5px] font-bold text-ink-strong">
-                      {t('智能体协同群聊')}
+                      {t('协作频道')}
                     </span>
-                    <span className="px-1.5 py-0.5 rounded-full text-[9.5px] font-bold bg-indigo-500/15 text-indigo-500 border border-indigo-500/25">
-                      {t('大厅')}
+                    <span className="px-1.5 py-0.5 rounded-full text-[9.5px] font-bold bg-line/80 text-ink-faint border border-line">
+                      {t('待命')}
                     </span>
                   </div>
-                  <span className="text-[11px] text-ink-soft line-clamp-1">
+                  <span className="text-[11px] text-ink-faint line-clamp-1">
                     {t('多智能体协同广播与交互视口')}
                   </span>
                 </div>
@@ -180,23 +182,13 @@ export function AgentTeamRoster({
               />
             </div>
 
-            {/* 成员头像堆叠与在线状态 */}
+            {/* 待命状态 */}
             <div className="flex items-center justify-between pt-2 border-t border-line/40 text-[10.5px]">
-              <div className="flex -space-x-1.5 overflow-hidden py-0.5">
-                {agents.slice(0, 5).map((a) => (
-                  <div
-                    key={a.id}
-                    title={`${a.name} (${a.role})`}
-                    className={`inline-flex items-center justify-center w-5 h-5 rounded-full ring-2 ring-card text-[10px] ${a.avatarBg} text-white font-bold select-none`}
-                  >
-                    {a.avatar}
-                  </div>
-                ))}
-              </div>
-              <span className="text-emerald-500 dark:text-emerald-400 font-medium flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                {t('{0} 位智能体就绪', agents.length)}
+              <span className="text-ink-faint font-medium flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-ink-faint/40" />
+                {t('协作频道暂无消息 (待命中)')}
               </span>
+              <span className="text-[10px] text-ink-faint">{t('暂无多 Agent 任务')}</span>
             </div>
           </div>
         </div>
@@ -231,8 +223,16 @@ export function AgentTeamRoster({
                       className={`w-9 h-9 shrink-0 rounded-xl ${agent.avatarBg} text-white flex items-center justify-center text-base shadow-xs relative`}
                     >
                       <span>{agent.avatar}</span>
-                      {agent.status === 'active' && (
-                        <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-card" />
+                      {agent.isLeader && isTutorRunning ? (
+                        <span
+                          className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse ring-2 ring-card"
+                          title={t('思考/执行中')}
+                        />
+                      ) : (
+                        <span
+                          className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-card"
+                          title={t('在线')}
+                        />
                       )}
                     </div>
 

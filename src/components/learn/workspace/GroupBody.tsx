@@ -525,7 +525,19 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
             */
             <ClassroomShowcasePage initialTag={gTab.ref.tag} />
           ) : gTab?.ref.kind === 'agentTeam' ? (
-            <AgentTeamPage goalId={gTab.ref.goalId} goals={store.goals} activeGoalId={store.activeGoalId} />
+            <AgentTeamPage
+              goalId={gTab.ref.goalId}
+              goals={store.goals}
+              activeGoalId={store.activeGoalId}
+              store={store}
+              getLatest={getLatest}
+              set={set}
+              agent={agent}
+              agentSettings={agentSettings}
+              hasKey={hasKey}
+              openTab={openTab}
+              onToast={onToast}
+            />
           ) : gTab?.ref.kind === 'settings' ? (
             /*
               设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），
