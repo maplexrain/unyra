@@ -71,6 +71,13 @@ export function formatMailboxHeader(receipts: WorkerReceipt[]): string {
     const status = STATUS_LABEL[r.status] || r.status
     const cleanSummary = r.summary.replace(/[\r\n]+/g, ' ').trim()
     const arts = r.artifactIds.length ? ` [产物ID: ${r.artifactIds.join(', ')}]` : ''
+
+    if (r.sourceType === 'agent' || r.sourceAgentName || r.sourceAgentId) {
+      const sourceName = r.sourceAgentName || r.sourceAgentId
+      const taskId = r.delegationId || r.workerId
+      return `- [${status}] [来自专家: ${sourceName}] ${r.title} (工单: ${taskId}): ${cleanSummary}${arts}`
+    }
+
     return `- [${status}] ${r.title} (ID: ${r.workerId}): ${cleanSummary}${arts}`
   })
 

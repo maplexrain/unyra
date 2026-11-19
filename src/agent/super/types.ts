@@ -31,6 +31,32 @@ export interface WorkerReceipt {
   summary: string
   artifactIds: string[]
   ts: number
+  /** 来源类型：内部 Worker 还是跨专家委派 */
+  sourceType?: 'worker' | 'agent'
+  sourceAgentId?: string
+  sourceAgentName?: string
+  delegationId?: string
+}
+
+/** 跨专家协作委派单输入契约 */
+export interface DelegatedTaskInput {
+  delegationId: string
+  fromAgentId: string
+  fromAgentName?: string
+  task: string
+  inputRefs?: string[]
+  chain?: string[]
+  hopCount?: number
+  announceInChannel?: boolean
+}
+
+/** 跨专家协作委派单终态产出契约 */
+export interface DelegationOutcome {
+  delegationId: string
+  status: 'done' | 'failed' | 'cancelled'
+  summary: string
+  artifactIds: string[]
+  chatText?: string
 }
 
 /** 外置黑板条目（结构化索引） */

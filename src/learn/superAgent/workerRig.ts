@@ -19,13 +19,15 @@ export interface SuperWorkerToolsDeps {
   set?: (store: LearnStore) => void
   goalId?: string | null
   nodeId?: string | null
+  /** 角色专属的 Worker 授权 API 组白名单（严格硬禁 subagent） */
+  allowedGroups?: string[]
 }
 
 /**
  * 为 Isolated Worker 装配真实的生产工具集（execute + rexecute）
  */
 export function createSuperWorkerTools(deps: SuperWorkerToolsDeps): AgentTool[] {
-  const { getLatest, set, goalId, nodeId } = deps
+  const { getLatest, set, goalId, nodeId, allowedGroups } = deps
 
   // 1. 如果有真实的 Store 依赖，装配全套受控工作区沙箱能力
   if (getLatest && set) {
@@ -39,19 +41,29 @@ export function createSuperWorkerTools(deps: SuperWorkerToolsDeps): AgentTool[] 
     // 铁律：不透传 subagent 组，避免递归调用
     delete (sandboxBase as Record<string, unknown>).subagent
 
-    // 限制白名单并定制 API 简介
-    sandboxBase.apiAllow = [...SUBAGENT_ALLOWED_GROUPS]
+    // 限制白名单并定制 API 简介（严格剔除 subagent）
+    const effectiveGroups = allowedGroups?.length
+      ? allowedGroups.filter((g) => g !== 'subagent')
+      : [...SUBAGENT_ALLOWED_GROUPS]
+
+    sandboxBase.apiAllow = effectiveGroups
     sandboxBase.apiBrief = apiBriefForGroups(sandboxBase.apiAllow)
 
     return createExecuteTools(sandboxBase)
   }
 
   // 2. 脱机或无 Store 依赖时的极简安全降级工具
+  const effectiveGroups = allowedGroups?.length
+    ? allowedGroups.filter((g) => g !== 'subagent')
+    : [...SUBAGENT_ALLOWED_GROUPS]
+
   return createExecuteTools({
     resolveNode: () => ({ ok: false, message: '脱机模式不支持节点读写' }),
     resolveDoc: () => ({ ok: false, message: '脱机模式不支持文档读写' }),
     nodeId: () => null,
     docOps: {} as never,
     nodes: {} as never,
+    apiAllow: effectiveGroups,
+    apiBrief: apiBriefForGroups(effectiveGroups),
   })
 }
