@@ -2,18 +2,19 @@
  * 智能体团队总页面 (AgentTeamPage)
  *
  * 架构：
- * 1. 默认团队工作台 (TeamBus)：
- *    - 左侧栏 (TeamRosterRail)：置顶协作频道 + 5 席独立专家花名册（绝对无 Worker）；
- *    - 右侧主区：
- *      - 选中「协作频道」：全局协作广播、跨专家工单进度与 @指定专家输入；
- *      - 选中特定专家：进入该专家专属三平面工作台 (TeamAgentWorkspace)，内嵌 Worker 卡片与内部工单/黑板；
- * 2. 经典单导师模式备用保留（极简低调切换入口）。
+ * 「左花名册 · 中清爽对话 · 右按需交付面板」三栏极简架构：
+ * 1. 左侧栏 (TeamRosterRail, 208px)：置顶协作频道 + 5 席专家极简花名册（严格无 Worker 污染）；
+ * 2. 中间主视口 (flex-1)：
+ *    - 协作频道视口 (TeamChannelPane) 或 专家专属对话流 (TeamAgentWorkspace)，长文彻底禁止内嵌；
+ * 3. 右侧交付面板 (DeliverableDrawer)：按需拉出，全幅 zero-copy 交付正文与执行过程双页签，支持直连快通道；
+ * 4. 经典单导师模式作为兜底对比备用入口。
  */
 
 import { useState, useMemo } from 'react'
 import { TeamRosterRail, type TeamSelection } from './TeamRosterRail'
 import { TeamChannelPane } from './TeamChannelPane'
 import { TeamAgentWorkspace } from './TeamAgentWorkspace'
+import { DeliverableDrawer, type DrawerMode } from './DeliverableDrawer'
 import { AgentTeamTutorPane } from './AgentTeamTutorPane'
 import { useAgentTeam } from '../../../learn/superAgent/useAgentTeam'
 import type { LearnStore, TabRef, DocView } from '../../../learn/types'
@@ -21,7 +22,7 @@ import type { useAgent } from '../../../learn/useAgent'
 import type { loadAgentSettings } from '../../../agent/settings'
 import { goalFocusByGoal } from '../workspace/goalFocus'
 import { t } from '../../../i18n'
-import { Layers } from 'lucide-react'
+import { AlertCircle, Layers, X } from 'lucide-react'
 
 type AgentApi = ReturnType<typeof useAgent>
 type AgentSettings = ReturnType<typeof loadAgentSettings>
@@ -83,6 +84,12 @@ export default function AgentTeamPage({
   // 左侧花名册当前选中项：默认选中协作频道
   const [selection, setSelection] = useState<TeamSelection>({ kind: 'channel' })
 
+  // 右侧按需滑出的交付抽屉目标
+  const [drawerTarget, setDrawerTarget] = useState<{
+    agentId: string
+    mode: DrawerMode
+  } | null>(null)
+
   // 挂载多 Agent 团队 Hook
   const team = useAgentTeam({
     scopeId: effectiveGoalId,
@@ -99,6 +106,12 @@ export default function AgentTeamPage({
     if (selection.kind !== 'agent') return null
     return team.agents[selection.agentId] || null
   }, [selection, team.agents])
+
+  // 抽屉所指向的 Agent 快照
+  const drawerAgentSnapshot = useMemo(() => {
+    if (!drawerTarget) return null
+    return team.agents[drawerTarget.agentId] || null
+  }, [drawerTarget, team.agents])
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-paper select-text">
@@ -122,7 +135,7 @@ export default function AgentTeamPage({
                 : 'text-ink-faint hover:text-ink'
             }`}
           >
-            {t('多智能体团队 (双层工作台)')}
+            {t('多智能体团队 (三栏工作台)')}
           </button>
           <button
             type="button"
@@ -138,13 +151,30 @@ export default function AgentTeamPage({
         </div>
       </div>
 
+      {/* 异常警示条 */}
+      {team.error && (
+        <div className="px-3.5 py-1.5 bg-rose-500/10 border-b border-rose-500/20 text-rose-600 dark:text-rose-400 text-[11px] flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-1.5 truncate">
+            <AlertCircle size={12} className="shrink-0" />
+            <span className="truncate">{team.error}</span>
+          </div>
+          <button
+            type="button"
+            onClick={team.clearError}
+            className="p-0.5 rounded text-rose-500 hover:text-rose-700 cursor-pointer"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
       {/* 主体视口 */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {workbenchMode === 'team' ? (
-          /* ===== 多 Agent 双层工作台 ===== */
+          /* ===== 「左花名册 · 中清爽对话 · 右按需交付面板」 ===== */
           <>
-            {/* 左侧栏：Agent 花名册 + 协作频道 (严格无 Worker) */}
-            <div className="w-64 md:w-72 shrink-0 h-full">
+            {/* 1. 左侧栏：Agent 花名册 + 协作频道 (紧凑 208px，严格无 Worker) */}
+            <div className="w-52 shrink-0 h-full">
               <TeamRosterRail
                 profiles={team.profiles}
                 agents={team.agents}
@@ -155,7 +185,7 @@ export default function AgentTeamPage({
               />
             </div>
 
-            {/* 右侧主视口 */}
+            {/* 2. 中间主对话流视口 */}
             <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
               {selection.kind === 'channel' ? (
                 /* 协作频道视口 */
@@ -165,6 +195,9 @@ export default function AgentTeamPage({
                   profiles={team.profiles}
                   onSendMessage={team.sendChannelMessage}
                   onSelectAgent={(agentId) => setSelection({ kind: 'agent', agentId })}
+                  onViewWorker={(agentId, workerId) =>
+                    setDrawerTarget({ agentId, mode: { kind: 'worker', workerId } })
+                  }
                   onResetChannel={team.resetChannel}
                   onStopAll={team.stopAll}
                 />
@@ -184,6 +217,18 @@ export default function AgentTeamPage({
                     team.cancelWorker(currentAgentSnapshot.profile.id, wid)
                   }
                   onSelectAgent={(agentId) => setSelection({ kind: 'agent', agentId })}
+                  onOpenWorkerDrawer={(wid) =>
+                    setDrawerTarget({
+                      agentId: currentAgentSnapshot.profile.id,
+                      mode: { kind: 'worker', workerId: wid },
+                    })
+                  }
+                  onOpenBlackboardDrawer={() =>
+                    setDrawerTarget({
+                      agentId: currentAgentSnapshot.profile.id,
+                      mode: { kind: 'blackboard' },
+                    })
+                  }
                   onResetAgent={() => team.resetAgent(currentAgentSnapshot.profile.id)}
                   onStopAgent={() => team.stopAgent(currentAgentSnapshot.profile.id)}
                 />
@@ -193,6 +238,31 @@ export default function AgentTeamPage({
                 </div>
               )}
             </div>
+
+            {/* 3. 右侧按需滑出的交付面板 */}
+            {drawerTarget && drawerAgentSnapshot && (
+              <div className="w-[420px] lg:w-[480px] shrink-0 h-full">
+                <DeliverableDrawer
+                  mode={drawerTarget.mode}
+                  agentName={drawerAgentSnapshot.profile.name}
+                  workers={drawerAgentSnapshot.workers}
+                  workerStreams={drawerAgentSnapshot.workerStreams}
+                  blackboard={drawerAgentSnapshot.blackboard}
+                  onSelectWorker={(wid) =>
+                    setDrawerTarget((prev) =>
+                      prev ? { ...prev, mode: { kind: 'worker', workerId: wid } } : null,
+                    )
+                  }
+                  onSendToWorker={(wid, text) =>
+                    team.sendToWorker(drawerTarget.agentId, wid, text)
+                  }
+                  onCancelWorker={(wid) =>
+                    team.cancelWorker(drawerTarget.agentId, wid)
+                  }
+                  onClose={() => setDrawerTarget(null)}
+                />
+              </div>
+            )}
           </>
         ) : store && getLatest && set && agent ? (
           /* ===== 经典单导师模式（备用） ===== */

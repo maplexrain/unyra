@@ -44,6 +44,7 @@ export class SuperAgentEngine {
   private state: SuperAgentState
   private options: SuperAgentEngineOptions
   private hostRunning = false
+  private hostAbortController: AbortController | null = null
   private hostChain: Promise<string> | null = null
   private workerHandles = new Map<string, WorkerHandle>()
   private delegationTracker = new DelegationTracker()
@@ -118,9 +119,9 @@ export class SuperAgentEngine {
   public async sendUserMessage(
     text: string,
     opts?: { targetWorkerId?: string },
-  ): Promise<void> {
+  ): Promise<string> {
     const trimmed = text.trim()
-    if (!trimmed) return
+    if (!trimmed) return ''
 
     // 1. 直连快通道 (Direct Route)
     if (opts?.targetWorkerId) {
@@ -129,11 +130,11 @@ export class SuperAgentEngine {
         throw new Error(`未找到目标 Worker: ${opts.targetWorkerId}`)
       }
       this.steerWorker(opts.targetWorkerId, trimmed)
-      return
+      return `已向 Worker ${opts.targetWorkerId} 发送指令`
     }
 
     // 2. 串行排队进入 Frontline Host 调度通道
-    await this.enqueueHostTurn(trimmed)
+    return await this.enqueueHostTurn(trimmed)
   }
 
   /**
@@ -174,6 +175,9 @@ export class SuperAgentEngine {
 
   private async doSendHostMessage(trimmed: string, delegationId?: string): Promise<string> {
     this.hostRunning = true
+    this.hostAbortController = new AbortController()
+    this.emit({ type: 'host-start' })
+    this.notifyStateChange()
     try {
       // 原子摘除：只消费当前时刻 snapshot 的回执
       const receipts = [...this.state.mailbox]
@@ -212,7 +216,12 @@ export class SuperAgentEngine {
         )
       }
       return finalContent
+    } catch (err: any) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      this.emit({ type: 'host-done', error: errMsg })
+      throw err
     } finally {
+      this.hostAbortController = null
       this.hostRunning = false
       this.notifyStateChange()
     }
@@ -244,6 +253,7 @@ export class SuperAgentEngine {
       ctx: { nodeId: null, goalId: this.state.id },
       ...(this.options.effort ? { reasoningEffort: this.options.effort } : {}),
       ...(this.options.chatFn ? { stream: this.options.chatFn } : {}),
+      ...(this.hostAbortController ? { signal: this.hostAbortController.signal } : {}),
       onContext: (snapshot) => {
         // 前缀门禁：严格保障 Host 历史只增不改
         assertPrefixStable(
@@ -450,6 +460,10 @@ export class SuperAgentEngine {
    * 中止全部活跃 Worker
    */
   public stopAll(): void {
+    if (this.hostAbortController) {
+      this.hostAbortController.abort()
+      this.hostAbortController = null
+    }
     for (const [wid, handle] of this.workerHandles.entries()) {
       handle.ctrl.abort()
       const w = this.state.workers[wid]

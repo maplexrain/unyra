@@ -247,12 +247,27 @@ export class TeamBus {
       ? matchedAgents
       : [this.profiles.find((p) => p.isLeader) || this.profiles[0]]
 
-    // 3. 并发触发所选专家的 Host
+    // 3. 并发触发所选专家的 Host，并将专家回复写回协作频道
     await Promise.all(
       targets.map(async (target) => {
         const engine = this.engines.get(target.id)
         if (engine) {
-          await engine.sendUserMessage(trimmed)
+          const reply = await engine.sendUserMessage(trimmed)
+          if (reply && reply.trim()) {
+            const replyMsg: ChannelMessage = {
+              id: 'cmsg-' + crypto.randomUUID().slice(0, 8),
+              senderId: target.id,
+              senderName: target.name,
+              avatar: target.avatar || '🤖',
+              color: target.color,
+              content: reply.trim(),
+              timestamp: Date.now(),
+              refAgentId: target.id,
+            }
+            this.state.channelMessages.push(replyMsg)
+            this.emit({ type: 'channel-message', message: replyMsg })
+            this.notifyStateChange()
+          }
         }
       }),
     )
@@ -390,10 +405,14 @@ export class TeamBus {
 
     this.emit({ type: 'delegation-updated', record })
 
-    // 1. 在协作频道记录交付总结
+    // 1. 在协作频道记录精炼交付总结（严格控制在 <=120 字，绝不淹没频道）
     const targetProfile = this.profiles.find((p) => p.id === record.targetAgentId)
     const icon = outcome.status === 'done' ? '✅' : outcome.status === 'cancelled' ? '🚫' : '⚠️'
     const statusText = outcome.status === 'done' ? '完成交付' : outcome.status === 'cancelled' ? '已取消' : '执行失败'
+
+    const briefSummary = outcome.summary && outcome.summary.length > 120
+      ? outcome.summary.slice(0, 120) + '...'
+      : (outcome.summary || (outcome.status === 'done' ? '任务已顺利完成' : '未能产出有效结果'))
 
     const deliveryMsg: ChannelMessage = {
       id: 'cmsg-' + crypto.randomUUID().slice(0, 8),
@@ -401,9 +420,12 @@ export class TeamBus {
       senderName: record.targetAgentName,
       avatar: targetProfile?.avatar || '🤖',
       color: targetProfile?.color,
-      content: `${icon} **【协作工单${statusText}】** ${record.targetAgentName} 交付了来自 ${record.fromAgentName} 的工单 (${record.id})：\n\n${outcome.summary}`,
+      content: `${icon} **【协作工单${statusText}】** ${record.targetAgentName} 交付了来自 ${record.fromAgentName} 的工单 (${record.id})：\n${briefSummary}`,
+      briefSummary,
       timestamp: Date.now(),
       delegationId: record.id,
+      refAgentId: record.targetAgentId,
+      refWorkerId: record.id,
       isAnnouncement: true,
     }
     this.state.channelMessages.push(deliveryMsg)

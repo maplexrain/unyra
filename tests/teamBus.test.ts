@@ -507,4 +507,80 @@ describe('TeamBus 多 Agent 协作内核 (Phase 5)', () => {
     expect(loadedAuthor.id).toBe(`${scopeId}:agent-author`)
     expect(loadedAuthor.blackboard[0].title).toBe('撰写讲义')
   })
+
+  it('7. TASK #10 回归验证：频道消息回写闭环、精炼摘要截断与指针携带', async () => {
+    const scopeId = 'test-channel-reply-and-summary'
+    const longDeliveryText = '这里是一篇极其冗长、超过数百字的讲义交付正文：微积分极限的严格定义采用ε-δ语言描述。设函数f(x)在点x0的去心邻域内有定义...' + 'A'.repeat(500)
+
+    const mock = createTeamMockStream([
+      {
+        match: '请向频道打招呼',
+        hops: [{ content: '你好！我是总导师，随时准备协助你的学习规划。' }],
+      },
+      {
+        match: '【跨专家协作委派单】',
+        hops: [
+          {
+            content: longDeliveryText,
+          },
+        ],
+      },
+    ])
+
+    const bus = new TeamBus({
+      scopeId,
+      provider: testProvider,
+      model: 'mock-model',
+      chatFn: mock.stream,
+    })
+
+    // 1. 测试频道发言与专家回复回写闭环
+    await bus.sendChannelMessage('请向频道打招呼')
+
+    const msgs = bus.getTeamState().channelMessages
+    expect(msgs.length).toBe(2)
+    expect(msgs[0].senderId).toBe('user')
+    expect(msgs[0].content).toBe('请向频道打招呼')
+
+    // 关键回归：专家的回复必须写回 channelMessages，绝不可造成用户面对空气
+    const replyMsg = msgs[1]
+    expect(replyMsg.senderId).toBe('agent-mentor')
+    expect(replyMsg.senderName).toBe('总导师')
+    expect(replyMsg.content).toContain('我是总导师，随时准备协助你的学习规划')
+    expect(replyMsg.refAgentId).toBe('agent-mentor')
+
+    // 2. 测试委派完成时写入频道的精炼摘要截断（<= 120 字）与指针携带
+    const mentorTools = createTeamHostTools({
+      selfAgentId: 'agent-mentor',
+      selfAgentName: '总导师',
+      listTeammates: () => bus.listTeammates('agent-mentor'),
+      delegateToAgent: (params) => (bus as any).dispatchDelegation({ ...params, fromAgentId: 'agent-mentor' }),
+      postChannelMessage: (content) => {
+        bus.postChannelAnnouncement('agent-mentor', content)
+        return { ok: true, message: 'ok' }
+      },
+      getActiveDelegation: () => null,
+    })
+    const delegateTool = mentorTools.find((t) => t.name === 'delegate_to_agent')!
+
+    const dispatchRes = await delegateTool.run({
+      targetAgentId: 'agent-author',
+      task: '撰写长讲义',
+      announceInChannel: true,
+    }, {} as any)
+    expect(dispatchRes.ok).toBe(true)
+
+    // 等待委派结算完成
+    await new Promise((r) => setTimeout(r, 60))
+
+    const updatedMsgs = bus.getTeamState().channelMessages
+    const deliveryMsg = updatedMsgs.find((m) => m.content.includes('完成交付'))
+    expect(deliveryMsg).toBeDefined()
+    expect(deliveryMsg?.refAgentId).toBe('agent-author')
+    expect(deliveryMsg?.refWorkerId).toBeDefined()
+    expect(deliveryMsg?.briefSummary).toBeDefined()
+    // 摘要必须截断在 <= 125 字符（含省略号），绝不在频道糊 500+ 字长文
+    expect(deliveryMsg!.briefSummary!.length).toBeLessThanOrEqual(125)
+    expect(deliveryMsg!.briefSummary!.endsWith('...')).toBe(true)
+  })
 })

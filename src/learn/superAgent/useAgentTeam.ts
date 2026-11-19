@@ -160,11 +160,24 @@ export function useAgentTeam(options: UseAgentTeamOptions) {
           })
         },
         onStateChange: (updatedTeam) => {
-          setTeamState({ ...updatedTeam })
+          setTeamState({
+            ...updatedTeam,
+            channelMessages: [...updatedTeam.channelMessages],
+            delegations: { ...updatedTeam.delegations },
+          })
           saveTeamState(sid, updatedTeam)
         },
         onAgentStateChange: (agentId, updatedAgentState) => {
-          setAgentStates((prev) => ({ ...prev, [agentId]: { ...updatedAgentState } }))
+          setAgentStates((prev) => ({
+            ...prev,
+            [agentId]: {
+              ...updatedAgentState,
+              hostMessages: [...updatedAgentState.hostMessages],
+              workers: { ...updatedAgentState.workers },
+              mailbox: [...updatedAgentState.mailbox],
+              blackboard: [...updatedAgentState.blackboard],
+            },
+          }))
           saveTeamAgentState(sid, agentId, updatedAgentState)
         },
         onAgentEvent: (agentId, e: SuperAgentEvent) => {
@@ -193,7 +206,9 @@ export function useAgentTeam(options: UseAgentTeamOptions) {
 
   // 处理每个 Agent 的实时流式事件
   const handleAgentEvent = useCallback((agentId: string, e: SuperAgentEvent) => {
-    if (e.type === 'host-thinking') {
+    if (e.type === 'host-start') {
+      setHostRunningMap((prev) => ({ ...prev, [agentId]: true }))
+    } else if (e.type === 'host-thinking') {
       setHostStreamingMap((prev) => {
         const cur = prev[agentId] || { thinking: '', text: '' }
         return { ...prev, [agentId]: { ...cur, thinking: cur.thinking + e.delta } }
@@ -216,6 +231,10 @@ export function useAgentTeam(options: UseAgentTeamOptions) {
     } else if (e.type === 'host-done') {
       setHostStreamingMap((prev) => ({ ...prev, [agentId]: null }))
       setHostRunningMap((prev) => ({ ...prev, [agentId]: false }))
+      if (e.error) {
+        setError(e.error)
+        onToast?.(e.error)
+      }
     } else if (e.type === 'worker-chat-delta') {
       setWorkerStreamsMap((prev) => {
         const agMap = prev[agentId] || {}
@@ -415,6 +434,7 @@ export function useAgentTeam(options: UseAgentTeamOptions) {
   return {
     ready,
     error,
+    clearError: () => setError(null),
     profiles: DEFAULT_TEAM_PROFILES,
     channelMessages: teamState?.channelMessages || [],
     delegations: teamState?.delegations || {},

@@ -104,6 +104,7 @@ export interface SuperAgentState {
 
 /** 运行时对外广播的强类型事件 */
 export type SuperAgentEvent =
+  | { type: 'host-start' }
   | { type: 'host-thinking'; delta: string }
   | { type: 'host-text-delta'; delta: string }
   | { type: 'host-tool-call'; id: string; name: string; args: string }

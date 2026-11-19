@@ -59,6 +59,10 @@ export interface ChannelMessage {
   isAnnouncement?: boolean
   delegationId?: string
   mentions?: string[]
+  /** 指向可点开在右侧交付面板查看的 Agent ID 与 Worker ID */
+  refAgentId?: string
+  refWorkerId?: string
+  briefSummary?: string
 }
 
 export interface TeamState {
