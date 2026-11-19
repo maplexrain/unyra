@@ -102,6 +102,7 @@ export function useChipOpening({
       ref.kind === 'terminal' ||
       ref.kind === 'classroom' ||
       ref.kind === 'classroomShowcase' ||
+      ref.kind === 'agentTeam' ||
       ref.kind === 'usage' ||
       ref.kind === 'schedule' ||
       ref.kind === 'mind' ||

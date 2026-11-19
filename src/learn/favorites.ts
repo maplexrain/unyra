@@ -50,7 +50,8 @@ export function favoriteKeyOfTab(ref: TabRef): string | null {
     ref.kind === 'draft' ||
     ref.kind === 'ws' ||
     ref.kind === 'classroom' ||
-    ref.kind === 'classroomShowcase'
+    ref.kind === 'classroomShowcase' ||
+    ref.kind === 'agentTeam'
   )
     return null
   if (ref.kind === 'web') return ref.url ? favoriteKey(ref) : null
@@ -77,7 +78,8 @@ export function favoriteRefOfTab(ref: TabRef): FavoriteRef | null {
     ref.kind === 'draft' ||
     ref.kind === 'ws' ||
     ref.kind === 'classroom' ||
-    ref.kind === 'classroomShowcase'
+    ref.kind === 'classroomShowcase' ||
+    ref.kind === 'agentTeam'
   )
     return null
   return ref

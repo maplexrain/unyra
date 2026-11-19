@@ -34,6 +34,7 @@ import TerminalTabPane from '../../terminal/TerminalTabPane'
 import UsagePanel from '../../settings/UsagePanel'
 import ClassroomView from '../classroom/ClassroomView'
 import ClassroomShowcasePage from '../classroom/ClassroomShowcasePage'
+import AgentTeamPage from '../agent-team/AgentTeamPage'
 import { SchedulePage } from '../../schedule/SchedulePage'
 import MindPanel from '../../agent/MindPanel'
 import AgentSettingsPanel from '../../AgentSettingsPanel'
@@ -189,6 +190,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     // 互动课堂与组件动效库不画：沉浸式独立画布与舞台页面，自成体系不画文档侧栏
     gTab.ref.kind !== 'classroom' &&
     gTab.ref.kind !== 'classroomShowcase' &&
+    gTab.ref.kind !== 'agentTeam' &&
     // 插件文档页不画：它是参考手册，不是可编辑节点文档
     gTab.ref.kind !== 'pluginDoc' &&
     // 赞助者名单页不画：它是致谢名册
@@ -522,6 +524,8 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               课堂组件与动效库全屏页面：组件渲染参考、交互演练与动态创作中心。
             */
             <ClassroomShowcasePage initialTag={gTab.ref.tag} />
+          ) : gTab?.ref.kind === 'agentTeam' ? (
+            <AgentTeamPage goalId={gTab.ref.goalId} goals={store.goals} activeGoalId={store.activeGoalId} />
           ) : gTab?.ref.kind === 'settings' ? (
             /*
               设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），

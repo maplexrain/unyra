@@ -212,7 +212,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       /** 「目标 → 根节点」：组锚判据的第二跳（见 groups/tabs 的 isAnchorOutline） */
       const rootOf = (goalId: string) => s.goals.find((g) => g.id === goalId)?.rootNodeId ?? null
       const goalOfTab = (tab: LearnTab): string | null => {
-        if (tab.ref.kind === 'mind') return tab.ref.goalId
+        if (tab.ref.kind === 'mind' || tab.ref.kind === 'agentTeam') return tab.ref.goalId ?? null
         if (tab.ref.kind === 'outline') {
           const oRef = tab.ref as { kind: 'outline'; nodeId: string; goalId?: string }
           if (oRef.goalId) return oRef.goalId
@@ -469,6 +469,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         tab.ref.kind === 'schedule' ||
         tab.ref.kind === 'mind' ||
         tab.ref.kind === 'agentSettings' ||
+        tab.ref.kind === 'agentTeam' ||
         tab.ref.kind === 'blank'
       )
         return { ok: true }

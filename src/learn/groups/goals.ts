@@ -56,6 +56,8 @@ export function refOwner(ref: TabRef, goalOfNode: (nodeId: string) => string | n
     // 记忆页签本身就是「一枚目标一份」的（见 tabs 的 `m:` + goalId），归属直接照抄
     case 'mind':
       return ref.goalId
+    case 'agentTeam':
+      return ref.goalId ?? PUBLIC_OWNER
     // 绑定到目标的视频页签（视频节点建立的绑定，ref.goalId 在打开时解析写入）：
     // 跟着那个目标的组走——切走收起、锚大纲关闭时整组（含它）进停靠场。
     // 没绑定的视频是公共页签（不挂任何目标）

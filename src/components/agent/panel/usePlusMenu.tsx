@@ -13,6 +13,7 @@ import {
   Paperclip,
   Settings,
   Trash2,
+  Users,
 } from 'lucide-react'
 import type { Conversation } from '../../../agent/types'
 import { NewChatIcon } from '../../icons'
@@ -166,6 +167,16 @@ export function usePlusMenu({
       icon: <Settings size={14} />,
       tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
       run: onOpenAgentSettings,
+    },
+    {
+      key: 'agentTeam',
+      label: t('智能体团队'),
+      hint: t('打开智能体协同与多 Agent 协作大厅'),
+      icon: <Users size={14} />,
+      tone: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300',
+      run: () => {
+        window.dispatchEvent(new CustomEvent('moji:open-tab', { detail: { kind: 'agentTeam' } }))
+      },
     },
   ]
 

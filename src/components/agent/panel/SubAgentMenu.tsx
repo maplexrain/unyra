@@ -8,7 +8,7 @@
  * 点列表项切进该子会话的视图。
  */
 import { useState } from 'react'
-import { Bot } from 'lucide-react'
+import { Bot, Users } from 'lucide-react'
 import type { SubAgentDef, SubAgentSession } from '../../../agent/subagent/types'
 import { useLocale, t } from '../../../i18n'
 
@@ -102,6 +102,19 @@ export function SubAgentMenu({ sessions, defs, onOpen }: SubAgentMenuProps) {
                 </button>
               )
             })}
+          </div>
+          <div className="border-t border-line bg-paper-deep/50 p-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                window.dispatchEvent(new CustomEvent('moji:open-tab', { detail: { kind: 'agentTeam' } }))
+              }}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-medium text-indigo-600 hover:bg-indigo-500/10 dark:text-indigo-400 transition"
+            >
+              <Users size={12} />
+              <span>{t('打开智能体团队协作大厅')}</span>
+            </button>
           </div>
         </div>
       )}

@@ -14,7 +14,7 @@
  */
 
 import { useState, type KeyboardEvent, type ReactNode } from 'react'
-import { Archive, FlaskConical, Gauge, GraduationCap, MessagesSquare, Settings } from 'lucide-react'
+import { Archive, FlaskConical, Gauge, GraduationCap, MessagesSquare, Settings, Users } from 'lucide-react'
 import type { Conversation } from '../../../agent/types'
 import {
   REASONING_EFFORTS,
@@ -129,6 +129,15 @@ export function useSlashMenu({
       hint: t('压缩阈值、人格等（与全局设置分开）'),
       icon: <Settings size={14} />,
       run: onOpenAgentSettings,
+    },
+    {
+      key: 'team',
+      label: t('智能体团队'),
+      hint: t('打开智能体协同大厅与多 Agent 协作工作区'),
+      icon: <Users size={14} />,
+      run: () => {
+        window.dispatchEvent(new CustomEvent('moji:open-tab', { detail: { kind: 'agentTeam' } }))
+      },
     },
     {
       key: 'effort',

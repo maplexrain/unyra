@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Volume2, VolumeX, Presentation, Layers } from 'lucide-react'
+import { Volume2, VolumeX, Presentation, Layers, Users } from 'lucide-react'
 import { FileIcon } from '@react-symbols/icons/utils'
 import { DocTypeIcon, WebTabTypeIcon } from '../docTypes'
 import VimIcon from '../VimIcon'
@@ -118,6 +118,17 @@ export function TabTypeIcon({ tab, favicon, loading }: { tab: TabRef; favicon?: 
         className="flex h-4 w-4 shrink-0 items-center justify-center text-seal"
       >
         <Layers size={13} />
+      </span>
+    )
+  }
+
+  if (tab.kind === 'agentTeam') {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex h-4 w-4 shrink-0 items-center justify-center text-indigo-500 dark:text-indigo-400"
+      >
+        <Users size={13} />
       </span>
     )
   }

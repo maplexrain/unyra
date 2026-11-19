@@ -127,6 +127,10 @@ export type TabRef =
    * components/agent/AgentSettingsPanel）。同样全局一枚，与全局设置是两份数据。
    */
   | { kind: 'agentSettings' }
+  /**
+   * 智能体团队页签：多智能体协作中心，左右分栏（左侧群聊/私聊，右侧目标智能体列表与协同大厅）
+   */
+  | { kind: 'agentTeam'; goalId?: string }
   /** 空白页签（底页）：显示无页签引导卡片，用于快捷新建或作为保底页签 */
   | { kind: 'blank'; key: string }
   /**
