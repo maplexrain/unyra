@@ -7,11 +7,11 @@
  * 3. Mailbox & Blackboard：Worker 静默入队 mailbox（不唤醒 Host），随下次用户请求拼头注入，沉淀结构化黑板。
  */
 
-import type { ChatMessage, ReasoningEffort, StreamFn } from '../../ai/types'
-import { streamChatWith, type ResolvedProvider } from '../../ai/client'
+import type { ReasoningEffort, StreamFn } from '../../ai/types'
+import { type ResolvedProvider } from '../../ai/client'
 import { runAgent } from '../runtime'
 import { assertPrefixStable, resetPrefixGate } from '../prefixGate'
-import type { AgentEvent, AgentPart, AgentTool, ConversationMessage } from '../types'
+import type { AgentPart, AgentTool, ConversationMessage } from '../types'
 import { toChatHistory } from '../../learn/agent/history'
 import { applyEvent } from '../../learn/agent/events'
 import { createHostTools } from './hostTools'
@@ -81,6 +81,10 @@ export class SuperAgentEngine {
 
   public getState(): SuperAgentState {
     return this.state
+  }
+
+  public isHostRunning(): boolean {
+    return this.hostRunning
   }
 
   private emit(event: SuperAgentEvent): void {

@@ -10,12 +10,17 @@ import {
 import { AgentTeamRoster } from './AgentTeamRoster'
 import { AgentTeamChat } from './AgentTeamChat'
 import { AgentTeamTutorPane } from './AgentTeamTutorPane'
+import { SuperAgentRail, type SuperRailView } from './SuperAgentRail'
+import { SuperHostPane } from './SuperHostPane'
+import { SuperWorkerPane } from './SuperWorkerPane'
+import { SuperBlackboardPane } from './SuperBlackboardPane'
+import { useSuperAgent } from '../../../learn/superAgent/useSuperAgent'
 import type { LearnStore, TabRef, DocView } from '../../../learn/types'
 import type { useAgent } from '../../../learn/useAgent'
 import type { loadAgentSettings } from '../../../agent/settings'
 import { resolveDisplayedConversation } from '../../../learn/graph'
 import { t } from '../../../i18n'
-import { Sparkles, Bot } from 'lucide-react'
+import { Sparkles, Bot, Layers } from 'lucide-react'
 
 type AgentApi = ReturnType<typeof useAgent>
 type AgentSettings = ReturnType<typeof loadAgentSettings>
@@ -47,7 +52,12 @@ export default function AgentTeamPage({
   openTab,
   onToast,
 }: AgentTeamPageProps) {
-  const effectiveGoalId = goalId || activeGoalId || undefined
+  const effectiveGoalId =
+    goalId ||
+    activeGoalId ||
+    store?.activeGoalId ||
+    (store?.goals && store.goals.length > 0 ? store.goals[0].id : 'global-scope')
+
   const activeGoal = useMemo(() => {
     if (goals) return goals.find((g) => g.id === effectiveGoalId)
     if (store?.goals) return store.goals.find((g) => g.id === effectiveGoalId)
@@ -56,20 +66,47 @@ export default function AgentTeamPage({
 
   const goalTitle = activeGoal?.title
 
+  // 工作台模式：'super'（三平面架构工作台，默认）与 'classic'（经典导师备用对比）
+  const [workbenchMode, setWorkbenchMode] = useState<'super' | 'classic'>('super')
+
+  // 三平面导航视图
+  const [railView, setRailView] = useState<SuperRailView>({ kind: 'host' })
+
+  // 挂载三平面 SuperAgent Hook
+  const superAgent = useSuperAgent({
+    scopeId: effectiveGoalId,
+    goalTitle,
+    store,
+    getLatest,
+    set,
+    nodeId: null,
+    onToast,
+  })
+
+  // 活跃 Worker 列表
+  const activeWorkers = useMemo(
+    () => superAgent.workers.filter((w) => w.status === 'running'),
+    [superAgent.workers],
+  )
+
+  // 选中的 Worker
+  const selectedWorker = useMemo(() => {
+    if (railView.kind !== 'worker') return null
+    return superAgent.workers.find((w) => w.id === railView.workerId) || null
+  }, [railView, superAgent.workers])
+
+  // --- 经典导师模式下的兼容状态 ---
   const [agents, setAgents] = useState<TeamAgent[]>(() => loadTeamAgents(goalId))
   const [messages, setMessages] = useState<TeamMessage[]>(() => loadTeamMessages(goalId))
-  // 默认选中超级导师，方便立即向超级导师派发任务
   const [selected, setSelected] = useState<TeamChatSelection>('agent-tutor')
   const [isSimulating, setIsSimulating] = useState(false)
 
-  // 当 goalId 变化时重新加载数据
   useEffect(() => {
     setAgents(loadTeamAgents(goalId))
     setMessages(loadTeamMessages(goalId))
     setSelected('agent-tutor')
   }, [goalId])
 
-  // 持久化保存
   const handleUpdateAgents = useCallback(
     (newAgents: TeamAgent[]) => {
       setAgents(newAgents)
@@ -86,20 +123,6 @@ export default function AgentTeamPage({
     [goalId],
   )
 
-  const handleAddAgent = (newAgent: TeamAgent) => {
-    const updated = [...agents, newAgent]
-    handleUpdateAgents(updated)
-  }
-
-  const handleDeleteAgent = (agentId: string) => {
-    const updated = agents.filter((a) => a.id !== agentId)
-    handleUpdateAgents(updated)
-    if (selected === agentId) {
-      setSelected('agent-tutor')
-    }
-  }
-
-  // 计算超级导师当前是否在运行中
   const convId = useMemo(() => {
     if (!store || !effectiveGoalId) return null
     return resolveDisplayedConversation(store, effectiveGoalId)
@@ -107,103 +130,193 @@ export default function AgentTeamPage({
 
   const isTutorRunning = Boolean(convId && agent?.runningByConversation[convId])
 
-  // 发送模拟消息（供独立聊天组件使用）
-  const handleSendMessage = (content: string, mentions?: string[]) => {
-    const userMsg: TeamMessage = {
-      id: `msg-${Date.now()}`,
-      senderId: 'user',
-      senderName: '学习者 (You)',
-      avatar: '👤',
-      content,
-      timestamp: Date.now(),
-      mentions,
-      isGroupChat: selected === 'group',
-      targetAgentId: selected === 'group' ? undefined : selected,
-    }
-
-    const nextMessages = [...messages, userMsg]
-    handleUpdateMessages(nextMessages)
-  }
-
-  const handleSimulateWorkflow = () => {
-    if (isSimulating) return
-    setIsSimulating(true)
-    handleUpdateMessages(PRESET_SIMULATION_MESSAGES)
-    setIsSimulating(false)
-  }
-
-  const handleClearMessages = () => {
-    handleUpdateMessages([])
-  }
-
   return (
-    <div className="flex h-full w-full overflow-hidden bg-paper select-text">
-      {/* 左侧：各个agent的列表（含置顶群聊） */}
-      <div className="w-80 md:w-88 xl:w-96 shrink-0 h-full border-r border-line/70">
-        <AgentTeamRoster
-          agents={agents}
-          selected={selected}
-          onSelect={setSelected}
-          onAddAgent={handleAddAgent}
-          onDeleteAgent={handleDeleteAgent}
-          goalTitle={goalTitle}
-          isTutorRunning={isTutorRunning}
-        />
+    <div className="flex flex-col h-full w-full overflow-hidden bg-paper select-text">
+      {/* 顶部极其低调的模式切换控制条 */}
+      <div className="px-4 py-1.5 border-b border-line/40 bg-card/40 flex items-center justify-between text-[11.5px] shrink-0">
+        <div className="flex items-center gap-1.5 text-ink-faint">
+          <Layers size={13} className="text-seal" />
+          <span className="font-semibold text-ink-strong">{t('智能体团队')}</span>
+          <span>·</span>
+          <span>{goalTitle || t('全局空间')}</span>
+        </div>
+
+        {/* 模式切换胶囊 */}
+        <div className="flex items-center bg-line/50 p-0.5 rounded-lg">
+          <button
+            type="button"
+            onClick={() => setWorkbenchMode('super')}
+            className={`px-2.5 py-0.8 rounded-md font-medium transition cursor-pointer ${
+              workbenchMode === 'super'
+                ? 'bg-paper text-seal font-semibold shadow-2xs'
+                : 'text-ink-faint hover:text-ink'
+            }`}
+          >
+            {t('三平面工作台 (推荐)')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setWorkbenchMode('classic')}
+            className={`px-2.5 py-0.8 rounded-md font-medium transition cursor-pointer ${
+              workbenchMode === 'classic'
+                ? 'bg-paper text-seal font-semibold shadow-2xs'
+                : 'text-ink-faint hover:text-ink'
+            }`}
+          >
+            {t('经典导师')}
+          </button>
+        </div>
       </div>
 
-      {/* 右侧：聊天框 (群聊 / 超级导师任务派发) */}
-      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
-        {selected === 'group' ? (
-          /* 协作频道：当前空着待命 */
-          <div className="flex h-full w-full flex-col items-center justify-center p-8 text-center bg-card/20">
-            <div className="w-16 h-16 rounded-3xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center mb-4 border border-indigo-500/20 shadow-xs">
-              <Sparkles size={28} />
+      {/* 主体视口 */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {workbenchMode === 'super' ? (
+          /* ===== 三平面工作台 (SuperAgent Workbench) ===== */
+          <>
+            {/* 左侧导航轨 */}
+            <div className="w-72 md:w-80 shrink-0 h-full border-r border-line/60">
+              <SuperAgentRail
+                currentView={railView}
+                onSelectView={setRailView}
+                hostRunning={superAgent.hostRunning}
+                mailboxCount={superAgent.mailboxCount}
+                workers={superAgent.workers}
+                blackboardCount={superAgent.blackboard.length}
+                onCancelWorker={superAgent.cancelWorker}
+                goalTitle={goalTitle}
+              />
             </div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-line/60 text-ink-faint text-[11px] font-semibold mb-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-ink-faint/50" />
-              <span>{t('协作频道 · 待命中')}</span>
-            </div>
-            <h3 className="text-[17px] font-bold text-ink-strong mb-2">{t('协作频道暂无消息')}</h3>
-            <p className="max-w-md text-[12.5px] text-ink-soft leading-relaxed mb-6">
-              {t(
-                '多智能体协同网络已接入。当超级导师触发多智能体协作、或开启复杂任务流水线时，各智能体之间的工单分发、协同检索与成果校验将在此频道实时广播。',
+
+            {/* 右侧工作台主视口 */}
+            <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
+              {railView.kind === 'host' && (
+                <SuperHostPane
+                  messages={superAgent.state?.hostMessages || []}
+                  streaming={superAgent.hostStreaming}
+                  isRunning={superAgent.hostRunning}
+                  mailboxCount={superAgent.mailboxCount}
+                  activeWorkers={activeWorkers}
+                  onSendMessage={superAgent.sendToHost}
+                  onStopHost={superAgent.stopAll}
+                  onReset={superAgent.resetSuperAgent}
+                  onSelectWorker={(wId) => setRailView({ kind: 'worker', workerId: wId })}
+                  goalTitle={goalTitle}
+                />
               )}
-            </p>
-            <button
-              type="button"
-              onClick={() => setSelected('agent-tutor')}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-seal text-white font-semibold text-[13px] hover:bg-seal-deep transition-all shadow-sm active:scale-95 cursor-pointer"
-            >
-              <Bot size={15} />
-              <span>{t('向超级导师派发任务')}</span>
-            </button>
-          </div>
-        ) : store && agent && getLatest && set ? (
-          /* 超级导师真实任务派发区（与全局 Agent 栏一致能力） */
-          <AgentTeamTutorPane
-            goalId={effectiveGoalId}
-            store={store}
-            getLatest={getLatest}
-            set={set}
-            agent={agent}
-            agentSettings={agentSettings}
-            hasKey={hasKey}
-            openTab={openTab}
-            onToast={onToast}
-          />
+
+              {railView.kind === 'worker' && selectedWorker && (
+                <SuperWorkerPane
+                  worker={selectedWorker}
+                  streamSlot={superAgent.workerStreams[selectedWorker.id]}
+                  onBackToHost={() => setRailView({ kind: 'host' })}
+                  onSendToWorker={superAgent.sendToWorker}
+                  onCancelWorker={superAgent.cancelWorker}
+                />
+              )}
+
+              {railView.kind === 'worker' && !selectedWorker && (
+                <div className="h-full flex flex-col items-center justify-center p-8 text-center text-ink-faint">
+                  <p className="text-[13px] mb-3">{t('该工单不存在或已被移除')}</p>
+                  <button
+                    type="button"
+                    onClick={() => setRailView({ kind: 'host' })}
+                    className="px-4 py-1.5 rounded-xl bg-seal text-white text-[12px] font-semibold cursor-pointer"
+                  >
+                    {t('返回前台主控')}
+                  </button>
+                </div>
+              )}
+
+              {railView.kind === 'blackboard' && (
+                <SuperBlackboardPane
+                  blackboard={superAgent.blackboard}
+                  onSelectWorker={(wId) => setRailView({ kind: 'worker', workerId: wId })}
+                  onBackToHost={() => setRailView({ kind: 'host' })}
+                />
+              )}
+            </div>
+          </>
         ) : (
-          /* 预览模式备用组件 */
-          <AgentTeamChat
-            selected={selected}
-            agents={agents}
-            messages={messages}
-            onSendMessage={handleSendMessage}
-            onSimulateWorkflow={handleSimulateWorkflow}
-            isSimulating={isSimulating}
-            onClearMessages={handleClearMessages}
-            onBackToGroup={() => setSelected('group')}
-            goalTitle={goalTitle}
-          />
+          /* ===== 经典导师模式 (Classic Mode) ===== */
+          <>
+            <div className="w-80 md:w-88 xl:w-96 shrink-0 h-full border-r border-line/70">
+              <AgentTeamRoster
+                agents={agents}
+                selected={selected}
+                onSelect={setSelected}
+                onAddAgent={(newAgent) => handleUpdateAgents([...agents, newAgent])}
+                onDeleteAgent={(id) => {
+                  const updated = agents.filter((a) => a.id !== id)
+                  handleUpdateAgents(updated)
+                  if (selected === id) setSelected('agent-tutor')
+                }}
+                goalTitle={goalTitle}
+                isTutorRunning={isTutorRunning}
+              />
+            </div>
+
+            <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
+              {selected === 'group' ? (
+                <div className="flex h-full w-full flex-col items-center justify-center p-8 text-center bg-card/20">
+                  <div className="w-16 h-16 rounded-3xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center mb-4 border border-indigo-500/20 shadow-xs">
+                    <Sparkles size={28} />
+                  </div>
+                  <h3 className="text-[17px] font-bold text-ink-strong mb-2">
+                    {t('协作频道暂无消息')}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setSelected('agent-tutor')}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-seal text-white font-semibold text-[13px] hover:bg-seal-deep transition-all shadow-sm cursor-pointer"
+                  >
+                    <Bot size={15} />
+                    <span>{t('向超级导师派发任务')}</span>
+                  </button>
+                </div>
+              ) : store && agent && getLatest && set ? (
+                <AgentTeamTutorPane
+                  goalId={effectiveGoalId}
+                  store={store}
+                  getLatest={getLatest}
+                  set={set}
+                  agent={agent}
+                  agentSettings={agentSettings}
+                  hasKey={hasKey}
+                  openTab={openTab}
+                  onToast={onToast}
+                />
+              ) : (
+                <AgentTeamChat
+                  selected={selected}
+                  agents={agents}
+                  messages={messages}
+                  onSendMessage={(content, mentions) => {
+                    const next: TeamMessage = {
+                      id: `msg-${Date.now()}`,
+                      senderId: 'user',
+                      senderName: '学习者 (You)',
+                      avatar: '👤',
+                      content,
+                      timestamp: Date.now(),
+                      mentions,
+                      isGroupChat: selected === 'group',
+                      targetAgentId: selected === 'group' ? undefined : selected,
+                    }
+                    handleUpdateMessages([...messages, next])
+                  }}
+                  onSimulateWorkflow={() => {
+                    setIsSimulating(true)
+                    handleUpdateMessages(PRESET_SIMULATION_MESSAGES)
+                    setIsSimulating(false)
+                  }}
+                  isSimulating={isSimulating}
+                  onClearMessages={() => handleUpdateMessages([])}
+                  onBackToGroup={() => setSelected('group')}
+                  goalTitle={goalTitle}
+                />
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>

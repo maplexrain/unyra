@@ -7,7 +7,7 @@
  * 3. 任何繁重、长耗时任务必须经由 spawn_worker 委派给隔离工坊。
  */
 
-import type { AgentTool, AgentToolResult } from '../types'
+import type { AgentTool } from '../types'
 import { searchBlackboard } from './blackboard'
 import type { SuperAgentState } from './types'
 

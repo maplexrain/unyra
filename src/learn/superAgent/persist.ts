@@ -9,7 +9,7 @@
 
 import { hydrateSuperAgentState } from '../../agent/super/engine'
 import type { SuperAgentState } from '../../agent/super/types'
-import { readJson, scheduleCommit, userPath, writeJson } from '../../lib/storage'
+import { readJson, userPath, writeJson } from '../../lib/storage'
 
 const LOCAL_STORAGE_PREFIX = 'moji:super-agent:'
 const pendingSaves = new Map<string, SuperAgentState>()
@@ -97,7 +97,6 @@ export async function flushSuperAgentState(scopeId: string): Promise<void> {
   if (rel) {
     try {
       await writeJson(rel, state)
-      scheduleCommit(rel)
     } catch (e) {
       console.warn(`[super-agent:persist] 落盘文件写入失败 (${scopeId}):`, e)
     }

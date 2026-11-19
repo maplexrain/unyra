@@ -8,13 +8,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { loadAiSettings, resolveGlobal, type AiSettings } from '../../ai/settings'
+import { hasApiKey, loadAiSettings, resolveGlobal, type AiSettings } from '../../ai/settings'
 import { SuperAgentEngine } from '../../agent/super/engine'
+import type { AgentPart } from '../../agent/types'
 import type {
-  AgentEvent,
-  AgentPart,
-  BlackboardEntry,
-  ConversationMessage,
   SuperAgentEvent,
   SuperAgentState,
   WorkerSession,
@@ -48,7 +45,7 @@ export interface WorkerStreamSlot {
 }
 
 export function useSuperAgent(options: UseSuperAgentOptions) {
-  const { scopeId, goalTitle, store, getLatest, set, nodeId, aiSettings: propAiSettings, onToast } = options
+  const { scopeId, goalTitle, store: _store, getLatest, set, nodeId, aiSettings: propAiSettings, onToast } = options
 
   const [state, setState] = useState<SuperAgentState | null>(null)
   const [hostRunning, setHostRunning] = useState(false)
@@ -87,7 +84,7 @@ export function useSuperAgent(options: UseSuperAgentOptions) {
         provider: resolvedAi.provider,
         model: resolvedAi.model,
         effort: resolvedAi.effort,
-        createWorkerTools: (workerId) =>
+        createWorkerTools: (_workerId) =>
           createSuperWorkerTools({
             getLatest,
             set,
@@ -213,6 +210,11 @@ export function useSuperAgent(options: UseSuperAgentOptions) {
   // 动作：发送给 Frontline Host
   const sendToHost = useCallback(
     async (text: string) => {
+      const s = propAiSettings ?? loadAiSettings()
+      if (!hasApiKey(s)) {
+        onToast?.('请先在设置中配置 AI 服务提供商的 API Key')
+        return
+      }
       const engine = engineRef.current
       if (!engine) return
       setHostRunning(true)
@@ -224,12 +226,17 @@ export function useSuperAgent(options: UseSuperAgentOptions) {
         setHostRunning(false)
       }
     },
-    [onToast],
+    [propAiSettings, onToast],
   )
 
   // 动作：直连发送给 Worker
   const sendToWorker = useCallback(
     async (workerId: string, text: string) => {
+      const s = propAiSettings ?? loadAiSettings()
+      if (!hasApiKey(s)) {
+        onToast?.('请先在设置中配置 AI 服务提供商的 API Key')
+        return
+      }
       const engine = engineRef.current
       if (!engine) return
       try {
@@ -238,8 +245,31 @@ export function useSuperAgent(options: UseSuperAgentOptions) {
         onToast?.(e instanceof Error ? e.message : '投递失败')
       }
     },
-    [onToast],
+    [propAiSettings, onToast],
   )
+
+  // 动作：重置/清空当前状态
+  const resetSuperAgent = useCallback(async () => {
+    const sid = scopeIdRef.current
+    if (engineRef.current) {
+      engineRef.current.stopAll()
+    }
+    const freshState: SuperAgentState = {
+      id: sid,
+      hostSystemPrompt: buildSuperHostSystemPrompt({ goalTitle }),
+      hostMessages: [],
+      workers: {},
+      mailbox: [],
+      blackboard: [],
+    }
+    saveSuperAgentState(sid, freshState)
+    await flushSuperAgentState(sid)
+    setState(freshState)
+    setHostRunning(false)
+    setHostStreaming(null)
+    setWorkerStreams({})
+    onToast?.('已清空智能体工作台记录')
+  }, [goalTitle, onToast])
 
   // 动作：取消指定 Worker
   const cancelWorker = useCallback((workerId: string) => {
@@ -283,5 +313,6 @@ export function useSuperAgent(options: UseSuperAgentOptions) {
     sendToWorker,
     cancelWorker,
     stopAll,
+    resetSuperAgent,
   }
 }

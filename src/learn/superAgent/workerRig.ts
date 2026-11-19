@@ -32,7 +32,7 @@ export function createSuperWorkerTools(deps: SuperWorkerToolsDeps): AgentTool[] 
     const sandboxBase = learnSandboxOps({
       getLatest,
       set,
-      goalId: () => goalId ?? null,
+      goalId: () => goalId ?? '',
       nodeId: () => nodeId ?? null,
     })
 
@@ -52,6 +52,6 @@ export function createSuperWorkerTools(deps: SuperWorkerToolsDeps): AgentTool[] 
     resolveDoc: () => ({ ok: false, message: '脱机模式不支持文档读写' }),
     nodeId: () => null,
     docOps: {} as never,
-    nodeOps: {} as never,
+    nodes: {} as never,
   })
 }

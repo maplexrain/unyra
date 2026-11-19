@@ -108,3 +108,50 @@ export function buildHostUserPayload(
   blocks.push(userText)
   return blocks.join('\n\n')
 }
+
+/**
+ * 前端展示剥离函数：
+ * 将发往 LLM 的原始 user 消息正文拆分为后台回执头、活跃工单头与用户实际输入。
+ * 目的：渲染用户气泡时不直接暴露底层的回执协议纯文本，保持界面素面优雅。
+ */
+export function splitHostUserDisplay(rawText: string): {
+  mailboxHeader?: string
+  activeWorkersHeader?: string
+  userText: string
+  mailboxCount: number
+} {
+  let text = rawText
+  let mailboxHeader: string | undefined
+  let activeWorkersHeader: string | undefined
+  let mailboxCount = 0
+
+  const mailboxPrefix = '【后台工作回执（共 '
+  if (text.startsWith(mailboxPrefix)) {
+    const endIdx = text.indexOf('\n\n')
+    if (endIdx !== -1) {
+      mailboxHeader = text.slice(0, endIdx).trim()
+      text = text.slice(endIdx + 2)
+      const match = /【后台工作回执（共 (\d+) 项）】/.exec(mailboxHeader)
+      if (match) {
+        mailboxCount = parseInt(match[1], 10) || 0
+      }
+    }
+  }
+
+  const runningPrefix = '【当前仍在运行的工单'
+  if (text.startsWith(runningPrefix)) {
+    const endIdx = text.indexOf('\n\n')
+    if (endIdx !== -1) {
+      activeWorkersHeader = text.slice(0, endIdx).trim()
+      text = text.slice(endIdx + 2)
+    }
+  }
+
+  return {
+    mailboxHeader,
+    activeWorkersHeader,
+    userText: text.trim(),
+    mailboxCount,
+  }
+}
+

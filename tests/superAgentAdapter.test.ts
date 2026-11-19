@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import { buildSuperHostSystemPrompt, buildSuperWorkerSystemPrompt } from '../src/learn/superAgent/prompts'
 import { loadSuperAgentState, saveSuperAgentState, flushSuperAgentState } from '../src/learn/superAgent/persist'
 import { createSuperWorkerTools } from '../src/learn/superAgent/workerRig'
+import { splitHostUserDisplay, buildHostUserPayload } from '../src/agent/super/projection'
 import type { SuperAgentState } from '../src/agent/super/types'
 
 describe('SuperAgent 业务域适配层 (Phase 2)', () => {
@@ -85,5 +86,35 @@ describe('SuperAgent 业务域适配层 (Phase 2)', () => {
     const executeTool = tools.find((t) => t.name === 'execute')!
     expect(executeTool.description).not.toContain('subagent.create')
     expect(executeTool.description).not.toContain('subagent.run')
+  })
+
+  it('4. 展示剥离：splitHostUserDisplay 正确解析底层协议头并保留干净用户正文', () => {
+    const rawPayload = buildHostUserPayload(
+      '大纲写好了吗？',
+      [
+        {
+          id: 'r-1',
+          workerId: 'w-1',
+          title: '大纲编写',
+          status: 'done',
+          summary: '完成了前三章大纲',
+          artifactIds: ['art-1'],
+          ts: Date.now(),
+        },
+      ],
+      [{ id: 'w-2', title: '例题分析', status: 'running', goal: '求解习题' }],
+    )
+
+    const parsed = splitHostUserDisplay(rawPayload)
+    expect(parsed.userText).toBe('大纲写好了吗？')
+    expect(parsed.mailboxCount).toBe(1)
+    expect(parsed.mailboxHeader).toContain('【后台工作回执（共 1 项）】')
+    expect(parsed.activeWorkersHeader).toContain('【当前仍在运行的工单（共 1 个）】')
+
+    // 纯文本消息无前置块时直接透传
+    const plain = splitHostUserDisplay('你好，这是一个简单问题')
+    expect(plain.userText).toBe('你好，这是一个简单问题')
+    expect(plain.mailboxCount).toBe(0)
+    expect(plain.mailboxHeader).toBeUndefined()
   })
 })
