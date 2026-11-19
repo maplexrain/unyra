@@ -33,4 +33,8 @@ export type SandboxReply =
 export interface ExecuteTool extends AgentTool {
   /** 最近一次编排实际调用了哪些 api（供界面显示，不进上下文） */
   lastCalls: () => SandboxCall[]
+  /** 伴生的 rexecute 工具，共享最近一次执行的代码与沙箱 */
+  rexecute?: AgentTool
+  /** 获取最近一次执行的代码全文 */
+  getLastBody?: () => string
 }

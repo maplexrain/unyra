@@ -3,7 +3,7 @@
  * （编译 body → 建 api → 跑沙箱 → 收失败与图片 → 拼回执）与结果顶部的失败清单，以及几个体量上限。
  */
 import { domOp } from '../../lib/docDom'
-import { MAX_TOOL_IMAGES, type MessageImage } from '../types'
+import { MAX_TOOL_IMAGES, type AgentContext, type AgentTool, type AgentToolResult, type MessageImage } from '../types'
 import { buildApi, clip, imagesOf } from './api'
 import { renderApiHelp, renderGroupHelp, renderRootHelp } from './apiRegistry'
 import { safeJson } from './askForm'
@@ -13,6 +13,7 @@ import { asText } from './refs'
 import { DEFAULT_SANDBOX_TIMEOUT_MS, MAX_LOGGED_CALLS } from './limits'
 import type { ExecuteTool, SandboxCall, SandboxOptions } from './types'
 import { makeDomFacade, RENAMED_API_HINT, runInWorker } from './worker'
+import { createRexecuteTool, type ExecutionState } from './rexecute'
 
 /* ---------- 工具本体 ---------- */
 const DESCRIPTION_FIELD = {
@@ -73,229 +74,264 @@ function executeParameters(apiBrief?: string): typeof EXECUTE_PARAMETERS {
 export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_SANDBOX_TIMEOUT_MS
   const runner = opts.runSandbox ?? runInWorker
-  let lastCalls: SandboxCall[] = []
-  /** 上一次失败的指纹：同样的写法再失败一次就明说「别重试了」 */
-  let lastFailure = ''
+  const state: ExecutionState = {
+    lastBody: '',
+    lastDescription: '',
+    lastCalls: [],
+    lastFailure: '',
+  }
   /**
    * ui.dom 的活动会话：会话 id → 文档区根元素。回调函数无法穿过 Worker 边界，
    * 所以 Worker 侧拿到的是「门面」，每个操作回到宿主来查这张表（见 callApi）。
    */
   const domSessions = new Map<string, Element>()
 
+  const executeBody = async (
+    body: string,
+    description: string,
+    _ctx?: AgentContext,
+  ): Promise<AgentToolResult> => {
+    state.lastBody = body
+    state.lastDescription = description
+
+    /*
+     * 形状与语法在交给沙箱之前先查一次：沙箱抛语法错时，行号指向它自己的包装代码，
+     * 「await is only valid in async functions」这种话对模型没有任何指向性（见 compileBody）。
+     */
+    const compiled = compileBody(body)
+    if (!compiled.ok) {
+      const res: AgentToolResult = { ok: false, content: compiled.content }
+      state.lastResult = res
+      return res
+    }
+    const log: SandboxCall[] = []
+    // 进程内 runner（测试探针 / 超级文档桥的直调）才有节点对象门面；真 Worker
+    // 通道的回执要过结构化克隆，api.node.get 必须回纯 manifest（见 buildApi 的
+    // nodeFacade 说明）。
+    const { api } = buildApi(opts, log, { nodeFacade: !!opts.runSandbox })
+    /**
+     * 本次编排里 api 附带的图片（目前只有 res.read 会带）。它们不能进 content
+     * （文本通道会把 base64 截成乱码），随工具结果的 images 交回运行时，
+     * 由运行时作为图片片段挂到下一跳。
+     */
+    const attached: MessageImage[] = []
+    const attachedIds = new Set<string>()
+    const logs: string[] = []
+    const logLine = (...items: unknown[]) => {
+      if (logs.length < MAX_LOGGED_CALLS) {
+        logs.push(items.map((x) => (typeof x === 'string' ? x : safeJson(x))).join(' '))
+      }
+    }
+    const reply = await runner({
+      body: compiled.body,
+      timeoutMs,
+      callApi: async (name, callArgs) => {
+        /**
+         * `__help()` 的宿主兜底：真沙箱由 sandboxRuntime 同步返回（不走到这里），
+         * 测试的 fakeRunner / 超级文档桥会把它当成一次普通 api 调用转回来。
+         * 放在白名单之前：查帮助不该被 apiAllow 拦掉，否则子代理连「自己有什么」都看不到。
+         */
+        if (name === '__help') return renderRootHelp()
+        if (name.endsWith('.__help')) {
+          const target = name.slice(0, -'.__help'.length)
+          return target.includes('.') ? renderApiHelp(target) : renderGroupHelp(target)
+        }
+        /**
+         * api 组白名单（子代理专用）的硬闸：名单外的组当场拒绝。
+         * apiAllow 是「execute 按需开放」的承诺，这里才是让它算数的地方——
+         * 名单内的组照常，名单外的一律「没有这个 api」，并把开放的组写进报错，
+         * 模型据此改写调用而不是瞎试。log 是沙箱自己的通道，不受白名单管。
+         */
+        if (opts.apiAllow?.length && name !== 'log' && !opts.apiAllow.includes(name.split('.')[0])) {
+          throw new Error(
+            '沙箱里没有这个 api：' + name + '。本次会话只开放了这些 api 组：' + opts.apiAllow.join('、'),
+          )
+        }
+        if (name === 'log') {
+          logLine(...callArgs)
+          return null
+        }
+        if (name === 'ui.dom.session') {
+          const root = opts.ui?.domRoot?.() ?? null
+          if (!root) {
+            throw new Error('文档区现在没有可访问的 DOM：请先打开一份文档（api.ui.point 可以打开一个页签）')
+          }
+          const sid = 'dom-' + crypto.randomUUID()
+          domSessions.set(sid, root)
+          return sid
+        }
+        if (name === 'ui.dom.op') {
+          const [sid, op, opArgs] = callArgs as [string, string, unknown[]]
+          const root = typeof sid === 'string' ? domSessions.get(sid) : undefined
+          if (!root) throw new Error('ui.dom 会话已失效（文档被切换或关闭了），请重新调 api.ui.dom')
+          return domOp(root, String(op ?? ''), Array.isArray(opArgs) ? opArgs : [])
+        }
+        /**
+         * ui.dom 的**进程内直调**通道：真沙箱里回调在 Worker 侧，走上面的
+         * session/op 两步；测试探针的 api 是进程内 Proxy（见 agent-ops 探针的
+         * fakeRunner），回调就地在宿主建门面执行。两条通道行为一致。
+         */
+        if (name === 'ui.dom') {
+          const fn = callArgs[0]
+          if (typeof fn !== 'function') {
+            throw new Error('api.ui.dom 需要传入一个回调函数：await api.ui.dom(async (root) => { ... })')
+          }
+          const root = opts.ui?.domRoot?.() ?? null
+          if (!root) {
+            throw new Error('文档区现在没有可访问的 DOM：请先打开一份文档（api.ui.point 可以打开一个页签）')
+          }
+          return await fn(makeDomFacade(root))
+        }
+        const segs = name.split('.')
+        let targetObj: unknown = api
+        for (const s of segs) {
+          // 命名空间可以是函数（api.node 是可调用门面，同时挂着 get/invoke）：
+          // 只认对象会把整组 api 判成「不存在」
+          if (!targetObj || (typeof targetObj !== 'object' && typeof targetObj !== 'function')) {
+            targetObj = undefined
+            break
+          }
+          targetObj = (targetObj as Record<string, unknown>)[s]
+        }
+        const fn = typeof targetObj === 'function' ? (targetObj as (...a: unknown[]) => unknown) : undefined
+        if (!fn) {
+          const hint = RENAMED_API_HINT[name]
+          throw new Error('沙箱里没有这个 api：' + name + (hint ? '。它已改名，现在写作 ' + hint : ''))
+        }
+        let value: unknown
+        try {
+          value = await fn(...callArgs)
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
+        const images = imagesOf(value)
+        if (!images.length) return value
+        for (const img of images) {
+          if (attachedIds.has(img.id) || attached.length >= MAX_TOOL_IMAGES) continue
+          attachedIds.add(img.id)
+          attached.push(img)
+        }
+        // 沙箱里看到的是回执文字，不是一串图片引用：把 images 摘掉再交回去
+        const rest: Record<string, unknown> = { ...(value as Record<string, unknown>) }
+        delete rest.images
+        return rest
+      },
+    })
+    domSessions.clear()
+    state.lastCalls = log
+
+    if (!reply.ok) {
+      const detail = description ? '（这段代码的说明：' + description + '）' : ''
+      /*
+       * 重试纪律：模型很容易「换个写法再试一次」，一轮里刷出十条噪声调用。
+       * 连续的同类失败在这里直接点破——换的若是同一处写法，它自己看不出区别。
+       */
+      const fingerprint = reply.error.slice(0, 80) + '|' + body.replace(/\s+/g, ' ').slice(0, 120)
+      const repeated = fingerprint === state.lastFailure
+      state.lastFailure = fingerprint
+      const isSyntaxError =
+        /Invalid or unexpected token|SyntaxError|Unexpected token/i.test(reply.error)
+      const syntaxAdvice =
+        isSyntaxError && /[\u4e00-\u9fa5\n]/.test(body)
+          ? '\n💡【语法提示】：长篇中文或多行文本一律使用反引号模板字符串（`...`）或 String.raw，避免使用引号数组（["行1", "行2"]）拼接，极易引发 Invalid or unexpected token 解析错误。'
+          : ''
+      const advice = repeated
+        ? '\n这条报错与上一次**完全同类**，同样的写法再试也不会有不同结果：请换一种策略，' +
+          '或先用最小调用（例如 return 1）确认沙箱语义，再回来改这段。连续失败两次以上就先停下来告诉我卡在哪。'
+        : syntaxAdvice
+      const head = failureHeader(log)
+      const tail = [whatHappened(log), logs.length ? '日志：\n' + logs.join('\n') : ''].filter(Boolean).join('\n')
+      const rexecuteTip = '\n💡【高效修复提示】：可直接调用 rexecute(pattern, replacement) 进行局部正则替换并重跑本次代码，无需重新发送完整长代码。'
+      const res: AgentToolResult = {
+        ok: false,
+        content: clip(head + '执行失败' + detail + '：' + reply.error + advice + rexecuteTip + (tail ? '\n\n' + tail : '')),
+      }
+      state.lastResult = res
+      return res
+    }
+    state.lastFailure = ''
+    // 节点对象（__node 门面）进回执前折成纯数据快照（见 sandbox/fold；真沙箱在同
+    // 一位置有一份自包含副本）。进程内直调没有克隆这道关，但 getter 与函数进
+    // safeJson 也只会变成 {}，照样得折。
+    const folded = reply.value === undefined ? undefined : foldNodes(reply.value)
+    const result =
+      folded === undefined
+        ? '（这段代码没有 return 任何值）'
+        : typeof folded === 'string'
+          ? folded
+          : safeJson(folded)
+    /**
+     * 有一次 api 调用没有生效（例如 expected 与现状不符），整次编排就算失败：
+     * 光把 { ok: false } 交给模型是不够的——它可能没检查返回值就接着往下走，
+     * 于是「明明没改成功」却被当成做完了。这里把它提成工具级失败，但**只标成
+     * 调用级失败（soft）**：代码这一层已经跑完了，界面上是黄色的「完成」，
+     * 不是红色的「失败」（见 ToolCard）。
+     */
+    const head = failureHeader(log)
+    const tail = [whatHappened(log), logs.length ? '日志：\n' + logs.join('\n') : ''].filter(Boolean).join('\n')
+    /** 这次是「跑完了，但有几步没做成」还是「这段代码根本跑不起来」，见下面的 ok / soft */
+    const allOk = log.every((c) => c.ok)
+    const res: AgentToolResult = {
+      // 工具级的成败：有一次没生效就是失败（模型据此判断），但结果照旧交给模型去读
+      ok: allOk,
+      /*
+       * 调用级失败：代码跑通了，只是某几次 api 调用没有生效。它与上面「编译不过 /
+       * 运行抛错 / 超时」那几条 early return 是两种东西——那几条没有 soft，
+       * 界面上是红的「失败」；这一条是黄的「完成」（见 ToolCard）。
+       */
+      soft: !allOk,
+      content: clip(head + result + (tail ? '\n\n' + tail : '')),
+      ...(attached.length
+        ? {
+            images: attached,
+            // 回执里点明「图在下一跳」：否则模型会以为 res.read 什么也没给它
+            content: clip(
+              head +
+                result +
+                (tail ? '\n\n' + tail : '') +
+                '\n\n（这次附上了 ' +
+                attached.length +
+                ' 张图片，它们会出现在你的下一步里。）',
+            ),
+          }
+        : {}),
+    }
+    state.lastResult = res
+    return res
+  }
+
+  const rexecute = createRexecuteTool(state, executeBody)
+
   return {
     name: 'execute',
     description: opts.apiBrief
       ? '执行一段 JS/TS 来完成任务：api 按本会话的授权开放（完整签名见参数说明，也可用 api.<组>.__help() 现查）。' +
         '多步、批量、需要判断或循环的活用代码一次做完，不要把中间结果写进对话；' +
-        '体量大的中间数据用 api.tmp.set 暂存或 api.workspace.write 落盘，只把结论带回来。'
-      : '执行一段 JS/TS 来操作学习数据——**唯一的工具**。节点与内容的读写全走节点宇宙：' +
+        '体量大的中间数据用 api.tmp.set 暂存或 api.workspace.write 落盘，只把结论带回来。' +
+        '若执行报错或需局部修正，后续可直接调用伴生的 rexecute 工具进行局部正则替换重试，避免重发完整长代码。'
+      : '执行一段 JS/TS 来操作学习数据——**核心执行工具**。节点与内容的读写全走节点宇宙：' +
         'api.node.list() 查全图（带 uuid）→ const n = await api.node.get(uuid) → await n.help() 看这个节点的内容格式与连接规则（**动态的，别凭记忆写**）→ ' +
         'await n.content 读、n.editContent(...) 整份写回、a.connect(b, "down") 连线。' +
         '其余：试卷判分与讲解（api.exam.*）、工作流（api.wf.*）、人机协作与界面操作各自的组。' +
         '多步、批量、需要判断或循环的活用代码一次做完，不要把中间结果写进对话。' +
-        '**每个组、每条 api 都有 __help()**：先查再用。应用数据不走 api.files.*——它只用于工作区、静态资源、技能与外部文件。',
+        '**每个组、每条 api 都有 __help()**：先查再用。应用数据不走 api.files.*——它只用于工作区、静态资源、技能与外部文件。' +
+        '若执行报错或需局部修正，后续可直接调用伴生的 rexecute 工具进行局部正则替换重试，避免重发完整长代码。',
     parameters: executeParameters(opts.apiBrief),
-    run: async (args) => {
+    run: async (args, ctx) => {
       const description = asText(args.description).trim()
       const body = asText(args.body)
-      /*
-       * 形状与语法在交给沙箱之前先查一次：沙箱抛语法错时，行号指向它自己的包装代码，
-       * 「await is only valid in async functions」这种话对模型没有任何指向性（见 compileBody）。
-       */
-      const compiled = compileBody(body)
-      if (!compiled.ok) return { ok: false, content: compiled.content }
-      const log: SandboxCall[] = []
-      // 进程内 runner（测试探针 / 超级文档桥的直调）才有节点对象门面；真 Worker
-      // 通道的回执要过结构化克隆，api.node.get 必须回纯 manifest（见 buildApi 的
-      // nodeFacade 说明）。
-      const { api } = buildApi(opts, log, { nodeFacade: !!opts.runSandbox })
-      /**
-       * 本次编排里 api 附带的图片（目前只有 res.read 会带）。它们不能进 content
-       * （文本通道会把 base64 截成乱码），随工具结果的 images 交回运行时，
-       * 由运行时作为图片片段挂到下一跳。
-       */
-      const attached: MessageImage[] = []
-      const attachedIds = new Set<string>()
-      const logs: string[] = []
-      const logLine = (...items: unknown[]) => {
-        if (logs.length < MAX_LOGGED_CALLS) {
-          logs.push(items.map((x) => (typeof x === 'string' ? x : safeJson(x))).join(' '))
-        }
-      }
-      const reply = await runner({
-        body: compiled.body,
-        timeoutMs,
-        callApi: async (name, callArgs) => {
-          /**
-           * `__help()` 的宿主兜底：真沙箱由 sandboxRuntime 同步返回（不走到这里），
-           * 测试的 fakeRunner / 超级文档桥会把它当成一次普通 api 调用转回来。
-           * 放在白名单之前：查帮助不该被 apiAllow 拦掉，否则子代理连「自己有什么」都看不到。
-           */
-          if (name === '__help') return renderRootHelp()
-          if (name.endsWith('.__help')) {
-            const target = name.slice(0, -'.__help'.length)
-            return target.includes('.') ? renderApiHelp(target) : renderGroupHelp(target)
-          }
-          /**
-           * api 组白名单（子代理专用）的硬闸：名单外的组当场拒绝。
-           * apiAllow 是「execute 按需开放」的承诺，这里才是让它算数的地方——
-           * 名单内的组照常，名单外的一律「没有这个 api」，并把开放的组写进报错，
-           * 模型据此改写调用而不是瞎试。log 是沙箱自己的通道，不受白名单管。
-           */
-          if (opts.apiAllow?.length && name !== 'log' && !opts.apiAllow.includes(name.split('.')[0])) {
-            throw new Error(
-              '沙箱里没有这个 api：' + name + '。本次会话只开放了这些 api 组：' + opts.apiAllow.join('、'),
-            )
-          }
-          if (name === 'log') {
-            logLine(...callArgs)
-            return null
-          }
-          if (name === 'ui.dom.session') {
-            const root = opts.ui?.domRoot?.() ?? null
-            if (!root) {
-              throw new Error('文档区现在没有可访问的 DOM：请先打开一份文档（api.ui.point 可以打开一个页签）')
-            }
-            const sid = 'dom-' + crypto.randomUUID()
-            domSessions.set(sid, root)
-            return sid
-          }
-          if (name === 'ui.dom.op') {
-            const [sid, op, opArgs] = callArgs as [string, string, unknown[]]
-            const root = typeof sid === 'string' ? domSessions.get(sid) : undefined
-            if (!root) throw new Error('ui.dom 会话已失效（文档被切换或关闭了），请重新调 api.ui.dom')
-            return domOp(root, String(op ?? ''), Array.isArray(opArgs) ? opArgs : [])
-          }
-          /**
-           * ui.dom 的**进程内直调**通道：真沙箱里回调在 Worker 侧，走上面的
-           * session/op 两步；测试探针的 api 是进程内 Proxy（见 agent-ops 探针的
-           * fakeRunner），回调就地在宿主建门面执行。两条通道行为一致。
-           */
-          if (name === 'ui.dom') {
-            const fn = callArgs[0]
-            if (typeof fn !== 'function') {
-              throw new Error('api.ui.dom 需要传入一个回调函数：await api.ui.dom(async (root) => { ... })')
-            }
-            const root = opts.ui?.domRoot?.() ?? null
-            if (!root) {
-              throw new Error('文档区现在没有可访问的 DOM：请先打开一份文档（api.ui.point 可以打开一个页签）')
-            }
-            return await fn(makeDomFacade(root))
-          }
-          const segs = name.split('.')
-          let targetObj: unknown = api
-          for (const s of segs) {
-            // 命名空间可以是函数（api.node 是可调用门面，同时挂着 get/invoke）：
-            // 只认对象会把整组 api 判成「不存在」
-            if (!targetObj || (typeof targetObj !== 'object' && typeof targetObj !== 'function')) {
-              targetObj = undefined
-              break
-            }
-            targetObj = (targetObj as Record<string, unknown>)[s]
-          }
-          const fn = typeof targetObj === 'function' ? (targetObj as (...a: unknown[]) => unknown) : undefined
-          if (!fn) {
-            const hint = RENAMED_API_HINT[name]
-            throw new Error('沙箱里没有这个 api：' + name + (hint ? '。它已改名，现在写作 ' + hint : ''))
-          }
-          let value: unknown
-          try {
-            value = await fn(...callArgs)
-          } catch (err) {
-            return { ok: false, error: err instanceof Error ? err.message : String(err) }
-          }
-          const images = imagesOf(value)
-          if (!images.length) return value
-          for (const img of images) {
-            if (attachedIds.has(img.id) || attached.length >= MAX_TOOL_IMAGES) continue
-            attachedIds.add(img.id)
-            attached.push(img)
-          }
-          // 沙箱里看到的是回执文字，不是一串图片引用：把 images 摘掉再交回去
-          const rest: Record<string, unknown> = { ...(value as Record<string, unknown>) }
-          delete rest.images
-          return rest
-        },
-      })
-      domSessions.clear()
-      lastCalls = log
-
-      if (!reply.ok) {
-        const detail = description ? '（这段代码的说明：' + description + '）' : ''
-        /*
-         * 重试纪律：模型很容易「换个写法再试一次」，一轮里刷出十条噪声调用。
-         * 连续的同类失败在这里直接点破——换的若是同一处写法，它自己看不出区别。
-         */
-        const fingerprint = reply.error.slice(0, 80) + '|' + body.replace(/\s+/g, ' ').slice(0, 120)
-        const repeated = fingerprint === lastFailure
-        lastFailure = fingerprint
-        const isSyntaxError =
-          /Invalid or unexpected token|SyntaxError|Unexpected token/i.test(reply.error)
-        const syntaxAdvice =
-          isSyntaxError && /[\u4e00-\u9fa5\n]/.test(body)
-            ? '\n💡【语法提示】：长篇中文或多行文本一律使用反引号模板字符串（`...`）或 String.raw，避免使用引号数组（["行1", "行2"]）拼接，极易引发 Invalid or unexpected token 解析错误。'
-            : ''
-        const advice = repeated
-          ? '\n这条报错与上一次**完全同类**，同样的写法再试也不会有不同结果：请换一种策略，' +
-            '或先用最小调用（例如 return 1）确认沙箱语义，再回来改这段。连续失败两次以上就先停下来告诉我卡在哪。'
-          : syntaxAdvice
-        const head = failureHeader(log)
-        const tail = [whatHappened(log), logs.length ? '日志：\n' + logs.join('\n') : ''].filter(Boolean).join('\n')
-        return {
-          ok: false,
-          content: clip(head + '执行失败' + detail + '：' + reply.error + advice + (tail ? '\n\n' + tail : '')),
-        }
-      }
-      lastFailure = ''
-      // 节点对象（__node 门面）进回执前折成纯数据快照（见 sandbox/fold；真沙箱在同
-      // 一位置有一份自包含副本）。进程内直调没有克隆这道关，但 getter 与函数进
-      // safeJson 也只会变成 {}，照样得折。
-      const folded = reply.value === undefined ? undefined : foldNodes(reply.value)
-      const result =
-        folded === undefined
-          ? '（这段代码没有 return 任何值）'
-          : typeof folded === 'string'
-            ? folded
-            : safeJson(folded)
-      /**
-       * 有一次 api 调用没有生效（例如 expected 与现状不符），整次编排就算失败：
-       * 光把 { ok: false } 交给模型是不够的——它可能没检查返回值就接着往下走，
-       * 于是「明明没改成功」却被当成做完了。这里把它提成工具级失败，但**只标成
-       * 调用级失败（soft）**：代码这一层已经跑完了，界面上是黄色的「完成」，
-       * 不是红色的「失败」（见 ToolCard）。
-       */
-      const head = failureHeader(log)
-      const tail = [whatHappened(log), logs.length ? '日志：\n' + logs.join('\n') : ''].filter(Boolean).join('\n')
-      /** 这次是「跑完了，但有几步没做成」还是「这段代码根本跑不起来」，见下面的 ok / soft */
-      const allOk = log.every((c) => c.ok)
-      return {
-        // 工具级的成败：有一次没生效就是失败（模型据此判断），但结果照旧交给模型去读
-        ok: allOk,
-        /*
-         * 调用级失败：代码跑通了，只是某几次 api 调用没有生效。它与上面「编译不过 /
-         * 运行抛错 / 超时」那几条 early return 是两种东西——那几条没有 soft，
-         * 界面上是红的「失败」；这一条是黄的「完成」（见 ToolCard）。
-         */
-        soft: !allOk,
-        content: clip(head + result + (tail ? '\n\n' + tail : '')),
-        ...(attached.length
-          ? {
-              images: attached,
-              // 回执里点明「图在下一跳」：否则模型会以为 res.read 什么也没给它
-              content: clip(
-                head +
-                  result +
-                  (tail ? '\n\n' + tail : '') +
-                  '\n\n（这次附上了 ' +
-                  attached.length +
-                  ' 张图片，它们会出现在你的下一步里。）',
-              ),
-            }
-          : {}),
-      }
+      return await executeBody(body, description, ctx)
     },
-    lastCalls: () => lastCalls,
+    lastCalls: () => state.lastCalls,
+    rexecute,
+    getLastBody: () => state.lastBody,
   }
+}
+
+/** 同时创建 execute 与配套的 rexecute 工具（数组形式，供 tools 注入） */
+export function createExecuteTools(opts: SandboxOptions): [ExecuteTool, AgentTool] {
+  const execute = createExecuteTool(opts)
+  return [execute, execute.rexecute!]
 }
 
 /**

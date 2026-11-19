@@ -81,7 +81,7 @@ export function ToolCard({ part }: { part: Extract<AgentPart, { type: 'tool' }> 
               {param && (
                 <div className="py-1.5">
                   <div className="mb-1 text-[11.5px] uppercase tracking-wider text-ink-faint">
-                    {part.name === 'execute' ? t('代码') : t('参数')}
+                    {part.name === 'execute' ? t('代码') : part.name === 'rexecute' ? t('替换规则') : t('参数')}
                   </div>
                   <CodePane text={param.text} lang={param.lang} />
                 </div>

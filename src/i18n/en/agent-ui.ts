@@ -309,6 +309,8 @@ const dict: Record<string, string> = {
 
   /* ---------- toolLabel 的旧工具名标签 ---------- */
   '执行代码': 'Execute code',
+  '正则替换重试': 'Retry with regex replace',
+  '替换规则': 'Replace rule',
   '读取笔记': 'Read note',
   '读取笔记片段': 'Read note excerpt',
   '更新笔记': 'Update note',

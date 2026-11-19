@@ -69,6 +69,7 @@ export { normalizeAskForm, safeJson } from './sandbox/askForm'
 export { buildApi, clip, imagesOf } from './sandbox/api'
 export { buildStandaloneApi } from './sandbox/standalone'
 
-/* ---------- 执行器（sandbox/worker、sandbox/execute） ---------- */
+/* ---------- 执行器（sandbox/worker、sandbox/execute、sandbox/rexecute） ---------- */
 export { makeDomFacade, RENAMED_API_HINT, runInWorker } from './sandbox/worker'
-export { createExecuteTool } from './sandbox/execute'
+export { createExecuteTool, createExecuteTools } from './sandbox/execute'
+export { createRexecuteTool } from './sandbox/rexecute'
