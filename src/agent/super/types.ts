@@ -81,8 +81,9 @@ export type SuperAgentEvent =
   | { type: 'host-done'; content?: string; error?: string }
   | { type: 'worker-created'; worker: WorkerSession }
   | { type: 'worker-status'; workerId: string; status: WorkerStatus; error?: string }
-  | { type: 'worker-mind-event'; workerId: string; event: AgentEvent }
-  | { type: 'worker-chat-delta'; workerId: string; delta: string }
+  | { type: 'worker-mind-event'; workerId: string; event: AgentEvent; hop?: number }
+  | { type: 'worker-chat-delta'; workerId: string; delta: string; hop?: number }
+  | { type: 'worker-hop'; workerId: string; hop: number }
   | { type: 'worker-artifact-updated'; workerId: string; artifact: ArtifactRecord }
   | { type: 'worker-need-input'; workerId: string; prompt: string }
   | { type: 'mailbox-enqueued'; receipt: WorkerReceipt }

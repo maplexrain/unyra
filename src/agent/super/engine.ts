@@ -10,7 +10,7 @@
 import type { ChatMessage, ReasoningEffort, StreamFn } from '../../ai/types'
 import { streamChatWith, type ResolvedProvider } from '../../ai/client'
 import { runAgent } from '../runtime'
-import { assertPrefixStable } from '../prefixGate'
+import { assertPrefixStable, resetPrefixGate } from '../prefixGate'
 import type { AgentEvent, AgentPart, AgentTool, ConversationMessage } from '../types'
 import { toChatHistory } from '../../learn/agent/history'
 import { applyEvent } from '../../learn/agent/events'
@@ -61,19 +61,22 @@ export class SuperAgentEngine {
   private state: SuperAgentState
   private options: SuperAgentEngineOptions
   private hostRunning = false
+  private hostChain: Promise<void> | null = null
   private workerHandles = new Map<string, WorkerHandle>()
 
   constructor(options: SuperAgentEngineOptions) {
     this.options = options
     const id = options.id || crypto.randomUUID()
-    this.state = {
-      id,
-      hostSystemPrompt: options.initialState?.hostSystemPrompt || DEFAULT_HOST_SYSTEM,
-      hostMessages: options.initialState?.hostMessages || [],
-      workers: options.initialState?.workers || {},
-      mailbox: options.initialState?.mailbox || [],
-      blackboard: options.initialState?.blackboard || [],
-    }
+    this.state = options.initialState
+      ? hydrateSuperAgentState(options.initialState)
+      : {
+          id,
+          hostSystemPrompt: DEFAULT_HOST_SYSTEM,
+          hostMessages: [],
+          workers: {},
+          mailbox: [],
+          blackboard: [],
+        }
   }
 
   public getState(): SuperAgentState {
@@ -93,7 +96,7 @@ export class SuperAgentEngine {
    *
    * 路由逻辑：
    * 1. 快通道 (Direct Route)：指定 targetWorkerId 时，绕过 Host 直接投递指令；
-   * 2. 标准主控通道 (Host Route)：弹出 Mailbox，前置拼头注入 user 消息，驱动 Host 单轮调度。
+   * 2. 标准主控通道 (Host Route)：通过 Promise 链严格串行排队，原子消费 Mailbox 拼头注入，驱动 Host 单轮调度。
    */
   public async sendUserMessage(
     text: string,
@@ -112,16 +115,31 @@ export class SuperAgentEngine {
       return
     }
 
-    // 2. Frontline Host 调度通道
-    if (this.hostRunning) {
-      throw new Error('Host 正在响应中，请稍候')
-    }
+    // 2. 串行排队进入 Frontline Host 调度通道
+    const prev = this.hostChain
+    let release!: () => void
+    const ticket = new Promise<void>((r) => {
+      release = r
+    })
+    this.hostChain = ticket
 
+    try {
+      if (prev) await prev
+      await this.doSendHostMessage(trimmed)
+    } finally {
+      release()
+      if (this.hostChain === ticket) {
+        this.hostChain = null
+      }
+    }
+  }
+
+  private async doSendHostMessage(trimmed: string): Promise<void> {
     this.hostRunning = true
     try {
-      // 消费 mailbox 中全部积压回执（严格一次性弹出）
+      // 原子摘除：只消费当前时刻 snapshot 的回执
       const receipts = [...this.state.mailbox]
-      this.state.mailbox = []
+      const consumedIds = new Set(receipts.map((r) => r.id))
 
       // 提取当前活跃 Worker 快照
       const activeWorkers = Object.values(this.state.workers).map((w) => ({
@@ -140,6 +158,9 @@ export class SuperAgentEngine {
         ts: Date.now(),
       }
       this.state.hostMessages.push(userMsg)
+
+      // 成功写入用户消息后，原子摘除已消费的回执（保留 Host 执行期间新写入的回执）
+      this.state.mailbox = this.state.mailbox.filter((r) => !consumedIds.has(r.id))
       this.notifyStateChange()
 
       // 驱动 Host runAgent
@@ -373,6 +394,7 @@ export class SuperAgentEngine {
       : []
 
     let currentTurnParts: AgentPart[] = []
+    let currentHop = 0
 
     // 跳边界介入读取通道
     const atBoundary = async (): Promise<{ role: 'user'; content: string } | null> => {
@@ -426,13 +448,26 @@ export class SuperAgentEngine {
           )
         },
         onEvent: (e) => {
-          if (e.type === 'text') {
+          if (e.type === 'hop') {
+            currentHop++
+            this.emit({ type: 'worker-hop', workerId: worker.id, hop: currentHop })
+          } else if (e.type === 'text') {
             worker.chatText += e.delta
             // 零拷贝直推面向人类的正文
-            this.emit({ type: 'worker-chat-delta', workerId: worker.id, delta: e.delta })
+            this.emit({
+              type: 'worker-chat-delta',
+              workerId: worker.id,
+              delta: e.delta,
+              hop: currentHop,
+            })
           } else {
             // 过程事件直推折叠区
-            this.emit({ type: 'worker-mind-event', workerId: worker.id, event: e })
+            this.emit({
+              type: 'worker-mind-event',
+              workerId: worker.id,
+              event: e,
+              hop: currentHop,
+            })
           }
 
           if (e.type === 'error') {
@@ -528,5 +563,66 @@ export class SuperAgentEngine {
 
     this.emit({ type: 'worker-status', workerId: worker.id, status, error: issue })
     this.notifyStateChange()
+  }
+}
+
+/**
+ * 状态持久化反序列化与冷启动崩溃恢复：
+ * 1. 扫描 workers：将残留处于 'running' 状态的 Worker 归一化为 'failed'，附带 '应用重启，任务被中断'；
+ * 2. 清洗可能残缺的字段（确保数组和对象均不为 null/undefined）；
+ * 3. 重置残留的 prefixGate 缓存键。
+ */
+export function hydrateSuperAgentState(raw: unknown): SuperAgentState {
+  if (!raw || typeof raw !== 'object') {
+    return {
+      id: crypto.randomUUID(),
+      hostSystemPrompt: DEFAULT_HOST_SYSTEM,
+      hostMessages: [],
+      workers: {},
+      mailbox: [],
+      blackboard: [],
+    }
+  }
+
+  const s = raw as Partial<SuperAgentState>
+  const id = typeof s.id === 'string' && s.id ? s.id : crypto.randomUUID()
+  const hostSystemPrompt =
+    typeof s.hostSystemPrompt === 'string' && s.hostSystemPrompt.trim()
+      ? s.hostSystemPrompt
+      : DEFAULT_HOST_SYSTEM
+  const hostMessages = Array.isArray(s.hostMessages) ? s.hostMessages : []
+  const mailbox = Array.isArray(s.mailbox) ? s.mailbox : []
+  const blackboard = Array.isArray(s.blackboard) ? s.blackboard : []
+
+  const rawWorkers = s.workers && typeof s.workers === 'object' ? s.workers : {}
+  const workers: Record<string, WorkerSession> = {}
+
+  for (const [wid, w] of Object.entries(rawWorkers)) {
+    if (!w || typeof w !== 'object') continue
+    const session = { ...w } as WorkerSession
+    // 恢复时将未完成的 running 状态归一化为 failed
+    if (session.status === 'running') {
+      session.status = 'failed'
+      session.error = '应用重启，任务被中断'
+      session.updatedAt = Date.now()
+    }
+    // 确保数组属性完整
+    if (!Array.isArray(session.messages)) session.messages = []
+    if (!Array.isArray(session.artifacts)) session.artifacts = []
+    if (typeof session.chatText !== 'string') session.chatText = ''
+
+    workers[wid] = session
+    resetPrefixGate('super:worker:' + wid)
+  }
+
+  resetPrefixGate('super:host:' + id)
+
+  return {
+    id,
+    hostSystemPrompt,
+    hostMessages,
+    workers,
+    mailbox,
+    blackboard,
   }
 }

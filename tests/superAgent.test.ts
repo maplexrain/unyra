@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest'
-import { SuperAgentEngine } from '../src/agent/super/engine'
+import { SuperAgentEngine, hydrateSuperAgentState } from '../src/agent/super/engine'
 import { clearPrefixGatesForTests } from '../src/agent/prefixGate'
 import type { ResolvedProvider } from '../src/ai/client'
 import type { StreamChatOptions, StreamChatResult } from '../src/ai/types'
@@ -438,5 +438,120 @@ describe('SuperAgent 三平面架构内核 (Phase 1)', () => {
     expect(firstText).toContain('【前置产物参考】')
     expect(firstText).toContain('第2节：矩阵特征值')
     expect(newWorker!.chatText).toContain('已参考前置产物')
+  })
+
+  it('6. 并发边界：Host 运行期间 Worker 完成，回执原子保留不丢失', async () => {
+    let unblockHost: () => void
+    const hostBarrier = new Promise<void>((r) => {
+      unblockHost = r
+    })
+
+    const mock = createMockStream([
+      {
+        match: '慢速回复问题',
+        hops: [
+          {
+            content: '这是经过思考后的回答。',
+          },
+        ],
+      },
+      {
+        match: '快速后台任务',
+        hops: [
+          {
+            content: '快速工单交付完成。',
+          },
+        ],
+      },
+    ])
+
+    const wrappedStream = async (opts: any) => {
+      if (opts.messages[0]?.content?.includes('Frontline Host')) {
+        await hostBarrier
+      }
+      return mock.stream(opts)
+    }
+
+    const engine = new SuperAgentEngine({
+      provider: testProvider,
+      model: 'test-model',
+      chatFn: wrappedStream,
+    })
+
+    // 先启动一个 Worker
+    const { workerId } = engine.spawnWorker({ title: '快速工单', goal: '快速后台任务' })
+
+    // 触发 Host 发送，Host 阻塞在 hostBarrier 上
+    const hostPromise = engine.sendUserMessage('慢速回复问题')
+
+    // 等待 Worker 跑完入队 mailbox
+    await new Promise((r) => setTimeout(r, 40))
+    expect(engine.getState().workers[workerId].status).toBe('done')
+    // 此时 Worker 的回执应该已经压入 mailbox
+    expect(engine.getState().mailbox).toHaveLength(1)
+    expect(engine.getState().mailbox[0].title).toBe('快速工单')
+
+    // 放行 Host
+    unblockHost!()
+    await hostPromise
+
+    // Host 跑完后：因为 Worker 回执是在 Host 消费 snapshot 之后才到来的，它必须被原子保留在 mailbox 中，供下一轮使用！
+    expect(engine.getState().mailbox).toHaveLength(1)
+    expect(engine.getState().mailbox[0].title).toBe('快速工单')
+  })
+
+  it('7. 并发边界：快速连发两条主控消息，内部串行排队且前缀门禁零报错', async () => {
+    const mock = createMockStream([
+      {
+        match: '连发消息1',
+        hops: [{ content: '已收到连发消息1' }],
+      },
+      {
+        match: '连发消息2',
+        hops: [{ content: '已收到连发消息2' }],
+      },
+    ])
+
+    const engine = new SuperAgentEngine({
+      provider: testProvider,
+      model: 'test-model',
+      chatFn: mock.stream,
+    })
+
+    // 快速并发发送两条消息，不等待第一条
+    const p1 = engine.sendUserMessage('连发消息1')
+    const p2 = engine.sendUserMessage('连发消息2')
+
+    await Promise.all([p1, p2])
+
+    expect(mock.getHostCalls()).toBe(2)
+    const msgs = engine.getState().hostMessages
+    expect(msgs).toHaveLength(4) // 2 对 user + assistant
+    expect((msgs[0].parts[0] as any).text).toContain('连发消息1')
+    expect((msgs[2].parts[0] as any).text).toContain('连发消息2')
+  })
+
+  it('8. 崩溃恢复：hydrateSuperAgentState 将残留 running 状态安全归一化为 failed', () => {
+    const rawState = {
+      id: 'session-crashed',
+      workers: {
+        'w-crashed': {
+          id: 'w-crashed',
+          title: '崩溃前未完成的任务',
+          goal: '做长期分析',
+          status: 'running',
+          messages: [],
+          chatText: '分析了一半...',
+          artifacts: [],
+          createdAt: 1000,
+          updatedAt: 2000,
+        },
+      },
+    }
+
+    const hydrated = hydrateSuperAgentState(rawState)
+    expect(hydrated.id).toBe('session-crashed')
+    expect(hydrated.workers['w-crashed'].status).toBe('failed')
+    expect(hydrated.workers['w-crashed'].error).toContain('应用重启')
   })
 })
