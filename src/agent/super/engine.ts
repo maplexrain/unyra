@@ -7,11 +7,11 @@
  * 3. Mailbox & Blackboard：Worker 静默入队 mailbox（不唤醒 Host），随下次用户请求拼头注入，沉淀结构化黑板。
  */
 
-import type { ReasoningEffort, StreamFn } from '../../ai/types'
+import type { ReasoningEffort } from '../../ai/types'
 import { type ResolvedProvider } from '../../ai/client'
 import { runAgent } from '../runtime'
 import { assertPrefixStable } from '../prefixGate'
-import type { AgentPart, AgentTool, ConversationMessage } from '../types'
+import type { AgentPart, ConversationMessage } from '../types'
 import { toChatHistory } from '../../learn/agent/history'
 import { applyEvent } from '../../learn/agent/events'
 import { createHostTools } from './hostTools'
@@ -31,31 +31,14 @@ import { driveWorker, type WorkerHandle } from './workerRunner'
 import type {
   DelegatedTaskInput,
   DelegationOutcome,
+  SuperAgentEngineOptions,
   SuperAgentEvent,
   SuperAgentState,
   WorkerReceipt,
   WorkerSession,
   WorkerStatus,
 } from './types'
-
-export interface SuperAgentEngineOptions {
-  id?: string
-  initialState?: Partial<SuperAgentState>
-  provider: ResolvedProvider
-  model: string
-  effort?: ReasoningEffort
-  contextWindow?: number
-  /** 测试注入替身流，默认使用实际 client */
-  chatFn?: StreamFn
-  /** 工坊 Worker 可选工具集工厂（如 sandbox execute） */
-  createWorkerTools?: (workerId: string) => AgentTool[]
-  /** Frontline Host 额外控制面工具（如团队协作原语），稳定注入以满足前缀门禁 */
-  extraHostTools?: AgentTool[]
-  /** Worker 固化系统提示词（如角色专属工坊提示词），不传使用默认 */
-  workerSystemPrompt?: string
-  onEvent?: (event: SuperAgentEvent) => void
-  onStateChange?: (state: SuperAgentState) => void
-}
+export type { SuperAgentEngineOptions } from './types'
 
 export class SuperAgentEngine {
   private state: SuperAgentState
@@ -174,24 +157,19 @@ export class SuperAgentEngine {
 
   private async enqueueHostTurn(text: string, delegationId?: string): Promise<string> {
     const prev = this.hostChain
-    let release!: () => void
-    const ticket = new Promise<void>((r) => {
-      release = r
-    })
-    let currentPromise: Promise<string>
-    currentPromise = (async () => {
+    let taskPromise!: Promise<string>
+    taskPromise = (async () => {
       try {
         if (prev) await prev
         return await this.doSendHostMessage(text, delegationId)
       } finally {
-        release()
-        if (this.hostChain === currentPromise) {
+        if (this.hostChain === taskPromise) {
           this.hostChain = null
         }
       }
     })()
-    this.hostChain = currentPromise
-    return currentPromise
+    this.hostChain = taskPromise
+    return taskPromise
   }
 
   private async doSendHostMessage(trimmed: string, delegationId?: string): Promise<string> {
@@ -515,7 +493,7 @@ export class SuperAgentEngine {
       id: crypto.randomUUID(),
       workerId: worker.id,
       title: worker.title,
-      status: status === 'running' ? 'done' : status,
+      status: (status === 'running' || status === 'idle') ? 'done' : status,
       summary,
       artifactIds: worker.artifacts.map((a) => a.id),
       ts: Date.now(),

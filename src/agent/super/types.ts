@@ -7,7 +7,9 @@
  * 3. Mailbox & Blackboard：静默总线与共享黑板。Worker 产出静默入队 mailbox，随下次用户发消息前置注入 Host；元数据与产物索引沉淀至黑板。
  */
 
-import type { AgentEvent, ConversationMessage } from '../types'
+import type { AgentEvent, AgentTool, ConversationMessage } from '../types'
+import type { ReasoningEffort, StreamFn } from '../../ai/types'
+import type { ResolvedProvider } from '../../ai/client'
 
 /** 隔离工坊 Worker 状态 */
 export type WorkerStatus = 'idle' | 'running' | 'waiting_input' | 'done' | 'failed' | 'cancelled'
@@ -115,3 +117,22 @@ export type SuperAgentEvent =
   | { type: 'worker-artifact-updated'; workerId: string; artifact: ArtifactRecord }
   | { type: 'worker-need-input'; workerId: string; prompt: string }
   | { type: 'mailbox-enqueued'; receipt: WorkerReceipt }
+
+export interface SuperAgentEngineOptions {
+  id?: string
+  initialState?: Partial<SuperAgentState>
+  provider: ResolvedProvider
+  model: string
+  effort?: ReasoningEffort
+  contextWindow?: number
+  /** 测试注入替身流，默认使用实际 client */
+  chatFn?: StreamFn
+  /** 工坊 Worker 可选工具集工厂（如 sandbox execute） */
+  createWorkerTools?: (workerId: string) => AgentTool[]
+  /** Frontline Host 额外控制面工具（如团队协作原语），稳定注入以满足前缀门禁 */
+  extraHostTools?: AgentTool[]
+  /** Worker 固化系统提示词（如角色专属工坊提示词），不传使用默认 */
+  workerSystemPrompt?: string
+  onEvent?: (event: SuperAgentEvent) => void
+  onStateChange?: (state: SuperAgentState) => void
+}

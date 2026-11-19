@@ -11,7 +11,7 @@
 
 import { runAgent } from '../runtime'
 import { assertPrefixStable } from '../prefixGate'
-import type { AgentPart, AgentTool, ConversationMessage } from '../types'
+import type { AgentPart, AgentTool } from '../types'
 import { toChatHistory } from '../../learn/agent/history'
 import { applyEvent } from '../../learn/agent/events'
 import { extractChatText } from './projection'

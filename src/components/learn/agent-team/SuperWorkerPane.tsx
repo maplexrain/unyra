@@ -28,7 +28,7 @@ import {
   Zap,
 } from 'lucide-react'
 import type { WorkerSession, WorkerStatus } from '../../../agent/super/types'
-import type { WorkerStreamSlot } from '../../../learn/superAgent/useSuperAgent'
+import type { WorkerStreamSlot } from '../../../learn/superAgent/useAgentTeam'
 import { extractChatText, extractMindParts } from '../../../agent/super/projection'
 import MarkdownView from '../../MarkdownView'
 import { renderNote } from '../../../lib/markdown'

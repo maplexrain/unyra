@@ -286,7 +286,7 @@ describe('TeamBus 多 Agent 协作内核 (Phase 5)', () => {
     const selfRes = await delegateTool.run({
       targetAgentId: 'agent-mentor',
       task: '自己做',
-    })
+    }, {} as any)
     expect(selfRes.ok).toBe(false)
     expect(selfRes.content).toContain('禁止向自己委派任务')
 
@@ -310,7 +310,7 @@ describe('TeamBus 多 Agent 协作内核 (Phase 5)', () => {
     const loopRes = await authorDelegate.run({
       targetAgentId: 'agent-mentor',
       task: '又回去了',
-    })
+    }, {} as any)
     expect(loopRes.ok).toBe(false)
     expect(loopRes.content).toContain('环路委派')
 
@@ -334,7 +334,7 @@ describe('TeamBus 多 Agent 协作内核 (Phase 5)', () => {
     const hopRes = await labDelegate.run({
       targetAgentId: 'agent-examiner',
       task: '第四跳',
-    })
+    }, {} as any)
     expect(hopRes.ok).toBe(false)
     expect(hopRes.content).toContain('跳数超限')
   })
@@ -413,5 +413,98 @@ describe('TeamBus 多 Agent 协作内核 (Phase 5)', () => {
     expect(examinerBody).toContain('exam')
     expect(examinerBody).not.toContain('classroom.schema')
     expect(examinerBody).not.toContain('subagent.create')
+  })
+
+  it('6. 团队与专家独立持久化验证：团队状态与各专家状态物理隔离落盘并能安全读回', async () => {
+    const {
+      saveTeamState,
+      flushTeamState,
+      loadTeamState,
+      saveTeamAgentState,
+      flushTeamAgentState,
+      loadTeamAgentState,
+    } = await import('../src/learn/superAgent/persist')
+
+    const scopeId = 'test-persist-team-scope'
+
+    // 保存团队状态
+    const teamStateToSave = {
+      scopeId,
+      agents: [...DEFAULT_TEAM_PROFILES],
+      channelMessages: [
+        {
+          id: 'msg-1',
+          senderId: 'user',
+          senderName: '学习者',
+          avatar: '👤',
+          content: '开始学习',
+          timestamp: 123456,
+        },
+      ],
+      delegations: {},
+      updatedAt: 123456,
+    }
+    saveTeamState(scopeId, teamStateToSave)
+    await flushTeamState(scopeId)
+
+    const loadedTeam = await loadTeamState(scopeId)
+    expect(loadedTeam).toBeDefined()
+    expect(loadedTeam?.channelMessages.length).toBe(1)
+    expect(loadedTeam?.channelMessages[0].content).toBe('开始学习')
+
+    // 分别保存两个专家的独立状态
+    const mentorState = {
+      id: `${scopeId}:agent-mentor`,
+      hostSystemPrompt: '导师提示词',
+      hostMessages: [],
+      workers: {},
+      mailbox: [],
+      blackboard: [
+        {
+          workerId: 'w-1',
+          title: '规划大纲',
+          goal: '规划大纲',
+          status: 'done' as const,
+          summary: '已完成规划',
+          artifactIds: ['art-1'],
+          tags: ['大纲'],
+          updatedAt: 123456,
+        },
+      ],
+    }
+
+    const authorState = {
+      id: `${scopeId}:agent-author`,
+      hostSystemPrompt: '研究员提示词',
+      hostMessages: [],
+      workers: {},
+      mailbox: [],
+      blackboard: [
+        {
+          workerId: 'w-2',
+          title: '撰写讲义',
+          goal: '撰写讲义',
+          status: 'done' as const,
+          summary: '已完成讲义',
+          artifactIds: ['art-2'],
+          tags: ['讲义'],
+          updatedAt: 123456,
+        },
+      ],
+    }
+
+    saveTeamAgentState(scopeId, 'agent-mentor', mentorState)
+    saveTeamAgentState(scopeId, 'agent-author', authorState)
+    await flushTeamAgentState(scopeId, 'agent-mentor')
+    await flushTeamAgentState(scopeId, 'agent-author')
+
+    // 独立读取并验证互不串台
+    const loadedMentor = await loadTeamAgentState(scopeId, 'agent-mentor')
+    const loadedAuthor = await loadTeamAgentState(scopeId, 'agent-author')
+
+    expect(loadedMentor.id).toBe(`${scopeId}:agent-mentor`)
+    expect(loadedMentor.blackboard[0].title).toBe('规划大纲')
+    expect(loadedAuthor.id).toBe(`${scopeId}:agent-author`)
+    expect(loadedAuthor.blackboard[0].title).toBe('撰写讲义')
   })
 })

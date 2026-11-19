@@ -12,7 +12,7 @@ import type { ResolvedProvider } from '../../ai/client'
 import type { ReasoningEffort, StreamFn } from '../../ai/types'
 import type { AgentTool } from '../types'
 import { SuperAgentEngine } from '../super/engine'
-import type { SuperAgentState, WorkerReceipt } from '../super/types'
+import type { SuperAgentEvent, SuperAgentState, WorkerReceipt } from '../super/types'
 import { DEFAULT_TEAM_PROFILES } from './presets'
 import { createTeamHostTools, type TeammateInfo } from './teamTools'
 import {
@@ -42,6 +42,7 @@ export interface TeamBusOptions {
   onEvent?: (event: TeamEvent) => void
   onStateChange?: (state: TeamState) => void
   onAgentStateChange?: (agentId: string, state: SuperAgentState) => void
+  onAgentEvent?: (agentId: string, event: SuperAgentEvent) => void
 }
 
 export class TeamBus {
@@ -112,6 +113,9 @@ export class TeamBus {
         chatFn: this.options.chatFn,
         extraHostTools: teamTools,
         workerSystemPrompt: workerPrompt,
+        onEvent: (event) => {
+          this.options.onAgentEvent?.(agentId, event)
+        },
         createWorkerTools: (workerId) => {
           if (this.options.createWorkerTools) {
             return this.options.createWorkerTools(agentId, workerId, profile.allowedApiGroups)
