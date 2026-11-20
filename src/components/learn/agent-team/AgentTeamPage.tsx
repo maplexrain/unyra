@@ -2,19 +2,19 @@
  * 智能体团队总页面 (AgentTeamPage)
  *
  * 架构：
- * 「左花名册 · 中清爽对话 · 右按需交付面板」三栏极简架构：
+ * 「左花名册 · 右主视口 (一级流 / 二级交付正文)」纯粹双栏架构：
  * 1. 左侧栏 (TeamRosterRail, 208px)：置顶协作频道 + 5 席专家极简花名册（严格无 Worker 污染）；
- * 2. 中间主视口 (flex-1)：
- *    - 协作频道视口 (TeamChannelPane) 或 专家专属对话流 (TeamAgentWorkspace)，长文彻底禁止内嵌；
- * 3. 右侧交付面板 (DeliverableDrawer)：按需拉出，全幅 zero-copy 交付正文与执行过程双页签，支持直连快通道；
- * 4. 经典单导师模式作为兜底对比备用入口。
+ * 2. 右侧主视口 (flex-1)：
+ *    - 一级页面：协作频道 (TeamChannelPane) 或 专家专属对话流 (TeamAgentWorkspace)；
+ *    - 二级页面 (DeliverableSubpage)：点击工单正文或共享黑板平滑推入，全幅居中 800px 消息流排布，带「← 返回」导航；
+ * 3. 经典单导师模式作为兜底对比备用入口。
  */
 
 import { useState, useMemo } from 'react'
 import { TeamRosterRail, type TeamSelection } from './TeamRosterRail'
 import { TeamChannelPane } from './TeamChannelPane'
 import { TeamAgentWorkspace } from './TeamAgentWorkspace'
-import { DeliverableDrawer, type DrawerMode } from './DeliverableDrawer'
+import { DeliverableSubpage, type SubpageMode } from './DeliverableSubpage'
 import { TaskRawDataViewer } from './TaskRawDataViewer'
 import { AgentTeamTutorPane } from './AgentTeamTutorPane'
 import { useAgentTeam } from '../../../learn/superAgent/useAgentTeam'
@@ -85,10 +85,10 @@ export default function AgentTeamPage({
   // 左侧花名册当前选中项：默认选中协作频道
   const [selection, setSelection] = useState<TeamSelection>({ kind: 'channel' })
 
-  // 右侧按需滑出的交付抽屉目标
-  const [drawerTarget, setDrawerTarget] = useState<{
+  // 聊天区二级页面目标（工单交付正文或共享黑板，平滑在主聊天视口展示）
+  const [activeSubpage, setActiveSubpage] = useState<{
     agentId: string
-    mode: DrawerMode
+    mode: SubpageMode
   } | null>(null)
 
   // 任务派发裸数据检视弹层开关
@@ -111,11 +111,11 @@ export default function AgentTeamPage({
     return team.agents[selection.agentId] || null
   }, [selection, team.agents])
 
-  // 抽屉所指向的 Agent 快照
-  const drawerAgentSnapshot = useMemo(() => {
-    if (!drawerTarget) return null
-    return team.agents[drawerTarget.agentId] || null
-  }, [drawerTarget, team.agents])
+  // 二级页面所指向的 Agent 快照
+  const subpageAgentSnapshot = useMemo(() => {
+    if (!activeSubpage) return null
+    return team.agents[activeSubpage.agentId] || null
+  }, [activeSubpage, team.agents])
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-paper select-text">
@@ -189,7 +189,7 @@ export default function AgentTeamPage({
       {/* 主体视口 */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {workbenchMode === 'team' ? (
-          /* ===== 「左花名册 · 中清爽对话 · 右按需交付面板」 ===== */
+          /* ===== 「左花名册 · 右聊天主视口 (一级流/二级交付正文)」 ===== */
           <>
             {/* 1. 左侧栏：Agent 花名册 + 协作频道 (紧凑 208px，严格无 Worker) */}
             <div className="w-52 shrink-0 h-full">
@@ -198,29 +198,58 @@ export default function AgentTeamPage({
                 agents={team.agents}
                 delegations={team.delegations}
                 selected={selection}
-                onSelect={setSelection}
+                onSelect={(sel) => {
+                  setSelection(sel)
+                  setActiveSubpage(null) // 切换花名册时重置二级页面，返回新目标的一级视口
+                }}
                 goalTitle={goalTitle}
               />
             </div>
 
-            {/* 2. 中间主对话流视口 */}
+            {/* 2. 中间主视口：支持一级对话流与二级正文页平滑切换 */}
             <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
-              {selection.kind === 'channel' ? (
-                /* 协作频道视口 */
+              {activeSubpage && subpageAgentSnapshot ? (
+                /* 二级页面：工单交付正文或共享黑板 */
+                <DeliverableSubpage
+                  mode={activeSubpage.mode}
+                  agentName={subpageAgentSnapshot.profile.name}
+                  workers={subpageAgentSnapshot.workers}
+                  workerStreams={subpageAgentSnapshot.workerStreams}
+                  blackboard={subpageAgentSnapshot.blackboard}
+                  backLabel={
+                    selection.kind === 'channel'
+                      ? t('返回协作频道')
+                      : t('返回「{0}」', currentAgentSnapshot?.profile.name || subpageAgentSnapshot.profile.name)
+                  }
+                  onSelectWorker={(wid) =>
+                    setActiveSubpage((prev) =>
+                      prev ? { ...prev, mode: { kind: 'worker', workerId: wid } } : null,
+                    )
+                  }
+                  onCancelWorker={(wid) =>
+                    team.cancelWorker(activeSubpage.agentId, wid)
+                  }
+                  onBack={() => setActiveSubpage(null)}
+                />
+              ) : selection.kind === 'channel' ? (
+                /* 一级页面：协作频道视口 */
                 <TeamChannelPane
                   messages={team.channelMessages}
                   delegations={team.delegations}
                   profiles={team.profiles}
                   onSendMessage={team.sendChannelMessage}
-                  onSelectAgent={(agentId) => setSelection({ kind: 'agent', agentId })}
+                  onSelectAgent={(agentId) => {
+                    setSelection({ kind: 'agent', agentId })
+                    setActiveSubpage(null)
+                  }}
                   onViewWorker={(agentId, workerId) =>
-                    setDrawerTarget({ agentId, mode: { kind: 'worker', workerId } })
+                    setActiveSubpage({ agentId, mode: { kind: 'worker', workerId } })
                   }
                   onResetChannel={team.resetChannel}
                   onStopAll={team.stopAll}
                 />
               ) : currentAgentSnapshot ? (
-                /* 专业 Agent 独立工作区 */
+                /* 一级页面：专业 Agent 独立工作区 */
                 <TeamAgentWorkspace
                   key={currentAgentSnapshot.profile.id}
                   profile={currentAgentSnapshot.profile}
@@ -234,15 +263,18 @@ export default function AgentTeamPage({
                   onCancelWorker={(wid) =>
                     team.cancelWorker(currentAgentSnapshot.profile.id, wid)
                   }
-                  onSelectAgent={(agentId) => setSelection({ kind: 'agent', agentId })}
+                  onSelectAgent={(agentId) => {
+                    setSelection({ kind: 'agent', agentId })
+                    setActiveSubpage(null)
+                  }}
                   onOpenWorkerDrawer={(wid) =>
-                    setDrawerTarget({
+                    setActiveSubpage({
                       agentId: currentAgentSnapshot.profile.id,
                       mode: { kind: 'worker', workerId: wid },
                     })
                   }
                   onOpenBlackboardDrawer={() =>
-                    setDrawerTarget({
+                    setActiveSubpage({
                       agentId: currentAgentSnapshot.profile.id,
                       mode: { kind: 'blackboard' },
                     })
@@ -256,28 +288,6 @@ export default function AgentTeamPage({
                 </div>
               )}
             </div>
-
-            {/* 3. 右侧按需滑出的交付面板 */}
-            {drawerTarget && drawerAgentSnapshot && (
-              <div className="w-[420px] lg:w-[480px] shrink-0 h-full">
-                <DeliverableDrawer
-                  mode={drawerTarget.mode}
-                  agentName={drawerAgentSnapshot.profile.name}
-                  workers={drawerAgentSnapshot.workers}
-                  workerStreams={drawerAgentSnapshot.workerStreams}
-                  blackboard={drawerAgentSnapshot.blackboard}
-                  onSelectWorker={(wid) =>
-                    setDrawerTarget((prev) =>
-                      prev ? { ...prev, mode: { kind: 'worker', workerId: wid } } : null,
-                    )
-                  }
-                  onCancelWorker={(wid) =>
-                    team.cancelWorker(drawerTarget.agentId, wid)
-                  }
-                  onClose={() => setDrawerTarget(null)}
-                />
-              </div>
-            )}
           </>
         ) : store && getLatest && set && agent ? (
           /* ===== 经典单导师模式（备用） ===== */

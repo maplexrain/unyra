@@ -6,7 +6,7 @@
  * 2. 对话流永不淹没：
  *    - 用户气泡：回执头折叠为单行小灰字，纯净呈现用户真实意图；
  *    - Host 回复：简练答复 + 1 行紧凑 InlineWorkerCard + 1 行极简委派条；
- * 3. 无缝协同：点击工单直接向右侧平滑拉出 DeliverableDrawer 交付面板，绝不跳出对话上下文！
+ * 3. 无缝协同：点击工单直接在聊天区平滑推入 DeliverableSubpage 二级页面，绝不跳出对话上下文！
  */
 
 import { memo, useState, useRef, useEffect, useMemo } from 'react'

@@ -6,7 +6,7 @@
  * 2. 消息流清爽纯净：
  *    - 用户消息与专家直答回复清爽呈现；
  *    - 协作工单结算仅显示 <=120 字精炼摘要 + [查看正文 →] 按钮，绝不铺陈长文！
- * 3. 点击 [查看正文 →] 直接拉出右侧 DeliverableDrawer 全幅检视，上下文永不中断。
+ * 3. 点击 [查看正文 →] 直接在聊天区平滑推入 DeliverableSubpage 二级页面全幅检视，上下文永不中断。
  */
 
 import { memo, useMemo, useState, useRef, useEffect } from 'react'
