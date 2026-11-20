@@ -9,7 +9,7 @@
  */
 
 import type { Dispatch, SetStateAction } from 'react'
-import { createExecuteTool, type AskFormPayload, type ExamToolDeps } from '../../agent/tools'
+import { createExecuteTools, type AskFormPayload, type ExamToolDeps } from '../../agent/tools'
 import { ASK_IDLE_TIMEOUT_MS } from '../../agent/sandbox/limits'
 import { ensureActivityListeners, userIdleMs } from '../../lib/userActivity'
 import { type AiSettings, globalContextWindow, resolveGlobal } from '../../ai/settings'
@@ -214,9 +214,8 @@ export function rigTurnTools(io: {
     不该触发渲染；收口时挂到消息上，组件自然就出来了（见 agent/delivery）。
   */
   const turnDelivery = emptyDelivery()
-  const tools = [
-    createExecuteTool({
-      ...sandboxBase,
+  const tools = createExecuteTools({
+    ...sandboxBase,
       /*
        * 交付登记：只收结构化数据。正文里不用再复述文件清单与参考来源——
        * 界面在消息底部按「一行一条」统一展示（见 DeliveryBlock）。
@@ -370,7 +369,6 @@ export function rigTurnTools(io: {
       },
       // 内置浏览器（browser.*）：宿主依赖在场的回合才有这一组（见 learn/web/browserOps）
       ...(browserDeps ? { browser: makeBrowserOps(browserDeps, target.goalId) } : {}),
-    }),
-  ]
+    })
   return { ctrl, tools, turnDelivery, global, window }
 }

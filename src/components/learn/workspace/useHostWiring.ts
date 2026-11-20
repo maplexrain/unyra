@@ -380,7 +380,7 @@ export function useHostWiring({
           source,
         },
       })
-      onToast(t('已把报错发给导师，请看对话栏'))
+      onToast(t('已把报错发给导师，请看智能体团队页签'))
     })
     return () => setPlotFixHandler(null)
   }, [docNode, getLatest, agent, onToast])

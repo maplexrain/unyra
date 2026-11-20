@@ -11,9 +11,12 @@ let agentExpand: (() => void) | null = null
 let messageSender: ((msg: string) => void) | null = null
 let pendingMessage: string | null = null
 
-/** 登记聚焦实现；返回清理用（传 null 注销） */
-export function setAgentFocusHandler(fn: (() => void) | null): void {
+/** 登记聚焦实现；返回带身份校验的清理函数（传 null 注销） */
+export function setAgentFocusHandler(fn: (() => void) | null): () => void {
   target = fn
+  return () => {
+    if (fn && target === fn) target = null
+  }
 }
 
 /** 请求把光标放进输入框；返回是否真的有人接 */
@@ -29,13 +32,16 @@ export function setAgentToggleHandler(handlers: { toggle?: () => void; expand?: 
   agentExpand = handlers?.expand ?? null
 }
 
-/** 登记消息发送实现（通常由 Composer 注入） */
-export function setAgentMessenger(fn: ((msg: string) => void) | null): void {
+/** 登记消息发送实现（通常由 Composer 注入）；返回带身份校验的清理函数 */
+export function setAgentMessenger(fn: ((msg: string) => void) | null): () => void {
   messageSender = fn
   if (messageSender && pendingMessage) {
     const msg = pendingMessage
     pendingMessage = null
     messageSender(msg)
+  }
+  return () => {
+    if (fn && messageSender === fn) messageSender = null
   }
 }
 

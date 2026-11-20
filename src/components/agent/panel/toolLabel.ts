@@ -55,6 +55,10 @@ export function toolLabel(name: string, args: string): string {
     const what = String(parsed.description ?? '').trim()
     return what || t('执行代码')
   }
+  if (name === 'rexecute') {
+    const what = String(parsed.description ?? '').trim()
+    return what || t('正则替换重试')
+  }
   const action = String(parsed.action ?? '')
   const key = action ? name + ':' + action : name
   const label = LEGACY_TOOL_LABEL[key] ?? LEGACY_TOOL_LABEL[name]

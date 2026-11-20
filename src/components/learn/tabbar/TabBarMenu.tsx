@@ -12,7 +12,7 @@ import { useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { CornerDownRight, CornerLeftUp, FileX, FoldHorizontal, Globe, OctagonX, Pin, PinOff, Star, Unlink, X } from 'lucide-react'
 import type { LearnStore, LearnTab } from '../../../learn/types'
-import { TAB_CLOSE_LABEL, isDocumentTab, isTabPinned, tabNodeId, type TabCloseMode } from '../../../learn/tabs'
+import { TAB_CLOSE_LABEL, isAlwaysPinnedRef, isDocumentTab, isTabPinned, tabNodeId, type TabCloseMode } from '../../../learn/tabs'
 import { useClampToViewport, useDismissOn } from '../../../lib/useDismiss'
 import { t } from '../../../i18n'
 import { buildDirectedDistanceMaps, computeTabRelationWithMaps } from './tabRelation'
@@ -212,7 +212,7 @@ export function TabMenu({
         {favorited ? t('取消收藏') : t('收藏')}
       </button>
 
-      {onTogglePin && targetTab && targetTab.ref.kind !== 'outline' && (
+      {onTogglePin && targetTab && !isAlwaysPinnedRef(targetTab.ref) && (
         <button
           type="button"
           role="menuitem"

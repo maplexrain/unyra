@@ -132,6 +132,59 @@ const dict: Record<string, string> = {
 
   // ---------- 节点宇宙浮层（Tab 键弹出，LearnWorkspace 的入口） ----------
   '先建一个学习目标，才有节点宇宙可看': 'Create a learning goal first — the node universe needs one',
+
+  // ---------- Vim :side 页签内传送对照 ----------
+  '选择要在当前页旁并排对照的页签（支持拼音或关键词，输入 off 关闭 / swap 对调）...':
+    'Pick a tab to display side-by-side in this pane (type pinyin/keywords, off to close, swap to flip)...',
+  '当前没有其他已打开页签可并排对照': 'No other open tabs available for side-by-side view',
+  '可并排对照页签列表': 'Side-by-side portal tab list',
+  '当前正在并排对照': 'Currently in side view',
+  '其他分屏组': 'Other split group',
+  '对调左右分栏位置': 'Swap left & right panes',
+  '等价于双击中间分割线，左右互换并记住比例': 'Same as double-clicking the center divider (persists ratio)',
+  '关闭并排对照': 'Close side-by-side portal',
+  '收起传送通道，仅保留原页签全屏显示': 'Close the portal and keep only the active tab',
+  '拖拽调整双栏宽度，双击对调左右位置': 'Drag to resize panes · double-click to swap sides',
+  '对调左右位置（也可双击中间分割线）': 'Swap left/right panes (or double-click divider)',
+  '对调左右位置': 'Swap sides',
+  '定位到原页签': 'Go to source tab',
+  '传送对照': 'Portal',
+  '切到原页签': 'Switch to source tab',
+  '在当前浏览器打开': 'Open in current browser',
+  '外部浏览器打开': 'Open in external browser',
+  '内置网页实例保留在原页签中，可通过下方按钮跳转或外部打开':
+    'Live webview stays anchored in its original tab; jump there or open externally below',
+  '视频播放器保留在原页签中以免重播中断，点击下方可快速切回原页签':
+    'Video player stays anchored in its original tab so playback is never interrupted',
+  '大纲导读': 'Outline Guide',
+  '智能体团队': 'Agent Team',
+  '项目文件': 'Workspace file',
+  '网页': 'Web',
+  '终端': 'Terminal',
+  '设置': 'Settings',
+  '导师设置': 'Tutor Settings',
+  '用量': 'Usage',
+  'Vim 速查': 'Vim Reference',
+  '用户中心': 'User Center',
+  '课堂': 'Classroom',
+  '组件库': 'Showcase',
+  '插件文档': 'Plugin Docs',
+  '赞助鸣谢': 'Sponsors',
+  '新建草稿': 'Draft',
+  '页签': 'Tab',
+  '选择要固定在外侧对照栏显示的页签（支持拼音或关键词，off 关闭 / swap 对调 / toggle 折叠）...':
+    'Pick a tab to dock in the fixed outer side panel (off to close, swap to flip, toggle to collapse)...',
+  '固定外侧栏': 'Fixed Dock',
+  '固定外侧对照栏': 'Fixed outer side dock',
+  '关闭固定外侧栏': 'Close fixed side dock',
+  '当前已在固定外侧栏': 'Currently docked in fixed side panel',
+  '对调固定外侧栏位置': 'Swap fixed side dock left/right',
+  '把固定外侧栏在左右两侧之间对调': 'Flip the fixed side panel between left and right',
+  '展开固定外侧栏': 'Expand fixed side dock',
+  '收起固定外侧栏': 'Collapse fixed side dock',
+  '折叠或展开固定外侧栏，保留当前传送页签': 'Toggle fixed side dock visibility while keeping its tab',
+  '关闭页签区外侧固定对照栏': 'Close the outer fixed side panel',
+  '拖拽调整固定外侧栏宽度，双击对调左右位置': 'Drag to resize fixed dock · double-click to flip sides',
 }
 
 export default dict

@@ -7,3 +7,10 @@
  * 不持久化，重启后回落各目标的总节点；写入只发生在 retargetNode（事件路径）。
  */
 export const goalFocusByGoal = new Map<string, string>()
+
+/**
+ * 每个目标「最近一次激活展示的会话 id」：当一个目标在 agentTabs 里存在多段对话
+ * （ga:<goalId>:<convId>），切换去另一个目标或后台固定对照栏渲染非全局激活目标时，
+ * 用它记住该目标上一次选中的会话，避免退回第一段旧会话。
+ */
+export const goalConvByGoal = new Map<string, string>()

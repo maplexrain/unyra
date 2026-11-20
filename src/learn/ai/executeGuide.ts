@@ -10,11 +10,14 @@
  */
 import { groupIndexForSystemPrompt, renderCompactApiDocumentation } from '../../agent/sandbox/apiRegistry'
 
-export const EXECUTE_GUIDE = `唯一的工具是 execute(description, body)：
+export const EXECUTE_GUIDE = `核心执行工具是 execute(description, body) 与高效重试工具 rexecute(description, pattern, replacement)：
+- execute(description, body)：执行一段完整的 JS/TS 匿名函数源码编排。
+- rexecute(description, pattern, replacement)：**高效重试利器**。重新执行最近一次 execute 或 rexecute 的代码；执行前先用 pattern 与 replacement 对原代码进行正则/字面量替换（支持单处替换或 replacements 批量替换）。
+  **执行失败或报错时必须优先使用 rexecute**：无需重新发送整段长代码，极大节省 token 并加速执行，可连续调用直到执行成功为止。
 - description：这一步要做什么，一句人话（会显示给学习者看）。
 - body：一段 JS **匿名函数**源码，形如 ((api)=>{ ... return 结果 })，也可以写成 ((api)=>{...})()。
   可以用 await；返回值会被回给你（超过 3.2 万字符会截断）。
-  没有别的工具：应用数据的读写、节点增删改、试卷、状态、工作流都在这里调 api。
+  应用数据的读写、节点增删改、试卷、状态、工作流都在这里调 api。
 - **长中文文本书写规范**：body 中包含长篇中文、多行文本或 README 时，**一律使用模板字符串（反引号 \`...\`）或 String.raw**，严禁使用引号数组（["第一行", "第二行"]）拼接，极易引发转义冲突报 Invalid or unexpected token。拼含 LaTeX 的正文必须用 String.raw（普通模板字符串会先按 JS 转义表吃一遍反斜杠，公式还没写入就坏了）。
 - **严禁把大文本正文 return 带回**：写入与收尾操作只需返回操作状态或 true，绝不要把数千字正文或完整源码放在返回值中二次回显；查证 / 抓取来的长文先落盘工作区再引用行号，别整段过上下文。
 
@@ -48,6 +51,6 @@ ${renderCompactApiDocumentation()}
 - **写操作的失败不抛异常**：返回 { ok:false, content/error: "哪一步没做成、该怎么改" }，并汇总在结果最前面的「没有生效」清单里。判断成败看清单，不要用 try/catch，也不要追加读接口确认。
 - path 寻址：'' = 当前节点；'极限' = 本目标标题；'极限/笔记' = 笔记；'#id' = 直接给节点 id。找不到时回执会列候选，照着改一次就对。
 - **修改笔记或已有内容前先阅读确认**，严禁覆盖学习者已有内容；不确定时主动说明，严禁编造。
-- **重试纪律：同一种写法最多重试 1 次**。连续两次失败立即换策略，仍不通过就停下来说明卡点。换策略是指换路径——换 api、换数据源、把大步骤拆小、先补齐缺失的事实——不是换个措辞把同一招再发一遍；连续几步没有新信息就先回头判断「这条路还通不通」，不要在一条死路上加码。
+- **重试纪律：报错修改优先用 rexecute**：当 execute 或前一次 rexecute 发生语法报错、API 异常或未生效需要微调时，**严禁整段重写重发 execute**。直接调用 rexecute(pattern, replacement) 局部纠错并重跑，直到成功为止；若连续两次仍未解决，再思考是否需要彻底换策略（换 api、换数据源、把大步骤拆小、先补齐缺失事实），不要在一条死路上盲目加码。
 - **编码涉网先查证**：写的代码要调第三方接口、依赖协议 / 规范 / SDK 行为时，先用 api.web.search + api.fetch 读官方文档确认参数、错误码与边界，再落笔——接口行为猜不得，一次查证比十轮盲试便宜。
 `

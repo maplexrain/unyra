@@ -39,12 +39,14 @@ import {
   allTabs,
   closeIn,
   dropTabs,
+  findFixSideTargetTab,
   findTab,
   focusedGroup,
   focusedTab,
   groupOf,
   isAnchorOutline,
   ownerOfTab,
+  pruneStaleSidePortals,
   renameTabRef,
   servesGoal,
   unloadAnchoredGroups,
@@ -212,7 +214,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
       /** 「目标 → 根节点」：组锚判据的第二跳（见 groups/tabs 的 isAnchorOutline） */
       const rootOf = (goalId: string) => s.goals.find((g) => g.id === goalId)?.rootNodeId ?? null
       const goalOfTab = (tab: LearnTab): string | null => {
-        if (tab.ref.kind === 'mind') return tab.ref.goalId
+        if (tab.ref.kind === 'mind' || tab.ref.kind === 'agentTeam') return tab.ref.goalId ?? null
         if (tab.ref.kind === 'outline') {
           const oRef = tab.ref as { kind: 'outline'; nodeId: string; goalId?: string }
           if (oRef.goalId) return oRef.goalId
@@ -280,7 +282,8 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
        */
       const live = new Set(allTabs(docArea0).map((t) => t.id))
       const goneIds = beforeTabs.filter((t) => !live.has(t.id)).map((t) => t.id)
-      const docArea = goneIds.length > 0 ? withOwners(docArea1, dropTabs(docArea1.tabOwners, goneIds)) : docArea1
+      const docAreaCleaned = goneIds.length > 0 ? withOwners(docArea1, dropTabs(docArea1.tabOwners, goneIds)) : docArea1
+      const docArea = pruneStaleSidePortals(docAreaCleaned)
       const landing = focusedGroup(docArea)
       const nextRef = landing.tabs.find((t) => t.id === landing.active)?.ref ?? null
       const remainingGoals = new Set(
@@ -331,9 +334,19 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         base = nextNodeId ? retargetNode(s, nextNodeId) : s
       }
 
+      const baseNextFixSide =
+        base.fixSide && findFixSideTargetTab(nextDocArea, base.fixSide)
+          ? base.fixSide
+          : undefined
+      const baseWithFixSide: LearnStore = baseNextFixSide
+        ? { ...base, docArea: nextDocArea, fixSide: baseNextFixSide }
+        : (() => {
+            const { fixSide: _removed, ...rest } = base
+            return { ...rest, docArea: nextDocArea }
+          })()
       const next = onGoalsClosed && goalsClosed.length > 0
-        ? onGoalsClosed({ ...base, docArea: nextDocArea }, goalsClosed)
-        : { ...base, docArea: nextDocArea }
+        ? onGoalsClosed(baseWithFixSide, goalsClosed)
+        : baseWithFixSide
       set(next)
     },
     [getLatest, onGoalsClosed, retargetNode, set],
@@ -469,6 +482,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         tab.ref.kind === 'schedule' ||
         tab.ref.kind === 'mind' ||
         tab.ref.kind === 'agentSettings' ||
+        tab.ref.kind === 'agentTeam' ||
         tab.ref.kind === 'blank'
       )
         return { ok: true }
@@ -588,7 +602,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
          * 但保存是异步入口（快捷键随时可能按下），落后一拍时不能装作存进去了：
          * 那会让用户以为写住了，然后把暂存区里唯一的一份正文也清掉。
          */
-        if (tab.ref.kind === 'video' || tab.ref.kind === 'pluginDoc' || tab.ref.kind === 'sponsors' || tab.ref.kind === 'vim' || tab.ref.kind === 'guide' || tab.ref.kind === 'classroom') {
+        if (tab.ref.kind === 'video' || tab.ref.kind === 'pluginDoc' || tab.ref.kind === 'sponsors' || tab.ref.kind === 'vim' || tab.ref.kind === 'guide' || tab.ref.kind === 'classroom' || tab.ref.kind === 'classroomShowcase') {
           // 这些页签不指向节点，也不参与文档保存：落到这里说明入口走错了，直接不存
           setDocSaving(false)
           return { ok: false, error: t('这个页签没有可保存的内容') }

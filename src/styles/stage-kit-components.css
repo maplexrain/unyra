@@ -1,0 +1,584 @@
+/* 互动课堂核心教学组件样式库 (stage-kit-components.css) */
+
+/* 典藏概念卡 (ui-concept) */
+.concept-card {
+  padding: 36px 42px;
+  border-top: 3px solid var(--accent-primary);
+}
+.concept-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 20px;
+}
+.concept-term-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.concept-term {
+  font-size: 38px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.concept-en {
+  font-size: 19px;
+  font-style: italic;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+.concept-def {
+  font-size: 25px;
+  color: var(--text-body);
+  line-height: 1.62;
+  margin-bottom: 22px;
+}
+.concept-keypoint {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 22px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent-primary) 9%, var(--bg-sunken));
+  border-left: 4px solid var(--accent-primary);
+}
+.concept-keypoint-icon {
+  color: var(--accent-primary);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.concept-keypoint-tag {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--accent-primary);
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+}
+.concept-keypoint-text {
+  font-size: 23px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+
+/* 数理公式陈列台 (ui-formula) */
+.formula-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 18px;
+}
+.formula-tone-seal { --_ft: var(--accent-primary); }
+.formula-tone-sky { --_ft: var(--accent-sky); }
+.formula-tone-ok { --_ft: var(--accent-success); }
+.formula-tone-warn { --_ft: var(--accent-warn); }
+.formula-tone-purple { --_ft: var(--accent-purple); }
+
+.formula-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.formula-title {
+  font-size: 27px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.formula-box {
+  position: relative;
+  width: 100%;
+  padding: 30px 52px;
+  border-radius: 14px;
+  background-color: var(--bg-sunken);
+  background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--_ft, var(--accent-primary)) 22%, transparent) 1px, transparent 0);
+  background-size: 22px 22px;
+  border: 1px solid color-mix(in srgb, var(--_ft, var(--accent-primary)) 35%, var(--border-subtle));
+  box-sizing: border-box;
+  font-size: 42px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.formula-corner {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-color: var(--_ft, var(--accent-primary));
+  border-style: solid;
+  opacity: 0.75;
+}
+.formula-corner.tl { top: 8px; left: 8px; border-width: 2px 0 0 2px; }
+.formula-corner.tr { top: 8px; right: 8px; border-width: 2px 2px 0 0; }
+.formula-corner.bl { bottom: 8px; left: 8px; border-width: 0 0 2px 2px; }
+.formula-corner.br { bottom: 8px; right: 8px; border-width: 0 2px 2px 0; }
+.formula-math { overflow-x: auto; }
+.formula-desc {
+  font-size: 22px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.formula-notes {
+  width: 100%;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 20px;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+/* 工作室代码标本卡 (ui-code) */
+.code-card {
+  background: #141821;
+  color: #e7edf5;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 80%, rgba(255, 255, 255, 0.14));
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--stage-shadow);
+}
+.code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.code-dots {
+  display: flex;
+  gap: 7px;
+  opacity: 0.72;
+}
+.code-dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot-r { background: #e06c75; }
+.dot-y { background: #e5c07b; }
+.dot-g { background: #98c379; }
+.code-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 18px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+.code-lang {
+  font-family: var(--font-mono, monospace);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #93c5fd;
+}
+.code-content {
+  margin: 0;
+  padding: 26px 30px;
+  font-family: var(--font-mono, monospace);
+  font-size: 22px;
+  line-height: 1.65;
+  color: #e8eef6;
+  overflow-x: auto;
+  flex: 1;
+}
+.code-caption {
+  padding: 12px 26px;
+  background: rgba(255, 255, 255, 0.03);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 17px;
+  color: #94a3b8;
+}
+
+/* 二元正误对照卡 (ui-compare) */
+.compare-card {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 24px;
+  align-items: stretch;
+  padding: 28px 34px;
+}
+.compare-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px 26px;
+  border-radius: 14px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-sunken);
+}
+.compare-tone-warn {
+  border-top: 3px solid var(--accent-warn);
+  background: color-mix(in srgb, var(--accent-warn) 6%, var(--bg-sunken));
+}
+.compare-tone-ok {
+  border-top: 3px solid var(--accent-success);
+  background: color-mix(in srgb, var(--accent-success) 7%, var(--bg-card));
+}
+.compare-tone-seal {
+  border-top: 3px solid var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 7%, var(--bg-card));
+}
+.compare-tone-sky {
+  border-top: 3px solid var(--accent-sky);
+  background: color-mix(in srgb, var(--accent-sky) 6%, var(--bg-card));
+}
+.compare-tone-muted { opacity: 0.88; }
+.compare-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 12px;
+}
+.compare-title {
+  font-size: 27px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+.compare-body {
+  font-size: 22px;
+  color: var(--text-body);
+  line-height: 1.6;
+  flex: 1;
+}
+.compare-divider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.compare-line {
+  width: 1px;
+  flex: 1;
+  background: var(--border-subtle);
+}
+.compare-badge {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border-strong);
+  color: var(--accent-primary);
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--stage-shadow);
+}
+
+/* 纵向步骤导轨 (ui-steps & ui-step) */
+.steps-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+}
+.steps-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.steps-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+.steps-subtitle {
+  font-size: 19px;
+  color: var(--text-secondary);
+}
+.steps-container {
+  display: flex;
+  flex-direction: column;
+}
+.step-item {
+  display: flex;
+  align-items: stretch;
+  gap: 20px;
+}
+.step-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 44px;
+}
+.step-num {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 2px solid var(--accent-primary);
+  color: var(--accent-primary);
+  font-weight: 800;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  z-index: 2;
+}
+.step-state-active .step-num {
+  background: var(--accent-primary);
+  color: #ffffff;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent-primary) 18%, transparent);
+}
+.step-state-done .step-num {
+  background: var(--accent-success);
+  border-color: var(--accent-success);
+  color: #ffffff;
+}
+.step-state-warn .step-num {
+  background: var(--accent-warn);
+  border-color: var(--accent-warn);
+  color: #ffffff;
+}
+.step-line {
+  width: 2px;
+  flex: 1;
+  min-height: 16px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-primary) 45%, transparent), var(--border-subtle));
+  margin: 4px 0;
+}
+.step-item:last-child .step-line { display: none; }
+.step-content {
+  flex: 1;
+  padding: 14px 22px 16px;
+  margin-bottom: 14px;
+  border-radius: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 0 var(--stage-specular);
+}
+.step-item:last-child .step-content { margin-bottom: 0; }
+.step-state-active .step-content {
+  border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent-primary) 6%, var(--bg-card));
+}
+.step-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.step-title {
+  font-size: 23px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.step-desc {
+  font-size: 20px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* 精密遥测指标卡 (ui-stat) */
+.stat-card { padding: 28px 34px; gap: 10px; }
+.stat-tone-seal { --_st: var(--accent-primary); }
+.stat-tone-sky { --_st: var(--accent-sky); }
+.stat-tone-ok { --_st: var(--accent-success); }
+.stat-tone-warn { --_st: var(--accent-warn); }
+.stat-tone-purple { --_st: var(--accent-purple); }
+.stat-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.stat-label-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 21px;
+  font-weight: 600;
+}
+.stat-icon {
+  width: 26px;
+  height: 26px;
+  color: var(--_st, var(--accent-primary));
+  display: flex;
+  align-items: center;
+}
+.stat-delta {
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-family: var(--font-mono, monospace);
+  font-size: 16px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--_st, var(--accent-primary)) 14%, transparent);
+  color: var(--_st, var(--accent-primary));
+}
+.stat-value-box { display: flex; align-items: baseline; gap: 4px; }
+.stat-affix {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--_st, var(--accent-primary));
+  opacity: 0.8;
+}
+.stat-value {
+  font-size: 56px;
+  font-weight: 800;
+  color: var(--_st, var(--accent-primary));
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.stat-subtext {
+  font-size: 18px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+/* 语义信号提示条 (ui-callout) */
+.callout-card {
+  padding: 22px 28px;
+  border-radius: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-left: 5px solid var(--_co, var(--accent-primary));
+  box-shadow: var(--stage-shadow);
+}
+.callout-tip,
+.callout-insight { --_co: var(--accent-primary); }
+.callout-warn,
+.callout-danger { --_co: var(--accent-warn); }
+.callout-info { --_co: var(--accent-sky); }
+.callout-tip,
+.callout-insight,
+.callout-warn,
+.callout-danger,
+.callout-info {
+  background: color-mix(in srgb, var(--_co) 7%, var(--bg-card));
+}
+.callout-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 23px;
+  font-weight: 800;
+  color: var(--_co);
+  margin-bottom: 8px;
+}
+.callout-icon { display: flex; align-items: center; }
+.callout-body {
+  font-size: 22px;
+  color: var(--text-body);
+  line-height: 1.55;
+}
+
+/* 大师引言碑文卡 (ui-quote) */
+.quote-card {
+  padding: 36px 46px;
+  border-left: 4px solid var(--accent-primary);
+}
+.quote-mark {
+  font-size: 76px;
+  line-height: 44px;
+  color: var(--accent-primary);
+  opacity: 0.28;
+  margin-bottom: 12px;
+  font-family: Georgia, serif;
+}
+.quote-text {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.58;
+}
+.quote-meta {
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  font-size: 20px;
+  color: var(--text-secondary);
+}
+.quote-author { font-weight: 700; color: var(--text-primary); }
+.quote-role { color: var(--text-muted); font-size: 18px; }
+
+/* 随堂思辨提问卡 (ui-quiz & ui-option) */
+.quiz-card { padding: 34px 42px; }
+.quiz-head { margin-bottom: 14px; }
+.quiz-badge {
+  display: inline-flex;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+  color: var(--accent-primary);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 28%, transparent);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+.quiz-question {
+  font-size: 31px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 22px;
+  line-height: 1.35;
+}
+.quiz-options { display: flex; flex-direction: column; gap: 13px; }
+.quiz-option {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 15px 22px;
+  border-radius: 13px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  font-size: 23px;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+.quiz-option-focus {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-card));
+}
+.quiz-option-correct {
+  border-color: var(--accent-success);
+  background: color-mix(in srgb, var(--accent-success) 12%, var(--bg-card));
+}
+.quiz-option-wrong { border-color: var(--accent-warn); opacity: 0.65; }
+.quiz-option-label {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 3px;
+  color: var(--accent-primary);
+  font-weight: 800;
+  font-size: 19px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.quiz-option-correct .quiz-option-label {
+  background: var(--accent-success);
+  border-color: var(--accent-success);
+  color: #ffffff;
+}
+.quiz-hint { margin-top: 18px; font-size: 18px; color: var(--text-muted); }

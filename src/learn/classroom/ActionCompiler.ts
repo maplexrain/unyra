@@ -1,10 +1,12 @@
 /**
  * 动作任务封装与 WAAPI 动作编译器 (ActionCompiler)
- * 将声明式 VisualVerb / Speak / Wait / Checkpoint 编译为具备可控句柄的 RunningTask
+ * 将声明式 VisualVerb / Speak / Wait / Checkpoint 编译为具备可控句柄的 RunningTask，
+ * 并与 WebAudio 音效引擎（sfxEngine）协同实现确定性音画同步（快进静音）。
  */
 import type { StageViewport } from './StageViewport'
 import { runAnimeAnimation } from './animations'
-import { ANIME_ACTION_VERBS } from './verbs'
+import { startSfx, type SfxHandle } from './sfx/sfxEngine'
+import { ANIME_ACTION_VERBS, WAKING_VERBS } from './verbs'
 import type {
   CheckpointAction,
   ITTSAdapter,
@@ -14,6 +16,18 @@ import type {
   VisualAction,
   WaitAction,
 } from './types'
+
+const INTRINSIC_VERB_SFX: Record<string, string> = {
+  countUp: 'count',
+  typewriter: 'typing',
+  stamp: 'stamp',
+  tada: 'success',
+}
+
+export interface CompileOptions {
+  /** 静音编译（用于 seekTo 快进重演，绝不发出音效） */
+  silent?: boolean
+}
 
 export class ActionCompiler {
   private stage: StageViewport
@@ -27,7 +41,8 @@ export class ActionCompiler {
   public compile(
     action: LessonAction,
     playbackRate: number = 1.0,
-    onVoiceReady?: () => void
+    onVoiceReady?: () => void,
+    opts?: CompileOptions,
   ): RunningTask {
     if (action.type === 'speak') {
       return this.compileSpeak(action, playbackRate, onVoiceReady)
@@ -36,9 +51,9 @@ export class ActionCompiler {
       return this.compileWait(action, playbackRate)
     }
     if (action.type === 'checkpoint') {
-      return this.compileCheckpoint(action)
+      return this.compileCheckpoint(action, opts)
     }
-    return this.compileVisual(action, playbackRate)
+    return this.compileVisual(action, playbackRate, opts)
   }
 
   /** 后台预加载口语讲解音频 */
@@ -52,7 +67,7 @@ export class ActionCompiler {
   private compileSpeak(
     action: SpeakAction,
     rate: number,
-    onVoiceReady?: () => void
+    onVoiceReady?: () => void,
   ): RunningTask {
     const handle = this.tts.speak(action.text, rate)
     if (onVoiceReady) {
@@ -62,7 +77,6 @@ export class ActionCompiler {
         onVoiceReady()
       }
     }
-    // 异常安全兜底：若 TTS 引擎报错或无响应，按汉字语速估算等待时长，防止课堂死锁
     const fallbackMs = Math.max(1200, (action.text.length * 200) / rate)
     const safeFinished = handle.finished.catch(() => {
       return new Promise<void>((resolve) => {
@@ -123,8 +137,16 @@ export class ActionCompiler {
   }
 
   /** 编译思考/交互检查点动作（等待用户主动继续或按键） */
-  private compileCheckpoint(_action: CheckpointAction): RunningTask {
+  private compileCheckpoint(action: CheckpointAction, opts?: CompileOptions): RunningTask {
     let resolveFn!: () => void
+    let sfxHandle: SfxHandle | null = null
+
+    if (!opts?.silent) {
+      const sfxName = action.sfx ?? 'bell'
+      if (sfxName && sfxName !== 'none') {
+        sfxHandle = startSfx(sfxName)
+      }
+    }
 
     const finished = new Promise<void>((resolve) => {
       resolveFn = resolve
@@ -133,14 +155,20 @@ export class ActionCompiler {
     return {
       pause: () => {},
       resume: () => {},
-      abort: () => resolveFn(),
-      instantFinish: () => resolveFn(),
+      abort: () => {
+        sfxHandle?.stop()
+        resolveFn()
+      },
+      instantFinish: () => {
+        sfxHandle?.stop()
+        resolveFn()
+      },
       finished,
     }
   }
 
   /** 编译语义视觉动词 */
-  private compileVisual(action: VisualAction, rate: number): RunningTask {
+  private compileVisual(action: VisualAction, rate: number, opts?: CompileOptions): RunningTask {
     const el = this.stage.getElement(action.target)
     const noop: RunningTask = {
       pause: () => {},
@@ -151,13 +179,42 @@ export class ActionCompiler {
     }
     if (!el) return noop
 
-    const duration = Math.max(50, (action.params?.duration ?? 450) / rate)
+    const resolvedAnim = action.verb === 'animate' ? action.params?.animation || 'popIn' : action.verb
+    const defaultMs =
+      resolvedAnim === 'typewriter' ? 1200 : resolvedAnim === 'countUp' ? 1100 : ANIME_ACTION_VERBS.has(action.verb) ? 620 : 480
+    const duration = Math.max(50, (action.params?.duration ?? defaultMs) / rate)
 
-    // 动画动词交由 runAnimeAnimation 处理（白名单唯一事实源在 verbs.ts：'animate' +
-    // registry 的一次性入场动效，含 slideIn 系列；pulse 走下面的状态动词通道）
+    // 确定此动作是否伴随音效（快进模式 silent=true 时严格静音）
+    let sfxHandle: SfxHandle | null = null
+    if (!opts?.silent) {
+      const explicitSfx = action.params?.sfx
+      const attrSfx = WAKING_VERBS.has(action.verb) ? el.getAttribute('data-sfx') : null
+      const sfxName = explicitSfx !== undefined ? explicitSfx : (attrSfx ?? INTRINSIC_VERB_SFX[resolvedAnim])
+      if (sfxName && sfxName !== 'none') {
+        const sfxDuration =
+          resolvedAnim === 'typewriter'
+            ? Math.max(duration, ((action.params?.text || el.dataset.fullText || el.textContent || '').length * 42) / rate)
+            : duration
+        sfxHandle = startSfx(sfxName, { duration: sfxDuration })
+      }
+    }
+
+    // 动画动词交由 runAnimeAnimation 处理
     if (ANIME_ACTION_VERBS.has(action.verb)) {
-      const animName = action.verb === 'animate' ? action.params?.animation || 'popIn' : action.verb
-      return runAnimeAnimation(el, animName, duration, action.params as Record<string, unknown> | undefined)
+      const task = runAnimeAnimation(el, resolvedAnim, duration, action.params as Record<string, unknown> | undefined)
+      return {
+        pause: task.pause,
+        resume: task.resume,
+        abort: () => {
+          sfxHandle?.stop()
+          task.abort()
+        },
+        instantFinish: () => {
+          sfxHandle?.stop()
+          task.instantFinish()
+        },
+        finished: task.finished,
+      }
     }
 
     let anim: Animation | null = null
@@ -189,7 +246,15 @@ export class ActionCompiler {
             Array.from(el.parentElement.children).forEach((child) => {
               const sib = child as HTMLElement
               if (sib.id) {
-                sib.style.opacity = sib === el ? '1' : '0.25'
+                if (sib === el) {
+                  sib.style.opacity = '1'
+                  sib.style.filter = 'none'
+                  sib.style.transform = sib.dataset.baseTransform || ''
+                } else {
+                  sib.style.opacity = '0.26'
+                  sib.style.filter = 'blur(0.8px) saturate(0.75)'
+                  sib.style.transform = `${sib.dataset.baseTransform || ''} scale(0.985)`.trim()
+                }
               }
             })
           }
@@ -200,6 +265,8 @@ export class ActionCompiler {
               const sib = child as HTMLElement
               if (sib.id) {
                 sib.style.opacity = '1'
+                sib.style.filter = 'none'
+                sib.style.transform = sib.dataset.baseTransform || ''
               }
             })
           }
@@ -217,7 +284,7 @@ export class ActionCompiler {
           break
         }
         case 'scale': {
-          const s = action.params?.scale ?? 1.15
+          const s = action.params?.scale ?? 1.12
           const tx = Number(el.dataset.tx || 0)
           const ty = Number(el.dataset.ty || 0)
           const t = `translate(${tx}px, ${ty}px) scale(${s})`
@@ -229,38 +296,39 @@ export class ActionCompiler {
           el.removeAttribute('data-hidden')
           el.style.opacity = '1'
           ;(el as unknown as SVGGeometryElement).style.strokeDashoffset = '0'
-          break;
+          break
         case 'updateText':
           if (action.params?.text !== undefined) {
             el.textContent = action.params.text
           }
           break
         case 'pulse':
-          // 瞬态动画，无持久化终态变化
           break
       }
     }
 
-    // 运行动画
     const runAnimation = (): Promise<void> => {
-      // 在支持 WAAPI animate 的现代环境中执行硬件加速动画
       if (typeof el.animate === 'function') {
         switch (action.verb) {
           case 'appear': {
             el.removeAttribute('data-hidden')
+            const base = el.dataset.baseTransform || ''
             anim = el.animate(
               [
-                { opacity: 0, transform: 'translateY(20px)' },
-                { opacity: 1, transform: 'translateY(0)' },
+                { opacity: 0, transform: `${base} translateY(22px) scale(0.975)`.trim() },
+                { opacity: 1, transform: base || 'translateY(0) scale(1)' },
               ],
-              { duration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' }
+              { duration, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' },
             )
             break
           }
           case 'disappear': {
             anim = el.animate(
-              [{ opacity: 1 }, { opacity: 0 }],
-              { duration, easing: 'ease-out', fill: 'forwards' }
+              [
+                { opacity: 1, transform: el.dataset.baseTransform || 'scale(1)' },
+                { opacity: 0, transform: `${el.dataset.baseTransform || ''} scale(0.97)`.trim() },
+              ],
+              { duration, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' },
             )
             break
           }
@@ -269,10 +337,10 @@ export class ActionCompiler {
             anim = el.animate(
               [
                 { transform: `${base} scale(1)` },
-                { transform: `${base} scale(1.08)` },
+                { transform: `${base} scale(1.06)` },
                 { transform: `${base} scale(1)` },
               ],
-              { duration: Math.max(duration, 400), easing: 'ease-in-out' }
+              { duration: Math.max(duration, 420), easing: 'ease-in-out' },
             )
             break
           }
@@ -284,7 +352,7 @@ export class ActionCompiler {
             svgEl.style.strokeDasharray = String(len)
             anim = el.animate(
               [{ strokeDashoffset: len }, { strokeDashoffset: 0 }],
-              { duration: Math.max(duration, 600), easing: 'ease-in-out', fill: 'forwards' }
+              { duration: Math.max(duration, 650), easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' },
             )
             break
           }
@@ -298,17 +366,25 @@ export class ActionCompiler {
                 { transform: `translate(${prevX}px, ${prevY}px)` },
                 { transform: `translate(${nextX}px, ${nextY}px)` },
               ],
-              { duration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' }
+              { duration, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' },
             )
             break
           }
           default: {
             // highlight / unhighlight / dimOthers / resetFocus / scale / updateText
-            el.style.transition = `all ${duration}ms cubic-bezier(0.22, 1, 0.36, 1)`
+            const targets: HTMLElement[] =
+              (action.verb === 'dimOthers' || action.verb === 'resetFocus') && el.parentElement
+                ? Array.from(el.parentElement.children).filter((c): c is HTMLElement => !!(c as HTMLElement).id)
+                : [el]
+            targets.forEach((t) => {
+              t.style.transition = `all ${duration}ms cubic-bezier(0.16, 1, 0.3, 1)`
+            })
             applyFinalState()
             return new Promise<void>((res) => {
               fallbackTimer = window.setTimeout(() => {
-                el.style.transition = ''
+                targets.forEach((t) => {
+                  t.style.transition = ''
+                })
                 res()
               }, duration)
             })
@@ -319,15 +395,12 @@ export class ActionCompiler {
           return anim.finished
             .then(() => {
               applyFinalState()
-              anim?.cancel() // 释放 forwards，由 inline style 接管
+              anim?.cancel()
             })
-            .catch(() => {
-              // 被 cancel 或中断时静默
-            })
+            .catch(() => {})
         }
       }
 
-      // 兜底直接应用终态
       applyFinalState()
       return Promise.resolve()
     }
@@ -338,10 +411,12 @@ export class ActionCompiler {
       pause: () => anim?.pause(),
       resume: () => anim?.play(),
       abort: () => {
+        sfxHandle?.stop()
         if (fallbackTimer !== null) clearTimeout(fallbackTimer)
         anim?.cancel()
       },
       instantFinish: () => {
+        sfxHandle?.stop()
         if (fallbackTimer !== null) clearTimeout(fallbackTimer)
         anim?.cancel()
         applyFinalState()

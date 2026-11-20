@@ -1,4 +1,4 @@
-import { AppWindow, Bot, BookOpen, Brain, CalendarClock, ChartColumn, FilePlus, Folder, FolderOpen, Globe, GraduationCap, HardDrive, Heart, ListTree, Loader2, MonitorPlay, NotebookPen, Package, Puzzle, ScrollText, Settings2, Terminal, UserRound } from 'lucide-react'
+import { AppWindow, Bot, BookOpen, Brain, CalendarClock, ChartColumn, FilePlus, Folder, FolderOpen, Globe, GraduationCap, HardDrive, Heart, ListTree, Loader2, MonitorPlay, NotebookPen, Package, Puzzle, ScrollText, Settings2, Terminal, UserRound, Users } from 'lucide-react'
 
 /**
  * 文档类型的**视觉身份**：一种类型一个图标、一个颜色。
@@ -29,6 +29,7 @@ export type DocKindKey =
   | 'schedule'
   | 'mind'
   | 'agentSettings'
+  | 'agentTeam'
   | 'blank'
   | 'draft'
 
@@ -52,6 +53,7 @@ const DOC_TYPE_COLOR: Record<DocKindKey, string> = {
   schedule: '#c47a3d', // 陶土橙：日程表（时间与约定，与朱红的试卷、琥珀的笔记都不撞）
   mind: '#7c8698', // 蓝灰：系统页（记忆管理），系统页同族
   agentSettings: '#7c8698', // 蓝灰：系统页（超级导师设置），系统页同族
+  agentTeam: '#6366f1', // 靛紫：智能体团队协同
   blank: '#8c8c8c', // 浅中性灰：空白页签
   draft: '#6f8fb0', // 雾蓝：新建文件（还没落定的那一份，与「外部文件的灰」分开）
 }
@@ -130,7 +132,10 @@ export function DocTypeIcon({ kind, size = 11 }: { kind: DocKindKey; size?: numb
     ) : kind === 'mind' ? (
       <Brain size={size} />
     ) : kind === 'agentSettings' ? (
-      <Bot size={size} />) : kind === 'blank' ? (
+      <Bot size={size} />
+    ) : kind === 'agentTeam' ? (
+      <Users size={size} />
+    ) : kind === 'blank' ? (
       <BlankPageGlyph size={size} />
     ) : kind === 'draft' ? (
       <FilePlus size={size} />

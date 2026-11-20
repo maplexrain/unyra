@@ -233,6 +233,10 @@ export interface ConversationMessage {
    * 判据只此一条——上下文只发没失活的消息。
    */
   retired?: boolean
+  /** 消息引用/回复链路（如 Agent 引用回复的用户消息） */
+  replyToId?: string
+  replyToSender?: string
+  replyToSnippet?: string
 }
 
 /**

@@ -23,7 +23,7 @@ export const WORKFLOWS_GUIDE = `## 内置工作流与任务规程
 - **伪编译 (\`code-compile\`)**：把文档里这段代码转译成可运行的 JS，交付运行（参数: \`target\`, \`language\`, \`key\`, \`code\`）。
 - **修复函数图像 (\`plot-fix\`)**：函数图像渲染失败时按报错与区间一次改完（参数: \`target\`, \`nodeTitle\`, \`reason\`, \`range\`, \`start\`, \`end\`, \`source\`）。
 - **浏览器操作 (\`browser-use\`)**：替用户操作内置浏览器（参数: \`target\`）——规矩就是沙箱速查里 api.browser 那组的闭环纪律（index → 读 → 写、看图干活、不可逆先 ask）。
-- **生成互动课堂 (\`classroom\`)**：为课堂节点生成 16:9 画布动态课件——画面、DOM 视觉动作与语音讲解流（参数: \`target\`）。
+- **生成课堂 (\`classroom\`)**：为课堂节点生成 16:9 画布动态课件——画面、DOM 视觉动作与语音讲解流（参数: \`target\`）。
 - **压缩上下文 (\`compact\`)**：把前面的对话折成一份高保真交接摘要。
 
 ### 1.【开讲】教学文档生成（teach-node）
@@ -108,11 +108,18 @@ export const WORKFLOWS_GUIDE = `## 内置工作流与任务规程
 3. 再写 summary（Markdown，1200 字以内）：## 学习目标与背景 / ## 已经讲清的内容 / ## 学习者的状态（自评、错在哪、还卡在哪）/ ## 约定与术语。用户表达「我想要什么」的话保留原意。
 4. api.compact({ summary, tasks }) **只调一次**；摘要本轮结束后才生效（旧消息失活、摘要成为第一条消息）。回一句话告诉用户已压好，**不要复述摘要内容**，也不要顺手改文档、建节点、出题。
 
-### 13.【生成互动课堂】课堂课件生成（classroom）
-1. 契约先行：\`await api.classroom.schema()\` 拿齐 course 结构（画面序列 scenes，动作列表字段名是 **actions**——不是 beats）、四类动作与阻塞默认值、1920×1080 布局常量与预置舞台类（stage-header / stage-title / stage-center / stage-top-title / stage-split 等；基础字号 28px，padding 56px 80px 120px 底部是字幕避让区）；组件与入场动效清单现查 api.classroom.components() / api.classroom.animations()（**每条的 description 与 example 就是属性与子节点约定的唯一出处**，表达不了再 registerComponent / registerAnimation 自创）。课堂画布视觉自有一套 stage 体系（卡片圆角与主题强调色是课堂自有样式），文档区的排版律别往里搬。
-2. 两套动效表严格分开（铁律）：讲解节奏里的显隐 / 强调 / 位移只能用 visual action（verb 白名单 api.classroom.verbs()）；\`data-anim="名"\` 只是换幕时的入场一次、不受时间轴控制——把动效名想当然填进 verb 会静默不生效，照 schema() 里的最小完整示例写。
-3. 受控元素每个都要有唯一 id；初始隐藏的声明 data-hidden、用 appear / drawSvg 等唤醒动词现身；字幕 = 朗读 = speak.text 唯一源，不要写 subtitle 字段。checkpoint **只是暂停画面让学生自己想**（浮层 + 继续，不判分）；ui-quiz 也只是展示——别设计成「答对才继续」，课堂没有判定回路。
-4. 教学风格（铁律）：这是名师授课，不是念 PPT——画面放结构提纲，嘴里讲直觉、类比与顿悟（❌ 复读卡片文字；✓「想象操场跑步，两人速度不同，只要跑道是环形的，就一定会套圈相遇！」）；speak.text **严禁句号（。和 .）**，每句 8-16 字（上限 20），多用设问与感叹：「注意看这里」「你发现了吗？」「关键就在这一处！」；几乎每句 speak 配 1-2 个 visual，讲解绝不能静止画面。
-5. 五幕式规划：整堂课 4-5 个 Scene 循序渐进——① 痛点引入（灵魂拷问 + 核心卡登场）② 原理拆解（双栏分立 + 步骤揭晓）③ 实战对比（点亮优势、晃动警示误区）④ 效能升华（数据滚动 + 金句）⑤ 互动思考（checkpoint 暂停让学生自己想——不判分）。
-6. 交付与验收：api.node.get("{{target}}").editContent({ title, course }) 一次落盘；回执带 error（动词不在白名单 / target 悬空 / 缺 html / type 不认识 / 藏了 script）必须修复后重交，warnings 也读一眼（句号 / 超长句 / 无动效画面 / data-hidden 死锁）；交付前可用 api.classroom.check({ target: 课堂uuid }) 复查；最后 delivery.submit({ files: [{ path: 课堂uuid, action: "updated", note: '一句话说明' }] }) 登记交付（path 直接给课堂 uuid）。
+### 13.【生成课堂】课堂课件生成（classroom）
+1. **契约先行（不凭印象拼标签）**：\`await api.classroom.schema()\` 拿齐 course 结构（画面序列 scenes，动作列表字段名是 **actions**——不是 beats）、1920×1080 逻辑画布与底部 120px 字幕安全区（padding 56px 80px 120px；基础字号 28px）；现查 api.classroom.components()（31 种内置 \`ui-*\`）、api.classroom.verbs()、api.classroom.animations() 与 api.classroom.sounds()（22 种 WebAudio 合成音效）。组件属性与子节点约定以其 description/example 为唯一出处；课堂自有一套基于纸墨令牌的 stage 体系（**严禁硬编码死白/死黑文字颜色**，保证浅纸与深墨主题皆通透可读）。
+2. **两套动效表严格分开（铁律）**：讲解时间轴上的显隐 / 聚焦 / 位移 / 动画只能用 \`visual.verb\`（白名单 api.classroom.verbs()）；\`data-anim="名"\` 只是换幕挂载播一次、不受时间轴控制。受控元素每个都要有唯一 id；初始隐藏的声明 \`data-hidden\` 并用唤醒动词现身；字幕 = 朗读 = \`speak.text\` 唯一源，不另写 subtitle；\`checkpoint\` 仅作暂停思考（不判分），\`ui-quiz\` 也仅作展示——别设计成「答对才继续」。
+3. **导演级舞台构图与审美纪律（传授的核心美学，务必贯彻）**：
+   - **一幕一焦点，留白 ≥ 30%**：宁可多拆 1 幕，绝不把一幕塞成文字墙！单幕主组件 1~3 个为佳，每张卡正文 ≤ 2~3 行短句——**眼睛看结构锚点，耳朵听细节推导**。
+   - **视觉降噪与明暗阶梯**：一幕最多 **1 个高饱和主焦点**（如 \`tone="seal"\` 或 \`highlight\`），其余陪衬卡片用 \`tone="sunken"\` 或默认静默底色压暗，善用 \`dimOthers\` + \`resetFocus\` 营造舞台追光景深——「有暗才有亮，全亮等于全不亮」。
+   - **拒绝连环同构，版式五幕交替变奏**：严禁连续两幕使用同一种骨架！推荐节奏：① 序幕悬念（\`ui-banner\` 或 \`ui-quote\` 居中大留白抛痛点）→ ② 直觉vs本质（\`ui-split ratio="3:2"\` 不对称双栏或 \`ui-compare\` 高反差辩析）→ ③ 机制推演（\`ui-pipeline\` 因果链 / \`ui-steps\` 纵向导轨 / \`ui-diagram\` 蓝图画框配 \`drawSvg\`）→ ④ 定量峰值（\`ui-formula\` 点阵公式台 / \`ui-stat\` 数字滚动 / \`ui-breakdown\` 构成条）→ ⑤ 思辨收官（\`ui-quiz\` + \`checkpoint\`）。
+4. **动效编排哲学（Motion Choreography）**：
+   - **动作要匹配语义性格**：稳重概念/总结用 \`riseIn\`（晨雾浮升）；步骤与展开用 \`unfold\`（书卷展开）；核心定论/证毕用 \`stamp\`（朱印落定）；公式与精华揭示用 \`blurIn\` 或 \`shimmer\`（流光扫面）；核心卡聚焦用 \`spotlight\`（追光抬升）或 \`ripple\`（同心涟漪）；误区警示用 \`shake\`；数据指标用 \`countUp\`；代码板书用 \`typewriter\`。
+   - **错拍呼吸，不动衬动**：同幕多个元素严禁齐刷刷用同一个 \`popIn\` 弹出来！穿插短 \`speak\` 或 \`wait(220~380)\` 错拍揭晓，静止的卡片靠 \`spotlight\` / \`dimOthers\` 切换焦点比反复乱跳高级十倍。
+5. **音效设计美学（Sound as Punctuation）**：
+   - **克制原则：音效是标点，不是背景墙**：一幕只给 **1~3 个戏剧转折/顿悟/定论点**配 \`params.sfx\`（或进幕 \`scene.sfx\`），其余动作静默推进。
+   - **声画通感对照**：大横幅登场用 \`swell\`，双栏/换幕滑入用 \`whoosh\` / \`swish\`，展卷/翻面用 \`paper\`，步骤/节点逐条用 \`tick\`，核心顿悟用 \`chime\` / \`sparkle\`，追光/流光用 \`glass\` / \`shimmer\` / \`focus\`，误区震颤用 \`error\`，悬念拷问用 \`tension\` / \`heartbeat\`；\`checkpoint\`（\`bell\`）、\`countUp\`（\`count\`）、\`typewriter\`（\`typing\`）、\`stamp\`（\`stamp\`）、\`tada\`（\`success\`）已自带音效，不想响传 \`sfx: "none"\`。
+6. **名师口语与交付验收**：讲解不是念 PPT——嘴里讲直觉、类比与设问（「注意看这里」「你发现了吗？」），\`speak.text\` **严禁句号（。和 .）**，每句 8-16 字（上限 20），几乎每句 speak 配 1~2 个 visual。用 \`api.node.get("{{target}}").editContent({ title, course })\` 一次落盘；回执带 error 必须修好重交，warnings（句号 / 超长句 / 未知音效名 / data-hidden 死锁）也一并修净；交付前可 \`api.classroom.check({ target: 课堂uuid })\` 复查，最后 \`api.delivery.submit({ files: [{ path: 课堂uuid, action: "updated", note: '一句话说明' }] })\` 登记交付。
 `

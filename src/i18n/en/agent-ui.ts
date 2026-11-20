@@ -186,8 +186,10 @@ const dict: Record<string, string> = {
   /* ---------- Composer ---------- */
   '尚未配置「{0}」的 API Key，请到顶栏设置中填写（也可在那里更换提供商）。': 'No API Key configured for "{0}" yet — fill it in under the top-bar Settings (you can switch providers there too).',
   '移除全部附件': 'Remove all attachments',
+  '输入消息开始对话…（/ 可用斜杠命令，可拖入文件、页签、图片）': 'Start chatting… (/ for slash commands; drop files, tabs, or images)',
   '向超级导师提问…（/ 可用斜杠命令，可拖入文件、页签、图片）': 'Ask the Super Tutor… (/ for slash commands; drop files, tabs, or images)',
   '发送（Enter）': 'Send (Enter)',
+  '正在回答…这条发出去会排进等待队列，等它答完自动发送': 'Replying… sending now puts this in the queue; it goes out once the reply finishes',
   '导师正在回答…这条发出去会排进等待队列，等它答完自动发送': 'The tutor is replying… sending now puts this in the queue; it goes out once the reply finishes',
   '排进等待队列（当前回答结束后自动发送）': 'Add to the waiting queue (sent automatically after the current reply)',
   /* ---------- 等待队列（agent 正在跑时发出去的那些，见 panel/QueuedMessages） ---------- */
@@ -309,6 +311,8 @@ const dict: Record<string, string> = {
 
   /* ---------- toolLabel 的旧工具名标签 ---------- */
   '执行代码': 'Execute code',
+  '正则替换重试': 'Retry with regex replace',
+  '替换规则': 'Replace rule',
   '读取笔记': 'Read note',
   '读取笔记片段': 'Read note excerpt',
   '更新笔记': 'Update note',
@@ -464,6 +468,36 @@ const dict: Record<string, string> = {
   '导师记忆管理 (Memory)': 'Tutor memory (Memory)',
   '工作记忆跟着目标走、长期记忆跨目标共享；两者都不会自动进上下文': 'Working memory follows the goal, long-term memory is shared across goals; neither enters the context automatically',
 
+  /* ---------- 智能体团队三栏（左侧 Agent 列表 + 右侧对话历史侧栏） ---------- */
+  '智能体列表': 'Agents',
+  '展开智能体列表': 'Expand agent list',
+  '收起智能体列表': 'Collapse agent list',
+  '智能体': 'Agents',
+  '仅聊天': 'Chat Only',
+  '纯对话 · 联网与日程': 'Pure chat · Web & schedule',
+  '导师': 'Tutor',
+  '正在执行…': 'Running…',
+  '等待你的确认': 'Waiting for confirmation',
+  '未选择学习目标': 'No learning goal selected',
+  '未命名目标': 'Untitled goal',
+  '展开对话历史': 'Expand conversation history',
+  '收起对话历史': 'Collapse conversation history',
+  '选择学习目标': 'Select learning goal',
+  '请选择学习目标': 'Choose a learning goal',
+  '暂无对话历史': 'No conversation history yet',
+  '点击上方新建对话，或直接输入开始': 'Click New Chat above or type below to start',
+  '刚刚': 'Just now',
+  '昨天': 'Yesterday',
+  '等待确认': 'Awaiting confirmation',
+  '至少保留一段空白对话': 'Keep at least one empty conversation',
+  '清空对话记录': 'Clear conversation history',
+  '删除对话': 'Delete conversation',
+  '子代理独立会话': 'Sub-agent isolated session',
+  '当前未选择学习目标，可从下方挑选一个目标直接开启导师对话：': 'No learning goal is currently selected. Pick a goal below to start talking with the tutor:',
+  '打开或新建一个学习目标后，它的导师会在这里出现。': 'Open or create a learning goal and its tutor will appear here.',
+  '跨目标': 'All goals',
+  '学习导师': 'Tutor',
+  '当前页面宽度小于 800，智能体列表已收起且暂不可展开': 'Roster stays collapsed below 800px width',
 }
 
 export default dict

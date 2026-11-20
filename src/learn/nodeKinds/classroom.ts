@@ -23,11 +23,11 @@ export class ClassroomGNode extends GNode {
 
   /** 获取身后的持久化课堂实体 */
   private get entity(): ClassroomEntity {
-    return loadClassroomEntity(this.uuid, '互动课堂', this.ctx.store())
+    return loadClassroomEntity(this.uuid, '课堂', this.ctx.store())
   }
 
   get title(): string {
-    return this.entity.title || '互动课堂'
+    return this.entity.title || '课堂'
   }
 
   exists(): boolean {

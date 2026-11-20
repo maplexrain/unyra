@@ -21,9 +21,9 @@
  * 不受影响。本地图片不走这条：它们由 lib/docImages 读字节贴成 data URL（file: 来源连
  * 'self' 都匹配不上，放行 file: 反而等于给文档开一个读任意本地文件的口子）。
  *
- * media-src 放行 media-relay: 是视频学习（实验）加的：`<video>` 的 src 指向本地中转
- * 协议（真实上游由主进程带头转发，见 electron/media-relay），不带它打包版里视频
- * 直接黑屏。API 请求不走这里——它们经 IPC（video:fetch），不进 CSP 的视野。
+ * media-src 放行 media-relay:、data:、blob: 与 http(s)：视频/音频同样是被动媒体资源，
+ * 不执行任何脚本；除了经主进程 media-relay:// 中转的带防盗链流之外，用户文档内嵌媒体、
+ * 在线视频/音频直链、TTS 语音合成与本地 blob: / data: 媒体流都需要被允许播放。
  */
 export const LOCAL_FILE_CSP =
   "default-src 'self'; " +
@@ -31,6 +31,6 @@ export const LOCAL_FILE_CSP =
   "worker-src 'self' blob:; " +
   "style-src 'self' 'unsafe-inline'; " +
   "img-src 'self' data: blob: https: http:; " +
-  "media-src 'self' media-relay:; " +
+  "media-src 'self' media-relay: data: blob: https: http:; " +
   "font-src 'self' data:; " +
   "connect-src 'self' llm-proxy:;"

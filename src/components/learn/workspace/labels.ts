@@ -64,10 +64,12 @@ export function savedTextOf(store: LearnStore, ref: TabRef): string {
     ref.kind === 'user' ||
     ref.kind === 'terminal' ||
     ref.kind === 'classroom' ||
+    ref.kind === 'classroomShowcase' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
+    ref.kind === 'agentTeam' ||
     ref.kind === 'guide' ||
     ref.kind === 'blank' ||
     ref.kind === 'draft'

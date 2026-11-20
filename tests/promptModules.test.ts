@@ -172,7 +172,8 @@ describe('首轮系统提示词（紧凑静态注入）', () => {
   })
 
   it('每轮必用的核心纪律与原则完整在场', () => {
-    expect(system).toContain('唯一的工具是 execute')
+    expect(system).toContain('execute')
+    expect(system).toContain('rexecute')
     expect(system).toContain('写操作的失败不抛异常')
     expect(system).toContain('应用数据一律走 api 组')
     expect(system).toContain('api.userInfo.get()')

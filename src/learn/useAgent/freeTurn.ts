@@ -13,7 +13,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import type { AgentPart, MessageFile, MessageImage, PendingFile, PendingImage } from '../../agent/types'
 import type { MessageUsage } from '../../agent/types'
 import { runAgent } from '../../agent/runtime'
-import { createExecuteTool } from '../../agent/tools'
+import { createExecuteTools } from '../../agent/tools'
 import type { SandboxOptions } from '../../agent/sandbox/types'
 import { loadAgentSettings } from '../../agent/settings'
 import { globalContextWindow, loadAiSettings, resolveGlobal } from '../../ai/settings'
@@ -138,7 +138,7 @@ export async function runFreeTurn(io: {
       '看用户的日程、给他排一条提醒（到点由宿主响铃，用户自己确认或稍后提醒）。',
     signal: ctrl.signal,
   }
-  const tools = [createExecuteTool(freeSandbox)]
+  const tools = createExecuteTools(freeSandbox)
 
   const tally = { turns: 0, context: 0, total: 0, output: 0, read: 0, miss: 0, tps: 0, estimated: false }
 

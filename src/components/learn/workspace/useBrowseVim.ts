@@ -223,6 +223,14 @@ export function useBrowseVim({ getLatest: rawGetLatest, onToast: rawOnToast, nex
 
     const onScroll = () => {
       hideAnnotationPopup()
+      // 处于终端控制台或智能体团队页面时，彻底销毁虚拟光标并直接退出
+      if (
+        document.activeElement?.closest?.('[data-terminal-pane]') ||
+        document.querySelector('[data-agent-team-page]')
+      ) {
+        smoothCursor.destroy()
+        return
+      }
       const sel = window.getSelection()
       if (sel && sel.rangeCount > 0) {
         smoothCursor.update(sel, isVisualModeRef.current)
@@ -241,14 +249,21 @@ export function useBrowseVim({ getLatest: rawGetLatest, onToast: rawOnToast, nex
     })
 
     const onSelectionChange = () => {
-      // 处于终端控制台时，彻底销毁虚拟光标并直接退出
-      if (document.activeElement?.closest?.('[data-terminal-pane]')) {
+      // 处于终端控制台或智能体团队页面时，彻底销毁虚拟光标并直接退出
+      if (
+        document.activeElement?.closest?.('[data-terminal-pane]') ||
+        document.querySelector('[data-agent-team-page]')
+      ) {
         smoothCursor.destroy()
         return
       }
       const s = getLatest()
       const group = focusedGroup(s.docArea)
       const activeTab = group?.tabs.find((t) => t.id === group.active)
+      if (activeTab?.ref?.kind === 'agentTeam' || (activeTab as any)?.kind === 'agentTeam') {
+        smoothCursor.destroy()
+        return
+      }
       // 浏览模式 Vim 光标功能只对允许切换为编辑模式的页签开放，其余页签或处于编辑模式时销毁并忽略
       if (!activeTab || !canTabSwitchToEdit(activeTab) || viewOf(activeTab, false) === 'source') {
         smoothCursor.destroy()
@@ -287,6 +302,34 @@ export function useBrowseVim({ getLatest: rawGetLatest, onToast: rawOnToast, nex
         return
       }
 
+      // 判定是否处于智能体团队页面：禁止智能体团队页面中使用 Vim 浏览模式，但保留 `:` 快捷唤出命令输入框
+      const s = getLatest()
+      const group = focusedGroup(s.docArea)
+      const activeTab = group?.tabs.find((t) => t.id === group.active)
+      const isAgentTeamPage =
+        activeTab?.ref?.kind === 'agentTeam' ||
+        (activeTab as any)?.kind === 'agentTeam' ||
+        Boolean(document.querySelector('[data-agent-team-page]'))
+
+      if (isAgentTeamPage) {
+        smoothCursor.destroy()
+        const key = e.key
+        const isCtrl = e.ctrlKey || e.metaKey
+        const isAlt = e.altKey
+        if (
+          !isCtrl &&
+          !isAlt &&
+          (key === ':' || (e.shiftKey && key === ';')) &&
+          !isEditableTarget(e.target)
+        ) {
+          e.preventDefault()
+          e.stopPropagation()
+          pendingPrefix.current = null
+          openGlobalCommandBar({ mode: ':', prefill: '' })
+        }
+        return
+      }
+
       // 1. 系统输入法组词保护：在输入法组词或未确认有效字符输入期间，绝不拦截键盘输入
       if (
         isComposingRef.current ||
@@ -303,9 +346,6 @@ export function useBrowseVim({ getLatest: rawGetLatest, onToast: rawOnToast, nex
       if (!isVimEnabled() || isEditableTarget(e.target) || getCalculatorState().isOpen) return
 
       // 浏览模式 Vim 仅对允许切换为编辑模式的页签开放，其余页签不接管按键；处于编辑态时由 CodeMirror Vim 自身接管
-      const s = getLatest()
-      const group = focusedGroup(s.docArea)
-      const activeTab = group?.tabs.find((t) => t.id === group.active)
       if (!activeTab || !canTabSwitchToEdit(activeTab) || viewOf(activeTab, false) === 'source') {
         smoothCursor.destroy()
         return

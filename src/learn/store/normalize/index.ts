@@ -15,7 +15,19 @@ import type {
   WorkflowBook,
 } from '../../types'
 import type { Exam } from '../../exam'
-import { allTabs, ensureAnchorOutlines, focusedTab, normalizeDocs, reconcileOwners, syncGoalOutlineTabs, withOwners, withParked } from '../../groups'
+import {
+  allTabs,
+  ensureAnchorOutlines,
+  focusedTab,
+  normalizeDocs,
+  normalizeFixSideState,
+  pruneStaleSidePortals,
+  reconcileOwners,
+  syncGoalAgentTeamTabs,
+  syncGoalOutlineTabs,
+  withOwners,
+  withParked,
+} from '../../groups'
 import { tabNodeId } from '../../tabs'
 import { normalizeAgentTabs } from '../../agentTabs'
 import { normalizeDrafts } from '../../drafts'
@@ -353,13 +365,17 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
     const parked = Object.fromEntries(
       Object.entries(docAreaRaw.parkedTabs ?? {}).filter(([goalId]) => goalIds.has(goalId)),
     )
-    const docArea0 = syncGoalOutlineTabs(
-      ensureAnchorOutlines(
-        withParked(docAreaRaw, Object.keys(parked).length > 0 ? parked : undefined),
-        (nodeId) => byId.get(nodeId)?.goalId ?? null,
-        (goalId) => goals.find((g) => g.id === goalId)?.rootNodeId ?? null,
+    const docArea0 = syncGoalAgentTeamTabs(
+      syncGoalOutlineTabs(
+        ensureAnchorOutlines(
+          withParked(docAreaRaw, Object.keys(parked).length > 0 ? parked : undefined),
+          (nodeId) => byId.get(nodeId)?.goalId ?? null,
+          (goalId) => goals.find((g) => g.id === goalId)?.rootNodeId ?? null,
+        ),
+        goals,
       ),
       goals,
+      activeGoalId,
     )
     /*
      * 目标页签归属（见 groups/goals）：旧数据里没有这张表，现算补一份。
@@ -370,7 +386,7 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
      */
     const docArea: typeof docArea0 = (() => {
       const owners = reconcileOwners(docArea0.tabOwners, allTabs(docArea0), (nodeId) => byId.get(nodeId)?.goalId ?? null)
-      return withOwners(docArea0, owners)
+      return pruneStaleSidePortals(withOwners(docArea0, owners))
     })()
     // 「当前节点」跟着焦点格里激活的页签走：两者都是上次退出时存的，一个被手改过或者
     // 指向了已经删掉的节点时，让它们重新对齐（页签是用户看得见的那个，以它为准）
@@ -464,6 +480,10 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       favorites: normalizeFavorites(d.favorites, byId, exams),
       agentTabs: agentTabsState.tabs,
       agentActiveTab: agentTabsState.active,
+      ...(() => {
+        const fixSide = normalizeFixSideState((d as { fixSide?: unknown }).fixSide, docArea)
+        return fixSide ? { fixSide } : {}
+      })(),
     }
     // 视频资源上的 boundTo 镜像按事实源（videoNodes）整表重建：读回来的那份不作数
     const mirrored = videos.length && videoNodes.length ? withVideoMirror(store) : store

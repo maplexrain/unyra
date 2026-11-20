@@ -1,5 +1,5 @@
 /**
- * 16:9 互动课堂沙箱画布容器 (StageViewport)
+ * 16:9 课堂沙箱画布容器 (StageViewport)
  * 严格锁定 1920x1080 逻辑坐标系，通过 CSS transform 等比自适应任何宿主视口
  */
 import katex from 'katex'

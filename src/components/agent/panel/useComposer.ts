@@ -84,6 +84,8 @@ export interface ComposerOptions {
   onNotice: (message: string) => void
   /** 主动发问就是想看回复：发送后回到跟随状态（见 useScrollFollow 的 restoreFollow） */
   onSent: () => void
+  /** 是否处于激活可见状态（keepalive 隐藏面板不抢全局聚焦与消息发送句柄） */
+  active?: boolean
 }
 
 export function useComposer({
@@ -91,6 +93,7 @@ export function useComposer({
   onSend,
   onNotice,
   onSent,
+  active = true,
 }: ComposerOptions): ComposerApi {
   const [value, setValue] = useState('')
   /**
@@ -135,13 +138,14 @@ export function useComposer({
   const submitRef = useRef<() => void>(() => {})
 
   useEffect(() => {
-    setAgentFocusHandler(() => {
+    if (!active) return
+    const disposeFocus = setAgentFocusHandler(() => {
       const el = inputRef.current
       if (!el) return
       // 光标放到末尾：那是「接着写」的位置，而选中的一段旧文字会让人一敲就删掉它。
       placeCaretEnd(el)
     })
-    setAgentMessenger((msg) => {
+    const disposeMessenger = setAgentMessenger((msg) => {
       setValue(msg)
       const el = inputRef.current
       if (el) {
@@ -153,10 +157,10 @@ export function useComposer({
       }, 60)
     })
     return () => {
-      setAgentFocusHandler(null)
-      setAgentMessenger(null)
+      disposeFocus()
+      disposeMessenger()
     }
-  }, [])
+  }, [active])
 
   /**
    * 把一批图片加进待发送列表。

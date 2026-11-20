@@ -50,7 +50,8 @@ const TAIL_WINDOW = 4000
  * 这一行是 whitespace-nowrap，浏览器要为一个 30 万字宽的行盒算宽度，
  * 一个气泡就是几十毫秒，而可见的永远只有最右边那几十个字。
  */
-export function lastLineOf(text: string): string {
+export function lastLineOf(text?: string | null): string {
+  if (!text || typeof text !== 'string') return ''
   const window = text.slice(Math.max(0, text.length - TAIL_WINDOW))
   const tail = window.replace(/\s+$/, '')
   if (!tail) return ''

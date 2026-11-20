@@ -84,21 +84,28 @@ export function tabKey(ref: TabRef): string {
   if (ref.kind === 'user') return 'usr:user'
   if (ref.kind === 'terminal') return ref.termId ? 'term:' + ref.termId : 'term:terminal'
   if (ref.kind === 'classroom') return 'c:' + ref.classroomId
+  if (ref.kind === 'classroomShowcase') return ref.tag ? 'cs:' + ref.tag : 'cs:all'
   if (ref.kind === 'usage') return 'u:usage'
   // 日程表全局只有一份：从顶栏 tip、提醒弹层还是设置里打开，都是切到同一枚页签
   if (ref.kind === 'schedule') return 'sc:schedule'
   // 超级导师设置全局一份；记忆按目标归档，页签也一枚目标一份
   if (ref.kind === 'mind') return 'm:' + ref.goalId
   if (ref.kind === 'agentSettings') return 'set:agent'
+  if (ref.kind === 'agentTeam') return ref.goalId ? 'team:' + ref.goalId : 'team:all'
   if (ref.kind === 'blank') return 'b:' + ref.key
   // 新建文件页签：还没有落点，身份只能是开签那一刻的随机后缀
   if (ref.kind === 'draft') return 'd:' + ref.key
   return 'l:' + ref.path
 }
 
-/** 判断页签是否为固定页签：仅显式设置 pinned 的页签固定，不再因类型自动固定 */
+/** 结构页签（outline）与智能体团队页签（agentTeam）始终处于固定状态，不可取消固定 */
+export function isAlwaysPinnedRef(ref: TabRef): boolean {
+  return ref.kind === 'outline' || ref.kind === 'agentTeam'
+}
+
+/** 判断页签是否为固定页签：结构与智能体团队始终固定，其余页签看显式 pinned 标记 */
 export function isTabPinned(tab: LearnTab): boolean {
-  return tab.pinned ?? false
+  return isAlwaysPinnedRef(tab.ref) || (tab.pinned ?? false)
 }
 
 export function makeTab(ref: TabRef, at: number, view?: DocView): LearnTab {
@@ -165,11 +172,13 @@ export function tabNodeId(ref: TabRef): string | null {
     ref.kind === 'settings' ||
     ref.kind === 'user' ||
     ref.kind === 'classroom' ||
+    ref.kind === 'classroomShowcase' ||
     ref.kind === 'terminal' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
+    ref.kind === 'agentTeam' ||
     ref.kind === 'blank' ||
     // 新建文件页签还没有落点：保存那一刻才知道它属于哪儿（见 types 的 draft 分支）
     ref.kind === 'draft'
@@ -255,9 +264,11 @@ function rawTabTitle(
   }
   if (ref.kind === 'usage') return t('用量统计')
   if (ref.kind === 'schedule') return t('日程安排')
-  if (ref.kind === 'classroom') return t('互动课堂')
+  if (ref.kind === 'classroom') return t('课堂')
+  if (ref.kind === 'classroomShowcase') return ref.tag ? `<${ref.tag}> ${t('组件')}` : t('组件与动效库')
   if (ref.kind === 'mind') return t('记忆管理')
   if (ref.kind === 'agentSettings') return t('超级导师设置')
+  if (ref.kind === 'agentTeam') return t('智能体团队')
   if (ref.kind === 'blank') return t('新页签')
   // 新建文件页签：还没有文件名，就叫「未命名」——保存之后它变成 local 页签，显示真实文件名
   if (ref.kind === 'draft') return t('未命名')
@@ -304,6 +315,7 @@ export function tabTrail(
     ref.kind === 'settings' ||
     ref.kind === 'user' ||
     ref.kind === 'classroom' ||
+    ref.kind === 'classroomShowcase' ||
     ref.kind === 'terminal' ||
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
@@ -314,6 +326,7 @@ export function tabTrail(
     return ''
 
   if (ref.kind === 'mind') return goalLabel ? goalLabel(ref.goalId) : ''
+  if (ref.kind === 'agentTeam') return ref.goalId && goalLabel ? goalLabel(ref.goalId) : t('超级导师')
   if (ref.kind === 'local') {
     const i = Math.max(ref.path.lastIndexOf('/'), ref.path.lastIndexOf('\\'))
     return i > 0 ? ref.path.slice(0, i) : ''

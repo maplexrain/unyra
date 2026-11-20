@@ -64,7 +64,7 @@ function readGoalLedgers(
     /** 文件节点（目标 × 本地文件/网页的绑定），目标目录的 file-nodes.json */
     fileNodesByGoal: Record<string, unknown[]>
     fileEdgesByGoal: Record<string, Array<Record<string, unknown>>>
-    /** 互动课堂节点（16:9 画布互动教学课堂），目标目录的 classrooms.json */
+    /** 课堂节点（16:9 画布互动教学课堂），目标目录的 classrooms.json */
     classroomsByGoal: Record<string, unknown[]>
     classroomEdgesByGoal: Record<string, Array<Record<string, unknown>>>
     /** 目标级知识库（整门课所有文档共享），目标目录的 knowledge.json */
@@ -155,7 +155,7 @@ function readGoalLedgers(
     out.fileEdgesByGoal[goalId] = fileNodesFile.edges
   }
 
-  // 互动课堂节点（16:9 画布互动教学课堂，见 learn/classroom）与其树边
+  // 课堂节点（16:9 画布互动教学课堂，见 learn/classroom）与其树边
   const classroomsFile = parseJson<{ classrooms?: unknown[]; edges?: Array<Record<string, unknown>> }>(files.get(`${goalDir}/classrooms.json`))
   if (Array.isArray(classroomsFile?.classrooms) && classroomsFile.classrooms.length) {
     out.classroomsByGoal[goalId] = classroomsFile.classrooms
@@ -352,7 +352,7 @@ export function parseDocsV3(files: Map<string, string>, state: unknown): LearnSt
       }
     }
   }
-  // 互动课堂节点并进总账
+  // 课堂节点并进总账
   const classrooms: unknown[] = []
   for (const led of Object.values(ledgers.classroomsByGoal)) classrooms.push(...led)
   for (const led of Object.values(ledgers.classroomEdgesByGoal)) {
@@ -619,7 +619,7 @@ export function parseDocsV2(files: Map<string, string>, state: unknown): LearnSt
       }
     }
   }
-  // 互动课堂节点并进总账
+  // 课堂节点并进总账
   const classrooms2: unknown[] = []
   for (const led of Object.values(ledgers.classroomsByGoal)) classrooms2.push(...led)
   for (const led of Object.values(ledgers.classroomEdgesByGoal)) {

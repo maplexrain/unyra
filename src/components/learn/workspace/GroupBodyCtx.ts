@@ -15,6 +15,7 @@ import type { useWorkflowStarters } from './useWorkflowStarters'
 import type { usePresence } from '../../../lib/presence'
 import type { useAgent } from '../../../learn/useAgent'
 import type { loadAgentSettings } from '../../../agent/settings'
+import type { AgentSlotDeps } from './AgentSlot'
 import type TabBar from '../TabBar'
 import type WebTabLayer from '../web/WebTabLayer'
 import type { EmptyDoc } from './chrome'
@@ -145,6 +146,7 @@ export interface GroupBodyCtx {
   requestGenerateDoc: (n: KnowledgeNode) => void
   getNoteActions: (tabId: string, node: KnowledgeNode, source: DocSource) => ComponentDocPaneNote
   agent: AgentApi
+  agentSlotDeps: AgentSlotDeps
   /* 画布 / 大纲 */
   updateStructure: (goalId: string, next: StructureMap) => void
   explorerDocs: NodeDocActions

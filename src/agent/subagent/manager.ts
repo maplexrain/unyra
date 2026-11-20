@@ -17,7 +17,7 @@ import type { ReasoningEffort, StreamFn } from '../../ai/types'
 import type { ResolvedProvider } from '../../ai/client'
 import type { AgentEvent, AgentPart, MessageUsage } from '../types'
 import { resetPrefixGate } from '../prefixGate'
-import { createExecuteTool } from '../sandbox/execute'
+import { createExecuteTools } from '../sandbox/execute'
 import type { SandboxOptions, SubAgentSandboxApi, SubWaitDelivery, SubWaitResult, SubWaitRunning } from '../sandbox/types'
 import { asText } from '../sandbox/refs'
 import { apiBriefForGroups, SUBAGENT_ALLOWED_GROUPS } from './groups'
@@ -188,7 +188,7 @@ export function createSubAgentManager(deps: SubAgentManagerDeps): SubAgentManage
         sessionId: session.id,
         // 启动那一刻的会话消息（含刚追加的任务）——之后长出来的部分由介入通道同步
         messages: session.messages,
-        tools: [createExecuteTool(subsetSandbox(cfg.sandbox, def.apiGroups))],
+        tools: createExecuteTools(subsetSandbox(cfg.sandbox, def.apiGroups)),
         provider: cfg.provider,
         model: cfg.model,
         ...(cfg.effort ? { effort: cfg.effort } : {}),

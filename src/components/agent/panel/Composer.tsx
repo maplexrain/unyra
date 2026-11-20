@@ -373,6 +373,12 @@ export function Composer(props: ComposerProps) {
       editorRef.current?.focus()
       return
     }
+    if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
+      e.preventDefault()
+      e.stopPropagation()
+      editorRef.current?.blur()
+      return
+    }
     if (
       ghostRef.current &&
       (e.key === 'Tab' || (e.key === 'ArrowRight' && editorRef.current && caretAtEnd(editorRef.current)))
@@ -559,8 +565,12 @@ export function Composer(props: ComposerProps) {
                 ? t('子会话只接受导师的调度——回到导师对话给它派任务。')
                 : running
                   ? // 正在跑：说清「现在发出去会发生什么」——排队，不是等用户自己按住
-                    t('导师正在回答…这条发出去会排进等待队列，等它答完自动发送')
-                  : t('向超级导师提问…（/ 可用斜杠命令，可拖入文件、页签、图片）')}
+                    free
+                    ? t('正在回答…这条发出去会排进等待队列，等它答完自动发送')
+                    : t('导师正在回答…这条发出去会排进等待队列，等它答完自动发送')
+                  : free
+                    ? t('输入消息开始对话…（/ 可用斜杠命令，可拖入文件、页签、图片）')
+                    : t('向超级导师提问…（/ 可用斜杠命令，可拖入文件、页签、图片）')}
             </span>
           )}
           <div

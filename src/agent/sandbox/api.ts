@@ -116,7 +116,7 @@ export function buildApi(
   installProcess(api, log)
   // 技能域：skill.*
   installSkill(api, opts, log)
-  // 互动课堂域：schema / verbs / components / animations / register* / check
+  // 课堂域：schema / verbs / components / animations / register* / check
   installClassroom(api, opts, log)
 
   /*

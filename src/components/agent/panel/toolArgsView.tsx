@@ -27,6 +27,26 @@ export function paramOf(part: Extract<AgentPart, { type: 'tool' }>): { text: str
     const text = formatJs(executeArgs(part.args).body)
     return text ? { text, lang: 'javascript' } : null
   }
+  if (part.name === 'rexecute') {
+    try {
+      const parsed = JSON.parse(part.args) as Record<string, unknown>
+      if (parsed && typeof parsed === 'object') {
+        const pattern = parsed.pattern ?? parsed.search ?? parsed.find
+        const replacement = parsed.replacement ?? parsed.replace ?? parsed.new
+        if (typeof pattern === 'string') {
+          const flags = typeof parsed.flags === 'string' ? parsed.flags : 'g'
+          const rep = typeof replacement === 'string' ? replacement : ''
+          return {
+            text: `// 正则替换规则\ns/${pattern}/${rep}/${flags}`,
+            lang: 'javascript',
+          }
+        }
+        return { text: JSON.stringify(parsed, null, 2), lang: 'json' }
+      }
+    } catch {
+      // 参数非法时原样展示
+    }
+  }
   try {
     const parsed = JSON.parse(part.args) as Record<string, unknown>
     if (parsed && typeof parsed === 'object') {

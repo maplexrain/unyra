@@ -2,7 +2,7 @@
 
 import type { Drafts } from '../drafts'
 import { DEFAULT_SCHEDULE_SOUND } from '../schedule'
-import type { DocKind, DocScroll, FavoriteItem, LearnStore, LearnTab, LocalFile, MemoryItem, WorkflowEntry } from '../types'
+import type { DocKind, DocScroll, FavoriteItem, FixSideState, LearnStore, LearnTab, LocalFile, MemoryItem, WorkflowEntry } from '../types'
 
 /**
  * 界面状态（相对用户目录的 state.json）。
@@ -64,6 +64,8 @@ export interface LearnState {
   agentTabs?: unknown
   /** agent 栏当前激活的页签（agentTabKey 的结果） */
   agentActiveTab?: unknown
+  /** Vim `:fixside` 固定外侧栏状态（原样落盘，校验交给 normalizeLearnStore） */
+  fixSide?: FixSideState
 }
 
 export function buildState(store: LearnStore): Record<string, unknown> {
@@ -104,6 +106,7 @@ export function buildState(store: LearnStore): Record<string, unknown> {
      */
     ...(store.agentTabs?.length ? { agentTabs: store.agentTabs } : {}),
     ...(store.agentActiveTab ? { agentActiveTab: store.agentActiveTab } : {}),
+    ...(store.fixSide ? { fixSide: store.fixSide } : {}),
     // 随笔窗口的位置与大小：拖过一次才写（没拖过就是默认值，不占字段）
   }
 }

@@ -358,17 +358,23 @@ describe('拓扑图连线支持与下级挂件连接', () => {
 })
 
 describe('文档区固定 Tab（Pinned Tab）规则', () => {
-  it('所有类型 Tab 默认为非固定，不因类型自动固定', () => {
+  it('结构(outline)与智能体团队(agentTeam)始终固定且不可取消，其余普通类型默认为非固定', () => {
     const outlineTab = makeTab({ kind: 'outline', nodeId: 'n1' }, 0)
+    const outlineUnpinnedAttempt = { ...outlineTab, pinned: false }
+    const teamTab = makeTab({ kind: 'agentTeam', goalId: 'g1' }, 0)
+    const teamUnpinnedAttempt = { ...teamTab, pinned: false }
     const teachTab = makeTab({ kind: 'teach', nodeId: 'n1' }, 0)
     const noteTab = makeTab({ kind: 'note', nodeId: 'n1', note: '随笔' }, 0)
 
-    expect(isTabPinned(outlineTab)).toBe(false)
+    expect(isTabPinned(outlineTab)).toBe(true)
+    expect(isTabPinned(outlineUnpinnedAttempt)).toBe(true)
+    expect(isTabPinned(teamTab)).toBe(true)
+    expect(isTabPinned(teamUnpinnedAttempt)).toBe(true)
     expect(isTabPinned(teachTab)).toBe(false)
     expect(isTabPinned(noteTab)).toBe(false)
   })
 
-  it('普通 Tab 与结构 Tab 支持显式设置 pinned', () => {
+  it('普通 Tab 支持显式设置 pinned，结构与智能体团队恒固定', () => {
     const customPinned = { ...makeTab({ kind: 'teach', nodeId: 'n1' }, 0), pinned: true }
     const teachUnpinned = { ...makeTab({ kind: 'teach', nodeId: 'n1' }, 0), pinned: false }
     const outlineExplicit = { ...makeTab({ kind: 'outline', nodeId: 'n1' }, 0), pinned: true }
@@ -378,7 +384,7 @@ describe('文档区固定 Tab（Pinned Tab）规则', () => {
     expect(isTabPinned(outlineExplicit)).toBe(true)
   })
 
-  it('reorderTabs 始终保证显式固定的 Tab 排在最前面', () => {
+  it('reorderTabs 始终保证固定 Tab（含结构、智能体团队与显式 pinned）排在最前面', () => {
     const tabA = makeTab({ kind: 'teach', nodeId: 'nA' }, 0)
     const tabB = { ...makeTab({ kind: 'teach', nodeId: 'nB' }, 0), pinned: true }
     const tabOutline = makeTab({ kind: 'outline', nodeId: 'nOutline' }, 0)
@@ -387,12 +393,12 @@ describe('文档区固定 Tab（Pinned Tab）规则', () => {
     const tabs = [tabA, tabB, tabOutline, tabC]
     const reordered = reorderTabs(tabs, [tabC.id, tabA.id, tabOutline.id, tabB.id])
 
-    // 仅显式固定 tab（tabB）在前，其余非固定（tabC, tabA, tabOutline）在后按新顺序排
+    // 固定 tab（tabOutline, tabB）排在左侧固定区，其余非固定（tabC, tabA）在后按新顺序排
     const pinnedIds = reordered.filter(isTabPinned).map((t) => t.id)
     const unpinnedIds = reordered.filter((t) => !isTabPinned(t)).map((t) => t.id)
 
-    expect(pinnedIds).toEqual([tabB.id])
-    expect(unpinnedIds).toEqual([tabC.id, tabA.id, tabOutline.id])
+    expect(pinnedIds).toEqual([tabOutline.id, tabB.id])
+    expect(unpinnedIds).toEqual([tabC.id, tabA.id])
     expect(reordered.map((t) => t.id)).toEqual([...pinnedIds, ...unpinnedIds])
   })
 

@@ -7,6 +7,8 @@ import { toggleAgentPanel, sendAgentMessage } from './agentFocus'
 import { toggleExplorer } from './explorerFocus'
 import { EditorView } from '@codemirror/view'
 import { executeOpenTarget } from './vimOpenTargets'
+import { executeSideCommand, executeFixSideCommand } from './vimSideTargets'
+import { openGlobalCommandBar } from './commandBarFocus'
 import { normalizeWebInput } from '../learn/webUrl'
 
 export interface VimEditorBridge {
@@ -44,6 +46,13 @@ export interface GlobalTabOperations {
   knowSelection?: () => { success: boolean; message?: string }
   studySelection?: () => { success: boolean; message?: string }
   askSelection?: (query?: string) => { success: boolean; message?: string }
+  openSidePortal?: (targetTabId: string) => { success: boolean; message?: string }
+  closeSidePortal?: () => { success: boolean; message?: string }
+  swapSidePortal?: () => { success: boolean; message?: string }
+  openFixSidePortal?: (targetTabId: string) => { success: boolean; message?: string }
+  closeFixSidePortal?: () => { success: boolean; message?: string }
+  swapFixSidePortal?: () => { success: boolean; message?: string }
+  toggleFixSideCollapse?: () => { success: boolean; message?: string }
 }
 
 let activeBridge: VimEditorBridge | null = null
@@ -621,6 +630,70 @@ export function registerVimExCommands(): void {
     const res = executeOpenTarget(arg)
     if (res.message) showVimNotice(cm, res.message)
   })
+
+  // 29.5 :side / :sd 页签内并排传送对照
+  const onSide = (cm: any, params: any) => {
+    const arg = params?.argString?.trim() || ''
+    if (!arg) {
+      const closed = globalTabOps?.closeSidePortal?.()
+      if (closed?.success) {
+        if (closed.message) showVimNotice(cm, closed.message)
+        return
+      }
+      window.setTimeout(() => openGlobalCommandBar({ mode: ':', prefill: 'side ' }), 0)
+      return
+    }
+    const lower = arg.toLowerCase()
+    if (lower === 'off' || lower === 'close' || lower === 'clear' || lower === 'only' || arg === '关闭') {
+      const res = globalTabOps?.closeSidePortal?.()
+      if (res?.message) showVimNotice(cm, res.message)
+      return
+    }
+    if (lower === 'swap' || lower === 'switch' || lower === 'flip' || arg === '对调') {
+      const res = globalTabOps?.swapSidePortal?.()
+      if (res?.message) showVimNotice(cm, res.message)
+      return
+    }
+    const res = executeSideCommand(arg)
+    if (res.message) showVimNotice(cm, res.message)
+  }
+  Vim.defineEx('side', 'si', onSide)
+  Vim.defineEx('sd', 'sd', onSide)
+
+  // 29.6 :fixside / :fside / :fsd 页签栏外侧固定对照栏（与原 AgentPanel 同位）
+  const onFixSide = (cm: any, params: any) => {
+    const arg = params?.argString?.trim() || ''
+    if (!arg) {
+      const closed = globalTabOps?.closeFixSidePortal?.()
+      if (closed?.success) {
+        if (closed.message) showVimNotice(cm, closed.message)
+        return
+      }
+      window.setTimeout(() => openGlobalCommandBar({ mode: ':', prefill: 'fixside ' }), 0)
+      return
+    }
+    const lower = arg.toLowerCase()
+    if (lower === 'off' || lower === 'close' || lower === 'clear' || lower === 'hide' || arg === '关闭') {
+      const res = globalTabOps?.closeFixSidePortal?.()
+      if (res?.message) showVimNotice(cm, res.message)
+      return
+    }
+    if (lower === 'swap' || lower === 'switch' || lower === 'flip' || arg === '对调') {
+      const res = globalTabOps?.swapFixSidePortal?.()
+      if (res?.message) showVimNotice(cm, res.message)
+      return
+    }
+    if (lower === 'toggle' || lower === 'collapse' || arg === '折叠') {
+      const res = globalTabOps?.toggleFixSideCollapse?.()
+      if (res?.message) showVimNotice(cm, res.message)
+      return
+    }
+    const res = executeFixSideCommand(arg)
+    if (res.message) showVimNotice(cm, res.message)
+  }
+  Vim.defineEx('fixside', 'fixs', onFixSide)
+  Vim.defineEx('fside', 'fside', onFixSide)
+  Vim.defineEx('fsd', 'fsd', onFixSide)
 
   // 30. 浏览模式划词专属命令 (:mark, :comment, :know, :study, :ask)
   Vim.defineEx('mark', 'mark', (cm) => {

@@ -49,8 +49,7 @@ import {
   activateIn,
   activeIdsOf,
   allTabs,
-  claimTab,
-  closeIds,
+  claimTab, closeIds, DEFAULT_FIX_SIDE_WIDTH, ensureGoalAgentTeamTab,
   findTab,
   focusedTab,
   goalTabsOf,
@@ -67,14 +66,12 @@ import {
   withOwners,
   type DocLayout,
 } from '../../learn/groups'
-import { isTabPinned, reorderTabs, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
+import { isAlwaysPinnedRef, isTabPinned, reorderTabs, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
 import { setZenActive } from '../../learn/zen'
 import type { BrowserDeps } from '../../learn/web/browserOps'
 import { webviewOf } from '../../learn/web/webviewRegistry'
 import {
-  addConversation,
   conversationById,
-  deleteConversation,
   ensureConversation,
   latestConversation,
   resolveDisplayedConversation,
@@ -98,7 +95,6 @@ import FloatWindow from '../FloatWindow'
 import { usePresence } from '../../lib/presence'
 import StructOverlay from './workspace/StructOverlay'
 import { useVimGlobalTabOps } from './workspace/useVimGlobalTabOps'
-import { pruneImages } from '../../learn/images'
 import { queueOf, shouldEnqueue } from '../../learn/agentQueue'
 import { nodePathOf } from '../../learn/paths'
 import { nodeDocPath } from '../../learn/files'
@@ -135,7 +131,6 @@ import { useDoubleCtrl } from '../../lib/useDoubleCtrl'
 import type { DocSource } from './NodeNote'
 import ConfirmDialog from '../ConfirmDialog'
 import ContextDebugger from '../agent/ContextDebugger'
-import { resetPrefixGate } from '../../agent/prefixGate'
 import { docAreaElement, locateNeedle, scrollToDoc, visibleDocBody } from '../../lib/docDom'
 import { nodeRevealKey, requestSourceReveal } from '../../lib/docReveal'
 import { readRecentTabs, residentIds } from '../../learn/resident'
@@ -148,8 +143,8 @@ import { ToolsDock } from './workspace/docks'
 import ScreenshotModal from '../tools/ScreenshotModal'
 import { Topbar } from './workspace/chrome'
 import { CreateGoalDialog } from './workspace/CreateGoalDialog'
-import { useSideColumns } from './workspace/useSideColumns'
-import SplitRow from './workspace/SplitRow'
+import { useZenMode } from './workspace/useZenMode'
+import { useAgentTeamHost } from './workspace/useAgentTeamHost'
 import { useDocSaveFlow } from './workspace/useDocSaveFlow'
 import { useExportFlow } from './workspace/useExportFlow'
 import { useTabDnd } from './workspace/useTabDnd'
@@ -172,8 +167,10 @@ import { useCanvasChannel } from './workspace/useCanvasChannel'
 import { useAgentTabActions } from './workspace/useAgentTabActions'
 import { useDeleteFlows } from './workspace/useDeleteFlows'
 import { DeleteConfirms } from './workspace/DeleteConfirms'
-import { AgentSlot } from './workspace/AgentSlot'
+import type { AgentSlotDeps } from './workspace/AgentSlot'
+import { sortConversationsByTimeDesc } from './agent-team/conversationList'
 import { useHostWiring } from './workspace/useHostWiring'
+import { FixSideLayout } from './workspace/FixSideLayout'
 import { renderGroupBody } from './workspace/GroupBody'
 import { useTabOpening } from './workspace/useTabOpening'
 import { useChipOpening } from './workspace/useChipOpening'
@@ -378,22 +375,18 @@ export default function LearnWorkspace({
    */
   const agentTabs = useMemo(() => store.agentTabs ?? [], [store.agentTabs])
   /*
-   * 固定聊天页签：栏上最左、常驻、不落 store——每一轮渲染在列表前合成一枚。
-   * 它展示的会话 = freeConvId（点选/新建时记下），丢了就回落到最近一段。
+   * 仅聊天模式：会话存在 users/{uid}/free-chat.json（learn/freeChat），按对话时间降序排列，
+   * 选中/新建时记在 freeConvId，丢失或初始为空时自动落到最近活跃的一段。
    */
   const freeChats = useSyncExternalStore(subscribeFreeChat, getFreeConversations)
+  const sortedFreeChats = useMemo(() => sortConversationsByTimeDesc(freeChats), [freeChats])
   const [freeConvId, setFreeConvId] = useState<string | null>(null)
   const currentFreeConvId =
-    freeConvId && freeConversationById(freeConvId) ? freeConvId : (freeChats[0]?.id ?? null)
+    freeConvId && freeConversationById(freeConvId) ? freeConvId : (sortedFreeChats[0]?.id ?? null)
   const freeTabRef = useMemo<AgentTabRef>(
     () => ({ kind: 'free', conversationId: currentFreeConvId }),
     [currentFreeConvId],
   )
-  /*
-   * agent 页签**跟着目标走**（见 learn/agentTabs 的 visibleAgentTabs）：
-   * 栏上只画当前目标名下的导师与子代理，切换目标时那一栏跟着换。
-   * 子代理的归属按它那段对话算（谁派出去的就属于谁），因此 `goalOfConversation` 由这里注入。
-   */
   const goalOfConversation = useCallback(
     (id: string) => conversationById(store, id)?.goalId ?? null,
     [store],
@@ -402,14 +395,8 @@ export default function LearnWorkspace({
     () => visibleAgentTabs(agentTabs, store.activeGoalId, goalOfConversation),
     [agentTabs, store.activeGoalId, goalOfConversation],
   )
-  /** 页签条看到的列表 = 固定页签置左 + 本目标的页签原序 */
-  const stripTabs = useMemo(() => [freeTabRef, ...goalAgentTabs], [freeTabRef, goalAgentTabs])
   /**
-   * 面板常挂的列表：**所有**页签（不按目标过滤）。
-   *
-   * 栏上按目标过滤是「别把话说错人」，面板不跟着过滤是另一件事——输入框里打到一半的
-   * 话是组件自己的 state（不落盘），面板一卸载就没了。切走一个目标再切回来，
-   * 半句话还在不在，差别就在这一行。
+   * 面板常挂的列表：**所有**页签（不按目标过滤），切走再切回时保留输入草稿与滚动位置。
    */
   const agentPanes = useMemo(() => [freeTabRef, ...agentTabs], [freeTabRef, agentTabs])
   const activeAgentTab = useMemo(() => {
@@ -613,16 +600,9 @@ export default function LearnWorkspace({
   void settingsEpoch
 
   /*
-   * 两列的机制（拖宽、收起、对调）整体在 useSideColumns（workspace/）：
-   * 这里解构出编排层用得到的几样；骨架 JSX 从 SplitRow 拿同一份对象。
+   * 纯净阅读模式（Zen Mode）状态与进出动画计时器：整体在 useZenMode（workspace/）。
    */
-  const side = useSideColumns()
-  /*
-   * pureMoving 是「纯净阅读的补间正在走」（进出都算，见 useSideColumns）。页签栏与顶栏
-   * 那两条收起动画都要看它——它们的时长与两列是同一档，只有把这 300ms 算进来，
-   * 几条边才是**一起**收好、一起放开的，而不是各收各的。
-   */
-  const { agentLeft, sideCollapsed, toggleSide, expandSide, pure, pureMoving, setPure } = side
+  const { pure, pureMoving, setPure } = useZenMode()
 
   /**
    * 切换纯净阅读：**F11、Esc、文档区悬浮组那颗按钮**走的是同一个动作。
@@ -822,18 +802,25 @@ export default function LearnWorkspace({
     browserDeps: () => (isWeb() ? undefined : (browserDepsRef.current ?? undefined)),
   })
 
-  /* ---------- agent 栏页签（见 learn/agentTabs 与 AgentTabStrip）：见 workspace/useAgentTabActions ---------- */
+  /* ---------- 智能体模式切换与会话 CRUD（见 workspace/useAgentTabActions） ---------- */
   const {
     openAgentTab,
     activateAgentTab,
-    docGoalIds,
-    closeAgentTabMode,
-    closeAgentTab,
-    reorderAgentTabList,
-    agentTabTitle,
-    agentTabRunning,
+    selectTutorGoal,
+    exitSubagentView,
+    handleNewGoalConversation,
+    newConversationIn,
+    selectConversationIn,
+    pruneImagesOf,
+    removeConversation,
     fixAgentTabsAfter,
-  } = useAgentTabActions({ store, getLatest, set, onToast, tabs, agent })
+  } = useAgentTabActions({
+    getLatest,
+    set,
+    onToast,
+    setSidebarOpen,
+    runningByConversation: agent.runningByConversation,
+  })
 
   /**
    * 超级文档的 method 桥：一份**常驻**的沙箱 api + 执行持久化函数的回调。
@@ -1063,7 +1050,7 @@ export default function LearnWorkspace({
   /** 固定/取消固定某一格里的页签，重排确保固定页签在最前面 */
   const toggleTabPin = useCallback(
     (group: string, tab: LearnTab) => {
-      if (tab.ref.kind === 'outline') return
+      if (isAlwaysPinnedRef(tab.ref)) return
       const s = getLatest()
       const docs = s.docArea
       const g = groupOf(docs, group)
@@ -1181,50 +1168,6 @@ export default function LearnWorkspace({
   )
 
   /**
-   * 换一段对话：会话属于目标，所以切对话不换节点。keepalive 的页签面板各自绑自己
-   * 的页签——换的是**那一枚页签**里展示的会话；被换的正是激活页签时，
-   * activeConversationId（文档区那条旧读口）也同步过去。
-   */
-  const selectConversationIn = (tab: AgentTabRef, conversationId: string) => {
-    if (tab.kind !== 'goal') return
-    const s = getLatest()
-    const conv = conversationById(s, conversationId)
-    if (!conv || conv.goalId !== tab.goalId) return
-    const t0 = upsertAgentTab(
-      s.agentTabs ?? [],
-      s.agentActiveTab ?? null,
-      { kind: 'goal', goalId: tab.goalId, conversationId },
-      true,
-    )
-    const next: LearnStore = {
-      ...s,
-      activeGoalId: tab.goalId,
-      activeConversationId: conversationId,
-    }
-    set(withAgentTabs(next, t0.tabs, t0.active))
-    setSidebarOpen(false)
-  }
-
-  /** 在某一枚目标级页签的目标里另起一段对话（同一个目标可以有并行几段上下文） */
-  const newConversationIn = (tab: AgentTabRef) => {
-    if (tab.kind !== 'goal') return
-    const s = getLatest()
-    const { store: withConv, conversation } = addConversation(s, tab.goalId)
-    const t0 = upsertAgentTab(
-      withConv.agentTabs ?? [],
-      withConv.agentActiveTab ?? null,
-      { kind: 'goal', goalId: tab.goalId, conversationId: conversation.id },
-      true,
-    )
-    const next: LearnStore = {
-      ...withConv,
-      activeGoalId: tab.goalId,
-      activeConversationId: conversation.id,
-    }
-    set(withAgentTabs(next, t0.tabs, t0.active))
-  }
-
-  /**
    * 全局推理等级：斜杠 /effort 与 ModelPicker 是同一个设置（AiSettings.global.effort）的两个入口。
    * 写完 bump 一次 settingsEpoch——它读的不是 React state，不 bump 界面不会知道该重新读。
    */
@@ -1235,59 +1178,6 @@ export default function LearnWorkspace({
     setSettingsEpoch((n) => n + 1)
     onToast(t('推理等级已设为「{0}」', REASONING_LABEL[next]))
   }
-
-  /**
-   * 删对话 / 删消息之后清一次图片。
-   *
-   * 图片是独立文件（见 learn/images），消息里只有一条引用：引用没了文件不会自己
-   * 消失。放在这里而不是每个删除点各写一遍——漏掉一处就是一份永远留在磁盘上的
-   * 垃圾，而且用户看不到它、也就不会去清。
-   */
-  const pruneImagesOf = (s: LearnStore) => {
-    if (s.activeGoalId) void pruneImages(s, s.activeGoalId)
-  }
-
-  const removeConversation = (conversationId: string) => {
-    // 删除会话（或删掉同目标最后一段时清空它的消息）是设计内的历史改写：这一会话的
-    // 前缀账重新开始记（见 agent/prefixGate）
-    resetPrefixGate(conversationId)
-    const next = fixAgentTabsAfter(deleteConversation(getLatest(), conversationId))
-    if (next.activeConversationId || !next.activeNodeId) {
-      set(next)
-      pruneImagesOf(next)
-      return
-    }
-    // 删掉的正是当前对话：回落到同一目标里最近的另一个
-    const node = nodeById(next, next.activeNodeId)
-    if (!node) {
-      set(next)
-      pruneImagesOf(next)
-      return
-    }
-    const ensured = ensureConversation(next, node.goalId)
-    const patched: LearnStore = { ...ensured.store, activeConversationId: ensured.conversationId }
-    set(patched)
-    pruneImagesOf(patched)
-  }
-
-  /** 在当前激活的目标下新增一段对话并作为新页签打开置前 */
-  const handleNewGoalConversation = useCallback(() => {
-    const s = getLatest()
-    if (!s.activeGoalId) return
-    const { store: withConv, conversation } = addConversation(s, s.activeGoalId)
-    const t0 = upsertAgentTab(
-      withConv.agentTabs ?? [],
-      withConv.agentActiveTab ?? null,
-      { kind: 'goal', goalId: s.activeGoalId, conversationId: conversation.id },
-      true,
-    )
-    const next: LearnStore = {
-      ...withConv,
-      activeGoalId: s.activeGoalId,
-      activeConversationId: conversation.id,
-    }
-    set(withAgentTabs(next, t0.tabs, t0.active))
-  }, [getLatest, set])
 
   /* ---------- 新建学习目标 ---------- */
 
@@ -1337,7 +1227,8 @@ export default function LearnWorkspace({
         now,
       )
 
-      const docArea = activateIn(docAreaWithAnchor, docAreaWithAnchor.focus, rootId)
+      const docAreaActivated = activateIn(docAreaWithAnchor, docAreaWithAnchor.focus, rootId)
+      const docArea = ensureGoalAgentTeamTab(docAreaActivated, goalId, now, { targetGroupId: docAreaActivated.focus })
       const claimedOwners = claimTab(docArea.tabOwners, goalId, rootId)
 
       const nextStore: LearnStore = {
@@ -1349,6 +1240,7 @@ export default function LearnWorkspace({
         activeNodeId: null,
         activeConversationId: conversation.id,
         docArea: withOwners(docArea, claimedOwners),
+        ...(!curStore.fixSide ? { fixSide: { targetTabId: `team:${goalId}`, width: DEFAULT_FIX_SIDE_WIDTH } } : {}),
       }
 
       set(nextStore)
@@ -1410,85 +1302,21 @@ export default function LearnWorkspace({
     },
   })
 
-  /**
-   * 导师开始干活时自动弹开右侧那一栏（仅当它就在右侧）。
-   *
-   * 收着的那一栏等于不存在，而「它正在写」「它正在判卷」恰恰是这一刻用户要看的东西。
-   * 只在 running 的**上升沿**做：跑起来之后用户若手动收起（想安静看文档），
-   * 不该每一帧又把它顶开。它在左边（主位）时不用管——本来就看得见。
+  /*
+   * 智能体团队（Tab 页版 AgentPanel）宿主协调：
+   * 监听工作区各处触发的工作流与提问表单（runningByConversation / pendingAskByConv），
+   * 自动同步 agentTabs 激活会话，并在需要时自动切至智能体团队页签。
    */
-  const wasRunning = useRef(false)
-  useEffect(() => {
-    /*
-     * 纯净阅读里**不弹**：那时用户要的正是「没有导师栏」的那块地方，
-     * 顶开它等于把刚收起来的东西又塞回去（退出之后它自然会按需弹开）。
-     */
-    if (agent.running && !wasRunning.current && !agentLeft && !pure) expandSide()
-    wasRunning.current = agent.running
-  }, [agent.running, agentLeft, expandSide, pure])
-
-  /**
-   * 文档区在右侧栏（agentLeft）且收起时，若文档区发生变动（文件变动/tab变动）则自动弹出。
-   *
-   * 对应场景：
-   * 1. tab 变动：打开新页签、关闭页签、切换激活页签、分屏或焦点变化。
-   * 2. 文件变动：导师改写教学文档（节点 editContent）、笔记修改、超级文档保存、试卷提交或草稿更新。
-   *
-   * 守卫与约束：
-   * - 首次挂载只记录初始快照，不触发弹出（避免应用启动时违背用户上一次保存的收起偏好）。
-   * - 纯净阅读（pure）模式下不弹（同导师栏策略，Zen 模式优先保护全屏沉浸）。
-   */
-  const docAreaSig = useMemo(() => {
-    const groupParts = Object.values(docs.groups)
-      .map((g) => `${g.id}:${g.active}:[${g.tabs.map((t) => `${t.id}:${tabKey(t.ref)}`).join(',')}]`)
-      .join('|')
-    const tabSig = `${docs.focus}::${groupParts}`
-
-    const contentParts: string[] = []
-    for (const t of tabs) {
-      const ref = t.ref
-      if (ref.kind === 'teach') {
-        const node = nodeById(store, ref.nodeId)
-        contentParts.push(`${t.id}:teach:${node?.docs?.teaching?.length ?? 0}:${node?.updatedAt ?? 0}`)
-      } else if (ref.kind === 'note') {
-        const node = nodeById(store, ref.nodeId)
-        const n = node?.notes.find((item) => item.name === ref.note)
-        contentParts.push(`${t.id}:note:${n?.content?.length ?? 0}:${n?.updatedAt ?? 0}`)
-      } else if (ref.kind === 'super') {
-        const s = readSuperDoc(store, ref.nodeId, ref.name)
-        contentParts.push(`${t.id}:super:${s?.html?.length ?? 0}:${s?.updatedAt ?? 0}`)
-      } else if (ref.kind === 'exam') {
-        const exam = store.exams.find((e) => e.id === ref.examId)
-        const attempt = exam?.attempts.find((a) => a.id === ref.attemptId)
-        contentParts.push(`${t.id}:exam:${attempt?.endedAt ?? attempt?.startedAt ?? 0}`)
-      } else if (ref.kind === 'outline') {
-        const node = nodeById(store, ref.nodeId)
-        contentParts.push(`${t.id}:outline:${node?.updatedAt ?? 0}`)
-      }
-      const draft = store.drafts[t.id]
-      if (draft) {
-        contentParts.push(`${t.id}:draft:${draft.length}`)
-      }
-    }
-    const contentSig = contentParts.join(';')
-
-    return { tabSig, contentSig }
-  }, [docs, tabs, store])
-
-  const prevDocAreaSig = useRef<{ tabSig: string; contentSig: string } | null>(null)
-  useEffect(() => {
-    if (prevDocAreaSig.current === null) {
-      prevDocAreaSig.current = docAreaSig
-      return
-    }
-    const tabChanged = prevDocAreaSig.current.tabSig !== docAreaSig.tabSig
-    const contentChanged = prevDocAreaSig.current.contentSig !== docAreaSig.contentSig
-    prevDocAreaSig.current = docAreaSig
-
-    if ((tabChanged || contentChanged) && agentLeft && sideCollapsed && !pure) {
-      expandSide()
-    }
-  }, [docAreaSig, agentLeft, sideCollapsed, pure, expandSide])
+  const { toggleAgentTeam, expandAgentTeam } = useAgentTeamHost({
+    getLatest,
+    set,
+    openTab,
+    activateTab,
+    agent,
+    pure,
+    setPure,
+    onSyncFreeConvId: setFreeConvId,
+  })
 
 
   /*
@@ -1731,10 +1559,7 @@ export default function LearnWorkspace({
     getLatest,
     closeTab,
     pure,
-    agentLeft,
-    sideCollapsed,
-    expandSide,
-    toggleSide,
+    toggleAgentTeam,
     toggleZen,
     isWeb,
     focusWebAddress,
@@ -1743,7 +1568,7 @@ export default function LearnWorkspace({
 
   // 全局 Vim 冒号命令调度（支持非编辑页面执行 :tabo, :q, :tabnew, :agent, :edit, :browser, :fullscreen, :open 以及划词专属 :mark, :comment, :know, :study, :ask 等）
   useVimGlobalTabOps({
-    getLatest, closeTab, openBlankTab, toggleSide, expandSide, setPure,
+    getLatest, set, closeTab, openBlankTab, toggleSide: toggleAgentTeam, expandSide: expandAgentTeam, setPure,
     isPure: () => pure, togglePure: toggleZen, openWebTab, setTabView, openTab,
     openExam: exam.openExam, openExamCopy, newExam, openWsFile, openLocalFile,
     activateTab, onToast,
@@ -1781,107 +1606,39 @@ export default function LearnWorkspace({
    * 拆成组件就得把这几十样逐个透传一遍，而它本来就只在这一次渲染里用（每格一次）。
    */
 
-  /*
-   * 一格正文的完整渲染：见 workspace/GroupBody（页签栏、页签类型分派、
-   * 常驻层、查找条、悬浮组、落点高亮）。格内派生在 GroupBody 里现算，
-   * 宿主能力从这里一次性喂入。
-   */
-  const renderGroup = (groupId: string) =>
-    renderGroupBody({
-      groupId,
-      store,
-      docs,
-      getLatest,
-      set,
-      onToast,
-      openTab,
-      onRootChanged,
-      users: users ?? (user ? [user] : []),
-      activeUserId: user?.id ?? null,
-      onSelectUser, onCreateUser, onUpdateUser, onDeleteUser, onSignOut,
-      tabOwners,
-      shownTabIds,
-      residentPanes,
-      activeGoalId,
-      activeTab,
-      docView,
-      docSource,
-      docPending,
-      unsavedIds,
-      tabTrails,
-      webMeta,
-      patchWebMeta,
-      outlineFocus,
-      handleOutlineFocusHandled,
-      pure,
-      pureMoving,
-      toggleZen,
-      findMode,
-      findTick,
-      setFindMode,
-      docSaving,
-      docSaveError,
-      localSaved,
-      localTicks,
-      editDocSource,
-      stageLocalDraft,
-      stageNewFileDraft,
-      saveDocNow,
-      closeTab,
-      setTabView,
-      rememberScroll,
-      docScale,
-      editorScale,
-      activateTab,
-      reorderTabList,
-      toggleTabPin,
-      onTabDragMove,
-      onTabDrop,
-      tabDrag,
-      tabDocPayload,
-      openChipInGroup,
-      openNewFileInPlace,
-      pickLocalInPlace,
-      openWebInPlace,
-      openNewGoalInPlace,
-      openWebTab,
-      openBlankTab,
-      commitWebUrl,
-      pendingJumpsRef,
-      isTabFavorite,
-      toggleTabFavorite,
-      isUrlFavorite,
-      toggleUrlFavorite,
-      favoriteTitleOf,
-      openFavorite,
-      blankRecents,
-      openRecent,
-      scheduleActions,
-      scheduleRinging,
-      memoryCreate,
-      memoryUpdate,
-      memoryDelete,
-      memoryClearWork,
-      agentSettings,
-      hasKey,
-      debugWin,
-      openContextTrace,
-      workflowRows,
-      runWorkflowRow,
-      removeWorkflowRow,
-      requestGenerateDoc,
-      getNoteActions,
-      agent,
-      updateStructure,
-      explorerDocs,
-      explorerExams,
-      canvasChannel,
-      runSuperMethod,
-      docBox,
-      groupHosts,
-      stripHosts,
-      examTabTitle,
-    })
+  const agentSlotDeps: AgentSlotDeps = {
+    store,
+    getLatest,
+    set,
+    agent,
+    freeChats,
+    currentFreeConvId,
+    setFreeConvId,
+    onToast,
+    openTab,
+    effort,
+    setGlobalEffort,
+    hasKey,
+    providerName,
+    vision,
+    agentSettings,
+    setSettingsEpoch,
+    agentPanes,
+    activeAgentTab,
+    activeAgentTabId,
+    activateAgentTab,
+    openAgentTab,
+    selectTutorGoal,
+    exitSubagentView,
+    handleNewGoalConversation,
+    removeConversation,
+    newConversationIn,
+    selectConversationIn,
+    pruneImagesOf,
+    startSuperLab,
+    newExam,
+    shouldWaitInLine,
+  }
 
   /**
    * 布局树 → DOM。
@@ -1891,7 +1648,7 @@ export default function LearnWorkspace({
    * 这正是「拖那条线时两边的比例严格跟着指针走」的前提。
    */
   const renderLayout = (node: DocLayout): ReactNode => {
-    if (node.kind === 'group') return renderGroup(node.group)
+    if (node.kind === 'group') return renderGroupBody({ groupId: node.group, ...groupSharedCtx })
     const sizes = splitDrag?.id === node.id ? splitDrag.sizes : node.sizes
     return (
       <div
@@ -1993,6 +1750,27 @@ export default function LearnWorkspace({
     }),
     [exam.openExam, exam.reveal, exam.live, selectNode, onToast, requestGrading, grading, openExamCopy],
   )
+
+  const groupSharedCtx = {
+      store, docs, getLatest, set, onToast, openTab, onRootChanged,
+      users: users ?? (user ? [user] : []), activeUserId: user?.id ?? null,
+      onSelectUser, onCreateUser, onUpdateUser, onDeleteUser, onSignOut,
+      tabOwners, shownTabIds, residentPanes, activeGoalId, activeTab,
+      docView, docSource, docPending, unsavedIds, tabTrails, webMeta, patchWebMeta,
+      outlineFocus, handleOutlineFocusHandled, pure, pureMoving, toggleZen,
+      findMode, findTick, setFindMode, docSaving, docSaveError, localSaved, localTicks,
+      editDocSource, stageLocalDraft, stageNewFileDraft, saveDocNow, closeTab,
+      setTabView, rememberScroll, docScale, editorScale, activateTab, reorderTabList,
+      toggleTabPin, onTabDragMove, onTabDrop, tabDrag, tabDocPayload, openChipInGroup,
+      openNewFileInPlace, pickLocalInPlace, openWebInPlace, openNewGoalInPlace,
+      openWebTab, openBlankTab, commitWebUrl, pendingJumpsRef, isTabFavorite,
+      toggleTabFavorite, isUrlFavorite, toggleUrlFavorite, favoriteTitleOf, openFavorite,
+      blankRecents, openRecent, scheduleActions, scheduleRinging, memoryCreate,
+      memoryUpdate, memoryDelete, memoryClearWork, agentSettings, hasKey, debugWin,
+      openContextTrace, workflowRows, runWorkflowRow, removeWorkflowRow, requestGenerateDoc,
+      getNoteActions, agent, agentSlotDeps, updateStructure, explorerDocs, explorerExams,
+      canvasChannel, runSuperMethod, docBox, groupHosts, stripHosts, examTabTitle,
+  }
 
   return (
     <div className="print-flat flex h-full overflow-hidden">
@@ -2109,62 +1887,13 @@ export default function LearnWorkspace({
           />
         </div>
 
-        {/*
-          两列：文档区与超级导师对话栏。骨架（两格、分割线、收起按钮、拖动读数）在
-          SplitRow，宽度与拖动机制在 useSideColumns；左格自适应、右格固定宽（--side-w，可拖），
-          宽度属于「格子」而不属于内容，对调时只换内容、不换宽度（见 lib/appearance 的 agentLeft）。
-          目标创建页现已移入文档区作为普通页签（kind: 'newGoal'）渲染。
-        */}
-        <SplitRow
-          side={side}
-            docsSlot={
-              <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-                {renderLayout(docs.layout)}
-              </div>
-            }
-            agentSlot={
-              <AgentSlot
-                deps={{
-                  store,
-                  getLatest,
-                  set,
-                  agent,
-                  freeChats,
-                  currentFreeConvId,
-                  setFreeConvId,
-                  onToast,
-                  openTab,
-                  effort,
-                  setGlobalEffort,
-                  hasKey,
-                  providerName,
-                  vision,
-                  agentSettings,
-                  setSettingsEpoch,
-                  stripTabs,
-                  agentPanes,
-                  activeAgentTab,
-                  activeAgentTabId,
-                  docGoalIds,
-                  agentTabTitle,
-                  agentTabRunning,
-                  activateAgentTab,
-                  closeAgentTab,
-                  closeAgentTabMode,
-                  reorderAgentTabList,
-                  openAgentTab,
-                  handleNewGoalConversation,
-                  removeConversation,
-                  newConversationIn,
-                  selectConversationIn,
-                  pruneImagesOf,
-                  startSuperLab,
-                  newExam,
-                  shouldWaitInLine,
-                }}
-              />
-            }
-          />
+        {/* 主工作区：docs.layout 页签树 + 可选固定外侧对照栏（`:fixside`，独立于页签之外） */}
+        <FixSideLayout
+          docsSlot={renderLayout(docs.layout)}
+          portalCtx={{ groupId: docs.focus, ...groupSharedCtx }}
+          pure={pure}
+          pureMoving={pureMoving}
+        />
       </div>
 
       {/*

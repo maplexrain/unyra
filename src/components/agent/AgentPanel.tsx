@@ -351,6 +351,7 @@ export default function AgentPanel({
     onSend,
     onNotice,
     onSent: restoreFollow,
+    active,
   })
 
   /*
@@ -503,7 +504,7 @@ export default function AgentPanel({
             {/* 字号系数挂在这一层、而不是滚动容器上：滚动条与内边距不该跟着缩放（上边距 20px：列表内容与页签栏之间留一口呼吸） */}
             <div
               ref={contentRef}
-              className={`pt-5 ${
+              className={`mx-auto w-full max-w-[768px] pt-5 ${
                 viewMessages.length === 0 && !viewStreaming
                   ? 'flex min-h-[calc(100%-1.25rem)] flex-col justify-center pb-8'
                   : ''

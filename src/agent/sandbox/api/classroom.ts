@@ -2,11 +2,8 @@
  * execute 沙箱: classroom.* api 实现
  *
  * 查询 course 结构契约（schema）、时间轴动词白名单（verbs）、可用组件与动效
- * （components / animations）、课件静态体检（check），并支持动态创作与注册
- * 新组件与新动效（registerComponent / registerAnimation）。
- *
- * schema / verbs 的载荷唯一事实源在 learn/classroom 的 contract.ts / verbs.ts；
- * 体检与 editContent 的写入校验共用 audit.ts——实现与文档不再各写一份。
+ * （components / animations）、实时合成音效库（sounds）、课件静态体检（check），
+ * 并支持动态创作与注册新组件与新动效（registerComponent / registerAnimation）。
  */
 import {
   listClassroomComponents,
@@ -19,10 +16,13 @@ import {
 import { classroomSchemaPayload } from '../../../learn/classroom/contract'
 import { verbCatalog } from '../../../learn/classroom/verbs'
 import { auditCourse } from '../../../learn/classroom/audit'
+import { listSfx, type SfxCategory, type SfxMeta } from '../../../learn/classroom/sfx/sfxLibrary'
 import type { LessonCourse } from '../../../learn/classroom/types'
 import { asRecord, asText } from '../refs'
 import { wrapApi } from '../wrap'
 import type { SandboxCall, SandboxOptions } from '../types'
+
+const VALID_SFX_CATEGORIES = new Set<SfxCategory>(['transition', 'accent', 'rhythm', 'feedback'])
 
 export function installClassroom(api: Record<string, unknown>, opts: SandboxOptions, log: SandboxCall[]): void {
   // 1. course 结构契约（写课件前必看）
@@ -46,8 +46,7 @@ export function installClassroom(api: Record<string, unknown>, opts: SandboxOpti
     'classroom.components',
     (args): { ok: true; components: ClassroomComponentDef[] } => {
       const o = asRecord(args[0])
-      const source =
-        o.source === 'builtin' || o.source === 'external' ? o.source : undefined
+      const source = o.source === 'builtin' || o.source === 'external' ? o.source : undefined
       const query = typeof o.query === 'string' ? o.query : undefined
       const components = listClassroomComponents({ source, query })
       return { ok: true, components }
@@ -61,8 +60,7 @@ export function installClassroom(api: Record<string, unknown>, opts: SandboxOpti
     'classroom.animations',
     (args): { ok: true; animations: ClassroomAnimationDef[] } => {
       const o = asRecord(args[0])
-      const source =
-        o.source === 'builtin' || o.source === 'external' ? o.source : undefined
+      const source = o.source === 'builtin' || o.source === 'external' ? o.source : undefined
       const query = typeof o.query === 'string' ? o.query : undefined
       const animations = listClassroomAnimations({ source, query })
       return { ok: true, animations }
@@ -70,7 +68,28 @@ export function installClassroom(api: Record<string, unknown>, opts: SandboxOpti
     log,
   )
 
-  // 5. 注册新教学组件
+  // 5. 查询可用音效库（WebAudio 实时合成）
+  wrapApi(
+    api,
+    'classroom.sounds',
+    (args): { ok: true; sounds: SfxMeta[]; tip: string } => {
+      const o = asRecord(args[0])
+      const category =
+        typeof o.category === 'string' && VALID_SFX_CATEGORIES.has(o.category as SfxCategory)
+          ? (o.category as SfxCategory)
+          : undefined
+      const query = typeof o.query === 'string' ? o.query : undefined
+      const sounds = listSfx({ category, query })
+      return {
+        ok: true,
+        sounds,
+        tip: '音效是标点不是背景墙：一幕只给 1~3 个戏剧节点配 params.sfx（或 scene.sfx），checkpoint/countUp/typewriter/stamp/tada 已自带音效（传 none 可静音）',
+      }
+    },
+    log,
+  )
+
+  // 6. 注册新教学组件
   wrapApi(
     api,
     'classroom.registerComponent',
@@ -103,7 +122,7 @@ export function installClassroom(api: Record<string, unknown>, opts: SandboxOpti
     log,
   )
 
-  // 6. 注册新动效
+  // 7. 注册新动效
   wrapApi(
     api,
     'classroom.registerAnimation',
@@ -136,7 +155,7 @@ export function installClassroom(api: Record<string, unknown>, opts: SandboxOpti
     log,
   )
 
-  // 7. 静态体检（不渲染画面）：动词白名单 / target 对号 / 字幕纪律 / data-hidden 语义
+  // 8. 静态体检（不渲染画面）：动词白名单 / target 对号 / 字幕纪律 / data-hidden 语义 / sfx 合法性
   wrapApi(
     api,
     'classroom.check',
