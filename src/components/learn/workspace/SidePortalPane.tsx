@@ -533,7 +533,7 @@ export function SidePortalPane({ ctx, targetTab, mode = 'side', onClose, onSwap 
         className={
           'flex shrink-0 items-center justify-between gap-2 px-3 select-none ' +
           (mode === 'fixside'
-            ? 'h-[37px] pt-1 border-b border-line-strong bg-paper/40'
+            ? 'h-[34px] pt-1 border-b border-line-strong bg-paper/40'
             : 'h-8 border-b border-line/60 bg-paper/75')
         }
       >
