@@ -2,8 +2,15 @@ import { useCallback, useEffect } from 'react'
 import { setGlobalTabOperations } from '../../../lib/vimCommands'
 import { setAgentToggleHandler, focusAgentInput } from '../../../lib/agentFocus'
 import { setOpenTargetsProvider, buildOpenTargets } from '../../../lib/vimOpenTargets'
-import { setSideTargetsProvider, buildSideTargets } from '../../../lib/vimSideTargets'
 import {
+  setSideTargetsProvider,
+  buildSideTargets,
+  setFixSideTargetsProvider,
+  buildFixSideTargets,
+} from '../../../lib/vimSideTargets'
+import {
+  allStoredTabs,
+  clampFixSideWidth,
   findTab,
   focusedGroup,
   focusedTab,
@@ -130,6 +137,64 @@ export function useVimGlobalTabOps(params: Params): void {
     if (!active?.side) return { success: false, message: '[当前页面未开启并排对照]' }
     set({ ...s, docArea: toggleSwapTabSidePortal(s.docArea, active.id) })
     return { success: true, message: '[已对调左右分栏位置]' }
+  }, [getLatest, set])
+
+  const openFixSidePortal = useCallback(
+    (targetTabId: string): { success: boolean; message?: string } => {
+      if (!set) return { success: false, message: '[当前环境不支持固定外侧对照]' }
+      const s = getLatest()
+      const exists = allStoredTabs(s.docArea).some((t) => t.id === targetTabId)
+      if (!exists) return { success: false, message: '[目标页签不存在]' }
+      set({
+        ...s,
+        fixSide: {
+          targetTabId,
+          width: clampFixSideWidth(s.fixSide?.width),
+          ...(s.fixSide?.left ? { left: true } : {}),
+        },
+      })
+      return { success: true, message: '[已开启固定外侧对照栏]' }
+    },
+    [getLatest, set],
+  )
+
+  const closeFixSidePortal = useCallback((): { success: boolean; message?: string } => {
+    if (!set) return { success: false, message: '[当前环境不支持固定外侧对照]' }
+    const s = getLatest()
+    if (!s.fixSide) return { success: false, message: '[当前未开启固定外侧对照栏]' }
+    const { fixSide: _removed, ...rest } = s
+    set(rest)
+    return { success: true, message: '[已关闭固定外侧对照栏]' }
+  }, [getLatest, set])
+
+  const swapFixSidePortal = useCallback((): { success: boolean; message?: string } => {
+    if (!set) return { success: false, message: '[当前环境不支持固定外侧对照]' }
+    const s = getLatest()
+    if (!s.fixSide) return { success: false, message: '[当前未开启固定外侧对照栏]' }
+    set({
+      ...s,
+      fixSide: {
+        ...s.fixSide,
+        left: !s.fixSide.left,
+        collapsed: false,
+      },
+    })
+    return { success: true, message: '[已对调固定外侧栏位置]' }
+  }, [getLatest, set])
+
+  const toggleFixSideCollapse = useCallback((): { success: boolean; message?: string } => {
+    if (!set) return { success: false, message: '[当前环境不支持固定外侧对照]' }
+    const s = getLatest()
+    if (!s.fixSide) return { success: false, message: '[当前未开启固定外侧对照栏]' }
+    const nextCollapsed = !s.fixSide.collapsed
+    set({
+      ...s,
+      fixSide: {
+        ...s.fixSide,
+        collapsed: nextCollapsed,
+      },
+    })
+    return { success: true, message: nextCollapsed ? '[已收起固定外侧栏]' : '[已展开固定外侧栏]' }
   }, [getLatest, set])
 
   useBrowseVim({
@@ -322,6 +387,10 @@ export function useVimGlobalTabOps(params: Params): void {
       openSidePortal,
       closeSidePortal,
       swapSidePortal,
+      openFixSidePortal,
+      closeFixSidePortal,
+      swapFixSidePortal,
+      toggleFixSideCollapse,
     })
 
     setSideTargetsProvider(() =>
@@ -335,6 +404,24 @@ export function useVimGlobalTabOps(params: Params): void {
         },
         swapSidePortal: () => {
           swapSidePortal()
+        },
+      }),
+    )
+
+    setFixSideTargetsProvider(() =>
+      buildFixSideTargets({
+        store: getLatest(),
+        openFixSidePortal: (tid) => {
+          openFixSidePortal(tid)
+        },
+        closeFixSidePortal: () => {
+          closeFixSidePortal()
+        },
+        swapFixSidePortal: () => {
+          swapFixSidePortal()
+        },
+        toggleFixSideCollapse: () => {
+          toggleFixSideCollapse()
         },
       }),
     )
@@ -360,6 +447,7 @@ export function useVimGlobalTabOps(params: Params): void {
       setAgentToggleHandler(null)
       setOpenTargetsProvider(null)
       setSideTargetsProvider(null)
+      setFixSideTargetsProvider(null)
     }
   }, [
     getLatest,
@@ -382,5 +470,9 @@ export function useVimGlobalTabOps(params: Params): void {
     openSidePortal,
     closeSidePortal,
     swapSidePortal,
+    openFixSidePortal,
+    closeFixSidePortal,
+    swapFixSidePortal,
+    toggleFixSideCollapse,
   ])
 }

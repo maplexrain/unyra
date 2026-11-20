@@ -172,6 +172,7 @@ import { DeleteConfirms } from './workspace/DeleteConfirms'
 import type { AgentSlotDeps } from './workspace/AgentSlot'
 import { sortConversationsByTimeDesc } from './agent-team/conversationList'
 import { useHostWiring } from './workspace/useHostWiring'
+import { FixSideLayout } from './workspace/FixSideLayout'
 import { renderGroupBody } from './workspace/GroupBody'
 import { useTabOpening } from './workspace/useTabOpening'
 import { useChipOpening } from './workspace/useChipOpening'
@@ -1640,109 +1641,6 @@ export default function LearnWorkspace({
     shouldWaitInLine,
   }
 
-  /*
-   * 一格正文的完整渲染：见 workspace/GroupBody（页签栏、页签类型分派、
-   * 常驻层、查找条、悬浮组、落点高亮）。格内派生在 GroupBody 里现算，
-   * 宿主能力从这里一次性喂入。
-   */
-  const renderGroup = (groupId: string) =>
-    renderGroupBody({
-      groupId,
-      store,
-      docs,
-      getLatest,
-      set,
-      onToast,
-      openTab,
-      onRootChanged,
-      users: users ?? (user ? [user] : []),
-      activeUserId: user?.id ?? null,
-      onSelectUser, onCreateUser, onUpdateUser, onDeleteUser, onSignOut,
-      tabOwners,
-      shownTabIds,
-      residentPanes,
-      activeGoalId,
-      activeTab,
-      docView,
-      docSource,
-      docPending,
-      unsavedIds,
-      tabTrails,
-      webMeta,
-      patchWebMeta,
-      outlineFocus,
-      handleOutlineFocusHandled,
-      pure,
-      pureMoving,
-      toggleZen,
-      findMode,
-      findTick,
-      setFindMode,
-      docSaving,
-      docSaveError,
-      localSaved,
-      localTicks,
-      editDocSource,
-      stageLocalDraft,
-      stageNewFileDraft,
-      saveDocNow,
-      closeTab,
-      setTabView,
-      rememberScroll,
-      docScale,
-      editorScale,
-      activateTab,
-      reorderTabList,
-      toggleTabPin,
-      onTabDragMove,
-      onTabDrop,
-      tabDrag,
-      tabDocPayload,
-      openChipInGroup,
-      openNewFileInPlace,
-      pickLocalInPlace,
-      openWebInPlace,
-      openNewGoalInPlace,
-      openWebTab,
-      openBlankTab,
-      commitWebUrl,
-      pendingJumpsRef,
-      isTabFavorite,
-      toggleTabFavorite,
-      isUrlFavorite,
-      toggleUrlFavorite,
-      favoriteTitleOf,
-      openFavorite,
-      blankRecents,
-      openRecent,
-      scheduleActions,
-      scheduleRinging,
-      memoryCreate,
-      memoryUpdate,
-      memoryDelete,
-      memoryClearWork,
-      agentSettings,
-      hasKey,
-      debugWin,
-      openContextTrace,
-      workflowRows,
-      runWorkflowRow,
-      removeWorkflowRow,
-      requestGenerateDoc,
-      getNoteActions,
-      agent,
-      agentSlotDeps,
-      updateStructure,
-      explorerDocs,
-      explorerExams,
-      canvasChannel,
-      runSuperMethod,
-      docBox,
-      groupHosts,
-      stripHosts,
-      examTabTitle,
-    })
-
   /**
    * 布局树 → DOM。
    *
@@ -1751,7 +1649,7 @@ export default function LearnWorkspace({
    * 这正是「拖那条线时两边的比例严格跟着指针走」的前提。
    */
   const renderLayout = (node: DocLayout): ReactNode => {
-    if (node.kind === 'group') return renderGroup(node.group)
+    if (node.kind === 'group') return renderGroupBody({ groupId: node.group, ...groupSharedCtx })
     const sizes = splitDrag?.id === node.id ? splitDrag.sizes : node.sizes
     return (
       <div
@@ -1853,6 +1751,27 @@ export default function LearnWorkspace({
     }),
     [exam.openExam, exam.reveal, exam.live, selectNode, onToast, requestGrading, grading, openExamCopy],
   )
+
+  const groupSharedCtx = {
+      store, docs, getLatest, set, onToast, openTab, onRootChanged,
+      users: users ?? (user ? [user] : []), activeUserId: user?.id ?? null,
+      onSelectUser, onCreateUser, onUpdateUser, onDeleteUser, onSignOut,
+      tabOwners, shownTabIds, residentPanes, activeGoalId, activeTab,
+      docView, docSource, docPending, unsavedIds, tabTrails, webMeta, patchWebMeta,
+      outlineFocus, handleOutlineFocusHandled, pure, pureMoving, toggleZen,
+      findMode, findTick, setFindMode, docSaving, docSaveError, localSaved, localTicks,
+      editDocSource, stageLocalDraft, stageNewFileDraft, saveDocNow, closeTab,
+      setTabView, rememberScroll, docScale, editorScale, activateTab, reorderTabList,
+      toggleTabPin, onTabDragMove, onTabDrop, tabDrag, tabDocPayload, openChipInGroup,
+      openNewFileInPlace, pickLocalInPlace, openWebInPlace, openNewGoalInPlace,
+      openWebTab, openBlankTab, commitWebUrl, pendingJumpsRef, isTabFavorite,
+      toggleTabFavorite, isUrlFavorite, toggleUrlFavorite, favoriteTitleOf, openFavorite,
+      blankRecents, openRecent, scheduleActions, scheduleRinging, memoryCreate,
+      memoryUpdate, memoryDelete, memoryClearWork, agentSettings, hasKey, debugWin,
+      openContextTrace, workflowRows, runWorkflowRow, removeWorkflowRow, requestGenerateDoc,
+      getNoteActions, agent, agentSlotDeps, updateStructure, explorerDocs, explorerExams,
+      canvasChannel, runSuperMethod, docBox, groupHosts, stripHosts, examTabTitle,
+  }
 
   return (
     <div className="print-flat flex h-full overflow-hidden">
@@ -1969,12 +1888,13 @@ export default function LearnWorkspace({
           />
         </div>
 
-        {/*
-          主工作区：文档与智能体团队（AgentPanel Tab 页版）共享同一个分屏页签布局树。
-        */}
-        <div className="print-flat relative flex min-h-0 flex-1 flex-col">
-          {renderLayout(docs.layout)}
-        </div>
+        {/* 主工作区：docs.layout 页签树 + 可选固定外侧对照栏（`:fixside`，独立于页签之外） */}
+        <FixSideLayout
+          docsSlot={renderLayout(docs.layout)}
+          portalCtx={{ groupId: docs.focus, ...groupSharedCtx }}
+          pure={pure}
+          pureMoving={pureMoving}
+        />
       </div>
 
       {/*

@@ -1,4 +1,4 @@
-import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { ArrowLeft, Bot, GraduationCap } from 'lucide-react'
 import type { AgentTabRef, DocView, LearnStore, TabRef } from '../../../learn/types'
 import { agentTabKey } from '../../../learn/agentTabs'
@@ -79,6 +79,8 @@ export interface AgentSlotDeps {
   tabActive?: boolean
   /** 若由目标专属智能体团队页签挂载，则固定绑定到该目标（仅聊天仍跨目标共享） */
   tabGoalId?: string
+  /** 是否将左右侧栏折叠状态持久化到 localStorage（传送窗格中置为 false，避免影响原页签） */
+  persistLayout?: boolean
 }
 
 /**
@@ -120,7 +122,33 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     shouldWaitInLine,
     tabActive = true,
     tabGoalId,
+    persistLayout = true,
   } = deps
+
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const [containerWidth, setContainerWidth] = useState<number | null>(null)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const syncWidth = (w: number) => {
+      if (Number.isFinite(w) && w > 0) {
+        setContainerWidth((prev) => (prev === Math.round(w) ? prev : Math.round(w)))
+      }
+    }
+    syncWidth(el.clientWidth)
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width
+      if (typeof w === 'number') syncWidth(w)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const hasMeasuredWidth = containerWidth !== null && containerWidth > 0
+  const hideHistorySidebar = hasMeasuredWidth && containerWidth < 1200
+  const lockRosterCollapsed = hasMeasuredWidth && containerWidth < 800
 
   // 当工作区尚无激活目标时，允许用户点击「导师」停留并呈现目标选择空态
   const [emptyTutorMode, setEmptyTutorMode] = useState(false)
@@ -467,8 +495,13 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   }, [mode, subViewMeta, tabGoalId, scopedPanes, activeAgentTabId])
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-row overflow-hidden">
-      {/* 左侧垂直 Agent 列表：仅聊天 / 导师 */}
+    <div
+      ref={containerRef}
+      data-agent-hide-history={hideHistorySidebar ? 'true' : undefined}
+      data-agent-lock-roster={lockRosterCollapsed ? 'true' : undefined}
+      className="flex h-full min-h-0 w-full flex-row overflow-hidden"
+    >
+      {/* 左侧垂直 Agent 列表：仅聊天 / 导师（宽度 < 800 时强制收起且不可展开） */}
       <AgentRosterSidebar
         mode={mode}
         onSelectMode={handleSelectMode}
@@ -482,6 +515,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         tutorPreview={lastMessagePreview(latestTutor)}
         tutorLastTime={latestTutor ? conversationTimeOf(latestTutor) : 0}
         tutorCount={sortedGoalChats.length}
+        forceCollapsed={lockRosterCollapsed}
+        persistCollapsed={persistLayout}
       />
 
       {/* 中间对话主工作区 */}
@@ -592,26 +627,29 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         </div>
       </div>
 
-      {/* 右侧对话历史侧栏：按对话时间降序，支持创建与删除 */}
-      <AgentHistorySidebar
-        mode={mode}
-        conversations={mode === 'free' ? sortedFreeChats : sortedGoalChats}
-        activeConversationId={mode === 'free' ? currentFreeConvId : activeTutorConvId}
-        runningByConversation={agent.runningByConversation}
-        pendingAskByConv={agent.pendingAskByConv}
-        activeGoalId={tutorGoalId}
-        goalLocked={Boolean(tabGoalId)}
-        goals={store.goals}
-        goalTitleOf={goalTitleOf}
-        onSelectGoal={(goalId) => {
-          setEmptyTutorMode(false)
-          selectTutorGoal(goalId)
-          scheduleFocus()
-        }}
-        onSelectConversation={handleHistorySelect}
-        onNewConversation={handleHistoryCreate}
-        onDeleteConversation={handleHistoryDelete}
-      />
+      {/* 右侧对话历史侧栏：按对话时间降序，支持创建与删除；宽度 < 1200 时不显示 */}
+      {!hideHistorySidebar && (
+        <AgentHistorySidebar
+          mode={mode}
+          conversations={mode === 'free' ? sortedFreeChats : sortedGoalChats}
+          activeConversationId={mode === 'free' ? currentFreeConvId : activeTutorConvId}
+          runningByConversation={agent.runningByConversation}
+          pendingAskByConv={agent.pendingAskByConv}
+          activeGoalId={tutorGoalId}
+          goalLocked={Boolean(tabGoalId)}
+          goals={store.goals}
+          goalTitleOf={goalTitleOf}
+          onSelectGoal={(goalId) => {
+            setEmptyTutorMode(false)
+            selectTutorGoal(goalId)
+            scheduleFocus()
+          }}
+          onSelectConversation={handleHistorySelect}
+          onNewConversation={handleHistoryCreate}
+          onDeleteConversation={handleHistoryDelete}
+          persistCollapsed={persistLayout}
+        />
+      )}
     </div>
   )
 }

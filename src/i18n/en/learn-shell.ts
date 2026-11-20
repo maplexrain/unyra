@@ -172,6 +172,19 @@ const dict: Record<string, string> = {
   '赞助鸣谢': 'Sponsors',
   '新建草稿': 'Draft',
   '页签': 'Tab',
+  '选择要固定在外侧对照栏显示的页签（支持拼音或关键词，off 关闭 / swap 对调 / toggle 折叠）...':
+    'Pick a tab to dock in the fixed outer side panel (off to close, swap to flip, toggle to collapse)...',
+  '固定外侧栏': 'Fixed Dock',
+  '固定外侧对照栏': 'Fixed outer side dock',
+  '关闭固定外侧栏': 'Close fixed side dock',
+  '当前已在固定外侧栏': 'Currently docked in fixed side panel',
+  '对调固定外侧栏位置': 'Swap fixed side dock left/right',
+  '把固定外侧栏在左右两侧之间对调': 'Flip the fixed side panel between left and right',
+  '展开固定外侧栏': 'Expand fixed side dock',
+  '收起固定外侧栏': 'Collapse fixed side dock',
+  '折叠或展开固定外侧栏，保留当前传送页签': 'Toggle fixed side dock visibility while keeping its tab',
+  '关闭页签区外侧固定对照栏': 'Close the outer fixed side panel',
+  '拖拽调整固定外侧栏宽度，双击对调左右位置': 'Drag to resize fixed dock · double-click to flip sides',
 }
 
 export default dict

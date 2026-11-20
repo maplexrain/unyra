@@ -50,11 +50,13 @@ import type { GroupBodyCtx } from './GroupBodyCtx'
 export interface SidePortalPaneProps {
   ctx: GroupBodyCtx
   targetTab: LearnTab
+  mode?: 'side' | 'fixside'
   onClose: () => void
   onSwap: () => void
 }
 
-export function SidePortalPane({ ctx, targetTab, onClose, onSwap }: SidePortalPaneProps) {
+export function SidePortalPane({ ctx, targetTab, mode = 'side', onClose, onSwap }: SidePortalPaneProps) {
+  const scopePrefix = mode === 'fixside' ? 'fixside:' : 'side:'
   const {
     store,
     getLatest,
@@ -154,11 +156,11 @@ export function SidePortalPane({ ctx, targetTab, onClose, onSwap }: SidePortalPa
               ext={noteExt}
               state={docSaving ? 'saving' : draft === undefined ? 'saved' : 'dirty'}
               label={ref.kind === 'note' ? ref.note : pane.node.title}
-              historyKey={'side:' + targetTab.id}
+              historyKey={scopePrefix + targetTab.id}
               scale={editorScale}
               revealKey={revealKey}
-              scrollTop={store.docScroll['side:' + targetTab.id + SRC_SCROLL_SUFFIX]}
-              onScrollTop={(top) => rememberScroll('side:' + targetTab.id + SRC_SCROLL_SUFFIX, top)}
+              scrollTop={store.docScroll[scopePrefix + targetTab.id + SRC_SCROLL_SUFFIX]}
+              onScrollTop={(top) => rememberScroll(scopePrefix + targetTab.id + SRC_SCROLL_SUFFIX, top)}
               onChange={(text) => editDocSource(targetTab.id, text)}
             />
           </div>
@@ -166,7 +168,7 @@ export function SidePortalPane({ ctx, targetTab, onClose, onSwap }: SidePortalPa
       }
       return (
         <DocPane
-          tabId={'side:' + targetTab.id}
+          tabId={scopePrefix + targetTab.id}
           active
           node={pane.node}
           source={pane.source}
@@ -181,9 +183,9 @@ export function SidePortalPane({ ctx, targetTab, onClose, onSwap }: SidePortalPa
           }}
           knownConceptKeys={conceptKeysOf(store, pane.node)}
           goalKnowledge={store.knowledge?.[pane.node.goalId] ?? []}
-          outlineSlot={getOutlineSlot('side:' + targetTab.id)}
-          scrollTop={store.docScroll['side:' + targetTab.id]}
-          onScrollTop={(top) => rememberScroll('side:' + targetTab.id, top)}
+          outlineSlot={getOutlineSlot(scopePrefix + targetTab.id)}
+          scrollTop={store.docScroll[scopePrefix + targetTab.id]}
+          onScrollTop={(top) => rememberScroll(scopePrefix + targetTab.id, top)}
           note={getNoteActions(targetTab.id, pane.node, pane.source)}
         />
       )
@@ -201,7 +203,7 @@ export function SidePortalPane({ ctx, targetTab, onClose, onSwap }: SidePortalPa
       }
       return (
         <OutlinePane
-          tabId={'side:' + targetTab.id}
+          tabId={scopePrefix + targetTab.id}
           active
           store={store}
           node={oNode ?? undefined}
@@ -310,12 +312,20 @@ export function SidePortalPane({ ctx, targetTab, onClose, onSwap }: SidePortalPa
     }
 
     if (ref.kind === 'agentTeam') {
-      return <AgentTeamPage active focused={false} goalId={ref.goalId} agentSlotDeps={agentSlotDeps} />
+      return (
+        <AgentTeamPage
+          active
+          focused={false}
+          goalId={ref.goalId}
+          persistLayout={false}
+          agentSlotDeps={agentSlotDeps}
+        />
+      )
     }
 
     if (ref.kind === 'terminal') {
       const termId = ref.termId || targetTab.id
-      return <TerminalTabPane tabId={'side:' + targetTab.id} termId={termId} shell={ref.shell} active onToast={onToast} />
+      return <TerminalTabPane tabId={scopePrefix + targetTab.id} termId={termId} shell={ref.shell} active onToast={onToast} />
     }
 
     if (ref.kind === 'settings') {
@@ -526,7 +536,7 @@ export function SidePortalPane({ ctx, targetTab, onClose, onSwap }: SidePortalPa
             {title}
           </span>
           <span className="shrink-0 rounded-md border border-seal/25 bg-seal/10 px-1.5 py-0.5 text-[9.5px] font-medium leading-none text-seal">
-            {t('传送对照')}
+            {mode === 'fixside' ? t('固定外侧栏') : t('传送对照')}
           </span>
         </div>
 
@@ -552,8 +562,8 @@ export function SidePortalPane({ ctx, targetTab, onClose, onSwap }: SidePortalPa
           <button
             type="button"
             onClick={onClose}
-            title={t('关闭并排对照')}
-            aria-label={t('关闭并排对照')}
+            title={mode === 'fixside' ? t('关闭固定外侧栏') : t('关闭并排对照')}
+            aria-label={mode === 'fixside' ? t('关闭固定外侧栏') : t('关闭并排对照')}
             className="flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-seal/15 hover:text-seal"
           >
             <X size={13} />

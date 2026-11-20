@@ -36,6 +36,10 @@ export interface AgentRosterSidebarProps {
   tutorPreview?: string
   tutorLastTime?: number
   tutorCount?: number
+  /** 容器宽度 < 800 时强制收起且禁用展开按钮（不写入全局持久化） */
+  forceCollapsed?: boolean
+  /** 是否把手动折叠状态持久化到 localStorage；:side / :fixside 传送栏中置为 false，避免影响原页签 */
+  persistCollapsed?: boolean
 }
 
 export function AgentRosterSidebar({
@@ -51,12 +55,15 @@ export function AgentRosterSidebar({
   tutorPreview,
   tutorLastTime,
   tutorCount,
+  forceCollapsed = false,
+  persistCollapsed = true,
 }: AgentRosterSidebarProps) {
   useLocale()
-  const [collapsed, setCollapsed] = useState<boolean>(readCollapsed)
+  const [collapsed, setCollapsed] = useState<boolean>(() => (persistCollapsed ? readCollapsed() : false))
 
   const toggleCollapsed = (next: boolean) => {
     setCollapsed(next)
+    if (!persistCollapsed) return
     try {
       localStorage.setItem(LEFT_COLLAPSED_KEY, next ? 'true' : 'false')
     } catch {
@@ -111,18 +118,30 @@ export function AgentRosterSidebar({
     },
   ]
 
-  if (collapsed) {
+  const effectiveCollapsed = Boolean(forceCollapsed || collapsed)
+
+  if (effectiveCollapsed) {
     return (
       <aside
         aria-label={t('智能体列表')}
+        data-roster-collapsed="true"
+        data-roster-locked={forceCollapsed ? 'true' : undefined}
         className="flex h-full w-12 shrink-0 flex-col items-center border-r border-line/70 bg-paper/60 py-2.5 gap-2"
       >
         <button
           type="button"
-          onClick={() => toggleCollapsed(false)}
-          title={t('展开智能体列表')}
+          disabled={forceCollapsed}
+          onClick={() => {
+            if (!forceCollapsed) toggleCollapsed(false)
+          }}
+          title={forceCollapsed ? t('当前页面宽度小于 800，智能体列表已收起且暂不可展开') : t('展开智能体列表')}
           aria-label={t('展开智能体列表')}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft transition hover:bg-line/50 hover:text-ink"
+          className={
+            'flex h-8 w-8 items-center justify-center rounded-lg transition ' +
+            (forceCollapsed
+              ? 'cursor-not-allowed text-ink-faint/45 opacity-45'
+              : 'text-ink-soft hover:bg-line/50 hover:text-ink')
+          }
         >
           <PanelLeftOpen size={15} />
         </button>

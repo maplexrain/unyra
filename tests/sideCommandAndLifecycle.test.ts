@@ -1,14 +1,19 @@
 // @vitest-environment happy-dom
+import { createElement, act } from 'react'
+import { createRoot } from 'react-dom/client'
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { isAlwaysPinnedRef, isTabPinned, makeTab, closeTabs, reorderTabs, tabKey } from '../src/learn/tabs'
 import {
   FIRST_GROUP,
   allTabs,
   claimTab,
+  clampFixSideWidth,
   emptyDocs,
   ensureGoalAgentTeamTab,
+  findFixSideTargetTab,
   findSideTargetTab,
   goalAgentTeamRef,
+  normalizeFixSideState,
   openAnchorOutline,
   openInGroup,
   pruneStaleSidePortals,
@@ -23,8 +28,16 @@ import { normalizeLearnStore } from '../src/learn/store/normalize'
 import { buildState } from '../src/learn/files/state'
 import { makeGoal } from '../src/learn/store/factories'
 import type { LearnStore, TabRef } from '../src/learn/types'
-import { buildSideTargets, matchSideTargets, setSideTargetsProvider } from '../src/lib/vimSideTargets'
+import {
+  buildFixSideTargets,
+  buildSideTargets,
+  matchSideTargets,
+  setFixSideTargetsProvider,
+  setSideTargetsProvider,
+} from '../src/lib/vimSideTargets'
 import { executeVimCommand, setGlobalTabOperations, setVimEditorBridge } from '../src/lib/vimCommands'
+import { AgentRosterSidebar } from '../src/components/learn/agent-team/AgentRosterSidebar'
+import { AgentSlot, type AgentSlotDeps } from '../src/components/learn/workspace/AgentSlot'
 
 function makeBaseStore(): LearnStore {
   const goalA = { ...makeGoal('nA', '微积分', 'gA'), createdAt: 100, updatedAt: 100 }
@@ -283,5 +296,253 @@ describe('Vim :side 页签内传送对照、拖拽比例、双击对调与持久
     // 确认 TabRef 类型被正确约束，无多余空字段
     const ref: TabRef = { kind: 'agentTeam', goalId: 'gA' }
     expect(tabKey(ref)).toBe('team:gA')
+  })
+})
+
+describe('智能体团队响应式布局断点与 :side 状态隔离', () => {
+  it('AgentRosterSidebar 在 forceCollapsed 时锁定收起且禁用展开，persistCollapsed=false 不写 localStorage', () => {
+    localStorage.removeItem('moji:agent-team:left-collapsed')
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+
+    act(() => {
+      root.render(
+        createElement(AgentRosterSidebar, {
+          mode: 'free',
+          onSelectMode: () => {},
+          activeGoalTitle: '微积分',
+          freeRunning: false,
+          tutorRunning: false,
+          tutorHasAsk: false,
+          forceCollapsed: true,
+          persistCollapsed: false,
+        }),
+      )
+    })
+
+    const aside = host.querySelector<HTMLElement>('[aria-label="智能体列表"]')
+    expect(aside?.getAttribute('data-roster-collapsed')).toBe('true')
+    expect(aside?.getAttribute('data-roster-locked')).toBe('true')
+
+    const expandBtn = host.querySelector<HTMLButtonElement>('button[aria-label="展开智能体列表"]')!
+    expect(expandBtn.disabled).toBe(true)
+    act(() => {
+      expandBtn.click()
+    })
+    // 点击后仍锁定收起且未污染全局 localStorage
+    expect(host.querySelector('[data-roster-collapsed="true"]')).not.toBeNull()
+    expect(localStorage.getItem('moji:agent-team:left-collapsed')).toBeNull()
+
+    // 若是在 side 传送窗内允许折叠（宽度 >= 800 且 persistCollapsed=false），手动收起也不会写入 localStorage
+    act(() => {
+      root.render(
+        createElement(AgentRosterSidebar, {
+          mode: 'free',
+          onSelectMode: () => {},
+          activeGoalTitle: '微积分',
+          freeRunning: false,
+          tutorRunning: false,
+          tutorHasAsk: false,
+          forceCollapsed: false,
+          persistCollapsed: false,
+        }),
+      )
+    })
+
+    const collapseBtn = host.querySelector<HTMLButtonElement>('button[aria-label="收起智能体列表"]')!
+    act(() => {
+      collapseBtn.click()
+    })
+    expect(host.querySelector('[data-roster-collapsed="true"]')).not.toBeNull()
+    expect(localStorage.getItem('moji:agent-team:left-collapsed')).toBeNull()
+
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('AgentSlot 根据容器宽度自动切换：>=1200 完整三栏，<1200 隐藏对话历史，<800 额外锁定收起智能体列表，且不改写 localStorage', () => {
+    localStorage.removeItem('moji:agent-team:left-collapsed')
+    localStorage.removeItem('moji:agent-team:right-collapsed')
+
+    let observeCb: ((entries: Array<{ contentRect: { width: number } }>) => void) | null = null
+    const OrigRO = globalThis.ResizeObserver
+    globalThis.ResizeObserver = class {
+      constructor(cb: (entries: Array<{ contentRect: { width: number } }>) => void) {
+        observeCb = cb
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver
+
+    try {
+      const store = makeBaseStore()
+      const deps: AgentSlotDeps = {
+        store,
+        getLatest: () => store,
+        set: () => {},
+        agent: {
+          runningByConversation: {},
+          pendingAskByConv: {},
+          streams: {},
+          queues: {},
+          tpsByConv: {},
+          liveUsageByConv: {},
+          compactingConvId: null,
+          subRunsAll: [],
+        } as unknown as AgentSlotDeps['agent'],
+        freeChats: [],
+        currentFreeConvId: null,
+        setFreeConvId: () => {},
+        onToast: () => {},
+        openTab: () => {},
+        effort: 'medium',
+        setGlobalEffort: () => {},
+        hasKey: true,
+        providerName: 'test',
+        vision: false,
+        agentSettings: { persona: 'default', docFormat: 'markdown', compact: { threshold: 70 } } as unknown as AgentSlotDeps['agentSettings'],
+        setSettingsEpoch: () => {},
+        agentPanes: [{ kind: 'free', conversationId: null }],
+        activeAgentTab: { kind: 'free', conversationId: null },
+        activeAgentTabId: 'free',
+        activateAgentTab: () => {},
+        openAgentTab: () => {},
+        selectTutorGoal: () => {},
+        exitSubagentView: () => {},
+        handleNewGoalConversation: () => {},
+        removeConversation: () => {},
+        newConversationIn: () => {},
+        selectConversationIn: () => {},
+        pruneImagesOf: () => {},
+        startSuperLab: () => {},
+        newExam: () => {},
+        shouldWaitInLine: () => false,
+        tabGoalId: 'gA',
+      }
+
+      const host = document.createElement('div')
+      document.body.appendChild(host)
+      const root = createRoot(host)
+
+      act(() => {
+        root.render(createElement(AgentSlot, { deps }))
+      })
+
+      // 1. 宽度 1300px：显示左右双侧栏
+      act(() => {
+        observeCb?.([{ contentRect: { width: 1300 } }])
+      })
+      expect(host.querySelector('[aria-label="对话历史"]')).not.toBeNull()
+      expect(host.querySelector('[data-roster-collapsed="true"]')).toBeNull()
+
+      // 2. 宽度 1050px（< 1200）：隐藏对话历史侧栏，但保留可自由操作的智能体列表
+      act(() => {
+        observeCb?.([{ contentRect: { width: 1050 } }])
+      })
+      expect(host.querySelector('[aria-label="对话历史"]')).toBeNull()
+      expect(host.querySelector('[data-roster-collapsed="true"]')).toBeNull()
+
+      // 3. 宽度 700px（< 800）：不显示对话历史，且智能体列表强制收起不可展开
+      act(() => {
+        observeCb?.([{ contentRect: { width: 700 } }])
+      })
+      expect(host.querySelector('[aria-label="对话历史"]')).toBeNull()
+      expect(host.querySelector('[data-roster-collapsed="true"]')).not.toBeNull()
+      expect(host.querySelector('[data-roster-locked="true"]')).not.toBeNull()
+
+      // 4. 关闭 side 或恢复宽屏（1300px）：自动回到原先状态，且从未污染 localStorage
+      act(() => {
+        observeCb?.([{ contentRect: { width: 1300 } }])
+      })
+      expect(host.querySelector('[aria-label="对话历史"]')).not.toBeNull()
+      expect(host.querySelector('[data-roster-collapsed="true"]')).toBeNull()
+      expect(localStorage.getItem('moji:agent-team:left-collapsed')).toBeNull()
+      expect(localStorage.getItem('moji:agent-team:right-collapsed')).toBeNull()
+
+      act(() => {
+        root.unmount()
+      })
+      host.remove()
+    } finally {
+      globalThis.ResizeObserver = OrigRO
+    }
+  })
+})
+
+describe('Vim :fixside 固定外侧对照栏（页签外宿主机与持久化）', () => {
+  beforeEach(() => {
+    setGlobalTabOperations(null)
+    setVimEditorBridge(null)
+    setFixSideTargetsProvider(null)
+  })
+
+  it('clampFixSideWidth、normalizeFixSideState 与 buildState/normalizeLearnStore 持久化往返', () => {
+    const store = makeBaseStore()
+    expect(clampFixSideWidth(120)).toBe(300)
+    expect(clampFixSideWidth(1500)).toBe(960)
+    expect(clampFixSideWidth(undefined)).toBe(540)
+
+    const valid = normalizeFixSideState({ targetTabId: 'team:gA', width: 620, left: false, collapsed: false }, store.docArea)
+    expect(valid).toEqual({ targetTabId: 'team:gA', width: 620 })
+
+    const leftValid = normalizeFixSideState({ targetTabId: 'team:gA', width: 480, left: true, collapsed: true }, store.docArea)
+    expect(leftValid).toEqual({ targetTabId: 'team:gA', width: 480, left: true, collapsed: true })
+    expect(findFixSideTargetTab(store.docArea, leftValid)?.id).toBe('team:gA')
+
+    // 持久化落盘与读回
+    const saved = buildState({ ...store, fixSide: leftValid })
+    const reloaded = normalizeLearnStore({ ...store, ...saved })
+    expect(reloaded?.fixSide).toEqual(leftValid)
+
+    // 目标页签已不存在时自动清理
+    const dangling = normalizeFixSideState({ targetTabId: 'not-exist-tab', width: 500 }, store.docArea)
+    expect(dangling).toBeUndefined()
+  })
+
+  it('buildFixSideTargets 不排除当前激活页签且 executeVimCommand 支持 :fixside 各子命令', () => {
+    const store = makeBaseStore()
+    const openSpy = vi.fn(() => ({ success: true }))
+    const closeSpy = vi.fn(() => ({ success: true, message: '[已关闭固定外侧对照栏]' }))
+    const swapSpy = vi.fn(() => ({ success: true, message: '[已对调固定外侧栏位置]' }))
+    const toggleSpy = vi.fn(() => ({ success: true, message: '[已收起固定外侧栏]' }))
+
+    const storeWithFix = { ...store, fixSide: { targetTabId: 't:nA', width: 540 } }
+    const candidates = buildFixSideTargets({
+      store: storeWithFix,
+      openFixSidePortal: openSpy,
+      closeFixSidePortal: closeSpy,
+      swapFixSidePortal: swapSpy,
+      toggleFixSideCollapse: toggleSpy,
+    })
+
+    // 注意：与 :side 不同，:fixside 位于 tab 之外，当前正在看的 t:nA 也可作为候选
+    expect(candidates.some((x) => x.tabId === 't:nA')).toBe(true)
+    expect(candidates.some((x) => x.tabId === 'team:gA')).toBe(true)
+    expect(candidates.some((x) => x.id === '__fixside_swap__')).toBe(true)
+    expect(candidates.some((x) => x.id === '__fixside_close__')).toBe(true)
+
+    setGlobalTabOperations({
+      openFixSidePortal: openSpy,
+      closeFixSidePortal: closeSpy,
+      swapFixSidePortal: swapSpy,
+      toggleFixSideCollapse: toggleSpy,
+    })
+    setFixSideTargetsProvider(() => candidates)
+
+    expect(executeVimCommand(':fixside 智能体团队').success).toBe(true)
+    expect(openSpy).toHaveBeenCalledWith('team:gA')
+
+    expect(executeVimCommand(':fixside swap').success).toBe(true)
+    expect(swapSpy).toHaveBeenCalledTimes(1)
+
+    expect(executeVimCommand(':fixside toggle').success).toBe(true)
+    expect(toggleSpy).toHaveBeenCalledTimes(1)
+
+    expect(executeVimCommand(':fixside off').success).toBe(true)
+    expect(closeSpy).toHaveBeenCalledTimes(1)
   })
 })

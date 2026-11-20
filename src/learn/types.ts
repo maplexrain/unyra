@@ -46,6 +46,7 @@ export type {
   TabRef,
   AgentTabRef,
   DocView,
+  FixSideState,
   WebTabMeta,
   TabSidePortal,
   LearnTab,

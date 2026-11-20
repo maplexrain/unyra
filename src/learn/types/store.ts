@@ -21,7 +21,7 @@ import type {
   MethodStore,
   OutlineEntity,
 } from './node'
-import type { FavoriteItem, AgentTabRef, LocalFile } from './tabs'
+import type { FavoriteItem, FixSideState, AgentTabRef, LocalFile } from './tabs'
 import type { FileNodeEntity, ProjectNodeEntity, VideoNodeEntity, VideoResource } from './media'
 import type { ClassroomEntity } from '../classroom/types'
 import type { MemoryStore } from './memory'
@@ -171,6 +171,8 @@ export interface LearnStore {
   agentTabs?: AgentTabRef[]
   /** agent 栏当前激活的页签（agentTabKey 的结果）；null = 没有选中项（页签也为空时） */
   agentActiveTab?: string | null
+  /** Vim `:fixside` 固定外侧对照栏持久化状态（位于页签栏之外、原右侧 Agent 宿主位置） */
+  fixSide?: FixSideState
 }
 
 /**

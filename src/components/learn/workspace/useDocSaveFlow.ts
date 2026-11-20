@@ -39,6 +39,7 @@ import {
   allTabs,
   closeIn,
   dropTabs,
+  findFixSideTargetTab,
   findTab,
   focusedGroup,
   focusedTab,
@@ -333,9 +334,19 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
         base = nextNodeId ? retargetNode(s, nextNodeId) : s
       }
 
+      const baseNextFixSide =
+        base.fixSide && findFixSideTargetTab(nextDocArea, base.fixSide)
+          ? base.fixSide
+          : undefined
+      const baseWithFixSide: LearnStore = baseNextFixSide
+        ? { ...base, docArea: nextDocArea, fixSide: baseNextFixSide }
+        : (() => {
+            const { fixSide: _removed, ...rest } = base
+            return { ...rest, docArea: nextDocArea }
+          })()
       const next = onGoalsClosed && goalsClosed.length > 0
-        ? onGoalsClosed({ ...base, docArea: nextDocArea }, goalsClosed)
-        : { ...base, docArea: nextDocArea }
+        ? onGoalsClosed(baseWithFixSide, goalsClosed)
+        : baseWithFixSide
       set(next)
     },
     [getLatest, onGoalsClosed, retargetNode, set],

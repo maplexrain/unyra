@@ -20,6 +20,7 @@ import {
   ensureAnchorOutlines,
   focusedTab,
   normalizeDocs,
+  normalizeFixSideState,
   pruneStaleSidePortals,
   reconcileOwners,
   syncGoalAgentTeamTabs,
@@ -479,6 +480,10 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       favorites: normalizeFavorites(d.favorites, byId, exams),
       agentTabs: agentTabsState.tabs,
       agentActiveTab: agentTabsState.active,
+      ...(() => {
+        const fixSide = normalizeFixSideState((d as { fixSide?: unknown }).fixSide, docArea)
+        return fixSide ? { fixSide } : {}
+      })(),
     }
     // 视频资源上的 boundTo 镜像按事实源（videoNodes）整表重建：读回来的那份不作数
     const mirrored = videos.length && videoNodes.length ? withVideoMirror(store) : store

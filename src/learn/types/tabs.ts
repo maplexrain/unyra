@@ -226,6 +226,21 @@ export interface TabSidePortal {
   swapped?: boolean
 }
 
+/**
+ * Vim `:fixside` 固定外侧对照栏状态：
+ * 独立于页签布局树之外（位于原右侧 AgentPanel 宿主位置），不随切换页签或分屏组变化而消失。
+ */
+export interface FixSideState {
+  /** 被传送到固定外侧栏展示的页签 id（LearnTab.id） */
+  targetTabId: string
+  /** 外侧栏宽度（px，300 ~ 960，默认 540） */
+  width?: number
+  /** 是否停靠在主工作区左侧（false = 默认右侧；true = 双击分割线对调到左侧） */
+  left?: boolean
+  /** 是否临时收起 */
+  collapsed?: boolean
+}
+
 export interface LearnTab {
   /** 稳定 key（tabKey 的结果），页签列表与激活态都按它比对 */
   id: string

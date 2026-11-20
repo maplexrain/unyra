@@ -49,6 +49,8 @@ export interface AgentHistorySidebarProps {
   onSelectConversation: (conversationId: string) => void
   onNewConversation: () => void
   onDeleteConversation: (conversationId: string) => void
+  /** 是否把手动折叠状态持久化到 localStorage；:side / :fixside 传送栏中置为 false */
+  persistCollapsed?: boolean
 }
 
 export function AgentHistorySidebar({
@@ -65,12 +67,14 @@ export function AgentHistorySidebar({
   onSelectConversation,
   onNewConversation,
   onDeleteConversation,
+  persistCollapsed = true,
 }: AgentHistorySidebarProps) {
   useLocale()
-  const [collapsed, setCollapsed] = useState<boolean>(readCollapsed)
+  const [collapsed, setCollapsed] = useState<boolean>(() => (persistCollapsed ? readCollapsed() : false))
 
   const toggleCollapsed = (next: boolean) => {
     setCollapsed(next)
+    if (!persistCollapsed) return
     try {
       localStorage.setItem(RIGHT_COLLAPSED_KEY, next ? 'true' : 'false')
     } catch {

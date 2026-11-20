@@ -263,3 +263,142 @@ export function executeSideCommand(arg: string): { success: boolean; message?: s
           : `[已开启传送对照: ${picked.title.slice(0, 18)}]`,
   }
 }
+
+export interface BuildFixSideTargetsParams {
+  store: LearnStore
+  openFixSidePortal: (targetTabId: string) => void
+  closeFixSidePortal: () => void
+  swapFixSidePortal: () => void
+  toggleFixSideCollapse: () => void
+  examTitle?: (examId: string, attemptId: string) => string | undefined
+}
+
+/**
+ * 构建 `:fixside` 固定外侧对照栏候选列表（枚举全部已打开非空白页签，
+ * 因为它独立于页签栏之外，不排除当前激活页签；并附加对调/收起/关闭动作）。
+ */
+export function buildFixSideTargets(params: BuildFixSideTargetsParams): VimSideTarget[] {
+  const { store, openFixSidePortal, closeFixSidePortal, swapFixSidePortal, toggleFixSideCollapse, examTitle } = params
+  const curGroup = focusedGroup(store.docArea)
+  const curVisibleIds = new Set(
+    visibleTabs(curGroup.tabs, store.docArea.tabOwners, store.activeGoalId).map((t) => t.id),
+  )
+
+  const goalTitleMap = new Map<string, string>()
+  for (const g of store.goals) {
+    const label = nodeById(store, g.rootNodeId)?.title || g.title || g.question || ''
+    if (label) goalTitleMap.set(g.id, label)
+  }
+
+  const seen = new Set<string>()
+  const visibleCandidates: VimSideTarget[] = []
+  const otherCandidates: VimSideTarget[] = []
+
+  const nodeLabelOf = (id: string) => nodeById(store, id)?.title ?? ''
+  const titleOfNode = (id: string) => nodeById(store, id)?.title
+  const goalLabelOf = (gid: string) => goalTitleMap.get(gid) ?? ''
+  const videoTitleOf = (vid: string) =>
+    store.videoNodes?.find((vn) => vn.id === vid)?.title ?? store.videos?.find((v) => v.id === vid)?.title
+
+  for (const group of store.docArea.groups) {
+    for (const tab of group.tabs) {
+      if (seen.has(tab.id) || isBlankTab(tab)) continue
+      seen.add(tab.id)
+
+      const title = tabTitle(tab.ref, titleOfNode, examTitle, videoTitleOf) || tab.id
+      const trail = tabTrail(tab.ref, nodeLabelOf, goalLabelOf)
+      const isCurrentFixed = store.fixSide?.targetTabId === tab.id
+      const subtitleParts = [
+        trail,
+        isCurrentFixed ? t('当前已在固定外侧栏') : group.id !== curGroup.id ? t('其他分屏组') : '',
+      ].filter(Boolean)
+
+      const item: VimSideTarget = {
+        id: `fix:${tab.id}`,
+        tabId: tab.id,
+        ref: tab.ref,
+        title,
+        subtitle: subtitleParts.join(' · ') || undefined,
+        badge: sideKindBadge(tab.ref),
+        kind: tab.ref.kind,
+        actionType: 'open',
+        action: () => openFixSidePortal(tab.id),
+      }
+
+      if (curVisibleIds.has(tab.id)) visibleCandidates.push(item)
+      else otherCandidates.push(item)
+    }
+  }
+
+  const out: VimSideTarget[] = [...visibleCandidates, ...otherCandidates]
+  if (store.fixSide) {
+    out.push(
+      {
+        id: '__fixside_swap__',
+        tabId: store.fixSide.targetTabId,
+        title: t('对调固定外侧栏位置'),
+        subtitle: t('把固定外侧栏在左右两侧之间对调'),
+        badge: 'swap',
+        kind: 'action',
+        actionType: 'swap',
+        action: () => swapFixSidePortal(),
+      },
+      {
+        id: '__fixside_toggle__',
+        tabId: store.fixSide.targetTabId,
+        title: store.fixSide.collapsed ? t('展开固定外侧栏') : t('收起固定外侧栏'),
+        subtitle: t('折叠或展开固定外侧栏，保留当前传送页签'),
+        badge: 'toggle',
+        kind: 'action',
+        actionType: 'swap',
+        action: () => toggleFixSideCollapse(),
+      },
+      {
+        id: '__fixside_close__',
+        tabId: store.fixSide.targetTabId,
+        title: t('关闭固定外侧栏'),
+        subtitle: t('关闭页签区外侧固定对照栏'),
+        badge: 'off',
+        kind: 'action',
+        actionType: 'close',
+        action: () => closeFixSidePortal(),
+      },
+    )
+  }
+
+  return out
+}
+
+let fixSideTargetsProvider: SideTargetsProvider | null = null
+
+export function setFixSideTargetsProvider(provider: SideTargetsProvider | null): void {
+  fixSideTargetsProvider = provider
+}
+
+export function getFixSideTargets(query?: string): VimSideTarget[] {
+  const all = fixSideTargetsProvider?.() ?? []
+  if (!query) return all
+  return matchSideTargets(all, query)
+}
+
+export function executeFixSideCommand(arg: string): { success: boolean; message?: string } {
+  const cleanQ = arg.trim()
+  const list = getFixSideTargets(cleanQ)
+  if (list.length === 0) {
+    return {
+      success: false,
+      message: cleanQ ? `[未找到匹配页签: ${cleanQ}]` : '[当前没有可放入固定外侧栏的页签]',
+    }
+  }
+  const picked = list[0]
+  picked.action()
+  return {
+    success: true,
+    message:
+      picked.actionType === 'close'
+        ? '[已关闭固定外侧栏]'
+        : picked.actionType === 'swap'
+          ? '[已更新固定外侧栏布局]'
+          : `[已打开固定外侧栏: ${picked.title.slice(0, 18)}]`,
+  }
+}

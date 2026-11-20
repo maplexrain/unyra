@@ -497,6 +497,7 @@ const dict: Record<string, string> = {
   '打开或新建一个学习目标后，它的导师会在这里出现。': 'Open or create a learning goal and its tutor will appear here.',
   '跨目标': 'All goals',
   '学习导师': 'Tutor',
+  '当前页面宽度小于 800，智能体列表已收起且暂不可展开': 'Roster stays collapsed below 800px width',
 }
 
 export default dict

@@ -12,6 +12,8 @@ export interface AgentTeamPageProps {
   active?: boolean
   focused?: boolean
   goalId?: string
+  /** 是否持久化左侧列表/右侧历史栏的折叠状态（在 `:side` / `:fixside` 中传入 false，避免串扰原页签） */
+  persistLayout?: boolean
   agentSlotDeps: AgentSlotDeps
 }
 
@@ -19,6 +21,7 @@ export default function AgentTeamPage({
   active,
   focused,
   goalId,
+  persistLayout,
   agentSlotDeps,
 }: AgentTeamPageProps) {
   const isFocused = focused ?? active ?? true
@@ -45,7 +48,14 @@ export default function AgentTeamPage({
       data-agent-team-page={isFocused ? 'true' : undefined}
       className="flex h-full w-full flex-col overflow-hidden bg-paper select-text"
     >
-      <AgentSlot deps={{ ...agentSlotDeps, tabActive: active ?? true, ...(goalId ? { tabGoalId: goalId } : {}) }} />
+      <AgentSlot
+        deps={{
+          ...agentSlotDeps,
+          tabActive: active ?? true,
+          ...(goalId ? { tabGoalId: goalId } : {}),
+          ...(persistLayout !== undefined ? { persistLayout } : {}),
+        }}
+      />
     </div>
   )
 }

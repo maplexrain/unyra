@@ -5,7 +5,7 @@
  * - 清理指向已关闭页签的过期传送配置。
  */
 
-import type { LearnTab, TabSidePortal } from '../types'
+import type { FixSideState, LearnTab, TabSidePortal } from '../types'
 import { settle } from './core'
 import { findTab } from './focus'
 import { allStoredTabs } from './tabs'
@@ -14,6 +14,43 @@ import type { DocWorkspace } from './types'
 export const DEFAULT_SIDE_RATIO = 0.5
 export const MIN_SIDE_RATIO = 0.2
 export const MAX_SIDE_RATIO = 0.8
+
+export const DEFAULT_FIX_SIDE_WIDTH = 540
+export const MIN_FIX_SIDE_WIDTH = 300
+export const MAX_FIX_SIDE_WIDTH = 960
+
+export function clampFixSideWidth(width: number | undefined): number {
+  if (typeof width !== 'number' || !Number.isFinite(width)) return DEFAULT_FIX_SIDE_WIDTH
+  return Math.max(MIN_FIX_SIDE_WIDTH, Math.min(MAX_FIX_SIDE_WIDTH, Math.round(width)))
+}
+
+/** 校验并归一 `:fixside` 固定外侧栏持久化状态；目标页签已不在工作区中则返回 undefined */
+export function normalizeFixSideState(raw: unknown, docs: DocWorkspace): FixSideState | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const targetTabId = typeof r.targetTabId === 'string' ? r.targetTabId.trim() : ''
+  if (!targetTabId) return undefined
+  if (!allStoredTabs(docs).some((t) => t.id === targetTabId)) return undefined
+  const width = typeof r.width === 'number' && Number.isFinite(r.width) ? clampFixSideWidth(r.width) : undefined
+  const left = r.left === true ? true : undefined
+  const collapsed = r.collapsed === true ? true : undefined
+  return {
+    targetTabId,
+    ...(width !== undefined ? { width } : {}),
+    ...(left !== undefined ? { left } : {}),
+    ...(collapsed !== undefined ? { collapsed } : {}),
+  }
+}
+
+/** 查找 `:fixside` 指向的页签实体（支持活动组与停靠场中存在的已打开页签） */
+export function findFixSideTargetTab(
+  docs: DocWorkspace,
+  fixSide?: FixSideState | null,
+): LearnTab | null {
+  const targetId = fixSide?.targetTabId
+  if (!targetId) return null
+  return allStoredTabs(docs).find((t) => t.id === targetId) ?? null
+}
 
 export function clampSideRatio(ratio: number | undefined): number {
   if (typeof ratio !== 'number' || !Number.isFinite(ratio)) return DEFAULT_SIDE_RATIO

@@ -170,6 +170,15 @@ export const VIM_COMMANDS: readonly VimCommandInfo[] = [
     example: ':side ',
   },
   {
+    cmd: 'fixside',
+    aliases: ['fside', 'fsd'],
+    name: '固定外侧对照栏',
+    desc: '在页签栏外侧（原右侧导师栏位置）固定对照任意打开页签，切页签不受影响（:fixside off 关闭 / swap 对调）',
+    category: 'moji',
+    tag: '专属',
+    example: ':fixside ',
+  },
+  {
     cmd: 'resources',
     aliases: ['res'],
     name: '切换资源管理器',
