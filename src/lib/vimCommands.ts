@@ -635,6 +635,11 @@ export function registerVimExCommands(): void {
   const onSide = (cm: any, params: any) => {
     const arg = params?.argString?.trim() || ''
     if (!arg) {
+      const closed = globalTabOps?.closeSidePortal?.()
+      if (closed?.success) {
+        if (closed.message) showVimNotice(cm, closed.message)
+        return
+      }
       window.setTimeout(() => openGlobalCommandBar({ mode: ':', prefill: 'side ' }), 0)
       return
     }
@@ -659,6 +664,11 @@ export function registerVimExCommands(): void {
   const onFixSide = (cm: any, params: any) => {
     const arg = params?.argString?.trim() || ''
     if (!arg) {
+      const closed = globalTabOps?.closeFixSidePortal?.()
+      if (closed?.success) {
+        if (closed.message) showVimNotice(cm, closed.message)
+        return
+      }
       window.setTimeout(() => openGlobalCommandBar({ mode: ':', prefill: 'fixside ' }), 0)
       return
     }

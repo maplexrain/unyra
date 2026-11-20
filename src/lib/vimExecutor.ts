@@ -351,6 +351,8 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'sd': {
       const arg = clean.slice(baseCmd.length).trim()
       if (!arg) {
+        const closed = globalTabOps?.closeSidePortal?.()
+        if (closed?.success) return closed
         if (typeof window !== 'undefined') {
           window.setTimeout(() => openGlobalCommandBar({ mode: ':', prefill: 'side ' }), 0)
         }
@@ -370,6 +372,8 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'fsd': {
       const arg = clean.slice(baseCmd.length).trim()
       if (!arg) {
+        const closed = globalTabOps?.closeFixSidePortal?.()
+        if (closed?.success) return closed
         if (typeof window !== 'undefined') {
           window.setTimeout(() => openGlobalCommandBar({ mode: ':', prefill: 'fixside ' }), 0)
         }

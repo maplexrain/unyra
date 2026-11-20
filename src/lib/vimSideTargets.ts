@@ -301,7 +301,8 @@ export function buildFixSideTargets(params: BuildFixSideTargetsParams): VimSideT
     store.videoNodes?.find((vn) => vn.id === vid)?.title ?? store.videos?.find((v) => v.id === vid)?.title
 
   for (const group of store.docArea.groups) {
-    for (const tab of group.tabs) {
+    const groupVisible = visibleTabs(group.tabs, store.docArea.tabOwners, store.activeGoalId)
+    for (const tab of groupVisible) {
       if (seen.has(tab.id) || isBlankTab(tab)) continue
       seen.add(tab.id)
 

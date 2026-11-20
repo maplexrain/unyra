@@ -7,6 +7,7 @@ import {
   allTabs,
   claimTab,
   closeIds,
+  DEFAULT_FIX_SIDE_WIDTH,
   ensureGoalAgentTeamTab,
   findTab,
   focusedGroup,
@@ -458,8 +459,14 @@ export function useTabOpening({
       nextDocs = ensureGoalAgentTeamTab(nextDocs, goal.id, Date.now(), { targetGroupId: outlineGrp })
       updated = true
     }
-    if (updated) {
-      set({ ...cur, docArea: nextDocs })
+    if (updated || (!cur.fixSide && cur.activeGoalId && allTabs(nextDocs).some((t) => t.id === `team:${cur.activeGoalId}`))) {
+      set({
+        ...cur,
+        docArea: nextDocs,
+        ...(!cur.fixSide && cur.activeGoalId && allTabs(nextDocs).some((t) => t.id === `team:${cur.activeGoalId}`)
+          ? { fixSide: { targetTabId: `team:${cur.activeGoalId}`, width: DEFAULT_FIX_SIDE_WIDTH } }
+          : {}),
+      })
     }
   }, [getLatest, set])
 

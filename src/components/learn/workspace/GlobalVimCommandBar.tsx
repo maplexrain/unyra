@@ -455,18 +455,6 @@ export default function GlobalVimCommandBar() {
         return
       }
 
-      // 非编辑器模式下提交 bare `:side` / `:fixside` 直接展开候选空格列表，零闪烁切换
-      if (!isPrompt && (cmd === 'side' || cmd === 'sd')) {
-        setValue('side ')
-        setSelected(-1)
-        return
-      }
-      if (!isPrompt && (cmd === 'fixside' || cmd === 'fside' || cmd === 'fsd')) {
-        setValue('fixside ')
-        setSelected(-1)
-        return
-      }
-
       // 非编辑器模式：立即关闭弹层并执行命令
       close(true)
       executeVimCommand(cmd)

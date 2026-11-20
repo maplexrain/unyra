@@ -545,6 +545,34 @@ describe('Vim :fixside 固定外侧对照栏（页签外宿主机与持久化）
 
     expect(executeVimCommand(':fixside off').success).toBe(true)
     expect(closeSpy).toHaveBeenCalledTimes(1)
+
+    // 空参数的 :side / :fixside 在已开启时直接关闭
+    expect(executeVimCommand(':side').success).toBe(true)
+    expect(closeSpy).toHaveBeenCalledTimes(1)
+    expect(executeVimCommand(':fixside').success).toBe(true)
+    expect(closeSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('buildFixSideTargets 仅包含当前 tab 组可见页签，排除其他目标的隐藏页签', () => {
+    const store = makeBaseStore()
+    const docsWithOtherGoal = openInGroup(
+      store.docArea,
+      FIRST_GROUP,
+      { kind: 'teach', nodeId: 'nB' },
+      400,
+    )
+    const claimed = withOwners(docsWithOtherGoal, claimTab(docsWithOtherGoal.tabOwners, 'gB', 't:nB'))
+    const scopedStore = { ...store, docArea: claimed }
+
+    const candidates = buildFixSideTargets({
+      store: scopedStore,
+      openFixSidePortal: () => {},
+      closeFixSidePortal: () => {},
+      swapFixSidePortal: () => {},
+      toggleFixSideCollapse: () => {},
+    })
+    expect(candidates.some((c) => c.tabId === 't:nA')).toBe(true)
+    expect(candidates.some((c) => c.tabId === 't:nB')).toBe(false)
   })
 
   it('resolveFixSideTabForGoal 在目标切换时自动跟随切换智能体团队或结构页签，普通文档不跟随', () => {

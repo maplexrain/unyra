@@ -529,7 +529,14 @@ export function SidePortalPane({ ctx, targetTab, mode = 'side', onClose, onSwap 
       data-side-portal-id={targetTab.id}
       className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card"
     >
-      <header className="flex h-8 shrink-0 items-center justify-between gap-2 border-b border-line/60 bg-paper/75 px-3 select-none">
+      <header
+        className={
+          'flex shrink-0 items-center justify-between gap-2 px-3 select-none ' +
+          (mode === 'fixside'
+            ? 'h-[37px] pt-1 border-b border-line-strong bg-paper/40'
+            : 'h-8 border-b border-line/60 bg-paper/75')
+        }
+      >
         <div className="flex min-w-0 items-center gap-2">
           <TabTypeIcon tab={targetTab.ref} />
           <span title={title} className="truncate text-[12px] font-medium text-ink-strong">
