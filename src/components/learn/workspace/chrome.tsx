@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Check, ChevronDown, Compass, FilePlus, FolderOpen, Globe, History, Menu, Sparkles, Star, Users, X } from 'lucide-react'
+import { Check, ChevronDown, Compass, FilePlus, FolderOpen, Globe, History, Menu, Sparkles, Star, X } from 'lucide-react'
 import type { FavoriteItem, FavoriteRef, KnowledgeNode, LearnStore } from '../../../learn/types'
 import { favoriteKey } from '../../../learn/favorites'
 import type { RecentOpen } from '../../../learn/recents'
@@ -56,9 +56,6 @@ export function Topbar({
   onOpenUpdate,
   onOpenNotice,
   onOpenLan,
-  onOpenAgentTeam,
-  agentRunning,
-  agentHasAsk,
   onToast: _onToast,
   schedule: _schedule,
   tools,
@@ -97,12 +94,6 @@ export function Topbar({
   onOpenNotice: () => void
   /** 打开局域网互联传输弹窗 */
   onOpenLan?: () => void
-  /** 打开智能体团队全屏页签 */
-  onOpenAgentTeam?: () => void
-  /** 是否有导师会话正在后台运行 */
-  agentRunning?: boolean
-  /** 是否有导师提问表单正在等待作答 */
-  agentHasAsk?: boolean
   /** 顶栏那几个「还没做好」的按钮据此说明一句，而不是点了没反应 */
   onToast: (msg: string) => void
 }) {
@@ -209,26 +200,6 @@ export function Topbar({
         <UpdateButton onOpenUpdate={onOpenUpdate} />
         {/* 工具入口：已整合截图、日程与计算器 */}
         {tools}
-        {/* 智能体团队入口 */}
-        <button
-          type="button"
-          title={agentHasAsk ? t('智能体团队（有提问待回答）') : agentRunning ? t('智能体团队（导师执行中）') : t('智能体团队')}
-          onClick={() => {
-            if (onOpenAgentTeam) onOpenAgentTeam()
-            else window.dispatchEvent(new CustomEvent('moji:open-tab', { detail: { kind: 'agentTeam' } }))
-          }}
-          className="relative flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft transition-all hover:bg-line/60 hover:text-ink active:scale-95 cursor-pointer"
-        >
-          <Users size={15} />
-          {agentHasAsk ? (
-            <span className="absolute right-1.5 top-1.5 flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
-            </span>
-          ) : agentRunning ? (
-            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-seal animate-pulse" />
-          ) : null}
-        </button>
         <UserMenu
           user={user}
           onOpenUser={onOpenUser}

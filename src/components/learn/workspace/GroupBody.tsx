@@ -1,7 +1,7 @@
 import { ExternalLink, Globe, Maximize2, Minimize2 } from 'lucide-react'
 import type { LearnTab } from '../../../learn/types'
 import { tabTitle, tabKey, isPdfFile } from '../../../learn/tabs'
-import { setFocus, focusTabsInGroup } from '../../../learn/groups'
+import { setFocus, focusTabsInGroup, findSideTargetTab } from '../../../learn/groups'
 import { nodeById, resolveDisplayedConversation, setNoteFormat } from '../../../learn/graph'
 import type { NoteFormat } from '../../../learn/noteFormat'
 import { updateFileNode } from '../../../learn/fileNodes'
@@ -43,6 +43,7 @@ import { DocPane } from './DocPane'
 import { OutlinePane } from './OutlinePane'
 import { FileTabLayer } from './FileTabLayer'
 import { EditorTabLayer } from './EditorTabLayer'
+import { SideSplitLayout } from './SideSplitLayout'
 import { paneInfo, examCopyOf, conceptKeysOf } from './panes'
 import { createVideoTabBridge } from './videoTabBridge'
 import { memoryDocKey } from '../../../lib/memoryMode'
@@ -233,8 +234,10 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
   /** 这一格挂着的文件页签（本地文件与工作区文件）：keepalive 常驻，切页签只藏不卸，保持编辑器状态与光标 */
   /** 这一格挂着的终端页签：每个终端独立成为一枚顶层页签，keepalive 常驻保活 */
   const gTerminalTabs = (g.group?.tabs ?? []).filter((t) => t.ref.kind === 'terminal')
-  /** 这一格挂着的智能体团队页签：keepalive 常驻保活，切走只藏不卸 */
-  const gAgentTeamTabs = (g.group?.tabs ?? []).filter((t) => t.ref.kind === 'agentTeam')
+  /** 这一格挂着的智能体团队页签（按当前目标过滤后 keepalive 常驻保活，切走只藏不卸） */
+  const gAgentTeamTabs = gVisibleTabs.filter((t) => t.ref.kind === 'agentTeam')
+  /** Vim :side 页签内传送目标（若当前页签未启用或目标已关闭则为 null） */
+  const gSideTarget = findSideTargetTab(docs, gTab)
   const gFileTabs = (g.group?.tabs ?? []).filter((x) => x.ref.kind === 'local' || x.ref.kind === 'ws')
   /** 这一格挂着的教学文档 / 笔记 / 超级文档页签：编辑态常驻层（EditorTabLayer）照此挂起 */
   const gEditorTabs = (g.group?.tabs ?? []).filter(
@@ -351,7 +354,13 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
         relative，并且它是**唯一**能被悬浮组盖住的地方——它不会跑到页签栏或对话栏上去。
       */}
       <div className="relative flex min-h-0 flex-1 flex-col bg-card">
-          <div
+        <SideSplitLayout
+          ctx={ctx}
+          sourceTab={gTab}
+          targetTab={gSideTarget}
+          primary={
+            <>
+              <div
             ref={isFocused ? docBox : undefined}
             {...boxProps}
             className={
@@ -833,7 +842,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
           const isCur = gTab?.id === t.id
           return (
             <div key={t.id} className={`absolute inset-0 z-10 flex flex-col ${isCur ? '' : 'hidden pointer-events-none'}`}>
-              <AgentTeamPage active={isCur} focused={isCur && isFocused} agentSlotDeps={agentSlotDeps} />
+              <AgentTeamPage active={isCur} focused={isCur && isFocused} goalId={t.ref.kind === 'agentTeam' ? t.ref.goalId : undefined} agentSlotDeps={agentSlotDeps} />
             </div>
           )
         })}
@@ -959,6 +968,9 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
             {pure ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
         )}
+            </>
+          }
+        />
 
         {/*
           拖页签的落点高亮：指针停在某一格的边上时，把那半边画出来——

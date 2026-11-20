@@ -495,6 +495,8 @@ const dict: Record<string, string> = {
   '子代理独立会话': 'Sub-agent isolated session',
   '当前未选择学习目标，可从下方挑选一个目标直接开启导师对话：': 'No learning goal is currently selected. Pick a goal below to start talking with the tutor:',
   '打开或新建一个学习目标后，它的导师会在这里出现。': 'Open or create a learning goal and its tutor will appear here.',
+  '跨目标': 'All goals',
+  '学习导师': 'Tutor',
 }
 
 export default dict

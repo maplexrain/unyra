@@ -213,6 +213,19 @@ export interface WebTabMeta {
  * id 由 tabKey(ref) 算出（见 learn/tabs），因此「同一个目标」在列表里只可能出现一次——
  * 重复打开只是把它激活，不会多出一个页签。
  */
+/**
+ * 页签内内置双栏对照传送通道（Vim :side 命令）：
+ * 在当前页签内并排切出另一枚已打开页签的实时视图，不拆分 Tab 组，也不额外生成页签栏。
+ */
+export interface TabSidePortal {
+  /** 被传送的目标页签 id（LearnTab.id），目标原页签保持原位不受影响 */
+  targetTabId: string
+  /** 左栏宽度占比（0.2 ~ 0.8，默认 0.5） */
+  ratio?: number
+  /** 是否对调左右位置（false = 原页面在左、传送页面在右；true = 传送页面在左、原页面在右） */
+  swapped?: boolean
+}
+
 export interface LearnTab {
   /** 稳定 key（tabKey 的结果），页签列表与激活态都按它比对 */
   id: string
@@ -227,6 +240,8 @@ export interface LearnTab {
   createdAt: number
   /** 是否固定标签页：固定tab永远显示在最前面，不受tab栏滚动和非直接关闭影响 */
   pinned?: boolean
+  /** Vim :side 并排传送对照配置，随 state.json 持久化 */
+  side?: TabSidePortal
 }
 
 /**

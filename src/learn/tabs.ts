@@ -98,9 +98,14 @@ export function tabKey(ref: TabRef): string {
   return 'l:' + ref.path
 }
 
-/** 判断页签是否为固定页签：仅显式设置 pinned 的页签固定，不再因类型自动固定 */
+/** 结构页签（outline）与智能体团队页签（agentTeam）始终处于固定状态，不可取消固定 */
+export function isAlwaysPinnedRef(ref: TabRef): boolean {
+  return ref.kind === 'outline' || ref.kind === 'agentTeam'
+}
+
+/** 判断页签是否为固定页签：结构与智能体团队始终固定，其余页签看显式 pinned 标记 */
 export function isTabPinned(tab: LearnTab): boolean {
-  return tab.pinned ?? false
+  return isAlwaysPinnedRef(tab.ref) || (tab.pinned ?? false)
 }
 
 export function makeTab(ref: TabRef, at: number, view?: DocView): LearnTab {

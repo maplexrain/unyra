@@ -1,10 +1,27 @@
 /** 页签与本地文件列表的反序列化：指向已不存在的东西的页签一律丢掉，本地文件只校验形状、不查磁盘。 */
 
-import type { DocScroll, DocView, FavoriteItem, FavoriteRef, KnowledgeNode, LearnTab, LocalFile, TabRef } from '../../types'
+import { isAlwaysPinnedRef, newBlankKey, newWebKey, tabKey } from '../../tabs'
+import type { DocScroll, DocView, FavoriteItem, FavoriteRef, KnowledgeNode, LearnTab, LocalFile, TabRef, TabSidePortal } from '../../types'
 import type { Exam } from '../../exam'
 import { sortLocalFiles } from '../../localfiles'
-import { newBlankKey, newWebKey, tabKey } from '../../tabs'
 import { favoriteKey } from '../../favorites'
+
+function normalizeTabSide(raw: unknown, selfId: string): TabSidePortal | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const targetTabId = typeof r.targetTabId === 'string' ? r.targetTabId.trim() : ''
+  if (!targetTabId || targetTabId === selfId) return undefined
+  const ratio =
+    typeof r.ratio === 'number' && Number.isFinite(r.ratio)
+      ? Math.max(0.2, Math.min(0.8, r.ratio))
+      : undefined
+  const swapped = r.swapped === true ? true : undefined
+  return {
+    targetTabId,
+    ...(ratio !== undefined ? { ratio } : {}),
+    ...(swapped !== undefined ? { swapped } : {}),
+  }
+}
 
 /* ---------- 页签与本地文件列表 ---------- */
 
@@ -33,12 +50,21 @@ export function normalizeTab(raw: unknown, byId: Map<string, KnowledgeNode>): Le
       : rawRef.view === 'source' || rawRef.view === 'preview'
         ? rawRef.view
         : undefined
-  const pinned = r.pinned === true ? true : r.pinned === false ? false : undefined
+  const id = tabKey(ref)
+  const pinned = isAlwaysPinnedRef(ref)
+    ? true
+    : r.pinned === true
+      ? true
+      : r.pinned === false
+        ? false
+        : undefined
+  const side = normalizeTabSide(r.side, id)
   return {
-    id: tabKey(ref),
+    id,
     ref,
     ...(view ? { view } : {}),
     ...(pinned !== undefined ? { pinned } : {}),
+    ...(side ? { side } : {}),
     createdAt:
       typeof r.createdAt === 'number' && Number.isFinite(r.createdAt) ? r.createdAt : Date.now(),
   }

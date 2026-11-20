@@ -11,7 +11,7 @@ import {
   PanelLeftOpen,
 } from 'lucide-react'
 import { t, useLocale } from '../../../i18n'
-import type { AgentTeamMode } from './conversationList'
+import { formatConversationTime, type AgentTeamMode } from './conversationList'
 
 const LEFT_COLLAPSED_KEY = 'moji:agent-team:left-collapsed'
 
@@ -30,6 +30,12 @@ export interface AgentRosterSidebarProps {
   freeRunning: boolean
   tutorRunning: boolean
   tutorHasAsk: boolean
+  freePreview?: string
+  freeLastTime?: number
+  freeCount?: number
+  tutorPreview?: string
+  tutorLastTime?: number
+  tutorCount?: number
 }
 
 export function AgentRosterSidebar({
@@ -39,6 +45,12 @@ export function AgentRosterSidebar({
   freeRunning,
   tutorRunning,
   tutorHasAsk,
+  freePreview,
+  freeLastTime,
+  freeCount,
+  tutorPreview,
+  tutorLastTime,
+  tutorCount,
 }: AgentRosterSidebarProps) {
   useLocale()
   const [collapsed, setCollapsed] = useState<boolean>(readCollapsed)
@@ -55,31 +67,45 @@ export function AgentRosterSidebar({
   const agents: Array<{
     id: AgentTeamMode
     label: string
+    roleTag: string
     subtitle: string
+    timeLabel: string
+    count?: number
     icon: typeof MessageSquare
-    accentClass: string
+    avatarClass: string
+    ringClass: string
     running: boolean
     hasAsk: boolean
   }> = [
     {
       id: 'free',
       label: t('仅聊天'),
-      subtitle: freeRunning ? t('回答中…') : t('纯对话 · 联网与日程'),
+      roleTag: t('跨目标'),
+      subtitle: freeRunning
+        ? t('回答中…')
+        : freePreview || t('纯对话 · 联网与日程'),
+      timeLabel: formatConversationTime(freeLastTime ?? 0),
+      count: freeCount,
       icon: MessageSquare,
-      accentClass: 'bg-line/70 text-ink-strong',
+      avatarClass: 'bg-line/75 text-ink-strong border-line-strong/40',
+      ringClass: 'bg-emerald-500/12 text-emerald-600 dark:text-emerald-400',
       running: freeRunning,
       hasAsk: false,
     },
     {
       id: 'tutor',
       label: t('导师'),
+      roleTag: t('学习导师'),
       subtitle: tutorHasAsk
         ? t('等待你的确认')
         : tutorRunning
           ? t('正在执行…')
-          : activeGoalTitle || t('未选择学习目标'),
+          : tutorPreview || activeGoalTitle || t('未选择学习目标'),
+      timeLabel: formatConversationTime(tutorLastTime ?? 0),
+      count: tutorCount,
       icon: GraduationCap,
-      accentClass: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
+      avatarClass: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/25',
+      ringClass: 'bg-sky-500/15 text-sky-600 dark:text-sky-300',
       running: tutorRunning,
       hasAsk: tutorHasAsk,
     },
@@ -145,12 +171,17 @@ export function AgentRosterSidebar({
   return (
     <aside
       aria-label={t('智能体列表')}
-      className="flex h-full w-[184px] shrink-0 flex-col border-r border-line/70 bg-paper/60"
+      className="flex h-full w-[240px] shrink-0 flex-col border-r border-line/70 bg-paper/65"
     >
-      <header className="flex shrink-0 items-center justify-between border-b border-line/50 px-3 py-2.5">
-        <span className="text-[11.5px] font-semibold tracking-wide text-ink-soft">
-          {t('智能体')}
-        </span>
+      <header className="flex shrink-0 items-center justify-between border-b border-line/50 px-3.5 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] font-semibold tracking-wide text-ink-soft">
+            {t('智能体')}
+          </span>
+          <span className="rounded-full bg-line/60 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-ink-faint">
+            {agents.length}
+          </span>
+        </div>
         <button
           type="button"
           onClick={() => toggleCollapsed(true)}
@@ -165,7 +196,7 @@ export function AgentRosterSidebar({
       <div
         role="tablist"
         aria-orientation="vertical"
-        className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-2"
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2.5"
       >
         {agents.map((item) => {
           const Icon = item.icon
@@ -178,49 +209,77 @@ export function AgentRosterSidebar({
               aria-selected={active}
               onClick={() => onSelectMode(item.id)}
               className={
-                'group flex w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition ' +
+                'group relative flex w-full items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition ' +
                 (active
-                  ? 'border-line-strong/80 bg-card text-ink-strong shadow-xs'
-                  : 'border-transparent text-ink-soft hover:bg-line/45 hover:text-ink')
+                  ? 'border-line-strong/85 bg-card text-ink-strong shadow-xs'
+                  : 'border-transparent text-ink-soft hover:border-line/60 hover:bg-card/55 hover:text-ink')
               }
             >
+              {/* 联系人头像 + 在线/运行状态点 */}
               <span
                 className={
-                  'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition ' +
-                  (active ? item.accentClass : 'bg-line/40 text-ink-soft group-hover:text-ink')
+                  'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border transition ' +
+                  (active ? item.avatarClass : 'border-line/60 bg-line/35 text-ink-soft group-hover:text-ink')
                 }
               >
-                <Icon size={15} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5">
-                  <span className="truncate text-[12.5px] font-medium text-ink-strong">
-                    {item.label}
-                  </span>
-                  {item.hasAsk ? (
-                    <span
-                      aria-hidden="true"
-                      className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-amber-500"
-                    />
-                  ) : item.running ? (
-                    <span
-                      aria-hidden="true"
-                      className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-seal"
-                    />
-                  ) : null}
-                </span>
+                <Icon size={17} />
                 <span
-                  title={item.subtitle}
+                  aria-hidden="true"
                   className={
-                    'mt-0.5 block truncate text-[10.5px] ' +
+                    'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-paper transition ' +
                     (item.hasAsk
-                      ? 'text-amber-500'
+                      ? 'animate-pulse bg-amber-500'
                       : item.running
-                        ? 'text-seal'
-                        : 'text-ink-faint')
+                        ? 'animate-pulse bg-seal'
+                        : 'bg-emerald-500')
                   }
-                >
-                  {item.subtitle}
+                />
+              </span>
+
+              {/* 联系人信息：名称、角色标签、最近时间与消息预览 */}
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center justify-between gap-1.5">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate text-[13px] font-semibold text-ink-strong">
+                      {item.label}
+                    </span>
+                    <span
+                      className={
+                        'shrink-0 rounded-md px-1.5 py-0.5 text-[9.5px] font-medium leading-none ' +
+                        (active
+                          ? item.ringClass
+                          : 'bg-line/55 text-ink-faint')
+                      }
+                    >
+                      {item.roleTag}
+                    </span>
+                  </span>
+                  {item.timeLabel && (
+                    <span className="shrink-0 text-[10px] tabular-nums text-ink-faint">
+                      {item.timeLabel}
+                    </span>
+                  )}
+                </span>
+
+                <span className="mt-1 flex items-center justify-between gap-1.5">
+                  <span
+                    title={item.subtitle}
+                    className={
+                      'min-w-0 truncate text-[11px] leading-snug ' +
+                      (item.hasAsk
+                        ? 'font-medium text-amber-500'
+                        : item.running
+                          ? 'font-medium text-seal'
+                          : 'text-ink-faint')
+                    }
+                  >
+                    {item.subtitle}
+                  </span>
+                  {typeof item.count === 'number' && item.count > 0 && (
+                    <span className="shrink-0 rounded-full bg-line/65 px-1.5 py-0.5 text-[9.5px] font-medium tabular-nums leading-none text-ink-faint">
+                      {item.count}
+                    </span>
+                  )}
                 </span>
               </span>
             </button>

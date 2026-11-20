@@ -11,12 +11,14 @@ import { AgentSlot, type AgentSlotDeps } from '../workspace/AgentSlot'
 export interface AgentTeamPageProps {
   active?: boolean
   focused?: boolean
+  goalId?: string
   agentSlotDeps: AgentSlotDeps
 }
 
 export default function AgentTeamPage({
   active,
   focused,
+  goalId,
   agentSlotDeps,
 }: AgentTeamPageProps) {
   const isFocused = focused ?? active ?? true
@@ -43,7 +45,7 @@ export default function AgentTeamPage({
       data-agent-team-page={isFocused ? 'true' : undefined}
       className="flex h-full w-full flex-col overflow-hidden bg-paper select-text"
     >
-      <AgentSlot deps={{ ...agentSlotDeps, tabActive: active ?? true }} />
+      <AgentSlot deps={{ ...agentSlotDeps, tabActive: active ?? true, ...(goalId ? { tabGoalId: goalId } : {}) }} />
     </div>
   )
 }

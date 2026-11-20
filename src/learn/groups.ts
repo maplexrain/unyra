@@ -109,3 +109,17 @@ export {
 export type { TabOwners } from './groups/goals'
 
 export { closeGoalTabGroupStore } from './groups/goalTabGroupOps'
+
+export { ensureGoalAgentTeamTab, goalAgentTeamRef, outlineGroupForGoal, syncGoalAgentTeamTabs } from './groups/goalAgentTeam'
+
+export {
+  DEFAULT_SIDE_RATIO,
+  MAX_SIDE_RATIO,
+  MIN_SIDE_RATIO,
+  clampSideRatio,
+  findSideTargetTab,
+  pruneStaleSidePortals,
+  setTabSidePortalRatio,
+  toggleSwapTabSidePortal,
+  withTabSidePortal,
+} from './groups/sidePortal'

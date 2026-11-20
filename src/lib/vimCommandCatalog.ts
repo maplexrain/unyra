@@ -161,6 +161,15 @@ export const VIM_COMMANDS: readonly VimCommandInfo[] = [
     example: ':preview switch',
   },
   {
+    cmd: 'side',
+    aliases: ['sd'],
+    name: '当前页并排对照',
+    desc: '在当前页签内开传送通道并排显示另一打开页签（不拆分 Tab 栏；:side off 关闭 / :side swap 对调）',
+    category: 'moji',
+    tag: '专属',
+    example: ':side ',
+  },
+  {
     cmd: 'resources',
     aliases: ['res'],
     name: '切换资源管理器',

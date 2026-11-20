@@ -18,10 +18,28 @@ import { focusAgentInput } from '../../../lib/agentFocus'
 
 type AgentApi = ReturnType<typeof useAgent>
 
-/** 任意分屏组中当前激活的页签是否为智能体团队页签 */
-export function isAgentTeamVisible(store: LearnStore): boolean {
+/** resolving the target goalId for a conversation or current active store */
+function resolveTeamTabRef(store: LearnStore, convId?: string): TabRef {
+  if (convId) {
+    const conv = conversationById(store, convId)
+    if (conv?.goalId) return { kind: 'agentTeam', goalId: conv.goalId }
+  }
+  return store.activeGoalId ? { kind: 'agentTeam', goalId: store.activeGoalId } : { kind: 'agentTeam' }
+}
+
+/** 任意分屏组中当前激活的页签是否为智能体团队页签（传 goalId 时校验所属目标） */
+export function isAgentTeamVisible(store: LearnStore, goalId?: string | null): boolean {
   return store.docArea.groups.some(
-    (g) => Boolean(g.active && g.tabs.some((t) => t.id === g.active && t.ref.kind === 'agentTeam')),
+    (g) =>
+      Boolean(
+        g.active &&
+          g.tabs.some(
+            (t) =>
+              t.id === g.active &&
+              t.ref.kind === 'agentTeam' &&
+              (!goalId || t.ref.goalId === goalId || !t.ref.goalId),
+          ),
+      ),
   )
 }
 
@@ -130,7 +148,7 @@ export function useAgentTeamHost({
         set(withAgentTabs(s, t0.tabs, t0.active))
       }
 
-      openTab({ kind: 'agentTeam' })
+      openTab(resolveTeamTabRef(s, opts?.conversationId))
       if (opts?.focusInput) {
         scheduleFocusInput()
       }
@@ -180,8 +198,9 @@ export function useAgentTeamHost({
     const synced = syncAgentTabForConversation(s, convId)
     if (synced !== s) set(synced)
 
-    if (!pure && !isAgentTeamVisible(getLatest())) {
-      openTab({ kind: 'agentTeam' })
+    const targetGoalId = conversationById(s, convId)?.goalId
+    if (!pure && !isAgentTeamVisible(getLatest(), targetGoalId)) {
+      openTab(resolveTeamTabRef(getLatest(), convId))
     }
   }, [agent.runningByConversation, pure, getLatest, set, openTab, onSyncFreeConvId])
 
@@ -204,8 +223,9 @@ export function useAgentTeamHost({
     const synced = syncAgentTabForConversation(s, convId)
     if (synced !== s) set(synced)
 
-    if (!isAgentTeamVisible(getLatest())) {
-      openTab({ kind: 'agentTeam' })
+    const targetGoalId = conversationById(s, convId)?.goalId
+    if (!isAgentTeamVisible(getLatest(), targetGoalId)) {
+      openTab(resolveTeamTabRef(getLatest(), convId))
     }
   }, [agent.pendingAskByConv, pure, setPure, getLatest, set, openTab, onSyncFreeConvId])
 

@@ -2,7 +2,14 @@ import { useCallback, useEffect } from 'react'
 import { setGlobalTabOperations } from '../../../lib/vimCommands'
 import { setAgentToggleHandler, focusAgentInput } from '../../../lib/agentFocus'
 import { setOpenTargetsProvider, buildOpenTargets } from '../../../lib/vimOpenTargets'
-import { focusedGroup } from '../../../learn/groups'
+import { setSideTargetsProvider, buildSideTargets } from '../../../lib/vimSideTargets'
+import {
+  findTab,
+  focusedGroup,
+  focusedTab,
+  toggleSwapTabSidePortal,
+  withTabSidePortal,
+} from '../../../learn/groups'
 import type { AnnotationStyle, DocView, LearnStore, TabRef } from '../../../learn/types'
 import { canTabSwitchToEdit, type TabCloseMode, viewOf } from '../../../learn/tabs'
 import { emptyNote } from './panes'
@@ -14,6 +21,7 @@ import { isWindowsPlatform } from '../../terminal/terminalPath'
 
 interface Params {
   getLatest: () => LearnStore
+  set?: (s: LearnStore) => void
   closeTab: (
     groupId: string,
     tabId: string,
@@ -49,6 +57,7 @@ interface Params {
 export function useVimGlobalTabOps(params: Params): void {
   const {
     getLatest,
+    set,
     closeTab,
     openBlankTab,
     toggleSide,
@@ -83,6 +92,45 @@ export function useVimGlobalTabOps(params: Params): void {
     },
     [activateTab, getLatest],
   )
+
+  const openSidePortal = useCallback(
+    (targetTabId: string): { success: boolean; message?: string } => {
+      if (!set) return { success: false, message: '[当前环境不支持并排对照]' }
+      const s = getLatest()
+      const active = focusedTab(s.docArea)
+      if (!active) return { success: false, message: '[当前无活动页签]' }
+      if (targetTabId === active.id) return { success: false, message: '[无法与当前页面自身对照]' }
+      if (!findTab(s.docArea, targetTabId)) return { success: false, message: '[目标页签不存在]' }
+      set({
+        ...s,
+        docArea: withTabSidePortal(s.docArea, active.id, {
+          targetTabId,
+          ratio: active.side?.ratio,
+          swapped: active.side?.swapped,
+        }),
+      })
+      return { success: true, message: '[已开启并排传送对照]' }
+    },
+    [getLatest, set],
+  )
+
+  const closeSidePortal = useCallback((): { success: boolean; message?: string } => {
+    if (!set) return { success: false, message: '[当前环境不支持并排对照]' }
+    const s = getLatest()
+    const active = focusedTab(s.docArea)
+    if (!active?.side) return { success: false, message: '[当前页面未开启并排对照]' }
+    set({ ...s, docArea: withTabSidePortal(s.docArea, active.id, null) })
+    return { success: true, message: '[已关闭并排对照]' }
+  }, [getLatest, set])
+
+  const swapSidePortal = useCallback((): { success: boolean; message?: string } => {
+    if (!set) return { success: false, message: '[当前环境不支持并排对照]' }
+    const s = getLatest()
+    const active = focusedTab(s.docArea)
+    if (!active?.side) return { success: false, message: '[当前页面未开启并排对照]' }
+    set({ ...s, docArea: toggleSwapTabSidePortal(s.docArea, active.id) })
+    return { success: true, message: '[已对调左右分栏位置]' }
+  }, [getLatest, set])
 
   useBrowseVim({
     getLatest,
@@ -271,7 +319,25 @@ export function useVimGlobalTabOps(params: Params): void {
           return { success: true, message: '[已打开导师提问窗口]' }
         }
       },
+      openSidePortal,
+      closeSidePortal,
+      swapSidePortal,
     })
+
+    setSideTargetsProvider(() =>
+      buildSideTargets({
+        store: getLatest(),
+        openSidePortal: (tid) => {
+          openSidePortal(tid)
+        },
+        closeSidePortal: () => {
+          closeSidePortal()
+        },
+        swapSidePortal: () => {
+          swapSidePortal()
+        },
+      }),
+    )
 
     if (openTab && openExam && openExamCopy && newExam) {
       setOpenTargetsProvider(() =>
@@ -293,9 +359,11 @@ export function useVimGlobalTabOps(params: Params): void {
       setGlobalTabOperations(null)
       setAgentToggleHandler(null)
       setOpenTargetsProvider(null)
+      setSideTargetsProvider(null)
     }
   }, [
     getLatest,
+    set,
     closeTab,
     openBlankTab,
     toggleSide,
@@ -311,5 +379,8 @@ export function useVimGlobalTabOps(params: Params): void {
     newExam,
     openWsFile,
     openLocalFile,
+    openSidePortal,
+    closeSidePortal,
+    swapSidePortal,
   ])
 }

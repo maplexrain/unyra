@@ -51,6 +51,7 @@ import {
   allTabs,
   claimTab,
   closeIds,
+  ensureGoalAgentTeamTab,
   findTab,
   focusedTab,
   goalTabsOf,
@@ -67,7 +68,7 @@ import {
   withOwners,
   type DocLayout,
 } from '../../learn/groups'
-import { isTabPinned, reorderTabs, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
+import { isAlwaysPinnedRef, isTabPinned, reorderTabs, tabKey, tabNodeId, tabTitle, tabTrail, fileNameOf as localFileNameOf } from '../../learn/tabs'
 import { setZenActive } from '../../learn/zen'
 import type { BrowserDeps } from '../../learn/web/browserOps'
 import { webviewOf } from '../../learn/web/webviewRegistry'
@@ -1050,7 +1051,7 @@ export default function LearnWorkspace({
   /** 固定/取消固定某一格里的页签，重排确保固定页签在最前面 */
   const toggleTabPin = useCallback(
     (group: string, tab: LearnTab) => {
-      if (tab.ref.kind === 'outline') return
+      if (isAlwaysPinnedRef(tab.ref)) return
       const s = getLatest()
       const docs = s.docArea
       const g = groupOf(docs, group)
@@ -1227,7 +1228,8 @@ export default function LearnWorkspace({
         now,
       )
 
-      const docArea = activateIn(docAreaWithAnchor, docAreaWithAnchor.focus, rootId)
+      const docAreaActivated = activateIn(docAreaWithAnchor, docAreaWithAnchor.focus, rootId)
+      const docArea = ensureGoalAgentTeamTab(docAreaActivated, goalId, now, { targetGroupId: docAreaActivated.focus })
       const claimedOwners = claimTab(docArea.tabOwners, goalId, rootId)
 
       const nextStore: LearnStore = {
@@ -1305,7 +1307,7 @@ export default function LearnWorkspace({
    * 监听工作区各处触发的工作流与提问表单（runningByConversation / pendingAskByConv），
    * 自动同步 agentTabs 激活会话，并在需要时自动切至智能体团队页签。
    */
-  const { openAgentTeam, toggleAgentTeam, expandAgentTeam } = useAgentTeamHost({
+  const { toggleAgentTeam, expandAgentTeam } = useAgentTeamHost({
     getLatest,
     set,
     openTab,
@@ -1566,7 +1568,7 @@ export default function LearnWorkspace({
 
   // 全局 Vim 冒号命令调度（支持非编辑页面执行 :tabo, :q, :tabnew, :agent, :edit, :browser, :fullscreen, :open 以及划词专属 :mark, :comment, :know, :study, :ask 等）
   useVimGlobalTabOps({
-    getLatest, closeTab, openBlankTab, toggleSide: toggleAgentTeam, expandSide: expandAgentTeam, setPure,
+    getLatest, set, closeTab, openBlankTab, toggleSide: toggleAgentTeam, expandSide: expandAgentTeam, setPure,
     isPure: () => pure, togglePure: toggleZen, openWebTab, setTabView, openTab,
     openExam: exam.openExam, openExamCopy, newExam, openWsFile, openLocalFile,
     activateTab, onToast,
@@ -1950,9 +1952,6 @@ export default function LearnWorkspace({
             onOpenUpdate={onOpenUpdate}
             onOpenNotice={onOpenNotice}
             onOpenLan={onOpenLan}
-            onOpenAgentTeam={() => openAgentTeam({ focusInput: true })}
-            agentRunning={agent.running}
-            agentHasAsk={Object.keys(agent.pendingAskByConv).length > 0}
             onToast={onToast}
             /* 工具箱：整合截图、日程与计算器入口 */
             tools={

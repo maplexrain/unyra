@@ -12,6 +12,7 @@ import {
   conversationTimeOf,
   displayConversationTitle,
   formatConversationTime,
+  lastMessagePreview,
   sortConversationsByTimeDesc,
   visibleMessageCount,
 } from '../src/components/learn/agent-team/conversationList'
@@ -440,6 +441,67 @@ describe('三栏组件 AgentRosterSidebar & AgentHistorySidebar 交互渲染', (
       deleteOld.click()
     })
     expect(onDeleteConversation).toHaveBeenCalledWith('old-conv')
+
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('AgentRosterSidebar 联系人卡片展示最近消息摘要与会话计数，且 lastMessagePreview 过滤内部隐藏消息', () => {
+    const conv = {
+      id: 'c-preview',
+      goalId: 'g1',
+      messages: [
+        { id: 'm1', role: 'user' as const, parts: [{ type: 'text' as const, text: '请问什么是特征向量' }], ts: 1000 },
+        { id: 'm2', role: 'assistant' as const, parts: [{ type: 'text' as const, text: '特征向量是在线性变换下只发生缩放的非零向量' }], ts: 2000 },
+        { id: 'm3', role: 'user' as const, hidden: true, parts: [{ type: 'text' as const, text: '内部指令' }], ts: 3000 },
+      ],
+      createdAt: 1000,
+      updatedAt: 2000,
+    }
+    expect(lastMessagePreview(conv)).toContain('特征向量是在线性变换下只发生缩放的非零向量')
+
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(AgentRosterSidebar, {
+          mode: 'free',
+          onSelectMode: () => {},
+          activeGoalTitle: '线性代数',
+          freeRunning: false,
+          tutorRunning: false,
+          tutorHasAsk: false,
+          freePreview: '跨目标自由聊消息',
+          freeLastTime: Date.now() - 10_000,
+          freeCount: 3,
+          tutorPreview: '在线等导师回答',
+          tutorLastTime: Date.now() - 120_000,
+          tutorCount: 2,
+        }),
+      )
+    })
+
+    expect(host.textContent).toContain('跨目标自由聊消息')
+    expect(host.textContent).toContain('在线等导师回答')
+    expect(host.textContent).toContain('跨目标')
+    expect(host.textContent).toContain('学习导师')
+    expect(
+      isAgentTeamVisible(
+        {
+          docArea: {
+            focus: 'g1',
+            layout: { kind: 'group', group: 'g1' },
+            groups: [
+              { id: 'g1', active: 'team:g2', tabs: [{ id: 'team:g2', ref: { kind: 'agentTeam', goalId: 'g2' }, createdAt: 1 }] },
+            ],
+          },
+        } as unknown as LearnStore,
+        'g1',
+      ),
+    ).toBe(false)
 
     act(() => {
       root.unmount()

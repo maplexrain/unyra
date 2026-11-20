@@ -45,6 +45,7 @@ import {
   groupOf,
   isAnchorOutline,
   ownerOfTab,
+  pruneStaleSidePortals,
   renameTabRef,
   servesGoal,
   unloadAnchoredGroups,
@@ -280,7 +281,8 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
        */
       const live = new Set(allTabs(docArea0).map((t) => t.id))
       const goneIds = beforeTabs.filter((t) => !live.has(t.id)).map((t) => t.id)
-      const docArea = goneIds.length > 0 ? withOwners(docArea1, dropTabs(docArea1.tabOwners, goneIds)) : docArea1
+      const docAreaCleaned = goneIds.length > 0 ? withOwners(docArea1, dropTabs(docArea1.tabOwners, goneIds)) : docArea1
+      const docArea = pruneStaleSidePortals(docAreaCleaned)
       const landing = focusedGroup(docArea)
       const nextRef = landing.tabs.find((t) => t.id === landing.active)?.ref ?? null
       const remainingGoals = new Set(

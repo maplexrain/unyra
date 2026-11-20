@@ -70,6 +70,24 @@ export function displayConversationTitle(conv: Conversation): string {
   return t('新对话')
 }
 
+/** 提取对话最近一条可见消息摘要，供联系人卡片副标题展示 */
+export function lastMessagePreview(conv: Conversation | undefined | null): string {
+  if (!conv) return ''
+  for (let i = conv.messages.length - 1; i >= 0; i--) {
+    const m = conv.messages[i]
+    if (!m || (m.hidden && !m.mark)) continue
+    const text = m.parts
+      .filter((p) => p.type === 'text')
+      .map((p) => p.text)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (text) return text.length > 32 ? `${text.slice(0, 32)}…` : text
+    if (m.mark?.trim()) return t(m.mark.trim())
+  }
+  return ''
+}
+
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n)
 }

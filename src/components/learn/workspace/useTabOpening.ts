@@ -7,6 +7,7 @@ import {
   allTabs,
   claimTab,
   closeIds,
+  ensureGoalAgentTeamTab,
   findTab,
   focusedGroup,
   focusedTab,
@@ -17,6 +18,7 @@ import {
   openGroupedDoc,
   openInGroup,
   openOutlineTab,
+  outlineGroupForGoal,
   patchTab,
   refOwner,
   setFocus,
@@ -109,10 +111,15 @@ export function useTabOpening({
       const owners = s.docArea.tabOwners ?? {}
       let docArea = syncGoalOutlineTabs(s.docArea, s.goals)
       const home = groupIdOfTab(docArea, rootId)
+      const hadParked = Boolean(s.docArea.parkedTabs?.[goalId]?.length)
       const goalOf = (id: string) => nodeById(s, id)?.goalId ?? (s.goals.some((g) => g.id === id) ? id : null)
       docArea = home
         ? docArea
         : openAnchorOutline(docArea, docArea.focus, rootRef, goalOf, Date.now())
+      if (!home && !hadParked) {
+        const anchorGroup = groupIdOfTab(docArea, rootId) ?? docArea.focus
+        docArea = ensureGoalAgentTeamTab(docArea, goalId, Date.now(), { targetGroupId: anchorGroup })
+      }
       if (toOutline) {
         const at = groupIdOfTab(docArea, rootId)
         if (at) docArea = activateIn(docArea, at, rootId)
@@ -253,6 +260,9 @@ export function useTabOpening({
       }
       const s = getLatest()
       let ref = targetRef
+      if (ref.kind === 'agentTeam' && !ref.goalId && s.activeGoalId) {
+        ref = { kind: 'agentTeam', goalId: s.activeGoalId }
+      }
       // 游离笔记的页签：nodeId 放的是笔记自己的 id，对不上节点、却对得上游离池 = 合法页签
       //（与绑定笔记同一套用法，差别只是没有那条关系线——见 workspace/panes 的 noteEntityOf）
       const freeNote = ref.kind === 'note' ? noteEntityOf(s, ref) : null
@@ -294,7 +304,9 @@ export function useTabOpening({
         ? touchNode(retargetNode(s, node.id), node.id)
         : isGoalOutline && targetGoalId
           ? retargetGoal(s, targetGoalId)
-          : s
+          : ref.kind === 'agentTeam' && ref.goalId && s.goals.some((g) => g.id === ref.goalId)
+            ? retargetGoal(s, ref.goalId)
+            : s
       /*
        * 绑定的视频页签：打开它 = 把它所属目标的页签组一并打开（goalTabGroup 会开组锚、
        * 让停靠的整组归队），视频页签落进焦点格并登记在该目标名下，目标随之切过去——
@@ -405,7 +417,18 @@ export function useTabOpening({
         (derivedOwner && derivedOwner !== PUBLIC_OWNER ? derivedOwner : null) ||
         base.activeGoalId ||
         PUBLIC_OWNER
-      set({ ...base, docArea: withOwners(opened, claimTab(opened.tabOwners, owner, tabKey(ref))) })
+      let finalDocs = withOwners(opened, claimTab(opened.tabOwners, owner, tabKey(ref)))
+      if (owner !== PUBLIC_OWNER && base.goals.some((g) => g.id === owner)) {
+        const hadTeamAlready =
+          allTabs(base.docArea).some((t) => t.id === `team:${owner}`) ||
+          Boolean(base.docArea.parkedTabs?.[owner]?.some((t) => t.id === `team:${owner}`)) ||
+          Boolean(base.docArea.parkedTabs?.[owner]?.length)
+        if (!hadTeamAlready && allTabs(finalDocs).every((t) => t.id !== `team:${owner}`)) {
+          const teamGroup = groupIdOfTab(finalDocs, tabKey(ref)) ?? finalDocs.focus
+          finalDocs = ensureGoalAgentTeamTab(finalDocs, owner, Date.now(), { targetGroupId: teamGroup })
+        }
+      }
+      set({ ...base, docArea: finalDocs })
       if (wasActive) requestReveal()
       setSidebarOpen(false)
     },
@@ -418,6 +441,27 @@ export function useTabOpening({
     setVimPageOpener(() => openTab({ kind: 'vim' }))
     return () => setVimPageOpener(null)
   }, [openTab])
+
+  // 启动或首次挂载时：若已打开学习目标的「结构」页签尚未配齐同组「智能体团队」固定页签，自动为其补齐（不影响已有焦点的结构页签）
+  const didEnsureGoalTeamsRef = useRef(false)
+  useEffect(() => {
+    if (didEnsureGoalTeamsRef.current) return
+    didEnsureGoalTeamsRef.current = true
+    const cur = getLatest()
+    let nextDocs = cur.docArea
+    let updated = false
+    for (const goal of cur.goals) {
+      const outlineGrp = outlineGroupForGoal(nextDocs, goal)
+      if (!outlineGrp) continue
+      const hasTeam = allTabs(nextDocs).some((t) => t.id === `team:${goal.id}`)
+      if (hasTeam) continue
+      nextDocs = ensureGoalAgentTeamTab(nextDocs, goal.id, Date.now(), { targetGroupId: outlineGrp })
+      updated = true
+    }
+    if (updated) {
+      set({ ...cur, docArea: nextDocs })
+    }
+  }, [getLatest, set])
 
   // 监听全局打开页签请求（例如 OCR 插件引导等）
   useEffect(() => {

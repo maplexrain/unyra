@@ -3,8 +3,10 @@ import { executeVimCommand } from '../../../lib/vimCommands'
 import { setGlobalCommandBarOpener } from '../../../lib/commandBarFocus'
 import { matchVimCommands, type VimCommandInfo } from '../../../lib/vimCommandCatalog'
 import { getOpenTargets, type VimOpenTarget } from '../../../lib/vimOpenTargets'
+import { getSideTargets, type VimSideTarget } from '../../../lib/vimSideTargets'
 import { browseVimSearch, dispatchBrowseSearch } from '../../../lib/browseVimSearch'
 import VimOpenDropdown from './VimOpenDropdown'
+import VimSideDropdown from './VimSideDropdown'
 import VimTerminalDropdown, { filterTerminalOptions } from './VimTerminalDropdown'
 import VimCalcDropdown, { filterCalcOptions } from './VimCalcDropdown'
 import { preserveCurrentSelection, restoreOrClearPreservedSelection } from './vimSelectionPreserve'
@@ -78,10 +80,19 @@ export default function GlobalVimCommandBar() {
     return filterCalcOptions(calcArg)
   }, [isCalcMode, calcArg])
 
+  // `:side ` / `:sd ` 弹出除当前页签外的其他打开页签候选
+  const sideMatch = !isSearchMode && value.match(/^:?\s*(?:side|sd)\s+(.*)$/i)
+  const isSideMode = !isSearchMode && Boolean(sideMatch)
+  const sideQuery = sideMatch ? (sideMatch[1] ?? '') : ''
+  const sideTargets = useMemo(() => {
+    if (!isSideMode) return []
+    return getSideTargets(sideQuery)
+  }, [isSideMode, sideQuery])
+
   /* ---------- 前缀联想：候选与幽灵补全 ---------- */
   const matches = useMemo(
-    () => (isOpenMode || isTerminalMode || isCalcMode || isSearchMode ? [] : matchVimCommands(value)),
-    [isOpenMode, isTerminalMode, isCalcMode, isSearchMode, value]
+    () => (isOpenMode || isSideMode || isTerminalMode || isCalcMode || isSearchMode ? [] : matchVimCommands(value)),
+    [isOpenMode, isSideMode, isTerminalMode, isCalcMode, isSearchMode, value]
   )
   const [selected, setSelected] = useState(-1)
   /** 幽灵预览的目标项：方向键选中的那一个；没选过就看第一个候选 */
@@ -92,7 +103,7 @@ export default function GlobalVimCommandBar() {
    * 支持前缀带冒号 `:` 的情形对齐补全。
    */
   const ghostText = (() => {
-    if (isOpenMode || isTerminalMode || isCalcMode || isSearchMode) return null
+    if (isOpenMode || isSideMode || isTerminalMode || isCalcMode || isSearchMode) return null
     if (!ghostItem || value.includes(' ') || value.length === 0) return null
     const typed = value.replace(/^:+/, '')
     if (!typed) return null
@@ -289,6 +300,13 @@ export default function GlobalVimCommandBar() {
         setSelected((s) => (s < 0 ? (isDown ? 0 : n - 1) : (isDown ? s + 1 : s - 1 + n) % n))
         return
       }
+      if (isSideMode && sideTargets.length > 0) {
+        e.preventDefault()
+        e.stopPropagation()
+        const n = Math.min(sideTargets.length, 40)
+        setSelected((s) => (s < 0 ? (isDown ? 0 : n - 1) : (isDown ? s + 1 : s - 1 + n) % n))
+        return
+      }
       if (isTerminalMode && termOptions.length > 0) {
         e.preventDefault()
         e.stopPropagation()
@@ -303,7 +321,7 @@ export default function GlobalVimCommandBar() {
         setSelected((s) => (s < 0 ? (isDown ? 0 : n - 1) : (isDown ? s + 1 : s - 1 + n) % n))
         return
       }
-      if (!isOpenMode && !isTerminalMode && !isCalcMode && matches.length > 0) {
+      if (!isOpenMode && !isSideMode && !isTerminalMode && !isCalcMode && matches.length > 0) {
         e.preventDefault()
         e.stopPropagation()
         const n = matches.length
@@ -356,6 +374,17 @@ export default function GlobalVimCommandBar() {
         return
       }
 
+      // :side / :sd 模式直接将选中的其他页签切为当前页签内并排对照
+      if (isSideMode) {
+        if (sideTargets.length > 0) {
+          const idx = selected >= 0 && selected < sideTargets.length ? selected : 0
+          executeSideTarget(sideTargets[idx])
+        } else {
+          close(false)
+        }
+        return
+      }
+
       // :terminal 模式直接执行选中的终端类型
       if (isTerminalMode) {
         const option = termOptions[selected >= 0 && selected < termOptions.length ? selected : 0]
@@ -399,6 +428,13 @@ export default function GlobalVimCommandBar() {
         return
       }
 
+      // 非编辑器模式下提交 bare `:side` 直接展开候选空格列表，零闪烁切换
+      if (!isPrompt && (cmd === 'side' || cmd === 'sd')) {
+        setValue('side ')
+        setSelected(-1)
+        return
+      }
+
       // 非编辑器模式：立即关闭弹层并执行命令
       close(true)
       executeVimCommand(cmd)
@@ -406,6 +442,21 @@ export default function GlobalVimCommandBar() {
   }
 
   const executeTarget = (target: VimOpenTarget) => {
+    const finish = finishRef.current
+    finishRef.current = null
+    queryChangeRef.current = null
+    try {
+      finish?.(undefined)
+    } catch {}
+    close(true)
+    try {
+      target.action()
+    } catch {
+      // 容错
+    }
+  }
+
+  const executeSideTarget = (target: VimSideTarget) => {
     const finish = finishRef.current
     finishRef.current = null
     queryChangeRef.current = null
@@ -489,6 +540,8 @@ export default function GlobalVimCommandBar() {
                   ? t('输入搜索内容或正则表达式 (支持拼音匹配，按 Enter 查找)...')
                   : isOpenMode
                   ? t('搜索打开目标：支持拼音缩写、全拼或中文名称...')
+                  : isSideMode
+                  ? t('选择要在当前页旁并排对照的页签（支持拼音或关键词，输入 off 关闭 / swap 对调）...')
                   : isTerminalMode
                   ? t('选择终端类型 (powershell, cmd, bash)...')
                   : isCalcMode
@@ -518,6 +571,12 @@ export default function GlobalVimCommandBar() {
             targets={openTargets}
             selectedIndex={selected >= 0 ? selected : 0}
             onSelect={executeTarget}
+          />
+        ) : isSideMode ? (
+          <VimSideDropdown
+            targets={sideTargets}
+            selectedIndex={selected >= 0 ? selected : 0}
+            onSelect={executeSideTarget}
           />
         ) : isTerminalMode ? (
           <VimTerminalDropdown

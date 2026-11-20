@@ -42,6 +42,7 @@ export interface AgentHistorySidebarProps {
   runningByConversation: Record<string, boolean>
   pendingAskByConv: Record<string, unknown>
   activeGoalId: string | null
+  goalLocked?: boolean
   goals: LearningGoal[]
   goalTitleOf: (goalId: string) => string
   onSelectGoal?: (goalId: string) => void
@@ -57,6 +58,7 @@ export function AgentHistorySidebar({
   runningByConversation,
   pendingAskByConv,
   activeGoalId,
+  goalLocked,
   goals,
   goalTitleOf,
   onSelectGoal,
@@ -111,7 +113,7 @@ export function AgentHistorySidebar({
   return (
     <aside
       aria-label={t('对话历史')}
-      className="flex h-full w-[252px] shrink-0 flex-col border-l border-line/70 bg-paper/60"
+      className="flex h-full w-[300px] shrink-0 flex-col border-l border-line/70 bg-paper/65"
     >
       <header className="flex shrink-0 items-center justify-between border-b border-line/50 px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-1.5">
@@ -150,7 +152,7 @@ export function AgentHistorySidebar({
       <div className="shrink-0 border-b border-line/40 px-2.5 py-2 space-y-2">
         {mode === 'tutor' && goals.length > 0 && (
           <div>
-            {goals.length > 1 && onSelectGoal ? (
+            {!goalLocked && goals.length > 1 && onSelectGoal ? (
               <select
                 aria-label={t('选择学习目标')}
                 value={activeGoalId ?? ''}

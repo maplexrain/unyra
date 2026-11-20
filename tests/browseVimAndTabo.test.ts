@@ -20,12 +20,14 @@ import { setGlobalCommandBarOpener } from '../src/lib/commandBarFocus'
 import type { LearnStore } from '../src/learn/types'
 
 describe('tab 打开与排序规则', () => {
-  it('新打开的 Tab 永远放在末尾，不因类型 (outline/teach/note 等) 自动排序或自动固定', () => {
+  it('结构(outline)与智能体团队(agentTeam)始终固定在左侧，普通 Tab (teach/note 等) 默认不固定', () => {
     const tabOutline = makeTab({ kind: 'outline', nodeId: 'n1' }, 0)
+    const tabAgentTeam = makeTab({ kind: 'agentTeam', goalId: 'g1' }, 0)
     const tabTeach = makeTab({ kind: 'teach', nodeId: 'n2' }, 1)
     const tabNote = makeTab({ kind: 'note', nodeId: 'n3', note: '随笔' }, 2)
 
-    expect(isTabPinned(tabOutline)).toBe(false)
+    expect(isTabPinned(tabOutline)).toBe(true)
+    expect(isTabPinned(tabAgentTeam)).toBe(true)
     expect(isTabPinned(tabTeach)).toBe(false)
     expect(isTabPinned(tabNote)).toBe(false)
 

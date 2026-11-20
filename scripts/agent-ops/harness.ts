@@ -133,7 +133,7 @@ if (splitBack) {
     layout,
   )
   ok(
-    allTabs(splitBack.docArea).map((t) => t.id).join(',') === 't:' + rootId + ',t:' + childId + ',o:' + rootId,
+    allTabs(splitBack.docArea).map((t) => t.id).join(',') === 't:' + rootId + ',o:' + rootId + ',t:' + childId,
     '两格里的页签按布局顺序往返',
     allTabs(splitBack.docArea).map((t) => t.id),
   )

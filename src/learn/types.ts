@@ -47,6 +47,7 @@ export type {
   AgentTabRef,
   DocView,
   WebTabMeta,
+  TabSidePortal,
   LearnTab,
   LocalFile,
   FavoriteRef,

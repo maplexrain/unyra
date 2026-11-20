@@ -10,6 +10,8 @@ import { toggleAgentPanel, sendAgentMessage } from './agentFocus'
 import { toggleExplorer } from './explorerFocus'
 import { getVimEditorBridge, getGlobalTabOperations, scrollCursorToCenter } from './vimCommands'
 import { executeOpenTarget } from './vimOpenTargets'
+import { executeSideCommand } from './vimSideTargets'
+import { openGlobalCommandBar } from './commandBarFocus'
 import { normalizeWebInput } from '../learn/webUrl'
 import { toggleCalculator, openCalculator, type CalculatorMode } from './calculatorState'
 
@@ -344,6 +346,24 @@ export function executeVimCommand(rawCmd: string): { success: boolean; message?:
     case 'o': {
       const arg = clean.slice(baseCmd.length).trim()
       return executeOpenTarget(arg)
+    }
+    case 'side':
+    case 'sd': {
+      const arg = clean.slice(baseCmd.length).trim()
+      if (!arg) {
+        if (typeof window !== 'undefined') {
+          window.setTimeout(() => openGlobalCommandBar({ mode: ':', prefill: 'side ' }), 0)
+        }
+        return { success: true, message: '[选择要并排对照的页签]' }
+      }
+      const lower = arg.toLowerCase()
+      if (lower === 'off' || lower === 'close' || lower === 'clear' || lower === 'only' || arg === '关闭') {
+        return globalTabOps?.closeSidePortal?.() ?? { success: false, message: '[当前环境不支持并排对照]' }
+      }
+      if (lower === 'swap' || lower === 'switch' || lower === 'flip' || arg === '对调') {
+        return globalTabOps?.swapSidePortal?.() ?? { success: false, message: '[当前环境不支持并排对照]' }
+      }
+      return executeSideCommand(arg)
     }
     case 'mark': {
       if (globalTabOps?.markSelection) {

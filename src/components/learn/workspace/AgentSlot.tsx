@@ -24,7 +24,12 @@ import { AgentTabPane } from './AgentTabPane'
 import { goalFocusByGoal } from './goalFocus'
 import { AgentRosterSidebar } from '../agent-team/AgentRosterSidebar'
 import { AgentHistorySidebar } from '../agent-team/AgentHistorySidebar'
-import { sortConversationsByTimeDesc, type AgentTeamMode } from '../agent-team/conversationList'
+import {
+  conversationTimeOf,
+  lastMessagePreview,
+  sortConversationsByTimeDesc,
+  type AgentTeamMode,
+} from '../agent-team/conversationList'
 import type { useAgent } from '../../../learn/useAgent'
 import type { useWorkflowStarters } from './useWorkflowStarters'
 import { t } from '../../../i18n'
@@ -72,6 +77,8 @@ export interface AgentSlotDeps {
   shouldWaitInLine: (convId: string) => boolean
   /** 宿主 Tab 页签是否当前可见（agentTeam 页签后台保活时降为 false，切回再激活） */
   tabActive?: boolean
+  /** 若由目标专属智能体团队页签挂载，则固定绑定到该目标（仅聊天仍跨目标共享） */
+  tabGoalId?: string
 }
 
 /**
@@ -112,18 +119,20 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     newExam,
     shouldWaitInLine,
     tabActive = true,
+    tabGoalId,
   } = deps
 
   // 当工作区尚无激活目标时，允许用户点击「导师」停留并呈现目标选择空态
   const [emptyTutorMode, setEmptyTutorMode] = useState(false)
 
   const tutorGoalId = useMemo(() => {
+    if (tabGoalId) return tabGoalId
     if (activeAgentTab.kind === 'goal') return activeAgentTab.goalId
     if (activeAgentTab.kind === 'sub') {
       return conversationById(store, activeAgentTab.conversationId)?.goalId ?? store.activeGoalId ?? null
     }
     return store.activeGoalId ?? null
-  }, [activeAgentTab, store])
+  }, [tabGoalId, activeAgentTab, store])
 
   const mode: AgentTeamMode =
     activeAgentTab.kind !== 'free'
@@ -150,8 +159,11 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   )
 
   const activeTutorConvId = useMemo(() => {
-    if (activeAgentTab.kind === 'sub') return activeAgentTab.conversationId
-    if (activeAgentTab.kind === 'goal') {
+    if (activeAgentTab.kind === 'sub') {
+      const subConv = conversationById(store, activeAgentTab.conversationId)
+      if (!tabGoalId || subConv?.goalId === tabGoalId) return activeAgentTab.conversationId
+    }
+    if (activeAgentTab.kind === 'goal' && (!tabGoalId || activeAgentTab.goalId === tabGoalId)) {
       if (
         activeAgentTab.conversationId &&
         conversationById(store, activeAgentTab.conversationId)?.goalId === activeAgentTab.goalId
@@ -160,13 +172,17 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       }
       return resolveDisplayedConversation(store, activeAgentTab.goalId) ?? sortedGoalChats[0]?.id ?? null
     }
+    if (tabGoalId) {
+      return resolveDisplayedConversation(store, tabGoalId) ?? sortedGoalChats[0]?.id ?? null
+    }
     return null
-  }, [activeAgentTab, store, sortedGoalChats])
+  }, [activeAgentTab, store, sortedGoalChats, tabGoalId])
 
   const subViewMeta = useMemo(() => {
     if (activeAgentTab.kind !== 'sub') return null
     const conv = conversationById(store, activeAgentTab.conversationId)
     if (!conv) return null
+    if (tabGoalId && conv.goalId !== tabGoalId) return null
     const session = conv.subagents?.sessions.find((s) => s.id === activeAgentTab.sessionId)
     const def = session ? conv.subagents?.defs.find((d) => d.key === session.defKey) : undefined
     return {
@@ -175,15 +191,18 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       conversationId: conv.id,
       name: def?.name ?? session?.defKey ?? t('子代理'),
     }
-  }, [activeAgentTab, store])
+  }, [activeAgentTab, store, tabGoalId])
 
   const freeRunning = freeChats.some((c) => Boolean(agent.runningByConversation[c.id]))
-  const tutorRunning = store.conversations.some(
+  const tutorScopeConvs = tabGoalId ? sortedGoalChats : store.conversations
+  const tutorRunning = tutorScopeConvs.some(
     (c) =>
       Boolean(agent.runningByConversation[c.id]) ||
       agent.subRunsAll.some((r) => r.conversationId === c.id),
   )
-  const tutorHasAsk = store.conversations.some((c) => Boolean(agent.pendingAskByConv[c.id]))
+  const tutorHasAsk = tutorScopeConvs.some((c) => Boolean(agent.pendingAskByConv[c.id]))
+  const latestFree = sortedFreeChats[0]
+  const latestTutor = sortedGoalChats[0]
 
   const scheduleFocus = () => {
     window.setTimeout(() => focusAgentInput(), 30)
@@ -424,6 +443,29 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
 
   const showCenterPane = mode === 'free' || Boolean(tutorGoalId)
 
+  const scopedPanes = useMemo(() => {
+    if (!tabGoalId) return agentPanes
+    const out = agentPanes.filter((tab) => {
+      if (tab.kind === 'free') return true
+      if (tab.kind === 'goal') return tab.goalId === tabGoalId
+      return conversationById(store, tab.conversationId)?.goalId === tabGoalId
+    })
+    if (!out.some((tab) => tab.kind === 'goal' && tab.goalId === tabGoalId)) {
+      out.push({ kind: 'goal', goalId: tabGoalId, conversationId: activeTutorConvId })
+    }
+    return out
+  }, [agentPanes, tabGoalId, store, activeTutorConvId])
+
+  const renderedActivePaneId = useMemo(() => {
+    if (mode === 'free') return 'free'
+    if (subViewMeta) return subViewMeta.key
+    if (tabGoalId) {
+      const matched = scopedPanes.find((t) => t.kind === 'goal' && t.goalId === tabGoalId)
+      return matched ? agentTabKey(matched) : activeAgentTabId
+    }
+    return activeAgentTabId
+  }, [mode, subViewMeta, tabGoalId, scopedPanes, activeAgentTabId])
+
   return (
     <div className="flex h-full min-h-0 w-full flex-row overflow-hidden">
       {/* 左侧垂直 Agent 列表：仅聊天 / 导师 */}
@@ -434,6 +476,12 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         freeRunning={freeRunning}
         tutorRunning={tutorRunning}
         tutorHasAsk={tutorHasAsk}
+        freePreview={lastMessagePreview(latestFree)}
+        freeLastTime={latestFree ? conversationTimeOf(latestFree) : 0}
+        freeCount={sortedFreeChats.length}
+        tutorPreview={lastMessagePreview(latestTutor)}
+        tutorLastTime={latestTutor ? conversationTimeOf(latestTutor) : 0}
+        tutorCount={sortedGoalChats.length}
       />
 
       {/* 中间对话主工作区 */}
@@ -493,9 +541,9 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         ) : null}
 
         <div className={showCenterPane ? 'relative min-h-0 flex-1' : 'hidden'}>
-          {agentPanes.map((tab) => {
+          {scopedPanes.map((tab) => {
             const key = agentTabKey(tab)
-            const on = tabActive && showCenterPane && key === activeAgentTabId
+            const on = tabActive && showCenterPane && key === renderedActivePaneId
             const props = agentTabProps(tab)
             return (
               <AgentTabPane
@@ -552,6 +600,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         runningByConversation={agent.runningByConversation}
         pendingAskByConv={agent.pendingAskByConv}
         activeGoalId={tutorGoalId}
+        goalLocked={Boolean(tabGoalId)}
         goals={store.goals}
         goalTitleOf={goalTitleOf}
         onSelectGoal={(goalId) => {
