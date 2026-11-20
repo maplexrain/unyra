@@ -381,6 +381,7 @@ export function useAgentTeam(options: UseAgentTeamOptions) {
 
       resetPrefixGate('super:host:' + st.id)
       setAgentStates((prev) => ({ ...prev, [agentId]: { ...st } }))
+      saveTeamAgentState(scopeIdRef.current, agentId, st)
       await flushTeamAgentState(scopeIdRef.current, agentId)
     },
     [],
@@ -394,8 +395,40 @@ export function useAgentTeam(options: UseAgentTeamOptions) {
     st.channelMessages = []
     st.delegations = {}
     setTeamState({ ...st })
+    saveTeamState(scopeIdRef.current, st)
     await flushTeamState(scopeIdRef.current)
   }, [])
+
+  // 8. 清空所有智能体上下文（测试与重置专用）
+  const resetAllAgents = useCallback(async () => {
+    const bus = teamBusRef.current
+    if (!bus) return
+
+    bus.resetAll()
+    setHostRunningMap({})
+    setHostStreamingMap({})
+    setWorkerStreamsMap({})
+
+    const newAgentStates: Record<string, SuperAgentState> = {}
+    for (const profile of DEFAULT_TEAM_PROFILES) {
+      const eng = bus.getAgentEngine(profile.id)
+      if (eng) {
+        const st = eng.getState()
+        newAgentStates[profile.id] = { ...st }
+        saveTeamAgentState(scopeIdRef.current, profile.id, st)
+        await flushTeamAgentState(scopeIdRef.current, profile.id)
+      }
+    }
+    setAgentStates(newAgentStates)
+
+    const teamSt = bus.getTeamState()
+    setTeamState({ ...teamSt })
+    saveTeamState(scopeIdRef.current, teamSt)
+    await flushTeamState(scopeIdRef.current)
+
+    setError(null)
+    onToast?.(t('已清空所有智能体上下文与历史工单'))
+  }, [onToast])
 
   // 构建各专家的视图投影快照
   const agents = useMemo<Record<string, AgentViewSnapshot>>(() => {
@@ -447,5 +480,6 @@ export function useAgentTeam(options: UseAgentTeamOptions) {
     stopAll,
     resetAgent,
     resetChannel,
+    resetAllAgents,
   }
 }

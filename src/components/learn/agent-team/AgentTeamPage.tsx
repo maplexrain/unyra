@@ -23,7 +23,7 @@ import type { useAgent } from '../../../learn/useAgent'
 import type { loadAgentSettings } from '../../../agent/settings'
 import { goalFocusByGoal } from '../workspace/goalFocus'
 import { t } from '../../../i18n'
-import { AlertCircle, Layers, X, FileJson } from 'lucide-react'
+import { AlertCircle, Layers, X, FileJson, RotateCcw } from 'lucide-react'
 
 type AgentApi = ReturnType<typeof useAgent>
 type AgentSettings = ReturnType<typeof loadAgentSettings>
@@ -117,6 +117,18 @@ export default function AgentTeamPage({
     return team.agents[activeSubpage.agentId] || null
   }, [activeSubpage, team.agents])
 
+  // 清空所有智能体上下文（测试专用）
+  const handleResetAll = async () => {
+    if (
+      window.confirm(
+        t('确定要清空所有智能体的对话历史、后台工单与协作频道记录吗？此操作不可逆，主要用于测试。'),
+      )
+    ) {
+      await team.resetAllAgents()
+      setActiveSubpage(null)
+    }
+  }
+
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-paper select-text">
       {/* 顶部极其低调的模式切换控制条 */}
@@ -130,15 +142,28 @@ export default function AgentTeamPage({
 
         <div className="flex items-center gap-2">
           {workbenchMode === 'team' && (
-            <button
-              type="button"
-              onClick={() => setShowRawViewer(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-ink-subtle hover:text-seal bg-card border border-line hover:border-line-strong transition cursor-pointer shadow-2xs"
-              title={t('透明化检视所有跨专家委派、隔离工坊工单与 Mailbox 回执')}
-            >
-              <FileJson size={12} className="text-seal" />
-              <span>{t('任务派发裸数据')}</span>
-            </button>
+            <>
+              {/* 清空所有智能体上下文按钮（测试用） */}
+              <button
+                type="button"
+                onClick={handleResetAll}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 border border-rose-500/30 transition cursor-pointer shadow-2xs"
+                title={t('清空所有智能体的会话历史、内部工单、黑板及协作频道（测试用）')}
+              >
+                <RotateCcw size={12} className="text-rose-500" />
+                <span>{t('清空全部上下文')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowRawViewer(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-ink-subtle hover:text-seal bg-card border border-line hover:border-line-strong transition cursor-pointer shadow-2xs"
+                title={t('透明化检视所有跨专家委派、隔离工坊工单与 Mailbox 回执')}
+              >
+                <FileJson size={12} className="text-seal" />
+                <span>{t('任务派发裸数据')}</span>
+              </button>
+            </>
           )}
 
           {/* 模式切换胶囊 */}

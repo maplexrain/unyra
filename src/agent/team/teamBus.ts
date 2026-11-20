@@ -11,6 +11,7 @@
 import type { ResolvedProvider } from '../../ai/client'
 import type { ReasoningEffort, StreamFn } from '../../ai/types'
 import type { AgentTool } from '../types'
+import { resetPrefixGate } from '../prefixGate'
 import { SuperAgentEngine } from '../super/engine'
 import type { SuperAgentEvent, SuperAgentState, WorkerReceipt } from '../super/types'
 import { DEFAULT_TEAM_PROFILES } from './presets'
@@ -473,5 +474,23 @@ export class TeamBus {
     for (const engine of this.engines.values()) {
       engine.stopAll()
     }
+  }
+
+  /**
+   * 清空所有专家的上下文、内部工单与协作频道记录（测试与重置专用）
+   */
+  public resetAll(): void {
+    this.stopAll()
+    for (const engine of this.engines.values()) {
+      const st = engine.getState()
+      st.hostMessages = []
+      st.workers = {}
+      st.mailbox = []
+      st.blackboard = []
+      resetPrefixGate('super:host:' + st.id)
+    }
+    this.state.channelMessages = []
+    this.state.delegations = {}
+    this.notifyStateChange()
   }
 }

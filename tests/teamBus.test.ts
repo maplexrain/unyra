@@ -583,4 +583,45 @@ describe('TeamBus 多 Agent 协作内核 (Phase 5)', () => {
     expect(deliveryMsg!.briefSummary!.length).toBeLessThanOrEqual(125)
     expect(deliveryMsg!.briefSummary!.endsWith('...')).toBe(true)
   })
+
+  it('8. resetAll 应彻底清空所有 Agent 的会话、工单、黑板及协作频道记录', async () => {
+    const mock = createTeamMockStream([
+      {
+        match: '你好',
+        hops: [{ content: '你好，我是总导师！' }],
+      },
+    ])
+
+    const bus = new TeamBus({
+      scopeId: 'test-scope-reset',
+      provider: testProvider,
+      model: 'mock-model',
+      chatFn: mock.stream,
+    })
+
+    // 先发送一条频道消息
+    await bus.sendChannelMessage('你好')
+    expect(bus.getTeamState().channelMessages.length).toBeGreaterThan(0)
+
+    const mentorEng = bus.getAgentEngine('agent-mentor')!
+    expect(mentorEng.getState().hostMessages.length).toBeGreaterThan(0)
+
+    // 执行全量重置
+    bus.resetAll()
+
+    // 验证协作频道被清空
+    const teamSt = bus.getTeamState()
+    expect(teamSt.channelMessages).toEqual([])
+    expect(teamSt.delegations).toEqual({})
+
+    // 验证所有 Agent 的内部上下文被清空
+    for (const profile of DEFAULT_TEAM_PROFILES) {
+      const eng = bus.getAgentEngine(profile.id)!
+      const st = eng.getState()
+      expect(st.hostMessages).toEqual([])
+      expect(st.workers).toEqual({})
+      expect(st.mailbox).toEqual([])
+      expect(st.blackboard).toEqual([])
+    }
+  })
 })
