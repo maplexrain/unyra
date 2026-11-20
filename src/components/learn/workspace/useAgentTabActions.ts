@@ -1,40 +1,117 @@
-import { useCallback, useMemo } from 'react'
-import type { AgentTabRef, LearnStore, LearnTab } from '../../../learn/types'
+import { useCallback } from 'react'
+import type { AgentTabRef, LearnStore } from '../../../learn/types'
 import {
-  agentTabCloseBlock,
-  agentTabCloseSet,
   agentTabKey,
-  reorderAgentTabs,
   removeAgentTab,
   upsertAgentTab,
   withAgentTabs,
-  type AgentTabCloseBlock,
 } from '../../../learn/agentTabs'
-import { allTabs } from '../../../learn/groups'
-import { closeGoalTabGroupStore } from '../../../learn/groups/goalTabGroupOps'
-import type { TabCloseMode } from '../../../learn/tabs'
-import { tabNodeId } from '../../../learn/tabs'
-import { conversationById, conversationTitle, nodeById, resolveDisplayedConversation } from '../../../learn/graph'
+import {
+  addConversation,
+  conversationById,
+  deleteConversation,
+  ensureConversation,
+  nodeById,
+  resolveDisplayedConversation,
+} from '../../../learn/graph'
+import { pruneImages } from '../../../learn/images'
+import { resetPrefixGate } from '../../../agent/prefixGate'
 import { goalFocusByGoal } from './goalFocus'
-import type { useAgent } from '../../../learn/useAgent'
+import { sortConversationsByTimeDesc } from '../agent-team/conversationList'
 import { t } from '../../../i18n'
 
-type AgentApi = ReturnType<typeof useAgent>
-
-/** agent 栏页签动作需要的宿主能力与派生值 */
+/** agent 栏模式/会话动作需要的宿主能力与派生值 */
 export interface AgentTabActionsDeps {
-  store: LearnStore
   getLatest: () => LearnStore
   set: (s: LearnStore) => void
   onToast: (msg: string) => void
-  /** 文档区全部页签（布局顺序）：目标级页签的关闭守卫按它算 docGoalIds */
-  tabs: LearnTab[]
-  agent: AgentApi
+  setSidebarOpen: (open: boolean) => void
+  runningByConversation: Record<string, boolean>
 }
 
-/* ---------- agent 栏页签（见 learn/agentTabs 与 AgentTabStrip） ---------- */
-export function useAgentTabActions({ store, getLatest, set, onToast, tabs, agent }: AgentTabActionsDeps) {
-  /** 开（或更新）一枚 agent 页签；子代理页签由用户从会话菜单点开（不自动开——页签多了拥挤） */
+/**
+ * 删会话 / 清空会话之后收拾 agent 页签（纯函数，便于单测）：
+ * - 已死目标 / 已死子代理会话的页签丢掉；
+ * - 指向被删会话的目标级页签重映射到同目标按时间降序的最新一段；
+ * - 若当前处于固定聊天 `'free'`，原地保留 `'free'`；
+ * - 若删的正是激活中的目标会话或其子代理，激活权留在同目标降序回落会话上，不跳去别家目标。
+ */
+export function repairAgentTabsAfterDelete(
+  s: LearnStore,
+  opts?: { deletedConvId?: string; deletedGoalId?: string; fallbackConvId?: string | null },
+): LearnStore {
+  const tabs0 = s.agentTabs ?? []
+  if (!tabs0.length) {
+    if (opts?.deletedGoalId && s.agentActiveTab?.startsWith(`ga:${opts.deletedGoalId}`) && opts.fallbackConvId) {
+      return withAgentTabs(
+        s,
+        [{ kind: 'goal', goalId: opts.deletedGoalId, conversationId: opts.fallbackConvId }],
+        `ga:${opts.deletedGoalId}:${opts.fallbackConvId}`,
+      )
+    }
+    return s
+  }
+
+  const mapped = tabs0
+    .filter((t) => {
+      if (t.kind === 'goal') return s.goals.some((g) => g.id === t.goalId)
+      if (t.kind !== 'sub') return true
+      const conv = conversationById(s, t.conversationId)
+      return !!conv?.subagents?.sessions.some((x) => x.id === t.sessionId)
+    })
+    .map((t) => {
+      if (t.kind !== 'goal' || !t.conversationId) return t
+      const valid = conversationById(s, t.conversationId)?.goalId === t.goalId
+      if (valid) return t
+      const goalConvs = sortConversationsByTimeDesc(s.conversations.filter((c) => c.goalId === t.goalId))
+      const fb = goalConvs[0]?.id ?? resolveDisplayedConversation(s, t.goalId) ?? null
+      return { ...t, conversationId: fb }
+    })
+
+  const seen = new Set<string>()
+  const fixed: AgentTabRef[] = []
+  for (const t of mapped) {
+    const key = agentTabKey(t)
+    if (seen.has(key)) continue
+    seen.add(key)
+    fixed.push(t)
+  }
+
+  let active = s.agentActiveTab ?? null
+  if (active === 'free') {
+    return withAgentTabs(s, fixed, 'free')
+  }
+
+  if (active && fixed.some((t) => agentTabKey(t) === active)) {
+    return withAgentTabs(s, fixed, active)
+  }
+
+  if (opts?.deletedGoalId && s.goals.some((g) => g.id === opts.deletedGoalId)) {
+    const fb =
+      opts.fallbackConvId ??
+      sortConversationsByTimeDesc(s.conversations.filter((c) => c.goalId === opts.deletedGoalId))[0]?.id ??
+      null
+    const preferredKey = fb ? `ga:${opts.deletedGoalId}:${fb}` : `ga:${opts.deletedGoalId}`
+    if (fixed.some((t) => agentTabKey(t) === preferredKey)) {
+      return withAgentTabs(s, fixed, preferredKey)
+    }
+    const ref: AgentTabRef = { kind: 'goal', goalId: opts.deletedGoalId, conversationId: fb }
+    return withAgentTabs(s, [...fixed, ref], agentTabKey(ref))
+  }
+
+  active = fixed[0] ? agentTabKey(fixed[0]) : null
+  return withAgentTabs(s, fixed, active)
+}
+
+/* ---------- 智能体模式切换与会话 CRUD（供 AgentSlot / LearnWorkspace 消费） ---------- */
+export function useAgentTabActions({
+  getLatest,
+  set,
+  onToast,
+  setSidebarOpen,
+  runningByConversation,
+}: AgentTabActionsDeps) {
+  /** 开（或更新）一枚内部 agent 运行时条目（含子代理独立上下文） */
   const openAgentTab = useCallback(
     (ref: AgentTabRef, activate = true) => {
       const s = getLatest()
@@ -44,12 +121,11 @@ export function useAgentTabActions({ store, getLatest, set, onToast, tabs, agent
     [getLatest, set],
   )
 
-  /** 点一枚页签：置前（目标级页签展示哪段对话以页签里记的为准，见 agentView） */
+  /** 激活指定 key（'free' / 'ga:...' / 'sa:...'） */
   const activateAgentTab = useCallback(
     (key: string) => {
       const s = getLatest()
       if (s.agentActiveTab === key) return
-      // 固定聊天页签不在 store 的页签列表里（界面合成置左），但它是合法的激活项
       if (key !== 'free' && !(s.agentTabs ?? []).some((t) => agentTabKey(t) === key)) return
 
       let next: LearnStore = s
@@ -84,223 +160,207 @@ export function useAgentTabActions({ store, getLatest, set, onToast, tabs, agent
     [getLatest, set],
   )
 
-  /**
-   * 文档区里哪些目标还开着页签：目标级导师页签的关闭守卫读它——
-   * 需求原文：「如果文档区还存在某个目标的页签，那么就无法关闭 agent 栏中其对应的 agent」。
-   */
-  const docGoalIds = useMemo(() => {
-    const out = new Set<string>()
-    for (const t of tabs) {
-      const nid = tabNodeId(t.ref)
-      const n = nid ? nodeById(store, nid) : null
-      if (n) out.add(n.goalId)
-    }
-    return out
-  }, [tabs, store])
-
-  /** 一枚页签的关闭守卫数据（目标级：文档区还有它的页签 / 会话在跑；子代理不拦） */
-  const closeBlockOf = useCallback(
-    (s: LearnStore, ref: AgentTabRef): AgentTabCloseBlock => {
-      const convId =
-        ref.kind === 'goal'
-          ? ref.conversationId && conversationById(s, ref.conversationId)?.goalId === ref.goalId
-            ? ref.conversationId
-            : (resolveDisplayedConversation(s, ref.goalId) ?? null)
+  /** 切换到指定学习目标的导师视图（若尚无会话则现场初始化） */
+  const selectTutorGoal = useCallback(
+    (goalId: string) => {
+      const s = getLatest()
+      const goal = s.goals.find((g) => g.id === goalId)
+      if (!goal) return
+      const activeInGoal =
+        s.activeConversationId && conversationById(s, s.activeConversationId)?.goalId === goalId
+          ? s.activeConversationId
           : null
-      const hasDocTabs =
-        ref.kind === 'goal'
-          ? allTabs(s.docArea).some((t) => {
-              if (t.ref.kind === 'mind') return t.ref.goalId === ref.goalId
-              const nodeId = tabNodeId(t.ref)
-              return !!nodeId && nodeById(s, nodeId)?.goalId === ref.goalId
-            })
-          : false
-      return agentTabCloseBlock(ref, {
-        // 关闭动作必须按 getLatest() 现算，不能读创建 callback 时的旧 docGoalIds；
-        // 文档区刚关完一枚页签后，旧闭包否则会把导师继续错误地拦住。
-        hasDocTabs,
-        running: ref.kind === 'goal' ? !!(convId && agent.runningByConversation[convId]) : false,
-      })
-    },
-    [agent.runningByConversation],
-  )
+      const descFirst =
+        sortConversationsByTimeDesc(s.conversations.filter((c) => c.goalId === goalId))[0]?.id ?? null
+      const resolvedId = activeInGoal ?? resolveDisplayedConversation(s, goalId) ?? descFirst
+      const ensured = resolvedId
+        ? { store: s, conversationId: resolvedId }
+        : ensureConversation(s, goalId)
 
-  /**
-   * 关一批页签（右键菜单的位置语义：self/left/right/others/all，与文档区同一套；
-   * 单枚关闭 = mode 'self'）。名单里的每一枚都要过关闭守卫：拦下的跳过，
-   * 一枚都没关成时把原因说清；关掉的全从 removeAgentTab 走——激活项逐次落到
-   * 「被关那枚的邻居」。
-   */
-  const closeAgentTabMode = useCallback(
-    (key: string, mode: TabCloseMode) => {
-      const s = getLatest()
-      const list = s.agentTabs ?? []
-      const doomed = agentTabCloseSet(list, key, mode)
-      if (!doomed.length) return
-      let cur = s
-
-      // 强制模式：连同文档区关联的tab一起关闭整个目标页签组
-      const isForce = mode === 'force' || mode === 'forceOthers'
-      if (isForce) {
-        const doomedGoalIds = new Set<string>()
-        for (const k of doomed) {
-          const ref = (cur.agentTabs ?? []).find((t) => agentTabKey(t) === k)
-          if (ref && ref.kind === 'goal') doomedGoalIds.add(ref.goalId)
-        }
-        for (const gid of doomedGoalIds) {
-          cur = closeGoalTabGroupStore(cur, gid)
-        }
-      }
-
-      let closed = 0
-      let blocked = 0
-      for (const k of doomed) {
-        const ref = (cur.agentTabs ?? []).find((t) => agentTabKey(t) === k)
-        if (!ref) continue
-        const block = closeBlockOf(cur, ref)
-        if (block !== 'none' && !isForce) {
-          blocked++
-          continue
-        }
-        if (ref.kind === 'goal') {
-          // 检查该目标下是否还有未在 doomed 里的其他对话页签
-          const remainingTabsOfGoal = (cur.agentTabs ?? []).filter(
-            (t) => t.kind === 'goal' && t.goalId === ref.goalId && !doomed.includes(agentTabKey(t)),
-          )
-          if (remainingTabsOfGoal.length === 0) {
-            // 最后一个对话页签关闭：视为关闭整个页签组！
-            cur = closeGoalTabGroupStore(cur, ref.goalId)
-            closed++
-            continue
-          }
-        }
-        const next = removeAgentTab(cur.agentTabs ?? [], cur.agentActiveTab ?? null, k)
-        cur = withAgentTabs(cur, next.tabs, next.active)
-        if (cur.agentActiveTab) {
-          const activeRef = (cur.agentTabs ?? []).find((t) => agentTabKey(t) === cur.agentActiveTab)
-          if (activeRef?.kind === 'goal') {
-            cur = {
-              ...cur,
-              activeGoalId: activeRef.goalId,
-              activeConversationId: activeRef.conversationId,
-            }
-          }
-        }
-        closed++
-      }
-      if (!closed) {
-        onToast(t('导师正在运行，先停止这一轮再关闭'))
-        return
-      }
-      // 全部关完时把激活权交给固定聊天页签——它是这一栏的底座，永远在
-      if (!cur.agentActiveTab) cur = { ...cur, agentActiveTab: 'free' }
-      set(cur)
-      if (blocked) onToast(t('{0} 枚页签被拦下（导师正在跑）', blocked))
-    },
-    [getLatest, set, closeBlockOf, onToast],
-  )
-
-  /** 关一枚页签（单枚 = closeMode 的 self） */
-  const closeAgentTab = useCallback(
-    (key: string) => closeAgentTabMode(key, 'self'),
-    [closeAgentTabMode],
-  )
-
-  /** 拖拽排序：只动顺序不动激活态（与文档区 reorderTabList 同一条规矩），顺序随 state.json 落盘。
-      固定聊天页签不参与排序：它常驻最左，把它从钥匙串里滤掉（列表里本来也没有它） */
-  const reorderAgentTabList = useCallback(
-    (keys: string[]) => {
-      const s = getLatest()
-      const next = reorderAgentTabs(s.agentTabs ?? [], keys.filter((k) => k !== 'free'))
-      if (next === (s.agentTabs ?? [])) return
-      set(withAgentTabs(s, next, s.agentActiveTab ?? null))
+      const focusId =
+        goalFocusByGoal.get(goalId) ??
+        goal.rootNodeId ??
+        ensured.store.nodes.find((n) => n.goalId === goalId)?.id ??
+        ensured.store.activeNodeId
+      const t0 = upsertAgentTab(
+        ensured.store.agentTabs ?? [],
+        ensured.store.agentActiveTab ?? null,
+        { kind: 'goal', goalId, conversationId: ensured.conversationId },
+        true,
+      )
+      set(
+        withAgentTabs(
+          {
+            ...ensured.store,
+            activeGoalId: goalId,
+            activeNodeId: focusId || ensured.store.activeNodeId,
+            activeConversationId: ensured.conversationId,
+          },
+          t0.tabs,
+          t0.active,
+        ),
+      )
     },
     [getLatest, set],
   )
 
-  /** 页签标题：固定聊天 = 「聊天」；目标级 = 对话标题或目标标题；子代理 = 定义名（任务模式使用图标前置 task chip 标识） */
-  const agentTabTitle = useCallback(
-    (ref: AgentTabRef): string => {
-      if (ref.kind === 'free') return t('聊天')
-      if (ref.kind === 'goal') {
-        const goal = store.goals.find((g) => g.id === ref.goalId)
-        const goalTitle = goal ? (nodeById(store, goal.rootNodeId)?.title ?? goal.question) : ''
-        const conv = ref.conversationId ? conversationById(store, ref.conversationId) : undefined
-        const convTitle = conv?.title || (conv && conv.messages.length > 0 ? conversationTitle(conv) : '')
-        return convTitle || goalTitle || t('新对话')
-      }
-      const conv = conversationById(store, ref.conversationId)
-      const session = conv?.subagents?.sessions.find((x) => x.id === ref.sessionId)
-      const def = session ? conv?.subagents?.defs.find((d) => d.key === session.defKey) : undefined
-      return def?.name ?? session?.defKey ?? t('子代理')
-    },
-    [store],
-  )
-
-  /** 页签的运行态：固定聊天看那张「谁在跑」的表；目标级看同一张表；子代理看会话状态（后台跑的也算跑着） */
-  const agentTabRunning = useCallback(
-    (ref: AgentTabRef): boolean => {
-      if (ref.kind === 'free') return !!(ref.conversationId && agent.runningByConversation[ref.conversationId])
-      if (ref.kind === 'goal') {
-        const convId =
-          ref.conversationId && conversationById(store, ref.conversationId)?.goalId === ref.goalId
-            ? ref.conversationId
-            : (resolveDisplayedConversation(store, ref.goalId) ?? null)
-        return !!(convId && agent.runningByConversation[convId])
-      }
-      const conv = conversationById(store, ref.conversationId)
-      return conv?.subagents?.sessions.find((x) => x.id === ref.sessionId)?.status === 'running'
-    },
-    [store, agent.runningByConversation],
-  )
-
-  /**
-   * 删会话 / 删目标之后收拾 agent 页签：指向被删会话的目标级页签改指该目标最近的一段，
-   * 已死会话的子代理页签与已死目标的目标级页签整枚丢掉。读盘归一有同一条规矩
-   * （normalizeAgentTabs），这里是活删的即时版。
-   */
-  const fixAgentTabsAfter = (s: LearnStore): LearnStore => {
-    const tabs0 = s.agentTabs ?? []
-    if (!tabs0.length) return s
-    const mapped = tabs0
-      .filter((t) => {
-        if (t.kind === 'goal') return s.goals.some((g) => g.id === t.goalId)
-        if (t.kind !== 'sub') return true
-        const conv = conversationById(s, t.conversationId)
-        return !!conv?.subagents?.sessions.some((x) => x.id === t.sessionId)
-      })
-      .map((t) =>
-        t.kind === 'goal' &&
-        t.conversationId &&
-        conversationById(s, t.conversationId)?.goalId !== t.goalId
-          ? { ...t, conversationId: resolveDisplayedConversation(s, t.goalId) ?? null }
-          : t,
+  /** 退出子代理视图并回到父导师会话 */
+  const exitSubagentView = useCallback(
+    (subKey: string, parentGoalId: string, parentConvId: string) => {
+      const s = getLatest()
+      const removed = removeAgentTab(s.agentTabs ?? [], s.agentActiveTab ?? null, subKey)
+      const t0 = upsertAgentTab(
+        removed.tabs,
+        removed.active,
+        { kind: 'goal', goalId: parentGoalId, conversationId: parentConvId },
+        true,
       )
-    const seen = new Set<string>()
-    const fixed: AgentTabRef[] = []
-    for (const t of mapped) {
-      const key = agentTabKey(t)
-      if (seen.has(key)) continue
-      seen.add(key)
-      fixed.push(t)
-    }
-    const active =
-      s.agentActiveTab && fixed.some((t) => agentTabKey(t) === s.agentActiveTab)
-        ? s.agentActiveTab
-        : (fixed[0] ? agentTabKey(fixed[0]) : null)
-    return withAgentTabs(s, fixed, active)
-  }
+      set(
+        withAgentTabs(
+          {
+            ...s,
+            activeGoalId: parentGoalId,
+            activeConversationId: parentConvId,
+          },
+          t0.tabs,
+          t0.active,
+        ),
+      )
+    },
+    [getLatest, set],
+  )
+
+  /** 在指定目标（或子代理父目标）下切换展示的会话 */
+  const selectConversationIn = useCallback(
+    (tab: AgentTabRef, conversationId: string) => {
+      const s = getLatest()
+      const targetGoalId =
+        tab.kind === 'goal'
+          ? tab.goalId
+          : tab.kind === 'sub'
+            ? conversationById(s, tab.conversationId)?.goalId
+            : null
+      if (!targetGoalId) return
+      const conv = conversationById(s, conversationId)
+      if (!conv || conv.goalId !== targetGoalId) return
+      const t0 = upsertAgentTab(
+        s.agentTabs ?? [],
+        s.agentActiveTab ?? null,
+        { kind: 'goal', goalId: targetGoalId, conversationId },
+        true,
+      )
+      const next: LearnStore = {
+        ...s,
+        activeGoalId: targetGoalId,
+        activeConversationId: conversationId,
+      }
+      set(withAgentTabs(next, t0.tabs, t0.active))
+      setSidebarOpen(false)
+    },
+    [getLatest, set, setSidebarOpen],
+  )
+
+  /** 在指定（或当前激活）目标下新增一段对话并置前激活 */
+  const handleNewGoalConversation = useCallback(
+    (targetGoalId?: string) => {
+      const s = getLatest()
+      const gid = targetGoalId ?? s.activeGoalId
+      if (!gid) return
+      const { store: withConv, conversation } = addConversation(s, gid)
+      const t0 = upsertAgentTab(
+        withConv.agentTabs ?? [],
+        withConv.agentActiveTab ?? null,
+        { kind: 'goal', goalId: gid, conversationId: conversation.id },
+        true,
+      )
+      const next: LearnStore = {
+        ...withConv,
+        activeGoalId: gid,
+        activeConversationId: conversation.id,
+      }
+      set(withAgentTabs(next, t0.tabs, t0.active))
+    },
+    [getLatest, set],
+  )
+
+  /** 在目标或子代理对应的目标下新建一段对话 */
+  const newConversationIn = useCallback(
+    (tab: AgentTabRef) => {
+      const s = getLatest()
+      const targetGoalId =
+        tab.kind === 'goal'
+          ? tab.goalId
+          : tab.kind === 'sub'
+            ? conversationById(s, tab.conversationId)?.goalId
+            : null
+      if (targetGoalId) handleNewGoalConversation(targetGoalId)
+    },
+    [getLatest, handleNewGoalConversation],
+  )
+
+  /** 删对话 / 删消息之后清理不再被引用的磁盘图片 */
+  const pruneImagesOf = useCallback((s: LearnStore) => {
+    if (s.activeGoalId) void pruneImages(s, s.activeGoalId)
+  }, [])
+
+  /** 删除或清空指定目标对话（运行中拦截，删当前激活段时顺滑落回时间最新段） */
+  const removeConversation = useCallback(
+    (conversationId: string) => {
+      if (runningByConversation[conversationId]) {
+        onToast(t('这一段正在运行，先停止再删除'))
+        return
+      }
+      resetPrefixGate(conversationId)
+      const before = getLatest()
+      const target = conversationById(before, conversationId)
+      const afterDel = deleteConversation(before, conversationId)
+      const fallbackConvId = target
+        ? (sortConversationsByTimeDesc(afterDel.conversations.filter((c) => c.goalId === target.goalId))[0]?.id ?? null)
+        : null
+      const patchedDel =
+        target && before.activeConversationId === conversationId && afterDel.activeGoalId === target.goalId
+          ? { ...afterDel, activeConversationId: fallbackConvId }
+          : afterDel
+      const next = repairAgentTabsAfterDelete(patchedDel, {
+        deletedConvId: conversationId,
+        deletedGoalId: target?.goalId,
+        fallbackConvId,
+      })
+      if (next.activeConversationId || !next.activeNodeId) {
+        set(next)
+        pruneImagesOf(next)
+        return
+      }
+      const node = nodeById(next, next.activeNodeId)
+      if (!node) {
+        set(next)
+        pruneImagesOf(next)
+        return
+      }
+      const ensured = ensureConversation(next, node.goalId)
+      const patched: LearnStore = { ...ensured.store, activeConversationId: ensured.conversationId }
+      set(patched)
+      pruneImagesOf(patched)
+    },
+    [runningByConversation, onToast, getLatest, set, pruneImagesOf],
+  )
+
+  const fixAgentTabsAfter = useCallback(
+    (s: LearnStore, opts?: { deletedConvId?: string; deletedGoalId?: string; fallbackConvId?: string | null }) =>
+      repairAgentTabsAfterDelete(s, opts),
+    [],
+  )
 
   return {
     openAgentTab,
     activateAgentTab,
-    docGoalIds,
-    closeBlockOf,
-    closeAgentTabMode,
-    closeAgentTab,
-    reorderAgentTabList,
-    agentTabTitle,
-    agentTabRunning,
+    selectTutorGoal,
+    exitSubagentView,
+    handleNewGoalConversation,
+    newConversationIn,
+    selectConversationIn,
+    pruneImagesOf,
+    removeConversation,
     fixAgentTabsAfter,
   }
 }

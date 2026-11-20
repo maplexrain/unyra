@@ -72,9 +72,7 @@ import { setZenActive } from '../../learn/zen'
 import type { BrowserDeps } from '../../learn/web/browserOps'
 import { webviewOf } from '../../learn/web/webviewRegistry'
 import {
-  addConversation,
   conversationById,
-  deleteConversation,
   ensureConversation,
   latestConversation,
   resolveDisplayedConversation,
@@ -98,7 +96,6 @@ import FloatWindow from '../FloatWindow'
 import { usePresence } from '../../lib/presence'
 import StructOverlay from './workspace/StructOverlay'
 import { useVimGlobalTabOps } from './workspace/useVimGlobalTabOps'
-import { pruneImages } from '../../learn/images'
 import { queueOf, shouldEnqueue } from '../../learn/agentQueue'
 import { nodePathOf } from '../../learn/paths'
 import { nodeDocPath } from '../../learn/files'
@@ -135,7 +132,6 @@ import { useDoubleCtrl } from '../../lib/useDoubleCtrl'
 import type { DocSource } from './NodeNote'
 import ConfirmDialog from '../ConfirmDialog'
 import ContextDebugger from '../agent/ContextDebugger'
-import { resetPrefixGate } from '../../agent/prefixGate'
 import { docAreaElement, locateNeedle, scrollToDoc, visibleDocBody } from '../../lib/docDom'
 import { nodeRevealKey, requestSourceReveal } from '../../lib/docReveal'
 import { readRecentTabs, residentIds } from '../../learn/resident'
@@ -173,6 +169,7 @@ import { useAgentTabActions } from './workspace/useAgentTabActions'
 import { useDeleteFlows } from './workspace/useDeleteFlows'
 import { DeleteConfirms } from './workspace/DeleteConfirms'
 import type { AgentSlotDeps } from './workspace/AgentSlot'
+import { sortConversationsByTimeDesc } from './agent-team/conversationList'
 import { useHostWiring } from './workspace/useHostWiring'
 import { renderGroupBody } from './workspace/GroupBody'
 import { useTabOpening } from './workspace/useTabOpening'
@@ -378,22 +375,18 @@ export default function LearnWorkspace({
    */
   const agentTabs = useMemo(() => store.agentTabs ?? [], [store.agentTabs])
   /*
-   * 固定聊天页签：栏上最左、常驻、不落 store——每一轮渲染在列表前合成一枚。
-   * 它展示的会话 = freeConvId（点选/新建时记下），丢了就回落到最近一段。
+   * 仅聊天模式：会话存在 users/{uid}/free-chat.json（learn/freeChat），按对话时间降序排列，
+   * 选中/新建时记在 freeConvId，丢失或初始为空时自动落到最近活跃的一段。
    */
   const freeChats = useSyncExternalStore(subscribeFreeChat, getFreeConversations)
+  const sortedFreeChats = useMemo(() => sortConversationsByTimeDesc(freeChats), [freeChats])
   const [freeConvId, setFreeConvId] = useState<string | null>(null)
   const currentFreeConvId =
-    freeConvId && freeConversationById(freeConvId) ? freeConvId : (freeChats[0]?.id ?? null)
+    freeConvId && freeConversationById(freeConvId) ? freeConvId : (sortedFreeChats[0]?.id ?? null)
   const freeTabRef = useMemo<AgentTabRef>(
     () => ({ kind: 'free', conversationId: currentFreeConvId }),
     [currentFreeConvId],
   )
-  /*
-   * agent 页签**跟着目标走**（见 learn/agentTabs 的 visibleAgentTabs）：
-   * 栏上只画当前目标名下的导师与子代理，切换目标时那一栏跟着换。
-   * 子代理的归属按它那段对话算（谁派出去的就属于谁），因此 `goalOfConversation` 由这里注入。
-   */
   const goalOfConversation = useCallback(
     (id: string) => conversationById(store, id)?.goalId ?? null,
     [store],
@@ -402,14 +395,8 @@ export default function LearnWorkspace({
     () => visibleAgentTabs(agentTabs, store.activeGoalId, goalOfConversation),
     [agentTabs, store.activeGoalId, goalOfConversation],
   )
-  /** 页签条看到的列表 = 固定页签置左 + 本目标的页签原序 */
-  const stripTabs = useMemo(() => [freeTabRef, ...goalAgentTabs], [freeTabRef, goalAgentTabs])
   /**
-   * 面板常挂的列表：**所有**页签（不按目标过滤）。
-   *
-   * 栏上按目标过滤是「别把话说错人」，面板不跟着过滤是另一件事——输入框里打到一半的
-   * 话是组件自己的 state（不落盘），面板一卸载就没了。切走一个目标再切回来，
-   * 半句话还在不在，差别就在这一行。
+   * 面板常挂的列表：**所有**页签（不按目标过滤），切走再切回时保留输入草稿与滚动位置。
    */
   const agentPanes = useMemo(() => [freeTabRef, ...agentTabs], [freeTabRef, agentTabs])
   const activeAgentTab = useMemo(() => {
@@ -815,18 +802,25 @@ export default function LearnWorkspace({
     browserDeps: () => (isWeb() ? undefined : (browserDepsRef.current ?? undefined)),
   })
 
-  /* ---------- agent 栏页签（见 learn/agentTabs 与 AgentTabStrip）：见 workspace/useAgentTabActions ---------- */
+  /* ---------- 智能体模式切换与会话 CRUD（见 workspace/useAgentTabActions） ---------- */
   const {
     openAgentTab,
     activateAgentTab,
-    docGoalIds,
-    closeAgentTabMode,
-    closeAgentTab,
-    reorderAgentTabList,
-    agentTabTitle,
-    agentTabRunning,
+    selectTutorGoal,
+    exitSubagentView,
+    handleNewGoalConversation,
+    newConversationIn,
+    selectConversationIn,
+    pruneImagesOf,
+    removeConversation,
     fixAgentTabsAfter,
-  } = useAgentTabActions({ store, getLatest, set, onToast, tabs, agent })
+  } = useAgentTabActions({
+    getLatest,
+    set,
+    onToast,
+    setSidebarOpen,
+    runningByConversation: agent.runningByConversation,
+  })
 
   /**
    * 超级文档的 method 桥：一份**常驻**的沙箱 api + 执行持久化函数的回调。
@@ -1174,50 +1168,6 @@ export default function LearnWorkspace({
   )
 
   /**
-   * 换一段对话：会话属于目标，所以切对话不换节点。keepalive 的页签面板各自绑自己
-   * 的页签——换的是**那一枚页签**里展示的会话；被换的正是激活页签时，
-   * activeConversationId（文档区那条旧读口）也同步过去。
-   */
-  const selectConversationIn = (tab: AgentTabRef, conversationId: string) => {
-    if (tab.kind !== 'goal') return
-    const s = getLatest()
-    const conv = conversationById(s, conversationId)
-    if (!conv || conv.goalId !== tab.goalId) return
-    const t0 = upsertAgentTab(
-      s.agentTabs ?? [],
-      s.agentActiveTab ?? null,
-      { kind: 'goal', goalId: tab.goalId, conversationId },
-      true,
-    )
-    const next: LearnStore = {
-      ...s,
-      activeGoalId: tab.goalId,
-      activeConversationId: conversationId,
-    }
-    set(withAgentTabs(next, t0.tabs, t0.active))
-    setSidebarOpen(false)
-  }
-
-  /** 在某一枚目标级页签的目标里另起一段对话（同一个目标可以有并行几段上下文） */
-  const newConversationIn = (tab: AgentTabRef) => {
-    if (tab.kind !== 'goal') return
-    const s = getLatest()
-    const { store: withConv, conversation } = addConversation(s, tab.goalId)
-    const t0 = upsertAgentTab(
-      withConv.agentTabs ?? [],
-      withConv.agentActiveTab ?? null,
-      { kind: 'goal', goalId: tab.goalId, conversationId: conversation.id },
-      true,
-    )
-    const next: LearnStore = {
-      ...withConv,
-      activeGoalId: tab.goalId,
-      activeConversationId: conversation.id,
-    }
-    set(withAgentTabs(next, t0.tabs, t0.active))
-  }
-
-  /**
    * 全局推理等级：斜杠 /effort 与 ModelPicker 是同一个设置（AiSettings.global.effort）的两个入口。
    * 写完 bump 一次 settingsEpoch——它读的不是 React state，不 bump 界面不会知道该重新读。
    */
@@ -1228,59 +1178,6 @@ export default function LearnWorkspace({
     setSettingsEpoch((n) => n + 1)
     onToast(t('推理等级已设为「{0}」', REASONING_LABEL[next]))
   }
-
-  /**
-   * 删对话 / 删消息之后清一次图片。
-   *
-   * 图片是独立文件（见 learn/images），消息里只有一条引用：引用没了文件不会自己
-   * 消失。放在这里而不是每个删除点各写一遍——漏掉一处就是一份永远留在磁盘上的
-   * 垃圾，而且用户看不到它、也就不会去清。
-   */
-  const pruneImagesOf = (s: LearnStore) => {
-    if (s.activeGoalId) void pruneImages(s, s.activeGoalId)
-  }
-
-  const removeConversation = (conversationId: string) => {
-    // 删除会话（或删掉同目标最后一段时清空它的消息）是设计内的历史改写：这一会话的
-    // 前缀账重新开始记（见 agent/prefixGate）
-    resetPrefixGate(conversationId)
-    const next = fixAgentTabsAfter(deleteConversation(getLatest(), conversationId))
-    if (next.activeConversationId || !next.activeNodeId) {
-      set(next)
-      pruneImagesOf(next)
-      return
-    }
-    // 删掉的正是当前对话：回落到同一目标里最近的另一个
-    const node = nodeById(next, next.activeNodeId)
-    if (!node) {
-      set(next)
-      pruneImagesOf(next)
-      return
-    }
-    const ensured = ensureConversation(next, node.goalId)
-    const patched: LearnStore = { ...ensured.store, activeConversationId: ensured.conversationId }
-    set(patched)
-    pruneImagesOf(patched)
-  }
-
-  /** 在当前激活的目标下新增一段对话并作为新页签打开置前 */
-  const handleNewGoalConversation = useCallback(() => {
-    const s = getLatest()
-    if (!s.activeGoalId) return
-    const { store: withConv, conversation } = addConversation(s, s.activeGoalId)
-    const t0 = upsertAgentTab(
-      withConv.agentTabs ?? [],
-      withConv.agentActiveTab ?? null,
-      { kind: 'goal', goalId: s.activeGoalId, conversationId: conversation.id },
-      true,
-    )
-    const next: LearnStore = {
-      ...withConv,
-      activeGoalId: s.activeGoalId,
-      activeConversationId: conversation.id,
-    }
-    set(withAgentTabs(next, t0.tabs, t0.active))
-  }, [getLatest, set])
 
   /* ---------- 新建学习目标 ---------- */
 
@@ -1416,6 +1313,7 @@ export default function LearnWorkspace({
     agent,
     pure,
     setPure,
+    onSyncFreeConvId: setFreeConvId,
   })
 
 
@@ -1723,18 +1621,13 @@ export default function LearnWorkspace({
     vision,
     agentSettings,
     setSettingsEpoch,
-    stripTabs,
     agentPanes,
     activeAgentTab,
     activeAgentTabId,
-    docGoalIds,
-    agentTabTitle,
-    agentTabRunning,
     activateAgentTab,
-    closeAgentTab,
-    closeAgentTabMode,
-    reorderAgentTabList,
     openAgentTab,
+    selectTutorGoal,
+    exitSubagentView,
     handleNewGoalConversation,
     removeConversation,
     newConversationIn,

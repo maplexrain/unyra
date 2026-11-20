@@ -106,8 +106,17 @@ export function deleteConversation(store: LearnStore, conversationId: string): L
       ...store,
       conversations: store.conversations.map((c) =>
         c.id === conversationId
-          ? // 清空消息时连带清掉在途标记：历史已经没了，中断恢复不该再找那条回复
-            { ...c, messages: [], inflight: undefined, updatedAt: Date.now() }
+          ? // 清空消息时连带清掉在途标记与标题/摘要等旧状态：历史已经没了，不再保留旧标题或旧总结
+            {
+              ...c,
+              messages: [],
+              title: undefined,
+              summary: undefined,
+              inflight: undefined,
+              subagents: undefined,
+              systemPrompt: undefined,
+              updatedAt: Date.now(),
+            }
           : c,
       ),
     }

@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { LearnStore, TabRef } from '../../../learn/types'
 import { conversationById, resolveDisplayedConversation } from '../../../learn/graph'
+import { freeConversationById } from '../../../learn/freeChat'
 import { upsertAgentTab, withAgentTabs } from '../../../learn/agentTabs'
 import { findTab, focusedTab } from '../../../learn/groups'
 import type { useAgent } from '../../../learn/useAgent'
@@ -57,6 +58,7 @@ export interface AgentTeamHostDeps {
   agent: AgentApi
   pure: boolean
   setPure: (on: boolean) => void
+  onSyncFreeConvId?: (convId: string) => void
 }
 
 export function useAgentTeamHost({
@@ -67,6 +69,7 @@ export function useAgentTeamHost({
   agent,
   pure,
   setPure,
+  onSyncFreeConvId,
 }: AgentTeamHostDeps) {
   const lastNonTeamTabRef = useRef<string | null>(null)
   const focusTimerRef = useRef<number | null>(null)
@@ -107,6 +110,9 @@ export function useAgentTeamHost({
       }
 
       if (opts?.conversationId) {
+        if (!conversationById(s, opts.conversationId) && freeConversationById(opts.conversationId)) {
+          onSyncFreeConvId?.(opts.conversationId)
+        }
         const synced = syncAgentTabForConversation(s, opts.conversationId)
         if (synced !== s) set(synced)
       } else if (
@@ -129,7 +135,7 @@ export function useAgentTeamHost({
         scheduleFocusInput()
       }
     },
-    [getLatest, set, openTab, scheduleFocusInput],
+    [getLatest, set, openTab, scheduleFocusInput, onSyncFreeConvId],
   )
 
   const toggleAgentTeam = useCallback(() => {
@@ -168,13 +174,16 @@ export function useAgentTeamHost({
 
     const convId = started[started.length - 1]
     const s = getLatest()
+    if (!conversationById(s, convId) && freeConversationById(convId)) {
+      onSyncFreeConvId?.(convId)
+    }
     const synced = syncAgentTabForConversation(s, convId)
     if (synced !== s) set(synced)
 
     if (!pure && !isAgentTeamVisible(getLatest())) {
       openTab({ kind: 'agentTeam' })
     }
-  }, [agent.runningByConversation, pure, getLatest, set, openTab])
+  }, [agent.runningByConversation, pure, getLatest, set, openTab, onSyncFreeConvId])
 
   // 监听 api.ask 结构化表单：有新提问到来时退出纯净阅读、对齐会话并确保页签可见
   useEffect(() => {
@@ -189,13 +198,16 @@ export function useAgentTeamHost({
     if (pure) setPure(false)
 
     const s = getLatest()
+    if (!conversationById(s, convId) && freeConversationById(convId)) {
+      onSyncFreeConvId?.(convId)
+    }
     const synced = syncAgentTabForConversation(s, convId)
     if (synced !== s) set(synced)
 
     if (!isAgentTeamVisible(getLatest())) {
       openTab({ kind: 'agentTeam' })
     }
-  }, [agent.pendingAskByConv, pure, setPure, getLatest, set, openTab])
+  }, [agent.pendingAskByConv, pure, setPure, getLatest, set, openTab, onSyncFreeConvId])
 
   return {
     openAgentTeam,
