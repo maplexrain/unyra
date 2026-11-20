@@ -1,15 +1,74 @@
 /**
- * 5 席核心专业 Agent 预设配置
+ * 智能体团队预设配置
  *
- * 认知模式与资源切分规范：
- * 1. 独占资源严格划分：classroom 归导演、exam 归测评官、code/method 归实验室、memory/userInfo 归总导师；
- * 2. 全员永久硬禁 subagent API 组；
- * 3. 差异化 Host 角色提示词与 Worker 白名单。
+ * 当前采用单导师架构（作为唯一的核心 Agent），应用 Host + Workers 双层体系：
+ * 1. 单导师承接全量教学能力（大纲、讲义、课堂、试卷、代码实验、记忆）；
+ * 2. Frontline Host 专职用户接待、意图理解、即时答疑与工单编排；
+ * 3. Isolated Workers 专职工坊并发执行，拥有全量沙箱 API 白名单（严格硬禁 subagent 递归）；
+ * 4. 另保留 MULTI_EXPERT_PROFILES 供多 Agent 协作内核测试与未来扩展使用。
  */
 
 import type { TeamAgentProfile } from './types'
 
 export const DEFAULT_TEAM_PROFILES: TeamAgentProfile[] = [
+  {
+    id: 'agent-mentor',
+    name: '导师',
+    role: '全能智能导师 (Tutor)',
+    roleType: 'leader',
+    isLeader: true,
+    avatar: '🧠',
+    color: 'indigo',
+    description:
+      '全能智能导师，原汁原味承接大纲规划、讲义撰写、互动课堂、测评出卷、代码实验与长期记忆等全量教学能力。采用 Host + Workers 架构，前台即时调度规划，后台专职工坊并发执行。',
+    capabilities: [
+      '全能伴学',
+      '大纲与知识树',
+      '深度讲义',
+      '互动课堂',
+      '试卷考评',
+      '代码实验',
+      '长期记忆',
+      '工作区工程',
+    ],
+    // 包含全部 25 组宿主沙箱 API 白名单（严禁 subagent 递归）
+    allowedApiGroups: [
+      'core',
+      'node',
+      'memory',
+      'schedule',
+      'tmp',
+      'exam',
+      'res',
+      'workspace',
+      'userInfo',
+      'method',
+      'wf',
+      'code',
+      'chip',
+      'delivery',
+      'web',
+      'browser',
+      'mcp',
+      'ui',
+      'permission',
+      'files',
+      'process',
+      'skill',
+      'video',
+      'classroom',
+      'project',
+    ],
+    hostPromptRole:
+      '你是全能智能导师 (Tutor)。作为直接面向学习者的唯一接待前台，倾听学习者的需求，负责意图理解、即时答疑与工单编排。' +
+      '对于长篇讲义撰写、深入全网查证、16:9 舞台互动课堂编排、随堂测验出卷与阅卷、工作区代码工程与实验等重度繁重任务，必须调用 spawn_worker 委派专职后台 Worker 独立工坊去执行。',
+    workerPromptRole:
+      '你是智能导师工坊的专职执行 Worker，承载原版单导师的全部核心教学规范、沙箱能力与执行纪律。',
+  },
+]
+
+/** 5 席细分专业 Agent 预设（保留供多 Agent 协作流、委派防环单测与未来按需切回） */
+export const MULTI_EXPERT_PROFILES: TeamAgentProfile[] = [
   {
     id: 'agent-mentor',
     name: '总导师',

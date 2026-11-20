@@ -12,7 +12,7 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import { clearPrefixGatesForTests } from '../src/agent/prefixGate'
 import { TeamBus } from '../src/agent/team/teamBus'
-import { DEFAULT_TEAM_PROFILES } from '../src/agent/team/presets'
+import { DEFAULT_TEAM_PROFILES, MULTI_EXPERT_PROFILES } from '../src/agent/team/presets'
 import { createTeamHostTools } from '../src/agent/team/teamTools'
 import { createSuperWorkerTools } from '../src/learn/superAgent/workerRig'
 import type { ResolvedProvider } from '../src/ai/client'
@@ -48,7 +48,8 @@ function createTeamMockStream(routes: ScriptRoute[]) {
     const sysText = typeof sysMsg?.content === 'string' ? sysMsg.content : ''
 
     // 统计调用者（通过唯一前缀识别当前 Agent，防止队友花名册干扰）
-    for (const p of DEFAULT_TEAM_PROFILES) {
+    const allProfiles = [...DEFAULT_TEAM_PROFILES, ...MULTI_EXPERT_PROFILES]
+    for (const p of allProfiles) {
       if (sysText.includes(`「${p.name}」`)) {
         agentCalls[p.id] = (agentCalls[p.id] || 0) + 1
       }
@@ -111,6 +112,7 @@ describe('TeamBus 多 Agent 协作内核 (Phase 5)', () => {
 
     const bus = new TeamBus({
       scopeId,
+      profiles: MULTI_EXPERT_PROFILES,
       provider: testProvider,
       model: 'mock-model',
       chatFn: mock.stream,
@@ -211,6 +213,7 @@ describe('TeamBus 多 Agent 协作内核 (Phase 5)', () => {
 
     const bus = new TeamBus({
       scopeId,
+      profiles: MULTI_EXPERT_PROFILES,
       provider: testProvider,
       model: 'mock-model',
       chatFn: mock.stream,
@@ -354,6 +357,7 @@ describe('TeamBus 多 Agent 协作内核 (Phase 5)', () => {
 
     const bus = new TeamBus({
       scopeId,
+      profiles: MULTI_EXPERT_PROFILES,
       provider: testProvider,
       model: 'mock-model',
       chatFn: mock.stream,
@@ -380,8 +384,8 @@ describe('TeamBus 多 Agent 协作内核 (Phase 5)', () => {
   })
 
   it('5. 角色最小权限白名单验证：各角色 API 白名单严格隔离，且全员硬禁 subagent', () => {
-    const directorProfile = DEFAULT_TEAM_PROFILES.find((p) => p.id === 'agent-director')!
-    const examinerProfile = DEFAULT_TEAM_PROFILES.find((p) => p.id === 'agent-examiner')!
+    const directorProfile = MULTI_EXPERT_PROFILES.find((p) => p.id === 'agent-director')!
+    const examinerProfile = MULTI_EXPERT_PROFILES.find((p) => p.id === 'agent-examiner')!
 
     // 检查预设声明
     expect(directorProfile.allowedApiGroups).toContain('classroom')
@@ -529,6 +533,7 @@ describe('TeamBus 多 Agent 协作内核 (Phase 5)', () => {
 
     const bus = new TeamBus({
       scopeId,
+      profiles: MULTI_EXPERT_PROFILES,
       provider: testProvider,
       model: 'mock-model',
       chatFn: mock.stream,
@@ -623,5 +628,61 @@ describe('TeamBus 多 Agent 协作内核 (Phase 5)', () => {
       expect(st.mailbox).toEqual([])
       expect(st.blackboard).toEqual([])
     }
+  })
+
+  it('9. 默认单导师模型：作为团队唯一 Agent，拥有全量 API 白名单与完整的 Host + Workers 架构', async () => {
+    // 9.1 验证默认团队仅有 1 位 Agent（导师）
+    expect(DEFAULT_TEAM_PROFILES).toHaveLength(1)
+    const soloMentor = DEFAULT_TEAM_PROFILES[0]
+    expect(soloMentor.id).toBe('agent-mentor')
+    expect(soloMentor.name).toBe('导师')
+    expect(soloMentor.isLeader).toBe(true)
+
+    // 9.2 验证单导师 Worker 白名单覆盖全量 25 组 API（且严格禁用 subagent）
+    expect(soloMentor.allowedApiGroups.length).toBeGreaterThanOrEqual(20)
+    expect(soloMentor.allowedApiGroups).toContain('node')
+    expect(soloMentor.allowedApiGroups).toContain('web')
+    expect(soloMentor.allowedApiGroups).toContain('classroom')
+    expect(soloMentor.allowedApiGroups).toContain('exam')
+    expect(soloMentor.allowedApiGroups).toContain('code')
+    expect(soloMentor.allowedApiGroups).toContain('workspace')
+    expect(soloMentor.allowedApiGroups).not.toContain('subagent')
+
+    // 9.3 验证 Worker 沙箱工具包含全量核心接口
+    const soloTools = createSuperWorkerTools({
+      allowedGroups: soloMentor.allowedApiGroups,
+    })
+    const execTool = soloTools.find((t) => t.name === 'execute')!
+    const desc = (execTool.parameters as { properties: { body: { description: string } } }).properties.body.description
+    expect(desc).toContain('classroom')
+    expect(desc).toContain('exam')
+    expect(desc).toContain('node')
+    expect(desc).toContain('workspace')
+    expect(desc).not.toContain('subagent.create')
+
+    // 9.4 验证默认 TeamBus 只初始化该导师，且能正常处理消息
+    const mock = createTeamMockStream([
+      {
+        match: '导师你好',
+        hops: [{ content: '你好，我是你的全能导师。' }],
+      },
+    ])
+    const bus = new TeamBus({
+      scopeId: 'test-solo-mentor-scope',
+      provider: testProvider,
+      model: 'mock-model',
+      chatFn: mock.stream,
+    })
+
+    const loadedProfiles = bus.getTeamState().agents
+    expect(loadedProfiles).toHaveLength(1)
+    expect(loadedProfiles[0].id).toBe('agent-mentor')
+
+    await bus.sendDirectMessage('agent-mentor', '导师你好')
+    const mentorEng = bus.getAgentEngine('agent-mentor')!
+    expect(mentorEng.getState().hostMessages.length).toBe(2)
+    expect(mentorEng.getState().hostMessages[1].parts[0]).toMatchObject({
+      text: '你好，我是你的全能导师。',
+    })
   })
 })
