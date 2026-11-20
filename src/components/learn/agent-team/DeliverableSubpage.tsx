@@ -2,25 +2,22 @@
  * 交付正文二级页面 (DeliverableSubpage)
  *
  * 架构规范：
- * 1. 聊天区二级页面形态：不再作为右侧抽屉挤占工作区宽度，而在聊天视口内平滑推入；
- * 2. 顶栏提供明确的面包屑导航与「← 返回」按钮（支持返回频道或返回专家）；
- * 3. 布局与 Agent 对话流严格一致：自然时间流、折叠思考与工具过程件、零拷贝交付正文；
- * 4. 气泡与主体容器严格限制最大宽度 800px 居中排布，阅读体验极佳；
- * 5. 彻底无底部输入框与多余 Tab 页，纯粹沉浸式查验交付成果。
+ * 1. 聊天区二级页面形态：在主聊天视口内平滑推入，顶栏提供清晰的「← 返回」导航；
+ * 2. 100% 完整复用系统原生 Agent 消息列表组件 (MessageRow, Parts)：
+ *    - 严格遵循素面无壳规矩：无外层多余边框、无多层嵌套卡片、无背景色与内边距包裹；
+ *    - 思考过程与工具调用过程原生折叠收起 (ThinkingBlock, ProcessGroup)，被内容自然撑开，绝不设限高滚动条；
+ *    - 正文采用自然 Markdown 分段排布与零拷贝呈现；
+ * 3. 视口居中 max-w-[800px] 排布，纯粹沉浸式查验交付成果。
  */
 
-import { memo, useMemo, useState } from 'react'
+import { memo, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   Check,
-  ChevronDown,
-  ChevronRight,
   Copy,
   FileText,
   LayoutGrid,
-  Loader2,
   StopCircle,
-  Wrench,
   Zap,
 } from 'lucide-react'
 import type {
@@ -29,10 +26,8 @@ import type {
 } from '../../../agent/super/types'
 import type { WorkerStreamSlot } from '../../../learn/superAgent/useAgentTeam'
 import type { AgentPart, ConversationMessage } from '../../../agent/types'
-import { extractMindParts } from '../../../agent/super/projection'
-import MarkdownView from '../../MarkdownView'
-import { renderNote } from '../../../lib/markdown'
-import { ToolCard } from '../../agent/panel/ToolCard'
+import { MessageRow, Parts } from '../../agent/panel/MessageBubble'
+import WaveBars from '../../WaveBars'
 import { t } from '../../../i18n'
 
 export type SubpageMode =
@@ -50,55 +45,6 @@ export interface DeliverableSubpageProps {
   onSelectWorker: (workerId: string) => void
   onCancelWorker: (workerId: string) => void
   onBack: () => void
-}
-
-/** 单条 Assistant 消息内部的思考与工具折叠组 */
-function AssistantProcessGroup({
-  parts,
-  defaultExpanded = false,
-}: {
-  parts: AgentPart[]
-  defaultExpanded?: boolean
-}) {
-  const [expanded, setExpanded] = useState(defaultExpanded)
-  if (parts.length === 0) return null
-
-  return (
-    <div className="mb-2 rounded-xl border border-line/60 bg-paper-deep/40 overflow-hidden text-[11.5px]">
-      <button
-        type="button"
-        onClick={() => setExpanded((prev) => !prev)}
-        className="w-full px-2.5 py-1.5 flex items-center justify-between text-ink-subtle hover:text-ink hover:bg-line/20 transition cursor-pointer select-none"
-      >
-        <span className="flex items-center gap-1.5 font-medium">
-          <Wrench size={11} className="text-amber-500/80" />
-          <span>{t('思考与工具执行过程 ({0})', parts.length)}</span>
-        </span>
-        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-      </button>
-
-      {expanded && (
-        <div className="p-2.5 space-y-2 border-t border-line/40 bg-paper/50 max-h-60 overflow-y-auto">
-          {parts.map((part, idx) => {
-            if (part.type === 'thinking') {
-              return (
-                <div
-                  key={idx}
-                  className="p-2 rounded-lg bg-paper-deep/60 border border-line text-ink-subtle italic text-[11px] leading-relaxed"
-                >
-                  {part.text}
-                </div>
-              )
-            }
-            if (part.type === 'tool') {
-              return <ToolCard key={idx} part={part} />
-            }
-            return null
-          })}
-        </div>
-      )}
-    </div>
-  )
 }
 
 export const DeliverableSubpage = memo(function DeliverableSubpage({
@@ -121,11 +67,25 @@ export const DeliverableSubpage = memo(function DeliverableSubpage({
   const currentStream = currentWorker ? workerStreams[currentWorker.id] : undefined
   const [copiedArtifactId, setCopiedArtifactId] = useState<string | null>(null)
 
+  // 复用系统原生 MessageRow 所需的 DOM refs
+  const msgRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const dummySetPreview = useRef(() => {}).current
+
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text)
     setCopiedArtifactId(id)
     setTimeout(() => setCopiedArtifactId(null), 1500)
   }
+
+  // 流式输出时，将后台 Worker 的思考过程与交付正文拼合成标准 AgentPart[] 交由原生 Parts 渲染
+  const streamingParts = useMemo(() => {
+    if (!currentStream) return []
+    const parts: AgentPart[] = [...currentStream.mind]
+    if (currentStream.chat) {
+      parts.push({ type: 'text', text: currentStream.chat })
+    }
+    return parts
+  }, [currentStream])
 
   return (
     <div className="flex flex-col h-full w-full bg-paper overflow-hidden select-text">
@@ -222,9 +182,9 @@ export const DeliverableSubpage = memo(function DeliverableSubpage({
         </div>
       </div>
 
-      {/* 主体视口：800px 居中排布 */}
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="max-w-[800px] mx-auto w-full space-y-3">
+      {/* 主体视口：800px 居中排布，完全无壳、自然撑开 */}
+      <div className="flex-1 overflow-y-auto p-4 select-text">
+        <div className="max-w-[800px] mx-auto w-full">
           {mode.kind === 'blackboard' ? (
             /* 黑板视图 */
             blackboard.length === 0 ? (
@@ -233,134 +193,95 @@ export const DeliverableSubpage = memo(function DeliverableSubpage({
                 <span>{t('当前黑板尚未沉淀任何条目')}</span>
               </div>
             ) : (
-              blackboard.map((entry) => (
-                <div
-                  key={entry.workerId}
-                  onClick={() => {
-                    if (entry.workerId) onSelectWorker(entry.workerId)
-                  }}
-                  className="p-3.5 rounded-xl bg-card border border-line/80 hover:border-seal/40 transition cursor-pointer space-y-1.5 shadow-2xs"
-                >
-                  <div className="flex items-center justify-between text-[11.5px]">
-                    <span className="font-semibold text-ink-strong">{entry.title}</span>
-                    <span className="text-[10px] text-ink-faint">
-                      {new Date(entry.updatedAt).toLocaleTimeString()}
-                    </span>
+              <div className="space-y-3">
+                {blackboard.map((entry) => (
+                  <div
+                    key={entry.workerId}
+                    onClick={() => {
+                      if (entry.workerId) onSelectWorker(entry.workerId)
+                    }}
+                    className="p-3.5 rounded-xl bg-card border border-line/80 hover:border-seal/40 transition cursor-pointer space-y-1.5 shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between text-[11.5px]">
+                      <span className="font-semibold text-ink-strong">{entry.title}</span>
+                      <span className="text-[10px] text-ink-faint">
+                        {new Date(entry.updatedAt).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <div className="text-[12px] text-ink leading-relaxed line-clamp-3">
+                      {entry.summary}
+                    </div>
                   </div>
-                  <div className="text-[12px] text-ink leading-relaxed line-clamp-3">
-                    {entry.summary}
-                  </div>
-                </div>
-              ))
+                ))}
+              </div>
             )
           ) : !currentWorker ? (
             <div className="flex flex-col items-center justify-center py-20 text-ink-faint text-[12px]">
               <span>{t('暂无选中的工单')}</span>
             </div>
           ) : (
-            <>
-              {/* 工单完整会话历史 */}
-              {currentWorker.messages.map((m: ConversationMessage) => {
-                const isUser = m.role === 'user'
+            <div className="space-y-4">
+              {/* 完整复用系统原生 Agent 消息行：MessageRow 严格遵循素面无壳设计 */}
+              {currentWorker.messages.map((m: ConversationMessage) => (
+                <MessageRow
+                  key={m.id}
+                  m={m}
+                  faded={false}
+                  flash={false}
+                  msgRefs={msgRefs}
+                  setBubblePreview={dummySetPreview}
+                />
+              ))}
 
-                if (isUser) {
-                  const text = m.parts
-                    .filter((p) => p.type === 'text')
-                    .map((p) => ('text' in p ? p.text : ''))
-                    .join('\n\n')
-
-                  return (
-                    <div key={m.id} className="flex justify-end">
-                      <div className="max-w-[800px] w-fit rounded-2xl rounded-tr-xs bg-seal/12 text-ink-strong border border-seal/20 px-3.5 py-2 shadow-2xs text-[12.5px] leading-relaxed">
-                        <div className="whitespace-pre-wrap">{text}</div>
-                      </div>
+              {/* 若 Worker 正在执行流式推理，完整复用原生 Parts 与 WaveBars，过程件自然展开撑开 */}
+              {streamingParts.length > 0 && (
+                <div className="group relative mb-4">
+                  <Parts parts={streamingParts} streaming={true} />
+                  {currentWorker.status === 'running' && (
+                    <div className="moji-in-soft mt-3 flex items-center gap-2.5 text-[12.5px] text-ink-faint">
+                      <WaveBars className="text-seal" />
+                      <span className="moji-sheen">{t('正在后台工坊执行中...')}</span>
                     </div>
-                  )
-                }
+                  )}
+                </div>
+              )}
 
-                // Assistant 消息：过程折叠组 + 正文 Markdown + 产物胶囊
-                const mindParts = extractMindParts(m.parts)
-                const textParts = m.parts.filter((p) => p.type === 'text')
-
-                return (
-                  <div key={m.id} className="flex justify-start">
-                    <div className="max-w-[800px] w-full rounded-2xl rounded-tl-xs bg-card border border-line/80 p-3.5 shadow-2xs space-y-2 text-[12.5px]">
-                      {/* 折叠的过程件 */}
-                      {mindParts.length > 0 && <AssistantProcessGroup parts={mindParts} />}
-
-                      {/* 交付正文 */}
-                      {textParts.map((part, idx) => (
-                        <div key={idx} className="text-ink leading-relaxed prose-sm">
-                          <MarkdownView
-                            html={renderNote('text' in part ? part.text : '')}
-                            className="moji-agent-md"
-                          />
-                        </div>
-                      ))}
-
-                      {/* 关联产物展示 */}
-                      {currentWorker.artifacts.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-line/40 flex flex-wrap gap-1.5 text-[10.5px]">
-                          {currentWorker.artifacts.map((art) => (
-                            <div
-                              key={art.id}
-                              className="flex items-center gap-1.5 px-2 py-0.8 rounded-md bg-seal/10 text-seal border border-seal/20 font-medium"
-                            >
-                              <FileText size={11} />
-                              <span>{art.title}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleCopy(art.content, art.id)}
-                                className="ml-1 text-ink-faint hover:text-ink cursor-pointer"
-                                title={t('复制产物内容')}
-                              >
-                                {copiedArtifactId === art.id ? (
-                                  <Check size={11} className="text-emerald-500" />
-                                ) : (
-                                  <Copy size={11} />
-                                )}
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+              {/* 交付产物卡片展示 */}
+              {currentWorker.artifacts.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-line/60 flex flex-wrap items-center gap-2 text-[11.5px]">
+                  <span className="text-ink-faint">{t('交付产物:')}</span>
+                  {currentWorker.artifacts.map((art) => (
+                    <div
+                      key={art.id}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-seal/10 text-seal border border-seal/20 font-medium"
+                    >
+                      <FileText size={12} />
+                      <span>{art.title}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(art.content, art.id)}
+                        className="ml-1 text-ink-faint hover:text-ink cursor-pointer"
+                        title={t('复制产物内容')}
+                      >
+                        {copiedArtifactId === art.id ? (
+                          <Check size={12} className="text-emerald-500" />
+                        ) : (
+                          <Copy size={12} />
+                        )}
+                      </button>
                     </div>
-                  </div>
-                )
-              })}
-
-              {/* 若 Worker 正在执行流式推理中，实时呈现当前的流式内容 */}
-              {currentStream && (
-                <div className="flex justify-start">
-                  <div className="max-w-[800px] w-full rounded-2xl rounded-tl-xs bg-card border border-line/80 p-3.5 shadow-2xs space-y-2 text-[12.5px]">
-                    {currentStream.mind.length > 0 && (
-                      <AssistantProcessGroup parts={currentStream.mind} defaultExpanded />
-                    )}
-                    {currentStream.chat ? (
-                      <div className="text-ink leading-relaxed prose-sm">
-                        <MarkdownView
-                          html={renderNote(currentStream.chat)}
-                          className="moji-agent-md"
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 text-ink-faint text-[12px] py-1">
-                        <Loader2 size={13} className="animate-spin text-emerald-500" />
-                        <span>{t('正在后台工坊执行探索与撰写成果...')}</span>
-                      </div>
-                    )}
-                  </div>
+                  ))}
                 </div>
               )}
 
               {/* 若既无历史消息也无流式内容 */}
-              {currentWorker.messages.length === 0 && !currentStream && (
+              {currentWorker.messages.length === 0 && streamingParts.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 text-ink-faint text-[12px] space-y-2">
                   <Zap size={24} className="opacity-40" />
                   <span>{t('工单已就绪，等待执行。')}</span>
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       </div>
