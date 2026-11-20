@@ -321,7 +321,7 @@ export function tabTrail(
     return ''
 
   if (ref.kind === 'mind') return goalLabel ? goalLabel(ref.goalId) : ''
-  if (ref.kind === 'agentTeam') return ref.goalId && goalLabel ? goalLabel(ref.goalId) : t('多智能体协同')
+  if (ref.kind === 'agentTeam') return ref.goalId && goalLabel ? goalLabel(ref.goalId) : t('超级导师')
   if (ref.kind === 'local') {
     const i = Math.max(ref.path.lastIndexOf('/'), ref.path.lastIndexOf('\\'))
     return i > 0 ? ref.path.slice(0, i) : ''

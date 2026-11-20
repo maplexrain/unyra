@@ -2,8 +2,6 @@ import type { Dispatch, SetStateAction } from 'react'
 import type { LearnStore } from '../../../learn/types'
 import { focusedGroup } from '../../../learn/groups'
 import { useShortcut } from '../../../lib/useShortcut'
-import { focusAgentInput } from '../../../lib/agentFocus'
-import { SIDE_ANIM_MS } from './constants'
 
 export interface WorkspaceShortcutsDeps {
   saveDocNow: () => Promise<void>
@@ -13,10 +11,7 @@ export interface WorkspaceShortcutsDeps {
   getLatest: () => LearnStore
   closeTab: (groupId: string, tabId: string, which: 'self') => void
   pure: boolean
-  agentLeft: boolean
-  sideCollapsed: boolean
-  expandSide: () => void
-  toggleSide: () => void
+  toggleAgentTeam: () => void
   toggleZen: () => void
   isWeb: () => boolean
   focusWebAddress: () => void
@@ -34,10 +29,7 @@ export function useWorkspaceShortcuts({
   getLatest,
   closeTab,
   pure,
-  agentLeft,
-  sideCollapsed,
-  expandSide,
-  toggleSide,
+  toggleAgentTeam,
   toggleZen,
   isWeb,
   focusWebAddress,
@@ -79,20 +71,11 @@ export function useWorkspaceShortcuts({
     },
   })
 
-  // Ctrl+Q：切换右侧栏 / 聚焦导师
+  // Ctrl+Q：切换智能体团队页签 / 聚焦导师输入框
   useShortcut('agent.focus', {
     down: () => {
       if (pure) return
-      if (!agentLeft) {
-        if (sideCollapsed) {
-          expandSide()
-          window.setTimeout(focusAgentInput, SIDE_ANIM_MS)
-        } else {
-          toggleSide()
-        }
-        return
-      }
-      toggleSide()
+      toggleAgentTeam()
     },
   })
 

@@ -76,6 +76,8 @@ export interface AgentSlotDeps {
   startSuperLab: StartersApi['startSuperLab']
   newExam: StartersApi['newExam']
   shouldWaitInLine: (convId: string) => boolean
+  /** 宿主 Tab 页签是否当前可见（agentTeam 页签后台保活时降为 false，切回再激活） */
+  tabActive?: boolean
 }
 
 /**
@@ -122,6 +124,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     startSuperLab,
     newExam,
     shouldWaitInLine,
+    tabActive = true,
   } = deps
 
   /**
@@ -335,7 +338,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         {/* 常挂的是全部页签（见 agentPanes 的说明），栏上画哪几枚由 stripTabs 决定 */}
         {agentPanes.map((tab) => {
           const key = agentTabKey(tab)
-          const on = key === activeAgentTabId
+          const on = tabActive && key === activeAgentTabId
           const props = agentTabProps(tab)
           return (
             <AgentTabPane

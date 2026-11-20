@@ -147,6 +147,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     requestGenerateDoc,
     getNoteActions,
     agent,
+    agentSlotDeps,
     updateStructure,
     explorerDocs,
     explorerExams,
@@ -830,14 +831,9 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
         {/* 智能体团队常驻保活层（keepalive）：切页签只藏不卸，状态与长连接全保活 */}
         {gAgentTeamTabs.map((t) => {
           const isCur = gTab?.id === t.id
-          const teamRef = t.ref as { kind: 'agentTeam'; goalId?: string }
           return (
             <div key={t.id} className={`absolute inset-0 z-10 flex flex-col ${isCur ? '' : 'hidden pointer-events-none'}`}>
-              <AgentTeamPage
-                goalId={teamRef.goalId} goals={store.goals} activeGoalId={store.activeGoalId}
-                store={store} getLatest={getLatest} set={set} agent={agent}
-                agentSettings={agentSettings} hasKey={hasKey} openTab={openTab} onToast={onToast}
-              />
+              <AgentTeamPage active={isCur} focused={isCur && isFocused} agentSlotDeps={agentSlotDeps} />
             </div>
           )
         })}

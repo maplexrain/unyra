@@ -365,7 +365,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
         onToast(t('现在发不出编译请求：先打开一个知识点，等对话框就绪再点'))
         return
       }
-      onToast(t('已把这段代码交给导师伪编译，结果与说明见右侧对话'))
+      onToast(t('已把这段代码交给导师伪编译，结果与说明见智能体团队页签'))
     }
   })
   useEffect(() => {
