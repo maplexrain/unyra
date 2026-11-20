@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { groupParts, isProcessPart } from '../src/components/agent/panel/partGroups'
+import { lastLineOf } from '../src/components/agent/panel/preview'
 import type { AgentPart } from '../src/agent/types'
 
 const think = (text: string): AgentPart => ({ type: 'thinking', text })
@@ -90,5 +91,19 @@ describe('轮开始时的提示词注入', () => {
 
   it('没有注入时归组结果与从前逐字一致', () => {
     expect(groupParts([think('想')], [])).toEqual(groupParts([think('想')]))
+  })
+})
+
+describe('lastLineOf 空值安全防护', () => {
+  it('传入 undefined, null, 空串或非字符串时安全返回空字符串，绝不抛异常', () => {
+    expect(lastLineOf(undefined as any)).toBe('')
+    expect(lastLineOf(null as any)).toBe('')
+    expect(lastLineOf('')).toBe('')
+    expect(lastLineOf(123 as any)).toBe('')
+  })
+
+  it('多行文本正确提取剥除末尾空白后的最后一行', () => {
+    expect(lastLineOf('第一行\n第二行\n\n  ')).toBe('第二行')
+    expect(lastLineOf('只有一行')).toBe('只有一行')
   })
 })

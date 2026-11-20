@@ -328,21 +328,23 @@ function SinglePart({
  */
 function ProcessGroup({ items }: { items: ProcessPart[] }) {
   const { open, shown, toggle } = useFold()
-  const last = items[items.length - 1]
-  const hasPrompt = items.some((p) => p.type === 'prompt-module' || p.type === 'inject')
+  const last = items && items.length > 0 ? items[items.length - 1] : undefined
+  const hasPrompt = items?.some((p) => p.type === 'prompt-module' || p.type === 'inject') ?? false
   /**
    * 预览不进 useMemo：流式时 applyEvent 是**原地改 part 对象**的（setStreaming 只换
    * 数组壳，对象身份不变），认对象会让预览冻在第一帧——思考在长，组上却看不见。
    * lastLineOf 只扫末尾一个窗口，每次渲染现算也花不了几个钱。
    */
   const tail =
-    last.type === 'thinking'
-      ? lastLineOf(last.text) || '…'
-      : last.type === 'prompt-module'
-        ? t('提示词模块 · {0}', promptModuleTitleOf(last.key) ?? last.key)
-        : last.type === 'inject'
-          ? last.label
-          : toolLabel(last.name, last.args)
+    !last
+      ? ''
+      : last.type === 'thinking'
+        ? lastLineOf((last as any).text || (last as any).delta || '') || '…'
+        : last.type === 'prompt-module'
+          ? t('提示词模块 · {0}', promptModuleTitleOf(last.key) ?? last.key)
+          : last.type === 'inject'
+            ? last.label
+            : toolLabel(last.name, last.args)
 
   return (
     <div className="border-b border-line pb-2">
@@ -415,22 +417,23 @@ function ProcessGroup({ items }: { items: ProcessPart[] }) {
  * 流式期间还在写的时候，只要读者本来就停在底部就继续跟着贴底（往上翻过就不抢，
  * 与消息列表同一条礼貌）。
  */
-function ThinkingBlock({ text }: { text: string }) {
+function ThinkingBlock({ text }: { text?: string }) {
   const { open, shown, toggle } = useFold()
-  const tail = useMemo(() => lastLineOf(text), [text])
+  const safeText = typeof text === 'string' ? text : ''
+  const tail = useMemo(() => lastLineOf(safeText), [safeText])
   const bodyRef = useRef<HTMLDivElement | null>(null)
   /** 读者此刻是不是停在正文底部：流式续写时据此决定要不要跟着滚 */
   const atBottomRef = useRef(true)
   /** 上一次渲染的正文：只有它**变长了**才谈得上跟着滚（展开历史思考不该跳到末尾） */
-  const prevText = useRef(text)
+  const prevText = useRef(safeText)
 
   useEffect(() => {
     const el = bodyRef.current
-    const grew = text !== prevText.current
-    prevText.current = text
+    const grew = safeText !== prevText.current
+    prevText.current = safeText
     if (!el || !grew || !atBottomRef.current) return
     el.scrollTop = el.scrollHeight
-  }, [text])
+  }, [safeText])
 
   return (
     <div>
