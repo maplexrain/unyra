@@ -8,6 +8,7 @@
  */
 
 import type { AgentEvent, AgentTool, ConversationMessage } from '../types'
+import type { DeliveryRecord } from '../delivery'
 import type { ReasoningEffort, StreamFn } from '../../ai/types'
 import type { ResolvedProvider } from '../../ai/client'
 
@@ -87,6 +88,8 @@ export interface WorkerSession {
   chatText: string
   /** 该 Worker 产出的所有结构化产物 */
   artifacts: ArtifactRecord[]
+  /** 该 Worker 登记的交付记录（DeliveryBlock 所需的结构化文件变动与引证） */
+  delivery?: DeliveryRecord
   createdAt: number
   updatedAt: number
   error?: string

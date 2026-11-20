@@ -10,12 +10,9 @@
  * 3. 视口居中 max-w-[800px] 排布，纯粹沉浸式查验交付成果。
  */
 
-import { memo, useMemo, useRef, useState } from 'react'
+import { memo, useMemo, useRef } from 'react'
 import {
   ArrowLeft,
-  Check,
-  Copy,
-  FileText,
   LayoutGrid,
   StopCircle,
   Zap,
@@ -24,6 +21,7 @@ import type {
   BlackboardEntry,
   WorkerSession,
 } from '../../../agent/super/types'
+import { hasDelivery, type DeliveryRecord } from '../../../agent/delivery'
 import type { WorkerStreamSlot } from '../../../learn/superAgent/useAgentTeam'
 import type { AgentPart, ConversationMessage } from '../../../agent/types'
 import { MessageRow, Parts } from '../../agent/panel/MessageBubble'
@@ -42,6 +40,8 @@ export interface DeliverableSubpageProps {
   workerStreams: Record<string, WorkerStreamSlot>
   blackboard: BlackboardEntry[]
   backLabel?: string
+  goalId?: string
+  onOpenFile?: (pathOrRel: string, title?: string) => void
   onSelectWorker: (workerId: string) => void
   onCancelWorker: (workerId: string) => void
   onBack: () => void
@@ -54,6 +54,8 @@ export const DeliverableSubpage = memo(function DeliverableSubpage({
   workerStreams,
   blackboard,
   backLabel,
+  goalId,
+  onOpenFile,
   onSelectWorker,
   onCancelWorker,
   onBack,
@@ -65,17 +67,37 @@ export const DeliverableSubpage = memo(function DeliverableSubpage({
     [workers, activeWorkerId],
   )
   const currentStream = currentWorker ? workerStreams[currentWorker.id] : undefined
-  const [copiedArtifactId, setCopiedArtifactId] = useState<string | null>(null)
 
   // 复用系统原生 MessageRow 所需的 DOM refs
   const msgRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const dummySetPreview = useRef(() => {}).current
 
-  const handleCopy = (text: string, id: string) => {
-    navigator.clipboard.writeText(text)
-    setCopiedArtifactId(id)
-    setTimeout(() => setCopiedArtifactId(null), 1500)
-  }
+  // 完整对齐 Agent 栏：若 Worker 拥有交付结果，将其以 DeliveryRecord 规范挂载于最后一条 assistant 消息
+  const messagesWithDelivery = useMemo(() => {
+    if (!currentWorker) return []
+    const msgs = [...currentWorker.messages]
+    const lastAssistIdx = msgs.map((m) => m.role).lastIndexOf('assistant')
+    if (lastAssistIdx !== -1) {
+      const targetMsg = msgs[lastAssistIdx]
+      if (!targetMsg.delivery) {
+        if (currentWorker.delivery && hasDelivery(currentWorker.delivery)) {
+          msgs[lastAssistIdx] = { ...targetMsg, delivery: currentWorker.delivery }
+        } else if (currentWorker.artifacts?.length) {
+          const delivery: DeliveryRecord = {
+            files: currentWorker.artifacts.map((art) => ({
+              path: art.title,
+              action: 'created',
+              note: art.content.slice(0, 80).replace(/\n+/g, ' '),
+              goalId: goalId || undefined,
+            })),
+            sources: [],
+          }
+          msgs[lastAssistIdx] = { ...targetMsg, delivery }
+        }
+      }
+    }
+    return msgs
+  }, [currentWorker, goalId])
 
   // 流式输出时，将后台 Worker 的思考过程与交付正文拼合成标准 AgentPart[] 交由原生 Parts 渲染
   const streamingParts = useMemo(() => {
@@ -221,8 +243,8 @@ export const DeliverableSubpage = memo(function DeliverableSubpage({
             </div>
           ) : (
             <div className="space-y-4">
-              {/* 完整复用系统原生 Agent 消息行：MessageRow 严格遵循素面无壳设计 */}
-              {currentWorker.messages.map((m: ConversationMessage) => (
+              {/* 完整复用系统原生 Agent 消息行：MessageRow 严格遵循素面无壳设计，原生呈现 DeliveryBlock */}
+              {messagesWithDelivery.map((m: ConversationMessage) => (
                 <MessageRow
                   key={m.id}
                   m={m}
@@ -230,6 +252,8 @@ export const DeliverableSubpage = memo(function DeliverableSubpage({
                   flash={false}
                   msgRefs={msgRefs}
                   setBubblePreview={dummySetPreview}
+                  onOpenFile={onOpenFile}
+                  goalId={goalId}
                 />
               ))}
 
@@ -246,36 +270,8 @@ export const DeliverableSubpage = memo(function DeliverableSubpage({
                 </div>
               )}
 
-              {/* 交付产物卡片展示 */}
-              {currentWorker.artifacts.length > 0 && (
-                <div className="mt-4 pt-3 border-t border-line/60 flex flex-wrap items-center gap-2 text-[11.5px]">
-                  <span className="text-ink-faint">{t('交付产物:')}</span>
-                  {currentWorker.artifacts.map((art) => (
-                    <div
-                      key={art.id}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-seal/10 text-seal border border-seal/20 font-medium"
-                    >
-                      <FileText size={12} />
-                      <span>{art.title}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(art.content, art.id)}
-                        className="ml-1 text-ink-faint hover:text-ink cursor-pointer"
-                        title={t('复制产物内容')}
-                      >
-                        {copiedArtifactId === art.id ? (
-                          <Check size={12} className="text-emerald-500" />
-                        ) : (
-                          <Copy size={12} />
-                        )}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
               {/* 若既无历史消息也无流式内容 */}
-              {currentWorker.messages.length === 0 && streamingParts.length === 0 && (
+              {messagesWithDelivery.length === 0 && streamingParts.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 text-ink-faint text-[12px] space-y-2">
                   <Zap size={24} className="opacity-40" />
                   <span>{t('工单已就绪，等待执行。')}</span>

@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import { SuperAgentEngine, hydrateSuperAgentState } from '../src/agent/super/engine'
+import { applyEvent } from '../src/learn/agent/events'
 import { clearPrefixGatesForTests } from '../src/agent/prefixGate'
 import type { ResolvedProvider } from '../src/ai/client'
 import type { StreamChatOptions, StreamChatResult } from '../src/ai/types'
@@ -553,5 +554,72 @@ describe('SuperAgent 三平面架构内核 (Phase 1)', () => {
     expect(hydrated.id).toBe('session-crashed')
     expect(hydrated.workers['w-crashed'].status).toBe('failed')
     expect(hydrated.workers['w-crashed'].error).toContain('应用重启')
+  })
+
+  it('9. 流式 Thinking Token 防膨胀：多次 delta 事件由 applyEvent 原地累加为单步', () => {
+    const parts: any[] = []
+    // 模拟流式模型吐出 50 个 token 的思考过程
+    for (let i = 0; i < 50; i++) {
+      applyEvent(parts, { type: 'thinking', delta: `token_${i} ` })
+    }
+    // 必须只生成 1 个 thinking part，而不是 50 个独立的 parts 导致步骤爆炸与卡死
+    expect(parts).toHaveLength(1)
+    expect(parts[0].type).toBe('thinking')
+    expect(parts[0].text).toContain('token_0 token_1')
+    expect(parts[0].text).toContain('token_49')
+  })
+
+  it('10. Worker 交付产物自动转为 DeliveryRecord 并挂载到 assistant 消息', async () => {
+    const mock = createMockStream([
+      {
+        match: '做个交付任务',
+        hops: [
+          {
+            toolCalls: [
+              {
+                id: 'call_spawn',
+                name: 'spawn_worker',
+                arguments: JSON.stringify({
+                  title: '语法导读课',
+                  goal: '生成语法导读并交付文档',
+                }),
+              },
+            ],
+          },
+          { content: '任务已派发' },
+        ],
+      },
+      {
+        match: '生成语法导读并交付文档',
+        hops: [
+          {
+            reasoning: '正在规划导读课内容...',
+            content: '《英语语法·导读课》已生成，结构完整。',
+          },
+        ],
+      },
+    ])
+
+    const engine = new SuperAgentEngine({
+      provider: testProvider,
+      model: 'test-model',
+      chatFn: mock.stream,
+    })
+
+    await engine.sendUserMessage('做个交付任务')
+    const workers = Object.values(engine.getState().workers)
+    expect(workers.length).toBeGreaterThan(0)
+    const w = workers[0]
+    expect(w.status).toBe('done')
+    expect(w.artifacts.length).toBeGreaterThan(0)
+    expect(w.delivery).toBeDefined()
+    expect(w.delivery?.files.length).toBeGreaterThan(0)
+    expect(w.delivery?.files[0].path).toBe('语法导读课交付物')
+
+    // 检查其 assistant 消息上是否也挂载了 delivery
+    const lastMsg = w.messages[w.messages.length - 1]
+    expect(lastMsg.role).toBe('assistant')
+    expect(lastMsg.delivery).toBeDefined()
+    expect(lastMsg.delivery?.files[0].path).toBe('语法导读课交付物')
   })
 })

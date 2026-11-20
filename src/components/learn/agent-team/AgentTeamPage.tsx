@@ -10,7 +10,7 @@
  * 3. 经典单导师模式作为兜底对比备用入口。
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { TeamRosterRail, type TeamSelection } from './TeamRosterRail'
 import { TeamChannelPane } from './TeamChannelPane'
 import { TeamAgentWorkspace } from './TeamAgentWorkspace'
@@ -116,6 +116,48 @@ export default function AgentTeamPage({
     if (!activeSubpage) return null
     return team.agents[activeSubpage.agentId] || null
   }, [activeSubpage, team.agents])
+
+  // 清除任何可能残留的 Vim 虚拟平滑光标与拖尾
+  useEffect(() => {
+    const clearVimCursors = () => {
+      document
+        .querySelectorAll(
+          '.moji-browse-virtual-cursor, .moji-browse-cursor-trail, .moji-browse-speed-line',
+        )
+        .forEach((el) => el.remove())
+    }
+    clearVimCursors()
+    const timer = setTimeout(clearVimCursors, 60)
+    return () => {
+      clearTimeout(timer)
+      clearVimCursors()
+    }
+  }, [])
+
+  // 交付文件点击定位打开
+  const handleOpenFile = useCallback(
+    (pathOrRel: string, title?: string) => {
+      if (!openTab) return
+      const st = getLatest?.() || store
+      const gid = goalId || activeGoalId || undefined
+      if (st && gid) {
+        const byId = st.nodes?.find(
+          (n) => n.id === pathOrRel || (pathOrRel.startsWith('#') && n.id === pathOrRel.slice(1)),
+        )
+        if (byId) {
+          openTab({ kind: 'teach', nodeId: byId.id }, 'preview')
+          return
+        }
+        const byTitle = st.nodes?.find((n) => n.goalId === gid && n.title === pathOrRel)
+        if (byTitle) {
+          openTab({ kind: 'teach', nodeId: byTitle.id }, 'preview')
+          return
+        }
+      }
+      openTab({ kind: 'local', path: pathOrRel, title }, 'preview')
+    },
+    [openTab, getLatest, store, goalId, activeGoalId],
+  )
 
   // 清空所有智能体上下文（测试专用）
   const handleResetAll = async () => {
@@ -244,6 +286,8 @@ export default function AgentTeamPage({
                   workers={subpageAgentSnapshot.workers}
                   workerStreams={subpageAgentSnapshot.workerStreams}
                   blackboard={subpageAgentSnapshot.blackboard}
+                  goalId={goalId || activeGoalId || undefined}
+                  onOpenFile={handleOpenFile}
                   backLabel={
                     selection.kind === 'channel'
                       ? t('返回协作频道')

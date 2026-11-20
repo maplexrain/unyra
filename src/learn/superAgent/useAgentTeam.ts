@@ -34,6 +34,7 @@ import {
   saveTeamState,
 } from './persist'
 import { createSuperWorkerTools } from './workerRig'
+import { applyEvent } from '../agent/events'
 import { t } from '../../i18n'
 
 export interface UseAgentTeamOptions {
@@ -251,13 +252,15 @@ export function useAgentTeam(options: UseAgentTeamOptions) {
       setWorkerStreamsMap((prev) => {
         const agMap = prev[agentId] || {}
         const cur = agMap[e.workerId] || { mind: [], chat: '', hop: e.hop ?? 1 }
+        const nextMind = [...cur.mind]
+        applyEvent(nextMind, e.event)
         return {
           ...prev,
           [agentId]: {
             ...agMap,
             [e.workerId]: {
               ...cur,
-              mind: [...cur.mind, e.event as AgentPart],
+              mind: nextMind,
               hop: e.hop ?? cur.hop,
             },
           },

@@ -232,6 +232,8 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
   /** 这一格挂着的文件页签（本地文件与工作区文件）：keepalive 常驻，切页签只藏不卸，保持编辑器状态与光标 */
   /** 这一格挂着的终端页签：每个终端独立成为一枚顶层页签，keepalive 常驻保活 */
   const gTerminalTabs = (g.group?.tabs ?? []).filter((t) => t.ref.kind === 'terminal')
+  /** 这一格挂着的智能体团队页签：keepalive 常驻保活，切走只藏不卸 */
+  const gAgentTeamTabs = (g.group?.tabs ?? []).filter((t) => t.ref.kind === 'agentTeam')
   const gFileTabs = (g.group?.tabs ?? []).filter((x) => x.ref.kind === 'local' || x.ref.kind === 'ws')
   /** 这一格挂着的教学文档 / 笔记 / 超级文档页签：编辑态常驻层（EditorTabLayer）照此挂起 */
   const gEditorTabs = (g.group?.tabs ?? []).filter(
@@ -525,19 +527,8 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
             */
             <ClassroomShowcasePage initialTag={gTab.ref.tag} />
           ) : gTab?.ref.kind === 'agentTeam' ? (
-            <AgentTeamPage
-              goalId={gTab.ref.goalId}
-              goals={store.goals}
-              activeGoalId={store.activeGoalId}
-              store={store}
-              getLatest={getLatest}
-              set={set}
-              agent={agent}
-              agentSettings={agentSettings}
-              hasKey={hasKey}
-              openTab={openTab}
-              onToast={onToast}
-            />
+            /* 智能体团队页面：由下方的常驻保活层（keepalive）接管，切页签只藏不卸，这里让出位置 */
+            null
           ) : gTab?.ref.kind === 'settings' ? (
             /*
               设置面板：文档区的一枚页签（不再是弹窗）。全局只有这一份（tabKey 恒定），
@@ -831,6 +822,21 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
                 shell={termRef.shell}
                 active={isCur}
                 onToast={onToast}
+              />
+            </div>
+          )
+        })}
+
+        {/* 智能体团队常驻保活层（keepalive）：切页签只藏不卸，状态与长连接全保活 */}
+        {gAgentTeamTabs.map((t) => {
+          const isCur = gTab?.id === t.id
+          const teamRef = t.ref as { kind: 'agentTeam'; goalId?: string }
+          return (
+            <div key={t.id} className={`absolute inset-0 z-10 flex flex-col ${isCur ? '' : 'hidden pointer-events-none'}`}>
+              <AgentTeamPage
+                goalId={teamRef.goalId} goals={store.goals} activeGoalId={store.activeGoalId}
+                store={store} getLatest={getLatest} set={set} agent={agent}
+                agentSettings={agentSettings} hasKey={hasKey} openTab={openTab} onToast={onToast}
               />
             </div>
           )

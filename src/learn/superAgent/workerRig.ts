@@ -11,6 +11,8 @@
 import { createExecuteTools } from '../../agent/sandbox/execute'
 import { SUBAGENT_ALLOWED_GROUPS, apiBriefForGroups } from '../../agent/subagent/groups'
 import type { AgentTool } from '../../agent/types'
+import { normalizeDelivery, type DeliveryRecord } from '../../agent/delivery'
+import { resolveNode } from '../paths'
 import { learnSandboxOps } from '../agent/sandboxOps'
 import type { LearnStore } from '../types'
 
@@ -21,6 +23,7 @@ export interface SuperWorkerToolsDeps {
   nodeId?: string | null
   /** 角色专属的 Worker 授权 API 组白名单（严格硬禁 subagent） */
   allowedGroups?: string[]
+  onDelivery?: (delivery: DeliveryRecord) => void
 }
 
 /**
@@ -41,15 +44,58 @@ export function createSuperWorkerTools(deps: SuperWorkerToolsDeps): AgentTool[] 
     // 铁律：不透传 subagent 组，避免递归调用
     delete (sandboxBase as Record<string, unknown>).subagent
 
-    // 限制白名单并定制 API 简介（严格剔除 subagent）
+    // 限制白名单并定制 API 简介（严格剔除 subagent，并加入 delivery 支持）
     const effectiveGroups = allowedGroups?.length
       ? allowedGroups.filter((g) => g !== 'subagent')
       : [...SUBAGENT_ALLOWED_GROUPS]
+    if (!effectiveGroups.includes('delivery')) {
+      effectiveGroups.push('delivery')
+    }
+
+    const deliveryOps = {
+      submit: (input: unknown) => {
+        const rec = normalizeDelivery(input)
+        if (!rec) {
+          return { ok: false, error: '至少要提供 files 或 sources' }
+        }
+        if (goalId && getLatest) {
+          const st = getLatest()
+          for (const f of rec.files) {
+            if (!f.goalId) f.goalId = goalId
+            if (!f.nodeId) {
+              const byId = st.nodes?.find(
+                (n) => n.id === f.path || (f.path.startsWith('#') && n.id === f.path.slice(1)),
+              )
+              if (byId) {
+                f.nodeId = byId.id
+                continue
+              }
+              const res = resolveNode(st, { goalId, currentNodeId: nodeId ?? null }, f.path)
+              if (res.ok) {
+                f.nodeId = res.value.id
+                continue
+              }
+              const clean = f.path.replace(/\.md$/i, '').trim()
+              const byClean = st.nodes?.find((n) => n.goalId === goalId && n.title === clean)
+              if (byClean) {
+                f.nodeId = byClean.id
+                continue
+              }
+            }
+          }
+        }
+        deps.onDelivery?.(rec)
+        return { ok: true, files: rec.files.length, sources: rec.sources.length }
+      },
+    }
 
     sandboxBase.apiAllow = effectiveGroups
     sandboxBase.apiBrief = apiBriefForGroups(sandboxBase.apiAllow)
 
-    return createExecuteTools(sandboxBase)
+    return createExecuteTools({
+      ...sandboxBase,
+      delivery: deliveryOps,
+    })
   }
 
   // 2. 脱机或无 Store 依赖时的极简安全降级工具

@@ -48,6 +48,18 @@
 /*
  * 浏览模式下的 Vim 平滑虚拟光标、位移拖尾与高能速度线
  */
+body:has([data-agent-team-page]) .moji-browse-virtual-cursor,
+body:has([data-agent-team-page]) .moji-browse-cursor-trail,
+body:has([data-agent-team-page]) .moji-browse-speed-line,
+[data-agent-team-page] .moji-browse-virtual-cursor,
+[data-agent-team-page] .moji-browse-cursor-trail,
+[data-agent-team-page] .moji-browse-speed-line {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 .moji-browse-virtual-cursor {
   position: absolute;
   top: 0;

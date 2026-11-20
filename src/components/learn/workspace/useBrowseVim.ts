@@ -223,6 +223,14 @@ export function useBrowseVim({ getLatest: rawGetLatest, onToast: rawOnToast, nex
 
     const onScroll = () => {
       hideAnnotationPopup()
+      // 处于终端控制台或智能体团队页面时，彻底销毁虚拟光标并直接退出
+      if (
+        document.activeElement?.closest?.('[data-terminal-pane]') ||
+        document.querySelector('[data-agent-team-page]')
+      ) {
+        smoothCursor.destroy()
+        return
+      }
       const sel = window.getSelection()
       if (sel && sel.rangeCount > 0) {
         smoothCursor.update(sel, isVisualModeRef.current)

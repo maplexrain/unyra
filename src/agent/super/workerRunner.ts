@@ -244,6 +244,26 @@ export async function driveWorker(ctx: DriveWorkerContext): Promise<void> {
     emit({ type: 'worker-artifact-updated', workerId: worker.id, artifact: art })
   }
 
+  // 保证 DeliveryRecord 规范收口并挂载到最后一条 assistant 消息
+  if (!worker.delivery && worker.artifacts.length > 0) {
+    worker.delivery = {
+      files: worker.artifacts.map((art) => ({
+        path: art.title,
+        action: 'created',
+        note: art.content.slice(0, 80).replace(/\n+/g, ' '),
+        goalId: scopeId || undefined,
+      })),
+      sources: [],
+    }
+  }
+
+  if (worker.delivery) {
+    const lastMsg = worker.messages[worker.messages.length - 1]
+    if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.delivery) {
+      lastMsg.delivery = worker.delivery
+    }
+  }
+
   worker.status = finalStatus
   if (errorMessage) worker.error = errorMessage
   worker.updatedAt = Date.now()

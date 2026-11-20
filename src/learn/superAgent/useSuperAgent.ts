@@ -21,6 +21,7 @@ import type { LearnStore } from '../types'
 import { flushSuperAgentState, loadSuperAgentState, saveSuperAgentState } from './persist'
 import { buildSuperHostSystemPrompt } from './prompts'
 import { createSuperWorkerTools } from './workerRig'
+import { applyEvent } from '../agent/events'
 
 export interface UseSuperAgentOptions {
   scopeId: string
@@ -176,20 +177,7 @@ export function useSuperAgent(options: UseSuperAgentOptions) {
         setWorkerStreams((prev) => {
           const slot = prev[event.workerId] || { mind: [], chat: '', hop: event.hop ?? 0 }
           const nextMind = [...slot.mind]
-          // 简易累加
-          if (event.event.type === 'thinking') {
-            nextMind.push({ type: 'thinking', text: event.event.delta })
-          } else if (event.event.type === 'tool-call') {
-            nextMind.push({
-              type: 'tool',
-              id: event.event.id,
-              name: event.event.name,
-              args: event.event.args,
-              result: '',
-              ok: true,
-              status: 'running',
-            })
-          }
+          applyEvent(nextMind, event.event)
           return {
             ...prev,
             [event.workerId]: {
