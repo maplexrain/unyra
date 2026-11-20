@@ -1,5 +1,5 @@
 /**
- * 互动课堂内置 SVG 图标库与 DOM 辅助函数 (componentIcons.ts)
+ * 课堂内置 SVG 图标库与 DOM 辅助函数 (componentIcons.ts)
  * 从 components.ts 拆出，保持模块简洁可读。
  */
 

@@ -264,7 +264,7 @@ function rawTabTitle(
   }
   if (ref.kind === 'usage') return t('用量统计')
   if (ref.kind === 'schedule') return t('日程安排')
-  if (ref.kind === 'classroom') return t('互动课堂')
+  if (ref.kind === 'classroom') return t('课堂')
   if (ref.kind === 'classroomShowcase') return ref.tag ? `<${ref.tag}> ${t('组件')}` : t('组件与动效库')
   if (ref.kind === 'mind') return t('记忆管理')
   if (ref.kind === 'agentSettings') return t('超级导师设置')

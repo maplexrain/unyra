@@ -67,7 +67,7 @@ function sideKindBadge(ref: TabRef): string {
     case 'user':
       return t('用户中心')
     case 'classroom':
-      return t('互动课堂')
+      return t('课堂')
     case 'classroomShowcase':
       return t('组件库')
     case 'pluginDoc':

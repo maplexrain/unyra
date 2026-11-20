@@ -96,7 +96,7 @@ export type TabRef =
    */
   | { kind: 'terminal'; termId?: string; shell?: ShellKind; title?: string }
   /**
-   * 互动课堂页签：16:9 画布互动教学课堂（画面 + 动作 + 节拍时间轴）
+   * 课堂页签：16:9 画布互动教学课堂（画面 + 动作 + 节拍时间轴）
    */
   | { kind: 'classroom'; classroomId: string; nodeId?: string; goalId?: string }
   /**

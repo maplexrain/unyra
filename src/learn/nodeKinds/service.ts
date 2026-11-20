@@ -353,7 +353,7 @@ export class NodeService {
 
     if (kind === 'classroom') {
       const classId = `classroom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-      const classTitle = title || '互动课堂'
+      const classTitle = title || '课堂'
       const entity = loadClassroomEntity(classId, classTitle)
       entity.goalId = goalId
       if (typeof input.course === 'object' && input.course) {
@@ -363,7 +363,7 @@ export class NodeService {
 
       const underGiven = input.under !== undefined && input.under !== null && String(input.under).trim() !== ''
       let finalStore: LearnStore = { ...store, classrooms: [...(store.classrooms ?? []), entity] }
-      let note = '已建一枚互动课堂节点（游离）：可通过拖线挂到教学文档之下'
+      let note = '已建一枚课堂节点（游离）：可通过拖线挂到教学文档之下'
       if (underGiven) {
         const rawUnder = String(input.under).trim()
         const hostDoc = nodeById(store, rawUnder)
@@ -371,7 +371,7 @@ export class NodeService {
           const r = addEdge(finalStore, hostDoc.id, classId)
           if (r.added) {
             finalStore = r.store
-            note = `已建互动课堂并挂在文档「${hostDoc.title}」之下`
+            note = `已建课堂并挂在文档「${hostDoc.title}」之下`
           }
         }
       }

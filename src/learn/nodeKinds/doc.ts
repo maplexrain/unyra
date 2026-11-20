@@ -340,7 +340,7 @@ export class DocGNode extends GNode {
       const r = addEdge(s, this.uuid, down.uuid)
       if (!r.added) return { error: r.reason ?? '挂载失败' }
       this.ctx.commit(r.store)
-      return { ok: true, note: '已把互动课堂「' + down.title + '」挂到「' + this.title + '」之下（课件原样）' }
+      return { ok: true, note: '已把课堂「' + down.title + '」挂到「' + this.title + '」之下（课件原样）' }
     }
     return { error: '这种节点挂不到文档之下（能绑的：笔记 / 试卷 / 超级文档 / 项目 / 文件 / 视频 / 课堂）' }
   }
@@ -394,7 +394,7 @@ export class DocGNode extends GNode {
       )
       if (edge) {
         this.ctx.commit(removeEdge(this.ctx.store(), edge.from, edge.to))
-        return { ok: true, note: '已把互动课堂「' + target.title + '」从「' + this.title + '」之下摘出来（课件原样保留）' }
+        return { ok: true, note: '已把课堂「' + target.title + '」从「' + this.title + '」之下摘出来（课件原样保留）' }
       }
     }
     // 下级文档（下游树边，画布枢纽不在时的 doc→doc 那条线）：摘线 = 拆边，对方变游离

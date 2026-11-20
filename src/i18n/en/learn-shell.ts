@@ -166,7 +166,7 @@ const dict: Record<string, string> = {
   '用量': 'Usage',
   'Vim 速查': 'Vim Reference',
   '用户中心': 'User Center',
-  '互动课堂': 'Classroom',
+  '课堂': 'Classroom',
   '组件库': 'Showcase',
   '插件文档': 'Plugin Docs',
   '赞助鸣谢': 'Sponsors',

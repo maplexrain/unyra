@@ -1,5 +1,5 @@
 /**
- * 互动课堂预置组件与动效全景目录 (builtinCatalog.ts)
+ * 课堂预置组件与动效全景目录 (builtinCatalog.ts)
  * 包含 31 种墨韵编辑级教学组件与 29 种精雕 Anime.js 课堂动效的完整定义与示例
  */
 

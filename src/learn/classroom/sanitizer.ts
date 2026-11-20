@@ -1,5 +1,5 @@
 /**
- * 互动课堂编译器级校验、容错与自愈层
+ * 课堂编译器级校验、容错与自愈层
  */
 import type { LessonAction, LessonCourse, LessonScene, VisualAction } from './types'
 import { expandClassroomComponents } from './components'

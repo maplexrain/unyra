@@ -1,13 +1,13 @@
 /**
- * 互动课堂实体存储与默认课件模板
+ * 课堂实体存储与默认课件模板
  */
 import type { ClassroomEntity, LessonAction, LessonCourse, LessonScene } from './types'
 import type { LearnStore } from '../types'
 
 const CLASSROOM_STORE_KEY_PREFIX = 'moji:classroom:'
 
-/** 生成初始互动课堂数据（默认空白，等待 AI 导师生成或用户编写） */
-export function createDefaultLessonCourse(title: string = '新互动课堂'): LessonCourse {
+/** 生成初始课堂数据（默认空白，等待 AI 导师生成或用户编写） */
+export function createDefaultLessonCourse(title: string = '新课堂'): LessonCourse {
   return {
     courseId: `course_${Date.now()}`,
     title,
@@ -16,12 +16,12 @@ export function createDefaultLessonCourse(title: string = '新互动课堂'): Le
   }
 }
 
-/** 生成初始演示互动课堂数据（供测试或样例参考，通过静态体检零警告） */
-export function createDemoLessonCourse(title: string = '互动课堂教学演示'): LessonCourse {
+/** 生成初始演示课堂数据（供测试或样例参考，通过静态体检零警告） */
+export function createDemoLessonCourse(title: string = '课堂教学演示'): LessonCourse {
   return {
     courseId: `course_${Date.now()}`,
     title,
-    description: '16:9 墨韵舞台互动课堂示例：版式、动效与音效协同',
+    description: '16:9 墨韵舞台课堂示例：版式、动效与音效协同',
     scenes: [
       {
         id: 'scene_intro',
@@ -32,13 +32,13 @@ export function createDemoLessonCourse(title: string = '互动课堂教学演示
             <div class="stage-header">
               <div class="flex items-center gap-4">
                 <ui-badge color="seal" variant="solid">第 1 幕</ui-badge>
-                <h1 class="stage-title">什么是确定性互动课堂？</h1>
+                <h1 class="stage-title">什么是确定性课堂？</h1>
               </div>
               <span class="stage-eyebrow">1920 × 1080 STAGE</span>
             </div>
             <ui-split gap="44" ratio="3:2">
               <ui-card id="card_concept" eyebrow="PARADIGM SHIFT" title="动态剧场 vs 静态幻灯片" tone="seal" icon="sparkles">
-                <p>传统课件依赖机械翻页，而互动课堂由<ui-highlight color="seal">画面 + 动作 + 节拍轴</ui-highlight>驱动，讲解到哪一词，视觉聚焦到哪一处！</p>
+                <p>传统课件依赖机械翻页，而课堂由<ui-highlight color="seal">画面 + 动作 + 节拍轴</ui-highlight>驱动，讲解到哪一词，视觉聚焦到哪一处！</p>
               </ui-card>
               <ui-steps id="card_features" title="核心引擎能力" data-hidden>
                 <ui-step id="feat_1" num="1" title="绝对比例画布" state="done">锁定 16:9 坐标，拒绝视口挤压错乱</ui-step>
@@ -50,7 +50,7 @@ export function createDemoLessonCourse(title: string = '互动课堂教学演示
         `,
         actions: [
           { type: 'visual', verb: 'spotlight', target: 'card_concept', params: { sfx: 'focus' } },
-          { type: 'speak', text: '欢迎来到互动课堂，这里不是静态幻灯片' },
+          { type: 'speak', text: '欢迎来到课堂，这里不是静态幻灯片' },
           { type: 'visual', verb: 'unfold', target: 'card_features', params: { sfx: 'paper' } },
           { type: 'speak', text: '画布锁定了黄金比例，排版永远稳固' },
           { type: 'visual', verb: 'slideInLeft', target: 'feat_2', params: { sfx: 'tick' } },
@@ -185,7 +185,7 @@ export function normalizeClassrooms(raw: unknown, goalIds?: ReadonlySet<string>)
     if (goalId && goalIds && !goalIds.has(goalId)) continue
     seenIds.add(id)
 
-    const title = typeof r.title === 'string' && r.title.trim() ? r.title.trim() : '互动课堂'
+    const title = typeof r.title === 'string' && r.title.trim() ? r.title.trim() : '课堂'
     const createdAt = typeof r.createdAt === 'number' && Number.isFinite(r.createdAt) ? r.createdAt : Date.now()
     const updatedAt = typeof r.updatedAt === 'number' && Number.isFinite(r.updatedAt) ? r.updatedAt : createdAt
     const rawCourse = r.course && typeof r.course === 'object' ? (r.course as LessonCourse) : createDefaultLessonCourse(title)

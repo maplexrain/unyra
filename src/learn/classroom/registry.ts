@@ -1,5 +1,5 @@
 /**
- * 互动课堂组件与动效注册中心 (Classroom Registry)
+ * 课堂组件与动效注册中心 (Classroom Registry)
  *
  * 统一管理内置与外部动态注册的教学组件 (UI Components) 与动效 (Anime.js Animations)。
  * 支持：

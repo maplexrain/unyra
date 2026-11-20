@@ -1,5 +1,5 @@
 /**
- * 互动课堂预置语义组件库 (components.ts)
+ * 课堂预置语义组件库 (components.ts)
  * 将 31 种高阶教学语义标签 (<ui-card>, <ui-concept>, <ui-pipeline>, <ui-diagram> 等)
  * 展开为精细雕琢的舞台 DOM 结构，自动透传 id / data-hidden / data-anim / data-sfx。
  */
@@ -404,8 +404,17 @@ export function expandClassroomComponents(html: string): string {
   }
 
   try {
+    // HTML5 解析器会剥离未包裹在 <table> 内的 <tr>/<td>，导致 <ui-table> 内容被提升到表格外部；
+    // 解析前为 <ui-table> 内部补齐 <table><tbody> 包裹，展开时再还原。
+    const safeHtml = html.includes('<ui-table')
+      ? html.replace(/<ui-table(\b[^>]*)>([\s\S]*?)<\/ui-table>/gi, (_m, attrs, inner) => {
+          if (/<table\b/i.test(inner)) return `<ui-table${attrs}>${inner}</ui-table>`
+          return `<ui-table${attrs}><table><tbody>${inner}</tbody></table></ui-table>`
+        })
+      : html
+
     const parser = new DOMParser()
-    const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html')
+    const doc = parser.parseFromString(`<div>${safeHtml}</div>`, 'text/html')
     const root = doc.body.firstElementChild
     if (!root) return html
 

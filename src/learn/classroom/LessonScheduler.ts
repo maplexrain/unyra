@@ -1,5 +1,5 @@
 /**
- * 确定性互动课堂运行时调度器 (LessonScheduler)
+ * 确定性课堂运行时调度器 (LessonScheduler)
  * 驱动动作生命周期、维护阻塞/非阻塞双通道并发、执行 0ms 确定性静音快进 (Deterministic Seek)
  */
 import type { ActionCompiler } from './ActionCompiler'

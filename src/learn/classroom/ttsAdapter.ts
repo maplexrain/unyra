@@ -1,5 +1,5 @@
 /**
- * 对接宿主环境统一 TTS 系统的互动课堂音频适配器
+ * 对接宿主环境统一 TTS 系统的课堂音频适配器
  * 支持三句滑动窗口预加载（Preload Buffer），实现 0ms 延迟即时播放与音画精准同步
  */
 import { ttsManager } from '../../lib/tts/manager'

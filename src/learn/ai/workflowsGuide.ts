@@ -23,7 +23,7 @@ export const WORKFLOWS_GUIDE = `## 内置工作流与任务规程
 - **伪编译 (\`code-compile\`)**：把文档里这段代码转译成可运行的 JS，交付运行（参数: \`target\`, \`language\`, \`key\`, \`code\`）。
 - **修复函数图像 (\`plot-fix\`)**：函数图像渲染失败时按报错与区间一次改完（参数: \`target\`, \`nodeTitle\`, \`reason\`, \`range\`, \`start\`, \`end\`, \`source\`）。
 - **浏览器操作 (\`browser-use\`)**：替用户操作内置浏览器（参数: \`target\`）——规矩就是沙箱速查里 api.browser 那组的闭环纪律（index → 读 → 写、看图干活、不可逆先 ask）。
-- **生成互动课堂 (\`classroom\`)**：为课堂节点生成 16:9 画布动态课件——画面、DOM 视觉动作与语音讲解流（参数: \`target\`）。
+- **生成课堂 (\`classroom\`)**：为课堂节点生成 16:9 画布动态课件——画面、DOM 视觉动作与语音讲解流（参数: \`target\`）。
 - **压缩上下文 (\`compact\`)**：把前面的对话折成一份高保真交接摘要。
 
 ### 1.【开讲】教学文档生成（teach-node）
@@ -108,7 +108,7 @@ export const WORKFLOWS_GUIDE = `## 内置工作流与任务规程
 3. 再写 summary（Markdown，1200 字以内）：## 学习目标与背景 / ## 已经讲清的内容 / ## 学习者的状态（自评、错在哪、还卡在哪）/ ## 约定与术语。用户表达「我想要什么」的话保留原意。
 4. api.compact({ summary, tasks }) **只调一次**；摘要本轮结束后才生效（旧消息失活、摘要成为第一条消息）。回一句话告诉用户已压好，**不要复述摘要内容**，也不要顺手改文档、建节点、出题。
 
-### 13.【生成互动课堂】课堂课件生成（classroom）
+### 13.【生成课堂】课堂课件生成（classroom）
 1. **契约先行（不凭印象拼标签）**：\`await api.classroom.schema()\` 拿齐 course 结构（画面序列 scenes，动作列表字段名是 **actions**——不是 beats）、1920×1080 逻辑画布与底部 120px 字幕安全区（padding 56px 80px 120px；基础字号 28px）；现查 api.classroom.components()（31 种内置 \`ui-*\`）、api.classroom.verbs()、api.classroom.animations() 与 api.classroom.sounds()（22 种 WebAudio 合成音效）。组件属性与子节点约定以其 description/example 为唯一出处；课堂自有一套基于纸墨令牌的 stage 体系（**严禁硬编码死白/死黑文字颜色**，保证浅纸与深墨主题皆通透可读）。
 2. **两套动效表严格分开（铁律）**：讲解时间轴上的显隐 / 聚焦 / 位移 / 动画只能用 \`visual.verb\`（白名单 api.classroom.verbs()）；\`data-anim="名"\` 只是换幕挂载播一次、不受时间轴控制。受控元素每个都要有唯一 id；初始隐藏的声明 \`data-hidden\` 并用唤醒动词现身；字幕 = 朗读 = \`speak.text\` 唯一源，不另写 subtitle；\`checkpoint\` 仅作暂停思考（不判分），\`ui-quiz\` 也仅作展示——别设计成「答对才继续」。
 3. **导演级舞台构图与审美纪律（传授的核心美学，务必贯彻）**：

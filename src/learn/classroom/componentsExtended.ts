@@ -1,5 +1,5 @@
 /**
- * 互动课堂扩展语义组件展开器 (componentsExtended.ts)
+ * 课堂扩展语义组件展开器 (componentsExtended.ts)
  * 负责 banner / pipeline / diagram / breakdown / timeline / progress / dialogue / table / keyboard / highlight / accordion。
  */
 import { CLASSROOM_ICONS, escapeAttr, getCommonAttributes, htmlToElement } from './componentIcons'
@@ -263,12 +263,16 @@ export function transformExtendedElement(el: Element): Element | null {
       const headers = headersStr ? headersStr.split(',').map((h) => h.trim()) : []
       const attrs = getCommonAttributes(el, 'card-glass table-card')
       const theadHtml = headers.length > 0 ? `<thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead>` : ''
+      const innerTable = el.querySelector(':scope > table')
+      const bodyHtml = innerTable
+        ? (innerTable.querySelector(':scope > tbody')?.innerHTML ?? innerTable.innerHTML)
+        : el.innerHTML
       return htmlToElement(`
         <div ${attrs}>
           ${title ? `<div class="table-title">${title}</div>` : ''}
           <table class="table-classroom">
             ${theadHtml}
-            <tbody>${el.innerHTML}</tbody>
+            <tbody>${bodyHtml}</tbody>
           </table>
           ${caption ? `<div class="table-caption">${caption}</div>` : ''}
         </div>
