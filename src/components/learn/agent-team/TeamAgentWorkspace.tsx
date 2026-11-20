@@ -9,7 +9,7 @@
  * 3. 无缝协同：点击工单直接向右侧平滑拉出 DeliverableDrawer 交付面板，绝不跳出对话上下文！
  */
 
-import { memo, useState, useRef, useEffect } from 'react'
+import { memo, useState, useRef, useEffect, useMemo } from 'react'
 import {
   Bot,
   LayoutGrid,
@@ -19,6 +19,7 @@ import {
   Trash2,
   Zap,
   ArrowRight,
+  Quote,
 } from 'lucide-react'
 import type { TeamAgentProfile } from '../../../agent/team/types'
 import type { AgentViewSnapshot } from '../../../learn/superAgent/useAgentTeam'
@@ -56,9 +57,47 @@ export const TeamAgentWorkspace = memo(function TeamAgentWorkspace({
   onStopAgent,
 }: TeamAgentWorkspaceProps) {
   const [inputText, setInputText] = useState('')
+  const [filterChainMessageId, setFilterChainMessageId] = useState<string | null>(null)
   const streamBottomRef = useRef<HTMLDivElement>(null)
 
   const meta = deriveAgentStatus(agent)
+
+  // 计算消息引用链路闭包 (向上追溯父级，向下追溯回复)
+  const chainIds = useMemo(() => {
+    if (!filterChainMessageId) return null
+    const result = new Set<string>()
+    result.add(filterChainMessageId)
+
+    // 向上追溯祖先
+    let currId: string | undefined = filterChainMessageId
+    while (currId) {
+      const m = agent.hostMessages.find((item) => item.id === currId)
+      if (m && m.replyToId) {
+        result.add(m.replyToId)
+        currId = m.replyToId
+      } else {
+        break
+      }
+    }
+
+    // 向下追溯子孙
+    let added = true
+    while (added) {
+      added = false
+      for (const m of agent.hostMessages) {
+        if (m.replyToId && result.has(m.replyToId) && !result.has(m.id)) {
+          result.add(m.id)
+          added = true
+        }
+      }
+    }
+    return result
+  }, [filterChainMessageId, agent.hostMessages])
+
+  const displayedMessages = useMemo(() => {
+    if (!chainIds) return agent.hostMessages
+    return agent.hostMessages.filter((m) => chainIds.has(m.id))
+  }, [chainIds, agent.hostMessages])
 
   useEffect(() => {
     streamBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -154,7 +193,24 @@ export const TeamAgentWorkspace = memo(function TeamAgentWorkspace({
 
       {/* 对话流主区 */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {agent.hostMessages.length === 0 && !agent.hostStreaming ? (
+        {/* 链路过滤激活提示条 */}
+        {filterChainMessageId && (
+          <div className="px-3.5 py-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-[11.5px] flex items-center justify-between text-indigo-700 dark:text-indigo-300 shrink-0 sticky top-0 z-10 backdrop-blur-md">
+            <div className="flex items-center gap-1.5 truncate">
+              <Quote size={12} className="text-indigo-500 shrink-0" />
+              <span className="font-semibold">{t('当前正在查看消息引用链路 ({0} 条相关消息)', displayedMessages.length)}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFilterChainMessageId(null)}
+              className="text-seal hover:underline font-semibold cursor-pointer text-[11px] shrink-0 ml-2"
+            >
+              {t('显示全部消息')}
+            </button>
+          </div>
+        )}
+
+        {displayedMessages.length === 0 && !agent.hostStreaming ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-ink-faint py-16 space-y-2">
             <div className="w-10 h-10 rounded-2xl bg-paper-deep border border-line flex items-center justify-center text-ink-faint">
               <Bot size={20} />
@@ -167,7 +223,7 @@ export const TeamAgentWorkspace = memo(function TeamAgentWorkspace({
             </p>
           </div>
         ) : (
-          agent.hostMessages.map((msg) => {
+          displayedMessages.map((msg) => {
             const isUser = msg.role === 'user'
 
             if (isUser) {
@@ -175,7 +231,7 @@ export const TeamAgentWorkspace = memo(function TeamAgentWorkspace({
               const { userText, mailboxCount } = splitHostUserDisplay(rawText)
               return (
                 <div key={msg.id} className="flex justify-end space-y-1">
-                  <div className="max-w-[78%]">
+                  <div className="max-w-[800px] w-fit ml-auto">
                     {mailboxCount > 0 && (
                       <div className="text-right text-[9.5px] text-ink-faint mb-1">
                         {t('【已自动带入 {0} 项后台回执】', mailboxCount)}
@@ -189,13 +245,34 @@ export const TeamAgentWorkspace = memo(function TeamAgentWorkspace({
               )
             }
 
-            // Assistant 消息
+            // Assistant 消息 (限宽 800px，顶部支持引用历史)
             return (
               <div key={msg.id} className="flex justify-start gap-2 items-start">
                 <div className="w-6 h-6 rounded-lg bg-paper-deep border border-line text-ink flex items-center justify-center shrink-0 text-[11px] mt-0.5">
                   <Bot size={13} />
                 </div>
-                <div className="max-w-[85%] space-y-1.5">
+                <div className="max-w-[800px] w-full space-y-1">
+                  {/* 消息引用条（点击查看链路过滤） */}
+                  {msg.replyToSnippet && (
+                    <button
+                      type="button"
+                      onClick={() => setFilterChainMessageId((prev) => (prev === msg.id ? null : msg.id))}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-paper-deep/80 hover:bg-paper-deep text-ink-subtle border-l-2 border-seal text-[11px] text-left transition w-full truncate cursor-pointer group"
+                      title={t('点击查看引用上下文链路')}
+                    >
+                      <Quote size={11} className="text-seal shrink-0" />
+                      <span className="font-semibold text-ink-strong shrink-0">
+                        @{msg.replyToSender || t('上下文')}:
+                      </span>
+                      <span className="truncate text-ink-faint group-hover:text-ink-subtle">
+                        {msg.replyToSnippet}
+                      </span>
+                      <span className="ml-auto text-[9.5px] text-seal opacity-0 group-hover:opacity-100 transition shrink-0">
+                        {filterChainMessageId === msg.id ? t('退出链路') : t('追踪链路 →')}
+                      </span>
+                    </button>
+                  )}
+
                   <div className="rounded-2xl rounded-tl-xs bg-card border border-line/80 p-3 shadow-2xs text-[12.5px] text-ink leading-relaxed space-y-2">
                     {msg.parts.map((part: AgentPart, idx: number) => {
                       if (part.type === 'text') {
@@ -288,13 +365,13 @@ export const TeamAgentWorkspace = memo(function TeamAgentWorkspace({
           })
         )}
 
-        {/* 流式生成中 */}
+        {/* 流式生成中 (限宽 800px) */}
         {agent.hostStreaming && (
           <div className="flex justify-start gap-2 items-start">
             <div className="w-6 h-6 rounded-lg bg-paper-deep border border-line text-ink flex items-center justify-center shrink-0 text-[11px] mt-0.5">
               <Bot size={13} />
             </div>
-            <div className="max-w-[85%] rounded-2xl rounded-tl-xs bg-card border border-line/80 p-3 shadow-2xs space-y-1.5 text-[12.5px]">
+            <div className="max-w-[800px] w-full rounded-2xl rounded-tl-xs bg-card border border-line/80 p-3 shadow-2xs space-y-1.5 text-[12.5px]">
               {agent.hostStreaming.thinking && (
                 <div className="p-2 rounded-xl bg-paper-deep/60 border border-line text-ink-subtle text-[11px] italic leading-relaxed">
                   {agent.hostStreaming.thinking}

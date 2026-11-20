@@ -63,6 +63,12 @@ export interface ChannelMessage {
   refAgentId?: string
   refWorkerId?: string
   briefSummary?: string
+  /** 领取该消息的 Agent 列表（用于用户气泡下方显示认领者头像） */
+  claimedBy?: Array<{ id: string; name: string; avatar: string; color?: string }>
+  /** 消息引用/回复链路 */
+  replyToId?: string
+  replyToSender?: string
+  replyToSnippet?: string
 }
 
 export interface TeamState {

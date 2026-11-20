@@ -218,20 +218,7 @@ export class TeamBus {
     const trimmed = text.trim()
     if (!trimmed) return
 
-    // 1. 记录用户频道消息
-    const msg: ChannelMessage = {
-      id: 'cmsg-' + crypto.randomUUID().slice(0, 8),
-      senderId: 'user',
-      senderName: '学习者',
-      avatar: '👤',
-      content: trimmed,
-      timestamp: Date.now(),
-    }
-    this.state.channelMessages.push(msg)
-    this.emit({ type: 'channel-message', message: msg })
-    this.notifyStateChange()
-
-    // 2. 解析提及的目标 Agent
+    // 1. 解析提及的目标 Agent（未 @ 默认路由 Leader 总导师）
     const matchedAgents: TeamAgentProfile[] = []
     for (const profile of this.profiles) {
       if (
@@ -247,7 +234,28 @@ export class TeamBus {
       ? matchedAgents
       : [this.profiles.find((p) => p.isLeader) || this.profiles[0]]
 
-    // 3. 并发触发所选专家的 Host，并将专家回复写回协作频道
+    const claimedBy = targets.map((t) => ({
+      id: t.id,
+      name: t.name,
+      avatar: t.avatar || '🤖',
+      color: t.color,
+    }))
+
+    // 2. 记录用户频道消息并附带认领专家头像
+    const msg: ChannelMessage = {
+      id: 'cmsg-' + crypto.randomUUID().slice(0, 8),
+      senderId: 'user',
+      senderName: '学习者',
+      avatar: '👤',
+      content: trimmed,
+      timestamp: Date.now(),
+      claimedBy,
+    }
+    this.state.channelMessages.push(msg)
+    this.emit({ type: 'channel-message', message: msg })
+    this.notifyStateChange()
+
+    // 3. 并发触发所选专家的 Host，并将专家回复写回协作频道（附带引用上文）
     await Promise.all(
       targets.map(async (target) => {
         const engine = this.engines.get(target.id)
@@ -263,6 +271,9 @@ export class TeamBus {
               content: reply.trim(),
               timestamp: Date.now(),
               refAgentId: target.id,
+              replyToId: msg.id,
+              replyToSender: msg.senderName,
+              replyToSnippet: trimmed.slice(0, 60),
             }
             this.state.channelMessages.push(replyMsg)
             this.emit({ type: 'channel-message', message: replyMsg })

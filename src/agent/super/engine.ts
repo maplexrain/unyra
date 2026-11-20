@@ -206,7 +206,11 @@ export class SuperAgentEngine {
       this.notifyStateChange()
 
       // 驱动 Host runAgent
-      const finalContent = await this.runHost()
+      const finalContent = await this.runHost({
+        id: userMsg.id,
+        sender: '学习者',
+        snippet: trimmed.slice(0, 60),
+      })
 
       if (delegationId) {
         this.delegationTracker.hostTurnFinished(
@@ -230,7 +234,7 @@ export class SuperAgentEngine {
   /**
    * 启动 Frontline Host 单轮调度
    */
-  private async runHost(): Promise<string> {
+  private async runHost(replyTo?: { id: string; sender: string; snippet: string }): Promise<string> {
     const baseTools = createHostTools({
       getState: () => this.state,
       spawnWorker: (params) => this.spawnWorker(params),
@@ -288,6 +292,9 @@ export class SuperAgentEngine {
       role: 'assistant',
       parts: hostParts,
       ts: Date.now(),
+      replyToId: replyTo?.id,
+      replyToSender: replyTo?.sender,
+      replyToSnippet: replyTo?.snippet,
     }
     this.state.hostMessages.push(assistantMsg)
     this.emit({ type: 'host-done', content: finalContent })

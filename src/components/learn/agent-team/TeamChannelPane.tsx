@@ -19,6 +19,7 @@ import {
   Bot,
   Clock,
   CheckCircle2,
+  Quote,
 } from 'lucide-react'
 import type {
   ChannelMessage,
@@ -51,12 +52,50 @@ export const TeamChannelPane = memo(function TeamChannelPane({
   onStopAll,
 }: TeamChannelPaneProps) {
   const [inputText, setInputText] = useState('')
+  const [filterChainMessageId, setFilterChainMessageId] = useState<string | null>(null)
   const streamBottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const activeDelegations = useMemo(() => {
     return Object.values(delegations).filter((d) => d.status === 'running')
   }, [delegations])
+
+  // 计算消息引用链路闭包 (向上追溯父级，向下追溯回复)
+  const chainIds = useMemo(() => {
+    if (!filterChainMessageId) return null
+    const result = new Set<string>()
+    result.add(filterChainMessageId)
+
+    // 向上追溯祖先
+    let currId: string | undefined = filterChainMessageId
+    while (currId) {
+      const m = messages.find((item) => item.id === currId)
+      if (m && m.replyToId) {
+        result.add(m.replyToId)
+        currId = m.replyToId
+      } else {
+        break
+      }
+    }
+
+    // 向下追溯子孙
+    let added = true
+    while (added) {
+      added = false
+      for (const m of messages) {
+        if (m.replyToId && result.has(m.replyToId) && !result.has(m.id)) {
+          result.add(m.id)
+          added = true
+        }
+      }
+    }
+    return result
+  }, [filterChainMessageId, messages])
+
+  const displayedMessages = useMemo(() => {
+    if (!chainIds) return messages
+    return messages.filter((m) => chainIds.has(m.id))
+  }, [chainIds, messages])
 
   useEffect(() => {
     streamBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -144,7 +183,24 @@ export const TeamChannelPane = memo(function TeamChannelPane({
 
       {/* 消息流 */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.length === 0 ? (
+        {/* 链路过滤激活提示条 */}
+        {filterChainMessageId && (
+          <div className="px-3.5 py-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-[11.5px] flex items-center justify-between text-indigo-700 dark:text-indigo-300 shrink-0 sticky top-0 z-10 backdrop-blur-md">
+            <div className="flex items-center gap-1.5 truncate">
+              <Quote size={12} className="text-indigo-500 shrink-0" />
+              <span className="font-semibold">{t('当前正在查看消息引用链路 ({0} 条相关消息)', displayedMessages.length)}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFilterChainMessageId(null)}
+              className="text-seal hover:underline font-semibold cursor-pointer text-[11px] shrink-0 ml-2"
+            >
+              {t('显示全部消息')}
+            </button>
+          </div>
+        )}
+
+        {displayedMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-ink-faint py-16 space-y-2">
             <Sparkles size={22} className="text-indigo-400 opacity-60" />
             <div className="text-[12.5px] font-semibold text-ink-strong">{t('智能体团队准备就绪')}</div>
@@ -153,26 +209,43 @@ export const TeamChannelPane = memo(function TeamChannelPane({
             </p>
           </div>
         ) : (
-          messages.map((msg) => {
+          displayedMessages.map((msg) => {
             const isUser = msg.senderId === 'user'
             const isDelCard = msg.delegationId !== undefined
 
             if (isUser) {
               return (
-                <div key={msg.id} className="flex justify-end">
-                  <div className="max-w-[75%] rounded-2xl rounded-tr-xs bg-seal/12 text-ink-strong border border-seal/20 px-3.5 py-2 shadow-2xs text-[12.5px]">
+                <div key={msg.id} className="flex flex-col items-end">
+                  <div className="max-w-[800px] w-fit rounded-2xl rounded-tr-xs bg-seal/12 text-ink-strong border border-seal/20 px-3.5 py-2 shadow-2xs text-[12.5px]">
                     <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
                   </div>
+                  {/* 若有专家认领该用户消息，下方显示认领者头像 */}
+                  {msg.claimedBy && msg.claimedBy.length > 0 && (
+                    <div className="flex items-center gap-1.5 mt-1 text-[10px] text-ink-faint">
+                      <span>{t('已领取:')}</span>
+                      <div className="flex items-center gap-1 flex-wrap justify-end">
+                        {msg.claimedBy.map((c) => (
+                          <span
+                            key={c.id}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-paper-deep border border-line text-[10px] text-ink-subtle font-medium shadow-2xs"
+                          >
+                            <span className="text-[11px] leading-none">{c.avatar}</span>
+                            <span>{c.name}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             }
 
-            // 协作工单通知条（极简，绝不贴满长文）
+            // 协作工单通知条（极简，绝不贴满长文，限宽 800px）
             if (isDelCard) {
               const isDone = msg.content.includes('完成交付')
               return (
                 <div key={msg.id} className="flex justify-start">
-                  <div className="max-w-[85%] rounded-xl bg-card border border-line/80 px-3.5 py-2.5 shadow-2xs space-y-1.5 text-[12px]">
+                  <div className="max-w-[800px] w-full rounded-xl bg-card border border-line/80 px-3.5 py-2.5 shadow-2xs space-y-1.5 text-[12px]">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-1.5">
                         {isDone ? (
@@ -206,13 +279,13 @@ export const TeamChannelPane = memo(function TeamChannelPane({
               )
             }
 
-            // 专家直答回复
+            // 专家直答回复 (限宽 800px，顶部支持引用历史)
             return (
               <div key={msg.id} className="flex justify-start gap-2 items-start">
                 <div className="w-6 h-6 rounded-lg bg-paper-deep border border-line text-ink flex items-center justify-center shrink-0 text-[11px] mt-0.5">
                   <Bot size={13} />
                 </div>
-                <div className="max-w-[80%] space-y-1">
+                <div className="max-w-[800px] w-full space-y-1">
                   <div className="flex items-center gap-1.5 text-[10.5px]">
                     <span className="font-semibold text-ink-strong">{msg.senderName}</span>
                     {msg.isAnnouncement && (
@@ -221,6 +294,28 @@ export const TeamChannelPane = memo(function TeamChannelPane({
                       </span>
                     )}
                   </div>
+
+                  {/* 消息引用条（点击查看链路过滤） */}
+                  {msg.replyToSnippet && (
+                    <button
+                      type="button"
+                      onClick={() => setFilterChainMessageId((prev) => (prev === msg.id ? null : msg.id))}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-paper-deep/80 hover:bg-paper-deep text-ink-subtle border-l-2 border-seal text-[11px] text-left transition w-full truncate cursor-pointer group"
+                      title={t('点击查看引用上下文链路')}
+                    >
+                      <Quote size={11} className="text-seal shrink-0" />
+                      <span className="font-semibold text-ink-strong shrink-0">
+                        @{msg.replyToSender || t('上下文')}:
+                      </span>
+                      <span className="truncate text-ink-faint group-hover:text-ink-subtle">
+                        {msg.replyToSnippet}
+                      </span>
+                      <span className="ml-auto text-[9.5px] text-seal opacity-0 group-hover:opacity-100 transition shrink-0">
+                        {filterChainMessageId === msg.id ? t('退出链路') : t('追踪链路 →')}
+                      </span>
+                    </button>
+                  )}
+
                   <div className="rounded-2xl rounded-tl-xs bg-card border border-line/80 p-3 shadow-2xs text-[12.5px] text-ink leading-relaxed">
                     <MarkdownView html={renderNote(msg.content)} className="moji-agent-md" />
                   </div>

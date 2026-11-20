@@ -15,6 +15,7 @@ import { TeamRosterRail, type TeamSelection } from './TeamRosterRail'
 import { TeamChannelPane } from './TeamChannelPane'
 import { TeamAgentWorkspace } from './TeamAgentWorkspace'
 import { DeliverableDrawer, type DrawerMode } from './DeliverableDrawer'
+import { TaskRawDataViewer } from './TaskRawDataViewer'
 import { AgentTeamTutorPane } from './AgentTeamTutorPane'
 import { useAgentTeam } from '../../../learn/superAgent/useAgentTeam'
 import type { LearnStore, TabRef, DocView } from '../../../learn/types'
@@ -22,7 +23,7 @@ import type { useAgent } from '../../../learn/useAgent'
 import type { loadAgentSettings } from '../../../agent/settings'
 import { goalFocusByGoal } from '../workspace/goalFocus'
 import { t } from '../../../i18n'
-import { AlertCircle, Layers, X } from 'lucide-react'
+import { AlertCircle, Layers, X, FileJson } from 'lucide-react'
 
 type AgentApi = ReturnType<typeof useAgent>
 type AgentSettings = ReturnType<typeof loadAgentSettings>
@@ -90,6 +91,9 @@ export default function AgentTeamPage({
     mode: DrawerMode
   } | null>(null)
 
+  // 任务派发裸数据检视弹层开关
+  const [showRawViewer, setShowRawViewer] = useState(false)
+
   // 挂载多 Agent 团队 Hook
   const team = useAgentTeam({
     scopeId: effectiveGoalId,
@@ -124,30 +128,44 @@ export default function AgentTeamPage({
           <span>{goalTitle || t('全局空间')}</span>
         </div>
 
-        {/* 模式切换胶囊 */}
-        <div className="flex items-center bg-line/50 p-0.5 rounded-lg">
-          <button
-            type="button"
-            onClick={() => setWorkbenchMode('team')}
-            className={`px-2.5 py-0.8 rounded-md font-medium transition cursor-pointer ${
-              workbenchMode === 'team'
-                ? 'bg-paper text-seal font-semibold shadow-2xs'
-                : 'text-ink-faint hover:text-ink'
-            }`}
-          >
-            {t('多智能体团队 (三栏工作台)')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setWorkbenchMode('classic')}
-            className={`px-2.5 py-0.8 rounded-md font-medium transition cursor-pointer ${
-              workbenchMode === 'classic'
-                ? 'bg-paper text-seal font-semibold shadow-2xs'
-                : 'text-ink-faint hover:text-ink'
-            }`}
-          >
-            {t('经典单导师')}
-          </button>
+        <div className="flex items-center gap-2">
+          {workbenchMode === 'team' && (
+            <button
+              type="button"
+              onClick={() => setShowRawViewer(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-ink-subtle hover:text-seal bg-card border border-line hover:border-line-strong transition cursor-pointer shadow-2xs"
+              title={t('透明化检视所有跨专家委派、隔离工坊工单与 Mailbox 回执')}
+            >
+              <FileJson size={12} className="text-seal" />
+              <span>{t('任务派发裸数据')}</span>
+            </button>
+          )}
+
+          {/* 模式切换胶囊 */}
+          <div className="flex items-center bg-line/50 p-0.5 rounded-lg">
+            <button
+              type="button"
+              onClick={() => setWorkbenchMode('team')}
+              className={`px-2.5 py-0.8 rounded-md font-medium transition cursor-pointer ${
+                workbenchMode === 'team'
+                  ? 'bg-paper text-seal font-semibold shadow-2xs'
+                  : 'text-ink-faint hover:text-ink'
+              }`}
+            >
+              {t('多智能体团队 (三栏工作台)')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setWorkbenchMode('classic')}
+              className={`px-2.5 py-0.8 rounded-md font-medium transition cursor-pointer ${
+                workbenchMode === 'classic'
+                  ? 'bg-paper text-seal font-semibold shadow-2xs'
+                  : 'text-ink-faint hover:text-ink'
+              }`}
+            >
+              {t('经典单导师')}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -253,9 +271,6 @@ export default function AgentTeamPage({
                       prev ? { ...prev, mode: { kind: 'worker', workerId: wid } } : null,
                     )
                   }
-                  onSendToWorker={(wid, text) =>
-                    team.sendToWorker(drawerTarget.agentId, wid, text)
-                  }
                   onCancelWorker={(wid) =>
                     team.cancelWorker(drawerTarget.agentId, wid)
                   }
@@ -285,6 +300,15 @@ export default function AgentTeamPage({
           </div>
         )}
       </div>
+
+      {/* 任务派发裸数据检视弹层 */}
+      <TaskRawDataViewer
+        isOpen={showRawViewer}
+        onClose={() => setShowRawViewer(false)}
+        delegations={team.delegations}
+        agents={team.agents}
+        channelMessages={team.channelMessages}
+      />
     </div>
   )
 }

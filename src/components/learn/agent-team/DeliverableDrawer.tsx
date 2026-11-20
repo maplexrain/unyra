@@ -1,23 +1,24 @@
 /**
- * 右侧按需滑出交付面板 (DeliverableDrawer)
+ * 查看正文交付面板 (DeliverableDrawer)
  *
- * 核心设计：
- * 1. 默认收起，点击任意工单条、交付卡片或顶栏「工单/黑板」时平滑滑出；
- * 2. 顶部双页签彻底分离：
- *    - 「交付正文 (Chat)」：全幅零拷贝 Markdown 正文，沉浸式阅读产出与 Artifact 切换；
- *    - 「执行过程 (Mind)」：独立折叠查看思考链与工具调用卡片；
- * 3. 底部直连快通道：无需唤醒 Host，直接向当前 Worker 跳边界插队或追问。
+ * 规范（TASK #10 改造）：
+ * 1. 采用与 Agent 栏消息列表一致的布局与消息组件，消息自然按时间线流转；
+ * 2. 彻底取消底部输入框与「交付正文/执行过程」Tab 分页；
+ * 3. 过程件（思考与工具）与正文在单条消息内折叠呈现，最大程度减少信息干扰；
+ * 4. 气泡最大宽度限制为 800px。
  */
 
 import { memo, useMemo, useState } from 'react'
 import {
   Check,
+  ChevronDown,
+  ChevronRight,
   Copy,
   FileText,
   LayoutGrid,
   Loader2,
-  Send,
   StopCircle,
+  Wrench,
   X,
   Zap,
 } from 'lucide-react'
@@ -26,6 +27,7 @@ import type {
   WorkerSession,
 } from '../../../agent/super/types'
 import type { WorkerStreamSlot } from '../../../learn/superAgent/useAgentTeam'
+import type { AgentPart, ConversationMessage } from '../../../agent/types'
 import { extractMindParts } from '../../../agent/super/projection'
 import MarkdownView from '../../MarkdownView'
 import { renderNote } from '../../../lib/markdown'
@@ -44,9 +46,57 @@ export interface DeliverableDrawerProps {
   workerStreams: Record<string, WorkerStreamSlot>
   blackboard: BlackboardEntry[]
   onSelectWorker: (workerId: string) => void
-  onSendToWorker: (workerId: string, text: string) => void
   onCancelWorker: (workerId: string) => void
   onClose: () => void
+}
+
+/** 单条 Assistant 消息内部的思考与工具折叠组 */
+function AssistantProcessGroup({
+  parts,
+  defaultExpanded = false,
+}: {
+  parts: AgentPart[]
+  defaultExpanded?: boolean
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded)
+  if (parts.length === 0) return null
+
+  return (
+    <div className="mb-2 rounded-xl border border-line/60 bg-paper-deep/40 overflow-hidden text-[11.5px]">
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        className="w-full px-2.5 py-1.5 flex items-center justify-between text-ink-subtle hover:text-ink hover:bg-line/20 transition cursor-pointer select-none"
+      >
+        <span className="flex items-center gap-1.5 font-medium">
+          <Wrench size={11} className="text-amber-500/80" />
+          <span>{t('思考与工具执行过程 ({0})', parts.length)}</span>
+        </span>
+        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+      </button>
+
+      {expanded && (
+        <div className="p-2.5 space-y-2 border-t border-line/40 bg-paper/50 max-h-60 overflow-y-auto">
+          {parts.map((part, idx) => {
+            if (part.type === 'thinking') {
+              return (
+                <div
+                  key={idx}
+                  className="p-2 rounded-lg bg-paper-deep/60 border border-line text-ink-subtle italic text-[11px] leading-relaxed"
+                >
+                  {part.text}
+                </div>
+              )
+            }
+            if (part.type === 'tool') {
+              return <ToolCard key={idx} part={part} />
+            }
+            return null
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export const DeliverableDrawer = memo(function DeliverableDrawer({
@@ -56,7 +106,6 @@ export const DeliverableDrawer = memo(function DeliverableDrawer({
   workerStreams,
   blackboard,
   onSelectWorker,
-  onSendToWorker,
   onCancelWorker,
   onClose,
 }: DeliverableDrawerProps) {
@@ -67,52 +116,18 @@ export const DeliverableDrawer = memo(function DeliverableDrawer({
     [workers, activeWorkerId],
   )
   const currentStream = currentWorker ? workerStreams[currentWorker.id] : undefined
+  const [copiedArtifactId, setCopiedArtifactId] = useState<string | null>(null)
 
-  // 内部页签：'chat' (交付正文) 与 'mind' (执行过程)
-  const [activeTab, setActiveTab] = useState<'chat' | 'mind'>('chat')
-  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
-  const [inputText, setInputText] = useState('')
-
-  // 提取 Mind 过程
-  const mindParts = useMemo(() => {
-    if (!currentWorker) return []
-    const historicalParts = currentWorker.messages.flatMap((m) => m.parts)
-    const base = extractMindParts(historicalParts)
-    if (currentStream?.mind?.length) {
-      return [...base, ...currentStream.mind]
-    }
-    return base
-  }, [currentWorker, currentStream?.mind])
-
-  // 提取正文
-  const fullChatText = currentStream?.chat || currentWorker?.chatText || ''
-
-  // 选中的产物内容（若选中）
-  const activeArtifact = useMemo(() => {
-    if (!selectedArtifactId || !currentWorker) return null
-    return currentWorker.artifacts.find((a) => a.id === selectedArtifactId) || null
-  }, [selectedArtifactId, currentWorker])
-
-  const displayedMarkdown = activeArtifact ? activeArtifact.content : fullChatText
-
-  const handleCopy = () => {
-    if (!displayedMarkdown) return
-    navigator.clipboard.writeText(displayedMarkdown)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  const handleSend = () => {
-    if (!currentWorker || !inputText.trim()) return
-    onSendToWorker(currentWorker.id, inputText.trim())
-    setInputText('')
+  const handleCopy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedArtifactId(id)
+    setTimeout(() => setCopiedArtifactId(null), 1500)
   }
 
   return (
     <div className="flex flex-col h-full w-full bg-card/95 backdrop-blur-md border-l border-line/80 shadow-xl select-text">
-      {/* 顶栏 */}
-      <div className="p-3 border-b border-line/60 flex items-center justify-between gap-2 shrink-0 bg-paper-deep/40">
+      {/* 顶栏：极简 */}
+      <div className="px-3.5 py-2.5 border-b border-line/60 flex items-center justify-between gap-2 shrink-0 bg-paper-deep/30">
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-6 h-6 rounded-lg bg-seal/15 text-seal flex items-center justify-center shrink-0">
             {mode.kind === 'blackboard' ? <LayoutGrid size={13} /> : <Zap size={13} />}
@@ -121,7 +136,7 @@ export const DeliverableDrawer = memo(function DeliverableDrawer({
             <h3 className="text-[12.5px] font-bold text-ink-strong truncate">
               {mode.kind === 'blackboard'
                 ? t('「{0}」共享黑板', agentName)
-                : currentWorker?.title || t('交付成果检视')}
+                : currentWorker?.title || t('工单正文')}
             </h3>
             {mode.kind === 'worker' && currentWorker && (
               <p className="text-[10px] text-ink-faint truncate max-w-[240px]">
@@ -139,17 +154,17 @@ export const DeliverableDrawer = memo(function DeliverableDrawer({
                 <button
                   type="button"
                   onClick={() => onCancelWorker(currentWorker.id)}
-                  className="px-2 py-0.8 rounded-lg text-[10.5px] font-semibold text-rose-500 hover:bg-rose-500/10 cursor-pointer transition"
+                  className="p-1 rounded-md text-rose-500 hover:bg-rose-500/10 cursor-pointer transition"
                   title={t('中止工单')}
                 >
-                  <StopCircle size={12} />
+                  <StopCircle size={13} />
                 </button>
               )}
               {workers.length > 1 && (
                 <select
                   value={currentWorker.id}
                   onChange={(e) => onSelectWorker(e.target.value)}
-                  className="px-1.5 py-0.8 rounded-lg text-[10.5px] bg-paper border border-line text-ink cursor-pointer focus:outline-none max-w-[110px] truncate"
+                  className="px-1.5 py-0.8 rounded-lg text-[10.5px] bg-paper border border-line text-ink cursor-pointer focus:outline-none max-w-[120px] truncate"
                 >
                   {workers.map((w) => (
                     <option key={w.id} value={w.id}>
@@ -172,9 +187,10 @@ export const DeliverableDrawer = memo(function DeliverableDrawer({
         </div>
       </div>
 
-      {/* 模式 A：黑板视口 */}
+      {/* 主体视口 */}
       {mode.kind === 'blackboard' ? (
-        <div className="flex-1 overflow-y-auto p-3.5 space-y-3">
+        /* 黑板视图 */
+        <div className="flex-1 overflow-y-auto p-3.5 space-y-2.5">
           {blackboard.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-ink-faint text-[12px] py-16">
               <LayoutGrid size={24} className="mb-2 opacity-40" />
@@ -187,9 +203,9 @@ export const DeliverableDrawer = memo(function DeliverableDrawer({
                 onClick={() => {
                   if (entry.workerId) onSelectWorker(entry.workerId)
                 }}
-                className="p-3 rounded-xl bg-paper border border-line/80 hover:border-seal/40 transition cursor-pointer space-y-1.5"
+                className="p-3 rounded-xl bg-paper border border-line/80 hover:border-seal/40 transition cursor-pointer space-y-1.5 max-w-[800px]"
               >
-                <div className="flex items-center justify-between text-[11px]">
+                <div className="flex items-center justify-between text-[11.5px]">
                   <span className="font-semibold text-ink-strong">{entry.title}</span>
                   <span className="text-[10px] text-ink-faint">
                     {new Date(entry.updatedAt).toLocaleTimeString()}
@@ -207,155 +223,109 @@ export const DeliverableDrawer = memo(function DeliverableDrawer({
           {t('暂无选中的工单')}
         </div>
       ) : (
-        /* 模式 B：工单交付双页签检视 */
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          {/* 页签切换 */}
-          <div className="px-3 py-1.5 border-b border-line/60 bg-paper/60 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('chat')
-                  setSelectedArtifactId(null)
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[11.5px] font-semibold transition cursor-pointer ${
-                  activeTab === 'chat' && !selectedArtifactId
-                    ? 'bg-seal text-white shadow-2xs'
-                    : 'text-ink-subtle hover:text-ink hover:bg-line/40'
-                }`}
-              >
-                {t('交付正文')}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('mind')
-                  setSelectedArtifactId(null)
-                }}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11.5px] font-semibold transition cursor-pointer ${
-                  activeTab === 'mind'
-                    ? 'bg-seal text-white shadow-2xs'
-                    : 'text-ink-subtle hover:text-ink hover:bg-line/40'
-                }`}
-              >
-                <span>{t('执行过程')}</span>
-                {mindParts.length > 0 && (
-                  <span className="px-1 py-0.2 rounded-full text-[9px] bg-paper text-ink font-bold border border-line">
-                    {mindParts.length}
-                  </span>
+        /* Agent 栏标准消息流布局 */
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {/* 渲染该工单的完整会话历史 */}
+          {currentWorker.messages.map((m: ConversationMessage) => {
+            const isUser = m.role === 'user'
+
+            if (isUser) {
+              const text = m.parts
+                .filter((p) => p.type === 'text')
+                .map((p) => ('text' in p ? p.text : ''))
+                .join('\n\n')
+
+              return (
+                <div key={m.id} className="flex justify-end">
+                  <div className="max-w-[800px] rounded-2xl rounded-tr-xs bg-line/60 text-ink px-3.5 py-2 shadow-2xs text-[12.5px] leading-relaxed">
+                    <div className="whitespace-pre-wrap">{text}</div>
+                  </div>
+                </div>
+              )
+            }
+
+            // Assistant 消息：过程折叠组 + 正文 Markdown + 产物胶囊
+            const mindParts = extractMindParts(m.parts)
+            const textParts = m.parts.filter((p) => p.type === 'text')
+
+            return (
+              <div key={m.id} className="flex justify-start">
+                <div className="max-w-[800px] w-full rounded-2xl rounded-tl-xs bg-card border border-line/80 p-3.5 shadow-2xs space-y-2 text-[12.5px]">
+                  {/* 折叠的过程件 */}
+                  {mindParts.length > 0 && <AssistantProcessGroup parts={mindParts} />}
+
+                  {/* 交付正文 */}
+                  {textParts.map((part, idx) => (
+                    <div key={idx} className="text-ink leading-relaxed prose-sm">
+                      <MarkdownView
+                        html={renderNote('text' in part ? part.text : '')}
+                        className="moji-agent-md"
+                      />
+                    </div>
+                  ))}
+
+                  {/* 关联产物展示 */}
+                  {currentWorker.artifacts.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-line/40 flex flex-wrap gap-1.5 text-[10.5px]">
+                      {currentWorker.artifacts.map((art) => (
+                        <div
+                          key={art.id}
+                          className="flex items-center gap-1.5 px-2 py-0.8 rounded-md bg-seal/10 text-seal border border-seal/20 font-medium"
+                        >
+                          <FileText size={11} />
+                          <span>{art.title}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(art.content, art.id)}
+                            className="ml-1 text-ink-faint hover:text-ink cursor-pointer"
+                            title={t('复制产物内容')}
+                          >
+                            {copiedArtifactId === art.id ? (
+                              <Check size={11} className="text-emerald-500" />
+                            ) : (
+                              <Copy size={11} />
+                            )}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+
+          {/* 若 Worker 正在执行流式推理中，实时呈现当前的流式内容 */}
+          {currentStream && (
+            <div className="flex justify-start">
+              <div className="max-w-[800px] w-full rounded-2xl rounded-tl-xs bg-card border border-line/80 p-3.5 shadow-2xs space-y-2 text-[12.5px]">
+                {currentStream.mind.length > 0 && (
+                  <AssistantProcessGroup parts={currentStream.mind} defaultExpanded />
                 )}
-              </button>
-            </div>
-
-            {/* 复制按钮 */}
-            {displayedMarkdown && (
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="flex items-center gap-1 px-2 py-0.8 rounded-md text-[10.5px] text-ink-faint hover:text-ink transition cursor-pointer"
-                title={t('复制当前正文')}
-              >
-                {copied ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
-                <span>{copied ? t('已复制') : t('复制')}</span>
-              </button>
-            )}
-          </div>
-
-          {/* 产物子胶囊条（若有） */}
-          {currentWorker.artifacts.length > 0 && (
-            <div className="px-3 py-1.5 bg-paper-deep/30 border-b border-line/40 flex items-center gap-1.5 overflow-x-auto text-[10.5px] shrink-0">
-              <span className="text-ink-faint shrink-0 flex items-center gap-1 font-medium">
-                <FileText size={11} className="text-seal" />
-                <span>{t('独立产物:')}</span>
-              </span>
-              {currentWorker.artifacts.map((art) => (
-                <button
-                  key={art.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('chat')
-                    setSelectedArtifactId(art.id)
-                  }}
-                  className={`px-2 py-0.5 rounded-md border shrink-0 transition cursor-pointer font-medium ${
-                    selectedArtifactId === art.id
-                      ? 'bg-seal/15 border-seal/40 text-seal font-semibold'
-                      : 'bg-card border-line hover:border-seal/30 text-ink-subtle'
-                  }`}
-                >
-                  {art.title}
-                </button>
-              ))}
+                {currentStream.chat ? (
+                  <div className="text-ink leading-relaxed prose-sm">
+                    <MarkdownView
+                      html={renderNote(currentStream.chat)}
+                      className="moji-agent-md"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-ink-faint text-[12px] py-1">
+                    <Loader2 size={13} className="animate-spin text-emerald-500" />
+                    <span>{t('正在后台工坊执行探索与撰写成果...')}</span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          {/* 正文或过程内容区 */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {activeTab === 'chat' ? (
-              displayedMarkdown ? (
-                <div className="text-[12.5px] leading-relaxed text-ink prose-sm">
-                  <MarkdownView html={renderNote(displayedMarkdown)} className="moji-agent-md" />
-                </div>
-              ) : currentWorker.status === 'running' ? (
-                <div className="flex flex-col items-center justify-center h-full text-center text-ink-faint py-16 space-y-2">
-                  <Loader2 size={18} className="animate-spin text-emerald-500" />
-                  <span className="text-[12px]">{t('正在工坊深度探索与撰写成果...')}</span>
-                </div>
-              ) : (
-                <div className="text-[12px] text-ink-faint italic py-8 text-center">
-                  {t('该工单已结束，未产出独立交付正文。')}
-                </div>
-              )
-            ) : (
-              /* Mind 执行过程 */
-              <div className="space-y-2 text-[11.5px]">
-                {mindParts.length === 0 ? (
-                  <div className="text-[12px] text-ink-faint italic py-8 text-center">
-                    {t('暂无思考或工具调用记录')}
-                  </div>
-                ) : (
-                  mindParts.map((part, idx) => {
-                    if (part.type === 'thinking') {
-                      return (
-                        <div
-                          key={idx}
-                          className="p-2.5 rounded-xl bg-paper-deep/60 border border-line text-ink-subtle italic leading-relaxed"
-                        >
-                          {part.text}
-                        </div>
-                      )
-                    }
-                    if (part.type === 'tool') {
-                      return <ToolCard key={idx} part={part} />
-                    }
-                    return null
-                  })
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* 底部直连快通道 */}
-          <div className="p-3 border-t border-line/60 bg-paper/90 backdrop-blur-md shrink-0">
-            <div className="relative rounded-xl border border-line/80 bg-paper-deep/60 focus-within:border-seal/60 focus-within:ring-1 focus-within:ring-seal/20 transition">
-              <input
-                type="text"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder={t('向此工单插队补充要求或追问... (Enter 发送)')}
-                className="w-full px-3 py-2 pr-10 text-[12px] bg-transparent focus:outline-none placeholder:text-ink-faint text-ink"
-              />
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={!inputText.trim()}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-seal text-white hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
-                title={t('发送 (Enter)')}
-              >
-                <Send size={11} />
-              </button>
+          {/* 若既无历史消息也无流式内容 */}
+          {currentWorker.messages.length === 0 && !currentStream && (
+            <div className="flex flex-col items-center justify-center py-16 text-ink-faint text-[12px] space-y-2">
+              <Zap size={22} className="opacity-40" />
+              <span>{t('工单已就绪，等待执行。')}</span>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
