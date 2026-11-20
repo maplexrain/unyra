@@ -262,6 +262,7 @@ export async function apiNameTests() {
     'classroom.verbs': '',
     'classroom.components': '',
     'classroom.animations': '',
+    'classroom.sounds': '',
     'classroom.check': "{ target: 'classroom_probe' }",
     'classroom.registerComponent': "{ tag: 'ui-probe-card', name: '探针卡', description: '探针用组件', template: '<div>{{content}}</div>' }",
     'classroom.registerAnimation': "{ verb: 'probeSpin', name: '探针动效', keyframes: { opacity: [0, 1] } }",

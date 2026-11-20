@@ -431,12 +431,12 @@ describe('互动课堂 (Interactive Classroom) 核心逻辑与编译器测试', 
       scheduler.destroy()
     })
 
-    it('内置工作流中注册了「生成互动课堂」工作流', async () => {
+    it('内置工作流中注册了「生成课堂」工作流', async () => {
       const { builtinWorkflowRows } = await import('../src/learn/workflows')
       const rows = builtinWorkflowRows()
       const classroomWf = rows.find((w) => w.id === 'classroom')
       expect(classroomWf).toBeDefined()
-      expect(classroomWf?.name).toBe('生成互动课堂')
+      expect(classroomWf?.name).toBe('生成课堂')
       expect(classroomWf?.params).toContain('target')
       expect(classroomWf?.runnable).toBe(true)
     })
