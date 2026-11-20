@@ -39,7 +39,7 @@ import { isElectron, isWeb, native } from '../../../lib/native'
 import { openExternalLink } from '../../../lib/externalLink'
 import { requestReveal } from '../explorer/reveal'
 import { emptyNote, noteEntityOf } from './panes'
-import { goalFocusByGoal } from './goalFocus'
+import { goalConvByGoal, goalFocusByGoal } from './goalFocus'
 import { setVimPageOpener } from '../../../lib/vimPage'
 
 /** 打开与跳转需要的宿主能力（晚绑定把手由宿主先声明、这里回填，见各自说明） */
@@ -142,11 +142,17 @@ export function useTabOpening({
     (s: LearnStore, goalId: string): LearnStore => {
       const goal = s.goals.find((g) => g.id === goalId)
       if (!goal) return s
+      const rememberedConv = goalConvByGoal.get(goalId)
+      const validRemembered =
+        rememberedConv && s.conversations.some((c) => c.id === rememberedConv && c.goalId === goalId)
+          ? rememberedConv
+          : null
       const convId =
         s.activeConversationId &&
         s.conversations.some((c) => c.id === s.activeConversationId && c.goalId === goalId)
           ? s.activeConversationId
-          : (resolveDisplayedConversation(s, goalId) ?? null)
+          : (validRemembered ?? resolveDisplayedConversation(s, goalId) ?? null)
+      if (convId) goalConvByGoal.set(goalId, convId)
       const tabbed0 = upsertAgentTab(
         s.agentTabs ?? [],
         s.agentActiveTab ?? null,
@@ -165,6 +171,7 @@ export function useTabOpening({
         return withGoalTabs({ ...tabbed, activeGoalId: goalId, activeNodeId: null })
       }
       const ensured = ensureConversation(tabbed, goalId)
+      goalConvByGoal.set(goalId, ensured.conversationId)
       const retabbed0 = upsertAgentTab(
         ensured.store.agentTabs ?? [],
         ensured.store.agentActiveTab ?? null,
@@ -190,10 +197,16 @@ export function useTabOpening({
       // 写在 retargetNode 里而不是每个调用方——closeTab 的落点也走这里，漏了它就会偏一格。
       goalFocusByGoal.set(node.goalId, node.id)
       // 目标级导师页签：开好、置前，并把页签的会话对齐到这一刻的落点
+      const rememberedConv = goalConvByGoal.get(node.goalId)
+      const validRemembered =
+        rememberedConv && s.conversations.some((c) => c.id === rememberedConv && c.goalId === node.goalId)
+          ? rememberedConv
+          : null
       const convId = s.activeConversationId &&
         s.conversations.some((c) => c.id === s.activeConversationId && c.goalId === node.goalId)
         ? s.activeConversationId
-        : (resolveDisplayedConversation(s, node.goalId) ?? null)
+        : (validRemembered ?? resolveDisplayedConversation(s, node.goalId) ?? null)
+      if (convId) goalConvByGoal.set(node.goalId, convId)
       const tabbed0 = upsertAgentTab(s.agentTabs ?? [], s.agentActiveTab ?? null, { kind: 'goal', goalId: node.goalId, conversationId: convId }, true)
       const tabbed = withAgentTabs(s, tabbed0.tabs, tabbed0.active)
       const conv = tabbed.activeConversationId

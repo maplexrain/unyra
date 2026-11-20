@@ -16,7 +16,7 @@ import {
 } from '../../../learn/graph'
 import { pruneImages } from '../../../learn/images'
 import { resetPrefixGate } from '../../../agent/prefixGate'
-import { goalFocusByGoal } from './goalFocus'
+import { goalConvByGoal, goalFocusByGoal } from './goalFocus'
 import { sortConversationsByTimeDesc } from '../agent-team/conversationList'
 import { t } from '../../../i18n'
 
@@ -138,6 +138,7 @@ export function useAgentTabActions({
             s.activeNodeId
           const convId =
             targetTab.conversationId ?? resolveDisplayedConversation(s, targetTab.goalId) ?? null
+          if (convId) goalConvByGoal.set(targetTab.goalId, convId)
           next = {
             ...s,
             activeGoalId: targetTab.goalId,
@@ -147,6 +148,7 @@ export function useAgentTabActions({
         } else if (targetTab && targetTab.kind === 'sub') {
           const conv = conversationById(s, targetTab.conversationId)
           if (conv) {
+            goalConvByGoal.set(conv.goalId, targetTab.conversationId)
             next = {
               ...s,
               activeGoalId: conv.goalId,
@@ -170,12 +172,16 @@ export function useAgentTabActions({
         s.activeConversationId && conversationById(s, s.activeConversationId)?.goalId === goalId
           ? s.activeConversationId
           : null
+      const remembered = goalConvByGoal.get(goalId)
+      const validRemembered =
+        remembered && conversationById(s, remembered)?.goalId === goalId ? remembered : null
       const descFirst =
         sortConversationsByTimeDesc(s.conversations.filter((c) => c.goalId === goalId))[0]?.id ?? null
-      const resolvedId = activeInGoal ?? resolveDisplayedConversation(s, goalId) ?? descFirst
+      const resolvedId = activeInGoal ?? validRemembered ?? resolveDisplayedConversation(s, goalId) ?? descFirst
       const ensured = resolvedId
         ? { store: s, conversationId: resolvedId }
         : ensureConversation(s, goalId)
+      goalConvByGoal.set(goalId, ensured.conversationId)
 
       const focusId =
         goalFocusByGoal.get(goalId) ??
@@ -208,6 +214,7 @@ export function useAgentTabActions({
   const exitSubagentView = useCallback(
     (subKey: string, parentGoalId: string, parentConvId: string) => {
       const s = getLatest()
+      goalConvByGoal.set(parentGoalId, parentConvId)
       const removed = removeAgentTab(s.agentTabs ?? [], s.agentActiveTab ?? null, subKey)
       const t0 = upsertAgentTab(
         removed.tabs,
@@ -243,6 +250,7 @@ export function useAgentTabActions({
       if (!targetGoalId) return
       const conv = conversationById(s, conversationId)
       if (!conv || conv.goalId !== targetGoalId) return
+      goalConvByGoal.set(targetGoalId, conversationId)
       const t0 = upsertAgentTab(
         s.agentTabs ?? [],
         s.agentActiveTab ?? null,
@@ -267,6 +275,7 @@ export function useAgentTabActions({
       const gid = targetGoalId ?? s.activeGoalId
       if (!gid) return
       const { store: withConv, conversation } = addConversation(s, gid)
+      goalConvByGoal.set(gid, conversation.id)
       const t0 = upsertAgentTab(
         withConv.agentTabs ?? [],
         withConv.agentActiveTab ?? null,
@@ -317,6 +326,10 @@ export function useAgentTabActions({
       const fallbackConvId = target
         ? (sortConversationsByTimeDesc(afterDel.conversations.filter((c) => c.goalId === target.goalId))[0]?.id ?? null)
         : null
+      if (target && goalConvByGoal.get(target.goalId) === conversationId) {
+        if (fallbackConvId) goalConvByGoal.set(target.goalId, fallbackConvId)
+        else goalConvByGoal.delete(target.goalId)
+      }
       const patchedDel =
         target && before.activeConversationId === conversationId && afterDel.activeGoalId === target.goalId
           ? { ...afterDel, activeConversationId: fallbackConvId }

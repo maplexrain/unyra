@@ -34,6 +34,7 @@ function sameAgentTabPane(prev: AgentTabPaneProps, next: AgentTabPaneProps): boo
   // 当且仅当其核心数据或配置发生变化时才重渲染，避免文档区 Tab 切换等无关顶层重渲染传导进来
   return (
     prev.conversation === next.conversation &&
+    prev.conversations === next.conversations &&
     prev.streaming === next.streaming &&
     prev.streamingMessageId === next.streamingMessageId &&
     prev.running === next.running &&

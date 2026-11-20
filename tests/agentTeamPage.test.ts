@@ -1,13 +1,17 @@
 // @vitest-environment happy-dom
-import { createElement, act } from 'react'
+import { createElement, act, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { tabKey, tabTitle, tabTrail, tabNodeId } from '../src/learn/tabs'
 import { normalizeTab } from '../src/learn/store/normalize/tabs'
-import type { LearnStore } from '../src/learn/types'
+import type { AgentTabRef, LearnStore } from '../src/learn/types'
 import type { Conversation } from '../src/agent/types'
+import { agentTabKey } from '../src/learn/agentTabs'
+import { addFreeConversation, deleteFreeConversation, getFreeConversations, hydrateFreeChat } from '../src/learn/freeChat'
 import { deleteConversation } from '../src/learn/graph/conversations'
-import { repairAgentTabsAfterDelete } from '../src/components/learn/workspace/useAgentTabActions'
+import { repairAgentTabsAfterDelete, useAgentTabActions } from '../src/components/learn/workspace/useAgentTabActions'
+import { AgentSlot, type AgentSlotDeps } from '../src/components/learn/workspace/AgentSlot'
+import { goalConvByGoal } from '../src/components/learn/workspace/goalFocus'
 import {
   conversationTimeOf,
   displayConversationTitle,
@@ -503,6 +507,213 @@ describe('三栏组件 AgentRosterSidebar & AgentHistorySidebar 交互渲染', (
       ),
     ).toBe(false)
 
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+})
+
+describe('AgentSlot 对话历史切换回归', () => {
+  beforeEach(async () => {
+    ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+    localStorage.clear()
+    goalConvByGoal.clear()
+    await hydrateFreeChat(null)
+  })
+
+  it('在固定 tabGoalId 的智能体团队页签中点击对话历史，实际切换可见面板而非停留在第一段对话', () => {
+    const conv1 = makeConv({
+      id: 'c1',
+      goalId: 'g1',
+      title: '第一段讨论',
+      messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: '会话一的独占内容' }], ts: 1000 }],
+      createdAt: 1000,
+      updatedAt: 1000,
+    })
+    const conv2 = makeConv({
+      id: 'c2',
+      goalId: 'g1',
+      title: '第二段讨论',
+      messages: [{ id: 'm2', role: 'user', parts: [{ type: 'text', text: '会话二的独占内容' }], ts: 2000 }],
+      createdAt: 2000,
+      updatedAt: 2000,
+    })
+    const initialStore = {
+      goals: [{ id: 'g1', title: '微积分', question: '微积分', rootNodeId: 'n1', createdAt: 1, updatedAt: 1 }],
+      nodes: [
+        {
+          id: 'n1',
+          goalId: 'g1',
+          title: '极限',
+          key: '极限',
+          description: '',
+          docs: { teaching: { content: '', updatedAt: 1 } },
+          notes: [],
+          annotations: [],
+          status: 'learning',
+          origin: 'user',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      conversations: [conv1, conv2],
+      exams: [],
+      resources: {},
+      activeGoalId: 'g1',
+      activeNodeId: 'n1',
+      activeConversationId: 'c1',
+      agentTabs: [
+        { kind: 'goal', goalId: 'g1', conversationId: 'c1' },
+        { kind: 'goal', goalId: 'g1', conversationId: 'c2' },
+      ],
+      agentActiveTab: 'ga:g1:c1',
+      docArea: { focus: 'g-main', layout: { kind: 'group', group: 'g-main' }, groups: [{ id: 'g-main', active: null, tabs: [] }] },
+      drafts: {},
+      docScroll: {},
+      localFiles: [],
+    } as unknown as LearnStore
+
+    const f1 = addFreeConversation(500)
+    const f2 = addFreeConversation(600)
+    f1.title = '自由一'
+    f2.title = '自由二'
+
+    let latestStore = initialStore
+    const getLatest = () => latestStore
+    const writeStore = (next: LearnStore) => {
+      latestStore = next
+    }
+
+    function Harness() {
+      const [store, setStore] = useState<LearnStore>(initialStore)
+      const [freeConvId, setFreeConvId] = useState<string | null>(f2.id)
+      const set = (next: LearnStore) => {
+        writeStore(next)
+        setStore(next)
+      }
+
+      const actions = useAgentTabActions({
+        getLatest,
+        set,
+        onToast: () => {},
+        setSidebarOpen: () => {},
+        runningByConversation: {},
+      })
+
+      const freeTabRef = useMemo<AgentTabRef>(
+        () => ({ kind: 'free', conversationId: freeConvId }),
+        [freeConvId],
+      )
+      const agentTabs = store.agentTabs
+      const agentPanes = useMemo(() => [freeTabRef, ...(agentTabs ?? [])], [freeTabRef, agentTabs])
+      const activeAgentTab = useMemo(() => {
+        if (store.agentActiveTab === 'free') return freeTabRef
+        const tabs = agentTabs ?? []
+        return tabs.find((t) => agentTabKey(t) === store.agentActiveTab) ?? tabs[0] ?? freeTabRef
+      }, [store.agentActiveTab, agentTabs, freeTabRef])
+
+      const deps: AgentSlotDeps = {
+        store,
+        getLatest,
+        set,
+        agent: {
+          runningByConversation: {},
+          pendingAskByConv: {},
+          streams: {},
+          queues: {},
+          tpsByConv: {},
+          liveUsageByConv: {},
+          compactingConvId: null,
+          subRunsAll: [],
+        } as unknown as AgentSlotDeps['agent'],
+        freeChats: getFreeConversations(),
+        currentFreeConvId: freeConvId,
+        setFreeConvId,
+        onToast: () => {},
+        openTab: () => {},
+        effort: 'medium',
+        setGlobalEffort: () => {},
+        hasKey: true,
+        providerName: 'test',
+        vision: false,
+        agentSettings: { persona: 'default', docFormat: 'markdown', compact: { threshold: 70 } } as unknown as AgentSlotDeps['agentSettings'],
+        setSettingsEpoch: () => {},
+        agentPanes,
+        activeAgentTab,
+        activeAgentTabId: agentTabKey(activeAgentTab),
+        activateAgentTab: actions.activateAgentTab,
+        openAgentTab: actions.openAgentTab,
+        selectTutorGoal: actions.selectTutorGoal,
+        exitSubagentView: actions.exitSubagentView,
+        handleNewGoalConversation: actions.handleNewGoalConversation,
+        removeConversation: actions.removeConversation,
+        newConversationIn: actions.newConversationIn,
+        selectConversationIn: actions.selectConversationIn,
+        pruneImagesOf: actions.pruneImagesOf,
+        startSuperLab: () => {},
+        newExam: () => {},
+        shouldWaitInLine: () => false,
+        tabGoalId: 'g1',
+      }
+
+      return createElement(AgentSlot, { deps })
+    }
+
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+
+    act(() => {
+      root.render(createElement(Harness))
+    })
+
+    const visiblePaneText = () => {
+      const panes = [...host.querySelectorAll<HTMLElement>('.moji-tab-transition')]
+      return panes.map((p) => p.textContent ?? '').join('\n')
+    }
+
+    // 初始展示 c1，c2 处于 hidden
+    expect(visiblePaneText()).toContain('会话一的独占内容')
+    expect(visiblePaneText()).not.toContain('会话二的独占内容')
+
+    // 点击右侧对话历史切换至 c2
+    const c2Btn = host.querySelector<HTMLButtonElement>('[data-conversation-id="c2"] button')!
+    act(() => {
+      c2Btn.click()
+    })
+    expect(visiblePaneText()).toContain('会话二的独占内容')
+    expect(visiblePaneText()).not.toContain('会话一的独占内容')
+
+    // 再切回 c1
+    const c1Btn = host.querySelector<HTMLButtonElement>('[data-conversation-id="c1"] button')!
+    act(() => {
+      c1Btn.click()
+    })
+    expect(visiblePaneText()).toContain('会话一的独占内容')
+    expect(visiblePaneText()).not.toContain('会话二的独占内容')
+
+    // 切到「仅聊天」模式并在自由对话 f1 / f2 间切换
+    const freeTabBtn = host.querySelectorAll<HTMLButtonElement>('[role="tab"]')[0]
+    act(() => {
+      freeTabBtn.click()
+    })
+    const f1Btn = host.querySelector<HTMLButtonElement>(`[data-conversation-id="${f1.id}"] button`)!
+    act(() => {
+      f1Btn.click()
+    })
+    const f1Row = host.querySelector(`[data-conversation-id="${f1.id}"]`)!
+    expect(f1Row.className).toContain('bg-card')
+
+    // 切回「导师」模式，记忆该目标上次选中的 c1（即使曾点过新建对话再切回也不丢）
+    const tutorTabBtn = host.querySelectorAll<HTMLButtonElement>('[role="tab"]')[1]
+    act(() => {
+      tutorTabBtn.click()
+    })
+    expect(visiblePaneText()).toContain('会话一的独占内容')
+
+    deleteFreeConversation(f1.id)
+    deleteFreeConversation(f2.id)
     act(() => {
       root.unmount()
     })

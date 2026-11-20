@@ -21,7 +21,7 @@ import { focusAgentInput } from '../../../lib/agentFocus'
 import { wsChipUserRel } from '../../../learn/chipRef'
 import { wsRefOfRel } from '../../../learn/workspace'
 import { AgentTabPane } from './AgentTabPane'
-import { goalFocusByGoal } from './goalFocus'
+import { goalConvByGoal, goalFocusByGoal } from './goalFocus'
 import { AgentRosterSidebar } from '../agent-team/AgentRosterSidebar'
 import { AgentHistorySidebar } from '../agent-team/AgentHistorySidebar'
 import {
@@ -37,6 +37,7 @@ import { t } from '../../../i18n'
 type AgentApi = ReturnType<typeof useAgent>
 type StartersApi = ReturnType<typeof useWorkflowStarters>
 type AgentSettings = ReturnType<typeof loadAgentSettings>
+const EMPTY_CONVERSATIONS: Conversation[] = []
 
 /**
  * agent 栏（左侧 Agent 列表 + 中间 keepalive 面板 + 右侧对话历史侧栏）需要的宿主能力与派生值。
@@ -178,12 +179,25 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   const activeGoalTitle = tutorGoalId ? goalTitleOf(tutorGoalId) : null
 
   const sortedFreeChats = useMemo(() => sortConversationsByTimeDesc(freeChats), [freeChats])
+  const goalConversationsByGoal = useMemo(() => {
+    const grouped = new Map<string, Conversation[]>()
+    for (const c of store.conversations) {
+      let bucket = grouped.get(c.goalId)
+      if (!bucket) {
+        bucket = []
+        grouped.set(c.goalId, bucket)
+      }
+      bucket.push(c)
+    }
+    const sorted = new Map<string, Conversation[]>()
+    for (const [gid, list] of grouped) {
+      sorted.set(gid, sortConversationsByTimeDesc(list))
+    }
+    return sorted
+  }, [store.conversations])
   const sortedGoalChats = useMemo(
-    () =>
-      tutorGoalId
-        ? sortConversationsByTimeDesc(store.conversations.filter((c) => c.goalId === tutorGoalId))
-        : [],
-    [store.conversations, tutorGoalId],
+    () => (tutorGoalId ? (goalConversationsByGoal.get(tutorGoalId) ?? EMPTY_CONVERSATIONS) : EMPTY_CONVERSATIONS),
+    [goalConversationsByGoal, tutorGoalId],
   )
 
   const activeTutorConvId = useMemo(() => {
@@ -201,6 +215,10 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       return resolveDisplayedConversation(store, activeAgentTab.goalId) ?? sortedGoalChats[0]?.id ?? null
     }
     if (tabGoalId) {
+      const remembered = goalConvByGoal.get(tabGoalId)
+      if (remembered && conversationById(store, remembered)?.goalId === tabGoalId) {
+        return remembered
+      }
       return resolveDisplayedConversation(store, tabGoalId) ?? sortedGoalChats[0]?.id ?? null
     }
     return null
@@ -384,8 +402,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     const session = isSub ? (sessions.find((x) => x.id === tab.sessionId) ?? null) : null
     const stream = convId ? agent.streams[convId] : undefined
     const goalConversations = goalId
-      ? sortConversationsByTimeDesc(store.conversations.filter((c) => c.goalId === goalId))
-      : []
+      ? (goalConversationsByGoal.get(goalId) ?? EMPTY_CONVERSATIONS)
+      : EMPTY_CONVERSATIONS
     return {
       goalId,
       conversation: conv,
@@ -478,7 +496,12 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       if (tab.kind === 'goal') return tab.goalId === tabGoalId
       return conversationById(store, tab.conversationId)?.goalId === tabGoalId
     })
-    if (!out.some((tab) => tab.kind === 'goal' && tab.goalId === tabGoalId)) {
+    const hasActiveGoalPane = activeTutorConvId
+      ? out.some(
+          (tab) => tab.kind === 'goal' && tab.goalId === tabGoalId && tab.conversationId === activeTutorConvId,
+        )
+      : out.some((tab) => tab.kind === 'goal' && tab.goalId === tabGoalId)
+    if (!hasActiveGoalPane) {
       out.push({ kind: 'goal', goalId: tabGoalId, conversationId: activeTutorConvId })
     }
     return out
@@ -488,11 +511,21 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     if (mode === 'free') return 'free'
     if (subViewMeta) return subViewMeta.key
     if (tabGoalId) {
-      const matched = scopedPanes.find((t) => t.kind === 'goal' && t.goalId === tabGoalId)
+      // 一个学习目标在 agentTabs 里可以并存多个会话页签（ga:<goalId>:<convId>），
+      // 必须按 activeTutorConvId 精确匹配当前激活的那一段对话，否则永远只会命中第一枚。
+      const matched =
+        (activeTutorConvId
+          ? scopedPanes.find(
+              (t) =>
+                t.kind === 'goal' &&
+                t.goalId === tabGoalId &&
+                t.conversationId === activeTutorConvId,
+            )
+          : undefined) ?? scopedPanes.find((t) => t.kind === 'goal' && t.goalId === tabGoalId)
       return matched ? agentTabKey(matched) : activeAgentTabId
     }
     return activeAgentTabId
-  }, [mode, subViewMeta, tabGoalId, scopedPanes, activeAgentTabId])
+  }, [mode, subViewMeta, tabGoalId, activeTutorConvId, scopedPanes, activeAgentTabId])
 
   return (
     <div
