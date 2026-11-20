@@ -130,7 +130,10 @@ export default function AgentTeamPage({
   }
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-paper select-text">
+    <div
+      data-agent-team-page="true"
+      className="flex flex-col h-full w-full overflow-hidden bg-paper select-text"
+    >
       {/* 顶部极其低调的模式切换控制条 */}
       <div className="px-4 py-1.5 border-b border-line/40 bg-card/40 flex items-center justify-between text-[11.5px] shrink-0">
         <div className="flex items-center gap-1.5 text-ink-faint">

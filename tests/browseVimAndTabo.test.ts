@@ -16,6 +16,7 @@ import type { DocWorkspace } from '../src/learn/groups/types'
 import { useBrowseVim } from '../src/components/learn/workspace/useBrowseVim'
 import { BrowseSmoothCursor } from '../src/components/learn/workspace/browseSmoothCursor'
 import { setVimEnabled } from '../src/lib/vimSettings'
+import { setGlobalCommandBarOpener } from '../src/lib/commandBarFocus'
 import type { LearnStore } from '../src/learn/types'
 
 describe('tab 打开与排序规则', () => {
@@ -358,6 +359,85 @@ describe('Vim 剪贴板同步与输入法 IME 防护', () => {
     cursor.destroy()
     area.remove()
     vi.useRealTimers()
+  })
+
+  it('在智能体团队页面中彻底禁用 Vim 模式按键拦截，但保留非输入区冒号唤出命令栏', async () => {
+    const openerMock = vi.fn()
+    setGlobalCommandBarOpener(openerMock)
+
+    const teamStore: LearnStore = {
+      docArea: {
+        layout: { kind: 'group', group: 'g1' },
+        groups: [
+          {
+            id: 'g1',
+            tabs: [{ id: 'team:all', ref: { kind: 'agentTeam' }, view: 'preview' as const }],
+            active: 'team:all',
+          },
+        ],
+        focus: 'g1',
+      },
+    } as any
+
+    function TeamComp() {
+      useBrowseVim({
+        getLatest: () => teamStore,
+      })
+      return React.createElement(
+        'div',
+        { 'data-agent-team-page': 'true' },
+        React.createElement('textarea', { id: 'team-input' }),
+        React.createElement('button', { id: 'team-btn' }, '按钮'),
+      )
+    }
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(React.createElement(TeamComp))
+    })
+
+    const textarea = document.getElementById('team-input') as HTMLTextAreaElement
+    const button = document.getElementById('team-btn') as HTMLButtonElement
+
+    // 1. 普通 Vim 按键 (如 'j', 'k', 'v') 绝不被拦截
+    const jEvent = new KeyboardEvent('keydown', {
+      key: 'j',
+      bubbles: true,
+      cancelable: true,
+    })
+    window.dispatchEvent(jEvent)
+    expect(jEvent.defaultPrevented).toBe(false)
+
+    // 2. 非输入元素下按下 ':' 能够唤出全局命令栏
+    button.focus()
+    const colonEvent = new KeyboardEvent('keydown', {
+      key: ':',
+      bubbles: true,
+      cancelable: true,
+    })
+    button.dispatchEvent(colonEvent)
+    expect(colonEvent.defaultPrevented).toBe(true)
+    expect(openerMock).toHaveBeenCalledWith({ mode: ':', prefill: '' })
+
+    // 3. 在输入框内部按下 ':' 绝不唤出全局命令栏，不阻止默认输入
+    openerMock.mockClear()
+    textarea.focus()
+    const colonInInputEvent = new KeyboardEvent('keydown', {
+      key: ':',
+      bubbles: true,
+      cancelable: true,
+    })
+    textarea.dispatchEvent(colonInInputEvent)
+    expect(colonInInputEvent.defaultPrevented).toBe(false)
+    expect(openerMock).not.toHaveBeenCalled()
+
+    setGlobalCommandBarOpener(null)
+    await act(async () => {
+      root.unmount()
+    })
+    container.remove()
   })
 })
 

@@ -111,6 +111,7 @@ export const TeamAgentWorkspace = memo(function TeamAgentWorkspace({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    e.stopPropagation()
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       handleSend()
