@@ -552,19 +552,21 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
   g(
     'classroom',
     '互动课堂',
-    '互动课堂域：course 结构契约（schema）、时间轴动词表（verbs）、组件与入场动效库（components / animations）、静态体检（check）、自创注册。',
+    '互动课堂域：course 结构契约（schema）、时间轴动词表（verbs）、组件与动效库（components / animations）、音效库（sounds）、静态体检（check）、自创注册。',
     `互动课堂域。写课件前**必调 schema()** 对齐 course 结构（动作列表字段名是 actions，不是 beats）；两套动效表严格分开：
 - action.verb：时间轴逐条调度的动词（显隐 / 强调 / 位移 / 动画），白名单 classroom.verbs()；
 - data-anim="名"：换幕挂载时播一次的入场动效，不受时间轴控制，清单 classroom.animations()；
+- 音效库 classroom.sounds()：22 个 WebAudio 实时合成音效，可在 visual.params.sfx、scene.sfx 或 checkpoint.sfx 中按需点缀；
 - 把 data-anim 的名想当然填进 verb 曾经是最高频的静默失败——schema() 里的最小完整示例是唯一标准，
   editContent 写入时做结构校验（错误拒存并回原因），交付前可 classroom.check() 复查；
 - 组件与动效表达不了的场景，registerComponent / registerAnimation 自创注册。`,
     [
       a('schema', 'classroom.schema()', 'course 结构契约一次给齐（写课件前必看）', 'LessonCourse / LessonScene / 四类 action（speak / visual / wait / checkpoint）的完整字段与阻塞默认值、1920×1080 布局常量与预置舞台类、受控元素 id / data-hidden 语义、一份最小完整 course 示例。动作列表字段名是 actions，不是 beats。', "const s = await api.classroom.schema()", { trap: '动作列表字段名是 actions，不是 beats；节奏动效只能用 action.verb（verbs()），data-anim 是另一套入场表' }),
-      a('verbs', 'classroom.verbs()', 'action.verb 时间轴动词白名单', '回 state（appear / highlight / move 等 11 个状态动词）与 anime（popIn / bounce / slideIn* 等动画动词）两张表，每个动词一行用途。讲解节奏里的显隐强调位移只能从这里选；data-anim 是另一套表（animations()）。', 'const v = await api.classroom.verbs()'),
-      a('components', 'classroom.components({ source?, query? }?)', '查询可用教学组件', '返回全部可用教学组件（内置 ui-* 与外部注册）及其标签、说明与语法示例。', 'const r = await api.classroom.components()'),
-      a('animations', 'classroom.animations({ source?, query? }?)', '查询 data-anim 入场动效表', '返回全部可用 data-anim 动效（换幕挂载时播一次，不受时间轴控制）及其名称、说明与挂载示例。注意：这不是 action.verb 白名单（那是 verbs()）。', 'const r = await api.classroom.animations()'),
-      a('check', 'classroom.check({ target })', '对已存课件做静态体检（不渲染画面）', '查动词白名单、target 与元素 id 对号、字幕句号、每句字数、data-hidden 死锁与无动效画面；editContent 之后或自检时调，errors 要修、warnings 建议修。', 'const r = await api.classroom.check({ target: 课堂uuid })'),
+      a('verbs', 'classroom.verbs()', 'action.verb 时间轴动词白名单', '回 state（appear / highlight / move / dimOthers 等 11 个状态动词）与 anime（riseIn / popIn / unfold / stamp / shimmer / spotlight / ripple 等动画动词）两张表，每个动词一行用途。讲解节奏里的显隐强调位移只能从这里选；data-anim 是另一套表（animations()）。', 'const v = await api.classroom.verbs()'),
+      a('components', 'classroom.components({ source?, query? }?)', '查询可用教学组件', '返回全部可用教学组件（31 种内置 ui-* 与外部注册）及其标签、说明与语法示例。', 'const r = await api.classroom.components()'),
+      a('animations', 'classroom.animations({ source?, query? }?)', '查询 data-anim 入场动效表', '返回全部可用 data-anim 动效（换幕挂载时播一次，不受时间轴控制）及其名称、分类、推荐音效与挂载示例。注意：这不是 action.verb 白名单（那是 verbs()）。', 'const r = await api.classroom.animations()'),
+      a('sounds', 'classroom.sounds({ category?, query? }?)', '查询课堂音效库（22 种 WebAudio 合成音效）', '返回全部实时合成音效的名称、标签、分类（transition|accent|rhythm|feedback）、听感描述与推荐用法；可在 visual.params.sfx、scene.sfx、checkpoint.sfx 中引用，传 none 可关闭自带音。', "const s = await api.classroom.sounds()"),
+      a('check', 'classroom.check({ target })', '对已存课件做静态体检（不渲染画面）', '查动词白名单、target 与元素 id 对号、字幕句号、每句字数、data-hidden 死锁、音效名合法性与无动效画面；editContent 之后或自检时调，errors 要修、warnings 建议修。', 'const r = await api.classroom.check({ target: 课堂uuid })'),
       a('registerComponent', 'classroom.registerComponent({ tag, name, description, template, defaultProps?, example? })', '注册自定义教学组件', 'tag 必须以 ui- 或 x- 开头；template 支持 {{prop}} 与 {{content}} 插槽。', `await api.classroom.registerComponent({ tag: 'ui-experiment', name: '实验展示卡', description: '展示实验器材与反应', template: '<div class="exp-card"><h4>{{title}}</h4><p>{{content}}</p></div>' })`),
       a('registerAnimation', 'classroom.registerAnimation({ verb, name, description, keyframes, duration?, easing?, example? })', '注册自定义动效', 'verb 为动效动词；keyframes 为 anime.js 关键帧对象或数组。', `await api.classroom.registerAnimation({ verb: 'spiralZoom', name: '螺旋聚焦', description: '带轻微旋转的快速放大聚焦', keyframes: { scale: [0.3, 1], rotate: [-45, 0], opacity: [0, 1] }, duration: 600 })`),
     ],

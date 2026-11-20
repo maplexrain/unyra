@@ -1,9 +1,10 @@
 /**
  * 确定性互动课堂运行时调度器 (LessonScheduler)
- * 驱动动作生命周期、维护阻塞/非阻塞双通道并发、执行 0ms 确定性快进 (Deterministic Seek)
+ * 驱动动作生命周期、维护阻塞/非阻塞双通道并发、执行 0ms 确定性静音快进 (Deterministic Seek)
  */
 import type { ActionCompiler } from './ActionCompiler'
 import type { StageViewport } from './StageViewport'
+import { startSfx, stopAllSfx, type SfxHandle } from './sfx/sfxEngine'
 import { buildTimelineBeats, findBeatIndex } from './timeline'
 import type {
   LessonAction,
@@ -21,8 +22,9 @@ export class LessonScheduler {
   private playbackRate = 1.0
 
   private activeBlockingTask: RunningTask | null = null
+  private activeSceneSfx: SfxHandle | null = null
   private backgroundTasks = new Set<RunningTask>()
-  private runToken = 0 // 递增令牌，防止异步时序竞态
+  private runToken = 0
   private beats: TimelineBeat[] = []
 
   private course: LessonCourse
@@ -34,14 +36,13 @@ export class LessonScheduler {
     course: LessonCourse,
     stage: StageViewport,
     compiler: ActionCompiler,
-    onStateChange: (snapshot: SchedulerSnapshot) => void
+    onStateChange: (snapshot: SchedulerSnapshot) => void,
   ) {
     this.course = course
     this.stage = stage
     this.compiler = compiler
     this.onStateChange = onStateChange
     this.beats = buildTimelineBeats(this.course)
-    // 实例化时立即启动向后看 3 句话的 TTS 预热
     this.maintainPreloadBuffer()
   }
 
@@ -68,7 +69,7 @@ export class LessonScheduler {
     return this.buildSnapshot()
   }
 
-  /** 初始化挂载首个画面 DOM，保持 idle 状态等待手动触发播放 */
+  /** 初始化挂载首个画面 DOM，保持 idle 状态等待手动触发播放（绝对静音） */
   public mountInitial(): void {
     if (this.course.scenes.length > 0) {
       const scene = this.course.scenes[0]
@@ -88,8 +89,7 @@ export class LessonScheduler {
       this.resume()
       return
     }
-    
-    // 如果播放已结束，重置状态以支持重播
+
     if (this.status === 'ended') {
       this.sceneIndex = 0
       this.actionIndex = 0
@@ -105,16 +105,18 @@ export class LessonScheduler {
       const scene = this.course.scenes[this.sceneIndex]
       const actions = scene.actions ?? []
 
-      // 若处于本画面起点，重置并挂载画面初始 DOM
       if (this.actionIndex === 0) {
         this.stage.mountScene(scene.html ?? '')
+        if (scene.sfx && scene.sfx !== 'none') {
+          this.activeSceneSfx?.stop()
+          this.activeSceneSfx = startSfx(scene.sfx, { rate: this.playbackRate })
+        }
       }
 
       while (this.actionIndex < actions.length) {
         if (currentToken !== this.runToken) return
         const action = actions[this.actionIndex]
 
-        // 检查点拦截：等待学生点击继续或按键
         if (action.type === 'checkpoint') {
           this.status = 'waiting_checkpoint'
           const task = this.compiler.compile(action, this.playbackRate)
@@ -129,7 +131,6 @@ export class LessonScheduler {
           continue
         }
 
-        // 口语讲解动作：确保声音与字幕同步，并滚动预加载三句话缓冲区
         if (action.type === 'speak') {
           this.maintainPreloadBuffer()
           let voiceEmitted = false
@@ -141,7 +142,6 @@ export class LessonScheduler {
           }
 
           const task = this.compiler.compile(action, this.playbackRate, onVoiceReady)
-          // 兜底微定时器：若音频层异常，避免阻断字幕露出
           const fallbackTimer = window.setTimeout(onVoiceReady, 60)
 
           const isBlocking = action.blocking ?? true
@@ -174,7 +174,6 @@ export class LessonScheduler {
           this.activeBlockingTask = null
           if (currentToken !== this.runToken) return
         } else {
-          // 非阻塞动作：推入后台集合并行运行，不阻塞主循环
           this.backgroundTasks.add(task)
           task.finished.finally(() => {
             this.backgroundTasks.delete(task)
@@ -184,7 +183,6 @@ export class LessonScheduler {
         this.actionIndex++
       }
 
-      // 画面边界汇合（Barrier）：本画面动作全部跑完，强制完成所有残余后台动画
       this.flushBackgroundTasks()
       this.sceneIndex++
       this.actionIndex = 0
@@ -201,6 +199,8 @@ export class LessonScheduler {
   public pause(): void {
     if (this.status !== 'playing') return
     this.status = 'paused'
+    this.activeSceneSfx?.stop()
+    this.activeSceneSfx = null
     this.activeBlockingTask?.pause()
     this.backgroundTasks.forEach((t) => t.pause())
     this.emitState()
@@ -223,14 +223,13 @@ export class LessonScheduler {
   }
 
   /**
-   * 任意节拍跳转 (Deterministic Seek)
-   * 1. 废除旧异步循环，立即停止所有正在朗读的语音与动画；
-   * 2. 重置目标画面的初始 HTML；
-   * 3. 在同一渲染帧内对目标画面 [0, targetActionIndex - 1] 的所有视觉动作同步应用 instantFinish；
-   * 4. 更新游标并恢复播放。
+   * 任意节拍跳转 (Deterministic Seek，全程静音快进前置状态)
    */
   public seekTo(targetSceneIndex: number, targetActionIndex: number): void {
     this.runToken++
+    this.activeSceneSfx?.stop()
+    this.activeSceneSfx = null
+    stopAllSfx()
     this.activeBlockingTask?.abort()
     this.activeBlockingTask = null
     this.abortBackgroundTasks()
@@ -238,16 +237,14 @@ export class LessonScheduler {
     const targetScene = this.course.scenes[targetSceneIndex]
     if (!targetScene) return
 
-    // 重置目标画面初始 HTML
     this.stage.mountScene(targetScene.html ?? '')
 
-    // 单帧内重现前置所有视觉动作终态
     const targetActions = targetScene.actions ?? []
     const end = Math.min(targetActionIndex, targetActions.length)
     for (let i = 0; i < end; i++) {
       const prevAction = targetActions[i]
       if (prevAction.type === 'visual') {
-        const fastTask = this.compiler.compile(prevAction, 1.0)
+        const fastTask = this.compiler.compile(prevAction, 1.0, undefined, { silent: true })
         fastTask.instantFinish()
       }
     }
@@ -275,16 +272,12 @@ export class LessonScheduler {
       const prevBeat = this.beats[curBeatIdx - 1]
       this.seekTo(prevBeat.sceneIndex, prevBeat.startActionIndex)
     } else {
-      // 已经在第一个节拍，重置本节拍
       const cur = this.beats[0]
       if (cur) this.seekTo(cur.sceneIndex, cur.startActionIndex)
     }
   }
 
-  /**
-   * 维护向后看三句话的 TTS 预加载滑动窗口
-   * 确保无论演播推进到哪一步，缓冲区内始终保持后续 3 句 speak 音频已合成与预热
-   */
+  /** 维护向后看三句话的 TTS 预加载滑动窗口 */
   public maintainPreloadBuffer(): void {
     const queue: string[] = []
     let s = this.sceneIndex
@@ -309,13 +302,11 @@ export class LessonScheduler {
     }
   }
 
-  /** 强制完成所有后台残存任务 */
   private flushBackgroundTasks(): void {
     this.backgroundTasks.forEach((t) => t.instantFinish())
     this.backgroundTasks.clear()
   }
 
-  /** 中止所有后台任务 */
   private abortBackgroundTasks(): void {
     this.backgroundTasks.forEach((t) => t.abort())
     this.backgroundTasks.clear()
@@ -329,7 +320,6 @@ export class LessonScheduler {
       sceneIndex: this.sceneIndex,
       actionIndex: this.actionIndex,
       activeBeatIndex,
-      // 字幕与 TTS 唯一源：TTS 朗读与屏幕字幕严格使用 act.text，绝对一致
       subtitle: act?.type === 'speak' ? act.text : undefined,
       checkpointTitle: act?.type === 'checkpoint' ? act.title : undefined,
       playbackRate: this.playbackRate,
@@ -342,6 +332,9 @@ export class LessonScheduler {
 
   public destroy(): void {
     this.runToken++
+    this.activeSceneSfx?.stop()
+    this.activeSceneSfx = null
+    stopAllSfx()
     this.activeBlockingTask?.abort()
     this.activeBlockingTask = null
     this.abortBackgroundTasks()

@@ -21,6 +21,8 @@ export interface LessonScene {
    * 初始隐藏元素统一声明 data-hidden 属性
    */
   html: string
+  /** 进幕时的可选转场音效名（见 api.classroom.sounds()，如 'whoosh' / 'swell'；'none' 静音） */
+  sfx?: string
   /** 线性动作指令序列 */
   actions: LessonAction[]
 }
@@ -60,9 +62,9 @@ export interface VisualParams {
   y?: number
   /** 目标缩放倍率 */
   scale?: number
-  /** 强调颜色（Hex 或 CSS 变量，用于 highlight / unhighlight） */
+  /** 强调颜色（Hex 或 CSS 变量，用于 highlight / glow / shimmer / ripple） */
   color?: string
-  /** 替换文本内容（用于 updateText） */
+  /** 替换文本内容（用于 updateText / typewriter） */
   text?: string
   /** anime.js 动画预设名（用于 animate 动词） */
   animation?: string
@@ -70,8 +72,12 @@ export interface VisualParams {
   end?: number
   /** countUp 动画起始数值（默认 0） */
   start?: number
+  /** countUp 动画前缀（如 "¥", "+"） */
+  prefix?: string
   /** countUp 动画后缀（如 "%", "ms"） */
   suffix?: string
+  /** 伴随此动作触发的音效名（见 api.classroom.sounds()；传 'none' 可覆盖关闭自带音效） */
+  sfx?: string
 }
 
 /** 3. 显式等待动作（用于讲解气口留白） */
@@ -87,6 +93,8 @@ export interface CheckpointAction {
   type: 'checkpoint'
   /** 思考提示文案 */
   title?: string
+  /** 检查点弹出音效（默认 'bell'；传 'none' 静音） */
+  sfx?: string
   blocking: true
 }
 
@@ -96,8 +104,8 @@ export type VisualVerb =
   | 'disappear' // [状态型] 淡出并设置 data-hidden
   | 'highlight' // [状态型] 添加高亮发光类
   | 'unhighlight' // [状态型] 移除高亮发光类
-  | 'dimOthers' // [状态型] 聚焦 target，同级兄弟元素降低透明度至 0.25
-  | 'resetFocus' // [状态型] 恢复同级兄弟元素透明度为 1
+  | 'dimOthers' // [状态型] 聚焦 target，同级兄弟元素降低透明度并柔化景深
+  | 'resetFocus' // [状态型] 恢复同级兄弟元素透明度与清晰度
   | 'move' // [状态型] 相对当前位置平滑位移 (x, y)
   | 'scale' // [状态型] 平滑缩放至指定倍率
   | 'drawSvg' // [状态型] SVG 描边绘制动画
@@ -112,12 +120,23 @@ export type VisualVerb =
   | 'flip' // [动画] 3D 翻转动效
   | 'popIn' // [动画] 弹性缩放进入动效
   | 'zoomIn' // [动画] 聚焦放大动效
+  | 'riseIn' // [动画] 晨雾浮升入场动效
+  | 'unfold' // [动画] 书卷纵展开场动效
+  | 'stamp' // [动画] 朱印落定入场动效
+  | 'blurIn' // [动画] 光晕景深聚焦入场动效
   | 'rotate' // [动画] 顺时针旋转动效
   | 'glow' // [动画] 呼吸光晕动效
+  | 'shimmer' // [动画] 流光斜扫掠影动效
+  | 'ripple' // [动画] 涟漪扩圈聚焦动效
+  | 'spotlight' // [动画] 舞台追光抬升动效
+  | 'heartbeat' // [动画] 双拍心跳律动动效
+  | 'jello' // [动画] 软体果冻弹性动效
+  | 'swing' // [动画] 顶支点钟摆摇曳动效
+  | 'rubberBand' // [动画] 橡皮筋张力拉伸动效
+  | 'flash' // [动画] 双闪警示动效
+  | 'tada' // [动画] 礼花欢庆绽放动效
   | 'countUp' // [动画] 数字滚动递增动效
   | 'typewriter' // [动画] 打字机字符逐字显现动效
-  // slideIn 系列：与 registry（BUILTIN_ANIMATIONS）同名同源。2026-11-18 前类型漏了它们，
-  // 而 sanitizer 早已按唤醒动词对待——写成 action.verb 编译不过、运行又落 noop，两头不讨好
   | 'slideInLeft' // [动画] 自左滑入
   | 'slideInRight' // [动画] 自右滑入
   | 'slideInTop' // [动画] 自上降落

@@ -1,12 +1,9 @@
 /**
  * 课堂 course 的静态校验与体检（不渲染画面）。
- *
- * 2026-11-18 之前 editContent 对 course 只查「是对象」就原样存盘：未知 verb、悬空
- * target、自造的 beats 字段全部静默入库，画面全静还无从查起——「交付约定不可见 +
- * 写入不校验」叠加出的最坏失败形态。这里的回执即人话：errors 拒绝保存（editContent
- * 用），warnings 随 ok 回执带出（note），classroom.check() 也用它做整卷体检。
+ * 统一从 verbs.ts 读取动作白名单与唤醒集合，并校验 sfx 音效名合法性。
  */
-import { VISUAL_VERB_WHITELIST } from './verbs'
+import { SFX_RECIPES } from './sfx/sfxLibrary'
+import { VISUAL_VERB_WHITELIST, WAKING_VERBS } from './verbs'
 
 export interface CourseAudit {
   errors: string[]
@@ -15,21 +12,6 @@ export interface CourseAudit {
 }
 
 const COURSE_FIELDS = new Set(['courseId', 'title', 'description', 'scenes'])
-
-/** 能唤醒 data-hidden 的动词（与 sanitizer 的唤醒口径一致） */
-const WAKING_VERBS = new Set([
-  'appear',
-  'drawSvg',
-  'popIn',
-  'zoomIn',
-  'slideInLeft',
-  'slideInRight',
-  'slideInTop',
-  'slideInBottom',
-  'flip',
-  'bounce',
-  'animate',
-])
 
 /** 从 html 片段里扫出元素 id 与是否声明 data-hidden（宿主侧无 DOMParser，用标签正则） */
 function scanElements(html: string): Map<string, { hidden: boolean }> {
@@ -44,7 +26,14 @@ function scanElements(html: string): Map<string, { hidden: boolean }> {
   return out
 }
 
-/** 校验完整 course：结构、动词白名单、target 对号、字幕纪律、data-hidden 语义 */
+function checkSfxName(sfx: unknown, where: string, warnings: string[]): void {
+  if (typeof sfx !== 'string' || !sfx.trim() || sfx === 'none') return
+  if (!SFX_RECIPES[sfx.trim()]) {
+    warnings.push(`${where} 的音效名 "${sfx}" 不在内置音效库——可用清单查 api.classroom.sounds()`)
+  }
+}
+
+/** 校验完整 course：结构、动词白名单、target 对号、字幕纪律、data-hidden 语义、音效名 */
 export function auditCourse(course: unknown): CourseAudit {
   const errors: string[] = []
   const warnings: string[] = []
@@ -89,10 +78,10 @@ export function auditCourse(course: unknown): CourseAudit {
     if (typeof s.html !== 'string' || !s.html.trim()) {
       errors.push(where + '.html 缺失——画面内容是 H5 片段（1920×1080 坐标系，受控元素带唯一 id）')
     } else if (/<script[\s\S]*<\/script\s*>/i.test(s.html) || /\son[a-z]+\s*=/i.test(s.html)) {
-      // 渲染器走 innerHTML：<script> 不执行但 on* 内联事件会；手动编辑路径有 sanitizer
-      // 剥离，agent 写入路径一律拒存逼着改对（这也让冒烟测试能探出问题而不是 ok:true）
       errors.push(where + '.html 含 <script> 或 on* 内联事件——课堂画布禁用脚本，互动暂停用 checkpoint 动作')
     }
+    checkSfxName(s.sfx, where + '.sfx', warnings)
+
     if (!Array.isArray(s.actions)) {
       errors.push(where + '.actions 缺失或不是数组——动作列表字段名是 actions，不是 beats；契约先调 api.classroom.schema()')
       return
@@ -147,6 +136,10 @@ export function auditCourse(course: unknown): CourseAudit {
           if (verb === 'appear' && target && elements.get(target)?.hidden === false) {
             warnings.push(at2 + ' 对 "' + target + '" 用 appear 但元素没声明 data-hidden——它一开始就可见，appear 看不出效果')
           }
+          const params = a.params && typeof a.params === 'object' ? (a.params as Record<string, unknown>) : null
+          if (params?.sfx !== undefined) {
+            checkSfxName(params.sfx, at2 + '.params.sfx', warnings)
+          }
           if (WAKING_VERBS.has(verb) && target) woken.add(target)
           break
         }
@@ -156,6 +149,7 @@ export function auditCourse(course: unknown): CourseAudit {
           break
         }
         case 'checkpoint':
+          checkSfxName(a.sfx, at2 + '.sfx', warnings)
           break
         default:
           errors.push(at2 + '.type "' + String(a.type) + '" 不认识——只有 speak / visual / wait / checkpoint 四类')
@@ -166,7 +160,6 @@ export function auditCourse(course: unknown): CourseAudit {
       warnings.push(where + ' 有讲解但没有任何 visual 动效——讲解不能静止画面，几乎每句 speak 都配 1-2 个 visual')
     }
 
-    // data-hidden 死锁：声明了隐藏但全剧从未被唤醒（宿主侧存盘不会自愈，会一直看不见）
     for (const [id, el] of elements) {
       if (el.hidden && !woken.has(id)) {
         warnings.push(where + ' 的 "' + id + '" 声明了 data-hidden 但全剧从未被唤醒——会一直看不见，安排唤醒动词或删掉 data-hidden')

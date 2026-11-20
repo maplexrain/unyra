@@ -8,8 +8,11 @@ import {
   unregisterClassroomAnimation,
 } from '../../../learn/classroom/registry'
 import { runAnimeAnimation } from '../../../learn/classroom/animations'
+import { playSfx } from '../../../learn/classroom/sfx/sfxEngine'
+import { listSfx } from '../../../learn/classroom/sfx/sfxLibrary'
 import ClassroomComponentPreview from './ClassroomComponentPreview'
 import ClassroomComponentDetailPage from './ClassroomComponentDetailPage'
+import ClassroomSfxSection from './ClassroomSfxSection'
 import {
   ArrowLeft,
   Sparkles,
@@ -22,6 +25,7 @@ import {
   Layers,
   Film,
   Tag,
+  Volume2,
   ArrowRight,
 } from 'lucide-react'
 import { t } from '../../../i18n'
@@ -31,7 +35,7 @@ export interface ClassroomShowcasePageProps {
   initialTag?: string
 }
 
-type TabCategory = 'all' | 'components' | 'animations' | 'external'
+type TabCategory = 'all' | 'components' | 'animations' | 'sounds' | 'external'
 type ComponentSubCategory = 'all' | 'layout' | 'content' | 'interactive' | 'visual'
 
 export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomShowcasePageProps) {
@@ -49,11 +53,10 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
   const [formName, setFormName] = useState('')
   const [formDesc, setFormDesc] = useState('')
   const [formTemplate, setFormTemplate] = useState('')
-  const [formKeyframes, setFormKeyframes] = useState('{\n  "scale": [0.8, 1],\n  "opacity": [0, 1]\n}')
+  const [formKeyframes, setFormKeyframes] = useState('{\n  "scale": [0.85, 1],\n  "opacity": [0, 1]\n}')
   const [formDuration, setFormDuration] = useState('600')
   const [formError, setFormError] = useState<string | null>(null)
 
-  // 动效卡片 DOM 引用字典，用于实时原位播放
   const animTargetsRef = useRef<Record<string, HTMLDivElement | null>>({})
 
   const components = useMemo(() => {
@@ -66,7 +69,8 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
     return listClassroomAnimations()
   }, [revision])
 
-  // 复制示例代码到剪贴板
+  const allSounds = useMemo(() => listSfx(), [])
+
   const handleCopy = (e: React.MouseEvent, id: string, text: string) => {
     e.stopPropagation()
     navigator.clipboard.writeText(text).then(() => {
@@ -75,14 +79,15 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
     })
   }
 
-  // 播放单项动效
-  const handlePlayAnimation = (verb: string) => {
+  const handlePlayAnimation = (verb: string, recommendedSfx?: string) => {
     const el = animTargetsRef.current[verb]
     if (!el) return
     runAnimeAnimation(el, verb)
+    if (recommendedSfx) {
+      playSfx(recommendedSfx)
+    }
   }
 
-  // 注销外部组件
   const handleDeleteComponent = (e: React.MouseEvent, tag: string) => {
     e.stopPropagation()
     if (confirm(t('确定要注销组件 <{0}> 吗？', tag))) {
@@ -92,7 +97,6 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
     }
   }
 
-  // 注销外部动效
   const handleDeleteAnimation = (verb: string) => {
     if (confirm(t('确定要注销动效「{0}」吗？', verb))) {
       if (unregisterClassroomAnimation(verb)) {
@@ -101,7 +105,6 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
     }
   }
 
-  // 提交新建
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setFormError(null)
@@ -111,14 +114,14 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
         tag: formTagOrVerb,
         name: formName,
         description: formDesc,
-        template: formTemplate || `<div class="card-glass p-6"><h4 class="font-bold">{{title}}</h4><div>{{content}}</div></div>`,
+        template: formTemplate || `<div class="card-glass"><h4 class="card-ui-title">{{title}}</h4><div>{{content}}</div></div>`,
       })
       if (!res.ok) {
         setFormError(res.message || t('注册组件失败'))
         return
       }
     } else {
-      let parsedKeyframes: any = undefined
+      let parsedKeyframes: Record<string, unknown> | Array<Record<string, unknown>> | undefined
       if (formKeyframes.trim()) {
         try {
           parsedKeyframes = JSON.parse(formKeyframes)
@@ -148,10 +151,9 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
     setRevision((v) => v + 1)
   }
 
-  // 过滤组件列表
   const filteredComponents = useMemo(() => {
+    if (activeTab === 'animations' || activeTab === 'sounds') return []
     let list = components
-    if (activeTab === 'animations') return []
     if (activeTab === 'external') list = list.filter((c) => c.source === 'external')
     if (subCategory !== 'all') {
       list = list.filter((c) => c.category === subCategory)
@@ -168,10 +170,9 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
     return list
   }, [components, activeTab, subCategory, searchQuery])
 
-  // 过滤动效列表
   const filteredAnimations = useMemo(() => {
+    if (activeTab === 'components' || activeTab === 'sounds') return []
     let list = animations
-    if (activeTab === 'components') return []
     if (activeTab === 'external') list = list.filter((a) => a.source === 'external')
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim()
@@ -185,7 +186,11 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
     return list
   }, [animations, activeTab, searchQuery])
 
-  // 若处于二级组件详情页，展示详情页视图
+  const filteredSounds = useMemo(() => {
+    if (activeTab !== 'all' && activeTab !== 'sounds') return []
+    return searchQuery.trim() ? listSfx({ query: searchQuery }) : allSounds
+  }, [allSounds, activeTab, searchQuery])
+
   if (selectedTag) {
     return (
       <ClassroomComponentDetailPage
@@ -225,12 +230,11 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
               </span>
             </div>
             <p className="text-[12px] text-ink-soft">
-              {t('教学语义组件 · Anime.js 动效视效 · 渲染实时参考与动态创作注册')}
+              {t('墨韵教学组件 · 精雕 Anime.js 动效 · WebAudio 实时音效库')}
             </p>
           </div>
         </div>
 
-        {/* 搜索与创作注册入口 */}
         <div className="flex items-center gap-2.5">
           <div className="relative flex items-center">
             <Search size={14} className="absolute left-3 text-ink-faint" />
@@ -238,8 +242,8 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t('搜索组件或动效 (如: concept, card, popIn)...')}
-              className="pl-8.5 pr-3 py-1.5 w-60 rounded-xl bg-paper border border-line text-[12px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-seal transition"
+              placeholder={t('搜索组件、动效或音效 (如: pipeline, shimmer, chime)...')}
+              className="pl-8.5 pr-3 py-1.5 w-68 rounded-xl bg-paper border border-line text-[12px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-seal transition"
             />
           </div>
           <button
@@ -255,26 +259,21 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
 
       {/* 分类过滤器条 */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 border-b border-line/50 bg-card/60 shrink-0">
-        {/* 一级分类 */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-line/30 text-[12px] font-medium">
+        <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-line/30 text-[12px] font-medium">
           <button
             type="button"
             onClick={() => setActiveTab('all')}
             className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-              activeTab === 'all'
-                ? 'bg-seal text-white font-bold shadow-xs'
-                : 'text-ink-soft hover:text-ink'
+              activeTab === 'all' ? 'bg-seal text-white font-bold shadow-xs' : 'text-ink-soft hover:text-ink'
             }`}
           >
-            {t('全部 ({0})', components.length + animations.length)}
+            {t('全部 ({0})', components.length + animations.length + allSounds.length)}
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('components')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
-              activeTab === 'components'
-                ? 'bg-seal text-white font-bold shadow-xs'
-                : 'text-ink-soft hover:text-ink'
+              activeTab === 'components' ? 'bg-seal text-white font-bold shadow-xs' : 'text-ink-soft hover:text-ink'
             }`}
           >
             <Layers size={13} />
@@ -284,9 +283,7 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
             type="button"
             onClick={() => setActiveTab('animations')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
-              activeTab === 'animations'
-                ? 'bg-seal text-white font-bold shadow-xs'
-                : 'text-ink-soft hover:text-ink'
+              activeTab === 'animations' ? 'bg-seal text-white font-bold shadow-xs' : 'text-ink-soft hover:text-ink'
             }`}
           >
             <Film size={13} />
@@ -294,11 +291,19 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab('sounds')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
+              activeTab === 'sounds' ? 'bg-seal text-white font-bold shadow-xs' : 'text-ink-soft hover:text-ink'
+            }`}
+          >
+            <Volume2 size={13} />
+            <span>{t('音效库 ({0})', allSounds.length)}</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('external')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
-              activeTab === 'external'
-                ? 'bg-seal text-white font-bold shadow-xs'
-                : 'text-ink-soft hover:text-ink'
+              activeTab === 'external' ? 'bg-seal text-white font-bold shadow-xs' : 'text-ink-soft hover:text-ink'
             }`}
           >
             <Tag size={13} />
@@ -312,8 +317,7 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
           </button>
         </div>
 
-        {/* 组件子分类筛选（仅在组件库或全部标签下可用） */}
-        {activeTab !== 'animations' && (
+        {(activeTab === 'all' || activeTab === 'components' || activeTab === 'external') && (
           <div className="flex items-center gap-1 text-[11px] font-medium">
             <span className="text-ink-faint mr-1">{t('组件类型：')}</span>
             {(
@@ -418,7 +422,7 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
               </label>
               <textarea
                 rows={3}
-                placeholder='<div class="card-glass p-6"><h4 class="card-ui-title">{{title}}</h4><div>{{content}}</div></div>'
+                placeholder='<div class="card-glass"><h4 class="card-ui-title">{{title}}</h4><div>{{content}}</div></div>'
                 value={formTemplate}
                 onChange={(e) => setFormTemplate(e.target.value)}
                 className="w-full px-3.5 py-2 rounded-xl bg-card border border-line text-[12px] font-mono leading-relaxed"
@@ -468,7 +472,7 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
       )}
 
       {/* 主网格展示区 */}
-      <div className="flex-1 p-5 md:p-7 max-w-[1720px] w-full mx-auto space-y-8">
+      <div className="flex-1 p-5 md:p-7 max-w-[1720px] w-full mx-auto space-y-10">
         {/* 组件卡牌网格 */}
         {filteredComponents.length > 0 && (
           <section className="space-y-4">
@@ -480,7 +484,7 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
               <span className="text-[11.5px] text-ink-soft">{t('点击任意组件卡片进入详情与实时演练')}</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-4.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
               {filteredComponents.map((comp) => {
                 const isExt = comp.source === 'external'
                 const copyKey = `comp:${comp.tag}`
@@ -491,7 +495,6 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
                     onClick={() => setSelectedTag(comp.tag)}
                     className="flex flex-col rounded-2xl bg-card border border-line/80 hover:border-seal/60 p-4.5 shadow-xs hover:shadow-xl transition-all duration-200 cursor-pointer group relative overflow-hidden"
                   >
-                    {/* 卡牌顶栏 */}
                     <div className="flex items-center justify-between mb-2.5">
                       <span className="font-mono text-[14px] font-bold text-seal tracking-tight group-hover:underline">
                         &lt;{comp.tag}&gt;
@@ -520,16 +523,12 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
                     </div>
 
                     <h3 className="text-[14.5px] font-bold text-ink-strong mb-1">{comp.name}</h3>
-                    <p className="text-[12px] text-ink-soft leading-relaxed line-clamp-2 mb-3.5">
-                      {comp.description}
-                    </p>
+                    <p className="text-[12px] text-ink-soft leading-relaxed line-clamp-2 mb-3.5">{comp.description}</p>
 
-                    {/* 实时渲染预览区（显示组件渲染后的真实样子） */}
                     <div className="mb-3.5">
                       <ClassroomComponentPreview html={comp.example} mode="thumbnail" />
                     </div>
 
-                    {/* 卡牌底栏：快捷复制与详情引导 */}
                     <div className="flex items-center justify-between pt-1 text-[11px] text-ink-soft border-t border-line/40">
                       <button
                         type="button"
@@ -569,10 +568,10 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
                 <Film size={16} className="text-sky-500" />
                 <h2 className="text-[15px] font-bold text-ink-strong">{t('课堂动效库 (Anime.js Animations)')}</h2>
               </div>
-              <span className="text-[11.5px] text-ink-soft">{t('原位点击试播实时动画')}</span>
+              <span className="text-[11.5px] text-ink-soft">{t('原位点击试播实时动画与伴音')}</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-4.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
               {filteredAnimations.map((anim) => {
                 const isExt = anim.source === 'external'
                 const copyKey = `anim:${anim.verb}`
@@ -587,6 +586,11 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
                         {anim.verb}
                       </span>
                       <div className="flex items-center gap-1.5">
+                        {anim.recommendedSfx && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                            ♪ {anim.recommendedSfx}
+                          </span>
+                        )}
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                             isExt
@@ -612,7 +616,6 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
                     <h3 className="text-[14.5px] font-bold text-ink-strong mb-1">{anim.name}</h3>
                     <p className="text-[12px] text-ink-soft leading-relaxed mb-4 flex-1">{anim.description}</p>
 
-                    {/* 实时动画试播视口 */}
                     <div className="flex items-center justify-between p-3.5 rounded-2xl bg-paper-deep border border-line/60 mb-3">
                       <div className="flex-1 flex items-center justify-center min-h-[48px]">
                         <div
@@ -626,7 +629,7 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
                       </div>
                       <button
                         type="button"
-                        onClick={() => handlePlayAnimation(anim.verb)}
+                        onClick={() => handlePlayAnimation(anim.verb, anim.recommendedSfx)}
                         className="flex items-center gap-1 px-3.5 py-2 rounded-xl bg-seal text-white hover:bg-seal-deep text-[11.5px] font-bold transition shadow-xs cursor-pointer active:scale-95 shrink-0"
                       >
                         <Play size={12} fill="currentColor" />
@@ -634,7 +637,6 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
                       </button>
                     </div>
 
-                    {/* 语法与复制 */}
                     <div className="flex items-center justify-between text-[11px] text-ink-soft rounded-xl bg-line/30 px-3 py-1.5 font-mono">
                       <span className="truncate pr-2">{anim.example}</span>
                       <button
@@ -643,11 +645,7 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
                         className="p-1 text-ink-faint hover:text-ink transition cursor-pointer shrink-0"
                         title={t('复制代码')}
                       >
-                        {copiedId === copyKey ? (
-                          <Check size={12} className="text-emerald-500" />
-                        ) : (
-                          <Copy size={12} />
-                        )}
+                        {copiedId === copyKey ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                       </button>
                     </div>
                   </div>
@@ -657,10 +655,15 @@ export default function ClassroomShowcasePage({ onBack, initialTag }: ClassroomS
           </section>
         )}
 
-        {filteredComponents.length === 0 && filteredAnimations.length === 0 && (
+        {/* 音效库网格 */}
+        {filteredSounds.length > 0 && (
+          <ClassroomSfxSection sounds={filteredSounds} copiedId={copiedId} onCopy={handleCopy} />
+        )}
+
+        {filteredComponents.length === 0 && filteredAnimations.length === 0 && filteredSounds.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-center select-none text-ink-faint space-y-3">
             <Layers size={42} className="opacity-35" />
-            <p className="text-[14px] font-medium">{t('未检索到符合条件的组件或动效')}</p>
+            <p className="text-[14px] font-medium">{t('未检索到符合条件的组件、动效或音效')}</p>
             <p className="text-[12px]">{t('请尝试更换关键字或切换分类标签')}</p>
           </div>
         )}

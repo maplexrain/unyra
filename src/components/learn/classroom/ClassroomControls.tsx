@@ -1,5 +1,6 @@
 import type { PlaybackStatus, SubtitleStyleConfig } from '../../../learn/classroom/types'
 import ClassroomSubtitleMenu from './ClassroomSubtitleMenu'
+import ClassroomSfxMenu from './ClassroomSfxMenu'
 import {
   Play,
   Pause,
@@ -140,6 +141,9 @@ export default function ClassroomControls({
           subtitleStyle={subtitleStyle}
           onChangeSubtitleStyle={onChangeSubtitleStyle}
         />
+
+        {/* 音效开关与主音量控制 */}
+        <ClassroomSfxMenu />
 
         {/* 关联子资源坞开关 */}
         <button

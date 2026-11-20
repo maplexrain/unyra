@@ -24,6 +24,8 @@ export interface ClassroomAnimationDef {
   verb: string
   name: string
   description: string
+  category?: 'entrance' | 'focus' | 'motion' | 'data'
+  recommendedSfx?: string
   source: 'builtin' | 'external'
   keyframes?: Record<string, unknown> | Array<Record<string, unknown>>
   duration?: number

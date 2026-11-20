@@ -16,147 +16,68 @@ export function createDefaultLessonCourse(title: string = '新互动课堂'): Le
   }
 }
 
-/** 生成初始演示互动课堂数据（供测试或样例参考） */
+/** 生成初始演示互动课堂数据（供测试或样例参考，通过静态体检零警告） */
 export function createDemoLessonCourse(title: string = '互动课堂教学演示'): LessonCourse {
   return {
     courseId: `course_${Date.now()}`,
     title,
-    description: '16:9 画布互动教学示例：画面、动作与时间轴联动',
+    description: '16:9 墨韵舞台互动课堂示例：版式、动效与音效协同',
     scenes: [
       {
         id: 'scene_intro',
         title: '1. 概念引入',
+        sfx: 'swell',
         html: `
           <div class="stage-top-title">
-            <div class="flex items-center justify-between border-b border-white/10 pb-4">
+            <div class="stage-header">
               <div class="flex items-center gap-4">
-                <span class="badge-step">第 1 节</span>
-                <span class="text-[44px] font-bold text-white tracking-wide">什么是确定性互动课堂？</span>
+                <ui-badge color="seal" variant="solid">第 1 幕</ui-badge>
+                <h1 class="stage-title">什么是确定性互动课堂？</h1>
               </div>
-              <span class="text-[24px] text-sky-400 font-mono">1920 × 1080 STAGE</span>
+              <span class="stage-eyebrow">1920 × 1080 STAGE</span>
             </div>
-            <div class="stage-split">
-              <div id="card_concept" class="card-glass flex flex-col gap-4">
-                <div class="text-[36px] font-bold text-sky-400">传统 PPT vs 互动数字课堂</div>
-                <div class="text-[28px] text-slate-300 leading-relaxed">
-                  传统课件依靠单向翻页与固定时长，而互动课堂由<span class="text-sky-300 font-semibold">【画面 + 动作 + 节拍轴】</span>构成，时间根据语音解说与动画动态推进。
-                </div>
-              </div>
-              <div id="card_features" data-hidden class="card-glass flex flex-col gap-5">
-                <div class="text-[32px] font-bold text-emerald-400">核心能力</div>
-                <div id="feat_1" class="text-[26px] text-slate-200 flex items-center gap-3">
-                  <span class="w-3 h-3 rounded-full bg-sky-400"></span> 16:9 绝对逻辑坐标系，消灭排版错乱
-                </div>
-                <div id="feat_2" data-hidden class="text-[26px] text-slate-200 flex items-center gap-3">
-                  <span class="w-3 h-3 rounded-full bg-emerald-400"></span> 阻塞讲解与非阻塞视觉并行调度
-                </div>
-                <div id="feat_3" data-hidden class="text-[26px] text-slate-200 flex items-center gap-3">
-                  <span class="w-3 h-3 rounded-full bg-pink-400"></span> 任意时间轴跳转，0毫秒精准终态重现
-                </div>
-              </div>
-            </div>
+            <ui-split gap="44" ratio="3:2">
+              <ui-card id="card_concept" eyebrow="PARADIGM SHIFT" title="动态剧场 vs 静态幻灯片" tone="seal" icon="sparkles">
+                <p>传统课件依赖机械翻页，而互动课堂由<ui-highlight color="seal">画面 + 动作 + 节拍轴</ui-highlight>驱动，讲解到哪一词，视觉聚焦到哪一处！</p>
+              </ui-card>
+              <ui-steps id="card_features" title="核心引擎能力" data-hidden>
+                <ui-step id="feat_1" num="1" title="绝对比例画布" state="done">锁定 16:9 坐标，拒绝视口挤压错乱</ui-step>
+                <ui-step id="feat_2" num="2" title="双通道并发" state="active" badge="协同" data-hidden>讲解阻塞推进，动效与音效并行呼吸</ui-step>
+                <ui-step id="feat_3" num="3" title="零毫秒快进" data-hidden>任意拖拽时间轴，瞬间安静重现终态</ui-step>
+              </ui-steps>
+            </ui-split>
           </div>
         `,
         actions: [
-          {
-            type: 'visual',
-            verb: 'highlight',
-            target: 'card_concept',
-          },
-          {
-            type: 'speak',
-            text: '欢迎来到全新互动课堂。这里不再是单调的翻页，而是由画面、动作与节拍构成的动态剧场。',
-            subtitle: '欢迎来到全新互动课堂：16:9 画布 · 动态动作流 · 语音协同',
-          },
-          {
-            type: 'visual',
-            verb: 'appear',
-            target: 'card_features',
-          },
-          {
-            type: 'speak',
-            text: '看右侧的核心优势，画布锁定高清比例，排版永远稳如泰山。',
-            subtitle: '16:9 锁定分辨率，外层等比自适应视口',
-          },
-          {
-            type: 'visual',
-            verb: 'appear',
-            target: 'feat_2',
-          },
-          {
-            type: 'speak',
-            text: '动作被拆解为阻塞讲解与后台动画，实现音画天然对齐。',
-            subtitle: '双通道并发调度：非阻塞动画 + 阻塞讲解',
-          },
-          {
-            type: 'visual',
-            verb: 'appear',
-            target: 'feat_3',
-          },
-          {
-            type: 'visual',
-            verb: 'pulse',
-            target: 'feat_3',
-          },
-          {
-            type: 'speak',
-            text: '无论你在时间轴上跳到哪里，都能一瞬间还原画面终态。',
-            subtitle: '0ms 确定性快进，告别繁重逆向 Undo',
-          },
-          {
-            type: 'checkpoint',
-            title: '准备好进入下一步公式推导了吗？',
-            blocking: true,
-          },
+          { type: 'visual', verb: 'spotlight', target: 'card_concept', params: { sfx: 'focus' } },
+          { type: 'speak', text: '欢迎来到互动课堂，这里不是静态幻灯片' },
+          { type: 'visual', verb: 'unfold', target: 'card_features', params: { sfx: 'paper' } },
+          { type: 'speak', text: '画布锁定了黄金比例，排版永远稳固' },
+          { type: 'visual', verb: 'slideInLeft', target: 'feat_2', params: { sfx: 'tick' } },
+          { type: 'speak', text: '嘴里讲到哪一句，画面就同步推演到哪一步' },
+          { type: 'visual', verb: 'slideInLeft', target: 'feat_3', params: { sfx: 'tick' } },
+          { type: 'visual', verb: 'stamp', target: 'feat_3' },
+          { type: 'speak', text: '无论跳到时间轴哪里，都能瞬间安静还原画面' },
+          { type: 'checkpoint', title: '准备好进入下一幕公式推导了吗？', blocking: true },
         ],
       },
       {
         id: 'scene_formula',
         title: '2. 公式与推导',
+        sfx: 'whoosh',
         html: `
-          <div class="stage-top-title">
-            <div class="flex items-center justify-between border-b border-white/10 pb-4">
-              <div class="flex items-center gap-4">
-                <span class="badge-step">第 2 节</span>
-                <span class="text-[44px] font-bold text-white tracking-wide">数学公式与动画步进</span>
-              </div>
-              <span class="text-[24px] text-emerald-400 font-mono">KaTeX FORMULA</span>
-            </div>
-            <div class="stage-center">
-              <div id="formula_main" class="formula-box w-3/4 shadow-2xl">
-                $$E = mc^2$$
-              </div>
-              <div id="formula_desc" data-hidden class="card-glass w-3/4 flex flex-col gap-3 text-center">
-                <div class="text-[34px] font-bold text-sky-300">质能等价方程</div>
-                <div class="text-[28px] text-slate-300">
-                  能量 $E$ 等于质量 $m$ 乘以光速 $c$ 的平方，揭示了微观质量蕴含的巨大能量。
-                </div>
-              </div>
-            </div>
+          <div class="stage-center">
+            <ui-formula id="formula_main" eyebrow="EINSTEIN MASS-ENERGY" title="质能等价方程" latex="E = mc^2" desc="静止质量本身就蕴藏着按光速平方放大的巨大能量" tone="seal"></ui-formula>
+            <ui-callout id="formula_desc" type="insight" title="物理直觉" data-hidden>
+              光速 c 是一个天文数字，所以极微小的质量亏损就能释放惊人能量！
+            </ui-callout>
           </div>
         `,
         actions: [
-          {
-            type: 'visual',
-            verb: 'highlight',
-            target: 'formula_main',
-            params: { color: '#38bdf8' },
-          },
-          {
-            type: 'speak',
-            text: '课堂原生支持数学公式。中间是著名的爱因斯坦质能等价方程。',
-            subtitle: '公式直接经 KaTeX 硬件渲染：$E = mc^2$',
-          },
-          {
-            type: 'visual',
-            verb: 'appear',
-            target: 'formula_desc',
-          },
-          {
-            type: 'speak',
-            text: '画面能够根据讲解节奏，按步揭示知识细节与重点推导。',
-            subtitle: '伴随讲解动态展开推导释义',
-          },
+          { type: 'visual', verb: 'shimmer', target: 'formula_main', params: { sfx: 'shimmer' } },
+          { type: 'speak', text: '看中间这个著名的质能等价方程' },
+          { type: 'visual', verb: 'riseIn', target: 'formula_desc', params: { sfx: 'chime' } },
+          { type: 'speak', text: '微小质量乘上光速平方，能量就几何放大' },
         ],
       },
     ],

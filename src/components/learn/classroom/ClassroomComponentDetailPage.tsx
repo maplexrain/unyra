@@ -12,10 +12,13 @@ import {
   Info,
   CheckCircle2,
   Sliders,
+  Volume2,
 } from 'lucide-react'
 import { getClassroomComponent, unregisterClassroomComponent } from '../../../learn/classroom/registry'
+import { playSfx } from '../../../learn/classroom/sfx/sfxEngine'
+import { listSfx } from '../../../learn/classroom/sfx/sfxLibrary'
 import { getComponentSpec } from './componentSpecs'
-import ClassroomComponentPreview from './ClassroomComponentPreview'
+import ClassroomComponentPreview, { type PreviewStageTheme } from './ClassroomComponentPreview'
 import { t } from '../../../i18n'
 
 export interface ClassroomComponentDetailPageProps {
@@ -32,15 +35,15 @@ export default function ClassroomComponentDetailPage({
 }: ClassroomComponentDetailPageProps) {
   const compDef = useMemo(() => getClassroomComponent(tag), [tag])
   const spec = useMemo(() => getComponentSpec(tag, compDef), [tag, compDef])
+  const sounds = useMemo(() => listSfx(), [])
 
-  // 演练场实时代码状态
   const [dslCode, setDslCode] = useState(() => compDef?.example || spec.examples[0]?.code || `<${tag}></${tag}>`)
   const [copied, setCopied] = useState(false)
-  const [stageTheme, setStageTheme] = useState<'dark' | 'light' | 'acrylic'>('dark')
+  const [stageTheme, setStageTheme] = useState<PreviewStageTheme>('dark')
   const [activeAnim, setActiveAnim] = useState<string | undefined>(spec.recommendedAnimations[0])
+  const [activeSfx, setActiveSfx] = useState<string>('none')
   const [animTriggerKey, setAnimTriggerKey] = useState(0)
 
-  // 复制代码
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
@@ -48,20 +51,27 @@ export default function ClassroomComponentDetailPage({
     })
   }
 
-  // 恢复默认示例代码
   const handleReset = () => {
     const defaultCode = compDef?.example || spec.examples[0]?.code || `<${tag}></${tag}>`
     setDslCode(defaultCode)
     setAnimTriggerKey((k) => k + 1)
   }
 
-  // 触发指定动效播放
   const handlePlayAnim = (verb: string) => {
     setActiveAnim(verb)
     setAnimTriggerKey((k) => k + 1)
+    if (activeSfx && activeSfx !== 'none') {
+      playSfx(activeSfx, { force: true })
+    }
   }
 
-  // 删除注销外部组件
+  const handlePlaySfx = (sfxName: string) => {
+    setActiveSfx(sfxName)
+    if (sfxName !== 'none') {
+      playSfx(sfxName, { force: true })
+    }
+  }
+
   const handleDelete = () => {
     if (confirm(t('确定要注销此外部组件「{0}」吗？', tag))) {
       if (unregisterClassroomComponent(tag)) {
@@ -118,7 +128,6 @@ export default function ClassroomComponentDetailPage({
         </div>
       </header>
 
-      {/* 主体双栏内容区 */}
       <div className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-8">
         {/* 组件头部介绍区 */}
         <section className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-3xl bg-card border border-line shadow-xs">
@@ -141,9 +150,7 @@ export default function ClassroomComponentDetailPage({
               </span>
             </div>
             <h1 className="text-[22px] font-extrabold text-ink-strong">{spec.name}</h1>
-            <p className="text-[13.5px] text-ink-soft leading-relaxed max-w-3xl">
-              {spec.description}
-            </p>
+            <p className="text-[13.5px] text-ink-soft leading-relaxed max-w-3xl">{spec.description}</p>
           </div>
 
           <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
@@ -158,57 +165,45 @@ export default function ClassroomComponentDetailPage({
           </div>
         </section>
 
-        {/* 核心双栏：左侧交互舞台与代码演练场，右侧参数详表与搭配建议 */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* 左侧：16:9 实时舞台与实时演练场 (7 列) */}
+          {/* 左侧：16:9 实时舞台与演练场 */}
           <div className="lg:col-span-7 space-y-5">
-            {/* 舞台容器卡片 */}
             <div className="flex flex-col rounded-3xl bg-card border border-line shadow-md overflow-hidden">
-              {/* 舞台顶栏：分辨率指示、主题切换与动效试播 */}
               <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-line bg-paper-deep/50 shrink-0">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-line/40 text-[11px] font-mono text-ink-soft">
-                    <Sliders size={12} className="text-seal" />
-                    <span>16:9 渲染舞台</span>
-                  </div>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-line/40 text-[11px] font-mono text-ink-soft">
+                  <Sliders size={12} className="text-seal" />
+                  <span>16:9 渲染舞台</span>
                 </div>
 
                 <div className="flex items-center gap-3">
-                  {/* 背景主题切换 */}
                   <div className="flex items-center p-0.5 rounded-lg bg-line/30 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => setStageTheme('dark')}
-                      className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
-                        stageTheme === 'dark' ? 'bg-card text-ink font-bold shadow-2xs' : 'text-ink-soft'
-                      }`}
-                    >
-                      {t('沉浸深色')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStageTheme('light')}
-                      className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
-                        stageTheme === 'light' ? 'bg-card text-ink font-bold shadow-2xs' : 'text-ink-soft'
-                      }`}
-                    >
-                      {t('极简白昼')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStageTheme('acrylic')}
-                      className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
-                        stageTheme === 'acrylic' ? 'bg-card text-ink font-bold shadow-2xs' : 'text-ink-soft'
-                      }`}
-                    >
-                      {t('晶透亚克力')}
-                    </button>
+                    {(
+                      [
+                        ['dark', t('沉浸深色')],
+                        ['paper', t('纸墨暖调')],
+                        ['light', t('极简白昼')],
+                        ['acrylic', t('晶透亚克力')],
+                      ] as const
+                    ).map(([modeKey, label]) => (
+                      <button
+                        key={modeKey}
+                        type="button"
+                        onClick={() => setStageTheme(modeKey)}
+                        className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                          stageTheme === modeKey ? 'bg-card text-ink font-bold shadow-2xs' : 'text-ink-soft'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
 
-                  {/* 重新播放入场动画 */}
                   <button
                     type="button"
-                    onClick={() => setAnimTriggerKey((k) => k + 1)}
+                    onClick={() => {
+                      setAnimTriggerKey((k) => k + 1)
+                      if (activeSfx !== 'none') playSfx(activeSfx, { force: true })
+                    }}
                     title={t('重新播放入场动效')}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-seal/15 text-seal hover:bg-seal/25 text-[11.5px] font-bold transition cursor-pointer"
                   >
@@ -218,7 +213,6 @@ export default function ClassroomComponentDetailPage({
                 </div>
               </div>
 
-              {/* 舞台主渲染视口 */}
               <div className="p-4 bg-paper-deep/30">
                 <div className="w-full aspect-video">
                   <ClassroomComponentPreview
@@ -233,7 +227,6 @@ export default function ClassroomComponentDetailPage({
               </div>
             </div>
 
-            {/* 实时代码演练场 (Playground) */}
             <div className="rounded-3xl bg-card border border-line shadow-xs overflow-hidden">
               <div className="flex items-center justify-between px-5 py-3 border-b border-line bg-paper-deep/30">
                 <div className="flex items-center gap-2">
@@ -270,15 +263,14 @@ export default function ClassroomComponentDetailPage({
                 />
                 <p className="text-[11px] text-ink-soft mt-2 flex items-center gap-1">
                   <Info size={12} className="text-seal" />
-                  <span>{t('提示：修改标签属性（如 title、badge、icon）或内部正文，上方 16:9 画布将瞬时响应。')}</span>
+                  <span>{t('提示：修改标签属性（如 title、badge、tone、icon）或正文，上方 16:9 画布将瞬时响应。')}</span>
                 </p>
               </div>
             </div>
           </div>
 
-          {/* 右侧：属性契约表与搭配推荐 (5 列) */}
+          {/* 右侧：参数详表与动效/音效试配 */}
           <div className="lg:col-span-5 space-y-6">
-            {/* 参数属性契约表 */}
             <div className="rounded-3xl bg-card border border-line shadow-xs overflow-hidden">
               <div className="px-5 py-3.5 border-b border-line bg-paper-deep/30 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -345,7 +337,7 @@ export default function ClassroomComponentDetailPage({
                 <span className="text-[13px] font-bold text-ink-strong">{t('推荐动效搭配')}</span>
               </div>
               <p className="text-[12px] text-ink-soft leading-relaxed">
-                {t('点击下方动效按钮，可即时在上方的 16:9 舞台中播放测试该入场/视效动画：')}
+                {t('点击下方动效按钮，可即时在上方 16:9 舞台中播放并联动试听音效：')}
               </p>
               <div className="flex flex-wrap gap-2 pt-1">
                 {spec.recommendedAnimations.map((animVerb) => {
@@ -367,9 +359,44 @@ export default function ClassroomComponentDetailPage({
                   )
                 })}
               </div>
+
+              {/* 搭配音效选择 */}
+              <div className="pt-2 border-t border-line/40 space-y-2">
+                <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-ink-soft">
+                  <Volume2 size={13} className="text-emerald-500" />
+                  <span>{t('联动音效试配')}</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handlePlaySfx('none')}
+                    className={`px-2 py-1 rounded-lg text-[11px] font-mono transition cursor-pointer ${
+                      activeSfx === 'none'
+                        ? 'bg-ink-strong text-paper font-bold'
+                        : 'bg-paper border border-line text-ink-soft hover:text-ink'
+                    }`}
+                  >
+                    none
+                  </button>
+                  {sounds.slice(0, 10).map((s) => (
+                    <button
+                      key={s.name}
+                      type="button"
+                      onClick={() => handlePlaySfx(s.name)}
+                      title={s.label}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-mono transition cursor-pointer ${
+                        activeSfx === s.name
+                          ? 'bg-emerald-600 text-white font-bold'
+                          : 'bg-paper border border-line text-ink-soft hover:border-emerald-500/40'
+                      }`}
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            {/* 场景建议与最佳实践 */}
             <div className="rounded-3xl bg-card border border-line shadow-xs p-5 space-y-2.5">
               <div className="flex items-center gap-2">
                 <CheckCircle2 size={15} className="text-emerald-500" />

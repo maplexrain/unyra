@@ -115,7 +115,7 @@ const VIDEO_OVERVIEW_INSTRUCTION = ['## 使用「视频总览」工作流。', '
 const CLASSROOM_INSTRUCTION = [
   '## 使用「生成互动课堂」工作流。',
   '- 目标课堂节点: {{target}}',
-  '- 动笔前先 `await api.classroom.schema()` 对齐 course 结构契约（动作列表字段名是 actions，不是 beats）；步骤与教学规矩见系统提示词「内置工作流与任务规程」的【生成互动课堂】一节',
+  '- 动笔前先 `await api.classroom.schema()` 与 `await api.classroom.sounds()` 对齐 course 结构契约、31 种组件、动效与音效库（动作列表字段名是 actions，不是 beats）；舞台构图、动效编排与音效审美纪律见系统提示词「内置工作流与任务规程」的【生成互动课堂】一节',
 ].join('\n')
 
 /**

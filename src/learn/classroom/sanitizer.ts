@@ -3,6 +3,7 @@
  */
 import type { LessonAction, LessonCourse, LessonScene, VisualAction } from './types'
 import { expandClassroomComponents } from './components'
+import { WAKING_VERBS } from './verbs'
 
 /** 纯净口语文本清洗（剔除 Markdown 格式符、LaTeX $ 标记、动作提示及禁止的句号等） */
 export function sanitizeTtsText(text: string): string {
@@ -58,20 +59,7 @@ export function sanitizeScene(scene: LessonScene): LessonScene {
       if (!validIds.has(cleanTarget)) {
         continue
       }
-      const wakingVerbs = new Set([
-        'appear',
-        'drawSvg',
-        'popIn',
-        'zoomIn',
-        'slideInLeft',
-        'slideInRight',
-        'slideInTop',
-        'slideInBottom',
-        'flip',
-        'bounce',
-        'animate',
-      ])
-      if (wakingVerbs.has(action.verb)) {
+      if (WAKING_VERBS.has(action.verb)) {
         appearedIds.add(cleanTarget)
       }
       cleanActions.push({
