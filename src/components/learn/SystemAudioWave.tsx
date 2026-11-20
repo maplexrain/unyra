@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { t } from '../../i18n'
-import { isWeb } from '../../lib/native'
+import { isWeb, native } from '../../lib/native'
 import { startLoopback, type LoopbackSession } from '../../lib/audio/loopback'
 import { addBreath, applyGravity, barCount, barRanges, sampleBars, smoothBars } from '../../lib/audio/bars'
 
@@ -57,7 +57,9 @@ export default function SystemAudioWave() {
   const mouseRef = useRef<{ x: number; active: boolean }>({ x: -1, active: false })
 
   useEffect(() => {
-    if (isWeb()) return
+    // 系统音频回环只有 Windows 支持（主进程 setDisplayMediaRequestHandler 仅在 win32 给 loopback）。
+    // 其它平台调 getDisplayMedia 拿不到音频轨，只会反复弹「共享屏幕」授权框，直接不启动。
+    if (isWeb() || native().platform !== 'win32') return
     const canvas = ref.current
     const ctx = canvas?.getContext('2d')
     if (!canvas || !ctx) return
@@ -212,6 +214,8 @@ export default function SystemAudioWave() {
           ranges = null
           const msg = err instanceof Error ? err.message : String(err)
           setTip(t('系统音频拿不到：{0}', msg))
+          // 用户点了「不允许共享屏幕」：保留提示但别重试，否则会间隔性反复弹权限框
+          if ((err as { name?: string })?.name === 'NotAllowedError') return
           if (attempts < MAX_RETRIES) {
             attempts++
             retryTimer = window.setTimeout(start, 3000)
