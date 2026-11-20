@@ -88,7 +88,7 @@ export function AgentHistorySidebar({
     return (
       <aside
         aria-label={t('对话历史')}
-        className="flex h-full w-11 shrink-0 flex-col items-center border-l border-line/70 bg-paper/60 py-2.5 gap-2"
+        className="flex h-full w-11 shrink-0 flex-col items-center overflow-hidden border-l border-line/70 bg-paper/60 py-2.5 gap-2 transition-[width] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)]"
       >
         <button
           type="button"
@@ -117,7 +117,7 @@ export function AgentHistorySidebar({
   return (
     <aside
       aria-label={t('对话历史')}
-      className="flex h-full w-[300px] shrink-0 flex-col border-l border-line/70 bg-paper/65"
+      className="flex h-full w-[300px] shrink-0 flex-col overflow-hidden border-l border-line/70 bg-paper/65 transition-[width] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)]"
     >
       <header className="flex shrink-0 items-center justify-between border-b border-line/50 px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-1.5">

@@ -17,6 +17,7 @@ import {
   openAnchorOutline,
   openInGroup,
   pruneStaleSidePortals,
+  resolveFixSideTabForGoal,
   setTabSidePortalRatio,
   syncGoalAgentTeamTabs,
   toggleSwapTabSidePortal,
@@ -544,5 +545,21 @@ describe('Vim :fixside 固定外侧对照栏（页签外宿主机与持久化）
 
     expect(executeVimCommand(':fixside off').success).toBe(true)
     expect(closeSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('resolveFixSideTabForGoal 在目标切换时自动跟随切换智能体团队或结构页签，普通文档不跟随', () => {
+    const store = makeBaseStore()
+    let docs = openAnchorOutline(
+      store.docArea,
+      FIRST_GROUP,
+      { kind: 'outline', nodeId: 'nB', goalId: 'gB' },
+      (id) => (id === 'nB' ? 'gB' : 'gA'),
+      300,
+    )
+    docs = ensureGoalAgentTeamTab(docs, 'gB', 301, { targetGroupId: FIRST_GROUP })
+
+    expect(resolveFixSideTabForGoal(docs, { targetTabId: 'team:gA' }, store.goals, 'gB')).toBe('team:gB')
+    expect(resolveFixSideTabForGoal(docs, { targetTabId: 'o:nA' }, store.goals, 'gB')).toBe('o:nB')
+    expect(resolveFixSideTabForGoal(docs, { targetTabId: 't:nA' }, store.goals, 'gB')).toBeNull()
   })
 })

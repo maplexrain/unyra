@@ -120,78 +120,76 @@ export function AgentRosterSidebar({
 
   const effectiveCollapsed = Boolean(forceCollapsed || collapsed)
 
-  if (effectiveCollapsed) {
-    return (
-      <aside
-        aria-label={t('智能体列表')}
-        data-roster-collapsed="true"
-        data-roster-locked={forceCollapsed ? 'true' : undefined}
-        className="flex h-full w-12 shrink-0 flex-col items-center border-r border-line/70 bg-paper/60 py-2.5 gap-2"
-      >
-        <button
-          type="button"
-          disabled={forceCollapsed}
-          onClick={() => {
-            if (!forceCollapsed) toggleCollapsed(false)
-          }}
-          title={forceCollapsed ? t('当前页面宽度小于 800，智能体列表已收起且暂不可展开') : t('展开智能体列表')}
-          aria-label={t('展开智能体列表')}
-          className={
-            'flex h-8 w-8 items-center justify-center rounded-lg transition ' +
-            (forceCollapsed
-              ? 'cursor-not-allowed text-ink-faint/45 opacity-45'
-              : 'text-ink-soft hover:bg-line/50 hover:text-ink')
-          }
-        >
-          <PanelLeftOpen size={15} />
-        </button>
-
-        <span aria-hidden="true" className="w-6 border-t border-line/60" />
-
-        <div className="flex flex-col items-center gap-1.5" role="tablist" aria-orientation="vertical">
-          {agents.map((item) => {
-            const Icon = item.icon
-            const active = mode === item.id
-            return (
-              <button
-                key={item.id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                title={`${item.label} · ${item.subtitle}`}
-                onClick={() => onSelectMode(item.id)}
-                className={
-                  'relative flex h-9 w-9 items-center justify-center rounded-xl border transition ' +
-                  (active
-                    ? 'border-line-strong bg-card text-ink-strong shadow-xs'
-                    : 'border-transparent text-ink-soft hover:bg-line/45 hover:text-ink')
-                }
-              >
-                <Icon size={16} />
-                {item.hasAsk ? (
-                  <span
-                    aria-hidden="true"
-                    className="absolute right-1 top-1 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500"
-                  />
-                ) : item.running ? (
-                  <span
-                    aria-hidden="true"
-                    className="absolute right-1 top-1 h-1.5 w-1.5 animate-pulse rounded-full bg-seal"
-                  />
-                ) : null}
-              </button>
-            )
-          })}
-        </div>
-      </aside>
-    )
-  }
-
   return (
     <aside
       aria-label={t('智能体列表')}
-      className="flex h-full w-[240px] shrink-0 flex-col border-r border-line/70 bg-paper/65"
+      data-roster-collapsed={effectiveCollapsed ? 'true' : undefined}
+      data-roster-locked={effectiveCollapsed && forceCollapsed ? 'true' : undefined}
+      className={
+        'flex h-full shrink-0 flex-col overflow-hidden border-r border-line/70 bg-paper/65 transition-[width] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] ' +
+        (effectiveCollapsed ? 'w-12 items-center py-2.5 gap-2' : 'w-[300px]')
+      }
     >
+      {effectiveCollapsed ? (
+        <>
+          <button
+            type="button"
+            disabled={forceCollapsed}
+            onClick={() => {
+              if (!forceCollapsed) toggleCollapsed(false)
+            }}
+            title={forceCollapsed ? t('当前页面宽度小于 800，智能体列表已收起且暂不可展开') : t('展开智能体列表')}
+            aria-label={t('展开智能体列表')}
+            className={
+              'flex h-8 w-8 items-center justify-center rounded-lg transition ' +
+              (forceCollapsed
+                ? 'cursor-not-allowed text-ink-faint/45 opacity-45'
+                : 'text-ink-soft hover:bg-line/50 hover:text-ink')
+            }
+          >
+            <PanelLeftOpen size={15} />
+          </button>
+
+          <span aria-hidden="true" className="w-6 border-t border-line/60" />
+
+          <div className="flex flex-col items-center gap-1.5" role="tablist" aria-orientation="vertical">
+            {agents.map((item) => {
+              const Icon = item.icon
+              const active = mode === item.id
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  title={`${item.label} · ${item.subtitle}`}
+                  onClick={() => onSelectMode(item.id)}
+                  className={
+                    'relative flex h-9 w-9 items-center justify-center rounded-xl border transition ' +
+                    (active
+                      ? 'border-line-strong bg-card text-ink-strong shadow-xs'
+                      : 'border-transparent text-ink-soft hover:bg-line/45 hover:text-ink')
+                  }
+                >
+                  <Icon size={16} />
+                  {item.hasAsk ? (
+                    <span
+                      aria-hidden="true"
+                      className="absolute right-1 top-1 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500"
+                    />
+                  ) : item.running ? (
+                    <span
+                      aria-hidden="true"
+                      className="absolute right-1 top-1 h-1.5 w-1.5 animate-pulse rounded-full bg-seal"
+                    />
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      ) : (
+        <div className="flex h-full w-[300px] flex-col">
       <header className="flex shrink-0 items-center justify-between border-b border-line/50 px-3.5 py-2.5">
         <div className="flex items-center gap-2">
           <span className="text-[12px] font-semibold tracking-wide text-ink-soft">
@@ -305,6 +303,8 @@ export function AgentRosterSidebar({
           )
         })}
       </div>
+        </div>
+      )}
     </aside>
   )
 }

@@ -5,7 +5,8 @@
  * - 清理指向已关闭页签的过期传送配置。
  */
 
-import type { FixSideState, LearnTab, TabSidePortal } from '../types'
+import type { FixSideState, LearningGoal, LearnTab, TabSidePortal } from '../types'
+import { tabKey } from '../tabs'
 import { settle } from './core'
 import { findTab } from './focus'
 import { allStoredTabs } from './tabs'
@@ -50,6 +51,41 @@ export function findFixSideTargetTab(
   const targetId = fixSide?.targetTabId
   if (!targetId) return null
   return allStoredTabs(docs).find((t) => t.id === targetId) ?? null
+}
+
+/**
+ * 当工作区切换学习目标时，若 `:fixside` 当前固定展示的是「智能体团队」或「结构（大纲）」页签，
+ * 返回新目标对应的同类页签 id；否则返回 null（不跟随切换）。
+ */
+export function resolveFixSideTabForGoal(
+  docs: DocWorkspace,
+  fixSide: FixSideState | undefined,
+  goals: readonly LearningGoal[],
+  nextGoalId: string | null,
+): string | null {
+  if (!fixSide || !nextGoalId) return null
+  const curTab = findFixSideTargetTab(docs, fixSide)
+  if (!curTab) return null
+  const ref = curTab.ref
+  if (ref.kind !== 'agentTeam' && ref.kind !== 'outline') return null
+
+  const curGoalId =
+    ref.kind === 'agentTeam'
+      ? (ref.goalId ?? null)
+      : (ref.goalId ??
+          goals.find((g) => g.id === ref.nodeId || g.rootNodeId === ref.nodeId)?.id ??
+          null)
+  if (curGoalId === nextGoalId) return null
+
+  const nextGoal = goals.find((g) => g.id === nextGoalId)
+  if (!nextGoal) return null
+
+  const candidateId =
+    ref.kind === 'agentTeam'
+      ? tabKey({ kind: 'agentTeam', goalId: nextGoalId })
+      : tabKey({ kind: 'outline', nodeId: nextGoal.rootNodeId || nextGoalId, goalId: nextGoalId })
+
+  return allStoredTabs(docs).some((t) => t.id === candidateId) ? candidateId : null
 }
 
 export function clampSideRatio(ratio: number | undefined): number {

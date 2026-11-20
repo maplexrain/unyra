@@ -6,8 +6,9 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { clampFixSideWidth, findFixSideTargetTab } from '../../../learn/groups'
+import { clampFixSideWidth, findFixSideTargetTab, resolveFixSideTabForGoal } from '../../../learn/groups'
 import type { GroupBodyCtx } from './GroupBodyCtx'
 import { SidePortalPane } from './SidePortalPane'
 import { t } from '../../../i18n'
@@ -38,6 +39,15 @@ export function FixSideLayout({ docsSlot, portalCtx, pure, pureMoving }: FixSide
     [],
   )
 
+  // 当切换学习目标时，若固定外侧栏正在显示智能体团队或结构页签，自动跟随切到新目标对应的同类页签
+  useEffect(() => {
+    const cur = getLatest()
+    const nextTabId = resolveFixSideTabForGoal(cur.docArea, cur.fixSide, cur.goals, cur.activeGoalId)
+    if (nextTabId && cur.fixSide) {
+      set({ ...cur, fixSide: { ...cur.fixSide, targetTabId: nextTabId } })
+    }
+  }, [store.activeGoalId, getLatest, set])
+
   if (!fixSide || !targetTab) {
     return (
       <div className="print-flat relative flex min-h-0 flex-1 flex-col">
@@ -59,16 +69,24 @@ export function FixSideLayout({ docsSlot, portalCtx, pure, pureMoving }: FixSide
   }
 
   const swapFixSide = () => {
-    const cur = getLatest()
-    if (!cur.fixSide) return
-    set({
-      ...cur,
-      fixSide: {
-        ...cur.fixSide,
-        left: !cur.fixSide.left,
-        collapsed: false,
-      },
-    })
+    const apply = () => {
+      const cur = getLatest()
+      if (!cur.fixSide) return
+      set({
+        ...cur,
+        fixSide: {
+          ...cur.fixSide,
+          left: !cur.fixSide.left,
+          collapsed: false,
+        },
+      })
+    }
+    const vt = (document as Document & { startViewTransition?: (cb: () => void) => unknown }).startViewTransition
+    if (typeof vt === 'function') {
+      vt.call(document, () => flushSync(apply))
+    } else {
+      apply()
+    }
   }
 
   const toggleCollapse = () => {

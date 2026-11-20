@@ -373,6 +373,12 @@ export function Composer(props: ComposerProps) {
       editorRef.current?.focus()
       return
     }
+    if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
+      e.preventDefault()
+      e.stopPropagation()
+      editorRef.current?.blur()
+      return
+    }
     if (
       ghostRef.current &&
       (e.key === 'Tab' || (e.key === 'ArrowRight' && editorRef.current && caretAtEnd(editorRef.current)))

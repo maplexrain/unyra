@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useRef, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import type { LearnTab } from '../../../learn/types'
 import {
   DEFAULT_SIDE_RATIO,
@@ -54,8 +55,16 @@ export function SideSplitLayout({ ctx, sourceTab, targetTab, primary }: SideSpli
 
   const swapPortal = () => {
     if (!sourceTab) return
-    const latest = getLatest()
-    set({ ...latest, docArea: toggleSwapTabSidePortal(latest.docArea, sourceTab.id) })
+    const apply = () => {
+      const latest = getLatest()
+      set({ ...latest, docArea: toggleSwapTabSidePortal(latest.docArea, sourceTab.id) })
+    }
+    const vt = (document as Document & { startViewTransition?: (cb: () => void) => unknown }).startViewTransition
+    if (typeof vt === 'function') {
+      vt.call(document, () => flushSync(apply))
+    } else {
+      apply()
+    }
   }
 
   const commitRatio = (nextRatio: number) => {

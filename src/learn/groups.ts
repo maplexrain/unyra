@@ -125,6 +125,7 @@ export {
   findSideTargetTab,
   normalizeFixSideState,
   pruneStaleSidePortals,
+  resolveFixSideTabForGoal,
   setTabSidePortalRatio,
   toggleSwapTabSidePortal,
   withTabSidePortal,
