@@ -595,6 +595,65 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
     ],
   ),
 
+  g(
+    'team',
+    '智能体团队',
+    'list / status / delegate / complete / awake：agent team 两位声部（仅聊天 / 导师）之间的任务委托与相互唤醒。',
+    `把一项任务**委托**给另一位声部：delegate 只排队（不堵塞当前进程），目标空闲时立即启动、
+忙碌时等它收口后接续；承接方做完用 complete 交付，结果传回委托者——委托者空闲就被激活，
+运行中则在当前轮的单次 loop 边界注入后继续跑。存在未完成委托时，目标空闲会被系统启动提醒。
+awake 是自我唤醒：本轮收口后等待 N 时自启动，期间若有过新启动（用户发消息、委托激活）则失效。
+内置能力（委托通道本身）不可裁剪——但本组随 execute 白名单裁剪，关掉它就没有团队协作能力。`,
+    [
+      a(
+        'list',
+        'team.list()',
+        '列出当前可用的智能体',
+        '回 { agents: [{ id, name }] }；id 是委托与查询用的身份（free=仅聊天 / tutor=导师）。',
+        'const team = await api.team.list()',
+      ),
+      a(
+        'status',
+        'team.status(id)',
+        '查询某位智能体的当前状态',
+        "回 { id, running, processing, pendingCount, pending }：running=它当前会话有没有活着的轮；processing=它正在处理的委托（若有）；pendingCount=未处理委托数。",
+        'const s = await api.team.status("tutor")',
+      ),
+      a(
+        'delegate',
+        'team.delegate({ to, instruction, preemptibleMs?, preemptibleUntil? })',
+        '把任务委托给某位智能体（不堵塞）',
+        'to 是目标 id；instruction 写清「做什么与边界」（它是目标那一轮的指令全文）；' +
+          'preemptibleMs / preemptibleUntil 声明本委托在多久之内允许被后续委托插队——插队从队尾往前找：' +
+          '仍在允许期内（未到期）的委托会被越过，到期的不越。**只排队**：目标空闲立即启动，忙碌则等收口接续，本调用不堵塞。',
+        `const r = await api.team.delegate({
+  to: 'tutor',
+  instruction: '整理本目标本周的学习笔记，产出一份 200 字摘要。',
+  preemptibleMs: 60_000,
+})`,
+        { trap: '只排队不堵塞：回执 ok 后继续自己的工作，不要等它；承接方做完会用 complete 把交付结果传回给你' },
+      ),
+      a(
+        'complete',
+        'team.complete({ id?, result })',
+        '结束自己承接的委托并交付结果',
+        'result 是交付全文（给委托者看的话，写清结论与产物位置）；id 省略时默认结束你当前正在处理的那一条（多条在身时必须给 id）。' +
+          '交付立即传回委托者：它空闲就被激活，运行中就在它当前轮的 loop 边界注入。',
+        'await api.team.complete({ result: "摘要已写入 docs/week.md，共 200 字。" })',
+        { trap: '做完的活必须 complete 收口——不收口，系统会在你空闲时启动一轮提醒你补上' },
+      ),
+      a(
+        'awake',
+        'team.awake(ms | { seconds })',
+        '本轮收口后延迟自启动',
+        '在沙箱里调用后，本轮一旦收口就开始计时；到点仍没人启动你（用户发消息、委托交付激活都不算「没人」）就自启动一轮，' +
+          '由你继续未竟的工作或收尾。上限 10 分钟。',
+        'await api.team.awake({ seconds: 30 })',
+        { trap: '计时从本轮收口才开始；期间若有过任何新启动，自启动当场失效（不会重复醒）' },
+      ),
+    ],
+  ),
+
   /* ---------- 兼容/内部：不进 Worker 名单 ---------- */
 ]
 
@@ -735,9 +794,14 @@ export function buildSandboxHelp(): SandboxHelp {
   return { root: renderRootHelp(), groups, apis }
 }
 
-/** 系统提示词里的 api 集索引：只给组名与一句说明，不给具体签名（legacy 组不宣传） */
-export function groupIndexForSystemPrompt(): string {
+/**
+ * 系统提示词里的 api 集索引：只给组名与一句说明，不给具体签名（legacy 组不宣传）。
+ * allow 给定时只列放行的组（智能体团队分工的提示词侧对账，见 agent/agentProfile 的
+ * AGENT_API_PLANES）；不给 = 全量（子代理 brief 等老口径）。
+ */
+export function groupIndexForSystemPrompt(allow?: ReadonlySet<string>): string {
   return promotedGroups()
+    .filter((group) => !allow || allow.has(group.key))
     .map((group) =>
       group.key === 'core'
         ? '- 顶层函数：' + group.intro
@@ -748,21 +812,35 @@ export function groupIndexForSystemPrompt(): string {
 
 /** 设置页/子代理 brief 用的简洁清单：组 → 条目 */
 
+/** 速查的抬头两行（智能体团队分工后，共同前缀与专属区共用同一份抬头） */
+export function renderCompactApiHeader(): string {
+  return (
+    '### 沙箱 API 速查（签名 + 用法边界）\n' +
+    '写代码前先扫一遍这一节；更细的参数说明、返回结构与完整示例用 api.<组>.<api>.__help() 现查，不要凭印象猜参数。'
+  )
+}
+
 /**
- * 系统提示词用的「签名 + 用法边界」紧凑手册（首轮静态注入）。
- *
- * 与被它取代的全量手册的差别：不带任何代码示例围栏、不带 params/returns 专列、
- * 不带组示例——完整参数、返回结构与可运行示例一律走 api.<组>.<api>.__help() 现查
- * （buildSandboxHelp 已预渲染进 Worker，查询零成本）。内容仍全部从注册表生成：
- * 签名、一句话作用与用法边界就是 ApiDoc 本身，改 api 时这里自动跟上（对账纪律见文件头）。
+ * 速查的组块正文（每个放行的组一段 `#### api.<组> — 名称`）。
+ * allow 给定时只渲染放行的组（智能体团队分工的提示词侧对账）；不给 = 全量。
+ * core 组的成员在运行时按裸函数名对账（api.fetch 而非 api.core.fetch），裁剪也按名走：
+ * 只渲染放行的顶层函数（help 恒在场——查帮助不该被拦），一个都没有就整组不出现。
  */
-export function renderCompactApiDocumentation(): string {
-  const lines: string[] = [
-    '### 沙箱 API 速查（签名 + 用法边界）',
-    '写代码前先扫一遍这一节；更细的参数说明、返回结构与完整示例用 api.<组>.<api>.__help() 现查，不要凭印象猜参数。',
-    '',
-  ]
+export function renderCompactApiGroupBlocks(allow?: ReadonlySet<string>): string {
+  const lines: string[] = []
   for (const group of promotedGroups()) {
+    if (allow && group.key === 'core') {
+      const apis = group.apis.filter((api) => api.name === 'help' || allow.has(api.name))
+      if (apis.length <= 1) continue
+      lines.push('#### 顶层函数（api.<name>） — ' + group.label)
+      if (group.usage.trim()) lines.push(group.usage.trim())
+      for (const api of apis) {
+        lines.push('- `' + api.signature + '` — ' + api.summary + (api.trap ? '。' + api.trap : ''))
+      }
+      lines.push('')
+      continue
+    }
+    if (allow && !allow.has(group.key)) continue
     lines.push('#### ' + (group.key === 'core' ? '顶层函数（api.<name>）' : 'api.' + group.key) + ' — ' + group.label)
     if (group.usage.trim()) lines.push(group.usage.trim())
     for (const api of group.apis) {
@@ -771,6 +849,19 @@ export function renderCompactApiDocumentation(): string {
     lines.push('')
   }
   return lines.join('\n').trimEnd()
+}
+
+/**
+ * 系统提示词用的「签名 + 用法边界」紧凑手册（首轮静态注入）。
+ *
+ * 与被它取代的全量手册的差别：不带任何代码示例围栏、不带 params/returns 专列、
+ * 不带组示例——完整参数、返回结构与可运行示例一律走 api.<组>.<api>.__help() 现查
+ * （buildSandboxHelp 已预渲染进 Worker，查询零成本）。内容仍全部从注册表生成：
+ * 签名、一句话作用与用法边界就是 ApiDoc 本身，改 api 时这里自动跟上（对账纪律见文件头）。
+ * allow 给定时只渲染放行的组；不给 = 全量。
+ */
+export function renderCompactApiDocumentation(allow?: ReadonlySet<string>): string {
+  return renderCompactApiHeader() + '\n\n' + renderCompactApiGroupBlocks(allow)
 }
 
 export function catalogGroups(): Array<{

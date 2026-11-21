@@ -68,6 +68,19 @@ export const DEFAULT_MCP_SETTINGS: McpSettings = {
   servers: [],
 }
 
+/**
+ * 对外 MCP 服务（应用本身当 MCP server，外部 harness 当外设智能体）的设置：
+ * 与上面那组（应用去**消费**外部服务）住在同一个域、方向相反。
+ */
+export interface McpServeSettings {
+  /** 总开关：关掉后主进程管道与端点文件立即收起，外部连接当场失败 */
+  enabled: boolean
+}
+
+export const DEFAULT_MCP_SERVE_SETTINGS: McpServeSettings = {
+  enabled: true,
+}
+
 /** 常用官方与社区 MCP 服务预设，供用户一键快速添加 */
 export interface McpPreset {
   id: string

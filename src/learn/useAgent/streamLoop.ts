@@ -57,8 +57,14 @@ export async function runTurnLoop(io: {
   setTps: Dispatch<SetStateAction<Record<string, number>>>
   setLiveUsage: Dispatch<SetStateAction<Record<string, MessageUsage>>>
   scheduleFlush: (immediate: boolean) => void
+  /**
+   * 跳边界注入（见 agent/runtime 的介入通道）：委托交付回传走这里——委托者正在运行
+   * 时，team.complete 的交付结果在它当前轮的单次 loop 结束后插入、接着继续运行
+   * （宿主在回调里同步落库镜像片段，见 learn/agentTeam/delegations 与 agent/history）。
+   */
+  injections: () => Promise<AgentInjection | null>
 }) {
-  const { global, window, teacherSystem, history, tools, ctrl, parts, tally, convKey, target, assistantId, setStreaming, setTps, setLiveUsage, scheduleFlush } = io
+  const { global, window, teacherSystem, history, tools, ctrl, parts, tally, convKey, target, assistantId, setStreaming, setTps, setLiveUsage, scheduleFlush, injections } = io
   await runAgent({
     provider: global.provider,
     model: global.model,
@@ -101,14 +107,12 @@ export async function runTurnLoop(io: {
       noteRequest(target.conversationId, snapshot)
     },
     /**
-     * 动态提示词注入的边界通道——**已退役**（2026-11 全量静态提示词：规程随系统提示词
-     * 首轮在场，不再在 loop 中途注入）。通道本体留在 runtime 接口上（恒回 null）；
-     * 回复里的 prompt-module 片段形态与 toChatHistory 的补发逻辑保留——老对话的历史
-     * 里还有这种片段，还原口径不变（见 agent/history）。
+     * 动态提示词注入已退役（2026-11 全量静态提示词），通道现在只承载**委托交付回传**
+     * （team.complete → 委托者运行中 → 跳边界注入，见 learn/agentTeam/delegations）；
+     * 宿主的回调负责镜像落库。回复里的 prompt-module 片段形态与 toChatHistory 的补发
+     * 逻辑保留——老对话的历史里还有这种片段，还原口径不变（见 agent/history）。
      */
-    injections: async (): Promise<AgentInjection | null> => {
-      return null
-    },
+    injections,
     onEvent: (e) => {
       if (e.type === 'usage') {
         tally.turns++

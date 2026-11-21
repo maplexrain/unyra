@@ -1,9 +1,10 @@
 /**
- * 全量工作流提示词与任务规程（WORKFLOWS_GUIDE）。
+ * 工作流提示词与任务规程的**源头全文**（WORKFLOWS_GUIDE）。
  *
- * 规范：首轮注入全量规程，让 Agent 预先掌握所有内置工作流的目标、状态机与验收标准。
- * 规程只写「步骤与规矩」，api 怎么调一律引用 api 名（签名与反直觉边界在沙箱 API 速查，
- * 细节 __help 现查）——同一件事只在提示词里出现一次。
+ * 规范：首轮注入规程，让声部预先掌握它分工面内所有内置工作流的目标、状态机与验收标准
+ * （按声部经 workflowGuideFor 裁剪重组，见文件尾）。规程只写「步骤与规矩」，api 怎么调
+ * 一律引用 api 名（签名与反直觉边界在沙箱 API 速查，细节 __help 现查）——同一件事只在
+ * 提示词里出现一次。
  */
 export const WORKFLOWS_GUIDE = `## 内置工作流与任务规程
 
@@ -123,3 +124,95 @@ export const WORKFLOWS_GUIDE = `## 内置工作流与任务规程
    - **声画通感对照**：大横幅登场用 \`swell\`，双栏/换幕滑入用 \`whoosh\` / \`swish\`，展卷/翻面用 \`paper\`，步骤/节点逐条用 \`tick\`，核心顿悟用 \`chime\` / \`sparkle\`，追光/流光用 \`glass\` / \`shimmer\` / \`focus\`，误区震颤用 \`error\`，悬念拷问用 \`tension\` / \`heartbeat\`；\`checkpoint\`（\`bell\`）、\`countUp\`（\`count\`）、\`typewriter\`（\`typing\`）、\`stamp\`（\`stamp\`）、\`tada\`（\`success\`）已自带音效，不想响传 \`sfx: "none"\`。
 6. **名师口语与交付验收**：讲解不是念 PPT——嘴里讲直觉、类比与设问（「注意看这里」「你发现了吗？」），\`speak.text\` **严禁句号（。和 .）**，每句 8-16 字（上限 20），几乎每句 speak 配 1~2 个 visual。用 \`api.node.get("{{target}}").editContent({ title, course })\` 一次落盘；回执带 error 必须修好重交，warnings（句号 / 超长句 / 未知音效名 / data-hidden 死锁）也一并修净；交付前可 \`api.classroom.check({ target: 课堂uuid })\` 复查，最后 \`api.delivery.submit({ files: [{ path: 课堂uuid, action: "updated", note: '一句话说明' }] })\` 登记交付。
 `
+
+/**
+ * 注：上面的全量文本是**唯一的规程源头**；每位声部收到的清单按团队分工面
+ * （agent/agentProfile 的 AGENT_WORKFLOW_PLANES）经 workflowGuideFor 裁剪重组——
+ * 切分由程序完成（按节标题切原文），不存在第二份手抄。登记的全局 / 目标级工作流
+ * 没有静态规程文本（规程由登记的 prompt 字段在触发时注入），不在裁剪范围内。
+ */
+
+/* ---------- 按声部重组（切分自上面的同一份原文） ---------- */
+
+/** 编号节的固定顺序（与原文的 ### 1~13 一致） */
+const SECTION_ORDER: readonly string[] = [
+  'teach-node', 'outline', 'outline-guide', 'project-interpret', 'exam', 'exam-grade',
+  'superlab', 'video-overview', 'explain', 'code-compile', 'plot-fix', 'compact', 'classroom',
+]
+
+/** 总览 bullets 的顺序（原文与节序不同：浏览器操作在课堂前、压缩在最后） */
+const OVERVIEW_ORDER: readonly string[] = [
+  'teach-node', 'outline', 'outline-guide', 'project-interpret', 'exam', 'exam-grade',
+  'superlab', 'video-overview', 'explain', 'code-compile', 'plot-fix', 'browser-use',
+  'classroom', 'compact',
+]
+
+/** 解析结果：抬头、总览 bullets（按 id 归组）、各节标题与正文 */
+const GUIDE_INTRO: string[] = []
+const OVERVIEW_BY_ID: Record<string, string[]> = {}
+const SECTIONS: Record<string, { title: string; body: string }> = {}
+{
+  const lines = WORKFLOWS_GUIDE.split('\n')
+  let zone: 'intro' | 'overview' | 'section' = 'intro'
+  let curId = ''
+  let cur: string[] = []
+  let curTitle = ''
+  const flush = () => {
+    if (zone === 'section' && curId) SECTIONS[curId] = { title: curTitle, body: cur.join('\n').trimEnd() }
+  }
+  for (const line of lines) {
+    const overviewHead = line === '### 工作流清单总览'
+    const numbered = /^### \d+\.【/.exec(line)
+    if (overviewHead || numbered) {
+      flush()
+      cur = []
+      if (overviewHead) {
+        zone = 'overview'
+        continue
+      }
+      zone = 'section'
+      curTitle = line.replace(/^### \d+\./, '')
+      curId = /（([a-z0-9-]+)）\s*$/.exec(line)?.[1] ?? ''
+      continue
+    }
+    if (zone === 'intro') GUIDE_INTRO.push(line)
+    else if (zone === 'overview') {
+      if (line.startsWith('- ')) {
+        // 「前置知识大纲」那条没有 id（规程同「生成大纲」），随 outline 走
+        const id = OVERVIEW_ORDER.find((k) => line.includes('`' + k + '`')) ?? (line.includes('前置知识大纲') ? 'outline' : '')
+        if (id) (OVERVIEW_BY_ID[id] ??= []).push(line)
+      }
+    } else cur.push(line)
+  }
+  flush()
+}
+
+/**
+ * 按声部的内置工作流面重组规程（ids 缺省 / null = 全量）。
+ * 编号按选中集合重新排（1..N），抬头与总览口径与原文逐字一致。
+ */
+export function workflowGuideFor(ids?: ReadonlySet<string> | null): string {
+  const wanted = (id: string): boolean => !ids || ids.has(id)
+  const parts: string[] = [GUIDE_INTRO.join('\n').trimEnd(), '', '### 工作流清单总览']
+  for (const id of OVERVIEW_ORDER) if (wanted(id)) parts.push(...(OVERVIEW_BY_ID[id] ?? []))
+  let n = 0
+  for (const id of SECTION_ORDER) {
+    if (!wanted(id)) continue
+    const sec = SECTIONS[id]
+    if (!sec) continue
+    n++
+    parts.push('', '### ' + n + '.' + sec.title, sec.body)
+  }
+  return parts.join('\n')
+}
+
+/**
+ * 压缩上下文的规程节（**不带编号、独立成节**）：四位执行声部的共同前缀末尾都放这一段
+ * （compact 是全员内置规程，自动压缩不分声部，见 agentSharedPrefix）；各声部的专属
+ * 工作流清单里不再重复渲染它（workflowGuideFor 的调用方传去掉 compact 的面）。
+ */
+export function compactWorkflowSection(): string {
+  const sec = SECTIONS['compact']
+  return '### 【压缩上下文】长会话交接摘要（compact）\n' + (sec?.body ?? '')
+}
+

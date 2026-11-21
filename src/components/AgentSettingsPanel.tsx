@@ -7,6 +7,7 @@ import {
   Cpu,
   FolderCheck,
   GraduationCap,
+  Radio,
   Settings2,
   Sparkles,
   Terminal,
@@ -27,6 +28,7 @@ import type { MemoryInput, MemoryPatch } from '../learn/memory'
 import { StrategyTab } from './agent-settings/StrategyTab'
 import { SkillsTab } from './agent-settings/SkillsTab'
 import { McpTab } from './agent-settings/McpTab'
+import { ServeTab } from './agent-settings/ServeTab'
 import { ToolsTab } from './agent-settings/ToolsTab'
 import { PermissionsTab } from './agent-settings/PermissionsTab'
 import { MemoryTab } from './agent-settings/MemoryTab'
@@ -81,7 +83,7 @@ interface Props {
   onSwitchSection?: (section: 'general' | 'agent') => void
 }
 
-type TabKey = 'chat' | 'strategy' | 'memory' | 'skills' | 'mcp' | 'tools' | 'permissions' | 'flow' | 'dev'
+type TabKey = 'chat' | 'strategy' | 'memory' | 'skills' | 'mcp' | 'serve' | 'tools' | 'permissions' | 'flow' | 'dev'
 
 const TAB_KEY = 'moji:agent-settings:tab'
 
@@ -91,6 +93,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: typeof Sparkles }> = [
   { key: 'memory', label: '记忆管理', icon: Brain },
   { key: 'skills', label: '专业技能', icon: GraduationCap },
   { key: 'mcp', label: 'MCP 服务', icon: Cpu },
+  { key: 'serve', label: '对外 MCP 服务', icon: Radio },
   { key: 'tools', label: '工具与上下文', icon: Wrench },
   { key: 'permissions', label: '权限设置', icon: FolderCheck },
   { key: 'flow', label: '工作流', icon: Workflow },
@@ -111,6 +114,7 @@ const savedTab = (): TabKey => {
       v === 'memory' ||
       v === 'skills' ||
       v === 'mcp' ||
+      v === 'serve' ||
       v === 'tools' ||
       v === 'permissions' ||
       v === 'flow'
@@ -284,9 +288,11 @@ export default function AgentSettingsPanel({
                     ? t('工作流模板')
                     : tab === 'skills'
                       ? t('专业技能扩展 (Skills)')
-                      : tab === 'mcp'
-                        ? t('Model Context Protocol (MCP)')
-                        : tab === 'tools'
+                        : tab === 'mcp'
+                          ? t('Model Context Protocol (MCP)')
+                          : tab === 'serve'
+                            ? t('对外 MCP 服务')
+                            : tab === 'tools'
                           ? t('工具与上下文管理')
                           : tab === 'permissions'
                             ? t('权限设置与安全沙箱')
@@ -303,9 +309,11 @@ export default function AgentSettingsPanel({
                     ? t('由导师代跑的任务模板；触发时指令以 user 消息进入上下文')
                     : tab === 'skills'
                       ? t('为导师装配特定的认知框架、启发策略与解题规范')
-                      : tab === 'mcp'
-                        ? t('连接开放协议服务，赋予导师操作真实世界系统与网络的能力')
-                        : tab === 'tools'
+                        : tab === 'mcp'
+                          ? t('连接开放协议服务，赋予导师操作真实世界系统与网络的能力')
+                          : tab === 'serve'
+                            ? t('把应用开放给外部 AI harness：开关、运行状态、连接配置与调用记录')
+                            : tab === 'tools'
                           ? t('原生系统进程监控、上下文健康度及沙箱能力目录')
                           : tab === 'permissions'
                             ? t('真实文件系统访问白名单授权与安全沙箱边界治理')
@@ -350,6 +358,8 @@ export default function AgentSettingsPanel({
               settings={settings.mcp}
               onChange={(nextMcp) => onChange({ ...settings, mcp: nextMcp })}
             />
+          ) : tab === 'serve' ? (
+            <ServeTab settings={settings} onChange={onChange} />
           ) : tab === 'tools' ? (
             <ToolsTab
               settings={settings}

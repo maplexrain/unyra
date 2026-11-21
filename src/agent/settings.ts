@@ -15,7 +15,9 @@ import { DEFAULT_DOC_FORMAT, docFormatOf, type DocFormat, type DocFormatId } fro
  */
 
 import { DEFAULT_SKILL_SETTINGS, type SkillSettings } from './skill/types'
-import { DEFAULT_MCP_SETTINGS, type McpServerConfig, type McpSettings } from './mcp/types'
+import { DEFAULT_MCP_SETTINGS, DEFAULT_MCP_SERVE_SETTINGS, type McpServeSettings, type McpServerConfig, type McpSettings } from './mcp/types'
+import { REASONING_EFFORTS, type ReasoningEffort } from '../ai/types'
+import { AGENT_TEAM_IDS, type AgentProfile, type AgentProfileId } from './agentProfile'
 
 export interface CompactSettings {
   /** 到阈值自动压缩；关掉之后只有手动「压缩上下文」会压 */
@@ -70,6 +72,11 @@ export interface AgentSettings {
    */
   mcp?: McpSettings
   /**
+   * 对外 MCP 服务（应用本身当 MCP server）：外部 harness 经命名管道连进来当外设智能体。
+   * 见 electron/mcp/serve 与设置里的「对外 MCP 服务」分页。
+   */
+  mcpServe?: McpServeSettings
+  /**
    * 额外系统提示词配置：
    * 允许用户全局追加自定义系统提示词，默认不启用。
    */
@@ -80,6 +87,12 @@ export interface AgentSettings {
    * 目标数据目录默认完全放行；外部真实系统目录需在此白名单放行。
    */
   permissions?: AgentPermissionsSettings
+  /**
+   * 智能体的独立设置（per-agent profile，见 agent/agentProfile）：
+   * agent team 里每位声部（仅聊天 / 导师）自己的名字、头像、api 白名单、
+   * 工作流、提供商-模型与思考档位。缺省字段 = 跟随全局默认。
+   */
+  profiles?: Partial<Record<AgentProfileId, AgentProfile>>
 }
 
 export interface AgentPermissionsSettings {
@@ -112,9 +125,11 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   dev: { contextDebugger: false },
   skills: DEFAULT_SKILL_SETTINGS,
   mcp: DEFAULT_MCP_SETTINGS,
+  mcpServe: DEFAULT_MCP_SERVE_SETTINGS,
   permissions: {
     allowedDirs: [],
   },
+  profiles: {},
 }
 
 const clamp = (v: unknown, lo: number, hi: number, fallback: number): number => {
@@ -163,7 +178,33 @@ export function normalizeAgentSettings(raw: unknown): AgentSettings {
   const dev = (src.dev && typeof src.dev === 'object' ? src.dev : {}) as Partial<AgentDevSettings>
   const skills = (src.skills && typeof src.skills === 'object' ? src.skills : {}) as Partial<SkillSettings>
   const mcp = (src.mcp && typeof src.mcp === 'object' ? src.mcp : {}) as Partial<McpSettings>
+  const mcpServe = (src.mcpServe && typeof src.mcpServe === 'object' ? src.mcpServe : {}) as Partial<McpServeSettings>
   const permissions = (src.permissions && typeof src.permissions === 'object' ? src.permissions : {}) as Partial<AgentPermissionsSettings>
+  /**
+   * 智能体独立设置（profiles）：逐字段白名单重建，形状不对的整条丢弃、空壳不存。
+   * 与其它段同一条纪律——归一化跑在每次读写上，这里就是「新字段必须透传」的那一关。
+   */
+  const profiles: Partial<Record<AgentProfileId, AgentProfile>> = {}
+  if (src.profiles && typeof src.profiles === 'object') {
+    for (const id of AGENT_TEAM_IDS) {
+      const p = (src.profiles as Partial<Record<AgentProfileId, unknown>>)[id]
+      if (!p || typeof p !== 'object') continue
+      const rec = p as Partial<AgentProfile>
+      const next: AgentProfile = {}
+      // 身份字段存非空值：空串与缺省同义（显示侧回落默认名/头像），不落盘
+      if (typeof rec.name === 'string' && rec.name.trim()) next.name = rec.name
+      if (typeof rec.avatar === 'string' && rec.avatar.trim()) next.avatar = rec.avatar
+      // apiGroups 刻意不在白名单里：execute 能力面已定稿为架构固定（按声部的团队分工面，
+      // 见 agent/agentProfile 的 AGENT_API_PLANES），旧版本存下的清单在这里被静默作废——不透传即弃
+      if (Array.isArray(rec.workflows)) next.workflows = rec.workflows.map(String).filter((w) => w.trim())
+      if (typeof rec.providerId === 'string' && rec.providerId.trim()) next.providerId = rec.providerId
+      if (typeof rec.model === 'string' && rec.model.trim()) next.model = rec.model
+      if (typeof rec.effort === 'string' && REASONING_EFFORTS.includes(rec.effort as ReasoningEffort)) {
+        next.effort = rec.effort as ReasoningEffort
+      }
+      if (Object.keys(next).length) profiles[id] = next
+    }
+  }
   const customPersonas = Array.isArray(src.customPersonas)
     ? src.customPersonas.filter(
         (p): p is Persona =>
@@ -209,11 +250,15 @@ export function normalizeAgentSettings(raw: unknown): AgentSettings {
       enabled: typeof mcp.enabled === 'boolean' ? mcp.enabled : DEFAULT_MCP_SETTINGS.enabled,
       servers: Array.isArray(mcp.servers) ? migrateMcpServers(mcp.servers) : DEFAULT_MCP_SETTINGS.servers,
     },
+    mcpServe: {
+      enabled: typeof mcpServe.enabled === 'boolean' ? mcpServe.enabled : DEFAULT_MCP_SERVE_SETTINGS.enabled,
+    },
     permissions: {
       allowedDirs: Array.isArray(permissions.allowedDirs)
         ? permissions.allowedDirs.map(String).map((d) => d.trim()).filter(Boolean)
         : [],
     },
+    profiles,
   }
 }
 

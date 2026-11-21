@@ -12,7 +12,8 @@ import type { Dispatch, SetStateAction } from 'react'
 import { createExecuteTools, type AskFormPayload, type ExamToolDeps } from '../../agent/tools'
 import { ASK_IDLE_TIMEOUT_MS } from '../../agent/sandbox/limits'
 import { ensureActivityListeners, userIdleMs } from '../../lib/userActivity'
-import { type AiSettings, globalContextWindow, resolveGlobal } from '../../ai/settings'
+import { type AiSettings, globalContextWindow } from '../../ai/settings'
+import { agentRuntimeApiAllow, agentWfGrant, profileOf, resolveAgentGlobal, type AgentVoice } from '../../agent/agentProfile'
 import { applyAskToProfile, learnSandboxOps, type AgentRunTarget, type AgentUiDeps } from '../agent/sandboxOps'
 import { makeMcpOps } from '../../agent/mcp/ops'
 import { makePermissionOps } from '../../agent/permissions'
@@ -75,10 +76,19 @@ export function rigTurnTools(io: {
   setPendingAsk: Dispatch<SetStateAction<Record<string, { id: string; form: AskFormPayload }>>>
   /** 转存失败之类的话要能说出来（ui.toast 缺席时的回落通道，见 hook 里 onNoticeRef 的说明） */
   onNoticeRef: { current: ((message: string) => void) | undefined }
+  /**
+   * 这一轮由哪位声部来说话（agent team 的团队分工）：决定模型覆盖（按声部的 profile）、
+   * api 能力面（agentRuntimeApiAllow）、工作流面（agentWfGrant）与 team.* 的身份。
+   * 缺省 = 导师（老调用方零改动）。
+   */
+  voice?: AgentVoice
   /** 子代理管理器：一段对话一个、跨轮存活（见 hook 的 getOrCreateSubManager） */
   getOrCreateSubManager: (conversationId: string) => SubAgentManager
 }) {
   const { getLatest, set, target, settings, agentSettings, wfParams, examDeps, afterNodeEdit, uiRef, browserFnRef, wfChainRef, pendingWfRef, askWaitersRef, setPendingAsk, onNoticeRef, getOrCreateSubManager } = io
+  const voice = io.voice ?? 'tutor'
+  /** 子代理 / MCP / 权限放行是导师层的机制（承接声部的分工面里没有这三组） */
+  const isTutor = voice === 'tutor'
   /**
    * 唯一的工具：模型写一段 JS，经由沙箱里的 api 完成读写。
    * 文档、节点、描述、试卷、临时变量、长期记忆、人机协作（ask / tiktok）
@@ -94,13 +104,17 @@ export function rigTurnTools(io: {
   const browserDeps = browserFnRef.current?.()
   /**
    * 全局提供商 / 模型 / 思考等级：所有 AI 功能的共同基底。提前到这里，
-   * 因为子代理要跑在导师同一轮的模型与档位上（见 subagent 的说明）。
+   * 因为子代理要跑在宿主同一轮的模型与档位上（见 subagent 的说明）。
+   * 叠加本声部的独立设置（agent/agentProfile）：提供商-模型与档位覆盖，
+   * 没配就逐字回落全局默认（resolveAgentGlobal 的缺省语义）。
    */
-  const global = resolveGlobal(settings)
+  const global = resolveAgentGlobal(settings, profileOf(agentSettings, voice))
   const window = globalContextWindow(settings)
   /**
    * 沙箱基座：一轮对话与子代理共用同一套能力（learnSandboxOps 的产物）。
-   * execute 拿全量，子代理按定义的 apiGroups 取子集（见 subagent/manager）。
+   * execute 的能力面按团队分工走（agentRuntimeApiAllow 的运行时清单 + 提示词速查同源）；
+   * 子代理按定义的 apiGroups 取子集（见 subagent/manager）。
+   * workflowGrant 是本声部的工作流授权面（内置规程面由分工固定；登记条目只有导师可调）。
    */
   const sandboxBase = learnSandboxOps({
     getLatest,
@@ -108,6 +122,10 @@ export function rigTurnTools(io: {
     // 这一轮冲着来的节点是沙箱里的「当前节点」——不是界面上此刻选中的那个
     nodeId: () => target.nodeId,
     goalId: () => target.goalId,
+    workflowGrant: agentWfGrant(agentSettings, voice),
+    apiAllow: agentRuntimeApiAllow(voice),
+    // 委托发起方：本声部这一轮自己（team.* 的 from 身份，见 learn/agentTeam/delegations）
+    teamFrom: () => ({ conversationId: target.conversationId, agent: voice, goalId: target.goalId }),
     ...(afterNodeEdit ? { afterNodeEdit } : {}),
     /**
      * wf.invoke 的落点（见 WorkflowOps.invoke）：**只排队，不当场跑**。
@@ -141,27 +159,30 @@ export function rigTurnTools(io: {
   })
   /**
    * 子代理管理器：喂给这一轮的模型配置与沙箱基座；它启动的子代理任务用
-   * 启动那一刻的配置跑完（换轮不漂移）。
+   * 启动那一刻的配置跑完（换轮不漂移）。导师专用——承接声部分工面里没有 subagent 组，
+   * 也不给它起管理器（省一份跨轮的空壳）。
    */
-  const manager = getOrCreateSubManager(target.conversationId)
-  manager.setTurn({
-    sandbox: sandboxBase,
-    provider: global.provider,
-    model: global.model,
-    // 档位全应用唯一（全局滑条）：子代理与它的宿主同档，绝不各自翻面（见 learn/effortGuard）
-    effort: global.effort,
-    contextWindow: window,
-  })
-  // subagent api 挂进沙箱（导师专用；子代理的 apiAllow 白名单里没有这一组）
-  sandboxBase.subagent = manager.api
-  /*
-   * MCP 外部服务挂进沙箱（mcp.list / mcp.discover / mcp.call，见 agent/mcp/ops）。
-   * 配置是这一轮现取的快照：用户改了 MCP 设置，下一轮就生效；
-   * 总开关关着时不注入——与旧做法「关闭时不注入任何 MCP 工具」同一口径。
-   * 子代理的 apiAllow 白名单里没有 mcp，subsetSandbox 也不带它——只敞给导师。
-   */
-  const mcpOps = makeMcpOps(agentSettings.mcp)
-  if (mcpOps) sandboxBase.mcp = mcpOps
+  if (isTutor) {
+    const manager = getOrCreateSubManager(target.conversationId)
+    manager.setTurn({
+      sandbox: sandboxBase,
+      provider: global.provider,
+      model: global.model,
+      // 档位全应用唯一（全局滑条）：子代理与它的宿主同档，绝不各自翻面（见 learn/effortGuard）
+      effort: global.effort,
+      contextWindow: window,
+    })
+    // subagent api 挂进沙箱（导师专用；子代理的 apiAllow 白名单里没有这一组）
+    sandboxBase.subagent = manager.api
+    /*
+     * MCP 外部服务挂进沙箱（mcp.list / mcp.discover / mcp.call，见 agent/mcp/ops）。
+     * 配置是这一轮现取的快照：用户改了 MCP 设置，下一轮就生效；
+     * 总开关关着时不注入——与旧做法「关闭时不注入任何 MCP 工具」同一口径。
+     * 子代理的 apiAllow 白名单里没有 mcp，subsetSandbox 也不带它——只敞给导师。
+     */
+    const mcpOps = makeMcpOps(agentSettings.mcp)
+    if (mcpOps) sandboxBase.mcp = mcpOps
+  }
   /**
    * ask 的表单通道抽成局部函数：permission.request 的审批复用同一条管线
    * （展示、限时、停止中断全都一致）；区别只在结果的去向——批准由宿主直接落
@@ -329,7 +350,7 @@ export function rigTurnTools(io: {
         }),
       ask: askHost,
       // 路径放行（导师专用）：审批复用 askHost 那条管线，批准由宿主直接落配置
-      permission: makePermissionOps({ ask: askHost }),
+      ...(isTutor ? { permission: makePermissionOps({ ask: askHost }) } : {}),
       tiktok: async () => {
         // Electron 的 beep：响一声即返回；不在 Electron 里跑时静默跳过
         try {

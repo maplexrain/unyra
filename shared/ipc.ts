@@ -161,6 +161,14 @@ export type {
   McpStdioCallResult,
 } from './ipc/mcp'
 
+/* ---------- 对外 MCP 服务（应用 = MCP server，见 electron/mcp/serve） ---------- */
+export type {
+  McpServeCall,
+  McpServeReply,
+  McpServeEndpoint,
+  McpServeStatus,
+} from './ipc/mcpServe'
+
 /* ---------- 公告（远程公告的本地状态） ---------- */
 export type { NoticeSettings } from './ipc/notice'
 

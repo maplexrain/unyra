@@ -12,6 +12,7 @@ import {
   removeWorkflow,
   renderWorkflowInstruction,
   upsertWorkflow,
+  BUILTIN_WORKFLOW_IDS,
 } from '../workflows'
 
 /**
@@ -37,11 +38,26 @@ function invokeParams(raw: unknown): Record<string, string | number> {
 export function createWorkflowOps(deps: AgentOpsDeps): WorkflowOps {
   const store0 = () => deps.getLatest()
   const goal = () => deps.goalId()
+  /**
+   * 授权面（智能体团队分工，见 agent/agentProfile 的 AgentWfGrant）：内置规程按声部的
+   * 固定面对账（分工由架构固定、设置里只读），登记条目按 registered 白名单
+   * （null = 不设限，只有导师是这待遇）。缺省 = 不设限（子代理 / 超级文档桥的老口径）。
+   * 越权触发在 invoke 当场拒绝并说明去哪儿放开。
+   */
+  const grant = deps.workflowGrant ?? { builtin: BUILTIN_WORKFLOW_IDS, registered: null }
+  const allowed = (row: { id: string; tier: string }): boolean =>
+    row.tier === 'builtin'
+      ? grant.builtin.has(row.id.toLowerCase())
+      : grant.registered === null || grant.registered.has(row.id.toLowerCase())
+  const pick = <T extends { id: string; tier: string }>(rows: T[]): T[] => rows.filter((r) => allowed(r))
+  const denied = (name: string): string =>
+    '工作流「' + name +
+    '」没有开放给当前智能体：内置规程面由团队分工固定（agent team 左栏的智能体设置里可查看）；登记工作流只有导师能在自己的设置里勾选放开。'
 
   return {
     list: (opts?: unknown) => {
       const o = opts && typeof opts === 'object' ? (opts as Record<string, unknown>) : {}
-      const rows = listWorkflowRows(store0(), goal())
+      const rows = pick(listWorkflowRows(store0(), goal()))
       const isFull = o.full === true || o.brief === false
       return {
         count: rows.length,
@@ -63,7 +79,7 @@ export function createWorkflowOps(deps: AgentOpsDeps): WorkflowOps {
     get: (ref: string) => {
       const key = String(ref ?? '').trim().toLowerCase()
       const hit = listWorkflowRows(store0(), goal()).find(
-        (r) => r.id.toLowerCase() === key || r.name.toLowerCase() === key,
+        (r) => (r.id.toLowerCase() === key || r.name.toLowerCase() === key) && allowed(r),
       )
       if (!hit) {
         return { ok: false, error: '没有这个工作流：' + (ref || '（空）') }
@@ -120,9 +136,17 @@ export function createWorkflowOps(deps: AgentOpsDeps): WorkflowOps {
      * 自己照着流程做一遍，那就成了双份）。
      */
     invoke: (ref, opts) => {
-      const hit = findWorkflow(store0(), goal(), ref)
+      const key = String(ref ?? '').trim().toLowerCase()
+      const hit = listWorkflowRows(store0(), goal()).find(
+        (r) => (r.id.toLowerCase() === key || r.name.toLowerCase() === key) && allowed(r),
+      )
       if (!hit) {
-        return { error: '没有叫「' + (ref || '（空）') + '」的工作流。可调 api.wf.list() 核对 id 或名字，或查看当前目标的 workflow.json。' }
+        const anywhere = findWorkflow(store0(), goal(), ref)
+        return {
+          error: anywhere
+            ? denied(anywhere.name)
+            : '没有叫「' + (ref || '（空）') + '」的工作流。可调 api.wf.list() 核对 id 或名字，或查看当前目标的 workflow.json。',
+        }
       }
       const run = deps.invokeWorkflow
       if (!run) {

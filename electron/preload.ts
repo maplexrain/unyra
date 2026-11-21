@@ -25,7 +25,7 @@ import type {
   BaseProcessInfo, BaseProcessListResult, BaseProcessOutputResult, BaseProcessRunOpts, BaseProcessRunResult, BaseProcessStartResult, BaseProcessStatusResult,
   BaseProcessStopResult, BaseProcessWaitOpts, BaseProcessWaitResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
-  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
+  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpServeCall, McpServeReply, McpServeStatus, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   PluginEntry, PluginListResult, PluginSettingsResult,
   PluginSourceResult, PluginTogglesResult, SaveBinaryPayload, SaveBinaryResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
   NoticeSettings,
@@ -52,7 +52,7 @@ export type {
   BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
   BaseProcessInfo, BaseProcessListResult, BaseProcessOutputResult, BaseProcessRunOpts, BaseProcessRunResult, BaseProcessStartResult, BaseProcessStatusResult,
   BaseProcessStopResult, BaseProcessWaitOpts, BaseProcessWaitResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
-  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
+  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpServeCall, McpServeReply, McpServeStatus, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   PluginEntry, PluginListResult,
   PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
   NoticeSettings,
@@ -244,6 +244,25 @@ const api = {
     ): Promise<McpStdioCallResult> => ipcRenderer.invoke('mcp:call', server, tool, args),
     /** 停掉某个服务的会话（设置里禁用 / 删除时来一发，不留没用的子进程）；省略 = 停掉全部 */
     stop: (serverId?: string): Promise<StorageOk> => ipcRenderer.invoke('mcp:stop', serverId),
+  },
+
+  /**
+   * 对外 MCP 服务（应用本身当 MCP server）：主进程把外部 harness 经命名管道
+   * 送来的工具调用转发到这里执行（guest 会话见 src/agent/mcp/serveHost），
+   * 回执经 reply 原路送回。与上面 mcp 那组方向相反：那条是**消费**外部服务，
+   * 这条是**对外提供**。
+   */
+  mcpServe: {
+    onCall: (cb: (call: McpServeCall) => void): (() => void) => {
+      const listener = (_e: unknown, call: McpServeCall) => cb(call)
+      ipcRenderer.on('mcpServe:call', listener)
+      return () => ipcRenderer.removeListener('mcpServe:call', listener)
+    },
+    reply: (reply: McpServeReply): void => ipcRenderer.send('mcpServe:reply', reply),
+    /** 主进程侧的服务状态（监听/管道/端点文件/连接数/桥路径）；服务停着也回答 */
+    status: (): Promise<McpServeStatus> => ipcRenderer.invoke('mcpServe:status'),
+    /** 开关：设置是渲染层的事实源，这里只推给主进程启停管道；回推最新 status */
+    setEnabled: (on: boolean): Promise<McpServeStatus> => ipcRenderer.invoke('mcpServe:setEnabled', on),
   },
 
   /**

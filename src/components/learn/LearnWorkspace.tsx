@@ -1297,7 +1297,7 @@ export default function LearnWorkspace({
       const ex = st.exams.find((e) => e.id === examId)
       agent.runWorkflow('exam-grade', {
         nodeId: ex?.nodeId,
-        params: { target: ex?.nodeId ?? '', examId, attemptId },
+        params: { target: ex?.nodeId ?? '', examId, attemptId }, voice: 'grader',
       })
     },
   })

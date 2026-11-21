@@ -16,7 +16,9 @@ import { runAgent } from '../../agent/runtime'
 import { createExecuteTools } from '../../agent/tools'
 import type { SandboxOptions } from '../../agent/sandbox/types'
 import { loadAgentSettings } from '../../agent/settings'
-import { globalContextWindow, loadAiSettings, resolveGlobal } from '../../ai/settings'
+import { FREE_AGENT_GROUPS, profileOf, resolveAgentGlobal } from '../../agent/agentProfile'
+import { onConversationTurnClosed } from '../agentTeam/delegations'
+import { globalContextWindow, loadAiSettings } from '../../ai/settings'
 import { applyEvent } from '../agent/events'
 import { toChatHistory } from '../agent/history'
 import { loadAttachTexts } from '../agent/transfer'
@@ -79,7 +81,8 @@ export async function runFreeTurn(io: {
   if (!stored) return
   const settings = loadAiSettings()
   const agentSettings = loadAgentSettings()
-  // 自由聊天的系统提示词同样固化进会话（见 Conversation.systemPrompt）：系统提示词变动时自动同步最新规范
+  // 自由聊天的系统提示词同样固化进会话（见 Conversation.systemPrompt）：系统提示词变动时自动同步最新规范。
+  // 能力面由架构固定（内置组不可卸载），提示词恒定——没有随 profile 变化的字段。
   const desiredFreeSystem = buildFreeChatSystem({
     extraSystemPrompt:
       agentSettings.extraSystemPromptEnabled && agentSettings.extraSystemPrompt?.trim()
@@ -91,7 +94,8 @@ export async function runFreeTurn(io: {
     freeSystem = desiredFreeSystem
     mutateFreeConversation(conversationId, (c) => ({ ...c, systemPrompt: freeSystem }))
   }
-  const global = resolveGlobal(settings)
+  // 仅聊天声部的独立设置（agent/agentProfile）：提供商-模型与档位覆盖，缺省逐字回落全局
+  const global = resolveAgentGlobal(settings, profileOf(agentSettings, 'free'))
   const window = globalContextWindow(settings)
   const assistantId = crypto.randomUUID()
   const convKey = conversationId
@@ -128,7 +132,8 @@ export async function runFreeTurn(io: {
      * 日程上的一个可选标记，这里给 FREE_GOAL_ID，界面按「自由聊天」显示。
      */
     schedule: createScheduleOps({ getLatest, set, goalId: () => FREE_GOAL_ID }),
-    apiAllow: ['web', 'fetch', 'schedule'],
+    // 仅聊天的能力面由架构固定（内置组不可卸载）：恒为 web / fetch / schedule 全集
+    apiAllow: [...FREE_AGENT_GROUPS],
     apiBrief:
       'DeepSeek 官方搜索与抓取服务：\n' +
       'api.web.search({ query, count?: 5, ori_question?, need_content? })：网络搜索并获取多维度权威检索结果；\n' +
@@ -250,6 +255,18 @@ export async function runFreeTurn(io: {
       delete next[convKey]
       return next
     })
+    // 委托承接收口（仅聊天承接方没有 team.*：最后一条回复就是交付结果，自动交付；
+    // 见 learn/agentTeam/delegations 的收口通知）
+    const afterConv = freeConversationById(convKey)
+    const lastAssistant = afterConv ? [...afterConv.messages].reverse().find((m) => m.role === 'assistant') : undefined
+    const delivered = lastAssistant
+      ? lastAssistant.parts
+          .filter((p) => p.type === 'text')
+          .map((p) => p.text)
+          .join('')
+          .trim()
+      : ''
+    onConversationTurnClosed(convKey, { autoCompleteResult: delivered || undefined })
   }
   // 第一句话进来给这段对话起名（与导师对话同一套起名器，只是不挂目标问题）
   const after = freeConversationById(convKey)

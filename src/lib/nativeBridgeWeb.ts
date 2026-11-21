@@ -205,6 +205,16 @@ export function createWebNativeBridge(): NativeBridge {
       stop: (serverId?: string) => apiFetch('/api/mcp/stop', { method: 'POST', body: JSON.stringify({ serverId }) }),
     },
 
+    // 对外 MCP 服务只在桌面端有（命名管道在主进程）：WebUI 模式安静空转，永远没有调用进来
+    mcpServe: {
+      onCall: () => () => {},
+      reply: () => {},
+      status: () =>
+        Promise.resolve({ enabled: false, listening: false, pipe: '', endpointFile: '', connections: 0, bridgePath: '', version: '' }),
+      setEnabled: (on) =>
+        Promise.resolve({ enabled: on === true, listening: false, pipe: '', endpointFile: '', connections: 0, bridgePath: '', version: '' }),
+    },
+
     plugins: {
       list: () => Promise.resolve({ ok: true, dir: '', entries: [] }),
       read: () => Promise.resolve({ ok: false, error: 'WebUI 模式暂不支持本地外部插件' }),

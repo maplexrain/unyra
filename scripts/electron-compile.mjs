@@ -124,5 +124,17 @@ export async function buildElectron(outdir = join(ROOT, 'dist-electron')) {
     }
   }
 
+  // 对外 MCP 服务的哑桥（electron/mcp/bridge.mjs）：原样拷进产物根——打包版的
+  // harness 配置直接指向 <安装目录>/resources/app.asar.unpacked/dist-electron/mcp-bridge.mjs
+  //（asarUnpack 要解到真实文件系统，见 electron-builder.yml：普通 Node 读不了 asar）
+  const bridgeSrc = join(ROOT, 'electron/mcp/bridge.mjs')
+  if (existsSync(bridgeSrc)) {
+    try {
+      copyFileSync(bridgeSrc, join(outdir, 'mcp-bridge.mjs'))
+    } catch {
+      // 被占用时允许跳过：下一次构建再带上
+    }
+  }
+
   return outdir
 }

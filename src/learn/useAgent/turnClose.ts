@@ -45,8 +45,8 @@ export function settleTurn(io: {
   setPendingAsk: Dispatch<SetStateAction<Record<string, { id: string; form: AskFormPayload }>>>
   /** wf.invoke 的出队口（见 hook 里 wfDrainRef 的说明） */
   wfDrainRef: { current: ((target: AgentRunTarget) => boolean) | null }
-  /** 到阈值自动压缩的触发口（见 hook 里 autoCompactRef 的说明） */
-  autoCompactRef: { current: ((ratio: number) => void) | null }
+  /** 到阈值自动压缩的触发口（见 hook 里 autoCompactRef 的说明）；target = 刚收口的这一轮（承接声部的会话要压自己） */
+  autoCompactRef: { current: ((ratio: number, target?: AgentRunTarget) => void) | null }
   onNoticeRef: { current: ((message: string) => void) | undefined }
 }) {
   const { convKey, target, assistantId, parts, tally, window, turnDelivery, isCompactTurn, persist, getLatest, setRunning, setStreaming, setTps, setLiveUsage, setPendingAsk, wfDrainRef, autoCompactRef, onNoticeRef } = io
@@ -152,7 +152,7 @@ export function settleTurn(io: {
     const cfg = loadAgentSettings().compact
     const ratio = window ? tally.context / window : 0
     if (cfg.auto && shouldCompact(activeMessages(after.messages).length, ratio, cfg.threshold)) {
-      autoCompactRef.current(ratio)
+      autoCompactRef.current(ratio, target)
     }
   }
 }

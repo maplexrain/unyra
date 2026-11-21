@@ -851,8 +851,17 @@ export function globalSummary(settings: AiSettings = loadAiSettings()): string {
  * 一条提供商都没配时抛 AiRequestError——那是可提示给用户的错误，
  * 而不是让调用方拿到半个对象去发请求。
  */
-export function resolveProvider(settings: AiSettings = loadAiSettings()): ResolvedProvider {
-  const cfg = globalProvider(settings)
+export function resolveProvider(
+  settings: AiSettings = loadAiSettings(),
+  /** 指定提供商覆盖（智能体独立设置用）：找不到这条或没指定时回落全局默认 */
+  wanted?: { providerId?: string },
+): ResolvedProvider {
+  const cfg = (wanted?.providerId && settings.providers.find((p) => p.id === wanted.providerId)) || globalProvider(settings)
+  return resolveProviderConfig(cfg)
+}
+
+/** 把一条提供商配置解析成可直接发请求的形态（resolveProvider 与全局覆盖路径共用） */
+function resolveProviderConfig(cfg: ProviderConfig | undefined): ResolvedProvider {
   if (!cfg) throw new AiRequestError('尚未配置任何 AI 提供商，请先在设置里创建')
   const preset = isCustomConfig(cfg) ? undefined : presetOf(cfg.id)
   const quirks = preset?.quirks || cfg.quirks ? { ...preset?.quirks, ...cfg.quirks } : undefined
@@ -889,15 +898,31 @@ export function resolveProvider(settings: AiSettings = loadAiSettings()): Resolv
 }
 
 /** 全局选择的完整解析结果：一次拿齐提供商、模型、思考等级 */
-export function resolveGlobal(settings: AiSettings = loadAiSettings()): {
+export function resolveGlobal(
+  settings: AiSettings = loadAiSettings(),
+  /**
+   * 提供商-模型覆盖（智能体独立设置用）：providerId 找不到时回落全局默认；
+   * model 不属于生效提供商时回落该提供商的默认模型；两者都没给时与原行为逐字节一致。
+   */
+  wanted?: { providerId?: string; model?: string },
+): {
   provider: ResolvedProvider
   model: string
   effort: ReasoningEffort
 } {
-  const provider = resolveProvider(settings)
-  const model = globalModel(settings)
+  const provider = resolveProvider(settings, wanted)
+  const cfg = settings.providers.find((p) => p.id === provider.id)
+  const wantedModel = wanted?.model?.trim() ?? ''
+  const model =
+    wantedModel && cfg && modelsOf(cfg).includes(wantedModel)
+      ? wantedModel
+      : wanted?.providerId
+        ? cfg
+          ? defaultModelOf(cfg)
+          : ''
+        : globalModel(settings)
   // 模型级的映射最后覆盖：聚合平台一个提供商下多家模型，映射按模型配才够细
-  const entry = globalProvider(settings)?.models.find((m) => m.id === model)
+  const entry = cfg?.models.find((m) => m.id === model)
   if (entry?.effortMap) provider.effortMap = { ...provider.effortMap, ...entry.effortMap }
   return { provider, model, effort: globalEffort(settings) }
 }

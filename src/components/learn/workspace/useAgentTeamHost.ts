@@ -15,6 +15,7 @@ import { upsertAgentTab, withAgentTabs } from '../../../learn/agentTabs'
 import { findTab, focusedTab } from '../../../learn/groups'
 import type { useAgent } from '../../../learn/useAgent'
 import { focusAgentInput } from '../../../lib/agentFocus'
+import { installMcpServeHost } from '../../../agent/mcp/serveHost'
 
 type AgentApi = ReturnType<typeof useAgent>
 
@@ -110,6 +111,10 @@ export function useAgentTeamHost({
     },
     [],
   )
+
+  // 对外 MCP 服务（应用当 server）的 guest 会话：外部 harness 经命名管道调用工具，
+  // 在这里拿到与真沙箱同源的基座执行（见 src/agent/mcp/serveHost；单例，重挂自动换新）
+  useEffect(() => installMcpServeHost({ getLatest, set }), [getLatest, set])
 
   const scheduleFocusInput = useCallback(() => {
     if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current)

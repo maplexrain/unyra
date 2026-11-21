@@ -165,6 +165,13 @@ export function toChatHistory(
           const role = prev && prev.role === 'user' ? 'assistant' : 'user'
           out.push({ role, content: p.text })
         }
+        /**
+         * 委托交付（team.complete，见 learn/agentTeam/delegations）：实发侧按 user 角色
+         * push（pushInjection 对 user 恒不降级），还原同样恒为 user——逐字节镜像。
+         */
+        if (p.type === 'team-delivery') {
+          out.push({ role: 'user', content: p.text })
+        }
       }
     }
   }

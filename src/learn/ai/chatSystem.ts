@@ -5,6 +5,10 @@
  * 它配备 DeepSeek 官方搜索（web.search）与抓取（fetch）能力，外加用户级日程（schedule.*），
  * 通过 execute 工具在受限沙箱中调用——沙箱开放面与 useAgent 里 freeSandbox 的
  * apiAllow 保持同一口径（web / fetch / schedule / log），两边改要一起改。
+ *
+ * 这份提示词**不做声部白名单裁剪**：仅聊天的能力面（联网 + 日程）由沙箱架构固定，
+ * 全部属于内置能力、不可卸载（见 agent/agentProfile 的 BUILTIN_API_GROUPS），
+ * 所以提示词恒定——profile 里没有能改变它的字段。
  */
 
 export function buildFreeChatSystem(opts?: { extraSystemPrompt?: string }): string {

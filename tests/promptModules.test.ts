@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ConversationMessage } from '../src/agent/types'
-import { buildTeacherSystem } from '../src/learn/ai'
+import { buildTeacherSystem, buildExaminerSystem } from '../src/learn/ai'
 import {
   PROMPT_MODULES,
   missingPromptModules,
@@ -129,30 +129,36 @@ describe('首轮系统提示词（紧凑静态注入）', () => {
     expect(system).toContain('api.browser')
     expect(system).toContain('api.subagent')
     expect(system).toContain('api.workspace')
-    expect(system).toContain('api.exam')
+    // 团队分工：判卷的 exam 组与课件的 classroom 组不在导师的速查里（分给了判卷官 / 命题官）
+    expect(system).not.toContain('#### api.exam')
+    expect(system).not.toContain('#### api.classroom')
     // 具体签名与反直觉边界（trap）在场
     expect(system).toContain('node.list()')
     expect(system).toContain('node.get(uuid)')
     expect(system).toContain('workspace.write')
-    expect(system).toContain('browser.open')
+    // 导师的专属组速查在场（ui / memory / subagent 等）；课堂组分给了命题官
+    expect(system).toContain('ui.point')
     expect(system).toContain('8 秒硬超时')
-    expect(system).toContain('严禁改写')
+    expect(system).not.toContain('#### api.classroom')
+    expect(system).toContain('先读后写')
     // 全量手册（示例围栏堆砌）已退役——瘦身验收线
     expect(system).not.toContain('沙箱全部 API 完整参考手册与示例')
     expect(system).not.toContain('示例代码：')
   })
 
-  it('全量工作流规程集中在 WORKFLOWS_GUIDE 并拼进系统提示词', () => {
+  it('工作流规程按声部分工拼进系统提示词（教学主线在导师、创作域分给命题官）', () => {
     expect(system).toContain('内置工作流与任务规程')
     expect(system).toContain('教学文档生成')
     expect(system).toContain('大纲编写与规划')
-    expect(system).toContain('项目与文章解读')
-    expect(system).toContain('试卷命题')
-    expect(system).toContain('超级实验室')
     expect(system).toContain('长会话交接摘要')
-    // 规程引用 api 名，但不重复解释 api 用法（细节走 __help）
-    expect(system).toContain('api.exam.grade')
+    // 分出去的域：导师的规程节里不再出现（分诊一句提及「超级实验室」没问题），命题官的规程里齐
+    expect(system).not.toContain('【出卷】试卷命题（exam）')
+    expect(system).not.toContain('【超级实验室】可交互超级文档（superlab）')
     expect(system).toContain('api.node.finish')
+    const examiner = buildExaminerSystem()
+    expect(examiner).toContain('试卷命题')
+    expect(examiner).toContain('超级实验室')
+    expect(examiner).toContain('api.classroom.schema')
   })
 
   it('排版配方与语法指南在场（九配方版）', () => {
