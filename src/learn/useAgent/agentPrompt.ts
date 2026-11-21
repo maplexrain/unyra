@@ -9,8 +9,9 @@
  */
 
 import type { Conversation, ConversationMessage, MessageFile, MessageImage, MessageQuote } from '../../agent/types'
+import type { AgentVoice } from '../../agent/agentProfile'
 import { loadAgentSettings, type AgentSettings } from '../../agent/settings'
-import { buildTeacherSystem } from '../ai'
+import { buildVoiceSystem } from '../ai'
 import { needsPersonaAnnounce, personaMessage } from '../../agent/persona'
 import { needsDocFormatAnnounce, docFormatMessage } from '../../agent/docFormat'
 import { needsUserInfoAnnounce, userInfoMessage } from '../../agent/userInfo'
@@ -36,10 +37,18 @@ export function assembleTurnEntry(io: {
   attachedFiles: { files: MessageFile[]; error?: string }
   /** 这一轮回复的固定 id：inflight 标记与流式槽都按它认领 */
   assistantId: string
+  /**
+   * 这一轮由哪位声部来说话（agent team 的团队分工）：决定系统提示词（buildVoiceSystem）
+   * 与各路感知注入的范围。缺省 = 导师（老调用方零改动）。
+   */
+  voice?: AgentVoice
   /** 目标会话（载入的那份；不存在时是调用方现场建的空会话） */
   conv: Conversation
 }): { conv: Conversation; agentSettings: AgentSettings; teacherSystem: string } {
   const { trimmed, hidden, mark, wfParams, context, quote, attached, attachedFiles, assistantId } = io
+  const voice = io.voice ?? 'tutor'
+  /** 只有导师有人格 / 文档格式 / 技能库 / MCP 的感知注入：那是导师层的机制（全局设置） */
+  const isTutor = voice === 'tutor'
   let conv = io.conv
   /**
    * **节点上下文不再自动注入**（2026-10-23 的架构决定）：「当前学习目标 / 目标规划 /
@@ -91,8 +100,8 @@ export function assembleTurnEntry(io: {
    */
   let teacherSystem = conv.systemPrompt
   if (!teacherSystem) {
-    teacherSystem = buildTeacherSystem({
-      // 画像**不在这里传**：导师要贴合这个人时自己 api.userInfo.get() 取（见 ai 的说明）
+    teacherSystem = buildVoiceSystem(voice, {
+      // 画像**不在这里传**：声部要贴合这个人时自己 api.userInfo.get() 取（见 ai 的说明）
       extraSystemPrompt:
         agentSettings.extraSystemPromptEnabled && agentSettings.extraSystemPrompt?.trim()
           ? agentSettings.extraSystemPrompt.trim()
@@ -100,18 +109,20 @@ export function assembleTurnEntry(io: {
     })
     conv = { ...conv, systemPrompt: teacherSystem }
   }
-  const announcer = needsPersonaAnnounce(conv.messages, personaId)
-    ? [personaMessage(personaId, Date.now(), crypto.randomUUID(), agentSettings.customPersonas)]
-    : []
+  const announcer =
+    isTutor && needsPersonaAnnounce(conv.messages, personaId)
+      ? [personaMessage(personaId, Date.now(), crypto.randomUUID(), agentSettings.customPersonas)]
+      : []
 
   /*
    * 文档格式策略：与人格同一位置、同一条纪律（见 agent/docFormat）——
    * 一条对话里同一种格式只补一次；格式变了就是新 id，自然再补一次；
    * 被压缩掉（retired）之后自动补回来。
    */
-  const formatAnnouncer = needsDocFormatAnnounce(conv.messages, agentSettings.docFormat)
-    ? [docFormatMessage(agentSettings.docFormat, Date.now(), crypto.randomUUID(), agentSettings.customDocFormats)]
-    : []
+  const formatAnnouncer =
+    isTutor && needsDocFormatAnnounce(conv.messages, agentSettings.docFormat)
+      ? [docFormatMessage(agentSettings.docFormat, Date.now(), crypto.randomUUID(), agentSettings.customDocFormats)]
+      : []
 
   const userInfoAnnouncer = needsUserInfoAnnounce(conv.messages)
     ? [userInfoMessage(activeProfile(), Date.now(), crypto.randomUUID())]
@@ -121,34 +132,36 @@ export function assembleTurnEntry(io: {
   const activeSkills = getActiveSkills(agentSettings.skills)
   const currentSkillsDigest = getSkillsDigest(activeSkills)
   const hasPreviousSkillsAnnounce = conv.messages.some((m) => !m.retired && m.skillsDigest !== undefined)
-  const skillsAnnouncer = needsSkillsAnnounce(conv.messages, currentSkillsDigest)
-    ? [
-        skillsAnnounceMessage(
-          activeSkills,
-          storageAbsPath('skills') ?? undefined,
-          Date.now(),
-          crypto.randomUUID(),
-          currentSkillsDigest,
-          hasPreviousSkillsAnnounce,
-        ),
-      ]
-    : []
+  const skillsAnnouncer =
+    isTutor && needsSkillsAnnounce(conv.messages, currentSkillsDigest)
+      ? [
+          skillsAnnounceMessage(
+            activeSkills,
+            storageAbsPath('skills') ?? undefined,
+            Date.now(),
+            crypto.randomUUID(),
+            currentSkillsDigest,
+            hasPreviousSkillsAnnounce,
+          ),
+        ]
+      : []
 
   // MCP 感知注入：与技能发现层同一套机制（隐藏消息 + digest 变更重注入）。
   // 主观能动性的前提是知情——agent 不知道有哪些外部服务，就不会在任务需要时想到它们
   const currentMcpDigest = getMcpDigest(agentSettings.mcp)
   const hasPreviousMcpAnnounce = conv.messages.some((m) => !m.retired && m.mcpDigest !== undefined)
-  const mcpAnnouncer = needsMcpAnnounce(conv.messages, currentMcpDigest)
-    ? [
-        mcpAnnounceMessage(
-          agentSettings.mcp,
-          Date.now(),
-          crypto.randomUUID(),
-          currentMcpDigest,
-          hasPreviousMcpAnnounce,
-        ),
-      ]
-    : []
+  const mcpAnnouncer =
+    isTutor && needsMcpAnnounce(conv.messages, currentMcpDigest)
+      ? [
+          mcpAnnounceMessage(
+            agentSettings.mcp,
+            Date.now(),
+            crypto.randomUUID(),
+            currentMcpDigest,
+            hasPreviousMcpAnnounce,
+          ),
+        ]
+      : []
 
   conv = {
     ...conv,

@@ -7,6 +7,7 @@
  * - AgentTool：可注册的工具；新增能力只需实现一个工具并注册进 ToolRegistry
  */
 import type { ChatUsage } from '../ai/types'
+import type { AgentVoice } from './agentProfile'
 import type { DeliveryRecord } from './delivery'
 
 /** 会话里一条消息的组成片段：思考过程、正文回复、一次工具调用、一条运行时提示 */
@@ -32,6 +33,19 @@ export type AgentPart =
        */
       type: 'prompt-module'
       key: string
+      text: string
+    }
+  | {
+      /**
+       * 委托交付的跳边界注入（team.complete，见 learn/agentTeam/delegations）：与
+       * prompt-module 同一条镜像纪律——runtime 在 hop 边界 push 一条 **user** 消息
+       * （pushInjection 对 user 角色恒不降级），宿主把交付全文记成本片段；toChatHistory
+       * 在它所在的位置补发一条 **恒为 user** 的消息（逐字节重放，见 agent/history）。
+       * 界面渲染成与思考/工具同层的折叠块。
+       */
+      type: 'team-delivery'
+      /** 交付所属的委托 id */
+      delegationId: string
       text: string
     }
   | {
@@ -346,6 +360,11 @@ export interface MessageQuote {
 export interface Conversation {
   id: string
   goalId: string
+  /**
+   * 这段对话属于哪位声部（agent team 的团队分工，见 agent/agentProfile）：
+   * 命题官 / 判卷官 / 资料员的承接会话在这里标身份；缺省 = 导师（老数据全部是导师对话）。
+   */
+  voice?: AgentVoice
   messages: ConversationMessage[]
   createdAt: number
   updatedAt: number

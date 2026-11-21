@@ -25,3 +25,5 @@
 export { generateShortAnnotation } from './ai/annotation'
 export { buildTeacherSystem } from './ai/teacherSystem'
 export { buildFreeChatSystem } from './ai/chatSystem'
+export { buildVoiceSystem, buildExaminerSystem, buildGraderSystem, buildResearcherSystem } from './ai/agentTeamSystem'
+export { SHARED_AGENT_PREFIX } from './ai/agentSharedPrefix'

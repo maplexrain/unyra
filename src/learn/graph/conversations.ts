@@ -2,6 +2,7 @@
  * 本文件负责：会话（按目标归属）的增删查，以及会话标题与消息正文的编辑。
  */
 import type { Conversation } from '../../agent/types'
+import { voiceOfConversation } from '../agentTeam/voiceConvs'
 import type { LearnStore } from '../types'
 
 export function conversationById(store: LearnStore, conversationId: string): Conversation | undefined {
@@ -10,9 +11,18 @@ export function conversationById(store: LearnStore, conversationId: string): Con
 
 /* ---------- 节点树与对话（会话按目标归属） ---------- */
 
-/** 某目标的全部会话，按创建时间升序 */
+/**
+ * 某目标的**导师**会话，按创建时间升序。
+ *
+ * agent team 分工之后（见 learn/agentTeam/voiceConvs），store.conversations 里还住着
+ * 承接声部（命题官 / 判卷官 / 资料员）的工作会话——它们各有自己的解析通道
+ * （voiceConversationsOfGoal），这里按声部过滤到导师，让「目标的当前会话」的既有
+ * 语义（显示 / 激活 / 兜底）不被 specialists 的会话污染。
+ */
 export function conversationsOfGoal(store: LearnStore, goalId: string): Conversation[] {
-  return store.conversations.filter((c) => c.goalId === goalId).sort((a, b) => a.createdAt - b.createdAt)
+  return store.conversations
+    .filter((c) => c.goalId === goalId && voiceOfConversation(c) === 'tutor')
+    .sort((a, b) => a.createdAt - b.createdAt)
 }
 
 /** 该目标最近使用的会话（没有则返回 undefined） */

@@ -22,6 +22,7 @@ import type { ChipOps } from './chip'
 import type { DeliveryOps } from './delivery'
 import type { MethodOps } from './method'
 import type { WorkflowOps } from './workflow'
+import type { TeamOps } from './team'
 import type { CodeOps } from './code'
 import type { UserInfoOps } from './userInfo'
 import type { UiOps } from './ui'
@@ -195,5 +196,12 @@ export interface SandboxOptions {
    * 之间的事，不从子代理手里过）。宿主实现见 agent/permissions。
    */
   permission?: PermissionOps
+  /**
+   * team 组（list / status / delegate / complete / awake）：智能体团队编排——把任务
+   * **委托**给另一位声部（仅聊天 / 导师），交付结果传回委托者。
+   * **导师专用**：子代理的 apiAllow 白名单放不进这一组（子代理不该再往外派活），
+   * 仅聊天的沙箱基座里也没有它。宿主实现见 learn/ops/team 与 learn/agentTeam/delegations。
+   */
+  teams?: TeamOps
 }
 

@@ -14,6 +14,7 @@ import type { KnowledgeNode, LearnStore } from '../../../learn/types'
 import { nodeById } from '../../../learn/graph'
 import { outlineByMember } from '../../../learn/outline'
 import { listWorkflowRows, removeWorkflow, type WorkflowRow } from '../../../learn/workflows'
+import { voiceForWorkflow } from '../../../agent/agentProfile'
 import { setCodeHost, type CodeCompileRequest } from '../../../lib/docHost'
 import { examNeedingWork } from './examTools'
 import type { useAgent } from '../../../learn/useAgent'
@@ -71,7 +72,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
       onOpenSettings()
       return
     }
-    agent.runWorkflow('browser-use', { nodeId: nid, params: { target: nid } })
+    agent.runWorkflow('browser-use', { nodeId: nid, params: { target: nid }, voice: 'researcher' })
   }, [activeGoal, activeNodeId, agent, getLatest, hasKey, onToast, onOpenSettings, providerName])
 
   /**
@@ -95,7 +96,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     setCreating(false)
     // 交付边界随指令钉一遍：这是「往目标文档下面出一份卷」的轮次，不是建树。
     // 画布上有空壳时 api.node.create 会原位复用（同 id 吸收），没有就现建——两条路都是它。
-    agent.runWorkflow('exam', { nodeId: target.id, params: { target: target.id } })
+    agent.runWorkflow('exam', { nodeId: target.id, params: { target: target.id }, voice: 'examiner' })
   }
 
   /**
@@ -119,6 +120,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     agent.runWorkflow('exam-grade', {
       nodeId: target.id,
       params: { target: target.id, ...(examId ? { examId } : {}) },
+      voice: 'grader',
     })
   }
 
@@ -149,6 +151,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     agent.runWorkflow('superlab', {
       nodeId: target.id,
       params: { target: target.id, ...(shellUuid ? { shell: shellUuid } : {}) },
+      voice: 'examiner',
     })
     onToast(t('已启动超级实验室，导师马上会问你想做什么'))
   }
@@ -301,6 +304,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     agent.runWorkflow('video-overview', {
       nodeId: rootId,
       params: { target: videoNodeUuid, videoId: videoNode.videoId },
+      voice: 'researcher',
     })
     onToast(t('已为视频启动总览文档生成工作流，导师正在分析选集语义…'))
   }
@@ -325,6 +329,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     agent.runWorkflow('classroom', {
       nodeId: rootId,
       params: { target: classroomNodeUuid },
+      voice: 'examiner',
     })
     onToast(t('已为课堂启动课件生成工作流，导师正在规划画面与动作流…'))
   }
@@ -359,6 +364,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
       const sent = agent.runWorkflow('code-compile', {
         nodeId: target.id,
         params: { target: target.id, language: req.languageId ?? '未标注', key: req.key, code: req.code },
+        voice: 'examiner',
       })
       if (!sent) {
         // 对话还没就绪（没有会话/目标）：这一轮根本发不出去，菜单不该空转
@@ -388,7 +394,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
       onToast(t('先选一个知识点：工作流要在它的上下文里跑'))
       return
     }
-    agent.runWorkflow(row.id, { nodeId: activeNode.id })
+    agent.runWorkflow(row.id, { nodeId: activeNode.id, voice: voiceForWorkflow(row.id) })
     onToast(t('已启动「{0}」', t(row.name)))
   }
   /** 设置里的删除（FlowTab 先弹过确认框）：只删登记的，内置的到不了这里 */

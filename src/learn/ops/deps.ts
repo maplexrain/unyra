@@ -6,6 +6,7 @@
  */
 
 import type { SandboxOptions, WebOps } from '../../agent/tools'
+import type { AgentProfileId, AgentWfGrant } from '../../agent/agentProfile'
 import type { LearnStore, TmpEntry } from '../types'
 import type { UserProfile } from '../../user/types'
 import type { ProjectIo } from './project'
@@ -63,6 +64,25 @@ export interface AgentOpsDeps {
    * 不注入时 wf.invoke 回一句「这个执行环境触发不了」（超级文档的桥那一侧就是如此）。
    */
   invokeWorkflow?: (ref: string, opts: { params?: Record<string, string | number> }) => unknown
+  /**
+   * wf.* 的授权面（智能体团队分工，见 agent/agentProfile 的 AgentWfGrant）：
+   * builtin = 这位声部固定可触发的内置规程；registered = 登记条目的白名单
+   * （null = 全部可用，只对导师成立）。缺省 = 不设限（子代理 / 超级文档桥的老口径）。
+   * 越权触发在 invoke 当场拒绝并说明去哪儿放开。
+   */
+  workflowGrant?: AgentWfGrant
+  /**
+   * team.* 的委托发起方身份（执行声部的轮都有，见 learn/ops/team 与
+   * learn/agentTeam/delegations）：委托人 = 当前会话 + 它的声部与目标。
+   * 不注入就没有 team 这一组（子代理 / 超级文档桥 / 仅聊天都没有）。
+   */
+  teamFrom?: () => { conversationId: string; agent: AgentProfileId; goalId: string }
+  /**
+   * execute 通道的 api 组放行面（智能体团队分工的运行时清单，见 agent/agentProfile 的
+   * agentRuntimeApiAllow）：组名 + 放行的顶层函数名。不给 = 不设限
+   * （子代理 / 超级文档桥的老口径；导师之外的声音部都给）。
+   */
+  apiAllow?: readonly string[]
 }
 
 /**

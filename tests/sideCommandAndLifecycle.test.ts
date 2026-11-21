@@ -313,9 +313,7 @@ describe('智能体团队响应式布局断点与 :side 状态隔离', () => {
           mode: 'free',
           onSelectMode: () => {},
           activeGoalTitle: '微积分',
-          freeRunning: false,
-          tutorRunning: false,
-          tutorHasAsk: false,
+          voiceStats: {},
           forceCollapsed: true,
           persistCollapsed: false,
         }),
@@ -342,9 +340,7 @@ describe('智能体团队响应式布局断点与 :side 状态隔离', () => {
           mode: 'free',
           onSelectMode: () => {},
           activeGoalTitle: '微积分',
-          freeRunning: false,
-          tutorRunning: false,
-          tutorHasAsk: false,
+          voiceStats: {},
           forceCollapsed: false,
           persistCollapsed: false,
         }),
@@ -364,7 +360,7 @@ describe('智能体团队响应式布局断点与 :side 状态隔离', () => {
     host.remove()
   })
 
-  it('AgentSlot 根据容器宽度自动切换：>=1200 完整三栏，<1200 隐藏对话历史，<800 额外锁定收起智能体列表，且不改写 localStorage', () => {
+  it('AgentSlot 根据容器宽度自动切换：>=800 左栏声部项内嵌子对话列表，<800 顶部横栏，且不改写 localStorage', () => {
     localStorage.removeItem('moji:agent-team:left-collapsed')
     localStorage.removeItem('moji:agent-team:right-collapsed')
 
@@ -433,33 +429,38 @@ describe('智能体团队响应式布局断点与 :side 状态隔离', () => {
         root.render(createElement(AgentSlot, { deps }))
       })
 
-      // 1. 宽度 1300px：显示左右双侧栏
+      // 1. 宽度 1300px：左栏（声部项内嵌子对话列表，当前声部默认展开）+ 中栏；右栏已退役
       act(() => {
         observeCb?.([{ contentRect: { width: 1300 } }])
       })
-      expect(host.querySelector('[aria-label="对话历史"]')).not.toBeNull()
+      expect(host.querySelector('[aria-label="对话历史"]')).toBeNull()
       expect(host.querySelector('[data-roster-collapsed="true"]')).toBeNull()
+      expect(host.querySelector('[data-roster-conv-list="free"]')).not.toBeNull()
 
-      // 2. 宽度 1050px（< 1200）：隐藏对话历史侧栏，但保留可自由操作的智能体列表
+      // 2. 宽度 1050px：布局同上（旧右栏断点已无意义）
       act(() => {
         observeCb?.([{ contentRect: { width: 1050 } }])
       })
-      expect(host.querySelector('[aria-label="对话历史"]')).toBeNull()
+      expect(host.querySelector('[data-roster-conv-list="free"]')).not.toBeNull()
       expect(host.querySelector('[data-roster-collapsed="true"]')).toBeNull()
 
-      // 3. 宽度 700px（< 800）：不显示对话历史，且智能体列表强制收起不可展开
+      // 3. 宽度 700px（< 800）：不显示对话历史，智能体列表变为顶部横栏（不再有收起轨）
       act(() => {
         observeCb?.([{ contentRect: { width: 700 } }])
       })
       expect(host.querySelector('[aria-label="对话历史"]')).toBeNull()
-      expect(host.querySelector('[data-roster-collapsed="true"]')).not.toBeNull()
-      expect(host.querySelector('[data-roster-locked="true"]')).not.toBeNull()
+      expect(host.querySelector('[data-agent-roster-top="true"]')).not.toBeNull()
+      expect(host.querySelector('[data-roster-top="true"]')).not.toBeNull()
+      // 顶部横栏形态暂不展开子对话列表
+      expect(host.querySelector('[data-roster-conv-list="free"]')).toBeNull()
+      expect(host.querySelector('[data-roster-collapsed="true"]')).toBeNull()
+      expect(host.querySelector('[data-roster-locked="true"]')).toBeNull()
 
       // 4. 关闭 side 或恢复宽屏（1300px）：自动回到原先状态，且从未污染 localStorage
       act(() => {
         observeCb?.([{ contentRect: { width: 1300 } }])
       })
-      expect(host.querySelector('[aria-label="对话历史"]')).not.toBeNull()
+      expect(host.querySelector('[data-roster-conv-list="free"]')).not.toBeNull()
       expect(host.querySelector('[data-roster-collapsed="true"]')).toBeNull()
       expect(localStorage.getItem('moji:agent-team:left-collapsed')).toBeNull()
       expect(localStorage.getItem('moji:agent-team:right-collapsed')).toBeNull()

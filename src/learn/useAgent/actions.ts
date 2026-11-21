@@ -10,9 +10,11 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import type { MessageQuote, PendingFile, PendingImage } from '../../agent/types'
+import type { AgentVoice } from '../../agent/agentProfile'
 import type { AgentRunTarget } from '../agent/sandboxOps'
 import type { PromptModule } from '../ai/promptModules'
 import { addConversation, conversationById, nodeById, resolveDisplayedConversation } from '../graph'
+import { resolveVoiceConversation, voiceConversationId, voiceOfConversation } from '../agentTeam/voiceConvs'
 import { findWorkflow, renderWorkflowInstruction, workflowModules, workflowPrep } from '../workflows'
 import { native } from '../../lib/native'
 import { MIN_ACTIVE_MESSAGES, activeMessages } from '../compact'
@@ -85,7 +87,13 @@ export function useAgentActions(deps: {
             (s.goals.find((g) => g.id === effectiveGoalId)?.rootNodeId || s.nodes.find((n) => n.goalId === effectiveGoalId)?.id || null)
 
           if (effectiveConvId) {
-            t = { goalId: effectiveGoalId, nodeId: effectiveNodeId || null, conversationId: effectiveConvId }
+            // 声部随会话走（agent team 分工）：当前显示的可能是承接声部的工作会话
+            t = {
+              goalId: effectiveGoalId,
+              nodeId: effectiveNodeId || null,
+              conversationId: effectiveConvId,
+              voice: voiceOfConversation(conversationById(s, effectiveConvId)) as AgentVoice,
+            }
           }
         }
       }
@@ -137,6 +145,11 @@ export function useAgentActions(deps: {
         hint?: string
         /** 显式目标：节点刚创建、hook 状态还没跟上时用 */
         target?: AgentRunTarget
+        /**
+         * 分诊给哪位声部跑（agent team 的团队分工）：出卷 → examiner、阅卷 → grader…
+         * 目标会话按声部解析（承接声部落各自的工作会话）；不给 = 导师（当前显示的那段）。
+         */
+        voice?: AgentVoice
         /** 附带的图片附件 */
         images?: PendingImage[]
         /** 附带的文件附件 */
@@ -149,18 +162,27 @@ export function useAgentActions(deps: {
         const targetNodeId = opts?.nodeId ?? nodeId ?? s.activeNodeId ?? null
         const targetNode = targetNodeId ? nodeById(s, targetNodeId) : null
         const targetGoalId = targetNode?.goalId ?? goalId ?? s.activeGoalId ?? null
+        const nid =
+          (targetNode && targetNode.goalId === targetGoalId ? targetNode.id : null) ??
+          (nodeId && nodeById(s, nodeId)?.goalId === targetGoalId ? nodeId : null) ??
+          (s.goals.find((g) => g.id === targetGoalId)?.rootNodeId || s.nodes.find((n) => n.goalId === targetGoalId)?.id || null)
 
-        if (targetGoalId) {
+        if (targetGoalId && opts?.voice && opts.voice !== 'tutor') {
+          // 系统侧分诊到承接声部（出卷 → 命题官、阅卷 → 判卷官…）：落它自己的工作会话
+          //（没有就给确定性 id，首轮启动落库，见 learn/agentTeam/voiceConvs）
+          target = {
+            goalId: targetGoalId,
+            nodeId: nid || null,
+            conversationId:
+              resolveVoiceConversation(s, opts.voice, targetGoalId) ?? voiceConversationId(targetGoalId, opts.voice),
+            voice: opts.voice,
+          }
+        } else if (targetGoalId) {
           // 外部触发的工作流必须优先使用当前显示的上下文（正在交互的导师会话）
           const convId =
             (conversationId && conversationById(s, conversationId)?.goalId === targetGoalId
               ? conversationId
               : null) ?? resolveDisplayedConversation(s, targetGoalId)
-
-          const nid =
-            (targetNode && targetNode.goalId === targetGoalId ? targetNode.id : null) ??
-            (nodeId && nodeById(s, nodeId)?.goalId === targetGoalId ? nodeId : null) ??
-            (s.goals.find((g) => g.id === targetGoalId)?.rootNodeId || s.nodes.find((n) => n.goalId === targetGoalId)?.id || null)
 
 
           if (convId) {
@@ -235,7 +257,12 @@ export function useAgentActions(deps: {
       if (convId && id !== conversationId) {
         const goal = latest.goals.find((g) => g.id === conv.goalId)
         await runWorkflow('compact', {
-          target: { goalId: conv.goalId, nodeId: goal?.rootNodeId || null, conversationId: id },
+          target: {
+            goalId: conv.goalId,
+            nodeId: goal?.rootNodeId || null,
+            conversationId: id,
+            voice: voiceOfConversation(conv) === 'free' ? undefined : voiceOfConversation(conv),
+          },
         })
       } else {
         await runWorkflow('compact')
@@ -250,9 +277,11 @@ export function useAgentActions(deps: {
   // 要读它们）；这里在每次渲染装填最新的一份闭包（runWorkflow 在本文件、晚于 runTurn，
   // 前面的闭包追不到它——挂 ref 每渲染刷新正是为此）。
   useEffect(() => {
-    autoCompactRef.current = (ratio: number) => {
+    autoCompactRef.current = (ratio: number, target?: AgentRunTarget) => {
       onNoticeRef.current?.(t('上下文已用到 {0}%，正在压缩前面的对话…', Math.round(ratio * 100)))
-      void runWorkflow('compact')
+      // target = 刚收口的这一轮：承接声部的会话压的是它自己（target.voice 随目标走），
+      // 不给 target = 导师当前显示的那段（老口径）
+      void runWorkflow('compact', target ? { target } : {})
     }
     wfDrainRef.current = (target: AgentRunTarget) => {
       const q = pendingWfRef.current.get(target.conversationId)
@@ -330,7 +359,21 @@ export function useAgentActions(deps: {
           set(made.store)
           return made.conversation.id
         })()
-      void runTurn({ goalId: node.goalId, nodeId: node.id, conversationId: conv }, text, true, undefined, undefined, undefined, undefined, mark)
+      void runTurn(
+        {
+          goalId: node.goalId,
+          nodeId: node.id,
+          conversationId: conv,
+          voice: voiceOfConversation(conversationById(getLatest(), conv)) as AgentVoice,
+        },
+        text,
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        mark,
+      )
     },
     [nodeId, conversationId, getLatest, set, runTurn],
   )
@@ -347,7 +390,16 @@ export function useAgentActions(deps: {
   const resumeInterrupted = useCallback(
     (override?: AgentRunTarget) => {
       // 局部变量避开 t：外层那个 t 是 i18n 函数，指令文本要用它
-      const tgt = override ?? (goalId && conversationId ? { goalId, nodeId: nodeId || null, conversationId } : null)
+      const tgt =
+        override ??
+        (goalId && conversationId
+          ? {
+              goalId,
+              nodeId: nodeId || null,
+              conversationId,
+              voice: voiceOfConversation(conversationById(getLatest(), conversationId)) as AgentVoice,
+            }
+          : null)
       if (!tgt) return
       if (running[tgt.conversationId]) {
         onNoticeRef.current?.(t('导师正在回答，等这一轮结束再继续'))
@@ -365,7 +417,7 @@ export function useAgentActions(deps: {
       )
     },
     // onNoticeRef 是跨渲染稳定的 ref：列进依赖不改变记忆化行为
-    [goalId, nodeId, conversationId, running, runTurn, onNoticeRef],
+    [goalId, nodeId, conversationId, running, runTurn, onNoticeRef, getLatest],
   )
 
   return { send, compactingConv, runWorkflow, compactNow, autoTeach, runHidden, resumeInterrupted }

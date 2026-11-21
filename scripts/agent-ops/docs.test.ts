@@ -399,6 +399,12 @@ export async function apiNameTests() {
     'schedule.update': "'probe-schedule', { time: '22:00' }",
     'schedule.complete': "'probe-schedule'",
     'schedule.remove': "'probe-schedule'",
+    // 智能体团队编排（team.*）：派发器不在场时这些都要优雅应答（不能抛、不能说 api 不存在）
+    'team.list': '',
+    'team.status': "'tutor'",
+    'team.delegate': "{ to: 'free', instruction: '探针委托' }",
+    'team.complete': "{ result: '探针交付' }",
+    'team.awake': '1000',
   }
   let s = staticStore()
   /*
@@ -467,6 +473,9 @@ export async function apiNameTests() {
     tmp: () => ({ nodeId: childId, entries: tmpStore as never, onChange: (next) => { tmpStore = next; if (Object.keys(next).length) sawTmpWrite = true } }),
     // wf.invoke：接受排队就是成功（真起那一轮的是宿主）
     invokeWorkflow: (id) => { sawInvoke = id; return { ok: true } },
+    // team.* 的发起方身份（探针 = 导师声部的一段会话）：名单检查只问「这五个 api 在不在」，
+    // 无派发器时 delegate / status 的优雅拒绝与空状态本身就是断言对象
+    teamFrom: () => ({ conversationId: 'probe-conv', agent: 'tutor', goalId }),
     // 桩：这一组只查「名字真的注册了吗」，行为由 examTests 与用例各自覆盖
     exam: {
       create: () => ({ ok: true, content: '（桩）' }),

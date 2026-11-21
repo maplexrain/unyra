@@ -8,7 +8,8 @@
 import type { Conversation } from '../../../agent/types'
 import { t } from '../../../i18n'
 
-export type AgentTeamMode = 'free' | 'tutor'
+/** agent team 左栏的声部 id（与 agent/agentProfile 的 AgentProfileId 同形：5 位） */
+export type AgentTeamMode = 'free' | 'tutor' | 'examiner' | 'grader' | 'researcher'
 
 /**
  * 解析一段对话的「最近对话时间」（毫秒时间戳）：
@@ -37,13 +38,37 @@ export function sortConversationsByTimeDesc(list: readonly Conversation[]): Conv
   })
 }
 
-/** 统计会话中的可见消息数量（过滤隐藏内部指令，但保留带 mark 的工作流分界条） */
-export function visibleMessageCount(conv: Conversation): number {
-  let count = 0
-  for (const m of conv.messages) {
-    if (!m.hidden || m.mark) count++
-  }
-  return count
+/**
+ * 把一段消息文本压成**纯文本摘要**：HTML / SVG / 围栏代码这类渲染态内容
+ * 不能以原文落在聊天列表里——带图题与讲解里最常见的整段 `<svg>`、课堂与
+ * 超级文档的 HTML 片段、代码围栏，进了预览与标题就是一串标签原文。
+ * 处理顺序：围栏代码 → `<svg>` 整段 → Markdown 图片 → 链接留文字 →
+ * HTML 注释与其余标签 → 常用实体 → 空白折叠。
+ * 标签剥离只认「`<` 后紧跟字母」的形状：`a < b > c` 这类比较文本不受影响。
+ */
+function plainPreview(text: string): string {
+  let s = text
+  // 围栏代码块：按 ``` 切段，奇数段都是代码（未闭合的尾巴也算代码）
+  s = s
+    .split(/```/)
+    .map((seg, i) => (i % 2 === 1 ? ` ${t('[代码]')} ` : seg))
+    .join(' ')
+  s = s.replace(/<svg[\s\S]*?<\/svg\s*>/gi, ` ${t('[图]')} `)
+  s = s.replace(/!\[[^\]]*\]\([^)]*\)/g, ` ${t('[图]')} `)
+  s = s.replace(/\[([^\]]*)\]\(([^)]*)\)/g, '$1')
+  s = s.replace(/<!--[\s\S]*?-->/g, ' ')
+  s = s.replace(/<\/?[a-zA-Z][^>]*>/g, ' ')
+  s = s
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, '&')
+  // 剥标签会在中文标点前留下悬空空格（「定冠词 ？」），贴回去
+  return s
+    .replace(/ ([，。？；：！、）】」』])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 /** 解析侧栏展示用的对话标题：已起名标题 > 首条可见用户消息 > 最近工作流标记 > 新对话 */
@@ -53,12 +78,12 @@ export function displayConversationTitle(conv: Conversation): string {
 
   for (const m of conv.messages) {
     if (m.role !== 'user' || m.hidden) continue
-    const text = m.parts
-      .filter((p) => p.type === 'text')
-      .map((p) => p.text)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim()
+    const text = plainPreview(
+      m.parts
+        .filter((p) => p.type === 'text')
+        .map((p) => p.text)
+        .join(' '),
+    )
     if (text) return text.length > 36 ? `${text.slice(0, 36)}…` : text
   }
 
@@ -76,12 +101,12 @@ export function lastMessagePreview(conv: Conversation | undefined | null): strin
   for (let i = conv.messages.length - 1; i >= 0; i--) {
     const m = conv.messages[i]
     if (!m || (m.hidden && !m.mark)) continue
-    const text = m.parts
-      .filter((p) => p.type === 'text')
-      .map((p) => p.text)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim()
+    const text = plainPreview(
+      m.parts
+        .filter((p) => p.type === 'text')
+        .map((p) => p.text)
+        .join(' '),
+    )
     if (text) return text.length > 32 ? `${text.slice(0, 32)}…` : text
     if (m.mark?.trim()) return t(m.mark.trim())
   }

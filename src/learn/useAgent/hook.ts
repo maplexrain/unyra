@@ -29,6 +29,15 @@ import {
 import type { AskAnswers, ExamToolDeps } from '../../agent/tools'
 import { hasApiKey, loadAiSettings } from '../../ai/settings'
 import { freeConversationById, getFreeConversations } from '../freeChat'
+import {
+  delegationTurnText,
+  onAgentTeamTurnStarted,
+  onConversationTurnClosed,
+  setAgentTeamDispatcher,
+  takeDeliveryInjection,
+  type AgentTeamDispatcher,
+} from '../agentTeam/delegations'
+import { resolveVoiceConversation, voiceOfConversation } from '../agentTeam/voiceConvs'
 import { setEffortContextProbe } from '../effortGuard'
 import type { LearnStore } from '../types'
 import { conversationById, nodeById } from '../graph'
@@ -134,7 +143,7 @@ export function useAgent(opts: {
    * 压缩轮自己不会再触发（它一定产生了 applied.label），所以不会自激。
    * （本体在这里声明、早于 runTurnUnchecked；装填在 useAgent/actions 的每次渲染里。）
    */
-  const autoCompactRef = useRef<((ratio: number) => void) | null>(null)
+  const autoCompactRef = useRef<((ratio: number, target?: AgentRunTarget) => void) | null>(null)
   /**
    * wf.invoke 的出队口：一轮收口时把导师交出去的活起起来（见 pendingWfRef 与 runTurn 的 finally）。
    *
@@ -237,7 +246,6 @@ export function useAgent(opts: {
       const before = getLatest()
       if (!before.goals.some((g) => g.id === target.goalId)) return
       if (target.nodeId && !nodeById(before, target.nodeId)) return
-
       /**
        * 这一轮回复的固定身份：轮次内增量落库按它整条替换（见 flushTurn 的说明），
        * 也随 inflight 标记写进会话——进程被杀后，载入恢复靠它找到那条没收口的回复
@@ -263,16 +271,26 @@ export function useAgent(opts: {
         : { files: [] as MessageFile[], error: undefined }
       if (attachedFiles.error) onNoticeRef.current?.(attachedFiles.error)
 
-      let conv = conversationById(before, target.conversationId) ?? {
+      /**
+       * 声部以**会话**为最终事实源：会话已存在（哪怕 voice 字段漏标——voiceOfConversation
+       * 会从确定性 id 愈合）就按它的声部走，否则才信 target（承接声部的首轮）。
+       * 漏标的承接会话在这里就地补标（幂等；导师对话不写 voice，与老数据同形）。
+       */
+      const existing = conversationById(before, target.conversationId)
+      const voice = existing ? voiceOfConversation(existing) : (target.voice ?? 'tutor')
+      let conv = existing ?? {
         id: target.conversationId,
         goalId: target.goalId,
         messages: [] as ConversationMessage[],
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        // 承接声部的第一轮就在这里把会话落库并标上声部（导师对话不写 voice，与老数据同形）
+        ...(voice !== 'tutor' ? { voice } : {}),
       }
+      if (voice !== 'tutor' && !conv.voice) conv = { ...conv, voice }
       // 入口组装（当轮用户消息 + 人格 / 格式 / 画像 / 技能 / MCP 各路补发，以及系统提示词
       // 的固化与 inflight 标记）整段在 assembleTurnEntry；这里只接回组装好的会话并落库。
-      const entry = assembleTurnEntry({ trimmed, hidden, mark, wfParams, context, quote, attached, attachedFiles, assistantId, conv })
+      const entry = assembleTurnEntry({ trimmed, hidden, mark, wfParams, context, quote, attached, attachedFiles, assistantId, voice, conv })
       conv = entry.conv
       // 工作流触发时随指令注入的规程模块（登记工作流的 prompt 字段）：作为隐藏
       // assistant 声明插在当轮指令之前——声明归 assistant 边、指令归 user（见
@@ -301,6 +319,7 @@ export function useAgent(opts: {
         settings,
         agentSettings: entry.agentSettings,
         wfParams,
+        voice,
         examDeps,
         afterNodeEdit: afterNodeEditRef.current,
         uiRef,
@@ -390,6 +409,30 @@ export function useAgent(opts: {
           setTps,
           setLiveUsage,
           scheduleFlush,
+          /**
+           * 跳边界注入：委托交付回传（team.complete → 委托者运行中 → 单次 loop 结束后
+           * 插入接着继续运行，见 learn/agentTeam/delegations）。镜像纪律：交付全文记成
+           * team-delivery 片段挂在当前回复的跳边界上、随增量落库——toChatHistory 会在
+           * 同一位置重放同一条 user 消息，下一轮的前缀逐字节对得上。
+           */
+          injections: async () => {
+            const delivery = takeDeliveryInjection(target.conversationId)
+            if (!delivery) return null
+            parts.push({ type: 'team-delivery', delegationId: delivery.delegationId, text: delivery.text })
+            const storedConv = conversationById(getLatest(), target.conversationId)
+            if (storedConv) {
+              persist(
+                upsertAssistantInFlight(storedConv, {
+                  id: assistantId,
+                  role: 'assistant',
+                  parts: [...parts],
+                  ts: Date.now(),
+                }),
+              )
+            }
+            scheduleFlush(true)
+            return { role: 'user', content: delivery.text }
+          },
         })
       } finally {
         // 只摘自己的中止器：并发时后启动的轮次可能已经换了这一格
@@ -419,6 +462,9 @@ export function useAgent(opts: {
           autoCompactRef,
           onNoticeRef,
         })
+        // 委托与自启动的收口接续（交付注入缓冲转激活 / 承接中的委托记账 / awake 计时 /
+        // 承接队列空闲启动，见 learn/agentTeam/delegations）
+        onConversationTurnClosed(target.conversationId)
       }
     },
     // 后面追加的全是跨渲染稳定的 ref / setState：列进依赖不改变记忆化行为（与拆分前一致）
@@ -457,6 +503,8 @@ export function useAgent(opts: {
         if (!hidden) onNeedKeyRef.current()
         return
       }
+      // 任何一轮真正开始，该会话布防的自启动（team.awake）当场失效（见 agentTeam/delegations）
+      onAgentTeamTurnStarted(target.conversationId)
       const chain = turnChainRef.current
       const prev = chain.get(target.conversationId)
       let release!: () => void
@@ -509,6 +557,8 @@ export function useAgent(opts: {
         onNeedKeyRef.current()
         return
       }
+      // 任何一轮真正开始，该会话布防的自启动（team.awake）当场失效
+      onAgentTeamTurnStarted(conversationId)
       const chain = turnChainRef.current
       const prev = chain.get(conversationId)
       let release!: () => void
@@ -590,6 +640,88 @@ export function useAgent(opts: {
     sendFree,
     stop,
   })
+
+  /* ---------- 智能体团队委托（team.*）的宿主派发器 ---------- */
+
+  /**
+   * 委托注册表（learn/agentTeam/delegations）只管账，**启动一轮**永远是宿主的事：
+   * 目标声部的会话走 runTurn（隐藏指令 + 分界条 mark，前缀与用户消息同一套纪律，
+   * target.voice 按声部装配提示词与能力面），自由聊天走 sendFree（它没有隐藏机制，
+   * 委托指令以可见消息进入）。
+   * 目标会话解析（resolveTargetConversation）：按发起方所在的目标解析——导师 = 该目标
+   * 最新的导师会话；承接声部 = 各自的工作会话（没有就给确定性 id，见
+   * learn/agentTeam/voiceConvs）；仅聊天 = 最近活跃的那段（不挂目标）。
+   * 经 getter 取用——teamHostRef 每次渲染刷新一份，注册表每次都拿到最新闭包
+   * （与 uiRef / effortGuard 探针同一条纪律）。
+   */
+  const teamHostRef = useRef<AgentTeamDispatcher | null>(null)
+  useEffect(() => {
+    teamHostRef.current = {
+      isConversationRunning: (convId) => Boolean(running[convId]),
+      resolveTargetConversation: (agent, goalId) => {
+        if (agent === 'free') {
+          let best: string | null = null
+          let bestTs = -1
+          for (const c of getFreeConversations()) {
+            const ts = Math.max(c.updatedAt ?? 0, c.createdAt ?? 0)
+            if (ts >= bestTs) {
+              bestTs = ts
+              best = c.id
+            }
+          }
+          return best
+        }
+        // 导师：给了目标按目标解析（委托分诊的口径），没给退回界面当前会话
+        if (agent === 'tutor' && !goalId) return conversationId
+        return resolveVoiceConversation(getLatest(), agent, goalId)
+      },
+      startTurn: ({ conversationId: convId, kind, delegation }) => {
+        // 启动即令该会话布防的自启动失效（awake 的「期间启动过则失效」）
+        onAgentTeamTurnStarted(convId)
+        if (!hasApiKey(loadAiSettings())) return
+        const text = delegationTurnText(kind, delegation)
+        const conv = conversationById(getLatest(), convId)
+        /**
+         * 这一轮的声部：目标会话存在就以**会话**为准（voiceOfConversation 会从确定性 id
+         * 愈合漏标的声部——会话是身份的最终事实源）；会话还不存在（承接声部的首轮）才按
+         * 委托的两端认（process/remind 是承接方、deliver 是委托方），自启动轮兜导师。
+         * 仅聊天没有隐藏机制，走 sendFree。
+         */
+        const voice = conv
+          ? voiceOfConversation(conv)
+          : delegation
+            ? (kind === 'deliver' ? delegation.fromAgent : delegation.toAgent)
+            : 'tutor'
+        if (voice === 'free') {
+          sendFree(convId, text)
+          return
+        }
+        const goal = conv?.goalId ?? delegation?.goalId
+        if (!goal) return
+        const mark =
+          kind === 'process' ? '委托' : kind === 'remind' ? '委托提醒' : kind === 'deliver' ? '委托交付' : '自启动'
+        void runTurn(
+          {
+            goalId: goal,
+            nodeId: delegation?.nodeId ?? null,
+            conversationId: convId,
+            voice,
+          },
+          text,
+          true,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          mark,
+        )
+      },
+    }
+  })
+  useEffect(() => {
+    setAgentTeamDispatcher(() => teamHostRef.current)
+    return () => setAgentTeamDispatcher(null)
+  }, [])
 
   /**
    * 当前会话的实时槽。分槽之后同一时刻可能有几位导师都在跑，这里只交出

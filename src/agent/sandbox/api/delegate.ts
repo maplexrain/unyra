@@ -47,4 +47,16 @@ export function installDelegate(api: Record<string, unknown>, opts: SandboxOptio
       return perm.request({ path: rawPath, ...(asText(a.reason).trim() ? { reason: asText(a.reason).trim() } : {}) })
     }, log)
   }
+
+  // 智能体团队（team.*）：任务委托与相互唤醒。**导师专用**——SUBAGENT_ALLOWED_GROUPS
+  // 不含这一组（子代理不该再往外派活），仅聊天的沙箱基座里也没有它。
+  // 宿主实现见 learn/ops/team 与 learn/agentTeam/delegations。
+  if (opts.teams) {
+    const team = opts.teams
+    wrapApi(api, 'team.list', () => team.list(), log)
+    wrapApi(api, 'team.status', (args) => team.status(asText(args[0]).trim()), log)
+    wrapApi(api, 'team.delegate', (args) => team.delegate(asRecord(args[0])), log)
+    wrapApi(api, 'team.complete', (args) => team.complete(asRecord(args[0])), log)
+    wrapApi(api, 'team.awake', (args) => team.awake(args[0] ?? {}), log)
+  }
 }
