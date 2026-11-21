@@ -53,6 +53,8 @@ asar: true # 资源打进单文件包；Electron 对 fs / nativeImage 的读取�
 # 2026-11 起安装包不再内置任何模型运行时，语音与识别能力经「设置 → 模型 → 能力接入」。）
 asarUnpack:
   - 'dist-electron/*.exe'
+  # 对外 MCP 服务的哑桥：harness 用普通 Node 拉起它（node mcp-bridge.mjs），读不了 asar
+  - 'dist-electron/mcp-bridge.mjs'
 
 win:
   target:

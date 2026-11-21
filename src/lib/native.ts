@@ -14,7 +14,7 @@ import type {
   BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
   BaseProcessListResult, BaseProcessOutputResult, BaseProcessRunOpts, BaseProcessRunResult, BaseProcessStartResult, BaseProcessStatusResult,
   BaseProcessStopResult, BaseProcessWaitOpts, BaseProcessWaitResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
-  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
+  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpServeCall, McpServeReply, McpServeStatus, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   NoticeSettings, PluginEntry, PluginTogglesResult, SaveBinaryPayload, SaveBinaryResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
   UpdatePhase, UpdateState, VideoApiFetchResult, VideoStreamOpenResult, WebDomOpResult, WebFastTranslateResult, WebFetchResult, WebBinaryFetchResult, WebLogDetailResult,
@@ -38,7 +38,7 @@ import type {
 export type {
   SaveBinaryPayload, SaveBinaryResult,
   AttachReadResult, BaseProcessDeleteResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
-  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
+  ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpServeCall, McpServeReply, McpServeStatus, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   NoticeSettings, PluginEntry, PluginTogglesResult, SaveFilter,
   SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
   UpdatePhase, UpdateState, VideoApiFetchResult, VideoStreamOpenResult, WebDomOpResult, WebFastTranslateResult, WebFetchResult, WebBinaryFetchResult, WebLogDetailResult,
@@ -164,6 +164,22 @@ export interface NativeBridge {
     call(server: McpStdioServerPayload, tool: string, args: Record<string, unknown>): Promise<McpStdioCallResult>
     /** 停掉某个服务的会话（设置里禁用 / 删除时来一发，不留没用的子进程）；省略 = 停掉全部 */
     stop(serverId?: string): Promise<StorageOk | StorageFail>
+  }
+
+  /**
+   * 对外 MCP 服务（应用本身当 MCP server）：主进程把外部 harness 经命名管道
+   * 送来的工具调用转发到这里执行（guest 会话见 src/agent/mcp/serveHost），回执经
+   * reply 原路送回。与上面 mcp 那组方向相反：那条是**消费**外部服务，这条是**对外提供**。
+   */
+  mcpServe: {
+    /** 订阅主进程转发来的工具调用；返回取消订阅函数 */
+    onCall(cb: (call: McpServeCall) => void): () => void
+    /** 把回执送回主进程（主进程按 requestId 配对给挂起的 tools/call） */
+    reply(reply: McpServeReply): void
+    /** 主进程侧的服务状态（监听/管道/端点文件/连接数/桥路径）；服务停着也回答 */
+    status(): Promise<McpServeStatus>
+    /** 开关：设置是渲染层的事实源，推给主进程启停管道；回推最新 status */
+    setEnabled(on: boolean): Promise<McpServeStatus>
   }
 
   /**

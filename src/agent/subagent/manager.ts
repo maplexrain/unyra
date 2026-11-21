@@ -456,13 +456,14 @@ export function createSubAgentManager(deps: SubAgentManagerDeps): SubAgentManage
 }
 
 /**
- * 从导师的沙箱基座里按 apiGroups 取子集：**没开放的东西根本不注入**（buildApi 按
+ * 从导师的沙箱基座里按 apiGroups 取子集（子代理与对外 MCP 的 guest 会话共用，
+ * 见 src/agent/mcp/serveHost）：**没开放的东西根本不注入**（buildApi 按
  * 「注入了才有」装配），再叠加通道口的硬白名单（apiAllow）与按需的参数说明（apiBrief）。
  * content / graph 的寻址与读写是必需的基座（docOps / nodeOps 无条件装配），由 apiAllow
  * 挡住越权调用；content 的大纲与超级文档 part 分别依赖 outline / superdocs 注入，一并带过。
  * subagent 字段刻意不透传：子代理的 api 面里永远没有 subagent.*（不递归在装配层就断了）。
  */
-function subsetSandbox(base: SandboxOptions, groups: string[]): SandboxOptions {
+export function subsetSandbox(base: SandboxOptions, groups: string[]): SandboxOptions {
   const has = (group: string): boolean => groups.includes(group)
   return {
     nodeId: base.nodeId,
