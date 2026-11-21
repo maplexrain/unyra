@@ -37,6 +37,7 @@ import {
   takeDeliveryInjection,
   type AgentTeamDispatcher,
 } from '../agentTeam/delegations'
+import type { AgentVoice } from '../../agent/agentProfile'
 import { resolveVoiceConversation, voiceOfConversation } from '../agentTeam/voiceConvs'
 import { setEffortContextProbe } from '../effortGuard'
 import type { LearnStore } from '../types'
@@ -277,7 +278,9 @@ export function useAgent(opts: {
        * 漏标的承接会话在这里就地补标（幂等；导师对话不写 voice，与老数据同形）。
        */
       const existing = conversationById(before, target.conversationId)
-      const voice = existing ? voiceOfConversation(existing) : (target.voice ?? 'tutor')
+      const derived = existing ? voiceOfConversation(existing) : (target.voice ?? 'tutor')
+      // store 里的会话不会是 free（仅聊天另存 freeChat）；类型面在这里收窄成执行声部
+      const voice: AgentVoice = derived === 'free' ? 'tutor' : derived
       let conv = existing ?? {
         id: target.conversationId,
         goalId: target.goalId,

@@ -345,7 +345,9 @@ function ProcessGroup({ items }: { items: ProcessPart[] }) {
           ? t('提示词模块 · {0}', promptModuleTitleOf(last.key) ?? last.key)
           : last.type === 'inject'
             ? last.label
-            : toolLabel(last.name, last.args)
+            : last.type === 'team-delivery'
+              ? t('委托交付 · {0}', lastLineOf(last.text))
+              : toolLabel(last.name, last.args)
 
   return (
     <div className="border-b border-line pb-2">
@@ -383,6 +385,8 @@ function ProcessGroup({ items }: { items: ProcessPart[] }) {
                   <PromptModuleBlock key={'m' + i} part={p} />
                 ) : p.type === 'inject' ? (
                   <InjectBlock key={'i' + p.id} item={p} />
+                ) : p.type === 'team-delivery' ? (
+                  <TeamDeliveryBlock key={'d' + p.delegationId} part={p} />
                 ) : (
                   <ToolCard key={p.id || i} part={p} />
                 ),

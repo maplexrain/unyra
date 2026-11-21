@@ -261,7 +261,8 @@ export function useAgentActions(deps: {
             goalId: conv.goalId,
             nodeId: goal?.rootNodeId || null,
             conversationId: id,
-            voice: voiceOfConversation(conv) === 'free' ? undefined : voiceOfConversation(conv),
+            // store 里的会话不会是 free（仅聊天另存 freeChat）；类型面收窄见 voiceOfConversation 的说明
+            voice: voiceOfConversation(conv) as AgentVoice,
           },
         })
       } else {

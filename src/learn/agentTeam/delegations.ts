@@ -104,7 +104,7 @@ const delegations = new Map<string, AgentDelegation>()
 /** 各声部的**待处理**队列（front = 下一个处理）；running 不在列 */
 const queues: Record<AgentProfileId, string[]> = Object.fromEntries(
   AGENT_TEAM_IDS.map((id) => [id, []]),
-) as Record<AgentProfileId, string[]>
+) as unknown as Record<AgentProfileId, string[]>
 /** 等待跳边界注入的交付（键 = 委托者会话） */
 const deliveryBuffer = new Map<string, Array<{ delegationId: string; text: string }>>()
 /** 已布防的自启动意图（键 = 会话）：本轮收口才开始计时 */

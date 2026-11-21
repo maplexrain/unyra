@@ -19,7 +19,10 @@ const AGENT_ID_NOTE =
   '先用 team.list() 看可用名单（free=仅聊天 / tutor=导师 / examiner=命题官 / grader=判卷官 / researcher=资料员）。'
 
 export function createTeamOps(deps: Pick<AgentOpsDeps, 'teamFrom'>): TeamOps {
-  const from = () => deps.teamFrom()
+  // teamFrom 由装配层把关（deps.teamFrom 不在就没有 team 这一组，见 assemble）；探针直构造时也总给。
+  // 缺省兜一份空身份，只是让 TS 的可选性满足——真打到这里说明装配层漏了闸。
+  const from = () =>
+    deps.teamFrom?.() ?? { conversationId: '', agent: 'tutor' as AgentProfileId, goalId: '' }
 
   return {
     list: () => ({

@@ -7,6 +7,18 @@
 import { BookOpenText, Compass, GraduationCap, MessageSquare, NotebookPen, type LucideIcon } from 'lucide-react'
 import type { AgentTeamMode } from './conversationList'
 
+/** 一位声部的近况统计（AgentSlot 按目标作用域算好带来，roster 联系人卡片消费） */
+export interface AgentVoiceStats {
+  running: boolean
+  hasAsk: boolean
+  preview?: string
+  lastTime?: number
+  count?: number
+}
+
+/** 各声部近况的缺省（没有统计时用） */
+export const EMPTY_VOICE_STATS: AgentVoiceStats = { running: false, hasAsk: false }
+
 export interface AgentRosterMeta {
   /** 角色徽标（联系人卡片上的 tag） */
   roleTag: string

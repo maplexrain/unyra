@@ -15,7 +15,8 @@
  */
 
 import type { ReasoningEffort } from '../ai/types'
-import { resolveGlobal, type AiSettings, type ResolvedProvider } from '../ai/settings'
+import { resolveGlobal, type AiSettings } from '../ai/settings'
+import type { ResolvedProvider } from '../ai/client'
 import { loadAgentSettings, saveAgentSettings, type AgentSettings } from './settings'
 
 /**

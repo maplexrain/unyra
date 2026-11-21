@@ -248,7 +248,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
    * （Conversation.voice）。子代理页签的 activeTutorConvId 是父会话（导师），天然正确。
    */
   const activeVoice: AgentTeamMode = voiceOfConversation(
-    conversationById(store, activeTutorConvId),
+    conversationById(store, activeTutorConvId ?? ''),
   ) as AgentTeamMode
 
   const mode: AgentTeamMode =

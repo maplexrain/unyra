@@ -24,6 +24,7 @@ import { AgentSettingsView } from '../src/components/learn/agent-team/AgentSetti
 import type { WorkflowRow } from '../src/learn/workflows'
 import { SHARED_AGENT_PREFIX } from '../src/learn/ai/agentSharedPrefix'
 import type { AgentProfile } from '../src/agent/agentProfile'
+import type { AgentTeamMode } from '../src/components/learn/agent-team/conversationList'
 import {
   isAgentTeamVisible,
   syncAgentTabForConversation,
@@ -966,7 +967,7 @@ describe('AgentSettingsView 智能体独立设置页', () => {
   })
 
   it('系统提示词预览恒定：api 速查与内置规程全量在场（旧白名单数据被无视）', () => {
-    const render = (profile: Partial<AgentProfile>, agentId: 'tutor' | 'free' = 'tutor') => {
+    const render = (profile: Partial<AgentProfile>, agentId: AgentTeamMode = 'tutor') => {
       const host = document.createElement('div')
       document.body.appendChild(host)
       const root = createRoot(host)

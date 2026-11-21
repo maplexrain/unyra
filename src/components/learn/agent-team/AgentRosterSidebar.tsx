@@ -25,7 +25,7 @@ import { DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import type { LearningGoal } from '../../../learn/types'
 import { t, useLocale } from '../../../i18n'
 import { agentAvatarIcon } from './agentAvatars'
-import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER } from './agentRoster'
+import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, type AgentVoiceStats } from './agentRoster'
 import {
   conversationTimeOf,
   displayConversationTitle,
@@ -41,15 +41,6 @@ function readCollapsed(): boolean {
   } catch {
     return false
   }
-}
-
-/** 一位声部的近况统计（AgentSlot 按目标作用域算好带来） */
-export interface AgentVoiceStats {
-  running: boolean
-  hasAsk: boolean
-  preview?: string
-  lastTime?: number
-  count?: number
 }
 
 export interface AgentRosterSidebarProps {
