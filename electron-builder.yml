@@ -62,6 +62,16 @@ win:
   # 文件名用 ASCII：安装向导里显示的仍是「归一 Unyra」，但中文文件名在下载/传输环节容易变成乱码
   artifactName: Unyra-${version}-Setup.${ext}
 
+# Linux 产物：AppImage（单文件便携）+ tar.xz（最高压缩；解压后散文件运行，冷启动无 squashfs 解压开销）。
+# 统一命名：两种格式只有 ${ext} 不同（沿用 win/mac 的 Unyra 前缀，避免中文文件名在传输中乱码）。
+# 这里写死 x64 而不用 ${arch}：electron-builder 会把 ${arch} 按格式改写（AppImage=x86_64、tar=x64），
+# 写死才能让两份产物名字完全一致；本项目 Linux 只出 x64。
+linux:
+  artifactName: Unyra-${version}-Linux-x64.${ext}
+  target:
+    - AppImage
+    - tar.xz
+
 nsis:
   # solidCompression 选项在 electron-builder 26.x 已移除（compression: maximum 已覆盖）
   oneClick: false # 有向导：可以改安装目录、能看到装到哪
@@ -92,6 +102,10 @@ mac:
   extendInfo:
     NSMicrophoneUsageDescription: "归一 Unyra 需要麦克风权限以提供实时语音识别与输入功能"
     NSScreenCaptureDescription: "专注守卫模式需要屏幕捕获权限以检测分心窗口"
+
+# appimage 不能使用 compression: maximum， 不然会导致冷启动巨慢
+appImage:
+  compression: gzip
 
 dmg:
   title: "${productName} ${version}"
