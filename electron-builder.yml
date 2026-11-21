@@ -93,6 +93,10 @@ mac:
     NSMicrophoneUsageDescription: "归一 Unyra 需要麦克风权限以提供实时语音识别与输入功能"
     NSScreenCaptureDescription: "专注守卫模式需要屏幕捕获权限以检测分心窗口"
 
+# appimage 不能使用 compression: maximum， 不然会导致冷启动巨慢
+appImage:
+  compression: gzip
+
 dmg:
   title: "${productName} ${version}"
   artifactName: "Unyra-${version}-Mac-${arch}.${ext}"
