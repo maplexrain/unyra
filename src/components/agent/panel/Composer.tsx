@@ -28,6 +28,8 @@ import { t } from '../../../i18n'
 
 export interface ComposerProps {
   composer: ComposerApi
+  /** 锁住输入区（不可交流声部的工作会话）：编辑与发送都关掉，只留停止 */
+  locked?: boolean
   /**
    * 「+」菜单：状态机在 usePlusMenu 里，这里只把它画出来。
    * 拆成一个个 prop（而不是整个对象传下来）是为了绕开 react(refs) 的误报，见下面那段注释。
@@ -117,6 +119,7 @@ export function Composer(props: ComposerProps) {
    * 当成 ref（之后每一次 composer.yyy 都报「渲染期访问 ref」）。拆开之后就没这回事。
    */
   const {
+    locked,
     composer,
     menuMounted,
     menuClosing,
@@ -168,6 +171,8 @@ export function Composer(props: ComposerProps) {
     onDrop,
   } = props
   const { value, images, files, submit, setValue, pasteImages, removeImage, removeFile, clearAttachments } = composer
+  /** 不可交流声部：输入区整体锁死——发送与 Enter 全部拦下（停止键照常） */
+  const doSubmit = locked ? () => {} : submit
   /**
    * 输入框里有东西吗（文字或附件）：发送键画不画、能不能点都看它。
    * 附件也算——只有一张图、没有字的那条同样发得出去（见 useComposer 的 submit）。
@@ -391,7 +396,7 @@ export function Composer(props: ComposerProps) {
       e.preventDefault()
       // contenteditable 的默认 Enter 会插进一个 div 壳，序列化还得另算一层——两键都拦下自己插
       if (e.shiftKey) document.execCommand('insertLineBreak')
-      else submit()
+      else doSubmit()
     }
   }
 
@@ -568,14 +573,16 @@ export function Composer(props: ComposerProps) {
                     free
                     ? t('正在回答…这条发出去会排进等待队列，等它答完自动发送')
                     : t('导师正在回答…这条发出去会排进等待队列，等它答完自动发送')
-                  : free
-                    ? t('输入消息开始对话…（/ 可用斜杠命令，可拖入文件、页签、图片）')
-                    : t('向超级导师提问…（/ 可用斜杠命令，可拖入文件、页签、图片）')}
+                  : locked
+                    ? t('工作会话：由工作流与委托驱动，不直接对话')
+                    : free
+                      ? t('输入消息开始对话…（/ 可用斜杠命令，可拖入文件、页签、图片）')
+                      : t('向超级导师提问…（/ 可用斜杠命令，可拖入文件、页签、图片）')}
             </span>
           )}
           <div
             ref={editorMount}
-            contentEditable={!subMode}
+            contentEditable={!subMode && !locked}
             role="textbox"
             aria-multiline="true"
             spellCheck={false}
@@ -662,11 +669,11 @@ export function Composer(props: ComposerProps) {
               同一颗实心按钮会让人以为点下去导师马上就听。停键排在它右边——
               最靠角的那颗是「停下来」，这是这颗面板里最需要闭着眼也点得准的动作。
             */}
-            {running && !subMode && hasDraft && (
+            {running && !subMode && hasDraft && !locked && (
               <button
                 type="button"
                 title={t('排进等待队列（当前回答结束后自动发送）')}
-                onClick={submit}
+                onClick={doSubmit}
                 disabled={slash.active}
                 className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg border border-dashed border-seal/60 bg-seal/5 text-seal-deep shadow-none transition hover:border-seal hover:bg-seal/15 disabled:pointer-events-none disabled:opacity-35"
               >
@@ -682,11 +689,11 @@ export function Composer(props: ComposerProps) {
               >
                 <Square size={13} />
               </button>
-            ) : (
+            ) : !locked ? (
               <button
                 type="button"
                 title={t('发送（Enter）')}
-                onClick={submit}
+                onClick={doSubmit}
                 /*
                  * 斜杠命令打着的时候发不得：那截文字是命令，不是消息（Enter 在斜杠菜单里
                  * 已经被拦下，这颗按钮是同一道闸的鼠标侧）。
@@ -696,7 +703,7 @@ export function Composer(props: ComposerProps) {
               >
                 <ArrowUp size={15} />
               </button>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

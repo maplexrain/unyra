@@ -13,10 +13,10 @@ import type {
   AttachReadResult, BaseFileEditOpts, BaseFileEditResult, BaseFileListResult, BaseFileOpResult, BaseFileReadResult,
   BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
   BaseProcessListResult, BaseProcessOutputResult, BaseProcessRunOpts, BaseProcessRunResult, BaseProcessStartResult, BaseProcessStatusResult,
-  BaseProcessStopResult, BaseProcessWaitOpts, BaseProcessWaitResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
+  BaseProcessStopResult, BaseProcessWaitOpts, BaseProcessWaitResult, CloseAction, CloseBehavior, ExamCloseReason,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpServeCall, McpServeReply, McpServeStatus, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   NoticeSettings, PluginEntry, PluginTogglesResult, SaveBinaryPayload, SaveBinaryResult, SaveFilter,
-  SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
+  StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
   UpdatePhase, UpdateState, VideoApiFetchResult, VideoStreamOpenResult, WebDomOpResult, WebFastTranslateResult, WebFetchResult, WebBinaryFetchResult, WebLogDetailResult,
   WebLogsOpts, WebLogsResult,
   WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult,
@@ -37,10 +37,10 @@ import type {
 // 这里按原样转出去，外部从 src/lib/native 引这些类型的写法不用改。
 export type {
   SaveBinaryPayload, SaveBinaryResult,
-  AttachReadResult, BaseProcessDeleteResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
+  AttachReadResult, BaseProcessDeleteResult, CloseAction, CloseBehavior, ExamCloseReason,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpServeCall, McpServeReply, McpServeStatus, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   NoticeSettings, PluginEntry, PluginTogglesResult, SaveFilter,
-  SilentMark, StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
+  StorageEntry, StorageFail, StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail,
   UpdatePhase, UpdateState, VideoApiFetchResult, VideoStreamOpenResult, WebDomOpResult, WebFastTranslateResult, WebFetchResult, WebBinaryFetchResult, WebLogDetailResult,
   WebLogsOpts, WebLogsResult,
   WebPageFetchReq, WebPageFetchResult, WebPointResult, WebReadHtmlResult, WebRecordResult,
@@ -61,21 +61,6 @@ export type PluginList =
   | { ok: false; error: string }
 
 export type PluginSource = { ok: true; content: string } | { ok: false; error: string }
-
-export type ArtifactList =
-  | { ok: true; items: Record<string, CodeArtifact>; silent: Record<string, SilentMark> }
-  | { ok: false; error: string }
-
-/** 主进程替沙箱发出去的那一次请求的结果 */
-export type RunnerFetch =
-  | { ok: true; status: number; statusText: string; headers: Array<[string, string]>; body: string; truncated: boolean }
-  | { ok: false; error: string }
-
-export interface RunnerFetchInit {
-  method?: string
-  headers?: Record<string, string>
-  body?: string
-}
 
 export type StorageRead = { ok: true; content: string | null } | StorageFail
 export type StorageYaml = { ok: true; data: unknown } | StorageFail
@@ -249,24 +234,6 @@ export interface NativeBridge {
     toggles(): Promise<PluginTogglesResult>
     /** 改一个内置插件的开关；**重启后生效** */
     setToggle(id: string, enabled: boolean): Promise<StorageOk | StorageFail>
-  }
-  /**
-   * 代码块伪编译（见 electron/runner.ts）。
-   *
-   * 产物落在**数据目录**里（换一份数据目录就换一批产物）；联网只能走主进程——
-   * 渲染层那个执行沙箱是 Web Worker，受页面 CSP 管着，自己发不出外部请求。
-   */
-  runner: {
-    /** 全量产物表 */
-    artifacts(): Promise<ArtifactList>
-    /** 存一份产物（键是「代码 + 语言」的指纹） */
-    putArtifact(key: string, value: CodeArtifact): Promise<StorageOk | StorageFail>
-    /** 记下「这段代码没有输出」：那块代码从此不再显示编译与运行 */
-    putSilent(key: string, value: SilentMark): Promise<StorageOk | StorageFail>
-    /** 清空全部产物 */
-    clearArtifacts(): Promise<StorageOk | StorageFail>
-    /** 替沙箱发一次请求；用户同不同意由渲染层先弹窗问过 */
-    fetch(url: string, init: RunnerFetchInit): Promise<RunnerFetch>
   }
   window: {
     minimize(): void

@@ -100,8 +100,8 @@ export const API_GROUPS: ApiGroupDoc[] = [
   g(
     'core',
     '执行控制',
-    'wait / ask / tiktok / help / compact / fetch / see：顶层函数，不挂在某个组下。',
-    `这一组不是对象，直接写在 api 上（不挂组名）：跨组的执行控制原语。ask 支持联动表单与画像写入，fetch 是 web.fetch 的别名（数组 = 并发批量），see 能看图与 PDF 指定页——逐条签名与边界见下。`,
+    '顶层函数，不挂在某个组下，按名直接调用（本声部放行的在下面逐条列出）。',
+    `这一组不是对象，直接写在 api 上（不挂组名）：跨组的执行控制原语。ask 支持联动表单与画像写入，fetch 是 web.fetch 的别名（数组 = 并发批量），see 能看图与 PDF 指定页——逐条签名与边界见下；下面没列的就是你调不到的。`,
     [
       a('help', 'help()', 'api 集总览', '任何时候都能调。返回的是组名与一句说明，不含具体签名；具体用法用 api.<组>.__help()。', 'const overview = await api.help()'),
       a('wait', 'wait(ms | { seconds })', '等一段时间再继续', '等异步结果、等页面加载、等用户操作时用；上限 120 秒。纯计算不要用它拖时间。', 'await api.wait(800)'),
@@ -124,9 +124,9 @@ export const API_GROUPS: ApiGroupDoc[] = [
         'see(url | "moji:static/<uuid>" | 本地路径 | base64 | { url?, base64?, mime?, name? } | { pdf?, page?, name? })',
         '看一张图或一份 PDF 的指定页（附在你的下一步里）',
         '需要亲眼看一样东西时用：网页或接口里发现的图片链接、资源库引用 moji:static/<uuid>（或已入库图片 uuid）、工作区/本地图片相对路径、代码/文件里的 base64 图片、工作区文件里的 data URL、' +
-          '论文/讲义/扫描件 PDF 里的图表与排版。图片走图像通道（与 res.read 读图同一机制），回执本身不含图片内容，' +
+          '论文/讲义/扫描件 PDF 里的图表与排版。图片走图像通道（与看图 api 同一机制），回执本身不含图片内容，' +
           '不要把 base64 写进返回值。图片收五种写法：http(s) 图片地址、资源库引用 moji:static/<uuid>、资源库 uuid 或工作区图片相对路径、data:image/...;base64,...、裸 base64（按 mime 参数或魔数认格式）。' +
-          '**看 PDF 用 { pdf, page }**：pdf 收 http(s) 地址、资源库引用 moji:static/<uuid>（先 res.list() 找）' +
+          '**看 PDF 用 { pdf, page }**：pdf 收 http(s) 地址、资源库引用 moji:static/<uuid>' +
           '或相对用户的文件路径；page 从 1 起，单个或数组（一次最多 4 页），省略看第 1 页——只渲染页面为图，不提供文字层；' +
           '个别字体未内嵌的 CJK PDF 可能缺字。图片上限 12MB、PDF 上限 32MB，过大的图先压缩到长边 1568 再入库；' +
           '同内容的图自动复用资源库已有那条。多页内容逐页调，先看你最需要的那几页。',
@@ -144,7 +144,7 @@ const p = await api.see({ pdf: 'moji:static/<uuid>', page: [1, 3] })`,
     'node',
     '节点宇宙',
     'api.node.list() 查全图（带 uuid）→ get(uuid) 取节点对象 → help() 现查写法 → content 读 / editContent 写 / connect 连线。',
-    `节点是学习数据的全部骨架：**文档**（讲义）、**大纲**（计划）、**笔记**、**试卷**、**超级文档**、**项目**（真实路径的授权声明）、**课堂**（16:9 互动课件，course 契约 api.classroom.schema()）、**入口**——每一种都是节点，uuid 是唯一身份（api.node.list() 的回执里全带）。读写内容、建删节点、连线全部经由节点对象：
+    `节点是学习数据的全部骨架：**文档**（讲义）、**大纲**（计划）、**笔记**、**试卷**、**超级文档**、**项目**（真实路径的授权声明）、**课堂**（16:9 互动课件，course 契约动手前现查）、**入口**——每一种都是节点，uuid 是唯一身份（api.node.list() 的回执里全带）。读写内容、建删节点、连线全部经由节点对象：
 
     const list = await api.node.list()            // 全图清单（uuid / 标题 / path / 挂件）
     const n = await api.node.get(list.nodes[0].uuid)
@@ -163,7 +163,7 @@ const p = await api.see({ pdf: 'moji:static/<uuid>', page: [1, 3] })`,
     [
       a('list', 'node.list()', '目标的全图清单', '回 goal（含入口 uuid）与 nodes：每份文档带 uuid / 标题 / path / 状态 / 上游 / 大纲（目标项数）/ 笔记 / 试卷 / 超级文档（各带 uuid）；另有 freeOutlines / videos / classrooms（课堂节点 uuid / 标题——课堂不在 nodes 里）/ projects / detached 段。导航、找落点、核对存在性全靠它。', 'const list = await api.node.list()'),
       a('get', 'node.get(uuid)', '取一个节点对象', '回执在门面里被包成真对象（content / editContent / help / connect / disconnect）。uuid 全部来自 list()，不要手拼——大纲与入口的前缀规则 help() 里会讲。', "const n = await api.node.get(list.nodes[0].uuid)"),
-      a('create', 'node.create({ kind, title?, under? , ...? })', '建节点（画布与 agent 同一条通道）', 'kind: doc / outline / note / exam / superdoc / video / project / classroom（16:9 课堂，course 契约 api.classroom.schema()）。doc 支持 root: true 设为目标根节点（目标尚无根节点时首个 doc 自动成根）。under 给了 = 创建即绑（挂件挂到那份文档、文档挂进大纲或视频节点之下，同目标同名文档复用不另建）；under 不给 = **独立游离实体**（笔记/超级文档进游离池、试卷宿主悬空、文档无父无纲），之后拖线 / connect 绑定。outline 配宿主文档一起成形：不给 under 就建「新文档+空大纲」，给了 under 就给那份文档补空卷大纲。试卷遇空壳复用原位。video 绑视频：不给 under 建，建好 editContent({ videoId }) 绑一个现有视频（清单在 list() 的 videos.all）。project 声明真实路径：{ kind: "project", path, under?: 文档uuid }——path 必给，拼法由路径自己说（盘符或 / 开头 = 绝对，其余相对目标根目录），声明之后 api.project.* 就能读写它下面的所有文件（清单在 list() 的 projects 段）。', `await api.node.create({ kind: 'note', title: '错题本', under: 文档uuid })`, { trap: 'doc 用 root: true 设目标根（root 为 null 时先建根文档）；outline 与宿主文档伴生：under 给文档 uuid = 给它补空大纲，不给 = 建「新文档+空大纲」；under 给了 = 创建即绑；project 声明真实路径即授权' }),
+      a('create', 'node.create({ kind, title?, under? , ...? })', '建节点（画布与 agent 同一条通道）', 'kind: doc / outline / note / exam / superdoc / video / project / classroom（16:9 课堂，course 契约动手前现查）。doc 支持 root: true 设为目标根节点（目标尚无根节点时首个 doc 自动成根）。under 给了 = 创建即绑（挂件挂到那份文档、文档挂进大纲或视频节点之下，同目标同名文档复用不另建）；under 不给 = **独立游离实体**（笔记/超级文档进游离池、试卷宿主悬空、文档无父无纲），之后拖线 / connect 绑定。outline 配宿主文档一起成形：不给 under 就建「新文档+空大纲」，给了 under 就给那份文档补空卷大纲。试卷遇空壳复用原位。video 绑视频：不给 under 建，建好 editContent({ videoId }) 绑一个现有视频（清单在 list() 的 videos.all）。project 声明真实路径：{ kind: "project", path, under?: 文档uuid }——path 必给，拼法由路径自己说（盘符或 / 开头 = 绝对，其余相对目标根目录），声明之后 api.project.* 就能读写它下面的所有文件（清单在 list() 的 projects 段）。', `await api.node.create({ kind: 'note', title: '错题本', under: 文档uuid })`, { trap: 'doc 用 root: true 设目标根（root 为 null 时先建根文档）；outline 与宿主文档伴生：under 给文档 uuid = 给它补空大纲，不给 = 建「新文档+空大纲」；under 给了 = 创建即绑；project 声明真实路径即授权' }),
       a('delete', 'node.delete(uuid)', '删节点（删谁只删谁）', '删文档只删它自己：相连的线摘掉、下游文档断线成游离（不删除）、名下的笔记/试卷/超级文档随它走；删大纲 = 清空那份计划（文档与树边不动）；删挂件只删它自己。删试卷走 api.exam.delete（要先确认没有待判分的考试）。', `await api.node.delete(笔记uuid)`, { trap: '删文档只删它自己：下游断线成游离（不删除）；删试卷走 api.exam.delete' }),
       a('invoke', 'node.invoke(uuid, 成员名, 参数数组)', '调节点对象的成员', '门面自动走它（n.editContent(...) 最终就是一次 node.invoke）；connect / disconnect 的对象参数会被折成 uuid。直接调时参数是数组形状。', `await api.node.invoke(文档uuid, 'editContent', [{ title: '极限', description: '', teaching: '# 极限', status: 'learning' }])`),
       a('brief', 'node.brief(uuid)', '文档的一页纸简报（写正文之前先看它）', '一次给齐：self（标题/描述/状态/字数）、port（认领的目标项——范围与边界以它为准）、siblings（同层其他目标项）、taught（全图各文档已讲过的小节标题——出现过的概念别重讲）。省掉 list 全图 + 逐个读。', `const brief = await api.node.brief(文档uuid)`),
@@ -259,22 +259,6 @@ exam.* 只管**作答侧**：交卷后 exam.read() 看作答，exam.grade(...) �
     ],
   ),
   g(
-    'res',
-    '资源库',
-    '目标 static/ 下的图片、PDF、附件：清单、详情、读、建、改、删、引用扫描。',
-    `资源文件按 uuid 命名，文档里用 ![说明](moji:static/<uuid>) 引用。
-读图片不会回 base64——图片会挂到下一跳；文本可以分段读。`,
-    [
-      a('list', 'res.list()', '列本目标全部资源', '回 uuid、名称、类型、大小、引用数。', `const assets = await api.res.list()`),
-      a('info', 'res.info(uuid)', '单条资源详情', '回名称、类型、大小、描述、引用。', `const info = await api.res.info('a1b2c3')`),
-      a('read', 'res.read(uuid, { start?, end? }?)', '读一份资源', '文本回内容（可给区间分段）；图片走图像通道挂到下一跳；其它二进制只回元数据。', `const text = await api.res.read('a1b2c3')`),
-      a('create', 'res.create({ name, ext, content })', '新建文本资源', '只收文本；二进制资源用界面或文件工作区。', `await api.res.create({ name: '参考提纲', ext: 'md', content: '# 提纲' })`),
-      a('update', 'res.update(uuid, { name?, description?, content? })', '改资源元数据或文本', '改名只动清单不动文件；改 content 会覆盖原文本，先 res.read 确认再动手。', `await api.res.update('a1b2c3', { description: '课程讲义截图' })`),
-      a('delete', 'res.delete(uuid, { force? }? )', '删除一份资源', '还被引用时必须 force:true；不可逆，删除前先 res.refs 看引用面。', `await api.res.delete('a1b2c3')`, { trap: '还被引用时必须 { force: true }；删除前先 res.refs 看引用面' }),
-      a('refs', 'res.refs(uuid?)', '引用扫描', '给 uuid 查这一条被谁引用；不给就列全部资源。', `const refs = await api.res.refs('a1b2c3')`),
-    ],
-  ),
-  g(
     'workspace',
     '工作区',
     '当前节点 workspace/ 目录：列、读文本、写文本。',
@@ -331,24 +315,13 @@ list() 回执的 rel 字段是**真实磁盘路径**：process.* 的 cwd 等需�
     ],
   ),
   g(
-    'code',
-    '代码块伪编译',
-    '把文档里那段代码转译成可运行 JS 的交付口。',
-    `用户点代码块上的「编译」时，工作流会带着 key / 语言 / 代码进来。
-转译完用 code.save 交货；只有定义、没有输出的代码用 code.silent 标停。`,
-    [
-      a('save', 'code.save({ key, js, note })', '交付伪编译产物', 'key 原样抄；js 必须完整、自包含、能在 Web Worker 跑；note 写补了哪些假设。', `await api.code.save({ key: 'abc123', js: 'console.log(1)', note: '补了一个假数据数组' })`, { trap: 'key 原样抄；js 必须完整自包含、能在 Web Worker 里跑（无 DOM / require / import）' }),
-      a('silent', 'code.silent({ key, reason })', '标记这段代码没有输出', '只有定义/接口/常量的代码块走这里；reason 一句话说清。', `await api.code.silent({ key: 'abc123', reason: '只有类型与函数定义，没有被调用的语句' })`),
-    ],
-  ),
-  g(
     'chip',
     '引用 chip',
     '生成与校验回复里的可点击引用卡片。',
     `不要手拼 chip 的 path；build 会当场对 store 解析并带上 nodeId。
 交付前用 check 把草稿里的 chip 逐颗验一遍。`,
     [
-      a('build', 'chip.build({ type, path?, url?, note?, name?, examId?, attemptId?, dir?, title? })', '生成一颗引用 chip', 'type: doc / note / outline / super / exam / attempt / ws / web / local。定位不到回 ok:false 与原因。', `const c = await api.chip.build({ type: 'doc', path: '极限' })`),
+      a('build', 'chip.build({ type, path?, url?, note?, name?, examId?, attemptId?, dir?, title? })', '生成一颗引用 chip', 'type: doc / note / outline / super（=superdoc，完整名也认）/ exam / attempt / ws / web / local。定位不到回 ok:false 与原因。', `const c = await api.chip.build({ type: 'doc', path: '极限' })`),
       a('check', 'chip.check(text)', '校验文本里的全部 chip', '回 { total, valid, invalid, problems? }；坏的用 build 重新生成。', `const r = await api.chip.check(draft)`),
     ],
   ),
@@ -435,7 +408,7 @@ tabId 可省略，默认操作当前激活的网页页签；目标支持索引�
       a('point', 'ui.point(path?, tab?)', '打开并定位文档', '把教学文档/笔记在文档区打开并定位；交付后指引用户看这里。', `await api.ui.point('极限')`),
       a('scroll', 'ui.scroll({ to?, by? })', '滚文档区', 'to: top/bottom；by: 像素。滚的是文档区，不是网页。', `await api.ui.scroll({ to: 'top' })`),
       a('screenshot', 'ui.screenshot()', '截文档区', '截图进资源库并挂到下一跳；只在视觉必须亲眼看时用。', `await api.ui.screenshot()`),
-      a('superdoc', 'ui.superdoc(path?, name)', '打开超级文档页签', '写完节点对象的 editContent({ html }) 后用它让用户看到（path 给文档的 #uuid 或标题）。', `await api.ui.superdoc('#' + 文档uuid, '夹逼实验')`),
+      a('superdoc', 'ui.superdoc(超级文档uuid) 或 ui.superdoc(宿主文档uuid, name)', '打开超级文档页签', '写完节点对象的 editContent({ html }) 后用它让用户看到。**推荐单参**：直接给超级文档节点自己的 uuid（编辑回执里带的那个），不用反向拼宿主与名字。', `await api.ui.superdoc('b77079f4-…')`),
       a('dom', 'ui.dom(async (root) => { ... })', '受控 DOM 读写', 'root 提供 exists/count/query/text/attr/html/rect/click 等；只用于文档区。', `await api.ui.dom(async (root) => { return await root.text('h1') })`, { trap: '作用域只有文档区——浏览器页签里的网页不在内' }),
     ],
   ),
@@ -452,7 +425,7 @@ tabId 可省略，默认操作当前激活的网页页签；目标支持索引�
 **挂起队列**：交付时没人在等就挂起不会丢，下一次 wait 把积压的一起返回；单次 execute
 结束时仍有子代理在后台跑是正常的——之后任何一次 execute 里都可以继续 wait 收。`,
     [
-      a('create', 'subagent.create({ key, system, tools?, name? })', '登记一个子代理（只登记、未启动）', 'key 是地址（字母开头，≤32 字符，可用字母/数字/-/_）；system ≥20 字，写清角色、工作方式与交付纪律（子代理看不到导师的对话）；tools 从允许名单里选，默认 [web, tmp]。同 key 再 create 即覆盖定义（会话保留，新提示词从下一次任务生效）。', `const r = await api.subagent.create({ key: 'paper', system: '你是论文研读员：通读给定论文，交付方法-实验-结论三段摘要。只用 api.web 与 api.res。', tools: ['web', 'res'] })`),
+      a('create', 'subagent.create({ key, system, tools?, name? })', '登记一个子代理（只登记、未启动）', 'key 是地址（字母开头，≤32 字符，可用字母/数字/-/_）；system ≥20 字，写清角色、工作方式与交付纪律（子代理看不到导师的对话）；tools 从允许名单里选，默认 [web, tmp]。同 key 再 create 即覆盖定义（会话保留，新提示词从下一次任务生效）。', `const r = await api.subagent.create({ key: 'paper', system: '你是论文研读员：通读给定论文，交付方法-实验-结论三段摘要。只用 api.web 与 api.tmp。', tools: ['web', 'tmp'] })`),
       a('run', 'subagent.run({ agent, task })', '派任务并后台启动', 'agent 认 key；task 写全：做什么、什么口径、交付什么格式。run 立即返回、任务并发跑，用 wait 收交付；同一个子代理同一时刻只跑一场。', `await api.subagent.run({ agent: 'paper', task: '通读 https://example.com/paper.pdf，交付 500 字摘要与三个关键结论' })`, { trap: 'task 要自包含：子代理看不到你们的对话' }),
       a('resume', 'subagent.resume(key)', '继续一个被中断的子代理', '在同一份会话上接着跑，上下文保留、不加新指令；只对被中断过的有效。', `await api.subagent.resume('paper')`),
       a('intervene', 'subagent.intervene(key, message)', '给运行中的子代理插一条指令', '用于纠偏；消息排队等子代理下一跳消费，不要频繁打断。', `await api.subagent.intervene('paper', '先只看第 3 节')`),
@@ -482,7 +455,7 @@ tabId 可省略，默认操作当前激活的网页页签；目标支持索引�
     '只用于工作区、静态资源、技能与外部文件；不能读写应用数据。',
     `files.* 是通用文件系统，不是应用数据的入口。允许的范围：
 - docs/.../workspace/**（用户交付物，优先用 api.workspace.*）；
-- docs/.../static/**（静态资源，优先用 api.res.*）；
+- docs/.../static/**（静态资源：文档引用的图片与附件字节）；
 - skills/**（技能文件，优先用 api.skill.*）；
 - 数据根之外、用户已放行的目录。
 教学文档、笔记、大纲、meta、试卷、superdocs、chat.json、state.json、user.yaml、
@@ -598,10 +571,13 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
   g(
     'team',
     '智能体团队',
-    'list / status / delegate / complete / awake：agent team 两位声部（仅聊天 / 导师）之间的任务委托与相互唤醒。',
+    'list / status / delegate / complete / awake：智能体团队**全体执行声部**之间的任务委托、交付与相互唤醒（team 是被委托方收口交付的唯一通道）。',
     `把一项任务**委托**给另一位声部：delegate 只排队（不堵塞当前进程），目标空闲时立即启动、
 忙碌时等它收口后接续；承接方做完用 complete 交付，结果传回委托者——委托者空闲就被激活，
 运行中则在当前轮的单次 loop 边界注入后继续跑。存在未完成委托时，目标空闲会被系统启动提醒。
+**承接会话由系统自动落位**：承接方按「承接声部 × 委托者 × 目标」各有一段专属委托会话，
+同一委托者的后续委托复用同一段——不需要承接方先有会话（唯一例外：free 仅聊天要先有对话；
+委托被拒就由你兜底完成或如实说明，不要重试）。
 awake 是自我唤醒：本轮收口后等待 N 时自启动，期间若有过新启动（用户发消息、委托激活）则失效。
 内置能力（委托通道本身）不可裁剪——但本组随 execute 白名单裁剪，关掉它就没有团队协作能力。`,
     [
@@ -625,7 +601,8 @@ awake 是自我唤醒：本轮收口后等待 N 时自启动，期间若有过�
         '把任务委托给某位智能体（不堵塞）',
         'to 是目标 id；instruction 写清「做什么与边界」（它是目标那一轮的指令全文）；' +
           'preemptibleMs / preemptibleUntil 声明本委托在多久之内允许被后续委托插队——插队从队尾往前找：' +
-          '仍在允许期内（未到期）的委托会被越过，到期的不越。**只排队**：目标空闲立即启动，忙碌则等收口接续，本调用不堵塞。',
+          '仍在允许期内（未到期）的委托会被越过，到期的不越。**只排队**：目标空闲立即启动，忙碌则等收口接续，本调用不堵塞。' +
+          '承接会话按「承接声部 × 委托者 × 目标」由系统自动落位并复用，不需要承接方先有会话（free 例外）。',
         `const r = await api.team.delegate({
   to: 'tutor',
   instruction: '整理本目标本周的学习笔记，产出一份 200 字摘要。',
@@ -858,10 +835,16 @@ export function renderCompactApiGroupBlocks(allow?: ReadonlySet<string>): string
  * 不带组示例——完整参数、返回结构与可运行示例一律走 api.<组>.<api>.__help() 现查
  * （buildSandboxHelp 已预渲染进 Worker，查询零成本）。内容仍全部从注册表生成：
  * 签名、一句话作用与用法边界就是 ApiDoc 本身，改 api 时这里自动跟上（对账纪律见文件头）。
- * allow 给定时只渲染放行的组；不给 = 全量。
+ * allow 给定时只渲染放行的组（索引与顶层函数一并按面裁剪）；不给 = 全量。
  */
 export function renderCompactApiDocumentation(allow?: ReadonlySet<string>): string {
-  return renderCompactApiHeader() + '\n\n' + renderCompactApiGroupBlocks(allow)
+  return (
+    renderCompactApiHeader() +
+    '\n\n**api 集总览索引**\n' +
+    groupIndexForSystemPrompt(allow) +
+    '\n\n' +
+    renderCompactApiGroupBlocks(allow)
+  )
 }
 
 export function catalogGroups(): Array<{

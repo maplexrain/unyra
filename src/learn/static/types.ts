@@ -19,7 +19,7 @@ export interface StaticResource {
   /** 后缀，小写、不含点；文件就是 \`{uuid}.{ext}\` */
   ext: string
   type: ResourceType
-  /** 一句话说明。由 Agent 写（见 res.update），可空 */
+  /** 一句话说明（Agent 或用户在界面上写），可空 */
   description: string
   /** 上传日期 */
   createdAt: number
@@ -33,7 +33,7 @@ export interface StaticResource {
   /**
    * 内容指纹（SHA-256 十六进制；环境不支持时退回 fnv1a-…）。
    *
-   * 用来**避免同一份内容存两遍**：转存、res.create、res.update 都会先算它，
+   * 用来**避免同一份内容存两遍**：转存同内容的图会先算它，
    * 命中同目标里已有的资源就直接复用那条（uuid 不变、文件不重写）。
    * 老清单里没有这一项，读回来是空串（此时不参与去重，不影响其它字段）。
    */

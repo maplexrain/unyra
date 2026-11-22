@@ -20,6 +20,8 @@ import { CHIP_MIME, parseChipJson } from '../../../lib/chipSyntax'
 export interface ComposerUiProps {
   composer: ComposerApi
   running: boolean
+  /** 锁住输入区（不可交流声部的工作会话）：原样透传给 Composer */
+  locked?: boolean
   hasKey: boolean
   /** 当前提供商的显示名，仅用于「未配置」提示 */
   providerLabel: string

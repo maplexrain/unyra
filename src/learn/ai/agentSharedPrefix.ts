@@ -1,58 +1,40 @@
 /**
- * 四位执行声部（导师 / 命题官 / 判卷官 / 资料员）系统提示词的**共同前缀（P0）**。
+ * 五位执行声部（导师 / 出卷师 / 设计师 / 调研员 / 维修员）系统提示词的**共同前缀（P0）**。
  *
- * 为什么要一份逐字节相同的共同前缀：多声部并发调用时，各声部各自的对话共享同一段
- * system 前缀才能命中服务端前缀缓存——把「与声部无关」的口径全部提到最前面（团队协作、
- * execute 机制、通用 api 速查、沙箱纪律、引用与交付、通用纪律、compact 规程），各声部
- * 的专属内容（角色 / 分工 / 专属组 / 排版语法 / 专属工作流）追加在后（P1，见
- * teacherSystem 与 agentTeamSystem）。
+ * 取舍纪律（用户定稿）：**提示词里暴露的 api 与工作流，取决于该声部实际持有哪些**——
+ * 不为了前缀缓存往 P0 里塞多余的组。所以 P0 只装「对四位声部逐字为真」的内容：
+ * 团队协作（team.* 四声部都有）、execute 机制、先查再用、应用数据守门、沙箱纪律、
+ * 通用纪律、compact 规程（compact 四声部都有）。**api 速查与引用/交付纪律不进 P0**——
+ * 除 tmp/team 外各组没有交集，塞进 P0 就是给没有该组的声部灌噪声；各声部的完整持面
+ * 速查在 P1 按 AGENT_API_PLANES 渲染（apiDocKeysFor），引用/交付段按持有拼装
+ * （CHIP_QUOTE_GUIDE / DELIVERY_LEDGER_GUIDE，见 teacherSystem 与 agentTeamSystem）。
  *
  * 顺序纪律不变：越不可变越靠前——P0 对四份提示词逐字节一致，P1 按声部分化，末尾才是
- * 会随设置变化的附加提示词。改这里任何一行，四份提示词的前缀同时变（这正是目的）。
+ * 会随设置变化的附加提示词。改这里任何一行，四份提示词的前缀同时变。
  */
 
-import { AGENT_API_PLANES } from '../../agent/agentProfile'
-import {
-  groupIndexForSystemPrompt,
-  renderCompactApiGroupBlocks,
-  renderCompactApiHeader,
-} from '../../agent/sandbox/apiRegistry'
+import { AGENT_API_PLANES, type AgentVoice } from '../../agent/agentProfile'
 import { APP_DATA_GUIDE, EXECUTE_BASE_GUIDE, SANDBOX_DISCIPLINE_GUIDE, SEEK_HELP_GUIDE } from './executeGuide'
-import { CHIP_DELIVERY_GUIDE } from './guides'
 import { TEAM_GUIDE } from './teamGuide'
 import { compactWorkflowSection } from './workflowsGuide'
 
 /**
- * 通用 api 组（用户定稿的 11 组：对四份声部都值得预先在场）与顶层函数全集。
- * 分工面之外的组 / 顶层函数调用会被沙箱当场拒绝——速查的注记行说明这一点，
- * 各声部「你的分工」一节再给出它真正拥有的面。
+ * 一位声部的速查文档键 = **它实际持有的组 + 放行的顶层函数名 + core 展示组**。
+ * 渲染走 apiRegistry 的 allow 口径：组块按组名裁剪，core 顶层按裸函数名裁剪
+ * （help 恒在场）——提示词速查与运行时 apiAllow 从同一份分工面算出，永不对不上。
  */
-const SHARED_GROUP_KEYS: ReadonlySet<string> = new Set([
-  'node', 'tmp', 'team', 'wf', 'delivery', 'chip', 'web', 'files', 'project', 'res', 'workspace',
-])
-const SHARED_TOP_LEVEL: readonly string[] = ['help', 'wait', 'ask', 'tiktok', 'compact', 'fetch', 'see']
-
-/** P0 速查的文档键（组名 + 顶层函数名 + core 展示组） */
-export const SHARED_API_DOC_KEYS: ReadonlySet<string> = new Set<string>([
-  ...SHARED_GROUP_KEYS,
-  ...SHARED_TOP_LEVEL,
-  'core',
-])
-
-/** 某声部在通用面**之外**的专属组（P1 速查只渲染这些） */
-export function extraApiDocKeys(voice: 'tutor' | 'examiner' | 'grader' | 'researcher'): ReadonlySet<string> {
-  return new Set(AGENT_API_PLANES[voice].groups.filter((g) => !SHARED_GROUP_KEYS.has(g)))
+export function apiDocKeysFor(voice: AgentVoice): ReadonlySet<string> {
+  const plane = AGENT_API_PLANES[voice]
+  return new Set<string>([...plane.groups, ...plane.topLevel, 'core'])
 }
 
-const API_REFERENCE = [
-  '**API 集总览索引**（通用组；每位声部的专属组在其「你的分工」之后的专属速查里）',
-  groupIndexForSystemPrompt(SHARED_API_DOC_KEYS),
-  '',
-  renderCompactApiHeader(),
-  '各组与顶层函数按声部分工开放：上面是通用面，分工面之外的组与顶层函数（ask / tiktok / fetch / see 等按各声部「你的分工」为准）调用会被沙箱当场拒绝，回执会列出本次开放的组——动手前先对照「你的分工」。',
-  '',
-  renderCompactApiGroupBlocks(SHARED_API_DOC_KEYS),
-].join('\n')
+/** P1 速查的收尾注记：速查即全部面（面外拒绝在 APP_DATA_GUIDE 也守了一道） */
+export const API_PLANE_NOTE =
+  '- 以上就是你的全部 api 组与顶层函数：速查之外没有别的组，调用会被沙箱当场拒绝，回执会列出本次开放的组。'
+
+/** 节点 path 寻址口径（只有持有 api.node 组的声部渲染，随 P1 速查附在后面） */
+export const NODE_PATH_NOTE =
+  "- path 寻址：'' = 当前节点；'极限' = 本目标标题；'极限/笔记' = 笔记；'#id' = 直接给节点 id。找不到时回执会列候选，照着改一次就对。"
 
 /** 通用纪律（需求解耦 / 查证要真读 / 不钻牛角尖）：四位声部逐字同一段，导师也用它 */
 const SHARED_DISCIPLINE = [
@@ -64,8 +46,9 @@ const SHARED_DISCIPLINE = [
 
 /**
  * 共同前缀全文：四位执行声部的系统提示词都以它开头（逐字节一致）。
- * 块序（用户定稿）：团队协作 → execute 机制 → 先查再用 → 应用数据 → 沙箱纪律 →
- * 通用 api 速查 → 引用与交付 → 通用纪律 → compact 规程。
+ * 块序：团队协作 → execute 机制 → 先查再用 → 应用数据守门 → 沙箱纪律 → 通用纪律 →
+ * compact 规程。全部内容对四位声部为真——声部间没有交集的东西（各域 api 速查、
+ * 引用与交付、排版语法、专属工作流规程）都在 P1。
  */
 export const SHARED_AGENT_PREFIX = [
   TEAM_GUIDE,
@@ -77,10 +60,6 @@ export const SHARED_AGENT_PREFIX = [
   APP_DATA_GUIDE,
   '',
   SANDBOX_DISCIPLINE_GUIDE,
-  '',
-  API_REFERENCE,
-  '',
-  CHIP_DELIVERY_GUIDE,
   '',
   SHARED_DISCIPLINE,
   '',

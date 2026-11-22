@@ -38,7 +38,7 @@ import type { McpServeCall, McpServeReply } from '../../../shared/ipc'
  * 分开抄——两条名单将来会按各自的审批面演化（比如 MCP 侧将来带审批地开 ui）。
  * 名单里的每个组都必须是 apiRegistry 的真实组 key（与子代理名单同一条对账纪律）。
  */
-const MCP_ALLOWED_GROUPS = ['web', 'tmp', 'res', 'node', 'memory', 'workspace'] as const
+const MCP_ALLOWED_GROUPS = ['web', 'tmp', 'node', 'memory', 'workspace'] as const
 
 /** 服务是否开放：设置是事实源，安装时读一次、面板切换时写回来 */
 let enabled = true

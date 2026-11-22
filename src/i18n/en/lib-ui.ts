@@ -99,43 +99,6 @@ const dict: Record<string, string> = {
   '挂载 DOM': 'Mounts DOM',
   'marked 扩展': 'marked extensions',
 
-  /* ---------- lib/codeBlockMenu.ts：代码块菜单与联网确认 ---------- */
-  '导师判定这段代码没有输出：{0}': 'The tutor judged this code to have no output: {0}',
-  '导师判定这段代码没有输出（跑起来不会有任何东西可看）': 'The tutor judged this code to have no output (running it would produce nothing to see)',
-  '编译中': 'Compiling',
-  '重新编译': 'Recompile',
-  '编译': 'Compile',
-  '这里没有超级导师的上下文（在文档区里才能编译）': 'No Super Tutor context here (compiling works inside the document area)',
-  '运行输出': 'Run output',
-  '（前面还有 {0} 行没显示）': '({0} earlier lines not shown)',
-  '正在跑…': 'Running...',
-  '已复制': 'Copied',
-  '复制失败': 'Copy failed',
-  '移动失败': 'Move failed',
-  '不能把目录移进它自己里面': "A folder can't be moved into itself",
-  '已复制到 {0}': 'Copied to {0}',
-  '已移动到 {0}': 'Moved to {0}',
-  '这段代码要联网': 'This code needs the network',
-  '它想访问：\n{0}\n\n同意之后，本次运行里后续的联网请求都会一并放行。\n代码是 AI 转译出来的，请确认上面这个地址你认识。':
-    'It wants to reach:\n{0}\n\nOnce allowed, further network requests in this run are let through as well.\nThe code was translated by AI; please make sure you recognize the address above.',
-  '允许本次运行': 'Allow this run',
-  '（联网被拒绝，代码可能在等数据）': '(Network access was denied; the code may be waiting for data)',
-  '代码块操作': 'Code block actions',
-  '运行': 'Run',
-  '无输出': 'No output',
-
-  /* ---------- lib/codeRun.ts：运行输出与失败原因 ---------- */
-  '沙箱起不来：页面不允许创建 Worker（worker-src 被 CSP 限制）': 'The sandbox cannot start: the page does not allow creating Workers (worker-src is restricted by CSP)',
-  '沙箱起不来': 'The sandbox cannot start',
-  '运行超时（{0} 秒），已强制停止': 'Run timed out ({0} s); it was force-stopped',
-  '运行超时': 'Run timed out',
-  '已停止': 'Stopped',
-  '沙箱内部错误': 'Sandbox internal error',
-  '请求发不出去：{0}': 'The request could not be sent: {0}',
-
-  /* ---------- lib/codeArtifacts.ts ---------- */
-  '清不掉': 'Could not clear',
-
   /* ---------- lib/staticView.ts：资源占位与缺失 ---------- */
   '正在读取…': 'Reading...',
   '图片读取失败': 'Image failed to load',

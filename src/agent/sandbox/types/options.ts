@@ -23,12 +23,10 @@ import type { DeliveryOps } from './delivery'
 import type { MethodOps } from './method'
 import type { WorkflowOps } from './workflow'
 import type { TeamOps } from './team'
-import type { CodeOps } from './code'
 import type { UserInfoOps } from './userInfo'
 import type { UiOps } from './ui'
 import type { BrowserOps } from './browser'
 import type { McpOps } from './mcp'
-import type { ResourceOps } from './resources'
 import type { VideoOps } from './video'
 import type { ProjectOps } from './project'
 
@@ -65,16 +63,6 @@ export interface SandboxOptions {
     entries: Record<string, TmpEntry>
     onChange: (next: Record<string, TmpEntry>) => void
   }
-  /**
-   * 资源库（本目标 `static/` 下的文件，见 learn/static）；不注入就没有 res 这一组。
-   *
-   * 与 doc / node 两组的关键差别：它要碰磁盘（读文本、读图、删文件），所以方法是异步的；
-   * 而且「读图片」有个硬约定——**绝不把 base64 放进返回值**。返回值走的是文本通道
-   * （先 safeJson、再被裁到 3 万字符，见 AgentToolResult.images 的说明），
-   * 一张图的 base64 进去只会剩一段乱码。图片挂在返回值的 images 上，
-   * 由工具收集、由运行时作为图片片段送上下一跳。
-   */
-  resources?: ResourceOps
   /**
    * 未注入时沙箱里没有 state 这一组。
    */
@@ -113,8 +101,6 @@ export interface SandboxOptions {
   methods?: MethodOps
   /** 工作流登记表（wf.*，见 learn/workflows）；未注入就没有 wf 这一组 */
   workflows?: WorkflowOps
-  /** 代码块伪编译的交付口（见 lib/codeArtifacts）；未注入就没有 code 这一组 */
-  code?: CodeOps
   /**
    * 学习者画像（userInfo.*，见 user/fields 与 learn/agentOps）；未注入就没有这一组。
    *
@@ -130,7 +116,7 @@ export interface SandboxOptions {
    * 下一跳。未注入就没有这个顶层 api（自由聊天、子代理都没有——前者没有目标资源库，
    * 后者刻意不敞）。
    *
-   * 与 res.read 读图是**同一条图像通道**：图片不进返回值文本（文本通道会把 base64
+   * 与读图类 api 是**同一条图像通道**：图片不进返回值文本（文本通道会把 base64
    * 截成乱码），宿主存好图后在返回值上挂 images，由 execute 收集、运行时送上下一跳。
    */
   see?: (input: SeeRequest) => Promise<unknown>

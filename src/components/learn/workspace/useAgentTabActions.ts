@@ -18,6 +18,7 @@ import { pruneImages } from '../../../learn/images'
 import { resetPrefixGate } from '../../../agent/prefixGate'
 import { goalConvByGoal, goalFocusByGoal } from './goalFocus'
 import { sortConversationsByTimeDesc } from '../agent-team/conversationList'
+import { voiceOfConversation } from '../../../learn/agentTeam/voiceConvs'
 import { t } from '../../../i18n'
 
 /** agent 栏模式/会话动作需要的宿主能力与派生值 */
@@ -168,16 +169,23 @@ export function useAgentTabActions({
       const s = getLatest()
       const goal = s.goals.find((g) => g.id === goalId)
       if (!goal) return
-      const activeInGoal =
-        s.activeConversationId && conversationById(s, s.activeConversationId)?.goalId === goalId
-          ? s.activeConversationId
-          : null
+      // **只认导师会话**：声部会话（调度员 / 出卷师…的 cv/dv）与导师会话共用 goalId，
+      // 不过滤的话「最后活跃的那段」会是其他声部的会话——点导师却打开了别人的对话
+      const isTutorConv = (id: string | null | undefined): boolean => {
+        if (!id) return false
+        const c = conversationById(s, id)
+        return !!c && c.goalId === goalId && voiceOfConversation(c) === 'tutor'
+      }
+      const activeInGoal = isTutorConv(s.activeConversationId) ? s.activeConversationId! : null
       const remembered = goalConvByGoal.get(goalId)
-      const validRemembered =
-        remembered && conversationById(s, remembered)?.goalId === goalId ? remembered : null
+      const validRemembered = isTutorConv(remembered) ? remembered! : null
       const descFirst =
-        sortConversationsByTimeDesc(s.conversations.filter((c) => c.goalId === goalId))[0]?.id ?? null
-      const resolvedId = activeInGoal ?? validRemembered ?? resolveDisplayedConversation(s, goalId) ?? descFirst
+        sortConversationsByTimeDesc(
+          s.conversations.filter((c) => c.goalId === goalId && voiceOfConversation(c) === 'tutor'),
+        )[0]?.id ?? null
+      // 回退链里**不能有 resolveDisplayedConversation**：它读的是当前激活页签——点导师时
+      // 那上面停的还是声部会话（调度员 / 出卷师…），会把别人的对话选回来（真机踩过）
+      const resolvedId = activeInGoal ?? validRemembered ?? descFirst
       const ensured = resolvedId
         ? { store: s, conversationId: resolvedId }
         : ensureConversation(s, goalId)

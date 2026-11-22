@@ -21,7 +21,6 @@ import { installBrowser } from './api/browser'
 import { installHost } from './api/host'
 import { installSee } from './api/see'
 import { installUi } from './api/ui'
-import { installRes } from './api/res'
 import { installDelegate } from './api/delegate'
 import { installFiles } from './api/files'
 import { installProcess } from './api/process'
@@ -100,8 +99,6 @@ export function buildApi(
   installSee(api, opts, log)
   // 页面反馈域：ui.*（docRef / nodeRef 随组进了 api/ui.ts）
   installUi(api, opts, log)
-  // 资源库域：res.*
-  installRes(api, opts, log)
   // 导师专用域：subagent.* / permission.*
   installDelegate(api, opts, log)
   // 真实文件系统域：files.*（路径映射与 chat.json 硬挡的敏感口径在 api/files.ts）

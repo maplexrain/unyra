@@ -1,12 +1,12 @@
 /**
- * Agent 列表侧栏：智能体团队的**五位声部**（仅聊天 / 导师 / 命题官 / 判卷官 / 资料员）。
+ * Agent 列表侧栏：智能体团队的名册（仅聊天 / 导师 / 出卷师 / 设计师 / 调研员 / 维修员）。
  * 两种形态（variant）：
  * - side（默认）：左侧竖栏，可折叠成 48px 轨（forceCollapsed 时锁定不可展开）；
  * - top：容器宽度 < 800 时由 AgentSlot 切换的顶部横栏——横排声部按钮、
  *   右侧展示当前声部的近况摘要，不再有折叠语义（横排本身就是收起形态）。
  *
  * 声部的角色标签 / 兜底图标 / 配色在 agentRoster.ts 的注册表里；名字与头像来自
- * 各自的 profile（智能体独立设置）。承接声部（命题官 / 判卷官 / 资料员）的工作会话
+ * 各自的 profile（智能体独立设置）。承接声部（出卷师 / 设计师 / 调研员 / 维修员）的工作会话
  * 由委托与系统侧分诊自动落进来，没有「新建对话」——它们按目标各有一段工作会话。
  */
 
@@ -25,7 +25,7 @@ import { DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import type { LearningGoal } from '../../../learn/types'
 import { t, useLocale } from '../../../i18n'
 import { agentAvatarIcon } from './agentAvatars'
-import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, type AgentVoiceStats } from './agentRoster'
+import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, voiceTags, type AgentVoiceStats } from './agentRoster'
 import {
   conversationTimeOf,
   displayConversationTitle,
@@ -146,6 +146,7 @@ export function AgentRosterSidebar({
       ringClass: meta.ringClass,
       running: st.running,
       hasAsk: st.hasAsk,
+      tags: voiceTags(id),
     }
   })
 
@@ -191,9 +192,7 @@ export function AgentRosterSidebar({
           <p className="px-1.5 py-1 text-[10.5px] leading-relaxed text-ink-faint">
             {agentId === 'tutor' && !activeGoalId
               ? t('请先选择一个学习目标')
-              : agentId === 'free'
-                ? t('暂无对话历史')
-                : t('还没有工作会话：委托或系统触发会自动落到这里')}
+              : t(AGENT_ROSTER_META[agentId].emptyHint)}
           </p>
         ) : (
           convs.map((conv) => {
@@ -237,6 +236,14 @@ export function AgentRosterSidebar({
                   >
                     {title}
                   </span>
+                  {conv.id.startsWith('dv:') && (
+                    <span
+                      title={t('委托会话：只承接这位委托者的委托，不接受直接输入')}
+                      className="shrink-0 rounded bg-seal/10 px-1 py-px text-[9px] leading-none text-seal-deep dark:text-seal-2"
+                    >
+                      {t('委托')}
+                    </span>
+                  )}
                   {timeLabel && <span className="shrink-0 text-[10px] tabular-nums text-ink-faint">{timeLabel}</span>}
                 </button>
                 {onDeleteConversation && (
@@ -511,7 +518,23 @@ export function AgentRosterSidebar({
                   )}
                 </span>
 
-                <span className="mt-1 flex items-center justify-between gap-1.5">
+                <span className="mt-0.5 flex items-center gap-1">
+                  {item.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className={
+                        'rounded px-1 py-px text-[9px] leading-none ' +
+                        (tag === '工作流触发'
+                          ? 'bg-line/55 text-ink-faint'
+                          : 'bg-seal/10 text-seal-deep dark:text-seal-2')
+                      }
+                    >
+                      {t(tag)}
+                    </span>
+                  ))}
+                </span>
+
+                <span className="mt-0.5 flex items-center justify-between gap-1.5">
                   <span
                     title={item.subtitle}
                     className={

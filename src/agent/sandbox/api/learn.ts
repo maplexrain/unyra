@@ -131,13 +131,6 @@ export function installLearn(api: Record<string, unknown>, opts: SandboxOptions,
     wrapApi(api, 'wf.invoke', (args) => wfs.invoke(asText(args[0]).trim(), asRecord(args[1])), log)
   }
 
-  // 代码块伪编译：导师把转译好的 JS 交回宿主（见 lib/codeArtifacts）
-  if (opts.code) {
-    const code = opts.code
-    wrapApi(api, 'code.save', (args) => code.save(asRecord(args[0])), log)
-    wrapApi(api, 'code.silent', (args) => code.silent(asRecord(args[0])), log)
-  }
-
   // 工作区目录：节点的真实系统目录（见 learn/workspace），支持读写文本、检索、删除、移动与文件下载
   if (opts.workspace) {
     const ws = opts.workspace

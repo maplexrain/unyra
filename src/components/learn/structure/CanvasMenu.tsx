@@ -41,7 +41,6 @@ export interface CanvasMenuProps {
   onGenerateNoteSummary?: (noteId: string) => void
   onOpenVideoNode?: (nodeUuid: string) => void
   onOpenVideo?: (videoId: string) => void
-  onGenerateVideoDoc?: (videoNodeUuid: string) => void
   onOpenFileNode?: (nodeUuid: string) => void
   onBindFile?: (nodeUuid: string, patch: { fileKind?: FileNodeKind; url?: string; title?: string; titleCustomized?: boolean }) => ChannelResult
   onSetProjectPath?: (nodeUuid: string, path: string) => ChannelResult | Promise<ChannelResult>
@@ -74,7 +73,6 @@ export function CanvasMenu({
   onGenerateNoteSummary,
   onOpenVideoNode,
   onOpenVideo,
-  onGenerateVideoDoc,
   onOpenFileNode,
   onBindFile,
   onSetProjectPath,
@@ -217,18 +215,6 @@ export function CanvasMenu({
               >
                 {t('重命名')}
               </button>
-              {menuCard.video?.confirmed && onGenerateVideoDoc && (
-                <button
-                  type="button"
-                  className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-                  onClick={() => {
-                    setMenu(null)
-                    onGenerateVideoDoc(menuCard.uuid)
-                  }}
-                >
-                  {t('生成总览')}
-                </button>
-              )}
             </>
           )}
           {menuCard.kind === 'file' && (

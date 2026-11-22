@@ -11,7 +11,10 @@ import {
   FlaskConical,
   GraduationCap,
   MessageSquare,
+  Palette,
+  Route,
   Sparkles,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -24,6 +27,9 @@ export const AGENT_AVATAR_ICONS: Record<string, LucideIcon> = {
   compass: Compass,
   spark: Sparkles,
   brain: Brain,
+  wrench: Wrench,
+  palette: Palette,
+  route: Route,
 }
 
 /** 头像 id → 图标；认不出的 id 回落到 fallback（默认声部图标） */

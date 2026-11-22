@@ -11,8 +11,7 @@ import type { AgentProfileId, AgentVoice, AgentWfGrant } from '../../agent/agent
 import { createAgentOps, type AgentOps } from '../agentOps'
 import { examsOfNode } from '../graph'
 import type { LearnStore } from '../types'
-import { loadImageByRel } from '../static'
-import { readUserText, removeUserPath, userPath, writeUserText } from '../../lib/storage'
+import { userPath } from '../../lib/storage'
 import { native } from '../../lib/native'
 import { fetchForAgent, searchForAgent } from '../webSearch'
 import { tmpEntriesOf, withTmpEntries } from '../../lib/tmpStore'
@@ -116,20 +115,8 @@ export function learnSandboxOps(deps: {
       return null
     },
     /**
-     * 资源库的磁盘能力。图片走 loadImageByRel：与聊天气泡共用同一份缓存，
-     * 同一张图既挂在消息里、又被文档引用时只读一次盘。
-     */
-    resourceIo: {
-      // 资源路径是「相对当前用户」的（docs/{目标}/static/…）：
-      // 这里必须用 *User* 那一组，否则文件会落到 {root}/docs 下、与清单分家
-      readText: readUserText,
-      writeText: writeUserText,
-      readImage: loadImageByRel,
-      remove: removeUserPath,
-    },
-    /**
      * 工作区目录的磁盘能力（users/<uid>/workspace/…，见 learn/workspace）：路径是
-     * 「相对当前用户」的，uid 前缀在这里补一次（与资源库同一条纪律）。直接走
+     * 「相对当前用户」的，uid 前缀在这里补一次（与用户存储同一纪律）。直接走
      * native 的 storage:list/read/write——错误原样透传，模型要靠它把路径改对。
      */
     workspaceIo: {

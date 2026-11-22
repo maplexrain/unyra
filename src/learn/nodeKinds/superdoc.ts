@@ -75,7 +75,11 @@ export class SuperdocGNode extends GNode {
     }
     const o = next as Record<string, unknown>
     if (typeof o.title === 'string' && o.title.trim() && o.title.trim() !== found.doc.name) {
-      return { error: '超级文档不支持改名（名字是页签与身份的一半）；要新名字就 create 一份新的，把内容搬过去' }
+      return {
+        error:
+          '超级文档的 title 创建即只读（名字是页签与身份的一半，不能改）：editContent 只传 { html }，'
+          + '省略 title 即可；要新名字就 create 一份新的，把内容搬过去',
+      }
     }
     if (typeof o.html !== 'string') return { error: 'html 必给：一份完整的 HTML（按钮、样式、脚本都在里面）' }
     const html = o.html
@@ -108,7 +112,9 @@ export class SuperdocGNode extends GNode {
       ok: true,
       note:
         '已覆盖更新「' + found.doc.name + '」（' + html.length + ' 字符）。' +
-        (hostId ? '打开给用户：api.ui.superdoc("' + hostId + '", "' + found.doc.name + '")' : '它目前是游离的：绑到某份文档后才能作为页签打开'),
+        (hostId
+          ? '打开给用户：api.ui.superdoc("' + this.uuid + '")（直接给超级文档自己的 uuid；或 api.ui.superdoc("' + hostId + '", "' + found.doc.name + '")）'
+          : '它目前是游离的：绑到某份文档后才能作为页签打开'),
     }
   }
 
@@ -120,7 +126,8 @@ export class SuperdocGNode extends GNode {
         (found?.node ? '，挂在文档「' + found.node.title + '」下。' : '（游离：还没绑到哪份文档上）。') +
         (found ? (found.doc.html.trim() ? '现有 ' + found.doc.html.length + ' 字符。' : '还是空的（一份壳）。') : ''),
       edit: [
-        'await n.content 读源码 → 改 → await n.editContent({ html }) 整份覆盖（自包含单页：结构、<style>、<script> 都在这一份里）。',
+        'await n.content 读源码 → 改 → await n.editContent({ html }) 整份覆盖（自包含单页：结构、<style>、<script> 都在这一份里）。**title 创建即只读**：editContent 只传 { html }，不要传 title。',
+        '打开给用户：api.ui.superdoc(本节点 uuid) 直接开（也可 ui.superdoc(宿主文档uuid, name)）。',
         '主题变量自适应深浅色：var(--color-bg) / --color-sunken / --color-surface、--color-ink / --ink-strong / --ink-soft、--color-seal / --line / --warn / --success。',
         '富文本用 <moji-markdown>…</moji-markdown>（宿主解析 Markdown 与 LaTeX）；页面里的按钮调 window.api.method.call("函数名", ...args) 执行持久化函数（先 api.method.create 存好）。',
         '内置跳转协议：静态资源 moji:static/{uuid}、超级文档互跳 moji:super/{name}、节点跳转 moji:node/{nodeId}。',

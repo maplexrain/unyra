@@ -8,7 +8,7 @@
 import type { LearnStore } from '../../src/learn/types'
 import { buildDocs, buildState, parseDocs } from '../../src/learn/files'
 import { FIRST_GROUP, allTabs, emptyDocs, focusedTab, groupIdsOf, openInGroup, splitWith } from '../../src/learn/groups'
-import { createAgentOps, type ResourceIo, type WorkspaceIo } from '../../src/learn/agentOps'
+import { createAgentOps, type WorkspaceIo } from '../../src/learn/agentOps'
 import { addResource, makeResource } from '../../src/learn/static'
 import { docPathOf, nodePathOf, resolveDoc, resolveNode } from '../../src/learn/paths'
 import { createExecuteTool, type SandboxRequest, type SandboxReply } from '../../src/agent/tools'
@@ -298,7 +298,7 @@ export function fakeWorkspaceIo() {
  * 1. **清单与文件必须一致**。清单在 store 里（跟着文档一起落盘）、文件在 static/ 下，
  *    两者分属两套机制；「登记了但没写文件」「删了文件没删条目」在界面上都看不出来，
  *    只会在 Agent 照着清单去读的时候得到一句「文件读不到」。
- * 2. **图片只走图像通道**。res.read 读图绝不把 base64 放进返回值（会被 3.2 万字符的
+ * 2. **图片只走图像通道**。看图 / 截图返回的图绝不把 base64 放进返回值（会被 3.2 万字符的
  *    截断毁掉、还永久占着上下文），而是挂在工具结果上由运行时送上下一跳；
  *    历史还原还要与实发的那一条逐字节一致，否则前缀缓存整段作废。
  */
@@ -307,29 +307,6 @@ export const PNG_UUID = '3f2a1b4c-0000-4000-8000-000000000001'
 export const MD_UUID = '7c9d0e11-0000-4000-8000-000000000002'
 export const PNG_REL = 'docs/微积分/static/' + PNG_UUID + '.png'
 export const MD_REL = 'docs/微积分/static/' + MD_UUID + '.md'
-
-/** 假的资源磁盘：只记在内存里，用来核对「清单说有什么」与「盘上真有什么」 */
-export function fakeResourceIo(files: Map<string, string>, images: Map<string, string>) {
-  const removed: string[] = []
-  const io: ResourceIo = {
-    readText: async (rel) => files.get(rel) ?? null,
-    writeText: async (rel, content) => {
-      files.set(rel, content)
-      return true
-    },
-    readImage: async (rel) => {
-      const data = images.get(rel)
-      return data ? { mime: 'image/png', data, url: 'data:image/png;base64,' + data } : null
-    },
-    remove: async (rel) => {
-      files.delete(rel)
-      images.delete(rel)
-      removed.push(rel)
-      return true
-    },
-  }
-  return { io, removed }
-}
 
 export function staticStore(): LearnStore {
   let s = baseStore()

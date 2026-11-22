@@ -374,15 +374,17 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
     })
 
     const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
-    expect(tabs).toHaveLength(5)
+    expect(tabs).toHaveLength(7)
     expect(tabs[0].textContent).toContain('仅聊天')
-    expect(tabs[1].textContent).toContain('导师')
-    expect(tabs[2].textContent).toContain('命题官')
-    expect(tabs[3].textContent).toContain('判卷官')
-    expect(tabs[4].textContent).toContain('资料员')
-    expect(tabs[1].textContent).toContain('零基础英语语法入门')
+    expect(tabs[1].textContent).toContain('调度员')
+    expect(tabs[2].textContent).toContain('导师')
+    expect(tabs[3].textContent).toContain('出卷师')
+    expect(tabs[4].textContent).toContain('设计师')
+    expect(tabs[5].textContent).toContain('调研员')
+    expect(tabs[6].textContent).toContain('维修员')
+    expect(tabs[2].textContent).toContain('零基础英语语法入门')
     expect(tabs[0].getAttribute('aria-selected')).toBe('false')
-    expect(tabs[1].getAttribute('aria-selected')).toBe('true')
+    expect(tabs[2].getAttribute('aria-selected')).toBe('true')
 
     act(() => {
       tabs[0].click()
@@ -419,7 +421,7 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
     expect(bar?.getAttribute('data-roster-collapsed')).toBeNull()
 
     const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
-    expect(tabs).toHaveLength(5)
+    expect(tabs).toHaveLength(7)
     expect(tabs[0].getAttribute('aria-selected')).toBe('true')
     expect(tabs[1].getAttribute('aria-selected')).toBe('false')
 
@@ -429,6 +431,10 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
 
     act(() => {
       tabs[1].click()
+    })
+    expect(onSelectMode).toHaveBeenCalledWith('dispatcher')
+    act(() => {
+      tabs[2].click()
     })
     expect(onSelectMode).toHaveBeenCalledWith('tutor')
 
@@ -714,7 +720,7 @@ describe('AgentRosterSidebar 智能体设置按钮与名称覆盖', () => {
     })
 
     const gears = [...host.querySelectorAll<HTMLButtonElement>('[data-agent-settings]')]
-    expect(gears).toHaveLength(5)
+    expect(gears).toHaveLength(7)
     expect(host.textContent).toContain('小导师')
 
     act(() => {
@@ -723,6 +729,10 @@ describe('AgentRosterSidebar 智能体设置按钮与名称覆盖', () => {
     expect(onOpenSettings).toHaveBeenCalledWith('free')
     act(() => {
       gears[1]!.click()
+    })
+    expect(onOpenSettings).toHaveBeenCalledWith('dispatcher')
+    act(() => {
+      gears[2]!.click()
     })
     expect(onOpenSettings).toHaveBeenCalledWith('tutor')
 
@@ -882,10 +892,11 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     const codeKeys = [...host.querySelectorAll('code')].map((c) => c.textContent)
     expect(codeKeys.some((k) => k === 'node')).toBe(true)
     expect(codeKeys.filter((k) => k === 'core')).toHaveLength(1)
-    // 分出去的域（判卷的 exam / 课件的 classroom）不在导师的清单里
+    // 分出去的域（判卷与课件的 exam / classroom、调研的 web / browser）不在导师的清单里
     expect(codeKeys.some((k) => k === 'exam')).toBe(false)
     expect(codeKeys.some((k) => k === 'classroom')).toBe(false)
-    expect(codeKeys.some((k) => k === 'web')).toBe(true)
+    expect(codeKeys.some((k) => k === 'web')).toBe(false)
+    expect(codeKeys.some((k) => k === 'browser')).toBe(false)
     // 旧设置被无视：不触发任何 onChange
     expect(onChange).not.toHaveBeenCalled()
 
@@ -993,18 +1004,24 @@ describe('AgentSettingsView 智能体独立设置页', () => {
 
     // 导师全文恒定：api 速查与规程按团队分工拼装（分出去的域不在，分诊口径在场）
     const text = render({ apiGroups: ['web'] } as AgentProfile)
-    expect(text).toContain('#### api.web')
     expect(text).toContain('【开讲】教学文档生成（teach-node）')
-    expect(text).toContain('委托 examiner（命题官）')
+    expect(text).toContain('委托 examiner（出卷师）')
+    expect(text).toContain('委托 designer（设计师）')
     expect(text).toContain('你是软件「归一 unyra」的智能导师助手')
     expect(text).not.toContain('#### api.exam')
     expect(text).not.toContain('【出卷】试卷命题（exam）')
 
-    // 判卷官：阅卷规程 + api.exam 在（通用面在共同前缀里，四份共享）
-    const graderText = render({}, 'grader')
-    expect(graderText).toContain('【阅卷】判分与讲解（exam-grade）')
-    expect(graderText).toContain('#### api.exam')
-    expect(graderText.startsWith(SHARED_AGENT_PREFIX)).toBe(true)
+    // 命题官：创作规程与阅卷规程都在（判卷已并入），共享前缀逐字节一致
+    const examinerText = render({}, 'examiner')
+    expect(examinerText).toContain('【出卷】试卷命题（exam）')
+    expect(examinerText).toContain('【阅卷】判分与讲解（exam-grade）')
+    expect(examinerText).toContain('#### api.exam')
+    expect(examinerText.startsWith(SHARED_AGENT_PREFIX)).toBe(true)
+
+    // 维修员：只拿修图规程
+    const fixerText = render({}, 'fixer')
+    expect(fixerText).toContain('【修复函数图像】Plot 错误快速纠偏（plot-fix）')
+    expect(fixerText.startsWith(SHARED_AGENT_PREFIX)).toBe(true)
 
     // 仅聊天：能力面由架构固定，提示词恒定
     const freeText = render({}, 'free')
@@ -1270,8 +1287,9 @@ describe('AgentSlot 对话历史切换回归', () => {
     const f1Row = host.querySelector(`[data-conversation-id="${f1.id}"]`)!
     expect(f1Row.className).toContain('bg-card')
 
-    // 切回「导师」模式，记忆该目标上次选中的 c1（即使曾点过新建对话再切回也不丢）
-    const tutorTabBtn = host.querySelectorAll<HTMLButtonElement>('[role="tab"]')[1]
+    // 切回「导师」模式（roster 里调度员在导师之上：导师是 role=tab 的第 3 枚），
+    // 记忆该目标上次选中的 c1（即使曾点过新建对话再切回也不丢）
+    const tutorTabBtn = host.querySelectorAll<HTMLButtonElement>('[role="tab"]')[2]
     act(() => {
       tutorTabBtn.click()
     })
@@ -1279,6 +1297,169 @@ describe('AgentSlot 对话历史切换回归', () => {
 
     deleteFreeConversation(f1.id)
     deleteFreeConversation(f2.id)
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('点导师：当前停在声部会话（调度员）时，必须打开导师自己的会话而不是留在声部会话上', () => {
+    const tutorConv = makeConv({
+      id: 't1',
+      goalId: 'g1',
+      title: '导师讨论',
+      messages: [{ id: 'mt', role: 'user', parts: [{ type: 'text', text: '导师的对话内容' }], ts: 1000 }],
+      createdAt: 1000,
+      updatedAt: 1000,
+    })
+    const dispatcherConv = makeConv({
+      id: 'd1',
+      goalId: 'g1',
+      voice: 'dispatcher',
+      title: '调度讨论',
+      messages: [{ id: 'md', role: 'user', parts: [{ type: 'text', text: '调度员的对话内容' }], ts: 2000 }],
+      createdAt: 2000,
+      updatedAt: 2000,
+    })
+    const initialStore = {
+      goals: [{ id: 'g1', title: '微积分', question: '微积分', rootNodeId: 'n1', createdAt: 1, updatedAt: 1 }],
+      nodes: [
+        {
+          id: 'n1',
+          goalId: 'g1',
+          title: '极限',
+          key: '极限',
+          description: '',
+          docs: { teaching: { content: '', updatedAt: 1 } },
+          notes: [],
+          annotations: [],
+          status: 'learning',
+          origin: 'user',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      conversations: [tutorConv, dispatcherConv],
+      exams: [],
+      resources: {},
+      activeGoalId: 'g1',
+      activeNodeId: 'n1',
+      // 用户此刻正停在调度员的会话上
+      activeConversationId: 'd1',
+      agentTabs: [{ kind: 'goal', goalId: 'g1', conversationId: 'd1' }],
+      agentActiveTab: 'ga:g1:d1',
+      docArea: { focus: 'g-main', layout: { kind: 'group', group: 'g-main' }, groups: [{ id: 'g-main', active: null, tabs: [] }] },
+      drafts: {},
+      docScroll: {},
+      localFiles: [],
+    } as unknown as LearnStore
+
+    let latestStore = initialStore
+    const getLatest = () => latestStore
+    const writeStore = (next: LearnStore) => {
+      latestStore = next
+    }
+
+    function Harness() {
+      const [store, setStore] = useState<LearnStore>(initialStore)
+      const set = (next: LearnStore) => {
+        writeStore(next)
+        setStore(next)
+      }
+
+      const actions = useAgentTabActions({
+        getLatest,
+        set,
+        onToast: () => {},
+        setSidebarOpen: () => {},
+        runningByConversation: {},
+      })
+
+      const agentTabs = store.agentTabs
+      const agentPanes = useMemo(() => [...(agentTabs ?? [])], [agentTabs])
+      const activeAgentTab = useMemo(() => {
+        const tabs = agentTabs ?? []
+        return tabs.find((t) => agentTabKey(t) === store.agentActiveTab) ?? tabs[0] ?? freeTabStub
+      }, [store.agentActiveTab, agentTabs])
+
+      const deps: AgentSlotDeps = {
+        store,
+        getLatest,
+        set,
+        agent: {
+          runningByConversation: {},
+          pendingAskByConv: {},
+          streams: {},
+          queues: {},
+          tpsByConv: {},
+          liveUsageByConv: {},
+          compactingConvId: null,
+          subRunsAll: [],
+        } as unknown as AgentSlotDeps['agent'],
+        freeChats: [],
+        currentFreeConvId: null,
+        setFreeConvId: () => {},
+        onToast: () => {},
+        openTab: () => {},
+        effort: 'medium',
+        setGlobalEffort: () => {},
+        hasKey: true,
+        providerName: 'test',
+        vision: false,
+        agentSettings: { persona: 'default', docFormat: 'markdown', compact: { threshold: 70 } } as unknown as AgentSlotDeps['agentSettings'],
+        setSettingsEpoch: () => {},
+        agentPanes,
+        activeAgentTab,
+        activeAgentTabId: agentTabKey(activeAgentTab),
+        activateAgentTab: actions.activateAgentTab,
+        openAgentTab: actions.openAgentTab,
+        selectTutorGoal: actions.selectTutorGoal,
+        exitSubagentView: actions.exitSubagentView,
+        handleNewGoalConversation: actions.handleNewGoalConversation,
+        removeConversation: actions.removeConversation,
+        newConversationIn: actions.newConversationIn,
+        selectConversationIn: actions.selectConversationIn,
+        pruneImagesOf: actions.pruneImagesOf,
+        startSuperLab: () => {},
+        newExam: () => {},
+        shouldWaitInLine: () => false,
+        tabGoalId: 'g1',
+      }
+
+      return createElement(AgentSlot, { deps })
+    }
+
+    const freeTabStub = { kind: 'free' } as AgentTabRef
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+
+    act(() => {
+      root.render(createElement(Harness))
+    })
+
+    const visiblePaneText = () => {
+      const panes = [...host.querySelectorAll<HTMLElement>('.moji-tab-transition')]
+      return panes.map((p) => p.textContent ?? '').join('\n')
+    }
+
+    // 初始停在调度员的会话上
+    expect(visiblePaneText()).toContain('调度员的对话内容')
+
+    // 点 roster 里的「导师」行（副标题「主讲与协调」唯一标识它）
+    // roster 的导师行：roleTag「学习导师」是它的唯一标识（副标题会被最近预览顶掉）
+    const tutorRow = [...host.querySelectorAll<HTMLButtonElement>('button[role="tab"]')].find((b) =>
+      (b.textContent ?? '').includes('学习导师'),
+    )!
+    expect(tutorRow).toBeTruthy()
+    act(() => {
+      tutorRow.click()
+    })
+
+    // 打开的必须是导师自己的会话
+    expect(visiblePaneText()).toContain('导师的对话内容')
+    expect(visiblePaneText()).not.toContain('调度员的对话内容')
+
     act(() => {
       root.unmount()
     })

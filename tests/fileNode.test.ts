@@ -403,13 +403,11 @@ describe('存储序列化与派生画布', () => {
 })
 
 describe('提示词与工作流规范同步验证', () => {
-  it('WORKFLOWS_GUIDE 明确小文件材料用 file 节点（fileKind 区分 web/local），大工程用 project 节点', () => {
-    // project-interpret 规程已随全量静态提示词集中在 WORKFLOWS_GUIDE（不再有独立模块）
-    expect(WORKFLOWS_GUIDE).toContain("文件节点（kind: 'file'）")
-    expect(WORKFLOWS_GUIDE).toContain("docs/{目标}/files/")
-    expect(WORKFLOWS_GUIDE).toContain("fileKind: 'local'")
-    expect(WORKFLOWS_GUIDE).toContain("fileKind: 'web'")
-    expect(WORKFLOWS_GUIDE).toContain("项目节点（kind: 'project'")
+  it('WORKFLOWS_GUIDE 已随「项目与文章解读」工作流退役（fileKind / project 节点仍在节点宇宙）', () => {
+    // project-interpret 工作流已删（调研员收窄为联网调研 + 浏览器操作）；file / project
+    // 节点类型本身还在（建节点走 api.node.create，规程在 node 对象的 help() 里）
+    expect(WORKFLOWS_GUIDE).not.toContain('project-interpret')
+    expect(WORKFLOWS_GUIDE).not.toContain('视频总览')
   })
 })
 

@@ -26,13 +26,11 @@ const dict: Record<string, string> = {
   '就正文里选中的那段文字写一条两三句的注解，划在正文上（选中文字 →「了解」触发）': 'Writes a two-or-three-sentence note about the selected text and underlines it in the document (select text → "Explain")',
   '超级实验室': 'Super Lab',
   '问清想做什么实验，生成一份可交互的超级文档': 'Asks what you want to experiment with, then generates an interactive super doc',
-  '伪编译': 'Pseudo-compile',
   '把文档里这段代码转译成可运行的 JS，产物交给它运行': 'Transpiles the selected code snippet into runnable JavaScript and runs it',
   '压缩上下文': 'Compact context',
   '把前面的对话折成一份交接摘要（旧消息随即失活）': 'Folds the earlier conversation into a handoff summary (older messages are deactivated)',
   '浏览器操作': 'Browser use',
   '替用户操作内置浏览器：截图看页面、模拟鼠标键盘完成任务': 'Drives the built-in browser for you: looks via screenshots, acts via simulated mouse and keyboard',
-  '项目与文章解读': 'Project & article interpretation',
   '下载文章/小型项目至本地建立项目节点，并在生成的教学文档中用 quote 块精准引用原文进行逐段精读': 'Downloads an article or small project locally to create a project node, and references original source text with quote blocks for in-depth explanation',
 
   // ---------- 共享的标签常量（在使用处包 t()：learn/types、learn/learning、learn/review、focus 等） ----------
@@ -567,10 +565,7 @@ const dict: Record<string, string> = {
   '已请导师规划「{0}」的大纲，大纲页会随写入更新': 'Asked the tutor to plan the outline of "{0}"; the outline page updates as it writes',
   '已请导师规划「{0}」这一层的大纲，大纲页会随写入更新': 'Asked the tutor to plan the "{0}" layer; the outline page updates as it writes',
   '读它认领的目标项与上级上下文，规划这一层怎么拆': 'Read the goal item it claimed and the parent context, then plan how this layer splits',
-  '伪编译需要超级导师，请先在设置中填写「{0}」的 API Key': 'Pseudo-compile needs Super Tutor — set the {0} API Key in Settings first',
-  '先选一个知识点：伪编译要在这篇文档的上下文里做': 'Pick a knowledge node first: pseudo-compile runs in the context of this document',
   '现在发不出编译请求：先打开一个知识点，等对话框就绪再点': 'Cannot send the compile request right now: open a knowledge node and wait for the conversation to be ready',
-  '已把这段代码交给导师伪编译，结果与说明见右侧对话': 'Code sent to the tutor for pseudo-compile — results and notes in the conversation',
   '运行工作流需要 AI，请先在设置中填写「{0}」的 API Key': 'Running a workflow needs AI — set the {0} API Key in Settings first',
   '先选一个知识点：工作流要在它的上下文里跑': 'Pick a knowledge node first: the workflow runs in its context',
   '已启动「{0}」': 'Started "{0}"',
@@ -639,7 +634,7 @@ const dict: Record<string, string> = {
   '超级文档支持嵌入富交互式 HTML/JS 实验与沙盒仿真（如网络协议时序模拟、算法动态演练）。连线挂载在文档下，让抽象理论变成可动手操作的具象实验。':
     'SuperDocs embed rich interactive HTML/JS experiments and simulations (like network protocol timelines or algorithm visualizations) under docs, turning abstract theories into hands-on labs.',
   '视频与拓展学习资源': 'Videos and learning media',
-  '视频节点支持选集联动、生成总览文档以及分段笔记。可以在左侧栏拖入视频卡，随时与知识点文档建立关联。':
+  '视频节点支持选集联动与分段笔记。可以在左侧栏拖入视频卡，随时与知识点文档建立关联。':
     'Video nodes support episode linking, overview doc generation, and segmented notes. Drag video cards from the left to link with your knowledge docs.',
   '小地图全景导航': 'Mini-map panorama navigation',
   '左上角为缩略小地图：当学习体系规模逐渐扩大时，点击或拖动小地图视野框即可快速穿梭定位，随时掌握全图脉络。':

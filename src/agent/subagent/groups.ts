@@ -15,13 +15,12 @@ import { SANDBOX_API_CATALOG } from '../apiCatalog'
  * - ui：界面操作是导师与用户之间的事；
  * - exam：判分与讲解是导师的职责；
  * - userInfo：学习者画像；
- * - compact / wf / code / method / state：压缩、登记表、伪编译、持久化函数、
+ * - compact / wf / method / state：压缩、登记表、持久化函数、
  *   学习状态——这些都是「导师」这一层的事，子代理拿了只会越权。
  */
 export const SUBAGENT_ALLOWED_GROUPS = [
   'web',
   'tmp',
-  'res',
   'node',
   'memory',
   'workspace',

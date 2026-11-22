@@ -22,7 +22,7 @@ export interface SeeRequest {
   page?: number | number[]
   /** 图片说明或题注（如 '图 3 整体架构'），直接写入静态资源库元数据 */
   caption?: string
-  /** 排序序号（如 1, 2, 3），直接写入静态资源库元数据，便于 res.list 原样呈现 */
+  /** 排序序号（如 1, 2, 3），直接写入静态资源库元数据 */
   order?: number
 }
 

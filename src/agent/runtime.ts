@@ -71,7 +71,7 @@ export interface AgentRunOptions {
   /** 思考等级（low / high / max）；不传就不发该字段，由模型自选 */
   reasoningEffort?: ReasoningEffort
   /**
-   * 把工具附带的图片（Agent 用 res.read 看了一张图）读成 base64。
+   * 把工具附带的图片（Agent 用看图 / 截图 api 附带了一张图）读成 base64。
    *
    * 运行时本身不碰文件系统：给什么读什么（与用户消息里的图片同一条路，
    * 见 learn/images 的 loadImagesById）。不注入就退化成「挂不上图」，

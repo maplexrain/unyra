@@ -32,7 +32,7 @@ export interface WorkflowRow extends WorkflowEntry {
    * 触发前的宿主准备，两种：
    * - 'ask'：响一声铃。问询类工作流的第一步是一张压在输入框上方的表单，
    *   用户盯着文档时听不见——这一声让它被看见。
-   * - 'show'：也响铃。交付物在对话里（如「伪编译」），用户此刻正盯着自己点的地方
+   * - 'show'：也响铃。交付物就在用户此刻正盯着的地方（错误卡片、代码块）
    *   （代码块上的转圈，随后亮起来的「运行」按钮），响一声就够，别的不做。
    *
    * 两档现在**行为相同**（都是响铃）——分开只是标注这条工作流的交互形态：
@@ -99,11 +99,6 @@ const OUTLINE_GUIDE_INSTRUCTION = ['## 使用「生成大纲导读」工作流�
  */
 
 /**
- * 「视频总览」：分析视频选集结构并规划语义分类总览文档（挂在视频节点子级）。
- */
-const VIDEO_OVERVIEW_INSTRUCTION = ['## 使用「视频总览」工作流。', '- 目标节点: {{target}}', '- 视频资源: {{videoId}}'].join('\n')
-
-/**
  * 「生成课堂」：为课堂节点生成 16:9 画布课件（画面 + DOM 动作流 + 讲解语音）。
  *
  * 与其他内置工作流同一纪律：指令只写「做什么」与本轮参数——course 结构契约、两套
@@ -156,7 +151,6 @@ const COMPACT_INSTRUCTION = ['## 使用「压缩上下文」工作流。'].join(
  */
 const EXPLAIN_INSTRUCTION = ['## 使用「了解」工作流。', '- 目标节点: {{target}}', '- 词条: {{term}}', '- 出现序号: {{occurrence}}', '- 选中原文: {{snippet}}'].join('\n')
 
-const CODE_COMPILE_INSTRUCTION = ['## 使用「伪编译」工作流。', '- 代码块: {{key}}', '- 语言: {{language}}', '- 目标节点: {{target}}', '', '待编译代码（原文）：', '```{{language}}', '{{code}}', '```'].join('\n')
 
 /**
  * 「浏览器操作」：替用户驱动内置浏览器完成任务。之所以特化成工作流：网页是
@@ -184,12 +178,6 @@ type BuiltinDef = Omit<WorkflowRow, 'tier' | 'runnable' | 'createdAt' | 'updated
  * 也不存在「渲染验证」这件事（它没有渲染通道），验收标准就是下面列的几条硬要求。
  */
 const PLOT_FIX_INSTRUCTION = ['## 使用「修复函数图像」工作流。', '- 目标节点: {{target}}', '- 文档标题: {{nodeTitle}}', '- 报错原因: {{reason}}', '- 字符区间: {{range}}', '- 起止偏移: {{start}} 到 {{end}}', '', '失败围栏原文（原样，含首尾 ``` 标记）：', '```plot', '{{source}}', '```'].join('\n')
-
-/**
- * 「项目与文章解读」：当用户需要导师带着解读文章或代码项目时，将材料下载/保存至本地，
- * 创建项目节点挂在相应文档节点之下（或游离），并在生成的解读文档中用 quote 块精准引用原文。
- */
-const PROJECT_INTERPRET_INSTRUCTION = ['## 使用「项目与文章解读」工作流。', '- 目标节点: {{target}}'].join('\n')
 
 const BUILTIN_DEFS: BuiltinDef[] = [  {
     id: 'teach-node',
@@ -222,15 +210,6 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     // 与生成大纲同一待遇：交付物长在导读页签里，只响铃不抢主位
     prep: 'show',
     // 只有画布菜单的触发口，不出现在导师的工作流清单里
-    runnable: false,
-  },
-  {
-    id: 'video-overview',
-    name: '视频总览',
-    description: '分析视频选集结构并规划语义分类总览文档（挂在视频节点子级）',
-    instruction: VIDEO_OVERVIEW_INSTRUCTION,
-    params: ['target', 'videoId'],
-    prep: 'show',
     runnable: false,
   },
   {
@@ -270,7 +249,7 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     // 词条、序号与选段都由触发方补齐；从工作流列表里空跑没有词条可讲
     params: ['target', 'term', 'occurrence', 'snippet'],
     runnable: false,
-    // 只响一声铃、不切主位：交付物就画在用户盯着的那段文字旁边（同「伪编译」）
+    // 只响一声铃、不切主位：交付物就画在用户盯着的那段文字旁边
     prep: 'show',
     // 选中即出的两三句注解，等待感最明显
   },
@@ -283,19 +262,6 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     params: ['target'],
     prep: 'ask',
     // 生成可交互 HTML/JS：复杂代码合成是 max 收益最大的场景，失败代价最高、也等得起
-  },
-  {
-    id: 'code-compile',
-    name: '伪编译',
-    description: '把文档里这段代码转译成可运行的 JS，产物交给它运行',
-    instruction: CODE_COMPILE_INSTRUCTION,
-    // 产物交付的 api 口径（save / silent）与转译环境在系统提示词的「伪编译」规程里
-    // 代码、语言与 key 由代码块菜单补齐；从工作流列表里空跑没有意义
-    params: ['target', 'language', 'key', 'code'],
-    runnable: false,
-    // 响一声铃就够：用户点的是代码块，回执也在那儿（转圈 → 运行亮起），见 WorkflowRow.prep
-    prep: 'show',
-    // 转译规则明确、代码块通常短
   },
   {
     id: 'plot-fix',
@@ -325,15 +291,6 @@ const BUILTIN_DEFS: BuiltinDef[] = [  {
     // 操作规程与安全纪律在系统提示词的 api.browser 组速查里
     params: ['target'],
     // 全程看图干活：识别与决策都轻——快才是浏览效率
-  },
-  {
-    id: 'project-interpret',
-    name: '项目与文章解读',
-    description: '为文章建立文件节点（在线网页直接引用阅读无需下载）或小型项目建立项目节点，并在教学文档中精准引用逐段精读',
-    instruction: PROJECT_INTERPRET_INSTRUCTION,
-    params: ['target'],
-    prep: 'ask',
-    runnable: true,
   },
 ]
 

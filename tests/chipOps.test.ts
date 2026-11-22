@@ -91,6 +91,16 @@ describe('chip.build：生成的 chip 一定定位得到', () => {
     expect(parseChipToken(r.chip)?.nodeId).toBe('c1')
   })
 
+  it('super：完整名 superdoc 与缩写 super 等价（别名兼容）', () => {
+    const store = fixture()
+    const ops = chipWith(store)
+    const short = ops.build({ type: 'super', name: '句号计数器' }) as { ok: boolean; chip: string }
+    const full = ops.build({ type: 'superdoc', name: '句号计数器' }) as { ok: boolean; chip: string; problem?: string }
+    expect(full.ok).toBe(true)
+    expect(full.chip).toBe(short.chip)
+    expect(full.problem).toBeUndefined()
+  })
+
   it('doc：写标题也指得明白（与 doc.* 同一套寻址）', () => {
     const store = fixture()
     const r = chipWith(store).build({ type: 'doc', path: '微积分' }) as { ok: boolean; chip: string }

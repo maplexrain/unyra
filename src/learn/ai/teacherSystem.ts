@@ -1,10 +1,12 @@
 /**
  * 导师声部（tutor）的系统提示词 = **共同前缀（SHARED_AGENT_PREFIX，P0）+ 导师专属区（P1）**。
  *
- * P0（见 agentSharedPrefix）装着与声部无关的全部口径：团队协作、execute 机制、通用 api
- * 速查、沙箱纪律、引用与交付、通用纪律、compact 规程——四位执行声部逐字节共享（并发调用
- * 共享前缀缓存，见 agentSharedPrefix 的说明）。这里只拼导师的 P1：角色定位与节点宇宙哲学、
- * 分诊口径、导师专属 api 组速查、排版与语法指南、导师面内的内置工作流规程、教学专属纪律。
+ * P0（见 agentSharedPrefix）只装「对四位执行声部逐字为真」的口径：团队协作、execute 机制、
+ * 先查再用、应用数据守门、沙箱纪律、通用纪律、compact 规程——api 速查不进 P0（除 tmp/team
+ * 外各组没有交集，塞进 P0 就是给没有该组的声部灌噪声）。这里拼导师的 P1：角色定位与节点
+ * 宇宙哲学、分诊口径、主动获取三查、**导师完整持面的 api 速查**（agentApiDocKeysFor 渲染，
+ * 与运行时 apiAllow 同源）、引用与交付登记（chip / delivery 导师都有）、排版与语法指南、
+ * 导师面内的内置工作流规程、教学专属纪律。
  *
  * 排序纪律（用户铁律）：越不可变越靠前——P0 在最前，P1 按静态→动态排列，会话内会变的
  * 信息（人格 / 画像 / 技能）不进系统提示词，见各模块的说明。
@@ -16,12 +18,12 @@ import { VIDEOS_SYNTAX_GUIDE } from '../../lib/videosBlock'
 import { QUOTE_SYNTAX_GUIDE } from '../../lib/quoteBlock'
 import { AIQA_SYNTAX_GUIDE } from '../../lib/aiqaBlock'
 import { PROACTIVE_SEEK_GUIDE } from './executeGuide'
-import { DOC_LINK_SYNTAX, GOAL_OUTLINE_GUIDE, LEARN_LINK_SYNTAX, RICH_CONTENT_GUIDE } from './guides'
+import { CHIP_DELIVERY_GUIDE, DOC_LINK_SYNTAX, GOAL_OUTLINE_GUIDE, LEARN_LINK_SYNTAX, RICH_CONTENT_GUIDE } from './guides'
 import { PROMPT_MODULES } from './promptModules'
 import { workflowGuideFor } from './workflowsGuide'
 import { AGENT_WORKFLOW_PLANES } from '../../agent/agentProfile'
-import { SHARED_AGENT_PREFIX, extraApiDocKeys } from './agentSharedPrefix'
-import { groupIndexForSystemPrompt, renderCompactApiGroupBlocks } from '../../agent/sandbox/apiRegistry'
+import { apiDocKeysFor, API_PLANE_NOTE, NODE_PATH_NOTE, SHARED_AGENT_PREFIX } from './agentSharedPrefix'
+import { renderCompactApiDocumentation } from '../../agent/sandbox/apiRegistry'
 
 function moduleTextOf(key: string): string {
   const m = PROMPT_MODULES.find((item) => item.key === key)
@@ -51,16 +53,19 @@ export function buildTeacherSystem(opts: {
     '',
     /* ---------- P1：分诊（团队的主讲与协调者） ---------- */
     '### 你的分工（团队的主讲与协调者）',
-    '- 出卷、课堂课件、超级实验室、伪编译、修复函数图像 → 委托 examiner（命题官）；判分与错题讲解 → 委托 grader（判卷官，判卷类委托要带 nodeId）；联网调研、内置浏览器实操、项目与文章解读、视频总览 → 委托 researcher（资料员）。',
-    '- 这些域没有开放给你（api 组与工作流面都拿不到）：不要试图自己完成——写清目标、边界与产物要求委托出去，交付回来后向用户汇报。教学主线（开讲、大纲、讲解、答疑、画像、日程）是你的本职，亲自做。',
+    '- 出卷 → 委托 examiner（出卷师）；判分与错题讲解 → 也委托 examiner（判卷类委托要带 nodeId）；课堂课件、超级实验室 → 委托 designer（设计师）；联网调研、内置浏览器实操 → 委托 researcher（调研员）。',
+    '- 这些域没有开放给你（api 组与工作流面都拿不到，联网与浏览器也是）：不要试图自己完成——写清目标、边界与产物要求委托出去，交付回来后向用户汇报。教学主线（开讲、大纲、讲解、答疑、画像、日程）是你的本职，亲自做。函数图像语法修复归 fixer（维修员），用户在报错卡片上主动触发。',
     '',
-    /* ---------- P1：导师专属的主动获取与 api 组 ---------- */
+    /* ---------- P1：导师专属的主动获取与 api 速查（完整持面） ---------- */
     PROACTIVE_SEEK_GUIDE,
     '',
-    '### 专属 api 组（导师在通用面之外还开放以下各组）',
-    groupIndexForSystemPrompt(extraApiDocKeys('tutor')),
+    renderCompactApiDocumentation(apiDocKeysFor('tutor')),
     '',
-    renderCompactApiGroupBlocks(extraApiDocKeys('tutor')),
+    API_PLANE_NOTE,
+    '',
+    NODE_PATH_NOTE,
+    '',
+    CHIP_DELIVERY_GUIDE,
     '',
     /* ---------- P1：排版与语法指南 ---------- */
     LEARN_LINK_SYNTAX,
@@ -94,7 +99,7 @@ export function buildTeacherSystem(opts: {
     '',
     /* ---------- P1：教学专属纪律（其余通用纪律在共同前缀） ---------- */
     '约束与纪律（导师补充）：',
-    '- **检索有节制、查证要真读**：心智架构（大纲拆解、概念阶梯、教学设计、推导脉络）由你的专业知识与教育学推理自主制定，严禁照搬网页目录；检索只为核准事实与权威背书——创作交付（大纲 / 讲义 / 试卷）必搜且要读原文，纯本地工作不搜；查到足以支撑结论就停，不要凑来源数量；引用不到权威来源时如实说明这是通识讲解，不要用「据说」含糊带过。',
+    '- **检索调研委托出去、查证要真读**：联网检索是 researcher（调研员）的职责面——创作交付（大纲 / 讲义）需要权威背书时，把「要核准什么、要什么类型的来源」写清后委托它，拿到调研交付再动笔；调研结果只用于核准事实，心智架构（大纲拆解、概念阶梯、教学设计、推导脉络）由你的专业知识与教育学推理自主制定，严禁照搬网页目录；引用不到权威来源时如实说明这是通识讲解，不要用「据说」含糊带过。',
   ]
   if (extraSystemPrompt?.trim()) {
     parts.push(

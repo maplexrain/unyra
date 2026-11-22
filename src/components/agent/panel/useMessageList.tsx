@@ -77,6 +77,44 @@ function toSegments(messages: ConversationMessage[]): { segments: Segment[]; pen
   return { segments, pending }
 }
 
+/**
+ * 空态文案表（键 = 声部 id）：标题、一句话职责、可选的「可以这样对我说」建议。
+ * 可交流声部给建议（用户能直接输入）；工作流驱动的声部不给建议（输入区是锁着的）。
+ */
+const EMPTY_COPY: Record<string, { ready: string; body: string; suggestions?: string[] }> = {
+  free: {
+    ready: '自由对话已就绪',
+    body: '探索想法、快速答疑、方案构思或自由交流，随时随地开启对话',
+    suggestions: ['帮我梳理一段思路或方案', '快速解答一个技术或日常疑问', '探讨一个观点的不同视角与利弊'],
+  },
+  tutor: {
+    ready: '超级导师已就绪',
+    body: '针对当前知识点随思提问、拆解推导或生成笔记',
+    suggestions: ['用直白的例子解释这个概念', '帮我梳理要点并整理进笔记', '针对难点出一道随堂小测验'],
+  },
+  dispatcher: {
+    ready: '调度员已就绪',
+    body: '把需求说给我：我会分派给合适的声部，跟踪到交付再向你汇报',
+    suggestions: ['把我的需求分派出去', '现在有哪些任务在进行？', '查一说出卷师现在的进度'],
+  },
+  examiner: {
+    ready: '出卷师已就绪',
+    body: '承接出卷与阅卷任务（工作流与委托触发），照规程交付试卷与错题讲解',
+  },
+  designer: {
+    ready: '设计师已就绪',
+    body: '承接互动课堂课件与超级实验室（工作流与委托触发），画面与交互按规程交付',
+  },
+  researcher: {
+    ready: '调研员已就绪',
+    body: '承接联网调研与内置浏览器操作（会话由工作流与委托触发）',
+  },
+  fixer: {
+    ready: '维修员已就绪',
+    body: '承接函数图像语法修复（由文档里的报错卡片触发）',
+  },
+}
+
 export function useMessageList({
   messages,
   summaryStart,
@@ -94,6 +132,9 @@ export function useMessageList({
   onSelectPrompt,
   goalId,
   free,
+  /** 空态随声部：voice id（'free' / 声部 id）与显示名；不给 = 导师口径（老调用方零改动） */
+  emptyVoice,
+  emptyName,
 }: MessageListProps) {
   /*
    * 分段只在 messages 变了之后重算：流式写作时 messages 身份不变（正在长的那一段
@@ -101,21 +142,13 @@ export function useMessageList({
    * 不会因为每个 chunk 重渲染一次而被打掉。
    */
   const { segments, pending } = useMemo(() => toSegments(messages), [messages])
-  const suggestions = useMemo(
-    () =>
-      free
-        ? [
-            t('帮我梳理一段思路或方案'),
-            t('快速解答一个技术或日常疑问'),
-            t('探讨一个观点的不同视角与利弊'),
-          ]
-        : [
-            t('用直白的例子解释这个概念'),
-            t('帮我梳理要点并整理进笔记'),
-            t('针对难点出一道随堂小测验'),
-          ],
-    [free],
-  )
+  /**
+   * 空态随声部：copy 表按 emptyVoice 取（缺省 = 导师口径，老调用方零改动）；
+   * 建议只有可交流声部才有（工作流驱动的声部输入区是锁着的，建议点不了）。
+   */
+  // free 标志优先：固定聊天页签的空态永远是自由对话口径（emptyVoice 只是补充）
+  const emptyCopy = EMPTY_COPY[free ? 'free' : (emptyVoice ?? 'tutor')] ?? EMPTY_COPY.tutor
+  const suggestions = useMemo(() => emptyCopy.suggestions ?? [], [emptyCopy])
 
   return (
     <>
@@ -129,13 +162,14 @@ export function useMessageList({
             )}
           </div>
           <h4 className="mt-2 text-[14.5px] font-medium tracking-wide text-ink-strong">
-            {free ? t('自由对话已就绪') : t('超级导师已就绪')}
+            {emptyName?.trim() ? emptyName.trim() + ' · ' + t(emptyCopy.ready) : free ? t('自由对话已就绪') : t('超级导师已就绪')}
           </h4>
           <p className="mt-1 max-w-[280px] text-[12px] leading-relaxed text-ink-soft">
             {free
               ? t('探索想法、快速答疑、方案构思或自由交流，随时随地开启对话')
-              : t('针对当前知识点随思提问、拆解推导或生成笔记')}
+              : t(emptyCopy.body)}
           </p>
+          {suggestions.length > 0 && (
           <div className="mt-5 flex flex-col items-center gap-2 text-[11.5px] text-ink-faint">
             <span className="text-[11px] text-ink-faint/70">{t('可以这样对我说：')}</span>
             <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-[340px]">
@@ -151,6 +185,7 @@ export function useMessageList({
               ))}
             </div>
           </div>
+          )}
         </div>
       )}
 

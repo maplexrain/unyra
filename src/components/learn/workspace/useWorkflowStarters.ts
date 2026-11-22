@@ -1,7 +1,7 @@
 /*
  * 这个文件负责：一切「把一件事交给导师的工作流去跑」的启动按钮——
  * 出卷、补判分、超级实验室、浏览器操作、大纲，以及设置里工作流列表的
- * 直接运行 / 删除、代码块菜单的「伪编译」登记。外加学习状态里两个纯本地的小动作
+ * 直接运行 / 删除。外加学习状态里两个纯本地的小动作
  * （改自评、删错误记忆），它们与工作流共享「作用于哪个节点」的同一套收参口径：
  * 可省的 nodeId 一律「省 = 当前节点，指名 = 右键的那一个」。
  *
@@ -9,13 +9,12 @@
  * 迟早有一处忘了。
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useMemo } from 'react'
 import type { KnowledgeNode, LearnStore } from '../../../learn/types'
 import { nodeById } from '../../../learn/graph'
 import { outlineByMember } from '../../../learn/outline'
 import { listWorkflowRows, removeWorkflow, type WorkflowRow } from '../../../learn/workflows'
 import { voiceForWorkflow } from '../../../agent/agentProfile'
-import { setCodeHost, type CodeCompileRequest } from '../../../lib/docHost'
 import { examNeedingWork } from './examTools'
 import type { useAgent } from '../../../learn/useAgent'
 import { t } from '../../../i18n'
@@ -72,7 +71,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
       onOpenSettings()
       return
     }
-    agent.runWorkflow('browser-use', { nodeId: nid, params: { target: nid }, voice: 'researcher' })
+    agent.runWorkflow('browser-use', { nodeId: nid, params: { target: nid }, voice: 'dispatcher' })
   }, [activeGoal, activeNodeId, agent, getLatest, hasKey, onToast, onOpenSettings, providerName])
 
   /**
@@ -96,7 +95,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     setCreating(false)
     // 交付边界随指令钉一遍：这是「往目标文档下面出一份卷」的轮次，不是建树。
     // 画布上有空壳时 api.node.create 会原位复用（同 id 吸收），没有就现建——两条路都是它。
-    agent.runWorkflow('exam', { nodeId: target.id, params: { target: target.id }, voice: 'examiner' })
+    agent.runWorkflow('exam', { nodeId: target.id, params: { target: target.id }, voice: 'dispatcher' })
   }
 
   /**
@@ -120,7 +119,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     agent.runWorkflow('exam-grade', {
       nodeId: target.id,
       params: { target: target.id, ...(examId ? { examId } : {}) },
-      voice: 'grader',
+      voice: 'dispatcher',
     })
   }
 
@@ -151,9 +150,9 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     agent.runWorkflow('superlab', {
       nodeId: target.id,
       params: { target: target.id, ...(shellUuid ? { shell: shellUuid } : {}) },
-      voice: 'examiner',
+      voice: 'dispatcher',
     })
-    onToast(t('已启动超级实验室，导师马上会问你想做什么'))
+    onToast(t('已启动超级实验室：调度员会分派给设计师，确认表单在智能体团队里'))
   }
 
   /**
@@ -170,7 +169,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
       onOpenSettings()
       return
     }
-    agent.runWorkflow('outline', { nodeId: target.id, params: { target: target.id } })
+    agent.runWorkflow('outline', { nodeId: target.id, params: { target: target.id }, voice: 'dispatcher' })
     onToast(t('已请导师规划「{0}」的大纲，大纲页会随写入更新', target.title))
   }
 
@@ -275,39 +274,11 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
       nodeId: finalNodeId,
       params: { target: finalOutlineTarget },
       hint,
+      voice: 'dispatcher',
     })
     onToast(t('已请导师规划「{0}」这一层的大纲，大纲页会随写入更新', title || '大纲'))
   }
   const startPrereqOutline = startGenerateOutline
-
-  /**
-   * 视频总览：为绑定的视频规划语义分类结构并生成总览文档（挂在视频节点子级）。
-   */
-  const startVideoOverview = (videoNodeUuid: string) => {
-    if (!hasKey) {
-      onToast(t('生成总览文档需要 AI，请先在设置中填写「{0}」的 API Key', providerName))
-      onOpenSettings()
-      return
-    }
-    const store = getLatest()
-    const videoNode = (store.videoNodes ?? []).find((v) => v.id === videoNodeUuid)
-    if (!videoNode || !videoNode.videoId) {
-      onToast(t('该视频节点尚未绑定视频，无法生成总览文档'))
-      return
-    }
-    const goal = store.goals.find((g) => g.id === videoNode.goalId)
-    const rootId = goal?.rootNodeId ?? activeNode?.id
-    if (!rootId) {
-      onToast(t('未找到绑定的学习目标根节点'))
-      return
-    }
-    agent.runWorkflow('video-overview', {
-      nodeId: rootId,
-      params: { target: videoNodeUuid, videoId: videoNode.videoId },
-      voice: 'researcher',
-    })
-    onToast(t('已为视频启动总览文档生成工作流，导师正在分析选集语义…'))
-  }
 
   /**
    * 生成互动课堂：为课堂节点生成 16:9 画布课件（画面 + DOM 动作流 + 讲解语音）。
@@ -329,55 +300,10 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     agent.runWorkflow('classroom', {
       nodeId: rootId,
       params: { target: classroomNodeUuid },
-      voice: 'examiner',
+      voice: 'dispatcher',
     })
-    onToast(t('已为课堂启动课件生成工作流，导师正在规划画面与动作流…'))
+    onToast(t('已为课堂启动课件生成工作流，设计师正在规划画面与动作流…'))
   }
-
-  /**
-   * 把「谁来跑伪编译工作流」交给代码块菜单（见 lib/docHost）。
-   *
-   * 为什么由学习区注册：跑工作流要用 useAgent 的 runWorkflow，还要知道有没有配 Key、
-   * 当前是哪个节点——这些只有这一层有。菜单是渲染期命令式挂进 DOM 的，不在组件树里，
-   * props 传不到它手上，于是用一根模块级的线牵起来（与 lib/quoteFocus 同一种做法）。
-   *
-   * 卸载时注销：没有学习区的地方（AI 对话里的代码块、试卷副本、超级文档 iframe）
-   * 就拿不到 host，菜单据此把「编译」按住不点——而不是点了没反应。
-   *
-   * 注册只做一次，回调本体每次渲染后刷进 ref（与 useAgent 里 uiRef / onNoticeRef 同一路数）：
-   * agent / activeNode / hasKey 每个渲染都是新值，直接进依赖数组会让「注册」跟着每次渲染重来，
-   * 而每次注册都会叫醒所有菜单重画一遍——AI 流式输出时那是每秒好几次的无谓开销。
-   */
-  const compileRef = useRef<(req: CodeCompileRequest) => void>(() => {})
-  useEffect(() => {
-    compileRef.current = (req) => {
-      if (!hasKey) {
-        onToast(t('伪编译需要超级导师，请先在设置中填写「{0}」的 API Key', providerName))
-        onOpenSettings()
-        return
-      }
-      const target = activeNode
-      if (!target) {
-        onToast(t('先选一个知识点：伪编译要在这篇文档的上下文里做'))
-        return
-      }
-      const sent = agent.runWorkflow('code-compile', {
-        nodeId: target.id,
-        params: { target: target.id, language: req.languageId ?? '未标注', key: req.key, code: req.code },
-        voice: 'examiner',
-      })
-      if (!sent) {
-        // 对话还没就绪（没有会话/目标）：这一轮根本发不出去，菜单不该空转
-        onToast(t('现在发不出编译请求：先打开一个知识点，等对话框就绪再点'))
-        return
-      }
-      onToast(t('已把这段代码交给导师伪编译，结果与说明见智能体团队页签'))
-    }
-  })
-  useEffect(() => {
-    setCodeHost({ compile: (req) => compileRef.current(req) })
-    return () => setCodeHost(null)
-  }, [])
 
   /**
    * 工作流列表（超级导师设置 → 工作流）：三级并成一张，当前目标裁剪。
@@ -411,7 +337,6 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
     startOutline,
     startGenerateOutline,
     startPrereqOutline,
-    startVideoOverview,
     startGenerateClassroom,
     workflowRows,
     runWorkflowRow,

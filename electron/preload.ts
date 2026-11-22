@@ -23,11 +23,11 @@ import type {
   AttachReadResult, BaseFileEditOpts, BaseFileEditResult, BaseFileEntry, BaseFileListResult, BaseFileOpResult, BaseFileReadResult,
   BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
   BaseProcessInfo, BaseProcessListResult, BaseProcessOutputResult, BaseProcessRunOpts, BaseProcessRunResult, BaseProcessStartResult, BaseProcessStatusResult,
-  BaseProcessStopResult, BaseProcessWaitOpts, BaseProcessWaitResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
+  BaseProcessStopResult, BaseProcessWaitOpts, BaseProcessWaitResult, CloseAction, CloseBehavior, ExamCloseReason,
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpServeCall, McpServeReply, McpServeStatus, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   PluginEntry, PluginListResult, PluginSettingsResult,
-  PluginSourceResult, PluginTogglesResult, SaveBinaryPayload, SaveBinaryResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
+  PluginSourceResult, PluginTogglesResult, SaveBinaryPayload, SaveBinaryResult, SaveFilter, StorageEntry, StorageFail,
   NoticeSettings,
   StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail, UpdatePhase, UpdateState,
   VideoApiFetchResult, VideoStreamOpenResult, WebDomOpResult, WebFastTranslateResult,
@@ -51,10 +51,10 @@ export type {
   AttachReadResult, BaseFileEditResult, BaseFileEntry, BaseFileListResult, BaseFileOpResult, BaseFileReadResult,
   BaseFileStatResult, BaseFileWriteResult, BaseProcessCreateOpts, BaseProcessCreateResult, BaseProcessDeleteResult, BaseProcessGetResult,
   BaseProcessInfo, BaseProcessListResult, BaseProcessOutputResult, BaseProcessRunOpts, BaseProcessRunResult, BaseProcessStartResult, BaseProcessStatusResult,
-  BaseProcessStopResult, BaseProcessWaitOpts, BaseProcessWaitResult, CloseAction, CloseBehavior, CodeArtifact, ExamCloseReason,
+  BaseProcessStopResult, BaseProcessWaitOpts, BaseProcessWaitResult, CloseAction, CloseBehavior, ExamCloseReason,
   ExamOpenResult, ExportPdfPayload, ExportPdfResult, FlushItem, McpServeCall, McpServeReply, McpServeStatus, McpStdioCallResult, McpStdioServerPayload, McpStdioToolsResult,
   PluginEntry, PluginListResult,
-  PluginSourceResult, PluginTogglesResult, SaveFilter, SilentMark, StorageEntry, StorageFail,
+  PluginSourceResult, PluginTogglesResult, SaveFilter, StorageEntry, StorageFail,
   NoticeSettings,
   StorageInfo, StorageOk, StorageRootResult, UpdateChannel, UpdateFail, UpdatePhase, UpdateState,
   WebDomOpResult,
@@ -73,15 +73,6 @@ export interface SaveTextResult {
   path?: string
   error?: string
 }
-
-export type ArtifactListResult =
-  | { ok: true; items: Record<string, CodeArtifact>; silent: Record<string, SilentMark> }
-  | { ok: false; error: string }
-
-/** 主进程替沙箱发出去的一次请求（真的结果，见 electron/runner.ts 的 runFetch） */
-export type RunnerFetchResult =
-  | { ok: true; status: number; statusText: string; headers: Array<[string, string]>; body: string; truncated: boolean }
-  | { ok: false; error: string }
 
 /** 外部文件（拖进来浏览的本地文件）的读写结果 */
 export type LocalReadResult = { ok: true; content: string } | { ok: false; error: string }
@@ -373,34 +364,6 @@ const api = {
       ipcRenderer.invoke('plugins:setToggle', id, enabled),
   },
 
-  /**
-   * 代码块伪编译的产物与联网出口（见 electron/runner.ts）。
-   *
-   * 两件事都只能在这儿做：产物要落在**数据目录**里（活过重启），
-   * 联网要被 CSP 挡在门外（渲染层的 Worker 连不上外网，只能请主进程代发）。
-   */
-  runner: {
-    /** 全量产物表（渲染层启动时拉一次，之后本地维护） */
-    artifacts: (): Promise<ArtifactListResult> => ipcRenderer.invoke('runner:artifacts'),
-
-    /** 存一份产物（按「代码 + 语言」的指纹） */
-    putArtifact: (key: string, value: CodeArtifact): Promise<StorageOk | StorageFail> =>
-      ipcRenderer.invoke('runner:putArtifact', key, value),
-
-    /** 记下「这段代码没有输出」：导师判定的结论，落盘之后那块不再可编译、不可运行 */
-    putSilent: (key: string, value: SilentMark): Promise<StorageOk | StorageFail> =>
-      ipcRenderer.invoke('runner:putSilent', key, value),
-
-    /** 清空全部产物（设置页里的清理入口） */
-    clearArtifacts: (): Promise<StorageOk | StorageFail> => ipcRenderer.invoke('runner:clearArtifacts'),
-
-    /** 替沙箱发一次请求。**用户同不同意是渲染层弹窗的事**，这里只负责发 */
-    fetch: (url: string, init: {
-      method?: string
-      headers?: Record<string, string>
-      body?: string
-    }): Promise<RunnerFetchResult> => ipcRenderer.invoke('runner:fetch', url, init),
-  },
 
   /**
    * 模型能力（设置 → 模型 → 能力接入）：TTS / STT / OCR 三个能力的合成与识别、

@@ -107,9 +107,26 @@ export function installUi(api: Record<string, unknown>, opts: SandboxOptions, lo
         const obj = asRecord(args.length === 1 ? args[0] : args[1])
         const path = args.length === 1 ? asText(obj.path) : asText(args[0])
         const name = (args.length === 1 ? asText(obj.name) : asText(args[1])).trim()
-        if (!name) return { error: '要给出超级文档的名字：ui.superdoc(path?, name)' }
         const r = nodeRef(path)
         if ('error' in r) return { error: r.error }
+        // **单参直开**：path 给的是超级文档节点自己的 uuid（不带 name）——解析出宿主与名字，
+        // 免去调用方反向拼「宿主 uuid + 创建时的 name」。游离态（没绑宿主）如实说明。
+        if (!name) {
+          const node = opts.nodes?.service()?.get(r.ref.id)
+          if (node?.kind !== 'superdoc') {
+            return { error: '要给出超级文档的名字：ui.superdoc(宿主文档uuid, name)；或直接 ui.superdoc(超级文档uuid)' }
+          }
+          const up = node.relations.find((x) => x.type === 'up')
+          if (!up) return { error: '这份超级文档还是游离的（没绑到文档）：拖线绑到文档后才能作为页签打开' }
+          const res = await openSuper({ nodeId: up.id, name: node.title })
+          return {
+            ok: true,
+            opened: res.opened,
+            note: res.opened
+              ? '已在页签里打开「' + node.title + '」，用户看得到。'
+              : '这个宿主下尚未找到「' + node.title + '」对应的超级文档文件。',
+          }
+        }
         const res = await openSuper({ nodeId: r.ref.id, name })
         return {
           ok: true,

@@ -94,7 +94,6 @@ export interface CanvasCardsProps {
   toggleProjDir: (uuid: string, dirPath: string) => void
   onOpenProjectFile?: (absPath: string) => void
   onUpdateVideoNode?: (nodeUuid: string, patch: { input?: string; title?: string; titleCustomized?: boolean }) => ChannelResult
-  onGenerateVideoDoc?: (videoNodeUuid: string) => void
   onGenerateClassroom?: (classroomId: string) => void
   onBindFile?: (nodeUuid: string, patch: { fileKind?: FileNodeKind; url?: string; title?: string; titleCustomized?: boolean }) => ChannelResult
   onToast?: (msg: string) => void
@@ -143,7 +142,6 @@ export function CanvasCards({
   toggleProjDir,
   onOpenProjectFile,
   onUpdateVideoNode,
-  onGenerateVideoDoc,
   onGenerateClassroom,
   onBindFile,
   onToast,
@@ -662,7 +660,6 @@ export function CanvasCards({
                   store={store}
                   goalId={goalId}
                   onUpdateVideoNode={onUpdateVideoNode}
-                  onGenerateVideoDoc={onGenerateVideoDoc}
                 />
               ) : card.kind === 'file' ? (
                 /*

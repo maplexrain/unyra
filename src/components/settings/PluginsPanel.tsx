@@ -1,18 +1,16 @@
 /**
- * 设置 → 插件：按类别列出插件、开关、插件目录与伪编译产物的清理。
+ * 设置 → 插件：按类别列出插件、开关与插件目录。
  */
 
 import { useEffect, useState } from 'react'
 import {
   AlertTriangle,
   BookOpen,
-  Cpu,
   FolderOpen,
   PlugZap,
   RefreshCw,
   Settings,
   ShieldAlert,
-  Trash2,
 } from 'lucide-react'
 import { pane } from '../Pane'
 import Switch from '../Switch'
@@ -28,7 +26,6 @@ import {
   reloadUserPlugin,
   type PluginStatus,
 } from '../../lib/plugins'
-import { artifactCount, clearArtifacts, loadArtifacts, silentCount } from '../../lib/codeArtifacts'
 import { t } from '../../i18n'
 import { pluginHint } from './pluginHints'
 import { native } from '../../lib/native'
@@ -44,8 +41,6 @@ export function PluginsPanel({ onToast }: Props) {
   const [list, setList] = useState<PluginStatus[]>(() => pluginStatuses())
   const [listError, setListError] = useState(() => pluginListError())
   const [busy, setBusy] = useState('')
-  const [artifacts, setArtifacts] = useState(() => artifactCount())
-  const [silent, setSilent] = useState(() => silentCount())
   const [blockers, setBlockers] = useState<Record<string, string>>({})
 
   const reload = () =>
@@ -59,10 +54,6 @@ export function PluginsPanel({ onToast }: Props) {
     void refreshPlugins().then((next) => {
       setList([...next])
       setListError(pluginListError())
-    })
-    void loadArtifacts().then(() => {
-      setArtifacts(artifactCount())
-      setSilent(silentCount())
     })
   }, [])
 
@@ -285,38 +276,6 @@ export function PluginsPanel({ onToast }: Props) {
             </section>
           )
         })}
-
-      {/* 伪编译产物缓存清理卡片 */}
-      <section className="rounded-xl border border-line bg-card/60 p-3.5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-2.5">
-            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line bg-card text-seal">
-              <Cpu size={15} />
-            </div>
-            <div>
-              <div className="text-[13px] font-medium text-ink-strong">{t('代码块编译缓存')}</div>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-ink-soft">
-                {t('共 {0} 份编译产物缓存；清理仅清除本地生成的执行缓存，下次点击代码块运行依然会自动重新编译。另有 {1} 块被判定为无输出。', artifacts, silent)}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            disabled={!artifacts}
-            onClick={() => {
-              void clearArtifacts().then((err) => {
-                setArtifacts(artifactCount())
-                setSilent(silentCount())
-                onToast(err ?? t('已清空编译产物与无输出标记'))
-              })
-            }}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line bg-card px-3 py-1.5 text-[11.5px] font-medium text-ink transition hover:border-line-strong hover:bg-card/80 disabled:opacity-40"
-          >
-            <Trash2 size={12} className="text-ink-soft" />
-            <span>{t('清空缓存')}</span>
-          </button>
-        </div>
-      </section>
 
       {/* 插件同权安全性说明 */}
       <div className="rounded-xl border border-line bg-card/60 p-3.5 text-[11px] leading-relaxed text-ink-soft">

@@ -6,7 +6,7 @@
  * 1. **取**：发请求前把历史里引用到的图读回来，拼成中立的 content 片段（见 ai/content）。
  *    读回来的 base64 进缓存——同一张图每一轮都要重放，不缓存就每轮读一次盘；
  * 2. **共用**：这份缓存是全应用**唯一**的一份图字节，键是 rel。聊天气泡、文档里的
- *    `moji:static` 引用、Agent 读图（res.read）都走它（见 learn/static 的 loadImageByRel）；
+ *    `moji:static` 引用、Agent 看图（api.see）都走它（见 learn/static 的 loadImageByRel）；
  * 3. **清**：删消息 / 删对话之后，把 `{目标}/images/` 里没人再引用的图删掉（pruneImages）。
  *    那已经是**旧目录**：新附件一律转存进 static/ 的资源库，成为目标的资产，
  *    不跟着消息的增删走。这里的清理只为迁移前的老数据保留。

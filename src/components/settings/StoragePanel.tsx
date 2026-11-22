@@ -183,7 +183,7 @@ export function StoragePanel({ onRootChanged, onToast }: Props) {
           <div className="rounded-xl border border-line bg-card p-3">
             <div className="font-mono text-[12px] font-medium text-seal-deep">plugins/</div>
             <p className="mt-1 text-[11px] leading-relaxed text-ink-soft">
-              {t('本地安装的自定义扩展插件与伪编译缓存产物。')}
+              {t('本地安装的自定义扩展插件。')}
             </p>
           </div>
         </div>

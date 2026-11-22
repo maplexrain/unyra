@@ -43,7 +43,7 @@ describe('注册表形状', () => {
     for (const name of [
       'node.list', 'node.get', 'node.create', 'node.delete', 'node.invoke',
       'exam.read', 'exam.grade', 'exam.explain',
-      'res.read', 'workspace.write',
+      'workspace.write',
       'userInfo.get', 'tmp.set',
       'wf.list', 'wf.get', 'wf.create', 'wf.remove', 'wf.invoke',
       // 记忆：五条全进名单（工作 / 长期两类都靠它读写）

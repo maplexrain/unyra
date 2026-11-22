@@ -155,18 +155,15 @@ registerRenderPlugin({
 })
 
 /**
- * 代码块伪编译与运行：给每块代码挂一个右侧悬浮菜单（复制 / 编译 / 运行）。
+ * 代码块复制菜单：给每块代码挂一个右侧悬浮的「复制」按钮。
  *
- * 它是**文档能力**的一部分（和 plot 一样默认开着），但它会花模型请求、还会
- * 执行模型写出来的代码，所以设置页里必须能关——关掉之后代码块就只剩高亮。
- *
- * 编译产物落在数据目录里（见 lib/codeArtifacts 与 electron/runner.ts），
- * 运行在一次性 Worker 沙箱里（见 lib/codeRun），联网每次运行都要用户点头。
+ * 伪编译与运行已随该功能整体退役（api.code / 产物表 / Worker 沙箱都已删除），
+ * 悬浮菜单只剩复制——它不花任何模型请求，纯本地剪贴板操作。
  */
 registerRenderPlugin({
   id: 'code-run',
-  name: '代码块编译运行',
+  name: '代码块复制菜单',
   builtin: true,
-  summary: ['鼠标经过代码块才出现的右侧菜单', '经 AI 转译成 JS 后在沙箱里跑', '联网要每次运行确认'],
+  summary: ['鼠标经过代码块才出现的右侧复制按钮'],
   hydrate: (root: HTMLElement) => hydrateCodeRun(root),
 })

@@ -3,17 +3,21 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import { normalizeAgentSettings, loadAgentSettings, type AgentSettings } from '../src/agent/settings'
 import { buildTeacherSystem } from '../src/learn/ai/teacherSystem'
 import { buildFreeChatSystem } from '../src/learn/ai/chatSystem'
-import { buildExaminerSystem, buildGraderSystem, buildResearcherSystem } from '../src/learn/ai/agentTeamSystem'
+import { buildDispatcherSystem, buildExaminerSystem, buildDesignerSystem, buildResearcherSystem, buildFixerSystem } from '../src/learn/ai/agentTeamSystem'
 import { SHARED_AGENT_PREFIX } from '../src/learn/ai/agentSharedPrefix'
 import {
+  type AgentVoice,
   agentAvatarIdOf,
   agentRuntimeApiAllow,
+  CONTENT_VOICES,
+  isCommunicable,
   agentWfGrant,
   resolveAgentGlobal,
   updateAgentProfile,
   resetAgentProfile,
   profileOf,
   AGENT_TEAM_IDS,
+  AGENT_VOICES,
   AGENT_WORKFLOW_PLANES,
   DEFAULT_AGENT_AVATAR,
   voiceForWorkflow,
@@ -195,57 +199,98 @@ describe('agentWfGrant（工作流授权面：内置规程面按分工固定 + �
   it('承接声部：内置面 = 各自分工面；登记条目一概不放（固定面）', () => {
     const examiner = agentWfGrant(settings(undefined), 'examiner')
     expect(examiner.builtin.has('exam')).toBe(true)
-    expect(examiner.builtin.has('classroom')).toBe(true)
+    expect(examiner.builtin.has('exam-grade')).toBe(true)
+    expect(examiner.builtin.has('classroom')).toBe(false)
     expect(examiner.builtin.has('teach-node')).toBe(false)
     expect(examiner.registered?.size).toBe(0)
-    const grader = agentWfGrant(settings(undefined), 'grader')
-    expect(grader.builtin.has('exam-grade')).toBe(true)
-    expect(grader.builtin.has('compact')).toBe(true)
-    expect(grader.builtin.has('outline')).toBe(false)
+    const designer = agentWfGrant(settings(undefined), 'designer')
+    expect(designer.builtin.has('classroom')).toBe(true)
+    expect(designer.builtin.has('superlab')).toBe(true)
+    expect(designer.builtin.has('compact')).toBe(true)
+    expect(designer.builtin.has('exam')).toBe(false)
     const researcher = agentWfGrant(settings(undefined), 'researcher')
     expect(researcher.builtin.has('browser-use')).toBe(true)
-    expect(researcher.builtin.has('project-interpret')).toBe(true)
+    expect(researcher.builtin.has('compact')).toBe(true)
     expect(researcher.builtin.has('exam')).toBe(false)
+    const fixer = agentWfGrant(settings(undefined), 'fixer')
+    expect(fixer.builtin.has('plot-fix')).toBe(true)
+    expect(fixer.builtin.has('compact')).toBe(true)
+    expect(fixer.builtin.has('outline')).toBe(false)
     expect(agentWfGrant(settings({ examiner: { workflows: ['exam'] } }), 'examiner').registered?.size).toBe(0)
   })
 
   it('运行时 apiAllow：组名 + 顶层函数，core 不进运行时清单', () => {
     const allow = agentRuntimeApiAllow('examiner')
     expect(allow).toContain('node')
-    expect(allow).toContain('classroom')
     expect(allow).toContain('fetch')
     expect(allow).toContain('see')
     expect(allow).not.toContain('core')
-    expect(allow).not.toContain('exam')
-    const grader = agentRuntimeApiAllow('grader')
-    expect(grader).toContain('exam')
-    expect(grader).not.toContain('web')
-    expect(grader).not.toContain('fetch')
-    expect(grader).toContain('wait')
-    expect(grader).not.toContain('ask')
+    expect(allow).toContain('exam')
+    expect(allow).not.toContain('browser')
+    expect(allow).not.toContain('classroom')
+    const designer = agentRuntimeApiAllow('designer')
+    expect(designer).toContain('classroom')
+    expect(designer).toContain('method')
+    expect(designer).toContain('node')
+    expect(designer).not.toContain('web')
+    expect(designer).not.toContain('fetch')
+    expect(designer).toContain('ask')
+    const fixer = agentRuntimeApiAllow('fixer')
+    expect(fixer).toContain('node')
+    expect(fixer).toContain('team')
+    expect(fixer).not.toContain('web')
+    expect(fixer).not.toContain('fetch')
+    expect(fixer).toContain('wait')
+    expect(fixer).not.toContain('ask')
   })
 
-  it('voiceForWorkflow：内置规程按分工面反查声部；登记条目归导师', () => {
-    expect(voiceForWorkflow('exam')).toBe('examiner')
-    expect(voiceForWorkflow('exam-grade')).toBe('grader')
-    expect(voiceForWorkflow('browser-use')).toBe('researcher')
-    expect(voiceForWorkflow('teach-node')).toBe('tutor')
-    expect(voiceForWorkflow('wf_custom')).toBe('tutor')
-    // 全部执行声部都内置 compact（自动压缩不分声部）
-    expect(AGENT_WORKFLOW_PLANES.tutor).toContain('compact')
-    expect(AGENT_WORKFLOW_PLANES.examiner).toContain('compact')
-    expect(AGENT_WORKFLOW_PLANES.grader).toContain('compact')
-    expect(AGENT_WORKFLOW_PLANES.researcher).toContain('compact')
+  it('voiceForWorkflow：工作流统一经调度员路由（AGENT_WORKFLOW_PLANES 只是规程面）', () => {
+    expect(voiceForWorkflow('exam')).toBe('dispatcher')
+    expect(voiceForWorkflow('exam-grade')).toBe('dispatcher')
+    expect(voiceForWorkflow('plot-fix')).toBe('dispatcher')
+    expect(voiceForWorkflow('browser-use')).toBe('dispatcher')
+    expect(voiceForWorkflow('teach-node')).toBe('dispatcher')
+    expect(voiceForWorkflow('wf_custom')).toBe('dispatcher')
+    // 规程面仍在各声部（承接调度员的委托照规程干），调度员只有 compact
+    expect(AGENT_WORKFLOW_PLANES.examiner).toContain('exam')
+    expect(AGENT_WORKFLOW_PLANES.examiner).toContain('exam-grade')
+    expect(AGENT_WORKFLOW_PLANES.designer).toContain('superlab')
+    expect(AGENT_WORKFLOW_PLANES.dispatcher).toEqual(['compact'])
+    // compact 是全员内置（自动压缩不分声部）
+    for (const voice of AGENT_VOICES) {
+      expect(AGENT_WORKFLOW_PLANES[voice]).toContain('compact')
+    }
   })
 })
 
 describe('profiles 声部 id 契约', () => {
-  it('认 5 位声部（free / tutor / examiner / grader / researcher，与 agent team 左栏同形）', () => {
-    const ids: AgentProfileId[] = ['free', 'tutor', 'examiner', 'grader', 'researcher']
+  it('认 7 位成员（free / tutor / dispatcher / examiner / designer / researcher / fixer，与左栏同形）', () => {
+    const ids: AgentProfileId[] = ['free', 'tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer']
     for (const id of ids) {
       expect(DEFAULT_AGENT_AVATAR[id]).toBeTruthy()
     }
     expect(AGENT_TEAM_IDS).toEqual(ids)
+    // 两个声部标签：可交流（可直接发消息启动）与内容生成（注入写作策略与画像）
+    expect(isCommunicable('free')).toBe(true)
+    expect(isCommunicable('tutor')).toBe(true)
+    expect(isCommunicable('dispatcher')).toBe(true)
+    expect(isCommunicable('examiner')).toBe(true)
+    expect(isCommunicable('designer')).toBe(true)
+    expect(isCommunicable('researcher')).toBe(false)
+    expect(isCommunicable('fixer')).toBe(false)
+    for (const id of ['tutor', 'examiner', 'designer'] as AgentVoice[]) {
+      expect(CONTENT_VOICES.has(id)).toBe(true)
+    }
+    for (const id of ['dispatcher', 'researcher', 'fixer'] as AgentVoice[]) {
+      expect(CONTENT_VOICES.has(id)).toBe(false)
+    }
+    // 调度员轻装：只有 team / tmp / node，活全靠委托
+    const dispatcher = agentRuntimeApiAllow('dispatcher')
+    expect(dispatcher).toContain('team')
+    expect(dispatcher).toContain('node')
+    expect(dispatcher).not.toContain('web')
+    expect(dispatcher).not.toContain('delivery')
+    expect(dispatcher).toContain('ask')
   })
 })
 
@@ -254,51 +299,91 @@ describe('profiles 声部 id 契约', () => {
 describe('系统提示词（团队分工：导师分诊、承接声部各拿各的规程）', () => {
   it('导师提示词：教学规程与速查在场，创作域 / 阅卷域已分诊出去', () => {
     const text = buildTeacherSystem()
-    expect(text).toContain('#### api.web')
     expect(text).toContain('【开讲】教学文档生成（teach-node）')
     expect(text).toContain('你是软件「归一 unyra」的智能导师助手')
     // 团队协作与分诊口径在场
     expect(text).toContain('api.team.list()')
-    expect(text).toContain('委托 examiner（命题官）')
-    expect(text).toContain('委托 grader（判卷官')
+    expect(text).toContain('委托 examiner（出卷师）')
+    expect(text).toContain('委托 designer（设计师）')
+    expect(text).toContain('委托 researcher（调研员）')
+    // 联网分给了调研员：browser 不在导师的速查里；web 在共同前缀（分工面外运行时拒，注记行兜底），检索步骤写的是委托
+    expect(text).not.toContain('#### api.browser')
+    expect(text).toContain('委托调研')
     // 分出去的域：速查与规程都不在导师的提示词里
     expect(text).not.toContain('#### api.exam')
     expect(text).not.toContain('【出卷】试卷命题（exam）')
     expect(text).not.toContain('【生成课堂】课堂课件生成（classroom）')
   })
 
-  it('命题官提示词：创作域规程齐、教学域不在', () => {
-    const text = buildExaminerSystem()
-    expect(text).toContain('命题官')
-    expect(text).toContain('【出卷】试卷命题（exam）')
-    expect(text).toContain('【生成课堂】课堂课件生成（classroom）')
-    expect(text).toContain('【修复函数图像】Plot 错误快速纠偏（plot-fix）')
-    expect(text).toContain('#### api.classroom')
-    expect(text).toContain('api.team.complete')
-    expect(text).not.toContain('【开讲】教学文档生成（teach-node）')
-    expect(text).not.toContain('#### api.exam ')
+  it('调度员提示词：路由表齐、执行规程不在', () => {
+    const text = buildDispatcherSystem()
+    expect(text).toContain('调度员')
+    expect(text).toContain('路由表')
+    expect(text).toContain('tutor（导师）')
+    expect(text).toContain('examiner（出卷师）')
+    expect(text).toContain('designer（设计师）')
+    expect(text).toContain('researcher（调研员）')
+    expect(text).toContain('fixer（维修员）')
+    expect(text).toContain('team.delegate')
+    expect(text).toContain('不抢活')
+    // 它没有执行规程（出卷 / 课堂的规程都在承接方）
+    expect(text).not.toContain('【出卷】试卷命题（exam）')
+    expect(text).not.toContain('【生成课堂】课堂课件生成（classroom）')
+    expect(text).not.toContain('#### api.exam')
+    expect(text).not.toContain('#### api.classroom')
   })
 
-  it('判卷官提示词：阅卷规程在、出卷与联网不在', () => {
-    const text = buildGraderSystem()
-    expect(text).toContain('判卷官')
+  it('出卷师提示词：出卷与阅卷规程齐、课堂与修图不在', () => {
+    const text = buildExaminerSystem()
+    expect(text).toContain('出卷师')
+    expect(text).toContain('判分讲解')
+    expect(text).toContain('【出卷】试卷命题（exam）')
     expect(text).toContain('【阅卷】判分与讲解（exam-grade）')
     expect(text).toContain('#### api.exam')
-    expect(text).not.toContain('【出卷】试卷命题（exam）')
-    // 通用面在共同前缀里（api.web 等通用组四份都在场）；判卷官的专属面只有 exam
-    expect(text).toContain('- api.exam — 考试（作答侧）')
-    expect(text).not.toContain('- api.memory —')
-    expect(text).not.toContain('- api.browser —')
+    expect(text).toContain('api.team.complete')
     expect(text).toContain('始终认指令给的 attemptId')
+    expect(text).not.toContain('【开讲】教学文档生成（teach-node）')
+    expect(text).not.toContain('【生成课堂】课堂课件生成（classroom）')
+    expect(text).not.toContain('【修复函数图像】Plot 错误快速纠偏（plot-fix）')
+    expect(text).not.toContain('#### api.classroom')
   })
 
-  it('资料员提示词：调研域规程齐、判卷不在', () => {
-    const text = buildResearcherSystem()
-    expect(text).toContain('资料员')
-    expect(text).toContain('替用户操作内置浏览器')
-    expect(text).toContain('【项目与文章解读】源码与文章逐段精读（project-interpret）')
-    expect(text).toContain('#### api.browser')
+  it('设计师提示词：课堂与实验规程齐、出卷与教学不在', () => {
+    const text = buildDesignerSystem()
+    expect(text).toContain('设计师')
+    expect(text).toContain('【生成课堂】课堂课件生成（classroom）')
+    expect(text).toContain('【超级实验室】可交互超级文档（superlab）')
+    expect(text).toContain('#### api.classroom')
+    expect(text).toContain('api.method.create')
+    expect(text).toContain('api.delivery.submit')
+    expect(text).not.toContain('【出卷】试卷命题（exam）')
+    expect(text).not.toContain('【开讲】教学文档生成（teach-node）')
+    expect(text).not.toContain('#### api.exam')
+    expect(text).not.toContain('#### api.web')
+  })
+
+  it('维修员提示词：修图规程在、教学与阅卷不在', () => {
+    const text = buildFixerSystem()
+    expect(text).toContain('维修员')
+    expect(text).toContain('【修复函数图像】Plot 错误快速纠偏（plot-fix）')
+    expect(text).not.toContain('【出卷】试卷命题（exam）')
     expect(text).not.toContain('【阅卷】判分与讲解（exam-grade）')
+    // 专属面只有 node / tmp / team：联网、判卷、课堂都不在
+    expect(text).not.toContain('- api.exam — 考试（作答侧）')
+    expect(text).not.toContain('- api.memory —')
+    expect(text).not.toContain('- api.browser —')
+    expect(text).toContain('最小修复')
+  })
+
+  it('调研员提示词：调研与浏览器规程齐、判卷与解读不在', () => {
+    const text = buildResearcherSystem()
+    expect(text).toContain('调研员')
+    expect(text).toContain('为团队其他声部提供网络消息的调研')
+    expect(text).toContain('替用户操作内置浏览器')
+    expect(text).toContain('#### api.browser')
+    expect(text).toContain('检索有止损线')
+    expect(text).not.toContain('【阅卷】判分与讲解（exam-grade）')
+    expect(text).not.toContain('【项目与文章解读】')
     expect(text).not.toContain('#### api.exam')
   })
 
@@ -312,8 +397,9 @@ describe('系统提示词（团队分工：导师分诊、承接声部各拿各�
     // 老数据 / 导师对话：没有 voice 字段兜导师
     expect(voiceOfConversation(undefined)).toBe('tutor')
     expect(voiceOfConversation({ id: 'uuid-1', goalId: 'g', messages: [] } as never)).toBe('tutor')
-    // 承接声部字段在场
-    expect(voiceOfConversation({ id: 'x', goalId: 'g', voice: 'grader', messages: [] } as never)).toBe('grader')
+    // 已退役声部（判卷官）：voice 字段与 id 段都映射到承接者命题官
+    expect(voiceOfConversation({ id: 'x', goalId: 'g', voice: 'grader', messages: [] } as never)).toBe('examiner')
+    expect(voiceOfConversation({ id: 'cv:grader:g1', goalId: 'g1', messages: [] } as never)).toBe('examiner')
     // 漏标但确定性 id 自带声部：就地愈合（真机踩过：命题官会话被归进导师桶）
     expect(voiceOfConversation({ id: voiceConversationId('g', 'examiner'), goalId: 'g', messages: [] } as never)).toBe('examiner')
   })
@@ -350,34 +436,35 @@ describe('系统提示词（团队分工：导师分诊、承接声部各拿各�
       updatedAt: 1,
       systemPrompt: '## 智能体团队协作你是软件「归一 unyra」智能体团队的判卷官（grader）：专精判分与错题讲解的阅卷声部。',
     })
-    expect(byPrompt.voice).toBe('grader')
+    expect(byPrompt.voice).toBe('examiner')
   })
 
   it('四位执行声部共享逐字节相同的共同前缀（SHARED_AGENT_PREFIX）', () => {
     const prompts = [
       buildTeacherSystem(),
       buildExaminerSystem(),
-      buildGraderSystem(),
+      buildDesignerSystem(),
       buildResearcherSystem(),
+      buildFixerSystem(),
     ]
     for (const text of prompts) {
       expect(text.startsWith(SHARED_AGENT_PREFIX)).toBe(true)
     }
-    // 共同前缀里该有的九块都在：团队协作 / execute 机制 / 先查再用 / 应用数据 /
-    // 沙箱纪律 / 通用速查 / 引用与交付 / 通用纪律 / compact 规程
+    // 共同前缀只装对四位声部逐字为真的块：团队协作 / execute 机制 / 先查再用 /
+    // 应用数据守门 / 沙箱纪律 / 通用纪律 / compact 规程
     expect(SHARED_AGENT_PREFIX).toContain('## 智能体团队协作（team.*）')
     expect(SHARED_AGENT_PREFIX).toContain('核心执行工具是 execute')
     expect(SHARED_AGENT_PREFIX).toContain('**先查再用**')
-    expect(SHARED_AGENT_PREFIX).toContain('**应用数据一律走 api 组，files.* 不许碰**')
+    expect(SHARED_AGENT_PREFIX).toContain('**应用数据一律走 api 组**')
     expect(SHARED_AGENT_PREFIX).toContain('**调用形态与沙箱纪律**')
-    expect(SHARED_AGENT_PREFIX).toContain('### 沙箱 API 速查（签名 + 用法边界）')
-    expect(SHARED_AGENT_PREFIX).toContain('引用与交付登记纪律：')
     expect(SHARED_AGENT_PREFIX).toContain('约束与纪律：')
     expect(SHARED_AGENT_PREFIX).toContain('【压缩上下文】长会话交接摘要（compact）')
-    // 专属组不进共同前缀
-    expect(SHARED_AGENT_PREFIX).not.toContain('#### api.exam —')
-    expect(SHARED_AGENT_PREFIX).not.toContain('#### api.classroom —')
-    expect(SHARED_AGENT_PREFIX).not.toContain('#### api.browser —')
+    // api 速查与引用交付按持有进各声部的 P1：P0 里不该出现任何组文档块与 chip/delivery
+    expect(SHARED_AGENT_PREFIX).not.toContain('#### api.')
+    expect(SHARED_AGENT_PREFIX).not.toContain('### 沙箱 API 速查')
+    expect(SHARED_AGENT_PREFIX).not.toContain('引用与交付登记纪律：')
+    expect(SHARED_AGENT_PREFIX).not.toContain('api.chip.build')
+    expect(SHARED_AGENT_PREFIX).not.toContain('api.delivery.submit')
   })
 })
 

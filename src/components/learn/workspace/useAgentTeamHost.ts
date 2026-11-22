@@ -193,9 +193,12 @@ export function useAgentTeamHost({
     }
     prevRunningRef.current = currentRunning
 
-    if (started.length === 0) return
+    // **委托会话（dv: 前缀）的轮不自动跳转**：承接方被委托启动是后台行为，用户留在
+    // 当前位置，从委托者会话底部的「委托中」条进入。工作流 / 用户直接对话的启动照旧跳。
+    const startedMain = started.filter((cid) => !cid.startsWith('dv:'))
+    if (startedMain.length === 0) return
 
-    const convId = started[started.length - 1]
+    const convId = startedMain[startedMain.length - 1]
     const s = getLatest()
     if (!conversationById(s, convId) && freeConversationById(convId)) {
       onSyncFreeConvId?.(convId)

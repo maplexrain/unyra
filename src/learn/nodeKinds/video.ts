@@ -132,7 +132,7 @@ export class VideoGNode extends GNode {
       edit:
         '内容形状：{ videoId } 或 { input }。未固化前可修改 input 或 title；确定为视频资源后标识输入框彻底固化，不再支持修改或换绑。',
       connection:
-        '上游允许文档节点，下游可挂文档（如视频总览文档）或笔记节点。删除走 api.node.delete。',
+        '上游允许文档节点，下游可挂文档（如视频笔记文档）或笔记节点。删除走 api.node.delete。',
     }
   }
 
