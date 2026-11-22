@@ -296,11 +296,22 @@ export interface ActiveDelegationView {
   toName: string
   status: 'pending' | 'running'
   toConversationId: string
+  /** 裸数据（展开核对 / 手动干预用）：发起方与指令全文、目标归属、重试账目与时间戳 */
+  fromAgent: AgentProfileId
+  fromName: string
+  instruction: string
+  goalId: string
+  nodeId?: string
+  attempts: number
+  createdAt: number
+  startedAt?: number
+  preemptibleUntil: number
 }
 
 /**
  * 某段会话（委托者视角）发起的、还没收口的委托：pending（排队等承接方空闲）与
- * running（承接方正在处理）都在列——界面在消息列表底部展示并允许跳转到委托会话。
+ * running（承接方正在处理）都在列——界面在消息列表底部展示、展开看裸数据、
+ * 手动激活 / 删除（见 manuallyActivateDelegation / manuallyDeleteDelegation）。
  */
 export function activeDelegationsFrom(conversationId: string): ActiveDelegationView[] {
   const out: ActiveDelegationView[] = []
@@ -313,11 +324,81 @@ export function activeDelegationsFrom(conversationId: string): ActiveDelegationV
         toName: displayNameOf(d.toAgent),
         status: d.status,
         toConversationId: d.toConversationId,
+        fromAgent: d.fromAgent,
+        fromName: displayNameOf(d.fromAgent),
+        instruction: d.instruction,
+        goalId: d.goalId,
+        ...(d.nodeId ? { nodeId: d.nodeId } : {}),
+        attempts: d.attempts,
+        createdAt: d.createdAt,
+        ...(d.startedAt ? { startedAt: d.startedAt } : {}),
+        preemptibleUntil: d.preemptibleUntil,
       })
     }
   }
   // 处理中的排前面（界面先看到正在动的）
   return out.sort((a, b) => (a.status === b.status ? 0 : a.status === 'running' ? -1 : 1))
+}
+
+/* ---------- 界面管理口（手动激活 / 删除）：委托卡住的最后兜底 ---------- */
+
+/**
+ * 手动激活一条委托（「委托中」条上的按钮）：
+ * - pending：提到队首立即启动（承接会话空闲才行）；
+ * - running：承接轮多半已经死了（收口通知没送达 = 僵尸账）——转回「提醒」口径重启；
+ *   承接会话真的还在跑则拒绝（等它收口自动接续）。
+ * 同声部还挂着别的僵尸 running 账时顺手转回排队，不打断正常账目。
+ */
+export function manuallyActivateDelegation(id: string): { ok: boolean; error?: string } {
+  const d = delegations.get(id.trim())
+  if (!d) return { ok: false, error: '没有这条委托：注册表只在内存里，应用重启后就丢了，可以在对话里重新委托' }
+  if (d.status === 'done' || d.status === 'failed') {
+    return { ok: false, error: '这条委托已经结束（' + d.status + '），不能再激活' }
+  }
+  const host = dispatcherOf()
+  if (!host) return { ok: false, error: '委托宿主尚未就绪，稍后再试' }
+  if (host.isConversationRunning(d.toConversationId)) {
+    return { ok: false, error: '承接会话正在运行中，等它收口后注册表会自动接续，不用手动激活' }
+  }
+  // 同声部挂着别的 running 僵尸账（会话明明空闲却一直 running）：转回待处理排队
+  const zombie = runningOf(d.toAgent)
+  if (zombie && zombie.id !== d.id) {
+    zombie.status = 'pending'
+    zombie.needsRemind = true
+    const zombieQueue = queues[zombie.toAgent]
+    if (!zombieQueue.includes(zombie.id)) zombieQueue.unshift(zombie.id)
+  }
+  if (d.status === 'running') {
+    d.status = 'pending'
+    d.needsRemind = true
+  }
+  const queue = queues[d.toAgent]
+  const idx = queue.indexOf(d.id)
+  if (idx >= 0) queue.splice(idx, 1)
+  queue.unshift(d.id)
+  startDelegation(d)
+  return { ok: true }
+}
+
+/**
+ * 手动删除一条委托（「委托中」条上的按钮）：从注册表与队列里摘掉，注入缓冲里它
+ * 的交付一并作废。running 也能删——承接轮就算还活着，收口后注册表找不到这条账，
+ * 它的 complete 会得到「没有这条委托」，不会留下悬挂状态。
+ */
+export function manuallyDeleteDelegation(id: string): { ok: boolean; error?: string } {
+  const d = delegations.get(id.trim())
+  if (!d) return { ok: false, error: '没有这条委托：可能已被删除' }
+  delegations.delete(d.id)
+  const queue = queues[d.toAgent]
+  const idx = queue.indexOf(d.id)
+  if (idx >= 0) queue.splice(idx, 1)
+  const buf = deliveryBuffer.get(d.fromConversationId)
+  if (buf) {
+    const next = buf.filter((item) => item.delegationId !== d.id)
+    if (next.length) deliveryBuffer.set(d.fromConversationId, next)
+    else deliveryBuffer.delete(d.fromConversationId)
+  }
+  return { ok: true }
 }
 
 /** 一位声部的完整状态：是否在跑 / 正在处理的委托 / 未处理委托队列 */

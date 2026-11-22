@@ -746,3 +746,42 @@
     animation: none;
   }
 }
+
+/* ---------- Agent 在跑的动画背景：一道高光沿对角线扫过去，循环 ----------
+ * 名册卡（AgentSlot 左栏）、历史对话行、委托条的运行行共用同一份：
+ * 元素自己的底色（bg-card / hover:bg-line）照旧，这里只叠 background-image，
+ * 扫过去的那道高光用主题色 seal——「正在动」这件事一眼可见，又不喧宾夺主。 */
+@keyframes moji-agent-live-sweep {
+  0% {
+    background-position: -180% 0;
+  }
+  100% {
+    background-position: 280% 0;
+  }
+}
+.moji-agent-live {
+  background-image: linear-gradient(
+    110deg,
+    transparent 0%,
+    transparent 35%,
+    color-mix(in srgb, var(--color-seal) 10%, transparent) 50%,
+    transparent 65%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  animation: moji-agent-live-sweep 2.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 关掉动效：退回一层静态的淡染色，状态仍然可读 */
+  .moji-agent-live {
+    animation: none;
+    background-image: linear-gradient(
+      110deg,
+      transparent,
+      color-mix(in srgb, var(--color-seal) 8%, transparent),
+      transparent
+    );
+  }
+}

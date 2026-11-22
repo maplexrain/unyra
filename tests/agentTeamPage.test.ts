@@ -48,10 +48,10 @@ describe('智能体团队 Tab 契约', () => {
     expect(tabNodeId({ kind: 'agentTeam', goalId: 'goal-1' })).toBeNull()
   })
 
-  it('tabTitle 与 tabTrail 返回正确文案', () => {
-    expect(tabTitle({ kind: 'agentTeam' }, () => undefined)).toBe('智能体团队')
-    expect(tabTrail({ kind: 'agentTeam' }, () => '')).toBe('超级导师')
-    expect(tabTrail({ kind: 'agentTeam', goalId: 'g1' }, () => '', (id) => `目标:${id}`)).toBe('目标:g1')
+  it('tabTitle 与 tabTrail 返回正确文案（页签就叫「智能体」，目标归属由页签组表达）', () => {
+    expect(tabTitle({ kind: 'agentTeam' }, () => undefined)).toBe('智能体')
+    expect(tabTrail({ kind: 'agentTeam' }, () => '')).toBe('')
+    expect(tabTrail({ kind: 'agentTeam', goalId: 'g1' }, () => '', (id) => `目标:${id}`)).toBe('')
   })
 
   it('normalizeTab 支持 agentTeam 并保全 goalId', () => {
@@ -375,13 +375,13 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
 
     const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
     expect(tabs).toHaveLength(7)
-    expect(tabs[0].textContent).toContain('仅聊天')
-    expect(tabs[1].textContent).toContain('调度员')
-    expect(tabs[2].textContent).toContain('导师')
-    expect(tabs[3].textContent).toContain('出卷师')
-    expect(tabs[4].textContent).toContain('设计师')
-    expect(tabs[5].textContent).toContain('调研员')
-    expect(tabs[6].textContent).toContain('维修员')
+    expect(tabs[0].textContent).toContain('聊天龟')
+    expect(tabs[1].textContent).toContain('调度龟')
+    expect(tabs[2].textContent).toContain('导师龟')
+    expect(tabs[3].textContent).toContain('出卷龟')
+    expect(tabs[4].textContent).toContain('设计龟')
+    expect(tabs[5].textContent).toContain('调研龟')
+    expect(tabs[6].textContent).toContain('维修龟')
     expect(tabs[2].textContent).toContain('零基础英语语法入门')
     expect(tabs[0].getAttribute('aria-selected')).toBe('false')
     expect(tabs[2].getAttribute('aria-selected')).toBe('true')
@@ -444,10 +444,7 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
     host.remove()
   })
 
-  it('AgentRosterSidebar 声部项内嵌子对话列表：默认展开当前声部、可收起、选择/新建/删除带声部回调', () => {
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-    const root = createRoot(host)
+  it('AgentRosterSidebar 对话历史块（下块）：只显示当前声部的历史，选择/新建/删除带声部回调', () => {
     const onSelectConversation = vi.fn()
     const onNewConversation = vi.fn()
     const onDeleteConversation = vi.fn()
@@ -462,51 +459,55 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
       ]),
     }
 
+    const propsFor = (mode: 'free' | 'tutor') =>
+      createElement(AgentRosterSidebar, {
+        mode,
+        onSelectMode: () => {},
+        activeGoalTitle: '线性代数',
+        voiceStats: {},
+        conversationsByAgent: convs,
+        activeConversationByAgent: { free: 'f-new', tutor: 't-1' },
+        runningByConversation: {},
+        pendingAskByConv: {},
+        activeGoalId: 'g1',
+        goals: [],
+        goalTitleOf: () => '',
+        onSelectConversation,
+        onNewConversation,
+        onDeleteConversation,
+      })
+
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
     act(() => {
-      root.render(
-        createElement(AgentRosterSidebar, {
-          mode: 'free',
-          onSelectMode: () => {},
-          activeGoalTitle: '线性代数',
-          voiceStats: {},
-          conversationsByAgent: convs,
-          activeConversationByAgent: { free: 'f-new', tutor: 't-1' },
-          runningByConversation: {},
-          pendingAskByConv: {},
-          activeGoalId: 'g1',
-          goals: [],
-          goalTitleOf: () => '',
-          onSelectConversation,
-          onNewConversation,
-          onDeleteConversation,
-        }),
-      )
+      root.render(propsFor('free'))
     })
 
-    // 当前声部（free）默认展开；导师项默认收起
+    // 下块只渲染当前声部（free）的历史；导师的历史不出现
     expect(host.querySelector('[data-roster-conv-list="free"]')).not.toBeNull()
     expect(host.querySelector('[data-roster-conv-list="tutor"]')).toBeNull()
     const rows = [...host.querySelectorAll<HTMLElement>('[data-conversation-id]')]
     expect(rows.map((r) => r.dataset.conversationId)).toEqual(['f-new', 'f-old'])
 
-    const clickConv = (id: string) => {
-      const btn = host.querySelector<HTMLButtonElement>(`[data-conversation-id="${id}"] button`)!
+    const clickConvIn = (h: HTMLElement, id: string) => {
+      const btn = h.querySelector<HTMLButtonElement>(`[data-conversation-id="${id}"] button`)!
       act(() => {
         btn.click()
       })
     }
-    const btnByLabel = (label: string) =>
-      [...host.querySelectorAll<HTMLButtonElement>('button')].filter(
+    const btnByLabel = (h: HTMLElement, label: string) =>
+      [...h.querySelectorAll<HTMLButtonElement>('button')].filter(
         (b) => b.textContent?.includes(label) || b.getAttribute('aria-label') === label,
       )
 
     act(() => {
-      clickConv('f-old')
+      clickConvIn(host, 'f-old')
     })
     expect(onSelectConversation).toHaveBeenCalledWith('free', 'f-old')
 
     act(() => {
-      btnByLabel('新建对话')[0].click()
+      btnByLabel(host, '新建对话')[0].click()
     })
     expect(onNewConversation).toHaveBeenCalledWith('free')
 
@@ -518,30 +519,32 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
     })
     expect(onDeleteConversation).toHaveBeenCalledWith('free', 'f-old')
 
-    // 收起 free、展开 tutor：两个声部的收展互相独立（chevron 在各自声部行内定位）
-    const chevronOf = (label: string) => {
-      const tab = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) =>
-        b.textContent?.includes(label),
-      )!
-      return tab.parentElement!.querySelector<HTMLButtonElement>('[aria-expanded]')!
-    }
-    act(() => {
-      chevronOf('仅聊天').click()
-    })
-    expect(host.querySelector('[data-roster-conv-list="free"]')).toBeNull()
-    act(() => {
-      chevronOf('导师').click()
-    })
-    expect(host.querySelector('[data-roster-conv-list="tutor"]')).not.toBeNull()
-    act(() => {
-      clickConv('t-1')
-    })
-    expect(onSelectConversation).toHaveBeenCalledWith('tutor', 't-1')
+    // 名册卡不再内嵌子列表（历史统一住下块）
+    expect(host.querySelector('[aria-expanded]')).toBeNull()
 
     act(() => {
       root.unmount()
     })
     host.remove()
+
+    // 切到导师声部：下块整体换成导师的历史
+    const host2 = document.createElement('div')
+    document.body.appendChild(host2)
+    const root2 = createRoot(host2)
+    act(() => {
+      root2.render(propsFor('tutor'))
+    })
+    expect(host2.querySelector('[data-roster-conv-list="tutor"]')).not.toBeNull()
+    expect(host2.querySelector('[data-roster-conv-list="free"]')).toBeNull()
+    act(() => {
+      clickConvIn(host2, 't-1')
+    })
+    expect(onSelectConversation).toHaveBeenCalledWith('tutor', 't-1')
+
+    act(() => {
+      root2.unmount()
+    })
+    host2.remove()
   })
 
   it('聊天列表预览与标题剥掉 HTML/SVG/围栏代码等渲染态内容（占位符 + 纯文本）', () => {
@@ -701,7 +704,7 @@ describe('AgentRosterSidebar 智能体设置按钮与名称覆盖', () => {
     localStorage.clear()
   })
 
-  it('竖栏：每个声部一枚设置按钮，点击回传声部 id；自定义名称生效', () => {
+  it('竖栏：设置入口在名册卡头像上，点击回传声部 id；头像与徽章颜色常亮', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
@@ -719,22 +722,26 @@ describe('AgentRosterSidebar 智能体设置按钮与名称覆盖', () => {
       )
     })
 
-    const gears = [...host.querySelectorAll<HTMLButtonElement>('[data-agent-settings]')]
-    expect(gears).toHaveLength(7)
+    // 名册卡头像即设置入口：7 位声部各一枚；历史块不再有齿轮
+    const avatars = [...host.querySelectorAll<HTMLButtonElement>('[data-agent-avatar]')]
+    expect(avatars).toHaveLength(7)
+    expect(host.querySelectorAll('[data-agent-settings]')).toHaveLength(0)
     expect(host.textContent).toContain('小导师')
 
     act(() => {
-      gears[0]!.click()
+      avatars[0]!.click()
     })
     expect(onOpenSettings).toHaveBeenCalledWith('free')
     act(() => {
-      gears[1]!.click()
-    })
-    expect(onOpenSettings).toHaveBeenCalledWith('dispatcher')
-    act(() => {
-      gears[2]!.click()
+      avatars[2]!.click()
     })
     expect(onOpenSettings).toHaveBeenCalledWith('tutor')
+
+    // 颜色常亮：未选中的声部（tutor）头像与角色徽章也用各自的配色，不退灰
+    const tutorAvatar = host.querySelector<HTMLElement>('[data-agent-avatar="tutor"]')!
+    expect(tutorAvatar.className).toContain('sky-500/15')
+    const tutorBadge = [...host.querySelectorAll<HTMLElement>('span')].find((s) => s.textContent === '学习导师')!
+    expect(tutorBadge.className).toContain('sky-500')
 
     act(() => {
       root.unmount()
@@ -1005,9 +1012,9 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     // 导师全文恒定：api 速查与规程按团队分工拼装（分出去的域不在，分诊口径在场）
     const text = render({ apiGroups: ['web'] } as AgentProfile)
     expect(text).toContain('【开讲】教学文档生成（teach-node）')
-    expect(text).toContain('委托 examiner（出卷师）')
-    expect(text).toContain('委托 designer（设计师）')
-    expect(text).toContain('你是软件「归一 unyra」的智能导师助手')
+    expect(text).toContain('委托 examiner（出卷龟）')
+    expect(text).toContain('委托 designer（设计龟）')
+    expect(text).toContain('你是「归一 Unyra」的导师龟')
     expect(text).not.toContain('#### api.exam')
     expect(text).not.toContain('【出卷】试卷命题（exam）')
 

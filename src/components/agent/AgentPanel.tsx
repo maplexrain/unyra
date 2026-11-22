@@ -19,7 +19,9 @@ import type { PersonaId } from '../../agent/persona'
 import type { DocFormatId } from '../../agent/docFormat'
 import type { SubAgentDef, SubAgentSession } from '../../agent/subagent/types'
 import type { QueuedMessage, SendOutcome } from '../../learn/agentQueue'
+import type { ActiveDelegationView } from '../../learn/agentTeam/delegations'
 import type { ReasoningEffort } from '../../ai/types'
+import { ChevronDown, ChevronRight, Trash2, Zap } from 'lucide-react'
 import StrategyPicker from './StrategyPicker'
 import { ImageLightbox, PendingLightbox } from './panel/Images'
 import { MsgRail } from './panel/MsgRail'
@@ -46,6 +48,13 @@ import { focusAgentInput } from '../../lib/agentFocus'
  * 消息列表见 panel/MessageList、输入区见 panel/Composer（菜单在 panel/PlusMenu）。
  */
 
+/** 委托裸数据里的时间戳显示（本地时区的 月/日 时:分；没有就画 —） */
+function delegationTsLabel(ts: number): string {
+  if (!Number.isFinite(ts) || ts <= 0) return '—'
+  const d = new Date(ts)
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 interface Props {
   conversation: Conversation | null
   conversations: Conversation[]
@@ -58,11 +67,16 @@ interface Props {
   emptyVoice?: string
   emptyName?: string
   /**
-   * 本会话（委托者视角）发起的、还没收口的委托（activeDelegationsFrom 的快照）：
-   * 在消息列表底部画「委托进行中」条，点击跳转到对应的委托会话。
+   * 本会话（委托者视角）发起的、还没收口的委托（activeDelegationsFrom 的快照，带裸数据）：
+   * 在消息列表底部画「委托进行中」条——行可展开看裸数据，可手动激活 / 删除（防卡死的
+   * 最后兜底），点「查看会话」跳转到对应的委托会话。
    */
-  delegationsOut?: Array<{ id: string; toAgent: string; toName: string; status: 'pending' | 'running'; toConversationId: string }>
+  delegationsOut?: ActiveDelegationView[]
   onOpenDelegation?: (conversationId: string) => void
+  /** 手动激活一条委托（跳过排队 / 重启僵尸账，承接会话忙时由宿主拒绝并提示） */
+  onActivateDelegation?: (id: string) => void
+  /** 手动删除一条委托（从注册表与队列摘除，不再排队与接续） */
+  onDeleteDelegation?: (id: string) => void
   /** 轮次进行中那条回复的 id：它在轮次内就分次进了会话（增量落库），列表里要剔掉防止两边都画 */
   streamingMessageId: string | null
   running: boolean
@@ -179,6 +193,8 @@ export default function AgentPanel({
   chatLocked,
   delegationsOut,
   onOpenDelegation,
+  onActivateDelegation,
+  onDeleteDelegation,
   emptyVoice,
   emptyName,
   streamingMessageId,
@@ -226,6 +242,8 @@ export default function AgentPanel({
   /** 点开看大图的附件。两种来源各一份状态：已进资源库的气泡图与还在内存里的待发送图 */
   const [preview, setPreview] = useState<PendingImage | null>(null)
   const [bubblePreview, setBubblePreview] = useState<MessageImage | null>(null)
+  /** 委托条上展开看裸数据的那几条（键 = 委托 id；面板内局部展开态，随面板卸载即忘） */
+  const [expandedDelegationIds, setExpandedDelegationIds] = useState<Set<string>>(() => new Set())
   /** 上下文压缩后的摘要展开着（消息列表里那块分界线上的「看摘要」） */
   const [summaryOpen, setSummaryOpen] = useState(false)
 
@@ -533,39 +551,154 @@ export default function AgentPanel({
               {delegationsOut?.length ? (
                 <div
                   data-delegation-strip
-                  className="mb-2 rounded-xl border border-line bg-card/70 px-3 py-2.5 text-[11.5px]"
+                  className="mb-2 rounded-xl border border-line bg-card/70 px-2.5 py-2.5 text-[11.5px]"
                 >
-                  <div className="mb-1.5 flex items-center gap-1.5 font-medium text-ink-strong">
+                  <div className="mb-1.5 flex items-center gap-1.5 px-0.5 font-medium text-ink-strong">
                     {t('委托进行中')}
                     <span className="rounded bg-seal/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-seal-deep dark:text-seal-2">
                       {delegationsOut.length}
                     </span>
                   </div>
                   <div className="flex flex-col gap-1">
-                    {delegationsOut.map((d) => (
-                      <button
-                        key={d.id}
-                        type="button"
-                        title={t('跳转到它的委托会话')}
-                        onClick={() => onOpenDelegation?.(d.toConversationId)}
-                        className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-ink-soft transition hover:bg-line/45 hover:text-ink"
-                      >
-                        <span
-                          aria-hidden="true"
+                    {delegationsOut.map((d) => {
+                      const expanded = expandedDelegationIds.has(d.id)
+                      const toggle = () =>
+                        setExpandedDelegationIds((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(d.id)) next.delete(d.id)
+                          else next.add(d.id)
+                          return next
+                        })
+                      return (
+                        <div
+                          key={d.id}
+                          data-delegation-id={d.id}
                           className={
-                            'h-1.5 w-1.5 shrink-0 rounded-full ' +
-                            (d.status === 'running' ? 'animate-pulse bg-seal' : 'bg-line-strong')
+                            'rounded-lg border transition ' +
+                            (d.status === 'running' ? 'moji-agent-live ' : '') +
+                            (expanded ? 'border-line-strong/60 bg-card/60' : 'border-transparent')
                           }
-                        />
-                        <span className="truncate">
-                          → {d.toName}
-                          <span className="ml-1 text-ink-faint">
-                            （{d.status === 'running' ? t('处理中') : t('排队中')}）
-                          </span>
-                        </span>
-                        <span className="ml-auto shrink-0 text-[10.5px] text-seal">{t('查看委托会话')}</span>
-                      </button>
-                    ))}
+                        >
+                          <div className="flex items-center gap-1 px-0.5 py-0.5">
+                            <button
+                              type="button"
+                              aria-expanded={expanded}
+                              aria-label={expanded ? t('收起委托详情') : t('展开委托详情')}
+                              title={expanded ? t('收起委托详情') : t('展开委托详情（指令全文与裸数据）')}
+                              onClick={toggle}
+                              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/50 hover:text-ink"
+                            >
+                              {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                            </button>
+                            <span
+                              aria-hidden="true"
+                              className={
+                                'h-1.5 w-1.5 shrink-0 rounded-full ' +
+                                (d.status === 'running' ? 'animate-pulse bg-seal' : 'bg-line-strong')
+                              }
+                            />
+                            <button
+                              type="button"
+                              onClick={toggle}
+                              title={d.instruction}
+                              className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded-md px-1 py-1 text-left text-ink-soft transition hover:text-ink"
+                            >
+                              <span className="truncate">
+                                → {d.toName}
+                                <span className="ml-1 text-ink-faint">
+                                  （{d.status === 'running' ? t('处理中') : t('排队中')}）
+                                </span>
+                                {d.attempts > 0 && (
+                                  <span className="ml-1 text-amber-500">
+                                    {t('重试')} ×{d.attempts}
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                            <span className="flex shrink-0 items-center gap-0.5">
+                              <button
+                                type="button"
+                                title={t('手动激活：跳过排队立即启动（承接会话忙时会被拒绝）')}
+                                aria-label={t('手动激活这条委托')}
+                                onClick={() => onActivateDelegation?.(d.id)}
+                                className="flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-seal/15 hover:text-seal-deep dark:hover:text-seal-2"
+                              >
+                                <Zap size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                title={t('删除这条委托：不再排队与接续（卡住的委托用这招兜底）')}
+                                aria-label={t('删除这条委托')}
+                                onClick={() => onDeleteDelegation?.(d.id)}
+                                className="flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-seal/15 hover:text-seal-deep dark:hover:text-seal-2"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                title={t('跳转到它的委托会话')}
+                                onClick={() => onOpenDelegation?.(d.toConversationId)}
+                                className="rounded-md px-1.5 py-1 text-[10.5px] text-seal transition hover:bg-seal/10"
+                              >
+                                {t('查看会话')}
+                              </button>
+                            </span>
+                          </div>
+                          {expanded && (
+                            <div className="border-t border-line/50 px-3 py-2 text-[11px] leading-relaxed text-ink-soft">
+                              <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-sans text-[11.5px] text-ink">
+                                {d.instruction}
+                              </pre>
+                              <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-0.5 text-[10.5px] text-ink-faint">
+                                <span className="text-ink-faint/80">{t('发起')}</span>
+                                <span className="text-ink-soft">{d.fromName}</span>
+                                <span className="text-ink-faint/80">{t('承接会话')}</span>
+                                <span className="truncate font-mono" title={d.toConversationId}>
+                                  {d.toConversationId}
+                                </span>
+                                {d.goalId && (
+                                  <>
+                                    <span className="text-ink-faint/80">{t('目标')}</span>
+                                    <span className="truncate font-mono" title={d.goalId}>
+                                      {d.goalId}
+                                    </span>
+                                  </>
+                                )}
+                                {d.nodeId && (
+                                  <>
+                                    <span className="text-ink-faint/80">{t('节点')}</span>
+                                    <span className="truncate font-mono" title={d.nodeId}>
+                                      {d.nodeId}
+                                    </span>
+                                  </>
+                                )}
+                                <span className="text-ink-faint/80">{t('创建')}</span>
+                                <span className="tabular-nums">{delegationTsLabel(d.createdAt)}</span>
+                                {d.startedAt ? (
+                                  <>
+                                    <span className="text-ink-faint/80">{t('最近启动')}</span>
+                                    <span className="tabular-nums">{delegationTsLabel(d.startedAt)}</span>
+                                  </>
+                                ) : null}
+                                <span className="text-ink-faint/80">{t('重试次数')}</span>
+                                <span className="tabular-nums">
+                                  {d.attempts}
+                                  {d.attempts > 0 ? t('（收口没交付会记一次，连续 3 次自动作废）') : ''}
+                                </span>
+                                <span className="text-ink-faint/80">{t('允许插队至')}</span>
+                                <span className="tabular-nums">
+                                  {d.preemptibleUntil > 0 ? delegationTsLabel(d.preemptibleUntil) : t('不允许')}
+                                </span>
+                                <span className="text-ink-faint/80">id</span>
+                                <span className="truncate font-mono" title={d.id}>
+                                  {d.id}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               ) : null}
