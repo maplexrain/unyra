@@ -120,7 +120,7 @@ export function toChatHistory(
         if (calls.length) {
           for (const t of calls) out.push({ role: 'tool', tool_call_id: t.id, content: t.result })
           /**
-           * 工具附带的图片（Agent 用 res.read 看的那张）：还原成工具结果之后的**一条 user 消息**。
+           * 工具附带的图片（Agent 看图时附带的那张）：还原成工具结果之后的**一条 user 消息**。
            *
            * 这里必须与 agent/runtime 实发的那一条逐字节一致——说明文字、去重、张数上限、
            * 顺序任何一处不同，下一轮的历史就从这里开始与上一轮对不上，服务端的前缀缓存

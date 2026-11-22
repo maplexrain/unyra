@@ -227,14 +227,6 @@ export function createWebNativeBridge(): NativeBridge {
       settingsSet: () => Promise.resolve({ ok: false, error: '插件配置仅桌面端可用' }),
     },
 
-    runner: {
-      artifacts: () => Promise.resolve({ ok: true, items: {}, silent: {} }),
-      putArtifact: () => Promise.resolve({ ok: true }),
-      putSilent: () => Promise.resolve({ ok: true }),
-      clearArtifacts: () => Promise.resolve({ ok: true }),
-      fetch: (url, init) => apiFetch('/api/web/fetch', { method: 'POST', body: JSON.stringify({ url, ...init }) }),
-    },
-
     /**
      * 模型能力（WebUI 模式）：网络调用转发给自托管服务端的 /api/caps/*（服务端与桌面端
      * 共用同一套分流逻辑，见 server/routes/capabilities.ts）。samples 数组化过线。

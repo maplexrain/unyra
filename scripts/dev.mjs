@@ -17,6 +17,12 @@
  *    这里改成给每次启动编号，close 回调只认自己那一代。
  * 3. 文件监听出错（编辑器原子保存留下的临时目录会引发 EBUSY）会把整个 dev 进程
  *    带走，见下面的 uncaughtException 兜底与 vite.config.ts 的 server.watch.ignored。
+ * 4. 强杀会让 Chromium 带病收摊：Windows 上 child.kill()/taskkill /F 是硬终止，
+ *    before-quit 与磁盘缓存落盘都没机会跑，下一次**首次启动**就刷 net\disk_cache
+ *    的 Critical error / No file for …（脏索引，看起来像「运行环境第一次起不来」）。
+ *    所以停机先走 IPC 哨兵（child.send('dev:quit')，主进程 app.quit()，见
+ *    electron/app/devQuit.ts——Electron 主进程的 stdin 开流即 EOF，收不到东西），
+ *    脚本死了通道断开主进程也会跟着退，3 秒没退才强杀兜底。
  */
 
 import { spawn } from 'node:child_process'
@@ -83,7 +89,13 @@ async function startElectron(devServerUrl) {
   const gen = ++generation
   const child = spawn(electronPath, ['.'], {
     cwd: ROOT,
-    stdio: 'inherit',
+    // 第 4 路 'ipc' 是优雅停机通道：child.send('dev:quit') 递进主进程（Electron
+    // 主进程的 stdin 开流即 EOF，走不了 stdin，见 electron/app/devQuit.ts）
+    stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+    // Windows 上脱离父进程的控制台：终端的 Ctrl+C 只落进本脚本（由它走优雅停机），
+    // 不再把 Ctrl+C 事件同时灌给 Electron 硬终止。GUI 子系统进程不因此多出控制台窗口；
+    // macOS/Linux 保持同组即可，那边的信号路径本来就是可讲的
+    detached: process.platform === 'win32',
     env: { ...process.env, VITE_DEV_SERVER_URL: devServerUrl, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' },
   })
   electronProcess = child
@@ -98,7 +110,13 @@ async function startElectron(devServerUrl) {
   return child
 }
 
-/** 停掉当前 Electron 并**等它真的退出**：单实例锁是在进程退出那一刻才放开的 */
+/**
+ * 停掉当前 Electron 并**等它真的退出**：单实例锁是在进程退出那一刻才放开的。
+ *
+ * 顺序：先发优雅停机哨兵（IPC 通道 child.send('dev:quit')，主进程 app.quit()
+ * 正常收摊，见 electron/app/devQuit.ts——硬终止会让磁盘缓存带脏页落盘，下一次
+ * 首启报 disk_cache 错）；3 秒还没退才整棵进程树强杀兜底。
+ */
 async function stopElectron() {
   const child = electronProcess
   electronProcess = null
@@ -112,8 +130,9 @@ async function stopElectron() {
       if (timer) clearTimeout(timer)
       resolve()
     }
+    // 兜底：优雅通道没走通（主进程赖着不走/哨兵没送到）就整棵进程树强杀
+    //（Windows 上 Electron 还有一堆子进程，要 /T）
     timer = setTimeout(() => {
-      // 兜底：主进程赖着不走就整棵进程树强杀（Windows 上 Electron 还有一堆子进程）
       if (process.platform === 'win32') {
         spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' }).on('close', done)
       } else {
@@ -127,9 +146,9 @@ async function stopElectron() {
     }, 3000)
     child.once('exit', done)
     try {
-      child.kill()
+      child.send('dev:quit')
     } catch {
-      done()
+      // 通道已断（子进程刚死之类）：等 exit 事件或超时强杀
     }
   })
 }

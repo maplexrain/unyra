@@ -18,6 +18,9 @@ export const isDev = Boolean(DEV_SERVER_URL)
 export function bootSingleInstance(start: () => void): void {
   // 双开会并发写同一份数据目录（设置、教学文档），必须挡住
   if (!app.requestSingleInstanceLock()) {
+    // 退出原因必须说出口：dev 里这句话就是「Electron 退出（code 0）」的唯一线索，
+    // 不写的话看起来像「启动脚本坏了 / 首次启动失败」
+    console.error('[startup] 单实例锁被占用：已有一份实例在运行，本份退出。')
     app.quit()
   } else {
     start()

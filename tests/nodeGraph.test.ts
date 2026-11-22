@@ -281,7 +281,9 @@ describe('editContent：整份替换，各类型自己校验', () => {
     const sdoc = svc.get('sdoc1')!
     expect(sdoc.editContent({ html: '   ' })).toMatchObject({ error: expect.stringContaining('为空') })
     expect(sdoc.editContent({ html: 'x'.repeat(200_000) })).toMatchObject({ error: expect.stringContaining('最长') })
-    expect(sdoc.editContent({ title: '新名字', html: '<p/>' })).toMatchObject({ error: expect.stringContaining('改名') })
+    expect(sdoc.editContent({ title: '新名字', html: '<p/>' })).toMatchObject({ error: expect.stringContaining('只读') })
+    // 保留原名（或省略 title）不受影响：只读的是『改名』这件事
+    expect(sdoc.editContent({ title: '实验', html: '<p/>' })).toMatchObject({ ok: true })
     expect(sdoc.editContent({ html: '<p>新的</p>' })).toMatchObject({ ok: true })
     expect(h.store.nodes[0].superdocs?.[0].html).toBe('<p>新的</p>')
   })

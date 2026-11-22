@@ -399,7 +399,7 @@ export class NodeService {
       return { error: 'under 里的大纲（' + underRaw + '）已经不在了：先 api.node.list() 查清楚再建' }
     }
     if (videoUnder && kind !== 'doc') {
-      return { error: '视频节点下只能挂文档（如视频总览文档）' }
+      return { error: '视频节点下只能挂文档（如视频笔记文档）' }
     }
     if (classroomUnder) {
       if (kind !== 'note' && kind !== 'exam' && kind !== 'superdoc' && kind !== 'file') {

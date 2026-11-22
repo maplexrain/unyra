@@ -52,6 +52,17 @@ interface Props {
   streaming: AgentPart[] | null
   /** 自由聊天（固定页签）：没有导师身份——子代理、人格与「正在辅导」全部收起 */
   free?: boolean
+  /** 锁住输入区（不可交流声部的工作会话 / 委托会话）：只能看，发消息要走工作流或委托 */
+  chatLocked?: boolean
+  /** 空态随声部：声部 id（'free' = 仅聊天）与显示名（空白页标题与职责说明跟声部走） */
+  emptyVoice?: string
+  emptyName?: string
+  /**
+   * 本会话（委托者视角）发起的、还没收口的委托（activeDelegationsFrom 的快照）：
+   * 在消息列表底部画「委托进行中」条，点击跳转到对应的委托会话。
+   */
+  delegationsOut?: Array<{ id: string; toAgent: string; toName: string; status: 'pending' | 'running'; toConversationId: string }>
+  onOpenDelegation?: (conversationId: string) => void
   /** 轮次进行中那条回复的 id：它在轮次内就分次进了会话（增量落库），列表里要剔掉防止两边都画 */
   streamingMessageId: string | null
   running: boolean
@@ -165,6 +176,11 @@ export default function AgentPanel({
   conversations,
   streaming,
   free,
+  chatLocked,
+  delegationsOut,
+  onOpenDelegation,
+  emptyVoice,
+  emptyName,
   streamingMessageId,
   running,
   hasKey,
@@ -465,6 +481,8 @@ export default function AgentPanel({
     onOpenFile,
     onSelectPrompt: handleSelectPrompt,
     free,
+    emptyVoice,
+    emptyName,
   })
 
   return (
@@ -512,6 +530,45 @@ export default function AgentPanel({
               style={{ zoom: chatScale } as CSSProperties}
             >
               {messageList}
+              {delegationsOut?.length ? (
+                <div
+                  data-delegation-strip
+                  className="mb-2 rounded-xl border border-line bg-card/70 px-3 py-2.5 text-[11.5px]"
+                >
+                  <div className="mb-1.5 flex items-center gap-1.5 font-medium text-ink-strong">
+                    {t('委托进行中')}
+                    <span className="rounded bg-seal/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-seal-deep dark:text-seal-2">
+                      {delegationsOut.length}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {delegationsOut.map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        title={t('跳转到它的委托会话')}
+                        onClick={() => onOpenDelegation?.(d.toConversationId)}
+                        className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-ink-soft transition hover:bg-line/45 hover:text-ink"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={
+                            'h-1.5 w-1.5 shrink-0 rounded-full ' +
+                            (d.status === 'running' ? 'animate-pulse bg-seal' : 'bg-line-strong')
+                          }
+                        />
+                        <span className="truncate">
+                          → {d.toName}
+                          <span className="ml-1 text-ink-faint">
+                            （{d.status === 'running' ? t('处理中') : t('排队中')}）
+                          </span>
+                        </span>
+                        <span className="ml-auto shrink-0 text-[10.5px] text-seal">{t('查看委托会话')}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -544,6 +601,7 @@ export default function AgentPanel({
         <ComposerUi
           composer={composer}
           running={running}
+          locked={chatLocked}
           hasKey={hasKey}
           providerLabel={providerLabel}
           queue={queue}

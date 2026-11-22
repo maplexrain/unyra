@@ -202,7 +202,7 @@ export function AgentSettingsView({
   useLocale()
   const isTutor = agentId === 'tutor'
   const isFree = agentId === 'free'
-  /** 承接声部（命题官 / 判卷官 / 资料员）：api 与工作流面都是团队分工固定的只读清单 */
+  /** 承接声部（出卷师 / 设计师 / 调研员 / 维修员）：api 与工作流面都是团队分工固定的只读清单 */
   const isSpecialist = !isTutor && !isFree
   const agentSettings = useSyncExternalStore(subscribeAgentSettings, loadAgentSettings)
   const ai = useSyncExternalStore(subscribeAiSettings, loadAiSettings)
@@ -468,7 +468,7 @@ export function AgentSettingsView({
                 isFree
                   ? t('仅聊天的沙箱只有联网与日程两组能力，由架构固定、恒开放。')
                   : isTutor
-                    ? t('导师的 api 面按团队分工固定、只读（不可增删）：教学主线与协调的全量基座；出卷、判卷、调研三个域分给了承接声部。')
+                    ? t('导师的 api 面按团队分工固定、只读（不可增删）：教学主线与协调的全量基座；路由与分派归调度员、联网与浏览器归调研员、课件与实验归设计师、出卷与阅卷归出卷师、修复归维修员。')
                     : t('这位成员的 api 面由团队分工固定、只读（不可增删）：它只拿职责所需的能力，其余域通过 team.* 协作补齐。')
               }
             />

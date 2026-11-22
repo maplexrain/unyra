@@ -347,7 +347,7 @@ export function useHostWiring({
   }, [getLatest, set, docNode])
 
   /*
-    plot 错误卡片上的「让导师修复」：以**工作流**（learn/workflows 的 plot-fix）注入——
+    plot 错误卡片上的「让维修员修复」：以**工作流**（learn/workflows 的 plot-fix）注入——
     隐藏指令、分界条一条，不是一条普通用户消息。报错原因、字符区间与围栏原文都算好
     塞进 {{占位符}}；区间与 doc.replace 的参数同语义，agent 一轮就能改完。
     目标是当前文档的节点——不是界面上此刻激活的那个导师页签（用户可能正看着 A 课的
@@ -369,7 +369,7 @@ export function useHostWiring({
       const content = docSource?.content ?? ''
       const range = findPlotFenceRange(content, source)
       agent.runWorkflow('plot-fix', {
-        target: { goalId: node.goalId, nodeId: node.id, conversationId: convId, voice: 'examiner' },
+        target: { goalId: node.goalId, nodeId: node.id, conversationId: convId, voice: 'dispatcher' },
         params: {
           nodeTitle: node.title,
           reason,
@@ -380,7 +380,7 @@ export function useHostWiring({
           source,
         },
       })
-      onToast(t('已把报错发给导师，请看智能体团队页签'))
+      onToast(t('已把报错交给调度员分派给维修员，请看智能体团队页签'))
     })
     return () => setPlotFixHandler(null)
   }, [docNode, getLatest, agent, onToast])

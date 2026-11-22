@@ -17,10 +17,8 @@ import { nodeLayout } from '../layout'
 import { NODE_FILE_SUFFIX } from '../files/nodeFile'
 import { NodeService } from '../nodeKinds'
 import { createMethodOps } from './method'
-import { createCodeOps } from './code'
 import { createWorkflowOps } from './workflow'
 import { createUserInfoOps } from './userinfo'
-import { createResourceOps } from './resource'
 import { createCompactOps } from './process'
 import { createWorkspaceOps } from './workspace'
 import { createProjectOps } from './project'
@@ -157,14 +155,11 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
     // 目标级持久化函数与工作流：纯 store 逻辑，总是可用（见 learn/methods、learn/workflows）
     methods: createMethodOps(deps),
     workflows: createWorkflowOps(deps),
-    // 代码块伪编译的交付口：纯渲染层逻辑（产物表 + 待编译登记），总是可用
-    code: createCodeOps(),
     // 日程：用户级的提醒清单（见 learn/schedule）——agent 能排、能改，响铃在宿主那边
     schedule: createScheduleOps({ getLatest: deps.getLatest, set: deps.set, goalId: deps.goalId }),
     ...(deps.userInfo ? { userInfo: createUserInfoOps(deps.userInfo) } : {}),
     ...(deps.tmp ? { tmp: deps.tmp } : {}),
     ...(deps.exam ? { exam: deps.exam } : {}),
-    ...(deps.resourceIo ? { resources: createResourceOps(deps, deps.resourceIo) } : {}),
     // 工作区目录：真实系统文件的读写（见 learn/ops/workspace）；磁盘那一层由界面注入
     ...(deps.workspaceIo ? { workspace: createWorkspaceOps(deps, deps.workspaceIo) } : {}),
     // 项目路径：对已声明 project 节点的真实路径做文件操作（声明即授权，见 learn/ops/project）
@@ -174,7 +169,7 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
     // 引用 chip：生成与交付前自查——build 当场对 store 验证可定位（见 learn/ops/chip）
     chip: createChipOps(deps),
     video: createVideoOps(deps),
-    // 智能体团队编排（team.*）：任务委托与相互唤醒。导师轮专用——deps.teamFrom 不在
+    // 智能体团队编排（team.*）：任务委托与相互唤醒。所有执行声部的轮都带 teamFrom
     // （子代理 / 超级文档桥 / 仅聊天）就没有这一组（见 learn/ops/team）
     ...(deps.teamFrom ? { teams: createTeamOps(deps) } : {}),
     // 读网页：实现整个由界面层给（见 learn/webDocs），这里只接线

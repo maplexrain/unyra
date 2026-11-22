@@ -1,11 +1,10 @@
 /**
- * 探针分组：文档 / 节点 / 执行器的 api 面（原文件第 3、4 节与第 6 节的 res.* 部分）。
+ * 探针分组：文档 / 节点 / 执行器的 api 面（原文件第 3、4 节）。
  *
  * - toolTests（第 3 节）：用假沙箱执行器把 buildApi + learn/agentOps 整条路跑通；
- * - apiNameTests（第 4 节）：沙箱注入的 api 名单必须与真的注册了的对上，并与 api 目录对账；
- * - resourceApiTests（第 6 节后半）：res.* 的行为——图片只走图像通道、引用保护、指纹去重。
+ * - apiNameTests（第 4 节）：沙箱注入的 api 名单必须与真的注册了的对上，并与 api 目录对账。
  *
- * 共享 fixture（ok / baseStore / harness / fakeRunner / staticStore / fakeResourceIo 与四个 uuid 常量）在 ./harness。
+ * 共享 fixture（ok / baseStore / harness / fakeRunner / staticStore 与 uuid 常量）在 ./harness。
  */
 import { createAgentOps } from '../../src/learn/agentOps'
 import { loadAgentSettings, saveAgentSettings } from '../../src/agent/settings'
@@ -16,15 +15,9 @@ import { emptySchedule } from '../../src/learn/schedule'
 import { SANDBOX_API_NAMES } from '../../src/agent/sandboxWorker'
 import { SANDBOX_API_CATALOG } from '../../src/agent/apiCatalog'
 import { emptyProfile } from '../../src/user/types'
-import { findByHash, findResource, hashOfText, resourcesOf } from '../../src/learn/static'
 import {
-  MD_REL,
-  MD_UUID,
-  PNG_REL,
-  PNG_UUID,
   baseStore,
   childId,
-  fakeResourceIo,
   fakeRunner,
   fakeWorkspaceIo,
   goalId,
@@ -218,8 +211,6 @@ export async function apiNameTests() {
     'wf.invoke': "'compact'",
     'wf.list': '',
     'wf.get': "'recall'",
-    // 伪编译交货：key 是宿主发出去的那串（探针这里没有待编译登记，走的是「key 对不上」那条路）
-    'code.save': "{ key: '0123456789abcdef', js: 'console.log(1)', note: '探针' }",
     'code.silent': "{ key: '0123456789abcdef', reason: '探针：只有定义' }",
     // 人机协作与界面：宿主能力是桩（见下面 createExecuteTool 的注入）
     'wait': '0',
@@ -360,13 +351,6 @@ export async function apiNameTests() {
     'exam.cropAnswer': "{ questionId: 'q1', box: [100, 50, 450, 950] }",
     'exam.explain': "{ content: '探针讲解' }",
     'exam.delete': '{}',
-    'res.list': '',
-    'res.info': "'probe-uuid'",
-    'res.read': "'probe-uuid'",
-    'res.create': "{ name: '探针资源', ext: 'md', content: '# 探针' }",
-    'res.update': "'probe-uuid', { description: '探针' }",
-    'res.delete': "'probe-uuid'",
-    'res.refs': "''",
     'workspace.list': "''",
     'workspace.read': "''",
     'workspace.write': "{ path: '探针.txt', content: '探针' }",
@@ -425,17 +409,11 @@ export async function apiNameTests() {
   let sawTmpWrite = false
   /** wf.invoke 的落点：真宿主是 useAgent 的队列（本轮收口后另起一轮），这里只记下交给它的是哪一条 */
   let sawInvoke = ''
-  // 资源那一组要磁盘：给它一份假的，名单检查才走得通（见 fakeResourceIo）
-  const { io: resIo } = fakeResourceIo(
-    new Map<string, string>([[MD_REL, '# 速查']]),
-    new Map<string, string>([[PNG_REL, 'AAAB']]),
-  )
   const ops = createAgentOps({
     getLatest: () => s,
     set: (n) => { s = n },
     nodeId: () => childId,
     goalId: () => goalId,
-    resourceIo: resIo,
     // 工作区同样给一份假的：名单检查只问「这三个 api 在不在」
     workspaceIo: fakeWorkspaceIo().io,
     // 项目路径同样给一份假的：名单检查只问「这九个 api 在不在」；真实现与授权口径在 learn/ops/project
@@ -665,78 +643,4 @@ export async function apiNameTests() {
     { nodeId: childId, goalId },
   )
   ok(chipCk.ok && chipCk.content.includes('"invalid":1'), 'chip.check 把定位不到的 chip 点出来', chipCk.content.slice(0, 220))
-}
-
-/* ---------- 6. 资源库（static）：res.* 的行为（分节标题与 fixture 见 ./harness） ---------- */
-export async function resourceApiTests() {
-  const files = new Map<string, string>([[MD_REL, '# 速查\n\n' + 'x'.repeat(50)]])
-  const images = new Map<string, string>([[PNG_REL, 'AAAB']])
-  const { io, removed } = fakeResourceIo(files, images)
-  let s = staticStore()
-  const ops = createAgentOps({ getLatest: () => s, set: (n) => { s = n }, nodeId: () => childId, goalId: () => goalId, resourceIo: io })
-  const tool = createExecuteTool({ ...ops, runSandbox: fakeRunner })
-  const run = (body: string) => tool.run({ description: '测试', body }, { nodeId: childId, goalId })
-
-  const l = await run('((api)=>{ const l = await api.res.list(); return { count: l.count, first: l.resources[0] } })')
-  // 工具结果里的对象是 safeJson 序列化的（没有空格），断言要按那个形状写
-  ok(l.ok && l.content.includes('题图.png') && l.content.includes('"refs":0'), 'res.list 回清单与引用数', l.content.slice(0, 220))
-
-  const rt = await run("((api)=>{ const r = await api.res.read('" + MD_UUID + "'); return { kind: r.kind, chars: r.chars, head: r.content.slice(0, 4) } })")
-  ok(rt.ok && rt.content.includes('"kind":"text"') && rt.content.includes('# 速查'), 'res.read 文本回正文', rt.content.slice(0, 220))
-
-  // 图片：返回值里绝不能有 base64，图片挂在工具结果的 images 上
-  const ri = await run("((api)=>{ const r = await api.res.read('" + PNG_UUID + "'); return { kind: r.kind, noteLen: r.note.length } })")
-  ok(ri.ok && !ri.content.includes('AAAB') && !ri.content.includes('base64'), 'res.read 图片不把 base64 交给模型', ri.content.slice(0, 220))
-  ok(ri.images?.length === 1 && ri.images[0].id === PNG_UUID && ri.images[0].rel === PNG_REL, '图片挂在工具结果的 images 上', ri.images)
-  ok(ri.content.includes('附上了 1 张图片'), '回执里点明图片在下一跳', ri.content.slice(-90))
-
-  const rm = await run("((api)=>{ return await api.res.read('不存在的uuid') })")
-  ok(!rm.ok && rm.content.includes('没有这条资源'), '未知 uuid 给可读原因', rm.content.slice(0, 180))
-
-  const ru = await run("((api)=>{ return await api.res.update('" + PNG_UUID + "', { name: '第二题插图', description: '来自课本 P42' }) })")
-  const after = findResource(s, goalId, PNG_UUID)!
-  ok(ru.ok && after.name === '第二题插图' && after.description === '来自课本 P42', 'res.update 改名称与描述（描述由 AI 写）', after)
-  ok(after.updatedAt > after.createdAt, '修改日期跟着动', [after.createdAt, after.updatedAt])
-
-  const rc = await run("((api)=>{ return await api.res.update('" + MD_UUID + "', { content: '# 新速查' }) })")
-  ok(rc.ok && files.get(MD_REL) === '# 新速查', 'res.update 改文本内容，文件真的写下去', files.get(MD_REL))
-  ok(findResource(s, goalId, MD_UUID)!.bytes === new TextEncoder().encode('# 新速查').length, '字节数跟着更新')
-  const rb = await run("((api)=>{ return await api.res.update('" + PNG_UUID + "', { content: '想改二进制' }) })")
-  ok(!rb.ok && rb.content.includes('二进制资源'), '二进制资源的内容改不动', rb.content.slice(0, 180))
-
-  const rn = await run("((api)=>{ return await api.res.create({ name: '错题清单', ext: 'md', content: '- 第一题' }) })")
-  const created = resourcesOf(s, goalId).find((r) => r.name === '错题清单')
-  ok(rn.ok && !!created && created.type === 'text', 'res.create 新建文本资源并登记', created)
-  ok(!!created && files.get('docs/微积分/static/' + created.uuid + '.md') === '- 第一题', '新资源真的落盘')
-  const rn2 = await run("((api)=>{ return await api.res.create({ name: '图', ext: 'png', content: 'x' }) })")
-  ok(!rn2.ok && rn2.content.includes('只能新建文本'), 'res.create 拒绝二进制后缀', rn2.content.slice(0, 180))
-
-  // 被引用扫描 + 删除保护
-  s = { ...s, nodes: s.nodes.map((n) => (n.id === childId ? { ...n, docs: { ...n.docs, teaching: '![题图](moji:static/' + PNG_UUID + ')' } } : n)) }
-  const rf = await run("((api)=>{ const r = await api.res.refs('" + PNG_UUID + "'); return { count: r.count, node: r.refs[0].node } })")
-  ok(rf.ok && rf.content.includes('"count":1') && rf.content.includes('微积分/极限'), 'res.refs 说出谁在引用它', rf.content.slice(0, 220))
-  const rd = await run("((api)=>{ return await api.res.delete('" + PNG_UUID + "') })")
-  ok(!rd.ok && rd.content.includes('还被') && resourcesOf(s, goalId).some((r) => r.uuid === PNG_UUID), '被引用时拒绝删除', rd.content.slice(0, 220))
-  const rd2 = await run("((api)=>{ return await api.res.delete('" + PNG_UUID + "', { force: true }) })")
-  ok(rd2.ok && !resourcesOf(s, goalId).some((r) => r.uuid === PNG_UUID), 'force 之后清单里没有它了', rd2.content.slice(0, 180))
-  ok(removed.includes(PNG_REL), '文件也真的删了', removed)
-
-  const rall = await run('((api)=>{ return await api.res.refs() })')
-  ok(rall.ok && rall.content.includes('"unreferenced"'), 'res.refs() 是一次全量扫描', rall.content.slice(0, 180))
-
-  // 指纹与去重：同样的内容不该存第二份
-  const h1 = await hashOfText('同样的一段内容')
-  const h2 = await hashOfText('同样的一段内容')
-  ok(h1 === h2 && h1.length > 0, '相同内容指纹相同', h1)
-  ok((await hashOfText('另一段')) !== h1, '不同内容指纹不同')
-  const reuse = await run("((api)=>{ return await api.res.create({ name: '错题清单副本', ext: 'md', content: '- 第一题' }) })")
-  ok(reuse.ok && reuse.content.includes('"reused":true'), 'res.create 撞上已有内容时直接复用', reuse.content.slice(0, 220))
-  ok(
-    resourcesOf(s, goalId).filter((r) => r.hash === (created?.hash ?? '')).length === 1,
-    '清单里同样的内容只留一条',
-    resourcesOf(s, goalId).map((r) => r.name),
-  )
-  ok(findByHash(s, goalId, created?.hash ?? '')?.uuid === created?.uuid, 'findByHash 能按内容找回那条资源')
-  const listed = await run('((api)=>{ return await api.res.list() })')
-  ok(listed.ok && listed.content.includes('"hash":"'), 'res.list 带指纹前缀（够认出重复）', listed.content.slice(0, 200))
 }

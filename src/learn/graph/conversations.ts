@@ -15,7 +15,7 @@ export function conversationById(store: LearnStore, conversationId: string): Con
  * 某目标的**导师**会话，按创建时间升序。
  *
  * agent team 分工之后（见 learn/agentTeam/voiceConvs），store.conversations 里还住着
- * 承接声部（命题官 / 判卷官 / 资料员）的工作会话——它们各有自己的解析通道
+ * 承接声部（调度员 / 出卷师 / 设计师 / 调研员 / 维修员）的工作会话——它们各有自己的解析通道
  * （voiceConversationsOfGoal），这里按声部过滤到导师，让「目标的当前会话」的既有
  * 语义（显示 / 激活 / 兜底）不被 specialists 的会话污染。
  */

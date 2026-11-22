@@ -17,6 +17,12 @@ import {
   type AgentTeamDispatcher,
 } from '../src/learn/agentTeam/delegations'
 import { createTeamOps } from '../src/learn/ops/team'
+import { activeDelegationsFrom } from '../src/learn/agentTeam/delegations'
+import {
+  delegationConversationId,
+  isDelegationConversation,
+  voiceOfConversation,
+} from '../src/learn/agentTeam/voiceConvs'
 import type { AgentProfileId } from '../src/agent/agentProfile'
 
 /** 派发器 mock 组装：可按需覆写各探针 */
@@ -242,8 +248,8 @@ describe('team.awake（收口后延迟自启动）', () => {
 describe('team.ops 探针（Node 裸跑）', () => {
   it('list / status 在无派发器时也能答；delegate 无承接会话时优雅拒绝', () => {
     const ops = createTeamOps({ teamFrom: () => ({ conversationId: 'from-conv', agent: 'tutor', goalId: 'goal-1' }) })
-    expect(ops.list()).toMatchObject({ ok: true, agents: [{ id: 'free' }, { id: 'tutor' }, { id: 'examiner' }, { id: 'grader' }, { id: 'researcher' }] })
-    expect(listAgents().map((a) => a.id)).toEqual(['free', 'tutor', 'examiner', 'grader', 'researcher'])
+    expect(ops.list()).toMatchObject({ ok: true, agents: [{ id: 'free' }, { id: 'tutor' }, { id: 'dispatcher' }, { id: 'examiner' }, { id: 'designer' }, { id: 'researcher' }, { id: 'fixer' }] })
+    expect(listAgents().map((a) => a.id)).toEqual(['free', 'tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer'])
     const st = ops.status('tutor') as { ok: boolean; isRunning: boolean; pendingCount: number }
     expect(st).toMatchObject({ ok: true, isRunning: false, pendingCount: 0 })
     expect((ops.status('ghost') as { ok: boolean }).ok).toBe(false)
@@ -321,5 +327,63 @@ describe('启动轮指令口径', () => {
     expect(deliver).toContain('全部完成')
     const awake = delegationTurnText('awake')
     expect(awake).toContain('自启动')
+  })
+})
+
+describe('委托会话（按委托者分会）', () => {
+  it('dv 确定性 id：同一位委托者复用同一段，voiceOfConversation 认承接声部，dv: 前缀即委托类别', () => {
+    const a = delegationConversationId('goal-1', 'examiner', 'tutor')
+    const b = delegationConversationId('goal-1', 'examiner', 'tutor')
+    expect(a).toBe(b)
+    expect(a).toBe('dv:examiner:tutor:goal-1')
+    expect(delegationConversationId('goal-1', 'examiner', 'designer')).toBe('dv:examiner:designer:goal-1')
+    // id 解析：第一段仍是承接声部；dv: 前缀即委托会话
+    expect(voiceOfConversation({ id: a, goalId: 'goal-1', messages: [] } as never)).toBe('examiner')
+    expect(isDelegationConversation({ id: a, goalId: 'goal-1', messages: [] } as never)).toBe(true)
+    expect(isDelegationConversation({ id: 'cv:examiner:goal-1', goalId: 'goal-1', messages: [] } as never)).toBe(false)
+  })
+
+  it('activeDelegationsFrom：只列这段会话发起的 pending/running 委托，带承接方显示名', () => {
+    const dispatcher = makeDispatcher()
+    setAgentTeamDispatcher(() => dispatcher)
+    delegateNow({ fromConversationId: 'from-conv', toAgent: 'examiner', toConversationId: 'dv:examiner:tutor:goal-1' })
+    // 同一段委托会话（同委托者）再发一条：第一条立即启动（承接方空闲），第二条排队
+    delegateNow({ fromConversationId: 'from-conv', toAgent: 'examiner', toConversationId: 'dv:examiner:tutor:goal-1', instruction: '第二条' })
+    const active = activeDelegationsFrom('from-conv')
+    expect(active.map((d) => d.status)).toEqual(['running', 'pending'])
+    expect(active.every((d) => d.toConversationId === 'dv:examiner:tutor:goal-1')).toBe(true)
+    expect(active[0]!.toName.length).toBeGreaterThan(0)
+    // 别的会话发起的委托不进这条的视图
+    delegateNow({ fromConversationId: 'other-conv', toAgent: 'designer', toConversationId: 'dv:designer:tutor:goal-1' })
+    expect(activeDelegationsFrom('other-conv').map((d) => d.toAgent)).toEqual(['designer'])
+    // 第一条收口（自动交付）→ 第二条（排队中）立即在同一段委托会话上启动
+    onConversationTurnClosed('dv:examiner:tutor:goal-1', { autoCompleteResult: '交付' })
+    const after = activeDelegationsFrom('from-conv')
+    expect(after.map((d) => d.status)).toEqual(['running'])
+    // 第二条也收口 → 这段会话发起的委托全部清空
+    onConversationTurnClosed('dv:examiner:tutor:goal-1', { autoCompleteResult: '交付' })
+    expect(activeDelegationsFrom('from-conv')).toEqual([])
+  })
+
+  it('队列接续按承接声部认领：dv 会话收口后，另一位委托者的排队委托也能启动', () => {
+    const dispatcher = makeDispatcher()
+    setAgentTeamDispatcher(() => dispatcher)
+    // A（from-conv-1）委托 examiner → 立即启动在 dv:examiner:tutor:goal-1
+    delegateNow({ fromConversationId: 'from-conv-1', toAgent: 'examiner', toConversationId: 'dv:examiner:tutor:goal-1' })
+    // B（from-conv-2）委托 examiner → 排队（承接方忙碌）
+    const queued = delegateNow({ fromConversationId: 'from-conv-2', toAgent: 'examiner', toConversationId: 'dv:examiner:designer:goal-1', instruction: 'B 的委托' })
+    expect(queued.status).toBe('pending')
+    // A 的委托会话收口（没 complete → 记一次提醒回队首）
+    onConversationTurnClosed('dv:examiner:tutor:goal-1')
+    // 队首是 A 的委托（needsRemind）→ 在 A 的 dv 会话上启动；B 的仍排队
+    expect(dispatcher.startTurn).toHaveBeenCalledTimes(2)
+    const last = dispatcher.startTurn.mock.calls.at(-1)![0] as { conversationId: string; kind: string }
+    expect(last.conversationId).toBe('dv:examiner:tutor:goal-1')
+    expect(last.kind).toBe('remind')
+    // A 的提醒轮再收口 → A 的委托第二次失败尝试回队首；此时队首仍不是 B 的会话，
+    // 但 dv:examiner: 前缀认领让 B 的委托在 A 收口后也能被接续（B 的委托排在 A 后面）
+    onConversationTurnClosed('dv:examiner:tutor:goal-1', { autoCompleteResult: '交付' })
+    const next = dispatcher.startTurn.mock.calls.at(-1)![0] as { conversationId: string }
+    expect(next.conversationId).toBe('dv:examiner:designer:goal-1')
   })
 })

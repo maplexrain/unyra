@@ -218,7 +218,6 @@ const dict: Record<string, string> = {
   '全部工作流（内置 + 全局 + 当前目标），带 id、分级与完整指令': 'All workflows (built-in + global + current goal) with id, tier and full instruction',
   '登记一条工作流；instruction 写成能独立执行的步骤清单，tier 缺省 goal（global 则所有目标可用）；prompt（可选）是每次触发都要在场的规程知识——按 wf:<id> 作键、同一上下文只注入一次，之后触发只发 instruction；同名覆盖': 'Register a workflow; write instruction as a step list executable on its own; tier defaults to goal (global makes it available to all goals); prompt (optional) carries the stable procedure knowledge that must be present on every run — injected once per context under the wf:<id> key, later runs only send instruction; the same name overwrites',
   '删除一条登记的工作流（内置的删不掉）': 'Remove a registered workflow (built-ins cannot be removed)',
-  '代码块伪编译 · code': 'Code block pseudo-compile · code',
   '学习者画像 · userInfo': 'Learner profile · userInfo',
   '昵称、年龄、性别、语言、教育程度、专业背景、当前身份、工作经验、已掌握技能，外加 filled / missing（还缺哪些）': 'Nickname, age, gender, language, education, major, current role, work experience, mastered skills, plus filled / missing (what is still absent)',
   '增量写（只改给的字段）；认不出的字段与写不进去的值会逐条说明，不会整单丢弃': 'Incremental write (only the given fields change); unrecognized fields and unwritable values are explained item by item, never dropping the whole batch',

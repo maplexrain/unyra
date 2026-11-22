@@ -1,7 +1,7 @@
 /**
  * 结构画布的卡片内容行与滚轮隔离容器：
  * - WheelStop：滚轮不冒泡到画布相机的隔离容器（项目卡目录树、浮层菜单共用）；
- * - VideoCardRow：视频卡的第二行（视频唯一标识输入框 / 固化后的标题行 + 生成总览）；
+ * - VideoCardRow：视频卡的第二行（视频唯一标识输入框 / 固化后的标题行）；
  * - FileCardRow：文件卡的第二行（响应式地址输入框 + 本地文件上传按钮）。
  * 供 CanvasCards 与 CanvasMenu 复用；与卡片的头部/目标项渲染（CanvasCards）分离。
  */
@@ -47,13 +47,11 @@ export function VideoCardRow({
   store,
   goalId: _goalId,
   onUpdateVideoNode,
-  onGenerateVideoDoc,
 }: {
   card: CardView
   store: LearnStore
   goalId: string
   onUpdateVideoNode?: (nodeUuid: string, patch: { input?: string; title?: string; titleCustomized?: boolean }) => ChannelResult
-  onGenerateVideoDoc?: (videoNodeUuid: string) => void
 }) {
   const vNode = store.videoNodes?.find((v) => v.id === card.uuid)
   const isConfirmed = !!vNode?.confirmed
@@ -94,17 +92,6 @@ export function VideoCardRow({
         >
           {card.subtitle || val}
         </span>
-        {onGenerateVideoDoc && (
-          <button
-            type="button"
-            title={t('为这个视频生成总览文档')}
-            className="shrink-0 rounded bg-pink-500/15 px-2 py-1 text-[10.5px] font-medium text-pink-700 dark:text-pink-300 hover:bg-pink-500/25 transition cursor-pointer"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => onGenerateVideoDoc(card.uuid)}
-          >
-            {t('生成总览')}
-          </button>
-        )}
       </div>
     )
   }

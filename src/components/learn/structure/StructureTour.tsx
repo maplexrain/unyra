@@ -64,7 +64,7 @@ const STEPS: TourStep[] = [
   {
     selector: '[data-tour-node="video"]',
     title: '视频与拓展学习资源',
-    body: '视频节点支持选集联动、生成总览文档以及分段笔记。可以在左侧栏拖入视频卡，随时与知识点文档建立关联。',
+    body: '视频节点支持选集联动与分段笔记。可以在左侧栏拖入视频卡，随时与知识点文档建立关联。',
   },
   {
     selector: '[data-tour="minimap"]',

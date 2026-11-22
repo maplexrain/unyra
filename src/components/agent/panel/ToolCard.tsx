@@ -64,7 +64,7 @@ export function ToolCard({ part }: { part: Extract<AgentPart, { type: 'tool' }> 
         </span>
       </button>
       {/*
-        工具附带回的图片（Agent 用 res.read 看了一张图）。折叠着也显示：
+        工具附带回的图片（Agent 用看图 / 截图 api 附带了一张图）。折叠着也显示：
         「它到底看了哪张图」是这一步最该让人看见的事，藏进展开区等于没显示。
       */}
       {!!part.images?.length && (

@@ -179,7 +179,6 @@ export interface StructureCanvasProps {
   /** 笔记卡右键菜单的「生成总结」：内部一次性补全（≤200 字），落在笔记卡上 */
   onGenerateNoteSummary?: (noteId: string) => void
   /** 视频卡点「生成总览」：交给 AI 根据选集生成总览文档并挂在视频节点子级 */
-  onGenerateVideoDoc?: (videoNodeUuid: string) => void
   /** 项目卡设置 / 修改路径（统一通道：走节点对象的 editContent，与 agent 同一条路）；拼法由路径推断 */
   onSetProjectPath?: (nodeUuid: string, path: string) => ChannelResult | Promise<ChannelResult>
   /** 点项目卡目录树里的一个文件：本地文件页签打开（磁盘绝对路径） */
@@ -225,7 +224,6 @@ export const StructureCanvas = memo(function StructureCanvas({
   onGenerateOutlineGuide,
   onOpenOutlineGuide,
   onGenerateNoteSummary,
-  onGenerateVideoDoc,
   onSetProjectPath,
   onOpenProjectFile,
   onOpenFileNode,
@@ -786,7 +784,6 @@ export const StructureCanvas = memo(function StructureCanvas({
           toggleProjDir={toggleProjDir}
           onOpenProjectFile={onOpenProjectFile}
           onUpdateVideoNode={onUpdateVideoNode}
-          onGenerateVideoDoc={onGenerateVideoDoc}
           onGenerateClassroom={onGenerateClassroom}
           onBindFile={onBindFile}
           onToast={onToast}
@@ -872,7 +869,6 @@ export const StructureCanvas = memo(function StructureCanvas({
           onGenerateNoteSummary={onGenerateNoteSummary}
           onOpenVideoNode={onOpenVideoNode}
           onOpenVideo={onOpenVideo}
-          onGenerateVideoDoc={onGenerateVideoDoc}
           onOpenFileNode={onOpenFileNode}
           onBindFile={onBindFile}
           onSetProjectPath={onSetProjectPath}

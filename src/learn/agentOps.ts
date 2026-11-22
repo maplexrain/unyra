@@ -13,6 +13,6 @@
  * 把原来的公开符号原样转出去，调用方的 import 一行都不用改。
  */
 export { clipText } from './ops/text'
-export type { AgentOpsDeps, AgentOps, ResourceIo, UserInfoIo, WorkspaceIo } from './ops/deps'
+export type { AgentOpsDeps, AgentOps, UserInfoIo, WorkspaceIo } from './ops/deps'
 export { makeExamTool } from './ops/exam'
 export { createAgentOps } from './ops/assemble'

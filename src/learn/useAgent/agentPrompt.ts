@@ -9,7 +9,7 @@
  */
 
 import type { Conversation, ConversationMessage, MessageFile, MessageImage, MessageQuote } from '../../agent/types'
-import type { AgentVoice } from '../../agent/agentProfile'
+import { CONTENT_VOICES, type AgentVoice } from '../../agent/agentProfile'
 import { loadAgentSettings, type AgentSettings } from '../../agent/settings'
 import { buildVoiceSystem } from '../ai'
 import { needsPersonaAnnounce, personaMessage } from '../../agent/persona'
@@ -47,8 +47,10 @@ export function assembleTurnEntry(io: {
 }): { conv: Conversation; agentSettings: AgentSettings; teacherSystem: string } {
   const { trimmed, hidden, mark, wfParams, context, quote, attached, attachedFiles, assistantId } = io
   const voice = io.voice ?? 'tutor'
-  /** 只有导师有人格 / 文档格式 / 技能库 / MCP 的感知注入：那是导师层的机制（全局设置） */
+  /** 只有导师有人格 / 技能库 / MCP 的感知注入：那是导师层的机制（全局设置） */
   const isTutor = voice === 'tutor'
+  /** 内容生成声部（导师 / 出卷师 / 设计师）：注入写作策略（文档格式）与学习者画像 */
+  const isContent = CONTENT_VOICES.has(voice)
   let conv = io.conv
   /**
    * **节点上下文不再自动注入**（2026-10-23 的架构决定）：「当前学习目标 / 目标规划 /
@@ -120,13 +122,15 @@ export function assembleTurnEntry(io: {
    * 被压缩掉（retired）之后自动补回来。
    */
   const formatAnnouncer =
-    isTutor && needsDocFormatAnnounce(conv.messages, agentSettings.docFormat)
+    isContent && needsDocFormatAnnounce(conv.messages, agentSettings.docFormat)
       ? [docFormatMessage(agentSettings.docFormat, Date.now(), crypto.randomUUID(), agentSettings.customDocFormats)]
       : []
 
-  const userInfoAnnouncer = needsUserInfoAnnounce(conv.messages)
-    ? [userInfoMessage(activeProfile(), Date.now(), crypto.randomUUID())]
-    : []
+  /** 用户画像只有内容生成声部拿：产出面向学习者的内容才需要贴合这个人 */
+  const userInfoAnnouncer =
+    isContent && needsUserInfoAnnounce(conv.messages)
+      ? [userInfoMessage(activeProfile(), Date.now(), crypto.randomUUID())]
+      : []
 
   // 动态技能清单注入：不在系统提示词中硬编码，而在消息流中按需注入与变更更新（保持前缀缓存稳定）
   const activeSkills = getActiveSkills(agentSettings.skills)

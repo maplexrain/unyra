@@ -9,7 +9,7 @@ import type { Conversation } from '../../../agent/types'
 import { t } from '../../../i18n'
 
 /** agent team 左栏的声部 id（与 agent/agentProfile 的 AgentProfileId 同形：5 位） */
-export type AgentTeamMode = 'free' | 'tutor' | 'examiner' | 'grader' | 'researcher'
+export type AgentTeamMode = 'free' | 'tutor' | 'dispatcher' | 'examiner' | 'designer' | 'researcher' | 'fixer'
 
 /**
  * 解析一段对话的「最近对话时间」（毫秒时间戳）：

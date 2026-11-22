@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ConversationMessage } from '../src/agent/types'
-import { buildTeacherSystem, buildExaminerSystem } from '../src/learn/ai'
+import { buildTeacherSystem, buildDesignerSystem, buildExaminerSystem } from '../src/learn/ai'
 import {
   PROMPT_MODULES,
   missingPromptModules,
@@ -126,19 +126,19 @@ describe('首轮系统提示词（紧凑静态注入）', () => {
     expect(system).toContain('沙箱 API 速查（签名 + 用法边界）')
     expect(system).toContain('api.node — 节点宇宙')
     expect(system).toContain('api.schedule')
-    expect(system).toContain('api.browser')
     expect(system).toContain('api.subagent')
     expect(system).toContain('api.workspace')
-    // 团队分工：判卷的 exam 组与课件的 classroom 组不在导师的速查里（分给了判卷官 / 命题官）
+    // 团队分工：联网与浏览器归调研员、判卷归命题官——这些组不在导师的速查里
     expect(system).not.toContain('#### api.exam')
     expect(system).not.toContain('#### api.classroom')
+    expect(system).not.toContain('#### api.browser')
     // 具体签名与反直觉边界（trap）在场
     expect(system).toContain('node.list()')
     expect(system).toContain('node.get(uuid)')
     expect(system).toContain('workspace.write')
     // 导师的专属组速查在场（ui / memory / subagent 等）；课堂组分给了命题官
     expect(system).toContain('ui.point')
-    expect(system).toContain('8 秒硬超时')
+    expect(system).toContain('只在压缩轮调用')
     expect(system).not.toContain('#### api.classroom')
     expect(system).toContain('先读后写')
     // 全量手册（示例围栏堆砌）已退役——瘦身验收线
@@ -146,19 +146,22 @@ describe('首轮系统提示词（紧凑静态注入）', () => {
     expect(system).not.toContain('示例代码：')
   })
 
-  it('工作流规程按声部分工拼进系统提示词（教学主线在导师、创作域分给命题官）', () => {
+  it('工作流规程按声部分工拼进系统提示词（教学主线在导师、课件实验分给设计师）', () => {
     expect(system).toContain('内置工作流与任务规程')
     expect(system).toContain('教学文档生成')
     expect(system).toContain('大纲编写与规划')
     expect(system).toContain('长会话交接摘要')
-    // 分出去的域：导师的规程节里不再出现（分诊一句提及「超级实验室」没问题），命题官的规程里齐
+    // 分出去的域：导师的规程节里不再出现（分诊一句提及「超级实验室」没问题）
     expect(system).not.toContain('【出卷】试卷命题（exam）')
     expect(system).not.toContain('【超级实验室】可交互超级文档（superlab）')
     expect(system).toContain('api.node.finish')
     const examiner = buildExaminerSystem()
     expect(examiner).toContain('试卷命题')
-    expect(examiner).toContain('超级实验室')
-    expect(examiner).toContain('api.classroom.schema')
+    expect(examiner).toContain('api.exam.grade')
+    expect(examiner).not.toContain('api.classroom.schema')
+    const designer = buildDesignerSystem()
+    expect(designer).toContain('超级实验室')
+    expect(designer).toContain('api.classroom.schema')
   })
 
   it('排版配方与语法指南在场（九配方版）', () => {
@@ -183,15 +186,15 @@ describe('首轮系统提示词（紧凑静态注入）', () => {
     expect(system).toContain('写操作的失败不抛异常')
     expect(system).toContain('应用数据一律走 api 组')
     expect(system).toContain('api.userInfo.get()')
-    expect(system).toContain('wait / ask / tiktok')
+    expect(system).toContain('按名直接调用')
     expect(system).toContain('需求解耦')
     expect(system).toContain('api.ui.point')
     expect(system).not.toContain('iwanna')
   })
 
   it('api 手册全文只在紧凑速查一处出现（旧版的双重嵌入已退役）', () => {
-    // browser.eval 的用法说明全文只在速查里出现一次——旧版在手册与专项手册各一份
-    const marker = '页面上下文受控 JS 执行'
+    // workspace.list 的用法说明全文只在速查里出现一次——旧版在手册与专项手册各一份
+    const marker = '工作区是用户交付物的落点'
     expect(system.indexOf(marker)).toBeGreaterThan(-1)
     expect(system.indexOf(marker)).toBe(system.lastIndexOf(marker))
   })

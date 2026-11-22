@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { analyzeFetchContent } from '../src/learn/webSearch'
 import { makeResource } from '../src/learn/static'
 import { createWorkspaceOps } from '../src/learn/ops/workspace'
-import { createResourceOps } from '../src/learn/ops/resource'
 import { buildApi } from '../src/agent/sandbox/api'
 import { DocGNode } from '../src/learn/nodeKinds/doc'
 import { FileGNode } from '../src/learn/nodeKinds/file'
@@ -35,7 +34,7 @@ describe('Agent 交互与数据抓取优化测试', () => {
     expect(diag3.warning).toContain('语法断裂或残句')
   })
 
-  it('2. makeResource 与 res.list 完整透出 name, caption, order', () => {
+  it('2. makeResource 完整透出 name, caption, order（静态资源清单层）', () => {
     const res = makeResource({
       name: '架构图',
       ext: 'png',
@@ -46,54 +45,7 @@ describe('Agent 交互与数据抓取优化测试', () => {
     expect(res.name).toBe('架构图')
     expect(res.caption).toBe('图 1 核心系统架构图')
     expect(res.order).toBe(1)
-
-    const store: any = {
-      version: 2,
-      goals: [{ id: 'g1', title: '测试目标', question: '问题', rootNodeId: 'n1', createdAt: 1, updatedAt: 1 }],
-      nodes: [
-        {
-          id: 'n1',
-          goalId: 'g1',
-          title: '根文档',
-          key: 'gendowen',
-          description: '',
-          docs: { teaching: '' },
-          notes: [],
-          annotations: [],
-          origin: 'ai',
-          createdAt: 1,
-          updatedAt: 1,
-          status: 'learning',
-        },
-      ],
-      resources: {
-        g1: [res],
-      },
-      edges: [],
-      conversations: [],
-      exams: [],
-    }
-
-    const rOps = createResourceOps(
-      {
-        getLatest: () => store,
-        set: () => {},
-        goalId: () => 'g1',
-        nodeId: () => 'n1',
-      },
-      {
-        readText: async () => null,
-        writeText: async () => true,
-        readImage: async () => null,
-      } as any,
-    )
-
-    const listRes = rOps.list() as any
-    expect(listRes.count).toBe(1)
-    expect(listRes.resources[0].name).toBe('架构图')
-    expect(listRes.resources[0].caption).toBe('图 1 核心系统架构图')
-    expect(listRes.resources[0].order).toBe(1)
-    expect(listRes.resources[0].file).toBe('架构图.png')
+    expect(res.name + '.' + res.ext).toBe('架构图.png')
   })
 
   it('3. workspace.grep 支持按 anchors / query 定向检索并返回精准 1-based 行号', async () => {

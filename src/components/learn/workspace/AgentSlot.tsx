@@ -24,8 +24,23 @@ import { AgentTabPane } from './AgentTabPane'
 import { goalConvByGoal, goalFocusByGoal } from './goalFocus'
 import { AgentRosterSidebar } from '../agent-team/AgentRosterSidebar'
 import { AgentSettingsView } from '../agent-team/AgentSettingsView'
-import { agentAvatarIdOf, profileOf, resetAgentProfile, updateAgentProfile, type AgentVoice } from '../../../agent/agentProfile'
-import { voiceOfConversation, voiceConversationId } from '../../../learn/agentTeam/voiceConvs'
+import {
+  agentAvatarIdOf,
+  COMMUNICABLE_VOICES,
+  DEFAULT_AGENT_NAME,
+  isCommunicable,
+  profileOf,
+  resetAgentProfile,
+  updateAgentProfile,
+  type AgentProfileId,
+  type AgentVoice,
+} from '../../../agent/agentProfile'
+import {
+  isDelegationConversation,
+  voiceConversationId,
+  voiceOfConversation,
+} from '../../../learn/agentTeam/voiceConvs'
+import { activeDelegationsFrom } from '../../../learn/agentTeam/delegations'
 import { AGENT_ROSTER_ORDER, type AgentVoiceStats } from '../agent-team/agentRoster'
 import { listWorkflowRows, type WorkflowRow } from '../../../learn/workflows'
 import {
@@ -344,7 +359,16 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     if (tutorGoalId) {
       setEmptyTutorMode(false)
       if (next !== 'tutor') {
-        // 承接声部：选中它按目标建好的工作会话（还没有就现场落一段，确定性 id 见 voiceConvs）
+        // 不可交流的声部（调研员 / 维修员）：只能**看**它已有的工作会话——会话只能由
+        // 工流触发或委托启动，选中不现场建（也没有输入焦点，输入区是锁着的）
+        if (!isCommunicable(next as AgentProfileId)) {
+          const list = voiceChatsOf(next)
+          if (list.length) {
+            selectConversationIn({ kind: 'goal', goalId: tutorGoalId, conversationId: list[0].id }, list[0].id)
+          }
+          return
+        }
+        // 可交流的承接声部：选中它按目标建好的工作会话（还没有就现场落一段，确定性 id 见 voiceConvs）
         const convId = voiceConversationId(tutorGoalId, next)
         if (!conversationById(getLatest(), convId)) {
           set({
@@ -411,6 +435,11 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     removeConversation(convId)
   }
 
+  /** 各声部的显示名（profile 覆盖后的）：roster 卡片与空态标题共用这一份 */
+  const agentNames = useMemo(
+    () => Object.fromEntries(AGENT_ROSTER_ORDER.map((v) => [v, profileOf(agentSettings, v).name ?? ''])),
+    [agentSettings],
+  )
   /**
    * 一枚 agent 运行时条目对应的完整 AgentPanel props。
    */
@@ -427,6 +456,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         streamingMessageId: stream?.messageId ?? null,
         running: !!(convId && agent.runningByConversation[convId]),
         free: true,
+        emptyVoice: 'free',
+        emptyName: '仅聊天',
         onSend: (text: string, images: PendingImage[], files: PendingFile[]) => {
           const id = convId ?? addFreeConversation().id
           if (id !== convId) setFreeConvId(id)
@@ -495,8 +526,39 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     const goalConversations = goalId
       ? (goalConversationsByGoal.get(goalId)?.[convVoice] ?? EMPTY_CONVERSATIONS)
       : EMPTY_CONVERSATIONS
+    // 锁输入区的两种会话：不可交流声部的工作会话 + **委托会话**（类别由 id 前缀 dv: 认，
+    // 委托会话就算落在可交流声部头上也不接受用户输入——它只听委托者的指令）
+    const chatLocked =
+      (conv ? isDelegationConversation(conv) : mode !== 'tutor' && mode !== 'free' && !isCommunicable(mode as AgentProfileId)) ||
+      (conv ? !COMMUNICABLE_VOICES.has(voiceOfConversation(conv) as AgentVoice) : false)
     return {
       goalId,
+      chatLocked,
+      emptyVoice: mode,
+      emptyName: agentNames?.[mode]?.trim() || DEFAULT_AGENT_NAME[mode],
+      delegationsOut: convId ? activeDelegationsFrom(convId) : [],
+      onOpenDelegation: (delegationConvId: string) => {
+        if (!goalId) return
+        if (!conversationById(getLatest(), delegationConvId)) {
+          // 还没落库（委托还在排队）：现场落一段空壳，落点与 voiceConversationId 同一口径
+          const voice = (delegationConvId.split(':')[1] ?? 'tutor') as AgentVoice
+          set({
+            ...getLatest(),
+            conversations: [
+              ...getLatest().conversations,
+              {
+                id: delegationConvId,
+                goalId,
+                voice,
+                messages: [],
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              },
+            ],
+          })
+        }
+        selectConversationIn({ kind: 'goal', goalId, conversationId: delegationConvId }, delegationConvId)
+      },
       conversation: conv,
       conversations: goalConversations,
       streaming: stream?.parts ?? null,
@@ -504,6 +566,10 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       running: !!(convId && agent.runningByConversation[convId]),
       onSend: (text: string, images: PendingImage[], files: PendingFile[]) => {
         if (!target) return 'sent' as const
+        // 不可交流声部与**委托会话**的硬闸：输入区已锁，这里再拦一道（委托与工作流触发不走这条路）
+        const targetConv = conversationById(getLatest(), target.conversationId)
+        if (isDelegationConversation(targetConv)) return 'sent' as const
+        if (!COMMUNICABLE_VOICES.has(target.voice)) return 'sent' as const
         if (shouldWaitInLine(target.conversationId)) {
           agent.enqueueMessage({
             conversationId: target.conversationId,
@@ -637,16 +703,20 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         conversationsByAgent={{
           free: sortedFreeChats,
           tutor: sortedGoalChats,
+          dispatcher: voiceChatsOf('dispatcher'),
           examiner: voiceChatsOf('examiner'),
-          grader: voiceChatsOf('grader'),
+          designer: voiceChatsOf('designer'),
           researcher: voiceChatsOf('researcher'),
+          fixer: voiceChatsOf('fixer'),
         }}
         activeConversationByAgent={{
           free: currentFreeConvId,
           tutor: activeTutorConvId,
+          dispatcher: mode === 'dispatcher' ? activeTutorConvId : (voiceChatsOf('dispatcher')[0]?.id ?? null),
           examiner: mode === 'examiner' ? activeTutorConvId : (voiceChatsOf('examiner')[0]?.id ?? null),
-          grader: mode === 'grader' ? activeTutorConvId : (voiceChatsOf('grader')[0]?.id ?? null),
+          designer: mode === 'designer' ? activeTutorConvId : (voiceChatsOf('designer')[0]?.id ?? null),
           researcher: mode === 'researcher' ? activeTutorConvId : (voiceChatsOf('researcher')[0]?.id ?? null),
+          fixer: mode === 'fixer' ? activeTutorConvId : (voiceChatsOf('fixer')[0]?.id ?? null),
         }}
         runningByConversation={agent.runningByConversation}
         pendingAskByConv={agent.pendingAskByConv}
@@ -663,7 +733,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         onNewConversation={handleHistoryCreate}
         onDeleteConversation={handleHistoryDelete}
         onOpenSettings={openAgentSettings}
-        agentNames={Object.fromEntries(AGENT_ROSTER_ORDER.map((v) => [v, profileOf(agentSettings, v).name ?? '']))}
+        agentNames={agentNames}
         agentAvatars={Object.fromEntries(
           AGENT_ROSTER_ORDER.map((v) => [v, agentAvatarIdOf(profileOf(agentSettings, v), v)]),
         )}

@@ -1297,7 +1297,7 @@ export default function LearnWorkspace({
       const ex = st.exams.find((e) => e.id === examId)
       agent.runWorkflow('exam-grade', {
         nodeId: ex?.nodeId,
-        params: { target: ex?.nodeId ?? '', examId, attemptId }, voice: 'grader',
+        params: { target: ex?.nodeId ?? '', examId, attemptId }, voice: 'dispatcher',
       })
     },
   })
@@ -1339,7 +1339,7 @@ export default function LearnWorkspace({
 
   const {
     newExam, requestGrading, startSuperLab, startOutline,
-    startPrereqOutline, startVideoOverview, startGenerateClassroom,
+    startPrereqOutline, startGenerateClassroom,
     workflowRows, runWorkflowRow, removeWorkflowRow,
   } = useWorkflowStarters({
     getLatest,
@@ -1494,7 +1494,6 @@ export default function LearnWorkspace({
     onOpenSettings,
     agent,
     startPrereqOutline,
-    startVideoOverview,
     startGenerateClassroom,
     goalSubtreeSize,
     setPendingDelete,

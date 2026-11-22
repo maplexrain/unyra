@@ -46,23 +46,20 @@ const store = (workflows?: LearnStore['workflows']): LearnStore => ({
 })
 
 describe('内置工作流', () => {
-  it('内置工作流都在：开讲、生成大纲、视频总览、出卷、阅卷、了解、超级实验室、伪编译、修复函数图像、压缩上下文、浏览器操作、项目与文章解读、生成互动课堂', () => {
+  it('内置工作流都在：开讲、生成大纲、出卷、阅卷、了解、超级实验室、修复函数图像、压缩上下文、浏览器操作、生成互动课堂（伪编译已退役）', () => {
     const rows = builtinWorkflowRows()
     expect(rows.map((r) => r.id)).toEqual([
       'teach-node',
       'outline',
       'outline-guide',
-      'video-overview',
       'classroom',
       'exam',
       'exam-grade',
       'explain',
       'superlab',
-      'code-compile',
       'plot-fix',
       'compact',
       'browser-use',
-      'project-interpret',
     ])
     for (const r of rows) {
       expect(r.tier).toBe('builtin')
@@ -84,21 +81,6 @@ describe('内置工作流', () => {
     expect(WORKFLOWS_GUIDE).toContain('直接子层级')
   })
 
-  it('项目与文章解读：指令带目标节点，规程在系统提示词的 WORKFLOWS_GUIDE 里', () => {
-    const row = builtinWorkflowRows().find((r) => r.id === 'project-interpret')
-    expect(row).toBeTruthy()
-    expect(row?.params).toEqual(['target'])
-
-    const text = renderWorkflowInstruction(row!.instruction, { target: '目标文档UUID' })
-    expect(text).toBe('## 使用「项目与文章解读」工作流。\n- 目标节点: 目标文档UUID')
-
-    // 材料判定（file vs project 节点）与 quote 精读规程都在场
-    expect(WORKFLOWS_GUIDE).toContain('项目与文章解读')
-    expect(WORKFLOWS_GUIDE).toContain("kind: 'file'")
-    expect(WORKFLOWS_GUIDE).toContain("kind: 'project'")
-    expect(WORKFLOWS_GUIDE).toContain('quote')
-  })
-
   it('问询类（开讲/出卷/超级实验室）触发前响铃；阅卷不能从列表直接跑', () => {
     const rows = builtinWorkflowRows()
     const byId = new Map(rows.map((r) => [r.id, r]))
@@ -112,11 +94,6 @@ describe('内置工作流', () => {
     expect(byId.get('exam')?.params).toEqual(['target'])
     // 阅卷必须先有人交卷：从列表里空跑只会得到「没有需要讲解的考试」
     expect(byId.get('exam-grade')?.runnable).toBe(false)
-    // 伪编译由代码块菜单触发（代码、语言、key 都是它给的），列表里没有可跑的入口；
-    // 它的交付物在对话里，所以是 'show'——**响铃但不切主位**
-    expect(byId.get('code-compile')?.runnable).toBe(false)
-    expect(byId.get('code-compile')?.prep).toBe('show')
-    expect(byId.get('code-compile')?.params).toEqual(['target', 'language', 'key', 'code'])
     // 修复函数图像由错误卡片触发（报错、区间、原文都由触发方算好），同样不可空跑；
     // 修复结果直接落在文档里，'show' 响一声即可
     expect(byId.get('plot-fix')?.runnable).toBe(false)
@@ -139,46 +116,14 @@ describe('内置工作流', () => {
       'teach-node',
       'outline',
       'outline-guide',
-      'video-overview',
       'classroom',
       'exam',
       'explain',
       'superlab',
-      'code-compile',
       'plot-fix',
-      'project-interpret',
     ])
     // 切主位那一条规矩随 api.ui.switchMain 一起撤了：谁都不许动用户的主栏
     expect(builtinWorkflowRows().some((r) => 'takeMain' in workflowPrep(r.prep))).toBe(false)
-  })
-
-  it('伪编译指令：标准函数调用 + 代码围栏；规程在「代码块伪编译」模块里', () => {
-    const row = builtinWorkflowRows().find((r) => r.id === 'code-compile')
-    expect(row).toBeTruthy()
-    const text = renderWorkflowInstruction(row?.instruction ?? '', {
-      target: 'n1',
-      language: 'python',
-      key: 'abc123def456',
-      code: 'print(sum(xs))',
-    })
-    // 指令 = 标准函数调用（参数行）+ 待编译代码的数据段
-    expect(text).toContain('## 使用「伪编译」工作流。')
-    expect(text).toContain('- 代码块: abc123def456')
-    expect(text).toContain('- 语言: python')
-    expect(text).toContain('- 目标节点: n1')
-    expect(text).toContain('print(sum(xs))')
-    // 占位符一个都不许剩下：剩下的会被模型当成正文抄进产物里
-    expect(text).not.toContain('{{')
-    // 代码块围栏要真的在（它是模型分辨「哪一段是待编译的代码」的凭据）
-    expect(text).toContain('```')
-    // 交货与「先判无输出」的规程在 WORKFLOWS_GUIDE 里，而且停下的那条 api 在交货那条之前
-    const spec = WORKFLOWS_GUIDE.indexOf('code.silent')
-    const save = WORKFLOWS_GUIDE.indexOf('code.save')
-    expect(spec).toBeGreaterThan(-1)
-    expect(save).toBeGreaterThan(-1)
-    expect(spec).toBeLessThan(save)
-    // 主栏归用户：指令与规程里都不该再出现任何「切主位」的说法（那条 api 已经撤了）
-    expect(text).not.toContain('switchMain')
   })
 
   it('了解指令：标准函数调用（四个参数整行列出），规程在 WORKFLOWS_GUIDE 里', () => {

@@ -70,12 +70,15 @@ export function createChipOps(deps: AgentOpsDeps) {
      * 换算磁盘路径、补 nodeId、定标题都是这里的活。
      */
     build: (input: Record<string, unknown>) => {
-      const type = typeof input.type === 'string' ? input.type.trim() : ''
+      const rawType = typeof input.type === 'string' ? input.type.trim() : ''
+      // 别名兼容：超级文档在节点体系通篇叫 superdoc（api.ui.superdoc / node kind），
+      // chip 枚举是缩写 super——两个都收，防经验主义笔误
+      const type = rawType === 'superdoc' ? 'super' : rawType
       if (!(BUILD_TYPES as readonly string[]).includes(type)) {
         return {
           ok: false,
           problem:
-            'chip.build 的 type 只认：教学文档(doc)、笔记(note)、大纲(outline)、超级文档(super)、试卷(exam/attempt)、工作区文件(ws)、网页(web) 或本地文件(local)。要引用什么就给什么字段：文档类给 path（省略 = 当前节点）、web 给 url、exam/attempt 给 examId、super 带 name、note 带 note。',
+            'chip.build 的 type 只认：教学文档(doc)、笔记(note)、大纲(outline)、超级文档(super，完整名 superdoc 也认)、试卷(exam/attempt)、工作区文件(ws)、网页(web) 或本地文件(local)。要引用什么就给什么字段：文档类给 path（省略 = 当前节点）、web 给 url、exam/attempt 给 examId、super 带 name、note 带 note。',
         }
       }
       const str = (k: string): string | undefined => {

@@ -1,7 +1,7 @@
 /**
  * 智能体团队编排（team.*）这一组 ops 的宿主实现（见 learn/agentTeam/delegations）。
  *
- * 委托的发起方是任意执行声部（导师 / 命题官 / 判卷官 / 资料员——装配了 teamFrom 的
+ * 委托的发起方是任意执行声部（导师 / 调度员 / 出卷师 / 设计师 / 调研员 / 维修员——装配了 teamFrom 的
  * 轮都带 team.*；仅聊天没有 execute，收口即自动交付）。承接方也可以是任一声部——
  * 目标会话由宿主派发器在 delegate 时刻解析并钉住（承接声部按发起方所在目标解析，
  * 还没有会话时给确定性 id，首轮启动落库，见 learn/agentTeam/voiceConvs）。
@@ -16,7 +16,7 @@ import { agentStatus, armAwake, completeDelegation, createDelegation, listAgents
 const AWAKE_MAX_MS = 10 * 60_000
 
 const AGENT_ID_NOTE =
-  '先用 team.list() 看可用名单（free=仅聊天 / tutor=导师 / examiner=命题官 / grader=判卷官 / researcher=资料员）。'
+  '先用 team.list() 看可用名单（free=仅聊天 / tutor=导师 / dispatcher=调度员 / examiner=出卷师 / designer=设计师 / researcher=调研员 / fixer=维修员）。'
 
 export function createTeamOps(deps: Pick<AgentOpsDeps, 'teamFrom'>): TeamOps {
   // teamFrom 由装配层把关（deps.teamFrom 不在就没有 team 这一组，见 assemble）；探针直构造时也总给。
@@ -36,7 +36,8 @@ export function createTeamOps(deps: Pick<AgentOpsDeps, 'teamFrom'>): TeamOps {
       if (!AGENT_TEAM_IDS.includes(id)) {
         return { ok: false, error: '没有这位智能体：「' + (agentId || '（空）') + '」。' + AGENT_ID_NOTE }
       }
-      return { ok: true, ...agentStatus(id, from().goalId) }
+      // 状态查询带委托者身份：查的是「它替我开的委托会话」（dv: 按委托者分会）
+      return { ok: true, ...agentStatus(id, from().goalId, from().agent) }
     },
 
     /**
@@ -47,7 +48,7 @@ export function createTeamOps(deps: Pick<AgentOpsDeps, 'teamFrom'>): TeamOps {
       const rec = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
       const to = String(rec.to ?? '').trim().toLowerCase() as AgentProfileId
       if (!AGENT_TEAM_IDS.includes(to)) {
-        return { ok: false, error: 'delegate 需要 to（目标智能体 id：free / tutor / examiner / grader / researcher）。' + AGENT_ID_NOTE }
+        return { ok: false, error: 'delegate 需要 to（目标智能体 id：free / tutor / dispatcher / examiner / designer / researcher / fixer）。' + AGENT_ID_NOTE }
       }
       const instruction = String(rec.instruction ?? '').trim()
       if (!instruction) {
@@ -61,16 +62,19 @@ export function createTeamOps(deps: Pick<AgentOpsDeps, 'teamFrom'>): TeamOps {
       } else if (typeof rec.preemptibleMs === 'number' && Number.isFinite(rec.preemptibleMs) && rec.preemptibleMs > 0) {
         preemptibleUntil = nowMs + rec.preemptibleMs
       }
-      // 承接会话按发起方所在目标解析（承接声部一段工作会话；free 取最近活跃那段）
-      const toConversationId = agentStatus(to, self.goalId).conversationId
+      // 承接会话按发起方解析：**委托会话按委托者分会**（dv:<承接>:<委托者>:<goal>，
+      // 同一委托者的后续委托复用同一段）；free 取最近活跃那段
+      const toConversationId = agentStatus(to, self.goalId, self.agent).conversationId
       if (!toConversationId) {
+        // 走到这里只剩 free（其他声部的委托会话由系统按「承接声部 × 委托者 × 目标」自动落位，恒可解析）
         return {
           ok: false,
           error:
-            '「' + to + '」当前没有可承接的会话（导师还没有激活的学习目标 / 仅聊天还没有会话），稍后再试。',
+            '「' + to + '」当前没有可承接的会话：free（仅聊天）需要先有一段已存在的对话。' +
+            '稍后再试，或由你直接兜底完成这项工作，不要反复重试委托。',
         }
       }
-      // nodeId 可选：活长在某个节点上的委托（判卷、修图）要靠它装配节点级工具
+      // nodeId 可选：活长在某个节点上的委托（判卷）要靠它装配节点级工具
       const nodeId = typeof rec.nodeId === 'string' && rec.nodeId.trim() ? rec.nodeId.trim() : undefined
       const { delegation, position } = createDelegation({
         fromAgent: self.agent,

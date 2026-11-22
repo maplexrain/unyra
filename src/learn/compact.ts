@@ -1,4 +1,4 @@
-import { AGENT_VOICES, type AgentVoice } from '../agent/agentProfile'
+import { AGENT_VOICES, LEGACY_VOICE_ALIAS, type AgentVoice } from '../agent/agentProfile'
 import type { ContextSummary, Conversation, ConversationMessage } from '../agent/types'
 import { t } from '../i18n'
 
@@ -149,13 +149,16 @@ const CV_VOICE_RE = /^cv:([a-z]+):/
 /** 承接声部固化提示词里的角色行：中间版本漏标 voice 的老会话据此修一次 */
 const VOICE_ROLE_MARKERS: ReadonlyArray<readonly [RegExp, AgentVoice]> = [
   [/的命题官（examiner）：专精试卷命题/, 'examiner'],
-  [/的判卷官（grader）：专精判分/, 'grader'],
+  // 判卷官已并入命题官：老会话的固化提示词签名映射到承接者
+  [/的判卷官（grader）：专精判分/, 'examiner'],
   [/的资料员（researcher）：专精联网调研/, 'researcher'],
 ]
 
 function voiceFromId(id: string): AgentVoice | undefined {
-  const seg = CV_VOICE_RE.exec(id)?.[1] as AgentVoice | undefined
-  return seg && (AGENT_VOICES as readonly string[]).includes(seg) ? seg : undefined
+  const seg = CV_VOICE_RE.exec(id)?.[1]
+  if (!seg) return undefined
+  if ((AGENT_VOICES as readonly string[]).includes(seg)) return seg as AgentVoice
+  return LEGACY_VOICE_ALIAS[seg]  // 已退役声部（grader）映射到承接者
 }
 
 /**

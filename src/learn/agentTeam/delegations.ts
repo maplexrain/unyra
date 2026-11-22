@@ -67,10 +67,11 @@ export interface AgentTeamDispatcher {
   isConversationRunning: (conversationId: string) => boolean
   /**
    * 这位声部「当前」的会话（委托承接与状态查询都落在它上面）；没有则 null。
-   * goalId 是委托发起方所在的目标——承接声部的会话按目标解析（没有就给确定性 id，
-   * 见 learn/agentTeam/voiceConvs）；free 不挂目标，忽略 goalId 取最近活跃的那段。
+   * goalId 是委托发起方所在的目标；**fromAgent 给定时解析的是委托会话**
+   * （dv:<承接声部>:<委托者声部>:<goalId>，按委托者分会、同委托者复用，见
+   * learn/agentTeam/voiceConvs）；free 不挂目标，忽略 goalId 取最近活跃的那段。
    */
-  resolveTargetConversation: (agent: AgentProfileId, goalId?: string | null) => string | null
+  resolveTargetConversation: (agent: AgentProfileId, goalId?: string | null, fromAgent?: AgentProfileId) => string | null
   /** 启动一轮（不堵塞调用方）：kind 决定指令口径，text 由 delegationTurnText 生成 */
   startTurn: (req: { conversationId: string; kind: DelegationTurnKind; delegation?: AgentDelegation }) => void
 }
@@ -287,8 +288,40 @@ export function listAgents(): Array<{ id: AgentProfileId; name: string }> {
   return AGENT_TEAM_IDS.map((id) => ({ id, name: agentNameOf(settings.profiles?.[id], id) }))
 }
 
+/** 一条「我发起的、还没收口」的委托的公开形状（界面「委托中」条用） */
+export interface ActiveDelegationView {
+  id: string
+  toAgent: AgentProfileId
+  /** 承接方的显示名（profile 覆盖后的，界面直接画） */
+  toName: string
+  status: 'pending' | 'running'
+  toConversationId: string
+}
+
+/**
+ * 某段会话（委托者视角）发起的、还没收口的委托：pending（排队等承接方空闲）与
+ * running（承接方正在处理）都在列——界面在消息列表底部展示并允许跳转到委托会话。
+ */
+export function activeDelegationsFrom(conversationId: string): ActiveDelegationView[] {
+  const out: ActiveDelegationView[] = []
+  for (const d of delegations.values()) {
+    if (d.fromConversationId !== conversationId) continue
+    if (d.status === 'pending' || d.status === 'running') {
+      out.push({
+        id: d.id,
+        toAgent: d.toAgent,
+        toName: displayNameOf(d.toAgent),
+        status: d.status,
+        toConversationId: d.toConversationId,
+      })
+    }
+  }
+  // 处理中的排前面（界面先看到正在动的）
+  return out.sort((a, b) => (a.status === b.status ? 0 : a.status === 'running' ? -1 : 1))
+}
+
 /** 一位声部的完整状态：是否在跑 / 正在处理的委托 / 未处理委托队列 */
-export function agentStatus(agent: AgentProfileId, goalId?: string | null): {
+export function agentStatus(agent: AgentProfileId, goalId?: string | null, fromAgent?: AgentProfileId): {
   id: AgentProfileId
   name: string
   conversationId: string | null
@@ -298,7 +331,7 @@ export function agentStatus(agent: AgentProfileId, goalId?: string | null): {
   pending: Array<{ id: string; from: string; createdAt: number; instruction: string }>
 } {
   const host = dispatcherOf()
-  const conv = host?.resolveTargetConversation(agent, goalId) ?? null
+  const conv = host?.resolveTargetConversation(agent, goalId, fromAgent) ?? null
   const isRunning = conv ? (host?.isConversationRunning(conv) ?? false) : false
   const settings = loadAgentSettings()
   const running = runningOf(agent)
@@ -413,12 +446,16 @@ export function onConversationTurnClosed(
     }, delay)
     awakeTimers.set(conversationId, timer)
   }
-  // 4) 承接队列接续（本会话名下还有待处理委托 → 空闲启动下一条）
+  // 4) 承接队列接续：收口的是这位声部的委托会话（dv: 前缀按声部段认领）且它空闲
+  //    → 启动下一条。委托会话按委托者分会之后，队首的 toConversationId 可能是
+  //    「另一位委托者」的那段会话——按声部认领而不是按会话 id 严格相等。
   for (const agent of AGENT_TEAM_IDS) {
     const queue = queues[agent]
     if (!queue.length) continue
     const head = delegations.get(queue[0]!)
-    if (head && head.toConversationId === conversationId) {
+    if (!head) continue
+    const owned = head.toConversationId === conversationId || conversationId.startsWith('dv:' + agent + ':')
+    if (owned && !runningOf(agent)) {
       maybeStartNext(agent)
       break
     }

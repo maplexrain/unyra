@@ -28,7 +28,7 @@ export const MCP_SERVE_TOOLS: McpServeToolDef[] = [
     description:
       '执行一段 JS/TS 编排来操作归一 Unyra（本地优先的 AI 学习应用）的学习数据。' +
       'api 只开放了本会话授权的组：api.node.*（节点宇宙：list/get/create/delete 与内容读写、连线）、' +
-      'api.memory.*、api.res.*、api.workspace.*、api.web.*、api.tmp.*。' +
+      'api.memory.*、api.workspace.*、api.web.*、api.tmp.*。' +
       'body 是匿名函数源码，形如 ((api)=>{ ... return 结果 })，可直接写 TypeScript、可用 await；' +
       '返回值折成纯数据回给你（超长截断，中间数据用 api.tmp.set 暂存）。' +
       '每个组、每条 api 都挂着 __help()：先 await api.<组>.__help() 看有哪些 api，' +

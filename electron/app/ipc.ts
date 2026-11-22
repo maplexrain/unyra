@@ -12,7 +12,6 @@ import { canOpenExternal } from '../link-core'
 import { setLocale, t } from '../i18n'
 import { registerPluginIpc } from '../plugins'
 import { allowedHostList, setAllowedHosts } from '../proxy'
-import { registerRunnerIpc } from '../runner'
 import { closeBehavior, markLocalOwnWrite, registerStorageIpc, setCloseBehavior, setUiLocale, uiLocale } from '../storage'
 import { registerUpdateIpc } from '../update'
 import { registerCapabilitiesIpc } from '../capabilities'
@@ -81,8 +80,6 @@ export function registerIpc(): void {
   registerStorageIpc()
   // 插件目录：列出 / 读源码 / 开关（window.mojiNative.plugins，见 electron/plugins.ts）
   registerPluginIpc()
-  // 代码块伪编译：产物的持久化与运行时唯一的联网出口（见 electron/runner.ts）
-  registerRunnerIpc()
   // 模型能力（TTS / STT / OCR / Files API，见 electron/capabilities/）：三个能力接入
   // DeepSeek 或用户自架的本地适配器后，网络调用都由主进程发起（渲染层 CSP 够不着外网）
   registerCapabilitiesIpc()

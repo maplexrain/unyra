@@ -42,7 +42,6 @@ export interface CanvasChannelDeps {
   onOpenSettings: () => void
   agent: AgentApi
   startPrereqOutline: StartersApi['startPrereqOutline']
-  startVideoOverview: StartersApi['startVideoOverview']
   startGenerateClassroom: StartersApi['startGenerateClassroom']
   goalSubtreeSize: (rootOrGoalId: string) => number
   setPendingDelete: (p: PendingNodeDelete | null) => void
@@ -63,7 +62,6 @@ export function useCanvasChannel({
   onOpenSettings,
   agent,
   startPrereqOutline,
-  startVideoOverview,
   startGenerateClassroom,
   goalSubtreeSize,
   setPendingDelete,
@@ -589,10 +587,9 @@ export function useCanvasChannel({
         if (!node || node.kind !== 'video') return { error: '这个视频节点已经不在了' }
         return node.editContent(patch)
       },
-      onGenerateVideoDoc: (videoNodeUuid: string) => startVideoOverview(videoNodeUuid),
       onGenerateClassroom: (classroomUuid: string) => startGenerateClassroom(classroomUuid),
     }),
-    [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, canvasSetEntry, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, canvasRenameOutlineEntry, canvasDeleteOutlineEntry, generateDocForNode, startPrereqOutline, startVideoOverview, startGenerateClassroom, startOutlineGuide, openOutlineGuide, startNoteSummary, makeNodeService, openTab, getLatest, set, store, onToast],
+    [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, canvasSetEntry, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, canvasRenameOutlineEntry, canvasDeleteOutlineEntry, generateDocForNode, startPrereqOutline, startGenerateClassroom, startOutlineGuide, openOutlineGuide, startNoteSummary, makeNodeService, openTab, getLatest, set, store, onToast],
   )
 
   return { requestGenerateDoc, updateStructure, canvasChannel }

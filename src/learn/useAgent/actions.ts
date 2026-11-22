@@ -146,8 +146,9 @@ export function useAgentActions(deps: {
         /** 显式目标：节点刚创建、hook 状态还没跟上时用 */
         target?: AgentRunTarget
         /**
-         * 分诊给哪位声部跑（agent team 的团队分工）：出卷 → examiner、阅卷 → grader…
-         * 目标会话按声部解析（承接声部落各自的工作会话）；不给 = 导师（当前显示的那段）。
+         * 分诊给哪位声部跑（agent team 的团队分工）：**工作流统一经调度员路由**（voiceForWorkflow
+         * 恒返回 dispatcher）——工作流轮起在调度员的会话上，由它委托给对应声部；不给 = 导师
+         * （当前显示的那段）。compact 不给 voice：压缩是当前会话的维护操作，不经调度员。
          */
         voice?: AgentVoice
         /** 附带的图片附件 */
@@ -168,7 +169,7 @@ export function useAgentActions(deps: {
           (s.goals.find((g) => g.id === targetGoalId)?.rootNodeId || s.nodes.find((n) => n.goalId === targetGoalId)?.id || null)
 
         if (targetGoalId && opts?.voice && opts.voice !== 'tutor') {
-          // 系统侧分诊到承接声部（出卷 → 命题官、阅卷 → 判卷官…）：落它自己的工作会话
+          // 系统侧分诊（工作流统一经调度员路由）：落调度员的会话，由它委托给对应声部
           //（没有就给确定性 id，首轮启动落库，见 learn/agentTeam/voiceConvs）
           target = {
             goalId: targetGoalId,

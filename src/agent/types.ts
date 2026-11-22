@@ -66,7 +66,7 @@ export type AgentPart =
        */
       soft?: boolean
       /**
-       * 这次调用**附带回的图片**（如 execute 里 res.read 看了一张图）。
+       * 这次调用**附带回的图片**（如 execute 里看图 / 读图 api 附带了一张图）。
        * 字节在磁盘上，这里只有引用（见 MessageImage）。
        */
       images?: MessageImage[]
@@ -171,7 +171,7 @@ export interface ConversationMessage {
    */
   mark?: string
   /**
-   * 工作流启动时的**实参**（runWorkflow 的 params：如伪编译的 language/key/code）。
+   * 工作流启动时的**实参**（runWorkflow 的 params：如出卷的 examId / attemptId）。
    * 界面的工作流分界条展开时据此画「参数行」，并把指令里对应的实参高亮出来。
    * 只随隐藏指令落库；聊天轮没有它。
    */
@@ -336,7 +336,7 @@ export interface MessageImage {
   bytes: number
   /**
    * 像素尺寸。**可选**：用户贴进来的图在保存时就知道尺寸，而由资源库挂上来的图
-   * （Agent 用 res.read 看的那一张）只从清单里拿到字节数，不必为它多解码一次。
+   * （Agent 看图时附带的那些）只从清单里拿到字节数，不必为它多解码一次。
    */
   width?: number
   height?: number
@@ -362,7 +362,8 @@ export interface Conversation {
   goalId: string
   /**
    * 这段对话属于哪位声部（agent team 的团队分工，见 agent/agentProfile）：
-   * 命题官 / 判卷官 / 资料员的承接会话在这里标身份；缺省 = 导师（老数据全部是导师对话）。
+   * 调度员 / 出卷师 / 设计师 / 调研员 / 维修员的承接会话在这里标身份；缺省 = 导师（老数据全部是导师对话；
+   * 已退役的判卷官 grader 载入时映射到命题官，见 agentProfile 的 LEGACY_VOICE_ALIAS）。
    */
   voice?: AgentVoice
   messages: ConversationMessage[]

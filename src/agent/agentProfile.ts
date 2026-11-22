@@ -20,27 +20,57 @@ import type { ResolvedProvider } from '../ai/client'
 import { loadAgentSettings, saveAgentSettings, type AgentSettings } from './settings'
 
 /**
- * 智能体声部 id（agent team 左栏的五位，与 components 的 AgentTeamMode 同形）：
- * - tutor      导师：主讲与协调（教学对话、大纲、画像、日程），团队里的分诊入口；
- * - examiner   命题官：试卷命题、课堂课件、超级实验室、伪编译与图像修复；
- * - grader     判卷官：判分与错题讲解（交卷后的阅卷轮跑在它的会话里）；
- * - researcher 资料员：联网调研、内置浏览器实操、项目与文章解读、视频总览；
- * - free       仅聊天：不挂目标的纯对话（固定页签，无 execute 工具面）。
+ * 智能体声部 id（agent team 左栏的六位执行声部，与 components 的 AgentTeamMode 同形）：
+ * - tutor       导师：主讲与协调（教学对话、大纲、画像、日程），教学主线执行声部；
+ * - dispatcher  调度员：接收用户需求、按路由表把任务委托给对应声部、交付结果——
+ *               **节点宇宙与其他地方发起的工作流统一经过它路由**；
+ * - examiner    出卷师：试卷命题、判分与错题讲解；
+ * - designer    设计师：互动课堂课件与超级实验室；
+ * - researcher  调研员：联网调研与内置浏览器实操（为其他声部提供网络消息的调研）；
+ * - fixer       维修员：修复问题（目前仅解析失败的函数图像语法，用户主动触发）；
+ * - free        仅聊天：不挂目标的纯对话（固定页签，无 execute 工具面）。
  */
-export type AgentProfileId = 'free' | 'tutor' | 'examiner' | 'grader' | 'researcher'
+export type AgentProfileId = 'free' | 'tutor' | 'dispatcher' | 'examiner' | 'designer' | 'researcher' | 'fixer'
 
 /** 挂在目标上的执行声部（free 不挂目标，是固定页签） */
 export type AgentVoice = Exclude<AgentProfileId, 'free'>
 
-/** 全部执行声部（tutor 在前：老数据没有 voice 字段时兜到它） */
-export const AGENT_VOICES: readonly AgentVoice[] = ['tutor', 'examiner', 'grader', 'researcher']
+/** 全部执行声部（tutor 在前：老数据没有 voice 字段时兜到它；调度员随后——它是任务入口） */
+export const AGENT_VOICES: readonly AgentVoice[] = ['tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer']
 
 /** team.* 的完整名单（free 也算：它可以承接纯对话性质的委托） */
-export const AGENT_TEAM_IDS: readonly AgentProfileId[] = ['free', 'tutor', 'examiner', 'grader', 'researcher']
+export const AGENT_TEAM_IDS: readonly AgentProfileId[] = [
+  'free', 'tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer',
+]
+
+/**
+ * **可交流**标签：学习者可以选中直接发消息启动的声部。不在这个集合里的声部
+ * （调研员 / 维修员）只能由**工作流触发**或**被其他声部委托**来启动——界面据此
+ * 禁用输入区、选中时也不现场建会话。调度员可交流：用户直接把需求说给它听。
+ */
+export const COMMUNICABLE_VOICES: ReadonlySet<AgentVoice> = new Set(['tutor', 'dispatcher', 'examiner', 'designer'])
+
+/**
+ * **内容生成**标签：注入**写作策略**（文档格式策略，见 agent/docFormat）与**学习者
+ * 画像**（见 agent/userInfo）的声部——产出面向学习者的内容才需要贴合这个人；
+ * 调研 / 修复类声部拿到画像只是噪声。
+ */
+export const CONTENT_VOICES: ReadonlySet<AgentVoice> = new Set(['tutor', 'examiner', 'designer'])
+
+/** 可交流口径（free 恒可聊）；含 legacy 声部时先映射到现役 */
+export function isCommunicable(id: AgentProfileId): boolean {
+  return id === 'free' || COMMUNICABLE_VOICES.has(id as AgentVoice)
+}
+
+/**
+ * 已退役声部的**legacy 别名**：老数据里还有它们的痕迹（确定性会话 id 的声部段、
+ * 固化提示词的角色行），载入时映射到承接了其职责的现役声部——判卷官并入了出卷师。
+ */
+export const LEGACY_VOICE_ALIAS: Readonly<Record<string, AgentVoice>> = { grader: 'examiner' }
 
 /** 一位智能体的独立设置。缺省字段 = 跟随默认 / 全局，见模块顶部说明 */
 export interface AgentProfile {
-  /** 显示名覆盖；空 / 缺省 = 默认名（仅聊天 / 导师 / 命题官 …） */
+  /** 显示名覆盖；空 / 缺省 = 默认名（仅聊天 / 导师 / 出卷师 …） */
   name?: string
   /** 头像 id（AGENT_AVATARS 目录）；缺省 = 默认头像 */
   avatar?: string
@@ -64,21 +94,28 @@ export const AGENT_AVATARS: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'compass', label: '指南针' },
   { id: 'spark', label: '灵感' },
   { id: 'brain', label: '思维' },
+  { id: 'wrench', label: '扳手' },
+  { id: 'palette', label: '调色盘' },
+  { id: 'route', label: '路线' },
 ]
 
 export const DEFAULT_AGENT_NAME: Record<AgentProfileId, string> = {
   free: '仅聊天',
   tutor: '导师',
-  examiner: '命题官',
-  grader: '判卷官',
-  researcher: '资料员',
+  dispatcher: '调度员',
+  examiner: '出卷师',
+  designer: '设计师',
+  researcher: '调研员',
+  fixer: '维修员',
 }
 export const DEFAULT_AGENT_AVATAR: Record<AgentProfileId, string> = {
   free: 'chat',
   tutor: 'grad',
+  dispatcher: 'route',
   examiner: 'spark',
-  grader: 'brain',
+  designer: 'palette',
   researcher: 'compass',
+  fixer: 'wrench',
 }
 
 /* ---------- 团队分工：api 能力面 ---------- */
@@ -88,9 +125,10 @@ export const DEFAULT_AGENT_AVATAR: Record<AgentProfileId, string> = {
  * 「谁会什么」是团队分工，不是用户偏好；分配原则：
  * - core 顶层原语（wait / ask / tiktok / compact / fetch / see）按需给：ask / see 给
  *   要与人交互、要看图面的声部；fetch 只给有 web 组的声部；
- * - 域专属组只给对应的声部（exam → 判卷官、classroom → 命题官、browser → 资料员、
+ * - 域专属组只给对应的声部（exam → 出卷师、classroom → 设计师、browser → 调研员、
  *   subagent / mcp / permission → 只有导师）——职责拆分就是能力面拆分；
- * - delivery / tmp / team 全体执行声部都有：交付登记、临时变量与团队协作是协作纪律。
+ * - 交付登记（delivery）与临时变量（tmp）按声部给；团队协作（team）全体执行声部都有
+ *   （被委托方收口交付的唯一通道）；调度员轻装（team/tmp/node）——它的活全靠委托。
  */
 export interface AgentApiPlane {
   /** 文档与设置页展示的 api 组（'core' 只作文档展示；运行时放行走 topLevel + 组名） */
@@ -107,29 +145,39 @@ const CORE_TOP_LEVEL_WEB = [...CORE_TOP_LEVEL_ALL, 'fetch', 'see'] as const
 export const AGENT_API_PLANES: Record<AgentVoice, AgentApiPlane> = {
   tutor: {
     groups: [
-      'node', 'memory', 'schedule', 'tmp', 'res', 'workspace', 'userInfo', 'method', 'wf',
-      'code', 'chip', 'delivery', 'web', 'browser', 'mcp', 'ui', 'subagent', 'permission',
+      'node', 'memory', 'schedule', 'tmp', 'workspace', 'userInfo', 'method', 'wf',
+      'chip', 'delivery', 'mcp', 'ui', 'subagent', 'permission',
       'files', 'process', 'skill', 'video', 'project', 'team',
     ],
-    topLevel: CORE_TOP_LEVEL_WEB,
+    // 联网调研已分给调研员：导师没有 web / browser / fetch，只有看图的 see
+    topLevel: [...CORE_TOP_LEVEL_ALL, 'see'] as const,
+  },
+  dispatcher: {
+    // 调度员轻装上阵：路由与跟踪全走 team，node 用来现查目标结构好把指令写准
+    groups: ['team', 'tmp', 'node'],
+    // 接需求要 ask 澄清；交付完成要响铃提醒
+    topLevel: CORE_TOP_LEVEL_ALL,
   },
   examiner: {
     groups: [
-      'node', 'tmp', 'res', 'workspace', 'userInfo', 'method', 'wf', 'code', 'chip',
-      'delivery', 'web', 'ui', 'files', 'classroom', 'project', 'team',
+      'node', 'exam', 'tmp', 'workspace', 'userInfo', 'wf', 'chip',
+      'delivery', 'web', 'ui', 'files', 'project', 'team',
     ],
     topLevel: CORE_TOP_LEVEL_WEB,
   },
-  grader: {
-    groups: ['node', 'exam', 'tmp', 'wf', 'delivery', 'team'],
-    topLevel: ['wait', 'compact'],
+  designer: {
+    // team 是被委托后的交付通道（complete）——所有承接声部都必须有
+    groups: ['node', 'tmp', 'method', 'delivery', 'classroom', 'team'],
+    // 课堂与实验都不联网：问需求要 ask（超级实验室的第一步），没有 fetch / see
+    topLevel: CORE_TOP_LEVEL_ALL,
   },
   researcher: {
-    groups: [
-      'node', 'tmp', 'res', 'workspace', 'wf', 'chip', 'delivery', 'web', 'browser',
-      'files', 'project', 'video', 'team',
-    ],
+    groups: ['tmp', 'workspace', 'delivery', 'web', 'browser', 'team'],
     topLevel: CORE_TOP_LEVEL_WEB,
+  },
+  fixer: {
+    groups: ['node', 'tmp', 'team'],
+    topLevel: ['wait', 'compact'],
   },
 }
 
@@ -144,18 +192,21 @@ export function agentRuntimeApiAllow(voice: AgentVoice): string[] {
 /* ---------- 团队分工：工作流面 ---------- */
 
 /**
- * 每位声部固定可触发的**内置**工作流（设置里只读、不可增删）：
- * - 导师留下教学主线（开讲 / 大纲 / 导读 / 划词注解）与压缩交接；
- * - 命题官拿走创作域（出卷 / 课堂 / 超级实验室 / 伪编译 / 修图）；
- * - 判卷官只管阅卷；
- * - 资料员拿走调研域（浏览器操作 / 项目解读 / 视频总览）。
+ * 每位声部固定可触发的**内置**工作流（设置里只读、不可增删）。口径（用户定稿：工作流
+ * 统一经调度员路由）：这是各声部的**规程面**——承接调度员委托进来的活照规程干，不再
+ * 是触发入口（触发口一律 voiceForWorkflow → 调度员）：
+ * - 导师：教学主线（开讲 / 大纲 / 导读 / 划词注解）；
+ * - 出卷师：出卷与阅卷；设计师：课件与实验；调研员：浏览器操作；维修员：修图；
+ * - 调度员没有执行面（它的活全靠委托），只有 compact。
  * compact 全员都有：自动压缩不分声部，长会话都要能交接。
  */
 export const AGENT_WORKFLOW_PLANES: Record<AgentVoice, readonly string[]> = {
   tutor: ['teach-node', 'outline', 'outline-guide', 'explain', 'compact'],
-  examiner: ['exam', 'classroom', 'superlab', 'plot-fix', 'code-compile', 'compact'],
-  grader: ['exam-grade', 'compact'],
-  researcher: ['browser-use', 'project-interpret', 'video-overview', 'compact'],
+  dispatcher: ['compact'],
+  examiner: ['exam', 'exam-grade', 'compact'],
+  designer: ['classroom', 'superlab', 'compact'],
+  researcher: ['browser-use', 'compact'],
+  fixer: ['plot-fix', 'compact'],
 }
 
 /** 登记工作流的授权面：builtin = 声部固定面；registered = 登记条目（null = 全部可用） */
@@ -174,15 +225,14 @@ export function agentWfGrant(settings: AgentSettings, voice: AgentVoice): AgentW
 }
 
 /**
- * 按工作流 id 反查该由哪位声部跑（系统侧触发口的分诊口径：界面的出卷 / 阅卷 /
- * 课件按钮直接把轮开到对应声部的工作会话）。不在任何分工面里的 id（登记条目）归导师。
+ * 工作流入口的**统一路由**（用户定稿：节点宇宙与其他地方发起的工作流统一经过调度员）：
+ * 工作流轮一律起在**调度员**的会话上，调度员按自己提示词里的路由表把活委托给对应声部，
+ * 等交付后向用户汇报。AGENT_WORKFLOW_PLANES 因此只是各声部的规程面（承接委托时照着干），
+ * 不再是触发入口。compact 例外：压缩是当前会话的维护操作，走 runWorkflow 的无 voice 路径，
+ * 不经调度员（把调度员的上下文压了没有意义）。
  */
-export function voiceForWorkflow(id: string): AgentVoice {
-  const key = id.trim().toLowerCase()
-  for (const voice of AGENT_VOICES) {
-    if (AGENT_WORKFLOW_PLANES[voice].includes(key)) return voice
-  }
-  return 'tutor'
+export function voiceForWorkflow(_id: string): AgentVoice {
+  return 'dispatcher'
 }
 
 function wfAllowOf(list: string[] | undefined): ReadonlySet<string> | null {

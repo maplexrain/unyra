@@ -38,7 +38,7 @@ import {
   type AgentTeamDispatcher,
 } from '../agentTeam/delegations'
 import type { AgentVoice } from '../../agent/agentProfile'
-import { resolveVoiceConversation, voiceOfConversation } from '../agentTeam/voiceConvs'
+import { delegationConversationId, resolveVoiceConversation, voiceOfConversation } from '../agentTeam/voiceConvs'
 import { setEffortContextProbe } from '../effortGuard'
 import type { LearnStore } from '../types'
 import { conversationById, nodeById } from '../graph'
@@ -661,7 +661,12 @@ export function useAgent(opts: {
   useEffect(() => {
     teamHostRef.current = {
       isConversationRunning: (convId) => Boolean(running[convId]),
-      resolveTargetConversation: (agent, goalId) => {
+      resolveTargetConversation: (agent, goalId, fromAgent) => {
+        // 委托承接：**按委托者分会**（dv:<承接>:<委托者>:<goal>，同委托者复用同一段；
+        // 见 learn/agentTeam/voiceConvs）。free 没有确定性会话，维持「最近活跃」口径。
+        if (agent !== 'free' && fromAgent && goalId) {
+          return delegationConversationId(goalId, agent, fromAgent)
+        }
         if (agent === 'free') {
           let best: string | null = null
           let bestTs = -1

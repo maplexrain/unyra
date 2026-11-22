@@ -18,7 +18,7 @@ function isFailedValue(v: unknown): boolean {
   return r.ok === false || typeof r.error === 'string'
 }
 
-/** api 返回值里夹带的图片引用（如 res.read 看了一张图）：见 ResourceOps 的说明 */
+/** api 返回值里夹带的图片引用（如看图 / 截图 api 附带的图）：见 AgentToolResult.images 的说明 */
 export function imagesOf(value: unknown): MessageImage[] {
   if (!value || typeof value !== 'object') return []
   const imgs = (value as { images?: unknown }).images

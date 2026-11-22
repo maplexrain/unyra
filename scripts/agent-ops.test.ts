@@ -27,7 +27,7 @@
  * 由第一个 import 触发，仍然早于所有测试函数——顺序与副作用时机与拆分前一致。
  */
 import { fails, pass } from './agent-ops/harness'
-import { apiNameTests, resourceApiTests, toolTests } from './agent-ops/docs.test'
+import { apiNameTests, toolTests } from './agent-ops/docs.test'
 import { scrollTests } from './agent-ops/reading.test'
 import { examTests, methodAndSdocTests, userInfoTests, workflowTests } from './agent-ops/exam.test'
 import { budgetAndAttachTests, imageTests, staticTests } from './agent-ops/media.test'
@@ -42,7 +42,6 @@ apiNameTests()
   .then(() => scrollTests())
   .then(() => imageTests())
   .then(() => staticTests())
-  .then(() => resourceApiTests())
   .then(() => budgetAndAttachTests())
   .then(() => examTests())
   .then(() => cspTests())

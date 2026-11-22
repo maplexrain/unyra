@@ -137,7 +137,6 @@ describe('Agent 反馈优化与摩擦点消除测试', () => {
       nodeId: () => docId,
       workspaceIo: { list: async () => ({ ok: true, entries: [] }), read: async () => ({ ok: true, content: '' }), write: async () => ({ ok: true }) },
       projectIo: { send: async () => ({ ok: true, op: 'list', path: '', entries: [] } as any) },
-      resourceIo: {} as any,
     })
 
     let pointedTarget: any = null
@@ -197,7 +196,6 @@ describe('Agent 反馈优化与摩擦点消除测试', () => {
       nodeId: () => node.id,
       workspaceIo: { list: async () => ({ ok: true, entries: [] }), read: async () => ({ ok: true, content: '' }), write: async () => ({ ok: true }) },
       projectIo: { send: async () => ({ ok: true, op: 'list', path: '', entries: [] } as any) },
-      resourceIo: {} as any,
     })
 
     const builtNote = ops.chip!.build({

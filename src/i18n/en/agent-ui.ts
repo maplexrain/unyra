@@ -2,6 +2,14 @@
  * 英文字典：导师对话区（components/agent 全部 + AgentSettingsPanel）。
  *
  * 键 = 界面里的中文原文，逐字节一致（含全角标点）；插值用 {0} {1}。
+
+  '委托进行中': 'Delegations in progress',
+  '处理中': 'Running',
+  '排队中': 'Queued',
+  '查看委托会话': 'Open delegation chat',
+  '跳转到它的委托会话': 'Open the delegation conversation',
+  '委托': 'Delegated',
+  '委托会话：只承接这位委托者的委托，不接受直接输入': 'A delegation chat: it only takes instructions from its delegator and accepts no direct input',
  * 本文件只由「导师对话区」分片的接入者维护。
  */
 const dict: Record<string, string> = {

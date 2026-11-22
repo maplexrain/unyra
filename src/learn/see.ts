@@ -179,7 +179,7 @@ async function saveSeenImage(
 }
 
 /**
- * see 的宿主实现。createSeeOps 只做装配（与 createResourceOps 同一条纪律：
+ * see 的宿主实现。createSeeOps 只做装配（与 createWorkspaceOps 同一条纪律：
  * store 与 goalId 现取闭包，本模块不在 Node 探针里裸跑——它要 DOM 与原生桥）。
  */
 export function createSeeOps(deps: {
@@ -245,7 +245,7 @@ async function seeImage(
       if (!res) {
         return {
           ok: false,
-          error: `资源库中找不到引用「${raw || url}」对应的图片。可先用 api.res.list() 查看现有静态资源。`,
+          error: `资源库中找不到引用「${raw || url}」对应的图片。可在资源库界面上确认现有静态资源。`,
         }
       }
       const rel = resourceRel(store, gid, res)

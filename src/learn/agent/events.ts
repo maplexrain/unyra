@@ -37,7 +37,7 @@ export function applyEvent(parts: AgentPart[], e: AgentEvent): void {
          * 只是界面上点一枚黄（见 ToolCard）。
          */
         p.status = e.ok || e.soft ? 'done' : 'error'
-        // 工具附带的图片（如 res.read 看了一张图）：只存引用，字节在磁盘上
+        // 工具附带的图片（如看图 / 读图 api 附带了一张图）：只存引用，字节在磁盘上
         if (e.images?.length) p.images = e.images
       }
       break

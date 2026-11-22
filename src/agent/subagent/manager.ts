@@ -473,7 +473,6 @@ export function subsetSandbox(base: SandboxOptions, groups: string[]): SandboxOp
     ...(base.nodes ? { nodes: base.nodes } : {}),
     ...(base.docPath ? { docPath: base.docPath } : {}),
     ...(has('tmp') && base.tmp ? { tmp: base.tmp } : {}),
-    ...(has('res') && base.resources ? { resources: base.resources } : {}),
     ...(has('web') && base.web ? { web: base.web } : {}),
     ...(has('memory') && base.memory ? { memory: base.memory } : {}),
     ...(has('workspace') && base.workspace ? { workspace: base.workspace } : {}),

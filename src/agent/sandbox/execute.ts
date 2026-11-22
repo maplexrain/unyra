@@ -110,7 +110,7 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
     // nodeFacade 说明）。
     const { api } = buildApi(opts, log, { nodeFacade: !!opts.runSandbox })
     /**
-     * 本次编排里 api 附带的图片（目前只有 res.read 会带）。它们不能进 content
+     * 本次编排里 api 附带的图片（看图 / 读图类 api 会带）。它们不能进 content
      * （文本通道会把 base64 截成乱码），随工具结果的 images 交回运行时，
      * 由运行时作为图片片段挂到下一跳。
      */
@@ -284,7 +284,7 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
       ...(attached.length
         ? {
             images: attached,
-            // 回执里点明「图在下一跳」：否则模型会以为 res.read 什么也没给它
+            // 回执里点明「图在下一跳」：否则模型会以为读图什么也没给它
             content: clip(
               head +
                 result +
