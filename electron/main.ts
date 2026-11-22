@@ -33,6 +33,7 @@ import { registerMediaRelayProtocol } from './media-relay'
 import { startUpdateChecks } from './update'
 import { registerWebIpc } from './web'
 import { bootSingleInstance, initStartupTrace, lap } from './app/startup'
+import { listenDevQuit } from './app/devQuit'
 import { createWindow, mainWindow, showMainWindow } from './app/windows'
 import { setupWebBrowser } from './app/webSession'
 import { closeExamWindow } from './app/examWindow'
@@ -68,6 +69,10 @@ function main(): void {
   // 全局兜底：未捕获异常只记日志，不静默崩掉整个应用
   process.on('uncaughtException', (err) => console.error('[main] uncaughtException:', err))
   process.on('unhandledRejection', (reason) => console.error('[main] unhandledRejection:', reason))
+
+  // dev 脚本的优雅停机通道（stdin 哨兵 → app.quit()，见 app/devQuit.ts）：
+  // 不挂它，dev 停 Electron 只能硬杀，缓存带脏页收摊、下次首启报 disk_cache 错
+  listenDevQuit()
 
   // 特权协议声明必须在 app ready 之前。
   // corsEnabled + supportFetchAPI + stream 三件套缺一不可：
