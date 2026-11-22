@@ -300,12 +300,12 @@ describe('系统提示词（团队分工：导师分诊、承接声部各拿各�
   it('导师提示词：教学规程与速查在场，创作域 / 阅卷域已分诊出去', () => {
     const text = buildTeacherSystem()
     expect(text).toContain('【开讲】教学文档生成（teach-node）')
-    expect(text).toContain('你是软件「归一 unyra」的智能导师助手')
+    expect(text).toContain('你是「归一 Unyra」的导师龟')
     // 团队协作与分诊口径在场
     expect(text).toContain('api.team.list()')
-    expect(text).toContain('委托 examiner（出卷师）')
-    expect(text).toContain('委托 designer（设计师）')
-    expect(text).toContain('委托 researcher（调研员）')
+    expect(text).toContain('委托 examiner（出卷龟）')
+    expect(text).toContain('委托 designer（设计龟）')
+    expect(text).toContain('委托 researcher（调研龟）')
     // 联网分给了调研员：browser 不在导师的速查里；web 在共同前缀（分工面外运行时拒，注记行兜底），检索步骤写的是委托
     expect(text).not.toContain('#### api.browser')
     expect(text).toContain('委托调研')
@@ -317,13 +317,13 @@ describe('系统提示词（团队分工：导师分诊、承接声部各拿各�
 
   it('调度员提示词：路由表齐、执行规程不在', () => {
     const text = buildDispatcherSystem()
-    expect(text).toContain('调度员')
+    expect(text).toContain('调度龟')
     expect(text).toContain('路由表')
-    expect(text).toContain('tutor（导师）')
-    expect(text).toContain('examiner（出卷师）')
-    expect(text).toContain('designer（设计师）')
-    expect(text).toContain('researcher（调研员）')
-    expect(text).toContain('fixer（维修员）')
+    expect(text).toContain('tutor（导师龟）')
+    expect(text).toContain('examiner（出卷龟）')
+    expect(text).toContain('designer（设计龟）')
+    expect(text).toContain('researcher（调研龟）')
+    expect(text).toContain('fixer（维修龟）')
     expect(text).toContain('team.delegate')
     expect(text).toContain('不抢活')
     // 它没有执行规程（出卷 / 课堂的规程都在承接方）
@@ -335,7 +335,7 @@ describe('系统提示词（团队分工：导师分诊、承接声部各拿各�
 
   it('出卷师提示词：出卷与阅卷规程齐、课堂与修图不在', () => {
     const text = buildExaminerSystem()
-    expect(text).toContain('出卷师')
+    expect(text).toContain('出卷龟')
     expect(text).toContain('判分讲解')
     expect(text).toContain('【出卷】试卷命题（exam）')
     expect(text).toContain('【阅卷】判分与讲解（exam-grade）')
@@ -350,7 +350,7 @@ describe('系统提示词（团队分工：导师分诊、承接声部各拿各�
 
   it('设计师提示词：课堂与实验规程齐、出卷与教学不在', () => {
     const text = buildDesignerSystem()
-    expect(text).toContain('设计师')
+    expect(text).toContain('设计龟')
     expect(text).toContain('【生成课堂】课堂课件生成（classroom）')
     expect(text).toContain('【超级实验室】可交互超级文档（superlab）')
     expect(text).toContain('#### api.classroom')
@@ -364,7 +364,7 @@ describe('系统提示词（团队分工：导师分诊、承接声部各拿各�
 
   it('维修员提示词：修图规程在、教学与阅卷不在', () => {
     const text = buildFixerSystem()
-    expect(text).toContain('维修员')
+    expect(text).toContain('维修龟')
     expect(text).toContain('【修复函数图像】Plot 错误快速纠偏（plot-fix）')
     expect(text).not.toContain('【出卷】试卷命题（exam）')
     expect(text).not.toContain('【阅卷】判分与讲解（exam-grade）')
@@ -375,9 +375,9 @@ describe('系统提示词（团队分工：导师分诊、承接声部各拿各�
     expect(text).toContain('最小修复')
   })
 
-  it('调研员提示词：调研与浏览器规程齐、判卷与解读不在', () => {
+  it('调研龟提示词：调研与浏览器规程齐、判卷与解读不在', () => {
     const text = buildResearcherSystem()
-    expect(text).toContain('调研员')
+    expect(text).toContain('调研龟')
     expect(text).toContain('为团队其他声部提供网络消息的调研')
     expect(text).toContain('替用户操作内置浏览器')
     expect(text).toContain('#### api.browser')

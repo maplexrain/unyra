@@ -88,29 +88,29 @@ const EMPTY_COPY: Record<string, { ready: string; body: string; suggestions?: st
     suggestions: ['帮我梳理一段思路或方案', '快速解答一个技术或日常疑问', '探讨一个观点的不同视角与利弊'],
   },
   tutor: {
-    ready: '超级导师已就绪',
+    ready: '导师龟已就绪',
     body: '针对当前知识点随思提问、拆解推导或生成笔记',
     suggestions: ['用直白的例子解释这个概念', '帮我梳理要点并整理进笔记', '针对难点出一道随堂小测验'],
   },
   dispatcher: {
-    ready: '调度员已就绪',
+    ready: '调度龟已就绪',
     body: '把需求说给我：我会分派给合适的声部，跟踪到交付再向你汇报',
-    suggestions: ['把我的需求分派出去', '现在有哪些任务在进行？', '查一说出卷师现在的进度'],
+    suggestions: ['把我的需求分派出去', '现在有哪些任务在进行？', '查一说出卷龟现在的进度'],
   },
   examiner: {
-    ready: '出卷师已就绪',
+    ready: '出卷龟已就绪',
     body: '承接出卷与阅卷任务（工作流与委托触发），照规程交付试卷与错题讲解',
   },
   designer: {
-    ready: '设计师已就绪',
+    ready: '设计龟已就绪',
     body: '承接互动课堂课件与超级实验室（工作流与委托触发），画面与交互按规程交付',
   },
   researcher: {
-    ready: '调研员已就绪',
+    ready: '调研龟已就绪',
     body: '承接联网调研与内置浏览器操作（会话由工作流与委托触发）',
   },
   fixer: {
-    ready: '维修员已就绪',
+    ready: '维修龟已就绪',
     body: '承接函数图像语法修复（由文档里的报错卡片触发）',
   },
 }
@@ -162,7 +162,7 @@ export function useMessageList({
             )}
           </div>
           <h4 className="mt-2 text-[14.5px] font-medium tracking-wide text-ink-strong">
-            {emptyName?.trim() ? emptyName.trim() + ' · ' + t(emptyCopy.ready) : free ? t('自由对话已就绪') : t('超级导师已就绪')}
+            {emptyName?.trim() ? emptyName.trim() + ' · ' + t(emptyCopy.ready) : free ? t('自由对话已就绪') : t('导师龟已就绪')}
           </h4>
           <p className="mt-1 max-w-[280px] text-[12px] leading-relaxed text-ink-soft">
             {free

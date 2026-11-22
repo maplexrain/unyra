@@ -40,8 +40,14 @@ import {
   voiceConversationId,
   voiceOfConversation,
 } from '../../../learn/agentTeam/voiceConvs'
-import { activeDelegationsFrom } from '../../../learn/agentTeam/delegations'
-import { AGENT_ROSTER_ORDER, type AgentVoiceStats } from '../agent-team/agentRoster'
+import {
+  activeDelegationsFrom,
+  manuallyActivateDelegation,
+  manuallyDeleteDelegation,
+  type ActiveDelegationView,
+} from '../../../learn/agentTeam/delegations'
+import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, type AgentVoiceStats } from '../agent-team/agentRoster'
+import { AgentAvatarGlyph } from '../agent-team/AgentAvatarGlyph'
 import { listWorkflowRows, type WorkflowRow } from '../../../learn/workflows'
 import {
   conversationTimeOf,
@@ -58,9 +64,10 @@ type StartersApi = ReturnType<typeof useWorkflowStarters>
 type AgentSettings = ReturnType<typeof loadAgentSettings>
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_WF_ROWS: WorkflowRow[] = []
+const EMPTY_DELEGATIONS: ActiveDelegationView[] = []
 
 /**
- * agent 栏（左侧 Agent 列表——声部项内嵌各自对话历史 + 中间 keepalive 面板）需要的宿主能力与派生值。
+ * agent 栏（左侧 Agent 列表——上块声部名册 + 下块当前声部对话历史 + 中间 keepalive 面板）需要的宿主能力与派生值。
  */
 export interface AgentSlotDeps {
   store: LearnStore
@@ -106,8 +113,8 @@ export interface AgentSlotDeps {
 
 /**
  * 智能体团队两栏工作台：
- * 左栏（Agent 垂直列表：仅聊天 / 导师，各声部项内嵌可收展的子对话列表）
- * + 中栏（keepalive AgentPanel）。对话历史只住在左栏声部项下，不再有右栏。
+ * 左栏垂直分两块（高度权重 2:1）——上块声部名册、下块当前选中声部的对话历史
+ * （含新建 / 目标切换 / 设置齿轮）+ 中栏（keepalive AgentPanel）。不再有右栏。
  */
 export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   const {
@@ -174,6 +181,14 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
 
   // 当工作区尚无激活目标时，允许用户点击「导师」停留并呈现目标选择空态
   const [emptyTutorMode, setEmptyTutorMode] = useState(false)
+  /**
+   * 选中了**还没有会话**的声部（不可交流声部：会话只能由工作流与委托触发）：中央区
+   * 显示该声部的空白页而不是上一段对话。渲染期派生自证清白——该声部一旦有了会话
+   * （工作流 / 委托落的），空白态自动让位给正常派生，不需要 effect 清理。
+   */
+  const [emptyVoiceMode, setEmptyVoiceMode] = useState<AgentTeamMode | null>(null)
+  /** 委托手动干预（激活 / 删除）的针数：注册表是模块态，宿主据此重渲染取新快照 */
+  const [delegationOpsTick, setDelegationOpsTick] = useState(0)
   /**
    * 智能体设置态：非 null 时中央工作区显示这位声部的独立设置页（AgentSettingsView），
    * 替代对话流。选择声部 / 选对话 / 新建对话 / 切目标都会退出设置态回到对话。
@@ -266,12 +281,20 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     conversationById(store, activeTutorConvId ?? ''),
   ) as AgentTeamMode
 
+  /**
+   * 选中了还没有会话的声部（空白页态）：只在它真的还没有会话时生效——工作流 / 委托
+   * 给它落的会话一出现，这里就自然让位回正常派生（渲染期自证清白，见 emptyVoiceMode）。
+   */
+  const emptyVoiceActive: AgentTeamMode | null =
+    emptyVoiceMode && tutorGoalId && voiceChatsOf(emptyVoiceMode).length === 0 ? emptyVoiceMode : null
+
   const mode: AgentTeamMode =
-    activeAgentTab.kind !== 'free'
+    emptyVoiceActive ??
+    (activeAgentTab.kind !== 'free'
       ? activeVoice
       : tutorGoalId === null && emptyTutorMode
         ? 'tutor'
-        : 'free'
+        : 'free')
 
   const subViewMeta = useMemo(() => {
     if (activeAgentTab.kind !== 'sub') return null
@@ -315,6 +338,36 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     // agent.* 的三张表是状态槽（引用随运行变化），一并列进来
   }, [tabGoalId, store.conversations, agent.runningByConversation, agent.pendingAskByConv, agent.subRunsAll, goalConversationsByGoal])
 
+  /**
+   * 「委托中」快照按会话缓存（**身份稳定**）：委托注册表是模块态、非响应式——登记 /
+   * 收口都伴随 store 或运行表的身份变化，手动激活 / 删除再补一针 tick。稳定身份是
+   * AgentTabPane memo 的前提（比较器按引用看 delegationsOut，每渲染换新数组会拆开 memo）。
+   */
+  const delegationViewsByConv = useMemo(() => {
+    const out = new Map<string, ActiveDelegationView[]>()
+    for (const c of store.conversations) {
+      const views = activeDelegationsFrom(c.id)
+      if (views.length) out.set(c.id, views)
+    }
+    return out
+    // agent.* 三张表与 tick 是「注册表可能动过」的信号（模块态不可响应），不是数据依赖
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [delegationOpsTick, store.conversations, agent.runningByConversation, agent.pendingAskByConv, agent.subRunsAll])
+
+  /** 手动激活一条委托（「委托中」条上的闪电按钮）：结果与拒绝原因用 toast 说清楚 */
+  const handleActivateDelegation = (id: string) => {
+    const res = manuallyActivateDelegation(id)
+    onToast(t(res.ok ? '委托已手动激活：承接方马上开始处理' : (res.error ?? '激活失败')))
+    setDelegationOpsTick((n) => n + 1)
+  }
+
+  /** 手动删除一条委托（卡住时的兜底）：从注册表与队列摘除，不再排队与接续 */
+  const handleDeleteDelegation = (id: string) => {
+    const res = manuallyDeleteDelegation(id)
+    onToast(t(res.ok ? '已删除这条委托：不再排队与接续' : (res.error ?? '删除失败')))
+    setDelegationOpsTick((n) => n + 1)
+  }
+
   const scheduleFocus = () => {
     window.setTimeout(() => focusAgentInput(), 30)
   }
@@ -342,6 +395,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
 
   const handleSelectMode = (next: AgentTeamMode) => {
     setSettingsAgent(null)
+    setEmptyVoiceMode(null)
     if (next === 'free') {
       setEmptyTutorMode(false)
       activateAgentTab('free')
@@ -359,12 +413,15 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     if (tutorGoalId) {
       setEmptyTutorMode(false)
       if (next !== 'tutor') {
-        // 不可交流的声部（调研员 / 维修员）：只能**看**它已有的工作会话——会话只能由
-        // 工流触发或委托启动，选中不现场建（也没有输入焦点，输入区是锁着的）
+        // 不可交流的声部（调研员 / 维修员）：会话只能由工作流或委托启动，选中不现场建。
+        // 有会话就看最近的一段；还没有也允许选中——中央区落本声部的空白页
+        // （会话由工作流与委托触发后才出现，见 emptyVoiceMode）
         if (!isCommunicable(next as AgentProfileId)) {
           const list = voiceChatsOf(next)
           if (list.length) {
             selectConversationIn({ kind: 'goal', goalId: tutorGoalId, conversationId: list[0].id }, list[0].id)
+          } else {
+            setEmptyVoiceMode(next as AgentTeamMode)
           }
           return
         }
@@ -399,6 +456,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
 
   const handleHistorySelect = (agentId: AgentTeamMode, convId: string) => {
     setSettingsAgent(null)
+    setEmptyVoiceMode(null)
     if (agentId === 'free') {
       setEmptyTutorMode(false)
       activateAgentTab('free')
@@ -413,6 +471,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
 
   const handleHistoryCreate = (agentId: AgentTeamMode) => {
     setSettingsAgent(null)
+    setEmptyVoiceMode(null)
     if (agentId === 'free') {
       setEmptyTutorMode(false)
       activateAgentTab('free')
@@ -438,6 +497,14 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   /** 各声部的显示名（profile 覆盖后的）：roster 卡片与空态标题共用这一份 */
   const agentNames = useMemo(
     () => Object.fromEntries(AGENT_ROSTER_ORDER.map((v) => [v, profileOf(agentSettings, v).name ?? ''])),
+    [agentSettings],
+  )
+  /** 各声部的头像 id（profile 覆盖后的）：roster 卡片与声部空白页共用这一份 */
+  const agentAvatarIds = useMemo(
+    () =>
+      Object.fromEntries(
+        AGENT_ROSTER_ORDER.map((v) => [v, agentAvatarIdOf(profileOf(agentSettings, v), v)]),
+      ) as Record<AgentTeamMode, string>,
     [agentSettings],
   )
   /**
@@ -536,7 +603,9 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       chatLocked,
       emptyVoice: mode,
       emptyName: agentNames?.[mode]?.trim() || DEFAULT_AGENT_NAME[mode],
-      delegationsOut: convId ? activeDelegationsFrom(convId) : [],
+      delegationsOut: convId ? (delegationViewsByConv.get(convId) ?? EMPTY_DELEGATIONS) : EMPTY_DELEGATIONS,
+      onActivateDelegation: handleActivateDelegation,
+      onDeleteDelegation: handleDeleteDelegation,
       onOpenDelegation: (delegationConvId: string) => {
         if (!goalId) return
         if (!conversationById(getLatest(), delegationConvId)) {
@@ -726,6 +795,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         goalTitleOf={goalTitleOf}
         onSelectGoal={(goalId) => {
           setEmptyTutorMode(false)
+          setEmptyVoiceMode(null)
           selectTutorGoal(goalId)
           scheduleFocus()
         }}
@@ -734,9 +804,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         onDeleteConversation={handleHistoryDelete}
         onOpenSettings={openAgentSettings}
         agentNames={agentNames}
-        agentAvatars={Object.fromEntries(
-          AGENT_ROSTER_ORDER.map((v) => [v, agentAvatarIdOf(profileOf(agentSettings, v), v)]),
-        )}
+        agentAvatars={agentAvatarIds}
       />
 
       {/* 中间对话主工作区；设置态下整块替换为这位声部的独立设置页 */}
@@ -772,7 +840,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
           </div>
         )}
 
-        {!showCenterPane ? (
+        {!showCenterPane && !emptyVoiceActive ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-500/12 text-sky-600 dark:text-sky-300">
               <GraduationCap size={22} />
@@ -795,6 +863,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
                       type="button"
                       onClick={() => {
                         setEmptyTutorMode(false)
+                        setEmptyVoiceMode(null)
                         selectTutorGoal(g.id)
                         scheduleFocus()
                       }}
@@ -809,7 +878,35 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
           </div>
         ) : null}
 
-        <div className={showCenterPane ? 'relative min-h-0 flex-1' : 'hidden'}>
+        {/* 选中了还没有会话的声部：本声部的空白页（会话由工作流与委托触发后才出现） */}
+        {emptyVoiceActive ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
+            <span
+              className={
+                'flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border ' +
+                AGENT_ROSTER_META[emptyVoiceActive].avatarClass
+              }
+            >
+              <AgentAvatarGlyph
+                avatarId={agentAvatarIds[emptyVoiceActive]}
+                fallback={AGENT_ROSTER_META[emptyVoiceActive].fallbackIcon}
+                size={24}
+                imgSize={44}
+                imgClassName="h-11 w-11 rounded-full"
+              />
+            </span>
+            <div className="space-y-1">
+              <div className="text-[14px] font-medium text-ink-strong">
+                {agentNames?.[emptyVoiceActive]?.trim() || DEFAULT_AGENT_NAME[emptyVoiceActive]}
+              </div>
+              <p className="max-w-[280px] text-[12px] leading-relaxed text-ink-faint">
+                {t(AGENT_ROSTER_META[emptyVoiceActive].emptyHint)}
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        <div className={showCenterPane && !emptyVoiceActive ? 'relative min-h-0 flex-1' : 'hidden'}>
           {scopedPanes.map((tab) => {
             const key = agentTabKey(tab)
             const on = tabActive && showCenterPane && key === renderedActivePaneId

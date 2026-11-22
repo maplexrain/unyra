@@ -8,6 +8,8 @@ import {
   createDelegation,
   delegationTurnText,
   listAgents,
+  manuallyActivateDelegation,
+  manuallyDeleteDelegation,
   onAgentTeamTurnStarted,
   onConversationTurnClosed,
   resetAgentTeamRegistry,
@@ -385,5 +387,111 @@ describe('委托会话（按委托者分会）', () => {
     onConversationTurnClosed('dv:examiner:tutor:goal-1', { autoCompleteResult: '交付' })
     const next = dispatcher.startTurn.mock.calls.at(-1)![0] as { conversationId: string }
     expect(next.conversationId).toBe('dv:examiner:designer:goal-1')
+  })
+})
+
+
+describe('委托手动干预（激活 / 删除）：卡住的委托的最后兜底', () => {
+  it('manuallyActivateDelegation：pending 提到队首立即启动；承接会话忙 / 已结束 / 没这条都拒绝', () => {
+    const dispatcher = makeDispatcher()
+    setAgentTeamDispatcher(() => dispatcher)
+    const busy = delegateNow({ toAgent: 'examiner', toConversationId: 'dv:examiner:tutor:goal-1', instruction: '第一条' })
+    expect(busy.status).toBe('running')
+    const queued = delegateNow({ toAgent: 'examiner', toConversationId: 'dv:examiner:tutor:goal-1', instruction: '第二条' })
+    expect(queued.status).toBe('pending')
+    // 拒绝：承接会话正忙（等它收口自动接续，不该手动撬）
+    setAgentTeamDispatcher(() => makeDispatcher({ isConversationRunning: () => true }))
+    const refused = manuallyActivateDelegation(queued.id)
+    expect(refused.ok).toBe(false)
+    expect(queued.status).toBe('pending')
+    // 放行：空闲 → 提到队首立即启动
+    setAgentTeamDispatcher(() => dispatcher)
+    const callsBefore = dispatcher.startTurn.mock.calls.length
+    const ok = manuallyActivateDelegation(queued.id)
+    expect(ok.ok).toBe(true)
+    expect(queued.status).toBe('running')
+    expect(dispatcher.startTurn).toHaveBeenCalledTimes(callsBefore + 1)
+    const start = dispatcher.startTurn.mock.calls.at(-1)![0] as { conversationId: string; kind: string }
+    expect(start).toMatchObject({ conversationId: 'dv:examiner:tutor:goal-1', kind: 'process' })
+    // 已结束的不能再激活；没这条的报「没有这条委托」
+    busy.status = 'done'
+    expect(manuallyActivateDelegation(busy.id).ok).toBe(false)
+    expect(manuallyActivateDelegation('no-such-id').ok).toBe(false)
+  })
+
+  it('manuallyActivateDelegation：running 僵尸账（会话已空闲）转提醒口径重启；同声部别的僵尸账顺带回队', () => {
+    const dispatcher = makeDispatcher()
+    setAgentTeamDispatcher(() => dispatcher)
+    const stuck = delegateNow({ toAgent: 'examiner', toConversationId: 'dv:examiner:tutor:goal-1' })
+    expect(stuck.status).toBe('running')
+    // 账面还挂着 running、承接会话其实空闲（收口通知没送达的僵尸）→ 手动激活走 remind 口径重启
+    const callsBefore = dispatcher.startTurn.mock.calls.length
+    const ok = manuallyActivateDelegation(stuck.id)
+    expect(ok.ok).toBe(true)
+    expect(stuck.status).toBe('running')
+    const start = dispatcher.startTurn.mock.calls.at(-1)![0] as { kind: string }
+    expect(start.kind).toBe('remind')
+    expect(dispatcher.startTurn).toHaveBeenCalledTimes(callsBefore + 1)
+    // 同声部的僵尸账顺带归队：z1 是僵尸 running，激活排队的 z2 → z2 先启动，z1 转回待处理
+    setAgentTeamDispatcher(() => makeDispatcher({ isConversationRunning: () => true }))
+    const z1 = delegateNow({ toAgent: 'designer', toConversationId: 'dv:designer:tutor:goal-1' })
+    const z2 = delegateNow({ toAgent: 'designer', toConversationId: 'dv:designer:tutor:goal-1', instruction: 'z2' })
+    z1.status = 'running'
+    setAgentTeamDispatcher(() => makeDispatcher())
+    const res = manuallyActivateDelegation(z2.id)
+    expect(res.ok).toBe(true)
+    expect(z2.status).toBe('running')
+    expect(z1.status).toBe('pending')
+    expect(z1.needsRemind).toBe(true)
+    expect(agentStatus('designer').pending.map((p) => p.id)).toEqual([z1.id])
+  })
+
+  it('manuallyDeleteDelegation：注册表与队列一并摘除，收口接续不会再启动它', () => {
+    const dispatcher = makeDispatcher()
+    setAgentTeamDispatcher(() => dispatcher)
+    const a = delegateNow({ toAgent: 'fixer', toConversationId: 'dv:fixer:tutor:goal-1', instruction: 'a' })
+    setAgentTeamDispatcher(() => makeDispatcher({ isConversationRunning: () => true }))
+    const b = delegateNow({ toAgent: 'fixer', toConversationId: 'dv:fixer:tutor:goal-1', instruction: 'b' })
+    expect(b.status).toBe('pending')
+    expect(activeDelegationsFrom('from-conv').map((d) => d.id)).toEqual([a.id, b.id])
+    // 删除排队的 b：视图与队列都不再有它
+    const res = manuallyDeleteDelegation(b.id)
+    expect(res.ok).toBe(true)
+    expect(activeDelegationsFrom('from-conv').map((d) => d.id)).toEqual([a.id])
+    expect(manuallyDeleteDelegation(b.id).ok).toBe(false)
+    // a 收口（自动交付）后，队列接续不会碰已删除的 b（不再有 process 启动）
+    setAgentTeamDispatcher(() => dispatcher)
+    const processCount = () =>
+      dispatcher.startTurn.mock.calls.filter((c) => (c[0] as { kind: string }).kind === 'process').length
+    const before = processCount()
+    onConversationTurnClosed('dv:fixer:tutor:goal-1', { autoCompleteResult: '交付' })
+    expect(processCount()).toBe(before)
+  })
+
+  it('activeDelegationsFrom：快照带裸数据（指令全文 / 发起方 / 重试账目 / 时间戳）', () => {
+    const dispatcher = makeDispatcher()
+    setAgentTeamDispatcher(() => dispatcher)
+    const d = delegateNow({
+      fromConversationId: 'from-conv',
+      toAgent: 'examiner',
+      toConversationId: 'dv:examiner:tutor:goal-1',
+      instruction: '出一份随堂小测，带两道向量题',
+      preemptibleUntil: 70_000,
+      now: 10_000,
+    })
+    d.attempts = 1
+    const active = activeDelegationsFrom('from-conv')
+    expect(active).toHaveLength(1)
+    const view = active[0]!
+    expect(view.id).toBe(d.id)
+    expect(view.fromAgent).toBe('tutor')
+    expect(view.fromName.length).toBeGreaterThan(0)
+    expect(view.toName.length).toBeGreaterThan(0)
+    expect(view.instruction).toBe('出一份随堂小测，带两道向量题')
+    expect(view.goalId).toBe('goal-1')
+    expect(view.attempts).toBe(1)
+    expect(view.createdAt).toBe(10_000)
+    expect(typeof view.startedAt).toBe('number')
+    expect(view.preemptibleUntil).toBe(70_000)
   })
 })

@@ -11,7 +11,7 @@
  * 导师层面的机制）是两回事：这里是按声部逐个配的「它自己是谁、用什么跑」。
  */
 
-import { createElement, useMemo, useState, useSyncExternalStore } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import { ArrowLeft, Check, Copy, GraduationCap, MessageSquare, RotateCcw } from 'lucide-react'
 import { REASONING_EFFORTS, REASONING_HINT, REASONING_LABEL, type ReasoningEffort } from '../../../ai/types'
 import {
@@ -39,7 +39,7 @@ import { loadAgentSettings, subscribeAgentSettings } from '../../../agent/settin
 import { buildFreeChatSystem, buildVoiceSystem } from '../../../learn/ai'
 import { t, useLocale } from '../../../i18n'
 import { builtinWorkflowRows, type WorkflowRow } from '../../../learn/workflows'
-import { agentAvatarIcon } from './agentAvatars'
+import { AgentAvatarGlyph } from './AgentAvatarGlyph'
 import type { AgentTeamMode } from './conversationList'
 
 export interface AgentSettingsViewProps {
@@ -209,9 +209,8 @@ export function AgentSettingsView({
 
   /* ---------- 身份 ---------- */
   const displayName = profile.name?.trim() || t(DEFAULT_AGENT_NAME[agentId])
-  // 图标组件取自固定映射（引用稳定）；小写 + createElement 是为了让 react-compiler
-  // 认得出这不是「渲染期造组件」（static-components 规则会掐掉优化）
-  const avatarIcon = agentAvatarIcon(profile.avatar, agentId === 'free' ? MessageSquare : GraduationCap)
+  // 头像兜底：仅聊天落对话气泡、其余落导师帽（龟龟图片在 Glyph 里认 id 现画）
+  const avatarFallback = isFree ? MessageSquare : GraduationCap
 
   /* ---------- 提供商 · 模型 ---------- */
   const globalProv = globalProvider(ai)
@@ -302,7 +301,13 @@ export function AgentSettingsView({
           <span>{t('返回对话')}</span>
         </button>
         <span aria-hidden="true" className="h-4 w-px bg-line" />
-        {createElement(avatarIcon, { size: 14, className: 'shrink-0 text-seal' })}
+        <AgentAvatarGlyph
+          avatarId={profile.avatar}
+          fallback={avatarFallback}
+          size={14}
+          imgSize={18}
+          imgClassName="h-[18px] w-[18px] rounded-md"
+        />
         <span className="truncate text-[13px] font-semibold text-ink-strong">{displayName}</span>
         <span className="shrink-0 text-[11px] text-ink-faint">· {t('智能体设置')}</span>
         <button
@@ -336,7 +341,6 @@ export function AgentSettingsView({
                 <span className="w-14 shrink-0 pt-1.5 text-[12px] text-ink-soft">{t('头像')}</span>
                 <div className="flex flex-wrap gap-1.5">
                   {AGENT_AVATARS.map((a) => {
-                    const Icon = agentAvatarIcon(a.id, MessageSquare)
                     const on = (profile.avatar ?? '') === a.id
                     return (
                       <button
@@ -346,13 +350,19 @@ export function AgentSettingsView({
                         title={t(a.label)}
                         onClick={() => onChange({ avatar: on ? undefined : a.id })}
                         className={
-                          'flex h-8 w-8 items-center justify-center rounded-lg border transition ' +
+                          'flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border transition ' +
                           (on
                             ? 'border-seal/60 bg-seal/10 text-seal'
                             : 'border-line bg-card text-ink-soft hover:border-line-strong hover:text-ink')
                         }
                       >
-                        <Icon size={15} />
+                        <AgentAvatarGlyph
+                          avatarId={a.id}
+                          fallback={MessageSquare}
+                          size={15}
+                          imgSize={32}
+                          imgClassName="h-8 w-8 rounded-lg"
+                        />
                       </button>
                     )
                   })}

@@ -70,9 +70,9 @@ export const LEGACY_VOICE_ALIAS: Readonly<Record<string, AgentVoice>> = { grader
 
 /** 一位智能体的独立设置。缺省字段 = 跟随默认 / 全局，见模块顶部说明 */
 export interface AgentProfile {
-  /** 显示名覆盖；空 / 缺省 = 默认名（仅聊天 / 导师 / 出卷师 …） */
+  /** 显示名覆盖；空 / 缺省 = 默认名（聊天龟 / 导师龟 / 出卷龟 …） */
   name?: string
-  /** 头像 id（AGENT_AVATARS 目录）；缺省 = 默认头像 */
+  /** 头像 id（AGENT_AVATARS 目录）；缺省 = 默认头像（各自的那只龟龟） */
   avatar?: string
   /** 允许触发的工作流 id 清单（只管登记的全局 / 目标级，内置规程面由团队分工固定）；undefined = 全部可用（仅导师） */
   workflows?: string[]
@@ -84,8 +84,18 @@ export interface AgentProfile {
   effort?: ReasoningEffort
 }
 
-/** 头像目录：id → 展示名。图标组件映射在 components 一侧（agentAvatars.tsx），这里只存纯数据 */
+/**
+ * 头像目录：id → 展示名。可视映射在 components 一侧（agentAvatars.tsx：龟龟图片 +
+ * lucide 图标），这里只存纯数据。龟龟是默认形象（每位声部一只），图标款是设置里的备选。
+ */
 export const AGENT_AVATARS: ReadonlyArray<{ id: string; label: string }> = [
+  { id: 'turtle-chat', label: '聊天龟' },
+  { id: 'turtle-tutor', label: '导师龟' },
+  { id: 'turtle-dispatcher', label: '调度龟' },
+  { id: 'turtle-examiner', label: '出卷龟' },
+  { id: 'turtle-designer', label: '设计龟' },
+  { id: 'turtle-researcher', label: '调研龟' },
+  { id: 'turtle-fixer', label: '维修龟' },
   { id: 'chat', label: '对话气泡' },
   { id: 'grad', label: '导师帽' },
   { id: 'bot', label: '机器人' },
@@ -99,23 +109,24 @@ export const AGENT_AVATARS: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'route', label: '路线' },
 ]
 
+/** 默认显示名（龟龟一家：归一的 xx 龟，提示词里的身份口径与此一致；排行与龟号见 learn/ai/turtleClan 的龟门总纲） */
 export const DEFAULT_AGENT_NAME: Record<AgentProfileId, string> = {
-  free: '仅聊天',
-  tutor: '导师',
-  dispatcher: '调度员',
-  examiner: '出卷师',
-  designer: '设计师',
-  researcher: '调研员',
-  fixer: '维修员',
+  free: '聊天龟',
+  tutor: '导师龟',
+  dispatcher: '调度龟',
+  examiner: '出卷龟',
+  designer: '设计龟',
+  researcher: '调研龟',
+  fixer: '维修龟',
 }
 export const DEFAULT_AGENT_AVATAR: Record<AgentProfileId, string> = {
-  free: 'chat',
-  tutor: 'grad',
-  dispatcher: 'route',
-  examiner: 'spark',
-  designer: 'palette',
-  researcher: 'compass',
-  fixer: 'wrench',
+  free: 'turtle-chat',
+  tutor: 'turtle-tutor',
+  dispatcher: 'turtle-dispatcher',
+  examiner: 'turtle-examiner',
+  designer: 'turtle-designer',
+  researcher: 'turtle-researcher',
+  fixer: 'turtle-fixer',
 }
 
 /* ---------- 团队分工：api 能力面 ---------- */

@@ -43,7 +43,7 @@ describe('固定聊天（Free Chat）与超级导师空占位内容区分', () =
     // 标题与副标题验证
     expect(text).toContain('自由对话已就绪')
     expect(text).toContain('探索想法、快速答疑、方案构思或自由交流，随时随地开启对话')
-    expect(text).not.toContain('超级导师已就绪')
+    expect(text).not.toContain('导师龟已就绪')
     expect(text).not.toContain('针对当前知识点随思提问、拆解推导或生成笔记')
 
     // 建议词验证
@@ -66,7 +66,7 @@ describe('固定聊天（Free Chat）与超级导师空占位内容区分', () =
     const container = renderComponent({ free: false, onSelectPrompt })
 
     const text = container.textContent || ''
-    expect(text).toContain('超级导师已就绪')
+    expect(text).toContain('导师龟已就绪')
     expect(text).toContain('针对当前知识点随思提问、拆解推导或生成笔记')
     expect(text).not.toContain('自由对话已就绪')
 

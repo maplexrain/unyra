@@ -1,19 +1,20 @@
 /**
- * Agent 列表侧栏：智能体团队的名册（仅聊天 / 导师 / 出卷师 / 设计师 / 调研员 / 维修员）。
+ * Agent 列表侧栏：智能体团队的名册（仅聊天 / 调度员 / 导师 / 出卷师 / 设计师 / 调研员 / 维修员）。
  * 两种形态（variant）：
- * - side（默认）：左侧竖栏，可折叠成 48px 轨（forceCollapsed 时锁定不可展开）；
+ * - side（默认）：左侧竖栏，垂直分成两块（高度权重 2:1，各自溢出滚动）——
+ *   上块是声部名册，下块是**当前选中声部**的对话历史（含新建 / 删目标切换与设置入口）；
+ *   可整体折叠成 48px 轨（forceCollapsed 时锁定不可展开）；
  * - top：容器宽度 < 800 时由 AgentSlot 切换的顶部横栏——横排声部按钮、
  *   右侧展示当前声部的近况摘要，不再有折叠语义（横排本身就是收起形态）。
  *
  * 声部的角色标签 / 兜底图标 / 配色在 agentRoster.ts 的注册表里；名字与头像来自
  * 各自的 profile（智能体独立设置）。承接声部（出卷师 / 设计师 / 调研员 / 维修员）的工作会话
  * 由委托与系统侧分诊自动落进来，没有「新建对话」——它们按目标各有一段工作会话。
+ * 设置入口在名册卡的**头像**上：点头像直接开这位声部的独立设置（AgentSettingsView）。
  */
 
 import { useState } from 'react'
 import {
-  ChevronDown,
-  ChevronRight,
   MessageSquarePlus,
   PanelLeftClose,
   PanelLeftOpen,
@@ -23,8 +24,9 @@ import {
 import type { Conversation } from '../../../agent/types'
 import { DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import type { LearningGoal } from '../../../learn/types'
+import { delegatorVoiceOf } from '../../../learn/agentTeam/voiceConvs'
 import { t, useLocale } from '../../../i18n'
-import { agentAvatarIcon } from './agentAvatars'
+import { AgentAvatarGlyph } from './AgentAvatarGlyph'
 import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, voiceTags, type AgentVoiceStats } from './agentRoster'
 import {
   conversationTimeOf,
@@ -55,8 +57,8 @@ export interface AgentRosterSidebarProps {
   persistCollapsed?: boolean
   /** 形态：side=左侧竖栏（默认）；top=窄宽度（容器 <800）下的顶部横栏 */
   variant?: 'side' | 'top'
-  /* ---------- 子对话列表（历史能力从右栏搬进声部项，AgentSlot 总是传） ---------- */
-  /** 每个声部名下的对话列表（已按对话时间降序）；不传则不渲染子列表，top 形态也暂不展开 */
+  /* ---------- 对话历史块（下块：当前选中声部的历史列表，AgentSlot 总是传） ---------- */
+  /** 每个声部名下的对话列表（已按对话时间降序）；下块只展示当前选中声部的那一份 */
   conversationsByAgent?: Partial<Record<AgentTeamMode, Conversation[]>>
   /** 各声部当前激活的对话 id */
   activeConversationByAgent?: Partial<Record<AgentTeamMode, string | null>>
@@ -72,7 +74,7 @@ export interface AgentRosterSidebarProps {
   onSelectConversation?: (agentId: AgentTeamMode, conversationId: string) => void
   onNewConversation?: (agentId: AgentTeamMode) => void
   onDeleteConversation?: (agentId: AgentTeamMode, conversationId: string) => void
-  /** 打开这位声部的独立设置（中央区切到设置页，见 AgentSettingsView） */
+  /** 打开某位声部的独立设置（名册卡头像的点击入口，见 AgentSettingsView） */
   onOpenSettings?: (agentId: AgentTeamMode) => void
   /** 各声部的自定义显示名（智能体独立设置的身份）；空串 = 用默认名 */
   agentNames?: Partial<Record<AgentTeamMode, string>>
@@ -117,12 +119,6 @@ export function AgentRosterSidebar({
     }
   }
 
-  /** 子对话列表的展开状态：默认跟随当前声部（切到哪个声部就展开哪个），手动收展后按声部记忆 */
-  const [manualOpen, setManualOpen] = useState<Partial<Record<AgentTeamMode, boolean>>>({})
-  const sectionOpen = (id: AgentTeamMode): boolean => manualOpen[id] ?? id === mode
-  const toggleSection = (id: AgentTeamMode): void =>
-    setManualOpen((prev) => ({ ...prev, [id]: !sectionOpen(id) }))
-
   const statsOf = (id: AgentTeamMode): AgentVoiceStats => voiceStats[id] ?? { running: false, hasAsk: false }
 
   const agents = AGENT_ROSTER_ORDER.map((id) => {
@@ -141,7 +137,8 @@ export function AgentRosterSidebar({
           : st.preview || idleSubtitle,
       timeLabel: formatConversationTime(st.lastTime ?? 0),
       count: st.count,
-      icon: agentAvatarIcon(agentAvatars?.[id], meta.fallbackIcon),
+      avatarId: agentAvatars?.[id],
+      fallbackIcon: meta.fallbackIcon,
       avatarClass: meta.avatarClass,
       ringClass: meta.ringClass,
       running: st.running,
@@ -151,7 +148,7 @@ export function AgentRosterSidebar({
   })
 
   /**
-   * 一个声部的子对话列表（缩进在声部项下）：目标切换（导师多目标）、新建、选择与删除。
+   * 对话历史块（下块）的主体：目标切换（导师多目标）、新建、选择与删除。
    * 删除保护沿用右栏的口径：唯一且空的导师对话不可删（那是「清空对话记录」的语义）、
    * 运行中的先停止再删。承接声部没有「新建对话」——它们按目标各有一段工作会话。
    */
@@ -201,6 +198,9 @@ export function AgentRosterSidebar({
             const hasAsk = Boolean(pendingAskByConv?.[conv.id])
             const title = displayConversationTitle(conv)
             const timeLabel = formatConversationTime(conversationTimeOf(conv))
+            // 委托会话（dv:）标出来源：这一段只听哪位委托者的指令
+            const dvFrom = delegatorVoiceOf(conv)
+            const dvName = dvFrom ? agentNames?.[dvFrom]?.trim() || t(DEFAULT_AGENT_NAME[dvFrom]) : ''
             const soleEmpty =
               agentId === 'tutor' && convs.length <= 1 && conv.messages.length === 0 && !conv.title && !conv.summary
             const deleteTitle = running
@@ -214,6 +214,7 @@ export function AgentRosterSidebar({
                 data-conversation-id={conv.id}
                 className={
                   'group/cv relative flex items-center rounded-lg pr-0.5 transition ' +
+                  (running ? 'moji-agent-live ' : '') +
                   (active ? 'bg-card' : 'hover:bg-line/40')
                 }
               >
@@ -230,21 +231,21 @@ export function AgentRosterSidebar({
                   <span
                     title={title}
                     className={
-                      'min-w-0 flex-1 truncate text-[11.5px] leading-snug ' +
+                      'min-w-0 flex-1 truncate text-[12.5px] leading-snug ' +
                       (active ? 'font-medium text-ink-strong' : 'text-ink-soft')
                     }
                   >
                     {title}
                   </span>
-                  {conv.id.startsWith('dv:') && (
+                  {dvFrom && (
                     <span
-                      title={t('委托会话：只承接这位委托者的委托，不接受直接输入')}
-                      className="shrink-0 rounded bg-seal/10 px-1 py-px text-[9px] leading-none text-seal-deep dark:text-seal-2"
+                      title={t('委托会话：由「{0}」发起，只承接它的委托，不接受直接输入', dvName)}
+                      className="shrink-0 rounded bg-seal/10 px-1 py-px text-[9.5px] leading-none text-seal-deep dark:text-seal-2"
                     >
-                      {t('委托')}
+                      {t('委托')}·{dvName}
                     </span>
                   )}
-                  {timeLabel && <span className="shrink-0 text-[10px] tabular-nums text-ink-faint">{timeLabel}</span>}
+                  {timeLabel && <span className="shrink-0 text-[10.5px] tabular-nums text-ink-faint">{timeLabel}</span>}
                 </button>
                 {onDeleteConversation && (
                   <button
@@ -292,7 +293,6 @@ export function AgentRosterSidebar({
         </span>
         <div role="tablist" className="flex shrink-0 items-center gap-1">
           {agents.map((item) => {
-            const Icon = item.icon
             const active = mode === item.id
             return (
               <button
@@ -309,7 +309,13 @@ export function AgentRosterSidebar({
                     : 'border-transparent text-ink-soft hover:bg-line/45 hover:text-ink')
                 }
               >
-                <Icon size={13} />
+                <AgentAvatarGlyph
+                  avatarId={item.avatarId}
+                  fallback={item.fallbackIcon}
+                  size={13}
+                  imgSize={18}
+                  imgClassName="h-[18px] w-[18px] rounded-md"
+                />
                 <span className="font-medium">{item.label}</span>
                 {item.hasAsk ? (
                   <span aria-hidden="true" className="absolute right-0.5 top-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
@@ -391,7 +397,6 @@ export function AgentRosterSidebar({
 
           <div className="flex flex-col items-center gap-1.5" role="tablist" aria-orientation="vertical">
             {agents.map((item) => {
-              const Icon = item.icon
               const active = mode === item.id
               return (
                 <button
@@ -402,13 +407,19 @@ export function AgentRosterSidebar({
                   title={`${item.label} · ${item.subtitle}`}
                   onClick={() => onSelectMode(item.id)}
                   className={
-                    'relative flex h-9 w-9 items-center justify-center rounded-xl border transition ' +
+                    'relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border transition ' +
                     (active
                       ? 'border-line-strong bg-card text-ink-strong shadow-xs'
                       : 'border-transparent text-ink-soft hover:bg-line/45 hover:text-ink')
                   }
                 >
-                  <Icon size={16} />
+                  <AgentAvatarGlyph
+                    avatarId={item.avatarId}
+                    fallback={item.fallbackIcon}
+                    size={18}
+                    imgSize={40}
+                    imgClassName="h-10 w-10 rounded-full"
+                  />
                   {item.hasAsk ? (
                     <span
                       aria-hidden="true"
@@ -447,24 +458,87 @@ export function AgentRosterSidebar({
         </button>
       </header>
 
+      {/* 上块（高度权重 2）：声部名册——只放名册卡；各声部的对话历史统一挪去下块 */}
       <div
         role="tablist"
         aria-orientation="vertical"
-        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2.5"
+        className="flex min-h-0 flex-[2] flex-col gap-2 overflow-y-auto p-2.5 pb-1"
       >
         {agents.map((item) => {
-          const Icon = item.icon
           const active = mode === item.id
           return (
             <div key={item.id} className="shrink-0">
               <div
                 className={
-                  'group relative flex w-full items-center gap-1 rounded-2xl border px-3 py-2.5 transition ' +
+                  'group relative flex w-full items-center gap-2.5 rounded-2xl border px-2 py-2.5 transition ' +
+                  (item.running ? 'moji-agent-live ' : '') +
                   (active
                     ? 'border-line-strong/85 bg-card text-ink-strong shadow-xs'
                     : 'border-transparent text-ink-soft hover:border-line/60 hover:bg-card/55 hover:text-ink')
                 }
               >
+                {/* 头像即设置入口：点它直接开这位声部的设置（AgentSlot.openAgentSettings 会顺手把声部切过去） */}
+                {onOpenSettings ? (
+                  <button
+                    type="button"
+                    data-agent-avatar={item.id}
+                    aria-label={t('智能体设置')}
+                    title={t('智能体设置')}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onOpenSettings(item.id)
+                    }}
+                    className={
+                      'relative flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-hidden rounded-full border transition hover:ring-2 hover:ring-seal/35 ' +
+                      item.avatarClass
+                    }
+                  >
+                    <AgentAvatarGlyph
+                      avatarId={item.avatarId}
+                      fallback={item.fallbackIcon}
+                      size={24}
+                      imgSize={60}
+                      imgClassName="h-[60px] w-[60px] rounded-full"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className={
+                        'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-paper transition ' +
+                        (item.hasAsk
+                          ? 'animate-pulse bg-amber-500'
+                          : item.running
+                            ? 'animate-pulse bg-seal'
+                            : 'bg-emerald-500')
+                      }
+                    />
+                  </button>
+                ) : (
+                  <span
+                    className={
+                      'relative flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-hidden rounded-full border ' +
+                      item.avatarClass
+                    }
+                  >
+                    <AgentAvatarGlyph
+                      avatarId={item.avatarId}
+                      fallback={item.fallbackIcon}
+                      size={24}
+                      imgSize={60}
+                      imgClassName="h-[60px] w-[60px] rounded-full"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className={
+                        'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-paper transition ' +
+                        (item.hasAsk
+                          ? 'animate-pulse bg-amber-500'
+                          : item.running
+                            ? 'animate-pulse bg-seal'
+                            : 'bg-emerald-500')
+                      }
+                    />
+                  </span>
+                )}
                 <button
                   type="button"
                   role="tab"
@@ -472,27 +546,6 @@ export function AgentRosterSidebar({
                   onClick={() => onSelectMode(item.id)}
                   className="flex min-w-0 flex-1 items-center gap-3 text-left"
                 >
-              {/* 联系人头像 + 在线/运行状态点 */}
-              <span
-                className={
-                  'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border transition ' +
-                  (active ? item.avatarClass : 'border-line/60 bg-line/35 text-ink-soft group-hover:text-ink')
-                }
-              >
-                <Icon size={17} />
-                <span
-                  aria-hidden="true"
-                  className={
-                    'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-paper transition ' +
-                    (item.hasAsk
-                      ? 'animate-pulse bg-amber-500'
-                      : item.running
-                        ? 'animate-pulse bg-seal'
-                        : 'bg-emerald-500')
-                  }
-                />
-              </span>
-
               {/* 联系人信息：名称、角色标签、最近时间与消息预览 */}
               <span className="min-w-0 flex-1">
                 <span className="flex items-center justify-between gap-1.5">
@@ -502,10 +555,7 @@ export function AgentRosterSidebar({
                     </span>
                     <span
                       className={
-                        'shrink-0 rounded-md px-1.5 py-0.5 text-[9.5px] font-medium leading-none ' +
-                        (active
-                          ? item.ringClass
-                          : 'bg-line/55 text-ink-faint')
+                        'shrink-0 rounded-md px-1.5 py-0.5 text-[9.5px] font-medium leading-none ' + item.ringClass
                       }
                     >
                       {item.roleTag}
@@ -556,48 +606,25 @@ export function AgentRosterSidebar({
                 </span>
                 </span>
                 </button>
-                {onOpenSettings && (
-                  <button
-                    type="button"
-                    data-agent-settings={item.id}
-                    aria-label={t('智能体设置')}
-                    title={t('智能体设置')}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onOpenSettings(item.id)
-                    }}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-faint transition hover:bg-line/45 hover:text-ink"
-                  >
-                    <Settings2 size={14} />
-                  </button>
-                )}
-                {conversationsByAgent && (
-                  <button
-                    type="button"
-                    aria-expanded={sectionOpen(item.id)}
-                    aria-label={sectionOpen(item.id) ? t('收起对话列表') : t('展开对话列表')}
-                    title={sectionOpen(item.id) ? t('收起对话列表') : t('展开对话列表')}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      toggleSection(item.id)
-                    }}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-faint transition hover:bg-line/45 hover:text-ink"
-                  >
-                    {sectionOpen(item.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  </button>
-                )}
               </div>
-              {conversationsByAgent && sectionOpen(item.id) && (
-                <div
-                  data-roster-conv-list={item.id}
-                  className="ml-1.5 flex flex-col gap-px border-l border-line/50 pb-1 pl-2"
-                >
-                  {convSection(item.id)}
-                </div>
-              )}
             </div>
           )
         })}
+      </div>
+
+      {/* 下块（高度权重 1）：当前选中声部的对话历史。设置入口不在历史块——名册卡的头像就是设置按钮 */}
+      <div data-roster-history={mode} className="flex min-h-0 flex-[1] flex-col border-t border-line/50">
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-line/50 px-3.5 py-1.5">
+          <span className="truncate text-[11.5px] font-semibold text-ink-soft">
+            {agents.find((item) => item.id === mode)?.label ?? t(DEFAULT_AGENT_NAME[mode])}
+          </span>
+        </div>
+        <div
+          data-roster-conv-list={mode}
+          className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-2.5 pt-1.5"
+        >
+          {convSection(mode)}
+        </div>
       </div>
         </div>
       )}

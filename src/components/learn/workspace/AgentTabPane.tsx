@@ -51,6 +51,9 @@ function sameAgentTabPane(prev: AgentTabPaneProps, next: AgentTabPaneProps): boo
     // 等待队列（输入框上方那一块）：排进一条、撤回、被派发都要当场画出来。
     // 队列按会话存、没动过的会话数组还是同一个引用，所以这一条不会误伤别的页签
     prev.queue === next.queue &&
+    // 「委托中」条（消息列表底部）：登记 / 收口 / 手动激活与删除都要当场画出来。
+    // 宿主侧按会话缓存了快照（身份稳定），这里按引用比较才不会每渲染都拆开 memo
+    prev.delegationsOut === next.delegationsOut &&
     prev.ask === next.ask &&
     prev.sub === next.sub &&
     prev.viewSubId === next.viewSubId

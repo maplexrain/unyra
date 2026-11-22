@@ -16,6 +16,7 @@
 import { AGENT_API_PLANES, type AgentVoice } from '../../agent/agentProfile'
 import { APP_DATA_GUIDE, EXECUTE_BASE_GUIDE, SANDBOX_DISCIPLINE_GUIDE, SEEK_HELP_GUIDE } from './executeGuide'
 import { TEAM_GUIDE } from './teamGuide'
+import { TURTLE_CLAN_GUIDE } from './turtleClan'
 import { compactWorkflowSection } from './workflowsGuide'
 
 /**
@@ -46,11 +47,13 @@ const SHARED_DISCIPLINE = [
 
 /**
  * 共同前缀全文：四位执行声部的系统提示词都以它开头（逐字节一致）。
- * 块序：团队协作 → execute 机制 → 先查再用 → 应用数据守门 → 沙箱纪律 → 通用纪律 →
+ * 块序：龟门总纲（七兄弟身份） → 团队协作 → execute 机制 → 先查再用 → 应用数据守门 → 沙箱纪律 → 通用纪律 →
  * compact 规程。全部内容对四位声部为真——声部间没有交集的东西（各域 api 速查、
  * 引用与交付、排版语法、专属工作流规程）都在 P1。
  */
 export const SHARED_AGENT_PREFIX = [
+  TURTLE_CLAN_GUIDE,
+  '',
   TEAM_GUIDE,
   '',
   EXECUTE_BASE_GUIDE,

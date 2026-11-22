@@ -268,7 +268,9 @@ function rawTabTitle(
   if (ref.kind === 'classroomShowcase') return ref.tag ? `<${ref.tag}> ${t('组件')}` : t('组件与动效库')
   if (ref.kind === 'mind') return t('记忆管理')
   if (ref.kind === 'agentSettings') return t('超级导师设置')
-  if (ref.kind === 'agentTeam') return t('智能体团队')
+  // 页签上就叫「智能体」：目标归属由页签组本身表达（每个目标自己的页签组各有一枚），
+  // 不再把目标名拼进标题（跨组重名时 trail 也不给它后缀，见 tabTrail）
+  if (ref.kind === 'agentTeam') return t('智能体')
   if (ref.kind === 'blank') return t('新页签')
   // 新建文件页签：还没有文件名，就叫「未命名」——保存之后它变成 local 页签，显示真实文件名
   if (ref.kind === 'draft') return t('未命名')
@@ -326,7 +328,9 @@ export function tabTrail(
     return ''
 
   if (ref.kind === 'mind') return goalLabel ? goalLabel(ref.goalId) : ''
-  if (ref.kind === 'agentTeam') return ref.goalId && goalLabel ? goalLabel(ref.goalId) : t('超级导师')
+  // 智能体页签不给后缀：它就叫「智能体」，目标归属由所在页签组表达（多个目标各开一枚
+  // 也都叫智能体——栏上只见当前目标的那一套，分屏同看两目标时名字相同是接受的取舍）
+  if (ref.kind === 'agentTeam') return ''
   if (ref.kind === 'local') {
     const i = Math.max(ref.path.lastIndexOf('/'), ref.path.lastIndexOf('\\'))
     return i > 0 ? ref.path.slice(0, i) : ''
@@ -578,8 +582,18 @@ export function reorderTabs(tabs: LearnTab[], ids: string[]): LearnTab[] {
   }
   for (const t of tabs) if (!out.includes(t)) out.push(t)
   // 固定 tab 永远显示在最前面
-  const pinned = out.filter(isTabPinned)
+  const pinnedAll = out.filter(isTabPinned)
   const unpinned = out.filter((t) => !isTabPinned(t))
+  // 两枚系统固定页签的相对顺序由系统钉死：智能体团队排在结构（大纲）之前；
+  // 其余固定页签（用户 pin 的文档）保持原相对位置不动
+  const teamIdx = pinnedAll.findIndex((t) => t.ref.kind === 'agentTeam')
+  const outlineIdx = pinnedAll.findIndex((t) => t.ref.kind === 'outline')
+  let pinned = pinnedAll
+  if (teamIdx >= 0 && outlineIdx >= 0 && teamIdx > outlineIdx) {
+    const team = pinnedAll[teamIdx]!
+    pinned = [...pinnedAll.slice(0, teamIdx), ...pinnedAll.slice(teamIdx + 1)]
+    pinned.splice(outlineIdx, 0, team)
+  }
   return [...pinned, ...unpinned]
 }
 
