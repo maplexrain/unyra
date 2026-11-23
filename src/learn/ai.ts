@@ -27,6 +27,7 @@ export { buildTeacherSystem } from './ai/teacherSystem'
 export { buildFreeChatSystem } from './ai/chatSystem'
 export { buildVoiceSystem, buildDispatcherSystem, buildExaminerSystem, buildDesignerSystem, buildResearcherSystem, buildFixerSystem } from './ai/agentTeamSystem'
 export { ALL_AGENTS_COMMON_PREFIX, SHARED_AGENT_PREFIX } from './ai/agentSharedPrefix'
+export { COMPONENT_SYNTAX_GUIDE } from '../lib/componentBlock'
 export {
   COMMON_ALL_AGENTS_PREFIX_PROMPT,
   COMMON_TURTLE_CLAN_PROMPT,

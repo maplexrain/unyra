@@ -17,6 +17,7 @@ import { PISC_SYNTAX_GUIDE } from '../../lib/pisc'
 import { PLOT_SYNTAX_GUIDE } from '../../lib/plot'
 import { QUOTE_SYNTAX_GUIDE } from '../../lib/quoteBlock'
 import { VIDEOS_SYNTAX_GUIDE } from '../../lib/videosBlock'
+import { COMPONENT_SYNTAX_GUIDE } from '../../lib/componentBlock'
 import {
   ALL_AGENTS_COMMON_PREFIX,
   apiDocKeysFor,
@@ -322,6 +323,8 @@ function getTutorSections(opts: BuildSectionsOpts = {}): PromptSection[] {
         QUOTE_SYNTAX_GUIDE,
         '',
         AIQA_SYNTAX_GUIDE,
+        '',
+        COMPONENT_SYNTAX_GUIDE,
         '',
         RICH_CONTENT_GUIDE,
         '',

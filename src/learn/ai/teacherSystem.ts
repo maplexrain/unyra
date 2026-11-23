@@ -17,6 +17,7 @@ import { MERMAID_SYNTAX_GUIDE } from '../../lib/mermaid'
 import { VIDEOS_SYNTAX_GUIDE } from '../../lib/videosBlock'
 import { QUOTE_SYNTAX_GUIDE } from '../../lib/quoteBlock'
 import { AIQA_SYNTAX_GUIDE } from '../../lib/aiqaBlock'
+import { COMPONENT_SYNTAX_GUIDE } from '../../lib/componentBlock'
 import { PROACTIVE_SEEK_GUIDE } from './executeGuide'
 import { CHIP_DELIVERY_GUIDE, DOC_LINK_SYNTAX, GOAL_OUTLINE_GUIDE, LEARN_LINK_SYNTAX, RICH_CONTENT_GUIDE } from './guides'
 import { PROMPT_MODULES } from './promptModules'
@@ -87,6 +88,8 @@ export function buildTeacherSystem(opts: {
     QUOTE_SYNTAX_GUIDE,
     '',
     AIQA_SYNTAX_GUIDE,
+    '',
+    COMPONENT_SYNTAX_GUIDE,
     '',
     RICH_CONTENT_GUIDE,
     '',
