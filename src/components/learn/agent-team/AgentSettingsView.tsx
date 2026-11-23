@@ -28,11 +28,13 @@ import { SANDBOX_API_CATALOG } from '../../../agent/apiCatalog'
 import { docFormatOf } from '../../../agent/docFormat'
 import { personaOf } from '../../../agent/persona'
 import {
-  AGENT_API_PLANES,
   AGENT_AVATARS,
   AGENT_WORKFLOW_PLANES,
   DEFAULT_AGENT_NAME,
+  FIXED_API_PLANE,
   FREE_AGENT_API_ITEMS,
+  variableApiGroupsOf,
+  variableTopLevelOf,
   type AgentProfile,
   type AgentVoice,
 } from '../../../agent/agentProfile'
@@ -192,6 +194,35 @@ function AllowListEditor(props: {
 const selectClass =
   'min-w-0 rounded-lg border border-line bg-card px-2 py-1.5 text-[12px] text-ink-strong outline-none transition hover:border-line-strong focus:border-seal/60'
 
+interface ApiRow {
+  key: string
+  label: string
+  code: string
+}
+
+/** execute api 的只读行清单（固定组 / 非固定组共用同一行样式，靠徽标区分） */
+function ApiRowList(props: { rows: ApiRow[]; badge: string; tone: 'fixed' | 'variable' }) {
+  const badgeClass =
+    props.tone === 'fixed'
+      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+      : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+  return (
+    <ul className="flex flex-col divide-y divide-line/50 rounded-lg border border-line/70 bg-paper-deep/30">
+      {props.rows.map((row) => (
+        <li key={row.key} className="flex items-center gap-2 px-3 py-1.5">
+          <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink-strong">
+            {row.label}
+          </span>
+          <span className={`shrink-0 rounded px-1.5 py-px text-[10px] font-medium ${badgeClass}`}>
+            {props.badge}
+          </span>
+          <code className="shrink-0 text-[10px] text-ink-faint">{row.code}</code>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export function AgentSettingsView({
   agentId,
   profile,
@@ -225,23 +256,52 @@ export function AgentSettingsView({
       ? profile.model.trim()
       : t('该提供商默认（第一个）')
 
-  /* ---------- execute api（能力面由架构固定：全部恒开放、纯只读清单） ---------- */
+  /* ---------- execute api（能力面由架构固定：按固定组 / 非固定组两份只读清单展示） ---------- */
   /**
-   * execute 的 api 能力面：按声部的团队分工（AGENT_API_PLANES）固定的只读清单。
-   * 执行控制原语（core 组是顶层函数，不在目录里，单独一行——目录里的 core 过滤掉防重名）。
+   * 分组口径与系统提示词的 api 速查同源（FIXED_API_PLANE 来自 AGENT_API_PLANES 求交）：
+   * - 固定组 = 六位执行声部人人有的执行基座（help / wait / compact + tmp / team）；
+   * - 非固定组 = 本声部职责面里的其余域（core 里按需给的顶层函数 + 各组）。
+   * 仅聊天是另一套架构固定面（联网 + 日程），没有非固定组。
    */
-  const apiItems: Array<{ key: string; label: string; builtin?: boolean }> = isFree
-    ? FREE_AGENT_API_ITEMS.map((key) => ({
+  const coreCatalog = SANDBOX_API_CATALOG.find((g) => g.key === 'core')
+  const fixedRows: ApiRow[] = []
+  const variableRows: ApiRow[] = []
+
+  if (isFree) {
+    for (const key of FREE_AGENT_API_ITEMS) {
+      fixedRows.push({
         key,
         label: key === 'web' ? t('联网搜索与抓取') : t('日程提醒'),
-        builtin: true,
-      }))
-    : [
-        { key: 'core', label: '执行控制（顶层函数）', builtin: true },
-        ...SANDBOX_API_CATALOG.filter(
-          (g) => g.key !== 'core' && AGENT_API_PLANES[agentId as AgentVoice].groups.includes(g.key),
-        ).map((g) => ({ key: g.key, label: g.label, builtin: true })),
-      ]
+        code: 'api.' + key,
+      })
+    }
+  } else {
+    const voice = agentId as AgentVoice
+    const coreItem = (name: string): ApiRow | undefined => {
+      const item = coreCatalog?.items.find((i) => i.name === name)
+      return item ? { key: 'core:' + name, label: item.summary, code: 'api.' + name } : undefined
+    }
+
+    // 固定组：core 的 help 恒在场 + 交集顶层函数，然后是全声部共用的组
+    for (const name of ['help', ...FIXED_API_PLANE.topLevel]) {
+      const row = coreItem(name)
+      if (row) fixedRows.push(row)
+    }
+    for (const key of FIXED_API_PLANE.groups) {
+      const group = SANDBOX_API_CATALOG.find((g) => g.key === key)
+      if (group) fixedRows.push({ key, label: t(group.label), code: 'api.' + key })
+    }
+
+    // 非固定组：本声部额外持有的顶层函数（ask / tiktok / fetch / see），再是职责域的组
+    for (const name of variableTopLevelOf(voice)) {
+      const row = coreItem(name)
+      if (row) variableRows.push(row)
+    }
+    for (const key of variableApiGroupsOf(voice)) {
+      const group = SANDBOX_API_CATALOG.find((g) => g.key === key)
+      if (group) variableRows.push({ key, label: t(group.label), code: 'api.' + key })
+    }
+  }
   /* ---------- 工作流（导师可配白名单；承接声部 = 分工固定的只读面） ---------- */
   const wfPlane = new Set(AGENT_WORKFLOW_PLANES[agentId as AgentVoice])
   // 内置行的锁死口径 = 本声部的分工面：不在面上的内置规程它触发不了，干脆不展示
@@ -434,31 +494,54 @@ export function AgentSettingsView({
             </div>
           </section>
 
-          {/* ---------- execute 开放的 api（能力面固定：纯只读清单，不可增删） ---------- */}
+          {/* ---------- execute 开放的 api（能力面固定：固定组 / 非固定组两份只读清单） ---------- */}
           <section className="border-b border-line/60 py-4">
             <SectionHead
               title={t('execute 开放的 api')}
               hint={
                 isFree
-                  ? t('仅聊天的沙箱只有联网与日程两组能力，由架构固定、恒开放。')
+                  ? t('仅聊天的沙箱只有联网与日程两组能力，由架构固定、恒开放；没有非固定组。')
                   : isTutor
-                    ? t('导师的 api 面按团队分工固定、只读（不可增删）：教学主线与协调的全量基座；路由与分派归调度员、联网与浏览器归调研员、课件与实验归设计师、出卷与阅卷归出卷师、修复归维修员。')
-                    : t('这位成员的 api 面由团队分工固定、只读（不可增删）：它只拿职责所需的能力，其余域通过 team.* 协作补齐。')
+                    ? t('导师的 api 面按团队分工固定、只读（不可增删）：固定组是六位执行声部共用的执行基座；非固定组是导师职责面的专属能力（教学主线与协调）。路由与分派归调度员、联网与浏览器归调研员、课件与实验归设计师、出卷与阅卷归出卷师、修复归维修员。')
+                    : t('这位成员的 api 面由团队分工固定、只读（不可增删）：固定组全员共用；非固定组只拿职责所需的域，其余域通过 team.* 协作补齐。')
               }
             />
-            <ul className="flex flex-col divide-y divide-line/50 rounded-lg border border-line/70 bg-paper-deep/30">
-              {apiItems.map((item) => (
-                <li key={item.key} className="flex items-center gap-2 px-3 py-1.5">
-                  <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink-strong">
-                    {t(item.label)}
+            <div className="flex flex-col gap-3">
+              <div>
+                <div className="mb-1.5 flex items-center gap-2 text-[11px]">
+                  <span className="font-semibold text-ink-strong">{t('固定组')}</span>
+                  <span className="min-w-0 truncate text-ink-faint">
+                    {isFree ? t('仅聊天的执行基座，架构固定') : t('六位执行声部共用 · 架构固定')}
                   </span>
-                  <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-px text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                    {t('内置 · 恒开放')}
+                  <span className="ml-auto shrink-0 tabular-nums text-ink-faint">
+                    {t('{0} 项', fixedRows.length)}
                   </span>
-                  <code className="shrink-0 text-[10px] text-ink-faint">{item.key}</code>
-                </li>
-              ))}
-            </ul>
+                </div>
+                <ApiRowList rows={fixedRows} badge={t('固定 · 恒开放')} tone="fixed" />
+              </div>
+              <div>
+                <div className="mb-1.5 flex items-center gap-2 text-[11px]">
+                  <span className="font-semibold text-ink-strong">{t('非固定组')}</span>
+                  <span className="min-w-0 truncate text-ink-faint">
+                    {isFree ? t('架构没有给仅聊天额外能力') : t('本声部职责面 · 架构固定')}
+                  </span>
+                  {variableRows.length > 0 && (
+                    <span className="ml-auto shrink-0 tabular-nums text-ink-faint">
+                      {t('{0} 项', variableRows.length)}
+                    </span>
+                  )}
+                </div>
+                {variableRows.length > 0 ? (
+                  <ApiRowList rows={variableRows} badge={t('专属 · 恒开放')} tone="variable" />
+                ) : (
+                  <p className="rounded-lg border border-line/70 bg-paper-deep/40 px-3 py-2 text-[11.5px] leading-relaxed text-ink-faint">
+                    {isFree
+                      ? t('无：仅聊天的能力面全部由架构固定。')
+                      : t('无：这位成员只持有全员共用的固定基座。')}
+                  </p>
+                )}
+              </div>
+            </div>
           </section>
 
           {/* ---------- 集成的工作流 ---------- */}

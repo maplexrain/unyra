@@ -1,16 +1,20 @@
 /**
- * 五位执行声部（导师 / 出卷师 / 设计师 / 调研员 / 维修员）系统提示词的**共同前缀（P0）**。
+ * 六位执行声部（导师 / 调度 / 出卷 / 设计 / 调研 / 维修）系统提示词的**共同前缀（P0）**。
  *
  * 取舍纪律（用户定稿）：**提示词里暴露的 api 与工作流，取决于该声部实际持有哪些**——
- * 不为了前缀缓存往 P0 里塞多余的组。所以 P0 只装「对四位声部逐字为真」的内容：
- * 团队协作（team.* 四声部都有）、execute 机制、先查再用、应用数据守门、沙箱纪律、
- * 通用纪律、compact 规程（compact 四声部都有）。**api 速查与引用/交付纪律不进 P0**——
- * 除 tmp/team 外各组没有交集，塞进 P0 就是给没有该组的声部灌噪声；各声部的完整持面
- * 速查在 P1 按 AGENT_API_PLANES 渲染（apiDocKeysFor），引用/交付段按持有拼装
- * （CHIP_QUOTE_GUIDE / DELIVERY_LEDGER_GUIDE，见 teacherSystem 与 agentTeamSystem）。
+ * 不为了前缀缓存往 P0 里塞多余的组。所以 P0 只装「对六位声部逐字为真」的内容：
+ * 团队协作（team.* 六声部都有）、execute 机制、先查再用、应用数据守门、沙箱纪律、
+ * 通用纪律、compact 规程（compact 六声部都有）。
  *
- * 顺序纪律不变：越不可变越靠前——P0 对四份提示词逐字节一致，P1 按声部分化，末尾才是
- * 会随设置变化的附加提示词。改这里任何一行，四份提示词的前缀同时变。
+ * api 速查**不塞进 P0**，而是紧随 P0 拆成两段（内容声部在 P0 与 api 之间还先接一段共用
+ * 排版与视觉规范，见 typographyGuide）：
+ * - **固定组**（help / wait / compact + tmp / team）是六声部交集，逐字节一致，跨声部缓存
+ *   前缀能从 P0 一路命中到固定组末尾；
+ * - **非固定组**按 AGENT_API_PLANES 的实际持面渲染（apiDocKeysFor），没持有的组连索引都
+ *   不出现；引用/交付纪律（CHIP_QUOTE_GUIDE / DELIVERY_LEDGER_GUIDE）跟着持有拼在后面。
+ *
+ * 顺序纪律不变：越不可变越靠前——P0 与共用排版段、固定组对相应声部逐字节一致，专属能力面
+ * 按声部分化，末尾才是会随设置变化的附加提示词。改这里任何一行，六份提示词的前缀同时变。
  */
 
 import { AGENT_API_PLANES, type AgentVoice } from '../../agent/agentProfile'
@@ -67,7 +71,8 @@ export const ALL_AGENTS_COMMON_PREFIX = [
 /**
  * 执行声部共同前缀全文（P0）：六位执行声部的系统提示词都以它开头（逐字节一致）。
  * 块序：全员通用前缀（ALL_AGENTS_COMMON_PREFIX） → 团队协作（TEAM_GUIDE） → compact 会话压缩规程。
- * 声部间分化的内容（专属分工、API 速查、引用与交付、排版语法、专属工作流规程）都在 P1。
+ * P0 之后紧跟**固定组 API 速查**（六声部逐字节一致）与**非固定组 API 速查 / 引用交付 / 排版语法 /
+ * 专属工作流规程**（按声部分化），再往后才是身份定位与附加提示词——API 先于身份（用户定稿）。
  */
 export const SHARED_AGENT_PREFIX = [
   ALL_AGENTS_COMMON_PREFIX,

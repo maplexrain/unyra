@@ -45,7 +45,7 @@ export function voiceTags(id: AgentProfileId): string[] {
   return tags
 }
 
-/** 左栏顺序：仅聊天 / 调度员（任务入口） / 导师 / 四位承接声部（展示顺序，与 AGENT_TEAM_IDS 无关） */
+/** 左栏顺序：仅聊天 / 导师 / 调度员（任务入口） / 四位承接声部（展示顺序，与运行时名单顺序无关） */
 export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
   free: {
     roleTag: '跨目标',
@@ -106,4 +106,4 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
 }
 
 /** 左栏的展示顺序（free 在最左，导师随后，承接声部依次排开） */
-export const AGENT_ROSTER_ORDER: readonly AgentTeamMode[] = ['free', 'dispatcher', 'tutor', 'examiner', 'designer', 'researcher', 'fixer']
+export const AGENT_ROSTER_ORDER: readonly AgentTeamMode[] = ['free', 'tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer']

@@ -7,7 +7,9 @@
 import { describe, expect, it } from 'vitest'
 import { buildTeacherSystem } from '../src/learn/ai/teacherSystem'
 import { buildDispatcherSystem, buildExaminerSystem, buildDesignerSystem, buildResearcherSystem, buildFixerSystem } from '../src/learn/ai/agentTeamSystem'
-import { AGENT_API_PLANES, type AgentVoice } from '../src/agent/agentProfile'
+import { buildFreeChatSystem } from '../src/learn/ai/chatSystem'
+import { SHARED_AGENT_PREFIX } from '../src/learn/ai/agentSharedPrefix'
+import { AGENT_API_PLANES, FIXED_API_PLANE, type AgentVoice } from '../src/agent/agentProfile'
 
 const build = (v: AgentVoice): string =>
   v === 'tutor'
@@ -68,5 +70,65 @@ describe('提示词暴露面 = 实际持面', () => {
     expect(designer).toContain('【生成课堂】')
     expect(designer).toContain('【超级实验室】')
     expect(designer).not.toContain('【阅卷】')
+  })
+})
+
+describe('固定组 / 非固定组：切分口径、顺序与缓存前缀', () => {
+  it('固定能力面是六位执行声部的交集（tmp / team + wait / compact）', () => {
+    expect(FIXED_API_PLANE.groups).toEqual(['tmp', 'team'])
+    expect(FIXED_API_PLANE.topLevel).toEqual(['wait', 'compact'])
+  })
+
+  it('API 段排在共同基础前缀之后、身份定位之前', () => {
+    for (const voice of ['tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer'] as AgentVoice[]) {
+      const text = build(voice)
+      expect(text.startsWith(SHARED_AGENT_PREFIX)).toBe(true)
+      const fixedAt = text.indexOf('### 固定组（全员共用）')
+      const roleAt = text.indexOf('你是「归一 Unyra」')
+      expect(fixedAt).toBeGreaterThan(SHARED_AGENT_PREFIX.length)
+      expect(roleAt).toBeGreaterThan(fixedAt)
+      // 六位执行声部都至少有一个专属域（fixer 的 node 也是非固定组）：非固定组同样落在身份定位之前
+      const variableAt = text.indexOf('### 非固定组（本声部专属）')
+      expect(variableAt).toBeGreaterThan(fixedAt)
+      expect(variableAt).toBeLessThan(roleAt)
+    }
+    // 仅聊天同样「API 先于身份」
+    const free = buildFreeChatSystem()
+    expect(free.indexOf('【工具与沙箱能力】')).toBeLessThan(free.indexOf('你是「归一 Unyra」的聊天龟'))
+  })
+
+  it('固定组段逐字节一致（六位执行声部共用同一缓存前缀）', () => {
+    const fixedOf = (text: string): string => {
+      const start = text.indexOf('### 沙箱 API 速查')
+      const end = text.indexOf('\n\n### 非固定组（本声部专属）')
+      const tail = text.indexOf('\n\n- 以上就是你的全部 api 组与顶层函数')
+      const stop = end >= 0 ? end : tail >= 0 ? tail : text.indexOf('\n\n你是「归一 Unyra」')
+      return text.slice(start, stop)
+    }
+    const baseline = fixedOf(buildTeacherSystem())
+    for (const voice of ['dispatcher', 'examiner', 'designer', 'researcher', 'fixer'] as AgentVoice[]) {
+      expect(fixedOf(build(voice)), voice).toBe(baseline)
+    }
+  })
+
+  it('内容声部共用排版指南：P0 之后、固定组 API 之前，且三声部逐字节一致', () => {
+    const typographyOf = (text: string): string => {
+      const start = text.indexOf('### 结构化教学排版组件（```component 围栏）')
+      const stop = text.indexOf('### 沙箱 API 速查')
+      return text.slice(start, stop)
+    }
+    const baseline = typographyOf(buildTeacherSystem())
+    for (const voice of ['tutor', 'examiner', 'designer'] as AgentVoice[]) {
+      const text = build(voice)
+      const typoAt = text.indexOf('### 结构化教学排版组件（```component 围栏）')
+      const fixedAt = text.indexOf('### 沙箱 API 速查')
+      expect(typoAt).toBeGreaterThan(SHARED_AGENT_PREFIX.length)
+      expect(typoAt).toBeLessThan(fixedAt)
+      expect(typographyOf(text), voice).toBe(baseline)
+    }
+    // 非内容声部不背这段排版配方（避免给不出文档的声部灌噪声）
+    for (const voice of ['dispatcher', 'researcher', 'fixer'] as AgentVoice[]) {
+      expect(build(voice), voice).not.toContain('### 结构化教学排版组件（```component 围栏）')
+    }
   })
 })

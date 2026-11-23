@@ -200,6 +200,37 @@ export function agentRuntimeApiAllow(voice: AgentVoice): string[] {
   return [...AGENT_API_PLANES[voice].groups.filter((g) => g !== 'core'), ...AGENT_API_PLANES[voice].topLevel]
 }
 
+/**
+ * **固定能力面**：六位执行声部**逐位都持有**的 api 组与顶层函数（AGENT_API_PLANES 求交）。
+ * 它是「固定组 / 非固定组」这条分线的唯一口径，设置页的 execute 清单与系统提示词的
+ * api 速查都从这里取：
+ * - 固定组 = 团队协作基座（tmp / team）+ 人人都有的执行控制（wait / compact；help 恒在场，
+ *   渲染时单独补，不算交集成员）；
+ * - 非固定组 = 其余按职责分配的域（node / exam / classroom / browser …）。
+ *
+ * 之所以**求交而不是手写常量**：以后谁的能力面增减（例如给 fixer 补 ask），固定组的
+ * 定义会自动跟着「全员都持有」走，不会出现设置页说固定、运行时其实没给的假口径。
+ */
+export const FIXED_API_PLANE: AgentApiPlane = {
+  groups: intersectPlaneField('groups'),
+  topLevel: intersectPlaneField('topLevel'),
+}
+
+function intersectPlaneField(field: 'groups' | 'topLevel'): readonly string[] {
+  const first = AGENT_API_PLANES[AGENT_VOICES[0]][field]
+  return first.filter((name) => AGENT_VOICES.every((voice) => AGENT_API_PLANES[voice][field].includes(name)))
+}
+
+/** 某位执行声部持有的**非固定组**（持面减去固定组，保持 AGENT_API_PLANES 的声明顺序） */
+export function variableApiGroupsOf(voice: AgentVoice): string[] {
+  return AGENT_API_PLANES[voice].groups.filter((g) => !FIXED_API_PLANE.groups.includes(g))
+}
+
+/** 某位执行声部持有的**非固定顶层函数**（help 恒在场，不列；其余减去固定成员） */
+export function variableTopLevelOf(voice: AgentVoice): string[] {
+  return AGENT_API_PLANES[voice].topLevel.filter((name) => !FIXED_API_PLANE.topLevel.includes(name))
+}
+
 /* ---------- 团队分工：工作流面 ---------- */
 
 /**

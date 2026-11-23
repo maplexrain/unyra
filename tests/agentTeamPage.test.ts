@@ -889,21 +889,25 @@ describe('AgentSettingsView 智能体独立设置页', () => {
       )
     })
 
-    // 全部行都带「内置 · 恒开放」徽标；没有任何移除按钮、没有添加下拉
-    expect(host.textContent).toContain('内置 · 恒开放')
+    // 固定组 / 非固定组分开列，全部恒开放；没有任何移除按钮、没有添加下拉
+    expect(host.textContent).toContain('固定 · 恒开放')
+    expect(host.textContent).toContain('专属 · 恒开放')
+    expect(host.textContent).toContain('固定组')
+    expect(host.textContent).toContain('非固定组')
     expect(host.textContent).toContain('按团队分工固定')
     expect([...host.querySelectorAll<HTMLButtonElement>('button[aria-label^="移除"]')]).toHaveLength(0)
     expect(host.querySelector('[data-api-add]')).toBeNull()
-    // 导师分工面里的组都在清单里；core 只出现一次（合成行 + 目录行不重复）
-    expect(host.textContent).toContain('执行控制（顶层函数）')
+    // 导师分工面里的组都在清单里；固定组成员（help / wait / compact）各只出现一次
     const codeKeys = [...host.querySelectorAll('code')].map((c) => c.textContent)
-    expect(codeKeys.some((k) => k === 'node')).toBe(true)
-    expect(codeKeys.filter((k) => k === 'core')).toHaveLength(1)
+    expect(codeKeys.some((k) => k === 'api.node')).toBe(true)
+    expect(codeKeys.filter((k) => k === 'api.wait')).toHaveLength(1)
+    expect(codeKeys.filter((k) => k === 'api.compact')).toHaveLength(1)
+    expect(codeKeys.filter((k) => k === 'api.help')).toHaveLength(1)
     // 分出去的域（判卷与课件的 exam / classroom、调研的 web / browser）不在导师的清单里
-    expect(codeKeys.some((k) => k === 'exam')).toBe(false)
-    expect(codeKeys.some((k) => k === 'classroom')).toBe(false)
-    expect(codeKeys.some((k) => k === 'web')).toBe(false)
-    expect(codeKeys.some((k) => k === 'browser')).toBe(false)
+    expect(codeKeys.some((k) => k === 'api.exam')).toBe(false)
+    expect(codeKeys.some((k) => k === 'api.classroom')).toBe(false)
+    expect(codeKeys.some((k) => k === 'api.web')).toBe(false)
+    expect(codeKeys.some((k) => k === 'api.browser')).toBe(false)
     // 旧设置被无视：不触发任何 onChange
     expect(onChange).not.toHaveBeenCalled()
 
