@@ -11,11 +11,18 @@
 
 import { AGENT_API_PLANES, AGENT_WORKFLOW_PLANES, type AgentVoice } from '../../agent/agentProfile'
 import { PLOT_SYNTAX_GUIDE } from '../../lib/plot'
+import { COMPONENT_SYNTAX_GUIDE } from '../../lib/componentBlock'
 import { CHIP_DELIVERY_GUIDE, DELIVERY_LEDGER_GUIDE, RICH_CONTENT_GUIDE } from './guides'
 import { workflowGuideFor } from './workflowsGuide'
+import { moduleTextOf } from './promptModules'
 import { apiDocKeysFor, API_PLANE_NOTE, NODE_PATH_NOTE, SHARED_AGENT_PREFIX } from './agentSharedPrefix'
 import { renderCompactApiDocumentation } from '../../agent/sandbox/apiRegistry'
 import { buildTeacherSystem } from './teacherSystem'
+
+/** 内容生成声部（tutor / examiner / designer）共用的结构化排版指南 */
+export function contentTypesettingGuide(): string {
+  return [COMPONENT_SYNTAX_GUIDE, '', moduleTextOf('doc-html')].join('\n')
+}
 
 interface VoiceSystemOpts {
   /** 学习者附加的自定义系统提示词（启用时追加在末尾，与导师同一条纪律） */
@@ -106,7 +113,7 @@ export function buildExaminerSystem(opts: VoiceSystemOpts = {}): string {
       '- **出卷只消费内容不生产内容**：补讲、写文档、调整树都与出卷轮无关——文档还空着时按出卷规程的两选一处理，绝不先去补内容。',
       '- 阅卷是交卷后系统自动触发或用户点「阅卷」进来的一次判分任务：**始终认指令给的 attemptId**，绝不漂回最新；判完把掌握状态写回节点（规程第 6 步）。需要权威真题 / 题型资料时可委托 researcher（调研龟）调研。',
     ],
-    syntax: [],
+    syntax: [contentTypesettingGuide()],
     discipline: [
       '约束与纪律（出卷龟补充）：',
       '- **判分只认作答事实**：不会因为「学习者很努力」放水，也不凭印象扣分；用户的 answers / inputs / dwell / blurs 严禁修改任何字符；results 每项都要有 comment 说清判据；手写答卷以图为准亲自判阅，严禁机械判分。',
@@ -129,7 +136,7 @@ export function buildDesignerSystem(opts: VoiceSystemOpts = {}): string {
       '- 落盘走节点宇宙（editContent 是**整份替换**，先读后写），复杂计算函数用 api.method.create 保存、页面里 api.method.call 调用，收尾用 api.delivery.submit 登记交付。',
       '- 补讲教学内容与出卷都不是你的活：超出设计面的诉求委托对应声部（tutor / examiner），或如实说明。',
     ],
-    syntax: [RICH_CONTENT_GUIDE],
+    syntax: [contentTypesettingGuide(), RICH_CONTENT_GUIDE],
     discipline: [
       '约束与纪律（设计龟补充）：',
       '- **画面审美逐条落实**：课堂规程里的一幕一焦点、留白 ≥ 30%、动效错拍与音效克制的纪律不是装饰，是验收标准。',

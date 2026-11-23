@@ -44,6 +44,7 @@ import { PROMPT_MODULES } from './promptModules'
 import { TEAM_GUIDE } from './teamGuide'
 import { TURTLE_CLAN_GUIDE } from './turtleClan'
 import { compactWorkflowSection, workflowGuideFor } from './workflowsGuide'
+import { contentTypesettingGuide } from './agentTeamSystem'
 import type { AgentTeamMode } from '../../components/learn/agent-team/conversationList'
 
 /** 提示词分段颜色主题 */
@@ -422,6 +423,7 @@ function getSpecialistSections(voice: AgentVoice, opts: BuildSectionsOpts = {}):
       '- **判卷与讲解（exam-grade）**：学习者交卷后判定答案，给出逐题解析与总评（api.exam.grade）；错题必须讲透「为什么错、正确思路是什么、对应讲义哪一节」。',
       '- **交付登记**：产物生成后必须调 api.delivery.register 登记交付物（kind 为 exam 或 exam-grade），方便调度方或用户查验。',
     ].join('\n')
+    syntaxText = contentTypesettingGuide()
     disciplineText = [
       '约束与纪律（出卷龟补充）：',
       '- **不超纲不偏门**：题目的知识边界必须在关联文档范围内，严禁考查文档未涉及的生僻术语。',
@@ -437,7 +439,7 @@ function getSpecialistSections(voice: AgentVoice, opts: BuildSectionsOpts = {}):
       '- **超级实验室（superlab）**：在节点工作区搭建可运行、可调参的交互仿真实验（通过 api.workspace 落地）。',
       '- **交付登记**：产物完成后调 api.delivery.register 登记交付物。',
     ].join('\n')
-    syntaxText = [PLOT_SYNTAX_GUIDE, '', RICH_CONTENT_GUIDE].join('\n')
+    syntaxText = [contentTypesettingGuide(), '', PLOT_SYNTAX_GUIDE, '', RICH_CONTENT_GUIDE].join('\n')
     disciplineText = [
       '约束与纪律（设计龟补充）：',
       '- **克制美学**：交互与动画必须服务于概念理解，严禁华而不实的纯装饰。',

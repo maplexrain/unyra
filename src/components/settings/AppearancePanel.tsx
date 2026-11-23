@@ -26,6 +26,7 @@ import { AppearanceBackgroundSection } from './AppearanceBackgroundSection'
 import { AppearanceTypographySection } from './AppearanceTypographySection'
 import { AppearanceLocaleSection } from './AppearanceLocaleSection'
 import { AppearanceFeaturesSection } from './AppearanceFeaturesSection'
+import { AppearanceDocDesignSection } from './AppearanceDocDesignSection'
 
 interface Props {
   appearance: Appearance
@@ -355,6 +356,15 @@ export function AppearancePanel({
           onCommitStrokeColor={commitStrokeColor}
           onColorPickerChange={handleColorPickerChange}
           onStrokeWidthChange={handleStrokeWidthChange}
+        />
+      )}
+
+      {/* 文档设计（排版组件管理） */}
+      {(!activeSubTab || activeSubTab === 'doc-design') && (
+        <AppearanceDocDesignSection
+          onToast={onToast}
+          highlighted={isHighlighted('doc-design')}
+          highlightKey={getHighlightKey('doc-design')}
         />
       )}
 

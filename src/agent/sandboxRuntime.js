@@ -162,6 +162,10 @@ function makeApi() {
     api.web = attachGroupHelp(api.web || {}, 'web')
     api.web.fetch = attachApiHelp((...callArgs) => api.fetch(...callArgs), 'web.fetch')
   }
+  // 别名：api.design.componet 容错别名指向 api.design.component
+  if (api.design && api.design.component) {
+    api.design.componet = api.design.component
+  }
   api.ui = attachGroupHelp(api.ui || {}, 'ui')
   /**
    * api.node.get(uuid)：节点对象门面。get 回 manifest（身份 + 关系快照），这里包成真对象：

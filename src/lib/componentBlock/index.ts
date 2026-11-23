@@ -25,27 +25,51 @@ import {
   renderStat,
   renderSteps,
 } from './renderers'
+import { getDocumentComponent } from './registry'
 import type { ComponentNode, ComponentRenderCtx } from './types'
 
 export const COMPONENT_LANG = 'component'
 
 /**
- * 教学 Agent 的 Component 语法指引（用于排版指南与系统提示词，替代繁琐的 HTML 标签）
+ * 教学 Agent 的 Component 语法指引（用于排版指南与系统提示词，替代繁琐易错的 HTML 标签）
  */
-export const COMPONENT_SYNTAX_GUIDE = `结构化教学排版组件（\`\`\`component 围栏，用于替代冗长 HTML 配方，大幅节省 token 并规避标签未闭合问题）：
-在 \`\`\`component 围栏内使用轻量语义标签与 \`#插槽名\` 属性组织内容，自动渲染为出版级直角精装卡片：
-1. 提示框 (Notice)：<Notice type="warn|seal|ok|sky"><div #title>眉标标题</div><div #describe>详细内容（支持 Markdown / 公式）</div></Notice>
-2. 双栏正误辨析 (Compare)：<Compare><div #left title="直觉误区" badge="常见错误" type="warn">内容</div><div #right title="严格定义" badge="正确认知" type="ok">内容</div></Compare>
-3. 定理公式解剖卡 (Formula)：<Formula title="定理名称" expr="数学表达式"><div #item name="项名" tone="seal">含义解释</div></Formula>
-4. 贯穿步骤轴 (Steps)：<Steps><div #step title="步骤标题">步骤说明</div></Steps>
-5. 机制推导链 (Pipeline)：<Pipeline><div #stage label="STAGE 01" title="阶段标题" tone="seal">阶段说明</div></Pipeline>
-6. 关键指标看板 (Stat)：<Stat><div #item label="指标名" value="大号数值" tone="seal">解读说明</div></Stat>
-7. 词典式术语名片 (Concept)：<Concept><div #term>概念名</div><div #en>英文名</div><div #tag>领域标签</div><div #describe>定义</div></Concept>
-8. 构成比例条 (Breakdown)：<Breakdown title="标题" total="总计 100%"><div #item label="类别" value="55%" tone="seal"></div></Breakdown>
-9. 随堂微测自检卡 (Quiz)：<Quiz><div #title>自测问答</div><div #question>设问</div><div #answer>思路与答案解析（点击展开）</div></Quiz>`
+export const COMPONENT_SYNTAX_GUIDE = `### 结构化教学排版组件（\`\`\`component 围栏）
+
+教学文档中的结构化卡片排版**严禁手写繁重内嵌 HTML**，必须使用 \`\`\`component 代码块：
+1. 围栏语言标识为 \`component\`：\`\`\`component ... \`\`\`
+2. 使用轻量语义标签定义组件（如 \`<Notice>\`、\`<Compare>\` 等），支持标准属性 \`key="value"\`。
+3. 插槽标记：使用带 \`#插槽名\` 属性的子元素指定插槽内容（如 \`<div #title>标题</div>\` 或 \`<div #describe>内容</div>\`）。
+4. 语法示例：
+\`\`\`component
+<Notice type="warn">
+  <div #title>易错陷阱 · 边界条件</div>
+  <div #describe>当分母趋近于 0 时，<strong>不能直接代入求值</strong>，必须先通过因式分解或洛必达法则消去零因子。</div>
+</Notice>
+\`\`\`
+
+#### 动态获取组件签名（Execute API）
+排版组件配方已解耦为动态注册中心，使用前请通过沙箱 API 动态获取组件签名：
+- \`api.design.component.list()\`（亦支持 \`api.design.componet.list()\`）：获取已注册组件清单，仅返回简短描述与组件 id，节省 token。
+- \`api.design.component.get(idOrTag)\`：获取组件详细签名（标签、可用插槽 slots、属性 attrs、示例 example 与模板）。
+- \`api.design.component.register(...) / update(...) / delete(...)\`：动态注册与管理扩展配方组件。`
 
 /** 根据组件标签名调度对应的渲染器 */
 function renderSingleComponent(node: ComponentNode, ctx: ComponentRenderCtx): string {
+  const customDef = getDocumentComponent(node.tag)
+  if (customDef?.template) {
+    let out = customDef.template
+    for (const [key, val] of Object.entries(node.attrs)) {
+      out = out.replaceAll(`{{${key}}}`, ctx.renderInline ? ctx.renderInline(val) : ctx.escape(val))
+    }
+    for (const [slot, items] of Object.entries(node.slots)) {
+      const slotContent = items
+        .map((it) => (ctx.renderInline ? ctx.renderInline(it.content) : ctx.escape(it.content)))
+        .join('\n')
+      out = out.replaceAll(`{{${slot}}}`, slotContent)
+    }
+    return out
+  }
+
   const tag = node.tag.toLowerCase()
 
   switch (tag) {
@@ -134,3 +158,4 @@ export function componentBlock(source: string, ctx: PluginRenderContext, _info?:
 export * from './types'
 export * from './parser'
 export * from './renderers'
+export * from './registry'

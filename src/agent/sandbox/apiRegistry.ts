@@ -545,6 +545,21 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
     ],
   ),
   g(
+    'design',
+    '文档设计与排版',
+    '文档排版配方组件查询与管理（component.list / get / register / update / delete）。',
+    `文档设计域。排版结构化教学卡片首选 \`\`\`component 块。使用组件前用 api.design.component.list() 动态获取已注册组件清单；
+若需查看组件标签结构、可用插槽（#slot）或属性，调 api.design.component.get(id 或 tag)；
+需要自创新排版配方时调 register / update / delete。`,
+    [
+      a('component.list', 'design.component.list({ query?, source? }?)', '获取已注册的排版配方组件清单', '只暴露 id、tag、name 与简短 description 以节省 token；支持 query 过滤与 source 筛选（builtin/external）。亦支持 design.componet.list。', "const res = await api.design.component.list()"),
+      a('component.get', 'design.component.get(idOrTag)', '获取详细的组件签名与插槽信息', '返回组件的 tag、name、description、slots、attrs、example 与 template 模板定义。亦支持 design.componet.get。', "const res = await api.design.component.get('Notice')"),
+      a('component.register', 'design.component.register({ tag, name, description, template?, example?, slots?, attrs? })', '注册新的排版配方组件', '注册自定义排版组件供教学正文使用。tag 为标签名；template 为 HTML 模板（支持 {{slot}} 插槽替换）。亦支持 design.componet.register。', "const res = await api.design.component.register({ tag: 'Notice', name: '提示卡', description: '高亮重要提示', template: '<div class=\"p-4 bg-amber-50 rounded\">{{title}}<p>{{describe}}</p></div>' })"),
+      a('component.update', 'design.component.update({ id, name?, tag?, description?, template?, example?, slots?, attrs? })', '更新外部注册的排版配方组件', '更新自定义配方组件内容；内置组件不可修改。亦支持 design.componet.update。', "const res = await api.design.component.update({ id: 'c-custom-1', description: '更新后的描述' })"),
+      a('component.delete', 'design.component.delete(id)', '删除外部注册的排版配方组件', '根据 id 删除外部组件；内置组件受保护不可删除。亦支持 design.componet.delete。', "const res = await api.design.component.delete('c-custom-1')"),
+    ],
+  ),
+  g(
     'project',
     '项目路径',
     '已声明 project 节点的真实路径读写：uuid + 项目内相对路径寻址，越出声明根一律拒绝。',

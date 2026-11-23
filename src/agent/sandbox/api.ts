@@ -27,6 +27,7 @@ import { installProcess } from './api/process'
 import { installSkill } from './api/skill'
 import { installProject } from './api/project'
 import { installClassroom } from './api/classroom'
+import { installDesign } from './api/design'
 
 /** 把结果裁到上限：宁可给模型一段被截断的内容，也不要它被 413 顶回来 */
 export function clip(text: string, limit = MAX_RESULT_CHARS): string {
@@ -115,6 +116,8 @@ export function buildApi(
   installSkill(api, opts, log)
   // 课堂域：schema / verbs / components / animations / register* / check
   installClassroom(api, opts, log)
+  // 文档设计域：component.list / component.get / component.register / component.update / component.delete
+  installDesign(api, opts, log)
 
   /*
    * 节点宇宙（api.node）：create / get / list / delete 四条传输 + 对象门面。

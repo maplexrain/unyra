@@ -81,6 +81,7 @@ const ALL_TABS: SettingsTabItem[] = [
       { key: 'theme', label: '主题配色' },
       { key: 'background', label: '全局壁纸' },
       { key: 'typography', label: '字体与描边' },
+      { key: 'doc-design', label: '文档设计' },
       { key: 'locale', label: '界面语言' },
       { key: 'features', label: '辅助与提示' },
     ],

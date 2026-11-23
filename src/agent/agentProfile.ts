@@ -158,7 +158,7 @@ export const AGENT_API_PLANES: Record<AgentVoice, AgentApiPlane> = {
     groups: [
       'node', 'memory', 'schedule', 'tmp', 'workspace', 'userInfo', 'method', 'wf',
       'chip', 'delivery', 'mcp', 'ui', 'subagent', 'permission',
-      'files', 'process', 'skill', 'video', 'project', 'team',
+      'files', 'process', 'skill', 'video', 'project', 'team', 'design',
     ],
     // 联网调研已分给调研员：导师没有 web / browser / fetch，只有看图的 see
     topLevel: [...CORE_TOP_LEVEL_ALL, 'see'] as const,
@@ -172,13 +172,13 @@ export const AGENT_API_PLANES: Record<AgentVoice, AgentApiPlane> = {
   examiner: {
     groups: [
       'node', 'exam', 'tmp', 'workspace', 'userInfo', 'wf', 'chip',
-      'delivery', 'web', 'ui', 'files', 'project', 'team',
+      'delivery', 'web', 'ui', 'files', 'project', 'team', 'design',
     ],
     topLevel: CORE_TOP_LEVEL_WEB,
   },
   designer: {
     // team 是被委托后的交付通道（complete）——所有承接声部都必须有
-    groups: ['node', 'tmp', 'method', 'delivery', 'classroom', 'team'],
+    groups: ['node', 'tmp', 'method', 'delivery', 'classroom', 'team', 'design'],
     // 课堂与实验都不联网：问需求要 ask（超级实验室的第一步），没有 fetch / see
     topLevel: CORE_TOP_LEVEL_ALL,
   },

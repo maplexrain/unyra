@@ -40,14 +40,15 @@ describe('模块注册表（内容形态规范）', () => {
     }
   })
 
-  it('doc-html 不再承载图表：配方数量与图表分流口径', () => {
+  it('doc-html 不再承载图表与静态配方：图表分流与 component 围栏动态获取', () => {
     const docHtml = PROMPT_MODULES.find((m) => m.key === 'doc-html')!
     // 图表一律走围栏（各有专节），HTML 配方不手写 SVG / 柱状图——体积纪律
     expect(docHtml.text).toContain('```plot')
     expect(docHtml.text).toContain('```pisc')
     expect(docHtml.text).toContain('```mermaid')
-    // 精装配方收成九个（图表类三配方已撤出）
-    expect(docHtml.text).toContain('九个精装配方')
+    // 静态配方已撤出，改为 ```component 围栏与 api.design.component 动态查询
+    expect(docHtml.text).toContain('```component')
+    expect(docHtml.text).toContain('api.design.component.list')
   })
 
   it('旧规程模块已退役（2026-11 全量静态重构：规程在 WORKFLOWS_GUIDE，不在注册表）', () => {
@@ -164,9 +165,10 @@ describe('首轮系统提示词（紧凑静态注入）', () => {
     expect(designer).toContain('api.classroom.schema')
   })
 
-  it('排版配方与语法指南在场（九配方版）', () => {
+  it('排版配方与语法指南在场（component 围栏与动态 api 版）', () => {
     expect(system).toContain('文档排版与视觉呈现')
-    expect(system).toContain('九个精装配方')
+    expect(system).toContain('```component')
+    expect(system).toContain('api.design.component.list')
     expect(system).toContain('```plot')
     expect(system).toContain('```quote')
     expect(system).toContain('```mermaid')
@@ -197,5 +199,16 @@ describe('首轮系统提示词（紧凑静态注入）', () => {
     const marker = '工作区是用户交付物的落点'
     expect(system.indexOf(marker)).toBeGreaterThan(-1)
     expect(system.indexOf(marker)).toBe(system.lastIndexOf(marker))
+  })
+
+  it('所有内容生成声部（tutor / examiner / designer）共用排版指南与 component 语法', () => {
+    const tutor = buildTeacherSystem()
+    const examiner = buildExaminerSystem()
+    const designer = buildDesignerSystem()
+    for (const sys of [tutor, examiner, designer]) {
+      expect(sys).toContain('```component')
+      expect(sys).toContain('api.design.component.list')
+      expect(sys).toContain('文档排版与视觉呈现')
+    }
   })
 })

@@ -27,7 +27,7 @@ describe('提示词暴露面 = 实际持面', () => {
     it(voice + ': 持有的组都在、没持有的绝不出现', () => {
       const text = build(voice)
       const held = AGENT_API_PLANES[voice].groups
-      const all = ['node', 'memory', 'schedule', 'tmp', 'workspace', 'userInfo', 'method', 'wf', 'chip', 'delivery', 'web', 'browser', 'mcp', 'ui', 'subagent', 'permission', 'files', 'process', 'skill', 'video', 'project', 'team', 'exam', 'classroom']
+      const all = ['node', 'memory', 'schedule', 'tmp', 'workspace', 'userInfo', 'method', 'wf', 'chip', 'delivery', 'web', 'browser', 'mcp', 'ui', 'subagent', 'permission', 'files', 'process', 'skill', 'video', 'project', 'team', 'exam', 'classroom', 'design']
       for (const g of held) {
         expect(text).toContain('#### api.' + g + ' —')
       }
