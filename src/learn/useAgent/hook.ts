@@ -50,7 +50,8 @@ import {
   setRoleWorkDispatcher,
   takeChannelInjection,
 } from '../roleWork/dispatch'
-import { outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
+import { groupPeer, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
+import { appendGroupMessage } from '../groupChat'
 import { useAgentSlots } from './slots'
 import { useAgentSession } from './session'
 import { assembleTurnEntry } from './agentPrompt'
@@ -473,8 +474,8 @@ export function useAgent(opts: {
           autoCompactRef,
           onNoticeRef,
         })
-        // 收口兜底：这一轮从未用 chat.send 对外说过话时，把最终正文补成 user 通道一条
-        // （auto: true 标出来，角色不会误以为这是它主动发的）。用户能立刻在对话层看到回复。
+        // 收口兜底：这一轮从未用 chat.send 对外说过话时，把最终正文补成一条
+        // （auto: true 标出来，角色不会误以为这是它主动发的）。用户能立刻在对应通道看到回复。
         if (!roleOutboundMade(target.conversationId)) {
           const finalText = parts
             .filter((p) => p.type === 'text')
@@ -483,13 +484,30 @@ export function useAgent(opts: {
             .trim()
           const cur = conversationById(getLatest(), target.conversationId)
           if (finalText && cur) {
+            // 兜底也必须沿**最近一条外部入站**的通道回去：群聊来的任务不能悄悄变成私聊回复
+            const lastInbound = [...(cur.channels ?? [])]
+              .reverse()
+              .find((m) => m.direction === 'in' && m.kind !== 'work')
+            const fallbackChannel =
+              lastInbound?.kind === 'group'
+                ? 'group'
+                : lastInbound?.kind === 'agent'
+                  ? 'agent'
+                  : 'user'
             const envelope = outboundEnvelope({
-              channel: 'user',
+              channel: fallbackChannel,
               from: peerOf('agent', voice, DEFAULT_AGENT_NAME[voice]),
-              to: userPeer(),
+              to:
+                fallbackChannel === 'group'
+                  ? groupPeer()
+                  : fallbackChannel === 'agent' && lastInbound
+                    ? lastInbound.from
+                    : userPeer(),
               text: finalText,
               auto: true,
+              ...(fallbackChannel === 'group' && cur.goalId ? { goalId: cur.goalId } : {}),
             })
+            if (fallbackChannel === 'group') appendGroupMessage(envelope)
             persist({ ...cur, channels: [...(cur.channels ?? []), envelope].slice(-200), updatedAt: Date.now() })
             markRoleOutbound(target.conversationId)
           }

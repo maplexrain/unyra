@@ -73,27 +73,30 @@ export type AgentPart =
     }
 
 /**
- * role-work 三通道的公共戳。宿主在消息入站时写入，模型只能读、不能改：
+ * role-work 四通道的公共戳。宿主在消息入站时写入，模型只能读、不能改：
  * - user：用户通道（界面输入 / 用户附件）；
- * - agent：角色通道（另一位 role 发来的话）；
- * - work：工作通道（本 role 的 work 交付或状态）。
+ * - agent：角色通道（另一位 role 私聊发来的话）；
+ * - work：工作通道（本 role 的 work 交付或状态）；
+ * - group：群聊通道（多角色共用一条会话，必须 @ 才能点名交付）。
  */
-export type ChannelKind = 'user' | 'agent' | 'work'
+export type ChannelKind = 'user' | 'agent' | 'work' | 'group'
 
- /** 通道里的一端：用户 / 角色 / 工作会话 */
+ /** 通道里的一端：用户 / 角色 / 工作会话 / 群聊 */
 export interface ChannelPeer {
-  kind: 'user' | 'role' | 'work'
+  kind: 'user' | 'role' | 'work' | 'group'
   id: string
   name: string
 }
 
-/** 入站消息的来源与时间戳（模型历史里会渲染成一行 `【来源 · 时间】`） */
+/** 入站消息的来源与时间戳（模型历史里会渲染成一行元信息抬头） */
 export interface ChannelStamp {
   channel: ChannelKind
   from: ChannelPeer
   to: ChannelPeer
   ts: number
   envelopeId: string
+  /** 所属学习目标；群聊按目标分开，私聊 / agent / work 可省略 */
+  goalId?: string
 }
 
 /** 一条通道流水：role 的外部收发都在这里，聊天层只读它，不碰工具/思考。 */
@@ -108,6 +111,10 @@ export interface ChannelMessage {
   attachments?: { images?: MessageImage[]; files?: MessageFile[] }
   /** work.send / chat.send 引用转发的用户消息 id */
   quoteMessageId?: string
+  /** 群聊里被 @ 的收件人（一条消息可点名多位） */
+  mentions?: ChannelPeer[]
+  /** 所属学习目标（群聊按目标分开；其它通道可省略） */
+  goalId?: string
   /** 收口兜底自动补发（模型没显式 send） */
   auto?: boolean
 }

@@ -24,10 +24,13 @@ import { makeBrowserOps, type BrowserDeps } from '../web/browserOps'
 import type { WorkManager } from '../../agent/work/manager'
 import { createChatOps } from '../ops/chat'
 import { resolveChatAttachments } from '../roleWork/attachments'
-import { DEFAULT_AGENT_NAME, type AgentProfileId } from '../../agent/agentProfile'
+import { agentNameOf, AGENT_ROLE_IDS, type AgentProfileId } from '../../agent/agentProfile'
+import { isAgentRoleId } from '../../agent/roleWork/types'
 import type { ChannelMessage, Conversation, ConversationMessage } from '../../agent/types'
 import { roleConversationId } from '../roleWork/roles'
-import { userPeer } from '../roleWork/channels'
+import { groupPeer, inboundEnvelope, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
+import { deliverInbound } from '../roleWork/dispatch'
+import { appendGroupMessage } from '../groupChat'
 import { emptyDelivery, mergeDelivery, normalizeDelivery } from '../../agent/delivery'
 import { native } from '../../lib/native'
 import { nodeById } from '../graph'
@@ -174,40 +177,45 @@ export function rigTurnTools(io: {
     contextWindow: window,
   })
   sandboxBase.work = workManager.api
+  const roleName = agentNameOf(profileOf(agentSettings, voice as AgentProfileId), voice as AgentProfileId)
+  const appendChannel = (convId: string, envelope: ChannelMessage): void => {
+    const cur = getLatest().conversations.find((c) => c.id === convId)
+    if (!cur) return
+    const conversations = getLatest().conversations.map((c) =>
+      c.id === convId ? { ...c, channels: [...(c.channels ?? []), envelope].slice(-200), updatedAt: Date.now() } : c,
+    )
+    set({ ...getLatest(), conversations })
+  }
+  const ensureRole = (role: AgentProfileId, goalId: string): string => {
+    const existing = getLatest().conversations.find(
+      (c) => c.goalId === goalId && (c.voice ?? 'tutor') === role,
+    )
+    if (existing) return existing.id
+    const id = roleConversationId(goalId, role as AgentVoice)
+    const now = Date.now()
+    const conv: Conversation = { id, goalId, voice: role as AgentVoice, messages: [], createdAt: now, updatedAt: now }
+    set({ ...getLatest(), conversations: [...getLatest().conversations, conv] })
+    return id
+  }
+  const resolveRole = (role: AgentProfileId, goalId?: string | null): string | null => {
+    const matches = getLatest().conversations.filter(
+      (c) => (c.voice ?? 'tutor') === role && (goalId == null || c.goalId === goalId),
+    )
+    matches.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+    return matches[0]?.id ?? null
+  }
+  const roleNameOf = (role: AgentProfileId): string => agentNameOf(profileOf(agentSettings, role), role)
   sandboxBase.chat = createChatOps({
     roleId: voice as AgentProfileId,
-    roleName: DEFAULT_AGENT_NAME[voice as AgentProfileId],
+    roleName,
     conversationId: target.conversationId,
     ...(target.goalId ? { goalId: target.goalId } : {}),
     getConversation: (id) => getLatest().conversations.find((c) => c.id === id) ?? null,
-    appendChannel: (convId, envelope: ChannelMessage) => {
-      const cur = getLatest().conversations.find((c) => c.id === convId)
-      if (!cur) return
-      const conversations = getLatest().conversations.map((c) =>
-        c.id === convId ? { ...c, channels: [...(c.channels ?? []), envelope].slice(-200), updatedAt: Date.now() } : c,
-      )
-      set({ ...getLatest(), conversations })
-    },
+    appendChannel,
     userPeer: () => userPeer(),
-    resolveRoleConversation: (role, goalId) => {
-      const matches = getLatest().conversations.filter(
-        (c) => (c.voice ?? 'tutor') === role && (goalId == null || c.goalId === goalId),
-      )
-      matches.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-      return matches[0]?.id ?? null
-    },
-    ensureRoleConversation: (role, goalId) => {
-      const existing = getLatest().conversations.find(
-        (c) => c.goalId === goalId && (c.voice ?? 'tutor') === role,
-      )
-      if (existing) return existing.id
-      const id = roleConversationId(goalId, role as AgentVoice)
-      const now = Date.now()
-      const conv: Conversation = { id, goalId, voice: role as AgentVoice, messages: [], createdAt: now, updatedAt: now }
-      set({ ...getLatest(), conversations: [...getLatest().conversations, conv] })
-      return id
-    },
-    roleNameOf: (role) => DEFAULT_AGENT_NAME[role],
+    resolveRoleConversation: (role, goalId) => resolveRole(role, goalId),
+    ensureRoleConversation: (role, goalId) => ensureRole(role, goalId),
+    roleNameOf,
     messageOf: (messageId): ConversationMessage | null =>
       getLatest().conversations.find((c) => c.id === target.conversationId)?.messages.find((m) => m.id === messageId) ?? null,
     resolveAttachments: (items) =>
@@ -225,6 +233,82 @@ export function rigTurnTools(io: {
         ...(attachments?.files?.length ? { files: attachments.files } : {}),
       })
       return { ok: r.ok, channel: 'work', to: name, ...(r.error ? { error: r.error } : {}) }
+    },
+    sendToGroup: async ({ text, mentions, messageId, attachments }) => {
+      const goalId = target.goalId
+      if (!goalId) return { ok: false, error: '当前 role 会话不挂在目标上，无法进入群聊' }
+      const rawIds = [...new Set((mentions ?? []).map((id) => id.trim()).filter(Boolean))]
+      // 目标可以写 role id，也可以写显示名（模型有时直接抄 @名字）；统一解析成 role id
+      const ids = rawIds
+        .map((raw) => {
+          if (isAgentRoleId(raw)) return raw as AgentProfileId
+          return AGENT_ROLE_IDS.find((id) => id !== 'free' && roleNameOf(id) === raw)
+        })
+        .filter((id): id is AgentProfileId => Boolean(id))
+      if (ids.length !== rawIds.length) return { ok: false, error: '群聊 @ 的目标 role id / 名字不合法' }
+      // 群聊里要投给某个 agent，正文必须显式 @ 它的名字；只发群里（不点名）则不投给任何 role
+      for (const id of ids) {
+        if (!text.includes('@' + roleNameOf(id))) {
+          return { ok: false, error: `群聊消息要投给 ${roleNameOf(id)}，正文必须显式 @${roleNameOf(id)}` }
+        }
+      }
+      const from = peerOf('agent', voice, roleName)
+      const mentionPeers = ids.map((id) => peerOf('agent', id, roleNameOf(id)))
+      const groupMsg = outboundEnvelope({
+        channel: 'group',
+        from,
+        to: groupPeer(),
+        text,
+        ...(messageId ? { quoteMessageId: messageId } : {}),
+        ...(attachments ? { attachments } : {}),
+        ...(mentionPeers.length ? { mentions: mentionPeers } : {}),
+        goalId,
+      })
+      appendGroupMessage(groupMsg)
+      // 自己这一侧的 mind 也留一条出站流水（群聊层另开，不混进私聊）
+      appendChannel(target.conversationId, groupMsg)
+      for (const id of ids) {
+        if (id === voice) continue
+        const targetConvId = resolveRole(id, goalId) ?? ensureRole(id, goalId)
+        const toPeer = peerOf('agent', id, roleNameOf(id))
+        const inbound = inboundEnvelope({
+          channel: 'group',
+          from,
+          to: toPeer,
+          text,
+          id: groupMsg.id,
+          ts: groupMsg.ts,
+          ...(attachments ? { attachments } : {}),
+          mentions: mentionPeers,
+          goalId,
+        })
+        deliverInbound(
+          {
+            conversationId: targetConvId,
+            role: id,
+            goalId,
+            text,
+            stamp: {
+              channel: 'group',
+              from,
+              to: toPeer,
+              ts: groupMsg.ts,
+              envelopeId: groupMsg.id,
+              goalId,
+            },
+            envelopeId: groupMsg.id,
+            ...(attachments?.images ? { images: attachments.images } : {}),
+            ...(attachments?.files ? { files: attachments.files } : {}),
+          },
+          inbound,
+        )
+      }
+      return {
+        ok: true,
+        channel: 'group',
+        id: groupMsg.id,
+        ...(ids.length ? { to: ids.join(',') } : {}),
+      }
     },
   })
   /*

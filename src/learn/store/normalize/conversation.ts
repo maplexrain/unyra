@@ -127,7 +127,7 @@ function normalizeStamp(raw: unknown): ChannelStamp | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const r = raw as Record<string, unknown>
   if (typeof r.channel !== 'string' || !r.channel) return undefined
-  if (r.channel !== 'user' && r.channel !== 'agent' && r.channel !== 'work') return undefined
+  if (r.channel !== 'user' && r.channel !== 'agent' && r.channel !== 'work' && r.channel !== 'group') return undefined
   if (!r.from || !r.to || typeof r.from !== 'object' || typeof r.to !== 'object') return undefined
   if (typeof r.envelopeId !== 'string' || !r.envelopeId) return undefined
   return {
@@ -136,6 +136,7 @@ function normalizeStamp(raw: unknown): ChannelStamp | undefined {
     to: r.to as ChannelStamp['to'],
     ts: typeof r.ts === 'number' ? r.ts : Date.now(),
     envelopeId: r.envelopeId,
+    ...(typeof r.goalId === 'string' && r.goalId ? { goalId: r.goalId } : {}),
   }
 }
 

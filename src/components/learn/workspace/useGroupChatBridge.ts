@@ -1,0 +1,106 @@
+/**
+ * 群聊与宿主 store 的桥：把群聊流水订阅、按目标过滤、用户发言投递从 AgentSlot 拆出来。
+ *
+ * 群聊是独立账本（learn/groupChat），role 的私聊 / mind 是另一套会话；这里只负责：
+ * - 读群聊流水并按当前目标过滤；
+ * - 用户群聊发言时先落群流水，再给被 @ 的 role 各投一条 `channel:'group'` 入站消息。
+ *
+ * 放在独立模块是为了让 AgentSlot 保持「读 props → 组织布局」的薄壳，不把通道细节堆回去。
+ */
+import { useMemo, useSyncExternalStore } from 'react'
+import type { AgentVoice } from '../../../agent/agentProfile'
+import type { ChannelMessage } from '../../../agent/types'
+import type { LearnStore } from '../../../learn/types'
+import { ensureRoleConversation } from '../../../learn/roleWork/roles'
+import { groupPeer, inboundEnvelope, peerOf, userPeer } from '../../../learn/roleWork/channels'
+import { deliverInbound } from '../../../learn/roleWork/dispatch'
+import { appendGroupMessage, getGroupChatMessages, subscribeGroupChat } from '../../../learn/groupChat'
+import type { GroupChatAgent } from '../../agent/panel/GroupChatPanel'
+
+export interface GroupChatBridge {
+  /** 当前目标下的群聊消息（从旧到新） */
+  messages: ChannelMessage[]
+  /** 用户群聊发言：必须 @ 至少一位 agent；返回 false = 拒绝发送 */
+  send: (text: string, targetIds: GroupChatAgent['id'][]) => boolean
+}
+
+export function useGroupChatBridge({
+  goalId,
+  agents,
+  getLatest,
+  set,
+}: {
+  goalId: string | null
+  agents: GroupChatAgent[]
+  getLatest: () => LearnStore
+  set: (s: LearnStore) => void
+}): GroupChatBridge {
+  const all = useSyncExternalStore(subscribeGroupChat, getGroupChatMessages, getGroupChatMessages)
+  const messages = useMemo(
+    () => (goalId ? all.filter((m) => m.kind === 'group' && m.goalId === goalId) : []),
+    [all, goalId],
+  )
+
+  const send = (text: string, targetIds: GroupChatAgent['id'][]): boolean => {
+    const body = text.trim()
+    if (!body || !goalId || targetIds.length === 0) return false
+    const targets = targetIds
+      .map((id) => agents.find((a) => a.id === id))
+      .filter((a): a is GroupChatAgent => Boolean(a))
+    if (!targets.length) return false
+    for (const agent of targets) {
+      if (!body.includes('@' + agent.name)) return false
+    }
+    const from = userPeer()
+    const now = Date.now()
+    const mentions = targets.map((a) => peerOf('agent', a.id, a.name))
+    const message: ChannelMessage = {
+      id: 'g-' + crypto.randomUUID(),
+      kind: 'group',
+      direction: 'in',
+      from,
+      to: groupPeer(),
+      text: body,
+      ts: now,
+      mentions,
+      goalId,
+    }
+    appendGroupMessage(message)
+    for (const agent of targets) {
+      const ensured = ensureRoleConversation(getLatest(), agent.id as AgentVoice, goalId)
+      if (ensured.store !== getLatest()) set(ensured.store)
+      const to = peerOf('agent', agent.id, agent.name)
+      const inbound = inboundEnvelope({
+        channel: 'group',
+        from,
+        to,
+        text: body,
+        id: message.id,
+        ts: now,
+        mentions,
+        goalId,
+      })
+      deliverInbound(
+        {
+          conversationId: ensured.conversationId,
+          role: agent.id as AgentVoice,
+          goalId,
+          text: body,
+          stamp: {
+            channel: 'group',
+            from,
+            to,
+            ts: now,
+            envelopeId: message.id,
+            goalId,
+          },
+          envelopeId: message.id,
+        },
+        inbound,
+      )
+    }
+    return true
+  }
+
+  return { messages, send }
+}

@@ -40,6 +40,16 @@ export interface ChatOpsDeps {
     messageId?: string,
     attachments?: { images?: ConversationMessage['images']; files?: ConversationMessage['files'] },
   ) => ChatCallResult | Promise<ChatCallResult>
+  /**
+   * group 通道：落群聊流水，并把同一句话投给被 @ 的 role（它们各自的 mind 共用一条会话）。
+   * 实现方负责检查正文确有 `@名字`；没有点名时只留在群里（不投给任何 role）。
+   */
+  sendToGroup: (input: {
+    text: string
+    mentions?: string[]
+    messageId?: string
+    attachments?: { images?: ConversationMessage['images']; files?: ConversationMessage['files'] }
+  }) => ChatCallResult | Promise<ChatCallResult>
 }
 
 function quoteBlock(message: ConversationMessage | null): string {
@@ -59,8 +69,20 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
   return {
     send: async (input) => {
       const channel = input.channel
-      if (channel !== 'user' && channel !== 'agent' && channel !== 'work') {
-        return { ok: false, error: 'chat.send 的 channel 只能是 user / agent / work' }
+      if (channel !== 'user' && channel !== 'agent' && channel !== 'work' && channel !== 'group') {
+        return { ok: false, error: 'chat.send 的 channel 只能是 user / agent / work / group' }
+      }
+      // 群聊来源的任务必须沿群通道回复/委派：最近一条外部入站是 group 时，不能改成 user 私聊或 agent 私聊。
+      // Work 通道不算外部来源（它只是 work 交回的过程消息），所以不在这里拦。
+      const conversation = deps.getConversation(deps.conversationId)
+      const lastInbound = [...(conversation?.channels ?? [])]
+        .reverse()
+        .find((m) => m.direction === 'in' && m.kind !== 'work')
+      if (lastInbound?.kind === 'group' && (channel === 'user' || channel === 'agent')) {
+        return {
+          ok: false,
+          error: '最近一条消息来自群聊：回复或委派都必须走 group 通道（正文显式 @目标名）',
+        }
       }
       const text = input.text.trim()
       const messageId = input.messageId?.trim()
@@ -95,6 +117,20 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
         deps.appendChannel(deps.conversationId, envelope)
         markRoleOutbound(deps.conversationId)
         return { ok: true, channel, id: envelope.id }
+      }
+
+      if (channel === 'group') {
+        if (!deps.goalId) return { ok: false, error: '当前 role 会话不挂在目标上，无法进入群聊' }
+        const targets = [...(input.mentions ?? [])]
+        if (input.to?.trim()) targets.push(input.to.trim())
+        const result = await deps.sendToGroup({
+          text: body,
+          ...(targets.length ? { mentions: [...new Set(targets)] } : {}),
+          ...(messageId ? { messageId } : {}),
+          ...(attachments ? { attachments } : {}),
+        })
+        if (result.ok) markRoleOutbound(deps.conversationId)
+        return result
       }
 
       const to = input.to as AgentProfileId | undefined

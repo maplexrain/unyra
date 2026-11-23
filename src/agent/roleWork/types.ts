@@ -70,8 +70,10 @@ export interface ChatAttachmentInput {
 
 export interface ChatSendInput {
   channel: ChannelKind
-  /** agent 通道 = role id；work 通道 = work 名；user 通道省略 */
+  /** agent 通道 = role id；work 通道 = work 名；group 通道 = 被点名的 role id（可省略在群里回复用户） */
   to?: string
+  /** 群聊一次 @ 多位 role：与 to 合并去重；正文必须出现 @名字 */
+  mentions?: string[]
   text: string
   /** 引用当前 role 会话里的用户消息（转发并标注来源） */
   messageId?: string

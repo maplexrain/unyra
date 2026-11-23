@@ -37,7 +37,7 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
     if (!item || typeof item !== 'object') continue
     const m = item as Partial<ChannelMessage>
     if (typeof m.id !== 'string' || !m.id) continue
-    if (m.kind !== 'user' && m.kind !== 'agent' && m.kind !== 'work') continue
+    if (m.kind !== 'user' && m.kind !== 'agent' && m.kind !== 'work' && m.kind !== 'group') continue
     if (m.direction !== 'in' && m.direction !== 'out') continue
     if (!m.from || !m.to || typeof m.text !== 'string') continue
     out.push({
@@ -50,6 +50,8 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
       ts: typeof m.ts === 'number' ? m.ts : Date.now(),
       ...(m.attachments ? { attachments: m.attachments } : {}),
       ...(m.quoteMessageId ? { quoteMessageId: m.quoteMessageId } : {}),
+      ...(Array.isArray(m.mentions) && m.mentions.length ? { mentions: m.mentions } : {}),
+      ...(typeof m.goalId === 'string' && m.goalId ? { goalId: m.goalId } : {}),
       ...(m.auto ? { auto: true } : {}),
     })
   }

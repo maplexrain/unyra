@@ -64,6 +64,9 @@ interface Props {
   emptyName?: string
   /** 当前 role 的头像 id（agent profile 覆盖后的）；chat 头与消息行用 */
   agentAvatarId?: string
+  /** 全部 role 的显示名 / 头像 id：一条私聊里可能出现别的 role 的回复，要按 from.id 取 */
+  agentNames?: Partial<Record<string, string>>
+  agentAvatars?: Partial<Record<string, string>>
   /** 轮次进行中那条回复的 id：它在轮次内就分次进了会话（增量落库），列表里要剔掉防止两边都画 */
   streamingMessageId: string | null
   running: boolean
@@ -172,6 +175,8 @@ export default function AgentPanel({
   emptyVoice,
   emptyName,
   agentAvatarId,
+  agentNames,
+  agentAvatars,
   streamingMessageId,
   running,
   hasKey,
@@ -547,6 +552,8 @@ export default function AgentPanel({
                   channels={conversation?.channels ?? []}
                   agentName={emptyName ?? t('智能体')}
                   agentAvatarId={agentAvatarId}
+                  agentNames={agentNames}
+                  agentAvatars={agentAvatars}
                   agentVoice={emptyVoice ?? 'free'}
                 />
               ) : (

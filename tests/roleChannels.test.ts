@@ -99,6 +99,7 @@ describe('chat.send 三通道', () => {
       messageOf: () => null,
       resolveAttachments: () => ({}),
       sendToWork: () => ({ ok: true, channel: 'work', to: '调研-1' }),
+      sendToGroup: () => ({ ok: true, channel: 'group' }),
       ...overrides,
     })
     return { chat, appended, delivered, conversations }
@@ -133,6 +134,57 @@ describe('chat.send 三通道', () => {
     expect(channels[0]!.to).toEqual({ kind: 'role', id: 'examiner', name: 'examiner' })
     void appended
   })
+
+  it('group 通道：把 to 并进 mentions 交给宿主，不落普通私聊流水', async () => {
+    let passed: { text: string; mentions?: string[] } | null = null
+    const { chat, appended } = makeChat({
+      sendToGroup: (input) => {
+        passed = input
+        return { ok: true, channel: 'group' }
+      },
+    })
+    const r = await chat.send({ channel: 'group', to: 'examiner', text: '@出卷龟 出三道题' })
+    expect(r).toMatchObject({ ok: true, channel: 'group' })
+    expect(passed).toMatchObject({ text: '@出卷龟 出三道题', mentions: ['examiner'] })
+    expect(appended).toHaveLength(0)
+  })
+
+  it('group 通道：role 会话不挂在目标上时拒绝', async () => {
+    const { chat } = makeChat({ goalId: undefined })
+    expect(await chat.send({ channel: 'group', text: '@导师龟 在吗' })).toMatchObject({ ok: false })
+  })
+
+  it('群聊来源的任务：最近入站是 group 时禁止改走私聊', async () => {
+    const conversations = new Map<string, Conversation>()
+    conversations.set('c1', {
+      id: 'c1',
+      goalId: 'g1',
+      messages: [],
+      channels: [
+        {
+          id: 'g1',
+          kind: 'group',
+          direction: 'in',
+          from: { kind: 'user', id: 'u1', name: '用户' },
+          to: { kind: 'role', id: 'tutor', name: '导师龟' },
+          text: '@导师龟 帮我查一下',
+          ts: 1,
+          goalId: 'g1',
+        },
+      ],
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    const { chat } = makeChat({ getConversation: (id) => conversations.get(id) ?? null })
+    expect(await chat.send({ channel: 'agent', to: 'researcher', text: '私聊转一下' })).toMatchObject({
+      ok: false,
+    })
+    expect(await chat.send({ channel: 'group', to: 'researcher', text: '@调研龟 群里转' })).toMatchObject({
+      ok: true,
+      channel: 'group',
+    })
+  })
+
 
   it('work 通道：交给工作管理器，要求 to（work 名），本次附件一并带过去', async () => {
     let called = ''

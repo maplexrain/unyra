@@ -34,11 +34,19 @@ export function userPeer(): ChannelPeer {
 export function peerNameOf(kind: ChannelKind, id: string, fallback: string): string {
   // 用户的名字只认用户模块：调用方即使还带着历史的字面量「用户」，也不能盖回真名
   if (kind === 'user') return currentUserName() || fallback
+  if (kind === 'group') return fallback || '群聊'
   return fallback || id
 }
 
 export function stampLineOf(stamp: ChannelStamp): string {
-  const label = stamp.channel === 'user' ? '用户通道' : stamp.channel === 'agent' ? 'Agent 通道' : 'Work 通道'
+  const label =
+    stamp.channel === 'user'
+      ? '用户通道'
+      : stamp.channel === 'agent'
+        ? 'Agent 通道'
+        : stamp.channel === 'group'
+          ? '群聊通道'
+          : 'Work 通道'
   return '【' + label + ' · ' + stamp.from.name + ' · ' + formatTs(stamp.ts) + '】'
 }
 
@@ -112,13 +120,22 @@ export function inboundMessage(
   }
 }
 
-/** 聊天层只展示用户通道与 Agent 通道；Work 通道属于内部协作，放在思维层 */
+/** 私聊层只展示用户通道；Agent 通道属于内部协作，群聊另开一层，Work 通道放在思维层 */
 export function chatChannelsOf(conv: Conversation): ChannelMessage[] {
-  return (conv.channels ?? []).filter((m) => m.kind === 'user' || m.kind === 'agent')
+  return (conv.channels ?? []).filter((m) => m.kind === 'user')
+}
+
+/** 群聊的固定对端：`to` 用它表示「这条消息进群」，收件人另看 mentions */
+export const GROUP_PEER_ID = 'group'
+
+export function groupPeer(): ChannelPeer {
+  return { kind: 'group', id: GROUP_PEER_ID, name: '群聊' }
 }
 
 export function peerOf(kind: ChannelKind, id: string, name: string): ChannelPeer {
-  return { kind: kind === 'user' ? 'user' : kind === 'agent' ? 'role' : 'work', id, name }
+  const peerKind: ChannelPeer['kind'] =
+    kind === 'user' ? 'user' : kind === 'agent' ? 'role' : kind === 'group' ? 'group' : 'work'
+  return { kind: peerKind, id, name }
 }
 
 /** 构造一条出站通道消息（宿主写时间戳与来源，模型不能改） */
@@ -131,6 +148,8 @@ export function outboundEnvelope(input: {
   attachments?: ChannelMessage['attachments']
   quoteMessageId?: string
   auto?: boolean
+  mentions?: ChannelPeer[]
+  goalId?: string
 }): ChannelMessage {
   return {
     id: crypto.randomUUID(),
@@ -143,20 +162,25 @@ export function outboundEnvelope(input: {
     ...(input.attachments ? { attachments: input.attachments } : {}),
     ...(input.quoteMessageId ? { quoteMessageId: input.quoteMessageId } : {}),
     ...(input.auto ? { auto: true } : {}),
+    ...(input.mentions?.length ? { mentions: input.mentions } : {}),
+    ...(input.goalId ? { goalId: input.goalId } : {}),
   }
 }
 
-/** 构造一条入站通道消息（用户 / Agent / Work 发进来） */
+/** 构造一条入站通道消息（用户 / Agent / Work / 群聊发进来） */
 export function inboundEnvelope(input: {
   channel: ChannelKind
   from: ChannelPeer
   to: ChannelPeer
   text: string
   ts?: number
+  id?: string
   attachments?: ChannelMessage['attachments']
+  mentions?: ChannelPeer[]
+  goalId?: string
 }): ChannelMessage {
   return {
-    id: crypto.randomUUID(),
+    id: input.id ?? crypto.randomUUID(),
     kind: input.channel,
     direction: 'in',
     from: input.from,
@@ -164,5 +188,7 @@ export function inboundEnvelope(input: {
     text: input.text,
     ts: input.ts ?? Date.now(),
     ...(input.attachments ? { attachments: input.attachments } : {}),
+    ...(input.mentions?.length ? { mentions: input.mentions } : {}),
+    ...(input.goalId ? { goalId: input.goalId } : {}),
   }
 }

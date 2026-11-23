@@ -40,6 +40,8 @@ import {
   roleOfConversation,
 } from '../../../learn/roleWork/roles'
 import { inboundEnvelope, peerOf, userPeer } from '../../../learn/roleWork/channels'
+import { GroupChatPanel, type GroupChatAgent } from '../../agent/panel/GroupChatPanel'
+import { useGroupChatBridge } from './useGroupChatBridge'
 import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, type AgentVoiceStats } from '../agent-team/agentRoster'
 import { AgentAvatarGlyph } from '../agent-team/AgentAvatarGlyph'
 import { listWorkflowRows, type WorkflowRow } from '../../../learn/workflows'
@@ -183,6 +185,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
    * 替代对话流。选择声部 / 选对话 / 新建对话 / 切目标都会退出设置态回到对话。
    */
   const [settingsAgent, setSettingsAgent] = useState<AgentTeamMode | null>(null)
+  /** 群聊页：名册里固定多出来的一张卡；它不是某个 role 的会话，只读群通道流水 */
+  const [groupOpen, setGroupOpen] = useState(false)
 
   const tutorGoalId = useMemo(() => {
     if (tabGoalId) return tabGoalId
@@ -261,6 +265,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   const openWorkFromRoster = (agentId: AgentTeamMode, workId: string) => {
     const work = worksByAgent[agentId]?.find((w) => w.id === workId)
     if (!work) return
+    setGroupOpen(false)
     setSettingsAgent(null)
     setEmptyTutorMode(false)
     setEmptyVoiceMode(null)
@@ -363,10 +368,22 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   }
 
   /**
+   * 打开群聊：群聊是名册里的固定入口，不属于任何目标/role 会话。
+   * 打开时清掉设置态与空态，中央区换成群聊面板；没有目标时面板仍在，输入区禁用。
+   */
+  const handleOpenGroup = () => {
+    setSettingsAgent(null)
+    setEmptyTutorMode(false)
+    setEmptyVoiceMode(null)
+    setGroupOpen(true)
+  }
+
+  /**
    * 打开一位声部的独立设置：先把它切成当前声部（左栏高亮跟着走），再进设置态。
    * handleSelectMode 会顺手退出设置态，所以顺序是先切声部、后置设置目标。
    */
   const openAgentSettings = (id: AgentTeamMode) => {
+    setGroupOpen(false)
     if (mode !== id) handleSelectMode(id)
     setSettingsAgent(id)
   }
@@ -384,6 +401,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   }
 
   const handleSelectMode = (next: AgentTeamMode) => {
+    setGroupOpen(false)
     setSettingsAgent(null)
     setEmptyVoiceMode(null)
     if (next === 'free') {
@@ -444,6 +462,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   }
 
   const handleHistoryCreate = (agentId: AgentTeamMode) => {
+    setGroupOpen(false)
     setSettingsAgent(null)
     setEmptyVoiceMode(null)
     if (agentId === 'free') {
@@ -473,6 +492,29 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       ) as Record<AgentTeamMode, string>,
     [agentSettings],
   )
+
+  /** 群聊成员：有目标上下文的 role（不含仅聊天的 free；群聊消息最终要落到目标级 role 会话） */
+  const groupAgents = useMemo<GroupChatAgent[]>(
+    () =>
+      AGENT_ROSTER_ORDER.filter((id) => id !== 'free').map((id) => ({
+        id,
+        name: agentNames?.[id]?.trim() || DEFAULT_AGENT_NAME[id],
+        avatarId: agentAvatarIds[id],
+        running: Boolean(voiceStats[id]?.running),
+      })),
+    [agentAvatarIds, agentNames, voiceStats],
+  )
+
+  const groupBridge = useGroupChatBridge({
+    goalId: tutorGoalId,
+    agents: groupAgents,
+    getLatest,
+    set,
+  })
+  const groupMessagesForGoal = groupBridge.messages
+  const sendGroupMessage = (text: string, targetIds: AgentTeamMode[]): boolean =>
+    groupBridge.send(text, targetIds)
+
   /**
    * 一枚 agent 运行时条目对应的完整 AgentPanel props。
    */
@@ -492,6 +534,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         emptyVoice: 'free',
         emptyName: agentNames?.free?.trim() || DEFAULT_AGENT_NAME.free,
         agentAvatarId: agentAvatarIds.free,
+        agentNames,
+        agentAvatars: agentAvatarIds,
         onSend: (text: string, images: PendingImage[], files: PendingFile[]) => {
           // role 层单会话：没有当前段时也只补唯一的一段，不再多开
           const id = convId ?? ensureFreeConversation().id
@@ -562,6 +606,9 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     const stream = convId ? agent.streams[convId] : undefined
     // 面板的会话列表只列本 role 的（导师对话与 specialists 的工作会话互不串台）
     const convVoice = roleOfConversation(conv) as AgentTeamMode
+    // keepalive 下多个 role 的页签同时挂着：每一枚面板的抬头/兜底头像必须跟它自己的会话 role 走，
+    // 不能使用全局 mode（否则会出现“头像渲染没对上”）
+    const panelVoice = (conv ? convVoice : mode) as AgentTeamMode
     const goalConversations = goalId
       ? (goalConversationsByGoal.get(goalId)?.[convVoice] ?? EMPTY_CONVERSATIONS)
       : EMPTY_CONVERSATIONS
@@ -572,9 +619,11 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     return {
       goalId,
       chatLocked,
-      emptyVoice: mode,
-      emptyName: agentNames?.[mode]?.trim() || DEFAULT_AGENT_NAME[mode],
-      agentAvatarId: agentAvatarIds[mode],
+      emptyVoice: panelVoice,
+      emptyName: agentNames?.[panelVoice]?.trim() || DEFAULT_AGENT_NAME[panelVoice],
+      agentAvatarId: agentAvatarIds[panelVoice],
+      agentNames,
+      agentAvatars: agentAvatarIds,
       conversation: conv,
       conversations: goalConversations,
       streaming: stream?.parts ?? null,
@@ -591,7 +640,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
           const envelope = inboundEnvelope({
             channel: 'user',
             from: userPeer(),
-            to: peerOf('agent', target.voice, DEFAULT_AGENT_NAME[target.voice]),
+            to: peerOf('agent', target.voice, agentNames?.[target.voice]?.trim() || DEFAULT_AGENT_NAME[target.voice]),
             text,
           })
           channel = { channel: 'user', from: envelope.from, to: envelope.to, ts: envelope.ts, envelopeId: envelope.id }
@@ -683,7 +732,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     }
   }
 
-  const showCenterPane = mode === 'free' || Boolean(tutorGoalId)
+  const showCenterPane = groupOpen || mode === 'free' || Boolean(tutorGoalId)
 
   const scopedPanes = useMemo(() => {
     if (!tabGoalId) return agentPanes
@@ -706,6 +755,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   }, [agentPanes, tabGoalId, store, activeTutorConvId])
 
   const renderedActivePaneId = useMemo(() => {
+    if (groupOpen) return null
     if (mode === 'free') return 'free'
     if (workViewMeta) return workViewMeta.key
     if (tabGoalId) {
@@ -723,7 +773,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       return matched ? agentTabKey(matched) : activeAgentTabId
     }
     return activeAgentTabId
-  }, [mode, workViewMeta, tabGoalId, activeTutorConvId, scopedPanes, activeAgentTabId])
+  }, [groupOpen, mode, workViewMeta, tabGoalId, activeTutorConvId, scopedPanes, activeAgentTabId])
 
   return (
     <div
@@ -756,6 +806,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         onOpenSettings={openAgentSettings}
         agentNames={agentNames}
         agentAvatars={agentAvatarIds}
+        groupActive={groupOpen}
+        onOpenGroup={handleOpenGroup}
       />
 
       {/* 中间对话主工作区；设置态下整块替换为这位声部的独立设置页 */}
@@ -774,7 +826,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
           />
         ) : (
           <>
-        {workViewMeta && mode === 'tutor' && (
+        {workViewMeta && mode === 'tutor' && !groupOpen && (
           <div className="flex shrink-0 items-center gap-2 border-b border-line/70 bg-card/70 px-3.5 py-1.5 text-[12px]">
             <button
               type="button"
@@ -858,9 +910,23 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         ) : null}
 
         <div className={showCenterPane && !emptyVoiceActive ? 'relative min-h-0 flex-1' : 'hidden'}>
+          {groupOpen ? (
+            <div className="absolute inset-0 z-10 overflow-hidden bg-paper-deep/40">
+              <GroupChatPanel
+                messages={groupMessagesForGoal}
+                agents={groupAgents}
+                disabledReason={
+                  tutorGoalId
+                    ? undefined
+                    : t('群聊挂在学习目标上：先选择一个目标，再在群里 @ 指定 agent。')
+                }
+                onSend={sendGroupMessage}
+              />
+            </div>
+          ) : null}
           {scopedPanes.map((tab) => {
             const key = agentTabKey(tab)
-            const on = tabActive && showCenterPane && key === renderedActivePaneId
+            const on = tabActive && showCenterPane && !groupOpen && key === renderedActivePaneId
             const props = agentTabProps(tab)
             return (
               <AgentTabPane

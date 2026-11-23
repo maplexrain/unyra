@@ -19,6 +19,7 @@ import { flushCommits, flushCommitsSync, setRoot } from './storage'
 import { hydrateUserSettings } from './userSettings'
 import { hydrateUsageLog } from '../ai/usageLog'
 import { hydrateFreeChat } from '../learn/freeChat'
+import { hydrateGroupChat } from '../learn/groupChat'
 import { t } from '../i18n'
 import { bootstrapUsers } from '../user/store'
 import { reconcileBackgroundAssets } from '../user/background'
@@ -49,6 +50,8 @@ export async function enterUserScope(uid: string | null): Promise<void> {
   await hydrateUsageLog(uid)
   // 自由聊天的会话同样跟着用户走（users/{uid}/free-chat.json，learn/freeChat）
   await hydrateFreeChat(uid)
+  // 群聊流水同样跟着用户走（users/{uid}/group-chat.json，learn/groupChat）
+  await hydrateGroupChat(uid)
   if (uid) {
     await autoMigrateIfNeeded(uid)
   }

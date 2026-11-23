@@ -8,6 +8,16 @@ import { wrapApi } from '../wrap'
 import type { SandboxCall, SandboxOptions } from '../types'
 import type { ChatAttachmentInput, ChatSendInput, WorkSendInput } from '../../roleWork/types'
 
+function cleanMentions(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const out: string[] = []
+  for (const item of raw) {
+    const id = asText(item).trim()
+    if (id && !out.includes(id)) out.push(id)
+  }
+  return out
+}
+
 function cleanAttachments(raw: unknown): ChatAttachmentInput[] | undefined {
   if (!Array.isArray(raw)) return undefined
   const out: ChatAttachmentInput[] = []
@@ -91,8 +101,9 @@ export function installRoleWork(api: Record<string, unknown>, opts: SandboxOptio
       const text = asText(a.text).trim()
       const to = asText(a.to).trim()
       const messageId = asText(a.messageId).trim()
-      if (channel !== 'user' && channel !== 'agent' && channel !== 'work') {
-        return { ok: false, error: 'chat.send 的 channel 只能是 user / agent / work' }
+      const mentions = cleanMentions(a.mentions)
+      if (channel !== 'user' && channel !== 'agent' && channel !== 'work' && channel !== 'group') {
+        return { ok: false, error: 'chat.send 的 channel 只能是 user / agent / work / group' }
       }
       if (!text && !messageId) return { ok: false, error: 'chat.send 需要 text 或 messageId' }
       if (channel === 'agent' && !to) return { ok: false, error: 'chat.send 到 agent 通道需要 to（目标 role id）' }
@@ -102,6 +113,7 @@ export function installRoleWork(api: Record<string, unknown>, opts: SandboxOptio
         channel,
         text,
         ...(to ? { to } : {}),
+        ...(mentions.length ? { mentions } : {}),
         ...(messageId ? { messageId } : {}),
         ...(attachments ? { attachments } : {}),
       }

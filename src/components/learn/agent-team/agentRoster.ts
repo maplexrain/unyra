@@ -33,6 +33,8 @@ export interface AgentRosterMeta {
   avatarClass: string
   /** 角色徽标配色（激活态） */
   ringClass: string
+  /** 角色名称的高亮色：聊天 / 群聊 / 思维抬头用不同颜色区分是哪个 role */
+  nameClass: string
 }
 
 /** 一位 role 的能力标签（联系人卡片上的小徽章）：可交流 / 内容生成 / 工作流触发 */
@@ -54,6 +56,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
     fallbackIcon: MessageSquare,
     avatarClass: 'bg-line/75 text-ink-strong border-line-strong/40',
     ringClass: 'bg-emerald-500/12 text-emerald-600 dark:text-emerald-400',
+    nameClass: 'text-emerald-700 dark:text-emerald-300',
   },
   tutor: {
     roleTag: '学习导师',
@@ -62,6 +65,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
     fallbackIcon: GraduationCap,
     avatarClass: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/25',
     ringClass: 'bg-sky-500/15 text-sky-600 dark:text-sky-300',
+    nameClass: 'text-sky-700 dark:text-sky-300',
   },
   dispatcher: {
     roleTag: '调度分派',
@@ -70,6 +74,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
     fallbackIcon: Route,
     avatarClass: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/25',
     ringClass: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-300',
+    nameClass: 'text-indigo-700 dark:text-indigo-300',
   },
   examiner: {
     roleTag: '出卷阅卷',
@@ -78,6 +83,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
     fallbackIcon: NotebookPen,
     avatarClass: 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/25',
     ringClass: 'bg-violet-500/15 text-violet-600 dark:text-violet-300',
+    nameClass: 'text-violet-700 dark:text-violet-300',
   },
   designer: {
     roleTag: '课堂设计',
@@ -86,6 +92,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
     fallbackIcon: Palette,
     avatarClass: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/25',
     ringClass: 'bg-amber-500/15 text-amber-600 dark:text-amber-300',
+    nameClass: 'text-amber-700 dark:text-amber-300',
   },
   researcher: {
     roleTag: '调研实操',
@@ -94,14 +101,16 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
     fallbackIcon: Compass,
     avatarClass: 'bg-teal-500/15 text-teal-700 dark:text-teal-300 border-teal-500/25',
     ringClass: 'bg-teal-500/15 text-teal-600 dark:text-teal-300',
+    nameClass: 'text-teal-700 dark:text-teal-300',
   },
   fixer: {
     roleTag: '修复维修',
     blurb: '函数图像语法修复',
     emptyHint: '还没有会话：修复任务由用户在报错卡片上触发',
     fallbackIcon: Wrench,
-    avatarClass: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/25',
-    ringClass: 'bg-amber-500/15 text-amber-600 dark:text-amber-300',
+    avatarClass: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/25',
+    ringClass: 'bg-rose-500/15 text-rose-600 dark:text-rose-300',
+    nameClass: 'text-rose-700 dark:text-rose-300',
   },
 }
 
