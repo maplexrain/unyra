@@ -10,7 +10,7 @@
  * ```
  */
 
-import type { PluginRenderContext } from '../renderPlugins'
+import { type PluginRenderContext, escapeHtml, encodeAttr } from '../renderPlugins'
 import { renderInline } from '../markdown'
 import { parseComponentBlock } from './parser'
 import {
@@ -27,8 +27,6 @@ import {
 } from './renderers'
 import { getDocumentComponent } from './registry'
 import type { ComponentNode, ComponentRenderCtx } from './types'
-
-export const COMPONENT_LANG = 'component'
 
 /**
  * 教学 Agent 的 Component 语法指引（用于排版指南与系统提示词，替代繁琐易错的 HTML 标签）
@@ -153,6 +151,17 @@ export function componentBlock(source: string, ctx: PluginRenderContext, _info?:
       `</div>`
     )
   }
+}
+
+/**
+ * 便捷工具：将 component DSL 源码（如配方 example）渲染为展示用 HTML（供设置面板样式预览）
+ */
+export function renderComponentPreview(source: string): string {
+  const ctx: PluginRenderContext = {
+    escape: escapeHtml,
+    attr: encodeAttr,
+  }
+  return componentBlock(source, ctx)
 }
 
 export * from './types'

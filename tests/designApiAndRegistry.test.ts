@@ -7,6 +7,7 @@ import {
   updateDocumentComponent,
   deleteDocumentComponent,
 } from '../src/lib/componentBlock/registry'
+import { renderComponentPreview } from '../src/lib/componentBlock'
 import { buildApi } from '../src/agent/sandbox/api'
 import { AGENT_API_PLANES, CONTENT_VOICES } from '../src/agent/agentProfile'
 import { TABS } from '../src/components/settings/tabs'
@@ -172,11 +173,21 @@ describe('内容生成声部（CONTENT_VOICES）排版指南与 API 持面一致
     }
   })
 
-  it('设置-外观中包含文档设计子页签 (doc-design)', () => {
+  it('设置中包含文档设计第一层页签 (doc-design)', () => {
+    const docDesignTab = TABS.find((t) => t.key === 'doc-design')
+    expect(docDesignTab).toBeDefined()
+    expect(docDesignTab?.label).toBe('文档设计')
+
+    // 外观中不再包含 doc-design 子页签
     const appearanceTab = TABS.find((t) => t.key === 'appearance')
-    expect(appearanceTab).toBeDefined()
     const docDesignSubTab = appearanceTab?.subTabs?.find((s) => s.key === 'doc-design')
-    expect(docDesignSubTab).toBeDefined()
-    expect(docDesignSubTab?.label).toBe('文档设计')
+    expect(docDesignSubTab).toBeUndefined()
+  })
+
+  it('renderComponentPreview 正常解析并渲染出组件出版级样式 HTML', () => {
+    const noticeDef = getDocumentComponent('Notice')!
+    const html = renderComponentPreview(noticeDef.example)
+    expect(html).toContain('border-l-warn')
+    expect(html).toContain('易错陷阱 · 边界条件')
   })
 })

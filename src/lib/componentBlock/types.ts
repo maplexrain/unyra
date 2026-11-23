@@ -33,3 +33,5 @@ export interface ComponentRenderCtx {
   escape: (text: string) => string
   renderInline?: (text: string) => string
 }
+
+export const COMPONENT_LANG = 'component'
