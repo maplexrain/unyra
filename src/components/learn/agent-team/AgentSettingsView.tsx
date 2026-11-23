@@ -11,9 +11,10 @@
  * 导师层面的机制）是两回事：这里是按声部逐个配的「它自己是谁、用什么跑」。
  */
 
-import { useMemo, useState, useSyncExternalStore } from 'react'
-import { ArrowLeft, Check, Copy, GraduationCap, MessageSquare, RotateCcw } from 'lucide-react'
-import { REASONING_EFFORTS, REASONING_HINT, REASONING_LABEL, type ReasoningEffort } from '../../../ai/types'
+import { useSyncExternalStore } from 'react'
+import { ArrowLeft, GraduationCap, MessageSquare, RotateCcw } from 'lucide-react'
+import { REASONING_LABEL, type ReasoningEffort } from '../../../ai/types'
+import EffortSlider from '../../agent/EffortSlider'
 import {
   globalProvider,
   globalEffort,
@@ -36,10 +37,10 @@ import {
   type AgentVoice,
 } from '../../../agent/agentProfile'
 import { loadAgentSettings, subscribeAgentSettings } from '../../../agent/settings'
-import { buildFreeChatSystem, buildVoiceSystem } from '../../../learn/ai'
 import { t, useLocale } from '../../../i18n'
 import { builtinWorkflowRows, type WorkflowRow } from '../../../learn/workflows'
 import { AgentAvatarGlyph } from './AgentAvatarGlyph'
+import { AgentPromptSectionsView } from './AgentPromptSectionsView'
 import type { AgentTeamMode } from './conversationList'
 
 export interface AgentSettingsViewProps {
@@ -224,9 +225,6 @@ export function AgentSettingsView({
       ? profile.model.trim()
       : t('该提供商默认（第一个）')
 
-  /* ---------- 思考档位 ---------- */
-  const effortValue = profile.effort ?? ''
-
   /* ---------- execute api（能力面由架构固定：全部恒开放、纯只读清单） ---------- */
   /**
    * execute 的 api 能力面：按声部的团队分工（AGENT_API_PLANES）固定的只读清单。
@@ -266,27 +264,6 @@ export function AgentSettingsView({
     agentSettings.extraSystemPromptEnabled && agentSettings.extraSystemPrompt?.trim()
       ? agentSettings.extraSystemPrompt.trim()
       : undefined
-  /**
-   * 系统提示词的只读预览：execute 能力面由架构固定（全部恒开放），提示词恒为全量——
-   * 与 assembleTurnEntry 落进新对话的合成同一条路径。工作流规程同样是内置恒在场。
-   */
-  const systemPrompt = useMemo(
-    () =>
-      isFree
-        ? buildFreeChatSystem({ extraSystemPrompt: extra })
-        : buildVoiceSystem(agentId, { extraSystemPrompt: extra }),
-    [isFree, agentId, extra],
-  )
-  const [copied, setCopied] = useState(false)
-  const copyPrompt = (): void => {
-    void navigator.clipboard
-      .writeText(systemPrompt)
-      .then(() => {
-        setCopied(true)
-        window.setTimeout(() => setCopied(false), 1500)
-      })
-      .catch(() => {})
-  }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-paper">
@@ -433,40 +410,27 @@ export function AgentSettingsView({
                 '这位智能体自己的档位；没改就跟随全局滑条。注意：换档可能整体更换服务商的缓存引擎，已有长对话的前缀缓存会重置。',
               )}
             />
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                aria-pressed={effortValue === ''}
-                onClick={() => onChange({ effort: undefined })}
-                className={
-                  'rounded-lg border px-3 py-1.5 text-[12px] transition ' +
-                  (effortValue === ''
-                    ? 'border-seal/60 bg-seal/10 font-medium text-seal'
-                    : 'border-line bg-card text-ink-soft hover:border-line-strong hover:text-ink')
-                }
-              >
-                {t('跟随全局')}（{REASONING_LABEL[globalEffort(ai)]}）
-              </button>
-              {REASONING_EFFORTS.map((e) => {
-                const on = effortValue === e
-                return (
+            <div className="flex max-w-[340px] flex-col gap-2">
+              <div className="flex items-center justify-between text-[11.5px]">
+                <span className="text-ink-soft">
+                  {profile.effort === undefined
+                    ? `${t('跟随全局')}（${t(REASONING_LABEL[globalEffort(ai)])}）`
+                    : `${t('独立档位')}：${t(REASONING_LABEL[profile.effort])}`}
+                </span>
+                {profile.effort !== undefined && (
                   <button
-                    key={e}
                     type="button"
-                    aria-pressed={on}
-                    title={t(REASONING_HINT[e])}
-                    onClick={() => onChange({ effort: e as ReasoningEffort })}
-                    className={
-                      'rounded-lg border px-3 py-1.5 text-[12px] transition ' +
-                      (on
-                        ? 'border-seal/60 bg-seal/10 font-medium text-seal'
-                        : 'border-line bg-card text-ink-soft hover:border-line-strong hover:text-ink')
-                    }
+                    onClick={() => onChange({ effort: undefined })}
+                    className="cursor-pointer text-[11px] text-seal hover:underline"
                   >
-                    {REASONING_LABEL[e]}
+                    {t('恢复跟随全局')}
                   </button>
-                )
-              })}
+                )}
+              </div>
+              <EffortSlider
+                value={(profile.effort ?? globalEffort(ai)) as ReasoningEffort}
+                onChange={(next) => onChange({ effort: next })}
+              />
             </div>
           </section>
 
@@ -551,40 +515,13 @@ export function AgentSettingsView({
                   : t('这位成员**新对话**将收到的系统提示词全文（当前配置拼出；api 与工作流面按团队分工拼装）。进行中的对话用首轮固化的那份，不受影响。')
               }
             />
-            <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-ink-soft">
-              {isTutor && (
-                <>
-                  <span>
-                    {t('人格')}: <span className="text-ink-strong">{personaOf(agentSettings.persona).label}</span>
-                  </span>
-                  <span>
-                    {t('文档格式')}: <span className="text-ink-strong">{docFormatOf(agentSettings.docFormat).label}</span>
-                  </span>
-                </>
-              )}
-              <span>
-                {t('追加提示词')}:{' '}
-                <span className="text-ink-strong">{extra ? t('已启用') : t('未启用')}</span>
-              </span>
-            </div>
-            <div className="overflow-hidden rounded-lg border border-line/70 bg-paper-deep/40">
-              <div className="flex items-center justify-between border-b border-line/60 px-3 py-1.5">
-                <span className="text-[11px] text-ink-faint">
-                  {t('{0} 字', systemPrompt.length)}
-                </span>
-                <button
-                  type="button"
-                  onClick={copyPrompt}
-                  className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] text-ink-soft transition hover:bg-line/50 hover:text-ink"
-                >
-                  {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-                  <span>{copied ? t('已复制') : t('复制全文')}</span>
-                </button>
-              </div>
-              <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-ink-soft">
-                {systemPrompt}
-              </pre>
-            </div>
+            <AgentPromptSectionsView
+              agentId={agentId}
+              extraSystemPrompt={extra}
+              isTutor={isTutor}
+              personaLabel={isTutor ? personaOf(agentSettings.persona).label : undefined}
+              docFormatLabel={isTutor ? docFormatOf(agentSettings.docFormat).label : undefined}
+            />
           </section>
         </div>
       </div>

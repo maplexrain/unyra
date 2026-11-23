@@ -27,3 +27,14 @@ export { buildTeacherSystem } from './ai/teacherSystem'
 export { buildFreeChatSystem } from './ai/chatSystem'
 export { buildVoiceSystem, buildDispatcherSystem, buildExaminerSystem, buildDesignerSystem, buildResearcherSystem, buildFixerSystem } from './ai/agentTeamSystem'
 export { SHARED_AGENT_PREFIX } from './ai/agentSharedPrefix'
+export {
+  COMMON_TURTLE_CLAN_PROMPT,
+  COMMON_TEAM_COLLABORATION_PROMPT,
+  COMMON_EXECUTION_DISCIPLINE_PROMPT,
+  COMMON_COMPACT_WORKFLOW_PROMPT,
+  COMMON_EXECUTION_PREFIX_PROMPT,
+  getAgentPromptSections,
+  type PromptSection,
+  type PromptSectionColor,
+} from './ai/promptSections'
+

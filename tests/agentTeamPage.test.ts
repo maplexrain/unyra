@@ -834,10 +834,10 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     for (const title of ['身份', '提供商 · 模型', '思考强度', 'execute 开放的 api', '集成的工作流', '系统提示词']) {
       expect(host.textContent).toContain(title)
     }
-    // 系统提示词是导师全文（buildTeacherSystem）的只读 pre
-    const pre = host.querySelector('pre')
-    expect(pre?.textContent).toContain('智能导师助手')
-    expect(pre?.textContent).toContain('内置工作流与任务规程')
+    // 系统提示词按分段展示：所有 pre 组合成完整提示词文本
+    const presText = Array.from(host.querySelectorAll('pre')).map((p) => p.textContent).join('\n')
+    expect(presText).toContain('智能导师助手')
+    expect(presText).toContain('内置工作流与任务规程')
 
     // 改名（受控 input）
     const nameInput = host.querySelector<HTMLInputElement>('input[type="text"]')!
@@ -1001,7 +1001,7 @@ describe('AgentSettingsView 智能体独立设置页', () => {
           }),
         )
       })
-      const pre = host.querySelector('pre')!.textContent!
+      const pre = Array.from(host.querySelectorAll('pre')).map((p) => p.textContent).join('\n\n')
       act(() => {
         root.unmount()
       })

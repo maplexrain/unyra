@@ -13,11 +13,12 @@
  * 设置入口在名册卡的**头像**上：点头像直接开这位声部的独立设置（AgentSettingsView）。
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   MessageSquarePlus,
   PanelLeftClose,
   PanelLeftOpen,
+  Pin,
   Settings2,
   Trash2,
 } from 'lucide-react'
@@ -27,6 +28,13 @@ import type { LearningGoal } from '../../../learn/types'
 import { delegatorVoiceOf } from '../../../learn/agentTeam/voiceConvs'
 import { t, useLocale } from '../../../i18n'
 import { AgentAvatarGlyph } from './AgentAvatarGlyph'
+import { AgentContextMenu } from './AgentContextMenu'
+import {
+  isPinLocked,
+  loadPinnedAgents,
+  sortAgentsByPinAndTime,
+  toggleAgentPin,
+} from './agentPinning'
 import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, voiceTags, type AgentVoiceStats } from './agentRoster'
 import {
   conversationTimeOf,
@@ -108,6 +116,8 @@ export function AgentRosterSidebar({
 }: AgentRosterSidebarProps) {
   useLocale()
   const [collapsed, setCollapsed] = useState<boolean>(() => (persistCollapsed ? readCollapsed() : false))
+  const [pinnedAgents, setPinnedAgents] = useState<Set<AgentTeamMode>>(() => loadPinnedAgents())
+  const [contextMenu, setContextMenu] = useState<{ agentId: AgentTeamMode; x: number; y: number } | null>(null)
 
   const toggleCollapsed = (next: boolean) => {
     setCollapsed(next)
@@ -121,31 +131,34 @@ export function AgentRosterSidebar({
 
   const statsOf = (id: AgentTeamMode): AgentVoiceStats => voiceStats[id] ?? { running: false, hasAsk: false }
 
-  const agents = AGENT_ROSTER_ORDER.map((id) => {
-    const meta = AGENT_ROSTER_META[id]
-    const st = statsOf(id)
-    // 导师的兜底副标题是当前目标（它 scoped 到目标上）；其余声部用注册表的职责一句话
-    const idleSubtitle = id === 'tutor' ? activeGoalTitle || t(meta.blurb) : t(meta.blurb)
-    return {
-      id,
-      label: agentNames?.[id]?.trim() || t(DEFAULT_AGENT_NAME[id]),
-      roleTag: t(meta.roleTag),
-      subtitle: st.hasAsk
-        ? t('等待你的确认')
-        : st.running
-          ? t(id === 'free' ? '回答中…' : '正在执行…')
-          : st.preview || idleSubtitle,
-      timeLabel: formatConversationTime(st.lastTime ?? 0),
-      count: st.count,
-      avatarId: agentAvatars?.[id],
-      fallbackIcon: meta.fallbackIcon,
-      avatarClass: meta.avatarClass,
-      ringClass: meta.ringClass,
-      running: st.running,
-      hasAsk: st.hasAsk,
-      tags: voiceTags(id),
-    }
-  })
+  const agents = useMemo(() => {
+    const raw = AGENT_ROSTER_ORDER.map((id) => {
+      const meta = AGENT_ROSTER_META[id]
+      const st = statsOf(id)
+      // 导师的兜底副标题是当前目标（它 scoped 到目标上）；其余声部用注册表的职责一句话
+      const idleSubtitle = id === 'tutor' ? activeGoalTitle || t(meta.blurb) : t(meta.blurb)
+      return {
+        id,
+        label: agentNames?.[id]?.trim() || t(DEFAULT_AGENT_NAME[id]),
+        roleTag: t(meta.roleTag),
+        subtitle: st.hasAsk
+          ? t('等待你的确认')
+          : st.running
+            ? t(id === 'free' ? '回答中…' : '正在执行…')
+            : st.preview || idleSubtitle,
+        timeLabel: formatConversationTime(st.lastTime ?? 0),
+        count: st.count,
+        avatarId: agentAvatars?.[id],
+        fallbackIcon: meta.fallbackIcon,
+        avatarClass: meta.avatarClass,
+        ringClass: meta.ringClass,
+        running: st.running,
+        hasAsk: st.hasAsk,
+        tags: voiceTags(id),
+      }
+    })
+    return sortAgentsByPinAndTime(raw, pinnedAgents, (id) => statsOf(id).lastTime ?? 0)
+  }, [activeGoalTitle, agentAvatars, agentNames, pinnedAgents, voiceStats])
 
   /**
    * 对话历史块（下块）的主体：目标切换（导师多目标）、新建、选择与删除。
@@ -302,6 +315,11 @@ export function AgentRosterSidebar({
                 aria-selected={active}
                 title={`${item.label} · ${item.subtitle}`}
                 onClick={() => onSelectMode(item.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setContextMenu({ agentId: item.id, x: e.clientX, y: e.clientY })
+                }}
                 className={
                   'relative flex h-7 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-[11.5px] transition ' +
                   (active
@@ -406,6 +424,11 @@ export function AgentRosterSidebar({
                   aria-selected={active}
                   title={`${item.label} · ${item.subtitle}`}
                   onClick={() => onSelectMode(item.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setContextMenu({ agentId: item.id, x: e.clientX, y: e.clientY })
+                  }}
                   className={
                     'relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border transition ' +
                     (active
@@ -467,7 +490,15 @@ export function AgentRosterSidebar({
         {agents.map((item) => {
           const active = mode === item.id
           return (
-            <div key={item.id} className="shrink-0">
+            <div
+              key={item.id}
+              className="shrink-0"
+              onContextMenu={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setContextMenu({ agentId: item.id, x: e.clientX, y: e.clientY })
+              }}
+            >
               <div
                 className={
                   'group relative flex w-full items-center gap-2.5 rounded-2xl border px-2 py-2.5 transition ' +
@@ -561,11 +592,21 @@ export function AgentRosterSidebar({
                       {item.roleTag}
                     </span>
                   </span>
-                  {item.timeLabel && (
-                    <span className="shrink-0 text-[10px] tabular-nums text-ink-faint">
-                      {item.timeLabel}
-                    </span>
-                  )}
+                  <span className="flex items-center gap-1 shrink-0">
+                    {pinnedAgents.has(item.id) && (
+                      <span
+                        title={isPinLocked(item.id) ? t('默认置顶') : t('已置顶')}
+                        className="text-seal/80 shrink-0"
+                      >
+                        <Pin size={10} className="fill-seal/20 -rotate-45" />
+                      </span>
+                    )}
+                    {item.timeLabel && (
+                      <span className="text-[10px] tabular-nums text-ink-faint">
+                        {item.timeLabel}
+                      </span>
+                    )}
+                  </span>
                 </span>
 
                 <span className="mt-0.5 flex items-center gap-1">
@@ -628,6 +669,15 @@ export function AgentRosterSidebar({
       </div>
         </div>
       )}
+      {/* 智能体卡片右键菜单 */}
+      <AgentContextMenu
+        menu={contextMenu}
+        isPinned={contextMenu ? pinnedAgents.has(contextMenu.agentId) : false}
+        isLocked={contextMenu ? isPinLocked(contextMenu.agentId) : false}
+        onTogglePin={(agentId) => setPinnedAgents((prev) => toggleAgentPin(prev, agentId))}
+        onOpenSettings={onOpenSettings}
+        onClose={() => setContextMenu(null)}
+      />
     </aside>
   )
 }
