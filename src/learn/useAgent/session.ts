@@ -6,7 +6,8 @@
  */
 import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react'
 import type { AgentEvent, AgentPart, Conversation } from '../../agent/types'
-import type { AgentProfileId } from '../../agent/agentProfile'
+import { agentNameOf, profileOf, type AgentProfileId } from '../../agent/agentProfile'
+import { loadAgentSettings } from '../../agent/settings'
 import { applyEvent } from '../agent/events'
 import { createWorkManager, type WorkManager } from '../../agent/work/manager'
 import { buildWorkSystem } from '../ai/workSystem'
@@ -73,8 +74,10 @@ export function useAgentSession(deps: {
       if (!m) {
         const stored = conversationById(getLatest(), conversationId)
         const roleId = (stored?.voice ?? 'tutor') as AgentProfileId
+        const roleName = agentNameOf(profileOf(loadAgentSettings(), roleId), roleId)
         m = createWorkManager({
           roleId,
+          roleName,
           roleConversationId: conversationId,
           goalId: stored?.goalId,
           getWorks: () => conversationById(getLatest(), conversationId)?.works?.sessions ?? [],
@@ -90,7 +93,7 @@ export function useAgentSession(deps: {
           appendOutbound: (work, text, meta) => {
             const cur = conversationById(getLatest(), conversationId)
             if (!cur) return
-            const from = peerOf('agent', roleId, roleId)
+            const from = peerOf('agent', roleId, roleName)
             const to = peerOf('work', work.id, work.name)
             const envelope = outboundEnvelope({
               channel: 'work',
@@ -104,7 +107,7 @@ export function useAgentSession(deps: {
           },
           deliverToRole: (work, text, meta) => {
             const from = peerOf('work', work.id, work.name)
-            const to = peerOf('agent', work.roleId, work.roleId)
+            const to = peerOf('agent', work.roleId, roleName)
             const envelope = inboundEnvelope({ channel: 'work', from, to, text })
             deliverInbound(
               {
@@ -150,8 +153,10 @@ export function useAgentSession(deps: {
       let m = workManagersRef.current.get(conversationId)
       if (!m) {
         const conv = () => freeConversationById(conversationId)
+        const roleName = agentNameOf(profileOf(loadAgentSettings(), 'free'), 'free')
         m = createWorkManager({
           roleId: 'free',
+          roleName,
           roleConversationId: conversationId,
           getWorks: () => conv()?.works?.sessions ?? [],
           setWorks: (update) => {
@@ -170,7 +175,7 @@ export function useAgentSession(deps: {
             mutateFreeConversation(conversationId, (c) => {
               const envelope = outboundEnvelope({
                 channel: 'work',
-                from: peerOf('agent', 'free', 'free'),
+                from: peerOf('agent', 'free', roleName),
                 to: peerOf('work', work.id, work.name),
                 text,
                 ...(meta.quoteMessageId ? { quoteMessageId: meta.quoteMessageId } : {}),
@@ -181,7 +186,7 @@ export function useAgentSession(deps: {
           },
           deliverToRole: (work, text) => {
             const from = peerOf('work', work.id, work.name)
-            const to = peerOf('agent', 'free', 'free')
+            const to = peerOf('agent', 'free', roleName)
             const envelope = inboundEnvelope({ channel: 'work', from, to, text })
             // 与目标 role 同一条路径：通道落账 + 空闲立即起轮 / 运行中跳边界注入。
             // dispatcher 尚未注册（极端初始化阶段）才走旧的「留到下一轮」兜底；

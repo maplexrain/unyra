@@ -38,11 +38,11 @@ export interface MessageListProps {
   emptyVoice?: string
   emptyName?: string
   /**
-   * 思维层：过程件逐条铺开（不归组）、消息不带聊天气泡，且每条消息自身默认折叠。
-   * work 视图恒为 true；role 视图由 chat/mind 页签决定。
+   * 思维层：过程件逐条铺开（不归组）、消息不带聊天气泡，且**消息行第一层不折叠**
+   * （只有消息内部的过程件可折叠）。work 视图恒为 true；role 视图由 chat/mind 页签决定。
    */
   mind?: boolean
-  /** 当前 role 的显示名：mind 折叠行与用户消息对端标签用 */
+  /** 当前 role 的显示名：mind 无信封行与用户消息对端标签用 */
   agentName?: string
   /** 当前 role 的头像 id */
   agentAvatarId?: string

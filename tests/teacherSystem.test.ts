@@ -24,6 +24,16 @@ describe('产物归属规则（用户定的）', () => {
   })
 })
 
+describe('work 能力缺口与跨 role 转交', () => {
+  it('work 明确知道自己缺能力时要交回 role，不能硬做；交接协议写进提示词', () => {
+    expect(system).toContain('能力不够就交回 role 转交')
+    expect(system).toContain('web.search')
+    expect(system).toContain('交接请求')
+    expect(system).toContain('递归')
+    expect(system).toContain('最终交付')
+  })
+})
+
 describe('内置围栏语法指引（plot / pisc / mermaid / videos / quote / aiqa）', () => {
   it('系统提示词包含全部内置围栏语法指引：plot、pisc、mermaid、videos、quote、aiqa', () => {
     expect(system).toContain('```plot')

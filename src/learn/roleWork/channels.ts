@@ -32,7 +32,8 @@ export function userPeer(): ChannelPeer {
 }
 
 export function peerNameOf(kind: ChannelKind, id: string, fallback: string): string {
-  if (kind === 'user') return fallback || currentUserName()
+  // 用户的名字只认用户模块：调用方即使还带着历史的字面量「用户」，也不能盖回真名
+  if (kind === 'user') return currentUserName() || fallback
   return fallback || id
 }
 
@@ -50,9 +51,40 @@ export function formatTs(ts: number): string {
   )
 }
 
+/**
+ * 通道元信息里的时间：模型上下文要求 `yyyy/MM/dd HH:mm:ss`（与 UI 的 `-` 格式分开）。
+ * 单独一个函数是为了不把「人看的格式」与「模型读的协议」混在一处改。
+ */
+export function formatMetaTs(ts: number): string {
+  return formatTs(ts).replace(/-/g, '/')
+}
+
+/**
+ * role / work 上下文里每条 user 侧外部消息的**元信息抬头**。
+ *
+ * 形如：
+ * `[{time:2026/11/23 20:45:00, channel:agent, id:e1, roleId:dispatcher, roleName:调度龟}]`
+ *
+ * 字段是约定好的协议，不是给人看的装饰：`roleId` / `roleName` 是**发信人**，
+ * `channel` 是它从哪条通道来。大模型靠这一行分清「这句话是谁说的」，用户消息、
+ * 跨 role 转交、work 交付都走同一套抬头。
+ */
+export function channelMetaLineOf(stamp: ChannelStamp): string {
+  const id = stamp.from.id || '-'
+  const name = stamp.from.name || '-'
+  const envelopeId = stamp.envelopeId || '-'
+  return (
+    '[{time:' + formatMetaTs(stamp.ts) +
+    ', channel:' + stamp.channel +
+    ', id:' + envelopeId +
+    ', roleId:' + id +
+    ', roleName:' + name + '}]'
+  )
+}
+
 /** 模型历史里的通道正文：与 runtime 注入必须逐字节一致 */
 export function channelTextOf(stamp: ChannelStamp, text: string): string {
-  return stampLineOf(stamp) + '\n' + text
+  return channelMetaLineOf(stamp) + '\n' + text
 }
 
 /** 给一条 role 会话追加通道流水；超过上限只保留最近的（旧消息仍在 messages 里） */

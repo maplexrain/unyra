@@ -35,6 +35,8 @@ export interface WorkTurnConfig {
 
 export interface WorkManagerDeps {
   roleId: AgentProfileId
+  /** role 的显示名：写进 Work 通道的元信息，避免模型/界面只看到 role id */
+  roleName?: string
   roleConversationId: string
   goalId?: string
   getWorks: () => WorkSession[]
@@ -339,7 +341,7 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
         ts: Date.now(),
         channel: {
           channel: 'work',
-          from: { kind: 'role', id: deps.roleId, name: deps.roleId },
+          from: { kind: 'role', id: deps.roleId, name: deps.roleName?.trim() || deps.roleId },
           to: { kind: 'work', id: w.id, name: w.name },
           ts: Date.now(),
           envelopeId: crypto.randomUUID(),

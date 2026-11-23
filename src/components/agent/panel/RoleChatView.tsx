@@ -71,6 +71,20 @@ export function RoleChatView({
     return agentName
   }
 
+  /**
+   * 气泡上方 `> xxx` 的收件人：用户发给当前 role 的，用 role 的真名；
+   * agent 发给用户的，用用户昵称；跨 role 的，用信封里的对方名字。
+   */
+  const recipientOf = (m: ChannelMessage): string => {
+    if (m.to.kind === 'user') return userName
+    if (m.to.kind === 'work') return m.to.name?.trim() || t('工作会话')
+    if (m.to.kind === 'role') {
+      if (m.to.id === agentVoice) return agentName
+      return m.to.name?.trim() || t('另一位角色')
+    }
+    return m.to.name?.trim() || t('未知收件人')
+  }
+
   if (!visible.length) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-ink-faint">
@@ -103,9 +117,12 @@ export function RoleChatView({
               </span>
             )}
             <div className={'min-w-0 max-w-[86%] ' + (mine ? 'flex flex-col items-end' : 'flex flex-col items-start')}>
-              <div className="mb-0.5 flex items-center gap-1.5 px-1 text-[10.5px] text-ink-faint">
+              <div className="mb-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px] text-ink-faint">
                 <span>{labelOf(m)}</span>
                 <span>{new Date(m.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</span>
+                <span className="text-ink-faint/80" title={t('收件人')}>
+                  {'>'} {recipientOf(m)}
+                </span>
                 {m.auto ? <span className="text-amber-600">{t('自动')}</span> : null}
               </div>
               <div

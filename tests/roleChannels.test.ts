@@ -4,6 +4,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { ChannelMessage, Conversation } from '../src/agent/types'
 import { createChatOps } from '../src/learn/ops/chat'
+import { toChatHistory } from '../src/learn/agent/history'
 import {
   deliverInbound,
   enqueueInjection,
@@ -13,7 +14,7 @@ import {
   takeChannelInjection,
   type RoleTurnRequest,
 } from '../src/learn/roleWork/dispatch'
-import { channelTextOf, stampLineOf } from '../src/learn/roleWork/channels'
+import { channelMetaLineOf, channelTextOf, formatMetaTs, stampLineOf } from '../src/learn/roleWork/channels'
 
 const stampOf = (m: ChannelMessage) => ({
   channel: m.kind,
@@ -24,7 +25,7 @@ const stampOf = (m: ChannelMessage) => ({
 })
 
 describe('通道时间戳与正文', () => {
-  it('stampLineOf / channelTextOf：三类来源各自固定前缀，正文在下', () => {
+  it('stampLineOf 保留旧的人读来源行；channelTextOf 用模型协议的元信息抬头', () => {
     const envelope: ChannelMessage = {
       id: 'e1',
       kind: 'agent',
@@ -37,7 +38,41 @@ describe('通道时间戳与正文', () => {
     const line = stampLineOf(stampOf(envelope))
     expect(line).toContain('Agent 通道')
     expect(line).toContain('调度龟')
-    expect(channelTextOf(stampOf(envelope), '查一下极限')).toBe(line + '\n查一下极限')
+
+    // role 上下文里每条 user 侧消息的抬头：time / channel / id / roleId / roleName
+    const meta = channelMetaLineOf(stampOf(envelope))
+    expect(meta.startsWith('[{time:')).toBe(true)
+    expect(meta).toContain('time:' + formatMetaTs(envelope.ts))
+    expect(meta).toContain('channel:agent')
+    expect(meta).toContain('id:e1')
+    expect(meta).toContain('roleId:dispatcher')
+    expect(meta).toContain('roleName:调度龟')
+    expect(meta.endsWith('}]')).toBe(true)
+    expect(channelTextOf(stampOf(envelope), '查一下极限')).toBe(meta + '\n查一下极限')
+  })
+
+  it('toChatHistory 的每条 user 侧通道消息都带同一份元信息抬头', () => {
+    const envelope: ChannelMessage = {
+      id: 'e2',
+      kind: 'user',
+      direction: 'in',
+      from: { kind: 'user', id: 'u1', name: 'Maxwell' },
+      to: { kind: 'role', id: 'tutor', name: '导师龟' },
+      text: '我想学 Java',
+      ts: 1_700_000_000_000,
+    }
+    const history = toChatHistory([
+      {
+        id: 'm1',
+        role: 'user',
+        parts: [{ type: 'text', text: envelope.text }],
+        ts: envelope.ts,
+        channel: stampOf(envelope),
+      },
+    ])
+    expect(history[0]!.content).toBe(channelTextOf(stampOf(envelope), envelope.text))
+    expect(history[0]!.content).toContain('channel:user')
+    expect(history[0]!.content).toContain('roleName:Maxwell')
   })
 })
 
@@ -184,7 +219,8 @@ describe('dispatch：忙时排队、空闲起轮、跳边界注入', () => {
     expect(deliverInbound(busyReq, envelope('e2', '忙时消息'))).toBe(false)
     expect(started).toHaveLength(1)
     const injection = takeChannelInjection('c1')
-    expect(injection?.text).toContain('Agent 通道')
+    expect(injection?.text).toContain('channel:agent')
+    expect(injection?.text).toContain('roleName:调度龟')
     expect(injection?.text).toContain('忙时消息')
   })
 

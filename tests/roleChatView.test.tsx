@@ -13,7 +13,10 @@ const channel = (id: string, kind: 'user' | 'agent', direction: 'in' | 'out', fr
   kind,
   direction,
   from: { kind: kind === 'user' ? 'user' : 'role', id: from, name: from },
-  to: { kind: 'role', id: 'tutor', name: '导师龟' },
+  to:
+    kind === 'user' && direction === 'in'
+      ? { kind: 'role', id: 'tutor', name: '导师龟' }
+      : { kind: 'user', id: 'u1', name: 'Maxwell' },
   text,
   ts: 1000,
 })
@@ -43,6 +46,9 @@ describe('RoleChatView', () => {
     expect(host.textContent).not.toContain('我')
     // 用户模块没有加载时也走「未命名用户」，而不是历史信封里硬编码的“用户”
     expect(host.textContent).toContain('未命名用户')
+    // 气泡上方、时间右侧标明收件人：用户发给导师，agent 回复给用户
+    expect(host.textContent).toContain('> 导师龟')
+    expect(host.textContent).toContain('> 未命名用户')
     // 两侧都有头像位（agent 图标 / 用户兜底图标）
     expect(host.querySelectorAll('svg, img').length).toBeGreaterThanOrEqual(2)
 
