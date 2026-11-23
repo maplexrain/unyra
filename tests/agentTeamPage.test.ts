@@ -506,10 +506,9 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
     })
     expect(onSelectConversation).toHaveBeenCalledWith('free', 'f-old')
 
-    act(() => {
-      btnByLabel(host, '新建对话')[0].click()
-    })
-    expect(onNewConversation).toHaveBeenCalledWith('free')
+    // role-work：一位 agent 的 role 层只有一段会话，不再提供「新建对话」
+    expect(btnByLabel(host, '新建对话').length).toBe(0)
+    expect(onNewConversation).not.toHaveBeenCalled()
 
     const deleteOld = host
       .querySelector<HTMLElement>('[data-conversation-id="f-old"]')!
@@ -831,13 +830,14 @@ describe('AgentSettingsView 智能体独立设置页', () => {
       )
     })
 
-    for (const title of ['身份', '提供商 · 模型', '思考强度', 'execute 开放的 api', '集成的工作流', '系统提示词']) {
+    for (const title of ['身份', '提供商 · 模型', '思考强度', 'execute 开放的 api', '工作层的工作流', '系统提示词']) {
       expect(host.textContent).toContain(title)
     }
     // 系统提示词按分段展示：所有 pre 组合成完整提示词文本
     const presText = Array.from(host.querySelectorAll('pre')).map((p) => p.textContent).join('\n')
     expect(presText).toContain('智能导师助手')
-    expect(presText).toContain('内置工作流与任务规程')
+    expect(presText).toContain('api.work.create')
+    expect(presText).not.toContain('内置工作流与任务规程')
 
     // 改名（受控 input）
     const nameInput = host.querySelector<HTMLInputElement>('input[type="text"]')!
@@ -891,23 +891,19 @@ describe('AgentSettingsView 智能体独立设置页', () => {
 
     // 固定组 / 非固定组分开列，全部恒开放；没有任何移除按钮、没有添加下拉
     expect(host.textContent).toContain('固定 · 恒开放')
-    expect(host.textContent).toContain('专属 · 恒开放')
     expect(host.textContent).toContain('固定组')
     expect(host.textContent).toContain('非固定组')
-    expect(host.textContent).toContain('按架构分工固定')
+    expect(host.textContent).toContain('role 层不直接持有领域能力')
     expect([...host.querySelectorAll<HTMLButtonElement>('button[aria-label^="移除"]')]).toHaveLength(0)
     expect(host.querySelector('[data-api-add]')).toBeNull()
-    // 导师分工面里的组都在清单里；固定组成员（help / wait / compact）各只出现一次
+    // role 的固定面只有 tmp / work / chat + compact（help 恒在），领域组一律不在
     const codeKeys = [...host.querySelectorAll('[data-api-section] code')].map((c) => c.textContent)
-    expect(codeKeys.some((k) => k === 'api.node')).toBe(true)
-    expect(codeKeys.filter((k) => k === 'api.wait')).toHaveLength(1)
-    expect(codeKeys.filter((k) => k === 'api.compact')).toHaveLength(1)
-    expect(codeKeys.filter((k) => k === 'api.help')).toHaveLength(1)
-    // 分出去的域（判卷与课件的 exam / classroom、调研的 web / browser）不在导师的清单里
-    expect(codeKeys.some((k) => k === 'api.exam')).toBe(false)
-    expect(codeKeys.some((k) => k === 'api.classroom')).toBe(false)
-    expect(codeKeys.some((k) => k === 'api.web')).toBe(false)
-    expect(codeKeys.some((k) => k === 'api.browser')).toBe(false)
+    for (const key of ['api.tmp', 'api.work', 'api.chat', 'api.compact', 'api.help']) {
+      expect(codeKeys.filter((k) => k === key)).toHaveLength(1)
+    }
+    for (const key of ['api.node', 'api.wait', 'api.exam', 'api.classroom', 'api.web', 'api.browser']) {
+      expect(codeKeys.some((k) => k === key)).toBe(false)
+    }
     // 工作层只读：固定面与按 role 派生面都直接来自架构，没有任何增删入口
     const workLayer = host.querySelector('[data-work-layer]')
     expect(workLayer?.textContent).toContain('工作层（work）')
@@ -1018,31 +1014,36 @@ describe('AgentSettingsView 智能体独立设置页', () => {
       return pre
     }
 
-    // 导师全文恒定：api 速查与规程按团队分工拼装（分出去的域不在，分诊口径在场）
+    // 导师 role 全文恒定：只留人格 / 分诊 / 固定 API，执行规程不在
     const text = render({ apiGroups: ['web'] } as AgentProfile)
-    expect(text).toContain('【开讲】教学文档生成（teach-node）')
-    expect(text).toContain("to: 'examiner'")
-    expect(text).toContain("to: 'designer'")
+    expect(text).toContain("'examiner'")
+    expect(text).toContain("'designer'")
     expect(text).toContain('你是「归一 Unyra」的导师龟')
+    expect(text).toContain('api.work.create')
+    expect(text).not.toContain('【开讲】教学文档生成（teach-node）')
+    expect(text).not.toContain('#### api.node')
     expect(text).not.toContain('#### api.exam')
     expect(text).not.toContain('【出卷】试卷命题（exam）')
 
-    // 命题官：创作规程与阅卷规程都在（判卷已并入），共享前缀逐字节一致
+    // 命题官 role：领域规程与 api 全部在 work，role 预览不再出现
     const examinerText = render({}, 'examiner')
-    expect(examinerText).toContain('【出卷】试卷命题（exam）')
-    expect(examinerText).toContain('【阅卷】判分与讲解（exam-grade）')
-    expect(examinerText).toContain('#### api.exam')
+    expect(examinerText).toContain('api.work.create')
+    expect(examinerText).not.toContain('【出卷】试卷命题（exam）')
+    expect(examinerText).not.toContain('【阅卷】判分与讲解（exam-grade）')
+    expect(examinerText).not.toContain('#### api.exam')
     expect(examinerText.startsWith(SHARED_AGENT_PREFIX)).toBe(true)
 
-    // 维修员：只拿修图规程
+    // 维修员 role：修图规程在 work，不在 role
     const fixerText = render({}, 'fixer')
-    expect(fixerText).toContain('【修复函数图像】Plot 错误快速纠偏（plot-fix）')
+    expect(fixerText).not.toContain('【修复函数图像】Plot 错误快速纠偏（plot-fix）')
     expect(fixerText.startsWith(SHARED_AGENT_PREFIX)).toBe(true)
 
-    // 仅聊天：能力面由架构固定，提示词恒定
+    // 仅聊天 role：只有 work / chat，联网与日程在 work
     const freeText = render({}, 'free')
-    expect(freeText).toContain('api.web.search')
-    expect(freeText).toContain('api.schedule.*')
+    expect(freeText).toContain('api.work.create')
+    expect(freeText).toContain('api.chat.send')
+    expect(freeText).not.toContain('api.web.search')
+    expect(freeText).not.toContain('api.schedule.*')
   })
 
   it('返回对话与恢复默认两个出口', () => {

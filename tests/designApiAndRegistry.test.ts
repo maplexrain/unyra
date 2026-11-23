@@ -9,9 +9,9 @@ import {
 } from '../src/lib/componentBlock/registry'
 import { renderComponentPreview } from '../src/lib/componentBlock'
 import { buildApi } from '../src/agent/sandbox/api'
-import { AGENT_API_PLANES, CONTENT_VOICES } from '../src/agent/agentProfile'
+import { WORK_API_PLANES, CONTENT_VOICES } from '../src/agent/agentProfile'
 import { TABS } from '../src/components/settings/tabs'
-import { buildTeacherSystem, buildExaminerSystem, buildDesignerSystem } from '../src/learn/ai'
+import { buildWorkSystem } from '../src/learn/ai/workSystem'
 import type { SandboxCall, SandboxOptions } from '../src/agent/sandbox/types'
 
 describe('Document Component Registry & Storage', () => {
@@ -154,17 +154,17 @@ describe('api.design.* Execute 沙箱集成与容错别名', () => {
 })
 
 describe('内容生成声部（CONTENT_VOICES）排版指南与 API 持面一致性', () => {
-  it('所有 CONTENT_VOICES (tutor, examiner, designer) 均持有 design API 组', () => {
+  it('所有 CONTENT_VOICES (tutor, examiner, designer) 的 work 均持有 design API 组', () => {
     for (const voice of CONTENT_VOICES) {
-      const groups = AGENT_API_PLANES[voice].groups
+      const groups = WORK_API_PLANES[voice].groups
       expect(groups, `${voice} 必须持有 design API 组`).toContain('design')
     }
   })
 
-  it('所有 CONTENT_VOICES 共用排版指南与 component 围栏指引', () => {
-    const tutor = buildTeacherSystem()
-    const examiner = buildExaminerSystem()
-    const designer = buildDesignerSystem()
+  it('所有 CONTENT_VOICES 的 work 共用排版指南与 component 围栏指引', () => {
+    const tutor = buildWorkSystem('tutor')
+    const examiner = buildWorkSystem('examiner')
+    const designer = buildWorkSystem('designer')
 
     for (const prompt of [tutor, examiner, designer]) {
       expect(prompt).toContain('```component')

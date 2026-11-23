@@ -40,6 +40,11 @@ export function setRoleWorkDispatcher(next: (() => RoleWorkDispatcher | null) | 
   dispatcherGetter = next
 }
 
+/** 宿主是否已注册（free 的 work 交付决定走通道还是落旧账的判据） */
+export function hasRoleWorkDispatcher(): boolean {
+  return dispatcherGetter?.() != null
+}
+
 function dispatcherOf(): RoleWorkDispatcher | null {
   return dispatcherGetter?.() ?? null
 }

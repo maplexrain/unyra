@@ -144,7 +144,8 @@ describe('提示词分段与共同提示词独立性', () => {
   it('getAgentPromptSections 为所有声部产出结构化的分段，且第一个分段为共同提示词/总纲', () => {
     // 导师龟
     const tutorSections = getAgentPromptSections('tutor')
-    expect(tutorSections.length).toBeGreaterThanOrEqual(7)
+    // role 层现在只有四段：共同前缀 / 固定 API / 人格 / 分工
+    expect(tutorSections.length).toBeGreaterThanOrEqual(4)
     expect(tutorSections[0]!.title).toContain('共同提示词')
     expect(tutorSections[0]!.content).toBe(SHARED_AGENT_PREFIX)
     expect(tutorSections[0]!.isCommon).toBe(true)

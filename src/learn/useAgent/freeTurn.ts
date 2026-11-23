@@ -16,7 +16,7 @@ import { runAgent } from '../../agent/runtime'
 import { createExecuteTools } from '../../agent/tools'
 import type { SandboxOptions } from '../../agent/sandbox/types'
 import { loadAgentSettings } from '../../agent/settings'
-import { FREE_AGENT_GROUPS, profileOf, resolveAgentGlobal } from '../../agent/agentProfile'
+import { FREE_AGENT_GROUPS, FREE_AGENT_TOP_LEVEL, profileOf, resolveAgentGlobal } from '../../agent/agentProfile'
 import { globalContextWindow, loadAiSettings } from '../../ai/settings'
 import { applyEvent } from '../agent/events'
 import { toChatHistory } from '../agent/history'
@@ -39,9 +39,10 @@ import type { WorkManager } from '../../agent/work/manager'
 import type { ChatCallResult, ChatSendInput } from '../../agent/roleWork/types'
 import { isAgentRoleId } from '../../agent/roleWork/types'
 import { channelTextOf, inboundEnvelope, outboundEnvelope, peerOf } from '../roleWork/channels'
-import { deliverInbound } from '../roleWork/dispatch'
+import { deliverInbound, takeChannelInjection } from '../roleWork/dispatch'
 import { roleOfConversation } from '../roleWork/roles'
 import { resolveChatAttachments } from '../roleWork/attachments'
+import type { ChannelStamp } from '../../agent/types'
 
 /**
  * 跑自由聊天的一轮（原 sendFree 的轮次主体）。调用方（hook 的 sendFree）已做好
@@ -67,8 +68,13 @@ export async function runFreeTurn(io: {
   abortMapRef: { current: Map<string, AbortController> }
   /** 聊天龟的 work 管理器（hook 跨轮持有；账本住 free-chat.json） */
   workManager?: WorkManager
+  /**
+   * Work 通道交付（role 空闲时由宿主直接起这一轮）：不是用户发言，不写 user 通道，
+   * 只把交付作为带 Work 来源戳的 user 侧消息进入历史。
+   */
+  delivery?: { text: string; stamp: ChannelStamp; envelopeId: string }
 }) {
-  const { conversationId, trimmed, docFiles, imageFiles, onNoticeRef, namingRef, getLatest, set, setStreaming, setRunning, setTps, setLiveUsage, abortMapRef, workManager } = io
+  const { conversationId, trimmed, docFiles, imageFiles, onNoticeRef, namingRef, getLatest, set, setStreaming, setRunning, setTps, setLiveUsage, abortMapRef, workManager, delivery } = io
   // 转存图片与文件附件至 free/static
   const [attachedImages, attachedFiles] = await Promise.all([
     imageFiles.length ? transferFreePendingImages(imageFiles) : Promise.resolve({ images: [] as MessageImage[], error: undefined }),
@@ -77,26 +83,38 @@ export async function runFreeTurn(io: {
   if (attachedImages.error) onNoticeRef.current?.(attachedImages.error)
   if (attachedFiles.error) onNoticeRef.current?.(attachedFiles.error)
 
-  const userEnvelope = inboundEnvelope({
-    channel: 'user',
-    from: peerOf('user', 'user', '用户'),
-    to: peerOf('agent', 'free', 'free'),
-    text: trimmed || '[附件]',
-  })
+  const userEnvelope = delivery
+    ? null
+    : inboundEnvelope({
+        channel: 'user',
+        from: peerOf('user', 'user', '用户'),
+        to: peerOf('agent', 'free', 'free'),
+        text: trimmed || '[附件]',
+      })
   appendFreeMessage(conversationId, {
     id: crypto.randomUUID(),
     role: 'user',
-    parts: [{ type: 'text', text: trimmed }],
-    channel: { channel: 'user', from: userEnvelope.from, to: userEnvelope.to, ts: userEnvelope.ts, envelopeId: userEnvelope.id },
-    ...(attachedImages.images.length ? { images: attachedImages.images } : {}),
-    ...(attachedFiles.files.length ? { files: attachedFiles.files } : {}),
+    parts: [{ type: 'text', text: delivery?.text ?? trimmed }],
+    channel: delivery
+      ? delivery.stamp
+      : {
+          channel: 'user',
+          from: userEnvelope!.from,
+          to: userEnvelope!.to,
+          ts: userEnvelope!.ts,
+          envelopeId: userEnvelope!.id,
+        },
+    ...(!delivery && attachedImages.images.length ? { images: attachedImages.images } : {}),
+    ...(!delivery && attachedFiles.files.length ? { files: attachedFiles.files } : {}),
     ts: Date.now(),
   })
-  mutateFreeConversation(conversationId, (c) => ({
-    ...c,
-    channels: [...(c.channels ?? []), userEnvelope].slice(-200),
-    updatedAt: Date.now(),
-  }))
+  if (userEnvelope) {
+    mutateFreeConversation(conversationId, (c) => ({
+      ...c,
+      channels: [...(c.channels ?? []), userEnvelope].slice(-200),
+      updatedAt: Date.now(),
+    }))
+  }
   const stored = freeConversationById(conversationId)
   if (!stored) return
   const settings = loadAiSettings()
@@ -224,7 +242,8 @@ export async function runFreeTurn(io: {
     return { ok: true, channel: 'agent', to: input.to }
   }
 
-  const freeSandbox: SandboxOptions = {
+  // work 的基座：聊天龟派出的 work 仍要联网与排日程；role 自己的沙箱不暴露这两组
+  const freeWorkBase: SandboxOptions = {
     nodeId: () => null,
     resolveNode: () => ({ ok: false, message: '自由聊天不挂在知识节点上' }),
     resolveDoc: () => ({ ok: false, message: '自由聊天不挂载教学文档上' }),
@@ -235,7 +254,7 @@ export async function runFreeTurn(io: {
       search: searchForAgent,
     },
     /*
-     * 日程：聊天 agent 也排得了日程（需求明确）。它写的是**用户级**的那张表
+     * 日程：聊天龟派出的 work 也要排日程（需求明确）。它写的是**用户级**的那张表
      * （state.json 的 schedule），与自由聊天没有目标这件事不冲突——goalId 只是
      * 日程上的一个可选标记，这里给 FREE_GOAL_ID，界面按「自由聊天」显示。
      */
@@ -246,22 +265,24 @@ export async function runFreeTurn(io: {
           chat: { send: chatSend },
         }
       : {}),
-    // 仅聊天的能力面由架构固定（内置组不可卸载）：web / fetch / schedule / work / chat
-    apiAllow: [...FREE_AGENT_GROUPS],
+  }
+  const freeSandbox: SandboxOptions = {
+    ...freeWorkBase,
+    // role 层单会话：联网 / 日程不在 role 面，调用会被 apiAllow 拒绝；这里连实现都不注入
+    web: undefined,
+    schedule: undefined,
+    // role 的固定面：tmp / work / chat + compact
+    apiAllow: [...FREE_AGENT_GROUPS, ...FREE_AGENT_TOP_LEVEL],
     apiBrief:
-      'DeepSeek 官方搜索与抓取服务：\n' +
-      'api.web.search({ query, count?: 5, ori_question?, need_content? })：网络搜索并获取多维度权威检索结果；\n' +
-      "api.fetch({ url: 'https://...' }) 或 api.fetch('https://...')：抓取网页正文并转为 Markdown 格式；\n" +
-      'api.web.fetch({ url })：抓取网页正文（api.fetch 别名）；\n' +
-      'api.schedule.list({ days? }) / api.schedule.create({ title, date?, time, minutes?, remindBefore? })：' +
-      '看用户的日程、给他排一条提醒（到点由宿主响铃，用户自己确认或稍后提醒）；' +
-      'api.work.list() / api.work.create({ name? }) / api.work.send({ name, text }) / api.work.status(name)：管理自己的 work；' +
-      'api.chat.send({ channel: \'user\'|\'agent\'|\'work\', to?, text })：对外发消息。',
+      'api.work.list() / api.work.create({ name? }) / api.work.status(name)：管理自己的 work；\n' +
+      'api.work.send({ name, text })：把任务交给 work，调用立即返回；\n' +
+      'api.chat.send({ channel: \'user\'|\'agent\'|\'work\', to?, text })：对外发消息。\n' +
+      '联网检索、网页抓取、日程读写都只在 work 面：需要就 create/send 一个 work。',
     signal: ctrl.signal,
   }
   if (workManager) {
     workManager.setTurn({
-      sandbox: freeSandbox,
+      sandbox: freeWorkBase,
       provider: global.provider,
       model: global.model,
       ...(global.effort ? { effort: global.effort } : {}),
@@ -288,6 +309,19 @@ export async function runFreeTurn(io: {
       tools,
       ctx: { nodeId: '', goalId: FREE_GOAL_ID },
       signal: ctrl.signal,
+      injections: async () => {
+        const next = takeChannelInjection(convKey)
+        if (!next) return null
+        parts.push({ type: 'channel-message', channelId: next.envelopeId, text: next.text })
+        mutateFreeConversation(convKey, (c) =>
+          upsertAssistantInFlight(c, { id: assistantId, role: 'assistant', parts: [...parts], ts: Date.now() }),
+        )
+        setStreaming((prev2) => ({
+          ...prev2,
+          [convKey]: { conversationId: convKey, messageId: assistantId, parts: [...parts] },
+        }))
+        return { role: 'user', content: next.text }
+      },
       onEvent: (e) => {
         if (e.type === 'usage') {
           tally.turns++

@@ -29,7 +29,7 @@ import {
 } from '../../agent/types'
 import type { AskAnswers, ExamToolDeps } from '../../agent/tools'
 import { hasApiKey, loadAiSettings } from '../../ai/settings'
-import { freeConversationById, getFreeConversations } from '../freeChat'
+import { freeConversationById, getFreeConversations, mutateFreeConversation } from '../freeChat'
 import { DEFAULT_AGENT_NAME, type AgentVoice } from '../../agent/agentProfile'
 import { setEffortContextProbe } from '../effortGuard'
 import type { LearnStore } from '../types'
@@ -573,8 +573,18 @@ export function useAgent(opts: {
    * 那里的每一段都挂在目标上、写进 {目标}/chat.json，自由聊天没有目标可挂。
    */
   const sendFree = useCallback(
-    (conversationId: string, text: string, opts?: { files?: PendingFile[]; images?: PendingImage[] }) => {
+    (
+      conversationId: string,
+      text: string,
+      opts?: {
+        files?: PendingFile[]
+        images?: PendingImage[]
+        /** Work 通道交付：role 空闲时由交付唤醒，不当作新的用户发言 */
+        delivery?: { text: string; stamp: ChannelStamp; envelopeId: string }
+      },
+    ) => {
       const trimmed = text.trim()
+      const delivery = opts?.delivery
       const docFiles = (opts?.files ?? []).filter((x) => !x.image)
       const imageFiles: PendingImage[] = [
         ...(opts?.images ?? []),
@@ -582,8 +592,8 @@ export function useAgent(opts: {
           .filter((x) => x.image)
           .map((x) => ({ id: x.id, name: x.name, bytes: x.bytes, file: x.image as File, previewUrl: '' })),
       ]
-      // 允许纯图片或纯文件发送（无字放行）
-      if (!trimmed && !docFiles.length && !imageFiles.length) return
+      // 允许纯图片或纯文件发送（无字放行）；Work 交付与附件无关，直接放行
+      if (!delivery && !trimmed && !docFiles.length && !imageFiles.length) return
       if (!freeConversationById(conversationId)) return
       if (!hasApiKey(loadAiSettings())) {
         onNeedKeyRef.current()
@@ -616,6 +626,7 @@ export function useAgent(opts: {
             setLiveUsage,
             abortMapRef,
             workManager: getOrCreateFreeWorkManager(conversationId),
+            ...(delivery ? { delivery } : {}),
           })
         } finally {
           release()
@@ -682,16 +693,35 @@ export function useAgent(opts: {
    * 经 getter 取用——dispatcherRef 每次渲染刷新一份，注册表每次都拿到最新闭包。
    */
   const dispatcherRef = useRef<RoleWorkDispatcher | null>(null)
+  /**
+   * 运行态从 true → false 时补一次通道收口：`settleTurn` 里立即 flush 读到的还是旧
+   * running 状态；等 React 提交后再扫一遍，保证运行中排队的 Work 交付一定起下一轮。
+   */
+  const prevRunningRef = useRef<Record<string, boolean>>({})
+  useEffect(() => {
+    const prev = prevRunningRef.current
+    for (const id of Object.keys(prev)) {
+      if (prev[id] && !running[id]) flushChannelInbox(id)
+    }
+    prevRunningRef.current = running
+  }, [running])
   useEffect(() => {
     dispatcherRef.current = {
       isConversationRunning: (convId) => Boolean(running[convId]),
       resolveRoleConversation: (role, gid) => findRoleConversation(getLatest(), role, gid),
       startRoleTurn: (req) => {
         if (!hasApiKey(loadAiSettings())) return
+        if (req.role === 'free') {
+          if (!freeConversationById(req.conversationId)) return
+          void sendFree(req.conversationId, '', {
+            delivery: { text: req.text, stamp: req.stamp, envelopeId: req.envelopeId },
+          })
+          return
+        }
         const conv = conversationById(getLatest(), req.conversationId)
         const goal = req.goalId ?? conv?.goalId
         if (!goal) return
-        const voice: AgentVoice = req.role === 'free' ? 'tutor' : req.role
+        const voice: AgentVoice = req.role
         void runTurn(
           {
             goalId: goal,
@@ -714,8 +744,18 @@ export function useAgent(opts: {
       },
       appendChannel: (convId, envelope) => {
         const cur = conversationById(getLatest(), convId)
-        if (!cur) return
-        persist({ ...cur, channels: [...(cur.channels ?? []), envelope].slice(-200), updatedAt: Date.now() })
+        if (cur) {
+          persist({ ...cur, channels: [...(cur.channels ?? []), envelope].slice(-200), updatedAt: Date.now() })
+          return
+        }
+        const free = freeConversationById(convId)
+        if (free) {
+          mutateFreeConversation(convId, (c) => ({
+            ...c,
+            channels: [...(c.channels ?? []), envelope].slice(-200),
+            updatedAt: Date.now(),
+          }))
+        }
       },
     }
   })

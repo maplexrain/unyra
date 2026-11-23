@@ -24,11 +24,22 @@ work ──host.send──▶ 回到所属 role 的 Work 通道
 聊天龟（free）也是 role：能闲聊，也能 create / send work；它没有目标上下文，
 跨 role 的 agent 通道只在现有目标会话里找得到目标时才发得出去。
 
+## role 层：只有沟通与调度
+
+- **一个 agent 的 role 层始终只有一段会话**（同一目标下复用最新的 `Conversation.voice`，
+  没有才落 `cv:<role>:<goal>`）；work 才是一任务一段、可多开。
+- role 的 API 是固定面：`tmp / work / chat` + 顶层 `compact`（`help` 恒在）。
+  领域组（node / exam / browser / classroom / web / schedule / workspace…）一律不下发。
+- role 的系统提示词只写「我是谁、我负责什么分工、怎么派 work、怎么对外说」；
+  排版配方、围栏语法、领域工作流、交付登记这些「怎么做」全部在 work 提示词里。
+- role 的 loop 不阻塞：派完 work 立即用 `chat.send(user)` 回一句回执并结束本轮；
+  **没有 `wait`**，也不轮询 `work.status`、不用 `ask` 挂住自己。
+
 ## role API 契约
 
 ```
 api.work.list()
-api.work.status(name)
+api.work.status(name)      // 只在用户明确问进度时看一眼，不轮询
 api.work.stop(name)        // 中止但保留上下文，可续跑
 api.work.create({ name? })
 api.work.kill(name)        // 中止并删除
@@ -43,6 +54,8 @@ api.chat.send({ channel, to?, text, messageId?, attachments? })
 ## work 的边界
 
 - work **没有人格**；系统提示词由 `buildWorkSystem(role)` 生成，创建时固化，不随 role 改动。
+  依次拼：work 基础纪律 → 本 role 的职责说明（`WORK_ROLE_BRIEF`，无人格）→ 排版配方
+  （仅需要产物的内容 role）→ 固定 API → 领域 API → 围栏语法 → 工作流规程 → 领域纪律。
 - work 只有 `tmp / host` 固定组 + 该 role 的领域组（去掉 `work/chat/permission/ui`）；
   顶层有 `wait / compact`，但没有 `ask`（work 不直接面对用户）。
 - 一个 work 只对接创建它的 role；上下文、消息、execTrace、交付记录都在自己的账本里。
@@ -62,8 +75,8 @@ api.chat.send({ channel, to?, text, messageId?, attachments? })
 
 - role 一轮没有 `chat.send(user)` 时，hook 把最终正文补成 user 通道消息（`auto: true`），
   保证对话层看得到回复。
-- 自由聊天的每轮结束同样补一条 user 通道；它的 work 交付没有可注入的 role 轮次，
-  因此写进 channels 并追加一条 `channel-message` 助手消息，下一轮进入历史。
+- Work 交付回到 role：role 空闲 → 立即起一轮；正在跑 → 在当前 loop 结束边界注入一条
+  `channel-message`。自由聊天也一样，交付不会再「留到下一次用户发言」。
 
 ## 持久化与迁移
 

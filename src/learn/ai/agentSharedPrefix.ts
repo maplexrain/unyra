@@ -76,9 +76,10 @@ export const ALL_AGENTS_COMMON_PREFIX = [
 
 /**
  * 角色层共同前缀全文（P0）：六位挂目标 role 的系统提示词都以它开头（逐字节一致）。
- * 块序：全员通用前缀（ALL_AGENTS_COMMON_PREFIX） → 角色层与工作层 → 通道 → compact 会话压缩规程。
- * P0 之后紧跟**固定组 API 速查**（六位 role 逐字节一致）与**非固定组 API 速查 / 引用交付 / 排版语法 /
- * 专属工作流规程**（按 role 分化），再往后才是身份定位与附加提示词——API 先于身份（用户定稿）。
+ * 块序：全员通用前缀（身份总纲 / execute 机制 / 应用数据守门 / 沙箱纪律 / 通用纪律）
+ * → 角色层与工作层 → 通道 → compact 会话压缩规程。
+ * P0 之后只紧跟**固定组 API 速查**（六位 role 逐字节一致），再往后是身份定位与分工；
+ * 领域 API、排版、语法、工作流规程只进 work 提示词，不再进 role。
  */
 export const SHARED_AGENT_PREFIX = [
   ALL_AGENTS_COMMON_PREFIX,

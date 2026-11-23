@@ -14,7 +14,7 @@ import { conversationById } from '../graph'
 import { generateConversationTitle, namingSource } from '../title'
 import type { LearnStore } from '../types'
 import { inboundEnvelope, outboundEnvelope, peerOf } from '../roleWork/channels'
-import { deliverInbound } from '../roleWork/dispatch'
+import { deliverInbound, hasRoleWorkDispatcher } from '../roleWork/dispatch'
 import { freeConversationById, mutateFreeConversation } from '../freeChat'
 
 export interface WorkRunSlot {
@@ -180,25 +180,39 @@ export function useAgentSession(deps: {
             })
           },
           deliverToRole: (work, text) => {
-            mutateFreeConversation(conversationId, (c) => {
-              const from = peerOf('work', work.id, work.name)
-              const to = peerOf('agent', 'free', 'free')
-              const envelope = inboundEnvelope({ channel: 'work', from, to, text })
-              return {
-                ...c,
-                channels: [...(c.channels ?? []), envelope].slice(-200),
-                messages: [
-                  ...c.messages,
-                  {
-                    id: crypto.randomUUID(),
-                    role: 'assistant',
-                    parts: [{ type: 'channel-message', channelId: envelope.id, text }],
-                    ts: Date.now(),
-                  },
-                ],
-                updatedAt: Date.now(),
-              }
-            })
+            const from = peerOf('work', work.id, work.name)
+            const to = peerOf('agent', 'free', 'free')
+            const envelope = inboundEnvelope({ channel: 'work', from, to, text })
+            // 与目标 role 同一条路径：通道落账 + 空闲立即起轮 / 运行中跳边界注入。
+            // dispatcher 尚未注册（极端初始化阶段）才走旧的「留到下一轮」兜底；
+            // 运行中返回 false 是「已排队」，不能再落一遍账。
+            if (hasRoleWorkDispatcher()) {
+              deliverInbound(
+                {
+                  conversationId,
+                  role: 'free',
+                  text,
+                  stamp: { channel: 'work', from, to, ts: envelope.ts, envelopeId: envelope.id },
+                  envelopeId: envelope.id,
+                },
+                envelope,
+              )
+              return
+            }
+            mutateFreeConversation(conversationId, (c) => ({
+              ...c,
+              channels: [...(c.channels ?? []), envelope].slice(-200),
+              messages: [
+                ...c.messages,
+                {
+                  id: crypto.randomUUID(),
+                  role: 'assistant',
+                  parts: [{ type: 'channel-message', channelId: envelope.id, text }],
+                  ts: Date.now(),
+                },
+              ],
+              updatedAt: Date.now(),
+            }))
           },
           onEvent: (workId, runId, e) => {
             setWorkRuns((prev) => {

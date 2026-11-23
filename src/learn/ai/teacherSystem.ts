@@ -1,14 +1,11 @@
 /**
- * 导师声部（tutor）的系统提示词 = **共同前缀（SHARED_AGENT_PREFIX，P0）+ 共用排版与视觉规范
- * + 固定组 API 速查 + 非固定组 API 速查 + 导师专属区（P1）**。
+ * 导师 role（tutor）的系统提示词 = **共同前缀（SHARED_AGENT_PREFIX，P0）+ 固定组 API + 身份 / 分工**。
  *
- * 顺序纪律（用户定稿）：越不可变越靠前——P0 在最前（七兄弟总纲 / 团队协作 / execute 机制 /
- * 先查再用 / 应用数据守门 / 沙箱纪律 / 通用纪律 / compact 规程）；紧接着是**内容声部共用排版
- * 规范**（导师 / 出卷 / 设计逐字节一致）、**固定组 API**（六位执行声部逐字节一致的执行基座）
- * 与**非固定组 API**（导师职责面），然后才进入身份定位 / 分工 / 专用语法 / 工作流 / 纪律。
- * 会话内会变的信息（人格 / 画像 / 技能）不进系统提示词。
+ * role 层只保留对外沟通与对内调度的信息，不背执行规程、领域语法、排版配方与工作流；
+ * 这些全部由 work 的系统提示词（`buildWorkSystem('tutor')`）负责。顺序固定，不与用户配置
+ * 或会话内容混写——同样的代码永远产出同样的字节，前缀缓存才稳定。
  *
- * 文案与分段由 promptSections 统一装配（voiceCopy + typographyGuide + apiPromptSections），
+ * 文案与分段由 promptSections 统一装配（voiceCopy + apiPromptSections + roleWorkGuide），
  * 这里只做拼接——设置页预览与运行期发出的提示词是同一份，不再各写一遍。
  */
 import { getAgentPromptSections, joinPromptSections } from './promptSections'

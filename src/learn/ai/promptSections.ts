@@ -8,13 +8,12 @@
  * 2. **这里是七位智能体系统提示词的唯一装配来源**：运行期的 buildFreeChatSystem /
  *    buildTeacherSystem / buildVoiceSystem 都把这里的分段按 '\n\n' 拼回去，设置页的预览
  *    直接展示同一份分段——预览与真正发出的提示词不会再各说各话。
- * 3. 顺序（用户定稿）：共同基础前缀 → **共用排版与视觉规范**（导师 / 出卷 / 设计逐字节一致）→
- *    **固定组 API 能力面** → **非固定组 API 能力面** → 身份定位 → 分工 → 专用语法 → 工作流
- *    → 纪律 → 附加提示词。排版与能力面都先于身份：模型先知道「内容长什么样、手里有什么」，
- *    再读自己是谁。
+ * 3. role 的顺序（用户定稿）：共同基础前缀 → **固定组 API** → 身份定位 → 分工（能做什么）
+ *    → 附加提示词。role 只拿「沟通 + 调度」信息；排版、领域语法、工作流规程、领域纪律
+ *    都归 work，由 `workSystem` 装配（见 buildWorkSystem）。
  */
 
-import { AGENT_WORKFLOW_PLANES, CONTENT_VOICES, type AgentVoice } from '../../agent/agentProfile'
+import { type AgentVoice } from '../../agent/agentProfile'
 import {
   ALL_AGENTS_COMMON_PREFIX,
   SHARED_AGENT_PREFIX,
@@ -27,17 +26,11 @@ import {
   SANDBOX_DISCIPLINE_GUIDE,
   SEEK_HELP_GUIDE,
 } from './executeGuide'
-import {
-  FREE_CHAT_API_SECTION,
-  FREE_CHAT_BOUNDARY,
-  FREE_CHAT_IDENTITY,
-  FREE_CHAT_SEARCH_SECTION,
-} from './freeChatCopy'
+import { FREE_CHAT_API_SECTION, FREE_CHAT_BOUNDARY, FREE_CHAT_IDENTITY } from './freeChatCopy'
 import { ROLE_CHANNEL_GUIDE, ROLE_WORK_GUIDE } from './roleWorkGuide'
 import { TURTLE_CLAN_GUIDE } from './turtleClan'
-import { SHARED_TYPOGRAPHY_GUIDE } from './typographyGuide'
 import { voiceCopyOf } from './voiceCopy'
-import { compactWorkflowSection, workflowGuideFor } from './workflowsGuide'
+import { compactWorkflowSection } from './workflowsGuide'
 import type { AgentProfileId } from '../../agent/agentProfile'
 
 /** 提示词分段颜色主题 */
@@ -133,23 +126,7 @@ export function joinPromptSections(sections: PromptSection[]): string {
   return sections.map((s) => s.content).join('\n\n')
 }
 
-/** 共用排版与视觉规范（内容声部 tutor / examiner / designer 逐字节一致） */
-function typographySections(voice: AgentVoice): PromptSection[] {
-  if (!CONTENT_VOICES.has(voice)) return []
-  return [
-    {
-      id: 'shared-typography',
-      index: 0,
-      title: '排版与视觉规范（内容 role 共用）',
-      badge: '排版指南',
-      color: 'teal',
-      isCommon: true,
-      content: SHARED_TYPOGRAPHY_GUIDE,
-    },
-  ]
-}
-
-/** 固定组 API 段（六位执行声部逐字节一致） */
+/** 固定组 API 段（七位 role 逐字节一致） */
 function fixedApiSection(voice: AgentVoice, content: string): PromptSection {
   return {
     id: `${voice}-api-fixed`,
@@ -162,25 +139,10 @@ function fixedApiSection(voice: AgentVoice, content: string): PromptSection {
   }
 }
 
-/** 非固定组 API 段（按本声部职责面渲染；为空时不出现） */
-function variableApiSection(voice: AgentVoice, content: string): PromptSection[] {
-  if (!content) return []
-  return [
-    {
-      id: `${voice}-api-variable`,
-      index: 0,
-      title: '非固定组 API 能力面（本 role 专属）',
-      badge: '非固定组',
-      color: 'emerald',
-      content,
-    },
-  ]
-}
-
-/** 执行声部的身份 / 分工 / 语法 / 纪律四段（文案来自 voiceCopy，逐字定稿） */
+/** role 层的人格与分工两段（语法 / 工作流 / 领域纪律全部在 work 提示词里） */
 function voiceCopySections(voice: AgentVoice): PromptSection[] {
   const copy = voiceCopyOf(voice)
-  const out: PromptSection[] = [
+  return [
     {
       id: `${voice}-role`,
       index: 0,
@@ -198,44 +160,6 @@ function voiceCopySections(voice: AgentVoice): PromptSection[] {
       content: copy.duty.join('\n'),
     },
   ]
-  if (copy.syntax.length) {
-    out.push({
-      id: `${voice}-syntax`,
-      index: 0,
-      title:
-        voice === 'tutor'
-          ? '教学文档专用语法（链接 / 大纲 / 围栏）'
-          : voice === 'fixer'
-            ? '函数图像语法规范'
-            : '语法规范与呈现指南',
-      badge: '语法指南',
-      color: 'teal',
-      content: copy.syntax.join('\n\n'),
-    })
-  }
-  const workflowIds = AGENT_WORKFLOW_PLANES[voice].filter((id) => id !== 'compact')
-  const wf = workflowIds.length ? workflowGuideFor(new Set(workflowIds)) : ''
-  if (wf.trim()) {
-    out.push({
-      id: `${voice}-workflow`,
-      index: 0,
-      title: voice === 'tutor' ? '导师内置工作流规程' : '专属工作流触发规程',
-      badge: '工作流',
-      color: 'purple',
-      content: wf.trim(),
-    })
-  }
-  if (copy.discipline.length) {
-    out.push({
-      id: `${voice}-discipline`,
-      index: 0,
-      title: voice === 'tutor' ? '教学专属纪律补充' : '专属纪律约束',
-      badge: '纪律补充',
-      color: 'amber',
-      content: copy.discipline.join('\n'),
-    })
-  }
-  return out
 }
 
 /* =========================================================================
@@ -278,14 +202,6 @@ function getFreeChatSections(opts: BuildSectionsOpts = {}): PromptSection[] {
       color: 'rose',
       content: FREE_CHAT_BOUNDARY,
     },
-    {
-      id: 'free-search-discipline',
-      index: 0,
-      title: '网络搜索与引证执行纪律',
-      badge: '检索纪律',
-      color: 'teal',
-      content: FREE_CHAT_SEARCH_SECTION,
-    },
     ...extraSection('free-extra', opts),
   ])
 }
@@ -303,9 +219,7 @@ function getVoiceSections(voice: AgentVoice, opts: BuildSectionsOpts = {}): Prom
       isCommon: true,
       content: SHARED_AGENT_PREFIX,
     },
-    ...typographySections(voice),
     fixedApiSection(voice, parts.fixed),
-    ...variableApiSection(voice, parts.variable),
     ...voiceCopySections(voice),
     ...extraSection(`${voice}-extra`, opts),
   ])

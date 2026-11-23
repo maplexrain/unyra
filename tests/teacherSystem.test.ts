@@ -1,16 +1,15 @@
 /**
- * 系统提示词的组装用例（buildTeacherSystem，见 src/learn/ai/teacherSystem）。
+ * work 系统提示词的组装用例（buildWorkSystem，见 src/learn/ai/workSystem）。
  *
- * 目前只钉用户定下的一条产物归属规则：**教学文档 / 笔记 / 超级文档 / 试卷之外的
- * 交付物（文件、项目、代码等）统一进 workspace 目录**——模型不能把它们散落到
- * 数据目录别处。规则在系统提示词（每轮必在场，不靠按需注入），读写规范在
- * 「工作区」提示词模块（首次碰 workspace 时注入）。
+ * 领域规则与围栏语法都属于 work：role 只负责沟通与调度，不再背这些执行细节。
+ * **教学文档 / 笔记 / 超级文档 / 试卷之外的交付物统一进 workspace 目录**——
+ * 规则在 work 系统提示词（每轮必在场，不靠按需注入）。
  */
 import { describe, expect, it } from 'vitest'
 
-import { buildTeacherSystem } from '../src/learn/ai/teacherSystem'
+import { buildWorkSystem } from '../src/learn/ai/workSystem'
 
-const system = buildTeacherSystem()
+const system = buildWorkSystem('tutor')
 
 describe('产物归属规则（用户定的）', () => {
   it('非文档类产物统一进工作区：规则在系统提示词里，且给了准确路径出处', () => {

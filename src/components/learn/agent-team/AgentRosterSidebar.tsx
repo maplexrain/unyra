@@ -167,7 +167,8 @@ export function AgentRosterSidebar({
   const convSection = (agentId: AgentTeamMode) => {
     const convs = conversationsByAgent?.[agentId] ?? []
     const activeConvId = activeConversationByAgent?.[agentId] ?? null
-    const canCreate = agentId === 'free' || (agentId === 'tutor' && Boolean(activeGoalId))
+    // role-work：一个 agent 的 role 层始终只有一段会话，历史块不再提供「新建对话」
+    const canCreate = false
     return (
       <>
         {agentId === 'tutor' && !goalLocked && (goals?.length ?? 0) > 1 && onSelectGoal && (

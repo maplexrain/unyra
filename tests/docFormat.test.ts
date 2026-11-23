@@ -16,7 +16,7 @@ import {
   needsDocFormatAnnounce,
 } from '../src/agent/docFormat'
 import { DEFAULT_AGENT_SETTINGS, normalizeAgentSettings } from '../src/agent/settings'
-import { buildTeacherSystem } from '../src/learn/ai'
+import { buildWorkSystem } from '../src/learn/ai/workSystem'
 import { toChatHistory } from '../src/learn/useAgent'
 
 const AT = 1700000000000
@@ -98,7 +98,7 @@ describe('那条隐藏消息本身', () => {
 
 describe('不进系统提示词（与人格同一条纪律）', () => {
   it('系统提示词里一个字都不提格式策略（换格式不该让前缀缓存作废）', () => {
-    const system = buildTeacherSystem()
+    const system = buildWorkSystem('tutor')
     expect(system).not.toContain('【文档格式')
     expect(system).not.toContain('覆盖系统提示词')
     expect(system).not.toContain('【文档格式 · 纯 Markdown】')
@@ -108,7 +108,7 @@ describe('不进系统提示词（与人格同一条纪律）', () => {
 
 describe('LaTeX 兼容性注意事项（用户要求：写在系统提示词里）', () => {
   it('标准、最大程度兼容的核心子集声明在系统提示词里', () => {
-    const system = buildTeacherSystem()
+    const system = buildWorkSystem('tutor')
     expect(system).toContain('LaTeX 兼容性')
     expect(system).toContain('最大程度兼容')
     // 不用 Unicode 字符近似数学（α、x²、√2 这类直接写 LaTeX）

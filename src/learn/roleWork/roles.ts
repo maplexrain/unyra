@@ -1,8 +1,9 @@
 /**
  * role 会话的定位：`voice` 字段（缺省 = 导师）决定「这段对话是哪位 role」。
  *
- * role-work 之后没有「委托会话」：每位 role 在目标下最多一段工作会话（`cv:<role>:<goal>`），
- * 用户与其它 role 的消息都落在同一段上；多个 work 的独立上下文在 Conversation.works 里。
+ * role-work 之后**一个 agent 的 role 层始终只有一段会话**：同一目标下每位 role
+ * 复用已有会话（`Conversation.voice` 判定），没有时才按 `cv:<role>:<goal>` 落一段。
+ * 多个 work 的独立上下文在 Conversation.works 里，不另开 role 会话。
  */
 import type { Conversation } from '../../agent/types'
 import { AGENT_VOICES, LEGACY_VOICE_ALIAS, type AgentProfileId, type AgentVoice } from '../../agent/agentProfile'
@@ -42,4 +43,28 @@ export function resolveRoleConversation(store: LearnStore, role: AgentProfileId,
   if (latest) return latest.id
   if (role === 'tutor') return null
   return roleConversationId(goalId, role)
+}
+
+/**
+ * 保证一位 role 在目标下**恰好一段**会话：已有（含历史随机 id）就复用最新的，
+ * 没有才落确定性 id。所有「打开/切到 role」的入口都走这里，不再新建第二段。
+ */
+export function ensureRoleConversation(
+  store: LearnStore,
+  role: AgentVoice,
+  goalId: string,
+): { store: LearnStore; conversationId: string } {
+  const existing = roleConversationsOfGoal(store, goalId, role)[0]
+  if (existing) return { store, conversationId: existing.id }
+  const id = roleConversationId(goalId, role)
+  const now = Date.now()
+  const conv: Conversation = {
+    id,
+    goalId,
+    voice: role,
+    messages: [],
+    createdAt: now,
+    updatedAt: now,
+  }
+  return { store: { ...store, conversations: [...store.conversations, conv] }, conversationId: id }
 }

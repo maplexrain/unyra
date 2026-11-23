@@ -135,14 +135,16 @@ export const DEFAULT_AGENT_AVATAR: Record<AgentProfileId, string> = {
 /* ---------- 团队分工：api 能力面 ---------- */
 
 /**
- * 一位 role 的 execute 能力面。**由架构固定、不可增删**（设置里纯只读展示）——
- * 「谁会什么」是 role 分工，不是用户偏好；分配原则：
+ * **work 层的领域能力面**：role 只负责沟通与调度，领域执行能力全部下沉到 work。
+ * 这里保留原有分工表，作为 `workPlaneOfRole` 的输入；role 自己的 `AGENT_API_PLANES`
+ * 不再读取它（role 只有固定的 work/chat/tmp/compact）。
+ *
+ * 分配原则：
  * - core 顶层原语（wait / ask / tiktok / compact / fetch / see）按需给：ask / see 给
- *   要与人交互、要看图面的 role；fetch 只给有 web 组的 role；
- * - 域专属组只给对应的 role（exam → 出卷师、classroom → 设计师、browser → 调研员、
- *   mcp / permission → 只有导师）——职责拆分就是能力面拆分；
- * - 交付登记（delivery）与临时变量（tmp）按 role 给；work / chat 是 role 层固定组，
- *   全员都有；调度员轻装（tmp + work/chat）——它的活主要靠派 work 与 chat 路由。
+ *   要与人交互、要看图面的 work；fetch 只给有 web 组的 work；
+ * - 域专属组只给对应的 work（exam → 出卷、classroom → 设计、browser → 调研、
+ *   mcp / permission → 只有导师派出的 work）——职责拆分就是能力面拆分；
+ * - 交付登记（delivery）与临时变量（tmp）按 role 给；work 固定补 host。
  */
 export interface AgentApiPlane {
   /** 文档与设置页展示的 api 组（'core' 只作文档展示；运行时放行走 topLevel + 组名） */
@@ -151,12 +153,12 @@ export interface AgentApiPlane {
   topLevel: readonly string[]
 }
 
-/** 全体挂目标 role 都有的顶层原语：等待、表单、响铃与压缩交接 */
+/** 领域 work 通用顶层原语：等待、表单、响铃与压缩交接 */
 const CORE_TOP_LEVEL_ALL = ['wait', 'ask', 'tiktok', 'compact'] as const
-/** 带联网的声部额外拿 fetch（web.fetch 的别名）；看图面另给 see */
+/** 带联网的 work 额外拿 fetch（web.fetch 的别名）；看图面另给 see */
 const CORE_TOP_LEVEL_WEB = [...CORE_TOP_LEVEL_ALL, 'fetch', 'see'] as const
 
-export const AGENT_API_PLANES: Record<AgentVoice, AgentApiPlane> = {
+export const WORK_DOMAIN_PLANES: Record<AgentVoice, AgentApiPlane> = {
   tutor: {
     groups: [
       'node', 'memory', 'schedule', 'tmp', 'workspace', 'userInfo', 'method', 'wf',
@@ -167,9 +169,9 @@ export const AGENT_API_PLANES: Record<AgentVoice, AgentApiPlane> = {
     topLevel: [...CORE_TOP_LEVEL_ALL, 'see'] as const,
   },
   dispatcher: {
-    // 调度员轻装上阵：路由与跟踪走 Agent 通道 + work，node 用来现查目标结构好把任务写准
+    // 调度员派出的 work：能现查目标结构、跑具体执行；没有自己的沟通通道
     groups: ['tmp', 'node', 'work', 'chat'],
-    // 接需求要 ask 澄清；交付完成要响铃提醒
+    // 派活前要 ask 澄清；交付前要响铃提醒
     topLevel: CORE_TOP_LEVEL_ALL,
   },
   examiner: {
@@ -195,20 +197,39 @@ export const AGENT_API_PLANES: Record<AgentVoice, AgentApiPlane> = {
 }
 
 /**
- * 运行时 apiAllow（sandbox/execute 通道口按 `api.<名>` 的首段对账）：声部的组名 +
+ * **role 层能力面**：七位 role 只保留「对外沟通 + 对内调度」所需的固定面。
+ * 领域组（node / exam / classroom / web / browser / files …）全部只在 work 面出现；
+ * role 不需要 `wait`（loop 不阻塞），也不需要 `ask`（问用户用 chat.send 一句话即可，
+ * 不把当前 loop 挂住）。`help` 恒在场，渲染时单独补。
+ */
+export const ROLE_FIXED_GROUPS = ['tmp', 'work', 'chat'] as const
+/** role 固定顶层：只留上下文压缩交接；wait/ask/tiktok/fetch/see 全部只在 work 面 */
+export const ROLE_FIXED_TOP_LEVEL = ['compact'] as const
+
+const ROLE_API_PLANE: AgentApiPlane = {
+  groups: ROLE_FIXED_GROUPS,
+  topLevel: ROLE_FIXED_TOP_LEVEL,
+}
+
+export const AGENT_API_PLANES: Record<AgentVoice, AgentApiPlane> = {
+  tutor: ROLE_API_PLANE,
+  dispatcher: ROLE_API_PLANE,
+  examiner: ROLE_API_PLANE,
+  designer: ROLE_API_PLANE,
+  researcher: ROLE_API_PLANE,
+  fixer: ROLE_API_PLANE,
+}
+
+/**
+ * 运行时 apiAllow（sandbox/execute 通道口按 `api.<名>` 的首段对账）：role 的组名 +
  * 放行的顶层函数名。'core' 只是文档展示组，运行时不存在 api.core.*，不进清单。
  */
 export function agentRuntimeApiAllow(voice: AgentVoice): string[] {
   return [...AGENT_API_PLANES[voice].groups.filter((g) => g !== 'core'), ...AGENT_API_PLANES[voice].topLevel]
 }
 
-/** role 层固定组：所有人都有的执行基座（tmp + role 专属 work/chat） */
-export const ROLE_FIXED_GROUPS = ['tmp', 'work', 'chat'] as const
-/** role 层固定顶层：等待与压缩交接；help 恒在场，渲染时单独补 */
-export const ROLE_FIXED_TOP_LEVEL = ['wait', 'compact'] as const
-
 /**
- * work 层的领域面：从 role 的领域组派生，去掉 role 专属/人机交互/审批类，
+ * work 层的领域面：从 role 的领域分组派生，去掉 role 专属/人机交互/审批类，
  * 补上 work 唯一的对外通道 host。
  *
  * work 不直接面对用户：ask / tiktok 顶层也不给；它用 host.send 交回 role，
@@ -218,7 +239,7 @@ const WORK_EXCLUDED_GROUPS: ReadonlySet<string> = new Set(['work', 'chat', 'perm
 const WORK_EXCLUDED_TOP_LEVEL: ReadonlySet<string> = new Set(['ask', 'tiktok'])
 
 export function workPlaneOfRole(voice: AgentVoice): AgentApiPlane {
-  const role = AGENT_API_PLANES[voice]
+  const role = WORK_DOMAIN_PLANES[voice]
   const groups = role.groups.filter((g) => !WORK_EXCLUDED_GROUPS.has(g))
   if (!groups.includes('tmp')) groups.unshift('tmp')
   if (!groups.includes('host')) groups.push('host')
@@ -412,8 +433,9 @@ export function resolveAgentGlobal(
 }
 
 /**
- * 仅聊天 role 的沙箱基座：web / fetch / schedule，加上 role 层的 work / chat。
- * 能力面同样由架构固定。
+ * 仅聊天 role 的沙箱基座：work / chat / tmp，加上顶层 compact；领域与联网能力全在 work。
+ * 能力面同样由架构固定、不可增删。
  */
-export const FREE_AGENT_GROUPS = ['web', 'fetch', 'schedule', 'work', 'chat'] as const
-export const FREE_AGENT_API_ITEMS = ['web', 'schedule', 'work', 'chat'] as const
+export const FREE_AGENT_GROUPS = ['tmp', 'work', 'chat'] as const
+export const FREE_AGENT_TOP_LEVEL = ['compact'] as const
+export const FREE_AGENT_API_ITEMS = ['work', 'chat'] as const

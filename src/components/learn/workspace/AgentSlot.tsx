@@ -4,8 +4,8 @@ import type { AgentTabRef, DocView, LearnStore, TabRef } from '../../../learn/ty
 import { agentTabKey } from '../../../learn/agentTabs'
 import { queueOf } from '../../../learn/agentQueue'
 import {
-  addFreeConversation,
   deleteFreeConversation,
+  ensureFreeConversation,
   freeConversationById,
 } from '../../../learn/freeChat'
 import { conversationById, deleteMessage, nodeById, resolveDisplayedConversation, updateMessageText } from '../../../learn/graph'
@@ -36,7 +36,7 @@ import {
   type AgentVoice,
 } from '../../../agent/agentProfile'
 import {
-  roleConversationId,
+  ensureRoleConversation,
   roleOfConversation,
 } from '../../../learn/roleWork/roles'
 import { inboundEnvelope, peerOf } from '../../../learn/roleWork/channels'
@@ -88,9 +88,9 @@ export interface AgentSlotDeps {
   activateAgentTab: (key: string) => void
   openAgentTab: (ref: AgentTabRef, activate?: boolean) => void
   selectTutorGoal: (goalId: string) => void
-  handleNewGoalConversation: (goalId?: string) => void
+  handleNewGoalConversation?: (goalId?: string) => void
   removeConversation: (conversationId: string) => void
-  newConversationIn: (tab: AgentTabRef) => void
+  newConversationIn?: (tab: AgentTabRef) => void
   selectConversationIn: (tab: AgentTabRef, conversationId: string) => void
   pruneImagesOf: (s: LearnStore) => void
   startSuperLab: StartersApi['startSuperLab']
@@ -133,9 +133,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     activateAgentTab,
     openAgentTab,
     selectTutorGoal,
-    handleNewGoalConversation,
     removeConversation,
-    newConversationIn,
     selectConversationIn,
     pruneImagesOf,
     startSuperLab,
@@ -387,25 +385,19 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
           }
           return
         }
-        // 可交流的承接声部：选中它按目标建好的工作会话（还没有就现场落一段，确定性 id 见 voiceConvs）
-        const convId = roleConversationId(tutorGoalId, next)
-        if (!conversationById(getLatest(), convId)) {
-          set({
-            ...getLatest(),
-            conversations: [
-              ...getLatest().conversations,
-              {
-                id: convId,
-                goalId: tutorGoalId,
-                voice: next,
-                messages: [],
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-              },
-            ],
-          })
+        // 可交流的承接声部：选中它在该目标下**唯一**的工作会话（还没有就落确定性 id 的一段）
+        if (!isCommunicable(next as AgentProfileId)) {
+          const list = voiceChatsOf(next)
+          if (list.length) {
+            selectConversationIn({ kind: 'goal', goalId: tutorGoalId, conversationId: list[0].id }, list[0].id)
+          } else {
+            setEmptyVoiceMode(next as AgentTeamMode)
+          }
+          return
         }
-        selectConversationIn({ kind: 'goal', goalId: tutorGoalId, conversationId: convId }, convId)
+        const ensured = ensureRoleConversation(getLatest(), next as AgentVoice, tutorGoalId)
+        if (ensured.store !== getLatest()) set(ensured.store)
+        selectConversationIn({ kind: 'goal', goalId: tutorGoalId, conversationId: ensured.conversationId }, ensured.conversationId)
         scheduleFocus()
         return
       }
@@ -437,14 +429,14 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     if (agentId === 'free') {
       setEmptyTutorMode(false)
       activateAgentTab('free')
-      const created = addFreeConversation()
-      setFreeConvId(created.id)
+      // role 层单会话：不再新建，复用当前唯一的一段
+      setFreeConvId(ensureFreeConversation().id)
       scheduleFocus()
       return
     }
-    if (agentId !== 'tutor') return
     if (!tutorGoalId) return
-    handleNewGoalConversation(tutorGoalId)
+    // role 层单会话：已有就选它，没有才落确定性 id；不再新建第二段
+    handleSelectMode(agentId)
     scheduleFocus()
   }
 
@@ -488,7 +480,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         emptyVoice: 'free',
         emptyName: '仅聊天',
         onSend: (text: string, images: PendingImage[], files: PendingFile[]) => {
-          const id = convId ?? addFreeConversation().id
+          // role 层单会话：没有当前段时也只补唯一的一段，不再多开
+          const id = convId ?? ensureFreeConversation().id
           if (id !== convId) setFreeConvId(id)
           if (shouldWaitInLine(id)) {
             agent.enqueueMessage({ conversationId: id, free: true, text, images, files })
@@ -521,7 +514,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         viewWorkId: null,
         onOpenWork: () => {},
         onNewConversation: () => {
-          setFreeConvId(addFreeConversation().id)
+          // 单会话：不新开，只回到当前这段
+          setFreeConvId(ensureFreeConversation().id)
         },
         onSelectConversation: (id: string) => setFreeConvId(id),
         onDeleteConversation: handleDeleteFreeConversation,
@@ -661,7 +655,11 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       onOpenWork: (wid: string) => {
         if (convId) openAgentTab({ kind: 'work', conversationId: convId, workId: wid }, true)
       },
-      onNewConversation: () => newConversationIn(tab),
+      // role 层单会话：加号不新建，只回到当前 role 的唯一会话
+      onNewConversation: () =>
+        handleHistoryCreate(
+          (convId ? roleOfConversation(conversationById(store, convId)) : 'tutor') as AgentTeamMode,
+        ),
       onSelectConversation: (id: string) => selectConversationIn(tab, id),
       onDeleteConversation: removeConversation,
     }
