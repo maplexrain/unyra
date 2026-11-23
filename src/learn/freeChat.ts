@@ -14,6 +14,7 @@
 import { readJson, userRel, writeJson } from '../lib/storage'
 import { settingsUid } from '../lib/userSettings'
 import type { Conversation, ConversationMessage } from '../agent/types'
+import { normalizeChannels, normalizeWorks, migrateLegacySubagents } from '../agent/roleWork/registry'
 
 /** 自由聊天会话的 goalId 哨兵：segment 非法字符都避开的下划线形式 */
 export const FREE_GOAL_ID = '__free__'
@@ -133,6 +134,19 @@ export async function hydrateFreeChat(uid: string | null): Promise<void> {
   }
   const raw = await readJson<FreeChatFile>(userRel(uid, FILE))
   const list = raw?.version === 1 && Array.isArray(raw.conversations) ? raw.conversations : []
-  conversations = list.filter((c) => c && typeof c.id === 'string' && Array.isArray(c.messages))
+  conversations = list
+    .filter((c) => c && typeof c.id === 'string' && Array.isArray(c.messages))
+    .map((c) => {
+      const legacy = c as Conversation & { subagents?: unknown }
+      const channels = normalizeChannels(legacy.channels)
+      const works =
+        normalizeWorks(legacy.works, 'free', c.id) ??
+        migrateLegacySubagents(legacy.subagents as Parameters<typeof migrateLegacySubagents>[0], 'free', c.id)
+      return {
+        ...c,
+        ...(channels ? { channels } : {}),
+        ...(works ? { works: { sessions: works } } : {}),
+      }
+    })
   emit()
 }

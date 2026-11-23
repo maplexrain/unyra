@@ -26,6 +26,20 @@ export function imagesOf(value: unknown): MessageImage[] {
 }
 
 /**
+ * 所有 execute api 的最小返回值契约：**不允许 undefined 回执**。
+ *
+ * 写操作没给返回值时，模型看不到“到底成没成”，于是会把同一条动作重发好几遍
+ * （chat.send 重复发送就是这么来的）。这里统一补一张成功回执；具体 api 仍应
+ * 尽量回 { ok:true, id/... } 这类有信息量的结果。
+ */
+export function apiResultOf(name: string, value: unknown): unknown {
+  if (value === undefined) {
+    return { ok: true, api: name, message: '调用完成（该 api 没有额外返回值）' }
+  }
+  return value
+}
+
+/**
  * 这次调用失败了吗——失败的话把那句话记进 record（供结果顶部那份清单用）。
  * `{ok:false}` 与 `{error}` 两种写法都认，见 isFailedValue。
  */
@@ -61,8 +75,9 @@ export function wrapApi(api: Record<string, unknown>, name: string, fn: (args: u
       if (value instanceof Promise) {
         return value.then(
           (settled) => {
-            markFailed(record, settled)
-            return settled
+            const result = apiResultOf(name, settled)
+            markFailed(record, result)
+            return result
           },
           (err: unknown) => {
             record.ok = false
@@ -71,8 +86,9 @@ export function wrapApi(api: Record<string, unknown>, name: string, fn: (args: u
           },
         )
       }
-      markFailed(record, value)
-      return value
+      const result = apiResultOf(name, value)
+      markFailed(record, result)
+      return result
     } catch (err) {
       record.ok = false
       record.message = err instanceof Error ? err.message : 'api 调用失败'

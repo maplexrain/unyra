@@ -402,6 +402,25 @@ describe('文档区固定 Tab（Pinned Tab）规则', () => {
     expect(reordered.map((t) => t.id)).toEqual([...pinnedIds, ...unpinnedIds])
   })
 
+  it('系统固定页签内部：智能体团队始终排在结构之前', () => {
+    const outline = makeTab({ kind: 'outline', nodeId: 'nOutline', goalId: 'g1' }, 0)
+    const team = makeTab({ kind: 'agentTeam', goalId: 'g1' }, 1)
+    const pinnedDoc = { ...makeTab({ kind: 'teach', nodeId: 'nPinned' }, 2), pinned: true }
+    const normalDoc = makeTab({ kind: 'teach', nodeId: 'nNormal' }, 3)
+
+    // 模拟旧存档：结构在前、智能体在后，且顺序不在拖动 ids 里纠正
+    const reordered = reorderTabs(
+      [pinnedDoc, outline, normalDoc, team],
+      [pinnedDoc.id, outline.id, normalDoc.id, team.id],
+    )
+
+    expect(reordered.map((t) => t.id)).toEqual([pinnedDoc.id, team.id, outline.id, normalDoc.id])
+    expect(reordered.filter((t) => t.ref.kind === 'agentTeam' || t.ref.kind === 'outline').map((t) => t.ref.kind)).toEqual([
+      'agentTeam',
+      'outline',
+    ])
+  })
+
   it('固定 Tab 不受非直接关闭方式（others, all）影响，但可以通过自身直接关闭（self）', () => {
     const tabPinned = { ...makeTab({ kind: 'teach', nodeId: 'nPinned' }, 0), pinned: true }
     const tab1 = makeTab({ kind: 'teach', nodeId: 'n1' }, 0)

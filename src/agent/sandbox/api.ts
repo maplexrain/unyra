@@ -22,11 +22,13 @@ import { installHost } from './api/host'
 import { installSee } from './api/see'
 import { installUi } from './api/ui'
 import { installDelegate } from './api/delegate'
+import { installRoleWork } from './api/roleWork'
 import { installFiles } from './api/files'
 import { installProcess } from './api/process'
 import { installSkill } from './api/skill'
 import { installProject } from './api/project'
 import { installClassroom } from './api/classroom'
+import { installDesign } from './api/design'
 
 /** 把结果裁到上限：宁可给模型一段被截断的内容，也不要它被 413 顶回来 */
 export function clip(text: string, limit = MAX_RESULT_CHARS): string {
@@ -99,8 +101,10 @@ export function buildApi(
   installSee(api, opts, log)
   // 页面反馈域：ui.*（docRef / nodeRef 随组进了 api/ui.ts）
   installUi(api, opts, log)
-  // 导师专用域：subagent.* / permission.*
+  // role 专用域：permission.*
   installDelegate(api, opts, log)
+  // role-work：role 的 work.* / chat.*，work 的 host.*
+  installRoleWork(api, opts, log)
   // 真实文件系统域：files.*（路径映射与 chat.json 硬挡的敏感口径在 api/files.ts）
   installFiles(api, opts, log)
 
@@ -115,6 +119,8 @@ export function buildApi(
   installSkill(api, opts, log)
   // 课堂域：schema / verbs / components / animations / register* / check
   installClassroom(api, opts, log)
+  // 文档设计域：component.list / component.get / component.register / component.update / component.delete
+  installDesign(api, opts, log)
 
   /*
    * 节点宇宙（api.node）：create / get / list / delete 四条传输 + 对象门面。

@@ -17,7 +17,7 @@
   `unyra/hello` 里带 token——握手前的任何消息都会被断开。token 每次启动重生成。
 - **工具执行**：主进程只做转发；真正的执行在渲染层 guest 会话——
   `learnSandboxOps`（与一轮对话、超级文档桥同一个装配点）+ `subsetSandbox`
-  （与子代理同一把裁剪刀）+ Worker 沙箱（每次编排一个 Worker，15 秒上限）。
+  （与 work 的 guest 同一把裁剪刀）+ Worker 沙箱（每次编排一个 Worker，15 秒上限）。
 
 ## harness 配置
 
@@ -46,7 +46,7 @@
 ## 开放边界（guest 会话）
 
 - api 组白名单 `MCP_ALLOWED_GROUPS`：`web / tmp / res / node / memory / workspace`
-  （与子代理同级）。ask / ui / exam / permission / wf / subagent / mcp 这些
+  （与 work 同级）。ask / ui / exam / permission / wf / work / chat 这些
   「导师层」能力不对外——将来要开放得先带审批面（P1）。
 - `goalId` 落在用户当前活动目标（`store.activeGoalId`）；guest 无「当前节点」。
 - guest 调用在渲染层**串行**执行（一次编排跑完才跑下一次），与内部 agent 共用

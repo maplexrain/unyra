@@ -141,12 +141,12 @@ export function compactLabel(s: ContextSummary): string {
  * 不做全字段校验——对话消息的形状由写入方保证（这是项目里既有的约定，见 files.ts）。
  * 老的 ContextSummary 没有 tasks / pending：折算之后一律当作「已应用」。
  */
-/* ---------- 声部字段的载入修复 ---------- */
+/* ---------- role 字段的载入修复 ---------- */
 
-/** 确定性会话 id 里自带的声部段（cv:<voice>:<goalId>，见 learn/agentTeam/voiceConvs） */
+/** 确定性会话 id 里自带的 role 段（cv:<role>:<goalId>，见 learn/roleWork/roles） */
 const CV_VOICE_RE = /^cv:([a-z]+):/
 
-/** 承接声部固化提示词里的角色行：中间版本漏标 voice 的老会话据此修一次 */
+/** 承接 role 固化提示词里的角色行：中间版本漏标 voice 的老会话据此修一次 */
 const VOICE_ROLE_MARKERS: ReadonlyArray<readonly [RegExp, AgentVoice]> = [
   [/的命题官（examiner）：专精试卷命题/, 'examiner'],
   // 判卷官已并入命题官：老会话的固化提示词签名映射到承接者
@@ -162,9 +162,9 @@ function voiceFromId(id: string): AgentVoice | undefined {
 }
 
 /**
- * 漏标 voice 的会话在载入时就地修复（幂等）：确定性 id 自带的声部段最可信（它就是
- * 委托定向的地址），其次是固化系统提示词里的角色行（中间版本创建的 uuid 会话）。
- * 不修的后果：承接会话被归进导师桶，用户的对话以导师声部进入一段命题官提示词的
+ * 漏标 voice 的会话在载入时就地修复（幂等）：确定性 id 自带的 role 段最可信（它就是
+ * role 会话的地址），其次是固化系统提示词里的角色行（中间版本创建的 uuid 会话）。
+ * 不修的后果：承接会话被归进导师桶，用户的对话以导师身份进入一段命题官提示词的
  * 会话——界面身份与模型身份分裂（2026-11-21 真机踩过）。
  */
 function healConversationVoice(raw: Conversation): Conversation {

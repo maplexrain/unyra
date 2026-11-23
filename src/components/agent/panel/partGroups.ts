@@ -34,12 +34,12 @@ export interface InjectItem {
  * 另有第四种：InjectItem（轮开始时的提示词注入，见上）——同样是「凭什么这么答」。
  */
 export type ProcessPart =
-  | Extract<AgentPart, { type: 'thinking' } | { type: 'tool' } | { type: 'prompt-module' } | { type: 'team-delivery' }>
+  | Extract<AgentPart, { type: 'thinking' } | { type: 'tool' } | { type: 'prompt-module' } | { type: 'channel-message' }>
   | InjectItem
 
-/** 是不是过程件（组内可收拢的那三种；InjectItem 由调用方按 type 单独认） */
+/** 是不是过程件（组内可收拢的那几种；InjectItem 由调用方按 type 单独认） */
 export function isProcessPart(p: AgentPart): p is Exclude<ProcessPart, InjectItem> {
-  return p.type === 'thinking' || p.type === 'tool' || p.type === 'prompt-module' || p.type === 'team-delivery'
+  return p.type === 'thinking' || p.type === 'tool' || p.type === 'prompt-module' || p.type === 'channel-message'
 }
 
 /** 归组结果：一组过程件（渲染成可折叠的消息组），或一件独立成条的东西 */
@@ -59,16 +59,30 @@ export type PartGroup = { kind: 'group'; items: ProcessPart[] } | { kind: 'singl
  * `injects` 是这一轮开始前注入的那几条提示词（见 InjectItem）：它们发生在第一个
  * 思考/工具之前，所以排在最前面、与后面的过程件同属一组——用户看到的是**一条**
  * 「思考、工具与提示词 · N 步」，而不是两行各自折叠的标题。
+ *
+ * `flat=true` 是思维层的口径：相邻过程件不合并，注入也逐条独立成组；调用方仍按
+ * 单条渲染，于是每一件都能单独折叠、默认收起。
  */
-export function groupParts(parts: AgentPart[], injects?: InjectItem[]): PartGroup[] {
+export function groupParts(parts: AgentPart[], injects?: InjectItem[], flat = false): PartGroup[] {
   const groups: PartGroup[] = []
-  if (injects?.length) groups.push({ kind: 'group', items: [...injects] })
+  if (injects?.length) {
+    if (flat) {
+      // 思维层：每一条注入各自成条、各自折叠，不跟后面的过程件糊成一组
+      for (const item of injects) groups.push({ kind: 'group', items: [item] })
+    } else {
+      groups.push({ kind: 'group', items: [...injects] })
+    }
+  }
   for (const p of parts) {
     if (p.type === 'hop') continue
     if (isProcessPart(p)) {
-      const last = groups[groups.length - 1]
-      if (last && last.kind === 'group') last.items.push(p)
-      else groups.push({ kind: 'group', items: [p] })
+      // 思维层：相邻思考 / 工具调用直接铺开；每个过程件自己收起自己
+      if (flat) groups.push({ kind: 'group', items: [p] })
+      else {
+        const last = groups[groups.length - 1]
+        if (last && last.kind === 'group') last.items.push(p)
+        else groups.push({ kind: 'group', items: [p] })
+      }
     } else {
       groups.push({ kind: 'single', part: p })
     }

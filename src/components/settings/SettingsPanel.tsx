@@ -31,6 +31,7 @@ import {
 import { t } from '../../i18n'
 import { type SwitchRootResult } from '../../lib/boot'
 import { AppearancePanel } from './AppearancePanel'
+import { DocDesignPanel } from './DocDesignPanel'
 import { ReminderPanel } from './ReminderPanel'
 import { PerformancePanel } from './PerformancePanel'
 import type { ScheduleSound } from '../../learn/schedule'
@@ -350,7 +351,9 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
             <h2 className="text-[15px] font-semibold text-ink-strong">
               {tab === 'appearance'
                 ? t('外观')
-                : tab === 'reminder'
+                : tab === 'doc-design'
+                  ? t('文档设计')
+                  : tab === 'reminder'
                   ? t('提醒')
                 : tab === 'performance'
                   ? t('性能')
@@ -457,6 +460,8 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
             highlightSubTab={highlightSubTab}
             onSubTabChange={setActiveSubTab}
           />
+        ) : tab === 'doc-design' ? (
+          <DocDesignPanel onToast={onToast} />
         ) : tab === 'input' ? (
           <InputPanel onToast={onToast} />
         ) : tab === 'reminder' ? (

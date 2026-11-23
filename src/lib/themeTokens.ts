@@ -45,6 +45,8 @@ export const THEME_VAR_NAMES: readonly string[] = [
   '--color-code',
   '--color-quote-ink',
   '--color-mark',
+  '--color-bubble-user',
+  '--color-bubble-agent',
   '--color-scroll',
   '--color-scroll-strong',
   // 代码块语法高亮（scope → 令牌类型 → 这一组变量，见 src/syntax 与 index.css）

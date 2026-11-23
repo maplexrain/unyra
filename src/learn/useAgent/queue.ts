@@ -9,8 +9,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { MessageQuote, PendingFile, PendingImage } from '../../agent/types'
+import type { ChannelStamp, MessageQuote, PendingFile, PendingImage } from '../../agent/types'
 import type { AgentRunTarget } from '../agent/sandboxOps'
+import type { PromptModule } from '../ai/promptModules'
 import { hasApiKey, loadAiSettings } from '../../ai/settings'
 import { releasePending } from '../images'
 import {
@@ -41,6 +42,10 @@ export function useAgentQueue(deps: {
     pending?: PendingImage[],
     files?: PendingFile[],
     mark?: string,
+    isCompactTurn?: boolean,
+    modules?: PromptModule[],
+    wfParams?: Record<string, string | number>,
+    channel?: ChannelStamp,
   ) => Promise<void>
   sendFree: (conversationId: string, text: string, opts?: { files?: PendingFile[]; images?: PendingImage[] }) => void
   stop: (convId?: string) => void
@@ -90,7 +95,7 @@ export function useAgentQueue(deps: {
         return
       }
       if (!m.target) return
-      void runTurn(m.target, m.text, false, undefined, undefined, m.images, m.files)
+      void runTurn(m.target, m.text, false, undefined, undefined, m.images, m.files, undefined, false, undefined, undefined, m.channel)
     },
     [runTurn, sendFree],
   )

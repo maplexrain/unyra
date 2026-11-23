@@ -10,7 +10,8 @@
 import { useRef, useState } from 'react'
 import type { AgentPart, MessageUsage } from '../../agent/types'
 import type { AskFormPayload } from '../../agent/tools'
-import type { SubAgentManager } from '../../agent/subagent/manager'
+import type { WorkManager } from '../../agent/work/manager'
+import type { WorkRunSlot } from './session'
 
 /** 流式槽的一格：这一轮回复归属的会话、回复的固定 id 与累计片段 */
 export type StreamingSlot = {
@@ -61,15 +62,11 @@ export function useAgentSlots() {
    */
   const [liveUsage, setLiveUsage] = useState<Record<string, MessageUsage>>({})
   /**
-   * 子代理会话住在 Conversation.subagents 上、随 chat.json 落盘（生命周期 = 这段
-   * 导师对话，见 docs/subagent-architecture.md）——这里不再另立状态，读走对话、
-   * 写走子代理管理器的 setBucket。留在内存的只有两样：
-   * - subRuns：并发在跑的各场任务的流式输出（一段对话可同时跑多场，按 runId 分槽）；
-   * - 子代理管理器（按 conversationId 各一个，跨轮存活——轮次结束仍在后台跑的任务
-   *   由它继续管着，下一轮的 wait 领回交付）。
+   * work 会话住在 Conversation.works 上、随 chat.json 落盘（生命周期 = 这段 role 对话）。
+   * 留在内存的只有：并发在跑的 work 实时流式输出，与每段 role 对话一个的 work 管理器。
    */
-  const [subRuns, setSubRuns] = useState<Array<{ conversationId: string; sessionId: string; runId: string; parts: AgentPart[] }>>([])
-  const subManagersRef = useRef(new Map<string, SubAgentManager>())
+  const [workRuns, setWorkRuns] = useState<WorkRunSlot[]>([])
+  const workManagersRef = useRef(new Map<string, WorkManager>())
 
   return {
     streaming,
@@ -87,8 +84,8 @@ export function useAgentSlots() {
     setTps,
     liveUsage,
     setLiveUsage,
-    subRuns,
-    setSubRuns,
-    subManagersRef,
+    workRuns,
+    setWorkRuns,
+    workManagersRef,
   }
 }

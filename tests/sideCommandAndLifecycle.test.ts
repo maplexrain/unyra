@@ -121,6 +121,18 @@ describe('结构与智能体团队页签始终固定（不可取消固定）', (
 })
 
 describe('每个学习目标独立拥有智能体团队页签并随结构页签同步停靠恢复', () => {
+  it('ensureGoalAgentTeamTab activate:true 把智能体团队置前并激活（打开 tab 组的默认落点）', () => {
+    const store = makeBaseStore()
+    const activated = ensureGoalAgentTeamTab(store.docArea, 'gA', 200, { activate: true })
+    const group = activated.groups.find((g) => g.tabs.some((t) => t.id === 'team:gA'))!
+
+    expect(group.active).toBe('team:gA')
+    expect(group.tabs.filter((t) => isTabPinned(t)).map((t) => t.id).slice(0, 2)).toEqual([
+      'team:gA',
+      'o:nA',
+    ])
+  })
+
   it('ensureGoalAgentTeamTab 不抢占当前结构页签焦点，关闭结构后两者一同停靠，再次打开结构一并归队', () => {
     const store = makeBaseStore()
     const goalOfNode = (id: string) => (id === 'nA' ? 'gA' : id === 'nB' ? 'gB' : null)
@@ -160,6 +172,27 @@ describe('每个学习目标独立拥有智能体团队页签并随结构页签�
     )
     expect(allTabs(restored).map((t) => t.id)).toContain('team:gA')
     expect(allTabs(restored).map((t) => t.id)).toContain('t:nA')
+  })
+
+  it('syncGoalAgentTeamTabs 对旧存档里「结构在前、智能体在后」的顺序也会纠正', () => {
+    const store = makeBaseStore()
+    const legacyDocs = {
+      ...store.docArea,
+      groups: [
+        {
+          id: FIRST_GROUP,
+          tabs: [
+            makeTab({ kind: 'outline', nodeId: 'nA', goalId: 'gA' }, 1),
+            makeTab({ kind: 'agentTeam', goalId: 'gA' }, 2),
+            makeTab({ kind: 'teach', nodeId: 'nA' }, 3),
+          ],
+          active: 'o:nA',
+        },
+      ],
+    }
+
+    const synced = syncGoalAgentTeamTabs(legacyDocs, store.goals, 'gA')
+    expect(synced.groups[0].tabs.map((t) => t.id)).toEqual(['team:gA', 'o:nA', 't:nA'])
   })
 
   it('syncGoalAgentTeamTabs 自动将旧版单例 team:all 迁移为当前目标独立页签并清理已删除目标残留', () => {
@@ -211,7 +244,7 @@ describe('Vim :side 页签内传送对照、拖拽比例、双击对调与持久
     expect(targets.some((x) => x.tabId === 'o:nA')).toBe(true)
     expect(targets.some((x) => x.tabId === 'team:gA')).toBe(true)
 
-    const pyMatch = matchSideTargets(targets, 'znttd') // 智能体团队拼音首字母
+    const pyMatch = matchSideTargets(targets, 'jszr') // 角色阵容拼音首字母
     expect(pyMatch.some((x) => x.tabId === 'team:gA')).toBe(true)
   })
 
@@ -282,7 +315,7 @@ describe('Vim :side 页签内传送对照、拖拽比例、双击对调与持久
       }),
     )
 
-    const rOpen = executeVimCommand(':side 智能体团队')
+    const rOpen = executeVimCommand(':side 角色阵容')
     expect(rOpen.success).toBe(true)
     expect(openSpy).toHaveBeenCalledWith('team:gA')
 
@@ -409,7 +442,6 @@ describe('智能体团队响应式布局断点与 :side 状态隔离', () => {
         activateAgentTab: () => {},
         openAgentTab: () => {},
         selectTutorGoal: () => {},
-        exitSubagentView: () => {},
         handleNewGoalConversation: () => {},
         removeConversation: () => {},
         newConversationIn: () => {},
@@ -435,13 +467,13 @@ describe('智能体团队响应式布局断点与 :side 状态隔离', () => {
       })
       expect(host.querySelector('[aria-label="对话历史"]')).toBeNull()
       expect(host.querySelector('[data-roster-collapsed="true"]')).toBeNull()
-      expect(host.querySelector('[data-roster-conv-list="free"]')).not.toBeNull()
+      expect(host.querySelector('[data-roster-work-list="free"]')).not.toBeNull()
 
       // 2. 宽度 1050px：布局同上（旧右栏断点已无意义）
       act(() => {
         observeCb?.([{ contentRect: { width: 1050 } }])
       })
-      expect(host.querySelector('[data-roster-conv-list="free"]')).not.toBeNull()
+      expect(host.querySelector('[data-roster-work-list="free"]')).not.toBeNull()
       expect(host.querySelector('[data-roster-collapsed="true"]')).toBeNull()
 
       // 3. 宽度 700px（< 800）：不显示对话历史，智能体列表变为顶部横栏（不再有收起轨）
@@ -452,7 +484,7 @@ describe('智能体团队响应式布局断点与 :side 状态隔离', () => {
       expect(host.querySelector('[data-agent-roster-top="true"]')).not.toBeNull()
       expect(host.querySelector('[data-roster-top="true"]')).not.toBeNull()
       // 顶部横栏形态不渲染对话历史块
-      expect(host.querySelector('[data-roster-conv-list="free"]')).toBeNull()
+      expect(host.querySelector('[data-roster-work-list="free"]')).toBeNull()
       expect(host.querySelector('[data-roster-collapsed="true"]')).toBeNull()
       expect(host.querySelector('[data-roster-locked="true"]')).toBeNull()
 
@@ -460,7 +492,7 @@ describe('智能体团队响应式布局断点与 :side 状态隔离', () => {
       act(() => {
         observeCb?.([{ contentRect: { width: 1300 } }])
       })
-      expect(host.querySelector('[data-roster-conv-list="free"]')).not.toBeNull()
+      expect(host.querySelector('[data-roster-work-list="free"]')).not.toBeNull()
       expect(host.querySelector('[data-roster-collapsed="true"]')).toBeNull()
       expect(localStorage.getItem('moji:agent-team:left-collapsed')).toBeNull()
       expect(localStorage.getItem('moji:agent-team:right-collapsed')).toBeNull()
@@ -535,7 +567,7 @@ describe('Vim :fixside 固定外侧对照栏（页签外宿主机与持久化）
     })
     setFixSideTargetsProvider(() => candidates)
 
-    expect(executeVimCommand(':fixside 智能体团队').success).toBe(true)
+    expect(executeVimCommand(':fixside 角色阵容').success).toBe(true)
     expect(openSpy).toHaveBeenCalledWith('team:gA')
 
     expect(executeVimCommand(':fixside swap').success).toBe(true)

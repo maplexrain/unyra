@@ -10,7 +10,6 @@ import type { ResolvedNodeRef, ResolvedDocRef, SandboxDocKind } from '../refs'
 import type { NodeOps } from '../nodeObject'
 import type { SandboxRequest, SandboxReply } from './core'
 import type { PermissionOps } from './permission'
-import type { SubAgentSandboxApi } from './subagent'
 import type { AskFormPayload } from './ask'
 import type { WorkspaceOps } from './workspace'
 import type { WebOps } from './web'
@@ -22,7 +21,7 @@ import type { ChipOps } from './chip'
 import type { DeliveryOps } from './delivery'
 import type { MethodOps } from './method'
 import type { WorkflowOps } from './workflow'
-import type { TeamOps } from './team'
+import type { WorkSandboxApi, ChatSandboxApi, HostSandboxApi } from '../../roleWork/types'
 import type { UserInfoOps } from './userInfo'
 import type { UiOps } from './ui'
 import type { BrowserOps } from './browser'
@@ -171,23 +170,25 @@ export interface SandboxOptions {
    */
   apiBrief?: string
   /**
-   * subagent 组（create / run / resume / intervene / interrupt / view / delete / wait）：
-   * **导师专用**的子代理管理通道（实现见 subagent/manager）。SUBAGENT_ALLOWED_GROUPS
-   * 不含这一组——子代理的 apiAllow 白名单永远放不进它，不递归在通道口就被挡死。
-   */
-  subagent?: SubAgentSandboxApi
-  /**
    * permission 组（list / revoke / request）：外部路径放行的查看、撤销与审批。
-   * **导师专用**——SUBAGENT_ALLOWED_GROUPS 不含这一组（改放行配置是导师与用户
-   * 之间的事，不从子代理手里过）。宿主实现见 agent/permissions。
+   * **role 专用**——work 不拿这一组（改放行配置是 role 与用户之间的事）。
+   * 宿主实现见 agent/permissions。
    */
   permission?: PermissionOps
   /**
-   * team 组（list / status / delegate / complete / awake）：智能体团队编排——把任务
-   * **委托**给另一位声部（仅聊天 / 导师），交付结果传回委托者。
-   * **导师专用**：子代理的 apiAllow 白名单放不进这一组（子代理不该再往外派活），
-   * 仅聊天的沙箱基座里也没有它。宿主实现见 learn/ops/team 与 learn/agentTeam/delegations。
+   * role 层的 work 管理面（list / status / stop / create / kill / send）。
+   * work 层不注入它——work 不能再往下派 work。
    */
-  teams?: TeamOps
+  work?: WorkSandboxApi
+  /**
+   * role 层的通道发送面（chat.send）。
+   * work 层不注入它——work 只能 host.send。
+   */
+  chat?: ChatSandboxApi
+  /**
+   * work 层的唯一回传面（host.send）。
+   * role 层不注入它。
+   */
+  host?: HostSandboxApi
 }
 

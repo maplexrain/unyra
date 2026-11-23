@@ -37,7 +37,7 @@ function sideKindBadge(ref: TabRef): string {
     case 'guide':
       return t('大纲导读')
     case 'agentTeam':
-      return t('智能体团队')
+      return t('角色阵容')
     case 'local':
       return t('本地文件')
     case 'ws':

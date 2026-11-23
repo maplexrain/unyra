@@ -2,7 +2,6 @@ import { useCallback } from 'react'
 import type { AgentTabRef, LearnStore } from '../../../learn/types'
 import {
   agentTabKey,
-  removeAgentTab,
   upsertAgentTab,
   withAgentTabs,
 } from '../../../learn/agentTabs'
@@ -18,7 +17,7 @@ import { pruneImages } from '../../../learn/images'
 import { resetPrefixGate } from '../../../agent/prefixGate'
 import { goalConvByGoal, goalFocusByGoal } from './goalFocus'
 import { sortConversationsByTimeDesc } from '../agent-team/conversationList'
-import { voiceOfConversation } from '../../../learn/agentTeam/voiceConvs'
+import { ensureRoleConversation, roleConversationsOfGoal } from '../../../learn/roleWork/roles'
 import { t } from '../../../i18n'
 
 /** agent 栏模式/会话动作需要的宿主能力与派生值 */
@@ -56,9 +55,9 @@ export function repairAgentTabsAfterDelete(
   const mapped = tabs0
     .filter((t) => {
       if (t.kind === 'goal') return s.goals.some((g) => g.id === t.goalId)
-      if (t.kind !== 'sub') return true
+      if (t.kind !== 'work') return true
       const conv = conversationById(s, t.conversationId)
-      return !!conv?.subagents?.sessions.some((x) => x.id === t.sessionId)
+      return !!conv?.works?.sessions.some((x) => x.id === t.workId)
     })
     .map((t) => {
       if (t.kind !== 'goal' || !t.conversationId) return t
@@ -146,7 +145,7 @@ export function useAgentTabActions({
             activeNodeId: focusId,
             activeConversationId: convId,
           }
-        } else if (targetTab && targetTab.kind === 'sub') {
+        } else if (targetTab && targetTab.kind === 'work') {
           const conv = conversationById(s, targetTab.conversationId)
           if (conv) {
             goalConvByGoal.set(conv.goalId, targetTab.conversationId)
@@ -163,32 +162,24 @@ export function useAgentTabActions({
     [getLatest, set],
   )
 
-  /** 切换到指定学习目标的导师视图（若尚无会话则现场初始化） */
+  /** 切换到指定学习目标的导师视图（role 层单会话：复用已有，没有才落一段） */
   const selectTutorGoal = useCallback(
     (goalId: string) => {
       const s = getLatest()
       const goal = s.goals.find((g) => g.id === goalId)
       if (!goal) return
-      // **只认导师会话**：声部会话（调度员 / 出卷师…的 cv/dv）与导师会话共用 goalId，
-      // 不过滤的话「最后活跃的那段」会是其他声部的会话——点导师却打开了别人的对话
-      const isTutorConv = (id: string | null | undefined): boolean => {
-        if (!id) return false
-        const c = conversationById(s, id)
-        return !!c && c.goalId === goalId && voiceOfConversation(c) === 'tutor'
-      }
-      const activeInGoal = isTutorConv(s.activeConversationId) ? s.activeConversationId! : null
+      // **只认导师会话**：声部会话与导师会话共用 goalId，不过滤会点导师却打开别人的对话
+      const tutorConvs = roleConversationsOfGoal(s, goalId, 'tutor')
+      const activeInGoal =
+        s.activeConversationId && tutorConvs.some((c) => c.id === s.activeConversationId)
+          ? s.activeConversationId
+          : null
       const remembered = goalConvByGoal.get(goalId)
-      const validRemembered = isTutorConv(remembered) ? remembered! : null
-      const descFirst =
-        sortConversationsByTimeDesc(
-          s.conversations.filter((c) => c.goalId === goalId && voiceOfConversation(c) === 'tutor'),
-        )[0]?.id ?? null
-      // 回退链里**不能有 resolveDisplayedConversation**：它读的是当前激活页签——点导师时
-      // 那上面停的还是声部会话（调度员 / 出卷师…），会把别人的对话选回来（真机踩过）
-      const resolvedId = activeInGoal ?? validRemembered ?? descFirst
+      const validRemembered = tutorConvs.some((c) => c.id === remembered) ? remembered! : null
+      const resolvedId = activeInGoal ?? validRemembered ?? tutorConvs[0]?.id
       const ensured = resolvedId
         ? { store: s, conversationId: resolvedId }
-        : ensureConversation(s, goalId)
+        : ensureRoleConversation(s, 'tutor', goalId)
       goalConvByGoal.set(goalId, ensured.conversationId)
 
       const focusId =
@@ -218,41 +209,14 @@ export function useAgentTabActions({
     [getLatest, set],
   )
 
-  /** 退出子代理视图并回到父导师会话 */
-  const exitSubagentView = useCallback(
-    (subKey: string, parentGoalId: string, parentConvId: string) => {
-      const s = getLatest()
-      goalConvByGoal.set(parentGoalId, parentConvId)
-      const removed = removeAgentTab(s.agentTabs ?? [], s.agentActiveTab ?? null, subKey)
-      const t0 = upsertAgentTab(
-        removed.tabs,
-        removed.active,
-        { kind: 'goal', goalId: parentGoalId, conversationId: parentConvId },
-        true,
-      )
-      set(
-        withAgentTabs(
-          {
-            ...s,
-            activeGoalId: parentGoalId,
-            activeConversationId: parentConvId,
-          },
-          t0.tabs,
-          t0.active,
-        ),
-      )
-    },
-    [getLatest, set],
-  )
-
-  /** 在指定目标（或子代理父目标）下切换展示的会话 */
+  /** 在指定目标（或 work 所属目标）下切换展示的会话 */
   const selectConversationIn = useCallback(
     (tab: AgentTabRef, conversationId: string) => {
       const s = getLatest()
       const targetGoalId =
         tab.kind === 'goal'
           ? tab.goalId
-          : tab.kind === 'sub'
+          : tab.kind === 'work'
             ? conversationById(s, tab.conversationId)?.goalId
             : null
       if (!targetGoalId) return
@@ -307,7 +271,7 @@ export function useAgentTabActions({
       const targetGoalId =
         tab.kind === 'goal'
           ? tab.goalId
-          : tab.kind === 'sub'
+          : tab.kind === 'work'
             ? conversationById(s, tab.conversationId)?.goalId
             : null
       if (targetGoalId) handleNewGoalConversation(targetGoalId)
@@ -376,7 +340,6 @@ export function useAgentTabActions({
     openAgentTab,
     activateAgentTab,
     selectTutorGoal,
-    exitSubagentView,
     handleNewGoalConversation,
     newConversationIn,
     selectConversationIn,

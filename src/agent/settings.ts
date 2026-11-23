@@ -17,7 +17,7 @@ import { DEFAULT_DOC_FORMAT, docFormatOf, type DocFormat, type DocFormatId } fro
 import { DEFAULT_SKILL_SETTINGS, type SkillSettings } from './skill/types'
 import { DEFAULT_MCP_SETTINGS, DEFAULT_MCP_SERVE_SETTINGS, type McpServeSettings, type McpServerConfig, type McpSettings } from './mcp/types'
 import { REASONING_EFFORTS, type ReasoningEffort } from '../ai/types'
-import { AGENT_TEAM_IDS, type AgentProfile, type AgentProfileId } from './agentProfile'
+import { AGENT_ROLE_IDS, type AgentProfile, type AgentProfileId } from './agentProfile'
 
 export interface CompactSettings {
   /** 到阈值自动压缩；关掉之后只有手动「压缩上下文」会压 */
@@ -186,7 +186,7 @@ export function normalizeAgentSettings(raw: unknown): AgentSettings {
    */
   const profiles: Partial<Record<AgentProfileId, AgentProfile>> = {}
   if (src.profiles && typeof src.profiles === 'object') {
-    for (const id of AGENT_TEAM_IDS) {
+    for (const id of AGENT_ROLE_IDS) {
       const p = (src.profiles as Partial<Record<AgentProfileId, unknown>>)[id]
       if (!p || typeof p !== 'object') continue
       const rec = p as Partial<AgentProfile>

@@ -1,19 +1,20 @@
 /**
- * 智能体的**独立设置页**：agent team 中央工作区在「设置态」下替换对话流的那一块
+ * 智能体的**独立设置页**：角色阵容中央工作区在「设置态」下替换对话流的那一块
  * （AgentSlot 的 settingsAgent 状态控制，见 workspace/AgentSlot）。
  *
- * 管的是「这位声部自己」：名字与头像、跑在哪家提供商-模型上、思考档位、
+ * 管的是「这位 role 自己」：名字与头像、跑在哪家提供商-模型上、思考档位、
  * execute 开放哪些 api 组、能触发哪些工作流，以及只读查看它实际会收到的系统提示词。
  * 每个字段都遵循 agent/agentProfile 的缺省语义：没改过 = 跟随默认 / 全局，
  * 改过才落盘；「恢复默认」整条清除覆盖。
  *
  * 与全局的「超级导师设置」（AgentSettingsPanel，管人格 / 技能 / MCP / 权限这些
- * 导师层面的机制）是两回事：这里是按声部逐个配的「它自己是谁、用什么跑」。
+ * 导师层面的机制）是两回事：这里是按 role 逐个配的「它自己是谁、用什么跑」。
  */
 
-import { useMemo, useState, useSyncExternalStore } from 'react'
-import { ArrowLeft, Check, Copy, GraduationCap, MessageSquare, RotateCcw } from 'lucide-react'
-import { REASONING_EFFORTS, REASONING_HINT, REASONING_LABEL, type ReasoningEffort } from '../../../ai/types'
+import { useSyncExternalStore } from 'react'
+import { ArrowLeft, GraduationCap, MessageSquare, RotateCcw } from 'lucide-react'
+import { REASONING_LABEL, type ReasoningEffort } from '../../../ai/types'
+import EffortSlider from '../../agent/EffortSlider'
 import {
   globalProvider,
   globalEffort,
@@ -27,24 +28,27 @@ import { SANDBOX_API_CATALOG } from '../../../agent/apiCatalog'
 import { docFormatOf } from '../../../agent/docFormat'
 import { personaOf } from '../../../agent/persona'
 import {
-  AGENT_API_PLANES,
   AGENT_AVATARS,
   AGENT_WORKFLOW_PLANES,
   DEFAULT_AGENT_NAME,
-  FREE_AGENT_API_ITEMS,
+  FIXED_API_PLANE,
+  WORK_FIXED_PLANE,
+  variableWorkGroupsOf,
+  variableWorkTopLevelOf,
   type AgentProfile,
+  type AgentProfileId,
   type AgentVoice,
 } from '../../../agent/agentProfile'
 import { loadAgentSettings, subscribeAgentSettings } from '../../../agent/settings'
-import { buildFreeChatSystem, buildVoiceSystem } from '../../../learn/ai'
 import { t, useLocale } from '../../../i18n'
 import { builtinWorkflowRows, type WorkflowRow } from '../../../learn/workflows'
 import { AgentAvatarGlyph } from './AgentAvatarGlyph'
+import { AgentPromptSectionsView } from './AgentPromptSectionsView'
 import type { AgentTeamMode } from './conversationList'
 
 export interface AgentSettingsViewProps {
   agentId: AgentTeamMode
-  /** 这位声部当前的 profile（AgentSlot 从 agentSettings 现取） */
+  /** 这位 role 当前的 profile（AgentSlot 从 agentSettings 现取） */
   profile: AgentProfile
   /** 合并一段覆盖（undefined 字段 = 清除该覆盖）；落盘与广播由调用方完成 */
   onChange: (patch: Partial<AgentProfile>) => void
@@ -191,6 +195,35 @@ function AllowListEditor(props: {
 const selectClass =
   'min-w-0 rounded-lg border border-line bg-card px-2 py-1.5 text-[12px] text-ink-strong outline-none transition hover:border-line-strong focus:border-seal/60'
 
+interface ApiRow {
+  key: string
+  label: string
+  code: string
+}
+
+/** execute api 的只读行清单（固定组 / 非固定组共用同一行样式，靠徽标区分） */
+function ApiRowList(props: { rows: ApiRow[]; badge: string; tone: 'fixed' | 'variable' }) {
+  const badgeClass =
+    props.tone === 'fixed'
+      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+      : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+  return (
+    <ul className="flex flex-col divide-y divide-line/50 rounded-lg border border-line/70 bg-paper-deep/30">
+      {props.rows.map((row) => (
+        <li key={row.key} className="flex items-center gap-2 px-3 py-1.5">
+          <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink-strong">
+            {row.label}
+          </span>
+          <span className={`shrink-0 rounded px-1.5 py-px text-[10px] font-medium ${badgeClass}`}>
+            {props.badge}
+          </span>
+          <code className="shrink-0 text-[10px] text-ink-faint">{row.code}</code>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export function AgentSettingsView({
   agentId,
   profile,
@@ -202,7 +235,7 @@ export function AgentSettingsView({
   useLocale()
   const isTutor = agentId === 'tutor'
   const isFree = agentId === 'free'
-  /** 承接声部（出卷师 / 设计师 / 调研员 / 维修员）：api 与工作流面都是团队分工固定的只读清单 */
+  /** 承接 role（出卷师 / 设计师 / 调研员 / 维修员）：api 与工作流面都是架构分工固定的只读清单 */
   const isSpecialist = !isTutor && !isFree
   const agentSettings = useSyncExternalStore(subscribeAgentSettings, loadAgentSettings)
   const ai = useSyncExternalStore(subscribeAiSettings, loadAiSettings)
@@ -224,29 +257,29 @@ export function AgentSettingsView({
       ? profile.model.trim()
       : t('该提供商默认（第一个）')
 
-  /* ---------- 思考档位 ---------- */
-  const effortValue = profile.effort ?? ''
-
-  /* ---------- execute api（能力面由架构固定：全部恒开放、纯只读清单） ---------- */
+  /* ---------- execute api（role 只有固定编排面；领域能力在 work 设置节展示） ---------- */
   /**
-   * execute 的 api 能力面：按声部的团队分工（AGENT_API_PLANES）固定的只读清单。
-   * 执行控制原语（core 组是顶层函数，不在目录里，单独一行——目录里的 core 过滤掉防重名）。
+   * role 层能力面由架构固定：help / compact + tmp / work / chat。
+   * 领域组（node / exam / classroom / web …）全部下沉到 work，在下方「工作层（work）」只读展示。
    */
-  const apiItems: Array<{ key: string; label: string; builtin?: boolean }> = isFree
-    ? FREE_AGENT_API_ITEMS.map((key) => ({
-        key,
-        label: key === 'web' ? t('联网搜索与抓取') : t('日程提醒'),
-        builtin: true,
-      }))
-    : [
-        { key: 'core', label: '执行控制（顶层函数）', builtin: true },
-        ...SANDBOX_API_CATALOG.filter(
-          (g) => g.key !== 'core' && AGENT_API_PLANES[agentId as AgentVoice].groups.includes(g.key),
-        ).map((g) => ({ key: g.key, label: g.label, builtin: true })),
-      ]
-  /* ---------- 工作流（导师可配白名单；承接声部 = 分工固定的只读面） ---------- */
+  const coreCatalog = SANDBOX_API_CATALOG.find((g) => g.key === 'core')
+  const fixedRows: ApiRow[] = []
+  const variableRows: ApiRow[] = []
+  const coreItem = (name: string): ApiRow | undefined => {
+    const item = coreCatalog?.items.find((i) => i.name === name)
+    return item ? { key: 'core:' + name, label: item.summary, code: 'api.' + name } : undefined
+  }
+  for (const name of ['help', ...FIXED_API_PLANE.topLevel]) {
+    const row = coreItem(name)
+    if (row) fixedRows.push(row)
+  }
+  for (const key of FIXED_API_PLANE.groups) {
+    const group = SANDBOX_API_CATALOG.find((g) => g.key === key)
+    if (group) fixedRows.push({ key, label: t(group.label), code: 'api.' + key })
+  }
+  /* ---------- 工作流（导师可配白名单；承接 role = 分工固定的只读面） ---------- */
   const wfPlane = new Set(AGENT_WORKFLOW_PLANES[agentId as AgentVoice])
-  // 内置行的锁死口径 = 本声部的分工面：不在面上的内置规程它触发不了，干脆不展示
+  // 内置行的锁死口径 = 本 role 的分工面：不在面上的内置规程它触发不了，干脆不展示
   //（免得进了「添加」下拉、加了又被通道口拒绝）
   const wfItems = flowRows
     .filter((r) => r.tier !== 'builtin' || wfPlane.has(r.id))
@@ -256,7 +289,7 @@ export function AgentSettingsView({
       tag: r.tier === 'builtin' ? '内置' : r.tier === 'global' ? '全局' : '目标级',
       builtin: r.tier === 'builtin',
     }))
-  /** 承接声部的固定工作流面（只有内置规程，没有登记条目） */
+  /** 承接 role 的固定工作流面（只有内置规程，没有登记条目） */
   const specialistWfItems = builtinWorkflowRows()
     .filter((r) => wfPlane.has(r.id))
     .map((r) => ({ key: r.id, label: r.name, tag: '内置' as const, builtin: true }))
@@ -266,27 +299,6 @@ export function AgentSettingsView({
     agentSettings.extraSystemPromptEnabled && agentSettings.extraSystemPrompt?.trim()
       ? agentSettings.extraSystemPrompt.trim()
       : undefined
-  /**
-   * 系统提示词的只读预览：execute 能力面由架构固定（全部恒开放），提示词恒为全量——
-   * 与 assembleTurnEntry 落进新对话的合成同一条路径。工作流规程同样是内置恒在场。
-   */
-  const systemPrompt = useMemo(
-    () =>
-      isFree
-        ? buildFreeChatSystem({ extraSystemPrompt: extra })
-        : buildVoiceSystem(agentId, { extraSystemPrompt: extra }),
-    [isFree, agentId, extra],
-  )
-  const [copied, setCopied] = useState(false)
-  const copyPrompt = (): void => {
-    void navigator.clipboard
-      .writeText(systemPrompt)
-      .then(() => {
-        setCopied(true)
-        window.setTimeout(() => setCopied(false), 1500)
-      })
-      .catch(() => {})
-  }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-paper">
@@ -325,7 +337,7 @@ export function AgentSettingsView({
         <div className="mx-auto flex max-w-[880px] flex-col px-6 py-1">
           {/* ---------- 身份 ---------- */}
           <section className="border-b border-line/60 py-4">
-            <SectionHead title={t('身份')} hint={t('改的是 agent team 左栏与这里的显示；不影响对话内容。')} />
+            <SectionHead title={t('身份')} hint={t('改的是角色阵容左栏与这里的显示；不影响对话内容。')} />
             <div className="flex flex-col gap-2.5">
               <label className="flex items-center gap-2.5">
                 <span className="w-14 shrink-0 text-[12px] text-ink-soft">{t('名称')}</span>
@@ -433,80 +445,126 @@ export function AgentSettingsView({
                 '这位智能体自己的档位；没改就跟随全局滑条。注意：换档可能整体更换服务商的缓存引擎，已有长对话的前缀缓存会重置。',
               )}
             />
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                aria-pressed={effortValue === ''}
-                onClick={() => onChange({ effort: undefined })}
-                className={
-                  'rounded-lg border px-3 py-1.5 text-[12px] transition ' +
-                  (effortValue === ''
-                    ? 'border-seal/60 bg-seal/10 font-medium text-seal'
-                    : 'border-line bg-card text-ink-soft hover:border-line-strong hover:text-ink')
-                }
-              >
-                {t('跟随全局')}（{REASONING_LABEL[globalEffort(ai)]}）
-              </button>
-              {REASONING_EFFORTS.map((e) => {
-                const on = effortValue === e
-                return (
+            <div className="flex max-w-[340px] flex-col gap-2">
+              <div className="flex items-center justify-between text-[11.5px]">
+                <span className="text-ink-soft">
+                  {profile.effort === undefined
+                    ? `${t('跟随全局')}（${t(REASONING_LABEL[globalEffort(ai)])}）`
+                    : `${t('独立档位')}：${t(REASONING_LABEL[profile.effort])}`}
+                </span>
+                {profile.effort !== undefined && (
                   <button
-                    key={e}
                     type="button"
-                    aria-pressed={on}
-                    title={t(REASONING_HINT[e])}
-                    onClick={() => onChange({ effort: e as ReasoningEffort })}
-                    className={
-                      'rounded-lg border px-3 py-1.5 text-[12px] transition ' +
-                      (on
-                        ? 'border-seal/60 bg-seal/10 font-medium text-seal'
-                        : 'border-line bg-card text-ink-soft hover:border-line-strong hover:text-ink')
-                    }
+                    onClick={() => onChange({ effort: undefined })}
+                    className="cursor-pointer text-[11px] text-seal hover:underline"
                   >
-                    {REASONING_LABEL[e]}
+                    {t('恢复跟随全局')}
                   </button>
-                )
-              })}
+                )}
+              </div>
+              <EffortSlider
+                value={(profile.effort ?? globalEffort(ai)) as ReasoningEffort}
+                onChange={(next) => onChange({ effort: next })}
+              />
             </div>
           </section>
 
-          {/* ---------- execute 开放的 api（能力面固定：纯只读清单，不可增删） ---------- */}
-          <section className="border-b border-line/60 py-4">
+          {/* ---------- execute 开放的 api（能力面固定：固定组 / 非固定组两份只读清单） ---------- */}
+          <section data-api-section className="border-b border-line/60 py-4">
             <SectionHead
               title={t('execute 开放的 api')}
               hint={
                 isFree
-                  ? t('仅聊天的沙箱只有联网与日程两组能力，由架构固定、恒开放。')
+                  ? t('仅聊天的 role 只有 work / chat / tmp / compact 固定面；联网、日程等领域能力全部在 work 层。')
                   : isTutor
-                    ? t('导师的 api 面按团队分工固定、只读（不可增删）：教学主线与协调的全量基座；路由与分派归调度员、联网与浏览器归调研员、课件与实验归设计师、出卷与阅卷归出卷师、修复归维修员。')
-                    : t('这位成员的 api 面由团队分工固定、只读（不可增删）：它只拿职责所需的能力，其余域通过 team.* 协作补齐。')
+                    ? t('导师的 role 面按架构固定、只读（不可增删）：只保留对学习者说话与编排 work 的固定基座；领域执行面全部在下方「工作层（work）」。')
+                    : t('这位 role 的 api 面由架构分工固定、只读（不可增删）：role 只保留 work / chat / tmp / compact，领域执行能力在 work 层。')
               }
             />
-            <ul className="flex flex-col divide-y divide-line/50 rounded-lg border border-line/70 bg-paper-deep/30">
-              {apiItems.map((item) => (
-                <li key={item.key} className="flex items-center gap-2 px-3 py-1.5">
-                  <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink-strong">
-                    {t(item.label)}
+            <div className="flex flex-col gap-3">
+              <div>
+                <div className="mb-1.5 flex items-center gap-2 text-[11px]">
+                  <span className="font-semibold text-ink-strong">{t('固定组')}</span>
+                  <span className="min-w-0 truncate text-ink-faint">
+                    {isFree ? t('仅聊天的固定执行基座') : t('七位 role 共用 · 架构固定')}
                   </span>
-                  <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-px text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                    {t('内置 · 恒开放')}
+                  <span className="ml-auto shrink-0 tabular-nums text-ink-faint">
+                    {t('{0} 项', fixedRows.length)}
                   </span>
-                  <code className="shrink-0 text-[10px] text-ink-faint">{item.key}</code>
-                </li>
-              ))}
-            </ul>
+                </div>
+                <ApiRowList rows={fixedRows} badge={t('固定 · 恒开放')} tone="fixed" />
+              </div>
+              <div>
+                <div className="mb-1.5 flex items-center gap-2 text-[11px]">
+                  <span className="font-semibold text-ink-strong">{t('非固定组')}</span>
+                  <span className="min-w-0 truncate text-ink-faint">
+                    {isFree ? t('role 层不直接持有领域能力') : t('role 层不直接持有领域能力')}
+                  </span>
+                  {variableRows.length > 0 && (
+                    <span className="ml-auto shrink-0 tabular-nums text-ink-faint">
+                      {t('{0} 项', variableRows.length)}
+                    </span>
+                  )}
+                </div>
+                {variableRows.length > 0 ? (
+                  <ApiRowList rows={variableRows} badge={t('专属 · 恒开放')} tone="variable" />
+                ) : (
+                  <p className="rounded-lg border border-line/70 bg-paper-deep/40 px-3 py-2 text-[11.5px] leading-relaxed text-ink-faint">
+                    {isFree
+                      ? t('无：role 层只保留固定编排面，领域能力全部在 work 层。')
+                      : t('无：这位 role 只持有全员共用的固定基座。')}
+                  </p>
+                )}
+              </div>
+            </div>
           </section>
 
-          {/* ---------- 集成的工作流 ---------- */}
+          {/* ---------- 工作层（work，只读） ---------- */}
+          <section data-work-layer className="border-b border-line/60 py-4">
+            <SectionHead
+              title={t('工作层（work）')}
+              hint={t('work 没有人格、不共享 role 的对话上下文；它由 role 用 work.create / work.send 派出，执行完用 host.send 把交付交回 role。下面是从 role 能力面派生出的 work 面，只读。')}
+            />
+            <div className="rounded-lg border border-line/70 bg-paper-deep/30 px-3 py-2">
+              <div className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-ink-soft">
+                <span className="font-medium text-ink-strong">{t('固定')}</span>
+                {['help', ...WORK_FIXED_PLANE.groups, ...WORK_FIXED_PLANE.topLevel].map((key) => (
+                  <code key={key} className="rounded bg-line/60 px-1.5 py-px text-[10.5px] text-ink-faint">
+                    api.{key}
+                  </code>
+                ))}
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11.5px] text-ink-soft">
+                <span className="font-medium text-ink-strong">{t('按 role 派生')}</span>
+                {[
+                  ...variableWorkGroupsOf(agentId as AgentProfileId).map((g) => 'api.' + g + '.*'),
+                  ...variableWorkTopLevelOf(agentId as AgentProfileId).map((n) => 'api.' + n),
+                ].map((key) => (
+                  <code key={key} className="rounded bg-line/50 px-1.5 py-px text-[10.5px] text-ink-faint">
+                    {key}
+                  </code>
+                ))}
+                {variableWorkGroupsOf(agentId as AgentProfileId).length === 0 &&
+                variableWorkTopLevelOf(agentId as AgentProfileId).length === 0 ? (
+                  <span className="text-[11px] text-ink-faint">{t('这位 role 的 work 只有固定面。')}</span>
+                ) : null}
+              </div>
+              <p className="mt-1.5 text-[10.5px] leading-relaxed text-ink-faint">
+                {t('work 的系统提示词由 role 自动生成（内容类 role 带共用排版内核），不在设置里改；它不是独立人格，也没有用户对话历史。')}
+              </p>
+            </div>
+          </section>
+
+          {/* ---------- 工作层的工作流（由 work 执行，role 只路由） ---------- */}
           <section className="border-b border-line/60 py-4">
             <SectionHead
-              title={t('集成的工作流')}
+              title={t('工作层的工作流')}
               hint={
                 isFree
-                  ? t('自由聊天的沙箱没有工作流通道（wf.*），此设置不生效。')
+                  ? t('聊天龟的 work 没有工作流通道（wf.*），此设置不生效；需要开讲、出卷这类流程请找导师。')
                   : isTutor
-                    ? t('从下拉把允许触发的工作流添加进列表。本声部分工面里的内置规程恒开放、只读不可卸载；白名单只管登记的全局 / 目标级工作流——wf.list 只列出的，越权触发当场拒绝。')
-                    : t('这位成员的工作流面由团队分工固定、只读（不可增删）；登记的全局 / 目标级工作流只有导师能触发。')
+                    ? t('工作流由导师的 work 执行，role 只负责路由与汇报。内置规程按架构分工恒开放、只读；白名单只管登记的全局 / 目标级工作流——work 的 wf.list 只列出的，越权触发当场拒绝。')
+                    : t('工作流由这位 role 派出的 work 执行，role 本身不触发；内置规程由架构分工固定、只读（不可增删）。登记的全局 / 目标级工作流只有导师的 work 能触发。')
               }
             />
             {isTutor ? (
@@ -516,7 +574,7 @@ export function AgentSettingsView({
                 onChange={(list) => onChange({ workflows: list })}
                 addLabel={t('添加工作流')}
                 addHook="wf"
-                emptyNote="未添加任何项：登记的工作流全部可用（本声部的内置规程面恒开放）。"
+                emptyNote="未添加任何项：登记的工作流全部可用（本 role 的内置规程面恒开放）。"
                 clearedNote="列表为空：分工面内的内置规程恒可用，登记的全局 / 目标级工作流全部关闭。"
                 clearLabel="恢复全部可用"
               />
@@ -548,43 +606,16 @@ export function AgentSettingsView({
               hint={
                 isFree
                   ? t('自由聊天**下一轮**将收到的系统提示词全文；其能力面由架构固定，提示词恒定。')
-                  : t('这位成员**新对话**将收到的系统提示词全文（当前配置拼出；api 与工作流面按团队分工拼装）。进行中的对话用首轮固化的那份，不受影响。')
+                  : t('这位 role **新对话**将收到的系统提示词全文（当前配置拼出；api 固定面由架构固定，工作流由 work 执行）。进行中的对话用首轮固化的那份，不受影响。')
               }
             />
-            <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-ink-soft">
-              {isTutor && (
-                <>
-                  <span>
-                    {t('人格')}: <span className="text-ink-strong">{personaOf(agentSettings.persona).label}</span>
-                  </span>
-                  <span>
-                    {t('文档格式')}: <span className="text-ink-strong">{docFormatOf(agentSettings.docFormat).label}</span>
-                  </span>
-                </>
-              )}
-              <span>
-                {t('追加提示词')}:{' '}
-                <span className="text-ink-strong">{extra ? t('已启用') : t('未启用')}</span>
-              </span>
-            </div>
-            <div className="overflow-hidden rounded-lg border border-line/70 bg-paper-deep/40">
-              <div className="flex items-center justify-between border-b border-line/60 px-3 py-1.5">
-                <span className="text-[11px] text-ink-faint">
-                  {t('{0} 字', systemPrompt.length)}
-                </span>
-                <button
-                  type="button"
-                  onClick={copyPrompt}
-                  className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] text-ink-soft transition hover:bg-line/50 hover:text-ink"
-                >
-                  {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-                  <span>{copied ? t('已复制') : t('复制全文')}</span>
-                </button>
-              </div>
-              <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-ink-soft">
-                {systemPrompt}
-              </pre>
-            </div>
+            <AgentPromptSectionsView
+              agentId={agentId}
+              extraSystemPrompt={extra}
+              isTutor={isTutor}
+              personaLabel={isTutor ? personaOf(agentSettings.persona).label : undefined}
+              docFormatLabel={isTutor ? docFormatOf(agentSettings.docFormat).label : undefined}
+            />
           </section>
         </div>
       </div>

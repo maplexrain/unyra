@@ -1,36 +1,41 @@
 /**
- * Agent 列表侧栏：智能体团队的名册（仅聊天 / 调度员 / 导师 / 出卷师 / 设计师 / 调研员 / 维修员）。
+ * Agent 列表侧栏：角色阵容的名册（仅聊天 / 调度员 / 导师 / 出卷师 / 设计师 / 调研员 / 维修员）。
  * 两种形态（variant）：
  * - side（默认）：左侧竖栏，垂直分成两块（高度权重 2:1，各自溢出滚动）——
- *   上块是声部名册，下块是**当前选中声部**的对话历史（含新建 / 删目标切换与设置入口）；
+ *   上块是 role 名册，下块是**当前选中 agent 的 work 上下文**（点击打开 work 页签）；
  *   可整体折叠成 48px 轨（forceCollapsed 时锁定不可展开）；
- * - top：容器宽度 < 800 时由 AgentSlot 切换的顶部横栏——横排声部按钮、
- *   右侧展示当前声部的近况摘要，不再有折叠语义（横排本身就是收起形态）。
+ * - top：容器宽度 < 800 时由 AgentSlot 切换的顶部横栏——横排 role 按钮、
+ *   右侧展示当前 role 的近况摘要，不再有折叠语义（横排本身就是收起形态）。
  *
- * 声部的角色标签 / 兜底图标 / 配色在 agentRoster.ts 的注册表里；名字与头像来自
- * 各自的 profile（智能体独立设置）。承接声部（出卷师 / 设计师 / 调研员 / 维修员）的工作会话
- * 由委托与系统侧分诊自动落进来，没有「新建对话」——它们按目标各有一段工作会话。
- * 设置入口在名册卡的**头像**上：点头像直接开这位声部的独立设置（AgentSettingsView）。
+ * role 的角色标签 / 兜底图标 / 配色在 agentRoster.ts 的注册表里；名字与头像来自
+ * 各自的 profile（智能体独立设置）。role 层每个 agent 只有一段会话，所以下块不再列
+ * 会话历史；真正被派出去执行、需要被看见的是 work，它们由 work / chat.send 自动建立。
+ * 设置入口在名册卡的**头像**上：点头像直接开这位 role 的独立设置（AgentSettingsView）。
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
-  MessageSquarePlus,
+  ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
+  Pin,
   Settings2,
-  Trash2,
+  Users,
 } from 'lucide-react'
-import type { Conversation } from '../../../agent/types'
+import type { WorkSession } from '../../../agent/types'
 import { DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import type { LearningGoal } from '../../../learn/types'
-import { delegatorVoiceOf } from '../../../learn/agentTeam/voiceConvs'
 import { t, useLocale } from '../../../i18n'
 import { AgentAvatarGlyph } from './AgentAvatarGlyph'
+import { AgentContextMenu } from './AgentContextMenu'
+import {
+  isPinLocked,
+  loadPinnedAgents,
+  sortAgentsByPinAndTime,
+  toggleAgentPin,
+} from './agentPinning'
 import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, voiceTags, type AgentVoiceStats } from './agentRoster'
 import {
-  conversationTimeOf,
-  displayConversationTitle,
   formatConversationTime,
   type AgentTeamMode,
 } from './conversationList'
@@ -57,29 +62,27 @@ export interface AgentRosterSidebarProps {
   persistCollapsed?: boolean
   /** 形态：side=左侧竖栏（默认）；top=窄宽度（容器 <800）下的顶部横栏 */
   variant?: 'side' | 'top'
-  /* ---------- 对话历史块（下块：当前选中声部的历史列表，AgentSlot 总是传） ---------- */
-  /** 每个声部名下的对话列表（已按对话时间降序）；下块只展示当前选中声部的那一份 */
-  conversationsByAgent?: Partial<Record<AgentTeamMode, Conversation[]>>
-  /** 各声部当前激活的对话 id */
-  activeConversationByAgent?: Partial<Record<AgentTeamMode, string | null>>
-  runningByConversation?: Record<string, boolean>
-  pendingAskByConv?: Record<string, unknown>
-  /** 导师声部的作用域目标：子列表、新建按钮与目标切换都跟着它走 */
+  /* ---------- 下块：当前选中 agent 的 work 上下文（点击打开 work 页签） ---------- */
+  /** 每个 agent 名下的 work 会话（按 lastActiveAt 降序）；下块只展示当前选中的那一份 */
+  worksByAgent?: Partial<Record<AgentTeamMode, WorkSession[]>>
+  /** 打开某个 work 页签（AgentSlot 已按 roleConversationId 接好页签） */
+  onOpenWork?: (agentId: AgentTeamMode, workId: string) => void
+  /** 导师声部的作用域目标：work 列表跟着当前目标走 */
   activeGoalId?: string | null
   /** 固定目标的页签（:fixside）里目标不可切换 */
   goalLocked?: boolean
   goals?: LearningGoal[]
   goalTitleOf?: (goalId: string) => string
   onSelectGoal?: (goalId: string) => void
-  onSelectConversation?: (agentId: AgentTeamMode, conversationId: string) => void
-  onNewConversation?: (agentId: AgentTeamMode) => void
-  onDeleteConversation?: (agentId: AgentTeamMode, conversationId: string) => void
   /** 打开某位声部的独立设置（名册卡头像的点击入口，见 AgentSettingsView） */
   onOpenSettings?: (agentId: AgentTeamMode) => void
   /** 各声部的自定义显示名（智能体独立设置的身份）；空串 = 用默认名 */
   agentNames?: Partial<Record<AgentTeamMode, string>>
   /** 各声部的头像 id（AGENT_AVATARS 目录）；缺省 = 默认声部图标 */
   agentAvatars?: Partial<Record<AgentTeamMode, string>>
+  /** 名册里固定多出来的「群聊」入口：群聊只有对话列表，通道为 group */
+  groupActive?: boolean
+  onOpenGroup?: () => void
 }
 
 export function AgentRosterSidebar({
@@ -90,24 +93,23 @@ export function AgentRosterSidebar({
   forceCollapsed = false,
   persistCollapsed = true,
   variant = 'side',
-  conversationsByAgent,
-  activeConversationByAgent,
-  runningByConversation,
-  pendingAskByConv,
+  worksByAgent,
+  onOpenWork,
   activeGoalId,
   goalLocked,
   goals,
   goalTitleOf,
   onSelectGoal,
-  onSelectConversation,
-  onNewConversation,
-  onDeleteConversation,
   onOpenSettings,
   agentNames,
   agentAvatars,
+  groupActive = false,
+  onOpenGroup,
 }: AgentRosterSidebarProps) {
   useLocale()
   const [collapsed, setCollapsed] = useState<boolean>(() => (persistCollapsed ? readCollapsed() : false))
+  const [pinnedAgents, setPinnedAgents] = useState<Set<AgentTeamMode>>(() => loadPinnedAgents())
+  const [contextMenu, setContextMenu] = useState<{ agentId: AgentTeamMode; x: number; y: number } | null>(null)
 
   const toggleCollapsed = (next: boolean) => {
     setCollapsed(next)
@@ -121,41 +123,45 @@ export function AgentRosterSidebar({
 
   const statsOf = (id: AgentTeamMode): AgentVoiceStats => voiceStats[id] ?? { running: false, hasAsk: false }
 
-  const agents = AGENT_ROSTER_ORDER.map((id) => {
-    const meta = AGENT_ROSTER_META[id]
-    const st = statsOf(id)
-    // 导师的兜底副标题是当前目标（它 scoped 到目标上）；其余声部用注册表的职责一句话
-    const idleSubtitle = id === 'tutor' ? activeGoalTitle || t(meta.blurb) : t(meta.blurb)
-    return {
-      id,
-      label: agentNames?.[id]?.trim() || t(DEFAULT_AGENT_NAME[id]),
-      roleTag: t(meta.roleTag),
-      subtitle: st.hasAsk
-        ? t('等待你的确认')
-        : st.running
-          ? t(id === 'free' ? '回答中…' : '正在执行…')
-          : st.preview || idleSubtitle,
-      timeLabel: formatConversationTime(st.lastTime ?? 0),
-      count: st.count,
-      avatarId: agentAvatars?.[id],
-      fallbackIcon: meta.fallbackIcon,
-      avatarClass: meta.avatarClass,
-      ringClass: meta.ringClass,
-      running: st.running,
-      hasAsk: st.hasAsk,
-      tags: voiceTags(id),
-    }
-  })
+  const agents = useMemo(() => {
+    const raw = AGENT_ROSTER_ORDER.map((id) => {
+      const meta = AGENT_ROSTER_META[id]
+      const st = statsOf(id)
+      // 导师的兜底副标题是当前目标（它 scoped 到目标上）；其余声部用注册表的职责一句话
+      const idleSubtitle = id === 'tutor' ? activeGoalTitle || t(meta.blurb) : t(meta.blurb)
+      return {
+        id,
+        label: agentNames?.[id]?.trim() || t(DEFAULT_AGENT_NAME[id]),
+        roleTag: t(meta.roleTag),
+        subtitle: st.hasAsk
+          ? t('等待你的确认')
+          : st.running
+            ? t(id === 'free' ? '回答中…' : '正在执行…')
+            : st.preview || idleSubtitle,
+        timeLabel: formatConversationTime(st.lastTime ?? 0),
+        count: st.count,
+        avatarId: agentAvatars?.[id],
+        fallbackIcon: meta.fallbackIcon,
+        avatarClass: meta.avatarClass,
+        ringClass: meta.ringClass,
+        nameClass: meta.nameClass,
+        running: st.running,
+        hasAsk: st.hasAsk,
+        tags: voiceTags(id),
+      }
+    })
+    return sortAgentsByPinAndTime(raw, pinnedAgents, (id) => statsOf(id).lastTime ?? 0)
+  }, [activeGoalTitle, agentAvatars, agentNames, pinnedAgents, voiceStats])
 
   /**
-   * 对话历史块（下块）的主体：目标切换（导师多目标）、新建、选择与删除。
-   * 删除保护沿用右栏的口径：唯一且空的导师对话不可删（那是「清空对话记录」的语义）、
-   * 运行中的先停止再删。承接声部没有「新建对话」——它们按目标各有一段工作会话。
+   * 工作上下文块（下块）的主体：当前 agent 名下的 work 会话。
+   *
+   * role 层每个 agent 只有一段会话，再把它列在下块没有意义；真正需要被看见、被点开的是
+   * work——role 派出的任务和执行过程都住在那里。列表只回答「有哪些 work、各自到哪一步」，
+   * 点一下就把对应的 work 页签置前（见 AgentSlot 的 onOpenWork）。
    */
-  const convSection = (agentId: AgentTeamMode) => {
-    const convs = conversationsByAgent?.[agentId] ?? []
-    const activeConvId = activeConversationByAgent?.[agentId] ?? null
-    const canCreate = agentId === 'free' || (agentId === 'tutor' && Boolean(activeGoalId))
+  const workSection = (agentId: AgentTeamMode) => {
+    const works = worksByAgent?.[agentId] ?? []
     return (
       <>
         {agentId === 'tutor' && !goalLocked && (goals?.length ?? 0) > 1 && onSelectGoal && (
@@ -175,100 +181,77 @@ export function AgentRosterSidebar({
             ))}
           </select>
         )}
-        {canCreate && onNewConversation && (
-          <button
-            type="button"
-            onClick={() => onNewConversation(agentId)}
-            className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-[11px] text-ink-soft transition hover:bg-line/45 hover:text-ink"
-          >
-            <MessageSquarePlus size={12} className="shrink-0 text-seal" />
-            <span>{t('新建对话')}</span>
-          </button>
-        )}
-        {convs.length === 0 ? (
+        {works.length === 0 ? (
           <p className="px-1.5 py-1 text-[10.5px] leading-relaxed text-ink-faint">
             {agentId === 'tutor' && !activeGoalId
               ? t('请先选择一个学习目标')
-              : t(AGENT_ROSTER_META[agentId].emptyHint)}
+              : t('还没有 work 上下文；role 派出任务后会自动出现。')}
           </p>
         ) : (
-          convs.map((conv) => {
-            const active = conv.id === activeConvId
-            const running = Boolean(runningByConversation?.[conv.id])
-            const hasAsk = Boolean(pendingAskByConv?.[conv.id])
-            const title = displayConversationTitle(conv)
-            const timeLabel = formatConversationTime(conversationTimeOf(conv))
-            // 委托会话（dv:）标出来源：这一段只听哪位委托者的指令
-            const dvFrom = delegatorVoiceOf(conv)
-            const dvName = dvFrom ? agentNames?.[dvFrom]?.trim() || t(DEFAULT_AGENT_NAME[dvFrom]) : ''
-            const soleEmpty =
-              agentId === 'tutor' && convs.length <= 1 && conv.messages.length === 0 && !conv.title && !conv.summary
-            const deleteTitle = running
-              ? t('这一段正在运行，先停止再删除')
-              : soleEmpty
-                ? t('清空对话记录')
-                : t('删除对话')
+          works.map((work) => {
+            const running = work.status === 'running'
+            const failed = work.status === 'error'
+            const stopped = work.status === 'stopped' || work.status === 'interrupted'
+            const statusText = running
+              ? t('运行中')
+              : failed
+                ? t('出错')
+                : stopped
+                  ? t('已停止')
+                  : t('空闲')
+            const preview = (work.lastDelivery || work.lastIssue || '').replace(/\s+/g, ' ').trim()
             return (
-              <div
-                key={conv.id}
-                data-conversation-id={conv.id}
+              <button
+                key={work.id}
+                type="button"
+                data-work-id={work.id}
+                onClick={() => onOpenWork?.(agentId, work.id)}
+                title={t('点击查看 work')}
                 className={
-                  'group/cv relative flex items-center rounded-lg pr-0.5 transition ' +
-                  (running ? 'moji-agent-live ' : '') +
-                  (active ? 'bg-card' : 'hover:bg-line/40')
+                  'group/wk flex w-full min-w-0 flex-col gap-0.5 rounded-lg px-1.5 py-1 text-left transition hover:bg-line/40 ' +
+                  (running ? 'moji-agent-live ' : '')
                 }
               >
-                <button
-                  type="button"
-                  onClick={() => onSelectConversation?.(agentId, conv.id)}
-                  className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left"
-                >
-                  {hasAsk ? (
-                    <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-amber-500" />
-                  ) : running ? (
-                    <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-seal" />
-                  ) : null}
+                <span className="flex min-w-0 items-center gap-1.5">
                   <span
-                    title={title}
+                    aria-hidden="true"
                     className={
-                      'min-w-0 flex-1 truncate text-[12.5px] leading-snug ' +
-                      (active ? 'font-medium text-ink-strong' : 'text-ink-soft')
+                      'h-1.5 w-1.5 shrink-0 rounded-full ' +
+                      (running
+                        ? 'animate-pulse bg-seal'
+                        : failed
+                          ? 'bg-seal'
+                          : stopped
+                            ? 'bg-amber-500'
+                            : 'bg-ink-faint/45')
                     }
-                  >
-                    {title}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] leading-snug text-ink-soft group-hover/wk:text-ink">
+                    {work.name}
                   </span>
-                  {dvFrom && (
-                    <span
-                      title={t('委托会话：由「{0}」发起，只承接它的委托，不接受直接输入', dvName)}
-                      className="shrink-0 rounded bg-seal/10 px-1 py-px text-[9.5px] leading-none text-seal-deep dark:text-seal-2"
-                    >
-                      {t('委托')}·{dvName}
-                    </span>
+                  <span className="shrink-0 text-[10.5px] tabular-nums text-ink-faint">
+                    {formatConversationTime(work.lastActiveAt)}
+                  </span>
+                  <ChevronRight
+                    size={11}
+                    className="shrink-0 opacity-0 transition group-hover/wk:opacity-50"
+                    aria-hidden="true"
+                  />
+                </span>
+                <span className="flex min-w-0 items-center gap-1.5 pl-3 text-[10.5px] text-ink-faint">
+                  <span className={running ? 'text-seal-deep' : undefined}>{statusText}</span>
+                  <span>·</span>
+                  <span>{t('{0} 次任务', work.runs)}</span>
+                  {preview && (
+                    <>
+                      <span>·</span>
+                      <span className="min-w-0 flex-1 truncate" title={preview}>
+                        {preview}
+                      </span>
+                    </>
                   )}
-                  {timeLabel && <span className="shrink-0 text-[10.5px] tabular-nums text-ink-faint">{timeLabel}</span>}
-                </button>
-                {onDeleteConversation && (
-                  <button
-                    type="button"
-                    disabled={soleEmpty}
-                    title={deleteTitle}
-                    aria-label={deleteTitle}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onDeleteConversation(agentId, conv.id)
-                    }}
-                    className={
-                      'flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition ' +
-                      (soleEmpty
-                        ? 'cursor-not-allowed opacity-20'
-                        : 'text-ink-faint opacity-0 hover:bg-seal/15 hover:text-seal-deep group-hover/cv:opacity-100 focus-visible:opacity-100 ' +
-                          (active ? 'opacity-65' : ''))
-                    }
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                )}
-              </div>
+                </span>
+              </button>
             )
           })
         )}
@@ -291,9 +274,27 @@ export function AgentRosterSidebar({
         <span className="shrink-0 pr-0.5 text-[11px] font-semibold tracking-wide text-ink-soft">
           {t('智能体')}
         </span>
+        {onOpenGroup ? (
+          <button
+            type="button"
+            data-agent-group-top="true"
+            aria-pressed={groupActive}
+            title={t('群聊：只有对话列表，@ 指定 agent')}
+            onClick={onOpenGroup}
+            className={
+              'flex h-7 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-[11.5px] transition ' +
+              (groupActive
+                ? 'border-teal-500/40 bg-teal-500/10 text-teal-700 dark:text-teal-300'
+                : 'border-transparent text-ink-soft hover:bg-line/45 hover:text-ink')
+            }
+          >
+            <Users size={13} />
+            <span className="font-medium">{t('群聊')}</span>
+          </button>
+        ) : null}
         <div role="tablist" className="flex shrink-0 items-center gap-1">
           {agents.map((item) => {
-            const active = mode === item.id
+            const active = !groupActive && mode === item.id
             return (
               <button
                 key={item.id}
@@ -302,6 +303,11 @@ export function AgentRosterSidebar({
                 aria-selected={active}
                 title={`${item.label} · ${item.subtitle}`}
                 onClick={() => onSelectMode(item.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setContextMenu({ agentId: item.id, x: e.clientX, y: e.clientY })
+                }}
                 className={
                   'relative flex h-7 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-[11.5px] transition ' +
                   (active
@@ -316,7 +322,7 @@ export function AgentRosterSidebar({
                   imgSize={18}
                   imgClassName="h-[18px] w-[18px] rounded-md"
                 />
-                <span className="font-medium">{item.label}</span>
+                <span className={'font-medium ' + item.nameClass}>{item.label}</span>
                 {item.hasAsk ? (
                   <span aria-hidden="true" className="absolute right-0.5 top-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
                 ) : item.running ? (
@@ -341,19 +347,21 @@ export function AgentRosterSidebar({
         {/* 当前声部的近况：预览与未读数，行内截断（窄宽度下的信息位） */}
         <span className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.5">
           <span
-            title={activeAgent.subtitle}
+            title={groupActive ? t('群聊：只有对话列表，@ 指定 agent') : activeAgent.subtitle}
             className={
               'min-w-0 truncate text-[11px] ' +
-              (activeAgent.hasAsk
-                ? 'font-medium text-amber-500'
-                : activeAgent.running
-                  ? 'font-medium text-seal'
-                  : 'text-ink-faint')
+              (groupActive
+                ? 'font-medium text-teal-700 dark:text-teal-300'
+                : activeAgent.hasAsk
+                  ? 'font-medium text-amber-500'
+                  : activeAgent.running
+                    ? 'font-medium text-seal'
+                    : 'text-ink-faint')
             }
           >
-            {activeAgent.subtitle}
+            {groupActive ? t('群通道 · 只有对话列表 · @ 指定 agent') : activeAgent.subtitle}
           </span>
-          {typeof activeAgent.count === 'number' && activeAgent.count > 0 && (
+          {!groupActive && typeof activeAgent.count === 'number' && activeAgent.count > 0 && (
             <span className="shrink-0 rounded-full bg-line/65 px-1.5 py-0.5 text-[9.5px] font-medium tabular-nums leading-none text-ink-faint">
               {activeAgent.count}
             </span>
@@ -396,8 +404,25 @@ export function AgentRosterSidebar({
           <span aria-hidden="true" className="w-6 border-t border-line/60" />
 
           <div className="flex flex-col items-center gap-1.5" role="tablist" aria-orientation="vertical">
+            {onOpenGroup ? (
+              <button
+                type="button"
+                data-agent-group-collapsed="true"
+                aria-pressed={groupActive}
+                title={t('群聊：只有对话列表，@ 指定 agent')}
+                onClick={onOpenGroup}
+                className={
+                  'flex h-10 w-10 items-center justify-center rounded-full border transition ' +
+                  (groupActive
+                    ? 'border-teal-500/50 bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                    : 'border-transparent bg-teal-500/10 text-teal-600 hover:bg-teal-500/15')
+                }
+              >
+                <Users size={18} />
+              </button>
+            ) : null}
             {agents.map((item) => {
-              const active = mode === item.id
+              const active = !groupActive && mode === item.id
               return (
                 <button
                   key={item.id}
@@ -406,6 +431,11 @@ export function AgentRosterSidebar({
                   aria-selected={active}
                   title={`${item.label} · ${item.subtitle}`}
                   onClick={() => onSelectMode(item.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setContextMenu({ agentId: item.id, x: e.clientX, y: e.clientY })
+                  }}
                   className={
                     'relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border transition ' +
                     (active
@@ -464,10 +494,47 @@ export function AgentRosterSidebar({
         aria-orientation="vertical"
         className="flex min-h-0 flex-[2] flex-col gap-2 overflow-y-auto p-2.5 pb-1"
       >
+        {onOpenGroup ? (
+          <button
+            type="button"
+            data-agent-group="true"
+            aria-pressed={groupActive}
+            onClick={onOpenGroup}
+            className={
+              'group flex w-full shrink-0 items-center gap-2.5 rounded-2xl border px-2 py-2.5 text-left transition ' +
+              (groupActive
+                ? 'border-teal-500/40 bg-teal-500/10 text-ink-strong shadow-xs'
+                : 'border-transparent text-ink-soft hover:border-line/60 hover:bg-card/55 hover:text-ink')
+            }
+          >
+            <span className="flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-full border border-teal-500/30 bg-teal-500/10 text-teal-600">
+              <Users size={25} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center justify-between gap-1.5">
+                <span className="truncate text-[13px] font-semibold text-ink-strong">{t('群聊')}</span>
+                <span className="shrink-0 rounded-md bg-teal-500/10 px-1.5 py-0.5 text-[9.5px] font-medium leading-none text-teal-700 dark:text-teal-300">
+                  {t('群通道')}
+                </span>
+              </span>
+              <span className="mt-1 block truncate text-[11px] text-ink-faint">
+                {t('只有对话列表；@ 指定 agent 才会进对方通道')}
+              </span>
+            </span>
+          </button>
+        ) : null}
         {agents.map((item) => {
-          const active = mode === item.id
+          const active = !groupActive && mode === item.id
           return (
-            <div key={item.id} className="shrink-0">
+            <div
+              key={item.id}
+              className="shrink-0"
+              onContextMenu={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setContextMenu({ agentId: item.id, x: e.clientX, y: e.clientY })
+              }}
+            >
               <div
                 className={
                   'group relative flex w-full items-center gap-2.5 rounded-2xl border px-2 py-2.5 transition ' +
@@ -550,7 +617,7 @@ export function AgentRosterSidebar({
               <span className="min-w-0 flex-1">
                 <span className="flex items-center justify-between gap-1.5">
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate text-[13px] font-semibold text-ink-strong">
+                    <span className={'truncate text-[13px] font-semibold ' + item.nameClass}>
                       {item.label}
                     </span>
                     <span
@@ -561,11 +628,21 @@ export function AgentRosterSidebar({
                       {item.roleTag}
                     </span>
                   </span>
-                  {item.timeLabel && (
-                    <span className="shrink-0 text-[10px] tabular-nums text-ink-faint">
-                      {item.timeLabel}
-                    </span>
-                  )}
+                  <span className="flex items-center gap-1 shrink-0">
+                    {pinnedAgents.has(item.id) && (
+                      <span
+                        title={isPinLocked(item.id) ? t('默认置顶') : t('已置顶')}
+                        className="text-seal/80 shrink-0"
+                      >
+                        <Pin size={10} className="fill-seal/20 -rotate-45" />
+                      </span>
+                    )}
+                    {item.timeLabel && (
+                      <span className="text-[10px] tabular-nums text-ink-faint">
+                        {item.timeLabel}
+                      </span>
+                    )}
+                  </span>
                 </span>
 
                 <span className="mt-0.5 flex items-center gap-1">
@@ -612,22 +689,42 @@ export function AgentRosterSidebar({
         })}
       </div>
 
-      {/* 下块（高度权重 1）：当前选中声部的对话历史。设置入口不在历史块——名册卡的头像就是设置按钮 */}
-      <div data-roster-history={mode} className="flex min-h-0 flex-[1] flex-col border-t border-line/50">
+      {/* 下块（高度权重 1）：当前选中 agent 的 work 上下文。role 层每个 agent 只有一段会话，不再重复列出 */}
+      <div data-roster-work={groupActive ? 'group' : mode} className="flex min-h-0 flex-[1] flex-col border-t border-line/50">
         <div className="flex shrink-0 items-center gap-1.5 border-b border-line/50 px-3.5 py-1.5">
           <span className="truncate text-[11.5px] font-semibold text-ink-soft">
-            {agents.find((item) => item.id === mode)?.label ?? t(DEFAULT_AGENT_NAME[mode])}
+            {groupActive
+              ? t('群聊')
+              : (agents.find((item) => item.id === mode)?.label ?? t(DEFAULT_AGENT_NAME[mode]))}
+          </span>
+          <span className="ml-auto shrink-0 text-[10.5px] text-ink-faint">
+            {groupActive ? t('只有对话列表') : t('工作上下文')}
           </span>
         </div>
         <div
-          data-roster-conv-list={mode}
+          data-roster-work-list={groupActive ? 'group' : mode}
           className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-2.5 pt-1.5"
         >
-          {convSection(mode)}
+          {groupActive ? (
+            <p className="px-1.5 py-1 text-[10.5px] leading-relaxed text-ink-faint">
+              {t('群聊只有对话列表；@ 指定 agent 后，消息会进入对方自己的思维层。')}
+            </p>
+          ) : (
+            workSection(mode)
+          )}
         </div>
       </div>
         </div>
       )}
+      {/* 智能体卡片右键菜单 */}
+      <AgentContextMenu
+        menu={contextMenu}
+        isPinned={contextMenu ? pinnedAgents.has(contextMenu.agentId) : false}
+        isLocked={contextMenu ? isPinLocked(contextMenu.agentId) : false}
+        onTogglePin={(agentId) => setPinnedAgents((prev) => toggleAgentPin(prev, agentId))}
+        onOpenSettings={onOpenSettings}
+        onClose={() => setContextMenu(null)}
+      />
     </aside>
   )
 }

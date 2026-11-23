@@ -17,6 +17,8 @@ import { MessageSquare, Sparkles } from 'lucide-react'
 import WaveBars from '../../WaveBars'
 import { CompactionDivider } from './CompactionDivider'
 import { HiddenDivider, MessageRow, Parts } from './MessageBubble'
+import { MindMessageRow } from './MindMessageRow'
+import { useRecentWindow } from './useRecentWindow'
 import type { MessageListProps } from './MessageList'
 import type { InjectItem } from './partGroups'
 import type { ConversationMessage } from '../../../agent/types'
@@ -78,8 +80,8 @@ function toSegments(messages: ConversationMessage[]): { segments: Segment[]; pen
 }
 
 /**
- * 空态文案表（键 = 声部 id）：标题、一句话职责、可选的「可以这样对我说」建议。
- * 可交流声部给建议（用户能直接输入）；工作流驱动的声部不给建议（输入区是锁着的）。
+ * 空态文案表（键 = role id）：标题、一句话职责、可选的「可以这样对我说」建议。
+ * 可交流 role 给建议（用户能直接输入）；工作流驱动的 role 不给建议（输入区是锁着的）。
  */
 const EMPTY_COPY: Record<string, { ready: string; body: string; suggestions?: string[] }> = {
   free: {
@@ -94,20 +96,20 @@ const EMPTY_COPY: Record<string, { ready: string; body: string; suggestions?: st
   },
   dispatcher: {
     ready: '调度龟已就绪',
-    body: '把需求说给我：我会分派给合适的声部，跟踪到交付再向你汇报',
-    suggestions: ['把我的需求分派出去', '现在有哪些任务在进行？', '查一说出卷龟现在的进度'],
+    body: '把需求说给我：我会用 chat.send 派给合适的 role，或用 work 派单，跟踪到交付再向你汇报',
+    suggestions: ['把我的需求分派出去', '现在有哪些 work 在跑？', '查一下出卷龟现在的进度'],
   },
   examiner: {
     ready: '出卷龟已就绪',
-    body: '承接出卷与阅卷任务（工作流与委托触发），照规程交付试卷与错题讲解',
+    body: '承接出卷与阅卷任务（工作流与 role 派单触发），照规程交付试卷与错题讲解',
   },
   designer: {
     ready: '设计龟已就绪',
-    body: '承接互动课堂课件与超级实验室（工作流与委托触发），画面与交互按规程交付',
+    body: '承接互动课堂课件与超级实验室（工作流与 role 派单触发），画面与交互按规程交付',
   },
   researcher: {
     ready: '调研龟已就绪',
-    body: '承接联网调研与内置浏览器操作（会话由工作流与委托触发）',
+    body: '承接联网调研与内置浏览器操作（会话由工作流与 role 派单触发）',
   },
   fixer: {
     ready: '维修龟已就绪',
@@ -132,19 +134,29 @@ export function useMessageList({
   onSelectPrompt,
   goalId,
   free,
-  /** 空态随声部：voice id（'free' / 声部 id）与显示名；不给 = 导师口径（老调用方零改动） */
+  /** 空态随 role：voice id（'free' / role id）与显示名；不给 = 导师口径（老调用方零改动） */
   emptyVoice,
   emptyName,
+  mind = false,
+  agentName = '',
+  resetKey = '',
 }: MessageListProps) {
+  /*
+   * 只挂最近一屏：完整 messages 仍在 store 里（搜索/定位/导出照旧），
+   * 但 DOM 里不再一次铺几万条。滚动到顶部附近再由哨兵补上一页。
+   */
+  const { start, hasOlder, sentinelRef } = useRecentWindow(messages.length, resetKey)
+  const visibleMessages = useMemo(() => messages.slice(start), [messages, start])
+  const adjustedSummaryStart = Math.max(0, summaryStart - start)
   /*
    * 分段只在 messages 变了之后重算：流式写作时 messages 身份不变（正在长的那一段
    * 走 streaming，见 AgentPanel），于是 prelude 数组的身份也稳定——memo 过的消息行
    * 不会因为每个 chunk 重渲染一次而被打掉。
    */
-  const { segments, pending } = useMemo(() => toSegments(messages), [messages])
+  const { segments, pending } = useMemo(() => toSegments(visibleMessages), [visibleMessages])
   /**
-   * 空态随声部：copy 表按 emptyVoice 取（缺省 = 导师口径，老调用方零改动）；
-   * 建议只有可交流声部才有（工作流驱动的声部输入区是锁着的，建议点不了）。
+   * 空态随 role：copy 表按 emptyVoice 取（缺省 = 导师口径，老调用方零改动）；
+   * 建议只有可交流 role 才有（工作流驱动的 role 输入区是锁着的，建议点不了）。
    */
   // free 标志优先：固定聊天页签的空态永远是自由对话口径（emptyVoice 只是补充）
   const emptyCopy = EMPTY_COPY[free ? 'free' : (emptyVoice ?? 'tutor')] ?? EMPTY_COPY.tutor
@@ -189,6 +201,14 @@ export function useMessageList({
         </div>
       )}
 
+      {/* 顶部哨兵：进入视口前 120px 就补上一页；真源仍在 store，滚回去还能继续加载 */}
+      {hasOlder ? (
+        <div className="mb-2 flex items-center justify-center text-[10.5px] text-ink-faint">
+          向上滚动加载更早的消息…
+        </div>
+      ) : null}
+      <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
+
       {/* 摘要卡永远在最上面：压缩之后它就是第一条消息（旧消息全部失活、只作显示） */}
       {summary && (
         <CompactionDivider summary={summary} open={summaryOpen} onToggle={() => setSummaryOpen((v) => !v)} />
@@ -206,26 +226,28 @@ export function useMessageList({
             <HiddenDivider
               key={seg.msgs[0].id}
               msgs={seg.msgs}
-              faded={seg.start < summaryStart}
+              faded={seg.start < adjustedSummaryStart}
               flash={seg.msgs.some((m) => m.id === flashId)}
               msgRefs={msgRefs}
             />
           )
         }
         const m = seg.m
-        return (
-          <MessageRow
-            key={m.id}
-            m={m}
-            prelude={seg.prelude}
-            faded={seg.at < summaryStart}
-            flash={flashId === m.id}
-            msgRefs={msgRefs}
-            onResumeNotice={onResumeNotice}
-            setBubblePreview={setBubblePreview}
-            onOpenFile={onOpenFile}
-            goalId={goalId}
-          />
+        const rowProps = {
+          m,
+          prelude: seg.prelude,
+          faded: seg.at < adjustedSummaryStart,
+          flash: flashId === m.id,
+          msgRefs,
+          onResumeNotice,
+          setBubblePreview,
+          onOpenFile,
+          goalId,
+        }
+        return mind ? (
+          <MindMessageRow key={m.id} {...rowProps} agentName={agentName} />
+        ) : (
+          <MessageRow key={m.id} {...rowProps} />
         )
       })}
 
@@ -235,14 +257,14 @@ export function useMessageList({
             还没落库的那一轮：攒下的提示词注入交给它——与落库之后并进回复是同一个位置，
             用户不会在这一轮收口时看到那几行「跳」一下。
           */}
-          <Parts parts={streaming} prelude={pending.length ? pending : undefined} streaming={true} />
+          <Parts parts={streaming} prelude={pending.length ? pending : undefined} streaming={true} mind={mind} />
         </div>
       )}
 
       {/* 没有流式内容、也没有回复可挂的注入（极少见：用户刚发出、导师还没开口）：自己成一组 */}
       {pending.length > 0 && !(streaming && streaming.length > 0) && (
         <div className="mb-4">
-          <Parts parts={[]} prelude={pending} />
+          <Parts parts={[]} prelude={pending} mind={mind} />
         </div>
       )}
 

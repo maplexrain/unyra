@@ -5,6 +5,7 @@
 import { domOp } from '../../lib/docDom'
 import { MAX_TOOL_IMAGES, type AgentContext, type AgentTool, type AgentToolResult, type MessageImage } from '../types'
 import { buildApi, clip, imagesOf } from './api'
+import { apiResultOf } from './wrap'
 import { renderApiHelp, renderGroupHelp, renderRootHelp } from './apiRegistry'
 import { safeJson } from './askForm'
 import { compileBody } from './body'
@@ -149,7 +150,7 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
         }
         if (name === 'log') {
           logLine(...callArgs)
-          return null
+          return { ok: true, api: 'log', lines: callArgs.length }
         }
         if (name === 'ui.dom.session') {
           const root = opts.ui?.domRoot?.() ?? null
@@ -164,7 +165,7 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
           const [sid, op, opArgs] = callArgs as [string, string, unknown[]]
           const root = typeof sid === 'string' ? domSessions.get(sid) : undefined
           if (!root) throw new Error('ui.dom 会话已失效（文档被切换或关闭了），请重新调 api.ui.dom')
-          return domOp(root, String(op ?? ''), Array.isArray(opArgs) ? opArgs : [])
+          return apiResultOf(name, domOp(root, String(op ?? ''), Array.isArray(opArgs) ? opArgs : []))
         }
         /**
          * ui.dom 的**进程内直调**通道：真沙箱里回调在 Worker 侧，走上面的
@@ -180,7 +181,7 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
           if (!root) {
             throw new Error('文档区现在没有可访问的 DOM：请先打开一份文档（api.ui.point 可以打开一个页签）')
           }
-          return await fn(makeDomFacade(root))
+          return apiResultOf(name, await fn(makeDomFacade(root)))
         }
         const segs = name.split('.')
         let targetObj: unknown = api
@@ -204,6 +205,7 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
         } catch (err) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
+        value = apiResultOf(name, value)
         const images = imagesOf(value)
         if (!images.length) return value
         for (const img of images) {

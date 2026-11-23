@@ -152,7 +152,7 @@ export function useWorkflowStarters(deps: WorkflowStartersDeps) {
       params: { target: target.id, ...(shellUuid ? { shell: shellUuid } : {}) },
       voice: 'dispatcher',
     })
-    onToast(t('已启动超级实验室：调度员会分派给设计师，确认表单在智能体团队里'))
+    onToast(t('已启动超级实验室：调度员会派给设计师，确认表单在角色阵容里'))
   }
 
   /**

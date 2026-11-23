@@ -11,6 +11,7 @@ import {
   HardDrive,
   Info,
   Keyboard,
+  Layers,
   Palette,
   PlugZap,
   Terminal,
@@ -19,7 +20,7 @@ import {
 import { isDevUnlocked } from '../../lib/devMode'
 import { isWeb } from '../../lib/native'
 
-export type TabKey = 'ai' | 'appearance' | 'input' | 'reminder' | 'performance' | 'window' | 'storage' | 'migration' | 'plugins' | 'update' | 'about' | 'dev'
+export type TabKey = 'ai' | 'appearance' | 'doc-design' | 'input' | 'reminder' | 'performance' | 'window' | 'storage' | 'migration' | 'plugins' | 'update' | 'about' | 'dev'
 
 export interface SubTab {
   key: string
@@ -46,8 +47,8 @@ export const loadSavedTab = (): TabKey => {
     if (v === 'dev') return isDevUnlocked() ? 'dev' : 'ai'
     if (isWeb() && (v === 'window' || v === 'update')) return 'ai'
     const keys: TabKey[] = isWeb()
-      ? ['ai', 'appearance', 'input', 'reminder', 'performance', 'storage', 'migration', 'plugins', 'about']
-      : ['ai', 'appearance', 'input', 'reminder', 'performance', 'window', 'storage', 'migration', 'plugins', 'update', 'about']
+      ? ['ai', 'appearance', 'doc-design', 'input', 'reminder', 'performance', 'storage', 'migration', 'plugins', 'about']
+      : ['ai', 'appearance', 'doc-design', 'input', 'reminder', 'performance', 'window', 'storage', 'migration', 'plugins', 'update', 'about']
     return keys.includes(v as TabKey) ? (v as TabKey) : 'ai'
   } catch {
     return 'ai'
@@ -84,6 +85,11 @@ const ALL_TABS: SettingsTabItem[] = [
       { key: 'locale', label: '界面语言' },
       { key: 'features', label: '辅助与提示' },
     ],
+  },
+  {
+    key: 'doc-design',
+    label: '文档设计',
+    icon: Layers,
   },
   // 「输入」= 键盘与麦克风：改键、语音转文字。它们都是「怎么把话喂进这个应用」，
   // 放在一起才找得到（教学模式那个开关在外观里，它管的是显示）

@@ -28,13 +28,13 @@ const goal = (goalId: string, conversationId: string | null = 'c1'): AgentTabRef
   goalId,
   conversationId,
 })
-const sub = (conversationId: string, sessionId: string): AgentTabRef => ({ kind: 'sub', conversationId, sessionId })
+const sub = (conversationId: string, sessionId: string): AgentTabRef => ({ kind: 'work', conversationId, workId: sessionId })
 
 describe('agentTabKey', () => {
   it('目标级按目标加会话、子代理按会话、固定聊天恒定', () => {
     expect(agentTabKey(goal('g1', 'c1'))).toBe('ga:g1:c1')
     expect(agentTabKey(goal('g1', null))).toBe('ga:g1')
-    expect(agentTabKey(sub('c1', 's1'))).toBe('sa:s1')
+    expect(agentTabKey(sub('c1', 's1'))).toBe('wa:s1')
     expect(agentTabKey({ kind: 'free', conversationId: null })).toBe('free')
   })
 })
@@ -119,7 +119,7 @@ describe('removeAgentTabsOfGoals', () => {
   it('文档区关闭目标后只移除目标导师，保留子代理和其它目标', () => {
     const tabs = [goal('g1'), goal('g2'), sub('c1', 's1')]
     const removed = removeAgentTabsOfGoals(tabs, 'ga:g1:c1', new Set(['g1']))
-    expect(removed.tabs.map(agentTabKey)).toEqual(['ga:g2:c1', 'sa:s1'])
+    expect(removed.tabs.map(agentTabKey)).toEqual(['ga:g2:c1', 'wa:s1'])
     expect(removed.active).toBe('ga:g2:c1')
   })
 
@@ -174,7 +174,7 @@ describe('agentTabCloseBlock', () => {
 })
 
 const CONVS = [
-  { id: 'c1', goalId: 'g1', subagents: { sessions: [{ id: 's1' }, { id: 's2' }] } },
+  { id: 'c1', goalId: 'g1', works: { sessions: [{ id: 's1' }, { id: 's2' }] } },
   { id: 'c2', goalId: 'g1' },
   { id: 'c3', goalId: 'g2' },
 ]
@@ -182,7 +182,7 @@ const CONVS = [
 describe('normalizeAgentTabs', () => {
   const ctx = { goals: new Set(['g1', 'g2']), conversations: CONVS }
 
-  it('目标 / 会话 / 子代理会话已经没了的页签当场剪掉，支持同目标多会话页签共存', () => {
+  it('目标 / 会话 / work 已经没了的页签当场剪掉，支持同目标多会话页签共存', () => {
     const { tabs } = normalizeAgentTabs(
       [goal('g1', 'c1'), goal('g9'), sub('c1', 's1'), sub('c1', 'ghost'), sub('c9', 's1'), goal('g1', 'c2'), goal('g1', 'c1')],
       null,
@@ -241,8 +241,8 @@ describe('页签归属与目标绑定', () => {
 
   it('栏上只有当前目标的导师与它的子代理', () => {
     const tabs = [goal('g1', 'c1'), goal('g2', 'c2'), sub('c1', 's1'), sub('c2', 's2')]
-    expect(visibleAgentTabs(tabs, 'g1', goalOfConversation).map(agentTabKey)).toEqual(['ga:g1:c1', 'sa:s1'])
-    expect(visibleAgentTabs(tabs, 'g2', goalOfConversation).map(agentTabKey)).toEqual(['ga:g2:c2', 'sa:s2'])
+    expect(visibleAgentTabs(tabs, 'g1', goalOfConversation).map(agentTabKey)).toEqual(['ga:g1:c1', 'wa:s1'])
+    expect(visibleAgentTabs(tabs, 'g2', goalOfConversation).map(agentTabKey)).toEqual(['ga:g2:c2', 'wa:s2'])
   })
 
   it('固定聊天不参与过滤（它常驻栏上，由调用方另加在最左）', () => {

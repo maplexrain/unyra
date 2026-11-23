@@ -440,6 +440,7 @@ export default function EffortSlider({ value, onChange, compact = false, classNa
               key={e}
               type="button"
               tabIndex={-1}
+              title={t(REASONING_HINT[e])}
               onClick={(ev) => {
                 ev.stopPropagation()
                 onChange(e)

@@ -9,13 +9,16 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import type { MessageQuote, PendingFile, PendingImage } from '../../agent/types'
+import type { ChannelStamp, MessageQuote, PendingFile, PendingImage } from '../../agent/types'
 import type { AgentVoice } from '../../agent/agentProfile'
+import { DEFAULT_AGENT_NAME } from '../../agent/agentProfile'
 import type { AgentRunTarget } from '../agent/sandboxOps'
 import type { PromptModule } from '../ai/promptModules'
 import { addConversation, conversationById, nodeById, resolveDisplayedConversation } from '../graph'
-import { resolveVoiceConversation, voiceConversationId, voiceOfConversation } from '../agentTeam/voiceConvs'
+import { resolveRoleConversation, roleConversationId, roleOfConversation, ensureRoleConversation } from '../roleWork/roles'
 import { findWorkflow, renderWorkflowInstruction, workflowModules, workflowPrep } from '../workflows'
+import { appendGroupMessage } from '../groupChat'
+import { groupPeer, inboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
 import { native } from '../../lib/native'
 import { MIN_ACTIVE_MESSAGES, activeMessages } from '../compact'
 import { t } from '../../i18n'
@@ -49,6 +52,7 @@ export function useAgentActions(deps: {
     isCompactTurn?: boolean,
     modules?: PromptModule[],
     wfParams?: Record<string, string | number>,
+    channel?: ChannelStamp,
   ) => Promise<void>
 }) {
   const { getLatest, set, goalId, nodeId, conversationId, running, onNoticeRef, pendingWfRef, wfChainRef, autoCompactRef, wfDrainRef, runTurn } = deps
@@ -66,6 +70,8 @@ export function useAgentActions(deps: {
         quote?: MessageQuote
         images?: PendingImage[]
         files?: PendingFile[]
+        /** 这条用户消息的来源通道（写进消息，history 据此补来源/时间戳） */
+        channel?: ChannelStamp
         /**
          * 显式目标：keepalive 的页签面板各自绑定自己的会话——后台页签的输入框
          * 发出去也要落到它自己那一段对话上，不能借用「眼前激活的页签」。
@@ -92,7 +98,7 @@ export function useAgentActions(deps: {
               goalId: effectiveGoalId,
               nodeId: effectiveNodeId || null,
               conversationId: effectiveConvId,
-              voice: voiceOfConversation(conversationById(s, effectiveConvId)) as AgentVoice,
+              voice: roleOfConversation(conversationById(s, effectiveConvId)) as AgentVoice,
             }
           }
         }
@@ -106,6 +112,11 @@ export function useAgentActions(deps: {
         opts?.quote,
         opts?.images,
         opts?.files,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        opts?.channel,
       )
     },
     [goalId, nodeId, conversationId, runTurn, getLatest],
@@ -146,15 +157,17 @@ export function useAgentActions(deps: {
         /** 显式目标：节点刚创建、hook 状态还没跟上时用 */
         target?: AgentRunTarget
         /**
-         * 分诊给哪位声部跑（agent team 的团队分工）：**工作流统一经调度员路由**（voiceForWorkflow
-         * 恒返回 dispatcher）——工作流轮起在调度员的会话上，由它委托给对应声部；不给 = 导师
-         * （当前显示的那段）。compact 不给 voice：压缩是当前会话的维护操作，不经调度员。
+         * 分诊给哪位 role 跑（角色阵容的分工）：**外部工作流统一经群聊进入**，默认 @调度龟，
+         * 由它用 chat.send / work 递归派给对应 role；显式 target 的内部续跑才留在私聊。
+         * compact 不给 voice：压缩是当前会话的维护操作，也不经调度员。
          */
         voice?: AgentVoice
         /** 附带的图片附件 */
         images?: PendingImage[]
         /** 附带的文件附件 */
         files?: PendingFile[]
+        /** 显式要求从群聊进入（外部触发但带来了固定 target 的工作流，如报错修复） */
+        viaGroup?: boolean
       },
     ) => {
       let target = opts?.target ?? null
@@ -170,12 +183,12 @@ export function useAgentActions(deps: {
 
         if (targetGoalId && opts?.voice && opts.voice !== 'tutor') {
           // 系统侧分诊（工作流统一经调度员路由）：落调度员的会话，由它委托给对应声部
-          //（没有就给确定性 id，首轮启动落库，见 learn/agentTeam/voiceConvs）
+          //（没有就给确定性 id，首轮启动落库，见 learn/roleWork/roles）
           target = {
             goalId: targetGoalId,
             nodeId: nid || null,
             conversationId:
-              resolveVoiceConversation(s, opts.voice, targetGoalId) ?? voiceConversationId(targetGoalId, opts.voice),
+              resolveRoleConversation(s, opts.voice, targetGoalId) ?? roleConversationId(targetGoalId, opts.voice),
             voice: opts.voice,
           }
         } else if (targetGoalId) {
@@ -192,7 +205,8 @@ export function useAgentActions(deps: {
         }
       }
       if (!target) return
-      const found = findWorkflow(getLatest(), target.goalId, ref)
+      const baseTarget = target
+      const found = findWorkflow(getLatest(), baseTarget.goalId, ref)
       if (!found) {
         onNoticeRef.current?.(t('没有叫「{0}」的工作流（列表见超级导师设置，或让导师 api.wf.list()）', ref))
         return
@@ -207,9 +221,88 @@ export function useAgentActions(deps: {
       }
       // 档位全应用唯一（全局滑条）：聊天轮与工作流轮同档，绝不自动翻面（见 learn/effortGuard）。
       // 把这一轮的 promise 交回给调用方：手动压缩要知道「这一轮什么时候跑完」（见 compactNow）
+      const instruction = renderWorkflowInstruction(found.instruction, opts?.params)
+      /*
+       * 外部入口（新目标 / 出卷 / 阅卷 / 开讲 / 超级实验室 / 联网调研 / 释义 / 大纲导读…）
+       * 默认从群聊进入：先落一条 `@目标龟` 的群流水，再把同一件事以隐藏工作流指令投给目标 role。
+       * 群消息是用户可见的任务票；隐藏指令保留模块 / 参数 / 兜底，目标 role 的回复因为
+       * recent inbound = group 会回到群里，调度龟再按群聊递归派给其他兄弟。
+       *
+       * 内部续跑（wfDrain / 自动开讲 / 手动压缩）带显式 target，或属于 compact 维护轮，
+       * 走私聊闭环，不能在用户没要求时凭空往群里塞消息；少数外部但带固定 target 的入口
+       * （如报错修复）用 opts.viaGroup 显式要求进群。
+       */
+      const groupVoice = opts?.voice ?? 'dispatcher'
+      const viaGroup =
+        found.id !== 'compact' &&
+        (opts?.viaGroup ?? !opts?.target)
+      if (viaGroup) {
+        const latest = getLatest()
+        const ensured = ensureRoleConversation(latest, groupVoice, baseTarget.goalId)
+        if (ensured.store !== latest) set(ensured.store)
+        const groupTarget = {
+          ...baseTarget,
+          conversationId: ensured.conversationId,
+          voice: groupVoice,
+        }
+        const roleName = DEFAULT_AGENT_NAME[groupVoice]
+        const rolePeer = peerOf('agent', groupVoice, roleName)
+        const from = userPeer()
+        const now = Date.now()
+        const label = found.name
+        const body = `@${roleName} 【外部工作流 · ${label}】已触发，请处理。`
+        const groupMessage = inboundEnvelope({
+          channel: 'group',
+          from,
+          to: groupPeer(),
+          text: body,
+          ts: now,
+          mentions: [rolePeer],
+          goalId: groupTarget.goalId,
+          extra: { title: `工作流指令 · ${label}`, text: instruction },
+        })
+        appendGroupMessage(groupMessage)
+        // 群聊入站信封落进目标 role 的通道：chat.send 的「从哪来回哪去」与兜底都读最近入站。
+        const current = conversationById(getLatest(), groupTarget.conversationId)
+        if (current) {
+          const inbound = inboundEnvelope({
+            channel: 'group',
+            from,
+            to: rolePeer,
+            text: body,
+            ts: now,
+            id: groupMessage.id,
+            mentions: [rolePeer],
+            goalId: groupTarget.goalId,
+            extra: { title: `工作流指令 · ${label}`, text: instruction },
+          })
+          set({
+            ...getLatest(),
+            conversations: getLatest().conversations.map((c) =>
+              c.id === groupTarget.conversationId
+                ? { ...c, channels: [...(c.channels ?? []), inbound].slice(-200), updatedAt: now }
+                : c,
+            ),
+          })
+        }
+        return runTurn(
+          groupTarget,
+          instruction,
+          true,
+          opts?.hint,
+          undefined,
+          opts?.images,
+          opts?.files,
+          found.name,
+          false,
+          workflowModules(found),
+          opts?.params,
+          { channel: 'group', from, to: rolePeer, ts: now, envelopeId: groupMessage.id, goalId: groupTarget.goalId ?? undefined },
+        )
+      }
       return runTurn(
-        target,
-        renderWorkflowInstruction(found.instruction, opts?.params),
+        baseTarget,
+        instruction,
         true,
         opts?.hint,
         undefined,
@@ -262,8 +355,8 @@ export function useAgentActions(deps: {
             goalId: conv.goalId,
             nodeId: goal?.rootNodeId || null,
             conversationId: id,
-            // store 里的会话不会是 free（仅聊天另存 freeChat）；类型面收窄见 voiceOfConversation 的说明
-            voice: voiceOfConversation(conv) as AgentVoice,
+            // store 里的会话不会是 free（仅聊天另存 freeChat）；类型面收窄见 roleOfConversation 的说明
+            voice: roleOfConversation(conv) as AgentVoice,
           },
         })
       } else {
@@ -366,7 +459,7 @@ export function useAgentActions(deps: {
           goalId: node.goalId,
           nodeId: node.id,
           conversationId: conv,
-          voice: voiceOfConversation(conversationById(getLatest(), conv)) as AgentVoice,
+          voice: roleOfConversation(conversationById(getLatest(), conv)) as AgentVoice,
         },
         text,
         true,
@@ -399,7 +492,7 @@ export function useAgentActions(deps: {
               goalId,
               nodeId: nodeId || null,
               conversationId,
-              voice: voiceOfConversation(conversationById(getLatest(), conversationId)) as AgentVoice,
+              voice: roleOfConversation(conversationById(getLatest(), conversationId)) as AgentVoice,
             }
           : null)
       if (!tgt) return

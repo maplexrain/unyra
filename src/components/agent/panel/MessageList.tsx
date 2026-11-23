@@ -34,7 +34,18 @@ export interface MessageListProps {
   goalId?: string
   /** 自由/固定聊天页签（不是导师，空占位显示通用对话内容） */
   free?: boolean
-  /** 空态随声部：声部 id（'free' = 仅聊天）与显示名 */
+  /** 空态随 role：role id（'free' = 仅聊天）与显示名 */
   emptyVoice?: string
   emptyName?: string
+  /**
+   * 思维层：过程件逐条铺开（不归组）、消息不带聊天气泡，且**消息行第一层不折叠**
+   * （只有消息内部的过程件可折叠）。work 视图恒为 true；role 视图由 chat/mind 页签决定。
+   */
+  mind?: boolean
+  /** 当前 role 的显示名：mind 无信封行与用户消息对端标签用 */
+  agentName?: string
+  /** 当前 role 的头像 id */
+  agentAvatarId?: string
+  /** 最近窗口的复位键：切换会话 / 目标时必须回到尾部，不沿用上一段的加载深度 */
+  resetKey?: string
 }

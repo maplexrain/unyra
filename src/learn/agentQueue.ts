@@ -15,7 +15,7 @@
  * 这与输入框草稿的待遇一致（草稿也不落盘）。真要落盘，落下的也只是半条消息。
  */
 
-import type { PendingFile, PendingImage } from '../agent/types'
+import type { ChannelStamp, PendingFile, PendingImage } from '../agent/types'
 import type { AgentRunTarget } from './agent/sandboxOps'
 
 export interface QueuedMessage {
@@ -33,6 +33,8 @@ export interface QueuedMessage {
    */
   target?: AgentRunTarget
   free?: boolean
+  /** 这条消息的来源通道（排进队列时先记下来，派发时还原成 user 消息的来源戳） */
+  channel?: ChannelStamp
   /** 排进来的时刻（列表按它排序就是按发出来的先后，同时也是排查用的时间戳） */
   at: number
 }

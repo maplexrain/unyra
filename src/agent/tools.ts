@@ -45,7 +45,9 @@ export type {
   WebOps,
   WorkflowOps,
   WorkspaceOps,
-  TeamOps,
+  WorkSandboxApi,
+  ChatSandboxApi,
+  HostSandboxApi,
 } from './sandbox/types'
 export { EXAM_ACTIONS } from './sandbox/types'
 

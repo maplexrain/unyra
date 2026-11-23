@@ -2,7 +2,7 @@
  * 本文件负责：会话（按目标归属）的增删查，以及会话标题与消息正文的编辑。
  */
 import type { Conversation } from '../../agent/types'
-import { voiceOfConversation } from '../agentTeam/voiceConvs'
+import { roleOfConversation } from '../roleWork/roles'
 import type { LearnStore } from '../types'
 
 export function conversationById(store: LearnStore, conversationId: string): Conversation | undefined {
@@ -14,14 +14,13 @@ export function conversationById(store: LearnStore, conversationId: string): Con
 /**
  * 某目标的**导师**会话，按创建时间升序。
  *
- * agent team 分工之后（见 learn/agentTeam/voiceConvs），store.conversations 里还住着
- * 承接声部（调度员 / 出卷师 / 设计师 / 调研员 / 维修员）的工作会话——它们各有自己的解析通道
- * （voiceConversationsOfGoal），这里按声部过滤到导师，让「目标的当前会话」的既有
- * 语义（显示 / 激活 / 兜底）不被 specialists 的会话污染。
+ * role-work 之后 store.conversations 里还住着其它 role（调度员 / 出卷师 / 设计师 / 调研员 /
+ * 维修员）的工作会话——这里按 role 过滤到导师，让「目标的当前会话」的既有语义
+ * （显示 / 激活 / 兜底）不被 specialists 的会话污染。
  */
 export function conversationsOfGoal(store: LearnStore, goalId: string): Conversation[] {
   return store.conversations
-    .filter((c) => c.goalId === goalId && voiceOfConversation(c) === 'tutor')
+    .filter((c) => c.goalId === goalId && roleOfConversation(c) === 'tutor')
     .sort((a, b) => a.createdAt - b.createdAt)
 }
 
@@ -62,8 +61,8 @@ export function resolveDisplayedConversation(store: LearnStore, goalId: string):
     }
   }
 
-  if (activeTabKey && activeTabKey.startsWith('sa:')) {
-    const activeTab = store.agentTabs?.find((t) => t.kind === 'sub' && 'sa:' + t.sessionId === activeTabKey)
+  if (activeTabKey && activeTabKey.startsWith('wa:')) {
+    const activeTab = store.agentTabs?.find((t) => t.kind === 'work' && 'wa:' + t.workId === activeTabKey)
     if (activeTab?.conversationId) {
       const conv = conversationById(store, activeTab.conversationId)
       if (conv && conv.goalId === goalId) return conv.id

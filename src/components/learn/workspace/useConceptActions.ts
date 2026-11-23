@@ -272,7 +272,7 @@ export function useConceptActions(deps: ConceptActionsDeps) {
       quote,
       ...(convId ? { target: { goalId: node.goalId, nodeId: node.id, conversationId: convId } } : {}),
     })
-    onToast(t('已就选段提问，回复见智能体团队页签'))
+    onToast(t('已就选段提问，回复见角色阵容页签'))
   }
 
   return {

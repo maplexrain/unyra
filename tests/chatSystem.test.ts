@@ -8,15 +8,23 @@ describe('固定聊天系统提示词 (buildFreeChatSystem)', () => {
     expect(prompt).toContain('日常闲聊、答疑解惑、概念辨析、思路启发、自由问答与交流')
   })
 
-  it('包含立即终止具体任务的红线铁律与明确话术', () => {
+  it('聊天龟是 role：具体任务交给 work，不亲手做也不谎报完成', () => {
     const prompt = buildFreeChatSystem()
-    expect(prompt).toContain('严禁处理具体任务（立即终止）')
-    expect(prompt).toContain('编写、修改、整理学习讲义或教学文档')
-    expect(prompt).toContain('生成、调整知识图谱、节点或学习大纲')
-    expect(prompt).toContain('出试卷、测评、判卷或批改作业')
-    expect(prompt).toContain('项目编码、修改工程代码、在工作区创建/读写文件')
-    expect(prompt).toContain('你必须立即终止该任务')
-    expect(prompt).toContain('当前页签仅作为聊天，无法处理具体的任务，请打开任务处理的页签（即上方带有 task 标识的页签）进行操作。')
+    expect(prompt).toContain('具体任务不在你这一层亲手做')
+    expect(prompt).toContain('编写讲义 / 文档')
+    expect(prompt).toContain('生成知识图谱')
+    expect(prompt).toContain('出卷判卷')
+    expect(prompt).toContain('api.work.create / api.work.send')
+    expect(prompt).toContain("api.chat.send({ channel: 'user', text })")
+    expect(prompt).not.toContain('任何任务指令在此页签均视为非法越界')
+  })
+
+  it('固定组文档列出 work / chat 的调用面', () => {
+    const prompt = buildFreeChatSystem()
+    expect(prompt).toContain('api.work.list()')
+    expect(prompt).toContain('api.work.status(name)')
+    expect(prompt).toContain('api.work.kill(name)')
+    expect(prompt).toContain('api.chat.send({ channel, to?, text')
   })
 
   it('支持附加自定义系统提示词', () => {

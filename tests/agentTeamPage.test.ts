@@ -5,9 +5,9 @@ import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { tabKey, tabTitle, tabTrail, tabNodeId } from '../src/learn/tabs'
 import { normalizeTab } from '../src/learn/store/normalize/tabs'
 import type { AgentTabRef, LearnStore } from '../src/learn/types'
-import type { Conversation } from '../src/agent/types'
+import type { Conversation, WorkSession } from '../src/agent/types'
 import { agentTabKey } from '../src/learn/agentTabs'
-import { addFreeConversation, deleteFreeConversation, getFreeConversations, hydrateFreeChat } from '../src/learn/freeChat'
+import { hydrateFreeChat } from '../src/learn/freeChat'
 import { deleteConversation } from '../src/learn/graph/conversations'
 import { repairAgentTabsAfterDelete, useAgentTabActions } from '../src/components/learn/workspace/useAgentTabActions'
 import { AgentSlot, type AgentSlotDeps } from '../src/components/learn/workspace/AgentSlot'
@@ -444,19 +444,26 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
     host.remove()
   })
 
-  it('AgentRosterSidebar 对话历史块（下块）：只显示当前声部的历史，选择/新建/删除带声部回调', () => {
-    const onSelectConversation = vi.fn()
-    const onNewConversation = vi.fn()
-    const onDeleteConversation = vi.fn()
-
-    const convs = {
-      free: sortConversationsByTimeDesc([
-        makeConv({ id: 'f-old', title: '更早的自由聊', createdAt: 1000, updatedAt: 1000 }),
-        makeConv({ id: 'f-new', title: '最近的自由聊', createdAt: 500, updatedAt: 9000 }),
-      ]),
-      tutor: sortConversationsByTimeDesc([
-        makeConv({ id: 't-1', title: '导师讨论一', createdAt: 1000, updatedAt: 9000 }),
-      ]),
+  it('AgentRosterSidebar 工作上下文块（下块）：只显示当前 agent 的 work，点击打开 work 页签', () => {
+    const onOpenWork = vi.fn()
+    const work = (id: string, name: string, at: number, extra: Partial<WorkSession> = {}): WorkSession => ({
+      id,
+      name,
+      roleId: 'free',
+      roleConversationId: 'f-new',
+      status: 'idle',
+      runs: 1,
+      createdAt: at,
+      lastActiveAt: at,
+      runtimeMs: 0,
+      systemPrompt: '',
+      messages: [],
+      execTrace: [],
+      ...extra,
+    })
+    const worksByAgent = {
+      free: [work('w-free-new', '整理自由聊天', 9000, { runs: 2, lastDelivery: '交付一' }), work('w-free-old', '旧工作', 1000)],
+      tutor: [work('w-tutor', '推导极限', 8000, { roleId: 'tutor', roleConversationId: 't-1', status: 'running' })],
     }
 
     const propsFor = (mode: 'free' | 'tutor') =>
@@ -465,16 +472,11 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
         onSelectMode: () => {},
         activeGoalTitle: '线性代数',
         voiceStats: {},
-        conversationsByAgent: convs,
-        activeConversationByAgent: { free: 'f-new', tutor: 't-1' },
-        runningByConversation: {},
-        pendingAskByConv: {},
+        worksByAgent,
+        onOpenWork,
         activeGoalId: 'g1',
         goals: [],
         goalTitleOf: () => '',
-        onSelectConversation,
-        onNewConversation,
-        onDeleteConversation,
       })
 
     const host = document.createElement('div')
@@ -484,69 +486,48 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
       root.render(propsFor('free'))
     })
 
-    // 下块只渲染当前声部（free）的历史；导师的历史不出现
-    expect(host.querySelector('[data-roster-conv-list="free"]')).not.toBeNull()
-    expect(host.querySelector('[data-roster-conv-list="tutor"]')).toBeNull()
-    const rows = [...host.querySelectorAll<HTMLElement>('[data-conversation-id]')]
-    expect(rows.map((r) => r.dataset.conversationId)).toEqual(['f-new', 'f-old'])
-
-    const clickConvIn = (h: HTMLElement, id: string) => {
-      const btn = h.querySelector<HTMLButtonElement>(`[data-conversation-id="${id}"] button`)!
-      act(() => {
-        btn.click()
-      })
-    }
-    const btnByLabel = (h: HTMLElement, label: string) =>
-      [...h.querySelectorAll<HTMLButtonElement>('button')].filter(
-        (b) => b.textContent?.includes(label) || b.getAttribute('aria-label') === label,
-      )
+    // 下块只渲染当前 agent（free）的 work；导师的 work 不出现
+    expect(host.querySelector('[data-roster-work-list="free"]')).not.toBeNull()
+    expect(host.querySelector('[data-roster-work-list="tutor"]')).toBeNull()
+    const rows = [...host.querySelectorAll<HTMLElement>('[data-work-id]')]
+    expect(rows.map((r) => r.dataset.workId)).toEqual(['w-free-new', 'w-free-old'])
+    expect(host.textContent).toContain('2 次任务')
+    expect(host.textContent).toContain('交付一')
 
     act(() => {
-      clickConvIn(host, 'f-old')
+      host.querySelector<HTMLButtonElement>('[data-work-id="w-free-old"]')!.click()
     })
-    expect(onSelectConversation).toHaveBeenCalledWith('free', 'f-old')
+    expect(onOpenWork).toHaveBeenCalledWith('free', 'w-free-old')
 
-    act(() => {
-      btnByLabel(host, '新建对话')[0].click()
-    })
-    expect(onNewConversation).toHaveBeenCalledWith('free')
-
-    const deleteOld = host
-      .querySelector<HTMLElement>('[data-conversation-id="f-old"]')!
-      .querySelectorAll('button')[1]
-    act(() => {
-      deleteOld.click()
-    })
-    expect(onDeleteConversation).toHaveBeenCalledWith('free', 'f-old')
-
-    // 名册卡不再内嵌子列表（历史统一住下块）
-    expect(host.querySelector('[aria-expanded]')).toBeNull()
+    // role 层每个 agent 只有一段会话，下块不再提供新建 / 选择 / 删除对话
+    expect(host.querySelector('[data-conversation-id]')).toBeNull()
+    expect([...host.querySelectorAll<HTMLButtonElement>('button')].some((b) => b.textContent?.includes('新建对话'))).toBe(false)
 
     act(() => {
       root.unmount()
     })
     host.remove()
 
-    // 切到导师声部：下块整体换成导师的历史
+    // 切到导师声部：下块整体换成导师的 work
     const host2 = document.createElement('div')
     document.body.appendChild(host2)
     const root2 = createRoot(host2)
     act(() => {
       root2.render(propsFor('tutor'))
     })
-    expect(host2.querySelector('[data-roster-conv-list="tutor"]')).not.toBeNull()
-    expect(host2.querySelector('[data-roster-conv-list="free"]')).toBeNull()
+    expect(host2.querySelector('[data-roster-work-list="tutor"]')).not.toBeNull()
+    expect(host2.querySelector('[data-roster-work-list="free"]')).toBeNull()
+    expect(host2.textContent).toContain('运行中')
     act(() => {
-      clickConvIn(host2, 't-1')
+      host2.querySelector<HTMLButtonElement>('[data-work-id="w-tutor"]')!.click()
     })
-    expect(onSelectConversation).toHaveBeenCalledWith('tutor', 't-1')
+    expect(onOpenWork).toHaveBeenCalledWith('tutor', 'w-tutor')
 
     act(() => {
       root2.unmount()
     })
     host2.remove()
   })
-
   it('聊天列表预览与标题剥掉 HTML/SVG/围栏代码等渲染态内容（占位符 + 纯文本）', () => {
     const svgConv = {
       id: 'c-svg',
@@ -831,13 +812,14 @@ describe('AgentSettingsView 智能体独立设置页', () => {
       )
     })
 
-    for (const title of ['身份', '提供商 · 模型', '思考强度', 'execute 开放的 api', '集成的工作流', '系统提示词']) {
+    for (const title of ['身份', '提供商 · 模型', '思考强度', 'execute 开放的 api', '工作层的工作流', '系统提示词']) {
       expect(host.textContent).toContain(title)
     }
-    // 系统提示词是导师全文（buildTeacherSystem）的只读 pre
-    const pre = host.querySelector('pre')
-    expect(pre?.textContent).toContain('智能导师助手')
-    expect(pre?.textContent).toContain('内置工作流与任务规程')
+    // 系统提示词按分段展示：所有 pre 组合成完整提示词文本
+    const presText = Array.from(host.querySelectorAll('pre')).map((p) => p.textContent).join('\n')
+    expect(presText).toContain('智能导师助手')
+    expect(presText).toContain('api.work.create')
+    expect(presText).not.toContain('内置工作流与任务规程')
 
     // 改名（受控 input）
     const nameInput = host.querySelector<HTMLInputElement>('input[type="text"]')!
@@ -889,21 +871,26 @@ describe('AgentSettingsView 智能体独立设置页', () => {
       )
     })
 
-    // 全部行都带「内置 · 恒开放」徽标；没有任何移除按钮、没有添加下拉
-    expect(host.textContent).toContain('内置 · 恒开放')
-    expect(host.textContent).toContain('按团队分工固定')
+    // 固定组 / 非固定组分开列，全部恒开放；没有任何移除按钮、没有添加下拉
+    expect(host.textContent).toContain('固定 · 恒开放')
+    expect(host.textContent).toContain('固定组')
+    expect(host.textContent).toContain('非固定组')
+    expect(host.textContent).toContain('role 层不直接持有领域能力')
     expect([...host.querySelectorAll<HTMLButtonElement>('button[aria-label^="移除"]')]).toHaveLength(0)
     expect(host.querySelector('[data-api-add]')).toBeNull()
-    // 导师分工面里的组都在清单里；core 只出现一次（合成行 + 目录行不重复）
-    expect(host.textContent).toContain('执行控制（顶层函数）')
-    const codeKeys = [...host.querySelectorAll('code')].map((c) => c.textContent)
-    expect(codeKeys.some((k) => k === 'node')).toBe(true)
-    expect(codeKeys.filter((k) => k === 'core')).toHaveLength(1)
-    // 分出去的域（判卷与课件的 exam / classroom、调研的 web / browser）不在导师的清单里
-    expect(codeKeys.some((k) => k === 'exam')).toBe(false)
-    expect(codeKeys.some((k) => k === 'classroom')).toBe(false)
-    expect(codeKeys.some((k) => k === 'web')).toBe(false)
-    expect(codeKeys.some((k) => k === 'browser')).toBe(false)
+    // role 的固定面只有 tmp / work / chat + compact（help 恒在），领域组一律不在
+    const codeKeys = [...host.querySelectorAll('[data-api-section] code')].map((c) => c.textContent)
+    for (const key of ['api.tmp', 'api.work', 'api.chat', 'api.compact', 'api.help']) {
+      expect(codeKeys.filter((k) => k === key)).toHaveLength(1)
+    }
+    for (const key of ['api.node', 'api.wait', 'api.exam', 'api.classroom', 'api.web', 'api.browser']) {
+      expect(codeKeys.some((k) => k === key)).toBe(false)
+    }
+    // 工作层只读：固定面与按 role 派生面都直接来自架构，没有任何增删入口
+    const workLayer = host.querySelector('[data-work-layer]')
+    expect(workLayer?.textContent).toContain('工作层（work）')
+    expect(workLayer?.textContent).toContain('api.host')
+    expect([...workLayer!.querySelectorAll('button')]).toHaveLength(0)
     // 旧设置被无视：不触发任何 onChange
     expect(onChange).not.toHaveBeenCalled()
 
@@ -937,7 +924,7 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     // 分工面内的内置行（开讲）恒在且锁死（默认态没有任何移除按钮）；下拉只列登记条目
     //（不在分工面里的内置规程——出卷——连展示都没有，更进不了下拉）
     expect(host.textContent).toContain('开讲')
-    expect(host.textContent).toContain('未添加任何项：登记的工作流全部可用（本声部的内置规程面恒开放）。')
+    expect(host.textContent).toContain('未添加任何项：登记的工作流全部可用（本 role 的内置规程面恒开放）。')
     expect([...host.querySelectorAll<HTMLButtonElement>('button[aria-label^="移除"]')]).toHaveLength(0)
     const add = host.querySelector<HTMLSelectElement>('[data-wf-add]')!
     expect([...add.options].map((o) => o.value).filter(Boolean)).toEqual(['wf_custom'])
@@ -1001,7 +988,7 @@ describe('AgentSettingsView 智能体独立设置页', () => {
           }),
         )
       })
-      const pre = host.querySelector('pre')!.textContent!
+      const pre = Array.from(host.querySelectorAll('pre')).map((p) => p.textContent).join('\n\n')
       act(() => {
         root.unmount()
       })
@@ -1009,31 +996,36 @@ describe('AgentSettingsView 智能体独立设置页', () => {
       return pre
     }
 
-    // 导师全文恒定：api 速查与规程按团队分工拼装（分出去的域不在，分诊口径在场）
+    // 导师 role 全文恒定：只留人格 / 分诊 / 固定 API，执行规程不在
     const text = render({ apiGroups: ['web'] } as AgentProfile)
-    expect(text).toContain('【开讲】教学文档生成（teach-node）')
-    expect(text).toContain('委托 examiner（出卷龟）')
-    expect(text).toContain('委托 designer（设计龟）')
+    expect(text).toContain("'examiner'")
+    expect(text).toContain("'designer'")
     expect(text).toContain('你是「归一 Unyra」的导师龟')
+    expect(text).toContain('api.work.create')
+    expect(text).not.toContain('【开讲】教学文档生成（teach-node）')
+    expect(text).not.toContain('#### api.node')
     expect(text).not.toContain('#### api.exam')
     expect(text).not.toContain('【出卷】试卷命题（exam）')
 
-    // 命题官：创作规程与阅卷规程都在（判卷已并入），共享前缀逐字节一致
+    // 命题官 role：领域规程与 api 全部在 work，role 预览不再出现
     const examinerText = render({}, 'examiner')
-    expect(examinerText).toContain('【出卷】试卷命题（exam）')
-    expect(examinerText).toContain('【阅卷】判分与讲解（exam-grade）')
-    expect(examinerText).toContain('#### api.exam')
+    expect(examinerText).toContain('api.work.create')
+    expect(examinerText).not.toContain('【出卷】试卷命题（exam）')
+    expect(examinerText).not.toContain('【阅卷】判分与讲解（exam-grade）')
+    expect(examinerText).not.toContain('#### api.exam')
     expect(examinerText.startsWith(SHARED_AGENT_PREFIX)).toBe(true)
 
-    // 维修员：只拿修图规程
+    // 维修员 role：修图规程在 work，不在 role
     const fixerText = render({}, 'fixer')
-    expect(fixerText).toContain('【修复函数图像】Plot 错误快速纠偏（plot-fix）')
+    expect(fixerText).not.toContain('【修复函数图像】Plot 错误快速纠偏（plot-fix）')
     expect(fixerText.startsWith(SHARED_AGENT_PREFIX)).toBe(true)
 
-    // 仅聊天：能力面由架构固定，提示词恒定
+    // 仅聊天 role：只有 work / chat，联网与日程在 work
     const freeText = render({}, 'free')
-    expect(freeText).toContain('api.web.search')
-    expect(freeText).toContain('api.schedule.*')
+    expect(freeText).toContain('api.work.create')
+    expect(freeText).toContain('api.chat.send')
+    expect(freeText).not.toContain('api.web.search')
+    expect(freeText).not.toContain('api.schedule.*')
   })
 
   it('返回对话与恢复默认两个出口', () => {
@@ -1111,211 +1103,23 @@ describe('AgentSlot 对话历史切换回归', () => {
     await hydrateFreeChat(null)
   })
 
-  it('在固定 tabGoalId 的智能体团队页签中点击对话历史，实际切换可见面板而非停留在第一段对话', () => {
-    const conv1 = makeConv({
-      id: 'c1',
-      goalId: 'g1',
-      title: '第一段讨论',
-      messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: '会话一的独占内容' }], ts: 1000 }],
-      createdAt: 1000,
-      updatedAt: 1000,
-    })
-    const conv2 = makeConv({
-      id: 'c2',
-      goalId: 'g1',
-      title: '第二段讨论',
-      messages: [{ id: 'm2', role: 'user', parts: [{ type: 'text', text: '会话二的独占内容' }], ts: 2000 }],
-      createdAt: 2000,
-      updatedAt: 2000,
-    })
-    const initialStore = {
-      goals: [{ id: 'g1', title: '微积分', question: '微积分', rootNodeId: 'n1', createdAt: 1, updatedAt: 1 }],
-      nodes: [
-        {
-          id: 'n1',
-          goalId: 'g1',
-          title: '极限',
-          key: '极限',
-          description: '',
-          docs: { teaching: { content: '', updatedAt: 1 } },
-          notes: [],
-          annotations: [],
-          status: 'learning',
-          origin: 'user',
-          createdAt: 1,
-          updatedAt: 1,
-        },
-      ],
-      conversations: [conv1, conv2],
-      exams: [],
-      resources: {},
-      activeGoalId: 'g1',
-      activeNodeId: 'n1',
-      activeConversationId: 'c1',
-      agentTabs: [
-        { kind: 'goal', goalId: 'g1', conversationId: 'c1' },
-        { kind: 'goal', goalId: 'g1', conversationId: 'c2' },
-      ],
-      agentActiveTab: 'ga:g1:c1',
-      docArea: { focus: 'g-main', layout: { kind: 'group', group: 'g-main' }, groups: [{ id: 'g-main', active: null, tabs: [] }] },
-      drafts: {},
-      docScroll: {},
-      localFiles: [],
-    } as unknown as LearnStore
-
-    const f1 = addFreeConversation(500)
-    const f2 = addFreeConversation(600)
-    f1.title = '自由一'
-    f2.title = '自由二'
-
-    let latestStore = initialStore
-    const getLatest = () => latestStore
-    const writeStore = (next: LearnStore) => {
-      latestStore = next
-    }
-
-    function Harness() {
-      const [store, setStore] = useState<LearnStore>(initialStore)
-      const [freeConvId, setFreeConvId] = useState<string | null>(f2.id)
-      const set = (next: LearnStore) => {
-        writeStore(next)
-        setStore(next)
-      }
-
-      const actions = useAgentTabActions({
-        getLatest,
-        set,
-        onToast: () => {},
-        setSidebarOpen: () => {},
-        runningByConversation: {},
-      })
-
-      const freeTabRef = useMemo<AgentTabRef>(
-        () => ({ kind: 'free', conversationId: freeConvId }),
-        [freeConvId],
-      )
-      const agentTabs = store.agentTabs
-      const agentPanes = useMemo(() => [freeTabRef, ...(agentTabs ?? [])], [freeTabRef, agentTabs])
-      const activeAgentTab = useMemo(() => {
-        if (store.agentActiveTab === 'free') return freeTabRef
-        const tabs = agentTabs ?? []
-        return tabs.find((t) => agentTabKey(t) === store.agentActiveTab) ?? tabs[0] ?? freeTabRef
-      }, [store.agentActiveTab, agentTabs, freeTabRef])
-
-      const deps: AgentSlotDeps = {
-        store,
-        getLatest,
-        set,
-        agent: {
-          runningByConversation: {},
-          pendingAskByConv: {},
-          streams: {},
-          queues: {},
-          tpsByConv: {},
-          liveUsageByConv: {},
-          compactingConvId: null,
-          subRunsAll: [],
-        } as unknown as AgentSlotDeps['agent'],
-        freeChats: getFreeConversations(),
-        currentFreeConvId: freeConvId,
-        setFreeConvId,
-        onToast: () => {},
-        openTab: () => {},
-        effort: 'medium',
-        setGlobalEffort: () => {},
-        hasKey: true,
-        providerName: 'test',
-        vision: false,
-        agentSettings: { persona: 'default', docFormat: 'markdown', compact: { threshold: 70 } } as unknown as AgentSlotDeps['agentSettings'],
-        setSettingsEpoch: () => {},
-        agentPanes,
-        activeAgentTab,
-        activeAgentTabId: agentTabKey(activeAgentTab),
-        activateAgentTab: actions.activateAgentTab,
-        openAgentTab: actions.openAgentTab,
-        selectTutorGoal: actions.selectTutorGoal,
-        exitSubagentView: actions.exitSubagentView,
-        handleNewGoalConversation: actions.handleNewGoalConversation,
-        removeConversation: actions.removeConversation,
-        newConversationIn: actions.newConversationIn,
-        selectConversationIn: actions.selectConversationIn,
-        pruneImagesOf: actions.pruneImagesOf,
-        startSuperLab: () => {},
-        newExam: () => {},
-        shouldWaitInLine: () => false,
-        tabGoalId: 'g1',
-      }
-
-      return createElement(AgentSlot, { deps })
-    }
-
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-    const root = createRoot(host)
-
-    act(() => {
-      root.render(createElement(Harness))
-    })
-
-    const visiblePaneText = () => {
-      const panes = [...host.querySelectorAll<HTMLElement>('.moji-tab-transition')]
-      return panes.map((p) => p.textContent ?? '').join('\n')
-    }
-
-    // 初始展示 c1，c2 处于 hidden
-    expect(visiblePaneText()).toContain('会话一的独占内容')
-    expect(visiblePaneText()).not.toContain('会话二的独占内容')
-
-    // 点击右侧对话历史切换至 c2
-    const c2Btn = host.querySelector<HTMLButtonElement>('[data-conversation-id="c2"] button')!
-    act(() => {
-      c2Btn.click()
-    })
-    expect(visiblePaneText()).toContain('会话二的独占内容')
-    expect(visiblePaneText()).not.toContain('会话一的独占内容')
-
-    // 再切回 c1
-    const c1Btn = host.querySelector<HTMLButtonElement>('[data-conversation-id="c1"] button')!
-    act(() => {
-      c1Btn.click()
-    })
-    expect(visiblePaneText()).toContain('会话一的独占内容')
-    expect(visiblePaneText()).not.toContain('会话二的独占内容')
-
-    // 切到「仅聊天」模式并在自由对话 f1 / f2 间切换
-    const freeTabBtn = host.querySelectorAll<HTMLButtonElement>('[role="tab"]')[0]
-    act(() => {
-      freeTabBtn.click()
-    })
-    const f1Btn = host.querySelector<HTMLButtonElement>(`[data-conversation-id="${f1.id}"] button`)!
-    act(() => {
-      f1Btn.click()
-    })
-    const f1Row = host.querySelector(`[data-conversation-id="${f1.id}"]`)!
-    expect(f1Row.className).toContain('bg-card')
-
-    // 切回「导师」模式（roster 里调度员在导师之上：导师是 role=tab 的第 3 枚），
-    // 记忆该目标上次选中的 c1（即使曾点过新建对话再切回也不丢）
-    const tutorTabBtn = host.querySelectorAll<HTMLButtonElement>('[role="tab"]')[2]
-    act(() => {
-      tutorTabBtn.click()
-    })
-    expect(visiblePaneText()).toContain('会话一的独占内容')
-
-    deleteFreeConversation(f1.id)
-    deleteFreeConversation(f2.id)
-    act(() => {
-      root.unmount()
-    })
-    host.remove()
-  })
-
   it('点导师：当前停在声部会话（调度员）时，必须打开导师自己的会话而不是留在声部会话上', () => {
     const tutorConv = makeConv({
       id: 't1',
       goalId: 'g1',
       title: '导师讨论',
       messages: [{ id: 'mt', role: 'user', parts: [{ type: 'text', text: '导师的对话内容' }], ts: 1000 }],
+      channels: [
+        {
+          id: 'cht',
+          kind: 'user',
+          direction: 'in',
+          from: { kind: 'user', id: 'user', name: '用户' },
+          to: { kind: 'role', id: 'tutor', name: '导师龟' },
+          text: '导师的对话内容',
+          ts: 1000,
+        },
+      ] as Conversation['channels'],
       createdAt: 1000,
       updatedAt: 1000,
     })
@@ -1325,6 +1129,17 @@ describe('AgentSlot 对话历史切换回归', () => {
       voice: 'dispatcher',
       title: '调度讨论',
       messages: [{ id: 'md', role: 'user', parts: [{ type: 'text', text: '调度员的对话内容' }], ts: 2000 }],
+      channels: [
+        {
+          id: 'chd',
+          kind: 'user',
+          direction: 'in',
+          from: { kind: 'user', id: 'user', name: '用户' },
+          to: { kind: 'role', id: 'dispatcher', name: '调度员' },
+          text: '调度员的对话内容',
+          ts: 2000,
+        },
+      ] as Conversation['channels'],
       createdAt: 2000,
       updatedAt: 2000,
     })
@@ -1421,7 +1236,6 @@ describe('AgentSlot 对话历史切换回归', () => {
         activateAgentTab: actions.activateAgentTab,
         openAgentTab: actions.openAgentTab,
         selectTutorGoal: actions.selectTutorGoal,
-        exitSubagentView: actions.exitSubagentView,
         handleNewGoalConversation: actions.handleNewGoalConversation,
         removeConversation: actions.removeConversation,
         newConversationIn: actions.newConversationIn,

@@ -383,6 +383,22 @@ export async function apiNameTests() {
     'schedule.update': "'probe-schedule', { time: '22:00' }",
     'schedule.complete': "'probe-schedule'",
     'schedule.remove': "'probe-schedule'",
+    // 文档设计域：组件清单 / 查询 / 注册 / 更新 / 删除（注册与更新用不存在的目标，
+    // 只证明 api 真的注册了，不在探针里留外部组件状态）
+    'design.component.list': '',
+    'design.component.get': "'Notice'",
+    'design.component.register': "{ name: '探针组件', description: '探针' }",
+    'design.component.update': "{ id: 'probe-component', description: '探针' }",
+    'design.component.delete': "'probe-component'",
+    // role-work：role 的 work.* / chat.*，work 的 host.*（宿主桩在 createAgentOps 里）
+    'work.list': '',
+    'work.status': "'调研-1'",
+    'work.stop': "'调研-1'",
+    'work.create': "{ name: '调研-1' }",
+    'work.kill': "'调研-1'",
+    'work.send': "{ name: '调研-1', text: '探针任务' }",
+    'chat.send': "{ channel: 'user', text: '探针：通道检查' }",
+    'host.send': "{ text: '探针交付' }",
     // 智能体团队编排（team.*）：派发器不在场时这些都要优雅应答（不能抛、不能说 api 不存在）
     'team.list': '',
     'team.status': "'tutor'",
@@ -454,6 +470,17 @@ export async function apiNameTests() {
     // team.* 的发起方身份（探针 = 导师声部的一段会话）：名单检查只问「这五个 api 在不在」，
     // 无派发器时 delegate / status 的优雅拒绝与空状态本身就是断言对象
     teamFrom: () => ({ conversationId: 'probe-conv', agent: 'tutor', goalId }),
+    // role-work 三组：工作层不在探针里真跑，只给最小宿主桩证明注册路径在
+    work: {
+      list: () => [],
+      status: () => ({ error: '探针里没有 work 会话' }),
+      stop: () => ({ ok: true }),
+      create: () => ({ ok: true, name: 'probe-work' }),
+      kill: () => ({ ok: true }),
+      send: () => ({ ok: true, name: 'probe-work' }),
+    },
+    chat: { send: (input) => ({ ok: true, channel: input.channel, id: 'probe-chat' }) },
+    host: { send: () => ({ ok: true, delivered: true }) },
     // 桩：这一组只查「名字真的注册了吗」，行为由 examTests 与用例各自覆盖
     exam: {
       create: () => ({ ok: true, content: '（桩）' }),

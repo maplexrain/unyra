@@ -61,10 +61,10 @@ export interface ComposerUiProps {
   onSetEffort: (e: ReasoningEffort) => void
   /** 点开输入框里的缩略图看大图 */
   onOpenPreview: (image: PendingImage) => void
-  /** 子会话模式（见 Composer.subMode 的说明）：面板正看着一个子代理会话 */
-  subMode?: { name: string; running: boolean }
-  /** 子代理会话入口（按钮 + 弹出列表），插在模型选择器左侧 */
-  subAgentSlot?: ReactNode
+  /** work 模式（见 Composer.workMode 的说明）：面板正看着一个 work 会话 */
+  workMode?: { name: string; running: boolean }
+  /** work 会话入口（按钮 + 弹出列表），插在模型选择器左侧 */
+  workSlot?: ReactNode
   /** 写作策略入口（导师人格 + 文档格式）：插在子代理按钮的右侧，与提供商切换同一排 */
   strategySlot?: ReactNode
   /** 这枚面板是不是眼前的页签（原样透传给 Composer：隐藏面板不登记 chip 落点） */

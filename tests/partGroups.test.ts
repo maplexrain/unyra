@@ -73,6 +73,42 @@ describe('归组', () => {
   })
 })
 
+describe('思维层平铺（flat）', () => {
+  it('相邻思考 / 工具不合并：每个过程件各自成一条', () => {
+    const groups = groupParts([think('想'), tool('t1'), mod('ui'), think('再想')], undefined, true)
+    expect(groups).toHaveLength(4)
+    for (const g of groups) {
+      expect(g.kind).toBe('group')
+      if (g.kind === 'group') expect(g.items).toHaveLength(1)
+    }
+    expect(groups.map((g) => (g.kind === 'group' ? g.items[0].type : ''))).toEqual([
+      'thinking',
+      'tool',
+      'prompt-module',
+      'thinking',
+    ])
+  })
+
+  it('轮开始注入也逐条独立，不跟思考 / 工具糊成一组', () => {
+    const groups = groupParts([think('想'), tool('t1')], [
+      { type: 'inject', id: 'm1', label: '人格', text: '全文' },
+      { type: 'inject', id: 'm2', label: '格式', text: '全文' },
+    ], true)
+    expect(groups).toHaveLength(4)
+    expect(groups.map((g) => (g.kind === 'group' ? g.items[0].type : ''))).toEqual([
+      'inject',
+      'inject',
+      'thinking',
+      'tool',
+    ])
+  })
+
+  it('正文仍独立成条，不受平铺影响', () => {
+    const groups = groupParts([think('想'), text('正文')], undefined, true)
+    expect(groups.map((g) => g.kind)).toEqual(['group', 'single'])
+  })
+})
+
 describe('轮开始时的提示词注入', () => {
   const inject = (id: string, label: string) => ({ type: 'inject' as const, id, label, text: '注入全文' })
 

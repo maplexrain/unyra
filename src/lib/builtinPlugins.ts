@@ -17,6 +17,8 @@ import { videosBlock, hydrateVideos } from './videosBlock'
 import { quoteBlock, hydrateQuotes } from './quoteBlock'
 import { AIQA_LANG, aiqaBlock, hydrateAiqa } from './aiqaBlock'
 import { PISC_LANG, piscBlock, hydratePisc } from './pisc'
+import { COMPONENT_LANG } from './componentBlock/types'
+import { componentBlock } from './componentBlock'
 import { registerRenderPlugin, type PluginRenderContext } from './renderPlugins'
 import { languageCount } from '../syntax/LanguageAliases'
 
@@ -137,6 +139,14 @@ registerRenderPlugin({
   fences: [PISC_LANG],
   render: (source: string, ctx: PluginRenderContext, info?: string) => piscBlock(source, ctx, info),
   hydrate: (root: HTMLElement) => hydratePisc(root),
+})
+
+registerRenderPlugin({
+  id: 'component',
+  name: '结构化教学排版组件',
+  builtin: true,
+  fences: [COMPONENT_LANG],
+  render: (source: string, ctx: PluginRenderContext, info?: string) => componentBlock(source, ctx, info),
 })
 
 /**

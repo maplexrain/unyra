@@ -404,9 +404,9 @@ export default function LearnWorkspace({
     const hit = goalAgentTabs.find((t) => agentTabKey(t) === store.agentActiveTab)
     if (hit) return hit
     /*
-     * 记着的激活项不在这个目标名下（切了目标、或它是别家目标的子代理）：
-     * 落到本目标这一枚——导师是跟着目标走的，切了目标却还对着上一个目标的导师说话最危险。
-     * 本目标一枚都没有时也必须回到固定聊天：固定聊天是 Agent 栏的底座，不能因为目标导师
+     * 记着的激活项不在这个目标名下（切了目标、或它是别家目标下的 work）：
+     * 落到本目标这一枚——role 是跟着目标走的，切了目标却还对着上一个目标的 role 说话最危险。
+     * 本目标一枚都没有时也必须回到固定聊天：固定聊天是 Agent 栏的底座，不能因为目标 role
      * 被关闭或旧的 activeAgentTab 失效而让整块 Agent 区消失。
      */
     return goalAgentTabs.find((t) => t.kind === 'goal') ?? freeTabRef
@@ -414,28 +414,28 @@ export default function LearnWorkspace({
   const activeAgentTabId = activeAgentTab ? agentTabKey(activeAgentTab) : null
   /**
    * 激活页签解析出的面板视图：目标级页签 → 那个目标当前展示的会话 + 落点节点；
-   * 子代理页签 → 它的父会话（subagent 的数据都住在导师对话上）与它自己的会话 id。
+   * work 页签 → 它所属的 role 会话与 work id（work 的消息与角色对话同一套渲染）。
    */
   const agentView = useMemo(() => {
     if (!activeAgentTab) return null
     if (activeAgentTab.kind === 'free') {
-      // 固定聊天没有目标/节点/子代理：这里只给出会话 id（agentTabProps 的 free 分支自己解析）
+      // 固定聊天没有目标/节点/work：这里只给出会话 id（agentTabProps 的 free 分支自己解析）
       return {
         tab: activeAgentTab,
         goalId: null as string | null,
         nodeId: null as string | null,
         conversationId: activeAgentTab.conversationId,
-        sessionId: null as string | null,
+        workId: null as string | null,
       }
     }
-    if (activeAgentTab.kind === 'sub') {
+    if (activeAgentTab.kind === 'work') {
       const conv = conversationById(store, activeAgentTab.conversationId)
       return {
         tab: activeAgentTab,
         goalId: conv?.goalId ?? null,
         nodeId: conv ? (goalFocusByGoal.get(conv.goalId) ?? null) : null,
         conversationId: activeAgentTab.conversationId,
-        sessionId: activeAgentTab.sessionId as string | null,
+        workId: activeAgentTab.workId as string | null,
       }
     }
     const goal = store.goals.find((g) => g.id === activeAgentTab.goalId) ?? null
@@ -455,7 +455,7 @@ export default function LearnWorkspace({
       goalId: activeAgentTab.goalId,
       nodeId: focusId || null,
       conversationId: convId,
-      sessionId: null as string | null,
+      workId: null as string | null,
     }
     // goalFocusByGoal 是模块级槽：读它不参与依赖（它的更新总伴随 store 变化，渲染会跟上）
   }, [activeAgentTab, store])
@@ -807,7 +807,6 @@ export default function LearnWorkspace({
     openAgentTab,
     activateAgentTab,
     selectTutorGoal,
-    exitSubagentView,
     handleNewGoalConversation,
     newConversationIn,
     selectConversationIn,
@@ -1228,7 +1227,7 @@ export default function LearnWorkspace({
       )
 
       const docAreaActivated = activateIn(docAreaWithAnchor, docAreaWithAnchor.focus, rootId)
-      const docArea = ensureGoalAgentTeamTab(docAreaActivated, goalId, now, { targetGroupId: docAreaActivated.focus })
+      const docArea = ensureGoalAgentTeamTab(docAreaActivated, goalId, now, { targetGroupId: docAreaActivated.focus, activate: true })
       const claimedOwners = claimTab(docArea.tabOwners, goalId, rootId)
 
       const nextStore: LearnStore = {
@@ -1628,7 +1627,6 @@ export default function LearnWorkspace({
     activateAgentTab,
     openAgentTab,
     selectTutorGoal,
-    exitSubagentView,
     handleNewGoalConversation,
     removeConversation,
     newConversationIn,
