@@ -30,7 +30,7 @@ import {
 import type { AskAnswers, ExamToolDeps } from '../../agent/tools'
 import { hasApiKey, loadAiSettings } from '../../ai/settings'
 import { freeConversationById, getFreeConversations, mutateFreeConversation } from '../freeChat'
-import { DEFAULT_AGENT_NAME, type AgentVoice } from '../../agent/agentProfile'
+import { agentNameOf, profileOf, type AgentVoice } from '../../agent/agentProfile'
 import { setEffortContextProbe } from '../effortGuard'
 import type { LearnStore } from '../types'
 import { conversationById, nodeById } from '../graph'
@@ -496,7 +496,7 @@ export function useAgent(opts: {
                   : 'user'
             const envelope = outboundEnvelope({
               channel: fallbackChannel,
-              from: peerOf('agent', voice, DEFAULT_AGENT_NAME[voice]),
+              from: peerOf('agent', voice, agentNameOf(profileOf(entry.agentSettings, voice), voice)),
               to:
                 fallbackChannel === 'group'
                   ? groupPeer()

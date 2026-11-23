@@ -149,6 +149,20 @@ describe('chat.send 三通道', () => {
     expect(appended).toHaveLength(0)
   })
 
+  it('group 通道：to 写 group 表示只回群里，不把它当成非法目标', async () => {
+    let passed!: { text: string; mentions?: string[] }
+    const { chat } = makeChat({
+      sendToGroup: (input) => {
+        passed = input
+        return { ok: true, channel: 'group' }
+      },
+    })
+    const r = await chat.send({ channel: 'group', to: 'group', text: '@导师龟 我收到了' })
+    expect(r).toMatchObject({ ok: true, channel: 'group' })
+    expect(passed).toMatchObject({ text: '@导师龟 我收到了' })
+    expect(passed.mentions).toBeUndefined()
+  })
+
   it('group 通道：role 会话不挂在目标上时拒绝', async () => {
     const { chat } = makeChat({ goalId: undefined })
     expect(await chat.send({ channel: 'group', text: '@导师龟 在吗' })).toMatchObject({ ok: false })

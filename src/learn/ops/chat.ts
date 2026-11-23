@@ -1,5 +1,5 @@
 /**
- * role 的 chat.send：把对话发到 user / agent / work 三种通道。
+ * role 的 chat.send：把对话发到 user / agent / work / group 四种通道。
  *
  * 只有 role 注入这一组；work 注入的是 host.send（见 learn/ops/host）。
  * 通道流水由宿主落账，来源与时间戳由这里写死，模型不能改。
@@ -7,7 +7,7 @@
 import type { AgentProfileId } from '../../agent/agentProfile'
 import type { ChannelMessage, ChannelPeer, Conversation, ConversationMessage } from '../../agent/types'
 import type { ChatCallResult, ChatSandboxApi, ChatSendInput } from '../../agent/roleWork/types'
-import { inboundEnvelope, outboundEnvelope, peerOf, stampLineOf, userPeer } from '../roleWork/channels'
+import { GROUP_PEER_ID, inboundEnvelope, outboundEnvelope, peerOf, stampLineOf, userPeer } from '../roleWork/channels'
 import { deliverInbound, markRoleOutbound } from '../roleWork/dispatch'
 
 export interface ChatOpsDeps {
@@ -121,8 +121,13 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
 
       if (channel === 'group') {
         if (!deps.goalId) return { ok: false, error: '当前 role 会话不挂在目标上，无法进入群聊' }
-        const targets = [...(input.mentions ?? [])]
-        if (input.to?.trim()) targets.push(input.to.trim())
+        // to / mentions 里的目标都是 role；模型偶尔把群 peer 本身写进 to（group），
+        // 那表示“只回群里、不点名”，不能当成一个非法的 role id 去拒绝整条消息。
+        const targets = (input.mentions ?? [])
+          .map((item) => item.trim())
+          .filter((item) => item && item !== GROUP_PEER_ID)
+        const direct = input.to?.trim()
+        if (direct && direct !== GROUP_PEER_ID) targets.push(direct)
         const result = await deps.sendToGroup({
           text: body,
           ...(targets.length ? { mentions: [...new Set(targets)] } : {}),
