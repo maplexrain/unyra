@@ -1,7 +1,7 @@
 /**
  * useAgent 一轮的**工具装配**（从 useAgent.ts 原样搬出）：这一轮唯一的工具（execute）
  * 在这里拿到它的全部能力——沙箱基座（learnSandboxOps）、工作流排队（wf.invoke）、
- * 子代理、MCP 外部服务、人机协作表单（ask）与权限审批、考试、记忆、等待、提醒、
+ * work 管理器、MCP 外部服务、人机协作表单（ask）与权限审批、考试、记忆、等待、提醒、
  * 界面操作（ui.*）、内置浏览器（browser.*），以及交付（delivery）的登记。
  *
  * 装配只在轮首做一次：本函数返回这一轮的中止器、工具数组、交付账与全局模型解析，
@@ -21,7 +21,12 @@ import { createMemoryOps } from '../memory'
 import { makeExamTool } from '../agentOps'
 import { saveScreenshot } from '../screenshots'
 import { makeBrowserOps, type BrowserDeps } from '../web/browserOps'
-import type { SubAgentManager } from '../../agent/subagent/manager'
+import type { WorkManager } from '../../agent/work/manager'
+import { createChatOps } from '../ops/chat'
+import { resolveChatAttachments } from '../roleWork/attachments'
+import { DEFAULT_AGENT_NAME, type AgentProfileId } from '../../agent/agentProfile'
+import type { ChannelMessage, Conversation, ConversationMessage } from '../../agent/types'
+import { roleConversationId } from '../roleWork/roles'
 import { emptyDelivery, mergeDelivery, normalizeDelivery } from '../../agent/delivery'
 import { native } from '../../lib/native'
 import { nodeById } from '../graph'
@@ -43,7 +48,7 @@ const MAX_WF_CHAIN = 3
  * - ctrl：本轮的中止器（ask / wait 的中止语义需要它，停止按钮也从这里摘）；
  * - tools：交给 runAgent 的工具数组（唯一的 execute 工具）；
  * - turnDelivery：本轮的交付账（文件变动 / 参考引证，收口时挂到消息上）；
- * - global / window：全局提供商 / 模型 / 档位与上下文窗口（子代理与 runAgent 都要用）。
+ * - global / window：全局提供商 / 模型 / 档位与上下文窗口（work 与 runAgent 都要用）。
  */
 export function rigTurnTools(io: {
   getLatest: () => LearnStore
@@ -77,17 +82,17 @@ export function rigTurnTools(io: {
   /** 转存失败之类的话要能说出来（ui.toast 缺席时的回落通道，见 hook 里 onNoticeRef 的说明） */
   onNoticeRef: { current: ((message: string) => void) | undefined }
   /**
-   * 这一轮由哪位声部来说话（agent team 的团队分工）：决定模型覆盖（按声部的 profile）、
-   * api 能力面（agentRuntimeApiAllow）、工作流面（agentWfGrant）与 team.* 的身份。
+   * 这一轮由哪位 role 来说话：决定模型覆盖（按 role 的 profile）、
+   * api 能力面（agentRuntimeApiAllow）、工作流面（agentWfGrant）与 chat.work 的身份。
    * 缺省 = 导师（老调用方零改动）。
    */
   voice?: AgentVoice
-  /** 子代理管理器：一段对话一个、跨轮存活（见 hook 的 getOrCreateSubManager） */
-  getOrCreateSubManager: (conversationId: string) => SubAgentManager
+  /** 当前 role 对话的 work 管理器（一段对话一个、跨轮存活） */
+  workManager: WorkManager
 }) {
-  const { getLatest, set, target, settings, agentSettings, wfParams, examDeps, afterNodeEdit, uiRef, browserFnRef, wfChainRef, pendingWfRef, askWaitersRef, setPendingAsk, onNoticeRef, getOrCreateSubManager } = io
+  const { getLatest, set, target, settings, agentSettings, wfParams, examDeps, afterNodeEdit, uiRef, browserFnRef, wfChainRef, pendingWfRef, askWaitersRef, setPendingAsk, onNoticeRef, workManager } = io
   const voice = io.voice ?? 'tutor'
-  /** 子代理 / MCP / 权限放行是导师层的机制（承接声部的分工面里没有这三组） */
+  /** MCP / 权限放行仍是导师层的机制（其它 role 的分工面里没有这两组） */
   const isTutor = voice === 'tutor'
   /**
    * 唯一的工具：模型写一段 JS，经由沙箱里的 api 完成读写。
@@ -104,17 +109,17 @@ export function rigTurnTools(io: {
   const browserDeps = browserFnRef.current?.()
   /**
    * 全局提供商 / 模型 / 思考等级：所有 AI 功能的共同基底。提前到这里，
-   * 因为子代理要跑在宿主同一轮的模型与档位上（见 subagent 的说明）。
-   * 叠加本声部的独立设置（agent/agentProfile）：提供商-模型与档位覆盖，
+   * 因为 work 要跑在宿主同一轮的模型与档位上（见 work/manager 的说明）。
+   * 叠加本 role 的独立设置（agent/agentProfile）：提供商-模型与档位覆盖，
    * 没配就逐字回落全局默认（resolveAgentGlobal 的缺省语义）。
    */
   const global = resolveAgentGlobal(settings, profileOf(agentSettings, voice))
   const window = globalContextWindow(settings)
   /**
-   * 沙箱基座：一轮对话与子代理共用同一套能力（learnSandboxOps 的产物）。
-   * execute 的能力面按团队分工走（agentRuntimeApiAllow 的运行时清单 + 提示词速查同源）；
-   * 子代理按定义的 apiGroups 取子集（见 subagent/manager）。
-   * workflowGrant 是本声部的工作流授权面（内置规程面由分工固定；登记条目只有导师可调）。
+   * 沙箱基座：一轮 role 对话与它派出的 work 共用同一套能力（learnSandboxOps 的产物）。
+   * execute 的能力面按 role 分工走（agentRuntimeApiAllow 的运行时清单 + 提示词速查同源）；
+   * work 按 WORK_API_PLANES 取子集（见 work/manager）。
+   * workflowGrant 是本 role 的工作流授权面（内置规程面由分工固定；登记条目只有导师可调）。
    */
   const sandboxBase = learnSandboxOps({
     getLatest,
@@ -124,8 +129,6 @@ export function rigTurnTools(io: {
     goalId: () => target.goalId,
     workflowGrant: agentWfGrant(agentSettings, voice),
     apiAllow: agentRuntimeApiAllow(voice),
-    // 委托发起方：本声部这一轮自己（team.* 的 from 身份，见 learn/agentTeam/delegations）
-    teamFrom: () => ({ conversationId: target.conversationId, agent: voice, goalId: target.goalId }),
     ...(afterNodeEdit ? { afterNodeEdit } : {}),
     /**
      * wf.invoke 的落点（见 WorkflowOps.invoke）：**只排队，不当场跑**。
@@ -157,32 +160,83 @@ export function rigTurnTools(io: {
       return { ok: true }
     },
   })
-  /**
-   * 子代理管理器：喂给这一轮的模型配置与沙箱基座；它启动的子代理任务用
-   * 启动那一刻的配置跑完（换轮不漂移）。导师专用——承接声部分工面里没有 subagent 组，
-   * 也不给它起管理器（省一份跨轮的空壳）。
+  /*
+   * work 管理器：喂给这一轮的模型与沙箱基座；它启动的 work 用启动那一刻的配置跑完
+   * （换轮不漂移）。role 侧通过 work.* 管理多个 work，每个 work 的上下文独立。
+   */
+  workManager.setTurn({
+    sandbox: sandboxBase,
+    provider: global.provider,
+    model: global.model,
+    // 档位全应用唯一（全局滑条）：work 与它的 role 同档，绝不各自翻面（见 learn/effortGuard）
+    effort: global.effort,
+    contextWindow: window,
+  })
+  sandboxBase.work = workManager.api
+  sandboxBase.chat = createChatOps({
+    roleId: voice as AgentProfileId,
+    roleName: DEFAULT_AGENT_NAME[voice as AgentProfileId],
+    conversationId: target.conversationId,
+    ...(target.goalId ? { goalId: target.goalId } : {}),
+    getConversation: (id) => getLatest().conversations.find((c) => c.id === id) ?? null,
+    appendChannel: (convId, envelope: ChannelMessage) => {
+      const cur = getLatest().conversations.find((c) => c.id === convId)
+      if (!cur) return
+      const conversations = getLatest().conversations.map((c) =>
+        c.id === convId ? { ...c, channels: [...(c.channels ?? []), envelope].slice(-200), updatedAt: Date.now() } : c,
+      )
+      set({ ...getLatest(), conversations })
+    },
+    userPeer: () => ({ kind: 'user', id: 'user', name: '用户' }),
+    resolveRoleConversation: (role, goalId) => {
+      const matches = getLatest().conversations.filter(
+        (c) => (c.voice ?? 'tutor') === role && (goalId == null || c.goalId === goalId),
+      )
+      matches.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+      return matches[0]?.id ?? null
+    },
+    ensureRoleConversation: (role, goalId) => {
+      const existing = getLatest().conversations.find(
+        (c) => c.goalId === goalId && (c.voice ?? 'tutor') === role,
+      )
+      if (existing) return existing.id
+      const id = roleConversationId(goalId, role as AgentVoice)
+      const now = Date.now()
+      const conv: Conversation = { id, goalId, voice: role as AgentVoice, messages: [], createdAt: now, updatedAt: now }
+      set({ ...getLatest(), conversations: [...getLatest().conversations, conv] })
+      return id
+    },
+    roleNameOf: (role) => DEFAULT_AGENT_NAME[role],
+    messageOf: (messageId): ConversationMessage | null =>
+      getLatest().conversations.find((c) => c.id === target.conversationId)?.messages.find((m) => m.id === messageId) ?? null,
+    resolveAttachments: (items) =>
+      resolveChatAttachments(items, {
+        getLatest,
+        set,
+        ...(target.goalId ? { goalId: target.goalId } : {}),
+      }),
+    sendToWork: async (name, text, messageId, attachments) => {
+      const r = await workManager.api.send({
+        name,
+        text,
+        ...(messageId ? { messageId } : {}),
+        ...(attachments?.images?.length ? { images: attachments.images } : {}),
+        ...(attachments?.files?.length ? { files: attachments.files } : {}),
+      })
+      return { ok: r.ok, channel: 'work', to: name, ...(r.error ? { error: r.error } : {}) }
+    },
+  })
+  /*
+   * MCP 外部服务挂进沙箱（mcp.list / mcp.discover / mcp.call，见 agent/mcp/ops）。
+   * 配置是这一轮现取的快照：用户改了 MCP 设置，下一轮就生效；
+   * 总开关关着时不注入——与旧做法「关闭时不注入任何 MCP 工具」同一口径。
+   * 其它 role 分工面里没有 mcp 组，也不给它们起外部连接。
    */
   if (isTutor) {
-    const manager = getOrCreateSubManager(target.conversationId)
-    manager.setTurn({
-      sandbox: sandboxBase,
-      provider: global.provider,
-      model: global.model,
-      // 档位全应用唯一（全局滑条）：子代理与它的宿主同档，绝不各自翻面（见 learn/effortGuard）
-      effort: global.effort,
-      contextWindow: window,
-    })
-    // subagent api 挂进沙箱（导师专用；子代理的 apiAllow 白名单里没有这一组）
-    sandboxBase.subagent = manager.api
-    /*
-     * MCP 外部服务挂进沙箱（mcp.list / mcp.discover / mcp.call，见 agent/mcp/ops）。
-     * 配置是这一轮现取的快照：用户改了 MCP 设置，下一轮就生效；
-     * 总开关关着时不注入——与旧做法「关闭时不注入任何 MCP 工具」同一口径。
-     * 子代理的 apiAllow 白名单里没有 mcp，subsetSandbox 也不带它——只敞给导师。
-     */
     const mcpOps = makeMcpOps(agentSettings.mcp)
     if (mcpOps) sandboxBase.mcp = mcpOps
   }
+
   /**
    * ask 的表单通道抽成局部函数：permission.request 的审批复用同一条管线
    * （展示、限时、停止中断全都一致）；区别只在结果的去向——批准由宿主直接落

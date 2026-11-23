@@ -894,11 +894,11 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     expect(host.textContent).toContain('专属 · 恒开放')
     expect(host.textContent).toContain('固定组')
     expect(host.textContent).toContain('非固定组')
-    expect(host.textContent).toContain('按团队分工固定')
+    expect(host.textContent).toContain('按架构分工固定')
     expect([...host.querySelectorAll<HTMLButtonElement>('button[aria-label^="移除"]')]).toHaveLength(0)
     expect(host.querySelector('[data-api-add]')).toBeNull()
     // 导师分工面里的组都在清单里；固定组成员（help / wait / compact）各只出现一次
-    const codeKeys = [...host.querySelectorAll('code')].map((c) => c.textContent)
+    const codeKeys = [...host.querySelectorAll('[data-api-section] code')].map((c) => c.textContent)
     expect(codeKeys.some((k) => k === 'api.node')).toBe(true)
     expect(codeKeys.filter((k) => k === 'api.wait')).toHaveLength(1)
     expect(codeKeys.filter((k) => k === 'api.compact')).toHaveLength(1)
@@ -908,6 +908,11 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     expect(codeKeys.some((k) => k === 'api.classroom')).toBe(false)
     expect(codeKeys.some((k) => k === 'api.web')).toBe(false)
     expect(codeKeys.some((k) => k === 'api.browser')).toBe(false)
+    // 工作层只读：固定面与按 role 派生面都直接来自架构，没有任何增删入口
+    const workLayer = host.querySelector('[data-work-layer]')
+    expect(workLayer?.textContent).toContain('工作层（work）')
+    expect(workLayer?.textContent).toContain('api.host')
+    expect([...workLayer!.querySelectorAll('button')]).toHaveLength(0)
     // 旧设置被无视：不触发任何 onChange
     expect(onChange).not.toHaveBeenCalled()
 
@@ -941,7 +946,7 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     // 分工面内的内置行（开讲）恒在且锁死（默认态没有任何移除按钮）；下拉只列登记条目
     //（不在分工面里的内置规程——出卷——连展示都没有，更进不了下拉）
     expect(host.textContent).toContain('开讲')
-    expect(host.textContent).toContain('未添加任何项：登记的工作流全部可用（本声部的内置规程面恒开放）。')
+    expect(host.textContent).toContain('未添加任何项：登记的工作流全部可用（本 role 的内置规程面恒开放）。')
     expect([...host.querySelectorAll<HTMLButtonElement>('button[aria-label^="移除"]')]).toHaveLength(0)
     const add = host.querySelector<HTMLSelectElement>('[data-wf-add]')!
     expect([...add.options].map((o) => o.value).filter(Boolean)).toEqual(['wf_custom'])
@@ -1016,8 +1021,8 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     // 导师全文恒定：api 速查与规程按团队分工拼装（分出去的域不在，分诊口径在场）
     const text = render({ apiGroups: ['web'] } as AgentProfile)
     expect(text).toContain('【开讲】教学文档生成（teach-node）')
-    expect(text).toContain('委托 examiner（出卷龟）')
-    expect(text).toContain('委托 designer（设计龟）')
+    expect(text).toContain("to: 'examiner'")
+    expect(text).toContain("to: 'designer'")
     expect(text).toContain('你是「归一 Unyra」的导师龟')
     expect(text).not.toContain('#### api.exam')
     expect(text).not.toContain('【出卷】试卷命题（exam）')
@@ -1238,7 +1243,6 @@ describe('AgentSlot 对话历史切换回归', () => {
         activateAgentTab: actions.activateAgentTab,
         openAgentTab: actions.openAgentTab,
         selectTutorGoal: actions.selectTutorGoal,
-        exitSubagentView: actions.exitSubagentView,
         handleNewGoalConversation: actions.handleNewGoalConversation,
         removeConversation: actions.removeConversation,
         newConversationIn: actions.newConversationIn,
@@ -1425,7 +1429,6 @@ describe('AgentSlot 对话历史切换回归', () => {
         activateAgentTab: actions.activateAgentTab,
         openAgentTab: actions.openAgentTab,
         selectTutorGoal: actions.selectTutorGoal,
-        exitSubagentView: actions.exitSubagentView,
         handleNewGoalConversation: actions.handleNewGoalConversation,
         removeConversation: actions.removeConversation,
         newConversationIn: actions.newConversationIn,

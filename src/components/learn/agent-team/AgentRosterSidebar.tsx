@@ -1,16 +1,16 @@
 /**
- * Agent 列表侧栏：智能体团队的名册（仅聊天 / 调度员 / 导师 / 出卷师 / 设计师 / 调研员 / 维修员）。
+ * Agent 列表侧栏：角色阵容的名册（仅聊天 / 调度员 / 导师 / 出卷师 / 设计师 / 调研员 / 维修员）。
  * 两种形态（variant）：
  * - side（默认）：左侧竖栏，垂直分成两块（高度权重 2:1，各自溢出滚动）——
- *   上块是声部名册，下块是**当前选中声部**的对话历史（含新建 / 删目标切换与设置入口）；
+ *   上块是 role 名册，下块是**当前选中 role** 的对话历史（含新建 / 删目标切换与设置入口）；
  *   可整体折叠成 48px 轨（forceCollapsed 时锁定不可展开）；
- * - top：容器宽度 < 800 时由 AgentSlot 切换的顶部横栏——横排声部按钮、
- *   右侧展示当前声部的近况摘要，不再有折叠语义（横排本身就是收起形态）。
+ * - top：容器宽度 < 800 时由 AgentSlot 切换的顶部横栏——横排 role 按钮、
+ *   右侧展示当前 role 的近况摘要，不再有折叠语义（横排本身就是收起形态）。
  *
- * 声部的角色标签 / 兜底图标 / 配色在 agentRoster.ts 的注册表里；名字与头像来自
- * 各自的 profile（智能体独立设置）。承接声部（出卷师 / 设计师 / 调研员 / 维修员）的工作会话
- * 由委托与系统侧分诊自动落进来，没有「新建对话」——它们按目标各有一段工作会话。
- * 设置入口在名册卡的**头像**上：点头像直接开这位声部的独立设置（AgentSettingsView）。
+ * role 的角色标签 / 兜底图标 / 配色在 agentRoster.ts 的注册表里；名字与头像来自
+ * 各自的 profile（智能体独立设置）。承接 role（出卷师 / 设计师 / 调研员 / 维修员）的会话
+ * 由 work / chat.send 派单自动落进来，没有「新建对话」——它们按目标各有一段会话。
+ * 设置入口在名册卡的**头像**上：点头像直接开这位 role 的独立设置（AgentSettingsView）。
  */
 
 import { useMemo, useState } from 'react'
@@ -25,7 +25,6 @@ import {
 import type { Conversation } from '../../../agent/types'
 import { DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import type { LearningGoal } from '../../../learn/types'
-import { delegatorVoiceOf } from '../../../learn/agentTeam/voiceConvs'
 import { t, useLocale } from '../../../i18n'
 import { AgentAvatarGlyph } from './AgentAvatarGlyph'
 import { AgentContextMenu } from './AgentContextMenu'
@@ -211,9 +210,6 @@ export function AgentRosterSidebar({
             const hasAsk = Boolean(pendingAskByConv?.[conv.id])
             const title = displayConversationTitle(conv)
             const timeLabel = formatConversationTime(conversationTimeOf(conv))
-            // 委托会话（dv:）标出来源：这一段只听哪位委托者的指令
-            const dvFrom = delegatorVoiceOf(conv)
-            const dvName = dvFrom ? agentNames?.[dvFrom]?.trim() || t(DEFAULT_AGENT_NAME[dvFrom]) : ''
             const soleEmpty =
               agentId === 'tutor' && convs.length <= 1 && conv.messages.length === 0 && !conv.title && !conv.summary
             const deleteTitle = running
@@ -250,14 +246,6 @@ export function AgentRosterSidebar({
                   >
                     {title}
                   </span>
-                  {dvFrom && (
-                    <span
-                      title={t('委托会话：由「{0}」发起，只承接它的委托，不接受直接输入', dvName)}
-                      className="shrink-0 rounded bg-seal/10 px-1 py-px text-[9.5px] leading-none text-seal-deep dark:text-seal-2"
-                    >
-                      {t('委托')}·{dvName}
-                    </span>
-                  )}
                   {timeLabel && <span className="shrink-0 text-[10.5px] tabular-nums text-ink-faint">{timeLabel}</span>}
                 </button>
                 {onDeleteConversation && (

@@ -51,8 +51,8 @@ const partText = (p: AgentPart): string =>
       ? '[' + (p.level === 'warn' ? '警告' : '提示') + '] ' + p.text
       : p.type === 'prompt-module'
         ? '〔提示词模块 ' + p.key + '〕\n' + p.text
-        : p.type === 'team-delivery'
-          ? '〔委托交付 ' + p.delegationId + '〕\n' + p.text
+        : p.type === 'channel-message'
+          ? '〔通道消息 ' + p.channelId + '〕\n' + p.text
           : (p as { text?: string }).text ?? ''
 
 /** 一条消息拆成原文段：context（节点上下文）在前、parts 在后 */
@@ -65,14 +65,14 @@ function itemsOfMessage(m: ConversationMessage): TraceItem[] {
     if (p.type === 'hop') continue // 跳边界只服务于历史还原，没有内容可看
     const text = partText(p)
     out.push({
-      kind: p.type === 'prompt-module' || p.type === 'team-delivery' ? 'module' : (p.type as TraceItem['kind']),
+      kind: p.type === 'prompt-module' || p.type === 'channel-message' ? 'module' : (p.type as TraceItem['kind']),
       title:
         p.type === 'tool'
           ? '工具调用 ' + p.name + (p.status === 'error' ? '（失败）' : p.soft ? '（部分未生效）' : '')
           : p.type === 'prompt-module'
             ? '提示词模块 ' + p.key
-            : p.type === 'team-delivery'
-              ? '委托交付 ' + p.delegationId
+            : p.type === 'channel-message'
+              ? '通道消息 ' + p.channelId
               : p.type === 'thinking'
                 ? '思考过程'
                 : p.type === 'notice'

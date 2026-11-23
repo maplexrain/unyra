@@ -100,7 +100,7 @@ export const API_GROUPS: ApiGroupDoc[] = [
   g(
     'core',
     '执行控制',
-    '顶层函数，不挂在某个组下，按名直接调用（本声部放行的在下面逐条列出）。',
+    '顶层函数，不挂在某个组下，按名直接调用（本 role 放行的在下面逐条列出）。',
     `这一组不是对象，直接写在 api 上（不挂组名）：跨组的执行控制原语。ask 支持联动表单与画像写入，fetch 是 web.fetch 的别名（数组 = 并发批量），see 能看图与 PDF 指定页——逐条签名与边界见下；下面没列的就是你调不到的。`,
     [
       a('help', 'help()', 'api 集总览', '任何时候都能调。返回的是组名与一句说明，不含具体签名；具体用法用 api.<组>.__help()。', 'const overview = await api.help()'),
@@ -413,29 +413,6 @@ tabId 可省略，默认操作当前激活的网页页签；目标支持索引�
     ],
   ),
   g(
-    'subagent',
-    '子代理',
-    '并发派活：登记定义、派任务、等待交付、恢复、干预、中断、查看、删除。',
-    `子代理适合长文档通读、繁重检索、独立并行任务。它们的 api 面按 create 时给的 tools
-白名单裁剪（可选组见回执说明）；不要指望子代理有 wf/state/exam 这些导师专用组。
-地址一律认 key（name 是显示名，碰巧写 name 也能对上）。
-**监督回路（防钻牛角尖）**：wait 超时 → api.subagent.view(agent) 看它最近在干什么 →
-确实在打转就 api.subagent.intervene(agent, 指令) 纠偏（指令在它当前这条消息输出完整后插入），
-走得正常就再发一轮 wait——超时 ≠ 卡死，别急着 interrupt。
-**挂起队列**：交付时没人在等就挂起不会丢，下一次 wait 把积压的一起返回；单次 execute
-结束时仍有子代理在后台跑是正常的——之后任何一次 execute 里都可以继续 wait 收。`,
-    [
-      a('create', 'subagent.create({ key, system, tools?, name? })', '登记一个子代理（只登记、未启动）', 'key 是地址（字母开头，≤32 字符，可用字母/数字/-/_）；system ≥20 字，写清角色、工作方式与交付纪律（子代理看不到导师的对话）；tools 从允许名单里选，默认 [web, tmp]。同 key 再 create 即覆盖定义（会话保留，新提示词从下一次任务生效）。', `const r = await api.subagent.create({ key: 'paper', system: '你是论文研读员：通读给定论文，交付方法-实验-结论三段摘要。只用 api.web 与 api.tmp。', tools: ['web', 'tmp'] })`),
-      a('run', 'subagent.run({ agent, task })', '派任务并后台启动', 'agent 认 key；task 写全：做什么、什么口径、交付什么格式。run 立即返回、任务并发跑，用 wait 收交付；同一个子代理同一时刻只跑一场。', `await api.subagent.run({ agent: 'paper', task: '通读 https://example.com/paper.pdf，交付 500 字摘要与三个关键结论' })`, { trap: 'task 要自包含：子代理看不到你们的对话' }),
-      a('resume', 'subagent.resume(key)', '继续一个被中断的子代理', '在同一份会话上接着跑，上下文保留、不加新指令；只对被中断过的有效。', `await api.subagent.resume('paper')`),
-      a('intervene', 'subagent.intervene(key, message)', '给运行中的子代理插一条指令', '用于纠偏；消息排队等子代理下一跳消费，不要频繁打断。', `await api.subagent.intervene('paper', '先只看第 3 节')`),
-      a('interrupt', 'subagent.interrupt(key)', '中断一个子代理任务', '立刻停跑但保留已产出的内容；之后可用 resume 继续。', `await api.subagent.interrupt('paper')`),
-      a('view', 'subagent.view(key)', '查看子代理会话详情', '回状态、最近过程与上次交付；判断它卡没卡、跑偏没跑偏时用。', `const detail = await api.subagent.view('paper')`),
-      a('delete', 'subagent.delete(key)', '删除一个子代理的定义与会话', '不可逆；交付没拿走前不要删。', `await api.subagent.delete('paper')`),
-      a('wait', 'subagent.wait({ seconds })', '等子代理交付', '回已完成/仍在跑/超时三类；seconds 是本次愿意等的最大时长。不要用 sleep 轮询。', `const done = await api.subagent.wait({ seconds: 60 })`, { trap: 'seconds 必带（本次愿意等的最大时长）；任何一个先完成就立即返回它，不要用 sleep 轮询' }),
-    ],
-  ),
-  g(
     'permission',
     '路径放行',
     '外部目录的查看、撤销与审批。',
@@ -584,65 +561,44 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
   ),
 
   g(
-    'team',
-    '智能体团队',
-    'list / status / delegate / complete / awake：智能体团队**全体执行声部**之间的任务委托、交付与相互唤醒（team 是被委托方收口交付的唯一通道）。',
-    `把一项任务**委托**给另一位声部：delegate 只排队（不堵塞当前进程），目标空闲时立即启动、
-忙碌时等它收口后接续；承接方做完用 complete 交付，结果传回委托者——委托者空闲就被激活，
-运行中则在当前轮的单次 loop 边界注入后继续跑。存在未完成委托时，目标空闲会被系统启动提醒。
-**承接会话由系统自动落位**：承接方按「承接声部 × 委托者 × 目标」各有一段专属委托会话，
-同一委托者的后续委托复用同一段——不需要承接方先有会话（唯一例外：free 仅聊天要先有对话；
-委托被拒就由你兜底完成或如实说明，不要重试）。
-awake 是自我唤醒：本轮收口后等待 N 时自启动，期间若有过新启动（用户发消息、委托激活）则失效。
-内置能力（委托通道本身）不可裁剪——但本组随 execute 白名单裁剪，关掉它就没有团队协作能力。`,
+    'work',
+    '工作会话',
+    'role 专属：list / status / stop / create / kill / send。把重活派给独立的 work 会话，role 只负责接口与交付。',
+    `work 是 role 的工作层：每段 work 有独立上下文、独立系统提示词，没有人格，不直接面对用户。
+**role 掌握多个 work，work 只对接创建它的这一位 role**。work 做完必须用 api.host.send 把结果交回 role；
+role 收到 Work 通道消息后再决定怎么对用户/其他 agent 说。
+status 只回执行轨迹的 execute 标题，不回工具参数与正文；要给 work 补上下文用 send，不要靠翻 status 拼过程。`,
     [
-      a(
-        'list',
-        'team.list()',
-        '列出当前可用的智能体',
-        '回 { agents: [{ id, name }] }；id 是委托与查询用的身份（free=仅聊天 / tutor=导师）。',
-        'const team = await api.team.list()',
-      ),
-      a(
-        'status',
-        'team.status(id)',
-        '查询某位智能体的当前状态',
-        "回 { id, running, processing, pendingCount, pending }：running=它当前会话有没有活着的轮；processing=它正在处理的委托（若有）；pendingCount=未处理委托数。",
-        'const s = await api.team.status("tutor")',
-      ),
-      a(
-        'delegate',
-        'team.delegate({ to, instruction, preemptibleMs?, preemptibleUntil? })',
-        '把任务委托给某位智能体（不堵塞）',
-        'to 是目标 id；instruction 写清「做什么与边界」（它是目标那一轮的指令全文）；' +
-          'preemptibleMs / preemptibleUntil 声明本委托在多久之内允许被后续委托插队——插队从队尾往前找：' +
-          '仍在允许期内（未到期）的委托会被越过，到期的不越。**只排队**：目标空闲立即启动，忙碌则等收口接续，本调用不堵塞。' +
-          '承接会话按「承接声部 × 委托者 × 目标」由系统自动落位并复用，不需要承接方先有会话（free 例外）。',
-        `const r = await api.team.delegate({
-  to: 'tutor',
-  instruction: '整理本目标本周的学习笔记，产出一份 200 字摘要。',
-  preemptibleMs: 60_000,
-})`,
-        { trap: '只排队不堵塞：回执 ok 后继续自己的工作，不要等它；承接方做完会用 complete 把交付结果传回给你' },
-      ),
-      a(
-        'complete',
-        'team.complete({ id?, result })',
-        '结束自己承接的委托并交付结果',
-        'result 是交付全文（给委托者看的话，写清结论与产物位置）；id 省略时默认结束你当前正在处理的那一条（多条在身时必须给 id）。' +
-          '交付立即传回委托者：它空闲就被激活，运行中就在它当前轮的 loop 边界注入。',
-        'await api.team.complete({ result: "摘要已写入 docs/week.md，共 200 字。" })',
-        { trap: '做完的活必须 complete 收口——不收口，系统会在你空闲时启动一轮提醒你补上' },
-      ),
-      a(
-        'awake',
-        'team.awake(ms | { seconds })',
-        '本轮收口后延迟自启动',
-        '在沙箱里调用后，本轮一旦收口就开始计时；到点仍没人启动你（用户发消息、委托交付激活都不算「没人」）就自启动一轮，' +
-          '由你继续未竟的工作或收尾。上限 10 分钟。',
-        'await api.team.awake({ seconds: 30 })',
-        { trap: '计时从本轮收口才开始；期间若有过任何新启动，自启动当场失效（不会重复醒）' },
-      ),
+      a('list', 'api.work.list()', '列出本 role 的 work 会话', '回 { works: [{ name, status, runs, runtimeMs, lastActiveAt }] }；只列当前 role 自己的 work。', `const { works } = await api.work.list()`),
+      a('status', 'api.work.status(name)', '查看指定 work 的状态与最近轨迹', '回 { name, status, runs, runtimeMs, lastActiveAt, recentExecutes: [{ at, title }], lastDelivery?, lastIssue? }。recentExecutes 只含 execute 调用的标题（description），不含参数与正文。', `const s = await api.work.status("调研-1")`, { trap: 'status 不是对话记录：看不到 work 的中间正文，只能看状态、轮次、时长与 execute 标题' }),
+      a('stop', 'api.work.stop(name)', '强制停止当前 work 轮次', '中止正在跑的那一轮，保留 work 的上下文；之后可以再 work.send 续跑。', `await api.work.stop("调研-1")`),
+      a('create', 'api.work.create({ name? })', '创建 work 会话', 'name 可命名，省略时系统给 work-N；同一 role 内重名会被拒绝。创建时固化该 role 的 work 系统提示词。', `const w = await api.work.create({ name: "调研-1" })`),
+      a('kill', 'api.work.kill(name)', '删除 work 会话', '先中止当前轮，再把会话与上下文一起删除；不可恢复。', `await api.work.kill("调研-1")`, { trap: 'kill 是删除，不是停止；只想保留上下文续跑请用 stop' }),
+      a('send', 'api.work.send({ name, text?, messageId? })', '给 work 发任务或追问', 'text 是任务全文；messageId 可直接引用 role 会话里的用户消息（连同附件转发，并标注来源）。work 空闲就起一轮，运行中则排到跳边界注入。', `await api.work.send({ name: "调研-1", messageId: "m_123" })`, { trap: 'messageId 只能引用当前 role 会话里的消息；跨 role 或查不到会整笔拒绝' }),
+    ],
+  ),
+
+  g(
+    'chat',
+    '通道对话',
+    'role 专属：chat.send 把对话发到用户 / Agent / Work 通道，可带附件。',
+    `role 的所有外部消息都经通道：user（用户）、agent（其他 role）、work（自己的 work）。
+每条入站消息由宿主标注来源与时间戳；chat.send 的 text 是**对外说的话**，不是思维过程。
+chat.send 到 work 通道等价于 work.send；到 agent 通道要写 to（目标 role id）；到 user 通道不写 to。`,
+    [
+      a('send', 'api.chat.send({ channel, to?, text, messageId?, attachments? })', '把对话发到指定通道', 'channel 取 user / agent / work；agent 要 to=role id，work 要 to=work 名；attachments 可带图/文件（moji:static 引用、workspace 路径或 http(s)），最多 4 个。messageId 可引用当前 role 会话里的用户消息（转发并标注来源）。', `await api.chat.send({ channel: "user", text: "已让调研工作去查，稍后回你。" })`, { trap: '对外只发短句；思考与工具过程留在思维层，不要抄进 chat.send' }),
+    ],
+  ),
+
+  g(
+    'host',
+    '宿主交付',
+    'work 专属：host.send 把任务结果交回所属 role。',
+    `work 不直接面对用户，也没有资格给别的 role 发消息；它只有这一条回传通道。
+交付写清结论、产物位置、没做成的部分；role 收到后才会对外说。
+一轮结束前没调用 host.send 时，宿主会把最后一段正文自动回传并标记 auto，便于 role 兜底。`,
+    [
+      a('send', 'api.host.send({ text, messageId? })', '把交付发回所属 role', 'text 是给 role 看的交付全文；messageId 可引用 role 发来的任务消息，标明这次回的是哪一条。接收方固定为创建这个 work 的 role，模型不能改。', `await api.host.send({ text: "调研完成：3 条来源，结论写在 docs/brief.md。" })`, { trap: '只发结论与产物位置，不要把中间工具日志抄给 role' }),
     ],
   ),
 

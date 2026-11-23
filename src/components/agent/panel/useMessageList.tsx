@@ -78,8 +78,8 @@ function toSegments(messages: ConversationMessage[]): { segments: Segment[]; pen
 }
 
 /**
- * 空态文案表（键 = 声部 id）：标题、一句话职责、可选的「可以这样对我说」建议。
- * 可交流声部给建议（用户能直接输入）；工作流驱动的声部不给建议（输入区是锁着的）。
+ * 空态文案表（键 = role id）：标题、一句话职责、可选的「可以这样对我说」建议。
+ * 可交流 role 给建议（用户能直接输入）；工作流驱动的 role 不给建议（输入区是锁着的）。
  */
 const EMPTY_COPY: Record<string, { ready: string; body: string; suggestions?: string[] }> = {
   free: {
@@ -94,20 +94,20 @@ const EMPTY_COPY: Record<string, { ready: string; body: string; suggestions?: st
   },
   dispatcher: {
     ready: '调度龟已就绪',
-    body: '把需求说给我：我会分派给合适的声部，跟踪到交付再向你汇报',
-    suggestions: ['把我的需求分派出去', '现在有哪些任务在进行？', '查一说出卷龟现在的进度'],
+    body: '把需求说给我：我会用 chat.send 派给合适的 role，或用 work 派单，跟踪到交付再向你汇报',
+    suggestions: ['把我的需求分派出去', '现在有哪些 work 在跑？', '查一下出卷龟现在的进度'],
   },
   examiner: {
     ready: '出卷龟已就绪',
-    body: '承接出卷与阅卷任务（工作流与委托触发），照规程交付试卷与错题讲解',
+    body: '承接出卷与阅卷任务（工作流与 role 派单触发），照规程交付试卷与错题讲解',
   },
   designer: {
     ready: '设计龟已就绪',
-    body: '承接互动课堂课件与超级实验室（工作流与委托触发），画面与交互按规程交付',
+    body: '承接互动课堂课件与超级实验室（工作流与 role 派单触发），画面与交互按规程交付',
   },
   researcher: {
     ready: '调研龟已就绪',
-    body: '承接联网调研与内置浏览器操作（会话由工作流与委托触发）',
+    body: '承接联网调研与内置浏览器操作（会话由工作流与 role 派单触发）',
   },
   fixer: {
     ready: '维修龟已就绪',
@@ -132,7 +132,7 @@ export function useMessageList({
   onSelectPrompt,
   goalId,
   free,
-  /** 空态随声部：voice id（'free' / 声部 id）与显示名；不给 = 导师口径（老调用方零改动） */
+  /** 空态随 role：voice id（'free' / role id）与显示名；不给 = 导师口径（老调用方零改动） */
   emptyVoice,
   emptyName,
 }: MessageListProps) {
@@ -143,8 +143,8 @@ export function useMessageList({
    */
   const { segments, pending } = useMemo(() => toSegments(messages), [messages])
   /**
-   * 空态随声部：copy 表按 emptyVoice 取（缺省 = 导师口径，老调用方零改动）；
-   * 建议只有可交流声部才有（工作流驱动的声部输入区是锁着的，建议点不了）。
+   * 空态随 role：copy 表按 emptyVoice 取（缺省 = 导师口径，老调用方零改动）；
+   * 建议只有可交流 role 才有（工作流驱动的 role 输入区是锁着的，建议点不了）。
    */
   // free 标志优先：固定聊天页签的空态永远是自由对话口径（emptyVoice 只是补充）
   const emptyCopy = EMPTY_COPY[free ? 'free' : (emptyVoice ?? 'tutor')] ?? EMPTY_COPY.tutor

@@ -18,14 +18,10 @@ import { emptyDocs } from '../src/learn/groups'
 import { buildDocs, buildState, parseDocs } from '../src/learn/files'
 import { activeMessages } from '../src/learn/compact'
 import { upsertAssistantInFlight } from '../src/learn/agent/inflight'
-import { createSession, withAssistantFlush, withRunOutcome, withTaskMessage } from '../src/agent/subagent/registry'
 import type { Conversation, ConversationMessage, ContextSummary } from '../src/agent/types'
 import type { LearnStore } from '../src/learn/types'
 
 const now = new Date(2026, 8, 23, 21, 0).getTime()
-
-/** 子代理定义替身（没有内置子代理了）：会话按 defKey 挂在它名下 */
-const SUB_DEF = { key: 'reader', name: '文档通读', system: '通读长文档的子代理。', apiGroups: ['doc', 'tmp'] }
 
 const msg = (id: string, role: 'user' | 'assistant', text: string): ConversationMessage => ({
   id,
@@ -206,48 +202,65 @@ describe('对话写盘 → 读回', () => {
     expect(part && part.type === 'tool' ? part.images : null).toEqual([shot])
   })
 
-  it('子代理桶活着回来：定义、会话与各自独立的上下文（normalizeConversation 的字段白名单曾经把它整层剥掉）', () => {
-    const task = withTaskMessage(createSession(SUB_DEF), '查一下勾股定理的证明思路')
-    const session = withRunOutcome(
-      withAssistantFlush(task.session, [
-        { type: 'tool', id: 't1', name: 'execute', args: '{}', result: '搜索回执', ok: true, status: 'done' },
-        { type: 'hop' },
-        { type: 'text', text: '交付正文' },
-      ]),
-      { status: 'idle', delivery: '交付正文' },
-    )
+  it('旧 subagent 桶迁进 works：定义里的 system 固化成 work.systemPrompt，消息与状态原样保留', () => {
+    const legacy = {
+      id: 'w1',
+      defKey: 'reader',
+      status: 'idle' as const,
+      runs: 1,
+      createdAt: now,
+      lastActiveAt: now,
+      messages: [
+        { id: 'u1', role: 'user', parts: [{ type: 'text', text: '查一下勾股定理的证明思路' }], ts: now } as never,
+        {
+          id: 'a1',
+          role: 'assistant',
+          parts: [
+            { type: 'tool', id: 't1', name: 'execute', args: '{}', result: '搜索回执', ok: true, status: 'done' },
+            { type: 'hop' },
+            { type: 'text', text: '交付正文' },
+          ],
+          ts: now,
+        } as never,
+      ],
+      lastDelivery: '交付正文',
+    }
     const back = roundTrip({
       ...convWith([msg('u1', 'user', '开始')]),
       subagents: {
-        defs: [SUB_DEF],
-        sessions: [session],
+        defs: [{ key: 'reader', name: '文档通读', system: '通读长文档的子代理。' }],
+        sessions: [legacy],
       },
-    })
-    expect(back.subagents?.defs).toHaveLength(1)
-    expect(back.subagents?.defs[0]).toMatchObject({ key: 'reader', apiGroups: ['doc', 'tmp'] })
-    const live = back.subagents?.sessions[0]
+    } as unknown as Conversation)
+    const live = back.works?.sessions[0]
+    expect(live?.name).toBe('文档通读')
+    expect(live?.systemPrompt).toBe('通读长文档的子代理。')
     expect(live?.runs).toBe(1)
     expect(live?.lastDelivery).toBe('交付正文')
-    // 会话自己的上下文（任务 + 含工具卡片的回复）一条不少——入口按钮与子会话视图全靠它
+    // work 自己的上下文（任务 + 含工具卡片的回复）一条不少
     expect(live?.messages).toHaveLength(2)
     expect(live?.messages[0]?.parts[0]).toEqual({ type: 'text', text: '查一下勾股定理的证明思路' })
     expect(live?.messages[1]?.parts.some((p) => p.type === 'tool')).toBe(true)
   })
 
-  it('子代理桶的坏数据不炸也不留：残留「运行中」复位「被中断」，孤儿会话剪掉，形状不对整层丢弃', () => {
-    const running = { ...withTaskMessage(createSession(SUB_DEF), '任务').session, status: 'running' as const }
-    const orphan = withTaskMessage(createSession({ ...SUB_DEF, key: 'web-search' }), '内置时代的任务').session
+  it('旧桶坏数据不炸：残留「运行中」迁成「被中断」，形状不对整层丢弃', () => {
+    const running = {
+      id: 'w2',
+      defKey: 'reader',
+      status: 'running' as const,
+      runs: 1,
+      createdAt: now,
+      lastActiveAt: now,
+      messages: [],
+    }
     const back = roundTrip({
       ...convWith([msg('u1', 'user', '开始')]),
-      subagents: { defs: [SUB_DEF], sessions: [running, orphan, { id: '半条' }] as never },
-    })
-    // running 复位为 interrupted（进程被杀时那场任务已经没了，留着只会永远脉冲）；孤儿会话不回来
-    expect(back.subagents?.sessions.map((s) => s.status)).toEqual(['interrupted'])
-    expect(back.subagents?.sessions.map((s) => s.defKey)).toEqual(['reader'])
-    expect(back.subagents?.defs).toHaveLength(1)
+      subagents: { defs: [{ key: 'reader', name: '文档通读' }], sessions: [running, { id: '半条' }] },
+    } as unknown as Conversation)
+    expect(back.works?.sessions.map((s) => s.status)).toEqual(['interrupted'])
     // 形状完全不对的整桶丢弃：读回来等于没有这个字段
-    const gone = roundTrip({ ...convWith([msg('u1', 'user', '开始')]), subagents: '乱写' as never })
-    expect(gone.subagents).toBeUndefined()
+    const gone = roundTrip({ ...convWith([msg('u1', 'user', '开始')]), subagents: '乱写' } as never)
+    expect(gone.works).toBeUndefined()
   })
 
   it('写摘要的那一轮没跑完（pending 留在盘上）：读回来就地把它应用掉', () => {    const back = roundTrip(

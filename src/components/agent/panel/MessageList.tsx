@@ -34,7 +34,7 @@ export interface MessageListProps {
   goalId?: string
   /** 自由/固定聊天页签（不是导师，空占位显示通用对话内容） */
   free?: boolean
-  /** 空态随声部：声部 id（'free' = 仅聊天）与显示名 */
+  /** 空态随 role：role id（'free' = 仅聊天）与显示名 */
   emptyVoice?: string
   emptyName?: string
 }

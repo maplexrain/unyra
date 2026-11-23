@@ -34,12 +34,12 @@ export interface InjectItem {
  * 另有第四种：InjectItem（轮开始时的提示词注入，见上）——同样是「凭什么这么答」。
  */
 export type ProcessPart =
-  | Extract<AgentPart, { type: 'thinking' } | { type: 'tool' } | { type: 'prompt-module' } | { type: 'team-delivery' }>
+  | Extract<AgentPart, { type: 'thinking' } | { type: 'tool' } | { type: 'prompt-module' } | { type: 'channel-message' }>
   | InjectItem
 
-/** 是不是过程件（组内可收拢的那三种；InjectItem 由调用方按 type 单独认） */
+/** 是不是过程件（组内可收拢的那几种；InjectItem 由调用方按 type 单独认） */
 export function isProcessPart(p: AgentPart): p is Exclude<ProcessPart, InjectItem> {
-  return p.type === 'thinking' || p.type === 'tool' || p.type === 'prompt-module' || p.type === 'team-delivery'
+  return p.type === 'thinking' || p.type === 'tool' || p.type === 'prompt-module' || p.type === 'channel-message'
 }
 
 /** 归组结果：一组过程件（渲染成可折叠的消息组），或一件独立成条的东西 */

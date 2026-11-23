@@ -153,16 +153,16 @@ export type TabRef =
  * 固定聊天：栏上最左侧那枚**常驻页签**——纯聊天（无系统提示词、无工具、没有人格），
  * 不可关闭与拖拽，不落 store（界面在页签列表前合成置左）；会话住在
  * users/{uid}/free-chat.json（learn/freeChat），conversationId 记当前展示的那一段。
- * 目标级导师：一个目标一枚页签——上下文按目标隔离（graph/conversations），页签里
+ * 目标级 role：一个目标一枚页签——上下文按目标隔离（graph/conversations），页签里
  * 可以在目标的几段对话之间切换（conversationId 记的是**当前展示**的那一段，
  * 为 null 表示还没有会话，激活时现场建）。
- * 子代理会话：页签随时可关（任务在后台继续跑，见 subagent/manager），所以
- * conversationId + sessionId 都要存——会话的渲染数据住在那一段导师对话上。
+ * work 会话：页签随时可关（work 在后台继续跑，见 agent/work/manager），所以
+ * conversationId + workId 都要存——work 的渲染数据住在它所属的那段 role 对话上。
  */
 export type AgentTabRef =
   | { kind: 'free'; conversationId: string | null }
   | { kind: 'goal'; goalId: string; conversationId: string | null }
-  | { kind: 'sub'; conversationId: string; sessionId: string }
+  | { kind: 'work'; conversationId: string; workId: string }
 
 /** 文档区的视图：源码（可编辑）、预览（渲染后）与媒体预览（图片 / 音频 / 视频的本地文件） */
 export type DocView = 'source' | 'preview' | 'media'

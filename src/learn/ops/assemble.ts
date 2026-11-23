@@ -25,7 +25,6 @@ import { createProjectOps } from './project'
 import { createChipOps } from './chip'
 import { createScheduleOps } from '../schedule'
 import { createVideoOps } from './video'
-import { createTeamOps } from './team'
 
 /**
  * 排版提醒（layoutHintOf，见 agent/docFormat）：挂在整篇写入教学文档的回执上——
@@ -169,9 +168,10 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
     // 引用 chip：生成与交付前自查——build 当场对 store 验证可定位（见 learn/ops/chip）
     chip: createChipOps(deps),
     video: createVideoOps(deps),
-    // 智能体团队编排（team.*）：任务委托与相互唤醒。所有执行声部的轮都带 teamFrom
-    // （子代理 / 超级文档桥 / 仅聊天）就没有这一组（见 learn/ops/team）
-    ...(deps.teamFrom ? { teams: createTeamOps(deps) } : {}),
+    // role-work：role 的 work / chat 面，work 的 host 面（由宿主按层注入）
+    ...(deps.work ? { work: deps.work } : {}),
+    ...(deps.chat ? { chat: deps.chat } : {}),
+    ...(deps.host ? { host: deps.host } : {}),
     // 读网页：实现整个由界面层给（见 learn/webDocs），这里只接线
     ...(deps.web ? { web: deps.web } : {}),
     // 看图（顶层 api.see）：实现由界面层给（见 learn/see），这里只接线

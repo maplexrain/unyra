@@ -8,7 +8,7 @@
  * 被压缩折掉（retired）之后自动补回来。
  */
 
-import type { Conversation, ConversationMessage, MessageFile, MessageImage, MessageQuote } from '../../agent/types'
+import type { ChannelStamp, Conversation, ConversationMessage, MessageFile, MessageImage, MessageQuote } from '../../agent/types'
 import { CONTENT_VOICES, type AgentVoice } from '../../agent/agentProfile'
 import { loadAgentSettings, type AgentSettings } from '../../agent/settings'
 import { buildVoiceSystem } from '../ai'
@@ -44,6 +44,8 @@ export function assembleTurnEntry(io: {
   voice?: AgentVoice
   /** 目标会话（载入的那份；不存在时是调用方现场建的空会话） */
   conv: Conversation
+  /** 这条用户消息从哪个通道来（history 据此在模型上下文里补来源/时间戳） */
+  channel?: ChannelStamp
 }): { conv: Conversation; agentSettings: AgentSettings; teacherSystem: string } {
   const { trimmed, hidden, mark, wfParams, context, quote, attached, attachedFiles, assistantId } = io
   const voice = io.voice ?? 'tutor'
@@ -71,6 +73,7 @@ export function assembleTurnEntry(io: {
     parts: [{ type: 'text', text: trimmed }],
     ts: Date.now(),
     hidden,
+    ...(io.channel ? { channel: io.channel } : {}),
     /*
      * 带 mark 的隐藏轮就是**工作流指令**（runWorkflow 把工作流名当 mark 传下来，
      * runHidden 那几个动作同理）：界面上画一条分界条，定位条给它一个锚点。

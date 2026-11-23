@@ -127,7 +127,8 @@ describe('首轮系统提示词（紧凑静态注入）', () => {
     expect(system).toContain('沙箱 API 速查（签名 + 用法边界）')
     expect(system).toContain('api.node — 节点宇宙')
     expect(system).toContain('api.schedule')
-    expect(system).toContain('api.subagent')
+    expect(system).toContain('api.work')
+    expect(system).toContain('api.chat')
     expect(system).toContain('api.workspace')
     // 团队分工：联网与浏览器归调研员、判卷归命题官——这些组不在导师的速查里
     expect(system).not.toContain('#### api.exam')

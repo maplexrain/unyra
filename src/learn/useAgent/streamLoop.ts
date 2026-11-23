@@ -58,9 +58,9 @@ export async function runTurnLoop(io: {
   setLiveUsage: Dispatch<SetStateAction<Record<string, MessageUsage>>>
   scheduleFlush: (immediate: boolean) => void
   /**
-   * 跳边界注入（见 agent/runtime 的介入通道）：委托交付回传走这里——委托者正在运行
-   * 时，team.complete 的交付结果在它当前轮的单次 loop 结束后插入、接着继续运行
-   * （宿主在回调里同步落库镜像片段，见 learn/agentTeam/delegations 与 agent/history）。
+   * 跳边界注入（见 agent/runtime 的介入通道）：Work 通道回传走这里——role 正在运行
+   * 时，work 的 host.send 交付／Agent 通道来信在它当前轮的单次 loop 结束后插入、接着
+   * 继续运行（宿主在回调里同步落库镜像片段，见 learn/roleWork/dispatch 与 agent/history）。
    */
   injections: () => Promise<AgentInjection | null>
 }) {
@@ -107,8 +107,8 @@ export async function runTurnLoop(io: {
       noteRequest(target.conversationId, snapshot)
     },
     /**
-     * 动态提示词注入已退役（2026-11 全量静态提示词），通道现在只承载**委托交付回传**
-     * （team.complete → 委托者运行中 → 跳边界注入，见 learn/agentTeam/delegations）；
+     * 动态提示词注入已退役（2026-11 全量静态提示词），通道现在只承载**Work 交付 /
+     * Agent 来信**（host.send / chat.send → role 运行中 → 跳边界注入，见 learn/roleWork/dispatch）；
      * 宿主的回调负责镜像落库。回复里的 prompt-module 片段形态与 toChatHistory 的补发
      * 逻辑保留——老对话的历史里还有这种片段，还原口径不变（见 agent/history）。
      */

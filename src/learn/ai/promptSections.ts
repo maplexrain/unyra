@@ -33,12 +33,12 @@ import {
   FREE_CHAT_IDENTITY,
   FREE_CHAT_SEARCH_SECTION,
 } from './freeChatCopy'
-import { TEAM_GUIDE } from './teamGuide'
+import { ROLE_CHANNEL_GUIDE, ROLE_WORK_GUIDE } from './roleWorkGuide'
 import { TURTLE_CLAN_GUIDE } from './turtleClan'
 import { SHARED_TYPOGRAPHY_GUIDE } from './typographyGuide'
 import { voiceCopyOf } from './voiceCopy'
 import { compactWorkflowSection, workflowGuideFor } from './workflowsGuide'
-import type { AgentTeamMode } from '../../components/learn/agent-team/conversationList'
+import type { AgentProfileId } from '../../agent/agentProfile'
 
 /** 提示词分段颜色主题 */
 export type PromptSectionColor =
@@ -70,8 +70,8 @@ export interface PromptSection {
 /** 共同提示词：龟门七兄弟身份总纲（所有 Agent 共同拥有） */
 export const COMMON_TURTLE_CLAN_PROMPT = TURTLE_CLAN_GUIDE
 
-/** 共同提示词：团队协作与委托机制（所有执行声部拥有） */
-export const COMMON_TEAM_COLLABORATION_PROMPT = TEAM_GUIDE
+/** 共同提示词：role 层协作总纲与三通道纪律（所有 role 拥有） */
+export const COMMON_TEAM_COLLABORATION_PROMPT = ROLE_WORK_GUIDE + '\n\n' + ROLE_CHANNEL_GUIDE
 
 /** 共同提示词：执行沙箱、守门与通用纪律（所有执行声部拥有） */
 export const COMMON_EXECUTION_DISCIPLINE_PROMPT = [
@@ -140,7 +140,7 @@ function typographySections(voice: AgentVoice): PromptSection[] {
     {
       id: 'shared-typography',
       index: 0,
-      title: '排版与视觉规范（内容声部共用）',
+      title: '排版与视觉规范（内容 role 共用）',
       badge: '排版指南',
       color: 'teal',
       isCommon: true,
@@ -169,7 +169,7 @@ function variableApiSection(voice: AgentVoice, content: string): PromptSection[]
     {
       id: `${voice}-api-variable`,
       index: 0,
-      title: '非固定组 API 能力面（本声部专属）',
+      title: '非固定组 API 能力面（本 role 专属）',
       badge: '非固定组',
       color: 'emerald',
       content,
@@ -184,7 +184,7 @@ function voiceCopySections(voice: AgentVoice): PromptSection[] {
     {
       id: `${voice}-role`,
       index: 0,
-      title: voice === 'tutor' ? '导师角色定位与节点宇宙哲学' : '声部角色定位',
+      title: voice === 'tutor' ? '导师角色定位与节点宇宙哲学' : 'role 角色定位',
       badge: '身份定位',
       color: 'rose',
       content: copy.role.join('\n'),
@@ -315,7 +315,7 @@ function getVoiceSections(voice: AgentVoice, opts: BuildSectionsOpts = {}): Prom
  * 统一获取某位 Agent 的全部提示词切片
  */
 export function getAgentPromptSections(
-  agentId: AgentTeamMode,
+  agentId: AgentProfileId,
   opts: BuildSectionsOpts = {},
 ): PromptSection[] {
   if (agentId === 'free') return getFreeChatSections(opts)

@@ -53,9 +53,9 @@ describe('resolveDisplayedConversation', () => {
 
   it('当子代理页签处于激活态且其父会话属于该目标时，返回其父会话上下文', () => {
     const store = makeMockStore({
-      agentActiveTab: 'sa:sub-123',
+      agentActiveTab: 'wa:sub-123',
       agentTabs: [
-        { kind: 'sub', conversationId: 'c1', sessionId: 'sub-123' },
+        { kind: 'work', conversationId: 'c1', workId: 'sub-123' },
       ],
       activeConversationId: 'c1',
     })

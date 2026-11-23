@@ -13,7 +13,7 @@ import { resetPrefixGate } from '../../../agent/prefixGate'
 import { saveAgentSettings, loadAgentSettings } from '../../../agent/settings'
 import { personaOf } from '../../../agent/persona'
 import { docFormatOf } from '../../../agent/docFormat'
-import type { Conversation, PendingFile, PendingImage } from '../../../agent/types'
+import type { AgentPart, ChannelStamp, Conversation, PendingFile, PendingImage } from '../../../agent/types'
 import type { AskAnswers } from '../../../agent/tools'
 import type { ReasoningEffort } from '../../../ai/types'
 import { userAbsPath } from '../../../lib/storage'
@@ -36,16 +36,10 @@ import {
   type AgentVoice,
 } from '../../../agent/agentProfile'
 import {
-  isDelegationConversation,
-  voiceConversationId,
-  voiceOfConversation,
-} from '../../../learn/agentTeam/voiceConvs'
-import {
-  activeDelegationsFrom,
-  manuallyActivateDelegation,
-  manuallyDeleteDelegation,
-  type ActiveDelegationView,
-} from '../../../learn/agentTeam/delegations'
+  roleConversationId,
+  roleOfConversation,
+} from '../../../learn/roleWork/roles'
+import { inboundEnvelope, peerOf } from '../../../learn/roleWork/channels'
 import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, type AgentVoiceStats } from '../agent-team/agentRoster'
 import { AgentAvatarGlyph } from '../agent-team/AgentAvatarGlyph'
 import { listWorkflowRows, type WorkflowRow } from '../../../learn/workflows'
@@ -64,7 +58,7 @@ type StartersApi = ReturnType<typeof useWorkflowStarters>
 type AgentSettings = ReturnType<typeof loadAgentSettings>
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_WF_ROWS: WorkflowRow[] = []
-const EMPTY_DELEGATIONS: ActiveDelegationView[] = []
+const EMPTY_WORK_RUNS: Array<{ conversationId: string; workId: string; runId: string; parts: AgentPart[] }> = []
 
 /**
  * agent 栏（左侧 Agent 列表——上块声部名册 + 下块当前声部对话历史 + 中间 keepalive 面板）需要的宿主能力与派生值。
@@ -94,7 +88,6 @@ export interface AgentSlotDeps {
   activateAgentTab: (key: string) => void
   openAgentTab: (ref: AgentTabRef, activate?: boolean) => void
   selectTutorGoal: (goalId: string) => void
-  exitSubagentView: (subKey: string, parentGoalId: string, parentConvId: string) => void
   handleNewGoalConversation: (goalId?: string) => void
   removeConversation: (conversationId: string) => void
   newConversationIn: (tab: AgentTabRef) => void
@@ -140,7 +133,6 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     activateAgentTab,
     openAgentTab,
     selectTutorGoal,
-    exitSubagentView,
     handleNewGoalConversation,
     removeConversation,
     newConversationIn,
@@ -178,6 +170,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   const hasMeasuredWidth = containerWidth !== null && containerWidth > 0
   // 宽度 < 800：左侧竖栏不再是「收起且禁用的 48px 轨」，改为对话区上方的顶部横栏
   const rosterTopBar = hasMeasuredWidth && containerWidth < 800
+  const workRunsAll = agent.workRunsAll ?? EMPTY_WORK_RUNS
 
   // 当工作区尚无激活目标时，允许用户点击「导师」停留并呈现目标选择空态
   const [emptyTutorMode, setEmptyTutorMode] = useState(false)
@@ -187,8 +180,6 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
    * （工作流 / 委托落的），空白态自动让位给正常派生，不需要 effect 清理。
    */
   const [emptyVoiceMode, setEmptyVoiceMode] = useState<AgentTeamMode | null>(null)
-  /** 委托手动干预（激活 / 删除）的针数：注册表是模块态，宿主据此重渲染取新快照 */
-  const [delegationOpsTick, setDelegationOpsTick] = useState(0)
   /**
    * 智能体设置态：非 null 时中央工作区显示这位声部的独立设置页（AgentSettingsView），
    * 替代对话流。选择声部 / 选对话 / 新建对话 / 切目标都会退出设置态回到对话。
@@ -198,7 +189,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   const tutorGoalId = useMemo(() => {
     if (tabGoalId) return tabGoalId
     if (activeAgentTab.kind === 'goal') return activeAgentTab.goalId
-    if (activeAgentTab.kind === 'sub') {
+    if (activeAgentTab.kind === 'work') {
       return conversationById(store, activeAgentTab.conversationId)?.goalId ?? store.activeGoalId ?? null
     }
     return store.activeGoalId ?? null
@@ -221,7 +212,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   const goalConversationsByGoal = useMemo(() => {
     const grouped = new Map<string, Map<AgentTeamMode, Conversation[]>>()
     for (const c of store.conversations) {
-      const voice = voiceOfConversation(c) as AgentTeamMode
+      const voice = roleOfConversation(c) as AgentTeamMode
       let bucket = grouped.get(c.goalId)
       if (!bucket) {
         bucket = new Map()
@@ -250,9 +241,9 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   )
 
   const activeTutorConvId = useMemo(() => {
-    if (activeAgentTab.kind === 'sub') {
-      const subConv = conversationById(store, activeAgentTab.conversationId)
-      if (!tabGoalId || subConv?.goalId === tabGoalId) return activeAgentTab.conversationId
+    if (activeAgentTab.kind === 'work') {
+      const workConv = conversationById(store, activeAgentTab.conversationId)
+      if (!tabGoalId || workConv?.goalId === tabGoalId) return activeAgentTab.conversationId
     }
     if (activeAgentTab.kind === 'goal' && (!tabGoalId || activeAgentTab.goalId === tabGoalId)) {
       if (
@@ -277,7 +268,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
    * 眼前这段对话属于哪位声部（mode 的 goal 侧取值）：goal 页签指向的会话本身就是身份
    * （Conversation.voice）。子代理页签的 activeTutorConvId 是父会话（导师），天然正确。
    */
-  const activeVoice: AgentTeamMode = voiceOfConversation(
+  const activeVoice: AgentTeamMode = roleOfConversation(
     conversationById(store, activeTutorConvId ?? ''),
   ) as AgentTeamMode
 
@@ -296,37 +287,38 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         ? 'tutor'
         : 'free')
 
-  const subViewMeta = useMemo(() => {
-    if (activeAgentTab.kind !== 'sub') return null
+  const workViewMeta = useMemo(() => {
+    if (activeAgentTab.kind !== 'work') return null
     const conv = conversationById(store, activeAgentTab.conversationId)
     if (!conv) return null
     if (tabGoalId && conv.goalId !== tabGoalId) return null
-    const session = conv.subagents?.sessions.find((s) => s.id === activeAgentTab.sessionId)
-    const def = session ? conv.subagents?.defs.find((d) => d.key === session.defKey) : undefined
+    const work = conv.works?.sessions.find((w) => w.id === activeAgentTab.workId)
+    if (!work) return null
     return {
       key: agentTabKey(activeAgentTab),
       goalId: conv.goalId,
       conversationId: conv.id,
-      name: def?.name ?? session?.defKey ?? t('子代理'),
+      workId: work.id,
+      name: work.name,
     }
   }, [activeAgentTab, store, tabGoalId])
 
   /**
-   * 各声部的近况统计（左栏联系人卡片的运行点 / 表单点 / 预览 / 时间 / 未读数）。
-   * 作用域与旧的 tutor 口径一致：固定目标页签只看该目标；全局看 store 全部（按声部过滤）。
+   * 各 role 的近况统计（左栏联系人卡片的运行点 / 表单点 / 预览 / 时间 / 未读数）。
+   * 作用域与旧的 tutor 口径一致：固定目标页签只看该目标；全局看 store 全部（按 role 过滤）。
    */
   const voiceStats = useMemo(() => {
     const out: Partial<Record<AgentTeamMode, AgentVoiceStats>> = {}
     for (const voice of AGENT_ROSTER_ORDER) {
       const list = tabGoalId
         ? (goalConversationsByGoal.get(tabGoalId)?.[voice] ?? EMPTY_CONVERSATIONS)
-        : store.conversations.filter((c) => voiceOfConversation(c) === voice)
+        : store.conversations.filter((c) => roleOfConversation(c) === voice)
       const latest = list[0]
       out[voice] = {
         running: list.some(
           (c) =>
             Boolean(agent.runningByConversation[c.id]) ||
-            agent.subRunsAll.some((r) => r.conversationId === c.id),
+            workRunsAll.some((r) => r.conversationId === c.id),
         ),
         hasAsk: list.some((c) => Boolean(agent.pendingAskByConv[c.id])),
         preview: lastMessagePreview(latest),
@@ -336,37 +328,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     }
     return out
     // agent.* 的三张表是状态槽（引用随运行变化），一并列进来
-  }, [tabGoalId, store.conversations, agent.runningByConversation, agent.pendingAskByConv, agent.subRunsAll, goalConversationsByGoal])
-
-  /**
-   * 「委托中」快照按会话缓存（**身份稳定**）：委托注册表是模块态、非响应式——登记 /
-   * 收口都伴随 store 或运行表的身份变化，手动激活 / 删除再补一针 tick。稳定身份是
-   * AgentTabPane memo 的前提（比较器按引用看 delegationsOut，每渲染换新数组会拆开 memo）。
-   */
-  const delegationViewsByConv = useMemo(() => {
-    const out = new Map<string, ActiveDelegationView[]>()
-    for (const c of store.conversations) {
-      const views = activeDelegationsFrom(c.id)
-      if (views.length) out.set(c.id, views)
-    }
-    return out
-    // agent.* 三张表与 tick 是「注册表可能动过」的信号（模块态不可响应），不是数据依赖
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [delegationOpsTick, store.conversations, agent.runningByConversation, agent.pendingAskByConv, agent.subRunsAll])
-
-  /** 手动激活一条委托（「委托中」条上的闪电按钮）：结果与拒绝原因用 toast 说清楚 */
-  const handleActivateDelegation = (id: string) => {
-    const res = manuallyActivateDelegation(id)
-    onToast(t(res.ok ? '委托已手动激活：承接方马上开始处理' : (res.error ?? '激活失败')))
-    setDelegationOpsTick((n) => n + 1)
-  }
-
-  /** 手动删除一条委托（卡住时的兜底）：从注册表与队列摘除，不再排队与接续 */
-  const handleDeleteDelegation = (id: string) => {
-    const res = manuallyDeleteDelegation(id)
-    onToast(t(res.ok ? '已删除这条委托：不再排队与接续' : (res.error ?? '删除失败')))
-    setDelegationOpsTick((n) => n + 1)
-  }
+  }, [tabGoalId, store.conversations, agent.runningByConversation, agent.pendingAskByConv, workRunsAll, goalConversationsByGoal])
 
   const scheduleFocus = () => {
     window.setTimeout(() => focusAgentInput(), 30)
@@ -405,17 +367,17 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       scheduleFocus()
       return
     }
-    if (subViewMeta) {
-      exitSubagentView(subViewMeta.key, subViewMeta.goalId, subViewMeta.conversationId)
+    if (workViewMeta) {
+      activateAgentTab('ga:' + workViewMeta.goalId + ':' + workViewMeta.conversationId)
       scheduleFocus()
       return
     }
     if (tutorGoalId) {
       setEmptyTutorMode(false)
       if (next !== 'tutor') {
-        // 不可交流的声部（调研员 / 维修员）：会话只能由工作流或委托启动，选中不现场建。
-        // 有会话就看最近的一段；还没有也允许选中——中央区落本声部的空白页
-        // （会话由工作流与委托触发后才出现，见 emptyVoiceMode）
+        // 不可交流的 role（调研员 / 维修员）：会话只能由工作流或其它 role 经通道启动，选中不现场建。
+        // 有会话就看最近的一段；还没有也允许选中——中央区落本 role 的空白页
+        // （会话由工作流与通道触发后才出现，见 emptyVoiceMode）
         if (!isCommunicable(next as AgentProfileId)) {
           const list = voiceChatsOf(next)
           if (list.length) {
@@ -426,7 +388,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
           return
         }
         // 可交流的承接声部：选中它按目标建好的工作会话（还没有就现场落一段，确定性 id 见 voiceConvs）
-        const convId = voiceConversationId(tutorGoalId, next)
+        const convId = roleConversationId(tutorGoalId, next)
         if (!conversationById(getLatest(), convId)) {
           set({
             ...getLatest(),
@@ -555,9 +517,9 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         onCompact: nope,
         onSuperLab: nope,
         onExam: nope,
-        sub: { sessions: [], defs: [], running: false, live: [] },
-        viewSubId: null,
-        onOpenSub: () => {},
+        work: { sessions: [], running: false, live: [] },
+        viewWorkId: null,
+        onOpenWork: () => {},
         onNewConversation: () => {
           setFreeConvId(addFreeConversation().id)
         },
@@ -565,9 +527,9 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         onDeleteConversation: handleDeleteFreeConversation,
       }
     }
-    const isSub = tab.kind === 'sub'
-    const goalId = isSub ? (conversationById(store, tab.conversationId)?.goalId ?? null) : tab.goalId
-    const convId = isSub
+    const isWork = tab.kind === 'work'
+    const goalId = isWork ? (conversationById(store, tab.conversationId)?.goalId ?? null) : tab.goalId
+    const convId = isWork
       ? tab.conversationId
       : tab.conversationId &&
           conversationById(store, tab.conversationId)?.goalId === tab.goalId
@@ -582,52 +544,25 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     const conv = convId ? (conversationById(store, convId) ?? null) : null
     const target =
       goalId && convId
-        ? { goalId, nodeId: nodeId || null, conversationId: convId, voice: voiceOfConversation(conv) as AgentVoice }
+        ? { goalId, nodeId: nodeId || null, conversationId: convId, voice: roleOfConversation(conv) as AgentVoice }
         : null
-    const bucket = conv?.subagents
-    const sessions = bucket?.sessions ?? []
-    const session = isSub ? (sessions.find((x) => x.id === tab.sessionId) ?? null) : null
+    const works = conv?.works?.sessions ?? []
+    const work = isWork ? (works.find((x) => x.id === tab.workId) ?? null) : null
     const stream = convId ? agent.streams[convId] : undefined
-    // 面板的会话列表只列本声部的（导师对话与承接声部的工作会话互不串台）
-    const convVoice = voiceOfConversation(conv) as AgentTeamMode
+    // 面板的会话列表只列本 role 的（导师对话与 specialists 的工作会话互不串台）
+    const convVoice = roleOfConversation(conv) as AgentTeamMode
     const goalConversations = goalId
       ? (goalConversationsByGoal.get(goalId)?.[convVoice] ?? EMPTY_CONVERSATIONS)
       : EMPTY_CONVERSATIONS
-    // 锁输入区的两种会话：不可交流声部的工作会话 + **委托会话**（类别由 id 前缀 dv: 认，
-    // 委托会话就算落在可交流声部头上也不接受用户输入——它只听委托者的指令）
-    const chatLocked =
-      (conv ? isDelegationConversation(conv) : mode !== 'tutor' && mode !== 'free' && !isCommunicable(mode as AgentProfileId)) ||
-      (conv ? !COMMUNICABLE_VOICES.has(voiceOfConversation(conv) as AgentVoice) : false)
+    // 锁输入区：不可交流 role 的工作会话（用户只能看，不能直接往里发）
+    const chatLocked = conv
+      ? !COMMUNICABLE_VOICES.has(roleOfConversation(conv) as AgentVoice)
+      : mode !== 'tutor' && mode !== 'free' && !isCommunicable(mode as AgentProfileId)
     return {
       goalId,
       chatLocked,
       emptyVoice: mode,
       emptyName: agentNames?.[mode]?.trim() || DEFAULT_AGENT_NAME[mode],
-      delegationsOut: convId ? (delegationViewsByConv.get(convId) ?? EMPTY_DELEGATIONS) : EMPTY_DELEGATIONS,
-      onActivateDelegation: handleActivateDelegation,
-      onDeleteDelegation: handleDeleteDelegation,
-      onOpenDelegation: (delegationConvId: string) => {
-        if (!goalId) return
-        if (!conversationById(getLatest(), delegationConvId)) {
-          // 还没落库（委托还在排队）：现场落一段空壳，落点与 voiceConversationId 同一口径
-          const voice = (delegationConvId.split(':')[1] ?? 'tutor') as AgentVoice
-          set({
-            ...getLatest(),
-            conversations: [
-              ...getLatest().conversations,
-              {
-                id: delegationConvId,
-                goalId,
-                voice,
-                messages: [],
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-              },
-            ],
-          })
-        }
-        selectConversationIn({ kind: 'goal', goalId, conversationId: delegationConvId }, delegationConvId)
-      },
       conversation: conv,
       conversations: goalConversations,
       streaming: stream?.parts ?? null,
@@ -635,10 +570,28 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       running: !!(convId && agent.runningByConversation[convId]),
       onSend: (text: string, images: PendingImage[], files: PendingFile[]) => {
         if (!target) return 'sent' as const
-        // 不可交流声部与**委托会话**的硬闸：输入区已锁，这里再拦一道（委托与工作流触发不走这条路）
-        const targetConv = conversationById(getLatest(), target.conversationId)
-        if (isDelegationConversation(targetConv)) return 'sent' as const
+        // 不可交流 role 的硬闸：输入区已锁，这里再拦一道（工作流触发不走这条路）
         if (!COMMUNICABLE_VOICES.has(target.voice)) return 'sent' as const
+        // user 通道入站：对话层只读 channels，用户自己说的话也要有来源与时间戳
+        const stored = conversationById(getLatest(), target.conversationId)
+        let channel: ChannelStamp | undefined
+        if (stored && text.trim()) {
+          const envelope = inboundEnvelope({
+            channel: 'user',
+            from: peerOf('user', 'user', '用户'),
+            to: peerOf('agent', target.voice, DEFAULT_AGENT_NAME[target.voice]),
+            text,
+          })
+          channel = { channel: 'user', from: envelope.from, to: envelope.to, ts: envelope.ts, envelopeId: envelope.id }
+          set({
+            ...getLatest(),
+            conversations: getLatest().conversations.map((c) =>
+              c.id === stored.id
+                ? { ...c, channels: [...(c.channels ?? []), envelope].slice(-200), updatedAt: Date.now() }
+                : c,
+            ),
+          })
+        }
         if (shouldWaitInLine(target.conversationId)) {
           agent.enqueueMessage({
             conversationId: target.conversationId,
@@ -646,6 +599,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
             text,
             images,
             files,
+            ...(channel ? { channel } : {}),
           })
           return 'queued' as const
         }
@@ -654,6 +608,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
           ...(images.length || files.length
             ? { images: images.length ? images : undefined, files: files.length ? files : undefined }
             : {}),
+          ...(channel ? { channel } : {}),
         })
         return 'sent' as const
       },
@@ -695,17 +650,16 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         if (nodeId) startSuperLab(nodeId)
       },
       onExam: () => newExam(nodeId ?? undefined),
-      sub: {
-        sessions,
-        defs: bucket?.defs ?? [],
-        running: agent.subRunsAll.some((r) => r.conversationId === convId),
-        live: agent.subRunsAll
+      work: {
+        sessions: works,
+        running: workRunsAll.some((r) => r.conversationId === convId),
+        live: workRunsAll
           .filter((r) => r.conversationId === convId)
-          .map(({ sessionId: sid, runId, parts }) => ({ sessionId: sid, runId, parts })),
+          .map(({ workId, runId, parts }) => ({ workId, runId, parts })),
       },
-      viewSubId: session?.id ?? null,
-      onOpenSub: (sid: string) => {
-        if (convId) openAgentTab({ kind: 'sub', conversationId: convId, sessionId: sid }, true)
+      viewWorkId: work?.id ?? null,
+      onOpenWork: (wid: string) => {
+        if (convId) openAgentTab({ kind: 'work', conversationId: convId, workId: wid }, true)
       },
       onNewConversation: () => newConversationIn(tab),
       onSelectConversation: (id: string) => selectConversationIn(tab, id),
@@ -735,7 +689,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
 
   const renderedActivePaneId = useMemo(() => {
     if (mode === 'free') return 'free'
-    if (subViewMeta) return subViewMeta.key
+    if (workViewMeta) return workViewMeta.key
     if (tabGoalId) {
       // 一个学习目标在 agentTabs 里可以并存多个会话页签（ga:<goalId>:<convId>），
       // 必须按 activeTutorConvId 精确匹配当前激活的那一段对话，否则永远只会命中第一枚。
@@ -751,7 +705,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       return matched ? agentTabKey(matched) : activeAgentTabId
     }
     return activeAgentTabId
-  }, [mode, subViewMeta, tabGoalId, activeTutorConvId, scopedPanes, activeAgentTabId])
+  }, [mode, workViewMeta, tabGoalId, activeTutorConvId, scopedPanes, activeAgentTabId])
 
   return (
     <div
@@ -823,20 +777,20 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
           />
         ) : (
           <>
-        {subViewMeta && mode === 'tutor' && (
+        {workViewMeta && mode === 'tutor' && (
           <div className="flex shrink-0 items-center gap-2 border-b border-line/70 bg-card/70 px-3.5 py-1.5 text-[12px]">
             <button
               type="button"
-              onClick={() => exitSubagentView(subViewMeta.key, subViewMeta.goalId, subViewMeta.conversationId)}
+              onClick={() => activateAgentTab('ga:' + workViewMeta.goalId + ':' + workViewMeta.conversationId)}
               className="flex items-center gap-1 rounded-lg px-2 py-1 text-ink-soft transition hover:bg-line/50 hover:text-ink-strong"
             >
               <ArrowLeft size={13} />
-              <span>{t('返回导师对话')}</span>
+              <span>{t('返回角色对话')}</span>
             </button>
             <span aria-hidden="true" className="h-3.5 w-px bg-line" />
             <Bot size={13} className="shrink-0 text-seal" />
-            <span className="truncate font-medium text-ink-strong">{subViewMeta.name}</span>
-            <span className="truncate text-[11px] text-ink-faint">{t('子代理独立会话')}</span>
+            <span className="truncate font-medium text-ink-strong">{workViewMeta.name}</span>
+            <span className="truncate text-[11px] text-ink-faint">{t('工作层 · 独立上下文')}</span>
           </div>
         )}
 

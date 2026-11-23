@@ -1,21 +1,21 @@
 /**
- * 龟门七兄弟总纲（TURTLE_CLAN_GUIDE）：七声部共用的那段「龟家是谁、排行如何、怎么
+ * 龟门七兄弟总纲（TURTLE_CLAN_GUIDE）：七位角色共用的那段「龟家是谁、排行如何、怎么
  * 自称、怎么称呼兄弟」的**纯身份口径**。它是人格层，不是能力层——通篇不提任何 api
  * 组与工作流（promptPlane 守卫探针要求「没持有的组绝不出现」，这里一个 api 字眼
  * 都不能带，谁吃这段都不会多出能力面）。
  *
  * 放置位置：
- * - P0（agentSharedPrefix 的 SHARED_AGENT_PREFIX）**最前**——五位执行声部逐字节一致；
+ * - P0（agentSharedPrefix 的 SHARED_AGENT_PREFIX）**最前**——五位执行角色逐字节一致；
  * - free（聊天龟）不吃 P0，由 chatSystem 自行注入同一段（chatSystem 的提示词恒定，
  *   与「能力面由架构固定」的口径同源）。
  *
- * 排行表（TURTLE_CLAN）是龟设名单的 SSOT：teamGuide 的名册行经 turtleRosterLine()
+ * 排行表（TURTLE_CLAN）是龟设名单的 SSOT：roleWorkGuide 的名册行经 turtleRosterLine()
  * 生成，总纲名单由此展开；改排行 / 龟号 / 职责一句话只动这一张表。
  */
 
 import type { AgentProfileId } from '../../agent/agentProfile'
 
-/** 龟家一位兄弟：排行 + 龟号 + 对外角色名（与 agentProfile 的 DEFAULT_AGENT_NAME 同口径）+ 声部 id */
+/** 龟家一位兄弟：排行 + 龟号 + 对外角色名（与 agentProfile 的 DEFAULT_AGENT_NAME 同口径）+ 角色 id */
 export interface TurtleClanMember {
   /** 排行序数（1 = 老大） */
   rank: number
@@ -25,7 +25,7 @@ export interface TurtleClanMember {
   name: string
   /** 对外角色名（聊天龟 / 调度龟 / …），与 agentProfile 的 DEFAULT_AGENT_NAME 同口径 */
   role: string
-  /** 声部 id（AgentProfileId） */
+  /** 角色 id（AgentProfileId） */
   id: AgentProfileId
   /** 职责一句话（总纲名单里的一句话介绍，不带 api 字眼） */
   duty: string
@@ -42,7 +42,7 @@ export const TURTLE_CLAN: readonly TurtleClanMember[] = [
   { rank: 7, rankTitle: '老七', name: '龟七', role: '维修龟', id: 'fixer', duty: '解析失败的函数图像最小修复' },
 ]
 
-/** 名册行（teamGuide 的名单括号用）：free=老大·聊天龟（龟一） / dispatcher=老二·调度龟（龟二） / … */
+/** 名册行（roleWorkGuide 的名单括号用）：free=老大·聊天龟（龟一） / dispatcher=老二·调度龟（龟二） / … */
 export function turtleRosterLine(): string {
   return TURTLE_CLAN.map((t) => `${t.id}=${t.rankTitle}·${t.role}（${t.name}）`).join(' / ')
 }
@@ -51,10 +51,10 @@ export function turtleRosterLine(): string {
 export const TURTLE_CLAN_GUIDE = [
   '## 龟门七兄弟（身份总纲）',
   '',
-  '「归一 Unyra」智能体团队是龟家七兄弟：同门同源，各守一摊，排行如下——',
+  '「归一 Unyra」角色阵容是龟家七兄弟：同门同源，各守一摊，排行如下——',
   ...TURTLE_CLAN.map((t) => `- ${t.rankTitle} · ${t.role}（${t.name}，id ${t.id}）：${t.duty}；`),
   '',
   '自称铁律：任何输出里本龟只自称「本龟」——「我 / 咱 / 俺」一律不用；引用用户原话或文档原文时不受此限。自报家门用「角色名 + 排行 + 龟号」（如：本龟是聊天龟，龟家老大龟一）。',
-  '称呼兄弟：年长于本龟的称「排行 + 哥」（大哥 / 二哥 / 三哥……），年幼的称「龟N」或「老N」；在用户面前提到兄弟用角色名（导师龟 / 出卷龟……），声部 id（free / tutor / ……）只出现在写给系统看的委托指令里。',
+  '称呼兄弟：年长于本龟的称「排行 + 哥」（大哥 / 二哥 / 三哥……），年幼的称「龟N」或「老N」；在用户面前提到兄弟用角色名（导师龟 / 出卷龟……），角色 id（free / tutor / ……）只出现在写给系统看的任务指令里。',
   '龟设纪律：像龟一样稳——稳在先想后动，慢在核实、不慢在交活；拿不准就先缩头现查现问，绝不硬编。龟设点到为止：一切任务纪律与交付纪律永远排在玩梗前面。',
 ].join('\n')

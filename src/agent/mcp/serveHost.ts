@@ -5,9 +5,9 @@
  *
  * 为什么 guest 能复用整个沙箱：应用的 agent 是「单工具 execute」哲学——
  * learnSandboxOps（与一轮对话、超级文档桥同一个装配点）+ subsetSandbox
- * （与子代理同一把裁剪刀）+ createExecuteTools（与真沙箱同一条 Worker 通道，
+ * （与 work 的 guest 同一把裁剪刀）+ createExecuteTools（与真沙箱同一条 Worker 通道，
  * 每次编排一个 Worker、15 秒上限）。唯一的新决定是白名单：MCP_ALLOWED_GROUPS
- * 与子代理同级（见下），ask/ui/exam/permission/wf/subagent/mcp 这些「导师层」
+ * 与 work 同级（见下），ask/ui/exam/permission/wf/work/chat/mcp 这些「role 层」
  * 的能力一律不对外——要开放得先有对应的审批面。
  *
  * 串行纪律：内部 agent 与 guest 会话会并发改同一份 store，而沙箱只在**一次
@@ -27,16 +27,16 @@ import { createMemoryOps } from '../../learn/memory'
 import type { LearnStore } from '../../learn/types'
 import { native } from '../../lib/native'
 import { loadAgentSettings } from '../settings'
-import { subsetSandbox } from '../subagent/manager'
+import { subsetSandbox } from '../sandbox/subset'
 import { renderApiHelp, renderGroupHelp, renderRootHelp } from '../sandbox/apiRegistry'
 import { createExecuteTools, type SandboxOptions } from '../tools'
 import type { AgentContext } from '../types'
 import type { McpServeCall, McpServeReply } from '../../../shared/ipc'
 
 /**
- * guest 会话开放的 api 组：与子代理名单（SUBAGENT_ALLOWED_GROUPS）同级而刻意
- * 分开抄——两条名单将来会按各自的审批面演化（比如 MCP 侧将来带审批地开 ui）。
- * 名单里的每个组都必须是 apiRegistry 的真实组 key（与子代理名单同一条对账纪律）。
+ * guest 会话开放的 api 组：与 work 白名单同级而刻意分开抄——两条名单将来会按各自的
+ * 审批面演化（比如 MCP 侧将来带审批地开 ui）。名单里的每个组都必须是 apiRegistry 的
+ * 真实组 key（与 work 名单同一条对账纪律）。
  */
 const MCP_ALLOWED_GROUPS = ['web', 'tmp', 'node', 'memory', 'workspace'] as const
 
@@ -114,7 +114,7 @@ export function installMcpServeHost(io: {
   })
   // memory 组由一轮宿主注入（createAgentOps 不管它）：与 toolRig 同款装配
   base.memory = createMemoryOps({ getLatest: io.getLatest, set: io.set, goalId })
-  // 与子代理同一把裁剪刀：名单外的东西根本不注入，通道口还有 apiAllow 硬闸
+  // 与 work 同一把裁剪刀：名单外的东西根本不注入，通道口还有 apiAllow 硬闸
   const [execute] = createExecuteTools(subsetSandbox(base as SandboxOptions, [...MCP_ALLOWED_GROUPS]))
 
   const run = async (call: McpServeCall): Promise<McpServeReply> => {

@@ -22,6 +22,7 @@ import { installHost } from './api/host'
 import { installSee } from './api/see'
 import { installUi } from './api/ui'
 import { installDelegate } from './api/delegate'
+import { installRoleWork } from './api/roleWork'
 import { installFiles } from './api/files'
 import { installProcess } from './api/process'
 import { installSkill } from './api/skill'
@@ -100,8 +101,10 @@ export function buildApi(
   installSee(api, opts, log)
   // 页面反馈域：ui.*（docRef / nodeRef 随组进了 api/ui.ts）
   installUi(api, opts, log)
-  // 导师专用域：subagent.* / permission.*
+  // role 专用域：permission.*
   installDelegate(api, opts, log)
+  // role-work：role 的 work.* / chat.*，work 的 host.*
+  installRoleWork(api, opts, log)
   // 真实文件系统域：files.*（路径映射与 chat.json 硬挡的敏感口径在 api/files.ts）
   installFiles(api, opts, log)
 

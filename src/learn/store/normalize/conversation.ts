@@ -13,7 +13,8 @@ import type {
 import { normalizeDelivery } from '../../../agent/delivery'
 import { applyCompaction } from '../../compact'
 import { recoverInterruptedTurn } from '../../agent/inflight'
-import { normalizeSubBucket } from '../../../agent/subagent/registry'
+import { migrateLegacySubagents, normalizeChannels, normalizeWorks } from '../../../agent/roleWork/registry'
+import type { ChannelStamp } from '../../../agent/types'
 
 function normalizeQuote(raw: unknown): MessageQuote | null {
   if (!raw || typeof raw !== 'object') return null
@@ -122,6 +123,22 @@ function normalizeInflight(raw: unknown): Conversation['inflight'] {
   return { messageId: r.messageId, startedAt: typeof r.startedAt === 'number' ? r.startedAt : 0 }
 }
 
+function normalizeStamp(raw: unknown): ChannelStamp | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  if (typeof r.channel !== 'string' || !r.channel) return undefined
+  if (r.channel !== 'user' && r.channel !== 'agent' && r.channel !== 'work') return undefined
+  if (!r.from || !r.to || typeof r.from !== 'object' || typeof r.to !== 'object') return undefined
+  if (typeof r.envelopeId !== 'string' || !r.envelopeId) return undefined
+  return {
+    channel: r.channel,
+    from: r.from as ChannelStamp['from'],
+    to: r.to as ChannelStamp['to'],
+    ts: typeof r.ts === 'number' ? r.ts : Date.now(),
+    envelopeId: r.envelopeId,
+  }
+}
+
 function normalizePart(raw: unknown): AgentPart | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Record<string, unknown>
@@ -134,6 +151,9 @@ function normalizePart(raw: unknown): AgentPart | null {
     return { type: 'prompt-module', key: r.key, text: r.text }
   }
   if (r.type === 'thinking' && typeof r.text === 'string') return { type: 'thinking', text: r.text }
+  if (r.type === 'channel-message' && typeof r.channelId === 'string' && typeof r.text === 'string') {
+    return { type: 'channel-message', channelId: r.channelId, text: r.text }
+  }
   if (r.type === 'text' && typeof r.text === 'string') return { type: 'text', text: r.text }
   if (r.type === 'notice' && typeof r.text === 'string') {
     return { type: 'notice', level: r.level === 'info' ? 'info' : 'warn', text: r.text }
@@ -263,6 +283,7 @@ export function normalizeConversation(
          */
         ...(mr.inject === 'instruction' || mr.inject === 'prompt' ? { inject: mr.inject } : {}),
         ...(typeof mr.context === 'string' && mr.context ? { context: mr.context } : {}),
+        ...(normalizeStamp(mr.channel) ? { channel: normalizeStamp(mr.channel) } : {}),
         ...(quote ? { quote } : {}),
         ...(images.length ? { images } : {}),
         ...(files.length ? { files } : {}),
@@ -277,17 +298,27 @@ export function normalizeConversation(
   const title = typeof r.title === 'string' ? r.title.trim() : ''
   const inflight = normalizeInflight(r.inflight)
   /**
-   * 子代理桶（见 agent/subagent、docs/subagent-architecture.md）：随 chat.json 落盘的
-   * 定义与会话。**这里是它唯一的载入出口**——buildDocs 整份序列化没问题，但这一层是
-   * 逐字段重建的，漏了它子代理就会「重启后凭空消失」（入口按钮直接不见了）。
-   * 归一化里含：形状不对整桶丢弃；进程被杀时残留的「运行中」复位为「被中断」。
+   * work 账本（见 agent/work、docs/role-work-architecture.md）：随 chat.json 落盘的
+   * 工作会话。**这里是它唯一的载入出口**——buildDocs 整份序列化没问题，但这一层是
+   * 逐字段重建的，漏了它 work 就会「重启后凭空消失」（入口按钮直接不见了）。
+   * 归一化里含：形状不对整桶丢弃；进程被杀时残留的「运行中」复位为「被中断」；
+   * 旧 subagent 桶迁到 works（见 roleWork/registry 的 migrateLegacySubagents）。
    */
-  const subagents = normalizeSubBucket(r.subagents)
+  const voice = typeof r.voice === 'string' && r.voice ? r.voice as Conversation['voice'] : 'tutor'
+  const convId = typeof r.id === 'string' ? r.id : crypto.randomUUID()
+  const channels = normalizeChannels(r.channels)
+  const works =
+    normalizeWorks(r.works, voice ?? 'tutor', convId) ??
+    migrateLegacySubagents(
+      (r as { subagents?: Parameters<typeof migrateLegacySubagents>[0] }).subagents,
+      voice ?? 'tutor',
+      convId,
+    )
   // 固化的系统提示词（见 agent/types 的 Conversation.systemPrompt）：有就带上；
   // 没有的老数据不用在这里补——下一轮请求前会现场抓一份并落盘（见 useAgent 的固化逻辑）
   const systemPrompt = typeof r.systemPrompt === 'string' && r.systemPrompt ? r.systemPrompt : undefined
   const conv: Conversation = {
-    id: typeof r.id === 'string' ? r.id : crypto.randomUUID(),
+    id: convId,
     goalId,
     messages,
     createdAt: typeof r.createdAt === 'number' ? r.createdAt : now,
@@ -296,7 +327,8 @@ export function normalizeConversation(
     ...(title ? { title } : {}),
     ...(summary ? { summary } : {}),
     ...(inflight ? { inflight } : {}),
-    ...(subagents ? { subagents } : {}),
+    ...(channels ? { channels } : {}),
+    ...(works ? { works: { sessions: works } } : {}),
     ...(systemPrompt ? { systemPrompt } : {}),
   }
   /*

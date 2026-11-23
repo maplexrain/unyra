@@ -29,7 +29,7 @@ describe('提示词暴露面 = 实际持面', () => {
     it(voice + ': 持有的组都在、没持有的绝不出现', () => {
       const text = build(voice)
       const held = AGENT_API_PLANES[voice].groups
-      const all = ['node', 'memory', 'schedule', 'tmp', 'workspace', 'userInfo', 'method', 'wf', 'chip', 'delivery', 'web', 'browser', 'mcp', 'ui', 'subagent', 'permission', 'files', 'process', 'skill', 'video', 'project', 'team', 'exam', 'classroom', 'design']
+      const all = ['node', 'memory', 'schedule', 'tmp', 'workspace', 'userInfo', 'method', 'wf', 'chip', 'delivery', 'web', 'browser', 'mcp', 'ui', 'work', 'chat', 'host', 'permission', 'files', 'process', 'skill', 'video', 'project', 'exam', 'classroom', 'design']
       for (const g of held) {
         expect(text).toContain('#### api.' + g + ' —')
       }
@@ -45,10 +45,12 @@ describe('提示词暴露面 = 实际持面', () => {
       // 交付/引用段按持有
       if (!held.includes('chip')) expect(text).not.toContain('api.chip.build')
       if (!held.includes('delivery')) expect(text).not.toContain('api.delivery.submit')
-      // **不变量**：team 是被委托方收口交付（api.team.complete）的唯一通道——
-      // 每一位执行声部都必须持有，谁丢了 team 谁就无法交付
-      expect(held).toContain('team')
-      expect(text).toContain('api.team.complete')
+      // **不变量**：每位 role 都能派 work、都能用 chat.send 对外发消息——
+      // 谁丢了这两组，谁就不再有外发通道与工作层
+      expect(held).toContain('work')
+      expect(held).toContain('chat')
+      expect(text).toContain('api.work.list')
+      expect(text).toContain('api.chat.send')
     })
   }
   it('researcher: 有交付登记、无 chip；fixer: 两段都无', () => {
@@ -74,8 +76,8 @@ describe('提示词暴露面 = 实际持面', () => {
 })
 
 describe('固定组 / 非固定组：切分口径、顺序与缓存前缀', () => {
-  it('固定能力面是六位执行声部的交集（tmp / team + wait / compact）', () => {
-    expect(FIXED_API_PLANE.groups).toEqual(['tmp', 'team'])
+  it('固定能力面是六位执行 role 的交集（tmp / work / chat + wait / compact）', () => {
+    expect(FIXED_API_PLANE.groups).toEqual(['tmp', 'work', 'chat'])
     expect(FIXED_API_PLANE.topLevel).toEqual(['wait', 'compact'])
   })
 
@@ -88,7 +90,7 @@ describe('固定组 / 非固定组：切分口径、顺序与缓存前缀', () =
       expect(fixedAt).toBeGreaterThan(SHARED_AGENT_PREFIX.length)
       expect(roleAt).toBeGreaterThan(fixedAt)
       // 六位执行声部都至少有一个专属域（fixer 的 node 也是非固定组）：非固定组同样落在身份定位之前
-      const variableAt = text.indexOf('### 非固定组（本声部专属）')
+      const variableAt = text.indexOf('### 非固定组（本 role 专属）')
       expect(variableAt).toBeGreaterThan(fixedAt)
       expect(variableAt).toBeLessThan(roleAt)
     }
@@ -100,7 +102,7 @@ describe('固定组 / 非固定组：切分口径、顺序与缓存前缀', () =
   it('固定组段逐字节一致（六位执行声部共用同一缓存前缀）', () => {
     const fixedOf = (text: string): string => {
       const start = text.indexOf('### 沙箱 API 速查')
-      const end = text.indexOf('\n\n### 非固定组（本声部专属）')
+      const end = text.indexOf('\n\n### 非固定组（本 role 专属）')
       const tail = text.indexOf('\n\n- 以上就是你的全部 api 组与顶层函数')
       const stop = end >= 0 ? end : tail >= 0 ? tail : text.indexOf('\n\n你是「归一 Unyra」')
       return text.slice(start, stop)

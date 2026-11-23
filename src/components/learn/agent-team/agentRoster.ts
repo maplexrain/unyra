@@ -1,5 +1,5 @@
 /**
- * agent team 左栏的**声部注册表**（纯展示数据）：各声部的角色标签、默认职责副标题、
+ * 角色阵容左栏的**role 注册表**（纯展示数据）：各 role 的角色标签、默认职责副标题、
  * 兜底图标与配色。运行时口径（名字 / 头像的 profile 覆盖、api 与工作流面）都在
  * agent/agentProfile；这里只管「左栏怎么画」。
  */
@@ -8,7 +8,7 @@ import { Compass, GraduationCap, MessageSquare, NotebookPen, Palette, Route, Wre
 import { COMMUNICABLE_VOICES, CONTENT_VOICES, type AgentProfileId } from '../../../agent/agentProfile'
 import type { AgentTeamMode } from './conversationList'
 
-/** 一位声部的近况统计（AgentSlot 按目标作用域算好带来，roster 联系人卡片消费） */
+/** 一位 role 的近况统计（AgentSlot 按目标作用域算好带来，roster 联系人卡片消费） */
 export interface AgentVoiceStats {
   running: boolean
   hasAsk: boolean
@@ -17,7 +17,7 @@ export interface AgentVoiceStats {
   count?: number
 }
 
-/** 各声部近况的缺省（没有统计时用） */
+/** 各 role 近况的缺省（没有统计时用） */
 export const EMPTY_VOICE_STATS: AgentVoiceStats = { running: false, hasAsk: false }
 
 export interface AgentRosterMeta {
@@ -25,7 +25,7 @@ export interface AgentRosterMeta {
   roleTag: string
   /** 没有对话时的兜底副标题（与 agentProfile 的 AGENT_ROLE_BLURB 同口径） */
   blurb: string
-  /** 会话列表空态的文案（跟随声部名称与功能） */
+  /** 会话列表空态的文案（跟随 role 名称与功能） */
   emptyHint: string
   /** profile 没配头像时的兜底图标 */
   fallbackIcon: LucideIcon
@@ -35,7 +35,7 @@ export interface AgentRosterMeta {
   ringClass: string
 }
 
-/** 一位声部的能力标签（联系人卡片上的小徽章）：可交流 / 内容生成 / 工作流触发 */
+/** 一位 role 的能力标签（联系人卡片上的小徽章）：可交流 / 内容生成 / 工作流触发 */
 export function voiceTags(id: AgentProfileId): string[] {
   const tags: string[] = []
   const voice = id === 'free' ? undefined : (id as Exclude<AgentProfileId, 'free'>)
@@ -45,7 +45,7 @@ export function voiceTags(id: AgentProfileId): string[] {
   return tags
 }
 
-/** 左栏顺序：仅聊天 / 导师 / 调度员（任务入口） / 四位承接声部（展示顺序，与运行时名单顺序无关） */
+/** 左栏顺序：仅聊天 / 导师 / 调度员（任务入口） / 四位承接 role（展示顺序，与运行时名单顺序无关） */
 export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
   free: {
     roleTag: '跨目标',
@@ -57,7 +57,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
   },
   tutor: {
     roleTag: '学习导师',
-    blurb: '主讲与协调 · 团队分诊',
+    blurb: '主讲与协调 · 角色分诊',
     emptyHint: '还没有对话：直接说需求，或从工作流发起',
     fallbackIcon: GraduationCap,
     avatarClass: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/25',
@@ -65,7 +65,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
   },
   dispatcher: {
     roleTag: '调度分派',
-    blurb: '接需求 · 委托分派 · 交付汇报',
+    blurb: '接需求 · chat 派单 / work · 交付汇报',
     emptyHint: '还没有会话：把需求直接说给我，或由工作流触发',
     fallbackIcon: Route,
     avatarClass: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/25',
@@ -90,7 +90,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
   researcher: {
     roleTag: '调研实操',
     blurb: '联网调研 · 浏览器操作',
-    emptyHint: '还没有会话：浏览器任务由工作流与委托触发',
+    emptyHint: '还没有会话：浏览器任务由工作流与 role 派单触发',
     fallbackIcon: Compass,
     avatarClass: 'bg-teal-500/15 text-teal-700 dark:text-teal-300 border-teal-500/25',
     ringClass: 'bg-teal-500/15 text-teal-600 dark:text-teal-300',
@@ -105,5 +105,5 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
   },
 }
 
-/** 左栏的展示顺序（free 在最左，导师随后，承接声部依次排开） */
+/** 左栏的展示顺序（free 在最左，导师随后，承接 role 依次排开） */
 export const AGENT_ROSTER_ORDER: readonly AgentTeamMode[] = ['free', 'tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer']

@@ -87,9 +87,9 @@ export interface ComposerProps {
    * 「+」菜单与模型选择器这些导师域的控件一并隐藏；「停止」保留——停的是整轮，
    * 会级联中止正在跑的子代理。
    */
-  subMode?: { name: string; running: boolean }
+  workMode?: { name: string; running: boolean }
   /** 子代理会话入口（按钮 + 弹出列表），插在模型选择器左侧；没有会话时不渲染 */
-  subAgentSlot?: ReactNode
+  workSlot?: ReactNode
   /** 写作策略入口（导师人格 + 文档格式）：插在子代理按钮的右侧、与提供商切换同一排 */
   strategySlot?: ReactNode
   /** 消息列表定位按钮入口：插在「+」菜单右侧 */
@@ -156,8 +156,8 @@ export function Composer(props: ComposerProps) {
     onSetEffort,
     onSuperLab,
     onOpenPreview,
-  subMode,
-  subAgentSlot,
+  workMode,
+  workSlot,
   strategySlot,
   msgNavSlot,
   /** 这枚面板是不是眼前的页签（keepalive 常挂时隐藏面板不登记 chip 落点，见上面的 effect） */
@@ -239,7 +239,7 @@ export function Composer(props: ComposerProps) {
     // keepalive 之后所有页签的面板常挂——**只有可见的那一枚**能登记：
     // 落点是模块级单槽，谁最后登记谁赢，隐藏面板抢走它，chip 就拖不进眼前的输入框了。
     const el = cardRef.current
-    if (!el || subMode || !active) return
+    if (!el || workMode || !active) return
     registerDocChipTarget({
       el,
       hover: setChipHover,
@@ -252,7 +252,7 @@ export function Composer(props: ComposerProps) {
       },
     })
     return () => registerDocChipTarget(null)
-  }, [subMode, active])
+  }, [workMode, active])
 
   /** 粘贴：图片走附件那条路；文本拍平插进来，其中完整的 #[{…}] 直接落成 chip */
   const onPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
@@ -359,7 +359,7 @@ export function Composer(props: ComposerProps) {
     g.textContent = ghostText
     g.style.left = rect.left + 'px'
     g.style.top = rect.top + 'px'
-  }, [ghostText, value, subMode])
+  }, [ghostText, value, workMode])
 
   /** 收下幽灵：把半截命令补成完整的「/命令」，光标留末尾——菜单继续开着，回车即执行 */
   const acceptGhost = () => {
@@ -566,15 +566,15 @@ export function Composer(props: ComposerProps) {
               aria-hidden="true"
               className="pointer-events-none absolute left-3.5 top-2.5 max-w-full truncate text-[13px] leading-relaxed text-ink-faint"
             >
-              {subMode
-                ? t('子会话只接受导师的调度——回到导师对话给它派任务。')
+              {workMode
+                ? t('工作层只接受所属 role 的派单——回到 role 对话给它派任务。')
                 : running
                   ? // 正在跑：说清「现在发出去会发生什么」——排队，不是等用户自己按住
                     free
                     ? t('正在回答…这条发出去会排进等待队列，等它答完自动发送')
                     : t('导师正在回答…这条发出去会排进等待队列，等它答完自动发送')
                   : locked
-                    ? t('工作会话：由工作流与委托驱动，不直接对话')
+                    ? t('工作会话：由工作流与 role 派单驱动，不直接对话')
                     : free
                       ? t('输入消息开始对话…（/ 可用斜杠命令，可拖入文件、页签、图片）')
                       : t('向超级导师提问…（/ 可用斜杠命令，可拖入文件、页签、图片）')}
@@ -582,7 +582,7 @@ export function Composer(props: ComposerProps) {
           )}
           <div
             ref={editorMount}
-            contentEditable={!subMode && !locked}
+            contentEditable={!workMode && !locked}
             role="textbox"
             aria-multiline="true"
             spellCheck={false}
@@ -606,7 +606,7 @@ export function Composer(props: ComposerProps) {
             onKeyDown={onKeyDown}
             className={
               'block max-h-56 min-h-[42px] w-full overflow-y-auto rounded-t-2xl bg-transparent px-3.5 pt-2.5 pb-2 text-[13px] leading-relaxed text-ink outline-none ' +
-              (subMode ? 'cursor-not-allowed opacity-55' : '')
+              (workMode ? 'cursor-not-allowed opacity-55' : '')
             }
           />
         </div>
@@ -622,7 +622,7 @@ export function Composer(props: ComposerProps) {
             子会话模式下不画：那些动作都是导师域的。
           */}
           <div className="flex shrink-0 items-center gap-0.5">
-            {!subMode && (
+            {!workMode && (
               <PlusMenu
                 menuMounted={menuMounted}
                 menuClosing={menuClosing}
@@ -642,18 +642,18 @@ export function Composer(props: ComposerProps) {
             )}
             {msgNavSlot}
           </div>
-          {subMode && (
+          {workMode && (
             <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-ink-faint">
               <Bot size={13} className="shrink-0 text-seal" />
-              <span className="truncate font-medium text-ink-soft">{subMode.name}</span>
+              <span className="truncate font-medium text-ink-soft">{workMode.name}</span>
               <span className="shrink-0">· {t('子会话只读')}</span>
             </span>
           )}
           <div className="ml-auto flex shrink-0 items-center gap-0.5">
-            {subAgentSlot}
-            {!subMode && <ModelPicker onChanged={onModelChanged} />}
-            {!subMode && strategySlot}
-            {!subMode && (
+            {workSlot}
+            {!workMode && <ModelPicker onChanged={onModelChanged} />}
+            {!workMode && strategySlot}
+            {!workMode && (
               <MicButton active={active} makeSink={makeVoiceSink} />
             )}
             {/*
@@ -669,7 +669,7 @@ export function Composer(props: ComposerProps) {
               同一颗实心按钮会让人以为点下去导师马上就听。停键排在它右边——
               最靠角的那颗是「停下来」，这是这颗面板里最需要闭着眼也点得准的动作。
             */}
-            {running && !subMode && hasDraft && !locked && (
+            {running && !workMode && hasDraft && !locked && (
               <button
                 type="button"
                 title={t('排进等待队列（当前回答结束后自动发送）')}
@@ -698,7 +698,7 @@ export function Composer(props: ComposerProps) {
                  * 斜杠命令打着的时候发不得：那截文字是命令，不是消息（Enter 在斜杠菜单里
                  * 已经被拦下，这颗按钮是同一道闸的鼠标侧）。
                  */
-                disabled={!!subMode || slash.active || !hasDraft}
+                disabled={!!workMode || slash.active || !hasDraft}
                 className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg bg-ink text-paper shadow-sm transition hover:bg-ink-strong disabled:pointer-events-none disabled:opacity-35"
               >
                 <ArrowUp size={15} />

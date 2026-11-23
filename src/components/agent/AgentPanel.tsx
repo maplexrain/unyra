@@ -7,21 +7,12 @@ import {
   useState,
   type CSSProperties,
 } from 'react'
-import type {  AgentPart,
-  Conversation,
-  MessageImage,
-  MessageUsage,
-  PendingFile,
-  PendingImage,
-} from '../../agent/types'
+import type { AgentPart, Conversation, MessageImage, MessageUsage, PendingFile, PendingImage, WorkSession } from '../../agent/types'
 import type { AskAnswers, AskFormPayload } from '../../agent/tools'
 import type { PersonaId } from '../../agent/persona'
 import type { DocFormatId } from '../../agent/docFormat'
-import type { SubAgentDef, SubAgentSession } from '../../agent/subagent/types'
 import type { QueuedMessage, SendOutcome } from '../../learn/agentQueue'
-import type { ActiveDelegationView } from '../../learn/agentTeam/delegations'
 import type { ReasoningEffort } from '../../ai/types'
-import { ChevronDown, ChevronRight, Trash2, Zap } from 'lucide-react'
 import StrategyPicker from './StrategyPicker'
 import { ImageLightbox, PendingLightbox } from './panel/Images'
 import { MsgRail } from './panel/MsgRail'
@@ -30,7 +21,8 @@ import { useMessageList } from './panel/useMessageList'
 import { ComposerUi } from './panel/useComposerUi'
 import { PaceStrip } from './panel/PaceStrip'
 import { FollowLatestButton } from './panel/MessageBubble'
-import { SubAgentMenu } from './panel/SubAgentMenu'
+import { WorkMenu } from './panel/WorkMenu'
+import { RoleChatView } from './panel/RoleChatView'
 import { toolLabel } from './panel/toolLabel'
 import { useComposer } from './panel/useComposer'
 import { useMsgRail } from './panel/useMsgRail'
@@ -48,11 +40,14 @@ import { focusAgentInput } from '../../lib/agentFocus'
  * 消息列表见 panel/MessageList、输入区见 panel/Composer（菜单在 panel/PlusMenu）。
  */
 
-/** 委托裸数据里的时间戳显示（本地时区的 月/日 时:分；没有就画 —） */
-function delegationTsLabel(ts: number): string {
-  if (!Number.isFinite(ts) || ts <= 0) return '—'
-  const d = new Date(ts)
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+/**
+ * 一个 work 会话的 view 数据：会话列表 + 正在跑的实时输出。
+ * work 没有人格，界面只画它的任务上下文与过程。
+ */
+interface WorkView {
+  sessions: WorkSession[]
+  running: boolean
+  live: Array<{ workId: string; runId: string; parts: AgentPart[] }>
 }
 
 interface Props {
@@ -61,22 +56,11 @@ interface Props {
   streaming: AgentPart[] | null
   /** 自由聊天（固定页签）：没有导师身份——子代理、人格与「正在辅导」全部收起 */
   free?: boolean
-  /** 锁住输入区（不可交流声部的工作会话 / 委托会话）：只能看，发消息要走工作流或委托 */
+  /** 锁住输入区（不可交流 role 的工作会话）：只能看，发消息要走工作流 */
   chatLocked?: boolean
-  /** 空态随声部：声部 id（'free' = 仅聊天）与显示名（空白页标题与职责说明跟声部走） */
+  /** 空态随 role：role id（'free' = 仅聊天）与显示名（空白页标题与职责说明跟 role 走） */
   emptyVoice?: string
   emptyName?: string
-  /**
-   * 本会话（委托者视角）发起的、还没收口的委托（activeDelegationsFrom 的快照，带裸数据）：
-   * 在消息列表底部画「委托进行中」条——行可展开看裸数据，可手动激活 / 删除（防卡死的
-   * 最后兜底），点「查看会话」跳转到对应的委托会话。
-   */
-  delegationsOut?: ActiveDelegationView[]
-  onOpenDelegation?: (conversationId: string) => void
-  /** 手动激活一条委托（跳过排队 / 重启僵尸账，承接会话忙时由宿主拒绝并提示） */
-  onActivateDelegation?: (id: string) => void
-  /** 手动删除一条委托（从注册表与队列摘除，不再排队与接续） */
-  onDeleteDelegation?: (id: string) => void
   /** 轮次进行中那条回复的 id：它在轮次内就分次进了会话（增量落库），列表里要剔掉防止两边都画 */
   streamingMessageId: string | null
   running: boolean
@@ -159,27 +143,17 @@ interface Props {
   /** 正在跑的这一轮到目前为止的账（每跳 usage 重算）：圆环的实时数据源，空闲时为 null */
   liveUsage?: MessageUsage | null
   /**
-   * 子代理（见 docs/subagent-architecture.md）：当前对话的会话列表 + 正在跑的那场的
-   * 实时输出。面板据此画入口按钮、弹出会话列表与子会话视图——子会话的渲染与导师
-   * 视图是同一套（消息列表、工具卡片、流式），只是数据源换掉、输入禁用。
+   * work：当前 role 对话下的工作会话列表 + 正在跑的实时输出。
+   * 面板据此画 WorkMenu 入口与 work 视图（消息列表、工具卡片、流式），输入禁用。
    */
-  sub?: {
-    sessions: SubAgentSession[]
-    /** 本对话里 subagent.create 登记的定义（会话按 defKey 认名字） */
-    defs: SubAgentDef[]
-    running: boolean
-    /** 每场在跑任务的实时流式（并发时多场同时在跑，按会话挑自己那一份） */
-    live: Array<{ sessionId: string; runId: string; parts: AgentPart[] }>
-  }
+  work?: WorkView
   /**
-   * 子会话视图：看哪个子代理会话由**页签**决定（agent 栏页签化，见 AgentTabStrip）——
-   * 页签指着哪个会话，整个面板就看哪一边。消息列表、流式输出、状态条与定位条的输入
-   * 全部换成子会话那一份——渲染机制与导师视图完全同一套，换的只是数据源；
-   * 传 null 就是导师对话本身。
+   * work 视图：看哪个 work 由**页签**决定（agent 栏页签化，见 AgentTabStrip）——
+   * 页签指着哪个 work，整个面板就看哪一边；传 null 就是 role 对话本身。
    */
-  viewSubId?: string | null
-  /** 子代理会话入口被点：宿主把它的页签开好并置前（替代旧的面板内视图切换） */
-  onOpenSub?: (sessionId: string) => void
+  viewWorkId?: string | null
+  /** work 入口被点：宿主把它的页签开好并置前 */
+  onOpenWork?: (workId: string) => void
   /** 点击文件附件时在标签页打开 */
   onOpenFile?: (pathOrRel: string, title?: string) => void
   onOpenSettings?: () => void
@@ -191,10 +165,6 @@ export default function AgentPanel({
   streaming,
   free,
   chatLocked,
-  delegationsOut,
-  onOpenDelegation,
-  onActivateDelegation,
-  onDeleteDelegation,
   emptyVoice,
   emptyName,
   streamingMessageId,
@@ -232,9 +202,9 @@ export default function AgentPanel({
   onAskCancel,
   tps,
   liveUsage,
-  sub,
-  viewSubId = null,
-  onOpenSub,
+  work,
+  viewWorkId = null,
+  onOpenWork,
   active = true,
   onOpenFile,
   onOpenSettings,
@@ -242,8 +212,8 @@ export default function AgentPanel({
   /** 点开看大图的附件。两种来源各一份状态：已进资源库的气泡图与还在内存里的待发送图 */
   const [preview, setPreview] = useState<PendingImage | null>(null)
   const [bubblePreview, setBubblePreview] = useState<MessageImage | null>(null)
-  /** 委托条上展开看裸数据的那几条（键 = 委托 id；面板内局部展开态，随面板卸载即忘） */
-  const [expandedDelegationIds, setExpandedDelegationIds] = useState<Set<string>>(() => new Set())
+  /** role 视图分层：chat = 只画 user/agent 通道的对外消息；mind = 全量消息（工具、思考、work 通道） */
+  const [viewMode, setViewMode] = useState<'chat' | 'mind'>('mind')
   /** 上下文压缩后的摘要展开着（消息列表里那块分界线上的「看摘要」） */
   const [summaryOpen, setSummaryOpen] = useState(false)
 
@@ -263,26 +233,23 @@ export default function AgentPanel({
   )
 
   /**
-   * 子会话视图的解析（viewSubId 由页签给，见 Props 的说明）。
+   * work 视图的解析（viewWorkId 由页签给，见 Props 的说明）。
    */
-  const subSession = useMemo(
-    () => (sub && viewSubId ? (sub.sessions.find((s) => s.id === viewSubId) ?? null) : null),
-    [sub, viewSubId],
+  const workSession = useMemo(
+    () => (work && viewWorkId ? (work.sessions.find((w) => w.id === viewWorkId) ?? null) : null),
+    [work, viewWorkId],
   )
   /**
-   * 正看着的这场任务在跑吗（实时流式来自 sub.live 里属于这个会话的那一份）。
-   * 并发模型下过程是边跑边落库的（介入插入前固化一段、收口再固化一段），
-   * 会话消息与实时流式天然不重不漏——不再需要按 runId 剔重的过滤。
+   * 正看着的这个 work 在跑吗（实时流式来自 work.live 里属于它的那一份）。
    */
-  const subLive = useMemo(
-    () => (sub && viewSubId ? (sub.live.find((l) => l.sessionId === viewSubId) ?? null) : null),
-    [sub, viewSubId],
+  const workLive = useMemo(
+    () => (work && viewWorkId ? (work.live.find((l) => l.workId === viewWorkId) ?? null) : null),
+    [work, viewWorkId],
   )
-  const viewMessages = useMemo(() => (subSession ? subSession.messages : messages), [subSession, messages])
-  const viewStreaming = subSession ? (subLive ? subLive.parts : null) : streaming
-  const viewRunning = subSession ? !!(subLive || subSession.status === 'running') : running
-  /** 子会话头部要显示的定义信息（名字 / 内置标记） */
-  const subDef = subSession ? (sub?.defs ?? []).find((d) => d.key === subSession.defKey) : undefined
+  const viewMessages = useMemo(() => (workSession ? workSession.messages : messages), [workSession, messages])
+  const viewStreaming = workSession ? (workLive ? workLive.parts : null) : streaming
+  const viewRunning = workSession ? !!(workLive || workSession.status === 'running') : running
+  const viewStatus = workSession?.status ?? null
   /**
    * 这个对话里所有回复的 token 账，圆环与浮层据此汇总。
    * 跑着的时候把**实时账**追加在最后（每跳 usage 重算）：一轮里模型来回好几跳，
@@ -292,9 +259,9 @@ export default function AgentPanel({
   const usages = useMemo(
     () => [
       ...viewMessages.flatMap((m) => (m.role === 'assistant' && m.usage ? [m.usage] : [])),
-      ...(!subSession && liveUsage ? [liveUsage] : []),
+      ...(!workSession && liveUsage ? [liveUsage] : []),
     ],
-    [viewMessages, subSession, liveUsage],
+    [viewMessages, workSession, liveUsage],
   )
   /**
    * 失活的分界线：从这一条（下标）起还在上下文里，前面的已经被折进摘要、只作显示。
@@ -303,7 +270,7 @@ export default function AgentPanel({
    * 压缩就是「一条原消息都不留 + 摘要成为第一条消息」。全部都失活时给 messages.length
    * （那时摘要下面还没有新消息，分界线画在列表开头，由上面那句 summary 单独渲染）。
    */
-  const summary = subSession ? null : (conversation?.summary ?? null)
+  const summary = workSession ? null : (conversation?.summary ?? null)
   const summaryStart = useMemo(() => {
     const i = viewMessages.findIndex((m) => !m.retired)
     return i < 0 ? viewMessages.length : i
@@ -468,9 +435,9 @@ export default function AgentPanel({
     lastStreaming && lastStreaming.type === 'tool' && lastStreaming.status === 'running'
       ? t('正在{0}…', toolLabel(lastStreaming.name, lastStreaming.args))
       : viewStreaming?.length
-        ? subSession
-          ? t('子代理正在准备')
-          : t('导师正在准备')
+        ? workSession
+          ? t('work 正在执行')
+          : t('角色正在准备')
         : t('思考中…')
 
   const handleSelectPrompt = useCallback(
@@ -506,6 +473,25 @@ export default function AgentPanel({
   return (
     // relative：定位条贴着这一块的右边挂（它要的是整块面板的坐标，不是消息列的）
     <div ref={rootRef} className="relative flex h-full min-h-0 flex-col bg-paper-deep/40">
+      {!workSession ? (
+        <div className="flex shrink-0 items-center gap-1 border-b border-line/60 px-3 py-1.5">
+          {(['chat', 'mind'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setViewMode(m)}
+              className={
+                'rounded-lg px-2.5 py-1 text-[11.5px] transition ' +
+                (viewMode === m
+                  ? 'bg-ink-strong text-paper'
+                  : 'text-ink-faint hover:bg-line/50 hover:text-ink-strong')
+              }
+            >
+              {m === 'chat' ? t('对话') : t('思维')}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {/*
         内容上限 768px：这一栏的容器可以被拉到 800 宽，两列对调之后还会占住左边那一大块，
         但对话本身（消息 / 输入区）始终不超过 768——一行拉得太长就读不动了。
@@ -547,161 +533,11 @@ export default function AgentPanel({
               }`}
               style={{ zoom: chatScale } as CSSProperties}
             >
-              {messageList}
-              {delegationsOut?.length ? (
-                <div
-                  data-delegation-strip
-                  className="mb-2 rounded-xl border border-line bg-card/70 px-2.5 py-2.5 text-[11.5px]"
-                >
-                  <div className="mb-1.5 flex items-center gap-1.5 px-0.5 font-medium text-ink-strong">
-                    {t('委托进行中')}
-                    <span className="rounded bg-seal/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-seal-deep dark:text-seal-2">
-                      {delegationsOut.length}
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    {delegationsOut.map((d) => {
-                      const expanded = expandedDelegationIds.has(d.id)
-                      const toggle = () =>
-                        setExpandedDelegationIds((prev) => {
-                          const next = new Set(prev)
-                          if (next.has(d.id)) next.delete(d.id)
-                          else next.add(d.id)
-                          return next
-                        })
-                      return (
-                        <div
-                          key={d.id}
-                          data-delegation-id={d.id}
-                          className={
-                            'rounded-lg border transition ' +
-                            (d.status === 'running' ? 'moji-agent-live ' : '') +
-                            (expanded ? 'border-line-strong/60 bg-card/60' : 'border-transparent')
-                          }
-                        >
-                          <div className="flex items-center gap-1 px-0.5 py-0.5">
-                            <button
-                              type="button"
-                              aria-expanded={expanded}
-                              aria-label={expanded ? t('收起委托详情') : t('展开委托详情')}
-                              title={expanded ? t('收起委托详情') : t('展开委托详情（指令全文与裸数据）')}
-                              onClick={toggle}
-                              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/50 hover:text-ink"
-                            >
-                              {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                            </button>
-                            <span
-                              aria-hidden="true"
-                              className={
-                                'h-1.5 w-1.5 shrink-0 rounded-full ' +
-                                (d.status === 'running' ? 'animate-pulse bg-seal' : 'bg-line-strong')
-                              }
-                            />
-                            <button
-                              type="button"
-                              onClick={toggle}
-                              title={d.instruction}
-                              className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded-md px-1 py-1 text-left text-ink-soft transition hover:text-ink"
-                            >
-                              <span className="truncate">
-                                → {d.toName}
-                                <span className="ml-1 text-ink-faint">
-                                  （{d.status === 'running' ? t('处理中') : t('排队中')}）
-                                </span>
-                                {d.attempts > 0 && (
-                                  <span className="ml-1 text-amber-500">
-                                    {t('重试')} ×{d.attempts}
-                                  </span>
-                                )}
-                              </span>
-                            </button>
-                            <span className="flex shrink-0 items-center gap-0.5">
-                              <button
-                                type="button"
-                                title={t('手动激活：跳过排队立即启动（承接会话忙时会被拒绝）')}
-                                aria-label={t('手动激活这条委托')}
-                                onClick={() => onActivateDelegation?.(d.id)}
-                                className="flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-seal/15 hover:text-seal-deep dark:hover:text-seal-2"
-                              >
-                                <Zap size={13} />
-                              </button>
-                              <button
-                                type="button"
-                                title={t('删除这条委托：不再排队与接续（卡住的委托用这招兜底）')}
-                                aria-label={t('删除这条委托')}
-                                onClick={() => onDeleteDelegation?.(d.id)}
-                                className="flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-seal/15 hover:text-seal-deep dark:hover:text-seal-2"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                              <button
-                                type="button"
-                                title={t('跳转到它的委托会话')}
-                                onClick={() => onOpenDelegation?.(d.toConversationId)}
-                                className="rounded-md px-1.5 py-1 text-[10.5px] text-seal transition hover:bg-seal/10"
-                              >
-                                {t('查看会话')}
-                              </button>
-                            </span>
-                          </div>
-                          {expanded && (
-                            <div className="border-t border-line/50 px-3 py-2 text-[11px] leading-relaxed text-ink-soft">
-                              <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-sans text-[11.5px] text-ink">
-                                {d.instruction}
-                              </pre>
-                              <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-0.5 text-[10.5px] text-ink-faint">
-                                <span className="text-ink-faint/80">{t('发起')}</span>
-                                <span className="text-ink-soft">{d.fromName}</span>
-                                <span className="text-ink-faint/80">{t('承接会话')}</span>
-                                <span className="truncate font-mono" title={d.toConversationId}>
-                                  {d.toConversationId}
-                                </span>
-                                {d.goalId && (
-                                  <>
-                                    <span className="text-ink-faint/80">{t('目标')}</span>
-                                    <span className="truncate font-mono" title={d.goalId}>
-                                      {d.goalId}
-                                    </span>
-                                  </>
-                                )}
-                                {d.nodeId && (
-                                  <>
-                                    <span className="text-ink-faint/80">{t('节点')}</span>
-                                    <span className="truncate font-mono" title={d.nodeId}>
-                                      {d.nodeId}
-                                    </span>
-                                  </>
-                                )}
-                                <span className="text-ink-faint/80">{t('创建')}</span>
-                                <span className="tabular-nums">{delegationTsLabel(d.createdAt)}</span>
-                                {d.startedAt ? (
-                                  <>
-                                    <span className="text-ink-faint/80">{t('最近启动')}</span>
-                                    <span className="tabular-nums">{delegationTsLabel(d.startedAt)}</span>
-                                  </>
-                                ) : null}
-                                <span className="text-ink-faint/80">{t('重试次数')}</span>
-                                <span className="tabular-nums">
-                                  {d.attempts}
-                                  {d.attempts > 0 ? t('（收口没交付会记一次，连续 3 次自动作废）') : ''}
-                                </span>
-                                <span className="text-ink-faint/80">{t('允许插队至')}</span>
-                                <span className="tabular-nums">
-                                  {d.preemptibleUntil > 0 ? delegationTsLabel(d.preemptibleUntil) : t('不允许')}
-                                </span>
-                                <span className="text-ink-faint/80">id</span>
-                                <span className="truncate font-mono" title={d.id}>
-                                  {d.id}
-                                </span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ) : null}
+              {viewMode === 'mind' || workSession ? (
+                messageList
+              ) : (
+                <RoleChatView channels={conversation?.channels ?? []} />
+              )}
             </div>
           </div>
         </div>
@@ -760,11 +596,9 @@ export default function AgentPanel({
           effort={effort}
           onSetEffort={onSetEffort}
           onOpenPreview={setPreview}
-          subMode={subSession ? { name: subDef?.name ?? subSession.defKey, running: viewRunning } : undefined}
-          subAgentSlot={
-            free ? undefined : (
-              <SubAgentMenu sessions={sub?.sessions ?? []} defs={sub?.defs ?? []} onOpen={(id) => onOpenSub?.(id)} />
-            )
+          workMode={workSession ? { name: workSession.name, running: viewRunning } : undefined}
+          workSlot={
+            free ? undefined : <WorkMenu sessions={work?.sessions ?? []} onOpen={(id) => onOpenWork?.(id)} />
           }
           // 写作策略入口：输入框底行、子代理按钮右侧（向上展开——它已贴近窗口底缘）
           strategySlot={
@@ -802,21 +636,23 @@ export default function AgentPanel({
           人格与格式选择器不在这行：它们搬进了输入框底行，与提供商切换同一排（见 ComposerUi 的 strategySlot）。
         */}
         <div className="flex min-w-0 items-center gap-2.5 px-1 pb-1.5 pt-1.5">
-          {subSession ? (
+          {workSession ? (
             <>
               <span
                 className={'shrink-0 text-[11px] leading-none ' + (viewRunning ? 'text-seal' : 'text-ink-faint')}
               >
                 {viewRunning
                   ? t('任务进行中')
-                  : subSession.status === 'interrupted'
+                  : viewStatus === 'interrupted'
                     ? t('上次被中断')
-                    : subSession.status === 'error'
+                    : viewStatus === 'error'
                       ? t('上次出错')
-                      : t('空闲')}
+                      : viewStatus === 'stopped'
+                        ? t('已停止')
+                        : t('空闲')}
               </span>
               <span className="min-w-0 truncate text-[11px] leading-none text-ink-faint">
-                {t('独立上下文 · {0} 次任务', subSession.runs)}
+                {t('独立上下文 · {0} 次任务', workSession.runs)}
               </span>
             </>
           ) : free ? (

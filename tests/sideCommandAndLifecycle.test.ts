@@ -211,7 +211,7 @@ describe('Vim :side 页签内传送对照、拖拽比例、双击对调与持久
     expect(targets.some((x) => x.tabId === 'o:nA')).toBe(true)
     expect(targets.some((x) => x.tabId === 'team:gA')).toBe(true)
 
-    const pyMatch = matchSideTargets(targets, 'znttd') // 智能体团队拼音首字母
+    const pyMatch = matchSideTargets(targets, 'jszr') // 角色阵容拼音首字母
     expect(pyMatch.some((x) => x.tabId === 'team:gA')).toBe(true)
   })
 
@@ -282,7 +282,7 @@ describe('Vim :side 页签内传送对照、拖拽比例、双击对调与持久
       }),
     )
 
-    const rOpen = executeVimCommand(':side 智能体团队')
+    const rOpen = executeVimCommand(':side 角色阵容')
     expect(rOpen.success).toBe(true)
     expect(openSpy).toHaveBeenCalledWith('team:gA')
 
@@ -409,7 +409,6 @@ describe('智能体团队响应式布局断点与 :side 状态隔离', () => {
         activateAgentTab: () => {},
         openAgentTab: () => {},
         selectTutorGoal: () => {},
-        exitSubagentView: () => {},
         handleNewGoalConversation: () => {},
         removeConversation: () => {},
         newConversationIn: () => {},
@@ -535,7 +534,7 @@ describe('Vim :fixside 固定外侧对照栏（页签外宿主机与持久化）
     })
     setFixSideTargetsProvider(() => candidates)
 
-    expect(executeVimCommand(':fixside 智能体团队').success).toBe(true)
+    expect(executeVimCommand(':fixside 角色阵容').success).toBe(true)
     expect(openSpy).toHaveBeenCalledWith('team:gA')
 
     expect(executeVimCommand(':fixside swap').success).toBe(true)

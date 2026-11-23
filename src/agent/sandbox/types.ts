@@ -4,8 +4,8 @@
  * 实现见同目录的 api / body / askForm / worker / execute。
  *
  * 契约本体已按 API 能力组拆到 ./types/ 子目录（core / exam / options / permission /
- * subagent / ask / workspace / web / see / memory / schedule / compact / chip / delivery /
- * method / workflow / code / userInfo / ui / browser / mcp / resources / video / project），
+ * work / chat / host / ask / workspace / web / see / memory / schedule / compact / chip /
+ * delivery / method / workflow / code / userInfo / ui / browser / mcp / resources / video / project），
  * 本文件只做**原样转发**：类型用 `export type { ... } from`、值（EXAM_ACTIONS）用
  * `export { ... } from`——调用方从 './sandbox/types' 引用名字的写法一行都不用改。
  */
@@ -25,14 +25,22 @@ export type { SandboxOptions } from './types/options'
 /* ---------- permission：路径放行 ---------- */
 export type { PermissionRequestPayload, PermissionOps } from './types/permission'
 
-/* ---------- subagent：子代理 ---------- */
+/* ---------- roleWork：work / chat / host ---------- */
 export type {
-  SubWaitDelivery,
-  SubWaitRunning,
-  SubWaitResult,
-  SubAgentApiResult,
-  SubAgentSandboxApi,
-} from './types/subagent'
+  WorkSandboxApi,
+  WorkSummary,
+  WorkStatusResult,
+  WorkCreateInput,
+  WorkSendInput,
+  WorkCallResult,
+  ChatSandboxApi,
+  ChatSendInput,
+  ChatCallResult,
+  ChatAttachmentInput,
+  HostSandboxApi,
+  HostSendInput,
+  HostCallResult,
+} from '../roleWork/types'
 
 /* ---------- ask：结构化表单 ---------- */
 export type {
@@ -55,13 +63,12 @@ export type { MemoryOps } from './types/memory'
 export type { ScheduleOps } from './types/schedule'
 export type { CompactOps } from './types/compact'
 
-/* ---------- chip / delivery / method / wf / code / userInfo / team ---------- */
+/* ---------- chip / delivery / method / wf / code / userInfo ---------- */
 export type { ChipOps } from './types/chip'
 export type { DeliveryOps } from './types/delivery'
 export type { MethodOps } from './types/method'
 export type { WorkflowOps } from './types/workflow'
 export type { UserInfoOps } from './types/userInfo'
-export type { TeamOps } from './types/team'
 
 /* ---------- ui：界面操作 ---------- */
 export type { UiPointRequest, UiScrollRequest, UiCaptureResult, UiOps } from './types/ui'

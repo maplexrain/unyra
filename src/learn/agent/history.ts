@@ -18,6 +18,7 @@ import type { ChatMessage } from '../../ai/types'
 import { budgetChars, imagePart, textPart } from '../../ai/content'
 import { fileBlock } from '../attachments'
 import { summaryBlock } from '../compact'
+import { channelTextOf } from '../roleWork/channels'
 
 /**
  * 送入模型的历史预算（字符数）。不是「最近 N 条」——按条数裁剪会让前缀每轮都变：
@@ -72,7 +73,8 @@ export function toChatHistory(
         .filter((p): p is { mime: string; data: string } => !!p)
       // 附件的正文接在用户那句话之后、位置说明之前：先看他问了什么、附了什么，再看「此刻在哪个节点」
       const attach = m.files?.length ? fileBlock(m.files, opts?.files ?? new Map()) : ''
-      const body = withContext([text, attach].filter(Boolean).join('\n\n'), m.context)
+      const stamped = m.channel ? channelTextOf(m.channel, text) : text
+      const body = withContext([stamped, attach].filter(Boolean).join('\n\n'), m.context)
       // 片段顺序：先文字后图片。顺序一旦定下就不能再改——历史要逐字节稳定
       out.push({
         role: 'user',
@@ -166,10 +168,10 @@ export function toChatHistory(
           out.push({ role, content: p.text })
         }
         /**
-         * 委托交付（team.complete，见 learn/agentTeam/delegations）：实发侧按 user 角色
-         * push（pushInjection 对 user 恒不降级），还原同样恒为 user——逐字节镜像。
+         * 通道消息（role-work 的 Work / Agent 通道）：实发侧按 user 角色 push
+         * （pushInjection 对 user 恒不降级），还原同样恒为 user——逐字节镜像。
          */
-        if (p.type === 'team-delivery') {
+        if (p.type === 'channel-message') {
           out.push({ role: 'user', content: p.text })
         }
       }

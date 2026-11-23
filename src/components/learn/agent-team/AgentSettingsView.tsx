@@ -1,14 +1,14 @@
 /**
- * 智能体的**独立设置页**：agent team 中央工作区在「设置态」下替换对话流的那一块
+ * 智能体的**独立设置页**：角色阵容中央工作区在「设置态」下替换对话流的那一块
  * （AgentSlot 的 settingsAgent 状态控制，见 workspace/AgentSlot）。
  *
- * 管的是「这位声部自己」：名字与头像、跑在哪家提供商-模型上、思考档位、
+ * 管的是「这位 role 自己」：名字与头像、跑在哪家提供商-模型上、思考档位、
  * execute 开放哪些 api 组、能触发哪些工作流，以及只读查看它实际会收到的系统提示词。
  * 每个字段都遵循 agent/agentProfile 的缺省语义：没改过 = 跟随默认 / 全局，
  * 改过才落盘；「恢复默认」整条清除覆盖。
  *
  * 与全局的「超级导师设置」（AgentSettingsPanel，管人格 / 技能 / MCP / 权限这些
- * 导师层面的机制）是两回事：这里是按声部逐个配的「它自己是谁、用什么跑」。
+ * 导师层面的机制）是两回事：这里是按 role 逐个配的「它自己是谁、用什么跑」。
  */
 
 import { useSyncExternalStore } from 'react'
@@ -33,9 +33,13 @@ import {
   DEFAULT_AGENT_NAME,
   FIXED_API_PLANE,
   FREE_AGENT_API_ITEMS,
+  WORK_FIXED_PLANE,
   variableApiGroupsOf,
   variableTopLevelOf,
+  variableWorkGroupsOf,
+  variableWorkTopLevelOf,
   type AgentProfile,
+  type AgentProfileId,
   type AgentVoice,
 } from '../../../agent/agentProfile'
 import { loadAgentSettings, subscribeAgentSettings } from '../../../agent/settings'
@@ -47,7 +51,7 @@ import type { AgentTeamMode } from './conversationList'
 
 export interface AgentSettingsViewProps {
   agentId: AgentTeamMode
-  /** 这位声部当前的 profile（AgentSlot 从 agentSettings 现取） */
+  /** 这位 role 当前的 profile（AgentSlot 从 agentSettings 现取） */
   profile: AgentProfile
   /** 合并一段覆盖（undefined 字段 = 清除该覆盖）；落盘与广播由调用方完成 */
   onChange: (patch: Partial<AgentProfile>) => void
@@ -234,7 +238,7 @@ export function AgentSettingsView({
   useLocale()
   const isTutor = agentId === 'tutor'
   const isFree = agentId === 'free'
-  /** 承接声部（出卷师 / 设计师 / 调研员 / 维修员）：api 与工作流面都是团队分工固定的只读清单 */
+  /** 承接 role（出卷师 / 设计师 / 调研员 / 维修员）：api 与工作流面都是架构分工固定的只读清单 */
   const isSpecialist = !isTutor && !isFree
   const agentSettings = useSyncExternalStore(subscribeAgentSettings, loadAgentSettings)
   const ai = useSyncExternalStore(subscribeAiSettings, loadAiSettings)
@@ -259,8 +263,8 @@ export function AgentSettingsView({
   /* ---------- execute api（能力面由架构固定：按固定组 / 非固定组两份只读清单展示） ---------- */
   /**
    * 分组口径与系统提示词的 api 速查同源（FIXED_API_PLANE 来自 AGENT_API_PLANES 求交）：
-   * - 固定组 = 六位执行声部人人有的执行基座（help / wait / compact + tmp / team）；
-   * - 非固定组 = 本声部职责面里的其余域（core 里按需给的顶层函数 + 各组）。
+   * - 固定组 = 六位挂目标 role 人人有的执行基座（help / wait / compact + tmp / work / chat）；
+   * - 非固定组 = 本 role 职责面里的其余域（core 里按需给的顶层函数 + 各组）。
    * 仅聊天是另一套架构固定面（联网 + 日程），没有非固定组。
    */
   const coreCatalog = SANDBOX_API_CATALOG.find((g) => g.key === 'core')
@@ -282,7 +286,7 @@ export function AgentSettingsView({
       return item ? { key: 'core:' + name, label: item.summary, code: 'api.' + name } : undefined
     }
 
-    // 固定组：core 的 help 恒在场 + 交集顶层函数，然后是全声部共用的组
+    // 固定组：core 的 help 恒在场 + 交集顶层函数，然后是全 role 共用的组
     for (const name of ['help', ...FIXED_API_PLANE.topLevel]) {
       const row = coreItem(name)
       if (row) fixedRows.push(row)
@@ -292,7 +296,7 @@ export function AgentSettingsView({
       if (group) fixedRows.push({ key, label: t(group.label), code: 'api.' + key })
     }
 
-    // 非固定组：本声部额外持有的顶层函数（ask / tiktok / fetch / see），再是职责域的组
+    // 非固定组：本 role 额外持有的顶层函数（ask / tiktok / fetch / see），再是职责域的组
     for (const name of variableTopLevelOf(voice)) {
       const row = coreItem(name)
       if (row) variableRows.push(row)
@@ -302,9 +306,9 @@ export function AgentSettingsView({
       if (group) variableRows.push({ key, label: t(group.label), code: 'api.' + key })
     }
   }
-  /* ---------- 工作流（导师可配白名单；承接声部 = 分工固定的只读面） ---------- */
+  /* ---------- 工作流（导师可配白名单；承接 role = 分工固定的只读面） ---------- */
   const wfPlane = new Set(AGENT_WORKFLOW_PLANES[agentId as AgentVoice])
-  // 内置行的锁死口径 = 本声部的分工面：不在面上的内置规程它触发不了，干脆不展示
+  // 内置行的锁死口径 = 本 role 的分工面：不在面上的内置规程它触发不了，干脆不展示
   //（免得进了「添加」下拉、加了又被通道口拒绝）
   const wfItems = flowRows
     .filter((r) => r.tier !== 'builtin' || wfPlane.has(r.id))
@@ -314,7 +318,7 @@ export function AgentSettingsView({
       tag: r.tier === 'builtin' ? '内置' : r.tier === 'global' ? '全局' : '目标级',
       builtin: r.tier === 'builtin',
     }))
-  /** 承接声部的固定工作流面（只有内置规程，没有登记条目） */
+  /** 承接 role 的固定工作流面（只有内置规程，没有登记条目） */
   const specialistWfItems = builtinWorkflowRows()
     .filter((r) => wfPlane.has(r.id))
     .map((r) => ({ key: r.id, label: r.name, tag: '内置' as const, builtin: true }))
@@ -362,7 +366,7 @@ export function AgentSettingsView({
         <div className="mx-auto flex max-w-[880px] flex-col px-6 py-1">
           {/* ---------- 身份 ---------- */}
           <section className="border-b border-line/60 py-4">
-            <SectionHead title={t('身份')} hint={t('改的是 agent team 左栏与这里的显示；不影响对话内容。')} />
+            <SectionHead title={t('身份')} hint={t('改的是角色阵容左栏与这里的显示；不影响对话内容。')} />
             <div className="flex flex-col gap-2.5">
               <label className="flex items-center gap-2.5">
                 <span className="w-14 shrink-0 text-[12px] text-ink-soft">{t('名称')}</span>
@@ -495,15 +499,15 @@ export function AgentSettingsView({
           </section>
 
           {/* ---------- execute 开放的 api（能力面固定：固定组 / 非固定组两份只读清单） ---------- */}
-          <section className="border-b border-line/60 py-4">
+          <section data-api-section className="border-b border-line/60 py-4">
             <SectionHead
               title={t('execute 开放的 api')}
               hint={
                 isFree
                   ? t('仅聊天的沙箱只有联网与日程两组能力，由架构固定、恒开放；没有非固定组。')
                   : isTutor
-                    ? t('导师的 api 面按团队分工固定、只读（不可增删）：固定组是六位执行声部共用的执行基座；非固定组是导师职责面的专属能力（教学主线与协调）。路由与分派归调度员、联网与浏览器归调研员、课件与实验归设计师、出卷与阅卷归出卷师、修复归维修员。')
-                    : t('这位成员的 api 面由团队分工固定、只读（不可增删）：固定组全员共用；非固定组只拿职责所需的域，其余域通过 team.* 协作补齐。')
+                    ? t('导师的 api 面按架构分工固定、只读（不可增删）：固定组是六位 role 共用的执行基座；非固定组是导师职责面的专属能力（教学主线与协调）。路由与派单归调度员、联网与浏览器归调研员、课件与实验归设计师、出卷与阅卷归出卷师、修复归维修员。')
+                    : t('这位 role 的 api 面由架构分工固定、只读（不可增删）：固定组全员共用；非固定组只拿职责所需的域，其余域通过 chat.send / work 协作补齐。')
               }
             />
             <div className="flex flex-col gap-3">
@@ -511,7 +515,7 @@ export function AgentSettingsView({
                 <div className="mb-1.5 flex items-center gap-2 text-[11px]">
                   <span className="font-semibold text-ink-strong">{t('固定组')}</span>
                   <span className="min-w-0 truncate text-ink-faint">
-                    {isFree ? t('仅聊天的执行基座，架构固定') : t('六位执行声部共用 · 架构固定')}
+                    {isFree ? t('仅聊天的执行基座，架构固定') : t('六位 role 共用 · 架构固定')}
                   </span>
                   <span className="ml-auto shrink-0 tabular-nums text-ink-faint">
                     {t('{0} 项', fixedRows.length)}
@@ -523,7 +527,7 @@ export function AgentSettingsView({
                 <div className="mb-1.5 flex items-center gap-2 text-[11px]">
                   <span className="font-semibold text-ink-strong">{t('非固定组')}</span>
                   <span className="min-w-0 truncate text-ink-faint">
-                    {isFree ? t('架构没有给仅聊天额外能力') : t('本声部职责面 · 架构固定')}
+                    {isFree ? t('架构没有给仅聊天额外能力') : t('本 role 职责面 · 架构固定')}
                   </span>
                   {variableRows.length > 0 && (
                     <span className="ml-auto shrink-0 tabular-nums text-ink-faint">
@@ -537,10 +541,46 @@ export function AgentSettingsView({
                   <p className="rounded-lg border border-line/70 bg-paper-deep/40 px-3 py-2 text-[11.5px] leading-relaxed text-ink-faint">
                     {isFree
                       ? t('无：仅聊天的能力面全部由架构固定。')
-                      : t('无：这位成员只持有全员共用的固定基座。')}
+                      : t('无：这位 role 只持有全员共用的固定基座。')}
                   </p>
                 )}
               </div>
+            </div>
+          </section>
+
+          {/* ---------- 工作层（work，只读） ---------- */}
+          <section data-work-layer className="border-b border-line/60 py-4">
+            <SectionHead
+              title={t('工作层（work）')}
+              hint={t('work 没有人格、不共享 role 的对话上下文；它由 role 用 work.create / work.send 派出，执行完用 host.send 把交付交回 role。下面是从 role 能力面派生出的 work 面，只读。')}
+            />
+            <div className="rounded-lg border border-line/70 bg-paper-deep/30 px-3 py-2">
+              <div className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-ink-soft">
+                <span className="font-medium text-ink-strong">{t('固定')}</span>
+                {['help', ...WORK_FIXED_PLANE.groups, ...WORK_FIXED_PLANE.topLevel].map((key) => (
+                  <code key={key} className="rounded bg-line/60 px-1.5 py-px text-[10.5px] text-ink-faint">
+                    api.{key}
+                  </code>
+                ))}
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11.5px] text-ink-soft">
+                <span className="font-medium text-ink-strong">{t('按 role 派生')}</span>
+                {[
+                  ...variableWorkGroupsOf(agentId as AgentProfileId).map((g) => 'api.' + g + '.*'),
+                  ...variableWorkTopLevelOf(agentId as AgentProfileId).map((n) => 'api.' + n),
+                ].map((key) => (
+                  <code key={key} className="rounded bg-line/50 px-1.5 py-px text-[10.5px] text-ink-faint">
+                    {key}
+                  </code>
+                ))}
+                {variableWorkGroupsOf(agentId as AgentProfileId).length === 0 &&
+                variableWorkTopLevelOf(agentId as AgentProfileId).length === 0 ? (
+                  <span className="text-[11px] text-ink-faint">{t('这位 role 的 work 只有固定面。')}</span>
+                ) : null}
+              </div>
+              <p className="mt-1.5 text-[10.5px] leading-relaxed text-ink-faint">
+                {t('work 的系统提示词由 role 自动生成（内容类 role 带共用排版内核），不在设置里改；它不是独立人格，也没有用户对话历史。')}
+              </p>
             </div>
           </section>
 
@@ -552,8 +592,8 @@ export function AgentSettingsView({
                 isFree
                   ? t('自由聊天的沙箱没有工作流通道（wf.*），此设置不生效。')
                   : isTutor
-                    ? t('从下拉把允许触发的工作流添加进列表。本声部分工面里的内置规程恒开放、只读不可卸载；白名单只管登记的全局 / 目标级工作流——wf.list 只列出的，越权触发当场拒绝。')
-                    : t('这位成员的工作流面由团队分工固定、只读（不可增删）；登记的全局 / 目标级工作流只有导师能触发。')
+                    ? t('从下拉把允许触发的工作流添加进列表。本 role 分工面里的内置规程恒开放、只读不可卸载；白名单只管登记的全局 / 目标级工作流——wf.list 只列出的，越权触发当场拒绝。')
+                    : t('这位 role 的工作流面由架构分工固定、只读（不可增删）；登记的全局 / 目标级工作流只有导师能触发。')
               }
             />
             {isTutor ? (
@@ -563,7 +603,7 @@ export function AgentSettingsView({
                 onChange={(list) => onChange({ workflows: list })}
                 addLabel={t('添加工作流')}
                 addHook="wf"
-                emptyNote="未添加任何项：登记的工作流全部可用（本声部的内置规程面恒开放）。"
+                emptyNote="未添加任何项：登记的工作流全部可用（本 role 的内置规程面恒开放）。"
                 clearedNote="列表为空：分工面内的内置规程恒可用，登记的全局 / 目标级工作流全部关闭。"
                 clearLabel="恢复全部可用"
               />
@@ -595,7 +635,7 @@ export function AgentSettingsView({
               hint={
                 isFree
                   ? t('自由聊天**下一轮**将收到的系统提示词全文；其能力面由架构固定，提示词恒定。')
-                  : t('这位成员**新对话**将收到的系统提示词全文（当前配置拼出；api 与工作流面按团队分工拼装）。进行中的对话用首轮固化的那份，不受影响。')
+                  : t('这位 role **新对话**将收到的系统提示词全文（当前配置拼出；api 与工作流面按架构分工拼装）。进行中的对话用首轮固化的那份，不受影响。')
               }
             />
             <AgentPromptSectionsView

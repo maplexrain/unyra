@@ -4,7 +4,7 @@
  * 导师对话栏从「单面板」改成「页签栏 + 每页签一份运行时」（见 components/agent/AgentTabStrip）：
  * - 一个**目标**一枚页签（上下文按目标隔离，见 graph/conversations）——打开某个目标下的
  *   文档时它的导师页签自动开好并置前；页签标题就是目标的标题；
- * - 一个**子代理会话**一枚页签——子代理允许在后台跑，页签随时可关（关页签不停任务）。
+ * - 一个 **work 会话**一枚页签——work 允许在后台跑，页签随时可关（关页签不停任务）。
  *
  * 这里只放数据形状与纯函数：增删、激活、关闭守卫、读盘归一。界面的守卫数据
  * （目标有没有开着文档页签、导师在不在跑）由调用方算好传进来。
@@ -13,13 +13,13 @@
 import type { AgentTabRef } from './types'
 import type { TabCloseMode } from './tabs'
 
-/** 页签 id：固定聊天 `free`（常驻，不落 store）、目标级 `ga:<goalId>:<conversationId>`、子代理 `sa:<sessionId>`。一个目标可收容多个会话页签 */
+/** 页签 id：固定聊天 `free`（常驻，不落 store）、目标级 `ga:<goalId>:<conversationId>`、work `wa:<workId>`。一个目标可收容多个会话页签 */
 export function agentTabKey(ref: AgentTabRef): string {
   if (ref.kind === 'free') return 'free'
   if (ref.kind === 'goal') {
     return ref.conversationId ? `ga:${ref.goalId}:${ref.conversationId}` : `ga:${ref.goalId}`
   }
-  return 'sa:' + ref.sessionId
+  return 'wa:' + ref.workId
 }
 
 /** 关一枚 agent 页签被什么拦着：'none' 随便关；'docs' 文档区还开着该目标的页签；'running' 导师正在跑 */
@@ -29,8 +29,8 @@ export type AgentTabCloseBlock = 'none' | 'docs' | 'running'
  * 一枚 agent 页签属于哪个目标；固定聊天返回 null（它是栏的底座，不属于任何目标）。
  *
  * 与文档区页签的归属（groups/goals 的 refOwner）是同一条思路：目标级页签的归属就写在
- * 它自己身上，子代理页签则跟着**它那段对话**走——子代理的数据本来就住在导师的对话上
- * （见 subagent/manager），派它出去的是哪个目标，它就属于哪个目标。
+ * 它自己身上，work 页签则跟着**它所属的 role 对话**走——work 的数据本来就住在 role 的
+ * 对话上（见 agent/work/manager），派它出去的是哪个目标，它就属于哪个目标。
  */
 export function agentTabOwner(
   ref: AgentTabRef,
@@ -62,13 +62,13 @@ export function visibleAgentTabs(
 /**
  * 关闭守卫。目标级页签：文档区还有它的页签时不能关（导师还在辅导看得见的东西）；
  * 这一轮还没跑完时也不能关（运行时页签禁止关闭——停了才许走）。两条同时命中时
- * 报 'docs'：先关文档是更靠前的因果。子代理页签**永远不拦**：任务在后台继续跑。
+ * 报 'docs'：先关文档是更靠前的因果。work 页签**永远不拦**：work 在后台继续跑。
  */
 export function agentTabCloseBlock(
   ref: AgentTabRef,
   ctx: { hasDocTabs?: boolean; running: boolean },
 ): AgentTabCloseBlock {
-  if (ref.kind === 'free' || ref.kind === 'sub') return 'none'
+  if (ref.kind === 'free' || ref.kind === 'work') return 'none'
   if (ctx.running) return 'running'
   return 'none'
 }
@@ -80,7 +80,7 @@ function sameAgentTabRef(a: AgentTabRef, b: AgentTabRef): boolean {
   if (a.kind === 'goal' && b.kind === 'goal') {
     return a.goalId === b.goalId && a.conversationId === b.conversationId
   }
-  return a.kind === 'sub' && b.kind === 'sub' && a.conversationId === b.conversationId && a.sessionId === b.sessionId
+  return a.kind === 'work' && b.kind === 'work' && a.conversationId === b.conversationId && a.workId === b.workId
 }
 
 /**
@@ -138,8 +138,8 @@ export function removeAgentTab(
 /**
  * 删除已经没有文档的目标级 Agent 页签。
  *
- * 子代理页签刻意不在这里处理：子代理任务允许脱离文档和父页签继续后台运行；固定聊天
- * 页签也不落在 `tabs` 里。批量文档关闭只应该影响对应目标导师页签。
+ * work 页签刻意不在这里处理：work 任务允许脱离文档和父页签继续后台运行；固定聊天
+ * 页签也不落在 `tabs` 里。批量文档关闭只应该影响对应目标页签。
  */
 export function removeAgentTabsOfGoals(
   tabs: AgentTabRef[],
@@ -155,16 +155,16 @@ export function removeAgentTabsOfGoals(
   return next
 }
 
-/** 读盘归一化时对会话的最小视图：只用到 id、归属与子代理会话名单 */
+/** 读盘归一化时对会话的最小视图：只用到 id、归属与 work 会话名单 */
 export interface AgentTabConvView {
   id: string
   goalId: string
-  subagents?: { sessions: Array<{ id: string }> } | null
+  works?: { sessions: Array<{ id: string }> } | null
 }
 
 /**
- * 读盘归一：只留还活得着的页签。目标没了的目标级页签、会话或子代理会话没了的
- * 子代理页签当场丢掉；目标级页签里存着的会话若已不在（被删过会话），回落到该目标
+ * 读盘归一：只留还活得着的页签。目标没了的目标级页签、会话或 work 会话没了的
+ * work 页签当场丢掉；目标级页签里存着的会话若已不在（被删过会话），回落到该目标
  * 最近的一段——页签本身不该因此丢（它的身份是目标，不是某一段对话）。
  * 激活项必须是留下的页签之一，否则回落到第一枚。
  */
@@ -195,14 +195,14 @@ export function normalizeAgentTabs(
         if (seen.has(key)) continue
         seen.add(key)
         tabs.push(tabRef)
-      } else if (r.kind === 'sub') {
+      } else if (r.kind === 'work') {
         const conversationId = typeof r.conversationId === 'string' ? r.conversationId : ''
-        const sessionId = typeof r.sessionId === 'string' ? r.sessionId : ''
-        if (!conversationId || !sessionId || seen.has('sa:' + sessionId)) continue
+        const workId = typeof r.workId === 'string' ? r.workId : ''
+        if (!conversationId || !workId || seen.has('wa:' + workId)) continue
         const conv = convOf(conversationId)
-        if (!conv?.subagents?.sessions.some((s) => s.id === sessionId)) continue
-        seen.add('sa:' + sessionId)
-        tabs.push({ kind: 'sub', conversationId, sessionId })
+        if (!conv?.works?.sessions.some((s) => s.id === workId)) continue
+        seen.add('wa:' + workId)
+        tabs.push({ kind: 'work', conversationId, workId })
       }
     }
   }

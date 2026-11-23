@@ -306,7 +306,7 @@ function SinglePart({
   if (part.type === 'thinking') return <ThinkingBlock text={part.text} />
   if (part.type === 'tool') return <ToolCard part={part} />
   if (part.type === 'prompt-module') return <PromptModuleBlock part={part} />
-  if (part.type === 'team-delivery') return <TeamDeliveryBlock part={part} />
+  if (part.type === 'channel-message') return <ChannelMessageBlock part={part} />
   return null
 }
 
@@ -345,8 +345,8 @@ function ProcessGroup({ items }: { items: ProcessPart[] }) {
           ? t('提示词模块 · {0}', promptModuleTitleOf(last.key) ?? last.key)
           : last.type === 'inject'
             ? last.label
-            : last.type === 'team-delivery'
-              ? t('委托交付 · {0}', lastLineOf(last.text))
+            : last.type === 'channel-message'
+              ? t('通道消息 · {0}', lastLineOf(last.text))
               : toolLabel(last.name, last.args)
 
   return (
@@ -385,8 +385,8 @@ function ProcessGroup({ items }: { items: ProcessPart[] }) {
                   <PromptModuleBlock key={'m' + i} part={p} />
                 ) : p.type === 'inject' ? (
                   <InjectBlock key={'i' + p.id} item={p} />
-                ) : p.type === 'team-delivery' ? (
-                  <TeamDeliveryBlock key={'d' + p.delegationId} part={p} />
+                ) : p.type === 'channel-message' ? (
+                  <ChannelMessageBlock key={'d' + p.channelId} part={p} />
                 ) : (
                   <ToolCard key={p.id || i} part={p} />
                 ),
@@ -708,22 +708,22 @@ function PromptModuleBlock({ part }: { part: Extract<AgentPart, { type: 'prompt-
 }
 
 /**
- * 一条**委托交付**（team.complete 的跳边界注入，见 learn/agentTeam/delegations）在
- * 过程组里的折叠块。与 PromptModuleBlock 同一副样子：折叠时一行「委托交付 · id ·
- * 已注入上下文」，展开看交付全文（Markdown 渲染——交付本来就是写给委托者读的正文）。
+ * 一条**通道消息**（Work / Agent 通道的跳边界注入，见 learn/roleWork）在过程组里的折叠块。
+ * 与 PromptModuleBlock 同一副样子：折叠时一行「通道消息 · id · 已注入上下文」，
+ * 展开看全文（通道消息本来就是写给角色读的正文）。
  */
-function TeamDeliveryBlock({ part }: { part: Extract<AgentPart, { type: 'team-delivery' }> }) {
+function ChannelMessageBlock({ part }: { part: Extract<AgentPart, { type: 'channel-message' }> }) {
   const [open, setOpen] = useState(false)
   return (
     <div>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title={open ? t('收起交付全文') : t('点开查看委托交付的全文')}
+        title={open ? t('收起通道消息') : t('点开查看通道消息全文')}
         className="flex w-full items-center gap-1.5 text-left text-[12.5px] text-ink-faint transition hover:text-ink-soft"
       >
         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-        <span className="shrink-0">{t('委托交付 · {0}', part.delegationId.slice(0, 8))}</span>
+        <span className="shrink-0">{t('通道消息 · {0}', part.channelId.slice(0, 8))}</span>
         <span className="shrink-0 opacity-75">{t('已注入上下文')}</span>
       </button>
       {open && (

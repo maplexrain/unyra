@@ -16,7 +16,7 @@ import {
   updateAgentProfile,
   resetAgentProfile,
   profileOf,
-  AGENT_TEAM_IDS,
+  AGENT_ROLE_IDS,
   AGENT_VOICES,
   AGENT_WORKFLOW_PLANES,
   DEFAULT_AGENT_AVATAR,
@@ -24,7 +24,7 @@ import {
   type AgentProfileId,
 } from '../src/agent/agentProfile'
 import { hydrateUserSettings } from '../src/lib/userSettings'
-import { voiceOfConversation, voiceConversationId } from '../src/learn/agentTeam/voiceConvs'
+import { roleOfConversation, roleConversationId } from '../src/learn/roleWork/roles'
 import { migrateConversation } from '../src/learn/compact'
 import { makeModelEntry, type AiSettings } from '../src/ai/settings'
 
@@ -237,7 +237,7 @@ describe('agentWfGrant（工作流授权面：内置规程面按分工固定 + �
     expect(designer).toContain('ask')
     const fixer = agentRuntimeApiAllow('fixer')
     expect(fixer).toContain('node')
-    expect(fixer).toContain('team')
+    expect(fixer).toContain('work')
     expect(fixer).not.toContain('web')
     expect(fixer).not.toContain('fetch')
     expect(fixer).toContain('wait')
@@ -269,7 +269,7 @@ describe('profiles 声部 id 契约', () => {
     for (const id of ids) {
       expect(DEFAULT_AGENT_AVATAR[id]).toBeTruthy()
     }
-    expect(AGENT_TEAM_IDS).toEqual(ids)
+    expect(AGENT_ROLE_IDS).toEqual(ids)
     // 两个声部标签：可交流（可直接发消息启动）与内容生成（注入写作策略与画像）
     expect(isCommunicable('free')).toBe(true)
     expect(isCommunicable('tutor')).toBe(true)
@@ -284,9 +284,10 @@ describe('profiles 声部 id 契约', () => {
     for (const id of ['dispatcher', 'researcher', 'fixer'] as AgentVoice[]) {
       expect(CONTENT_VOICES.has(id)).toBe(false)
     }
-    // 调度员轻装：只有 team / tmp / node，活全靠委托
+    // 调度员轻装：work / chat / tmp / node，活主要交给角色与 work
     const dispatcher = agentRuntimeApiAllow('dispatcher')
-    expect(dispatcher).toContain('team')
+    expect(dispatcher).toContain('work')
+    expect(dispatcher).toContain('chat')
     expect(dispatcher).toContain('node')
     expect(dispatcher).not.toContain('web')
     expect(dispatcher).not.toContain('delivery')
@@ -301,14 +302,15 @@ describe('系统提示词（团队分工：导师分诊、承接声部各拿各�
     const text = buildTeacherSystem()
     expect(text).toContain('【开讲】教学文档生成（teach-node）')
     expect(text).toContain('你是「归一 Unyra」的导师龟')
-    // 团队协作与分诊口径在场
-    expect(text).toContain('api.team.list()')
-    expect(text).toContain('委托 examiner（出卷龟）')
-    expect(text).toContain('委托 designer（设计龟）')
-    expect(text).toContain('委托 researcher（调研龟）')
-    // 联网分给了调研员：browser 不在导师的速查里；web 在共同前缀（分工面外运行时拒，注记行兜底），检索步骤写的是委托
+    // 协作与分诊口径在场：交给对应角色，不再走 team.delegate
+    expect(text).toContain('api.chat.send')
+    expect(text).toContain("to: 'examiner'")
+    expect(text).toContain("to: 'designer'")
+    expect(text).toContain("to: 'researcher'")
+    expect(text).not.toContain('api.team.delegate')
+    // 联网分给了调研员：browser 不在导师的速查里；web 在共同前缀（分工面外运行时拒，注记行兜底），检索步骤写的是交给调研员
     expect(text).not.toContain('#### api.browser')
-    expect(text).toContain('委托调研')
+    expect(text).toContain('researcher（调研龟）')
     // 分出去的域：速查与规程都不在导师的提示词里
     expect(text).not.toContain('#### api.exam')
     expect(text).not.toContain('【出卷】试卷命题（exam）')
@@ -324,7 +326,10 @@ describe('系统提示词（团队分工：导师分诊、承接声部各拿各�
     expect(text).toContain('designer（设计龟）')
     expect(text).toContain('researcher（调研龟）')
     expect(text).toContain('fixer（维修龟）')
-    expect(text).toContain('team.delegate')
+    expect(text).toContain('api.chat.send')
+    expect(text).toContain('api.work.create')
+    expect(text).toContain('api.work.status')
+    expect(text).not.toContain('team.delegate')
     expect(text).toContain('不抢活')
     // 它没有执行规程（出卷 / 课堂的规程都在承接方）
     expect(text).not.toContain('【出卷】试卷命题（exam）')
@@ -340,7 +345,8 @@ describe('系统提示词（团队分工：导师分诊、承接声部各拿各�
     expect(text).toContain('【出卷】试卷命题（exam）')
     expect(text).toContain('【阅卷】判分与讲解（exam-grade）')
     expect(text).toContain('#### api.exam')
-    expect(text).toContain('api.team.complete')
+    expect(text).toContain('api.chat.send')
+    expect(text).not.toContain('api.team.complete')
     expect(text).toContain('始终认指令给的 attemptId')
     expect(text).not.toContain('【开讲】教学文档生成（teach-node）')
     expect(text).not.toContain('【生成课堂】课堂课件生成（classroom）')
@@ -368,17 +374,19 @@ describe('系统提示词（团队分工：导师分诊、承接声部各拿各�
     expect(text).toContain('【修复函数图像】Plot 错误快速纠偏（plot-fix）')
     expect(text).not.toContain('【出卷】试卷命题（exam）')
     expect(text).not.toContain('【阅卷】判分与讲解（exam-grade）')
-    // 专属面只有 node / tmp / team：联网、判卷、课堂都不在
+    // 专属面只有 node / tmp / work / chat：联网、判卷、课堂都不在
     expect(text).not.toContain('- api.exam — 考试（作答侧）')
     expect(text).not.toContain('- api.memory —')
     expect(text).not.toContain('- api.browser —')
+    expect(text).toContain('#### api.work')
+    expect(text).toContain('#### api.chat')
     expect(text).toContain('最小修复')
   })
 
   it('调研龟提示词：调研与浏览器规程齐、判卷与解读不在', () => {
     const text = buildResearcherSystem()
     expect(text).toContain('调研龟')
-    expect(text).toContain('为团队其他声部提供网络消息的调研')
+    expect(text).toContain('为其他角色提供网络消息的调研')
     expect(text).toContain('替用户操作内置浏览器')
     expect(text).toContain('#### api.browser')
     expect(text).toContain('检索有止损线')
@@ -393,19 +401,19 @@ describe('系统提示词（团队分工：导师分诊、承接声部各拿各�
     expect(text).toContain('api.schedule.*')
   })
 
-  it('voiceOfConversation：voice 字段 > 确定性 id 里自带的声部 > 导师（漏标愈合）', () => {
+  it('roleOfConversation：voice 字段 > 确定性 id 里自带的声部 > 导师（漏标愈合）', () => {
     // 老数据 / 导师对话：没有 voice 字段兜导师
-    expect(voiceOfConversation(undefined)).toBe('tutor')
-    expect(voiceOfConversation({ id: 'uuid-1', goalId: 'g', messages: [] } as never)).toBe('tutor')
+    expect(roleOfConversation(undefined)).toBe('tutor')
+    expect(roleOfConversation({ id: 'uuid-1', goalId: 'g', messages: [] } as never)).toBe('tutor')
     // 已退役声部（判卷官）：voice 字段与 id 段都映射到承接者命题官
-    expect(voiceOfConversation({ id: 'x', goalId: 'g', voice: 'grader', messages: [] } as never)).toBe('examiner')
-    expect(voiceOfConversation({ id: 'cv:grader:g1', goalId: 'g1', messages: [] } as never)).toBe('examiner')
+    expect(roleOfConversation({ id: 'x', goalId: 'g', voice: 'grader', messages: [] } as never)).toBe('examiner')
+    expect(roleOfConversation({ id: 'cv:grader:g1', goalId: 'g1', messages: [] } as never)).toBe('examiner')
     // 漏标但确定性 id 自带声部：就地愈合（真机踩过：命题官会话被归进导师桶）
-    expect(voiceOfConversation({ id: voiceConversationId('g', 'examiner'), goalId: 'g', messages: [] } as never)).toBe('examiner')
+    expect(roleOfConversation({ id: roleConversationId('g', 'examiner'), goalId: 'g', messages: [] } as never)).toBe('examiner')
   })
 
   it('migrateConversation 载入修复：漏标 voice 的承接会话就地补标（幂等）', () => {
-    const detId = voiceConversationId('g1', 'examiner')
+    const detId = roleConversationId('g1', 'examiner')
     const healed = migrateConversation({
       id: detId,
       goalId: 'g1',
@@ -452,7 +460,7 @@ describe('系统提示词（团队分工：导师分诊、承接声部各拿各�
     }
     // 共同前缀只装对四位声部逐字为真的块：团队协作 / execute 机制 / 先查再用 /
     // 应用数据守门 / 沙箱纪律 / 通用纪律 / compact 规程
-    expect(SHARED_AGENT_PREFIX).toContain('## 智能体团队协作（team.*）')
+    expect(SHARED_AGENT_PREFIX).toContain('## 角色层与工作层')
     expect(SHARED_AGENT_PREFIX).toContain('核心执行工具是 execute')
     expect(SHARED_AGENT_PREFIX).toContain('**先查再用**')
     expect(SHARED_AGENT_PREFIX).toContain('**应用数据一律走 api 组**')

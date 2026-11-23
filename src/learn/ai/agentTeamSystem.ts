@@ -1,12 +1,12 @@
 /**
- * 智能体团队**承接声部**的系统提示词（调度龟 / 出卷龟 / 设计龟 / 调研龟 / 维修龟）与按
- * 声部的统一入口（buildVoiceSystem）。导师的提示词在 teacherSystem（buildTeacherSystem）。
+ * 七位 role 的系统提示词（除导师外）与按 role 的统一入口（buildVoiceSystem）。
+ * 导师的提示词在 teacherSystem（buildTeacherSystem）。
  *
  * 结构纪律与导师同源：**共同前缀（SHARED_AGENT_PREFIX，P0）→ 共用排版与视觉规范（仅内容
- * 声部）→ 固定组 API 速查（全员共用）→ 非固定组 API 速查（本声部专属）→ 角色定位 → 你的
- * 分工 → 专用语法 → 内置工作流规程（compact 在共同前缀）→ 声部专属纪律 → 学习者附加提示词**。
+ * role）→ 固定组 API 速查（全员共用）→ 非固定组 API 速查（本 role 专属）→ 角色定位 → 你的
+ * 分工 → 专用语法 → 内置工作流规程（compact 在共同前缀）→ role 专属纪律 → 学习者附加提示词**。
  * 全部文案与分段由 promptSections（voiceCopy + typographyGuide + apiPromptSections）统一装配，
- * 这里只按声部取分段拼回去——设置页预览与运行期逐字节一致。承接会话的首轮照常固化进
+ * 这里只按 role 取分段拼回去——设置页预览与运行期逐字节一致。承接会话的首轮照常固化进
  * Conversation.systemPrompt。
  */
 
@@ -23,7 +23,7 @@ function buildVoice(voice: AgentVoice, opts: VoiceSystemOpts): string {
   return joinPromptSections(getAgentPromptSections(voice, opts))
 }
 
-/** 调度龟（dispatcher）：接收需求 → 委托分派 → 跟踪 → 交付（工作流统一经它路由） */
+/** 调度龟（dispatcher）：接收需求 → 用 chat.send / work 派单 → 跟踪 → 交付（工作流统一经它路由） */
 export function buildDispatcherSystem(opts: VoiceSystemOpts = {}): string {
   return buildVoice('dispatcher', opts)
 }

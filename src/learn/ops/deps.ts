@@ -6,7 +6,7 @@
  */
 
 import type { SandboxOptions, WebOps } from '../../agent/tools'
-import type { AgentProfileId, AgentWfGrant } from '../../agent/agentProfile'
+import type { AgentWfGrant } from '../../agent/agentProfile'
 import type { LearnStore, TmpEntry } from '../types'
 import type { UserProfile } from '../../user/types'
 import type { ProjectIo } from './project'
@@ -70,11 +70,14 @@ export interface AgentOpsDeps {
    */
   workflowGrant?: AgentWfGrant
   /**
-   * team.* 的委托发起方身份（执行声部的轮都有，见 learn/ops/team 与
-   * learn/agentTeam/delegations）：委托人 = 当前会话 + 它的声部与目标。
-   * 不注入就没有 team 这一组（子代理 / 超级文档桥 / 仅聊天都没有）。
+   * role 层的 work 管理面（work.*）。不注入就没有这一组；
+   * work 层不注入它（work 不能再派 work）。
    */
-  teamFrom?: () => { conversationId: string; agent: AgentProfileId; goalId: string }
+  work?: SandboxOptions['work']
+  /** role 层的通道发送面（chat.send）。work 层不注入。 */
+  chat?: SandboxOptions['chat']
+  /** work 层的唯一回传面（host.send）。role 层不注入。 */
+  host?: SandboxOptions['host']
   /**
    * execute 通道的 api 组放行面（智能体团队分工的运行时清单，见 agent/agentProfile 的
    * agentRuntimeApiAllow）：组名 + 放行的顶层函数名。不给 = 不设限

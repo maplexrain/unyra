@@ -250,7 +250,7 @@ export function AgentPromptSectionsView({
                       className="hidden sm:inline-flex items-center gap-0.5 text-[10px] text-ink-faint shrink-0"
                     >
                       <Layers size={10} className="text-indigo-500" />
-                      <span>{t('多声部共用')}</span>
+                      <span>{t('多角色共用')}</span>
                     </span>
                   )}
                 </div>

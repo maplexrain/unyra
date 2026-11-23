@@ -166,7 +166,7 @@ export function ServeTab({
           <Info size={13} className="mt-0.5 shrink-0 text-ink-faint" />
           <p className="text-[11.5px] leading-relaxed text-ink-soft">
             {t(
-              '外部会话只开放与子代理同级的沙箱能力（节点宇宙 / 记忆 / 资源 / 工作区 / 联网 / 临时变量），goal 跟随你当前打开的目标；调用互相串行，数据改动实时反映到界面。',
+              '外部会话只开放与 work 同级的沙箱能力（节点宇宙 / 记忆 / 资源 / 工作区 / 联网 / 临时变量），goal 跟随你当前打开的目标；调用互相串行，数据改动实时反映到界面。',
             )}
           </p>
         </div>

@@ -16,8 +16,8 @@
 - 提示词：`EXECUTE_GUIDE` 的「按需加载的能力」只有一行索引；完整规范在
   `promptModules` 的 `mcp` 模块里，模型首次调用 `mcp.*` 时注入（见 [prompt-modules.md](prompt-modules.md)）；
 - 目录（`src/agent/apiCatalog.ts` 的 mcp 组）与实现由 agent 探针逐条对账；
-- **子代理拿不到这一组**（apiAllow 白名单与 subsetSandbox 都不带它）——MCP 是导师级的真实外部
-  系统，要开放得同时改 `subagent/groups.ts` 的白名单与 `manager.ts` 的 subsetSandbox。
+- **work 拿不到这一组**（apiAllow 白名单与 subsetSandbox 都不带它）——MCP 是 role 级的真实外部
+  系统，要开放得同时改 `agentProfile` 的 work 面白名单与 `agent/sandbox/subset.ts`。
 
 ## 两条传输，各走各的路
 

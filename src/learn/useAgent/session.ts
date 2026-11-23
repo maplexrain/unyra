@@ -1,28 +1,37 @@
 /**
- * useAgent 的**会话级副作用**（从 useAgent.ts 原样搬出）：会话的落库（persist）、
- * 起名（nameConversation）与子代理管理器（getOrCreateSubManager）。
+ * useAgent 的**会话级副作用**：会话落库（persist）、起名与 work 管理器。
  *
- * 三件事都是「拿到一段 Conversation 之后围着它转」的辅助：persist 把更新并进 store
- * 的会话清单；起名只在第一轮顺手做一次；子代理管理器一段对话一个、跨轮存活。
+ * work 管理器一段 role 对话一个、跨轮存活：role 在轮内 create/send 的 work 会继续在后台跑，
+ * 交付通过 Work 通道回到 role（见 learn/roleWork/dispatch）。
  */
-
 import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react'
-import type { AgentPart, Conversation } from '../../agent/types'
+import type { AgentEvent, AgentPart, Conversation } from '../../agent/types'
+import type { AgentProfileId } from '../../agent/agentProfile'
 import { applyEvent } from '../agent/events'
-import { createSubAgentManager, type SubAgentManager } from '../../agent/subagent/manager'
-import { EMPTY_SUB_BUCKET } from '../../agent/subagent/registry'
+import { createWorkManager, type WorkManager } from '../../agent/work/manager'
+import { buildWorkSystem } from '../ai/workSystem'
 import { conversationById } from '../graph'
 import { generateConversationTitle, namingSource } from '../title'
 import type { LearnStore } from '../types'
+import { inboundEnvelope, outboundEnvelope, peerOf } from '../roleWork/channels'
+import { deliverInbound } from '../roleWork/dispatch'
+import { freeConversationById, mutateFreeConversation } from '../freeChat'
 
-/** 会话落库、起名与子代理管理器（依赖由 hook 本体传入；namingRef 由自由聊天共用） */
+export interface WorkRunSlot {
+  conversationId: string
+  workId: string
+  runId: string
+  parts: AgentPart[]
+}
+
+/** 会话落库、起名与 work 管理器 */
 export function useAgentSession(deps: {
   getLatest: () => LearnStore
   set: (store: LearnStore) => void
-  subManagersRef: { current: Map<string, SubAgentManager> }
-  setSubRuns: Dispatch<SetStateAction<Array<{ conversationId: string; sessionId: string; runId: string; parts: AgentPart[] }>>>
+  workManagersRef: { current: Map<string, WorkManager> }
+  setWorkRuns: Dispatch<SetStateAction<WorkRunSlot[]>>
 }) {
-  const { getLatest, set, subManagersRef, setSubRuns } = deps
+  const { getLatest, set, workManagersRef, setWorkRuns } = deps
 
   const persist = useCallback(
     (next: Conversation) => {
@@ -36,15 +45,6 @@ export function useAgentSession(deps: {
     [getLatest, set],
   )
 
-  /**
-   * 给这段对话起个名（见 learn/title）。**只在一段对话还没有标题时做一次**，
-   * 失败就安静地算了——起名是锦上添花，不能影响任何一次真正的对话。
-   *
-   * 为什么挂在 runTurn 里、而不是「新建对话」那一刻：新建时对话是空的，一句话都没有，
-   * 拿什么起名。第一轮跑起来时那句话才刚进会话（见 runTurn 里 persist 之后的那一处）。
-   *
-   * namingRef 是在途标记：第一轮还没跑完用户又发了一条时，不要再发一次起名请求。
-   */
   const namingRef = useRef(new Set<string>())
   const nameConversation = useCallback(
     (conv: Conversation) => {
@@ -56,7 +56,6 @@ export function useAgentSession(deps: {
       void generateConversationTitle({ text: source })
         .then((title) => {
           const cur = conversationById(getLatest(), conv.id)
-          // 期间它可能被删掉了、或已经由别的路径起了名（换用户时整份 store 会换掉）
           if (!cur || cur.title) return
           persist({ ...cur, title })
         })
@@ -68,44 +67,175 @@ export function useAgentSession(deps: {
     [getLatest, persist],
   )
 
-  /**
-   * 子代理管理器：一段对话一个、跨轮存活（在跑的任务不随轮次结束而停，
-   * 交付挂起在它手里，下一轮的 wait 领回）。桶的读写都在这条对话上。
-   */
-  const getOrCreateSubManager = useCallback(
-    (conversationId: string): SubAgentManager => {
-      let m = subManagersRef.current.get(conversationId)
+  const getOrCreateWorkManager = useCallback(
+    (conversationId: string): WorkManager => {
+      let m = workManagersRef.current.get(conversationId)
       if (!m) {
-        m = createSubAgentManager({
-          getBucket: () => conversationById(getLatest(), conversationId)?.subagents ?? EMPTY_SUB_BUCKET,
-          setBucket: (update) => {
-            const stored = conversationById(getLatest(), conversationId)
-            if (!stored) return
-            const next = update(stored.subagents ?? EMPTY_SUB_BUCKET)
-            // 空桶不存字段：没有子代理的对话不该在 chat.json 里多一截空结构
-            persist({ ...stored, subagents: next.defs.length || next.sessions.length ? next : undefined })
+        const stored = conversationById(getLatest(), conversationId)
+        const roleId = (stored?.voice ?? 'tutor') as AgentProfileId
+        m = createWorkManager({
+          roleId,
+          roleConversationId: conversationId,
+          goalId: stored?.goalId,
+          getWorks: () => conversationById(getLatest(), conversationId)?.works?.sessions ?? [],
+          setWorks: (update) => {
+            const cur = conversationById(getLatest(), conversationId)
+            if (!cur) return
+            const sessions = update(cur.works?.sessions ?? [])
+            persist({ ...cur, works: sessions.length ? { sessions } : undefined })
           },
-          onEvent: (sessionId, runId, e) => {
-            setSubRuns((prev) => {
+          buildSystem: (role) => buildWorkSystem(role),
+          roleMessage: (messageId) =>
+            conversationById(getLatest(), conversationId)?.messages.find((m) => m.id === messageId) ?? null,
+          appendOutbound: (work, text, meta) => {
+            const cur = conversationById(getLatest(), conversationId)
+            if (!cur) return
+            const from = peerOf('agent', roleId, roleId)
+            const to = peerOf('work', work.id, work.name)
+            const envelope = outboundEnvelope({
+              channel: 'work',
+              from,
+              to,
+              text,
+              ...(meta.quoteMessageId ? { quoteMessageId: meta.quoteMessageId } : {}),
+              ...(meta.auto ? { auto: true } : {}),
+            })
+            persist({ ...cur, channels: [...(cur.channels ?? []), envelope].slice(-200), updatedAt: Date.now() })
+          },
+          deliverToRole: (work, text, meta) => {
+            const from = peerOf('work', work.id, work.name)
+            const to = peerOf('agent', work.roleId, work.roleId)
+            const envelope = inboundEnvelope({ channel: 'work', from, to, text })
+            deliverInbound(
+              {
+                conversationId: work.roleConversationId,
+                role: work.roleId,
+                text,
+                stamp: { channel: 'work', from, to, ts: envelope.ts, envelopeId: envelope.id },
+                envelopeId: envelope.id,
+                ...(meta.quoteMessageId ? { mark: '工作交付' } : {}),
+              },
+              envelope,
+            )
+          },
+          onEvent: (workId, runId, e) => {
+            setWorkRuns((prev) => {
               const cur = prev.find((r) => r.runId === runId)
               const parts = cur ? [...cur.parts] : []
               applyEvent(parts, e)
               return cur
                 ? prev.map((r) => (r.runId === runId ? { ...r, parts } : r))
-                : [...prev, { conversationId, sessionId, runId, parts }]
+                : [...prev, { conversationId, workId, runId, parts }]
             })
           },
-          onRunEnd: (_sessionId, runId) => {
-            setSubRuns((prev) => prev.filter((r) => r.runId !== runId))
+          onRunEnd: (_workId, runId) => {
+            setWorkRuns((prev) => prev.filter((r) => r.runId !== runId))
           },
         })
-        subManagersRef.current.set(conversationId, m)
+        workManagersRef.current.set(conversationId, m)
       }
       return m
     },
-    // subManagersRef / setSubRuns 都是跨渲染稳定的 ref / setState：列进依赖不改变记忆化行为
-    [getLatest, persist, subManagersRef, setSubRuns],
+    [getLatest, persist, workManagersRef, setWorkRuns],
   )
 
-  return { persist, namingRef, nameConversation, getOrCreateSubManager }
+  /**
+   * 自由聊天（聊天龟）的 work 管理器：会话账本住 free-chat.json，不进 LearnStore。
+   * 交付没有可注入的 role 轮次（free 的轮由 sendFree 串行发起），因此宿主把
+   * Work 通道信封落进 channels，并追加一条 channel-message 助手消息；下一轮
+   * 自由对话重建历史时，它会被还原成一条用户侧消息，聊天龟据此接活。
+   */
+  const getOrCreateFreeWorkManager = useCallback(
+    (conversationId: string): WorkManager => {
+      let m = workManagersRef.current.get(conversationId)
+      if (!m) {
+        const conv = () => freeConversationById(conversationId)
+        m = createWorkManager({
+          roleId: 'free',
+          roleConversationId: conversationId,
+          getWorks: () => conv()?.works?.sessions ?? [],
+          setWorks: (update) => {
+            const cur = conv()
+            if (!cur) return
+            const sessions = update(cur.works?.sessions ?? [])
+            mutateFreeConversation(conversationId, (c) => ({
+              ...c,
+              works: sessions.length ? { sessions } : undefined,
+              updatedAt: Date.now(),
+            }))
+          },
+          buildSystem: (role) => buildWorkSystem(role),
+          roleMessage: (messageId) => conv()?.messages.find((x) => x.id === messageId) ?? null,
+          appendOutbound: (work, text, meta) => {
+            mutateFreeConversation(conversationId, (c) => {
+              const envelope = outboundEnvelope({
+                channel: 'work',
+                from: peerOf('agent', 'free', 'free'),
+                to: peerOf('work', work.id, work.name),
+                text,
+                ...(meta.quoteMessageId ? { quoteMessageId: meta.quoteMessageId } : {}),
+                ...(meta.auto ? { auto: true } : {}),
+              })
+              return { ...c, channels: [...(c.channels ?? []), envelope].slice(-200), updatedAt: Date.now() }
+            })
+          },
+          deliverToRole: (work, text) => {
+            mutateFreeConversation(conversationId, (c) => {
+              const from = peerOf('work', work.id, work.name)
+              const to = peerOf('agent', 'free', 'free')
+              const envelope = inboundEnvelope({ channel: 'work', from, to, text })
+              return {
+                ...c,
+                channels: [...(c.channels ?? []), envelope].slice(-200),
+                messages: [
+                  ...c.messages,
+                  {
+                    id: crypto.randomUUID(),
+                    role: 'assistant',
+                    parts: [{ type: 'channel-message', channelId: envelope.id, text }],
+                    ts: Date.now(),
+                  },
+                ],
+                updatedAt: Date.now(),
+              }
+            })
+          },
+          onEvent: (workId, runId, e) => {
+            setWorkRuns((prev) => {
+              const cur = prev.find((r) => r.runId === runId)
+              const parts = cur ? [...cur.parts] : []
+              applyEvent(parts, e)
+              return cur
+                ? prev.map((r) => (r.runId === runId ? { ...r, parts } : r))
+                : [...prev, { conversationId, workId, runId, parts }]
+            })
+          },
+          onRunEnd: (_workId, runId) => {
+            setWorkRuns((prev) => prev.filter((r) => r.runId !== runId))
+          },
+        })
+        workManagersRef.current.set(conversationId, m)
+      }
+      return m
+    },
+    [workManagersRef, setWorkRuns],
+  )
+
+  return { persist, namingRef, nameConversation, getOrCreateWorkManager, getOrCreateFreeWorkManager }
+}
+
+/** 给 work 的实时事件补一条（宿主用来在页签上渲染） */
+export function workEventSlot(
+  prev: WorkRunSlot[],
+  conversationId: string,
+  workId: string,
+  runId: string,
+  e: AgentEvent,
+): WorkRunSlot[] {
+  const cur = prev.find((r) => r.runId === runId)
+  const parts = cur ? [...cur.parts] : []
+  applyEvent(parts, e)
+  return cur
+    ? prev.map((r) => (r.runId === runId ? { ...r, parts } : r))
+    : [...prev, { conversationId, workId, runId, parts }]
 }
