@@ -12,9 +12,10 @@
  */
 import type { ReasoningEffort, StreamFn } from '../../ai/types'
 import type { ResolvedProvider } from '../../ai/client'
-import type { AgentEvent, AgentPart, ConversationMessage, MessageUsage, WorkSession, WorkStatus } from '../types'
+import type { AgentEvent, AgentPart, ChannelExtra, ConversationMessage, MessageUsage, WorkSession, WorkStatus } from '../types'
 import type { AgentProfileId } from '../agentProfile'
 import { createExecuteTools } from '../sandbox/execute'
+import type { AskFormPayload } from '../tools'
 import type { HostSendInput, WorkCallResult, WorkCreateInput, WorkSendInput, WorkStatusResult, WorkSummary, WorkSandboxApi } from '../roleWork/types'
 import { defaultWorkName } from '../roleWork/types'
 import { apiBriefForGroups } from './groups'
@@ -31,6 +32,11 @@ export interface WorkTurnConfig {
   model: string
   effort?: ReasoningEffort
   contextWindow: number
+  /**
+   * work 的 api.ask：工作层不经过 role 的头脑，但问询要借 role 的身份落进它当前通道。
+   * 由宿主注入；没有就退回沙箱基座里 role 自己的 ask（通常更短命，不推荐）。
+   */
+  ask?: (workId: string, form: AskFormPayload, signal: AbortSignal) => Promise<unknown>
 }
 
 export interface WorkManagerDeps {
@@ -46,9 +52,9 @@ export interface WorkManagerDeps {
   /** role 会话里按 messageId 找一条用户消息（转发用） */
   roleMessage: (messageId: string) => ConversationMessage | null
   /** 把一条 outbound work 通道消息记到 role 的通道流水 */
-  appendOutbound: (work: WorkSession, text: string, meta: { quoteMessageId?: string; auto?: boolean }) => void
+  appendOutbound: (work: WorkSession, text: string, meta: { quoteMessageId?: string; auto?: boolean; extra?: ChannelExtra }) => void
   /** host.send / 自动兜底：把交付写回 role（宿主负责写通道 + 注入/起轮） */
-  deliverToRole: (work: WorkSession, text: string, meta: { quoteMessageId?: string; auto?: boolean }) => void
+  deliverToRole: (work: WorkSession, text: string, meta: { quoteMessageId?: string; auto?: boolean; extra?: ChannelExtra }) => void
   onEvent?: (workId: string, runId: string, e: AgentEvent) => void
   onRunEnd?: (workId: string, runId: string) => void
   stream?: StreamFn
@@ -114,19 +120,23 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
       const handle = running.get(workId)
       if (handle) handle.delivered = true
       patch(workId, (w) => ({ ...w, lastDelivery: text }))
-      deps.deliverToRole(work, text, { ...(input.messageId ? { quoteMessageId: input.messageId } : {}) })
+      deps.deliverToRole(work, text, {
+        ...(input.messageId ? { quoteMessageId: input.messageId } : {}),
+        ...(input.extra ? { extra: input.extra } : {}),
+      })
       return { ok: true, delivered: true }
     },
   })
 
-  const workSandbox = (base: WorkTurnConfig['sandbox'], workId: string) => ({
-    ...base,
+  const workSandbox = (cfg: WorkTurnConfig, workId: string) => ({
+    ...cfg.sandbox,
     // work 不能再派 work、不能发通道、不能审批外部路径；这些组即使基座里有也被 apiAllow 挡死，
     // 这里再把注入字段清掉，避免 buildApi 装配出空壳。
     work: undefined,
     chat: undefined,
     permission: undefined,
     host: hostApi(workId),
+    ...(cfg.ask ? { ask: (form: AskFormPayload) => cfg.ask!(workId, form, running.get(workId)?.ctrl.signal ?? new AbortController().signal) } : {}),
     apiAllow: workRuntimeApiAllow(deps.roleId),
     apiBrief: apiBriefForGroups(workRuntimeApiAllow(deps.roleId)),
   })
@@ -165,7 +175,7 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
         messages: work.messages,
         images,
         files,
-        tools: createExecuteTools(workSandbox(cfg.sandbox, work.id)),
+        tools: createExecuteTools(workSandbox(cfg, work.id)),
         provider: cfg.provider,
         model: cfg.model,
         ...(cfg.effort ? { effort: cfg.effort } : {}),

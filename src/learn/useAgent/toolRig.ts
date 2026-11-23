@@ -10,8 +10,7 @@
 
 import type { Dispatch, SetStateAction } from 'react'
 import { createExecuteTools, type AskFormPayload, type ExamToolDeps } from '../../agent/tools'
-import { ASK_IDLE_TIMEOUT_MS } from '../../agent/sandbox/limits'
-import { ensureActivityListeners, userIdleMs } from '../../lib/userActivity'
+import { ASK_BUBBLE_TTL_MS } from '../../agent/sandbox/limits'
 import { type AiSettings, globalContextWindow } from '../../ai/settings'
 import { agentRuntimeApiAllow, agentWfGrant, profileOf, resolveAgentGlobal, type AgentVoice } from '../../agent/agentProfile'
 import { applyAskToProfile, learnSandboxOps, type AgentRunTarget, type AgentUiDeps } from '../agent/sandboxOps'
@@ -26,12 +25,12 @@ import { createChatOps } from '../ops/chat'
 import { resolveChatAttachments } from '../roleWork/attachments'
 import { agentNameOf, AGENT_ROLE_IDS, DEFAULT_AGENT_NAME, type AgentProfileId } from '../../agent/agentProfile'
 import { isAgentRoleId } from '../../agent/roleWork/types'
-import type { ChannelMessage, Conversation, ConversationMessage } from '../../agent/types'
+import type { ChannelAskStatus, ChannelMessage, Conversation, ConversationMessage } from '../../agent/types'
 import { roleConversationId } from '../roleWork/roles'
 import { groupPeer, inboundEnvelope, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
 import { deliverInbound } from '../roleWork/dispatch'
 import { mentionedRoleIdsOf, type MentionRole } from '../roleWork/groupTargets'
-import { appendGroupMessage } from '../groupChat'
+import { appendGroupMessage, patchGroupMessage } from '../groupChat'
 import { emptyDelivery, mergeDelivery, normalizeDelivery } from '../../agent/delivery'
 import { native } from '../../lib/native'
 import { nodeById } from '../graph'
@@ -166,6 +165,11 @@ export function rigTurnTools(io: {
     },
   })
   /*
+   * work 的 ask 要用**它自己的 run 信号**，不能用 role 本轮的中止器：
+   * role 轮早结束了，work 还在跑。回调本体在下面 askHost 定义之后装填。
+   */
+  const workAskRef: { current: ((workId: string, form: AskFormPayload, signal: AbortSignal) => Promise<unknown>) | null } = { current: null }
+  /*
    * work 管理器：喂给这一轮的模型与沙箱基座；它启动的 work 用启动那一刻的配置跑完
    * （换轮不漂移）。role 侧通过 work.* 管理多个 work，每个 work 的上下文独立。
    */
@@ -176,6 +180,9 @@ export function rigTurnTools(io: {
     // 档位全应用唯一（全局滑条）：work 与它的 role 同档，绝不各自翻面（见 learn/effortGuard）
     effort: global.effort,
     contextWindow: window,
+    ask: (workId, form, signal) =>
+      workAskRef.current?.(workId, form, signal) ??
+      Promise.resolve({ ok: false, content: '当前宿主没有接上 work 的 ask 通道。' }),
   })
   sandboxBase.work = workManager.api
   const roleName = agentNameOf(profileOf(agentSettings, voice as AgentProfileId), voice as AgentProfileId)
@@ -235,7 +242,7 @@ export function rigTurnTools(io: {
       })
       return { ok: r.ok, channel: 'work', to: name, ...(r.error ? { error: r.error } : {}) }
     },
-    sendToGroup: async ({ text, mentions, messageId, attachments }) => {
+    sendToGroup: async ({ text, mentions, messageId, attachments, extra }) => {
       const goalId = target.goalId
       if (!goalId) return { ok: false, error: '当前 role 会话不挂在目标上，无法进入群聊' }
       const mentionRoles: MentionRole[] = AGENT_ROLE_IDS.filter((id) => id !== 'free').map((id) => ({
@@ -248,26 +255,36 @@ export function rigTurnTools(io: {
        * 有 @ 时以正文为准；没有 @ 时才用 to / mentions，并要求正文补上点名。
        */
       const textIds = mentionedRoleIdsOf(text, mentionRoles)
-      let ids = textIds
+      let ids: AgentProfileId[] = textIds
       if (!ids.length) {
         const rawIds = [...new Set((mentions ?? []).map((id) => id.trim()).filter(Boolean))]
-        ids = rawIds
-          .map((raw) => {
-            if (isAgentRoleId(raw)) return raw as AgentProfileId
-            return AGENT_ROLE_IDS.find(
-              (id) => id !== 'free' && (roleNameOf(id) === raw || DEFAULT_AGENT_NAME[id] === raw),
-            )
-          })
-          .filter((id): id is AgentProfileId => Boolean(id))
-        if (ids.length !== rawIds.length) return { ok: false, error: '群聊 @ 的目标 role id / 名字不合法' }
-        for (const id of ids) {
-          if (!text.includes('@' + roleNameOf(id)) && !text.includes('@' + DEFAULT_AGENT_NAME[id])) {
-            return { ok: false, error: `群聊消息要投给 ${roleNameOf(id)}，正文必须显式 @${roleNameOf(id)}` }
+        if (rawIds.length) {
+          ids = rawIds
+            .map((raw) => {
+              if (isAgentRoleId(raw)) return raw as AgentProfileId
+              return AGENT_ROLE_IDS.find(
+                (id) => id !== 'free' && (roleNameOf(id) === raw || DEFAULT_AGENT_NAME[id] === raw),
+              )
+            })
+            .filter((id): id is AgentProfileId => Boolean(id))
+          if (ids.length !== rawIds.length) return { ok: false, error: '群聊 @ 的目标 role id / 名字不合法' }
+          for (const id of ids) {
+            if (!text.includes('@' + roleNameOf(id)) && !text.includes('@' + DEFAULT_AGENT_NAME[id])) {
+              return { ok: false, error: `群聊消息要投给 ${roleNameOf(id)}，正文必须显式 @${roleNameOf(id)}` }
+            }
           }
+        } else if (text.includes('@')) {
+          // 写了 @ 却一个成员都没解析出来：不能悄悄退回默认调度，否则会把活投错。
+          return { ok: false, error: '群聊正文里的 @ 没有匹配到任何成员，请检查名字或补全 @' }
+        } else {
+          // 群聊没有点名时由调度龟兜底接收；这是用户的默认路由，不是广播。
+          ids = ['dispatcher']
         }
       }
       const from = peerOf('agent', voice, roleName)
-      const mentionPeers = ids.map((id) => peerOf('agent', id, roleNameOf(id)))
+      // 正文没有 @ 时默认投给调度龟，但不要凭空造一条 @ 提示；只有真的点名了才带 mentions。
+      const explicitMentions = textIds.length > 0 || Boolean(mentions?.length)
+      const mentionPeers = explicitMentions ? ids.map((id) => peerOf('agent', id, roleNameOf(id))) : []
       const groupMsg = outboundEnvelope({
         channel: 'group',
         from,
@@ -276,6 +293,7 @@ export function rigTurnTools(io: {
         ...(messageId ? { quoteMessageId: messageId } : {}),
         ...(attachments ? { attachments } : {}),
         ...(mentionPeers.length ? { mentions: mentionPeers } : {}),
+        ...(extra ? { extra } : {}),
         goalId,
       })
       appendGroupMessage(groupMsg)
@@ -293,6 +311,7 @@ export function rigTurnTools(io: {
           id: groupMsg.id,
           ts: groupMsg.ts,
           ...(attachments ? { attachments } : {}),
+          ...(extra ? { extra } : {}),
           mentions: mentionPeers,
           goalId,
         })
@@ -337,52 +356,115 @@ export function rigTurnTools(io: {
   }
 
   /**
-   * ask 的表单通道抽成局部函数：permission.request 的审批复用同一条管线
-   * （展示、限时、停止中断全都一致）；区别只在结果的去向——批准由宿主直接落
-   * 放行配置（agent/permissions），不把答案交给模型。
+   * ask 气泡：宿主要把一次问询做成**通道消息**，而不是只压在输入框上方。
+   *
+   * - role 层的 ask 用 role 自己的本轮信号；
+   * - work 的 ask 用 work 自己 run 的信号（role 轮早已结束，不能拿旧 ctrl 当命）；
+   * - 气泡落在该 role 最近一条外部入站的通道：group 就进群聊流水，否则进 user 私聊。
+   *   这样 work 不需要 role “感知”，界面仍然看到当前 role 的身份在问。
    */
-  const askHost = (form: AskFormPayload): Promise<unknown> =>
+  const askInChannel = (
+    form: AskFormPayload,
+    askSignal: AbortSignal,
+    opts: { pending: boolean },
+  ): Promise<unknown> =>
     new Promise<unknown>((resolve) => {
-      let idleTimer: ReturnType<typeof setInterval> | null = null
       const askId = crypto.randomUUID()
-      const finish = (value: unknown): void => {
-        if (askWaitersRef.current.get(askId) !== finish) return
+      const expiresAt = Date.now() + ASK_BUBBLE_TTL_MS
+      const conv = getLatest().conversations.find((c) => c.id === target.conversationId)
+      const lastInbound = [...(conv?.channels ?? [])]
+        .reverse()
+        .find((m) => m.direction === 'in' && m.kind !== 'work')
+      const channel = lastInbound?.kind === 'group' ? 'group' : 'user'
+      const from = peerOf('agent', voice, roleName)
+      const to = channel === 'group' ? groupPeer() : userPeer()
+      const askMessage = outboundEnvelope({
+        channel,
+        from,
+        to,
+        text: form.title || '需要你确认一下',
+        ...(target.goalId && channel === 'group' ? { goalId: target.goalId } : {}),
+        ask: { id: askId, form, expiresAt, status: 'pending' },
+      })
+      appendChannel(target.conversationId, askMessage)
+      if (channel === 'group') appendGroupMessage(askMessage)
+
+      let timer: ReturnType<typeof setTimeout> | null = null
+      let waiter: (value: unknown) => void = () => {}
+      const statusOf = (value: unknown): ChannelAskStatus => {
+        if (value && typeof value === 'object') {
+          const rec = value as { ok?: boolean; cancelled?: boolean; timedOut?: boolean }
+          if (rec.timedOut) return 'expired'
+          if (rec.cancelled) return 'cancelled'
+          if (rec.ok) return 'answered'
+        }
+        return 'cancelled'
+      }
+      const settle = (status: ChannelAskStatus, value: unknown): void => {
+        if (askWaitersRef.current.get(askId) !== waiter) return
         askWaitersRef.current.delete(askId)
-        signal.removeEventListener('abort', onAbort)
-        if (idleTimer) clearInterval(idleTimer)
-        // 只收走自己挂的那一张：并发时别的会话可能也挂着表单
+        askSignal.removeEventListener('abort', onAbort)
+        if (timer) clearTimeout(timer)
         setPendingAsk((prev) => {
           if (prev[target.conversationId]?.id !== askId) return prev
           const next = { ...prev }
           delete next[target.conversationId]
           return next
         })
-        // 标了 userInfo 的题目：答案在**用户提交的那一刻**就落进画像（见 user/fields），
-        // 导师拿到答案时画像已经写好了——不必再 update 一遍，也就没有「转述走样」这一步
+        // 状态写回气泡：提交 / 取消 / 超时后表单失效，倒计时也停
+        const settled = {
+          ...askMessage.ask!,
+          status,
+          settledAt: Date.now(),
+        }
+        const cur = getLatest().conversations.find((c) => c.id === target.conversationId)
+        if (cur) {
+          const state = getLatest()
+          const conversations = state.conversations.map((c) =>
+            c.id === target.conversationId
+              ? {
+                  ...c,
+                  channels: (c.channels ?? []).map((m) => (m.id === askMessage.id ? { ...m, ask: settled } : m)),
+                  updatedAt: Date.now(),
+                }
+              : c,
+          )
+          set({ ...state, conversations })
+        }
+        if (channel === 'group') patchGroupMessage(askMessage.id, { ask: settled })
         void applyAskToProfile(form, value).then(resolve, () => resolve(value))
       }
+      waiter = (value: unknown): void => settle(statusOf(value), value)
       const onAbort = () =>
-        finish({ ok: false, content: '用户停止了这一轮，表单已关闭。不要假设用户的回答。' })
-      signal.addEventListener('abort', onAbort, { once: true })
-      askWaitersRef.current.set(askId, finish)
-      setPendingAsk((prev) => ({ ...prev, [target.conversationId]: { id: askId, form } }))
+        settle('cancelled', { ok: false, content: '用户停止了这一轮，表单已关闭。不要假设用户的回答。' })
+      if (askSignal.aborted) {
+        askWaitersRef.current.set(askId, waiter)
+        onAbort()
+        return
+      }
+      askSignal.addEventListener('abort', onAbort, { once: true })
+      askWaitersRef.current.set(askId, waiter)
+      if (opts.pending) {
+        setPendingAsk((prev) => ({ ...prev, [target.conversationId]: { id: askId, form } }))
+      }
       /*
-       * 表单限时：挂出一分钟后用户**没有任何操作**（鼠标键盘都不动，任意操作都会续住它，
-       * 见 lib/userActivity）就自动收起并带回 timedOut——agent 据此自行决定继续或交付，
-       * 不能为一个没人理的表单把整轮沙箱无限吊着。
+       * 硬时限：**从挂出那一刻起算**，不随鼠标键盘续期（用户要的是可预期，
+       * 而不是「动一下就一直挂着」）。到期只收自己的 waiter，并带回 timedOut。
        */
-      ensureActivityListeners()
-      idleTimer = setInterval(() => {
-        if (askWaitersRef.current.get(askId) !== finish) return
-        if (userIdleMs() >= ASK_IDLE_TIMEOUT_MS) {
-          finish({
-            ok: false,
-            timedOut: true,
-            content: '表单挂出一分钟，用户没有任何操作（超时自动收起）。不要假设用户的回答。',
-          })
-        }
-      }, 5_000)
+      timer = setTimeout(() => {
+        settle('expired', {
+          ok: false,
+          timedOut: true,
+          content: '表单已到时自动失效。不要假设用户的回答。',
+        })
+      }, ASK_BUBBLE_TTL_MS)
     })
+
+  /** role 自己的 ask（以及审批）走这条；work 在下面单独接上自己的信号。 */
+  const askHost = (form: AskFormPayload): Promise<unknown> =>
+    askInChannel(form, signal, { pending: true })
+  workAskRef.current = (_workId, form, workSignal) =>
+    askInChannel(form, workSignal, { pending: false })
   /*
     这一轮的交付账（文件变动 / 参考引证）。用局部变量而不是 state：它是这一轮的副作用，
     不该触发渲染；收口时挂到消息上，组件自然就出来了（见 agent/delivery）。

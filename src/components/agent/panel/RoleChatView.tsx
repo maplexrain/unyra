@@ -9,6 +9,7 @@
  * 工具、思考、work 的内部过程也不进这里。
  */
 import { useMemo } from 'react'
+import type { AskAnswers } from '../../../agent/tools'
 import { MessageSquare, UserRound } from 'lucide-react'
 import type { ChannelMessage, ChannelPeer } from '../../../agent/types'
 import { AGENT_ROLE_IDS, DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
@@ -19,6 +20,9 @@ import UserAvatar from '../../user/UserAvatar'
 import { AGENT_ROSTER_META } from '../../learn/agent-team/agentRoster'
 import { AgentAvatarGlyph } from '../../learn/agent-team/AgentAvatarGlyph'
 import { BubbleRichText } from './BubbleRichText'
+import { AskBubble } from './AskBubble'
+import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
+import { useRecentWindow } from './useRecentWindow'
 import type { AgentTeamMode } from '../../learn/agent-team/conversationList'
 
 function peerName(peer: ChannelPeer | undefined, fallback: string): string {
@@ -32,6 +36,10 @@ export function RoleChatView({
   agentVoice = 'free',
   agentNames,
   agentAvatars,
+  resetKey = '',
+  onAskSubmit,
+  onAskCancel,
+  onAskExpire,
 }: {
   channels: ChannelMessage[]
   /** 当前 role 的显示名（agent profile 覆盖后的真名） */
@@ -44,6 +52,11 @@ export function RoleChatView({
   agentNames?: Partial<Record<string, string>>
   /** 全部 role 的头像 id：同理，不能拿当前页签的头像硬套 */
   agentAvatars?: Partial<Record<string, string>>
+  /** 切换会话时重置最近窗口 */
+  resetKey?: string
+  onAskSubmit?: (askId: string, answers: AskAnswers) => void
+  onAskCancel?: (askId: string) => void
+  onAskExpire?: (askId: string) => void
 }) {
   const user = activeUser()
   const userName = user ? displayName(user.profile, t('未命名用户')) : t('未命名用户')
@@ -60,7 +73,9 @@ export function RoleChatView({
   }, [agentName, agentNames, userName])
 
   /** 私聊层只保留 user 通道：Agent 通道的内部转交不在这里出现 */
-  const visible = useMemo(() => channels.filter((m) => m.kind === 'user').slice(-200), [channels])
+  const allVisible = useMemo(() => channels.filter((m) => m.kind === 'user'), [channels])
+  const { start, hasOlder, sentinelRef } = useRecentWindow(allVisible.length, resetKey)
+  const visible = allVisible.slice(start)
 
   const roleIdOf = (m: ChannelMessage): AgentTeamMode | null => {
     const id = m.from.kind === 'role' ? m.from.id : ''
@@ -90,14 +105,14 @@ export function RoleChatView({
         return (
           <UserAvatar
             profile={user.profile}
-            size={42}
+            size={46}
             seed={user.id}
-            className="mt-1 ring-1 ring-line/70"
+            className="mt-1.5 ring-1 ring-line/70"
           />
         )
       }
       return (
-        <span className="mt-1 flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-line/70 text-ink-faint">
+        <span className="mt-1.5 flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full bg-line/70 text-ink-faint">
           <UserRound size={20} />
         </span>
       )
@@ -108,7 +123,7 @@ export function RoleChatView({
     return (
       <span
         className={
-          'mt-1 flex h-[42px] w-[42px] shrink-0 items-center justify-center overflow-hidden rounded-full border ' +
+          'mt-1.5 flex h-[46px] w-[46px] shrink-0 items-center justify-center overflow-hidden rounded-full border ' +
           (meta?.avatarClass ?? 'border-line/70 bg-line/45 text-ink-soft')
         }
       >
@@ -116,8 +131,8 @@ export function RoleChatView({
           avatarId={(id ? agentAvatars?.[id] : undefined) ?? agentAvatarId}
           fallback={fallback}
           size={21}
-          imgSize={42}
-          imgClassName="h-[42px] w-[42px] rounded-full"
+          imgSize={46}
+          imgClassName="h-[46px] w-[46px] rounded-full"
         />
       </span>
     )
@@ -150,13 +165,19 @@ export function RoleChatView({
 
   return (
     <div className="flex flex-col gap-3 pb-2">
+      {hasOlder ? (
+        <div className="flex items-center justify-center py-2 text-[10.5px] text-ink-faint">
+          向上滚动加载更早的消息…
+        </div>
+      ) : null}
+      <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
       {visible.map((m) => {
         const mine = m.kind === 'user' && m.direction === 'in'
-        const bubbleBg = mine ? 'bg-ink-strong' : 'bg-line/35'
+        const bubbleBg = mine ? 'bg-bubble-user text-ink-strong' : 'bg-bubble-agent text-ink'
         return (
           <div key={m.id} className={'flex items-start gap-2.5 ' + (mine ? 'flex-row-reverse' : '')}>
             {avatarOf(m)}
-            <div className={'min-w-0 max-w-[84%] ' + (mine ? 'flex flex-col items-end' : 'flex flex-col items-start')}>
+            <div className={'min-w-0 max-w-[700px] ' + (mine ? 'flex flex-col items-end' : 'flex flex-col items-start')}>
               <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px]">
                 <span className={'font-semibold ' + nameClassOf(m)}>{nameOf(m)}</span>
                 <span className="text-ink-faint">
@@ -167,33 +188,35 @@ export function RoleChatView({
                 </span>
                 {m.auto ? <span className="text-amber-600">{t('自动')}</span> : null}
               </div>
-              <div
-                className={
-                  'relative max-w-full whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ' +
-                  bubbleBg +
-                  (mine ? ' text-paper rounded-tr-sm' : ' text-ink rounded-tl-sm')
-                }
-              >
-                {/* 朝向头像的小尖尖：消息从哪边来，尖尖就在哪边；与气泡同色、无边框 */}
-                <span
-                  aria-hidden="true"
-                  className={
-                    'absolute top-2.5 h-2.5 w-2.5 rotate-45 ' +
-                    bubbleBg +
-                    (mine ? ' -right-1' : ' -left-1')
-                  }
+              {m.ask ? (
+                <AskBubble
+                  ask={m.ask}
+                  actorName={nameOf(m)}
+                  createdAt={m.ts}
+                  onSubmit={onAskSubmit ? (answers) => onAskSubmit(m.ask!.id, answers) : undefined}
+                  onCancel={onAskCancel ? () => onAskCancel(m.ask!.id) : undefined}
+                  onExpire={onAskExpire ? () => onAskExpire(m.ask!.id) : undefined}
                 />
-                <BubbleRichText text={m.text} names={mentionNames} tone={mine ? 'user' : 'agent'} />
-              </div>
-              {m.attachments?.images?.length ? (
-                <div className={'mt-1 flex flex-wrap gap-1 ' + (mine ? 'justify-end' : 'justify-start')}>
-                  {m.attachments.images.map((img) => (
-                    <span key={img.id} className="rounded-md border border-line px-1.5 py-0.5 text-[10.5px] text-ink-faint">
-                      {img.name}
-                    </span>
-                  ))}
+              ) : (
+                <div
+                  className={
+                    'relative max-w-full whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ' +
+                    bubbleBg +
+                    (mine ? ' rounded-tr-sm' : ' rounded-tl-sm')
+                  }
+                >
+                  <span
+                    aria-hidden="true"
+                    className={
+                      'absolute top-2.5 h-2.5 w-2.5 rotate-45 ' +
+                      (mine ? 'bg-bubble-user -right-1' : 'bg-bubble-agent -left-1')
+                    }
+                  />
+                  <BubbleRichText text={m.text} names={mentionNames} tone={mine ? 'user' : 'agent'} />
                 </div>
-              ) : null}
+              )}
+              <ChannelAttachments message={m} />
+              <ChannelExtraBlock extra={m.extra} names={mentionNames} />
             </div>
           </div>
         )

@@ -18,6 +18,7 @@ import WaveBars from '../../WaveBars'
 import { CompactionDivider } from './CompactionDivider'
 import { HiddenDivider, MessageRow, Parts } from './MessageBubble'
 import { MindMessageRow } from './MindMessageRow'
+import { useRecentWindow } from './useRecentWindow'
 import type { MessageListProps } from './MessageList'
 import type { InjectItem } from './partGroups'
 import type { ConversationMessage } from '../../../agent/types'
@@ -138,13 +139,21 @@ export function useMessageList({
   emptyName,
   mind = false,
   agentName = '',
+  resetKey = '',
 }: MessageListProps) {
+  /*
+   * 只挂最近一屏：完整 messages 仍在 store 里（搜索/定位/导出照旧），
+   * 但 DOM 里不再一次铺几万条。滚动到顶部附近再由哨兵补上一页。
+   */
+  const { start, hasOlder, sentinelRef } = useRecentWindow(messages.length, resetKey)
+  const visibleMessages = useMemo(() => messages.slice(start), [messages, start])
+  const adjustedSummaryStart = Math.max(0, summaryStart - start)
   /*
    * 分段只在 messages 变了之后重算：流式写作时 messages 身份不变（正在长的那一段
    * 走 streaming，见 AgentPanel），于是 prelude 数组的身份也稳定——memo 过的消息行
    * 不会因为每个 chunk 重渲染一次而被打掉。
    */
-  const { segments, pending } = useMemo(() => toSegments(messages), [messages])
+  const { segments, pending } = useMemo(() => toSegments(visibleMessages), [visibleMessages])
   /**
    * 空态随 role：copy 表按 emptyVoice 取（缺省 = 导师口径，老调用方零改动）；
    * 建议只有可交流 role 才有（工作流驱动的 role 输入区是锁着的，建议点不了）。
@@ -192,6 +201,14 @@ export function useMessageList({
         </div>
       )}
 
+      {/* 顶部哨兵：进入视口前 120px 就补上一页；真源仍在 store，滚回去还能继续加载 */}
+      {hasOlder ? (
+        <div className="mb-2 flex items-center justify-center text-[10.5px] text-ink-faint">
+          向上滚动加载更早的消息…
+        </div>
+      ) : null}
+      <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
+
       {/* 摘要卡永远在最上面：压缩之后它就是第一条消息（旧消息全部失活、只作显示） */}
       {summary && (
         <CompactionDivider summary={summary} open={summaryOpen} onToggle={() => setSummaryOpen((v) => !v)} />
@@ -209,7 +226,7 @@ export function useMessageList({
             <HiddenDivider
               key={seg.msgs[0].id}
               msgs={seg.msgs}
-              faded={seg.start < summaryStart}
+              faded={seg.start < adjustedSummaryStart}
               flash={seg.msgs.some((m) => m.id === flashId)}
               msgRefs={msgRefs}
             />
@@ -219,7 +236,7 @@ export function useMessageList({
         const rowProps = {
           m,
           prelude: seg.prelude,
-          faded: seg.at < summaryStart,
+          faded: seg.at < adjustedSummaryStart,
           flash: flashId === m.id,
           msgRefs,
           onResumeNotice,

@@ -5,7 +5,7 @@
 import { createElement, act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
-import { GroupChatPanel } from '../src/components/agent/panel/GroupChatPanel'
+import { GroupChatPanel, mentionContextAt } from '../src/components/agent/panel/GroupChatPanel'
 import { mentionedAgentsOf } from '../src/components/agent/panel/groupMentions'
 import type { ChannelMessage } from '../src/agent/types'
 
@@ -56,6 +56,35 @@ describe('GroupChatPanel', () => {
     expect(host.textContent).toContain('@导师龟 收到，已派 work')
     expect(host.textContent).toContain('@ 导师龟')
     expect(host.textContent).not.toContain('思维')
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('@ 提示只跟当前光标：删掉 @ 或名字后打空格就收起', () => {
+    expect(mentionContextAt('@', 1)).toEqual({ start: 0, query: '' })
+    expect(mentionContextAt('请大家 @导', 6)).toEqual({ start: 4, query: '导' })
+    // 删掉 @ 后不应再有候选
+    expect(mentionContextAt('请', 1)).toBeNull()
+    // 名字选完补了空格，提示必须收起，不能一直挂着
+    expect(mentionContextAt('@导师龟 ', 5)).toBeNull()
+    expect(mentionContextAt('abc@导师龟', 8)).toBeNull()
+  })
+
+  it('只画最近一屏消息，旧消息不一次性塞进 DOM', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const many = Array.from({ length: 61 }, (_, i) =>
+      message(`m${i}`, { kind: 'user', id: 'u1', name: '用户' }, `消息-${i}-内容`),
+    )
+    act(() => {
+      root.render(createElement(GroupChatPanel, { messages: many, agents, onSend: vi.fn(() => true) }))
+    })
+    expect(host.textContent).toContain('消息-60-内容')
+    expect(host.textContent).not.toContain('消息-0-内容')
+    expect(host.textContent).toContain('向上滚动加载更早的消息')
     act(() => {
       root.unmount()
     })

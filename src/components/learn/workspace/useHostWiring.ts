@@ -370,6 +370,7 @@ export function useHostWiring({
       const range = findPlotFenceRange(content, source)
       agent.runWorkflow('plot-fix', {
         target: { goalId: node.goalId, nodeId: node.id, conversationId: convId, voice: 'dispatcher' },
+        viaGroup: true,
         params: {
           nodeTitle: node.title,
           reason,

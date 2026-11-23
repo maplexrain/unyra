@@ -25,7 +25,7 @@ export function BubbleRichText({
   text: string
   /** 可被 @ 的角色名（profile 名 + 默认名） */
   names?: string[]
-  /** 用户气泡是深底，链接/代码要高对比；agent 气泡是浅底 */
+  /** 用户气泡与 agent 气泡都用亮底，但用户更亮；链接/代码只做轻微色差，保证可读 */
   tone?: 'user' | 'agent'
   /** 点击 @ 角色时的回调；不传则只阻止导航 */
   onMention?: (name: string) => void
@@ -49,7 +49,7 @@ export function BubbleRichText({
 
   const toneClass =
     tone === 'user'
-      ? '[&_a]:text-sky-200 [&_code]:bg-white/15 [&_code]:text-paper [&_blockquote]:border-white/30'
+      ? '[&_a]:text-sky-700 [&_code]:bg-line/40 [&_code]:text-ink-strong [&_blockquote]:border-line-strong'
       : '[&_a]:text-seal [&_code]:bg-line/55 [&_code]:text-ink-strong [&_blockquote]:border-line-strong'
 
   return (

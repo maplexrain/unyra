@@ -232,11 +232,11 @@ export function agentRuntimeApiAllow(voice: AgentVoice): string[] {
  * work 层的领域面：从 role 的领域分组派生，去掉 role 专属/人机交互/审批类，
  * 补上 work 唯一的对外通道 host。
  *
- * work 不直接面对用户：ask / tiktok 顶层也不给；它用 host.send 交回 role，
+ * work 不直接面对用户：ask 会借用所属 role 的身份落进对应通道的气泡；它用 host.send 交回 role，
  * 由 role 决定怎么对用户说。
  */
 const WORK_EXCLUDED_GROUPS: ReadonlySet<string> = new Set(['work', 'chat', 'permission', 'ui'])
-const WORK_EXCLUDED_TOP_LEVEL: ReadonlySet<string> = new Set(['ask', 'tiktok'])
+const WORK_EXCLUDED_TOP_LEVEL: ReadonlySet<string> = new Set(['tiktok'])
 
 export function workPlaneOfRole(voice: AgentVoice): AgentApiPlane {
   const role = WORK_DOMAIN_PLANES[voice]
@@ -245,6 +245,7 @@ export function workPlaneOfRole(voice: AgentVoice): AgentApiPlane {
   if (!groups.includes('host')) groups.push('host')
   const topLevel = role.topLevel.filter((n) => !WORK_EXCLUDED_TOP_LEVEL.has(n))
   if (!topLevel.includes('wait')) topLevel.unshift('wait')
+  if (!topLevel.includes('ask')) topLevel.unshift('ask')
   if (!topLevel.includes('compact')) topLevel.push('compact')
   return { groups, topLevel }
 }

@@ -46,4 +46,6 @@ export interface MessageListProps {
   agentName?: string
   /** 当前 role 的头像 id */
   agentAvatarId?: string
+  /** 最近窗口的复位键：切换会话 / 目标时必须回到尾部，不沿用上一段的加载深度 */
+  resetKey?: string
 }

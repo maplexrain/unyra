@@ -211,6 +211,38 @@ export function useAgent(opts: {
     [pendingAsk, conversationId, askWaitersRef],
   )
 
+  /** 气泡里的 ask 不依赖 pendingAsk（work 发起的问询不在 role 的表单槽里） */
+  const submitAskById = useCallback(
+    (askId: string, answers: AskAnswers) => {
+      askWaitersRef.current.get(askId)?.({ ok: true, cancelled: false, answers })
+    },
+    [askWaitersRef],
+  )
+
+  const cancelAskById = useCallback(
+    (askId: string) => {
+      askWaitersRef.current.get(askId)?.({
+        ok: true,
+        cancelled: true,
+        answers: [],
+        note: '用户取消了表单，没有给出任何回答。不要假设他的偏好或答案。',
+      })
+    },
+    [askWaitersRef],
+  )
+
+  /** UI 倒计时走到 0 时先收口；宿主定时器随后会撞上同一个 waiter，不会重复。 */
+  const expireAskById = useCallback(
+    (askId: string) => {
+      askWaitersRef.current.get(askId)?.({
+        ok: false,
+        timedOut: true,
+        content: '表单已到时自动失效。不要假设用户的回答。',
+      })
+    },
+    [askWaitersRef],
+  )
+
   /**
    * runTurn 的本体，不做并发控制（守卫与排队在 runTurn 里）。
    */
@@ -854,6 +886,9 @@ export function useAgent(opts: {
     pendingAsk: conversationId ? (pendingAsk[conversationId] ?? null) : null,
     submitAsk,
     cancelAsk,
+    submitAskById,
+    cancelAskById,
+    expireAskById,
     /** 最近一跳实测的输出速度（tok/s）；没在跑、或服务端没流式回包时为 null */
     tps: conversationId ? (tps[conversationId] ?? null) : null,
     /** 正在跑的这一轮到目前为止的账（每跳 usage 重算）：上下文占用圆环的实时数据源 */

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * 群聊桥：用户群聊发言只投给被 @ 的 role，并落同一份群流水。
+ * 群聊桥：用户群聊发言 @ 谁就投给谁；没有 @ 时默认由调度龟接手。
  */
 import { createElement, act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -64,6 +64,53 @@ describe('useGroupChatBridge', () => {
     )
     expect(logged?.kind).toBe('group')
     expect(logged?.mentions?.[0]?.id).toBe('tutor')
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('用户发言：没有 @ 时默认投给调度龟', () => {
+    let current = { conversations: [] } as unknown as LearnStore
+    const set = (next: LearnStore): void => {
+      current = next
+    }
+    const started: RoleTurnRequest[] = []
+    setRoleWorkDispatcher(() => ({
+      isConversationRunning: () => false,
+      resolveRoleConversation: () => null,
+      startRoleTurn: (req) => started.push(req),
+      appendChannel: () => {},
+    }))
+
+    let bridge: GroupChatBridge | null = null
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(function Probe() {
+          bridge = useGroupChatBridge({
+            goalId: 'g-bridge-noat',
+            agents: [
+              { id: 'tutor', name: '导师龟' },
+              { id: 'dispatcher', name: '调度龟' },
+            ],
+            getLatest: () => current,
+            set,
+          })
+          return null
+        }),
+      )
+    })
+    act(() => {
+      expect(bridge!.send('帮我把这周的安排列一下', ['dispatcher'])).toBe(true)
+    })
+    expect(started).toHaveLength(1)
+    expect(started[0]!.role).toBe('dispatcher')
+    expect(started[0]!.text).toBe('帮我把这周的安排列一下')
+    const logged = getGroupChatMessages().find((m) => m.goalId === 'g-bridge-noat')
+    expect(logged?.mentions ?? []).toEqual([])
     act(() => {
       root.unmount()
     })

@@ -141,6 +141,10 @@ interface Props {
   ask: { id: string; form: AskFormPayload } | null
   onAskSubmit: (answers: AskAnswers) => void
   onAskCancel: () => void
+  /** 通道气泡内的 ask（含 work 发起、没有进 pendingAsk 槽的那些）按 id 提交 / 取消 / 到期 */
+  onAskSubmitById?: (askId: string, answers: AskAnswers) => void
+  onAskCancelById?: (askId: string) => void
+  onAskExpireById?: (askId: string) => void
   /**
    * 最近一跳实测的输出速度（tok/s，运行时掐表测得）。跑着的时候来自实时上报，
    * 空闲时为 null——状态条会退回用最后一条回复里存的值。
@@ -207,9 +211,11 @@ export default function AgentPanel({
   onEditMessage,
   onDeleteMessage,
   onResumeInterrupted,
-  ask,
   onAskSubmit,
   onAskCancel,
+  onAskSubmitById,
+  onAskCancelById,
+  onAskExpireById,
   tps,
   liveUsage,
   work,
@@ -481,6 +487,7 @@ export default function AgentPanel({
     mind: viewMode === 'mind' || !!workSession,
     agentName: emptyName ?? '',
     agentAvatarId,
+    resetKey: workSession?.id ?? conversation?.id ?? '',
   })
 
   return (
@@ -506,16 +513,13 @@ export default function AgentPanel({
         </div>
       ) : null}
       {/*
-        内容上限 768px：这一栏的容器可以被拉到 800 宽，两列对调之后还会占住左边那一大块，
-        但对话本身（消息 / 输入区）始终不超过 768——一行拉得太长就读不动了。
-        三段各写一次同一个上限，而不是外面再包一层：这样底色的铺满范围不变，
-        宽出来的部分就是这一栏自己的留白，三段的左右边缘也正好对齐。
-
+        消息区不再限制整栏宽度：对话列表铺满可用空间，只有单条气泡限制 700px，
+        这样长屏上不会出现一大片空白的「居中窄栏」，一行也不会被拉得读不动。
         顶栏（超级导师 + 人格 + 「正在辅导」）随 agent 栏页签化撤掉：页签自己就回答着
         「现在跟谁在说」——目标级页签的标题就是目标的标题，子代理页签就是会话名。
         「正在辅导」与对话标题搬到了输入框下面的状态行（见下面那一行）。
       */}
-      <div className="relative mx-auto min-h-0 w-full max-w-[768px] flex-1">
+      <div className="relative min-h-0 w-full flex-1">
         {/* moji-selectable：聊天列表是全站仅有的两处「可选文字、可拖拽」的区域之一
             （另一处是左侧文档浏览区），见 index.css 的只读界面规则 */}
         {/*
@@ -531,6 +535,7 @@ export default function AgentPanel({
         <div className="h-full" style={listMaskStyle}>
           <div
             ref={scrollRef}
+            data-message-scroll
             onWheel={onWheel}
             onScroll={onScroll}
             // 不显示滚动条（moji-scroll-none），左右内边距对称
@@ -539,7 +544,7 @@ export default function AgentPanel({
             {/* 字号系数挂在这一层、而不是滚动容器上：滚动条与内边距不该跟着缩放（上边距 20px：列表内容与页签栏之间留一口呼吸） */}
             <div
               ref={contentRef}
-              className={`mx-auto w-full max-w-[768px] pt-5 ${
+              className={`w-full px-4 pt-5 ${
                 viewMessages.length === 0 && !viewStreaming && !workSession
                   ? 'flex min-h-[calc(100%-1.25rem)] flex-col justify-center pb-8'
                   : ''
@@ -555,6 +560,10 @@ export default function AgentPanel({
                   agentNames={agentNames}
                   agentAvatars={agentAvatars}
                   agentVoice={emptyVoice ?? 'free'}
+                  resetKey={conversation?.id ?? ''}
+                  onAskSubmit={onAskSubmitById}
+                  onAskCancel={onAskCancelById}
+                  onAskExpire={onAskExpireById}
                 />
               ) : (
                 messageList
@@ -587,8 +596,8 @@ export default function AgentPanel({
         上内边距为 0：输入卡片与上面的消息列表之间只留卡片自己那圈边框，
         上面那一条 10px 的空白把「对话」与「我要说的话」切成了两段，而且它一直是空的。
       */}
-      <div className="mx-auto w-full max-w-[768px] shrink-0 px-3.5 pb-3 pt-0">
-        {!workSession && (
+      <div className="w-full shrink-0 px-3.5 pb-3 pt-0">
+        {!workSession && viewMode === 'chat' && (
           <ComposerUi
           composer={composer}
           running={running}
@@ -598,7 +607,7 @@ export default function AgentPanel({
           queue={queue}
           onQueueDrop={onQueueDrop}
           onQueueSendNow={onQueueSendNow}
-          ask={ask}
+          ask={null}
           onAskSubmit={onAskSubmit}
           onAskCancel={onAskCancel}
           usages={usages}

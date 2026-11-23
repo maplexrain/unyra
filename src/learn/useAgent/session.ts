@@ -102,13 +102,14 @@ export function useAgentSession(deps: {
               text,
               ...(meta.quoteMessageId ? { quoteMessageId: meta.quoteMessageId } : {}),
               ...(meta.auto ? { auto: true } : {}),
+              ...(meta.extra ? { extra: meta.extra } : {}),
             })
             persist({ ...cur, channels: [...(cur.channels ?? []), envelope].slice(-200), updatedAt: Date.now() })
           },
           deliverToRole: (work, text, meta) => {
             const from = peerOf('work', work.id, work.name)
             const to = peerOf('agent', work.roleId, roleName)
-            const envelope = inboundEnvelope({ channel: 'work', from, to, text })
+            const envelope = inboundEnvelope({ channel: 'work', from, to, text, ...(meta.extra ? { extra: meta.extra } : {}) })
             deliverInbound(
               {
                 conversationId: work.roleConversationId,

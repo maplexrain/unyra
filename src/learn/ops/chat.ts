@@ -49,6 +49,7 @@ export interface ChatOpsDeps {
     mentions?: string[]
     messageId?: string
     attachments?: { images?: ConversationMessage['images']; files?: ConversationMessage['files'] }
+    extra?: ChannelMessage['extra']
   }) => ChatCallResult | Promise<ChatCallResult>
 }
 
@@ -112,6 +113,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
           to: deps.userPeer(),
           text: body,
           ...(attachments && (attachments.images || attachments.files) ? { attachments } : {}),
+          ...(input.extra ? { extra: input.extra } : {}),
           ...(messageId ? { quoteMessageId: messageId } : {}),
         })
         deps.appendChannel(deps.conversationId, envelope)
@@ -133,6 +135,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
           ...(targets.length ? { mentions: [...new Set(targets)] } : {}),
           ...(messageId ? { messageId } : {}),
           ...(attachments ? { attachments } : {}),
+          ...(input.extra ? { extra: input.extra } : {}),
         })
         if (result.ok) markRoleOutbound(deps.conversationId)
         return result
@@ -153,6 +156,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
           to: targetPeer,
           text: body,
           ...(attachments && (attachments.images || attachments.files) ? { attachments } : {}),
+          ...(input.extra ? { extra: input.extra } : {}),
           ...(messageId ? { quoteMessageId: messageId } : {}),
         }),
       )
@@ -162,6 +166,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
         to: targetPeer,
         text: body,
         ...(attachments && (attachments.images || attachments.files) ? { attachments } : {}),
+        ...(input.extra ? { extra: input.extra } : {}),
       })
       deliverInbound(
         {

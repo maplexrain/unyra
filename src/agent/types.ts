@@ -9,6 +9,7 @@
 import type { ChatUsage } from '../ai/types'
 import type { AgentProfileId, AgentVoice } from './agentProfile'
 import type { DeliveryRecord } from './delivery'
+import type { AskFormPayload } from './sandbox/types/ask'
 
 /** 会话里一条消息的组成片段：思考过程、正文回复、一次工具调用、一条运行时提示 */
 export type AgentPart =
@@ -99,6 +100,32 @@ export interface ChannelStamp {
   goalId?: string
 }
 
+/** 通道消息里的额外数据：正文之外的日志 / 原始结果 / 长文本，界面折叠展示，避免刷屏。 */
+export interface ChannelExtra {
+  /** 折叠条的标题，例如「调研原始结果」「工具输出」 */
+  title?: string
+  /** 放在正文之外的完整数据；支持 Markdown */
+  text: string
+  /** 展示格式；缺省 text */
+  format?: 'text' | 'markdown' | 'json'
+}
+
+/** ask 气泡的生命周期状态：pending 之外一律不可再提交。 */
+export type ChannelAskStatus = 'pending' | 'answered' | 'cancelled' | 'expired'
+
+/**
+ * 通道里的 ask 气泡。表单本身来自 agent/sandbox 的 AskFormPayload；
+ * expiresAt 是宿主写死的截止时间（毫秒时间戳），UI 据此画倒计时进度条。
+ */
+export interface ChannelAsk {
+  id: string
+  form: AskFormPayload
+  expiresAt: number
+  status: ChannelAskStatus
+  /** 用户提交 / 取消 / 超时的时间 */
+  settledAt?: number
+}
+
 /** 一条通道流水：role 的外部收发都在这里，聊天层只读它，不碰工具/思考。 */
 export interface ChannelMessage {
   id: string
@@ -109,6 +136,10 @@ export interface ChannelMessage {
   text: string
   ts: number
   attachments?: { images?: MessageImage[]; files?: MessageFile[] }
+  /** 正文之外的额外数据（可折叠）；Agent 之间的大段结果优先放这里 */
+  extra?: ChannelExtra
+  /** 结构化问询气泡；有它时正文只是引子，界面画表单与倒计时 */
+  ask?: ChannelAsk
   /** work.send / chat.send 引用转发的用户消息 id */
   quoteMessageId?: string
   /** 群聊里被 @ 的收件人（一条消息可点名多位） */

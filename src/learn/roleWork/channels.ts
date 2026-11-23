@@ -150,6 +150,8 @@ export function outboundEnvelope(input: {
   auto?: boolean
   mentions?: ChannelPeer[]
   goalId?: string
+  extra?: ChannelMessage['extra']
+  ask?: ChannelMessage['ask']
 }): ChannelMessage {
   return {
     id: crypto.randomUUID(),
@@ -160,6 +162,8 @@ export function outboundEnvelope(input: {
     text: input.text,
     ts: input.ts ?? Date.now(),
     ...(input.attachments ? { attachments: input.attachments } : {}),
+    ...(input.extra ? { extra: input.extra } : {}),
+    ...(input.ask ? { ask: input.ask } : {}),
     ...(input.quoteMessageId ? { quoteMessageId: input.quoteMessageId } : {}),
     ...(input.auto ? { auto: true } : {}),
     ...(input.mentions?.length ? { mentions: input.mentions } : {}),
@@ -178,6 +182,7 @@ export function inboundEnvelope(input: {
   attachments?: ChannelMessage['attachments']
   mentions?: ChannelPeer[]
   goalId?: string
+  extra?: ChannelMessage['extra']
 }): ChannelMessage {
   return {
     id: input.id ?? crypto.randomUUID(),
@@ -188,6 +193,7 @@ export function inboundEnvelope(input: {
     text: input.text,
     ts: input.ts ?? Date.now(),
     ...(input.attachments ? { attachments: input.attachments } : {}),
+    ...(input.extra ? { extra: input.extra } : {}),
     ...(input.mentions?.length ? { mentions: input.mentions } : {}),
     ...(input.goalId ? { goalId: input.goalId } : {}),
   }

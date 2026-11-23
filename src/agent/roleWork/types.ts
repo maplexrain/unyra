@@ -5,7 +5,7 @@
  * 角色层互相 import 形成环；这里只放「调用面」与回执，供 sandbox ops / 宿主实现共用。
  */
 import type { AgentProfileId, AgentVoice } from '../agentProfile'
-import type { ChannelKind, MessageFile, MessageImage, WorkSession, WorkStatus } from '../types'
+import type { ChannelExtra, ChannelKind, MessageFile, MessageImage, WorkSession, WorkStatus } from '../types'
 
 export type { ChannelKind, ChannelMessage, ChannelPeer, ChannelStamp, WorkExecuteTrace, WorkSession, WorkStatus, WorkBucket } from '../types'
 
@@ -78,6 +78,11 @@ export interface ChatSendInput {
   /** 引用当前 role 会话里的用户消息（转发并标注来源） */
   messageId?: string
   attachments?: ChatAttachmentInput[]
+  /**
+   * 正文之外的额外数据（长日志 / 原始结果 / JSON）：不占气泡正文，界面折叠展示。
+   * 两个 agent 之间搬运大块材料时必须放这里，避免把聊天列表刷屏。
+   */
+  extra?: ChannelExtra
 }
 
 export interface ChatCallResult {
@@ -97,6 +102,8 @@ export interface HostSendInput {
   text: string
   /** 引用 role 发来的任务消息 id */
   messageId?: string
+  /** 长结果 / 原始数据走附加字段，不刷聊天列表 */
+  extra?: ChannelExtra
 }
 
 export interface HostCallResult {

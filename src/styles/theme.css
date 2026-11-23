@@ -14,6 +14,12 @@
   --color-line: #e4ddcd;
   --color-line-strong: #d0c6b1;
   /**
+   * 聊天气泡：同一个暖色系，用户气泡比 agent 气泡更亮（与卡片/纸面仍有区分）。
+   * 深色模式在下方覆盖；两处都改才不会被主题翻转后「用户反而更暗」。
+   */
+  --color-bubble-user: #fffaf0;
+  --color-bubble-agent: #eee6d7;
+  /**
    * 遮罩色（图片预览、抽屉背景这类"压暗下面内容"的表面）。
    * 单独一个 token 而不是复用 ink：ink 在深色模式下是**浅色**（它是文字色），
    * 拿它当遮罩会得到一层白纱——深色模式下的图片预览正是这么白的。
@@ -92,6 +98,8 @@
   --color-ink-faint: #7c7468;
   --color-line: #332e26;
   --color-line-strong: #493f33;
+  --color-bubble-user: #352b23;
+  --color-bubble-agent: #231f19;
   --color-mask: #000000;
   --color-seal: #d0705a;
   --color-seal-deep: #e08a74;

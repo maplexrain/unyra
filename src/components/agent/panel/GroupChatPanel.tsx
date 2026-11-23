@@ -1,13 +1,13 @@
 /**
  * 群聊面板：只有对话列表，没有思维层、没有单个 work 的过程。
  *
- * 用户与 agent 的群聊流水存在 groupChat 里（users/{uid}/group-chat.json）；
- * 群聊消息只有在正文 **显式 @ 某个 agent 的名字** 时才会投给该 agent 的 role mind。
- * 只有 @ 到的人收到入站消息，群聊层本身对所有人可见。
+ * 群聊流水存在 groupChat 里（users/{uid}/group-chat.json）；正文显式 @ 某个 agent
+ * 时投给被点名的 role，没有 @ 时按产品口径默认由调度龟接收。群聊层本身对所有人可见。
  */
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AtSign, MessageSquare, Send, UserRound, Users } from 'lucide-react'
 import type { ChannelMessage } from '../../../agent/types'
+import type { AskAnswers } from '../../../agent/tools'
 import { AGENT_ROLE_IDS, DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import { t } from '../../../i18n'
 import { displayName } from '../../../user/profile'
@@ -17,6 +17,9 @@ import { AgentAvatarGlyph } from '../../learn/agent-team/AgentAvatarGlyph'
 import type { AgentTeamMode } from '../../learn/agent-team/conversationList'
 import { AGENT_ROSTER_META } from '../../learn/agent-team/agentRoster'
 import { BubbleRichText } from './BubbleRichText'
+import { AskBubble } from './AskBubble'
+import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
+import { useRecentWindow } from './useRecentWindow'
 import { mentionedAgentsOf } from './groupMentions'
 
 export interface GroupChatAgent {
@@ -26,6 +29,22 @@ export interface GroupChatAgent {
   aliases?: string[]
   avatarId?: string
   running?: boolean
+}
+
+/**
+ * 当前光标是否处在一个**还没结束的 @ 片段**里。
+ *
+ * 不是「正文里出现过 @」也不是「文本以 @ 结尾」：删掉 @ 后不能继续弹，
+ * 在 @ 后面打了一个空格（名字已经选定 / 放弃）也立刻收起。
+ */
+export function mentionContextAt(text: string, caret: number): { start: number; query: string } | null {
+  const before = text.slice(0, Math.max(0, Math.min(caret, text.length)))
+  const at = before.lastIndexOf('@')
+  if (at < 0) return null
+  const query = before.slice(at + 1)
+  if (/\s/.test(query)) return null
+  if (at > 0 && !/\s/.test(before[at - 1])) return null
+  return { start: at, query }
 }
 
 function nameOfPeer(m: ChannelMessage): string {
@@ -39,6 +58,10 @@ export function GroupChatPanel({
   agents,
   disabledReason,
   onSend,
+  resetKey = '',
+  onAskSubmit,
+  onAskCancel,
+  onAskExpire,
 }: {
   messages: ChannelMessage[]
   agents: GroupChatAgent[]
@@ -46,16 +69,47 @@ export function GroupChatPanel({
   disabledReason?: string
   /** 返回 false 表示发送失败（输入区保留内容） */
   onSend: (text: string, targetIds: AgentTeamMode[]) => boolean
+  /** 切换目标 / 群聊时重置最近窗口 */
+  resetKey?: string
+  onAskSubmit?: (askId: string, answers: AskAnswers) => void
+  onAskCancel?: (askId: string) => void
+  onAskExpire?: (askId: string) => void
 }) {
   const [text, setText] = useState('')
-  const [pickerOpen, setPickerOpen] = useState(false)
+  const [caret, setCaret] = useState(0)
+  const [forcePicker, setForcePicker] = useState(false)
+  const [suppressPicker, setSuppressPicker] = useState(false)
+  const [activePick, setActivePick] = useState(0)
   const [error, setError] = useState('')
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const user = activeUser()
   const userName = user ? displayName(user.profile, t('未命名用户')) : t('未命名用户')
+  const { start, hasOlder, sentinelRef } = useRecentWindow(messages.length, resetKey)
+  const visible = messages.slice(start)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const atBottomRef = useRef(true)
+
+  useEffect(() => {
+    const el = scrollRef.current
+    atBottomRef.current = true
+    if (el) el.scrollTop = el.scrollHeight
+  }, [resetKey])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el && atBottomRef.current) el.scrollTop = el.scrollHeight
+  }, [messages.length])
 
   const mentioned = useMemo(() => mentionedAgentsOf(text, agents), [text, agents])
-  const canSend = Boolean(text.trim()) && mentioned.length > 0 && !disabledReason
+  const mention = mentionContextAt(text, caret)
+  const pickerOpen = (Boolean(mention) || forcePicker) && !suppressPicker
+  const mentionQuery = mention?.query.trim().toLowerCase() ?? ''
+  const filteredAgents = useMemo(
+    () => agents.filter((a) => !mentionQuery || a.name.toLowerCase().includes(mentionQuery) || (a.aliases ?? []).some((x) => x.toLowerCase().includes(mentionQuery))),
+    [agents, mentionQuery],
+  )
+  const pickIndex = Math.min(activePick, Math.max(0, filteredAgents.length - 1))
+  const canSend = Boolean(text.trim()) && !disabledReason
 
   /** 气泡里 @ 的解析名单：成员真名 + 所有 role 的默认名，改名前后都能认 */
   const mentionNames = useMemo(() => {
@@ -66,29 +120,81 @@ export function GroupChatPanel({
 
   const insertMention = (agent: GroupChatAgent): void => {
     const token = '@' + agent.name + ' '
-    setText((prev) => {
-      const trimmedEnd = prev.replace(/\s+$/, '')
-      return (trimmedEnd ? trimmedEnd + ' ' : '') + token
-    })
-    setPickerOpen(false)
+    const m = mentionContextAt(text, caret)
+    let next = ''
+    let nextCaret = 0
+    if (m) {
+      let tokenEnd = caret
+      while (tokenEnd < text.length && !/\s/.test(text[tokenEnd])) tokenEnd += 1
+      const before = text.slice(0, m.start)
+      const after = text.slice(tokenEnd)
+      next = before + token + after.replace(/^\s*/, ' ')
+      nextCaret = before.length + token.length
+    } else {
+      const trimmedEnd = text.replace(/\s+$/, '')
+      const before = trimmedEnd ? trimmedEnd + ' ' : ''
+      next = before + token
+      nextCaret = next.length
+    }
+    setText(next)
+    setCaret(nextCaret)
+    setForcePicker(false)
+    setSuppressPicker(false)
+    setActivePick(0)
     setError('')
-    requestAnimationFrame(() => inputRef.current?.focus())
+    requestAnimationFrame(() => {
+      const el = inputRef.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(nextCaret, nextCaret)
+    })
   }
 
   const submit = (): void => {
     const body = text.trim()
     if (!body || disabledReason) return
-    if (!mentioned.length) {
-      setError(t('群聊消息必须 @ 至少一位 agent，消息才会进入对方通道'))
+    // 没有 @ 时按产品口径默认由调度龟接；@ 了就按正文点名的成员投递
+    const targets: AgentTeamMode[] = mentioned.length
+      ? mentioned.map((a) => a.id)
+      : agents.some((a) => a.id === 'dispatcher')
+        ? ['dispatcher']
+        : []
+    if (!targets.length) {
+      setError(t('当前群聊里没有调度龟，无法接收无 @ 的消息'))
       return
     }
-    const ok = onSend(body, mentioned.map((a) => a.id))
+    const ok = onSend(body, targets)
     if (!ok) {
       setError(t('发送失败，请稍后再试'))
       return
     }
     setText('')
+    setCaret(0)
+    setForcePicker(false)
+    setSuppressPicker(false)
     setError('')
+  }
+
+  const openMentionPicker = (): void => {
+    if (disabledReason) return
+    setSuppressPicker(false)
+    if (mention) {
+      setForcePicker(true)
+    } else {
+      const at = Math.max(0, Math.min(caret, text.length))
+      const insertion = (at > 0 && !/\s/.test(text[at - 1]) ? ' ' : '') + '@'
+      const next = text.slice(0, at) + insertion + text.slice(at)
+      const nextCaret = at + insertion.length
+      setText(next)
+      setCaret(nextCaret)
+      setForcePicker(true)
+      requestAnimationFrame(() => {
+        const el = inputRef.current
+        if (!el) return
+        el.focus()
+        el.setSelectionRange(nextCaret, nextCaret)
+      })
+    }
   }
 
   return (
@@ -100,7 +206,7 @@ export function GroupChatPanel({
         <div className="min-w-0 flex-1">
           <div className="text-[14px] font-semibold text-ink">{t('群聊')}</div>
           <div className="truncate text-[11px] text-ink-faint">
-            {t('群通道 · 只有对话列表 · @ 指定 agent 才会进入对方')}
+            {t('群通道 · 只有对话列表 · @ 指定 agent，无 @ 时由调度龟接手')}
           </div>
         </div>
         <div className="flex -space-x-2">
@@ -128,10 +234,24 @@ export function GroupChatPanel({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {messages.length ? (
+      <div
+        ref={scrollRef}
+        data-message-scroll
+        onScroll={(e) => {
+          const el = e.currentTarget
+          atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
+        }}
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+      >
+        {visible.length ? (
           <div className="flex flex-col gap-3">
-            {messages.map((m) => {
+            {hasOlder ? (
+              <div className="flex items-center justify-center py-1 text-[10.5px] text-ink-faint">
+                向上滚动加载更早的消息…
+              </div>
+            ) : null}
+            <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
+            {visible.map((m) => {
               const fromRole = m.from.kind === 'role'
               const roleId = fromRole ? (m.from.id as AgentTeamMode) : undefined
               const meta = roleId ? AGENT_ROSTER_META[roleId] : undefined
@@ -145,19 +265,19 @@ export function GroupChatPanel({
                     user ? (
                       <UserAvatar
                         profile={user.profile}
-                        size={42}
+                        size={46}
                         seed={user.id}
-                        className="mt-1 ring-1 ring-line/70"
+                        className="mt-1.5 ring-1 ring-line/70"
                       />
                     ) : (
-                      <span className="mt-1 flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-line/70 text-ink-faint">
+                      <span className="mt-1.5 flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full bg-line/70 text-ink-faint">
                         <UserRound size={20} />
                       </span>
                     )
                   ) : (
                     <span
                       className={
-                        'mt-1 flex h-[42px] w-[42px] shrink-0 items-center justify-center overflow-hidden rounded-full border ' +
+                        'mt-1.5 flex h-[46px] w-[46px] shrink-0 items-center justify-center overflow-hidden rounded-full border ' +
                         (meta?.avatarClass ?? 'border-line/70 bg-line/45 text-ink-soft')
                       }
                     >
@@ -165,12 +285,12 @@ export function GroupChatPanel({
                         avatarId={avatarId}
                         fallback={meta?.fallbackIcon ?? MessageSquare}
                         size={21}
-                        imgSize={42}
-                        imgClassName="h-[42px] w-[42px] rounded-full"
+                        imgSize={46}
+                        imgClassName="h-[46px] w-[46px] rounded-full"
                       />
                     </span>
                   )}
-                  <div className={'min-w-0 max-w-[82%] ' + (mine ? 'flex flex-col items-end' : 'flex flex-col items-start')}>
+                  <div className={'min-w-0 max-w-[700px] ' + (mine ? 'flex flex-col items-end' : 'flex flex-col items-start')}>
                     <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px]">
                       <span className={'font-semibold ' + (mine ? 'text-ink-strong' : (meta?.nameClass ?? 'text-ink-strong'))}>
                         {mine ? userName : nameOfPeer(m)}
@@ -182,23 +302,36 @@ export function GroupChatPanel({
                         {mentions.length ? '@ ' + mentions.join('、') : t('群聊')}
                       </span>
                     </div>
-                    <div
-                      className={
-                        'relative max-w-full break-words rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ' +
-                        (mine
-                          ? 'bg-ink-strong text-paper rounded-tr-sm'
-                          : 'bg-line/35 text-ink rounded-tl-sm')
-                      }
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={
-                          'absolute top-2.5 h-2.5 w-2.5 rotate-45 ' +
-                          (mine ? 'bg-ink-strong -right-1' : 'bg-line/35 -left-1')
-                        }
+                    {m.ask ? (
+                      <AskBubble
+                        ask={m.ask}
+                        actorName={nameOfPeer(m)}
+                        createdAt={m.ts}
+                        onSubmit={onAskSubmit ? (answers) => onAskSubmit(m.ask!.id, answers) : undefined}
+                        onCancel={onAskCancel ? () => onAskCancel(m.ask!.id) : undefined}
+                        onExpire={onAskExpire ? () => onAskExpire(m.ask!.id) : undefined}
                       />
-                      <BubbleRichText text={m.text} names={mentionNames} tone={mine ? 'user' : 'agent'} />
-                    </div>
+                    ) : (
+                      <div
+                        className={
+                          'relative max-w-full break-words rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ' +
+                          (mine
+                            ? 'bg-bubble-user text-ink-strong rounded-tr-sm'
+                            : 'bg-bubble-agent text-ink rounded-tl-sm')
+                        }
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={
+                            'absolute top-2.5 h-2.5 w-2.5 rotate-45 ' +
+                            (mine ? 'bg-bubble-user -right-1' : 'bg-bubble-agent -left-1')
+                          }
+                        />
+                        <BubbleRichText text={m.text} names={mentionNames} tone={mine ? 'user' : 'agent'} />
+                      </div>
+                    )}
+                    <ChannelAttachments message={m} />
+                    <ChannelExtraBlock extra={m.extra} names={mentionNames} />
                   </div>
                 </div>
               )
@@ -211,7 +344,7 @@ export function GroupChatPanel({
             </div>
             <div className="text-[13px]">{t('还没有群消息')}</div>
             <div className="max-w-[320px] text-[11.5px] leading-relaxed">
-              {t('在下方输入 @名字 指定要对话的 agent；被 @ 的 agent 会在自己的思维里收到群通道消息。')}
+              {t('直接输入即可发给调度龟；输入 @名字 可以点名指定 agent，被点名的 agent 会在群通道里收到消息。')}
             </div>
           </div>
         )}
@@ -221,40 +354,45 @@ export function GroupChatPanel({
         {disabledReason ? (
           <div className="mb-2 rounded-lg bg-line/25 px-2.5 py-1.5 text-[11px] text-ink-faint">{disabledReason}</div>
         ) : null}
-        {pickerOpen ? (
-          <div className="mb-2 max-h-[180px] overflow-y-auto rounded-xl border border-line bg-card p-1 shadow-lg">
-            {agents.map((agent) => {
-              const meta = AGENT_ROSTER_META[agent.id]
-              const active = mentioned.some((a) => a.id === agent.id)
-              return (
-                <button
-                  key={agent.id}
-                  type="button"
-                  onClick={() => insertMention(agent)}
-                  className={
-                    'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-line/25 ' +
-                    (active ? 'bg-line/20' : '')
-                  }
-                >
-                  <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-line/60">
-                    <AgentAvatarGlyph
-                      avatarId={agent.avatarId}
-                      fallback={meta?.fallbackIcon ?? MessageSquare}
-                      size={13}
-                      imgSize={24}
-                      imgClassName="h-6 w-6 rounded-full"
-                    />
-                  </span>
-                  <span className={'text-[12px] font-medium ' + (meta?.nameClass ?? 'text-ink')}>{agent.name}</span>
-                  {agent.running ? <span className="ml-auto text-[10px] text-amber-600">{t('运行中')}</span> : null}
-                </button>
-              )
-            })}
-          </div>
-        ) : null}
-        <div className="flex items-end gap-2">
-          <div className="relative min-w-0 flex-1 rounded-xl border border-line bg-card px-2 py-1.5 focus-within:border-seal/50">
-            <div className="flex flex-wrap items-center gap-1 px-1 pb-1">
+        <div className="relative">
+          {pickerOpen ? (
+            <div className="moji-bloom-up-in absolute bottom-full left-0 right-0 z-30 mb-2 max-h-[240px] overflow-y-auto rounded-2xl border border-line-strong bg-card/95 p-1.5 shadow-[0_16px_48px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+              {filteredAgents.length ? (
+                filteredAgents.map((agent, i) => {
+                  const meta = AGENT_ROSTER_META[agent.id]
+                  const active = mentioned.some((a) => a.id === agent.id)
+                  return (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => insertMention(agent)}
+                      className={
+                        'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition ' +
+                        (i === pickIndex ? 'bg-seal/10' : active ? 'bg-line/20' : 'hover:bg-line/25')
+                      }
+                    >
+                      <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-line/60">
+                        <AgentAvatarGlyph
+                          avatarId={agent.avatarId}
+                          fallback={meta?.fallbackIcon ?? MessageSquare}
+                          size={13}
+                          imgSize={24}
+                          imgClassName="h-6 w-6 rounded-full"
+                        />
+                      </span>
+                      <span className={'text-[12px] font-medium ' + (meta?.nameClass ?? 'text-ink')}>{agent.name}</span>
+                      {agent.running ? <span className="ml-auto text-[10px] text-amber-600">{t('运行中')}</span> : null}
+                    </button>
+                  )
+                })
+              ) : (
+                <div className="px-2 py-3 text-center text-[11.5px] text-ink-faint">没有匹配的 agent</div>
+              )}
+            </div>
+          ) : null}
+          <div className="rounded-2xl border border-line bg-card shadow-sm transition focus-within:border-seal/50 focus-within:ring-2 focus-within:ring-seal/10">
+            <div className="flex flex-wrap items-center gap-1 px-3 pt-2">
               {mentioned.map((agent) => {
                 const meta = AGENT_ROSTER_META[agent.id]
                 return (
@@ -269,7 +407,9 @@ export function GroupChatPanel({
                   </span>
                 )
               })}
-              {!mentioned.length ? <span className="text-[10.5px] text-ink-faint">{t('必须 @ 至少一位 agent')}</span> : null}
+              {!mentioned.length ? (
+                <span className="text-[10.5px] text-ink-faint">未 @ 时由调度龟接手；@ 可点名指定成员</span>
+              ) : null}
             </div>
             <textarea
               ref={inputRef}
@@ -277,39 +417,81 @@ export function GroupChatPanel({
               rows={2}
               onChange={(e) => {
                 setText(e.target.value)
+                setCaret(e.target.selectionStart ?? e.target.value.length)
+                setActivePick(0)
+                setForcePicker(false)
+                setSuppressPicker(false)
                 setError('')
-                // 只输到 `@` 时就把名单弹出来，减少手动点按钮
-                if (e.target.value.endsWith('@')) setPickerOpen(true)
+              }}
+              onFocus={() => setSuppressPicker(false)}
+              onBlur={() => setSuppressPicker(true)}
+              onClick={(e) => {
+                setCaret(e.currentTarget.selectionStart ?? text.length)
+                setSuppressPicker(false)
               }}
               onKeyDown={(e) => {
+                if (pickerOpen && mention && filteredAgents.length) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    setActivePick((i) => Math.min(filteredAgents.length - 1, i + 1))
+                    return
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setActivePick((i) => Math.max(0, i - 1))
+                    return
+                  }
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    insertMention(filteredAgents[pickIndex])
+                    return
+                  }
+                }
+                if (e.key === 'Escape') {
+                  setForcePicker(false)
+                  setSuppressPicker(true)
+                  return
+                }
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
                   submit()
                 }
               }}
-              placeholder={disabledReason ? t('先选择学习目标后再群聊') : t('输入消息，@ 指定 agent…')}
+              onSelect={(e) => {
+                setCaret(e.currentTarget.selectionStart ?? text.length)
+                setForcePicker(false)
+                setSuppressPicker(false)
+              }}
+              placeholder={disabledReason ? t('先选择学习目标后再群聊') : t('输入消息，可不 @ 直接发；@ 可点名指定成员…')}
               disabled={Boolean(disabledReason)}
-              className="max-h-[120px] w-full resize-none bg-transparent px-1 py-1 text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-faint/70 disabled:opacity-60"
+              className="max-h-[160px] min-h-[52px] w-full resize-none bg-transparent px-3.5 pb-1.5 pt-2 text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-faint/70 disabled:opacity-60"
             />
+            <div className="flex items-center gap-1 px-2.5 pb-2">
+              <span className="min-w-0 truncate text-[10.5px] text-ink-faint">
+                {mentioned.length ? '将投递给点名成员' : '默认投递给调度龟'}
+              </span>
+              <div className="ml-auto flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={openMentionPicker}
+                  disabled={Boolean(disabledReason)}
+                  title={t('@ 指定 agent')}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-faint transition hover:bg-line/25 hover:text-ink disabled:opacity-40"
+                >
+                  <AtSign size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={submit}
+                  disabled={!canSend}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-seal text-white transition hover:bg-seal-deep disabled:bg-line disabled:text-ink-faint"
+                  title={t('发送')}
+                >
+                  <Send size={15} />
+                </button>
+              </div>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setPickerOpen((v) => !v)}
-            disabled={Boolean(disabledReason)}
-            title={t('@ 指定 agent')}
-            className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line text-ink-faint hover:bg-line/25 disabled:opacity-40"
-          >
-            <AtSign size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!canSend}
-            className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-seal text-white disabled:bg-line disabled:text-ink-faint"
-            title={t('发送')}
-          >
-            <Send size={16} />
-          </button>
         </div>
         {error ? <div className="mt-1.5 text-[11px] text-rose-600">{error}</div> : null}
       </div>

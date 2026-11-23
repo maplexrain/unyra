@@ -60,10 +60,13 @@ export function AskFormCard({
   form,
   onSubmit,
   onCancel,
+  hideTitle = false,
 }: {
   form: AskFormPayload
   onSubmit: (answers: AskAnswers) => void
   onCancel: () => void
+  /** 气泡外层已经有标题时，卡里不再重复一遍 */
+  hideTitle?: boolean
 }) {
   const [drafts, setDrafts] = useState<Record<string, AskDraft>>(() =>
     Object.fromEntries(form.questions.map((q) => [q.id, initDraft(q)])),
@@ -201,12 +204,16 @@ export function AskFormCard({
   return (
     <div className="moji-bloom-up-in mb-2 rounded-xl border border-seal/40 bg-card shadow-[0_8px_28px_rgba(31,27,23,0.14)]">
       <div className="flex items-center gap-1.5 border-b border-line px-3 py-2">
-        <HelpCircle size={13} className="shrink-0 text-seal" />
-        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink-strong">
-          {form.title || t('导师想先确认几件事')}
-        </span>
+        {!hideTitle && (
+          <>
+            <HelpCircle size={13} className="shrink-0 text-seal" />
+            <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink-strong">
+              {form.title || t('导师想先确认几件事')}
+            </span>
+          </>
+        )}
         {visible.length > 0 && (
-          <span className="shrink-0 tabular-nums text-[10.5px] text-ink-faint">
+          <span className={'shrink-0 tabular-nums text-[10.5px] text-ink-faint' + (hideTitle ? ' ml-auto' : '')}>
             {t('第 {0} / {1} 题', idx + 1, visible.length)}
           </span>
         )}

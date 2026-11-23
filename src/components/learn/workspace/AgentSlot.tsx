@@ -702,6 +702,9 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       onAskCancel: () => {
         if (convId) agent.cancelAsk(convId)
       },
+      onAskSubmitById: agent.submitAskById,
+      onAskCancelById: agent.cancelAskById,
+      onAskExpireById: agent.expireAskById,
       tps: (convId ? agent.tpsByConv[convId] : null) ?? null,
       liveUsage: (convId ? agent.liveUsageByConv[convId] : null) ?? null,
       compacting: !!convId && agent.compactingConvId === convId,
@@ -919,9 +922,13 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
                 disabledReason={
                   tutorGoalId
                     ? undefined
-                    : t('群聊挂在学习目标上：先选择一个目标，再在群里 @ 指定 agent。')
+                    : t('群聊挂在学习目标上：先选择一个目标，再和群里的 agent 对话。')
                 }
                 onSend={sendGroupMessage}
+                resetKey={tutorGoalId ?? ''}
+                onAskSubmit={agent.submitAskById}
+                onAskCancel={agent.cancelAskById}
+                onAskExpire={agent.expireAskById}
               />
             </div>
           ) : null}

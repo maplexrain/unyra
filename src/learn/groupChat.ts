@@ -74,6 +74,17 @@ export function appendGroupMessage(message: ChannelMessage): void {
   commit([...messages, message])
 }
 
+/** 原位更新一条群聊流水（ask 状态、展开状态等）；找不到就静默忽略。 */
+export function patchGroupMessage(id: string, patch: Partial<ChannelMessage>): void {
+  let touched = false
+  const next = messages.map((m) => {
+    if (m.id !== id) return m
+    touched = true
+    return { ...m, ...patch }
+  })
+  if (touched) commit(next)
+}
+
 /** 换用户：先把旧用户的尾巴落掉，再读新用户的群聊 */
 export async function hydrateGroupChat(uid: string | null): Promise<void> {
   if (saveTimer) {

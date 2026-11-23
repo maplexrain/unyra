@@ -17,3 +17,9 @@ export const MAX_LOGGED_CALLS = 40
 
 /** api.ask 挂出后，用户**没有任何操作**多久判超时（任意操作都会续住它，见 lib/userActivity） */
 export const ASK_IDLE_TIMEOUT_MS = 60_000
+
+/**
+ * ask 气泡的硬时限：从挂出那一刻开始算，不随用户操作续期。
+ * UI 的倒计时进度条与宿主定时器共用这一个数，时间一到就失效。
+ */
+export const ASK_BUBBLE_TTL_MS = 60_000

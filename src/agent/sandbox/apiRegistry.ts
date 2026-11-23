@@ -109,7 +109,7 @@ export const API_GROUPS: ApiGroupDoc[] = [
         'ask',
         'ask({ title?, questions })',
         '弹结构化表单并阻塞到用户作答',
-        '题目类型 single / multiple / short；options 2~8 项；when 做联动；userInfo 让答案直接写进画像。用户取消回 cancelled:true，超时回 timedOut:true。',
+        '题目类型 single / multiple / short；options 2~8 项；when 做联动；userInfo 让答案直接写进画像。用户取消回 cancelled:true，超时回 timedOut:true。work 也能用：表单借所属 role 身份出现在对应通道的 ask 气泡，带倒计时，不经过 role 的头脑。',
         `const r = await api.ask({
   title: '确认难度',
   questions: [{ type: 'single', prompt: '这次想练哪一档？', options: ['基础', '进阶', '挑战'] }],
@@ -587,9 +587,10 @@ status 只回执行轨迹的 execute 标题，不回工具参数与正文；要�
 **回复必须从最近一条入站消息的 channel 回去**：user 回 user；agent 回 agent（to=目标 role id）；group 回 group。
 group 通道要把这句话投给某位 role，正文必须显式写 \`@目标名\`，并写 to（目标 role id）或 mentions；只回群里不点名时只发 group。
 chat.send 到 work 通道等价于 work.send；到 user 通道不写 to。
-chat.send 成功会回 \`{ ok:true, channel, id, to? }\`；看到 ok:true 后**禁止重复发送同一条消息**，失败才按 error 修正。`,
+chat.send 成功会回 \`{ ok:true, channel, id, to? }\`；看到 ok:true 后**禁止重复发送同一条消息**，失败才按 error 修正。
+大段结果（调研原文、日志、JSON）放 \`extra:{title,text}\`，不要塞进正文刷屏；用户可点开查看。`,
     [
-      a('send', 'api.chat.send({ channel, to?, mentions?, text, messageId?, attachments? })', '把对话发到指定通道', 'channel 取 user / agent / work / group；agent 要 to=role id，work 要 to=work 名；group 用 to 或 mentions 指定被 @ 的 role，正文必须有 @名字；attachments 可带图/文件（moji:static 引用、workspace 路径或 http(s)），最多 4 个。messageId 可引用当前 role 会话里的用户消息（转发并标注来源）。返回值至少含 ok；成功时含 channel 与消息 id，to 是实际投递的 role id。', `await api.chat.send({ channel: "group", to: "researcher", text: "@调研龟 请查这三条来源的原文，结果发回群里。" })`, { trap: '群聊来源的任务不要走私聊委派；只有用户私聊发起的任务才走 agent 通道' }),
+      a('send', 'api.chat.send({ channel, to?, mentions?, text, messageId?, attachments?, extra? })', '把对话发到指定通道', 'channel 取 user / agent / work / group；agent 要 to=role id，work 要 to=work 名；group 用 to 或 mentions 指定被 @ 的 role，正文必须有 @名字；attachments 可带图/文件（moji:static 引用、workspace 路径或 http(s)），最多 4 个。messageId 可引用当前 role 会话里的用户消息（转发并标注来源）。extra={title?,text,format?} 放正文之外的日志 / 原始结果 / 长 JSON，界面折叠展示。返回值至少含 ok；成功时含 channel 与消息 id，to 是实际投递的 role id。', `await api.chat.send({ channel: "group", to: "researcher", text: "@调研龟 请查这三条来源的原文，结果发回群里。", extra: { title: "待查来源", text: sourceList } })`, { trap: '群聊来源的任务不要走私聊委派；只有用户私聊发起的任务才走 agent 通道' }),
     ],
   ),
 
@@ -601,7 +602,7 @@ chat.send 成功会回 \`{ ok:true, channel, id, to? }\`；看到 ok:true 后**�
 交付写清结论、产物位置、没做成的部分；role 收到后才会对外说。
 一轮结束前没调用 host.send 时，宿主会把最后一段正文自动回传并标记 auto，便于 role 兜底。`,
     [
-      a('send', 'api.host.send({ text, messageId? })', '把交付发回所属 role', 'text 是给 role 看的交付全文；messageId 可引用 role 发来的任务消息，标明这次回的是哪一条。接收方固定为创建这个 work 的 role，模型不能改。', `await api.host.send({ text: "调研完成：3 条来源，结论写在 docs/brief.md。" })`, { trap: '只发结论与产物位置，不要把中间工具日志抄给 role' }),
+      a('send', 'api.host.send({ text, messageId?, extra? })', '把交付发回所属 role', 'text 是给 role 看的结论正文；messageId 可引用 role 发来的任务消息，标明这次回的是哪一条；extra={title?,text,format?} 放原始数据 / 长日志，避免刷屏。接收方固定为创建这个 work 的 role，模型不能改。', `await api.host.send({ text: "调研完成：3 条来源，结论写在 docs/brief.md。", extra: { title: "原始来源", text: rawNotes } })`, { trap: '只发结论与产物位置，把中间日志 / 原文放 extra，不要抄进正文' }),
     ],
   ),
 

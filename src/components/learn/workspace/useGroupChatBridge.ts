@@ -21,7 +21,7 @@ import type { GroupChatAgent } from '../../agent/panel/GroupChatPanel'
 export interface GroupChatBridge {
   /** 当前目标下的群聊消息（从旧到新） */
   messages: ChannelMessage[]
-  /** 用户群聊发言：必须 @ 至少一位 agent；返回 false = 拒绝发送 */
+  /** 用户群聊发言：@ 指定成员；无 @ 时默认投给调度龟。返回 false = 拒绝发送 */
   send: (text: string, targetIds: GroupChatAgent['id'][]) => boolean
 }
 
@@ -54,17 +54,17 @@ export function useGroupChatBridge({
       names: [agent.name, ...(agent.aliases ?? [])].map((name) => name.trim()).filter(Boolean),
     }))
     const mentionedIds = mentionedRoleIdsOf(body, mentionRoles)
-    const targets = (mentionedIds.length ? mentionedIds : targetIds)
+    const explicitMentions = mentionedIds.length > 0
+    // 正文里出现 @ 却解析不到任何成员时拒绝，避免误投给默认调度龟；
+    // 正文完全没有 @ 时才使用调用方给的默认目标（群聊 UI 传 dispatcher）。
+    if (!explicitMentions && body.includes('@')) return false
+    const targets = (explicitMentions ? mentionedIds : targetIds)
       .map((id) => agents.find((a) => a.id === id))
       .filter((a): a is GroupChatAgent => Boolean(a))
     if (!targets.length) return false
-    for (const agent of targets) {
-      const names = [agent.name, ...(agent.aliases ?? [])].map((name) => name.trim()).filter(Boolean)
-      if (!names.some((name) => body.includes('@' + name))) return false
-    }
     const from = userPeer()
     const now = Date.now()
-    const mentions = targets.map((a) => peerOf('agent', a.id, a.name))
+    const mentions = explicitMentions ? targets.map((a) => peerOf('agent', a.id, a.name)) : []
     const message: ChannelMessage = {
       id: 'g-' + crypto.randomUUID(),
       kind: 'group',
@@ -73,7 +73,7 @@ export function useGroupChatBridge({
       to: groupPeer(),
       text: body,
       ts: now,
-      mentions,
+      ...(mentions.length ? { mentions } : {}),
       goalId,
     }
     appendGroupMessage(message)
@@ -88,7 +88,7 @@ export function useGroupChatBridge({
         text: body,
         id: message.id,
         ts: now,
-        mentions,
+        ...(mentions.length ? { mentions } : {}),
         goalId,
       })
       deliverInbound(
