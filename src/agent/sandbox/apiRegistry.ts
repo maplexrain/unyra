@@ -586,9 +586,10 @@ status 只回执行轨迹的 execute 标题，不回工具参数与正文；要�
 每条入站消息由宿主标注来源与时间戳；chat.send 的 text 是**对外说的话**，不是思维过程。
 **回复必须从最近一条入站消息的 channel 回去**：user 回 user；agent 回 agent（to=目标 role id）；group 回 group。
 group 通道要把这句话投给某位 role，正文必须显式写 \`@目标名\`，并写 to（目标 role id）或 mentions；只回群里不点名时只发 group。
-chat.send 到 work 通道等价于 work.send；到 user 通道不写 to。`,
+chat.send 到 work 通道等价于 work.send；到 user 通道不写 to。
+chat.send 成功会回 \`{ ok:true, channel, id, to? }\`；看到 ok:true 后**禁止重复发送同一条消息**，失败才按 error 修正。`,
     [
-      a('send', 'api.chat.send({ channel, to?, mentions?, text, messageId?, attachments? })', '把对话发到指定通道', 'channel 取 user / agent / work / group；agent 要 to=role id，work 要 to=work 名；group 用 to 或 mentions 指定被 @ 的 role，正文必须有 @名字；attachments 可带图/文件（moji:static 引用、workspace 路径或 http(s)），最多 4 个。messageId 可引用当前 role 会话里的用户消息（转发并标注来源）。', `await api.chat.send({ channel: "group", to: "researcher", text: "@调研龟 请查这三条来源的原文，结果发回群里。" })`, { trap: '群聊来源的任务不要走私聊委派；只有用户私聊发起的任务才走 agent 通道' }),
+      a('send', 'api.chat.send({ channel, to?, mentions?, text, messageId?, attachments? })', '把对话发到指定通道', 'channel 取 user / agent / work / group；agent 要 to=role id，work 要 to=work 名；group 用 to 或 mentions 指定被 @ 的 role，正文必须有 @名字；attachments 可带图/文件（moji:static 引用、workspace 路径或 http(s)），最多 4 个。messageId 可引用当前 role 会话里的用户消息（转发并标注来源）。返回值至少含 ok；成功时含 channel 与消息 id，to 是实际投递的 role id。', `await api.chat.send({ channel: "group", to: "researcher", text: "@调研龟 请查这三条来源的原文，结果发回群里。" })`, { trap: '群聊来源的任务不要走私聊委派；只有用户私聊发起的任务才走 agent 通道' }),
     ],
   ),
 

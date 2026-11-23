@@ -8,6 +8,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { AtSign, MessageSquare, Send, UserRound, Users } from 'lucide-react'
 import type { ChannelMessage } from '../../../agent/types'
+import { AGENT_ROLE_IDS, DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import { t } from '../../../i18n'
 import { displayName } from '../../../user/profile'
 import { activeUser } from '../../../user/store'
@@ -15,11 +16,14 @@ import UserAvatar from '../../user/UserAvatar'
 import { AgentAvatarGlyph } from '../../learn/agent-team/AgentAvatarGlyph'
 import type { AgentTeamMode } from '../../learn/agent-team/conversationList'
 import { AGENT_ROSTER_META } from '../../learn/agent-team/agentRoster'
+import { BubbleRichText } from './BubbleRichText'
 import { mentionedAgentsOf } from './groupMentions'
 
 export interface GroupChatAgent {
   id: AgentTeamMode
   name: string
+  /** 默认角色名等别名：用户仍可用默认名 @ 到已改名的 agent */
+  aliases?: string[]
   avatarId?: string
   running?: boolean
 }
@@ -52,6 +56,13 @@ export function GroupChatPanel({
 
   const mentioned = useMemo(() => mentionedAgentsOf(text, agents), [text, agents])
   const canSend = Boolean(text.trim()) && mentioned.length > 0 && !disabledReason
+
+  /** 气泡里 @ 的解析名单：成员真名 + 所有 role 的默认名，改名前后都能认 */
+  const mentionNames = useMemo(() => {
+    const names = [userName, ...agents.flatMap((a) => [a.name.trim(), ...(a.aliases ?? []).map((x) => x.trim())])]
+    for (const id of AGENT_ROLE_IDS) names.push(DEFAULT_AGENT_NAME[id])
+    return [...new Set(names.filter(Boolean))]
+  }, [agents, userName])
 
   const insertMention = (agent: GroupChatAgent): void => {
     const token = '@' + agent.name + ' '
@@ -132,25 +143,30 @@ export function GroupChatPanel({
                 <div key={m.id} className={'flex items-start gap-2.5 ' + (mine ? 'flex-row-reverse' : '')}>
                   {mine ? (
                     user ? (
-                      <UserAvatar profile={user.profile} size={36} seed={user.id} className="ring-1 ring-line/70" />
+                      <UserAvatar
+                        profile={user.profile}
+                        size={42}
+                        seed={user.id}
+                        className="mt-1 ring-1 ring-line/70"
+                      />
                     ) : (
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-line/70 text-ink-faint">
-                        <UserRound size={18} />
+                      <span className="mt-1 flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-line/70 text-ink-faint">
+                        <UserRound size={20} />
                       </span>
                     )
                   ) : (
                     <span
                       className={
-                        'flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border ' +
+                        'mt-1 flex h-[42px] w-[42px] shrink-0 items-center justify-center overflow-hidden rounded-full border ' +
                         (meta?.avatarClass ?? 'border-line/70 bg-line/45 text-ink-soft')
                       }
                     >
                       <AgentAvatarGlyph
                         avatarId={avatarId}
                         fallback={meta?.fallbackIcon ?? MessageSquare}
-                        size={19}
-                        imgSize={36}
-                        imgClassName="h-9 w-9 rounded-full"
+                        size={21}
+                        imgSize={42}
+                        imgClassName="h-[42px] w-[42px] rounded-full"
                       />
                     </span>
                   )}
@@ -168,7 +184,7 @@ export function GroupChatPanel({
                     </div>
                     <div
                       className={
-                        'relative max-w-full whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ' +
+                        'relative max-w-full break-words rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ' +
                         (mine
                           ? 'bg-ink-strong text-paper rounded-tr-sm'
                           : 'bg-line/35 text-ink rounded-tl-sm')
@@ -181,7 +197,7 @@ export function GroupChatPanel({
                           (mine ? 'bg-ink-strong -right-1' : 'bg-line/35 -left-1')
                         }
                       />
-                      <span className="relative">{m.text}</span>
+                      <BubbleRichText text={m.text} names={mentionNames} tone={mine ? 'user' : 'agent'} />
                     </div>
                   </div>
                 </div>

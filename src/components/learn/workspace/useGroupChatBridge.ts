@@ -14,6 +14,7 @@ import type { LearnStore } from '../../../learn/types'
 import { ensureRoleConversation } from '../../../learn/roleWork/roles'
 import { groupPeer, inboundEnvelope, peerOf, userPeer } from '../../../learn/roleWork/channels'
 import { deliverInbound } from '../../../learn/roleWork/dispatch'
+import { mentionedRoleIdsOf, type MentionRole } from '../../../learn/roleWork/groupTargets'
 import { appendGroupMessage, getGroupChatMessages, subscribeGroupChat } from '../../../learn/groupChat'
 import type { GroupChatAgent } from '../../agent/panel/GroupChatPanel'
 
@@ -43,13 +44,23 @@ export function useGroupChatBridge({
 
   const send = (text: string, targetIds: GroupChatAgent['id'][]): boolean => {
     const body = text.trim()
-    if (!body || !goalId || targetIds.length === 0) return false
-    const targets = targetIds
+    if (!body || !goalId) return false
+    /*
+     * 和 role 侧同一条纪律：正文里的 `@名字` 比调用方传的 targetIds 更可信。
+     * 这样即使 UI / 模型把目标算错，@导师龟 也只会投给导师龟，不会误投设计龟。
+     */
+    const mentionRoles: MentionRole[] = agents.map((agent) => ({
+      id: agent.id,
+      names: [agent.name, ...(agent.aliases ?? [])].map((name) => name.trim()).filter(Boolean),
+    }))
+    const mentionedIds = mentionedRoleIdsOf(body, mentionRoles)
+    const targets = (mentionedIds.length ? mentionedIds : targetIds)
       .map((id) => agents.find((a) => a.id === id))
       .filter((a): a is GroupChatAgent => Boolean(a))
     if (!targets.length) return false
     for (const agent of targets) {
-      if (!body.includes('@' + agent.name)) return false
+      const names = [agent.name, ...(agent.aliases ?? [])].map((name) => name.trim()).filter(Boolean)
+      if (!names.some((name) => body.includes('@' + name))) return false
     }
     const from = userPeer()
     const now = Date.now()

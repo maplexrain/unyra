@@ -16,7 +16,7 @@ describe('useGroupChatBridge', () => {
     resetChannelRegistry()
   })
 
-  it('用户发言：先落群流水，只给被 @ 的 role 投递 group 入站', () => {
+  it('用户发言：正文 @导师龟 时，即使 targetIds 错传设计龟，也只投给导师龟', () => {
     let current = { conversations: [] } as unknown as LearnStore
     const set = (next: LearnStore): void => {
       current = next
@@ -41,6 +41,7 @@ describe('useGroupChatBridge', () => {
             agents: [
               { id: 'tutor', name: '导师龟' },
               { id: 'dispatcher', name: '调度龟' },
+              { id: 'designer', name: '设计龟' },
             ],
             getLatest: () => current,
             set,
@@ -50,7 +51,8 @@ describe('useGroupChatBridge', () => {
       )
     })
     act(() => {
-      expect(bridge!.send('@导师龟 帮我查一下', ['tutor'])).toBe(true)
+      // 模拟 targetIds 被算错：正文 @导师龟，但目标列表传了 designer
+      expect(bridge!.send('@导师龟 帮我查一下', ['designer'])).toBe(true)
     })
     expect(current.conversations.some((c) => c.id === 'cv:tutor:g-bridge-test')).toBe(true)
     expect(started).toHaveLength(1)

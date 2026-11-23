@@ -11,12 +11,14 @@
 import { useMemo } from 'react'
 import { MessageSquare, UserRound } from 'lucide-react'
 import type { ChannelMessage, ChannelPeer } from '../../../agent/types'
+import { AGENT_ROLE_IDS, DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import { t } from '../../../i18n'
 import { displayName } from '../../../user/profile'
 import { activeUser } from '../../../user/store'
 import UserAvatar from '../../user/UserAvatar'
 import { AGENT_ROSTER_META } from '../../learn/agent-team/agentRoster'
 import { AgentAvatarGlyph } from '../../learn/agent-team/AgentAvatarGlyph'
+import { BubbleRichText } from './BubbleRichText'
 import type { AgentTeamMode } from '../../learn/agent-team/conversationList'
 
 function peerName(peer: ChannelPeer | undefined, fallback: string): string {
@@ -45,6 +47,17 @@ export function RoleChatView({
 }) {
   const user = activeUser()
   const userName = user ? displayName(user.profile, t('未命名用户')) : t('未命名用户')
+
+  /** 气泡里 @ 的解析名单：当前 role 真名 + 所有 role 的 profile / 默认名 */
+  const mentionNames = useMemo(() => {
+    const names: string[] = [agentName.trim(), userName.trim()]
+    for (const id of AGENT_ROLE_IDS) {
+      const custom = agentNames?.[id]?.trim()
+      if (custom) names.push(custom)
+      names.push(DEFAULT_AGENT_NAME[id])
+    }
+    return [...new Set(names.filter(Boolean))]
+  }, [agentName, agentNames, userName])
 
   /** 私聊层只保留 user 通道：Agent 通道的内部转交不在这里出现 */
   const visible = useMemo(() => channels.filter((m) => m.kind === 'user').slice(-200), [channels])
@@ -77,15 +90,15 @@ export function RoleChatView({
         return (
           <UserAvatar
             profile={user.profile}
-            size={36}
+            size={42}
             seed={user.id}
-            className="ring-1 ring-line/70"
+            className="mt-1 ring-1 ring-line/70"
           />
         )
       }
       return (
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-line/70 text-ink-faint">
-          <UserRound size={18} />
+        <span className="mt-1 flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-line/70 text-ink-faint">
+          <UserRound size={20} />
         </span>
       )
     }
@@ -95,16 +108,16 @@ export function RoleChatView({
     return (
       <span
         className={
-          'flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border ' +
+          'mt-1 flex h-[42px] w-[42px] shrink-0 items-center justify-center overflow-hidden rounded-full border ' +
           (meta?.avatarClass ?? 'border-line/70 bg-line/45 text-ink-soft')
         }
       >
         <AgentAvatarGlyph
           avatarId={(id ? agentAvatars?.[id] : undefined) ?? agentAvatarId}
           fallback={fallback}
-          size={19}
-          imgSize={36}
-          imgClassName="h-9 w-9 rounded-full"
+          size={21}
+          imgSize={42}
+          imgClassName="h-[42px] w-[42px] rounded-full"
         />
       </span>
     )
@@ -170,7 +183,7 @@ export function RoleChatView({
                     (mine ? ' -right-1' : ' -left-1')
                   }
                 />
-                <span className="relative">{m.text}</span>
+                <BubbleRichText text={m.text} names={mentionNames} tone={mine ? 'user' : 'agent'} />
               </div>
               {m.attachments?.images?.length ? (
                 <div className={'mt-1 flex flex-wrap gap-1 ' + (mine ? 'justify-end' : 'justify-start')}>

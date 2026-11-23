@@ -499,6 +499,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       AGENT_ROSTER_ORDER.filter((id) => id !== 'free').map((id) => ({
         id,
         name: agentNames?.[id]?.trim() || DEFAULT_AGENT_NAME[id],
+        aliases: [DEFAULT_AGENT_NAME[id]],
         avatarId: agentAvatarIds[id],
         running: Boolean(voiceStats[id]?.running),
       })),

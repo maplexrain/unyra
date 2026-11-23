@@ -24,12 +24,13 @@ import { makeBrowserOps, type BrowserDeps } from '../web/browserOps'
 import type { WorkManager } from '../../agent/work/manager'
 import { createChatOps } from '../ops/chat'
 import { resolveChatAttachments } from '../roleWork/attachments'
-import { agentNameOf, AGENT_ROLE_IDS, type AgentProfileId } from '../../agent/agentProfile'
+import { agentNameOf, AGENT_ROLE_IDS, DEFAULT_AGENT_NAME, type AgentProfileId } from '../../agent/agentProfile'
 import { isAgentRoleId } from '../../agent/roleWork/types'
 import type { ChannelMessage, Conversation, ConversationMessage } from '../../agent/types'
 import { roleConversationId } from '../roleWork/roles'
 import { groupPeer, inboundEnvelope, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
 import { deliverInbound } from '../roleWork/dispatch'
+import { mentionedRoleIdsOf, type MentionRole } from '../roleWork/groupTargets'
 import { appendGroupMessage } from '../groupChat'
 import { emptyDelivery, mergeDelivery, normalizeDelivery } from '../../agent/delivery'
 import { native } from '../../lib/native'
@@ -237,19 +238,32 @@ export function rigTurnTools(io: {
     sendToGroup: async ({ text, mentions, messageId, attachments }) => {
       const goalId = target.goalId
       if (!goalId) return { ok: false, error: '当前 role 会话不挂在目标上，无法进入群聊' }
-      const rawIds = [...new Set((mentions ?? []).map((id) => id.trim()).filter(Boolean))]
-      // 目标可以写 role id，也可以写显示名（模型有时直接抄 @名字）；统一解析成 role id
-      const ids = rawIds
-        .map((raw) => {
-          if (isAgentRoleId(raw)) return raw as AgentProfileId
-          return AGENT_ROLE_IDS.find((id) => id !== 'free' && roleNameOf(id) === raw)
-        })
-        .filter((id): id is AgentProfileId => Boolean(id))
-      if (ids.length !== rawIds.length) return { ok: false, error: '群聊 @ 的目标 role id / 名字不合法' }
-      // 群聊里要投给某个 agent，正文必须显式 @ 它的名字；只发群里（不点名）则不投给任何 role
-      for (const id of ids) {
-        if (!text.includes('@' + roleNameOf(id))) {
-          return { ok: false, error: `群聊消息要投给 ${roleNameOf(id)}，正文必须显式 @${roleNameOf(id)}` }
+      const mentionRoles: MentionRole[] = AGENT_ROLE_IDS.filter((id) => id !== 'free').map((id) => ({
+        id,
+        names: [roleNameOf(id), DEFAULT_AGENT_NAME[id]],
+      }))
+      /*
+       * 正文里的 `@名字` 是群聊投递的唯一真源：模型传的 to / mentions 只作为补充。
+       * 否则模型把「@导师龟」写成 to=designer 时，设计龟会真的收到导师的活。
+       * 有 @ 时以正文为准；没有 @ 时才用 to / mentions，并要求正文补上点名。
+       */
+      const textIds = mentionedRoleIdsOf(text, mentionRoles)
+      let ids = textIds
+      if (!ids.length) {
+        const rawIds = [...new Set((mentions ?? []).map((id) => id.trim()).filter(Boolean))]
+        ids = rawIds
+          .map((raw) => {
+            if (isAgentRoleId(raw)) return raw as AgentProfileId
+            return AGENT_ROLE_IDS.find(
+              (id) => id !== 'free' && (roleNameOf(id) === raw || DEFAULT_AGENT_NAME[id] === raw),
+            )
+          })
+          .filter((id): id is AgentProfileId => Boolean(id))
+        if (ids.length !== rawIds.length) return { ok: false, error: '群聊 @ 的目标 role id / 名字不合法' }
+        for (const id of ids) {
+          if (!text.includes('@' + roleNameOf(id)) && !text.includes('@' + DEFAULT_AGENT_NAME[id])) {
+            return { ok: false, error: `群聊消息要投给 ${roleNameOf(id)}，正文必须显式 @${roleNameOf(id)}` }
+          }
         }
       }
       const from = peerOf('agent', voice, roleName)
