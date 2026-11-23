@@ -38,7 +38,7 @@ import type { StreamingSlot } from './slots'
 import type { WorkManager } from '../../agent/work/manager'
 import type { ChatCallResult, ChatSendInput } from '../../agent/roleWork/types'
 import { isAgentRoleId } from '../../agent/roleWork/types'
-import { channelTextOf, inboundEnvelope, outboundEnvelope, peerOf } from '../roleWork/channels'
+import { channelTextOf, inboundEnvelope, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
 import { deliverInbound, takeChannelInjection } from '../roleWork/dispatch'
 import { roleOfConversation } from '../roleWork/roles'
 import { resolveChatAttachments } from '../roleWork/attachments'
@@ -87,7 +87,7 @@ export async function runFreeTurn(io: {
     ? null
     : inboundEnvelope({
         channel: 'user',
-        from: peerOf('user', 'user', '用户'),
+        from: userPeer(),
         to: peerOf('agent', 'free', 'free'),
         text: trimmed || '[附件]',
       })
@@ -181,7 +181,7 @@ export async function runFreeTurn(io: {
         outboundEnvelope({
           channel: 'user',
           from: peerOf('agent', 'free', 'free'),
-          to: peerOf('user', 'user', '用户'),
+          to: userPeer(),
           text,
           ...(attachments && (attachments.images || attachments.files) ? { attachments } : {}),
         }),
@@ -401,7 +401,7 @@ export async function runFreeTurn(io: {
         outboundEnvelope({
           channel: 'user',
           from: peerOf('agent', 'free', 'free'),
-          to: peerOf('user', 'user', '用户'),
+          to: userPeer(),
           text: answer,
           auto: true,
         }),

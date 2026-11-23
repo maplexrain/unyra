@@ -27,6 +27,7 @@ import { resolveChatAttachments } from '../roleWork/attachments'
 import { DEFAULT_AGENT_NAME, type AgentProfileId } from '../../agent/agentProfile'
 import type { ChannelMessage, Conversation, ConversationMessage } from '../../agent/types'
 import { roleConversationId } from '../roleWork/roles'
+import { userPeer } from '../roleWork/channels'
 import { emptyDelivery, mergeDelivery, normalizeDelivery } from '../../agent/delivery'
 import { native } from '../../lib/native'
 import { nodeById } from '../graph'
@@ -187,7 +188,7 @@ export function rigTurnTools(io: {
       )
       set({ ...getLatest(), conversations })
     },
-    userPeer: () => ({ kind: 'user', id: 'user', name: '用户' }),
+    userPeer: () => userPeer(),
     resolveRoleConversation: (role, goalId) => {
       const matches = getLatest().conversations.filter(
         (c) => (c.voice ?? 'tutor') === role && (goalId == null || c.goalId === goalId),

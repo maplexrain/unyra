@@ -17,6 +17,7 @@ import { MessageSquare, Sparkles } from 'lucide-react'
 import WaveBars from '../../WaveBars'
 import { CompactionDivider } from './CompactionDivider'
 import { HiddenDivider, MessageRow, Parts } from './MessageBubble'
+import { MindMessageRow } from './MindMessageRow'
 import type { MessageListProps } from './MessageList'
 import type { InjectItem } from './partGroups'
 import type { ConversationMessage } from '../../../agent/types'
@@ -135,6 +136,8 @@ export function useMessageList({
   /** 空态随 role：voice id（'free' / role id）与显示名；不给 = 导师口径（老调用方零改动） */
   emptyVoice,
   emptyName,
+  mind = false,
+  agentName = '',
 }: MessageListProps) {
   /*
    * 分段只在 messages 变了之后重算：流式写作时 messages 身份不变（正在长的那一段
@@ -213,19 +216,21 @@ export function useMessageList({
           )
         }
         const m = seg.m
-        return (
-          <MessageRow
-            key={m.id}
-            m={m}
-            prelude={seg.prelude}
-            faded={seg.at < summaryStart}
-            flash={flashId === m.id}
-            msgRefs={msgRefs}
-            onResumeNotice={onResumeNotice}
-            setBubblePreview={setBubblePreview}
-            onOpenFile={onOpenFile}
-            goalId={goalId}
-          />
+        const rowProps = {
+          m,
+          prelude: seg.prelude,
+          faded: seg.at < summaryStart,
+          flash: flashId === m.id,
+          msgRefs,
+          onResumeNotice,
+          setBubblePreview,
+          onOpenFile,
+          goalId,
+        }
+        return mind ? (
+          <MindMessageRow key={m.id} {...rowProps} agentName={agentName} />
+        ) : (
+          <MessageRow key={m.id} {...rowProps} />
         )
       })}
 
@@ -235,14 +240,14 @@ export function useMessageList({
             还没落库的那一轮：攒下的提示词注入交给它——与落库之后并进回复是同一个位置，
             用户不会在这一轮收口时看到那几行「跳」一下。
           */}
-          <Parts parts={streaming} prelude={pending.length ? pending : undefined} streaming={true} />
+          <Parts parts={streaming} prelude={pending.length ? pending : undefined} streaming={true} mind={mind} />
         </div>
       )}
 
       {/* 没有流式内容、也没有回复可挂的注入（极少见：用户刚发出、导师还没开口）：自己成一组 */}
       {pending.length > 0 && !(streaming && streaming.length > 0) && (
         <div className="mb-4">
-          <Parts parts={[]} prelude={pending} />
+          <Parts parts={[]} prelude={pending} mind={mind} />
         </div>
       )}
 

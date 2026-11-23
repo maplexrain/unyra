@@ -7,11 +7,32 @@
  * - 思维层读 `Conversation.messages`，两者互不污染。
  */
 import type { ChannelKind, ChannelMessage, ChannelPeer, ChannelStamp, Conversation, ConversationMessage } from '../../agent/types'
+import { displayName } from '../../user/profile'
+import { activeUser } from '../../user/store'
 
 const CHANNEL_CAP = 200
 
+/**
+ * 当前用户的正式显示名：用户模块是唯一的身份来源，通道信封不再写死“用户”。
+ * 用户尚未加载（启动早期 / 无用户作用域）时给一个中性兜底，而不是每次渲染都空着。
+ */
+export function currentUserName(): string {
+  const user = activeUser()
+  return user ? displayName(user.profile, '未命名用户') : '未命名用户'
+}
+
+/** 当前用户作为通道对端（id 也取用户模块，不再固定为字面量 'user'） */
+export function userPeer(): ChannelPeer {
+  const user = activeUser()
+  return {
+    kind: 'user',
+    id: user?.id ?? 'user',
+    name: user ? displayName(user.profile, '未命名用户') : '未命名用户',
+  }
+}
+
 export function peerNameOf(kind: ChannelKind, id: string, fallback: string): string {
-  if (kind === 'user') return '用户'
+  if (kind === 'user') return fallback || currentUserName()
   return fallback || id
 }
 

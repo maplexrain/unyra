@@ -37,4 +37,13 @@ export interface MessageListProps {
   /** 空态随 role：role id（'free' = 仅聊天）与显示名 */
   emptyVoice?: string
   emptyName?: string
+  /**
+   * 思维层：过程件逐条铺开（不归组）、消息不带聊天气泡，且每条消息自身默认折叠。
+   * work 视图恒为 true；role 视图由 chat/mind 页签决定。
+   */
+  mind?: boolean
+  /** 当前 role 的显示名：mind 折叠行与用户消息对端标签用 */
+  agentName?: string
+  /** 当前 role 的头像 id */
+  agentAvatarId?: string
 }

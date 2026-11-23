@@ -2,10 +2,10 @@
  * 一条消息长什么样：引文、气泡里的附件、操作按钮、编辑框，以及正文里的
  * 消息组（思考 / 工具调用 / 注入的提示词模块）/ 文本块 / 提示块，外加列表右下角那颗「回到最新」。
  *
- * 层级与用色的规矩：**只有用户消息保留气泡本尊**（同色系、深一档的底色圆角）；其余一律无壳——
- * 导师的正文、思考气泡、工具调用气泡、消息组的收拢容器都不带边框与底色，
- * 分层靠排版与缩进。相邻至少两条的过程件才收进消息组，落单的不成组，
- * 自己就是一条气泡。
+ * 层级与用色的规矩：**chat 层只有用户消息保留气泡本尊**（同色系、深一档的底色圆角）；
+ * 其余一律无壳；mind 层连用户气泡也去掉。导师的正文、思考气泡、工具调用气泡、
+ * 消息组的收拢容器都不带边框与底色，分层靠排版与缩进。chat 层相邻至少两条的过程件
+ * 才收进消息组；mind 层不归组，每个过程件自己成条。
  *
  * 全是纯展示组件——它们只认 props，不改任何状态；消息数据、编辑与删除
  * 都由 AgentPanel 通过 MessageList 传下来。
@@ -51,7 +51,7 @@ import { t, useLocale } from '../../../i18n'
  * 它们一变就换身份，memo 等于没加。faded / flash / confirming / editingText 都是
  * 父组件按这一条算好的值（算法与拆分前逐字相同）。
  */
-interface MessageRowProps {
+export interface MessageRowProps {
   m: ConversationMessage
   /** 这一条在失活分界线之前：已经被折进摘要，只作显示（淡一档） */
   faded: boolean
@@ -64,8 +64,8 @@ interface MessageRowProps {
    * 由 useMessageList 从隐藏消息合成，身份只在 messages 变了之后才换。
    */
   prelude?: InjectItem[]
-  /** 每条消息的 DOM：定位条与缩放都要用 */
-  msgRefs: React.RefObject<Map<string, HTMLDivElement>>
+  /** 每条消息的 DOM：定位条与缩放都要用（mind 的折叠壳会自己登记，内层可不传） */
+  msgRefs?: React.RefObject<Map<string, HTMLDivElement>>
   /** 点中断说明旁的「继续」：恢复被中断的一轮（见 AgentPanel；只挂在正文的 NoticeBlock 上） */
   onResumeNotice?: () => void
   setBubblePreview: React.Dispatch<React.SetStateAction<MessageImage | null>>
@@ -73,6 +73,8 @@ interface MessageRowProps {
   onOpenFile?: (pathOrRel: string, title?: string) => void
   /** 目标 id：用于交付组件定位节点文档，避免多目标同名节点指针混淆 */
   goalId?: string
+  /** 思维层：去掉聊天气泡、过程件逐条铺开 */
+  mind?: boolean
 }
 
 /**
@@ -89,6 +91,7 @@ export const MessageRow = memo(function MessageRow({
   setBubblePreview: _setBubblePreview,
   onOpenFile,
   goalId,
+  mind = false,
 }: MessageRowProps) {
   useLocale()
   const fadedCls = faded ? ' opacity-55' : ''
@@ -98,21 +101,28 @@ export const MessageRow = memo(function MessageRow({
     return (
       <div
         ref={(el) => {
+          if (!msgRefs?.current) return
           if (el) msgRefs.current.set(m.id, el)
           else msgRefs.current.delete(m.id)
         }}
-        className={'group mb-3 flex items-end justify-end gap-1.5' + fadedCls}
+        className={
+          'group flex gap-1.5 ' +
+          (mind ? 'mb-1 items-start justify-start' : 'mb-3 items-end justify-end') +
+          fadedCls
+        }
       >
-        <MessageActions text={messageText} />
+        {!mind && <MessageActions text={messageText} />}
         <div
           className={
-            'max-w-[85%] rounded-2xl ' + (flash ? 'moji-msg-flash' : '')
+            mind
+              ? 'min-w-0 max-w-full'
+              : 'max-w-[85%] rounded-2xl ' + (flash ? 'moji-msg-flash' : '')
           }
         >
           {m.quote && <QuoteChip quote={m.quote} />}
           {/* 附件排在文字上方：与输入框里的排列一致，发出去前后看到的是同一个顺序 */}
           {!!m.images?.length && (
-            <div className="mb-1.5 flex flex-wrap justify-end gap-1.5">
+            <div className={'mb-1.5 flex flex-wrap gap-1.5 ' + (mind ? 'justify-start' : 'justify-end')}>
               {m.images.map((img) => (
                 <BubbleImage
                   key={img.id}
@@ -126,7 +136,7 @@ export const MessageRow = memo(function MessageRow({
             </div>
           )}
           {!!m.files?.length && (
-            <div className="mb-1.5 flex flex-wrap justify-end gap-1.5">
+            <div className={'mb-1.5 flex flex-wrap gap-1.5 ' + (mind ? 'justify-start' : 'justify-end')}>
               {m.files.map((file, idx) => (
                 <BubbleFile
                   key={file.uuid ?? `${file.name}-${idx}`}
@@ -139,8 +149,14 @@ export const MessageRow = memo(function MessageRow({
               ))}
             </div>
           )}
-          <div className="rounded-2xl bg-line/60 px-3.5 py-2 text-[13px] leading-relaxed text-ink select-text">
-            <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} />
+          <div
+            className={
+              mind
+                ? 'text-[13px] leading-relaxed text-ink select-text'
+                : 'rounded-2xl bg-line/60 px-3.5 py-2 text-[13px] leading-relaxed text-ink select-text'
+            }
+          >
+            <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} mind={mind} />
           </div>
         </div>
       </div>
@@ -151,12 +167,13 @@ export const MessageRow = memo(function MessageRow({
   return (
     <div
       ref={(el) => {
+        if (!msgRefs?.current) return
         if (el) msgRefs.current.set(m.id, el)
         else msgRefs.current.delete(m.id)
       }}
-      className={'group relative mb-4' + fadedCls}
+      className={'group relative ' + (mind ? 'mb-1' : 'mb-4') + fadedCls}
     >
-      <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} />
+      <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} mind={mind} />
       {m.delivery && <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={goalId} />}
       {m.usage && (
         <div className="mt-1">
@@ -253,19 +270,25 @@ function MessageActions({ text }: { text: string }) {
  * 于是这一轮从头到尾只有**一条**折叠标题，而不是「提示词注入」与「思考与工具」两行。
  *
  * 只有一个成员的组按单条画：孤零零一件没有可收拢的东西，硬套组壳等于多一次点击。
+ *
+ * mind=true 时反过来：相邻过程件**不归组**，每一条自己成条、自己折叠；这是思维层
+ * 「一步一步铺开」的口径，也是为了不把一条长执行链压成一个标题。
  */
 function Parts({
   parts,
   prelude,
   onResumeNotice,
   streaming = false,
+  mind = false,
 }: {
   parts: AgentPart[]
   prelude?: InjectItem[]
   onResumeNotice?: () => void
   streaming?: boolean
+  /** 思维层：不归组，每个过程件单独成条（各自仍有自己的折叠） */
+  mind?: boolean
 }) {
-  const groups = groupParts(parts, prelude)
+  const groups = groupParts(parts, prelude, mind)
   return (
     <div className="flex flex-col gap-2">
       {groups.map((g, i) => {

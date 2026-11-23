@@ -13,7 +13,7 @@ import { resetPrefixGate } from '../../../agent/prefixGate'
 import { saveAgentSettings, loadAgentSettings } from '../../../agent/settings'
 import { personaOf } from '../../../agent/persona'
 import { docFormatOf } from '../../../agent/docFormat'
-import type { AgentPart, ChannelStamp, Conversation, PendingFile, PendingImage } from '../../../agent/types'
+import type { AgentPart, ChannelStamp, Conversation, PendingFile, PendingImage, WorkSession } from '../../../agent/types'
 import type { AskAnswers } from '../../../agent/tools'
 import type { ReasoningEffort } from '../../../ai/types'
 import { userAbsPath } from '../../../lib/storage'
@@ -39,7 +39,7 @@ import {
   ensureRoleConversation,
   roleOfConversation,
 } from '../../../learn/roleWork/roles'
-import { inboundEnvelope, peerOf } from '../../../learn/roleWork/channels'
+import { inboundEnvelope, peerOf, userPeer } from '../../../learn/roleWork/channels'
 import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, type AgentVoiceStats } from '../agent-team/agentRoster'
 import { AgentAvatarGlyph } from '../agent-team/AgentAvatarGlyph'
 import { listWorkflowRows, type WorkflowRow } from '../../../learn/workflows'
@@ -237,6 +237,35 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     () => (tutorGoalId ? (goalConversationsByGoal.get(tutorGoalId)?.tutor ?? EMPTY_CONVERSATIONS) : EMPTY_CONVERSATIONS),
     [goalConversationsByGoal, tutorGoalId],
   )
+  /**
+   * 左栏下块的数据：每个 agent 名下的 work 上下文。
+   * role 层每个 agent 只有一段会话，列它等于把同一个标题重复一遍；真正要看的是 work。
+   * 一个 work 只认 id 一次（历史数据里同一段 role 会话可能被多个入口看到）。
+   */
+  const worksByAgent = useMemo(() => {
+    const collect = (convs: Conversation[]): WorkSession[] => {
+      const byId = new Map<string, WorkSession>()
+      for (const conv of convs) for (const work of conv.works?.sessions ?? []) byId.set(work.id, work)
+      return [...byId.values()].sort((a, b) => b.lastActiveAt - a.lastActiveAt)
+    }
+    const out: Partial<Record<AgentTeamMode, WorkSession[]>> = {
+      free: collect(sortedFreeChats),
+    }
+    for (const voice of AGENT_ROSTER_ORDER) {
+      if (voice === 'free') continue
+      out[voice] = collect(tutorGoalId ? (goalConversationsByGoal.get(tutorGoalId)?.[voice] ?? []) : [])
+    }
+    return out
+  }, [sortedFreeChats, goalConversationsByGoal, tutorGoalId])
+
+  const openWorkFromRoster = (agentId: AgentTeamMode, workId: string) => {
+    const work = worksByAgent[agentId]?.find((w) => w.id === workId)
+    if (!work) return
+    setSettingsAgent(null)
+    setEmptyTutorMode(false)
+    setEmptyVoiceMode(null)
+    openAgentTab({ kind: 'work', conversationId: work.roleConversationId, workId: work.id }, true)
+  }
 
   const activeTutorConvId = useMemo(() => {
     if (activeAgentTab.kind === 'work') {
@@ -287,9 +316,10 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
 
   const workViewMeta = useMemo(() => {
     if (activeAgentTab.kind !== 'work') return null
-    const conv = conversationById(store, activeAgentTab.conversationId)
+    const conv =
+      freeConversationById(activeAgentTab.conversationId) ?? conversationById(store, activeAgentTab.conversationId)
     if (!conv) return null
-    if (tabGoalId && conv.goalId !== tabGoalId) return null
+    if (tabGoalId && conv.goalId && conv.goalId !== tabGoalId) return null
     const work = conv.works?.sessions.find((w) => w.id === activeAgentTab.workId)
     if (!work) return null
     return {
@@ -366,7 +396,12 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       return
     }
     if (workViewMeta) {
-      activateAgentTab('ga:' + workViewMeta.goalId + ':' + workViewMeta.conversationId)
+      if (workViewMeta.goalId) {
+        activateAgentTab('ga:' + workViewMeta.goalId + ':' + workViewMeta.conversationId)
+      } else {
+        activateAgentTab('free')
+        setFreeConvId(workViewMeta.conversationId)
+      }
       scheduleFocus()
       return
     }
@@ -408,21 +443,6 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     setEmptyTutorMode(true)
   }
 
-  const handleHistorySelect = (agentId: AgentTeamMode, convId: string) => {
-    setSettingsAgent(null)
-    setEmptyVoiceMode(null)
-    if (agentId === 'free') {
-      setEmptyTutorMode(false)
-      activateAgentTab('free')
-      setFreeConvId(convId)
-      scheduleFocus()
-      return
-    }
-    if (!tutorGoalId) return
-    selectConversationIn({ kind: 'goal', goalId: tutorGoalId, conversationId: convId }, convId)
-    scheduleFocus()
-  }
-
   const handleHistoryCreate = (agentId: AgentTeamMode) => {
     setSettingsAgent(null)
     setEmptyVoiceMode(null)
@@ -438,14 +458,6 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     // role 层单会话：已有就选它，没有才落确定性 id；不再新建第二段
     handleSelectMode(agentId)
     scheduleFocus()
-  }
-
-  const handleHistoryDelete = (agentId: AgentTeamMode, convId: string) => {
-    if (agentId === 'free') {
-      handleDeleteFreeConversation(convId)
-      return
-    }
-    removeConversation(convId)
   }
 
   /** 各声部的显示名（profile 覆盖后的）：roster 卡片与空态标题共用这一份 */
@@ -478,7 +490,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         running: !!(convId && agent.runningByConversation[convId]),
         free: true,
         emptyVoice: 'free',
-        emptyName: '仅聊天',
+        emptyName: agentNames?.free?.trim() || DEFAULT_AGENT_NAME.free,
+        agentAvatarId: agentAvatarIds.free,
         onSend: (text: string, images: PendingImage[], files: PendingFile[]) => {
           // role 层单会话：没有当前段时也只补唯一的一段，不再多开
           const id = convId ?? ensureFreeConversation().id
@@ -522,9 +535,13 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       }
     }
     const isWork = tab.kind === 'work'
-    const goalId = isWork ? (conversationById(store, tab.conversationId)?.goalId ?? null) : tab.goalId
+    // work 页签的 conversationId 既可能是目标会话，也可能是自由聊天（两者都可能有 work 桶）
+    const workConv = isWork
+      ? (freeConversationById(tab.conversationId) ?? conversationById(store, tab.conversationId) ?? null)
+      : null
+    const goalId = isWork ? (workConv?.goalId ?? null) : tab.goalId
     const convId = isWork
-      ? tab.conversationId
+      ? (workConv?.id ?? tab.conversationId)
       : tab.conversationId &&
           conversationById(store, tab.conversationId)?.goalId === tab.goalId
         ? tab.conversationId
@@ -535,7 +552,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
             store.nodes.find((n) => n.goalId === goalId)?.id ||
             null))
       : null
-    const conv = convId ? (conversationById(store, convId) ?? null) : null
+    const conv = isWork ? workConv : convId ? (conversationById(store, convId) ?? null) : null
     const target =
       goalId && convId
         ? { goalId, nodeId: nodeId || null, conversationId: convId, voice: roleOfConversation(conv) as AgentVoice }
@@ -557,6 +574,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       chatLocked,
       emptyVoice: mode,
       emptyName: agentNames?.[mode]?.trim() || DEFAULT_AGENT_NAME[mode],
+      agentAvatarId: agentAvatarIds[mode],
       conversation: conv,
       conversations: goalConversations,
       streaming: stream?.parts ?? null,
@@ -572,7 +590,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         if (stored && text.trim()) {
           const envelope = inboundEnvelope({
             channel: 'user',
-            from: peerOf('user', 'user', '用户'),
+            from: userPeer(),
             to: peerOf('agent', target.voice, DEFAULT_AGENT_NAME[target.voice]),
             text,
           })
@@ -672,6 +690,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     const out = agentPanes.filter((tab) => {
       if (tab.kind === 'free') return true
       if (tab.kind === 'goal') return tab.goalId === tabGoalId
+      // 自由聊天也可以是 work 的宿主（它同样有独立 work 桶）
+      if (freeConversationById(tab.conversationId)) return true
       return conversationById(store, tab.conversationId)?.goalId === tabGoalId
     })
     const hasActiveGoalPane = activeTutorConvId
@@ -721,26 +741,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         voiceStats={voiceStats}
         variant={rosterTopBar ? 'top' : 'side'}
         persistCollapsed={persistLayout}
-        conversationsByAgent={{
-          free: sortedFreeChats,
-          tutor: sortedGoalChats,
-          dispatcher: voiceChatsOf('dispatcher'),
-          examiner: voiceChatsOf('examiner'),
-          designer: voiceChatsOf('designer'),
-          researcher: voiceChatsOf('researcher'),
-          fixer: voiceChatsOf('fixer'),
-        }}
-        activeConversationByAgent={{
-          free: currentFreeConvId,
-          tutor: activeTutorConvId,
-          dispatcher: mode === 'dispatcher' ? activeTutorConvId : (voiceChatsOf('dispatcher')[0]?.id ?? null),
-          examiner: mode === 'examiner' ? activeTutorConvId : (voiceChatsOf('examiner')[0]?.id ?? null),
-          designer: mode === 'designer' ? activeTutorConvId : (voiceChatsOf('designer')[0]?.id ?? null),
-          researcher: mode === 'researcher' ? activeTutorConvId : (voiceChatsOf('researcher')[0]?.id ?? null),
-          fixer: mode === 'fixer' ? activeTutorConvId : (voiceChatsOf('fixer')[0]?.id ?? null),
-        }}
-        runningByConversation={agent.runningByConversation}
-        pendingAskByConv={agent.pendingAskByConv}
+        worksByAgent={worksByAgent}
         activeGoalId={tutorGoalId}
         goalLocked={Boolean(tabGoalId)}
         goals={store.goals}
@@ -751,9 +752,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
           selectTutorGoal(goalId)
           scheduleFocus()
         }}
-        onSelectConversation={handleHistorySelect}
-        onNewConversation={handleHistoryCreate}
-        onDeleteConversation={handleHistoryDelete}
+        onOpenWork={openWorkFromRoster}
         onOpenSettings={openAgentSettings}
         agentNames={agentNames}
         agentAvatars={agentAvatarIds}

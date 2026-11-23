@@ -7,7 +7,7 @@
 import type { AgentProfileId } from '../../agent/agentProfile'
 import type { ChannelMessage, ChannelPeer, Conversation, ConversationMessage } from '../../agent/types'
 import type { ChatCallResult, ChatSandboxApi, ChatSendInput } from '../../agent/roleWork/types'
-import { inboundEnvelope, outboundEnvelope, peerOf, stampLineOf } from '../roleWork/channels'
+import { inboundEnvelope, outboundEnvelope, peerOf, stampLineOf, userPeer } from '../roleWork/channels'
 import { deliverInbound, markRoleOutbound } from '../roleWork/dispatch'
 
 export interface ChatOpsDeps {
@@ -47,7 +47,7 @@ function quoteBlock(message: ConversationMessage | null): string {
   const text = message.parts.filter((p) => p.type === 'text').map((p) => p.text).join('').trim()
   const stamp = message.channel ?? {
     channel: 'user' as const,
-    from: { kind: 'user' as const, id: 'user', name: '用户' },
+    from: userPeer(),
     to: { kind: 'role' as const, id: '', name: '' },
     ts: message.ts,
     envelopeId: message.id,

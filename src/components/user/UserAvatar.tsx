@@ -54,7 +54,7 @@ export default function UserAvatar({ profile, size = 28, seed, className = '' }:
     return (
       <img
         src={src}
-        alt={t(displayName(profile, '用户'))}
+        alt={t(displayName(profile, '未命名用户'))}
         width={size}
         height={size}
         style={{ width: px, height: px }}
@@ -66,7 +66,7 @@ export default function UserAvatar({ profile, size = 28, seed, className = '' }:
   return (
     <span
       aria-hidden="true"
-      title={t(displayName(profile, '用户'))}
+      title={t(displayName(profile, '未命名用户'))}
       style={{
         width: px,
         height: px,

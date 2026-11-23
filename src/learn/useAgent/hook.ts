@@ -50,7 +50,7 @@ import {
   setRoleWorkDispatcher,
   takeChannelInjection,
 } from '../roleWork/dispatch'
-import { outboundEnvelope, peerOf } from '../roleWork/channels'
+import { outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
 import { useAgentSlots } from './slots'
 import { useAgentSession } from './session'
 import { assembleTurnEntry } from './agentPrompt'
@@ -486,7 +486,7 @@ export function useAgent(opts: {
             const envelope = outboundEnvelope({
               channel: 'user',
               from: peerOf('agent', voice, DEFAULT_AGENT_NAME[voice]),
-              to: peerOf('user', 'user', '用户'),
+              to: userPeer(),
               text: finalText,
               auto: true,
             })

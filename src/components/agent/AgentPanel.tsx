@@ -22,6 +22,7 @@ import { ComposerUi } from './panel/useComposerUi'
 import { PaceStrip } from './panel/PaceStrip'
 import { FollowLatestButton } from './panel/MessageBubble'
 import { WorkMenu } from './panel/WorkMenu'
+import { WorkFlowStrip } from './panel/WorkFlowStrip'
 import { RoleChatView } from './panel/RoleChatView'
 import { toolLabel } from './panel/toolLabel'
 import { useComposer } from './panel/useComposer'
@@ -61,6 +62,8 @@ interface Props {
   /** 空态随 role：role id（'free' = 仅聊天）与显示名（空白页标题与职责说明跟 role 走） */
   emptyVoice?: string
   emptyName?: string
+  /** 当前 role 的头像 id（agent profile 覆盖后的）；chat 头与消息行用 */
+  agentAvatarId?: string
   /** 轮次进行中那条回复的 id：它在轮次内就分次进了会话（增量落库），列表里要剔掉防止两边都画 */
   streamingMessageId: string | null
   running: boolean
@@ -144,7 +147,8 @@ interface Props {
   liveUsage?: MessageUsage | null
   /**
    * work：当前 role 对话下的工作会话列表 + 正在跑的实时输出。
-   * 面板据此画 WorkMenu 入口与 work 视图（消息列表、工具卡片、流式），输入禁用。
+   * 面板据此画 WorkMenu 入口与 work 视图（消息列表、工具卡片、流式）。
+   * work 只有 mind 一层：不显示 chat 页签，也不提供输入框（用户不能直接向 work 发言）。
    */
   work?: WorkView
   /**
@@ -167,6 +171,7 @@ export default function AgentPanel({
   chatLocked,
   emptyVoice,
   emptyName,
+  agentAvatarId,
   streamingMessageId,
   running,
   hasKey,
@@ -212,8 +217,8 @@ export default function AgentPanel({
   /** 点开看大图的附件。两种来源各一份状态：已进资源库的气泡图与还在内存里的待发送图 */
   const [preview, setPreview] = useState<PendingImage | null>(null)
   const [bubblePreview, setBubblePreview] = useState<MessageImage | null>(null)
-  /** role 视图分层：chat = 只画 user/agent 通道的对外消息；mind = 全量消息（工具、思考、work 通道） */
-  const [viewMode, setViewMode] = useState<'chat' | 'mind'>('mind')
+  /** role 视图分层：chat = 用户视角的对外消息；mind = 全量执行过程（工具、思考、work 通道） */
+  const [viewMode, setViewMode] = useState<'chat' | 'mind'>('chat')
   /** 上下文压缩后的摘要展开着（消息列表里那块分界线上的「看摘要」） */
   const [summaryOpen, setSummaryOpen] = useState(false)
 
@@ -468,6 +473,9 @@ export default function AgentPanel({
     free,
     emptyVoice,
     emptyName,
+    mind: viewMode === 'mind' || !!workSession,
+    agentName: emptyName ?? '',
+    agentAvatarId,
   })
 
   return (
@@ -527,16 +535,22 @@ export default function AgentPanel({
             <div
               ref={contentRef}
               className={`mx-auto w-full max-w-[768px] pt-5 ${
-                viewMessages.length === 0 && !viewStreaming
+                viewMessages.length === 0 && !viewStreaming && !workSession
                   ? 'flex min-h-[calc(100%-1.25rem)] flex-col justify-center pb-8'
                   : ''
               }`}
               style={{ zoom: chatScale } as CSSProperties}
             >
-              {viewMode === 'mind' || workSession ? (
-                messageList
+              {workSession && <WorkFlowStrip work={workSession} running={viewRunning} />}
+              {viewMode === 'chat' && !workSession ? (
+                <RoleChatView
+                  channels={conversation?.channels ?? []}
+                  agentName={emptyName ?? t('智能体')}
+                  agentAvatarId={agentAvatarId}
+                  agentVoice={emptyVoice ?? 'free'}
+                />
               ) : (
-                <RoleChatView channels={conversation?.channels ?? []} />
+                messageList
               )}
             </div>
           </div>
@@ -567,7 +581,8 @@ export default function AgentPanel({
         上面那一条 10px 的空白把「对话」与「我要说的话」切成了两段，而且它一直是空的。
       */}
       <div className="mx-auto w-full max-w-[768px] shrink-0 px-3.5 pb-3 pt-0">
-        <ComposerUi
+        {!workSession && (
+          <ComposerUi
           composer={composer}
           running={running}
           locked={chatLocked}
@@ -596,7 +611,6 @@ export default function AgentPanel({
           effort={effort}
           onSetEffort={onSetEffort}
           onOpenPreview={setPreview}
-          workMode={workSession ? { name: workSession.name, running: viewRunning } : undefined}
           workSlot={
             free ? undefined : <WorkMenu sessions={work?.sessions ?? []} onOpen={(id) => onOpenWork?.(id)} />
           }
@@ -626,7 +640,8 @@ export default function AgentPanel({
           free={free}
           // keepalive：隐藏面板不登记 chip 落点（模块级单槽，谁最后登记谁赢）
           active={active}
-        />
+          />
+        )}
 
         {/*
           状态行：输入框底下的一条细字。左边只放**这段对话叫什么**，右边是轮数 / 速度 / token——
@@ -652,7 +667,7 @@ export default function AgentPanel({
                         : t('空闲')}
               </span>
               <span className="min-w-0 truncate text-[11px] leading-none text-ink-faint">
-                {t('独立上下文 · {0} 次任务', workSession.runs)}
+                {t('独立执行层 · 只读 · {0} 次任务', workSession.runs)}
               </span>
             </>
           ) : free ? (
