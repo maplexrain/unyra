@@ -10,13 +10,13 @@
  * 全部属于内置能力、不可卸载（见 agent/agentProfile 的 BUILTIN_API_GROUPS），
  * 所以提示词恒定——profile 里没有能改变它的字段。
  */
-import { TURTLE_CLAN_GUIDE } from './turtleClan'
+import { ALL_AGENTS_COMMON_PREFIX } from './agentSharedPrefix'
 
 export function buildFreeChatSystem(opts?: { extraSystemPrompt?: string }): string {
   const parts = [
-    '你是「归一 Unyra」的聊天龟——龟家七兄弟的老大「龟一」，软件「归一 unyra」的智能助手。你当前处于系统界面的【固定聊天】（Free Chat）独立页签中。',
+    ALL_AGENTS_COMMON_PREFIX,
     '',
-    TURTLE_CLAN_GUIDE,
+    '你是「归一 Unyra」的聊天龟——龟家七兄弟的老大「龟一」，软件「归一 unyra」的智能助手。你当前处于系统界面的【固定聊天】（Free Chat）独立页签中。',
     '',
     '🚨🚨🚨【最高优先级核心边界与任务终止铁律（绝对红线）】🚨🚨🚨',
     '1. 你的专属职责：日常闲聊、答疑解惑、概念辨析、思路启发、自由问答与交流。',

@@ -11,9 +11,18 @@ import {
   sortAgentsByPinAndTime,
 } from '../src/components/learn/agent-team/agentPinning'
 import {
+  ALL_AGENTS_COMMON_PREFIX,
+  COMMON_ALL_AGENTS_PREFIX_PROMPT,
   COMMON_TURTLE_CLAN_PROMPT,
   COMMON_EXECUTION_PREFIX_PROMPT,
   getAgentPromptSections,
+  buildFreeChatSystem,
+  buildTeacherSystem,
+  buildDispatcherSystem,
+  buildExaminerSystem,
+  buildDesignerSystem,
+  buildResearcherSystem,
+  buildFixerSystem,
 } from '../src/learn/ai'
 import { SHARED_AGENT_PREFIX } from '../src/learn/ai/agentSharedPrefix'
 import { TURTLE_CLAN_GUIDE } from '../src/learn/ai/turtleClan'
@@ -108,7 +117,28 @@ describe('agentPinning 置顶与排序机制', () => {
 describe('提示词分段与共同提示词独立性', () => {
   it('共同提示词独立导出且与原始总纲/前缀完全一致', () => {
     expect(COMMON_TURTLE_CLAN_PROMPT).toBe(TURTLE_CLAN_GUIDE)
+    expect(COMMON_ALL_AGENTS_PREFIX_PROMPT).toBe(ALL_AGENTS_COMMON_PREFIX)
     expect(COMMON_EXECUTION_PREFIX_PROMPT).toBe(SHARED_AGENT_PREFIX)
+  })
+
+  it('七位智能体系统提示词首部持有共同前缀，最大化缓存命中率', () => {
+    // 全部七位智能体均以 ALL_AGENTS_COMMON_PREFIX 开头
+    expect(buildFreeChatSystem().startsWith(ALL_AGENTS_COMMON_PREFIX)).toBe(true)
+    expect(buildTeacherSystem().startsWith(ALL_AGENTS_COMMON_PREFIX)).toBe(true)
+    expect(buildDispatcherSystem().startsWith(ALL_AGENTS_COMMON_PREFIX)).toBe(true)
+    expect(buildExaminerSystem().startsWith(ALL_AGENTS_COMMON_PREFIX)).toBe(true)
+    expect(buildDesignerSystem().startsWith(ALL_AGENTS_COMMON_PREFIX)).toBe(true)
+    expect(buildResearcherSystem().startsWith(ALL_AGENTS_COMMON_PREFIX)).toBe(true)
+    expect(buildFixerSystem().startsWith(ALL_AGENTS_COMMON_PREFIX)).toBe(true)
+
+    // 六位执行声部在此基础上进一步以 SHARED_AGENT_PREFIX 开头
+    expect(SHARED_AGENT_PREFIX.startsWith(ALL_AGENTS_COMMON_PREFIX)).toBe(true)
+    expect(buildTeacherSystem().startsWith(SHARED_AGENT_PREFIX)).toBe(true)
+    expect(buildDispatcherSystem().startsWith(SHARED_AGENT_PREFIX)).toBe(true)
+    expect(buildExaminerSystem().startsWith(SHARED_AGENT_PREFIX)).toBe(true)
+    expect(buildDesignerSystem().startsWith(SHARED_AGENT_PREFIX)).toBe(true)
+    expect(buildResearcherSystem().startsWith(SHARED_AGENT_PREFIX)).toBe(true)
+    expect(buildFixerSystem().startsWith(SHARED_AGENT_PREFIX)).toBe(true)
   })
 
   it('getAgentPromptSections 为所有声部产出结构化的分段，且第一个分段为共同提示词/总纲', () => {
@@ -125,11 +155,11 @@ describe('提示词分段与共同提示词独立性', () => {
     expect(examinerSections[0]!.content).toBe(SHARED_AGENT_PREFIX)
     expect(examinerSections[0]!.isCommon).toBe(true)
 
-    // 自由聊天龟
+    // 自由聊天龟：第一个分段为全员共同提示词基座
     const freeSections = getAgentPromptSections('free')
-    expect(freeSections[1]!.title).toContain('龟门七兄弟身份总纲')
-    expect(freeSections[1]!.content).toBe(TURTLE_CLAN_GUIDE)
-    expect(freeSections[1]!.isCommon).toBe(true)
+    expect(freeSections[0]!.title).toContain('全员共同提示词')
+    expect(freeSections[0]!.content).toBe(ALL_AGENTS_COMMON_PREFIX)
+    expect(freeSections[0]!.isCommon).toBe(true)
 
     // 每个分段都应有递增的索引和颜色标识
     for (const s of tutorSections) {

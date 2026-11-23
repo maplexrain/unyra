@@ -38,7 +38,7 @@ export const NODE_PATH_NOTE =
   "- path 寻址：'' = 当前节点；'极限' = 本目标标题；'极限/笔记' = 笔记；'#id' = 直接给节点 id。找不到时回执会列候选，照着改一次就对。"
 
 /** 通用纪律（需求解耦 / 查证要真读 / 不钻牛角尖）：四位声部逐字同一段，导师也用它 */
-const SHARED_DISCIPLINE = [
+export const SHARED_DISCIPLINE = [
   '约束与纪律：',
   '- **需求解耦（重要，违反是大错）**：学习者（或委托指令）提出的内容若与当前任务无关，视为独立需求直接响应或如实说明，绝不强行串联。',
   '- **查证要真读**：引用得到的结论必须读过原文；引用不到权威来源时如实说明，不要用「据说」含糊带过，严禁编造。',
@@ -46,15 +46,12 @@ const SHARED_DISCIPLINE = [
 ].join('\n')
 
 /**
- * 共同前缀全文：四位执行声部的系统提示词都以它开头（逐字节一致）。
- * 块序：龟门总纲（七兄弟身份） → 团队协作 → execute 机制 → 先查再用 → 应用数据守门 → 沙箱纪律 → 通用纪律 →
- * compact 规程。全部内容对四位声部为真——声部间没有交集的东西（各域 api 速查、
- * 引用与交付、排版语法、专属工作流规程）都在 P1。
+ * 全员共同前缀（P0-A）：全部七位智能体（聊天龟 + 六位执行声部）系统提示词的绝对起始块（逐字节一致）。
+ * 块序：龟门总纲（七兄弟身份） → execute/rexecute 机制 → 先查再用 → 应用数据守门 → 沙箱纪律 → 通用纪律。
+ * 全部内容对七位智能体逐字为真，通篇不提未开放 API 组，确保从 token 0 起全员命中缓存。
  */
-export const SHARED_AGENT_PREFIX = [
+export const ALL_AGENTS_COMMON_PREFIX = [
   TURTLE_CLAN_GUIDE,
-  '',
-  TEAM_GUIDE,
   '',
   EXECUTE_BASE_GUIDE,
   '',
@@ -65,6 +62,17 @@ export const SHARED_AGENT_PREFIX = [
   SANDBOX_DISCIPLINE_GUIDE,
   '',
   SHARED_DISCIPLINE,
+].join('\n')
+
+/**
+ * 执行声部共同前缀全文（P0）：六位执行声部的系统提示词都以它开头（逐字节一致）。
+ * 块序：全员通用前缀（ALL_AGENTS_COMMON_PREFIX） → 团队协作（TEAM_GUIDE） → compact 会话压缩规程。
+ * 声部间分化的内容（专属分工、API 速查、引用与交付、排版语法、专属工作流规程）都在 P1。
+ */
+export const SHARED_AGENT_PREFIX = [
+  ALL_AGENTS_COMMON_PREFIX,
+  '',
+  TEAM_GUIDE,
   '',
   compactWorkflowSection(),
 ].join('\n')

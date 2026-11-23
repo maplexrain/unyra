@@ -26,8 +26,9 @@ export { generateShortAnnotation } from './ai/annotation'
 export { buildTeacherSystem } from './ai/teacherSystem'
 export { buildFreeChatSystem } from './ai/chatSystem'
 export { buildVoiceSystem, buildDispatcherSystem, buildExaminerSystem, buildDesignerSystem, buildResearcherSystem, buildFixerSystem } from './ai/agentTeamSystem'
-export { SHARED_AGENT_PREFIX } from './ai/agentSharedPrefix'
+export { ALL_AGENTS_COMMON_PREFIX, SHARED_AGENT_PREFIX } from './ai/agentSharedPrefix'
 export {
+  COMMON_ALL_AGENTS_PREFIX_PROMPT,
   COMMON_TURTLE_CLAN_PROMPT,
   COMMON_TEAM_COLLABORATION_PROMPT,
   COMMON_EXECUTION_DISCIPLINE_PROMPT,

@@ -18,6 +18,7 @@ import { PLOT_SYNTAX_GUIDE } from '../../lib/plot'
 import { QUOTE_SYNTAX_GUIDE } from '../../lib/quoteBlock'
 import { VIDEOS_SYNTAX_GUIDE } from '../../lib/videosBlock'
 import {
+  ALL_AGENTS_COMMON_PREFIX,
   apiDocKeysFor,
   API_PLANE_NOTE,
   NODE_PATH_NOTE,
@@ -106,6 +107,9 @@ export const COMMON_EXECUTION_DISCIPLINE_PROMPT = [
 /** 共同提示词：会话压缩规程（所有执行声部拥有） */
 export const COMMON_COMPACT_WORKFLOW_PROMPT = compactWorkflowSection()
 
+/** 全员共同提示词全文（全部七位智能体起始块） */
+export const COMMON_ALL_AGENTS_PREFIX_PROMPT = ALL_AGENTS_COMMON_PREFIX
+
 /** 执行声部共同基础前缀全文（即 SHARED_AGENT_PREFIX） */
 export const COMMON_EXECUTION_PREFIX_PROMPT = SHARED_AGENT_PREFIX
 
@@ -121,22 +125,22 @@ interface BuildSectionsOpts {
 function getFreeChatSections(opts: BuildSectionsOpts = {}): PromptSection[] {
   const sections: PromptSection[] = [
     {
-      id: 'free-role',
+      id: 'free-common-prefix',
       index: 1,
+      title: '全员共同提示词 · 龟门身份与执行沙箱基座',
+      badge: '全员基座',
+      color: 'indigo',
+      isCommon: true,
+      content: ALL_AGENTS_COMMON_PREFIX,
+    },
+    {
+      id: 'free-role',
+      index: 2,
       title: '聊天龟定位与页签说明',
       badge: '身份定位',
       color: 'rose',
       content:
         '你是「归一 Unyra」的聊天龟——龟家七兄弟的老大「龟一」，软件「归一 unyra」的智能助手。你当前处于系统界面的【固定聊天】（Free Chat）独立页签中。',
-    },
-    {
-      id: 'free-clan',
-      index: 2,
-      title: '龟门七兄弟身份总纲',
-      badge: '共同基础',
-      color: 'indigo',
-      isCommon: true,
-      content: TURTLE_CLAN_GUIDE,
     },
     {
       id: 'free-boundary',
