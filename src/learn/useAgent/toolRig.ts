@@ -29,7 +29,7 @@ import type { ChannelAskStatus, ChannelMessage, Conversation, ConversationMessag
 import { roleConversationId } from '../roleWork/roles'
 import { groupPeer, inboundEnvelope, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
 import { deliverInbound } from '../roleWork/dispatch'
-import { mentionedRoleIdsOf, type MentionRole } from '../roleWork/groupTargets'
+import { groupSelfMentionError, mentionedRoleIdsOf, type MentionRole } from '../roleWork/groupTargets'
 import { appendGroupMessage, patchGroupMessage } from '../groupChat'
 import { emptyDelivery, mergeDelivery, normalizeDelivery } from '../../agent/delivery'
 import { native } from '../../lib/native'
@@ -255,6 +255,8 @@ export function rigTurnTools(io: {
        * 有 @ 时以正文为准；没有 @ 时才用 to / mentions，并要求正文补上点名。
        */
       const textIds = mentionedRoleIdsOf(text, mentionRoles)
+      const selfMentionError = groupSelfMentionError(textIds, voice, roleNameOf(voice))
+      if (selfMentionError) return { ok: false, error: selfMentionError }
       let ids: AgentProfileId[] = textIds
       if (!ids.length) {
         const rawIds = [...new Set((mentions ?? []).map((id) => id.trim()).filter(Boolean))]
@@ -268,6 +270,8 @@ export function rigTurnTools(io: {
             })
             .filter((id): id is AgentProfileId => Boolean(id))
           if (ids.length !== rawIds.length) return { ok: false, error: '群聊 @ 的目标 role id / 名字不合法' }
+          const rawSelfError = groupSelfMentionError(ids, voice, roleNameOf(voice))
+          if (rawSelfError) return { ok: false, error: rawSelfError }
           for (const id of ids) {
             if (!text.includes('@' + roleNameOf(id)) && !text.includes('@' + DEFAULT_AGENT_NAME[id])) {
               return { ok: false, error: `群聊消息要投给 ${roleNameOf(id)}，正文必须显式 @${roleNameOf(id)}` }

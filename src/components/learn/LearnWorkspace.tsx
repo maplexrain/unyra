@@ -1227,7 +1227,7 @@ export default function LearnWorkspace({
       )
 
       const docAreaActivated = activateIn(docAreaWithAnchor, docAreaWithAnchor.focus, rootId)
-      const docArea = ensureGoalAgentTeamTab(docAreaActivated, goalId, now, { targetGroupId: docAreaActivated.focus })
+      const docArea = ensureGoalAgentTeamTab(docAreaActivated, goalId, now, { targetGroupId: docAreaActivated.focus, activate: true })
       const claimedOwners = claimTab(docArea.tabOwners, goalId, rootId)
 
       const nextStore: LearnStore = {

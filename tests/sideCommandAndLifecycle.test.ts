@@ -121,6 +121,18 @@ describe('结构与智能体团队页签始终固定（不可取消固定）', (
 })
 
 describe('每个学习目标独立拥有智能体团队页签并随结构页签同步停靠恢复', () => {
+  it('ensureGoalAgentTeamTab activate:true 把智能体团队置前并激活（打开 tab 组的默认落点）', () => {
+    const store = makeBaseStore()
+    const activated = ensureGoalAgentTeamTab(store.docArea, 'gA', 200, { activate: true })
+    const group = activated.groups.find((g) => g.tabs.some((t) => t.id === 'team:gA'))!
+
+    expect(group.active).toBe('team:gA')
+    expect(group.tabs.filter((t) => isTabPinned(t)).map((t) => t.id).slice(0, 2)).toEqual([
+      'team:gA',
+      'o:nA',
+    ])
+  })
+
   it('ensureGoalAgentTeamTab 不抢占当前结构页签焦点，关闭结构后两者一同停靠，再次打开结构一并归队', () => {
     const store = makeBaseStore()
     const goalOfNode = (id: string) => (id === 'nA' ? 'gA' : id === 'nB' ? 'gB' : null)
@@ -160,6 +172,27 @@ describe('每个学习目标独立拥有智能体团队页签并随结构页签�
     )
     expect(allTabs(restored).map((t) => t.id)).toContain('team:gA')
     expect(allTabs(restored).map((t) => t.id)).toContain('t:nA')
+  })
+
+  it('syncGoalAgentTeamTabs 对旧存档里「结构在前、智能体在后」的顺序也会纠正', () => {
+    const store = makeBaseStore()
+    const legacyDocs = {
+      ...store.docArea,
+      groups: [
+        {
+          id: FIRST_GROUP,
+          tabs: [
+            makeTab({ kind: 'outline', nodeId: 'nA', goalId: 'gA' }, 1),
+            makeTab({ kind: 'agentTeam', goalId: 'gA' }, 2),
+            makeTab({ kind: 'teach', nodeId: 'nA' }, 3),
+          ],
+          active: 'o:nA',
+        },
+      ],
+    }
+
+    const synced = syncGoalAgentTeamTabs(legacyDocs, store.goals, 'gA')
+    expect(synced.groups[0].tabs.map((t) => t.id)).toEqual(['team:gA', 'o:nA', 't:nA'])
   })
 
   it('syncGoalAgentTeamTabs 自动将旧版单例 team:all 迁移为当前目标独立页签并清理已删除目标残留', () => {

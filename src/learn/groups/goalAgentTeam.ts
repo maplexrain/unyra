@@ -36,9 +36,10 @@ export function outlineGroupForGoal(docs: DocWorkspace, goal: LearningGoal): str
 }
 
 /**
- * 确保指定学习目标拥有独立的智能体团队固定页签，但不打断当前激活页签的焦点：
- * - 若该页签已在工作区中，仅校正归属与固定排序；
+ * 确保指定学习目标拥有独立的智能体团队固定页签：
+ * - 若该页签已在工作区中，校正归属并把系统固定页签排成「智能体在结构之前」；
  * - 若该页签尚未开出，则放进锚点大纲所在的分组（回退到焦点格），登记归属后按固定区重排。
+ * - 默认不抢占当前激活页签；调用方要「打开 tab 组默认看智能体」时传 `activate: true`。
  */
 export function ensureGoalAgentTeamTab(
   docs: DocWorkspace,
@@ -132,9 +133,11 @@ export function syncGoalAgentTeamTabs(
         nextTabs.push(t)
       }
     }
-    if (!groupChanged) return g
-    changed = true
+    // 即使没有团队页签变化，也要比对一次顺序：旧存档可能仍是「结构 → 智能体」。
     const reordered = reorderTabs(nextTabs, nextTabs.map((x) => x.id))
+    const orderChanged = reordered.some((t, i) => t.id !== nextTabs[i]!.id)
+    if (!groupChanged && !orderChanged) return g
+    changed = true
     const nextActive = active && reordered.some((x) => x.id === active) ? active : (reordered[0]?.id ?? null)
     return { ...g, tabs: reordered, active: nextActive }
   })

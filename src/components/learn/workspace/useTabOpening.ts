@@ -92,23 +92,25 @@ export function useTabOpening({
    *
    * - 目标自己的页签**一直在文档区里开着**（不是切走就关掉），切目标只是换一套**看得到的**；
    * - 因此切回来时「前一回在这个目标里看的那些文档」原样还在；
-   * - 首次切到某个目标时，把它的**大纲页**开成页签并置前：那是一个目标的入口，
-   *   教学文档一律从大纲里点进去（需求原文：「以后教学文档打开统一经过大纲 tab 去打开」）。
+   * - 首次切到某个目标时，把它的**大纲页**开成页签，同时补齐智能体团队固定页签；
+   *   打开组（`preferAgent`）时默认激活智能体页签，结构页签永远排在它后面。
    *
    * 落点是**焦点格**（与 openTab 同一条口径）：切目标不动分屏布局，
    * 只在当前那一格里换文档——用户分好的左右两半不该被一次切目标打散。
    *
-   * `toOutline`（点侧栏里那个目标的标题）时**焦点一定落在大纲上**：此刻看着的即使是
-   * 同一个目标的教学文档，点目标名要的也是「回到这一层的入口」，停在原处等于点了没反应。
-   * 大纲页开在另一格里时就切到那一格（不重开第二枚，与 openTab 同一条规矩）。
+   * `toOutline`（点侧栏里那个目标的标题）时**焦点落在大纲上**；`preferAgent` 优先，
+   * 两者同时给时以智能体为先，找不到团队页签才退回大纲。大纲页开在另一格里时
+   * 就切到那一格（不重开第二枚，与 openTab 同一条规矩）。
    */
   const goalTabGroup = useCallback(
-    (s: LearnStore, goalId: string, toOutline = false): LearnStore => {
+    (s: LearnStore, goalId: string, opts: { toOutline?: boolean; preferAgent?: boolean } = {}): LearnStore => {
       const goal = s.goals.find((x) => x.id === goalId)
       if (!goal) return s
       const anchorNodeId = goal.rootNodeId || goal.id
       const rootRef: TabRef & { kind: 'outline' } = { kind: 'outline', nodeId: anchorNodeId, goalId: goal.id }
       const rootId = tabKey(rootRef)
+      const teamRef = { kind: 'agentTeam', goalId: goal.id } as TabRef & { kind: 'agentTeam'; goalId: string }
+      const teamId = tabKey(teamRef)
       const owners = s.docArea.tabOwners ?? {}
       let docArea = syncGoalOutlineTabs(s.docArea, s.goals)
       const home = groupIdOfTab(docArea, rootId)
@@ -117,11 +119,30 @@ export function useTabOpening({
       docArea = home
         ? docArea
         : openAnchorOutline(docArea, docArea.focus, rootRef, goalOf, Date.now())
-      if (!home && !hadParked) {
-        const anchorGroup = groupIdOfTab(docArea, rootId) ?? docArea.focus
-        docArea = ensureGoalAgentTeamTab(docArea, goalId, Date.now(), { targetGroupId: anchorGroup })
+      const anchorGroup = groupIdOfTab(docArea, rootId) ?? docArea.focus
+      /*
+       * 打开组时无论团队页签是否已经存在，都过一遍 ensure：它会把系统固定页签重排成
+       * 「智能体在结构之前」。旧存档里顺序相反时，靠这一下纠正，而不是只在新建时排。
+       */
+      if (!hadParked && (!home || opts.preferAgent)) {
+        docArea = ensureGoalAgentTeamTab(docArea, goalId, Date.now(), {
+          targetGroupId: anchorGroup,
+          ...(opts.preferAgent ? { activate: true } : {}),
+        })
       }
-      if (toOutline) {
+      if (opts.preferAgent) {
+        /*
+         * 打开一个目标页签组时，默认落在「智能体」页签上：这里是入口，也是用户要看的协作面。
+         * 团队页签可能已在别的分屏格里（固定区不保证只在焦点格），优先在它所在格激活，
+         * 找不到时才退回大纲——不为了激活而把第二枚团队页签开出来。
+         */
+        const teamGroup = groupIdOfTab(docArea, teamId)
+        if (teamGroup) docArea = activateIn(docArea, teamGroup, teamId)
+        else if (opts.toOutline) {
+          const at = groupIdOfTab(docArea, rootId)
+          if (at) docArea = activateIn(docArea, at, rootId)
+        }
+      } else if (opts.toOutline) {
         const at = groupIdOfTab(docArea, rootId)
         if (at) docArea = activateIn(docArea, at, rootId)
       } else {
@@ -456,7 +477,8 @@ export function useTabOpening({
     return () => setVimPageOpener(null)
   }, [openTab])
 
-  // 启动或首次挂载时：若已打开学习目标的「结构」页签尚未配齐同组「智能体团队」固定页签，自动为其补齐（不影响已有焦点的结构页签）
+  // 启动或首次挂载时：若已打开学习目标的「结构」页签尚未配齐同组「智能体团队」固定页签，自动为其补齐；
+  // 当前目标组默认激活自己的智能体页签（用户口径：打开 tab 组默认看智能体）。
   const didEnsureGoalTeamsRef = useRef(false)
   useEffect(() => {
     if (didEnsureGoalTeamsRef.current) return
@@ -467,10 +489,22 @@ export function useTabOpening({
     for (const goal of cur.goals) {
       const outlineGrp = outlineGroupForGoal(nextDocs, goal)
       if (!outlineGrp) continue
-      const hasTeam = allTabs(nextDocs).some((t) => t.id === `team:${goal.id}`)
-      if (hasTeam) continue
-      nextDocs = ensureGoalAgentTeamTab(nextDocs, goal.id, Date.now(), { targetGroupId: outlineGrp })
-      updated = true
+      const teamId = `team:${goal.id}`
+      const hasTeam = allTabs(nextDocs).some((t) => t.id === teamId)
+      if (!hasTeam) {
+        nextDocs = ensureGoalAgentTeamTab(nextDocs, goal.id, Date.now(), {
+          targetGroupId: outlineGrp,
+          ...(cur.activeGoalId === goal.id ? { activate: true } : {}),
+        })
+        updated = true
+      } else if (cur.activeGoalId === goal.id) {
+        // 旧存档可能仍是「结构 → 智能体」；ensure 的 reorderTabs 会把它纠正成智能体在前
+        nextDocs = ensureGoalAgentTeamTab(nextDocs, goal.id, Date.now(), {
+          targetGroupId: outlineGrp,
+          activate: true,
+        })
+        updated = true
+      }
     }
     if (updated || (!cur.fixSide && cur.activeGoalId && allTabs(nextDocs).some((t) => t.id === `team:${cur.activeGoalId}`))) {
       set({
@@ -514,9 +548,9 @@ export function useTabOpening({
   /**
    * 顶栏目标名菜单：切到某个目标的页签组。
    *
-   * 与 openGoalGroup（侧栏点目标名）的差别只有一个：**不强制落回大纲**——那个组正开着
-   * 哪份文档，切回去就接着看哪份（「快速切换 tab 组」的本意）；组是空的兜底仍由
-   * goalTabGroup 管（没开过就在焦点格里开大纲）。
+   * 与 openGoalGroup 的差别只在入口来源（顶栏菜单 vs 侧栏目标名）；两边打开组后
+   * 都默认激活该组的「智能体」页签（见 goalTabGroup 的 preferAgent）——第一眼
+   * 应该是智能体，而不是上一次停在的某份文档。
    */
   const switchGoalGroup = useCallback(
     (goalId: string) => {
@@ -525,7 +559,7 @@ export function useTabOpening({
       if (!goal) return
       const node = goal.rootNodeId ? nodeById(s, goal.rootNodeId) : null
       const base = node ? touchNode(retargetNode(s, node.id), node.id) : retargetGoal(s, goalId)
-      const next = goalTabGroup(base, goalId)
+      const next = goalTabGroup(base, goalId, { preferAgent: true })
       set(next)
       if (focusedTab(s.docArea)?.id === focusedTab(next.docArea)?.id) requestReveal()
     },
@@ -533,15 +567,15 @@ export function useTabOpening({
   )
 
   /**
-   * 点资源管理器里的**目标节点**：切到它的目标页签组，并把焦点落到它的大纲上。
+   * 点资源管理器里的**目标节点**：切到它的目标页签组，并默认落在「智能体」页签。
    *
    * 需求原文：「资源管理器的目标节点的文字原本是点击打开教学文档，重构为点击创建一个 tab 组」；
-   * 后来又补了一条：「如果当前显示的标签不是大纲就跳到大纲，即使当前打开的是教学文档也要跳到大纲」。
-   * 于是这里的落点**一律是大纲页**——它是这一层的入口，教学文档从大纲里点进去。
+   * 现在再补一条：「每次打开 tab 组默认激活智能体 tab 页」。于是这里不再强制落大纲，
+   * 目标组打开后显示的是智能体入口；结构页签仍在左侧固定区，随时可以点回。
    *
    * 具体做两件事：
    * 1. 把「当前目标」挪到它（retargetNode 一条路，对话栏/agent 页签都跟着对齐）；
-   * 2. 把文档区切到它那一套页签上，并把该目标的大纲页置前（见 goalTabGroup 的 toOutline）——
+   * 2. 把文档区切到它那一套页签上，并激活该组的智能体页签（见 goalTabGroup 的 preferAgent）——
    *    目标自己的页签在这个目标下都还在，切回来时原样可见。
    */
   const openGoalGroup = useCallback(
@@ -554,7 +588,7 @@ export function useTabOpening({
       const goalId = goal.id
       const node = nodeById(s, targetId) ?? (goal.rootNodeId ? nodeById(s, goal.rootNodeId) : null)
       const base = node ? touchNode(retargetNode(s, node.id), node.id) : retargetGoal(s, goalId)
-      const next = goalTabGroup(base, goalId, true)
+      const next = goalTabGroup(base, goalId, { preferAgent: true })
       set(next)
       if (focusedTab(s.docArea)?.id === focusedTab(next.docArea)?.id) requestReveal()
       setSidebarOpen(false)

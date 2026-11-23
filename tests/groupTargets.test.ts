@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mentionedRoleIdsOf, type MentionRole } from '../src/learn/roleWork/groupTargets'
+import { groupSelfMentionError, mentionedRoleIdsOf, type MentionRole } from '../src/learn/roleWork/groupTargets'
 
 const roles: MentionRole[] = [
   { id: 'tutor', names: ['导师龟'] },
@@ -19,5 +19,12 @@ describe('群聊 @ 目标解析', () => {
 
   it('@ 到不存在的名字不产生目标', () => {
     expect(mentionedRoleIdsOf('@维修龟 看一下', roles)).toEqual([])
+  })
+
+  it('群聊里显式 @ 自己会被拒绝；@ 别人则正常', () => {
+    expect(groupSelfMentionError(['tutor'], 'tutor', '导师龟')).toContain('不能 @ 自己（导师龟）')
+    expect(groupSelfMentionError(['tutor', 'designer'], 'tutor', '导师龟')).toContain('不能 @ 自己（导师龟）')
+    expect(groupSelfMentionError(['designer'], 'tutor', '导师龟')).toBeNull()
+    expect(groupSelfMentionError([], 'tutor', '导师龟')).toBeNull()
   })
 })

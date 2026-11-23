@@ -21,3 +21,17 @@ export function mentionedRoleIdsOf(text: string, roles: MentionRole[]): AgentPro
   }
   return roles.filter((role) => mentioned.has(role.id)).map((role) => role.id)
 }
+
+/**
+ * 群聊里 @ 自己一律拒绝：它不是「自己给自己发一条流水」，而是模型把收件人写错了。
+ * 显式点名自己就算错，哪怕同时 @ 了别人也不投递——否则消息里留着一枚无效 @，
+ * 对方收到后还可能误以为要回给发信人。
+ */
+export function groupSelfMentionError(
+  ids: readonly AgentProfileId[],
+  selfId: AgentProfileId,
+  selfName: string,
+): string | null {
+  if (!ids.includes(selfId)) return null
+  return `群聊里不能 @ 自己（${selfName}）；请 @ 另一位成员，或直接说明要交给谁`
+}
