@@ -74,6 +74,7 @@ export function assembleTurnEntry(io: {
     ts: Date.now(),
     hidden,
     ...(io.channel ? { channel: io.channel } : {}),
+    ...(io.channel?.delivery ? { delivery: io.channel.delivery } : {}),
     /*
      * 带 mark 的隐藏轮就是**工作流指令**（runWorkflow 把工作流名当 mark 传下来，
      * runHidden 那几个动作同理）：界面上画一条分界条，定位条给它一个锚点。

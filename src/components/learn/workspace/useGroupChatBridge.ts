@@ -14,7 +14,7 @@ import type { LearnStore } from '../../../learn/types'
 import { ensureRoleConversation } from '../../../learn/roleWork/roles'
 import { groupPeer, inboundEnvelope, peerOf, userPeer } from '../../../learn/roleWork/channels'
 import { deliverInbound } from '../../../learn/roleWork/dispatch'
-import { mentionedRoleIdsOf, type MentionRole } from '../../../learn/roleWork/groupTargets'
+import { firstMentionedRoleIdOf, mentionedRoleIdsOf, type MentionRole } from '../../../learn/roleWork/groupTargets'
 import { appendGroupMessage, getGroupChatMessages, groupThreadIdOf, patchGroupMessage, subscribeGroupChat, threadRootIdOf } from '../../../learn/groupChat'
 import type { GroupChatAgent } from '../../agent/panel/GroupChatPanel'
 
@@ -66,13 +66,24 @@ export function useGroupChatBridge({
     // 正文里出现 @ 却解析不到任何成员时拒绝，避免误投给默认调度龟；
     // 正文完全没有 @ 时才使用调用方给的默认目标（群聊 UI 传 dispatcher）。
     if (!explicitMentions && body.includes('@')) return false
-    const targets = (explicitMentions ? mentionedIds : targetIds)
-      .map((id) => agents.find((a) => a.id === id))
-      .filter((a): a is GroupChatAgent => Boolean(a))
+    const targets = [...new Set((explicitMentions ? mentionedIds : targetIds).filter((id) => agents.some((a) => a.id === id)))]
     if (!targets.length) return false
+    /*
+     * 用户群聊消息的首个 @ 是唯一 mention：它会被激活。
+     * 其余 @ 只抄送上下文（silent），不启动 loop。没有 @ 时默认目标是 mention。
+     */
+    const activeId = explicitMentions ? firstMentionedRoleIdOf(body, mentionRoles) : targets[0]
+    const active = activeId ? agents.find((a) => a.id === activeId) : undefined
+    if (!active) return false
     const from = userPeer()
     const now = Date.now()
-    const mentions = explicitMentions ? targets.map((a) => peerOf('agent', a.id, a.name)) : []
+    const mentions = explicitMentions
+      ? targets.map((id) => {
+          const agent = agents.find((a) => a.id === id)!
+          return peerOf('agent', id, agent.name)
+        })
+      : []
+    const activePeer = peerOf('agent', active.id, active.name)
     const message: ChannelMessage = {
       id: 'g-' + crypto.randomUUID(),
       kind: 'group',
@@ -82,6 +93,7 @@ export function useGroupChatBridge({
       text: body,
       ts: now,
       ...(mentions.length ? { mentions } : {}),
+      mention: activePeer,
       goalId,
       ...(threadId && threadRootId ? { threadId, threadRootId } : {}),
     }
@@ -89,9 +101,10 @@ export function useGroupChatBridge({
     // 一级主楼先被评论时补上 threadId（它仍是一级消息，因为 threadRootId 只在评论里出现）。
     if (threadId && threadRootId) patchGroupMessage(threadRootId, { threadId })
     for (const agent of targets) {
-      const ensured = ensureRoleConversation(getLatest(), agent.id as AgentVoice, goalId)
+      const ensured = ensureRoleConversation(getLatest(), agent as AgentVoice, goalId)
       if (ensured.store !== getLatest()) set(ensured.store)
-      const to = peerOf('agent', agent.id, agent.name)
+      const to = peerOf('agent', agent, agents.find((a) => a.id === agent)?.name ?? agent)
+      const isMention = agent === active.id
       const inbound = inboundEnvelope({
         channel: 'group',
         from,
@@ -100,13 +113,14 @@ export function useGroupChatBridge({
         id: message.id,
         ts: now,
         ...(mentions.length ? { mentions } : {}),
+        ...(isMention ? { mention: activePeer } : {}),
         goalId,
         ...(threadId && threadRootId ? { threadId, threadRootId } : {}),
       })
       deliverInbound(
         {
           conversationId: ensured.conversationId,
-          role: agent.id as AgentVoice,
+          role: agent as AgentVoice,
           goalId,
           text: body,
           stamp: {
@@ -117,10 +131,13 @@ export function useGroupChatBridge({
             envelopeId: message.id,
             goalId,
             ...(threadId && threadRootId ? { threadId, threadRootId } : {}),
+            ...(isMention ? { mention: true } : {}),
           },
           envelopeId: message.id,
         },
         inbound,
+        // 只有 mention 会起轮；其他被 @ 的成员只拿到上下文。
+        { silent: !isMention },
       )
     }
     return true

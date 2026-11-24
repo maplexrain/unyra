@@ -12,7 +12,7 @@
  * 每条消息本身（画法与 memo）在 MessageBubble.tsx 的 MessageRow 里，这里只把它们排成一列。
  */
 
-import { Fragment, useMemo } from 'react'
+import { useMemo } from 'react'
 import { MessageSquare, Sparkles } from 'lucide-react'
 import WaveBars from '../../WaveBars'
 import { CompactionDivider } from './CompactionDivider'
@@ -20,7 +20,6 @@ import { HiddenDivider, MessageRow, Parts } from './MessageBubble'
 import { MindMessageRow } from './MindMessageRow'
 import { MindContextSummary } from './MindContextSummary'
 import { WorkDispatchList } from './WorkDispatchList'
-import { isWorkDispatchMessage } from './workDispatch'
 import { useRecentWindow } from './useRecentWindow'
 import type { MessageListProps } from './MessageList'
 import type { InjectItem } from './partGroups'
@@ -254,17 +253,10 @@ export function useMessageList({
           onOpenFile,
           goalId,
         }
-        return (
-          <Fragment key={m.id}>
-            {mind ? <MindMessageRow {...rowProps} agentName={agentName} /> : <MessageRow {...rowProps} />}
-            {mind && works.length > 0 && isWorkDispatchMessage(m) && (
-              <WorkDispatchList
-                works={works}
-                onOpenWork={onOpenMindWork}
-                activeWorkId={activeWorkId}
-              />
-            )}
-          </Fragment>
+        return mind ? (
+          <MindMessageRow key={m.id} {...rowProps} agentName={agentName} />
+        ) : (
+          <MessageRow key={m.id} {...rowProps} />
         )
       })}
 
@@ -301,6 +293,11 @@ export function useMessageList({
             <span className="moji-sheen">{loopLabel}</span>
           </div>
         )}
+
+      {/* 当前 role 的 work 上下文固定挂在对话列表最下方；不再在左栏单独占一块。 */}
+      {mind && works.length > 0 && (
+        <WorkDispatchList works={works} onOpenWork={onOpenMindWork} activeWorkId={activeWorkId} />
+      )}
     </>
   )
 }

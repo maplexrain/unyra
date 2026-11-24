@@ -805,6 +805,7 @@ export function useAgent(opts: {
           ...(req.files ? { files: req.files } : {}),
           ...(req.hidden ? { hidden: true } : {}),
           ...(req.mark ? { mark: req.mark } : {}),
+          ...(req.delivery ? { delivery: req.delivery } : {}),
         })
         const cur = conversationById(getLatest(), req.conversationId)
         if (cur) {

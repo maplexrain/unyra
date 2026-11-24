@@ -461,19 +461,19 @@ describe('智能体团队响应式布局断点与 :side 状态隔离', () => {
         root.render(createElement(AgentSlot, { deps }))
       })
 
-      // 1. 宽度 1300px：左栏（上块声部名册 + 下块当前声部对话历史）+ 中栏；右栏已退役
+      // 1. 宽度 1300px：左栏（声部名册，工作上下文已移到对话列表底部）+ 中栏；右栏已退役
       act(() => {
         observeCb?.([{ contentRect: { width: 1300 } }])
       })
       expect(host.querySelector('[aria-label="对话历史"]')).toBeNull()
       expect(host.querySelector('[data-roster-collapsed="true"]')).toBeNull()
-      expect(host.querySelector('[data-roster-work-list="group"]')).not.toBeNull()
+      expect(host.querySelector('[data-roster-work-list="group"]')).toBeNull()
 
       // 2. 宽度 1050px：布局同上（旧右栏断点已无意义）
       act(() => {
         observeCb?.([{ contentRect: { width: 1050 } }])
       })
-      expect(host.querySelector('[data-roster-work-list="group"]')).not.toBeNull()
+      expect(host.querySelector('[data-roster-work-list="group"]')).toBeNull()
       expect(host.querySelector('[data-roster-collapsed="true"]')).toBeNull()
 
       // 3. 宽度 700px（< 800）：不显示对话历史，智能体列表变为顶部横栏（不再有收起轨）
@@ -492,7 +492,7 @@ describe('智能体团队响应式布局断点与 :side 状态隔离', () => {
       act(() => {
         observeCb?.([{ contentRect: { width: 1300 } }])
       })
-      expect(host.querySelector('[data-roster-work-list="group"]')).not.toBeNull()
+      expect(host.querySelector('[data-roster-work-list="group"]')).toBeNull()
       expect(host.querySelector('[data-roster-collapsed="true"]')).toBeNull()
       expect(localStorage.getItem('moji:agent-team:left-collapsed')).toBeNull()
       expect(localStorage.getItem('moji:agent-team:right-collapsed')).toBeNull()

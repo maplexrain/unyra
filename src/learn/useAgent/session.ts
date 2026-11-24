@@ -110,14 +110,29 @@ export function useAgentSession(deps: {
           deliverToRole: (work, text, meta) => {
             const from = peerOf('work', work.id, work.name)
             const to = peerOf('agent', work.roleId, roleName)
-            const envelope = inboundEnvelope({ channel: 'work', from, to, text, ...(meta.extra ? { extra: meta.extra } : {}) })
+            const envelope = inboundEnvelope({
+              channel: 'work',
+              from,
+              to,
+              text,
+              ...(meta.extra ? { extra: meta.extra } : {}),
+              ...(meta.delivery ? { delivery: meta.delivery } : {}),
+            })
             deliverInbound(
               {
                 conversationId: work.roleConversationId,
                 role: work.roleId,
                 text,
-                stamp: { channel: 'work', from, to, ts: envelope.ts, envelopeId: envelope.id },
+                stamp: {
+                  channel: 'work',
+                  from,
+                  to,
+                  ts: envelope.ts,
+                  envelopeId: envelope.id,
+                  ...(meta.delivery ? { delivery: meta.delivery } : {}),
+                },
                 envelopeId: envelope.id,
+                ...(meta.delivery ? { delivery: meta.delivery } : {}),
                 ...(meta.quoteMessageId ? { mark: '工作交付' } : {}),
               },
               envelope,
@@ -186,10 +201,16 @@ export function useAgentSession(deps: {
               return { ...c, channels: [...(c.channels ?? []), envelope].slice(-200), updatedAt: Date.now() }
             })
           },
-          deliverToRole: (work, text) => {
+          deliverToRole: (work, text, meta) => {
             const from = peerOf('work', work.id, work.name)
             const to = peerOf('agent', 'free', roleName)
-            const envelope = inboundEnvelope({ channel: 'work', from, to, text })
+            const envelope = inboundEnvelope({
+              channel: 'work',
+              from,
+              to,
+              text,
+              ...(meta.delivery ? { delivery: meta.delivery } : {}),
+            })
             // 与目标 role 同一条路径：通道落账 + 空闲立即起轮 / 运行中跳边界注入。
             // dispatcher 尚未注册（极端初始化阶段）才走旧的「留到下一轮」兜底；
             // 运行中返回 false 是「已排队」，不能再落一遍账。
@@ -199,8 +220,16 @@ export function useAgentSession(deps: {
                   conversationId,
                   role: 'free',
                   text,
-                  stamp: { channel: 'work', from, to, ts: envelope.ts, envelopeId: envelope.id },
+                  stamp: {
+                  channel: 'work',
+                  from,
+                  to,
+                  ts: envelope.ts,
                   envelopeId: envelope.id,
+                  ...(meta.delivery ? { delivery: meta.delivery } : {}),
+                },
+                  envelopeId: envelope.id,
+                  ...(meta.delivery ? { delivery: meta.delivery } : {}),
                 },
                 envelope,
               )
@@ -216,6 +245,7 @@ export function useAgentSession(deps: {
                   role: 'assistant',
                   parts: [{ type: 'channel-message', channelId: envelope.id, text }],
                   ts: Date.now(),
+                  ...(meta.delivery ? { delivery: meta.delivery } : {}),
                 },
               ],
               updatedAt: Date.now(),

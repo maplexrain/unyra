@@ -102,6 +102,10 @@ export interface ChannelStamp {
   threadId?: string
   /** 该消息属于哪条一级主楼；只有评论区里的消息才填，一级主楼不填 */
   threadRootId?: string
+  /** 本条群消息是否把当前 role 作为唯一 mention 激活；缺省 = 只是 @ 抄送，不一定是自己的任务 */
+  mention?: boolean
+  /** 这条入站消息自带的交付账；role mind 里的用户消息据此展示交付组件 */
+  delivery?: DeliveryRecord
 }
 
 /** 通道消息里的额外数据：正文之外的日志 / 原始结果 / 长文本，界面折叠展示，避免刷屏。 */
@@ -146,8 +150,15 @@ export interface ChannelMessage {
   ask?: ChannelAsk
   /** work.send / chat.send 引用转发的用户消息 id */
   quoteMessageId?: string
-  /** 群聊里被 @ 的收件人（一条消息可点名多位） */
+  /** 群聊里被 @ 的收件人（只抄送上下文，不激活；一条消息可点名多位） */
   mentions?: ChannelPeer[]
+  /**
+   * 本条消息唯一被激活的 mention。一条消息最多一个；只有它会在送达之外启动一轮。
+   * 用户消息的首个 @ 由宿主解析成 mention，agent 侧显式传 `mention`。
+   */
+  mention?: ChannelPeer
+  /** 本轮交付账（work 交付 / role 转发到通道时带上，界面在气泡下方展示） */
+  delivery?: DeliveryRecord
   /** 所属学习目标（群聊按目标分开；其它通道可省略） */
   goalId?: string
   /**
@@ -542,6 +553,8 @@ export interface WorkSession {
   /** 自己独立的上下文：role 下发的任务是一条 user 消息，每次任务是 assistant 回复 */
   messages: ConversationMessage[]
   lastDelivery?: string
+  /** 最近一次 `api.delivery.submit` 的结构化交付账；role 转发时原样带走 */
+  delivery?: DeliveryRecord
   lastIssue?: string
   execTrace: WorkExecuteTrace[]
 }

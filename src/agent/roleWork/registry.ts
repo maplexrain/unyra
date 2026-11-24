@@ -9,6 +9,7 @@
 import type { AgentProfileId } from '../agentProfile'
 import type { ChannelAsk, ChannelMessage, Conversation, ConversationMessage, WorkSession, WorkStatus } from '../types'
 import { normalizeAskForm } from '../sandbox/askForm'
+import { normalizeDelivery } from '../delivery'
 
 /** 旧 subagent 数据（只在迁移时读，旧结构已从类型面移除） */
 interface LegacySubSession {
@@ -65,6 +66,11 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
     if (m.direction !== 'in' && m.direction !== 'out') continue
     if (!m.from || !m.to || typeof m.text !== 'string') continue
     const ask = normalizeChannelAsk(m.ask)
+    const delivery = normalizeDelivery(m.delivery)
+    const mention =
+      m.mention && typeof m.mention === 'object' && typeof m.mention.id === 'string' && typeof m.mention.kind === 'string'
+        ? m.mention
+        : undefined
     out.push({
       id: m.id,
       kind: m.kind,
@@ -77,6 +83,8 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
       ...(ask ? { ask } : {}),
       ...(m.quoteMessageId ? { quoteMessageId: m.quoteMessageId } : {}),
       ...(Array.isArray(m.mentions) && m.mentions.length ? { mentions: m.mentions } : {}),
+      ...(mention ? { mention } : {}),
+      ...(delivery ? { delivery } : {}),
       ...(typeof m.goalId === 'string' && m.goalId ? { goalId: m.goalId } : {}),
       ...(typeof m.threadId === 'string' && m.threadId.includes('>') ? { threadId: m.threadId } : {}),
       ...(typeof m.threadRootId === 'string' && m.threadRootId ? { threadRootId: m.threadRootId } : {}),
@@ -105,6 +113,7 @@ export function normalizeWork(raw: unknown, roleId: AgentProfileId, conversation
   if (!name) return null
   const messages = Array.isArray(w.messages) ? w.messages.map(normalizeMessage).filter((m): m is ConversationMessage => !!m) : []
   const status = STATUSES.includes(w.status as WorkStatus) ? (w.status as WorkStatus) : 'idle'
+  const delivery = normalizeDelivery(w.delivery)
   return {
     id: w.id,
     name,
@@ -118,6 +127,7 @@ export function normalizeWork(raw: unknown, roleId: AgentProfileId, conversation
     systemPrompt: typeof w.systemPrompt === 'string' ? w.systemPrompt : '',
     messages,
     ...(w.lastDelivery ? { lastDelivery: w.lastDelivery } : {}),
+    ...(delivery ? { delivery } : {}),
     ...(w.lastIssue ? { lastIssue: w.lastIssue } : {}),
     execTrace: Array.isArray(w.execTrace)
       ? w.execTrace.filter((t) => t && typeof t.title === 'string' && typeof t.at === 'number').slice(-30)

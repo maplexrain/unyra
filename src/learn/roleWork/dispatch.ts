@@ -22,6 +22,8 @@ export interface RoleTurnRequest {
   mark?: string
   images?: ConversationMessage['images']
   files?: ConversationMessage['files']
+  /** Work / role 转发带来的交付账；随入站消息落到 mind 消息里 */
+  delivery?: ChannelMessage['delivery']
 }
 
 export interface RoleWorkDispatcher {

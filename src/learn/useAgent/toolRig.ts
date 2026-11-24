@@ -30,7 +30,7 @@ import { ensureRoleConversation, roleConversationsOfGoal } from '../roleWork/rol
 import { registerAskTimer } from '../roleWork/askTimers'
 import { groupPeer, inboundEnvelope, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
 import { deliverInbound } from '../roleWork/dispatch'
-import { groupMentionLimitError, groupSelfMentionError, hasMentionOf, mentionedRoleIdsOf, mentionsUserInGroup, type MentionRole } from '../roleWork/groupTargets'
+import { groupSelfMentionError, hasMentionOf, mentionedRoleIdsOf, mentionsUserInGroup, type MentionRole } from '../roleWork/groupTargets'
 import { appendGroupMessage, patchGroupMessage } from '../groupChat'
 import { planGroupThread } from '../roleWork/groupThread'
 import { emptyDelivery, mergeDelivery, normalizeDelivery } from '../../agent/delivery'
@@ -226,6 +226,14 @@ export function rigTurnTools(io: {
     roleNameOf,
     messageOf: (messageId): ConversationMessage | null =>
       getLatest().conversations.find((c) => c.id === target.conversationId)?.messages.find((m) => m.id === messageId) ?? null,
+    deliveryOf: (messageId) => {
+      const conv = getLatest().conversations.find((c) => c.id === target.conversationId)
+      // 先找 role 会话消息（work 交付唤醒后的那条 user 消息带 delivery），
+      // 再找通道流水（work / agent 信封本身就带 delivery，不必等它进 messages）。
+      const fromMessage = conv?.messages.find((m) => m.id === messageId)?.delivery
+      if (fromMessage) return fromMessage
+      return conv?.channels?.find((m) => m.id === messageId)?.delivery
+    },
     resolveAttachments: (items) =>
       resolveChatAttachments(items, {
         getLatest,
@@ -242,7 +250,7 @@ export function rigTurnTools(io: {
       })
       return { ok: r.ok, channel: 'work', to: name, ...(r.error ? { error: r.error } : {}) }
     },
-    sendToGroup: async ({ text, mentions, messageId, attachments, extra, silent }) => {
+    sendToGroup: async ({ text, mentions, mention, messageId, attachments, extra, delivery, silent }) => {
       const goalId = target.goalId
       if (!goalId) return { ok: false, error: '当前 role 会话不挂在目标上，无法进入群聊' }
       const mentionRoles: MentionRole[] = AGENT_ROLE_IDS.filter((id) => id !== 'free').map((id) => ({
@@ -250,9 +258,9 @@ export function rigTurnTools(io: {
         names: [roleNameOf(id), DEFAULT_AGENT_NAME[id]],
       }))
       /*
-       * 正文里的 `@名字` 是群聊投递的唯一真源：模型传的 to / mentions 只作为补充。
-       * 否则模型把「@导师龟」写成 to=designer 时，设计龟会真的收到导师的活。
-       * 有 @ 时以正文为准；没有 @ 时才用 to / mentions，并要求正文补上点名。
+       * 正文里的 `@名字` 是群聊投递的唯一真源：模型传的 mentions 只作补充。
+       * 所有 @ 都只是「把这句话抄进对方上下文」，不激活任何 loop。
+       * 唯一会起轮的是 `mention`（一条消息最多一个）。
        */
       const textIds = mentionedRoleIdsOf(text, mentionRoles)
       const mentionsUser = mentionsUserInGroup(text, userPeer().name)
@@ -280,27 +288,41 @@ export function rigTurnTools(io: {
                 return { ok: false, error: `群聊消息要投给 ${roleNameOf(id)}，正文必须显式写 \`@${roleNameOf(id)} \`（名字后留一个空格）` }
               }
             }
-          } else if (text.includes('@') && !mentionsUser) {
-            // 写了 @ 却一个成员都没解析出来：不能悄悄退回默认调度，否则会把活投错。
+          } else if (text.includes('@')) {
+            // 写了 @ 却一个成员都没解析出来：不能悄悄退回默认调度，否则会把话投错。
             return { ok: false, error: '群聊正文里的 @ 没有匹配到任何成员；请检查名字，并在 `@名字 ` 后留一个空格' }
-          } else if (!text.includes('@')) {
-            // 群聊没有点名时由调度龟兜底接收；这是用户的默认路由，不是广播。
-            ids = ['dispatcher']
           }
         }
       }
-      const mentionLimitError = groupMentionLimitError(ids, mentionsUser)
-      if (mentionLimitError) return { ok: false, error: mentionLimitError }
+      /*
+       * mention：唯一会启动目标一轮的那个人。它必须在正文里被 @；@ 可以有很多个，mention 只能有一个。
+       * ChatOps 把旧 `to` 兼容成 mention；用户消息则由群聊桥把首个 @ 解析成 mention。
+       */
+      const rawMention = mention?.trim()
+      let mentionId: AgentProfileId | undefined
+      if (rawMention) {
+        mentionId = isAgentRoleId(rawMention)
+          ? (rawMention as AgentProfileId)
+          : AGENT_ROLE_IDS.find((id) => id !== 'free' && (roleNameOf(id) === rawMention || DEFAULT_AGENT_NAME[id] === rawMention))
+        if (!mentionId) return { ok: false, error: 'mention 的目标 role id / 名字不合法' }
+        if (mentionId === voice) {
+          return { ok: false, error: `群聊里不能 mention 自己（${roleNameOf(voice)}）；mention 只能给对方` }
+        }
+        if (!ids.includes(mentionId)) {
+          return { ok: false, error: `mention 的 ${roleNameOf(mentionId)} 必须同时出现在正文 \`@${roleNameOf(mentionId)} \` 里` }
+        }
+      }
+      if (silent && mentionId) {
+        return { ok: false, error: 'silent 静默汇报不能带 mention：它只入上下文，不激活目标' }
+      }
       const from = peerOf('agent', voice, roleName)
-      // 正文没有 @ 时默认投给调度龟，但不要凭空造一条 @ 提示；只有真的点名了才带 mentions。
-      const explicitMentions = textIds.length > 0 || Boolean(mentions?.length)
-      const mentionPeers = explicitMentions ? ids.map((id) => peerOf('agent', id, roleNameOf(id))) : []
+      // 正文没有 @ 时不再默认投给调度龟：agent 的群聊发言可以只是说给群里听。
+      const mentionPeers = ids.map((id) => peerOf('agent', id, roleNameOf(id)))
+      const activePeer = mentionId ? mentionPeers.find((p) => p.id === mentionId) : undefined
       /*
        * 评论串路由（纯函数 planGroupThread）：
-       * - 最终 @用户 的汇报、以及 ask 气泡留在一级群聊；
-       * - 其余 agent 消息先看自己会话里最近一条群消息的 threadId：在评论串里就继续原串；
-       * - 最近不在串里、且这条确实 @ 了某位 role（任务交流）→ 以本条消息为主楼开一条新串。
-       * 索引严格 `通道id>消息id`（见 learn/groupChat 的 groupThreadIdOf）。
+       * - 只有真正会激活某位 role 的 mention 才开 / 续任务串；纯抄送的 @ 不拉人开会；
+       * - 最终 @用户 的汇报、以及 ask 气泡留在一级群聊。
        */
       const conv = getLatest().conversations.find((c) => c.id === target.conversationId)
       const latestGroupMsg = [...(conv?.channels ?? [])].reverse().find((m) => m.kind === 'group')
@@ -310,7 +332,7 @@ export function rigTurnTools(io: {
         messageId: groupMsgId,
         latestThreadId: latestGroupMsg?.threadId,
         mentionsUser,
-        targetIds: ids,
+        targetIds: mentionId ? [mentionId] : [],
       })
       const threadId = threadPlan.threadId
       const threadRootId = threadPlan.threadRootId
@@ -323,6 +345,8 @@ export function rigTurnTools(io: {
         ...(messageId ? { quoteMessageId: messageId } : {}),
         ...(attachments ? { attachments } : {}),
         ...(mentionPeers.length ? { mentions: mentionPeers } : {}),
+        ...(activePeer ? { mention: activePeer } : {}),
+        ...(delivery ? { delivery } : {}),
         ...(extra ? { extra } : {}),
         goalId,
         ...(threadId ? { threadId } : {}),
@@ -345,7 +369,9 @@ export function rigTurnTools(io: {
           ts: groupMsg.ts,
           ...(attachments ? { attachments } : {}),
           ...(extra ? { extra } : {}),
+          ...(delivery ? { delivery } : {}),
           mentions: mentionPeers,
+          ...(activePeer && activePeer.id === id ? { mention: activePeer } : {}),
           goalId,
           ...(threadId ? { threadId } : {}),
           ...(threadRootId ? { threadRootId } : {}),
@@ -366,13 +392,17 @@ export function rigTurnTools(io: {
               goalId,
               ...(threadId ? { threadId } : {}),
               ...(threadRootId ? { threadRootId } : {}),
+              ...(id === mentionId ? { mention: true } : {}),
+              ...(delivery ? { delivery } : {}),
             },
             envelopeId: groupMsg.id,
+            ...(delivery ? { delivery } : {}),
             ...(attachments?.images ? { images: attachments.images } : {}),
             ...(attachments?.files ? { files: attachments.files } : {}),
           },
           inbound,
-          { silent },
+          // 只有唯一的 mention 起轮；其余 @ 一律只注入上下文。
+          { silent: silent || id !== mentionId },
         )
       }
       return {
@@ -380,6 +410,7 @@ export function rigTurnTools(io: {
         channel: 'group',
         id: groupMsg.id,
         ...(ids.length ? { to: ids.join(',') } : {}),
+        ...(mentionId ? { mention: mentionId } : {}),
       }
     },
   })

@@ -5,7 +5,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { tabKey, tabTitle, tabTrail, tabNodeId } from '../src/learn/tabs'
 import { normalizeTab } from '../src/learn/store/normalize/tabs'
 import type { AgentTabRef, LearnStore } from '../src/learn/types'
-import type { Conversation, WorkSession } from '../src/agent/types'
+import type { Conversation } from '../src/agent/types'
 import { agentTabKey } from '../src/learn/agentTabs'
 import { hydrateFreeChat } from '../src/learn/freeChat'
 import { deleteConversation } from '../src/learn/graph/conversations'
@@ -439,36 +439,13 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
     host.remove()
   })
 
-  it('AgentRosterSidebar 工作上下文块（下块）：只显示当前 agent 的 work，点击打开 work 页签', () => {
-    const onOpenWork = vi.fn()
-    const work = (id: string, name: string, at: number, extra: Partial<WorkSession> = {}): WorkSession => ({
-      id,
-      name,
-      roleId: 'free',
-      roleConversationId: 'f-new',
-      status: 'idle',
-      runs: 1,
-      createdAt: at,
-      lastActiveAt: at,
-      runtimeMs: 0,
-      systemPrompt: '',
-      messages: [],
-      execTrace: [],
-      ...extra,
-    })
-    const worksByAgent = {
-      free: [work('w-free-new', '整理自由聊天', 9000, { runs: 2, lastDelivery: '交付一' }), work('w-free-old', '旧工作', 1000)],
-      tutor: [work('w-tutor', '推导极限', 8000, { roleId: 'tutor', roleConversationId: 't-1', status: 'running' })],
-    }
-
+  it('AgentRosterSidebar 不再把 work 列表挂在名册下方', () => {
     const propsFor = (mode: 'free' | 'tutor') =>
       createElement(AgentRosterSidebar, {
         mode,
         onSelectMode: () => {},
         activeGoalTitle: '线性代数',
         voiceStats: {},
-        worksByAgent,
-        onOpenWork,
         activeGoalId: 'g1',
         goals: [],
         goalTitleOf: () => '',
@@ -480,48 +457,14 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
     act(() => {
       root.render(propsFor('free'))
     })
-
-    // 下块只渲染当前 agent（free）的 work；导师的 work 不出现
-    expect(host.querySelector('[data-roster-work-list="free"]')).not.toBeNull()
-    expect(host.querySelector('[data-roster-work-list="tutor"]')).toBeNull()
-    const rows = [...host.querySelectorAll<HTMLElement>('[data-work-id]')]
-    expect(rows.map((r) => r.dataset.workId)).toEqual(['w-free-new', 'w-free-old'])
-    expect(host.textContent).toContain('2 次任务')
-    expect(host.textContent).toContain('交付一')
-
-    act(() => {
-      host.querySelector<HTMLButtonElement>('[data-work-id="w-free-old"]')!.click()
-    })
-    expect(onOpenWork).toHaveBeenCalledWith('free', 'w-free-old')
-
-    // role 层每个 agent 只有一段会话，下块不再提供新建 / 选择 / 删除对话
-    expect(host.querySelector('[data-conversation-id]')).toBeNull()
-    expect([...host.querySelectorAll<HTMLButtonElement>('button')].some((b) => b.textContent?.includes('新建对话'))).toBe(false)
+    expect(host.querySelector('[data-roster-work]')).toBeNull()
+    expect(host.querySelector('[data-roster-work-list]')).toBeNull()
+    expect(host.querySelector('[data-work-id]')).toBeNull()
 
     act(() => {
       root.unmount()
     })
     host.remove()
-
-    // 切到导师声部：下块整体换成导师的 work
-    const host2 = document.createElement('div')
-    document.body.appendChild(host2)
-    const root2 = createRoot(host2)
-    act(() => {
-      root2.render(propsFor('tutor'))
-    })
-    expect(host2.querySelector('[data-roster-work-list="tutor"]')).not.toBeNull()
-    expect(host2.querySelector('[data-roster-work-list="free"]')).toBeNull()
-    expect(host2.textContent).toContain('运行中')
-    act(() => {
-      host2.querySelector<HTMLButtonElement>('[data-work-id="w-tutor"]')!.click()
-    })
-    expect(onOpenWork).toHaveBeenCalledWith('tutor', 'w-tutor')
-
-    act(() => {
-      root2.unmount()
-    })
-    host2.remove()
   })
   it('聊天列表预览与标题剥掉 HTML/SVG/围栏代码等渲染态内容（占位符 + 纯文本）', () => {
     const svgConv = {

@@ -116,7 +116,7 @@ describe('mind 上下文账与 work 观察列表', () => {
     r.cleanup()
   })
 
-  it('work 派发消息后插入观察列表；普通消息不插', () => {
+  it('work 上下文固定挂在对话列表最下方；与最新一条消息是否派发 work 无关', () => {
     const r = render({
       messages: [workMessage],
       mind: true,
@@ -140,7 +140,7 @@ describe('mind 上下文账与 work 观察列表', () => {
     }
     r.cleanup()
     const r2 = render({ messages: [plain], mind: true, works: [work] })
-    expect(r2.host.querySelector('[data-work-dispatch-list]')).toBeNull()
+    expect(r2.host.querySelector('[data-work-dispatch-list]')).not.toBeNull()
     r2.cleanup()
   })
 

@@ -1,28 +1,25 @@
 /**
  * Agent 列表侧栏：团队角色阵容的名册（导师 / 调度员 / 出卷师 / 设计师 / 调研员 / 维修员）。
  * 两种形态（variant）：
- * - side（默认）：左侧竖栏，垂直分成两块（高度权重 2:1，各自溢出滚动）——
- *   上块是 role 名册，下块是**当前选中 agent 的 work 上下文**（点击打开 work 页签）；
- *   可整体折叠成 48px 轨（forceCollapsed 时锁定不可展开）；
+ * - side（默认）：左侧竖栏，上方是 role 名册；工作上下文列表已移到 agent 对话列表底部，
+ *   这里只在名册下方保留导师的目标选择器；可整体折叠成 48px 轨（forceCollapsed 时锁定不可展开）；
  * - top：容器宽度 < 800 时由 AgentSlot 切换的顶部横栏——横排 role 按钮、
  *   右侧展示当前 role 的近况摘要，不再有折叠语义（横排本身就是收起形态）。
  *
  * role 的角色标签 / 兜底图标 / 配色在 agentRoster.ts 的注册表里；名字与头像来自
- * 各自的 profile（智能体独立设置）。role 层每个 agent 只有一段会话，所以下块不再列
- * 会话历史；真正被派出去执行、需要被看见的是 work，它们由 work / chat.send 自动建立。
+ * 各自的 profile（智能体独立设置）。role 层每个 agent 只有一段会话；真正被派出去
+ * 执行、需要被看见的是 work，它们显示在对应 agent 对话列表的最下方。
  * 设置入口在名册卡的**头像**上：点头像直接开这位 role 的独立设置（AgentSettingsView）。
  */
 
 import { useMemo, useState } from 'react'
 import {
-  ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
   Pin,
   Settings2,
   Users,
 } from 'lucide-react'
-import type { WorkSession } from '../../../agent/types'
 import { DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import type { LearningGoal } from '../../../learn/types'
 import { t, useLocale } from '../../../i18n'
@@ -62,12 +59,8 @@ export interface AgentRosterSidebarProps {
   persistCollapsed?: boolean
   /** 形态：side=左侧竖栏（默认）；top=窄宽度（容器 <800）下的顶部横栏 */
   variant?: 'side' | 'top'
-  /* ---------- 下块：当前选中 agent 的 work 上下文（点击打开 work 页签） ---------- */
-  /** 每个 agent 名下的 work 会话（按 lastActiveAt 降序）；下块只展示当前选中的那一份 */
-  worksByAgent?: Partial<Record<AgentTeamMode, WorkSession[]>>
-  /** 打开某个 work 页签（AgentSlot 已按 roleConversationId 接好页签） */
-  onOpenWork?: (agentId: AgentTeamMode, workId: string) => void
-  /** 导师声部的作用域目标：work 列表跟着当前目标走 */
+  /* ---------- 名册底部：导师目标选择器（work 列表已移到对话列表底部） ---------- */
+  /** 导师声部的作用域目标 */
   activeGoalId?: string | null
   /** 固定目标的页签（:fixside）里目标不可切换 */
   goalLocked?: boolean
@@ -93,8 +86,6 @@ export function AgentRosterSidebar({
   forceCollapsed = false,
   persistCollapsed = true,
   variant = 'side',
-  worksByAgent,
-  onOpenWork,
   activeGoalId,
   goalLocked,
   goals,
@@ -154,110 +145,28 @@ export function AgentRosterSidebar({
   }, [activeGoalTitle, agentAvatars, agentNames, pinnedAgents, voiceStats])
 
   /**
-   * 工作上下文块（下块）的主体：当前 agent 名下的 work 会话。
-   *
-   * role 层每个 agent 只有一段会话，再把它列在下块没有意义；真正需要被看见、被点开的是
-   * work——role 派出的任务和执行过程都住在那里。列表只回答「有哪些 work、各自到哪一步」，
-   * 点一下就把对应的 work 页签置前（见 AgentSlot 的 onOpenWork）。
+   * 顶栏形态下不显示目标切换；侧栏底部保留一个紧凑目标选择器：
+   * 工作上下文列表已经挪到 agent 对话列表最下方（见 AgentPanel/useMessageList），
+   * 名册下方不再挂 work 列表，但导师的目标作用域仍需要入口。
    */
-  const workSection = (agentId: AgentTeamMode) => {
-    const works = worksByAgent?.[agentId] ?? []
-    return (
-      <>
-        {agentId === 'tutor' && !goalLocked && (goals?.length ?? 0) > 1 && onSelectGoal && (
-          <select
-            aria-label={t('选择学习目标')}
-            value={activeGoalId ?? ''}
-            onChange={(e) => {
-              if (e.target.value) onSelectGoal(e.target.value)
-            }}
-            className="w-full truncate rounded-lg border border-line/70 bg-card/60 px-1.5 py-1 text-[11px] text-ink-soft outline-none transition hover:border-line-strong focus:border-seal/60"
-          >
-            {!activeGoalId && <option value="">{t('请选择学习目标')}</option>}
-            {(goals ?? []).map((g) => (
-              <option key={g.id} value={g.id}>
-                {goalTitleOf?.(g.id) ?? g.id}
-              </option>
-            ))}
-          </select>
-        )}
-        {works.length === 0 ? (
-          <p className="px-1.5 py-1 text-[10.5px] leading-relaxed text-ink-faint">
-            {agentId === 'tutor' && !activeGoalId
-              ? t('请先选择一个学习目标')
-              : t('还没有 work 上下文；role 派出任务后会自动出现。')}
-          </p>
-        ) : (
-          works.map((work) => {
-            const running = work.status === 'running'
-            const failed = work.status === 'error'
-            const stopped = work.status === 'stopped' || work.status === 'interrupted'
-            const statusText = running
-              ? t('运行中')
-              : failed
-                ? t('出错')
-                : stopped
-                  ? t('已停止')
-                  : t('空闲')
-            const preview = (work.lastDelivery || work.lastIssue || '').replace(/\s+/g, ' ').trim()
-            return (
-              <button
-                key={work.id}
-                type="button"
-                data-work-id={work.id}
-                onClick={() => onOpenWork?.(agentId, work.id)}
-                title={t('点击查看 work')}
-                className={
-                  'group/wk flex w-full min-w-0 flex-col gap-0.5 rounded-lg px-1.5 py-1 text-left transition hover:bg-line/40 ' +
-                  (running ? 'moji-agent-live ' : '')
-                }
-              >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span
-                    aria-hidden="true"
-                    className={
-                      'h-1.5 w-1.5 shrink-0 rounded-full ' +
-                      (running
-                        ? 'animate-pulse bg-seal'
-                        : failed
-                          ? 'bg-seal'
-                          : stopped
-                            ? 'bg-amber-500'
-                            : 'bg-ink-faint/45')
-                    }
-                  />
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] leading-snug text-ink-soft group-hover/wk:text-ink">
-                    {work.name}
-                  </span>
-                  <span className="shrink-0 text-[10.5px] tabular-nums text-ink-faint">
-                    {formatConversationTime(work.lastActiveAt)}
-                  </span>
-                  <ChevronRight
-                    size={11}
-                    className="shrink-0 opacity-0 transition group-hover/wk:opacity-50"
-                    aria-hidden="true"
-                  />
-                </span>
-                <span className="flex min-w-0 items-center gap-1.5 pl-3 text-[10.5px] text-ink-faint">
-                  <span className={running ? 'text-seal-deep' : undefined}>{statusText}</span>
-                  <span>·</span>
-                  <span>{t('{0} 次任务', work.runs)}</span>
-                  {preview && (
-                    <>
-                      <span>·</span>
-                      <span className="min-w-0 flex-1 truncate" title={preview}>
-                        {preview}
-                      </span>
-                    </>
-                  )}
-                </span>
-              </button>
-            )
-          })
-        )}
-      </>
-    )
-  }
+  const goalPicker =
+    mode === 'tutor' && !goalLocked && (goals?.length ?? 0) > 1 && onSelectGoal ? (
+      <select
+        aria-label={t('选择学习目标')}
+        value={activeGoalId ?? ''}
+        onChange={(e) => {
+          if (e.target.value) onSelectGoal(e.target.value)
+        }}
+        className="w-full truncate rounded-lg border border-line/70 bg-card/60 px-1.5 py-1 text-[11px] text-ink-soft outline-none transition hover:border-line-strong focus:border-seal/60"
+      >
+        {!activeGoalId && <option value="">{t('请选择学习目标')}</option>}
+        {(goals ?? []).map((g) => (
+          <option key={g.id} value={g.id}>
+            {goalTitleOf?.(g.id) ?? g.id}
+          </option>
+        ))}
+      </select>
+    ) : null
 
   const effectiveCollapsed = Boolean(forceCollapsed || collapsed)
 
@@ -279,7 +188,7 @@ export function AgentRosterSidebar({
             type="button"
             data-agent-group-top="true"
             aria-pressed={groupActive}
-            title={t('群聊：只有对话列表，@ 指定 agent')}
+            title={t('群聊：只有对话列表；首个 @ 激活，其他 @ 抄送')}
             onClick={onOpenGroup}
             className={
               'flex h-7 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-[11.5px] transition ' +
@@ -347,7 +256,7 @@ export function AgentRosterSidebar({
         {/* 当前声部的近况：预览与未读数，行内截断（窄宽度下的信息位） */}
         <span className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.5">
           <span
-            title={groupActive ? t('群聊：只有对话列表，@ 指定 agent') : activeAgent.subtitle}
+            title={groupActive ? t('群聊：只有对话列表；首个 @ 激活，其他 @ 抄送') : activeAgent.subtitle}
             className={
               'min-w-0 truncate text-[11px] ' +
               (groupActive
@@ -409,7 +318,7 @@ export function AgentRosterSidebar({
                 type="button"
                 data-agent-group-collapsed="true"
                 aria-pressed={groupActive}
-                title={t('群聊：只有对话列表，@ 指定 agent')}
+                title={t('群聊：只有对话列表；首个 @ 激活，其他 @ 抄送')}
                 onClick={onOpenGroup}
                 className={
                   'flex h-10 w-10 items-center justify-center rounded-full border transition ' +
@@ -488,11 +397,11 @@ export function AgentRosterSidebar({
         </button>
       </header>
 
-      {/* 上块（高度权重 2）：声部名册——只放名册卡；各声部的对话历史统一挪去下块 */}
+      {/* 声部名册：只放名册卡；各声部的工作上下文统一挂在对话列表最下方 */}
       <div
         role="tablist"
         aria-orientation="vertical"
-        className="flex min-h-0 flex-[2] flex-col gap-2 overflow-y-auto p-2.5 pb-1"
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2.5 pb-1"
       >
         {onOpenGroup ? (
           <button
@@ -518,7 +427,7 @@ export function AgentRosterSidebar({
                 </span>
               </span>
               <span className="mt-1 block truncate text-[11px] text-ink-faint">
-                {t('只有对话列表；@ 指定 agent 才会进对方通道')}
+                {t('只有对话列表；首个 @ 激活，其他 @ 只抄送上下文')}
               </span>
             </span>
           </button>
@@ -688,32 +597,7 @@ export function AgentRosterSidebar({
           )
         })}
       </div>
-
-      {/* 下块（高度权重 1）：当前选中 agent 的 work 上下文。role 层每个 agent 只有一段会话，不再重复列出 */}
-      <div data-roster-work={groupActive ? 'group' : mode} className="flex min-h-0 flex-[1] flex-col border-t border-line/50">
-        <div className="flex shrink-0 items-center gap-1.5 border-b border-line/50 px-3.5 py-1.5">
-          <span className="truncate text-[11.5px] font-semibold text-ink-soft">
-            {groupActive
-              ? t('群聊')
-              : (agents.find((item) => item.id === mode)?.label ?? t(DEFAULT_AGENT_NAME[mode]))}
-          </span>
-          <span className="ml-auto shrink-0 text-[10.5px] text-ink-faint">
-            {groupActive ? t('只有对话列表') : t('工作上下文')}
-          </span>
-        </div>
-        <div
-          data-roster-work-list={groupActive ? 'group' : mode}
-          className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-2.5 pt-1.5"
-        >
-          {groupActive ? (
-            <p className="px-1.5 py-1 text-[10.5px] leading-relaxed text-ink-faint">
-              {t('群聊只有对话列表；@ 指定 agent 后，消息会进入对方自己的思维层。')}
-            </p>
-          ) : (
-            workSection(mode)
-          )}
-        </div>
-      </div>
+      {goalPicker ? <div className="shrink-0 border-t border-line/50 p-2.5">{goalPicker}</div> : null}
         </div>
       )}
       {/* 智能体卡片右键菜单 */}

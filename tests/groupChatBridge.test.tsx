@@ -224,6 +224,55 @@ describe('useGroupChatBridge', () => {
     host.remove()
   })
 
+  it('用户发言：多个 @ 都可抄送上下文，但只有首个 @ 作为 mention 激活', () => {
+    let current = { conversations: [] } as unknown as LearnStore
+    const set = (next: LearnStore): void => {
+      current = next
+    }
+    const started: RoleTurnRequest[] = []
+    setRoleWorkDispatcher(() => ({
+      isConversationRunning: () => false,
+      resolveRoleConversation: () => null,
+      startRoleTurn: (req) => started.push(req),
+      appendChannel: () => {},
+    }))
+
+    let bridge: GroupChatBridge | null = null
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(function Probe() {
+          bridge = useGroupChatBridge({
+            goalId: 'g-bridge-multi',
+            agents: [
+              { id: 'tutor', name: '导师龟' },
+              { id: 'dispatcher', name: '调度龟' },
+              { id: 'designer', name: '设计龟' },
+            ],
+            getLatest: () => current,
+            set,
+          })
+          return null
+        }),
+      )
+    })
+    act(() => {
+      expect(bridge!.send('@导师龟 @设计龟 你们一起看一下', [])).toBe(true)
+    })
+    expect(started).toHaveLength(1)
+    expect(started[0]!.role).toBe('tutor')
+    const logged = getGroupChatMessages().find((m) => m.goalId === 'g-bridge-multi')
+    expect(logged?.mentions?.map((p) => p.id).sort()).toEqual(['designer', 'tutor'])
+    expect(logged?.mention).toMatchObject({ kind: 'role', id: 'tutor' })
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+
   it('用户发言：没有 @ 时默认投给调度龟', () => {
     let current = { conversations: [] } as unknown as LearnStore
     const set = (next: LearnStore): void => {
@@ -265,6 +314,8 @@ describe('useGroupChatBridge', () => {
     expect(started[0]!.text).toBe('帮我把这周的安排列一下')
     const logged = getGroupChatMessages().find((m) => m.goalId === 'g-bridge-noat')
     expect(logged?.mentions ?? []).toEqual([])
+    // 没有 @ 时默认目标是唯一 mention（会激活），但正文没点名，不伪造 mentions。
+    expect(logged?.mention).toMatchObject({ kind: 'role', id: 'dispatcher' })
     act(() => {
       root.unmount()
     })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  groupMentionLimitError,
+  firstMentionedRoleIdOf,
   groupSelfMentionError,
   mentionedRoleIdsOf,
   mentionsUserInGroup,
@@ -36,11 +36,11 @@ describe('群聊 @ 目标解析', () => {
     expect(mentionedRoleIdsOf('@维修龟 看一下', roles)).toEqual([])
   })
 
-  it('agent 群发一次最多只能点名一位成员（role 或用户）', () => {
-    expect(groupMentionLimitError(['tutor'], false)).toBeNull()
-    expect(groupMentionLimitError([], true)).toBeNull()
-    expect(groupMentionLimitError(['tutor', 'designer'], false)).toContain('最多只能 @ 一位')
-    expect(groupMentionLimitError(['tutor'], true)).toContain('最多只能 @ 一位')
+  it('@ 可以点名多位，不再有人数上限；mention 取正文里最先出现的那个', () => {
+    expect(mentionedRoleIdsOf('@导师龟 @设计龟 一起看', roles)).toEqual(['tutor', 'designer'])
+    expect(firstMentionedRoleIdOf('@导师龟 @设计龟 一起看', roles)).toBe('tutor')
+    expect(firstMentionedRoleIdOf('@设计龟 先看，@导师龟 再看', roles)).toBe('designer')
+    expect(firstMentionedRoleIdOf('@用户 已完成', roles)).toBeNull()
   })
 
   it('群聊里显式 @ 自己会被拒绝；@ 别人则正常', () => {

@@ -228,6 +228,60 @@ describe('chat.send 三通道', () => {
     expect(appended).toHaveLength(0)
   })
 
+  it('group 通道：mentions 可多位但只是抄送；mention 单独控制唯一激活目标', async () => {
+    let passed: { mentions?: string[]; mention?: string } | null = null
+    const { chat } = makeChat({
+      sendToGroup: (input) => {
+        passed = input
+        return { ok: true, channel: 'group' }
+      },
+    })
+    expect(
+      await chat.send({
+        channel: 'group',
+        mentions: ['tutor', 'designer'],
+        mention: 'designer',
+        text: '@导师龟 @设计龟 一起看，@设计龟 先出方案',
+      }),
+    ).toMatchObject({ ok: true })
+    expect(passed).toMatchObject({ mentions: ['tutor', 'designer'], mention: 'designer' })
+  })
+
+  it('group 通道：silent 不能带 mention，避免静默汇报偷偷激活别人', async () => {
+    const { chat } = makeChat({
+      sendToGroup: () => ({ ok: true, channel: 'group' }),
+    })
+    expect(
+      await chat.send({
+        channel: 'group',
+        to: 'designer',
+        text: '@设计龟 进度抄送',
+        silent: true,
+      }),
+    ).toMatchObject({ ok: false })
+  })
+
+  it('deliveryFrom：把来源消息的交付账带进转发消息', async () => {
+    const delivery = { files: [{ path: '微积分/极限', action: 'updated' as const }], sources: [] }
+    const calls: Array<{ delivery?: ChannelMessage['delivery'] }> = []
+    const { chat } = makeChat({
+      deliveryOf: (id) => (id === 'work-msg-1' ? delivery : undefined),
+      sendToGroup: (input) => {
+        calls.push(input)
+        return { ok: true, channel: 'group' }
+      },
+    })
+    expect(
+      await chat.send({
+        channel: 'group',
+        text: '@用户 已交付',
+        deliveryFrom: 'work-msg-1',
+      }),
+    ).toMatchObject({ ok: true })
+    expect(calls[0]?.delivery).toEqual(delivery)
+  })
+
+
   it('group 通道：末尾 @名字 的语义空格不被 chat.send 裁掉', async () => {
     let passed: { text: string; mentions?: string[] } | null = null
     const { chat } = makeChat({

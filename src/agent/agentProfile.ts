@@ -244,6 +244,8 @@ export function workPlaneOfRole(voice: AgentVoice): AgentApiPlane {
   const role = WORK_DOMAIN_PLANES[voice]
   const groups = role.groups.filter((g) => !WORK_EXCLUDED_GROUPS.has(g))
   if (!groups.includes('tmp')) groups.unshift('tmp')
+  // 每个 work 都能登记结构化交付：host.send 带回 role 时，交付账随消息一起走。
+  if (!groups.includes('delivery')) groups.push('delivery')
   if (!groups.includes('host')) groups.push('host')
   const topLevel = role.topLevel.filter((n) => !WORK_EXCLUDED_TOP_LEVEL.has(n))
   if (!topLevel.includes('wait')) topLevel.unshift('wait')
@@ -255,7 +257,7 @@ export function workPlaneOfRole(voice: AgentVoice): AgentApiPlane {
 /** 无目标自由对话的 work 面：能查网、排日程，交回自由对话；没有文档/节点面 */
 export function freeWorkPlane(): AgentApiPlane {
   return {
-    groups: ['tmp', 'web', 'schedule', 'host'],
+    groups: ['tmp', 'web', 'schedule', 'delivery', 'host'],
     topLevel: ['wait', 'compact', 'fetch'],
   }
 }

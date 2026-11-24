@@ -20,6 +20,7 @@ import { groupThreadIdOf } from '../../../learn/groupChat'
 import { BubbleRichText } from './BubbleRichText'
 import { AskBubble } from './AskBubble'
 import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
+import { DeliveryBlock } from './DeliveryBlock'
 import { useRecentWindow } from './useRecentWindow'
 import { mentionedAgentsOf } from './groupMentions'
 
@@ -64,6 +65,7 @@ export function GroupChatPanel({
   onAskCancel,
   onAskExpire,
   onAskHover,
+  onOpenFile,
 }: {
   messages: ChannelMessage[]
   agents: GroupChatAgent[]
@@ -77,6 +79,8 @@ export function GroupChatPanel({
   onAskCancel?: (askId: string) => void
   onAskExpire?: (askId: string) => void
   onAskHover?: (askId: string, hovering: boolean) => void
+  /** 交付组件里点开本地文件；不传时只处理节点 / 工作区路径 */
+  onOpenFile?: (pathOrRel: string, title?: string) => void
 }) {
   const [text, setText] = useState('')
   const [caret, setCaret] = useState(0)
@@ -164,7 +168,7 @@ export function GroupChatPanel({
 
   /** 气泡里 @ 的解析名单：成员真名 + 所有 role 的默认名，改名前后都能认 */
   const mentionNames = useMemo(() => {
-    const names = [userName, ...agents.flatMap((a) => [a.name.trim(), ...(a.aliases ?? []).map((x) => x.trim())])]
+    const names = ['用户', userName, ...agents.flatMap((a) => [a.name.trim(), ...(a.aliases ?? []).map((x) => x.trim())])]
     for (const id of AGENT_ROLE_IDS) names.push(DEFAULT_AGENT_NAME[id])
     return [...new Set(names.filter(Boolean))]
   }, [agents, userName])
@@ -355,6 +359,8 @@ export function GroupChatPanel({
               const canComment = !threadRoot && !m.threadRootId && Boolean(m.goalId) && (!m.threadId || m.threadId === ownThreadId)
               const mentions =
                 m.mentions?.map((p) => agents.find((a) => a.id === p.id)?.name || p.name).filter(Boolean) ?? []
+              const mentionAgent =
+                m.mention?.kind === 'role' ? agents.find((a) => a.id === m.mention?.id) : undefined
               return (
                 <div key={m.id} className={'flex items-start gap-2.5 ' + (mine ? 'flex-row-reverse' : '')}>
                   {mine ? (
@@ -403,6 +409,41 @@ export function GroupChatPanel({
                         </span>
                       ) : null}
                     </div>
+                    {mentionAgent ? (
+                      <div
+                        data-mention-agent={mentionAgent.id}
+                        className={
+                          'mb-1 flex items-center gap-1.5 rounded-full px-1 text-[10.5px] ' +
+                          (mine ? 'self-end' : 'self-start')
+                        }
+                      >
+                        <span
+                          className={
+                            'flex h-4 w-4 items-center justify-center overflow-hidden rounded-full border ' +
+                            (AGENT_ROSTER_META[mentionAgent.id]?.avatarClass ?? 'border-line/70 bg-line/45')
+                          }
+                        >
+                          <AgentAvatarGlyph
+                            avatarId={mentionAgent.avatarId}
+                            fallback={AGENT_ROSTER_META[mentionAgent.id]?.fallbackIcon ?? MessageSquare}
+                            size={10}
+                            imgSize={16}
+                            imgClassName="h-4 w-4 rounded-full"
+                          />
+                        </span>
+                        <span className="font-medium text-ink-soft">@{mentionAgent.name}</span>
+                        <span className="flex items-center gap-1 text-ink-faint">
+                          <span
+                            aria-hidden="true"
+                            className={
+                              'h-1.5 w-1.5 rounded-full ' +
+                              (mentionAgent.running ? 'animate-pulse bg-seal' : 'bg-ink-faint/45')
+                            }
+                          />
+                          {mentionAgent.running ? t('运行中') : t('空闲')}
+                        </span>
+                      </div>
+                    ) : null}
                     {m.ask ? (
                       <AskBubble
                         ask={m.ask}
@@ -428,10 +469,17 @@ export function GroupChatPanel({
                             (mine ? 'bg-bubble-user -right-1' : 'bg-bubble-agent -left-1')
                           }
                         />
-                        <BubbleRichText text={m.text} names={mentionNames} tone={mine ? 'user' : 'agent'} />
+                        <BubbleRichText
+                          text={m.text}
+                          names={mentionNames}
+                          labels={{ 用户: userName }}
+                          tone={mine ? 'user' : 'agent'}
+                        />
                       </div>
                     )}
                     <ChannelAttachments message={m} />
+                    {/* 交付账：work 完成 / role 转发时把影响的内容与引用来源带到这里 */}
+                    {m.delivery ? <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={m.goalId} /> : null}
                     <ChannelExtraBlock extra={m.extra} names={mentionNames} />
                     {canComment ? (
                       <button
@@ -459,7 +507,7 @@ export function GroupChatPanel({
             </div>
             <div className="text-[13px]">{t('还没有群消息')}</div>
             <div className="max-w-[320px] text-[11.5px] leading-relaxed">
-              {t('直接输入即可发给调度龟；输入 @名字 可以点名指定 agent，被点名的 agent 会在群通道里收到消息。')}
+              {t('直接输入即可发给调度龟；@ 名字会抄送上下文，首个 @ 会激活那位 agent。')}
             </div>
           </div>
         )}

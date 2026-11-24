@@ -13,7 +13,7 @@ import { resetPrefixGate } from '../../../agent/prefixGate'
 import { saveAgentSettings, loadAgentSettings } from '../../../agent/settings'
 import { personaOf } from '../../../agent/persona'
 import { docFormatOf } from '../../../agent/docFormat'
-import type { AgentPart, ChannelStamp, Conversation, PendingFile, PendingImage, WorkSession } from '../../../agent/types'
+import type { AgentPart, ChannelStamp, Conversation, PendingFile, PendingImage } from '../../../agent/types'
 import type { AskAnswers } from '../../../agent/tools'
 import type { ReasoningEffort } from '../../../ai/types'
 import { userAbsPath } from '../../../lib/storage'
@@ -247,36 +247,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     [goalConversationsByGoal, tutorGoalId],
   )
   /**
-   * 左栏下块的数据：每个 agent 名下的 work 上下文。
-   * role 层每个 agent 只有一段会话，列它等于把同一个标题重复一遍；真正要看的是 work。
-   * 一个 work 只认 id 一次（历史数据里同一段 role 会话可能被多个入口看到）。
+   * 左栏只留名册与目标选择器；work 上下文列表已经移到对应 agent 的对话列表底部。
    */
-  const worksByAgent = useMemo(() => {
-    const collect = (convs: Conversation[]): WorkSession[] => {
-      const byId = new Map<string, WorkSession>()
-      for (const conv of convs) for (const work of conv.works?.sessions ?? []) byId.set(work.id, work)
-      return [...byId.values()].sort((a, b) => b.lastActiveAt - a.lastActiveAt)
-    }
-    const out: Partial<Record<AgentTeamMode, WorkSession[]>> = {
-      free: collect(sortedFreeChats),
-    }
-    for (const voice of AGENT_ROSTER_ORDER) {
-      if (voice === 'free') continue
-      out[voice] = collect(tutorGoalId ? (goalConversationsByGoal.get(tutorGoalId)?.[voice] ?? []) : [])
-    }
-    return out
-  }, [sortedFreeChats, goalConversationsByGoal, tutorGoalId])
-
-  const openWorkFromRoster = (agentId: AgentTeamMode, workId: string) => {
-    const work = worksByAgent[agentId]?.find((w) => w.id === workId)
-    if (!work) return
-    setGroupOpen(false)
-    setSettingsAgent(null)
-    setEmptyTutorMode(false)
-    setEmptyVoiceMode(null)
-    openAgentTab({ kind: 'work', conversationId: work.roleConversationId, workId: work.id }, true)
-  }
-
   const activeTutorConvId = useMemo(() => {
     if (activeAgentTab.kind === 'work') {
       const workConv = conversationById(store, activeAgentTab.conversationId)
@@ -804,7 +776,6 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         voiceStats={voiceStats}
         variant={rosterTopBar ? 'top' : 'side'}
         persistCollapsed={persistLayout}
-        worksByAgent={worksByAgent}
         activeGoalId={tutorGoalId}
         goalLocked={Boolean(tabGoalId)}
         goals={store.goals}
@@ -815,7 +786,6 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
           selectTutorGoal(goalId)
           scheduleFocus()
         }}
-        onOpenWork={openWorkFromRoster}
         onOpenSettings={openAgentSettings}
         agentNames={agentNames}
         agentAvatars={agentAvatarIds}
@@ -939,6 +909,21 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
                 onAskCancel={agent.cancelAskById}
                 onAskExpire={agent.expireAskById}
                 onAskHover={agent.setAskHover}
+                onOpenFile={(pathOrRel, title) => {
+                  const norm = pathOrRel.replace(/\\/g, '/')
+                  const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(norm)
+                  if (!isAbs) {
+                    const targetGoalId = tutorGoalId ?? (store.activeGoalId ?? undefined)
+                    const wsRel = wsChipUserRel(getLatest(), norm, targetGoalId)
+                    const wsRef = wsRel ? wsRefOfRel(getLatest(), wsRel) : null
+                    if (wsRef) {
+                      openTab(wsRef)
+                      return
+                    }
+                  }
+                  const abs = isAbs ? norm : (userAbsPath(norm) ?? norm)
+                  openTab({ kind: 'local', path: abs, ...(title ? { title } : {}) })
+                }}
               />
             </div>
           ) : null}

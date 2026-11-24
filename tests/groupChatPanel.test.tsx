@@ -65,6 +65,36 @@ describe('GroupChatPanel', () => {
     host.remove()
   })
 
+  it('气泡上方显示唯一 mention 的头像与运行状态，交付账在气泡下方展示', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const m: ChannelMessage = {
+      ...message('m1', { kind: 'user', id: 'u1', name: '用户' }, '@导师龟 讲讲极限'),
+      mention: { kind: 'role', id: 'tutor', name: '导师龟' },
+      delivery: { files: [{ path: '微积分/极限', action: 'updated' }], sources: [] },
+    }
+    act(() => {
+      root.render(
+        createElement(GroupChatPanel, {
+          messages: [m],
+          agents: [{ ...agents[0]!, running: true }, agents[1]!],
+          onSend: vi.fn(() => true),
+        }),
+      )
+    })
+    const status = host.querySelector('[data-mention-agent="tutor"]')
+    expect(status).not.toBeNull()
+    expect(status?.textContent).toContain('@导师龟')
+    expect(status?.textContent).toContain('运行中')
+    expect(host.textContent).toContain('本轮交付')
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+
   it('一级列表只画主楼；点「评论」进入评论串后才看到楼内回复', () => {
     const rootMessage = message('m1', { kind: 'role', id: 'dispatcher', name: '调度龟' }, '@导师龟 帮我查一下')
     rootMessage.threadId = groupThreadIdOf('g1', 'm1')

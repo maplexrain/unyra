@@ -86,7 +86,9 @@ export function channelMetaLineOf(stamp: ChannelStamp): string {
     ', channel:' + stamp.channel +
     ', id:' + envelopeId +
     ', roleId:' + id +
-    ', roleName:' + name + '}]'
+    ', roleName:' + name +
+    (stamp.mention ? ', mention:self' : '') +
+    '}]'
   )
 }
 
@@ -105,7 +107,7 @@ export function withChannel(conv: Conversation, message: ChannelMessage): Conver
 export function inboundMessage(
   text: string,
   stamp: ChannelStamp,
-  extra?: Pick<ConversationMessage, 'images' | 'files' | 'hidden' | 'mark'>,
+  extra?: Pick<ConversationMessage, 'images' | 'files' | 'hidden' | 'mark' | 'delivery'>,
 ): ConversationMessage {
   return {
     id: crypto.randomUUID(),
@@ -117,6 +119,7 @@ export function inboundMessage(
     ...(extra?.files ? { files: extra.files } : {}),
     ...(extra?.hidden ? { hidden: true } : {}),
     ...(extra?.mark ? { mark: extra.mark } : {}),
+    ...(extra?.delivery ?? stamp.delivery ? { delivery: extra?.delivery ?? stamp.delivery } : {}),
   }
 }
 
@@ -151,6 +154,10 @@ export function outboundEnvelope(input: {
   quoteMessageId?: string
   auto?: boolean
   mentions?: ChannelPeer[]
+  /** 唯一被激活的 mention */
+  mention?: ChannelPeer
+  /** 交付账（work 交付经 role 转发到通道） */
+  delivery?: ChannelMessage['delivery']
   goalId?: string
   threadId?: string
   threadRootId?: string
@@ -173,6 +180,8 @@ export function outboundEnvelope(input: {
     ...(input.quoteMessageId ? { quoteMessageId: input.quoteMessageId } : {}),
     ...(input.auto ? { auto: true } : {}),
     ...(input.mentions?.length ? { mentions: input.mentions } : {}),
+    ...(input.mention ? { mention: input.mention } : {}),
+    ...(input.delivery ? { delivery: input.delivery } : {}),
     ...(input.goalId ? { goalId: input.goalId } : {}),
     ...(input.threadId ? { threadId: input.threadId } : {}),
     ...(input.threadRootId ? { threadRootId: input.threadRootId } : {}),
@@ -190,6 +199,10 @@ export function inboundEnvelope(input: {
   id?: string
   attachments?: ChannelMessage['attachments']
   mentions?: ChannelPeer[]
+  /** 唯一被激活的 mention */
+  mention?: ChannelPeer
+  /** 交付账（work 交付经 role 转发到通道） */
+  delivery?: ChannelMessage['delivery']
   goalId?: string
   threadId?: string
   threadRootId?: string
@@ -208,6 +221,8 @@ export function inboundEnvelope(input: {
     ...(input.attachments ? { attachments: input.attachments } : {}),
     ...(input.extra ? { extra: input.extra } : {}),
     ...(input.mentions?.length ? { mentions: input.mentions } : {}),
+    ...(input.mention ? { mention: input.mention } : {}),
+    ...(input.delivery ? { delivery: input.delivery } : {}),
     ...(input.goalId ? { goalId: input.goalId } : {}),
     ...(input.threadId ? { threadId: input.threadId } : {}),
     ...(input.threadRootId ? { threadRootId: input.threadRootId } : {}),

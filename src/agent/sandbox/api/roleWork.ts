@@ -104,7 +104,9 @@ export function installRoleWork(api: Record<string, unknown>, opts: SandboxOptio
       const text = trimmedText && /[ \u3000]$/.test(rawText) ? trimmedText + ' ' : trimmedText
       const to = asText(a.to).trim()
       const messageId = asText(a.messageId).trim()
+      const deliveryFrom = asText(a.deliveryFrom).trim()
       const mentions = cleanMentions(a.mentions)
+      const mention = asText(a.mention).trim()
       const silent = a.silent === true
       if (channel !== 'user' && channel !== 'agent' && channel !== 'work' && channel !== 'group') {
         return { ok: false, error: 'chat.send 的 channel 只能是 user / agent / work / group' }
@@ -115,13 +117,16 @@ export function installRoleWork(api: Record<string, unknown>, opts: SandboxOptio
       if (!text && !messageId) return { ok: false, error: 'chat.send 需要 text 或 messageId' }
       if (channel === 'agent' && !to) return { ok: false, error: 'chat.send 到 agent 通道需要 to（目标 role id）' }
       if (channel === 'work' && !to) return { ok: false, error: 'chat.send 到 work 通道需要 to（work 名）' }
+      if (mention && channel !== 'group') return { ok: false, error: 'chat.send 的 mention 只用于 group 通道（唯一激活目标）' }
       const attachments = cleanAttachments(a.attachments)
       const input: ChatSendInput = {
         channel,
         text,
         ...(to ? { to } : {}),
         ...(mentions.length ? { mentions } : {}),
+        ...(mention ? { mention } : {}),
         ...(messageId ? { messageId } : {}),
+        ...(deliveryFrom ? { deliveryFrom } : {}),
         ...(attachments ? { attachments } : {}),
         ...(silent ? { silent: true } : {}),
       }

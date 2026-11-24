@@ -22,6 +22,7 @@ import { AgentAvatarGlyph } from '../../learn/agent-team/AgentAvatarGlyph'
 import { BubbleRichText } from './BubbleRichText'
 import { AskBubble } from './AskBubble'
 import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
+import { DeliveryBlock } from './DeliveryBlock'
 import { useRecentWindow } from './useRecentWindow'
 import type { AgentTeamMode } from '../../learn/agent-team/conversationList'
 
@@ -41,6 +42,7 @@ export function RoleChatView({
   onAskCancel,
   onAskExpire,
   onAskHover,
+  onOpenFile,
 }: {
   channels: ChannelMessage[]
   /** 当前 role 的显示名（agent profile 覆盖后的真名） */
@@ -59,13 +61,15 @@ export function RoleChatView({
   onAskCancel?: (askId: string) => void
   onAskExpire?: (askId: string) => void
   onAskHover?: (askId: string, hovering: boolean) => void
+  /** 交付组件里点开本地文件 */
+  onOpenFile?: (pathOrRel: string, title?: string) => void
 }) {
   const user = activeUser()
   const userName = user ? displayName(user.profile, t('未命名用户')) : t('未命名用户')
 
   /** 气泡里 @ 的解析名单：当前 role 真名 + 所有 role 的 profile / 默认名 */
   const mentionNames = useMemo(() => {
-    const names: string[] = [agentName.trim(), userName.trim()]
+    const names: string[] = ['用户', agentName.trim(), userName.trim()]
     for (const id of AGENT_ROLE_IDS) {
       const custom = agentNames?.[id]?.trim()
       if (custom) names.push(custom)
@@ -214,10 +218,16 @@ export function RoleChatView({
                       (mine ? 'bg-bubble-user -right-1' : 'bg-bubble-agent -left-1')
                     }
                   />
-                  <BubbleRichText text={m.text} names={mentionNames} tone={mine ? 'user' : 'agent'} />
+                  <BubbleRichText
+                    text={m.text}
+                    names={mentionNames}
+                    labels={{ 用户: userName }}
+                    tone={mine ? 'user' : 'agent'}
+                  />
                 </div>
               )}
               <ChannelAttachments message={m} />
+              {m.delivery ? <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={m.goalId} /> : null}
               <ChannelExtraBlock extra={m.extra} names={mentionNames} />
             </div>
           </div>

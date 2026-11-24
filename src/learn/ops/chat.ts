@@ -26,6 +26,8 @@ export interface ChatOpsDeps {
   roleNameOf: (role: AgentProfileId) => string
   /** role 会话里的消息（messageId 引用 / 转发） */
   messageOf: (messageId: string) => ConversationMessage | null
+  /** 按消息 id 取交付账：先找 role 会话消息，再找通道流水（Work 交付） */
+  deliveryOf?: (messageId: string) => ChannelMessage['delivery'] | undefined
   /** 附件解析（可异步：外链要先下载）；失败时返回 error，整笔拒绝 */
   resolveAttachments: (
     items: NonNullable<ChatSendInput['attachments']>,
@@ -46,10 +48,15 @@ export interface ChatOpsDeps {
    */
   sendToGroup: (input: {
     text: string
+    /** 抄送上下文的目标（可多位，不激活） */
     mentions?: string[]
+    /** 唯一要激活的 mention（只能一位） */
+    mention?: string
     messageId?: string
     attachments?: { images?: ConversationMessage['images']; files?: ConversationMessage['files'] }
     extra?: ChannelMessage['extra']
+    /** 交付账：role 转发 work 交付时带上 */
+    delivery?: ChannelMessage['delivery']
     /** 静默汇报：目标 role 只入上下文，不起轮 */
     silent?: boolean
   }) => ChatCallResult | Promise<ChatCallResult>
@@ -96,9 +103,14 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
       // 群聊 @ 的分隔符就是名字后的空格：末尾的这一个空格不能被 trim 掉。
       const text = trimmedText && /[ \u3000]$/.test(rawText) ? trimmedText + ' ' : trimmedText
       const messageId = input.messageId?.trim()
+      const deliveryFrom = input.deliveryFrom?.trim()
       if (!text && !messageId) return { ok: false, error: 'chat.send 需要 text 或 messageId' }
       const quoted = messageId ? deps.messageOf(messageId) : null
       if (messageId && !quoted) return { ok: false, error: '当前 role 会话里找不到消息「' + messageId + '」' }
+      const forwardedDelivery = deliveryFrom ? deps.deliveryOf?.(deliveryFrom) : undefined
+      if (deliveryFrom && !forwardedDelivery) {
+        return { ok: false, error: '找不到消息「' + deliveryFrom + '」上的交付账；先核对来源消息 id' }
+      }
       const body = [text, quoteBlock(quoted)].filter(Boolean).join('\n\n')
       const resolved = input.attachments?.length ? await deps.resolveAttachments(input.attachments) : undefined
       if (resolved && 'error' in resolved) return { ok: false, error: resolved.error }
@@ -123,6 +135,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
           ...(attachments && (attachments.images || attachments.files) ? { attachments } : {}),
           ...(input.extra ? { extra: input.extra } : {}),
           ...(messageId ? { quoteMessageId: messageId } : {}),
+          ...(forwardedDelivery ? { delivery: forwardedDelivery } : {}),
         })
         deps.appendChannel(deps.conversationId, envelope)
         return { ok: true, channel, id: envelope.id }
@@ -137,12 +150,19 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
           .filter((item) => item && item !== GROUP_PEER_ID)
         const direct = input.to?.trim()
         if (direct && direct !== GROUP_PEER_ID) targets.push(direct)
+        // 旧 `to` 语义是「交给谁」，与 mention 等价；新代码优先用显式 mention。
+        const activeMention = input.mention?.trim() || (direct && direct !== GROUP_PEER_ID ? direct : undefined)
+        if (silent && activeMention) {
+          return { ok: false, error: 'silent 静默汇报不能再带 mention：它只入上下文，不激活目标' }
+        }
         const result = await deps.sendToGroup({
           text: body,
           ...(targets.length ? { mentions: [...new Set(targets)] } : {}),
+          ...(activeMention ? { mention: activeMention } : {}),
           ...(messageId ? { messageId } : {}),
           ...(attachments ? { attachments } : {}),
           ...(input.extra ? { extra: input.extra } : {}),
+          ...(forwardedDelivery ? { delivery: forwardedDelivery } : {}),
           ...(silent ? { silent: true } : {}),
         })
         return result
@@ -165,6 +185,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
           ...(attachments && (attachments.images || attachments.files) ? { attachments } : {}),
           ...(input.extra ? { extra: input.extra } : {}),
           ...(messageId ? { quoteMessageId: messageId } : {}),
+          ...(forwardedDelivery ? { delivery: forwardedDelivery } : {}),
         }),
       )
       const envelope = inboundEnvelope({
@@ -175,6 +196,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
         ...(attachments && (attachments.images || attachments.files) ? { attachments } : {}),
         ...(input.extra ? { extra: input.extra } : {}),
         ...(silent ? { silent: true } : {}),
+        ...(forwardedDelivery ? { delivery: forwardedDelivery } : {}),
       })
       deliverInbound(
         {
@@ -188,6 +210,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
             to: targetPeer,
             ts: envelope.ts,
             envelopeId: envelope.id,
+            ...(forwardedDelivery ? { delivery: forwardedDelivery } : {}),
           },
           envelopeId: envelope.id,
           ...(attachments?.images ? { images: attachments.images } : {}),
