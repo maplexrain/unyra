@@ -475,7 +475,7 @@ export function AgentSettingsView({
               title={t('execute 开放的 api')}
               hint={
                 isFree
-                  ? t('仅聊天的 role 只有 work / chat / tmp / compact 固定面；联网、日程等领域能力全部在 work 层。')
+                  ? t('自由对话只有 work / chat / tmp / compact 固定面；联网、日程等领域能力全部在 work 层。')
                   : isTutor
                     ? t('导师的 role 面按架构固定、只读（不可增删）：只保留对学习者说话与编排 work 的固定基座；领域执行面全部在下方「工作层（work）」。')
                     : t('这位 role 的 api 面由架构分工固定、只读（不可增删）：role 只保留 work / chat / tmp / compact，领域执行能力在 work 层。')
@@ -486,7 +486,7 @@ export function AgentSettingsView({
                 <div className="mb-1.5 flex items-center gap-2 text-[11px]">
                   <span className="font-semibold text-ink-strong">{t('固定组')}</span>
                   <span className="min-w-0 truncate text-ink-faint">
-                    {isFree ? t('仅聊天的固定执行基座') : t('七位 role 共用 · 架构固定')}
+                    {isFree ? t('自由对话的固定执行基座') : t('六位 role 共用 · 架构固定')}
                   </span>
                   <span className="ml-auto shrink-0 tabular-nums text-ink-faint">
                     {t('{0} 项', fixedRows.length)}
@@ -561,7 +561,7 @@ export function AgentSettingsView({
               title={t('工作层的工作流')}
               hint={
                 isFree
-                  ? t('聊天龟的 work 没有工作流通道（wf.*），此设置不生效；需要开讲、出卷这类流程请找导师。')
+                  ? t('自由对话的 work 没有工作流通道（wf.*），此设置不生效；需要开讲、出卷这类流程请找导师。')
                   : isTutor
                     ? t('工作流由导师的 work 执行，role 只负责路由与汇报。内置规程按架构分工恒开放、只读；白名单只管登记的全局 / 目标级工作流——work 的 wf.list 只列出的，越权触发当场拒绝。')
                     : t('工作流由这位 role 派出的 work 执行，role 本身不触发；内置规程由架构分工固定、只读（不可增删）。登记的全局 / 目标级工作流只有导师的 work 能触发。')

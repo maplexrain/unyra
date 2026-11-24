@@ -202,7 +202,7 @@ export function RoleChatView({
               ) : (
                 <div
                   className={
-                    'relative max-w-full whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ' +
+                    'relative max-w-full whitespace-pre-wrap break-words rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed ' +
                     bubbleBg +
                     (mine ? ' rounded-tr-sm' : ' rounded-tl-sm')
                   }

@@ -356,7 +356,7 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
     localStorage.clear()
   })
 
-  it('AgentRosterSidebar 渲染「仅聊天」与「导师」两个选项并支持切换', () => {
+  it('AgentRosterSidebar 渲染团队六位角色并支持切换（聊天龟已移除）', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
@@ -368,28 +368,27 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
           mode: 'tutor',
           onSelectMode,
           activeGoalTitle: '零基础英语语法入门',
-          voiceStats: { free: { running: true, hasAsk: false } },
+          voiceStats: {},
         }),
       )
     })
 
     const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
-    expect(tabs).toHaveLength(7)
-    expect(tabs[0].textContent).toContain('聊天龟')
-    expect(tabs[1].textContent).toContain('调度龟')
-    expect(tabs[2].textContent).toContain('导师龟')
-    expect(tabs[3].textContent).toContain('出卷龟')
-    expect(tabs[4].textContent).toContain('设计龟')
-    expect(tabs[5].textContent).toContain('调研龟')
-    expect(tabs[6].textContent).toContain('维修龟')
-    expect(tabs[2].textContent).toContain('零基础英语语法入门')
-    expect(tabs[0].getAttribute('aria-selected')).toBe('false')
-    expect(tabs[2].getAttribute('aria-selected')).toBe('true')
+    expect(tabs).toHaveLength(6)
+    expect(tabs[0].textContent).toContain('调度龟')
+    expect(tabs[1].textContent).toContain('导师龟')
+    expect(tabs[2].textContent).toContain('出卷龟')
+    expect(tabs[3].textContent).toContain('设计龟')
+    expect(tabs[4].textContent).toContain('调研龟')
+    expect(tabs[5].textContent).toContain('维修龟')
+    expect(host.textContent).not.toContain('聊天龟')
+    expect(tabs[1].textContent).toContain('零基础英语语法入门')
+    expect(tabs[1].getAttribute('aria-selected')).toBe('true')
 
     act(() => {
       tabs[0].click()
     })
-    expect(onSelectMode).toHaveBeenCalledWith('free')
+    expect(onSelectMode).toHaveBeenCalledWith('dispatcher')
 
     act(() => {
       root.unmount()
@@ -407,7 +406,7 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
       root.render(
         createElement(AgentRosterSidebar, {
           variant: 'top',
-          mode: 'free',
+          mode: 'dispatcher',
           onSelectMode,
           activeGoalTitle: '零基础英语语法入门',
           voiceStats: { tutor: { running: false, hasAsk: true, count: 3 } },
@@ -421,20 +420,16 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
     expect(bar?.getAttribute('data-roster-collapsed')).toBeNull()
 
     const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
-    expect(tabs).toHaveLength(7)
+    expect(tabs).toHaveLength(6)
     expect(tabs[0].getAttribute('aria-selected')).toBe('true')
     expect(tabs[1].getAttribute('aria-selected')).toBe('false')
 
-    // 近况位只显示当前声部（free）的预览；未激活的导师摘要不出现在顶部栏
-    expect(bar?.textContent).toContain('纯对话 · 联网与日程')
+    // 近况位只显示当前声部（dispatcher）的预览；未激活的导师摘要不出现在顶部栏
+    expect(bar?.textContent).toContain('接需求 · chat 派单 / work · 交付汇报')
     expect(bar?.textContent).not.toContain('零基础英语语法入门')
 
     act(() => {
       tabs[1].click()
-    })
-    expect(onSelectMode).toHaveBeenCalledWith('dispatcher')
-    act(() => {
-      tabs[2].click()
     })
     expect(onSelectMode).toHaveBeenCalledWith('tutor')
 
@@ -642,11 +637,11 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
     act(() => {
       root.render(
         createElement(AgentRosterSidebar, {
-          mode: 'free',
+          mode: 'dispatcher',
           onSelectMode: () => {},
           activeGoalTitle: '线性代数',
           voiceStats: {
-            free: { running: false, hasAsk: false, preview: '跨目标自由聊消息', lastTime: Date.now() - 10_000, count: 3 },
+            dispatcher: { running: false, hasAsk: false, preview: '跨目标自由聊消息', lastTime: Date.now() - 10_000, count: 3 },
             tutor: { running: false, hasAsk: false, preview: '在线等导师回答', lastTime: Date.now() - 120_000, count: 2 },
           },
         }),
@@ -655,7 +650,7 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
 
     expect(host.textContent).toContain('跨目标自由聊消息')
     expect(host.textContent).toContain('在线等导师回答')
-    expect(host.textContent).toContain('跨目标')
+    expect(host.textContent).toContain('调度分派')
     expect(host.textContent).toContain('学习导师')
     expect(
       isAgentTeamVisible(
@@ -693,7 +688,7 @@ describe('AgentRosterSidebar 智能体设置按钮与名称覆盖', () => {
     act(() => {
       root.render(
         createElement(AgentRosterSidebar, {
-          mode: 'free',
+          mode: 'dispatcher',
           onSelectMode: () => {},
           activeGoalTitle: null,
           voiceStats: {},
@@ -703,18 +698,18 @@ describe('AgentRosterSidebar 智能体设置按钮与名称覆盖', () => {
       )
     })
 
-    // 名册卡头像即设置入口：7 位声部各一枚；历史块不再有齿轮
+    // 名册卡头像即设置入口：团队 6 位各一枚；历史块不再有齿轮
     const avatars = [...host.querySelectorAll<HTMLButtonElement>('[data-agent-avatar]')]
-    expect(avatars).toHaveLength(7)
+    expect(avatars).toHaveLength(6)
     expect(host.querySelectorAll('[data-agent-settings]')).toHaveLength(0)
     expect(host.textContent).toContain('小导师')
 
     act(() => {
       avatars[0]!.click()
     })
-    expect(onOpenSettings).toHaveBeenCalledWith('free')
+    expect(onOpenSettings).toHaveBeenCalledWith('dispatcher')
     act(() => {
-      avatars[2]!.click()
+      avatars[1]!.click()
     })
     expect(onOpenSettings).toHaveBeenCalledWith('tutor')
 

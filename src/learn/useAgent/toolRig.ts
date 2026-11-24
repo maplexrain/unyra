@@ -32,6 +32,7 @@ import { groupPeer, inboundEnvelope, outboundEnvelope, peerOf, userPeer } from '
 import { deliverInbound } from '../roleWork/dispatch'
 import { groupMentionLimitError, groupSelfMentionError, hasMentionOf, mentionedRoleIdsOf, mentionsUserInGroup, type MentionRole } from '../roleWork/groupTargets'
 import { appendGroupMessage, patchGroupMessage } from '../groupChat'
+import { planGroupThread } from '../roleWork/groupThread'
 import { emptyDelivery, mergeDelivery, normalizeDelivery } from '../../agent/delivery'
 import { native } from '../../lib/native'
 import { nodeById } from '../graph'
@@ -294,16 +295,38 @@ export function rigTurnTools(io: {
       // 正文没有 @ 时默认投给调度龟，但不要凭空造一条 @ 提示；只有真的点名了才带 mentions。
       const explicitMentions = textIds.length > 0 || Boolean(mentions?.length)
       const mentionPeers = explicitMentions ? ids.map((id) => peerOf('agent', id, roleNameOf(id))) : []
+      /*
+       * 评论串路由（纯函数 planGroupThread）：
+       * - 最终 @用户 的汇报、以及 ask 气泡留在一级群聊；
+       * - 其余 agent 消息先看自己会话里最近一条群消息的 threadId：在评论串里就继续原串；
+       * - 最近不在串里、且这条确实 @ 了某位 role（任务交流）→ 以本条消息为主楼开一条新串。
+       * 索引严格 `通道id>消息id`（见 learn/groupChat 的 groupThreadIdOf）。
+       */
+      const conv = getLatest().conversations.find((c) => c.id === target.conversationId)
+      const latestGroupMsg = [...(conv?.channels ?? [])].reverse().find((m) => m.kind === 'group')
+      const groupMsgId = 'g-' + crypto.randomUUID()
+      const threadPlan = planGroupThread({
+        goalId,
+        messageId: groupMsgId,
+        latestThreadId: latestGroupMsg?.threadId,
+        mentionsUser,
+        targetIds: ids,
+      })
+      const threadId = threadPlan.threadId
+      const threadRootId = threadPlan.threadRootId
       const groupMsg = outboundEnvelope({
         channel: 'group',
         from,
         to: groupPeer(),
+        id: groupMsgId,
         text,
         ...(messageId ? { quoteMessageId: messageId } : {}),
         ...(attachments ? { attachments } : {}),
         ...(mentionPeers.length ? { mentions: mentionPeers } : {}),
         ...(extra ? { extra } : {}),
         goalId,
+        ...(threadId ? { threadId } : {}),
+        ...(threadRootId ? { threadRootId } : {}),
       })
       appendGroupMessage(groupMsg)
       // 自己这一侧的 mind 也留一条出站流水（群聊层另开，不混进私聊）
@@ -323,6 +346,8 @@ export function rigTurnTools(io: {
           ...(extra ? { extra } : {}),
           mentions: mentionPeers,
           goalId,
+          ...(threadId ? { threadId } : {}),
+          ...(threadRootId ? { threadRootId } : {}),
         })
         deliverInbound(
           {
@@ -337,6 +362,8 @@ export function rigTurnTools(io: {
               ts: groupMsg.ts,
               envelopeId: groupMsg.id,
               goalId,
+              ...(threadId ? { threadId } : {}),
+              ...(threadRootId ? { threadRootId } : {}),
             },
             envelopeId: groupMsg.id,
             ...(attachments?.images ? { images: attachments.images } : {}),
@@ -385,6 +412,14 @@ export function rigTurnTools(io: {
         .reverse()
         .find((m) => m.direction === 'in' && m.kind !== 'work')
       const channel = lastInbound?.kind === 'group' ? 'group' : 'user'
+      /*
+       * ask 永远落一级群聊，不放进评论区；但若当前任务本身在评论串里，气泡带上 threadId
+       * （不填 threadRootId），后续 agent 回复仍能沿这条串继续，不会因为一次问询就断线。
+       */
+      const askThreadId =
+        channel === 'group'
+          ? [...(conv?.channels ?? [])].reverse().find((m) => m.kind === 'group')?.threadId
+          : undefined
       const from = peerOf('agent', voice, roleName)
       const to = channel === 'group' ? groupPeer() : userPeer()
       const askMessage = outboundEnvelope({
@@ -393,6 +428,7 @@ export function rigTurnTools(io: {
         to,
         text: form.title || '需要你确认一下',
         ...(target.goalId && channel === 'group' ? { goalId: target.goalId } : {}),
+        ...(askThreadId ? { threadId: askThreadId } : {}),
         ask: { id: askId, form, expiresAt, status: 'pending' },
       })
       appendChannel(target.conversationId, askMessage)

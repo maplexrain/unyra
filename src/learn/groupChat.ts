@@ -15,7 +15,32 @@ import type { ChannelMessage } from '../agent/types'
 import { normalizeChannels } from '../agent/roleWork/registry'
 
 const FILE = 'group-chat.json'
-const CAP = 200
+const CAP = 400
+
+/**
+ * 群聊通道 id：一个学习目标一条群通道。评论串索引严格为 `通道id>消息id`，
+ * 所以这里把通道 id 收敛成 `group:<goalId>`，避免界面/宿主各拼一套。
+ */
+export function groupChannelIdOf(goalId: string): string {
+  return 'group:' + goalId
+}
+
+/** 一条群消息的评论串索引：`group:<goalId>><根消息 id>` */
+export function groupThreadIdOf(goalId: string, rootMessageId: string): string {
+  return groupChannelIdOf(goalId) + '>' + rootMessageId
+}
+
+/** 从评论串索引里取回根消息 id；格式不对返回 null */
+export function threadRootIdOf(threadId: string): string | null {
+  const at = threadId.indexOf('>')
+  if (at <= 0 || at >= threadId.length - 1) return null
+  return threadId.slice(at + 1)
+}
+
+/** 这条群消息是不是评论区里的回复（一级主楼不填 threadRootId） */
+export function isThreadComment(message: ChannelMessage): boolean {
+  return Boolean(message.threadRootId)
+}
 
 interface GroupChatFile {
   version: 1

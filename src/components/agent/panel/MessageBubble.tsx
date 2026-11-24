@@ -117,7 +117,7 @@ export const MessageRow = memo(function MessageRow({
           className={
             mind
               ? 'min-w-0 max-w-full'
-              : 'max-w-[700px] rounded-2xl ' + (flash ? 'moji-msg-flash' : '')
+              : 'max-w-[700px] rounded-lg ' + (flash ? 'moji-msg-flash' : '')
           }
         >
           {m.quote && <QuoteChip quote={m.quote} />}
@@ -154,7 +154,7 @@ export const MessageRow = memo(function MessageRow({
             className={
               mind
                 ? 'text-[13px] leading-relaxed text-ink select-text'
-                : 'rounded-2xl bg-bubble-user px-3.5 py-2 text-[13px] leading-relaxed text-ink-strong ring-1 ring-line/65 select-text'
+                : 'rounded-lg bg-bubble-user px-3.5 py-2 text-[13px] leading-relaxed text-ink-strong ring-1 ring-line/65 select-text'
             }
           >
             <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} />

@@ -11,6 +11,7 @@ import {
   agentAvatarIdOf,
   agentRuntimeApiAllow,
   CONTENT_VOICES,
+  DEFAULT_AGENT_NAME,
   isCommunicable,
   agentWfGrant,
   resolveAgentGlobal,
@@ -99,12 +100,12 @@ describe('agentProfile 读写', () => {
   })
 
   it('resetAgentProfile 整条恢复默认；profileOf 缺省给空对象', () => {
-    updateAgentProfile('free', { effort: 'low' })
-    expect(profileOf(loadAgentSettings(), 'free')).toEqual({ effort: 'low' })
-    resetAgentProfile('free')
-    expect(profileOf(loadAgentSettings(), 'free')).toEqual({})
-    // 恢复一条本来就不存在的 profile 是无害空操作
+    updateAgentProfile('tutor', { effort: 'low' })
+    expect(profileOf(loadAgentSettings(), 'tutor')).toEqual({ effort: 'low' })
     resetAgentProfile('tutor')
+    expect(profileOf(loadAgentSettings(), 'tutor')).toEqual({})
+    // 恢复一条本来就不存在的 profile 是无害空操作
+    resetAgentProfile('examiner')
     expect(loadAgentSettings().profiles).toEqual({})
   })
 
@@ -260,12 +261,14 @@ describe('agentWfGrant（工作流授权面：内置规程面按分工固定 + �
 })
 
 describe('profiles 声部 id 契约', () => {
-  it('认 7 位成员（free / tutor / dispatcher / examiner / designer / researcher / fixer，与左栏同形）', () => {
-    const ids: AgentProfileId[] = ['free', 'tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer']
+  it('认六位团队 role；free 只保留为无目标自由对话的运行形态', () => {
+    const ids: AgentProfileId[] = ['tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer']
     for (const id of ids) {
       expect(DEFAULT_AGENT_AVATAR[id]).toBeTruthy()
     }
     expect(AGENT_ROLE_IDS).toEqual(ids)
+    expect(DEFAULT_AGENT_NAME.free).toBe('自由对话')
+    expect(DEFAULT_AGENT_AVATAR.free).toBeTruthy()
     // 两个声部标签：可交流（可直接发消息启动）与内容生成（注入写作策略与画像）
     expect(isCommunicable('free')).toBe(true)
     expect(isCommunicable('tutor')).toBe(true)
@@ -360,7 +363,7 @@ describe('系统提示词：role 只说话与调度，work 才带领域规程', 
     expect(text).toContain('api.chat.send')
     expect(text).not.toContain('api.web.search')
     expect(text).not.toContain('api.schedule.*')
-    // 聊天龟的 work 才带 web / schedule
+    // 自由对话派出的 work 才带 web / schedule
     expect(buildWorkSystem('free')).toContain('web.search(')
     expect(buildWorkSystem('free')).toContain('schedule.')
   })

@@ -22,7 +22,7 @@ export const WORK_COMMON_PREFIX = [
 
 /** work 的领域职责说明：让它知道自己“会做什么”，但不带 role 的人格 */
 export const WORK_ROLE_BRIEF: Record<'free' | 'tutor' | 'dispatcher' | 'examiner' | 'designer' | 'researcher' | 'fixer', string> = {
-  free: '你是聊天龟派出的通用执行 work：负责联网检索与网页抓取、日程读写，以及用户交办的具体执行任务。',
+  free: '你是自由对话派出的通用执行 work：负责联网检索与网页抓取、日程读写，以及用户交办的具体执行任务。',
   tutor: '你是导师龟派出的教学执行 work：负责讲义/文档、大纲、讲解、答疑、学习者画像与日程等教学落地任务。',
   dispatcher: '你是调度龟派出的执行 work：负责具体、可独立完成的执行子任务（查资料、整理清单、定时提醒等），把结果交回调度龟。',
   examiner: '你是出卷龟派出的出卷执行 work：负责试卷命题、判分与错题讲解，按任务给定的 attemptId 与节点执行。',

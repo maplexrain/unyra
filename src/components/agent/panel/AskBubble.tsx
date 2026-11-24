@@ -115,7 +115,7 @@ export function AskBubble({
     <div
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
-      className="w-full max-w-[700px] rounded-2xl border border-seal/25 bg-bubble-agent px-3 py-2.5 shadow-[0_8px_24px_rgba(31,27,23,0.08)]"
+      className="w-full max-w-[700px] rounded-lg border border-seal/25 bg-bubble-agent px-3 py-2.5 shadow-[0_8px_24px_rgba(31,27,23,0.08)]"
     >
       <div className="flex items-center gap-1.5 px-0.5 pb-1.5 text-[11px]">
         {pending ? <Clock3 size={12} className="shrink-0 text-seal" /> : <HelpCircle size={12} className="shrink-0 text-ink-faint" />}

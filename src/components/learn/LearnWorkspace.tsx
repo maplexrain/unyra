@@ -49,7 +49,7 @@ import {
   activateIn,
   activeIdsOf,
   allTabs,
-  claimTab, closeIds, DEFAULT_FIX_SIDE_WIDTH, ensureGoalAgentTeamTab,
+  claimTab, closeIds, ensureGoalAgentTeamTab,
   findTab,
   focusedTab,
   goalTabsOf,
@@ -1239,7 +1239,6 @@ export default function LearnWorkspace({
         activeNodeId: null,
         activeConversationId: conversation.id,
         docArea: withOwners(docArea, claimedOwners),
-        ...(!curStore.fixSide ? { fixSide: { targetTabId: `team:${goalId}`, width: DEFAULT_FIX_SIDE_WIDTH } } : {}),
       }
 
       set(nextStore)

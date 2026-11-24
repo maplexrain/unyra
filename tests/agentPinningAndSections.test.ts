@@ -33,20 +33,18 @@ describe('agentPinning 置顶与排序机制', () => {
     localStorage.clear()
   })
 
-  it('聊天龟与调度龟默认置顶且不可撤销', () => {
-    expect(isPinLocked('free')).toBe(true)
+  it('调度龟默认置顶且不可撤销；聊天龟已从名册移除', () => {
+    expect(isPinLocked('free')).toBe(false)
     expect(isPinLocked('dispatcher')).toBe(true)
     expect(isPinLocked('tutor')).toBe(false)
     expect(isPinLocked('examiner')).toBe(false)
 
-    // 初始加载包含默认锁定的两项
+    // 初始加载只包含默认锁定的调度龟
     const initial = loadPinnedAgents()
-    expect(initial.has('free')).toBe(true)
+    expect(initial.has('free')).toBe(false)
     expect(initial.has('dispatcher')).toBe(true)
 
-    // 尝试取消置顶 free 或 dispatcher，集合保持不变
-    const afterFree = toggleAgentPin(initial, 'free')
-    expect(afterFree.has('free')).toBe(true)
+    // 尝试取消置顶 dispatcher，集合保持不变
     const afterDispatcher = toggleAgentPin(initial, 'dispatcher')
     expect(afterDispatcher.has('dispatcher')).toBe(true)
   })
@@ -62,7 +60,7 @@ describe('agentPinning 置顶与排序机制', () => {
     // 模拟重新读取
     const reloaded = loadPinnedAgents()
     expect(reloaded.has('tutor')).toBe(true)
-    expect(reloaded.has('free')).toBe(true)
+    expect(reloaded.has('free')).toBe(false)
     expect(reloaded.has('dispatcher')).toBe(true)
 
     // 取消置顶 tutor
@@ -75,7 +73,6 @@ describe('agentPinning 置顶与排序机制', () => {
 
   it('sortAgentsByPinAndTime 排序规则：置顶优先，且各区按最近时间降序排列', () => {
     const list: Array<{ id: AgentTeamMode }> = [
-      { id: 'free' },
       { id: 'dispatcher' },
       { id: 'tutor' },
       { id: 'examiner' },
@@ -84,10 +81,10 @@ describe('agentPinning 置顶与排序机制', () => {
       { id: 'fixer' },
     ]
 
-    const pinnedSet = new Set<AgentTeamMode>(['free', 'dispatcher', 'examiner'])
+    const pinnedSet = new Set<AgentTeamMode>(['dispatcher', 'examiner'])
 
     // 时间模拟：
-    // 置顶区：free(100), dispatcher(500), examiner(300) -> 排序后应为 dispatcher, examiner, free
+    // 置顶区：dispatcher(500), examiner(300) -> 排序后应为 dispatcher, examiner
     // 非置顶区：tutor(10), designer(50), researcher(0), fixer(30) -> 排序后应为 designer, fixer, tutor, researcher
     const times: Record<AgentTeamMode, number> = {
       dispatcher: 500,
@@ -105,7 +102,6 @@ describe('agentPinning 置顶与排序机制', () => {
     expect(order).toEqual([
       'dispatcher',
       'examiner',
-      'free',
       'designer',
       'fixer',
       'tutor',
@@ -121,8 +117,8 @@ describe('提示词分段与共同提示词独立性', () => {
     expect(COMMON_EXECUTION_PREFIX_PROMPT).toBe(SHARED_AGENT_PREFIX)
   })
 
-  it('七位智能体系统提示词首部持有共同前缀，最大化缓存命中率', () => {
-    // 全部七位智能体均以 ALL_AGENTS_COMMON_PREFIX 开头
+  it('六位团队角色与自由对话系统提示词首部持有共同前缀，最大化缓存命中率', () => {
+    // 六位团队角色 + 自由对话均以 ALL_AGENTS_COMMON_PREFIX 开头
     expect(buildFreeChatSystem().startsWith(ALL_AGENTS_COMMON_PREFIX)).toBe(true)
     expect(buildTeacherSystem().startsWith(ALL_AGENTS_COMMON_PREFIX)).toBe(true)
     expect(buildDispatcherSystem().startsWith(ALL_AGENTS_COMMON_PREFIX)).toBe(true)
@@ -156,7 +152,7 @@ describe('提示词分段与共同提示词独立性', () => {
     expect(examinerSections[0]!.content).toBe(SHARED_AGENT_PREFIX)
     expect(examinerSections[0]!.isCommon).toBe(true)
 
-    // 自由聊天龟：第一个分段为全员共同提示词基座
+    // 自由对话：第一个分段为全员共同提示词基座
     const freeSections = getAgentPromptSections('free')
     expect(freeSections[0]!.title).toContain('全员共同提示词')
     expect(freeSections[0]!.content).toBe(ALL_AGENTS_COMMON_PREFIX)

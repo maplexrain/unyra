@@ -5,7 +5,8 @@
 import { createElement, act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
-import { getGroupChatMessages } from '../src/learn/groupChat'
+import { appendGroupMessage, getGroupChatMessages, groupThreadIdOf } from '../src/learn/groupChat'
+import type { ChannelMessage } from '../src/agent/types'
 import { resetChannelRegistry, setRoleWorkDispatcher, type RoleTurnRequest } from '../src/learn/roleWork/dispatch'
 import type { LearnStore } from '../src/learn/types'
 import { useGroupChatBridge, type GroupChatBridge } from '../src/components/learn/workspace/useGroupChatBridge'
@@ -66,6 +67,70 @@ describe('useGroupChatBridge', () => {
     expect(logged?.mentions?.[0]?.id).toBe('tutor')
     act(() => {
       root.unmount()
+    })
+    host.remove()
+  })
+
+  it('用户在评论串里发言：落到 `group:goal>根消息id`，并把 threadId 带给被回复的 role', () => {
+    let current = { conversations: [] } as unknown as LearnStore
+    const set = (next: LearnStore): void => {
+      current = next
+    }
+    const started: RoleTurnRequest[] = []
+    setRoleWorkDispatcher(() => ({
+      isConversationRunning: () => false,
+      resolveRoleConversation: () => null,
+      startRoleTurn: (req) => started.push(req),
+      appendChannel: () => {},
+    }))
+
+    const goalId = 'g-bridge-thread'
+    const root: ChannelMessage = {
+      id: 'g-root',
+      kind: 'group',
+      direction: 'out',
+      from: { kind: 'role', id: 'dispatcher', name: '调度龟' },
+      to: { kind: 'group', id: 'group', name: '群聊' },
+      text: '@导师龟 帮我讲一下',
+      ts: 1000,
+      mentions: [{ kind: 'role', id: 'tutor', name: '导师龟' }],
+      goalId,
+      threadId: groupThreadIdOf(goalId, 'g-root'),
+    }
+    appendGroupMessage(root)
+
+    let bridge: GroupChatBridge | null = null
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const rootHost = createRoot(host)
+    act(() => {
+      rootHost.render(
+        createElement(function Probe() {
+          bridge = useGroupChatBridge({
+            goalId,
+            agents: [
+              { id: 'tutor', name: '导师龟' },
+              { id: 'dispatcher', name: '调度龟' },
+            ],
+            getLatest: () => current,
+            set,
+          })
+          return null
+        }),
+      )
+    })
+    act(() => {
+      expect(bridge!.send('补充一处边界', ['tutor'], groupThreadIdOf(goalId, 'g-root'))).toBe(true)
+    })
+    expect(started).toHaveLength(1)
+    expect(started[0]!.role).toBe('tutor')
+    expect(started[0]!.stamp.threadId).toBe('group:g-bridge-thread>g-root')
+    expect(started[0]!.stamp.threadRootId).toBe('g-root')
+    const comment = getGroupChatMessages().find((m) => m.text === '补充一处边界')
+    expect(comment?.threadId).toBe('group:g-bridge-thread>g-root')
+    expect(comment?.threadRootId).toBe('g-root')
+    act(() => {
+      rootHost.unmount()
     })
     host.remove()
   })

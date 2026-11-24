@@ -78,6 +78,8 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
       ...(m.quoteMessageId ? { quoteMessageId: m.quoteMessageId } : {}),
       ...(Array.isArray(m.mentions) && m.mentions.length ? { mentions: m.mentions } : {}),
       ...(typeof m.goalId === 'string' && m.goalId ? { goalId: m.goalId } : {}),
+      ...(typeof m.threadId === 'string' && m.threadId.includes('>') ? { threadId: m.threadId } : {}),
+      ...(typeof m.threadRootId === 'string' && m.threadRootId ? { threadRootId: m.threadRootId } : {}),
       ...(m.auto ? { auto: true } : {}),
     })
   }

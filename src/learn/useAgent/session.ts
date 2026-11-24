@@ -145,10 +145,10 @@ export function useAgentSession(deps: {
   )
 
   /**
-   * 自由聊天（聊天龟）的 work 管理器：会话账本住 free-chat.json，不进 LearnStore。
+   * 自由聊天（自由对话）的 work 管理器：会话账本住 free-chat.json，不进 LearnStore。
    * 交付没有可注入的 role 轮次（free 的轮由 sendFree 串行发起），因此宿主把
    * Work 通道信封落进 channels，并追加一条 channel-message 助手消息；下一轮
-   * 自由对话重建历史时，它会被还原成一条用户侧消息，聊天龟据此接活。
+   * 自由对话重建历史时，它会被还原成一条用户侧消息，自由对话据此接活。
    */
   const getOrCreateFreeWorkManager = useCallback(
     (conversationId: string): WorkManager => {

@@ -518,8 +518,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     set,
   })
   const groupMessagesForGoal = groupBridge.messages
-  const sendGroupMessage = (text: string, targetIds: AgentTeamMode[]): boolean =>
-    groupBridge.send(text, targetIds)
+  const sendGroupMessage = (text: string, targetIds: AgentTeamMode[], threadId?: string): boolean =>
+    groupBridge.send(text, targetIds, threadId)
 
   /**
    * 一枚 agent 运行时条目对应的完整 AgentPanel props。

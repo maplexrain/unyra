@@ -144,17 +144,21 @@ export function outboundEnvelope(input: {
   from: ChannelPeer
   to: ChannelPeer
   text: string
+  /** 宿主指定 id（群聊评论串需要先知道根消息 id）；缺省随机 */
+  id?: string
   ts?: number
   attachments?: ChannelMessage['attachments']
   quoteMessageId?: string
   auto?: boolean
   mentions?: ChannelPeer[]
   goalId?: string
+  threadId?: string
+  threadRootId?: string
   extra?: ChannelMessage['extra']
   ask?: ChannelMessage['ask']
 }): ChannelMessage {
   return {
-    id: crypto.randomUUID(),
+    id: input.id ?? crypto.randomUUID(),
     kind: input.channel,
     direction: 'out',
     from: input.from,
@@ -168,6 +172,8 @@ export function outboundEnvelope(input: {
     ...(input.auto ? { auto: true } : {}),
     ...(input.mentions?.length ? { mentions: input.mentions } : {}),
     ...(input.goalId ? { goalId: input.goalId } : {}),
+    ...(input.threadId ? { threadId: input.threadId } : {}),
+    ...(input.threadRootId ? { threadRootId: input.threadRootId } : {}),
   }
 }
 
@@ -182,6 +188,8 @@ export function inboundEnvelope(input: {
   attachments?: ChannelMessage['attachments']
   mentions?: ChannelPeer[]
   goalId?: string
+  threadId?: string
+  threadRootId?: string
   extra?: ChannelMessage['extra']
 }): ChannelMessage {
   return {
@@ -196,5 +204,7 @@ export function inboundEnvelope(input: {
     ...(input.extra ? { extra: input.extra } : {}),
     ...(input.mentions?.length ? { mentions: input.mentions } : {}),
     ...(input.goalId ? { goalId: input.goalId } : {}),
+    ...(input.threadId ? { threadId: input.threadId } : {}),
+    ...(input.threadRootId ? { threadRootId: input.threadRootId } : {}),
   }
 }

@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
 import { GroupChatPanel, mentionContextAt } from '../src/components/agent/panel/GroupChatPanel'
 import { mentionedAgentsOf } from '../src/components/agent/panel/groupMentions'
+import { groupThreadIdOf } from '../src/learn/groupChat'
 import type { ChannelMessage } from '../src/agent/types'
 
 const agents = [
@@ -58,6 +59,43 @@ describe('GroupChatPanel', () => {
     expect(host.textContent).toContain('@导师龟 收到，已派 work')
     expect(host.textContent).toContain('@ 导师龟')
     expect(host.textContent).not.toContain('思维')
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('一级列表只画主楼；点「评论」进入评论串后才看到楼内回复', () => {
+    const rootMessage = message('m1', { kind: 'role', id: 'dispatcher', name: '调度龟' }, '@导师龟 帮我查一下')
+    rootMessage.threadId = groupThreadIdOf('g1', 'm1')
+    const comment = message('m2', { kind: 'role', id: 'tutor', name: '导师龟' }, '@调度龟 收到，已开工')
+    comment.threadId = groupThreadIdOf('g1', 'm1')
+    comment.threadRootId = 'm1'
+
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(GroupChatPanel, {
+          messages: [rootMessage, comment],
+          agents,
+          onSend: vi.fn(() => true),
+        }),
+      )
+    })
+    expect(host.textContent).toContain('@导师龟 帮我查一下')
+    expect(host.textContent).not.toContain('@调度龟 收到，已开工')
+    const commentButton = host.querySelector<HTMLButtonElement>('button[title="group:g1>m1"]')
+    expect(commentButton).not.toBeNull()
+    act(() => {
+      commentButton!.click()
+    })
+    expect(host.textContent).toContain('评论串')
+    expect(host.textContent).toContain('原消息')
+    expect(host.textContent).toContain('@调度龟 收到，已开工')
+    expect(host.textContent).toContain('group:g1>m1')
+
     act(() => {
       root.unmount()
     })

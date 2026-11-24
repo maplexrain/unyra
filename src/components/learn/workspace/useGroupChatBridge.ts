@@ -15,14 +15,18 @@ import { ensureRoleConversation } from '../../../learn/roleWork/roles'
 import { groupPeer, inboundEnvelope, peerOf, userPeer } from '../../../learn/roleWork/channels'
 import { deliverInbound } from '../../../learn/roleWork/dispatch'
 import { mentionedRoleIdsOf, type MentionRole } from '../../../learn/roleWork/groupTargets'
-import { appendGroupMessage, getGroupChatMessages, subscribeGroupChat } from '../../../learn/groupChat'
+import { appendGroupMessage, getGroupChatMessages, groupThreadIdOf, patchGroupMessage, subscribeGroupChat, threadRootIdOf } from '../../../learn/groupChat'
 import type { GroupChatAgent } from '../../agent/panel/GroupChatPanel'
 
 export interface GroupChatBridge {
-  /** 当前目标下的群聊消息（从旧到新） */
+  /** 当前目标下的群聊消息（从旧到新；一级主楼与评论区回复都在里面，界面自行分层） */
   messages: ChannelMessage[]
-  /** 用户群聊发言：@ 指定成员；无 @ 时默认投给调度龟。返回 false = 拒绝发送 */
-  send: (text: string, targetIds: GroupChatAgent['id'][]) => boolean
+  /**
+   * 用户群聊发言：@ 指定成员；无 @ 时默认投给调度龟。
+   * 传 threadId 时落到该评论串（索引 `通道id>消息id`），回复仍投给被点名/默认成员。
+   * 返回 false = 拒绝发送。
+   */
+  send: (text: string, targetIds: GroupChatAgent['id'][], threadId?: string) => boolean
 }
 
 export function useGroupChatBridge({
@@ -42,11 +46,13 @@ export function useGroupChatBridge({
     [all, goalId],
   )
 
-  const send = (text: string, targetIds: GroupChatAgent['id'][]): boolean => {
+  const send = (text: string, targetIds: GroupChatAgent['id'][], threadId?: string): boolean => {
     const trimmed = text.trim()
     // 群聊 @ 的分隔符就是名字后的空格：末尾的这一个空格不能被 trim 掉。
     const body = trimmed && /[ \u3000]$/.test(text) ? trimmed + ' ' : trimmed
     if (!body || !goalId) return false
+    const threadRootId = threadId ? threadRootIdOf(threadId) : null
+    if (threadId && (!threadRootId || threadId !== groupThreadIdOf(goalId, threadRootId))) return false
     /*
      * 和 role 侧同一条纪律：正文里的 `@名字` 比调用方传的 targetIds 更可信。
      * 这样即使 UI / 模型把目标算错，@导师龟 也只会投给导师龟，不会误投设计龟。
@@ -77,8 +83,11 @@ export function useGroupChatBridge({
       ts: now,
       ...(mentions.length ? { mentions } : {}),
       goalId,
+      ...(threadId && threadRootId ? { threadId, threadRootId } : {}),
     }
     appendGroupMessage(message)
+    // 一级主楼先被评论时补上 threadId（它仍是一级消息，因为 threadRootId 只在评论里出现）。
+    if (threadId && threadRootId) patchGroupMessage(threadRootId, { threadId })
     for (const agent of targets) {
       const ensured = ensureRoleConversation(getLatest(), agent.id as AgentVoice, goalId)
       if (ensured.store !== getLatest()) set(ensured.store)
@@ -92,6 +101,7 @@ export function useGroupChatBridge({
         ts: now,
         ...(mentions.length ? { mentions } : {}),
         goalId,
+        ...(threadId && threadRootId ? { threadId, threadRootId } : {}),
       })
       deliverInbound(
         {
@@ -106,6 +116,7 @@ export function useGroupChatBridge({
             ts: now,
             envelopeId: message.id,
             goalId,
+            ...(threadId && threadRootId ? { threadId, threadRootId } : {}),
           },
           envelopeId: message.id,
         },

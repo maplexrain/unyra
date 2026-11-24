@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { buildFreeChatSystem } from '../src/learn/ai/chatSystem'
 
-describe('固定聊天系统提示词 (buildFreeChatSystem)', () => {
-  it('包含固定聊天独立页签身份与职责定义', () => {
+describe('自由对话系统提示词 (buildFreeChatSystem)', () => {
+  it('包含自由对话独立页签身份与职责定义', () => {
     const prompt = buildFreeChatSystem()
-    expect(prompt).toContain('固定聊天')
+    expect(prompt).toContain('自由对话')
+    expect(prompt).toContain('不要自称「本龟」')
     expect(prompt).toContain('日常闲聊、答疑解惑、概念辨析、思路启发、自由问答与交流')
   })
 
-  it('聊天龟是 role：具体任务交给 work，不亲手做也不谎报完成', () => {
+  it('自由对话不是团队 agent：具体任务交给 work，不亲手做也不谎报完成', () => {
     const prompt = buildFreeChatSystem()
     expect(prompt).toContain('具体任务不在你这一层亲手做')
     expect(prompt).toContain('编写讲义 / 文档')

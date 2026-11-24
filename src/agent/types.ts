@@ -98,6 +98,10 @@ export interface ChannelStamp {
   envelopeId: string
   /** 所属学习目标；群聊按目标分开，私聊 / agent / work 可省略 */
   goalId?: string
+  /** 群聊评论串索引（`通道id>消息id`）；一级主楼也可能带（表示它拥有/继承了一条评论串） */
+  threadId?: string
+  /** 该消息属于哪条一级主楼；只有评论区里的消息才填，一级主楼不填 */
+  threadRootId?: string
 }
 
 /** 通道消息里的额外数据：正文之外的日志 / 原始结果 / 长文本，界面折叠展示，避免刷屏。 */
@@ -146,6 +150,16 @@ export interface ChannelMessage {
   mentions?: ChannelPeer[]
   /** 所属学习目标（群聊按目标分开；其它通道可省略） */
   goalId?: string
+  /**
+   * 群聊评论串索引，格式严格为 `通道id>消息id`（通道id = `group:<goalId>`，消息id = 一级主楼 id）。
+   * 一级主楼带它表示「这条消息拥有/继承了这条评论串」；评论区里的评论带它 + threadRootId。
+   */
+  threadId?: string
+  /**
+   * 该消息属于哪条一级主楼（只有评论区里的消息才填）。一级主楼不填，所以群聊一级列表
+   * 用 `!threadRootId` 过滤；ask 这类落在一级但继承任务线程的消息可以只带 threadId。
+   */
+  threadRootId?: string
   /** 收口兜底自动补发（模型没显式 send） */
   auto?: boolean
 }

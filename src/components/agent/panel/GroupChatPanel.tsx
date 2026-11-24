@@ -5,7 +5,7 @@
  * 时投给被点名的 role，没有 @ 时按产品口径默认由调度龟接收。群聊层本身对所有人可见。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AtSign, MessageSquare, Send, UserRound, Users } from 'lucide-react'
+import { ArrowLeft, AtSign, MessageSquare, Send, UserRound, Users } from 'lucide-react'
 import type { ChannelMessage } from '../../../agent/types'
 import type { AskAnswers } from '../../../agent/tools'
 import { AGENT_ROLE_IDS, DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
@@ -16,6 +16,7 @@ import UserAvatar from '../../user/UserAvatar'
 import { AgentAvatarGlyph } from '../../learn/agent-team/AgentAvatarGlyph'
 import type { AgentTeamMode } from '../../learn/agent-team/conversationList'
 import { AGENT_ROSTER_META } from '../../learn/agent-team/agentRoster'
+import { groupThreadIdOf } from '../../../learn/groupChat'
 import { BubbleRichText } from './BubbleRichText'
 import { AskBubble } from './AskBubble'
 import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
@@ -68,8 +69,8 @@ export function GroupChatPanel({
   agents: GroupChatAgent[]
   /** 没有目标时群聊不可发送；显示在输入区上方 */
   disabledReason?: string
-  /** 返回 false 表示发送失败（输入区保留内容） */
-  onSend: (text: string, targetIds: AgentTeamMode[]) => boolean
+  /** 返回 false 表示发送失败（输入区保留内容）；threadId 非空时发到对应评论串 */
+  onSend: (text: string, targetIds: AgentTeamMode[], threadId?: string) => boolean
   /** 切换目标 / 群聊时重置最近窗口 */
   resetKey?: string
   onAskSubmit?: (askId: string, answers: AskAnswers) => void
@@ -86,8 +87,51 @@ export function GroupChatPanel({
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const user = activeUser()
   const userName = user ? displayName(user.profile, t('未命名用户')) : t('未命名用户')
-  const { start, hasOlder, sentinelRef } = useRecentWindow(messages.length, resetKey)
-  const visible = messages.slice(start)
+  const [threadRootId, setThreadRootId] = useState<string | null>(null)
+  /** 一级群聊：评论串里的回复（有 threadRootId）不重复出现在主列表 */
+  const topMessages = useMemo(() => messages.filter((m) => !m.threadRootId), [messages])
+  const threadRoot = useMemo(
+    () => (threadRootId ? messages.find((m) => m.id === threadRootId) ?? null : null),
+    [messages, threadRootId],
+  )
+  /** 当前评论串里的回复；根消息单独渲染，永远在主楼位置 */
+  const threadComments = useMemo(
+    () => (threadRoot ? messages.filter((m) => m.threadRootId === threadRoot.id) : []),
+    [messages, threadRoot],
+  )
+  const threadId = threadRoot?.goalId ? groupThreadIdOf(threadRoot.goalId, threadRoot.id) : null
+  /** 评论串里默认回复谁：优先最近一位发言的 role，其次主楼 @ 的 role，再次主楼作者 */
+  const threadDefaultTargetIds = useMemo((): AgentTeamMode[] => {
+    if (!threadRoot) return []
+    const isAgent = (id: string): id is AgentTeamMode => agents.some((a) => a.id === id)
+    const roleOf = (m: ChannelMessage): AgentTeamMode | null =>
+      m.from.kind === 'role' && isAgent(m.from.id) ? m.from.id : null
+    const lastSpeaker = [...threadComments].reverse().map(roleOf).find((id): id is AgentTeamMode => Boolean(id))
+    if (lastSpeaker) return [lastSpeaker]
+    const mentioned = (threadRoot.mentions ?? [])
+      .map((p) => p.id)
+      .filter((id): id is AgentTeamMode => isAgent(id))
+    if (mentioned.length) return [mentioned[0]]
+    const rootRole = roleOf(threadRoot)
+    if (rootRole) return [rootRole]
+    return agents.some((a) => a.id === 'dispatcher') ? ['dispatcher'] : []
+  }, [agents, threadComments, threadRoot])
+
+  useEffect(() => {
+    setThreadRootId(null)
+  }, [resetKey])
+
+  // 评论串根消息被容量裁掉时退回一级列表，避免停在一个空壳页面。
+  useEffect(() => {
+    if (threadRootId && !threadRoot) setThreadRootId(null)
+  }, [threadRoot, threadRootId])
+
+  const listMessages = threadRoot ? threadComments : topMessages
+  const viewKey = resetKey + (threadRootId ? '|' + threadRootId : '')
+  const { start, hasOlder, sentinelRef } = useRecentWindow(listMessages.length, viewKey)
+  const visible = listMessages.slice(start)
+  /** 评论串视图里根消息永远单独占第一条；它不计入评论窗口 */
+  const rendered = threadRoot ? [threadRoot, ...visible] : visible
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const atBottomRef = useRef(true)
 
@@ -96,6 +140,11 @@ export function GroupChatPanel({
     atBottomRef.current = true
     if (el) el.scrollTop = el.scrollHeight
   }, [resetKey])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [threadRootId])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -158,21 +207,24 @@ export function GroupChatPanel({
     // @ 的语法要求名字后保留一个空格；不能在这里把末尾空格 trim 掉，否则
     // `@导师龟 ` 会被自己吃掉分隔符，变成一次失败的艾特。
     const body = /[ \u3000]$/.test(text) ? trimmed + ' ' : trimmed
-    // 没有 @ 时按产品口径默认由调度龟接；@ 了就按正文点名的成员投递
+    // 没有 @ 时按产品口径默认由调度龟接；@ 了就按正文点名的成员投递。
+    // 评论区里没有 @ 时优先回到最近一位发言的 role，避免把任务重新丢回调度龟。
     const targets: AgentTeamMode[] = mentioned.length
       ? mentioned.map((a) => a.id)
-      : agents.some((a) => a.id === 'dispatcher')
-        ? ['dispatcher']
-        : []
+      : threadRoot
+        ? threadDefaultTargetIds
+        : agents.some((a) => a.id === 'dispatcher')
+          ? ['dispatcher']
+          : []
     if (!targets.length) {
-      setError(t('当前群聊里没有调度龟，无法接收无 @ 的消息'))
+      setError(threadRoot ? t('这条评论串里还没有可回复的 agent') : t('当前群聊里没有调度龟，无法接收无 @ 的消息'))
       return
     }
     if (body.includes('@') && !mentioned.length) {
       setError(t('@ 没有匹配到成员：请写完整名字，并在 `@名字 ` 后留一个空格'))
       return
     }
-    const ok = onSend(body, targets)
+    const ok = onSend(body, targets, threadId ?? undefined)
     if (!ok) {
       setError(t('发送失败，请稍后再试'))
       return
@@ -209,38 +261,68 @@ export function GroupChatPanel({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-line/60 px-4 py-3">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-500/10 text-teal-600">
-          <Users size={18} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="text-[14px] font-semibold text-ink">{t('群聊')}</div>
-          <div className="truncate text-[11px] text-ink-faint">
-            {t('群通道 · 只有对话列表 · @ 指定 agent，无 @ 时由调度龟接手')}
-          </div>
-        </div>
-        <div className="flex -space-x-2">
-          {agents.slice(0, 5).map((agent) => {
-            const meta = AGENT_ROSTER_META[agent.id]
-            return (
-              <span
-                key={agent.id}
-                title={agent.name}
-                className={
-                  'flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border ' +
-                  (meta?.avatarClass ?? 'border-line/70 bg-line/45 text-ink-soft')
-                }
-              >
-                <AgentAvatarGlyph
-                  avatarId={agent.avatarId}
-                  fallback={meta?.fallbackIcon ?? MessageSquare}
-                  size={15}
-                  imgSize={28}
-                  imgClassName="h-7 w-7 rounded-full"
-                />
-              </span>
-            )
-          })}
-        </div>
+        {threadRoot ? (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setThreadRootId(null)
+                setError('')
+              }}
+              title={t('返回群聊')}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-line/30 hover:text-ink"
+            >
+              <ArrowLeft size={17} />
+            </button>
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-seal/10 text-seal">
+              <MessageSquare size={17} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[14px] font-semibold text-ink">{t('评论串')}</div>
+              <div className="truncate text-[11px] text-ink-faint" title={threadId ?? undefined}>
+                {t('{0} 条评论 · 原消息来自 {1}', threadComments.length, nameOfPeer(threadRoot))}
+              </div>
+            </div>
+            <span className="hidden max-w-[180px] truncate rounded-full bg-line/30 px-2 py-0.5 text-[9.5px] text-ink-faint sm:inline" title={threadId ?? undefined}>
+              {threadId ?? ''}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-500/10 text-teal-600">
+              <Users size={18} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[14px] font-semibold text-ink">{t('群聊')}</div>
+              <div className="truncate text-[11px] text-ink-faint">
+                {t('群通道 · 只有对话列表 · @ 指定 agent，无 @ 时由调度龟接手')}
+              </div>
+            </div>
+            <div className="flex -space-x-2">
+              {agents.slice(0, 5).map((agent) => {
+                const meta = AGENT_ROSTER_META[agent.id]
+                return (
+                  <span
+                    key={agent.id}
+                    title={agent.name}
+                    className={
+                      'flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border ' +
+                      (meta?.avatarClass ?? 'border-line/70 bg-line/45 text-ink-soft')
+                    }
+                  >
+                    <AgentAvatarGlyph
+                      avatarId={agent.avatarId}
+                      fallback={meta?.fallbackIcon ?? MessageSquare}
+                      size={15}
+                      imgSize={28}
+                      imgClassName="h-7 w-7 rounded-full"
+                    />
+                  </span>
+                )
+              })}
+            </div>
+          </>
+        )}
       </div>
 
       <div
@@ -252,7 +334,7 @@ export function GroupChatPanel({
         }}
         className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
       >
-        {visible.length ? (
+        {rendered.length ? (
           <div className="flex flex-col gap-3">
             {hasOlder ? (
               <div className="flex items-center justify-center py-1 text-[10.5px] text-ink-faint">
@@ -260,12 +342,17 @@ export function GroupChatPanel({
               </div>
             ) : null}
             <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
-            {visible.map((m) => {
+            {rendered.map((m) => {
               const fromRole = m.from.kind === 'role'
               const roleId = fromRole ? (m.from.id as AgentTeamMode) : undefined
               const meta = roleId ? AGENT_ROSTER_META[roleId] : undefined
               const avatarId = roleId ? agents.find((a) => a.id === roleId)?.avatarId : undefined
               const mine = m.from.kind === 'user'
+              const isThreadRoot = threadRoot?.id === m.id
+              const commentCount = messages.filter((x) => x.threadRootId === m.id).length
+              const ownThreadId = m.goalId ? groupThreadIdOf(m.goalId, m.id) : null
+              // ask 可能继承任务串（threadId 指向别的根）：它仍在一级，但不在这里开新串。
+              const canComment = !threadRoot && !m.threadRootId && Boolean(m.goalId) && (!m.threadId || m.threadId === ownThreadId)
               const mentions =
                 m.mentions?.map((p) => agents.find((a) => a.id === p.id)?.name || p.name).filter(Boolean) ?? []
               return (
@@ -310,6 +397,11 @@ export function GroupChatPanel({
                       <span className="text-ink-faint/80">
                         {mentions.length ? '@ ' + mentions.join('、') : t('群聊')}
                       </span>
+                      {isThreadRoot ? (
+                        <span className="rounded-full bg-seal/12 px-1.5 py-0.5 text-[9.5px] font-medium text-seal">
+                          {t('原消息')}
+                        </span>
+                      ) : null}
                     </div>
                     {m.ask ? (
                       <AskBubble
@@ -323,7 +415,7 @@ export function GroupChatPanel({
                     ) : (
                       <div
                         className={
-                          'relative max-w-full break-words rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ' +
+                          'relative max-w-full break-words rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed ' +
                           (mine
                             ? 'bg-bubble-user text-ink-strong rounded-tr-sm'
                             : 'bg-bubble-agent text-ink rounded-tl-sm ring-1 ring-line/50')
@@ -341,6 +433,20 @@ export function GroupChatPanel({
                     )}
                     <ChannelAttachments message={m} />
                     <ChannelExtraBlock extra={m.extra} names={mentionNames} />
+                    {canComment ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setThreadRootId(m.id)
+                          setError('')
+                        }}
+                        title={m.goalId ? groupThreadIdOf(m.goalId, m.id) : undefined}
+                        className="mt-1.5 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] text-ink-faint transition-colors hover:bg-line/25 hover:text-ink-soft"
+                      >
+                        <MessageSquare size={11} />
+                        {commentCount ? t('评论 {0}', commentCount) : t('评论')}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               )
@@ -417,7 +523,9 @@ export function GroupChatPanel({
                 )
               })}
               {!mentioned.length ? (
-                <span className="text-[10.5px] text-ink-faint">未 @ 时由调度龟接手；@ 可点名指定成员</span>
+                <span className="text-[10.5px] text-ink-faint">
+                  {threadRoot ? t('评论串内未 @ 时回复最近发言的 agent') : t('未 @ 时由调度龟接手；@ 可点名指定成员')}
+                </span>
               ) : null}
             </div>
             <textarea
@@ -471,13 +579,23 @@ export function GroupChatPanel({
                 setForcePicker(false)
                 setSuppressPicker(false)
               }}
-              placeholder={disabledReason ? t('先选择学习目标后再群聊') : t('输入消息，可不 @ 直接发；@ 可点名指定成员…')}
+              placeholder={
+                disabledReason
+                  ? t('先选择学习目标后再群聊')
+                  : threadRoot
+                    ? t('回复这条评论串，可不 @ 直接发…')
+                    : t('输入消息，可不 @ 直接发；@ 可点名指定成员…')
+              }
               disabled={Boolean(disabledReason)}
               className="max-h-[160px] min-h-[52px] w-full resize-none bg-transparent px-3.5 pb-1.5 pt-2 text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-faint/70 disabled:opacity-60"
             />
             <div className="flex items-center gap-1 px-2.5 pb-2">
               <span className="min-w-0 truncate text-[10.5px] text-ink-faint">
-                {mentioned.length ? '将投递给点名成员' : '默认投递给调度龟'}
+                {mentioned.length
+                  ? t('将投递给点名成员')
+                  : threadRoot
+                    ? t('将回复评论串里的 agent')
+                    : t('默认投递给调度龟')}
               </span>
               <div className="ml-auto flex shrink-0 items-center gap-1">
                 <button

@@ -124,7 +124,7 @@ describe('装配顺序与缓存前缀', () => {
       expect(text).not.toContain('### 非固定组（本 role 专属）')
     }
     const free = buildFreeChatSystem()
-    expect(free.indexOf('【工具与沙箱能力】')).toBeLessThan(free.indexOf('你是「归一 Unyra」的聊天龟'))
+    expect(free.indexOf('【工具与沙箱能力】')).toBeLessThan(free.indexOf('你是「归一 Unyra」的自由对话助手'))
   })
 
   it('固定组段六位 role 逐字节一致', () => {

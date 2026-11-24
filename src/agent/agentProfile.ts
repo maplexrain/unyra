@@ -20,30 +20,33 @@ import type { ResolvedProvider } from '../ai/client'
 import { loadAgentSettings, saveAgentSettings, type AgentSettings } from './settings'
 
 /**
- * role id（七位 role；interface 的 AgentTeamMode 仍是历史命名）：
+ * role id（六位团队 role；interface 的 AgentTeamMode 仍是历史命名）：
  * - tutor       导师：主讲与协调（教学对话、大纲、画像、日程），教学主线 role；
  * - dispatcher  调度员：接收用户需求，用 chat.send 派给对应 role / 用 work 派活，交付结果——
  *               **节点宇宙与其他地方发起的工作流统一经过它路由**；
  * - examiner    出卷师：试卷命题、判分与错题讲解；
  * - designer    设计师：互动课堂课件与超级实验室；
  * - researcher  调研员：联网调研与内置浏览器实操；
- * - fixer       维修员：修复问题（目前仅解析失败的函数图像语法，用户主动触发）；
- * - free        仅聊天：不挂目标的纯对话（固定页签，但有 work/chat 面，可派 work）。
+ * - fixer       维修员：修复问题（目前仅解析失败的函数图像语法，用户主动触发）。
+ *
+ * `free` 是**无目标自由对话**的运行形态，不再作为一位团队 agent 出现在名册、置顶或提示词
+ * 排行里；保留类型只为兼容历史 free-chat 会话与无目标页签。
  */
 export type AgentProfileId = 'free' | 'tutor' | 'dispatcher' | 'examiner' | 'designer' | 'researcher' | 'fixer'
 
-/** 挂在目标上的 role（free 不挂目标，是固定页签） */
+/** 挂在目标上的团队 role（free 不挂目标，也不再进入团队名册） */
 export type AgentVoice = Exclude<AgentProfileId, 'free'>
 
 /** 全部挂目标的 role（tutor 在前：老数据没有 voice 字段时兜到它；调度员随后——它是任务入口） */
 export const AGENT_VOICES: readonly AgentVoice[] = ['tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer']
 
 /**
- * 全部 role 的名单（role-work 之后一个 role 一段对话，可按需带多个 work）。
+ * 全部团队 role 的名单（role-work 之后一个 role 一段对话，可按需带多个 work）。
  * 顺序只服务运行时遍历，界面顺序见 components/learn/agent-team/agentRoster。
+ * `free` 不在名单里：自由对话不是团队 agent，不参与角色提示词与群聊点名。
  */
 export const AGENT_ROLE_IDS: readonly AgentProfileId[] = [
-  'free', 'tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer',
+  'tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer',
 ]
 
 /**
@@ -60,7 +63,7 @@ export const COMMUNICABLE_VOICES: ReadonlySet<AgentVoice> = new Set(['tutor', 'd
  */
 export const CONTENT_VOICES: ReadonlySet<AgentVoice> = new Set(['tutor', 'examiner', 'designer'])
 
-/** 可交流口径（free 恒可聊）；含 legacy 声部时先映射到现役 */
+/** 可交流口径（自由对话恒可聊）；含 legacy 声部时先映射到现役 */
 export function isCommunicable(id: AgentProfileId): boolean {
   return id === 'free' || COMMUNICABLE_VOICES.has(id as AgentVoice)
 }
@@ -73,7 +76,7 @@ export const LEGACY_VOICE_ALIAS: Readonly<Record<string, AgentVoice>> = { grader
 
 /** 一位智能体的独立设置。缺省字段 = 跟随默认 / 全局，见模块顶部说明 */
 export interface AgentProfile {
-  /** 显示名覆盖；空 / 缺省 = 默认名（聊天龟 / 导师龟 / 出卷龟 …） */
+  /** 显示名覆盖；空 / 缺省 = 默认名（自由对话 / 导师龟 / 出卷龟 …） */
   name?: string
   /** 头像 id（AGENT_AVATARS 目录）；缺省 = 默认头像（各自的那只龟龟） */
   avatar?: string
@@ -89,10 +92,9 @@ export interface AgentProfile {
 
 /**
  * 头像目录：id → 展示名。可视映射在 components 一侧（agentAvatars.tsx：龟龟图片 +
- * lucide 图标），这里只存纯数据。龟龟是默认形象（每位声部一只），图标款是设置里的备选。
+ * lucide 图标），这里只存纯数据。龟龟是六位团队声部的默认形象，图标款是设置里的备选。
  */
 export const AGENT_AVATARS: ReadonlyArray<{ id: string; label: string }> = [
-  { id: 'turtle-chat', label: '聊天龟' },
   { id: 'turtle-tutor', label: '导师龟' },
   { id: 'turtle-dispatcher', label: '调度龟' },
   { id: 'turtle-examiner', label: '出卷龟' },
@@ -112,9 +114,9 @@ export const AGENT_AVATARS: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'route', label: '路线' },
 ]
 
-/** 默认显示名（龟龟一家：归一的 xx 龟，提示词里的身份口径与此一致；排行与龟号见 learn/ai/turtleClan 的龟门总纲） */
+/** 默认显示名（团队六位：归一的 xx 龟；自由对话是无目标页签，不列入龟门排行） */
 export const DEFAULT_AGENT_NAME: Record<AgentProfileId, string> = {
-  free: '聊天龟',
+  free: '自由对话',
   tutor: '导师龟',
   dispatcher: '调度龟',
   examiner: '出卷龟',
@@ -123,7 +125,7 @@ export const DEFAULT_AGENT_NAME: Record<AgentProfileId, string> = {
   fixer: '维修龟',
 }
 export const DEFAULT_AGENT_AVATAR: Record<AgentProfileId, string> = {
-  free: 'turtle-chat',
+  free: 'chat',
   tutor: 'turtle-tutor',
   dispatcher: 'turtle-dispatcher',
   examiner: 'turtle-examiner',
@@ -197,7 +199,7 @@ export const WORK_DOMAIN_PLANES: Record<AgentVoice, AgentApiPlane> = {
 }
 
 /**
- * **role 层能力面**：七位 role 只保留「对外沟通 + 对内调度」所需的固定面。
+ * **role 层能力面**：六位团队 role 只保留「对外沟通 + 对内调度」所需的固定面。
  * 领域组（node / exam / classroom / web / browser / files …）全部只在 work 面出现；
  * role 不需要 `wait`（loop 不阻塞），也不需要 `ask`（问用户用 chat.send 一句话即可，
  * 不把当前 loop 挂住）。`help` 恒在场，渲染时单独补。
@@ -250,7 +252,7 @@ export function workPlaneOfRole(voice: AgentVoice): AgentApiPlane {
   return { groups, topLevel }
 }
 
-/** 仅聊天 role 的 work 面：能查网、排日程，交回聊天龟；没有文档/节点面 */
+/** 无目标自由对话的 work 面：能查网、排日程，交回自由对话；没有文档/节点面 */
 export function freeWorkPlane(): AgentApiPlane {
   return {
     groups: ['tmp', 'web', 'schedule', 'host'],

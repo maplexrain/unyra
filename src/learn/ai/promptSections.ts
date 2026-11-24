@@ -5,7 +5,7 @@
  * 1. 将系统提示词拆解为相互独立的结构化段落（索引、标题、类别徽标、颜色主题、内容），
  *    同时将「全员/执行声部共用的基础提示词」（身份总纲、团队协作、沙箱执行约束、压缩规程）
  *    明确独立出来，供 UI 展示与独立复用。
- * 2. **这里是七位智能体系统提示词的唯一装配来源**：运行期的 buildFreeChatSystem /
+ * 2. **这里是六位团队角色与自由对话系统提示词的唯一装配来源**：运行期的 buildFreeChatSystem /
  *    buildTeacherSystem / buildVoiceSystem 都把这里的分段按 '\n\n' 拼回去，设置页的预览
  *    直接展示同一份分段——预览与真正发出的提示词不会再各说各话。
  * 3. role 的顺序（用户定稿）：共同基础前缀 → **固定组 API** → 身份定位 → 分工（能做什么）
@@ -60,7 +60,7 @@ export interface PromptSection {
  * 共同提示词组件（独立导出）
  * ========================================================================= */
 
-/** 共同提示词：龟门七兄弟身份总纲（所有 Agent 共同拥有） */
+/** 共同提示词：龟门六兄弟身份总纲（所有 Agent 共同拥有） */
 export const COMMON_TURTLE_CLAN_PROMPT = TURTLE_CLAN_GUIDE
 
 /** 共同提示词：role 层协作总纲与三通道纪律（所有 role 拥有） */
@@ -82,7 +82,7 @@ export const COMMON_EXECUTION_DISCIPLINE_PROMPT = [
 /** 共同提示词：会话压缩规程（所有执行声部拥有） */
 export const COMMON_COMPACT_WORKFLOW_PROMPT = compactWorkflowSection()
 
-/** 全员共同提示词全文（全部七位智能体起始块） */
+/** 全员共同提示词全文（六位团队角色起始块） */
 export const COMMON_ALL_AGENTS_PREFIX_PROMPT = ALL_AGENTS_COMMON_PREFIX
 
 /** 执行声部共同基础前缀全文（即 SHARED_AGENT_PREFIX） */
@@ -126,7 +126,7 @@ export function joinPromptSections(sections: PromptSection[]): string {
   return sections.map((s) => s.content).join('\n\n')
 }
 
-/** 固定组 API 段（七位 role 逐字节一致） */
+/** 固定组 API 段（六位 role 逐字节一致） */
 function fixedApiSection(voice: AgentVoice, content: string): PromptSection {
   return {
     id: `${voice}-api-fixed`,
@@ -166,7 +166,7 @@ function voiceCopySections(voice: AgentVoice): PromptSection[] {
  * 各声部分段构建器
  * ========================================================================= */
 
-/** 拆解 Free Chat（聊天龟）的提示词分段 */
+/** 拆解 Free Chat（自由对话）的提示词分段 */
 function getFreeChatSections(opts: BuildSectionsOpts = {}): PromptSection[] {
   return numbered([
     {
@@ -189,7 +189,7 @@ function getFreeChatSections(opts: BuildSectionsOpts = {}): PromptSection[] {
     {
       id: 'free-role',
       index: 0,
-      title: '聊天龟定位与页签说明',
+      title: '自由对话定位与页签说明',
       badge: '身份定位',
       color: 'rose',
       content: FREE_CHAT_IDENTITY,

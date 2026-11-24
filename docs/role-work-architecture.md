@@ -1,6 +1,6 @@
 # role-work 架构
 
-> 七位 agent 都是 **role**；role 不亲手做所有事，它把任务拆给一个或多个 **work**，
+> 六位团队 role 都是 **role**；role 不亲手做所有事，它把任务拆给一个或多个 **work**，
 > work 在自己的独立上下文里执行，干完通过 `host.send` 交回 role，role 再决定怎么对外说。
 > 旧 subagent / agent-team 委托架构已经删除，本文是当前唯一入口。
 
@@ -18,11 +18,10 @@ role ──work.send──▶ work N（独立上下文，无人格）
 work ──host.send──▶ 回到所属 role 的 Work 通道
 ```
 
-## 七个 role
+## 六位团队 role
 
-`free / tutor / dispatcher / examiner / designer / researcher / fixer`。
-聊天龟（free）也是 role：能闲聊，也能 create / send work；它没有目标上下文，
-跨 role 的 agent 通道只在现有目标会话里找得到目标时才发得出去。
+`tutor / dispatcher / examiner / designer / researcher / fixer`。
+`free` 只保留为无目标时的 legacy 自由对话运行态，不在团队名册、龟门排行与群聊点名里。
 
 ## role 层：只有沟通与调度
 
@@ -70,6 +69,9 @@ api.chat.send({ channel, to?, text, messageId?, attachments? })
   - **对话（chat）**：只画 user / agent 通道，不画工具、思考、Work 通道；
   - **思维（mind）**：画完整消息、工具、思考与 Work 交付。
 - work 页签直接渲染 work 的消息与 execTrace；work 页签关闭不拦后台运行。
+- 群聊评论串：索引严格为 `通道id>消息id`（群通道为 `group:<goalId>`）。一级主楼只带 `threadId`，
+  评论区回复同时带 `threadId` 与 `threadRootId`；群聊一级列表用 `!threadRootId` 过滤，评论只在
+  对应主楼的二级视图出现。agent 间任务交流进评论串，`@用户` 汇报与 ask 仍留一级。
 
 ## 收口兜底
 

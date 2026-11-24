@@ -2,7 +2,7 @@
  * 这个文件负责应用图标与应用菜单：窗口与托盘上那枚图标从哪来、运行时染色的结果怎么应用，
  * 以及那份「只为把 Ctrl+W / Ctrl+Q 让出来」的编辑菜单。
  */
-import { Menu, nativeImage } from 'electron'
+import { BrowserWindow, Menu, nativeImage } from 'electron'
 import path from 'node:path'
 import { t } from '../i18n'
 import { isDev } from './startup'
@@ -77,8 +77,30 @@ export function rebuildAppMenu(): void {
           { role: 'toggleDevTools', label: t('开发者工具') },
           { type: 'separator' },
           { role: 'resetZoom', label: t('实际大小') },
-          { role: 'zoomIn', label: t('放大') },
-          { role: 'zoomOut', label: t('缩小') },
+          /*
+           * 放大 / 缩小**不挂原生加速键**：role: zoomIn / zoomOut 自带的 Ctrl+= / Ctrl+-
+           * 会在浏览器进程先一步吃掉按键，渲染层收不到，而且改键后的旧组合仍会生效
+           * （见 lib/shortcuts 的 source.foldCurrent / unfoldCurrent）。这里改成普通菜单项，
+           * 缩放只走菜单点击；键盘上的 Ctrl+- / Ctrl+= 交给渲染层按当前绑定处理。
+           */
+          {
+            label: t('放大'),
+            click: (_item, win) => {
+              if (win instanceof BrowserWindow) {
+                const wc = win.webContents
+                wc.setZoomLevel(wc.getZoomLevel() + 0.5)
+              }
+            },
+          },
+          {
+            label: t('缩小'),
+            click: (_item, win) => {
+              if (win instanceof BrowserWindow) {
+                const wc = win.webContents
+                wc.setZoomLevel(wc.getZoomLevel() - 0.5)
+              }
+            },
+          },
           { type: 'separator' },
           {
             /*
