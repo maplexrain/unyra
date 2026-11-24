@@ -5,18 +5,21 @@
  * 时投给被点名的 role，没有 @ 时按产品口径默认由调度龟接收。群聊层本身对所有人可见。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, AtSign, MessageSquare, Send, Users } from 'lucide-react'
+import { ArrowLeft, AtSign, MessageSquare, Send, UserRound, Users } from 'lucide-react'
 import type { ChannelMessage } from '../../../agent/types'
 import type { AskAnswers } from '../../../agent/tools'
 import { AGENT_ROLE_IDS, DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import { t } from '../../../i18n'
 import { displayName } from '../../../user/profile'
 import { activeUser } from '../../../user/store'
+import UserAvatar from '../../user/UserAvatar'
 import { AgentAvatarGlyph } from '../../learn/agent-team/AgentAvatarGlyph'
 import type { AgentTeamMode } from '../../learn/agent-team/conversationList'
 import { AGENT_ROSTER_META } from '../../learn/agent-team/agentRoster'
 import { groupThreadIdOf } from '../../../learn/groupChat'
-import { GroupMessageCard } from './GroupMessageCard'
+import { BubbleRichText } from './BubbleRichText'
+import { AskBubble } from './AskBubble'
+import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
 import { useRecentWindow } from './useRecentWindow'
 import { mentionedAgentsOf } from './groupMentions'
 
@@ -340,31 +343,112 @@ export function GroupChatPanel({
             ) : null}
             <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
             {rendered.map((m) => {
+              const fromRole = m.from.kind === 'role'
+              const roleId = fromRole ? (m.from.id as AgentTeamMode) : undefined
+              const meta = roleId ? AGENT_ROSTER_META[roleId] : undefined
+              const avatarId = roleId ? agents.find((a) => a.id === roleId)?.avatarId : undefined
+              const mine = m.from.kind === 'user'
               const isThreadRoot = threadRoot?.id === m.id
+              const commentCount = messages.filter((x) => x.threadRootId === m.id).length
               const ownThreadId = m.goalId ? groupThreadIdOf(m.goalId, m.id) : null
               // ask 可能继承任务串（threadId 指向别的根）：它仍在一级，但不在这里开新串。
-              const canComment =
-                !threadRoot && !m.threadRootId && Boolean(m.goalId) && (!m.threadId || m.threadId === ownThreadId)
-              const comments = messages.filter((x) => x.threadRootId === m.id)
+              const canComment = !threadRoot && !m.threadRootId && Boolean(m.goalId) && (!m.threadId || m.threadId === ownThreadId)
+              const mentions =
+                m.mentions?.map((p) => agents.find((a) => a.id === p.id)?.name || p.name).filter(Boolean) ?? []
               return (
-                <GroupMessageCard
-                  key={m.id}
-                  message={m}
-                  agents={agents}
-                  userName={userName}
-                  mentionNames={mentionNames}
-                  comments={comments}
-                  isThreadRoot={isThreadRoot}
-                  canComment={canComment}
-                  onOpenThread={() => {
-                    setThreadRootId(m.id)
-                    setError('')
-                  }}
-                  onAskSubmit={onAskSubmit}
-                  onAskCancel={onAskCancel}
-                  onAskExpire={onAskExpire}
-                  onAskHover={onAskHover}
-                />
+                <div key={m.id} className={'flex items-start gap-2.5 ' + (mine ? 'flex-row-reverse' : '')}>
+                  {mine ? (
+                    user ? (
+                      <UserAvatar
+                        profile={user.profile}
+                        size={46}
+                        seed={user.id}
+                        className="mt-1.5 ring-1 ring-line/70"
+                      />
+                    ) : (
+                      <span className="mt-1.5 flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full bg-line/70 text-ink-faint">
+                        <UserRound size={20} />
+                      </span>
+                    )
+                  ) : (
+                    <span
+                      className={
+                        'mt-1.5 flex h-[46px] w-[46px] shrink-0 items-center justify-center overflow-hidden rounded-full border ' +
+                        (meta?.avatarClass ?? 'border-line/70 bg-line/45 text-ink-soft')
+                      }
+                    >
+                      <AgentAvatarGlyph
+                        avatarId={avatarId}
+                        fallback={meta?.fallbackIcon ?? MessageSquare}
+                        size={21}
+                        imgSize={46}
+                        imgClassName="h-[46px] w-[46px] rounded-full"
+                      />
+                    </span>
+                  )}
+                  <div className={'min-w-0 max-w-[700px] ' + (mine ? 'flex flex-col items-end' : 'flex flex-col items-start')}>
+                    <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px]">
+                      <span className={'font-semibold ' + (mine ? 'text-ink-strong' : (meta?.nameClass ?? 'text-ink-strong'))}>
+                        {mine ? userName : nameOfPeer(m)}
+                      </span>
+                      <span className="text-ink-faint">
+                        {new Date(m.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <span className="text-ink-faint/80">
+                        {mentions.length ? '@ ' + mentions.join('、') : t('群聊')}
+                      </span>
+                      {isThreadRoot ? (
+                        <span className="rounded-full bg-seal/12 px-1.5 py-0.5 text-[9.5px] font-medium text-seal">
+                          {t('原消息')}
+                        </span>
+                      ) : null}
+                    </div>
+                    {m.ask ? (
+                      <AskBubble
+                        ask={m.ask}
+                        actorName={nameOfPeer(m)}
+                        onSubmit={onAskSubmit ? (answers) => onAskSubmit(m.ask!.id, answers) : undefined}
+                        onCancel={onAskCancel ? () => onAskCancel(m.ask!.id) : undefined}
+                        onExpire={onAskExpire ? () => onAskExpire(m.ask!.id) : undefined}
+                        onHover={onAskHover ? (hovering) => onAskHover(m.ask!.id, hovering) : undefined}
+                      />
+                    ) : (
+                      <div
+                        className={
+                          'relative max-w-full break-words rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed ' +
+                          (mine
+                            ? 'bg-bubble-user text-ink-strong rounded-tr-sm'
+                            : 'bg-bubble-agent text-ink rounded-tl-sm ring-1 ring-line/50')
+                        }
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={
+                            'absolute top-2.5 h-2.5 w-2.5 rotate-45 ' +
+                            (mine ? 'bg-bubble-user -right-1' : 'bg-bubble-agent -left-1')
+                          }
+                        />
+                        <BubbleRichText text={m.text} names={mentionNames} tone={mine ? 'user' : 'agent'} />
+                      </div>
+                    )}
+                    <ChannelAttachments message={m} />
+                    <ChannelExtraBlock extra={m.extra} names={mentionNames} />
+                    {canComment ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setThreadRootId(m.id)
+                          setError('')
+                        }}
+                        title={m.goalId ? groupThreadIdOf(m.goalId, m.id) : undefined}
+                        className="mt-1.5 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] text-ink-faint transition-colors hover:bg-line/25 hover:text-ink-soft"
+                      >
+                        <MessageSquare size={11} />
+                        {commentCount ? t('评论 {0}', commentCount) : t('评论')}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
               )
             })}
           </div>

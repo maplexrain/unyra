@@ -59,7 +59,6 @@ describe('GroupChatPanel', () => {
     expect(host.textContent).toContain('@导师龟 收到，已派 work')
     expect(host.textContent).toContain('@ 导师龟')
     expect(host.textContent).not.toContain('思维')
-    expect(host.querySelector('[data-group-message-card="m1"]')).not.toBeNull()
     act(() => {
       root.unmount()
     })
