@@ -40,6 +40,7 @@ export function RoleChatView({
   onAskSubmit,
   onAskCancel,
   onAskExpire,
+  onAskHover,
 }: {
   channels: ChannelMessage[]
   /** 当前 role 的显示名（agent profile 覆盖后的真名） */
@@ -57,6 +58,7 @@ export function RoleChatView({
   onAskSubmit?: (askId: string, answers: AskAnswers) => void
   onAskCancel?: (askId: string) => void
   onAskExpire?: (askId: string) => void
+  onAskHover?: (askId: string, hovering: boolean) => void
 }) {
   const user = activeUser()
   const userName = user ? displayName(user.profile, t('未命名用户')) : t('未命名用户')
@@ -173,7 +175,7 @@ export function RoleChatView({
       <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
       {visible.map((m) => {
         const mine = m.kind === 'user' && m.direction === 'in'
-        const bubbleBg = mine ? 'bg-bubble-user text-ink-strong' : 'bg-bubble-agent text-ink'
+        const bubbleBg = mine ? 'bg-bubble-user text-ink-strong' : 'bg-bubble-agent text-ink ring-1 ring-line/50'
         return (
           <div key={m.id} className={'flex items-start gap-2.5 ' + (mine ? 'flex-row-reverse' : '')}>
             {avatarOf(m)}
@@ -192,10 +194,10 @@ export function RoleChatView({
                 <AskBubble
                   ask={m.ask}
                   actorName={nameOf(m)}
-                  createdAt={m.ts}
                   onSubmit={onAskSubmit ? (answers) => onAskSubmit(m.ask!.id, answers) : undefined}
                   onCancel={onAskCancel ? () => onAskCancel(m.ask!.id) : undefined}
                   onExpire={onAskExpire ? () => onAskExpire(m.ask!.id) : undefined}
+                  onHover={onAskHover ? (hovering) => onAskHover(m.ask!.id, hovering) : undefined}
                 />
               ) : (
                 <div

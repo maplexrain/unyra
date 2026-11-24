@@ -5,11 +5,19 @@
  * work 的详情仍然在下面的 mind 列表里（每条思考 / 工具调用可展开）；
  * 这一条只是让用户不必先点开每一步，就能看到整条执行链路。
  */
-import { ChevronRight, Loader2 } from 'lucide-react'
+import { ChevronRight, Loader2, Square } from 'lucide-react'
 import type { WorkSession } from '../../../agent/types'
 import { t } from '../../../i18n'
 
-export function WorkFlowStrip({ work, running }: { work: WorkSession; running: boolean }) {
+export function WorkFlowStrip({
+  work,
+  running,
+  onStop,
+}: {
+  work: WorkSession
+  running: boolean
+  onStop?: () => void
+}) {
   const trace = work.execTrace
   if (!trace.length && !running) return null
   return (
@@ -25,7 +33,22 @@ export function WorkFlowStrip({ work, running }: { work: WorkSession; running: b
         )}
         <span className="font-semibold">{t('工作流程')}</span>
         <span className="text-ink-faint">{trace.length ? t('{0} 步', trace.length) : t('等待第一步')}</span>
-        {running && <span className="ml-auto text-[10.5px] text-seal-deep">{t('执行中')}</span>}
+        {running && (
+          <span className="ml-auto flex items-center gap-2">
+            <span className="text-[10.5px] text-seal-deep">{t('执行中')}</span>
+            {onStop && (
+              <button
+                type="button"
+                onClick={onStop}
+                className="flex items-center gap-1 rounded-md border border-line/80 px-1.5 py-0.5 text-[10.5px] text-ink-soft transition-colors hover:border-seal/70 hover:bg-seal/10 hover:text-seal-deep"
+                title={t('终止这个 work 正在跑的这一轮')}
+              >
+                <Square size={9} className="shrink-0" />
+                {t('终止')}
+              </button>
+            )}
+          </span>
+        )}
       </div>
       {trace.length > 0 && (
         <ol className="moji-scroll-thin mt-1.5 flex items-center gap-1 overflow-x-auto pb-0.5 text-[11px] text-ink-faint">

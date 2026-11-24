@@ -42,6 +42,7 @@ import { activeMessages } from '../compact'
 import { missingPromptModules, promptModuleMessage, type PromptModule } from '../ai/promptModules'
 import type { AgentProfileId } from '../../agent/agentProfile'
 import type { RoleWorkDispatcher } from '../roleWork/dispatch'
+import { roleOfConversation } from '../roleWork/roles'
 import {
   clearRoleOutbound,
   flushChannelInbox,
@@ -52,6 +53,7 @@ import {
 } from '../roleWork/dispatch'
 import { groupPeer, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
 import { appendGroupMessage } from '../groupChat'
+import { pauseAskTimer, resumeAskTimer } from '../roleWork/askTimers'
 import { useAgentSlots } from './slots'
 import { useAgentSession } from './session'
 import { assembleTurnEntry } from './agentPrompt'
@@ -244,6 +246,15 @@ export function useAgent(opts: {
   )
 
   /**
+   * 气泡悬停：暂停 / 恢复宿主侧的 ask 到期定时器。
+   * 只控制计时，不改变 ask 状态；真正的到期仍由 toolRig 的 settle 收口。
+   */
+  const setAskHover = useCallback((askId: string, hovering: boolean) => {
+    if (hovering) pauseAskTimer(askId)
+    else resumeAskTimer(askId)
+  }, [])
+
+  /**
    * runTurn 的本体，不做并发控制（守卫与排队在 runTurn 里）。
    */
   const runTurnUnchecked = useCallback(
@@ -320,7 +331,9 @@ export function useAgent(opts: {
        * 漏标的承接会话在这里就地补标（幂等；导师对话不写 voice，与老数据同形）。
        */
       const existing = conversationById(before, target.conversationId)
-      const voice: AgentVoice = existing?.voice ?? target.voice ?? 'tutor'
+      const voice: AgentVoice = existing
+        ? (roleOfConversation(existing) as AgentVoice)
+        : (target.voice ?? 'tutor')
       clearRoleOutbound(target.conversationId)
       let conv = existing ?? {
         id: target.conversationId,
@@ -720,6 +733,23 @@ export function useAgent(opts: {
     [conversationId, abortMapRef, workManagersRef],
   )
 
+  /**
+   * 停止某个 work 正在跑的那一轮：只认这一个 work，不碰 role 的对话，
+   * 也不连坐同目录下别的 work。work 已经空闲时是 no-op。
+   */
+  const stopWork = useCallback(
+    (workId: string, convId?: string) => {
+      const id = convId ?? conversationId
+      if (!id) return
+      const work = getLatest()
+        .conversations.find((c) => c.id === id)
+        ?.works?.sessions.find((w) => w.id === workId)
+      if (!work) return
+      workManagersRef.current.get(id)?.api.stop(work.name)
+    },
+    [conversationId, getLatest, workManagersRef],
+  )
+
   /* ---------- 等待队列：导师在跑时用户发出去的消息排在这里（见 learn/agentQueue） ---------- */
 
   // 等待队列的机制（writeQueue / dispatchQueued / drain / 排队 / 撤回 / 立即发送）
@@ -882,6 +912,7 @@ export function useAgent(opts: {
     runWorkflow,
     compactNow,
     stop,
+    stopWork,
     /** api.ask 的表单状态与两条出口（由 AgentPanel 渲染成输入框上方的卡片） */
     pendingAsk: conversationId ? (pendingAsk[conversationId] ?? null) : null,
     submitAsk,
@@ -889,6 +920,7 @@ export function useAgent(opts: {
     submitAskById,
     cancelAskById,
     expireAskById,
+    setAskHover,
     /** 最近一跳实测的输出速度（tok/s）；没在跑、或服务端没流式回包时为 null */
     tps: conversationId ? (tps[conversationId] ?? null) : null,
     /** 正在跑的这一轮到目前为止的账（每跳 usage 重算）：上下文占用圆环的实时数据源 */
@@ -911,7 +943,7 @@ function findRoleConversation(
   goalId?: string | null,
 ): string | null {
   const matches = store.conversations.filter(
-    (c) => (c.voice ?? 'tutor') === role && (goalId == null || c.goalId === goalId),
+    (c) => roleOfConversation(c) === role && (goalId == null || c.goalId === goalId),
   )
   matches.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
   return matches[0]?.id ?? null

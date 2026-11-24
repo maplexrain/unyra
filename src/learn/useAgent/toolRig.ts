@@ -25,11 +25,12 @@ import { createChatOps } from '../ops/chat'
 import { resolveChatAttachments } from '../roleWork/attachments'
 import { agentNameOf, AGENT_ROLE_IDS, DEFAULT_AGENT_NAME, type AgentProfileId } from '../../agent/agentProfile'
 import { isAgentRoleId } from '../../agent/roleWork/types'
-import type { ChannelAskStatus, ChannelMessage, Conversation, ConversationMessage } from '../../agent/types'
-import { roleConversationId } from '../roleWork/roles'
+import type { ChannelAskStatus, ChannelMessage, ConversationMessage } from '../../agent/types'
+import { ensureRoleConversation, roleConversationsOfGoal } from '../roleWork/roles'
+import { registerAskTimer } from '../roleWork/askTimers'
 import { groupPeer, inboundEnvelope, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
 import { deliverInbound } from '../roleWork/dispatch'
-import { groupSelfMentionError, mentionedRoleIdsOf, type MentionRole } from '../roleWork/groupTargets'
+import { groupSelfMentionError, mentionedRoleIdsOf, mentionsUserInGroup, type MentionRole } from '../roleWork/groupTargets'
 import { appendGroupMessage, patchGroupMessage } from '../groupChat'
 import { emptyDelivery, mergeDelivery, normalizeDelivery } from '../../agent/delivery'
 import { native } from '../../lib/native'
@@ -194,23 +195,21 @@ export function rigTurnTools(io: {
     )
     set({ ...getLatest(), conversations })
   }
+  /*
+   * 找/建 role 会话只走 roleWork/roles 的同一套判据：`Conversation.voice` 与确定性 id
+   * 都要认（见 roleOfConversation）。这里曾经手写 `c.voice ?? 'tutor'`，把
+   * `cv:designer:*` 这类漏标 voice 的旧会话当成了导师会话；群聊 @导师龟 时若设计龟
+   * 那段最近更新，就会把邮件投进设计龟的 mind，界面上却还显示导师龟。
+   */
   const ensureRole = (role: AgentProfileId, goalId: string): string => {
-    const existing = getLatest().conversations.find(
-      (c) => c.goalId === goalId && (c.voice ?? 'tutor') === role,
-    )
-    if (existing) return existing.id
-    const id = roleConversationId(goalId, role as AgentVoice)
-    const now = Date.now()
-    const conv: Conversation = { id, goalId, voice: role as AgentVoice, messages: [], createdAt: now, updatedAt: now }
-    set({ ...getLatest(), conversations: [...getLatest().conversations, conv] })
-    return id
+    const store = getLatest()
+    const ensured = ensureRoleConversation(store, role as AgentVoice, goalId)
+    if (ensured.store !== store) set(ensured.store)
+    return ensured.conversationId
   }
   const resolveRole = (role: AgentProfileId, goalId?: string | null): string | null => {
-    const matches = getLatest().conversations.filter(
-      (c) => (c.voice ?? 'tutor') === role && (goalId == null || c.goalId === goalId),
-    )
-    matches.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-    return matches[0]?.id ?? null
+    if (!goalId) return null
+    return roleConversationsOfGoal(getLatest(), goalId, role)[0]?.id ?? null
   }
   const roleNameOf = (role: AgentProfileId): string => agentNameOf(profileOf(agentSettings, role), role)
   sandboxBase.chat = createChatOps({
@@ -255,34 +254,38 @@ export function rigTurnTools(io: {
        * 有 @ 时以正文为准；没有 @ 时才用 to / mentions，并要求正文补上点名。
        */
       const textIds = mentionedRoleIdsOf(text, mentionRoles)
+      const mentionsUser = mentionsUserInGroup(text, userPeer().name)
       const selfMentionError = groupSelfMentionError(textIds, voice, roleNameOf(voice))
       if (selfMentionError) return { ok: false, error: selfMentionError }
       let ids: AgentProfileId[] = textIds
       if (!ids.length) {
         const rawIds = [...new Set((mentions ?? []).map((id) => id.trim()).filter(Boolean))]
-        if (rawIds.length) {
-          ids = rawIds
-            .map((raw) => {
-              if (isAgentRoleId(raw)) return raw as AgentProfileId
-              return AGENT_ROLE_IDS.find(
-                (id) => id !== 'free' && (roleNameOf(id) === raw || DEFAULT_AGENT_NAME[id] === raw),
-              )
-            })
-            .filter((id): id is AgentProfileId => Boolean(id))
-          if (ids.length !== rawIds.length) return { ok: false, error: '群聊 @ 的目标 role id / 名字不合法' }
-          const rawSelfError = groupSelfMentionError(ids, voice, roleNameOf(voice))
-          if (rawSelfError) return { ok: false, error: rawSelfError }
-          for (const id of ids) {
-            if (!text.includes('@' + roleNameOf(id)) && !text.includes('@' + DEFAULT_AGENT_NAME[id])) {
-              return { ok: false, error: `群聊消息要投给 ${roleNameOf(id)}，正文必须显式 @${roleNameOf(id)}` }
+        // 正文只 @用户：这是给用户看的结论，即使模型误填了 to / mentions 也不投递给任何 role。
+        if (!(mentionsUser && !textIds.length)) {
+          if (rawIds.length) {
+            ids = rawIds
+              .map((raw) => {
+                if (isAgentRoleId(raw)) return raw as AgentProfileId
+                return AGENT_ROLE_IDS.find(
+                  (id) => id !== 'free' && (roleNameOf(id) === raw || DEFAULT_AGENT_NAME[id] === raw),
+                )
+              })
+              .filter((id): id is AgentProfileId => Boolean(id))
+            if (ids.length !== rawIds.length) return { ok: false, error: '群聊 @ 的目标 role id / 名字不合法' }
+            const rawSelfError = groupSelfMentionError(ids, voice, roleNameOf(voice))
+            if (rawSelfError) return { ok: false, error: rawSelfError }
+            for (const id of ids) {
+              if (!text.includes('@' + roleNameOf(id)) && !text.includes('@' + DEFAULT_AGENT_NAME[id])) {
+                return { ok: false, error: `群聊消息要投给 ${roleNameOf(id)}，正文必须显式 @${roleNameOf(id)}` }
+              }
             }
+          } else if (text.includes('@') && !mentionsUser) {
+            // 写了 @ 却一个成员都没解析出来：不能悄悄退回默认调度，否则会把活投错。
+            return { ok: false, error: '群聊正文里的 @ 没有匹配到任何成员，请检查名字或补全 @' }
+          } else if (!text.includes('@')) {
+            // 群聊没有点名时由调度龟兜底接收；这是用户的默认路由，不是广播。
+            ids = ['dispatcher']
           }
-        } else if (text.includes('@')) {
-          // 写了 @ 却一个成员都没解析出来：不能悄悄退回默认调度，否则会把活投错。
-          return { ok: false, error: '群聊正文里的 @ 没有匹配到任何成员，请检查名字或补全 @' }
-        } else {
-          // 群聊没有点名时由调度龟兜底接收；这是用户的默认路由，不是广播。
-          ids = ['dispatcher']
         }
       }
       const from = peerOf('agent', voice, roleName)
@@ -395,6 +398,10 @@ export function rigTurnTools(io: {
 
       let timer: ReturnType<typeof setTimeout> | null = null
       let waiter: (value: unknown) => void = () => {}
+      /** 到期计时器的有效截止时间；悬停暂停时用它算剩余 */
+      let deadline = expiresAt
+      let paused = false
+      let unregister: () => void = () => {}
       const statusOf = (value: unknown): ChannelAskStatus => {
         if (value && typeof value === 'object') {
           const rec = value as { ok?: boolean; cancelled?: boolean; timedOut?: boolean }
@@ -409,21 +416,25 @@ export function rigTurnTools(io: {
         askWaitersRef.current.delete(askId)
         askSignal.removeEventListener('abort', onAbort)
         if (timer) clearTimeout(timer)
+        timer = null
+        unregister()
         setPendingAsk((prev) => {
           if (prev[target.conversationId]?.id !== askId) return prev
           const next = { ...prev }
           delete next[target.conversationId]
           return next
         })
-        // 状态写回气泡：提交 / 取消 / 超时后表单失效，倒计时也停
+        // 状态写回气泡：提交 / 取消 / 超时后表单失效，倒计时也停。
+        // 截止时间可能已被悬停暂停改写过，取当前落盘的那一份，而不是最初的 askMessage。
+        const state = getLatest()
+        const cur = state.conversations.find((c) => c.id === target.conversationId)
+        const currentAsk = cur?.channels?.find((m) => m.id === askMessage.id)?.ask ?? askMessage.ask!
         const settled = {
-          ...askMessage.ask!,
+          ...currentAsk,
           status,
           settledAt: Date.now(),
         }
-        const cur = getLatest().conversations.find((c) => c.id === target.conversationId)
         if (cur) {
-          const state = getLatest()
           const conversations = state.conversations.map((c) =>
             c.id === target.conversationId
               ? {
@@ -438,9 +449,61 @@ export function rigTurnTools(io: {
         if (channel === 'group') patchGroupMessage(askMessage.id, { ask: settled })
         void applyAskToProfile(form, value).then(resolve, () => resolve(value))
       }
+      /** 悬停暂停会延长有效期：把新的截止时间同时写回会话流水与群聊，刷新后仍是同一份剩余。 */
+      const writeAskExpiry = (expiresAt: number): void => {
+        const state = getLatest()
+        const cur = state.conversations.find((c) => c.id === target.conversationId)
+        const currentAsk = cur?.channels?.find((m) => m.id === askMessage.id)?.ask
+        if (!cur || !currentAsk) return
+        const nextAsk = { ...currentAsk, expiresAt }
+        const conversations = state.conversations.map((c) =>
+          c.id === target.conversationId
+            ? {
+                ...c,
+                channels: (c.channels ?? []).map((m) => (m.id === askMessage.id ? { ...m, ask: nextAsk } : m)),
+                updatedAt: Date.now(),
+              }
+            : c,
+        )
+        set({ ...state, conversations })
+        if (channel === 'group') patchGroupMessage(askMessage.id, { ask: nextAsk })
+      }
       waiter = (value: unknown): void => settle(statusOf(value), value)
       const onAbort = () =>
         settle('cancelled', { ok: false, content: '用户停止了这一轮，表单已关闭。不要假设用户的回答。' })
+      const expire = () => {
+        timer = null
+        settle('expired', {
+          ok: false,
+          timedOut: true,
+          content: '表单已到时自动失效。不要假设用户的回答。',
+        })
+      }
+      const arm = (ms: number) => {
+        deadline = Date.now() + ms
+        timer = setTimeout(expire, ms)
+      }
+      /*
+       * 悬停暂停：鼠标停在气泡上时界面会冻结自己的进度条，这里同步停掉宿主
+       * 的 setTimeout，并把剩余时长留住；移出后按同一份剩余重新起算。
+       * 只停「当前这一张」ask，别的 ask 不受影响。
+       */
+      unregister = registerAskTimer(askId, {
+        pause: () => {
+          if (paused || !timer) return
+          clearTimeout(timer)
+          timer = null
+          paused = true
+          deadline = Math.max(0, deadline - Date.now())
+          writeAskExpiry(Date.now() + deadline)
+        },
+        resume: () => {
+          if (!paused) return
+          paused = false
+          arm(deadline)
+          writeAskExpiry(deadline)
+        },
+      })
       if (askSignal.aborted) {
         askWaitersRef.current.set(askId, waiter)
         onAbort()
@@ -454,14 +517,9 @@ export function rigTurnTools(io: {
       /*
        * 硬时限：**从挂出那一刻起算**，不随鼠标键盘续期（用户要的是可预期，
        * 而不是「动一下就一直挂着」）。到期只收自己的 waiter，并带回 timedOut。
+       * 唯一例外是鼠标悬停在气泡上——用户正在填表，暂停计时（见上面的 pause/resume）。
        */
-      timer = setTimeout(() => {
-        settle('expired', {
-          ok: false,
-          timedOut: true,
-          content: '表单已到时自动失效。不要假设用户的回答。',
-        })
-      }, ASK_BUBBLE_TTL_MS)
+      arm(Math.max(0, expiresAt - Date.now()))
     })
 
   /** role 自己的 ask（以及审批）走这条；work 在下面单独接上自己的信号。 */

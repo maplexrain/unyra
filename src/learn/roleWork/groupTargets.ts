@@ -13,6 +13,17 @@ export interface MentionRole {
   names: string[]
 }
 
+/**
+ * 群聊正文是否在 **@ 用户**：`@用户` 是稳定口径，另外兼容用户当前的显示名。
+ * 这种 @ 不是投递给某位 role——它只是让群里的用户看到结论；宿主不能因为
+ * 「有 @ 但没解析出 role」就报错，也不能退回默认调度龟。
+ */
+export function mentionsUserInGroup(text: string, userName?: string): boolean {
+  if (text.includes('@用户')) return true
+  const name = userName?.trim()
+  return Boolean(name && text.includes('@' + name))
+}
+
 /** 正文中直接 @ 到的 role（按 role 名单顺序，去重） */
 export function mentionedRoleIdsOf(text: string, roles: MentionRole[]): AgentProfileId[] {
   const mentioned = new Set<AgentProfileId>()

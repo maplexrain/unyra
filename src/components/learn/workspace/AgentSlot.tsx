@@ -705,6 +705,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       onAskSubmitById: agent.submitAskById,
       onAskCancelById: agent.cancelAskById,
       onAskExpireById: agent.expireAskById,
+      onAskHoverById: agent.setAskHover,
       tps: (convId ? agent.tpsByConv[convId] : null) ?? null,
       liveUsage: (convId ? agent.liveUsageByConv[convId] : null) ?? null,
       compacting: !!convId && agent.compactingConvId === convId,
@@ -725,6 +726,9 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       viewWorkId: work?.id ?? null,
       onOpenWork: (wid: string) => {
         if (convId) openAgentTab({ kind: 'work', conversationId: convId, workId: wid }, true)
+      },
+      onStopWork: (wid: string) => {
+        if (convId) agent.stopWork(wid, convId)
       },
       // role 层单会话：加号不新建，只回到当前 role 的唯一会话
       onNewConversation: () =>
@@ -929,6 +933,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
                 onAskSubmit={agent.submitAskById}
                 onAskCancel={agent.cancelAskById}
                 onAskExpire={agent.expireAskById}
+                onAskHover={agent.setAskHover}
               />
             </div>
           ) : null}

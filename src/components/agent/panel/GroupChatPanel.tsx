@@ -62,6 +62,7 @@ export function GroupChatPanel({
   onAskSubmit,
   onAskCancel,
   onAskExpire,
+  onAskHover,
 }: {
   messages: ChannelMessage[]
   agents: GroupChatAgent[]
@@ -74,6 +75,7 @@ export function GroupChatPanel({
   onAskSubmit?: (askId: string, answers: AskAnswers) => void
   onAskCancel?: (askId: string) => void
   onAskExpire?: (askId: string) => void
+  onAskHover?: (askId: string, hovering: boolean) => void
 }) {
   const [text, setText] = useState('')
   const [caret, setCaret] = useState(0)
@@ -306,10 +308,10 @@ export function GroupChatPanel({
                       <AskBubble
                         ask={m.ask}
                         actorName={nameOfPeer(m)}
-                        createdAt={m.ts}
                         onSubmit={onAskSubmit ? (answers) => onAskSubmit(m.ask!.id, answers) : undefined}
                         onCancel={onAskCancel ? () => onAskCancel(m.ask!.id) : undefined}
                         onExpire={onAskExpire ? () => onAskExpire(m.ask!.id) : undefined}
+                        onHover={onAskHover ? (hovering) => onAskHover(m.ask!.id, hovering) : undefined}
                       />
                     ) : (
                       <div
@@ -317,7 +319,7 @@ export function GroupChatPanel({
                           'relative max-w-full break-words rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ' +
                           (mine
                             ? 'bg-bubble-user text-ink-strong rounded-tr-sm'
-                            : 'bg-bubble-agent text-ink rounded-tl-sm')
+                            : 'bg-bubble-agent text-ink rounded-tl-sm ring-1 ring-line/50')
                         }
                       >
                         <span

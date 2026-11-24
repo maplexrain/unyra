@@ -145,6 +145,8 @@ interface Props {
   onAskSubmitById?: (askId: string, answers: AskAnswers) => void
   onAskCancelById?: (askId: string) => void
   onAskExpireById?: (askId: string) => void
+  /** 鼠标在 ask 气泡上悬停 / 移出：暂停或恢复宿主侧的到期计时 */
+  onAskHoverById?: (askId: string, hovering: boolean) => void
   /**
    * 最近一跳实测的输出速度（tok/s，运行时掐表测得）。跑着的时候来自实时上报，
    * 空闲时为 null——状态条会退回用最后一条回复里存的值。
@@ -165,6 +167,8 @@ interface Props {
   viewWorkId?: string | null
   /** work 入口被点：宿主把它的页签开好并置前 */
   onOpenWork?: (workId: string) => void
+  /** 终止某个 work 正在跑的这一轮（只停这一个 work，不动 role 的对话） */
+  onStopWork?: (workId: string) => void
   /** 点击文件附件时在标签页打开 */
   onOpenFile?: (pathOrRel: string, title?: string) => void
   onOpenSettings?: () => void
@@ -216,11 +220,13 @@ export default function AgentPanel({
   onAskSubmitById,
   onAskCancelById,
   onAskExpireById,
+  onAskHoverById,
   tps,
   liveUsage,
   work,
   viewWorkId = null,
   onOpenWork,
+  onStopWork,
   active = true,
   onOpenFile,
   onOpenSettings,
@@ -551,7 +557,13 @@ export default function AgentPanel({
               }`}
               style={{ zoom: chatScale } as CSSProperties}
             >
-              {workSession && <WorkFlowStrip work={workSession} running={viewRunning} />}
+              {workSession && (
+                <WorkFlowStrip
+                  work={workSession}
+                  running={viewRunning}
+                  onStop={onStopWork ? () => onStopWork(workSession.id) : undefined}
+                />
+              )}
               {viewMode === 'chat' && !workSession ? (
                 <RoleChatView
                   channels={conversation?.channels ?? []}
@@ -564,6 +576,7 @@ export default function AgentPanel({
                   onAskSubmit={onAskSubmitById}
                   onAskCancel={onAskCancelById}
                   onAskExpire={onAskExpireById}
+                  onAskHover={onAskHoverById}
                 />
               ) : (
                 messageList

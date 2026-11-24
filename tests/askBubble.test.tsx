@@ -42,7 +42,7 @@ describe('AskBubble', () => {
     const root = createRoot(host)
     roots.push({ root, host })
     act(() => {
-      root.render(createElement(AskBubble, { ask: ask('pending', Date.now() + 60_000), actorName: '导师龟', createdAt: Date.now() }))
+      root.render(createElement(AskBubble, { ask: ask('pending', Date.now() + 60_000), actorName: '导师龟' }))
     })
     expect(host.textContent).toContain('导师龟')
     expect(host.textContent).toContain('确认难度')
@@ -56,7 +56,7 @@ describe('AskBubble', () => {
     const root = createRoot(host)
     roots.push({ root, host })
     act(() => {
-      root.render(createElement(AskBubble, { ask: ask('expired', Date.now() - 1), actorName: '导师龟', createdAt: 1 }))
+      root.render(createElement(AskBubble, { ask: ask('expired', Date.now() - 1), actorName: '导师龟' }))
     })
     expect(host.textContent).toContain('表单已失效')
     expect(host.querySelector('textarea')).toBeNull()
@@ -73,11 +73,36 @@ describe('AskBubble', () => {
         createElement(AskBubble, {
           ask: ask('pending', Date.now() - 1),
           actorName: '导师龟',
-          createdAt: 1,
           onExpire,
         }),
       )
     })
     expect(onExpire).toHaveBeenCalledTimes(1)
+  })
+
+  it('鼠标进入 / 移出会通知宿主暂停 / 恢复计时', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    roots.push({ root, host })
+    const onHover = vi.fn()
+    act(() => {
+      root.render(
+        createElement(AskBubble, {
+          ask: ask('pending', Date.now() + 60_000),
+          actorName: '导师龟',
+          onHover,
+        }),
+      )
+    })
+    const bubble = host.firstElementChild as HTMLElement
+    act(() => {
+      bubble.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    })
+    expect(onHover).toHaveBeenLastCalledWith(true)
+    act(() => {
+      bubble.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }))
+    })
+    expect(onHover).toHaveBeenLastCalledWith(false)
   })
 })

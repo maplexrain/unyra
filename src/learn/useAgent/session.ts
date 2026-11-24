@@ -6,7 +6,7 @@
  */
 import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react'
 import type { AgentEvent, AgentPart, Conversation } from '../../agent/types'
-import { agentNameOf, profileOf, type AgentProfileId } from '../../agent/agentProfile'
+import { agentNameOf, profileOf } from '../../agent/agentProfile'
 import { loadAgentSettings } from '../../agent/settings'
 import { applyEvent } from '../agent/events'
 import { createWorkManager, type WorkManager } from '../../agent/work/manager'
@@ -16,6 +16,7 @@ import { generateConversationTitle, namingSource } from '../title'
 import type { LearnStore } from '../types'
 import { inboundEnvelope, outboundEnvelope, peerOf } from '../roleWork/channels'
 import { deliverInbound, hasRoleWorkDispatcher } from '../roleWork/dispatch'
+import { roleOfConversation } from '../roleWork/roles'
 import { freeConversationById, mutateFreeConversation } from '../freeChat'
 
 export interface WorkRunSlot {
@@ -73,7 +74,7 @@ export function useAgentSession(deps: {
       let m = workManagersRef.current.get(conversationId)
       if (!m) {
         const stored = conversationById(getLatest(), conversationId)
-        const roleId = (stored?.voice ?? 'tutor') as AgentProfileId
+        const roleId = roleOfConversation(stored)
         const roleName = agentNameOf(profileOf(loadAgentSettings(), roleId), roleId)
         m = createWorkManager({
           roleId,

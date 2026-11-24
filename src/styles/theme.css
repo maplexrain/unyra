@@ -15,11 +15,11 @@
   --color-line-strong: #d0c6b1;
   /**
    * 聊天气泡：跟随主题的表面层级，不写死具体颜色。
-   * 用户气泡偏 elevated、agent 气泡偏 paper-deep，因此在浅色 / 深色 / 扩展主题里
-   * 用户那一侧都比 agent 更亮；换主题时由 color-mix 自动跟着变。
+   * 聊天列表底色是 paper-deep/40；agent 气泡用 card，用户气泡用 elevated，
+   * 在浅色 / 深色 / 扩展主题里都比列表底色亮一档，不会糊成同一块。
    */
-  --color-bubble-user: color-mix(in srgb, var(--color-elevated) 82%, var(--color-card) 18%);
-  --color-bubble-agent: color-mix(in srgb, var(--color-paper-deep) 80%, var(--color-card) 20%);
+  --color-bubble-user: var(--color-elevated);
+  --color-bubble-agent: var(--color-card);
   /**
    * 遮罩色（图片预览、抽屉背景这类"压暗下面内容"的表面）。
    * 单独一个 token 而不是复用 ink：ink 在深色模式下是**浅色**（它是文字色），

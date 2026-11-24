@@ -9,6 +9,8 @@ import type { LearnStore } from '../src/learn/types'
 import {
   ensureRoleConversation,
   roleConversationId,
+  roleConversationsOfGoal,
+  roleOfConversation,
 } from '../src/learn/roleWork/roles'
 
 const empty = { conversations: [] } as unknown as LearnStore
@@ -16,6 +18,34 @@ const empty = { conversations: [] } as unknown as LearnStore
 function withConv(conv: Conversation): LearnStore {
   return { conversations: [conv] } as unknown as LearnStore
 }
+
+describe('roleOfConversation', () => {
+  it('voice 缺失时按确定性会话 id 认 role，不能把设计龟误判成导师', () => {
+    const designer = { id: 'cv:designer:goal-1', goalId: 'goal-1', messages: [] } as unknown as Conversation
+    const tutor = { id: 'cv:tutor:goal-1', goalId: 'goal-1', messages: [] } as unknown as Conversation
+    expect(roleOfConversation(designer)).toBe('designer')
+    expect(roleOfConversation(tutor)).toBe('tutor')
+  })
+
+  it('显式 voice 优先于 id；两者都没有时默认导师', () => {
+    const legacy = { id: 'c-random', voice: 'examiner', goalId: 'goal-1', messages: [] } as unknown as Conversation
+    expect(roleOfConversation(legacy)).toBe('examiner')
+    expect(roleOfConversation({ id: 'c-random', messages: [] } as unknown as Conversation)).toBe('tutor')
+  })
+
+  it('找导师时不会被最近更新的设计龟旧会话截胡', () => {
+    const designer = {
+      id: 'cv:designer:goal-1',
+      goalId: 'goal-1',
+      messages: [],
+      createdAt: 1,
+      updatedAt: 99_999,
+    } as unknown as Conversation
+    const store = withConv(designer)
+    expect(roleConversationsOfGoal(store, 'goal-1', 'tutor')).toEqual([])
+    expect(ensureRoleConversation(store, 'tutor', 'goal-1').conversationId).toBe(roleConversationId('goal-1', 'tutor'))
+  })
+})
 
 describe('ensureRoleConversation', () => {
   it('同一目标第一次落确定性 id，第二次原样复用', () => {

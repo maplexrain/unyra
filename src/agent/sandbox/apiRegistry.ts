@@ -590,7 +590,7 @@ chat.send 到 work 通道等价于 work.send；到 user 通道不写 to。
 chat.send 成功会回 \`{ ok:true, channel, id, to? }\`；看到 ok:true 后**禁止重复发送同一条消息**，失败才按 error 修正。
 大段结果（调研原文、日志、JSON）放 \`extra:{title,text}\`，不要塞进正文刷屏；用户可点开查看。`,
     [
-      a('send', 'api.chat.send({ channel, to?, mentions?, text, messageId?, attachments?, extra? })', '把对话发到指定通道', 'channel 取 user / agent / work / group；agent 要 to=role id，work 要 to=work 名；group 用 to 或 mentions 指定被 @ 的 role，正文必须有 @名字；attachments 可带图/文件（moji:static 引用、workspace 路径或 http(s)），最多 4 个。messageId 可引用当前 role 会话里的用户消息（转发并标注来源）。extra={title?,text,format?} 放正文之外的日志 / 原始结果 / 长 JSON，界面折叠展示。返回值至少含 ok；成功时含 channel 与消息 id，to 是实际投递的 role id。', `await api.chat.send({ channel: "group", to: "researcher", text: "@调研龟 请查这三条来源的原文，结果发回群里。", extra: { title: "待查来源", text: sourceList } })`, { trap: '群聊来源的任务不要走私聊委派；只有用户私聊发起的任务才走 agent 通道' }),
+      a('send', 'api.chat.send({ channel, to?, mentions?, text, messageId?, attachments?, extra? })', '把对话发到指定通道', 'channel 取 user / agent / work / group；agent 要 to=role id，work 要 to=work 名；group 用 to 或 mentions 指定被 @ 的 role，正文必须有 @名字；**正文只 @用户、不指定 to / mentions 时不投递给任何 role，用于把最终结论直接汇报给用户**；attachments 可带图/文件（moji:static 引用、workspace 路径或 http(s)），最多 4 个。messageId 可引用当前 role 会话里的用户消息（转发并标注来源）。extra={title?,text,format?} 放正文之外的日志 / 原始结果 / 长 JSON，界面折叠展示。返回值至少含 ok；成功时含 channel 与消息 id，to 是实际投递的 role id。', `await api.chat.send({ channel: "group", to: "researcher", text: "@调研龟 请查这三条来源的原文，结果发回群里。", extra: { title: "待查来源", text: sourceList } })`, { trap: '群聊来源的任务不要走私聊委派；只有用户私聊发起的任务才走 agent 通道' }),
     ],
   ),
 
