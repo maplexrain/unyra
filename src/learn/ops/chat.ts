@@ -85,7 +85,10 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
           error: '最近一条消息来自群聊：回复或委派都必须走 group 通道（正文显式 @目标名）',
         }
       }
-      const text = input.text.trim()
+      const rawText = input.text
+      const trimmedText = rawText.trim()
+      // 群聊 @ 的分隔符就是名字后的空格：末尾的这一个空格不能被 trim 掉。
+      const text = trimmedText && /[ \u3000]$/.test(rawText) ? trimmedText + ' ' : trimmedText
       const messageId = input.messageId?.trim()
       if (!text && !messageId) return { ok: false, error: 'chat.send 需要 text 或 messageId' }
       const quoted = messageId ? deps.messageOf(messageId) : null

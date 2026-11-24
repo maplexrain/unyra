@@ -13,11 +13,11 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-/** `@名字` → Markdown 链接；名字按长度降序，避免短名先吃掉长名 */
+/** `@名字 ` → Markdown 链接；名字按长度降序，避免短名先吃掉长名；名字后必须是空格才算艾特 */
 function markMentions(text: string, names: string[]): string {
   const valid = [...new Set(names.map((n) => n.trim()).filter(Boolean))].sort((a, b) => b.length - a.length)
   if (!valid.length || !text.includes('@')) return text
-  const re = new RegExp('@(' + valid.map(escapeRegExp).join('|') + ')', 'g')
+  const re = new RegExp('@(' + valid.map(escapeRegExp).join('|') + ')(?=[ \\u3000])', 'g')
   return text.replace(re, (_m, name: string) => `[@${name}](${MENTION_SCHEME}${encodeURIComponent(name)})`)
 }
 

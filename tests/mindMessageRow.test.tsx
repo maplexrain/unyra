@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 /**
- * 思维层第一行：**不折叠、不可折叠**，正文与 raw 元信息直接可见；用户消息不带气泡。
+ * 思维层一行：渠道 / 发信人 / 收信人 / 上下文占用始终可见；raw 信封只留在无障碍层；
+ * 纯过程回复默认收成一行，点开才挂载执行过程。
  */
 import { createElement, act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -9,7 +10,7 @@ import { MindMessageRow } from '../src/components/agent/panel/MindMessageRow'
 import type { ConversationMessage } from '../src/agent/types'
 
 describe('MindMessageRow', () => {
-  it('第一层直接铺开：没有折叠按钮，正文与 raw 元信息始终可见', () => {
+  it('用户入站：渠道、发信人、正文直接可见；raw 元信息只进无障碍层', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
@@ -42,6 +43,9 @@ describe('MindMessageRow', () => {
     })
 
     expect(host.querySelector('[data-mind-message-id="m1"]')).not.toBeNull()
+    expect(host.querySelector('[data-mind-channel="user"]')?.textContent).toContain('用户')
+    expect(host.textContent).toContain('Maxwell')
+    expect(host.textContent).toContain('导师龟')
     expect(host.textContent).toContain('第一行正文')
     expect(host.textContent).toContain('第二行正文')
     const raw = host.querySelector('[data-mind-raw]')
@@ -50,8 +54,7 @@ describe('MindMessageRow', () => {
     expect(raw?.textContent).toContain('id:e1')
     expect(raw?.textContent).toContain('roleId:u1')
     expect(raw?.textContent).toContain('roleName:Maxwell')
-    // 第一层不允许折叠：整行没有折叠按钮
-    expect(host.querySelector('button')).toBeNull()
+    expect(raw?.getAttribute('class')).toContain('sr-only')
     expect(msgRefs.current.has('m1')).toBe(true)
     // 思维层去掉气泡：用户正文所在的那层不再有圆角气泡底色
     expect(host.querySelector('[class*="bg-line/60"]')).toBeNull()
@@ -62,7 +65,7 @@ describe('MindMessageRow', () => {
     host.remove()
   })
 
-  it('assistant 消息没有 channel 时退回角色名 + 时间，不伪造信封', () => {
+  it('assistant 消息没有 channel 时退回角色名 + 回复标记，不伪造信封', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
@@ -83,8 +86,69 @@ describe('MindMessageRow', () => {
       )
     })
     expect(host.textContent).toContain('导师龟')
+    expect(host.textContent).toContain('回复')
     expect(host.textContent).toContain('回复正文')
     expect(host.querySelector('[data-mind-raw]')).toBeNull()
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('纯过程回复先收成一条过程组：点开一次看全部思考与工具', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const msg: ConversationMessage = {
+      id: 'm3',
+      role: 'assistant',
+      ts: 1_700_000_000_000,
+      usage: {
+        contextTokens: 1200,
+        contextWindow: 8000,
+        totalTokens: 1300,
+        outputTokens: 100,
+        cacheReadTokens: 900,
+        cacheMissTokens: 300,
+        estimated: false,
+      },
+      parts: [
+        { type: 'thinking', text: '先读一下资料' },
+        {
+          type: 'tool',
+          id: 't1',
+          name: 'execute',
+          args: JSON.stringify({ description: '读资料', body: 'await api.node.list()' }),
+          result: 'ok',
+          ok: true,
+          status: 'done',
+        },
+      ],
+    }
+    act(() => {
+      root.render(
+        createElement(MindMessageRow, {
+          m: msg,
+          agentName: '导师龟',
+          faded: false,
+          flash: false,
+          setBubblePreview: vi.fn(),
+        }),
+      )
+    })
+    expect(host.textContent).toContain('思考与工具 · 2 步')
+    expect(host.textContent).toContain('↑1.2k')
+    expect(host.textContent).toContain('15%')
+    // 过程组默认收起：只留一行组标题，内层「思考过程 / 工具卡」不挂载
+    expect(host.textContent).not.toContain('思考过程')
+    const toggle = host.querySelector('button')
+    expect(toggle?.getAttribute('aria-expanded')).toBeNull()
+    act(() => {
+      toggle?.click()
+    })
+    expect(host.textContent).toContain('思考过程')
+    expect(host.textContent).toContain('读资料')
+
     act(() => {
       root.unmount()
     })

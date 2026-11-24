@@ -3,6 +3,9 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { ChannelMessage, Conversation } from '../src/agent/types'
+import type { ChatSendInput } from '../src/agent/roleWork/types'
+import { installRoleWork } from '../src/agent/sandbox/api/roleWork'
+import type { SandboxOptions } from '../src/agent/sandbox/types'
 import { createChatOps } from '../src/learn/ops/chat'
 import { toChatHistory } from '../src/learn/agent/history'
 import {
@@ -147,6 +150,38 @@ describe('chat.send 三通道', () => {
     expect(r).toMatchObject({ ok: true, channel: 'group' })
     expect(passed).toMatchObject({ text: '@出卷龟 出三道题', mentions: ['examiner'] })
     expect(appended).toHaveLength(0)
+  })
+
+  it('group 通道：末尾 @名字 的语义空格不被 chat.send 裁掉', async () => {
+    let passed: { text: string; mentions?: string[] } | null = null
+    const { chat } = makeChat({
+      sendToGroup: (input) => {
+        passed = input
+        return { ok: true, channel: 'group' }
+      },
+    })
+    expect(await chat.send({ channel: 'group', text: '@导师龟 ' })).toMatchObject({ ok: true })
+    expect(passed).toMatchObject({ text: '@导师龟 ' })
+  })
+
+  it('group 通道：末尾 @名字 的语义空格在沙箱 API 入口不被裁掉', async () => {
+    let passed: ChatSendInput | null = null
+    const api: Record<string, unknown> = {}
+    installRoleWork(
+      api,
+      {
+        chat: {
+          send: (input: ChatSendInput) => {
+            passed = input
+            return { ok: true, channel: 'group' }
+          },
+        },
+      } as unknown as SandboxOptions,
+      [],
+    )
+    const chat = api.chat as { send: (input: ChatSendInput) => Promise<{ ok: boolean }> }
+    expect(await chat.send({ channel: 'group', text: '@导师龟 ' })).toMatchObject({ ok: true })
+    expect(passed!.text).toBe('@导师龟 ')
   })
 
   it('group 通道：to 写 group 表示只回群里，不把它当成非法目标', async () => {

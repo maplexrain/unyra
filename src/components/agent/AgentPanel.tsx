@@ -8,6 +8,7 @@ import {
   type CSSProperties,
 } from 'react'
 import type { AgentPart, Conversation, MessageImage, MessageUsage, PendingFile, PendingImage, WorkSession } from '../../agent/types'
+import { ArrowLeft } from 'lucide-react'
 import type { AskAnswers, AskFormPayload } from '../../agent/tools'
 import type { PersonaId } from '../../agent/persona'
 import type { DocFormatId } from '../../agent/docFormat'
@@ -236,6 +237,11 @@ export default function AgentPanel({
   const [bubblePreview, setBubblePreview] = useState<MessageImage | null>(null)
   /** role 视图分层：chat = 用户视角的对外消息；mind = 全量执行过程（工具、思考、work 通道） */
   const [viewMode, setViewMode] = useState<'chat' | 'mind'>('chat')
+  /**
+   * mind 的二级 work 页：点「已派发的 work」观察卡进入，返回键回到思维列表。
+   * 这是面板内的嵌套视图，不新开顶层 work 页签；顶部页签给出的 viewWorkId 仍然优先。
+   */
+  const [nestedWorkId, setNestedWorkId] = useState<string | null>(null)
   /** 上下文压缩后的摘要展开着（消息列表里那块分界线上的「看摘要」） */
   const [summaryOpen, setSummaryOpen] = useState(false)
 
@@ -255,19 +261,26 @@ export default function AgentPanel({
   )
 
   /**
-   * work 视图的解析（viewWorkId 由页签给，见 Props 的说明）。
+   * work 视图的解析：顶层页签给的 viewWorkId 优先；没有时看 mind 里点开的
+   * nestedWorkId（二级页）。两者都不在时看 role 对话本身。
    */
+  const activeWorkId = viewWorkId ?? nestedWorkId
+  const nestedWork = !viewWorkId && Boolean(nestedWorkId)
   const workSession = useMemo(
-    () => (work && viewWorkId ? (work.sessions.find((w) => w.id === viewWorkId) ?? null) : null),
-    [work, viewWorkId],
+    () => (work && activeWorkId ? (work.sessions.find((w) => w.id === activeWorkId) ?? null) : null),
+    [work, activeWorkId],
   )
   /**
    * 正看着的这个 work 在跑吗（实时流式来自 work.live 里属于它的那一份）。
    */
   const workLive = useMemo(
-    () => (work && viewWorkId ? (work.live.find((l) => l.workId === viewWorkId) ?? null) : null),
-    [work, viewWorkId],
+    () => (work && activeWorkId ? (work.live.find((l) => l.workId === activeWorkId) ?? null) : null),
+    [work, activeWorkId],
   )
+  /** 切换 role 会话 / 顶层 work 页签时，旧的二级 work 必须退出，不能挂在另一段 mind 下 */
+  useEffect(() => {
+    setNestedWorkId(null)
+  }, [conversation?.id, viewWorkId])
   const viewMessages = useMemo(() => (workSession ? workSession.messages : messages), [workSession, messages])
   const viewStreaming = workSession ? (workLive ? workLive.parts : null) : streaming
   const viewRunning = workSession ? !!(workLive || workSession.status === 'running') : running
@@ -493,12 +506,39 @@ export default function AgentPanel({
     mind: viewMode === 'mind' || !!workSession,
     agentName: emptyName ?? '',
     agentAvatarId,
+    usages,
+    // work 二级页不列 work（避免「work 里再派 work」时列表套娃）；role mind 下列当前 role 的全部 work
+    works: workSession ? [] : (work?.sessions ?? []),
+    onOpenMindWork: (workId: string) => {
+      setViewMode('mind')
+      setNestedWorkId(workId)
+    },
+    activeWorkId: nestedWorkId,
+    contextSubject: workSession?.name ?? emptyName ?? undefined,
     resetKey: workSession?.id ?? conversation?.id ?? '',
   })
 
   return (
     // relative：定位条贴着这一块的右边挂（它要的是整块面板的坐标，不是消息列的）
     <div ref={rootRef} className="relative flex h-full min-h-0 flex-col bg-paper-deep/40">
+      {nestedWork && (
+        <div
+          data-mind-work-back
+          className="flex shrink-0 items-center gap-2 border-b border-line/70 bg-card/75 px-3 py-1.5 text-[12px]"
+        >
+          <button
+            type="button"
+            onClick={() => setNestedWorkId(null)}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-ink-soft transition hover:bg-line/50 hover:text-ink-strong"
+          >
+            <ArrowLeft size={13} />
+            <span>{t('返回思维列表')}</span>
+          </button>
+          <span className="min-w-0 flex-1 truncate text-[11px] text-ink-faint">
+            {t('work 二级页 · {0}', workSession?.name ?? activeWorkId ?? '')}
+          </span>
+        </div>
+      )}
       {!workSession ? (
         <div className="flex shrink-0 items-center gap-1 border-b border-line/60 px-3 py-1.5">
           {(['chat', 'mind'] as const).map((m) => (

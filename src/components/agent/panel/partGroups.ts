@@ -60,29 +60,18 @@ export type PartGroup = { kind: 'group'; items: ProcessPart[] } | { kind: 'singl
  * 思考/工具之前，所以排在最前面、与后面的过程件同属一组——用户看到的是**一条**
  * 「思考、工具与提示词 · N 步」，而不是两行各自折叠的标题。
  *
- * `flat=true` 是思维层的口径：相邻过程件不合并，注入也逐条独立成组；调用方仍按
- * 单条渲染，于是每一件都能单独折叠、默认收起。
+ * chat 与 mind 共用这一套归组规则；mind 的差别只在消息行头部（渠道 / 发信人 /
+ * 上下文账，见 MindMessageRow），不是把过程件重新铺开。
  */
-export function groupParts(parts: AgentPart[], injects?: InjectItem[], flat = false): PartGroup[] {
+export function groupParts(parts: AgentPart[], injects?: InjectItem[]): PartGroup[] {
   const groups: PartGroup[] = []
-  if (injects?.length) {
-    if (flat) {
-      // 思维层：每一条注入各自成条、各自折叠，不跟后面的过程件糊成一组
-      for (const item of injects) groups.push({ kind: 'group', items: [item] })
-    } else {
-      groups.push({ kind: 'group', items: [...injects] })
-    }
-  }
+  if (injects?.length) groups.push({ kind: 'group', items: [...injects] })
   for (const p of parts) {
     if (p.type === 'hop') continue
     if (isProcessPart(p)) {
-      // 思维层：相邻思考 / 工具调用直接铺开；每个过程件自己收起自己
-      if (flat) groups.push({ kind: 'group', items: [p] })
-      else {
-        const last = groups[groups.length - 1]
-        if (last && last.kind === 'group') last.items.push(p)
-        else groups.push({ kind: 'group', items: [p] })
-      }
+      const last = groups[groups.length - 1]
+      if (last && last.kind === 'group') last.items.push(p)
+      else groups.push({ kind: 'group', items: [p] })
     } else {
       groups.push({ kind: 'single', part: p })
     }

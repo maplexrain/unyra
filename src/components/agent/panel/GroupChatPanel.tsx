@@ -153,8 +153,11 @@ export function GroupChatPanel({
   }
 
   const submit = (): void => {
-    const body = text.trim()
-    if (!body || disabledReason) return
+    const trimmed = text.trim()
+    if (!trimmed || disabledReason) return
+    // @ 的语法要求名字后保留一个空格；不能在这里把末尾空格 trim 掉，否则
+    // `@导师龟 ` 会被自己吃掉分隔符，变成一次失败的艾特。
+    const body = /[ \u3000]$/.test(text) ? trimmed + ' ' : trimmed
     // 没有 @ 时按产品口径默认由调度龟接；@ 了就按正文点名的成员投递
     const targets: AgentTeamMode[] = mentioned.length
       ? mentioned.map((a) => a.id)
@@ -163,6 +166,10 @@ export function GroupChatPanel({
         : []
     if (!targets.length) {
       setError(t('当前群聊里没有调度龟，无法接收无 @ 的消息'))
+      return
+    }
+    if (body.includes('@') && !mentioned.length) {
+      setError(t('@ 没有匹配到成员：请写完整名字，并在 `@名字 ` 后留一个空格'))
       return
     }
     const ok = onSend(body, targets)

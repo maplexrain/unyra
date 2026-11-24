@@ -70,6 +70,95 @@ describe('useGroupChatBridge', () => {
     host.remove()
   })
 
+  it('用户发言：@ 名字后没有空格时不算艾特，直接拒绝', () => {
+    let current = { conversations: [] } as unknown as LearnStore
+    const set = (next: LearnStore): void => {
+      current = next
+    }
+    const started: RoleTurnRequest[] = []
+    setRoleWorkDispatcher(() => ({
+      isConversationRunning: () => false,
+      resolveRoleConversation: () => null,
+      startRoleTurn: (req) => started.push(req),
+      appendChannel: () => {},
+    }))
+
+    let bridge: GroupChatBridge | null = null
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(function Probe() {
+          bridge = useGroupChatBridge({
+            goalId: 'g-bridge-strict',
+            agents: [
+              { id: 'tutor', name: '导师龟' },
+              { id: 'dispatcher', name: '调度龟' },
+            ],
+            getLatest: () => current,
+            set,
+          })
+          return null
+        }),
+      )
+    })
+    act(() => {
+      expect(bridge!.send('@导师龟，帮我查一下', ['designer'])).toBe(false)
+    })
+    expect(started).toHaveLength(0)
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('用户发言：句末 @导师龟 的尾随空格保留，严格语法才算成功', () => {
+    let current = { conversations: [] } as unknown as LearnStore
+    const set = (next: LearnStore): void => {
+      current = next
+    }
+    const started: RoleTurnRequest[] = []
+    setRoleWorkDispatcher(() => ({
+      isConversationRunning: () => false,
+      resolveRoleConversation: () => null,
+      startRoleTurn: (req) => started.push(req),
+      appendChannel: () => {},
+    }))
+
+    let bridge: GroupChatBridge | null = null
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(function Probe() {
+          bridge = useGroupChatBridge({
+            goalId: 'g-bridge-tail',
+            agents: [
+              { id: 'tutor', name: '导师龟' },
+              { id: 'dispatcher', name: '调度龟' },
+              { id: 'designer', name: '设计龟' },
+            ],
+            getLatest: () => current,
+            set,
+          })
+          return null
+        }),
+      )
+    })
+    act(() => {
+      expect(bridge!.send('@导师龟 ', ['designer'])).toBe(true)
+    })
+    expect(started).toHaveLength(1)
+    expect(started[0]!.role).toBe('tutor')
+    expect(started[0]!.text).toBe('@导师龟 ')
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
   it('用户发言：没有 @ 时默认投给调度龟', () => {
     let current = { conversations: [] } as unknown as LearnStore
     const set = (next: LearnStore): void => {

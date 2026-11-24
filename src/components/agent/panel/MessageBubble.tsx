@@ -4,8 +4,9 @@
  *
  * 层级与用色的规矩：**chat 层只有用户消息保留气泡本尊**（同色系、深一档的底色圆角）；
  * 其余一律无壳；mind 层连用户气泡也去掉。导师的正文、思考气泡、工具调用气泡、
- * 消息组的收拢容器都不带边框与底色，分层靠排版与缩进。chat 层相邻至少两条的过程件
- * 才收进消息组；mind 层不归组，每个过程件自己成条。
+ * 消息组的收拢容器都不带边框与底色，分层靠排版与缩进。chat 与 mind 都把相邻的过程件
+ * 收进消息组；mind 的差别在消息行头部（渠道 / 发信人 / 上下文账，见 MindMessageRow），
+ * 纯过程回复因此只留一行可折叠的过程组标题。
  *
  * 全是纯展示组件——它们只认 props，不改任何状态；消息数据、编辑与删除
  * 都由 AgentPanel 通过 MessageList 传下来。
@@ -64,7 +65,7 @@ export interface MessageRowProps {
    * 由 useMessageList 从隐藏消息合成，身份只在 messages 变了之后才换。
    */
   prelude?: InjectItem[]
-  /** 每条消息的 DOM：定位条与缩放都要用（mind 的折叠壳会自己登记，内层可不传） */
+  /** 每条消息的 DOM：定位条与缩放都要用（MindMessageRow 会把内层这一份登记进来） */
   msgRefs?: React.RefObject<Map<string, HTMLDivElement>>
   /** 点中断说明旁的「继续」：恢复被中断的一轮（见 AgentPanel；只挂在正文的 NoticeBlock 上） */
   onResumeNotice?: () => void
@@ -73,7 +74,7 @@ export interface MessageRowProps {
   onOpenFile?: (pathOrRel: string, title?: string) => void
   /** 目标 id：用于交付组件定位节点文档，避免多目标同名节点指针混淆 */
   goalId?: string
-  /** 思维层：去掉聊天气泡、过程件逐条铺开 */
+  /** 思维层：去掉聊天气泡与聊天操作，消息行头部另由 MindMessageRow 提供 */
   mind?: boolean
 }
 
@@ -156,7 +157,7 @@ export const MessageRow = memo(function MessageRow({
                 : 'rounded-2xl bg-bubble-user px-3.5 py-2 text-[13px] leading-relaxed text-ink-strong ring-1 ring-line/65 select-text'
             }
           >
-            <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} mind={mind} />
+            <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} />
           </div>
         </div>
       </div>
@@ -173,9 +174,9 @@ export const MessageRow = memo(function MessageRow({
       }}
       className={'group relative ' + (mind ? 'mb-1' : 'mb-4') + fadedCls}
     >
-      <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} mind={mind} />
+      <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} />
       {m.delivery && <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={goalId} />}
-      {m.usage && (
+      {m.usage && !mind && (
         <div className="mt-1">
           <UsageLine usage={m.usage} />
         </div>
@@ -271,24 +272,26 @@ function MessageActions({ text }: { text: string }) {
  *
  * 只有一个成员的组按单条画：孤零零一件没有可收拢的东西，硬套组壳等于多一次点击。
  *
- * mind=true 时反过来：相邻过程件**不归组**，每一条自己成条、自己折叠；这是思维层
- * 「一步一步铺开」的口径，也是为了不把一条长执行链压成一个标题。
+ * mind 层也在同一套归组规则下绘制：思维页看的是轨迹，不是让十几个工具调用各占一行；
+ * 没有正文的回复因此只剩一条过程组标题，点击一次展开全部过程。
  */
 function Parts({
   parts,
   prelude,
   onResumeNotice,
   streaming = false,
-  mind = false,
 }: {
   parts: AgentPart[]
   prelude?: InjectItem[]
   onResumeNotice?: () => void
   streaming?: boolean
-  /** 思维层：不归组，每个过程件单独成条（各自仍有自己的折叠） */
-  mind?: boolean
 }) {
-  const groups = groupParts(parts, prelude, mind)
+  /**
+   * 思维层也归组：旧口径「每条过程件都铺开」会把十几个工具调用各占一行——
+   * mind 的价值是看轨迹，不是看噪声。相邻过程件收成一条可折叠的消息组；
+   * 孤件仍按自己的折叠标题呈现（ToolCard / ThinkingBlock 本身就是收起态）。
+   */
+  const groups = groupParts(parts, prelude)
   return (
     <div className="flex flex-col gap-2">
       {groups.map((g, i) => {

@@ -43,7 +43,9 @@ export function useGroupChatBridge({
   )
 
   const send = (text: string, targetIds: GroupChatAgent['id'][]): boolean => {
-    const body = text.trim()
+    const trimmed = text.trim()
+    // 群聊 @ 的分隔符就是名字后的空格：末尾的这一个空格不能被 trim 掉。
+    const body = trimmed && /[ \u3000]$/.test(text) ? trimmed + ' ' : trimmed
     if (!body || !goalId) return false
     /*
      * 和 role 侧同一条纪律：正文里的 `@名字` 比调用方传的 targetIds 更可信。

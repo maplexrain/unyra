@@ -30,7 +30,7 @@ import { ensureRoleConversation, roleConversationsOfGoal } from '../roleWork/rol
 import { registerAskTimer } from '../roleWork/askTimers'
 import { groupPeer, inboundEnvelope, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
 import { deliverInbound } from '../roleWork/dispatch'
-import { groupSelfMentionError, mentionedRoleIdsOf, mentionsUserInGroup, type MentionRole } from '../roleWork/groupTargets'
+import { groupMentionLimitError, groupSelfMentionError, hasMentionOf, mentionedRoleIdsOf, mentionsUserInGroup, type MentionRole } from '../roleWork/groupTargets'
 import { appendGroupMessage, patchGroupMessage } from '../groupChat'
 import { emptyDelivery, mergeDelivery, normalizeDelivery } from '../../agent/delivery'
 import { native } from '../../lib/native'
@@ -275,19 +275,21 @@ export function rigTurnTools(io: {
             const rawSelfError = groupSelfMentionError(ids, voice, roleNameOf(voice))
             if (rawSelfError) return { ok: false, error: rawSelfError }
             for (const id of ids) {
-              if (!text.includes('@' + roleNameOf(id)) && !text.includes('@' + DEFAULT_AGENT_NAME[id])) {
-                return { ok: false, error: `群聊消息要投给 ${roleNameOf(id)}，正文必须显式 @${roleNameOf(id)}` }
+              if (!hasMentionOf(text, [roleNameOf(id), DEFAULT_AGENT_NAME[id]])) {
+                return { ok: false, error: `群聊消息要投给 ${roleNameOf(id)}，正文必须显式写 \`@${roleNameOf(id)} \`（名字后留一个空格）` }
               }
             }
           } else if (text.includes('@') && !mentionsUser) {
             // 写了 @ 却一个成员都没解析出来：不能悄悄退回默认调度，否则会把活投错。
-            return { ok: false, error: '群聊正文里的 @ 没有匹配到任何成员，请检查名字或补全 @' }
+            return { ok: false, error: '群聊正文里的 @ 没有匹配到任何成员；请检查名字，并在 `@名字 ` 后留一个空格' }
           } else if (!text.includes('@')) {
             // 群聊没有点名时由调度龟兜底接收；这是用户的默认路由，不是广播。
             ids = ['dispatcher']
           }
         }
       }
+      const mentionLimitError = groupMentionLimitError(ids, mentionsUser)
+      if (mentionLimitError) return { ok: false, error: mentionLimitError }
       const from = peerOf('agent', voice, roleName)
       // 正文没有 @ 时默认投给调度龟，但不要凭空造一条 @ 提示；只有真的点名了才带 mentions。
       const explicitMentions = textIds.length > 0 || Boolean(mentions?.length)

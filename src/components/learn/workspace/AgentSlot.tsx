@@ -21,6 +21,7 @@ import { focusAgentInput } from '../../../lib/agentFocus'
 import { wsChipUserRel } from '../../../learn/chipRef'
 import { wsRefOfRel } from '../../../learn/workspace'
 import { AgentTabPane } from './AgentTabPane'
+import { useGroupDefaultOpen } from './useGroupDefaultOpen'
 import { goalConvByGoal, goalFocusByGoal } from './goalFocus'
 import { AgentRosterSidebar } from '../agent-team/AgentRosterSidebar'
 import { AgentSettingsView } from '../agent-team/AgentSettingsView'
@@ -185,8 +186,12 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
    * 替代对话流。选择声部 / 选对话 / 新建对话 / 切目标都会退出设置态回到对话。
    */
   const [settingsAgent, setSettingsAgent] = useState<AgentTeamMode | null>(null)
-  /** 群聊页：名册里固定多出来的一张卡；它不是某个 role 的会话，只读群通道流水 */
-  const [groupOpen, setGroupOpen] = useState(false)
+  /**
+   * 群聊页：名册里固定多出来的一张卡；它不是某个 role 的会话，只读群通道流水。
+   * 默认选中群聊（从 work 页签直接挂载时例外），页面打开后外部切换激活页签会自动退出，
+   * 具体纪律见 useGroupDefaultOpen。
+   */
+  const [groupOpen, setGroupOpen] = useGroupDefaultOpen(activeAgentTab, activeAgentTabId)
 
   const tutorGoalId = useMemo(() => {
     if (tabGoalId) return tabGoalId

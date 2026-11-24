@@ -1264,8 +1264,8 @@ describe('AgentSlot 对话历史切换回归', () => {
       return panes.map((p) => p.textContent ?? '').join('\n')
     }
 
-    // 初始停在调度员的会话上
-    expect(visiblePaneText()).toContain('调度员的对话内容')
+    // 打开智能体页面默认选中群聊通道（不是默认落在某位 role 的会话里）
+    expect(host.textContent).toContain('群通道 · 只有对话列表')
 
     // 点 roster 里的「导师」行（副标题「主讲与协调」唯一标识它）
     // roster 的导师行：roleTag「学习导师」是它的唯一标识（副标题会被最近预览顶掉）

@@ -1,19 +1,43 @@
 /**
- * 思维层的一行：**第一层不折叠，也不能折叠**——每条消息进来就完整展开，
- * 折叠只发生在消息内部的过程件（思考 / 工具调用，见 MessageBubble 的 SinglePart）。
+ * 思维层的一行：**先回答「谁从哪条通道说了什么」，再决定过程要不要铺开**。
  *
- * 每行先亮出宿主写死的**原始元信息**（`channel` 信封的时间、通道、id、发信人），
- * 再挂消息本身；这样界面上看到的来源与模型上下文里读到的抬头是同一份，不需要互相猜。
- * 没有 channel 抬头的 assistant 回复则显示角色名与时间。
+ * 页面重构后的口径：
+ * - 头部固定暴露渠道、发信人、收信人、时间与这一跳的上下文占用；raw 信封元信息
+ *   只在无障碍层里保留（排查时可读，但不占视觉噪声）；
+ * - 正文（回复文本 / 交付 / 提示 / 附件）永远直接铺开；
+ * - 思考 / 工具 / 提示词注入由 MessageBubble 归成一条可折叠的消息组；
+ *   纯过程回复因此只剩一行「思考与工具 · N 步」，点一次就能看全部过程。
  *
  * 历史消息与 work 视图共用：work 的消息就是 role 派给它的任务 + 它的执行过程。
  */
+import {
+  ArrowRight,
+  Bot,
+  MessagesSquare,
+  UserRound,
+  Users,
+  Wrench,
+} from 'lucide-react'
 import { channelMetaLineOf, currentUserName } from '../../../learn/roleWork/channels'
-import { t, useLocale } from '../../../i18n'
+import { contextRatio, formatTokens } from '../../../lib/usage'
 import { MessageRow, type MessageRowProps } from './MessageBubble'
+import { t, useLocale } from '../../../i18n'
 
 function timeOf(ts: number): string {
   return new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+type ChannelKey = 'user' | 'agent' | 'group' | 'work' | 'reply'
+
+const CHANNEL_STYLE: Record<
+  ChannelKey,
+  { label: string; className: string; accent: string; icon: typeof UserRound }
+> = {
+  user: { label: '用户', className: 'bg-sky-500/10 text-sky-700', accent: 'border-l-sky-400/55', icon: UserRound },
+  agent: { label: 'Agent', className: 'bg-violet-500/10 text-violet-700', accent: 'border-l-violet-400/55', icon: Bot },
+  group: { label: '群聊', className: 'bg-teal-500/10 text-teal-700', accent: 'border-l-teal-400/55', icon: Users },
+  work: { label: 'Work', className: 'bg-amber-500/10 text-amber-700', accent: 'border-l-amber-400/55', icon: Wrench },
+  reply: { label: '回复', className: 'bg-seal/10 text-seal-deep', accent: '', icon: MessagesSquare },
 }
 
 export function MindMessageRow({
@@ -28,8 +52,18 @@ export function MindMessageRow({
 }) {
   useLocale()
   const { msgRefs, ...body } = rest
-  const who = m.role === 'user' ? currentUserName() : agentName || t('智能体')
+  const channelKey: ChannelKey = m.channel?.channel ?? (m.role === 'user' ? 'user' : 'reply')
+  const style = CHANNEL_STYLE[channelKey]
+  const Icon = style.icon
+  const fromName =
+    m.channel?.from.name?.trim() ||
+    (m.role === 'user' ? currentUserName() : agentName || t('智能体'))
+  const toName = m.channel?.to.name?.trim() || ''
   const meta = m.channel ? channelMetaLineOf(m.channel) : ''
+  const usage = m.usage
+  const ratio = usage ? contextRatio(usage) : null
+  const channelAccent = m.channel ? 'border-l-2 pl-2 ' + style.accent : ''
+
   return (
     <div
       ref={(el) => {
@@ -38,18 +72,45 @@ export function MindMessageRow({
         else msgRefs.current.delete(m.id)
       }}
       data-mind-message-id={m.id}
-      className={'border-b border-line/40 py-2 ' + (faded ? 'opacity-55 ' : '')}
+      className={'border-b border-line/40 py-2 ' + channelAccent + (faded ? 'opacity-55 ' : '')}
     >
-      <div className="mb-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[10.5px]">
-        {meta ? (
-          <span data-mind-raw className="min-w-0 break-all font-mono leading-relaxed text-ink-faint">
-            {meta}
+      {meta && (
+        <span data-mind-raw className="sr-only">
+          {meta}
+        </span>
+      )}
+      <div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+        <span
+          data-mind-channel={channelKey}
+          className={
+            'inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ' +
+            style.className
+          }
+        >
+          <Icon size={10} className="shrink-0" />
+          {t(style.label)}
+        </span>
+        <span className="min-w-0 max-w-[42%] truncate font-medium text-ink-strong" title={fromName}>
+          {fromName}
+        </span>
+        {toName && (
+          <span className="inline-flex min-w-0 items-center gap-1 text-[10.5px] text-ink-faint">
+            <ArrowRight size={10} className="shrink-0" />
+            <span className="max-w-[160px] truncate" title={toName}>
+              {toName}
+            </span>
           </span>
-        ) : (
-          <>
-            <span className="font-medium text-ink-soft">{who}</span>
-            <span className="text-ink-faint">{timeOf(m.ts)}</span>
-          </>
+        )}
+        <span className="text-[10px] tabular-nums text-ink-faint">{timeOf(m.ts)}</span>
+        {usage && (
+          <span
+            className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full bg-line/40 px-1.5 py-0.5 text-[10px] tabular-nums text-ink-soft"
+            title={t('这一跳的上下文占用 {0} / {1} token；输出 {2} token', formatTokens(usage.contextTokens), usage.contextWindow ? formatTokens(usage.contextWindow) : '—', formatTokens(usage.outputTokens))}
+          >
+            ↑{formatTokens(usage.contextTokens)}
+            {ratio !== null && <span className="text-ink-faint">· {Math.round(ratio * 100)}%</span>}
+            <span className="text-ink-faint">↓{formatTokens(usage.outputTokens)}</span>
+          </span>
         )}
       </div>
       <MessageRow {...body} m={m} faded={false} flash={flash} mind />

@@ -33,6 +33,8 @@ describe('GroupChatPanel', () => {
       'tutor',
       'dispatcher',
     ])
+    expect(mentionedAgentsOf('@导师龟，请讲一下', agents)).toEqual([])
+    expect(mentionedAgentsOf('请找 @导师龟', agents)).toEqual([])
     expect(mentionedAgentsOf('没有点名的群消息', agents)).toEqual([])
   })
 
