@@ -177,9 +177,49 @@ function normalizeBindings(raw: unknown): Record<string, string> {
   return out
 }
 
+/**
+ * 截图热键还有一层系统级实现：screenHelper 的低级键盘钩子脱离页面焦点工作。
+ * 改键/启动载入后必须把新组合同步过去，否则旧 F1 仍会在任意应用里唤起截图。
+ * Node 探针没有 window/native 桥，这里静默跳过。
+ */
+function syncGlobalScreenshotShortcut(): void {
+  if (typeof window === 'undefined') return
+  const win = window as unknown as {
+    unyraNative?: { tools?: { setScreenshotShortcut?: (combo: string) => Promise<{ ok: boolean; error?: string }> } }
+    mojiNative?: { tools?: { setScreenshotShortcut?: (combo: string) => Promise<{ ok: boolean; error?: string }> } }
+  }
+  const tools = (win.unyraNative ?? win.mojiNative)?.tools
+  if (!tools?.setScreenshotShortcut) return
+  try {
+    void tools.setScreenshotShortcut(bindingOf('tools.screenshot')).catch(() => {})
+  } catch {
+    // 桥不可用时截图仍可用页面内快捷键，不影响主流程
+  }
+}
+
+const bindingListeners = new Set<() => void>()
+
+/** 改键 / 重置 / 切换用户后通知展示层（如工具菜单里的快捷键徽标）刷新 */
+export function subscribeShortcutBindings(listener: () => void): () => void {
+  bindingListeners.add(listener)
+  return () => bindingListeners.delete(listener)
+}
+
+function notifyBindingsChanged(): void {
+  for (const listener of bindingListeners) {
+    try {
+      listener()
+    } catch {
+      // 展示层订阅失败不影响快捷键本身
+    }
+  }
+}
+
 /** 启动 / 切换用户时调用（见 lib/boot）；未登录时回到全默认 */
 export function refreshShortcuts(): void {
   bindings = normalizeBindings(readUserSettings('shortcuts'))
+  notifyBindingsChanged()
+  syncGlobalScreenshotShortcut()
 }
 
 /** 当前的组合串：没改过就是默认值 */
@@ -191,6 +231,8 @@ export function bindingOf(id: string): string {
 
 function commit(): void {
   writeUserSettings('shortcuts', bindings)
+  notifyBindingsChanged()
+  syncGlobalScreenshotShortcut()
 }
 
 /** 占了同一个组合的另一条（返回 id 与名字） */

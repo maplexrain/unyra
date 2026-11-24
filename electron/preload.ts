@@ -885,6 +885,9 @@ const api = {
   tools: {
     captureScreen: (): Promise<ScreenCaptureResult> => ipcRenderer.invoke('tools:capture-screen'),
     openScreenshot: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('screenshot:open'),
+    /** 把当前截图快捷键同步给系统级热键助手（改键后旧组合必须立即失效） */
+    setScreenshotShortcut: (combo: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('screenshot:set-shortcut', combo),
     getScreenshotImage: (): Promise<string | null> => ipcRenderer.invoke('screenshot:getImage'),
     getScreenshotSystemRects: (): Promise<Array<{ x: number; y: number; width: number; height: number }>> => ipcRenderer.invoke('screenshot:getSystemRects'),
     // 输入法自动切换（vim 普通模式切英文直通，见 src/lib/imeSwitch）

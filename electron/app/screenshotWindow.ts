@@ -14,7 +14,7 @@ import { attachConsoleForwarding } from './windows'
 import { openPinWindow, type PinnedItemPayload } from './pinWindow'
 import { copyDataUrlToClipboard } from './clipboardHelper'
 import { mainWindow } from './mainWindow'
-import { snapViaHelper } from './screenHelperHost'
+import { snapViaHelper, setGlobalScreenshotShortcut } from './screenHelperHost'
 import { detectSystemWindowRects, mapRawRectsToDisplay, getFallbackRects, type WindowRectItem } from './windowRectsHelper'
 
 let screenshotWindow: BrowserWindow | null = null
@@ -272,6 +272,12 @@ export function destroyScreenshotWindow(): void {
 export function registerScreenshotIpc(): void {
   // 1. 触发系统级全屏截图开窗
   ipcMain.handle('screenshot:open', async () => openScreenshotWindow())
+
+  // 1.1 同步系统级热键：渲染层改键/启动载入时调用，旧组合立即失效
+  ipcMain.handle('screenshot:set-shortcut', (_e, combo: unknown) => {
+    if (typeof combo !== 'string') return { ok: false, error: 'invalid shortcut' }
+    return setGlobalScreenshotShortcut(combo)
+  })
 
   // 2. 截图窗口获取当前冻结桌面图像
   ipcMain.handle('screenshot:getImage', () => {

@@ -575,6 +575,8 @@ export interface NativeBridge {
   tools?: {
     captureScreen(): Promise<ScreenCaptureResult>
     openScreenshot?(): Promise<{ ok: boolean; error?: string }>
+    /** 同步当前截图快捷键给系统级热键助手；WebUI/非 Electron 无此方法 */
+    setScreenshotShortcut?(combo: string): Promise<{ ok: boolean; error?: string }>
     getScreenshotImage?(): Promise<string | null>
     getScreenshotSystemRects?(): Promise<Array<{ x: number; y: number; width: number; height: number }>>
     onScreenshotUpdate?(cb: (payload: { imageSrc: string; systemRects?: Array<{ x: number; y: number; width: number; height: number }> }) => void): () => void

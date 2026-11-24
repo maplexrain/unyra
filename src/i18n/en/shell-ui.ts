@@ -132,6 +132,8 @@ const dict: Record<string, string> = {
   '收起两侧栏、页签栏与顶栏，只留正文；再按一次退出，Esc 也能退出（文档区右上角那颗按钮是同一件事）': 'Collapses both sidebars, the tab bar and the top bar, leaving only the text; press again to exit, Esc works too (the button at the top right of the document area does the same)',
   '屏幕截图': 'Screen capture',
   '快速唤出截图工具进行区域截屏、取色与批注': 'Quickly launch screenshot tool for region clipping, color picking and annotation',
+  '截图（{0} 键快速唤出）': 'Screenshot (press {0})',
+  'Shift 换色 · 快捷键唤出': 'Shift to switch color · press the shortcut to open',
   '弹出节点宇宙': 'Pop out node universe',
   '把当前目标的节点宇宙弹到文档区上方（浮层，不切页签）；按键或双击 Ctrl 唤出，Esc 收回': 'Pops the current goal\'s node universe over the document area (an overlay, no tab switch); press key or double-click Ctrl to trigger, Esc to dismiss',
   '没有这个快捷键': 'No such shortcut',

@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   refreshShortcuts,
   resetShortcut,
   setShortcut,
   subscribeShortcut,
+  subscribeShortcutBindings,
 } from '../src/lib/shortcuts'
 
 function press(combo: { key: string; ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean }): void {
@@ -53,6 +54,41 @@ describe('快捷键改键后旧组合失效', () => {
     } finally {
       unsubscribe()
       resetShortcut('doc.find')
+    }
+  })
+
+  it('截图改键后把新组合同步给系统级热键，重置再同步回 F1', () => {
+    const calls: string[] = []
+    const setScreenshotShortcut = vi.fn(async (combo: string) => {
+      calls.push(combo)
+      return { ok: true }
+    })
+    ;(window as unknown as { mojiNative?: unknown }).mojiNative = {
+      tools: { setScreenshotShortcut },
+    }
+    try {
+      expect(setShortcut('tools.screenshot', 'Ctrl+Shift+U').ok).toBe(true)
+      expect(calls).toEqual(['Ctrl+Shift+U'])
+      resetShortcut('tools.screenshot')
+      expect(calls.at(-1)).toBe('F1')
+    } finally {
+      delete (window as unknown as { mojiNative?: unknown }).mojiNative
+      resetShortcut('tools.screenshot')
+    }
+  })
+
+  it('改键/重置会通知展示层刷新快捷键徽标', () => {
+    let notified = 0
+    const unsubscribe = subscribeShortcutBindings(() => (notified += 1))
+    try {
+      expect(setShortcut('tools.screenshot', 'Ctrl+Shift+U').ok).toBe(true)
+      expect(notified).toBeGreaterThan(0)
+      const beforeReset = notified
+      resetShortcut('tools.screenshot')
+      expect(notified).toBeGreaterThan(beforeReset)
+    } finally {
+      unsubscribe()
+      resetShortcut('tools.screenshot')
     }
   })
 

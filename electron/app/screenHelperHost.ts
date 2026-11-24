@@ -2,10 +2,13 @@ import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
 import fs from 'node:fs'
 import { app } from 'electron'
+import { parseScreenshotHotkey, type ScreenshotHotkey } from './screenshotHotkey'
 
 let hookProcess: ChildProcess | null = null
 let triggerCallback: (() => void) | null = null
 let isStarting = false
+/** 当前生效的全局截图热键。默认 F1，渲染层启动后会用用户改过的绑定覆盖。 */
+let currentHotkey: ScreenshotHotkey = { vk: 0x70, mods: 0 }
 let windowQueryResolvers: Array<(rects: Array<{ x: number; y: number; width: number; height: number; title?: string }>) => void> = []
 let snapResolvers: Array<(res: { imagePath: string; windows: Array<{ x: number; y: number; width: number; height: number; title?: string }> } | null) => void> = []
 /** IME_GET 的应答队列（前台窗口当前键盘布局 HKL；读不到 = null） */
@@ -43,6 +46,28 @@ function getHelperCsPath(): string {
   return candidates[0]
 }
 
+function sendHotkeyToHelper(proc: ChildProcess): void {
+  if (!proc.stdin || proc.killed) return
+  try {
+    proc.stdin.write(`SETKEY ${currentHotkey.vk} ${currentHotkey.mods}\n`)
+  } catch {
+    // helper 刚退出时写管道会报错；下次启动会重新下发
+  }
+}
+
+/**
+ * 更新系统级截图热键。渲染层改键后立即调用；helper 还没启动时先记下，
+ * 等 spawn 成功再补发，避免启动早期仍按默认 F1 抢旧键。
+ */
+export function setGlobalScreenshotShortcut(combo: string): { ok: boolean; error?: string } {
+  const parsed = parseScreenshotHotkey(combo)
+  if (!parsed) return { ok: false, error: '无法识别的截图快捷键' }
+  currentHotkey = parsed
+  if (process.platform !== 'win32') return { ok: true }
+  if (hookProcess) sendHotkeyToHelper(hookProcess)
+  return { ok: true }
+}
+
 /**
  * 确保 screenHelper.exe 原生助手存在；不存在或源码比产物新时，
  * 自动调用系统内置 csc 瞬时编译（.cs 改过而 exe 还是旧的，就必须重编，否则会一直跑过期逻辑）
@@ -74,8 +99,9 @@ function ensureHelperExe(): Promise<boolean> {
 }
 
 /**
- * 启动全局截图快捷键（F1）监听与高速窗口探测助手：
+ * 启动全局截图快捷键监听与高速窗口探测助手：
  * - 纯底层低级键盘钩子，无条件调用 CallNextHookEx，绝不拦截/吃掉按键；
+ * - 热键由 `setGlobalScreenshotShortcut` 动态下发，默认 F1，改键后旧键立即失效；
  * - 最小化、失焦、全屏游戏或任何应用中均能瞬间感应；
  * - 原生 BitBlt 毫秒级全屏高清硬件截屏，彻底杜绝 WebRTC 黑屏；
  * - 内置高性能 DWM 真实视口枚举，天然保持原生 Z-order。
@@ -102,6 +128,10 @@ export async function startGlobalScreenshotShortcut(onTrigger: () => void): Prom
 
     hookProcess = proc
 
+    // 热键可能已经在 helper 启动前由渲染层下发；spawn 后立刻补发，
+    // 否则进程会先按默认 F1 监听一拍。
+    sendHotkeyToHelper(proc)
+
     proc.stdout?.on('data', (chunk: Buffer) => {
       const text = chunk.toString('utf8')
       const lines = text.split(/\r?\n/)
@@ -110,7 +140,7 @@ export async function startGlobalScreenshotShortcut(onTrigger: () => void): Prom
         const line = rawLine.trim()
         if (!line) continue
 
-        // 1. 全局截图快捷键（F1）触发
+        // 1. 当前全局截图热键触发
         if (line === 'TRIGGER') {
           try {
             triggerCallback?.()

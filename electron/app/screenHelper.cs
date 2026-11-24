@@ -12,6 +12,8 @@ public class ScreenHelper {
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100;
     private const int WM_SYSKEYDOWN = 0x0104;
+    private const int WM_KEYUP = 0x0101;
+    private const int WM_SYSKEYUP = 0x0105;
     private const int SRCCOPY = 0x00CC0020;
     private const uint WM_INPUTLANGCHANGEREQUEST = 0x0050;
     private static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = (IntPtr)(-4);
@@ -19,6 +21,12 @@ public class ScreenHelper {
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
     private static LowLevelKeyboardProc _proc = HookCallback;
     private static IntPtr _hookID = IntPtr.Zero;
+
+    // 当前全局截图热键：Windows 虚拟键码 + 修饰位掩码（1 Ctrl / 2 Shift / 4 Alt / 8 Win）。
+    // 由 Electron 主进程通过 stdin 的 SETKEY 命令动态更新，默认 F1。
+    private static volatile int _hotkeyVk = 0x70;
+    private static volatile int _hotkeyMods = 0;
+    private static readonly HashSet<int> _downKeys = new HashSet<int>();
 
     [DllImport("user32.dll")]
     private static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
@@ -112,6 +120,9 @@ public class ScreenHelper {
     [DllImport("gdi32.dll")]
     public static extern bool BitBlt(IntPtr hdcDest, int nXDest, int nYDest, int nWidth, int nHeight, IntPtr hdcSrc, int nXSrc, int nYSrc, int dwRop);
 
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT {
         public int Left;
@@ -167,6 +178,16 @@ public class ScreenHelper {
                     HandleImeGet();
                 } else if (line.StartsWith("IME_SET ")) {
                     HandleImeSet(line.Substring(8).Trim());
+                } else if (line.StartsWith("SETKEY ")) {
+                    // "SETKEY <vk> <mods>"：热键由渲染层当前绑定下发；调整只换匹配条件，不拦按键
+                    string[] parts = line.Substring(7).Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length >= 2) {
+                        int vk, mods;
+                        if (int.TryParse(parts[0], out vk) && int.TryParse(parts[1], out mods)) {
+                            _hotkeyVk = vk;
+                            _hotkeyMods = mods;
+                        }
+                    }
                 } else if (line == "EXIT") {
                     Environment.Exit(0);
                 }
@@ -177,7 +198,7 @@ public class ScreenHelper {
         stdInThread.IsBackground = true;
         stdInThread.Start();
 
-        // 注册全局键盘低级钩子（系统级双击反引号监听，无条件放行所有按键）
+        // 注册全局键盘低级钩子（系统级截图热键监听，无条件放行所有按键）
         using (Process curProcess = Process.GetCurrentProcess())
         using (ProcessModule curModule = curProcess.MainModule) {
             _hookID = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(curModule.ModuleName), 0);
@@ -196,11 +217,43 @@ public class ScreenHelper {
     }
 
     private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
-        if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)) {
-            int vkCode = Marshal.ReadInt32(lParam);
-            if (vkCode == 0x70) { /* VK_F1: 快速唤出截图 */ Console.WriteLine("TRIGGER"); Console.Out.Flush(); }
+        if (nCode >= 0) {
+            int msg = wParam.ToInt32();
+            if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) {
+                int vkCode = Marshal.ReadInt32(lParam);
+                // 过滤系统级自动重复：按住热点键不应连续开十几个截图窗口
+                if (!_downKeys.Contains(vkCode)) {
+                    _downKeys.Add(vkCode);
+                    if (MatchesHotkey(vkCode)) {
+                        Console.WriteLine("TRIGGER");
+                        Console.Out.Flush();
+                    }
+                }
+            } else if (msg == WM_KEYUP || msg == WM_SYSKEYUP) {
+                _downKeys.Remove(Marshal.ReadInt32(lParam));
+            }
         }
         return CallNextHookEx(_hookID, nCode, wParam, lParam);
+    }
+
+    private static bool IsKeyDown(int vk) {
+        return (GetAsyncKeyState(vk) & 0x8000) != 0;
+    }
+
+    /// <summary>
+    /// 判断这次 keydown 是否命中当前截图热键。修饰键用全局异步状态读取，
+    /// 因此热键在任意前台窗口都成立，且改键后旧组合会立即失效。
+    /// </summary>
+    private static bool MatchesHotkey(int vkCode) {
+        if (vkCode != _hotkeyVk) return false;
+
+        int mods = 0;
+        if (IsKeyDown(0x11) || IsKeyDown(0xA2) || IsKeyDown(0xA3)) mods |= 1; // Ctrl
+        if (IsKeyDown(0x10) || IsKeyDown(0xA0) || IsKeyDown(0xA1)) mods |= 2; // Shift
+        if (IsKeyDown(0x12) || IsKeyDown(0xA4) || IsKeyDown(0xA5)) mods |= 4; // Alt
+        if (IsKeyDown(0x5B) || IsKeyDown(0x5C)) mods |= 8; // Win
+
+        return mods == _hotkeyMods;
     }
 
     /// <summary>

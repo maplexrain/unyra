@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { BellRing, CalendarClock, Check, Clock, Crop, Calculator, Wrench } from 'lucide-react'
 import { useHoverMenu } from '../../lib/hoverMenu'
 import { toggleCalculator } from '../../lib/calculatorState'
@@ -8,6 +8,7 @@ import {
   type ScheduleItem,
 } from '../../learn/schedule'
 import { t } from '../../i18n'
+import { bindingOf, subscribeShortcutBindings } from '../../lib/shortcuts'
 
 /** 指针离开后延后这么久再收：按钮与面板之间有一道 pt-1 的缝（与日程/专注一致） */
 const HOVER_CLOSE_MS = 90
@@ -38,6 +39,11 @@ export default function ToolsButton({ onScreenshot, schedule }: ToolsButtonProps
   })
 
   const [snoozeOpen, setSnoozeOpen] = useState(false)
+  const screenshotCombo = useSyncExternalStore(
+    subscribeShortcutBindings,
+    () => bindingOf('tools.screenshot'),
+    () => bindingOf('tools.screenshot'),
+  )
 
   const ringing = schedule?.ringing ?? null
   const pendingCount = schedule ? schedule.today.filter((it) => !it.doneAt).length : 0
@@ -96,14 +102,14 @@ export default function ToolsButton({ onScreenshot, schedule }: ToolsButtonProps
             </div>
 
             <div className="flex flex-col gap-1">
-              {/* 1. 截图选项（F1 全局快捷键唤出） */}
+              {/* 1. 截图选项（当前全局快捷键唤出） */}
               <button
                 type="button"
                 onClick={() => {
                   setOpen(false)
                   onScreenshot()
                 }}
-                title={t('截图（F1 键快速唤出）')}
+                title={t('截图（{0} 键快速唤出）', screenshotCombo)}
                 className="group/item flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition hover:bg-line/60"
               >
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-seal/10 text-seal transition group-hover/item:bg-seal group-hover/item:text-white">
@@ -113,7 +119,7 @@ export default function ToolsButton({ onScreenshot, schedule }: ToolsButtonProps
                   <div className="flex items-center justify-between">
                     <span className="text-[13px] font-medium text-ink-strong">{t('截图')}</span>
                     <kbd className="rounded border border-line-strong/60 bg-paper-deep/70 px-1.5 py-0.5 font-mono text-[10px] text-ink-soft shadow-xs">
-                      F1
+                      {screenshotCombo}
                     </kbd>
                   </div>
                   <div className="truncate text-[11px] text-ink-faint">
