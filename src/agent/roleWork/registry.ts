@@ -81,6 +81,7 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
       ...(typeof m.threadId === 'string' && m.threadId.includes('>') ? { threadId: m.threadId } : {}),
       ...(typeof m.threadRootId === 'string' && m.threadRootId ? { threadRootId: m.threadRootId } : {}),
       ...(m.auto ? { auto: true } : {}),
+      ...(m.silent ? { silent: true } : {}),
     })
   }
   const kept = out.slice(-CHANNEL_CAP)

@@ -105,8 +105,12 @@ export function installRoleWork(api: Record<string, unknown>, opts: SandboxOptio
       const to = asText(a.to).trim()
       const messageId = asText(a.messageId).trim()
       const mentions = cleanMentions(a.mentions)
+      const silent = a.silent === true
       if (channel !== 'user' && channel !== 'agent' && channel !== 'work' && channel !== 'group') {
         return { ok: false, error: 'chat.send 的 channel 只能是 user / agent / work / group' }
+      }
+      if (silent && channel !== 'agent' && channel !== 'group') {
+        return { ok: false, error: 'chat.send 的 silent 只支持 agent / group 通道（进度汇报用）' }
       }
       if (!text && !messageId) return { ok: false, error: 'chat.send 需要 text 或 messageId' }
       if (channel === 'agent' && !to) return { ok: false, error: 'chat.send 到 agent 通道需要 to（目标 role id）' }
@@ -119,6 +123,7 @@ export function installRoleWork(api: Record<string, unknown>, opts: SandboxOptio
         ...(mentions.length ? { mentions } : {}),
         ...(messageId ? { messageId } : {}),
         ...(attachments ? { attachments } : {}),
+        ...(silent ? { silent: true } : {}),
       }
       try {
         return await chat.send(input)

@@ -162,6 +162,8 @@ export interface ChannelMessage {
   threadRootId?: string
   /** 收口兜底自动补发（模型没显式 send） */
   auto?: boolean
+  /** 静默汇报：只入目标 role 的上下文与通道流水，不启动它一轮（chat.send silent:true） */
+  silent?: boolean
 }
 
 /**

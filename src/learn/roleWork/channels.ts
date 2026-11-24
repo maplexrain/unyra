@@ -156,6 +156,8 @@ export function outboundEnvelope(input: {
   threadRootId?: string
   extra?: ChannelMessage['extra']
   ask?: ChannelMessage['ask']
+  /** 静默汇报：只入上下文与流水，不启动目标 role 一轮 */
+  silent?: boolean
 }): ChannelMessage {
   return {
     id: input.id ?? crypto.randomUUID(),
@@ -174,6 +176,7 @@ export function outboundEnvelope(input: {
     ...(input.goalId ? { goalId: input.goalId } : {}),
     ...(input.threadId ? { threadId: input.threadId } : {}),
     ...(input.threadRootId ? { threadRootId: input.threadRootId } : {}),
+    ...(input.silent ? { silent: true } : {}),
   }
 }
 
@@ -191,6 +194,8 @@ export function inboundEnvelope(input: {
   threadId?: string
   threadRootId?: string
   extra?: ChannelMessage['extra']
+  /** 静默汇报：只入上下文与流水，不启动目标 role 一轮 */
+  silent?: boolean
 }): ChannelMessage {
   return {
     id: input.id ?? crypto.randomUUID(),
@@ -206,5 +211,6 @@ export function inboundEnvelope(input: {
     ...(input.goalId ? { goalId: input.goalId } : {}),
     ...(input.threadId ? { threadId: input.threadId } : {}),
     ...(input.threadRootId ? { threadRootId: input.threadRootId } : {}),
+    ...(input.silent ? { silent: true } : {}),
   }
 }

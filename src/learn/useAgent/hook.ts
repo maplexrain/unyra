@@ -30,7 +30,7 @@ import {
 import type { AskAnswers, ExamToolDeps } from '../../agent/tools'
 import { hasApiKey, loadAiSettings } from '../../ai/settings'
 import { freeConversationById, getFreeConversations, mutateFreeConversation } from '../freeChat'
-import { agentNameOf, profileOf, type AgentVoice } from '../../agent/agentProfile'
+import { type AgentVoice } from '../../agent/agentProfile'
 import { setEffortContextProbe } from '../effortGuard'
 import type { LearnStore } from '../types'
 import { conversationById, nodeById } from '../graph'
@@ -44,15 +44,11 @@ import type { AgentProfileId } from '../../agent/agentProfile'
 import type { RoleWorkDispatcher } from '../roleWork/dispatch'
 import { roleOfConversation } from '../roleWork/roles'
 import {
-  clearRoleOutbound,
   flushChannelInbox,
-  markRoleOutbound,
-  roleOutboundMade,
   setRoleWorkDispatcher,
   takeChannelInjection,
 } from '../roleWork/dispatch'
-import { groupPeer, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
-import { appendGroupMessage } from '../groupChat'
+import { inboundMessage } from '../roleWork/channels'
 import { pauseAskTimer, resumeAskTimer } from '../roleWork/askTimers'
 import { useAgentSlots } from './slots'
 import { useAgentSession } from './session'
@@ -334,7 +330,6 @@ export function useAgent(opts: {
       const voice: AgentVoice = existing
         ? (roleOfConversation(existing) as AgentVoice)
         : (target.voice ?? 'tutor')
-      clearRoleOutbound(target.conversationId)
       let conv = existing ?? {
         id: target.conversationId,
         goalId: target.goalId,
@@ -519,44 +514,6 @@ export function useAgent(opts: {
           autoCompactRef,
           onNoticeRef,
         })
-        // 收口兜底：这一轮从未用 chat.send 对外说过话时，把最终正文补成一条
-        // （auto: true 标出来，角色不会误以为这是它主动发的）。用户能立刻在对应通道看到回复。
-        if (!roleOutboundMade(target.conversationId)) {
-          const finalText = parts
-            .filter((p) => p.type === 'text')
-            .map((p) => p.text)
-            .join('')
-            .trim()
-          const cur = conversationById(getLatest(), target.conversationId)
-          if (finalText && cur) {
-            // 兜底也必须沿**最近一条外部入站**的通道回去：群聊来的任务不能悄悄变成私聊回复
-            const lastInbound = [...(cur.channels ?? [])]
-              .reverse()
-              .find((m) => m.direction === 'in' && m.kind !== 'work')
-            const fallbackChannel =
-              lastInbound?.kind === 'group'
-                ? 'group'
-                : lastInbound?.kind === 'agent'
-                  ? 'agent'
-                  : 'user'
-            const envelope = outboundEnvelope({
-              channel: fallbackChannel,
-              from: peerOf('agent', voice, agentNameOf(profileOf(entry.agentSettings, voice), voice)),
-              to:
-                fallbackChannel === 'group'
-                  ? groupPeer()
-                  : fallbackChannel === 'agent' && lastInbound
-                    ? lastInbound.from
-                    : userPeer(),
-              text: finalText,
-              auto: true,
-              ...(fallbackChannel === 'group' && cur.goalId ? { goalId: cur.goalId } : {}),
-            })
-            if (fallbackChannel === 'group') appendGroupMessage(envelope)
-            persist({ ...cur, channels: [...(cur.channels ?? []), envelope].slice(-200), updatedAt: Date.now() })
-            markRoleOutbound(target.conversationId)
-          }
-        }
         // 通道收口：本轮若还有排着的通道消息，接着起下一轮（见 learn/roleWork/dispatch）
         flushChannelInbox(target.conversationId)
       }
@@ -833,6 +790,32 @@ export function useAgent(opts: {
           mutateFreeConversation(convId, (c) => ({
             ...c,
             channels: [...(c.channels ?? []), envelope].slice(-200),
+            updatedAt: Date.now(),
+          }))
+        }
+      },
+      /**
+       * 静默汇报：只把消息写进目标会话的上下文与通道流水，不启动一轮、不进排队。
+       * 通道流水由 deliverInbound 先落过，这里只补 `messages` 里的那一条 user 侧消息；
+       * 下一轮组历史时它带 channel stamp 出现，模型能看到这段进度。
+       */
+      appendSilentInbound: (req, _envelope) => {
+        const message = inboundMessage(req.text, req.stamp, {
+          ...(req.images ? { images: req.images } : {}),
+          ...(req.files ? { files: req.files } : {}),
+          ...(req.hidden ? { hidden: true } : {}),
+          ...(req.mark ? { mark: req.mark } : {}),
+        })
+        const cur = conversationById(getLatest(), req.conversationId)
+        if (cur) {
+          persist({ ...cur, messages: [...cur.messages, message], updatedAt: Date.now() })
+          return
+        }
+        const free = freeConversationById(req.conversationId)
+        if (free) {
+          mutateFreeConversation(req.conversationId, (c) => ({
+            ...c,
+            messages: [...c.messages, message],
             updatedAt: Date.now(),
           }))
         }

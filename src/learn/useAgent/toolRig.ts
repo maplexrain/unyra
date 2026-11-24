@@ -242,7 +242,7 @@ export function rigTurnTools(io: {
       })
       return { ok: r.ok, channel: 'work', to: name, ...(r.error ? { error: r.error } : {}) }
     },
-    sendToGroup: async ({ text, mentions, messageId, attachments, extra }) => {
+    sendToGroup: async ({ text, mentions, messageId, attachments, extra, silent }) => {
       const goalId = target.goalId
       if (!goalId) return { ok: false, error: '当前 role 会话不挂在目标上，无法进入群聊' }
       const mentionRoles: MentionRole[] = AGENT_ROLE_IDS.filter((id) => id !== 'free').map((id) => ({
@@ -327,6 +327,7 @@ export function rigTurnTools(io: {
         goalId,
         ...(threadId ? { threadId } : {}),
         ...(threadRootId ? { threadRootId } : {}),
+        ...(silent ? { silent: true } : {}),
       })
       appendGroupMessage(groupMsg)
       // 自己这一侧的 mind 也留一条出站流水（群聊层另开，不混进私聊）
@@ -348,6 +349,7 @@ export function rigTurnTools(io: {
           goalId,
           ...(threadId ? { threadId } : {}),
           ...(threadRootId ? { threadRootId } : {}),
+          ...(silent ? { silent: true } : {}),
         })
         deliverInbound(
           {
@@ -370,6 +372,7 @@ export function rigTurnTools(io: {
             ...(attachments?.files ? { files: attachments.files } : {}),
           },
           inbound,
+          { silent },
         )
       }
       return {

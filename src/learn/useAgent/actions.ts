@@ -228,9 +228,9 @@ export function useAgentActions(deps: {
        * 群消息是用户可见的任务票；隐藏指令保留模块 / 参数 / 兜底，目标 role 的回复因为
        * recent inbound = group 会回到群里，调度龟再按群聊递归派给其他兄弟。
        *
-       * 内部续跑（wfDrain / 自动开讲 / 手动压缩）带显式 target，或属于 compact 维护轮，
-       * 走私聊闭环，不能在用户没要求时凭空往群里塞消息；少数外部但带固定 target 的入口
-       * （如报错修复）用 opts.viaGroup 显式要求进群。
+       * 内部续跑（wfDrain / 手动压缩）带显式 target，或属于 compact 维护轮，
+       * 走私聊闭环，不能在用户没要求时凭空往群里塞消息；外部触发但带固定 target 的入口
+       * （自动开讲、报错修复）用 opts.viaGroup 显式要求进群——绝不直接写目标 role 的 mind 或走私聊。
        */
       const groupVoice = opts?.voice ?? 'dispatcher'
       const viaGroup =
@@ -419,6 +419,9 @@ export function useAgentActions(deps: {
     ) => {
       runWorkflow('teach-node', {
         target,
+        // 建节点后自动开讲是**外部触发**：先以用户身份在群通道落一条 @调度龟 的任务票，
+        // 再由隐藏工作流指令进入调度龟的上下文；不要借显式 target 直接走私聊 / 只写 mind。
+        viaGroup: true,
         hint: extra,
         params: target.nodeId ? { target: target.nodeId } : {},
         images: attachments?.images,

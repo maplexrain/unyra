@@ -37,7 +37,7 @@ export const FREE_CHAT_API_SECTION = [
   '• api.work.create({ name? })：新建一个独立上下文的 work；名字 1–32 字、role 内唯一，缺省为 work-N。',
   '• api.work.send({ name, text?, messageId? })：把任务发给 work；work 在跑时排队，空闲时起一轮，调用立即返回。',
   '• api.work.stop(name) 保留上下文可续跑；api.work.kill(name) 中止并删除。',
-  '• api.chat.send({ channel, to?, text, messageId?, attachments? })：对外发消息。channel=user 省略 to；channel=agent 时 to 必须是 role id；channel=work 时 to 是 work 名。',
+  '• api.chat.send({ channel, to?, text, messageId?, attachments?, silent? })：对外发消息。channel=user 省略 to；channel=agent 时 to 必须是 role id；channel=work 时 to 是 work 名。silent 只用于 agent 通道的进度汇报（只入对方上下文、不激活对方）。',
   '',
   '联网调研、网页抓取、日程读写都在 work 面：要这些能力就创建一个 work，把目标、边界与产物要求写清交给它。',
 ].join('\n')

@@ -83,6 +83,11 @@ export interface ChatSendInput {
    * 两个 agent 之间搬运大块材料时必须放这里，避免把聊天列表刷屏。
    */
   extra?: ChannelExtra
+  /**
+   * 静默汇报：只写入目标 role 的上下文与通道流水，不启动目标 role 一轮。
+   * 只允许 agent / group；适合「我正在直接对接用户，只需让调度龟知道进度」的截断点。
+   */
+  silent?: boolean
 }
 
 export interface ChatCallResult {

@@ -3,8 +3,8 @@
  *
  * 职责：
  * 1. 管理智能体团队单例页签（kind: 'agentTeam'）的打开、聚焦与 Ctrl+Q 往返切换；
- * 2. 监听工作区各处触发的工作流与提问表单（runningByConversation / pendingAskByConv），
- *    自动同步 agentTabs 激活会话，并在需要时唤起智能体团队页签展示执行与表单。
+ * 2. 只在**用户主动打开**、Ctrl+Q 或新 ask 表单到来时切换页签；
+ *    agent 被激活 / 工作流启动**绝不自动跟踪跳页**，用户停在原页面。
  */
 
 import { useCallback, useEffect, useRef } from 'react'
@@ -92,7 +92,6 @@ export function useAgentTeamHost({
 }: AgentTeamHostDeps) {
   const lastNonTeamTabRef = useRef<string | null>(null)
   const focusTimerRef = useRef<number | null>(null)
-  const prevRunningRef = useRef<Set<string>>(new Set())
   const prevAskIdsRef = useRef<Set<string>>(new Set())
 
   // 持续记住最近一次在焦点格打开的非智能体团队页签，供 Ctrl+Q 切回
@@ -179,38 +178,6 @@ export function useAgentTeamHost({
   const expandAgentTeam = useCallback(() => {
     openAgentTeam({ focusInput: true })
   }, [openAgentTeam])
-
-  // 监听工作流与任意会话启动：自动对齐对应导师会话并在需要时切到智能体团队页签
-  useEffect(() => {
-    const currentRunning = new Set(
-      Object.entries(agent.runningByConversation)
-        .filter(([, running]) => Boolean(running))
-        .map(([convId]) => convId),
-    )
-    const started: string[] = []
-    for (const cid of currentRunning) {
-      if (!prevRunningRef.current.has(cid)) started.push(cid)
-    }
-    prevRunningRef.current = currentRunning
-
-    // **委托会话（dv: 前缀）的轮不自动跳转**：承接方被委托启动是后台行为，用户留在
-    // 当前位置，从委托者会话底部的「委托中」条进入。工作流 / 用户直接对话的启动照旧跳。
-    const startedMain = started.filter((cid) => !cid.startsWith('dv:'))
-    if (startedMain.length === 0) return
-
-    const convId = startedMain[startedMain.length - 1]
-    const s = getLatest()
-    if (!conversationById(s, convId) && freeConversationById(convId)) {
-      onSyncFreeConvId?.(convId)
-    }
-    const synced = syncAgentTabForConversation(s, convId)
-    if (synced !== s) set(synced)
-
-    const targetGoalId = conversationById(s, convId)?.goalId
-    if (!pure && !isAgentTeamVisible(getLatest(), targetGoalId)) {
-      openTab(resolveTeamTabRef(getLatest(), convId))
-    }
-  }, [agent.runningByConversation, pure, getLatest, set, openTab, onSyncFreeConvId])
 
   // 监听 api.ask 结构化表单：有新提问到来时退出纯净阅读、对齐会话并确保页签可见
   useEffect(() => {

@@ -32,6 +32,12 @@ export interface RoleWorkDispatcher {
   startRoleTurn: (req: RoleTurnRequest) => void
   /** 只追加通道流水，不起轮（chat.send 的出站消息） */
   appendChannel: (conversationId: string, envelope: ChannelMessage) => void
+  /**
+   * 静默入站：把消息只追加到目标会话的上下文，不启动一轮、不进排队。
+   * 通道流水由 deliverInbound 先落；没有实现时退化为「只落通道流水」——老宿主不会因此崩，
+   * 但上下文里看不到。
+   */
+  appendSilentInbound?: (req: RoleTurnRequest, envelope: ChannelMessage) => void
 }
 
 let dispatcherGetter: (() => RoleWorkDispatcher | null) | null = null
@@ -52,26 +58,12 @@ function dispatcherOf(): RoleWorkDispatcher | null {
 /** 等跳边界注入的通道消息（键 = role 会话） */
 const pending = new Map<string, Array<{ req: RoleTurnRequest; stamp: ChannelStamp }>>()
 
-/** 这一轮是否已经用 chat.send 对外说过话（收口兜底用） */
-const spoke = new Set<string>()
+/** 静默汇报：目标正在跑时先挂起，等这一轮收口后只写上下文，不起新轮 */
+const silentPending = new Map<string, Array<{ req: RoleTurnRequest; envelope: ChannelMessage }>>()
 
 export function resetChannelRegistry(): void {
   pending.clear()
-  spoke.clear()
-}
-
-/** chat.send 成功落账后打点：这一轮不再自动补发 */
-export function markRoleOutbound(conversationId: string): void {
-  spoke.add(conversationId)
-}
-
-export function roleOutboundMade(conversationId: string): boolean {
-  return spoke.has(conversationId)
-}
-
-/** 一轮真正开始时清掉上一轮的标记 */
-export function clearRoleOutbound(conversationId: string): void {
-  spoke.delete(conversationId)
+  silentPending.clear()
 }
 
 export function enqueueInjection(req: RoleTurnRequest): number {
@@ -96,12 +88,29 @@ export function hasChannelInjection(conversationId: string): boolean {
 
 /**
  * 投递一条入站消息：先落通道流水，再按目标忙闲决定起轮或排队。
- * 返回 true = 已起轮，false = 排队 / 无宿主。
+ * silent = true 时只落流水 + 写进目标上下文，既不排队也不起轮。
+ * 返回 true = 已起轮，false = 排队 / 静默 / 无宿主。
  */
-export function deliverInbound(req: RoleTurnRequest, envelope: ChannelMessage): boolean {
+export function deliverInbound(
+  req: RoleTurnRequest,
+  envelope: ChannelMessage,
+  opts?: { silent?: boolean },
+): boolean {
   const host = dispatcherOf()
   if (!host) return false
   host.appendChannel(req.conversationId, envelope)
+  if (opts?.silent) {
+    // 目标正在跑：先挂起，等这一轮收口后由 flushChannelInbox 只写上下文，绝不插队起轮。
+    // 空闲时直接写进 messages；下一轮组历史时自然带上 channel stamp。
+    if (host.isConversationRunning(req.conversationId)) {
+      const list = silentPending.get(req.conversationId) ?? []
+      list.push({ req, envelope })
+      silentPending.set(req.conversationId, list)
+    } else {
+      host.appendSilentInbound?.(req, envelope)
+    }
+    return false
+  }
   if (host.isConversationRunning(req.conversationId)) {
     enqueueInjection(req)
     return false
@@ -114,6 +123,12 @@ export function deliverInbound(req: RoleTurnRequest, envelope: ChannelMessage): 
 export function flushChannelInbox(conversationId: string): void {
   const host = dispatcherOf()
   if (!host || host.isConversationRunning(conversationId)) return
+  // 先把挂起的静默汇报写进上下文；它们只入历史，不改变「下面要不要起下一轮」。
+  const silent = silentPending.get(conversationId)
+  if (silent?.length) {
+    silentPending.delete(conversationId)
+    for (const item of silent) host.appendSilentInbound?.(item.req, item.envelope)
+  }
   const list = pending.get(conversationId)
   const first = list?.shift()
   if (!first) return

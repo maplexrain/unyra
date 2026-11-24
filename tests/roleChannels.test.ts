@@ -138,6 +138,82 @@ describe('chat.send 三通道', () => {
     void appended
   })
 
+  it('agent 通道：静默汇报只落流水与目标上下文，不启动目标一轮', async () => {
+    const channels: ChannelMessage[] = []
+    const contexts: RoleTurnRequest[] = []
+    const turns: RoleTurnRequest[] = []
+    setRoleWorkDispatcher(() => ({
+      isConversationRunning: () => false,
+      resolveRoleConversation: () => null,
+      startRoleTurn: (req) => turns.push(req),
+      appendChannel: (_id, envelope) => channels.push(envelope),
+      appendSilentInbound: (req) => contexts.push(req),
+    }))
+    const { chat } = makeChat()
+    expect(
+      await chat.send({
+        channel: 'agent',
+        to: 'dispatcher',
+        text: '第 2 页已交付，用户已收到。',
+        silent: true,
+      }),
+    ).toMatchObject({ ok: true, channel: 'agent' })
+    expect(turns).toHaveLength(0)
+    expect(contexts).toHaveLength(1)
+    expect(contexts[0]!.text).toContain('用户已收到')
+    expect(channels).toHaveLength(1)
+    expect(channels[0]!.silent).toBe(true)
+  })
+
+  it('agent 通道：目标正在跑时静默汇报先挂起，收口后只写上下文、不起下一轮', async () => {
+    const channels: ChannelMessage[] = []
+    const contexts: RoleTurnRequest[] = []
+    const turns: RoleTurnRequest[] = []
+    let running = true
+    setRoleWorkDispatcher(() => ({
+      isConversationRunning: () => running,
+      resolveRoleConversation: () => null,
+      startRoleTurn: (req) => turns.push(req),
+      appendChannel: (_id, envelope) => channels.push(envelope),
+      appendSilentInbound: (req) => contexts.push(req),
+    }))
+    const { chat } = makeChat()
+    expect(
+      await chat.send({ channel: 'agent', to: 'dispatcher', text: '进度 1/3', silent: true }),
+    ).toMatchObject({ ok: true })
+    expect(contexts).toHaveLength(0)
+    expect(channels).toHaveLength(1)
+
+    running = false
+    flushChannelInbox('cv:dispatcher:g1')
+    expect(contexts).toHaveLength(1)
+    expect(contexts[0]!.text).toContain('进度 1/3')
+    expect(turns).toHaveLength(0)
+  })
+
+  it('沙箱 API 入口：silent 只允许 agent / group，并原样带给 chat.send', async () => {
+    let passed: ChatSendInput | null = null
+    const api: Record<string, unknown> = {}
+    installRoleWork(
+      api,
+      {
+        chat: {
+          send: (input: ChatSendInput) => {
+            passed = input
+            return { ok: true, channel: 'agent' }
+          },
+        },
+      } as unknown as SandboxOptions,
+      [],
+    )
+    const chat = api.chat as { send: (input: ChatSendInput) => Promise<{ ok: boolean }> }
+    expect(
+      await chat.send({ channel: 'agent', to: 'dispatcher', text: '阶段一完成', silent: true }),
+    ).toMatchObject({ ok: true })
+    expect(passed!.silent).toBe(true)
+    expect(await chat.send({ channel: 'user', text: '偷偷说', silent: true })).toMatchObject({ ok: false })
+  })
+
   it('group 通道：把 to 并进 mentions 交给宿主，不落普通私聊流水', async () => {
     let passed: { text: string; mentions?: string[] } | null = null
     const { chat, appended } = makeChat({

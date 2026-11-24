@@ -581,16 +581,17 @@ status 只回执行轨迹的 execute 标题，不回工具参数与正文；要�
   g(
     'chat',
     '通道对话',
-    'role 专属：chat.send 把对话发到用户 / Agent / Work / 群聊通道，可带附件。',
+    'role 专属：chat.send 把对话发到用户 / Agent / Work / 群聊通道，可带附件；silent:true 只把进度汇报塞进目标 role 的上下文，不激活它。',
     `role 的所有外部消息都经通道：user（用户私聊）、agent（其他 role 私聊）、group（群聊）、work（自己的 work）。
 每条入站消息由宿主标注来源与时间戳；chat.send 的 text 是**对外说的话**，不是思维过程。
 **回复必须从最近一条入站消息的 channel 回去**：user 回 user；agent 回 agent（to=目标 role id）；group 回 group。
 group 通道要把这句话投给某位 role，正文必须显式写 \`@目标名 \`（名字后留一个空格），并写 to（目标 role id）或 mentions；一次最多 @ 一位成员；只回群里不点名时只发 group。
 chat.send 到 work 通道等价于 work.send；到 user 通道不写 to。
+**silent:true 用于进度汇报**：只允许 agent / group 通道，且必须有明确目标 role；消息会落进对方的通道流水与上下文，但**不启动对方一轮**，适合「我已经直接对接用户，只需让调度龟知道进度」的截断点。普通回复不要静默，否则对方不会回应。
 chat.send 成功会回 \`{ ok:true, channel, id, to? }\`；看到 ok:true 后**禁止重复发送同一条消息**，失败才按 error 修正。
 大段结果（调研原文、日志、JSON）放 \`extra:{title,text}\`，不要塞进正文刷屏；用户可点开查看。`,
     [
-      a('send', 'api.chat.send({ channel, to?, mentions?, text, messageId?, attachments?, extra? })', '把对话发到指定通道', 'channel 取 user / agent / work / group；agent 要 to=role id，work 要 to=work 名；group 用 to 或 mentions 指定被 @ 的 role，正文必须写 \`@名字 \`（名字后留一个空格；一次最多一位）；**正文只 @用户、不指定 to / mentions 时不投递给任何 role，用于把最终结论直接汇报给用户**；attachments 可带图/文件（moji:static 引用、workspace 路径或 http(s)），最多 4 个。messageId 可引用当前 role 会话里的用户消息（转发并标注来源）。extra={title?,text,format?} 放正文之外的日志 / 原始结果 / 长 JSON，界面折叠展示。返回值至少含 ok；成功时含 channel 与消息 id，to 是实际投递的 role id。', `await api.chat.send({ channel: "group", to: "researcher", text: "@调研龟 请查这三条来源的原文，结果发回群里。", extra: { title: "待查来源", text: sourceList } })`, { trap: '群聊来源的任务不要走私聊委派；只有用户私聊发起的任务才走 agent 通道' }),
+      a('send', 'api.chat.send({ channel, to?, mentions?, text, messageId?, attachments?, extra?, silent? })', '把对话发到指定通道', 'channel 取 user / agent / work / group；agent 要 to=role id，work 要 to=work 名；group 用 to 或 mentions 指定被 @ 的 role，正文必须写 \`@名字 \`（名字后留一个空格；一次最多一位）；**正文只 @用户、不指定 to / mentions 时不投递给任何 role，用于把最终结论直接汇报给用户**；silent:true 只允许 agent / group，且必须有目标 role：消息落进目标 role 的通道流水与上下文，但不启动它一轮，用于进度汇报；attachments 可带图/文件（moji:static 引用、workspace 路径或 http(s)），最多 4 个。messageId 可引用当前 role 会话里的用户消息（转发并标注来源）。extra={title?,text,format?} 放正文之外的日志 / 原始结果 / 长 JSON，界面折叠展示。返回值至少含 ok；成功时含 channel 与消息 id，to 是实际投递的 role id。', `await api.chat.send({ channel: "group", to: "researcher", text: "@调研龟 请查这三条来源的原文，结果发回群里。", extra: { title: "待查来源", text: sourceList } })`, { trap: '群聊来源的任务不要走私聊委派；只有用户私聊发起的任务才走 agent 通道。silent 不是「不发送」：它只入上下文、不激活目标，普通回复别用。' }),
     ],
   ),
 

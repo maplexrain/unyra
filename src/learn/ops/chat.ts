@@ -8,7 +8,7 @@ import type { AgentProfileId } from '../../agent/agentProfile'
 import type { ChannelMessage, ChannelPeer, Conversation, ConversationMessage } from '../../agent/types'
 import type { ChatCallResult, ChatSandboxApi, ChatSendInput } from '../../agent/roleWork/types'
 import { GROUP_PEER_ID, inboundEnvelope, outboundEnvelope, peerOf, stampLineOf, userPeer } from '../roleWork/channels'
-import { deliverInbound, markRoleOutbound } from '../roleWork/dispatch'
+import { deliverInbound } from '../roleWork/dispatch'
 
 export interface ChatOpsDeps {
   roleId: AgentProfileId
@@ -50,6 +50,8 @@ export interface ChatOpsDeps {
     messageId?: string
     attachments?: { images?: ConversationMessage['images']; files?: ConversationMessage['files'] }
     extra?: ChannelMessage['extra']
+    /** 静默汇报：目标 role 只入上下文，不起轮 */
+    silent?: boolean
   }) => ChatCallResult | Promise<ChatCallResult>
 }
 
@@ -72,6 +74,10 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
       const channel = input.channel
       if (channel !== 'user' && channel !== 'agent' && channel !== 'work' && channel !== 'group') {
         return { ok: false, error: 'chat.send 的 channel 只能是 user / agent / work / group' }
+      }
+      const silent = input.silent === true
+      if (silent && channel !== 'agent' && channel !== 'group') {
+        return { ok: false, error: 'chat.send 的 silent 只支持 agent / group 通道（进度汇报用）' }
       }
       // 群聊来源的任务必须沿群通道回复/委派：最近一条外部入站是 group 时，不能改成 user 私聊或 agent 私聊。
       // Work 通道不算外部来源（它只是 work 交回的过程消息），所以不在这里拦。
@@ -105,7 +111,6 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
       if (channel === 'work') {
         if (!input.to) return { ok: false, error: 'chat.send 到 work 通道需要 to（work 名）' }
         const result = await deps.sendToWork(input.to, body, messageId, attachments)
-        if (result.ok) markRoleOutbound(deps.conversationId)
         return result
       }
 
@@ -120,7 +125,6 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
           ...(messageId ? { quoteMessageId: messageId } : {}),
         })
         deps.appendChannel(deps.conversationId, envelope)
-        markRoleOutbound(deps.conversationId)
         return { ok: true, channel, id: envelope.id }
       }
 
@@ -139,8 +143,8 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
           ...(messageId ? { messageId } : {}),
           ...(attachments ? { attachments } : {}),
           ...(input.extra ? { extra: input.extra } : {}),
+          ...(silent ? { silent: true } : {}),
         })
-        if (result.ok) markRoleOutbound(deps.conversationId)
         return result
       }
 
@@ -170,6 +174,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
         text: body,
         ...(attachments && (attachments.images || attachments.files) ? { attachments } : {}),
         ...(input.extra ? { extra: input.extra } : {}),
+        ...(silent ? { silent: true } : {}),
       })
       deliverInbound(
         {
@@ -189,8 +194,8 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
           ...(attachments?.files ? { files: attachments.files } : {}),
         },
         envelope,
+        { silent },
       )
-      markRoleOutbound(deps.conversationId)
       return { ok: true, channel, to, id: envelope.id }
     },
   }
