@@ -258,7 +258,7 @@ export function workPlaneOfRole(voice: AgentVoice): AgentApiPlane {
 export function freeWorkPlane(): AgentApiPlane {
   return {
     groups: ['tmp', 'web', 'schedule', 'delivery', 'host'],
-    topLevel: ['wait', 'compact', 'fetch'],
+    topLevel: ['wait', 'ask', 'compact', 'fetch'],
   }
 }
 

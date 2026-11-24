@@ -1,19 +1,21 @@
 // @vitest-environment happy-dom
 /**
- * 群聊桥：用户群聊发言 @ 谁就投给谁；没有 @ 时默认由调度龟接手。
+ * 群聊桥：用户群聊发言 @ 谁就投给谁；没有 @ 时交给幕后的群消息调度 agent 判断。
  */
 import { createElement, act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { appendGroupMessage, getGroupChatMessages, groupThreadIdOf } from '../src/learn/groupChat'
 import type { ChannelMessage } from '../src/agent/types'
 import { resetChannelRegistry, setRoleWorkDispatcher, type RoleTurnRequest } from '../src/learn/roleWork/dispatch'
+import { setGroupTriageRunner } from '../src/learn/roleWork/groupTriage'
 import type { LearnStore } from '../src/learn/types'
 import { useGroupChatBridge, type GroupChatBridge } from '../src/components/learn/workspace/useGroupChatBridge'
 
 describe('useGroupChatBridge', () => {
   afterEach(() => {
     setRoleWorkDispatcher(null)
+    setGroupTriageRunner(null)
     resetChannelRegistry()
   })
 
@@ -273,7 +275,7 @@ describe('useGroupChatBridge', () => {
   })
 
 
-  it('用户发言：没有 @ 时默认投给调度龟', () => {
+  it('用户发言：没有 @ 时交给群消息调度 agent，按结构化结果投递，不再默认调度龟', async () => {
     let current = { conversations: [] } as unknown as LearnStore
     const set = (next: LearnStore): void => {
       current = next
@@ -285,6 +287,12 @@ describe('useGroupChatBridge', () => {
       startRoleTurn: (req) => started.push(req),
       appendChannel: () => {},
     }))
+    let seenText = ''
+    setGroupTriageRunner(async (input) => {
+      seenText = input.text
+      expect(input.agents.map((a) => a.id)).toContain('tutor')
+      return { agentId: 'tutor', reason: '教学问题', confidence: 0.9 }
+    })
 
     let bridge: GroupChatBridge | null = null
     const host = document.createElement('div')
@@ -296,8 +304,8 @@ describe('useGroupChatBridge', () => {
           bridge = useGroupChatBridge({
             goalId: 'g-bridge-noat',
             agents: [
-              { id: 'tutor', name: '导师龟' },
-              { id: 'dispatcher', name: '调度龟' },
+              { id: 'tutor', name: '导师龟', duty: '主讲与协调' },
+              { id: 'dispatcher', name: '调度龟', duty: '接需求与派活' },
             ],
             getLatest: () => current,
             set,
@@ -307,15 +315,77 @@ describe('useGroupChatBridge', () => {
       )
     })
     act(() => {
-      expect(bridge!.send('帮我把这周的安排列一下', ['dispatcher'])).toBe(true)
+      expect(bridge!.send('帮我把这周的安排列一下', [])).toBe(true)
     })
-    expect(started).toHaveLength(1)
-    expect(started[0]!.role).toBe('dispatcher')
+    await vi.waitFor(() => expect(started).toHaveLength(1))
+    expect(seenText).toBe('帮我把这周的安排列一下')
+    expect(started[0]!.role).toBe('tutor')
     expect(started[0]!.text).toBe('帮我把这周的安排列一下')
+    expect(started[0]!.stamp.mention).toBe(true)
     const logged = getGroupChatMessages().find((m) => m.goalId === 'g-bridge-noat')
     expect(logged?.mentions ?? []).toEqual([])
-    // 没有 @ 时默认目标是唯一 mention（会激活），但正文没点名，不伪造 mentions。
-    expect(logged?.mention).toMatchObject({ kind: 'role', id: 'dispatcher' })
+    // 用户正文没有点名，不伪造 mentions / mention；选中目标只存在于投递内部。
+    expect(logged?.mention).toBeUndefined()
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('无 @ 调度连续失败后进入手动兜底；用户指定目标再投递', async () => {
+    let current = { conversations: [] } as unknown as LearnStore
+    const set = (next: LearnStore): void => {
+      current = next
+    }
+    const started: RoleTurnRequest[] = []
+    setRoleWorkDispatcher(() => ({
+      isConversationRunning: () => false,
+      resolveRoleConversation: () => null,
+      startRoleTurn: (req) => started.push(req),
+      appendChannel: () => {},
+    }))
+    let attempts = 0
+    setGroupTriageRunner(async () => {
+      attempts += 1
+      throw new Error('模型输出不是 JSON')
+    })
+
+    let bridge: GroupChatBridge | null = null
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(function Probe() {
+          bridge = useGroupChatBridge({
+            goalId: 'g-bridge-fallback',
+            agents: [
+              { id: 'tutor', name: '导师龟', duty: '主讲与协调' },
+              { id: 'dispatcher', name: '调度龟', duty: '接需求与派活' },
+            ],
+            getLatest: () => current,
+            set,
+          })
+          return null
+        }),
+      )
+    })
+    act(() => {
+      expect(bridge!.send('帮我把这周的安排列一下', [])).toBe(true)
+    })
+    await vi.waitFor(() => expect(bridge!.triageFallback).not.toBeNull())
+    // 首次 + 三次重试
+    expect(attempts).toBe(4)
+    expect(started).toHaveLength(0)
+    expect(getGroupChatMessages().some((m) => m.goalId === 'g-bridge-fallback' && m.text === '帮我把这周的安排列一下')).toBe(true)
+
+    act(() => {
+      bridge!.assignTriageFallback('dispatcher')
+    })
+    expect(bridge!.triageFallback).toBeNull()
+    expect(started).toHaveLength(1)
+    expect(started[0]!.role).toBe('dispatcher')
+    expect(started[0]!.stamp.mention).toBe(true)
     act(() => {
       root.unmount()
     })

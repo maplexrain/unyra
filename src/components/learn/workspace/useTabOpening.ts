@@ -33,6 +33,7 @@ import { nodeById, touchNode, ensureConversation, resolveDisplayedConversation }
 import { upsertAgentTab, withAgentTabs, removeAgentTabsOfGoals } from '../../../learn/agentTabs'
 import { normalizeWebInput } from '../../../learn/webUrl'
 import { webviewOf } from '../../../learn/web/webviewRegistry'
+import { subscribeOpenGroupChat } from '../../../learn/groupChatAttention'
 import { buildJumpToElementScript } from '../../../learn/web/guestJump'
 import { isElectron, isWeb, native } from '../../../lib/native'
 import { openExternalLink } from '../../../lib/externalLink'
@@ -518,6 +519,15 @@ export function useTabOpening({
     window.addEventListener('moji:open-tab', onOpenGlobalTab as EventListener)
     return () => window.removeEventListener('moji:open-tab', onOpenGlobalTab as EventListener)
   }, [openTab])
+
+  // 群消息推送点击：先打开对应目标的智能体团队页签；目标页签挂载后由 AgentSlot 选中群聊
+  useEffect(
+    () =>
+      subscribeOpenGroupChat((req) => {
+        openTab({ kind: 'agentTeam', goalId: req.goalId })
+      }),
+    [openTab],
+  )
 
   /**
    * 存活的 tab 组（顶栏目标名的下拉菜单，见 Topbar 的 tabGroups）：某个目标名下还有

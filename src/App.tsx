@@ -13,6 +13,7 @@ import { bootstrapNotice, startNoticePolling } from './lib/notice'
 import { startupMark } from './lib/startupTrace'
 import { userRepo } from './user/api'
 import { removeUser, updateUser } from './user/store'
+import { displayName } from './user/profile'
 import { signIn as sessionSignIn, signOut as sessionSignOut, type Session } from './user/session'
 import { guardRoute, type Route } from './lib/route'
 import type { User, UserProfile } from './user/types'
@@ -27,6 +28,7 @@ import { getLocale, setLocaleBridge, t, useLocale } from './i18n'
 import GlobalBackground from './components/background/GlobalBackground'
 import { isDarkTheme, useAppearance } from './lib/appearance'
 import GlobalVimCommandBar from './components/learn/workspace/GlobalVimCommandBar'
+import { GroupMentionPushHost } from './components/learn/workspace/GroupMentionPushHost'
 import CalculatorWindow from './components/tools/calculator/CalculatorWindow'
 
 /**
@@ -283,6 +285,10 @@ export default function App({ boot }: Props) {
         onOpenUpdate={() => setUpdateOpen(true)}
         onOpenNotice={() => setNoticeOpen(true)}
         onOpenLan={() => setLanOpen(true)}
+      />
+      {/* 群消息里 agent @用户：全局顶部推送，点击跳对应目标的智能体群聊 */}
+      <GroupMentionPushHost
+        userName={activeUserRecord ? displayName(activeUserRecord.profile, t('用户')) : undefined}
       />
       {updateOpen && <UpdateDialog onClose={() => setUpdateOpen(false)} />}
       {noticeOpen && <NoticeDialog onClose={() => setNoticeOpen(false)} />}

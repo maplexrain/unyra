@@ -154,4 +154,29 @@ describe('RoleChatView', () => {
     })
     host.remove()
   })
+
+  it('work 内嵌窗口挂在消息流最底部，不再单独渲染交付气泡', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(RoleChatView, {
+          channels: [roleOut('c2', '导师龟', '先看一眼手上的活')],
+          agentName: '导师龟',
+          agentVoice: 'tutor',
+          workWindow: createElement('div', { 'data-work-window-stub': 'true' }, '工作窗口'),
+        }),
+      )
+    })
+    const workWindow = host.querySelector('[data-work-window-stub]')
+    expect(workWindow).not.toBeNull()
+    expect(workWindow?.textContent).toContain('工作窗口')
+    // work 窗口是消息流最后一块，不再在气泡列表里另起一张卡片
+    expect(host.querySelector('[data-work-dispatch-list]')).toBeNull()
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
 })

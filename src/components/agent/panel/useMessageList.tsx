@@ -19,7 +19,6 @@ import { CompactionDivider } from './CompactionDivider'
 import { HiddenDivider, MessageRow, Parts } from './MessageBubble'
 import { MindMessageRow } from './MindMessageRow'
 import { MindContextSummary } from './MindContextSummary'
-import { WorkDispatchList } from './WorkDispatchList'
 import { useRecentWindow } from './useRecentWindow'
 import type { MessageListProps } from './MessageList'
 import type { InjectItem } from './partGroups'
@@ -142,9 +141,7 @@ export function useMessageList({
   mind = false,
   agentName = '',
   usages = [],
-  works = [],
-  onOpenMindWork,
-  activeWorkId = null,
+  workWindow,
   contextSubject,
   resetKey = '',
 }: MessageListProps) {
@@ -294,10 +291,8 @@ export function useMessageList({
           </div>
         )}
 
-      {/* 当前 role 的 work 上下文固定挂在对话列表最下方；不再在左栏单独占一块。 */}
-      {mind && works.length > 0 && (
-        <WorkDispatchList works={works} onOpenWork={onOpenMindWork} activeWorkId={activeWorkId} />
-      )}
+      {/* work 消息窗口固定挂在列表最下方；默认收起，展开后原地查看 work 消息。 */}
+      {mind && workWindow}
     </>
   )
 }

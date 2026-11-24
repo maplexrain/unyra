@@ -43,6 +43,7 @@ import {
 import { inboundEnvelope, peerOf, userPeer } from '../../../learn/roleWork/channels'
 import { GroupChatPanel, type GroupChatAgent } from '../../agent/panel/GroupChatPanel'
 import { useGroupChatBridge } from './useGroupChatBridge'
+import { useGroupMentionOpen } from './useGroupMentionOpen'
 import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, type AgentVoiceStats } from '../agent-team/agentRoster'
 import { AgentAvatarGlyph } from '../agent-team/AgentAvatarGlyph'
 import { listWorkflowRows, type WorkflowRow } from '../../../learn/workflows'
@@ -134,7 +135,6 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     activeAgentTab,
     activeAgentTabId,
     activateAgentTab,
-    openAgentTab,
     selectTutorGoal,
     removeConversation,
     selectConversationIn,
@@ -355,6 +355,9 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     setGroupOpen(true)
   }
 
+  // 全局群消息推送：只让「当前目标」的 AgentSlot 接住，消费 pending 后切到群聊。
+  useGroupMentionOpen(tutorGoalId, handleOpenGroup)
+
   /**
    * 打开一位声部的独立设置：先把它切成当前声部（左栏高亮跟着走），再进设置态。
    * handleSelectMode 会顺手退出设置态，所以顺序是先切声部、后置设置目标。
@@ -476,6 +479,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       AGENT_ROSTER_ORDER.filter((id) => id !== 'free').map((id) => ({
         id,
         name: agentNames?.[id]?.trim() || DEFAULT_AGENT_NAME[id],
+        duty: t(AGENT_ROSTER_META[id].blurb),
         aliases: [DEFAULT_AGENT_NAME[id]],
         avatarId: agentAvatarIds[id],
         running: Boolean(voiceStats[id]?.running),
@@ -547,7 +551,6 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         onExam: nope,
         work: { sessions: [], running: false, live: [] },
         viewWorkId: null,
-        onOpenWork: () => {},
         onNewConversation: () => {
           // 单会话：不新开，只回到当前这段
           setFreeConvId(ensureFreeConversation().id)
@@ -701,11 +704,14 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
           .map(({ workId, runId, parts }) => ({ workId, runId, parts })),
       },
       viewWorkId: work?.id ?? null,
-      onOpenWork: (wid: string) => {
-        if (convId) openAgentTab({ kind: 'work', conversationId: convId, workId: wid }, true)
-      },
       onStopWork: (wid: string) => {
         if (convId) agent.stopWork(wid, convId)
+      },
+      onStopWorkWithStatement: (wid: string, statement: string) => {
+        if (convId) agent.stopWorkWithStatement(wid, statement, convId)
+      },
+      onDeleteWork: (wid: string) => {
+        if (convId) agent.deleteWork(wid, convId)
       },
       // role 层单会话：加号不新建，只回到当前 role 的唯一会话
       onNewConversation: () =>
@@ -904,6 +910,9 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
                     : t('群聊挂在学习目标上：先选择一个目标，再和群里的 agent 对话。')
                 }
                 onSend={sendGroupMessage}
+                triageFallback={groupBridge.triageFallback}
+                onAssignTriageFallback={groupBridge.assignTriageFallback}
+                onDismissTriageFallback={groupBridge.dismissTriageFallback}
                 resetKey={tutorGoalId ?? ''}
                 onAskSubmit={agent.submitAskById}
                 onAskCancel={agent.cancelAskById}

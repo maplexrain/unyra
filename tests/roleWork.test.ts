@@ -168,3 +168,18 @@ describe('work.send 与交付', () => {
     expect(works()).toHaveLength(1)
   })
 })
+
+describe('用户终止 work', () => {
+  it('空声明只能拒绝；带声明的终止会落 stopped 并把说明发给 role', () => {
+    const { manager, works, deliveries } = makeManager(scriptedStream([]).stream)
+    manager.api.create({ name: '调研-1' })
+    expect(manager.stopWithStatement('调研-1', '   ')).toMatchObject({ ok: false })
+
+    const r = manager.stopWithStatement('调研-1', '方向变了，先保留材料')
+    expect(r).toMatchObject({ ok: true, name: '调研-1', status: 'stopped' })
+    expect(works()[0]!.status).toBe('stopped')
+    expect(works()[0]!.lastIssue).toContain('用户终止')
+    expect(deliveries.at(-1)?.text).toContain('用户终止 work')
+    expect(deliveries.at(-1)?.text).toContain('方向变了，先保留材料')
+  })
+})

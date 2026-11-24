@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 /**
- * mind 的两块新界面：
+ * mind 的两块界面：
  * 1. 顶部上下文账（当前占用 + 累计输入/输出）；
- * 2. 启动 work 的 execute 消息后面的只读 work 观察列表，点击进入二级页。
+ * 2. role 消息列表底部的 work 内嵌窗口（默认收起由 AgentPanel 控制）。
  */
 import { createElement, act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { useMessageList } from '../src/components/agent/panel/useMessageList'
 import type { MessageListProps } from '../src/components/agent/panel/MessageList'
 import { isWorkDispatchMessage } from '../src/components/agent/panel/workDispatch'
-import type { ConversationMessage, MessageUsage, WorkSession } from '../src/agent/types'
+import type { ConversationMessage, MessageUsage } from '../src/agent/types'
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -44,29 +44,6 @@ const workMessage: ConversationMessage = {
       status: 'done',
     },
   ],
-}
-
-const work: WorkSession = {
-  id: 'w1',
-  name: '调研-1',
-  roleId: 'tutor',
-  roleConversationId: 'c1',
-  status: 'running',
-  runs: 2,
-  createdAt: 1_700_000_000_000,
-  lastActiveAt: 1_700_000_100_000,
-  runtimeMs: 0,
-  systemPrompt: '',
-  messages: [
-    {
-      id: 'wm1',
-      role: 'assistant',
-      ts: 1_700_000_050_000,
-      usage,
-      parts: [{ type: 'text', text: '调研中' }],
-    },
-  ],
-  execTrace: [],
 }
 
 function TestHost(props: Partial<MessageListProps>) {
@@ -116,21 +93,18 @@ describe('mind 上下文账与 work 观察列表', () => {
     r.cleanup()
   })
 
-  it('work 上下文固定挂在对话列表最下方；与最新一条消息是否派发 work 无关', () => {
+  it('work 内嵌窗口固定挂在对话列表最下方；与最新一条消息是否派发 work 无关', () => {
+    const workWindow = createElement('div', { 'data-work-window-stub': 'true' }, '工作窗口')
     const r = render({
       messages: [workMessage],
       mind: true,
       usages: [usage],
       agentName: '导师龟',
-      works: [work],
-      onOpenMindWork: vi.fn(),
+      workWindow,
     })
-    const list = r.host.querySelector('[data-work-dispatch-list]')
-    expect(list).not.toBeNull()
-    expect(list?.textContent).toContain('已派发的 work')
-    expect(list?.textContent).toContain('调研-1')
-    expect(list?.textContent).toContain('仅界面观察 · 不进上下文')
-    expect(list?.textContent).toContain('上下文 15% · 1.2k')
+    const window = r.host.querySelector('[data-work-window-stub]')
+    expect(window).not.toBeNull()
+    expect(window?.textContent).toContain('工作窗口')
 
     const plain: ConversationMessage = {
       id: 'a2',
@@ -139,24 +113,15 @@ describe('mind 上下文账与 work 观察列表', () => {
       parts: [{ type: 'text', text: '没有派 work。' }],
     }
     r.cleanup()
-    const r2 = render({ messages: [plain], mind: true, works: [work] })
-    expect(r2.host.querySelector('[data-work-dispatch-list]')).not.toBeNull()
+    const r2 = render({ messages: [plain], mind: true, workWindow })
+    expect(r2.host.querySelector('[data-work-window-stub]')).not.toBeNull()
     r2.cleanup()
   })
 
-  it('点击 work 卡片进入二级页回调；work 自身统计也是同一套 usage', () => {
-    const onOpenMindWork = vi.fn()
-    const r = render({
-      messages: [workMessage],
-      mind: true,
-      usages: [usage],
-      works: [work],
-      onOpenMindWork,
-    })
-    const card = r.host.querySelector('[data-work-id="w1"]') as HTMLButtonElement | null
-    expect(card).not.toBeNull()
-    act(() => card?.click())
-    expect(onOpenMindWork).toHaveBeenCalledWith('w1')
+  it('chat 层不渲染 mind 的 work 窗口', () => {
+    const workWindow = createElement('div', { 'data-work-window-stub': 'true' }, '工作窗口')
+    const r = render({ messages: [workMessage], mind: false, workWindow })
+    expect(r.host.querySelector('[data-work-window-stub]')).toBeNull()
     r.cleanup()
   })
 

@@ -3,11 +3,12 @@
  *
  * 群聊是独立账本（learn/groupChat），role 的私聊 / mind 是另一套会话；这里只负责：
  * - 读群聊流水并按当前目标过滤；
- * - 用户群聊发言时先落群流水，再给被 @ 的 role 各投一条 `channel:'group'` 入站消息。
+ * - 用户群聊发言时先落群流水，再给被 @ 的 role 各投一条 `channel:'group'` 入站消息；
+ * - 没有 @ 时不指定默认 role，而是交给幕后的群消息调度 agent 判断，再投给选中的 role。
  *
  * 放在独立模块是为了让 AgentSlot 保持「读 props → 组织布局」的薄壳，不把通道细节堆回去。
  */
-import { useMemo, useSyncExternalStore } from 'react'
+import { useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { AgentVoice } from '../../../agent/agentProfile'
 import type { ChannelMessage } from '../../../agent/types'
 import type { LearnStore } from '../../../learn/types'
@@ -15,18 +16,29 @@ import { ensureRoleConversation } from '../../../learn/roleWork/roles'
 import { groupPeer, inboundEnvelope, peerOf, userPeer } from '../../../learn/roleWork/channels'
 import { deliverInbound } from '../../../learn/roleWork/dispatch'
 import { firstMentionedRoleIdOf, mentionedRoleIdsOf, type MentionRole } from '../../../learn/roleWork/groupTargets'
+import { triageGroupMessageWithRetry } from '../../../learn/roleWork/groupTriage'
 import { appendGroupMessage, getGroupChatMessages, groupThreadIdOf, patchGroupMessage, subscribeGroupChat, threadRootIdOf } from '../../../learn/groupChat'
 import type { GroupChatAgent } from '../../agent/panel/GroupChatPanel'
+
+/** 分类三次重试仍失败时，交给用户手动指定目标。 */
+export interface GroupTriageFallback {
+  message: ChannelMessage
+  agents: GroupChatAgent[]
+}
 
 export interface GroupChatBridge {
   /** 当前目标下的群聊消息（从旧到新；一级主楼与评论区回复都在里面，界面自行分层） */
   messages: ChannelMessage[]
   /**
-   * 用户群聊发言：@ 指定成员；无 @ 时默认投给调度龟。
-   * 传 threadId 时落到该评论串（索引 `通道id>消息id`），回复仍投给被点名/默认成员。
-   * 返回 false = 拒绝发送。
+   * 用户群聊发言：@ 指定成员；没有 @ 时交给群消息调度 agent 判断（不默认调度龟）。
+   * 传 threadId 时落到该评论串（索引 `通道id>消息id`），回复仍投给被点名/调度选中的成员。
+   * 返回 false = 拒绝发送；返回 true = 消息已落群流水，无 @ 的投递在后台异步完成。
    */
   send: (text: string, targetIds: GroupChatAgent['id'][], threadId?: string) => boolean
+  /** 调度自动重试仍失败：由群聊面板弹出选择，用户显式指定接手人 */
+  triageFallback: GroupTriageFallback | null
+  assignTriageFallback: (agentId: GroupChatAgent['id']) => void
+  dismissTriageFallback: () => void
 }
 
 export function useGroupChatBridge({
@@ -45,6 +57,72 @@ export function useGroupChatBridge({
     () => (goalId ? all.filter((m) => m.kind === 'group' && m.goalId === goalId) : []),
     [all, goalId],
   )
+  /**
+   * 无 @ 消息的调度串行队列：两条消息紧挨着发出时，先让第一条分类完、投递完，
+   * 第二条再基于已落账的群聊判断；否则两条分类会同时读到同一份历史并互相插队。
+   */
+  const triageQueue = useRef<Promise<void>>(Promise.resolve())
+  const [triageFallback, setTriageFallback] = useState<GroupTriageFallback | null>(null)
+  // 换目标时不要把上一个目标的失败弹窗带过来；消息本身仍留在它自己的群流水里。
+  const currentFallback =
+    triageFallback && triageFallback.message.goalId === goalId ? triageFallback : null
+
+  /**
+   * 把一条已落账的群消息投给某位 role。
+   *
+   * `activate` 决定这一跳是否真是「激活」：只有唯一目标会起轮，其他 @ 只抄送上下文。
+   * 群消息本体不带 `mention` 字段，避免界面把调度器选出的目标伪装成用户 @ 了谁。
+   */
+  const deliverGroupInbound = (
+    message: ChannelMessage,
+    target: GroupChatAgent,
+    activate: boolean,
+  ): void => {
+    const targetGoalId = message.goalId
+    if (!targetGoalId) return
+    const ensured = ensureRoleConversation(getLatest(), target.id as AgentVoice, targetGoalId)
+    if (ensured.store !== getLatest()) set(ensured.store)
+    const to = peerOf('agent', target.id, target.name)
+    const activePeer = activate ? peerOf('agent', target.id, target.name) : undefined
+    const mentions = message.mentions ?? []
+    const inbound = inboundEnvelope({
+      channel: 'group',
+      from: message.from,
+      to,
+      text: message.text,
+      id: message.id,
+      ts: message.ts,
+      ...(mentions.length ? { mentions } : {}),
+      ...(activePeer ? { mention: activePeer } : {}),
+      goalId: targetGoalId,
+      ...(message.threadId && message.threadRootId
+        ? { threadId: message.threadId, threadRootId: message.threadRootId }
+        : {}),
+    })
+    deliverInbound(
+      {
+        conversationId: ensured.conversationId,
+        role: target.id as AgentVoice,
+        goalId: targetGoalId,
+        text: message.text,
+        stamp: {
+          channel: 'group',
+          from: message.from,
+          to,
+          ts: message.ts,
+          envelopeId: message.id,
+          goalId: targetGoalId,
+          ...(message.threadId && message.threadRootId
+            ? { threadId: message.threadId, threadRootId: message.threadRootId }
+            : {}),
+          ...(activePeer ? { mention: true } : {}),
+        },
+        envelopeId: message.id,
+      },
+      inbound,
+      { silent: !activate },
+    )
+  }
 
   const send = (text: string, targetIds: GroupChatAgent['id'][], threadId?: string): boolean => {
     const trimmed = text.trim()
@@ -63,18 +141,17 @@ export function useGroupChatBridge({
     }))
     const mentionedIds = mentionedRoleIdsOf(body, mentionRoles)
     const explicitMentions = mentionedIds.length > 0
-    // 正文里出现 @ 却解析不到任何成员时拒绝，避免误投给默认调度龟；
-    // 正文完全没有 @ 时才使用调用方给的默认目标（群聊 UI 传 dispatcher）。
+    // 正文里出现 @ 却解析不到任何成员时拒绝，避免误投；正文完全没有 @ 时才进入调度。
     if (!explicitMentions && body.includes('@')) return false
     const targets = [...new Set((explicitMentions ? mentionedIds : targetIds).filter((id) => agents.some((a) => a.id === id)))]
-    if (!targets.length) return false
-    /*
-     * 用户群聊消息的首个 @ 是唯一 mention：它会被激活。
-     * 其余 @ 只抄送上下文（silent），不启动 loop。没有 @ 时默认目标是 mention。
-     */
     const activeId = explicitMentions ? firstMentionedRoleIdOf(body, mentionRoles) : targets[0]
     const active = activeId ? agents.find((a) => a.id === activeId) : undefined
-    if (!active) return false
+    /*
+     * 没 @ 且调用方也没给目标 = 这条消息要交给群消息调度 agent；先落群流水，
+     * 再异步分类投递。有 @ / 显式目标时仍走同步投递，保持原来的严格 @ 语义。
+     */
+    const needsTriage = !explicitMentions && targets.length === 0
+    if (!needsTriage && !active) return false
     const from = userPeer()
     const now = Date.now()
     const mentions = explicitMentions
@@ -83,7 +160,7 @@ export function useGroupChatBridge({
           return peerOf('agent', id, agent.name)
         })
       : []
-    const activePeer = peerOf('agent', active.id, active.name)
+    const activePeer = active ? peerOf('agent', active.id, active.name) : undefined
     const message: ChannelMessage = {
       id: 'g-' + crypto.randomUUID(),
       kind: 'group',
@@ -93,55 +170,64 @@ export function useGroupChatBridge({
       text: body,
       ts: now,
       ...(mentions.length ? { mentions } : {}),
-      mention: activePeer,
+      ...(explicitMentions && activePeer ? { mention: activePeer } : {}),
       goalId,
       ...(threadId && threadRootId ? { threadId, threadRootId } : {}),
     }
     appendGroupMessage(message)
     // 一级主楼先被评论时补上 threadId（它仍是一级消息，因为 threadRootId 只在评论里出现）。
     if (threadId && threadRootId) patchGroupMessage(threadRootId, { threadId })
-    for (const agent of targets) {
-      const ensured = ensureRoleConversation(getLatest(), agent as AgentVoice, goalId)
-      if (ensured.store !== getLatest()) set(ensured.store)
-      const to = peerOf('agent', agent, agents.find((a) => a.id === agent)?.name ?? agent)
-      const isMention = agent === active.id
-      const inbound = inboundEnvelope({
-        channel: 'group',
-        from,
-        to,
-        text: body,
-        id: message.id,
-        ts: now,
-        ...(mentions.length ? { mentions } : {}),
-        ...(isMention ? { mention: activePeer } : {}),
-        goalId,
-        ...(threadId && threadRootId ? { threadId, threadRootId } : {}),
-      })
-      deliverInbound(
-        {
-          conversationId: ensured.conversationId,
-          role: agent as AgentVoice,
-          goalId,
-          text: body,
-          stamp: {
-            channel: 'group',
-            from,
-            to,
-            ts: now,
-            envelopeId: message.id,
-            goalId,
-            ...(threadId && threadRootId ? { threadId, threadRootId } : {}),
-            ...(isMention ? { mention: true } : {}),
-          },
-          envelopeId: message.id,
-        },
-        inbound,
-        // 只有 mention 会起轮；其他被 @ 的成员只拿到上下文。
-        { silent: !isMention },
-      )
+
+    if (!needsTriage) {
+      for (const target of targets.map((id) => agents.find((a) => a.id === id)!)) {
+        deliverGroupInbound(message, target, target.id === active?.id)
+      }
+      return true
     }
+
+    // 当前群成员（不含 free）——职责一句话来自 AgentSlot 传入的 duty。
+    const triageAgents = agents
+      .filter((agent) => agent.id !== 'free')
+      .map((agent) => ({
+        id: agent.id as AgentVoice,
+        name: agent.name,
+        duty: agent.duty?.trim() || agent.name,
+      }))
+    if (!triageAgents.length) return true
+    triageQueue.current = triageQueue.current
+      .then(async () => {
+        const recent = getGroupChatMessages()
+          .filter((m) => m.kind === 'group' && m.goalId === goalId && m.id !== message.id)
+          .slice(-10)
+        const result = await triageGroupMessageWithRetry({ text: body, agents: triageAgents, recent })
+        const target = triageAgents.find((agent) => agent.id === result.agentId)
+        if (!target) return
+        deliverGroupInbound(
+          message,
+          { id: target.id, name: target.name, duty: target.duty },
+          true,
+        )
+      })
+      .catch((err: unknown) => {
+        // 三次重试仍失败：不伪造一条群消息，弹出显式选择让用户指定接手人。
+        console.warn('[group-triage] 无 @ 群消息调度失败，等待用户手动指定', err)
+        setTriageFallback({ message, agents: triageAgents })
+      })
     return true
   }
 
-  return { messages, send }
+  const assignTriageFallback = (agentId: GroupChatAgent['id']): void => {
+    const pending = currentFallback
+    if (!pending) return
+    const target = pending.agents.find((agent) => agent.id === agentId)
+    if (!target) return
+    deliverGroupInbound(pending.message, target, true)
+    setTriageFallback(null)
+  }
+
+  const dismissTriageFallback = (): void => {
+    setTriageFallback(null)
+  }
+
+  return { messages, send, triageFallback: currentFallback, assignTriageFallback, dismissTriageFallback }
 }

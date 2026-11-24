@@ -8,7 +8,6 @@ import {
   type CSSProperties,
 } from 'react'
 import type { AgentPart, Conversation, MessageImage, MessageUsage, PendingFile, PendingImage, WorkSession } from '../../agent/types'
-import { ArrowLeft } from 'lucide-react'
 import type { AskAnswers, AskFormPayload } from '../../agent/tools'
 import type { PersonaId } from '../../agent/persona'
 import type { DocFormatId } from '../../agent/docFormat'
@@ -23,8 +22,8 @@ import { ComposerUi } from './panel/useComposerUi'
 import { PaceStrip } from './panel/PaceStrip'
 import { FollowLatestButton } from './panel/MessageBubble'
 import { WorkMenu } from './panel/WorkMenu'
-import { WorkFlowStrip } from './panel/WorkFlowStrip'
 import { RoleChatView } from './panel/RoleChatView'
+import { InlineWorkWindow } from './panel/InlineWorkWindow'
 import { toolLabel } from './panel/toolLabel'
 import { useComposer } from './panel/useComposer'
 import { useMsgRail } from './panel/useMsgRail'
@@ -157,19 +156,20 @@ interface Props {
   liveUsage?: MessageUsage | null
   /**
    * work：当前 role 对话下的工作会话列表 + 正在跑的实时输出。
-   * 面板据此画 WorkMenu 入口与 work 视图（消息列表、工具卡片、流式）。
-   * work 只有 mind 一层：不显示 chat 页签，也不提供输入框（用户不能直接向 work 发言）。
+   * 面板据此画 WorkMenu 入口与内嵌 work 窗口；work 消息默认收起，不再单独开二级页。
    */
   work?: WorkView
   /**
-   * work 视图：看哪个 work 由**页签**决定（agent 栏页签化，见 AgentTabStrip）——
-   * 页签指着哪个 work，整个面板就看哪一边；传 null 就是 role 对话本身。
+   * 旧 work 页签带来的初始展开 id：保留兼容，只用于把内嵌窗口定位到对应 work。
+   * 传 null 就是当前 role 对话本身，work 窗口按默认收起。
    */
   viewWorkId?: string | null
-  /** work 入口被点：宿主把它的页签开好并置前 */
-  onOpenWork?: (workId: string) => void
   /** 终止某个 work 正在跑的这一轮（只停这一个 work，不动 role 的对话） */
   onStopWork?: (workId: string) => void
+  /** 带终止声明：停 loop 后把声明发给 role 并激活它 */
+  onStopWorkWithStatement?: (workId: string, statement: string) => void
+  /** 删除 work 会话（会先停 loop，再移除上下文） */
+  onDeleteWork?: (workId: string) => void
   /** 点击文件附件时在标签页打开 */
   onOpenFile?: (pathOrRel: string, title?: string) => void
   onOpenSettings?: () => void
@@ -226,8 +226,9 @@ export default function AgentPanel({
   liveUsage,
   work,
   viewWorkId = null,
-  onOpenWork,
   onStopWork,
+  onStopWorkWithStatement,
+  onDeleteWork,
   active = true,
   onOpenFile,
   onOpenSettings,
@@ -237,11 +238,9 @@ export default function AgentPanel({
   const [bubblePreview, setBubblePreview] = useState<MessageImage | null>(null)
   /** role 视图分层：chat = 用户视角的对外消息；mind = 全量执行过程（工具、思考、work 通道） */
   const [viewMode, setViewMode] = useState<'chat' | 'mind'>('chat')
-  /**
-   * mind 的二级 work 页：点「已派发的 work」观察卡进入，返回键回到思维列表。
-   * 这是面板内的嵌套视图，不新开顶层 work 页签；顶部页签给出的 viewWorkId 仍然优先。
-   */
-  const [nestedWorkId, setNestedWorkId] = useState<string | null>(null)
+  /** work 消息窗口：默认收起；展开后在原地看列表与选中 work 的消息 */
+  const [workWindowOpen, setWorkWindowOpen] = useState(false)
+  const [workWindowId, setWorkWindowId] = useState<string | null>(null)
   /** 上下文压缩后的摘要展开着（消息列表里那块分界线上的「看摘要」） */
   const [summaryOpen, setSummaryOpen] = useState(false)
 
@@ -261,30 +260,27 @@ export default function AgentPanel({
   )
 
   /**
-   * work 视图的解析：顶层页签给的 viewWorkId 优先；没有时看 mind 里点开的
-   * nestedWorkId（二级页）。两者都不在时看 role 对话本身。
+   * 切换 role 会话 / 旧 work 页签时重置 work 窗口：
+   * - 旧 work 页签带着 viewWorkId 进来时，展开并定位到那只 work；
+   * - 普通 role 会话默认收起，不能把上一段对话的窗口状态带过来。
    */
-  const activeWorkId = viewWorkId ?? nestedWorkId
-  const nestedWork = !viewWorkId && Boolean(nestedWorkId)
-  const workSession = useMemo(
-    () => (work && activeWorkId ? (work.sessions.find((w) => w.id === activeWorkId) ?? null) : null),
-    [work, activeWorkId],
-  )
-  /**
-   * 正看着的这个 work 在跑吗（实时流式来自 work.live 里属于它的那一份）。
-   */
-  const workLive = useMemo(
-    () => (work && activeWorkId ? (work.live.find((l) => l.workId === activeWorkId) ?? null) : null),
-    [work, activeWorkId],
-  )
-  /** 切换 role 会话 / 顶层 work 页签时，旧的二级 work 必须退出，不能挂在另一段 mind 下 */
   useEffect(() => {
-    setNestedWorkId(null)
+    if (viewWorkId) {
+      setWorkWindowOpen(true)
+      setWorkWindowId(viewWorkId)
+      return
+    }
+    setWorkWindowOpen(false)
+    setWorkWindowId(null)
   }, [conversation?.id, viewWorkId])
-  const viewMessages = useMemo(() => (workSession ? workSession.messages : messages), [workSession, messages])
-  const viewStreaming = workSession ? (workLive ? workLive.parts : null) : streaming
-  const viewRunning = workSession ? !!(workLive || workSession.status === 'running') : running
-  const viewStatus = workSession?.status ?? null
+
+  // work 被删 / 换了一段会话后，选中 id 不能在窗口里悬空。
+  useEffect(() => {
+    if (!workWindowId) return
+    if (work?.sessions.some((w) => w.id === workWindowId)) return
+    setWorkWindowId(work?.sessions[0]?.id ?? null)
+  }, [work, workWindowId])
+
   /**
    * 这个对话里所有回复的 token 账，圆环与浮层据此汇总。
    * 跑着的时候把**实时账**追加在最后（每跳 usage 重算）：一轮里模型来回好几跳，
@@ -293,10 +289,10 @@ export default function AgentPanel({
    */
   const usages = useMemo(
     () => [
-      ...viewMessages.flatMap((m) => (m.role === 'assistant' && m.usage ? [m.usage] : [])),
-      ...(!workSession && liveUsage ? [liveUsage] : []),
+      ...messages.flatMap((m) => (m.role === 'assistant' && m.usage ? [m.usage] : [])),
+      ...(liveUsage ? [liveUsage] : []),
     ],
-    [viewMessages, workSession, liveUsage],
+    [messages, liveUsage],
   )
   /**
    * 失活的分界线：从这一条（下标）起还在上下文里，前面的已经被折进摘要、只作显示。
@@ -305,11 +301,11 @@ export default function AgentPanel({
    * 压缩就是「一条原消息都不留 + 摘要成为第一条消息」。全部都失活时给 messages.length
    * （那时摘要下面还没有新消息，分界线画在列表开头，由上面那句 summary 单独渲染）。
    */
-  const summary = workSession ? null : (conversation?.summary ?? null)
+  const summary = conversation?.summary ?? null
   const summaryStart = useMemo(() => {
-    const i = viewMessages.findIndex((m) => !m.retired)
-    return i < 0 ? viewMessages.length : i
-  }, [viewMessages])
+    const i = messages.findIndex((m) => !m.retired)
+    return i < 0 ? messages.length : i
+  }, [messages])
 
   /* ---------- 定位条、滚动跟随与字号 ---------- */
 
@@ -348,7 +344,7 @@ export default function AgentPanel({
     zoomPct,
     zoomHud,
   } = useScrollFollow(
-    viewMessages,
+    messages,
     { scrollRef, rootRef, msgRefs, railAnchorsRef, contentRef },
     setRailActive,
   )
@@ -365,22 +361,22 @@ export default function AgentPanel({
   /**
    * 跟随状态下，内容每长一点就贴到底部；脱离之后一律不动。
    *
-   * 依赖里除了条数，还有 viewMessages 本身（编辑一条消息、压缩之后换了一整份列表，
+   * 依赖里除了条数，还有 messages 本身（编辑一条消息、压缩之后换了一整份列表，
    * 条数可能没变但高度变了）——只认条数会漏掉这些「不增不减、只是变高」的改动。
    */
   useEffect(() => {
     stickToBottom()
-  }, [stickToBottom, viewMessages, viewStreaming, viewRunning])
+  }, [stickToBottom, messages, streaming, running])
 
   // 定位条排在后面：它的 useLayoutEffect 与上面那个「贴底」谁先跑与拆分前一致（见各自注释）
   const { anchors, measureAnchors } = useMsgRail(
-    viewMessages,
+    messages,
     { scrollRef, rootRef, msgRefs, railAnchorsRef },
   )
   // 消息、流式内容一变就重新量一遍（正文还在长，位置一直在动）；容器尺寸变化同理
   useLayoutEffect(() => {
     measureAnchors()
-  }, [measureAnchors, viewStreaming, viewRunning, chatScale])
+  }, [measureAnchors, streaming, running, chatScale])
 
   const composer = useComposer({
     vision,
@@ -434,15 +430,15 @@ export default function AgentPanel({
    * 同样的输入给同样的数，什么时候算、算几次都不影响结果。
    */
   const { turns, tokensTotal, tpsNow } = useMemo(() => {
-    const turns = viewMessages.filter((m) => m.role === 'assistant').length + (viewStreaming ? 1 : 0)
+    const turns = messages.filter((m) => m.role === 'assistant').length + (streaming ? 1 : 0)
     /**
      * 最后一条带 tps 的导师回复。原来是 [...messages].reverse().find(...)：先整份复制再倒着找，
      * 这里改成从后往前的 for——找到的是同一条（倒过来之后的第一个 = 原来最后一个），
      * 也照样跳过 tps 为 0 / 缺失的那些。
      */
     const lastStoredTps = (): number | null => {
-      for (let i = viewMessages.length - 1; i >= 0; i--) {
-        const m = viewMessages[i]
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i]
         if (m.role === 'assistant' && m.usage?.tps) return m.usage.tps
       }
       return null
@@ -450,7 +446,7 @@ export default function AgentPanel({
     // 实时值优先：跑着的时候读这一轮上报的；空闲时退回最后一条回复里存的存量
     const tpsNow = tps ?? lastStoredTps()
     return { turns, tokensTotal: usages.reduce((n, u) => n + u.totalTokens, 0), tpsNow }
-  }, [viewMessages, viewStreaming, usages, tps])
+  }, [messages, streaming, usages, tps])
 
   /**
    * loop 还在跑时，消息列表末尾那行波浪的说明文字。
@@ -465,14 +461,12 @@ export default function AgentPanel({
   // loopLabel 不进 useMemo：纯字符串拼装，一次渲染算两回也花不了几个钱，
   // 而把 locale 塞进依赖数组只会换来一条「多余依赖」的 lint 警告。
   useLocale()
-  const lastStreaming = viewStreaming?.[viewStreaming.length - 1]
+  const lastStreaming = streaming?.[streaming.length - 1]
   const loopLabel =
     lastStreaming && lastStreaming.type === 'tool' && lastStreaming.status === 'running'
       ? t('正在{0}…', toolLabel(lastStreaming.name, lastStreaming.args))
-      : viewStreaming?.length
-        ? workSession
-          ? t('work 正在执行')
-          : t('角色正在准备')
+      : streaming?.length
+        ? t('角色正在准备')
         : t('思考中…')
 
   const handleSelectPrompt = useCallback(
@@ -483,16 +477,45 @@ export default function AgentPanel({
     [composer],
   )
 
+  /** 点 work 列表 / 输入区入口：只展开内嵌窗口，不再新开 work 二级页。 */
+  const openWork = useCallback((workId: string) => {
+    setWorkWindowId(workId)
+    setWorkWindowOpen(true)
+  }, [])
+  const toggleWorkWindow = () => {
+    const next = !workWindowOpen
+    if (next && !workWindowId) setWorkWindowId(work?.sessions[0]?.id ?? null)
+    setWorkWindowOpen(next)
+  }
+
+  const workWindowNode =
+    work && work.sessions.length ? (
+      <InlineWorkWindow
+        works={work.sessions}
+        live={work.live}
+        open={workWindowOpen}
+        activeWorkId={workWindowId}
+        onToggle={toggleWorkWindow}
+        onSelectWork={openWork}
+        onStopWork={onStopWork}
+        onStopWorkWithStatement={onStopWorkWithStatement}
+        onDeleteWork={onDeleteWork}
+        onOpenFile={onOpenFile}
+        setBubblePreview={setBubblePreview}
+        goalId={conversation?.goalId}
+      />
+    ) : null
+
   // 消息列表那一段 JSX：状态与回调都在上面，这里只负责把它渲染出来
   const messageList = useMessageList({
-    messages: viewMessages,
+    messages,
     goalId: conversation?.goalId,
     summaryStart,
     summary,
     summaryOpen,
     setSummaryOpen,
-    streaming: viewStreaming,
-    running: viewRunning,
+    streaming,
+    running,
     loopLabel,
     flashId,
     msgRefs,
@@ -503,61 +526,36 @@ export default function AgentPanel({
     free,
     emptyVoice,
     emptyName,
-    mind: viewMode === 'mind' || !!workSession,
+    mind: viewMode === 'mind',
     agentName: emptyName ?? '',
     agentAvatarId,
     usages,
-    // work 二级页不列 work（避免「work 里再派 work」时列表套娃）；role mind 下列当前 role 的全部 work
-    works: workSession ? [] : (work?.sessions ?? []),
-    onOpenMindWork: (workId: string) => {
-      setViewMode('mind')
-      setNestedWorkId(workId)
-    },
-    activeWorkId: nestedWorkId,
-    contextSubject: workSession?.name ?? emptyName ?? undefined,
-    resetKey: workSession?.id ?? conversation?.id ?? '',
+    workWindow: workWindowNode,
+    contextSubject: emptyName ?? undefined,
+    resetKey: conversation?.id ?? '',
   })
 
   return (
     // relative：定位条贴着这一块的右边挂（它要的是整块面板的坐标，不是消息列的）
     <div ref={rootRef} className="relative flex h-full min-h-0 flex-col bg-paper-deep/40">
-      {nestedWork && (
-        <div
-          data-mind-work-back
-          className="flex shrink-0 items-center gap-2 border-b border-line/70 bg-card/75 px-3 py-1.5 text-[12px]"
-        >
+      <div className="flex shrink-0 items-center gap-1 border-b border-line/60 px-3 py-1.5">
+        {(['chat', 'mind'] as const).map((m) => (
           <button
+            key={m}
             type="button"
-            onClick={() => setNestedWorkId(null)}
-            className="flex items-center gap-1 rounded-lg px-2 py-1 text-ink-soft transition hover:bg-line/50 hover:text-ink-strong"
+            onClick={() => setViewMode(m)}
+            className={
+              'rounded-lg px-2.5 py-1 text-[11.5px] transition ' +
+              (viewMode === m
+                ? 'bg-ink-strong text-paper'
+                : 'text-ink-faint hover:bg-line/50 hover:text-ink-strong')
+            }
           >
-            <ArrowLeft size={13} />
-            <span>{t('返回思维列表')}</span>
+            {m === 'chat' ? t('对话') : t('思维')}
           </button>
-          <span className="min-w-0 flex-1 truncate text-[11px] text-ink-faint">
-            {t('work 二级页 · {0}', workSession?.name ?? activeWorkId ?? '')}
-          </span>
-        </div>
-      )}
-      {!workSession ? (
-        <div className="flex shrink-0 items-center gap-1 border-b border-line/60 px-3 py-1.5">
-          {(['chat', 'mind'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setViewMode(m)}
-              className={
-                'rounded-lg px-2.5 py-1 text-[11.5px] transition ' +
-                (viewMode === m
-                  ? 'bg-ink-strong text-paper'
-                  : 'text-ink-faint hover:bg-line/50 hover:text-ink-strong')
-              }
-            >
-              {m === 'chat' ? t('对话') : t('思维')}
-            </button>
-          ))}
-        </div>
-      ) : null}
+        ))}
+        {/* work 窗口默认收起；入口在输入区，不在这里抢注意力 */}
+      </div>
       {/*
         消息区不再限制整栏宽度：对话列表铺满可用空间，只有单条气泡限制 700px，
         这样长屏上不会出现一大片空白的「居中窄栏」，一行也不会被拉得读不动。
@@ -591,20 +589,13 @@ export default function AgentPanel({
             <div
               ref={contentRef}
               className={`w-full px-4 pt-5 ${
-                viewMessages.length === 0 && !viewStreaming && !workSession
+                messages.length === 0 && !streaming
                   ? 'flex min-h-[calc(100%-1.25rem)] flex-col justify-center pb-8'
                   : ''
               }`}
               style={{ zoom: chatScale } as CSSProperties}
             >
-              {workSession && (
-                <WorkFlowStrip
-                  work={workSession}
-                  running={viewRunning}
-                  onStop={onStopWork ? () => onStopWork(workSession.id) : undefined}
-                />
-              )}
-              {viewMode === 'chat' && !workSession ? (
+              {viewMode === 'chat' ? (
                 <RoleChatView
                   channels={conversation?.channels ?? []}
                   agentName={emptyName ?? t('智能体')}
@@ -619,6 +610,7 @@ export default function AgentPanel({
                   onAskExpire={onAskExpireById}
                   onAskHover={onAskHoverById}
                   onOpenFile={onOpenFile}
+                  workWindow={workWindowNode}
                 />
               ) : (
                 messageList
@@ -652,7 +644,7 @@ export default function AgentPanel({
         上面那一条 10px 的空白把「对话」与「我要说的话」切成了两段，而且它一直是空的。
       */}
       <div className="w-full shrink-0 px-3.5 pb-3 pt-0">
-        {!workSession && viewMode === 'chat' && (
+        {viewMode === 'chat' && (
           <ComposerUi
           composer={composer}
           running={running}
@@ -683,7 +675,7 @@ export default function AgentPanel({
           onSetEffort={onSetEffort}
           onOpenPreview={setPreview}
           workSlot={
-            free ? undefined : <WorkMenu sessions={work?.sessions ?? []} onOpen={(id) => onOpenWork?.(id)} />
+            free ? undefined : <WorkMenu sessions={work?.sessions ?? []} onOpen={openWork} />
           }
           // 写作策略入口：输入框底行、子代理按钮右侧（向上展开——它已贴近窗口底缘）
           strategySlot={
@@ -722,26 +714,7 @@ export default function AgentPanel({
           人格与格式选择器不在这行：它们搬进了输入框底行，与提供商切换同一排（见 ComposerUi 的 strategySlot）。
         */}
         <div className="flex min-w-0 items-center gap-2.5 px-1 pb-1.5 pt-1.5">
-          {workSession ? (
-            <>
-              <span
-                className={'shrink-0 text-[11px] leading-none ' + (viewRunning ? 'text-seal' : 'text-ink-faint')}
-              >
-                {viewRunning
-                  ? t('任务进行中')
-                  : viewStatus === 'interrupted'
-                    ? t('上次被中断')
-                    : viewStatus === 'error'
-                      ? t('上次出错')
-                      : viewStatus === 'stopped'
-                        ? t('已停止')
-                        : t('空闲')}
-              </span>
-              <span className="min-w-0 truncate text-[11px] leading-none text-ink-faint">
-                {t('独立执行层 · 只读 · {0} 次任务', workSession.runs)}
-              </span>
-            </>
-          ) : free ? (
+          {free ? (
             <>
               {/*
                 自由聊天没有「正在辅导谁」：这里只放这段对话的名字（同一条起名规矩：
