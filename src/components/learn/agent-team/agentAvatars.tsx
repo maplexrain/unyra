@@ -19,7 +19,6 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
-import turtleChat from '../../../assets/agents/turtle-chat.webp'
 import turtleDispatcher from '../../../assets/agents/turtle-dispatcher.webp'
 import turtleTutor from '../../../assets/agents/turtle-tutor.webp'
 import turtleExaminer from '../../../assets/agents/turtle-examiner.webp'
@@ -43,7 +42,6 @@ export const AGENT_AVATAR_ICONS: Record<string, LucideIcon> = {
 
 /** 龟龟头像（图片资产）：id → 打包后的图片地址（Vite import，CSP img-src 'self' 覆盖得到） */
 export const AGENT_AVATAR_IMAGES: Record<string, string> = {
-  'turtle-chat': turtleChat,
   'turtle-dispatcher': turtleDispatcher,
   'turtle-tutor': turtleTutor,
   'turtle-examiner': turtleExaminer,

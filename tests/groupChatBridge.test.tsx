@@ -5,7 +5,8 @@
 import { createElement, act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
-import { getGroupChatMessages } from '../src/learn/groupChat'
+import { appendGroupMessage, getGroupChatMessages, groupThreadIdOf } from '../src/learn/groupChat'
+import type { ChannelMessage } from '../src/agent/types'
 import { resetChannelRegistry, setRoleWorkDispatcher, type RoleTurnRequest } from '../src/learn/roleWork/dispatch'
 import type { LearnStore } from '../src/learn/types'
 import { useGroupChatBridge, type GroupChatBridge } from '../src/components/learn/workspace/useGroupChatBridge'
@@ -70,6 +71,208 @@ describe('useGroupChatBridge', () => {
     host.remove()
   })
 
+  it('用户在评论串里发言：落到 `group:goal>根消息id`，并把 threadId 带给被回复的 role', () => {
+    let current = { conversations: [] } as unknown as LearnStore
+    const set = (next: LearnStore): void => {
+      current = next
+    }
+    const started: RoleTurnRequest[] = []
+    setRoleWorkDispatcher(() => ({
+      isConversationRunning: () => false,
+      resolveRoleConversation: () => null,
+      startRoleTurn: (req) => started.push(req),
+      appendChannel: () => {},
+    }))
+
+    const goalId = 'g-bridge-thread'
+    const root: ChannelMessage = {
+      id: 'g-root',
+      kind: 'group',
+      direction: 'out',
+      from: { kind: 'role', id: 'dispatcher', name: '调度龟' },
+      to: { kind: 'group', id: 'group', name: '群聊' },
+      text: '@导师龟 帮我讲一下',
+      ts: 1000,
+      mentions: [{ kind: 'role', id: 'tutor', name: '导师龟' }],
+      goalId,
+      threadId: groupThreadIdOf(goalId, 'g-root'),
+    }
+    appendGroupMessage(root)
+
+    let bridge: GroupChatBridge | null = null
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const rootHost = createRoot(host)
+    act(() => {
+      rootHost.render(
+        createElement(function Probe() {
+          bridge = useGroupChatBridge({
+            goalId,
+            agents: [
+              { id: 'tutor', name: '导师龟' },
+              { id: 'dispatcher', name: '调度龟' },
+            ],
+            getLatest: () => current,
+            set,
+          })
+          return null
+        }),
+      )
+    })
+    act(() => {
+      expect(bridge!.send('补充一处边界', ['tutor'], groupThreadIdOf(goalId, 'g-root'))).toBe(true)
+    })
+    expect(started).toHaveLength(1)
+    expect(started[0]!.role).toBe('tutor')
+    expect(started[0]!.stamp.threadId).toBe('group:g-bridge-thread>g-root')
+    expect(started[0]!.stamp.threadRootId).toBe('g-root')
+    const comment = getGroupChatMessages().find((m) => m.text === '补充一处边界')
+    expect(comment?.threadId).toBe('group:g-bridge-thread>g-root')
+    expect(comment?.threadRootId).toBe('g-root')
+    act(() => {
+      rootHost.unmount()
+    })
+    host.remove()
+  })
+
+  it('用户发言：@ 名字后没有空格时不算艾特，直接拒绝', () => {
+    let current = { conversations: [] } as unknown as LearnStore
+    const set = (next: LearnStore): void => {
+      current = next
+    }
+    const started: RoleTurnRequest[] = []
+    setRoleWorkDispatcher(() => ({
+      isConversationRunning: () => false,
+      resolveRoleConversation: () => null,
+      startRoleTurn: (req) => started.push(req),
+      appendChannel: () => {},
+    }))
+
+    let bridge: GroupChatBridge | null = null
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(function Probe() {
+          bridge = useGroupChatBridge({
+            goalId: 'g-bridge-strict',
+            agents: [
+              { id: 'tutor', name: '导师龟' },
+              { id: 'dispatcher', name: '调度龟' },
+            ],
+            getLatest: () => current,
+            set,
+          })
+          return null
+        }),
+      )
+    })
+    act(() => {
+      expect(bridge!.send('@导师龟，帮我查一下', ['designer'])).toBe(false)
+    })
+    expect(started).toHaveLength(0)
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('用户发言：句末 @导师龟 的尾随空格保留，严格语法才算成功', () => {
+    let current = { conversations: [] } as unknown as LearnStore
+    const set = (next: LearnStore): void => {
+      current = next
+    }
+    const started: RoleTurnRequest[] = []
+    setRoleWorkDispatcher(() => ({
+      isConversationRunning: () => false,
+      resolveRoleConversation: () => null,
+      startRoleTurn: (req) => started.push(req),
+      appendChannel: () => {},
+    }))
+
+    let bridge: GroupChatBridge | null = null
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(function Probe() {
+          bridge = useGroupChatBridge({
+            goalId: 'g-bridge-tail',
+            agents: [
+              { id: 'tutor', name: '导师龟' },
+              { id: 'dispatcher', name: '调度龟' },
+              { id: 'designer', name: '设计龟' },
+            ],
+            getLatest: () => current,
+            set,
+          })
+          return null
+        }),
+      )
+    })
+    act(() => {
+      expect(bridge!.send('@导师龟 ', ['designer'])).toBe(true)
+    })
+    expect(started).toHaveLength(1)
+    expect(started[0]!.role).toBe('tutor')
+    expect(started[0]!.text).toBe('@导师龟 ')
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('用户发言：多个 @ 都可抄送上下文，但只有首个 @ 作为 mention 激活', () => {
+    let current = { conversations: [] } as unknown as LearnStore
+    const set = (next: LearnStore): void => {
+      current = next
+    }
+    const started: RoleTurnRequest[] = []
+    setRoleWorkDispatcher(() => ({
+      isConversationRunning: () => false,
+      resolveRoleConversation: () => null,
+      startRoleTurn: (req) => started.push(req),
+      appendChannel: () => {},
+    }))
+
+    let bridge: GroupChatBridge | null = null
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(function Probe() {
+          bridge = useGroupChatBridge({
+            goalId: 'g-bridge-multi',
+            agents: [
+              { id: 'tutor', name: '导师龟' },
+              { id: 'dispatcher', name: '调度龟' },
+              { id: 'designer', name: '设计龟' },
+            ],
+            getLatest: () => current,
+            set,
+          })
+          return null
+        }),
+      )
+    })
+    act(() => {
+      expect(bridge!.send('@导师龟 @设计龟 你们一起看一下', [])).toBe(true)
+    })
+    expect(started).toHaveLength(1)
+    expect(started[0]!.role).toBe('tutor')
+    const logged = getGroupChatMessages().find((m) => m.goalId === 'g-bridge-multi')
+    expect(logged?.mentions?.map((p) => p.id).sort()).toEqual(['designer', 'tutor'])
+    expect(logged?.mention).toMatchObject({ kind: 'role', id: 'tutor' })
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+
   it('用户发言：没有 @ 时默认投给调度龟', () => {
     let current = { conversations: [] } as unknown as LearnStore
     const set = (next: LearnStore): void => {
@@ -111,6 +314,8 @@ describe('useGroupChatBridge', () => {
     expect(started[0]!.text).toBe('帮我把这周的安排列一下')
     const logged = getGroupChatMessages().find((m) => m.goalId === 'g-bridge-noat')
     expect(logged?.mentions ?? []).toEqual([])
+    // 没有 @ 时默认目标是唯一 mention（会激活），但正文没点名，不伪造 mentions。
+    expect(logged?.mention).toMatchObject({ kind: 'role', id: 'dispatcher' })
     act(() => {
       root.unmount()
     })

@@ -28,6 +28,48 @@ describe('normalizeChannels', () => {
     expect(normalizeChannels('乱写')).toBeUndefined()
     expect(normalizeChannels([{ id: 'x' }])).toBeUndefined()
   })
+
+  it('ask 气泡随通道流水落盘：表单、状态与截止时间都要保留', () => {
+    const ask = {
+      id: 'ask-1',
+      form: {
+        title: '确认难度',
+        questions: [
+          {
+            id: 'level',
+            type: 'single',
+            prompt: '这次想练哪一档？',
+            options: [
+              { id: 'easy', label: '基础' },
+              { id: 'hard', label: '挑战' },
+            ],
+          },
+        ],
+      },
+      expiresAt: now + 60_000,
+      status: 'answered' as const,
+      settledAt: now + 1_000,
+    }
+    const out = normalizeChannels([
+      {
+        id: 'e-ask',
+        kind: 'user',
+        direction: 'out',
+        from: peer,
+        to: { kind: 'role', id: 'tutor', name: '导师龟' },
+        text: '需要你确认一下',
+        ts: now,
+        ask,
+      },
+    ])!
+    expect(out[0]!.ask).toMatchObject({
+      id: 'ask-1',
+      expiresAt: now + 60_000,
+      status: 'answered',
+      settledAt: now + 1_000,
+    })
+    expect(out[0]!.ask!.form.questions[0]).toMatchObject({ id: 'level', type: 'single' })
+  })
 })
 
 describe('normalizeWorks', () => {

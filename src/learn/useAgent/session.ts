@@ -6,7 +6,7 @@
  */
 import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react'
 import type { AgentEvent, AgentPart, Conversation } from '../../agent/types'
-import { agentNameOf, profileOf, type AgentProfileId } from '../../agent/agentProfile'
+import { agentNameOf, profileOf } from '../../agent/agentProfile'
 import { loadAgentSettings } from '../../agent/settings'
 import { applyEvent } from '../agent/events'
 import { createWorkManager, type WorkManager } from '../../agent/work/manager'
@@ -16,6 +16,7 @@ import { generateConversationTitle, namingSource } from '../title'
 import type { LearnStore } from '../types'
 import { inboundEnvelope, outboundEnvelope, peerOf } from '../roleWork/channels'
 import { deliverInbound, hasRoleWorkDispatcher } from '../roleWork/dispatch'
+import { roleOfConversation } from '../roleWork/roles'
 import { freeConversationById, mutateFreeConversation } from '../freeChat'
 
 export interface WorkRunSlot {
@@ -73,7 +74,7 @@ export function useAgentSession(deps: {
       let m = workManagersRef.current.get(conversationId)
       if (!m) {
         const stored = conversationById(getLatest(), conversationId)
-        const roleId = (stored?.voice ?? 'tutor') as AgentProfileId
+        const roleId = roleOfConversation(stored)
         const roleName = agentNameOf(profileOf(loadAgentSettings(), roleId), roleId)
         m = createWorkManager({
           roleId,
@@ -109,14 +110,29 @@ export function useAgentSession(deps: {
           deliverToRole: (work, text, meta) => {
             const from = peerOf('work', work.id, work.name)
             const to = peerOf('agent', work.roleId, roleName)
-            const envelope = inboundEnvelope({ channel: 'work', from, to, text, ...(meta.extra ? { extra: meta.extra } : {}) })
+            const envelope = inboundEnvelope({
+              channel: 'work',
+              from,
+              to,
+              text,
+              ...(meta.extra ? { extra: meta.extra } : {}),
+              ...(meta.delivery ? { delivery: meta.delivery } : {}),
+            })
             deliverInbound(
               {
                 conversationId: work.roleConversationId,
                 role: work.roleId,
                 text,
-                stamp: { channel: 'work', from, to, ts: envelope.ts, envelopeId: envelope.id },
+                stamp: {
+                  channel: 'work',
+                  from,
+                  to,
+                  ts: envelope.ts,
+                  envelopeId: envelope.id,
+                  ...(meta.delivery ? { delivery: meta.delivery } : {}),
+                },
                 envelopeId: envelope.id,
+                ...(meta.delivery ? { delivery: meta.delivery } : {}),
                 ...(meta.quoteMessageId ? { mark: '工作交付' } : {}),
               },
               envelope,
@@ -144,10 +160,10 @@ export function useAgentSession(deps: {
   )
 
   /**
-   * 自由聊天（聊天龟）的 work 管理器：会话账本住 free-chat.json，不进 LearnStore。
+   * 自由聊天（自由对话）的 work 管理器：会话账本住 free-chat.json，不进 LearnStore。
    * 交付没有可注入的 role 轮次（free 的轮由 sendFree 串行发起），因此宿主把
    * Work 通道信封落进 channels，并追加一条 channel-message 助手消息；下一轮
-   * 自由对话重建历史时，它会被还原成一条用户侧消息，聊天龟据此接活。
+   * 自由对话重建历史时，它会被还原成一条用户侧消息，自由对话据此接活。
    */
   const getOrCreateFreeWorkManager = useCallback(
     (conversationId: string): WorkManager => {
@@ -185,10 +201,16 @@ export function useAgentSession(deps: {
               return { ...c, channels: [...(c.channels ?? []), envelope].slice(-200), updatedAt: Date.now() }
             })
           },
-          deliverToRole: (work, text) => {
+          deliverToRole: (work, text, meta) => {
             const from = peerOf('work', work.id, work.name)
             const to = peerOf('agent', 'free', roleName)
-            const envelope = inboundEnvelope({ channel: 'work', from, to, text })
+            const envelope = inboundEnvelope({
+              channel: 'work',
+              from,
+              to,
+              text,
+              ...(meta.delivery ? { delivery: meta.delivery } : {}),
+            })
             // 与目标 role 同一条路径：通道落账 + 空闲立即起轮 / 运行中跳边界注入。
             // dispatcher 尚未注册（极端初始化阶段）才走旧的「留到下一轮」兜底；
             // 运行中返回 false 是「已排队」，不能再落一遍账。
@@ -198,8 +220,16 @@ export function useAgentSession(deps: {
                   conversationId,
                   role: 'free',
                   text,
-                  stamp: { channel: 'work', from, to, ts: envelope.ts, envelopeId: envelope.id },
+                  stamp: {
+                  channel: 'work',
+                  from,
+                  to,
+                  ts: envelope.ts,
                   envelopeId: envelope.id,
+                  ...(meta.delivery ? { delivery: meta.delivery } : {}),
+                },
+                  envelopeId: envelope.id,
+                  ...(meta.delivery ? { delivery: meta.delivery } : {}),
                 },
                 envelope,
               )
@@ -215,6 +245,7 @@ export function useAgentSession(deps: {
                   role: 'assistant',
                   parts: [{ type: 'channel-message', channelId: envelope.id, text }],
                   ts: Date.now(),
+                  ...(meta.delivery ? { delivery: meta.delivery } : {}),
                 },
               ],
               updatedAt: Date.now(),

@@ -14,15 +14,19 @@ import type { LearnStore } from '../../../learn/types'
 import { ensureRoleConversation } from '../../../learn/roleWork/roles'
 import { groupPeer, inboundEnvelope, peerOf, userPeer } from '../../../learn/roleWork/channels'
 import { deliverInbound } from '../../../learn/roleWork/dispatch'
-import { mentionedRoleIdsOf, type MentionRole } from '../../../learn/roleWork/groupTargets'
-import { appendGroupMessage, getGroupChatMessages, subscribeGroupChat } from '../../../learn/groupChat'
+import { firstMentionedRoleIdOf, mentionedRoleIdsOf, type MentionRole } from '../../../learn/roleWork/groupTargets'
+import { appendGroupMessage, getGroupChatMessages, groupThreadIdOf, patchGroupMessage, subscribeGroupChat, threadRootIdOf } from '../../../learn/groupChat'
 import type { GroupChatAgent } from '../../agent/panel/GroupChatPanel'
 
 export interface GroupChatBridge {
-  /** 当前目标下的群聊消息（从旧到新） */
+  /** 当前目标下的群聊消息（从旧到新；一级主楼与评论区回复都在里面，界面自行分层） */
   messages: ChannelMessage[]
-  /** 用户群聊发言：@ 指定成员；无 @ 时默认投给调度龟。返回 false = 拒绝发送 */
-  send: (text: string, targetIds: GroupChatAgent['id'][]) => boolean
+  /**
+   * 用户群聊发言：@ 指定成员；无 @ 时默认投给调度龟。
+   * 传 threadId 时落到该评论串（索引 `通道id>消息id`），回复仍投给被点名/默认成员。
+   * 返回 false = 拒绝发送。
+   */
+  send: (text: string, targetIds: GroupChatAgent['id'][], threadId?: string) => boolean
 }
 
 export function useGroupChatBridge({
@@ -42,9 +46,13 @@ export function useGroupChatBridge({
     [all, goalId],
   )
 
-  const send = (text: string, targetIds: GroupChatAgent['id'][]): boolean => {
-    const body = text.trim()
+  const send = (text: string, targetIds: GroupChatAgent['id'][], threadId?: string): boolean => {
+    const trimmed = text.trim()
+    // 群聊 @ 的分隔符就是名字后的空格：末尾的这一个空格不能被 trim 掉。
+    const body = trimmed && /[ \u3000]$/.test(text) ? trimmed + ' ' : trimmed
     if (!body || !goalId) return false
+    const threadRootId = threadId ? threadRootIdOf(threadId) : null
+    if (threadId && (!threadRootId || threadId !== groupThreadIdOf(goalId, threadRootId))) return false
     /*
      * 和 role 侧同一条纪律：正文里的 `@名字` 比调用方传的 targetIds 更可信。
      * 这样即使 UI / 模型把目标算错，@导师龟 也只会投给导师龟，不会误投设计龟。
@@ -58,13 +66,24 @@ export function useGroupChatBridge({
     // 正文里出现 @ 却解析不到任何成员时拒绝，避免误投给默认调度龟；
     // 正文完全没有 @ 时才使用调用方给的默认目标（群聊 UI 传 dispatcher）。
     if (!explicitMentions && body.includes('@')) return false
-    const targets = (explicitMentions ? mentionedIds : targetIds)
-      .map((id) => agents.find((a) => a.id === id))
-      .filter((a): a is GroupChatAgent => Boolean(a))
+    const targets = [...new Set((explicitMentions ? mentionedIds : targetIds).filter((id) => agents.some((a) => a.id === id)))]
     if (!targets.length) return false
+    /*
+     * 用户群聊消息的首个 @ 是唯一 mention：它会被激活。
+     * 其余 @ 只抄送上下文（silent），不启动 loop。没有 @ 时默认目标是 mention。
+     */
+    const activeId = explicitMentions ? firstMentionedRoleIdOf(body, mentionRoles) : targets[0]
+    const active = activeId ? agents.find((a) => a.id === activeId) : undefined
+    if (!active) return false
     const from = userPeer()
     const now = Date.now()
-    const mentions = explicitMentions ? targets.map((a) => peerOf('agent', a.id, a.name)) : []
+    const mentions = explicitMentions
+      ? targets.map((id) => {
+          const agent = agents.find((a) => a.id === id)!
+          return peerOf('agent', id, agent.name)
+        })
+      : []
+    const activePeer = peerOf('agent', active.id, active.name)
     const message: ChannelMessage = {
       id: 'g-' + crypto.randomUUID(),
       kind: 'group',
@@ -74,13 +93,18 @@ export function useGroupChatBridge({
       text: body,
       ts: now,
       ...(mentions.length ? { mentions } : {}),
+      mention: activePeer,
       goalId,
+      ...(threadId && threadRootId ? { threadId, threadRootId } : {}),
     }
     appendGroupMessage(message)
+    // 一级主楼先被评论时补上 threadId（它仍是一级消息，因为 threadRootId 只在评论里出现）。
+    if (threadId && threadRootId) patchGroupMessage(threadRootId, { threadId })
     for (const agent of targets) {
-      const ensured = ensureRoleConversation(getLatest(), agent.id as AgentVoice, goalId)
+      const ensured = ensureRoleConversation(getLatest(), agent as AgentVoice, goalId)
       if (ensured.store !== getLatest()) set(ensured.store)
-      const to = peerOf('agent', agent.id, agent.name)
+      const to = peerOf('agent', agent, agents.find((a) => a.id === agent)?.name ?? agent)
+      const isMention = agent === active.id
       const inbound = inboundEnvelope({
         channel: 'group',
         from,
@@ -89,12 +113,14 @@ export function useGroupChatBridge({
         id: message.id,
         ts: now,
         ...(mentions.length ? { mentions } : {}),
+        ...(isMention ? { mention: activePeer } : {}),
         goalId,
+        ...(threadId && threadRootId ? { threadId, threadRootId } : {}),
       })
       deliverInbound(
         {
           conversationId: ensured.conversationId,
-          role: agent.id as AgentVoice,
+          role: agent as AgentVoice,
           goalId,
           text: body,
           stamp: {
@@ -104,10 +130,14 @@ export function useGroupChatBridge({
             ts: now,
             envelopeId: message.id,
             goalId,
+            ...(threadId && threadRootId ? { threadId, threadRootId } : {}),
+            ...(isMention ? { mention: true } : {}),
           },
           envelopeId: message.id,
         },
         inbound,
+        // 只有 mention 会起轮；其他被 @ 的成员只拿到上下文。
+        { silent: !isMention },
       )
     }
     return true

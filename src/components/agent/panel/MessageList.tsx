@@ -5,7 +5,14 @@
  * 于是那两个文件都能引用它而不互相 import（那会绕成环）。
  */
 
-import type { AgentPart, ConversationMessage, ContextSummary, MessageImage } from '../../../agent/types'
+import type {
+  AgentPart,
+  ConversationMessage,
+  ContextSummary,
+  MessageImage,
+  MessageUsage,
+  WorkSession,
+} from '../../../agent/types'
 
 export interface MessageListProps {
   messages: ConversationMessage[]
@@ -38,14 +45,24 @@ export interface MessageListProps {
   emptyVoice?: string
   emptyName?: string
   /**
-   * 思维层：过程件逐条铺开（不归组）、消息不带聊天气泡，且**消息行第一层不折叠**
-   * （只有消息内部的过程件可折叠）。work 视图恒为 true；role 视图由 chat/mind 页签决定。
+   * 思维层：消息不带聊天气泡；相邻思考/工具/提示词收成一条可折叠过程组，
+   * 消息行头部另画渠道与上下文账。work 视图恒为 true；role 视图由 chat/mind 页签决定。
    */
   mind?: boolean
   /** 当前 role 的显示名：mind 无信封行与用户消息对端标签用 */
   agentName?: string
   /** 当前 role 的头像 id */
   agentAvatarId?: string
+  /** 当前 role 的 token 账：mind 顶部画上下文占用 / 累计消耗（work 二级页传 work 自己的账） */
+  usages?: MessageUsage[]
+  /** 当前 role 的 work 会话：mind 在启动 work 的 execute 消息后插一块只读观察列表 */
+  works?: WorkSession[]
+  /** 点 work 观察卡：进入 mind 的二级 work 页 */
+  onOpenMindWork?: (workId: string) => void
+  /** 当前二级 work 页对应的 id：观察列表高亮它 */
+  activeWorkId?: string | null
+  /** 上下文摘要的标题主语（role 名 / work 名），只影响文案 */
+  contextSubject?: string
   /** 最近窗口的复位键：切换会话 / 目标时必须回到尾部，不沿用上一段的加载深度 */
   resetKey?: string
 }

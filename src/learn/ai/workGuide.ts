@@ -10,6 +10,9 @@ export const WORK_COMMON_PREFIX = [
   '- **上下文独立**：你只能看到本 work 自己的历史，看不到 role 与别的 work 的对话；需要补充信息就在交付里写清缺口，不要臆造。',
   '- **非文档类产物统一进工作区**：与教学文档 / 笔记 / 超级文档 / 试卷无关的交付物（文件、项目、代码、报告等）一律写当前节点的工作区目录，不要散落到数据目录别处。',
   '- **做完必须交付**：用 `api.host.send({ text })` 把结论、产物位置、没做成的部分写清；role 收到后才会对外说。',
+  '  **真正产出/修改了文件或引用了来源时，先 `api.delivery.submit({ files?, sources? })` 登记**：',
+  '  files 写影响的内容（path + action），sources 写引用链接；交付账会随 host.send 一起进 role，',
+  '  role 再用 `chat.send` 的 `deliveryFrom` 原样转发到群聊/私聊。没有交付物就不要登记空账。',
   '- **能力不够就交回 role 转交，不要硬做**：所需能力不在你的沙箱里（例如 `web.search` / 联网检索、`fetch`、日程、出卷、课件、函数图修复等属于别的 role 的领域能力）时，不要用模型记忆冒充结果，也不要把「大概是这样」当成交付。',
   '  用 `api.host.send` 发一条**交接请求**：写清①缺什么能力 ②为什么本 work 做不了 ③建议由哪个 role 接手 ④期望交付什么；然后结束本轮。role 会把任务转给对应 role，对方的结果再递归回到本 work，你接着完成剩余部分并做最终交付。',
   '- **交接请求只发一次**：不要反复创建 work、不要反复催 role，也不要在没有外部结果时假装已经拿到；收到 role 带回的结果或明确说明后再继续。',
@@ -22,7 +25,7 @@ export const WORK_COMMON_PREFIX = [
 
 /** work 的领域职责说明：让它知道自己“会做什么”，但不带 role 的人格 */
 export const WORK_ROLE_BRIEF: Record<'free' | 'tutor' | 'dispatcher' | 'examiner' | 'designer' | 'researcher' | 'fixer', string> = {
-  free: '你是聊天龟派出的通用执行 work：负责联网检索与网页抓取、日程读写，以及用户交办的具体执行任务。',
+  free: '你是自由对话派出的通用执行 work：负责联网检索与网页抓取、日程读写，以及用户交办的具体执行任务。',
   tutor: '你是导师龟派出的教学执行 work：负责讲义/文档、大纲、讲解、答疑、学习者画像与日程等教学落地任务。',
   dispatcher: '你是调度龟派出的执行 work：负责具体、可独立完成的执行子任务（查资料、整理清单、定时提醒等），把结果交回调度龟。',
   examiner: '你是出卷龟派出的出卷执行 work：负责试卷命题、判分与错题讲解，按任务给定的 attemptId 与节点执行。',

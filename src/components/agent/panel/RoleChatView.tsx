@@ -19,9 +19,10 @@ import { activeUser } from '../../../user/store'
 import UserAvatar from '../../user/UserAvatar'
 import { AGENT_ROSTER_META } from '../../learn/agent-team/agentRoster'
 import { AgentAvatarGlyph } from '../../learn/agent-team/AgentAvatarGlyph'
-import { BubbleRichText } from './BubbleRichText'
+import { BubbleBody } from './BubbleBody'
 import { AskBubble } from './AskBubble'
 import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
+import { DeliveryBlock } from './DeliveryBlock'
 import { useRecentWindow } from './useRecentWindow'
 import type { AgentTeamMode } from '../../learn/agent-team/conversationList'
 
@@ -34,12 +35,16 @@ export function RoleChatView({
   agentName,
   agentAvatarId,
   agentVoice = 'free',
+  /** 当前 role 是否正在工作；私聊气泡的名字后展示「工作中 / 空闲」 */
+  agentRunning,
   agentNames,
   agentAvatars,
   resetKey = '',
   onAskSubmit,
   onAskCancel,
   onAskExpire,
+  onAskHover,
+  onOpenFile,
 }: {
   channels: ChannelMessage[]
   /** 当前 role 的显示名（agent profile 覆盖后的真名） */
@@ -48,6 +53,8 @@ export function RoleChatView({
   agentAvatarId?: string
   /** 兜底头像要跟 role 走 */
   agentVoice?: string
+  /** 当前 role 的工作状态；true = 工作中，false = 空闲，undefined = 不展示 */
+  agentRunning?: boolean
   /** 全部 role 的显示名：一条私聊里可能出现别的 role 的回复，名字要按 from.id 取 */
   agentNames?: Partial<Record<string, string>>
   /** 全部 role 的头像 id：同理，不能拿当前页签的头像硬套 */
@@ -57,13 +64,16 @@ export function RoleChatView({
   onAskSubmit?: (askId: string, answers: AskAnswers) => void
   onAskCancel?: (askId: string) => void
   onAskExpire?: (askId: string) => void
+  onAskHover?: (askId: string, hovering: boolean) => void
+  /** 交付组件里点开本地文件 */
+  onOpenFile?: (pathOrRel: string, title?: string) => void
 }) {
   const user = activeUser()
   const userName = user ? displayName(user.profile, t('未命名用户')) : t('未命名用户')
 
   /** 气泡里 @ 的解析名单：当前 role 真名 + 所有 role 的 profile / 默认名 */
   const mentionNames = useMemo(() => {
-    const names: string[] = [agentName.trim(), userName.trim()]
+    const names: string[] = ['用户', agentName.trim(), userName.trim()]
     for (const id of AGENT_ROLE_IDS) {
       const custom = agentNames?.[id]?.trim()
       if (custom) names.push(custom)
@@ -173,13 +183,27 @@ export function RoleChatView({
       <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
       {visible.map((m) => {
         const mine = m.kind === 'user' && m.direction === 'in'
-        const bubbleBg = mine ? 'bg-bubble-user text-ink-strong' : 'bg-bubble-agent text-ink'
+        const bubbleBg = mine ? 'bg-bubble-user text-ink-strong' : 'bg-bubble-agent text-ink ring-1 ring-line/50'
         return (
           <div key={m.id} className={'flex items-start gap-2.5 ' + (mine ? 'flex-row-reverse' : '')}>
             {avatarOf(m)}
             <div className={'min-w-0 max-w-[700px] ' + (mine ? 'flex flex-col items-end' : 'flex flex-col items-start')}>
               <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px]">
                 <span className={'font-semibold ' + nameClassOf(m)}>{nameOf(m)}</span>
+                {!mine && typeof agentRunning === 'boolean' ? (
+                  <span
+                    data-agent-status={agentRunning ? 'running' : 'idle'}
+                    className={'inline-flex items-center gap-1 ' + (agentRunning ? 'text-seal' : 'text-ink-faint')}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={
+                        'h-1.5 w-1.5 rounded-full ' + (agentRunning ? 'animate-pulse bg-seal' : 'bg-ink-faint/45')
+                      }
+                    />
+                    {agentRunning ? t('工作中') : t('空闲')}
+                  </span>
+                ) : null}
                 <span className="text-ink-faint">
                   {new Date(m.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                 </span>
@@ -192,15 +216,15 @@ export function RoleChatView({
                 <AskBubble
                   ask={m.ask}
                   actorName={nameOf(m)}
-                  createdAt={m.ts}
                   onSubmit={onAskSubmit ? (answers) => onAskSubmit(m.ask!.id, answers) : undefined}
                   onCancel={onAskCancel ? () => onAskCancel(m.ask!.id) : undefined}
                   onExpire={onAskExpire ? () => onAskExpire(m.ask!.id) : undefined}
+                  onHover={onAskHover ? (hovering) => onAskHover(m.ask!.id, hovering) : undefined}
                 />
               ) : (
                 <div
                   className={
-                    'relative max-w-full whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ' +
+                    'relative max-w-full whitespace-pre-wrap break-words rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed ' +
                     bubbleBg +
                     (mine ? ' rounded-tr-sm' : ' rounded-tl-sm')
                   }
@@ -212,10 +236,17 @@ export function RoleChatView({
                       (mine ? 'bg-bubble-user -right-1' : 'bg-bubble-agent -left-1')
                     }
                   />
-                  <BubbleRichText text={m.text} names={mentionNames} tone={mine ? 'user' : 'agent'} />
+                  <BubbleBody
+                    text={m.text}
+                    detail={m.detail}
+                    names={mentionNames}
+                    labels={{ 用户: userName }}
+                    tone={mine ? 'user' : 'agent'}
+                  />
                 </div>
               )}
               <ChannelAttachments message={m} />
+              {m.delivery ? <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={m.goalId} /> : null}
               <ChannelExtraBlock extra={m.extra} names={mentionNames} />
             </div>
           </div>

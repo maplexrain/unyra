@@ -19,7 +19,8 @@ export const MAX_LOGGED_CALLS = 40
 export const ASK_IDLE_TIMEOUT_MS = 60_000
 
 /**
- * ask 气泡的硬时限：从挂出那一刻开始算，不随用户操作续期。
+ * ask 气泡的硬时限：从挂出那一刻开始算，不随键盘输入续期；鼠标停在气泡上时
+ * 暂停（用户正在填表，见 useAgent/toolRig 的 askTimers pause/resume）。
  * UI 的倒计时进度条与宿主定时器共用这一个数，时间一到就失效。
  */
 export const ASK_BUBBLE_TTL_MS = 60_000

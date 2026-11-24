@@ -25,12 +25,14 @@ import { createChatOps } from '../ops/chat'
 import { resolveChatAttachments } from '../roleWork/attachments'
 import { agentNameOf, AGENT_ROLE_IDS, DEFAULT_AGENT_NAME, type AgentProfileId } from '../../agent/agentProfile'
 import { isAgentRoleId } from '../../agent/roleWork/types'
-import type { ChannelAskStatus, ChannelMessage, Conversation, ConversationMessage } from '../../agent/types'
-import { roleConversationId } from '../roleWork/roles'
+import type { ChannelAskStatus, ChannelMessage, ConversationMessage } from '../../agent/types'
+import { ensureRoleConversation, roleConversationsOfGoal } from '../roleWork/roles'
+import { registerAskTimer } from '../roleWork/askTimers'
 import { groupPeer, inboundEnvelope, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
 import { deliverInbound } from '../roleWork/dispatch'
-import { groupSelfMentionError, mentionedRoleIdsOf, type MentionRole } from '../roleWork/groupTargets'
+import { groupSelfMentionError, hasMentionOf, mentionedRoleIdsOf, mentionsUserInGroup, type MentionRole } from '../roleWork/groupTargets'
 import { appendGroupMessage, patchGroupMessage } from '../groupChat'
+import { planGroupThread } from '../roleWork/groupThread'
 import { emptyDelivery, mergeDelivery, normalizeDelivery } from '../../agent/delivery'
 import { native } from '../../lib/native'
 import { nodeById } from '../graph'
@@ -194,23 +196,21 @@ export function rigTurnTools(io: {
     )
     set({ ...getLatest(), conversations })
   }
+  /*
+   * 找/建 role 会话只走 roleWork/roles 的同一套判据：`Conversation.voice` 与确定性 id
+   * 都要认（见 roleOfConversation）。这里曾经手写 `c.voice ?? 'tutor'`，把
+   * `cv:designer:*` 这类漏标 voice 的旧会话当成了导师会话；群聊 @导师龟 时若设计龟
+   * 那段最近更新，就会把邮件投进设计龟的 mind，界面上却还显示导师龟。
+   */
   const ensureRole = (role: AgentProfileId, goalId: string): string => {
-    const existing = getLatest().conversations.find(
-      (c) => c.goalId === goalId && (c.voice ?? 'tutor') === role,
-    )
-    if (existing) return existing.id
-    const id = roleConversationId(goalId, role as AgentVoice)
-    const now = Date.now()
-    const conv: Conversation = { id, goalId, voice: role as AgentVoice, messages: [], createdAt: now, updatedAt: now }
-    set({ ...getLatest(), conversations: [...getLatest().conversations, conv] })
-    return id
+    const store = getLatest()
+    const ensured = ensureRoleConversation(store, role as AgentVoice, goalId)
+    if (ensured.store !== store) set(ensured.store)
+    return ensured.conversationId
   }
   const resolveRole = (role: AgentProfileId, goalId?: string | null): string | null => {
-    const matches = getLatest().conversations.filter(
-      (c) => (c.voice ?? 'tutor') === role && (goalId == null || c.goalId === goalId),
-    )
-    matches.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-    return matches[0]?.id ?? null
+    if (!goalId) return null
+    return roleConversationsOfGoal(getLatest(), goalId, role)[0]?.id ?? null
   }
   const roleNameOf = (role: AgentProfileId): string => agentNameOf(profileOf(agentSettings, role), role)
   sandboxBase.chat = createChatOps({
@@ -226,6 +226,14 @@ export function rigTurnTools(io: {
     roleNameOf,
     messageOf: (messageId): ConversationMessage | null =>
       getLatest().conversations.find((c) => c.id === target.conversationId)?.messages.find((m) => m.id === messageId) ?? null,
+    deliveryOf: (messageId) => {
+      const conv = getLatest().conversations.find((c) => c.id === target.conversationId)
+      // 先找 role 会话消息（work 交付唤醒后的那条 user 消息带 delivery），
+      // 再找通道流水（work / agent 信封本身就带 delivery，不必等它进 messages）。
+      const fromMessage = conv?.messages.find((m) => m.id === messageId)?.delivery
+      if (fromMessage) return fromMessage
+      return conv?.channels?.find((m) => m.id === messageId)?.delivery
+    },
     resolveAttachments: (items) =>
       resolveChatAttachments(items, {
         getLatest,
@@ -242,7 +250,7 @@ export function rigTurnTools(io: {
       })
       return { ok: r.ok, channel: 'work', to: name, ...(r.error ? { error: r.error } : {}) }
     },
-    sendToGroup: async ({ text, mentions, messageId, attachments, extra }) => {
+    sendToGroup: async ({ text, detail, mentions, mention, messageId, attachments, extra, delivery, silent }) => {
       const goalId = target.goalId
       if (!goalId) return { ok: false, error: '当前 role 会话不挂在目标上，无法进入群聊' }
       const mentionRoles: MentionRole[] = AGENT_ROLE_IDS.filter((id) => id !== 'free').map((id) => ({
@@ -250,55 +258,101 @@ export function rigTurnTools(io: {
         names: [roleNameOf(id), DEFAULT_AGENT_NAME[id]],
       }))
       /*
-       * 正文里的 `@名字` 是群聊投递的唯一真源：模型传的 to / mentions 只作为补充。
-       * 否则模型把「@导师龟」写成 to=designer 时，设计龟会真的收到导师的活。
-       * 有 @ 时以正文为准；没有 @ 时才用 to / mentions，并要求正文补上点名。
+       * 正文里的 `@名字` 是群聊投递的唯一真源：模型传的 mentions 只作补充。
+       * 所有 @ 都只是「把这句话抄进对方上下文」，不激活任何 loop。
+       * 唯一会起轮的是 `mention`（一条消息最多一个）。
        */
       const textIds = mentionedRoleIdsOf(text, mentionRoles)
+      const mentionsUser = mentionsUserInGroup(text, userPeer().name)
       const selfMentionError = groupSelfMentionError(textIds, voice, roleNameOf(voice))
       if (selfMentionError) return { ok: false, error: selfMentionError }
       let ids: AgentProfileId[] = textIds
       if (!ids.length) {
         const rawIds = [...new Set((mentions ?? []).map((id) => id.trim()).filter(Boolean))]
-        if (rawIds.length) {
-          ids = rawIds
-            .map((raw) => {
-              if (isAgentRoleId(raw)) return raw as AgentProfileId
-              return AGENT_ROLE_IDS.find(
-                (id) => id !== 'free' && (roleNameOf(id) === raw || DEFAULT_AGENT_NAME[id] === raw),
-              )
-            })
-            .filter((id): id is AgentProfileId => Boolean(id))
-          if (ids.length !== rawIds.length) return { ok: false, error: '群聊 @ 的目标 role id / 名字不合法' }
-          const rawSelfError = groupSelfMentionError(ids, voice, roleNameOf(voice))
-          if (rawSelfError) return { ok: false, error: rawSelfError }
-          for (const id of ids) {
-            if (!text.includes('@' + roleNameOf(id)) && !text.includes('@' + DEFAULT_AGENT_NAME[id])) {
-              return { ok: false, error: `群聊消息要投给 ${roleNameOf(id)}，正文必须显式 @${roleNameOf(id)}` }
+        // 正文只 @用户：这是给用户看的结论，即使模型误填了 to / mentions 也不投递给任何 role。
+        if (!(mentionsUser && !textIds.length)) {
+          if (rawIds.length) {
+            ids = rawIds
+              .map((raw) => {
+                if (isAgentRoleId(raw)) return raw as AgentProfileId
+                return AGENT_ROLE_IDS.find(
+                  (id) => id !== 'free' && (roleNameOf(id) === raw || DEFAULT_AGENT_NAME[id] === raw),
+                )
+              })
+              .filter((id): id is AgentProfileId => Boolean(id))
+            if (ids.length !== rawIds.length) return { ok: false, error: '群聊 @ 的目标 role id / 名字不合法' }
+            const rawSelfError = groupSelfMentionError(ids, voice, roleNameOf(voice))
+            if (rawSelfError) return { ok: false, error: rawSelfError }
+            for (const id of ids) {
+              if (!hasMentionOf(text, [roleNameOf(id), DEFAULT_AGENT_NAME[id]])) {
+                return { ok: false, error: `群聊消息要投给 ${roleNameOf(id)}，正文必须显式写 \`@${roleNameOf(id)} \`（名字后留一个空格）` }
+              }
             }
+          } else if (text.includes('@')) {
+            // 写了 @ 却一个成员都没解析出来：不能悄悄退回默认调度，否则会把话投错。
+            return { ok: false, error: '群聊正文里的 @ 没有匹配到任何成员；请检查名字，并在 `@名字 ` 后留一个空格' }
           }
-        } else if (text.includes('@')) {
-          // 写了 @ 却一个成员都没解析出来：不能悄悄退回默认调度，否则会把活投错。
-          return { ok: false, error: '群聊正文里的 @ 没有匹配到任何成员，请检查名字或补全 @' }
-        } else {
-          // 群聊没有点名时由调度龟兜底接收；这是用户的默认路由，不是广播。
-          ids = ['dispatcher']
         }
       }
+      /*
+       * mention：唯一会启动目标一轮的那个人。它必须在正文里被 @；@ 可以有很多个，mention 只能有一个。
+       * ChatOps 把旧 `to` 兼容成 mention；用户消息则由群聊桥把首个 @ 解析成 mention。
+       */
+      const rawMention = mention?.trim()
+      let mentionId: AgentProfileId | undefined
+      if (rawMention) {
+        mentionId = isAgentRoleId(rawMention)
+          ? (rawMention as AgentProfileId)
+          : AGENT_ROLE_IDS.find((id) => id !== 'free' && (roleNameOf(id) === rawMention || DEFAULT_AGENT_NAME[id] === rawMention))
+        if (!mentionId) return { ok: false, error: 'mention 的目标 role id / 名字不合法' }
+        if (mentionId === voice) {
+          return { ok: false, error: `群聊里不能 mention 自己（${roleNameOf(voice)}）；mention 只能给对方` }
+        }
+        if (!ids.includes(mentionId)) {
+          return { ok: false, error: `mention 的 ${roleNameOf(mentionId)} 必须同时出现在正文 \`@${roleNameOf(mentionId)} \` 里` }
+        }
+      }
+      if (silent && mentionId) {
+        return { ok: false, error: 'silent 静默汇报不能带 mention：它只入上下文，不激活目标' }
+      }
       const from = peerOf('agent', voice, roleName)
-      // 正文没有 @ 时默认投给调度龟，但不要凭空造一条 @ 提示；只有真的点名了才带 mentions。
-      const explicitMentions = textIds.length > 0 || Boolean(mentions?.length)
-      const mentionPeers = explicitMentions ? ids.map((id) => peerOf('agent', id, roleNameOf(id))) : []
+      // 正文没有 @ 时不再默认投给调度龟：agent 的群聊发言可以只是说给群里听。
+      const mentionPeers = ids.map((id) => peerOf('agent', id, roleNameOf(id)))
+      const activePeer = mentionId ? mentionPeers.find((p) => p.id === mentionId) : undefined
+      /*
+       * 评论串路由（纯函数 planGroupThread）：
+       * - 只有真正会激活某位 role 的 mention 才开 / 续任务串；纯抄送的 @ 不拉人开会；
+       * - 最终 @用户 的汇报、以及 ask 气泡留在一级群聊。
+       */
+      const conv = getLatest().conversations.find((c) => c.id === target.conversationId)
+      const latestGroupMsg = [...(conv?.channels ?? [])].reverse().find((m) => m.kind === 'group')
+      const groupMsgId = 'g-' + crypto.randomUUID()
+      const threadPlan = planGroupThread({
+        goalId,
+        messageId: groupMsgId,
+        latestThreadId: latestGroupMsg?.threadId,
+        mentionsUser,
+        targetIds: mentionId ? [mentionId] : [],
+      })
+      const threadId = threadPlan.threadId
+      const threadRootId = threadPlan.threadRootId
       const groupMsg = outboundEnvelope({
         channel: 'group',
         from,
         to: groupPeer(),
+        id: groupMsgId,
         text,
+        ...(detail ? { detail } : {}),
         ...(messageId ? { quoteMessageId: messageId } : {}),
         ...(attachments ? { attachments } : {}),
         ...(mentionPeers.length ? { mentions: mentionPeers } : {}),
+        ...(activePeer ? { mention: activePeer } : {}),
+        ...(delivery ? { delivery } : {}),
         ...(extra ? { extra } : {}),
         goalId,
+        ...(threadId ? { threadId } : {}),
+        ...(threadRootId ? { threadRootId } : {}),
+        ...(silent ? { silent: true } : {}),
       })
       appendGroupMessage(groupMsg)
       // 自己这一侧的 mind 也留一条出站流水（群聊层另开，不混进私聊）
@@ -314,10 +368,16 @@ export function rigTurnTools(io: {
           text,
           id: groupMsg.id,
           ts: groupMsg.ts,
+          ...(detail ? { detail } : {}),
           ...(attachments ? { attachments } : {}),
           ...(extra ? { extra } : {}),
+          ...(delivery ? { delivery } : {}),
           mentions: mentionPeers,
+          ...(activePeer && activePeer.id === id ? { mention: activePeer } : {}),
           goalId,
+          ...(threadId ? { threadId } : {}),
+          ...(threadRootId ? { threadRootId } : {}),
+          ...(silent ? { silent: true } : {}),
         })
         deliverInbound(
           {
@@ -332,12 +392,19 @@ export function rigTurnTools(io: {
               ts: groupMsg.ts,
               envelopeId: groupMsg.id,
               goalId,
+              ...(threadId ? { threadId } : {}),
+              ...(threadRootId ? { threadRootId } : {}),
+              ...(id === mentionId ? { mention: true } : {}),
+              ...(delivery ? { delivery } : {}),
             },
             envelopeId: groupMsg.id,
+            ...(delivery ? { delivery } : {}),
             ...(attachments?.images ? { images: attachments.images } : {}),
             ...(attachments?.files ? { files: attachments.files } : {}),
           },
           inbound,
+          // 只有唯一的 mention 起轮；其余 @ 一律只注入上下文。
+          { silent: silent || id !== mentionId },
         )
       }
       return {
@@ -345,6 +412,7 @@ export function rigTurnTools(io: {
         channel: 'group',
         id: groupMsg.id,
         ...(ids.length ? { to: ids.join(',') } : {}),
+        ...(mentionId ? { mention: mentionId } : {}),
       }
     },
   })
@@ -380,6 +448,14 @@ export function rigTurnTools(io: {
         .reverse()
         .find((m) => m.direction === 'in' && m.kind !== 'work')
       const channel = lastInbound?.kind === 'group' ? 'group' : 'user'
+      /*
+       * ask 永远落一级群聊，不放进评论区；但若当前任务本身在评论串里，气泡带上 threadId
+       * （不填 threadRootId），后续 agent 回复仍能沿这条串继续，不会因为一次问询就断线。
+       */
+      const askThreadId =
+        channel === 'group'
+          ? [...(conv?.channels ?? [])].reverse().find((m) => m.kind === 'group')?.threadId
+          : undefined
       const from = peerOf('agent', voice, roleName)
       const to = channel === 'group' ? groupPeer() : userPeer()
       const askMessage = outboundEnvelope({
@@ -388,6 +464,7 @@ export function rigTurnTools(io: {
         to,
         text: form.title || '需要你确认一下',
         ...(target.goalId && channel === 'group' ? { goalId: target.goalId } : {}),
+        ...(askThreadId ? { threadId: askThreadId } : {}),
         ask: { id: askId, form, expiresAt, status: 'pending' },
       })
       appendChannel(target.conversationId, askMessage)
@@ -395,6 +472,10 @@ export function rigTurnTools(io: {
 
       let timer: ReturnType<typeof setTimeout> | null = null
       let waiter: (value: unknown) => void = () => {}
+      /** 到期计时器的有效截止时间；悬停暂停时用它算剩余 */
+      let deadline = expiresAt
+      let paused = false
+      let unregister: () => void = () => {}
       const statusOf = (value: unknown): ChannelAskStatus => {
         if (value && typeof value === 'object') {
           const rec = value as { ok?: boolean; cancelled?: boolean; timedOut?: boolean }
@@ -409,21 +490,25 @@ export function rigTurnTools(io: {
         askWaitersRef.current.delete(askId)
         askSignal.removeEventListener('abort', onAbort)
         if (timer) clearTimeout(timer)
+        timer = null
+        unregister()
         setPendingAsk((prev) => {
           if (prev[target.conversationId]?.id !== askId) return prev
           const next = { ...prev }
           delete next[target.conversationId]
           return next
         })
-        // 状态写回气泡：提交 / 取消 / 超时后表单失效，倒计时也停
+        // 状态写回气泡：提交 / 取消 / 超时后表单失效，倒计时也停。
+        // 截止时间可能已被悬停暂停改写过，取当前落盘的那一份，而不是最初的 askMessage。
+        const state = getLatest()
+        const cur = state.conversations.find((c) => c.id === target.conversationId)
+        const currentAsk = cur?.channels?.find((m) => m.id === askMessage.id)?.ask ?? askMessage.ask!
         const settled = {
-          ...askMessage.ask!,
+          ...currentAsk,
           status,
           settledAt: Date.now(),
         }
-        const cur = getLatest().conversations.find((c) => c.id === target.conversationId)
         if (cur) {
-          const state = getLatest()
           const conversations = state.conversations.map((c) =>
             c.id === target.conversationId
               ? {
@@ -438,9 +523,61 @@ export function rigTurnTools(io: {
         if (channel === 'group') patchGroupMessage(askMessage.id, { ask: settled })
         void applyAskToProfile(form, value).then(resolve, () => resolve(value))
       }
+      /** 悬停暂停会延长有效期：把新的截止时间同时写回会话流水与群聊，刷新后仍是同一份剩余。 */
+      const writeAskExpiry = (expiresAt: number): void => {
+        const state = getLatest()
+        const cur = state.conversations.find((c) => c.id === target.conversationId)
+        const currentAsk = cur?.channels?.find((m) => m.id === askMessage.id)?.ask
+        if (!cur || !currentAsk) return
+        const nextAsk = { ...currentAsk, expiresAt }
+        const conversations = state.conversations.map((c) =>
+          c.id === target.conversationId
+            ? {
+                ...c,
+                channels: (c.channels ?? []).map((m) => (m.id === askMessage.id ? { ...m, ask: nextAsk } : m)),
+                updatedAt: Date.now(),
+              }
+            : c,
+        )
+        set({ ...state, conversations })
+        if (channel === 'group') patchGroupMessage(askMessage.id, { ask: nextAsk })
+      }
       waiter = (value: unknown): void => settle(statusOf(value), value)
       const onAbort = () =>
         settle('cancelled', { ok: false, content: '用户停止了这一轮，表单已关闭。不要假设用户的回答。' })
+      const expire = () => {
+        timer = null
+        settle('expired', {
+          ok: false,
+          timedOut: true,
+          content: '表单已到时自动失效。不要假设用户的回答。',
+        })
+      }
+      const arm = (ms: number) => {
+        deadline = Date.now() + ms
+        timer = setTimeout(expire, ms)
+      }
+      /*
+       * 悬停暂停：鼠标停在气泡上时界面会冻结自己的进度条，这里同步停掉宿主
+       * 的 setTimeout，并把剩余时长留住；移出后按同一份剩余重新起算。
+       * 只停「当前这一张」ask，别的 ask 不受影响。
+       */
+      unregister = registerAskTimer(askId, {
+        pause: () => {
+          if (paused || !timer) return
+          clearTimeout(timer)
+          timer = null
+          paused = true
+          deadline = Math.max(0, deadline - Date.now())
+          writeAskExpiry(Date.now() + deadline)
+        },
+        resume: () => {
+          if (!paused) return
+          paused = false
+          arm(deadline)
+          writeAskExpiry(deadline)
+        },
+      })
       if (askSignal.aborted) {
         askWaitersRef.current.set(askId, waiter)
         onAbort()
@@ -454,14 +591,9 @@ export function rigTurnTools(io: {
       /*
        * 硬时限：**从挂出那一刻起算**，不随鼠标键盘续期（用户要的是可预期，
        * 而不是「动一下就一直挂着」）。到期只收自己的 waiter，并带回 timedOut。
+       * 唯一例外是鼠标悬停在气泡上——用户正在填表，暂停计时（见上面的 pause/resume）。
        */
-      timer = setTimeout(() => {
-        settle('expired', {
-          ok: false,
-          timedOut: true,
-          content: '表单已到时自动失效。不要假设用户的回答。',
-        })
-      }, ASK_BUBBLE_TTL_MS)
+      arm(Math.max(0, expiresAt - Date.now()))
     })
 
   /** role 自己的 ask（以及审批）走这条；work 在下面单独接上自己的信号。 */

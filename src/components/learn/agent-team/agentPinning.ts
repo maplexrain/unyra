@@ -2,7 +2,7 @@
  * 智能体置顶管理与按最近回复时间排序逻辑（agentPinning）
  *
  * 核心规则：
- * 1. 聊天龟（free）与调度龟（dispatcher）为团队核心枢纽，【默认置顶且不可撤销】。
+ * 1. 调度龟（dispatcher）为团队任务入口，【默认置顶且不可撤销】。
  * 2. 用户可自由置顶 / 取消置顶其他声部（导师、出卷、设计、调研、维修）。
  * 3. 排序策略：
  *    - 置顶项始终在非置顶项之前；
@@ -16,14 +16,14 @@ import type { AgentTeamMode } from './conversationList'
 const PINNED_STORAGE_KEY = 'moji:agent-team:pinned'
 
 /** 默认置顶且不可撤销的声部 */
-export const LOCKED_PINNED_AGENTS: readonly AgentTeamMode[] = ['free', 'dispatcher']
+export const LOCKED_PINNED_AGENTS: readonly AgentTeamMode[] = ['dispatcher']
 
 /** 检查某个声部是否为不可撤销置顶 */
 export function isPinLocked(agentId: AgentTeamMode): boolean {
   return LOCKED_PINNED_AGENTS.includes(agentId)
 }
 
-/** 从持久化存储读取当前置顶声部集合（锁定的两项恒在场） */
+/** 从持久化存储读取当前置顶声部集合（锁定项恒在场） */
 export function loadPinnedAgents(): Set<AgentTeamMode> {
   const set = new Set<AgentTeamMode>(LOCKED_PINNED_AGENTS)
   try {

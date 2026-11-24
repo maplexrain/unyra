@@ -1,5 +1,5 @@
 /**
- * 七位 role 的系统提示词（除导师外）与按 role 的统一入口（buildVoiceSystem）。
+ * 六位团队 role 的系统提示词（除导师外）与按 role 的统一入口（buildVoiceSystem）。
  * 导师的提示词在 teacherSystem（buildTeacherSystem）。
  *
  * 结构纪律与导师同源：**共同前缀（SHARED_AGENT_PREFIX，P0）→ 共用排版与视觉规范（仅内容

@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
 import { GroupChatPanel, mentionContextAt } from '../src/components/agent/panel/GroupChatPanel'
 import { mentionedAgentsOf } from '../src/components/agent/panel/groupMentions'
+import { groupThreadIdOf } from '../src/learn/groupChat'
 import type { ChannelMessage } from '../src/agent/types'
 
 const agents = [
@@ -33,6 +34,8 @@ describe('GroupChatPanel', () => {
       'tutor',
       'dispatcher',
     ])
+    expect(mentionedAgentsOf('@导师龟，请讲一下', agents)).toEqual([])
+    expect(mentionedAgentsOf('请找 @导师龟', agents)).toEqual([])
     expect(mentionedAgentsOf('没有点名的群消息', agents)).toEqual([])
   })
 
@@ -54,8 +57,83 @@ describe('GroupChatPanel', () => {
     })
     expect(host.textContent).toContain('@导师龟 讲讲极限')
     expect(host.textContent).toContain('@导师龟 收到，已派 work')
-    expect(host.textContent).toContain('@ 导师龟')
+    expect(host.textContent).toContain('@导师龟')
     expect(host.textContent).not.toContain('思维')
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('姓名时间行展示 @ 与发送者状态；不再有独立 mention 行，交付账和详细层可展开', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const m: ChannelMessage = {
+      ...message('m1', { kind: 'role', id: 'tutor', name: '导师龟' }, '@用户 极限讲义已经更新'),
+      detail: '详细依据：先补了极限定义，再补了夹逼定理例题，最后把产物放到 微积分/极限。',
+      mention: { kind: 'role', id: 'dispatcher', name: '调度龟' },
+      delivery: { files: [{ path: '微积分/极限', action: 'updated' }], sources: [] },
+    }
+    act(() => {
+      root.render(
+        createElement(GroupChatPanel, {
+          messages: [m],
+          agents: [{ ...agents[0]!, running: true }, agents[1]!],
+          onSend: vi.fn(() => true),
+        }),
+      )
+    })
+    const meta = host.querySelector('[data-message-meta]')
+    expect(meta?.textContent).toContain('导师龟')
+    expect(meta?.textContent).toContain('@导师龟')
+    expect(meta?.textContent).toContain('工作中')
+    expect(host.querySelector('[data-agent-status="running"]')).not.toBeNull()
+    expect(host.querySelector('[data-mention-agent]')).toBeNull()
+    expect(host.textContent).toContain('本轮交付')
+    expect(host.textContent).not.toContain('详细依据')
+    act(() => {
+      host.querySelector<HTMLButtonElement>('[data-bubble-detail-toggle]')?.click()
+    })
+    expect(host.textContent).toContain('详细依据')
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+
+  it('一级列表只画主楼；点「评论」进入评论串后才看到楼内回复', () => {
+    const rootMessage = message('m1', { kind: 'role', id: 'dispatcher', name: '调度龟' }, '@导师龟 帮我查一下')
+    rootMessage.threadId = groupThreadIdOf('g1', 'm1')
+    const comment = message('m2', { kind: 'role', id: 'tutor', name: '导师龟' }, '@调度龟 收到，已开工')
+    comment.threadId = groupThreadIdOf('g1', 'm1')
+    comment.threadRootId = 'm1'
+
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(GroupChatPanel, {
+          messages: [rootMessage, comment],
+          agents,
+          onSend: vi.fn(() => true),
+        }),
+      )
+    })
+    expect(host.textContent).toContain('@导师龟 帮我查一下')
+    expect(host.textContent).not.toContain('@调度龟 收到，已开工')
+    const commentButton = host.querySelector<HTMLButtonElement>('button[title="group:g1>m1"]')
+    expect(commentButton).not.toBeNull()
+    act(() => {
+      commentButton!.click()
+    })
+    expect(host.textContent).toContain('评论串')
+    expect(host.textContent).toContain('原消息')
+    expect(host.textContent).toContain('@调度龟 收到，已开工')
+    expect(host.textContent).toContain('group:g1>m1')
+
     act(() => {
       root.unmount()
     })

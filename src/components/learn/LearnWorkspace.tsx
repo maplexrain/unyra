@@ -49,7 +49,7 @@ import {
   activateIn,
   activeIdsOf,
   allTabs,
-  claimTab, closeIds, DEFAULT_FIX_SIDE_WIDTH, ensureGoalAgentTeamTab,
+  claimTab, closeIds, ensureGoalAgentTeamTab,
   findTab,
   focusedTab,
   goalTabsOf,
@@ -1239,7 +1239,6 @@ export default function LearnWorkspace({
         activeNodeId: null,
         activeConversationId: conversation.id,
         docArea: withOwners(docArea, claimedOwners),
-        ...(!curStore.fixSide ? { fixSide: { targetTabId: `team:${goalId}`, width: DEFAULT_FIX_SIDE_WIDTH } } : {}),
       }
 
       set(nextStore)
@@ -1303,8 +1302,8 @@ export default function LearnWorkspace({
 
   /*
    * 智能体团队（Tab 页版 AgentPanel）宿主协调：
-   * 监听工作区各处触发的工作流与提问表单（runningByConversation / pendingAskByConv），
-   * 自动同步 agentTabs 激活会话，并在需要时自动切至智能体团队页签。
+   * 只管理页签的打开 / 聚焦 / Ctrl+Q 往返；agent 被激活或工作流启动时**不自动跳页**，
+   * 用户停在哪里就是哪里。新 ask 表单仍会主动对齐并露出页签（见 useAgentTeamHost）。
    */
   const { toggleAgentTeam, expandAgentTeam } = useAgentTeamHost({
     getLatest,

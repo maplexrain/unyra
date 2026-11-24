@@ -30,7 +30,7 @@ import {
 import type { AskAnswers, ExamToolDeps } from '../../agent/tools'
 import { hasApiKey, loadAiSettings } from '../../ai/settings'
 import { freeConversationById, getFreeConversations, mutateFreeConversation } from '../freeChat'
-import { agentNameOf, profileOf, type AgentVoice } from '../../agent/agentProfile'
+import { type AgentVoice } from '../../agent/agentProfile'
 import { setEffortContextProbe } from '../effortGuard'
 import type { LearnStore } from '../types'
 import { conversationById, nodeById } from '../graph'
@@ -42,16 +42,14 @@ import { activeMessages } from '../compact'
 import { missingPromptModules, promptModuleMessage, type PromptModule } from '../ai/promptModules'
 import type { AgentProfileId } from '../../agent/agentProfile'
 import type { RoleWorkDispatcher } from '../roleWork/dispatch'
+import { roleOfConversation } from '../roleWork/roles'
 import {
-  clearRoleOutbound,
   flushChannelInbox,
-  markRoleOutbound,
-  roleOutboundMade,
   setRoleWorkDispatcher,
   takeChannelInjection,
 } from '../roleWork/dispatch'
-import { groupPeer, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
-import { appendGroupMessage } from '../groupChat'
+import { inboundMessage } from '../roleWork/channels'
+import { pauseAskTimer, resumeAskTimer } from '../roleWork/askTimers'
 import { useAgentSlots } from './slots'
 import { useAgentSession } from './session'
 import { assembleTurnEntry } from './agentPrompt'
@@ -244,6 +242,15 @@ export function useAgent(opts: {
   )
 
   /**
+   * 气泡悬停：暂停 / 恢复宿主侧的 ask 到期定时器。
+   * 只控制计时，不改变 ask 状态；真正的到期仍由 toolRig 的 settle 收口。
+   */
+  const setAskHover = useCallback((askId: string, hovering: boolean) => {
+    if (hovering) pauseAskTimer(askId)
+    else resumeAskTimer(askId)
+  }, [])
+
+  /**
    * runTurn 的本体，不做并发控制（守卫与排队在 runTurn 里）。
    */
   const runTurnUnchecked = useCallback(
@@ -320,8 +327,9 @@ export function useAgent(opts: {
        * 漏标的承接会话在这里就地补标（幂等；导师对话不写 voice，与老数据同形）。
        */
       const existing = conversationById(before, target.conversationId)
-      const voice: AgentVoice = existing?.voice ?? target.voice ?? 'tutor'
-      clearRoleOutbound(target.conversationId)
+      const voice: AgentVoice = existing
+        ? (roleOfConversation(existing) as AgentVoice)
+        : (target.voice ?? 'tutor')
       let conv = existing ?? {
         id: target.conversationId,
         goalId: target.goalId,
@@ -506,44 +514,6 @@ export function useAgent(opts: {
           autoCompactRef,
           onNoticeRef,
         })
-        // 收口兜底：这一轮从未用 chat.send 对外说过话时，把最终正文补成一条
-        // （auto: true 标出来，角色不会误以为这是它主动发的）。用户能立刻在对应通道看到回复。
-        if (!roleOutboundMade(target.conversationId)) {
-          const finalText = parts
-            .filter((p) => p.type === 'text')
-            .map((p) => p.text)
-            .join('')
-            .trim()
-          const cur = conversationById(getLatest(), target.conversationId)
-          if (finalText && cur) {
-            // 兜底也必须沿**最近一条外部入站**的通道回去：群聊来的任务不能悄悄变成私聊回复
-            const lastInbound = [...(cur.channels ?? [])]
-              .reverse()
-              .find((m) => m.direction === 'in' && m.kind !== 'work')
-            const fallbackChannel =
-              lastInbound?.kind === 'group'
-                ? 'group'
-                : lastInbound?.kind === 'agent'
-                  ? 'agent'
-                  : 'user'
-            const envelope = outboundEnvelope({
-              channel: fallbackChannel,
-              from: peerOf('agent', voice, agentNameOf(profileOf(entry.agentSettings, voice), voice)),
-              to:
-                fallbackChannel === 'group'
-                  ? groupPeer()
-                  : fallbackChannel === 'agent' && lastInbound
-                    ? lastInbound.from
-                    : userPeer(),
-              text: finalText,
-              auto: true,
-              ...(fallbackChannel === 'group' && cur.goalId ? { goalId: cur.goalId } : {}),
-            })
-            if (fallbackChannel === 'group') appendGroupMessage(envelope)
-            persist({ ...cur, channels: [...(cur.channels ?? []), envelope].slice(-200), updatedAt: Date.now() })
-            markRoleOutbound(target.conversationId)
-          }
-        }
         // 通道收口：本轮若还有排着的通道消息，接着起下一轮（见 learn/roleWork/dispatch）
         flushChannelInbox(target.conversationId)
       }
@@ -720,6 +690,23 @@ export function useAgent(opts: {
     [conversationId, abortMapRef, workManagersRef],
   )
 
+  /**
+   * 停止某个 work 正在跑的那一轮：只认这一个 work，不碰 role 的对话，
+   * 也不连坐同目录下别的 work。work 已经空闲时是 no-op。
+   */
+  const stopWork = useCallback(
+    (workId: string, convId?: string) => {
+      const id = convId ?? conversationId
+      if (!id) return
+      const work = getLatest()
+        .conversations.find((c) => c.id === id)
+        ?.works?.sessions.find((w) => w.id === workId)
+      if (!work) return
+      workManagersRef.current.get(id)?.api.stop(work.name)
+    },
+    [conversationId, getLatest, workManagersRef],
+  )
+
   /* ---------- 等待队列：导师在跑时用户发出去的消息排在这里（见 learn/agentQueue） ---------- */
 
   // 等待队列的机制（writeQueue / dispatchQueued / drain / 排队 / 撤回 / 立即发送）
@@ -807,6 +794,33 @@ export function useAgent(opts: {
           }))
         }
       },
+      /**
+       * 静默汇报：只把消息写进目标会话的上下文与通道流水，不启动一轮、不进排队。
+       * 通道流水由 deliverInbound 先落过，这里只补 `messages` 里的那一条 user 侧消息；
+       * 下一轮组历史时它带 channel stamp 出现，模型能看到这段进度。
+       */
+      appendSilentInbound: (req, _envelope) => {
+        const message = inboundMessage(req.text, req.stamp, {
+          ...(req.images ? { images: req.images } : {}),
+          ...(req.files ? { files: req.files } : {}),
+          ...(req.hidden ? { hidden: true } : {}),
+          ...(req.mark ? { mark: req.mark } : {}),
+          ...(req.delivery ? { delivery: req.delivery } : {}),
+        })
+        const cur = conversationById(getLatest(), req.conversationId)
+        if (cur) {
+          persist({ ...cur, messages: [...cur.messages, message], updatedAt: Date.now() })
+          return
+        }
+        const free = freeConversationById(req.conversationId)
+        if (free) {
+          mutateFreeConversation(req.conversationId, (c) => ({
+            ...c,
+            messages: [...c.messages, message],
+            updatedAt: Date.now(),
+          }))
+        }
+      },
     }
   })
   useEffect(() => {
@@ -882,6 +896,7 @@ export function useAgent(opts: {
     runWorkflow,
     compactNow,
     stop,
+    stopWork,
     /** api.ask 的表单状态与两条出口（由 AgentPanel 渲染成输入框上方的卡片） */
     pendingAsk: conversationId ? (pendingAsk[conversationId] ?? null) : null,
     submitAsk,
@@ -889,6 +904,7 @@ export function useAgent(opts: {
     submitAskById,
     cancelAskById,
     expireAskById,
+    setAskHover,
     /** 最近一跳实测的输出速度（tok/s）；没在跑、或服务端没流式回包时为 null */
     tps: conversationId ? (tps[conversationId] ?? null) : null,
     /** 正在跑的这一轮到目前为止的账（每跳 usage 重算）：上下文占用圆环的实时数据源 */
@@ -911,7 +927,7 @@ function findRoleConversation(
   goalId?: string | null,
 ): string | null {
   const matches = store.conversations.filter(
-    (c) => (c.voice ?? 'tutor') === role && (goalId == null || c.goalId === goalId),
+    (c) => roleOfConversation(c) === role && (goalId == null || c.goalId === goalId),
   )
   matches.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
   return matches[0]?.id ?? null

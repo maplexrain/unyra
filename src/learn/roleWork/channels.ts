@@ -86,7 +86,9 @@ export function channelMetaLineOf(stamp: ChannelStamp): string {
     ', channel:' + stamp.channel +
     ', id:' + envelopeId +
     ', roleId:' + id +
-    ', roleName:' + name + '}]'
+    ', roleName:' + name +
+    (stamp.mention ? ', mention:self' : '') +
+    '}]'
   )
 }
 
@@ -105,7 +107,7 @@ export function withChannel(conv: Conversation, message: ChannelMessage): Conver
 export function inboundMessage(
   text: string,
   stamp: ChannelStamp,
-  extra?: Pick<ConversationMessage, 'images' | 'files' | 'hidden' | 'mark'>,
+  extra?: Pick<ConversationMessage, 'images' | 'files' | 'hidden' | 'mark' | 'delivery'>,
 ): ConversationMessage {
   return {
     id: crypto.randomUUID(),
@@ -117,6 +119,7 @@ export function inboundMessage(
     ...(extra?.files ? { files: extra.files } : {}),
     ...(extra?.hidden ? { hidden: true } : {}),
     ...(extra?.mark ? { mark: extra.mark } : {}),
+    ...(extra?.delivery ?? stamp.delivery ? { delivery: extra?.delivery ?? stamp.delivery } : {}),
   }
 }
 
@@ -144,22 +147,35 @@ export function outboundEnvelope(input: {
   from: ChannelPeer
   to: ChannelPeer
   text: string
+  /** 内层详细汇报；气泡默认显示 text，可展开查看 */
+  detail?: string
+  /** 宿主指定 id（群聊评论串需要先知道根消息 id）；缺省随机 */
+  id?: string
   ts?: number
   attachments?: ChannelMessage['attachments']
   quoteMessageId?: string
   auto?: boolean
   mentions?: ChannelPeer[]
+  /** 唯一被激活的 mention */
+  mention?: ChannelPeer
+  /** 交付账（work 交付经 role 转发到通道） */
+  delivery?: ChannelMessage['delivery']
   goalId?: string
+  threadId?: string
+  threadRootId?: string
   extra?: ChannelMessage['extra']
   ask?: ChannelMessage['ask']
+  /** 静默汇报：只入上下文与流水，不启动目标 role 一轮 */
+  silent?: boolean
 }): ChannelMessage {
   return {
-    id: crypto.randomUUID(),
+    id: input.id ?? crypto.randomUUID(),
     kind: input.channel,
     direction: 'out',
     from: input.from,
     to: input.to,
     text: input.text,
+    ...(input.detail ? { detail: input.detail } : {}),
     ts: input.ts ?? Date.now(),
     ...(input.attachments ? { attachments: input.attachments } : {}),
     ...(input.extra ? { extra: input.extra } : {}),
@@ -167,7 +183,12 @@ export function outboundEnvelope(input: {
     ...(input.quoteMessageId ? { quoteMessageId: input.quoteMessageId } : {}),
     ...(input.auto ? { auto: true } : {}),
     ...(input.mentions?.length ? { mentions: input.mentions } : {}),
+    ...(input.mention ? { mention: input.mention } : {}),
+    ...(input.delivery ? { delivery: input.delivery } : {}),
     ...(input.goalId ? { goalId: input.goalId } : {}),
+    ...(input.threadId ? { threadId: input.threadId } : {}),
+    ...(input.threadRootId ? { threadRootId: input.threadRootId } : {}),
+    ...(input.silent ? { silent: true } : {}),
   }
 }
 
@@ -177,12 +198,22 @@ export function inboundEnvelope(input: {
   from: ChannelPeer
   to: ChannelPeer
   text: string
+  /** 内层详细汇报；气泡默认显示 text，可展开查看 */
+  detail?: string
   ts?: number
   id?: string
   attachments?: ChannelMessage['attachments']
   mentions?: ChannelPeer[]
+  /** 唯一被激活的 mention */
+  mention?: ChannelPeer
+  /** 交付账（work 交付经 role 转发到通道） */
+  delivery?: ChannelMessage['delivery']
   goalId?: string
+  threadId?: string
+  threadRootId?: string
   extra?: ChannelMessage['extra']
+  /** 静默汇报：只入上下文与流水，不启动目标 role 一轮 */
+  silent?: boolean
 }): ChannelMessage {
   return {
     id: input.id ?? crypto.randomUUID(),
@@ -191,10 +222,16 @@ export function inboundEnvelope(input: {
     from: input.from,
     to: input.to,
     text: input.text,
+    ...(input.detail ? { detail: input.detail } : {}),
     ts: input.ts ?? Date.now(),
     ...(input.attachments ? { attachments: input.attachments } : {}),
     ...(input.extra ? { extra: input.extra } : {}),
     ...(input.mentions?.length ? { mentions: input.mentions } : {}),
+    ...(input.mention ? { mention: input.mention } : {}),
+    ...(input.delivery ? { delivery: input.delivery } : {}),
     ...(input.goalId ? { goalId: input.goalId } : {}),
+    ...(input.threadId ? { threadId: input.threadId } : {}),
+    ...(input.threadRootId ? { threadRootId: input.threadRootId } : {}),
+    ...(input.silent ? { silent: true } : {}),
   }
 }

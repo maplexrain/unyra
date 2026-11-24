@@ -7,7 +7,6 @@ import {
   allTabs,
   claimTab,
   closeIds,
-  DEFAULT_FIX_SIDE_WIDTH,
   ensureGoalAgentTeamTab,
   findTab,
   focusedGroup,
@@ -506,14 +505,8 @@ export function useTabOpening({
         updated = true
       }
     }
-    if (updated || (!cur.fixSide && cur.activeGoalId && allTabs(nextDocs).some((t) => t.id === `team:${cur.activeGoalId}`))) {
-      set({
-        ...cur,
-        docArea: nextDocs,
-        ...(!cur.fixSide && cur.activeGoalId && allTabs(nextDocs).some((t) => t.id === `team:${cur.activeGoalId}`)
-          ? { fixSide: { targetTabId: `team:${cur.activeGoalId}`, width: DEFAULT_FIX_SIDE_WIDTH } }
-          : {}),
-      })
+    if (updated) {
+      set({ ...cur, docArea: nextDocs })
     }
   }, [getLatest, set])
 

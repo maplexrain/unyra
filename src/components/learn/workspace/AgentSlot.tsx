@@ -13,7 +13,7 @@ import { resetPrefixGate } from '../../../agent/prefixGate'
 import { saveAgentSettings, loadAgentSettings } from '../../../agent/settings'
 import { personaOf } from '../../../agent/persona'
 import { docFormatOf } from '../../../agent/docFormat'
-import type { AgentPart, ChannelStamp, Conversation, PendingFile, PendingImage, WorkSession } from '../../../agent/types'
+import type { AgentPart, ChannelStamp, Conversation, PendingFile, PendingImage } from '../../../agent/types'
 import type { AskAnswers } from '../../../agent/tools'
 import type { ReasoningEffort } from '../../../ai/types'
 import { userAbsPath } from '../../../lib/storage'
@@ -21,6 +21,7 @@ import { focusAgentInput } from '../../../lib/agentFocus'
 import { wsChipUserRel } from '../../../learn/chipRef'
 import { wsRefOfRel } from '../../../learn/workspace'
 import { AgentTabPane } from './AgentTabPane'
+import { useGroupDefaultOpen } from './useGroupDefaultOpen'
 import { goalConvByGoal, goalFocusByGoal } from './goalFocus'
 import { AgentRosterSidebar } from '../agent-team/AgentRosterSidebar'
 import { AgentSettingsView } from '../agent-team/AgentSettingsView'
@@ -185,8 +186,12 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
    * 替代对话流。选择声部 / 选对话 / 新建对话 / 切目标都会退出设置态回到对话。
    */
   const [settingsAgent, setSettingsAgent] = useState<AgentTeamMode | null>(null)
-  /** 群聊页：名册里固定多出来的一张卡；它不是某个 role 的会话，只读群通道流水 */
-  const [groupOpen, setGroupOpen] = useState(false)
+  /**
+   * 群聊页：名册里固定多出来的一张卡；它不是某个 role 的会话，只读群通道流水。
+   * 默认选中群聊（从 work 页签直接挂载时例外），页面打开后外部切换激活页签会自动退出，
+   * 具体纪律见 useGroupDefaultOpen。
+   */
+  const [groupOpen, setGroupOpen] = useGroupDefaultOpen(activeAgentTab, activeAgentTabId)
 
   const tutorGoalId = useMemo(() => {
     if (tabGoalId) return tabGoalId
@@ -242,36 +247,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     [goalConversationsByGoal, tutorGoalId],
   )
   /**
-   * 左栏下块的数据：每个 agent 名下的 work 上下文。
-   * role 层每个 agent 只有一段会话，列它等于把同一个标题重复一遍；真正要看的是 work。
-   * 一个 work 只认 id 一次（历史数据里同一段 role 会话可能被多个入口看到）。
+   * 左栏只留名册与目标选择器；work 上下文列表已经移到对应 agent 的对话列表底部。
    */
-  const worksByAgent = useMemo(() => {
-    const collect = (convs: Conversation[]): WorkSession[] => {
-      const byId = new Map<string, WorkSession>()
-      for (const conv of convs) for (const work of conv.works?.sessions ?? []) byId.set(work.id, work)
-      return [...byId.values()].sort((a, b) => b.lastActiveAt - a.lastActiveAt)
-    }
-    const out: Partial<Record<AgentTeamMode, WorkSession[]>> = {
-      free: collect(sortedFreeChats),
-    }
-    for (const voice of AGENT_ROSTER_ORDER) {
-      if (voice === 'free') continue
-      out[voice] = collect(tutorGoalId ? (goalConversationsByGoal.get(tutorGoalId)?.[voice] ?? []) : [])
-    }
-    return out
-  }, [sortedFreeChats, goalConversationsByGoal, tutorGoalId])
-
-  const openWorkFromRoster = (agentId: AgentTeamMode, workId: string) => {
-    const work = worksByAgent[agentId]?.find((w) => w.id === workId)
-    if (!work) return
-    setGroupOpen(false)
-    setSettingsAgent(null)
-    setEmptyTutorMode(false)
-    setEmptyVoiceMode(null)
-    openAgentTab({ kind: 'work', conversationId: work.roleConversationId, workId: work.id }, true)
-  }
-
   const activeTutorConvId = useMemo(() => {
     if (activeAgentTab.kind === 'work') {
       const workConv = conversationById(store, activeAgentTab.conversationId)
@@ -513,8 +490,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     set,
   })
   const groupMessagesForGoal = groupBridge.messages
-  const sendGroupMessage = (text: string, targetIds: AgentTeamMode[]): boolean =>
-    groupBridge.send(text, targetIds)
+  const sendGroupMessage = (text: string, targetIds: AgentTeamMode[], threadId?: string): boolean =>
+    groupBridge.send(text, targetIds, threadId)
 
   /**
    * 一枚 agent 运行时条目对应的完整 AgentPanel props。
@@ -705,6 +682,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       onAskSubmitById: agent.submitAskById,
       onAskCancelById: agent.cancelAskById,
       onAskExpireById: agent.expireAskById,
+      onAskHoverById: agent.setAskHover,
       tps: (convId ? agent.tpsByConv[convId] : null) ?? null,
       liveUsage: (convId ? agent.liveUsageByConv[convId] : null) ?? null,
       compacting: !!convId && agent.compactingConvId === convId,
@@ -725,6 +703,9 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
       viewWorkId: work?.id ?? null,
       onOpenWork: (wid: string) => {
         if (convId) openAgentTab({ kind: 'work', conversationId: convId, workId: wid }, true)
+      },
+      onStopWork: (wid: string) => {
+        if (convId) agent.stopWork(wid, convId)
       },
       // role 层单会话：加号不新建，只回到当前 role 的唯一会话
       onNewConversation: () =>
@@ -795,7 +776,6 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         voiceStats={voiceStats}
         variant={rosterTopBar ? 'top' : 'side'}
         persistCollapsed={persistLayout}
-        worksByAgent={worksByAgent}
         activeGoalId={tutorGoalId}
         goalLocked={Boolean(tabGoalId)}
         goals={store.goals}
@@ -806,7 +786,6 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
           selectTutorGoal(goalId)
           scheduleFocus()
         }}
-        onOpenWork={openWorkFromRoster}
         onOpenSettings={openAgentSettings}
         agentNames={agentNames}
         agentAvatars={agentAvatarIds}
@@ -929,6 +908,22 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
                 onAskSubmit={agent.submitAskById}
                 onAskCancel={agent.cancelAskById}
                 onAskExpire={agent.expireAskById}
+                onAskHover={agent.setAskHover}
+                onOpenFile={(pathOrRel, title) => {
+                  const norm = pathOrRel.replace(/\\/g, '/')
+                  const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(norm)
+                  if (!isAbs) {
+                    const targetGoalId = tutorGoalId ?? (store.activeGoalId ?? undefined)
+                    const wsRel = wsChipUserRel(getLatest(), norm, targetGoalId)
+                    const wsRef = wsRel ? wsRefOfRel(getLatest(), wsRel) : null
+                    if (wsRef) {
+                      openTab(wsRef)
+                      return
+                    }
+                  }
+                  const abs = isAbs ? norm : (userAbsPath(norm) ?? norm)
+                  openTab({ kind: 'local', path: abs, ...(title ? { title } : {}) })
+                }}
               />
             </div>
           ) : null}

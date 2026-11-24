@@ -68,6 +68,38 @@ describe('RoleChatView', () => {
     host.remove()
   })
 
+  it('agent 名字后显示工作中，双层汇报默认只显示外层并可展开', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const m: ChannelMessage = {
+      ...roleOut('c1', '导师龟', '极限讲义更新了。'),
+      detail: '补了定义，也补了两道例题。',
+    }
+    act(() => {
+      root.render(
+        createElement(RoleChatView, {
+          channels: [m],
+          agentName: '导师龟',
+          agentVoice: 'tutor',
+          agentRunning: true,
+        }),
+      )
+    })
+    expect(host.querySelector('[data-agent-status="running"]')?.textContent).toContain('工作中')
+    expect(host.textContent).toContain('极限讲义更新了。')
+    expect(host.textContent).not.toContain('补了定义')
+    act(() => {
+      host.querySelector<HTMLButtonElement>('[data-bubble-detail-toggle]')?.click()
+    })
+    expect(host.textContent).toContain('补了定义')
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+
   it('私聊只显示 user 通道：agent 内部转交不进入对话列表', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)

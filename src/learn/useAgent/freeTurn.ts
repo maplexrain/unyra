@@ -66,7 +66,7 @@ export async function runFreeTurn(io: {
   setTps: Dispatch<SetStateAction<Record<string, number>>>
   setLiveUsage: Dispatch<SetStateAction<Record<string, MessageUsage>>>
   abortMapRef: { current: Map<string, AbortController> }
-  /** 聊天龟的 work 管理器（hook 跨轮持有；账本住 free-chat.json） */
+  /** 自由对话的 work 管理器（hook 跨轮持有；账本住 free-chat.json） */
   workManager?: WorkManager
   /**
    * Work 通道交付（role 空闲时由宿主直接起这一轮）：不是用户发言，不写 user 通道，
@@ -167,6 +167,9 @@ export async function runFreeTurn(io: {
   const chatSend = async (input: ChatSendInput): Promise<ChatCallResult> => {
     const text = input.text.trim()
     if (!text) return { ok: false, channel: input.channel, error: 'chat.send 需要 text' }
+    if (input.silent && input.channel !== 'agent') {
+      return { ok: false, channel: input.channel, error: '自由对话的 silent 只支持 agent 通道' }
+    }
     const resolved = input.attachments?.length
       ? await resolveChatAttachments(input.attachments, { getLatest, set })
       : undefined
@@ -225,6 +228,7 @@ export async function runFreeTurn(io: {
       to,
       text,
       ...(attachments && (attachments.images || attachments.files) ? { attachments } : {}),
+      ...(input.silent ? { silent: true } : {}),
     })
     deliverInbound(
       {
@@ -238,11 +242,12 @@ export async function runFreeTurn(io: {
         ...(attachments?.files ? { files: attachments.files } : {}),
       },
       envelope,
+      { silent: input.silent },
     )
     return { ok: true, channel: 'agent', to: input.to }
   }
 
-  // work 的基座：聊天龟派出的 work 仍要联网与排日程；role 自己的沙箱不暴露这两组
+  // work 的基座：自由对话派出的 work 仍要联网与排日程；role 自己的沙箱不暴露这两组
   const freeWorkBase: SandboxOptions = {
     nodeId: () => null,
     resolveNode: () => ({ ok: false, message: '自由聊天不挂在知识节点上' }),
@@ -254,7 +259,7 @@ export async function runFreeTurn(io: {
       search: searchForAgent,
     },
     /*
-     * 日程：聊天龟派出的 work 也要排日程（需求明确）。它写的是**用户级**的那张表
+     * 日程：自由对话派出的 work 也要排日程（需求明确）。它写的是**用户级**的那张表
      * （state.json 的 schedule），与自由聊天没有目标这件事不冲突——goalId 只是
      * 日程上的一个可选标记，这里给 FREE_GOAL_ID，界面按「自由聊天」显示。
      */
@@ -389,8 +394,8 @@ export async function runFreeTurn(io: {
       )
     }
 
-    // 与 role 同一收口纪律：这一轮没有显式 chat.send(user) 时，把最终正文补成
-    // user 通道消息（auto），让 chat 层看得到聊天龟对外说的话。
+    // 自由对话的最终正文就是用户看到的聊天回复，这里补一条 user 通道镜像供 chat 层渲染；
+    // role 的 mind 正文不同：不自动外发、不转发到群聊，所有对外内容必须显式 chat.send。
     const answer = parts
       .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
       .map((p) => p.text)

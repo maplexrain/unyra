@@ -47,11 +47,11 @@ export function voiceTags(id: AgentProfileId): string[] {
   return tags
 }
 
-/** 左栏顺序：仅聊天 / 导师 / 调度员（任务入口） / 四位承接 role（展示顺序，与运行时名单顺序无关） */
+/** 左栏顺序：调度员（任务入口） / 导师 / 四位承接 role（展示顺序，与运行时名单顺序无关） */
 export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
   free: {
-    roleTag: '跨目标',
-    blurb: '纯对话 · 联网与日程',
+    roleTag: '无目标',
+    blurb: '自由对话运行态（不在团队名册）',
     emptyHint: '暂无对话历史',
     fallbackIcon: MessageSquare,
     avatarClass: 'bg-line/75 text-ink-strong border-line-strong/40',
@@ -114,5 +114,5 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
   },
 }
 
-/** 左栏的展示顺序（free 在最左，导师随后，承接 role 依次排开） */
-export const AGENT_ROSTER_ORDER: readonly AgentTeamMode[] = ['free', 'tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer']
+/** 左栏的展示顺序（导师 / 调度员 / 四位承接 role；自由对话不在团队名册） */
+export const AGENT_ROSTER_ORDER: readonly AgentTeamMode[] = ['tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer']

@@ -36,6 +36,7 @@ import { onVimModeChanged } from '../../lib/imeSwitch'
 import { loadAndApplyVimrc } from '../../lib/vimConfig'
 import { registerVimExCommands, setVimEditorBridge } from '../../lib/vimCommands'
 import { foldCurrentScope, unfoldCurrentScope } from '../../lib/cmFoldScope'
+import { bindingOf, comboFromEvent, formatCombo } from '../../lib/shortcuts'
 import { takeSourceReveal, subscribeSourceReveal, type SourceReveal } from '../../lib/docReveal'
 import { useDocScroll } from '../../lib/docScroll'
 import { EditorCursorBindingContext } from './editor/LiveSplitPreview'
@@ -145,6 +146,36 @@ interface Props {
   historyKey?: string
 }
 
+/**
+ * 折叠 / 展开当前代码块的快捷键**不在 CodeMirror 里写死**：设置面板改键后，
+ * 这里每次按键都读注册表当前组合（bindingOf），旧组合立刻失效。
+ *
+ * 为什么不用全局 useShortcut：分屏可以同时开多个 SourceEditor，而 lib/shortcuts
+ * 的 handlers 每个 id 只留一个订阅；放在每个 EditorView 的 DOM handler 上才能
+ * 让焦点所在的那一屏自己折叠，也不和别的编辑器抢注册。
+ */
+const foldShortcutHandler = EditorView.domEventHandlers({
+  keydown: (event, view) => {
+    if (event.defaultPrevented || event.isComposing) return false
+    // 只接管带 Ctrl / Alt / Meta 的组合：裸键与 Shift+键是编辑器输入，不能抢。
+    if (!event.ctrlKey && !event.altKey && !event.metaKey) return false
+    const combo = comboFromEvent(event)
+    if (!combo) return false
+    const comboText = formatCombo(combo)
+    if (comboText === bindingOf('source.foldCurrent')) {
+      event.preventDefault()
+      foldCurrentScope(view)
+      return true
+    }
+    if (comboText === bindingOf('source.unfoldCurrent')) {
+      event.preventDefault()
+      unfoldCurrentScope(view)
+      return true
+    }
+    return false
+  },
+})
+
 export default function SourceEditor({
   value,
   onChange,
@@ -220,36 +251,8 @@ export default function SourceEditor({
 
     const editorExtensions = [
       history(),
-          keymap.of([
-            // Ctrl- 与 Ctrl=：快速折叠/展开当前光标所在代码块（同时拦截默认网页缩放）
-            {
-              key: 'Mod--',
-              run: (view) => {
-                foldCurrentScope(view)
-                return true
-              },
-            },
-            {
-              key: 'Mod-=',
-              run: (view) => {
-                unfoldCurrentScope(view)
-                return true
-              },
-            },
-            {
-              key: 'Mod-_',
-              run: (view) => {
-                foldCurrentScope(view)
-                return true
-              },
-            },
-            {
-              key: 'Mod-+',
-              run: (view) => {
-                unfoldCurrentScope(view)
-                return true
-              },
-            },
+      foldShortcutHandler,
+      keymap.of([
             indentWithTab,
             ...closeBracketsKeymap,
             ...foldKeymap,

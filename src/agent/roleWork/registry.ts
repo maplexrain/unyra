@@ -7,7 +7,9 @@
  *   消息/状态/轮次保留），旧的委托会话（dv:）在会话层过滤，不进 works。
  */
 import type { AgentProfileId } from '../agentProfile'
-import type { ChannelMessage, Conversation, ConversationMessage, WorkSession, WorkStatus } from '../types'
+import type { ChannelAsk, ChannelMessage, Conversation, ConversationMessage, WorkSession, WorkStatus } from '../types'
+import { normalizeAskForm } from '../sandbox/askForm'
+import { normalizeDelivery } from '../delivery'
 
 /** 旧 subagent 数据（只在迁移时读，旧结构已从类型面移除） */
 interface LegacySubSession {
@@ -28,6 +30,29 @@ interface LegacySubBucket {
 
 const STATUSES: readonly WorkStatus[] = ['idle', 'running', 'interrupted', 'stopped', 'error']
 const CHANNEL_CAP = 200
+const ASK_STATUSES = ['pending', 'answered', 'cancelled', 'expired'] as const
+
+/**
+ * ask 气泡的落盘形状校验：表单本身要能过 normalizeAskForm，否则只留正文。
+ * 这是「刷新后 ask 气泡还在」的载入入口——早期 normalizeChannels 漏了 ask 字段，
+ * 历史里的表单会在重启后凭空消失。
+ */
+function normalizeChannelAsk(raw: unknown): ChannelAsk | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Partial<ChannelAsk>
+  if (typeof r.id !== 'string' || !r.id) return undefined
+  if (typeof r.expiresAt !== 'number' || !Number.isFinite(r.expiresAt)) return undefined
+  if (!ASK_STATUSES.includes(r.status as (typeof ASK_STATUSES)[number])) return undefined
+  const parsed = normalizeAskForm(r.form)
+  if (!parsed.ok) return undefined
+  return {
+    id: r.id,
+    form: parsed.form,
+    expiresAt: r.expiresAt,
+    status: r.status as ChannelAsk['status'],
+    ...(typeof r.settledAt === 'number' && Number.isFinite(r.settledAt) ? { settledAt: r.settledAt } : {}),
+  }
+}
 const NAME_PATTERN = /^[^\s/\\:*?"<>|]{1,32}$/
 
 export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
@@ -40,6 +65,12 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
     if (m.kind !== 'user' && m.kind !== 'agent' && m.kind !== 'work' && m.kind !== 'group') continue
     if (m.direction !== 'in' && m.direction !== 'out') continue
     if (!m.from || !m.to || typeof m.text !== 'string') continue
+    const ask = normalizeChannelAsk(m.ask)
+    const delivery = normalizeDelivery(m.delivery)
+    const mention =
+      m.mention && typeof m.mention === 'object' && typeof m.mention.id === 'string' && typeof m.mention.kind === 'string'
+        ? m.mention
+        : undefined
     out.push({
       id: m.id,
       kind: m.kind,
@@ -47,12 +78,19 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
       from: m.from,
       to: m.to,
       text: m.text,
+      ...(typeof m.detail === 'string' && m.detail.trim() ? { detail: m.detail } : {}),
       ts: typeof m.ts === 'number' ? m.ts : Date.now(),
       ...(m.attachments ? { attachments: m.attachments } : {}),
+      ...(ask ? { ask } : {}),
       ...(m.quoteMessageId ? { quoteMessageId: m.quoteMessageId } : {}),
       ...(Array.isArray(m.mentions) && m.mentions.length ? { mentions: m.mentions } : {}),
+      ...(mention ? { mention } : {}),
+      ...(delivery ? { delivery } : {}),
       ...(typeof m.goalId === 'string' && m.goalId ? { goalId: m.goalId } : {}),
+      ...(typeof m.threadId === 'string' && m.threadId.includes('>') ? { threadId: m.threadId } : {}),
+      ...(typeof m.threadRootId === 'string' && m.threadRootId ? { threadRootId: m.threadRootId } : {}),
       ...(m.auto ? { auto: true } : {}),
+      ...(m.silent ? { silent: true } : {}),
     })
   }
   const kept = out.slice(-CHANNEL_CAP)
@@ -76,6 +114,7 @@ export function normalizeWork(raw: unknown, roleId: AgentProfileId, conversation
   if (!name) return null
   const messages = Array.isArray(w.messages) ? w.messages.map(normalizeMessage).filter((m): m is ConversationMessage => !!m) : []
   const status = STATUSES.includes(w.status as WorkStatus) ? (w.status as WorkStatus) : 'idle'
+  const delivery = normalizeDelivery(w.delivery)
   return {
     id: w.id,
     name,
@@ -89,6 +128,7 @@ export function normalizeWork(raw: unknown, roleId: AgentProfileId, conversation
     systemPrompt: typeof w.systemPrompt === 'string' ? w.systemPrompt : '',
     messages,
     ...(w.lastDelivery ? { lastDelivery: w.lastDelivery } : {}),
+    ...(delivery ? { delivery } : {}),
     ...(w.lastIssue ? { lastIssue: w.lastIssue } : {}),
     execTrace: Array.isArray(w.execTrace)
       ? w.execTrace.filter((t) => t && typeof t.title === 'string' && typeof t.at === 'number').slice(-30)

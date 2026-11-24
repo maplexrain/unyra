@@ -16,6 +16,7 @@ import type { AgentEvent, AgentPart, ChannelExtra, ConversationMessage, MessageU
 import type { AgentProfileId } from '../agentProfile'
 import { createExecuteTools } from '../sandbox/execute'
 import type { AskFormPayload } from '../tools'
+import { emptyDelivery, mergeDelivery, normalizeDelivery, type DeliveryRecord } from '../delivery'
 import type { HostSendInput, WorkCallResult, WorkCreateInput, WorkSendInput, WorkStatusResult, WorkSummary, WorkSandboxApi } from '../roleWork/types'
 import { defaultWorkName } from '../roleWork/types'
 import { apiBriefForGroups } from './groups'
@@ -52,9 +53,9 @@ export interface WorkManagerDeps {
   /** role 会话里按 messageId 找一条用户消息（转发用） */
   roleMessage: (messageId: string) => ConversationMessage | null
   /** 把一条 outbound work 通道消息记到 role 的通道流水 */
-  appendOutbound: (work: WorkSession, text: string, meta: { quoteMessageId?: string; auto?: boolean; extra?: ChannelExtra }) => void
+  appendOutbound: (work: WorkSession, text: string, meta: { quoteMessageId?: string; auto?: boolean; extra?: ChannelExtra; delivery?: DeliveryRecord }) => void
   /** host.send / 自动兜底：把交付写回 role（宿主负责写通道 + 注入/起轮） */
-  deliverToRole: (work: WorkSession, text: string, meta: { quoteMessageId?: string; auto?: boolean; extra?: ChannelExtra }) => void
+  deliverToRole: (work: WorkSession, text: string, meta: { quoteMessageId?: string; auto?: boolean; extra?: ChannelExtra; delivery?: DeliveryRecord }) => void
   onEvent?: (workId: string, runId: string, e: AgentEvent) => void
   onRunEnd?: (workId: string, runId: string) => void
   stream?: StreamFn
@@ -123,10 +124,30 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
       deps.deliverToRole(work, text, {
         ...(input.messageId ? { quoteMessageId: input.messageId } : {}),
         ...(input.extra ? { extra: input.extra } : {}),
+        ...(work.delivery ? { delivery: work.delivery } : {}),
       })
       return { ok: true, delivered: true }
     },
   })
+
+  /**
+   * work 的交付账：和 role 的 turnDelivery 分开记，避免 work 跑完把文件清单写到 role
+   * 当时那一轮的气泡上。同一轮多次 submit 合并去重；host.send 与自动兜底都带这份账。
+   */
+  const submitDelivery = (workId: string, input: unknown): { ok: boolean; files: DeliveryRecord['files']; sources: DeliveryRecord['sources']; error?: string } => {
+    const rec = normalizeDelivery(input)
+    if (!rec) return { ok: false, files: [], sources: [], error: 'delivery.submit 需要至少一个 files / sources 项' }
+    const current = deps.getWorks().find((w) => w.id === workId)
+    if (!current) return { ok: false, files: [], sources: [], error: '这个 work 已经被删除了' }
+    const merged = mergeDelivery(
+      current.delivery
+        ? { files: [...current.delivery.files], sources: [...current.delivery.sources] }
+        : emptyDelivery(),
+      rec,
+    )
+    patch(workId, (w) => ({ ...w, delivery: merged, lastActiveAt: Date.now() }))
+    return { ok: true, files: merged.files, sources: merged.sources }
+  }
 
   const workSandbox = (cfg: WorkTurnConfig, workId: string) => ({
     ...cfg.sandbox,
@@ -135,6 +156,7 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
     work: undefined,
     chat: undefined,
     permission: undefined,
+    delivery: { submit: (input: unknown) => submitDelivery(workId, input) },
     host: hostApi(workId),
     ...(cfg.ask ? { ask: (form: AskFormPayload) => cfg.ask!(workId, form, running.get(workId)?.ctrl.signal ?? new AbortController().signal) } : {}),
     apiAllow: workRuntimeApiAllow(deps.roleId),
@@ -249,7 +271,10 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
     // host.send 是主路径；漏了就把最后一段正文自动回传（标记 auto），role 仍能收口。
     if (!handle.delivered && outcome.delivery && outcome.status !== 'interrupted' && outcome.status !== 'error') {
       const latest = deps.getWorks().find((w) => w.id === work.id) ?? work
-      deps.deliverToRole(latest, outcome.delivery, { auto: true })
+      deps.deliverToRole(latest, outcome.delivery, {
+        auto: true,
+        ...(latest.delivery ? { delivery: latest.delivery } : {}),
+      })
     }
   }
 

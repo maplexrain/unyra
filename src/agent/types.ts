@@ -98,6 +98,14 @@ export interface ChannelStamp {
   envelopeId: string
   /** 所属学习目标；群聊按目标分开，私聊 / agent / work 可省略 */
   goalId?: string
+  /** 群聊评论串索引（`通道id>消息id`）；一级主楼也可能带（表示它拥有/继承了一条评论串） */
+  threadId?: string
+  /** 该消息属于哪条一级主楼；只有评论区里的消息才填，一级主楼不填 */
+  threadRootId?: string
+  /** 本条群消息是否把当前 role 作为唯一 mention 激活；缺省 = 只是 @ 抄送，不一定是自己的任务 */
+  mention?: boolean
+  /** 这条入站消息自带的交付账；role mind 里的用户消息据此展示交付组件 */
+  delivery?: DeliveryRecord
 }
 
 /** 通道消息里的额外数据：正文之外的日志 / 原始结果 / 长文本，界面折叠展示，避免刷屏。 */
@@ -134,6 +142,11 @@ export interface ChannelMessage {
   from: ChannelPeer
   to: ChannelPeer
   text: string
+  /**
+   * 外层汇报之外的详细版：`text` 保持口语、简短；这里放依据、清单、过程与下一步。
+   * 聊天层默认只显示 `text`，用户或接收方可以展开查看详细版。
+   */
+  detail?: string
   ts: number
   attachments?: { images?: MessageImage[]; files?: MessageFile[] }
   /** 正文之外的额外数据（可折叠）；Agent 之间的大段结果优先放这里 */
@@ -142,12 +155,31 @@ export interface ChannelMessage {
   ask?: ChannelAsk
   /** work.send / chat.send 引用转发的用户消息 id */
   quoteMessageId?: string
-  /** 群聊里被 @ 的收件人（一条消息可点名多位） */
+  /** 群聊里被 @ 的收件人（只抄送上下文，不激活；一条消息可点名多位） */
   mentions?: ChannelPeer[]
+  /**
+   * 本条消息唯一被激活的 mention。一条消息最多一个；只有它会在送达之外启动一轮。
+   * 用户消息的首个 @ 由宿主解析成 mention，agent 侧显式传 `mention`。
+   */
+  mention?: ChannelPeer
+  /** 本轮交付账（work 交付 / role 转发到通道时带上，界面在气泡下方展示） */
+  delivery?: DeliveryRecord
   /** 所属学习目标（群聊按目标分开；其它通道可省略） */
   goalId?: string
+  /**
+   * 群聊评论串索引，格式严格为 `通道id>消息id`（通道id = `group:<goalId>`，消息id = 一级主楼 id）。
+   * 一级主楼带它表示「这条消息拥有/继承了这条评论串」；评论区里的评论带它 + threadRootId。
+   */
+  threadId?: string
+  /**
+   * 该消息属于哪条一级主楼（只有评论区里的消息才填）。一级主楼不填，所以群聊一级列表
+   * 用 `!threadRootId` 过滤；ask 这类落在一级但继承任务线程的消息可以只带 threadId。
+   */
+  threadRootId?: string
   /** 收口兜底自动补发（模型没显式 send） */
   auto?: boolean
+  /** 静默汇报：只入目标 role 的上下文与通道流水，不启动它一轮（chat.send silent:true） */
+  silent?: boolean
 }
 
 /**
@@ -526,6 +558,8 @@ export interface WorkSession {
   /** 自己独立的上下文：role 下发的任务是一条 user 消息，每次任务是 assistant 回复 */
   messages: ConversationMessage[]
   lastDelivery?: string
+  /** 最近一次 `api.delivery.submit` 的结构化交付账；role 转发时原样带走 */
+  delivery?: DeliveryRecord
   lastIssue?: string
   execTrace: WorkExecuteTrace[]
 }

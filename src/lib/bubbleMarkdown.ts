@@ -13,12 +13,16 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-/** `@名字` → Markdown 链接；名字按长度降序，避免短名先吃掉长名 */
-function markMentions(text: string, names: string[]): string {
+/** `@名字 ` → Markdown 链接；名字按长度降序，避免短名先吃掉长名；名字后必须是空格才算艾特 */
+function markMentions(text: string, names: string[], labels?: Record<string, string>): string {
   const valid = [...new Set(names.map((n) => n.trim()).filter(Boolean))].sort((a, b) => b.length - a.length)
   if (!valid.length || !text.includes('@')) return text
-  const re = new RegExp('@(' + valid.map(escapeRegExp).join('|') + ')', 'g')
-  return text.replace(re, (_m, name: string) => `[@${name}](${MENTION_SCHEME}${encodeURIComponent(name)})`)
+  const re = new RegExp('@(' + valid.map(escapeRegExp).join('|') + ')(?=[ \\u3000])', 'g')
+  return text.replace(re, (_m, name: string) => {
+    // `@用户` 是系统占位名：链接目标仍按原名解析，显示换成真实用户名。
+    const label = labels?.[name]?.trim() || name
+    return `[@${label}](${MENTION_SCHEME}${encodeURIComponent(name)})`
+  })
 }
 
 /**
@@ -33,7 +37,11 @@ function markBareUrls(text: string): string {
 }
 
 /** 气泡正文 → Markdown 源文（纯函数，方便单测） */
-export function bubbleMarkdownSource(text: string, names: string[] = []): string {
+export function bubbleMarkdownSource(
+  text: string,
+  names: string[] = [],
+  labels?: Record<string, string>,
+): string {
   if (!text) return ''
   /*
    * 代码块里的 @ 与 URL 不转换：那些是代码，不是聊天指令。按围栏/行内代码切成普通段
@@ -41,6 +49,6 @@ export function bubbleMarkdownSource(text: string, names: string[] = []): string
    */
   const parts = text.split(/(```[\s\S]*?```|`[^`\n]*`)/g)
   return parts
-    .map((part, i) => (i % 2 === 1 ? part : markBareUrls(markMentions(part, names))))
+    .map((part, i) => (i % 2 === 1 ? part : markBareUrls(markMentions(part, names, labels))))
     .join('')
 }

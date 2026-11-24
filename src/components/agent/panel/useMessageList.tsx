@@ -18,6 +18,8 @@ import WaveBars from '../../WaveBars'
 import { CompactionDivider } from './CompactionDivider'
 import { HiddenDivider, MessageRow, Parts } from './MessageBubble'
 import { MindMessageRow } from './MindMessageRow'
+import { MindContextSummary } from './MindContextSummary'
+import { WorkDispatchList } from './WorkDispatchList'
 import { useRecentWindow } from './useRecentWindow'
 import type { MessageListProps } from './MessageList'
 import type { InjectItem } from './partGroups'
@@ -139,6 +141,11 @@ export function useMessageList({
   emptyName,
   mind = false,
   agentName = '',
+  usages = [],
+  works = [],
+  onOpenMindWork,
+  activeWorkId = null,
+  contextSubject,
   resetKey = '',
 }: MessageListProps) {
   /*
@@ -209,6 +216,8 @@ export function useMessageList({
       ) : null}
       <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
 
+      {mind && <MindContextSummary usages={usages} subject={contextSubject} />}
+
       {/* 摘要卡永远在最上面：压缩之后它就是第一条消息（旧消息全部失活、只作显示） */}
       {summary && (
         <CompactionDivider summary={summary} open={summaryOpen} onToggle={() => setSummaryOpen((v) => !v)} />
@@ -257,14 +266,14 @@ export function useMessageList({
             还没落库的那一轮：攒下的提示词注入交给它——与落库之后并进回复是同一个位置，
             用户不会在这一轮收口时看到那几行「跳」一下。
           */}
-          <Parts parts={streaming} prelude={pending.length ? pending : undefined} streaming={true} mind={mind} />
+          <Parts parts={streaming} prelude={pending.length ? pending : undefined} streaming={true} />
         </div>
       )}
 
       {/* 没有流式内容、也没有回复可挂的注入（极少见：用户刚发出、导师还没开口）：自己成一组 */}
       {pending.length > 0 && !(streaming && streaming.length > 0) && (
         <div className="mb-4">
-          <Parts parts={[]} prelude={pending} mind={mind} />
+          <Parts parts={[]} prelude={pending} />
         </div>
       )}
 
@@ -284,6 +293,11 @@ export function useMessageList({
             <span className="moji-sheen">{loopLabel}</span>
           </div>
         )}
+
+      {/* 当前 role 的 work 上下文固定挂在对话列表最下方；不再在左栏单独占一块。 */}
+      {mind && works.length > 0 && (
+        <WorkDispatchList works={works} onOpenWork={onOpenMindWork} activeWorkId={activeWorkId} />
+      )}
     </>
   )
 }

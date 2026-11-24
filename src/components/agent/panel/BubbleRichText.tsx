@@ -19,18 +19,21 @@ import { renderNote } from '../../../lib/markdown'
 export function BubbleRichText({
   text,
   names = [],
+  labels,
   tone = 'agent',
   onMention,
 }: {
   text: string
   /** 可被 @ 的角色名（profile 名 + 默认名） */
   names?: string[]
+  /** 显示名映射：例如 `{ 用户: 真实昵称 }`，链接目标仍解析原名 */
+  labels?: Record<string, string>
   /** 用户气泡与 agent 气泡都用亮底，但用户更亮；链接/代码只做轻微色差，保证可读 */
   tone?: 'user' | 'agent'
   /** 点击 @ 角色时的回调；不传则只阻止导航 */
   onMention?: (name: string) => void
 }) {
-  const html = useMemo(() => renderNote(bubbleMarkdownSource(text, names)), [text, names])
+  const html = useMemo(() => renderNote(bubbleMarkdownSource(text, names, labels)), [text, names, labels])
 
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
     const anchor = (e.target as HTMLElement).closest('a')

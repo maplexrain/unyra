@@ -48,6 +48,10 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+/* 聊天气泡里的 @mention 是定位标记，不是普通链接：不要下划线，只保留颜色。 */
+.bubble-rich a[href^='moji:mention/'] {
+  text-decoration: none !important;
+}
 /*
  * 正文里的图片：宽度不许超过容器，高度按比例走。
  *

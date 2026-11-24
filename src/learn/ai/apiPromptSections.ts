@@ -3,7 +3,7 @@
  *
  * 领域 API、语法与工作流规程全部属于 work 层（见 workSystem）：role 只需要知道
  * `execute` 怎么调、work/chat 怎么用。固定组仍由 FIXED_API_PLANE 统一渲染，保证
- * 七位 role 的前缀逐字节一致。
+ * 六位团队 role 的前缀逐字节一致。
  */
 
 import { AGENT_API_PLANES, FIXED_API_PLANE, WORK_API_PLANES, WORK_FIXED_PLANE, type AgentProfileId, type AgentVoice } from '../../agent/agentProfile'

@@ -72,9 +72,19 @@ export interface ChatSendInput {
   channel: ChannelKind
   /** agent 通道 = role id；work 通道 = work 名；group 通道 = 被点名的 role id（可省略在群里回复用户） */
   to?: string
-  /** 群聊一次 @ 多位 role：与 to 合并去重；正文必须出现 @名字 */
+  /** 群聊里要抄送上下文的 @ 目标（正文必须出现 `@名字 `；可多位，不激活） */
   mentions?: string[]
+  /**
+   * 唯一要激活的 mention（群聊）。只能一位，且必须在正文里 `@名字 `；
+   * 用户消息的首个 @ 由宿主自动解析成它。传 `to` 时按旧兼容视作 mention。
+   */
+  mention?: string
   text: string
+  /**
+   * 内层详细汇报：`text` 是对外的口语化短汇报，这里放完整依据 / 清单 / 过程。
+   * 群聊与私聊气泡默认显示 `text`，可展开到 `detail`；发给 work 时会并入任务正文。
+   */
+  detail?: string
   /** 引用当前 role 会话里的用户消息（转发并标注来源） */
   messageId?: string
   attachments?: ChatAttachmentInput[]
@@ -83,12 +93,25 @@ export interface ChatSendInput {
    * 两个 agent 之间搬运大块材料时必须放这里，避免把聊天列表刷屏。
    */
   extra?: ChannelExtra
+  /**
+   * 把另一条消息上的交付账随这条消息一起转发（值为消息 id）。
+   * Work 交付消息的 id 在来源元信息里；role 转发给群聊 / 私聊时用它，
+   * 不要自己重抄 files / sources。
+   */
+  deliveryFrom?: string
+  /**
+   * 静默汇报：只写入目标 role 的上下文与通道流水，不启动目标 role 一轮。
+   * 只允许 agent / group；适合「我正在直接对接用户，只需让调度龟知道进度」的截断点。
+   */
+  silent?: boolean
 }
 
 export interface ChatCallResult {
   ok: boolean
   channel?: ChannelKind
   to?: string
+  /** 实际被激活的 mention（没有 mention 时不返回） */
+  mention?: string
   id?: string
   error?: string
 }

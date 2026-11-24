@@ -3,6 +3,9 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { ChannelMessage, Conversation } from '../src/agent/types'
+import type { ChatSendInput } from '../src/agent/roleWork/types'
+import { installRoleWork } from '../src/agent/sandbox/api/roleWork'
+import type { SandboxOptions } from '../src/agent/sandbox/types'
 import { createChatOps } from '../src/learn/ops/chat'
 import { toChatHistory } from '../src/learn/agent/history'
 import {
@@ -117,6 +120,14 @@ describe('chat.send 三通道', () => {
     expect(appended[0]!.message.ts).toBeGreaterThan(0)
   })
 
+  it('user 通道：detail 留在同一封通道消息里，正文仍是外层短汇报', async () => {
+    const { chat, appended } = makeChat()
+    await chat.send({ channel: 'user', text: '极限讲义更新了。', detail: '补了定义和两道例题。' })
+    expect(appended[0]!.message.text).toBe('极限讲义更新了。')
+    expect(appended[0]!.message.detail).toBe('补了定义和两道例题。')
+  })
+
+
   it('agent 通道：ensure 目标会话后投递，入站带来源与时间戳', async () => {
     const { chat, appended } = makeChat()
     const channels: ChannelMessage[] = []
@@ -135,6 +146,87 @@ describe('chat.send 三通道', () => {
     void appended
   })
 
+  it('agent 通道：静默汇报只落流水与目标上下文，不启动目标一轮', async () => {
+    const channels: ChannelMessage[] = []
+    const contexts: RoleTurnRequest[] = []
+    const turns: RoleTurnRequest[] = []
+    setRoleWorkDispatcher(() => ({
+      isConversationRunning: () => false,
+      resolveRoleConversation: () => null,
+      startRoleTurn: (req) => turns.push(req),
+      appendChannel: (_id, envelope) => channels.push(envelope),
+      appendSilentInbound: (req) => contexts.push(req),
+    }))
+    const { chat } = makeChat()
+    expect(
+      await chat.send({
+        channel: 'agent',
+        to: 'dispatcher',
+        text: '第 2 页已交付，用户已收到。',
+        silent: true,
+      }),
+    ).toMatchObject({ ok: true, channel: 'agent' })
+    expect(turns).toHaveLength(0)
+    expect(contexts).toHaveLength(1)
+    expect(contexts[0]!.text).toContain('用户已收到')
+    expect(channels).toHaveLength(1)
+    expect(channels[0]!.silent).toBe(true)
+  })
+
+  it('agent 通道：目标正在跑时静默汇报先挂起，收口后只写上下文、不起下一轮', async () => {
+    const channels: ChannelMessage[] = []
+    const contexts: RoleTurnRequest[] = []
+    const turns: RoleTurnRequest[] = []
+    let running = true
+    setRoleWorkDispatcher(() => ({
+      isConversationRunning: () => running,
+      resolveRoleConversation: () => null,
+      startRoleTurn: (req) => turns.push(req),
+      appendChannel: (_id, envelope) => channels.push(envelope),
+      appendSilentInbound: (req) => contexts.push(req),
+    }))
+    const { chat } = makeChat()
+    expect(
+      await chat.send({ channel: 'agent', to: 'dispatcher', text: '进度 1/3', silent: true }),
+    ).toMatchObject({ ok: true })
+    expect(contexts).toHaveLength(0)
+    expect(channels).toHaveLength(1)
+
+    running = false
+    flushChannelInbox('cv:dispatcher:g1')
+    expect(contexts).toHaveLength(1)
+    expect(contexts[0]!.text).toContain('进度 1/3')
+    expect(turns).toHaveLength(0)
+  })
+
+  it('沙箱 API 入口：silent 只允许 agent / group，并原样带给 chat.send', async () => {
+    let passed: ChatSendInput | null = null
+    const api: Record<string, unknown> = {}
+    installRoleWork(
+      api,
+      {
+        chat: {
+          send: (input: ChatSendInput) => {
+            passed = input
+            return { ok: true, channel: 'agent' }
+          },
+        },
+      } as unknown as SandboxOptions,
+      [],
+    )
+    const chat = api.chat as { send: (input: ChatSendInput) => Promise<{ ok: boolean }> }
+    expect(
+      await chat.send({ channel: 'user', text: '外层短汇报', detail: '内层详细依据' }),
+    ).toMatchObject({ ok: true })
+    expect(passed!.text).toBe('外层短汇报')
+    expect(passed!.detail).toBe('内层详细依据')
+    expect(
+      await chat.send({ channel: 'agent', to: 'dispatcher', text: '阶段一完成', silent: true }),
+    ).toMatchObject({ ok: true })
+    expect(passed!.silent).toBe(true)
+    expect(await chat.send({ channel: 'user', text: '偷偷说', silent: true })).toMatchObject({ ok: false })
+  })
+
   it('group 通道：把 to 并进 mentions 交给宿主，不落普通私聊流水', async () => {
     let passed: { text: string; mentions?: string[] } | null = null
     const { chat, appended } = makeChat({
@@ -147,6 +239,92 @@ describe('chat.send 三通道', () => {
     expect(r).toMatchObject({ ok: true, channel: 'group' })
     expect(passed).toMatchObject({ text: '@出卷龟 出三道题', mentions: ['examiner'] })
     expect(appended).toHaveLength(0)
+  })
+
+  it('group 通道：mentions 可多位但只是抄送；mention 单独控制唯一激活目标', async () => {
+    let passed: { mentions?: string[]; mention?: string } | null = null
+    const { chat } = makeChat({
+      sendToGroup: (input) => {
+        passed = input
+        return { ok: true, channel: 'group' }
+      },
+    })
+    expect(
+      await chat.send({
+        channel: 'group',
+        mentions: ['tutor', 'designer'],
+        mention: 'designer',
+        text: '@导师龟 @设计龟 一起看，@设计龟 先出方案',
+      }),
+    ).toMatchObject({ ok: true })
+    expect(passed).toMatchObject({ mentions: ['tutor', 'designer'], mention: 'designer' })
+  })
+
+  it('group 通道：silent 不能带 mention，避免静默汇报偷偷激活别人', async () => {
+    const { chat } = makeChat({
+      sendToGroup: () => ({ ok: true, channel: 'group' }),
+    })
+    expect(
+      await chat.send({
+        channel: 'group',
+        to: 'designer',
+        text: '@设计龟 进度抄送',
+        silent: true,
+      }),
+    ).toMatchObject({ ok: false })
+  })
+
+  it('deliveryFrom：把来源消息的交付账带进转发消息', async () => {
+    const delivery = { files: [{ path: '微积分/极限', action: 'updated' as const }], sources: [] }
+    const calls: Array<{ delivery?: ChannelMessage['delivery'] }> = []
+    const { chat } = makeChat({
+      deliveryOf: (id) => (id === 'work-msg-1' ? delivery : undefined),
+      sendToGroup: (input) => {
+        calls.push(input)
+        return { ok: true, channel: 'group' }
+      },
+    })
+    expect(
+      await chat.send({
+        channel: 'group',
+        text: '@用户 已交付',
+        deliveryFrom: 'work-msg-1',
+      }),
+    ).toMatchObject({ ok: true })
+    expect(calls[0]?.delivery).toEqual(delivery)
+  })
+
+
+  it('group 通道：末尾 @名字 的语义空格不被 chat.send 裁掉', async () => {
+    let passed: { text: string; mentions?: string[] } | null = null
+    const { chat } = makeChat({
+      sendToGroup: (input) => {
+        passed = input
+        return { ok: true, channel: 'group' }
+      },
+    })
+    expect(await chat.send({ channel: 'group', text: '@导师龟 ' })).toMatchObject({ ok: true })
+    expect(passed).toMatchObject({ text: '@导师龟 ' })
+  })
+
+  it('group 通道：末尾 @名字 的语义空格在沙箱 API 入口不被裁掉', async () => {
+    let passed: ChatSendInput | null = null
+    const api: Record<string, unknown> = {}
+    installRoleWork(
+      api,
+      {
+        chat: {
+          send: (input: ChatSendInput) => {
+            passed = input
+            return { ok: true, channel: 'group' }
+          },
+        },
+      } as unknown as SandboxOptions,
+      [],
+    )
+    const chat = api.chat as { send: (input: ChatSendInput) => Promise<{ ok: boolean }> }
+    expect(await chat.send({ channel: 'group', text: '@导师龟 ' })).toMatchObject({ ok: true })
+    expect(passed!.text).toBe('@导师龟 ')
   })
 
   it('group 通道：to 写 group 表示只回群里，不把它当成非法目标', async () => {
@@ -259,6 +437,27 @@ describe('dispatch：忙时排队、空闲起轮、跳边界注入', () => {
     text,
     ts: 1,
   })
+
+  it('detail：模型上下文拿到完整详细版，通道流水仍只把外层当正文', () => {
+    const { started, channels } = fakeHost(new Set())
+    const req: RoleTurnRequest = {
+      conversationId: 'c1',
+      role: 'tutor',
+      text: '三条来源已经核过。',
+      stamp: { channel: 'agent', from: { kind: 'role', id: 'dispatcher', name: '调度龟' }, to: { kind: 'role', id: 'tutor', name: '导师龟' }, ts: 1, envelopeId: 'e3' },
+      envelopeId: 'e3',
+    }
+    const detailed: ChannelMessage = {
+      ...envelope('e3', '三条来源已经核过。'),
+      detail: '1. 官网支持；2. 第二条与官方口径冲突；3. 引用位置在第三节。',
+    }
+    expect(deliverInbound(req, detailed)).toBe(true)
+    expect(channels[0]!.text).toBe('三条来源已经核过。')
+    expect(channels[0]!.detail).toContain('第二条与官方口径冲突')
+    expect(started[0]!.text).toContain('【详细汇报】')
+    expect(started[0]!.text).toContain('第二条与官方口径冲突')
+  })
+
 
   it('空闲：落账并立即起轮；运行中：只排队', () => {
     const running = new Set<string>()

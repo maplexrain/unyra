@@ -45,7 +45,7 @@ export function useScreenshotTool({ onToast }: ScreenshotToolDeps) {
     }
   }, [isCapturing, onToast])
 
-  // 截图工具快捷键改用 F1 唤出
+  // 截图工具快捷键按用户绑定唤出（默认 F1；系统级热键同步见 lib/shortcuts）
   useShortcut('tools.screenshot', { down: handleStartScreenshot })
 
   return { screenshotImage, setScreenshotImage, isCapturing, handleStartScreenshot }

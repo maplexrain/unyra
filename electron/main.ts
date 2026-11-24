@@ -171,7 +171,8 @@ function main(): void {
     createTray()
     lap('main:tray')
     /*
-     * 注册全局系统级截图快捷键：任意应用中按 F1 唤出截图（由 screenHelper 助手的键盘钩子承担）
+     * 注册全局系统级截图快捷键：任意应用中按用户当前绑定的截图键唤出截图
+     * （由 screenHelper 助手的键盘钩子承担；默认 F1，改键后动态下发）
      */
     void startGlobalScreenshotShortcut(() => {
       void openScreenshotWindow()
