@@ -250,7 +250,7 @@ export function rigTurnTools(io: {
       })
       return { ok: r.ok, channel: 'work', to: name, ...(r.error ? { error: r.error } : {}) }
     },
-    sendToGroup: async ({ text, mentions, mention, messageId, attachments, extra, delivery, silent }) => {
+    sendToGroup: async ({ text, detail, mentions, mention, messageId, attachments, extra, delivery, silent }) => {
       const goalId = target.goalId
       if (!goalId) return { ok: false, error: '当前 role 会话不挂在目标上，无法进入群聊' }
       const mentionRoles: MentionRole[] = AGENT_ROLE_IDS.filter((id) => id !== 'free').map((id) => ({
@@ -342,6 +342,7 @@ export function rigTurnTools(io: {
         to: groupPeer(),
         id: groupMsgId,
         text,
+        ...(detail ? { detail } : {}),
         ...(messageId ? { quoteMessageId: messageId } : {}),
         ...(attachments ? { attachments } : {}),
         ...(mentionPeers.length ? { mentions: mentionPeers } : {}),
@@ -367,6 +368,7 @@ export function rigTurnTools(io: {
           text,
           id: groupMsg.id,
           ts: groupMsg.ts,
+          ...(detail ? { detail } : {}),
           ...(attachments ? { attachments } : {}),
           ...(extra ? { extra } : {}),
           ...(delivery ? { delivery } : {}),

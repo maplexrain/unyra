@@ -102,6 +102,7 @@ export function installRoleWork(api: Record<string, unknown>, opts: SandboxOptio
       const trimmedText = rawText.trim()
       // 群聊 @ 的分隔符就是名字后的空格：末尾的这一个空格不能被 trim 掉。
       const text = trimmedText && /[ \u3000]$/.test(rawText) ? trimmedText + ' ' : trimmedText
+      const detail = asText(a.detail).trim()
       const to = asText(a.to).trim()
       const messageId = asText(a.messageId).trim()
       const deliveryFrom = asText(a.deliveryFrom).trim()
@@ -122,6 +123,7 @@ export function installRoleWork(api: Record<string, unknown>, opts: SandboxOptio
       const input: ChatSendInput = {
         channel,
         text,
+        ...(detail ? { detail } : {}),
         ...(to ? { to } : {}),
         ...(mentions.length ? { mentions } : {}),
         ...(mention ? { mention } : {}),

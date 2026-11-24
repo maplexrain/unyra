@@ -19,7 +19,7 @@ import { activeUser } from '../../../user/store'
 import UserAvatar from '../../user/UserAvatar'
 import { AGENT_ROSTER_META } from '../../learn/agent-team/agentRoster'
 import { AgentAvatarGlyph } from '../../learn/agent-team/AgentAvatarGlyph'
-import { BubbleRichText } from './BubbleRichText'
+import { BubbleBody } from './BubbleBody'
 import { AskBubble } from './AskBubble'
 import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
 import { DeliveryBlock } from './DeliveryBlock'
@@ -35,6 +35,8 @@ export function RoleChatView({
   agentName,
   agentAvatarId,
   agentVoice = 'free',
+  /** 当前 role 是否正在工作；私聊气泡的名字后展示「工作中 / 空闲」 */
+  agentRunning,
   agentNames,
   agentAvatars,
   resetKey = '',
@@ -51,6 +53,8 @@ export function RoleChatView({
   agentAvatarId?: string
   /** 兜底头像要跟 role 走 */
   agentVoice?: string
+  /** 当前 role 的工作状态；true = 工作中，false = 空闲，undefined = 不展示 */
+  agentRunning?: boolean
   /** 全部 role 的显示名：一条私聊里可能出现别的 role 的回复，名字要按 from.id 取 */
   agentNames?: Partial<Record<string, string>>
   /** 全部 role 的头像 id：同理，不能拿当前页签的头像硬套 */
@@ -186,6 +190,20 @@ export function RoleChatView({
             <div className={'min-w-0 max-w-[700px] ' + (mine ? 'flex flex-col items-end' : 'flex flex-col items-start')}>
               <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px]">
                 <span className={'font-semibold ' + nameClassOf(m)}>{nameOf(m)}</span>
+                {!mine && typeof agentRunning === 'boolean' ? (
+                  <span
+                    data-agent-status={agentRunning ? 'running' : 'idle'}
+                    className={'inline-flex items-center gap-1 ' + (agentRunning ? 'text-seal' : 'text-ink-faint')}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={
+                        'h-1.5 w-1.5 rounded-full ' + (agentRunning ? 'animate-pulse bg-seal' : 'bg-ink-faint/45')
+                      }
+                    />
+                    {agentRunning ? t('工作中') : t('空闲')}
+                  </span>
+                ) : null}
                 <span className="text-ink-faint">
                   {new Date(m.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                 </span>
@@ -218,8 +236,9 @@ export function RoleChatView({
                       (mine ? 'bg-bubble-user -right-1' : 'bg-bubble-agent -left-1')
                     }
                   />
-                  <BubbleRichText
+                  <BubbleBody
                     text={m.text}
+                    detail={m.detail}
                     names={mentionNames}
                     labels={{ 用户: userName }}
                     tone={mine ? 'user' : 'agent'}

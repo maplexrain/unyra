@@ -147,6 +147,8 @@ export function outboundEnvelope(input: {
   from: ChannelPeer
   to: ChannelPeer
   text: string
+  /** 内层详细汇报；气泡默认显示 text，可展开查看 */
+  detail?: string
   /** 宿主指定 id（群聊评论串需要先知道根消息 id）；缺省随机 */
   id?: string
   ts?: number
@@ -173,6 +175,7 @@ export function outboundEnvelope(input: {
     from: input.from,
     to: input.to,
     text: input.text,
+    ...(input.detail ? { detail: input.detail } : {}),
     ts: input.ts ?? Date.now(),
     ...(input.attachments ? { attachments: input.attachments } : {}),
     ...(input.extra ? { extra: input.extra } : {}),
@@ -195,6 +198,8 @@ export function inboundEnvelope(input: {
   from: ChannelPeer
   to: ChannelPeer
   text: string
+  /** 内层详细汇报；气泡默认显示 text，可展开查看 */
+  detail?: string
   ts?: number
   id?: string
   attachments?: ChannelMessage['attachments']
@@ -217,6 +222,7 @@ export function inboundEnvelope(input: {
     from: input.from,
     to: input.to,
     text: input.text,
+    ...(input.detail ? { detail: input.detail } : {}),
     ts: input.ts ?? Date.now(),
     ...(input.attachments ? { attachments: input.attachments } : {}),
     ...(input.extra ? { extra: input.extra } : {}),

@@ -101,23 +101,27 @@ export function deliverInbound(
   const host = dispatcherOf()
   if (!host) return false
   host.appendChannel(req.conversationId, envelope)
+  // 双层汇报：界面默认只显示外层，但模型需要看到内层细节，否则拿到的是残缺上下文。
+  const turnReq: RoleTurnRequest = envelope.detail
+    ? { ...req, text: `${req.text}\n\n【详细汇报】\n${envelope.detail}` }
+    : req
   if (opts?.silent) {
     // 目标正在跑：先挂起，等这一轮收口后由 flushChannelInbox 只写上下文，绝不插队起轮。
     // 空闲时直接写进 messages；下一轮组历史时自然带上 channel stamp。
     if (host.isConversationRunning(req.conversationId)) {
       const list = silentPending.get(req.conversationId) ?? []
-      list.push({ req, envelope })
+      list.push({ req: turnReq, envelope })
       silentPending.set(req.conversationId, list)
     } else {
-      host.appendSilentInbound?.(req, envelope)
+      host.appendSilentInbound?.(turnReq, envelope)
     }
     return false
   }
   if (host.isConversationRunning(req.conversationId)) {
-    enqueueInjection(req)
+    enqueueInjection(turnReq)
     return false
   }
-  host.startRoleTurn(req)
+  host.startRoleTurn(turnReq)
   return true
 }
 

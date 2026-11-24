@@ -48,6 +48,8 @@ export interface ChatOpsDeps {
    */
   sendToGroup: (input: {
     text: string
+    /** 内层详细汇报：聊天层默认显示 text，可展开 */
+    detail?: string
     /** 抄送上下文的目标（可多位，不激活） */
     mentions?: string[]
     /** 唯一要激活的 mention（只能一位） */
@@ -104,6 +106,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
       const text = trimmedText && /[ \u3000]$/.test(rawText) ? trimmedText + ' ' : trimmedText
       const messageId = input.messageId?.trim()
       const deliveryFrom = input.deliveryFrom?.trim()
+      const detail = input.detail?.trim()
       if (!text && !messageId) return { ok: false, error: 'chat.send 需要 text 或 messageId' }
       const quoted = messageId ? deps.messageOf(messageId) : null
       if (messageId && !quoted) return { ok: false, error: '当前 role 会话里找不到消息「' + messageId + '」' }
@@ -122,7 +125,9 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
 
       if (channel === 'work') {
         if (!input.to) return { ok: false, error: 'chat.send 到 work 通道需要 to（work 名）' }
-        const result = await deps.sendToWork(input.to, body, messageId, attachments)
+        // work 没有聊天气泡：详细版直接并入任务正文，避免任务信息被拆丢。
+        const workText = detail ? `${body}\n\n${detail}` : body
+        const result = await deps.sendToWork(input.to, workText, messageId, attachments)
         return result
       }
 
@@ -132,6 +137,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
           from,
           to: deps.userPeer(),
           text: body,
+          ...(detail ? { detail } : {}),
           ...(attachments && (attachments.images || attachments.files) ? { attachments } : {}),
           ...(input.extra ? { extra: input.extra } : {}),
           ...(messageId ? { quoteMessageId: messageId } : {}),
@@ -157,6 +163,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
         }
         const result = await deps.sendToGroup({
           text: body,
+          ...(detail ? { detail } : {}),
           ...(targets.length ? { mentions: [...new Set(targets)] } : {}),
           ...(activeMention ? { mention: activeMention } : {}),
           ...(messageId ? { messageId } : {}),
@@ -182,6 +189,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
           from,
           to: targetPeer,
           text: body,
+          ...(detail ? { detail } : {}),
           ...(attachments && (attachments.images || attachments.files) ? { attachments } : {}),
           ...(input.extra ? { extra: input.extra } : {}),
           ...(messageId ? { quoteMessageId: messageId } : {}),
@@ -193,6 +201,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
         from,
         to: targetPeer,
         text: body,
+        ...(detail ? { detail } : {}),
         ...(attachments && (attachments.images || attachments.files) ? { attachments } : {}),
         ...(input.extra ? { extra: input.extra } : {}),
         ...(silent ? { silent: true } : {}),

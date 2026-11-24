@@ -612,6 +612,7 @@ export default function AgentPanel({
                   agentNames={agentNames}
                   agentAvatars={agentAvatars}
                   agentVoice={emptyVoice ?? 'free'}
+                  agentRunning={running}
                   resetKey={conversation?.id ?? ''}
                   onAskSubmit={onAskSubmitById}
                   onAskCancel={onAskCancelById}

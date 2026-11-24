@@ -80,6 +80,11 @@ export interface ChatSendInput {
    */
   mention?: string
   text: string
+  /**
+   * 内层详细汇报：`text` 是对外的口语化短汇报，这里放完整依据 / 清单 / 过程。
+   * 群聊与私聊气泡默认显示 `text`，可展开到 `detail`；发给 work 时会并入任务正文。
+   */
+  detail?: string
   /** 引用当前 role 会话里的用户消息（转发并标注来源） */
   messageId?: string
   attachments?: ChatAttachmentInput[]

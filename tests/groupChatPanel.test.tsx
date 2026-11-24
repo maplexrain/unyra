@@ -57,7 +57,7 @@ describe('GroupChatPanel', () => {
     })
     expect(host.textContent).toContain('@导师龟 讲讲极限')
     expect(host.textContent).toContain('@导师龟 收到，已派 work')
-    expect(host.textContent).toContain('@ 导师龟')
+    expect(host.textContent).toContain('@导师龟')
     expect(host.textContent).not.toContain('思维')
     act(() => {
       root.unmount()
@@ -65,13 +65,14 @@ describe('GroupChatPanel', () => {
     host.remove()
   })
 
-  it('气泡上方显示唯一 mention 的头像与运行状态，交付账在气泡下方展示', () => {
+  it('姓名时间行展示 @ 与发送者状态；不再有独立 mention 行，交付账和详细层可展开', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
     const m: ChannelMessage = {
-      ...message('m1', { kind: 'user', id: 'u1', name: '用户' }, '@导师龟 讲讲极限'),
-      mention: { kind: 'role', id: 'tutor', name: '导师龟' },
+      ...message('m1', { kind: 'role', id: 'tutor', name: '导师龟' }, '@用户 极限讲义已经更新'),
+      detail: '详细依据：先补了极限定义，再补了夹逼定理例题，最后把产物放到 微积分/极限。',
+      mention: { kind: 'role', id: 'dispatcher', name: '调度龟' },
       delivery: { files: [{ path: '微积分/极限', action: 'updated' }], sources: [] },
     }
     act(() => {
@@ -83,11 +84,18 @@ describe('GroupChatPanel', () => {
         }),
       )
     })
-    const status = host.querySelector('[data-mention-agent="tutor"]')
-    expect(status).not.toBeNull()
-    expect(status?.textContent).toContain('@导师龟')
-    expect(status?.textContent).toContain('运行中')
+    const meta = host.querySelector('[data-message-meta]')
+    expect(meta?.textContent).toContain('导师龟')
+    expect(meta?.textContent).toContain('@导师龟')
+    expect(meta?.textContent).toContain('工作中')
+    expect(host.querySelector('[data-agent-status="running"]')).not.toBeNull()
+    expect(host.querySelector('[data-mention-agent]')).toBeNull()
     expect(host.textContent).toContain('本轮交付')
+    expect(host.textContent).not.toContain('详细依据')
+    act(() => {
+      host.querySelector<HTMLButtonElement>('[data-bubble-detail-toggle]')?.click()
+    })
+    expect(host.textContent).toContain('详细依据')
     act(() => {
       root.unmount()
     })

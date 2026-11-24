@@ -28,7 +28,7 @@ export const FREE_CHAT_API_SECTION = [
   '你拥有唯一的工具：execute(description, body)。',
   '你在沙箱中编写一段异步 JavaScript 代码调用 api 并返回结果。',
   '',
-  '⚠️ 沙箱权限约束（铁律）：',
+  '沙箱权限约束（铁律）：',
   '本聊天会话的沙箱只开放 role 固定面：api.tmp.*、api.work.*、api.chat.send 与顶层 api.compact（help 恒在场）。',
   '沙箱内绝不提供联网、日程、教学文档（content / doc）、知识节点（graph）、试卷（exam）、本地文件（files）、工作区（workspace）接口；这些能力只在你派出的 work 里出现，调用了会直接报「沙箱里没有这个 api」。',
   '',

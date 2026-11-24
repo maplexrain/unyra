@@ -17,7 +17,7 @@ import { AgentAvatarGlyph } from '../../learn/agent-team/AgentAvatarGlyph'
 import type { AgentTeamMode } from '../../learn/agent-team/conversationList'
 import { AGENT_ROSTER_META } from '../../learn/agent-team/agentRoster'
 import { groupThreadIdOf } from '../../../learn/groupChat'
-import { BubbleRichText } from './BubbleRichText'
+import { BubbleBody } from './BubbleBody'
 import { AskBubble } from './AskBubble'
 import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
 import { DeliveryBlock } from './DeliveryBlock'
@@ -350,17 +350,20 @@ export function GroupChatPanel({
               const fromRole = m.from.kind === 'role'
               const roleId = fromRole ? (m.from.id as AgentTeamMode) : undefined
               const meta = roleId ? AGENT_ROSTER_META[roleId] : undefined
-              const avatarId = roleId ? agents.find((a) => a.id === roleId)?.avatarId : undefined
+              const senderAgent = roleId ? agents.find((a) => a.id === roleId) : undefined
+              const avatarId = senderAgent?.avatarId
               const mine = m.from.kind === 'user'
               const isThreadRoot = threadRoot?.id === m.id
               const commentCount = messages.filter((x) => x.threadRootId === m.id).length
               const ownThreadId = m.goalId ? groupThreadIdOf(m.goalId, m.id) : null
               // ask 可能继承任务串（threadId 指向别的根）：它仍在一级，但不在这里开新串。
               const canComment = !threadRoot && !m.threadRootId && Boolean(m.goalId) && (!m.threadId || m.threadId === ownThreadId)
-              const mentions =
-                m.mentions?.map((p) => agents.find((a) => a.id === p.id)?.name || p.name).filter(Boolean) ?? []
-              const mentionAgent =
-                m.mention?.kind === 'role' ? agents.find((a) => a.id === m.mention?.id) : undefined
+              const mentions = Array.from(
+                new Set([
+                  ...(m.mentions?.map((p) => agents.find((a) => a.id === p.id)?.name || p.name) ?? []),
+                  ...(m.mention ? [agents.find((a) => a.id === m.mention?.id)?.name || m.mention.name] : []),
+                ]),
+              ).filter(Boolean)
               return (
                 <div key={m.id} className={'flex items-start gap-2.5 ' + (mine ? 'flex-row-reverse' : '')}>
                   {mine ? (
@@ -393,15 +396,36 @@ export function GroupChatPanel({
                     </span>
                   )}
                   <div className={'min-w-0 max-w-[700px] ' + (mine ? 'flex flex-col items-end' : 'flex flex-col items-start')}>
-                    <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px]">
+                    <div
+                      data-message-meta="true"
+                      className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px]"
+                    >
                       <span className={'font-semibold ' + (mine ? 'text-ink-strong' : (meta?.nameClass ?? 'text-ink-strong'))}>
                         {mine ? userName : nameOfPeer(m)}
                       </span>
+                      {!mine && senderAgent ? (
+                        <span
+                          data-agent-status={senderAgent.running ? 'running' : 'idle'}
+                          className={
+                            'inline-flex items-center gap-1 ' +
+                            (senderAgent.running ? 'text-seal' : 'text-ink-faint')
+                          }
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={
+                              'h-1.5 w-1.5 rounded-full ' +
+                              (senderAgent.running ? 'animate-pulse bg-seal' : 'bg-ink-faint/45')
+                            }
+                          />
+                          {senderAgent.running ? t('工作中') : t('空闲')}
+                        </span>
+                      ) : null}
                       <span className="text-ink-faint">
                         {new Date(m.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       <span className="text-ink-faint/80">
-                        {mentions.length ? '@ ' + mentions.join('、') : t('群聊')}
+                        {mentions.length ? mentions.map((name) => '@' + name).join('、') : t('群聊')}
                       </span>
                       {isThreadRoot ? (
                         <span className="rounded-full bg-seal/12 px-1.5 py-0.5 text-[9.5px] font-medium text-seal">
@@ -409,41 +433,6 @@ export function GroupChatPanel({
                         </span>
                       ) : null}
                     </div>
-                    {mentionAgent ? (
-                      <div
-                        data-mention-agent={mentionAgent.id}
-                        className={
-                          'mb-1 flex items-center gap-1.5 rounded-full px-1 text-[10.5px] ' +
-                          (mine ? 'self-end' : 'self-start')
-                        }
-                      >
-                        <span
-                          className={
-                            'flex h-4 w-4 items-center justify-center overflow-hidden rounded-full border ' +
-                            (AGENT_ROSTER_META[mentionAgent.id]?.avatarClass ?? 'border-line/70 bg-line/45')
-                          }
-                        >
-                          <AgentAvatarGlyph
-                            avatarId={mentionAgent.avatarId}
-                            fallback={AGENT_ROSTER_META[mentionAgent.id]?.fallbackIcon ?? MessageSquare}
-                            size={10}
-                            imgSize={16}
-                            imgClassName="h-4 w-4 rounded-full"
-                          />
-                        </span>
-                        <span className="font-medium text-ink-soft">@{mentionAgent.name}</span>
-                        <span className="flex items-center gap-1 text-ink-faint">
-                          <span
-                            aria-hidden="true"
-                            className={
-                              'h-1.5 w-1.5 rounded-full ' +
-                              (mentionAgent.running ? 'animate-pulse bg-seal' : 'bg-ink-faint/45')
-                            }
-                          />
-                          {mentionAgent.running ? t('运行中') : t('空闲')}
-                        </span>
-                      </div>
-                    ) : null}
                     {m.ask ? (
                       <AskBubble
                         ask={m.ask}
@@ -469,8 +458,9 @@ export function GroupChatPanel({
                             (mine ? 'bg-bubble-user -right-1' : 'bg-bubble-agent -left-1')
                           }
                         />
-                        <BubbleRichText
+                        <BubbleBody
                           text={m.text}
+                          detail={m.detail}
                           names={mentionNames}
                           labels={{ 用户: userName }}
                           tone={mine ? 'user' : 'agent'}

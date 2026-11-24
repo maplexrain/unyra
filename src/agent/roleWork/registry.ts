@@ -78,6 +78,7 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
       from: m.from,
       to: m.to,
       text: m.text,
+      ...(typeof m.detail === 'string' && m.detail.trim() ? { detail: m.detail } : {}),
       ts: typeof m.ts === 'number' ? m.ts : Date.now(),
       ...(m.attachments ? { attachments: m.attachments } : {}),
       ...(ask ? { ask } : {}),
