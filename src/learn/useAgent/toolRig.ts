@@ -25,14 +25,14 @@ import { createChatOps } from '../ops/chat'
 import { resolveChatAttachments } from '../roleWork/attachments'
 import { agentNameOf, AGENT_ROLE_IDS, DEFAULT_AGENT_NAME, type AgentProfileId } from '../../agent/agentProfile'
 import { isAgentRoleId } from '../../agent/roleWork/types'
-import type { ChannelAskStatus, ChannelMessage, ConversationMessage } from '../../agent/types'
+import type { ChannelAskStatus, ChannelMessage, ChannelStamp, ConversationMessage } from '../../agent/types'
 import { ensureRoleConversation, roleConversationsOfGoal } from '../roleWork/roles'
 import { registerAskTimer } from '../roleWork/askTimers'
 import { groupPeer, inboundEnvelope, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
 import { deliverInbound } from '../roleWork/dispatch'
 import { groupSelfMentionError, hasMentionOf, mentionedRoleIdsOf, mentionsUserInGroup, type MentionRole } from '../roleWork/groupTargets'
 import { appendGroupMessage, patchGroupMessage } from '../groupChat'
-import { planGroupThread } from '../roleWork/groupThread'
+import { replyThreadIdOf, planGroupThread } from '../roleWork/groupThread'
 import { emptyDelivery, mergeDelivery, normalizeDelivery } from '../../agent/delivery'
 import { native } from '../../lib/native'
 import { nodeById } from '../graph'
@@ -60,6 +60,8 @@ export function rigTurnTools(io: {
   getLatest: () => LearnStore
   set: (store: LearnStore) => void
   target: AgentRunTarget
+  /** 本轮入站消息的来源通道：群聊回执要沿来源主楼的评论串，不能看「最后一条群消息」 */
+  channel?: ChannelStamp
   /** 本轮现取的全局 AI 设置快照（runTurnUnchecked 在轮首读的那份） */
   settings: AiSettings
   /** 本轮现取的 agent 设置快照（assembleTurnEntry 读的那份；MCP 配置从这儿来） */
@@ -330,7 +332,10 @@ export function rigTurnTools(io: {
       const threadPlan = planGroupThread({
         goalId,
         messageId: groupMsgId,
-        latestThreadId: latestGroupMsg?.threadId,
+        latestThreadId: replyThreadIdOf({
+          channel: io.channel,
+          latestThreadId: latestGroupMsg?.threadId,
+        }),
         mentionsUser,
         targetIds: mentionId ? [mentionId] : [],
       })

@@ -368,6 +368,7 @@ export function useAgent(opts: {
         getLatest,
         set,
         target,
+        channel,
         settings,
         agentSettings: entry.agentSettings,
         wfParams,
@@ -707,6 +708,37 @@ export function useAgent(opts: {
     [conversationId, getLatest, workManagersRef],
   )
 
+  /**
+   * UI 的「终止并通知 role」：关闭 loop，同时把用户写的终止声明发到 role 的
+   * Work 通道并唤醒 role。强制终止仍走 stopWork，不碰 role 的上下文。
+   */
+  const stopWorkWithStatement = useCallback(
+    (workId: string, statement: string, convId?: string) => {
+      const id = convId ?? conversationId
+      if (!id) return
+      const work = getLatest()
+        .conversations.find((c) => c.id === id)
+        ?.works?.sessions.find((w) => w.id === workId)
+      if (!work) return
+      workManagersRef.current.get(id)?.stopWithStatement(work.name, statement)
+    },
+    [conversationId, getLatest, workManagersRef],
+  )
+
+  /** 删除 work 会话：管理器会先停 loop，再把它从账本里摘掉。 */
+  const deleteWork = useCallback(
+    (workId: string, convId?: string) => {
+      const id = convId ?? conversationId
+      if (!id) return
+      const work = getLatest()
+        .conversations.find((c) => c.id === id)
+        ?.works?.sessions.find((w) => w.id === workId)
+      if (!work) return
+      workManagersRef.current.get(id)?.api.kill(work.name)
+    },
+    [conversationId, getLatest, workManagersRef],
+  )
+
   /* ---------- 等待队列：导师在跑时用户发出去的消息排在这里（见 learn/agentQueue） ---------- */
 
   // 等待队列的机制（writeQueue / dispatchQueued / drain / 排队 / 撤回 / 立即发送）
@@ -897,6 +929,8 @@ export function useAgent(opts: {
     compactNow,
     stop,
     stopWork,
+    stopWorkWithStatement,
+    deleteWork,
     /** api.ask 的表单状态与两条出口（由 AgentPanel 渲染成输入框上方的卡片） */
     pendingAsk: conversationId ? (pendingAsk[conversationId] ?? null) : null,
     submitAsk,

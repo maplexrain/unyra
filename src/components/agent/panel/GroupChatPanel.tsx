@@ -2,7 +2,7 @@
  * 群聊面板：只有对话列表，没有思维层、没有单个 work 的过程。
  *
  * 群聊流水存在 groupChat 里（users/{uid}/group-chat.json）；正文显式 @ 某个 agent
- * 时投给被点名的 role，没有 @ 时按产品口径默认由调度龟接收。群聊层本身对所有人可见。
+ * 时投给被点名的 role；没有 @ 时交给幕后的群消息调度 agent 判断，不再默认投给调度龟。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, AtSign, MessageSquare, Send, UserRound, Users } from 'lucide-react'
@@ -23,10 +23,14 @@ import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
 import { DeliveryBlock } from './DeliveryBlock'
 import { useRecentWindow } from './useRecentWindow'
 import { mentionedAgentsOf } from './groupMentions'
+import { WorkingAgentStack } from './WorkingAgentStack'
+import { GroupTriageFallbackDialog } from './GroupTriageFallbackDialog'
 
 export interface GroupChatAgent {
   id: AgentTeamMode
   name: string
+  /** 群消息调度 agent 判断时看到的职责一句话 */
+  duty?: string
   /** 默认角色名等别名：用户仍可用默认名 @ 到已改名的 agent */
   aliases?: string[]
   avatarId?: string
@@ -66,10 +70,13 @@ export function GroupChatPanel({
   onAskExpire,
   onAskHover,
   onOpenFile,
+  triageFallback,
+  onAssignTriageFallback,
+  onDismissTriageFallback,
 }: {
   messages: ChannelMessage[]
   agents: GroupChatAgent[]
-  /** 没有目标时群聊不可发送；显示在输入区上方 */
+  /** 没有目标上下文 / 可调度成员时群聊不可发送；显示在输入区上方 */
   disabledReason?: string
   /** 返回 false 表示发送失败（输入区保留内容）；threadId 非空时发到对应评论串 */
   onSend: (text: string, targetIds: AgentTeamMode[], threadId?: string) => boolean
@@ -81,6 +88,10 @@ export function GroupChatPanel({
   onAskHover?: (askId: string, hovering: boolean) => void
   /** 交付组件里点开本地文件；不传时只处理节点 / 工作区路径 */
   onOpenFile?: (pathOrRel: string, title?: string) => void
+  /** 无 @ 调度自动重试仍失败：弹出候选让用户指定接手人 */
+  triageFallback?: { message: ChannelMessage; agents: GroupChatAgent[] } | null
+  onAssignTriageFallback?: (agentId: AgentTeamMode) => void
+  onDismissTriageFallback?: () => void
 }) {
   const [text, setText] = useState('')
   const [caret, setCaret] = useState(0)
@@ -92,6 +103,7 @@ export function GroupChatPanel({
   const user = activeUser()
   const userName = user ? displayName(user.profile, t('未命名用户')) : t('未命名用户')
   const [threadRootId, setThreadRootId] = useState<string | null>(null)
+  const workingAgents = useMemo(() => agents.filter((a) => a.running), [agents])
   /** 一级群聊：评论串里的回复（有 threadRootId）不重复出现在主列表 */
   const topMessages = useMemo(() => messages.filter((m) => !m.threadRootId), [messages])
   const threadRoot = useMemo(
@@ -104,23 +116,6 @@ export function GroupChatPanel({
     [messages, threadRoot],
   )
   const threadId = threadRoot?.goalId ? groupThreadIdOf(threadRoot.goalId, threadRoot.id) : null
-  /** 评论串里默认回复谁：优先最近一位发言的 role，其次主楼 @ 的 role，再次主楼作者 */
-  const threadDefaultTargetIds = useMemo((): AgentTeamMode[] => {
-    if (!threadRoot) return []
-    const isAgent = (id: string): id is AgentTeamMode => agents.some((a) => a.id === id)
-    const roleOf = (m: ChannelMessage): AgentTeamMode | null =>
-      m.from.kind === 'role' && isAgent(m.from.id) ? m.from.id : null
-    const lastSpeaker = [...threadComments].reverse().map(roleOf).find((id): id is AgentTeamMode => Boolean(id))
-    if (lastSpeaker) return [lastSpeaker]
-    const mentioned = (threadRoot.mentions ?? [])
-      .map((p) => p.id)
-      .filter((id): id is AgentTeamMode => isAgent(id))
-    if (mentioned.length) return [mentioned[0]]
-    const rootRole = roleOf(threadRoot)
-    if (rootRole) return [rootRole]
-    return agents.some((a) => a.id === 'dispatcher') ? ['dispatcher'] : []
-  }, [agents, threadComments, threadRoot])
-
   useEffect(() => {
     setThreadRootId(null)
   }, [resetKey])
@@ -211,17 +206,10 @@ export function GroupChatPanel({
     // @ 的语法要求名字后保留一个空格；不能在这里把末尾空格 trim 掉，否则
     // `@导师龟 ` 会被自己吃掉分隔符，变成一次失败的艾特。
     const body = /[ \u3000]$/.test(text) ? trimmed + ' ' : trimmed
-    // 没有 @ 时按产品口径默认由调度龟接；@ 了就按正文点名的成员投递。
-    // 评论区里没有 @ 时优先回到最近一位发言的 role，避免把任务重新丢回调度龟。
-    const targets: AgentTeamMode[] = mentioned.length
-      ? mentioned.map((a) => a.id)
-      : threadRoot
-        ? threadDefaultTargetIds
-        : agents.some((a) => a.id === 'dispatcher')
-          ? ['dispatcher']
-          : []
-    if (!targets.length) {
-      setError(threadRoot ? t('这条评论串里还没有可回复的 agent') : t('当前群聊里没有调度龟，无法接收无 @ 的消息'))
+    // 没有 @ 时不指定任何目标：交给幕后的群消息调度 agent 判断；评论串也一样。
+    const targets: AgentTeamMode[] = mentioned.length ? mentioned.map((a) => a.id) : []
+    if (!targets.length && !agents.length) {
+      setError(t('当前群聊里没有可调度的 agent'))
       return
     }
     if (body.includes('@') && !mentioned.length) {
@@ -299,7 +287,7 @@ export function GroupChatPanel({
             <div className="min-w-0 flex-1">
               <div className="text-[14px] font-semibold text-ink">{t('群聊')}</div>
               <div className="truncate text-[11px] text-ink-faint">
-                {t('群通道 · 只有对话列表 · @ 指定 agent，无 @ 时由调度龟接手')}
+                {t('群通道 · 只有对话列表 · @ 指定 agent，无 @ 时由群消息调度 agent 判断')}
               </div>
             </div>
             <div className="flex -space-x-2">
@@ -465,11 +453,13 @@ export function GroupChatPanel({
                           labels={{ 用户: userName }}
                           tone={mine ? 'user' : 'agent'}
                         />
+                        {/* 交付账嵌在气泡内侧底部，不再单独长成一个“交付气泡” */}
+                        {m.delivery ? (
+                          <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={m.goalId} />
+                        ) : null}
                       </div>
                     )}
                     <ChannelAttachments message={m} />
-                    {/* 交付账：work 完成 / role 转发时把影响的内容与引用来源带到这里 */}
-                    {m.delivery ? <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={m.goalId} /> : null}
                     <ChannelExtraBlock extra={m.extra} names={mentionNames} />
                     {canComment ? (
                       <button
@@ -497,7 +487,7 @@ export function GroupChatPanel({
             </div>
             <div className="text-[13px]">{t('还没有群消息')}</div>
             <div className="max-w-[320px] text-[11.5px] leading-relaxed">
-              {t('直接输入即可发给调度龟；@ 名字会抄送上下文，首个 @ 会激活那位 agent。')}
+              {t('直接输入即可交给群消息调度 agent 判断；@ 名字会抄送上下文，首个 @ 会激活那位 agent。')}
             </div>
           </div>
         )}
@@ -508,6 +498,11 @@ export function GroupChatPanel({
           <div className="mb-2 rounded-lg bg-line/25 px-2.5 py-1.5 text-[11px] text-ink-faint">{disabledReason}</div>
         ) : null}
         <div className="relative">
+          {workingAgents.length ? (
+            <div className="pointer-events-none absolute bottom-full left-0 z-20 mb-2">
+              <WorkingAgentStack agents={workingAgents} />
+            </div>
+          ) : null}
           {pickerOpen ? (
             <div className="moji-bloom-up-in absolute bottom-full left-0 right-0 z-30 mb-2 max-h-[240px] overflow-y-auto rounded-2xl border border-line-strong bg-card/95 p-1.5 shadow-[0_16px_48px_rgba(0,0,0,0.18)] backdrop-blur-xl">
               {filteredAgents.length ? (
@@ -562,7 +557,7 @@ export function GroupChatPanel({
               })}
               {!mentioned.length ? (
                 <span className="text-[10.5px] text-ink-faint">
-                  {threadRoot ? t('评论串内未 @ 时回复最近发言的 agent') : t('未 @ 时由调度龟接手；@ 可点名指定成员')}
+                  {threadRoot ? t('评论串内未 @ 时由群消息调度 agent 判断') : t('未 @ 时由群消息调度 agent 判断；@ 可点名指定成员')}
                 </span>
               ) : null}
             </div>
@@ -632,8 +627,8 @@ export function GroupChatPanel({
                 {mentioned.length
                   ? t('将投递给点名成员')
                   : threadRoot
-                    ? t('将回复评论串里的 agent')
-                    : t('默认投递给调度龟')}
+                    ? t('将由群消息调度 agent 判断')
+                    : t('将交给群消息调度 agent 判断')}
               </span>
               <div className="ml-auto flex shrink-0 items-center gap-1">
                 <button
@@ -660,6 +655,14 @@ export function GroupChatPanel({
         </div>
         {error ? <div className="mt-1.5 text-[11px] text-rose-600">{error}</div> : null}
       </div>
+      {triageFallback && triageFallback.agents.length && onAssignTriageFallback ? (
+        <GroupTriageFallbackDialog
+          message={triageFallback.message.text}
+          agents={triageFallback.agents}
+          onPick={onAssignTriageFallback}
+          onClose={onDismissTriageFallback ?? (() => undefined)}
+        />
+      ) : null}
     </div>
   )
 }

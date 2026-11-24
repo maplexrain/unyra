@@ -9,7 +9,35 @@
  *
  * 索引严格 `通道id>消息id`，由 learn/groupChat 的 groupThreadIdOf 生成。
  */
+import type { ChannelStamp } from '../../agent/types'
 import { groupThreadIdOf, threadRootIdOf } from '../groupChat'
+
+/**
+ * 回复时该沿哪条串：以这一轮收到的群消息为准，而不是角色会话里「最后一条群消息」。
+ *
+ * 后者会把「对某条一级主楼的回执」误当成一条新主楼——尤其是调度龟刚把任务派到
+ * 导师龟、导师龟马上回执时，会话里最新一条其实已经是这条派单主楼；如果中间又
+ * 插入了别的群消息，按「最新」找还会漂到别的串。来源消息自带的 threadId 是唯一
+ * 可靠的锚点：在评论串里回执就继续原串，一级派单则沿派单主楼开出的串。
+ *
+ * 非群聊轮次保留旧的 latestThreadId 兜底（私聊 / work 被唤醒后往群里发消息的历史
+ * 行为不变）。
+ */
+export function replyThreadIdOf(input: {
+  /** 本轮入站消息的来源信息；只有 group 通道的 threadId 能当锚点 */
+  channel?: ChannelStamp
+  /** 旧兜底：角色会话里最近一条群消息的 threadId */
+  latestThreadId?: string
+}): string | undefined {
+  if (input.channel?.channel === 'group') {
+    if (input.channel.threadId) return input.channel.threadId
+    if (input.channel.threadRootId && input.channel.goalId) {
+      return groupThreadIdOf(input.channel.goalId, input.channel.threadRootId)
+    }
+    return undefined
+  }
+  return input.latestThreadId
+}
 
 export interface GroupThreadPlanInput {
   goalId: string

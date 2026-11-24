@@ -66,6 +66,11 @@ export interface WorkManager {
   setTurn(config: WorkTurnConfig): void
   abortAll(): void
   hasRunning(): boolean
+  /**
+   * UI 专用：带终止声明的停止。先关闭当前 loop，再把声明作为 Work 通道消息
+   * 发给 role 并激活它；没有声明时调用方应走 api.stop（强制终止，不通知 role）。
+   */
+  stopWithStatement(name: string, statement: string): WorkCallResult
 }
 
 interface RunHandle {
@@ -74,6 +79,8 @@ interface RunHandle {
   /** role 在跑动中补的指令 */
   injections: string[]
   stopRequested: boolean
+  /** 用户写下的终止声明；有它时收口说明写成「用户终止」，不是 role 强制停止 */
+  stopStatement?: string
   /** 本轮是否已经显式 host.send */
   delivered: boolean
   startedAt: number
@@ -244,7 +251,9 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
     const issue =
       outcome.error ??
       (handle.stopRequested
-        ? '被 role 强制停止'
+        ? handle.stopStatement
+          ? '用户终止：' + handle.stopStatement
+          : '被 role 强制停止'
         : outcome.status === 'interrupted'
           ? '任务被中止，没有交付'
           : outcome.status === 'incomplete'
@@ -269,7 +278,7 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
     handle.injections.length = 0
 
     // host.send 是主路径；漏了就把最后一段正文自动回传（标记 auto），role 仍能收口。
-    if (!handle.delivered && outcome.delivery && outcome.status !== 'interrupted' && outcome.status !== 'error') {
+    if (!handle.delivered && !handle.stopRequested && outcome.delivery && outcome.status !== 'interrupted' && outcome.status !== 'error') {
       const latest = deps.getWorks().find((w) => w.id === work.id) ?? work
       deps.deliverToRole(latest, outcome.delivery, {
         auto: true,
@@ -407,6 +416,38 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
       for (const h of running.values()) h.ctrl.abort()
     },
     hasRunning: () => running.size > 0,
+    stopWithStatement: (name: string, statement: string): WorkCallResult => {
+      const w = find(name)
+      if (!w) return { ok: false, error: '没有叫「' + name + '」的 work' }
+      const text = statement.trim()
+      if (!text) return { ok: false, error: '终止声明不能为空；不写声明只能强制终止' }
+      const handle = running.get(w.id)
+      if (handle) {
+        handle.stopStatement = text
+        handle.stopRequested = true
+        handle.ctrl.abort()
+      } else {
+        patch(w.id, (cur) => ({
+          ...cur,
+          status: 'stopped',
+          runningSince: undefined,
+          lastActiveAt: Date.now(),
+          lastIssue: '用户终止：' + text,
+        }))
+      }
+      const latest = deps.getWorks().find((x) => x.id === w.id) ?? w
+      deps.deliverToRole(
+        latest,
+        [
+          '【用户终止 work】',
+          'work「' + w.name + '」' + (handle ? '的当前 loop 已关闭。' : '已被终止（当前没有在跑的 loop）。'),
+          '终止声明：' + text,
+          '已有上下文仍然保留；请根据这条声明决定后续安排，必要时给用户一句收口说明。',
+        ].join('\n'),
+        {},
+      )
+      return { ok: true, name: w.name, status: 'stopped' }
+    },
   }
 }
 

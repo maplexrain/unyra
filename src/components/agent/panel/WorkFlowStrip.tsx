@@ -5,19 +5,24 @@
  * work 的详情仍然在下面的 mind 列表里（每条思考 / 工具调用可展开）；
  * 这一条只是让用户不必先点开每一步，就能看到整条执行链路。
  */
+import { useState } from 'react'
 import { ChevronRight, Loader2, Square } from 'lucide-react'
 import type { WorkSession } from '../../../agent/types'
 import { t } from '../../../i18n'
+import { WorkStopDialog } from './WorkStopDialog'
 
 export function WorkFlowStrip({
   work,
   running,
   onStop,
+  onStopWithStatement,
 }: {
   work: WorkSession
   running: boolean
   onStop?: () => void
+  onStopWithStatement?: (statement: string) => void
 }) {
+  const [stopOpen, setStopOpen] = useState(false)
   const trace = work.execTrace
   if (!trace.length && !running) return null
   return (
@@ -39,7 +44,7 @@ export function WorkFlowStrip({
             {onStop && (
               <button
                 type="button"
-                onClick={onStop}
+                onClick={() => setStopOpen(true)}
                 className="flex items-center gap-1 rounded-md border border-line/80 px-1.5 py-0.5 text-[10.5px] text-ink-soft transition-colors hover:border-seal/70 hover:bg-seal/10 hover:text-seal-deep"
                 title={t('终止这个 work 正在跑的这一轮')}
               >
@@ -64,6 +69,20 @@ export function WorkFlowStrip({
             </li>
           ))}
         </ol>
+      )}
+      {stopOpen && (
+        <WorkStopDialog
+          workName={work.name}
+          onCancel={() => setStopOpen(false)}
+          onForceStop={() => {
+            onStop?.()
+            setStopOpen(false)
+          }}
+          onStopWithStatement={(statement) => {
+            onStopWithStatement?.(statement)
+            setStopOpen(false)
+          }}
+        />
       )}
     </div>
   )

@@ -119,7 +119,10 @@ export const DeliveryBlock = memo(function DeliveryBlock({
   const hasSources = delivery.sources.length > 0
 
   return (
-    <div className="mt-2 rounded-lg border border-line/70 bg-card/40 px-2.5 py-2">
+    <div
+      data-delivery-block
+      className="mt-2 border-t border-line/60 pt-2"
+    >
       {hasFiles && (
         <section>
           <div className="flex items-center gap-1.5 text-[12px] font-medium leading-5 text-ink-soft">

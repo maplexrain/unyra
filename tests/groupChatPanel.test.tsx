@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * 群聊层：只有对话列表；用户必须 @ 至少一位 agent 才会进入对方通道。
+ * 群聊层：只有对话列表；@ 指定投递，没有 @ 时由幕后的群消息调度 agent 判断。
  */
 import { createElement, act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -92,10 +92,48 @@ describe('GroupChatPanel', () => {
     expect(host.querySelector('[data-mention-agent]')).toBeNull()
     expect(host.textContent).toContain('本轮交付')
     expect(host.textContent).not.toContain('详细依据')
+    const delivery = host.querySelector('[data-delivery-block]')
+    expect(delivery).not.toBeNull()
+    // 交付账在 agent 气泡内侧底部，不再作为气泡外的一张独立卡片
+    expect(delivery?.closest('.bg-bubble-agent')).not.toBeNull()
     act(() => {
       host.querySelector<HTMLButtonElement>('[data-bubble-detail-toggle]')?.click()
     })
     expect(host.textContent).toContain('详细依据')
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('调度失败兜底：弹出成员选择，点选后交给指定 agent', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const onAssign = vi.fn()
+    const onDismiss = vi.fn()
+    act(() => {
+      root.render(
+        createElement(GroupChatPanel, {
+          messages: [],
+          agents,
+          onSend: vi.fn(() => true),
+          triageFallback: {
+            message: message('m1', { kind: 'user', id: 'u1', name: '用户' }, '@用户 帮我安排一下'),
+            agents,
+          },
+          onAssignTriageFallback: onAssign,
+          onDismissTriageFallback: onDismiss,
+        }),
+      )
+    })
+    const dialog = document.querySelector('[data-group-triage-fallback]')
+    expect(dialog).not.toBeNull()
+    expect(dialog?.textContent).toContain('群消息调度失败')
+    act(() => {
+      dialog?.querySelector<HTMLButtonElement>('[data-triage-agent="dispatcher"]')?.click()
+    })
+    expect(onAssign).toHaveBeenCalledWith('dispatcher')
     act(() => {
       root.unmount()
     })
@@ -169,6 +207,31 @@ describe('GroupChatPanel', () => {
     host.remove()
   })
 
+  it('没有 @ 时提交空目标列表，交给群消息调度 agent，而不是默认点名调度龟', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const onSend = vi.fn(() => true)
+    act(() => {
+      root.render(createElement(GroupChatPanel, { messages: [], agents, onSend }))
+    })
+    const textarea = host.querySelector('textarea') as HTMLTextAreaElement
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+    act(() => {
+      setter?.call(textarea, '帮我把这周的安排列一下')
+      textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    act(() => {
+      host.querySelector<HTMLButtonElement>('button[title="发送"]')?.click()
+    })
+    expect(onSend).toHaveBeenCalledTimes(1)
+    expect(onSend).toHaveBeenCalledWith('帮我把这周的安排列一下', [], undefined)
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
   it('没有目标时输入区禁用并显示原因', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
@@ -186,6 +249,33 @@ describe('GroupChatPanel', () => {
     const textarea = host.querySelector('textarea')
     expect(textarea?.disabled).toBe(true)
     expect(host.textContent).toContain('先选择学习目标')
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('输入框上方悬浮正在工作的头像组：多人叠放并显示人数', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(GroupChatPanel, {
+          messages: [],
+          agents: [
+            { ...agents[0]!, running: true },
+            { ...agents[1]!, running: true },
+          ],
+          onSend: vi.fn(() => true),
+        }),
+      )
+    })
+    const stack = host.querySelector('[data-working-agents]')
+    expect(stack).not.toBeNull()
+    expect(stack?.textContent).toContain('2 位工作中')
+    expect(stack?.querySelectorAll('img, svg').length).toBeGreaterThanOrEqual(2)
+    expect(stack?.className).toContain('group/working')
     act(() => {
       root.unmount()
     })

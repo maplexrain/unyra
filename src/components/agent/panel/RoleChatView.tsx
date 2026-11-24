@@ -8,7 +8,7 @@
  * 私聊层不再显示 Agent 通道的内部转交；那属于思维层，群聊则另有群聊页。
  * 工具、思考、work 的内部过程也不进这里。
  */
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import type { AskAnswers } from '../../../agent/tools'
 import { MessageSquare, UserRound } from 'lucide-react'
 import type { ChannelMessage, ChannelPeer } from '../../../agent/types'
@@ -45,6 +45,7 @@ export function RoleChatView({
   onAskExpire,
   onAskHover,
   onOpenFile,
+  workWindow,
 }: {
   channels: ChannelMessage[]
   /** 当前 role 的显示名（agent profile 覆盖后的真名） */
@@ -67,6 +68,8 @@ export function RoleChatView({
   onAskHover?: (askId: string, hovering: boolean) => void
   /** 交付组件里点开本地文件 */
   onOpenFile?: (pathOrRel: string, title?: string) => void
+  /** work 消息的内嵌折叠窗口（默认收起），由 AgentPanel 统一渲染 */
+  workWindow?: ReactNode
 }) {
   const user = activeUser()
   const userName = user ? displayName(user.profile, t('未命名用户')) : t('未命名用户')
@@ -162,7 +165,8 @@ export function RoleChatView({
     return peerName(m.to, t('群聊'))
   }
 
-  if (!visible.length) {
+  const hasWorkWindow = Boolean(workWindow)
+  if (!visible.length && !hasWorkWindow) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-ink-faint">
         <div className="text-[13px]">{t('这里只有你和当前 agent 的私聊')}</div>
@@ -174,84 +178,99 @@ export function RoleChatView({
   }
 
   return (
-    <div className="flex flex-col gap-3 pb-2">
-      {hasOlder ? (
-        <div className="flex items-center justify-center py-2 text-[10.5px] text-ink-faint">
-          向上滚动加载更早的消息…
-        </div>
-      ) : null}
-      <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
-      {visible.map((m) => {
-        const mine = m.kind === 'user' && m.direction === 'in'
-        const bubbleBg = mine ? 'bg-bubble-user text-ink-strong' : 'bg-bubble-agent text-ink ring-1 ring-line/50'
-        return (
-          <div key={m.id} className={'flex items-start gap-2.5 ' + (mine ? 'flex-row-reverse' : '')}>
-            {avatarOf(m)}
-            <div className={'min-w-0 max-w-[700px] ' + (mine ? 'flex flex-col items-end' : 'flex flex-col items-start')}>
-              <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px]">
-                <span className={'font-semibold ' + nameClassOf(m)}>{nameOf(m)}</span>
-                {!mine && typeof agentRunning === 'boolean' ? (
-                  <span
-                    data-agent-status={agentRunning ? 'running' : 'idle'}
-                    className={'inline-flex items-center gap-1 ' + (agentRunning ? 'text-seal' : 'text-ink-faint')}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={
-                        'h-1.5 w-1.5 rounded-full ' + (agentRunning ? 'animate-pulse bg-seal' : 'bg-ink-faint/45')
-                      }
-                    />
-                    {agentRunning ? t('工作中') : t('空闲')}
-                  </span>
-                ) : null}
-                <span className="text-ink-faint">
-                  {new Date(m.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-                <span className="text-ink-faint/80" title={t('收件人')}>
-                  {'>'} {recipientOf(m)}
-                </span>
-                {m.auto ? <span className="text-amber-600">{t('自动')}</span> : null}
-              </div>
-              {m.ask ? (
-                <AskBubble
-                  ask={m.ask}
-                  actorName={nameOf(m)}
-                  onSubmit={onAskSubmit ? (answers) => onAskSubmit(m.ask!.id, answers) : undefined}
-                  onCancel={onAskCancel ? () => onAskCancel(m.ask!.id) : undefined}
-                  onExpire={onAskExpire ? () => onAskExpire(m.ask!.id) : undefined}
-                  onHover={onAskHover ? (hovering) => onAskHover(m.ask!.id, hovering) : undefined}
-                />
-              ) : (
-                <div
-                  className={
-                    'relative max-w-full whitespace-pre-wrap break-words rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed ' +
-                    bubbleBg +
-                    (mine ? ' rounded-tr-sm' : ' rounded-tl-sm')
-                  }
-                >
-                  <span
-                    aria-hidden="true"
-                    className={
-                      'absolute top-2.5 h-2.5 w-2.5 rotate-45 ' +
-                      (mine ? 'bg-bubble-user -right-1' : 'bg-bubble-agent -left-1')
-                    }
-                  />
-                  <BubbleBody
-                    text={m.text}
-                    detail={m.detail}
-                    names={mentionNames}
-                    labels={{ 用户: userName }}
-                    tone={mine ? 'user' : 'agent'}
-                  />
-                </div>
-              )}
-              <ChannelAttachments message={m} />
-              {m.delivery ? <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={m.goalId} /> : null}
-              <ChannelExtraBlock extra={m.extra} names={mentionNames} />
+    <div className="flex min-h-full flex-col gap-3 pb-2">
+      {visible.length ? (
+        <>
+          {hasOlder ? (
+            <div className="flex items-center justify-center py-2 text-[10.5px] text-ink-faint">
+              向上滚动加载更早的消息…
             </div>
+          ) : null}
+          <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
+          {visible.map((m) => {
+            const mine = m.kind === 'user' && m.direction === 'in'
+            const bubbleBg = mine ? 'bg-bubble-user text-ink-strong' : 'bg-bubble-agent text-ink ring-1 ring-line/50'
+            return (
+              <div key={m.id} className={'flex items-start gap-2.5 ' + (mine ? 'flex-row-reverse' : '')}>
+                {avatarOf(m)}
+                <div className={'min-w-0 max-w-[700px] ' + (mine ? 'flex flex-col items-end' : 'flex flex-col items-start')}>
+                  <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px]">
+                    <span className={'font-semibold ' + nameClassOf(m)}>{nameOf(m)}</span>
+                    {!mine && typeof agentRunning === 'boolean' ? (
+                      <span
+                        data-agent-status={agentRunning ? 'running' : 'idle'}
+                        className={'inline-flex items-center gap-1 ' + (agentRunning ? 'text-seal' : 'text-ink-faint')}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={
+                            'h-1.5 w-1.5 rounded-full ' + (agentRunning ? 'animate-pulse bg-seal' : 'bg-ink-faint/45')
+                          }
+                        />
+                        {agentRunning ? t('工作中') : t('空闲')}
+                      </span>
+                    ) : null}
+                    <span className="text-ink-faint">
+                      {new Date(m.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="text-ink-faint/80" title={t('收件人')}>
+                      {'>'} {recipientOf(m)}
+                    </span>
+                    {m.auto ? <span className="text-amber-600">{t('自动')}</span> : null}
+                  </div>
+                  {m.ask ? (
+                    <AskBubble
+                      ask={m.ask}
+                      actorName={nameOf(m)}
+                      onSubmit={onAskSubmit ? (answers) => onAskSubmit(m.ask!.id, answers) : undefined}
+                      onCancel={onAskCancel ? () => onAskCancel(m.ask!.id) : undefined}
+                      onExpire={onAskExpire ? () => onAskExpire(m.ask!.id) : undefined}
+                      onHover={onAskHover ? (hovering) => onAskHover(m.ask!.id, hovering) : undefined}
+                    />
+                  ) : (
+                    <div
+                      className={
+                        'relative max-w-full whitespace-pre-wrap break-words rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed ' +
+                        bubbleBg +
+                        (mine ? ' rounded-tr-sm' : ' rounded-tl-sm')
+                      }
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={
+                          'absolute top-2.5 h-2.5 w-2.5 rotate-45 ' +
+                          (mine ? 'bg-bubble-user -right-1' : 'bg-bubble-agent -left-1')
+                        }
+                      />
+                      <BubbleBody
+                        text={m.text}
+                        detail={m.detail}
+                        names={mentionNames}
+                        labels={{ 用户: userName }}
+                        tone={mine ? 'user' : 'agent'}
+                      />
+                      {/* 交付账嵌在气泡内侧底部，不再单独长成一个“交付气泡” */}
+                      {m.delivery ? (
+                        <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={m.goalId} />
+                      ) : null}
+                    </div>
+                  )}
+                  <ChannelAttachments message={m} />
+                  <ChannelExtraBlock extra={m.extra} names={mentionNames} />
+                </div>
+              </div>
+            )
+          })}
+        </>
+      ) : (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-ink-faint">
+          <div className="text-[13px]">{t('这里只有你和当前 agent 的私聊')}</div>
+          <div className="max-w-[320px] text-[11.5px] leading-relaxed">
+            {t('内部转交、工具调用与思考过程在「思维」层；群聊在独立的群聊页。')}
           </div>
-        )
-      })}
+        </div>
+      )}
+      {workWindow ? <div className="mt-auto">{workWindow}</div> : null}
     </div>
   )
 }

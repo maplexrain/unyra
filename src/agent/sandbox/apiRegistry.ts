@@ -114,7 +114,7 @@ export const API_GROUPS: ApiGroupDoc[] = [
   title: '确认难度',
   questions: [{ type: 'single', prompt: '这次想练哪一档？', options: ['基础', '进阶', '挑战'] }],
 })`,
-      { trap: '用户取消回 { cancelled: true }，超时回 { timedOut: true }——先判这两个再读答案' },
+      { trap: '用户取消回 { cancelled: true }，超时回 { timedOut: true }——先判这两个再读答案；需求方向 / 范围 / 难度拿不准时先 ask，不要猜' },
       ),
       a('tiktok', 'tiktok()', '响一声系统提示音', '需要把用户视线叫回来时用；不要连续响。', 'await api.tiktok()'),
       a('compact', 'compact({ summary, tasks? })', '提交上下文交接摘要', '只在本轮是压缩轮时调用；summary 是正文摘要，tasks 是未完成事项。本轮结束后旧消息才失活。', `await api.compact({ summary: '## 已讲清\\n- 极限的定义', tasks: ['继续讲夹逼定理'] })`, { trap: '只在压缩轮调用；本轮结束后旧消息才失活，别重复调用、别把摘要复述给用户' }),
@@ -567,12 +567,13 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
     `work 是 role 的工作层：每段 work 有独立上下文、独立系统提示词，没有人格，不直接面对用户。
 **role 掌握多个 work，work 只对接创建它的这一位 role**。work 做完必须用 api.host.send 把结果交回 role；
 role 收到 Work 通道消息后再决定怎么对用户/其他 agent 说。
+新建 work 会从空上下文重新读材料、重新固化提示词；能接上的任务先用 list 找已有 work 续用，别重复开新会话。
 status 只回执行轨迹的 execute 标题，不回工具参数与正文；要给 work 补上下文用 send，不要靠翻 status 拼过程。`,
     [
       a('list', 'api.work.list()', '列出本 role 的 work 会话', '回 { works: [{ name, status, runs, runtimeMs, lastActiveAt }] }；只列当前 role 自己的 work。', `const { works } = await api.work.list()`),
       a('status', 'api.work.status(name)', '查看指定 work 的状态与最近轨迹', '回 { name, status, runs, runtimeMs, lastActiveAt, recentExecutes: [{ at, title }], lastDelivery?, lastIssue? }。recentExecutes 只含 execute 调用的标题（description），不含参数与正文。', `const s = await api.work.status("调研-1")`, { trap: 'status 不是对话记录：看不到 work 的中间正文，只能看状态、轮次、时长与 execute 标题' }),
       a('stop', 'api.work.stop(name)', '强制停止当前 work 轮次', '中止正在跑的那一轮，保留 work 的上下文；之后可以再 work.send 续跑。', `await api.work.stop("调研-1")`),
-      a('create', 'api.work.create({ name? })', '创建 work 会话', 'name 可命名，省略时系统给 work-N；同一 role 内重名会被拒绝。创建时固化该 role 的 work 系统提示词。', `const w = await api.work.create({ name: "调研-1" })`),
+      a('create', 'api.work.create({ name? })', '创建 work 会话', 'name 可命名，省略时系统给 work-N；同一 role 内重名会被拒绝。创建时固化该 role 的 work 系统提示词。', `const w = await api.work.create({ name: "调研-1" })`, { trap: '先 list 看有没有能接上的旧 work；新建会从空上下文重读材料，别把小任务重复开成新会话' }),
       a('kill', 'api.work.kill(name)', '删除 work 会话', '先中止当前轮，再把会话与上下文一起删除；不可恢复。', `await api.work.kill("调研-1")`, { trap: 'kill 是删除，不是停止；只想保留上下文续跑请用 stop' }),
       a('send', 'api.work.send({ name, text?, messageId? })', '给 work 发任务或追问', 'text 是任务全文；messageId 可直接引用 role 会话里的用户消息（连同附件转发，并标注来源）。work 空闲就起一轮，运行中则排到跳边界注入。', `await api.work.send({ name: "调研-1", messageId: "m_123" })`, { trap: 'messageId 只能引用当前 role 会话里的消息；跨 role 或查不到会整笔拒绝' }),
     ],

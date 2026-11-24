@@ -31,14 +31,15 @@ afterEach(() => {
 })
 
 describe('WorkFlowStrip', () => {
-  it('运行中显示终止按钮并回调', () => {
+  it('运行中先弹终止确认；强制终止才回调，不绕过确认', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
     roots.push({ root, host })
     const onStop = vi.fn()
+    const onStopWithStatement = vi.fn()
     act(() => {
-      root.render(createElement(WorkFlowStrip, { work, running: true, onStop }))
+      root.render(createElement(WorkFlowStrip, { work, running: true, onStop, onStopWithStatement }))
     })
     expect(host.textContent).toContain('执行中')
     const button = host.querySelector('button')
@@ -46,7 +47,13 @@ describe('WorkFlowStrip', () => {
     act(() => {
       button!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
+    expect(host.textContent).toContain('终止 work「调研-1」')
+    expect(onStop).not.toHaveBeenCalled()
+    act(() => {
+      host.querySelector<HTMLButtonElement>('[data-work-force-stop]')?.click()
+    })
     expect(onStop).toHaveBeenCalledTimes(1)
+    expect(onStopWithStatement).not.toHaveBeenCalled()
   })
 
   it('空闲时不渲染终止按钮', () => {
