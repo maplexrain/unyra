@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LearnStore } from './types'
 import { emptyLearnStore, flushLearnStore, loadLearnStore, saveLearnStore } from './store'
+import { setLiveLearnStore } from './store/live'
 import { flushCommitsSync } from '../lib/storage'
 import { initVfsStoreSync, registerStoreSyncListener } from '../vfs'
 
@@ -32,6 +33,13 @@ export function useLearnStore() {
     }, 500)
     return () => window.clearTimeout(t)
   }, [store])
+
+  useEffect(() => {
+    // 给「不认识 store、却要按 id 反查实体」的深层组件一条只读通路（见 store/live）。
+    // 不在这里注销：组件重挂时新实例会立刻覆盖；留一份旧引用只是内存里多一个指针，
+    // 但能避免「新实例已挂、旧实例卸载把通路置空」的竞态。
+    setLiveLearnStore(storeRef.current)
+  }, [])
 
   useEffect(() => {
     // 关窗前：先把当前状态排进队列，再同步落盘。
@@ -77,6 +85,7 @@ export function useLearnStore() {
    */
   const set = useCallback((next: LearnStore) => {
     storeRef.current = next
+    setLiveLearnStore(next)
     setStore(next)
   }, [])
 
@@ -92,6 +101,7 @@ export function useLearnStore() {
    */
   const patchQuiet = useCallback((fn: (s: LearnStore) => LearnStore) => {
     storeRef.current = fn(storeRef.current)
+    setLiveLearnStore(storeRef.current)
     saveLearnStore(storeRef.current)
   }, [])
 

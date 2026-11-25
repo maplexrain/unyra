@@ -1,9 +1,9 @@
 /**
- * 群聊输入框上方的「正在工作」头像组。
+ * 群聊顶部栏右侧的「正在工作」头像组。
  *
- * 只露头像，不写名字：它是一枚状态浮层，不是第二份成员名单。多个 agent 同时跑时
- * 头像按卡牌叠放（后一枚压住前一枚的一半），鼠标移进来才整体展开；移开恢复叠放，
- * 不占输入区的固定高度。
+ * 只露头像，不写名字：它是一枚状态标识，不是第二份成员名单。多个 agent 同时跑时
+ * 头像按卡牌叠放（后一枚压住前一枚的一半），鼠标移进来才整体展开；移开恢复叠放。
+ * 无边框、无阴影，和顶部栏里原本的成员头像同一层，不再像一枚浮在输入框上的按钮。
  */
 import type { AgentTeamMode } from '../../learn/agent-team/conversationList'
 import { t } from '../../../i18n'
@@ -22,7 +22,7 @@ export function WorkingAgentStack({ agents }: { agents: WorkingAgent[] }) {
     <div
       data-working-agents
       aria-label={t('{0} 位 agent 正在工作', agents.length)}
-      className="group/working pointer-events-auto flex items-center gap-2 rounded-full border border-line/70 bg-card/92 py-1 pl-1.5 pr-2.5 shadow-[0_10px_30px_rgba(31,27,23,0.16)] backdrop-blur-md"
+      className="group/working pointer-events-auto flex items-center gap-1.5 rounded-full bg-line/20 py-0.5 pl-1 pr-2"
     >
       <div className="flex items-center">
         {agents.map((agent, i) => {
@@ -36,17 +36,17 @@ export function WorkingAgentStack({ agents }: { agents: WorkingAgent[] }) {
                 (i > 0 ? '-ml-[18px] group-hover/working:ml-0' : '')
               }
             >
-              <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-line-strong bg-paper shadow-sm">
+              <span className="relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-lg border border-line-strong bg-paper">
                 <AgentAvatarGlyph
                   avatarId={agent.avatarId}
                   fallback={meta?.fallbackIcon}
-                  size={18}
-                  imgSize={32}
-                  imgClassName="h-8 w-8 rounded-[10px]"
+                  size={14}
+                  imgSize={24}
+                  imgClassName="h-6 w-6 rounded-md"
                 />
                 <span
                   aria-hidden="true"
-                  className="absolute bottom-0.5 right-0.5 h-2 w-2 rounded-full border border-card bg-seal"
+                  className="absolute bottom-0.5 right-0.5 h-1.5 w-1.5 rounded-full border border-card bg-seal"
                 />
               </span>
             </div>

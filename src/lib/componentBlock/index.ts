@@ -33,11 +33,19 @@ import type { ComponentNode, ComponentRenderCtx } from './types'
  */
 export const COMPONENT_SYNTAX_GUIDE = `### 结构化教学排版组件（\`\`\`component 围栏）
 
-教学文档中的结构化卡片排版**严禁手写繁重内嵌 HTML**，必须使用 \`\`\`component 代码块：
+教学文档中的结构化卡片排版**严禁手写整页 HTML、样式或脚本**，必须使用 \`\`\`component 代码块：
 1. 围栏语言标识为 \`component\`：\`\`\`component ... \`\`\`
 2. 使用轻量语义标签定义组件（如 \`<Notice>\`、\`<Compare>\` 等），支持标准属性 \`key="value"\`。
 3. 插槽标记：使用带 \`#插槽名\` 属性的子元素指定插槽内容（如 \`<div #title>标题</div>\` 或 \`<div #describe>内容</div>\`）。
-4. 语法示例：
+4. 分组插槽（如 \`<div #left>\`、\`<div #step>\`）有两种等价写法：
+   - 属性写法：\`<div #left title="直觉误区" badge="常见错误">正文</div>\`
+   - 嵌套写法：\`<div #left><div #title>直觉误区</div><div #content>正文</div></div>\`
+     解析器会把 \`#title / #label / #badge\` 折叠成属性，把 \`#content / #body / #describe\` 折叠成正文；
+     省略 \`#content\` 时，\`#title\` 之外的 HTML（如 \`<ul>\`）同样按正文处理。
+   两种写法都接受；正文允许轻量内联 HTML（strong / em / code / ul / li），不要写整套页面样式。
+5. 使用前**必须**通过 \`api.design.component.get(idOrTag)\` 查一次签名，按签名里的插槽名与属性写；
+   不要自造插槽（如把 \`#left\` 的 \`badge\` 写成 \`#tag\`）。拼错时先用签名核对，不要靠猜。
+6. 语法示例：
 \`\`\`component
 <Notice type="warn">
   <div #title>易错陷阱 · 边界条件</div>

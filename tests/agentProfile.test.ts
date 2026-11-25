@@ -427,7 +427,7 @@ describe('系统提示词：role 只说话与调度，work 才带领域规程', 
     }
     // 共同前缀只装对四位声部逐字为真的块：团队协作 / execute 机制 / 先查再用 /
     // 应用数据守门 / 沙箱纪律 / 通用纪律 / compact 规程
-    expect(SHARED_AGENT_PREFIX).toContain('## 角色层与工作层')
+    expect(SHARED_AGENT_PREFIX).toContain('## 同一个我：对外与执行')
     expect(SHARED_AGENT_PREFIX).toContain('核心执行工具是 execute')
     expect(SHARED_AGENT_PREFIX).toContain('**先查再用**')
     expect(SHARED_AGENT_PREFIX).toContain('**应用数据一律走 api 组**')

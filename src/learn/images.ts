@@ -21,8 +21,11 @@ import { DOCS_DIR, IMAGES_DIR, nodeLayout } from './layout'
 import { listUserDir, readUserImage, removeUserPath } from '../lib/storage'
 import { t } from '../i18n'
 
-/** 一条消息最多带几张图：再多模型也看不过来，token 更吃不消 */
-export const MAX_IMAGES = 6
+/**
+ * 一条消息最多带几张图：与消息气泡里的九宫格同数（9 张）。
+ * 再多模型也看不过来，token 更吃不消；界面上也正好排满 3×3。
+ */
+export const MAX_IMAGES = 9
 
 /** 单张原图上限。超过就拒绝，而不是硬压——几千万像素的图压起来也要几秒 */
 export const MAX_SOURCE_BYTES = 12 * 1024 * 1024

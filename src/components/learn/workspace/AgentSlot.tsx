@@ -41,8 +41,9 @@ import {
   roleOfConversation,
 } from '../../../learn/roleWork/roles'
 import { inboundEnvelope, peerOf, userPeer } from '../../../learn/roleWork/channels'
-import { GroupChatPanel, type GroupChatAgent } from '../../agent/panel/GroupChatPanel'
+import { GroupChatPanel } from '../../agent/panel/GroupChatPanel'
 import { useGroupChatBridge } from './useGroupChatBridge'
+import { groupAgentsOf } from './groupAgentRoster'
 import { useGroupMentionOpen } from './useGroupMentionOpen'
 import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, type AgentVoiceStats } from '../agent-team/agentRoster'
 import { AgentAvatarGlyph } from '../agent-team/AgentAvatarGlyph'
@@ -192,6 +193,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
    * 具体纪律见 useGroupDefaultOpen。
    */
   const [groupOpen, setGroupOpen] = useGroupDefaultOpen(activeAgentTab, activeAgentTabId)
+  /** 全局 @ 推送带过来的消息 id：群聊页打开后滚到这一条并闪一下 */
+  const [groupFocusMessageId, setGroupFocusMessageId] = useState<string | null>(null)
 
   const tutorGoalId = useMemo(() => {
     if (tabGoalId) return tabGoalId
@@ -348,14 +351,16 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
    * 打开群聊：群聊是名册里的固定入口，不属于任何目标/role 会话。
    * 打开时清掉设置态与空态，中央区换成群聊面板；没有目标时面板仍在，输入区禁用。
    */
-  const handleOpenGroup = () => {
+  const handleOpenGroup = (messageId?: string) => {
     setSettingsAgent(null)
     setEmptyTutorMode(false)
     setEmptyVoiceMode(null)
+    // 名册按钮的 onClick 会把事件当第一个参数传进来；只有字符串才是「定位某条消息」
+    setGroupFocusMessageId(typeof messageId === 'string' ? messageId : null)
     setGroupOpen(true)
   }
 
-  // 全局群消息推送：只让「当前目标」的 AgentSlot 接住，消费 pending 后切到群聊。
+  // 全局群消息推送：只让「当前目标」的 AgentSlot 接住，消费 pending 后切到群聊并定位那条消息。
   useGroupMentionOpen(tutorGoalId, handleOpenGroup)
 
   /**
@@ -474,16 +479,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
   )
 
   /** 群聊成员：有目标上下文的 role（不含仅聊天的 free；群聊消息最终要落到目标级 role 会话） */
-  const groupAgents = useMemo<GroupChatAgent[]>(
-    () =>
-      AGENT_ROSTER_ORDER.filter((id) => id !== 'free').map((id) => ({
-        id,
-        name: agentNames?.[id]?.trim() || DEFAULT_AGENT_NAME[id],
-        duty: t(AGENT_ROSTER_META[id].blurb),
-        aliases: [DEFAULT_AGENT_NAME[id]],
-        avatarId: agentAvatarIds[id],
-        running: Boolean(voiceStats[id]?.running),
-      })),
+  const groupAgents = useMemo(
+    () => groupAgentsOf({ agentNames, agentAvatarIds, voiceStats }),
     [agentAvatarIds, agentNames, voiceStats],
   )
 
@@ -494,8 +491,6 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     set,
   })
   const groupMessagesForGoal = groupBridge.messages
-  const sendGroupMessage = (text: string, targetIds: AgentTeamMode[], threadId?: string): boolean =>
-    groupBridge.send(text, targetIds, threadId)
 
   /**
    * 一枚 agent 运行时条目对应的完整 AgentPanel props。
@@ -614,10 +609,11 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         if (!target) return 'sent' as const
         // 不可交流 role 的硬闸：输入区已锁，这里再拦一道（工作流触发不走这条路）
         if (!COMMUNICABLE_VOICES.has(target.voice)) return 'sent' as const
-        // user 通道入站：对话层只读 channels，用户自己说的话也要有来源与时间戳
+        // user 通道入站：对话层只读 channels，用户自己说的话也要有来源与时间戳。
+        // 纯附件消息也要信封（附件引用在转存后由 runTurn 回填），否则私聊页整条都看不见。
         const stored = conversationById(getLatest(), target.conversationId)
         let channel: ChannelStamp | undefined
-        if (stored && text.trim()) {
+        if (stored && (text.trim() || images.length || files.length)) {
           const envelope = inboundEnvelope({
             channel: 'user',
             from: userPeer(),
@@ -909,7 +905,9 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
                     ? undefined
                     : t('群聊挂在学习目标上：先选择一个目标，再和群里的 agent 对话。')
                 }
-                onSend={sendGroupMessage}
+                onSend={groupBridge.send}
+                focusMessageId={groupFocusMessageId}
+                onFocusMessageHandled={() => setGroupFocusMessageId(null)}
                 triageFallback={groupBridge.triageFallback}
                 onAssignTriageFallback={groupBridge.assignTriageFallback}
                 onDismissTriageFallback={groupBridge.dismissTriageFallback}
@@ -918,6 +916,9 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
                 onAskCancel={agent.cancelAskById}
                 onAskExpire={agent.expireAskById}
                 onAskHover={agent.setAskHover}
+                onOpenAgentSettings={() => openTab({ kind: 'agentSettings' })}
+                onToast={onToast}
+                composerActive={tabActive ?? true}
                 onOpenFile={(pathOrRel, title) => {
                   const norm = pathOrRel.replace(/\\/g, '/')
                   const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(norm)

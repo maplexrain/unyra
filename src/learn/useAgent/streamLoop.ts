@@ -19,7 +19,6 @@ import type { AgentRunTarget } from '../agent/sandboxOps'
 import { applyEvent } from '../agent/events'
 import { toChatHistory } from '../agent/history'
 import { loadImagesById, loadImagesFor } from '../images'
-import { loadAttachTexts } from '../agent/transfer'
 import type { StreamingSlot } from './slots'
 
 /** 这一轮的 token 账（导师轮与自由聊天共用同一份 shape）：各跳 usage 的累计与最后一跳的即时速度 */
@@ -79,13 +78,18 @@ export async function runTurnLoop(io: {
     system: teacherSystem,
     /**
      * 历史里的图片要先读回内存：落盘的只有一条引用（见 agent/types 的 MessageImage），
-     * 字节在 {目标}/images 下。整段历史都读，而不是只读这一轮新增的那张——
-     * 模型要能看见前几轮聊过的那张图。
+     * 字节在 {目标}/images 下。调用方可能已经滤掉某些消息的 images（role 请求不挂用户附件），
+     * 这里按滤过的列表读，滤掉的那部分不会被重新读回来。
      */
-    messages: toChatHistory(history.messages, await loadImagesFor(history.messages), {
-      files: await loadAttachTexts(history.messages),
-      summary: history.summary,
-    }),
+    messages: toChatHistory(
+      history.messages,
+      // role 请求不挂用户附件图片的字节：去掉 user 消息里的 images 再加载，
+      // 但工具回传的图（res.read 看过的那张）仍保留，否则 role 会失忆。
+      await loadImagesFor(
+        history.messages.map((m) => (m.role === 'user' && m.images?.length ? { ...m, images: [] } : m)),
+      ),
+      { summary: history.summary, omitUserAttachments: true },
+    ),
     // 工具附带的图片（res.read 看了张图）也要读成字节才能挂上：与用户消息里的图同一条路
     loadImages: loadImagesById,
     tools,

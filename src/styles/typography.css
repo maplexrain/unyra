@@ -16,7 +16,7 @@
  * （learn/ai/guides 的正文排版规范），否则模型会照着旧数字排宽度，图上就会挤。
  *
  * 只管宽度与居中，左右内边距各视图自便：源码是编辑框（pl-[32px] pr-[22px]，
- * 与预览的正文左右对齐），预览还要避开左边的标题定位栏。窄于 800 的格子
+ * 与预览的正文左右对齐），预览还要避开左边的标题定位栏。窄于 1000 的格子
  * （分割之后）宽度照旧自适应。
  *
  * **这里不能写 display**：调用方身上挂着 Tailwind 的 flex / block，而无层级的
@@ -24,7 +24,7 @@
  */
 .doc-measure {
   width: 100%;
-  max-width: 800px;
+  max-width: 1000px;
   margin-inline: auto;
   transition: width 300ms cubic-bezier(0.16, 1, 0.3, 1), max-width 300ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -35,7 +35,7 @@
 
 /* 纯净阅读模式下内容宽度可拖拽调节，并在满宽溢出滚动容器内居中 */
 :root[data-zen='true'] .doc-measure {
-  width: var(--zen-width, 860px) !important;
+  width: var(--zen-width, 1000px) !important;
   max-width: 100% !important;
   margin-inline: auto !important;
 }

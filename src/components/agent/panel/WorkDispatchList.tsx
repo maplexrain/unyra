@@ -80,15 +80,17 @@ export function WorkDispatchList({
           : 'mb-3 rounded-xl border border-line/80 bg-paper-deep/35 px-2.5 py-2'
       }
     >
-      <div className="mb-1.5 flex min-w-0 items-center gap-1.5">
-        <ListTodo size={12} className="shrink-0 text-seal/75" />
-        <span className="text-[11.5px] font-medium text-ink-strong">{title}</span>
-        <span className="rounded-full bg-line/55 px-1.5 py-0.5 text-[10px] tabular-nums text-ink-soft">
-          {sorted.length}
-        </span>
-        <span className="ml-auto text-[10px] text-ink-faint">{t('仅界面观察 · 不进上下文')}</span>
-      </div>
-      <div className="flex flex-col gap-1">
+      {!embedded ? (
+        <div className="mb-1.5 flex min-w-0 items-center gap-1.5">
+          <ListTodo size={12} className="shrink-0 text-seal/75" />
+          <span className="text-[11.5px] font-medium text-ink-strong">{title}</span>
+          <span className="rounded-full bg-line/55 px-1.5 py-0.5 text-[10px] tabular-nums text-ink-soft">
+            {sorted.length}
+          </span>
+          <span className="ml-auto text-[10px] text-ink-faint">{t('仅界面观察 · 不进上下文')}</span>
+        </div>
+      ) : null}
+      <div className="flex flex-col">
         {sorted.map((work) => {
           const status = statusOf(work)
           const totals = totalUsage(usagesOf(work))
@@ -99,8 +101,8 @@ export function WorkDispatchList({
             <div
               key={work.id}
               className={
-                'group/wk flex min-w-0 items-stretch gap-1 rounded-lg transition ' +
-                (work.id === activeWorkId ? 'bg-seal/10 ring-1 ring-seal/20' : 'hover:bg-line/35')
+                'group/wk flex min-w-0 items-stretch gap-1 rounded-md transition ' +
+                (work.id === activeWorkId ? 'bg-line/20' : 'hover:bg-line/35')
               }
             >
               <button

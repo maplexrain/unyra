@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * work 消息内嵌窗口：默认收起，展开后在 role 对话底部显示 work 列表与只读消息。
+ * work 消息列表：默认收起，展开后在 role 对话底部平铺 work 与只读消息。
  */
 import { createElement, act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -44,7 +44,7 @@ function Host({ onSelectWork = vi.fn() }: { onSelectWork?: (id: string) => void 
 }
 
 describe('InlineWorkWindow', () => {
-  it('默认收起，只显示工作窗口标题；展开后显示 work 列表和消息', () => {
+  it('默认收起，只显示一条段头；展开后平铺 work 与消息，不再有窗口外壳', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
@@ -54,7 +54,7 @@ describe('InlineWorkWindow', () => {
     const window = host.querySelector('[data-inline-work-window]')
     expect(window).not.toBeNull()
     expect(window?.querySelector('button')?.getAttribute('aria-expanded')).toBe('false')
-    expect(host.textContent).toContain('工作窗口')
+    expect(host.textContent).not.toContain('工作窗口')
     expect(host.textContent).toContain('展开查看 work 消息')
     expect(host.querySelector('[data-work-dispatch-list]')).toBeNull()
     expect(host.querySelector('[data-inline-work-messages]')).toBeNull()
@@ -63,7 +63,8 @@ describe('InlineWorkWindow', () => {
       window?.querySelector<HTMLButtonElement>('button')?.click()
     })
     expect(window?.querySelector('button')?.getAttribute('aria-expanded')).toBe('true')
-    expect(host.textContent).toContain('work 列表')
+    expect(host.textContent).not.toContain('工作窗口')
+    expect(host.textContent).not.toContain('仅界面观察')
     expect(host.textContent).toContain('调研-1')
     expect(host.textContent).toContain('调研中')
     expect(host.querySelector('[data-inline-work-messages]')).not.toBeNull()

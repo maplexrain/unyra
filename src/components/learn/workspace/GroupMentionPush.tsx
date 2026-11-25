@@ -53,7 +53,7 @@ export function GroupMentionPush({
             {push.text}
           </span>
           <span className="mt-0.5 block text-[10.5px] font-medium text-seal-deep">
-            {t('点击打开智能体群聊')}
+            {t('点击打开群聊并跳到这条消息')}
           </span>
         </span>
         <button

@@ -15,7 +15,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 const INITIAL = 30
 const STEP = 30
 
-export function useRecentWindow(total: number, resetKey: string) {
+export function useRecentWindow(total: number, resetKey: string, focusIndex = -1) {
   const [count, setCount] = useState(INITIAL)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const anchorRef = useRef<{ el: HTMLElement; height: number; top: number } | null>(null)
@@ -23,6 +23,16 @@ export function useRecentWindow(total: number, resetKey: string) {
   useEffect(() => {
     setCount(INITIAL)
   }, [resetKey])
+
+  /**
+   * 深链定位：要跳到的那条可能在初始 30 条之外。
+   * 把窗口一次撑到「从它开始算起的所有消息」，否则它根本不在 DOM 里，
+   * scrollIntoView 找不到目标。
+   */
+  useEffect(() => {
+    if (focusIndex < 0) return
+    setCount((n) => Math.max(n, Math.min(total, total - focusIndex)))
+  }, [focusIndex, total])
 
   const start = Math.max(0, total - count)
   const hasOlder = start > 0

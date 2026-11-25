@@ -2,17 +2,26 @@
 
 import type { LearnStore } from '../types'
 import { DOCS_DIR, MANIFEST_FILE, STATIC_DIR, nodeLayout } from '../layout'
+import { sanitizeSegment } from '../segments'
 import type { StaticResource } from './types'
 
 /* ---------- 位置 ---------- */
 
-/** 目标的根目录（目标目录就是根节点的目录） */
+/**
+ * 目标的根目录（目标目录就是根节点的目录）。
+ *
+ * 刚建的空目标还没有根节点：这时 `nodeLayout` 里根本没有它的条目，但磁盘上目标目录
+ * 已经按目标名建好了（chat.json / goal.json 就在那里）。不能因此判「没有目录」——
+ * 否则第一条带附件的群消息会因为转存找不到位置而被静默丢掉。这里用与 nodeLayout
+ * 相同的段名规则退回目标目录本身。
+ */
 export function goalDirOf(store: LearnStore, goalId: string): string | null {
-  const rootId = store.goals.find((g) => g.id === goalId)?.rootNodeId
-  if (!rootId) return null
-  const layout = nodeLayout(store).get(rootId)
-  if (!layout) return null
-  return [DOCS_DIR, ...layout.dir].join('/')
+  const goal = store.goals.find((g) => g.id === goalId)
+  if (!goal) return null
+  const layout = goal.rootNodeId ? nodeLayout(store).get(goal.rootNodeId) : undefined
+  if (layout) return [DOCS_DIR, ...layout.dir].join('/')
+  const seg = sanitizeSegment(goal.title || goal.question || '未命名目标')
+  return [DOCS_DIR, seg].join('/')
 }
 
 /** 资源目录：\`docs/{目标}/static\`；目标不存在时 null */

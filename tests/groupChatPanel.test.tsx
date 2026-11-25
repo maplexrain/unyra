@@ -164,6 +164,8 @@ describe('GroupChatPanel', () => {
     expect(host.textContent).not.toContain('@调度龟 收到，已开工')
     const commentButton = host.querySelector<HTMLButtonElement>('button[title="group:g1>m1"]')
     expect(commentButton).not.toBeNull()
+    // 评论入口在气泡内部，不再挂在气泡下方的消息区
+    expect(commentButton!.closest('[class*="bg-bubble-agent"]')).not.toBeNull()
     act(() => {
       commentButton!.click()
     })
@@ -207,7 +209,7 @@ describe('GroupChatPanel', () => {
     host.remove()
   })
 
-  it('没有 @ 时提交空目标列表，交给群消息调度 agent，而不是默认点名调度龟', () => {
+  it('没有 @ 时提交空目标列表，交给群消息调度 agent，而不是默认点名调度龟', async () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
@@ -216,6 +218,9 @@ describe('GroupChatPanel', () => {
       root.render(createElement(GroupChatPanel, { messages: [], agents, onSend }))
     })
     const textarea = host.querySelector('textarea') as HTMLTextAreaElement
+    const scroll = host.querySelector<HTMLElement>('[data-message-scroll]')!
+    const scrollTo = vi.fn()
+    scroll.scrollTo = scrollTo
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
     act(() => {
       setter?.call(textarea, '帮我把这周的安排列一下')
@@ -226,6 +231,8 @@ describe('GroupChatPanel', () => {
     })
     expect(onSend).toHaveBeenCalledTimes(1)
     expect(onSend).toHaveBeenCalledWith('帮我把这周的安排列一下', [], undefined)
+    // 发出去的消息要落在最底下：即使此前往上翻过，也回到最新并恢复跟随
+    await vi.waitFor(() => expect(scrollTo).toHaveBeenCalled())
     act(() => {
       root.unmount()
     })
@@ -255,7 +262,98 @@ describe('GroupChatPanel', () => {
     host.remove()
   })
 
-  it('输入框上方悬浮正在工作的头像组：多人叠放并显示人数', () => {
+  it('没有评论时不显示评论入口；有评论时入口铺满整行', () => {
+    const plain = message('m1', { kind: 'role', id: 'tutor', name: '导师龟' }, '这一条还没有人评论')
+    const commented = message('m2', { kind: 'role', id: 'dispatcher', name: '调度龟' }, '这一条已经有评论')
+    commented.threadId = groupThreadIdOf('g1', 'm2')
+    const reply = message('m3', { kind: 'role', id: 'tutor', name: '导师龟' }, '楼内回复')
+    reply.threadId = groupThreadIdOf('g1', 'm2')
+    reply.threadRootId = 'm2'
+
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(GroupChatPanel, { messages: [plain, commented, reply], agents, onSend: vi.fn(() => true) }),
+      )
+    })
+
+    // 0 评论：连入口都不该有（开新串走右键菜单）
+    expect(host.querySelector('button[title="group:g1>m1"]')).toBeNull()
+    // 有评论：入口存在，且按钮自身铺满气泡可用宽度
+    const entry = host.querySelector<HTMLButtonElement>('button[title="group:g1>m2"]')
+    expect(entry).not.toBeNull()
+    expect(entry!.className).toContain('w-full')
+    expect(entry!.textContent).toContain('评论 1')
+
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('气泡右键菜单：复制写剪贴板，评论可直接开新评论串', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+      writable: true,
+    })
+
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const onToast = vi.fn()
+    act(() => {
+      root.render(
+        createElement(GroupChatPanel, {
+          messages: [message('m1', { kind: 'role', id: 'tutor', name: '导师龟' }, '右键我试试')],
+          agents,
+          onSend: vi.fn(() => true),
+          onToast,
+        }),
+      )
+    })
+
+    const bubble = host.querySelector<HTMLElement>('[class*="bg-bubble-agent"]')
+    expect(bubble).not.toBeNull()
+    act(() => {
+      bubble!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 240 }))
+    })
+
+    const menu = document.querySelector<HTMLElement>('[role="menu"]')
+    expect(menu).not.toBeNull()
+    const items = Array.from(menu!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+    expect(items.map((b) => b.textContent)).toEqual(['复制', '评论'])
+
+    await act(async () => {
+      items[0]!.click()
+      await Promise.resolve()
+    })
+    expect(writeText).toHaveBeenCalledWith('右键我试试')
+    expect(onToast).toHaveBeenCalledWith('已复制消息')
+    expect(document.querySelector('[role="menu"]')).toBeNull()
+
+    // 重新右键，走「评论」：0 评论也能开串
+    act(() => {
+      bubble!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 240 }))
+    })
+    const again = document.querySelector<HTMLElement>('[role="menu"]')!
+    act(() => {
+      Array.from(again.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find((b) => b.textContent === '评论')!.click()
+    })
+    expect(host.textContent).toContain('评论串')
+    expect(host.textContent).toContain('原消息')
+    expect(document.querySelector('[role="menu"]')).toBeNull()
+
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('顶部栏显示正在工作的头像组：多人叠放并显示人数', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
@@ -273,9 +371,84 @@ describe('GroupChatPanel', () => {
     })
     const stack = host.querySelector('[data-working-agents]')
     expect(stack).not.toBeNull()
+    expect(host.querySelector('[data-group-chat-header] [data-working-agents]')).not.toBeNull()
     expect(stack?.textContent).toContain('2 位工作中')
     expect(stack?.querySelectorAll('img, svg').length).toBeGreaterThanOrEqual(2)
     expect(stack?.className).toContain('group/working')
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('图片在气泡内宫格，普通文件挂气泡外；气泡宽 450', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const withAttachments: ChannelMessage = {
+      ...message('m1', { kind: 'user', id: 'u1', name: '用户' }, '@导师龟 看下这两份'),
+      attachments: {
+        images: [
+          { id: 'img-1', name: '猫.png', rel: 'static/img-1.png', mime: 'image/png', bytes: 120 },
+        ],
+        files: [{ name: '说明.txt', rel: 'static/note.txt', bytes: 20, binary: false }],
+      },
+    }
+    act(() => {
+      root.render(createElement(GroupChatPanel, { messages: [withAttachments], agents, onSend: vi.fn(() => true) }))
+    })
+    const imageButton = host.querySelector<HTMLButtonElement>('button[title^="猫.png"]')
+    expect(imageButton).not.toBeNull()
+    // 图片在气泡里，普通文件在气泡外
+    expect(imageButton?.closest('.bg-bubble-user')).not.toBeNull()
+    const fileButton = [...host.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('说明.txt'))
+    expect(fileButton?.closest('.bg-bubble-user')).toBeNull()
+    expect(host.querySelector('.max-w-\\[450px\\]')).not.toBeNull()
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('深链：打开群聊后滚到待定位的那条消息，并通知宿主清掉待定位 id', async () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const scrolled = vi.fn()
+    const old = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = scrolled
+    const handled = vi.fn()
+    act(() => {
+      root.render(
+        createElement(GroupChatPanel, {
+          messages: [
+            message('m1', { kind: 'user', id: 'u1', name: '用户' }, '@导师龟 第一条'),
+            message('m2', { kind: 'role', id: 'tutor', name: '导师龟' }, '@用户 第二条'),
+          ],
+          agents,
+          onSend: vi.fn(() => true),
+          focusMessageId: 'm2',
+          onFocusMessageHandled: handled,
+        }),
+      )
+    })
+    await vi.waitFor(() => expect(scrolled).toHaveBeenCalled())
+    expect(handled).toHaveBeenCalledTimes(1)
+    HTMLElement.prototype.scrollIntoView = old
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('贴底时右下角不显示「回到最新」按钮', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(createElement(GroupChatPanel, { messages: [], agents, onSend: vi.fn(() => true) }))
+    })
+    expect(host.querySelector('[data-follow-latest]')).toBeNull()
     act(() => {
       root.unmount()
     })

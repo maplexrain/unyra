@@ -9,6 +9,7 @@ import { wsRefOfRel } from '../src/learn/workspace'
 import { setChipOpener } from '../src/lib/docChip'
 import { DeliveryBlock } from '../src/components/agent/panel/DeliveryBlock'
 import type { DeliveryRecord } from '../src/agent/delivery'
+import { setLiveLearnStore } from '../src/learn/store/live'
 
 ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -208,5 +209,47 @@ describe('交付组件与工作区文件引用打开 (Delivery & Workspace Openi
     expect(onOpenFileMock).toHaveBeenCalledWith('C:/external/file.txt', '外部磁盘文件')
 
     setChipOpener(null)
+  })
+
+  it('8. 超级文档 uuid 反查成标题，点击直接打开对应超级文档（不再落成普通文档 / 显示 uuid）', async () => {
+    const local = fixtureStore()
+    const sdocId = '10460ed4-4b28-42fb-8e4e-b640a1059fb9'
+    local.nodes[1]!.superdocs = [
+      { id: sdocId, name: '单摆周期与能量实验', html: '<html><body>实验</body></html>', createdAt: 0, updatedAt: 0 },
+    ]
+    setLiveLearnStore(local)
+
+    const chipOpenerMock = vi.fn()
+    setChipOpener(chipOpenerMock)
+
+    const delivery: DeliveryRecord = {
+      files: [{ path: sdocId, action: 'created', note: '一句话说明这个实验' }],
+      sources: [],
+    }
+    const div = document.createElement('div')
+    const root = createRoot(div)
+    await act(async () => {
+      root.render(React.createElement(DeliveryBlock, { delivery, goalId: 'gA' }))
+    })
+
+    expect(div.textContent).toContain('单摆周期与能量实验')
+    expect(div.textContent).not.toContain(sdocId)
+    expect(div.textContent).toContain('一句话说明这个实验')
+
+    await act(async () => {
+      div.querySelector<HTMLButtonElement>('button')!.click()
+    })
+    expect(chipOpenerMock).toHaveBeenCalledWith({
+      type: 'super',
+      nodeId: 'childA',
+      name: '单摆周期与能量实验',
+      goalId: 'gA',
+    })
+
+    setChipOpener(null)
+    setLiveLearnStore(null)
+    await act(async () => {
+      root.unmount()
+    })
   })
 })

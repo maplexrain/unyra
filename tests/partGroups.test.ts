@@ -1,13 +1,13 @@
 /**
- * 消息归组的单元用例（见 panel/partGroups）。
+ * 消息部件平铺的单元用例（见 panel/partGroups）。
  *
- * 钉的是「谁跟谁合成一组」这条规矩：提示词模块算不算过程件、正文切不切组、
- * 跳边界要不要切断。它出错的形态是「界面看着有点乱」——不报错、不崩，
- * 只有用例说得清什么才算对。
+ * 钉的是「过程件不再并成组」这条规矩：思考、工具、提示词模块、轮开始时的注入
+ * 都按原顺序各占一项；正文也在同一顺序里。它出错的形态是「界面又冒出一层
+ * 思考与工具 · N 步的容器」——不报错、不崩，只有用例说得清什么才算对。
  */
 import { describe, expect, it } from 'vitest'
 
-import { groupParts, isProcessPart } from '../src/components/agent/panel/partGroups'
+import { flattenParts, isProcessPart } from '../src/components/agent/panel/partGroups'
 import { lastLineOf } from '../src/components/agent/panel/preview'
 import type { AgentPart } from '../src/agent/types'
 
@@ -35,62 +35,46 @@ describe('过程件的范围', () => {
   })
 })
 
-describe('归组', () => {
-  it('相邻的思考与工具连成一组，提示词模块并进同一组（在它发生的位置上）', () => {
-    const groups = groupParts([think('想'), tool('t1'), mod('browser'), think('再想'), tool('t2')])
-    expect(groups).toHaveLength(1)
-    expect(groups[0].kind).toBe('group')
-    if (groups[0].kind !== 'group') return
-    expect(groups[0].items.map((p) => p.type)).toEqual(['thinking', 'tool', 'prompt-module', 'thinking', 'tool'])
+describe('平铺', () => {
+  it('思考、工具与提示词模块按原顺序逐项返回，不再合并成组', () => {
+    const items = flattenParts([think('想'), tool('t1'), mod('browser'), think('再想'), tool('t2')])
+    expect(items.map((p) => p.type)).toEqual(['thinking', 'tool', 'prompt-module', 'thinking', 'tool'])
   })
 
-  it('正文一出，组就闭合：前后各成一组', () => {
-    const groups = groupParts([think('想'), tool('t1'), text('讲完了'), mod('ui'), tool('t2')])
-    expect(groups.map((g) => g.kind)).toEqual(['group', 'single', 'group'])
-    if (groups[0].kind === 'group') expect(groups[0].items).toHaveLength(2)
-    if (groups[2].kind === 'group') expect(groups[2].items).toHaveLength(2)
+  it('正文也在同一顺序里，过程件不会把正文包进组里', () => {
+    const items = flattenParts([think('想'), tool('t1'), text('讲完了'), mod('ui'), tool('t2')])
+    expect(items.map((p) => p.type)).toEqual(['thinking', 'tool', 'text', 'prompt-module', 'tool'])
   })
 
-  it('hop 是跳边界，不切断组；运行时提示在组外并切断组', () => {
-    const crossed = groupParts([think('第一跳'), { type: 'hop' }, tool('t1'), think('第二跳')])
-    expect(crossed).toHaveLength(1)
-    if (crossed[0].kind === 'group') expect(crossed[0].items).toHaveLength(3)
+  it('hop 是跳边界，不上屏；运行时提示原样留在顺序里', () => {
+    const crossed = flattenParts([think('第一跳'), { type: 'hop' }, tool('t1'), think('第二跳')])
+    expect(crossed.map((p) => p.type)).toEqual(['thinking', 'tool', 'thinking'])
 
-    const cut = groupParts([think('想'), { type: 'notice', level: 'warn', text: '步数用尽' }, tool('t1')])
-    expect(cut.map((g) => g.kind)).toEqual(['group', 'single', 'group'])
+    const withNotice = flattenParts([think('想'), { type: 'notice', level: 'warn', text: '步数用尽' }, tool('t1')])
+    expect(withNotice.map((p) => p.type)).toEqual(['thinking', 'notice', 'tool'])
   })
 
-  it('落单的过程件也照原样交出去（调用方按单条画，不成组）', () => {
-    const groups = groupParts([text('开场'), mod('ui')])
-    expect(groups).toHaveLength(2)
-    expect(groups[1].kind).toBe('group')
-    if (groups[1].kind === 'group') expect(groups[1].items).toHaveLength(1)
-  })
-
-  it('空消息与只有 hop 的消息都不产出任何一段', () => {
-    expect(groupParts([])).toEqual([])
-    expect(groupParts([{ type: 'hop' }, { type: 'hop' }])).toEqual([])
+  it('空消息与只有 hop 的消息都不产出任何一项', () => {
+    expect(flattenParts([])).toEqual([])
+    expect(flattenParts([{ type: 'hop' }, { type: 'hop' }])).toEqual([])
   })
 })
 
 describe('轮开始时的提示词注入', () => {
   const inject = (id: string, label: string) => ({ type: 'inject' as const, id, label, text: '注入全文' })
 
-  it('排在最前面，并与后面的思考 / 工具同组（一轮只有一条折叠标题）', () => {
-    const groups = groupParts([think('想'), tool('t1')], [inject('m1', '导师人格 · 标准导师')])
-    expect(groups).toHaveLength(1)
-    if (groups[0].kind !== 'group') throw new Error('应该是一组')
-    expect(groups[0].items.map((p) => p.type)).toEqual(['inject', 'thinking', 'tool'])
+  it('排在最前面，后面直接接思考 / 工具，每一项独立', () => {
+    const items = flattenParts([think('想'), tool('t1')], [inject('m1', '导师人格 · 标准导师')])
+    expect(items.map((p) => p.type)).toEqual(['inject', 'thinking', 'tool'])
   })
 
-  it('回复里只有正文时，注入自己成一组（不并进正文，正文永远在组外）', () => {
-    const groups = groupParts([text('开场白')], [inject('m1', '文档格式 · 混合')])
-    expect(groups.map((g) => g.kind)).toEqual(['group', 'single'])
-    if (groups[0].kind === 'group') expect(groups[0].items).toHaveLength(1)
+  it('回复里只有正文时，注入仍然单独占一项', () => {
+    const items = flattenParts([text('开场白')], [inject('m1', '文档格式 · 混合')])
+    expect(items.map((p) => p.type)).toEqual(['inject', 'text'])
   })
 
-  it('没有注入时归组结果与从前逐字一致', () => {
-    expect(groupParts([think('想')], [])).toEqual(groupParts([think('想')]))
+  it('没有注入时平铺结果与不传第二个参数一致', () => {
+    expect(flattenParts([think('想')], [])).toEqual(flattenParts([think('想')]))
   })
 })
 

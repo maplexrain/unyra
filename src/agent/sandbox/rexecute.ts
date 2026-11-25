@@ -38,11 +38,15 @@ export const REXECUTE_PARAMETERS = {
     },
     pattern: {
       type: 'string',
-      description: '用于匹配原代码的正则表达式或目标字符串（支持正则语法，如未能匹配正则会自动尝试字面量精确匹配）',
+      description:
+        '用于匹配原代码的正则表达式或目标字符串（支持正则语法，如未能匹配正则会自动尝试字面量精确匹配）。' +
+        '若上次已有业务调用生效，用它定位并摘掉那些已执行的段落。',
     },
     replacement: {
       type: 'string',
-      description: '替换后的新代码内容（留空且未提供 replacements 时则原样重跑上次代码）',
+      description:
+        '替换后的新代码内容。已执行成功的调用不要原样保留（改为注释 / 删除 / 幂等判断）。' +
+        '留空且未提供 replacements 时表示原样重跑——只有确认上次没有任何业务生效时才可这样用。',
     },
     flags: {
       type: 'string',
@@ -50,7 +54,7 @@ export const REXECUTE_PARAMETERS = {
     },
     replacements: {
       type: 'array',
-      description: '多处批量替换规则列表。每一项包含 { pattern, replacement, flags? }，将按先后顺序依次替换',
+      description: '多处批量替换规则列表。每一项包含 { pattern, replacement, flags? }，将按先后顺序依次替换；同样先摘掉已生效的调用',
       items: {
         type: 'object',
         properties: {
@@ -180,7 +184,10 @@ export function createRexecuteTool(
     name: 'rexecute',
     description:
       '重新执行最近一次 execute 或 rexecute 的代码。执行前支持传入 pattern 与 replacement 进行正则/字面量替换。' +
-      '**当上次执行报错或需要局部修正时必须优先使用本工具**，无需重新发送整段长代码，极大节省 token 并加速执行，可连续调用直到执行成功为止。',
+      '**当上次执行报错或需要局部修正时必须优先使用本工具**，无需重新发送整段长代码，极大节省 token 并加速执行，可连续调用直到执行成功为止。' +
+      '⚠️ **重跑前必须先核对上次回执里的调用清单**：如果上次虽然整体报错 / 中途抛异常，但其中已有部分业务调用成功生效' +
+      '（回执里该调用 ok:true，或文件已写、消息已发、状态已改），本次绝不能原样重跑——必须先用 pattern / replacement 把那些**已执行成功的调用摘掉**' +
+      '（或补上幂等判断），只重跑失败的那一步及其之后的部分。整段原样重跑会重复写文件、重复发消息、重复加数据，造成不可逆的重复副作用。',
     parameters: REXECUTE_PARAMETERS,
     run: async (args, ctx) => {
       if (!state.lastBody) {

@@ -10,8 +10,10 @@ export interface ComponentSlotNode {
   slotName: string
   /** 节点上携带的键值属性（如 type="warn" label="STAGE 01"） */
   attrs: Record<string, string>
-  /** 文本或子内容 */
+  /** 文本或子内容（保留轻量内联 HTML 与 Markdown，由渲染器再加工） */
   content: string
+  /** 是否由 #slot 显式声明；普通 HTML 子标签（ul/li/strong 等）为 false */
+  explicitSlot?: boolean
 }
 
 /** 顶层组件节点 */

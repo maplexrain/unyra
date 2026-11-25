@@ -66,7 +66,7 @@ export const WORKFLOWS_GUIDE = `## 内置工作流与任务规程
 ### 6.【超级实验室】可交互超级文档（superlab）
 1. 问需求：api.ask 一道简答题，给两三个贴合当前节点主题的示例选项帮用户起意。留空等于「你来定」：挑当前节点里最能帮助理解的一个知识点自拟实验，不必再问。
 2. 先想后写：确定实验演示什么规律或验证什么结论、用户怎么交互（按什么、改什么、看什么结果）、界面按什么顺序排。
-3. 落盘：指令给了「超级文档」壳 uuid 就写它（api.node.get(壳uuid)）；没给就 api.node.create({ kind: 'superdoc', title: 实验名, under: 目标uuid })。await lab.help() 看格式规范（主题变量、moji-markdown、大小上限都在里面），editContent({ html }) 写入一份完整可运行的自包含 HTML（名字不含 .html 后缀）。复杂计算函数用 api.method.create 保存、页面里 api.method.call 调用。
+3. 落盘：指令给了「超级文档」壳 uuid 就写它（api.node.get(壳uuid)）；没给就 api.node.create({ kind: 'superdoc', title: 实验名, under: 目标uuid })。await lab.help() 看格式规范（主题变量、moji-markdown、大小上限都在里面），editContent({ html }) 写入一份完整可运行的自包含 HTML（名字不含 .html 后缀）。**背景色必须严格跟随主题**：html / body / 主容器用 var(--color-bg) 或 var(--color-sunken) / var(--color-surface)，禁止写死 #fff / white / 浅灰——深色主题下不允许出现一块白底。复杂计算函数用 api.method.create 保存、页面里 api.method.call 调用。
 4. 收尾：api.delivery.submit({ files: [{ path: 实验uuid, action: 'created', note: '一句话说明这个实验' }] }) 登记交付，再用一两句话告诉用户这个实验能玩什么。
 
 ### 7.【了解】划词注解（explain）

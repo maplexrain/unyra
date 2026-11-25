@@ -6,7 +6,16 @@
  * - 聊天层只读它（user / agent），所以永远不会把工具与思考露给外部；
  * - 思维层读 `Conversation.messages`，两者互不污染。
  */
-import type { ChannelKind, ChannelMessage, ChannelPeer, ChannelStamp, Conversation, ConversationMessage } from '../../agent/types'
+import type {
+  ChannelKind,
+  ChannelMessage,
+  ChannelPeer,
+  ChannelStamp,
+  Conversation,
+  ConversationMessage,
+  MessageFile,
+  MessageImage,
+} from '../../agent/types'
 import { displayName } from '../../user/profile'
 import { activeUser } from '../../user/store'
 
@@ -126,6 +135,88 @@ export function inboundMessage(
 /** 私聊层只展示用户通道；Agent 通道属于内部协作，群聊另开一层，Work 通道放在思维层 */
 export function chatChannelsOf(conv: Conversation): ChannelMessage[] {
   return (conv.channels ?? []).filter((m) => m.kind === 'user')
+}
+
+/**
+ * 按 id 找 role 会话里的一条用户消息。
+ *
+ * 模型在上下文里看到的是通道抬头里的 `id:`，那是**信封 id**（群聊里就是群消息 id，
+ * 形如 `g-...`），不是 `ConversationMessage.id`。role 把抬头 id 原样交给 work.send /
+ * chat.send 时，两条 id 必须都能命中，否则「附件在眼前却转发不出去」。
+ */
+export function conversationMessageById(
+  messages: ConversationMessage[],
+  id: string,
+): ConversationMessage | null {
+  const key = id.trim()
+  if (!key) return null
+  return messages.find((m) => m.id === key || m.channel?.envelopeId === key) ?? null
+}
+
+/**
+ * 把转存后的附件引用回填到已落账的 user 信封。
+ *
+ * 私聊页只读 `Conversation.channels`，而用户发图时 `AgentSlot` 先建信封、后转存；
+ * 不补这一步，气泡永远只有文字（纯附件消息甚至会整条不可见）。
+ */
+export function withEnvelopeAttachments(
+  channels: ChannelMessage[] | undefined,
+  envelopeId: string | undefined,
+  attachments: ChannelMessage['attachments'] | undefined,
+): ChannelMessage[] | undefined {
+  if (!channels || !envelopeId || !attachments) return channels
+  if (!channels.some((m) => m.id === envelopeId)) return channels
+  return channels.map((m) => (m.id === envelopeId ? { ...m, attachments } : m))
+}
+
+/** 转存完成后，把附件引用并回私聊页正在看的那枚 user 信封。 */
+export function withUserEnvelopeAttachments(
+  conv: Conversation,
+  stamp: ChannelStamp | undefined,
+  images: MessageImage[],
+  files: MessageFile[],
+): Conversation {
+  if (stamp?.channel !== 'user' || (!images.length && !files.length)) return conv
+  const attachments: NonNullable<ChannelMessage['attachments']> = {
+    ...(images.length ? { images } : {}),
+    ...(files.length ? { files } : {}),
+  }
+  const channels = withEnvelopeAttachments(conv.channels, stamp.envelopeId, attachments)
+  if (channels === conv.channels) return conv
+  return { ...conv, channels, updatedAt: Date.now() }
+}
+
+/**
+ * 旧数据的自愈：早期私聊只把附件写进 messages，channels 的 user 信封没有 attachments，
+ * 于是重启后气泡永远是纯文字。这里按 `channel.envelopeId` 把同一轮消息里的引用补回信封；
+ * 幂等，已有 attachments 的信封不动。
+ */
+export function backfillUserEnvelopeAttachments(
+  channels: ChannelMessage[] | undefined,
+  messages: ConversationMessage[],
+): ChannelMessage[] | undefined {
+  if (!channels?.length) return channels
+  let changed = false
+  const next = channels.map((m) => {
+    if (m.kind !== 'user' || m.direction !== 'in' || m.attachments) return m
+    const source = messages.find(
+      (msg) =>
+        msg.role === 'user' &&
+        msg.channel?.channel === 'user' &&
+        msg.channel.envelopeId === m.id &&
+        ((msg.images?.length ?? 0) > 0 || (msg.files?.length ?? 0) > 0),
+    )
+    if (!source) return m
+    changed = true
+    return {
+      ...m,
+      attachments: {
+        ...(source.images?.length ? { images: source.images } : {}),
+        ...(source.files?.length ? { files: source.files } : {}),
+      },
+    }
+  })
+  return changed ? next : channels
 }
 
 /** 群聊的固定对端：`to` 用它表示「这条消息进群」，收件人另看 mentions */

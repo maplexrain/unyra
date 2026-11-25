@@ -159,6 +159,7 @@ const dict: Record<string, string> = {
   '关闭': 'Close',
   '群消息 · {0} 在群里 @了你': 'Group · {0} mentioned you in the group',
   '点击打开智能体群聊': 'Click to open the agent group chat',
+  '点击打开群聊并跳到这条消息': 'Click to open the group chat and jump to this message',
   '关闭推送': 'Close notification',
   '评论串内未 @ 时由群消息调度 agent 判断': 'Without @, the group message dispatcher decides in this thread',
   '未 @ 时由群消息调度 agent 判断；@ 可点名指定成员': 'Without @, the group message dispatcher decides; @ names a specific member',
@@ -322,6 +323,9 @@ const dict: Record<string, string> = {
   '思考、工具与提示词 · {0} 步': 'Thinking, tools & prompts · {0} steps',
   '思考过程': 'Thinking',
   '回到最新消息（恢复自动滚动）': 'Back to the latest message (resume auto-scroll)',
+  '回到最新消息（{0} 条新消息）': 'Back to the latest message ({0} new)',
+  '消息操作': 'Message actions',
+  '已复制消息': 'Message copied',
 
   /* ---------- 空状态（useMessageList） ---------- */
   '超级导师已就绪': 'Super Tutor is ready',

@@ -23,6 +23,8 @@ import { BubbleBody } from './BubbleBody'
 import { AskBubble } from './AskBubble'
 import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
 import { DeliveryBlock } from './DeliveryBlock'
+import { MessageMediaGrid } from './MessageMedia'
+import { isVideoFile } from './messageMediaLayout'
 import { useRecentWindow } from './useRecentWindow'
 import type { AgentTeamMode } from '../../learn/agent-team/conversationList'
 
@@ -68,7 +70,7 @@ export function RoleChatView({
   onAskHover?: (askId: string, hovering: boolean) => void
   /** 交付组件里点开本地文件 */
   onOpenFile?: (pathOrRel: string, title?: string) => void
-  /** work 消息的内嵌折叠窗口（默认收起），由 AgentPanel 统一渲染 */
+  /** work 列表折叠段（默认收起），由 AgentPanel 统一渲染，和消息同一条流 */
   workWindow?: ReactNode
 }) {
   const user = activeUser()
@@ -190,10 +192,14 @@ export function RoleChatView({
           {visible.map((m) => {
             const mine = m.kind === 'user' && m.direction === 'in'
             const bubbleBg = mine ? 'bg-bubble-user text-ink-strong' : 'bg-bubble-agent text-ink ring-1 ring-line/50'
+            const hasMedia = Boolean(
+              m.attachments?.images?.length || (m.attachments?.files ?? []).some((f) => isVideoFile(f)),
+            )
+            const bubbleVisible = Boolean(m.text.trim() || m.detail || hasMedia || m.delivery)
             return (
               <div key={m.id} className={'flex items-start gap-2.5 ' + (mine ? 'flex-row-reverse' : '')}>
                 {avatarOf(m)}
-                <div className={'min-w-0 max-w-[700px] ' + (mine ? 'flex flex-col items-end' : 'flex flex-col items-start')}>
+                <div className={'min-w-0 max-w-[450px] ' + (mine ? 'flex flex-col items-end' : 'flex flex-col items-start')}>
                   <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px]">
                     <span className={'font-semibold ' + nameClassOf(m)}>{nameOf(m)}</span>
                     {!mine && typeof agentRunning === 'boolean' ? (
@@ -227,7 +233,7 @@ export function RoleChatView({
                       onExpire={onAskExpire ? () => onAskExpire(m.ask!.id) : undefined}
                       onHover={onAskHover ? (hovering) => onAskHover(m.ask!.id, hovering) : undefined}
                     />
-                  ) : (
+                  ) : bubbleVisible ? (
                     <div
                       className={
                         'relative max-w-full whitespace-pre-wrap break-words rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed ' +
@@ -249,13 +255,18 @@ export function RoleChatView({
                         labels={{ 用户: userName }}
                         tone={mine ? 'user' : 'agent'}
                       />
+                      {/* 图片 / 视频嵌在气泡内侧底部；其余文件挂在气泡外底侧 */}
+                      <MessageMediaGrid
+                        images={m.attachments?.images}
+                        files={m.attachments?.files}
+                      />
                       {/* 交付账嵌在气泡内侧底部，不再单独长成一个“交付气泡” */}
                       {m.delivery ? (
                         <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={m.goalId} />
                       ) : null}
                     </div>
-                  )}
-                  <ChannelAttachments message={m} />
+                  ) : null}
+                  <ChannelAttachments message={m} onOpenFile={onOpenFile} />
                   <ChannelExtraBlock extra={m.extra} names={mentionNames} />
                 </div>
               </div>
@@ -270,7 +281,7 @@ export function RoleChatView({
           </div>
         </div>
       )}
-      {workWindow ? <div className="mt-auto">{workWindow}</div> : null}
+      {workWindow ? <div>{workWindow}</div> : null}
     </div>
   )
 }

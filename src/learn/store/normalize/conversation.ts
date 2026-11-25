@@ -14,6 +14,7 @@ import { normalizeDelivery } from '../../../agent/delivery'
 import { applyCompaction } from '../../compact'
 import { recoverInterruptedTurn } from '../../agent/inflight'
 import { migrateLegacySubagents, normalizeChannels, normalizeWorks } from '../../../agent/roleWork/registry'
+import { backfillUserEnvelopeAttachments } from '../../roleWork/channels'
 import type { ChannelStamp } from '../../../agent/types'
 
 function normalizeQuote(raw: unknown): MessageQuote | null {
@@ -307,7 +308,8 @@ export function normalizeConversation(
    */
   const voice = typeof r.voice === 'string' && r.voice ? r.voice as Conversation['voice'] : 'tutor'
   const convId = typeof r.id === 'string' ? r.id : crypto.randomUUID()
-  const channels = normalizeChannels(r.channels)
+  let channels = normalizeChannels(r.channels)
+  channels = backfillUserEnvelopeAttachments(channels, messages)
   const works =
     normalizeWorks(r.works, voice ?? 'tutor', convId) ??
     migrateLegacySubagents(

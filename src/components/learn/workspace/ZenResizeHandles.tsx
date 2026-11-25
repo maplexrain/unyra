@@ -13,7 +13,7 @@ import { t } from '../../../i18n'
 export default function ZenResizeHandles() {
   const isZen = useZenMode()
   const [dragging, setDragging] = useState(false)
-  const [hudWidth, setHudWidth] = useState(860)
+  const [hudWidth, setHudWidth] = useState(1000)
   const hudRef = useRef<HTMLSpanElement | null>(null)
   const dragRef = useRef<{
     side: 'left' | 'right'
@@ -34,7 +34,7 @@ export default function ZenResizeHandles() {
         if (saved) currentW = parseInt(saved, 10)
       } catch {}
     }
-    if (!Number.isFinite(currentW) || currentW < 480) currentW = 860
+    if (!Number.isFinite(currentW) || currentW < 480) currentW = 1000
 
     dragRef.current = {
       side,
@@ -56,7 +56,7 @@ export default function ZenResizeHandles() {
     document.documentElement.dataset.zenResizing = 'true'
 
     let rafId = 0
-    let pendingWidth = dragRef.current?.currentWidth ?? 860
+    let pendingWidth = dragRef.current?.currentWidth ?? 1000
 
     const onPointerMove = (e: PointerEvent) => {
       const state = dragRef.current

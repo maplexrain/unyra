@@ -18,6 +18,7 @@ import { ImageLightbox, PendingLightbox } from './panel/Images'
 import { MsgRail } from './panel/MsgRail'
 import type { MsgAnchor } from './panel/types'
 import { useMessageList } from './panel/useMessageList'
+import { useChatReadIndex } from './panel/messageReadIndex'
 import { ComposerUi } from './panel/useComposerUi'
 import { PaceStrip } from './panel/PaceStrip'
 import { FollowLatestButton } from './panel/MessageBubble'
@@ -259,6 +260,12 @@ export default function AgentPanel({
     [conversation, streamingMessageId],
   )
 
+  /** chat 层只画 user 通道（与 RoleChatView 的过滤同一口径）：浏览记录要按这个列表数 */
+  const chatMessages = useMemo(
+    () => (conversation?.channels ?? []).filter((m) => m.kind === 'user'),
+    [conversation],
+  )
+
   /**
    * 切换 role 会话 / 旧 work 页签时重置 work 窗口：
    * - 旧 work 页签带着 viewWorkId 进来时，展开并定位到那只 work；
@@ -347,6 +354,16 @@ export default function AgentPanel({
     messages,
     { scrollRef, rootRef, msgRefs, railAnchorsRef, contentRef },
     setRailActive,
+  )
+
+  /*
+    「回到最新」上的新消息数：按通道记用户读到哪一条（见 panel/messageReadIndex）。
+    chat 层数与 mind 层数是两份不同的浏览进度，通道名分开；贴着底部时恒为 0。
+  */
+  const unread = useChatReadIndex(
+    `role:${conversation?.id ?? ''}:${viewMode}`,
+    viewMode === 'chat' ? chatMessages : messages,
+    pinned,
   )
 
   /*
@@ -557,7 +574,7 @@ export default function AgentPanel({
         {/* work 窗口默认收起；入口在输入区，不在这里抢注意力 */}
       </div>
       {/*
-        消息区不再限制整栏宽度：对话列表铺满可用空间，只有单条气泡限制 700px，
+        消息区不再限制整栏宽度：对话列表铺满可用空间，只有单条气泡限制 450px，
         这样长屏上不会出现一大片空白的「居中窄栏」，一行也不会被拉得读不动。
         顶栏（超级导师 + 人格 + 「正在辅导」）随 agent 栏页签化撤掉：页签自己就回答着
         「现在跟谁在说」——目标级页签的标题就是目标的标题，子代理页签就是会话名。
@@ -635,7 +652,7 @@ export default function AgentPanel({
           <span className="text-[13px] font-medium tabular-nums text-ink-strong">{zoomPct}%</span>
         </div>
 
-        {!pinned && <FollowLatestButton onClick={restoreFollow} />}
+        {!pinned && <FollowLatestButton onClick={restoreFollow} unread={unread} className="bottom-3 right-8" />}
       </div>
 
       {/* 输入区与列表之间不画分隔线：输入卡片自己那圈边框已经把它分出来了，多一条线只是噪音 */}

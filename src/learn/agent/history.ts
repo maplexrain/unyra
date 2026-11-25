@@ -16,7 +16,7 @@ import {
 } from '../../agent/types'
 import type { ChatMessage } from '../../ai/types'
 import { budgetChars, imagePart, textPart } from '../../ai/content'
-import { fileBlock } from '../attachments'
+import { attachmentMetaBlock, fileBlock } from '../attachments'
 import { summaryBlock } from '../compact'
 import { channelTextOf } from '../roleWork/channels'
 
@@ -55,7 +55,15 @@ export function toChatHistory(
    * 做成一个选项对象而不是第三、第四个位置参数：这一层已经有两个可选参数了，
    * 再加位置参数，调用点上就分不清哪个是哪个。
    */
-  opts?: { files?: Map<string, string>; summary?: ContextSummary },
+  opts?: {
+    files?: Map<string, string>
+    summary?: ContextSummary
+    /**
+     * role 层专用：用户消息只带附件元信息，不把图片字节与文件正文挂进请求。
+     * work 拿原消息引用去读实际内容；role 想知道内容只能把消息交给 work。
+     */
+    omitUserAttachments?: boolean
+  },
 ): ChatMessage[] {
   /*
    * 压缩过的历史：**失活的消息一条都不发**，摘要作为第一条用户消息接在最前面
@@ -68,11 +76,21 @@ export function toChatHistory(
     if (m.retired) continue
     if (m.role === 'user') {
       const text = m.parts.filter((p) => p.type === 'text').map((p) => p.text).join('')
-      const pics = (m.images ?? [])
-        .map((img) => images?.get(img.id))
-        .filter((p): p is { mime: string; data: string } => !!p)
+      const pics = opts?.omitUserAttachments
+        ? []
+        : (m.images ?? [])
+            .map((img) => images?.get(img.id))
+            .filter((p): p is { mime: string; data: string } => !!p)
       // 附件的正文接在用户那句话之后、位置说明之前：先看他问了什么、附了什么，再看「此刻在哪个节点」
-      const attach = m.files?.length ? fileBlock(m.files, opts?.files ?? new Map()) : ''
+      // role 层只接元信息（文件名 / 体积 / 尺寸），图片字节与文件全文一律不挂。
+      const attach = opts?.omitUserAttachments
+        ? attachmentMetaBlock(m.images ?? [], m.files ?? [], {
+            totalFiles: m.files?.length ?? 0,
+            ...(m.channel?.envelopeId ? { messageId: m.channel.envelopeId } : {}),
+          })
+        : m.files?.length
+          ? fileBlock(m.files, opts?.files ?? new Map())
+          : ''
       const stamped = m.channel ? channelTextOf(m.channel, text) : text
       const body = withContext([stamped, attach].filter(Boolean).join('\n\n'), m.context)
       // 片段顺序：先文字后图片。顺序一旦定下就不能再改——历史要逐字节稳定
