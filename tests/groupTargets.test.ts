@@ -9,12 +9,12 @@ import {
 
 const roles: MentionRole[] = [
   { id: 'tutor', names: ['导师龟'] },
-  { id: 'dispatcher', names: ['调度龟'] },
+  { id: 'dispatcher', names: ['经理龟'] },
   { id: 'designer', names: ['设计龟'] },
 ]
 
 describe('群聊 @ 目标解析', () => {
-  it('只认正文里真正 @ 到的 role，不把调度龟与设计龟混在一起', () => {
+  it('只认正文里真正 @ 到的 role，不把经理龟与设计龟混在一起', () => {
     expect(mentionedRoleIdsOf('@导师龟 请接一下这个任务', roles)).toEqual(['tutor'])
     expect(mentionedRoleIdsOf('@设计龟 做个课件', roles)).toEqual(['designer'])
   })

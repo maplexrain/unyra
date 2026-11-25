@@ -23,12 +23,12 @@ function buildVoice(voice: AgentVoice, opts: VoiceSystemOpts): string {
   return joinPromptSections(getAgentPromptSections(voice, opts))
 }
 
-/** 调度龟（dispatcher）：接收需求 → 用 chat.send / work 派单 → 跟踪 → 交付（工作流统一经它路由） */
+/** 经理龟（dispatcher）：接收需求 → 用 chat.send / work 派单 → 跟踪 → 交付（工作流统一经它路由） */
 export function buildDispatcherSystem(opts: VoiceSystemOpts = {}): string {
   return buildVoice('dispatcher', opts)
 }
 
-/** 出卷龟（examiner）：出卷 / 判分与错题讲解 */
+/** 做题龟（examiner）：出卷 / 判分与错题讲解 */
 export function buildExaminerSystem(opts: VoiceSystemOpts = {}): string {
   return buildVoice('examiner', opts)
 }

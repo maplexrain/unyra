@@ -381,7 +381,7 @@ export function useHostWiring({
           source,
         },
       })
-      onToast(t('已把报错交给调度员分派给维修员，请看角色阵容页签'))
+      onToast(t('已把报错交给经理龟分派给维修员，请看角色阵容页签'))
     })
     return () => setPlotFixHandler(null)
   }, [docNode, getLatest, agent, onToast])

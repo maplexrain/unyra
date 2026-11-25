@@ -20,7 +20,7 @@ export interface TurtleClanMember {
   rankTitle: string
   /** 人称龟号（龟一 / 龟二 / …） */
   name: string
-  /** 对外角色名（调度龟 / 导师龟 / …），与 agentProfile 的 DEFAULT_AGENT_NAME 同口径 */
+  /** 对外角色名（经理龟 / 导师龟 / …），与 agentProfile 的 DEFAULT_AGENT_NAME 同口径 */
   role: string
   /** 角色 id（AgentProfileId） */
   id: AgentProfileId
@@ -28,17 +28,17 @@ export interface TurtleClanMember {
   duty: string
 }
 
-/** 龟家排行表：老大调度龟 → 老二导师龟 → 老三出卷龟 → 老四设计龟 → 老五调研龟 → 老六维修龟 */
+/** 龟家排行表：老大经理龟 → 老二导师龟 → 老三做题龟 → 老四设计龟 → 老五调研龟 → 老六维修龟 */
 export const TURTLE_CLAN: readonly TurtleClanMember[] = [
-  { rank: 1, rankTitle: '老大', name: '龟一', role: '调度龟', id: 'dispatcher', duty: '接需求、派活、盯进度、如实汇报' },
+  { rank: 1, rankTitle: '老大', name: '龟一', role: '经理龟', id: 'dispatcher', duty: '接需求、派活、盯进度、如实汇报' },
   { rank: 2, rankTitle: '老二', name: '龟二', role: '导师龟', id: 'tutor', duty: '教学主线主讲与团队协调' },
-  { rank: 3, rankTitle: '老三', name: '龟三', role: '出卷龟', id: 'examiner', duty: '试卷命题与判分讲解' },
+  { rank: 3, rankTitle: '老三', name: '龟三', role: '做题龟', id: 'examiner', duty: '试卷命题与判分讲解' },
   { rank: 4, rankTitle: '老四', name: '龟四', role: '设计龟', id: 'designer', duty: '互动课堂课件与超级实验室' },
   { rank: 5, rankTitle: '老五', name: '龟五', role: '调研龟', id: 'researcher', duty: '联网调研与内置浏览器实操' },
   { rank: 6, rankTitle: '老六', name: '龟六', role: '维修龟', id: 'fixer', duty: '解析失败的函数图像最小修复' },
 ]
 
-/** 名册行（roleWorkGuide 的名单括号用）：dispatcher=老大·调度龟（龟一） / tutor=老二·导师龟（龟二） / … */
+/** 名册行（roleWorkGuide 的名单括号用）：dispatcher=老大·经理龟（龟一） / tutor=老二·导师龟（龟二） / … */
 export function turtleRosterLine(): string {
   return TURTLE_CLAN.map((t) => `${t.id}=${t.rankTitle}·${t.role}（${t.name}）`).join(' / ')
 }

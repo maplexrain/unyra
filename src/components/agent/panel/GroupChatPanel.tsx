@@ -2,7 +2,7 @@
  * 群聊面板：只有对话列表，没有思维层、没有单个 work 的过程。
  *
  * 群聊流水存在 groupChat 里（users/{uid}/group-chat.json）；正文显式 @ 某个 agent
- * 时投给被点名的 role；没有 @ 时交给幕后的群消息调度 agent 判断，不再默认投给调度龟。
+ * 时投给被点名的 role；没有 @ 时交给幕后的群消息调度 agent 判断，不再默认投给经理龟。
  */
 import {
   useEffect,

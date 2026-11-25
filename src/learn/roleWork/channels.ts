@@ -80,7 +80,7 @@ export function formatMetaTs(ts: number): string {
  * role / work 上下文里每条 user 侧外部消息的**元信息抬头**。
  *
  * 形如：
- * `[{time:2026/11/23 20:45:00, channel:agent, id:e1, roleId:dispatcher, roleName:调度龟}]`
+ * `[{time:2026/11/23 20:45:00, channel:agent, id:e1, roleId:dispatcher, roleName:经理龟}]`
  *
  * 字段是约定好的协议，不是给人看的装饰：`roleId` / `roleName` 是**发信人**，
  * `channel` 是它从哪条通道来。大模型靠这一行分清「这句话是谁说的」，用户消息、

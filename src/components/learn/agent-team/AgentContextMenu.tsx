@@ -2,7 +2,7 @@
  * 智能体卡片右键菜单（AgentContextMenu）
  *
  * 功能选项：
- * 1. 置顶 / 取消置顶（调度龟默认置顶且不可撤销）
+ * 1. 置顶 / 取消置顶（经理龟默认置顶且不可撤销）
  * 2. 打开设置
  */
 
@@ -57,7 +57,7 @@ export function AgentContextMenu({
           type="button"
           role="menuitem"
           disabled
-          title={t('调度龟是团队任务入口，默认置顶不可撤销')}
+          title={t('经理龟是团队任务入口，默认置顶不可撤销')}
           className={ROW}
         >
           <span className={ICON}>

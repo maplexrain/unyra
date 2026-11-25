@@ -49,7 +49,7 @@ export function hasMentionOf(text: string, names: readonly string[]): boolean {
 /**
  * 群聊正文是否在 **@ 用户**：`@用户 ` 是稳定口径，另外兼容用户当前的显示名。
  * 这种 @ 不是投递给某位 role——它只是让群里的用户看到结论；宿主不能因为
- * 「有 @ 但没解析出 role」就报错，也不能退回默认调度龟。
+ * 「有 @ 但没解析出 role」就报错，也不能退回默认经理龟。
  */
 export function mentionsUserInGroup(text: string, userName?: string): boolean {
   if (hasMentionOf(text, ['用户'])) return true

@@ -64,7 +64,7 @@ export const LEGACY_VOICE_ALIAS: Readonly<Record<string, AgentVoice>> = { grader
 
 /** 一位智能体的独立设置。缺省字段 = 跟随默认 / 全局，见模块顶部说明 */
 export interface AgentProfile {
-  /** 显示名覆盖；空 / 缺省 = 默认名（自由对话 / 导师龟 / 出卷龟 …） */
+  /** 显示名覆盖；空 / 缺省 = 默认名（自由对话 / 导师龟 / 做题龟 …） */
   name?: string
   /** 头像 id（AGENT_AVATARS 目录）；缺省 = 默认头像（各自的那只龟龟） */
   avatar?: string
@@ -86,8 +86,8 @@ export interface AgentProfile {
  */
 export const AGENT_AVATARS: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'turtle-tutor', label: '导师龟' },
-  { id: 'turtle-dispatcher', label: '调度龟' },
-  { id: 'turtle-examiner', label: '出卷龟' },
+  { id: 'turtle-dispatcher', label: '经理龟' },
+  { id: 'turtle-examiner', label: '做题龟' },
   { id: 'turtle-designer', label: '设计龟' },
   { id: 'turtle-researcher', label: '调研龟' },
   { id: 'turtle-fixer', label: '维修龟' },
@@ -108,8 +108,8 @@ export const AGENT_AVATARS: ReadonlyArray<{ id: string; label: string }> = [
 export const DEFAULT_AGENT_NAME: Record<AgentProfileId, string> = {
   free: '自由对话',
   tutor: '导师龟',
-  dispatcher: '调度龟',
-  examiner: '出卷龟',
+  dispatcher: '经理龟',
+  examiner: '做题龟',
   designer: '设计龟',
   researcher: '调研龟',
   fixer: '维修龟',

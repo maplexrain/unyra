@@ -374,9 +374,9 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
 
     const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
     expect(tabs).toHaveLength(6)
-    expect(tabs[0].textContent).toContain('调度龟')
+    expect(tabs[0].textContent).toContain('经理龟')
     expect(tabs[1].textContent).toContain('导师龟')
-    expect(tabs[2].textContent).toContain('出卷龟')
+    expect(tabs[2].textContent).toContain('做题龟')
     expect(tabs[3].textContent).toContain('设计龟')
     expect(tabs[4].textContent).toContain('调研龟')
     expect(tabs[5].textContent).toContain('维修龟')
@@ -1024,7 +1024,7 @@ describe('AgentSlot 对话历史切换回归', () => {
     await hydrateFreeChat(null)
   })
 
-  it('点导师：当前停在声部会话（调度员）时，必须打开导师自己的会话而不是留在声部会话上', () => {
+  it('点导师：当前停在声部会话（经理龟）时，必须打开导师自己的会话而不是留在声部会话上', () => {
     const tutorConv = makeConv({
       id: 't1',
       goalId: 'g1',
@@ -1049,15 +1049,15 @@ describe('AgentSlot 对话历史切换回归', () => {
       goalId: 'g1',
       voice: 'dispatcher',
       title: '调度讨论',
-      messages: [{ id: 'md', role: 'user', parts: [{ type: 'text', text: '调度员的对话内容' }], ts: 2000 }],
+      messages: [{ id: 'md', role: 'user', parts: [{ type: 'text', text: '经理龟的对话内容' }], ts: 2000 }],
       channels: [
         {
           id: 'chd',
           kind: 'user',
           direction: 'in',
           from: { kind: 'user', id: 'user', name: '用户' },
-          to: { kind: 'role', id: 'dispatcher', name: '调度员' },
-          text: '调度员的对话内容',
+          to: { kind: 'role', id: 'dispatcher', name: '经理龟' },
+          text: '经理龟的对话内容',
           ts: 2000,
         },
       ] as Conversation['channels'],
@@ -1087,7 +1087,7 @@ describe('AgentSlot 对话历史切换回归', () => {
       resources: {},
       activeGoalId: 'g1',
       activeNodeId: 'n1',
-      // 用户此刻正停在调度员的会话上
+      // 用户此刻正停在经理龟的会话上
       activeConversationId: 'd1',
       agentTabs: [{ kind: 'goal', goalId: 'g1', conversationId: 'd1' }],
       agentActiveTab: 'ga:g1:d1',
@@ -1199,7 +1199,7 @@ describe('AgentSlot 对话历史切换回归', () => {
 
     // 打开的必须是导师自己的会话
     expect(visiblePaneText()).toContain('导师的对话内容')
-    expect(visiblePaneText()).not.toContain('调度员的对话内容')
+    expect(visiblePaneText()).not.toContain('经理龟的对话内容')
 
     act(() => {
       root.unmount()

@@ -96,12 +96,12 @@ const EMPTY_COPY: Record<string, { ready: string; body: string; suggestions?: st
     suggestions: ['用直白的例子解释这个概念', '帮我梳理要点并整理进笔记', '针对难点出一道随堂小测验'],
   },
   dispatcher: {
-    ready: '调度龟已就绪',
+    ready: '经理龟已就绪',
     body: '把需求说给我：我会用 chat.send 派给合适的 role，或用 work 派单，跟踪到交付再向你汇报',
-    suggestions: ['把我的需求分派出去', '现在有哪些 work 在跑？', '查一下出卷龟现在的进度'],
+    suggestions: ['把我的需求分派出去', '现在有哪些 work 在跑？', '查一下做题龟现在的进度'],
   },
   examiner: {
-    ready: '出卷龟已就绪',
+    ready: '做题龟已就绪',
     body: '承接出卷与阅卷任务（工作流与 role 派单触发），照规程交付试卷与错题讲解',
   },
   designer: {

@@ -342,7 +342,7 @@ export function rigTurnTools(io: {
         return { ok: false, error: 'silent 静默汇报不能带 mention：它只入上下文，不激活目标' }
       }
       const from = peerOf('agent', voice, roleName)
-      // 正文没有 @ 时不再默认投给调度龟：agent 的群聊发言可以只是说给群里听。
+      // 正文没有 @ 时不再默认投给经理龟：agent 的群聊发言可以只是说给群里听。
       const mentionPeers = ids.map((id) => peerOf('agent', id, roleNameOf(id)))
       const activePeer = mentionId ? mentionPeers.find((p) => p.id === mentionId) : undefined
       /*

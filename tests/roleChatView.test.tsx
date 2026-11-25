@@ -134,19 +134,19 @@ describe('RoleChatView', () => {
           channels: [
             channel('c1', 'user', 'in', '用户', '用户说的话'),
             roleOut('c2', 'tutor', '导师龟的回复'),
-            roleOut('c3', 'dispatcher', '调度龟的回复'),
+            roleOut('c3', 'dispatcher', '经理龟的回复'),
           ],
           agentName: '导师龟',
           agentAvatarId: 'turtle-tutor',
           agentVoice: 'tutor',
-          agentNames: { tutor: '导师龟', dispatcher: '调度龟' },
+          agentNames: { tutor: '导师龟', dispatcher: '经理龟' },
           agentAvatars: { tutor: 'turtle-tutor', dispatcher: 'turtle-dispatcher' },
         }),
       )
     })
     expect(host.textContent).toContain('导师龟的回复')
-    expect(host.textContent).toContain('调度龟的回复')
-    expect(host.textContent).toContain('调度龟')
+    expect(host.textContent).toContain('经理龟的回复')
+    expect(host.textContent).toContain('经理龟')
     const images = Array.from(host.querySelectorAll('img')).map((img) => img.getAttribute('src'))
     expect(new Set(images).size).toBeGreaterThanOrEqual(2)
     act(() => {

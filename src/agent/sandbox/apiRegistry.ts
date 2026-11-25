@@ -591,7 +591,7 @@ status 只回执行轨迹的 execute 标题，不回工具参数与正文；要�
 **要激活某位 role，必须传唯一的 \`mention: "<role id>"\`**，而且目标必须同时被正文 \`@名字 \` 点到；一条消息只能有一个 mention，被 mention 的 agent 会启动一轮。
 用户消息的首个 @ 由宿主自动解析成 mention；agent 发群消息时不要指望 @ 本身能叫醒谁。旧 \`to\` 在 group 里兼容为 mention，新代码请显式写 mention。
 chat.send 到 work 通道等价于 work.send；到 user 通道不写 to。
-**silent:true 用于进度汇报**：只允许 agent / group 通道，且必须有明确目标 role；消息会落进对方的通道流水与上下文，但**不启动对方一轮**，适合「我已经直接对接用户，只需让调度龟知道进度」的截断点。普通回复不要静默，否则对方不会回应；silent 不能与 mention 同用。
+**silent:true 用于进度汇报**：只允许 agent / group 通道，且必须有明确目标 role；消息会落进对方的通道流水与上下文，但**不启动对方一轮**，适合「我已经直接对接用户，只需让经理龟知道进度」的截断点。普通回复不要静默，否则对方不会回应；silent 不能与 mention 同用。
 **deliveryFrom**：传一条消息 id，把那条消息上的结构化交付账（影响内容 + 引用来源）随本条消息转发；Work 交付消息的 id 在来源元信息里，role 转给群聊/私聊时用它，不要自己重抄 files / sources。
 chat.send 成功会回 \`{ ok:true, channel, id, to?, mention? }\`；看到 ok:true 后**禁止重复发送同一条消息**，失败才按 error 修正。
 大段结果（调研原文、日志、JSON）放 \`extra:{title,text}\`，不要塞进正文刷屏；用户可点开查看。`,

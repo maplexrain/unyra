@@ -33,13 +33,13 @@ describe('agentPinning 置顶与排序机制', () => {
     localStorage.clear()
   })
 
-  it('调度龟默认置顶且不可撤销；聊天龟已从名册移除', () => {
+  it('经理龟默认置顶且不可撤销；聊天龟已从名册移除', () => {
     expect(isPinLocked('free')).toBe(false)
     expect(isPinLocked('dispatcher')).toBe(true)
     expect(isPinLocked('tutor')).toBe(false)
     expect(isPinLocked('examiner')).toBe(false)
 
-    // 初始加载只包含默认锁定的调度龟
+    // 初始加载只包含默认锁定的经理龟
     const initial = loadPinnedAgents()
     expect(initial.has('free')).toBe(false)
     expect(initial.has('dispatcher')).toBe(true)
@@ -122,8 +122,8 @@ describe('提示词分段与共同提示词独立性', () => {
     expect(TURTLE_CLAN_GUIDE).not.toContain('自报家门')
     expect(TURTLE_CLAN_GUIDE).toContain('禁止在每条回复开头自报身份')
     expect(buildDispatcherSystem()).toContain('导师龟是二弟/老二')
-    expect(buildTeacherSystem()).toContain('调度龟是大哥')
-    expect(buildTeacherSystem()).toContain('出卷龟是三弟/老三')
+    expect(buildTeacherSystem()).toContain('经理龟是大哥')
+    expect(buildTeacherSystem()).toContain('做题龟是三弟/老三')
     expect(buildTeacherSystem()).toContain('silent: true')
   })
 
@@ -179,7 +179,7 @@ describe('提示词分段与共同提示词独立性', () => {
     expect(tutorSections[0]!.content).toBe(SHARED_AGENT_PREFIX)
     expect(tutorSections[0]!.isCommon).toBe(true)
 
-    // 出卷龟
+    // 做题龟
     const examinerSections = getAgentPromptSections('examiner')
     expect(examinerSections[0]!.title).toContain('共同提示词')
     expect(examinerSections[0]!.content).toBe(SHARED_AGENT_PREFIX)

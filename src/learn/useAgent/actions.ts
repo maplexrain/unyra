@@ -157,7 +157,7 @@ export function useAgentActions(deps: {
         /** 显式目标：节点刚创建、hook 状态还没跟上时用 */
         target?: AgentRunTarget
         /**
-         * 分诊给哪位 role 跑（角色阵容的分工）：**外部工作流统一经群聊进入**，默认 @调度龟，
+         * 分诊给哪位 role 跑（角色阵容的分工）：**外部工作流统一经群聊进入**，默认 @经理龟，
          * 由它用 chat.send / work 递归派给对应 role；显式 target 的内部续跑才留在私聊。
          * compact 不给 voice：压缩是当前会话的维护操作，也不经调度员。
          */
@@ -226,7 +226,7 @@ export function useAgentActions(deps: {
        * 外部入口（新目标 / 出卷 / 阅卷 / 开讲 / 超级实验室 / 联网调研 / 释义 / 大纲导读…）
        * 默认从群聊进入：先落一条 `@目标龟` 的群流水，再把同一件事以隐藏工作流指令投给目标 role。
        * 群消息是用户可见的任务票；隐藏指令保留模块 / 参数 / 兜底，目标 role 的回复因为
-       * recent inbound = group 会回到群里，调度龟再按群聊递归派给其他兄弟。
+       * recent inbound = group 会回到群里，经理龟再按群聊递归派给其他兄弟。
        *
        * 内部续跑（wfDrain / 手动压缩）带显式 target，或属于 compact 维护轮，
        * 走私聊闭环，不能在用户没要求时凭空往群里塞消息；外部触发但带固定 target 的入口
@@ -419,8 +419,8 @@ export function useAgentActions(deps: {
     ) => {
       runWorkflow('teach-node', {
         target,
-        // 建节点后自动开讲是**外部触发**：先以用户身份在群通道落一条 @调度龟 的任务票，
-        // 再由隐藏工作流指令进入调度龟的上下文；不要借显式 target 直接走私聊 / 只写 mind。
+        // 建节点后自动开讲是**外部触发**：先以用户身份在群通道落一条 @经理龟 的任务票，
+        // 再由隐藏工作流指令进入经理龟的上下文；不要借显式 target 直接走私聊 / 只写 mind。
         viaGroup: true,
         hint: extra,
         params: target.nodeId ? { target: target.nodeId } : {},

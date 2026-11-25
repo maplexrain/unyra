@@ -240,14 +240,14 @@ describe('agentWfGrant（工作流授权面：内置规程面按分工固定 + �
     expect(examinerWork).toContain('#### api.node —')
   })
 
-  it('voiceForWorkflow：工作流统一经调度员路由（AGENT_WORKFLOW_PLANES 只是规程面）', () => {
+  it('voiceForWorkflow：工作流统一经经理龟路由（AGENT_WORKFLOW_PLANES 只是规程面）', () => {
     expect(voiceForWorkflow('exam')).toBe('dispatcher')
     expect(voiceForWorkflow('exam-grade')).toBe('dispatcher')
     expect(voiceForWorkflow('plot-fix')).toBe('dispatcher')
     expect(voiceForWorkflow('browser-use')).toBe('dispatcher')
     expect(voiceForWorkflow('teach-node')).toBe('dispatcher')
     expect(voiceForWorkflow('wf_custom')).toBe('dispatcher')
-    // 规程面仍在各声部（承接调度员的委托照规程干），调度员只有 compact
+    // 规程面仍在各声部（承接经理龟的委托照规程干），经理龟只有 compact
     expect(AGENT_WORKFLOW_PLANES.examiner).toContain('exam')
     expect(AGENT_WORKFLOW_PLANES.examiner).toContain('exam-grade')
     expect(AGENT_WORKFLOW_PLANES.designer).toContain('superlab')
@@ -275,7 +275,7 @@ describe('profiles 声部 id 契约', () => {
     for (const id of ['dispatcher', 'researcher', 'fixer'] as AgentVoice[]) {
       expect(CONTENT_VOICES.has(id)).toBe(false)
     }
-    // 调度员与所有 role 一样：只有沟通 + 调度固定面，活交给 work
+    // 经理龟与所有 role 一样：只有沟通 + 调度固定面，活交给 work
     const dispatcher = agentRuntimeApiAllow('dispatcher')
     expect(dispatcher).toEqual(['tmp', 'work', 'chat', 'compact'])
     expect(dispatcher).not.toContain('node')
@@ -304,12 +304,12 @@ describe('系统提示词：role 只说话与调度，work 才带领域规程', 
     expect(text).not.toContain('【生成课堂】课堂课件生成（classroom）')
   })
 
-  it('调度员 role 提示词：路由表齐、执行规程不在', () => {
+  it('经理龟 role 提示词：路由表齐、执行规程不在', () => {
     const text = buildDispatcherSystem()
-    expect(text).toContain('调度龟')
+    expect(text).toContain('经理龟')
     expect(text).toContain('路由表')
     expect(text).toContain('tutor（导师龟）')
-    expect(text).toContain('examiner（出卷龟）')
+    expect(text).toContain('examiner（做题龟）')
     expect(text).toContain('designer（设计龟）')
     expect(text).toContain('researcher（调研龟）')
     expect(text).toContain('fixer（维修龟）')

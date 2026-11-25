@@ -11,8 +11,8 @@ import {
 
 const agents = [
   { id: 'tutor' as const, name: '导师龟', duty: '主讲与协调' },
-  { id: 'dispatcher' as const, name: '调度龟', duty: '接需求、派活、盯进度' },
-  { id: 'examiner' as const, name: '出卷龟', duty: '试卷命题与判分讲解' },
+  { id: 'dispatcher' as const, name: '经理龟', duty: '接需求、派活、盯进度' },
+  { id: 'examiner' as const, name: '做题龟', duty: '试卷命题与判分讲解' },
   { id: 'designer' as const, name: '设计龟', duty: '互动课堂与超级实验室' },
   { id: 'researcher' as const, name: '调研龟', duty: '联网调研与浏览器实操' },
   { id: 'fixer' as const, name: '修复龟', duty: '函数图像修复' },
@@ -35,7 +35,7 @@ describe('群消息调度 agent', () => {
     const prompt = buildGroupTriagePrompt({ text: '帮我看看这道题', agents, recent })
     expect(prompt.system).toContain('你是群消息调度 agent')
     expect(prompt.system).toContain('导师龟（id: tutor）：主讲与协调')
-    expect(prompt.system).toContain('调度龟（id: dispatcher）')
+    expect(prompt.system).toContain('经理龟（id: dispatcher）')
     expect(prompt.system).toContain('修复龟（id: fixer）')
     // 只保留最近 10 条：前 4 条必须被截掉，最后一条必须在
     expect(prompt.system).not.toContain('消息 3')
