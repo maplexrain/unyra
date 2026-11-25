@@ -359,12 +359,15 @@ export function bodyFor(
    * message）。本地工具在场时服务端搜索本来就被沙箱 api（web.search）覆盖，
    * 功能无损失；纯聊天（无工具轮）才享受服务端搜索。tool_choice 保持 auto：
    * 官方约定服务端工具不可强制指定（400）。
+   *
+   * json 模式必须排除服务端工具：DeepSeek 只允许 `text` 与这些工具同时使用，
+   * 带上 response_format 会直接 400（群消息调度、标题生成都踩过）。
    */
   const serverToolDecls = serverToolDeclarations(p)
   if (opts.tools?.length) {
     body.tools = opts.tools
     body.tool_choice = 'auto'
-  } else if (serverToolDecls.length > 0) {
+  } else if (!opts.json && serverToolDecls.length > 0) {
     body.tools = serverToolDecls
     body.tool_choice = 'auto'
   }
@@ -711,7 +714,10 @@ export async function chatCompleteWith(
     temperature?: number
     /** 思考等级；不传就不发该字段 */
     reasoningEffort?: ReasoningEffort
-    /** 要求返回严格 JSON（response_format: json_object）；网关不支持时忽略 */
+    /**
+     * 要求返回严格 JSON（response_format: json_object）；网关不支持时忽略。
+     * 与服务端工具互斥，二者同时声明时优先保 JSON、不注入服务端工具。
+     */
     json?: boolean
     signal?: AbortSignal
     /** 这次请求的用途（只进用量台账，不发到服务端） */

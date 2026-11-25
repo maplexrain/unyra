@@ -78,6 +78,18 @@ describe('bodyFor 的服务端工具注入', () => {
     expect(toolTypes(body)).toEqual(['deepseek_web_search', 'deepseek_read_url'])
   })
 
+  it('json 模式不注入服务端工具：DeepSeek 只允许 text 与这些工具同时出现', () => {
+    const body = bodyFor(provider({ serverTools: { webSearch: true, readUrl: true } }), {
+      model: 'deepseek-flash',
+      messages: [msg],
+      stream: false,
+      json: true,
+    })
+    expect(body.response_format).toEqual({ type: 'json_object' })
+    expect(body.tools).toBeUndefined()
+    expect(body.tool_choice).toBeUndefined()
+  })
+
   it('非 OpenAI 协议不声明（Anthropic 的服务端工具格式不同，尚未接）', () => {
     const body = bodyFor(provider({ protocol: 'anthropic', serverTools: { webSearch: true, readUrl: true } }), {
       model: 'deepseek-flash',
