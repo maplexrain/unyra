@@ -774,7 +774,7 @@ export function groupIndexForSystemPrompt(allow?: ReadonlySet<string>): string {
 export function renderCompactApiHeader(): string {
   return (
     '### 沙箱 API 速查（签名 + 用法边界）\n' +
-    '写代码前先扫一遍这一节；更细的参数说明、返回结构与完整示例用 api.<组>.<api>.__help() 现查，不要凭印象猜参数。'
+    '写代码前先扫一遍；参数、返回与完整示例用 api.<组>.<api>.__help() 现查，不要凭印象猜。'
   )
 }
 

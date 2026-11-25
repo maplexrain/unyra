@@ -8,7 +8,7 @@
 
 import { AGENT_API_PLANES, FIXED_API_PLANE, WORK_API_PLANES, WORK_FIXED_PLANE, type AgentProfileId, type AgentVoice } from '../../agent/agentProfile'
 import { renderSplitApiDocumentation } from '../../agent/sandbox/apiPromptDoc'
-import { apiDocKeysFor, workApiDocKeysFor, API_PLANE_NOTE, NODE_PATH_NOTE } from './agentSharedPrefix'
+import { apiDocKeysFor, workApiDocKeysFor, NODE_PATH_NOTE } from './agentSharedPrefix'
 import { CHIP_DELIVERY_GUIDE, DELIVERY_LEDGER_GUIDE } from './guides'
 
 export interface ApiPromptParts {
@@ -28,11 +28,10 @@ export function apiPromptPartsFor(voice: AgentVoice): ApiPromptParts {
   if (holds('node')) tail.push(NODE_PATH_NOTE)
   if (holds('chip')) tail.push(CHIP_DELIVERY_GUIDE)
   else if (holds('delivery')) tail.push('交付登记纪律：\n' + DELIVERY_LEDGER_GUIDE)
-  tail.push(API_PLANE_NOTE)
 
   const tailText = tail.join('\n\n')
-  if (doc.variable) return { fixed: doc.fixed, variable: doc.variable + '\n\n' + tailText }
-  return { fixed: doc.fixed + '\n\n' + tailText, variable: '' }
+  if (doc.variable) return { fixed: doc.fixed, variable: doc.variable + (tailText ? '\n\n' + tailText : '') }
+  return { fixed: tailText ? doc.fixed + '\n\n' + tailText : doc.fixed, variable: '' }
 }
 
 /** work 层的 api 两段：固定组 host/tmp + 按 role 派生的非固定组 */
@@ -45,9 +44,8 @@ export function workApiPromptPartsFor(role: AgentProfileId): ApiPromptParts {
   if (holds('node')) tail.push(NODE_PATH_NOTE)
   if (holds('chip')) tail.push(CHIP_DELIVERY_GUIDE)
   else if (holds('delivery')) tail.push('交付登记纪律：\n' + DELIVERY_LEDGER_GUIDE)
-  tail.push(API_PLANE_NOTE)
 
   const tailText = tail.join('\n\n')
-  if (doc.variable) return { fixed: doc.fixed, variable: doc.variable + '\n\n' + tailText }
-  return { fixed: doc.fixed + '\n\n' + tailText, variable: '' }
+  if (doc.variable) return { fixed: doc.fixed, variable: doc.variable + (tailText ? '\n\n' + tailText : '') }
+  return { fixed: tailText ? doc.fixed + '\n\n' + tailText : doc.fixed, variable: '' }
 }
