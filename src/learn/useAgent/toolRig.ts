@@ -173,12 +173,33 @@ export function rigTurnTools(io: {
    * role 轮早结束了，work 还在跑。回调本体在下面 askHost 定义之后装填。
    */
   const workAskRef: { current: ((workId: string, form: AskFormPayload, signal: AbortSignal) => Promise<unknown>) | null } = { current: null }
+  /**
+   * 外部 MCP 工具：只有导师能力面包含 mcp；work 的 tutor 面也声明了 mcp，
+   * 所以要在 work 沙箱快照之前注入，不能等 role 的工具装配再补。
+   */
+  const mcpOps = isTutor ? makeMcpOps(agentSettings.mcp) : undefined
+  if (mcpOps) sandboxBase.mcp = mcpOps
+
   /*
    * work 管理器：喂给这一轮的模型与沙箱基座；它启动的 work 用启动那一刻的配置跑完
    * （换轮不漂移）。role 侧通过 work.* 管理多个 work，每个 work 的上下文独立。
+   *
+   * exam / browser 是宿主侧能力，原本只在下面 role 的 createExecuteTools 里叠加；
+   * work 拿的是更早的 sandboxBase 快照，若不提前并进去，提示词里声明了 exam / browser
+   * 的 work 实际会没有这两组实现（api.exam.read / api.browser.waitFor 直接不存在）。
    */
+  const examTool = (() => {
+    const deps = target.nodeId ? examDeps?.(target.nodeId, wfParams) : undefined
+    return deps ? makeExamTool(deps) : undefined
+  })()
+  const browserTool = browserDeps ? makeBrowserOps(browserDeps, target.goalId) : undefined
+  const workSandboxBase = {
+    ...sandboxBase,
+    ...(examTool ? { exam: examTool } : {}),
+    ...(browserTool ? { browser: browserTool } : {}),
+  }
   workManager.setTurn({
-    sandbox: sandboxBase,
+    sandbox: workSandboxBase,
     provider: global.provider,
     model: global.model,
     // 档位全应用唯一（全局滑条）：work 与它的 role 同档，绝不各自翻面（见 learn/effortGuard）
@@ -424,17 +445,6 @@ export function rigTurnTools(io: {
       }
     },
   })
-  /*
-   * MCP 外部服务挂进沙箱（mcp.list / mcp.discover / mcp.call，见 agent/mcp/ops）。
-   * 配置是这一轮现取的快照：用户改了 MCP 设置，下一轮就生效；
-   * 总开关关着时不注入——与旧做法「关闭时不注入任何 MCP 工具」同一口径。
-   * 其它 role 分工面里没有 mcp 组，也不给它们起外部连接。
-   */
-  if (isTutor) {
-    const mcpOps = makeMcpOps(agentSettings.mcp)
-    if (mcpOps) sandboxBase.mcp = mcpOps
-  }
-
   /**
    * ask 气泡：宿主要把一次问询做成**通道消息**，而不是只压在输入框上方。
    *
@@ -616,6 +626,8 @@ export function rigTurnTools(io: {
   const turnDelivery = emptyDelivery()
   const tools = createExecuteTools({
     ...sandboxBase,
+    ...(examTool ? { exam: examTool } : {}),
+    ...(browserTool ? { browser: browserTool } : {}),
       /*
        * 交付登记：只收结构化数据。正文里不用再复述文件清单与参考来源——
        * 界面在消息底部按「一行一条」统一展示（见 DeliveryBlock）。
@@ -694,18 +706,7 @@ export function rigTurnTools(io: {
           return { ok: true, files: turnDelivery.files.length, sources: turnDelivery.sources.length }
         },
       },
-      /*
-       * 考试工具：作用对象是这一轮冲着来的那个节点（target.nodeId），
-       * 不是「此刻界面上选中的那个」——一轮可能跑好几十秒，期间用户切了节点
-       * 也不该把阅卷对象换掉。
-       *
-       * 「读永远成功、写才看阶段」的翻译全在 learn/agentOps 的 makeExamTool 里
-       * （纯装配，Node 探针钉得住）。
-       */
-      exam: (() => {
-        const deps = target.nodeId ? examDeps?.(target.nodeId, wfParams) : undefined
-        return deps ? makeExamTool(deps) : undefined
-      })(),
+      // examTool / browserTool 已在 workSandboxBase 之前统一构造，role 与 work 共用同一份。
       // 动态提示词注入的触发口已退役（onPromptModule 不再传入，execute 的嗅探也随之拆除）
       // 用户点「停止」时，正在等用户的 ask 与正在睡的 wait 要能立刻退场
       signal,
@@ -767,8 +768,6 @@ export function rigTurnTools(io: {
             }
           : {}),
       },
-      // 内置浏览器（browser.*）：宿主依赖在场的回合才有这一组（见 learn/web/browserOps）
-      ...(browserDeps ? { browser: makeBrowserOps(browserDeps, target.goalId) } : {}),
     })
   return { ctrl, tools, turnDelivery, global, window }
 }

@@ -141,9 +141,15 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
          * api 组白名单（子代理专用）的硬闸：名单外的组当场拒绝。
          * apiAllow 是「execute 按需开放」的承诺，这里才是让它算数的地方——
          * 名单内的组照常，名单外的一律「没有这个 api」，并把开放的组写进报错，
-         * 模型据此改写调用而不是瞎试。log 是沙箱自己的通道，不受白名单管。
+         * 模型据此改写调用而不是瞎试。log 是沙箱自己的通道，不受白名单管；
+         * help 恒在场（见 apiRegistry 的 ALWAYS_CORE），不列进任何 apiAllow。
          */
-        if (opts.apiAllow?.length && name !== 'log' && !opts.apiAllow.includes(name.split('.')[0])) {
+        if (
+          opts.apiAllow?.length &&
+          name !== 'log' &&
+          name !== 'help' &&
+          !opts.apiAllow.includes(name.split('.')[0])
+        ) {
           throw new Error(
             '沙箱里没有这个 api：' + name + '。本次会话只开放了这些 api 组：' + opts.apiAllow.join('、'),
           )

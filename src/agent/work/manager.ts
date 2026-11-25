@@ -166,6 +166,28 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
     delivery: { submit: (input: unknown) => submitDelivery(workId, input) },
     host: hostApi(workId),
     ...(cfg.ask ? { ask: (form: AskFormPayload) => cfg.ask!(workId, form, running.get(workId)?.ctrl.signal ?? new AbortController().signal) } : {}),
+    // wait 与 ask 一样用 work 自己的 run 信号：role 轮早已结束，不能拿 role 的 ctrl 当命。
+    wait: (ms: number) =>
+      new Promise<void>((resolve, reject) => {
+        const signal = running.get(workId)?.ctrl.signal
+        if (signal?.aborted) {
+          reject(new Error('等待被用户中止'))
+          return
+        }
+        const timer = setTimeout(() => {
+          cleanup()
+          resolve()
+        }, ms)
+        const onAbort = () => {
+          cleanup()
+          reject(new Error('等待被用户中止'))
+        }
+        const cleanup = () => {
+          clearTimeout(timer)
+          signal?.removeEventListener('abort', onAbort)
+        }
+        signal?.addEventListener('abort', onAbort, { once: true })
+      }),
     apiAllow: workRuntimeApiAllow(deps.roleId),
     apiBrief: apiBriefForGroups(workRuntimeApiAllow(deps.roleId)),
   })

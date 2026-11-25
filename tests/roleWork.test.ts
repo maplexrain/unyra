@@ -45,7 +45,8 @@ function sandboxBase(calls: string[]): SandboxOptions {
     runSandbox: async (req: SandboxRequest): Promise<SandboxReply> => {
       const host = /host\.send\(([\s\S]*)\)/.exec(req.body)
       const search = /web\.search\(([^)]*)\)/.exec(req.body)
-      const name = host ? 'host.send' : search ? 'web.search' : 'unknown'
+      const wait = /api\.wait\(([^)]*)\)/.exec(req.body)
+      const name = host ? 'host.send' : search ? 'web.search' : wait ? 'wait' : 'unknown'
       calls.push(name)
       try {
         return {
@@ -54,7 +55,9 @@ function sandboxBase(calls: string[]): SandboxOptions {
             ? await req.callApi('host.send', [{ text: '显式交付' }])
             : search
               ? await req.callApi('web.search', [search[1]!.replace(/['"]/g, '')])
-              : null,
+              : wait
+                ? await req.callApi('wait', [Number(wait[1])])
+                : null,
           ms: 1,
         }
       } catch (err) {
@@ -192,6 +195,41 @@ describe('work.send 与交付', () => {
     expect(w.execTrace.map((x) => x.title)).toEqual(['回传结果'])
     expect(deliveries).toEqual([{ text: '显式交付' }])
     expect(calls).toContain('host.send')
+  })
+
+  it('work 的 wait 由 work 自己接上，不借 role 的信号', async () => {
+    const { stream } = scriptedStream([
+      {
+        match: '等片刻',
+        hops: [
+          {
+            content: '',
+            toolCalls: [
+              {
+                id: 'w1',
+                name: 'execute',
+                arguments: JSON.stringify({
+                  description: '等待',
+                  body: '((api) => api.wait(0))',
+                }),
+              },
+            ],
+          },
+          { content: '等好了。' },
+        ],
+      },
+    ])
+    const calls: string[] = []
+    const { manager, works } = makeManager(stream, calls)
+    manager.api.create({ name: '等待' })
+    manager.api.send({ name: '等待', text: '等片刻' })
+    await tick()
+    await tick()
+    await tick()
+    const w = works()[0]!
+    expect(w.status).toBe('idle')
+    expect(w.execTrace.map((x) => x.title)).toEqual(['等待'])
+    expect(calls).toContain('wait')
   })
 
   it('未知 work 与空 send 都当场拒绝，不落任何东西', () => {
