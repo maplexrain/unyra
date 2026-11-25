@@ -350,6 +350,17 @@ export function AgentSettingsView({
                   className="min-w-0 flex-1 rounded-lg border border-line bg-card px-2.5 py-1.5 text-[12.5px] text-ink-strong outline-none transition placeholder:text-ink-faint hover:border-line-strong focus:border-seal/60"
                 />
               </label>
+              <label className="flex items-start gap-2.5">
+                <span className="w-14 shrink-0 pt-1.5 text-[12px] text-ink-soft">{t('简介')}</span>
+                <textarea
+                  value={profile.bio ?? ''}
+                  maxLength={200}
+                  rows={2}
+                  placeholder={t('名册里显示的一句话介绍')}
+                  onChange={(e) => onChange({ bio: e.target.value })}
+                  className="min-h-[52px] min-w-0 flex-1 resize-none rounded-lg border border-line bg-card px-2.5 py-1.5 text-[12.5px] text-ink-strong outline-none transition placeholder:text-ink-faint hover:border-line-strong focus:border-seal/60"
+                />
+              </label>
               <div className="flex items-start gap-2.5">
                 <span className="w-14 shrink-0 pt-1.5 text-[12px] text-ink-soft">{t('头像')}</span>
                 <div className="flex flex-wrap gap-1.5">

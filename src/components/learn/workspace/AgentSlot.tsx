@@ -462,7 +462,11 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     [agentSettings],
   )
 
-  /** 群聊成员：有目标上下文的 role（不含仅聊天的 free；群聊消息最终要落到目标级 role 会话） */
+  /** 各声部的简介（profile.bio）：名册副标题优先显示它 */
+  const agentBios = useMemo(
+    () => Object.fromEntries(AGENT_ROSTER_ORDER.map((v) => [v, profileOf(agentSettings, v).bio ?? ''])),
+    [agentSettings],
+  )  /** 群聊成员：有目标上下文的 role（不含仅聊天的 free；群聊消息最终要落到目标级 role 会话） */
   const groupAgents = useMemo(
     () => groupAgentsOf({ agentNames, agentAvatarIds, voiceStats }),
     [agentAvatarIds, agentNames, voiceStats],
@@ -780,6 +784,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         onOpenSettings={openAgentSettings}
         agentNames={agentNames}
         agentAvatars={agentAvatarIds}
+        agentBios={agentBios}
         groupActive={groupOpen}
         groupName={groupBridge.groupName}
         groupAgents={groupAgents}

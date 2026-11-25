@@ -35,13 +35,13 @@ describe('AgentSettings.profiles 归一化', () => {
   it('逐字段白名单重建：认得的字段透传、空壳不存', () => {
     const next = normalizeAgentSettings({
       profiles: {
-        tutor: { name: '小导师', avatar: 'bot', effort: 'low', junk: 'x' },
+        tutor: { name: '小导师', avatar: 'bot', bio: '  负责主讲与协调  ', effort: 'low', junk: 'x' },
         free: { name: '' },
         ghost: { name: '不认识的声部整个丢弃' },
         broken: null,
       },
     })
-    expect(next.profiles?.tutor).toEqual({ name: '小导师', avatar: 'bot', effort: 'low' })
+    expect(next.profiles?.tutor).toEqual({ name: '小导师', avatar: 'bot', bio: '负责主讲与协调', effort: 'low' })
     expect(next.profiles?.free).toBeUndefined()
     expect((next.profiles as Record<string, unknown>)['ghost']).toBeUndefined()
     expect((next.profiles as Record<string, unknown>)['broken']).toBeUndefined()

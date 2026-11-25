@@ -6,7 +6,7 @@
  * 各分页的面板组件与分页清单见本目录（tabs.ts / *Panel.tsx）。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowLeft, Check } from 'lucide-react'
 import {
   allProviderBaseUrls,
@@ -59,6 +59,8 @@ interface Props {
   /** 日程铃声（设置 → 提醒）：数据是用户级的 schedule.sound，由工作区传进来 */
   scheduleSound?: ScheduleSound
   onScheduleSoundChange?: (patch: Partial<ScheduleSound>) => void
+  /** 左栏顶部的「常规 / 智能体」切换（由 SettingsPage 注入） */
+  sectionSwitch?: ReactNode
 }
 
 type Page = { view: 'list' } | { view: 'config'; providerId: string }
@@ -72,7 +74,13 @@ type Page = { view: 'list' } | { view: 'config'; providerId: string }
  *   预设不再以「已内置的提供商」形式出现——它们只是创建时的模板。
  * 二级「配置页」：选预设（或自定义兼容格式）→ 名称 → Key → 模型列表。
  */
-export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, onScheduleSoundChange }: Props) {
+export default function SettingsPanel({
+  onRootChanged,
+  onToast,
+  scheduleSound,
+  onScheduleSoundChange,
+  sectionSwitch,
+}: Props) {
   const initial = loadAiSettings()
   const [tab, setTab] = useState<TabKey>(loadSavedTab)
   const [activeSubTab, setActiveSubTab] = useState<string>('theme')
@@ -269,6 +277,7 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 bg-paper">
       <nav className="flex w-[196px] shrink-0 flex-col gap-1 border-r border-line bg-paper-deep px-3 py-3.5 overflow-y-auto select-none">
+        {sectionSwitch ? <div className="mb-1.5 shrink-0">{sectionSwitch}</div> : null}
         {tabs.map((tb) => (
           <div key={tb.key} className="flex flex-col">
             <TabButton

@@ -1,14 +1,15 @@
 /**
- * 提示词文件编排：agent 设置页只列「文件项」，正文一律在文档页签里看/改。
+ * 提示词文件编排：agent 设置页只列「已加入当前 agent 的文件项」，正文在文档页签里看/改。
  *
  * - role / work 两层切换；每层各有自己的顺序与启停；
- * - 内置文件只读：可调顺序、可停用，点开是一枚**只读**的内置提示词页签；
- * - 外置文件是 `users/{uid}/prompts/*.md` 的共用文件：新建即落一个 md、并当场打开它；
- *   点开走普通本地文件页签，可直接编辑保存（保存后下一轮立即生效）；
- * - 顺序即注入顺序，保存后下一轮请求立即按新顺序拼系统提示词。
+ * - 内置文件只读，始终在本层里；可调顺序、可停用，点开是只读提示词页签；
+ * - 外置文件是候选库：共用文件在 `users/{uid}/prompts/`，专属文件在
+ *   `users/{uid}/agents/{agent-id}/prompts/`。只有点「添加」显式加入当前层后才注入；
+ * - 新建文件分「共用 / 专属」两种落盘位置；两者建完都不自动加入任何 agent，需在候选库里显式添加；
+ * - 点开外置文件走普通本地页签，保存后下一轮立即生效。
  */
 import { useState, useSyncExternalStore, type KeyboardEvent } from 'react'
-import { ArrowDown, ArrowUp, FileText, Lock, Plus, Trash2, Eye, EyeOff } from 'lucide-react'
+import { ArrowDown, ArrowUp, FilePlus2, FileText, FolderOpen, Lock, Plus, Trash2, X, Eye, EyeOff } from 'lucide-react'
 import type { AgentProfileId } from '../../../agent/agentProfile'
 import { type PromptFileLayer, type PromptFileSettings } from '../../../agent/promptFiles'
 import {
@@ -16,6 +17,7 @@ import {
   deletePromptFile,
   getExternalPromptFiles,
   subscribePromptFiles,
+  type PromptFileScope,
 } from '../../../agent/promptFileStore'
 import { listPromptFiles, type PromptFileItem } from '../../../learn/ai/promptFiles'
 import { t } from '../../../i18n'
@@ -50,6 +52,10 @@ function withDisabled(
   }
 }
 
+function scopeBadge(scope: PromptFileScope | undefined): string {
+  return scope === 'agent' ? t('专属') : t('共用')
+}
+
 export function PromptFilesView({
   agentId,
   settings,
@@ -62,24 +68,37 @@ export function PromptFilesView({
   onOpenFile?: (file: PromptFileItem) => void
 }) {
   const [layer, setLayer] = useState<PromptFileLayer>('role')
-  const [adding, setAdding] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [picking, setPicking] = useState(false)
   const [draftName, setDraftName] = useState('')
+  const [draftScope, setDraftScope] = useState<PromptFileScope>('common')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  // prompts/ 目录由 store 持有；文件被保存/删除/外部改名后列表随之刷新
-  useSyncExternalStore(subscribePromptFiles, getExternalPromptFiles, getExternalPromptFiles)
+  // prompts/ 与 agents/<id>/prompts/ 由 store 持有；文件被保存/删除/外部改名后列表随之刷新
+  const external = useSyncExternalStore(subscribePromptFiles, getExternalPromptFiles, getExternalPromptFiles)
 
   const files = listPromptFiles(agentId, layer, settings)
   const disabled = settings.disabled?.[agentId]?.[layer] ?? []
+  const selectedIds = new Set(files.map((file) => file.id))
+  const available = external.filter(
+    (file) =>
+      (file.scope === 'common' || file.agentId === agentId) &&
+      !selectedIds.has(file.id),
+  )
+
+  const commitOrder = (next: PromptFileItem[]) => {
+    onChange(withLayerOrder(settings, agentId, layer, next.map((file) => file.id)))
+  }
 
   const move = (id: string, delta: -1 | 1) => {
-    const ids = files.map((file) => file.id)
-    const idx = ids.indexOf(id)
+    const idx = files.findIndex((file) => file.id === id)
     const next = idx + delta
-    if (idx < 0 || next < 0 || next >= ids.length) return
-    ids.splice(idx, 1)
-    ids.splice(next, 0, id)
-    onChange(withLayerOrder(settings, agentId, layer, ids))
+    if (idx < 0 || next < 0 || next >= files.length) return
+    const ordered = [...files]
+    const [row] = ordered.splice(idx, 1)
+    if (!row) return
+    ordered.splice(next, 0, row)
+    commitOrder(ordered)
   }
 
   const toggle = (id: string) => {
@@ -87,38 +106,54 @@ export function PromptFilesView({
     onChange(withDisabled(settings, agentId, layer, next))
   }
 
-  const removeExternal = async (fileName: string) => {
-    await deletePromptFile(fileName)
+  const addFile = (file: PromptFileItem) => {
+    commitOrder([...files, file])
+    setPicking(false)
   }
 
-  const addExternal = async () => {
+  const removeSelected = (file: PromptFileItem) => {
+    commitOrder(files.filter((row) => row.id !== file.id))
+  }
+
+  const removeFile = async (file: PromptFileItem) => {
+    if (!file.relPath) return
+    await deletePromptFile({ relPath: file.relPath })
+  }
+
+  const createFile = async () => {
     const name = draftName.trim()
     if (!name || busy) return
     setBusy(true)
     setError('')
-    const created = await createPromptFile(name)
+    const scope = draftScope
+    const created = await createPromptFile(name, { scope, agentId })
     setBusy(false)
     if (!created) {
       setError(t('新建提示词文件失败，请重试'))
       return
     }
     setDraftName('')
-    setAdding(false)
-    onOpenFile?.({
+    setCreating(false)
+    const item: PromptFileItem = {
       id: created.id,
       name: created.name,
       layer,
       builtin: false,
       fileName: created.fileName,
-      order: 1,
+      relPath: created.relPath,
+      scope: created.scope,
+      ...(created.agentId ? { agentId: created.agentId } : {}),
+      order: files.length + 1,
       enabled: true,
       content: created.content,
-    })
+    }
+    // 只落盘并打开文件；要注入当前 agent，仍需在「添加文件」里显式选择
+    onOpenFile?.(item)
   }
 
   const createWithKeyboard = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') void addExternal()
-    if (e.key === 'Escape') setAdding(false)
+    if (e.key === 'Enter') void createFile()
+    if (e.key === 'Escape') setCreating(false)
   }
 
   return (
@@ -140,36 +175,116 @@ export function PromptFilesView({
         ))}
         <button
           type="button"
-          onClick={() => setAdding((v) => !v)}
+          onClick={() => {
+            setPicking((v) => !v)
+            setCreating(false)
+            setError('')
+          }}
           className="ml-auto inline-flex items-center gap-1 rounded-md border border-line/70 px-2 py-1 text-[12px] text-ink-soft hover:bg-line/35"
         >
-          <Plus size={13} />
-          {t('新建提示词文件')}
+          <FolderOpen size={13} />
+          {t('添加文件')}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setCreating((v) => !v)
+            setPicking(false)
+            setError('')
+          }}
+          className="inline-flex items-center gap-1 rounded-md border border-line/70 px-2 py-1 text-[12px] text-ink-soft hover:bg-line/35"
+        >
+          <FilePlus2 size={13} />
+          {t('新建文件')}
         </button>
       </div>
 
-      {adding && (
+      {picking && (
         <div className="flex flex-col gap-1.5 rounded-lg border border-line/70 bg-paper-deep/30 p-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-ink-soft">{t('可用的提示词文件')}</span>
+            <button type="button" onClick={() => setPicking(false)} className="rounded p-0.5 text-ink-faint hover:bg-line/35">
+              <X size={13} />
+            </button>
+          </div>
+          {available.length === 0 ? (
+            <p className="px-1 py-1.5 text-[11.5px] text-ink-faint">{t('没有可添加的文件')}</p>
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {available.map((file) => (
+                <li key={file.id}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      addFile({
+                        id: file.id,
+                        name: file.name,
+                        layer,
+                        builtin: false,
+                        fileName: file.fileName,
+                        relPath: file.relPath,
+                        scope: file.scope,
+                        ...(file.agentId ? { agentId: file.agentId } : {}),
+                        order: files.length + 1,
+                        enabled: true,
+                        content: file.content,
+                      })
+                    }
+                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition hover:bg-line/30"
+                  >
+                    <FileText size={12} className="shrink-0 text-ink-faint" />
+                    <span className="min-w-0 flex-1 truncate text-[12px] text-ink-strong">{file.name}</span>
+                    <span className="shrink-0 rounded bg-line/55 px-1.5 py-px text-[10px] text-ink-faint">
+                      {scopeBadge(file.scope)}
+                    </span>
+                    <Plus size={13} className="shrink-0 text-ink-soft" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {creating && (
+        <div className="flex flex-col gap-2 rounded-lg border border-line/70 bg-paper-deep/30 p-2.5">
+          <div className="flex items-center gap-1">
+            {(['common', 'agent'] as const).map((scope) => (
+              <button
+                key={scope}
+                type="button"
+                aria-pressed={draftScope === scope}
+                onClick={() => setDraftScope(scope)}
+                className={`rounded-md px-2 py-0.5 text-[11px] transition ${
+                  draftScope === scope
+                    ? 'bg-card font-semibold text-ink-strong shadow-2xs ring-1 ring-line/70'
+                    : 'text-ink-soft hover:bg-line/30'
+                }`}
+              >
+                {scope === 'common' ? t('共用') : t('专属')}
+              </button>
+            ))}
+          </div>
           <input
             autoFocus
             value={draftName}
             onChange={(e) => setDraftName(e.target.value)}
             onKeyDown={createWithKeyboard}
-            placeholder={t('文件名（保存为 prompts/ 下的 md）')}
+            placeholder={t('文件名')}
             className="rounded-md border border-line/70 bg-paper px-2 py-1.5 text-[12px] text-ink-strong outline-none focus:border-line-strong"
           />
           {error && <p className="text-[11px] text-rose-500">{error}</p>}
           <div className="flex justify-end gap-1.5">
             <button
               type="button"
-              onClick={() => setAdding(false)}
+              onClick={() => setCreating(false)}
               className="rounded-md px-2 py-1 text-[11px] text-ink-faint hover:bg-line/35"
             >
               {t('取消')}
             </button>
             <button
               type="button"
-              onClick={() => void addExternal()}
+              onClick={() => void createFile()}
               disabled={!draftName.trim() || busy}
               className="rounded-md bg-ink-strong px-2.5 py-1 text-[11px] font-medium text-paper disabled:opacity-40"
             >
@@ -209,11 +324,9 @@ export function PromptFilesView({
             >
               {file.builtin ? t(file.name) : file.name}
             </span>
-            {file.builtin && (
-              <span className="inline-flex shrink-0 items-center rounded bg-line/55 px-1.5 py-px text-[10px] text-ink-faint">
-                {t('内置')}
-              </span>
-            )}
+            <span className="inline-flex shrink-0 items-center rounded bg-line/55 px-1.5 py-px text-[10px] text-ink-faint">
+              {file.builtin ? t('内置') : scopeBadge(file.scope)}
+            </span>
             <button
               type="button"
               onClick={(e) => {
@@ -249,12 +362,25 @@ export function PromptFilesView({
             >
               {file.enabled ? <Eye size={13} /> : <EyeOff size={13} />}
             </button>
-            {!file.builtin && file.fileName && (
+            {!file.builtin && (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
-                  void removeExternal(file.fileName as string)
+                  removeSelected(file)
+                }}
+                className="rounded p-0.5 text-ink-faint hover:bg-line/40"
+                title={t('从当前提示词移除')}
+              >
+                <X size={13} />
+              </button>
+            )}
+            {!file.builtin && file.relPath && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void removeFile(file)
                 }}
                 className="rounded p-0.5 text-ink-faint hover:bg-rose-500/10 hover:text-rose-500"
                 title={t('删除文件')}

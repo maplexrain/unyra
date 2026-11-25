@@ -45,7 +45,7 @@ export interface ChipOpeningDeps {
   exam: ExamBridgeApi
   retargetNode: (s: LearnStore, nodeId: string) => LearnStore
   setOutlineFocus: Dispatch<SetStateAction<{ nodeId: string; nonce: number } | null>>
-  setCreateGoalOpen: Dispatch<SetStateAction<boolean>>
+  onNewGoal: () => void
   /** 网页页签的活标题（拖拽 payload 里带上，见宿主 webMetaRef 的回填） */
   webMetaRef: RefObject<Record<string, WebTabMeta>>
   examTabTitle: (examId: string, attemptId: string) => string | undefined
@@ -63,7 +63,7 @@ export function useChipOpening({
   exam,
   retargetNode,
   setOutlineFocus,
-  setCreateGoalOpen,
+  onNewGoal,
   webMetaRef,
   examTabTitle,
 }: ChipOpeningDeps) {
@@ -355,9 +355,9 @@ export function useChipOpening({
 
   const openNewGoalInPlace = useCallback(
     (_groupId: string, _currentTabId: string) => {
-      setCreateGoalOpen(true)
+      onNewGoal()
     },
-    [setCreateGoalOpen],
+    [onNewGoal],
   )
 
   /**

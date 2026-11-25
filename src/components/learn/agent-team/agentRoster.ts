@@ -30,7 +30,7 @@ export interface AgentRosterMeta {
   avatarClass: string
   /** 角色徽标配色（激活态） */
   ringClass: string
-  /** 角色名称的高亮色：聊天 / 群聊 / 思维抬头用不同颜色区分是哪个 role */
+  /** 角色名称的统一文字色：不再按 role 分色，聊天 / 群聊 / 思维抬头一致 */
   nameClass: string
 }
 
@@ -42,7 +42,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
     fallbackIcon: MessageSquare,
     avatarClass: 'bg-line/75 text-ink-strong border-line-strong/40',
     ringClass: 'bg-emerald-500/12 text-emerald-600 dark:text-emerald-400',
-    nameClass: 'text-emerald-700 dark:text-emerald-300',
+    nameClass: 'text-ink-strong',
   },
   tutor: {
     blurb: '主讲与协调 · 角色分诊',
@@ -50,7 +50,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
     fallbackIcon: GraduationCap,
     avatarClass: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/25',
     ringClass: 'bg-sky-500/15 text-sky-600 dark:text-sky-300',
-    nameClass: 'text-sky-700 dark:text-sky-300',
+    nameClass: 'text-ink-strong',
   },
   dispatcher: {
     blurb: '接需求 · chat 派单 / work · 交付汇报',
@@ -58,7 +58,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
     fallbackIcon: Route,
     avatarClass: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/25',
     ringClass: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-300',
-    nameClass: 'text-indigo-700 dark:text-indigo-300',
+    nameClass: 'text-ink-strong',
   },
   examiner: {
     blurb: '出卷 · 判分与错题讲解',
@@ -66,7 +66,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
     fallbackIcon: NotebookPen,
     avatarClass: 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/25',
     ringClass: 'bg-violet-500/15 text-violet-600 dark:text-violet-300',
-    nameClass: 'text-violet-700 dark:text-violet-300',
+    nameClass: 'text-ink-strong',
   },
   designer: {
     blurb: '互动课堂 · 超级实验室',
@@ -74,7 +74,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
     fallbackIcon: Palette,
     avatarClass: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/25',
     ringClass: 'bg-amber-500/15 text-amber-600 dark:text-amber-300',
-    nameClass: 'text-amber-700 dark:text-amber-300',
+    nameClass: 'text-ink-strong',
   },
   researcher: {
     blurb: '联网调研 · 浏览器操作',
@@ -82,7 +82,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
     fallbackIcon: Compass,
     avatarClass: 'bg-teal-500/15 text-teal-700 dark:text-teal-300 border-teal-500/25',
     ringClass: 'bg-teal-500/15 text-teal-600 dark:text-teal-300',
-    nameClass: 'text-teal-700 dark:text-teal-300',
+    nameClass: 'text-ink-strong',
   },
   fixer: {
     blurb: '函数图像语法修复',
@@ -90,7 +90,7 @@ export const AGENT_ROSTER_META: Record<AgentTeamMode, AgentRosterMeta> = {
     fallbackIcon: Wrench,
     avatarClass: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/25',
     ringClass: 'bg-rose-500/15 text-rose-600 dark:text-rose-300',
-    nameClass: 'text-rose-700 dark:text-rose-300',
+    nameClass: 'text-ink-strong',
   },
 }
 

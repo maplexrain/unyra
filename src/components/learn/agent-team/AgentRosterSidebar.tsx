@@ -12,7 +12,7 @@
  * 设置入口在名册卡的**头像**上：点头像直接开这位 role 的独立设置（AgentSettingsView）。
  */
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -75,6 +75,8 @@ export interface AgentRosterSidebarProps {
   agentNames?: Partial<Record<AgentTeamMode, string>>
   /** 各声部的头像 id（AGENT_AVATARS 目录）；缺省 = 默认声部图标 */
   agentAvatars?: Partial<Record<AgentTeamMode, string>>
+  /** 各声部的简介（profile.bio）；空 = 用注册表的职责文案 */
+  agentBios?: Partial<Record<AgentTeamMode, string>>
   /** 名册里固定多出来的「群聊」入口：群聊只有对话列表，通道为 group */
   groupActive?: boolean
   groupName?: string
@@ -106,6 +108,7 @@ export function AgentRosterSidebar({
   onOpenSettings,
   agentNames,
   agentAvatars,
+  agentBios,
   groupActive = false,
   groupName,
   groupAgents,
@@ -142,14 +145,18 @@ export function AgentRosterSidebar({
     }
   }
 
-  const statsOf = (id: AgentTeamMode): AgentVoiceStats => voiceStats[id] ?? { running: false, hasAsk: false }
+  const statsOf = useCallback(
+    (id: AgentTeamMode): AgentVoiceStats => voiceStats[id] ?? { running: false, hasAsk: false },
+    [voiceStats],
+  )
 
   const agents = useMemo(() => {
     const raw = AGENT_ROSTER_ORDER.map((id) => {
       const meta = AGENT_ROSTER_META[id]
       const st = statsOf(id)
-      // 导师的兜底副标题是当前目标（它 scoped 到目标上）；其余声部用注册表的职责一句话
-      const idleSubtitle = id === 'tutor' ? activeGoalTitle || t(meta.blurb) : t(meta.blurb)
+      const bio = agentBios?.[id]?.trim()
+      // 用户写了简介就优先显示它；导师没写时兜底当前目标，其余声部用注册表的职责一句话
+      const idleSubtitle = bio || (id === 'tutor' ? activeGoalTitle || t(meta.blurb) : t(meta.blurb))
       return {
         id,
         label: agentNames?.[id]?.trim() || t(DEFAULT_AGENT_NAME[id]),
@@ -170,7 +177,7 @@ export function AgentRosterSidebar({
       }
     })
     return sortAgentsByPinAndTime(raw, pinnedAgents, (id) => statsOf(id).lastTime ?? 0)
-  }, [activeGoalTitle, agentAvatars, agentNames, pinnedAgents, voiceStats])
+  }, [activeGoalTitle, agentAvatars, agentNames, agentBios, pinnedAgents, statsOf])
 
   /**
    * 顶栏形态下不显示目标切换；侧栏底部保留一个紧凑目标选择器：
@@ -197,6 +204,22 @@ export function AgentRosterSidebar({
     ) : null
 
   const effectiveCollapsed = Boolean(forceCollapsed || collapsed)
+  const topBarRef = useRef<HTMLElement | null>(null)
+
+  // 顶部横栏不显示滚动条：竖向滚轮在栏内改为横向滚动，触控板横向手势保持原样。
+  // wheel 需要 non-passive 才能 preventDefault，React 的合成事件不保证这一点，所以挂原生监听。
+  useEffect(() => {
+    if (variant !== 'top') return
+    const el = topBarRef.current
+    if (!el) return
+    const onWheel = (ev: WheelEvent) => {
+      if (ev.ctrlKey || Math.abs(ev.deltaX) > Math.abs(ev.deltaY)) return
+      ev.preventDefault()
+      el.scrollLeft += ev.deltaY
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [variant])
 
   // 顶部栏形态（容器宽度 < 800 时切换）：横排声部按钮 + 当前声部的近况。
   // 没有折叠语义——横排本身就是收起形态（data-roster-top 供样式与测试识别）。
@@ -204,9 +227,10 @@ export function AgentRosterSidebar({
     const activeAgent = agents.find((item) => item.id === mode) ?? agents[0]!
     return (
       <aside
+        ref={topBarRef}
         aria-label={t('智能体列表')}
         data-roster-top="true"
-        className="flex h-10 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-line/70 bg-paper/65 px-2"
+        className="moji-scroll-x flex h-10 shrink-0 items-center gap-1.5 overflow-x-auto overscroll-x-contain border-b border-line/70 bg-paper/65 px-2"
       >
         <span className="shrink-0 pr-0.5 text-[11px] font-semibold tracking-wide text-ink-soft">
           {t('智能体')}
@@ -221,7 +245,7 @@ export function AgentRosterSidebar({
             className={
               'flex h-7 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-[11.5px] transition ' +
               (groupActive
-                ? 'border-teal-500/40 bg-teal-500/10 text-teal-700 dark:text-teal-300'
+                ? 'border-line-strong bg-card text-ink-strong shadow-xs'
                 : 'border-transparent text-ink-soft hover:bg-line/45 hover:text-ink')
             }
           >
@@ -288,7 +312,7 @@ export function AgentRosterSidebar({
             className={
               'min-w-0 truncate text-[11px] ' +
               (groupActive
-                ? 'font-medium text-teal-700 dark:text-teal-300'
+                ? 'font-medium text-ink-strong'
                 : activeAgent.hasAsk
                   ? 'font-medium text-amber-500'
                   : activeAgent.running
@@ -351,8 +375,8 @@ export function AgentRosterSidebar({
                 className={
                   'flex h-10 w-10 items-center justify-center rounded-full border transition ' +
                   (groupActive
-                    ? 'border-teal-500/50 bg-teal-500/15 text-teal-700 dark:text-teal-300'
-                    : 'border-transparent bg-teal-500/10 text-teal-600 hover:bg-teal-500/15')
+                    ? 'border-line-strong bg-card text-ink-strong shadow-xs'
+                    : 'border-transparent text-ink-soft hover:bg-line/45 hover:text-ink')
                 }
               >
                 <GroupAvatarStack agents={groupAgents ?? []} size={30} />
@@ -466,7 +490,7 @@ export function AgentRosterSidebar({
             className={
               'group flex w-full shrink-0 cursor-pointer items-center gap-2.5 rounded-2xl border px-2 py-1.5 text-left transition ' +
               (groupActive
-                ? 'border-teal-500/40 bg-teal-500/10 text-ink-strong shadow-xs'
+                ? 'border-line-strong/85 bg-card text-ink-strong shadow-xs'
                 : 'border-transparent text-ink-soft hover:border-line/60 hover:bg-card/55 hover:text-ink')
             }
           >

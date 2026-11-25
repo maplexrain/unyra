@@ -33,7 +33,11 @@ export function openPromptFileTab(
     )
     return
   }
-  const abs = file.fileName ? promptFileAbsPath(file.fileName) : null
+  const abs = file.relPath
+    ? promptFileAbsPath({ relPath: file.relPath })
+    : file.fileName
+      ? promptFileAbsPath(file.fileName)
+      : null
   if (!abs) {
     onToast('找不到这份提示词文件的路径')
     return
@@ -45,6 +49,17 @@ export function openPromptFileTab(
 export function agentTeamTabIdOf(docArea: LearnStore['docArea'], goalId: string | null): string | null {
   const tabs = allStoredTabs(docArea)
   return tabs.find((t) => t.ref.kind === 'agentTeam' && (t.ref.goalId ?? null) === goalId)?.id ?? null
+}
+
+/** 收起 / 展开当前已固定的外侧栏；没有 fixside 时返回 false，交给调用方决定是否提示。 */
+export function toggleFixSideCollapse(
+  getLatest: () => LearnStore,
+  set: (store: LearnStore) => void,
+): boolean {
+  const cur = getLatest()
+  if (!cur.fixSide) return false
+  set({ ...cur, fixSide: { ...cur.fixSide, collapsed: !cur.fixSide.collapsed } })
+  return true
 }
 
 /** 把智能体团队页固定到 fixside；已经停在那里则收起（再次点击即快捷关闭） */

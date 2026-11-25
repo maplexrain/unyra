@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import TabButton from './TabButton'
 import {
   Brain,
+  Bot,
   Compass,
   Cpu,
   FolderCheck,
@@ -30,6 +31,7 @@ import { ServeTab } from './agent-settings/ServeTab'
 import { ToolsTab } from './agent-settings/ToolsTab'
 import { PermissionsTab } from './agent-settings/PermissionsTab'
 import { MemoryTab } from './agent-settings/MemoryTab'
+import { ExternalAgentsPanel } from './agent-settings/ExternalAgentsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import DevUnlock from './DevUnlock'
 import { pane } from './Pane'
@@ -78,9 +80,11 @@ interface Props {
   onMemoryDelete?: (uuid: string) => void
   onMemoryClearWork?: (goalId: string) => void
   onToast?: (msg: string) => void
+  /** 左栏顶部的「常规 / 智能体」切换（由 SettingsPage 注入） */
+  sectionSwitch?: ReactNode
 }
 
-type TabKey = 'chat' | 'strategy' | 'memory' | 'skills' | 'mcp' | 'serve' | 'tools' | 'permissions' | 'flow' | 'dev'
+type TabKey = 'chat' | 'strategy' | 'memory' | 'skills' | 'mcp' | 'serve' | 'external' | 'tools' | 'permissions' | 'flow' | 'dev'
 
 const TAB_KEY = 'moji:agent-settings:tab'
 
@@ -91,6 +95,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: typeof Sparkles }> = [
   { key: 'skills', label: '专业技能', icon: GraduationCap },
   { key: 'mcp', label: 'MCP 服务', icon: Cpu },
   { key: 'serve', label: '对外 MCP 服务', icon: Radio },
+  { key: 'external', label: '外部智能体', icon: Bot },
   { key: 'tools', label: '工具与上下文', icon: Wrench },
   { key: 'permissions', label: '权限设置', icon: FolderCheck },
   { key: 'flow', label: '工作流', icon: Workflow },
@@ -112,6 +117,7 @@ const savedTab = (): TabKey => {
       v === 'skills' ||
       v === 'mcp' ||
       v === 'serve' ||
+      v === 'external' ||
       v === 'tools' ||
       v === 'permissions' ||
       v === 'flow'
@@ -149,6 +155,7 @@ export default function AgentSettingsPanel({
   onMemoryDelete = () => {},
   onMemoryClearWork = () => {},
   onToast = () => {},
+  sectionSwitch,
 }: Props) {
   /** 三击「超级导师设置」标题：开发者分页的隐藏入口 */
   const [devEntry, setDevEntry] = useState(false)
@@ -197,6 +204,7 @@ export default function AgentSettingsPanel({
     <div className="flex h-full min-h-0 w-full min-w-0 bg-paper">
       {/* 左侧导航栏 */}
       <nav className="flex w-[196px] shrink-0 flex-col gap-1 border-r border-line bg-paper-deep px-3 py-3.5 overflow-y-auto select-none">
+        {sectionSwitch ? <div className="mb-1.5 shrink-0">{sectionSwitch}</div> : null}
         {/* Tab 导航项 */}
         <div className="flex flex-col gap-1 pt-1">
           {tabs.map((tb) => {
@@ -264,6 +272,8 @@ export default function AgentSettingsPanel({
                   ? t('导师人格与策略定制')
                   : tab === 'flow'
                     ? t('工作流模板')
+                    : tab === 'external'
+                      ? t('外部智能体')
                     : tab === 'skills'
                       ? t('专业技能扩展 (Skills)')
                         : tab === 'mcp'
@@ -300,6 +310,8 @@ export default function AgentSettingsPanel({
               onClearWork={onMemoryClearWork}
               onToast={onToast}
             />
+          ) : tab === 'external' ? (
+            <ExternalAgentsPanel onToast={onToast} />
           ) : tab === 'skills' ? (
             <SkillsTab
               settings={settings.skills}

@@ -68,6 +68,8 @@ export interface AgentProfile {
   name?: string
   /** 头像 id（AGENT_AVATARS 目录）；缺省 = 默认头像（各自的那只龟龟） */
   avatar?: string
+  /** 一句话简介；名册副标题会优先显示它，缺省 = 注册表里的职责文案 */
+  bio?: string
   /** 允许触发的工作流 id 清单（只管登记的全局 / 目标级，内置规程面由团队分工固定）；undefined = 全部可用（仅导师） */
   workflows?: string[]
   /** 提供商覆盖（providers 的 id）；缺省 = 跟随全局默认 */

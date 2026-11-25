@@ -95,8 +95,8 @@ export const SHORTCUT_DEFS: ShortcutDef[] = [
   },
   {
     id: 'agent.focus',
-    label: '收起 / 展开右侧栏',
-    hint: '右侧那一栏在收起与展开之间切换；它装着导师时，展开后光标直接落到导师的输入框里',
+    label: '收起 / 展开固定外侧栏',
+    hint: '把固定在文档区外侧的对照栏收起或展开；没有固定栏时不做任何事',
     def: 'Ctrl+Q',
   },
   {

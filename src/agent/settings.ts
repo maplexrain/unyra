@@ -201,6 +201,7 @@ export function normalizeAgentSettings(raw: unknown): AgentSettings {
       // 身份字段存非空值：空串与缺省同义（显示侧回落默认名/头像），不落盘
       if (typeof rec.name === 'string' && rec.name.trim()) next.name = rec.name
       if (typeof rec.avatar === 'string' && rec.avatar.trim()) next.avatar = rec.avatar
+      if (typeof rec.bio === 'string' && rec.bio.trim()) next.bio = rec.bio.trim()
       // apiGroups 刻意不在白名单里：execute 能力面已定稿为架构固定（按声部的团队分工面，
       // 见 agent/agentProfile 的 AGENT_API_PLANES），旧版本存下的清单在这里被静默作废——不透传即弃
       if (Array.isArray(rec.workflows)) next.workflows = rec.workflows.map(String).filter((w) => w.trim())

@@ -21,6 +21,7 @@ import { hydrateUsageLog } from '../ai/usageLog'
 import { hydrateFreeChat } from '../learn/freeChat'
 import { hydrateGroupChat } from '../learn/groupChat'
 import { hydratePromptFiles } from '../agent/promptFileStore'
+import { hydrateExternalAgents } from '../agent/externalAgentStore'
 import { t } from '../i18n'
 import { bootstrapUsers } from '../user/store'
 import { reconcileBackgroundAssets } from '../user/background'
@@ -55,6 +56,8 @@ export async function enterUserScope(uid: string | null): Promise<void> {
   await hydrateGroupChat(uid)
   // 共用提示词文件库（users/{uid}/prompts/*.md）也要在页面首帧前就位
   await hydratePromptFiles(uid)
+  // 外部 agent 目录（users/{uid}/agents/*/agent.json）同样在首帧前载入
+  await hydrateExternalAgents(uid)
   if (uid) {
     await autoMigrateIfNeeded(uid)
   }
