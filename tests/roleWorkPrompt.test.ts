@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { buildTeacherSystem } from '../src/learn/ai/teacherSystem'
 import { buildWorkSystem } from '../src/learn/ai/workSystem'
 import { buildFreeChatSystem } from '../src/learn/ai/chatSystem'
+import { buildExaminerSystem, buildResearcherSystem } from '../src/learn/ai/agentTeamSystem'
+import { workDelegationSectionFor } from '../src/learn/ai/apiPromptSections'
 
 describe('role / work 对外一体与汇报纪律', () => {
   it('role 共同提示词要求按团队整体回答能力，不甩内部层级、不先否认再改口', () => {
@@ -44,5 +46,28 @@ describe('role / work 对外一体与汇报纪律', () => {
     expect(text).toContain('调研缺口先回 role')
     expect(text).toContain('【需要转交·调研】')
     expect(text).toContain('由 role 经当前通道委派 researcher')
+  })
+
+  it('role 看得到 work 的能力面，但明确自己调不到、只能委派', () => {
+    const tutor = buildTeacherSystem()
+    expect(tutor).toContain('### work 能做什么（只能委派，role 自己调不到）')
+    expect(tutor).toContain('`node`（节点宇宙）')
+    expect(tutor).toContain('**这些 api 不在 role 的沙箱里**')
+    expect(tutor).toContain('只有 `tmp / work / chat` + `compact`')
+    expect(tutor).toContain('api.work.create')
+    expect(tutor).toContain('api.work.send')
+    expect(tutor).toContain('api.host.send')
+    expect(tutor).toContain('你只能 `work.create` / `work.send` 派，不能直接调')
+    expect(tutor).toContain('`api.exam.read()` / `api.browser.waitFor()`')
+
+    const examSurface = workDelegationSectionFor('examiner')
+    expect(examSurface).toContain('`exam`（')
+    expect(examSurface).toContain('`ask`')
+    expect(workDelegationSectionFor('tutor')).not.toContain('`browser`（')
+    const researchSurface = workDelegationSectionFor('researcher')
+    expect(researchSurface).toContain('`browser`（内置浏览器）')
+    expect(researchSurface).not.toContain('`exam`（')
+    expect(buildResearcherSystem()).toContain('`browser`（内置浏览器）')
+    expect(buildExaminerSystem()).toContain('`exam`（')
   })
 })

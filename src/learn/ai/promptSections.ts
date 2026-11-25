@@ -19,7 +19,7 @@ import {
   SHARED_AGENT_PREFIX,
   SHARED_DISCIPLINE,
 } from './agentSharedPrefix'
-import { apiPromptPartsFor } from './apiPromptSections'
+import { apiPromptPartsFor, workDelegationSectionFor } from './apiPromptSections'
 import {
   APP_DATA_GUIDE,
   EXECUTE_BASE_GUIDE,
@@ -221,6 +221,14 @@ function getVoiceSections(voice: AgentVoice, opts: BuildSectionsOpts = {}): Prom
     },
     fixedApiSection(voice, parts.fixed),
     ...voiceCopySections(voice),
+    {
+      id: `${voice}-work-api`,
+      index: 0,
+      title: 'work 能力面（只能委派）',
+      badge: '委派边界',
+      color: 'amber',
+      content: workDelegationSectionFor(voice),
+    },
     ...extraSection(`${voice}-extra`, opts),
   ])
 }
