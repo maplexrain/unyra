@@ -60,7 +60,7 @@ export interface PromptSection {
  * 共同提示词组件（独立导出）
  * ========================================================================= */
 
-/** 共同提示词：龟门六兄弟身份总纲（所有 Agent 共同拥有） */
+/** 共同提示词：龟门六兄弟身份总纲（团队角色共用，拼在各自的 role 角色定位段前面） */
 export const COMMON_TURTLE_CLAN_PROMPT = TURTLE_CLAN_GUIDE
 
 /** 共同提示词：role 层协作总纲与三通道纪律（所有 role 拥有） */
@@ -82,7 +82,7 @@ export const COMMON_EXECUTION_DISCIPLINE_PROMPT = [
 /** 共同提示词：会话压缩规程（所有执行声部拥有） */
 export const COMMON_COMPACT_WORKFLOW_PROMPT = compactWorkflowSection()
 
-/** 全员共同提示词全文（六位团队角色起始块） */
+/** 全员共同提示词全文（所有 agent 的起始块，不含任何具体身份） */
 export const COMMON_ALL_AGENTS_PREFIX_PROMPT = ALL_AGENTS_COMMON_PREFIX
 
 /** 执行声部共同基础前缀全文（即 SHARED_AGENT_PREFIX） */
@@ -146,15 +146,15 @@ function voiceCopySections(voice: AgentVoice): PromptSection[] {
     {
       id: `${voice}-role`,
       index: 0,
-      title: voice === 'tutor' ? '导师角色定位与节点宇宙哲学' : 'role 角色定位',
+      title: 'role 角色定位',
       badge: '身份定位',
       color: 'rose',
-      content: copy.role.join('\n'),
+      content: [TURTLE_CLAN_GUIDE, '', ...copy.role].join('\n'),
     },
     {
       id: `${voice}-duty`,
       index: 0,
-      title: voice === 'tutor' ? '团队协调与任务分诊' : '你的专属分工',
+      title: '你的专属分工',
       badge: '分工协调',
       color: 'amber',
       content: copy.duty.join('\n'),
@@ -172,7 +172,7 @@ function getFreeChatSections(opts: BuildSectionsOpts = {}): PromptSection[] {
     {
       id: 'free-common-prefix',
       index: 0,
-      title: '全员共同提示词 · 龟门身份与执行沙箱基座',
+      title: '共同提示词 · 团队协作与沙箱执行基座',
       badge: '全员基座',
       color: 'indigo',
       isCommon: true,

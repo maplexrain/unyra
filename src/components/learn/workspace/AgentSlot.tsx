@@ -11,6 +11,12 @@ import {
 import { conversationById, deleteMessage, nodeById, resolveDisplayedConversation, updateMessageText } from '../../../learn/graph'
 import { resetPrefixGate } from '../../../agent/prefixGate'
 import { saveAgentSettings, loadAgentSettings } from '../../../agent/settings'
+import {
+  agentTeamTabIdOf,
+  openAgentSettingsTab,
+  openPromptFileTab,
+  toggleAgentTeamFixSide,
+} from './agentSlotTabs'
 import { personaOf } from '../../../agent/persona'
 import { docFormatOf } from '../../../agent/docFormat'
 import type { AgentPart, ChannelStamp, Conversation, PendingFile, PendingImage } from '../../../agent/types'
@@ -41,7 +47,7 @@ import { inboundEnvelope, peerOf, userPeer } from '../../../learn/roleWork/chann
 import { GroupChatPanel } from '../../agent/panel/GroupChatPanel'
 import { setGroupName } from '../../../learn/groupChat'
 import { useGroupChatBridge } from './useGroupChatBridge'
-import { groupAgentsOf } from './groupAgentRoster'
+import { groupAgentsOf, groupPreviewOf } from './groupAgentRoster'
 import { useGroupMentionOpen } from './useGroupMentionOpen'
 import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, type AgentVoiceStats } from '../agent-team/agentRoster'
 import { AgentAvatarGlyph } from '../agent-team/AgentAvatarGlyph'
@@ -469,16 +475,17 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     set,
   })
   const groupMessagesForGoal = groupBridge.messages
-  const groupPreview = useMemo(() => {
-    for (let i = groupMessagesForGoal.length - 1; i >= 0; i--) {
-      const m = groupMessagesForGoal[i]
-      if (m.threadRootId || !m.text.trim()) continue
-      return m.text.replace(/\s+/g, ' ').trim().slice(0, 80)
-    }
-    return ''
-  }, [groupMessagesForGoal])
+  const groupPreview = useMemo(() => groupPreviewOf(groupMessagesForGoal), [groupMessagesForGoal])
   const handleRenameGroup = (name: string) => {
     if (tutorGoalId) setGroupName(tutorGoalId, name)
+  }
+  const agentTeamTabId = useMemo(
+    () => agentTeamTabIdOf(store.docArea, tabGoalId ?? null),
+    [store.docArea, tabGoalId],
+  )
+  const fixSideAgentOpen = Boolean(agentTeamTabId && store.fixSide?.targetTabId === agentTeamTabId)
+  const toggleFixSideAgent = () => {
+    if (agentTeamTabId) toggleAgentTeamFixSide(getLatest, set, agentTeamTabId)
   }
 
   /**
@@ -779,6 +786,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         groupPreview={groupPreview}
         onRenameGroup={handleRenameGroup}
         onOpenGroup={handleOpenGroup}
+        fixSideAgentOpen={fixSideAgentOpen}
+        onToggleFixSide={agentTeamTabId ? toggleFixSideAgent : undefined}
       />
 
       {/* 中间对话主工作区；设置态下整块替换为这位声部的独立设置页 */}
@@ -796,6 +805,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
             flowRows={settingsAgent === 'tutor' ? listWorkflowRows(store, tutorGoalId) : EMPTY_WF_ROWS}
             promptFiles={agentSettings.promptFiles}
             onPromptFilesChange={(next) => saveAgentSettings({ ...agentSettings, promptFiles: next })}
+            onOpenPromptFile={(file) => openPromptFileTab(openTab, onToast, settingsAgent, file)}
           />
         ) : (
           <>
@@ -906,7 +916,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
                 onAskCancel={agent.cancelAskById}
                 onAskExpire={agent.expireAskById}
                 onAskHover={agent.setAskHover}
-                onOpenAgentSettings={() => openTab({ kind: 'agentSettings' })}
+                onOpenAgentSettings={() => openAgentSettingsTab(openTab)}
                 onToast={onToast}
                 composerActive={tabActive ?? true}
                 onOpenFile={(pathOrRel, title) => {
@@ -941,8 +951,8 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
                 onModelChanged={() => setSettingsEpoch((n) => n + 1)}
                 vision={vision}
                 onNotice={onToast}
-                onOpenAgentSettings={() => openTab({ kind: 'agentSettings' })}
-                onOpenSettings={() => openTab({ kind: 'agentSettings' })}
+                onOpenAgentSettings={() => openAgentSettingsTab(openTab)}
+                onOpenSettings={() => openAgentSettingsTab(openTab)}
                 effort={effort}
                 onSetEffort={setGlobalEffort}
                 compactThreshold={agentSettings.compact.threshold}

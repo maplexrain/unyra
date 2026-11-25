@@ -90,7 +90,9 @@ export function tabKey(ref: TabRef): string {
   if (ref.kind === 'schedule') return 'sc:schedule'
   // 超级导师设置全局一份；记忆按目标归档，页签也一枚目标一份
   if (ref.kind === 'mind') return 'm:' + ref.goalId
-  if (ref.kind === 'agentSettings') return 'set:agent'
+  if (ref.kind === 'agentSettings') return 'set:settings'
+  // 内置提示词页签：同一 agent、同一层、同一份文件只有一枚（外置是 local 页签，不在此列）
+  if (ref.kind === 'prompt') return `pm:${ref.agentId}:${ref.layer}:${ref.fileId}`
   if (ref.kind === 'agentTeam') return ref.goalId ? 'team:' + ref.goalId : 'team:all'
   if (ref.kind === 'blank') return 'b:' + ref.key
   // 新建文件页签：还没有落点，身份只能是开签那一刻的随机后缀
@@ -101,6 +103,21 @@ export function tabKey(ref: TabRef): string {
 /** 结构页签（outline）与智能体团队页签（agentTeam）始终处于固定状态，不可取消固定 */
 export function isAlwaysPinnedRef(ref: TabRef): boolean {
   return ref.kind === 'outline' || ref.kind === 'agentTeam'
+}
+
+/**
+ * 系统固定页签的展示顺序：智能体团队页恒排在结构（大纲）页之前。
+ * 新开的固定页签按打开顺序追加，这里统一校正一次，避免「先结构后智能体」的旧状态。
+ */
+export function orderSystemPinnedTabs<T>(tabs: T[], kindOf: (t: T) => TabRef['kind'] | undefined): T[] {
+  const teamIdx = tabs.findIndex((t) => kindOf(t) === 'agentTeam')
+  const outlineIdx = tabs.findIndex((t) => kindOf(t) === 'outline')
+  if (teamIdx < 0 || outlineIdx < 0 || teamIdx < outlineIdx) return tabs
+  const out = [...tabs]
+  const [team] = out.splice(teamIdx, 1)
+  if (!team) return tabs
+  out.splice(outlineIdx, 0, team)
+  return out
 }
 
 /** 判断页签是否为固定页签：结构与智能体团队始终固定，其余页签看显式 pinned 标记 */
@@ -178,6 +195,7 @@ export function tabNodeId(ref: TabRef): string | null {
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
+    ref.kind === 'prompt' ||
     ref.kind === 'agentTeam' ||
     ref.kind === 'blank' ||
     // 新建文件页签还没有落点：保存那一刻才知道它属于哪儿（见 types 的 draft 分支）
@@ -268,6 +286,7 @@ function rawTabTitle(
   if (ref.kind === 'classroomShowcase') return ref.tag ? `<${ref.tag}> ${t('组件')}` : t('组件与动效库')
   if (ref.kind === 'mind') return t('记忆管理')
   if (ref.kind === 'agentSettings') return t('超级导师设置')
+  if (ref.kind === 'prompt') return ref.title
   // 页签上就叫「智能体」：目标归属由页签组本身表达（每个目标自己的页签组各有一枚），
   // 不再把目标名拼进标题（跨组重名时 trail 也不给它后缀，见 tabTrail）
   if (ref.kind === 'agentTeam') return t('智能体')
@@ -322,6 +341,7 @@ export function tabTrail(
     ref.kind === 'usage' ||
     ref.kind === 'schedule' ||
     ref.kind === 'agentSettings' ||
+    ref.kind === 'prompt' ||
     ref.kind === 'blank' ||
     ref.kind === 'draft'
   )
@@ -586,15 +606,7 @@ export function reorderTabs(tabs: LearnTab[], ids: string[]): LearnTab[] {
   const unpinned = out.filter((t) => !isTabPinned(t))
   // 两枚系统固定页签的相对顺序由系统钉死：智能体团队排在结构（大纲）之前；
   // 其余固定页签（用户 pin 的文档）保持原相对位置不动
-  const teamIdx = pinnedAll.findIndex((t) => t.ref.kind === 'agentTeam')
-  const outlineIdx = pinnedAll.findIndex((t) => t.ref.kind === 'outline')
-  let pinned = pinnedAll
-  if (teamIdx >= 0 && outlineIdx >= 0 && teamIdx > outlineIdx) {
-    const team = pinnedAll[teamIdx]!
-    pinned = [...pinnedAll.slice(0, teamIdx), ...pinnedAll.slice(teamIdx + 1)]
-    pinned.splice(outlineIdx, 0, team)
-  }
-  return [...pinned, ...unpinned]
+  return [...orderSystemPinnedTabs(pinnedAll, (t) => t.ref.kind), ...unpinned]
 }
 
 /**

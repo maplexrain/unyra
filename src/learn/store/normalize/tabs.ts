@@ -3,6 +3,7 @@
 import { isAlwaysPinnedRef, newBlankKey, newWebKey, tabKey } from '../../tabs'
 import type { DocScroll, DocView, FavoriteItem, FavoriteRef, KnowledgeNode, LearnTab, LocalFile, TabRef, TabSidePortal } from '../../types'
 import type { Exam } from '../../exam'
+import type { AgentProfileId } from '../../../agent/agentProfile'
 import { sortLocalFiles } from '../../localfiles'
 import { favoriteKey } from '../../favorites'
 
@@ -102,7 +103,22 @@ function normalizeTabRef(raw: unknown, byId: Map<string, KnowledgeNode>): TabRef
     const goalId = typeof r.goalId === 'string' ? r.goalId : ''
     return goalId ? { kind: 'mind', goalId } : null
   }
-  if (r.kind === 'agentSettings') return { kind: r.kind }
+  // 内置提示词只读页签：文件是否还在由页面渲染时判断，这里只校验形状
+  if (r.kind === 'prompt') {
+    const agentId = typeof r.agentId === 'string' ? r.agentId.trim() : ''
+    const fileId = typeof r.fileId === 'string' ? r.fileId.trim() : ''
+    const title = typeof r.title === 'string' ? r.title.trim() : ''
+    if (!agentId || !fileId) return null
+    return {
+      kind: 'prompt',
+      agentId: agentId as AgentProfileId,
+      layer: r.layer === 'work' ? 'work' : 'role',
+      fileId,
+      title: title || fileId,
+    }
+  }
+  // 旧「智能体设置」页签并入统一设置页：都落到同一枚设置页签
+  if (r.kind === 'agentSettings') return { kind: 'settings' }
   if (r.kind === 'classroom') {
     const classroomId = typeof r.classroomId === 'string' ? r.classroomId.trim() : ''
     if (!classroomId) return null

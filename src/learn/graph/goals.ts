@@ -152,6 +152,7 @@ function tabNodeIdOf(ref: TabRef): string {
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
+    ref.kind === 'prompt' ||
     ref.kind === 'agentTeam' ||
     ref.kind === 'classroomShowcase' ||
     ref.kind === 'blank' ||

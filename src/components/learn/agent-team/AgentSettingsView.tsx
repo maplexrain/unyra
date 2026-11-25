@@ -42,6 +42,7 @@ import { t, useLocale } from '../../../i18n'
 import { builtinWorkflowRows, type WorkflowRow } from '../../../learn/workflows'
 import { AgentAvatarGlyph } from './AgentAvatarGlyph'
 import { PromptFilesView } from './PromptFilesView'
+import type { PromptFileItem } from '../../../learn/ai/promptFiles'
 import type { AgentTeamMode } from './conversationList'
 
 export interface AgentSettingsViewProps {
@@ -59,6 +60,8 @@ export interface AgentSettingsViewProps {
   /** 提示词文件库与顺序（全局设置，不在 profile 覆盖里） */
   promptFiles?: PromptFileSettings
   onPromptFilesChange?: (next: PromptFileSettings) => void
+  /** 点开一份提示词文件：内置走只读提示词页签，外置走本地 md 页签 */
+  onOpenPromptFile?: (file: PromptFileItem) => void
 }
 
 /** 分节标题：只留标题，不渲染说明性小字 */
@@ -233,6 +236,7 @@ export function AgentSettingsView({
   flowRows,
   promptFiles = DEFAULT_PROMPT_FILE_SETTINGS,
   onPromptFilesChange = () => {},
+  onOpenPromptFile,
 }: AgentSettingsViewProps) {
   useLocale()
   const isTutor = agentId === 'tutor'
@@ -603,6 +607,7 @@ export function AgentSettingsView({
               agentId={agentId}
               settings={promptFiles}
               onChange={onPromptFilesChange}
+              onOpenFile={onOpenPromptFile}
             />
           </section>
         </div>

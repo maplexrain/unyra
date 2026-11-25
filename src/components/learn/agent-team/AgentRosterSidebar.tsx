@@ -16,6 +16,7 @@ import { useMemo, useState } from 'react'
 import {
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRight,
   Pencil,
   Pin,
   Settings2,
@@ -83,6 +84,10 @@ export interface AgentRosterSidebarProps {
   onRenameGroup?: (name: string) => void
   groupPreview?: string
   onOpenGroup?: () => void
+  /** fixside 正停着这枚智能体页签 */
+  fixSideAgentOpen?: boolean
+  /** 顶部「固定到 fixside」：开 / 关智能体页的固定外侧栏 */
+  onToggleFixSide?: () => void
 }
 
 export function AgentRosterSidebar({
@@ -107,6 +112,8 @@ export function AgentRosterSidebar({
   onRenameGroup,
   groupPreview,
   onOpenGroup,
+  fixSideAgentOpen = false,
+  onToggleFixSide,
 }: AgentRosterSidebarProps) {
   useLocale()
   const [collapsed, setCollapsed] = useState<boolean>(() => (persistCollapsed ? readCollapsed() : false))
@@ -407,29 +414,57 @@ export function AgentRosterSidebar({
             {agents.length}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => toggleCollapsed(true)}
-          title={t('收起智能体列表')}
-          aria-label={t('收起智能体列表')}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/50 hover:text-ink"
-        >
-          <PanelLeftClose size={14} />
-        </button>
+        <div className="flex items-center gap-0.5">
+          {onToggleFixSide ? (
+            <button
+              type="button"
+              onClick={onToggleFixSide}
+              aria-pressed={fixSideAgentOpen}
+              title={fixSideAgentOpen ? t('关闭 fixside 智能体页') : t('固定到 fixside')}
+              aria-label={fixSideAgentOpen ? t('关闭 fixside 智能体页') : t('固定到 fixside')}
+              className={
+                'flex h-6 w-6 items-center justify-center rounded-md transition ' +
+                (fixSideAgentOpen
+                  ? 'bg-seal/12 text-seal-deep hover:bg-seal/20'
+                  : 'text-ink-faint hover:bg-line/50 hover:text-ink')
+              }
+            >
+              <PanelRight size={14} />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => toggleCollapsed(true)}
+            title={t('收起智能体列表')}
+            aria-label={t('收起智能体列表')}
+            className="flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/50 hover:text-ink"
+          >
+            <PanelLeftClose size={14} />
+          </button>
+        </div>
       </header>
 
       {/* 声部名册：只放名册卡；各声部的工作上下文统一挂在对话列表最下方 */}
       <div
         role="tablist"
         aria-orientation="vertical"
-        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2.5 pb-1"
+        className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2 pb-1"
       >
         {onOpenGroup ? (
           <div
             data-agent-group="true"
             aria-current={groupActive ? 'true' : undefined}
+            role="button"
+            tabIndex={0}
+            onClick={onOpenGroup}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onOpenGroup()
+              }
+            }}
             className={
-              'group flex w-full shrink-0 items-center gap-2.5 rounded-2xl border px-2 py-2.5 text-left transition ' +
+              'group flex w-full shrink-0 cursor-pointer items-center gap-2.5 rounded-2xl border px-2 py-1.5 text-left transition ' +
               (groupActive
                 ? 'border-teal-500/40 bg-teal-500/10 text-ink-strong shadow-xs'
                 : 'border-transparent text-ink-soft hover:border-line/60 hover:bg-card/55 hover:text-ink')
@@ -462,9 +497,9 @@ export function AgentRosterSidebar({
                 ) : (
                   <button
                     type="button"
-                    onClick={onOpenGroup}
                     onDoubleClick={(e) => {
                       e.preventDefault()
+                      e.stopPropagation()
                       startRenameGroup()
                     }}
                     className="min-w-0 flex-1 truncate text-left text-[13px] font-semibold text-ink-strong"
@@ -489,7 +524,7 @@ export function AgentRosterSidebar({
                 ) : null}
               </div>
               {groupPreview ? (
-                <div className="mt-1 truncate text-[11px] text-ink-faint">{groupPreview}</div>
+                <div className="mt-0.5 truncate text-[11px] text-ink-faint">{groupPreview}</div>
               ) : null}
             </div>
           </div>
@@ -508,7 +543,7 @@ export function AgentRosterSidebar({
             >
               <div
                 className={
-                  'group relative flex w-full items-center gap-2.5 rounded-2xl border px-2 py-2.5 transition ' +
+                  'group relative flex w-full items-center gap-2.5 rounded-2xl border px-2 py-1.5 transition ' +
                   (item.running ? 'moji-agent-live ' : '') +
                   (active
                     ? 'border-line-strong/85 bg-card text-ink-strong shadow-xs'

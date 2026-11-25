@@ -12,8 +12,6 @@ import { readSuperDoc } from '../../../learn/superdocs'
 import { wsRelOfTab } from '../../../learn/workspace'
 import { userAbsPath } from '../../../lib/storage'
 import { getOutlineSlot } from '../../../lib/outline'
-import { globalSummary } from '../../../ai/settings'
-import { saveAgentSettings } from '../../../agent/settings'
 import { parseSuperHref, handleSuperLink } from '../../../lib/nodeLink'
 import { requestSourceReveal, localRevealKey, nodeRevealKey } from '../../../lib/docReveal'
 import { nodeById } from '../../../learn/graph'
@@ -29,7 +27,8 @@ import OutlineGuideView from '../OutlineGuideView'
 import PluginDoc from '../../plugins/PluginDoc'
 import SponsorsDoc from '../../sponsor/SponsorsDoc'
 import VimCheatSheetView from '../vim/VimCheatSheetView'
-import SettingsPanel from '../../settings/SettingsPanel'
+import { SettingsPage } from '../../settings/SettingsPage'
+import { PromptFileView } from '../agent-team/PromptFileView'
 import UserTabPane from '../../user/UserTabPane'
 import TerminalTabPane from '../../terminal/TerminalTabPane'
 import UsagePanel from '../../settings/UsagePanel'
@@ -38,7 +37,6 @@ import ClassroomShowcasePage from '../classroom/ClassroomShowcasePage'
 import AgentTeamPage from '../agent-team/AgentTeamPage'
 import { SchedulePage } from '../../schedule/SchedulePage'
 import MindPanel from '../../agent/MindPanel'
-import AgentSettingsPanel from '../../AgentSettingsPanel'
 import { EmptyDoc } from './chrome'
 import { DocPane } from './DocPane'
 import { OutlinePane } from './OutlinePane'
@@ -63,8 +61,6 @@ export function SidePortalPane({ ctx, targetTab, mode = 'side', onClose, onSwap 
     set,
     onToast,
     openTab,
-    onRootChanged,
-    activeGoalId,
     docSaving,
     docSaveError,
     localSaved,
@@ -91,13 +87,6 @@ export function SidePortalPane({ ctx, targetTab, mode = 'side', onClose, onSwap 
     memoryUpdate,
     memoryDelete,
     memoryClearWork,
-    agentSettings,
-    hasKey,
-    debugWin,
-    openContextTrace,
-    workflowRows,
-    runWorkflowRow,
-    removeWorkflowRow,
     requestGenerateDoc,
     getNoteActions,
     agentSlotDeps,
@@ -261,6 +250,12 @@ export function SidePortalPane({ ctx, targetTab, mode = 'side', onClose, onSwap 
       )
     }
 
+    if (ref.kind === 'prompt') {
+      return (
+        <PromptFileView agentId={ref.agentId} layer={ref.layer} fileId={ref.fileId} />
+      )
+    }
+
     if (ref.kind === 'local' || ref.kind === 'ws') {
       const absPath =
         ref.kind === 'local'
@@ -328,42 +323,11 @@ export function SidePortalPane({ ctx, targetTab, mode = 'side', onClose, onSwap 
       return <TerminalTabPane tabId={scopePrefix + targetTab.id} termId={termId} shell={ref.shell} active onToast={onToast} />
     }
 
-    if (ref.kind === 'settings') {
+    if (ref.kind === 'settings' || ref.kind === 'agentSettings') {
       return (
-        <SettingsPanel
-          onRootChanged={onRootChanged}
-          onToast={onToast}
-          scheduleSound={store.schedule?.sound}
-          onScheduleSoundChange={scheduleActions.setSound}
-          onSwitchSection={(sec) => openTab({ kind: sec === 'agent' ? 'agentSettings' : 'settings' })}
-        />
-      )
-    }
-
-    if (ref.kind === 'agentSettings') {
-      return (
-        <AgentSettingsPanel
-          settings={agentSettings}
-          hasKey={hasKey}
-          model={globalSummary()}
-          onChange={(next) => {
-            saveAgentSettings(next)
-            onToast(t('超级导师设置已保存'))
-          }}
-          onOpenContextDebugger={() => debugWin.setOpen(true)}
-          onOpenContextTrace={openContextTrace}
-          flowRows={workflowRows}
-          onRunWorkflow={runWorkflowRow}
-          onRemoveWorkflow={removeWorkflowRow}
-          goals={store.goals}
-          memory={store.memory ?? { long: [], work: {} }}
-          activeGoalId={activeGoalId}
-          onMemoryCreate={memoryCreate}
-          onMemoryUpdate={memoryUpdate}
-          onMemoryDelete={memoryDelete}
-          onMemoryClearWork={memoryClearWork}
-          onToast={onToast}
-          onSwitchSection={(sec) => openTab({ kind: sec === 'agent' ? 'agentSettings' : 'settings' })}
+        <SettingsPage
+          ctx={ctx}
+          initialSection={ref.kind === 'agentSettings' ? 'agent' : undefined}
         />
       )
     }

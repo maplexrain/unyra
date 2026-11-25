@@ -8,6 +8,7 @@ import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, type AgentVoiceStats } from '../
 import { DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import { t } from '../../../i18n'
 import type { GroupChatAgent } from '../../agent/panel/GroupChatPanel'
+import type { ChannelMessage } from '../../../agent/types'
 
 export function groupAgentsOf({
   agentNames,
@@ -26,4 +27,16 @@ export function groupAgentsOf({
     avatarId: agentAvatarIds[id],
     running: Boolean(voiceStats[id]?.running),
   }))
+}
+
+/** 群聊卡片的最近消息预览：最后一条非评论串、非空消息，带发送者名字并截断 */
+export function groupPreviewOf(messages: readonly ChannelMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.threadRootId || !m.text.trim()) continue
+    const text = m.text.replace(/\s+/g, ' ').trim().slice(0, 80)
+    const sender = m.from.name.trim()
+    return sender ? `${sender}：${text}` : text
+  }
+  return ''
 }

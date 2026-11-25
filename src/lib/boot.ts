@@ -20,6 +20,7 @@ import { hydrateUserSettings } from './userSettings'
 import { hydrateUsageLog } from '../ai/usageLog'
 import { hydrateFreeChat } from '../learn/freeChat'
 import { hydrateGroupChat } from '../learn/groupChat'
+import { hydratePromptFiles } from '../agent/promptFileStore'
 import { t } from '../i18n'
 import { bootstrapUsers } from '../user/store'
 import { reconcileBackgroundAssets } from '../user/background'
@@ -52,6 +53,8 @@ export async function enterUserScope(uid: string | null): Promise<void> {
   await hydrateFreeChat(uid)
   // 群聊流水同样跟着用户走（users/{uid}/group-chat.json，learn/groupChat）
   await hydrateGroupChat(uid)
+  // 共用提示词文件库（users/{uid}/prompts/*.md）也要在页面首帧前就位
+  await hydratePromptFiles(uid)
   if (uid) {
     await autoMigrateIfNeeded(uid)
   }

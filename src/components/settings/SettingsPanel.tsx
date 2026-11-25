@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Check, Settings2, Sparkles } from 'lucide-react'
+import { ArrowLeft, Check } from 'lucide-react'
 import {
   allProviderBaseUrls,
   isConfigured,
@@ -59,7 +59,6 @@ interface Props {
   /** 日程铃声（设置 → 提醒）：数据是用户级的 schedule.sound，由工作区传进来 */
   scheduleSound?: ScheduleSound
   onScheduleSoundChange?: (patch: Partial<ScheduleSound>) => void
-  onSwitchSection?: (section: 'general' | 'agent') => void
 }
 
 type Page = { view: 'list' } | { view: 'config'; providerId: string }
@@ -73,7 +72,7 @@ type Page = { view: 'list' } | { view: 'config'; providerId: string }
  *   预设不再以「已内置的提供商」形式出现——它们只是创建时的模板。
  * 二级「配置页」：选预设（或自定义兼容格式）→ 名称 → Key → 模型列表。
  */
-export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, onScheduleSoundChange, onSwitchSection }: Props) {
+export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, onScheduleSoundChange }: Props) {
   const initial = loadAiSettings()
   const [tab, setTab] = useState<TabKey>(loadSavedTab)
   const [activeSubTab, setActiveSubTab] = useState<string>('theme')
@@ -119,8 +118,16 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
       saveTab('ai')
       setActiveSubTab('caps')
     }
+    // 顶部分页三击仍保留开发者入口（原先是左栏切换器上的隐藏手势）
+    const onDevEntry = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === 'general') setDevEntry(true)
+    }
     window.addEventListener('moji:open-caps', onOpenCaps as EventListener)
-    return () => window.removeEventListener('moji:open-caps', onOpenCaps as EventListener)
+    window.addEventListener('moji:settings:dev-entry', onDevEntry)
+    return () => {
+      window.removeEventListener('moji:open-caps', onOpenCaps as EventListener)
+      window.removeEventListener('moji:settings:dev-entry', onDevEntry)
+    }
   }, [])
   const [status, setStatus] = useState<StatusState>({ kind: 'idle' })
   const [appearance, setAppearanceState] = useState(loadAppearance)
@@ -262,31 +269,6 @@ export default function SettingsPanel({ onRootChanged, onToast, scheduleSound, o
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 bg-paper">
       <nav className="flex w-[196px] shrink-0 flex-col gap-1 border-r border-line bg-paper-deep px-3 py-3.5 overflow-y-auto select-none">
-        {/* 常规 / Agent 设置 Switch 切换组件 */}
-        <div
-          className="mb-2.5 flex items-center p-0.5 bg-card/60 border border-line rounded-none"
-          title={t('连续三击可解锁开发者模式')}
-          onClick={(e) => {
-            if (e.detail >= 3) setDevEntry(true)
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => onSwitchSection?.('general')}
-            className="flex flex-1 items-center justify-center gap-1.5 py-1 px-2 text-[12px] font-semibold bg-paper text-ink-strong shadow-2xs rounded-none transition"
-          >
-            <Settings2 size={13} className="text-seal shrink-0" />
-            <span>{t('常规')}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onSwitchSection?.('agent')}
-            className="flex flex-1 items-center justify-center gap-1.5 py-1 px-2 text-[12px] font-medium text-ink-soft hover:text-ink hover:bg-card/40 rounded-none transition"
-          >
-            <Sparkles size={13} className="text-ink-faint shrink-0" />
-            <span>{t('Agent')}</span>
-          </button>
-        </div>
         {tabs.map((tb) => (
           <div key={tb.key} className="flex flex-col">
             <TabButton

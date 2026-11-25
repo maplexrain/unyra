@@ -7,7 +7,6 @@ import {
   FolderCheck,
   GraduationCap,
   Radio,
-  Settings2,
   Sparkles,
   Terminal,
   Workflow,
@@ -79,7 +78,6 @@ interface Props {
   onMemoryDelete?: (uuid: string) => void
   onMemoryClearWork?: (goalId: string) => void
   onToast?: (msg: string) => void
-  onSwitchSection?: (section: 'general' | 'agent') => void
 }
 
 type TabKey = 'chat' | 'strategy' | 'memory' | 'skills' | 'mcp' | 'serve' | 'tools' | 'permissions' | 'flow' | 'dev'
@@ -151,7 +149,6 @@ export default function AgentSettingsPanel({
   onMemoryDelete = () => {},
   onMemoryClearWork = () => {},
   onToast = () => {},
-  onSwitchSection,
 }: Props) {
   /** 三击「超级导师设置」标题：开发者分页的隐藏入口 */
   const [devEntry, setDevEntry] = useState(false)
@@ -175,8 +172,16 @@ export default function AgentSettingsPanel({
       const target = typeof e.detail === 'string' ? e.detail : e.detail?.tab
       if (target) select(target as TabKey)
     }
+    // 顶部分页三击仍保留开发者入口（原先是左栏切换器上的隐藏手势）
+    const onDevEntry = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === 'agent') setDevEntry(true)
+    }
     window.addEventListener('moji:switch-agent-settings-tab', onSwitch)
-    return () => window.removeEventListener('moji:switch-agent-settings-tab', onSwitch)
+    window.addEventListener('moji:settings:dev-entry', onDevEntry)
+    return () => {
+      window.removeEventListener('moji:switch-agent-settings-tab', onSwitch)
+      window.removeEventListener('moji:settings:dev-entry', onDevEntry)
+    }
   }, [])
 
   // 统计各模块的活跃徽标数
@@ -192,32 +197,6 @@ export default function AgentSettingsPanel({
     <div className="flex h-full min-h-0 w-full min-w-0 bg-paper">
       {/* 左侧导航栏 */}
       <nav className="flex w-[196px] shrink-0 flex-col gap-1 border-r border-line bg-paper-deep px-3 py-3.5 overflow-y-auto select-none">
-        {/* 常规 / Agent 设置 Switch 切换组件 */}
-        <div
-          className="mb-2.5 flex items-center p-0.5 bg-card/60 border border-line rounded-none"
-          title={t('连续三击可解锁开发者模式')}
-          onClick={(e) => {
-            if (e.detail >= 3) setDevEntry(true)
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => onSwitchSection?.('general')}
-            className="flex flex-1 items-center justify-center gap-1.5 py-1 px-2 text-[12px] font-medium text-ink-soft hover:text-ink hover:bg-card/40 rounded-none transition"
-          >
-            <Settings2 size={13} className="text-ink-faint shrink-0" />
-            <span>{t('常规')}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onSwitchSection?.('agent')}
-            className="flex flex-1 items-center justify-center gap-1.5 py-1 px-2 text-[12px] font-semibold bg-paper text-ink-strong shadow-2xs rounded-none transition"
-          >
-            <Sparkles size={13} className="text-seal shrink-0" />
-            <span>{t('Agent')}</span>
-          </button>
-        </div>
-
         {/* Tab 导航项 */}
         <div className="flex flex-col gap-1 pt-1">
           {tabs.map((tb) => {

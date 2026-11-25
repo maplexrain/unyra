@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { LearnStore, LearnTab, TabRef, WebTabMeta } from '../../learn/types'
-import { isBlankTab, isTabPinned, tabNodeId, type TabCloseMode } from '../../learn/tabs'
+import { isBlankTab, isTabPinned, orderSystemPinnedTabs, tabNodeId, type TabCloseMode } from '../../learn/tabs'
 import type { ChipPayload } from '../../lib/docChip'
 import { TAB_EXIT_MS, useTabPresence } from '../../lib/tabPresence'
 import { useHorizontalScrollEdges, horizontalFadeMask } from '../../lib/scrollFade'
@@ -161,7 +161,10 @@ export default function TabBar({
    * 别的逻辑（菜单、拖动落点）仍旧只认活的 `tabs`。
    */
   const presence = useTabPresence(tabs, tabIdOf, TAB_EXIT_MS)
-  const pinnedPresence = useMemo(() => presence.filter((p) => isTabPinned(p.item)), [presence])
+  const pinnedPresence = useMemo(
+    () => orderSystemPinnedTabs(presence.filter((p) => isTabPinned(p.item)), (p) => p.item.ref.kind),
+    [presence],
+  )
   const normalPresence = useMemo(() => presence.filter((p) => !isTabPinned(p.item)), [presence])
   const pinnedStripRef = useRef<HTMLDivElement | null>(null)
   const activeBaseNodeId = activeTab ? tabNodeId(activeTab.ref) : null

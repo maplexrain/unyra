@@ -753,7 +753,8 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     expect(host.querySelectorAll('pre')).toHaveLength(0)
     expect(host.textContent).toContain('共同提示词 · 团队协作与沙箱执行基座')
     expect(host.textContent).toContain('固定组 API 能力面（全员共用）')
-    expect(host.textContent).toContain('导师角色定位与节点宇宙哲学')
+    expect(host.textContent).toContain('role 角色定位')
+    expect(host.textContent).toContain('你的专属分工')
 
     // 改名（受控 input）
     const nameInput = host.querySelector<HTMLInputElement>('input[type="text"]')!
@@ -935,7 +936,8 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     expect(tutor.preCount).toBe(0)
     expect(tutor.text).toContain('共同提示词 · 团队协作与沙箱执行基座')
     expect(tutor.text).toContain('固定组 API 能力面（全员共用）')
-    expect(tutor.text).toContain('导师角色定位与节点宇宙哲学')
+    expect(tutor.text).toContain('role 角色定位')
+    expect(tutor.text).toContain('你的专属分工')
     expect(tutor.text).not.toContain('你是「归一 Unyra」的导师龟')
 
     const examiner = render({}, 'examiner')

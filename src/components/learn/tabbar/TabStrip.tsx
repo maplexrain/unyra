@@ -77,6 +77,8 @@ export function TabItem({
   const on = tab.id === activeId
   const wmeta = webMetaOf?.(tab)
   const struct = tab.ref.kind === 'outline'
+  /** 智能体页是常驻主页面：栏上不给关闭键，也不允许被关闭。 */
+  const closable = tab.ref.kind !== 'agentTeam'
   const realTitle = titleOf(tab.ref)
   const termMeta = tab.ref.kind === 'terminal' ? getTerminalMeta((tab.ref as any).termId || tab.id) : null
   const termTitle =
@@ -241,18 +243,20 @@ export function TabItem({
             <Pin size={11} className="rotate-45" />
           </span>
         )}
-        <button
-          type="button"
-          title={t('关闭')}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation()
-            onClose(tab.id, 'self')
-          }}
-          className={'flex h-4 w-4 items-center justify-center rounded opacity-0 transition moji-press focus-visible:opacity-100 group-hover:opacity-70 hover:bg-line-strong/60'}
-        >
-          <X size={11} />
-        </button>
+        {closable && (
+          <button
+            type="button"
+            title={t('关闭')}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onClose(tab.id, 'self')
+            }}
+            className={'flex h-4 w-4 items-center justify-center rounded opacity-0 transition moji-press focus-visible:opacity-100 group-hover:opacity-70 hover:bg-line-strong/60'}
+          >
+            <X size={11} />
+          </button>
+        )}
         {dirty && (
           <span
             aria-hidden="true"

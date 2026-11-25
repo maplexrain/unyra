@@ -69,6 +69,7 @@ export function savedTextOf(store: LearnStore, ref: TabRef): string {
     ref.kind === 'schedule' ||
     ref.kind === 'mind' ||
     ref.kind === 'agentSettings' ||
+    ref.kind === 'prompt' ||
     ref.kind === 'agentTeam' ||
     ref.kind === 'guide' ||
     ref.kind === 'blank' ||
