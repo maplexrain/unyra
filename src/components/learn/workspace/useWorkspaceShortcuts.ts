@@ -11,7 +11,7 @@ export interface WorkspaceShortcutsDeps {
   getLatest: () => LearnStore
   closeTab: (groupId: string, tabId: string, which: 'self') => void
   pure: boolean
-  toggleAgentTeam: () => void
+  toggleFixSide: () => void
   toggleZen: () => void
   isWeb: () => boolean
   focusWebAddress: () => void
@@ -29,7 +29,7 @@ export function useWorkspaceShortcuts({
   getLatest,
   closeTab,
   pure,
-  toggleAgentTeam,
+  toggleFixSide,
   toggleZen,
   isWeb,
   focusWebAddress,
@@ -71,11 +71,11 @@ export function useWorkspaceShortcuts({
     },
   })
 
-  // Ctrl+Q：切换智能体团队页签 / 聚焦导师输入框
+  // Ctrl+Q：收起 / 展开固定在文档区外侧的 fixside 栏
   useShortcut('agent.focus', {
     down: () => {
       if (pure) return
-      toggleAgentTeam()
+      toggleFixSide()
     },
   })
 

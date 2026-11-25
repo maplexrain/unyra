@@ -175,9 +175,11 @@ export const MessageRow = memo(function MessageRow({
           <UsageLine usage={m.usage} />
         </div>
       )}
-      <div className="mt-1 flex justify-start opacity-0 transition group-hover:opacity-100">
-        <MessageActions text={messageText} />
-      </div>
+      {!mind && (
+        <div className="mt-1 flex justify-start opacity-0 transition group-hover:opacity-100">
+          <MessageActions text={messageText} />
+        </div>
+      )}
     </div>
   )
 })

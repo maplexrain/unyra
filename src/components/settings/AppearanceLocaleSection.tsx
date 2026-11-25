@@ -96,10 +96,6 @@ export function AppearanceLocaleSection({
         </div>
       </div>
 
-      <p className="text-[11px] leading-relaxed text-ink-faint">
-        {t('语言跟机器走，对所有用户生效；支持在 locales/ 目录下放入 JSON 语言包进行扩展。')}
-      </p>
-
       <div className="mt-1 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
         {LOCALES.map((l) => {
           const isSelected = locale === l

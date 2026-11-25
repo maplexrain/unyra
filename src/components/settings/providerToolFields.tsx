@@ -18,7 +18,6 @@ function SwitchRow({
   checked,
   onChange,
   title,
-  hint,
 }: {
   checked: boolean
   onChange: (v: boolean) => void
@@ -35,7 +34,6 @@ function SwitchRow({
       />
       <span className="min-w-0">
         <span className="block text-[12px] text-ink-strong">{title}</span>
-        {hint && <span className="mt-0.5 block text-[10.5px] leading-relaxed text-ink-faint">{hint}</span>}
       </span>
     </label>
   )
@@ -57,10 +55,7 @@ export function ServerToolsFields({
   const patch = (p: Partial<typeof current>) => patchProvider(cfg.id, { serverTools: { ...current, ...p } })
   return (
     <div className="rounded-xl border border-line bg-card/50 p-4">
-      <h4 className="mb-1 text-[12px] font-medium text-ink-strong">{t('服务端工具')}</h4>
-      <p className="mb-3 text-[11px] leading-relaxed text-ink-faint">
-        {t('由 DeepSeek 服务端执行的联网能力：搜索与抓取按次另计费，结果自动附带引用。仅 deepseek-flash 模型支持。')}
-      </p>
+      <h4 className="mb-2 text-[12px] font-medium text-ink-strong">{t('服务端工具')}</h4>
       <div className="flex flex-col gap-2.5">
         <SwitchRow
           checked={current.webSearch}
@@ -92,10 +87,7 @@ export function FilesApiFields({
   const current = cfg.files ?? preset?.files ?? { enabled: false }
   return (
     <div className="rounded-xl border border-line bg-card/50 p-4">
-      <h4 className="mb-1 text-[12px] font-medium text-ink-strong">{t('Files API（云端文件）')}</h4>
-      <p className="mb-3 text-[11px] leading-relaxed text-ink-faint">
-        {t('并非所有提供商都提供云端文件能力。开启后可在「设置 → 模型 → 能力接入」里管理云端文件；不需要时保持关闭。')}
-      </p>
+      <h4 className="mb-2 text-[12px] font-medium text-ink-strong">{t('Files API（云端文件）')}</h4>
       <SwitchRow
         checked={current.enabled}
         onChange={(v) => patchProvider(cfg.id, { files: { enabled: v } })}

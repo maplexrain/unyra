@@ -77,7 +77,7 @@ export function WorkDispatchList({
       className={
         embedded
           ? 'mb-0 rounded-none border-0 bg-transparent px-0 py-0'
-          : 'mb-3 rounded-xl border border-line/80 bg-paper-deep/35 px-2.5 py-2'
+          : 'mb-3 rounded-xl border border-line/80 bg-card/55 px-2.5 py-2'
       }
     >
       {!embedded ? (
@@ -87,7 +87,6 @@ export function WorkDispatchList({
           <span className="rounded-full bg-line/55 px-1.5 py-0.5 text-[10px] tabular-nums text-ink-soft">
             {sorted.length}
           </span>
-          <span className="ml-auto text-[10px] text-ink-faint">{t('仅界面观察 · 不进上下文')}</span>
         </div>
       ) : null}
       <div className="flex flex-col">
@@ -101,8 +100,8 @@ export function WorkDispatchList({
             <div
               key={work.id}
               className={
-                'group/wk flex min-w-0 items-stretch gap-1 rounded-md transition ' +
-                (work.id === activeWorkId ? 'bg-line/20' : 'hover:bg-line/35')
+                'group/wk mb-1 flex min-w-0 items-stretch gap-1 rounded-md border border-line/55 bg-card/60 transition ' +
+                (work.id === activeWorkId ? 'border-line-strong/70 bg-card' : 'hover:border-line-strong/60 hover:bg-card/80')
               }
             >
               <button

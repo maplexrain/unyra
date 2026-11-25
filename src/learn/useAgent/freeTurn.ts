@@ -30,7 +30,7 @@ import {
 import { fetchForAgent, searchForAgent } from '../webSearch'
 import { createScheduleOps } from '../schedule'
 import { FREE_GOAL_ID, appendFreeMessage, freeConversationById, mutateFreeConversation } from '../freeChat'
-import { buildFreeChatSystem } from '../ai'
+import { buildPromptFileSystem } from '../ai/promptFiles'
 import { generateConversationTitle, namingSource } from '../title'
 import { t } from '../../i18n'
 import type { LearnStore } from '../types'
@@ -119,19 +119,17 @@ export async function runFreeTurn(io: {
   if (!stored) return
   const settings = loadAiSettings()
   const agentSettings = loadAgentSettings()
-  // 自由聊天的系统提示词同样固化进会话（见 Conversation.systemPrompt）：系统提示词变动时自动同步最新规范。
-  // 能力面由架构固定（内置组不可卸载），提示词恒定——没有随 profile 变化的字段。
-  const desiredFreeSystem = buildFreeChatSystem({
-    extraSystemPrompt:
-      agentSettings.extraSystemPromptEnabled && agentSettings.extraSystemPrompt?.trim()
-        ? agentSettings.extraSystemPrompt.trim()
-        : undefined,
-  })
-  let freeSystem = stored.systemPrompt
-  if (!freeSystem || freeSystem !== desiredFreeSystem) {
-    freeSystem = desiredFreeSystem
-    mutateFreeConversation(conversationId, (c) => ({ ...c, systemPrompt: freeSystem }))
-  }
+  // 自由聊天同样每轮现拼：提示词文件的顺序/启停改了，这一轮就生效。
+  const extra =
+    agentSettings.extraSystemPromptEnabled && agentSettings.extraSystemPrompt?.trim()
+      ? agentSettings.extraSystemPrompt.trim()
+      : ''
+  const freeSystem = [
+    buildPromptFileSystem('free', 'role', agentSettings.promptFiles),
+    extra ? ['【用户附加自定义系统提示词（具有高优先级效力）】：', extra].join('\n') : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n')
   // 仅聊天声部的独立设置（agent/agentProfile）：提供商-模型与档位覆盖，缺省逐字回落全局
   const global = resolveAgentGlobal(settings, profileOf(agentSettings, 'free'))
   const window = globalContextWindow(settings)

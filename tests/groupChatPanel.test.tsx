@@ -12,7 +12,7 @@ import type { ChannelMessage } from '../src/agent/types'
 
 const agents = [
   { id: 'tutor' as const, name: '导师龟', avatarId: 'turtle-tutor' },
-  { id: 'dispatcher' as const, name: '调度龟', avatarId: 'turtle-dispatcher' },
+  { id: 'dispatcher' as const, name: '经理龟', avatarId: 'turtle-dispatcher' },
 ]
 
 const message = (id: string, from: ChannelMessage['from'], text: string): ChannelMessage => ({
@@ -30,7 +30,7 @@ const message = (id: string, from: ChannelMessage['from'], text: string): Channe
 describe('GroupChatPanel', () => {
   it('@ 解析只认已出现的完整名字，可一次点名多位', () => {
     expect(mentionedAgentsOf('@导师龟 请讲一下', agents).map((a) => a.id)).toEqual(['tutor'])
-    expect(mentionedAgentsOf('@导师龟 @调度龟 你们分工', agents).map((a) => a.id)).toEqual([
+    expect(mentionedAgentsOf('@导师龟 @经理龟 你们分工', agents).map((a) => a.id)).toEqual([
       'tutor',
       'dispatcher',
     ])
@@ -72,7 +72,7 @@ describe('GroupChatPanel', () => {
     const m: ChannelMessage = {
       ...message('m1', { kind: 'role', id: 'tutor', name: '导师龟' }, '@用户 极限讲义已经更新'),
       detail: '详细依据：先补了极限定义，再补了夹逼定理例题，最后把产物放到 微积分/极限。',
-      mention: { kind: 'role', id: 'dispatcher', name: '调度龟' },
+      mention: { kind: 'role', id: 'dispatcher', name: '经理龟' },
       delivery: { files: [{ path: '微积分/极限', action: 'updated' }], sources: [] },
     }
     act(() => {
@@ -142,9 +142,9 @@ describe('GroupChatPanel', () => {
 
 
   it('一级列表只画主楼；点「评论」进入评论串后才看到楼内回复', () => {
-    const rootMessage = message('m1', { kind: 'role', id: 'dispatcher', name: '调度龟' }, '@导师龟 帮我查一下')
+    const rootMessage = message('m1', { kind: 'role', id: 'dispatcher', name: '经理龟' }, '@导师龟 帮我查一下')
     rootMessage.threadId = groupThreadIdOf('g1', 'm1')
-    const comment = message('m2', { kind: 'role', id: 'tutor', name: '导师龟' }, '@调度龟 收到，已开工')
+    const comment = message('m2', { kind: 'role', id: 'tutor', name: '导师龟' }, '@经理龟 收到，已开工')
     comment.threadId = groupThreadIdOf('g1', 'm1')
     comment.threadRootId = 'm1'
 
@@ -161,7 +161,7 @@ describe('GroupChatPanel', () => {
       )
     })
     expect(host.textContent).toContain('@导师龟 帮我查一下')
-    expect(host.textContent).not.toContain('@调度龟 收到，已开工')
+    expect(host.textContent).not.toContain('@经理龟 收到，已开工')
     const commentButton = host.querySelector<HTMLButtonElement>('button[title="group:g1>m1"]')
     expect(commentButton).not.toBeNull()
     // 评论入口在气泡内部，不再挂在气泡下方的消息区
@@ -171,7 +171,7 @@ describe('GroupChatPanel', () => {
     })
     expect(host.textContent).toContain('评论串')
     expect(host.textContent).toContain('原消息')
-    expect(host.textContent).toContain('@调度龟 收到，已开工')
+    expect(host.textContent).toContain('@经理龟 收到，已开工')
     expect(host.textContent).toContain('group:g1>m1')
 
     act(() => {
@@ -209,7 +209,7 @@ describe('GroupChatPanel', () => {
     host.remove()
   })
 
-  it('没有 @ 时提交空目标列表，交给群消息调度 agent，而不是默认点名调度龟', async () => {
+  it('没有 @ 时提交空目标列表，交给群消息调度 agent，而不是默认点名经理龟', async () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
@@ -264,7 +264,7 @@ describe('GroupChatPanel', () => {
 
   it('没有评论时不显示评论入口；有评论时入口铺满整行', () => {
     const plain = message('m1', { kind: 'role', id: 'tutor', name: '导师龟' }, '这一条还没有人评论')
-    const commented = message('m2', { kind: 'role', id: 'dispatcher', name: '调度龟' }, '这一条已经有评论')
+    const commented = message('m2', { kind: 'role', id: 'dispatcher', name: '经理龟' }, '这一条已经有评论')
     commented.threadId = groupThreadIdOf('g1', 'm2')
     const reply = message('m3', { kind: 'role', id: 'tutor', name: '导师龟' }, '楼内回复')
     reply.threadId = groupThreadIdOf('g1', 'm2')

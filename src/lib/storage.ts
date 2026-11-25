@@ -20,6 +20,21 @@
 
 import { native, type FlushItem, type StorageEntry, type StorageInfo } from './native'
 
+/**
+ * 「某个用户级文本文件刚被写成功」的通知。
+ *
+ * 磁盘是唯一事实来源的目录（如 prompts/ 下的提示词文件）需要在保存后重新读回内存，
+ * 但它们不经过任何一方 store，只能由写入口本身广播。监听者拿用户内相对路径
+ * （`prompts/xx.md`）自行判断是否与自己有关。
+ */
+type UserTextWrittenListener = (rel: string) => void
+const userTextWrittenListeners = new Set<UserTextWrittenListener>()
+
+export function onUserTextWritten(listener: UserTextWrittenListener): () => void {
+  userTextWrittenListeners.add(listener)
+  return () => userTextWrittenListeners.delete(listener)
+}
+
 /** 用户数据根下的相对路径 */
 export function userRel(uid: string, ...segments: string[]): string {
   return ['users', uid, ...segments.filter(Boolean)].join('/')
@@ -436,7 +451,10 @@ export async function readUserText(rel: string): Promise<string | null> {
 
 export async function writeUserText(rel: string, content: string): Promise<boolean> {
   const p = userPath(rel)
-  return p ? writeText(p, content) : false
+  if (!p) return false
+  const ok = await writeText(p, content)
+  if (ok) for (const listener of userTextWrittenListeners) listener(rel)
+  return ok
 }
 
 export async function readUserJson<T>(rel: string): Promise<T | null> {

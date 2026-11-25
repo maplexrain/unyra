@@ -45,9 +45,12 @@ export function isThreadComment(message: ChannelMessage): boolean {
 interface GroupChatFile {
   version: 1
   messages: ChannelMessage[]
+  /** 每个学习目标自己的群名；缺省显示「群聊」 */
+  groupNames?: Record<string, string>
 }
 
 let messages: ChannelMessage[] = []
+let groupNames: Record<string, string> = {}
 let pending: { uid: string; file: GroupChatFile } | null = null
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 const listeners = new Set<() => void>()
@@ -83,7 +86,7 @@ async function saveNow(): Promise<void> {
 function scheduleSave(): void {
   const uid = settingsUid()
   if (!uid) return
-  pending = { uid, file: { version: 1, messages } }
+  pending = { uid, file: { version: 1, messages, groupNames } }
   if (saveTimer) return
   saveTimer = setTimeout(() => void saveNow(), 1200)
 }
@@ -110,6 +113,22 @@ export function patchGroupMessage(id: string, patch: Partial<ChannelMessage>): v
   if (touched) commit(next)
 }
 
+/** 当前目标群聊名；没改过就回落「群聊」 */
+export function getGroupName(goalId: string): string {
+  return groupNames[goalId]?.trim() || '群聊'
+}
+
+/** 改群名；空名等于恢复默认。改完即时广播，名册与群聊抬头一起更新。 */
+export function setGroupName(goalId: string, name: string): void {
+  const next = { ...groupNames }
+  const trimmed = name.trim()
+  if (trimmed) next[goalId] = trimmed.slice(0, 40)
+  else delete next[goalId]
+  groupNames = next
+  scheduleSave()
+  emit()
+}
+
 /** 换用户：先把旧用户的尾巴落掉，再读新用户的群聊 */
 export async function hydrateGroupChat(uid: string | null): Promise<void> {
   if (saveTimer) {
@@ -118,6 +137,7 @@ export async function hydrateGroupChat(uid: string | null): Promise<void> {
   }
   await saveNow()
   messages = []
+  groupNames = {}
   if (!uid) {
     emit()
     return
@@ -125,5 +145,13 @@ export async function hydrateGroupChat(uid: string | null): Promise<void> {
   const raw = await readJson<GroupChatFile>(userRel(uid, FILE))
   const list = raw?.version === 1 && Array.isArray(raw.messages) ? raw.messages : []
   messages = normalizeChannels(list) ?? []
+  groupNames =
+    raw?.groupNames && typeof raw.groupNames === 'object'
+      ? Object.fromEntries(
+          Object.entries(raw.groupNames)
+            .filter(([goalId, name]) => goalId.trim() && typeof name === 'string' && name.trim())
+            .map(([goalId, name]) => [goalId, name.trim().slice(0, 40)]),
+        )
+      : {}
   emit()
 }

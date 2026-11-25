@@ -1,14 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import TabButton from './TabButton'
 import {
   Brain,
-  CheckCircle2,
+  Bot,
   Compass,
   Cpu,
   FolderCheck,
   GraduationCap,
   Radio,
-  Settings2,
   Sparkles,
   Terminal,
   Workflow,
@@ -32,6 +31,7 @@ import { ServeTab } from './agent-settings/ServeTab'
 import { ToolsTab } from './agent-settings/ToolsTab'
 import { PermissionsTab } from './agent-settings/PermissionsTab'
 import { MemoryTab } from './agent-settings/MemoryTab'
+import { ExternalAgentsPanel } from './agent-settings/ExternalAgentsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import DevUnlock from './DevUnlock'
 import { pane } from './Pane'
@@ -80,10 +80,11 @@ interface Props {
   onMemoryDelete?: (uuid: string) => void
   onMemoryClearWork?: (goalId: string) => void
   onToast?: (msg: string) => void
-  onSwitchSection?: (section: 'general' | 'agent') => void
+  /** 左栏顶部的「常规 / 智能体」切换（由 SettingsPage 注入） */
+  sectionSwitch?: ReactNode
 }
 
-type TabKey = 'chat' | 'strategy' | 'memory' | 'skills' | 'mcp' | 'serve' | 'tools' | 'permissions' | 'flow' | 'dev'
+type TabKey = 'chat' | 'strategy' | 'memory' | 'skills' | 'mcp' | 'serve' | 'external' | 'tools' | 'permissions' | 'flow' | 'dev'
 
 const TAB_KEY = 'moji:agent-settings:tab'
 
@@ -94,6 +95,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: typeof Sparkles }> = [
   { key: 'skills', label: '专业技能', icon: GraduationCap },
   { key: 'mcp', label: 'MCP 服务', icon: Cpu },
   { key: 'serve', label: '对外 MCP 服务', icon: Radio },
+  { key: 'external', label: '外部智能体', icon: Bot },
   { key: 'tools', label: '工具与上下文', icon: Wrench },
   { key: 'permissions', label: '权限设置', icon: FolderCheck },
   { key: 'flow', label: '工作流', icon: Workflow },
@@ -115,6 +117,7 @@ const savedTab = (): TabKey => {
       v === 'skills' ||
       v === 'mcp' ||
       v === 'serve' ||
+      v === 'external' ||
       v === 'tools' ||
       v === 'permissions' ||
       v === 'flow'
@@ -152,7 +155,7 @@ export default function AgentSettingsPanel({
   onMemoryDelete = () => {},
   onMemoryClearWork = () => {},
   onToast = () => {},
-  onSwitchSection,
+  sectionSwitch,
 }: Props) {
   /** 三击「超级导师设置」标题：开发者分页的隐藏入口 */
   const [devEntry, setDevEntry] = useState(false)
@@ -176,8 +179,16 @@ export default function AgentSettingsPanel({
       const target = typeof e.detail === 'string' ? e.detail : e.detail?.tab
       if (target) select(target as TabKey)
     }
+    // 顶部分页三击仍保留开发者入口（原先是左栏切换器上的隐藏手势）
+    const onDevEntry = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === 'agent') setDevEntry(true)
+    }
     window.addEventListener('moji:switch-agent-settings-tab', onSwitch)
-    return () => window.removeEventListener('moji:switch-agent-settings-tab', onSwitch)
+    window.addEventListener('moji:settings:dev-entry', onDevEntry)
+    return () => {
+      window.removeEventListener('moji:switch-agent-settings-tab', onSwitch)
+      window.removeEventListener('moji:settings:dev-entry', onDevEntry)
+    }
   }, [])
 
   // 统计各模块的活跃徽标数
@@ -193,32 +204,7 @@ export default function AgentSettingsPanel({
     <div className="flex h-full min-h-0 w-full min-w-0 bg-paper">
       {/* 左侧导航栏 */}
       <nav className="flex w-[196px] shrink-0 flex-col gap-1 border-r border-line bg-paper-deep px-3 py-3.5 overflow-y-auto select-none">
-        {/* 常规 / Agent 设置 Switch 切换组件 */}
-        <div
-          className="mb-2.5 flex items-center p-0.5 bg-card/60 border border-line rounded-none"
-          title={t('连续三击可解锁开发者模式')}
-          onClick={(e) => {
-            if (e.detail >= 3) setDevEntry(true)
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => onSwitchSection?.('general')}
-            className="flex flex-1 items-center justify-center gap-1.5 py-1 px-2 text-[12px] font-medium text-ink-soft hover:text-ink hover:bg-card/40 rounded-none transition"
-          >
-            <Settings2 size={13} className="text-ink-faint shrink-0" />
-            <span>{t('常规')}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onSwitchSection?.('agent')}
-            className="flex flex-1 items-center justify-center gap-1.5 py-1 px-2 text-[12px] font-semibold bg-paper text-ink-strong shadow-2xs rounded-none transition"
-          >
-            <Sparkles size={13} className="text-seal shrink-0" />
-            <span>{t('Agent')}</span>
-          </button>
-        </div>
-
+        {sectionSwitch ? <div className="mb-1.5 shrink-0">{sectionSwitch}</div> : null}
         {/* Tab 导航项 */}
         <div className="flex flex-col gap-1 pt-1">
           {tabs.map((tb) => {
@@ -286,6 +272,8 @@ export default function AgentSettingsPanel({
                   ? t('导师人格与策略定制')
                   : tab === 'flow'
                     ? t('工作流模板')
+                    : tab === 'external'
+                      ? t('外部智能体')
                     : tab === 'skills'
                       ? t('专业技能扩展 (Skills)')
                         : tab === 'mcp'
@@ -300,32 +288,6 @@ export default function AgentSettingsPanel({
                               ? t('导师记忆管理 (Memory)')
                               : t('对话与上下文设置')}
             </h2>
-            <p className="text-[11.5px] text-ink-faint mt-0.5">
-              {tab === 'dev'
-                ? t('底层系统与调试工具，普通学习过程无需开启')
-                : tab === 'strategy'
-                  ? t('自定义导师的引导交流风格与教学文档结构排版策略')
-                  : tab === 'flow'
-                    ? t('由导师代跑的任务模板；触发时指令以 user 消息进入上下文')
-                    : tab === 'skills'
-                      ? t('为导师装配特定的认知框架、启发策略与解题规范')
-                        : tab === 'mcp'
-                          ? t('连接开放协议服务，赋予导师操作真实世界系统与网络的能力')
-                          : tab === 'serve'
-                            ? t('把应用开放给外部 AI harness：开关、运行状态、连接配置与调用记录')
-                            : tab === 'tools'
-                          ? t('原生系统进程监控、上下文健康度及沙箱能力目录')
-                          : tab === 'permissions'
-                            ? t('真实文件系统访问白名单授权与安全沙箱边界治理')
-                            : tab === 'memory'
-                              ? t('工作记忆跟着目标走、长期记忆跨目标共享；两者都不会自动进上下文')
-                              : t('只影响对话区里的超级导师自身，与全局 AI 设置保持独立')}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-1.5 rounded-full border border-line bg-card/60 px-2.5 py-1 text-[11px] text-ink-faint shadow-2xs">
-            <CheckCircle2 size={12} className="text-emerald-500" />
-            <span>{t('随改随存 · 即时生效')}</span>
           </div>
         </header>
 
@@ -348,6 +310,8 @@ export default function AgentSettingsPanel({
               onClearWork={onMemoryClearWork}
               onToast={onToast}
             />
+          ) : tab === 'external' ? (
+            <ExternalAgentsPanel onToast={onToast} />
           ) : tab === 'skills' ? (
             <SkillsTab
               settings={settings.skills}
@@ -422,7 +386,6 @@ function ChatTab({
         on={c.auto}
         onChange={(auto) => patch({ auto })}
         label={t('上下文快满时自动压缩')}
-        hint={t('当单轮对话累计上下文达到下方阈值时，自动折叠前期会话为交接摘要，避免因超长上下文导致调用失败')}
       />
 
       {/* 阈值调节滑块 */}
@@ -446,16 +409,6 @@ function ChatTab({
           onChange={(e) => patch({ threshold: Number(e.target.value) / 100 })}
           className="mt-3.5 w-full accent-[var(--color-seal)] cursor-pointer"
         />
-        <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
-          {t('窗口占用基于服务端实际返回用量精确计算。保留余量至关重要：在多跳循环中后续各跳的输入随工具结果逐步增大，过于贴近上限极易报错。')}
-        </p>
-      </section>
-
-      {/* 机制说明 */}
-      <section className="rounded-xl border border-line bg-sunken/60 p-3.5">
-        <p className="text-[11.5px] leading-relaxed text-ink-soft">
-          {t('压缩后，历史旧消息将不再进入模型上下文，但界面上会原样完整保留展示（绝不删减任何用户历史）。 对话流中的虚线为分界线，点击「查看摘要」可随时审阅导师凝练的记忆。')}
-        </p>
       </section>
 
       <div className="flex items-center gap-2 pt-1">
@@ -488,10 +441,7 @@ function DevTab({ onSelectTab }: { onSelectTab?: (tab: TabKey) => void }) {
     return (
       <div className={pane(4)}>
         <section className="rounded-xl border border-line bg-card p-5">
-          <h4 className="text-[13px] font-semibold text-ink-strong mb-1">{t('开发者口令验证')}</h4>
-          <p className="mb-3 text-[11.5px] leading-relaxed text-ink-faint">
-            {t('这一页平时不显示。请输入口令解锁（与全局设置开发者分页共享解锁状态）。')}
-          </p>
+          <h4 className="text-[13px] font-semibold text-ink-strong mb-3">{t('开发者口令验证')}</h4>
           <DevUnlock
             inputClass="min-w-0 rounded-lg border border-line bg-card px-3 py-2 text-[12px] text-ink-strong outline-none transition placeholder:text-ink-faint focus:border-seal/60 focus:ring-2 focus:ring-seal/15 w-[240px] font-mono"
             onUnlocked={() => setUnlocked(true)}
@@ -507,9 +457,6 @@ function DevTab({ onSelectTab }: { onSelectTab?: (tab: TabKey) => void }) {
           <Terminal size={16} className="text-seal" />
           <h4 className="text-[13.5px] font-semibold text-ink-strong">{t('开发者模式已激活')}</h4>
         </div>
-        <p className="text-[11.5px] leading-relaxed text-ink-faint">
-          {t('超级导师的上下文管理、沙箱工具目录、进程监控与安全权限放行已迁至独立的「工具与上下文」分页，提供更加现代化的全景交互与健康度监控。')}
-        </p>
         {onSelectTab && (
           <div className="mt-3.5">
             <button
@@ -523,10 +470,6 @@ function DevTab({ onSelectTab }: { onSelectTab?: (tab: TabKey) => void }) {
           </div>
         )}
       </section>
-
-      <div className="rounded-xl border border-line bg-card/60 px-3.5 py-2.5 text-[11px] leading-relaxed text-ink-soft">
-        {t('开发者口令已验证通过，底层调试接口与全局设置共享解锁状态。')}
-      </div>
     </div>
   )
 }

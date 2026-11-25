@@ -33,13 +33,13 @@ describe('agentPinning 置顶与排序机制', () => {
     localStorage.clear()
   })
 
-  it('调度龟默认置顶且不可撤销；聊天龟已从名册移除', () => {
+  it('经理龟默认置顶且不可撤销；聊天龟已从名册移除', () => {
     expect(isPinLocked('free')).toBe(false)
     expect(isPinLocked('dispatcher')).toBe(true)
     expect(isPinLocked('tutor')).toBe(false)
     expect(isPinLocked('examiner')).toBe(false)
 
-    // 初始加载只包含默认锁定的调度龟
+    // 初始加载只包含默认锁定的经理龟
     const initial = loadPinnedAgents()
     expect(initial.has('free')).toBe(false)
     expect(initial.has('dispatcher')).toBe(true)
@@ -122,9 +122,25 @@ describe('提示词分段与共同提示词独立性', () => {
     expect(TURTLE_CLAN_GUIDE).not.toContain('自报家门')
     expect(TURTLE_CLAN_GUIDE).toContain('禁止在每条回复开头自报身份')
     expect(buildDispatcherSystem()).toContain('导师龟是二弟/老二')
-    expect(buildTeacherSystem()).toContain('调度龟是大哥')
-    expect(buildTeacherSystem()).toContain('出卷龟是三弟/老三')
+    expect(buildTeacherSystem()).toContain('经理龟是大哥')
+    expect(buildTeacherSystem()).toContain('做题龟是三弟/老三')
     expect(buildTeacherSystem()).toContain('silent: true')
+  })
+
+  it('共同基座不含任何具体身份，可原样套给外部自定义 agent', () => {
+    // 1/2 两段是全员共用；龟门身份只能出现在各 role 的「role 角色定位」段
+    expect(ALL_AGENTS_COMMON_PREFIX).not.toContain('龟门')
+    expect(ALL_AGENTS_COMMON_PREFIX).not.toContain('兄弟')
+    expect(ALL_AGENTS_COMMON_PREFIX).not.toContain('本龟')
+    expect(ALL_AGENTS_COMMON_PREFIX).not.toContain('导师')
+    expect(ALL_AGENTS_COMMON_PREFIX).not.toContain('调研员')
+    expect(SHARED_AGENT_PREFIX).not.toContain('龟门')
+    expect(SHARED_AGENT_PREFIX).not.toContain('导师龟')
+    // 身份段确实被移进了 role 3
+    const roleSection = getAgentPromptSections('tutor').find((s) => s.id === 'tutor-role')
+    expect(roleSection?.title).toBe('role 角色定位')
+    expect(roleSection?.content).toContain('龟门六兄弟（身份总纲）')
+    expect(getAgentPromptSections('tutor').find((s) => s.id === 'tutor-duty')?.title).toBe('你的专属分工')
   })
 
   it('六位团队角色与自由对话系统提示词首部持有共同前缀，最大化缓存命中率', () => {
@@ -152,19 +168,26 @@ describe('提示词分段与共同提示词独立性', () => {
     const tutorSections = getAgentPromptSections('tutor')
     // role 层现在只有四段：共同前缀 / 固定 API / 人格 / 分工
     expect(tutorSections.length).toBeGreaterThanOrEqual(4)
+    // 团队 role 的固定四段：共同基座 / 固定 API / 角色定位 / 专属分工
+    expect(tutorSections.slice(0, 4).map((s) => s.title)).toEqual([
+      '共同提示词 · 团队协作与沙箱执行基座',
+      '固定组 API 能力面（全员共用）',
+      'role 角色定位',
+      '你的专属分工',
+    ])
     expect(tutorSections[0]!.title).toContain('共同提示词')
     expect(tutorSections[0]!.content).toBe(SHARED_AGENT_PREFIX)
     expect(tutorSections[0]!.isCommon).toBe(true)
 
-    // 出卷龟
+    // 做题龟
     const examinerSections = getAgentPromptSections('examiner')
     expect(examinerSections[0]!.title).toContain('共同提示词')
     expect(examinerSections[0]!.content).toBe(SHARED_AGENT_PREFIX)
     expect(examinerSections[0]!.isCommon).toBe(true)
 
-    // 自由对话：第一个分段为全员共同提示词基座
+    // 自由对话：第一个分段为共同提示词基座
     const freeSections = getAgentPromptSections('free')
-    expect(freeSections[0]!.title).toContain('全员共同提示词')
+    expect(freeSections[0]!.title).toContain('共同提示词')
     expect(freeSections[0]!.content).toBe(ALL_AGENTS_COMMON_PREFIX)
     expect(freeSections[0]!.isCommon).toBe(true)
 

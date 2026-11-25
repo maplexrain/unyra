@@ -3,7 +3,7 @@ import { triggerShortcutAction } from './shortcuts'
 /**
  * 「导师输入框聚焦、侧栏展开与消息发送」的全局接线：
  *
- * 供 Vim 冒号命令 :agent、快捷键 Ctrl+Q 以及各处调用。
+ * 供 Vim 冒号命令 :agent 以及各处调用；Ctrl+Q 现在归 fixside 折叠，不再走这里。
  */
 let target: (() => void) | null = null
 let agentToggle: (() => void) | null = null

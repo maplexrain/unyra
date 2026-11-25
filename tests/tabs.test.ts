@@ -126,7 +126,7 @@ describe('页签的身份', () => {
     expect(tabTrail(mind, () => '极限', (gid) => '目标' + gid)).toBe('目标g1')
     expect(tabTitle(mind, () => '随便')).toBe('记忆管理')
     const agentSettings: TabRef = { kind: 'agentSettings' }
-    expect(tabKey(agentSettings)).toBe('set:agent')
+    expect(tabKey(agentSettings)).toBe('set:settings')
     expect(tabNodeId(agentSettings)).toBeNull()
     expect(tabTitle(agentSettings, () => '随便')).toBe('超级导师设置')
     const outlineGoal: TabRef = { kind: 'outline', nodeId: 'g1', goalId: 'g1' }

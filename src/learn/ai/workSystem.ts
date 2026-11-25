@@ -1,6 +1,6 @@
 /**
  * work 的系统提示词：没有人格，只有执行基座 + 本 role 的领域能力 + 具体做法 + 交付纪律。
- * 创建 work 时固化；role 之后改设置不影响已建 work（上下文独立）。
+ * 每次运行由 promptFiles 按当前提示词文件顺序重新装配，不在创建时固化。
  */
 import { EXECUTE_BASE_GUIDE, APP_DATA_GUIDE, SANDBOX_DISCIPLINE_GUIDE } from './executeGuide'
 import { SHARED_DISCIPLINE } from './agentSharedPrefix'
@@ -23,6 +23,31 @@ export interface WorkSystemSections {
   syntax: string
   workflow: string
   discipline: string
+}
+
+export type WorkSystemSectionId = keyof WorkSystemSections
+
+/** 注入顺序（也是设置页文件项的默认顺序） */
+export const WORK_SYSTEM_SECTION_ORDER: readonly WorkSystemSectionId[] = [
+  'base',
+  'roleBrief',
+  'typography',
+  'fixedApi',
+  'variableApi',
+  'syntax',
+  'workflow',
+  'discipline',
+]
+
+export const WORK_SYSTEM_SECTION_TITLES: Record<WorkSystemSectionId, string> = {
+  base: '执行基座与通用纪律',
+  roleBrief: '角色分工',
+  typography: '排版规范',
+  fixedApi: '固定组 API 能力面',
+  variableApi: '动态 API 能力面',
+  syntax: '领域语法',
+  workflow: '工作流规程',
+  discipline: '领域纪律',
 }
 
 export function workSystemSections(role: AgentProfileId): WorkSystemSections {

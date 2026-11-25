@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
-import { Check, Palette, Sparkles } from 'lucide-react'
+import { Check, Palette } from 'lucide-react'
 import { type Appearance } from '../../lib/appearance'
 import {
   DEFAULT_CUSTOM_BACKGROUND,
@@ -282,13 +282,6 @@ export function AppearancePanel({
             <Palette size={16} className="text-seal" />
             <h2 className="text-[14px] font-semibold text-ink-strong">{t('外观与主题')}</h2>
           </div>
-          <p className="mt-1 text-[11.5px] text-ink-soft">
-            {t('自定义墨记的界面色彩、界面语言与辅助教学演示模式。')}
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok/10 px-2.5 py-1 text-[11px] text-ok-deep">
-          <Sparkles size={11} />
-          <span>{t('即时生效 · 自动保存')}</span>
         </div>
       </div>
 

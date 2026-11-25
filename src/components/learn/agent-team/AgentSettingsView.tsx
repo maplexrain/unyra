@@ -25,8 +25,6 @@ import {
   subscribeAiSettings,
 } from '../../../ai/settings'
 import { SANDBOX_API_CATALOG } from '../../../agent/apiCatalog'
-import { docFormatOf } from '../../../agent/docFormat'
-import { personaOf } from '../../../agent/persona'
 import {
   AGENT_AVATARS,
   AGENT_WORKFLOW_PLANES,
@@ -39,11 +37,12 @@ import {
   type AgentProfileId,
   type AgentVoice,
 } from '../../../agent/agentProfile'
-import { loadAgentSettings, subscribeAgentSettings } from '../../../agent/settings'
+import { DEFAULT_PROMPT_FILE_SETTINGS, type PromptFileSettings } from '../../../agent/promptFiles'
 import { t, useLocale } from '../../../i18n'
 import { builtinWorkflowRows, type WorkflowRow } from '../../../learn/workflows'
 import { AgentAvatarGlyph } from './AgentAvatarGlyph'
-import { AgentPromptSectionsView } from './AgentPromptSectionsView'
+import { PromptFilesView } from './PromptFilesView'
+import type { PromptFileItem } from '../../../learn/ai/promptFiles'
 import type { AgentTeamMode } from './conversationList'
 
 export interface AgentSettingsViewProps {
@@ -58,14 +57,18 @@ export interface AgentSettingsViewProps {
   onClose: () => void
   /** 工作流清单（导师 = 当前目标作用域的内置 + 全局 + 目标级） */
   flowRows: WorkflowRow[]
+  /** 提示词文件库与顺序（全局设置，不在 profile 覆盖里） */
+  promptFiles?: PromptFileSettings
+  onPromptFilesChange?: (next: PromptFileSettings) => void
+  /** 点开一份提示词文件：内置走只读提示词页签，外置走本地 md 页签 */
+  onOpenPromptFile?: (file: PromptFileItem) => void
 }
 
-/** 分节标题：一行标题 + 一句口径说明（高密度行式，不加卡片底） */
-function SectionHead({ title, hint }: { title: string; hint?: string }) {
+/** 分节标题：只留标题，不渲染说明性小字 */
+function SectionHead({ title }: { title: string; hint?: string }) {
   return (
     <div className="mb-2.5">
       <h3 className="text-[13px] font-semibold text-ink-strong">{title}</h3>
-      {hint && <p className="mt-0.5 text-[11px] leading-relaxed text-ink-faint">{hint}</p>}
     </div>
   )
 }
@@ -231,13 +234,15 @@ export function AgentSettingsView({
   onReset,
   onClose,
   flowRows,
+  promptFiles = DEFAULT_PROMPT_FILE_SETTINGS,
+  onPromptFilesChange = () => {},
+  onOpenPromptFile,
 }: AgentSettingsViewProps) {
   useLocale()
   const isTutor = agentId === 'tutor'
   const isFree = agentId === 'free'
   /** 承接 role（出卷师 / 设计师 / 调研员 / 维修员）：api 与工作流面都是架构分工固定的只读清单 */
   const isSpecialist = !isTutor && !isFree
-  const agentSettings = useSyncExternalStore(subscribeAgentSettings, loadAgentSettings)
   const ai = useSyncExternalStore(subscribeAiSettings, loadAiSettings)
 
   /* ---------- 身份 ---------- */
@@ -294,11 +299,7 @@ export function AgentSettingsView({
     .filter((r) => wfPlane.has(r.id))
     .map((r) => ({ key: r.id, label: r.name, tag: '内置' as const, builtin: true }))
 
-  /* ---------- 系统提示词（只读） ---------- */
-  const extra =
-    agentSettings.extraSystemPromptEnabled && agentSettings.extraSystemPrompt?.trim()
-      ? agentSettings.extraSystemPrompt.trim()
-      : undefined
+  /* ---------- 系统提示词文件（只列项，不展开正文） ---------- */
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-paper">
@@ -347,6 +348,17 @@ export function AgentSettingsView({
                   placeholder={t(DEFAULT_AGENT_NAME[agentId])}
                   onChange={(e) => onChange({ name: e.target.value })}
                   className="min-w-0 flex-1 rounded-lg border border-line bg-card px-2.5 py-1.5 text-[12.5px] text-ink-strong outline-none transition placeholder:text-ink-faint hover:border-line-strong focus:border-seal/60"
+                />
+              </label>
+              <label className="flex items-start gap-2.5">
+                <span className="w-14 shrink-0 pt-1.5 text-[12px] text-ink-soft">{t('简介')}</span>
+                <textarea
+                  value={profile.bio ?? ''}
+                  maxLength={200}
+                  rows={2}
+                  placeholder={t('名册里显示的一句话介绍')}
+                  onChange={(e) => onChange({ bio: e.target.value })}
+                  className="min-h-[52px] min-w-0 flex-1 resize-none rounded-lg border border-line bg-card px-2.5 py-1.5 text-[12.5px] text-ink-strong outline-none transition placeholder:text-ink-faint hover:border-line-strong focus:border-seal/60"
                 />
               </label>
               <div className="flex items-start gap-2.5">
@@ -599,22 +611,14 @@ export function AgentSettingsView({
             )}
           </section>
 
-          {/* ---------- 系统提示词（只读） ---------- */}
+          {/* ---------- 系统提示词文件（只列项，不展开正文） ---------- */}
           <section className="py-4">
-            <SectionHead
-              title={t('系统提示词')}
-              hint={
-                isFree
-                  ? t('自由聊天**下一轮**将收到的系统提示词全文；其能力面由架构固定，提示词恒定。')
-                  : t('这位 role **新对话**将收到的系统提示词全文（当前配置拼出；api 固定面由架构固定，工作流由 work 执行）。进行中的对话用首轮固化的那份，不受影响。')
-              }
-            />
-            <AgentPromptSectionsView
+            <SectionHead title={t('系统提示词')} />
+            <PromptFilesView
               agentId={agentId}
-              extraSystemPrompt={extra}
-              isTutor={isTutor}
-              personaLabel={isTutor ? personaOf(agentSettings.persona).label : undefined}
-              docFormatLabel={isTutor ? docFormatOf(agentSettings.docFormat).label : undefined}
+              settings={promptFiles}
+              onChange={onPromptFilesChange}
+              onOpenFile={onOpenPromptFile}
             />
           </section>
         </div>

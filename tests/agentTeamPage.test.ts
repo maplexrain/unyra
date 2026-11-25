@@ -22,7 +22,6 @@ import {
 import { AgentRosterSidebar } from '../src/components/learn/agent-team/AgentRosterSidebar'
 import { AgentSettingsView } from '../src/components/learn/agent-team/AgentSettingsView'
 import type { WorkflowRow } from '../src/learn/workflows'
-import { SHARED_AGENT_PREFIX } from '../src/learn/ai/agentSharedPrefix'
 import type { AgentProfile } from '../src/agent/agentProfile'
 import type { AgentTeamMode } from '../src/components/learn/agent-team/conversationList'
 import {
@@ -375,9 +374,9 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
 
     const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
     expect(tabs).toHaveLength(6)
-    expect(tabs[0].textContent).toContain('调度龟')
+    expect(tabs[0].textContent).toContain('经理龟')
     expect(tabs[1].textContent).toContain('导师龟')
-    expect(tabs[2].textContent).toContain('出卷龟')
+    expect(tabs[2].textContent).toContain('做题龟')
     expect(tabs[3].textContent).toContain('设计龟')
     expect(tabs[4].textContent).toContain('调研龟')
     expect(tabs[5].textContent).toContain('维修龟')
@@ -593,8 +592,7 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
 
     expect(host.textContent).toContain('跨目标自由聊消息')
     expect(host.textContent).toContain('在线等导师回答')
-    expect(host.textContent).toContain('调度分派')
-    expect(host.textContent).toContain('学习导师')
+    expect(host.textContent).not.toContain('调度分派')
     expect(
       isAgentTeamVisible(
         {
@@ -656,11 +654,9 @@ describe('AgentRosterSidebar 智能体设置按钮与名称覆盖', () => {
     })
     expect(onOpenSettings).toHaveBeenCalledWith('tutor')
 
-    // 颜色常亮：未选中的声部（tutor）头像与角色徽章也用各自的配色，不退灰
+    // 颜色常亮：未选中的声部（tutor）头像也用各自配色，不退灰
     const tutorAvatar = host.querySelector<HTMLElement>('[data-agent-avatar="tutor"]')!
     expect(tutorAvatar.className).toContain('sky-500/15')
-    const tutorBadge = [...host.querySelectorAll<HTMLElement>('span')].find((s) => s.textContent === '学习导师')!
-    expect(tutorBadge.className).toContain('sky-500')
 
     act(() => {
       root.unmount()
@@ -753,11 +749,12 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     for (const title of ['身份', '提供商 · 模型', '思考强度', 'execute 开放的 api', '工作层的工作流', '系统提示词']) {
       expect(host.textContent).toContain(title)
     }
-    // 系统提示词按分段展示：所有 pre 组合成完整提示词文本
-    const presText = Array.from(host.querySelectorAll('pre')).map((p) => p.textContent).join('\n')
-    expect(presText).toContain('智能导师助手')
-    expect(presText).toContain('api.work.create')
-    expect(presText).not.toContain('内置工作流与任务规程')
+    // 系统提示词只列文件项，不再展开全文
+    expect(host.querySelectorAll('pre')).toHaveLength(0)
+    expect(host.textContent).toContain('共同提示词 · 团队协作与沙箱执行基座')
+    expect(host.textContent).toContain('固定组 API 能力面（全员共用）')
+    expect(host.textContent).toContain('role 角色定位')
+    expect(host.textContent).toContain('你的专属分工')
 
     // 改名（受控 input）
     const nameInput = host.querySelector<HTMLInputElement>('input[type="text"]')!
@@ -909,7 +906,7 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     host2.remove()
   })
 
-  it('系统提示词预览恒定：api 速查与内置规程全量在场（旧白名单数据被无视）', () => {
+  it('系统提示词只列文件项：role/work 分层，不展开正文', () => {
     const render = (profile: Partial<AgentProfile>, agentId: AgentTeamMode = 'tutor') => {
       const host = document.createElement('div')
       document.body.appendChild(host)
@@ -926,44 +923,31 @@ describe('AgentSettingsView 智能体独立设置页', () => {
           }),
         )
       })
-      const pre = Array.from(host.querySelectorAll('pre')).map((p) => p.textContent).join('\n\n')
+      const text = host.textContent ?? ''
+      const preCount = host.querySelectorAll('pre').length
       act(() => {
         root.unmount()
       })
       host.remove()
-      return pre
+      return { text, preCount }
     }
 
-    // 导师 role 全文恒定：只留人格 / 分诊 / 固定 API，执行规程不在
-    const text = render({ apiGroups: ['web'] } as AgentProfile)
-    expect(text).toContain("'examiner'")
-    expect(text).toContain("'designer'")
-    expect(text).toContain('你是「归一 Unyra」的导师龟')
-    expect(text).toContain('api.work.create')
-    expect(text).not.toContain('【开讲】教学文档生成（teach-node）')
-    expect(text).not.toContain('#### api.node')
-    expect(text).not.toContain('#### api.exam')
-    expect(text).not.toContain('【出卷】试卷命题（exam）')
+    const tutor = render({ apiGroups: ['web'] } as AgentProfile)
+    expect(tutor.preCount).toBe(0)
+    expect(tutor.text).toContain('共同提示词 · 团队协作与沙箱执行基座')
+    expect(tutor.text).toContain('固定组 API 能力面（全员共用）')
+    expect(tutor.text).toContain('role 角色定位')
+    expect(tutor.text).toContain('你的专属分工')
+    expect(tutor.text).not.toContain('你是「归一 Unyra」的导师龟')
 
-    // 命题官 role：领域规程与 api 全部在 work，role 预览不再出现
-    const examinerText = render({}, 'examiner')
-    expect(examinerText).toContain('api.work.create')
-    expect(examinerText).not.toContain('【出卷】试卷命题（exam）')
-    expect(examinerText).not.toContain('【阅卷】判分与讲解（exam-grade）')
-    expect(examinerText).not.toContain('#### api.exam')
-    expect(examinerText.startsWith(SHARED_AGENT_PREFIX)).toBe(true)
+    const examiner = render({}, 'examiner')
+    expect(examiner.text).toContain('role 角色定位')
+    expect(examiner.text).not.toContain('【出卷】试卷命题（exam）')
 
-    // 维修员 role：修图规程在 work，不在 role
-    const fixerText = render({}, 'fixer')
-    expect(fixerText).not.toContain('【修复函数图像】Plot 错误快速纠偏（plot-fix）')
-    expect(fixerText.startsWith(SHARED_AGENT_PREFIX)).toBe(true)
-
-    // 仅聊天 role：只有 work / chat，联网与日程在 work
-    const freeText = render({}, 'free')
-    expect(freeText).toContain('api.work.create')
-    expect(freeText).toContain('api.chat.send')
-    expect(freeText).not.toContain('api.web.search')
-    expect(freeText).not.toContain('api.schedule.*')
+    const free = render({}, 'free')
+    expect(free.text).toContain('自由对话定位与页签说明')
+    expect(free.text).toContain('核心边界与任务终止铁律（绝对红线）')
+    expect(free.text).not.toContain('api.web.search')
   })
 
   it('返回对话与恢复默认两个出口', () => {
@@ -1018,13 +1002,12 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     })
 
     // 仅聊天：能力面由架构固定——两行内置恒开放、没有可添加项；工作流节是通道缺失说明
-    expect(host.textContent).toContain('由架构固定')
+    expect(host.textContent).toContain('固定组自由对话的固定执行基座')
     expect(host.querySelector('[data-api-add]')).toBeNull()
     expect(host.querySelector('button[aria-label="移除 web"]')).toBeNull()
-    expect(host.textContent).toContain('没有工作流通道')
-    // 自由聊天的系统提示词是 buildFreeChatSystem，不含导师规程
-    const pre = host.querySelector('pre')
-    expect(pre?.textContent).not.toContain('内置工作流与任务规程')
+    expect(host.textContent).toContain('没有接工作流通道')
+    // 自由聊天的系统提示词只列文件项，不含导师规程
+    expect(host.querySelector('pre')).toBeNull()
 
     act(() => {
       root.unmount()
@@ -1041,7 +1024,7 @@ describe('AgentSlot 对话历史切换回归', () => {
     await hydrateFreeChat(null)
   })
 
-  it('点导师：当前停在声部会话（调度员）时，必须打开导师自己的会话而不是留在声部会话上', () => {
+  it('点导师：当前停在声部会话（经理龟）时，必须打开导师自己的会话而不是留在声部会话上', () => {
     const tutorConv = makeConv({
       id: 't1',
       goalId: 'g1',
@@ -1066,15 +1049,15 @@ describe('AgentSlot 对话历史切换回归', () => {
       goalId: 'g1',
       voice: 'dispatcher',
       title: '调度讨论',
-      messages: [{ id: 'md', role: 'user', parts: [{ type: 'text', text: '调度员的对话内容' }], ts: 2000 }],
+      messages: [{ id: 'md', role: 'user', parts: [{ type: 'text', text: '经理龟的对话内容' }], ts: 2000 }],
       channels: [
         {
           id: 'chd',
           kind: 'user',
           direction: 'in',
           from: { kind: 'user', id: 'user', name: '用户' },
-          to: { kind: 'role', id: 'dispatcher', name: '调度员' },
-          text: '调度员的对话内容',
+          to: { kind: 'role', id: 'dispatcher', name: '经理龟' },
+          text: '经理龟的对话内容',
           ts: 2000,
         },
       ] as Conversation['channels'],
@@ -1104,7 +1087,7 @@ describe('AgentSlot 对话历史切换回归', () => {
       resources: {},
       activeGoalId: 'g1',
       activeNodeId: 'n1',
-      // 用户此刻正停在调度员的会话上
+      // 用户此刻正停在经理龟的会话上
       activeConversationId: 'd1',
       agentTabs: [{ kind: 'goal', goalId: 'g1', conversationId: 'd1' }],
       agentActiveTab: 'ga:g1:d1',
@@ -1203,12 +1186,11 @@ describe('AgentSlot 对话历史切换回归', () => {
     }
 
     // 打开智能体页面默认选中群聊通道（不是默认落在某位 role 的会话里）
-    expect(host.textContent).toContain('群通道 · 只有对话列表')
+    expect(host.textContent).toContain('还没有群消息')
 
-    // 点 roster 里的「导师」行（副标题「主讲与协调」唯一标识它）
-    // roster 的导师行：roleTag「学习导师」是它的唯一标识（副标题会被最近预览顶掉）
+    // 点 roster 里的导师行（role tab 的 title 以「导师龟」开头）
     const tutorRow = [...host.querySelectorAll<HTMLButtonElement>('button[role="tab"]')].find((b) =>
-      (b.textContent ?? '').includes('学习导师'),
+      (b.textContent ?? '').includes('导师龟'),
     )!
     expect(tutorRow).toBeTruthy()
     act(() => {
@@ -1217,7 +1199,7 @@ describe('AgentSlot 对话历史切换回归', () => {
 
     // 打开的必须是导师自己的会话
     expect(visiblePaneText()).toContain('导师的对话内容')
-    expect(visiblePaneText()).not.toContain('调度员的对话内容')
+    expect(visiblePaneText()).not.toContain('经理龟的对话内容')
 
     act(() => {
       root.unmount()

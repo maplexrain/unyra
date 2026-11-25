@@ -4,6 +4,8 @@
  * web 页签的活信息（WebTabMeta）、打开的页签（LearnTab）、本地文件（LocalFile）
  * 与收藏（FavoriteRef / FavoriteItem）。本文件不依赖其他 types/ 子模块。
  */
+import type { AgentProfileId } from '../../agent/agentProfile'
+import type { PromptFileLayer } from '../../agent/promptFiles'
 
 /* ---------- 自由页签（像 vscode 那样） ---------- */
 
@@ -127,6 +129,18 @@ export type TabRef =
    * components/agent/AgentSettingsPanel）。同样全局一枚，与全局设置是两份数据。
    */
   | { kind: 'agentSettings' }
+  /**
+   * 内置提示词文件页签（只读）：设置页里的某个内置提示词分段被点开时打开。
+   * 外置提示词不在这里——它就是 prompts/ 下的普通 md，直接用 local 页签编辑。
+   * title 参与显示但不参与身份（tabKey 只看 agent/layer/fileId）。
+   */
+  | {
+      kind: 'prompt'
+      agentId: AgentProfileId
+      layer: PromptFileLayer
+      fileId: string
+      title: string
+    }
   /**
    * 智能体团队页签：多智能体协作中心，左右分栏（左侧群聊/私聊，右侧目标智能体列表与协同大厅）
    */

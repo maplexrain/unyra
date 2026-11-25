@@ -239,6 +239,7 @@ export function revealOfTab(
     case 'schedule':
     case 'mind':
     case 'agentSettings':
+    case 'prompt':
     case 'agentTeam':
     case 'blank':
     case 'draft':

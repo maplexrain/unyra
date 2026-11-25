@@ -18,6 +18,7 @@ import { DEFAULT_SKILL_SETTINGS, type SkillSettings } from './skill/types'
 import { DEFAULT_MCP_SETTINGS, DEFAULT_MCP_SERVE_SETTINGS, type McpServeSettings, type McpServerConfig, type McpSettings } from './mcp/types'
 import { REASONING_EFFORTS, type ReasoningEffort } from '../ai/types'
 import { AGENT_ROLE_IDS, type AgentProfile, type AgentProfileId } from './agentProfile'
+import { DEFAULT_PROMPT_FILE_SETTINGS, normalizePromptFileSettings, type PromptFileSettings } from './promptFiles'
 
 export interface CompactSettings {
   /** 到阈值自动压缩；关掉之后只有手动「压缩上下文」会压 */
@@ -83,6 +84,11 @@ export interface AgentSettings {
   extraSystemPrompt?: string
   extraSystemPromptEnabled?: boolean
   /**
+   * 提示词文件（见 agent/promptFiles）：内置分段只读，外置文件可写；
+   * order / disabled 按 agent × role|work 层保存注入顺序与开关。
+   */
+  promptFiles: PromptFileSettings
+  /**
    * 基础原生工具安全权限配置：
    * 目标数据目录默认完全放行；外部真实系统目录需在此白名单放行。
    */
@@ -122,6 +128,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   customDocFormats: [],
   extraSystemPrompt: '',
   extraSystemPromptEnabled: false,
+  promptFiles: DEFAULT_PROMPT_FILE_SETTINGS,
   dev: { contextDebugger: false },
   skills: DEFAULT_SKILL_SETTINGS,
   mcp: DEFAULT_MCP_SETTINGS,
@@ -194,6 +201,7 @@ export function normalizeAgentSettings(raw: unknown): AgentSettings {
       // 身份字段存非空值：空串与缺省同义（显示侧回落默认名/头像），不落盘
       if (typeof rec.name === 'string' && rec.name.trim()) next.name = rec.name
       if (typeof rec.avatar === 'string' && rec.avatar.trim()) next.avatar = rec.avatar
+      if (typeof rec.bio === 'string' && rec.bio.trim()) next.bio = rec.bio.trim()
       // apiGroups 刻意不在白名单里：execute 能力面已定稿为架构固定（按声部的团队分工面，
       // 见 agent/agentProfile 的 AGENT_API_PLANES），旧版本存下的清单在这里被静默作废——不透传即弃
       if (Array.isArray(rec.workflows)) next.workflows = rec.workflows.map(String).filter((w) => w.trim())
@@ -238,6 +246,7 @@ export function normalizeAgentSettings(raw: unknown): AgentSettings {
     extraSystemPrompt: typeof src.extraSystemPrompt === 'string' ? src.extraSystemPrompt : '',
     extraSystemPromptEnabled:
       typeof src.extraSystemPromptEnabled === 'boolean' ? src.extraSystemPromptEnabled : false,
+    promptFiles: normalizePromptFileSettings(src.promptFiles),
     dev: {
       contextDebugger:
         typeof dev.contextDebugger === 'boolean' ? dev.contextDebugger : DEFAULT_AGENT_SETTINGS.dev.contextDebugger,

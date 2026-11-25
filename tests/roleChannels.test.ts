@@ -33,14 +33,14 @@ describe('通道时间戳与正文', () => {
       id: 'e1',
       kind: 'agent',
       direction: 'in',
-      from: { kind: 'role', id: 'dispatcher', name: '调度龟' },
+      from: { kind: 'role', id: 'dispatcher', name: '经理龟' },
       to: { kind: 'role', id: 'tutor', name: '导师龟' },
       text: '查一下极限',
       ts: 1_700_000_000_000,
     }
     const line = stampLineOf(stampOf(envelope))
     expect(line).toContain('Agent 通道')
-    expect(line).toContain('调度龟')
+    expect(line).toContain('经理龟')
 
     // role 上下文里每条 user 侧消息的抬头：time / channel / id / roleId / roleName
     const meta = channelMetaLineOf(stampOf(envelope))
@@ -49,7 +49,7 @@ describe('通道时间戳与正文', () => {
     expect(meta).toContain('channel:agent')
     expect(meta).toContain('id:e1')
     expect(meta).toContain('roleId:dispatcher')
-    expect(meta).toContain('roleName:调度龟')
+    expect(meta).toContain('roleName:经理龟')
     expect(meta.endsWith('}]')).toBe(true)
     expect(channelTextOf(stampOf(envelope), '查一下极限')).toBe(meta + '\n查一下极限')
   })
@@ -235,9 +235,9 @@ describe('chat.send 三通道', () => {
         return { ok: true, channel: 'group' }
       },
     })
-    const r = await chat.send({ channel: 'group', to: 'examiner', text: '@出卷龟 出三道题' })
+    const r = await chat.send({ channel: 'group', to: 'examiner', text: '@做题龟 出三道题' })
     expect(r).toMatchObject({ ok: true, channel: 'group' })
-    expect(passed).toMatchObject({ text: '@出卷龟 出三道题', mentions: ['examiner'] })
+    expect(passed).toMatchObject({ text: '@做题龟 出三道题', mentions: ['examiner'] })
     expect(appended).toHaveLength(0)
   })
 
@@ -432,7 +432,7 @@ describe('dispatch：忙时排队、空闲起轮、跳边界注入', () => {
     id,
     kind: 'agent',
     direction: 'in',
-    from: { kind: 'role', id: 'dispatcher', name: '调度龟' },
+    from: { kind: 'role', id: 'dispatcher', name: '经理龟' },
     to: { kind: 'role', id: 'tutor', name: '导师龟' },
     text,
     ts: 1,
@@ -444,7 +444,7 @@ describe('dispatch：忙时排队、空闲起轮、跳边界注入', () => {
       conversationId: 'c1',
       role: 'tutor',
       text: '三条来源已经核过。',
-      stamp: { channel: 'agent', from: { kind: 'role', id: 'dispatcher', name: '调度龟' }, to: { kind: 'role', id: 'tutor', name: '导师龟' }, ts: 1, envelopeId: 'e3' },
+      stamp: { channel: 'agent', from: { kind: 'role', id: 'dispatcher', name: '经理龟' }, to: { kind: 'role', id: 'tutor', name: '导师龟' }, ts: 1, envelopeId: 'e3' },
       envelopeId: 'e3',
     }
     const detailed: ChannelMessage = {
@@ -466,7 +466,7 @@ describe('dispatch：忙时排队、空闲起轮、跳边界注入', () => {
       conversationId: 'c1',
       role: 'tutor',
       text: '空闲消息',
-      stamp: { channel: 'agent', from: { kind: 'role', id: 'dispatcher', name: '调度龟' }, to: { kind: 'role', id: 'tutor', name: '导师龟' }, ts: 1, envelopeId: 'e1' },
+      stamp: { channel: 'agent', from: { kind: 'role', id: 'dispatcher', name: '经理龟' }, to: { kind: 'role', id: 'tutor', name: '导师龟' }, ts: 1, envelopeId: 'e1' },
       envelopeId: 'e1',
     }
     expect(deliverInbound(req, envelope('e1', '空闲消息'))).toBe(true)
@@ -478,14 +478,14 @@ describe('dispatch：忙时排队、空闲起轮、跳边界注入', () => {
       conversationId: 'c1',
       role: 'tutor',
       text: '忙时消息',
-      stamp: { channel: 'agent', from: { kind: 'role', id: 'dispatcher', name: '调度龟' }, to: { kind: 'role', id: 'tutor', name: '导师龟' }, ts: 1, envelopeId: 'e2' },
+      stamp: { channel: 'agent', from: { kind: 'role', id: 'dispatcher', name: '经理龟' }, to: { kind: 'role', id: 'tutor', name: '导师龟' }, ts: 1, envelopeId: 'e2' },
       envelopeId: 'e2',
     }
     expect(deliverInbound(busyReq, envelope('e2', '忙时消息'))).toBe(false)
     expect(started).toHaveLength(1)
     const injection = takeChannelInjection('c1')
     expect(injection?.text).toContain('channel:agent')
-    expect(injection?.text).toContain('roleName:调度龟')
+    expect(injection?.text).toContain('roleName:经理龟')
     expect(injection?.text).toContain('忙时消息')
   })
 

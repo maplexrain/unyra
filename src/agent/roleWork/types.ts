@@ -101,7 +101,7 @@ export interface ChatSendInput {
   deliveryFrom?: string
   /**
    * 静默汇报：只写入目标 role 的上下文与通道流水，不启动目标 role 一轮。
-   * 只允许 agent / group；适合「我正在直接对接用户，只需让调度龟知道进度」的截断点。
+   * 只允许 agent / group；适合「我正在直接对接用户，只需让经理龟知道进度」的截断点。
    */
   silent?: boolean
 }

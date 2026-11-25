@@ -12,18 +12,20 @@
  * 设置入口在名册卡的**头像**上：点头像直接开这位 role 的独立设置（AgentSettingsView）。
  */
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRight,
+  Pencil,
   Pin,
   Settings2,
-  Users,
 } from 'lucide-react'
 import { DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import type { LearningGoal } from '../../../learn/types'
 import { t, useLocale } from '../../../i18n'
 import { AgentAvatarGlyph } from './AgentAvatarGlyph'
+import { GroupAvatarStack, type GroupAvatarAgent } from './GroupAvatarStack'
 import { AgentContextMenu } from './AgentContextMenu'
 import {
   isPinLocked,
@@ -31,7 +33,7 @@ import {
   sortAgentsByPinAndTime,
   toggleAgentPin,
 } from './agentPinning'
-import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, voiceTags, type AgentVoiceStats } from './agentRoster'
+import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, type AgentVoiceStats } from './agentRoster'
 import {
   formatConversationTime,
   type AgentTeamMode,
@@ -73,9 +75,21 @@ export interface AgentRosterSidebarProps {
   agentNames?: Partial<Record<AgentTeamMode, string>>
   /** 各声部的头像 id（AGENT_AVATARS 目录）；缺省 = 默认声部图标 */
   agentAvatars?: Partial<Record<AgentTeamMode, string>>
+  /** 各声部的简介（profile.bio）；空 = 用注册表的职责文案 */
+  agentBios?: Partial<Record<AgentTeamMode, string>>
   /** 名册里固定多出来的「群聊」入口：群聊只有对话列表，通道为 group */
   groupActive?: boolean
+  groupName?: string
+  /** 群头像的卡牌成员（取前三位叠放） */
+  groupAgents?: readonly GroupAvatarAgent[]
+  /** 群聊改名；空串 = 恢复默认「群聊」 */
+  onRenameGroup?: (name: string) => void
+  groupPreview?: string
   onOpenGroup?: () => void
+  /** fixside 正停着这枚智能体页签 */
+  fixSideAgentOpen?: boolean
+  /** 顶部「固定到 fixside」：开 / 关智能体页的固定外侧栏 */
+  onToggleFixSide?: () => void
 }
 
 export function AgentRosterSidebar({
@@ -94,13 +108,32 @@ export function AgentRosterSidebar({
   onOpenSettings,
   agentNames,
   agentAvatars,
+  agentBios,
   groupActive = false,
+  groupName,
+  groupAgents,
+  onRenameGroup,
+  groupPreview,
   onOpenGroup,
+  fixSideAgentOpen = false,
+  onToggleFixSide,
 }: AgentRosterSidebarProps) {
   useLocale()
   const [collapsed, setCollapsed] = useState<boolean>(() => (persistCollapsed ? readCollapsed() : false))
   const [pinnedAgents, setPinnedAgents] = useState<Set<AgentTeamMode>>(() => loadPinnedAgents())
   const [contextMenu, setContextMenu] = useState<{ agentId: AgentTeamMode; x: number; y: number } | null>(null)
+  const [renamingGroup, setRenamingGroup] = useState(false)
+  const [groupDraft, setGroupDraft] = useState('')
+  const displayGroupName = groupName?.trim() || t('群聊')
+  const startRenameGroup = () => {
+    if (!onRenameGroup) return
+    setGroupDraft(groupName?.trim() || '')
+    setRenamingGroup(true)
+  }
+  const commitGroupName = (name: string) => {
+    onRenameGroup?.(name)
+    setRenamingGroup(false)
+  }
 
   const toggleCollapsed = (next: boolean) => {
     setCollapsed(next)
@@ -112,18 +145,21 @@ export function AgentRosterSidebar({
     }
   }
 
-  const statsOf = (id: AgentTeamMode): AgentVoiceStats => voiceStats[id] ?? { running: false, hasAsk: false }
+  const statsOf = useCallback(
+    (id: AgentTeamMode): AgentVoiceStats => voiceStats[id] ?? { running: false, hasAsk: false },
+    [voiceStats],
+  )
 
   const agents = useMemo(() => {
     const raw = AGENT_ROSTER_ORDER.map((id) => {
       const meta = AGENT_ROSTER_META[id]
       const st = statsOf(id)
-      // 导师的兜底副标题是当前目标（它 scoped 到目标上）；其余声部用注册表的职责一句话
-      const idleSubtitle = id === 'tutor' ? activeGoalTitle || t(meta.blurb) : t(meta.blurb)
+      const bio = agentBios?.[id]?.trim()
+      // 用户写了简介就优先显示它；导师没写时兜底当前目标，其余声部用注册表的职责一句话
+      const idleSubtitle = bio || (id === 'tutor' ? activeGoalTitle || t(meta.blurb) : t(meta.blurb))
       return {
         id,
         label: agentNames?.[id]?.trim() || t(DEFAULT_AGENT_NAME[id]),
-        roleTag: t(meta.roleTag),
         subtitle: st.hasAsk
           ? t('等待你的确认')
           : st.running
@@ -138,11 +174,10 @@ export function AgentRosterSidebar({
         nameClass: meta.nameClass,
         running: st.running,
         hasAsk: st.hasAsk,
-        tags: voiceTags(id),
       }
     })
     return sortAgentsByPinAndTime(raw, pinnedAgents, (id) => statsOf(id).lastTime ?? 0)
-  }, [activeGoalTitle, agentAvatars, agentNames, pinnedAgents, voiceStats])
+  }, [activeGoalTitle, agentAvatars, agentNames, agentBios, pinnedAgents, statsOf])
 
   /**
    * 顶栏形态下不显示目标切换；侧栏底部保留一个紧凑目标选择器：
@@ -169,6 +204,22 @@ export function AgentRosterSidebar({
     ) : null
 
   const effectiveCollapsed = Boolean(forceCollapsed || collapsed)
+  const topBarRef = useRef<HTMLElement | null>(null)
+
+  // 顶部横栏不显示滚动条：竖向滚轮在栏内改为横向滚动，触控板横向手势保持原样。
+  // wheel 需要 non-passive 才能 preventDefault，React 的合成事件不保证这一点，所以挂原生监听。
+  useEffect(() => {
+    if (variant !== 'top') return
+    const el = topBarRef.current
+    if (!el) return
+    const onWheel = (ev: WheelEvent) => {
+      if (ev.ctrlKey || Math.abs(ev.deltaX) > Math.abs(ev.deltaY)) return
+      ev.preventDefault()
+      el.scrollLeft += ev.deltaY
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [variant])
 
   // 顶部栏形态（容器宽度 < 800 时切换）：横排声部按钮 + 当前声部的近况。
   // 没有折叠语义——横排本身就是收起形态（data-roster-top 供样式与测试识别）。
@@ -176,9 +227,10 @@ export function AgentRosterSidebar({
     const activeAgent = agents.find((item) => item.id === mode) ?? agents[0]!
     return (
       <aside
+        ref={topBarRef}
         aria-label={t('智能体列表')}
         data-roster-top="true"
-        className="flex h-10 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-line/70 bg-paper/65 px-2"
+        className="moji-scroll-x flex h-10 shrink-0 items-center gap-1.5 overflow-x-auto overscroll-x-contain border-b border-line/70 bg-paper/65 px-2"
       >
         <span className="shrink-0 pr-0.5 text-[11px] font-semibold tracking-wide text-ink-soft">
           {t('智能体')}
@@ -188,17 +240,17 @@ export function AgentRosterSidebar({
             type="button"
             data-agent-group-top="true"
             aria-pressed={groupActive}
-            title={t('群聊：只有对话列表；首个 @ 激活，其他 @ 抄送')}
+            title={displayGroupName}
             onClick={onOpenGroup}
             className={
               'flex h-7 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-[11.5px] transition ' +
               (groupActive
-                ? 'border-teal-500/40 bg-teal-500/10 text-teal-700 dark:text-teal-300'
+                ? 'border-line-strong bg-card text-ink-strong shadow-xs'
                 : 'border-transparent text-ink-soft hover:bg-line/45 hover:text-ink')
             }
           >
-            <Users size={13} />
-            <span className="font-medium">{t('群聊')}</span>
+            <GroupAvatarStack agents={groupAgents ?? []} size={22} />
+            <span className="font-medium">{displayGroupName}</span>
           </button>
         ) : null}
         <div role="tablist" className="flex shrink-0 items-center gap-1">
@@ -256,11 +308,11 @@ export function AgentRosterSidebar({
         {/* 当前声部的近况：预览与未读数，行内截断（窄宽度下的信息位） */}
         <span className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.5">
           <span
-            title={groupActive ? t('群聊：只有对话列表；首个 @ 激活，其他 @ 抄送') : activeAgent.subtitle}
+            title={groupActive ? groupPreview : activeAgent.subtitle}
             className={
               'min-w-0 truncate text-[11px] ' +
               (groupActive
-                ? 'font-medium text-teal-700 dark:text-teal-300'
+                ? 'font-medium text-ink-strong'
                 : activeAgent.hasAsk
                   ? 'font-medium text-amber-500'
                   : activeAgent.running
@@ -268,7 +320,7 @@ export function AgentRosterSidebar({
                     : 'text-ink-faint')
             }
           >
-            {groupActive ? t('群通道 · 只有对话列表 · @ 指定 agent') : activeAgent.subtitle}
+            {groupActive ? groupPreview ?? '' : activeAgent.subtitle}
           </span>
           {!groupActive && typeof activeAgent.count === 'number' && activeAgent.count > 0 && (
             <span className="shrink-0 rounded-full bg-line/65 px-1.5 py-0.5 text-[9.5px] font-medium tabular-nums leading-none text-ink-faint">
@@ -318,16 +370,16 @@ export function AgentRosterSidebar({
                 type="button"
                 data-agent-group-collapsed="true"
                 aria-pressed={groupActive}
-                title={t('群聊：只有对话列表；首个 @ 激活，其他 @ 抄送')}
+                title={displayGroupName}
                 onClick={onOpenGroup}
                 className={
                   'flex h-10 w-10 items-center justify-center rounded-full border transition ' +
                   (groupActive
-                    ? 'border-teal-500/50 bg-teal-500/15 text-teal-700 dark:text-teal-300'
-                    : 'border-transparent bg-teal-500/10 text-teal-600 hover:bg-teal-500/15')
+                    ? 'border-line-strong bg-card text-ink-strong shadow-xs'
+                    : 'border-transparent text-ink-soft hover:bg-line/45 hover:text-ink')
                 }
               >
-                <Users size={18} />
+                <GroupAvatarStack agents={groupAgents ?? []} size={30} />
               </button>
             ) : null}
             {agents.map((item) => {
@@ -386,51 +438,120 @@ export function AgentRosterSidebar({
             {agents.length}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => toggleCollapsed(true)}
-          title={t('收起智能体列表')}
-          aria-label={t('收起智能体列表')}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/50 hover:text-ink"
-        >
-          <PanelLeftClose size={14} />
-        </button>
+        <div className="flex items-center gap-0.5">
+          {onToggleFixSide ? (
+            <button
+              type="button"
+              onClick={onToggleFixSide}
+              aria-pressed={fixSideAgentOpen}
+              title={fixSideAgentOpen ? t('关闭 fixside 智能体页') : t('固定到 fixside')}
+              aria-label={fixSideAgentOpen ? t('关闭 fixside 智能体页') : t('固定到 fixside')}
+              className={
+                'flex h-6 w-6 items-center justify-center rounded-md transition ' +
+                (fixSideAgentOpen
+                  ? 'bg-seal/12 text-seal-deep hover:bg-seal/20'
+                  : 'text-ink-faint hover:bg-line/50 hover:text-ink')
+              }
+            >
+              <PanelRight size={14} />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => toggleCollapsed(true)}
+            title={t('收起智能体列表')}
+            aria-label={t('收起智能体列表')}
+            className="flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-line/50 hover:text-ink"
+          >
+            <PanelLeftClose size={14} />
+          </button>
+        </div>
       </header>
 
       {/* 声部名册：只放名册卡；各声部的工作上下文统一挂在对话列表最下方 */}
       <div
         role="tablist"
         aria-orientation="vertical"
-        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2.5 pb-1"
+        className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2 pb-1"
       >
         {onOpenGroup ? (
-          <button
-            type="button"
+          <div
             data-agent-group="true"
-            aria-pressed={groupActive}
+            aria-current={groupActive ? 'true' : undefined}
+            role="button"
+            tabIndex={0}
             onClick={onOpenGroup}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onOpenGroup()
+              }
+            }}
             className={
-              'group flex w-full shrink-0 items-center gap-2.5 rounded-2xl border px-2 py-2.5 text-left transition ' +
+              'group flex w-full shrink-0 cursor-pointer items-center gap-2.5 rounded-2xl border px-2 py-1.5 text-left transition ' +
               (groupActive
-                ? 'border-teal-500/40 bg-teal-500/10 text-ink-strong shadow-xs'
+                ? 'border-line-strong/85 bg-card text-ink-strong shadow-xs'
                 : 'border-transparent text-ink-soft hover:border-line/60 hover:bg-card/55 hover:text-ink')
             }
           >
-            <span className="flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-full border border-teal-500/30 bg-teal-500/10 text-teal-600">
-              <Users size={25} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center justify-between gap-1.5">
-                <span className="truncate text-[13px] font-semibold text-ink-strong">{t('群聊')}</span>
-                <span className="shrink-0 rounded-md bg-teal-500/10 px-1.5 py-0.5 text-[9.5px] font-medium leading-none text-teal-700 dark:text-teal-300">
-                  {t('群通道')}
-                </span>
-              </span>
-              <span className="mt-1 block truncate text-[11px] text-ink-faint">
-                {t('只有对话列表；首个 @ 激活，其他 @ 只抄送上下文')}
-              </span>
-            </span>
-          </button>
+            <GroupAvatarStack agents={groupAgents ?? []} size={60} />
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-1">
+                {renamingGroup ? (
+                  <input
+                    autoFocus
+                    value={groupDraft}
+                    maxLength={40}
+                    aria-label={t('群聊名称')}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setGroupDraft(e.target.value)}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onBlur={() => commitGroupName(groupDraft)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        commitGroupName(groupDraft)
+                      } else if (e.key === 'Escape') {
+                        e.preventDefault()
+                        commitGroupName(groupName?.trim() || '')
+                      }
+                    }}
+                    className="min-w-0 flex-1 rounded-md border border-seal/40 bg-card px-1.5 py-0.5 text-[13px] font-semibold text-ink-strong outline-none"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onDoubleClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      startRenameGroup()
+                    }}
+                    className="min-w-0 flex-1 truncate text-left text-[13px] font-semibold text-ink-strong"
+                    title={t('双击重命名群聊')}
+                  >
+                    {displayGroupName}
+                  </button>
+                )}
+                {onRenameGroup && !renamingGroup ? (
+                  <button
+                    type="button"
+                    aria-label={t('重命名群聊')}
+                    title={t('重命名群聊')}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      startRenameGroup()
+                    }}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint opacity-0 transition hover:bg-line/50 hover:text-ink group-hover:opacity-100"
+                  >
+                    <Pencil size={11} />
+                  </button>
+                ) : null}
+              </div>
+              {groupPreview ? (
+                <div className="mt-0.5 truncate text-[11px] text-ink-faint">{groupPreview}</div>
+              ) : null}
+            </div>
+          </div>
         ) : null}
         {agents.map((item) => {
           const active = !groupActive && mode === item.id
@@ -446,7 +567,7 @@ export function AgentRosterSidebar({
             >
               <div
                 className={
-                  'group relative flex w-full items-center gap-2.5 rounded-2xl border px-2 py-2.5 transition ' +
+                  'group relative flex w-full items-center gap-2.5 rounded-2xl border px-2 py-1.5 transition ' +
                   (item.running ? 'moji-agent-live ' : '') +
                   (active
                     ? 'border-line-strong/85 bg-card text-ink-strong shadow-xs'
@@ -529,13 +650,6 @@ export function AgentRosterSidebar({
                     <span className={'truncate text-[13px] font-semibold ' + item.nameClass}>
                       {item.label}
                     </span>
-                    <span
-                      className={
-                        'shrink-0 rounded-md px-1.5 py-0.5 text-[9.5px] font-medium leading-none ' + item.ringClass
-                      }
-                    >
-                      {item.roleTag}
-                    </span>
                   </span>
                   <span className="flex items-center gap-1 shrink-0">
                     {pinnedAgents.has(item.id) && (
@@ -552,22 +666,6 @@ export function AgentRosterSidebar({
                       </span>
                     )}
                   </span>
-                </span>
-
-                <span className="mt-0.5 flex items-center gap-1">
-                  {item.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className={
-                        'rounded px-1 py-px text-[9px] leading-none ' +
-                        (tag === '工作流触发'
-                          ? 'bg-line/55 text-ink-faint'
-                          : 'bg-seal/10 text-seal-deep dark:text-seal-2')
-                      }
-                    >
-                      {t(tag)}
-                    </span>
-                  ))}
                 </span>
 
                 <span className="mt-0.5 flex items-center justify-between gap-1.5">

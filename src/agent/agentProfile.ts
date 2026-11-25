@@ -50,23 +50,11 @@ export const AGENT_ROLE_IDS: readonly AgentProfileId[] = [
 ]
 
 /**
- * **可交流**标签：学习者可以选中直接发消息启动的声部。不在这个集合里的声部
- * （调研员 / 维修员）只能由**工作流触发**或**被其他声部委托**来启动——界面据此
- * 禁用输入区、选中时也不现场建会话。调度员可交流：用户直接把需求说给它听。
- */
-export const COMMUNICABLE_VOICES: ReadonlySet<AgentVoice> = new Set(['tutor', 'dispatcher', 'examiner', 'designer'])
-
-/**
  * **内容生成**标签：注入**写作策略**（文档格式策略，见 agent/docFormat）与**学习者
  * 画像**（见 agent/userInfo）的声部——产出面向学习者的内容才需要贴合这个人；
  * 调研 / 修复类声部拿到画像只是噪声。
  */
 export const CONTENT_VOICES: ReadonlySet<AgentVoice> = new Set(['tutor', 'examiner', 'designer'])
-
-/** 可交流口径（自由对话恒可聊）；含 legacy 声部时先映射到现役 */
-export function isCommunicable(id: AgentProfileId): boolean {
-  return id === 'free' || COMMUNICABLE_VOICES.has(id as AgentVoice)
-}
 
 /**
  * 已退役声部的**legacy 别名**：老数据里还有它们的痕迹（确定性会话 id 的声部段、
@@ -76,10 +64,12 @@ export const LEGACY_VOICE_ALIAS: Readonly<Record<string, AgentVoice>> = { grader
 
 /** 一位智能体的独立设置。缺省字段 = 跟随默认 / 全局，见模块顶部说明 */
 export interface AgentProfile {
-  /** 显示名覆盖；空 / 缺省 = 默认名（自由对话 / 导师龟 / 出卷龟 …） */
+  /** 显示名覆盖；空 / 缺省 = 默认名（自由对话 / 导师龟 / 做题龟 …） */
   name?: string
   /** 头像 id（AGENT_AVATARS 目录）；缺省 = 默认头像（各自的那只龟龟） */
   avatar?: string
+  /** 一句话简介；名册副标题会优先显示它，缺省 = 注册表里的职责文案 */
+  bio?: string
   /** 允许触发的工作流 id 清单（只管登记的全局 / 目标级，内置规程面由团队分工固定）；undefined = 全部可用（仅导师） */
   workflows?: string[]
   /** 提供商覆盖（providers 的 id）；缺省 = 跟随全局默认 */
@@ -96,8 +86,8 @@ export interface AgentProfile {
  */
 export const AGENT_AVATARS: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'turtle-tutor', label: '导师龟' },
-  { id: 'turtle-dispatcher', label: '调度龟' },
-  { id: 'turtle-examiner', label: '出卷龟' },
+  { id: 'turtle-dispatcher', label: '经理龟' },
+  { id: 'turtle-examiner', label: '做题龟' },
   { id: 'turtle-designer', label: '设计龟' },
   { id: 'turtle-researcher', label: '调研龟' },
   { id: 'turtle-fixer', label: '维修龟' },
@@ -118,8 +108,8 @@ export const AGENT_AVATARS: ReadonlyArray<{ id: string; label: string }> = [
 export const DEFAULT_AGENT_NAME: Record<AgentProfileId, string> = {
   free: '自由对话',
   tutor: '导师龟',
-  dispatcher: '调度龟',
-  examiner: '出卷龟',
+  dispatcher: '经理龟',
+  examiner: '做题龟',
   designer: '设计龟',
   researcher: '调研龟',
   fixer: '维修龟',

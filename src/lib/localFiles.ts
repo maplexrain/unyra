@@ -18,6 +18,18 @@ export interface LocalReadResult {
   error?: string
 }
 
+type LocalFileWrittenListener = (path: string) => void
+const localFileWrittenListeners = new Set<LocalFileWrittenListener>()
+
+/**
+ * 订阅「外部文本文件写成功」。数据目录里的 prompts/*.md 也会被当作本地文件编辑，
+ * 它们需要知道保存发生了才能重新读回内容（见 agent/promptFileStore）。
+ */
+export function onLocalFileWritten(listener: LocalFileWrittenListener): () => void {
+  localFileWrittenListeners.add(listener)
+  return () => localFileWrittenListeners.delete(listener)
+}
+
 /** 读一个外部文件的全部文本 */
 export async function readLocalFile(path: string): Promise<LocalReadResult> {
   try {
@@ -68,7 +80,9 @@ export async function readLocalImage(path: string): Promise<string | null> {
 export async function writeLocalFile(path: string, content: string): Promise<string | null> {
   try {
     const r = await native().local.write(path, content)
-    return r.ok ? null : (r.error ?? t('保存失败'))
+    if (!r.ok) return r.error ?? t('保存失败')
+    for (const listener of localFileWrittenListeners) listener(path)
+    return null
   } catch {
     return t('保存失败：应用没有跑在 Electron 里')
   }

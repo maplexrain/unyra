@@ -134,19 +134,19 @@ describe('RoleChatView', () => {
           channels: [
             channel('c1', 'user', 'in', '用户', '用户说的话'),
             roleOut('c2', 'tutor', '导师龟的回复'),
-            roleOut('c3', 'dispatcher', '调度龟的回复'),
+            roleOut('c3', 'dispatcher', '经理龟的回复'),
           ],
           agentName: '导师龟',
           agentAvatarId: 'turtle-tutor',
           agentVoice: 'tutor',
-          agentNames: { tutor: '导师龟', dispatcher: '调度龟' },
+          agentNames: { tutor: '导师龟', dispatcher: '经理龟' },
           agentAvatars: { tutor: 'turtle-tutor', dispatcher: 'turtle-dispatcher' },
         }),
       )
     })
     expect(host.textContent).toContain('导师龟的回复')
-    expect(host.textContent).toContain('调度龟的回复')
-    expect(host.textContent).toContain('调度龟')
+    expect(host.textContent).toContain('经理龟的回复')
+    expect(host.textContent).toContain('经理龟')
     const images = Array.from(host.querySelectorAll('img')).map((img) => img.getAttribute('src'))
     expect(new Set(images).size).toBeGreaterThanOrEqual(2)
     act(() => {
@@ -190,7 +190,7 @@ describe('RoleChatView', () => {
     host.remove()
   })
 
-  it('work 内嵌窗口挂在消息流最底部，不再单独渲染交付气泡', () => {
+  it('对话页不再渲染 work 窗口', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
@@ -200,14 +200,10 @@ describe('RoleChatView', () => {
           channels: [roleOut('c2', '导师龟', '先看一眼手上的活')],
           agentName: '导师龟',
           agentVoice: 'tutor',
-          workWindow: createElement('div', { 'data-work-window-stub': 'true' }, '工作窗口'),
         }),
       )
     })
-    const workWindow = host.querySelector('[data-work-window-stub]')
-    expect(workWindow).not.toBeNull()
-    expect(workWindow?.textContent).toContain('工作窗口')
-    // work 窗口是消息流最后一块，不再在气泡列表里另起一张卡片
+    expect(host.querySelector('[data-work-window-stub]')).toBeNull()
     expect(host.querySelector('[data-work-dispatch-list]')).toBeNull()
     act(() => {
       root.unmount()

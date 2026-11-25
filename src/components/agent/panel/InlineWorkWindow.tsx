@@ -107,7 +107,7 @@ export function InlineWorkWindow({
               <div
                 ref={scrollRef}
                 data-inline-work-messages
-                className="max-h-[min(42vh,380px)] overflow-y-auto px-1 py-1"
+                className="max-h-[min(42vh,380px)] overflow-y-auto rounded-lg border border-line/60 bg-card/45 px-1 py-1"
               >
                 {selected.messages.filter((m) => !m.hidden).map((m) => (
                   <MindMessageRow

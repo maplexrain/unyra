@@ -20,7 +20,7 @@
 import { AGENT_API_PLANES, WORK_API_PLANES, type AgentProfileId, type AgentVoice } from '../../agent/agentProfile'
 import { APP_DATA_GUIDE, EXECUTE_BASE_GUIDE, SANDBOX_DISCIPLINE_GUIDE, SEEK_HELP_GUIDE } from './executeGuide'
 import { ROLE_WORK_GUIDE, ROLE_CHANNEL_GUIDE } from './roleWorkGuide'
-import { TURTLE_CLAN_GUIDE } from './turtleClan'
+import { COMMUNICATION_STYLE_GUIDE } from './turtleClan'
 import { compactWorkflowSection } from './workflowsGuide'
 
 /**
@@ -39,10 +39,6 @@ export function workApiDocKeysFor(role: AgentProfileId): ReadonlySet<string> {
   return new Set<string>([...plane.groups, ...plane.topLevel, 'core'])
 }
 
-/** P1 速查的收尾注记：速查即全部面（面外拒绝在 APP_DATA_GUIDE 也守了一道） */
-export const API_PLANE_NOTE =
-  '- 以上就是你的全部 api 组与顶层函数：速查之外没有别的组，调用会被沙箱当场拒绝，回执会列出本次开放的组。'
-
 /** 节点 path 寻址口径（只有持有 api.node 组的声部渲染，随 P1 速查附在后面） */
 export const NODE_PATH_NOTE =
   "- path 寻址：'' = 当前节点；'极限' = 本目标标题；'极限/笔记' = 笔记；'#id' = 直接给节点 id。找不到时回执会列候选，照着改一次就对。"
@@ -50,19 +46,18 @@ export const NODE_PATH_NOTE =
 /** 通用纪律（需求解耦 / 查证要真读 / 不钻牛角尖）：四位声部逐字同一段，导师也用它 */
 export const SHARED_DISCIPLINE = [
   '约束与纪律：',
-  '- **需求解耦（重要，违反是大错）**：学习者（或其它 role 的派单指令）提出的内容若与当前任务无关，视为独立需求直接响应或如实说明，绝不强行串联。',
-  '- **查证要真读**：引用得到的结论必须读过原文；引用不到权威来源时如实说明，不要用「据说」含糊带过，严禁编造。',
-  '- **不钻牛角尖（重要）**：同一个方案失败两次、连续几步没有新信息，就换路径（换 api、换数据源、把大问题拆小）或如实说明卡点与备选；转向前用 api.tmp 记下「试过什么、为什么不行」。',
+  '- **需求解耦**：用户或别的 role 提出的内容与当前任务无关时，当作独立需求处理或如实说明，不强行串联。',
+  '- **查证要真读**：引用结论前读过原文；没有权威来源就说明，不用「据说」含糊带过，不编造。',
+  '- **不钻牛角尖**：同一方案失败两次或连续几步没有新信息，就换 api、换数据源或拆小问题；转向前用 api.tmp 记下试过什么、为什么不行。',
 ].join('\n')
 
 /**
- * 全员共同前缀（P0-A）：六位团队角色（导师 / 调度 / 出卷 / 设计 / 调研 / 维修）系统提示词的绝对起始块（逐字节一致）。
- * 块序：龟门总纲（六兄弟身份） → execute/rexecute 机制 → 先查再用 → 应用数据守门 → 沙箱纪律 → 通用纪律。
- * 全部内容对六位团队角色逐字为真，通篇不提未开放 API 组，确保从 token 0 起全员命中缓存。
+ * 全员共同前缀（P0-A）：所有 agent（六位团队角色、自由对话与外部自定义 role）系统提示词的绝对起始块。
+ * 块序：execute/rexecute 机制 → 先查再用 → 应用数据守门 → 沙箱纪律 → 通用纪律 → 说话方式。
+ * **这里不能出现任何具体身份**（龟门、排行、角色名、职责路由都不行）：本段要原样套给外部自定义 agent。
+ * 全部内容对所有 role 逐字为真，通篇不提未开放 API 组，确保从 token 0 起全员命中缓存。
  */
 export const ALL_AGENTS_COMMON_PREFIX = [
-  TURTLE_CLAN_GUIDE,
-  '',
   EXECUTE_BASE_GUIDE,
   '',
   SEEK_HELP_GUIDE,
@@ -72,11 +67,13 @@ export const ALL_AGENTS_COMMON_PREFIX = [
   SANDBOX_DISCIPLINE_GUIDE,
   '',
   SHARED_DISCIPLINE,
+  '',
+  COMMUNICATION_STYLE_GUIDE,
 ].join('\n')
 
 /**
- * 角色层共同前缀全文（P0）：六位挂目标 role 的系统提示词都以它开头（逐字节一致）。
- * 块序：全员通用前缀（身份总纲 / execute 机制 / 应用数据守门 / 沙箱纪律 / 通用纪律）
+ * 角色层共同前缀全文（P0）：所有 role 的系统提示词都以它开头（逐字节一致）。
+ * 块序：全员通用前缀（execute 机制 / 应用数据守门 / 沙箱纪律 / 通用纪律 / 说话方式）
  * → 角色层与工作层 → 通道 → compact 会话压缩规程。
  * P0 之后只紧跟**固定组 API 速查**（六位 role 逐字节一致），再往后是身份定位与分工；
  * 领域 API、排版、语法、工作流规程只进 work 提示词，不再进 role。

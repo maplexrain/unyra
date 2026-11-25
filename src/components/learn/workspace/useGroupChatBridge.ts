@@ -18,7 +18,7 @@ import { groupPeer, inboundEnvelope, peerOf, userPeer } from '../../../learn/rol
 import { deliverInbound } from '../../../learn/roleWork/dispatch'
 import { firstMentionedRoleIdOf, mentionedRoleIdsOf, type MentionRole } from '../../../learn/roleWork/groupTargets'
 import { triageGroupMessageWithRetry } from '../../../learn/roleWork/groupTriage'
-import { appendGroupMessage, getGroupChatMessages, groupThreadIdOf, patchGroupMessage, subscribeGroupChat, threadRootIdOf } from '../../../learn/groupChat'
+import { appendGroupMessage, getGroupChatMessages, getGroupName, groupThreadIdOf, patchGroupMessage, subscribeGroupChat, threadRootIdOf } from '../../../learn/groupChat'
 import type { GroupChatAgent } from '../../agent/panel/GroupChatPanel'
 
 /** 分类三次重试仍失败时，交给用户手动指定目标。 */
@@ -36,8 +36,10 @@ export interface GroupSendAttachments {
 export interface GroupChatBridge {
   /** 当前目标下的群聊消息（从旧到新；一级主楼与评论区回复都在里面，界面自行分层） */
   messages: ChannelMessage[]
+  /** 当前目标自己的群名（没改过 = 群聊） */
+  groupName: string
   /**
-   * 用户群聊发言：@ 指定成员；没有 @ 时交给群消息调度 agent 判断（不默认调度龟）。
+   * 用户群聊发言：@ 指定成员；没有 @ 时交给群消息调度 agent 判断（不默认经理龟）。
    * 传 threadId 时落到该评论串（索引 `通道id>消息id`），回复仍投给被点名/调度选中的成员。
    * 带附件时返回 Promise：先转存图片/文件，再把带引用的消息落账；转存失败会拒绝，
    * 不会退化成一条没有附件的消息。
@@ -67,6 +69,11 @@ export function useGroupChatBridge({
   set: (s: LearnStore) => void
 }): GroupChatBridge {
   const all = useSyncExternalStore(subscribeGroupChat, getGroupChatMessages, getGroupChatMessages)
+  const groupName = useSyncExternalStore(
+    subscribeGroupChat,
+    () => (goalId ? getGroupName(goalId) : ''),
+    () => '',
+  )
   const messages = useMemo(
     () => (goalId ? all.filter((m) => m.kind === 'group' && m.goalId === goalId) : []),
     [all, goalId],
@@ -337,5 +344,5 @@ export function useGroupChatBridge({
     setTriageFallback(null)
   }
 
-  return { messages, send, triageFallback: currentFallback, assignTriageFallback, dismissTriageFallback }
+  return { messages, groupName, send, triageFallback: currentFallback, assignTriageFallback, dismissTriageFallback }
 }

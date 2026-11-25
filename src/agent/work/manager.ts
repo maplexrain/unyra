@@ -4,7 +4,7 @@
  * - role 侧通过 WorkSandboxApi 调 list/status/stop/create/kill/send；
  * - work 侧只有 HostSandboxApi：host.send 把交付写回 role 的 Work 通道；
  * - 多个 work 可并发；一个 work 同一时刻只跑一轮，运行中 send 进跳边界注入；
- * - work 没有人格、没有 role 的上下文，systemPrompt 创建时固化。
+ * - work 没有人格、没有 role 的上下文；系统提示词每轮由 buildSystem 现拼，不读创建时快照。
  *
  * 会话账本住在 Conversation.works 上（随 chat.json 落盘、随 role 对话删除消失）；
  * 管理器自己只留内存态：在跑句柄、注入队列。进程被杀后 running 复位为 interrupted
@@ -48,7 +48,7 @@ export interface WorkManagerDeps {
   goalId?: string
   getWorks: () => WorkSession[]
   setWorks: (update: (prev: WorkSession[]) => WorkSession[]) => void
-  /** 创建 work 时固化的系统提示词（无任何人设） */
+  /** 每轮取当前提示词文件顺序现拼的系统提示词（无任何人设） */
   buildSystem: (roleId: AgentProfileId) => string
   /** role 会话里按 messageId 找一条用户消息（转发用） */
   roleMessage: (messageId: string) => ConversationMessage | null
@@ -166,6 +166,28 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
     delivery: { submit: (input: unknown) => submitDelivery(workId, input) },
     host: hostApi(workId),
     ...(cfg.ask ? { ask: (form: AskFormPayload) => cfg.ask!(workId, form, running.get(workId)?.ctrl.signal ?? new AbortController().signal) } : {}),
+    // wait 与 ask 一样用 work 自己的 run 信号：role 轮早已结束，不能拿 role 的 ctrl 当命。
+    wait: (ms: number) =>
+      new Promise<void>((resolve, reject) => {
+        const signal = running.get(workId)?.ctrl.signal
+        if (signal?.aborted) {
+          reject(new Error('等待被用户中止'))
+          return
+        }
+        const timer = setTimeout(() => {
+          cleanup()
+          resolve()
+        }, ms)
+        const onAbort = () => {
+          cleanup()
+          reject(new Error('等待被用户中止'))
+        }
+        const cleanup = () => {
+          clearTimeout(timer)
+          signal?.removeEventListener('abort', onAbort)
+        }
+        signal?.addEventListener('abort', onAbort, { once: true })
+      }),
     apiAllow: workRuntimeApiAllow(deps.roleId),
     apiBrief: apiBriefForGroups(workRuntimeApiAllow(deps.roleId)),
   })
@@ -199,7 +221,7 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
         loadAttachTexts(work.messages),
       ])
       outcome = await runWorkTask({
-        system: work.systemPrompt,
+        system: deps.buildSystem(work.roleId),
         workId: work.id,
         messages: work.messages,
         images,

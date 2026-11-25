@@ -1,7 +1,7 @@
 /**
  * 前缀门禁（agent/prefixGate）的行为钉子：
  * 同一会话的上下文只允许「逐字节前缀 + 追加」，唯一的例外是 withinBudget 那种
- * 「从最旧一头裁掉一段」的形状；系统提示词与工具声明必须不变。
+ * 「从最旧一头裁掉一段」的形状；工具声明必须不变。系统提示词每轮现拼，允许变化。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -48,9 +48,18 @@ describe('前缀门禁', () => {
     expect(() => assertPrefixStable('c1', rewritten, tools)).not.toThrow()
   })
 
-  it('系统提示词变了：抛错', () => {
+  it('系统提示词变了：放行并换一届缓存纪元', () => {
     assertPrefixStable('c1', [msg('system', 'S'), msg('user', '你好')], tools)
-    expect(() => assertPrefixStable('c1', [msg('system', 'S2'), msg('user', '你好')], tools)).toThrow(PrefixGateError)
+    const epoch = currentEpoch('c1')
+    expect(() => assertPrefixStable('c1', [msg('system', 'S2'), msg('user', '你好')], tools)).not.toThrow()
+    expect(currentEpoch('c1')).toBe(epoch + 1)
+  })
+
+  it('系统提示词变化不掩护历史改写：两边切掉 system 后仍按前缀纪律比对', () => {
+    assertPrefixStable('c1', [msg('system', 'S'), msg('user', '你好')], tools)
+    expect(() =>
+      assertPrefixStable('c1', [msg('system', 'S2'), msg('user', '你好！')], tools),
+    ).toThrow(PrefixGateError)
   })
 
   it('工具声明变了：抛错', () => {

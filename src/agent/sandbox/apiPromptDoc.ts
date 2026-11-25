@@ -8,9 +8,8 @@
  * 2. **非固定组**是各 role 按架构分工拿到的域（node / exam / classroom / browser …），
  *    只渲染实际持有的组；没持有的组连索引都不出现（提示词与运行时 apiAllow 同一口径）。
  *
- * 纪律：组块格式与 apiRegistry.renderCompactApiGroupBlocks 完全一致（`#### api.<组> — 名称`
- * + 组 usage + 每条 `- \`签名\` — 一句话 + trap`），这样既有的提示词对账用例不用改；
- * 固定组成员是**交集的顶层函数**，core 组的 help 恒在场，渲染时单独补。
+ * 固定组只列「签名 + 一句话作用」，组 usage、trap、索引都交给共同前缀与 __help()，
+ * 避免和 ROLE_WORK_GUIDE / ROLE_CHANNEL_GUIDE 重复；非固定组仍保留完整用法边界。
  */
 
 import { promotedGroups, renderCompactApiHeader, type ApiGroupDoc } from './apiRegistry'
@@ -51,15 +50,9 @@ export function renderSplitApiDocumentation(
   )
   const fixedKeys = split.groups.filter((key) => allow.has(key))
   const fixedGroups = groups.filter((g) => g.key !== 'core' && fixedKeys.includes(g.key))
-  const fixedIndex = [
-    core && hasCore(fixedTop) ? '- 顶层函数：' + core.intro : '',
-    ...fixedGroups.map(indexLine),
-  ]
-    .filter(Boolean)
-    .join('\n')
   const fixedBlocks = [
-    core ? renderGroupBlock(core, fixedTop) : '',
-    ...fixedGroups.map((g) => renderGroupBlock(g)),
+    core ? renderGroupBlock(core, fixedTop, true) : '',
+    ...fixedGroups.map((g) => renderGroupBlock(g, undefined, true)),
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -90,7 +83,6 @@ export function renderSplitApiDocumentation(
     renderCompactApiHeader(),
     '',
     '### 固定组（全员共用）',
-    fixedIndex ? '**固定组索引**\n' + fixedIndex : '',
     '',
     fixedBlocks,
   ]
@@ -110,24 +102,27 @@ export function renderSplitApiDocumentation(
   return { fixed, variable }
 }
 
-function hasCore(members: ReadonlySet<string>): boolean {
-  return members.size > 0
-}
-
 function indexLine(group: ApiGroupDoc): string {
   return '- api.' + group.key + ' — ' + group.label + '：' + group.intro
 }
 
 /** 与 apiRegistry.renderCompactApiGroupBlocks 同格式；members 给定时只渲染其中的成员 */
-function renderGroupBlock(group: ApiGroupDoc, members?: ReadonlySet<string>): string {
+function renderGroupBlock(group: ApiGroupDoc, members?: ReadonlySet<string>, concise = false): string {
   const apis = members ? group.apis.filter((api) => members.has(api.name)) : group.apis
   if (!apis.length) return ''
   const lines = [
     (group.key === 'core' ? '#### 顶层函数（api.<name>）' : '#### api.' + group.key) + ' — ' + group.label,
   ]
-  if (group.usage.trim()) lines.push(group.usage.trim())
+  if (!concise && group.usage.trim()) lines.push(group.usage.trim())
   for (const api of apis) {
-    lines.push('- `' + api.signature + '` — ' + api.summary + (api.trap ? '。' + api.trap : ''))
+    const summary = concise ? promptSummary(api.summary) : api.summary
+    lines.push('- `' + api.signature + '` — ' + summary + (!concise && api.trap ? '。' + api.trap : ''))
   }
   return lines.join('\n')
+}
+
+/** 固定组只留一句话作用：切到第一个句号/分号，过长再截断 */
+function promptSummary(summary: string): string {
+  const short = summary.split(/[；。]/)[0]?.trim() || summary.trim()
+  return short.length > 120 ? short.slice(0, 120).trimEnd() + '…' : short
 }

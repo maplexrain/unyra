@@ -28,7 +28,7 @@ import {
   type WebSearchSettings,
 } from '../../ai/settings'
 import { PROVIDERS, type ProviderPreset } from '../../ai/providers'
-import { REASONING_HINT, REASONING_LABEL, compatLabel, type ReasoningEffort } from '../../ai/types'
+import { compatLabel, type ReasoningEffort } from '../../ai/types'
 import { t } from '../../i18n'
 import EffortSlider from '../agent/EffortSlider'
 import { ProviderLogo } from './ProviderLogo'
@@ -74,9 +74,6 @@ export function ProviderListPage({
         <div className="mb-2 flex items-center justify-between">
           <span className="text-[12.5px] font-medium text-ink-strong">
             {t('已添加的提供商')}
-            <span className="ml-2 text-[11px] font-normal text-ink-faint">
-              {t('点击进入配置（配置会自动保存）')}
-            </span>
           </span>
           <button
             type="button"
@@ -92,9 +89,6 @@ export function ProviderListPage({
           <div className="rounded-xl border border-dashed border-line bg-card/40 px-4 py-8 text-center">
             <p className="text-[12.5px] font-medium text-ink-strong">
               {t('尚未添加任何模型提供商')}
-            </p>
-            <p className="mt-1 text-[11.5px] text-ink-faint">
-              {t('点击右上角「添加新提供商」，选择 DeepSeek、OpenAI、Kimi 等官方预设或接入自定义模型。')}
             </p>
           </div>
         ) : (
@@ -181,9 +175,6 @@ export function ProviderListPage({
             <div className="mb-2.5 flex items-center justify-between">
               <div>
                 <h4 className="text-[13px] font-semibold text-ink-strong">{t('选择要添加的模型提供商')}</h4>
-                <p className="mt-0.5 text-[11px] text-ink-faint">
-                  {t('已内置各家官方接入协议与接口地址，选中后只需填入 API Key')}
-                </p>
               </div>
               <button
                 type="button"
@@ -281,7 +272,6 @@ export function ProviderListPage({
         <div className="mb-2.5 flex items-center gap-1.5">
           <Star size={13} className="text-seal" />
           <span className="text-[12.5px] font-medium text-seal-deep">{t('默认提供商与主用模型')}</span>
-          <span className="text-[11px] text-ink-faint">{t('超级导师与核心 AI 功能均以此为基准')}</span>
         </div>
         {configured.length === 0 ? (
           <p className="text-[11.5px] leading-relaxed text-ink-faint">
@@ -330,12 +320,8 @@ export function ProviderListPage({
         <div className="mb-2 flex items-center gap-1.5">
           <Sparkles size={13} className="text-seal" />
           <span className="text-[12.5px] font-medium text-ink-strong">{t('全局思考程度')}</span>
-          <span className="text-[11px] text-ink-faint">{t('对所有支持推理思考的模型生效')}</span>
         </div>
         <EffortSlider value={draft.global.effort} onChange={onEffort} />
-        <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
-          {REASONING_LABEL[draft.global.effort]}：{t(REASONING_HINT[draft.global.effort])}
-        </p>
       </section>
 
       {/* 网络搜索配置 */}
@@ -344,9 +330,6 @@ export function ProviderListPage({
           <div className="flex items-center gap-1.5">
             <Globe size={14} className="text-seal" />
             <span className="text-[12.5px] font-medium text-ink-strong">{t('网络搜索配置')}</span>
-            <span className="text-[11px] text-ink-faint">
-              {t('为智能导师与 Agent 教学编排提供全网权威信息检索与正文抓取能力')}
-            </span>
           </div>
         </div>
 
@@ -381,9 +364,6 @@ export function ProviderListPage({
                     </span>
                   )}
                 </div>
-                <p className="mt-0.5 text-[11px] text-ink-faint">
-                  {t('目前网络搜索专精支持 DeepSeek 官方搜索与抓取服务，通过 API 自动提炼核心知识与多源对比。')}
-                </p>
               </div>
             </div>
           </div>
@@ -445,9 +425,6 @@ export function ProviderListPage({
                 }
                 className="w-full rounded-lg border border-line bg-card px-2.5 py-1.5 font-mono text-[12px] text-ink-strong outline-none transition focus:border-seal/60 placeholder:font-sans placeholder:text-ink-faint/70"
               />
-              <p className="text-[10.5px] text-ink-faint">
-                {t('API Key 仅保存在本机，所有搜索与抓取请求由主进程直发 DeepSeek 官方服务。')}
-              </p>
             </div>
           </div>
         </div>

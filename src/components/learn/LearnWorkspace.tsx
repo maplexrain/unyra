@@ -142,7 +142,6 @@ import { DocPane } from './workspace/DocPane'
 import { ToolsDock } from './workspace/docks'
 import ScreenshotModal from '../tools/ScreenshotModal'
 import { Topbar } from './workspace/chrome'
-import { CreateGoalDialog } from './workspace/CreateGoalDialog'
 import { useZenMode } from './workspace/useZenMode'
 import { useAgentTeamHost } from './workspace/useAgentTeamHost'
 import { useDocSaveFlow } from './workspace/useDocSaveFlow'
@@ -176,6 +175,8 @@ import { useTabOpening } from './workspace/useTabOpening'
 import { useChipOpening } from './workspace/useChipOpening'
 import { useMouseNavTabs } from './workspace/useMouseNavTabs'
 import { useWorkspaceShortcuts } from './workspace/useWorkspaceShortcuts'
+import { toggleFixSideCollapse } from './workspace/agentSlotTabs'
+import { nextDefaultGoalTitle } from './workspace/goalNaming'
 import { t } from '../../i18n'
 
 export default function LearnWorkspace({
@@ -255,7 +256,6 @@ export default function LearnWorkspace({
    * 在独立窗口里改了之后宿主这边的快照要能跟着变——订阅是唯一能拿到那次通知的口子。
    */
   const agentSettings = useSyncExternalStore(subscribeAgentSettings, loadAgentSettings)
-  const [createGoalOpen, setCreateGoalOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   /*
@@ -750,10 +750,8 @@ export default function LearnWorkspace({
    */
   const openSettingsRef = useRef<() => void>(() => {})
   const onOpenSettings = useCallback(() => openSettingsRef.current(), [])
-  /** 兼容外部调用（makeExamDeps / useConceptActions / useWorkflowStarters）：打开「新建目标」弹窗 */
-  const setCreating = useCallback((v: boolean) => {
-    setCreateGoalOpen(v)
-  }, [])
+  /** 兼容外部调用（makeExamDeps / useConceptActions / useWorkflowStarters）：旧「新建目标」弹窗已移除 */
+  const setCreating = useCallback((_v: boolean) => {}, [])
   /** browser.* 的宿主依赖槽：真正的值在 web 块里（openWebTab / webMeta 声明靠后），effect 里回填 */
   const browserDepsRef = useRef<BrowserDeps | null>(null)
 
@@ -1135,12 +1133,6 @@ export default function LearnWorkspace({
     pickLocal,
   } = useLibraryActions({ getLatest, set, flush, onToast, openTab, pushUndo })
 
-  /** 打开「新建目标」弹窗 */
-  const startCreatingGoal = () => {
-    setCreateGoalOpen(true)
-    setSidebarOpen(false)
-  }
-
   /* ---------- .unr 目标分享包（导出 / 导入 / 全屏拖拽遮罩）：见 workspace/useUnrTransfer ---------- */
   const { handleExportGoal, handleImportGoal, isDraggingFile } = useUnrTransfer({ getLatest, set, flush, openTab, onToast })
 
@@ -1181,10 +1173,9 @@ export default function LearnWorkspace({
   /* ---------- 新建学习目标 ---------- */
 
   const createGoal = useCallback(
-    (name: string) => {
-      const trimmed = name.trim()
-      if (!trimmed) return
-
+    (name?: string) => {
+      const curStore = getLatest()
+      const trimmed = name?.trim() || nextDefaultGoalTitle(curStore.goals)
       const goalId = crypto.randomUUID()
       const now = Date.now()
 
@@ -1203,8 +1194,6 @@ export default function LearnWorkspace({
         messages: [],
         updatedAt: now,
       }
-
-      const curStore = getLatest()
 
       // 打开 Agent 导师页签置前
       const tab0 = upsertAgentTab(
@@ -1247,6 +1236,12 @@ export default function LearnWorkspace({
     },
     [getLatest, set, onToast],
   )
+
+  /** 新建目标：不再弹标题输入框，直接创建默认名目标 */
+  const startCreatingGoal = () => {
+    createGoal()
+    setSidebarOpen(false)
+  }
 
   /*
    * 选区上的动作（学习 / 了解 / 注解 / 询问）整体在 useConceptActions（workspace/），
@@ -1410,7 +1405,7 @@ export default function LearnWorkspace({
     openNewGoalInPlace,
     openNewFileInPlace,
     pickLocalInPlace,
-  } = useChipOpening({ getLatest, set, onToast, openTab, activateTab, openWebTab, selectNode: switchNode, exam, retargetNode, setOutlineFocus, setCreateGoalOpen, webMetaRef, examTabTitle })
+  } = useChipOpening({ getLatest, set, onToast, openTab, activateTab, openWebTab, selectNode: switchNode, exam, retargetNode, setOutlineFocus, onNewGoal: startCreatingGoal, webMetaRef, examTabTitle })
   /* ---------- 宿主接线（chip/插件/赞助/视频块/引用块/plot/静态资源/网页链接/effort 提醒）：见 workspace/useHostWiring ---------- */
   useHostWiring({
     onToast,
@@ -1556,7 +1551,9 @@ export default function LearnWorkspace({
     getLatest,
     closeTab,
     pure,
-    toggleAgentTeam,
+    toggleFixSide: () => {
+      toggleFixSideCollapse(getLatest, set)
+    },
     toggleZen,
     isWeb,
     focusWebAddress,
@@ -2002,13 +1999,6 @@ export default function LearnWorkspace({
           onCancel={() => setPendingConflict(null)}
         />
       )}
-
-      {/* 新建目标弹窗 */}
-      <CreateGoalDialog
-        open={createGoalOpen}
-        onClose={() => setCreateGoalOpen(false)}
-        onCreate={createGoal}
-      />
 
       {/* 节点宇宙浮层：Tab 弹出/收回（见上面的 toggleStructOverlay）；画布与大纲页签同一套通道 */}
       {structOverlayGoal && (

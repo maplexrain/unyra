@@ -72,7 +72,7 @@ export function MindMessageRow({
         else msgRefs.current.delete(m.id)
       }}
       data-mind-message-id={m.id}
-      className={'border-b border-line/40 py-2 ' + channelAccent + (faded ? 'opacity-55 ' : '')}
+      className={'my-1 rounded-lg border border-line/50 bg-card/55 px-2.5 py-2 ' + channelAccent + (faded ? 'opacity-55 ' : '')}
     >
       {meta && (
         <span data-mind-raw className="sr-only">

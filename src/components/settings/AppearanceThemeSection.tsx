@@ -76,13 +76,7 @@ export function AppearanceThemeSection({
           }`}
         >
           <span>{t('主题配色')}</span>
-          <span className="text-[11px] font-normal text-ink-faint">
-            ({t('当前：{0}', t(THEME_LABEL[theme]))})
-          </span>
         </div>
-        <p className="mt-0.5 text-[11px] text-ink-faint">
-          {t('跟随系统只在浅色 / 深色之间自动切换；其余主题是独立配色，选定即固定。')}
-        </p>
       </div>
 
       <div className="flex flex-col gap-4">
@@ -90,7 +84,6 @@ export function AppearanceThemeSection({
           <div key={group.name} className="flex flex-col gap-2">
             <div className="flex items-center gap-2 text-[11.5px] text-ink-soft">
               <span className="font-medium text-ink">{t(group.name)}</span>
-              <span className="text-[11px] text-ink-faint">· {t(group.hint)}</span>
             </div>
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4">
               {group.modes.map((m) => {

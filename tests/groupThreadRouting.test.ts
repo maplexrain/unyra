@@ -16,7 +16,7 @@ describe('群聊评论串索引与路由', () => {
       replyThreadIdOf({
         channel: {
           channel: 'group',
-          from: { kind: 'role', id: 'dispatcher', name: '调度龟' },
+          from: { kind: 'role', id: 'dispatcher', name: '经理龟' },
           to: { kind: 'role', id: 'tutor', name: '导师龟' },
           ts: 1,
           envelopeId: 'm1',

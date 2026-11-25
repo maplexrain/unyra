@@ -648,6 +648,8 @@ export async function apiNameTests() {
   ok(!denied.ok && denied.content.includes('只开放了'), 'apiAllow 名单外的组当场被拒', denied.content.slice(0, 160))
   const allowed = await sub.run({ description: '搜索', body: "((api)=>{ return await api.web.search('勾股定理') })" }, { nodeId: childId, goalId })
   ok(allowed.ok && (allowed.content.includes('baidu') || allowed.content.includes('百度百科') || allowed.content.includes('勾股定理')), 'apiAllow 名单内的组照常放行', { content: allowed.content.slice(0, 120) })
+  const help = await sub.run({ description: '根 help', body: '((api)=>{ return await api.help() })' }, { nodeId: childId, goalId })
+  ok(help.ok && help.content.includes('api.node'), 'api.help 恒在场，不受 apiAllow 限制', help.content.slice(0, 120))
 
   // 动态提示词注入的触发口已退役（2026-11 全量静态提示词）：execute 不再有 onPromptModule
   // 通道，规程随系统提示词首轮在场、登记工作流的 prompt 在轮首注入（见 useAgent/hook）。

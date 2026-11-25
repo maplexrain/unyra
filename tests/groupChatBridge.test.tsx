@@ -43,7 +43,7 @@ describe('useGroupChatBridge', () => {
             goalId: 'g-bridge-test',
             agents: [
               { id: 'tutor', name: '导师龟' },
-              { id: 'dispatcher', name: '调度龟' },
+              { id: 'dispatcher', name: '经理龟' },
               { id: 'designer', name: '设计龟' },
             ],
             getLatest: () => current,
@@ -91,7 +91,7 @@ describe('useGroupChatBridge', () => {
       id: 'g-root',
       kind: 'group',
       direction: 'out',
-      from: { kind: 'role', id: 'dispatcher', name: '调度龟' },
+      from: { kind: 'role', id: 'dispatcher', name: '经理龟' },
       to: { kind: 'group', id: 'group', name: '群聊' },
       text: '@导师龟 帮我讲一下',
       ts: 1000,
@@ -112,7 +112,7 @@ describe('useGroupChatBridge', () => {
             goalId,
             agents: [
               { id: 'tutor', name: '导师龟' },
-              { id: 'dispatcher', name: '调度龟' },
+              { id: 'dispatcher', name: '经理龟' },
             ],
             getLatest: () => current,
             set,
@@ -161,7 +161,7 @@ describe('useGroupChatBridge', () => {
             goalId: 'g-bridge-strict',
             agents: [
               { id: 'tutor', name: '导师龟' },
-              { id: 'dispatcher', name: '调度龟' },
+              { id: 'dispatcher', name: '经理龟' },
             ],
             getLatest: () => current,
             set,
@@ -204,7 +204,7 @@ describe('useGroupChatBridge', () => {
             goalId: 'g-bridge-tail',
             agents: [
               { id: 'tutor', name: '导师龟' },
-              { id: 'dispatcher', name: '调度龟' },
+              { id: 'dispatcher', name: '经理龟' },
               { id: 'designer', name: '设计龟' },
             ],
             getLatest: () => current,
@@ -250,7 +250,7 @@ describe('useGroupChatBridge', () => {
             goalId: 'g-bridge-multi',
             agents: [
               { id: 'tutor', name: '导师龟' },
-              { id: 'dispatcher', name: '调度龟' },
+              { id: 'dispatcher', name: '经理龟' },
               { id: 'designer', name: '设计龟' },
             ],
             getLatest: () => current,
@@ -275,7 +275,7 @@ describe('useGroupChatBridge', () => {
   })
 
 
-  it('用户发言：没有 @ 时交给群消息调度 agent，按结构化结果投递，不再默认调度龟', async () => {
+  it('用户发言：没有 @ 时交给群消息调度 agent，按结构化结果投递，不再默认经理龟', async () => {
     let current = { conversations: [] } as unknown as LearnStore
     const set = (next: LearnStore): void => {
       current = next
@@ -305,7 +305,7 @@ describe('useGroupChatBridge', () => {
             goalId: 'g-bridge-noat',
             agents: [
               { id: 'tutor', name: '导师龟', duty: '主讲与协调' },
-              { id: 'dispatcher', name: '调度龟', duty: '接需求与派活' },
+              { id: 'dispatcher', name: '经理龟', duty: '接需求与派活' },
             ],
             getLatest: () => current,
             set,
@@ -361,7 +361,7 @@ describe('useGroupChatBridge', () => {
             goalId: 'g-bridge-fallback',
             agents: [
               { id: 'tutor', name: '导师龟', duty: '主讲与协调' },
-              { id: 'dispatcher', name: '调度龟', duty: '接需求与派活' },
+              { id: 'dispatcher', name: '经理龟', duty: '接需求与派活' },
             ],
             getLatest: () => current,
             set,
