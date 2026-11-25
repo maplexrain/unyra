@@ -58,8 +58,6 @@ interface Props {
   streaming: AgentPart[] | null
   /** 自由聊天（固定页签）：没有导师身份——子代理、人格与「正在辅导」全部收起 */
   free?: boolean
-  /** 锁住输入区（不可交流 role 的工作会话）：只能看，发消息要走工作流 */
-  chatLocked?: boolean
   /** 空态随 role：role id（'free' = 仅聊天）与显示名（空白页标题与职责说明跟 role 走） */
   emptyVoice?: string
   emptyName?: string
@@ -181,7 +179,6 @@ export default function AgentPanel({
   conversations,
   streaming,
   free,
-  chatLocked,
   emptyVoice,
   emptyName,
   agentAvatarId,
@@ -600,12 +597,14 @@ export default function AgentPanel({
             onWheel={onWheel}
             onScroll={onScroll}
             // 不显示滚动条（moji-scroll-none），左右内边距对称
-            className="moji-scroll-none moji-selectable h-full overflow-y-auto pb-3 px-3.5"
+            className="moji-scroll-none moji-selectable h-full overflow-y-auto bg-card/45 pb-3 px-3.5"
           >
             {/* 字号系数挂在这一层、而不是滚动容器上：滚动条与内边距不该跟着缩放（上边距 20px：列表内容与页签栏之间留一口呼吸） */}
             <div
               ref={contentRef}
               className={`w-full px-4 pt-5 ${
+                viewMode === 'mind' ? 'max-w-[800px]' : ''
+              } ${
                 messages.length === 0 && !streaming
                   ? 'flex min-h-[calc(100%-1.25rem)] flex-col justify-center pb-8'
                   : ''
@@ -627,7 +626,6 @@ export default function AgentPanel({
                   onAskExpire={onAskExpireById}
                   onAskHover={onAskHoverById}
                   onOpenFile={onOpenFile}
-                  workWindow={workWindowNode}
                 />
               ) : (
                 messageList
@@ -665,7 +663,7 @@ export default function AgentPanel({
           <ComposerUi
           composer={composer}
           running={running}
-          locked={chatLocked}
+          locked={false}
           hasKey={hasKey}
           providerLabel={providerLabel}
           queue={queue}

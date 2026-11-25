@@ -46,6 +46,7 @@ import { useScrollFollow } from './useScrollFollow'
 import { mentionedAgentsOf } from './groupMentions'
 import { WorkingAgentStack } from './WorkingAgentStack'
 import { GroupTriageFallbackDialog } from './GroupTriageFallbackDialog'
+import { GroupChatTitle } from './GroupChatTitle'
 
 export interface GroupChatAgent {
   id: AgentTeamMode
@@ -94,6 +95,8 @@ interface MessageMenuState {
 export function GroupChatPanel({
   messages,
   agents,
+  groupName,
+  onRenameGroup,
   disabledReason,
   onSend,
   resetKey = '',
@@ -113,6 +116,9 @@ export function GroupChatPanel({
 }: {
   messages: ChannelMessage[]
   agents: GroupChatAgent[]
+  /** 当前目标自己的群名；缺省显示「群聊」 */
+  groupName?: string
+  onRenameGroup?: (name: string) => void
   /** 没有目标上下文 / 可调度成员时群聊不可发送；显示在输入区上方 */
   disabledReason?: string
   /** 返回 false 表示发送失败（输入区保留内容）；threadId 非空时发到对应评论串；带附件时异步转存后返回 */
@@ -536,42 +542,12 @@ export function GroupChatPanel({
           </>
         ) : (
           <>
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-500/10 text-teal-600">
-              <Users size={18} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="text-[14px] font-semibold text-ink">{t('群聊')}</div>
-              <div className="truncate text-[11px] text-ink-faint">
-                {t('群通道 · 只有对话列表 · @ 指定 agent，无 @ 时由群消息调度 agent 判断')}
-              </div>
-            </div>
-            {workingAgents.length ? (
-              <WorkingAgentStack agents={workingAgents} />
-            ) : (
-              <div className="flex -space-x-2">
-                {agents.slice(0, 5).map((agent) => {
-                  const meta = AGENT_ROSTER_META[agent.id]
-                  return (
-                    <span
-                      key={agent.id}
-                      title={agent.name}
-                      className={
-                        'flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border ' +
-                        (meta?.avatarClass ?? 'border-line/70 bg-line/45 text-ink-soft')
-                      }
-                    >
-                      <AgentAvatarGlyph
-                        avatarId={agent.avatarId}
-                        fallback={meta?.fallbackIcon ?? MessageSquare}
-                        size={15}
-                        imgSize={28}
-                        imgClassName="h-7 w-7 rounded-full"
-                      />
-                    </span>
-                  )
-                })}
-              </div>
-            )}
+            <GroupChatTitle
+              agents={agents}
+              groupName={groupName}
+              onRenameGroup={onRenameGroup}
+              workingAgents={workingAgents}
+            />
           </>
         )}
       </div>
@@ -583,7 +559,7 @@ export function GroupChatPanel({
           data-message-scroll
           onWheel={onWheel}
           onScroll={onScroll}
-          className="h-full overflow-y-auto"
+          className="h-full overflow-y-auto bg-card/45"
         >
         <div ref={contentRef} className="flex min-h-full flex-col px-4 py-4">
         {rendered.length ? (

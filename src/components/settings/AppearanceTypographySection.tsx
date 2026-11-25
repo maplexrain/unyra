@@ -94,9 +94,6 @@ export function AppearanceTypographySection({
           <span>{scanningFonts ? t('扫描中…') : t('检测系统字体')}</span>
         </button>
       </div>
-      <p className="text-[11px] leading-relaxed text-ink-faint">
-        {t('选择全局渲染所使用的字体族。支持直接选用操作系统包含的字体，或选择常用精选中西文字体。')}
-      </p>
 
       {/* 字体选择下拉与自定义输入 */}
       <div className="flex flex-col gap-2">
@@ -170,9 +167,6 @@ export function AppearanceTypographySection({
         <div className="flex items-center justify-between">
           <div>
             <div className="text-[12.5px] font-medium text-ink-strong">{t('全局 UI 字体大小系数')}</div>
-            <div className="text-[10.5px] text-ink-faint">
-              {t('统一缩放全局界面元素与文字大小（与文档正文字号独立调节），默认 100% (1.00x)。')}
-            </div>
           </div>
           <div className="flex items-center gap-2">
             <span className="font-mono text-[12px] font-semibold text-seal">
@@ -225,9 +219,6 @@ export function AppearanceTypographySection({
         <div className="flex items-center justify-between">
           <div>
             <div className="text-[12.5px] font-medium text-ink-strong">{t('文字描边')}</div>
-            <div className="text-[10.5px] text-ink-faint">
-              {t('在开启自定义背景图片时强化文字轮廓，避免复杂壁纸干扰阅读。')}
-            </div>
           </div>
           <Switch
             on={Boolean(textStrokeEnabled)}

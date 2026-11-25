@@ -12,7 +12,6 @@ import {
   agentRuntimeApiAllow,
   CONTENT_VOICES,
   DEFAULT_AGENT_NAME,
-  isCommunicable,
   agentWfGrant,
   resolveAgentGlobal,
   updateAgentProfile,
@@ -269,14 +268,7 @@ describe('profiles 声部 id 契约', () => {
     expect(AGENT_ROLE_IDS).toEqual(ids)
     expect(DEFAULT_AGENT_NAME.free).toBe('自由对话')
     expect(DEFAULT_AGENT_AVATAR.free).toBeTruthy()
-    // 两个声部标签：可交流（可直接发消息启动）与内容生成（注入写作策略与画像）
-    expect(isCommunicable('free')).toBe(true)
-    expect(isCommunicable('tutor')).toBe(true)
-    expect(isCommunicable('dispatcher')).toBe(true)
-    expect(isCommunicable('examiner')).toBe(true)
-    expect(isCommunicable('designer')).toBe(true)
-    expect(isCommunicable('researcher')).toBe(false)
-    expect(isCommunicable('fixer')).toBe(false)
+    // 所有声部都可直接交流；内容生成标签只给需要注入写作策略与画像的声部
     for (const id of ['tutor', 'examiner', 'designer'] as AgentVoice[]) {
       expect(CONTENT_VOICES.has(id)).toBe(true)
     }

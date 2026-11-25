@@ -8,7 +8,7 @@
  * 私聊层不再显示 Agent 通道的内部转交；那属于思维层，群聊则另有群聊页。
  * 工具、思考、work 的内部过程也不进这里。
  */
-import { useMemo, type ReactNode } from 'react'
+import { useMemo } from 'react'
 import type { AskAnswers } from '../../../agent/tools'
 import { MessageSquare, UserRound } from 'lucide-react'
 import type { ChannelMessage, ChannelPeer } from '../../../agent/types'
@@ -47,7 +47,6 @@ export function RoleChatView({
   onAskExpire,
   onAskHover,
   onOpenFile,
-  workWindow,
 }: {
   channels: ChannelMessage[]
   /** 当前 role 的显示名（agent profile 覆盖后的真名） */
@@ -70,8 +69,6 @@ export function RoleChatView({
   onAskHover?: (askId: string, hovering: boolean) => void
   /** 交付组件里点开本地文件 */
   onOpenFile?: (pathOrRel: string, title?: string) => void
-  /** work 列表折叠段（默认收起），由 AgentPanel 统一渲染，和消息同一条流 */
-  workWindow?: ReactNode
 }) {
   const user = activeUser()
   const userName = user ? displayName(user.profile, t('未命名用户')) : t('未命名用户')
@@ -167,8 +164,7 @@ export function RoleChatView({
     return peerName(m.to, t('群聊'))
   }
 
-  const hasWorkWindow = Boolean(workWindow)
-  if (!visible.length && !hasWorkWindow) {
+  if (!visible.length) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-ink-faint">
         <div className="text-[13px]">{t('这里只有你和当前 agent 的私聊')}</div>
@@ -281,7 +277,6 @@ export function RoleChatView({
           </div>
         </div>
       )}
-      {workWindow ? <div>{workWindow}</div> : null}
     </div>
   )
 }

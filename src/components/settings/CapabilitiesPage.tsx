@@ -214,9 +214,6 @@ export function CapabilitiesPage({ onToast }: CapsPageProps) {
                         : t('已关闭')}
                 </span>
               </div>
-              <p className="text-[10.5px] text-ink-faint">
-                {t('朗读 AI 回复与正文内容；结果本地缓存，重听不消耗资源')}
-              </p>
             </div>
           </div>
           <SegmentedSwitch
@@ -297,9 +294,6 @@ export function CapabilitiesPage({ onToast }: CapsPageProps) {
                       : t('已关闭')}
                 </span>
               </div>
-              <p className="text-[10.5px] text-ink-faint">
-                {t('导师输入框麦克风录音语音识别；音频仅在内存中处理')}
-              </p>
             </div>
           </div>
           <SegmentedSwitch
@@ -346,7 +340,6 @@ export function CapabilitiesPage({ onToast }: CapsPageProps) {
                   onChange={(e) => setVoiceSetting({ noiseGate: Number(e.target.value) })}
                   className="mt-1 h-1.5 w-full cursor-pointer accent-seal"
                 />
-                <span className="text-[10px] text-ink-faint">{t('值越高越防杂音，太高容易漏轻声')}</span>
               </label>
             </div>
 
@@ -396,9 +389,6 @@ export function CapabilitiesPage({ onToast }: CapsPageProps) {
                         : t('已关闭')}
                 </span>
               </div>
-              <p className="text-[10.5px] text-ink-faint">
-                {t('PDF 扫描件生成精准文字层以支持框选复制；每页结果本地缓存')}
-              </p>
             </div>
           </div>
           <SegmentedSwitch
@@ -499,11 +489,6 @@ function FilesPanel({ onToast }: CapsPageProps) {
                 <span className="text-[13px] font-bold text-ink-strong">{t('云端文件 (Files API)')}</span>
                 <span className="rounded bg-line/60 px-1.5 py-px text-[10px] text-ink-soft">{t('未启用')}</span>
               </div>
-              <p className="text-[10.5px] text-ink-faint">
-                {engine
-                  ? t('当前提供商未开启 Files API——可在该提供商的高级设置中启用。')
-                  : t('配置 DeepSeek 提供商并在高级设置中启用 Files API 后，可在此管理云端上传文档。')}
-              </p>
             </div>
           </div>
         </header>
@@ -583,7 +568,6 @@ function FilesPanel({ onToast }: CapsPageProps) {
               <span className="text-[13px] font-bold text-ink-strong">{t('云端文件 (Files API)')}</span>
               <span className="rounded bg-seal/10 px-1.5 py-px text-[10px] font-medium text-seal-deep">{t('已启用')}</span>
             </div>
-            <p className="text-[10.5px] text-ink-faint">{t('上传到 DeepSeek 云端供模型调用的文档（user_data）')}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

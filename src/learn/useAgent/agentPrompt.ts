@@ -11,7 +11,7 @@
 import type { ChannelStamp, Conversation, ConversationMessage, MessageFile, MessageImage, MessageQuote } from '../../agent/types'
 import { CONTENT_VOICES, type AgentVoice } from '../../agent/agentProfile'
 import { loadAgentSettings, type AgentSettings } from '../../agent/settings'
-import { buildVoiceSystem } from '../ai'
+import { buildPromptFileSystem } from '../ai/promptFiles'
 import { needsPersonaAnnounce, personaMessage } from '../../agent/persona'
 import { needsDocFormatAnnounce, docFormatMessage } from '../../agent/docFormat'
 import { needsUserInfoAnnounce, userInfoMessage } from '../../agent/userInfo'
@@ -100,21 +100,19 @@ export function assembleTurnEntry(io: {
   const agentSettings = loadAgentSettings()
   const personaId = agentSettings.persona
   /*
-   * 系统提示词固化进对话（见 agent/types 的 Conversation.systemPrompt）：第一次请求
-   * 抓一份、之后每一轮都用固化的那份，不再每轮现拼。老数据没有这个字段——在这里
-   * 现场抓一份补上，随下面 conv 组装后的 persist 一并落盘，之后与新数据完全一致。
+   * 系统提示词**不再固化**：每轮都按当前提示词文件顺序现拼，用户调整顺序/启停后下一轮立即生效。
+   * 代价是系统提示词变化会让服务端前缀缓存失效——这是有意的取舍（见 agent/prefixGate）。
+   * Conversation.systemPrompt 保留为历史快照，只用于排查，不再参与本轮请求。
    */
-  let teacherSystem = conv.systemPrompt
-  if (!teacherSystem) {
-    teacherSystem = buildVoiceSystem(voice, {
-      // 画像**不在这里传**：声部要贴合这个人时自己 api.userInfo.get() 取（见 ai 的说明）
-      extraSystemPrompt:
-        agentSettings.extraSystemPromptEnabled && agentSettings.extraSystemPrompt?.trim()
-          ? agentSettings.extraSystemPrompt.trim()
-          : undefined,
-    })
-    conv = { ...conv, systemPrompt: teacherSystem }
-  }
+  const extra = agentSettings.extraSystemPromptEnabled && agentSettings.extraSystemPrompt?.trim()
+    ? agentSettings.extraSystemPrompt.trim()
+    : ''
+  const teacherSystem = [
+    buildPromptFileSystem(voice, 'role', agentSettings.promptFiles),
+    extra ? ['【用户附加自定义系统提示词（具有高优先级效力）】：', extra].join('\n') : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n')
   const announcer =
     isTutor && needsPersonaAnnounce(conv.messages, personaId)
       ? [personaMessage(personaId, Date.now(), crypto.randomUUID(), agentSettings.customPersonas)]

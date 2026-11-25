@@ -50,23 +50,11 @@ export const AGENT_ROLE_IDS: readonly AgentProfileId[] = [
 ]
 
 /**
- * **可交流**标签：学习者可以选中直接发消息启动的声部。不在这个集合里的声部
- * （调研员 / 维修员）只能由**工作流触发**或**被其他声部委托**来启动——界面据此
- * 禁用输入区、选中时也不现场建会话。调度员可交流：用户直接把需求说给它听。
- */
-export const COMMUNICABLE_VOICES: ReadonlySet<AgentVoice> = new Set(['tutor', 'dispatcher', 'examiner', 'designer'])
-
-/**
  * **内容生成**标签：注入**写作策略**（文档格式策略，见 agent/docFormat）与**学习者
  * 画像**（见 agent/userInfo）的声部——产出面向学习者的内容才需要贴合这个人；
  * 调研 / 修复类声部拿到画像只是噪声。
  */
 export const CONTENT_VOICES: ReadonlySet<AgentVoice> = new Set(['tutor', 'examiner', 'designer'])
-
-/** 可交流口径（自由对话恒可聊）；含 legacy 声部时先映射到现役 */
-export function isCommunicable(id: AgentProfileId): boolean {
-  return id === 'free' || COMMUNICABLE_VOICES.has(id as AgentVoice)
-}
 
 /**
  * 已退役声部的**legacy 别名**：老数据里还有它们的痕迹（确定性会话 id 的声部段、

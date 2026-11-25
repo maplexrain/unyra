@@ -139,9 +139,6 @@ export function AppearanceBackgroundSection({
                 </span>
               )}
             </div>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-ink-faint">
-              {t('在应用视口底层渲染自定义壁纸，降低界面底色不透明度以透出背景，支持创建图组幻灯片播放。')}
-            </p>
           </div>
         </div>
         <div className="shrink-0 pt-0.5">
@@ -208,7 +205,6 @@ export function AppearanceBackgroundSection({
                 onChange={(e) => updateCustomBg({ uiOpacity: Number(e.target.value) })}
                 className="h-1.5 w-full cursor-pointer accent-seal"
               />
-              <span className="text-[10px] text-ink-faint">{t('降低底色透出背景')}</span>
             </div>
 
             {/* 背景虚化 */}
@@ -226,7 +222,6 @@ export function AppearanceBackgroundSection({
                 onChange={(e) => updateCustomBg({ blur: Number(e.target.value) })}
                 className="h-1.5 w-full cursor-pointer accent-seal"
               />
-              <span className="text-[10px] text-ink-faint">{t('柔化壁纸减少干扰')}</span>
             </div>
           </div>
 

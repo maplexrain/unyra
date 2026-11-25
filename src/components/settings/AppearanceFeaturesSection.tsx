@@ -43,9 +43,6 @@ export function AppearanceFeaturesSection({
               >
                 {t('教学演示模式')}
               </div>
-              <div className="mt-0.5 text-[11px] leading-relaxed text-ink-faint">
-                {t('打开后左下角常驻一块小窗，实时显示你按下的键（Ctrl + K 这样）。录屏讲课时观众看得见操作，而不是只看结果在变。它不挡点击，也不改任何按键行为。')}
-              </div>
             </div>
           </div>
           <div className="shrink-0 pt-0.5">

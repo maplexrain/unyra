@@ -18,6 +18,7 @@ import { DEFAULT_SKILL_SETTINGS, type SkillSettings } from './skill/types'
 import { DEFAULT_MCP_SETTINGS, DEFAULT_MCP_SERVE_SETTINGS, type McpServeSettings, type McpServerConfig, type McpSettings } from './mcp/types'
 import { REASONING_EFFORTS, type ReasoningEffort } from '../ai/types'
 import { AGENT_ROLE_IDS, type AgentProfile, type AgentProfileId } from './agentProfile'
+import { DEFAULT_PROMPT_FILE_SETTINGS, normalizePromptFileSettings, type PromptFileSettings } from './promptFiles'
 
 export interface CompactSettings {
   /** 到阈值自动压缩；关掉之后只有手动「压缩上下文」会压 */
@@ -83,6 +84,11 @@ export interface AgentSettings {
   extraSystemPrompt?: string
   extraSystemPromptEnabled?: boolean
   /**
+   * 提示词文件（见 agent/promptFiles）：内置分段只读，外置文件可写；
+   * order / disabled 按 agent × role|work 层保存注入顺序与开关。
+   */
+  promptFiles: PromptFileSettings
+  /**
    * 基础原生工具安全权限配置：
    * 目标数据目录默认完全放行；外部真实系统目录需在此白名单放行。
    */
@@ -122,6 +128,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   customDocFormats: [],
   extraSystemPrompt: '',
   extraSystemPromptEnabled: false,
+  promptFiles: DEFAULT_PROMPT_FILE_SETTINGS,
   dev: { contextDebugger: false },
   skills: DEFAULT_SKILL_SETTINGS,
   mcp: DEFAULT_MCP_SETTINGS,
@@ -238,6 +245,7 @@ export function normalizeAgentSettings(raw: unknown): AgentSettings {
     extraSystemPrompt: typeof src.extraSystemPrompt === 'string' ? src.extraSystemPrompt : '',
     extraSystemPromptEnabled:
       typeof src.extraSystemPromptEnabled === 'boolean' ? src.extraSystemPromptEnabled : false,
+    promptFiles: normalizePromptFileSettings(src.promptFiles),
     dev: {
       contextDebugger:
         typeof dev.contextDebugger === 'boolean' ? dev.contextDebugger : DEFAULT_AGENT_SETTINGS.dev.contextDebugger,

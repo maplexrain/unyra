@@ -3,9 +3,12 @@
  *
  * 服务端的前缀缓存（OpenAI / DeepSeek / Anthropic 都按前缀匹配）唯一的命中判据是：
  * 这次请求的消息数组与上一次实发的**逐字节相同，且只在其后追加**。任何一次中间改写
- * ——历史还原与实发结构对不上、并发轮次交错落库、系统提示词中途变了——都会让缓存
+ * ——历史还原与实发结构对不上、并发轮次交错落库、工具声明中途变了——都会让缓存
  * 从改写处整段作废，之后每一跳都全价重算。这类问题曾是缓存命中率极低的元凶
  * （见 learn/agent/history 的镜像说明），靠纪律修过两次，这里用代码把它钉死：
+ *
+ * **例外：系统提示词每轮按提示词文件现拼，允许中途变化**。变了就换一届缓存纪元放行，
+ * 不拦截本轮请求——用户改了文件顺序/启停，下一轮必须立即生效。
  *
  * 每次请求发出**之前**（runtime 的 onContext 钩子，拿到的是与实发完全一致的那一份）
  * 比对本会话的 messages 与工具声明：
@@ -69,17 +72,16 @@ function findViolation(prev: Snapshot, curr: Snapshot, onTrim?: () => void): Vio
   const p = prev.messages
   const c = curr.messages
   if (!p.length || !c.length) return null
-  // 系统提示词必须逐字节不变：它是前缀的第 0 位，变了就什么都不用比了
-  if (p[0] !== c[0]) {
-    return {
-      message: '系统提示词在两次请求之间变了，前缀缓存整段作废',
-      detail: `上次 messages[0]=${preview(p[0])}\n这次 messages[0]=${preview(c[0])}`,
-    }
-  }
-  // 第 0 位（system）已单独比对，剩下的历史从 1 开始
+  // 系统提示词每轮都按提示词文件现拼，顺序/启停变化会让第 0 位变化：
+  // 这是用户主动改配置的预期结果，放行并换一届缓存纪元（忽略前缀缓存失效），
+  // 不拦截本轮请求；但历史部分仍按原纪律比对，避免系统词变化掩护历史改写。
+  if (p[0] !== c[0]) onTrim?.()
+  // 第 0 位（system）单独处理：相同则自然同前缀，变化则已放行换纪元；剩下的历史从 1 开始
+  const start = 1
+  if (p.length <= start || c.length <= start) return null
   const n = Math.min(p.length, c.length)
   let diverged = -1
-  for (let i = 1; i < n; i++) {
+  for (let i = start; i < n; i++) {
     if (p[i] !== c[i]) {
       diverged = i
       break
@@ -91,13 +93,13 @@ function findViolation(prev: Snapshot, curr: Snapshot, onTrim?: () => void): Vio
     // 出现即是「历史被改写」，拦下来看。
     return p.length <= c.length ? null : { message: '上下文比上一次请求变短了（尾部消息被删）', detail: `上次 ${p.length} 条，这次 ${c.length} 条` }
   }
-  // 从分叉点起找「从最旧一头裁掉一段」的形状：c 的开头对上 p 的第 s 位、整段后移对齐
-  for (let s = 1; s < p.length; s++) {
-    if (p[s] !== c[1]) continue
-    const overlap = Math.min(c.length - 1, p.length - s)
+  // 从分叉点起找「从最旧一头裁掉一段」的形状：c 的 start 位对上 p 的第 s 位、整段后移对齐
+  for (let s = start; s < p.length; s++) {
+    if (p[s] !== c[start]) continue
+    const overlap = Math.min(c.length - start, p.length - s)
     let ok = true
     for (let j = 0; j < overlap; j++) {
-      if (p[s + j] !== c[1 + j]) {
+      if (p[s + j] !== c[start + j]) {
         ok = false
         break
       }

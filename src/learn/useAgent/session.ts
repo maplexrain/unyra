@@ -10,7 +10,7 @@ import { agentNameOf, profileOf } from '../../agent/agentProfile'
 import { loadAgentSettings } from '../../agent/settings'
 import { applyEvent } from '../agent/events'
 import { createWorkManager, type WorkManager } from '../../agent/work/manager'
-import { buildWorkSystem } from '../ai/workSystem'
+import { buildPromptFileSystem } from '../ai/promptFiles'
 import { conversationById } from '../graph'
 import { generateConversationTitle, namingSource } from '../title'
 import type { LearnStore } from '../types'
@@ -88,7 +88,7 @@ export function useAgentSession(deps: {
             const sessions = update(cur.works?.sessions ?? [])
             persist({ ...cur, works: sessions.length ? { sessions } : undefined })
           },
-          buildSystem: (role) => buildWorkSystem(role),
+          buildSystem: (role) => buildPromptFileSystem(role, 'work', loadAgentSettings().promptFiles),
           roleMessage: (messageId) =>
             conversationMessageById(conversationById(getLatest(), conversationId)?.messages ?? [], messageId),
           appendOutbound: (work, text, meta) => {
@@ -186,7 +186,7 @@ export function useAgentSession(deps: {
               updatedAt: Date.now(),
             }))
           },
-          buildSystem: (role) => buildWorkSystem(role),
+          buildSystem: (role) => buildPromptFileSystem(role, 'work', loadAgentSettings().promptFiles),
           roleMessage: (messageId) => conversationMessageById(conv()?.messages ?? [], messageId),
           appendOutbound: (work, text, meta) => {
             mutateFreeConversation(conversationId, (c) => {

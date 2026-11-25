@@ -16,14 +16,15 @@ import { useMemo, useState } from 'react'
 import {
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Pin,
   Settings2,
-  Users,
 } from 'lucide-react'
 import { DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import type { LearningGoal } from '../../../learn/types'
 import { t, useLocale } from '../../../i18n'
 import { AgentAvatarGlyph } from './AgentAvatarGlyph'
+import { GroupAvatarStack, type GroupAvatarAgent } from './GroupAvatarStack'
 import { AgentContextMenu } from './AgentContextMenu'
 import {
   isPinLocked,
@@ -31,7 +32,7 @@ import {
   sortAgentsByPinAndTime,
   toggleAgentPin,
 } from './agentPinning'
-import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, voiceTags, type AgentVoiceStats } from './agentRoster'
+import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, type AgentVoiceStats } from './agentRoster'
 import {
   formatConversationTime,
   type AgentTeamMode,
@@ -75,6 +76,12 @@ export interface AgentRosterSidebarProps {
   agentAvatars?: Partial<Record<AgentTeamMode, string>>
   /** 名册里固定多出来的「群聊」入口：群聊只有对话列表，通道为 group */
   groupActive?: boolean
+  groupName?: string
+  /** 群头像的卡牌成员（取前三位叠放） */
+  groupAgents?: readonly GroupAvatarAgent[]
+  /** 群聊改名；空串 = 恢复默认「群聊」 */
+  onRenameGroup?: (name: string) => void
+  groupPreview?: string
   onOpenGroup?: () => void
 }
 
@@ -95,12 +102,28 @@ export function AgentRosterSidebar({
   agentNames,
   agentAvatars,
   groupActive = false,
+  groupName,
+  groupAgents,
+  onRenameGroup,
+  groupPreview,
   onOpenGroup,
 }: AgentRosterSidebarProps) {
   useLocale()
   const [collapsed, setCollapsed] = useState<boolean>(() => (persistCollapsed ? readCollapsed() : false))
   const [pinnedAgents, setPinnedAgents] = useState<Set<AgentTeamMode>>(() => loadPinnedAgents())
   const [contextMenu, setContextMenu] = useState<{ agentId: AgentTeamMode; x: number; y: number } | null>(null)
+  const [renamingGroup, setRenamingGroup] = useState(false)
+  const [groupDraft, setGroupDraft] = useState('')
+  const displayGroupName = groupName?.trim() || t('群聊')
+  const startRenameGroup = () => {
+    if (!onRenameGroup) return
+    setGroupDraft(groupName?.trim() || '')
+    setRenamingGroup(true)
+  }
+  const commitGroupName = (name: string) => {
+    onRenameGroup?.(name)
+    setRenamingGroup(false)
+  }
 
   const toggleCollapsed = (next: boolean) => {
     setCollapsed(next)
@@ -123,7 +146,6 @@ export function AgentRosterSidebar({
       return {
         id,
         label: agentNames?.[id]?.trim() || t(DEFAULT_AGENT_NAME[id]),
-        roleTag: t(meta.roleTag),
         subtitle: st.hasAsk
           ? t('等待你的确认')
           : st.running
@@ -138,7 +160,6 @@ export function AgentRosterSidebar({
         nameClass: meta.nameClass,
         running: st.running,
         hasAsk: st.hasAsk,
-        tags: voiceTags(id),
       }
     })
     return sortAgentsByPinAndTime(raw, pinnedAgents, (id) => statsOf(id).lastTime ?? 0)
@@ -188,7 +209,7 @@ export function AgentRosterSidebar({
             type="button"
             data-agent-group-top="true"
             aria-pressed={groupActive}
-            title={t('群聊：只有对话列表；首个 @ 激活，其他 @ 抄送')}
+            title={displayGroupName}
             onClick={onOpenGroup}
             className={
               'flex h-7 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-[11.5px] transition ' +
@@ -197,8 +218,8 @@ export function AgentRosterSidebar({
                 : 'border-transparent text-ink-soft hover:bg-line/45 hover:text-ink')
             }
           >
-            <Users size={13} />
-            <span className="font-medium">{t('群聊')}</span>
+            <GroupAvatarStack agents={groupAgents ?? []} size={22} />
+            <span className="font-medium">{displayGroupName}</span>
           </button>
         ) : null}
         <div role="tablist" className="flex shrink-0 items-center gap-1">
@@ -256,7 +277,7 @@ export function AgentRosterSidebar({
         {/* 当前声部的近况：预览与未读数，行内截断（窄宽度下的信息位） */}
         <span className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.5">
           <span
-            title={groupActive ? t('群聊：只有对话列表；首个 @ 激活，其他 @ 抄送') : activeAgent.subtitle}
+            title={groupActive ? groupPreview : activeAgent.subtitle}
             className={
               'min-w-0 truncate text-[11px] ' +
               (groupActive
@@ -268,7 +289,7 @@ export function AgentRosterSidebar({
                     : 'text-ink-faint')
             }
           >
-            {groupActive ? t('群通道 · 只有对话列表 · @ 指定 agent') : activeAgent.subtitle}
+            {groupActive ? groupPreview ?? '' : activeAgent.subtitle}
           </span>
           {!groupActive && typeof activeAgent.count === 'number' && activeAgent.count > 0 && (
             <span className="shrink-0 rounded-full bg-line/65 px-1.5 py-0.5 text-[9.5px] font-medium tabular-nums leading-none text-ink-faint">
@@ -318,7 +339,7 @@ export function AgentRosterSidebar({
                 type="button"
                 data-agent-group-collapsed="true"
                 aria-pressed={groupActive}
-                title={t('群聊：只有对话列表；首个 @ 激活，其他 @ 抄送')}
+                title={displayGroupName}
                 onClick={onOpenGroup}
                 className={
                   'flex h-10 w-10 items-center justify-center rounded-full border transition ' +
@@ -327,7 +348,7 @@ export function AgentRosterSidebar({
                     : 'border-transparent bg-teal-500/10 text-teal-600 hover:bg-teal-500/15')
                 }
               >
-                <Users size={18} />
+                <GroupAvatarStack agents={groupAgents ?? []} size={30} />
               </button>
             ) : null}
             {agents.map((item) => {
@@ -404,11 +425,9 @@ export function AgentRosterSidebar({
         className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2.5 pb-1"
       >
         {onOpenGroup ? (
-          <button
-            type="button"
+          <div
             data-agent-group="true"
-            aria-pressed={groupActive}
-            onClick={onOpenGroup}
+            aria-current={groupActive ? 'true' : undefined}
             className={
               'group flex w-full shrink-0 items-center gap-2.5 rounded-2xl border px-2 py-2.5 text-left transition ' +
               (groupActive
@@ -416,21 +435,64 @@ export function AgentRosterSidebar({
                 : 'border-transparent text-ink-soft hover:border-line/60 hover:bg-card/55 hover:text-ink')
             }
           >
-            <span className="flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-full border border-teal-500/30 bg-teal-500/10 text-teal-600">
-              <Users size={25} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center justify-between gap-1.5">
-                <span className="truncate text-[13px] font-semibold text-ink-strong">{t('群聊')}</span>
-                <span className="shrink-0 rounded-md bg-teal-500/10 px-1.5 py-0.5 text-[9.5px] font-medium leading-none text-teal-700 dark:text-teal-300">
-                  {t('群通道')}
-                </span>
-              </span>
-              <span className="mt-1 block truncate text-[11px] text-ink-faint">
-                {t('只有对话列表；首个 @ 激活，其他 @ 只抄送上下文')}
-              </span>
-            </span>
-          </button>
+            <GroupAvatarStack agents={groupAgents ?? []} size={60} />
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-1">
+                {renamingGroup ? (
+                  <input
+                    autoFocus
+                    value={groupDraft}
+                    maxLength={40}
+                    aria-label={t('群聊名称')}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setGroupDraft(e.target.value)}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onBlur={() => commitGroupName(groupDraft)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        commitGroupName(groupDraft)
+                      } else if (e.key === 'Escape') {
+                        e.preventDefault()
+                        commitGroupName(groupName?.trim() || '')
+                      }
+                    }}
+                    className="min-w-0 flex-1 rounded-md border border-seal/40 bg-card px-1.5 py-0.5 text-[13px] font-semibold text-ink-strong outline-none"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onOpenGroup}
+                    onDoubleClick={(e) => {
+                      e.preventDefault()
+                      startRenameGroup()
+                    }}
+                    className="min-w-0 flex-1 truncate text-left text-[13px] font-semibold text-ink-strong"
+                    title={t('双击重命名群聊')}
+                  >
+                    {displayGroupName}
+                  </button>
+                )}
+                {onRenameGroup && !renamingGroup ? (
+                  <button
+                    type="button"
+                    aria-label={t('重命名群聊')}
+                    title={t('重命名群聊')}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      startRenameGroup()
+                    }}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint opacity-0 transition hover:bg-line/50 hover:text-ink group-hover:opacity-100"
+                  >
+                    <Pencil size={11} />
+                  </button>
+                ) : null}
+              </div>
+              {groupPreview ? (
+                <div className="mt-1 truncate text-[11px] text-ink-faint">{groupPreview}</div>
+              ) : null}
+            </div>
+          </div>
         ) : null}
         {agents.map((item) => {
           const active = !groupActive && mode === item.id
@@ -529,13 +591,6 @@ export function AgentRosterSidebar({
                     <span className={'truncate text-[13px] font-semibold ' + item.nameClass}>
                       {item.label}
                     </span>
-                    <span
-                      className={
-                        'shrink-0 rounded-md px-1.5 py-0.5 text-[9.5px] font-medium leading-none ' + item.ringClass
-                      }
-                    >
-                      {item.roleTag}
-                    </span>
                   </span>
                   <span className="flex items-center gap-1 shrink-0">
                     {pinnedAgents.has(item.id) && (
@@ -552,22 +607,6 @@ export function AgentRosterSidebar({
                       </span>
                     )}
                   </span>
-                </span>
-
-                <span className="mt-0.5 flex items-center gap-1">
-                  {item.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className={
-                        'rounded px-1 py-px text-[9px] leading-none ' +
-                        (tag === '工作流触发'
-                          ? 'bg-line/55 text-ink-faint'
-                          : 'bg-seal/10 text-seal-deep dark:text-seal-2')
-                      }
-                    >
-                      {t(tag)}
-                    </span>
-                  ))}
                 </span>
 
                 <span className="mt-0.5 flex items-center justify-between gap-1.5">
