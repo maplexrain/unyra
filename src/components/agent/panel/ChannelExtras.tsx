@@ -4,9 +4,10 @@
  * 大段日志 / JSON 不展开在正文里，默认只露出一行摘要；用户点开才看。
  * 这正是消息字段「正文 / 额外数据 / 附件」三分中的后两项。
  */
-import { ChevronDown, Database, FileText, ImageIcon, Paperclip } from 'lucide-react'
+import { ChevronDown, Database, FileText, Paperclip } from 'lucide-react'
 import type { ChannelExtra, ChannelMessage } from '../../../agent/types'
 import { BubbleRichText } from './BubbleRichText'
+import { isVideoFile } from './messageMediaLayout'
 
 export function ChannelExtraBlock({ extra, names }: { extra?: ChannelExtra; names?: string[] }) {
   if (!extra?.text?.trim()) return null
@@ -31,32 +32,39 @@ export function ChannelExtraBlock({ extra, names }: { extra?: ChannelExtra; name
   )
 }
 
-export function ChannelAttachments({ message }: { message: ChannelMessage }) {
-  const images = message.attachments?.images ?? []
-  const files = message.attachments?.files ?? []
-  if (!images.length && !files.length) return null
+/**
+ * 气泡外底侧的文件附件：图片与视频已经在气泡内的宫格里（见 MessageMedia），
+ * 这里只列「没有画面」的文件（文本 / PDF / 压缩包 / 二进制…）。
+ */
+export function ChannelAttachments({
+  message,
+  onOpenFile,
+}: {
+  message: ChannelMessage
+  onOpenFile?: (pathOrRel: string, title?: string) => void
+}) {
+  const files = (message.attachments?.files ?? []).filter((f) => !isVideoFile(f))
+  if (!files.length) return null
   return (
-    <div className="mt-1 flex max-w-[700px] flex-wrap gap-1">
-      {images.map((img) => (
-        <span
-          key={img.id}
-          className="inline-flex items-center gap-1 rounded-md border border-line/70 bg-card/70 px-1.5 py-0.5 text-[10.5px] text-ink-faint"
-          title={img.rel}
-        >
-          <ImageIcon size={10} className="shrink-0" />
-          <span className="max-w-[180px] truncate">{img.name}</span>
-        </span>
-      ))}
-      {files.map((f) => (
-        <span
-          key={f.rel || f.name}
-          className="inline-flex items-center gap-1 rounded-md border border-line/70 bg-card/70 px-1.5 py-0.5 text-[10.5px] text-ink-faint"
-          title={f.path || f.rel}
-        >
-          {f.binary ? <Paperclip size={10} className="shrink-0" /> : <FileText size={10} className="shrink-0" />}
-          <span className="max-w-[220px] truncate">{f.name}</span>
-        </span>
-      ))}
+    <div className="mt-1 flex max-w-[450px] flex-wrap gap-1">
+      {files.map((f) => {
+        const target = f.rel || f.path
+        return (
+          <button
+            key={f.rel || f.name}
+            type="button"
+            disabled={!target}
+            onClick={() => {
+              if (target) onOpenFile?.(target, f.name)
+            }}
+            title={f.path || f.rel || f.name}
+            className="inline-flex max-w-full items-center gap-1 rounded-md border border-line/70 bg-card/70 px-1.5 py-0.5 text-[10.5px] text-ink-faint transition enabled:hover:border-seal/40 enabled:hover:text-ink-soft disabled:cursor-default"
+          >
+            {f.binary ? <Paperclip size={10} className="shrink-0" /> : <FileText size={10} className="shrink-0" />}
+            <span className="max-w-[220px] truncate">{f.name}</span>
+          </button>
+        )
+      })}
     </div>
   )
 }

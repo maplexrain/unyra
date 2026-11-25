@@ -6,7 +6,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import { createWorkManager, type WorkManagerDeps } from '../src/agent/work/manager'
-import type { WorkSession } from '../src/agent/types'
+import type { ConversationMessage, WorkSession } from '../src/agent/types'
+import { conversationMessageById } from '../src/learn/roleWork/channels'
 import type { SandboxOptions, SandboxRequest, SandboxReply } from '../src/agent/sandbox/types'
 import type { ResolvedProvider } from '../src/ai/client'
 import type { ChatMessage, StreamChatOptions, StreamChatResult } from '../src/ai/types'
@@ -63,7 +64,11 @@ function sandboxBase(calls: string[]): SandboxOptions {
   } as SandboxOptions
 }
 
-function makeManager(stream: WorkManagerDeps['stream'], calls: string[] = []) {
+function makeManager(
+  stream: WorkManagerDeps['stream'],
+  calls: string[] = [],
+  roleMessage: WorkManagerDeps['roleMessage'] = () => null,
+) {
   let works: WorkSession[] = []
   const deliveries: Array<{ text: string; auto?: boolean }> = []
   const outbound: string[] = []
@@ -75,7 +80,7 @@ function makeManager(stream: WorkManagerDeps['stream'], calls: string[] = []) {
       works = update(works)
     },
     buildSystem: () => 'WORK SYSTEM',
-    roleMessage: () => null,
+    roleMessage,
     appendOutbound: (_w, text) => outbound.push(text),
     deliverToRole: (_w, text, meta) => deliveries.push({ text, ...(meta.auto ? { auto: true } : {}) }),
     stream,
@@ -124,6 +129,35 @@ describe('work.send 与交付', () => {
     const short = manager.api.status('调研-1') as { runs: number; recentExecutes: unknown[] }
     expect(short.runs).toBe(1)
     expect(short.recentExecutes).toEqual([])
+  })
+
+  it('role 用群聊抬头 id 引用带图消息：work.send 能解析并把附件引用落进 work', async () => {
+    const groupMessage: ConversationMessage = {
+      id: 'm-internal',
+      role: 'user',
+      ts: 1,
+      parts: [{ type: 'text', text: '看这张图' }],
+      channel: {
+        channel: 'group',
+        from: { kind: 'user', id: 'u1', name: 'Maxwell' },
+        to: { kind: 'role', id: 'tutor', name: '导师龟' },
+        ts: 1,
+        envelopeId: 'g-abc',
+      },
+      images: [
+        { id: 'img-1', name: 'shot.png', rel: 'docs/高等数学/static/shot.png', mime: 'image/png', bytes: 10 },
+      ],
+    }
+    const { stream } = scriptedStream([{ match: '读附件', hops: [{ content: '完成' }] }])
+    const { manager, works } = makeManager(stream, [], (id) => conversationMessageById([groupMessage], id))
+    manager.api.create({ name: '看图' })
+    const r = manager.api.send({ name: '看图', messageId: 'g-abc', text: '读附件' })
+    expect(r).toMatchObject({ ok: true, mode: 'started' })
+    const task = works()[0]!.messages.at(-1)!
+    expect(task.images?.map((i) => i.id)).toEqual(['img-1'])
+    expect(task.parts[0]!.type === 'text' ? task.parts[0]!.text : '').toContain('引用 role 会话消息 m-internal')
+    await tick()
+    await tick()
   })
 
   it('显式 host.send：不再自动回传；status 的 recentExecutes 只记 execute 标题', async () => {

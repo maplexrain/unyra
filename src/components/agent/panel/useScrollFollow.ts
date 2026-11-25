@@ -30,6 +30,8 @@ export interface ScrollFollow {
   jumpToMessage: (id: string) => void
   /** 回到最新：平滑滚到底并恢复跟随 */
   restoreFollow: () => void
+  /** 换会话：立刻落到底并恢复跟随（无动画） */
+  resetFollow: () => void
   /** 跟随状态下，内容每长一点就贴到底部（调用方在条数 / 流式内容 / 在不在跑变化时调） */
   stickToBottom: () => void
   /** 刚从定位条跳过来的那条消息：闪一下（消息列表据此加类） */
@@ -327,6 +329,17 @@ export function useScrollFollow(
   }
 
   /**
+   * 换会话 / 换频道：**立刻**落到底并恢复跟随（不走平滑动画）。
+   * 新列表的第一帧不该看到一段从顶上滑下来的动画；滚动位置也顺便归位。
+   */
+  const resetFollow = () => {
+    pinnedRef.current = true
+    setPinned(true)
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }
+
+  /**
    * 滚轮累计到阈值就脱离自动滚动。
    * 往下滚要把累计清零：那说明他正往回走，不该攒着上一次的额度把他踢出去。
    */
@@ -386,6 +399,7 @@ export function useScrollFollow(
     pinned,
     jumpToMessage,
     restoreFollow,
+    resetFollow,
     stickToBottom,
     flashId,
     chatScale,

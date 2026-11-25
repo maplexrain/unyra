@@ -78,14 +78,15 @@ export const PROMPT_MODULES: PromptModule[] = [
 3. **排版铁律**：字号一律 \`em\` 禁 px（正文支持等比缩放；常用档位 0.72 / 0.8 / 0.88 / 0.96em，大号数据 1.45~1.75em）；表格图表编号加 \`tabular-nums\`；**容器与卡片严禁任何圆角**（rounded-lg / md / sm 一律不用，保持纯正直角骨骼感）——仅步骤序号圆圈与微缩状态圆点可用 \`rounded-full\`；边框优先于阴影。
 
 ### 2. 结构化排版组件（\`\`\`component 围栏）与动态签名
-正文结构化卡片严禁手写内嵌 HTML 标签！一律使用 \`\`\`component 围栏：
+正文结构化卡片严禁手写整页 HTML、样式或脚本！一律使用 \`\`\`component 围栏：
 \`\`\`component
 <Notice type="warn">
   <div #title>核心结论</div>
   <div #describe>详细内容说明</div>
 </Notice>
 \`\`\`
-已注册的配方组件已从系统提示词解耦，使用前需通过 execute API 动态获取组件签名：
+分组插槽（#left / #step 等）支持属性写法，也支持嵌套 \`#title\` + \`#content\`；正文可带轻量 strong / ul / li，但不要写整套页面样式。
+已注册的配方组件已从系统提示词解耦，**使用前必须**通过 execute API 动态获取组件签名：
 - \`api.design.component.list()\`（亦支持 \`api.design.componet.list\`）：获取已注册的配方组件清单，只暴露作用简短描述与组件 id，大幅节省 token。
 - \`api.design.component.get(idOrTag)\`：获取详细的组件签名（可用 slots 插槽、attrs 属性、示例 example 与模板结构）。
 - 扩展配方组件：支持 \`api.design.component.register\`（注册）、\`update\`（更新）、\`delete\`（删除）。
@@ -104,7 +105,7 @@ export const PROMPT_MODULES: PromptModule[] = [
  * 模块是「怎么做」的**声明**（排版配方、规程）——固定内容、声明一次、同上下文不重复，
  * 归 assistant 边；「做什么」的指令（工作流、用户消息）才是 user。与 personaMessage
  * 同一个形状家族，也是一条**提示词注入**（inject: 'prompt'）：它不分割轮次，界面上
- * 并进那一轮的「思考、工具与提示词」过程组（见 agent/messageKind 与 panel/partGroups）。
+ * 与思考、工具调用逐项平铺（见 agent/messageKind 与 panel/partGroups）。
  */
 export function promptModuleMessage(mod: PromptModule, uuid: string, at: number): ConversationMessage {
   return {

@@ -243,7 +243,7 @@ export function createExecuteTool(opts: SandboxOptions): ExecuteTool {
         : syntaxAdvice
       const head = failureHeader(log)
       const tail = [whatHappened(log), logs.length ? '日志：\n' + logs.join('\n') : ''].filter(Boolean).join('\n')
-      const rexecuteTip = '\n💡【高效修复提示】：可直接调用 rexecute(pattern, replacement) 进行局部正则替换并重跑本次代码，无需重新发送完整长代码。'
+      const rexecuteTip = '\n💡【高效修复提示】：可直接调用 rexecute(pattern, replacement) 进行局部正则替换并重跑本次代码，无需重新发送完整长代码。**重跑前先看回执里哪些调用已经 ok:true / 已经落库**：已生效的业务必须先摘掉，否则重跑会重复写文件、重复发消息。'
       const res: AgentToolResult = {
         ok: false,
         content: clip(head + '执行失败' + detail + '：' + reply.error + advice + rexecuteTip + (tail ? '\n\n' + tail : '')),

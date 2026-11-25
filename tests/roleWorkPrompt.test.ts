@@ -4,11 +4,20 @@ import { buildWorkSystem } from '../src/learn/ai/workSystem'
 import { buildFreeChatSystem } from '../src/learn/ai/chatSystem'
 
 describe('role / work 对外一体与汇报纪律', () => {
-  it('role 共同提示词要求按上下文直接回答没有 xx 工具，不甩内部层级', () => {
+  it('role 共同提示词要求按团队整体回答能力，不甩内部层级、不先否认再改口', () => {
     const text = buildTeacherSystem()
-    expect(text).toContain('role 与 work 对外是一体的')
-    expect(text).toContain('我这边没有 xx 工具可调用')
-    expect(text).toContain('不要解释「我是 role，工具在 work 层」')
+    expect(text).toContain('对外只有一个「我」')
+    expect(text).toContain('绝对不要先说「role 看不到 / 我没有图片字节 / work 才看得到」')
+    expect(text).toContain('答「可以，我看一下 / 我来读取」')
+    expect(text).toContain('当前确实做不到时也只说「这项我暂时做不了」')
+    expect(text).toContain('不要解释是 role 还是 work 缺能力')
+    expect(text).not.toContain('我这边没有 xx 工具可调用')
+    expect(text).not.toContain('工具在 work 层')
+  })
+
+  it('work 交付文案不把 role/work 分层写给用户看', () => {
+    expect(buildWorkSystem('tutor')).toContain('对外由 role 统一成「我」')
+    expect(buildWorkSystem('tutor')).not.toContain('role 只拿到附件元信息')
   })
 
   it('role 对用户汇报要求一两句话，细节放 detail', () => {

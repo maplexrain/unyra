@@ -128,7 +128,7 @@ export class SuperdocGNode extends GNode {
       edit: [
         'await n.content 读源码 → 改 → await n.editContent({ html }) 整份覆盖（自包含单页：结构、<style>、<script> 都在这一份里）。**title 创建即只读**：editContent 只传 { html }，不要传 title。',
         '打开给用户：api.ui.superdoc(本节点 uuid) 直接开（也可 ui.superdoc(宿主文档uuid, name)）。',
-        '主题变量自适应深浅色：var(--color-bg) / --color-sunken / --color-surface、--color-ink / --ink-strong / --ink-soft、--color-seal / --line / --warn / --success。',
+        '主题变量自适应深浅色：var(--color-bg) / --color-sunken / --color-surface、--color-ink / --ink-strong / --ink-soft、--color-seal / --line / --warn / --success。**页面背景必须严格跟随主题**：html / body / 主容器的 background 一律用 var(--color-bg) 或 var(--color-sunken) / var(--color-surface)，**严禁写死 #fff / white / #f7f7f5 等浅色值**——深色主题下会变成一块刺眼的白板。',
         '富文本用 <moji-markdown>…</moji-markdown>（宿主解析 Markdown 与 LaTeX）；页面里的按钮调 window.api.method.call("函数名", ...args) 执行持久化函数（先 api.method.create 存好）。',
         '内置跳转协议：静态资源 moji:static/{uuid}、超级文档互跳 moji:super/{name}、节点跳转 moji:node/{nodeId}。',
         '上限 ' + SUPERDOC_MAX_CHARS + ' 字符；写完用 api.ui.superdoc 打开给用户看。',

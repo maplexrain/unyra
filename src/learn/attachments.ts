@@ -1,4 +1,4 @@
-import type { MessageFile, PendingFile } from '../agent/types'
+import type { MessageFile, MessageImage, PendingFile } from '../agent/types'
 import type { AttachReadResult } from '../lib/native'
 import { formatBytes } from './images'
 import { extOf, typeOfExt } from './static'
@@ -92,6 +92,53 @@ export function fileBlock(files: MessageFile[], texts: Map<string, string>): str
 /** 附件里有多少字要进上下文（估算用） */
 export function attachChars(files: MessageFile[]): number {
   return files.reduce((sum, f) => sum + (f.chars ?? 0), 0)
+}
+
+/**
+ * 附件元信息块（**只给 role 层**，不带图片字节 / 文件正文）。
+ *
+ * role 是沟通与调度层：它要知道「用户附了什么、有多重」，但不该把几 MB 的图
+ * 或整份源码塞进自己的上下文——真正动手读内容的是 work。需要内容时，
+ * role 用 `api.work.send({ messageId })` 把原消息（含附件引用）转给 work。
+ *
+ * 这一块会逐字进入 role 的请求，所以措辞要明确「未挂载」，避免它假装看过图。
+ * `opts.messageId` 是通道抬头的信封 id（群聊 `g-...`）：这一行只在真的有附件时出现，
+ * 让 role 能把「哪条消息」原样交给 work，而不是猜一个 uuid。
+ */
+export function attachmentMetaBlock(
+  images: MessageImage[],
+  files: MessageFile[],
+  opts?: { totalFiles?: number; messageId?: string },
+): string {
+  const totalFiles = opts?.totalFiles ?? files.length
+  const parts: string[] = []
+  images.forEach((img, i) => {
+    const size = [img.mime, formatBytes(img.bytes), img.width && img.height ? `${img.width}×${img.height}` : '']
+      .filter(Boolean)
+      .join(' · ')
+    parts.push(`【附件·图片 ${i + 1}：${img.name} · ${size}】`)
+  })
+  files.forEach((f, i) => {
+    const size = f.binary
+      ? `${formatBytes(f.bytes)}，二进制`
+      : f.chars
+        ? `共 ${f.chars} 字${f.truncated ? '（已截断）' : ''}`
+        : formatBytes(f.bytes)
+    const suffix = totalFiles > 1 ? `（文件 ${i + 1}/${totalFiles}）` : ''
+    parts.push(`【附件·文件：${f.name} · ${size}${suffix}】`)
+  })
+  if (!parts.length) return ''
+  // 模型能看见的是通道抬头的 id（群聊里就是 g-...），不是会话消息内部的 uuid。
+  // 把这枚 id 直接写在附件块里，role 才知道 work.send 该引用什么。
+  if (opts?.messageId) parts.unshift(`【原消息 id：${opts.messageId}（转给 work 时用这个）】`)
+  parts.push(
+    opts?.messageId
+      ? '（以上只有附件元信息，图片字节与文件正文都没有挂进 role 的请求；需要读取内容时，用 `api.work.send({ messageId: "' +
+          opts.messageId +
+          '", text: "读取附件并…" })` 把原消息交给 work。）'
+      : '（以上只有附件元信息，图片字节与文件正文都没有挂进 role 的请求；需要读取内容时，把带附件的原消息交给 work。）',
+  )
+  return parts.join('\n')
 }
 
 /* ---------- 收集待发送的附件 ---------- */

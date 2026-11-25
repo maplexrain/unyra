@@ -666,7 +666,7 @@ export default function LearnWorkspace({
   useEffect(() => {
     setZenActive(pure)
     if (pure) {
-      let initW = 860
+      let initW = 1000
       try {
         const saved = localStorage.getItem('moji:zen-width')
         if (saved) {

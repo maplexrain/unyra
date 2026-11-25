@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * 思维层一行：渠道 / 发信人 / 收信人 / 上下文占用始终可见；raw 信封只留在无障碍层；
- * 纯过程回复默认收成一行，点开才挂载执行过程。
+ * 思考与工具直接平铺，不再先收进一层「思考与工具 · N 步」的组容器。
  */
 import { createElement, act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -95,7 +95,7 @@ describe('MindMessageRow', () => {
     host.remove()
   })
 
-  it('纯过程回复先收成一条过程组：点开一次看全部思考与工具', () => {
+  it('思考与工具直接平铺，不再先收进过程组容器', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
@@ -136,18 +136,13 @@ describe('MindMessageRow', () => {
         }),
       )
     })
-    expect(host.textContent).toContain('思考与工具 · 2 步')
     expect(host.textContent).toContain('↑1.2k')
     expect(host.textContent).toContain('15%')
-    // 过程组默认收起：只留一行组标题，内层「思考过程 / 工具卡」不挂载
-    expect(host.textContent).not.toContain('思考过程')
-    const toggle = host.querySelector('button')
-    expect(toggle?.getAttribute('aria-expanded')).toBeNull()
-    act(() => {
-      toggle?.click()
-    })
+    // 没有「思考与工具 · N 步」这一层组壳；思考与工具各自是一行折叠项
+    expect(host.textContent).not.toContain('思考与工具')
     expect(host.textContent).toContain('思考过程')
     expect(host.textContent).toContain('读资料')
+    expect(host.querySelectorAll('button').length).toBeGreaterThanOrEqual(2)
 
     act(() => {
       root.unmount()

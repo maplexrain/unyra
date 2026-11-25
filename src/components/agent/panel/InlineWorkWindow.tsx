@@ -1,8 +1,8 @@
 /**
- * work 消息的内嵌窗口：替代原来的 work 独立二级页。
+ * work 消息内嵌视图：不再是独立窗口，只是思维 / 私聊列表底部、与消息同一层级的一段。
  *
- * 默认只露一条可折叠标题；展开后上面是当前 role 的 work 列表，下面是选中 work 的
- * 只读消息流。work 仍然在后台跑，窗口只负责观察，不把用户带离 role 对话。
+ * 默认只露一条可折叠的段头；展开后上面是当前 role 的 work 列表，下面是选中 work 的
+ * 只读消息流。work 仍然在后台跑，这里只负责观察，不把用户带离 role 对话。
  */
 import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
 import { ChevronDown, Wrench } from 'lucide-react'
@@ -55,16 +55,16 @@ export function InlineWorkWindow({
   return (
     <section
       data-inline-work-window
-      className="mx-auto mb-3 mt-3 w-full max-w-[700px] shrink-0 overflow-hidden rounded-xl border border-line/80 bg-paper-deep/35"
+      className="mt-2 w-full shrink-0"
     >
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-line/20"
+        className="flex w-full min-w-0 items-center gap-2 border-b border-line/25 px-1 py-1.5 text-left transition-colors hover:bg-line/20"
       >
         <Wrench size={13} className="shrink-0 text-seal/75" />
-        <span className="text-[11.5px] font-medium text-ink-strong">{t('工作窗口')}</span>
+        <span className="text-[11.5px] font-medium text-ink-strong">{t('work')}</span>
         <span className="rounded-full bg-line/55 px-1.5 py-0.5 text-[10px] tabular-nums text-ink-soft">
           {works.length}
         </span>
@@ -84,22 +84,19 @@ export function InlineWorkWindow({
       </button>
 
       {open ? (
-        <div className="border-t border-line/60">
-          <div className="px-2 pt-2">
-            <WorkDispatchList
-              embedded
-              works={works}
-              activeWorkId={activeWorkId}
-              title={t('work 列表')}
-              onOpenWork={onSelectWork}
-              onStopWork={onStopWork}
-              onStopWorkWithStatement={onStopWorkWithStatement}
-              onDeleteWork={onDeleteWork}
-            />
-          </div>
+        <div>
+          <WorkDispatchList
+            embedded
+            works={works}
+            activeWorkId={activeWorkId}
+            onOpenWork={onSelectWork}
+            onStopWork={onStopWork}
+            onStopWorkWithStatement={onStopWorkWithStatement}
+            onDeleteWork={onDeleteWork}
+          />
           {selected ? (
-            <div className="border-t border-line/60">
-              <div className="flex min-w-0 items-center gap-2 px-3 py-1.5">
+            <div>
+              <div className="flex min-w-0 items-center gap-2 px-1 py-1.5">
                 <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-ink-strong">
                   {selected.name}
                 </span>
@@ -110,7 +107,7 @@ export function InlineWorkWindow({
               <div
                 ref={scrollRef}
                 data-inline-work-messages
-                className="max-h-[min(42vh,380px)] overflow-y-auto border-t border-line/50 px-2 py-1"
+                className="max-h-[min(42vh,380px)] overflow-y-auto px-1 py-1"
               >
                 {selected.messages.filter((m) => !m.hidden).map((m) => (
                   <MindMessageRow

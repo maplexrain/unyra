@@ -70,6 +70,52 @@ describe('2. Component 节点树解析 (parseComponentBlock)', () => {
     expect(nodes[0]!.attrs.type).toBe('ok')
     expect(nodes[1]!.attrs.type).toBe('warn')
   })
+
+  it('分组插槽兼容 AI 常用写法：嵌套 #title / #content 折叠成属性与正文', () => {
+    const source = `
+<Compare>
+  <div #left>
+    <div #title>传统软件工程（规则驱动）</div>
+    <div #content><ul><li><strong>输入</strong>：明确的业务规则</li></ul></div>
+  </div>
+  <div #right>
+    <div #title>机器学习（数据驱动）</div>
+    <div #content><ul><li><strong>输入</strong>：历史数据样本</li></ul></div>
+  </div>
+</Compare>
+`
+    const nodes = parseComponentBlock(source)
+    const compare = nodes[0]!
+    expect(compare.slots.left?.[0]?.attrs.title).toBe('传统软件工程（规则驱动）')
+    expect(compare.slots.left?.[0]?.content).toContain('<ul>')
+    expect(compare.slots.right?.[0]?.attrs.title).toBe('机器学习（数据驱动）')
+  })
+
+  it('插槽正文保留嵌套 HTML，不再只留标签外的空白', () => {
+    const source = `
+<Notice type="warn">
+  <div #describe>当分母趋近 0 时，<strong>不能直接代入求值</strong>。</div>
+</Notice>
+`
+    const nodes = parseComponentBlock(source)
+    expect(nodes[0]!.slots.describe?.[0]?.content).toContain('<strong>不能直接代入求值</strong>')
+  })
+
+  it('嵌套 #title 之后直接跟 ul 时，ul 也归入正文', () => {
+    const source = `
+<Compare>
+  <div #left>
+    <div #title>传统软件工程</div>
+    <ul><li>输入：明确规则</li></ul>
+  </div>
+</Compare>
+`
+    const nodes = parseComponentBlock(source)
+    const left = nodes[0]!.slots.left?.[0]
+    expect(left?.attrs.title).toBe('传统软件工程')
+    expect(left?.content).toContain('<ul>')
+    expect(left?.content).not.toContain('<div #title>')
+  })
 })
 
 describe('3. 各类精装排版配方渲染验证', () => {
@@ -204,6 +250,87 @@ describe('3. 各类精装排版配方渲染验证', () => {
     expect(html).toContain('单摆固有周期与摆球质量有关吗？')
     expect(html).toContain('<details')
     expect(html).toContain('无关，仅由摆长与重力加速度决定。')
+  })
+
+  it('AI 常用嵌套写法：Compare 的左/右标题与富正文都能渲染', () => {
+    const source = `
+<Compare>
+  <div #left>
+    <div #title>传统软件工程（规则驱动）</div>
+    <div #content>
+      <ul>
+        <li><strong>输入</strong>：明确的业务规则</li>
+        <li><strong>输出</strong>：确定的执行结果</li>
+      </ul>
+    </div>
+  </div>
+  <div #right>
+    <div #title>机器学习（数据驱动）</div>
+    <div #content>
+      <ul>
+        <li><strong>输入</strong>：历史数据样本</li>
+      </ul>
+    </div>
+  </div>
+</Compare>
+`
+    const html = componentBlock(source, { escape: (s) => s, attr: (s) => s })
+    expect(html).toContain('moji-component-compare')
+    expect(html).toContain('传统软件工程（规则驱动）')
+    expect(html).toContain('机器学习（数据驱动）')
+    expect(html).toContain('明确的业务规则')
+    expect(html).toContain('确定的执行结果')
+    expect(html).toContain('历史数据样本')
+    expect(html).not.toContain('直觉误区')
+    expect(html).not.toContain('严格定义')
+  })
+
+  it('标准签名下正文里的 ul/li 也不再被吞成空白', () => {
+    const source = `
+<Compare>
+  <div #left title="传统软件工程" badge="常见错误" type="warn">
+    <ul><li><strong>输入</strong>：明确规则</li></ul>
+  </div>
+  <div #right title="机器学习" badge="正确认知" type="ok">
+    <ul><li><strong>输入</strong>：历史样本</li></ul>
+  </div>
+</Compare>
+`
+    const html = componentBlock(source, { escape: (s) => s, attr: (s) => s })
+    expect(html).toContain('传统软件工程')
+    expect(html).toContain('明确规则')
+    expect(html).toContain('历史样本')
+  })
+
+  it('Notice 正文中的内联 <strong> 保持原样', () => {
+    const source = `
+<Notice type="warn">
+  <div #title>边界条件</div>
+  <div #describe>当分母趋近 0 时，<strong>不能直接代入求值</strong>。</div>
+</Notice>
+`
+    const html = componentBlock(source, { escape: (s) => s, attr: (s) => s })
+    expect(html).toContain('<strong>不能直接代入求值</strong>')
+  })
+
+  it('AI 常用嵌套写法在 Steps 等分组插槽同样生效', () => {
+    const source = `
+<Steps>
+  <div #step>
+    <div #title>第一步 隔离研究对象</div>
+    <div #content>圈出所有接触面与场力来源，<strong>不要漏掉摩擦力</strong>。</div>
+  </div>
+  <div #step>
+    <div #title>第二步 建立坐标系</div>
+    <div #content>沿加速度方向建立坐标轴。</div>
+  </div>
+</Steps>
+`
+    const html = componentBlock(source, { escape: (s) => s, attr: (s) => s })
+    expect(html).toContain('第一步 隔离研究对象')
+    expect(html).toContain('圈出所有接触面与场力来源')
+    expect(html).toContain('<strong>不要漏掉摩擦力</strong>')
+    expect(html).toContain('第二步 建立坐标系')
   })
 
   it('通用兜底卡片 (Card / 未知组件)', () => {

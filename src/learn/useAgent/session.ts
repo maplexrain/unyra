@@ -14,7 +14,7 @@ import { buildWorkSystem } from '../ai/workSystem'
 import { conversationById } from '../graph'
 import { generateConversationTitle, namingSource } from '../title'
 import type { LearnStore } from '../types'
-import { inboundEnvelope, outboundEnvelope, peerOf } from '../roleWork/channels'
+import { conversationMessageById, inboundEnvelope, outboundEnvelope, peerOf } from '../roleWork/channels'
 import { deliverInbound, hasRoleWorkDispatcher } from '../roleWork/dispatch'
 import { roleOfConversation } from '../roleWork/roles'
 import { freeConversationById, mutateFreeConversation } from '../freeChat'
@@ -90,7 +90,7 @@ export function useAgentSession(deps: {
           },
           buildSystem: (role) => buildWorkSystem(role),
           roleMessage: (messageId) =>
-            conversationById(getLatest(), conversationId)?.messages.find((m) => m.id === messageId) ?? null,
+            conversationMessageById(conversationById(getLatest(), conversationId)?.messages ?? [], messageId),
           appendOutbound: (work, text, meta) => {
             const cur = conversationById(getLatest(), conversationId)
             if (!cur) return
@@ -187,7 +187,7 @@ export function useAgentSession(deps: {
             }))
           },
           buildSystem: (role) => buildWorkSystem(role),
-          roleMessage: (messageId) => conv()?.messages.find((x) => x.id === messageId) ?? null,
+          roleMessage: (messageId) => conversationMessageById(conv()?.messages ?? [], messageId),
           appendOutbound: (work, text, meta) => {
             mutateFreeConversation(conversationId, (c) => {
               const envelope = outboundEnvelope({

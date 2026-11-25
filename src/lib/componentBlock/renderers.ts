@@ -27,17 +27,37 @@ function getSlotText(node: ComponentNode, ...slotNames: string[]): string {
   return ''
 }
 
+/** 组件正文里允许少量结构化 HTML：列表折成紧凑的「•」行，段落/div 折成换行 */
+function normalizeRichText(text: string): string {
+  if (!text.includes('<')) return text
+  return text
+    .replace(/<\/?(?:ul|ol)\b[^>]*>/gi, '')
+    .replace(/<li\b[^>]*>/gi, '\n• ')
+    .replace(/<\/li>/gi, '')
+    .replace(/<\/?(?:p|div|section|article)\b[^>]*>/gi, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 /** 辅助处理内联 Markdown 文本 */
 function fmt(text: string, ctx: ComponentRenderCtx): string {
   if (!text) return ''
-  if (ctx.renderInline) {
-    try {
-      return ctx.renderInline(text)
-    } catch {
-      return ctx.escape(text)
-    }
-  }
-  return ctx.escape(text)
+  const normalized = normalizeRichText(text)
+  if (!normalized) return ''
+  if (!ctx.renderInline) return ctx.escape(normalized)
+  // 卡片正文是行内层：逐行渲染再拼 <br>，避免多行内容被 markdown 包成 <p>/<ul>。
+  return normalized
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return ctx.renderInline!(line)
+      } catch {
+        return ctx.escape(line)
+      }
+    })
+    .join('<br>')
 }
 
 /** 语义色调样式映射 */

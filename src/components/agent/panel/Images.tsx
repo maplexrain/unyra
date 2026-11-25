@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ExternalLink, FileText, X } from 'lucide-react'
 import type { MessageFile, MessageImage, PendingFile, PendingImage } from '../../../agent/types'
 import {
@@ -26,7 +27,7 @@ import { t } from '../../../i18n'
  * 刚贴进来的图存盘时就顺手进了缓存），没有就去读，读完由 subscribeImages
  * 通知所有在等这张图的组件重画。
  */
-function useImageUrl(image: MessageImage): string | null {
+export function useImageUrl(image: MessageImage): string | null {
   const [url, setUrl] = useState(() => cachedImageUrl(image))
   useEffect(() => {
     const sync = () => {
@@ -219,8 +220,9 @@ function LightboxFrame({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  return (
+  const frame = (
     <div
+      data-image-lightbox=""
       className="no-print moji-fade-in fixed inset-0 z-[80] flex flex-col items-center justify-center gap-3 bg-mask/75 p-8 backdrop-blur-[2px]"
       onClick={onClose}
     >
@@ -244,6 +246,12 @@ function LightboxFrame({
       </div>
     </div>
   )
+  /**
+   * 必须挂到 body 上：消息流/面板里一串 overflow-hidden、transform、backdrop-filter
+   * 会把 position:fixed 变成「相对祖先定位」，大图于是被聊天区的裁切边截掉。
+   * 预览是盖在应用之上的一层，不属于任何一条消息的 DOM。
+   */
+  return typeof document === 'undefined' ? frame : createPortal(frame, document.body)
 }
 
 /** 已经进资源库的附件（消息气泡里那张）：按引用取字节 */

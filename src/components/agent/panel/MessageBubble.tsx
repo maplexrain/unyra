@@ -1,12 +1,11 @@
 /**
  * 一条消息长什么样：引文、气泡里的附件、操作按钮、编辑框，以及正文里的
- * 消息组（思考 / 工具调用 / 注入的提示词模块）/ 文本块 / 提示块，外加列表右下角那颗「回到最新」。
+ * 思考 / 工具调用 / 注入的提示词模块与文本块、提示块，外加列表右下角那颗「回到最新」。
  *
  * 层级与用色的规矩：**chat 层只有用户消息保留气泡本尊**（同色系、深一档的底色圆角）；
- * 其余一律无壳；mind 层连用户气泡也去掉。导师的正文、思考气泡、工具调用气泡、
- * 消息组的收拢容器都不带边框与底色，分层靠排版与缩进。chat 与 mind 都把相邻的过程件
- * 收进消息组；mind 的差别在消息行头部（渠道 / 发信人 / 上下文账，见 MindMessageRow），
- * 纯过程回复因此只留一行可折叠的过程组标题。
+ * 其余一律无壳；mind 层连用户气泡也去掉。导师的正文、思考气泡、工具调用气泡
+ * 都不带边框与底色，分层靠排版与缩进。思考、工具与提示词注入**逐项平铺**，
+ * 不再先套一层「思考与工具 · N 步」的组容器。
  *
  * 全是纯展示组件——它们只认 props，不改任何状态；消息数据、编辑与删除
  * 都由 AgentPanel 通过 MessageList 传下来。
@@ -30,14 +29,15 @@ import MarkdownView from '../../MarkdownView'
 import UsageLine from '../UsageLine'
 import { renderNote } from '../../../lib/markdown'
 import { focusQuote } from '../../../lib/quoteFocus'
-import { BubbleFile, BubbleImage } from './Images'
+import { BubbleFile } from './Images'
+import { MessageMediaGrid } from './MessageMedia'
+import { isVideoFile } from './messageMediaLayout'
 import { DeliveryBlock } from './DeliveryBlock'
 import { ToolCard } from './ToolCard'
 import { lastLineOf } from './preview'
-import { toolLabel } from './toolLabel'
 import { useFold } from './useFold'
 import { isInterruptedNotice } from '../../../learn/agent/inflight'
-import { groupParts, isProcessPart, type InjectItem, type ProcessPart } from './partGroups'
+import { flattenParts, type InjectItem } from './partGroups'
 import { openChipRef, type ChipPayload } from '../../../lib/docChip'
 import { MessageSpeakButton } from '../../tts/MessageSpeakButton'
 import { chipLabel, chipSvg, chipToken, maskChipTokens, restoreChipTokens, splitChips } from '../../../lib/chipSyntax'
@@ -60,8 +60,8 @@ export interface MessageRowProps {
   flash: boolean
   /**
    * 这一轮开始前注入的那几条提示词（人格 / 文档格式 / 技能库 / 提示词模块，
-   * 见 agent/messageKind）。它们并进回复里的「思考、工具与提示词」过程组——
-   * 与思考、工具调用同一层，而不是在对话流里单独画一条分界条。
+   * 见 agent/messageKind）。它们排在回复的最前面逐条平铺，与思考、工具调用
+   * 同一层，而不是在对话流里单独画一条分界条。
    * 由 useMessageList 从隐藏消息合成，身份只在 messages 变了之后才换。
    */
   prelude?: InjectItem[]
@@ -99,6 +99,8 @@ export const MessageRow = memo(function MessageRow({
   const messageText = m.parts.filter((p) => p.type === 'text').map((p) => p.text).join('\n\n')
 
   if (m.role === 'user') {
+    const hasMedia = Boolean(m.images?.length || (m.files ?? []).some((f) => isVideoFile(f)))
+    const bubbleVisible = Boolean(messageText.trim() || hasMedia || m.quote)
     return (
       <div
         ref={(el) => {
@@ -116,49 +118,41 @@ export const MessageRow = memo(function MessageRow({
         <div
           className={
             mind
-              ? 'min-w-0 max-w-full'
-              : 'max-w-[700px] rounded-lg ' + (flash ? 'moji-msg-flash' : '')
+              ? 'min-w-0 max-w-[450px]'
+              : 'max-w-[450px] rounded-lg ' + (flash ? 'moji-msg-flash' : '')
           }
         >
           {m.quote && <QuoteChip quote={m.quote} />}
-          {/* 附件排在文字上方：与输入框里的排列一致，发出去前后看到的是同一个顺序 */}
-          {!!m.images?.length && (
-            <div className={'mb-1.5 flex flex-wrap gap-1.5 ' + (mind ? 'justify-start' : 'justify-end')}>
-              {m.images.map((img) => (
-                <BubbleImage
-                  key={img.id}
-                  image={img}
-                  onOpen={() => {
-                    const target = img.rel
-                    if (target) onOpenFile?.(target, img.name)
-                  }}
-                />
-              ))}
+          {bubbleVisible ? (
+            <div
+              className={
+                mind
+                  ? 'text-[13px] leading-relaxed text-ink select-text'
+                  : 'rounded-lg bg-bubble-user px-3.5 py-2 text-[13px] leading-relaxed text-ink-strong ring-1 ring-line/65 select-text'
+              }
+            >
+              <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} />
+              {/* 图片 / 视频嵌在气泡内侧底部，与群聊、私聊相同一套宫格 */}
+              <MessageMediaGrid images={m.images} files={m.files} />
+            </div>
+          ) : null}
+          {/* 非图片 / 视频文件挂在气泡外底侧 */}
+          {(m.files ?? []).some((f) => !isVideoFile(f)) && (
+            <div className={'mt-1 flex flex-wrap gap-1.5 ' + (mind ? 'justify-start' : 'justify-end')}>
+              {(m.files ?? [])
+                .filter((f) => !isVideoFile(f))
+                .map((file, idx) => (
+                  <BubbleFile
+                    key={file.uuid ?? `${file.name}-${idx}`}
+                    file={file}
+                    onOpen={() => {
+                      const target = file.rel || file.path
+                      if (target) onOpenFile?.(target, file.name)
+                    }}
+                  />
+                ))}
             </div>
           )}
-          {!!m.files?.length && (
-            <div className={'mb-1.5 flex flex-wrap gap-1.5 ' + (mind ? 'justify-start' : 'justify-end')}>
-              {m.files.map((file, idx) => (
-                <BubbleFile
-                  key={file.uuid ?? `${file.name}-${idx}`}
-                  file={file}
-                  onOpen={() => {
-                    const target = file.rel || file.path
-                    if (target) onOpenFile?.(target, file.name)
-                  }}
-                />
-              ))}
-            </div>
-          )}
-          <div
-            className={
-              mind
-                ? 'text-[13px] leading-relaxed text-ink select-text'
-                : 'rounded-lg bg-bubble-user px-3.5 py-2 text-[13px] leading-relaxed text-ink-strong ring-1 ring-line/65 select-text'
-            }
-          >
-            <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} />
-          </div>
         </div>
       </div>
     )
@@ -263,17 +257,12 @@ function MessageActions({ text }: { text: string }) {
   )
 }
 /**
- * 把一条消息的部件序列排成一段段：**相邻的过程件**（思考 / 工具调用 / 注入的提示词模块）
- * 连成的候选组，以及其余独立成条的东西（正文、运行时提示）。归组规则本身是纯函数、
- * 住在 panel/partGroups 里（有单元用例钉着）——这里只管「怎么画」。
+ * 把一条消息的部件序列摊成一条条：提示词注入排在最前，思考、工具调用、提示词模块
+ * 与正文、运行时提示各占一项，按原顺序平铺。归组规则在 panel/partGroups 里
+ * （有单元用例钉着）——这里只管「怎么画」。
  *
- * prelude（轮开始前注入的那几条提示词）由 groupParts 排在最前面、与后面的过程件同组：
- * 于是这一轮从头到尾只有**一条**折叠标题，而不是「提示词注入」与「思考与工具」两行。
- *
- * 只有一个成员的组按单条画：孤零零一件没有可收拢的东西，硬套组壳等于多一次点击。
- *
- * mind 层也在同一套归组规则下绘制：思维页看的是轨迹，不是让十几个工具调用各占一行；
- * 没有正文的回复因此只剩一条过程组标题，点击一次展开全部过程。
+ * 不再有组壳：每一项自己折叠、自己带一条细分隔线，用户不必先点开一层
+ * 「思考与工具 · N 步」再看里面。
  */
 function Parts({
   parts,
@@ -287,33 +276,19 @@ function Parts({
   streaming?: boolean
 }) {
   /**
-   * 思维层也归组：旧口径「每条过程件都铺开」会把十几个工具调用各占一行——
-   * mind 的价值是看轨迹，不是看噪声。相邻过程件收成一条可折叠的消息组；
-   * 孤件仍按自己的折叠标题呈现（ToolCard / ThinkingBlock 本身就是收起态）。
+   * 过程件不再归组：思考、工具调用、提示词模块与轮开始时的提示词注入
+   * 都按原顺序直接平铺。每项仍是自己的折叠块，但用户不必先点开一层组壳。
    */
-  const groups = groupParts(parts, prelude)
+  const items = flattenParts(parts, prelude)
   return (
     <div className="flex flex-col gap-2">
-      {groups.map((g, i) => {
-        if (g.kind === 'group' && g.items.length > 1) return <ProcessGroup key={i} items={g.items} />
-        const part = g.kind === 'single' ? g.part : g.items[0]
-        // 落单的提示词注入：与过程件同一副样子（折叠标题 + 展开看全文），也带那道下边框
-        if (part.type === 'inject') {
-          return (
-            <div key={'inject-' + part.id} className="border-b border-line pb-2">
-              <InjectBlock item={part} />
-            </div>
-          )
-        }
-        // 落单的过程件与组一样带一道下边框，和后面的正文分割开；正文与提示不带
-        return isProcessPart(part) ? (
-          <div key={i} className="border-b border-line pb-2">
-            <SinglePart part={part} streaming={streaming} />
-          </div>
+      {items.map((part, i) =>
+        part.type === 'inject' ? (
+          <InjectBlock key={'inject-' + part.id} item={part} />
         ) : (
           <SinglePart key={i} part={part} onResumeNotice={onResumeNotice} streaming={streaming} />
-        )
-      })}
+        ),
+      )}
     </div>
   )
 }
@@ -337,103 +312,7 @@ function SinglePart({
 }
 
 /**
- * 消息组：**相邻且至少两条**的过程件（思考 / 工具调用 / 注入的提示词模块 / 轮开始时的
- * 提示词注入）合进来，默认折叠。组本身**不画壳**——没有边框、没有底色、没有内边距，
- * 收拢关系全靠标题行与展开后的缩进表达；底部一道下边框把它和后面的正文分割开。
- * 展开后里面是一条条独立的思考气泡（ThinkingBlock）、工具调用气泡（ToolCard）、
- * 提示词模块块（PromptModuleBlock）与注入块（InjectBlock），各自管各自的展开收起，
- * 底部还有组级的「收起」。
- *
- * 折叠态不是一行死标题——它持续显示组里**当前最后一件**的内容，与思考气泡
- * 同一个意图：模型可能安静十几秒，一行不断往左滚的字，一眼就能看出「它还在写」。
- * 思考件取最后一行（lastLineOf，只扫末尾窗口），工具件取那一步的标题，
- * 提示词模块取模块名；组里新进来一件，预览就跟着换过去。模型的正文永远在组外
- * （见 Parts 的归组规则），那才是用户要直接读的话。
- *
- * 标题里的「提示词」只在组里真有模块或注入时才写：常驻一个用不上的词，等于把
- * 「这一步是什么」这件事说糊（模块本来就是低频的十几条之一）。
- */
-function ProcessGroup({ items }: { items: ProcessPart[] }) {
-  const { open, shown, toggle } = useFold()
-  const last = items && items.length > 0 ? items[items.length - 1] : undefined
-  const hasPrompt = items?.some((p) => p.type === 'prompt-module' || p.type === 'inject') ?? false
-  /**
-   * 预览不进 useMemo：流式时 applyEvent 是**原地改 part 对象**的（setStreaming 只换
-   * 数组壳，对象身份不变），认对象会让预览冻在第一帧——思考在长，组上却看不见。
-   * lastLineOf 只扫末尾一个窗口，每次渲染现算也花不了几个钱。
-   */
-  const tail =
-    !last
-      ? ''
-      : last.type === 'thinking'
-        ? lastLineOf((last as any).text || (last as any).delta || '') || '…'
-        : last.type === 'prompt-module'
-          ? t('提示词模块 · {0}', promptModuleTitleOf(last.key) ?? last.key)
-          : last.type === 'inject'
-            ? last.label
-            : last.type === 'channel-message'
-              ? t('通道消息 · {0}', lastLineOf(last.text))
-              : toolLabel(last.name, last.args)
-
-  return (
-    <div className="border-b border-line pb-2">
-      <button
-        type="button"
-        onClick={toggle}
-        className="flex w-full items-center gap-1.5 text-left text-[12.5px] text-ink-faint transition hover:text-ink-soft"
-      >
-        {/* 折叠指示：与思考气泡、工具气泡同一套 chevron 词汇 */}
-        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-        <span className="shrink-0">
-          {hasPrompt ? t('思考、工具与提示词 · {0} 步', items.length) : t('思考与工具 · {0} 步', items.length)}
-        </span>
-        {!open && (
-          /*
-            一行预览，看的是组里最后一件。靠 CSS 贴右端而不是 useLayoutEffect 里写
-            scrollLeft = scrollWidth：后者每挂一个气泡就强制一次整页排版，justify-end +
-            overflow-hidden 让它在布局阶段就贴到右端——溢出到左边的那截正好被裁掉，
-            效果一样，一分钱不花。
-          */
-          <span className="flex min-w-0 flex-1 justify-end overflow-hidden">
-            <span className="shrink-0 whitespace-nowrap opacity-75">{tail}</span>
-          </span>
-        )}
-      </button>
-      <div className={'moji-fold' + (open ? ' moji-fold-open' : '')}>
-        <div>
-          {shown && (
-            /* pl-3 是展开内容自己的缩进（嵌套的视觉），不是组容器的内边距 */
-            <div className="flex flex-col gap-2 pt-2 pl-3">
-              {items.map((p, i) =>
-                p.type === 'thinking' ? (
-                  <ThinkingBlock key={i} text={p.text} />
-                ) : p.type === 'prompt-module' ? (
-                  <PromptModuleBlock key={'m' + i} part={p} />
-                ) : p.type === 'inject' ? (
-                  <InjectBlock key={'i' + p.id} item={p} />
-                ) : p.type === 'channel-message' ? (
-                  <ChannelMessageBlock key={'d' + p.channelId} part={p} />
-                ) : (
-                  <ToolCard key={p.id || i} part={p} />
-                ),
-              )}
-              <button
-                type="button"
-                onClick={toggle}
-                className="self-start text-[12px] text-ink-faint transition hover:text-ink-soft"
-              >
-                {t('收起')}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/**
- * 思考过程气泡（消息组的嵌套件，也可能落单独立成条）。**无壳**：没有边框与
+ * 思考过程气泡（消息流的嵌套件，也可能落单独立成条）。**无壳**：没有边框与
  * 底色，展开区与收起行之间只靠缩进与一截淡淡的间距分开。收起时露一行预览：
  * **内容的最后一行**，不换行，一直往右滚到最新处。
  *
@@ -560,7 +439,7 @@ function NoticeBlock({
  * 点一下能跳回来。
  *
  * **只有工作流指令才画这一条**（判据见 agent/messageKind）：人格、文档格式、技能库、
- * 提示词模块这些「提示词注入」并进那一轮的过程组，不再挤到这里来——从前它们混在
+ * 提示词模块这些「提示词注入」逐项排在回复里，不再挤到这里来——从前它们混在
  * 一起，几条连着注入时这一行字会被挤出边界（用户报的那个 bug）。
  *
  * **相邻的分界条融成一条**：工作流常连着触发（出卷 → 阅卷），各画各的就是
@@ -697,13 +576,12 @@ function highlightParams(text: string, params: Array<[string, string | number]>)
 /**
  * 动态注入的提示词模块（见 learn/ai/promptModules）在回复**内部**的折叠块。
  *
- * 它与思考、工具调用是同一层——轮次进行中的一个片段，**不分割轮次**，也一起进消息组
- * （见 Parts 与 ProcessGroup）：折叠时一行「提示词模块 · 界面操作 · 已注入上下文」
- * （与消息组同一套 chevron 词汇），展开看注入的全文。透明化是这套机制的立身之本：
+ * 它与思考、工具调用是同一层——轮次进行中的一个片段，**不分割轮次**，也在 Parts 里
+ * 逐项平铺：折叠时一行「提示词模块 · 界面操作 · 已注入上下文」
+ * （与思考 / 工具同一套 chevron 词汇），展开看注入的全文。透明化是这套机制的立身之本：
  * 上下文里被注入了什么，用户随时点开就能看到。
  *
- * 自己**不画**那道下边框：落单时由 Parts 的包裹层给，进组时由组给——同一处边框
- * 画两遍，组里就会多出一道把「过程」切成两截的横线。
+ * 自己**不画**下边框：整段过程已经逐项平铺，行与行之间只靠 Parts 的间距分开。
  */
 function PromptModuleBlock({ part }: { part: Extract<AgentPart, { type: 'prompt-module' }> }) {
   const [open, setOpen] = useState(false)
@@ -734,7 +612,7 @@ function PromptModuleBlock({ part }: { part: Extract<AgentPart, { type: 'prompt-
 }
 
 /**
- * 一条**通道消息**（Work / Agent 通道的跳边界注入，见 learn/roleWork）在过程组里的折叠块。
+ * 一条**通道消息**（Work / Agent 通道的跳边界注入，见 learn/roleWork）的折叠块。
  * 与 PromptModuleBlock 同一副样子：折叠时一行「通道消息 · id · 已注入上下文」，
  * 展开看全文（通道消息本来就是写给角色读的正文）。
  */
@@ -762,7 +640,7 @@ function ChannelMessageBlock({ part }: { part: Extract<AgentPart, { type: 'chann
 }
 
 /**
- * 一条**提示词注入**（人格 / 文档格式 / 技能库 / 提示词模块）在过程组里的折叠块。
+ * 一条**提示词注入**（人格 / 文档格式 / 技能库 / 提示词模块）的折叠块。
  *
  * 与 PromptModuleBlock 是同一副样子、同一个道理：折叠时一行「导师人格 · ADHD 导师 ·
  * 已注入上下文」，展开看注入的全文。区别只在标题来源——模块块查模块表拿标题，
@@ -800,22 +678,42 @@ function InjectBlock({ item }: { item: InjectItem }) {
 /**
  * 「回到最新」：脱离自动滚动后浮在列表右下角，点一下平滑滚到底并恢复跟随。
  *
- * 图标是手画的 inline SVG（不走图标库）：一支回旋镖，去而复返地扎向下方——
- * 与发送、停止那些功能性图标不会看混。
+ * 深色圆钮 + 向下箭头：它是一个「往下走」的动作，箭头比回旋镖更直白。
+ * `unread > 0` 时上方顶一枚数字角标——人往上翻的时候，底下新到了几条要看得见；
+ * 贴着底部（pinned）时调用方不渲染它，所以角标只在真正离开底部时出现。
+ *
+ * 位置由调用方给（`className`）：私聊要避开最右边的消息定位条（right-8），
+ * 群聊没有定位条，贴右边即可（right-4）。
  */
-export function FollowLatestButton({ onClick }: { onClick: () => void }) {
+export function FollowLatestButton({
+  onClick,
+  unread = 0,
+  className = '',
+}: {
+  onClick: () => void
+  /** 底下还没看过的消息条数；0 = 不显角标 */
+  unread?: number
+  /** 定位与间距（absolute / bottom / right 由调用方组合） */
+  className?: string
+}) {
+  const badge = unread > 99 ? '99+' : String(unread)
+  const label = unread > 0 ? t('回到最新消息（{0} 条新消息）', unread) : t('回到最新消息（恢复自动滚动）')
   return (
     <button
       type="button"
+      data-follow-latest
       onClick={onClick}
-      title={t('回到最新消息（恢复自动滚动）')}
-      // right-8 而不是 right-3：最右边那条留给消息定位条，两者别叠在一起
-      className="moji-in-soft absolute bottom-3 right-8 z-10 flex h-8 w-8 items-center justify-center rounded-lg border border-line-strong bg-card/70 text-ink-soft shadow-[0_6px_20px_rgba(31,27,23,0.18)] transition hover:border-seal/50 hover:text-seal"
+      title={label}
+      aria-label={label}
+      className={
+        'moji-in-soft absolute z-20 flex h-10 w-10 items-center justify-center rounded-full bg-ink-strong text-paper shadow-[0_8px_24px_rgba(31,27,23,0.28)] transition hover:bg-ink active:scale-95 ' +
+        className
+      }
     >
       <svg
         viewBox="0 0 24 24"
-        width="17"
-        height="17"
+        width="18"
+        height="18"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.9"
@@ -823,9 +721,17 @@ export function FollowLatestButton({ onClick }: { onClick: () => void }) {
         strokeLinejoin="round"
         aria-hidden="true"
       >
-        <path d="M6.5 4.5c7.5 0 10 3.8 10 10.5" />
-        <path d="M12.2 10.8 16.5 15l4.3-4.2" />
+        <path d="M12 5v13" />
+        <path d="m6.5 12.5 5.5 5.5 5.5-5.5" />
       </svg>
+      {unread > 0 ? (
+        <span
+          data-unread-badge
+          className="absolute -top-2 left-1/2 min-w-[18px] -translate-x-1/2 rounded-full bg-teal-500 px-1 py-[1px] text-center text-[10px] font-semibold leading-[13px] text-white shadow-sm"
+        >
+          {badge}
+        </span>
+      ) : null}
     </button>
   )
 }

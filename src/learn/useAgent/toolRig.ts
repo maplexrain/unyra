@@ -28,7 +28,7 @@ import { isAgentRoleId } from '../../agent/roleWork/types'
 import type { ChannelAskStatus, ChannelMessage, ChannelStamp, ConversationMessage } from '../../agent/types'
 import { ensureRoleConversation, roleConversationsOfGoal } from '../roleWork/roles'
 import { registerAskTimer } from '../roleWork/askTimers'
-import { groupPeer, inboundEnvelope, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
+import { conversationMessageById, groupPeer, inboundEnvelope, outboundEnvelope, peerOf, userPeer } from '../roleWork/channels'
 import { deliverInbound } from '../roleWork/dispatch'
 import { groupSelfMentionError, hasMentionOf, mentionedRoleIdsOf, mentionsUserInGroup, type MentionRole } from '../roleWork/groupTargets'
 import { appendGroupMessage, patchGroupMessage } from '../groupChat'
@@ -227,7 +227,10 @@ export function rigTurnTools(io: {
     ensureRoleConversation: (role, goalId) => ensureRole(role, goalId),
     roleNameOf,
     messageOf: (messageId): ConversationMessage | null =>
-      getLatest().conversations.find((c) => c.id === target.conversationId)?.messages.find((m) => m.id === messageId) ?? null,
+      conversationMessageById(
+        getLatest().conversations.find((c) => c.id === target.conversationId)?.messages ?? [],
+        messageId,
+      ),
     deliveryOf: (messageId) => {
       const conv = getLatest().conversations.find((c) => c.id === target.conversationId)
       // 先找 role 会话消息（work 交付唤醒后的那条 user 消息带 delivery），

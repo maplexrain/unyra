@@ -66,8 +66,8 @@ export const BUILTIN_DOC_COMPONENTS: DocumentComponentDef[] = [
     category: 'layout',
     source: 'builtin',
     slots: [
-      { name: 'left', description: '左栏卡片（属性支持 title, badge, type）' },
-      { name: 'right', description: '右栏卡片（属性支持 title, badge, type）' },
+      { name: 'left', description: '左栏卡片（属性支持 title, badge, type；也可嵌套 #title / #content）' },
+      { name: 'right', description: '右栏卡片（属性支持 title, badge, type；也可嵌套 #title / #content）' },
     ],
     example: `<Compare>
   <div #left title="直觉误区" badge="常见错误" type="warn">认为导数等于 0 的点一定是极值点。</div>

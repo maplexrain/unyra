@@ -155,6 +155,41 @@ describe('RoleChatView', () => {
     host.remove()
   })
 
+  it('用户私聊消息带附件引用时，气泡里画出媒体宫格', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const m: ChannelMessage = {
+      ...channel('c1', 'user', 'in', '用户', '这张图里是什么？'),
+      attachments: {
+        images: [
+          {
+            id: 'img-1',
+            rel: 'docs/高等数学/static/img-1.png',
+            name: '截图',
+            mime: 'image/png',
+            bytes: 1234,
+          },
+        ],
+      },
+    }
+    act(() => {
+      root.render(
+        createElement(RoleChatView, {
+          channels: [m],
+          agentName: '导师龟',
+          agentVoice: 'tutor',
+        }),
+      )
+    })
+    expect(host.querySelector('button[title*="截图"]')).not.toBeNull()
+    expect(host.textContent).toContain('这张图里是什么？')
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
   it('work 内嵌窗口挂在消息流最底部，不再单独渲染交付气泡', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)

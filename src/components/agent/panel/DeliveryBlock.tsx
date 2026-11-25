@@ -16,6 +16,8 @@ import { FilePenLine, FilePlus2, FileX2, Link2, PackageCheck } from 'lucide-reac
 import { hasDelivery, type DeliveryAction, type DeliveryFile, type DeliveryRecord } from '../../../agent/delivery'
 import { openChipRef } from '../../../lib/docChip'
 import { openWebLink } from '../../../lib/externalLink'
+import { findSuperDocEntity } from '../../../learn/detached'
+import { liveLearnStore } from '../../../learn/store/live'
 import { t, useLocale } from '../../../i18n'
 
 /** 行首的小图标：一眼分清新增 / 修改 / 删除 */
@@ -27,6 +29,27 @@ function ActionIcon({ action }: { action: DeliveryAction }) {
 
 const actionLabel = (action: DeliveryAction): string =>
   action === 'created' ? t('新增') : action === 'deleted' ? t('删除') : t('修改')
+
+/** 超级文档 id 是 uuid；节点 id 也是 uuid，先按超级文档反查，再按节点兜底 */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function superDocOf(path: string) {
+  const p = path.replace(/\\/g, '/').trim()
+  if (!UUID_RE.test(p)) return null
+  const store = liveLearnStore()
+  return store ? findSuperDocEntity(store, p) : null
+}
+
+/**
+ * 交付行显示的落点名：超级文档 uuid 不是给人看的，反查标题；查不到就退回交付时
+ * 记下的 note（模型通常把标题写在 note 里），最后才是原始 path。
+ */
+function labelOf(file: DeliveryFile): string {
+  const doc = superDocOf(file.path)
+  if (doc) return doc.doc.name
+  const base = file.path.replace(/\\/g, '/').trim().split('/').pop() ?? file.path
+  return UUID_RE.test(base) && file.note ? file.note : file.path
+}
 
 /** 来源行右端挂个域名，比整条 URL 好认，也不会把标题挤没 */
 function hostOf(url: string): string {
@@ -59,6 +82,23 @@ function openDelivered(
   const p = file.path.replace(/\\/g, '/').trim()
   if (!p) return
   const goalId = file.goalId || fallbackGoalId
+
+  /*
+    超级文档：交付账里存的是实验 uuid（见 workflowsGuide 的 superlab 段），不是节点
+    文档路径。按 uuid 反查宿主节点与标题，走 super 型 chip 直接开那篇文档；
+    游离（没有宿主）的超级文档没有可落的页签，保持可显示标题、点了不误开别的文档。
+  */
+  const superDoc = superDocOf(p)
+  if (superDoc) {
+    if (!superDoc.hostId) return
+    openChipRef({
+      type: 'super',
+      nodeId: superDoc.hostId,
+      name: superDoc.doc.name,
+      goalId: superDoc.goalId || goalId,
+    })
+    return
+  }
 
   // 1. 磁盘绝对路径：交给本地文件打开器
   const isAbs = /^[a-zA-Z]:[/\\]|^[/\\]{2}|^\//.test(p)
@@ -133,25 +173,28 @@ export const DeliveryBlock = memo(function DeliveryBlock({
             </span>
           </div>
           <ul>
-            {delivery.files.map((f) => (
-              <li key={'f:' + f.path} className="flex min-w-0 items-center">
-                <button
-                  type="button"
-                  onClick={() => openDelivered(f, goalId, onOpenFile)}
-                  title={f.path}
-                  aria-label={`${actionLabel(f.action)}：${f.path}`}
-                  className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-[11.5px] leading-5 text-ink-soft transition hover:text-ink"
-                >
-                  <ActionIcon action={f.action} />
-                  <span className="min-w-0 flex-1 truncate">{f.path}</span>
-                  {f.note && (
-                    <span className="max-w-[45%] min-w-0 shrink-0 truncate text-ink-faint" title={f.note}>
-                      {f.note}
-                    </span>
-                  )}
-                </button>
-              </li>
-            ))}
+            {delivery.files.map((f) => {
+              const label = labelOf(f)
+              return (
+                <li key={'f:' + f.path} className="flex min-w-0 items-center">
+                  <button
+                    type="button"
+                    onClick={() => openDelivered(f, goalId, onOpenFile)}
+                    title={f.path}
+                    aria-label={`${actionLabel(f.action)}：${label}`}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-[11.5px] leading-5 text-ink-soft transition hover:text-ink"
+                  >
+                    <ActionIcon action={f.action} />
+                    <span className="min-w-0 flex-1 truncate">{label}</span>
+                    {f.note && f.note !== label && (
+                      <span className="max-w-[45%] min-w-0 shrink-0 truncate text-ink-faint" title={f.note}>
+                        {f.note}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              )
+            })}
           </ul>
         </section>
       )}

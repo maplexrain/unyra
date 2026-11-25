@@ -48,7 +48,7 @@ import {
   setRoleWorkDispatcher,
   takeChannelInjection,
 } from '../roleWork/dispatch'
-import { inboundMessage } from '../roleWork/channels'
+import { inboundMessage, withUserEnvelopeAttachments } from '../roleWork/channels'
 import { pauseAskTimer, resumeAskTimer } from '../roleWork/askTimers'
 import { useAgentSlots } from './slots'
 import { useAgentSession } from './session'
@@ -288,10 +288,16 @@ export function useAgent(opts: {
       wfParams?: Record<string, string | number>,
       /** 这条用户消息的来源通道（用户 / agent / work），写进消息后由 history 补时间戳 */
       channel?: ChannelStamp,
+      /**
+       * 已经落过盘、只带引用的附件（群聊 / 渠道入站走这里）：
+       * 不再转存，直接把引用并进这一轮的用户消息。字节留在资源库，role 的历史里
+       * 只留元信息，work 拿 messageId 时才读内容。
+       */
+      known?: { images?: MessageImage[]; files?: MessageFile[] },
     ) => {
       const trimmed = text.trim()
       // 与 runTurn 同一道门：纯图片/纯文件（无字）放行——图片转存与消息组装都在后面
-      if (!trimmed && !(pending?.length || files?.length)) return
+      if (!trimmed && !(pending?.length || files?.length || known?.images?.length || known?.files?.length)) return
       const settings = loadAiSettings()
       const before = getLatest()
       if (!before.goals.some((g) => g.id === target.goalId)) return
@@ -314,11 +320,11 @@ export function useAgent(opts: {
       const allImages = [...(pending ?? []), ...imageFiles]
       const attached = allImages.length
         ? await transferPendingImages(getLatest, set, target.goalId, allImages)
-        : { images: [] as MessageImage[], error: undefined }
+        : { images: known?.images ?? ([] as MessageImage[]), error: undefined }
       const docFiles = (files ?? []).filter((x) => !x.image)
       const attachedFiles = docFiles.length
         ? await transferPendingFiles(getLatest, set, target.goalId, docFiles)
-        : { files: [] as MessageFile[], error: undefined }
+        : { files: known?.files ?? ([] as MessageFile[]), error: undefined }
       if (attachedFiles.error) onNoticeRef.current?.(attachedFiles.error)
 
       /**
@@ -344,6 +350,13 @@ export function useAgent(opts: {
       // 的固化与 inflight 标记）整段在 assembleTurnEntry；这里只接回组装好的会话并落库。
       const entry = assembleTurnEntry({ trimmed, hidden, mark, wfParams, context, quote, attached, attachedFiles, assistantId, voice, conv, ...(channel ? { channel } : {}) })
       conv = entry.conv
+      /**
+       * 私聊页只读 channels，不读 messages：用户自己发的图片/文件在进入这一轮前只是
+       * PendingImage / PendingFile（还没有资源库引用），所以 AgentSlot 建 user 信封时
+       * 只能先写文字。转存完成后把同一枚信封补上 attachments，气泡才会画出宫格；
+       * 纯附件消息也靠这一步从「空信封」变成可见消息。
+       */
+      conv = withUserEnvelopeAttachments(conv, channel, attached.images, attachedFiles.files)
       // 工作流触发时随指令注入的规程模块（登记工作流的 prompt 字段）：作为隐藏
       // assistant 声明插在当轮指令之前——声明归 assistant 边、指令归 user（见
       // promptModuleMessage 的分工说明）。同一上下文同 key 只注一次，压缩折掉后自动补回。
@@ -546,13 +559,15 @@ export function useAgent(opts: {
       wfParams?: Record<string, string | number>,
       /** 用户消息的来源通道（见 runTurnUnchecked 同名参数） */
       channel?: ChannelStamp,
+      /** 已经落过盘的附件引用（群聊 / 渠道入站；见 runTurnUnchecked 同名参数） */
+      known?: { images?: MessageImage[]; files?: MessageFile[] },
     ) => {
       /*
        * 空文本 + 带附件（纯图片 / 纯文件）也是合法消息：气泡（MessageBubble 只在
        * 有字时才画文字泡）与历史组装（agent/history 只在 context 有值时才带）都为
        * 「只发图」留好了位置——门只拦「什么都没有」的那条。
        */
-      if (!text.trim() && !(pending?.length || files?.length)) return
+      if (!text.trim() && !(pending?.length || files?.length || known?.images?.length || known?.files?.length)) return
       if (!hasApiKey(loadAiSettings())) {
         if (!hidden) onNeedKeyRef.current()
         return
@@ -567,7 +582,7 @@ export function useAgent(opts: {
       chain.set(target.conversationId, ticket)
       try {
         if (prev) await prev
-        await runTurnUnchecked(target, text, hidden, context, quote, pending, files, mark, isCompactTurn, modules, wfParams, channel)
+        await runTurnUnchecked(target, text, hidden, context, quote, pending, files, mark, isCompactTurn, modules, wfParams, channel, known)
       } finally {
         release()
         if (chain.get(target.conversationId) === ticket) chain.delete(target.conversationId)
@@ -809,6 +824,9 @@ export function useAgent(opts: {
           undefined,
           undefined,
           req.stamp,
+          req.images?.length || req.files?.length
+            ? { ...(req.images?.length ? { images: req.images } : {}), ...(req.files?.length ? { files: req.files } : {}) }
+            : undefined,
         )
       },
       appendChannel: (convId, envelope) => {
