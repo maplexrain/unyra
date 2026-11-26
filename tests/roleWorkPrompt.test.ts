@@ -9,10 +9,10 @@ describe('role / work 对外一体与汇报纪律', () => {
   it('role 共同提示词要求按团队整体回答能力，不甩内部层级、不先否认再改口', () => {
     const text = buildTeacherSystem()
     expect(text).toContain('对外只有一个「我」')
-    expect(text).toContain('不要先否定能力、下一轮再改口')
-    expect(text).toContain('我看一下 / 我来读取')
+    expect(text).toContain('勿先否定再改口')
+    expect(text).toContain('我看一下/我来读取')
     expect(text).toContain('这项我暂时做不了')
-    expect(text).toContain('不解释是 role 还是 work 缺能力')
+    expect(text).toContain('绝不提 role / work / 后台 / 转交')
     expect(text).not.toContain('我这边没有 xx 工具可调用')
     expect(text).not.toContain('工具在 work 层')
   })
@@ -23,20 +23,20 @@ describe('role / work 对外一体与汇报纪律', () => {
   })
 
   it('role 对用户汇报要求一两句话，细节放 detail', () => {
-    expect(buildTeacherSystem()).toContain('给用户的汇报必须短')
+    expect(buildTeacherSystem()).toContain('汇报必须短')
     expect(buildTeacherSystem()).toContain('一两句话')
     expect(buildFreeChatSystem()).toContain('text 控制在一两句话')
   })
 
   it('role 遇到超出职责的问题先跨 role/work 对齐上下文，不凭当前记忆硬答', () => {
     const text = buildTeacherSystem()
-    expect(text).toContain('超出职责就先去对齐上下文')
-    expect(text).toContain('严禁凭记忆硬答')
-    expect(text).toContain('私聊来源走 agent 通道')
-    expect(text).toContain('群聊来源在群里')
+    expect(text).toContain('对齐上下文，严禁硬答')
+    expect(text).toContain('严禁编造')
+    expect(text).toContain('仅用户私聊来源的跨 role 协作才走')
+    expect(text).toContain('群聊')
     expect(text).toContain('api.work.status')
     expect(text).toContain('只补上下文、不要执行新任务')
-    expect(text).toContain('拿到对方的回复后再回答用户')
+    expect(text).toContain('等待回复时先回用户')
     expect(text).toContain('我去确认一下，稍等')
   })
 

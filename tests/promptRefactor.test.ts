@@ -23,12 +23,9 @@ describe('提示词语义分区', () => {
       const text = buildVoiceSystem(voice)
       for (const tag of [
         'agent_common',
-        'execution_rules',
-        'sandbox_rules',
-        'general_discipline',
-        'communication_rules',
         'collaboration_rules',
         'channel_rules',
+        'compaction_rules',
         'tool_capabilities',
         'identity',
         'duties',
@@ -51,9 +48,9 @@ describe('提示词语义分区', () => {
 
 describe('机械纪律去重', () => {
   for (const voice of VOICES) {
-    it(voice + ' 不重复抄写「派完立即回执」', () => {
+    it(voice + ' 不重复抄写「派完即回执」', () => {
       const text = buildVoiceSystem(voice)
-      expect(text.split('派完立即回执').length - 1).toBe(1)
+      expect(text.split('派完即回执').length - 1).toBe(1)
     })
   }
 })

@@ -14,23 +14,13 @@
  */
 
 import { type AgentVoice } from '../../agent/agentProfile'
-import {
-  ALL_AGENTS_COMMON_PREFIX,
-  SHARED_AGENT_PREFIX,
-  SHARED_DISCIPLINE,
-} from './agentSharedPrefix'
+import { AGENT_COMMON_GUIDE } from './agentCommonGuide'
+import { ALL_AGENTS_COMMON_PREFIX, SHARED_AGENT_PREFIX } from './agentSharedPrefix'
 import { apiPromptPartsFor, workDelegationSectionFor } from './apiPromptSections'
-import {
-  APP_DATA_GUIDE,
-  EXECUTE_BASE_GUIDE,
-  SANDBOX_DISCIPLINE_GUIDE,
-  SEEK_HELP_GUIDE,
-} from './executeGuide'
 import { FREE_CHAT_API_SECTION, FREE_CHAT_BOUNDARY, FREE_CHAT_IDENTITY } from './freeChatCopy'
-import { ROLE_CHANNEL_GUIDE, ROLE_WORK_GUIDE } from './roleWorkGuide'
+import { ROLE_COMPACTION_GUIDE, ROLE_CHANNEL_GUIDE, ROLE_WORK_GUIDE } from './roleWorkGuide'
 import { TURTLE_CLAN_GUIDE } from './turtleClan'
 import { voiceCopyOf } from './voiceCopy'
-import { compactWorkflowSection } from './workflowsGuide'
 import { promptBlock } from './promptFrames'
 import type { AgentProfileId } from '../../agent/agentProfile'
 
@@ -67,21 +57,11 @@ export const COMMON_TURTLE_CLAN_PROMPT = TURTLE_CLAN_GUIDE
 /** 共同提示词：role 层协作总纲与三通道纪律（所有 role 拥有） */
 export const COMMON_TEAM_COLLABORATION_PROMPT = ROLE_WORK_GUIDE + '\n\n' + ROLE_CHANNEL_GUIDE
 
-/** 共同提示词：执行沙箱、守门与通用纪律（所有执行声部拥有） */
-export const COMMON_EXECUTION_DISCIPLINE_PROMPT = [
-  EXECUTE_BASE_GUIDE,
-  '',
-  SEEK_HELP_GUIDE,
-  '',
-  APP_DATA_GUIDE,
-  '',
-  SANDBOX_DISCIPLINE_GUIDE,
-  '',
-  SHARED_DISCIPLINE,
-].join('\n')
+/** 共同提示词：执行沙箱、守门、通用纪律与说话方式（所有执行声部拥有） */
+export const COMMON_EXECUTION_DISCIPLINE_PROMPT = AGENT_COMMON_GUIDE
 
 /** 共同提示词：会话压缩规程（所有执行声部拥有） */
-export const COMMON_COMPACT_WORKFLOW_PROMPT = compactWorkflowSection()
+export const COMMON_COMPACT_WORKFLOW_PROMPT = ROLE_COMPACTION_GUIDE
 
 /** 全员共同提示词全文（所有 agent 的起始块，不含任何具体身份） */
 export const COMMON_ALL_AGENTS_PREFIX_PROMPT = ALL_AGENTS_COMMON_PREFIX

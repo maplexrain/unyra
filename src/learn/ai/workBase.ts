@@ -1,8 +1,7 @@
 /**
  * work 基座（唯一来源）：身份、执行纪律、沙箱工具与交付通道。
  *
- * 只给 work 用；role 侧继续复用 EXECUTE_BASE_GUIDE / APP_DATA_GUIDE / SANDBOX_DISCIPLINE_GUIDE
- * 等共同前缀。这里保留 XML 分区，不再拆成多个 section 叠加。
+ * 只给 work 用；role 侧共同前缀见 agentCommonGuide / roleWorkGuide。
  */
 export const WORK_BASE_GUIDE = [
   '<role>',
