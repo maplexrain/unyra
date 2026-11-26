@@ -52,7 +52,7 @@ describe('role 层：只暴露沟通与调度面', () => {
       expect(text).not.toContain('【出卷】试卷命题')
       expect(text).not.toContain('【生成课堂】课堂课件生成')
       expect(text).not.toContain('【修复函数图像】Plot')
-      expect(text).not.toContain('### 结构化教学排版组件')
+      expect(text).not.toContain('### 2. 结构化组件')
       expect(text).not.toContain('```plot')
       expect(text).not.toContain('### 非固定组（本 role 专属）')
     })
@@ -103,11 +103,11 @@ describe('work 层：领域能力、语法与规程都在这里', () => {
   it('排版配方与围栏语法只在内容类 work', () => {
     for (const role of ['tutor', 'examiner', 'designer'] as AgentProfileId[]) {
       const text = buildWorkSystem(role)
-      expect(text).toContain('### 结构化教学排版组件')
+      expect(text).toContain('### 2. 结构化组件')
       expect(text).toContain('```plot')
     }
     for (const role of ['dispatcher', 'researcher', 'fixer'] as AgentProfileId[]) {
-      expect(buildWorkSystem(role)).not.toContain('### 结构化教学排版组件')
+      expect(buildWorkSystem(role)).not.toContain('### 2. 结构化组件')
     }
   })
 })

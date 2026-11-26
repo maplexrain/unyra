@@ -164,8 +164,11 @@ describe('work 系统提示词（紧凑静态注入；role 不再背执行细节
   })
 
   it('排版配方与语法指南在场（component 围栏与动态 api 版）', () => {
-    expect(system).toContain('文档排版与视觉呈现')
+    expect(system).toContain('排版层级与基础规范')
     expect(system).toContain('```component')
+    // 旧排版指南已整体替掉，不能再与新 content_layout 并存
+    expect(system).not.toContain('### 结构化教学排版组件')
+    expect(system).not.toContain('## 文档排版与视觉呈现')
     expect(system).toContain('api.design.component.list')
     expect(system).toContain('```plot')
     expect(system).toContain('```quote')
@@ -204,7 +207,7 @@ describe('work 系统提示词（紧凑静态注入；role 不再背执行细节
     for (const sys of [tutor, examiner, designer]) {
       expect(sys).toContain('```component')
       expect(sys).toContain('api.design.component.list')
-      expect(sys).toContain('文档排版与视觉呈现')
+      expect(sys).toContain('排版层级与基础规范')
     }
   })
 })

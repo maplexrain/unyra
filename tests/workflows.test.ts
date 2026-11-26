@@ -286,7 +286,7 @@ describe('思考档位唯一性（三态配置已删）', () => {
     // 内置条目一律不带 promptModule（规程全在 WORKFLOWS_GUIDE，2026-11 全量静态重构）
     for (const r of rows) expect('promptModule' in r).toBe(false)
     // 排版配方（doc-html）随系统提示词在场——首份文档就不是纯文本草稿（v0.5.8 踩过）
-    expect(WORKFLOWS_GUIDE).toContain('文档排版与视觉呈现')
+    expect(WORKFLOWS_GUIDE).toContain('排版层级与基础规范')
     // workflowModules 只服务登记工作流的 prompt 字段；内置条目现在是空
     const teach = rows.find((r) => r.id === 'teach-node')!
     expect(workflowModules(teach)).toEqual([])

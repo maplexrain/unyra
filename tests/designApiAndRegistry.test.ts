@@ -169,7 +169,7 @@ describe('内容生成声部（CONTENT_VOICES）排版指南与 API 持面一致
     for (const prompt of [tutor, examiner, designer]) {
       expect(prompt).toContain('```component')
       expect(prompt).toContain('api.design.component.list')
-      expect(prompt).toContain('文档排版与视觉呈现')
+      expect(prompt).toContain('排版层级与基础规范')
     }
   })
 
