@@ -84,9 +84,9 @@ describe('派生：交替链（子级接文档卡，原有形态原样保留）'
     expect(x('r')).toBeLessThan(x(outlineUuid('r')))
     expect(x(outlineUuid('r'))).toBeLessThan(x('a'))
     expect(x('a')).toBeLessThan(x(outlineUuid('a')))
-    // 目标项 childId = 文档卡 uuid；入口徽章在根文档卡上
+    // 目标项 childId = 文档卡 uuid；根文档只是一份普通文档，没有入口徽章
     expect(view.cards.find((c) => c.uuid === outlineUuid('r'))!.slots!.find((s) => s.key === 'jichu')!.childId).toBe('a')
-    expect(view.cards.find((c) => c.uuid === 'r')!.entry).toBe(true)
+    expect(view.cards.find((c) => c.uuid === 'r')!.entry).toBeUndefined()
   })
 })
 

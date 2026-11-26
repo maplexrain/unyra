@@ -73,8 +73,8 @@ export interface WorkTimelineMessage {
   workName: string
   ts: number
   /**
-   * work 会话内的消息序号：运行中补的任务在发送时刻可能早于上一条 assistant 的
-   * 落库时刻，但真实顺序是 assistant 先、任务后，排序时优先看它。
+   * work 会话内的消息序号：调用方保留的稳定序号；时间线展示严格按 ts 平铺，
+   * 不再用 order 修正排序（同一秒内才作为稳定的同 ts 次序）。
    */
   order: number
 }

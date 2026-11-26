@@ -142,6 +142,12 @@ export interface ChannelMessage {
   from: ChannelPeer
   to: ChannelPeer
   /**
+   * 这条消息绑定的 work 运行状态（work.send({ bindMessageId }) 写入）。
+   * 绑定是消息级、可选的：不带就不显示。宿主在 work 启动/收口/停止/出错时
+   * 原地 patch 这份快照，界面据此在气泡下方挂一枚实时状态组件。
+   */
+  work?: WorkBinding
+  /**
    * 消息正文。单独一行 `---` 可分隔简短 / 详细：分隔线前是口语化短汇报，
    * 后面是详细改动、索引名、标识符与专业说明；聊天层默认只显示短汇报。
    */
@@ -154,8 +160,8 @@ export interface ChannelMessage {
   ask?: ChannelAsk
   /** work.send / chat.send 引用转发的用户消息 id */
   quoteMessageId?: string
-  /** 群聊里被 @ 的收件人（只抄送上下文，不激活；一条消息可点名多位） */
-  mentions?: ChannelPeer[]
+  /** 抄送对象：只同步上下文，不激活、不跑新一轮（一条消息可抄送多位） */
+  cc?: ChannelPeer[]
   /**
    * 本条消息唯一被激活的 mention。一条消息最多一个；只有它会在送达之外启动一轮。
    * 用户消息的首个 @ 由宿主解析成 mention，agent 侧显式传 `mention`。
@@ -529,6 +535,30 @@ export interface Conversation {
  * 只接 role 的任务并把结果用 api.host.send 交回去。上下文独立，生命周期 = 所属 role 对话。
  */
 export type WorkStatus = 'idle' | 'running' | 'interrupted' | 'stopped' | 'error'
+
+/**
+ * 挂在通道消息上的 work 运行快照。
+ *
+ * 只做展示，不反过来驱动 work：真正的状态源仍是 WorkSession。宿主在启动、执行
+ * 工具、收口、停止、删除这些节点上 patch 这份快照，让用户可以在发起任务的那条
+ * 消息下面就看见进度，而不必再翻到 work 列表。
+ */
+export interface WorkBinding {
+  workId: string
+  workName: string
+  roleId?: AgentProfileId
+  status: WorkStatus
+  /** 已完成轮次（收口时更新） */
+  runs: number
+  /** 已完成轮次累计时长；running 时界面再叠加当前这段 */
+  runtimeMs: number
+  /** 当前这段运行的开始时刻（running 时有） */
+  startedAt?: number
+  lastActiveAt?: number
+  /** 最近一次 execute 的标题（实时活动） */
+  current?: string
+  lastIssue?: string
+}
 
 /** work.status 的过程轨迹：只记 execute 的标题（description），不存 body / args */
 export interface WorkExecuteTrace {

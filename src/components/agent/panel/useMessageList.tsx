@@ -148,18 +148,11 @@ export function useMessageList({
   resetKey = '',
 }: MessageListProps) {
   /*
-   * 只挂最近一屏：完整 messages 仍在 store 里（搜索/定位/导出照旧），
-   * 但 DOM 里不再一次铺几万条。滚动到顶部附近再由哨兵补上一页。
-   */
-  const { start, hasOlder, sentinelRef } = useRecentWindow(messages.length, resetKey)
-  const visibleMessages = useMemo(() => messages.slice(start), [messages, start])
-  const adjustedSummaryStart = Math.max(0, summaryStart - start)
-  /*
    * 分段只在 messages 变了之后重算：流式写作时 messages 身份不变（正在长的那一段
    * 走 streaming，见 AgentPanel），于是 prelude 数组的身份也稳定——memo 过的消息行
    * 不会因为每个 chunk 重渲染一次而被打掉。
    */
-  const { segments, pending } = useMemo(() => toSegments(visibleMessages), [visibleMessages])
+  const { segments, pending } = useMemo(() => toSegments(messages), [messages])
   /** work 消息只做展示：过滤隐藏项，按时间戳插进 role 消息之间，绝不写回 messages。 */
   const workRows = useMemo(
     () => (mind ? workMessages.filter(({ m }) => !m.hidden) : []),
@@ -167,49 +160,37 @@ export function useMessageList({
   )
   const timeline = useMemo(() => {
     /*
-     * 同一条 work 的可见消息必须保持会话数组顺序：运行中补派的任务在发送时就带了 ts，
-     * 但它要等当前 assistant 到跳边界落库之后才进 work.messages，原始 ts 可能早于
-     * 上一条 assistant。给每条 work 消息算一个「不倒退」的排序时刻：组内按 order，
-     * 排序值取 max(原始 ts, 上一条排序值 + 1)。raw ts 仍然留在 data-mind-ts 上，
-     * 这里只改时间线位置，不改时间戳本身。
+     * 严格按原始 ts 混排：work 与 role 共用一条时间线，不按 work 分组、也不为保持
+     * 某个 work 的会话顺序而改写排序值。同 ts 时按进入时间线的先后稳定排。
      */
-    const workSortTs = new Map<WorkTimelineMessage, number>()
-    const byWork = new Map<string, WorkTimelineMessage[]>()
-    for (const item of workRows) {
-      const list = byWork.get(item.workId)
-      if (list) list.push(item)
-      else byWork.set(item.workId, [item])
-    }
-    for (const list of byWork.values()) {
-      list.sort((a, b) => a.order - b.order || a.ts - b.ts)
-      let cursor = Number.NEGATIVE_INFINITY
-      for (const item of list) {
-        cursor = Math.max(item.ts, cursor + 1)
-        workSortTs.set(item, cursor)
-      }
-    }
-    const items: TimelineItem[] = segments.map((seg, index) => ({
-      kind: 'segment',
-      key: seg.kind === 'marks' ? 'marks:' + seg.msgs[0].id : 'row:' + seg.m.id,
-      ts: (seg.kind === 'marks' ? seg.msgs[0]?.ts : seg.m.ts) ?? 0,
-      seq: index,
-      seg,
-    }))
+    const items: TimelineItem[] = []
+    segments.forEach((seg, index) => {
+      items.push({
+        kind: 'segment',
+        key: seg.kind === 'marks' ? 'marks:' + seg.msgs[0].id : 'row:' + seg.m.id,
+        ts: (seg.kind === 'marks' ? seg.msgs[0]?.ts : seg.m.ts) ?? 0,
+        seq: index,
+        seg,
+      })
+    })
     workRows.forEach((item, index) => {
       items.push({
         kind: 'work',
         key: 'work:' + item.workId + ':' + item.m.id,
-        ts: workSortTs.get(item) ?? item.ts,
+        ts: item.ts,
         seq: segments.length + index,
         item,
       })
     })
     return items.sort((a, b) => a.ts - b.ts || a.seq - b.seq)
   }, [segments, workRows])
-  /**
-   * 空态随 role：copy 表按 emptyVoice 取（缺省 = 导师口径，老调用方零改动）；
-   * 建议只有可交流 role 才有（工作流驱动的 role 输入区是锁着的，建议点不了）。
+  /*
+   * 只挂最近一屏：完整 messages / workMessages 仍在 store 里（搜索/定位/导出照旧），
+   * 但 DOM 里不再一次铺几万条。思维列表与群聊共用同一套窗口策略，窗口单位是
+   * 「已经混排好的时间线条目」——这样 work 消息再多也只会挂最近一页。
    */
+  const { start, hasOlder, sentinelRef } = useRecentWindow(timeline.length, resetKey)
+  const visibleTimeline = timeline.slice(start)
   // free 标志优先：固定聊天页签的空态永远是自由对话口径（emptyVoice 只是补充）
   const emptyCopy = EMPTY_COPY[free ? 'free' : (emptyVoice ?? 'tutor')] ?? EMPTY_COPY.tutor
   const suggestions = useMemo(() => emptyCopy.suggestions ?? [], [emptyCopy])
@@ -266,7 +247,7 @@ export function useMessageList({
         <CompactionDivider summary={summary} open={summaryOpen} onToggle={() => setSummaryOpen((v) => !v)} />
       )}
 
-      {timeline.map((item) => {
+      {visibleTimeline.map((item) => {
         if (item.kind === 'work') {
           return (
             <MindMessageRow
@@ -297,7 +278,7 @@ export function useMessageList({
             <HiddenDivider
               key={item.key}
               msgs={seg.msgs}
-              faded={seg.start < adjustedSummaryStart}
+              faded={seg.start < summaryStart}
               flash={seg.msgs.some((m) => m.id === flashId)}
               msgRefs={msgRefs}
             />
@@ -307,7 +288,7 @@ export function useMessageList({
         const rowProps = {
           m,
           prelude: seg.prelude,
-          faded: seg.at < adjustedSummaryStart,
+          faded: seg.at < summaryStart,
           flash: flashId === m.id,
           msgRefs,
           onResumeNotice,

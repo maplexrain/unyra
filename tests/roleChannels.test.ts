@@ -225,8 +225,8 @@ describe('chat.send 三通道', () => {
     expect(await chat.send({ channel: 'user', text: '偷偷说', silent: true })).toMatchObject({ ok: false })
   })
 
-  it('group 通道：把 to 并进 mentions 交给宿主，不落普通私聊流水', async () => {
-    let passed: { text: string; mentions?: string[] } | null = null
+  it('group 通道：把 to 并进 cc 交给宿主，不落普通私聊流水', async () => {
+    let passed: { text: string; cc?: string[] } | null = null
     const { chat, appended } = makeChat({
       sendToGroup: (input) => {
         passed = input
@@ -235,12 +235,12 @@ describe('chat.send 三通道', () => {
     })
     const r = await chat.send({ channel: 'group', to: 'examiner', text: '@做题龟 出三道题' })
     expect(r).toMatchObject({ ok: true, channel: 'group' })
-    expect(passed).toMatchObject({ text: '@做题龟 出三道题', mentions: ['examiner'] })
+    expect(passed).toMatchObject({ text: '@做题龟 出三道题', cc: ['examiner'] })
     expect(appended).toHaveLength(0)
   })
 
-  it('group 通道：mentions 可多位但只是抄送；mention 单独控制唯一激活目标', async () => {
-    let passed: { mentions?: string[]; mention?: string } | null = null
+  it('group 通道：cc 可多位但只是抄送；mention 单独控制唯一激活目标', async () => {
+    let passed: { cc?: string[]; mention?: string } | null = null
     const { chat } = makeChat({
       sendToGroup: (input) => {
         passed = input
@@ -250,12 +250,12 @@ describe('chat.send 三通道', () => {
     expect(
       await chat.send({
         channel: 'group',
-        mentions: ['tutor', 'designer'],
+        cc: ['tutor', 'designer'],
         mention: 'designer',
         text: '@导师龟 @设计龟 一起看，@设计龟 先出方案',
       }),
     ).toMatchObject({ ok: true })
-    expect(passed).toMatchObject({ mentions: ['tutor', 'designer'], mention: 'designer' })
+    expect(passed).toMatchObject({ cc: ['tutor', 'designer'], mention: 'designer' })
   })
 
   it('group 通道：silent 不能带 mention，避免静默汇报偷偷激活别人', async () => {
@@ -294,7 +294,7 @@ describe('chat.send 三通道', () => {
 
 
   it('group 通道：末尾 @名字 的语义空格不被 chat.send 裁掉', async () => {
-    let passed: { text: string; mentions?: string[] } | null = null
+    let passed: { text: string; cc?: string[] } | null = null
     const { chat } = makeChat({
       sendToGroup: (input) => {
         passed = input
@@ -326,7 +326,7 @@ describe('chat.send 三通道', () => {
   })
 
   it('group 通道：to 写 group 表示只回群里，不把它当成非法目标', async () => {
-    let passed!: { text: string; mentions?: string[] }
+    let passed!: { text: string; cc?: string[] }
     const { chat } = makeChat({
       sendToGroup: (input) => {
         passed = input
@@ -336,7 +336,7 @@ describe('chat.send 三通道', () => {
     const r = await chat.send({ channel: 'group', to: 'group', text: '@导师龟 我收到了' })
     expect(r).toMatchObject({ ok: true, channel: 'group' })
     expect(passed).toMatchObject({ text: '@导师龟 我收到了' })
-    expect(passed.mentions).toBeUndefined()
+    expect(passed.cc).toBeUndefined()
   })
 
   it('group 通道：role 会话不挂在目标上时拒绝', async () => {

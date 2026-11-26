@@ -15,7 +15,6 @@ import { memo, useCallback, useMemo } from 'react'
 import { FolderTree, LayoutGrid } from 'lucide-react'
 import type { KnowledgeNode, LearnStore } from '../../learn/types'
 import type { StructureMap } from '../../learn/structure'
-import { nodeById, normalizeKey } from '../../learn/graph'
 import { t } from '../../i18n'
 import type { ExamActions, NodeDocActions } from './explorer/types'
 import { StructureCanvas, type StructureCanvasProps } from './structure/StructureCanvas'
@@ -94,6 +93,13 @@ export default memo(function OutlineView({
   const goalId = propGoalId || node?.goalId || ''
   const saved = store.structure?.[goalId]
   const viewMode = saved?.viewMode === 'tree' ? 'tree' : 'graph'
+  /** 本目标全部文档节点：大纲树只能拿它们当根 */
+  const docNodes = useMemo(() => store.nodes.filter((n) => n.goalId === goalId), [store.nodes, goalId])
+  const treeRoot = useMemo(() => {
+    const id = saved?.treeRootId
+    const hit = id ? docNodes.find((n) => n.id === id) : undefined
+    return hit ?? null
+  }, [docNodes, saved?.treeRootId])
 
   const change = useCallback(
     (next: StructureMap) => onChangeStructure(goalId, next),
@@ -102,9 +108,28 @@ export default memo(function OutlineView({
 
   const handleSetViewMode = useCallback(
     (nextMode: 'graph' | 'tree') => {
+      /*
+       * 第一次切到大纲树时：沿用上次选的根；没有就默认当前打开的文档（仍是显式可见的选择，
+       * 左上角选择器随时能换）。两者都没有就不擅自挑根，让界面要求用户选。
+       */
+      const kept = saved?.treeRootId && docNodes.some((n) => n.id === saved.treeRootId) ? saved.treeRootId : undefined
+      const fallback = node && docNodes.some((n) => n.id === node.id) ? node.id : undefined
       onChangeStructure(goalId, {
         ...(saved ?? { version: 2, positions: {} }),
         viewMode: nextMode,
+        ...(nextMode === 'tree' && (kept || fallback) ? { treeRootId: kept || fallback } : {}),
+      })
+    },
+    [goalId, saved, onChangeStructure, docNodes, node],
+  )
+
+  const handlePickTreeRoot = useCallback(
+    (rootId: string) => {
+      if (!rootId) return
+      onChangeStructure(goalId, {
+        ...(saved ?? { version: 2, positions: {} }),
+        viewMode: 'tree',
+        treeRootId: rootId,
       })
     },
     [goalId, saved, onChangeStructure],
@@ -113,32 +138,6 @@ export default memo(function OutlineView({
   const handleToggleViewMode = useCallback(() => {
     handleSetViewMode(viewMode === 'graph' ? 'tree' : 'graph')
   }, [handleSetViewMode, viewMode])
-
-  const goal = store.goals.find((g) => g.id === goalId)
-  const rootNode = useMemo(() => {
-    if (goal?.rootNodeId) {
-      const r = nodeById(store, goal.rootNodeId)
-      if (r) return r
-    }
-    if (node) return node
-    const found = store.nodes.find((n) => n.goalId === goalId)
-    if (found) return found
-    const placeholder: KnowledgeNode = {
-      id: goal?.id ?? goalId,
-      title: goal?.title || goal?.question || t('新目标'),
-      key: normalizeKey(goal?.title || goal?.question || 'goal'),
-      description: '',
-      docs: { teaching: '' },
-      notes: [],
-      annotations: [],
-      status: 'learning',
-      origin: 'user',
-      goalId,
-      createdAt: goal?.createdAt ?? Date.now(),
-      updatedAt: goal?.updatedAt ?? Date.now(),
-    }
-    return placeholder
-  }, [goal, node, store, goalId])
 
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden bg-paper dark:bg-card/30">
@@ -174,17 +173,78 @@ export default memo(function OutlineView({
 
       <div className="relative min-h-0 flex-1">
         {viewMode === 'tree' ? (
-          <MindmapView
-            store={store}
-            node={rootNode}
-            readOnly
-            docs={docs}
-            exams={exams}
-            onOpenNode={(nodeId: string) => docs.onOpenTeach(nodeId)}
-            focusTarget={focusTarget}
-            onFocusHandled={onFocusHandled}
-            onToggleViewMode={handleToggleViewMode}
-          />
+          <>
+            {/* 大纲树的根文档选择器：只认本目标的文档节点，随时可换 */}
+            <div
+              data-tree-root-picker
+              className="absolute top-4 left-4 z-30 flex max-w-[300px] items-center gap-2 rounded-xl border border-line bg-card/90 px-2.5 py-1.5 text-[12px] shadow-sm backdrop-blur"
+            >
+              <FolderTree size={13} className="shrink-0 text-ink-faint" />
+              <span className="shrink-0 text-ink-faint">{t('根文档')}</span>
+              {docNodes.length ? (
+                <select
+                  data-tree-root-select
+                  value={treeRoot?.id ?? ''}
+                  onChange={(e) => handlePickTreeRoot(e.target.value)}
+                  className="min-w-0 max-w-[220px] cursor-pointer truncate bg-transparent font-medium text-ink outline-none"
+                  title={treeRoot?.title || t('选择大纲树的根文档')}
+                >
+                  {!treeRoot && <option value="">{t('选择文档…')}</option>}
+                  {docNodes.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.title || t('未命名文档')}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-ink-faint">{t('目标里还没有文档节点')}</span>
+              )}
+            </div>
+            {treeRoot ? (
+              <MindmapView
+                store={store}
+                node={treeRoot}
+                readOnly
+                docs={docs}
+                exams={exams}
+                onOpenNode={(nodeId: string) => docs.onOpenTeach(nodeId)}
+                focusTarget={focusTarget}
+                onFocusHandled={onFocusHandled}
+                onToggleViewMode={handleToggleViewMode}
+              />
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-8 text-center">
+                <FolderTree size={30} className="text-ink-faint/60" />
+                <div className="text-[13px] font-medium text-ink">
+                  {docNodes.length ? t('选择一份文档作为大纲树的根') : t('这个目标还没有文档节点')}
+                </div>
+                {docNodes.length ? (
+                  <>
+                    <p className="max-w-[360px] text-[12px] leading-relaxed text-ink-faint">
+                      {t('大纲树只画这份文档及其下级；根文档只是当前视图的选择，之后可以随时换成别的文档。')}
+                    </p>
+                    <div className="flex max-h-[50vh] w-full max-w-[440px] flex-col gap-1.5 overflow-auto rounded-xl border border-line bg-card/80 p-2 text-left">
+                      {docNodes.map((n) => (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => handlePickTreeRoot(n.id)}
+                          className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] text-ink transition hover:bg-line/50"
+                        >
+                          <FolderTree size={13} className="shrink-0 text-seal" />
+                          <span className="min-w-0 truncate">{n.title || t('未命名文档')}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="max-w-[360px] text-[12px] leading-relaxed text-ink-faint">
+                    {t('先在拓扑图里新建或导入文档，再切回大纲树选择根文档。')}
+                  </p>
+                )}
+              </div>
+            )}
+          </>
         ) : (
           <StructureCanvas
             store={store}

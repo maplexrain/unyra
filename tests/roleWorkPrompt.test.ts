@@ -48,6 +48,20 @@ describe('role / work 对外一体与汇报纪律', () => {
     expect(text).toContain('建议哪个 role')
   })
 
+  it('role 提示词写入汇报/抄送、群聊三态、交付账与波浪线转义', () => {
+    const text = buildTeacherSystem()
+    expect(text).toContain('汇报与抄送是两件事')
+    expect(text).toContain('直接向用户汇报')
+    expect(text).toContain('cc:["委派方roleId"]')
+    expect(text).toContain('只汇报用户')
+    expect(text).toContain('汇报 + 抄送委派方')
+    expect(text).toContain('纯抄送')
+    expect(text).toContain('主楼与评论串')
+    expect(text).toContain('交付账必须含 `files` + `sources`')
+    expect(text).toContain('整份交付账快照')
+    expect(text).toContain('\\~')
+  })
+
   it('role 看得到 work 的能力面，但明确自己调不到、只能委派', () => {
     const tutor = buildTeacherSystem()
     expect(tutor).toContain('### work 能做什么（只能委派，role 自己调不到）')

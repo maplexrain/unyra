@@ -118,8 +118,10 @@ describe('结构图（v2）：读盘校验', () => {
       version: 2,
       positions: {},
       viewMode: 'tree',
+      treeRootId: ' d1 ',
     })
     expect(mapWithTree.viewMode).toBe('tree')
+    expect(mapWithTree.treeRootId).toBe('d1')
   })
 
   it('v1 卡片表折成 v2 坐标表：d:/o:/e:/entry: 映射，n:/s: 放弃（交给自动铺排）', () => {
@@ -159,15 +161,19 @@ describe('结构图（v2）：读盘校验', () => {
     expect(normalizeStructure({ positions: 'oops' })).toEqual(emptyStructure())
   })
 
-  it('整本账：目标不在的直接丢，空坐标表的也不留', () => {
+  it('整本账：目标不在的直接丢；空坐标表但带视图/树根的仍保留', () => {
     const out = normalizeStructureBook(
       {
         g1: { version: 2, positions: { a: { x: 0, y: 0 } } },
         g2: { version: 2, positions: {} },
         g3: { version: 2, positions: { b: { x: 1, y: 1 } } },
+        g4: { version: 2, positions: {}, viewMode: 'tree' },
+        g5: { version: 2, positions: {}, treeRootId: 'd2' },
+        gone: { version: 2, positions: { c: { x: 2, y: 2 } } },
       },
-      new Set(['g1', 'g2']),
+      new Set(['g1', 'g2', 'g4', 'g5']),
     )
-    expect(Object.keys(out)).toEqual(['g1'])
+    expect(Object.keys(out)).toEqual(['g1', 'g4', 'g5'])
+    expect(out.g5?.treeRootId).toBe('d2')
   })
 })

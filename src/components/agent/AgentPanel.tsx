@@ -31,6 +31,7 @@ import { toolLabel } from './panel/toolLabel'
 import { useComposer } from './panel/useComposer'
 import { useMsgRail } from './panel/useMsgRail'
 import { useScrollFollow } from './panel/useScrollFollow'
+import { setAgentViewMode, useAgentViewMode } from './agentViewMode'
 import { fadeMask, useScrollEdges } from '../../lib/scrollFade'
 import { t, useLocale } from '../../i18n'
 import { focusAgentInput } from '../../lib/agentFocus'
@@ -233,8 +234,8 @@ export default function AgentPanel({
   /** 点开看大图的附件。两种来源各一份状态：已进资源库的气泡图与还在内存里的待发送图 */
   const [preview, setPreview] = useState<PendingImage | null>(null)
   const [bubblePreview, setBubblePreview] = useState<MessageImage | null>(null)
-  /** role 视图分层：chat = 用户视角的对外消息；mind = 全量执行过程（工具、思考、work 通道） */
-  const [viewMode, setViewMode] = useState<'chat' | 'mind'>('chat')
+  /** role 视图分层：全局单例，切换 agent 不重置（见 agentViewMode） */
+  const viewMode = useAgentViewMode()
   /** 右侧状态面板里高亮 / 定位的 work；WorkMenu 点选时写入，不等于展开某个窗口 */
   const [activeWorkId, setActiveWorkId] = useState<string | null>(null)
   /** 上下文压缩后的摘要展开着（消息列表里那块分界线上的「看摘要」） */
@@ -382,8 +383,8 @@ export default function AgentPanel({
     pinned,
     jumpToMessage,
     restoreFollow,
+    resetFollow,
     stickToBottom,
-    stickToBottomIfNear,
     flashId,
     chatScale,
     zoomPct,
@@ -393,6 +394,16 @@ export default function AgentPanel({
     { scrollRef, rootRef, msgRefs, railAnchorsRef, contentRef },
     setRailActive,
   )
+
+  /** resetFollow 每次渲染都是新函数；用 ref 转发，避免把布局 effect 变成每次渲染都跑 */
+  const resetFollowRef = useRef(resetFollow)
+  useLayoutEffect(() => {
+    resetFollowRef.current = resetFollow
+  })
+  // 首次打开 / 切换对话 / 切换对话-思维层 / 从隐藏切回：立刻落到最新一条，不播开场动画。
+  useLayoutEffect(() => {
+    resetFollowRef.current()
+  }, [viewMode, conversation?.id, active])
 
   /*
     「回到最新」上的新消息数：按通道记用户读到哪一条（见 panel/messageReadIndex）。
@@ -419,23 +430,28 @@ export default function AgentPanel({
    * 依赖里除了条数，还有 messages 本身（编辑一条消息、压缩之后换了一整份列表，
    * 条数可能没变但高度变了）——只认条数会漏掉这些「不增不减、只是变高」的改动。
    *
-   * 新增消息另有一条更宽的判据：即使已经脱离跟随，只要当前视口离底部 ≤400px，
-   * 也主动落底（见 useScrollFollow 的 stickToBottomIfNear）。work 消息也混在同一条
-   * 时间线里，所以两个来源的条数都要看。
+   * 新增可见消息则无条件回到底部：这是「列表出现新消息」的硬要求；
+   * work 消息也混在同一条时间线里，所以角色消息与 work 两个来源的条数都要看。
    */
   const lastTimelineCountRef = useRef({
     role: messages.reduce((n, m) => n + (m.hidden ? 0 : 1), 0),
     work: workMessages.length,
+    chat: chatMessages.length,
   })
   useEffect(() => {
     // 隐藏的提示词注入也会进 messages，但它们不上屏；只把可见行算作「新消息」。
     const roleCount = messages.reduce((n, m) => n + (m.hidden ? 0 : 1), 0)
     const prev = lastTimelineCountRef.current
-    const grew = roleCount > prev.role || workMessages.length > prev.work
-    lastTimelineCountRef.current = { role: roleCount, work: workMessages.length }
-    if (grew) stickToBottomIfNear()
+    const grew =
+      viewMode === 'chat'
+        ? chatMessages.length > prev.chat
+        : roleCount > prev.role || workMessages.length > prev.work
+    lastTimelineCountRef.current = { role: roleCount, work: workMessages.length, chat: chatMessages.length }
+    // 新消息到达就回到底部：即使之前往上翻过，也让最新一条直接可见。
+    // 内容长高 / 流式输出仍走 pinned 的缓动贴底，不打断正在上方阅读的人。
+    if (grew) restoreFollow()
     else stickToBottom()
-  }, [stickToBottom, stickToBottomIfNear, messages, streaming, running, workMessages])
+  }, [chatMessages, messages, restoreFollow, stickToBottom, streaming, running, viewMode, workMessages])
 
   // 定位条排在后面：它的 useLayoutEffect 与上面那个「贴底」谁先跑与拆分前一致（见各自注释）
   const { anchors, measureAnchors } = useMsgRail(
@@ -586,7 +602,7 @@ export default function AgentPanel({
           <button
             key={m}
             type="button"
-            onClick={() => setViewMode(m)}
+            onClick={() => setAgentViewMode(m)}
             className={
               'rounded-lg px-2.5 py-1 text-[11.5px] transition ' +
               (viewMode === m

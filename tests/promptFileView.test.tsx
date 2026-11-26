@@ -93,6 +93,25 @@ describe('PromptFileView', () => {
     cleanup(host, root)
   })
 
+  it('顶部一键复制整份提示词正文', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    const { host, root, file } = renderView()
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[data-prompt-copy]')?.click()
+      await Promise.resolve()
+    })
+
+    expect(writeText).toHaveBeenCalledWith(file.content)
+    expect(host.querySelector('[data-prompt-copy]')?.textContent).toContain('已复制')
+
+    cleanup(host, root)
+  })
+
   it('能切到只读源码模式，并把原正文交给编辑器', () => {
     const { host, root, file } = renderView()
 

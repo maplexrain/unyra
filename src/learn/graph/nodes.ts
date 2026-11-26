@@ -227,9 +227,10 @@ export function createNodeUnder(
  * 变成一道多选题。因此本来就有多个父节点（DAG 里被复用过）的节点，move 之后
  * 只剩新父节点这一条线。
  *
- * 四条硬边界：总目标的根不能动（它挂着整个目标）、跨目标不迁（阅读与打卡的账
- * 都按目标分开，搬过去就成无主账）、不能挂到自己之下、不能挂到自己的下级之下
- * （那是一个环）。复用与边注册的口径与 createNodeUnder 一致。
+ * 四条硬边界：跨目标不迁（阅读与打卡的账都按目标分开，搬过去就成无主账）、
+ * 不能挂到自己之下、不能挂到自己的下级之下（那是一个环）、不能原地重挂。
+ * 节点不再有“总目标根”身份：旧数据里的 rootNodeId 只是目录锚点，不阻止移动；
+ * 锚点留在原节点上，路径解析照旧从它起算。
  */
 export function moveNode(
   store: LearnStore,
@@ -240,9 +241,6 @@ export function moveNode(
   const parent = nodeById(store, newParentId)
   if (!node) return { store, moved: false, message: '要移动的节点不存在' }
   if (!parent) return { store, moved: false, message: '新父节点不存在' }
-  if (store.goals.some((g) => g.rootNodeId === id)) {
-    return { store, moved: false, message: '「' + node.title + '」是一个目标的根（总目标），不能挂到别的节点之下' }
-  }
   if (node.goalId !== parent.goalId) {
     return { store, moved: false, message: '跨目标迁移暂不支持：「' + node.title + '」属于另一个目标' }
   }
@@ -266,8 +264,12 @@ export function moveNode(
 }
 
 /**
- * 删除单个节点：只删它自己——相连的边摘掉、它名下的临时变量/页签一并清掉；
- * 若它是某个目标的根，则整个目标一并删除（根就是目标的骨架）。
+ * 删除单个节点：只删它自己——相连的边摘掉、它名下的临时变量/页签一并清掉。
+ *
+ * **不再有“根节点”**：节点只是节点，删掉一个文档节点不会带走整个学习目标。目标
+ * 仍然存在；若删的恰好是旧数据里的 `rootNodeId`（现在只作为目标目录的存储锚点），
+ * 就把锚点改到同目标里另一枚存活节点（没有就置空），由各处的 `goal.rootNodeId ||`
+ * 兜底处理。要把整个目标删掉，必须显式走 `deleteGoal(goal.id)`。
  *
  * **下游不连坐**（用户定的原则：节点都是独立的，关系可以解除）：树边摘掉之后，
  * 下游文档变成「没有上游的游离文档」，还在画布上，随时可以重新连上或单独删除。
@@ -278,13 +280,24 @@ export function moveNode(
  * 那正是节点级隔离改成目标级之后该有的样子。
  */
 export function deleteNode(store: LearnStore, id: string): LearnStore {
-  const goal = store.goals.find((g) => g.id === id || g.rootNodeId === id)
+  // 显式传目标 id 仍表示删目标（旧入口 / 资源管理器目标行）；文档节点 id 绝不再升级成删目标
+  const goal = store.goals.find((g) => g.id === id)
   if (goal) return deleteGoal(store, goal.id)
   const node = nodeById(store, id)
   if (!node) return store
   const parents = parentIds(store, id)
   const doomedTabs = tabIdsOfNode(allStoredTabs(store.docArea), id)
   const nodes = store.nodes.filter((n) => n.id !== id)
+  const anchorWasNode = store.goals.find((g) => g.id === node.goalId)?.rootNodeId === id
+  // 锚点改到同目标里另一枚存活节点：优先直接下级（它刚刚断了线，但仍在目标里），否则任意存活文档
+  const nextAnchor = anchorWasNode
+    ? (store.edges
+        .filter((e) => e.from === id)
+        .map((e) => e.to)
+        .find((cid) => cid !== id && nodes.some((n) => n.id === cid)) ??
+      nodes.find((n) => n.goalId === node.goalId)?.id ??
+      '')
+    : null
   // 挂件解除绑定、就地独立：笔记与超级文档进游离池（宿主的 goal），试卷留在 exams 里悬空
   const pool = detachedPoolOf(store, node.goalId)
   const nextDetached: LearnStore['detached'] = {
@@ -297,6 +310,13 @@ export function deleteNode(store: LearnStore, id: string): LearnStore {
   return {
     ...store,
     nodes,
+    ...(nextAnchor !== null
+      ? {
+          goals: store.goals.map((g) =>
+            g.id === node.goalId ? { ...g, rootNodeId: nextAnchor, updatedAt: Date.now() } : g,
+          ),
+        }
+      : {}),
     edges: store.edges.filter((e) => e.from !== id && e.to !== id),
     // 试卷不删：宿主没了绑定自然解除（nodeId 悬空），用户随时可以把它绑到别的文档或单独删掉
     tmp: withoutTmpNodes(store.tmp, new Set([id])),

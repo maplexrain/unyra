@@ -127,7 +127,7 @@ describe('mind 上下文账与 work 消息内联', () => {
     const workRow = r.host.querySelector('[data-work-message="w1"]')
     expect(workRow).not.toBeNull()
     expect(workRow?.getAttribute('data-mind-ts')).toBe('200')
-    expect(workRow?.textContent).toContain('work ·')
+    expect(workRow?.textContent).toContain('Work')
     expect(workRow?.textContent).toContain('调研-1')
     expect(workRow?.textContent).toContain('调研中间结果')
     expect(r.host.querySelector('[data-inline-work-window]')).toBeNull()
@@ -135,7 +135,7 @@ describe('mind 上下文账与 work 消息内联', () => {
     r.cleanup()
   })
 
-  it('多条 work 的消息各自带来源混入 mind 列表，同一条 work 内按 order 而不是发送时刻排', () => {
+  it('多条 work 的消息各自带来源混入 mind 列表，严格按原始时间戳平铺', () => {
     const r1: ConversationMessage = { id: 'r1', role: 'user', ts: 100, parts: [{ type: 'text', text: '开始' }] }
     const r2: ConversationMessage = { id: 'r2', role: 'assistant', ts: 500, parts: [{ type: 'text', text: '结束' }] }
     const a0 = {
@@ -163,13 +163,13 @@ describe('mind 上下文账与 work 消息内联', () => {
     const ids = Array.from(r.host.querySelectorAll('[data-mind-message-id]')).map((el) =>
       el.getAttribute('data-mind-message-id'),
     )
-    // A 的两条消息原始 ts 倒挂，但时间线按 order 修正排序值；B 按自己的时间插在前面。
-    expect(ids).toEqual(['r1', 'b0', 'a0', 'a1', 'r2'])
+    // 不再按 work 分组修正顺序，也不再让 order 覆盖原始 ts：三条 work 消息按 200 / 250 / 300 平铺。
+    expect(ids).toEqual(['r1', 'a1', 'b0', 'a0', 'r2'])
     const rows = Array.from(r.host.querySelectorAll('[data-work-message]'))
-    expect(rows.map((el) => el.getAttribute('data-work-message'))).toEqual(['wb', 'wa', 'wa'])
-    expect(rows.map((el) => el.getAttribute('data-mind-ts'))).toEqual(['250', '300', '200'])
-    expect(rows[0]?.textContent).toContain('调研-B')
-    expect(rows[1]?.textContent).toContain('调研-A')
+    expect(rows.map((el) => el.getAttribute('data-work-message'))).toEqual(['wa', 'wb', 'wa'])
+    expect(rows.map((el) => el.getAttribute('data-mind-ts'))).toEqual(['200', '250', '300'])
+    expect(rows[0]?.textContent).toContain('调研-A')
+    expect(rows[1]?.textContent).toContain('调研-B')
     r.cleanup()
   })
 
@@ -188,6 +188,29 @@ describe('mind 上下文账与 work 消息内联', () => {
     }
     const r = render({ messages: [workMessage], mind: false, workMessages: [workItem] })
     expect(r.host.querySelector('[data-work-message]')).toBeNull()
+    r.cleanup()
+  })
+
+  it('思维列表和群聊一样窗口化：work 再多也只挂最近 30 条', () => {
+    const role: ConversationMessage = { id: 'r0', role: 'user', ts: 0, parts: [{ type: 'text', text: '开始' }] }
+    const items = Array.from({ length: 40 }, (_, i) => ({
+      m: {
+        id: `w${i}`,
+        role: 'assistant' as const,
+        ts: i + 1,
+        parts: [{ type: 'text', text: `work-${i}` }],
+      } satisfies ConversationMessage,
+      workId: 'wa',
+      workName: '调研-A',
+      ts: i + 1,
+      order: i,
+    }))
+    const r = render({ messages: [role], mind: true, agentName: '导师龟', workMessages: items })
+    const units = r.host.querySelectorAll('[data-mind-unit-id]')
+    expect(units).toHaveLength(30)
+    expect(r.host.querySelector('[data-work-message]')?.getAttribute('data-work-message')).toBe('wa')
+    expect(r.host.textContent).toContain('work-39')
+    expect(r.host.textContent).not.toContain('work-9')
     r.cleanup()
   })
 

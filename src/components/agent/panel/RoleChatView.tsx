@@ -23,6 +23,7 @@ import { BubbleBody } from './BubbleBody'
 import { AskBubble } from './AskBubble'
 import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
 import { DeliveryBlock } from './DeliveryBlock'
+import { WorkBindingBadge } from './WorkBindingBadge'
 import { MessageMediaGrid } from './MessageMedia'
 import { isVideoFile } from './messageMediaLayout'
 import { useRecentWindow } from './useRecentWindow'
@@ -191,7 +192,7 @@ export function RoleChatView({
             const hasMedia = Boolean(
               m.attachments?.images?.length || (m.attachments?.files ?? []).some((f) => isVideoFile(f)),
             )
-            const bubbleVisible = Boolean(m.text.trim() || hasMedia || m.delivery)
+            const bubbleVisible = Boolean(m.text.trim() || hasMedia || m.delivery || m.work)
             return (
               <div key={m.id} className={'flex items-start gap-2.5 ' + (mine ? 'flex-row-reverse' : '')}>
                 {avatarOf(m)}
@@ -257,6 +258,7 @@ export function RoleChatView({
                         files={m.attachments?.files}
                       />
                       {/* 交付账嵌在气泡内侧底部，不再单独长成一个“交付气泡” */}
+                      {m.work ? <WorkBindingBadge binding={m.work} /> : null}
                       {m.delivery ? (
                         <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={m.goalId} />
                       ) : null}

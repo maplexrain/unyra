@@ -6,21 +6,17 @@
  */
 
 import type { Dispatch, SetStateAction } from 'react'
-import type { FileNodeKind, LearnStore } from '../../../learn/types'
+import type { FileNodeKind } from '../../../learn/types'
 import { inferPathKind } from '../../../learn/projects'
 import { native } from '../../../lib/native'
-import { outlineUuid } from '../../../learn/nodeKinds'
 import { t } from '../../../i18n'
 import type { ChannelResult, MenuState } from './canvasTypes'
 import { WheelStop } from './CanvasCardRows'
-import type { CanvasEdge, CardView } from './structureView'
+import type { CardView } from './structureView'
 
 export interface CanvasMenuProps {
   menu: MenuState
   menuCard: CardView
-  store: LearnStore
-  goalId: string
-  edges: CanvasEdge[]
   menuText: string
   setMenuText: Dispatch<SetStateAction<string>>
   menuTitleText: string
@@ -29,7 +25,6 @@ export interface CanvasMenuProps {
   setMenuFileKind: Dispatch<SetStateAction<FileNodeKind>>
   setMenu: Dispatch<SetStateAction<MenuState | null>>
   removeNode: (uuid: string) => void
-  onSetEntry?: (docUuid: string) => ChannelResult
   /** 统一通道的回执 → 吐司（拒绝一定带人话） */
   report: (r: ChannelResult) => boolean
   onGenerateOutline?: (docUuid: string) => void
@@ -54,9 +49,6 @@ export interface CanvasMenuProps {
 export function CanvasMenu({
   menu,
   menuCard,
-  store,
-  goalId,
-  edges,
   menuText,
   setMenuText,
   menuTitleText,
@@ -65,7 +57,6 @@ export function CanvasMenu({
   setMenuFileKind,
   setMenu,
   removeNode,
-  onSetEntry,
   report,
   onGenerateOutline,
   onGenerateOutlineGuide,
@@ -99,23 +90,6 @@ export function CanvasMenu({
           >
             {t('删除')}
           </button>
-          {menuCard.kind === 'doc' &&
-            !menuCard.entry &&
-            store.goals.find((g) => g.id === goalId)?.rootNodeId !== menuCard.uuid &&
-            !edges.some((e) => e.to === menuCard.uuid || e.to === outlineUuid(menuCard.uuid)) &&
-            onSetEntry && (
-            <button
-              type="button"
-              title={t('这门课从这份文档开始（原入口文档退位，仍在图上）')}
-              className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"
-              onClick={() => {
-                report(onSetEntry(menuCard.uuid))
-                setMenu(null)
-              }}
-            >
-              {t('设为入口')}
-            </button>
-          )}
           <button
             type="button"
             className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-line/60"

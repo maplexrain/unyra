@@ -11,7 +11,7 @@
  * 预览按 XML 顶层标签切块：左侧目录列出每块，点击滚到对应块；没有标签时整篇一块。
  */
 import { useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { ArrowLeft, FileText, ListTree, Lock } from 'lucide-react'
+import { ArrowLeft, Check, Copy, FileText, ListTree, Lock } from 'lucide-react'
 import { DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import { loadAgentSettings, subscribeAgentSettings } from '../../../agent/settings'
 import { listPromptFiles } from '../../../learn/ai/promptFiles'
@@ -43,6 +43,7 @@ export function PromptFileView({
     [agentId, layer, settings.promptFiles, fileId],
   )
   const [mode, setMode] = useState<'preview' | 'source'>('preview')
+  const [copied, setCopied] = useState(false)
   const [activeBlock, setActiveBlock] = useState(0)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const blocks = useMemo(() => parsePromptXml(file?.content ?? ''), [file?.content])
@@ -69,6 +70,16 @@ export function PromptFileView({
     setActiveBlock(index)
   }
 
+  const copyAll = async () => {
+    try {
+      await navigator.clipboard.writeText(file.content)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // 剪贴板被系统拒绝时保持原文可选中，不伪造「已复制」
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-paper">
       <header className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-line/70 px-4 py-2">
@@ -91,6 +102,16 @@ export function PromptFileView({
           {agentName} · {layer === 'role' ? t('role 层') : t('work 层')}
         </span>
         <div data-prompt-actions className="ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1.5">
+          <button
+            type="button"
+            data-prompt-copy
+            onClick={copyAll}
+            title={copied ? t('已复制') : t('复制整份提示词')}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-line/70 bg-paper px-2 py-1 text-[10.5px] text-ink-soft transition hover:border-line-strong hover:bg-line/30 hover:text-ink-strong"
+          >
+            {copied ? <Check size={12} className="text-emerald-600 dark:text-emerald-400" /> : <Copy size={12} />}
+            {copied ? t('已复制') : t('复制')}
+          </button>
           <div
             role="group"
             aria-label={t('查看方式')}

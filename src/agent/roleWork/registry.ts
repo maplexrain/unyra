@@ -7,7 +7,7 @@
  *   消息/状态/轮次保留），旧的委托会话（dv:）在会话层过滤，不进 works。
  */
 import type { AgentProfileId } from '../agentProfile'
-import type { ChannelAsk, ChannelMessage, Conversation, ConversationMessage, WorkSession, WorkStatus } from '../types'
+import type { ChannelAsk, ChannelMessage, ChannelPeer, Conversation, ConversationMessage, WorkBinding, WorkSession, WorkStatus } from '../types'
 import { normalizeAskForm } from '../sandbox/askForm'
 import { normalizeDelivery } from '../delivery'
 import { splitChatText } from '../../lib/chatText'
@@ -56,6 +56,28 @@ function normalizeChannelAsk(raw: unknown): ChannelAsk | undefined {
 }
 const NAME_PATTERN = /^[^\s/\\:*?"<>|]{1,32}$/
 
+function normalizeWorkBinding(raw: unknown): WorkBinding | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const b = raw as Partial<WorkBinding>
+  if (typeof b.workId !== 'string' || !b.workId) return undefined
+  if (typeof b.workName !== 'string' || !b.workName) return undefined
+  const status = STATUSES.includes(b.status as WorkStatus) ? (b.status as WorkStatus) : 'idle'
+  const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
+  return {
+    workId: b.workId,
+    workName: b.workName,
+    // 进程重启后运行中的 work 会被归一成 interrupted；消息上的状态也跟着收口，避免永远转圈
+    status: status === 'running' ? 'interrupted' : status,
+    runs: num(b.runs) ?? 0,
+    runtimeMs: num(b.runtimeMs) ?? 0,
+    ...(typeof b.roleId === 'string' ? { roleId: b.roleId } : {}),
+    ...(num(b.startedAt) ? { startedAt: num(b.startedAt) } : {}),
+    ...(num(b.lastActiveAt) ? { lastActiveAt: num(b.lastActiveAt) } : {}),
+    ...(typeof b.current === 'string' && b.current ? { current: b.current } : {}),
+    ...(typeof b.lastIssue === 'string' && b.lastIssue ? { lastIssue: b.lastIssue } : {}),
+  }
+}
+
 export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
   if (!Array.isArray(raw)) return undefined
   const out: ChannelMessage[] = []
@@ -76,10 +98,18 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
         : m.text
     const ask = normalizeChannelAsk(m.ask)
     const delivery = normalizeDelivery(m.delivery)
+    const work = normalizeWorkBinding(m.work)
     const mention =
       m.mention && typeof m.mention === 'object' && typeof m.mention.id === 'string' && typeof m.mention.kind === 'string'
         ? m.mention
         : undefined
+    // 旧数据迁移：2026-11 之前群聊抄送字段叫 mentions；读到就并进 cc，之后只写 cc。
+    const legacyMentions = (m as { mentions?: unknown }).mentions
+    const cc: ChannelPeer[] = Array.isArray(m.cc) && m.cc.length
+      ? m.cc
+      : Array.isArray(legacyMentions)
+        ? (legacyMentions as ChannelPeer[])
+        : []
     out.push({
       id: m.id,
       kind: m.kind,
@@ -91,9 +121,10 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
       ...(m.attachments ? { attachments: m.attachments } : {}),
       ...(ask ? { ask } : {}),
       ...(m.quoteMessageId ? { quoteMessageId: m.quoteMessageId } : {}),
-      ...(Array.isArray(m.mentions) && m.mentions.length ? { mentions: m.mentions } : {}),
+      ...(cc.length ? { cc } : {}),
       ...(mention ? { mention } : {}),
       ...(delivery ? { delivery } : {}),
+      ...(work ? { work } : {}),
       ...(typeof m.goalId === 'string' && m.goalId ? { goalId: m.goalId } : {}),
       ...(typeof m.threadId === 'string' && m.threadId.includes('>') ? { threadId: m.threadId } : {}),
       ...(typeof m.threadRootId === 'string' && m.threadRootId ? { threadRootId: m.threadRootId } : {}),

@@ -34,6 +34,11 @@ export interface WorkSendInput {
   text?: string
   /** 引用 role 会话里的用户消息 id，连同附件转发 */
   messageId?: string
+  /**
+   * 可选：把这次运行的实时状态挂在某个通道消息上（私聊通道或群聊都算）。
+   * 只是展示绑定，不影响任务内容；不传也能正常发。
+   */
+  bindMessageId?: string
   /** 随任务一起带过去的附件（chat.send 到 work 通道时用） */
   images?: MessageImage[]
   files?: MessageFile[]
@@ -72,8 +77,8 @@ export interface ChatSendInput {
   channel: ChannelKind
   /** agent 通道 = role id；work 通道 = work 名；group 通道 = 被点名的 role id（可省略在群里回复用户） */
   to?: string
-  /** 群聊里要抄送上下文的 @ 目标（正文必须出现 `@名字 `；可多位，不激活） */
-  mentions?: string[]
+  /** 抄送对象：正文必须出现 `@名字 `；只同步上下文，不激活、不跑新一轮，可多位 */
+  cc?: string[]
   /**
    * 唯一要激活的 mention（群聊）。只能一位，且必须在正文里 `@名字 `；
    * 用户消息的首个 @ 由宿主自动解析成它。传 `to` 时按旧兼容视作 mention。
